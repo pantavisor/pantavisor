@@ -6,10 +6,6 @@
 
 // systemc.h
 
-struct tstep {
-	void *next;
-};
-
 struct systemc {
 	struct systemc_config *config;
 	systemc_state *state;

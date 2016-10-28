@@ -1,6 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <string.h>
+#include <dirent.h>
+#include <ctype.h>
+
+#include <linux/limits.h>
 
 #include "log.h"
 #include "systemc.h"
@@ -11,6 +17,7 @@
 // SystemC controller
 
 #define CONFIG_FILENAME		"/factory/device.config"
+#define CMDLINE_OFFSET		7
 
 typedef enum {
 	STATE_INIT,
@@ -26,25 +33,19 @@ typedef enum {
 
 typedef sc_state_t sc_state_func_t(struct systemc *sc);
 
-static struct tstep *steps_init()
-{
-	struct tstep *steps = malloc(sizeof(struct tstep));
-
-	// FIXME: Initialize linked list of tsteps
-
-	return steps;
-}
-
 static sc_state_t _sc_init(struct systemc *sc)
 {
-        int ret;
+	int fd, ret, bytes;
+	int step_rev = -1;
+	int step_try = 0;
+	char *buf;
+	char *token;
 	struct systemc_config *c;
 
-	sc->steps = steps_init();
+	//sc->trail = sc_trail_new();
         c = malloc(sizeof(struct systemc_config));
 
-        ret = config_from_file(CONFIG_FILENAME, c);
-        if (ret < 0)
+        if (config_from_file(CONFIG_FILENAME, c) < 0)
                 exit_error(errno, "Unable to parse config");
 
         printf("c->storage.path = '%s'\n", c->storage.path);
@@ -61,8 +62,56 @@ static sc_state_t _sc_init(struct systemc *sc)
 	// Set config
 	sc->config = c;
 
-	// Get state 0
-	sc->state = sc_get_state(sc, 0);
+	// Get current step revision from cmdline
+	fd = open("/proc/cmdline", O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	buf = malloc(sizeof(char) * 1024);
+	bytes = read(fd, buf, sizeof(char)*1024);
+	close(fd);
+
+	token = strtok(buf, " ");
+	while (token) {
+		if (strncmp("sc_rev=", token, CMDLINE_OFFSET) == 0)
+			step_rev = atoi(token + CMDLINE_OFFSET);
+		else if (strncmp("sc_try=", token, CMDLINE_OFFSET) == 0)
+			step_try = atoi(token + CMDLINE_OFFSET);
+		token = strtok(NULL, " ");
+	}
+	free(buf);
+
+	// Get newest from disk if not specified in command line
+	if (step_rev < 0) {
+		// Iterate disk etc
+		struct dirent **dirs;
+		char basedir[PATH_MAX];
+
+		sprintf(basedir, "%s/trails/", sc->config->storage.mntpoint);
+
+		int n = scandir(basedir, &dirs, NULL, alphasort);
+		while (n--) {
+			char *tmp = dirs[n]->d_name;
+
+			while (*tmp && isdigit(*tmp))
+				tmp++;
+
+			if(tmp[0] != '\0')
+				continue;
+
+			printf("SYSTEMC: Default to newest step_rev: '%s'\n", dirs[n]->d_name);
+			step_rev = atoi(dirs[n]->d_name);
+			break;
+		}
+	}
+
+	printf("SYSTEMC: Trail step revision %d initialized\n", step_rev);
+	sc->state = sc_get_state(sc, step_rev);
+
+	if (!sc->state) {
+		printf("SYSTEMC: Invalid state requested, please reconfigure\n");
+		return STATE_ERROR;
+	}
 
         return STATE_RUN;
 }
