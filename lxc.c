@@ -10,7 +10,7 @@
 #include "log.h"
 #include "lxc.h"
 
-int start_lxc_container(char *name, char *conf_file)
+void *start_lxc_container(char *name, char *conf_file, void *data)
 {
 	int err;
 	struct lxc_container *c;
@@ -41,9 +41,29 @@ int start_lxc_container(char *name, char *conf_file)
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
 	c->set_inherit_namespaces(c, 1, share_ns);
 
-	err = c->start(c, 0, NULL);
+	errno = c->start(c, 0, NULL);
 
-	return err;
+	return (void *) c;
 }
 
+// cannot fail if data is valid
+void *stop_lxc_container(char *name, char *conf_file, void *data)
+{
+	bool s;
+	struct lxc_container *c = (struct lxc_container *) data;
+	
+	if (!data)
+		return NULL;
+
+	s = c->shutdown(c, 5); // 5 second timeout
+	if (!s)
+		c->stop(c);
+
+	printf("SYSTEMC: Stopped platform '%s'\n", c->name);
+
+	// unref
+	lxc_container_put(c);
+
+	return NULL;
+}
 

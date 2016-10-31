@@ -11,6 +11,7 @@
 #include "log.h"
 #include "systemc.h"
 #include "loop.h"
+#include "platforms.h"
 
 #include "controller.h"
 
@@ -18,6 +19,8 @@
 
 #define CONFIG_FILENAME		"/systemc/device.config"
 #define CMDLINE_OFFSET		7
+
+static int counter;
 
 typedef enum {
 	STATE_INIT,
@@ -46,6 +49,7 @@ static int sc_step_get_prev(struct systemc *sc)
 
 static sc_state_t _sc_init(struct systemc *sc)
 {
+	printf("%s():%d\n", __func__, __LINE__);
 	int fd, ret, bytes;
 	int step_rev = -1;
 	int step_try = 0;
@@ -129,19 +133,31 @@ static sc_state_t _sc_init(struct systemc *sc)
 		return STATE_ERROR;
 	}
 
+	counter = 0;
+
         return STATE_RUN;
 }
 
 static sc_state_t _sc_run(struct systemc *sc)
 {
-	sc_mount_volumes(sc);
+	printf("%s():%d\n", __func__, __LINE__);
+	int ret;
 
-	if (sc_start_platforms(sc) < 0)
+	if (sc_mount_volumes(sc) < 0)
 		return STATE_ROLLBACK;
+
+	ret = sc_platforms_start_all(sc);
+
+	if (ret < 0) {
+		printf("SYSTEMC: Error starting platforms\n");
+		return STATE_ERROR;
+	}
 
 	//if (sc->steps->current->try)
 	//	sc_commit_state(sc);
 
+	printf("SYSTEMC: Started %d platforms\n", ret);
+	
 	return STATE_UPDATE;
 }
 
@@ -149,18 +165,46 @@ static sc_state_t _sc_wait(struct systemc *sc)
 {
 	printf("%s():%d\n", __func__, __LINE__);
 	sleep(5);
+	counter++;
+
 	return STATE_UPDATE;
 }
 
 static sc_state_t _sc_update(struct systemc *sc)
 {
 	printf("%s():%d\n", __func__, __LINE__);
+
+	if (counter == 5)
+		return STATE_ROLLBACK;
+
 	return STATE_WAIT;
 }
 
 static sc_state_t _sc_rollback(struct systemc *sc)
 {
+	int ret;
+	int rev = sc->state->rev;
+
+	counter = 0;
+	
 	printf("%s():%d\n", __func__, __LINE__);
+	
+	ret = sc_platforms_stop_all(sc);
+
+	if (ret < 0)
+		return STATE_ERROR;
+
+	if (rev == 0) {
+		printf("SYSTEMC: At factory step, cannot roll back -- starting\n");
+		return STATE_RUN;
+	}
+
+	trail_state_free(sc->state);
+	sc->state = sc_get_state(sc, rev - 1);
+
+	if (sc->state)
+		printf("SYSTEMC: Loaded previous step %d\n", rev - 1);
+	
 	return STATE_RUN;
 }
 

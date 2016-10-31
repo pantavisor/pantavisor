@@ -119,7 +119,6 @@ int main(int argc, char *argv[])
 
 	// Spawn shell
 	printf("Execing /bin/ash...");
-	//execl("/bin/ash", "/bin/ash", (char *) NULL);
 	shell_pid = tsh_run("ash");
 
 	for (;;)

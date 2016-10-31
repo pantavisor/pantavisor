@@ -81,7 +81,8 @@ int sc_mount_volumes(struct systemc *sc)
                 char path[256];
                 char mntpoint[256];
 
-                sprintf(path, "%s/trails/0/volumes/%s", sc->config->storage.mntpoint, (*volumes)->filename);
+                sprintf(path, "%s/trails/%d/volumes/%s", sc->config->storage.mntpoint,
+			sc->state->rev, (*volumes)->filename);
                 sprintf(mntpoint, "/volumes/%s", (*volumes)->filename);
 
                 char *fstype = strrchr((*volumes)->filename, '.');
@@ -99,6 +100,7 @@ int sc_mount_volumes(struct systemc *sc)
         return 0;
 }
 
+/*
 int sc_start_platforms(struct systemc *sc)
 {
 	systemc_platform **platforms;
@@ -127,6 +129,7 @@ int sc_start_platforms(struct systemc *sc)
 	
 	return 0;
 }
+*/
 
 int systemc_init()
 {

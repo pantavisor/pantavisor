@@ -16,6 +16,7 @@ LOCAL_SRC_FILES := init.c \
 	           lxc.c \
 		   config.c \
 		   systemc.c \
-		   controller.c
+		   controller.c \
+		   platforms.c
 
 include $(BUILD_EXECUTABLE)

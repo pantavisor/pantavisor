@@ -5,6 +5,7 @@ extern int lxc_log_init(const char *name, const char *file,
 			const char *priority, const char *prefix, int quiet,
 			const char *lxcpath);
 
-int start_lxc_container(char *name, char *conf_file);
+void* start_lxc_container(char *name, char *conf_file, void *data);
+void* stop_lxc_container(char *name, char *conf_file, void *data);
 
 #endif

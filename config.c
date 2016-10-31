@@ -10,8 +10,8 @@ struct config_item {
 	struct config_item *next;
 };
 
-struct config_item *head = 0;
-struct config_item *last;
+static struct config_item *head = 0;
+static struct config_item *last;
 
 struct config_item* _config_add_item(char *key, char *value)
 {
@@ -83,6 +83,7 @@ void _config_del_item(char *key)
 		prev = curr;
 	}
 }
+
 // Fill config struct after parsing on-initramfs factory config
 int config_from_file(char *path, struct systemc_config *config)
 {
