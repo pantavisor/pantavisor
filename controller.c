@@ -16,7 +16,7 @@
 
 // SystemC controller
 
-#define CONFIG_FILENAME		"/factory/device.config"
+#define CONFIG_FILENAME		"/systemc/device.config"
 #define CMDLINE_OFFSET		7
 
 typedef enum {
@@ -32,6 +32,17 @@ typedef enum {
 } sc_state_t;
 
 typedef sc_state_t sc_state_func_t(struct systemc *sc);
+
+static int sc_step_get_prev(struct systemc *sc)
+{
+	if (!sc)
+		return -1;
+
+	if (sc->state)
+		return (sc->state->rev - 1);
+
+	return -1;
+}
 
 static sc_state_t _sc_init(struct systemc *sc)
 {
@@ -81,9 +92,15 @@ static sc_state_t _sc_init(struct systemc *sc)
 	}
 	free(buf);
 
-	// Get newest from disk if not specified in command line
+	// Get current from disk if not specified in command line
 	if (step_rev < 0) {
-		// Iterate disk etc
+		sc->state = sc_get_current_state(sc);
+		if (sc->state)
+			return STATE_RUN;
+	}
+
+	// If no current link, find latest
+	if (step_rev < 0) {
 		struct dirent **dirs;
 		char basedir[PATH_MAX];
 
@@ -105,7 +122,6 @@ static sc_state_t _sc_init(struct systemc *sc)
 		}
 	}
 
-	printf("SYSTEMC: Trail step revision %d initialized\n", step_rev);
 	sc->state = sc_get_state(sc, step_rev);
 
 	if (!sc->state) {

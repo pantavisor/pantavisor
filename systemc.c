@@ -3,6 +3,9 @@
 #include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <ctype.h>
+
+#include <linux/limits.h>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -24,14 +27,18 @@ void sc_destroy(struct systemc *sc)
         free(sc);
 }
 
-systemc_state *sc_get_state(struct systemc *sc, int current)
+systemc_state *sc_get_state(struct systemc *sc, int rev)
 {
         int fd;
         int bytes;
         char path[256];
         char buf[4096];
 
-        sprintf(path, "%s/trails/%d/state.json", sc->config->storage.mntpoint, current);
+	if (rev < 0)
+		sprintf(path, "%s/trails/current/state.json", sc->config->storage.mntpoint);
+	else
+	        sprintf(path, "%s/trails/%d/state.json", sc->config->storage.mntpoint, rev);
+
         printf("Reading state from: '%s'\n", path);
 
         fd = open(path, O_RDONLY);
@@ -48,6 +55,18 @@ systemc_state *sc_get_state(struct systemc *sc, int current)
 
 	// libtrail
         return trail_parse_state (buf, bytes);
+}
+
+systemc_state *sc_get_current_state(struct systemc *sc)
+{
+	struct stat buf;
+	char basedir[PATH_MAX];
+
+	sprintf(basedir, "%s/trails/current", sc->config->storage.mntpoint);
+	if (stat(basedir, &buf) != 0)
+		return sc_get_state(sc, -1);
+
+	return NULL;
 }
 
 int sc_mount_volumes(struct systemc *sc)

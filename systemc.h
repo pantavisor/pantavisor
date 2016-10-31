@@ -14,6 +14,7 @@ struct systemc {
 
 void sc_destroy(struct systemc *sc);
 systemc_state* sc_get_state(struct systemc *sc, int current);
+systemc_state *sc_get_current_state(struct systemc *sc);
 int sc_mount_volumes(struct systemc *sc);
 int sc_start_platforms(struct systemc *sc);
 int systemc_init(void);
