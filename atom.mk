@@ -17,6 +17,7 @@ LOCAL_SRC_FILES := init.c \
 		   config.c \
 		   systemc.c \
 		   controller.c \
-		   platforms.c
+		   platforms.c \
+		   updater.c
 
 include $(BUILD_EXECUTABLE)

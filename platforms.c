@@ -76,6 +76,19 @@ static struct sc_platform* _sc_platform_by_data(void *data)
 	return NULL;
 }
 
+static void _sc_platforms_remove_all(void)
+{
+	struct sc_platform *curr;
+
+	for (curr = head; curr != NULL; curr = curr->next) {
+		free(curr->type);
+		free(curr);
+	}
+
+	head = NULL;
+	last = NULL;
+}
+
 static void _sc_platforms_remove(void *data)
 {
 	struct sc_platform *curr;
@@ -87,12 +100,17 @@ static void _sc_platforms_remove(void *data)
 	for (curr = prev = head; curr != NULL; curr = curr->next) {
 		if (curr->data == data) {
 			free(curr->type);
-			if (prev != curr)
+			if (curr == head)
+				head = curr->next;
+			else
 				prev->next = curr->next;
 			free(curr);
+			return;
 		}
 		prev = curr;
 	}
+
+	last = prev;
 }
 
 static const struct sc_cont_ctrl* _sc_platforms_get_ctrl(char *type)
@@ -169,9 +187,10 @@ int sc_platforms_stop_all(struct systemc *sc)
 	for (curr = head; curr != NULL; curr = curr->next) {
 		ctrl = _sc_platforms_get_ctrl(curr->type);
 		ctrl->stop(NULL, NULL, curr->data);
-		_sc_platforms_remove(curr->data);
 		num_plats++;
 	}
+
+	_sc_platforms_remove_all();
 
 	printf("SYSTEMC: Stopped %d platforms\n", num_plats);
 

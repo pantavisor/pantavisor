@@ -27,12 +27,107 @@ void sc_destroy(struct systemc *sc)
         free(sc);
 }
 
+struct sc_volume {
+	char *src;
+	char *dest;
+	int loop_fd;
+	int file_fd;
+
+	struct sc_volume *next;
+};
+
+struct sc_volume *head = NULL;
+struct sc_volume *last;
+
+static struct sc_volume* _sc_volume_add(char *src, char *dest, int loop_fd, int file_fd)
+{
+	struct sc_volume *this = malloc(sizeof(struct sc_volume));
+
+	if (head == NULL)
+		head = this;
+	else
+		last->next = this;
+
+	this->src = strdup(src);
+	this->dest = strdup(dest);
+	this->loop_fd = loop_fd;
+	this->file_fd = file_fd;
+	this->next = NULL;
+	last = this;
+
+	return this;
+}
+
+static struct sc_volume* _sc_volume_get(char *src)
+{
+	struct sc_volume *curr = head;
+
+	while (curr) {
+		if (strcmp(curr->src, src) == 0)
+			return curr;
+		curr = curr->next;
+	}
+
+	return NULL;
+}
+
+static void _sc_volume_remove(char *src)
+{
+	struct sc_volume *curr = head;
+	struct sc_volume *prev = head;
+
+	for (curr = prev = head; curr != NULL; curr = curr->next) {
+		if (strcmp(curr->src, src) == 0) {
+			free(curr->src);
+			free(curr->dest);
+			if (curr == head)
+				head = curr->next;
+			else
+				prev->next = curr->next;
+			free(curr);
+			return;
+		}
+		prev = curr;
+	}
+	
+	last = prev;
+}
+
+int sc_volumes_unmount(struct systemc *sc)
+{
+	int count = 0;
+	systemc_volobject **volumes = sc->state->volumesv;
+
+        while(*volumes) {
+                char src[PATH_MAX];
+		struct sc_volume *v;
+
+                sprintf(src, "%s/trails/%d/volumes/%s", sc->config->storage.mntpoint,
+			sc->state->rev, (*volumes)->filename);
+
+		v = _sc_volume_get(src);
+		if (unmount_loop(v->dest, v->loop_fd, v->file_fd) < 0) {
+			printf("SYSTEMC: Error umounting volumes\n");
+			return -1;
+		} else {
+			_sc_volume_remove(src);
+			count++;
+		}
+		volumes++;
+	}
+	
+	printf("SYSTEMC: Unmounted '%d' volumes\n", count);
+	
+	return count;
+}
+
 systemc_state *sc_get_state(struct systemc *sc, int rev)
 {
         int fd;
         int bytes;
         char path[256];
         char buf[4096];
+	systemc_state *s;
 
 	if (rev < 0)
 		sprintf(path, "%s/trails/current/state.json", sc->config->storage.mntpoint);
@@ -47,14 +142,20 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
                 return NULL;
         }
 
+	memset(&buf, 0, sizeof(buf));
         bytes = read(fd, &buf, sizeof(buf));
         if (bytes < 0) {
                 printf("Unable to read device state\n");
                 return NULL;
         }
 
+	printf("\n\n%s\n\n", buf);
+
 	// libtrail
-        return trail_parse_state (buf, bytes);
+	s = trail_parse_state (buf, bytes);
+	close(fd);
+
+	return s;
 }
 
 systemc_state *sc_get_current_state(struct systemc *sc)
@@ -69,7 +170,7 @@ systemc_state *sc_get_current_state(struct systemc *sc)
 	return NULL;
 }
 
-int sc_mount_volumes(struct systemc *sc)
+int sc_volumes_mount(struct systemc *sc)
 {
         int ret;
         systemc_volobject **volumes = sc->state->volumesv;
@@ -78,6 +179,7 @@ int sc_mount_volumes(struct systemc *sc)
         mkdir("/volumes", 0644);
 
         while(*volumes) {
+		int loop_fd, file_fd;
                 char path[256];
                 char mntpoint[256];
 
@@ -90,46 +192,17 @@ int sc_mount_volumes(struct systemc *sc)
 
                 printf("Mounting volume '%s' to '%s' with type '%s'\n", path, mntpoint, fstype);
 
-                ret = mount_loop(path, mntpoint, fstype);
+                ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
                 if (ret < 0)
                         exit_error(errno, "Could not mount loop device");
+		
+		_sc_volume_add(path, mntpoint, loop_fd, file_fd);
 
                 volumes++;
         }
 
         return 0;
 }
-
-/*
-int sc_start_platforms(struct systemc *sc)
-{
-	systemc_platform **platforms;
-
-	if (sc->state->platformsv) {
-		platforms = sc->state->platformsv;
-	} else {
-        	printf("No platforms to start\n");
-		return -1;
-	}
-
-	while(*platforms) {
-		char conf_path[512];
-		systemc_object **configs;
-		
-		// Take first config, might be NULL
-		configs = (*platforms)->configs;
-		sprintf(conf_path, "%s/trails/%d/platforms/%s/configs/%s",
-		        sc->config->storage.mntpoint, sc->state->rev,
-		        (*platforms)->name, (*configs)->filename);
-		
-		start_lxc_container((*platforms)->name, conf_path);
-		
-		platforms++;
-	}
-	
-	return 0;
-}
-*/
 
 int systemc_init()
 {

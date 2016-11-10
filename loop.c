@@ -1,5 +1,7 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -27,10 +29,11 @@ int get_free_loop(char *devname)
 	return 0;
 }
 
-int bind_loop_dev(char *devname, char *file)
+int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
 {
-	int loopfd, filefd;
-	
+	int loopfd = *loop_fd;
+	int filefd = *file_fd;
+
 	loopfd = open(devname, O_RDWR);
 	if (loopfd < 0)
 		return -1;
@@ -42,10 +45,13 @@ int bind_loop_dev(char *devname, char *file)
 	if (ioctl(loopfd, LOOP_SET_FD, filefd) < 0)
 		return -1;
 
+	*loop_fd = loopfd;
+	*file_fd = filefd;
+
 	return 0;	
 }
 
-int mount_loop(char *src, char *dest, char *fstype)
+int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 {
 	int ret;
 	char devname[128];
@@ -53,7 +59,7 @@ int mount_loop(char *src, char *dest, char *fstype)
 	if (get_free_loop(devname) < 0)
 		return -1;
 
-	if (bind_loop_dev(devname, src) < 0)
+	if (bind_loop_dev(devname, src, loop_fd, file_fd) < 0)
 		return -1;
 
 	// Make dest if it doesn't exist
@@ -68,4 +74,30 @@ int mount_loop(char *src, char *dest, char *fstype)
 	}
 
 	return 0;
+}
+
+int unmount_loop(char *dest, int loop_fd, int file_fd)
+{
+	int ret;
+
+	ret = umount(dest);
+	if (ret < 0)
+		goto out;
+
+	ret = ioctl(loop_fd, LOOP_CLR_FD, 0);
+	if (ret < 0)
+		goto out;
+
+	ret = close(loop_fd);
+	if (ret < 0)
+		goto out;
+
+	ret = close(file_fd);
+	if (ret < 0)
+		goto out;
+
+	printf("SYSTEMC: Umounted '%s' volume\n", dest);
+
+out:
+	return ret;
 }

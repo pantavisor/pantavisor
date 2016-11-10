@@ -5,6 +5,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <ctype.h>
+#include <netdb.h>
 
 #include <linux/limits.h>
 
@@ -15,12 +16,14 @@
 
 #include "controller.h"
 
+#include "updater.h"
 // SystemC controller
 
 #define CONFIG_FILENAME		"/systemc/device.config"
 #define CMDLINE_OFFSET		7
 
 static int counter;
+static int total;
 
 typedef enum {
 	STATE_INIT,
@@ -47,6 +50,22 @@ static int sc_step_get_prev(struct systemc *sc)
 	return -1;
 }
 
+static int sc_network_is_up(void)
+{
+	struct hostent *ent;
+	char *hostname = "pantacor.com";
+	
+	printf("%s():%d\n", __func__, __LINE__);
+	ent = gethostbyname(hostname);
+	printf("%s():%d\n", __func__, __LINE__);
+
+	if (ent == NULL)
+		return 0;
+
+	printf("%s():%d\n", __func__, __LINE__);
+	return 1;
+}
+
 static sc_state_t _sc_init(struct systemc *sc)
 {
 	printf("%s():%d\n", __func__, __LINE__);
@@ -57,7 +76,6 @@ static sc_state_t _sc_init(struct systemc *sc)
 	char *token;
 	struct systemc_config *c;
 
-	//sc->trail = sc_trail_new();
         c = malloc(sizeof(struct systemc_config));
 
         if (config_from_file(CONFIG_FILENAME, c) < 0)
@@ -67,6 +85,11 @@ static sc_state_t _sc_init(struct systemc *sc)
         printf("c->storage.fstype = '%s'\n", c->storage.fstype);
         printf("c->storage.opts = '%s'\n", c->storage.opts);
         printf("c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
+        printf("c->creds.host = '%s'\n", c->creds.host);
+        printf("c->creds.port = '%d'\n", c->creds.port);
+        printf("c->creds.id = '%s'\n", c->creds.id);
+        printf("c->creds.abrn = '%s'\n", c->creds.abrn);
+        printf("c->creds.secret = '%s'\n", c->creds.secret);
 
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0644);
@@ -133,7 +156,10 @@ static sc_state_t _sc_init(struct systemc *sc)
 		return STATE_ERROR;
 	}
 
+	// Make sure this is not initialized
+	sc->remote = 0;
 	counter = 0;
+	total = 0;
 
         return STATE_RUN;
 }
@@ -143,7 +169,7 @@ static sc_state_t _sc_run(struct systemc *sc)
 	printf("%s():%d\n", __func__, __LINE__);
 	int ret;
 
-	if (sc_mount_volumes(sc) < 0)
+	if (sc_volumes_mount(sc) < 0)
 		return STATE_ROLLBACK;
 
 	ret = sc_platforms_start_all(sc);
@@ -156,7 +182,8 @@ static sc_state_t _sc_run(struct systemc *sc)
 	//if (sc->steps->current->try)
 	//	sc_commit_state(sc);
 
-	printf("SYSTEMC: Started %d platforms\n", ret);
+	total++;
+	printf("SYSTEMC: Started %d platforms -- RUN: %d\n", ret, total);
 	
 	return STATE_UPDATE;
 }
@@ -172,11 +199,45 @@ static sc_state_t _sc_wait(struct systemc *sc)
 
 static sc_state_t _sc_update(struct systemc *sc)
 {
+	int ret;
+
 	printf("%s():%d\n", __func__, __LINE__);
 
-	if (counter == 5)
-		return STATE_ROLLBACK;
+	if (!sc_network_is_up()) {
+		printf("%s():%d\n", __func__, __LINE__);
+		return STATE_WAIT;
+	}
+	
+	printf("%s():%d\n", __func__, __LINE__);
 
+	ret = sc_trail_check_for_updates(sc);
+
+	if (ret == 0) {
+		printf("SYSTEMC: CONTROLLER: No update available\n");
+	} else if (ret > 0) {
+		printf("SYSTEMC: CONTROLLER: Update available, stopping current\n");
+		if (sc_platforms_stop_all(sc) < 0)
+			return STATE_ERROR;
+		if (sc_volumes_unmount(sc) < 0)
+			return STATE_ERROR;
+
+		// Download and install update
+		ret = sc_trail_do_update(sc);
+		
+		if (ret < 0) {
+			printf("SYSTEMC: CONTROLLER: Update has failed, discard\n");
+			return STATE_RUN;
+		}
+		
+		printf("%s():%d\n", __func__, __LINE__);
+		trail_state_free(sc->state);
+		sc->state = sc_get_state(sc, ret);
+		printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d'\n", ret);
+		printf("%s():%d\n", __func__, __LINE__);
+
+		return STATE_RUN;
+	}
+	
 	return STATE_WAIT;
 }
 
@@ -190,17 +251,23 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 	printf("%s():%d\n", __func__, __LINE__);
 	
 	ret = sc_platforms_stop_all(sc);
-
 	if (ret < 0)
 		return STATE_ERROR;
 
-	if (rev == 0) {
-		printf("SYSTEMC: At factory step, cannot roll back -- starting\n");
-		return STATE_RUN;
-	}
+	ret = sc_volumes_unmount(sc);
+	if (ret < 0)
+		return STATE_ERROR;
+
+	//if (rev == 0) {
+	//	printf("SYSTEMC: At factory step, cannot roll back -- starting\n");
+	//	return STATE_RUN;
+	//}
 
 	trail_state_free(sc->state);
-	sc->state = sc_get_state(sc, rev - 1);
+	if (rev == 1)
+		sc->state = sc_get_state(sc, rev - 1);
+	else
+		sc->state = sc_get_state(sc, 1);
 
 	if (sc->state)
 		printf("SYSTEMC: Loaded previous step %d\n", rev - 1);

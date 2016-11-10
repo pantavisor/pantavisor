@@ -111,10 +111,10 @@ int config_from_file(char *path, struct systemc_config *config)
 	config->storage.opts = _config_get_value("storage_opts");
 	config->storage.mntpoint = _config_get_value("storage_mntpoint");
 
-	config->creds.host = _config_get_value("creds_username");
+	config->creds.host = _config_get_value("creds_host");
 	config->creds.port = atoi(_config_get_value("creds_port"));
-	config->creds.username = _config_get_value("creds_username");
-	config->creds.password = _config_get_value("creds_password");
+	config->creds.id = _config_get_value("creds_id");
+	config->creds.abrn = _config_get_value("creds_abrn");
 	config->creds.secret = _config_get_value("creds_secret");
 
 	return 0;
