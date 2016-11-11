@@ -22,7 +22,7 @@ pid_t sc_pid;
 
 void sc_destroy(struct systemc *sc)
 {
-        trail_state_free(sc->state);
+        sc_release_state(sc);
         free(sc->config);
         free(sc);
 }
@@ -124,9 +124,10 @@ int sc_volumes_unmount(struct systemc *sc)
 systemc_state *sc_get_state(struct systemc *sc, int rev)
 {
         int fd;
-        int bytes;
+        int size;;
         char path[256];
-        char buf[4096];
+        char *buf;
+	struct stat st;
 	systemc_state *s;
 
 	if (rev < 0)
@@ -142,20 +143,35 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
                 return NULL;
         }
 
-	memset(&buf, 0, sizeof(buf));
-        bytes = read(fd, &buf, sizeof(buf));
-        if (bytes < 0) {
+	stat(path, &st);
+	size = st.st_size;
+
+	buf = calloc(1, size);
+        size = read(fd, buf, size);
+
+        if (size < 0) {
                 printf("Unable to read device state\n");
                 return NULL;
         }
 
 	printf("\n\n%s\n\n", buf);
 
+	sc->step = buf;
+
 	// libtrail
-	s = trail_parse_state (buf, bytes);
+	s = trail_parse_state (buf, size);
 	close(fd);
 
 	return s;
+}
+
+void sc_release_state(struct systemc *sc)
+{
+	if (sc->step)
+		free(sc->step);
+	
+	if (sc->state)
+		free(sc->state);
 }
 
 systemc_state *sc_get_current_state(struct systemc *sc)

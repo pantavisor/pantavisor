@@ -7,7 +7,7 @@
 
 #include "updater.h"
 
-static int trail_get_size(struct trail_remote *r)
+static int trail_get_new_steps(struct trail_remote *r)
 {
 	trest_request_ptr req;
 	trest_response_ptr res;
@@ -20,13 +20,13 @@ static int trail_get_size(struct trail_remote *r)
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
-		printf("SYSTEMC: TRAIL: Unable get trail size\n");
+		printf("SYSTEMC: TRAIL: Unable to do trail request\n");
 		size = -1;
 		goto out;
 	}
 
 	size = jsmnutil_array_count(res->body, res->json_tokv);
-	printf("SYSTEMC: TRAIL: Remote trail size = '%d'\n", size);
+	printf("SYSTEMC: TRAIL: Steps found in NEW state = '%d'\n", size);
 
 out:
 	if (req)
@@ -37,13 +37,82 @@ out:
 	return size;
 }
 
-static int trail_first_boot(struct trail_remote *r)
+
+static int trail_is_available(struct trail_remote *r)
 {
-	printf("SYSTEMC: TRAIL: Initial trail first boot DO_PUSH()\n");
+	trest_request_ptr req;
+	trest_response_ptr res;
+	int size = 0;
 
+	req = trest_make_request(TREST_METHOD_GET,
+				 "/api/trails/",
+				 0, 0, 0);
+
+	res = trest_do_json_request(r->client, req);
+
+	if (!res) {
+		printf("SYSTEMC: TRAIL: Unable to do trail request\n");
+		size = -1;
+		goto out;
+	}
+
+	size = jsmnutil_array_count(res->body, res->json_tokv);
+	if (size)
+		printf("SYSTEMC: TRAIL: Trail found, using remote\n");
+
+out:
+	if (req)
+		free(req);
+	if (res)
+		free(res);
+
+	return size;
+}
+
+struct trest_request {
+        int type;
+        int method;
+
+        char *endpoint_path;
+        char **queries;
+        char **headers;
+        char *json_body;
+};
+
+
+static int trail_first_boot(struct systemc *sc)
+{
+	int ret;
+	trest_request_ptr req;
+	trest_response_ptr res;
+	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
+
+	status = trest_update_auth(sc->remote->client);
+	if (status != TREST_AUTH_STATUS_OK) {
+		printf("Authorization expired, exit\n");
+		return -1;
+	}
+
+	req = trest_make_request(TREST_METHOD_POST, "/api/trails/", 0, 0, sc->step);
+	res = trest_do_json_request(sc->remote->client, req);	
+
+	if (!res) {
+		printf("SYSTEMC: TRAIL: Unable to push initial trail on first boot\n");
+		ret = -1;
+		goto out;
+	}
+	printf("SYSTEMC: TRAIL: Initial trail pushed OK\n");
+	printf("SYSTEMC: Response: \n\n'%s'\n\n", res->body);
+	ret = 0;
+
+out:
 	sleep(5);
+	if (req)
+		free(req);
+	if (res)
+		free(res);
 
-	return 0;
+	return ret;
 }
 
 static int trail_remote_init(struct systemc *sc)
@@ -52,13 +121,11 @@ static int trail_remote_init(struct systemc *sc)
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_ptr client;
 
-	printf("%s():%d\n", __func__, __LINE__);
 	// Make sure values are reasonable
 	if ((strcmp(sc->config->creds.id, "") == 0) ||
 	    (strcmp(sc->config->creds.abrn, "") == 0))
 		return 0;
 
-	printf("%s():%d\n", __func__, __LINE__);
 	// Create client
 	client = trest_new_from_userpass(
 		sc->config->creds.host,
@@ -67,33 +134,24 @@ static int trail_remote_init(struct systemc *sc)
 		sc->config->creds.secret
 		);
 
-	printf("%s():%d\n", __func__, __LINE__);
 	if (!client) {
 		printf("SYSTEMC: TRAIL: Unable to create device client\n");
 		goto err;
 	}
 
-	printf("%s():%d\n", __func__, __LINE__);
 	status = trest_update_auth(client);
-	printf("%s():%d\n", __func__, __LINE__);
 	if (status != TREST_AUTH_STATUS_OK) {
 		printf("SYSTEMC: TRAIL: Unable to auth device client\n");
 		goto err;
 	}
-	printf("%s():%d\n", __func__, __LINE__);
 
 	remote = malloc(sizeof(struct trail_remote));
-	printf("%s():%d\n", __func__, __LINE__);
 	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
 				   + strlen(sc->config->creds.id)) * sizeof(char));
-	printf("%s():%d\n", __func__, __LINE__);
 	remote->client = client;
-	printf("%s():%d\n", __func__, __LINE__);
 	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, sc->config->creds.id);	
-	printf("%s():%d\n", __func__, __LINE__);
 
 	sc->remote = remote;
-	printf("%s():%d\n", __func__, __LINE__);
 
 	return 0;
 
@@ -109,19 +167,13 @@ err:
 
 int sc_trail_check_for_updates(struct systemc *sc)
 {
-	int ret;
-
-	printf("%s():%d\n", __func__, __LINE__);
 	if (!sc->remote)
 		trail_remote_init(sc);
-
-	printf("%s():%d\n", __func__, __LINE__);
-	ret = trail_get_size(sc->remote);
-	if (ret == 0) {
-		return trail_first_boot(sc->remote);
-	} else {
-		return ret;
-	}
+	
+	if (!trail_is_available(sc->remote))
+		return trail_first_boot(sc);
+	else
+		return trail_get_new_steps(sc->remote);
 }
 
 int sc_trail_do_update(struct systemc *sc)

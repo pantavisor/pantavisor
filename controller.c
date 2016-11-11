@@ -55,14 +55,11 @@ static int sc_network_is_up(void)
 	struct hostent *ent;
 	char *hostname = "pantacor.com";
 	
-	printf("%s():%d\n", __func__, __LINE__);
 	ent = gethostbyname(hostname);
-	printf("%s():%d\n", __func__, __LINE__);
 
 	if (ent == NULL)
 		return 0;
 
-	printf("%s():%d\n", __func__, __LINE__);
 	return 1;
 }
 
@@ -191,7 +188,7 @@ static sc_state_t _sc_run(struct systemc *sc)
 static sc_state_t _sc_wait(struct systemc *sc)
 {
 	printf("%s():%d\n", __func__, __LINE__);
-	sleep(5);
+	sleep(10);
 	counter++;
 
 	return STATE_UPDATE;
@@ -200,15 +197,12 @@ static sc_state_t _sc_wait(struct systemc *sc)
 static sc_state_t _sc_update(struct systemc *sc)
 {
 	int ret;
-
 	printf("%s():%d\n", __func__, __LINE__);
 
 	if (!sc_network_is_up()) {
 		printf("%s():%d\n", __func__, __LINE__);
 		return STATE_WAIT;
 	}
-	
-	printf("%s():%d\n", __func__, __LINE__);
 
 	ret = sc_trail_check_for_updates(sc);
 
@@ -229,11 +223,9 @@ static sc_state_t _sc_update(struct systemc *sc)
 			return STATE_RUN;
 		}
 		
-		printf("%s():%d\n", __func__, __LINE__);
 		trail_state_free(sc->state);
 		sc->state = sc_get_state(sc, ret);
 		printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d'\n", ret);
-		printf("%s():%d\n", __func__, __LINE__);
 
 		return STATE_RUN;
 	}
