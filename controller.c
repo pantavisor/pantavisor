@@ -153,8 +153,11 @@ static sc_state_t _sc_init(struct systemc *sc)
 		return STATE_ERROR;
 	}
 
+	// FIXME: somewhere here load update from disk if in progress, maybe with try?
+
 	// Make sure this is not initialized
 	sc->remote = 0;
+	sc->update = 0;
 	counter = 0;
 	total = 0;
 
@@ -168,13 +171,20 @@ static sc_state_t _sc_run(struct systemc *sc)
 
 	if (sc_volumes_mount(sc) < 0)
 		return STATE_ROLLBACK;
+	printf("%s():%d\n", __func__, __LINE__);
 
 	ret = sc_platforms_start_all(sc);
+	printf("%s():%d\n", __func__, __LINE__);
 
 	if (ret < 0) {
 		printf("SYSTEMC: Error starting platforms\n");
 		return STATE_ERROR;
 	}
+
+	printf("%s():%d\n", __func__, __LINE__);
+	if (sc->update)	
+		sc->update->status = UPDATE_TRY;
+	printf("%s():%d\n", __func__, __LINE__);
 
 	//if (sc->steps->current->try)
 	//	sc_commit_state(sc);
@@ -182,16 +192,37 @@ static sc_state_t _sc_run(struct systemc *sc)
 	total++;
 	printf("SYSTEMC: Started %d platforms -- RUN: %d\n", ret, total);
 	
-	return STATE_UPDATE;
+	return STATE_WAIT;
 }
 
 static sc_state_t _sc_wait(struct systemc *sc)
 {
+	int ret;
 	printf("%s():%d\n", __func__, __LINE__);
+
 	sleep(10);
 	counter++;
+	
+	// FIXME: if update, wait a few times then error
+	if (!sc_network_is_up()) {
+		printf("%s():%d\n", __func__, __LINE__);
+		return STATE_WAIT;
+	}
 
-	return STATE_UPDATE;
+	// if update pending to clear, commit update to cloud
+	if (sc->update) {
+		sc->update->status = UPDATE_DONE;
+		sc_trail_update_finish(sc);
+	}
+
+	ret = sc_trail_check_for_updates(sc);	
+
+	if (ret) {
+		printf("SYSTEMC: CONTROLLER: Update available, processing\n");
+		return STATE_UPDATE;
+	}
+
+	return STATE_WAIT;
 }
 
 static sc_state_t _sc_update(struct systemc *sc)
@@ -199,38 +230,43 @@ static sc_state_t _sc_update(struct systemc *sc)
 	int ret;
 	printf("%s():%d\n", __func__, __LINE__);
 
-	if (!sc_network_is_up()) {
-		printf("%s():%d\n", __func__, __LINE__);
+	printf("SYSTEMC: CONTROLLER: Update requested\n");
+
+	// queue locally and in cloud, block step
+	// FIXME: requires sc_trail_update_finish() call after RUN or boot
+	printf("%s():%d\n", __func__, __LINE__);
+	ret = sc_trail_update_start(sc);
+	printf("%s():%d\n", __func__, __LINE__);
+	if (ret < 0) {
+		printf("SYSTEMC: CONTROLLER: Unable to queue update, abandon\n");
 		return STATE_WAIT;
 	}
 
-	ret = sc_trail_check_for_updates(sc);
+	printf("%s():%d\n", __func__, __LINE__);
+	// stop current step
+	if (sc_platforms_stop_all(sc) < 0)
+		return STATE_ERROR;
+	if (sc_volumes_unmount(sc) < 0)
+		return STATE_ERROR;
 
-	if (ret == 0) {
-		printf("SYSTEMC: CONTROLLER: No update available\n");
-	} else if (ret > 0) {
-		printf("SYSTEMC: CONTROLLER: Update available, stopping current\n");
-		if (sc_platforms_stop_all(sc) < 0)
-			return STATE_ERROR;
-		if (sc_volumes_unmount(sc) < 0)
-			return STATE_ERROR;
-
-		// Download and install update
-		ret = sc_trail_do_update(sc);
-		
-		if (ret < 0) {
-			printf("SYSTEMC: CONTROLLER: Update has failed, discard\n");
-			return STATE_RUN;
-		}
-		
-		trail_state_free(sc->state);
-		sc->state = sc_get_state(sc, ret);
-		printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d'\n", ret);
-
-		return STATE_RUN;
+	printf("%s():%d\n", __func__, __LINE__);
+	// download and install pending step
+	ret = sc_trail_update_install(sc);
+	printf("%s():%d\n", __func__, __LINE__);
+	if (ret < 0) {
+		printf("SYSTEMC: CONTROLLER: Update has failed, rollback\n");
+		sc_trail_update_finish(sc);
+		return STATE_ROLLBACK;
 	}
-	
-	return STATE_WAIT;
+	printf("%s():%d\n", __func__, __LINE__);
+
+	//trail_state_free(sc->state);
+	//sc->state = sc_get_state(sc, ret);
+	printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d', starting...\n", ret);
+
+	// FIXME: if kernel updated, reboot
+
+	return STATE_RUN;
 }
 
 static sc_state_t _sc_rollback(struct systemc *sc)

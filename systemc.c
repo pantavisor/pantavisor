@@ -159,7 +159,7 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
 	sc->step = buf;
 
 	// libtrail
-	s = trail_parse_state (buf, size);
+	s = trail_parse_state(buf, size);
 	close(fd);
 
 	return s;
@@ -171,7 +171,7 @@ void sc_release_state(struct systemc *sc)
 		free(sc->step);
 	
 	if (sc->state)
-		free(sc->state);
+		trail_state_free(sc->state);
 }
 
 systemc_state *sc_get_current_state(struct systemc *sc)
