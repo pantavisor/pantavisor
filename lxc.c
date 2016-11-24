@@ -6,13 +6,13 @@
 
 #include <lxc/lxccontainer.h>
 
+#include "utils.h"
 #include "loop.h"
 #include "log.h"
 #include "lxc.h"
 
 void *start_lxc_container(char *name, char *conf_file, void *data)
 {
-	int err;
 	struct lxc_container *c;
 	char *dname;
 

@@ -9,6 +9,7 @@
 
 #include <linux/loop.h>
 
+#include "utils.h"
 #include "init.h"
 #include "loop.h"
 

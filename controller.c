@@ -9,15 +9,13 @@
 
 #include <linux/limits.h>
 
+#include "utils.h"
 #include "log.h"
 #include "systemc.h"
 #include "loop.h"
 #include "platforms.h"
-
 #include "controller.h"
-
 #include "updater.h"
-// SystemC controller
 
 #define CONFIG_FILENAME		"/systemc/device.config"
 #define CMDLINE_OFFSET		7
@@ -50,6 +48,7 @@ static int sc_step_get_prev(struct systemc *sc)
 	return -1;
 }
 
+//FIXME: should attempt connect() on dedicated api.pantacor.com endpoint
 static int sc_network_is_up(void)
 {
 	struct hostent *ent;
@@ -102,7 +101,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 	if (fd < 0)
 		return -1;
 
-	buf = malloc(sizeof(char) * 1024);
+	buf = calloc(1, sizeof(char) * (1024 + 1));
 	bytes = read(fd, buf, sizeof(char)*1024);
 	close(fd);
 
@@ -171,23 +170,16 @@ static sc_state_t _sc_run(struct systemc *sc)
 
 	if (sc_volumes_mount(sc) < 0)
 		return STATE_ROLLBACK;
-	printf("%s():%d\n", __func__, __LINE__);
-
+	
 	ret = sc_platforms_start_all(sc);
-	printf("%s():%d\n", __func__, __LINE__);
-
 	if (ret < 0) {
 		printf("SYSTEMC: Error starting platforms\n");
 		return STATE_ERROR;
 	}
 
-	printf("%s():%d\n", __func__, __LINE__);
-	if (sc->update)	
-		sc->update->status = UPDATE_TRY;
-	printf("%s():%d\n", __func__, __LINE__);
-
-	//if (sc->steps->current->try)
+	// FIXME: commit to disk ?? f (sc->steps->current->try)
 	//	sc_commit_state(sc);
+	sc->last = sc->state->rev;
 
 	total++;
 	printf("SYSTEMC: Started %d platforms -- RUN: %d\n", ret, total);
@@ -204,19 +196,16 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	counter++;
 	
 	// FIXME: if update, wait a few times then error
-	if (!sc_network_is_up()) {
-		printf("%s():%d\n", __func__, __LINE__);
+	if (!sc_network_is_up())
 		return STATE_WAIT;
-	}
 
 	// if update pending to clear, commit update to cloud
-	if (sc->update) {
+	if (sc->update && sc->update->status == UPDATE_TRY) {
 		sc->update->status = UPDATE_DONE;
 		sc_trail_update_finish(sc);
 	}
 
 	ret = sc_trail_check_for_updates(sc);	
-
 	if (ret) {
 		printf("SYSTEMC: CONTROLLER: Update available, processing\n");
 		return STATE_UPDATE;
@@ -228,41 +217,41 @@ static sc_state_t _sc_wait(struct systemc *sc)
 static sc_state_t _sc_update(struct systemc *sc)
 {
 	int ret;
-	printf("%s():%d\n", __func__, __LINE__);
 
 	printf("SYSTEMC: CONTROLLER: Update requested\n");
 
 	// queue locally and in cloud, block step
 	// FIXME: requires sc_trail_update_finish() call after RUN or boot
-	printf("%s():%d\n", __func__, __LINE__);
 	ret = sc_trail_update_start(sc);
-	printf("%s():%d\n", __func__, __LINE__);
 	if (ret < 0) {
 		printf("SYSTEMC: CONTROLLER: Unable to queue update, abandon\n");
 		return STATE_WAIT;
 	}
 
-	printf("%s():%d\n", __func__, __LINE__);
+	// download and install pending step
+	ret = sc_trail_update_install(sc);
+	if (ret < 0) {
+		printf("SYSTEMC: CONTROLLER: Update has failed, rollback\n");
+		sc_trail_update_finish(sc);
+		return STATE_ROLLBACK;
+	}
+
+	printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d', stopping current...\n", ret);
+
 	// stop current step
 	if (sc_platforms_stop_all(sc) < 0)
 		return STATE_ERROR;
 	if (sc_volumes_unmount(sc) < 0)
 		return STATE_ERROR;
 
-	printf("%s():%d\n", __func__, __LINE__);
-	// download and install pending step
-	ret = sc_trail_update_install(sc);
-	printf("%s():%d\n", __func__, __LINE__);
-	if (ret < 0) {
-		printf("SYSTEMC: CONTROLLER: Update has failed, rollback\n");
-		sc_trail_update_finish(sc);
-		return STATE_ROLLBACK;
-	}
-	printf("%s():%d\n", __func__, __LINE__);
-
-	//trail_state_free(sc->state);
-	//sc->state = sc_get_state(sc, ret);
 	printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d', starting...\n", ret);
+
+	// Load installed step
+	sc_release_state(sc);
+	sc->state = sc_get_state(sc, ret);
+
+	if (sc->state == NULL)
+		return STATE_ROLLBACK;
 
 	// FIXME: if kernel updated, reboot
 
@@ -271,34 +260,26 @@ static sc_state_t _sc_update(struct systemc *sc)
 
 static sc_state_t _sc_rollback(struct systemc *sc)
 {
-	int ret;
-	int rev = sc->state->rev;
-
-	counter = 0;
+	int ret = 0;
 	
-	printf("%s():%d\n", __func__, __LINE__);
+	if (sc->state) {
+		ret = sc_platforms_stop_all(sc);
+		if (ret < 0)
+			return STATE_ERROR;
 	
-	ret = sc_platforms_stop_all(sc);
-	if (ret < 0)
-		return STATE_ERROR;
+		ret = sc_volumes_unmount(sc);
+		if (ret < 0)
+			return STATE_ERROR;
 
-	ret = sc_volumes_unmount(sc);
-	if (ret < 0)
-		return STATE_ERROR;
+		counter = 0;
+		printf("%s():%d\n", __func__, __LINE__);
+		
+		sc_release_state(sc);
+	}
 
-	//if (rev == 0) {
-	//	printf("SYSTEMC: At factory step, cannot roll back -- starting\n");
-	//	return STATE_RUN;
-	//}
-
-	trail_state_free(sc->state);
-	if (rev == 1)
-		sc->state = sc_get_state(sc, rev - 1);
-	else
-		sc->state = sc_get_state(sc, 1);
-
+	sc->state = sc_get_state(sc, sc->last);
 	if (sc->state)
-		printf("SYSTEMC: Loaded previous step %d\n", rev - 1);
+		printf("SYSTEMC: Loaded previous step %d\n", sc->last);
 	
 	return STATE_RUN;
 }

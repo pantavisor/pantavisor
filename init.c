@@ -70,26 +70,29 @@ static int early_mounts()
 static void debug_init()
 {
 	tsh_run("ifconfig lo up");
-	tsh_run("ifconfig eth0 up");
+	tsh_run("ifconfig eth0 192.168.53.76");
 	tsh_run("telnetd -l /bin/ash");
 }
 
 static void signal_handler(int signal)
 {
-	pid_t pid;
+	pid_t pid = 0;
 	int wstatus;
 
 	if (signal != SIGCHLD)
 		return;
 
-	pid = wait(&wstatus);
+	while (pid == 0) {
+		pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED);
+	}
+
 	printf("init: reaped pid=%d\n", pid);
 
 	// Check for systemc
 	if (pid == sc_pid) {
 		if (WIFSIGNALED(wstatus)) {
 			printf("init: restarting systemc...\n");
-			systemc_init();
+	//		systemc_init();
 		} else if (WIFEXITED(wstatus)) {
 			printf("init: clean exit from systemc, rebooting...\n");
 			sleep(1);
@@ -112,7 +115,7 @@ int main(int argc, char *argv[])
 
 	signal(SIGCHLD, signal_handler);
 
-	systemc_init();
+	//systemc_init();
 
 	if (debug)
 		debug_init();

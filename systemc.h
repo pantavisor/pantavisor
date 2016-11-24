@@ -10,23 +10,40 @@ struct trail_remote;
 
 enum update_state {
 	UPDATE_QUEUED,
-	UPDATE_DONE,
+	UPDATE_DOWNLOADED,
+	UPDATE_INSTALLED,
 	UPDATE_TRY,
+	UPDATE_DONE,
 	UPDATE_FAILED,
 };
 
+struct trail_object {
+	char *id;
+	char *objpath;
+	char *relpath;
+	char *geturl;
+	struct trail_object *next;
+};
+
+struct trail_step {
+	char *json;
+	systemc_state *state;
+};
+
 struct sc_update {
-	systemc_state *pending;
-	char *endpoint;
 	enum update_state status;
+	char *endpoint;
+	struct trail_step *pending;
+	struct trail_object **objects;
 };
 
 struct systemc {
+	int last;
+	char *step;
 	struct systemc_config *config;
-	systemc_state *state;
 	struct trail_remote *remote;
 	struct sc_update *update;
-	char *step;
+	systemc_state *state;
 };
 
 void sc_destroy(struct systemc *sc);
