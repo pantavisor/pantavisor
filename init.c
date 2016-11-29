@@ -92,7 +92,7 @@ static void signal_handler(int signal)
 	if (pid == sc_pid) {
 		if (WIFSIGNALED(wstatus)) {
 			printf("init: restarting systemc...\n");
-	//		systemc_init();
+			systemc_init();
 		} else if (WIFEXITED(wstatus)) {
 			printf("init: clean exit from systemc, rebooting...\n");
 			sleep(1);
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 
 	signal(SIGCHLD, signal_handler);
 
-	//systemc_init();
+	systemc_init();
 
 	if (debug)
 		debug_init();

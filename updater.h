@@ -22,7 +22,7 @@ struct trail_remote {
 	struct trail_step *pending;
 };
 
-int sc_trail_update_start(struct systemc *sc);
+int sc_trail_update_start(struct systemc *sc, int offline);
 int sc_trail_update_finish(struct systemc *sc);
 int sc_trail_update_install(struct systemc *sc);
 int sc_trail_check_for_updates(struct systemc *sc);

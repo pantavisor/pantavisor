@@ -3,8 +3,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/sysinfo.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <mtd/mtd-user.h>
 
 #include <thttp.h>
 #include <jsmn/jsmnutil.h>
@@ -17,36 +21,66 @@ static struct trail_object *last;
 
 typedef void (*token_iter_f) (void *data, char *buf, jsmntok_t* tok, int c);
 
+static void uboot_set_try_rev(struct systemc *sc, int rev)
+{
+	int fd;
+	char s[256];
+	// FIXME: Maybe setup sc_rev=sc->last as well for safety
+	// If trying, commit to disk
+	erase_info_t ei;
+
+	fd = open("/dev/mtd2", O_RDWR | O_SYNC);
+	ei.start = 0;
+	ioctl(fd, MEMUNLOCK, &ei);
+	ioctl(fd, MEMERASE, &ei);
+
+	lseek(fd, 0, SEEK_SET);
+	//ioctl(fd, MEMGETINFO, &mtd_info);
+	sprintf(s, "sc_try=%d\0", rev);
+	write(fd, &s, strlen(s) + 1);
+	
+	close(fd);
+	
+	return;	
+}
+
 // takes an allocated buffer
 static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
 {
 	char *p = 0;
 	char *new = 0;
-	char *old = buf;
+	char *old;
 	int pos = 0, replaced = 0;
+	char *tmp;
 
-	p = strstr(buf, code);
+	tmp = malloc(strlen(buf) + strlen(code) + 1);
+	strcpy(tmp, buf);
+	strcat(tmp, code);
+	old = tmp;
+
+	p = strstr(tmp, code);
 	while (p) {
 		*p = '\0';
-		new = realloc(new, pos + strlen(buf) + 2);
-		strcpy(new+pos, buf);
-		pos = pos + strlen(buf);
+		new = realloc(new, pos + strlen(tmp) + 2);
+		strcpy(new+pos, tmp);
+		pos = pos + strlen(tmp);
 		new[pos] = c;
 		pos += 1;
 		new[pos] = '\0';
 		replaced += 1;
-		buf = p+strlen(code);
-		p = strstr(buf, code);
+		tmp = p+strlen(code);
+		p = strstr(tmp, code);
 	}
 
 	if (old)
 		free(old);
+	if (buf)
+		free(buf);
 
 	return new;
 }
 
-static char*
-get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
+static char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 {
 	int i;
 	int t=-1;
@@ -69,8 +103,7 @@ get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 	return NULL;
 }
 
-static int
-traverse_token (char *buf, jsmntok_t* tok, int t)
+static int traverse_token (char *buf, jsmntok_t* tok, int t)
 {
 	int i;
 	int c;
@@ -382,6 +415,9 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 	trest_response_ptr res;
 	char json[1024];
 
+	if (!sc->remote)
+		trail_remote_init(sc);
+
 	switch (status) {
 	case UPDATE_QUEUED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT, 
@@ -398,6 +434,10 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 	case UPDATE_TRY:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"INPROGRESS", "Attempting to start step", 90);
+		break;
+	case UPDATE_REBOOT:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"INPROGRESS", "Rebooting device", 95);
 		break;
 	case UPDATE_DONE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -446,29 +486,38 @@ static int get_digit_count(int number)
 	return c;
 }
 
-int sc_trail_update_start(struct systemc *sc)
+int sc_trail_update_start(struct systemc *sc, int offline)
 {
 	int c;
 	int ret = 0;
+	int rev = sc->state->rev;
 	struct sc_update *u = calloc(sizeof(struct sc_update), 1);
 
 	head = NULL;
 	last = NULL;
 
-	u->pending = sc->remote->pending;
+	// Offline update
+	if (!sc->remote && offline) {
+		rev = sc->state->rev;
+	} else {
+		u->pending = sc->remote->pending;
+		rev = u->pending->state->rev;
+	}
 	
 	// to construct endpoint
-	c = get_digit_count(u->pending->state->rev);
+	c = get_digit_count(rev);
 	u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
 		          + (strlen(sc->config->creds.id)) + c) * sizeof(char));
 	sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT,
-		sc->config->creds.id, u->pending->state->rev);
+		sc->config->creds.id, rev);
+
+	u->need_reboot = 0;
 	sc->update = u;
 
-	ret = trail_remote_set_status(sc, UPDATE_QUEUED);
-	if (ret < 0) {
-		printf("SYSTEMC: TRAIL: Failed to queue update\n");
-		return -1;
+	if (!offline) {
+		ret = trail_remote_set_status(sc, UPDATE_QUEUED);
+		if (ret < 0)
+			printf("SYSTEMC: TRAIL: Failed to update cloud status, offline?\n");
 	}
 
 	return 0;
@@ -486,6 +535,13 @@ int sc_trail_update_finish(struct systemc *sc)
 		if (ret < 0) {
 			printf("SYSTEMC: TRAIL: Unable to post completion, keep alive\n");
 		}
+		ret = 0;
+		goto out;
+		break;
+	case UPDATE_REBOOT:
+		printf("SYSTEMC: TRAIL: Update requires reboot, cleaning up...\n");
+		ret = 0;
+		goto out;
 		break;
 	case UPDATE_FAILED:
 		printf("SYSTEMC: TRAIL: Update failed, error\n");
@@ -497,12 +553,17 @@ int sc_trail_update_finish(struct systemc *sc)
 
 
 out:
-	if (sc->update->pending->state)
-		trail_state_free(sc->update->pending->state);
-	free(sc->update->pending->json);
-	free(sc->update->pending);
-	free(sc->update->objects);
-	free(sc->update->endpoint);
+	if (sc->update->pending) {
+		if (sc->update->pending->state)
+			trail_state_free(sc->update->pending->state);
+		free(sc->update->pending->json);
+		free(sc->update->pending);
+	}
+	if (sc->update->objects)
+		free(sc->update->objects);
+	if (sc->update->endpoint)
+		free(sc->update->endpoint);
+
 	free(sc->update);
 
 	while (obj) {
@@ -589,6 +650,14 @@ static int trail_add_object(struct systemc *sc, char *abrn, char *rpath)
 	obj->objpath = trail_get_objpath(sc, abrn);
 	obj->relpath = rpath;
 
+	printf( "New object:\n"
+		"\tobj->id: %s\n"
+		"\tobj->geturl: %s\n"
+		"\tobj->objpath: %s\n"
+		"\tobj->relpath: %s\n\n",
+		obj->id, obj->geturl, obj->objpath, obj->relpath);
+
+
 	obj->next = NULL;
 	last = obj;
 
@@ -665,7 +734,7 @@ static int trail_download_object(struct trail_object *obj)
 	res = thttp_request_do_file (req, fd);
 
 	close (fd);
-	printf("SYSTEMC: TRAIL: DOWNLOADER: Dowmloaded object (%s)\n", obj->objpath);
+	printf("SYSTEMC: TRAIL: DOWNLOADER: Downloaded object (%s)\n", obj->objpath);
 
 out:
 	if (host)
@@ -691,18 +760,23 @@ static int trail_link_objects(struct systemc *sc)
 		mkdir_p(tmp, 0644);
 		free(tmp);
 		if (link(obj->objpath, obj->relpath) < 0) {
-			printf("SYSTEM: TRAIL: OBJECTS: Unable to link %s, errno=%d\n", obj->relpath, errno);
-			err++;
+			printf("SYSTEM: TRAIL: OBJECTS: Unable to link %s, errno=%d\n",
+				obj->relpath, errno);
+			if (errno != EEXIST)
+				err++;
 		} else {
-			printf("SYSTEMC: TRAIL: OBJECTS: Linked %s to %s\n", obj->relpath, obj->objpath);
+			printf("SYSTEMC: TRAIL: OBJECTS: Linked %s to %s\n",
+				obj->relpath, obj->objpath);
 		}
 	}
 
 	return -err;
 }
 
+
 static int trail_download_objects(struct systemc *sc)
 {
+	struct stat st;
 	struct sc_update *u = sc->update;
 	systemc_state *p = u->pending->state;
         systemc_object **basev_i = p->basev;
@@ -714,10 +788,19 @@ static int trail_download_objects(struct systemc *sc)
 			trail_get_relpath(sc, TRAIL_KERNEL_FMT, p->rev,
 				p->kernel->filename, 0));
 
+	// Check if update includes new kernel
+	if (stat(trail_get_objpath(sc, p->kernel->abrn), &st) < 0)
+		u->need_reboot = 1;
+
 	while(*basev_i) {
 		trail_add_object(sc, (*basev_i)->abrn,
 			trail_get_relpath(sc, TRAIL_SYSTEMC_FMT, p->rev,
 				(*basev_i)->filename, 0));
+
+		// Check if new base object
+		if (stat(trail_get_objpath(sc, (*basev_i)->abrn), &st) < 0)
+			u->need_reboot = 1;
+
 		basev_i++;
 	}
 
@@ -800,6 +883,11 @@ int sc_trail_update_install(struct systemc *sc)
 	sc->update->status = UPDATE_TRY;
 	ret = step->state->rev;
 
+	if (sc->update->need_reboot) {
+		sc->update->status = UPDATE_REBOOT;
+		uboot_set_try_rev(sc, ret);
+	}
+	
 out:
 	trail_remote_set_status(sc, sc->update->status);
 

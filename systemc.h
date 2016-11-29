@@ -13,6 +13,7 @@ enum update_state {
 	UPDATE_DOWNLOADED,
 	UPDATE_INSTALLED,
 	UPDATE_TRY,
+	UPDATE_REBOOT,
 	UPDATE_DONE,
 	UPDATE_FAILED,
 };
@@ -33,6 +34,7 @@ struct trail_step {
 struct sc_update {
 	enum update_state status;
 	char *endpoint;
+	int need_reboot;
 	struct trail_step *pending;
 	struct trail_object **objects;
 };

@@ -7,7 +7,9 @@
 #include <ctype.h>
 #include <netdb.h>
 
+#include <sys/reboot.h>
 #include <linux/limits.h>
+#include <linux/reboot.h>
 
 #include "utils.h"
 #include "log.h"
@@ -116,7 +118,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 	free(buf);
 
 	// Get current from disk if not specified in command line
-	if (step_rev < 0) {
+	if ((step_rev < 0) && (step_try < 0)) {
 		sc->state = sc_get_current_state(sc);
 		if (sc->state)
 			return STATE_RUN;
@@ -144,8 +146,24 @@ static sc_state_t _sc_init(struct systemc *sc)
 			break;
 		}
 	}
+	
+	printf("%s():%d step_rev=%d, step_try=%d\n", __func__, __LINE__, step_rev, step_try);
+	// Make sure this is not initialized
+	sc->remote = 0;
+	sc->update = 0;
+
+	// Coming from reboot update?
+	if (step_try > 0) {
+		sc->last = step_rev;
+		step_rev = step_try;	
+	}
 
 	sc->state = sc_get_state(sc, step_rev);
+
+	if (step_try > 0) {
+		sc_trail_update_start(sc, 1);
+		sc->update->status = UPDATE_TRY;
+	}
 
 	if (!sc->state) {
 		printf("SYSTEMC: Invalid state requested, please reconfigure\n");
@@ -154,10 +172,6 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 	// FIXME: somewhere here load update from disk if in progress, maybe with try?
 
-	// Make sure this is not initialized
-	sc->remote = 0;
-	sc->update = 0;
-	counter = 0;
 	total = 0;
 
         return STATE_RUN;
@@ -177,33 +191,46 @@ static sc_state_t _sc_run(struct systemc *sc)
 		return STATE_ERROR;
 	}
 
-	// FIXME: commit to disk ?? f (sc->steps->current->try)
-	//	sc_commit_state(sc);
-	sc->last = sc->state->rev;
-
 	total++;
 	printf("SYSTEMC: Started %d platforms -- RUN: %d\n", ret, total);
 	
+	counter = 0;
+
 	return STATE_WAIT;
 }
 
 static sc_state_t _sc_wait(struct systemc *sc)
 {
 	int ret;
+	int fd;
+	char s[256];
+
 	printf("%s():%d\n", __func__, __LINE__);
 
 	sleep(10);
 	counter++;
-	
-	// FIXME: if update, wait a few times then error
-	if (!sc_network_is_up())
-		return STATE_WAIT;
 
-	// if update pending to clear, commit update to cloud
+	// FIXME: if update, wait a few times then error
+	if (!sc_network_is_up()) {
+		counter++;
+		if (counter > 10)
+			return STATE_ROLLBACK;
+		return STATE_WAIT;
+	}
+
+	// if online update pending to clear, commit update to cloud
 	if (sc->update && sc->update->status == UPDATE_TRY) {
+		sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
+		fd = open(s, O_RDWR | O_TRUNC | O_SYNC);
+		memset(s, 0, sizeof(s));
+		sprintf(s, "sc_rev=%d", sc->state->rev);
+		write(fd, s, strlen(s) + 1);
+		sync();
+		close(fd);
 		sc->update->status = UPDATE_DONE;
 		sc_trail_update_finish(sc);
 	}
+	sc->last = sc->state->rev;
 
 	ret = sc_trail_check_for_updates(sc);	
 	if (ret) {
@@ -222,7 +249,7 @@ static sc_state_t _sc_update(struct systemc *sc)
 
 	// queue locally and in cloud, block step
 	// FIXME: requires sc_trail_update_finish() call after RUN or boot
-	ret = sc_trail_update_start(sc);
+	ret = sc_trail_update_start(sc, 0);
 	if (ret < 0) {
 		printf("SYSTEMC: CONTROLLER: Unable to queue update, abandon\n");
 		return STATE_WAIT;
@@ -244,16 +271,21 @@ static sc_state_t _sc_update(struct systemc *sc)
 	if (sc_volumes_unmount(sc) < 0)
 		return STATE_ERROR;
 
+	// Release current step
+	sc_release_state(sc);
+
+	if (sc->update->need_reboot) {
+		printf("SYSTEMC: CONTROLLER: Rebooting...\n");
+		return STATE_REBOOT;
+	}
+
 	printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d', starting...\n", ret);
 
 	// Load installed step
-	sc_release_state(sc);
 	sc->state = sc_get_state(sc, ret);
 
 	if (sc->state == NULL)
 		return STATE_ROLLBACK;
-
-	// FIXME: if kernel updated, reboot
 
 	return STATE_RUN;
 }
@@ -272,8 +304,6 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 			return STATE_ERROR;
 
 		counter = 0;
-		printf("%s():%d\n", __func__, __LINE__);
-		
 		sc_release_state(sc);
 	}
 
@@ -287,6 +317,13 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 static sc_state_t _sc_reboot(struct systemc *sc)
 {
 	printf("%s():%d\n", __func__, __LINE__);
+
+	sc_trail_update_finish(sc);
+	sync();
+	printf("Rebooting...\n");
+	sleep(2);
+	reboot(LINUX_REBOOT_CMD_RESTART);	
+
 	return STATE_EXIT;
 }
 

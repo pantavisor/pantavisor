@@ -7,7 +7,7 @@ LOCAL_LIBRARIES := lxc libthttp
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
 
-LOCAL_CFLAGS := -g -Wno-format-nonliteral
+LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul
 LOCAL_LDFLAGS := -static
 
 LOCAL_SRC_FILES := init.c \
@@ -30,7 +30,7 @@ LOCAL_LIBRARIES := lxc libthttp
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := systemc-debug
 
-LOCAL_CFLAGS := -g -Wno-format-nonliteral
+LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul
 LOCAL_LDFLAGS := -static
 
 LOCAL_SRC_FILES := loop.c \
