@@ -13,7 +13,12 @@
 #include <thttp.h>
 #include <jsmn/jsmnutil.h>
 
+#define MODULE_NAME			"updater"
+#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
+
 #include "utils.h"
+
 #include "updater.h"
 
 static struct trail_object *head;
@@ -25,8 +30,6 @@ static void uboot_set_try_rev(struct systemc *sc, int rev)
 {
 	int fd;
 	char s[256];
-	// FIXME: Maybe setup sc_rev=sc->last as well for safety
-	// If trying, commit to disk
 	erase_info_t ei;
 
 	fd = open("/dev/mtd2", O_RDWR | O_SYNC);
@@ -35,7 +38,6 @@ static void uboot_set_try_rev(struct systemc *sc, int rev)
 	ioctl(fd, MEMERASE, &ei);
 
 	lseek(fd, 0, SEEK_SET);
-	//ioctl(fd, MEMGETINFO, &mtd_info);
 	sprintf(s, "sc_try=%d\0", rev);
 	write(fd, &s, strlen(s) + 1);
 	
@@ -96,7 +98,7 @@ static char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 			strncpy(idval, buf + tok[i].start, n);
 			return idval;
 		} else if (t==1) {
-			printf ("ERROR: json does not have 'key' string\n");
+			sc_log(WARN, "json does not have 'key' string");
 			return NULL;
 		}
 	}
@@ -122,7 +124,7 @@ static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f fu
 	int i;
 	int c;
 	if (tok[t].type != JSMN_ARRAY) {
-		printf("iterare_json_array: token not array");
+		sc_log(WARN, "iterare_json_array: token not array");
 		return -1;
 	}
 
@@ -169,7 +171,7 @@ static void _add_pending_step(void *data, char *buf, jsmntok_t *tok, int c)
 	*steps = malloc(sizeof(struct trail_step));	
 	(*steps)->state = trail_parse_state(value, strlen(value));
 	(*steps)->json = strdup(value);
-	printf("SYSTEMC:TRAIL Adding step = '%s'\n", (*steps)->json);
+	sc_log(DEBUG, "adding step = '%s'", (*steps)->json);
 	
 	if (value)
 		free(value);
@@ -218,13 +220,13 @@ static int trail_get_new_steps(struct trail_remote *r)
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
-		printf("SYSTEMC: TRAIL: Unable to do trail request\n");
+		sc_log(WARN, "unable to do trail request");
 		size = -1;
 		goto out;
 	}
 
 	size = jsmnutil_array_count(res->body, res->json_tokv);
-	printf("SYSTEMC: TRAIL: Steps found in NEW state = '%d'\n", size);
+	sc_log(DEBUG, "steps found in NEW state = '%d'", size);
 
 	if (!size)
 		goto out;
@@ -247,7 +249,7 @@ static int trail_get_new_steps(struct trail_remote *r)
 		iter++;
 	}
 
-	printf("SYSTEM: TRAIL: First pending found to be rev = %d\n", r->pending->state->rev);
+	sc_log(INFO, "first pending found to be rev = %d", r->pending->state->rev);
 
 out:
 	if (req)
@@ -277,7 +279,7 @@ static int trail_is_available(struct trail_remote *r)
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
-		printf("SYSTEMC: TRAIL: Unable to do trail request\n");
+		sc_log(WARN, "unable to do trail request");
 		size = -1;
 		goto out;
 	}
@@ -289,7 +291,7 @@ static int trail_is_available(struct trail_remote *r)
 
 	size = jsmnutil_array_count(res->body, res->json_tokv);
 	if (size)
-		printf("SYSTEMC: TRAIL: Trail found, using remote\n");
+		sc_log(DEBUG, "trail found, using remote");
 
 out:
 	if (req)
@@ -309,7 +311,7 @@ static int trail_first_boot(struct systemc *sc)
 
 	status = trest_update_auth(sc->remote->client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		printf("Authorization expired, exit\n");
+		sc_log(WARN, "cannot update auth token");
 		return -1;
 	}
 
@@ -317,11 +319,11 @@ static int trail_first_boot(struct systemc *sc)
 	res = trest_do_json_request(sc->remote->client, req);	
 
 	if (!res) {
-		printf("SYSTEMC: TRAIL: Unable to push initial trail on first boot\n");
+		sc_log(ERROR, "unable to push initial trail on first boot");
 		ret = -1;
 		goto out;
 	}
-	printf("SYSTEMC: TRAIL: Initial trail pushed OK (%s)\n", res->body);
+	sc_log(INFO, "initial trail pushed ok");
 	ret = 0;
 
 out:
@@ -354,13 +356,13 @@ static int trail_remote_init(struct systemc *sc)
 		);
 
 	if (!client) {
-		printf("SYSTEMC: TRAIL: Unable to create device client\n");
+		sc_log(WARN, "unable to create device client");
 		goto err;
 	}
 
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		printf("SYSTEMC: TRAIL: Unable to auth device client\n");
+		sc_log(WARN, "unable to auth device client");
 		goto err;
 	}
 
@@ -394,7 +396,7 @@ int sc_trail_check_for_updates(struct systemc *sc)
 	
 	auth_status = trest_update_auth(sc->remote->client);
 	if (auth_status != TREST_AUTH_STATUS_OK) {
-		printf ("SYSTEMC: TRAIL: Cannot authenticate to cloud\n");
+		sc_log(WARN, "cannot authenticate to cloud");
 		return 0;
 	}
 
@@ -445,7 +447,7 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"ERROR", "Error processing step", 0);
+			"ERROR", "Failed to install step", 0);
 		break;
 	}
 				
@@ -457,13 +459,12 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 	res = trest_do_json_request(sc->remote->client, req);
 
 	if (!res) {
-		printf("SYSTEMC: TRAIL: Unable to do trail request\n");
+		sc_log(WARN, "unable to do trail request");
 		ret = -1;
 		goto out;
 	}
 
-	printf("SYSTEC: TRAIL: New remote state: (%s)\n", res->body);
-
+	sc_log(INFO, "remote state updated to %s", res->body);
 out:
 	if (req)
 		trest_request_free(req);
@@ -512,39 +513,105 @@ int sc_trail_update_start(struct systemc *sc, int offline)
 		sc->config->creds.id, rev);
 
 	u->need_reboot = 0;
+	u->need_finish = 0;
 	sc->update = u;
 
 	if (!offline) {
 		ret = trail_remote_set_status(sc, UPDATE_QUEUED);
 		if (ret < 0)
-			printf("SYSTEMC: TRAIL: Failed to update cloud status, offline?\n");
+			sc_log(WARN, "failed to update cloud status, possibly offline");
 	}
+
+	return 0;
+}
+
+int sc_bl_get_update(struct systemc *sc, int *update)
+{
+	int ret = -1;
+	int fd, t;
+	char *rev = 0;
+	char *buf = 0;
+
+	// FIXME: systemc env partition should come from config
+	// FIXME: in fact it should be smart and have multiple backends
+	fd = open("/dev/mtd2", O_RDONLY);
+	if (fd < 0) {
+		sc_log(ERROR, "unable to read bootloader update buffer");
+		goto out;
+	}
+
+	lseek(fd, 0, SEEK_SET);
+	buf = calloc(1, 64 * sizeof(char));
+	read(fd, buf, 64 * sizeof(char));
+	buf[63] = '\0';
+	sc_log(INFO, "read %s from bootloader update buffer", buf);
+	close(fd);
+
+	rev = strtok(buf, "=");
+	if (!rev)
+		goto out;
+
+	if (strcmp(rev, "sc_update") != 0) {
+		sc_log(WARN, "no update information from bootloader");
+		goto out;
+	}
+
+	rev = strtok(NULL, "=");
+	t = atoi(rev);
+
+	if (t <= 0) {
+		sc_log(ERROR, "wrong update revision from bootloader");
+		goto out;
+	}
+
+	*update = t;
+	ret = 1;
+
+out:
+	if (buf)
+		free(buf);
+
+	return ret;
+}
+
+int sc_bl_clear_update(struct systemc *sc)
+{
+	int fd;
+	char buf[64] = { 0 };
+
+	fd = open("/dev/mtd2", O_RDONLY);
+	if (fd < 0) {
+		sc_log(ERROR, "unable to clear bootloader update buffer");
+		return -1;
+	}
+
+	lseek(fd, 0, SEEK_SET);
+	write(fd, &buf, sizeof(buf));
+	sc_log(INFO, "cleared bootloader update buffer");
+	close(fd);
 
 	return 0;
 }
 
 int sc_trail_update_finish(struct systemc *sc)
 {
-	int ret;
+	int ret = 0;
 	struct trail_object *tmp;
 	struct trail_object *obj = head;
 
 	switch (sc->update->status) {
 	case UPDATE_DONE:
 		ret = trail_remote_set_status(sc, UPDATE_DONE);
-		if (ret < 0) {
-			printf("SYSTEMC: TRAIL: Unable to post completion, keep alive\n");
-		}
-		ret = 0;
 		goto out;
 		break;
 	case UPDATE_REBOOT:
-		printf("SYSTEMC: TRAIL: Update requires reboot, cleaning up...\n");
-		ret = 0;
+		sc_log(WARN, "update requires reboot, cleaning up...");
 		goto out;
 		break;
 	case UPDATE_FAILED:
-		printf("SYSTEMC: TRAIL: Update failed, error\n");
+		ret = trail_remote_set_status(sc, UPDATE_FAILED);
+		sc_log(ERROR, "update has failed");
+		goto out;
 	default:
 		ret = -1;
 		goto out;
@@ -593,7 +660,7 @@ static char* trail_download_geturl(struct systemc *sc, char *abrn)
 	endpoint = malloc((sizeof(TRAIL_OBJECT_DL_FMT) + strlen(abrn)) * sizeof(char));
 	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, abrn);
 
-	printf("SYSTEMC: TRAIL: OBJECTS: Requesting obj='%s'\n", endpoint);
+	sc_log(INFO, "requesting obj='%s'", endpoint);
 	
 	req = trest_make_request(TREST_METHOD_GET,
 				 endpoint,
@@ -602,12 +669,17 @@ static char* trail_download_geturl(struct systemc *sc, char *abrn)
 	res = trest_do_json_request(sc->remote->client, req);
 
 	if (!res) {
-		printf("SYSTEMC: TRAIL: Unable to do trail request\n");
+		sc_log(WARN, "unable to do trail request");
 		goto out;
 	}
 
 	url = (char *) get_json_key_value(res->body, "signed-geturl",
 				 res->json_tokv, res->json_tokc);
+
+	if (!url) {
+		sc_log(ERROR, "unable to get download url for object");
+		goto out;
+	}
 	url = unescape_utf8_to_ascii(url, "\\u0026", '&');
 
 out:
@@ -650,13 +722,8 @@ static int trail_add_object(struct systemc *sc, char *abrn, char *rpath)
 	obj->objpath = trail_get_objpath(sc, abrn);
 	obj->relpath = rpath;
 
-	printf( "New object:\n"
-		"\tobj->id: %s\n"
-		"\tobj->geturl: %s\n"
-		"\tobj->objpath: %s\n"
-		"\tobj->relpath: %s\n\n",
-		obj->id, obj->geturl, obj->objpath, obj->relpath);
-
+	sc_log(DEBUG, "new obj id: '%s', url: '%s,' objpath: '%s', relpath: '%s'",
+		 obj->id, obj->geturl, obj->objpath, obj->relpath);
 
 	obj->next = NULL;
 	last = obj;
@@ -701,8 +768,8 @@ static int trail_download_object(struct trail_object *obj)
 	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;
 
-	if (strncmp(obj->geturl, "https://", 8) != 0) {
-		printf("SYSTEMC: TRAIL: DOWNLOADER: Object url is invalid\n");
+	if (obj->geturl && strncmp(obj->geturl, "https://", 8) != 0) {
+		sc_log(WARN, "object url (%s) is invalid", obj->geturl);
 		ret = -1;
 		goto out;
 	}
@@ -712,7 +779,7 @@ static int trail_download_object(struct trail_object *obj)
 
 	struct stat st;
 	if (stat(obj->objpath, &st) == 0) {
-		printf("SYSTEMC: TRAIL: DOWNLOADER: File exists (%s)\n", obj->objpath);
+		sc_log(INFO, "file exists (%s)", obj->objpath);
 		ret = 0;
 		goto out;
 	}
@@ -734,7 +801,7 @@ static int trail_download_object(struct trail_object *obj)
 	res = thttp_request_do_file (req, fd);
 
 	close (fd);
-	printf("SYSTEMC: TRAIL: DOWNLOADER: Downloaded object (%s)\n", obj->objpath);
+	sc_log(INFO, "downloaded object (%s)", obj->objpath);
 
 out:
 	if (host)
@@ -760,12 +827,12 @@ static int trail_link_objects(struct systemc *sc)
 		mkdir_p(tmp, 0644);
 		free(tmp);
 		if (link(obj->objpath, obj->relpath) < 0) {
-			printf("SYSTEM: TRAIL: OBJECTS: Unable to link %s, errno=%d\n",
+			sc_log(ERROR, "unable to link %s, errno=%d",
 				obj->relpath, errno);
 			if (errno != EEXIST)
 				err++;
 		} else {
-			printf("SYSTEMC: TRAIL: OBJECTS: Linked %s to %s\n",
+			sc_log(INFO, "linked %s to %s",
 				obj->relpath, obj->objpath);
 		}
 	}
@@ -789,7 +856,7 @@ static int trail_download_objects(struct systemc *sc)
 				p->kernel->filename, 0));
 
 	// Check if update includes new kernel
-	if (stat(trail_get_objpath(sc, p->kernel->abrn), &st) < 0)
+	if (strcmp(sc->state->kernel->abrn, p->kernel->abrn) != 0)
 		u->need_reboot = 1;
 
 	while(*basev_i) {
@@ -838,11 +905,11 @@ int sc_trail_update_install(struct systemc *sc)
 	if (!sc->remote)
 		trail_remote_init(sc);
 
-	printf("SYSTEMC: TRAIL: Applying update...\n");
+	sc_log(INFO, "applying update...");
 
 	ret = trail_download_objects(sc);
 	if (ret < 0) {
-		printf("SYSTEMC: TRAIL: Unable to download objects\n");
+		sc_log(ERROR, "unable to download objects");
 		sc->update->status = UPDATE_FAILED;
 		goto out;
 	}
@@ -851,7 +918,7 @@ int sc_trail_update_install(struct systemc *sc)
 	
 	ret = trail_link_objects(sc);
 	if (ret < 0) {
-		printf("SYSTEMC: TRAIL: Unable to link objects to relative path (failed=%d)\n", ret);
+		sc_log(ERROR, "unable to link objects to relative path (failed=%d)", ret);
 		sc->update->status = UPDATE_FAILED;
 		goto out;
 	}
@@ -861,24 +928,15 @@ int sc_trail_update_install(struct systemc *sc)
 	sprintf(state_path, "%s/trails/%d/state.json", sc->config->storage.mntpoint, step->state->rev);
 	fd = open(state_path, O_CREAT | O_WRONLY);
 	if (fd < 0) {
-		printf("SYSTEMC: TRAIL: Unable to write state.json file for update\n");
+		sc_log(ERROR, "unable to write state.json file for update");
 		ret = -1;
 		goto out;
 	}
 	write(fd, step->json, strlen(step->json));
 	close(fd);
 
-	// FIXME: DO THIS
-	//ret = trail_commit_to_disk();
-	//if (ret < 0) {
-	//	printf("SYSTEMC: TRAIL: Unable to commit to disk\n");
-	//	sc->update->state = UPDATE_FAILED;
-	//	goto out;
-	//}
 	trail_remote_set_status(sc, UPDATE_INSTALLED);
 
-	//// Update current state and set to TRY
-	//sc->state = memcpy(sc->update->pending, sizeof(struct sc_update));
 	sleep(2);
 	sc->update->status = UPDATE_TRY;
 	ret = step->state->rev;

@@ -35,6 +35,7 @@ struct sc_update {
 	enum update_state status;
 	char *endpoint;
 	int need_reboot;
+	int need_finish;
 	struct trail_step *pending;
 	struct trail_object **objects;
 };

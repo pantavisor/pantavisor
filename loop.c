@@ -13,6 +13,10 @@
 #include "init.h"
 #include "loop.h"
 
+#define MODULE_NAME             "loop"
+#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
+
 int get_free_loop(char *devname)
 {
 	int lctlfd, dev;
@@ -70,7 +74,7 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 
 	ret = mount(devname, dest, fstype, 0, NULL);
 	if (ret < 0) {
-		printf("Could not mount \"%s\" at \"%s\" (type=\"%s\")\n", src, dest, fstype);
+		sc_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
 		return ret;
 	}
 
@@ -97,7 +101,7 @@ int unmount_loop(char *dest, int loop_fd, int file_fd)
 	if (ret < 0)
 		goto out;
 
-	printf("SYSTEMC: Umounted '%s' volume\n", dest);
+	sc_log(INFO, "umounted '%s' volume", dest);
 
 out:
 	return ret;

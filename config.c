@@ -4,6 +4,10 @@
 
 #include "config.h"
 
+#define MODULE_NAME             "config"
+#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
+
 struct config_item {
 	char *key;
 	char *value;
@@ -18,7 +22,7 @@ struct config_item* _config_add_item(char *key, char *value)
 	struct config_item *this = (struct config_item *) malloc(sizeof(struct config_item));
 
 	if (!this) {
-		printf("Unable to allocate config item\n");
+		sc_log(ERROR, "unable to allocate config item");
 		return NULL;
 	}
 
@@ -87,12 +91,13 @@ void _config_del_item(char *key)
 // Fill config struct after parsing on-initramfs factory config
 int config_from_file(char *path, struct systemc_config *config)
 {
+	char *item;
 	char buff[1024];
 	FILE *fp;
 
 	fp = fopen(path, "r");
 	if (!fp) {
-		printf("Unable to find device config file\n");
+		sc_log(ERROR, "unable to find device config file");
 		return -1;
 	}
 
@@ -106,13 +111,21 @@ int config_from_file(char *path, struct systemc_config *config)
 		_config_add_item(key, value);
 	}
 
+	item = _config_get_value("loglevel");
+	if (item)
+		config->loglevel = atoi(item);
+
 	config->storage.path = _config_get_value("storage_device");
 	config->storage.fstype = _config_get_value("storage_fstype");
 	config->storage.opts = _config_get_value("storage_opts");
 	config->storage.mntpoint = _config_get_value("storage_mntpoint");
 
 	config->creds.host = _config_get_value("creds_host");
-	config->creds.port = atoi(_config_get_value("creds_port"));
+
+	item = _config_get_value("creds_port");
+	if (item)
+		config->creds.port = atoi(item);
+
 	config->creds.id = _config_get_value("creds_id");
 	config->creds.abrn = _config_get_value("creds_abrn");
 	config->creds.secret = _config_get_value("creds_secret");

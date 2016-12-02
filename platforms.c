@@ -7,6 +7,10 @@
 
 #include "lxc.h"
 
+#define MODULE_NAME             "platforms"
+#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
+
 #include "platforms.h"
 
 struct sc_cont_ctrl {
@@ -40,7 +44,7 @@ static struct sc_platform* _sc_platforms_add(void *data, char *type)
 	struct sc_platform *this = (struct sc_platform*) malloc(sizeof(struct sc_platform));
 
 	if (!this) {
-		printf("SYSTEMC: Cannot allocate new platform\n");
+		sc_log(ERROR, "cannot allocate new platform\n");
 		return NULL;
 	}
 
@@ -137,7 +141,7 @@ int sc_platforms_start_all(struct systemc *sc)
 	if (sc->state->platformsv) {
 		platforms = sc->state->platformsv;
 	} else {
-		printf("SYSTEMC: No platforms available\n");
+		sc_log(ERROR, "no platforms available");
 		return -1;
 	}
 
@@ -159,12 +163,12 @@ int sc_platforms_start_all(struct systemc *sc)
 		data = ctrl->start((*platforms)->name, conf_path, NULL);
 
 		if (!data) {
-			printf("SYSMTEC: Error starting platform: \"%s\"\n",
+			sc_log(ERROR, "error starting platform: \"%s\"",
 				(*platforms)->name);
 			return -1;
 		}
 		
-		printf("SYSMTEC: Started platform platform: \"%s\" (data=0x%p)\n",
+		sc_log(INFO, "started platform platform: \"%s\" (data=0x%p)",
 			(*platforms)->name, data);
 
 		_sc_platforms_add(data, (*platforms)->type);
@@ -192,7 +196,7 @@ int sc_platforms_stop_all(struct systemc *sc)
 
 	_sc_platforms_remove_all();
 
-	printf("SYSTEMC: Stopped %d platforms\n", num_plats);
+	sc_log(INFO, "stopped %d platforms", num_plats);
 
 	return num_plats;
 }

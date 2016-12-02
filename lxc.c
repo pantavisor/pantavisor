@@ -8,7 +8,11 @@
 
 #include "utils.h"
 #include "loop.h"
+
+#define MODULE_NAME             "lxc"
+#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+
 #include "lxc.h"
 
 void *start_lxc_container(char *name, char *conf_file, void *data)
@@ -31,9 +35,9 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	}
 	c->clear_config(c);
 	if (!c->load_config(c, conf_file)) {
-		printf("Failed to load rcfile");
+		sc_log(ERROR, "failed to load rcfile");
 		lxc_container_put(c);
-		exit_error(errno, "Failed to start container");
+		return NULL;
 	}
 
 	lxc_log_init(name, "/tmp/log", "DEBUG", "init", 0, name);
@@ -59,7 +63,7 @@ void *stop_lxc_container(char *name, char *conf_file, void *data)
 	if (!s)
 		c->stop(c);
 
-	printf("SYSTEMC: Stopped platform '%s'\n", c->name);
+	sc_log(INFO, "stopped platform '%s'", c->name);
 
 	// unref
 	lxc_container_put(c);

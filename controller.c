@@ -12,15 +12,18 @@
 #include <linux/reboot.h>
 
 #include "utils.h"
-#include "log.h"
 #include "systemc.h"
 #include "loop.h"
 #include "platforms.h"
 #include "controller.h"
 #include "updater.h"
 
-#define CONFIG_FILENAME		"/systemc/device.config"
-#define CMDLINE_OFFSET		7
+#define MODULE_NAME		"controller"
+#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
+
+#define CONFIG_FILENAME	"/systemc/device.config"
+#define CMDLINE_OFFSET	7
 
 static int counter;
 static int total;
@@ -66,28 +69,34 @@ static int sc_network_is_up(void)
 
 static sc_state_t _sc_init(struct systemc *sc)
 {
-	printf("%s():%d\n", __func__, __LINE__);
+	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
 	int fd, ret, bytes;
 	int step_rev = -1;
 	int step_try = 0;
+	int bl_rev = -1;
 	char *buf;
 	char *token;
 	struct systemc_config *c;
 
         c = malloc(sizeof(struct systemc_config));
 
-        if (config_from_file(CONFIG_FILENAME, c) < 0)
-                exit_error(errno, "Unable to parse config");
+        if (config_from_file(CONFIG_FILENAME, c) < 0) {
+		sc_log(FATAL, "unable to parse config");
+		return STATE_EXIT;
+	}
 
-        printf("c->storage.path = '%s'\n", c->storage.path);
-        printf("c->storage.fstype = '%s'\n", c->storage.fstype);
-        printf("c->storage.opts = '%s'\n", c->storage.opts);
-        printf("c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
-        printf("c->creds.host = '%s'\n", c->creds.host);
-        printf("c->creds.port = '%d'\n", c->creds.port);
-        printf("c->creds.id = '%s'\n", c->creds.id);
-        printf("c->creds.abrn = '%s'\n", c->creds.abrn);
-        printf("c->creds.secret = '%s'\n", c->creds.secret);
+	if (c->loglevel)
+		sc_log_set_level(c->loglevel);
+
+        sc_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
+        sc_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
+        sc_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
+        sc_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
+        sc_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
+        sc_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
+        sc_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
+        sc_log(DEBUG, "c->creds.abrn = '%s'\n", c->creds.abrn);
+        sc_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
 
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0644);
@@ -141,13 +150,12 @@ static sc_state_t _sc_init(struct systemc *sc)
 			if(tmp[0] != '\0')
 				continue;
 
-			printf("SYSTEMC: Default to newest step_rev: '%s'\n", dirs[n]->d_name);
+			sc_log(INFO, "default to newest step_rev: '%s'", dirs[n]->d_name);
 			step_rev = atoi(dirs[n]->d_name);
 			break;
 		}
 	}
 	
-	printf("%s():%d step_rev=%d, step_try=%d\n", __func__, __LINE__, step_rev, step_try);
 	// Make sure this is not initialized
 	sc->remote = 0;
 	sc->update = 0;
@@ -158,15 +166,27 @@ static sc_state_t _sc_init(struct systemc *sc)
 		step_rev = step_try;	
 	}
 
-	sc->state = sc_get_state(sc, step_rev);
+	sc_bl_get_update(sc, &bl_rev);
 
 	if (step_try > 0) {
+		// Load update attempt
+		sc->state = sc_get_state(sc, step_rev);
 		sc_trail_update_start(sc, 1);
 		sc->update->status = UPDATE_TRY;
+		if (bl_rev > 0)
+			sc_bl_clear_update(sc);
+	} else if (bl_rev > 0) {
+		// Load stale update
+		sc->state = sc_get_state(sc, bl_rev);
+		sc_trail_update_start(sc, 1);
+		sc->update->status = UPDATE_FAILED;
+		sc->update->need_finish = 1;
 	}
 
+	sc->state = sc_get_state(sc, bl_rev);
+
 	if (!sc->state) {
-		printf("SYSTEMC: Invalid state requested, please reconfigure\n");
+		sc_log(ERROR, "invalid state requested, please reconfigure");
 		return STATE_ERROR;
 	}
 
@@ -179,7 +199,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 static sc_state_t _sc_run(struct systemc *sc)
 {
-	printf("%s():%d\n", __func__, __LINE__);
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	int ret;
 
 	if (sc_volumes_mount(sc) < 0)
@@ -187,12 +207,12 @@ static sc_state_t _sc_run(struct systemc *sc)
 	
 	ret = sc_platforms_start_all(sc);
 	if (ret < 0) {
-		printf("SYSTEMC: Error starting platforms\n");
+		sc_log(ERROR, "error starting platforms");
 		return STATE_ERROR;
 	}
 
 	total++;
-	printf("SYSTEMC: Started %d platforms -- RUN: %d\n", ret, total);
+	sc_log(INFO, "started %d platforms", ret);
 	
 	counter = 0;
 
@@ -205,7 +225,7 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	int fd;
 	char s[256];
 
-	printf("%s():%d\n", __func__, __LINE__);
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	sleep(10);
 	counter++;
@@ -218,6 +238,7 @@ static sc_state_t _sc_wait(struct systemc *sc)
 		return STATE_WAIT;
 	}
 
+	// FIXME: should use sc_bl_*() helpers
 	// if online update pending to clear, commit update to cloud
 	if (sc->update && sc->update->status == UPDATE_TRY) {
 		sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
@@ -232,9 +253,15 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	}
 	sc->last = sc->state->rev;
 
+	// If stale failed update in flash, commit update to cloud
+	if (sc->update && sc->update->need_finish) {
+		sc_trail_update_finish(sc);
+		sc_bl_clear_update(sc);
+	}
+
 	ret = sc_trail_check_for_updates(sc);	
 	if (ret) {
-		printf("SYSTEMC: CONTROLLER: Update available, processing\n");
+		sc_log(INFO, "updates found");
 		return STATE_UPDATE;
 	}
 
@@ -245,25 +272,25 @@ static sc_state_t _sc_update(struct systemc *sc)
 {
 	int ret;
 
-	printf("SYSTEMC: CONTROLLER: Update requested\n");
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	// queue locally and in cloud, block step
 	// FIXME: requires sc_trail_update_finish() call after RUN or boot
 	ret = sc_trail_update_start(sc, 0);
 	if (ret < 0) {
-		printf("SYSTEMC: CONTROLLER: Unable to queue update, abandon\n");
+		sc_log(WARN, "unable to queue update, abandoning it");
 		return STATE_WAIT;
 	}
 
 	// download and install pending step
 	ret = sc_trail_update_install(sc);
 	if (ret < 0) {
-		printf("SYSTEMC: CONTROLLER: Update has failed, rollback\n");
+		sc_log(ERROR, "update has failed, rollback");
 		sc_trail_update_finish(sc);
 		return STATE_ROLLBACK;
 	}
 
-	printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d', stopping current...\n", ret);
+	sc_log(INFO, "update applied, new rev = '%d', stopping current...", ret);
 
 	// stop current step
 	if (sc_platforms_stop_all(sc) < 0)
@@ -275,11 +302,11 @@ static sc_state_t _sc_update(struct systemc *sc)
 	sc_release_state(sc);
 
 	if (sc->update->need_reboot) {
-		printf("SYSTEMC: CONTROLLER: Rebooting...\n");
+		sc_log(INFO, "rebooting...");
 		return STATE_REBOOT;
 	}
 
-	printf("SYSTEMC: CONTROLLER: Update applied, new rev = '%d', starting...\n", ret);
+	sc_log(INFO, "update applied, new rev = '%d', starting...", ret);
 
 	// Load installed step
 	sc->state = sc_get_state(sc, ret);
@@ -293,6 +320,7 @@ static sc_state_t _sc_update(struct systemc *sc)
 static sc_state_t _sc_rollback(struct systemc *sc)
 {
 	int ret = 0;
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	
 	if (sc->state) {
 		ret = sc_platforms_stop_all(sc);
@@ -309,18 +337,18 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 
 	sc->state = sc_get_state(sc, sc->last);
 	if (sc->state)
-		printf("SYSTEMC: Loaded previous step %d\n", sc->last);
+		sc_log(INFO, "loaded previous step %d\n", sc->last);
 	
 	return STATE_RUN;
 }
 
 static sc_state_t _sc_reboot(struct systemc *sc)
 {
-	printf("%s():%d\n", __func__, __LINE__);
+	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	sc_trail_update_finish(sc);
 	sync();
-	printf("Rebooting...\n");
+	sc_log(INFO, "rebooting...");
 	sleep(2);
 	reboot(LINUX_REBOOT_CMD_RESTART);	
 
@@ -329,7 +357,7 @@ static sc_state_t _sc_reboot(struct systemc *sc)
 
 static sc_state_t _sc_error(struct systemc *sc)
 {
-	printf("%s():%d\n", __func__, __LINE__);
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	sleep(1);
 	return STATE_ERROR;
 }
@@ -352,13 +380,15 @@ static sc_state_t _sc_run_state(sc_state_t state, struct systemc *sc)
 
 int sc_controller_start(struct systemc *sc)
 {
+	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
+
 	sc_state_t state = STATE_INIT;
  
 	while (1) {
-		printf("Going to state = %d\n", state);
+		sc_log(DEBUG, "going to state = %d", state);
 		state = _sc_run_state(state, sc);
 
 		if (state == STATE_EXIT)
-			return 0;
+			return 1;
 	}
 }

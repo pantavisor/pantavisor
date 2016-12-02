@@ -11,7 +11,10 @@
 #include <sys/types.h>
 #include <sys/prctl.h>
 
+#define MODULE_NAME             "core"
+#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+
 #include "lxc.h"
 #include "loop.h"
 #include "controller.h"
@@ -107,7 +110,7 @@ int sc_volumes_unmount(struct systemc *sc)
 
 		v = _sc_volume_get(src);
 		if (unmount_loop(v->dest, v->loop_fd, v->file_fd) < 0) {
-			printf("SYSTEMC: Error umounting volumes\n");
+			sc_log(ERROR, "error umounting volumes");
 			return -1;
 		} else {
 			_sc_volume_remove(src);
@@ -116,7 +119,7 @@ int sc_volumes_unmount(struct systemc *sc)
 		volumes++;
 	}
 	
-	printf("SYSTEMC: Unmounted '%d' volumes\n", count);
+	sc_log(INFO, "unmounted '%d' volumes", count);
 	
 	return count;
 }
@@ -135,11 +138,11 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
 	else
 	        sprintf(path, "%s/trails/%d/state.json", sc->config->storage.mntpoint, rev);
 
-        printf("Reading state from: '%s'\n", path);
+        sc_log(INFO, "reading state from: '%s'", path);
 
         fd = open(path, O_RDONLY);
         if (fd < 0) {
-                printf("Unable to find state JSON for current step\n");
+                sc_log(WARN, "unable to find state JSON for current step");
                 return NULL;
         }
 
@@ -150,11 +153,9 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
         size = read(fd, buf, size);
 
         if (size < 0) {
-                printf("Unable to read device state\n");
+                sc_log(ERROR, "unable to read device state");
                 return NULL;
         }
-
-	printf("\n\n%s\n\n", buf);
 
 	sc->step = buf;
 
@@ -206,7 +207,7 @@ int sc_volumes_mount(struct systemc *sc)
                 char *fstype = strrchr((*volumes)->filename, '.');
                 fstype++;
 
-                printf("Mounting volume '%s' to '%s' with type '%s'\n", path, mntpoint, fstype);
+                sc_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
 
                 ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
                 if (ret < 0)
@@ -234,14 +235,15 @@ int systemc_init()
                 sc_pid = pid;
                 goto out;
         } else {
+		int ret;
                 prctl(PR_SET_NAME, "systemc");
 		sc = malloc(sizeof(struct systemc));
 
 		// Enter state machine
-		sc_controller_start(sc);
+		ret = sc_controller_start(sc);
 
 		// Clean exit -> reboot
-                exit(0);
+                exit(ret);
         }
 
 out:

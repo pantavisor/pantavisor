@@ -18,6 +18,7 @@ struct systemc_storage {
 
 struct systemc_config {
 	char *name;
+	int loglevel;
 	struct systemc_creds creds; 
 	struct systemc_storage storage;
 };

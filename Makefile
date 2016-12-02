@@ -2,7 +2,6 @@ CC := ../toolchains/mips-linux-musl/bin/mips-linux-musl-gcc
 
 TARGETS = init
 
-DEBUG := 0
 CFLAGS := -g -fPIC -static -I../external/lxc/src/ 
 PREREQS := ../out/malta/build/lxc/obj/src/lxc/liblxc.a
 

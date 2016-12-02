@@ -13,7 +13,10 @@
 
 #include <linux/reboot.h>
 
+#define MODULE_NAME			"updater"
+#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+
 #include "tsh.h"
 #include "systemc.h"
 
@@ -86,15 +89,13 @@ static void signal_handler(int signal)
 		pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED);
 	}
 
-	printf("init: reaped pid=%d\n", pid);
-
 	// Check for systemc
 	if (pid == sc_pid) {
 		if (WIFSIGNALED(wstatus)) {
-			printf("init: restarting systemc...\n");
+			sc_log(WARN, "restarting systemc");
 			systemc_init();
 		} else if (WIFEXITED(wstatus)) {
-			printf("init: clean exit from systemc, rebooting...\n");
+			sc_log(INFO, "clean exit from systemc, rebooting...");
 			sleep(1);
 			sync();
 			reboot(LINUX_REBOOT_CMD_RESTART);
@@ -102,7 +103,7 @@ static void signal_handler(int signal)
 	}
 
 	if (pid == shell_pid) {
-		printf("init: reaped shell, restarting /bin/ash\n");
+		sc_log(WARN, "reaped shell, restarting /bin/ash");
 		shell_pid = tsh_run("ash");
 	}
 }
@@ -121,7 +122,7 @@ int main(int argc, char *argv[])
 		debug_init();
 
 	// Spawn shell
-	printf("Execing /bin/ash...");
+	sc_log(INFO, "Execing /bin/ash");
 	shell_pid = tsh_run("ash");
 
 	for (;;)
