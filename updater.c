@@ -579,7 +579,7 @@ int sc_bl_clear_update(struct systemc *sc)
 	int fd;
 	char buf[64] = { 0 };
 
-	fd = open("/dev/mtd2", O_RDONLY);
+	fd = open("/dev/mtd2", O_RDWR | O_SYNC);
 	if (fd < 0) {
 		sc_log(ERROR, "unable to clear bootloader update buffer");
 		return -1;

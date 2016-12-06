@@ -73,7 +73,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 	int fd, ret, bytes;
 	int step_rev = -1;
 	int step_try = 0;
-	int bl_rev = -1;
+	int bl_rev = 0;
 	char *buf;
 	char *token;
 	struct systemc_config *c;
@@ -126,6 +126,11 @@ static sc_state_t _sc_init(struct systemc *sc)
 	}
 	free(buf);
 
+	sc_log(DEBUG, "%s():%d step_try=%d, step_rev=%d\n", __func__, __LINE__, step_try, step_rev);
+
+	// Make sure this is initialized
+	sc->state = 0;
+
 	// Get current from disk if not specified in command line
 	if ((step_rev < 0) && (step_try < 0)) {
 		sc->state = sc_get_current_state(sc);
@@ -160,30 +165,32 @@ static sc_state_t _sc_init(struct systemc *sc)
 	sc->remote = 0;
 	sc->update = 0;
 
-	// Coming from reboot update?
-	if (step_try > 0) {
-		sc->last = step_rev;
-		step_rev = step_try;	
-	}
-
+	// Load stale update if presetn
 	sc_bl_get_update(sc, &bl_rev);
-
-	if (step_try > 0) {
-		// Load update attempt
-		sc->state = sc_get_state(sc, step_rev);
-		sc_trail_update_start(sc, 1);
-		sc->update->status = UPDATE_TRY;
-		if (bl_rev > 0)
-			sc_bl_clear_update(sc);
-	} else if (bl_rev > 0) {
-		// Load stale update
+	if (bl_rev && !step_try) {
 		sc->state = sc_get_state(sc, bl_rev);
 		sc_trail_update_start(sc, 1);
 		sc->update->status = UPDATE_FAILED;
 		sc->update->need_finish = 1;
+		trail_state_free(sc->state);
+		sc->state = 0;
 	}
 
-	sc->state = sc_get_state(sc, bl_rev);
+	// Coming from reboot update?
+	if (step_try > 0) {
+		sc->last = step_rev;
+		step_rev = step_try;	
+		// Load update attempt
+		sc->state = sc_get_state(sc, step_rev);
+		sc_trail_update_start(sc, 1);
+		sc->update->status = UPDATE_TRY;
+	}
+
+	if (bl_rev > 0)
+		sc_bl_clear_update(sc);
+
+	if (!sc->state)
+		sc->state = sc_get_state(sc, step_rev);
 
 	if (!sc->state) {
 		sc_log(ERROR, "invalid state requested, please reconfigure");

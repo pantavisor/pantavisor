@@ -237,7 +237,7 @@ int systemc_init()
         } else {
 		int ret;
                 prctl(PR_SET_NAME, "systemc");
-		sc = malloc(sizeof(struct systemc));
+		sc = calloc(1, sizeof(struct systemc));
 
 		// Enter state machine
 		ret = sc_controller_start(sc);
