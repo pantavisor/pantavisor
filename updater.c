@@ -360,6 +360,7 @@ static int trail_remote_init(struct systemc *sc)
 		goto err;
 	}
 
+	// FIXME: Crash here if unable to auth
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
 		sc_log(WARN, "unable to auth device client");
@@ -377,7 +378,8 @@ static int trail_remote_init(struct systemc *sc)
 	return 0;
 
 err:
-	free(client);
+	if (client)
+		free(client);
 	if (remote)
 		free(remote);
 
@@ -768,7 +770,20 @@ static int trail_download_object(struct trail_object *obj)
 	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;
 
-	if (obj->geturl && strncmp(obj->geturl, "https://", 8) != 0) {
+	struct stat st;
+	if (stat(obj->objpath, &st) == 0) {
+		sc_log(INFO, "file exists (%s)", obj->objpath);
+		ret = 0;
+		goto out;
+	}
+
+	if (obj->geturl == NULL) {
+		sc_log(WARN, "there is no get url defined");
+		ret = -1;
+		goto out;
+	}
+
+	if (strncmp(obj->geturl, "https://", 8) != 0) {
 		sc_log(WARN, "object url (%s) is invalid", obj->geturl);
 		ret = -1;
 		goto out;
@@ -777,13 +792,7 @@ static int trail_download_object(struct trail_object *obj)
 	// FIXME: should check sha256, need to rework geturl() for that
 	// FIXME: can use sha256.h from mbedtls mbedtls_sha256()
 
-	struct stat st;
-	if (stat(obj->objpath, &st) == 0) {
-		sc_log(INFO, "file exists (%s)", obj->objpath);
-		ret = 0;
-		goto out;
-	}
-	
+
 	start = obj->geturl + 8;
 	end = strchr(start, '/');
 	n = (unsigned long) end - (unsigned long) start;
