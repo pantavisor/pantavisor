@@ -74,6 +74,9 @@ static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
 		p = strstr(tmp, code);
 	}
 
+	if (buf[strlen(buf)] == code)
+		buf[strlen(buf)] = '\0';
+
 	if (old)
 		free(old);
 	if (buf)
@@ -783,6 +786,7 @@ static int trail_download_object(struct trail_object *obj)
 		goto out;
 	}
 
+	// FIXME: This breaks with non https urls...
 	if (strncmp(obj->geturl, "https://", 8) != 0) {
 		sc_log(WARN, "object url (%s) is invalid", obj->geturl);
 		ret = -1;
@@ -791,8 +795,6 @@ static int trail_download_object(struct trail_object *obj)
 
 	// FIXME: should check sha256, need to rework geturl() for that
 	// FIXME: can use sha256.h from mbedtls mbedtls_sha256()
-
-
 	start = obj->geturl + 8;
 	end = strchr(start, '/');
 	n = (unsigned long) end - (unsigned long) start;
@@ -801,7 +803,10 @@ static int trail_download_object(struct trail_object *obj)
 	host[n] = '\0';
 
 	req->host = host;
-	req->port = 80;
+	if (strstr(obj->geturl, "local-s3") != NULL)
+		req->port = 12365;
+	else
+		req->port = 80;
 	req->path = obj->geturl;
 	req->headers = 0;
 

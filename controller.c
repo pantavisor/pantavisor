@@ -235,15 +235,16 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	sleep(10);
-	counter++;
 
 	// FIXME: if update, wait a few times then error
 	if (!sc_network_is_up()) {
 		counter++;
-		if (counter > 10)
+		if (counter > 20)
 			return STATE_ROLLBACK;
 		return STATE_WAIT;
 	}
+
+	counter = 0;
 
 	// FIXME: should use sc_bl_*() helpers
 	// if online update pending to clear, commit update to cloud
