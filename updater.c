@@ -74,8 +74,8 @@ static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
 		p = strstr(tmp, code);
 	}
 
-	if (buf[strlen(buf)] == code)
-		buf[strlen(buf)] = '\0';
+	if (buf[strlen(buf)-1] == c)
+		buf[strlen(buf)-1] = '\0';
 
 	if (old)
 		free(old);
