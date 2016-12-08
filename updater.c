@@ -74,8 +74,8 @@ static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
 		p = strstr(tmp, code);
 	}
 
-	if (buf[strlen(buf)-1] == c)
-		buf[strlen(buf)-1] = '\0';
+	if (new[strlen(new)-1] == c)
+		new[strlen(new)-1] = '\0';
 
 	if (old)
 		free(old);
@@ -765,7 +765,7 @@ static int trail_download_object(struct trail_object *obj)
 	char *host = 0;
 	thttp_request_t* req = 0;
 	thttp_response_t* res = 0;
-	char *start = 0, *end = 0;
+	char *start = 0, *port = 0, *end = 0;
 
 	req = thttp_request_new_0 ();
 
@@ -796,7 +796,12 @@ static int trail_download_object(struct trail_object *obj)
 	// FIXME: should check sha256, need to rework geturl() for that
 	// FIXME: can use sha256.h from mbedtls mbedtls_sha256()
 	start = obj->geturl + 8;
-	end = strchr(start, '/');
+	port = strchr(start, ':');
+	if (port)
+		end = port;
+	else
+		end = strchr(start, '/');
+
 	n = (unsigned long) end - (unsigned long) start;
 	host = malloc((n+1) * sizeof(char));
 	strncpy(host, start, n);
@@ -807,6 +812,7 @@ static int trail_download_object(struct trail_object *obj)
 		req->port = 12365;
 	else
 		req->port = 80;
+
 	req->path = obj->geturl;
 	req->headers = 0;
 
