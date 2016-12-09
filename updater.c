@@ -428,31 +428,31 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 	switch (status) {
 	case UPDATE_QUEUED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT, 
-			"QUEUED", "Step seen, queued locally", 0);
+			"QUEUED", "Update queued", 0);
 		break;
 	case UPDATE_DOWNLOADED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Objects downloaded", 40);
+			"INPROGRESS", "Update objects downloaded", 40);
 		break;
 	case UPDATE_INSTALLED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Step committed to disk", 80);
+			"INPROGRESS", "Update installed", 80);
 		break;
 	case UPDATE_TRY:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Attempting to start step", 90);
+			"INPROGRESS", "Starting updated version", 90);
 		break;
 	case UPDATE_REBOOT:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Rebooting device", 95);
+			"INPROGRESS", "Rebooting", 95);
 		break;
 	case UPDATE_DONE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"DONE", "Step started correctly", 100);
+			"DONE", "Update finished", 100);
 		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"ERROR", "Failed to install step", 0);
+			"ERROR", "Error during update", 0);
 		break;
 	}
 				
