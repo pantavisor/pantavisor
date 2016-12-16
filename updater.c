@@ -347,14 +347,14 @@ static int trail_remote_init(struct systemc *sc)
 
 	// Make sure values are reasonable
 	if ((strcmp(sc->config->creds.id, "") == 0) ||
-	    (strcmp(sc->config->creds.abrn, "") == 0))
+	    (strcmp(sc->config->creds.prn, "") == 0))
 		return 0;
 
 	// Create client
 	client = trest_new_from_userpass(
 		sc->config->creds.host,
 		sc->config->creds.port,
-		sc->config->creds.abrn,
+		sc->config->creds.prn,
 		sc->config->creds.secret
 		);
 
@@ -655,15 +655,15 @@ out:
 	return ret;
 }
 
-static char* trail_download_geturl(struct systemc *sc, char *abrn)
+static char* trail_download_geturl(struct systemc *sc, char *prn)
 {
 	char *endpoint;
 	char *url = 0;
 	trest_request_ptr req;
 	trest_response_ptr res;
 
-	endpoint = malloc((sizeof(TRAIL_OBJECT_DL_FMT) + strlen(abrn)) * sizeof(char));
-	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, abrn);
+	endpoint = malloc((sizeof(TRAIL_OBJECT_DL_FMT) + strlen(prn)) * sizeof(char));
+	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, prn);
 
 	sc_log(INFO, "requesting obj='%s'", endpoint);
 	
@@ -698,22 +698,22 @@ out:
 	return url;
 }
 
-static char *trail_get_objpath(struct systemc *sc, char *abrn)
+static char *trail_get_objpath(struct systemc *sc, char *prn)
 {
 	struct systemc_config *c = sc->config;
 	char *path;
 
-	if (!abrn)
+	if (!prn)
 		return NULL;
 
 	path = malloc((strlen(c->storage.mntpoint) +
-			 strlen(abrn) + sizeof(TRAIL_OBJPATH_FMT)) * sizeof(char));
-	sprintf(path, TRAIL_OBJPATH_FMT, c->storage.mntpoint, abrn);
+			 strlen(prn) + sizeof(TRAIL_OBJPATH_FMT)) * sizeof(char));
+	sprintf(path, TRAIL_OBJPATH_FMT, c->storage.mntpoint, prn);
 
 	return path;
 }
 
-static int trail_add_object(struct systemc *sc, char *abrn, char *rpath)
+static int trail_add_object(struct systemc *sc, char *prn, char *rpath)
 {
 	struct trail_object *obj = malloc(sizeof(struct trail_object));
 
@@ -722,9 +722,9 @@ static int trail_add_object(struct systemc *sc, char *abrn, char *rpath)
 	else
 		last->next = obj;
 
-	obj->id = strdup(abrn);
-	obj->geturl = trail_download_geturl(sc, abrn);
-	obj->objpath = trail_get_objpath(sc, abrn);
+	obj->id = strdup(prn);
+	obj->geturl = trail_download_geturl(sc, prn);
+	obj->objpath = trail_get_objpath(sc, prn);
 	obj->relpath = rpath;
 
 	sc_log(DEBUG, "new obj id: '%s', url: '%s,' objpath: '%s', relpath: '%s'",
@@ -871,28 +871,28 @@ static int trail_download_objects(struct systemc *sc)
         systemc_platform **platformsv_i = p->platformsv;
 
 	// build list of objects to download
-	trail_add_object(sc, p->kernel->abrn,
+	trail_add_object(sc, p->kernel->prn,
 			trail_get_relpath(sc, TRAIL_KERNEL_FMT, p->rev,
 				p->kernel->filename, 0));
 
 	// Check if update includes new kernel
-	if (strcmp(sc->state->kernel->abrn, p->kernel->abrn) != 0)
+	if (strcmp(sc->state->kernel->prn, p->kernel->prn) != 0)
 		u->need_reboot = 1;
 
 	while(*basev_i) {
-		trail_add_object(sc, (*basev_i)->abrn,
+		trail_add_object(sc, (*basev_i)->prn,
 			trail_get_relpath(sc, TRAIL_SYSTEMC_FMT, p->rev,
 				(*basev_i)->filename, 0));
 
 		// Check if new base object
-		if (stat(trail_get_objpath(sc, (*basev_i)->abrn), &st) < 0)
+		if (stat(trail_get_objpath(sc, (*basev_i)->prn), &st) < 0)
 			u->need_reboot = 1;
 
 		basev_i++;
 	}
 
 	while(*volumesv_i) {
-		trail_add_object(sc, (*volumesv_i)->abrn,
+		trail_add_object(sc, (*volumesv_i)->prn,
 			 trail_get_relpath(sc, TRAIL_VOLUMES_FMT, p->rev,
 				(*volumesv_i)->filename, 0));
 		volumesv_i++;
@@ -902,7 +902,7 @@ static int trail_download_objects(struct systemc *sc)
 		systemc_object **configs_i;
 		configs_i = (*platformsv_i)->configs;
 		while (*configs_i) {
-			trail_add_object(sc, (*configs_i)->abrn,
+			trail_add_object(sc, (*configs_i)->prn,
 				trail_get_relpath(sc, TRAIL_PLAT_CFG_FMT, p->rev,
 					  (*configs_i)->filename, (*platformsv_i)->name));
 			configs_i++;

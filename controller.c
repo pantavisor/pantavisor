@@ -95,7 +95,7 @@ static sc_state_t _sc_init(struct systemc *sc)
         sc_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
         sc_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
         sc_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
-        sc_log(DEBUG, "c->creds.abrn = '%s'\n", c->creds.abrn);
+        sc_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
         sc_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
 
 	// Create storage mountpoint and mount device

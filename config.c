@@ -127,7 +127,7 @@ int config_from_file(char *path, struct systemc_config *config)
 		config->creds.port = atoi(item);
 
 	config->creds.id = _config_get_value("creds_id");
-	config->creds.abrn = _config_get_value("creds_abrn");
+	config->creds.prn = _config_get_value("creds_prn");
 	config->creds.secret = _config_get_value("creds_secret");
 
 	return 0;

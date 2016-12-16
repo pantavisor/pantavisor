@@ -5,7 +5,7 @@ struct systemc_creds {
 	char *host;
 	int port;
 	char *id;
-	char *abrn;
+	char *prn;
 	char *secret;
 };
 
