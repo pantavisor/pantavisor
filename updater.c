@@ -816,7 +816,7 @@ static int trail_download_object(struct trail_object *obj)
 	req->path = obj->geturl;
 	req->headers = 0;
 
-	fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
+	fd = open(obj->objpath, O_CREAT | O_RDWR | O_SYNC, 0644);
 
 	res = thttp_request_do_file (req, fd);
 
@@ -946,7 +946,7 @@ int sc_trail_update_install(struct systemc *sc)
 	// install state.json for new rev
 	step = sc->update->pending;
 	sprintf(state_path, "%s/trails/%d/state.json", sc->config->storage.mntpoint, step->state->rev);
-	fd = open(state_path, O_CREAT | O_WRONLY);
+	fd = open(state_path, O_CREAT | O_WRONLY | O_SYNC);
 	if (fd < 0) {
 		sc_log(ERROR, "unable to write state.json file for update");
 		ret = -1;
