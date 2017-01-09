@@ -398,6 +398,10 @@ int sc_trail_check_for_updates(struct systemc *sc)
 
 	if (!sc->remote)
 		trail_remote_init(sc);
+
+	// Offline
+	if (!sc->remote)
+		return 0;
 	
 	auth_status = trest_update_auth(sc->remote->client);
 	if (auth_status != TREST_AUTH_STATUS_OK) {
