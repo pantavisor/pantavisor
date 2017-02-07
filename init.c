@@ -73,7 +73,7 @@ static int early_mounts()
 static void debug_init()
 {
 	tsh_run("ifconfig lo up");
-	tsh_run("ifconfig eth0 192.168.53.76");
+	//tsh_run("ifconfig eth0 192.168.20.222");
 	tsh_run("telnetd -l /bin/ash");
 }
 
@@ -118,12 +118,12 @@ int main(int argc, char *argv[])
 
 	systemc_init();
 
-	if (debug)
-		debug_init();
-
 	// Spawn shell
 	sc_log(INFO, "Execing /bin/ash");
 	shell_pid = tsh_run("ash");
+
+	if (debug)
+		debug_init();
 
 	for (;;)
 		pause();

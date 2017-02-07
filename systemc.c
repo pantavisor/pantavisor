@@ -98,6 +98,7 @@ static void _sc_volume_remove(char *src)
 
 int sc_volumes_unmount(struct systemc *sc)
 {
+	int ret;
 	int count = 0;
 	systemc_volobject **volumes = sc->state->volumesv;
 
@@ -109,25 +110,33 @@ int sc_volumes_unmount(struct systemc *sc)
 			sc->state->rev, (*volumes)->filename);
 
 		v = _sc_volume_get(src);
-		if (unmount_loop(v->dest, v->loop_fd, v->file_fd) < 0) {
+
+		if (v->loop_fd == -1) {
+			ret = umount(v->dest);
+		} else {
+			ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
+		}
+
+		if (ret < 0) {
 			sc_log(ERROR, "error umounting volumes");
 			return -1;
 		} else {
+			sc_log(INFO, "unmounted '%s' successfully", v->dest);
 			_sc_volume_remove(src);
 			count++;
 		}
 		volumes++;
 	}
-	
+
 	sc_log(INFO, "unmounted '%d' volumes", count);
-	
+
 	return count;
 }
 
 systemc_state *sc_get_state(struct systemc *sc, int rev)
 {
         int fd;
-        int size;;
+        int size;
         char path[256];
         char *buf;
 	struct stat st;
@@ -151,6 +160,7 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
 
 	buf = calloc(1, size);
         size = read(fd, buf, size);
+	buf[size-1] = '\0';
 
         if (size < 0) {
                 sc_log(ERROR, "unable to read device state");
@@ -196,7 +206,7 @@ int sc_volumes_mount(struct systemc *sc)
         mkdir("/volumes", 0644);
 
         while(*volumes) {
-		int loop_fd, file_fd;
+		int loop_fd = -1, file_fd = -1;
                 char path[256];
                 char mntpoint[256];
 
@@ -209,7 +219,17 @@ int sc_volumes_mount(struct systemc *sc)
 
                 sc_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
 
-                ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
+		if (strcmp(fstype, "bind") == 0) {
+			struct stat buf;
+			if (stat(mntpoint, &buf) != 0) {
+				int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC);
+				close(fd);
+			}
+			ret = mount(path, mntpoint, "none", MS_BIND, "ro");
+		} else {
+			ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
+		}
+
                 if (ret < 0)
                         exit_error(errno, "Could not mount loop device");
 		

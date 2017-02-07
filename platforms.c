@@ -3,7 +3,10 @@
 #include <string.h>
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <linux/limits.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "lxc.h"
 
@@ -158,6 +161,17 @@ int sc_platforms_start_all(struct systemc *sc)
 
 		// Get type controller
 		ctrl = _sc_platforms_get_ctrl((*platforms)->type);	
+
+		// Redirect stdin,stdout,stderr before forking
+		char fdname[256];
+		sprintf(fdname, "/tmp/log-platform-%s.log", (*platforms)->name);
+		int fd1 = open(fdname, O_CREAT | O_RDWR | O_SYNC, 0644);
+		char *header = "Starting log for platform...";
+		write(fd1, header, strlen(header));
+
+		dup2(fileno(stdout), fileno(stderr));
+		dup2(fd1, fileno(stdout));
+		close(fd1);
 
 		// Start the platform
 		data = ctrl->start((*platforms)->name, conf_path, NULL);

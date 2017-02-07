@@ -17,6 +17,7 @@
 
 void *start_lxc_container(char *name, char *conf_file, void *data)
 {
+	int fd;
 	struct lxc_container *c;
 	char *dname;
 
@@ -45,6 +46,40 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
 	c->set_inherit_namespaces(c, 1, share_ns);
 
+	c->want_daemonize(c, true);
+	c->want_close_all_fds(c, true);
+
+	// Strip consoles from kernel cmdline
+	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
+	mktemp(tmp_cmd);
+	fd = open("/proc/cmdline", O_RDONLY);
+	if (fd < 0) {
+		sc_log(ERROR, "cannot open cmdline\n");
+	} else {
+		sc_log(DEBUG, "opened cmdline\n\n");
+		char *buf = calloc(1024, 1);
+		char *new = calloc(1024, 1);
+		int bytes = read(fd, buf, 1024);
+		sc_log(DEBUG, "read=%d bytes, old cmdline='%s'\n\n", bytes, buf);
+		char *tok = strtok(buf, " ");
+		while (tok) {
+			if (strncmp("console=", tok, 8) == 0) {
+				tok = strtok(NULL, " ");
+				continue;
+			}
+			strcat(new, tok);
+			strcat(new, " ");
+			tok = strtok(NULL, " ");
+		}
+		sc_log(DEBUG, "new cmdline='%s'", new);
+		close(fd);
+		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC);
+		write(fd, new, strlen(new));
+		close(fd);
+	}
+	char entry[1024];
+	sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);
+	c->set_config_item(c, "lxc.mount.entry", entry);
 	errno = c->start(c, 0, NULL);
 
 	return (void *) c;
