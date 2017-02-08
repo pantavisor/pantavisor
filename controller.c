@@ -77,6 +77,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 	char *buf;
 	char *token;
 	struct systemc_config *c;
+	struct stat st;
 
         c = malloc(sizeof(struct systemc_config));
 
@@ -100,6 +101,17 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0644);
+
+	// Check that storage device has been enumerated and wait if not there yet
+	// (RPi2 for example is too slow to scan the MMC devices in time)
+	for (int wait = 5; wait > 0; wait--) {
+		if (stat(c->storage.path, &st) == 0)
+			break;
+		sc_log(WARN, "trail storage not yet available, waiting...");
+		sleep(1);
+		continue;
+	}
+
         ret = mount(c->storage.path, c->storage.mntpoint, c->storage.fstype, 0, NULL);
         if (ret < 0)
                 exit_error(errno, "Could not mount trails storage");

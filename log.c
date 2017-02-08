@@ -18,7 +18,8 @@ static int prio = ERROR;
 void exit_error(int err, char *msg)
 {
 	printf("ERROR: %s (err=%d)\n", msg, err);
-	sleep(1);
+	printf("ERROR: rebooting system in 10 seconds\n");
+	sleep(10);
 	exit(0);
 }
 
