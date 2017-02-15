@@ -158,9 +158,9 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
 	stat(path, &st);
 	size = st.st_size;
 
-	buf = calloc(1, size);
+	buf = calloc(1, size+1);
         size = read(fd, buf, size);
-	buf[size-1] = '\0';
+	buf[size] = '\0';
 
         if (size < 0) {
                 sc_log(ERROR, "unable to read device state");

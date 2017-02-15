@@ -4,6 +4,8 @@
 #include <libgen.h>
 #include <unistd.h>
 
+#include <sys/utsname.h>
+
 #include <lxc/lxccontainer.h>
 
 #include "utils.h"
@@ -20,6 +22,8 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	int fd;
 	struct lxc_container *c;
 	char *dname;
+	struct utsname uts;
+	struct stat st;
 
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
@@ -80,6 +84,17 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	char entry[1024];
 	sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);
 	c->set_config_item(c, "lxc.mount.entry", entry);
+	int ret = uname(&uts);
+	
+	// FIXME: Implement modules volume and use that instead
+	sc_log(DEBUG, "uname ret=%d, errno=%d, rev='%s'", ret, errno, uts.release);
+	if (!ret) {
+		sprintf(entry, "/lib/modules/%s", uts.release);
+		if (stat(entry, &st) == 0) {
+			sprintf(entry, "/lib/modules/%s lib/modules/%s none bind,ro,create=dir 0 0", uts.release, uts.release);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+		}
+	}
 	errno = c->start(c, 0, NULL);
 
 	return (void *) c;

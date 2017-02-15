@@ -145,7 +145,7 @@ static void _add_pending_step(void *data, char *buf, jsmntok_t *tok, int c)
 	int n = ((tok+c)->end - (tok+c)->start) + 1;
 	int tokc, ret;
 	char *s = malloc (sizeof (char) * n+1);
-	char *value = NULL;
+	char *value = NULL, *spec = NULL;
 	struct trail_step **steps = (struct trail_step **) data;
 	jsmntok_t **keys = NULL, **keys_i = NULL;
 	jsmntok_t *tokv = NULL;
@@ -160,16 +160,28 @@ static void _add_pending_step(void *data, char *buf, jsmntok_t *tok, int c)
 	keys = jsmnutil_get_object_keys(s, tokv);
 	keys_i = keys;
 	while (*keys_i) {
-		if (!strncmp("state", s+(*keys_i)->start, strlen("state"))) {
-			int n = (*keys_i+1)->end - (*keys_i+1)->start;
+		if (!strncmp(s+(*keys_i)->start, "state", strlen("state"))) {
+			n = (*keys_i+1)->end - (*keys_i+1)->start;
 			value = malloc(n + 2);
 			strncpy(value, s+(*keys_i+1)->start, n+1);
-			value[n] = '\0';
+			value[n+1] = '\0';
 			break;
 		}
 		keys_i++;
 	}
 	jsmnutil_tokv_free(keys);
+
+	if (tokv)
+		free(tokv);
+
+	// implement a parser library
+	ret = jsmnutil_parse_json(value, &tokv, &tokc);
+	spec = get_json_key_value(value, "#spec", tokv, tokc);
+	if (spec) {
+		char *final = get_json_key_value(value, "state.json", tokv, tokc);
+		free(value);
+		value = final;
+	}
 
 	*steps = malloc(sizeof(struct trail_step));	
 	(*steps)->state = trail_parse_state(value, strlen(value));
