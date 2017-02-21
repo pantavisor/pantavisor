@@ -149,7 +149,6 @@ static int parse_platform(struct sc_state *s, char *buf, int n)
 
 	ret = jsmnutil_parse_json(configs, &tokv, &tokc);
 	size = jsmnutil_array_count(buf, tokv);
-	printf("configs=%d\n", size);
 	t = tokv+1;
 	this->configs = calloc(1, (size + 1) * sizeof(char *));
 	this->configs[size] = NULL;
@@ -171,7 +170,6 @@ static int parse_platform(struct sc_state *s, char *buf, int n)
 
 	ret = jsmnutil_parse_json(shares, &tokv, &tokc);
 	size = jsmnutil_array_count(shares, tokv);
-	printf("shares=%d\n", size);
 	t = tokv+1;
 	this->ns_share = 0;
 	while ((str = json_array_get_one_str(shares, &size, &t))) {
@@ -306,7 +304,7 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size)
 	this->json = strdup(buf);
 
 	// print
-	printf("\n\nkernel: '%s'\n", this->kernel);
+	printf("\nkernel: '%s'\n", this->kernel);
 	char **initrd = this->initrd;
 	printf("initrd: \n");
 	while (*initrd) {
@@ -339,6 +337,7 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size)
 		printf("  name: '%s'\n", o->id);
 		o = o->next;
 	}
+	printf("\n");
 
 	return this;
 }
