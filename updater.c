@@ -11,7 +11,6 @@
 #include <mtd/mtd-user.h>
 
 #include <thttp.h>
-#include <jsmn/jsmnutil.h>
 
 #define MODULE_NAME			"updater"
 #define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -19,12 +18,13 @@
 
 #include "utils.h"
 
+#include "objects.h"
 #include "updater.h"
 
 static struct trail_object *head;
 static struct trail_object *last;
 
-typedef void (*token_iter_f) (void *data, char *buf, jsmntok_t* tok, int c);
+typedef void (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 
 static void uboot_set_try_rev(struct systemc *sc, int rev)
 {
@@ -85,44 +85,10 @@ static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
 	return new;
 }
 
-static char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
-{
-	int i;
-	int t=-1;
-
-	for(i=0; i<tokc; i++) {
-		int n = tok[i].end - tok[i].start;
-		if (tok[i].type == JSMN_STRING
-		    && !strncmp(buf + tok[i].start, key, n)) {
-			t=1;
-		} else if (t==1) {
-			char *idval = malloc(n+1);
-			idval[n] = 0;
-			strncpy(idval, buf + tok[i].start, n);
-			return idval;
-		} else if (t==1) {
-			sc_log(WARN, "json does not have 'key' string");
-			return NULL;
-		}
-	}
-	return NULL;
-}
-
-static int traverse_token (char *buf, jsmntok_t* tok, int t)
-{
-	int i;
-	int c;
-	c=t;
-	for (i=0; i < tok[t].size; i++) {
-		c = traverse_token (buf, tok, c+1);
-	}
-	return c;
-}
-
 // is good for getting elements of any array type token. Just point tok+t to the
 // token of type array and it will iterate the direct children of that token
 // through travesal the depth first token array.
-static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f func, void *data)
+static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f func, void *d1, void *d2)
 {
 	int i;
 	int c;
@@ -133,20 +99,21 @@ static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f fu
 
 	c = t;
 	for(i=0; i < tok->size; i++) {
-		func(data, buf, tok, c+1);
+		func(d1, d2, buf, tok, c+1);
 		c = traverse_token (buf, tok, c+1);
 	}
 
 	return 0;
 }
 
-static void _add_pending_step(void *data, char *buf, jsmntok_t *tok, int c)
+static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int c)
 {
 	int n = ((tok+c)->end - (tok+c)->start) + 1;
 	int tokc, ret;
 	char *s = malloc (sizeof (char) * n+1);
-	char *value = NULL, *spec = NULL;
-	struct trail_step **steps = (struct trail_step **) data;
+	char *value = NULL;
+	struct sc_state **steps = (struct sc_state **) d1;
+	struct systemc *sc = (struct systemc *) d2;
 	jsmntok_t **keys = NULL, **keys_i = NULL;
 	jsmntok_t *tokv = NULL;
 
@@ -171,21 +138,7 @@ static void _add_pending_step(void *data, char *buf, jsmntok_t *tok, int c)
 	}
 	jsmnutil_tokv_free(keys);
 
-	if (tokv)
-		free(tokv);
-
-	// implement a parser library
-	ret = jsmnutil_parse_json(value, &tokv, &tokc);
-	spec = get_json_key_value(value, "#spec", tokv, tokc);
-	if (spec) {
-		char *final = get_json_key_value(value, "state.json", tokv, tokc);
-		free(value);
-		value = final;
-	}
-
-	*steps = malloc(sizeof(struct trail_step));	
-	(*steps)->state = trail_parse_state(value, strlen(value));
-	(*steps)->json = strdup(value);
+	*steps = sc_parse_state(sc, value, strlen(value));
 	sc_log(DEBUG, "adding step = '%s'", (*steps)->json);
 	
 	if (value)
@@ -196,20 +149,20 @@ static void _add_pending_step(void *data, char *buf, jsmntok_t *tok, int c)
 	free(s);
 }
 
-static struct trail_step* _pending_get_first(struct trail_step **p)
+static struct sc_state* _pending_get_first(struct sc_state **p)
 {
 	int min;
-	struct trail_step *r;
+	struct sc_state *r;
 
 	if (*p == NULL)
 		return NULL;
 
-	min = (*p)->state->rev;
+	min = (*p)->rev;
 	r = *p;
 
 	while (*p) {
-		if ((*p)->state->rev < min) {
-			min = (*p)->state->rev;
+		if ((*p)->rev < min) {
+			min = (*p)->rev;
 			r = *p;
 		}
 		p++;	
@@ -218,12 +171,13 @@ static struct trail_step* _pending_get_first(struct trail_step **p)
 	return r;
 }
 
-static int trail_get_new_steps(struct trail_remote *r)
+static int trail_get_new_steps(struct systemc *sc)
 {
 	int size;
+	struct trail_remote *r = sc->remote;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
-	struct trail_step **steps = 0, **iter = 0;
+	struct sc_state **steps = 0, **iter = 0;
 
 	if (!r)
 		return -1;
@@ -246,11 +200,12 @@ static int trail_get_new_steps(struct trail_remote *r)
 	if (!size)
 		goto out;
 
-	steps = malloc(sizeof (struct trail_step*) * (size + 1));
+	steps = malloc(sizeof (struct sc_state*) * (size + 1));
 	iter = steps;
-	memset(steps, 0, sizeof(struct trail_step*) * (size + 1));
+	memset(steps, 0, sizeof(struct sc_state*) * (size + 1));
         _iterate_json_array (res->body, res->json_tokv, 0,
-			    (token_iter_f) _add_pending_step, steps);
+			    (token_iter_f) _add_pending_step, steps,
+			     sc->config->storage.mntpoint);
 	steps[size] = NULL;
 	r->pending = _pending_get_first(steps);
 
@@ -258,13 +213,12 @@ static int trail_get_new_steps(struct trail_remote *r)
 	while (*iter) {
 		if (*iter != r->pending) {
 			free((*iter)->json);
-			trail_state_free((*iter)->state);
-			free(*iter);
+			sc_state_free((*iter));
 		}
 		iter++;
 	}
 
-	sc_log(INFO, "first pending found to be rev = %d", r->pending->state->rev);
+	sc_log(INFO, "first pending found to be rev = %d", r->pending->rev);
 
 out:
 	if (req)
@@ -425,7 +379,7 @@ int sc_trail_check_for_updates(struct systemc *sc)
 	if (ret == 0)
 		return trail_first_boot(sc);
 	else if (ret > 0)
-		return trail_get_new_steps(sc->remote);
+		return trail_get_new_steps(sc);
 	else
 		return 0;
 }
@@ -495,19 +449,6 @@ out:
 	return ret;
 }
 
-static int get_digit_count(int number)
-{
-	int c = 0;
-
-	while (number) {
-		number /= 10;
-		c++;
-	}
-	c++;
-
-	return c;
-}
-
 int sc_trail_update_start(struct systemc *sc, int offline)
 {
 	int c;
@@ -523,7 +464,7 @@ int sc_trail_update_start(struct systemc *sc, int offline)
 		rev = sc->state->rev;
 	} else {
 		u->pending = sc->remote->pending;
-		rev = u->pending->state->rev;
+		rev = u->pending->rev;
 	}
 	
 	// to construct endpoint
@@ -617,8 +558,6 @@ int sc_bl_clear_update(struct systemc *sc)
 int sc_trail_update_finish(struct systemc *sc)
 {
 	int ret = 0;
-	struct trail_object *tmp;
-	struct trail_object *obj = head;
 
 	switch (sc->update->status) {
 	case UPDATE_DONE:
@@ -639,33 +578,13 @@ int sc_trail_update_finish(struct systemc *sc)
 		break;
 	}
 
-
 out:
-	if (sc->update->pending) {
-		if (sc->update->pending->state)
-			trail_state_free(sc->update->pending->state);
-		free(sc->update->pending->json);
-		free(sc->update->pending);
-	}
-	if (sc->update->objects)
-		free(sc->update->objects);
+	if (sc->update->pending)
+		sc_state_free(sc->update->pending);
 	if (sc->update->endpoint)
 		free(sc->update->endpoint);
 
 	free(sc->update);
-
-	while (obj) {
-		free(obj->objpath);	
-		free(obj->relpath);	
-		free(obj->id);	
-		free(obj->geturl);
-		tmp = obj->next;
-		free(obj);
-		obj = tmp;
-	}
-
-	head = NULL;
-	last = NULL;
 
 	sc->update = NULL;
 	return ret;
@@ -714,68 +633,7 @@ out:
 	return url;
 }
 
-static char *trail_get_objpath(struct systemc *sc, char *prn)
-{
-	struct systemc_config *c = sc->config;
-	char *path;
-
-	if (!prn)
-		return NULL;
-
-	path = malloc((strlen(c->storage.mntpoint) +
-			 strlen(prn) + sizeof(TRAIL_OBJPATH_FMT)) * sizeof(char));
-	sprintf(path, TRAIL_OBJPATH_FMT, c->storage.mntpoint, prn);
-
-	return path;
-}
-
-static int trail_add_object(struct systemc *sc, char *prn, char *rpath)
-{
-	struct trail_object *obj = malloc(sizeof(struct trail_object));
-
-	if (head == NULL)
-		head = obj;
-	else
-		last->next = obj;
-
-	obj->id = strdup(prn);
-	obj->geturl = trail_download_geturl(sc, prn);
-	obj->objpath = trail_get_objpath(sc, prn);
-	obj->relpath = rpath;
-
-	sc_log(DEBUG, "new obj id: '%s', url: '%s,' objpath: '%s', relpath: '%s'",
-		 obj->id, obj->geturl, obj->objpath, obj->relpath);
-
-	obj->next = NULL;
-	last = obj;
-
-	return 0;
-}
-
-static char *trail_get_relpath(struct systemc *sc, char *fmt, int rev, char *filename, char *parent)
-{
-	int size;
-	int rsize = get_digit_count(rev);
-	char *rpath;
-	struct systemc_config *c = sc->config;
-
-	size = (strlen(fmt) + strlen(c->storage.mntpoint) +
-		strlen(filename) + rsize); 
-
-	if (parent)
-		size += strlen(parent);
-
-	rpath = malloc(size * sizeof(char));
-
-	if (!parent)
-		sprintf(rpath, fmt, c->storage.mntpoint, rev, filename);
-	else
-		sprintf(rpath, fmt, c->storage.mntpoint, rev, parent, filename);
-
-	return rpath;
-}
-
-static int trail_download_object(struct trail_object *obj)
+static int trail_download_object(struct sc_object *obj)
 {
 	int fd, ret, n;
 	char *host = 0;
@@ -853,10 +711,10 @@ out:
 static int trail_link_objects(struct systemc *sc)
 {
 	int err = 0;
-	struct trail_object *obj;
+	struct sc_object *obj = sc->update->pending->objects;
 	char *c, *tmp;
 
-	for (obj = head; obj != NULL; obj = obj->next) {
+	while (obj) {
 		tmp = strdup(obj->relpath);
 		c = strrchr(tmp, '/');
 		*c = '\0';
@@ -871,63 +729,35 @@ static int trail_link_objects(struct systemc *sc)
 			sc_log(INFO, "linked %s to %s",
 				obj->relpath, obj->objpath);
 		}
+		obj = obj->next;
 	}
 
 	return -err;
 }
 
-
 static int trail_download_objects(struct systemc *sc)
 {
-	struct stat st;
 	struct sc_update *u = sc->update;
-	systemc_state *p = u->pending->state;
-        systemc_object **basev_i = p->basev;
-        systemc_volobject **volumesv_i = p->volumesv;
-        systemc_platform **platformsv_i = p->platformsv;
+	struct sc_object *o = u->pending->objects;
 
-	// build list of objects to download
-	trail_add_object(sc, p->kernel->prn,
-			trail_get_relpath(sc, TRAIL_KERNEL_FMT, p->rev,
-				p->kernel->filename, 0));
+	while (o) {
+		o->geturl = trail_download_geturl(sc, o->id);
+		o = o->next;
+	}
 
-	// Check if update includes new kernel
-	if (strcmp(sc->state->kernel->prn, p->kernel->prn) != 0)
+	struct sc_object *k_new = sc_objects_get_by_name(u->pending,
+					u->pending->kernel);
+	struct sc_object *k_old = sc_objects_get_by_name(u->pending,
+					u->pending->kernel);
+
+	if (!strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
-	while(*basev_i) {
-		trail_add_object(sc, (*basev_i)->prn,
-			trail_get_relpath(sc, TRAIL_SYSTEMC_FMT, p->rev,
-				(*basev_i)->filename, 0));
-
-		// Check if new base object
-		if (stat(trail_get_objpath(sc, (*basev_i)->prn), &st) < 0)
-			u->need_reboot = 1;
-
-		basev_i++;
+	o = u->pending->objects;	
+	while (o) {
+		trail_download_object(o);
+		o = o->next;
 	}
-
-	while(*volumesv_i) {
-		trail_add_object(sc, (*volumesv_i)->prn,
-			 trail_get_relpath(sc, TRAIL_VOLUMES_FMT, p->rev,
-				(*volumesv_i)->filename, 0));
-		volumesv_i++;
-	}
-
-	while(*platformsv_i) {
-		systemc_object **configs_i;
-		configs_i = (*platformsv_i)->configs;
-		while (*configs_i) {
-			trail_add_object(sc, (*configs_i)->prn,
-				trail_get_relpath(sc, TRAIL_PLAT_CFG_FMT, p->rev,
-					  (*configs_i)->filename, (*platformsv_i)->name));
-			configs_i++;
-		}
-		platformsv_i++;
-	}
-
-	for (struct trail_object *obj = head; obj != NULL; obj = obj->next)
-		trail_download_object(obj);
 
 	return 0;
 }
@@ -935,7 +765,7 @@ static int trail_download_objects(struct systemc *sc)
 int sc_trail_update_install(struct systemc *sc)
 {
 	int ret, fd;
-	struct trail_step *step;
+	struct sc_state *pending = sc->update->pending;
 	char state_path[1024];
 
 	if (!sc->remote)
@@ -960,22 +790,21 @@ int sc_trail_update_install(struct systemc *sc)
 	}
 
 	// install state.json for new rev
-	step = sc->update->pending;
-	sprintf(state_path, "%s/trails/%d/state.json", sc->config->storage.mntpoint, step->state->rev);
+	sprintf(state_path, "%s/trails/%d.json", sc->config->storage.mntpoint, pending->rev);
 	fd = open(state_path, O_CREAT | O_WRONLY | O_SYNC);
 	if (fd < 0) {
 		sc_log(ERROR, "unable to write state.json file for update");
 		ret = -1;
 		goto out;
 	}
-	write(fd, step->json, strlen(step->json));
+	write(fd, pending->json, strlen(pending->json));
 	close(fd);
 
 	trail_remote_set_status(sc, UPDATE_INSTALLED);
 
 	sleep(2);
 	sc->update->status = UPDATE_TRY;
-	ret = step->state->rev;
+	ret = pending->rev;
 
 	if (sc->update->need_reboot) {
 		sc->update->status = UPDATE_REBOOT;

@@ -33,91 +33,117 @@ const struct sc_cont_ctrl cont_ctrl[SC_CONT_MAX] = {
 //	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
-struct sc_platform {
-	void *data;
-	char *type;
-	struct sc_platform *next;
-};
-
-static struct sc_platform *head = 0;
-static struct sc_platform *last;
-
-static struct sc_platform* _sc_platforms_add(void *data, char *type)
+struct sc_platform* sc_platform_add(struct sc_state *s, char *name)
 {
-	struct sc_platform *this = (struct sc_platform*) malloc(sizeof(struct sc_platform));
+	struct sc_platform *this = calloc(1, sizeof(struct sc_platform));
+	struct sc_platform *add = s->platforms;
 
-	if (!this) {
-		sc_log(ERROR, "cannot allocate new platform\n");
-		return NULL;
+	while (add && add->next) {
+		add = add->next;
 	}
 
-	if ((strcmp(type, "") == 0) || !data) {
-		free(this);
-		return NULL;
+	if (!add) {
+		s->platforms = add = this;
+	} else {
+		add->next = this;
 	}
 
-	if (!head)
-		head = this;
-	else
-		last->next = this;
-
-	this->data = data;
-	this->type = strdup(type);
-	this->next = NULL;
-	last = this;	
+	printf("adding platform: '%s'\n", name);
+	this->name = name;
 
 	return this;
 }
 
-static struct sc_platform* _sc_platform_by_data(void *data)
+struct sc_platform* sc_platform_get_by_name(struct sc_state *s, char *name)
 {
-	struct sc_platform *curr;
+	struct sc_platform *p = s->platforms;
+
+	if (name == NULL)
+		return NULL;
+
+	while (p) {
+		if (!strcmp(name, p->name))
+			return p;
+		p = p->next;
+	}
+	
+	return NULL;
+}
+
+struct sc_platform* sc_platform_get_by_data(struct sc_state *s, void *data)
+{
+	struct sc_platform *p = s->platforms;
 
 	if (data == NULL)
 		return NULL;
 
-	for (curr = head; curr != NULL; curr = curr->next)
-		if (curr->data == data)
-			return curr;
-
+	while (p) {
+		if (p->data == data)
+			return p;
+		p = p->next;
+	}
+	
 	return NULL;
 }
 
-static void _sc_platforms_remove_all(void)
+void sc_platforms_remove_all(struct sc_state *s)
 {
-	struct sc_platform *curr;
+	struct sc_platform *p = s->platforms;
+	struct sc_platform *t;
+	char **c;
 
-	for (curr = head; curr != NULL; curr = curr->next) {
-		free(curr->type);
-		free(curr);
+	while (p) {
+		if (p->name)
+			free(p->name);
+		if (p->type)
+			free(p->type);
+		if (p->exec)
+			free(p->exec);
+		
+		c = p->configs;
+		while (*c) {
+			free(*c);
+			c++;
+		}
+		t = p->next;
+		free(p);
+		p = t;
 	}
 
-	head = NULL;
-	last = NULL;
+	s->platforms = NULL;
 }
 
-static void _sc_platforms_remove(void *data)
+void sc_platforms_remove_by_data(struct sc_state *s, void *data)
 {
-	struct sc_platform *curr;
-	struct sc_platform *prev;
+	struct sc_platform *p = s->platforms;
+	struct sc_platform *prev = p;
+	char **c;
 
-	if (data == NULL)
-		return;
-
-	for (curr = prev = head; curr != NULL; curr = curr->next) {
-		if (curr->data == data) {
-			free(curr->type);
-			if (curr == head)
-				head = curr->next;
-			else
-				prev->next = curr->next;
-			free(curr);
-			return;
+	while (p) {
+		if (p->data != data) {
+			prev = p;
+			p = p->next;
+			continue;
 		}
-		prev = curr;
+		if (p->name)
+			free(p->name);
+		if (p->type)
+			free(p->type);
+		if (p->exec)
+			free(p->exec);
+	
+		c = p->configs;
+		while (*c) {
+			free(*c);
+			c++;
+		}
+		if (s->platforms == p)
+			s->platforms = p->next;
+		else
+			prev->next = p->next;
+		free(p);
+		break;
 	}
-
-	last = prev;
 }
 
 static const struct sc_cont_ctrl* _sc_platforms_get_ctrl(char *type)
@@ -139,45 +165,42 @@ static const struct sc_cont_ctrl* _sc_platforms_get_ctrl(char *type)
 int sc_platforms_start_all(struct systemc *sc)
 {
 	int num_plats = 0;
-	systemc_platform **platforms;
+	struct sc_state *s = sc->state;
+	struct sc_platform *p = s->platforms;
 
-	if (sc->state->platformsv) {
-		platforms = sc->state->platformsv;
-	} else {
+	if (!p) {
 		sc_log(ERROR, "no platforms available");
 		return -1;
 	}
 
-	while (*platforms) {
+	while (p) {
 		char conf_path[PATH_MAX];
 		const struct sc_cont_ctrl *ctrl;
 		void *data;
-		systemc_object **config;
+		char **c = p->configs;
 
-		config = (*platforms)->configs;
-		sprintf(conf_path, "%s/trails/%d/platforms/%s/configs/%s",
-			sc->config->storage.mntpoint, sc->state->rev,
-			(*platforms)->name, (*config)->filename);
+		sprintf(conf_path, "%s/trails/%d/%s",
+			sc->config->storage.mntpoint, s->rev, *c);
 
 		// Get type controller
-		ctrl = _sc_platforms_get_ctrl((*platforms)->type);	
+		ctrl = _sc_platforms_get_ctrl(p->type);	
 
 		// Start the platform
-		data = ctrl->start((*platforms)->name, conf_path, NULL);
+		data = ctrl->start(p->name, conf_path, NULL);
 
 		if (!data) {
 			sc_log(ERROR, "error starting platform: \"%s\"",
-				(*platforms)->name);
+				p->name);
 			return -1;
 		}
 		
 		sc_log(INFO, "started platform platform: \"%s\" (data=0x%p)",
-			(*platforms)->name, data);
+			p->name, data);
 
-		_sc_platforms_add(data, (*platforms)->type);
+		p->running = true;
 		num_plats++;
 
-		platforms++;
+		p = p->next;
 	}
 	
 	return num_plats;
@@ -188,16 +211,18 @@ int sc_platforms_start_all(struct systemc *sc)
 int sc_platforms_stop_all(struct systemc *sc)
 {
 	int num_plats = 0;
-	struct sc_platform *curr;
+	struct sc_state *s = sc->state;
+	struct sc_platform *p = s->platforms;
 	const struct sc_cont_ctrl *ctrl;
 
-	for (curr = head; curr != NULL; curr = curr->next) {
-		ctrl = _sc_platforms_get_ctrl(curr->type);
-		ctrl->stop(NULL, NULL, curr->data);
+	while (p) {
+		ctrl = _sc_platforms_get_ctrl(p->type);
+		ctrl->stop(NULL, NULL, p->data);
 		num_plats++;
+		p = p->next;
 	}
-
-	_sc_platforms_remove_all();
+	
+	sc_platforms_remove_all(s);
 
 	sc_log(INFO, "stopped %d platforms", num_plats);
 

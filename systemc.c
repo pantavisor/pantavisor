@@ -30,122 +30,19 @@ void sc_destroy(struct systemc *sc)
         free(sc);
 }
 
-struct sc_volume {
-	char *src;
-	char *dest;
-	int loop_fd;
-	int file_fd;
-
-	struct sc_volume *next;
-};
-
-struct sc_volume *head = NULL;
-struct sc_volume *last;
-
-static struct sc_volume* _sc_volume_add(char *src, char *dest, int loop_fd, int file_fd)
-{
-	struct sc_volume *this = malloc(sizeof(struct sc_volume));
-
-	if (head == NULL)
-		head = this;
-	else
-		last->next = this;
-
-	this->src = strdup(src);
-	this->dest = strdup(dest);
-	this->loop_fd = loop_fd;
-	this->file_fd = file_fd;
-	this->next = NULL;
-	last = this;
-
-	return this;
-}
-
-static struct sc_volume* _sc_volume_get(char *src)
-{
-	struct sc_volume *curr = head;
-
-	while (curr) {
-		if (strcmp(curr->src, src) == 0)
-			return curr;
-		curr = curr->next;
-	}
-
-	return NULL;
-}
-
-static void _sc_volume_remove(char *src)
-{
-	struct sc_volume *curr = head;
-	struct sc_volume *prev = head;
-
-	for (curr = prev = head; curr != NULL; curr = curr->next) {
-		if (strcmp(curr->src, src) == 0) {
-			free(curr->src);
-			free(curr->dest);
-			if (curr == head)
-				head = curr->next;
-			else
-				prev->next = curr->next;
-			free(curr);
-			return;
-		}
-		prev = curr;
-	}
-	
-	last = prev;
-}
-
-int sc_volumes_unmount(struct systemc *sc)
-{
-	int ret;
-	int count = 0;
-	systemc_volobject **volumes = sc->state->volumesv;
-
-        while(*volumes) {
-                char src[PATH_MAX];
-		struct sc_volume *v;
-
-                sprintf(src, "%s/trails/%d/volumes/%s", sc->config->storage.mntpoint,
-			sc->state->rev, (*volumes)->filename);
-
-		v = _sc_volume_get(src);
-
-		if (v->loop_fd == -1) {
-			ret = umount(v->dest);
-		} else {
-			ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
-		}
-
-		if (ret < 0) {
-			sc_log(ERROR, "error umounting volumes");
-			return -1;
-		} else {
-			sc_log(INFO, "unmounted '%s' successfully", v->dest);
-			_sc_volume_remove(src);
-			count++;
-		}
-		volumes++;
-	}
-
-	sc_log(INFO, "unmounted '%d' volumes", count);
-
-	return count;
-}
-
-systemc_state *sc_get_state(struct systemc *sc, int rev)
+struct sc_state* sc_get_state(struct systemc *sc, int rev)
 {
         int fd;
         int size;
         char path[256];
         char *buf;
 	struct stat st;
-	systemc_state *s;
+	struct sc_state *s;
 
 	if (rev < 0)
 		sprintf(path, "%s/trails/current/state.json", sc->config->storage.mntpoint);
 	else
-	        sprintf(path, "%s/trails/%d/state.json", sc->config->storage.mntpoint, rev);
+	        sprintf(path, "%s/trails/%d.json", sc->config->storage.mntpoint, rev);
 
         sc_log(INFO, "reading state from: '%s'", path);
 
@@ -170,7 +67,8 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
 	sc->step = buf;
 
 	// libtrail
-	s = trail_parse_state(buf, size);
+	//s = trail_parse_state(buf, size);
+	s = sc_parse_state(sc, buf, size);
 	close(fd);
 
 	return s;
@@ -178,14 +76,11 @@ systemc_state *sc_get_state(struct systemc *sc, int rev)
 
 void sc_release_state(struct systemc *sc)
 {
-	if (sc->step)
-		free(sc->step);
-	
 	if (sc->state)
-		trail_state_free(sc->state);
+		sc_state_free(sc->state);
 }
 
-systemc_state *sc_get_current_state(struct systemc *sc)
+struct sc_state* sc_get_current_state(struct systemc *sc)
 {
 	struct stat buf;
 	char basedir[PATH_MAX];
@@ -195,50 +90,6 @@ systemc_state *sc_get_current_state(struct systemc *sc)
 		return sc_get_state(sc, -1);
 
 	return NULL;
-}
-
-int sc_volumes_mount(struct systemc *sc)
-{
-        int ret;
-        systemc_volobject **volumes = sc->state->volumesv;
-
-        // Create volumes if non-existant
-        mkdir("/volumes", 0644);
-
-        while(*volumes) {
-		int loop_fd = -1, file_fd = -1;
-                char path[256];
-                char mntpoint[256];
-
-                sprintf(path, "%s/trails/%d/volumes/%s", sc->config->storage.mntpoint,
-			sc->state->rev, (*volumes)->filename);
-                sprintf(mntpoint, "/volumes/%s", (*volumes)->filename);
-
-                char *fstype = strrchr((*volumes)->filename, '.');
-                fstype++;
-
-                sc_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
-
-		if (strcmp(fstype, "bind") == 0) {
-			struct stat buf;
-			if (stat(mntpoint, &buf) != 0) {
-				int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC);
-				close(fd);
-			}
-			ret = mount(path, mntpoint, "none", MS_BIND, "ro");
-		} else {
-			ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
-		}
-
-                if (ret < 0)
-                        exit_error(errno, "Could not mount loop device");
-		
-		_sc_volume_add(path, mntpoint, loop_fd, file_fd);
-
-                volumes++;
-        }
-
-        return 0;
 }
 
 int systemc_init()

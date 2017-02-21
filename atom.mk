@@ -19,6 +19,10 @@ LOCAL_SRC_FILES := init.c \
 		   systemc.c \
 		   controller.c \
 		   platforms.c \
+		   utils.c \
+		   volumes.c \
+		   parser.c \
+		   objects.c \
 		   updater.c
 
 include $(BUILD_EXECUTABLE)
@@ -40,6 +44,8 @@ LOCAL_SRC_FILES := loop.c \
 		   systemc_debug.c \
 		   controller.c \
 		   platforms.c \
+		   utils.c \
+		   volumes.c \
 		   updater.c
 
 include $(BUILD_EXECUTABLE)

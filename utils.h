@@ -3,6 +3,14 @@
 
 #include <sys/types.h>
 
+#include <jsmn/jsmnutil.h>
+
 int mkdir_p(const char *dir, mode_t mode);
+
+int traverse_token (char *buf, jsmntok_t* tok, int t);
+int get_digit_count(int number);
+char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc);
+char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
+int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
 
 #endif

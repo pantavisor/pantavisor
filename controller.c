@@ -17,6 +17,7 @@
 #include "platforms.h"
 #include "controller.h"
 #include "updater.h"
+#include "volumes.h"
 
 #define MODULE_NAME		"controller"
 #define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -184,7 +185,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 		sc_trail_update_start(sc, 1);
 		sc->update->status = UPDATE_FAILED;
 		sc->update->need_finish = 1;
-		trail_state_free(sc->state);
+		sc_state_free(sc->state);
 		sc->state = 0;
 	}
 

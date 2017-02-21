@@ -8,18 +8,12 @@
 #define DEVICE_STEP_ENDPOINT_FMT "/api/trails/%s/steps/%d/progress"
 #define DEVICE_STEP_STATUS_FMT "{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
 
-#define TRAIL_OBJPATH_FMT	"%s/objects/%s"
-#define TRAIL_KERNEL_FMT	"%s/trails/%d/%s"
-#define TRAIL_VOLUMES_FMT	"%s/trails/%d/volumes/%s"
-#define TRAIL_SYSTEMC_FMT	"%s/trails/%d/systemc/%s"
-#define TRAIL_PLAT_CFG_FMT	"%s/trails/%d/platforms/%s/configs/%s"
-
 #define TRAIL_OBJECT_DL_FMT	"/api/objects/%s"
 
 struct trail_remote {
 	trest_ptr client;
 	char *endpoint;
-	struct trail_step *pending;
+	struct sc_state *pending;
 };
 
 int sc_trail_update_start(struct systemc *sc, int offline);
