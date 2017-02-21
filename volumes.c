@@ -91,7 +91,7 @@ int sc_volumes_mount(struct systemc *sc)
                 char path[256];
                 char mntpoint[256];
 
-                sprintf(path, "%s/trails/%d/volumes/%s", sc->config->storage.mntpoint,
+                sprintf(path, "%s/trails/%d/%s", sc->config->storage.mntpoint,
 			s->rev, v->name);
                 sprintf(mntpoint, "/volumes/%s", v->name);
 

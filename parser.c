@@ -308,7 +308,7 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size)
 	}
 
 	// copy buffer
-	this->json = strncpy(this->json, buf, size);
+	this->json = strdup(buf);
 
 	// print
 	printf("\n\nkernel: '%s'\n", this->kernel);
