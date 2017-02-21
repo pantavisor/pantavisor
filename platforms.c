@@ -48,7 +48,6 @@ struct sc_platform* sc_platform_add(struct sc_state *s, char *name)
 		add->next = this;
 	}
 
-	printf("adding platform: '%s'\n", name);
 	this->name = name;
 
 	return this;

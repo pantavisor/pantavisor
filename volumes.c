@@ -71,7 +71,6 @@ struct sc_volume* sc_volume_add(struct sc_state *s, char *name)
 		add->next = this;
 	}
 
-	printf("adding volume: '%s'\n", name);
 	this->name = name;
 
 	return this;

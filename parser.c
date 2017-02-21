@@ -67,7 +67,6 @@ static int parse_systemc(struct sc_state *s, char *buf, int n)
 		s->initrd[size] = NULL;
 		while ((str = json_array_get_one_str(buf, &size, &k))) {
 			s->initrd[i] = str;
-			printf("adding ricmm initrd: '%s'\n", s->initrd[i]);
 			i++;
 		}
 
@@ -128,8 +127,6 @@ static int parse_platform(struct sc_state *s, char *buf, int n)
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 	name = get_json_key_value(buf, "name", tokv, tokc);
 
-	printf("adding platform='%s'\n'%s'\n", name, buf);
-
 	this = sc_platform_get_by_name(s, name);
 	if (!this)
 		goto out;
@@ -159,7 +156,6 @@ static int parse_platform(struct sc_state *s, char *buf, int n)
 	i = 0;
 	while ((str = json_array_get_one_str(configs, &size, &t))) {
 		this->configs[i] = str;
-		printf("adding config='%s'\n", str);
 		i++;
 	}
 
@@ -180,7 +176,6 @@ static int parse_platform(struct sc_state *s, char *buf, int n)
 	this->ns_share = 0;
 	while ((str = json_array_get_one_str(shares, &size, &t))) {
 		this->ns_share |= ns_share_flag(str);
-		printf("adding share '%s' -- flags='0x%08lx'\n", str, this->ns_share);
 		i++;
 	}
 

@@ -39,8 +39,6 @@ struct sc_object* sc_objects_add(struct sc_state *s, char *filename, char *id, c
 	this->objpath = calloc(1, size * sizeof(char));
 	sprintf(this->objpath, OBJPATH_FMT, c, id);
 
-	printf("adding file='%s', id='%s', relpath='%s', objpath='%s'\n", this->name, this->id, this->relpath, this->objpath);
-
 	return this;
 }
 
