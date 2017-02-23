@@ -290,15 +290,10 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 
 		// check extension in case of file (json=platform, other=file)
 		ext = strrchr(key, '.');
-		if (ext && !strcmp(ext, ".json")) {
-			printf("adding: '%s', '%d'\n", value, strlen(value));
+		if (ext && !strcmp(ext, ".json"))
 			parse_platform(this, value, strlen(value));
-		} else {
-			printf("key: '%s'\n", key);
-			printf("value: '%s'\n", value);
-			printf("config: '%s'\n", sc->config->storage.mntpoint);
+		else
 			sc_objects_add(this, key, value, sc->config->storage.mntpoint);
-		}
 	
 		// free intermediates	
 		if (key)
