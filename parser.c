@@ -236,7 +236,7 @@ void sc_state_free(struct sc_state *this)
 	}
 }
 
-struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size)
+struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev)
 {
 	int tokc, ret, count, n;
 	char *key, *value, *ext = 0;
@@ -244,6 +244,9 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size)
 	jsmntok_t **k;
 
 	struct sc_state *this = calloc(1, sizeof(struct sc_state));
+
+	// set rev
+	this->rev = rev;
 
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
@@ -287,10 +290,15 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size)
 
 		// check extension in case of file (json=platform, other=file)
 		ext = strrchr(key, '.');
-		if (ext && !strcmp(ext, ".json"))
+		if (ext && !strcmp(ext, ".json")) {
+			printf("adding: '%s', '%d'\n", value, strlen(value));
 			parse_platform(this, value, strlen(value));
-		else
+		} else {
+			printf("key: '%s'\n", key);
+			printf("value: '%s'\n", value);
+			printf("config: '%s'\n", sc->config->storage.mntpoint);
 			sc_objects_add(this, key, value, sc->config->storage.mntpoint);
+		}
 	
 		// free intermediates	
 		if (key)

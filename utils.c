@@ -28,6 +28,32 @@ int get_digit_count(int number)
 	return c;
 }
 
+int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc)
+{
+	int i;
+	int val = 0;
+	int t=-1;
+
+	for(i=0; i<tokc; i++) {
+		int n = tok[i].end - tok[i].start;
+		if (tok[i].type == JSMN_PRIMITIVE
+		    && !strncmp(buf + tok[i].start, key, n)) {
+			t=1;
+		} else if (t==1) {
+			char *idval = malloc(n+1);
+			idval[n] = 0;
+			strncpy(idval, buf + tok[i].start, n);
+			val = atoi(idval);
+			free(idval);
+			return val;
+		} else if (t==1) {
+			printf ("ERROR: json does not have 'key' string\n");
+			return val;
+		}
+	}
+	return val;
+}
+
 char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 {
 	int i;

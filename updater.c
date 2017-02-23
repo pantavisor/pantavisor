@@ -109,8 +109,9 @@ static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f fu
 static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int c)
 {
 	int n = ((tok+c)->end - (tok+c)->start) + 1;
-	int tokc, ret;
+	int tokc, ret, rev = 0;
 	char *s = malloc (sizeof (char) * n+1);
+	char *rev_s = NULL;
 	char *value = NULL;
 	struct sc_state **steps = (struct sc_state **) d1;
 	struct systemc *sc = (struct systemc *) d2;
@@ -127,19 +128,24 @@ static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int
 	keys = jsmnutil_get_object_keys(s, tokv);
 	keys_i = keys;
 	while (*keys_i) {
-		if (!strncmp(s+(*keys_i)->start, "state", strlen("state"))) {
+		if (!strncmp(s+(*keys_i)->start, "rev", strlen("rev"))) {
+			n = (*keys_i+1)->end - (*keys_i+1)->start;
+			rev_s = malloc(n+1);
+			rev_s[n] = '\0';
+			strncpy(rev_s, s+(*keys_i+1)->start, n);
+			rev = atoi(rev_s);
+		} else if (!strncmp(s+(*keys_i)->start, "state", strlen("state"))) {
 			n = (*keys_i+1)->end - (*keys_i+1)->start;
 			value = malloc(n + 2);
-			strncpy(value, s+(*keys_i+1)->start, n+1);
-			value[n+1] = '\0';
-			break;
+			strncpy(value, s+(*keys_i+1)->start, n);
+			value[n] = '\0';
 		}
 		keys_i++;
 	}
 	jsmnutil_tokv_free(keys);
 
-	*steps = sc_parse_state(sc, value, strlen(value));
-	sc_log(DEBUG, "adding step = '%s'", (*steps)->json);
+	*steps = sc_parse_state(sc, value, strlen(value), rev);
+	sc_log(DEBUG, "adding rev=%d, step = '%s'", rev, (*steps)->json);
 	
 	if (value)
 		free(value);
@@ -204,8 +210,7 @@ static int trail_get_new_steps(struct systemc *sc)
 	iter = steps;
 	memset(steps, 0, sizeof(struct sc_state*) * (size + 1));
         _iterate_json_array (res->body, res->json_tokv, 0,
-			    (token_iter_f) _add_pending_step, steps,
-			     sc->config->storage.mntpoint);
+			    (token_iter_f) _add_pending_step, steps, sc);
 	steps[size] = NULL;
 	r->pending = _pending_get_first(steps);
 
@@ -721,10 +726,10 @@ static int trail_link_objects(struct systemc *sc)
 		mkdir_p(tmp, 0644);
 		free(tmp);
 		if (link(obj->objpath, obj->relpath) < 0) {
-			sc_log(ERROR, "unable to link %s, errno=%d",
-				obj->relpath, errno);
 			if (errno != EEXIST)
 				err++;
+			sc_log(ERROR, "unable to link %s, errno=%d",
+				obj->relpath, errno);
 		} else {
 			sc_log(INFO, "linked %s to %s",
 				obj->relpath, obj->objpath);

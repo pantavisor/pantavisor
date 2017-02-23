@@ -114,8 +114,8 @@ int sc_volumes_mount(struct systemc *sc)
                         exit_error(errno, "Could not mount loop device");
 	
 		// register mount state	
-		v->src = path;
-		v->dest = mntpoint;
+		v->src = strdup(path);
+		v->dest = strdup(mntpoint);
 		v->loop_fd = loop_fd;
 		v->file_fd = file_fd;
 
@@ -133,6 +133,7 @@ int sc_volumes_unmount(struct systemc *sc)
 	struct sc_volume *v = s->volumes;
 
         while(v) {
+		printf("unmounting: v->dest='%s', v->loop_fd='%d', v->file_fd='%d'\n", v->dest, v->loop_fd, v->file_fd);
 		if (v->loop_fd == -1) {
 			ret = umount(v->dest);
 		} else {

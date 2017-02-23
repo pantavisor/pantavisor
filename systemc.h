@@ -78,7 +78,7 @@ struct systemc {
 
 void sc_destroy(struct systemc *sc);
 void sc_release_state(struct systemc *sc);
-struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size);
+struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev);
 struct sc_state* sc_parse_state_from_buf(struct systemc *sc, char *buf);
 struct sc_state* sc_get_state(struct systemc *sc, int current);
 struct sc_state* sc_get_current_state(struct systemc *sc);

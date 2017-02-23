@@ -68,7 +68,7 @@ struct sc_state* sc_get_state(struct systemc *sc, int rev)
 
 	// libtrail
 	//s = trail_parse_state(buf, size);
-	s = sc_parse_state(sc, buf, size);
+	s = sc_parse_state(sc, buf, size, rev);
 	close(fd);
 
 	return s;
