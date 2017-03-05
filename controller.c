@@ -18,12 +18,13 @@
 #include "controller.h"
 #include "updater.h"
 #include "volumes.h"
+#include "pantahub.h"
 
 #define MODULE_NAME		"controller"
 #define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#define CONFIG_FILENAME	"/systemc/device.config"
+#define SC_CONFIG_FILENAME	"/systemc/device.config"
 #define CMDLINE_OFFSET	7
 
 static int counter;
@@ -33,6 +34,7 @@ typedef enum {
 	STATE_INIT,
 	STATE_RUN,
 	STATE_WAIT,
+	STATE_UNCLAIMED,
 	STATE_UPDATE,
 	STATE_ROLLBACK,
 	STATE_REBOOT,
@@ -54,20 +56,6 @@ static int sc_step_get_prev(struct systemc *sc)
 	return -1;
 }
 
-//FIXME: should attempt connect() on dedicated api.pantacor.com endpoint
-static int sc_network_is_up(void)
-{
-	struct hostent *ent;
-	char *hostname = "pantacor.com";
-	
-	ent = gethostbyname(hostname);
-
-	if (ent == NULL)
-		return 0;
-
-	return 1;
-}
-
 static sc_state_t _sc_init(struct systemc *sc)
 {
 	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
@@ -77,13 +65,17 @@ static sc_state_t _sc_init(struct systemc *sc)
 	int bl_rev = 0;
 	char *buf;
 	char *token;
+	char pconfig_p[256];
 	struct systemc_config *c;
 	struct stat st;
 
+	// Initialize flags
+	sc->flags = 0;
+
         c = malloc(sizeof(struct systemc_config));
 
-        if (config_from_file(CONFIG_FILENAME, c) < 0) {
-		sc_log(FATAL, "unable to parse config");
+        if (sc_config_from_file(SC_CONFIG_FILENAME, c) < 0) {
+		sc_log(FATAL, "unable to parse systemc config");
 		return STATE_EXIT;
 	}
 
@@ -94,11 +86,6 @@ static sc_state_t _sc_init(struct systemc *sc)
         sc_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
         sc_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
         sc_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
-        sc_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
-        sc_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
-        sc_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
-        sc_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
-        sc_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
 
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0644);
@@ -108,7 +95,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 	for (int wait = 5; wait > 0; wait--) {
 		if (stat(c->storage.path, &st) == 0)
 			break;
-		sc_log(WARN, "trail storage not yet available, waiting...");
+		sc_log(INFO, "trail storage not yet available, waiting...");
 		sleep(1);
 		continue;
 	}
@@ -116,6 +103,30 @@ static sc_state_t _sc_init(struct systemc *sc)
         ret = mount(c->storage.path, c->storage.mntpoint, c->storage.fstype, 0, NULL);
         if (ret < 0)
                 exit_error(errno, "Could not mount trails storage");
+
+	sprintf(pconfig_p, "%s/config/pantahub.config", c->storage.mntpoint);
+        if (ph_config_from_file(pconfig_p, c) < 0) {
+		sc_log(FATAL, "unable to parse pantahub config");
+		return STATE_EXIT;
+	}
+
+	sc_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
+        sc_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
+        sc_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
+        sc_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
+        sc_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
+
+	// Make pantavisor control area
+	if (stat("/tmp/pantavisor", &st) != 0)
+		mkdir_p("/tmp/pantavisor", 0644);
+
+	if (strcmp(c->creds.prn, "") == 0) {
+		fd = open("/tmp/pantavisor/device-id", O_CREAT | O_SYNC | O_WRONLY, 0644);
+		close(fd);
+		fd = open("/tmp/pantavisor/challenge", O_CREAT | O_SYNC | O_WRONLY, 0644);
+		close(fd);
+		sc->flags |= DEVICE_UNCLAIMED;
+	}
 
 	// Set config
 	sc->config = c;
@@ -177,6 +188,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 	// Make sure this is not initialized
 	sc->remote = 0;
 	sc->update = 0;
+	sc->last = -1;
 
 	// Load stale update if presetn
 	sc_bl_get_update(sc, &bl_rev);
@@ -228,7 +240,7 @@ static sc_state_t _sc_run(struct systemc *sc)
 	ret = sc_platforms_start_all(sc);
 	if (ret < 0) {
 		sc_log(ERROR, "error starting platforms");
-		return STATE_ERROR;
+		return STATE_ROLLBACK;
 	}
 
 	total++;
@@ -239,18 +251,66 @@ static sc_state_t _sc_run(struct systemc *sc)
 	return STATE_WAIT;
 }
 
-static sc_state_t _sc_wait(struct systemc *sc)
+static sc_state_t _sc_unclaimed(struct systemc *sc)
 {
-	int ret;
-	int fd;
-	char s[256];
+	int need_register = 1;
+	struct stat st;
+	char config_path[256];
+	char *c = malloc(sizeof(char) * 128);
 
 	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
-	sleep(10);
+	if (!sc_ph_is_available(sc))
+		return STATE_WAIT;
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+
+	sprintf(config_path, "%s/config/unclaimed.config", sc->config->storage.mntpoint);
+	if (stat(config_path, &st) == 0)
+		ph_config_from_file(config_path, sc->config);
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+
+	if ((strcmp(sc->config->creds.id, "") != 0) && sc_ph_device_exists(sc)) {
+		sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+		need_register = 0;
+	}
+
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	if (need_register && sc_ph_register_self(sc))
+		ph_config_to_file(sc->config, config_path);
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+
+	if (!sc_ph_device_is_owned(sc, &c)) {
+		sc_log(INFO, "device challenge: '%s'", c);
+		sc_ph_update_hint_file(sc, c);
+	} else {
+		sc_log(INFO, "device has been claimed, proceeding normally");
+		sprintf(config_path, "%s/config/pantahub.config", sc->config->storage.mntpoint);
+		ph_config_to_file(sc->config, config_path);
+		sc_ph_release_client(sc);
+		sc->flags &= ~DEVICE_UNCLAIMED;
+	}
+
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+
+	if (c)
+		free(c);
+
+	return STATE_WAIT;
+}
+
+static sc_state_t _sc_wait(struct systemc *sc)
+{
+	int ret;
+
+	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+
+	sleep(5);
+
+	if (sc->flags & DEVICE_UNCLAIMED)
+		return STATE_UNCLAIMED;
 
 	// FIXME: if update, wait a few times then error
-	if (!sc_network_is_up()) {
+	if (!sc_ph_is_available(sc)) {
 		counter++;
 		if (counter > 20)
 			return STATE_ROLLBACK;
@@ -262,14 +322,13 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	// FIXME: should use sc_bl_*() helpers
 	// if online update pending to clear, commit update to cloud
 	if (sc->update && sc->update->status == UPDATE_TRY) {
-		sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
-		fd = open(s, O_RDWR | O_TRUNC | O_SYNC);
-		memset(s, 0, sizeof(s));
-		sprintf(s, "sc_rev=%d", sc->state->rev);
-		write(fd, s, strlen(s) + 1);
-		sync();
-		close(fd);
+		sc_bl_set_current(sc);
 		sc->update->status = UPDATE_DONE;
+		sc_trail_update_finish(sc);
+	} else if (sc->update && sc->update->status == UPDATE_FAILED) {
+		// We come from a forced rollback
+		sc_bl_set_current(sc);
+		sc->update->status = UPDATE_FAILED;
 		sc_trail_update_finish(sc);
 	}
 	sc->last = sc->state->rev;
@@ -280,7 +339,7 @@ static sc_state_t _sc_wait(struct systemc *sc)
 		sc_bl_clear_update(sc);
 	}
 
-	ret = sc_trail_check_for_updates(sc);	
+	ret = sc_trail_check_for_updates(sc);
 	if (ret) {
 		sc_log(INFO, "updates found");
 		return STATE_UPDATE;
@@ -299,7 +358,7 @@ static sc_state_t _sc_update(struct systemc *sc)
 	// FIXME: requires sc_trail_update_finish() call after RUN or boot
 	ret = sc_trail_update_start(sc, 0);
 	if (ret < 0) {
-		sc_log(WARN, "unable to queue update, abandoning it");
+		sc_log(INFO, "unable to queue update, abandoning it");
 		return STATE_WAIT;
 	}
 
@@ -311,7 +370,7 @@ static sc_state_t _sc_update(struct systemc *sc)
 		return STATE_ROLLBACK;
 	}
 
-	sc_log(INFO, "update applied, new rev = '%d', stopping current...", ret);
+	sc_log(WARN, "New trail state accepted, stopping current state.");
 
 	// stop current step
 	if (sc_platforms_stop_all(sc) < 0)
@@ -323,11 +382,11 @@ static sc_state_t _sc_update(struct systemc *sc)
 	sc_release_state(sc);
 
 	if (sc->update->need_reboot) {
-		sc_log(INFO, "rebooting...");
+		sc_log(WARN, "Update requires reboot, rebooting...");
 		return STATE_REBOOT;
 	}
 
-	sc_log(INFO, "update applied, new rev = '%d', starting...", ret);
+	sc_log(WARN, "State update applied, starting new revision.", ret);
 
 	// Load installed step
 	sc->state = sc_get_state(sc, ret);
@@ -343,6 +402,10 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 	int ret = 0;
 	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	
+	// If we rollback, it means the considered OK update (kernel)
+	// actually failed to start platforms or mount volumes
+	sc->update->status = UPDATE_FAILED;
+
 	if (sc->state) {
 		ret = sc_platforms_stop_all(sc);
 		if (ret < 0)
@@ -356,10 +419,13 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 		sc_release_state(sc);
 	}
 
+	if (sc->last == -1)
+		sc->last = sc->state->rev - 1;
+
 	sc->state = sc_get_state(sc, sc->last);
 	if (sc->state)
 		sc_log(INFO, "loaded previous step %d\n", sc->last);
-	
+
 	return STATE_RUN;
 }
 
@@ -387,6 +453,7 @@ sc_state_func_t* const state_table[MAX_STATES] = {
 	_sc_init,
 	_sc_run,
 	_sc_wait,
+	_sc_unclaimed,
 	_sc_update,
 	_sc_rollback,
 	_sc_reboot,

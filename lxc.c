@@ -19,7 +19,7 @@
 
 void *start_lxc_container(char *name, char *conf_file, void *data)
 {
-	int fd;
+	int fd, err;
 	struct lxc_container *c;
 	char *dname;
 	struct utsname uts;
@@ -84,8 +84,11 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	char entry[1024];
 	sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);
 	c->set_config_item(c, "lxc.mount.entry", entry);
+
+	char *cpath = "/tmp/pantavisor/ run/pantavisor none bind,ro,create=dir 0 0";
+	c->set_config_item(c, "lxc.mount.entry", cpath);
+
 	int ret = uname(&uts);
-	
 	// FIXME: Implement modules volume and use that instead
 	sc_log(DEBUG, "uname ret=%d, errno=%d, rev='%s'", ret, errno, uts.release);
 	if (!ret) {
@@ -95,7 +98,12 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
 	}
-	errno = c->start(c, 0, NULL);
+	err = c->start(c, 0, NULL) ? 0 : 1;
+
+	if (err) {
+		lxc_container_put(c);
+		c = NULL;
+	}
 
 	return (void *) c;
 }

@@ -119,8 +119,8 @@ int main(int argc, char *argv[])
 	systemc_init();
 
 	// Spawn shell
-	sc_log(INFO, "Execing /bin/ash");
-	shell_pid = tsh_run("ash");
+	// sc_log(INFO, "Execing /bin/ash");
+	//shell_pid = tsh_run("ash");
 
 	if (debug)
 		debug_init();

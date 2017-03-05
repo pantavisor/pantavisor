@@ -1,8 +1,33 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "utils.h"
+
+static int seeded = 0;
+
+char *rand_string(int size)
+{
+	char set[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK";
+	char *str;
+	time_t t;
+
+	if (!seeded)
+		srand(time(&t));
+
+	str = malloc(sizeof(char) * (size + 1));
+
+	for (int i = 0; i < size; i++) {
+		int key = rand() % (sizeof(set) - 1);
+		str[i] = set[key];
+	}
+
+	// null terminate string
+	str[size] = '\0';
+
+	return str;
+}
 
 int traverse_token (char *buf, jsmntok_t* tok, int t)
 {
@@ -61,7 +86,7 @@ char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 
 	for(i=0; i<tokc; i++) {
 		int n = tok[i].end - tok[i].start;
-		if (tok[i].type == JSMN_STRING
+		if (n && tok[i].type == JSMN_STRING
 		    && !strncmp(buf + tok[i].start, key, n)) {
 			t=1;
 		} else if (t==1) {

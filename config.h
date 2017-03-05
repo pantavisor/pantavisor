@@ -23,11 +23,9 @@ struct systemc_config {
 	struct systemc_storage storage;
 };
 
-struct config_item* _config_add_item(char *key, char *value);
-char* _config_get_value(char *key);
-void _config_del_item(char *key);
-
 // Fill config struct after parsing on-initramfs factory config
-int config_from_file(char *path, struct systemc_config *config);
+int sc_config_from_file(char *path, struct systemc_config *config);
+int ph_config_from_file(char *path, struct systemc_config *config);
+int ph_config_to_file(struct systemc_config *config, char *path);
 
 #endif

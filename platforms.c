@@ -196,6 +196,7 @@ int sc_platforms_start_all(struct systemc *sc)
 		sc_log(INFO, "started platform platform: \"%s\" (data=0x%p)",
 			p->name, data);
 
+		p->data = data;
 		p->running = true;
 		num_plats++;
 

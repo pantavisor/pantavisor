@@ -93,7 +93,7 @@ static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f fu
 	int i;
 	int c;
 	if (tok[t].type != JSMN_ARRAY) {
-		sc_log(WARN, "iterare_json_array: token not array");
+		sc_log(INFO, "iterare_json_array: token not array");
 		return -1;
 	}
 
@@ -195,7 +195,7 @@ static int trail_get_new_steps(struct systemc *sc)
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
-		sc_log(WARN, "unable to do trail request");
+		sc_log(INFO, "unable to do trail request");
 		size = -1;
 		goto out;
 	}
@@ -253,7 +253,7 @@ static int trail_is_available(struct trail_remote *r)
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
-		sc_log(WARN, "unable to do trail request");
+		sc_log(INFO, "unable to do trail request");
 		size = -1;
 		goto out;
 	}
@@ -285,7 +285,7 @@ static int trail_first_boot(struct systemc *sc)
 
 	status = trest_update_auth(sc->remote->client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		sc_log(WARN, "cannot update auth token");
+		sc_log(INFO, "cannot update auth token");
 		return -1;
 	}
 
@@ -330,14 +330,14 @@ static int trail_remote_init(struct systemc *sc)
 		);
 
 	if (!client) {
-		sc_log(WARN, "unable to create device client");
+		sc_log(INFO, "unable to create device client");
 		goto err;
 	}
 
 	// FIXME: Crash here if unable to auth
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		sc_log(WARN, "unable to auth device client");
+		sc_log(INFO, "unable to auth device client");
 		goto err;
 	}
 
@@ -376,7 +376,7 @@ int sc_trail_check_for_updates(struct systemc *sc)
 	
 	auth_status = trest_update_auth(sc->remote->client);
 	if (auth_status != TREST_AUTH_STATUS_OK) {
-		sc_log(WARN, "cannot authenticate to cloud");
+		sc_log(INFO, "cannot authenticate to cloud");
 		return 0;
 	}
 
@@ -439,7 +439,7 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 	res = trest_do_json_request(sc->remote->client, req);
 
 	if (!res) {
-		sc_log(WARN, "unable to do trail request");
+		sc_log(INFO, "unable to do trail request");
 		ret = -1;
 		goto out;
 	}
@@ -486,10 +486,24 @@ int sc_trail_update_start(struct systemc *sc, int offline)
 	if (!offline) {
 		ret = trail_remote_set_status(sc, UPDATE_QUEUED);
 		if (ret < 0)
-			sc_log(WARN, "failed to update cloud status, possibly offline");
+			sc_log(INFO, "failed to update cloud status, possibly offline");
 	}
 
 	return 0;
+}
+
+void sc_bl_set_current(struct systemc *sc)
+{
+	int fd;
+	char s[256];
+
+	sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
+	fd = open(s, O_RDWR | O_TRUNC | O_SYNC);
+	memset(s, 0, sizeof(s));
+	sprintf(s, "sc_rev=%d", sc->state->rev);
+	write(fd, s, strlen(s) + 1);
+	sync();
+	close(fd);
 }
 
 int sc_bl_get_update(struct systemc *sc, int *update)
@@ -519,7 +533,7 @@ int sc_bl_get_update(struct systemc *sc, int *update)
 		goto out;
 
 	if (strcmp(rev, "sc_update") != 0) {
-		sc_log(WARN, "no update information from bootloader");
+		sc_log(INFO, "no update information from bootloader");
 		goto out;
 	}
 
@@ -570,7 +584,7 @@ int sc_trail_update_finish(struct systemc *sc)
 		goto out;
 		break;
 	case UPDATE_REBOOT:
-		sc_log(WARN, "update requires reboot, cleaning up...");
+		sc_log(INFO, "update requires reboot, cleaning up...");
 		goto out;
 		break;
 	case UPDATE_FAILED:
@@ -614,7 +628,7 @@ static char* trail_download_geturl(struct systemc *sc, char *prn)
 	res = trest_do_json_request(sc->remote->client, req);
 
 	if (!res) {
-		sc_log(WARN, "unable to do trail request");
+		sc_log(INFO, "unable to do trail request");
 		goto out;
 	}
 
@@ -660,14 +674,14 @@ static int trail_download_object(struct sc_object *obj)
 	}
 
 	if (obj->geturl == NULL) {
-		sc_log(WARN, "there is no get url defined");
+		sc_log(INFO, "there is no get url defined");
 		ret = -1;
 		goto out;
 	}
 
 	// FIXME: This breaks with non https urls...
 	if (strncmp(obj->geturl, "https://", 8) != 0) {
-		sc_log(WARN, "object url (%s) is invalid", obj->geturl);
+		sc_log(INFO, "object url (%s) is invalid", obj->geturl);
 		ret = -1;
 		goto out;
 	}
@@ -752,10 +766,10 @@ static int trail_download_objects(struct systemc *sc)
 
 	struct sc_object *k_new = sc_objects_get_by_name(u->pending,
 					u->pending->kernel);
-	struct sc_object *k_old = sc_objects_get_by_name(u->pending,
-					u->pending->kernel);
+	struct sc_object *k_old = sc_objects_get_by_name(sc->state,
+					sc->state->kernel);
 
-	if (!strcmp(k_new->id, k_old->id))
+	if (strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
 	o = u->pending->objects;	

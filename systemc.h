@@ -5,6 +5,8 @@
 #include <trail.h>
 #include "config.h"
 
+#define DEVICE_UNCLAIMED	(1 << 0)
+
 // systemc.h
 
 struct trail_remote;
@@ -74,6 +76,7 @@ struct systemc {
 	struct trail_remote *remote;
 	struct sc_update *update;
 	struct sc_state *state;
+	unsigned long flags;
 };
 
 void sc_destroy(struct systemc *sc);

@@ -7,6 +7,7 @@
 
 int mkdir_p(const char *dir, mode_t mode);
 
+char *rand_string(int size);
 int traverse_token (char *buf, jsmntok_t* tok, int t);
 int get_digit_count(int number);
 int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);

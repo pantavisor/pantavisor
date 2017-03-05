@@ -307,40 +307,39 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 	this->json = strdup(buf);
 
 	// print
-	printf("\nkernel: '%s'\n", this->kernel);
+	sc_log(INFO, "kernel: '%s'\n", this->kernel);
 	char **initrd = this->initrd;
-	printf("initrd: \n");
+	sc_log(INFO, "initrd: \n");
 	while (*initrd) {
-		printf("  '%s'\n", *initrd);
+		sc_log(INFO, "  '%s'\n", *initrd);
 		initrd++;
 	}
 	struct sc_platform *p = this->platforms;
-	printf("platform: '%s'\n", p->name);
+	sc_log(INFO, "platform: '%s'\n", p->name);
 	while (p) {
-		printf("  type: '%s'\n", p->type);
-		printf("  exec: '%s'\n", p->exec);
-		printf("  configs:\n");
+		sc_log(INFO, "  type: '%s'\n", p->type);
+		sc_log(INFO, "  exec: '%s'\n", p->exec);
+		sc_log(INFO, "  configs:\n");
 		char **config = p->configs;
 		while (*config) {
-			printf("    '%s'\n", *config);
+			sc_log(INFO, "    '%s'\n", *config);
 			config++;
 		}
-		printf("  shares: 0x%08lx\n", p->ns_share);
+		sc_log(INFO, "  shares: 0x%08lx\n", p->ns_share);
 		p = p->next;
 	}
 	struct sc_volume *v = this->volumes;
 	while (v) {
-		printf("volume: '%s'\n", v->name);
+		sc_log(INFO, "volume: '%s'\n", v->name);
 		v = v->next;
 	}
 	struct sc_object *o = this->objects;
 	while (o) {
-		printf("object: \n");
-		printf("  name: '%s'\n", o->name);
-		printf("  name: '%s'\n", o->id);
+		sc_log(INFO, "object: \n");
+		sc_log(INFO, "  name: '%s'\n", o->name);
+		sc_log(INFO, "  name: '%s'\n", o->id);
 		o = o->next;
 	}
-	printf("\n");
 
 	return this;
 }

@@ -133,7 +133,6 @@ int sc_volumes_unmount(struct systemc *sc)
 	struct sc_volume *v = s->volumes;
 
         while(v) {
-		printf("unmounting: v->dest='%s', v->loop_fd='%d', v->file_fd='%d'\n", v->dest, v->loop_fd, v->file_fd);
 		if (v->loop_fd == -1) {
 			ret = umount(v->dest);
 		} else {
