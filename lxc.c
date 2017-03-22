@@ -45,7 +45,7 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 		return NULL;
 	}
 
-	lxc_log_init(name, "/tmp/log", "DEBUG", "init", 0, name);
+	lxc_log_init(name, "/storage/log", "DEBUG", "init", 0, name);
 	
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
 	c->set_inherit_namespaces(c, 1, share_ns);
@@ -92,12 +92,14 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	// FIXME: Implement modules volume and use that instead
 	sc_log(DEBUG, "uname ret=%d, errno=%d, rev='%s'", ret, errno, uts.release);
 	if (!ret) {
-		sprintf(entry, "/lib/modules/%s", uts.release);
-		if (stat(entry, &st) == 0) {
-			sprintf(entry, "/lib/modules/%s lib/modules/%s none bind,ro,create=dir 0 0", uts.release, uts.release);
+		if (stat("/volumes/modules.squashfs", &st) == 0) {
+			sprintf(entry, "/volumes/modules.squashfs lib/modules/%s none bind,ro,create=dir 0 0", uts.release);
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
 	}
+	if (stat("/volumes/firmware.squashfs", &st) == 0)
+		c->set_config_item(c, "lxc.mount.entry", "/volumes/firmware.squashfs lib/firmware none bind,ro,create=dir 0 0");
+
 	err = c->start(c, 0, NULL) ? 0 : 1;
 
 	if (err) {

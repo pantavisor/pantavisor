@@ -20,31 +20,12 @@
 
 #include "objects.h"
 #include "updater.h"
+#include "bootloader.h"
 
 static struct trail_object *head;
 static struct trail_object *last;
 
 typedef void (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
-
-static void uboot_set_try_rev(struct systemc *sc, int rev)
-{
-	int fd;
-	char s[256];
-	erase_info_t ei;
-
-	fd = open("/dev/mtd2", O_RDWR | O_SYNC);
-	ei.start = 0;
-	ioctl(fd, MEMUNLOCK, &ei);
-	ioctl(fd, MEMERASE, &ei);
-
-	lseek(fd, 0, SEEK_SET);
-	sprintf(s, "sc_try=%d\0", rev);
-	write(fd, &s, strlen(s) + 1);
-	
-	close(fd);
-	
-	return;	
-}
 
 // takes an allocated buffer
 static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
@@ -492,88 +473,6 @@ int sc_trail_update_start(struct systemc *sc, int offline)
 	return 0;
 }
 
-void sc_bl_set_current(struct systemc *sc)
-{
-	int fd;
-	char s[256];
-
-	sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
-	fd = open(s, O_RDWR | O_TRUNC | O_SYNC);
-	memset(s, 0, sizeof(s));
-	sprintf(s, "sc_rev=%d", sc->state->rev);
-	write(fd, s, strlen(s) + 1);
-	sync();
-	close(fd);
-}
-
-int sc_bl_get_update(struct systemc *sc, int *update)
-{
-	int ret = -1;
-	int fd, t;
-	char *rev = 0;
-	char *buf = 0;
-
-	// FIXME: systemc env partition should come from config
-	// FIXME: in fact it should be smart and have multiple backends
-	fd = open("/dev/mtd2", O_RDONLY);
-	if (fd < 0) {
-		sc_log(ERROR, "unable to read bootloader update buffer");
-		goto out;
-	}
-
-	lseek(fd, 0, SEEK_SET);
-	buf = calloc(1, 64 * sizeof(char));
-	read(fd, buf, 64 * sizeof(char));
-	buf[63] = '\0';
-	sc_log(INFO, "read %s from bootloader update buffer", buf);
-	close(fd);
-
-	rev = strtok(buf, "=");
-	if (!rev)
-		goto out;
-
-	if (strcmp(rev, "sc_update") != 0) {
-		sc_log(INFO, "no update information from bootloader");
-		goto out;
-	}
-
-	rev = strtok(NULL, "=");
-	t = atoi(rev);
-
-	if (t <= 0) {
-		sc_log(ERROR, "wrong update revision from bootloader");
-		goto out;
-	}
-
-	*update = t;
-	ret = 1;
-
-out:
-	if (buf)
-		free(buf);
-
-	return ret;
-}
-
-int sc_bl_clear_update(struct systemc *sc)
-{
-	int fd;
-	char buf[64] = { 0 };
-
-	fd = open("/dev/mtd2", O_RDWR | O_SYNC);
-	if (fd < 0) {
-		sc_log(ERROR, "unable to clear bootloader update buffer");
-		return -1;
-	}
-
-	lseek(fd, 0, SEEK_SET);
-	write(fd, &buf, sizeof(buf));
-	sc_log(INFO, "cleared bootloader update buffer");
-	close(fd);
-
-	return 0;
-}
-
 int sc_trail_update_finish(struct systemc *sc)
 {
 	int ret = 0;
@@ -709,9 +608,9 @@ static int trail_download_object(struct sc_object *obj)
 	req->path = obj->geturl;
 	req->headers = 0;
 
-	fd = open(obj->objpath, O_CREAT | O_RDWR | O_SYNC, 0644);
-
+	fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
 	res = thttp_request_do_file (req, fd);
+	sync();
 
 	close (fd);
 	sc_log(INFO, "downloaded object (%s)", obj->objpath);
@@ -810,7 +709,7 @@ int sc_trail_update_install(struct systemc *sc)
 
 	// install state.json for new rev
 	sprintf(state_path, "%s/trails/%d.json", sc->config->storage.mntpoint, pending->rev);
-	fd = open(state_path, O_CREAT | O_WRONLY | O_SYNC);
+	fd = open(state_path, O_CREAT | O_WRONLY | O_SYNC, 0644);
 	if (fd < 0) {
 		sc_log(ERROR, "unable to write state.json file for update");
 		ret = -1;
@@ -825,10 +724,14 @@ int sc_trail_update_install(struct systemc *sc)
 	sc->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
+	sc_log(WARN, "%s():%d", __func__, __LINE__);
+
 	if (sc->update->need_reboot) {
 		sc->update->status = UPDATE_REBOOT;
-		uboot_set_try_rev(sc, ret);
+		sc_bl_set_try(sc, ret);
 	}
+	sc_log(WARN, "%s():%d", __func__, __LINE__);
+
 	
 out:
 	trail_remote_set_status(sc, sc->update->status);

@@ -62,6 +62,11 @@ static int early_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup");
 
+	mkdir("/sys/fs/cgroup/systemd", 0644);
+	ret = mount("cgroup", "/sys/fs/cgroup/systemd", "cgroup", 0, "none,name=systemd");
+	if (ret < 0)
+		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
+
 	mkdir("/root", 0644);
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
 	if (ret < 0)
@@ -120,7 +125,7 @@ int main(int argc, char *argv[])
 
 	// Spawn shell
 	// sc_log(INFO, "Execing /bin/ash");
-	//shell_pid = tsh_run("ash");
+	// shell_pid = tsh_run("ash");
 
 	if (debug)
 		debug_init();

@@ -4,6 +4,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <dirent.h>
+#include <netdb.h>
 
 #include <linux/limits.h>
 
@@ -82,12 +84,28 @@ void sc_release_state(struct systemc *sc)
 
 struct sc_state* sc_get_current_state(struct systemc *sc)
 {
-	struct stat buf;
+	int step_rev = 0;
+	struct dirent **dirs;
 	char basedir[PATH_MAX];
 
-	sprintf(basedir, "%s/trails/current", sc->config->storage.mntpoint);
-	if (stat(basedir, &buf) != 0)
-		return sc_get_state(sc, -1);
+	sprintf(basedir, "%s/trails/", sc->config->storage.mntpoint);
+
+	int n = scandir(basedir, &dirs, NULL, alphasort);
+	while (n--) {
+		char *tmp = dirs[n]->d_name;
+
+		while (*tmp && isdigit(*tmp))
+			tmp++;
+
+		if(tmp[0] != '\0')
+			continue;
+
+		sc_log(INFO, "default to newest step_rev: '%s'", dirs[n]->d_name);
+		step_rev = atoi(dirs[n]->d_name);
+		break;
+	}
+
+	return sc_get_state(sc, step_rev);
 
 	return NULL;
 }

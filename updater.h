@@ -23,7 +23,7 @@ int sc_trail_check_for_updates(struct systemc *sc);
 int sc_trail_do_single_update(struct systemc *sc);
 void sc_trail_remote_destroy(struct systemc *sc);
 
-void sc_bl_set_current(struct systemc *sc);
+void sc_bl_set_current(struct systemc *sc, int rev);
 int sc_bl_get_update(struct systemc *sc, int *update);
 int sc_bl_clear_update(struct systemc *sc);
 

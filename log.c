@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
+
+#include <sys/types.h>
 
 #include "log.h"
 
@@ -15,11 +18,17 @@ static struct level_name level_names[] = {
 
 static int prio = ERROR;
 
+// default STDOUT
+int log_fd = 1;
+
 void exit_error(int err, char *msg)
 {
 	printf("ERROR: %s (err=%d)\n", msg, err);
-	printf("ERROR: rebooting system in 10 seconds\n");
-	sleep(10);
+	printf("ERROR: rebooting system in 30 seconds\n");
+
+	// FIXME: Should drop to ash console
+	sync();
+	sleep(30);
 	exit(0);
 }
 
@@ -34,7 +43,7 @@ static void log_print_date(void)
 
 	strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", t);
 
-	printf("[%s] ", date);
+	dprintf(log_fd, "[%s] ", date);
 }
 
 static const char *strip_newline(const char *str)
@@ -58,13 +67,13 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	va_start(args, fmt);
 
 	if (level <= prio) {
-		printf("[systemc] %s\t", level_names[level].name);
+		dprintf(log_fd, "[systemc] %s\t", level_names[level].name);
 		log_print_date();
-		printf("[%s]: -- ", module);
+		dprintf(log_fd, "[%s]: -- ", module);
 		format = strip_newline(fmt);
-		vprintf(format, args);
+		vdprintf(log_fd, format, args);
 		if (fmt[strlen(fmt)] != '\n')
-			printf("\n");
+			dprintf(log_fd, "\n");
 	}
 	free((char *) format);
 
@@ -82,6 +91,8 @@ int sc_log_set_level(unsigned int level)
 {
 	if (level <= ALL)
 		prio = level;
+
+	//log_fd = open("/tmp/systemc.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
 
 	// FIXME: Setup other stuff like remote log, etc
 

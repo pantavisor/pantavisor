@@ -19,6 +19,7 @@
 #include "updater.h"
 #include "volumes.h"
 #include "pantahub.h"
+#include "bootloader.h"
 
 #define MODULE_NAME		"controller"
 #define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -60,8 +61,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 {
 	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
 	int fd, ret, bytes;
-	int step_rev = -1;
-	int step_try = 0;
+	int step_rev = 0, step_try = 0;
 	int bl_rev = 0;
 	char *buf;
 	char *token;
@@ -154,68 +154,35 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 	// Make sure this is initialized
 	sc->state = 0;
-
-	// Get current from disk if not specified in command line
-	if ((step_rev < 0) && (step_try < 0)) {
-		sc->state = sc_get_current_state(sc);
-		if (sc->state)
-			return STATE_RUN;
-	}
-
-	// If no current link, find latest
-	if (step_rev < 0) {
-		struct dirent **dirs;
-		char basedir[PATH_MAX];
-
-		sprintf(basedir, "%s/trails/", sc->config->storage.mntpoint);
-
-		int n = scandir(basedir, &dirs, NULL, alphasort);
-		while (n--) {
-			char *tmp = dirs[n]->d_name;
-
-			while (*tmp && isdigit(*tmp))
-				tmp++;
-
-			if(tmp[0] != '\0')
-				continue;
-
-			sc_log(INFO, "default to newest step_rev: '%s'", dirs[n]->d_name);
-			step_rev = atoi(dirs[n]->d_name);
-			break;
-		}
-	}
-	
-	// Make sure this is not initialized
 	sc->remote = 0;
 	sc->update = 0;
 	sc->last = -1;
 
-	// Load stale update if presetn
-	sc_bl_get_update(sc, &bl_rev);
-	if (bl_rev && !step_try) {
-		sc->state = sc_get_state(sc, bl_rev);
-		sc_trail_update_start(sc, 1);
-		sc->update->status = UPDATE_FAILED;
-		sc->update->need_finish = 1;
-		sc_state_free(sc->state);
-		sc->state = 0;
-	}
-
-	// Coming from reboot update?
-	if (step_try > 0) {
-		sc->last = step_rev;
-		step_rev = step_try;	
-		// Load update attempt
-		sc->state = sc_get_state(sc, step_rev);
+	int boot_rev = -1;
+	if (step_try == 0) {
+		boot_rev = step_rev;
+	} else if (step_try == step_rev) {
+		boot_rev = step_try;
+		sc->state = sc_get_state(sc, boot_rev);
 		sc_trail_update_start(sc, 1);
 		sc->update->status = UPDATE_TRY;
+	}
+
+	bl_rev = sc_bl_get_try(sc);
+	if (bl_rev && (bl_rev != boot_rev)) {
+		if (!sc->state)
+			sc->state = sc_get_state(sc, bl_rev);
+		sc_trail_update_start(sc, 1);
+		sc->update->status = UPDATE_FAILED;
+		sc_state_free(sc->state);
+		sc->state = 0;
 	}
 
 	if (bl_rev > 0)
 		sc_bl_clear_update(sc);
 
 	if (!sc->state)
-		sc->state = sc_get_state(sc, step_rev);
+		sc->state = sc_get_state(sc, boot_rev);
 
 	if (!sc->state) {
 		sc_log(ERROR, "invalid state requested, please reconfigure");
@@ -245,6 +212,9 @@ static sc_state_t _sc_run(struct systemc *sc)
 
 	total++;
 	sc_log(INFO, "started %d platforms", ret);
+
+	// update current in bl
+	sc_bl_set_current(sc, sc->state->rev);
 	
 	counter = 0;
 
@@ -258,26 +228,18 @@ static sc_state_t _sc_unclaimed(struct systemc *sc)
 	char config_path[256];
 	char *c = malloc(sizeof(char) * 128);
 
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
-
 	if (!sc_ph_is_available(sc))
 		return STATE_WAIT;
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	sprintf(config_path, "%s/config/unclaimed.config", sc->config->storage.mntpoint);
 	if (stat(config_path, &st) == 0)
 		ph_config_from_file(config_path, sc->config);
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
-	if ((strcmp(sc->config->creds.id, "") != 0) && sc_ph_device_exists(sc)) {
-		sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	if ((strcmp(sc->config->creds.id, "") != 0) && sc_ph_device_exists(sc))
 		need_register = 0;
-	}
 
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	if (need_register && sc_ph_register_self(sc))
 		ph_config_to_file(sc->config, config_path);
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	if (!sc_ph_device_is_owned(sc, &c)) {
 		sc_log(INFO, "device challenge: '%s'", c);
@@ -289,8 +251,6 @@ static sc_state_t _sc_unclaimed(struct systemc *sc)
 		sc_ph_release_client(sc);
 		sc->flags &= ~DEVICE_UNCLAIMED;
 	}
-
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	if (c)
 		free(c);
@@ -322,22 +282,16 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	// FIXME: should use sc_bl_*() helpers
 	// if online update pending to clear, commit update to cloud
 	if (sc->update && sc->update->status == UPDATE_TRY) {
-		sc_bl_set_current(sc);
+		sc_bl_set_current(sc, sc->state->rev);
 		sc->update->status = UPDATE_DONE;
 		sc_trail_update_finish(sc);
 	} else if (sc->update && sc->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
-		sc_bl_set_current(sc);
+		sc_bl_set_current(sc, sc->state->rev);
 		sc->update->status = UPDATE_FAILED;
 		sc_trail_update_finish(sc);
 	}
 	sc->last = sc->state->rev;
-
-	// If stale failed update in flash, commit update to cloud
-	if (sc->update && sc->update->need_finish) {
-		sc_trail_update_finish(sc);
-		sc_bl_clear_update(sc);
-	}
 
 	ret = sc_trail_check_for_updates(sc);
 	if (ret) {
@@ -401,6 +355,10 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 {
 	int ret = 0;
 	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+
+	// We shouldnt get a rollback event on rev 0
+	if (sc->state->rev == 0)
+		return STATE_ERROR;
 	
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes
@@ -445,7 +403,7 @@ static sc_state_t _sc_reboot(struct systemc *sc)
 static sc_state_t _sc_error(struct systemc *sc)
 {
 	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
-	sleep(1);
+	sleep(5);
 	return STATE_ERROR;
 }
 

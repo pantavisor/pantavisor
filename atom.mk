@@ -24,7 +24,8 @@ LOCAL_SRC_FILES := init.c \
 		   parser.c \
 		   objects.c \
 		   pantahub.c \
-		   updater.c
+		   updater.c \
+		   bootloader.c
 
 include $(BUILD_EXECUTABLE)
 
