@@ -262,8 +262,6 @@ static sc_state_t _sc_wait(struct systemc *sc)
 {
 	int ret;
 
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
-
 	sleep(5);
 
 	if (sc->flags & DEVICE_UNCLAIMED)
@@ -305,8 +303,6 @@ static sc_state_t _sc_wait(struct systemc *sc)
 static sc_state_t _sc_update(struct systemc *sc)
 {
 	int ret;
-
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	// queue locally and in cloud, block step
 	// FIXME: requires sc_trail_update_finish() call after RUN or boot

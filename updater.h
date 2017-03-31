@@ -4,11 +4,11 @@
 #include "systemc.h"
 #include <trest.h>
 
-#define DEVICE_TRAIL_ENDPOINT_FMT "/api/trails/%s/steps"
-#define DEVICE_STEP_ENDPOINT_FMT "/api/trails/%s/steps/%d/progress"
+#define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
+#define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%d/progress"
 #define DEVICE_STEP_STATUS_FMT "{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
 
-#define TRAIL_OBJECT_DL_FMT	"/api/objects/%s"
+#define TRAIL_OBJECT_DL_FMT	"/objects/%s"
 
 struct trail_remote {
 	trest_ptr client;

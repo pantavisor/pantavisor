@@ -21,6 +21,7 @@
 #include "objects.h"
 #include "updater.h"
 #include "bootloader.h"
+#include "pantahub.h"
 
 static struct trail_object *head;
 static struct trail_object *last;
@@ -228,7 +229,7 @@ static int trail_is_available(struct trail_remote *r)
 		return -1;
 
 	req = trest_make_request(TREST_METHOD_GET,
-				 "/api/trails/",
+				 "/trails/",
 				 0, 0, 0);
 
 	res = trest_do_json_request(r->client, req);
@@ -270,7 +271,7 @@ static int trail_first_boot(struct systemc *sc)
 		return -1;
 	}
 
-	req = trest_make_request(TREST_METHOD_POST, "/api/trails/", 0, 0, sc->step);
+	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, sc->step);
 	res = trest_do_json_request(sc->remote->client, req);	
 
 	if (!res) {
@@ -294,20 +295,28 @@ out:
 static int trail_remote_init(struct systemc *sc)
 {
 	struct trail_remote *remote = NULL;
+	const char **cafiles;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
-	trest_ptr client;
+	trest_ptr client = 0;
 
 	// Make sure values are reasonable
 	if ((strcmp(sc->config->creds.id, "") == 0) ||
 	    (strcmp(sc->config->creds.prn, "") == 0))
 		return 0;
 
+	cafiles = sc_ph_get_certs(sc);
+	if (!cafiles) {
+		sc_log(ERROR, "unable to assemble cert list");
+		goto err;
+	}
+
 	// Create client
-	client = trest_new_from_userpass(
+	client = trest_new_tls_from_userpass(
 		sc->config->creds.host,
 		sc->config->creds.port,
 		sc->config->creds.prn,
-		sc->config->creds.secret
+		sc->config->creds.secret,
+		(const char **) cafiles
 		);
 
 	if (!client) {
@@ -551,15 +560,17 @@ out:
 	return url;
 }
 
-static int trail_download_object(struct sc_object *obj)
+static int trail_download_object(struct sc_object *obj, const char **crtfiles)
 {
 	int fd, ret, n;
 	char *host = 0;
-	thttp_request_t* req = 0;
 	thttp_response_t* res = 0;
 	char *start = 0, *port = 0, *end = 0;
 
-	req = thttp_request_new_0 ();
+	thttp_request_tls_t* tls_req = thttp_request_tls_new_0 ();
+	tls_req->crtfiles = (char ** )crtfiles;
+
+	thttp_request_t* req = (thttp_request_t*) tls_req;
 
 	req->method = THTTP_METHOD_GET;
 	req->proto = THTTP_PROTO_HTTP;
@@ -603,7 +614,7 @@ static int trail_download_object(struct sc_object *obj)
 	if (strstr(obj->geturl, "local-s3") != NULL)
 		req->port = 12365;
 	else
-		req->port = 80;
+		req->port = 443;
 
 	req->path = obj->geturl;
 	req->headers = 0;
@@ -613,6 +624,8 @@ static int trail_download_object(struct sc_object *obj)
 	sync();
 
 	close (fd);
+
+	// FIXME: must verify file downloaded correctly
 	sc_log(INFO, "downloaded object (%s)", obj->objpath);
 
 out:
@@ -657,6 +670,7 @@ static int trail_download_objects(struct systemc *sc)
 {
 	struct sc_update *u = sc->update;
 	struct sc_object *o = u->pending->objects;
+	const char **crtfiles = sc_ph_get_certs(sc);
 
 	while (o) {
 		o->geturl = trail_download_geturl(sc, o->id);
@@ -673,7 +687,7 @@ static int trail_download_objects(struct systemc *sc)
 
 	o = u->pending->objects;	
 	while (o) {
-		trail_download_object(o);
+		trail_download_object(o, crtfiles);
 		o = o->next;
 	}
 
@@ -724,13 +738,10 @@ int sc_trail_update_install(struct systemc *sc)
 	sc->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	sc_log(WARN, "%s():%d", __func__, __LINE__);
-
 	if (sc->update->need_reboot) {
 		sc->update->status = UPDATE_REBOOT;
 		sc_bl_set_try(sc, ret);
 	}
-	sc_log(WARN, "%s():%d", __func__, __LINE__);
 
 	
 out:

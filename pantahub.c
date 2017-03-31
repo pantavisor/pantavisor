@@ -5,6 +5,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <dirent.h>
 
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -23,7 +24,7 @@
 #include "pantahub.h"
 
 #define DEVICE_REGISTER_FMT "{ \"secret\" : \"%s\" }"
-#define ENDPOINT_FMT "/api/devices/%s"
+#define ENDPOINT_FMT "/devices/%s"
 
 trest_ptr *client = 0;
 char *endpoint;
@@ -66,17 +67,18 @@ static int ph_client_init(struct systemc *sc)
 	if (client)
 		goto auth;
 
-	client = trest_new_from_userpass(
+	client = trest_new_tls_from_userpass(
 			sc->config->creds.host,
 			sc->config->creds.port,
 			sc->config->creds.prn,
-			sc->config->creds.secret
+			sc->config->creds.secret,
+			sc_ph_get_certs(sc)
 			);
 
 auth:
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		sc_log(DEBUG, "unable to auth unclaimed device");
+		sc_log(DEBUG, "unable to auth unclaimed device, status=%d", status);
 		return 0;
 	}
 
@@ -89,6 +91,39 @@ auth:
 }
 
 /* API */
+
+const char** sc_ph_get_certs(struct systemc *sc)
+{
+	struct dirent **files;
+	char **cafiles;
+	char *dir = "/certs/";
+	char path[128];
+	int n = 0, i = 0, size = 0;
+
+	n = scandir(dir, &files, NULL, alphasort);
+	if (n < 0)
+		return NULL;
+
+	// Always n-1 due to . and .., and need one extra
+	cafiles = calloc(1, (sizeof(char*) * (n-1)));
+
+	while (n--) {
+		if (!strncmp(files[n]->d_name, ".", 1))
+			continue;
+
+		sprintf(path, "/certs/%s", files[n]->d_name);
+		size = strlen(path);
+		cafiles[i] = malloc((size+1) * sizeof(char));
+		strncpy(cafiles[i], path, size);
+		cafiles[i][size] = '\0';
+		i++;
+	}
+
+	while (i--) {
+	}
+
+	return (const char **) cafiles;
+}
 
 int sc_ph_is_available(struct systemc *sc)
 {
@@ -184,11 +219,14 @@ int sc_ph_register_self(struct systemc *sc)
 	int tokc;
 	char json[512];
 	char *secret;
-	thttp_request_t* req = 0;
+	thttp_request_tls_t* tls_req = 0;
 	thttp_response_t* res = 0;
 	jsmntok_t *tokv;
 
-	req = thttp_request_new_0();
+	tls_req = thttp_request_tls_new_0();
+	tls_req->crtfiles = (char **) sc_ph_get_certs(sc);
+
+	thttp_request_t* req = (thttp_request_t*) tls_req;
 
 	req->method = THTTP_METHOD_POST;
 	req->proto = THTTP_PROTO_HTTP;	
@@ -197,7 +235,7 @@ int sc_ph_register_self(struct systemc *sc)
 	req->host = sc->config->creds.host;
 	req->port = sc->config->creds.port;
 
-	req->path = "/api/devices/";	
+	req->path = "/devices/";
 
 	secret = rand_string(10);
 	sprintf(json, DEVICE_REGISTER_FMT, secret);

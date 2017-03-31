@@ -32,7 +32,7 @@ void exit_error(int err, char *msg)
 	exit(0);
 }
 
-static void log_print_date(void)
+static void log_print_date(int fd)
 {
 	char date[sizeof(DATE_FORMAT)];
 	struct timeval tv;
@@ -43,7 +43,7 @@ static void log_print_date(void)
 
 	strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", t);
 
-	dprintf(log_fd, "[%s] ", date);
+	dprintf(fd, "[%s] ", date);
 }
 
 static const char *strip_newline(const char *str)
@@ -66,9 +66,19 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	va_list args;
 	va_start(args, fmt);
 
+	if (level <= ERROR) {
+		dprintf(STDOUT_FILENO, "[systemc] %s\t", level_names[level].name);
+		log_print_date(STDOUT_FILENO);
+		dprintf(STDOUT_FILENO, "[%s]: -- ", module);
+		format = strip_newline(fmt);
+		vdprintf(STDOUT_FILENO, format, args);
+		if (fmt[strlen(fmt)] != '\n')
+			dprintf(STDOUT_FILENO, "\n");
+	}
+
 	if (level <= prio) {
 		dprintf(log_fd, "[systemc] %s\t", level_names[level].name);
-		log_print_date();
+		log_print_date(log_fd);
 		dprintf(log_fd, "[%s]: -- ", module);
 		format = strip_newline(fmt);
 		vdprintf(log_fd, format, args);
@@ -92,7 +102,7 @@ int sc_log_set_level(unsigned int level)
 	if (level <= ALL)
 		prio = level;
 
-	//log_fd = open("/tmp/systemc.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
+	log_fd = open("/tmp/systemc.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
 
 	// FIXME: Setup other stuff like remote log, etc
 

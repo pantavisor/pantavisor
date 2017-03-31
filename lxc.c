@@ -82,11 +82,13 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 		close(fd);
 	}
 	char entry[1024];
-	sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);
-	c->set_config_item(c, "lxc.mount.entry", entry);
+	//sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);
+	//c->set_config_item(c, "lxc.mount.entry", entry);
 
 	char *cpath = "/tmp/pantavisor/ run/pantavisor none bind,ro,create=dir 0 0";
 	c->set_config_item(c, "lxc.mount.entry", cpath);
+
+	c->set_config_item(c, "lxc.mount.entry", "/dev dev none bind,rw,create=dir 0 0");
 
 	int ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
