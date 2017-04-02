@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <ctype.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <linux/limits.h>
 
 #define MODULE_NAME             "volumes"
@@ -13,6 +15,7 @@
 
 #include "loop.h"
 
+#include "utils.h"
 #include "systemc.h"
 #include "volumes.h"
 

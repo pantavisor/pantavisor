@@ -58,8 +58,9 @@ int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
 
 int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 {
-	int ret;
+	int ret = 0;
 	char devname[128];
+	char *opts = NULL;
 
 	if (get_free_loop(devname) < 0)
 		return -1;
@@ -71,14 +72,21 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 	if (mkdir_p(dest, 0644) < 0)
 		return -1;	
 
+	// if ext4 make sure we mount journaled
+	if (strcmp(fstype, "ext4") == 0)
+		opts = strdup("data=journal");
 
-	ret = mount(devname, dest, fstype, 0, NULL);
+	ret = mount(devname, dest, fstype, 0, opts);
 	if (ret < 0) {
 		sc_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
-		return ret;
+		goto out;
 	}
 
-	return 0;
+out:
+	if (opts)
+		free(opts);
+
+	return ret;
 }
 
 int unmount_loop(char *dest, int loop_fd, int file_fd)
@@ -97,6 +105,7 @@ int unmount_loop(char *dest, int loop_fd, int file_fd)
 	if (ret < 0)
 		goto out;
 
+	fsync(file_fd);
 	ret = close(file_fd);
 	if (ret < 0)
 		goto out;

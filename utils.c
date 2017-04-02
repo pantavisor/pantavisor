@@ -2,10 +2,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <libgen.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "utils.h"
 
 static int seeded = 0;
+
+void syncdir(char *file)
+{
+	int fd;
+	char *dir;
+
+	if (!file)
+		return;
+
+	dir = strdup(file);
+	dirname(dir);
+
+	fd = open(dir, O_RDONLY);
+	if (fd)
+		fsync(fd);
+
+	if (dir)
+		free(dir);
+
+	close(fd);
+}
 
 char *rand_string(int size)
 {

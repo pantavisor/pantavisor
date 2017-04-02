@@ -596,14 +596,20 @@ static int trail_download_object(struct sc_object *obj, const char **crtfiles)
 		goto out;
 	}
 
+	// SSL is default
+	req->port = 443;
+
 	// FIXME: should check sha256, need to rework geturl() for that
 	// FIXME: can use sha256.h from mbedtls mbedtls_sha256()
 	start = obj->geturl + 8;
 	port = strchr(start, ':');
-	if (port)
-		end = port;
-	else
+	if (port) {
+		int p = strtol (++port, &end, 0);
+		if (p > 0)
+		req->port = p;
+	} else {
 		end = strchr(start, '/');
+	}
 
 	n = (unsigned long) end - (unsigned long) start;
 	host = malloc((n+1) * sizeof(char));
@@ -611,19 +617,17 @@ static int trail_download_object(struct sc_object *obj, const char **crtfiles)
 	host[n] = '\0';
 
 	req->host = host;
-	if (strstr(obj->geturl, "local-s3") != NULL)
-		req->port = 12365;
-	else
-		req->port = 443;
 
 	req->path = obj->geturl;
 	req->headers = 0;
 
 	fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
 	res = thttp_request_do_file (req, fd);
-	sync();
 
+	fsync(fd);
 	close (fd);
+ 
+	syncdir(obj->objpath);
 
 	// FIXME: must verify file downloaded correctly
 	sc_log(INFO, "downloaded object (%s)", obj->objpath);
@@ -657,6 +661,7 @@ static int trail_link_objects(struct systemc *sc)
 			sc_log(ERROR, "unable to link %s, errno=%d",
 				obj->relpath, errno);
 		} else {
+			syncdir(obj->objpath);
 			sc_log(INFO, "linked %s to %s",
 				obj->relpath, obj->objpath);
 		}
