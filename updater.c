@@ -560,12 +560,14 @@ out:
 	return url;
 }
 
-static int trail_download_object(struct sc_object *obj, const char **crtfiles)
+static int trail_download_object(struct systemc *sc, struct sc_object *obj, const char **crtfiles)
 {
 	int fd, ret, n;
 	char *host = 0;
 	thttp_response_t* res = 0;
 	char *start = 0, *port = 0, *end = 0;
+	char tobj[] = "/tmp/object-XXXXXX";
+	struct stat st;
 
 	thttp_request_tls_t* tls_req = thttp_request_tls_new_0 ();
 	tls_req->crtfiles = (char ** )crtfiles;
@@ -576,7 +578,6 @@ static int trail_download_object(struct sc_object *obj, const char **crtfiles)
 	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;
 
-	struct stat st;
 	if (stat(obj->objpath, &st) == 0) {
 		sc_log(INFO, "file exists (%s)", obj->objpath);
 		ret = 0;
@@ -622,11 +623,20 @@ static int trail_download_object(struct sc_object *obj, const char **crtfiles)
 	req->headers = 0;
 
 	fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
+	if (strcmp(sc->config->bl_type, "uboot-pvk") == 0) {
+		fsync(fd);
+		close(fd);
+	        mktemp(tobj);
+		fd = open(tobj, O_CREAT | O_RDWR, 0644);
+	}
+	lseek(fd, 0, SEEK_SET);
 	res = thttp_request_do_file (req, fd);
-
 	fsync(fd);
 	close (fd);
- 
+
+	if (strcmp(sc->config->bl_type, "uboot-pvk") == 0)
+		sc_bl_install_kernel(sc, tobj);
+
 	syncdir(obj->objpath);
 
 	// FIXME: must verify file downloaded correctly
@@ -639,7 +649,7 @@ out:
 		thttp_request_free(req);
 	if (res)
 		thttp_response_free(res);
-	
+
 	return ret;
 }
 
@@ -692,7 +702,7 @@ static int trail_download_objects(struct systemc *sc)
 
 	o = u->pending->objects;	
 	while (o) {
-		trail_download_object(o, crtfiles);
+		trail_download_object(sc, o, crtfiles);
 		o = o->next;
 	}
 
@@ -747,7 +757,6 @@ int sc_trail_update_install(struct systemc *sc)
 		sc->update->status = UPDATE_REBOOT;
 		sc_bl_set_try(sc, ret);
 	}
-
 	
 out:
 	trail_remote_set_status(sc, sc->update->status);

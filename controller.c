@@ -61,7 +61,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 {
 	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
 	int fd, ret, bytes;
-	int step_rev = 0, step_try = 0;
+	int step_rev = 0, step_try = 0, sc_boot = -1;
 	int bl_rev = 0;
 	char *buf;
 	char *token;
@@ -146,17 +146,27 @@ static sc_state_t _sc_init(struct systemc *sc)
 			step_rev = atoi(token + CMDLINE_OFFSET);
 		else if (strncmp("sc_try=", token, CMDLINE_OFFSET) == 0)
 			step_try = atoi(token + CMDLINE_OFFSET);
+		else if (strncmp("sc_boot=", token, CMDLINE_OFFSET) == 0)
+			sc_boot = atoi(token + CMDLINE_OFFSET + 1);
 		token = strtok(NULL, " ");
 	}
 	free(buf);
-
-	sc_log(DEBUG, "%s():%d step_try=%d, step_rev=%d\n", __func__, __LINE__, step_try, step_rev);
 
 	// Make sure this is initialized
 	sc->state = 0;
 	sc->remote = 0;
 	sc->update = 0;
 	sc->last = -1;
+
+	// Setup PVK hints in case of legacy flash A/B kernel
+	if (sc_boot != -1 && !strcmp(sc->config->bl_type, "uboot-pvk")) {
+		step_rev = sc_bl_pvk_get_rev(sc, sc_boot);
+		step_try = sc_bl_get_try(sc);
+		if (step_try != step_rev)
+			step_try = 0;
+	}
+
+	sc_log(DEBUG, "%s():%d step_try=%d, step_rev=%d\n", __func__, __LINE__, step_try, step_rev);
 
 	int boot_rev = -1;
 	if (step_try == 0) {
@@ -178,11 +188,11 @@ static sc_state_t _sc_init(struct systemc *sc)
 		sc->state = 0;
 	}
 
-	if (bl_rev > 0)
-		sc_bl_clear_update(sc);
-
 	if (!sc->state)
 		sc->state = sc_get_state(sc, boot_rev);
+
+	if (bl_rev > 0)
+		sc_bl_clear_update(sc);
 
 	if (!sc->state) {
 		sc_log(ERROR, "invalid state requested, please reconfigure");
@@ -203,7 +213,7 @@ static sc_state_t _sc_run(struct systemc *sc)
 
 	if (sc_volumes_mount(sc) < 0)
 		return STATE_ROLLBACK;
-	
+
 	ret = sc_platforms_start_all(sc);
 	if (ret < 0) {
 		sc_log(ERROR, "error starting platforms");
@@ -215,7 +225,7 @@ static sc_state_t _sc_run(struct systemc *sc)
 
 	// update current in bl
 	sc_bl_set_current(sc, sc->state->rev);
-	
+
 	counter = 0;
 
 	return STATE_WAIT;
@@ -355,7 +365,7 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 	// We shouldnt get a rollback event on rev 0
 	if (sc->state->rev == 0)
 		return STATE_ERROR;
-	
+
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes
 	sc->update->status = UPDATE_FAILED;
@@ -364,7 +374,7 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 		ret = sc_platforms_stop_all(sc);
 		if (ret < 0)
 			return STATE_ERROR;
-	
+
 		ret = sc_volumes_unmount(sc);
 		if (ret < 0)
 			return STATE_ERROR;
@@ -391,7 +401,7 @@ static sc_state_t _sc_reboot(struct systemc *sc)
 	sync();
 	sc_log(INFO, "rebooting...");
 	sleep(2);
-	reboot(LINUX_REBOOT_CMD_RESTART);	
+	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;
 }
@@ -425,7 +435,7 @@ int sc_controller_start(struct systemc *sc)
 	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	sc_state_t state = STATE_INIT;
- 
+
 	while (1) {
 		sc_log(DEBUG, "going to state = %d", state);
 		state = _sc_run_state(state, sc);

@@ -156,6 +156,11 @@ int sc_config_from_file(char *path, struct systemc_config *config)
 	if (item)
 		config->loglevel = atoi(item);
 
+	item = _config_get_value("bootloader_type");
+	sc_log(DEBUG, "bl_type='%s'\n", item);
+	if (item)
+		config->bl_type = item;
+
 	config->storage.path = _config_get_value("storage_device");
 	config->storage.fstype = _config_get_value("storage_fstype");
 	config->storage.opts = _config_get_value("storage_opts");

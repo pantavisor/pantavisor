@@ -18,11 +18,52 @@
 
 #include "bootloader.h"
 
+static char bl_bank_from_rev(int rev)
+{
+	int fd;
+	int b0_rev = -1, b1_rev = -1;
+
+	fd = open("/dev/mtd3", O_RDONLY);
+	lseek(fd, 0x14, SEEK_SET);
+	read(fd, &b0_rev, sizeof(unsigned long));
+	lseek(fd, 0x18, SEEK_SET);
+	read(fd, &b1_rev, sizeof(unsigned long));
+
+	sc_log(DEBUG, "b0_rev=%d b1_rev=%d\n", b0_rev, b1_rev);
+
+	if (b0_rev == rev)
+		return 0x0;
+
+	return 0x1;
+}
+
+static int bl_is_pvk(struct systemc *sc)
+{
+	if (strcmp(sc->config->bl_type, "uboot-pvk") == 0)
+		return 1;
+
+	return 0;
+}
+
 static int uboot_set_try_rev(struct systemc *sc, int rev)
 {
 	int fd;
 	char s[256];
 	erase_info_t ei;
+	unsigned long try = (unsigned long) rev;
+
+	if (bl_is_pvk(sc)) {
+		fd = open("/dev/mtd3", O_RDWR | O_SYNC);
+		lseek(fd, 0x1c, SEEK_SET);
+		write(fd, &try, sizeof(unsigned long));
+		char bank = bl_bank_from_rev(sc->update->pending->rev);
+		sc_log(DEBUG, "setting boot_bank=%d\n", bank);
+		char header[4] = { 0x68, 0x00, 0x00, bank };
+		lseek(fd, 0, SEEK_SET);
+		write(fd, header, sizeof(header));
+		fsync(fd);
+		goto out;
+	}
 
 	fd = open("/dev/mtd2", O_RDWR | O_SYNC);
 	if (!fd)
@@ -36,6 +77,7 @@ static int uboot_set_try_rev(struct systemc *sc, int rev)
 	sprintf(s, "sc_try=%d\0", rev);
 	write(fd, &s, strlen(s) + 1);
 
+out:
 	close(fd);
 
 	return 1;
@@ -89,7 +131,6 @@ static int uboot_get_key_int(struct systemc *sc, char *key)
 
 	int k = 0;
 	for (int i = 0; i < st.st_size; i++) {
-		printf("%c", buf[i]);
 		if (buf[i] != '\0')
 			continue;
 
@@ -109,15 +150,54 @@ int sc_bl_get_current(struct systemc *sc)
 	return uboot_get_key_int(sc, "sc_rev");
 }
 
+static int bl_pvk_get_try()
+{
+	int fd;
+	unsigned long try = -1;
+
+	// FIXME: should be configurable
+	fd = open("/dev/mtd3", O_RDONLY);
+	lseek(fd, 0x1c, SEEK_SET);
+	read(fd, &try, sizeof(unsigned long));
+
+	sc_log(DEBUG, "try_rev=%d\n", (int) try);
+
+	return try;
+}
+
 int sc_bl_get_try(struct systemc *sc)
 {
+	if (bl_is_pvk(sc))
+		return bl_pvk_get_try();
+
 	return uboot_get_key_int(sc, "sc_try");
+}
+
+static void bl_pvk_set_current(int rev)
+{
+	int fd, bank;
+
+	fd = open("/dev/mtd3", O_RDWR | O_SYNC);
+	if (!fd) {
+		sc_log(ERROR, "unable to open PVK header");
+		return;
+	}
+
+	lseek(fd, 0, SEEK_SET);
+	bank = bl_bank_from_rev(rev);
+	char buf[4] = { 0x68, 0x00, 0x00, bank };
+	write(fd, buf, sizeof(buf));
 }
 
 void sc_bl_set_current(struct systemc *sc, int rev)
 {
 	int fd;
 	char s[256];
+
+	if (bl_is_pvk(sc)) {
+		bl_pvk_set_current(rev);
+		return;
+	}
 
 	sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
 	fd = open(s, O_RDWR | O_TRUNC | O_SYNC);
@@ -128,19 +208,104 @@ void sc_bl_set_current(struct systemc *sc, int rev)
 	close(fd);
 }
 
+int sc_bl_install_kernel(struct systemc *sc, char *obj)
+{
+	int fd, obj_fd;
+	int bytes, seek;
+	unsigned long rev = (unsigned long) sc->update->pending->rev;
+	char *buf;
+	char bank = bl_bank_from_rev(sc->state->rev);
+
+	sc_log(DEBUG, "current_bank=%d\n", bank);
+
+	// install to opposite bank
+	bank ^= 1;
+	if (!bank)
+		seek = 0x20;
+	else
+		seek = 0x380020;
+
+	obj_fd = open(obj, O_RDONLY);
+	if (!obj_fd) {
+		sc_log(ERROR, "unable to open temp kernel file");
+		return 0;
+	}
+
+	buf = calloc(1, 0x380000 * sizeof(char));
+
+	// FIXME: bank size and mtd should be in config
+	fd = open("/dev/mtd3", O_RDWR);
+
+	// clear bank
+	lseek(fd, seek, SEEK_SET);
+	write(fd, buf, 0x380000);
+
+	// read-in and write new kernel
+	lseek(obj_fd, 0, SEEK_SET);
+	bytes = read(obj_fd, buf, 0x380000);
+	sc_log(DEBUG, "read %d bytes from %s\n", bytes, obj);
+	lseek(fd, seek, SEEK_SET);
+	bytes = write(fd, buf, bytes);
+	sc_log(DEBUG, "wrote %d bytes to bank %d in /dev/mtd3\n", bytes, bank);
+
+	// write revision of bank in h+0x14 or h+0x18
+	lseek(fd, 0x14+(0x4*bank), SEEK_SET);
+	write(fd, &rev, sizeof(unsigned long));
+
+	close(obj_fd);
+	close(fd);
+
+
+
+	return 1;
+}
+
+int sc_bl_pvk_get_rev(struct systemc *sc, int bank)
+{
+	int fd;
+	unsigned long rev[2] = { 0 };
+
+	fd = open("/dev/mtd3", O_RDONLY);
+	lseek(fd, 0x14, SEEK_SET);
+	read(fd, &rev[0], sizeof(unsigned long));
+	lseek(fd, 0x18, SEEK_SET);
+	read(fd, &rev[1], sizeof(unsigned long));
+
+	sc_log(DEBUG, "rev[0]=%lu rev[1]=%lu\n", rev[0], rev[1]);
+
+	return rev[bank];
+}
+
 int sc_bl_clear_update(struct systemc *sc)
 {
 	int fd;
 	char buf[64] = { 0 };
 
-	fd = open("/dev/mtd2", O_RDWR | O_SYNC);
-	if (fd < 0) {
-		sc_log(ERROR, "unable to clear bootloader update buffer");
-		return -1;
+	if (bl_is_pvk(sc)) {
+		// FIXME: Should be config
+		fd = open("/dev/mtd3", O_RDWR | O_SYNC);
+		if (fd < 0) {
+			sc_log(ERROR, "unable to read pvk data eader");
+			return -1;
+		}
+		lseek(fd, 0, SEEK_SET);
+		char bank = bl_bank_from_rev(sc->state->rev);
+		char header[4] = { 0x68, 0x00, 0x00, bank };
+		write(fd, header, sizeof(header));
+		lseek(fd,  0x1c, SEEK_SET);
+		memset(header, 0, 4);
+		write(fd, header, sizeof(header));
+	} else {
+		// FIXME: Should be config
+		fd = open("/dev/mtd2", O_RDWR | O_SYNC);
+		if (fd < 0) {
+			sc_log(ERROR, "unable to clear bootloader update buffer");
+			return -1;
+		}
+		lseek(fd, 0, SEEK_SET);
+		write(fd, buf, sizeof(buf));
 	}
 
-	lseek(fd, 0, SEEK_SET);
-	write(fd, &buf, sizeof(buf));
 	sc_log(INFO, "cleared bootloader update buffer");
 	close(fd);
 
