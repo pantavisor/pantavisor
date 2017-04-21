@@ -420,7 +420,7 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 			"ERROR", "Error during update", 0);
 		break;
 	}
-				
+
 	req = trest_make_request(TREST_METHOD_PUT,
 				 u->endpoint,
 				 0, 0,
@@ -560,9 +560,21 @@ out:
 	return url;
 }
 
+static int obj_is_kernel_pvk(struct systemc *sc, struct sc_object *obj)
+{
+	if (strcmp(sc->state->kernel, obj->name))
+		return 0;
+
+	if (sc->config->bl_type == UBOOT_PVK)
+		return 1;
+
+	return 0;
+}
+
 static int trail_download_object(struct systemc *sc, struct sc_object *obj, const char **crtfiles)
 {
 	int fd, ret, n;
+	int is_kernel_pvk;
 	char *host = 0;
 	thttp_response_t* res = 0;
 	char *start = 0, *port = 0, *end = 0;
@@ -578,10 +590,14 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;
 
-	if (stat(obj->objpath, &st) == 0) {
+	is_kernel_pvk = obj_is_kernel_pvk(sc, obj);
+
+	if (!is_kernel_pvk && stat(obj->objpath, &st) == 0) {
 		sc_log(INFO, "file exists (%s)", obj->objpath);
 		ret = 0;
 		goto out;
+	} else {
+		sc_log(DEBUG, "reinstalling kernel as running under pvk");
 	}
 
 	if (obj->geturl == NULL) {
@@ -623,18 +639,19 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	req->headers = 0;
 
 	fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
-	if (strcmp(sc->config->bl_type, "uboot-pvk") == 0) {
+	if (is_kernel_pvk) {
 		fsync(fd);
 		close(fd);
 	        mktemp(tobj);
 		fd = open(tobj, O_CREAT | O_RDWR, 0644);
 	}
 	lseek(fd, 0, SEEK_SET);
+	sc_log(INFO, "downloading object (%s)", obj->objpath);
 	res = thttp_request_do_file (req, fd);
 	fsync(fd);
 	close (fd);
 
-	if (strcmp(sc->config->bl_type, "uboot-pvk") == 0)
+	if (is_kernel_pvk)
 		sc_bl_install_kernel(sc, tobj);
 
 	syncdir(obj->objpath);

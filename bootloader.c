@@ -18,7 +18,32 @@
 
 #include "bootloader.h"
 
-static char bl_bank_from_rev(int rev)
+static int bl_pvk_get_bank()
+{
+	int fd, bytes;
+	int bank = -1;
+	char *buf, *token;
+
+	fd = open("/proc/cmdline", O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	buf = calloc(1, sizeof(char) * (1024 + 1));
+	bytes = read(fd, buf, sizeof(char)*1024);
+	close(fd);
+
+	token = strtok(buf, " ");
+	while (token) {
+		if (strncmp("sc_boot=", token, 8) == 0)
+			bank = atoi(token + 8);
+		token = strtok(NULL, " ");
+	}
+	free(buf);
+
+	return bank;
+}
+
+static signed char bl_bank_from_rev(int rev)
 {
 	int fd;
 	int b0_rev = -1, b1_rev = -1;
@@ -32,14 +57,16 @@ static char bl_bank_from_rev(int rev)
 	sc_log(DEBUG, "b0_rev=%d b1_rev=%d\n", b0_rev, b1_rev);
 
 	if (b0_rev == rev)
-		return 0x0;
+		return 0;
+	else if (b1_rev == rev)
+		return 1;
 
-	return 0x1;
+	return -1;
 }
 
 static int bl_is_pvk(struct systemc *sc)
 {
-	if (strcmp(sc->config->bl_type, "uboot-pvk") == 0)
+	if (sc->config->bl_type == UBOOT_PVK)
 		return 1;
 
 	return 0;
@@ -183,8 +210,17 @@ static void bl_pvk_set_current(int rev)
 		return;
 	}
 
-	lseek(fd, 0, SEEK_SET);
 	bank = bl_bank_from_rev(rev);
+
+	// check if non-kernel update
+	if (bank < 0) {
+		bank = bl_pvk_get_bank();
+		//write rev to bank
+		lseek(fd, 0x14+(0x4*bank), SEEK_SET);
+		write(fd, &rev, sizeof(unsigned long));
+	}
+
+	lseek(fd, 0, SEEK_SET);
 	char buf[4] = { 0x68, 0x00, 0x00, bank };
 	write(fd, buf, sizeof(buf));
 }
@@ -217,6 +253,10 @@ int sc_bl_install_kernel(struct systemc *sc, char *obj)
 	char bank = bl_bank_from_rev(sc->state->rev);
 
 	sc_log(DEBUG, "current_bank=%d\n", bank);
+
+	// first check if rev exists in a bank
+	if (bl_bank_from_rev(rev) != -1)
+		return 1;
 
 	// install to opposite bank
 	bank ^= 1;
@@ -255,9 +295,12 @@ int sc_bl_install_kernel(struct systemc *sc, char *obj)
 	close(obj_fd);
 	close(fd);
 
-
-
 	return 1;
+}
+
+int sc_bl_pvk_get_bank(struct systemc *sc)
+{
+	return bl_pvk_get_bank();
 }
 
 int sc_bl_pvk_get_rev(struct systemc *sc, int bank)

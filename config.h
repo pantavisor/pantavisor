@@ -1,6 +1,11 @@
 #ifndef SC_CONFIG_H
 #define SC_CONFIG_H
 
+enum {
+	UBOOT_PLAIN = 0,
+	UBOOT_PVK
+};
+
 struct systemc_creds {
 	char *host;
 	int port;
@@ -19,8 +24,8 @@ struct systemc_storage {
 struct systemc_config {
 	char *name;
 	int loglevel;
-	char *bl_type;
-	struct systemc_creds creds; 
+	int bl_type;
+	struct systemc_creds creds;
 	struct systemc_storage storage;
 };
 

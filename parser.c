@@ -250,7 +250,7 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	
+
 	count = json_get_key_count(buf, "systemc.json", tokv, tokc);
 	if (!count || (count > 1)) {
 		printf("Invalid systemc.json count in state");

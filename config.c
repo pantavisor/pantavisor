@@ -158,8 +158,10 @@ int sc_config_from_file(char *path, struct systemc_config *config)
 
 	item = _config_get_value("bootloader_type");
 	sc_log(DEBUG, "bl_type='%s'\n", item);
-	if (item)
-		config->bl_type = item;
+	if (item && !strcmp(item, "uboot-pvk"))
+		config->bl_type = UBOOT_PVK;
+	else
+		config->bl_type = UBOOT_PLAIN;
 
 	config->storage.path = _config_get_value("storage_device");
 	config->storage.fstype = _config_get_value("storage_fstype");

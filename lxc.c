@@ -46,7 +46,7 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	}
 
 	lxc_log_init(name, "/storage/log", "DEBUG", "init", 0, name);
-	
+
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
 	c->set_inherit_namespaces(c, 1, share_ns);
 

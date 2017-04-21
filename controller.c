@@ -44,6 +44,22 @@ typedef enum {
 	MAX_STATES
 } sc_state_t;
 
+const char* sc_state_string(sc_state_t st)
+{
+	switch(st) {
+	case STATE_INIT: return "STATE_INIT";
+	case STATE_RUN: return "STATE_RUN";
+	case STATE_WAIT: return "STATE_WAIT";
+	case STATE_UNCLAIMED: return "STATE_UNCLAIMED";
+	case STATE_UPDATE: return "STATE_ROLLBACK";
+	case STATE_REBOOT: return "STATE_REBOOT";
+	case STATE_ERROR: return "STATE_ERROR";
+	case STATE_EXIT: return "STATE_EXIT";
+	}
+
+	return "UNKNOWN SC STATE";
+}
+
 typedef sc_state_t sc_state_func_t(struct systemc *sc);
 
 static int sc_step_get_prev(struct systemc *sc)
@@ -159,7 +175,7 @@ static sc_state_t _sc_init(struct systemc *sc)
 	sc->last = -1;
 
 	// Setup PVK hints in case of legacy flash A/B kernel
-	if (sc_boot != -1 && !strcmp(sc->config->bl_type, "uboot-pvk")) {
+	if (sc_boot != -1 && sc->config->bl_type == UBOOT_PVK) {
 		step_rev = sc_bl_pvk_get_rev(sc, sc_boot);
 		step_try = sc_bl_get_try(sc);
 		if (step_try != step_rev)
@@ -437,7 +453,7 @@ int sc_controller_start(struct systemc *sc)
 	sc_state_t state = STATE_INIT;
 
 	while (1) {
-		sc_log(DEBUG, "going to state = %d", state);
+		sc_log(DEBUG, "going to state = %s(%d)", sc_state_string(state));
 		state = _sc_run_state(state, sc);
 
 		if (state == STATE_EXIT)
