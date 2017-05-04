@@ -17,6 +17,26 @@
 #define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+static int mount_ext4(char *dev, char *dest)
+{
+	int ret;
+	char *opts[] = { "data=journal", "data=ordered" };
+
+	ret = mount(dev, dest, "ext4", 0, opts[0]);
+	if (!ret)
+		return ret;
+
+	sc_log(WARN, "unable to mount ext4 with data=journal");
+
+	// try ordered
+	ret = mount(dev, dest, "ext4", 0, opts[1]);
+	if (!ret)
+		return ret;
+
+	// let the kernel try default opts
+	return mount(dev, dest, "ext4", 0, 0);
+}
+
 int get_free_loop(char *devname)
 {
 	int lctlfd, dev;
@@ -74,9 +94,10 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 
 	// if ext4 make sure we mount journaled
 	if (strcmp(fstype, "ext4") == 0)
-		opts = strdup("data=journal");
+		ret = mount_ext4(devname, dest);
+	else
+		ret = mount(devname, dest, fstype, 0, opts);
 
-	ret = mount(devname, dest, fstype, 0, opts);
 	if (ret < 0) {
 		sc_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
 		goto out;

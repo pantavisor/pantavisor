@@ -192,7 +192,7 @@ int sc_platforms_start_all(struct systemc *sc)
 				p->name);
 			return -1;
 		}
-		
+
 		sc_log(INFO, "started platform platform: \"%s\" (data=0x%p)",
 			p->name, data);
 
@@ -205,7 +205,7 @@ int sc_platforms_start_all(struct systemc *sc)
 
 		p = p->next;
 	}
-	
+
 	return num_plats;
 }
 
@@ -224,7 +224,7 @@ int sc_platforms_stop_all(struct systemc *sc)
 		num_plats++;
 		p = p->next;
 	}
-	
+
 	sc_platforms_remove_all(s);
 
 	sc_log(INFO, "stopped %d platforms", num_plats);

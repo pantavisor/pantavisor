@@ -75,7 +75,7 @@ static int early_mounts()
 	return 0;
 }
 
-static void debug_init()
+static void debug_telnet()
 {
 	tsh_run("ifconfig lo up");
 	//tsh_run("ifconfig eth0 192.168.20.222");
@@ -104,7 +104,7 @@ static void signal_handler(int signal)
 			sleep(1);
 			sync();
 			reboot(LINUX_REBOOT_CMD_RESTART);
-		} 
+		}
 	}
 
 	if (pid == shell_pid) {
@@ -112,6 +112,33 @@ static void signal_handler(int signal)
 		shell_pid = tsh_run("ash");
 	}
 }
+
+static void debug_shell()
+{
+	char c[64] = { 0 };
+	int t = 3;
+	int con_fd;
+
+	con_fd = open("/dev/console", O_RDWR);
+	if (!con_fd) {
+		printf("Unable to open /dev/console\n");
+		return;
+	}
+
+	dprintf(con_fd, "Press [d] for debug ash shell... ");
+	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
+	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
+		dprintf(con_fd, "%d ", t);
+		fflush(NULL);
+		sleep(1);
+		t--;
+	}
+	dprintf(con_fd, "\n");
+
+	if (c[0] == 'd')
+		shell_pid = tsh_run("ash");
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -121,14 +148,11 @@ int main(int argc, char *argv[])
 
 	signal(SIGCHLD, signal_handler);
 
-	systemc_init();
-
-	// Spawn shell
-	// sc_log(INFO, "Execing /bin/ash");
-	shell_pid = tsh_run("ash");
-
 	if (debug)
-		debug_init();
+		debug_shell();
+		debug_telnet();
+
+	systemc_init();
 
 	for (;;)
 		pause();

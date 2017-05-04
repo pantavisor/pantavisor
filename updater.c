@@ -571,10 +571,30 @@ static int obj_is_kernel_pvk(struct systemc *sc, struct sc_object *obj)
 	return 0;
 }
 
+static int copy_and_close(int s_fd, int d_fd)
+{
+	int bytes_r = 0, bytes_w = 0;
+	char buf[4096];
+
+	lseek(s_fd, 0, SEEK_SET);
+	lseek(d_fd, 0, SEEK_SET);
+
+	while (bytes_r = read(s_fd, buf, sizeof(buf)), bytes_r > 0)
+		bytes_w += write(d_fd, buf, bytes_r);
+
+	close(s_fd);
+
+	sc_log(DEBUG, "  bytes_r=%d bytes_w=%d", bytes_r, bytes_w);
+
+	return bytes_r;
+}
+
 static int trail_download_object(struct systemc *sc, struct sc_object *obj, const char **crtfiles)
 {
-	int fd, ret, n;
+	int tmp_fd, obj_fd, fd;
+	int bytes, ret, n;
 	int is_kernel_pvk;
+	int use_temp = 0;
 	char *host = 0;
 	thttp_response_t* res = 0;
 	char *start = 0, *port = 0, *end = 0;
@@ -596,8 +616,6 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 		sc_log(INFO, "file exists (%s)", obj->objpath);
 		ret = 0;
 		goto out;
-	} else {
-		sc_log(DEBUG, "reinstalling kernel as running under pvk");
 	}
 
 	if (obj->geturl == NULL) {
@@ -638,18 +656,37 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	req->path = obj->geturl;
 	req->headers = 0;
 
-	fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
+	if (!strcmp(sc->config->storage.fstype, "jffs2"))
+		use_temp = 1;
+
+	mktemp(tobj);
+	obj_fd = open(obj->objpath, O_CREAT | O_WRONLY, 0644);
+	tmp_fd = open(tobj, O_CREAT | O_RDWR, 0644);
+
+	if (use_temp)
+		fd = tmp_fd;
+	else
+		fd = obj_fd;
+
 	if (is_kernel_pvk) {
-		fsync(fd);
-		close(fd);
-	        mktemp(tobj);
-		fd = open(tobj, O_CREAT | O_RDWR, 0644);
+		fsync(obj_fd);
+		close(obj_fd);
+		fd = tmp_fd;
 	}
+
+	// download to tmp
 	lseek(fd, 0, SEEK_SET);
 	sc_log(INFO, "downloading object (%s)", obj->objpath);
 	res = thttp_request_do_file (req, fd);
-	fsync(fd);
-	close (fd);
+
+	if (use_temp) {
+		sc_log(INFO, "copying %s to %s", tobj, obj->objpath);
+		bytes = copy_and_close(tmp_fd, obj_fd);
+	}
+	sc_log(INFO, "downloaded object (%s)", obj->objpath);
+
+	fsync(obj_fd);
+	close(obj_fd);
 
 	if (is_kernel_pvk)
 		sc_bl_install_kernel(sc, tobj);

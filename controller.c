@@ -44,17 +44,19 @@ typedef enum {
 	MAX_STATES
 } sc_state_t;
 
-const char* sc_state_string(sc_state_t st)
+static const char* sc_state_string(sc_state_t st)
 {
 	switch(st) {
 	case STATE_INIT: return "STATE_INIT";
 	case STATE_RUN: return "STATE_RUN";
 	case STATE_WAIT: return "STATE_WAIT";
 	case STATE_UNCLAIMED: return "STATE_UNCLAIMED";
-	case STATE_UPDATE: return "STATE_ROLLBACK";
+	case STATE_UPDATE: return "STATE_UPDATE";
+	case STATE_ROLLBACK: return "STATE_ROLLBACK";
 	case STATE_REBOOT: return "STATE_REBOOT";
 	case STATE_ERROR: return "STATE_ERROR";
 	case STATE_EXIT: return "STATE_EXIT";
+	default: return "STATE_UNKNOWN";
 	}
 
 	return "UNKNOWN SC STATE";

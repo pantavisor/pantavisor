@@ -104,7 +104,8 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 
 	err = c->start(c, 0, NULL) ? 0 : 1;
 
-	if (err) {
+	if (err && (c->error_num != 1)) {
+		sc_log(ERROR, "lxc failed to start container with err=%d, error_num=%d", err, c->error_num);
 		lxc_container_put(c);
 		c = NULL;
 	}
@@ -117,7 +118,7 @@ void *stop_lxc_container(char *name, char *conf_file, void *data)
 {
 	bool s;
 	struct lxc_container *c = (struct lxc_container *) data;
-	
+
 	if (!data)
 		return NULL;
 
