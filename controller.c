@@ -343,9 +343,9 @@ static sc_state_t _sc_update(struct systemc *sc)
 	// download and install pending step
 	ret = sc_trail_update_install(sc);
 	if (ret < 0) {
-		sc_log(ERROR, "update has failed, rollback");
+		sc_log(ERROR, "update has failed, continue");
 		sc_trail_update_finish(sc);
-		return STATE_ROLLBACK;
+		return STATE_WAIT;
 	}
 
 	sc_log(WARN, "New trail state accepted, stopping current state.");
