@@ -105,7 +105,7 @@ static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int
 
 	while (*steps)
 		steps++;
-	
+
 	ret = jsmnutil_parse_json (s, &tokv, &tokc);
 	keys = jsmnutil_get_object_keys(s, tokv);
 	keys_i = keys;
@@ -128,7 +128,7 @@ static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int
 
 	*steps = sc_parse_state(sc, value, strlen(value), rev);
 	sc_log(DEBUG, "adding rev=%d, step = '%s'", rev, (*steps)->json);
-	
+
 	if (value)
 		free(value);
 	if (tokv)
@@ -153,7 +153,7 @@ static struct sc_state* _pending_get_first(struct sc_state **p)
 			min = (*p)->rev;
 			r = *p;
 		}
-		p++;	
+		p++;
 	}
 
 	return r;
@@ -173,7 +173,7 @@ static int trail_get_new_steps(struct systemc *sc)
 	req = trest_make_request(TREST_METHOD_GET,
 				 r->endpoint,
 				 0, 0, 0);
-	
+
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
@@ -272,7 +272,7 @@ static int trail_first_boot(struct systemc *sc)
 	}
 
 	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, sc->step);
-	res = trest_do_json_request(sc->remote->client, req);	
+	res = trest_do_json_request(sc->remote->client, req);
 
 	if (!res) {
 		sc_log(ERROR, "unable to push initial trail on first boot");
@@ -335,7 +335,7 @@ static int trail_remote_init(struct systemc *sc)
 	remote->client = client;
 	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
 				   + strlen(sc->config->creds.id)) * sizeof(char));
-	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, sc->config->creds.id);	
+	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, sc->config->creds.id);
 
 	sc->remote = remote;
 
@@ -355,7 +355,7 @@ err:
 int sc_trail_check_for_updates(struct systemc *sc)
 {
 	int ret;
-	trest_auth_status_enum auth_status;	
+	trest_auth_status_enum auth_status;
 
 	if (!sc->remote)
 		trail_remote_init(sc);
@@ -363,7 +363,7 @@ int sc_trail_check_for_updates(struct systemc *sc)
 	// Offline
 	if (!sc->remote)
 		return 0;
-	
+
 	auth_status = trest_update_auth(sc->remote->client);
 	if (auth_status != TREST_AUTH_STATUS_OK) {
 		sc_log(INFO, "cannot authenticate to cloud");
@@ -461,7 +461,7 @@ int sc_trail_update_start(struct systemc *sc, int offline)
 		u->pending = sc->remote->pending;
 		rev = u->pending->rev;
 	}
-	
+
 	// to construct endpoint
 	c = get_digit_count(rev);
 	u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
@@ -528,7 +528,7 @@ static char* trail_download_geturl(struct systemc *sc, char *prn)
 	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, prn);
 
 	sc_log(INFO, "requesting obj='%s'", endpoint);
-	
+
 	req = trest_make_request(TREST_METHOD_GET,
 				 endpoint,
 				 0, 0, 0);
@@ -754,7 +754,7 @@ static int trail_download_objects(struct systemc *sc)
 	if (strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
-	o = u->pending->objects;	
+	o = u->pending->objects;
 	while (o) {
 		trail_download_object(sc, o, crtfiles);
 		o = o->next;
@@ -782,7 +782,7 @@ int sc_trail_update_install(struct systemc *sc)
 	}
 
 	trail_remote_set_status(sc, UPDATE_DOWNLOADED);
-	
+
 	ret = trail_link_objects(sc);
 	if (ret < 0) {
 		sc_log(ERROR, "unable to link objects to relative path (failed=%d)", ret);
@@ -811,7 +811,7 @@ int sc_trail_update_install(struct systemc *sc)
 		sc->update->status = UPDATE_REBOOT;
 		sc_bl_set_try(sc, ret);
 	}
-	
+
 out:
 	trail_remote_set_status(sc, sc->update->status);
 
