@@ -25,9 +25,9 @@ struct sc_object* sc_objects_add(struct sc_state *s, char *filename, char *id, c
 		add->next = this;
 	}
 
-	this->name = strdup(filename);	
+	this->name = strdup(filename);
 	this->id = strdup(id);
-	
+
 	size = sizeof(RELPATH_FMT) + strlen(c) +
 		strlen(filename) + get_digit_count(s->rev);
 

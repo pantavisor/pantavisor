@@ -56,6 +56,8 @@ struct sc_object {
 	char *geturl;
 	char *objpath;
 	char *relpath;
+	int size;
+	char *sha256;
 	struct sc_object *next;
 };
 

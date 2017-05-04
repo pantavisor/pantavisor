@@ -6,6 +6,7 @@
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <sys/statfs.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <mtd/mtd-user.h>
@@ -22,6 +23,7 @@
 #include "updater.h"
 #include "bootloader.h"
 #include "pantahub.h"
+#include "storage.h"
 
 static struct trail_object *head;
 static struct trail_object *last;
@@ -517,12 +519,19 @@ out:
 	return ret;
 }
 
-static char* trail_download_geturl(struct systemc *sc, char *prn)
+static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
 {
-	char *endpoint;
+	int ret = 0;
+	char *endpoint = 0;
 	char *url = 0;
-	trest_request_ptr req;
-	trest_response_ptr res;
+	char *prn;
+	trest_request_ptr req = 0;
+	trest_response_ptr res = 0;
+
+	if (!o)
+		goto out;
+
+	prn = o->id;
 
 	endpoint = malloc((sizeof(TRAIL_OBJECT_DL_FMT) + strlen(prn)) * sizeof(char));
 	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, prn);
@@ -540,7 +549,12 @@ static char* trail_download_geturl(struct systemc *sc, char *prn)
 		goto out;
 	}
 
-	url = (char *) get_json_key_value(res->body, "signed-geturl",
+	o->size = atoi(get_json_key_value(res->body, "size",
+				 res->json_tokv, res->json_tokc));
+	o->sha256 = get_json_key_value(res->body, "sha256sum",
+				 res->json_tokv, res->json_tokc);
+
+	url = get_json_key_value(res->body, "signed-geturl",
 				 res->json_tokv, res->json_tokc);
 
 	if (!url) {
@@ -548,6 +562,11 @@ static char* trail_download_geturl(struct systemc *sc, char *prn)
 		goto out;
 	}
 	url = unescape_utf8_to_ascii(url, "\\u0026", '&');
+	o->geturl = url;
+
+	// FIXME:
+	// if (verify_url(url)) ret = 1;
+	ret = 1;
 
 out:
 	if (req)
@@ -557,7 +576,7 @@ out:
 	if (endpoint)
 		free(endpoint);
 
-	return url;
+	return ret;
 }
 
 static int obj_is_kernel_pvk(struct systemc *sc, struct sc_object *obj)
@@ -591,20 +610,26 @@ static int copy_and_close(int s_fd, int d_fd)
 
 static int trail_download_object(struct systemc *sc, struct sc_object *obj, const char **crtfiles)
 {
+	int ret = 0;
 	int tmp_fd, obj_fd, fd;
-	int bytes, ret, n;
+	int bytes, n;
 	int is_kernel_pvk;
 	int use_temp = 0;
 	char *host = 0;
 	thttp_response_t* res = 0;
+	thttp_request_tls_t* tls_req = 0;
+	thttp_request_t* req = 0;
 	char *start = 0, *port = 0, *end = 0;
 	char tobj[] = "/tmp/object-XXXXXX";
 	struct stat st;
 
-	thttp_request_tls_t* tls_req = thttp_request_tls_new_0 ();
+	if (!obj)
+		goto out;
+
+	tls_req = thttp_request_tls_new_0 ();
 	tls_req->crtfiles = (char ** )crtfiles;
 
-	thttp_request_t* req = (thttp_request_t*) tls_req;
+	req = (thttp_request_t*) tls_req;
 
 	req->method = THTTP_METHOD_GET;
 	req->proto = THTTP_PROTO_HTTP;
@@ -614,20 +639,18 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 
 	if (!is_kernel_pvk && stat(obj->objpath, &st) == 0) {
 		sc_log(INFO, "file exists (%s)", obj->objpath);
-		ret = 0;
+		ret = 1;
 		goto out;
 	}
 
 	if (obj->geturl == NULL) {
 		sc_log(INFO, "there is no get url defined");
-		ret = -1;
 		goto out;
 	}
 
 	// FIXME: This breaks with non https urls...
 	if (strncmp(obj->geturl, "https://", 8) != 0) {
 		sc_log(INFO, "object url (%s) is invalid", obj->geturl);
-		ret = -1;
 		goto out;
 	}
 
@@ -735,32 +758,72 @@ static int trail_link_objects(struct systemc *sc)
 	return -err;
 }
 
+static int get_update_size(struct sc_update *u)
+{
+	int size = 0;
+	struct stat st;
+	struct sc_object *o = u->pending->objects;
+
+	while (o) {
+		if (stat(o->objpath, &st) < 0) {
+			size += o->size;
+			sc_log(INFO, "id=%s, name=%s, size=%d", o->id, o->name, o->size);
+		}
+		o = o->next;
+	}
+
+	sc_log(DEBUG, "update_size: %d bytes", size);
+
+	return size;
+}
+
 static int trail_download_objects(struct systemc *sc)
 {
+	int ret = 0;
+	struct sc_object *k_new, *k_old;
 	struct sc_update *u = sc->update;
 	struct sc_object *o = u->pending->objects;
 	const char **crtfiles = sc_ph_get_certs(sc);
 
 	while (o) {
-		o->geturl = trail_download_geturl(sc, o->id);
+		if (!trail_download_get_meta(sc, o))
+			goto out;
 		o = o->next;
 	}
 
-	struct sc_object *k_new = sc_objects_get_by_name(u->pending,
-					u->pending->kernel);
-	struct sc_object *k_old = sc_objects_get_by_name(sc->state,
-					sc->state->kernel);
+	// Run GC as last resort
+	if (sc_storage_get_free(sc) < get_update_size(u))
+		sc_storage_gc_run(sc);
+
+	// Check again
+	if (sc_storage_get_free(sc) < get_update_size(u)) {
+		sc_log(WARN, "not enough space to process update");
+		goto out;
+	}
+
+	k_new = sc_objects_get_by_name(u->pending,
+			u->pending->kernel);
+	k_old = sc_objects_get_by_name(sc->state,
+			sc->state->kernel);
 
 	if (strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
+	// Reset ret
+	ret = 0;
+
 	o = u->pending->objects;
 	while (o) {
-		trail_download_object(sc, o, crtfiles);
+		if (!trail_download_object(sc, o, crtfiles))
+			goto out;
 		o = o->next;
 	}
 
-	return 0;
+	// All done
+	ret = 1;
+
+out:
+	return ret;
 }
 
 int sc_trail_update_install(struct systemc *sc)
