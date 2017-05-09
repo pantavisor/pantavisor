@@ -700,7 +700,8 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	req->path = obj->geturl;
 	req->headers = 0;
 
-	if (!strcmp(sc->config->storage.fstype, "jffs2"))
+	if (!strcmp(sc->config->storage.fstype, "jffs2") ||
+	    !strcmp(sc->config->storage.fstype, "ubifs"))
 		use_temp = 1;
 
 	mktemp(tobj);
