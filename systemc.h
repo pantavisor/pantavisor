@@ -102,6 +102,8 @@ struct systemc {
 	unsigned long flags;
 };
 
+void sc_set_current(struct systemc *sc, int rev);
+int sc_get_rollback_rev(struct systemc *sc);
 void sc_destroy(struct systemc *sc);
 void sc_release_state(struct systemc *sc);
 struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev);

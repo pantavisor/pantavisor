@@ -263,7 +263,7 @@ static sc_state_t _sc_run(struct systemc *sc)
 	sc_log(INFO, "started %d platforms", ret);
 
 	// update current in bl
-	sc_bl_set_current(sc, sc->state->rev);
+	sc_set_current(sc, sc->state->rev);
 
 	counter = 0;
 
@@ -329,12 +329,12 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	// FIXME: should use sc_bl_*() helpers
 	// if online update pending to clear, commit update to cloud
 	if (sc->update && sc->update->status == UPDATE_TRY) {
-		sc_bl_set_current(sc, sc->state->rev);
+		sc_set_current(sc, sc->state->rev);
 		sc->update->status = UPDATE_DONE;
 		sc_trail_update_finish(sc);
 	} else if (sc->update && sc->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
-		sc_bl_set_current(sc, sc->state->rev);
+		sc_set_current(sc, sc->state->rev);
 		sc->update->status = UPDATE_FAILED;
 		sc_trail_update_finish(sc);
 	}
@@ -373,9 +373,9 @@ static sc_state_t _sc_update(struct systemc *sc)
 
 	// stop current step
 	if (sc_platforms_stop_all(sc) < 0)
-		return STATE_ERROR;
+		return STATE_ROLLBACK;
 	if (sc_volumes_unmount(sc) < 0)
-		return STATE_ERROR;
+		return STATE_ROLLBACK;
 
 	// Release current step
 	sc_release_state(sc);
@@ -403,7 +403,7 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 
 	// We shouldnt get a rollback event on rev 0
 	if (sc->state->rev == 0)
-		return STATE_ERROR;
+		return STATE_RUN;
 
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes
@@ -423,7 +423,7 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 	}
 
 	if (sc->last == -1)
-		sc->last = sc->state->rev - 1;
+		sc->last = sc_get_rollback_rev(sc);
 
 	sc->state = sc_get_state(sc, sc->last);
 	if (sc->state)
@@ -447,9 +447,16 @@ static sc_state_t _sc_reboot(struct systemc *sc)
 
 static sc_state_t _sc_error(struct systemc *sc)
 {
+	int count = 0;
+
 	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
-	sleep(5);
-	return STATE_ERROR;
+
+	while (count < 2) {
+		sleep(5);
+		return STATE_ERROR;
+	}
+
+	return STATE_REBOOT;
 }
 
 sc_state_func_t* const state_table[MAX_STATES] = {

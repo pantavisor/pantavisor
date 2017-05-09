@@ -41,6 +41,7 @@
 #include "lxc.h"
 #include "loop.h"
 #include "controller.h"
+#include "bootloader.h"
 
 #include "systemc.h"
 
@@ -51,6 +52,43 @@ void sc_destroy(struct systemc *sc)
         sc_release_state(sc);
         free(sc->config);
         free(sc);
+}
+
+void sc_set_current(struct systemc *sc, int rev)
+{
+	int fd;
+	char path[256];
+
+	sprintf(path, "%s/trails/%d/.done", sc->config->storage.mntpoint, rev);
+
+	fd = open(path, O_CREAT | O_WRONLY, 0644);
+	if (!fd) {
+		sc_log(WARN, "unable to set current(done) flag for revision %d", rev);
+		return;
+	}
+
+	// commit to disk
+	fsync(fd);
+	close(fd);
+
+	// commit to bootloader
+	sc_bl_set_current(sc, rev);
+}
+
+int sc_get_rollback_rev(struct systemc *sc)
+{
+	int rev = sc->state->rev;
+	struct stat st;
+	char path[256];
+
+	while (rev) {
+		sprintf(path, "%s/trails/%d/.done", sc->config->storage.mntpoint, rev);
+		if (stat(path, &st) == 0)
+			return rev;
+		rev--;
+	}
+
+	return rev;
 }
 
 struct sc_state* sc_get_state(struct systemc *sc, int rev)
@@ -157,5 +195,5 @@ int systemc_init()
         }
 
 out:
-	return pid;	
+	return pid;
 }
