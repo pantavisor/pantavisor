@@ -3,3 +3,14 @@ PantaVisor(TM) pvd - Copyright 2016-2017 Pantacor Ltd.
 This product includes software developed by Pantacor Ltd.
 (http://www.pantacor.com)
 
+This product bundles musl licensed under MIT.
+
+This product bundles libhttpc licensed under MIT:
+ - libhttpc product bundles mbedtls-2.3.0 licensed under APACHE-2.0.
+ - libhttpc product bundles jsmn which uses MIT license.
+ - libhttpc product bundles tinyhttp which uses 2-clause BSD-style license.
+
+This product bundles lxc bits licensed under LGPL 2.1 (or any later)
+ - to avoid potential licensing conflict we opt into LGPL 3 (or
+   any later) option for those bist
+
