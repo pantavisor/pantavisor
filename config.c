@@ -184,10 +184,28 @@ int sc_config_from_file(char *path, struct systemc_config *config)
 	else
 		config->bl_type = UBOOT_PLAIN;
 
-	config->storage.path = _config_get_value("storage_device");
-	config->storage.fstype = _config_get_value("storage_fstype");
-	config->storage.opts = _config_get_value("storage_opts");
-	config->storage.mntpoint = _config_get_value("storage_mntpoint");
+	config->storage.path = _config_get_value("storage.device");
+	config->storage.fstype = _config_get_value("storage.fstype");
+	config->storage.opts = _config_get_value("storage.opts");
+	config->storage.mntpoint = _config_get_value("storage.mntpoint");
+
+	// default 300 second update interval
+	item = _config_get_value("updater.interval");
+	if (item)
+		config->updater.interval = atoi(item);
+	else
+		config->updater.interval = 60;
+
+	// default timeout for network-down rollback
+	item = _config_get_value("updater.network_timeout");
+	if (item)
+		config->updater.network_timeout = atoi(item);
+	else
+		config->updater.network_timeout = 120;
+
+	item = _config_get_value("updater.keep_factory");
+	if (item)
+		config->updater.keep_factory = atoi(item);
 
 	return 0;
 }

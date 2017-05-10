@@ -40,6 +40,7 @@ enum update_state {
 	UPDATE_REBOOT,
 	UPDATE_DONE,
 	UPDATE_FAILED,
+	UPDATE_NO_DOWNLOAD
 };
 
 struct sc_update {
@@ -102,6 +103,8 @@ struct systemc {
 	unsigned long flags;
 };
 
+int *sc_trail_get_revs(struct systemc *sc);
+int sc_rev_is_done(struct systemc *sc, int rev);
 void sc_set_current(struct systemc *sc, int rev);
 int sc_get_rollback_rev(struct systemc *sc);
 void sc_destroy(struct systemc *sc);

@@ -22,6 +22,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <netdb.h>
+
+#include <linux/limits.h>
 
 #define MODULE_NAME			"objects"
 #define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -29,6 +34,54 @@
 
 #include "utils.h"
 #include "objects.h"
+
+char** sc_objects_get_all_ids(struct systemc *sc)
+{
+	int i = 0, n, bufsize;
+	struct dirent **dirs;
+	char **ids = 0;
+	char path[PATH_MAX];
+
+	sprintf(path, "%s/objects/", sc->config->storage.mntpoint);
+	n = scandir(path, &dirs, NULL, alphasort);
+	if (n < 0)
+		goto out;
+
+	// allocate enough minus '.' and '..' + null term str
+	bufsize = n-1;
+	ids = calloc(1, bufsize * sizeof(char*));
+
+	while (n--) {
+		char *tmp = dirs[n]->d_name;
+		if (!strcmp(tmp, ".") || !strcmp(tmp, ".."))
+			continue;
+		ids[i] = strdup(tmp);
+		i++;
+	}
+
+	// null terminate string array
+	ids[bufsize-1] = 0;
+
+out:
+	return ids;
+}
+
+int sc_objects_id_in_step(struct systemc *sc, struct sc_state *s, char *id)
+{
+	struct sc_object *o;
+
+	if (!s)
+		return 0;
+
+	o = s->objects;
+	while (o) {
+		if (!strcmp(o->id, id))
+			return 1;
+		o = o->next;
+	}
+
+	return 0;
+}
 
 struct sc_object* sc_objects_add(struct sc_state *s, char *filename, char *id, char *c)
 {
@@ -69,6 +122,19 @@ struct sc_object* sc_objects_get_by_name(struct sc_state *s, char *name)
 
 	while (o) {
 		if (!strcmp(o->name, name))
+			return o;
+		o = o->next;
+	}
+
+	return NULL;
+}
+
+struct sc_object* sc_objects_get_by_id(struct sc_state *s, char *id)
+{
+	struct sc_object *o = s->objects;
+
+	while (o) {
+		if (!strcmp(o->id, id))
 			return o;
 		o = o->next;
 	}

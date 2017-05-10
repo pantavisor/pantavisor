@@ -42,12 +42,19 @@ struct systemc_storage {
 	char *mntpoint;
 };
 
+struct systemc_updater {
+	int interval;
+	int keep_factory;
+	int network_timeout;
+};
+
 struct systemc_config {
 	char *name;
 	int loglevel;
 	int bl_type;
 	struct systemc_creds creds;
 	struct systemc_storage storage;
+	struct systemc_updater updater;
 };
 
 // Fill config struct after parsing on-initramfs factory config

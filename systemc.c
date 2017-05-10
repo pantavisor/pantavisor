@@ -75,6 +75,63 @@ void sc_set_current(struct systemc *sc, int rev)
 	sc_bl_set_current(sc, rev);
 }
 
+#define REV_BUF_SIZE	5
+int *sc_trail_get_revs(struct systemc *sc)
+{
+	int n, i = 0;
+	int bufsize = 1;
+	int *revs = calloc(1, bufsize * sizeof (int));
+	struct dirent **dirs;
+	char basedir[PATH_MAX];
+
+	sprintf(basedir, "%s/trails/", sc->config->storage.mntpoint);
+	n = scandir(basedir, &dirs, NULL, alphasort);
+	while (n--) {
+		char *tmp = dirs[n]->d_name;
+
+		while (*tmp && isdigit(*tmp))
+			tmp++;
+
+		if (tmp[0] != '\0')
+			continue;
+
+		if (i >= bufsize) {
+			revs = realloc(revs, bufsize+1);
+			if (!revs)
+				return NULL;
+			bufsize++;
+		}
+
+		revs[i] = atoi(dirs[n]->d_name);
+		i++;
+	}
+
+	revs = realloc(revs, bufsize+1);
+
+	if (!i)
+		revs[0] = -1;
+
+	// terminate with -1
+	revs[bufsize] = -1;
+
+	return revs;
+}
+
+int sc_rev_is_done(struct systemc *sc, int rev)
+{
+	struct stat st;
+	char path[256];
+
+	if (!rev)
+		return 1;
+
+	sprintf(path, "%s/trails/%d/.done", sc->config->storage.mntpoint, rev);
+	if (stat(path, &st) == 0)
+		return 1;
+
+	return 0;
+}
+
 int sc_get_rollback_rev(struct systemc *sc)
 {
 	int rev = sc->state->rev;

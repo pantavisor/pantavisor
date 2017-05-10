@@ -27,8 +27,11 @@
 
 #include "systemc.h"
 
+char** sc_objects_get_all_ids(struct systemc *sc);
+int sc_objects_id_in_step(struct systemc *sc, struct sc_state *s, char *id);
 struct sc_object* sc_objects_add(struct sc_state *s, char *filename, char *id, char *c);
 struct sc_object* sc_objects_get_by_name(struct sc_state *s, char *name);
+struct sc_object* sc_objects_get_by_id(struct sc_state *s, char *id);
 void sc_objects_remove_all(struct sc_state *s);
 
 #endif // SC_OBJECTS_H

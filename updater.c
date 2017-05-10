@@ -438,6 +438,10 @@ static int trail_remote_set_status(struct systemc *sc, enum update_state status)
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"DONE", "Update finished", 100);
 		break;
+	case UPDATE_NO_DOWNLOAD:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"WONTGO", "Unable to download and/or install update", 0);
+		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"ERROR", "Error during update", 0);
@@ -801,7 +805,7 @@ static int get_update_size(struct sc_update *u)
 
 static int trail_download_objects(struct systemc *sc)
 {
-	int ret = 0;
+	int ret = -1;
 	struct sc_object *k_new, *k_old;
 	struct sc_update *u = sc->update;
 	struct sc_object *o = u->pending->objects;
@@ -831,9 +835,6 @@ static int trail_download_objects(struct systemc *sc)
 	if (strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
-	// Reset ret
-	ret = 0;
-
 	o = u->pending->objects;
 	while (o) {
 		if (!trail_download_object(sc, o, crtfiles))
@@ -841,8 +842,7 @@ static int trail_download_objects(struct systemc *sc)
 		o = o->next;
 	}
 
-	// All done
-	ret = 1;
+	ret = 0;
 
 out:
 	return ret;
@@ -862,7 +862,7 @@ int sc_trail_update_install(struct systemc *sc)
 	ret = trail_download_objects(sc);
 	if (ret < 0) {
 		sc_log(ERROR, "unable to download objects");
-		sc->update->status = UPDATE_FAILED;
+		sc->update->status = UPDATE_NO_DOWNLOAD;
 		goto out;
 	}
 

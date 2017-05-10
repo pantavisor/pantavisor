@@ -46,6 +46,8 @@
 #define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "storage.h"
+
 #define SC_CONFIG_FILENAME	"/systemc/device.config"
 #define CMDLINE_OFFSET	7
 
@@ -310,21 +312,26 @@ static sc_state_t _sc_unclaimed(struct systemc *sc)
 static sc_state_t _sc_wait(struct systemc *sc)
 {
 	int ret;
+	int timeout_max = sc->config->updater.network_timeout
+		/ sc->config->updater.interval;
 
-	sleep(5);
+	// on first entry loop fast for network discovery
+	if (counter)
+		sleep(sc->config->updater.interval);
+	else
+		sleep(2);
 
 	if (sc->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
 
-	// FIXME: if update, wait a few times then error
+	counter = 1;
+
 	if (!sc_ph_is_available(sc)) {
 		counter++;
-		if (counter > 20)
+		if (counter > timeout_max)
 			return STATE_ROLLBACK;
 		return STATE_WAIT;
 	}
-
-	counter = 0;
 
 	// FIXME: should use sc_bl_*() helpers
 	// if online update pending to clear, commit update to cloud

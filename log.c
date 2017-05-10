@@ -123,7 +123,7 @@ int sc_log_set_level(unsigned int level)
 	if (level <= ALL)
 		prio = level;
 
-	log_fd = open("/tmp/systemc.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
+	//log_fd = open("/tmp/systemc.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
 
 	// FIXME: Setup other stuff like remote log, etc
 
