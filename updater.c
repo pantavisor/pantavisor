@@ -33,6 +33,7 @@
 #include <mtd/mtd-user.h>
 
 #include <thttp.h>
+#include <mbedtls/sha256.h>
 
 #define MODULE_NAME			"updater"
 #define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -636,17 +637,22 @@ static int copy_and_close(int s_fd, int d_fd)
 static int trail_download_object(struct systemc *sc, struct sc_object *obj, const char **crtfiles)
 {
 	int ret = 0;
-	int tmp_fd, obj_fd, fd;
+	int tmp_fd, fd, obj_fd = -1;
 	int bytes, n;
 	int is_kernel_pvk;
 	int use_temp = 0;
+	char *tmp;
 	char *host = 0;
+	char *start = 0, *port = 0, *end = 0;
+	char tobj[] = "/tmp/object-XXXXXX";
+	unsigned char buf[4096];
+	unsigned char cloud_sha[32];
+	unsigned char local_sha[32];
+	struct stat st;
+	mbedtls_sha256_context sha256_ctx;
 	thttp_response_t* res = 0;
 	thttp_request_tls_t* tls_req = 0;
 	thttp_request_t* req = 0;
-	char *start = 0, *port = 0, *end = 0;
-	char tobj[] = "/tmp/object-XXXXXX";
-	struct stat st;
 
 	if (!obj)
 		goto out;
@@ -709,7 +715,7 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 		use_temp = 1;
 
 	mktemp(tobj);
-	obj_fd = open(obj->objpath, O_CREAT | O_WRONLY, 0644);
+	obj_fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
 	tmp_fd = open(tobj, O_CREAT | O_RDWR, 0644);
 
 	if (use_temp)
@@ -733,19 +739,46 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 		bytes = copy_and_close(tmp_fd, obj_fd);
 	}
 	sc_log(INFO, "downloaded object (%s)", obj->objpath);
-
 	fsync(obj_fd);
-	close(obj_fd);
+
+	// verify file downloaded correctly before syncing to disk
+	lseek(obj_fd, 0, SEEK_SET);
+	mbedtls_sha256_init(&sha256_ctx);
+	mbedtls_sha256_starts(&sha256_ctx, 0);
+
+	while ((bytes = read(obj_fd, buf, 4096)) > 0) {
+		mbedtls_sha256_update(&sha256_ctx, buf, bytes);
+	}
+
+	mbedtls_sha256_finish(&sha256_ctx, local_sha);
+	mbedtls_sha256_free(&sha256_ctx);
+
+	tmp = obj->sha256;
+	for (int i = 0, j = 0; i < (int) strlen(tmp); i=i+2, j++) {
+		char byte[3];
+		strncpy(byte, tmp+i, 2);
+		byte[2] = 0;
+		cloud_sha[j] = strtoul(byte, NULL, 16);
+	}
+
+	// compare hashes FIXME: retry if fail
+	for (int i = 0; i < 32; i++) {
+		if (cloud_sha[i] != local_sha[i]) {
+			sc_log(WARN, "sha256 mismatch with local object");
+			goto out;
+		}
+	}
+	syncdir(obj->objpath);
 
 	if (is_kernel_pvk)
 		sc_bl_install_kernel(sc, tobj);
 
-	syncdir(obj->objpath);
-
-	// FIXME: must verify file downloaded correctly
-	sc_log(INFO, "downloaded object (%s)", obj->objpath);
+	sc_log(INFO, "verified object (%s)", obj->objpath);
+	ret = 1;
 
 out:
+	if (obj_fd)
+		close(obj_fd);
 	if (host)
 		free(host);
 	if (req)
