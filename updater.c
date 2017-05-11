@@ -765,6 +765,7 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	for (int i = 0; i < 32; i++) {
 		if (cloud_sha[i] != local_sha[i]) {
 			sc_log(WARN, "sha256 mismatch with local object");
+			remove(obj->objpath);
 			goto out;
 		}
 	}
