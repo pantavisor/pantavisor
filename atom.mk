@@ -7,7 +7,7 @@ LOCAL_LIBRARIES := lxc libthttp
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
 
-LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul
+LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -D_FILE_OFFSET_BITS=64
 LOCAL_LDFLAGS := -static
 
 LOCAL_SRC_FILES := init.c \

@@ -23,6 +23,6 @@
 #define SC_STORAGE_H
 
 int sc_storage_gc_run(struct systemc *sc);
-int sc_storage_get_free(struct systemc *sc);
+off_t sc_storage_get_free(struct systemc *sc);
 
 #endif // SC_STORAGE_H
