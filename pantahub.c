@@ -76,6 +76,8 @@ static int connect_try(char *host, int port, int h_length)
 out:
 	if (sfd > -1)
 		close(sfd);
+	if (serv)
+		free(serv);
 
 	return ret;
 }
@@ -108,7 +110,7 @@ auth:
 
 	sprintf(endpoint, ENDPOINT_FMT, sc->config->creds.id);
 
-	return 1;					
+	return 1;
 }
 
 /* API */

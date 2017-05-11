@@ -101,6 +101,8 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC);
 		write(fd, new, strlen(new));
 		close(fd);
+		free(new);
+		free(buf);
 	}
 	char entry[1024];
 	//sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);

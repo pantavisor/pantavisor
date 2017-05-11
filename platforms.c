@@ -86,7 +86,7 @@ struct sc_platform* sc_platform_get_by_name(struct sc_state *s, char *name)
 			return p;
 		p = p->next;
 	}
-	
+
 	return NULL;
 }
 
@@ -102,7 +102,7 @@ struct sc_platform* sc_platform_get_by_data(struct sc_state *s, void *data)
 			return p;
 		p = p->next;
 	}
-	
+
 	return NULL;
 }
 
@@ -119,7 +119,7 @@ void sc_platforms_remove_all(struct sc_state *s)
 			free(p->type);
 		if (p->exec)
 			free(p->exec);
-		
+
 		c = p->configs;
 		while (*c) {
 			free(*c);
@@ -151,7 +151,7 @@ void sc_platforms_remove_by_data(struct sc_state *s, void *data)
 			free(p->type);
 		if (p->exec)
 			free(p->exec);
-	
+
 		c = p->configs;
 		while (*c) {
 			free(*c);
