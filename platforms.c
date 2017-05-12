@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -45,12 +46,12 @@ struct sc_cont_ctrl {
 
 enum {
 	SC_CONT_LXC,
-	SC_CONT_DOCKER,
+//	SC_CONT_DOCKER,
 	SC_CONT_MAX
 };
 
-const struct sc_cont_ctrl cont_ctrl[SC_CONT_MAX] = {
-	{ "lxc", start_lxc_container, stop_lxc_container },
+struct sc_cont_ctrl cont_ctrl[SC_CONT_MAX] = {
+	{ "lxc", NULL, NULL },
 //	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
@@ -166,7 +167,7 @@ void sc_platforms_remove_by_data(struct sc_state *s, void *data)
 	}
 }
 
-static const struct sc_cont_ctrl* _sc_platforms_get_ctrl(char *type)
+static struct sc_cont_ctrl* _sc_platforms_get_ctrl(char *type)
 {
 	int i;
 
@@ -175,6 +176,47 @@ static const struct sc_cont_ctrl* _sc_platforms_get_ctrl(char *type)
 			return &cont_ctrl[i];
 
 	return NULL;
+}
+
+static int load_pv_plugin(struct sc_cont_ctrl *c)
+{
+	char lib_path[PATH_MAX];
+	void *lib;
+
+	sprintf(lib_path, "/lib/pv_%s.so", c->type);
+
+	lib = dlopen(lib_path, RTLD_NOW);
+	if (!lib) {
+		sc_log(ERROR, "unable to load %s: %s", lib_path, dlerror());
+		return 0;
+	}
+
+	sc_log(DEBUG, "loaded %s @%p", lib_path, lib);
+
+	if (c->start == NULL)
+		c->start = dlsym(lib, "pv_start_container");
+
+	if (c->stop == NULL)
+		c->stop = dlsym(lib, "pv_stop_container");
+
+	if (c->start == NULL || c->stop == NULL)
+		return 0;
+
+	return 1;
+}
+
+// this should construct the table dynamically
+int sc_platforms_init_ctrl(struct systemc *sc)
+{
+	int loaded = 0;
+
+	// try to find plugins for all registered types
+	for (int i = 0; i < SC_CONT_MAX; i++)
+		loaded += load_pv_plugin(&cont_ctrl[i]);
+
+	sc_log(DEBUG, "loaded %d plugins correctly", loaded);
+
+	return loaded;
 }
 
 // Iterate list of platforms from state
@@ -203,7 +245,7 @@ int sc_platforms_start_all(struct systemc *sc)
 			sc->config->storage.mntpoint, s->rev, *c);
 
 		// Get type controller
-		ctrl = _sc_platforms_get_ctrl(p->type);	
+		ctrl = _sc_platforms_get_ctrl(p->type);
 
 		// Start the platform
 		data = ctrl->start(p->name, conf_path, NULL);
@@ -242,6 +284,7 @@ int sc_platforms_stop_all(struct systemc *sc)
 	while (p) {
 		ctrl = _sc_platforms_get_ctrl(p->type);
 		ctrl->stop(NULL, NULL, p->data);
+		sc_log(INFO, "stopped platform '%s'", p->name);
 		num_plats++;
 		p = p->next;
 	}

@@ -26,19 +26,19 @@
 #include <unistd.h>
 
 #include <sys/utsname.h>
+#include <sys/stat.h>
 
 #include <lxc/lxccontainer.h>
 
 #include "utils.h"
-#include "loop.h"
 
-#define MODULE_NAME             "lxc"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
+#include "pv_lxc.h"
 
-#include "lxc.h"
+extern int lxc_log_init(const char *name, const char *file,
+			const char *priority, const char *prefix, int quiet,
+			const char *lxcpath);
 
-void *start_lxc_container(char *name, char *conf_file, void *data)
+void *pv_start_container(char *name, char *conf_file, void *data)
 {
 	int fd, err;
 	struct lxc_container *c;
@@ -57,11 +57,10 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 
 	c = lxc_container_new(name, NULL);
 	if (!c) {
-		exit_error(errno, "Failed to create contaier");
+		return NULL;
 	}
 	c->clear_config(c);
 	if (!c->load_config(c, conf_file)) {
-		sc_log(ERROR, "failed to load rcfile");
 		lxc_container_put(c);
 		return NULL;
 	}
@@ -78,14 +77,10 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
 	mktemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0) {
-		sc_log(ERROR, "cannot open cmdline\n");
-	} else {
-		sc_log(DEBUG, "opened cmdline\n\n");
+	if (fd) {
 		char *buf = calloc(1024, 1);
 		char *new = calloc(1024, 1);
-		int bytes = read(fd, buf, 1024);
-		sc_log(DEBUG, "read=%d bytes, old cmdline='%s'\n\n", bytes, buf);
+		read(fd, buf, 1024);
 		char *tok = strtok(buf, " ");
 		while (tok) {
 			if (strncmp("console=", tok, 8) == 0) {
@@ -96,7 +91,6 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 			strcat(new, " ");
 			tok = strtok(NULL, " ");
 		}
-		sc_log(DEBUG, "new cmdline='%s'", new);
 		close(fd);
 		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC);
 		write(fd, new, strlen(new));
@@ -115,7 +109,6 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 
 	int ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
-	sc_log(DEBUG, "uname ret=%d, errno=%d, rev='%s'", ret, errno, uts.release);
 	if (!ret) {
 		if (stat("/volumes/modules.squashfs", &st) == 0) {
 			sprintf(entry, "/volumes/modules.squashfs lib/modules/%s none bind,ro,create=dir 0 0", uts.release);
@@ -128,7 +121,6 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 	err = c->start(c, 0, NULL) ? 0 : 1;
 
 	if (err && (c->error_num != 1)) {
-		sc_log(ERROR, "lxc failed to start container with err=%d, error_num=%d", err, c->error_num);
 		lxc_container_put(c);
 		c = NULL;
 	}
@@ -137,7 +129,7 @@ void *start_lxc_container(char *name, char *conf_file, void *data)
 }
 
 // cannot fail if data is valid
-void *stop_lxc_container(char *name, char *conf_file, void *data)
+void *pv_stop_container(char *name, char *conf_file, void *data)
 {
 	bool s;
 	struct lxc_container *c = (struct lxc_container *) data;
@@ -148,8 +140,6 @@ void *stop_lxc_container(char *name, char *conf_file, void *data)
 	s = c->shutdown(c, 5); // 5 second timeout
 	if (!s)
 		c->stop(c);
-
-	sc_log(INFO, "stopped platform '%s'", c->name);
 
 	// unref
 	lxc_container_put(c);

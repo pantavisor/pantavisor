@@ -177,7 +177,7 @@ int sc_config_from_file(char *path, struct systemc_config *config)
 	if (item)
 		config->loglevel = atoi(item);
 
-	item = _config_get_value("bootloader_type");
+	item = _config_get_value("bootloader.type");
 	sc_log(DEBUG, "bl_type='%s'\n", item);
 	if (item && !strcmp(item, "uboot-pvk"))
 		config->bl_type = UBOOT_PVK;

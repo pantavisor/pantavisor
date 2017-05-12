@@ -244,6 +244,11 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 	total = 0;
 
+	if (!sc_platforms_init_ctrl(sc)) {
+		sc_log(ERROR, "unable to load any container runtime plugin");
+		return STATE_ERROR;
+	}
+
         return STATE_RUN;
 }
 
