@@ -30,8 +30,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include "lxc.h"
-
 #define MODULE_NAME             "platforms"
 #define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
@@ -193,6 +191,7 @@ static int load_pv_plugin(struct sc_cont_ctrl *c)
 
 	sc_log(DEBUG, "loaded %s @%p", lib_path, lib);
 
+	// static engines have to define c->start and c->end
 	if (c->start == NULL)
 		c->start = dlsym(lib, "pv_start_container");
 

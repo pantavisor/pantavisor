@@ -38,7 +38,6 @@
 #define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#include "lxc.h"
 #include "loop.h"
 #include "controller.h"
 #include "bootloader.h"
