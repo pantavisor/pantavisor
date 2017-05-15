@@ -94,7 +94,7 @@ int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
 	*loop_fd = loopfd;
 	*file_fd = filefd;
 
-	return 0;	
+	return 0;
 }
 
 int mount_bind(char *src, char *dest)
@@ -102,7 +102,7 @@ int mount_bind(char *src, char *dest)
 	int ret;
 
 	ret = mount(src, dest, "none", MS_BIND, 0);
-	if (!ret)
+	if (ret < 0)
 		sc_log(WARN, "unable to bind mount from %s to %s", src, dest);
 
 	return ret;
@@ -122,7 +122,7 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 
 	// Make dest if it doesn't exist
 	if (mkdir_p(dest, 0644) < 0)
-		return -1;	
+		return -1;
 
 	// if ext4 make sure we mount journaled
 	if (strcmp(fstype, "ext4") == 0)
