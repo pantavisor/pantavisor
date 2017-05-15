@@ -30,6 +30,7 @@ int sc_platforms_init_ctrl(struct systemc *sc);
 struct sc_platform* sc_platform_add(struct sc_state *s, char *name);
 struct sc_platform* sc_platform_remove(struct sc_state *s, char *name);
 void sc_platforms_remove_all(struct sc_state *s);
+void sc_platforms_remove_not_done(struct sc_state *s);
 void sc_platforms_remove_by_data(struct sc_state *s, void *data);
 struct sc_platform* sc_platform_get_by_name(struct sc_state *s, char *name);
 struct sc_platform* sc_platform_get_by_data(struct sc_state *s, void *data);

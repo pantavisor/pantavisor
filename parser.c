@@ -75,12 +75,12 @@ static int parse_systemc(struct sc_state *s, char *buf, int n)
 	// get initrd components
 	key = jsmnutil_get_object_keys(buf, tokv);
 	while (*key) {
-		c = (*key)->end - (*key)->start; 
+		c = (*key)->end - (*key)->start;
 		if (strncmp("initrd", buf+(*key)->start, strlen("initrd"))) {
 			key++;
 			continue;
 		}
-	
+
 		// parse array data
 		i = 0;
 		jsmntok_t *k = (*key+2);
@@ -98,12 +98,12 @@ static int parse_systemc(struct sc_state *s, char *buf, int n)
 	// get platforms and create empty items
 	key = jsmnutil_get_object_keys(buf, tokv);
 	while (*key) {
-		c = (*key)->end - (*key)->start; 
+		c = (*key)->end - (*key)->start;
 		if (strncmp("platforms", buf+(*key)->start, strlen("platforms"))) {
 			key++;
 			continue;
 		}
-	
+
 		// parse array data
 		jsmntok_t *k = (*key+2);
 		size = (*key+1)->size;
@@ -121,7 +121,7 @@ static int parse_systemc(struct sc_state *s, char *buf, int n)
 			key++;
 			continue;
 		}
-	
+
 		// parse array data
 		jsmntok_t *k = (*key+2);
 		size = (*key+1)->size;
@@ -150,8 +150,10 @@ static int parse_platform(struct sc_state *s, char *buf, int n)
 	name = get_json_key_value(buf, "name", tokv, tokc);
 
 	this = sc_platform_get_by_name(s, name);
-	if (!this)
+	if (!this) {
+		sc_log(ERROR, "");
 		goto out;
+	}
 
 	this->type = get_json_key_value(buf, "type", tokv, tokc);
 	this->exec = get_json_key_value(buf, "exec", tokv, tokc);
@@ -209,12 +211,14 @@ static int parse_platform(struct sc_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
+	this->done = true;
+
 out:
 	if (name)
 		free(name);
 	if (tokv)
 		free(tokv);
-	
+
 	return 0;
 }
 
@@ -304,7 +308,7 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 		// copy key
 		key = malloc(n+1);
 		snprintf(key, n+1, "%s", buf+(*k)->start);
-		
+
 		// copy value
 		n = (*k+1)->end - (*k+1)->start;
 		value = malloc(n+1);
@@ -316,13 +320,13 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 			parse_platform(this, value, strlen(value));
 		else
 			sc_objects_add(this, key, value, sc->config->storage.mntpoint);
-	
-		// free intermediates	
+
+		// free intermediates
 		if (key)
 			free(key);
 		if (value)
 			free(value);
-		k++;		
+		k++;
 	}
 
 	// copy buffer
@@ -343,7 +347,7 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 		sc_log(INFO, "  exec: '%s'\n", p->exec);
 		sc_log(INFO, "  configs:\n");
 		char **config = p->configs;
-		while (*config) {
+		while (config && *config) {
 			sc_log(INFO, "    '%s'\n", *config);
 			config++;
 		}
@@ -362,6 +366,9 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 		sc_log(INFO, "  name: '%s'\n", o->id);
 		o = o->next;
 	}
+
+	// remove platforms that have no loaded data
+	sc_platforms_remove_not_done(this);
 
 	return this;
 }

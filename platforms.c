@@ -69,6 +69,7 @@ struct sc_platform* sc_platform_add(struct sc_state *s, char *name)
 	}
 
 	this->name = name;
+	this->done = false;
 
 	return this;
 }
@@ -130,6 +131,39 @@ void sc_platforms_remove_all(struct sc_state *s)
 	}
 
 	s->platforms = NULL;
+}
+
+void sc_platforms_remove_not_done(struct sc_state *s)
+{
+	struct sc_platform *p = s->platforms;
+	struct sc_platform *prev = p;
+	char **c;
+
+	while (p) {
+		if (p->done) {
+			prev = p;
+			p = p->next;
+			continue;
+		}
+		if (p->name)
+			free(p->name);
+		if (p->type)
+			free(p->type);
+		if (p->exec)
+			free(p->exec);
+
+		c = p->configs;
+		while (c && *c) {
+			free(*c);
+			c++;
+		}
+		if (s->platforms == p)
+			s->platforms = p->next;
+		else
+			prev->next = p->next;
+		free(p);
+		break;
+	}
 }
 
 void sc_platforms_remove_by_data(struct sc_state *s, void *data)
@@ -283,6 +317,7 @@ int sc_platforms_stop_all(struct systemc *sc)
 	while (p) {
 		ctrl = _sc_platforms_get_ctrl(p->type);
 		ctrl->stop(NULL, NULL, p->data);
+		p->running = false;
 		sc_log(INFO, "stopped platform '%s'", p->name);
 		num_plats++;
 		p = p->next;

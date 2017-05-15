@@ -415,7 +415,7 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 
 	// We shouldnt get a rollback event on rev 0
 	if (sc->state->rev == 0)
-		return STATE_RUN;
+		return STATE_ERROR;
 
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes

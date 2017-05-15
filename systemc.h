@@ -69,6 +69,7 @@ struct sc_platform {
 	unsigned long ns_share;
 	void *data;
 	bool running;
+	bool done;
 	struct sc_platform *next;
 };
 
