@@ -70,6 +70,7 @@ static int parse_systemc(struct sc_state *s, char *buf, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 
 	// get initrd components
 	key = jsmnutil_get_object_keys(buf, tokv);

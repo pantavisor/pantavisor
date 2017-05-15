@@ -143,7 +143,6 @@ int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc)
 			free(idval);
 			return val;
 		} else if (t==1) {
-			printf ("ERROR: json does not have 'key' string\n");
 			return val;
 		}
 	}
@@ -166,7 +165,6 @@ char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 			strncpy(idval, buf + tok[i].start, n);
 			return idval;
 		} else if (t==1) {
-			printf ("ERROR: json does not have 'key' string\n");
 			return NULL;
 		}
 	}

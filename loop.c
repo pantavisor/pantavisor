@@ -97,6 +97,17 @@ int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
 	return 0;	
 }
 
+int mount_bind(char *src, char *dest)
+{
+	int ret;
+
+	ret = mount(src, dest, "none", MS_BIND, 0);
+	if (!ret)
+		sc_log(WARN, "unable to bind mount from %s to %s", src, dest);
+
+	return ret;
+}
+
 int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 {
 	int ret = 0;

@@ -27,6 +27,7 @@
 
 int get_free_loop(char *devname);
 int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd);
+int mount_bind(char *src, char *dest);
 int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd);
 int unmount_loop(char *dest, int loop_fd, int file_fd);
 

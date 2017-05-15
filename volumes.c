@@ -40,6 +40,8 @@
 #include "systemc.h"
 #include "volumes.h"
 
+#define FW_PATH		"/lib/firmware"
+
 struct sc_volume* sc_volume_get_by_name(struct sc_state *s, char *name)
 {
 	struct sc_volume* v = s->volumes;
@@ -103,6 +105,7 @@ struct sc_volume* sc_volume_add(struct sc_state *s, char *name)
 int sc_volumes_mount(struct systemc *sc)
 {
         int ret = -1;
+	struct stat st;
 	struct sc_state *s = sc->state;
 	struct sc_volume *v = s->volumes;
 
@@ -136,8 +139,8 @@ int sc_volumes_mount(struct systemc *sc)
 
                 if (ret < 0)
                         exit_error(errno, "Could not mount loop device");
-	
-		// register mount state	
+
+		// register mount state
 		v->src = strdup(path);
 		v->dest = strdup(mntpoint);
 		v->loop_fd = loop_fd;
@@ -146,6 +149,18 @@ int sc_volumes_mount(struct systemc *sc)
                 v = v->next;
 	}
 
+	if (!sc->state->firmware)
+		goto out;
+
+	if (stat(sc->state->firmware, &st))
+		goto out;
+
+	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
+		mkdir_p(FW_PATH, 0644);
+
+	ret = mount_bind(sc->state->firmware, FW_PATH);
+
+out:
         return ret;
 }
 

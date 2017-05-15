@@ -86,6 +86,7 @@ struct sc_object {
 struct sc_state {
 	int rev;
 	char *kernel;
+	char *firmware;
 	char **initrd;
 	struct sc_platform *platforms;
 	struct sc_volume *volumes;
