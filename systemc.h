@@ -79,7 +79,7 @@ struct sc_object {
 	char *geturl;
 	char *objpath;
 	char *relpath;
-	int size;
+	off_t size;
 	char *sha256;
 	struct sc_object *next;
 };

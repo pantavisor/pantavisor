@@ -550,7 +550,7 @@ static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
 	int ret = 0;
 	char *endpoint = 0;
 	char *url = 0;
-	char *prn;
+	char *prn, *size;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 
@@ -569,20 +569,21 @@ static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
 				 0, 0, 0);
 
 	res = trest_do_json_request(sc->remote->client, req);
-
 	if (!res) {
 		sc_log(INFO, "unable to do trail request");
 		goto out;
 	}
 
-	o->size = atoi(get_json_key_value(res->body, "size",
-				 res->json_tokv, res->json_tokc));
+	size = atoll(get_json_key_value(res->body, "size",
+			res->json_tokv, res->json_tokc));
+	if (size)
+		o->size = atoll(size);
+
 	o->sha256 = get_json_key_value(res->body, "sha256sum",
 				 res->json_tokv, res->json_tokc);
 
 	url = get_json_key_value(res->body, "signed-geturl",
 				 res->json_tokv, res->json_tokc);
-
 	if (!url) {
 		sc_log(ERROR, "unable to get download url for object");
 		goto out;
@@ -637,7 +638,7 @@ static int copy_and_close(int s_fd, int d_fd)
 static int trail_download_object(struct systemc *sc, struct sc_object *obj, const char **crtfiles)
 {
 	int ret = 0;
-	int tmp_fd, fd, obj_fd = -1;
+	int tmp_fd, fd = -1, obj_fd = -1;
 	int bytes, n;
 	int is_kernel_pvk;
 	int use_temp = 0;
@@ -739,14 +740,14 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 		bytes = copy_and_close(tmp_fd, obj_fd);
 	}
 	sc_log(INFO, "downloaded object (%s)", obj->objpath);
-	fsync(obj_fd);
+	fsync(fd);
 
 	// verify file downloaded correctly before syncing to disk
-	lseek(obj_fd, 0, SEEK_SET);
+	lseek(fd, 0, SEEK_SET);
 	mbedtls_sha256_init(&sha256_ctx);
 	mbedtls_sha256_starts(&sha256_ctx, 0);
 
-	while ((bytes = read(obj_fd, buf, 4096)) > 0) {
+	while ((bytes = read(fd, buf, 4096)) > 0) {
 		mbedtls_sha256_update(&sha256_ctx, buf, bytes);
 	}
 
@@ -778,8 +779,8 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	ret = 1;
 
 out:
-	if (obj_fd)
-		close(obj_fd);
+	if (fd)
+		close(fd);
 	if (host)
 		free(host);
 	if (req)
