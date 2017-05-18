@@ -40,7 +40,8 @@ enum update_state {
 	UPDATE_REBOOT,
 	UPDATE_DONE,
 	UPDATE_FAILED,
-	UPDATE_NO_DOWNLOAD
+	UPDATE_NO_DOWNLOAD,
+	UPDATE_NO_PARSE
 };
 
 struct sc_update {

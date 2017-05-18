@@ -50,7 +50,7 @@
 static struct trail_object *head;
 static struct trail_object *last;
 
-typedef void (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
+typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 
 // takes an allocated buffer
 static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
@@ -98,6 +98,8 @@ static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f fu
 {
 	int i;
 	int c;
+	int ret = 0;
+
 	if (tok[t].type != JSMN_ARRAY) {
 		sc_log(INFO, "iterare_json_array: token not array");
 		return -1;
@@ -105,17 +107,161 @@ static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f fu
 
 	c = t;
 	for(i=0; i < tok->size; i++) {
-		func(d1, d2, buf, tok, c+1);
+		ret = func(d1, d2, buf, tok, c+1);
+		if (ret)
+			return -1;
 		c = traverse_token (buf, tok, c+1);
 	}
 
 	return 0;
 }
 
-static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int c)
+static int trail_remote_init(struct systemc *sc)
+{
+	struct trail_remote *remote = NULL;
+	const char **cafiles;
+	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
+	trest_ptr client = 0;
+
+	// Make sure values are reasonable
+	if ((strcmp(sc->config->creds.id, "") == 0) ||
+	    (strcmp(sc->config->creds.prn, "") == 0))
+		return 0;
+
+	cafiles = sc_ph_get_certs(sc);
+	if (!cafiles) {
+		sc_log(ERROR, "unable to assemble cert list");
+		goto err;
+	}
+
+	// Create client
+	client = trest_new_tls_from_userpass(
+		sc->config->creds.host,
+		sc->config->creds.port,
+		sc->config->creds.prn,
+		sc->config->creds.secret,
+		(const char **) cafiles
+		);
+
+	if (!client) {
+		sc_log(INFO, "unable to create device client");
+		goto err;
+	}
+
+	// FIXME: Crash here if unable to auth
+	status = trest_update_auth(client);
+	if (status != TREST_AUTH_STATUS_OK) {
+		sc_log(INFO, "unable to auth device client");
+		goto err;
+	}
+
+	remote = malloc(sizeof(struct trail_remote));
+	remote->client = client;
+	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
+				   + strlen(sc->config->creds.id)) * sizeof(char));
+	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, sc->config->creds.id);
+
+	sc->remote = remote;
+
+	return 0;
+
+err:
+	if (client)
+		free(client);
+	if (remote)
+		free(remote);
+
+	return -1;
+}
+
+static int trail_remote_set_status(struct systemc *sc, int rev, enum update_state status)
+{
+	int ret = 0;
+	struct sc_update *u = sc->update;
+	trest_request_ptr req;
+	trest_response_ptr res;
+	char json[1024];
+	char *endpoint;
+
+	if (!u) {
+		endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT) +
+			strlen(sc->config->creds.id) + get_digit_count(rev));
+		sprintf(endpoint, DEVICE_STEP_ENDPOINT_FMT, sc->config->creds.id, rev);
+	} else {
+		endpoint = u->endpoint;
+	}
+
+	if (!sc->remote)
+		trail_remote_init(sc);
+
+	switch (status) {
+	case UPDATE_QUEUED:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"QUEUED", "Update queued", 0);
+		break;
+	case UPDATE_DOWNLOADED:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"INPROGRESS", "Update objects downloaded", 40);
+		break;
+	case UPDATE_INSTALLED:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"INPROGRESS", "Update installed", 80);
+		break;
+	case UPDATE_TRY:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"INPROGRESS", "Starting updated version", 90);
+		break;
+	case UPDATE_REBOOT:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"INPROGRESS", "Rebooting", 95);
+		break;
+	case UPDATE_DONE:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"DONE", "Update finished", 100);
+		break;
+	case UPDATE_NO_DOWNLOAD:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"WONTGO", "Unable to download and/or install update", 0);
+		break;
+	case UPDATE_NO_PARSE:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"WONTGO", "Remote state cannot be parsed", 0);
+		break;
+	default:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"ERROR", "Error during update", 0);
+		break;
+	}
+
+	req = trest_make_request(TREST_METHOD_PUT,
+				 endpoint,
+				 0, 0,
+				 json);
+
+	res = trest_do_json_request(sc->remote->client, req);
+
+	if (!res) {
+		sc_log(INFO, "unable to do trail request");
+		ret = -1;
+		goto out;
+	}
+
+	sc_log(INFO, "remote state updated to %s", res->body);
+out:
+	if (!u && endpoint)
+		free(endpoint);
+	if (req)
+		trest_request_free(req);
+	if (res)
+		trest_response_free(res);
+
+	return ret;
+}
+
+static int _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int c)
 {
 	int n = ((tok+c)->end - (tok+c)->start) + 1;
-	int tokc, ret, rev = 0;
+	int tokc, ret = 1, rev = 0;
 	char *s = malloc (sizeof (char) * n+1);
 	char *rev_s = NULL;
 	char *value = NULL;
@@ -130,7 +276,7 @@ static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int
 	while (*steps)
 		steps++;
 
-	ret = jsmnutil_parse_json (s, &tokv, &tokc);
+	jsmnutil_parse_json (s, &tokv, &tokc);
 	keys = jsmnutil_get_object_keys(s, tokv);
 	keys_i = keys;
 	while (*keys_i) {
@@ -150,15 +296,26 @@ static void _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int
 	}
 	jsmnutil_tokv_free(keys);
 
-	*steps = sc_parse_state(sc, value, strlen(value), rev);
-	sc_log(DEBUG, "adding rev=%d, step = '%s'", rev, (*steps)->json);
-
-	if (value)
+	if (value) {
+		*steps = sc_parse_state(sc, value, strlen(value), rev);
 		free(value);
+	}
+
+	if (*steps == 0) {
+		sc_log(DEBUG, "invalid rev=%d found on remote", rev);
+		trail_remote_set_status(sc, rev, UPDATE_NO_PARSE);
+	} else {
+		sc_log(DEBUG, "adding rev=%d, step = '%s'", rev, (*steps)->json);
+		ret = 0;
+	}
+
+out:
 	if (tokv)
 		free(tokv);
+	if (s)
+		free(s);
 
-	free(s);
+	return ret;
 }
 
 static struct sc_state* _pending_get_first(struct sc_state **p)
@@ -185,7 +342,7 @@ static struct sc_state* _pending_get_first(struct sc_state **p)
 
 static int trail_get_new_steps(struct systemc *sc)
 {
-	int size;
+	int size = 0;
 	struct trail_remote *r = sc->remote;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
@@ -215,8 +372,12 @@ static int trail_get_new_steps(struct systemc *sc)
 	steps = malloc(sizeof (struct sc_state*) * (size + 1));
 	iter = steps;
 	memset(steps, 0, sizeof(struct sc_state*) * (size + 1));
-        _iterate_json_array (res->body, res->json_tokv, 0,
-			    (token_iter_f) _add_pending_step, steps, sc);
+	if (_iterate_json_array (res->body, res->json_tokv, 0,
+			    (token_iter_f) _add_pending_step, steps, sc) < 0) {
+		sc_log(WARN, "stopping update attempt due to broken remote");
+		size = 0;
+		goto out;
+	}
 	steps[size] = NULL;
 	r->pending = _pending_get_first(steps);
 
@@ -316,64 +477,6 @@ out:
 	return ret;
 }
 
-static int trail_remote_init(struct systemc *sc)
-{
-	struct trail_remote *remote = NULL;
-	const char **cafiles;
-	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
-	trest_ptr client = 0;
-
-	// Make sure values are reasonable
-	if ((strcmp(sc->config->creds.id, "") == 0) ||
-	    (strcmp(sc->config->creds.prn, "") == 0))
-		return 0;
-
-	cafiles = sc_ph_get_certs(sc);
-	if (!cafiles) {
-		sc_log(ERROR, "unable to assemble cert list");
-		goto err;
-	}
-
-	// Create client
-	client = trest_new_tls_from_userpass(
-		sc->config->creds.host,
-		sc->config->creds.port,
-		sc->config->creds.prn,
-		sc->config->creds.secret,
-		(const char **) cafiles
-		);
-
-	if (!client) {
-		sc_log(INFO, "unable to create device client");
-		goto err;
-	}
-
-	// FIXME: Crash here if unable to auth
-	status = trest_update_auth(client);
-	if (status != TREST_AUTH_STATUS_OK) {
-		sc_log(INFO, "unable to auth device client");
-		goto err;
-	}
-
-	remote = malloc(sizeof(struct trail_remote));
-	remote->client = client;
-	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
-				   + strlen(sc->config->creds.id)) * sizeof(char));
-	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, sc->config->creds.id);
-
-	sc->remote = remote;
-
-	return 0;
-
-err:
-	if (client)
-		free(client);
-	if (remote)
-		free(remote);
-
-	return -1;
-}
-
 /* API */
 
 int sc_trail_check_for_updates(struct systemc *sc)
@@ -401,75 +504,6 @@ int sc_trail_check_for_updates(struct systemc *sc)
 		return trail_get_new_steps(sc);
 	else
 		return 0;
-}
-
-static int trail_remote_set_status(struct systemc *sc, enum update_state status)
-{
-	int ret = 0;
-	struct sc_update *u = sc->update;
-	trest_request_ptr req;
-	trest_response_ptr res;
-	char json[1024];
-
-	if (!sc->remote)
-		trail_remote_init(sc);
-
-	switch (status) {
-	case UPDATE_QUEUED:
-		sprintf(json, DEVICE_STEP_STATUS_FMT, 
-			"QUEUED", "Update queued", 0);
-		break;
-	case UPDATE_DOWNLOADED:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Update objects downloaded", 40);
-		break;
-	case UPDATE_INSTALLED:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Update installed", 80);
-		break;
-	case UPDATE_TRY:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Starting updated version", 90);
-		break;
-	case UPDATE_REBOOT:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Rebooting", 95);
-		break;
-	case UPDATE_DONE:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"DONE", "Update finished", 100);
-		break;
-	case UPDATE_NO_DOWNLOAD:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"WONTGO", "Unable to download and/or install update", 0);
-		break;
-	default:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"ERROR", "Error during update", 0);
-		break;
-	}
-
-	req = trest_make_request(TREST_METHOD_PUT,
-				 u->endpoint,
-				 0, 0,
-				 json);
-
-	res = trest_do_json_request(sc->remote->client, req);
-
-	if (!res) {
-		sc_log(INFO, "unable to do trail request");
-		ret = -1;
-		goto out;
-	}
-
-	sc_log(INFO, "remote state updated to %s", res->body);
-out:
-	if (req)
-		trest_request_free(req);
-	if (res)
-		trest_response_free(res);
-
-	return ret;
 }
 
 int sc_trail_update_start(struct systemc *sc, int offline)
@@ -502,7 +536,7 @@ int sc_trail_update_start(struct systemc *sc, int offline)
 	sc->update = u;
 
 	if (!offline) {
-		ret = trail_remote_set_status(sc, UPDATE_QUEUED);
+		ret = trail_remote_set_status(sc, -1, UPDATE_QUEUED);
 		if (ret < 0)
 			sc_log(INFO, "failed to update cloud status, possibly offline");
 	}
@@ -516,7 +550,7 @@ int sc_trail_update_finish(struct systemc *sc)
 
 	switch (sc->update->status) {
 	case UPDATE_DONE:
-		ret = trail_remote_set_status(sc, UPDATE_DONE);
+		ret = trail_remote_set_status(sc, -1, UPDATE_DONE);
 		goto out;
 		break;
 	case UPDATE_REBOOT:
@@ -524,7 +558,7 @@ int sc_trail_update_finish(struct systemc *sc)
 		goto out;
 		break;
 	case UPDATE_FAILED:
-		ret = trail_remote_set_status(sc, UPDATE_FAILED);
+		ret = trail_remote_set_status(sc, -1, UPDATE_FAILED);
 		sc_log(ERROR, "update has failed");
 		goto out;
 	default:
@@ -574,8 +608,8 @@ static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
 		goto out;
 	}
 
-	size = atoll(get_json_key_value(res->body, "size",
-			res->json_tokv, res->json_tokc));
+	size = get_json_key_value(res->body, "size",
+			res->json_tokv, res->json_tokc);
 	if (size)
 		o->size = atoll(size);
 
@@ -901,7 +935,7 @@ int sc_trail_update_install(struct systemc *sc)
 		goto out;
 	}
 
-	trail_remote_set_status(sc, UPDATE_DOWNLOADED);
+	trail_remote_set_status(sc, -1, UPDATE_DOWNLOADED);
 
 	ret = trail_link_objects(sc);
 	if (ret < 0) {
@@ -921,7 +955,7 @@ int sc_trail_update_install(struct systemc *sc)
 	write(fd, pending->json, strlen(pending->json));
 	close(fd);
 
-	trail_remote_set_status(sc, UPDATE_INSTALLED);
+	trail_remote_set_status(sc, -1, UPDATE_INSTALLED);
 
 	sleep(2);
 	sc->update->status = UPDATE_TRY;
@@ -933,7 +967,7 @@ int sc_trail_update_install(struct systemc *sc)
 	}
 
 out:
-	trail_remote_set_status(sc, sc->update->status);
+	trail_remote_set_status(sc, -1, sc->update->status);
 
 	return ret;
 }
