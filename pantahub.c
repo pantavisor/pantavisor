@@ -214,7 +214,7 @@ int sc_ph_device_exists(struct systemc *sc)
 
 	res = trest_do_json_request(client, req);
 
-	if (!res->body)
+	if (!res->body || res->code != THTTP_STATUS_OK)
 		goto out;
 
 	id = get_json_key_value(res->body, "id",
@@ -270,7 +270,7 @@ int sc_ph_register_self(struct systemc *sc)
 	res = thttp_request_do(req);
 
 	// If registered, override in-memory PantaHub credentials
-	if (res->body) {
+	if (res->code == THTTP_STATUS_OK && res->body) {
 		jsmnutil_parse_json(res->body, &tokv, &tokc);
 		sc->config->creds.id = get_json_key_value(res->body, "id",
 							tokv, tokc);
@@ -279,7 +279,7 @@ int sc_ph_register_self(struct systemc *sc)
 		sc->config->creds.secret = get_json_key_value(res->body, "secret",
 							tokv, tokc);
 	} else {
-		sc_log(ERROR, "registration attempt failed");
+		sc_log(ERROR, "registration attempt failed (http code %d)", res->code);
 		ret = 0;
 	}
 
@@ -311,6 +311,11 @@ int sc_ph_device_is_owned(struct systemc *sc, char **c)
 				 0, 0, 0);
 
 	res = trest_do_json_request(client, req);
+	if (res->code != THTTP_STATUS_OK) {
+		sc_log(WARN, "unable to query device information, code %d", res->code);
+		ret = 0;
+		goto out;
+	}
 
 	owner = get_json_key_value(res->body, "owner",
 			res->json_tokv, res->json_tokc);

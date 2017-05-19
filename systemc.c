@@ -137,11 +137,10 @@ int sc_get_rollback_rev(struct systemc *sc)
 	struct stat st;
 	char path[256];
 
-	while (rev) {
+	while (rev--) {
 		sprintf(path, "%s/trails/%d/.done", sc->config->storage.mntpoint, rev);
 		if (stat(path, &st) == 0)
 			return rev;
-		rev--;
 	}
 
 	return rev;

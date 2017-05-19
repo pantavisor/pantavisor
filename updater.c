@@ -246,7 +246,12 @@ static int trail_remote_set_status(struct systemc *sc, int rev, enum update_stat
 		goto out;
 	}
 
-	sc_log(INFO, "remote state updated to %s", res->body);
+	if (res->code == THTTP_STATUS_OK) {
+		sc_log(INFO, "remote state updated to %s", res->body);
+	} else {
+		sc_log(WARN, "unable to update remote status, http code %d", res->code);
+	}
+
 out:
 	if (!u && endpoint)
 		free(endpoint);
@@ -309,7 +314,6 @@ static int _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int 
 		ret = 0;
 	}
 
-out:
 	if (tokv)
 		free(tokv);
 	if (s)
@@ -359,6 +363,11 @@ static int trail_get_new_steps(struct systemc *sc)
 
 	if (!res) {
 		sc_log(INFO, "unable to do trail request");
+		size = -1;
+		goto out;
+	}
+	if (res->code != THTTP_STATUS_OK) {
+		sc_log(WARN, "http error (%d) on trail request", res->code);
 		size = -1;
 		goto out;
 	}
@@ -425,7 +434,7 @@ static int trail_is_available(struct trail_remote *r)
 		goto out;
 	}
 
-	if (res->body == NULL) {
+	if (res->code != THTTP_STATUS_OK || res->body == NULL) {
 		size = -1;
 		goto out;
 	}
@@ -445,7 +454,7 @@ out:
 
 static int trail_first_boot(struct systemc *sc)
 {
-	int ret;
+	int ret = 0;
 	trest_request_ptr req;
 	trest_response_ptr res;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
@@ -460,10 +469,17 @@ static int trail_first_boot(struct systemc *sc)
 	res = trest_do_json_request(sc->remote->client, req);
 
 	if (!res) {
-		sc_log(ERROR, "unable to push initial trail on first boot");
+		sc_log(ERROR, "error on first boot json request");
 		ret = -1;
 		goto out;
 	}
+
+	if (res->code != THTTP_STATUS_OK) {
+		sc_log(ERROR, "http request error (%d) for initial trail", res->code);
+		ret = -1;
+		goto out;
+	}
+
 	sc_log(INFO, "initial trail pushed ok");
 	ret = 0;
 
@@ -604,7 +620,11 @@ static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
 
 	res = trest_do_json_request(sc->remote->client, req);
 	if (!res) {
-		sc_log(INFO, "unable to do trail request");
+		sc_log(WARN, "unable to do trail request");
+		goto out;
+	}
+	if (res->code != THTTP_STATUS_OK) {
+		sc_log(WARN, "http request error (%d) on object metadata", res->code);
 		goto out;
 	}
 
@@ -768,6 +788,13 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	lseek(fd, 0, SEEK_SET);
 	sc_log(INFO, "downloading object (%s)", obj->objpath);
 	res = thttp_request_do_file (req, fd);
+	if (!res) {
+		sc_log(WARN, "no response from server");
+		goto out;
+	} else if (res->code != THTTP_STATUS_OK) {
+		sc_log(WARN, "error response from server, http code %d", res->code);
+		goto out;
+	}
 
 	if (use_temp) {
 		sc_log(INFO, "copying %s to %s", tobj, obj->objpath);

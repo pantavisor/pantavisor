@@ -320,20 +320,14 @@ static sc_state_t _sc_wait(struct systemc *sc)
 	int timeout_max = sc->config->updater.network_timeout
 		/ sc->config->updater.interval;
 
-	// on first entry loop fast for network discovery
-	if (counter)
-		sleep(sc->config->updater.interval);
-	else
-		sleep(2);
+	sleep(sc->config->updater.interval);
 
 	if (sc->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
 
-	counter = 1;
-
 	if (!sc_ph_is_available(sc)) {
 		counter++;
-		if (counter > timeout_max)
+		if (counter > 3)
 			return STATE_ROLLBACK;
 		return STATE_WAIT;
 	}
@@ -419,7 +413,8 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes
-	sc->update->status = UPDATE_FAILED;
+	if (sc->update)
+		sc->update->status = UPDATE_FAILED;
 
 	if (sc->state) {
 		ret = sc_platforms_stop_all(sc);
