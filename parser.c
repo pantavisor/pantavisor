@@ -60,13 +60,17 @@ static unsigned long ns_share_flag(char *key)
 	return 0;
 }
 
-static int parse_systemc(struct sc_state *s, char *buf, int n)
+static int parse_systemc(struct sc_state *s, char *value, int n)
 {
 	int i, c;
 	int ret, tokc, size;
-	char *str;
+	char *str, *buf;
 	jsmntok_t *tokv;
 	jsmntok_t **key;
+
+	// take null terminate copy of item to parse
+	buf = calloc(1, (n+1) * sizeof(char));
+	buf = strncpy(buf, value, n);
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
@@ -133,6 +137,8 @@ static int parse_systemc(struct sc_state *s, char *buf, int n)
 
 	if (tokv)
 		free(tokv);
+	if (buf)
+		free(buf);
 
 	return 1;
 }

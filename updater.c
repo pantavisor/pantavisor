@@ -107,13 +107,12 @@ static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f fu
 
 	c = t;
 	for(i=0; i < tok->size; i++) {
-		ret = func(d1, d2, buf, tok, c+1);
-		if (ret)
-			return -1;
+		if (func(d1, d2, buf, tok, c+1))
+			ret = 1;
 		c = traverse_token (buf, tok, c+1);
 	}
 
-	return 0;
+	return ret;
 }
 
 static int trail_remote_init(struct systemc *sc)
@@ -291,6 +290,7 @@ static int _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int 
 			rev_s[n] = '\0';
 			strncpy(rev_s, s+(*keys_i+1)->start, n);
 			rev = atoi(rev_s);
+			free(rev_s);
 		} else if (!strncmp(s+(*keys_i)->start, "state", strlen("state"))) {
 			n = (*keys_i+1)->end - (*keys_i+1)->start;
 			value = malloc(n + 2);
@@ -383,7 +383,7 @@ static int trail_get_new_steps(struct systemc *sc)
 	memset(steps, 0, sizeof(struct sc_state*) * (size + 1));
 	if (_iterate_json_array (res->body, res->json_tokv, 0,
 			    (token_iter_f) _add_pending_step, steps, sc) < 0) {
-		sc_log(WARN, "stopping update attempt due to broken remote");
+		sc_log(WARN, "restart update attempt due to broken remote");
 		size = 0;
 		goto out;
 	}
