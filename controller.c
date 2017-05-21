@@ -327,7 +327,7 @@ static sc_state_t _sc_wait(struct systemc *sc)
 
 	if (!sc_ph_is_available(sc)) {
 		counter++;
-		if (counter > 3)
+		if (counter > timeout_max)
 			return STATE_ROLLBACK;
 		return STATE_WAIT;
 	}
@@ -396,8 +396,10 @@ static sc_state_t _sc_update(struct systemc *sc)
 	// Load installed step
 	sc->state = sc_get_state(sc, ret);
 
-	if (sc->state == NULL)
+	if (sc->state == NULL) {
+		sc_log(WARN, "unable to load new step state, rolling back");
 		return STATE_ROLLBACK;
+	}
 
 	return STATE_RUN;
 }
@@ -408,7 +410,7 @@ static sc_state_t _sc_rollback(struct systemc *sc)
 	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
-	if (sc->state->rev == 0)
+	if (sc->state && sc->state->rev == 0)
 		return STATE_ERROR;
 
 	// If we rollback, it means the considered OK update (kernel)
