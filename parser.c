@@ -285,13 +285,13 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 
 	count = json_get_key_count(buf, "systemc.json", tokv, tokc);
 	if (!count || (count > 1)) {
-		printf("Invalid systemc.json count in state");
+		sc_log(WARN, "Invalid systemc.json count in state");
 		return NULL;
 	}
 
 	value = get_json_key_value(buf, "systemc.json", tokv, tokc);
 	if (!value) {
-		printf("Unable to get systemc.json value from state");
+		sc_log(WARN, "Unable to get systemc.json value from state");
 		return NULL;
 	}
 
