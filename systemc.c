@@ -33,6 +33,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/prctl.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #define MODULE_NAME             "core"
 #define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -241,6 +243,17 @@ int systemc_init()
 		int ret;
                 prctl(PR_SET_NAME, "systemc");
 		sc = calloc(1, sizeof(struct systemc));
+
+		struct rlimit core_limit;
+		core_limit.rlim_cur = RLIM_INFINITY;
+		core_limit.rlim_max = RLIM_INFINITY;
+
+		setrlimit(RLIMIT_CORE, &core_limit);
+
+		char *core = "/storage/corepv";
+		int fd = open("/proc/sys/kernel/core_pattern", O_WRONLY | O_SYNC);
+		if (fd)
+			write(fd, core, strlen(core));
 
 		// Enter state machine
 		ret = sc_controller_start(sc);
