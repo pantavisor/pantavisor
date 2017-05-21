@@ -91,30 +91,6 @@ static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
 	return new;
 }
 
-// is good for getting elements of any array type token. Just point tok+t to the
-// token of type array and it will iterate the direct children of that token
-// through travesal the depth first token array.
-static int _iterate_json_array(char *buf, jsmntok_t* tok, int t, token_iter_f func, void *d1, void *d2)
-{
-	int i;
-	int c;
-	int ret = 0;
-
-	if (tok[t].type != JSMN_ARRAY) {
-		sc_log(INFO, "iterare_json_array: token not array");
-		return -1;
-	}
-
-	c = t;
-	for(i=0; i < tok->size; i++) {
-		if (func(d1, d2, buf, tok, c+1))
-			ret = 1;
-		c = traverse_token (buf, tok, c+1);
-	}
-
-	return ret;
-}
-
 static int trail_remote_init(struct systemc *sc)
 {
 	struct trail_remote *remote = NULL;
@@ -262,98 +238,17 @@ out:
 	return ret;
 }
 
-static int _add_pending_step(void *d1, void *d2, char *buf, jsmntok_t *tok, int c)
-{
-	int n = ((tok+c)->end - (tok+c)->start) + 1;
-	int tokc, ret = 1, rev = 0;
-	char *s = malloc (sizeof (char) * n+1);
-	char *rev_s = NULL;
-	char *value = NULL;
-	struct sc_state **steps = (struct sc_state **) d1;
-	struct systemc *sc = (struct systemc *) d2;
-	jsmntok_t **keys = NULL, **keys_i = NULL;
-	jsmntok_t *tokv = NULL;
-
-	strncpy(s, buf + (tok+c)->start, n);
-	s[n] = '\0';
-
-	while (*steps)
-		steps++;
-
-	jsmnutil_parse_json (s, &tokv, &tokc);
-	keys = jsmnutil_get_object_keys(s, tokv);
-	keys_i = keys;
-	while (*keys_i) {
-		if (!strncmp(s+(*keys_i)->start, "rev", strlen("rev"))) {
-			n = (*keys_i+1)->end - (*keys_i+1)->start;
-			rev_s = malloc(n+1);
-			rev_s[n] = '\0';
-			strncpy(rev_s, s+(*keys_i+1)->start, n);
-			rev = atoi(rev_s);
-			free(rev_s);
-		} else if (!strncmp(s+(*keys_i)->start, "state", strlen("state"))) {
-			n = (*keys_i+1)->end - (*keys_i+1)->start;
-			value = malloc(n + 2);
-			strncpy(value, s+(*keys_i+1)->start, n);
-			value[n] = '\0';
-		}
-		keys_i++;
-	}
-	jsmnutil_tokv_free(keys);
-
-	if (value) {
-		*steps = sc_parse_state(sc, value, strlen(value), rev);
-		free(value);
-	}
-
-	if (*steps == 0) {
-		sc_log(DEBUG, "invalid rev=%d found on remote", rev);
-		trail_remote_set_status(sc, rev, UPDATE_NO_PARSE);
-	} else {
-		sc_log(DEBUG, "adding rev=%d, step = '%s'", rev, (*steps)->json);
-		ret = 0;
-	}
-
-	if (tokv)
-		free(tokv);
-	if (s)
-		free(s);
-
-	return ret;
-}
-
-static struct sc_state* _pending_get_first(struct sc_state **p)
-{
-	int min;
-	struct sc_state *r;
-
-	if (*p == NULL)
-		return NULL;
-
-	min = (*p)->rev;
-	r = *p;
-
-	while (*p) {
-		if ((*p)->rev < min) {
-			min = (*p)->rev;
-			r = *p;
-		}
-		p++;
-	}
-
-	return r;
-}
-
 static int trail_get_new_steps(struct systemc *sc)
 {
-	int size = 0;
+	int size = 0, tokc = 0, rev;
+	char *state = 0, *rev_s = 0;
 	struct trail_remote *r = sc->remote;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
-	struct sc_state **steps = 0, **iter = 0;
+	jsmntok_t *tokv = 0;
 
 	if (!r)
-		return -1;
+		return 0;
 
 	req = trest_make_request(TREST_METHOD_GET,
 				 r->endpoint,
@@ -363,12 +258,10 @@ static int trail_get_new_steps(struct systemc *sc)
 
 	if (!res) {
 		sc_log(INFO, "unable to do trail request");
-		size = -1;
 		goto out;
 	}
 	if (res->code != THTTP_STATUS_OK) {
 		sc_log(WARN, "http error (%d) on trail request", res->code);
-		size = -1;
 		goto out;
 	}
 
@@ -378,40 +271,44 @@ static int trail_get_new_steps(struct systemc *sc)
 	if (!size)
 		goto out;
 
-	steps = malloc(sizeof (struct sc_state*) * (size + 1));
-	iter = steps;
-	memset(steps, 0, sizeof(struct sc_state*) * (size + 1));
-	if (_iterate_json_array (res->body, res->json_tokv, 0,
-			    (token_iter_f) _add_pending_step, steps, sc) < 0) {
-		sc_log(WARN, "restart update attempt due to broken remote");
-		size = 0;
+	if (jsmnutil_parse_json (res->body, &tokv, &tokc) < 0)
+		goto out;
+
+	rev_s = get_json_key_value(res->body, "rev",
+		res->json_tokv, res->json_tokc);
+	state = get_json_key_value(res->body, "state",
+		res->json_tokv, res->json_tokc);
+
+	if (!rev_s || !state) {
+		sc_log(WARN, "invalid data found on trail, ignoring");
 		goto out;
 	}
-	steps[size] = NULL;
-	r->pending = _pending_get_first(steps);
 
-	// free all but pending
-	while (*iter) {
-		if (*iter != r->pending) {
-			free((*iter)->json);
-			sc_state_free((*iter));
-		}
-		iter++;
+	// parse state
+	rev = atoi(rev_s);
+	r->pending = sc_parse_state(sc, state, strlen(state), rev);
+
+	if (!r->pending) {
+		sc_log(DEBUG, "invalid rev (%d) found on remote", rev);
+		trail_remote_set_status(sc, rev, UPDATE_NO_PARSE);
+		size = 0;
+	} else {
+		sc_log(DEBUG, "adding rev (%d), state = '%s'", rev, state);
+		sc_log(INFO, "first pending found to be rev = %d", r->pending->rev);
 	}
 
-	sc_log(INFO, "first pending found to be rev = %d", r->pending->rev);
-
 out:
+	if (rev_s)
+		free(rev_s);
+	if (state)
+		free(state);
 	if (req)
 		trest_request_free(req);
 	if (res)
 		trest_response_free(res);
-	if (steps)
-		free(steps);
 
 	return size;
 }
-
 
 static int trail_is_available(struct trail_remote *r)
 {
