@@ -72,7 +72,9 @@ static int parse_systemc(struct sc_state *s, char *value, int n)
 	buf = calloc(1, (n+1) * sizeof(char));
 	buf = strncpy(buf, value, n);
 
+	sc_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
 	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 
