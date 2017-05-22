@@ -60,19 +60,25 @@ static int mount_ext4(char *dev, char *dest)
 
 int get_free_loop(char *devname)
 {
+	int ret = -1;
 	int lctlfd, dev;
 
 	lctlfd = open("/dev/loop-control", O_RDWR);
 	if (lctlfd < 0)
-		return -1;
+		goto out;
 
 	dev = ioctl(lctlfd, LOOP_CTL_GET_FREE);
 	if (dev < 0)
-               return -1;
+               goto out;
 
 	sprintf(devname, "/dev/loop%d", dev);
+	ret = 0;
 
-	return 0;
+out:
+	if (lctlfd > 0)
+		close(lctlfd);
+
+	return ret;
 }
 
 int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
