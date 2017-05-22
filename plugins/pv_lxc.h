@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_LXC_H
-#define SC_LXC_H
+#ifndef PV_LXC_H
+#define PV_LXC_H
 
 void* pv_start_container(char *name, char *conf_file, void *data);
 void* pv_stop_container(char *name, char *conf_file, void *data);

@@ -35,7 +35,7 @@
 #include "loop.h"
 
 #define MODULE_NAME             "loop"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 static int mount_ext4(char *dev, char *dest)
@@ -47,7 +47,7 @@ static int mount_ext4(char *dev, char *dest)
 	if (!ret)
 		return ret;
 
-	sc_log(WARN, "unable to mount ext4 with data=journal");
+	pv_log(WARN, "unable to mount ext4 with data=journal");
 
 	// try ordered
 	ret = mount(dev, dest, "ext4", 0, opts[1]);
@@ -103,7 +103,7 @@ int mount_bind(char *src, char *dest)
 
 	ret = mount(src, dest, "none", MS_BIND, 0);
 	if (ret < 0)
-		sc_log(WARN, "unable to bind mount from %s to %s", src, dest);
+		pv_log(WARN, "unable to bind mount from %s to %s", src, dest);
 
 	return ret;
 }
@@ -131,7 +131,7 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 		ret = mount(devname, dest, fstype, 0, opts);
 
 	if (ret < 0) {
-		sc_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
+		pv_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
 		goto out;
 	}
 
@@ -163,7 +163,7 @@ int unmount_loop(char *dest, int loop_fd, int file_fd)
 	if (ret < 0)
 		goto out;
 
-	sc_log(INFO, "umounted '%s' volume", dest);
+	pv_log(INFO, "umounted '%s' volume", dest);
 
 out:
 	return ret;

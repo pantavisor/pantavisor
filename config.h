@@ -19,15 +19,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_CONFIG_H
-#define SC_CONFIG_H
+#ifndef PV_CONFIG_H
+#define PV_CONFIG_H
 
 enum {
 	UBOOT_PLAIN = 0,
 	UBOOT_PVK
 };
 
-struct systemc_creds {
+struct pantavisor_creds {
 	char *host;
 	int port;
 	char *id;
@@ -35,31 +35,31 @@ struct systemc_creds {
 	char *secret;
 };
 
-struct systemc_storage {
+struct pantavisor_storage {
 	char *path;
 	char *fstype;
 	char *opts;
 	char *mntpoint;
 };
 
-struct systemc_updater {
+struct pantavisor_updater {
 	int interval;
 	int keep_factory;
 	int network_timeout;
 };
 
-struct systemc_config {
+struct pantavisor_config {
 	char *name;
 	int loglevel;
 	int bl_type;
-	struct systemc_creds creds;
-	struct systemc_storage storage;
-	struct systemc_updater updater;
+	struct pantavisor_creds creds;
+	struct pantavisor_storage storage;
+	struct pantavisor_updater updater;
 };
 
 // Fill config struct after parsing on-initramfs factory config
-int sc_config_from_file(char *path, struct systemc_config *config);
-int ph_config_from_file(char *path, struct systemc_config *config);
-int ph_config_to_file(struct systemc_config *config, char *path);
+int pv_config_from_file(char *path, struct pantavisor_config *config);
+int ph_config_from_file(char *path, struct pantavisor_config *config);
+int ph_config_to_file(struct pantavisor_config *config, char *path);
 
 #endif

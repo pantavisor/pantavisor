@@ -37,34 +37,34 @@
 #include <sys/resource.h>
 
 #define MODULE_NAME             "core"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "loop.h"
 #include "controller.h"
 #include "bootloader.h"
 
-#include "systemc.h"
+#include "pantavisor.h"
 
-pid_t sc_pid;
+pid_t pv_pid;
 
-void sc_destroy(struct systemc *sc)
+void pv_destroy(struct pantavisor *pv)
 {
-        sc_release_state(sc);
-        free(sc->config);
-        free(sc);
+        pv_release_state(pv);
+        free(pv->config);
+        free(pv);
 }
 
-void sc_set_current(struct systemc *sc, int rev)
+void pv_set_current(struct pantavisor *pv, int rev)
 {
 	int fd;
 	char path[256];
 
-	sprintf(path, "%s/trails/%d/.done", sc->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/.done", pv->config->storage.mntpoint, rev);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
 	if (!fd) {
-		sc_log(WARN, "unable to set current(done) flag for revision %d", rev);
+		pv_log(WARN, "unable to set current(done) flag for revision %d", rev);
 		return;
 	}
 
@@ -73,11 +73,11 @@ void sc_set_current(struct systemc *sc, int rev)
 	close(fd);
 
 	// commit to bootloader
-	sc_bl_set_current(sc, rev);
+	pv_bl_set_current(pv, rev);
 }
 
 #define REV_BUF_SIZE	5
-int *sc_trail_get_revs(struct systemc *sc)
+int *pv_trail_get_revs(struct pantavisor *pv)
 {
 	int n, i = 0;
 	int bufsize = 1;
@@ -85,7 +85,7 @@ int *sc_trail_get_revs(struct systemc *sc)
 	struct dirent **dirs;
 	char basedir[PATH_MAX];
 
-	sprintf(basedir, "%s/trails/", sc->config->storage.mntpoint);
+	sprintf(basedir, "%s/trails/", pv->config->storage.mntpoint);
 	n = scandir(basedir, &dirs, NULL, alphasort);
 	while (n--) {
 		char *tmp = dirs[n]->d_name;
@@ -118,7 +118,7 @@ int *sc_trail_get_revs(struct systemc *sc)
 	return revs;
 }
 
-int sc_rev_is_done(struct systemc *sc, int rev)
+int pv_rev_is_done(struct pantavisor *pv, int rev)
 {
 	struct stat st;
 	char path[256];
@@ -126,21 +126,21 @@ int sc_rev_is_done(struct systemc *sc, int rev)
 	if (!rev)
 		return 1;
 
-	sprintf(path, "%s/trails/%d/.done", sc->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/.done", pv->config->storage.mntpoint, rev);
 	if (stat(path, &st) == 0)
 		return 1;
 
 	return 0;
 }
 
-int sc_get_rollback_rev(struct systemc *sc)
+int pv_get_rollback_rev(struct pantavisor *pv)
 {
-	int rev = sc->state->rev;
+	int rev = pv->state->rev;
 	struct stat st;
 	char path[256];
 
 	while (rev--) {
-		sprintf(path, "%s/trails/%d/.done", sc->config->storage.mntpoint, rev);
+		sprintf(path, "%s/trails/%d/.done", pv->config->storage.mntpoint, rev);
 		if (stat(path, &st) == 0)
 			return rev;
 	}
@@ -148,25 +148,25 @@ int sc_get_rollback_rev(struct systemc *sc)
 	return rev;
 }
 
-struct sc_state* sc_get_state(struct systemc *sc, int rev)
+struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 {
         int fd;
         int size;
         char path[256];
         char *buf;
 	struct stat st;
-	struct sc_state *s;
+	struct pv_state *s;
 
 	if (rev < 0)
-		sprintf(path, "%s/trails/current/state.json", sc->config->storage.mntpoint);
+		sprintf(path, "%s/trails/current/state.json", pv->config->storage.mntpoint);
 	else
-	        sprintf(path, "%s/trails/%d.json", sc->config->storage.mntpoint, rev);
+	        sprintf(path, "%s/trails/%d.json", pv->config->storage.mntpoint, rev);
 
-        sc_log(INFO, "reading state from: '%s'", path);
+        pv_log(INFO, "reading state from: '%s'", path);
 
         fd = open(path, O_RDONLY);
         if (fd < 0) {
-                sc_log(WARN, "unable to find state JSON for current step");
+                pv_log(WARN, "unable to find state JSON for current step");
                 return NULL;
         }
 
@@ -178,33 +178,33 @@ struct sc_state* sc_get_state(struct systemc *sc, int rev)
 	buf[size] = '\0';
 
         if (size < 0) {
-                sc_log(ERROR, "unable to read device state");
+                pv_log(ERROR, "unable to read device state");
                 return NULL;
         }
 
-	sc->step = buf;
+	pv->step = buf;
 
 	// libtrail
 	//s = trail_parse_state(buf, size);
-	s = sc_parse_state(sc, buf, size, rev);
+	s = pv_parse_state(pv, buf, size, rev);
 	close(fd);
 
 	return s;
 }
 
-void sc_release_state(struct systemc *sc)
+void pv_release_state(struct pantavisor *pv)
 {
-	if (sc->state)
-		sc_state_free(sc->state);
+	if (pv->state)
+		pv_state_free(pv->state);
 }
 
-struct sc_state* sc_get_current_state(struct systemc *sc)
+struct pv_state* pv_get_current_state(struct pantavisor *pv)
 {
 	int step_rev = 0;
 	struct dirent **dirs;
 	char basedir[PATH_MAX];
 
-	sprintf(basedir, "%s/trails/", sc->config->storage.mntpoint);
+	sprintf(basedir, "%s/trails/", pv->config->storage.mntpoint);
 
 	int n = scandir(basedir, &dirs, NULL, alphasort);
 	while (n--) {
@@ -216,19 +216,19 @@ struct sc_state* sc_get_current_state(struct systemc *sc)
 		if(tmp[0] != '\0')
 			continue;
 
-		sc_log(INFO, "default to newest step_rev: '%s'", dirs[n]->d_name);
+		pv_log(INFO, "default to newest step_rev: '%s'", dirs[n]->d_name);
 		step_rev = atoi(dirs[n]->d_name);
 		break;
 	}
 
-	return sc_get_state(sc, step_rev);
+	return pv_get_state(pv, step_rev);
 
 	return NULL;
 }
 
-int systemc_init()
+int pantavisor_init()
 {
-	struct systemc *sc;
+	struct pantavisor *pv;
 
         pid_t pid = fork();
 
@@ -237,12 +237,12 @@ int systemc_init()
 
         if (pid > 0) {
                 // Let init continue
-                sc_pid = pid;
+                pv_pid = pid;
                 goto out;
         } else {
 		int ret;
-                prctl(PR_SET_NAME, "systemc");
-		sc = calloc(1, sizeof(struct systemc));
+                prctl(PR_SET_NAME, "pantavisor");
+		pv = calloc(1, sizeof(struct pantavisor));
 
 		struct rlimit core_limit;
 		core_limit.rlim_cur = RLIM_INFINITY;
@@ -256,7 +256,7 @@ int systemc_init()
 			write(fd, core, strlen(core));
 
 		// Enter state machine
-		ret = sc_controller_start(sc);
+		ret = pv_controller_start(pv);
 
 		// Clean exit -> reboot
                 exit(ret);

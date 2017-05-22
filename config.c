@@ -31,7 +31,7 @@
 #include "config.h"
 
 #define MODULE_NAME             "config"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 struct config_item {
@@ -74,7 +74,7 @@ static struct config_item* _config_add_item(char *key, char *value)
 	this = (struct config_item *) malloc(sizeof(struct config_item));
 
 	if (!this) {
-		sc_log(ERROR, "unable to allocate config item");
+		pv_log(ERROR, "unable to allocate config item");
 		return NULL;
 	}
 
@@ -147,7 +147,7 @@ static int load_key_value_file(char *path)
 
 	fp = fopen(path, "r");
 	if (!fp) {
-		sc_log(INFO, "unable to find %s config file", path);
+		pv_log(INFO, "unable to find %s config file", path);
 		return -1;
 	}
 
@@ -166,7 +166,7 @@ static int load_key_value_file(char *path)
 }
 
 // Fill config struct after parsing on-initramfs factory config
-int sc_config_from_file(char *path, struct systemc_config *config)
+int pv_config_from_file(char *path, struct pantavisor_config *config)
 {
 	char *item;
 
@@ -178,7 +178,7 @@ int sc_config_from_file(char *path, struct systemc_config *config)
 		config->loglevel = atoi(item);
 
 	item = _config_get_value("bootloader.type");
-	sc_log(DEBUG, "bl_type='%s'\n", item);
+	pv_log(DEBUG, "bl_type='%s'\n", item);
 	if (item && !strcmp(item, "uboot-pvk"))
 		config->bl_type = UBOOT_PVK;
 	else
@@ -212,7 +212,7 @@ int sc_config_from_file(char *path, struct systemc_config *config)
 
 // FIXME: add override capability for static config
 // Fill config struct after parsing on-initramfs factory config
-int ph_config_from_file(char *path, struct systemc_config *config)
+int ph_config_from_file(char *path, struct pantavisor_config *config)
 {
 	char *item;
 
@@ -222,7 +222,7 @@ int ph_config_from_file(char *path, struct systemc_config *config)
 	config->creds.host = _config_get_value("creds_host");
 	if (!config->creds.host) {
 		config->creds.host = strdup("192.168.53.1");
-		sc_log(INFO, "no host set, using default: '%s'", config->creds.host);
+		pv_log(INFO, "no host set, using default: '%s'", config->creds.host);
 	}
 
 	item = _config_get_value("creds_port");
@@ -250,7 +250,7 @@ static int write_config_tuple(int fd, char *key, char *value)
 	return bytes;
 }
 
-int ph_config_to_file(struct systemc_config *config, char *path)
+int ph_config_to_file(struct pantavisor_config *config, char *path)
 {
 	int fd;
 	int bytes;
@@ -258,7 +258,7 @@ int ph_config_to_file(struct systemc_config *config, char *path)
 
 	fd = open(path, O_RDWR | O_SYNC | O_CREAT, 644);
 	if (!fd) {
-		sc_log(ERROR, "unable to open temporary credentials config");
+		pv_log(ERROR, "unable to open temporary credentials config");
 		return 1;
 	}
 

@@ -29,24 +29,24 @@
 #include <sys/stat.h>
 
 #define MODULE_NAME             "parser"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "utils.h"
 #include "platforms.h"
 #include "volumes.h"
 #include "objects.h"
-#include "systemc.h"
+#include "pantavisor.h"
 
-#define SC_NS_NETWORK	0x1
-#define SC_NS_UTS	0x2
-#define SC_NS_IPC	0x4
+#define PV_NS_NETWORK	0x1
+#define PV_NS_UTS	0x2
+#define PV_NS_IPC	0x4
 
 typedef struct ns_share_t { char *name; unsigned long val; } ns_share_t;
 ns_share_t ns_share[] = {
-	{ "NETWORK", SC_NS_NETWORK },
-	{ "UTS", SC_NS_UTS },
-	{ "IPC", SC_NS_IPC },
+	{ "NETWORK", PV_NS_NETWORK },
+	{ "UTS", PV_NS_UTS },
+	{ "IPC", PV_NS_IPC },
 	{ NULL, 0xff }
 };
 
@@ -60,7 +60,7 @@ static unsigned long ns_share_flag(char *key)
 	return 0;
 }
 
-static int parse_systemc(struct sc_state *s, char *value, int n)
+static int parse_pantavisor(struct pv_state *s, char *value, int n)
 {
 	int i, c;
 	int ret, tokc, size;
@@ -72,7 +72,7 @@ static int parse_systemc(struct sc_state *s, char *value, int n)
 	buf = calloc(1, (n+1) * sizeof(char));
 	buf = strncpy(buf, value, n);
 
-	sc_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
+	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
@@ -114,7 +114,7 @@ static int parse_systemc(struct sc_state *s, char *value, int n)
 		jsmntok_t *k = (*key+2);
 		size = (*key+1)->size;
 		while ((str = json_array_get_one_str(buf, &size, &k)))
-			sc_platform_add(s, str);
+			pv_platform_add(s, str);
 
 		break;
 	}
@@ -132,7 +132,7 @@ static int parse_systemc(struct sc_state *s, char *value, int n)
 		jsmntok_t *k = (*key+2);
 		size = (*key+1)->size;
 		while ((str = json_array_get_one_str(buf, &size, &k)))
-			sc_volume_add(s, str);
+			pv_volume_add(s, str);
 
 		break;
 	}
@@ -145,21 +145,21 @@ static int parse_systemc(struct sc_state *s, char *value, int n)
 	return 1;
 }
 
-static int parse_platform(struct sc_state *s, char *buf, int n)
+static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	int i;
 	int tokc, ret, size;
 	jsmntok_t *tokv, *t;
 	char *name, *str;
 	char *configs, *shares;
-	struct sc_platform *this;
+	struct pv_platform *this;
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 	name = get_json_key_value(buf, "name", tokv, tokc);
 
-	this = sc_platform_get_by_name(s, name);
+	this = pv_platform_get_by_name(s, name);
 	if (!this) {
-		sc_log(ERROR, "");
+		pv_log(ERROR, "");
 		goto out;
 	}
 
@@ -230,14 +230,14 @@ out:
 	return 0;
 }
 
-void sc_state_free(struct sc_state *this)
+void pv_state_free(struct pv_state *this)
 {
 	char **initrd = this->initrd;
 	while (initrd && *initrd) {
 		free(*initrd);
 		initrd++;
 	}
-	struct sc_platform *pt, *p = this->platforms;
+	struct pv_platform *pt, *p = this->platforms;
 	while (p) {
 		free(p->type);
 		free(p->exec);
@@ -250,14 +250,14 @@ void sc_state_free(struct sc_state *this)
 		p = p->next;
 		free(pt);
 	}
-	struct sc_volume *vt, *v = this->volumes;
+	struct pv_volume *vt, *v = this->volumes;
 	while (v) {
 		free(v->name);
 		vt = v;
 		v = v->next;
 		free(vt);
 	}
-	struct sc_object *ot, *o = this->objects;
+	struct pv_object *ot, *o = this->objects;
 	while (o) {
 		free(o->name);
 		free(o->id);
@@ -270,14 +270,14 @@ void sc_state_free(struct sc_state *this)
 	}
 }
 
-struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev)
+struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int rev)
 {
 	int tokc, ret, count, n;
 	char *key, *value, *ext = 0;
 	jsmntok_t *tokv;
 	jsmntok_t **k;
 
-	struct sc_state *this = calloc(1, sizeof(struct sc_state));
+	struct pv_state *this = calloc(1, sizeof(struct pv_state));
 
 	// set rev
 	this->rev = rev;
@@ -285,29 +285,29 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	count = json_get_key_count(buf, "systemc.json", tokv, tokc);
+	count = json_get_key_count(buf, "pantavisor.json", tokv, tokc);
 	if (!count || (count > 1)) {
-		sc_log(WARN, "Invalid systemc.json count in state");
+		pv_log(WARN, "Invalid pantavisor.json count in state");
 		return NULL;
 	}
 
-	value = get_json_key_value(buf, "systemc.json", tokv, tokc);
+	value = get_json_key_value(buf, "pantavisor.json", tokv, tokc);
 	if (!value) {
-		sc_log(WARN, "Unable to get systemc.json value from state");
+		pv_log(WARN, "Unable to get pantavisor.json value from state");
 		return NULL;
 	}
 
-	if (!parse_systemc(this, value, strlen(value)))
+	if (!parse_pantavisor(this, value, strlen(value)))
 		return NULL;
 
 	k = jsmnutil_get_object_keys(buf, tokv);
 
-	// platform head is sc->state->platforms
+	// platform head is pv->state->platforms
 	while (*k) {
 		n = (*k)->end - (*k)->start;
 
-		// avoid systemc.json and #spec special keys
-		if (!strncmp("systemc.json", buf+(*k)->start, n) ||
+		// avoid pantavisor.json and #spec special keys
+		if (!strncmp("pantavisor.json", buf+(*k)->start, n) ||
 		    !strncmp("#spec", buf+(*k)->start, n)) {
 			k++;
 			continue;
@@ -327,7 +327,7 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 		if (ext && !strcmp(ext, ".json"))
 			parse_platform(this, value, strlen(value));
 		else
-			sc_objects_add(this, key, value, sc->config->storage.mntpoint);
+			pv_objects_add(this, key, value, pv->config->storage.mntpoint);
 
 		// free intermediates
 		if (key)
@@ -341,42 +341,42 @@ struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev
 	this->json = strdup(buf);
 
 	// print
-	sc_log(INFO, "kernel: '%s'\n", this->kernel);
+	pv_log(INFO, "kernel: '%s'\n", this->kernel);
 	char **initrd = this->initrd;
-	sc_log(INFO, "initrd: \n");
+	pv_log(INFO, "initrd: \n");
 	while (*initrd) {
-		sc_log(INFO, "  '%s'\n", *initrd);
+		pv_log(INFO, "  '%s'\n", *initrd);
 		initrd++;
 	}
-	struct sc_platform *p = this->platforms;
-	sc_log(INFO, "platform: '%s'\n", p->name);
+	struct pv_platform *p = this->platforms;
+	pv_log(INFO, "platform: '%s'\n", p->name);
 	while (p) {
-		sc_log(INFO, "  type: '%s'\n", p->type);
-		sc_log(INFO, "  exec: '%s'\n", p->exec);
-		sc_log(INFO, "  configs:\n");
+		pv_log(INFO, "  type: '%s'\n", p->type);
+		pv_log(INFO, "  exec: '%s'\n", p->exec);
+		pv_log(INFO, "  configs:\n");
 		char **config = p->configs;
 		while (config && *config) {
-			sc_log(INFO, "    '%s'\n", *config);
+			pv_log(INFO, "    '%s'\n", *config);
 			config++;
 		}
-		sc_log(INFO, "  shares: 0x%08lx\n", p->ns_share);
+		pv_log(INFO, "  shares: 0x%08lx\n", p->ns_share);
 		p = p->next;
 	}
-	struct sc_volume *v = this->volumes;
+	struct pv_volume *v = this->volumes;
 	while (v) {
-		sc_log(INFO, "volume: '%s'\n", v->name);
+		pv_log(INFO, "volume: '%s'\n", v->name);
 		v = v->next;
 	}
-	struct sc_object *o = this->objects;
+	struct pv_object *o = this->objects;
 	while (o) {
-		sc_log(INFO, "object: \n");
-		sc_log(INFO, "  name: '%s'\n", o->name);
-		sc_log(INFO, "  name: '%s'\n", o->id);
+		pv_log(INFO, "object: \n");
+		pv_log(INFO, "  name: '%s'\n", o->name);
+		pv_log(INFO, "  name: '%s'\n", o->id);
 		o = o->next;
 	}
 
 	// remove platforms that have no loaded data
-	sc_platforms_remove_not_done(this);
+	pv_platforms_remove_not_done(this);
 
 	return this;
 }

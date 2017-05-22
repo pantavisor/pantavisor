@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_LOG_H
-#define SC_LOG_H
+#ifndef PV_LOG_H
+#define PV_LOG_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +30,7 @@
 #include <time.h>
 #include <sys/time.h>
 
-#include "systemc.h"
+#include "pantavisor.h"
 
 void exit_error(int err, char *msg);
 
@@ -52,13 +52,13 @@ struct level_name {
 	char *name;
 };
 
-// Example log:		"[systemc] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
+// Example log:		"[pantavisor] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
 #define DATE_FORMAT		"2016-12-01 13:22:26"
 
 #define vlog(module, level, ...)	__vlog(module, level, ## __VA_ARGS__);
 
 void __vlog(char *module, int level, const char *fmt, ...);
-void sc_log_flush(struct systemc *sc);
-int sc_log_set_level(unsigned int level);
+void pv_log_flush(struct pantavisor *pv);
+int pv_log_set_level(unsigned int level);
 
 #endif

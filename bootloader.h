@@ -19,19 +19,19 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_BOOTLOADER_H
-#define SC_BOOTLOADER_H
+#ifndef PV_BOOTLOADER_H
+#define PV_BOOTLOADER_H
 
-#include "systemc.h"
+#include "pantavisor.h"
 
-int sc_bl_pvk_get_bank(struct systemc *sc);
-int sc_bl_install_kernel(struct systemc *sc, char *obj);
-int sc_bl_pvk_get_rev(struct systemc *sc, int bank);
-int sc_bl_set_try(struct systemc *sc, int rev);
-void sc_bl_set_current(struct systemc *sc, int rev);
-int sc_bl_get_current(struct systemc *sc);
-int sc_bl_get_update(struct systemc *sc, int *update);
-int sc_bl_clear_update(struct systemc *sc);
-int sc_bl_get_try(struct systemc *sc);
+int pv_bl_pvk_get_bank(struct pantavisor *pv);
+int pv_bl_install_kernel(struct pantavisor *pv, char *obj);
+int pv_bl_pvk_get_rev(struct pantavisor *pv, int bank);
+int pv_bl_set_try(struct pantavisor *pv, int rev);
+void pv_bl_set_current(struct pantavisor *pv, int rev);
+int pv_bl_get_current(struct pantavisor *pv);
+int pv_bl_get_update(struct pantavisor *pv, int *update);
+int pv_bl_clear_update(struct pantavisor *pv);
+int pv_bl_get_try(struct pantavisor *pv);
 
 #endif

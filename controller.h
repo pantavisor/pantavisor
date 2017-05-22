@@ -19,11 +19,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_CONTROLLER_H
-#define SC_CONTROLLER_H
+#ifndef PV_CONTROLLER_H
+#define PV_CONTROLLER_H
 
-#include "systemc.h"
+#include "pantavisor.h"
 
-int sc_controller_start(struct systemc *sc);
+int pv_controller_start(struct pantavisor *pv);
 
 #endif

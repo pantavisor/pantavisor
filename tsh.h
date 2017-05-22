@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_TSH_H
-#define SC_TSH_H
+#ifndef PV_TSH_H
+#define PV_TSH_H
 
 pid_t tsh_run(char *cmd);
 

@@ -31,20 +31,20 @@
 #include <linux/limits.h>
 
 #define MODULE_NAME             "volumes"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "loop.h"
 
 #include "utils.h"
-#include "systemc.h"
+#include "pantavisor.h"
 #include "volumes.h"
 
 #define FW_PATH		"/lib/firmware"
 
-struct sc_volume* sc_volume_get_by_name(struct sc_state *s, char *name)
+struct pv_volume* pv_volume_get_by_name(struct pv_state *s, char *name)
 {
-	struct sc_volume* v = s->volumes;
+	struct pv_volume* v = s->volumes;
 
 	while (v) {
 		if (!strcmp(name, v->name))
@@ -55,10 +55,10 @@ struct sc_volume* sc_volume_get_by_name(struct sc_state *s, char *name)
 	return NULL;
 }
 
-void sc_volume_remove(struct sc_state *s, char *name)
+void pv_volume_remove(struct pv_state *s, char *name)
 {
-	struct sc_volume *v = s->volumes;
-	struct sc_volume *prev = NULL;
+	struct pv_volume *v = s->volumes;
+	struct pv_volume *prev = NULL;
 
 	while (v) {
 		if (!strcmp(v->name, name)) {
@@ -82,10 +82,10 @@ void sc_volume_remove(struct sc_state *s, char *name)
 	}
 }
 
-struct sc_volume* sc_volume_add(struct sc_state *s, char *name)
+struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
 {
-	struct sc_volume *this = calloc(1, sizeof(struct sc_volume));
-	struct sc_volume *add = s->volumes;
+	struct pv_volume *this = calloc(1, sizeof(struct pv_volume));
+	struct pv_volume *add = s->volumes;
 
 	while (add && add->next) {
 		add = add->next;
@@ -102,12 +102,12 @@ struct sc_volume* sc_volume_add(struct sc_state *s, char *name)
 	return this;
 }
 
-int sc_volumes_mount(struct systemc *sc)
+int pv_volumes_mount(struct pantavisor *pv)
 {
         int ret = -1;
 	struct stat st;
-	struct sc_state *s = sc->state;
-	struct sc_volume *v = s->volumes;
+	struct pv_state *s = pv->state;
+	struct pv_volume *v = s->volumes;
 
         // Create volumes if non-existant
         mkdir("/volumes", 0644);
@@ -117,14 +117,14 @@ int sc_volumes_mount(struct systemc *sc)
                 char path[256];
                 char mntpoint[256];
 
-                sprintf(path, "%s/trails/%d/%s", sc->config->storage.mntpoint,
+                sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
 			s->rev, v->name);
                 sprintf(mntpoint, "/volumes/%s", v->name);
 
                 char *fstype = strrchr(v->name, '.');
                 fstype++;
 
-                sc_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
+                pv_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
 
 		if (strcmp(fstype, "bind") == 0) {
 			struct stat buf;
@@ -149,27 +149,27 @@ int sc_volumes_mount(struct systemc *sc)
                 v = v->next;
 	}
 
-	if (!sc->state->firmware)
+	if (!pv->state->firmware)
 		goto out;
 
-	if (stat(sc->state->firmware, &st))
+	if (stat(pv->state->firmware, &st))
 		goto out;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
 		mkdir_p(FW_PATH, 0644);
 
-	ret = mount_bind(sc->state->firmware, FW_PATH);
+	ret = mount_bind(pv->state->firmware, FW_PATH);
 
 out:
         return ret;
 }
 
-int sc_volumes_unmount(struct systemc *sc)
+int pv_volumes_unmount(struct pantavisor *pv)
 {
 	int ret;
 	int count = 0;
-	struct sc_state *s = sc->state;
-	struct sc_volume *v = s->volumes;
+	struct pv_state *s = pv->state;
+	struct pv_volume *v = s->volumes;
 
         while(v) {
 		if (v->loop_fd == -1) {
@@ -179,17 +179,17 @@ int sc_volumes_unmount(struct systemc *sc)
 		}
 
 		if (ret < 0) {
-			sc_log(ERROR, "error umounting volumes");
+			pv_log(ERROR, "error umounting volumes");
 			return -1;
 		} else {
-			sc_log(INFO, "unmounted '%s' successfully", v->dest);
-			sc_volume_remove(s, v->name);
+			pv_log(INFO, "unmounted '%s' successfully", v->dest);
+			pv_volume_remove(s, v->name);
 			count++;
 		}
 		v = v->next;
 	}
 
-	sc_log(INFO, "unmounted '%d' volumes", count);
+	pv_log(INFO, "unmounted '%d' volumes", count);
 
 	return count;
 }

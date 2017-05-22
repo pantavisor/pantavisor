@@ -19,19 +19,19 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_OBJECTS_H
-#define SC_OBJECTS_H
+#ifndef PV_OBJECTS_H
+#define PV_OBJECTS_H
 
 #define OBJPATH_FMT	"%s/objects/%s"
 #define RELPATH_FMT	"%s/trails/%d/%s"
 
-#include "systemc.h"
+#include "pantavisor.h"
 
-char** sc_objects_get_all_ids(struct systemc *sc);
-int sc_objects_id_in_step(struct systemc *sc, struct sc_state *s, char *id);
-struct sc_object* sc_objects_add(struct sc_state *s, char *filename, char *id, char *c);
-struct sc_object* sc_objects_get_by_name(struct sc_state *s, char *name);
-struct sc_object* sc_objects_get_by_id(struct sc_state *s, char *id);
-void sc_objects_remove_all(struct sc_state *s);
+char** pv_objects_get_all_ids(struct pantavisor *pv);
+int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id);
+struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *c);
+struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name);
+struct pv_object* pv_objects_get_by_id(struct pv_state *s, char *id);
+void pv_objects_remove_all(struct pv_state *s);
 
-#endif // SC_OBJECTS_H
+#endif // PV_OBJECTS_H

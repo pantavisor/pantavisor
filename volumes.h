@@ -19,13 +19,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_VOLUMES_H
-#define SC_VOLUMES_H
+#ifndef PV_VOLUMES_H
+#define PV_VOLUMES_H
 
-struct sc_volume* sc_volume_get_by_name(struct sc_state *s, char *name);
-void sc_volume_remove(struct sc_state *s, char *name);
-struct sc_volume* sc_volume_add(struct sc_state *s, char *name);
-int sc_volumes_mount(struct systemc *sc);
-int sc_volumes_unmount(struct systemc *sc);
+struct pv_volume* pv_volume_get_by_name(struct pv_state *s, char *name);
+void pv_volume_remove(struct pv_state *s, char *name);
+struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
+int pv_volumes_mount(struct pantavisor *pv);
+int pv_volumes_unmount(struct pantavisor *pv);
 
-#endif // SC_VOLUMES_H
+#endif // PV_VOLUMES_H

@@ -19,15 +19,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_PANTAHUB_H
-#define SC_PANTAHUB_H
+#ifndef PV_PANTAHUB_H
+#define PV_PANTAHUB_H
 
-int sc_ph_is_available(struct systemc *sc);
-int sc_ph_device_exists(struct systemc *sc);
-int sc_ph_register_self(struct systemc *sc);
-const char** sc_ph_get_certs(struct systemc *sc);
-int sc_ph_device_is_owned(struct systemc *sc, char **c);
-void sc_ph_release_client(struct systemc *sc);
-void sc_ph_update_hint_file(struct systemc *sc, char *c);
+int pv_ph_is_available(struct pantavisor *pv);
+int pv_ph_device_exists(struct pantavisor *pv);
+int pv_ph_register_self(struct pantavisor *pv);
+const char** pv_ph_get_certs(struct pantavisor *pv);
+int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
+void pv_ph_release_client(struct pantavisor *pv);
+void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
 
 #endif

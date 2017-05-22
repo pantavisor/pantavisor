@@ -34,7 +34,7 @@
 #include <sys/statfs.h>
 
 #define MODULE_NAME             "storage"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "objects.h"
@@ -48,13 +48,13 @@ static void remove_at(char *path, char *filename)
 	remove(full_path);
 }
 
-int sc_storage_gc_run(struct systemc *sc)
+int pv_storage_gc_run(struct pantavisor *pv)
 {
 	int reclaimed = 0;
 	int *rev, *rev_i;
 	int n = 0;
 	struct stat st;
-	struct sc_state *s = 0, *u = 0;
+	struct pv_state *s = 0, *u = 0;
 	struct dirent **d;
 	char path[PATH_MAX];
 	char **obj, **obj_i;
@@ -62,22 +62,22 @@ int sc_storage_gc_run(struct systemc *sc)
 
 	// FIXME: global GC disable check
 
-	if (sc->state)
-		s = sc->state;
+	if (pv->state)
+		s = pv->state;
 
 
-	if (sc->update)
-		u = sc->update->pending;
+	if (pv->update)
+		u = pv->update->pending;
 
 
 	// make sure our current is marked done
-	if (!sc_rev_is_done(sc, s->rev))
+	if (!pv_rev_is_done(pv, s->rev))
 		return -1;
 
-	rev = sc_trail_get_revs(sc);
+	rev = pv_trail_get_revs(pv);
 
 	if (!rev) {
-		sc_log(ERROR, "error parsings revs on disk for GC");
+		pv_log(ERROR, "error parsings revs on disk for GC");
 		return -1;
 	}
 
@@ -88,30 +88,30 @@ int sc_storage_gc_run(struct systemc *sc)
 			continue;
 
 		// if configured, keep factory too
-		if (sc->config->updater.keep_factory &&	*rev_i == 0)
+		if (pv->config->updater.keep_factory &&	*rev_i == 0)
 			continue;
 
 		// neither, remove
-		sprintf(path, "%s/trails/%d.json", sc->config->storage.mntpoint, *rev_i);
-		sc_log(DEBUG, "removing '%s'", path);
+		sprintf(path, "%s/trails/%d.json", pv->config->storage.mntpoint, *rev_i);
+		pv_log(DEBUG, "removing '%s'", path);
 		remove(path);
-		sprintf(path, "%s/trails/%d/", sc->config->storage.mntpoint, *rev_i);
+		sprintf(path, "%s/trails/%d/", pv->config->storage.mntpoint, *rev_i);
 
 		n = scandir(path, &d, NULL, alphasort);
 		while (n--) {
 			if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
 				continue;
-			sc_log(DEBUG, "unlink '%s'", d[n]->d_name);
+			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
 			remove_at(path, d[n]->d_name);
 		}
-		sc_log(DEBUG, "removing '%s'", path);
+		pv_log(DEBUG, "removing '%s'", path);
 		remove(path);
 		sync();
 	}
 
-	obj = sc_objects_get_all_ids(sc);
+	obj = pv_objects_get_all_ids(pv);
 	for (obj_i = obj; *obj_i; obj_i++) {
-		sprintf(path, "%s/objects/%s", sc->config->storage.mntpoint, *obj_i);
+		sprintf(path, "%s/objects/%s", pv->config->storage.mntpoint, *obj_i);
 		memset(&st, 0, sizeof(struct stat));
 		if (stat(path, &st) < 0)
 			continue;
@@ -119,17 +119,17 @@ int sc_storage_gc_run(struct systemc *sc)
 		if (st.st_nlink > 1)
 			continue;
 
-		if (sc_objects_id_in_step(sc, u, *obj_i))
+		if (pv_objects_id_in_step(pv, u, *obj_i))
 			continue;
 
 		// remove,unlink obj_iect and sync fs
 		reclaimed += st.st_size;
 		remove(path);
 		sync();
-		sc_log(DEBUG, "removed unused '%s', reclaimed %lu bytes", path, st.st_size);
+		pv_log(DEBUG, "removed unused '%s', reclaimed %lu bytes", path, st.st_size);
 	}
 
-	sc_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
+	pv_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
 
 	if (rev)
 		free(rev);
@@ -146,7 +146,7 @@ int sc_storage_gc_run(struct systemc *sc)
 	return reclaimed;
 }
 
-off_t sc_storage_get_free(struct systemc *sc)
+off_t pv_storage_get_free(struct pantavisor *pv)
 {
 	off_t fs_free, fs_min;
 	struct statfs buf;
@@ -160,7 +160,7 @@ off_t sc_storage_get_free(struct systemc *sc)
 	// Always leave 5%
 	fs_min -= (fs_min * 95) / 100;
 
-	sc_log(DEBUG, "fs_free: %llu, fs_min: %llu", fs_free, fs_min);
+	pv_log(DEBUG, "fs_free: %llu, fs_min: %llu", fs_free, fs_min);
 
 	if (fs_free < fs_min)
 		return 0;

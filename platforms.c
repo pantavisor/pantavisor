@@ -31,32 +31,32 @@
 #include <unistd.h>
 
 #define MODULE_NAME             "platforms"
-#define sc_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "platforms.h"
 
-struct sc_cont_ctrl {
+struct pv_cont_ctrl {
 	char *type;
 	void* (*start)(char *name, char *conf_file, void *data);
 	void* (*stop)(char *name, char *conf_file, void *data);
 };
 
 enum {
-	SC_CONT_LXC,
-//	SC_CONT_DOCKER,
-	SC_CONT_MAX
+	PV_CONT_LXC,
+//	PV_CONT_DOCKER,
+	PV_CONT_MAX
 };
 
-struct sc_cont_ctrl cont_ctrl[SC_CONT_MAX] = {
+struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 	{ "lxc", NULL, NULL },
 //	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
-struct sc_platform* sc_platform_add(struct sc_state *s, char *name)
+struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 {
-	struct sc_platform *this = calloc(1, sizeof(struct sc_platform));
-	struct sc_platform *add = s->platforms;
+	struct pv_platform *this = calloc(1, sizeof(struct pv_platform));
+	struct pv_platform *add = s->platforms;
 
 	while (add && add->next) {
 		add = add->next;
@@ -74,9 +74,9 @@ struct sc_platform* sc_platform_add(struct sc_state *s, char *name)
 	return this;
 }
 
-struct sc_platform* sc_platform_get_by_name(struct sc_state *s, char *name)
+struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 {
-	struct sc_platform *p = s->platforms;
+	struct pv_platform *p = s->platforms;
 
 	if (name == NULL)
 		return NULL;
@@ -90,9 +90,9 @@ struct sc_platform* sc_platform_get_by_name(struct sc_state *s, char *name)
 	return NULL;
 }
 
-struct sc_platform* sc_platform_get_by_data(struct sc_state *s, void *data)
+struct pv_platform* pv_platform_get_by_data(struct pv_state *s, void *data)
 {
-	struct sc_platform *p = s->platforms;
+	struct pv_platform *p = s->platforms;
 
 	if (data == NULL)
 		return NULL;
@@ -106,10 +106,10 @@ struct sc_platform* sc_platform_get_by_data(struct sc_state *s, void *data)
 	return NULL;
 }
 
-void sc_platforms_remove_all(struct sc_state *s)
+void pv_platforms_remove_all(struct pv_state *s)
 {
-	struct sc_platform *p = s->platforms;
-	struct sc_platform *t;
+	struct pv_platform *p = s->platforms;
+	struct pv_platform *t;
 	char **c;
 
 	while (p) {
@@ -133,10 +133,10 @@ void sc_platforms_remove_all(struct sc_state *s)
 	s->platforms = NULL;
 }
 
-void sc_platforms_remove_not_done(struct sc_state *s)
+void pv_platforms_remove_not_done(struct pv_state *s)
 {
-	struct sc_platform *p = s->platforms;
-	struct sc_platform *prev = p;
+	struct pv_platform *p = s->platforms;
+	struct pv_platform *prev = p;
 	char **c;
 
 	while (p) {
@@ -166,10 +166,10 @@ void sc_platforms_remove_not_done(struct sc_state *s)
 	}
 }
 
-void sc_platforms_remove_by_data(struct sc_state *s, void *data)
+void pv_platforms_remove_by_data(struct pv_state *s, void *data)
 {
-	struct sc_platform *p = s->platforms;
-	struct sc_platform *prev = p;
+	struct pv_platform *p = s->platforms;
+	struct pv_platform *prev = p;
 	char **c;
 
 	while (p) {
@@ -199,18 +199,18 @@ void sc_platforms_remove_by_data(struct sc_state *s, void *data)
 	}
 }
 
-static struct sc_cont_ctrl* _sc_platforms_get_ctrl(char *type)
+static struct pv_cont_ctrl* _pv_platforms_get_ctrl(char *type)
 {
 	int i;
 
-	for (i = 0; i < SC_CONT_MAX; i++)
+	for (i = 0; i < PV_CONT_MAX; i++)
 		if (strcmp(cont_ctrl[i].type, type) == 0)
 			return &cont_ctrl[i];
 
 	return NULL;
 }
 
-static int load_pv_plugin(struct sc_cont_ctrl *c)
+static int load_pv_plugin(struct pv_cont_ctrl *c)
 {
 	char lib_path[PATH_MAX];
 	void *lib;
@@ -219,11 +219,11 @@ static int load_pv_plugin(struct sc_cont_ctrl *c)
 
 	lib = dlopen(lib_path, RTLD_NOW);
 	if (!lib) {
-		sc_log(ERROR, "unable to load %s: %s", lib_path, dlerror());
+		pv_log(ERROR, "unable to load %s: %s", lib_path, dlerror());
 		return 0;
 	}
 
-	sc_log(DEBUG, "loaded %s @%p", lib_path, lib);
+	pv_log(DEBUG, "loaded %s @%p", lib_path, lib);
 
 	// static engines have to define c->start and c->end
 	if (c->start == NULL)
@@ -239,15 +239,15 @@ static int load_pv_plugin(struct sc_cont_ctrl *c)
 }
 
 // this should construct the table dynamically
-int sc_platforms_init_ctrl(struct systemc *sc)
+int pv_platforms_init_ctrl(struct pantavisor *pv)
 {
 	int loaded = 0;
 
 	// try to find plugins for all registered types
-	for (int i = 0; i < SC_CONT_MAX; i++)
+	for (int i = 0; i < PV_CONT_MAX; i++)
 		loaded += load_pv_plugin(&cont_ctrl[i]);
 
-	sc_log(DEBUG, "loaded %d plugins correctly", loaded);
+	pv_log(DEBUG, "loaded %d plugins correctly", loaded);
 
 	return loaded;
 }
@@ -257,39 +257,39 @@ int sc_platforms_init_ctrl(struct systemc *sc)
 // Setup logging, channels, etc
 // start_by_type (fetch start function (i.e. start_lxc_platform)
 // store per-platform (void*) type object to underlying impl (lxc, docker)
-int sc_platforms_start_all(struct systemc *sc)
+int pv_platforms_start_all(struct pantavisor *pv)
 {
 	int num_plats = 0;
-	struct sc_state *s = sc->state;
-	struct sc_platform *p = s->platforms;
+	struct pv_state *s = pv->state;
+	struct pv_platform *p = s->platforms;
 
 	if (!p) {
-		sc_log(ERROR, "no platforms available");
+		pv_log(ERROR, "no platforms available");
 		return -1;
 	}
 
 	while (p) {
 		char conf_path[PATH_MAX];
-		const struct sc_cont_ctrl *ctrl;
+		const struct pv_cont_ctrl *ctrl;
 		void *data;
 		char **c = p->configs;
 
 		sprintf(conf_path, "%s/trails/%d/%s",
-			sc->config->storage.mntpoint, s->rev, *c);
+			pv->config->storage.mntpoint, s->rev, *c);
 
 		// Get type controller
-		ctrl = _sc_platforms_get_ctrl(p->type);
+		ctrl = _pv_platforms_get_ctrl(p->type);
 
 		// Start the platform
 		data = ctrl->start(p->name, conf_path, NULL);
 
 		if (!data) {
-			sc_log(ERROR, "error starting platform: \"%s\"",
+			pv_log(ERROR, "error starting platform: \"%s\"",
 				p->name);
 			return -1;
 		}
 
-		sc_log(INFO, "started platform platform: \"%s\" (data=0x%p)",
+		pv_log(INFO, "started platform platform: \"%s\" (data=0x%p)",
 			p->name, data);
 
 		// FIXME: arbitrary delay between plats
@@ -307,25 +307,25 @@ int sc_platforms_start_all(struct systemc *sc)
 
 // Iterate all underlying impl objects, stop one by one
 // Cannot fail, force stop and/or kill if necessary
-int sc_platforms_stop_all(struct systemc *sc)
+int pv_platforms_stop_all(struct pantavisor *pv)
 {
 	int num_plats = 0;
-	struct sc_state *s = sc->state;
-	struct sc_platform *p = s->platforms;
-	const struct sc_cont_ctrl *ctrl;
+	struct pv_state *s = pv->state;
+	struct pv_platform *p = s->platforms;
+	const struct pv_cont_ctrl *ctrl;
 
 	while (p) {
-		ctrl = _sc_platforms_get_ctrl(p->type);
+		ctrl = _pv_platforms_get_ctrl(p->type);
 		ctrl->stop(NULL, NULL, p->data);
 		p->running = false;
-		sc_log(INFO, "stopped platform '%s'", p->name);
+		pv_log(INFO, "stopped platform '%s'", p->name);
 		num_plats++;
 		p = p->next;
 	}
 
-	sc_platforms_remove_all(s);
+	pv_platforms_remove_all(s);
 
-	sc_log(INFO, "stopped %d platforms", num_plats);
+	pv_log(INFO, "stopped %d platforms", num_plats);
 
 	return num_plats;
 }

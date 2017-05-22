@@ -32,7 +32,7 @@
 #include <mtd/mtd-user.h>
 
 #define MODULE_NAME			"bootloader"
-#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "utils.h"
@@ -55,7 +55,7 @@ static int bl_pvk_get_bank()
 
 	token = strtok(buf, " ");
 	while (token) {
-		if (strncmp("sc_boot=", token, 8) == 0)
+		if (strncmp("pv_boot=", token, 8) == 0)
 			bank = atoi(token + 8);
 		token = strtok(NULL, " ");
 	}
@@ -75,7 +75,7 @@ static signed char bl_bank_from_rev(int rev)
 	lseek(fd, 0x18, SEEK_SET);
 	read(fd, &b1_rev, sizeof(unsigned long));
 
-	sc_log(DEBUG, "b0_rev=%d b1_rev=%d\n", b0_rev, b1_rev);
+	pv_log(DEBUG, "b0_rev=%d b1_rev=%d\n", b0_rev, b1_rev);
 
 	if (b0_rev == rev)
 		return 0;
@@ -85,27 +85,27 @@ static signed char bl_bank_from_rev(int rev)
 	return -1;
 }
 
-static int bl_is_pvk(struct systemc *sc)
+static int bl_is_pvk(struct pantavisor *pv)
 {
-	if (sc->config->bl_type == UBOOT_PVK)
+	if (pv->config->bl_type == UBOOT_PVK)
 		return 1;
 
 	return 0;
 }
 
-static int uboot_set_try_rev(struct systemc *sc, int rev)
+static int uboot_set_try_rev(struct pantavisor *pv, int rev)
 {
 	int fd;
 	char s[256];
 	erase_info_t ei;
 	unsigned long try = (unsigned long) rev;
 
-	if (bl_is_pvk(sc)) {
+	if (bl_is_pvk(pv)) {
 		fd = open("/dev/mtd3", O_RDWR | O_SYNC);
 		lseek(fd, 0x1c, SEEK_SET);
 		write(fd, &try, sizeof(unsigned long));
-		char bank = bl_bank_from_rev(sc->update->pending->rev);
-		sc_log(DEBUG, "setting boot_bank=%d\n", bank);
+		char bank = bl_bank_from_rev(pv->update->pending->rev);
+		pv_log(DEBUG, "setting boot_bank=%d\n", bank);
 		char header[4] = { 0x68, 0x00, 0x00, bank };
 		lseek(fd, 0, SEEK_SET);
 		write(fd, header, sizeof(header));
@@ -122,7 +122,7 @@ static int uboot_set_try_rev(struct systemc *sc, int rev)
 	ioctl(fd, MEMERASE, &ei);
 
 	lseek(fd, 0, SEEK_SET);
-	sprintf(s, "sc_try=%d\0", rev);
+	sprintf(s, "pv_try=%d\0", rev);
 	write(fd, &s, strlen(s) + 1);
 
 out:
@@ -131,21 +131,21 @@ out:
 	return 1;
 }
 
-int sc_bl_set_try(struct systemc *sc, int rev)
+int pv_bl_set_try(struct pantavisor *pv, int rev)
 {
 	int fd;
 	char s[256];
 
-	if (strcmp(sc->config->storage.fstype, "ubifs") == 0)
-		return uboot_set_try_rev(sc, rev);
+	if (strcmp(pv->config->storage.fstype, "ubifs") == 0)
+		return uboot_set_try_rev(pv, rev);
 
-	sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
+	sprintf(s, "%s/boot/uboot.txt", pv->config->storage.mntpoint);
 	fd = open(s, O_WRONLY | O_APPEND | O_SYNC);
 	if (!fd)
 		return 0;
 
 	memset(s, 0, sizeof(s));
-	sprintf(s, "sc_try=%d\0", rev);
+	sprintf(s, "pv_try=%d\0", rev);
 	write(fd, s, strlen(s) + 1);
 	sync();
 	close(fd);
@@ -153,7 +153,7 @@ int sc_bl_set_try(struct systemc *sc, int rev)
 	return 1;
 }
 
-static int uboot_get_key_int(struct systemc *sc, char *key)
+static int uboot_get_key_int(struct pantavisor *pv, char *key)
 {
 	int fd, n;
 	int value = 0;
@@ -161,10 +161,10 @@ static int uboot_get_key_int(struct systemc *sc, char *key)
 	char *buf;
 	struct stat st;
 
-	if (strcmp(sc->config->storage.fstype, "ubifs") == 0)
+	if (strcmp(pv->config->storage.fstype, "ubifs") == 0)
 		sprintf(s, "/dev/mtd2");
 	else
-		sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
+		sprintf(s, "%s/boot/uboot.txt", pv->config->storage.mntpoint);
 	stat(s, &st);
 
 	fd = open(s, O_RDONLY);
@@ -193,9 +193,9 @@ static int uboot_get_key_int(struct systemc *sc, char *key)
 	return value;
 }
 
-int sc_bl_get_current(struct systemc *sc)
+int pv_bl_get_current(struct pantavisor *pv)
 {
-	return uboot_get_key_int(sc, "sc_rev");
+	return uboot_get_key_int(pv, "pv_rev");
 }
 
 static int bl_pvk_get_try()
@@ -208,17 +208,17 @@ static int bl_pvk_get_try()
 	lseek(fd, 0x1c, SEEK_SET);
 	read(fd, &try, sizeof(unsigned long));
 
-	sc_log(DEBUG, "try_rev=%d\n", (int) try);
+	pv_log(DEBUG, "try_rev=%d\n", (int) try);
 
 	return try;
 }
 
-int sc_bl_get_try(struct systemc *sc)
+int pv_bl_get_try(struct pantavisor *pv)
 {
-	if (bl_is_pvk(sc))
+	if (bl_is_pvk(pv))
 		return bl_pvk_get_try();
 
-	return uboot_get_key_int(sc, "sc_try");
+	return uboot_get_key_int(pv, "pv_try");
 }
 
 static void bl_pvk_set_current(int rev)
@@ -227,7 +227,7 @@ static void bl_pvk_set_current(int rev)
 
 	fd = open("/dev/mtd3", O_RDWR | O_SYNC);
 	if (!fd) {
-		sc_log(ERROR, "unable to open PVK header");
+		pv_log(ERROR, "unable to open PVK header");
 		return;
 	}
 
@@ -246,34 +246,34 @@ static void bl_pvk_set_current(int rev)
 	write(fd, buf, sizeof(buf));
 }
 
-void sc_bl_set_current(struct systemc *sc, int rev)
+void pv_bl_set_current(struct pantavisor *pv, int rev)
 {
 	int fd;
 	char s[256];
 
-	if (bl_is_pvk(sc)) {
+	if (bl_is_pvk(pv)) {
 		bl_pvk_set_current(rev);
 		return;
 	}
 
-	sprintf(s, "%s/boot/uboot.txt", sc->config->storage.mntpoint);
+	sprintf(s, "%s/boot/uboot.txt", pv->config->storage.mntpoint);
 	fd = open(s, O_RDWR | O_TRUNC | O_SYNC);
 	memset(s, 0, sizeof(s));
-	sprintf(s, "sc_rev=%d\0", rev);
+	sprintf(s, "pv_rev=%d\0", rev);
 	write(fd, s, strlen(s) + 1);
 	sync();
 	close(fd);
 }
 
-int sc_bl_install_kernel(struct systemc *sc, char *obj)
+int pv_bl_install_kernel(struct pantavisor *pv, char *obj)
 {
 	int fd, obj_fd;
 	int bytes, seek;
-	unsigned long rev = (unsigned long) sc->update->pending->rev;
+	unsigned long rev = (unsigned long) pv->update->pending->rev;
 	char *buf;
-	char bank = bl_bank_from_rev(sc->state->rev);
+	char bank = bl_bank_from_rev(pv->state->rev);
 
-	sc_log(DEBUG, "current_bank=%d\n", bank);
+	pv_log(DEBUG, "current_bank=%d\n", bank);
 
 	// first check if rev exists in a bank
 	if (bl_bank_from_rev(rev) != -1)
@@ -288,7 +288,7 @@ int sc_bl_install_kernel(struct systemc *sc, char *obj)
 
 	obj_fd = open(obj, O_RDONLY);
 	if (!obj_fd) {
-		sc_log(ERROR, "unable to open temp kernel file");
+		pv_log(ERROR, "unable to open temp kernel file");
 		return 0;
 	}
 
@@ -304,10 +304,10 @@ int sc_bl_install_kernel(struct systemc *sc, char *obj)
 	// read-in and write new kernel
 	lseek(obj_fd, 0, SEEK_SET);
 	bytes = read(obj_fd, buf, 0x380000);
-	sc_log(DEBUG, "read %d bytes from %s\n", bytes, obj);
+	pv_log(DEBUG, "read %d bytes from %s\n", bytes, obj);
 	lseek(fd, seek, SEEK_SET);
 	bytes = write(fd, buf, bytes);
-	sc_log(DEBUG, "wrote %d bytes to bank %d in /dev/mtd3\n", bytes, bank);
+	pv_log(DEBUG, "wrote %d bytes to bank %d in /dev/mtd3\n", bytes, bank);
 
 	// write revision of bank in h+0x14 or h+0x18
 	lseek(fd, 0x14+(0x4*bank), SEEK_SET);
@@ -319,12 +319,12 @@ int sc_bl_install_kernel(struct systemc *sc, char *obj)
 	return 1;
 }
 
-int sc_bl_pvk_get_bank(struct systemc *sc)
+int pv_bl_pvk_get_bank(struct pantavisor *pv)
 {
 	return bl_pvk_get_bank();
 }
 
-int sc_bl_pvk_get_rev(struct systemc *sc, int bank)
+int pv_bl_pvk_get_rev(struct pantavisor *pv, int bank)
 {
 	int fd;
 	unsigned long rev[2] = { 0 };
@@ -335,25 +335,25 @@ int sc_bl_pvk_get_rev(struct systemc *sc, int bank)
 	lseek(fd, 0x18, SEEK_SET);
 	read(fd, &rev[1], sizeof(unsigned long));
 
-	sc_log(DEBUG, "rev[0]=%lu rev[1]=%lu\n", rev[0], rev[1]);
+	pv_log(DEBUG, "rev[0]=%lu rev[1]=%lu\n", rev[0], rev[1]);
 
 	return rev[bank];
 }
 
-int sc_bl_clear_update(struct systemc *sc)
+int pv_bl_clear_update(struct pantavisor *pv)
 {
 	int fd;
 	char buf[64] = { 0 };
 
-	if (bl_is_pvk(sc)) {
+	if (bl_is_pvk(pv)) {
 		// FIXME: Should be config
 		fd = open("/dev/mtd3", O_RDWR | O_SYNC);
 		if (fd < 0) {
-			sc_log(ERROR, "unable to read pvk data eader");
+			pv_log(ERROR, "unable to read pvk data eader");
 			return -1;
 		}
 		lseek(fd, 0, SEEK_SET);
-		char bank = bl_bank_from_rev(sc->state->rev);
+		char bank = bl_bank_from_rev(pv->state->rev);
 		char header[4] = { 0x68, 0x00, 0x00, bank };
 		write(fd, header, sizeof(header));
 		lseek(fd,  0x1c, SEEK_SET);
@@ -363,14 +363,14 @@ int sc_bl_clear_update(struct systemc *sc)
 		// FIXME: Should be config
 		fd = open("/dev/mtd2", O_RDWR | O_SYNC);
 		if (fd < 0) {
-			sc_log(ERROR, "unable to clear bootloader update buffer");
+			pv_log(ERROR, "unable to clear bootloader update buffer");
 			return -1;
 		}
 		lseek(fd, 0, SEEK_SET);
 		write(fd, buf, sizeof(buf));
 	}
 
-	sc_log(INFO, "cleared bootloader update buffer");
+	pv_log(INFO, "cleared bootloader update buffer");
 	close(fd);
 
 	return 0;

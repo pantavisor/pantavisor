@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_UTILS_H
-#define SC_UTILS_H
+#ifndef PV_UTILS_H
+#define PV_UTILS_H
 
 #include <sys/types.h>
 

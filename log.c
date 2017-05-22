@@ -88,7 +88,7 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	va_start(args, fmt);
 
 	if (level <= ERROR) {
-		dprintf(STDOUT_FILENO, "[systemc] %s\t", level_names[level].name);
+		dprintf(STDOUT_FILENO, "[pantavisor] %s\t", level_names[level].name);
 		log_print_date(STDOUT_FILENO);
 		dprintf(STDOUT_FILENO, "[%s]: -- ", module);
 		format = strip_newline(fmt);
@@ -98,7 +98,7 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	}
 
 	if (level <= prio) {
-		dprintf(log_fd, "[systemc] %s\t", level_names[level].name);
+		dprintf(log_fd, "[pantavisor] %s\t", level_names[level].name);
 		log_print_date(log_fd);
 		dprintf(log_fd, "[%s]: -- ", module);
 		format = strip_newline(fmt);
@@ -111,19 +111,19 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	va_end(args);
 }
 
-void sc_log_flush(struct systemc *sc)
+void pv_log_flush(struct pantavisor *pv)
 {
 	// FIXME: Push to cloud somehow, device meta?
 
 	return;
 }
 
-int sc_log_set_level(unsigned int level)
+int pv_log_set_level(unsigned int level)
 {
 	if (level <= ALL)
 		prio = level;
 
-	log_fd = open("/tmp/systemc.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
+	log_fd = open("/tmp/pantavisor.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
 
 	return prio;
 }

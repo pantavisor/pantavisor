@@ -29,20 +29,20 @@
 #include <linux/limits.h>
 
 #define MODULE_NAME			"objects"
-#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "utils.h"
 #include "objects.h"
 
-char** sc_objects_get_all_ids(struct systemc *sc)
+char** pv_objects_get_all_ids(struct pantavisor *pv)
 {
 	int i = 0, n, bufsize;
 	struct dirent **dirs;
 	char **ids = 0;
 	char path[PATH_MAX];
 
-	sprintf(path, "%s/objects/", sc->config->storage.mntpoint);
+	sprintf(path, "%s/objects/", pv->config->storage.mntpoint);
 	n = scandir(path, &dirs, NULL, alphasort);
 	if (n < 0)
 		goto out;
@@ -66,9 +66,9 @@ out:
 	return ids;
 }
 
-int sc_objects_id_in_step(struct systemc *sc, struct sc_state *s, char *id)
+int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id)
 {
-	struct sc_object *o;
+	struct pv_object *o;
 
 	if (!s)
 		return 0;
@@ -83,10 +83,10 @@ int sc_objects_id_in_step(struct systemc *sc, struct sc_state *s, char *id)
 	return 0;
 }
 
-struct sc_object* sc_objects_add(struct sc_state *s, char *filename, char *id, char *c)
+struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *c)
 {
-	struct sc_object *this = calloc(1, sizeof(struct sc_object));
-	struct sc_object *add = s->objects;
+	struct pv_object *this = calloc(1, sizeof(struct pv_object));
+	struct pv_object *add = s->objects;
 	int size;
 
 	while (add && add->next) {
@@ -116,9 +116,9 @@ struct sc_object* sc_objects_add(struct sc_state *s, char *filename, char *id, c
 	return this;
 }
 
-struct sc_object* sc_objects_get_by_name(struct sc_state *s, char *name)
+struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
 {
-	struct sc_object *o = s->objects;
+	struct pv_object *o = s->objects;
 
 	while (o) {
 		if (!strcmp(o->name, name))
@@ -129,9 +129,9 @@ struct sc_object* sc_objects_get_by_name(struct sc_state *s, char *name)
 	return NULL;
 }
 
-struct sc_object* sc_objects_get_by_id(struct sc_state *s, char *id)
+struct pv_object* pv_objects_get_by_id(struct pv_state *s, char *id)
 {
-	struct sc_object *o = s->objects;
+	struct pv_object *o = s->objects;
 
 	while (o) {
 		if (!strcmp(o->id, id))
@@ -142,10 +142,10 @@ struct sc_object* sc_objects_get_by_id(struct sc_state *s, char *id)
 	return NULL;
 }
 
-void sc_objects_remove_all(struct sc_state *s)
+void pv_objects_remove_all(struct pv_state *s)
 {
-	struct sc_object *o = s->objects;
-	struct sc_object *t;
+	struct pv_object *o = s->objects;
+	struct pv_object *t;
 
 	while (o) {
 		if (o->name)

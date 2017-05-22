@@ -19,22 +19,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_PLATFORMS_H
-#define SC_PLATFORMS_H
+#ifndef PV_PLATFORMS_H
+#define PV_PLATFORMS_H
 
 #include <stdbool.h>
 
-#include "systemc.h"
+#include "pantavisor.h"
 
-int sc_platforms_init_ctrl(struct systemc *sc);
-struct sc_platform* sc_platform_add(struct sc_state *s, char *name);
-struct sc_platform* sc_platform_remove(struct sc_state *s, char *name);
-void sc_platforms_remove_all(struct sc_state *s);
-void sc_platforms_remove_not_done(struct sc_state *s);
-void sc_platforms_remove_by_data(struct sc_state *s, void *data);
-struct sc_platform* sc_platform_get_by_name(struct sc_state *s, char *name);
-struct sc_platform* sc_platform_get_by_data(struct sc_state *s, void *data);
-int sc_platforms_start_all(struct systemc *sc);
-int sc_platforms_stop_all(struct systemc *sc);
+int pv_platforms_init_ctrl(struct pantavisor *pv);
+struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
+struct pv_platform* pv_platform_remove(struct pv_state *s, char *name);
+void pv_platforms_remove_all(struct pv_state *s);
+void pv_platforms_remove_not_done(struct pv_state *s);
+void pv_platforms_remove_by_data(struct pv_state *s, void *data);
+struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name);
+struct pv_platform* pv_platform_get_by_data(struct pv_state *s, void *data);
+int pv_platforms_start_all(struct pantavisor *pv);
+int pv_platforms_stop_all(struct pantavisor *pv);
 
 #endif

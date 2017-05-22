@@ -19,10 +19,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_STORAGE_H
-#define SC_STORAGE_H
+#ifndef PV_STORAGE_H
+#define PV_STORAGE_H
 
-int sc_storage_gc_run(struct systemc *sc);
-off_t sc_storage_get_free(struct systemc *sc);
+int pv_storage_gc_run(struct pantavisor *pv);
+off_t pv_storage_get_free(struct pantavisor *pv);
 
-#endif // SC_STORAGE_H
+#endif // PV_STORAGE_H

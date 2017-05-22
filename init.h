@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_INIT_H
-#define SC_INIT_H
+#ifndef PV_INIT_H
+#define PV_INIT_H
 
 #ifndef CLONE_FS
 #  define CLONE_FS                0x00000200

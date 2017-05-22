@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_SYSTEMC_H
-#define SC_SYSTEMC_H
+#ifndef PV_SYSTEMC_H
+#define PV_SYSTEMC_H
 
 #include <stdbool.h>
 #include <trail.h>
@@ -28,7 +28,7 @@
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
-// systemc.h
+// pantavisor.h
 
 struct trail_remote;
 
@@ -44,25 +44,25 @@ enum update_state {
 	UPDATE_NO_PARSE
 };
 
-struct sc_update {
+struct pv_update {
 	enum update_state status;
 	char *endpoint;
 	int need_reboot;
 	int need_finish;
-	struct sc_state *pending;
+	struct pv_state *pending;
 };
 
-struct sc_volume {
+struct pv_volume {
 	char *name;
 	char *mode;
 	char *src;
 	char *dest;
 	int loop_fd;
 	int file_fd;
-	struct sc_volume *next;
+	struct pv_volume *next;
 };
 
-struct sc_platform {
+struct pv_platform {
 	char *name;
 	char *type;
 	char **configs;
@@ -71,10 +71,10 @@ struct sc_platform {
 	void *data;
 	bool running;
 	bool done;
-	struct sc_platform *next;
+	struct pv_platform *next;
 };
 
-struct sc_object {
+struct pv_object {
 	char *name;
 	char *id;
 	char *geturl;
@@ -82,42 +82,42 @@ struct sc_object {
 	char *relpath;
 	off_t size;
 	char *sha256;
-	struct sc_object *next;
+	struct pv_object *next;
 };
 
-struct sc_state {
+struct pv_state {
 	int rev;
 	char *kernel;
 	char *firmware;
 	char **initrd;
-	struct sc_platform *platforms;
-	struct sc_volume *volumes;
-	struct sc_object *objects;
+	struct pv_platform *platforms;
+	struct pv_volume *volumes;
+	struct pv_object *objects;
 	char *json;
 };
 
-struct systemc {
+struct pantavisor {
 	int last;
 	char *step;
-	struct systemc_config *config;
+	struct pantavisor_config *config;
 	struct trail_remote *remote;
-	struct sc_update *update;
-	struct sc_state *state;
+	struct pv_update *update;
+	struct pv_state *state;
 	unsigned long flags;
 };
 
-int *sc_trail_get_revs(struct systemc *sc);
-int sc_rev_is_done(struct systemc *sc, int rev);
-void sc_set_current(struct systemc *sc, int rev);
-int sc_get_rollback_rev(struct systemc *sc);
-void sc_destroy(struct systemc *sc);
-void sc_release_state(struct systemc *sc);
-struct sc_state* sc_parse_state(struct systemc *sc, char *buf, int size, int rev);
-struct sc_state* sc_parse_state_from_buf(struct systemc *sc, char *buf);
-struct sc_state* sc_get_state(struct systemc *sc, int current);
-struct sc_state* sc_get_current_state(struct systemc *sc);
-void sc_state_free(struct sc_state *s);
-int sc_start_platforms(struct systemc *sc);
-int systemc_init(void);
+int *pv_trail_get_revs(struct pantavisor *pv);
+int pv_rev_is_done(struct pantavisor *pv, int rev);
+void pv_set_current(struct pantavisor *pv, int rev);
+int pv_get_rollback_rev(struct pantavisor *pv);
+void pv_destroy(struct pantavisor *pv);
+void pv_release_state(struct pantavisor *pv);
+struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int rev);
+struct pv_state* pv_parse_state_from_buf(struct pantavisor *pv, char *buf);
+struct pv_state* pv_get_state(struct pantavisor *pv, int current);
+struct pv_state* pv_get_current_state(struct pantavisor *pv);
+void pv_state_free(struct pv_state *s);
+int pv_start_platforms(struct pantavisor *pv);
+int pantavisor_init(void);
 
 #endif

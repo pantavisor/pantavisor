@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_LOOP_H
-#define SC_LOOP_H
+#ifndef PV_LOOP_H
+#define PV_LOOP_H
 
 #include <sys/stat.h>
 #include <sys/mount.h>

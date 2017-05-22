@@ -35,13 +35,13 @@
 #include <linux/reboot.h>
 
 #define MODULE_NAME			"updater"
-#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "tsh.h"
-#include "systemc.h"
+#include "pantavisor.h"
 
-pid_t sc_pid;
+pid_t pv_pid;
 pid_t shell_pid;
 
 static int open_ns(int pid, const char *ns_proc_name)
@@ -115,13 +115,13 @@ static void signal_handler(int signal)
 		pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED);
 	}
 
-	// Check for systemc
-	if (pid == sc_pid) {
+	// Check for pantavisor
+	if (pid == pv_pid) {
 		if (WIFSIGNALED(wstatus)) {
-			sc_log(WARN, "restarting systemc");
-			systemc_init();
+			pv_log(WARN, "restarting pantavisor");
+			pantavisor_init();
 		} else if (WIFEXITED(wstatus)) {
-			sc_log(INFO, "clean exit from systemc, rebooting...");
+			pv_log(INFO, "clean exit from pantavisor, rebooting...");
 			sleep(1);
 			sync();
 			reboot(LINUX_REBOOT_CMD_RESTART);
@@ -129,7 +129,7 @@ static void signal_handler(int signal)
 	}
 
 	if (pid == shell_pid) {
-		sc_log(WARN, "reaped shell, restarting /bin/ash");
+		pv_log(WARN, "reaped shell, restarting /bin/ash");
 		shell_pid = tsh_run("ash");
 	}
 }
@@ -173,7 +173,7 @@ int main(int argc, char *argv[])
 		debug_shell();
 		debug_telnet();
 
-	systemc_init();
+	pantavisor_init();
 
 	for (;;)
 		pause();

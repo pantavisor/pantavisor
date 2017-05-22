@@ -36,7 +36,7 @@
 #include <mbedtls/sha256.h>
 
 #define MODULE_NAME			"updater"
-#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "utils.h"
@@ -53,7 +53,7 @@ static struct trail_object *last;
 typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 
 // takes an allocated buffer
-static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
+static char *unescape_utf8_to_apvii(char *buf, char *code, char c)
 {
 	char *p = 0;
 	char *new = 0;
@@ -91,7 +91,7 @@ static char *unescape_utf8_to_ascii(char *buf, char *code, char c)
 	return new;
 }
 
-static int trail_remote_init(struct systemc *sc)
+static int trail_remote_init(struct pantavisor *pv)
 {
 	struct trail_remote *remote = NULL;
 	const char **cafiles;
@@ -99,44 +99,44 @@ static int trail_remote_init(struct systemc *sc)
 	trest_ptr client = 0;
 
 	// Make sure values are reasonable
-	if ((strcmp(sc->config->creds.id, "") == 0) ||
-	    (strcmp(sc->config->creds.prn, "") == 0))
+	if ((strcmp(pv->config->creds.id, "") == 0) ||
+	    (strcmp(pv->config->creds.prn, "") == 0))
 		return 0;
 
-	cafiles = sc_ph_get_certs(sc);
+	cafiles = pv_ph_get_certs(pv);
 	if (!cafiles) {
-		sc_log(ERROR, "unable to assemble cert list");
+		pv_log(ERROR, "unable to assemble cert list");
 		goto err;
 	}
 
 	// Create client
 	client = trest_new_tls_from_userpass(
-		sc->config->creds.host,
-		sc->config->creds.port,
-		sc->config->creds.prn,
-		sc->config->creds.secret,
+		pv->config->creds.host,
+		pv->config->creds.port,
+		pv->config->creds.prn,
+		pv->config->creds.secret,
 		(const char **) cafiles
 		);
 
 	if (!client) {
-		sc_log(INFO, "unable to create device client");
+		pv_log(INFO, "unable to create device client");
 		goto err;
 	}
 
 	// FIXME: Crash here if unable to auth
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		sc_log(INFO, "unable to auth device client");
+		pv_log(INFO, "unable to auth device client");
 		goto err;
 	}
 
 	remote = malloc(sizeof(struct trail_remote));
 	remote->client = client;
 	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
-				   + strlen(sc->config->creds.id)) * sizeof(char));
-	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, sc->config->creds.id);
+				   + strlen(pv->config->creds.id)) * sizeof(char));
+	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, pv->config->creds.id);
 
-	sc->remote = remote;
+	pv->remote = remote;
 
 	return 0;
 
@@ -149,10 +149,10 @@ err:
 	return -1;
 }
 
-static int trail_remote_set_status(struct systemc *sc, int rev, enum update_state status)
+static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_state status)
 {
 	int ret = 0;
-	struct sc_update *u = sc->update;
+	struct pv_update *u = pv->update;
 	trest_request_ptr req;
 	trest_response_ptr res;
 	char json[1024];
@@ -160,14 +160,14 @@ static int trail_remote_set_status(struct systemc *sc, int rev, enum update_stat
 
 	if (!u) {
 		endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT) +
-			strlen(sc->config->creds.id) + get_digit_count(rev));
-		sprintf(endpoint, DEVICE_STEP_ENDPOINT_FMT, sc->config->creds.id, rev);
+			strlen(pv->config->creds.id) + get_digit_count(rev));
+		sprintf(endpoint, DEVICE_STEP_ENDPOINT_FMT, pv->config->creds.id, rev);
 	} else {
 		endpoint = u->endpoint;
 	}
 
-	if (!sc->remote)
-		trail_remote_init(sc);
+	if (!pv->remote)
+		trail_remote_init(pv);
 
 	switch (status) {
 	case UPDATE_QUEUED:
@@ -213,18 +213,18 @@ static int trail_remote_set_status(struct systemc *sc, int rev, enum update_stat
 				 0, 0,
 				 json);
 
-	res = trest_do_json_request(sc->remote->client, req);
+	res = trest_do_json_request(pv->remote->client, req);
 
 	if (!res) {
-		sc_log(INFO, "unable to do trail request");
+		pv_log(INFO, "unable to do trail request");
 		ret = -1;
 		goto out;
 	}
 
 	if (res->code == THTTP_STATUS_OK) {
-		sc_log(INFO, "remote state updated to %s", res->body);
+		pv_log(INFO, "remote state updated to %s", res->body);
 	} else {
-		sc_log(WARN, "unable to update remote status, http code %d", res->code);
+		pv_log(WARN, "unable to update remote status, http code %d", res->code);
 	}
 
 out:
@@ -238,11 +238,11 @@ out:
 	return ret;
 }
 
-static int trail_get_new_steps(struct systemc *sc)
+static int trail_get_new_steps(struct pantavisor *pv)
 {
 	int size = 0, tokc = 0, rev;
 	char *state = 0, *rev_s = 0;
-	struct trail_remote *r = sc->remote;
+	struct trail_remote *r = pv->remote;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 	jsmntok_t *tokv = 0;
@@ -257,16 +257,16 @@ static int trail_get_new_steps(struct systemc *sc)
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
-		sc_log(INFO, "unable to do trail request");
+		pv_log(INFO, "unable to do trail request");
 		goto out;
 	}
 	if (res->code != THTTP_STATUS_OK) {
-		sc_log(WARN, "http error (%d) on trail request", res->code);
+		pv_log(WARN, "http error (%d) on trail request", res->code);
 		goto out;
 	}
 
 	size = jsmnutil_array_count(res->body, res->json_tokv);
-	sc_log(DEBUG, "steps found in NEW state = '%d'", size);
+	pv_log(DEBUG, "steps found in NEW state = '%d'", size);
 
 	if (!size)
 		goto out;
@@ -280,21 +280,21 @@ static int trail_get_new_steps(struct systemc *sc)
 		res->json_tokv, res->json_tokc);
 
 	if (!rev_s || !state) {
-		sc_log(WARN, "invalid data found on trail, ignoring");
+		pv_log(WARN, "invalid data found on trail, ignoring");
 		goto out;
 	}
 
 	// parse state
 	rev = atoi(rev_s);
-	r->pending = sc_parse_state(sc, state, strlen(state), rev);
+	r->pending = pv_parse_state(pv, state, strlen(state), rev);
 
 	if (!r->pending) {
-		sc_log(DEBUG, "invalid rev (%d) found on remote", rev);
-		trail_remote_set_status(sc, rev, UPDATE_NO_PARSE);
+		pv_log(DEBUG, "invalid rev (%d) found on remote", rev);
+		trail_remote_set_status(pv, rev, UPDATE_NO_PARSE);
 		size = 0;
 	} else {
-		sc_log(DEBUG, "adding rev (%d), state = '%s'", rev, state);
-		sc_log(INFO, "first pending found to be rev = %d", r->pending->rev);
+		pv_log(DEBUG, "adding rev (%d), state = '%s'", rev, state);
+		pv_log(INFO, "first pending found to be rev = %d", r->pending->rev);
 	}
 
 out:
@@ -326,7 +326,7 @@ static int trail_is_available(struct trail_remote *r)
 	res = trest_do_json_request(r->client, req);
 
 	if (!res) {
-		sc_log(INFO, "unable to do trail request");
+		pv_log(INFO, "unable to do trail request");
 		size = -1;
 		goto out;
 	}
@@ -338,7 +338,7 @@ static int trail_is_available(struct trail_remote *r)
 
 	size = jsmnutil_array_count(res->body, res->json_tokv);
 	if (size)
-		sc_log(DEBUG, "trail found, using remote");
+		pv_log(DEBUG, "trail found, using remote");
 
 out:
 	if (req)
@@ -349,35 +349,35 @@ out:
 	return size;
 }
 
-static int trail_first_boot(struct systemc *sc)
+static int trail_first_boot(struct pantavisor *pv)
 {
 	int ret = 0;
 	trest_request_ptr req;
 	trest_response_ptr res;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 
-	status = trest_update_auth(sc->remote->client);
+	status = trest_update_auth(pv->remote->client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		sc_log(INFO, "cannot update auth token");
+		pv_log(INFO, "cannot update auth token");
 		return -1;
 	}
 
-	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, sc->step);
-	res = trest_do_json_request(sc->remote->client, req);
+	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, pv->step);
+	res = trest_do_json_request(pv->remote->client, req);
 
 	if (!res) {
-		sc_log(ERROR, "error on first boot json request");
+		pv_log(ERROR, "error on first boot json request");
 		ret = -1;
 		goto out;
 	}
 
 	if (res->code != THTTP_STATUS_OK) {
-		sc_log(ERROR, "http request error (%d) for initial trail", res->code);
+		pv_log(ERROR, "http request error (%d) for initial trail", res->code);
 		ret = -1;
 		goto out;
 	}
 
-	sc_log(INFO, "initial trail pushed ok");
+	pv_log(INFO, "initial trail pushed ok");
 	ret = 0;
 
 out:
@@ -392,87 +392,87 @@ out:
 
 /* API */
 
-int sc_trail_check_for_updates(struct systemc *sc)
+int pv_trail_check_for_updates(struct pantavisor *pv)
 {
 	int ret;
 	trest_auth_status_enum auth_status;
 
-	if (!sc->remote)
-		trail_remote_init(sc);
+	if (!pv->remote)
+		trail_remote_init(pv);
 
 	// Offline
-	if (!sc->remote)
+	if (!pv->remote)
 		return 0;
 
-	auth_status = trest_update_auth(sc->remote->client);
+	auth_status = trest_update_auth(pv->remote->client);
 	if (auth_status != TREST_AUTH_STATUS_OK) {
-		sc_log(INFO, "cannot authenticate to cloud");
+		pv_log(INFO, "cannot authenticate to cloud");
 		return 0;
 	}
 
-	ret = trail_is_available(sc->remote);
+	ret = trail_is_available(pv->remote);
 	if (ret == 0)
-		return trail_first_boot(sc);
+		return trail_first_boot(pv);
 	else if (ret > 0)
-		return trail_get_new_steps(sc);
+		return trail_get_new_steps(pv);
 	else
 		return 0;
 }
 
-int sc_trail_update_start(struct systemc *sc, int offline)
+int pv_trail_update_start(struct pantavisor *pv, int offline)
 {
 	int c;
 	int ret = 0;
-	int rev = sc->state->rev;
-	struct sc_update *u = calloc(sizeof(struct sc_update), 1);
+	int rev = pv->state->rev;
+	struct pv_update *u = calloc(sizeof(struct pv_update), 1);
 
 	head = NULL;
 	last = NULL;
 
 	// Offline update
-	if (!sc->remote && offline) {
-		rev = sc->state->rev;
+	if (!pv->remote && offline) {
+		rev = pv->state->rev;
 	} else {
-		u->pending = sc->remote->pending;
+		u->pending = pv->remote->pending;
 		rev = u->pending->rev;
 	}
 
 	// to construct endpoint
 	c = get_digit_count(rev);
 	u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
-		          + (strlen(sc->config->creds.id)) + c) * sizeof(char));
+		          + (strlen(pv->config->creds.id)) + c) * sizeof(char));
 	sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT,
-		sc->config->creds.id, rev);
+		pv->config->creds.id, rev);
 
 	u->need_reboot = 0;
 	u->need_finish = 0;
-	sc->update = u;
+	pv->update = u;
 
 	if (!offline) {
-		ret = trail_remote_set_status(sc, -1, UPDATE_QUEUED);
+		ret = trail_remote_set_status(pv, -1, UPDATE_QUEUED);
 		if (ret < 0)
-			sc_log(INFO, "failed to update cloud status, possibly offline");
+			pv_log(INFO, "failed to update cloud status, possibly offline");
 	}
 
 	return 0;
 }
 
-int sc_trail_update_finish(struct systemc *sc)
+int pv_trail_update_finish(struct pantavisor *pv)
 {
 	int ret = 0;
 
-	switch (sc->update->status) {
+	switch (pv->update->status) {
 	case UPDATE_DONE:
-		ret = trail_remote_set_status(sc, -1, UPDATE_DONE);
+		ret = trail_remote_set_status(pv, -1, UPDATE_DONE);
 		goto out;
 		break;
 	case UPDATE_REBOOT:
-		sc_log(INFO, "update requires reboot, cleaning up...");
+		pv_log(INFO, "update requires reboot, cleaning up...");
 		goto out;
 		break;
 	case UPDATE_FAILED:
-		ret = trail_remote_set_status(sc, -1, UPDATE_FAILED);
-		sc_log(ERROR, "update has failed");
+		ret = trail_remote_set_status(pv, -1, UPDATE_FAILED);
+		pv_log(ERROR, "update has failed");
 		goto out;
 	default:
 		ret = -1;
@@ -481,18 +481,18 @@ int sc_trail_update_finish(struct systemc *sc)
 	}
 
 out:
-	if (sc->update->pending)
-		sc_state_free(sc->update->pending);
-	if (sc->update->endpoint)
-		free(sc->update->endpoint);
+	if (pv->update->pending)
+		pv_state_free(pv->update->pending);
+	if (pv->update->endpoint)
+		free(pv->update->endpoint);
 
-	free(sc->update);
+	free(pv->update);
 
-	sc->update = NULL;
+	pv->update = NULL;
 	return ret;
 }
 
-static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
+static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 {
 	int ret = 0;
 	char *endpoint = 0;
@@ -509,19 +509,19 @@ static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
 	endpoint = malloc((sizeof(TRAIL_OBJECT_DL_FMT) + strlen(prn)) * sizeof(char));
 	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, prn);
 
-	sc_log(INFO, "requesting obj='%s'", endpoint);
+	pv_log(INFO, "requesting obj='%s'", endpoint);
 
 	req = trest_make_request(TREST_METHOD_GET,
 				 endpoint,
 				 0, 0, 0);
 
-	res = trest_do_json_request(sc->remote->client, req);
+	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
-		sc_log(WARN, "unable to do trail request");
+		pv_log(WARN, "unable to do trail request");
 		goto out;
 	}
 	if (res->code != THTTP_STATUS_OK) {
-		sc_log(WARN, "http request error (%d) on object metadata", res->code);
+		pv_log(WARN, "http request error (%d) on object metadata", res->code);
 		goto out;
 	}
 
@@ -536,10 +536,10 @@ static int trail_download_get_meta(struct systemc *sc, struct sc_object *o)
 	url = get_json_key_value(res->body, "signed-geturl",
 				 res->json_tokv, res->json_tokc);
 	if (!url) {
-		sc_log(ERROR, "unable to get download url for object");
+		pv_log(ERROR, "unable to get download url for object");
 		goto out;
 	}
-	url = unescape_utf8_to_ascii(url, "\\u0026", '&');
+	url = unescape_utf8_to_apvii(url, "\\u0026", '&');
 	o->geturl = url;
 
 	// FIXME:
@@ -557,12 +557,12 @@ out:
 	return ret;
 }
 
-static int obj_is_kernel_pvk(struct systemc *sc, struct sc_object *obj)
+static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 {
-	if (strcmp(sc->state->kernel, obj->name))
+	if (strcmp(pv->state->kernel, obj->name))
 		return 0;
 
-	if (sc->config->bl_type == UBOOT_PVK)
+	if (pv->config->bl_type == UBOOT_PVK)
 		return 1;
 
 	return 0;
@@ -581,12 +581,12 @@ static int copy_and_close(int s_fd, int d_fd)
 
 	close(s_fd);
 
-	sc_log(DEBUG, "  bytes_r=%d bytes_w=%d", bytes_r, bytes_w);
+	pv_log(DEBUG, "  bytes_r=%d bytes_w=%d", bytes_r, bytes_w);
 
 	return bytes_r;
 }
 
-static int trail_download_object(struct systemc *sc, struct sc_object *obj, const char **crtfiles)
+static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
 {
 	int ret = 0;
 	int tmp_fd, fd = -1, obj_fd = -1;
@@ -618,22 +618,22 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;
 
-	is_kernel_pvk = obj_is_kernel_pvk(sc, obj);
+	is_kernel_pvk = obj_is_kernel_pvk(pv, obj);
 
 	if (!is_kernel_pvk && stat(obj->objpath, &st) == 0) {
-		sc_log(INFO, "file exists (%s)", obj->objpath);
+		pv_log(INFO, "file exists (%s)", obj->objpath);
 		ret = 1;
 		goto out;
 	}
 
 	if (obj->geturl == NULL) {
-		sc_log(INFO, "there is no get url defined");
+		pv_log(INFO, "there is no get url defined");
 		goto out;
 	}
 
 	// FIXME: This breaks with non https urls...
 	if (strncmp(obj->geturl, "https://", 8) != 0) {
-		sc_log(INFO, "object url (%s) is invalid", obj->geturl);
+		pv_log(INFO, "object url (%s) is invalid", obj->geturl);
 		goto out;
 	}
 
@@ -662,8 +662,8 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	req->path = obj->geturl;
 	req->headers = 0;
 
-	if (!strcmp(sc->config->storage.fstype, "jffs2") ||
-	    !strcmp(sc->config->storage.fstype, "ubifs"))
+	if (!strcmp(pv->config->storage.fstype, "jffs2") ||
+	    !strcmp(pv->config->storage.fstype, "ubifs"))
 		use_temp = 1;
 
 	mktemp(tobj);
@@ -683,21 +683,21 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 
 	// download to tmp
 	lseek(fd, 0, SEEK_SET);
-	sc_log(INFO, "downloading object (%s)", obj->objpath);
+	pv_log(INFO, "downloading object (%s)", obj->objpath);
 	res = thttp_request_do_file (req, fd);
 	if (!res) {
-		sc_log(WARN, "no response from server");
+		pv_log(WARN, "no response from server");
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {
-		sc_log(WARN, "error response from server, http code %d", res->code);
+		pv_log(WARN, "error response from server, http code %d", res->code);
 		goto out;
 	}
 
 	if (use_temp) {
-		sc_log(INFO, "copying %s to %s", tobj, obj->objpath);
+		pv_log(INFO, "copying %s to %s", tobj, obj->objpath);
 		bytes = copy_and_close(tmp_fd, obj_fd);
 	}
-	sc_log(INFO, "downloaded object (%s)", obj->objpath);
+	pv_log(INFO, "downloaded object (%s)", obj->objpath);
 	fsync(fd);
 
 	// verify file downloaded correctly before syncing to disk
@@ -723,7 +723,7 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	// compare hashes FIXME: retry if fail
 	for (int i = 0; i < 32; i++) {
 		if (cloud_sha[i] != local_sha[i]) {
-			sc_log(WARN, "sha256 mismatch with local object");
+			pv_log(WARN, "sha256 mismatch with local object");
 			remove(obj->objpath);
 			goto out;
 		}
@@ -731,9 +731,9 @@ static int trail_download_object(struct systemc *sc, struct sc_object *obj, cons
 	syncdir(obj->objpath);
 
 	if (is_kernel_pvk)
-		sc_bl_install_kernel(sc, tobj);
+		pv_bl_install_kernel(pv, tobj);
 
-	sc_log(INFO, "verified object (%s)", obj->objpath);
+	pv_log(INFO, "verified object (%s)", obj->objpath);
 	ret = 1;
 
 out:
@@ -749,10 +749,10 @@ out:
 	return ret;
 }
 
-static int trail_link_objects(struct systemc *sc)
+static int trail_link_objects(struct pantavisor *pv)
 {
 	int err = 0;
-	struct sc_object *obj = sc->update->pending->objects;
+	struct pv_object *obj = pv->update->pending->objects;
 	char *c, *tmp;
 
 	while (obj) {
@@ -764,11 +764,11 @@ static int trail_link_objects(struct systemc *sc)
 		if (link(obj->objpath, obj->relpath) < 0) {
 			if (errno != EEXIST)
 				err++;
-			sc_log(ERROR, "unable to link %s, errno=%d",
+			pv_log(ERROR, "unable to link %s, errno=%d",
 				obj->relpath, errno);
 		} else {
 			syncdir(obj->objpath);
-			sc_log(INFO, "linked %s to %s",
+			pv_log(INFO, "linked %s to %s",
 				obj->relpath, obj->objpath);
 		}
 		obj = obj->next;
@@ -777,60 +777,60 @@ static int trail_link_objects(struct systemc *sc)
 	return -err;
 }
 
-static int get_update_size(struct sc_update *u)
+static int get_update_size(struct pv_update *u)
 {
 	int size = 0;
 	struct stat st;
-	struct sc_object *o = u->pending->objects;
+	struct pv_object *o = u->pending->objects;
 
 	while (o) {
 		if (stat(o->objpath, &st) < 0) {
 			size += o->size;
-			sc_log(INFO, "id=%s, name=%s, size=%d", o->id, o->name, o->size);
+			pv_log(INFO, "id=%s, name=%s, size=%d", o->id, o->name, o->size);
 		}
 		o = o->next;
 	}
 
-	sc_log(DEBUG, "update_size: %d bytes", size);
+	pv_log(DEBUG, "update_size: %d bytes", size);
 
 	return size;
 }
 
-static int trail_download_objects(struct systemc *sc)
+static int trail_download_objects(struct pantavisor *pv)
 {
 	int ret = -1;
-	struct sc_object *k_new, *k_old;
-	struct sc_update *u = sc->update;
-	struct sc_object *o = u->pending->objects;
-	const char **crtfiles = sc_ph_get_certs(sc);
+	struct pv_object *k_new, *k_old;
+	struct pv_update *u = pv->update;
+	struct pv_object *o = u->pending->objects;
+	const char **crtfiles = pv_ph_get_certs(pv);
 
 	while (o) {
-		if (!trail_download_get_meta(sc, o))
+		if (!trail_download_get_meta(pv, o))
 			goto out;
 		o = o->next;
 	}
 
 	// Run GC as last resort
-	if (sc_storage_get_free(sc) < get_update_size(u))
-		sc_storage_gc_run(sc);
+	if (pv_storage_get_free(pv) < get_update_size(u))
+		pv_storage_gc_run(pv);
 
 	// Check again
-	if (sc_storage_get_free(sc) < get_update_size(u)) {
-		sc_log(WARN, "not enough space to process update");
+	if (pv_storage_get_free(pv) < get_update_size(u)) {
+		pv_log(WARN, "not enough space to process update");
 		goto out;
 	}
 
-	k_new = sc_objects_get_by_name(u->pending,
+	k_new = pv_objects_get_by_name(u->pending,
 			u->pending->kernel);
-	k_old = sc_objects_get_by_name(sc->state,
-			sc->state->kernel);
+	k_old = pv_objects_get_by_name(pv->state,
+			pv->state->kernel);
 
 	if (strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
 	o = u->pending->objects;
 	while (o) {
-		if (!trail_download_object(sc, o, crtfiles))
+		if (!trail_download_object(pv, o, crtfiles))
 			goto out;
 		o = o->next;
 	}
@@ -841,67 +841,67 @@ out:
 	return ret;
 }
 
-int sc_trail_update_install(struct systemc *sc)
+int pv_trail_update_install(struct pantavisor *pv)
 {
 	int ret, fd;
-	struct sc_state *pending = sc->update->pending;
+	struct pv_state *pending = pv->update->pending;
 	char state_path[1024];
 
-	if (!sc->remote)
-		trail_remote_init(sc);
+	if (!pv->remote)
+		trail_remote_init(pv);
 
-	sc_log(INFO, "applying update...");
+	pv_log(INFO, "applying update...");
 
-	ret = trail_download_objects(sc);
+	ret = trail_download_objects(pv);
 	if (ret < 0) {
-		sc_log(ERROR, "unable to download objects");
-		sc->update->status = UPDATE_NO_DOWNLOAD;
+		pv_log(ERROR, "unable to download objects");
+		pv->update->status = UPDATE_NO_DOWNLOAD;
 		goto out;
 	}
 
-	trail_remote_set_status(sc, -1, UPDATE_DOWNLOADED);
+	trail_remote_set_status(pv, -1, UPDATE_DOWNLOADED);
 
-	ret = trail_link_objects(sc);
+	ret = trail_link_objects(pv);
 	if (ret < 0) {
-		sc_log(ERROR, "unable to link objects to relative path (failed=%d)", ret);
-		sc->update->status = UPDATE_FAILED;
+		pv_log(ERROR, "unable to link objects to relative path (failed=%d)", ret);
+		pv->update->status = UPDATE_FAILED;
 		goto out;
 	}
 
 	// install state.json for new rev
-	sprintf(state_path, "%s/trails/%d.json", sc->config->storage.mntpoint, pending->rev);
+	sprintf(state_path, "%s/trails/%d.json", pv->config->storage.mntpoint, pending->rev);
 	fd = open(state_path, O_CREAT | O_WRONLY | O_SYNC, 0644);
 	if (fd < 0) {
-		sc_log(ERROR, "unable to write state.json file for update");
+		pv_log(ERROR, "unable to write state.json file for update");
 		ret = -1;
 		goto out;
 	}
 	write(fd, pending->json, strlen(pending->json));
 	close(fd);
 
-	trail_remote_set_status(sc, -1, UPDATE_INSTALLED);
+	trail_remote_set_status(pv, -1, UPDATE_INSTALLED);
 
 	sleep(2);
-	sc->update->status = UPDATE_TRY;
+	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	if (sc->update->need_reboot) {
-		sc->update->status = UPDATE_REBOOT;
-		sc_bl_set_try(sc, ret);
+	if (pv->update->need_reboot) {
+		pv->update->status = UPDATE_REBOOT;
+		pv_bl_set_try(pv, ret);
 	}
 
 out:
-	trail_remote_set_status(sc, -1, sc->update->status);
+	trail_remote_set_status(pv, -1, pv->update->status);
 
 	return ret;
 }
 
-void sc_trail_remote_destroy(struct systemc *sc)
+void pv_trail_remote_destroy(struct pantavisor *pv)
 {
-	if (!sc->remote)
+	if (!pv->remote)
 		return;
 
-	free(sc->remote->client);
-	free(sc->remote->endpoint);
-	free(sc->remote);
+	free(pv->remote->client);
+	free(pv->remote->endpoint);
+	free(pv->remote);
 }

@@ -33,7 +33,7 @@
 #include <linux/reboot.h>
 
 #include "utils.h"
-#include "systemc.h"
+#include "pantavisor.h"
 #include "loop.h"
 #include "platforms.h"
 #include "controller.h"
@@ -43,12 +43,12 @@
 #include "bootloader.h"
 
 #define MODULE_NAME		"controller"
-#define sc_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "storage.h"
 
-#define SC_CONFIG_FILENAME	"/systemc/device.config"
+#define PV_CONFIG_FILENAME	"/pantavisor/device.config"
 #define CMDLINE_OFFSET	7
 
 static int counter;
@@ -66,9 +66,9 @@ typedef enum {
 	STATE_ERROR,
 	STATE_EXIT,
 	MAX_STATES
-} sc_state_t;
+} pv_state_t;
 
-static const char* sc_state_string(sc_state_t st)
+static const char* pv_state_string(pv_state_t st)
 {
 	switch(st) {
 	case STATE_INIT: return "STATE_INIT";
@@ -83,61 +83,61 @@ static const char* sc_state_string(sc_state_t st)
 	default: return "STATE_UNKNOWN";
 	}
 
-	return "UNKNOWN SC STATE";
+	return "UNKNOWN PV STATE";
 }
 
-typedef sc_state_t sc_state_func_t(struct systemc *sc);
+typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
 
-static int sc_step_get_prev(struct systemc *sc)
+static int pv_step_get_prev(struct pantavisor *pv)
 {
-	if (!sc)
+	if (!pv)
 		return -1;
 
-	if (sc->state)
-		return (sc->state->rev - 1);
+	if (pv->state)
+		return (pv->state->rev - 1);
 
 	return -1;
 }
 
-static sc_state_t _sc_init(struct systemc *sc)
+static pv_state_t _pv_init(struct pantavisor *pv)
 {
-	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	int fd, ret, bytes;
-	int step_rev = 0, step_try = 0, sc_boot = -1;
+	int step_rev = 0, step_try = 0, pv_boot = -1;
 	int bl_rev = 0;
 	char *buf;
 	char *token;
 	char pconfig_p[256];
-	struct systemc_config *c;
+	struct pantavisor_config *c;
 	struct stat st;
 
 	// Initialize flags
-	sc->flags = 0;
+	pv->flags = 0;
 
-        c = malloc(sizeof(struct systemc_config));
+        c = malloc(sizeof(struct pantavisor_config));
 
-        if (sc_config_from_file(SC_CONFIG_FILENAME, c) < 0) {
-		sc_log(FATAL, "unable to parse systemc config");
+        if (pv_config_from_file(PV_CONFIG_FILENAME, c) < 0) {
+		pv_log(FATAL, "unable to parse pantavisor config");
 		return STATE_EXIT;
 	}
 
 	if (c->loglevel)
-		sc_log_set_level(c->loglevel);
+		pv_log_set_level(c->loglevel);
 
-        sc_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
-        sc_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
-        sc_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
-        sc_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
+        pv_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
+        pv_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
+        pv_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
+        pv_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
 
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0644);
 
 	// Check that storage device has been enumerated and wait if not there yet
-	// (RPi2 for example is too slow to scan the MMC devices in time)
+	// (RPi2 for example is too slow to pvan the MMC devices in time)
 	for (int wait = 5; wait > 0; wait--) {
 		if (stat(c->storage.path, &st) == 0)
 			break;
-		sc_log(INFO, "trail storage not yet available, waiting...");
+		pv_log(INFO, "trail storage not yet available, waiting...");
 		sleep(1);
 		continue;
 	}
@@ -148,15 +148,15 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 	sprintf(pconfig_p, "%s/config/pantahub.config", c->storage.mntpoint);
         if (ph_config_from_file(pconfig_p, c) < 0) {
-		sc_log(FATAL, "unable to parse pantahub config");
+		pv_log(FATAL, "unable to parse pantahub config");
 		return STATE_EXIT;
 	}
 
-	sc_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
-        sc_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
-        sc_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
-        sc_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
-        sc_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
+	pv_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
+        pv_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
+        pv_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
+        pv_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
+        pv_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
 
 	// Make pantavisor control area
 	if (stat("/tmp/pantavisor", &st) != 0)
@@ -167,11 +167,11 @@ static sc_state_t _sc_init(struct systemc *sc)
 		close(fd);
 		fd = open("/tmp/pantavisor/challenge", O_CREAT | O_SYNC | O_WRONLY, 0644);
 		close(fd);
-		sc->flags |= DEVICE_UNCLAIMED;
+		pv->flags |= DEVICE_UNCLAIMED;
 	}
 
 	// Set config
-	sc->config = c;
+	pv->config = c;
 
 	// Get current step revision from cmdline
 	fd = open("/proc/cmdline", O_RDONLY);
@@ -184,60 +184,60 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 	token = strtok(buf, " ");
 	while (token) {
-		if (strncmp("sc_rev=", token, CMDLINE_OFFSET) == 0)
+		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0)
 			step_rev = atoi(token + CMDLINE_OFFSET);
-		else if (strncmp("sc_try=", token, CMDLINE_OFFSET) == 0)
+		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
 			step_try = atoi(token + CMDLINE_OFFSET);
-		else if (strncmp("sc_boot=", token, CMDLINE_OFFSET) == 0)
-			sc_boot = atoi(token + CMDLINE_OFFSET + 1);
+		else if (strncmp("pv_boot=", token, CMDLINE_OFFSET) == 0)
+			pv_boot = atoi(token + CMDLINE_OFFSET + 1);
 		token = strtok(NULL, " ");
 	}
 	free(buf);
 
 	// Make sure this is initialized
-	sc->state = 0;
-	sc->remote = 0;
-	sc->update = 0;
-	sc->last = -1;
+	pv->state = 0;
+	pv->remote = 0;
+	pv->update = 0;
+	pv->last = -1;
 
 	// Setup PVK hints in case of legacy flash A/B kernel
-	if (sc_boot != -1 && sc->config->bl_type == UBOOT_PVK) {
-		step_rev = sc_bl_pvk_get_rev(sc, sc_boot);
-		step_try = sc_bl_get_try(sc);
+	if (pv_boot != -1 && pv->config->bl_type == UBOOT_PVK) {
+		step_rev = pv_bl_pvk_get_rev(pv, pv_boot);
+		step_try = pv_bl_get_try(pv);
 		if (step_try != step_rev)
 			step_try = 0;
 	}
 
-	sc_log(DEBUG, "%s():%d step_try=%d, step_rev=%d\n", __func__, __LINE__, step_try, step_rev);
+	pv_log(DEBUG, "%s():%d step_try=%d, step_rev=%d\n", __func__, __LINE__, step_try, step_rev);
 
 	int boot_rev = -1;
 	if (step_try == 0) {
 		boot_rev = step_rev;
 	} else if (step_try == step_rev) {
 		boot_rev = step_try;
-		sc->state = sc_get_state(sc, boot_rev);
-		sc_trail_update_start(sc, 1);
-		sc->update->status = UPDATE_TRY;
+		pv->state = pv_get_state(pv, boot_rev);
+		pv_trail_update_start(pv, 1);
+		pv->update->status = UPDATE_TRY;
 	}
 
-	bl_rev = sc_bl_get_try(sc);
+	bl_rev = pv_bl_get_try(pv);
 	if (bl_rev && (bl_rev != boot_rev)) {
-		if (!sc->state)
-			sc->state = sc_get_state(sc, bl_rev);
-		sc_trail_update_start(sc, 1);
-		sc->update->status = UPDATE_FAILED;
-		sc_state_free(sc->state);
-		sc->state = 0;
+		if (!pv->state)
+			pv->state = pv_get_state(pv, bl_rev);
+		pv_trail_update_start(pv, 1);
+		pv->update->status = UPDATE_FAILED;
+		pv_state_free(pv->state);
+		pv->state = 0;
 	}
 
-	if (!sc->state)
-		sc->state = sc_get_state(sc, boot_rev);
+	if (!pv->state)
+		pv->state = pv_get_state(pv, boot_rev);
 
 	if (bl_rev > 0)
-		sc_bl_clear_update(sc);
+		pv_bl_clear_update(pv);
 
-	if (!sc->state) {
-		sc_log(ERROR, "invalid state requested, please reconfigure");
+	if (!pv->state) {
+		pv_log(ERROR, "invalid state requested, please reconfigure");
 		return STATE_ERROR;
 	}
 
@@ -245,65 +245,65 @@ static sc_state_t _sc_init(struct systemc *sc)
 
 	total = 0;
 
-	if (!sc_platforms_init_ctrl(sc)) {
-		sc_log(ERROR, "unable to load any container runtime plugin");
+	if (!pv_platforms_init_ctrl(pv)) {
+		pv_log(ERROR, "unable to load any container runtime plugin");
 		return STATE_ERROR;
 	}
 
         return STATE_RUN;
 }
 
-static sc_state_t _sc_run(struct systemc *sc)
+static pv_state_t _pv_run(struct pantavisor *pv)
 {
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	int ret;
 
-	if (sc_volumes_mount(sc) < 0)
+	if (pv_volumes_mount(pv) < 0)
 		return STATE_ROLLBACK;
 
-	ret = sc_platforms_start_all(sc);
+	ret = pv_platforms_start_all(pv);
 	if (ret < 0) {
-		sc_log(ERROR, "error starting platforms");
+		pv_log(ERROR, "error starting platforms");
 		return STATE_ROLLBACK;
 	}
 
 	total++;
-	sc_log(INFO, "started %d platforms", ret);
+	pv_log(INFO, "started %d platforms", ret);
 
 	counter = 0;
 
 	return STATE_WAIT;
 }
 
-static sc_state_t _sc_unclaimed(struct systemc *sc)
+static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 {
 	int need_register = 1;
 	struct stat st;
 	char config_path[256];
 	char *c = malloc(sizeof(char) * 128);
 
-	if (!sc_ph_is_available(sc))
+	if (!pv_ph_is_available(pv))
 		return STATE_WAIT;
 
-	sprintf(config_path, "%s/config/unclaimed.config", sc->config->storage.mntpoint);
+	sprintf(config_path, "%s/config/unclaimed.config", pv->config->storage.mntpoint);
 	if (stat(config_path, &st) == 0)
-		ph_config_from_file(config_path, sc->config);
+		ph_config_from_file(config_path, pv->config);
 
-	if ((strcmp(sc->config->creds.id, "") != 0) && sc_ph_device_exists(sc))
+	if ((strcmp(pv->config->creds.id, "") != 0) && pv_ph_device_exists(pv))
 		need_register = 0;
 
-	if (need_register && sc_ph_register_self(sc))
-		ph_config_to_file(sc->config, config_path);
+	if (need_register && pv_ph_register_self(pv))
+		ph_config_to_file(pv->config, config_path);
 
-	if (!sc_ph_device_is_owned(sc, &c)) {
-		sc_log(INFO, "device challenge: '%s'", c);
-		sc_ph_update_hint_file(sc, c);
+	if (!pv_ph_device_is_owned(pv, &c)) {
+		pv_log(INFO, "device challenge: '%s'", c);
+		pv_ph_update_hint_file(pv, c);
 	} else {
-		sc_log(INFO, "device has been claimed, proceeding normally");
-		sprintf(config_path, "%s/config/pantahub.config", sc->config->storage.mntpoint);
-		ph_config_to_file(sc->config, config_path);
-		sc_ph_release_client(sc);
-		sc->flags &= ~DEVICE_UNCLAIMED;
+		pv_log(INFO, "device has been claimed, proceeding normally");
+		sprintf(config_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
+		ph_config_to_file(pv->config, config_path);
+		pv_ph_release_client(pv);
+		pv->flags &= ~DEVICE_UNCLAIMED;
 	}
 
 	if (c)
@@ -312,157 +312,157 @@ static sc_state_t _sc_unclaimed(struct systemc *sc)
 	return STATE_WAIT;
 }
 
-static sc_state_t _sc_wait(struct systemc *sc)
+static pv_state_t _pv_wait(struct pantavisor *pv)
 {
 	int ret;
-	int timeout_max = sc->config->updater.network_timeout
-		/ sc->config->updater.interval;
+	int timeout_max = pv->config->updater.network_timeout
+		/ pv->config->updater.interval;
 
-	sleep(sc->config->updater.interval);
+	sleep(pv->config->updater.interval);
 
-	if (sc->flags & DEVICE_UNCLAIMED)
+	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
 
-	if (!sc_ph_is_available(sc)) {
+	if (!pv_ph_is_available(pv)) {
 		counter++;
 		if (counter > timeout_max)
 			return STATE_ROLLBACK;
 		return STATE_WAIT;
 	}
 
-	// FIXME: should use sc_bl_*() helpers
+	// FIXME: should use pv_bl_*() helpers
 	// if online update pending to clear, commit update to cloud
-	if (sc->update && sc->update->status == UPDATE_TRY) {
-		sc_set_current(sc, sc->state->rev);
-		sc->update->status = UPDATE_DONE;
-		sc_trail_update_finish(sc);
-	} else if (sc->update && sc->update->status == UPDATE_FAILED) {
+	if (pv->update && pv->update->status == UPDATE_TRY) {
+		pv_set_current(pv, pv->state->rev);
+		pv->update->status = UPDATE_DONE;
+		pv_trail_update_finish(pv);
+	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
-		sc_set_current(sc, sc->state->rev);
-		sc->update->status = UPDATE_FAILED;
-		sc_trail_update_finish(sc);
+		pv_set_current(pv, pv->state->rev);
+		pv->update->status = UPDATE_FAILED;
+		pv_trail_update_finish(pv);
 	}
 
 	// make sure we always keep a ref to the latest working DONE step
-	if (current != sc->state->rev) {
-		current = sc->state->rev;
-		sc_set_current(sc, current);
-		sc->last = sc->state->rev;
+	if (current != pv->state->rev) {
+		current = pv->state->rev;
+		pv_set_current(pv, current);
+		pv->last = pv->state->rev;
 	}
 
-	ret = sc_trail_check_for_updates(sc);
+	ret = pv_trail_check_for_updates(pv);
 	if (ret) {
-		sc_log(INFO, "updates found");
+		pv_log(INFO, "updates found");
 		return STATE_UPDATE;
 	}
 
 	return STATE_WAIT;
 }
 
-static sc_state_t _sc_update(struct systemc *sc)
+static pv_state_t _pv_update(struct pantavisor *pv)
 {
 	int ret;
 
 	// queue locally and in cloud, block step
-	// FIXME: requires sc_trail_update_finish() call after RUN or boot
-	ret = sc_trail_update_start(sc, 0);
+	// FIXME: requires pv_trail_update_finish() call after RUN or boot
+	ret = pv_trail_update_start(pv, 0);
 	if (ret < 0) {
-		sc_log(INFO, "unable to queue update, abandoning it");
+		pv_log(INFO, "unable to queue update, abandoning it");
 		return STATE_WAIT;
 	}
 
 	// download and install pending step
-	ret = sc_trail_update_install(sc);
+	ret = pv_trail_update_install(pv);
 	if (ret < 0) {
-		sc_log(ERROR, "update has failed, continue");
-		sc_trail_update_finish(sc);
+		pv_log(ERROR, "update has failed, continue");
+		pv_trail_update_finish(pv);
 		return STATE_WAIT;
 	}
 
-	sc_log(WARN, "New trail state accepted, stopping current state.");
+	pv_log(WARN, "New trail state accepted, stopping current state.");
 
 	// stop current step
-	if (sc_platforms_stop_all(sc) < 0)
+	if (pv_platforms_stop_all(pv) < 0)
 		return STATE_ROLLBACK;
-	if (sc_volumes_unmount(sc) < 0)
+	if (pv_volumes_unmount(pv) < 0)
 		return STATE_ROLLBACK;
 
 	// Release current step
-	sc_release_state(sc);
+	pv_release_state(pv);
 
-	if (sc->update->need_reboot) {
-		sc_log(WARN, "Update requires reboot, rebooting...");
+	if (pv->update->need_reboot) {
+		pv_log(WARN, "Update requires reboot, rebooting...");
 		return STATE_REBOOT;
 	}
 
-	sc_log(WARN, "State update applied, starting new revision.", ret);
+	pv_log(WARN, "State update applied, starting new revision.", ret);
 
 	// Load installed step
-	sc->state = sc_get_state(sc, ret);
+	pv->state = pv_get_state(pv, ret);
 
-	if (sc->state == NULL) {
-		sc_log(WARN, "unable to load new step state, rolling back");
+	if (pv->state == NULL) {
+		pv_log(WARN, "unable to load new step state, rolling back");
 		return STATE_ROLLBACK;
 	}
 
 	return STATE_RUN;
 }
 
-static sc_state_t _sc_rollback(struct systemc *sc)
+static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
 	int ret = 0;
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
-	if (sc->state && sc->state->rev == 0)
+	if (pv->state && pv->state->rev == 0)
 		return STATE_ERROR;
 
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes
-	if (sc->update)
-		sc->update->status = UPDATE_FAILED;
+	if (pv->update)
+		pv->update->status = UPDATE_FAILED;
 
-	if (sc->state) {
-		ret = sc_platforms_stop_all(sc);
+	if (pv->state) {
+		ret = pv_platforms_stop_all(pv);
 		if (ret < 0)
 			return STATE_ERROR;
 
-		ret = sc_volumes_unmount(sc);
+		ret = pv_volumes_unmount(pv);
 		if (ret < 0)
 			return STATE_ERROR;
 
 		counter = 0;
-		sc_release_state(sc);
+		pv_release_state(pv);
 	}
 
-	if (sc->last == -1)
-		sc->last = sc_get_rollback_rev(sc);
+	if (pv->last == -1)
+		pv->last = pv_get_rollback_rev(pv);
 
-	sc->state = sc_get_state(sc, sc->last);
-	if (sc->state)
-		sc_log(INFO, "loaded previous step %d\n", sc->last);
+	pv->state = pv_get_state(pv, pv->last);
+	if (pv->state)
+		pv_log(INFO, "loaded previous step %d\n", pv->last);
 
 	return STATE_RUN;
 }
 
-static sc_state_t _sc_reboot(struct systemc *sc)
+static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
-	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	sc_trail_update_finish(sc);
+	pv_trail_update_finish(pv);
 	sync();
-	sc_log(INFO, "rebooting...");
+	pv_log(INFO, "rebooting...");
 	sleep(2);
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;
 }
 
-static sc_state_t _sc_error(struct systemc *sc)
+static pv_state_t _pv_error(struct pantavisor *pv)
 {
 	int count = 0;
 
-	sc_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 
 	while (count < 2) {
 		sleep(5);
@@ -472,32 +472,32 @@ static sc_state_t _sc_error(struct systemc *sc)
 	return STATE_REBOOT;
 }
 
-sc_state_func_t* const state_table[MAX_STATES] = {
-	_sc_init,
-	_sc_run,
-	_sc_wait,
-	_sc_unclaimed,
-	_sc_update,
-	_sc_rollback,
-	_sc_reboot,
-	_sc_error,
+pv_state_func_t* const state_table[MAX_STATES] = {
+	_pv_init,
+	_pv_run,
+	_pv_wait,
+	_pv_unclaimed,
+	_pv_update,
+	_pv_rollback,
+	_pv_reboot,
+	_pv_error,
 	NULL
 };
 
-static sc_state_t _sc_run_state(sc_state_t state, struct systemc *sc)
+static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 {
-	return state_table[state](sc);
+	return state_table[state](pv);
 }
 
-int sc_controller_start(struct systemc *sc)
+int pv_controller_start(struct pantavisor *pv)
 {
-	sc_log(DEBUG, "%s():%d", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	sc_state_t state = STATE_INIT;
+	pv_state_t state = STATE_INIT;
 
 	while (1) {
-		sc_log(DEBUG, "going to state = %s(%d)", sc_state_string(state));
-		state = _sc_run_state(state, sc);
+		pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(state));
+		state = _pv_run_state(state, pv);
 
 		if (state == STATE_EXIT)
 			return 1;

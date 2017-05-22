@@ -19,10 +19,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef SC_UPDATER_H
-#define SC_UPDATER_H
+#ifndef PV_UPDATER_H
+#define PV_UPDATER_H
 
-#include "systemc.h"
+#include "pantavisor.h"
 #include <trest.h>
 
 #define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
@@ -34,18 +34,18 @@
 struct trail_remote {
 	trest_ptr client;
 	char *endpoint;
-	struct sc_state *pending;
+	struct pv_state *pending;
 };
 
-int sc_trail_update_start(struct systemc *sc, int offline);
-int sc_trail_update_finish(struct systemc *sc);
-int sc_trail_update_install(struct systemc *sc);
-int sc_trail_check_for_updates(struct systemc *sc);
-int sc_trail_do_single_update(struct systemc *sc);
-void sc_trail_remote_destroy(struct systemc *sc);
+int pv_trail_update_start(struct pantavisor *pv, int offline);
+int pv_trail_update_finish(struct pantavisor *pv);
+int pv_trail_update_install(struct pantavisor *pv);
+int pv_trail_check_for_updates(struct pantavisor *pv);
+int pv_trail_do_single_update(struct pantavisor *pv);
+void pv_trail_remote_destroy(struct pantavisor *pv);
 
-void sc_bl_set_current(struct systemc *sc, int rev);
-int sc_bl_get_update(struct systemc *sc, int *update);
-int sc_bl_clear_update(struct systemc *sc);
+void pv_bl_set_current(struct pantavisor *pv, int rev);
+int pv_bl_get_update(struct pantavisor *pv, int *update);
+int pv_bl_clear_update(struct pantavisor *pv);
 
 #endif
