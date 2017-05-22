@@ -53,6 +53,7 @@
 
 static int counter;
 static int total;
+static int current;
 
 typedef enum {
 	STATE_INIT,
@@ -269,9 +270,6 @@ static sc_state_t _sc_run(struct systemc *sc)
 	total++;
 	sc_log(INFO, "started %d platforms", ret);
 
-	// update current in bl
-	sc_set_current(sc, sc->state->rev);
-
 	counter = 0;
 
 	return STATE_WAIT;
@@ -344,7 +342,13 @@ static sc_state_t _sc_wait(struct systemc *sc)
 		sc->update->status = UPDATE_FAILED;
 		sc_trail_update_finish(sc);
 	}
-	sc->last = sc->state->rev;
+
+	// make sure we always keep a ref to the latest working DONE step
+	if (current != sc->state->rev) {
+		current = sc->state->rev;
+		sc_set_current(sc, current);
+		sc->last = sc->state->rev;
+	}
 
 	ret = sc_trail_check_for_updates(sc);
 	if (ret) {
