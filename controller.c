@@ -51,7 +51,7 @@
 #define PV_CONFIG_FILENAME	"/pantavisor/device.config"
 #define CMDLINE_OFFSET	7
 
-static int counter;
+static int rb_count;
 static int total;
 static int current;
 
@@ -270,7 +270,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	total++;
 	pv_log(INFO, "started %d platforms", ret);
 
-	counter = 0;
+	rb_count = 0;
 
 	return STATE_WAIT;
 }
@@ -323,12 +323,15 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
 
-	if (!pv_ph_is_available(pv)) {
-		counter++;
-		if (counter > timeout_max)
+	if (!pv_ph_is_available(pv) && !pv_rev_is_done(pv, pv->state->rev)) {
+		rb_count++;
+		if (rb_count > timeout_max)
 			return STATE_ROLLBACK;
 		return STATE_WAIT;
 	}
+
+	// reset rollback rb_count
+	rb_count = 0;
 
 	// FIXME: should use pv_bl_*() helpers
 	// if online update pending to clear, commit update to cloud
@@ -431,7 +434,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		if (ret < 0)
 			return STATE_ERROR;
 
-		counter = 0;
+		rb_count = 0;
 		pv_release_state(pv);
 	}
 
