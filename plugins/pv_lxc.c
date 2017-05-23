@@ -118,6 +118,9 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 	if (stat("/volumes/firmware.squashfs", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry", "/volumes/firmware.squashfs lib/firmware none bind,ro,create=dir 0 0");
 
+	// override container=lxc environment of pid 1
+	c->set_container_type(c, "pv-platform");
+
 	err = c->start(c, 0, NULL) ? 0 : 1;
 
 	if (err && (c->error_num != 1)) {
