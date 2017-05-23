@@ -586,6 +586,44 @@ static int copy_and_close(int s_fd, int d_fd)
 	return bytes_r;
 }
 
+static int trail_update_has_new_initrd(struct pantavisor *pv)
+{
+	char **old = 0, **new = 0;
+	struct pv_object *o_new = 0, *o_old = 0;
+
+	if (!pv)
+		return 0;
+
+	if (pv->state)
+		old = pv->state->initrd;
+
+	if (pv->update && pv->update->pending)
+		new = pv->update->pending->initrd;
+
+	if (!old || !new)
+		return 0;
+
+	while (*new && *old) {
+		if (strcmp(*old, *new))
+			return 1;
+
+		o_new = pv_objects_get_by_name(pv->update->pending, *new);
+		o_old = pv_objects_get_by_name(pv->state, *old);
+		if (!o_new || !o_old)
+			return 1;
+
+		if (strcmp(o_new->id, o_old->id))
+			return 1;
+		old++;
+		new++;
+	}
+
+	if (*new || *old)
+		return 1;
+
+	return 0;
+}
+
 static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
 {
 	int ret = 0;
@@ -619,7 +657,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	req->proto_version = THTTP_PROTO_VERSION_10;
 
 	is_kernel_pvk = obj_is_kernel_pvk(pv, obj);
-
 	if (!is_kernel_pvk && stat(obj->objpath, &st) == 0) {
 		pv_log(INFO, "file exists (%s)", obj->objpath);
 		ret = 1;
@@ -860,6 +897,9 @@ int pv_trail_update_install(struct pantavisor *pv)
 	}
 
 	trail_remote_set_status(pv, -1, UPDATE_DOWNLOADED);
+
+	if (trail_update_has_new_initrd(pv))
+		pv->update->need_reboot = 1;
 
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
