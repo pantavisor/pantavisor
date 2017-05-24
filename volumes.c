@@ -189,6 +189,9 @@ int pv_volumes_unmount(struct pantavisor *pv)
 		v = v->next;
 	}
 
+	if (pv->state->firmware)
+		umount(FW_PATH);
+
 	pv_log(INFO, "unmounted '%d' volumes", count);
 
 	return count;
