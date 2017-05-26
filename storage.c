@@ -74,7 +74,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	if (!pv_rev_is_done(pv, s->rev))
 		return -1;
 
-	rev = pv_trail_get_revs(pv);
+	rev = pv_get_revisions(pv);
 
 	if (!rev) {
 		pv_log(ERROR, "error parsings revs on disk for GC");

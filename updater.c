@@ -392,7 +392,7 @@ out:
 
 /* API */
 
-int pv_trail_check_for_updates(struct pantavisor *pv)
+int pv_check_for_updates(struct pantavisor *pv)
 {
 	int ret;
 	trest_auth_status_enum auth_status;
@@ -419,12 +419,40 @@ int pv_trail_check_for_updates(struct pantavisor *pv)
 		return 0;
 }
 
-int pv_trail_update_start(struct pantavisor *pv, int offline)
+int pv_update_set_status(struct pantavisor *pv, enum update_state status)
+{
+	if (!pv) {
+		pv_log(WARN, "uninitialized pantavisor object");
+		return 0;
+	}
+
+	if (!pv->update) {
+		pv_log(WARN, "invalid update in current state");
+		return 0;
+	}
+
+	pv->update->status = status;
+
+	return 1;
+}
+
+int pv_update_start(struct pantavisor *pv, int offline)
 {
 	int c;
-	int ret = 0;
-	int rev = pv->state->rev;
-	struct pv_update *u = calloc(sizeof(struct pv_update), 1);
+	int ret = -1, rev = -1;
+	struct pv_update *u;
+
+	if (!pv) {
+		pv_log(WARN, "uninitialized pantavisor object");
+		goto out;
+	}
+
+	if (!pv->state) {
+		pv_log(WARN, "invalid pantavisor state");
+		goto out;
+	}
+
+	u = calloc(sizeof(struct pv_update), 1);
 
 	head = NULL;
 	last = NULL;
@@ -448,16 +476,20 @@ int pv_trail_update_start(struct pantavisor *pv, int offline)
 	u->need_finish = 0;
 	pv->update = u;
 
+	// all done up to here for offline
+	ret = 0;
+
 	if (!offline) {
 		ret = trail_remote_set_status(pv, -1, UPDATE_QUEUED);
 		if (ret < 0)
 			pv_log(INFO, "failed to update cloud status, possibly offline");
 	}
 
-	return 0;
+out:
+	return ret;
 }
 
-int pv_trail_update_finish(struct pantavisor *pv)
+int pv_update_finish(struct pantavisor *pv)
 {
 	int ret = 0;
 
@@ -614,6 +646,7 @@ static int trail_update_has_new_initrd(struct pantavisor *pv)
 
 		if (strcmp(o_new->id, o_old->id))
 			return 1;
+
 		old++;
 		new++;
 	}
@@ -878,7 +911,7 @@ out:
 	return ret;
 }
 
-int pv_trail_update_install(struct pantavisor *pv)
+int pv_update_install(struct pantavisor *pv)
 {
 	int ret, fd;
 	struct pv_state *pending = pv->update->pending;
@@ -936,7 +969,7 @@ out:
 	return ret;
 }
 
-void pv_trail_remote_destroy(struct pantavisor *pv)
+void pv_remote_destroy(struct pantavisor *pv)
 {
 	if (!pv->remote)
 		return;

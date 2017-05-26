@@ -106,7 +106,7 @@ struct pantavisor {
 	unsigned long flags;
 };
 
-int *pv_trail_get_revs(struct pantavisor *pv);
+int *pv_get_revisions(struct pantavisor *pv);
 int pv_rev_is_done(struct pantavisor *pv, int rev);
 void pv_set_current(struct pantavisor *pv, int rev);
 int pv_get_rollback_rev(struct pantavisor *pv);

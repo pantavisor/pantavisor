@@ -39,6 +39,34 @@
 
 #include "bootloader.h"
 
+static int pv_env_exists = -1;
+
+static int bl_has_pv_env(struct pantavisor *pv)
+{
+	int fd;
+	struct stat st;
+	char buf[4096] = { 0 };
+
+	if (pv_env_exists != -1)
+		return pv_env_exists;
+
+	if (stat("/proc/mtd", &st)) {
+		pv_env_exists = 0;
+		return 0;
+	}
+
+	fd = open("/proc/mtd", O_RDONLY);
+	if (fd)
+		read(fd, buf, sizeof(buf));
+
+	if (strstr(buf, "\"pv-env\""))
+		pv_env_exists = 1;
+	else
+		pv_env_exists = 0;
+
+	return pv_env_exists;
+}
+
 static int bl_pvk_get_bank()
 {
 	int fd, bytes;
@@ -136,7 +164,7 @@ int pv_bl_set_try(struct pantavisor *pv, int rev)
 	int fd;
 	char s[256];
 
-	if (strcmp(pv->config->storage.fstype, "ubifs") == 0)
+	if (bl_has_pv_env(pv))
 		return uboot_set_try_rev(pv, rev);
 
 	sprintf(s, "%s/boot/uboot.txt", pv->config->storage.mntpoint);
@@ -161,7 +189,7 @@ static int uboot_get_key_int(struct pantavisor *pv, char *key)
 	char *buf;
 	struct stat st;
 
-	if (strcmp(pv->config->storage.fstype, "ubifs") == 0)
+	if (bl_has_pv_env(pv))
 		sprintf(s, "/dev/mtd2");
 	else
 		sprintf(s, "%s/boot/uboot.txt", pv->config->storage.mntpoint);
@@ -329,6 +357,9 @@ int pv_bl_pvk_get_rev(struct pantavisor *pv, int bank)
 	int fd;
 	unsigned long rev[2] = { 0 };
 
+	if (!bl_has_pv_env(pv))
+		return 0;
+
 	fd = open("/dev/mtd3", O_RDONLY);
 	lseek(fd, 0x14, SEEK_SET);
 	read(fd, &rev[0], sizeof(unsigned long));
@@ -344,6 +375,9 @@ int pv_bl_clear_update(struct pantavisor *pv)
 {
 	int fd;
 	char buf[64] = { 0 };
+
+	if (!bl_has_pv_env(pv))
+		return 0;
 
 	if (bl_is_pvk(pv)) {
 		// FIXME: Should be config

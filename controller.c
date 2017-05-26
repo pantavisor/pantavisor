@@ -52,7 +52,6 @@
 #define CMDLINE_OFFSET	7
 
 static int rb_count;
-static int total;
 static int current;
 
 typedef enum {
@@ -103,7 +102,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	int fd, ret, bytes;
-	int step_rev = 0, step_try = 0, pv_boot = -1;
+	int pv_rev = 0, pv_try = 0, pv_boot = -1;
 	int bl_rev = 0;
 	char *buf;
 	char *token;
@@ -173,6 +172,12 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	// Set config
 	pv->config = c;
 
+	// init platform controllers
+	if (!pv_platforms_init_ctrl(pv)) {
+		pv_log(ERROR, "unable to load any container runtime plugin");
+		return STATE_ERROR;
+	}
+
 	// Get current step revision from cmdline
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd < 0)
@@ -185,9 +190,9 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	token = strtok(buf, " ");
 	while (token) {
 		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0)
-			step_rev = atoi(token + CMDLINE_OFFSET);
+			pv_rev = atoi(token + CMDLINE_OFFSET);
 		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
-			step_try = atoi(token + CMDLINE_OFFSET);
+			pv_try = atoi(token + CMDLINE_OFFSET);
 		else if (strncmp("pv_boot=", token, CMDLINE_OFFSET) == 0)
 			pv_boot = atoi(token + CMDLINE_OFFSET + 1);
 		token = strtok(NULL, " ");
@@ -202,51 +207,47 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 
 	// Setup PVK hints in case of legacy flash A/B kernel
 	if (pv_boot != -1 && pv->config->bl_type == UBOOT_PVK) {
-		step_rev = pv_bl_pvk_get_rev(pv, pv_boot);
-		step_try = pv_bl_get_try(pv);
-		if (step_try != step_rev)
-			step_try = 0;
+		pv_rev = pv_bl_pvk_get_rev(pv, pv_boot);
+		pv_try = pv_bl_get_try(pv);
+		if (pv_try != pv_rev)
+			pv_try = 0;
 	}
 
-	pv_log(DEBUG, "%s():%d step_try=%d, step_rev=%d\n", __func__, __LINE__, step_try, step_rev);
+	pv_log(DEBUG, "%s():%d pv_try=%d, pv_rev=%d\n", __func__, __LINE__, pv_try, pv_rev);
 
-	int boot_rev = -1;
-	if (step_try == 0) {
-		boot_rev = step_rev;
-	} else if (step_try == step_rev) {
-		boot_rev = step_try;
-		pv->state = pv_get_state(pv, boot_rev);
-		pv_trail_update_start(pv, 1);
-		pv->update->status = UPDATE_TRY;
-	}
 
-	bl_rev = pv_bl_get_try(pv);
-	if (bl_rev && (bl_rev != boot_rev)) {
-		if (!pv->state)
-			pv->state = pv_get_state(pv, bl_rev);
-		pv_trail_update_start(pv, 1);
-		pv->update->status = UPDATE_FAILED;
-		pv_state_free(pv->state);
-		pv->state = 0;
-	}
+	// parse boot rev
+	pv->state = pv_get_state(pv, pv_rev);
 
+	// FIXME: maybe add some fallback configuration option
 	if (!pv->state)
-		pv->state = pv_get_state(pv, boot_rev);
+		return STATE_ERROR;
+
+	// get try revision from bl
+	bl_rev = pv_bl_get_try(pv);
+
+	if (!bl_rev)
+		return STATE_RUN;
+
+	if (bl_rev == pv_rev) {
+		pv_update_start(pv, 1);
+		pv_update_set_status(pv, UPDATE_TRY);
+	} else {
+		struct pv_state *s = pv->state;
+		pv->state = pv_get_state(pv, bl_rev);
+		pv_update_start(pv, 1);
+		pv_update_set_status(pv, UPDATE_FAILED);
+		pv_state_free(pv->state);
+		pv->state = s;
+	}
+
+	return STATE_RUN;
 
 	if (bl_rev > 0)
 		pv_bl_clear_update(pv);
 
 	if (!pv->state) {
 		pv_log(ERROR, "invalid state requested, please reconfigure");
-		return STATE_ERROR;
-	}
-
-	// FIXME: somewhere here load update from disk if in progress, maybe with try?
-
-	total = 0;
-
-	if (!pv_platforms_init_ctrl(pv)) {
-		pv_log(ERROR, "unable to load any container runtime plugin");
 		return STATE_ERROR;
 	}
 
@@ -258,6 +259,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	int ret;
 
+	if (!pv->state)
+		return STATE_ERROR;
+
 	if (pv_volumes_mount(pv) < 0)
 		return STATE_ROLLBACK;
 
@@ -267,7 +271,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	total++;
 	pv_log(INFO, "started %d platforms", ret);
 
 	rb_count = 0;
@@ -323,10 +326,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
 
-	if (!pv_ph_is_available(pv) && !pv_rev_is_done(pv, pv->state->rev)) {
+	if (!pv_ph_is_available(pv)) {
 		rb_count++;
-		if (rb_count > timeout_max)
+		if (!pv_rev_is_done(pv, pv->state->rev) &&
+			 (rb_count > timeout_max)) {
 			return STATE_ROLLBACK;
+		}
 		return STATE_WAIT;
 	}
 
@@ -337,13 +342,13 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY) {
 		pv_set_current(pv, pv->state->rev);
-		pv->update->status = UPDATE_DONE;
-		pv_trail_update_finish(pv);
+		pv_update_set_status(pv, UPDATE_DONE);
+		pv_update_finish(pv);
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
 		pv_set_current(pv, pv->state->rev);
-		pv->update->status = UPDATE_FAILED;
-		pv_trail_update_finish(pv);
+		pv_update_set_status(pv, UPDATE_FAILED);
+		pv_update_finish(pv);
 	}
 
 	// make sure we always keep a ref to the latest working DONE step
@@ -353,7 +358,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv->last = pv->state->rev;
 	}
 
-	ret = pv_trail_check_for_updates(pv);
+	ret = pv_check_for_updates(pv);
 	if (ret) {
 		pv_log(INFO, "updates found");
 		return STATE_UPDATE;
@@ -367,18 +372,18 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	int ret;
 
 	// queue locally and in cloud, block step
-	// FIXME: requires pv_trail_update_finish() call after RUN or boot
-	ret = pv_trail_update_start(pv, 0);
+	// FIXME: requires pv_update_finish() call after RUN or boot
+	ret = pv_update_start(pv, 0);
 	if (ret < 0) {
 		pv_log(INFO, "unable to queue update, abandoning it");
 		return STATE_WAIT;
 	}
 
 	// download and install pending step
-	ret = pv_trail_update_install(pv);
+	ret = pv_update_install(pv);
 	if (ret < 0) {
 		pv_log(ERROR, "update has failed, continue");
-		pv_trail_update_finish(pv);
+		pv_update_finish(pv);
 		return STATE_WAIT;
 	}
 
@@ -423,7 +428,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes
 	if (pv->update)
-		pv->update->status = UPDATE_FAILED;
+		pv_update_set_status(pv, UPDATE_FAILED);
 
 	if (pv->state) {
 		ret = pv_platforms_stop_all(pv);
@@ -452,7 +457,7 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	pv_trail_update_finish(pv);
+	pv_update_finish(pv);
 	sync();
 	pv_log(INFO, "rebooting...");
 	sleep(2);

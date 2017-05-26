@@ -77,7 +77,7 @@ void pv_set_current(struct pantavisor *pv, int rev)
 }
 
 #define REV_BUF_SIZE	5
-int *pv_trail_get_revs(struct pantavisor *pv)
+int *pv_get_revisions(struct pantavisor *pv)
 {
 	int n, i = 0;
 	int bufsize = 1;
@@ -135,12 +135,12 @@ int pv_rev_is_done(struct pantavisor *pv, int rev)
 
 int pv_get_rollback_rev(struct pantavisor *pv)
 {
-	int rev = pv->state->rev;
+	unsigned long rev = pv->state->rev;
 	struct stat st;
 	char path[256];
 
 	while (rev--) {
-		sprintf(path, "%s/trails/%d/.done", pv->config->storage.mntpoint, rev);
+		sprintf(path, "%s/trails/%lu/.done", pv->config->storage.mntpoint, rev);
 		if (stat(path, &st) == 0)
 			return rev;
 	}

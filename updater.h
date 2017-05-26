@@ -37,12 +37,13 @@ struct trail_remote {
 	struct pv_state *pending;
 };
 
-int pv_trail_update_start(struct pantavisor *pv, int offline);
-int pv_trail_update_finish(struct pantavisor *pv);
-int pv_trail_update_install(struct pantavisor *pv);
-int pv_trail_check_for_updates(struct pantavisor *pv);
-int pv_trail_do_single_update(struct pantavisor *pv);
-void pv_trail_remote_destroy(struct pantavisor *pv);
+int pv_update_start(struct pantavisor *pv, int offline);
+int pv_update_set_status(struct pantavisor *pv, enum update_state status);
+int pv_update_finish(struct pantavisor *pv);
+int pv_update_install(struct pantavisor *pv);
+int pv_check_for_updates(struct pantavisor *pv);
+int pv_do_single_update(struct pantavisor *pv);
+void pv_remote_destroy(struct pantavisor *pv);
 
 void pv_bl_set_current(struct pantavisor *pv, int rev);
 int pv_bl_get_update(struct pantavisor *pv, int *update);
