@@ -148,6 +148,28 @@ const char** pv_ph_get_certs(struct pantavisor *pv)
 	return (const char **) cafiles;
 }
 
+static void pv_ph_set_online(int online)
+{
+	int fd, hint;
+	char *path = "/pv/online";
+	struct stat st;
+
+	hint = stat(path, &st) ? 0 : 1;
+
+	switch (online) {
+	case 0:
+		if (hint)
+			remove(path);
+		break;
+	default:
+		if (!hint) {
+			fd = open(path, O_CREAT | O_SYNC, 0400);
+			close(fd);
+		}
+		break;
+	}
+}
+
 int pv_ph_is_available(struct pantavisor *pv)
 {
 	int ret = 0;
@@ -179,6 +201,8 @@ out:
 	} else {
 		ret = 0;
 	}
+
+	pv_ph_set_online(ret);
 
 	return ret;
 }
@@ -252,7 +276,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 	thttp_request_t* req = (thttp_request_t*) tls_req;
 
 	req->method = THTTP_METHOD_POST;
-	req->proto = THTTP_PROTO_HTTP;	
+	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;
 
 	req->host = pv->config->creds.host;
@@ -288,7 +312,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 	if (req)
 		thttp_request_free(req);
 	if (res)
-		thttp_response_free(res);	
+		thttp_response_free(res);
 
 	return ret;
 }
@@ -349,7 +373,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	int fd;
 	char buf[256];
 
-	fd = open("/tmp/pantavisor/device-id", O_TRUNC | O_SYNC | O_RDWR);
+	fd = open("/pv/device-id", O_TRUNC | O_SYNC | O_RDWR);
 	if (!fd) {
 		pv_log(INFO, "unable to open device-id hint file");
 		return;
@@ -358,12 +382,12 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	write(fd, buf, strlen(buf));
 	close(fd);
 
-	fd = open("/tmp/pantavisor/challenge", O_TRUNC | O_SYNC | O_RDWR);
+	fd = open("/pv/challenge", O_TRUNC | O_SYNC | O_RDWR);
 	if (!fd) {
 		pv_log(INFO, "unable to open challenge hint file");
 		return;
 	}
 	sprintf(buf, "challenge=%s\n", c);
 	write(fd, buf, strlen(buf));
-	close(fd);		
+	close(fd);
 }

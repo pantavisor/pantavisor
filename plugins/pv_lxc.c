@@ -102,7 +102,7 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 	//sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);
 	//c->set_config_item(c, "lxc.mount.entry", entry);
 
-	char *cpath = "/tmp/pantavisor/ run/pantavisor none bind,ro,create=dir 0 0";
+	char *cpath = "/pv/ pantavisor none bind,ro,create=dir 0 0";
 	c->set_config_item(c, "lxc.mount.entry", cpath);
 
 	c->set_config_item(c, "lxc.mount.entry", "/dev dev none bind,rw,create=dir 0 0");

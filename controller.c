@@ -158,16 +158,20 @@ static pv_state_t _pv_init(struct pantavisor *pv)
         pv_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
 
 	// Make pantavisor control area
-	if (stat("/tmp/pantavisor", &st) != 0)
-		mkdir_p("/tmp/pantavisor", 0644);
+	if (stat("/pv", &st) != 0)
+		mkdir_p("/pv", 0400);
 
-	if (strcmp(c->creds.prn, "") == 0) {
-		fd = open("/tmp/pantavisor/device-id", O_CREAT | O_SYNC | O_WRONLY, 0644);
-		close(fd);
-		fd = open("/tmp/pantavisor/challenge", O_CREAT | O_SYNC | O_WRONLY, 0644);
-		close(fd);
+	// create hints
+	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	close(fd);
+	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
+
+	if (strcmp(c->creds.prn, "") == 0)
 		pv->flags |= DEVICE_UNCLAIMED;
-	}
+	else
+		write(fd, c->creds.id, strlen(c->creds.id));
+
+	close(fd);
 
 	// Set config
 	pv->config = c;
@@ -307,6 +311,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 		ph_config_to_file(pv->config, config_path);
 		pv_ph_release_client(pv);
 		pv->flags &= ~DEVICE_UNCLAIMED;
+		open("/pv/challenge", O_TRUNC | O_WRONLY);
 	}
 
 	if (c)
