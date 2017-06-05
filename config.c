@@ -176,6 +176,11 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	item = _config_get_value("loglevel");
 	if (item)
 		config->loglevel = atoi(item);
+	item = _config_get_value("log.buf_nitems");
+	if (item)
+		config->logsize = atoi(item);
+	else
+		config->logsize = 16;
 
 	item = _config_get_value("bootloader.type");
 	pv_log(DEBUG, "bl_type='%s'\n", item);

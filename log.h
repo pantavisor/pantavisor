@@ -57,6 +57,7 @@ struct level_name {
 
 #define vlog(module, level, ...)	__vlog(module, level, ## __VA_ARGS__);
 
+void pv_log_init(struct pantavisor *pv);
 void __vlog(char *module, int level, const char *fmt, ...);
 void pv_log_flush(struct pantavisor *pv);
 int pv_log_set_level(unsigned int level);

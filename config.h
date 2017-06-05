@@ -51,6 +51,7 @@ struct pantavisor_updater {
 struct pantavisor_config {
 	char *name;
 	int loglevel;
+	int logsize;
 	int bl_type;
 	struct pantavisor_creds creds;
 	struct pantavisor_storage storage;

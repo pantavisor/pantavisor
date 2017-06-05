@@ -119,6 +119,8 @@ static void signal_handler(int signal)
 	if (pid == pv_pid) {
 		if (WIFSIGNALED(wstatus)) {
 			pv_log(WARN, "restarting pantavisor");
+			sleep(10);
+			reboot(LINUX_REBOOT_CMD_RESTART);
 			pantavisor_init();
 		} else if (WIFEXITED(wstatus)) {
 			pv_log(INFO, "clean exit from pantavisor, rebooting...");

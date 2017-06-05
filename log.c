@@ -42,6 +42,43 @@ static int prio = ERROR;
 // default STDOUT
 int log_fd = 1;
 
+#define LOG_RING_SIZE		LOG_ITEM_SIZE * 64
+#define LOG_ITEM_SIZE		4096
+
+typedef struct {
+	unsigned long time;		// 4 bytes
+	unsigned long level;		// 4 bytes
+	char msg[LOG_ITEM_SIZE-8];	// 4096-8 bytes
+} log_entry_t;
+
+typedef struct {
+	void *buf_start;
+	void *buf_end;
+	log_entry_t *head;
+	log_entry_t *tail;
+} log_buf_t;
+
+static log_buf_t *lb = NULL;
+
+void pv_log_init(struct pantavisor *pv)
+{
+	if (lb)
+		return;
+
+	// allocate ring buffer
+	if (pv->config->logsize == 0)
+		return;
+
+	lb = calloc(1, sizeof(log_buf_t));
+	if (!lb)
+		return;
+
+	lb->buf_start = calloc(1, sizeof(log_entry_t) * pv->config->logsize);
+	lb->buf_end = (char *) lb->buf_start + (sizeof(log_entry_t) * pv->config->logsize);
+	lb->head = (log_entry_t*) lb->buf_start + 1;
+	lb->tail = lb->buf_start;
+}
+
 void exit_error(int err, char *msg)
 {
 	printf("ERROR: %s (err=%d)\n", msg, err);
@@ -67,7 +104,7 @@ static void log_print_date(int fd)
 	dprintf(fd, "[%s] ", date);
 }
 
-static const char *strip_newline(const char *str)
+static char *strip_newline(const char *str)
 {
 	char *c = strdup(str);
 	char *t = c;
@@ -78,36 +115,59 @@ static const char *strip_newline(const char *str)
 		t = strchr(t, '\n');
 	}
 
-	return (const char *) c;
+	return (char *) c;
+}
+
+static void log_add(log_entry_t *e)
+{
+	// FIXME: flush if (lb->head == lb->tail)
+
+	memcpy(lb->head, e, sizeof(log_entry_t));
+	lb->head += 1;
+	if (lb->head == lb->buf_end) {
+		lb->head = lb->buf_start;
+	}
 }
 
 void __vlog(char *module, int level, const char *fmt, ...)
 {
-	const char *format = 0;
+	struct timeval tv;
+	char buf[LOG_ITEM_SIZE-8];
+	char *format = 0;
 	va_list args;
 	va_start(args, fmt);
 
-	if (level <= ERROR) {
-		dprintf(STDOUT_FILENO, "[pantavisor] %s\t", level_names[level].name);
-		log_print_date(STDOUT_FILENO);
-		dprintf(STDOUT_FILENO, "[%s]: -- ", module);
-		format = strip_newline(fmt);
-		vdprintf(STDOUT_FILENO, format, args);
-		if (fmt[strlen(fmt)] != '\n')
-			dprintf(STDOUT_FILENO, "\n");
-	}
+	if (!lb)
+		return;
 
-	if (level <= prio) {
-		dprintf(log_fd, "[pantavisor] %s\t", level_names[level].name);
-		log_print_date(log_fd);
-		dprintf(log_fd, "[%s]: -- ", module);
-		format = strip_newline(fmt);
-		vdprintf(log_fd, format, args);
-		if (fmt[strlen(fmt)] != '\n')
-			dprintf(log_fd, "\n");
-	}
+	if (level >= prio)
+		return;
+
+	// construct log entry in heap to copy
+	log_entry_t e;
+
+	gettimeofday(&tv, NULL);
+	e.time = (unsigned long) tv.tv_sec;
+	e.level = level;
+
+	format = strip_newline(fmt);
+	snprintf(buf, sizeof(buf), "[%s]: %s", module, format);
+	vsnprintf(e.msg, sizeof(buf), buf, args);
+
+	log_add(&e);
+
+	char date[sizeof(DATE_FORMAT)];
+	const struct tm *t;
+	t = localtime((time_t*) &e.time);
+
+	dprintf(log_fd, "[pantavisor] %s\t", level_names[e.level].name);
+	strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", t);
+	dprintf(log_fd, "[%s] ", date);
+	dprintf(log_fd, "%s", e.msg);
+	if (fmt[strlen(fmt)] != '\n')
+		dprintf(log_fd, "\n");
+
 	free((char *) format);
-
 	va_end(args);
 }
 

@@ -113,13 +113,15 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	// Initialize flags
 	pv->flags = 0;
 
-        c = malloc(sizeof(struct pantavisor_config));
+	c = calloc(1, sizeof(struct pantavisor_config));
+	pv->config = c;
 
         if (pv_config_from_file(PV_CONFIG_FILENAME, c) < 0) {
 		pv_log(FATAL, "unable to parse pantavisor config");
 		return STATE_EXIT;
 	}
 
+	pv_log_init(pv);
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
 
@@ -172,9 +174,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		write(fd, c->creds.id, strlen(c->creds.id));
 
 	close(fd);
-
-	// Set config
-	pv->config = c;
 
 	// init platform controllers
 	if (!pv_platforms_init_ctrl(pv)) {
