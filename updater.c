@@ -766,6 +766,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	if (use_temp) {
 		pv_log(INFO, "copying %s to %s", tobj, obj->objpath);
 		bytes = copy_and_close(tmp_fd, obj_fd);
+		fd = obj_fd;
 	}
 	pv_log(INFO, "downloaded object (%s)", obj->objpath);
 	fsync(fd);
