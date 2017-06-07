@@ -204,7 +204,7 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	vsnprintf(e.data, sizeof(buf), format, args);
 
 	// we dont like double quotes as this will go via json
-	replace_quotes(&e.data);
+	replace_quotes((char *) &e.data);
 
 	log_add(&e);
 
@@ -240,8 +240,6 @@ static void log_get_next(log_entry_t **e)
 	*e = next;
 	return;
 }
-
-static int flush_count = 0;
 
 void pv_log_flush(struct pantavisor *pv)
 {
