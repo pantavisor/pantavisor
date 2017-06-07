@@ -23,10 +23,12 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <inttypes.h>
 
 #include <sys/types.h>
 
 #include "log.h"
+#include "pantahub.h"
 
 #define LEVEL_NAME(LEVEL)	{ LEVEL, #LEVEL }
 static struct level_name level_names[] = {
@@ -43,12 +45,14 @@ static int prio = ERROR;
 int log_fd = 1;
 
 #define LOG_RING_SIZE		LOG_ITEM_SIZE * 64
-#define LOG_ITEM_SIZE		4096
+#define LOG_ITEM_SIZE		4096	// JSON size
 
 typedef struct {
-	unsigned long time;		// 4 bytes
-	unsigned long level;		// 4 bytes
-	char msg[LOG_ITEM_SIZE-8];	// 4096-8 bytes
+	uint64_t tsec;		// 8 bytes
+	uint32_t tusec;		// 4 bytes
+	uint32_t level;		// 4 bytes
+	char source[32];
+	char data[LOG_ITEM_SIZE-48];	// 4096-48 bytes
 } log_entry_t;
 
 typedef struct {
@@ -56,9 +60,24 @@ typedef struct {
 	void *buf_end;
 	log_entry_t *head;
 	log_entry_t *tail;
+	log_entry_t *last;
+	uint32_t buf_size;
+	uint32_t size;
+	uint32_t count;
 } log_buf_t;
 
 static log_buf_t *lb = NULL;
+
+static void log_reset(void)
+{
+	if (!lb)
+		return;
+
+	memset(lb->buf_start, 0, lb->buf_size);
+	lb->tail = lb->buf_start;
+	lb->head = lb->buf_start;
+	lb->count = 0;
+}
 
 void pv_log_init(struct pantavisor *pv)
 {
@@ -73,9 +92,11 @@ void pv_log_init(struct pantavisor *pv)
 	if (!lb)
 		return;
 
-	lb->buf_start = calloc(1, sizeof(log_entry_t) * pv->config->logsize);
-	lb->buf_end = (char *) lb->buf_start + (sizeof(log_entry_t) * pv->config->logsize);
-	lb->head = (log_entry_t*) lb->buf_start + 1;
+	lb->size = pv->config->logsize;
+	lb->buf_size = sizeof(log_entry_t) * lb->size;
+	lb->buf_start = calloc(1, lb->buf_size);
+	lb->buf_end = (char *) lb->buf_start + lb->buf_size;
+	lb->head = (log_entry_t*) lb->buf_start;
 	lb->tail = lb->buf_start;
 }
 
@@ -118,15 +139,40 @@ static char *strip_newline(const char *str)
 	return (char *) c;
 }
 
+static char *replace_quotes(char *str)
+{
+	char *t = str;
+
+	t = strchr(t, '\"');
+	while (t) {
+		*t = '\''; // single quote
+		t = strchr(t, '\"');
+	}
+
+	return (char *) str;
+}
+
 static void log_add(log_entry_t *e)
 {
-	// FIXME: flush if (lb->head == lb->tail)
-
+	// FIXME: backup to disk if (lb->head == lb->tail)
+	lb->last = lb->head;
 	memcpy(lb->head, e, sizeof(log_entry_t));
 	lb->head += 1;
 	if (lb->head == lb->buf_end) {
 		lb->head = lb->buf_start;
 	}
+
+	if (lb->count < lb->size)
+		lb->count++;
+}
+
+static void log_last_entry_to_file(void)
+{
+	log_entry_t *e = lb->last;
+
+	dprintf(log_fd, "[pantavisor] %s\t", level_names[e->level].name);
+	dprintf(log_fd, "[%"PRId64".%"PRId32"] ", e->tsec, e->tusec);
+	dprintf(log_fd, "-- [%s]: %s\n", e->source, e->data);
 }
 
 void __vlog(char *module, int level, const char *fmt, ...)
@@ -147,33 +193,104 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	log_entry_t e;
 
 	gettimeofday(&tv, NULL);
-	e.time = (unsigned long) tv.tv_sec;
+
+	e.tsec = (uint64_t) tv.tv_sec;
+	e.tusec = (uint32_t) tv.tv_usec;
 	e.level = level;
 
+	snprintf(e.source, 32, "%s", module);
+
 	format = strip_newline(fmt);
-	snprintf(buf, sizeof(buf), "[%s]: %s", module, format);
-	vsnprintf(e.msg, sizeof(buf), buf, args);
+	vsnprintf(e.data, sizeof(buf), format, args);
+
+	// we dont like double quotes as this will go via json
+	replace_quotes(&e.data);
 
 	log_add(&e);
 
-	char date[sizeof(DATE_FORMAT)];
-	const struct tm *t;
-	t = localtime((time_t*) &e.time);
-
-	dprintf(log_fd, "[pantavisor] %s\t", level_names[e.level].name);
-	strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", t);
-	dprintf(log_fd, "[%s] ", date);
-	dprintf(log_fd, "%s", e.msg);
-	if (fmt[strlen(fmt)] != '\n')
-		dprintf(log_fd, "\n");
+	// if config-logfile
+	log_last_entry_to_file();
 
 	free((char *) format);
 	va_end(args);
 }
 
+static int log_entry_null(log_entry_t *e)
+{
+	if (!e)
+		return 1;
+
+	if (e->tsec == 0 && e->tusec == 0)
+		return 1;
+
+	return 0;
+}
+
+static void log_get_next(log_entry_t **e)
+{
+	log_entry_t *next;
+
+	next = (*e)+1;
+	if (next == lb->buf_end)
+		next = lb->buf_start;
+
+	if (next == lb->tail)
+		next = NULL;
+
+	*e = next;
+	return;
+}
+
+static int flush_count = 0;
+
 void pv_log_flush(struct pantavisor *pv)
 {
-	// FIXME: Push to cloud somehow, device meta?
+	char *entry, *body;
+	unsigned long i = 1;
+	int size;
+
+	// FIXME: load rolled over logs and flush those first
+	if (!lb)
+		return;
+
+	if (lb->count == 0)
+		return;
+
+	// take tail of log buffer
+	log_entry_t *e = lb->tail;
+
+	body = calloc(1, BUF_CHUNK * sizeof(char));
+	sprintf(body, "[");
+
+	for (;;) {
+		size = sizeof(JSON_FORMAT) + 32;  // adjust timestamp
+		size += strlen(level_names[e->level].name);
+		size += strlen(e->source);
+		size += strlen(e->data);
+		entry = calloc(1, size * sizeof(char));
+
+		snprintf(entry, size, JSON_FORMAT, e->tsec,
+				e->tusec, level_names[e->level].name,
+				e->source, e->data);
+
+		if ((strlen(body) + size) > BUF_CHUNK*i) {
+			body = realloc(body, BUF_CHUNK*(i+1)* sizeof(char));
+			memset(body+(BUF_CHUNK*i), 0, BUF_CHUNK * sizeof(char));
+			i++;
+		}
+		body = strncat(body, entry, size);
+		free(entry);
+		log_get_next(&e);
+		if (log_entry_null(e))
+			break;
+		body = strncat(body, ",", 1);
+	}
+	body = strcat(body, "]");
+
+	if (pv_ph_upload_logs(pv, body))
+		log_reset();
+
+	free(body);
 
 	return;
 }

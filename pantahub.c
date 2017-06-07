@@ -48,7 +48,7 @@
 #define ENDPOINT_FMT "/devices/%s"
 
 trest_ptr *client = 0;
-char *endpoint;
+char *endpoint = 0;
 
 static int connect_try(char *host, int port, int h_length)
 {
@@ -105,10 +105,11 @@ auth:
 		return 0;
 	}
 
-	size = sizeof(ENDPOINT_FMT) + strlen(pv->config->creds.id) + 1;
-	endpoint = malloc(size * sizeof(char));
-
-	sprintf(endpoint, ENDPOINT_FMT, pv->config->creds.id);
+	if (!endpoint) {
+		size = sizeof(ENDPOINT_FMT) + strlen(pv->config->creds.id) + 1;
+		endpoint = malloc(size * sizeof(char));
+		sprintf(endpoint, ENDPOINT_FMT, pv->config->creds.id);
+	}
 
 	return 1;
 }
@@ -218,6 +219,39 @@ void pv_ph_release_client(struct pantavisor *pv)
 		free(endpoint);
 		endpoint = 0;
 	}
+}
+
+int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
+{
+	int ret = 0;
+	trest_request_ptr req = 0;
+	trest_response_ptr res = 0;
+
+	if (!ph_client_init(pv)) {
+		pv_log(DEBUG, "failed to initialize PantaHub connection");
+		goto out;
+	}
+
+	req = trest_make_request(TREST_METHOD_POST,
+				 "/logs/",
+				 0, 0,
+				 logs);
+
+	res = trest_do_json_request(client, req);
+	if (!res->body || res->code != THTTP_STATUS_OK) {
+		pv_log(DEBUG, "logs upload status = %d, body = '%s'", res->code, res->body);
+		goto out;
+	}
+
+	ret = 1;
+
+out:
+	if (req)
+		free(req);
+	if (req)
+		free(res);
+
+	return ret;
 }
 
 int pv_ph_device_exists(struct pantavisor *pv)

@@ -52,6 +52,9 @@ struct level_name {
 	char *name;
 };
 
+#define BUF_CHUNK	4096
+#define JSON_FORMAT	"{ \"tsec\": %"PRId64", \"tnano\": %"PRId32", \"lvl\": \"%s\", \"src\": \"%s\", \"msg\": \"%s\" }"
+
 // Example log:		"[pantavisor] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
 #define DATE_FORMAT		"2016-12-01 13:22:26"
 

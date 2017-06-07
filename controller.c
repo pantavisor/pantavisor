@@ -339,6 +339,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
+	// sync logs with remote
+	pv_log_flush(pv);
+
 	// reset rollback rb_count
 	rb_count = 0;
 
