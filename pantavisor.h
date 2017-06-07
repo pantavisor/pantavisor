@@ -103,6 +103,7 @@ struct pantavisor {
 	struct trail_remote *remote;
 	struct pv_update *update;
 	struct pv_state *state;
+	int online;
 	unsigned long flags;
 };
 

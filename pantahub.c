@@ -149,7 +149,7 @@ const char** pv_ph_get_certs(struct pantavisor *pv)
 	return (const char **) cafiles;
 }
 
-static void pv_ph_set_online(int online)
+static void pv_ph_set_online(struct pantavisor *pv, int online)
 {
 	int fd, hint;
 	char *path = "/pv/online";
@@ -169,6 +169,8 @@ static void pv_ph_set_online(int online)
 		}
 		break;
 	}
+
+	pv->online = online;
 }
 
 int pv_ph_is_available(struct pantavisor *pv)
@@ -203,7 +205,7 @@ out:
 		ret = 0;
 	}
 
-	pv_ph_set_online(ret);
+	pv_ph_set_online(pv, ret);
 
 	return ret;
 }

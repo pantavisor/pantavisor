@@ -247,6 +247,9 @@ void pv_log_flush(struct pantavisor *pv)
 	unsigned long i = 1;
 	int size;
 
+	if (!pv->online)
+		return;
+
 	// FIXME: load rolled over logs and flush those first
 	if (!lb)
 		return;
