@@ -289,12 +289,12 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	r->pending = pv_parse_state(pv, state, strlen(state), rev);
 
 	if (!r->pending) {
-		pv_log(DEBUG, "invalid rev (%d) found on remote", rev);
+		pv_log(INFO, "invalid rev (%d) found on remote", rev);
 		trail_remote_set_status(pv, rev, UPDATE_NO_PARSE);
 		size = 0;
 	} else {
 		pv_log(DEBUG, "adding rev (%d), state = '%s'", rev, state);
-		pv_log(INFO, "first pending found to be rev = %d", r->pending->rev);
+		pv_log(DEBUG, "first pending found to be rev = %d", r->pending->rev);
 	}
 
 out:
@@ -377,7 +377,7 @@ static int trail_first_boot(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_log(INFO, "initial trail pushed ok");
+	pv_log(INFO, "factory revision (base trail) pushed to remote correctly");
 	ret = 0;
 
 out:
@@ -541,7 +541,7 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 	endpoint = malloc((sizeof(TRAIL_OBJECT_DL_FMT) + strlen(prn)) * sizeof(char));
 	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, prn);
 
-	pv_log(INFO, "requesting obj='%s'", endpoint);
+	pv_log(DEBUG, "requesting obj='%s'", endpoint);
 
 	req = trest_make_request(TREST_METHOD_GET,
 				 endpoint,
@@ -691,7 +691,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 
 	is_kernel_pvk = obj_is_kernel_pvk(pv, obj);
 	if (!is_kernel_pvk && stat(obj->objpath, &st) == 0) {
-		pv_log(INFO, "file exists (%s)", obj->objpath);
+		pv_log(DEBUG, "file exists (%s)", obj->objpath);
 		ret = 1;
 		goto out;
 	}
@@ -854,14 +854,12 @@ static int get_update_size(struct pv_update *u)
 	struct pv_object *o = u->pending->objects;
 
 	while (o) {
-		if (stat(o->objpath, &st) < 0) {
+		if (stat(o->objpath, &st) < 0)
 			size += o->size;
-			pv_log(INFO, "id=%s, name=%s, size=%d", o->id, o->name, o->size);
-		}
 		o = o->next;
 	}
 
-	pv_log(DEBUG, "update_size: %d bytes", size);
+	pv_log(INFO, "update_size: %d bytes", size);
 
 	return size;
 }

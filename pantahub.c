@@ -101,7 +101,7 @@ static int ph_client_init(struct pantavisor *pv)
 auth:
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		pv_log(DEBUG, "unable to auth unclaimed device, status=%d", status);
+		pv_log(WARN, "unable to auth unclaimed device, status=%d", status);
 		return 0;
 	}
 
@@ -198,7 +198,7 @@ int pv_ph_is_available(struct pantavisor *pv)
 
 out:
 	if (ret > 0) {
-		pv_log(INFO, "PH available at '%s:%d'", host, port);
+		pv_log(DEBUG, "PH available at '%s:%d'", host, port);
 	} else {
 		ret = 0;
 	}
@@ -228,7 +228,7 @@ int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
 	trest_response_ptr res = 0;
 
 	if (!ph_client_init(pv)) {
-		pv_log(DEBUG, "failed to initialize PantaHub connection");
+		pv_log(WARN, "failed to initialize PantaHub connection");
 		goto out;
 	}
 
@@ -262,7 +262,7 @@ int pv_ph_device_exists(struct pantavisor *pv)
 	trest_response_ptr res = 0;
 
 	if (!ph_client_init(pv)) {
-		pv_log(DEBUG, "failed to initialize PantaHub connection");
+		pv_log(WARN, "failed to initialize PantaHub connection");
 		goto out;
 	}
 
@@ -379,7 +379,7 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 			res->json_tokv, res->json_tokc);
 
 	if (owner && (strcmp(owner, "") != 0)) {
-		pv_log(DEBUG, "device-owner: '%s'", owner); 
+		pv_log(DEBUG, "device-owner: '%s'", owner);
 		goto out;
 	}
 

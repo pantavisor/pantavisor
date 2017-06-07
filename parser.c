@@ -341,37 +341,37 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 	this->json = strdup(buf);
 
 	// print
-	pv_log(INFO, "kernel: '%s'\n", this->kernel);
+	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
 	char **initrd = this->initrd;
-	pv_log(INFO, "initrd: \n");
+	pv_log(DEBUG, "initrd: \n");
 	while (*initrd) {
-		pv_log(INFO, "  '%s'\n", *initrd);
+		pv_log(DEBUG, "  '%s'\n", *initrd);
 		initrd++;
 	}
 	struct pv_platform *p = this->platforms;
-	pv_log(INFO, "platform: '%s'\n", p->name);
+	pv_log(DEBUG, "platform: '%s'\n", p->name);
 	while (p) {
-		pv_log(INFO, "  type: '%s'\n", p->type);
-		pv_log(INFO, "  exec: '%s'\n", p->exec);
-		pv_log(INFO, "  configs:\n");
+		pv_log(DEBUG, "  type: '%s'\n", p->type);
+		pv_log(DEBUG, "  exec: '%s'\n", p->exec);
+		pv_log(DEBUG, "  configs:\n");
 		char **config = p->configs;
 		while (config && *config) {
-			pv_log(INFO, "    '%s'\n", *config);
+			pv_log(DEBUG, "    '%s'\n", *config);
 			config++;
 		}
-		pv_log(INFO, "  shares: 0x%08lx\n", p->ns_share);
+		pv_log(DEBUG, "  shares: 0x%08lx\n", p->ns_share);
 		p = p->next;
 	}
 	struct pv_volume *v = this->volumes;
 	while (v) {
-		pv_log(INFO, "volume: '%s'\n", v->name);
+		pv_log(DEBUG, "volume: '%s'\n", v->name);
 		v = v->next;
 	}
 	struct pv_object *o = this->objects;
 	while (o) {
-		pv_log(INFO, "object: \n");
-		pv_log(INFO, "  name: '%s'\n", o->name);
-		pv_log(INFO, "  name: '%s'\n", o->id);
+		pv_log(DEBUG, "object: \n");
+		pv_log(DEBUG, "  name: '%s'\n", o->name);
+		pv_log(DEBUG, "  name: '%s'\n", o->id);
 		o = o->next;
 	}
 
