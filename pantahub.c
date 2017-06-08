@@ -274,8 +274,10 @@ int pv_ph_device_exists(struct pantavisor *pv)
 
 	res = trest_do_json_request(client, req);
 
-	if (!res->body || res->code != THTTP_STATUS_OK)
+	if (!res->body || res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "error verifying device exists (code=%d)", res->code);
 		goto out;
+	}
 
 	id = get_json_key_value(res->body, "id",
 			res->json_tokv, res->json_tokc);

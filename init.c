@@ -116,23 +116,13 @@ static void signal_handler(int signal)
 	}
 
 	// Check for pantavisor
-	if (pid == pv_pid) {
-		if (WIFSIGNALED(wstatus)) {
-			pv_log(WARN, "restarting pantavisor");
-			sleep(10);
-			reboot(LINUX_REBOOT_CMD_RESTART);
-			pantavisor_init();
-		} else if (WIFEXITED(wstatus)) {
-			pv_log(INFO, "clean exit from pantavisor, rebooting...");
-			sleep(1);
-			sync();
-			reboot(LINUX_REBOOT_CMD_RESTART);
-		}
-	}
+	if (pid != pv_pid)
+		return;
 
-	if (pid == shell_pid) {
-		pv_log(WARN, "reaped shell, restarting /bin/ash");
-		shell_pid = tsh_run("ash");
+	if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
+		sleep(10);
+		sync();
+		reboot(LINUX_REBOOT_CMD_RESTART);
 	}
 }
 

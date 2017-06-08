@@ -286,7 +286,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	int need_register = 1;
 	struct stat st;
 	char config_path[256];
-	char *c = malloc(sizeof(char) * 128);
+	char *c = calloc(1, sizeof(char) * 128);
 
 	if (!pv_ph_is_available(pv))
 		return STATE_WAIT;

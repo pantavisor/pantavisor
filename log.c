@@ -105,9 +105,7 @@ void exit_error(int err, char *msg)
 	printf("ERROR: %s (err=%d)\n", msg, err);
 	printf("ERROR: rebooting system in 30 seconds\n");
 
-	// FIXME: Should drop to ash console
-	sync();
-	sleep(30);
+	sleep(20);
 	exit(0);
 }
 
