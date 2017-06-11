@@ -660,7 +660,7 @@ static int trail_update_has_new_initrd(struct pantavisor *pv)
 static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
 {
 	int ret = 0;
-	int tmp_fd, fd = -1, obj_fd = -1;
+	int tmp_fd = -1, fd = -1, obj_fd = -1;
 	int bytes, n;
 	int is_kernel_pvk;
 	int use_temp = 0;
@@ -736,14 +736,15 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	    !strcmp(pv->config->storage.fstype, "ubifs"))
 		use_temp = 1;
 
-	mktemp(tobj);
 	obj_fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
-	tmp_fd = open(tobj, O_CREAT | O_RDWR, 0644);
 
-	if (use_temp)
+	if (use_temp) {
+		mktemp(tobj);
+		tmp_fd = open(tobj, O_CREAT | O_RDWR, 0644);
 		fd = tmp_fd;
-	else
+	} else {
 		fd = obj_fd;
+	}
 
 	if (is_kernel_pvk) {
 		fsync(obj_fd);
@@ -808,8 +809,10 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	ret = 1;
 
 out:
-	if (fd)
+	if (fd) {
 		close(fd);
+		remove(obj->objpath);
+	}
 	if (host)
 		free(host);
 	if (req)
