@@ -261,7 +261,7 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	int bytes;
 	char sport[6];
 
-	fd = open(path, O_RDWR | O_SYNC | O_CREAT, 644);
+	fd = open(path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (!fd) {
 		pv_log(ERROR, "unable to open temporary credentials config");
 		return 1;
