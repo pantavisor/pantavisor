@@ -60,7 +60,7 @@ void pv_set_current(struct pantavisor *pv, int rev)
 	int fd;
 	char path[256];
 
-	sprintf(path, "%s/trails/%d/.done", pv->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/meta/.done", pv->config->storage.mntpoint, rev);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
 	if (!fd) {
@@ -126,7 +126,7 @@ int pv_rev_is_done(struct pantavisor *pv, int rev)
 	if (!rev)
 		return 1;
 
-	sprintf(path, "%s/trails/%d/.done", pv->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/meta/.done", pv->config->storage.mntpoint, rev);
 	if (stat(path, &st) == 0)
 		return 1;
 
@@ -140,7 +140,7 @@ int pv_get_rollback_rev(struct pantavisor *pv)
 	char path[256];
 
 	while (rev--) {
-		sprintf(path, "%s/trails/%lu/.done", pv->config->storage.mntpoint, rev);
+		sprintf(path, "%s/trails/%lu/meta/.done", pv->config->storage.mntpoint, rev);
 		if (stat(path, &st) == 0)
 			return rev;
 	}
@@ -160,7 +160,7 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 	if (rev < 0)
 		sprintf(path, "%s/trails/current/state.json", pv->config->storage.mntpoint);
 	else
-	        sprintf(path, "%s/trails/%d.json", pv->config->storage.mntpoint, rev);
+	        sprintf(path, "%s/trails/%d/meta/state.json", pv->config->storage.mntpoint, rev);
 
         pv_log(INFO, "reading state from: '%s'", path);
 

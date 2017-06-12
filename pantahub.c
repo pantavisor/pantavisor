@@ -55,17 +55,12 @@ static int connect_try(char *host, int port, int h_length)
 	int ret = 0;
 	int sfd = -1;
 	struct sockaddr_in *serv = malloc(sizeof (struct sockaddr_in));
-	char *addr;
 
 	sfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
 
 	memcpy((void *) &serv->sin_addr, host, h_length);
 	serv->sin_family = AF_INET;
 	serv->sin_port = htons(port);
-
-	addr = malloc(h_length + 1);
-	strncpy(addr, host, h_length);
-	addr[h_length] = '\0';
 
 	if ((ret = connect(sfd, (struct sockaddr *) serv, sizeof (*serv))) < 0)
 		goto out;
@@ -141,9 +136,6 @@ const char** pv_ph_get_certs(struct pantavisor *pv)
 		strncpy(cafiles[i], path, size);
 		cafiles[i][size] = '\0';
 		i++;
-	}
-
-	while (i--) {
 	}
 
 	return (const char **) cafiles;

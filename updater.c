@@ -302,6 +302,8 @@ out:
 		free(rev_s);
 	if (state)
 		free(state);
+	if (tokv)
+		free(tokv);
 	if (req)
 		trest_request_free(req);
 	if (res)
@@ -620,7 +622,7 @@ static int copy_and_close(int s_fd, int d_fd)
 
 static int trail_update_has_new_initrd(struct pantavisor *pv)
 {
-	char **old = 0, **new = 0;
+	char *old = 0, *new = 0;
 	struct pv_object *o_new = 0, *o_old = 0;
 
 	if (!pv)
@@ -635,23 +637,15 @@ static int trail_update_has_new_initrd(struct pantavisor *pv)
 	if (!old || !new)
 		return 0;
 
-	while (*new && *old) {
-		if (strcmp(*old, *new))
-			return 1;
+	if (strcmp(old, new))
+		return 1;
 
-		o_new = pv_objects_get_by_name(pv->update->pending, *new);
-		o_old = pv_objects_get_by_name(pv->state, *old);
-		if (!o_new || !o_old)
-			return 1;
+	o_new = pv_objects_get_by_name(pv->update->pending, new);
+	o_old = pv_objects_get_by_name(pv->state, old);
+	if (!o_new || !o_old)
+		return 1;
 
-		if (strcmp(o_new->id, o_old->id))
-			return 1;
-
-		old++;
-		new++;
-	}
-
-	if (*new || *old)
+	if (strcmp(o_new->id, o_old->id))
 		return 1;
 
 	return 0;
@@ -701,17 +695,13 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		goto out;
 	}
 
-	// FIXME: This breaks with non https urls...
+	// SSL is mandatory
 	if (strncmp(obj->geturl, "https://", 8) != 0) {
 		pv_log(INFO, "object url (%s) is invalid", obj->geturl);
 		goto out;
 	}
-
-	// SSL is default
 	req->port = 443;
 
-	// FIXME: should check sha256, need to rework geturl() for that
-	// FIXME: can use sha256.h from mbedtls mbedtls_sha256()
 	start = obj->geturl + 8;
 	port = strchr(start, ':');
 	if (port) {
@@ -809,7 +799,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	ret = 1;
 
 out:
-	if (fd) {
+	if (fd > 0) {
 		close(fd);
 		remove(obj->objpath);
 	}
@@ -827,6 +817,7 @@ static int trail_link_objects(struct pantavisor *pv)
 {
 	int err = 0;
 	struct pv_object *obj = pv->update->pending->objects;
+	char src[PATH_MAX], dst[PATH_MAX];
 	char *c, *tmp;
 
 	while (obj) {
@@ -846,6 +837,33 @@ static int trail_link_objects(struct pantavisor *pv)
 				obj->relpath, obj->objpath);
 		}
 		obj = obj->next;
+	}
+
+	sprintf(src, "%s/trails/%d/data/%s", pv->config->storage.mntpoint,
+		     pv->update->pending->rev, pv->update->pending->initrd);
+	sprintf(dst, "%s/trails/%d/meta/",
+		     pv->config->storage.mntpoint, pv->update->pending->rev);
+
+	mkdir_p(dst, 0644);
+	strcat(dst, "pv-initrd.img");
+
+	remove(dst);
+	if (link(src, dst) < 0) {
+		pv_log(ERROR, "unable to link initrd from %s, errno %d",
+			src, errno);
+		err++;
+	}
+
+	sprintf(src, "%s/trails/%d/data/%s", pv->config->storage.mntpoint,
+		     pv->update->pending->rev, pv->update->pending->kernel);
+	sprintf(dst, "%s/trails/%d/meta/pv-kernel.img",
+		     pv->config->storage.mntpoint, pv->update->pending->rev);
+
+	remove(dst);
+	if (link(src, dst) < 0) {
+		pv_log(ERROR, "unable to link kernel from %s, errno %d",
+			src, errno);
+		err++;
 	}
 
 	return -err;
@@ -897,7 +915,7 @@ static int trail_download_objects(struct pantavisor *pv)
 	k_old = pv_objects_get_by_name(pv->state,
 			pv->state->kernel);
 
-	if (strcmp(k_new->id, k_old->id))
+	if (k_new && k_old && strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
 	o = u->pending->objects;
@@ -922,6 +940,12 @@ int pv_update_install(struct pantavisor *pv)
 	if (!pv->remote)
 		trail_remote_init(pv);
 
+	if (!pending) {
+		ret = -1;
+		pv_log(ERROR, "update data is invalid");
+		goto out;
+	}
+
 	pv_log(INFO, "applying update...");
 
 	ret = trail_download_objects(pv);
@@ -944,7 +968,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	sprintf(state_path, "%s/trails/%d.json", pv->config->storage.mntpoint, pending->rev);
+	sprintf(state_path, "%s/trails/%d/meta/state.json", pv->config->storage.mntpoint, pending->rev);
 	fd = open(state_path, O_CREAT | O_WRONLY | O_SYNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to write state.json file for update");
@@ -967,6 +991,8 @@ int pv_update_install(struct pantavisor *pv)
 
 out:
 	trail_remote_set_status(pv, -1, pv->update->status);
+	if (pending && (ret < 0))
+		pv_storage_rm_rev(pv, pending->rev);
 
 	return ret;
 }

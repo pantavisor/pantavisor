@@ -89,7 +89,7 @@ struct pv_state {
 	int rev;
 	char *kernel;
 	char *firmware;
-	char **initrd;
+	char *initrd;
 	struct pv_platform *platforms;
 	struct pv_volume *volumes;
 	struct pv_object *objects;

@@ -62,8 +62,8 @@ static unsigned long ns_share_flag(char *key)
 
 static int parse_pantavisor(struct pv_state *s, char *value, int n)
 {
-	int i, c;
-	int ret, tokc, size;
+	int c;
+	int ret = 0, tokc, size;
 	char *str, *buf;
 	jsmntok_t *tokv;
 	jsmntok_t **key;
@@ -76,30 +76,11 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
 	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 
-	// get initrd components
-	key = jsmnutil_get_object_keys(buf, tokv);
-	while (*key) {
-		c = (*key)->end - (*key)->start;
-		if (strncmp("initrd", buf+(*key)->start, strlen("initrd"))) {
-			key++;
-			continue;
-		}
-
-		// parse array data
-		i = 0;
-		jsmntok_t *k = (*key+2);
-		size = (*key+1)->size;
-		s->initrd = calloc(1, (size+1) * sizeof(char*));
-		s->initrd[size] = NULL;
-		while ((str = json_array_get_one_str(buf, &size, &k))) {
-			s->initrd[i] = str;
-			i++;
-		}
-
-		break;
-	}
+	if (!s->kernel || !s->initrd)
+		goto out;
 
 	// get platforms and create empty items
 	key = jsmnutil_get_object_keys(buf, tokv);
@@ -137,12 +118,15 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 		break;
 	}
 
+	ret = 1;
+
+out:
 	if (tokv)
 		free(tokv);
 	if (buf)
 		free(buf);
 
-	return 1;
+	return ret;
 }
 
 static int parse_platform(struct pv_state *s, char *buf, int n)
@@ -232,11 +216,12 @@ out:
 
 void pv_state_free(struct pv_state *this)
 {
-	char **initrd = this->initrd;
-	while (initrd && *initrd) {
-		free(*initrd);
-		initrd++;
-	}
+	if (!this)
+		return;
+
+	if (this->initrd)
+		free(this->initrd);
+
 	struct pv_platform *pt, *p = this->platforms;
 	while (p) {
 		free(p->type);
@@ -270,17 +255,46 @@ void pv_state_free(struct pv_state *this)
 	}
 }
 
+static void pv_print_state(struct pv_state *this)
+{
+	// print
+	struct pv_platform *p = this->platforms;
+	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
+	pv_log(DEBUG, "initrd: '%s'\n", this->initrd);
+	pv_log(DEBUG, "platform: '%s'\n", p->name);
+	while (p) {
+		pv_log(DEBUG, "  type: '%s'\n", p->type);
+		pv_log(DEBUG, "  exec: '%s'\n", p->exec);
+		pv_log(DEBUG, "  configs:\n");
+		char **config = p->configs;
+		while (config && *config) {
+			pv_log(DEBUG, "    '%s'\n", *config);
+			config++;
+		}
+		pv_log(DEBUG, "  shares: 0x%08lx\n", p->ns_share);
+		p = p->next;
+	}
+	struct pv_volume *v = this->volumes;
+	while (v) {
+		pv_log(DEBUG, "volume: '%s'\n", v->name);
+		v = v->next;
+	}
+	struct pv_object *o = this->objects;
+	while (o) {
+		pv_log(DEBUG, "object: \n");
+		pv_log(DEBUG, "  name: '%s'\n", o->name);
+		pv_log(DEBUG, "  name: '%s'\n", o->id);
+		o = o->next;
+	}
+}
+
 struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int rev)
 {
 	int tokc, ret, count, n;
-	char *key, *value, *ext = 0;
+	char *key = 0, *value = 0, *ext = 0;
+	struct pv_state *this = 0;
 	jsmntok_t *tokv;
 	jsmntok_t **k;
-
-	struct pv_state *this = calloc(1, sizeof(struct pv_state));
-
-	// set rev
-	this->rev = rev;
 
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
@@ -288,17 +302,24 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 	count = json_get_key_count(buf, "pantavisor.json", tokv, tokc);
 	if (!count || (count > 1)) {
 		pv_log(WARN, "Invalid pantavisor.json count in state");
-		return NULL;
+		goto out;
 	}
 
 	value = get_json_key_value(buf, "pantavisor.json", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "Unable to get pantavisor.json value from state");
-		return NULL;
+		goto out;
 	}
 
-	if (!parse_pantavisor(this, value, strlen(value)))
-		return NULL;
+	this = calloc(1, sizeof(struct pv_state));
+	this->rev = rev;
+
+	if (!parse_pantavisor(this, value, strlen(value))) {
+		free(this);
+		this = 0;
+		goto out;
+	}
+	free(value);
 
 	k = jsmnutil_get_object_keys(buf, tokv);
 
@@ -330,53 +351,32 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 			pv_objects_add(this, key, value, pv->config->storage.mntpoint);
 
 		// free intermediates
-		if (key)
+		if (key) {
 			free(key);
-		if (value)
+			key = 0;
+		}
+		if (value) {
 			free(value);
+			value = 0;
+		}
 		k++;
 	}
 
 	// copy buffer
 	this->json = strdup(buf);
 
-	// print
-	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
-	char **initrd = this->initrd;
-	pv_log(DEBUG, "initrd: \n");
-	while (*initrd) {
-		pv_log(DEBUG, "  '%s'\n", *initrd);
-		initrd++;
-	}
-	struct pv_platform *p = this->platforms;
-	pv_log(DEBUG, "platform: '%s'\n", p->name);
-	while (p) {
-		pv_log(DEBUG, "  type: '%s'\n", p->type);
-		pv_log(DEBUG, "  exec: '%s'\n", p->exec);
-		pv_log(DEBUG, "  configs:\n");
-		char **config = p->configs;
-		while (config && *config) {
-			pv_log(DEBUG, "    '%s'\n", *config);
-			config++;
-		}
-		pv_log(DEBUG, "  shares: 0x%08lx\n", p->ns_share);
-		p = p->next;
-	}
-	struct pv_volume *v = this->volumes;
-	while (v) {
-		pv_log(DEBUG, "volume: '%s'\n", v->name);
-		v = v->next;
-	}
-	struct pv_object *o = this->objects;
-	while (o) {
-		pv_log(DEBUG, "object: \n");
-		pv_log(DEBUG, "  name: '%s'\n", o->name);
-		pv_log(DEBUG, "  name: '%s'\n", o->id);
-		o = o->next;
-	}
+	pv_print_state(this);
 
 	// remove platforms that have no loaded data
 	pv_platforms_remove_not_done(this);
+
+out:
+	if (key)
+		free(key);
+	if (value)
+		free(value);
+	if (tokv)
+		free(tokv);
 
 	return this;
 }

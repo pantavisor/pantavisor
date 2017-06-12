@@ -117,7 +117,7 @@ int pv_volumes_mount(struct pantavisor *pv)
                 char path[256];
                 char mntpoint[256];
 
-                sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
+                sprintf(path, "%s/trails/%d/data/%s", pv->config->storage.mntpoint,
 			s->rev, v->name);
                 sprintf(mntpoint, "/volumes/%s", v->name);
 

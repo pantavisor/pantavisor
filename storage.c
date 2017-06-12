@@ -40,35 +40,111 @@
 #include "objects.h"
 #include "storage.h"
 
-static void remove_at(char *path, char *filename)
+static int remove_at(char *path, char *filename)
 {
 	char full_path[PATH_MAX];
 
 	sprintf(full_path, "%s%s", path, filename);
-	remove(full_path);
+	return remove(full_path);
+}
+
+int pv_storage_gc_objects(struct pantavisor *pv)
+{
+	int reclaimed = 0;
+	struct stat st;
+	struct pv_state *u;
+	char path[PATH_MAX];
+	char **obj, **obj_i;
+
+	if (!pv->update)
+		goto out;
+
+	u = pv->update->pending;
+
+	obj = pv_objects_get_all_ids(pv);
+	for (obj_i = obj; *obj_i; obj_i++) {
+		sprintf(path, "%s/objects/%s", pv->config->storage.mntpoint, *obj_i);
+		memset(&st, 0, sizeof(struct stat));
+		if (stat(path, &st) < 0)
+			continue;
+
+		if (st.st_nlink > 1)
+			continue;
+
+		if (pv_objects_id_in_step(pv, u, *obj_i))
+			continue;
+
+		// remove,unlink object and sync fs
+		reclaimed += st.st_size;
+		remove(path);
+		sync();
+		pv_log(DEBUG, "removed unused '%s', reclaimed %lu bytes", path, st.st_size);
+	}
+
+	if (obj) {
+		obj_i = obj;
+		while (*obj_i) {
+			free(*obj_i);
+			obj_i++;
+		}
+		free(obj);
+	}
+
+out:
+	return reclaimed;
+}
+
+void pv_storage_rm_rev(struct pantavisor *pv, int rev)
+{
+	int n = 0;
+	struct dirent **d;
+	char path[PATH_MAX];
+
+	sprintf(path, "%s/trails/%d/meta/state.json", pv->config->storage.mntpoint, rev);
+	if (!remove(path))
+		pv_log(DEBUG, "removing '%s'", path);
+
+	sprintf(path, "%s/trails/%d/meta/", pv->config->storage.mntpoint, rev);
+	n = scandir(path, &d, NULL, alphasort);
+	while (n--) {
+		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
+			continue;
+		if (!remove_at(path, d[n]->d_name))
+			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
+	}
+	if (!remove(path))
+		pv_log(DEBUG, "removing '%s'", path);
+
+	sprintf(path, "%s/trails/%d/data/", pv->config->storage.mntpoint, rev);
+	n = scandir(path, &d, NULL, alphasort);
+	while (n--) {
+		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
+			continue;
+		if (!remove_at(path, d[n]->d_name))
+			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
+	}
+	if (!remove(path))
+		pv_log(DEBUG, "removing '%s'", path);
+
+	sprintf(path, "%s/trails/%d/", pv->config->storage.mntpoint, rev);
+	if (!remove(path))
+		pv_log(DEBUG, "removing '%s'", path);
+	sync();
 }
 
 int pv_storage_gc_run(struct pantavisor *pv)
 {
 	int reclaimed = 0;
 	int *rev, *rev_i;
-	int n = 0;
-	struct stat st;
 	struct pv_state *s = 0, *u = 0;
-	struct dirent **d;
-	char path[PATH_MAX];
-	char **obj, **obj_i;
-
 
 	// FIXME: global GC disable check
 
 	if (pv->state)
 		s = pv->state;
 
-
 	if (pv->update)
 		u = pv->update->pending;
-
 
 	// make sure our current is marked done
 	if (!pv_rev_is_done(pv, s->rev))
@@ -91,57 +167,17 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		if (pv->config->updater.keep_factory &&	*rev_i == 0)
 			continue;
 
-		// neither, remove
-		sprintf(path, "%s/trails/%d.json", pv->config->storage.mntpoint, *rev_i);
-		pv_log(DEBUG, "removing '%s'", path);
-		remove(path);
-		sprintf(path, "%s/trails/%d/", pv->config->storage.mntpoint, *rev_i);
-
-		n = scandir(path, &d, NULL, alphasort);
-		while (n--) {
-			if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
-				continue;
-			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
-			remove_at(path, d[n]->d_name);
-		}
-		pv_log(DEBUG, "removing '%s'", path);
-		remove(path);
-		sync();
+		// unlink the given revision from local storage
+		pv_storage_rm_rev(pv, *rev_i);
 	}
 
-	obj = pv_objects_get_all_ids(pv);
-	for (obj_i = obj; *obj_i; obj_i++) {
-		sprintf(path, "%s/objects/%s", pv->config->storage.mntpoint, *obj_i);
-		memset(&st, 0, sizeof(struct stat));
-		if (stat(path, &st) < 0)
-			continue;
-
-		if (st.st_nlink > 1)
-			continue;
-
-		if (pv_objects_id_in_step(pv, u, *obj_i))
-			continue;
-
-		// remove,unlink obj_iect and sync fs
-		reclaimed += st.st_size;
-		remove(path);
-		sync();
-		pv_log(DEBUG, "removed unused '%s', reclaimed %lu bytes", path, st.st_size);
-	}
+	// get rid of orphaned objects
+	reclaimed = pv_storage_gc_objects(pv);
 
 	pv_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
 
 	if (rev)
 		free(rev);
-
-	if (obj) {
-		obj_i = obj;
-		while (*obj_i) {
-			free(*obj_i);
-			obj_i++;
-		}
-		free(obj);
-	}
 
 	return reclaimed;
 }
@@ -151,7 +187,7 @@ off_t pv_storage_get_free(struct pantavisor *pv)
 	off_t fs_free, fs_min;
 	struct statfs buf;
 
-	if (statfs("/storage/trails/0.json", &buf) < 0)
+	if (statfs("/storage/trails/0/meta/state.json", &buf) < 0)
 		return -1;
 
 	fs_free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
