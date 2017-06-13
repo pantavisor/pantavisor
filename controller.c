@@ -41,6 +41,7 @@
 #include "volumes.h"
 #include "pantahub.h"
 #include "bootloader.h"
+#include "cmd.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -167,6 +168,10 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
 	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
+
+	// init pv cmd control socket
+	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") > 0)
+		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
 
 	if (strcmp(c->creds.prn, "") == 0)
 		pv->flags |= DEVICE_UNCLAIMED;
@@ -325,7 +330,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	int timeout_max = pv->config->updater.network_timeout
 		/ pv->config->updater.interval;
 
-	sleep(pv->config->updater.interval);
+	pv_cmd_t *c = pv_cmd_socket_wait(pv, timeout_max);
+
+	if (c)
+		pv_log(DEBUG, "PV command received: type=%d, msg='%s'", c->type, c->args);
 
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;

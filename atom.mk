@@ -38,6 +38,7 @@ LOCAL_SRC_FILES := init.c \
 		   pantahub.c \
 		   updater.c \
 		   bootloader.c \
-		   storage.c
+		   storage.c \
+		   cmd.c
 
 include $(BUILD_EXECUTABLE)

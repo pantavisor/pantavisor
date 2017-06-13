@@ -123,31 +123,17 @@ static void log_print_date(int fd)
 	dprintf(fd, "[%s] ", date);
 }
 
-static char *strip_newline(const char *str)
-{
-	char *c = strdup(str);
-	char *t = c;
-
-	t = strchr(t, '\n');
-	while (t) {
-		*t = 32; // whitespace
-		t = strchr(t, '\n');
-	}
-
-	return (char *) c;
-}
-
-static char *replace_quotes(char *str)
+static char *replace_char(char *str, char c, char r)
 {
 	char *t = str;
 
-	t = strchr(t, '\"');
+	t = strchr(t, c);
 	while (t) {
-		*t = '\''; // single quote
-		t = strchr(t, '\"');
+		*t = r;
+		t = strchr(t, c);
 	}
 
-	return (char *) str;
+	return (char *) t;
 }
 
 static void log_add(log_entry_t *e)
@@ -198,12 +184,13 @@ void __vlog(char *module, int level, const char *fmt, ...)
 
 	snprintf(e.source, 32, "%s", module);
 
-	format = strip_newline(fmt);
-	vsnprintf(e.data, sizeof(buf), format, args);
+	vsnprintf(e.data, sizeof(buf), fmt, args);
 
-	// we dont like double quotes as this will go via json
-	replace_quotes((char *) &e.data);
+	// escape problematic json chars
+	replace_char(e.data, '\n', ' ');
+	replace_char(e.data, '\"', '\'');
 
+	// add to ring buffer
 	log_add(&e);
 
 	// if config-logfile
@@ -272,7 +259,7 @@ void pv_log_flush(struct pantavisor *pv)
 				e->tusec, level_names[e->level].name,
 				e->source, e->data);
 
-		if ((strlen(body) + size) > BUF_CHUNK*i) {
+		if ((strlen(body) + size + 3) > BUF_CHUNK*i) {
 			body = realloc(body, BUF_CHUNK*(i+1)* sizeof(char));
 			memset(body+(BUF_CHUNK*i), 0, BUF_CHUNK * sizeof(char));
 			i++;

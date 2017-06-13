@@ -748,9 +748,11 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	res = thttp_request_do_file (req, fd);
 	if (!res) {
 		pv_log(WARN, "no response from server");
+		remove(obj->objpath);
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "error response from server, http code %d", res->code);
+		remove(obj->objpath);
 		goto out;
 	}
 
@@ -799,10 +801,8 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	ret = 1;
 
 out:
-	if (fd > 0) {
+	if (fd)
 		close(fd);
-		remove(obj->objpath);
-	}
 	if (host)
 		free(host);
 	if (req)

@@ -104,6 +104,7 @@ struct pantavisor {
 	struct pv_update *update;
 	struct pv_state *state;
 	int online;
+	int ctrl_fd;
 	unsigned long flags;
 };
 
