@@ -142,10 +142,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	name = get_json_key_value(buf, "name", tokv, tokc);
 
 	this = pv_platform_get_by_name(s, name);
-	if (!this) {
-		pv_log(ERROR, "");
+	if (!this)
 		goto out;
-	}
 
 	this->type = get_json_key_value(buf, "type", tokv, tokc);
 	this->exec = get_json_key_value(buf, "exec", tokv, tokc);
@@ -203,6 +201,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
+	this->json = strdup(buf);
 	this->done = true;
 
 out:
@@ -222,6 +221,8 @@ void pv_state_free(struct pv_state *this)
 	if (this->initrd)
 		free(this->initrd);
 
+	free(this->json);
+
 	struct pv_platform *pt, *p = this->platforms;
 	while (p) {
 		free(p->type);
@@ -231,6 +232,7 @@ void pv_state_free(struct pv_state *this)
 			free(*config);
 			config++;
 		}
+		free(p->json);
 		pt = p;
 		p = p->next;
 		free(pt);

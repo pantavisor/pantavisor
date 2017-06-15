@@ -69,6 +69,7 @@ struct pv_platform {
 	char *exec;
 	unsigned long ns_share;
 	void *data;
+	char *json;
 	bool running;
 	bool done;
 	struct pv_platform *next;
@@ -114,6 +115,7 @@ int *pv_get_revisions(struct pantavisor *pv);
 int pv_rev_is_done(struct pantavisor *pv, int rev);
 void pv_set_current(struct pantavisor *pv, int rev);
 int pv_get_rollback_rev(struct pantavisor *pv);
+int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
 int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
 int pv_meta_get_tryonce(struct pantavisor *pv);
 void pv_meta_set_tryonce(struct pantavisor *pv, int value);

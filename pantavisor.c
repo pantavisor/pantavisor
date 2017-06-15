@@ -149,6 +149,71 @@ int pv_get_rollback_rev(struct pantavisor *pv)
 	return rev;
 }
 
+int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
+{
+	int fd = 0, bytes, tokc;
+	int ret = 0;
+	char *buf = 0;
+	char path[PATH_MAX];
+	struct stat st;
+	struct pv_platform *p = 0;
+	jsmntok_t *tokv = 0;
+
+	if (!pv || !s)
+		goto out;
+
+	sprintf(path, "%s/trails/%d/pantavisor.json",
+		  pv->config->storage.mntpoint, s->rev);
+	if (stat(path, &st) == 0)
+		goto out;
+
+	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
+	if (!fd)
+		goto out;
+
+	if (jsmnutil_parse_json (s->json, &tokv, &tokc) < 0)
+		goto out;
+
+	buf = get_json_key_value(s->json, "pantavisor.json", tokv, tokc);
+	bytes = write(fd, buf, strlen(buf));
+	if (bytes)
+		pv_log(DEBUG, "%s: written %d bytes", path, bytes);
+
+	close(fd);
+
+	p = s->platforms;
+	while (p) {
+		sprintf(path, "%s/trails/%d/%s.json",
+			  pv->config->storage.mntpoint, s->rev, p->name);
+
+		if (stat(path, &st) == 0)
+			continue;
+
+		fd = open(path, O_CREAT | O_WRONLY | O_SYNC, 0644);
+		if (!fd)
+			continue;
+
+		bytes = write(fd, p->json, strlen(p->json));
+		if (bytes)
+			pv_log(DEBUG, "%s: written %d bytes", path, bytes);
+
+		close(fd);
+		p = p->next;
+	}
+
+	ret = 1;
+
+out:
+	if (buf)
+		free(buf);
+	if (tokv)
+		free(tokv);
+	if (fd)
+		close(fd);
+
+	return ret;
+}
+
 int pv_meta_get_tryonce(struct pantavisor *pv)
 {
 	char path[PATH_MAX];

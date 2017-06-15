@@ -958,6 +958,12 @@ int pv_update_install(struct pantavisor *pv)
 	write(fd, pending->json, strlen(pending->json));
 	close(fd);
 
+	if (!pv_meta_expand_jsons(pv, pending)) {
+		pv_log(ERROR, "unable to install platform and pantavisor jsons");
+		ret = -1;
+		goto out;
+	}
+
 	trail_remote_set_status(pv, -1, UPDATE_INSTALLED);
 
 	sleep(2);
