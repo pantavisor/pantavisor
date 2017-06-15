@@ -35,6 +35,6 @@ struct pv_cmd_req {
 int pv_cmd_socket_open(struct pantavisor *pv, char *path);
 void pv_cmd_socket_close(struct pantavisor *pv);
 struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout);
-void pv_cmd_finish(struct pv_cmd_req *c);
+void pv_cmd_finish(struct pantavisor *pv);
 
 #endif // PV_CMD_H

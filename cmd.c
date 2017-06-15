@@ -132,10 +132,16 @@ err:
 	return 0;
 }
 
-void pv_cmd_finish(struct pv_cmd_req *c)
+void pv_cmd_finish(struct pantavisor *pv)
 {
+	struct pv_cmd_req *c = pv->req;
+
+	if (!c)
+		return;
+
 	if (c->data)
 		free(c->data);
-
 	free(c);
+
+	pv->req = NULL;
 }

@@ -334,7 +334,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	if (pv->req) {
 		pv_log(WARN, "stable command found queued, discarding");
-		pv_cmd_finish(pv->req);
+		pv_cmd_finish(pv);
 		return STATE_WAIT;
 	}
 
@@ -391,7 +391,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	int rev;
 	char buf[4096] = { 0 };
 	struct pv_cmd_req *c = pv->req;
-	struct pv_state *old;
+	struct pv_state *new;
 
 	if (!c)
 		return STATE_WAIT;
@@ -404,16 +404,27 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		memcpy(buf, c->data, c->len);
 		rev = atoi(buf);
 
+		// lets not tryonce factory
+		if (rev == 0)
+			goto out;
+
 		// load try state
-		old = pv->state;
-		pv->state = pv_get_state(pv, rev);
-		if (!pv->state) {
+		new = pv_get_state(pv, rev);
+		if (!new) {
 			pv_log(DEBUG, "invalid rev requested %d", rev);
-			pv->state = old;
 			return STATE_WAIT;
 		}
+
+		// stop current step
+		if (pv_platforms_stop_all(pv) < 0)
+			return STATE_ROLLBACK;
+		if (pv_volumes_unmount(pv) < 0)
+			return STATE_ROLLBACK;
+
+		pv->state = new;
 		pv_meta_link_boot(pv, NULL);
 		pv_meta_set_tryonce(pv, 1);
+		pv_cmd_finish(pv);
 		return STATE_RUN;
 		}
 		break;
@@ -421,8 +432,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG, "unknown command received");
 	}
 
-	pv_cmd_finish(c);
-
+out:
+	pv_cmd_finish(pv);
 	return STATE_WAIT;
 }
 
