@@ -817,7 +817,6 @@ static int trail_link_objects(struct pantavisor *pv)
 {
 	int err = 0;
 	struct pv_object *obj = pv->update->pending->objects;
-	char src[PATH_MAX], dst[PATH_MAX];
 	char *c, *tmp;
 
 	while (obj) {
@@ -839,32 +838,7 @@ static int trail_link_objects(struct pantavisor *pv)
 		obj = obj->next;
 	}
 
-	sprintf(src, "%s/trails/%d/data/%s", pv->config->storage.mntpoint,
-		     pv->update->pending->rev, pv->update->pending->initrd);
-	sprintf(dst, "%s/trails/%d/meta/",
-		     pv->config->storage.mntpoint, pv->update->pending->rev);
-
-	mkdir_p(dst, 0644);
-	strcat(dst, "pv-initrd.img");
-
-	remove(dst);
-	if (link(src, dst) < 0) {
-		pv_log(ERROR, "unable to link initrd from %s, errno %d",
-			src, errno);
-		err++;
-	}
-
-	sprintf(src, "%s/trails/%d/data/%s", pv->config->storage.mntpoint,
-		     pv->update->pending->rev, pv->update->pending->kernel);
-	sprintf(dst, "%s/trails/%d/meta/pv-kernel.img",
-		     pv->config->storage.mntpoint, pv->update->pending->rev);
-
-	remove(dst);
-	if (link(src, dst) < 0) {
-		pv_log(ERROR, "unable to link kernel from %s, errno %d",
-			src, errno);
-		err++;
-	}
+	err += pv_meta_link_boot(pv, pv->update->pending);
 
 	return -err;
 }

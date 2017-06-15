@@ -43,6 +43,7 @@
 #include "loop.h"
 #include "controller.h"
 #include "bootloader.h"
+#include "utils.h"
 
 #include "pantavisor.h"
 
@@ -148,6 +149,79 @@ int pv_get_rollback_rev(struct pantavisor *pv)
 	return rev;
 }
 
+int pv_meta_get_tryonce(struct pantavisor *pv)
+{
+	char path[PATH_MAX];
+	struct pantavisor_config *c;
+	struct stat st;
+
+	if (!pv)
+		return 0;
+
+	c = pv->config;
+	sprintf(path, "%s/trails/%d/.pv/.tryonce", c->storage.mntpoint, pv->state->rev);
+
+	if (stat(path, &st) == 0)
+		return 1;
+
+	return 0;
+}
+
+void pv_meta_set_tryonce(struct pantavisor *pv, int value)
+{
+	int fd;
+	char path[PATH_MAX];
+	struct pantavisor_config *c;
+
+	if (!pv)
+		return;
+
+	c = pv->config;
+	sprintf(path, "%s/trails/%d/.pv/.tryonce", c->storage.mntpoint, pv->state->rev);
+
+	if (value) {
+		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
+		if (fd)
+			close(fd);
+	} else {
+		remove(path);
+		sync();
+	}
+}
+
+int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
+{
+	char src[PATH_MAX], dst[PATH_MAX];
+	struct pantavisor_config *c = pv->config;
+
+	if (!s)
+		s = pv->state;
+
+	sprintf(dst, "%s/trails/%d/meta/", c->storage.mntpoint, s->rev);
+	sprintf(src, "%s/trails/%d/data/%s", c->storage.mntpoint, s->rev, s->initrd);
+
+	mkdir_p(dst, 0644);
+	strcat(dst, "pv-initrd.img");
+
+	remove(dst);
+	if (link(src, dst) < 0)
+		goto err;
+
+	sprintf(dst, "%s/trails/%d/meta/pv-kernel.img", c->storage.mntpoint, s->rev);
+	sprintf(src, "%s/trails/%d/data/%s", c->storage.mntpoint, s->rev, s->kernel);
+
+	remove(dst);
+	if (link(src, dst) < 0)
+		goto err;
+
+	pv_log(DEBUG, "linked boot assets for rev=%d", s->rev);
+
+	return 0;
+err:
+	pv_log(ERROR, "unable to link '%s' to '%s', errno %d", src, dst, errno);
+	return 1;
+}
+
 struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 {
         int fd;
@@ -184,8 +258,6 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 
 	pv->step = buf;
 
-	// libtrail
-	//s = trail_parse_state(buf, size);
 	s = pv_parse_state(pv, buf, size, rev);
 	close(fd);
 

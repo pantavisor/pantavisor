@@ -22,19 +22,19 @@
 #ifndef PV_CMD_H
 #define PV_CMD_H
 
-enum cmd_type {
-	CMD_TRY_ONCE,
-	CMD_START_PLAT,
-	CMD_STOP_PLAT
+enum cmd_t {
+	CMD_TRY_ONCE = 1
 };
 
-typedef struct pv_cmd {
-	int type;
-	char *args;
-} pv_cmd_t;
+struct pv_cmd_req {
+	char cmd;
+	uint32_t len;
+	char *data;
+};
 
 int pv_cmd_socket_open(struct pantavisor *pv, char *path);
 void pv_cmd_socket_close(struct pantavisor *pv);
-pv_cmd_t *pv_cmd_socket_wait(struct pantavisor *pv, int timeout);
+struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout);
+void pv_cmd_finish(struct pv_cmd_req *c);
 
 #endif // PV_CMD_H

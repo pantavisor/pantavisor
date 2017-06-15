@@ -59,6 +59,7 @@ typedef enum {
 	STATE_INIT,
 	STATE_RUN,
 	STATE_WAIT,
+	STATE_COMMAND,
 	STATE_UNCLAIMED,
 	STATE_UPDATE,
 	STATE_ROLLBACK,
@@ -74,6 +75,7 @@ static const char* pv_state_string(pv_state_t st)
 	case STATE_INIT: return "STATE_INIT";
 	case STATE_RUN: return "STATE_RUN";
 	case STATE_WAIT: return "STATE_WAIT";
+	case STATE_COMMAND: return "STATE_COMMAND";
 	case STATE_UNCLAIMED: return "STATE_UNCLAIMED";
 	case STATE_UPDATE: return "STATE_UPDATE";
 	case STATE_ROLLBACK: return "STATE_ROLLBACK";
@@ -330,10 +332,15 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	int timeout_max = pv->config->updater.network_timeout
 		/ pv->config->updater.interval;
 
-	pv_cmd_t *c = pv_cmd_socket_wait(pv, timeout_max);
+	if (pv->req) {
+		pv_log(WARN, "stable command found queued, discarding");
+		pv_cmd_finish(pv->req);
+		return STATE_WAIT;
+	}
 
-	if (c)
-		pv_log(DEBUG, "PV command received: type=%d, msg='%s'", c->type, c->args);
+	pv->req = pv_cmd_socket_wait(pv, timeout_max);
+	if (pv->req)
+		return STATE_COMMAND;
 
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
@@ -364,7 +371,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	}
 
 	// make sure we always keep a ref to the latest working DONE step
-	if (current != pv->state->rev) {
+	if (current != pv->state->rev && !pv_meta_get_tryonce(pv)) {
 		current = pv->state->rev;
 		pv_set_current(pv, current);
 		pv->last = pv->state->rev;
@@ -375,6 +382,46 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv_log(INFO, "updates found");
 		return STATE_UPDATE;
 	}
+
+	return STATE_WAIT;
+}
+
+static pv_state_t _pv_command(struct pantavisor *pv)
+{
+	int rev;
+	char buf[4096] = { 0 };
+	struct pv_cmd_req *c = pv->req;
+	struct pv_state *old;
+
+	if (!c)
+		return STATE_WAIT;
+
+	pv_log(DEBUG, "%s():%d -- cmd=%d", __func__, __LINE__, c->cmd);
+
+	switch (c->cmd) {
+	case CMD_TRY_ONCE:
+		{
+		memcpy(buf, c->data, c->len);
+		rev = atoi(buf);
+
+		// load try state
+		old = pv->state;
+		pv->state = pv_get_state(pv, rev);
+		if (!pv->state) {
+			pv_log(DEBUG, "invalid rev requested %d", rev);
+			pv->state = old;
+			return STATE_WAIT;
+		}
+		pv_meta_link_boot(pv, NULL);
+		pv_meta_set_tryonce(pv, 1);
+		return STATE_RUN;
+		}
+		break;
+	default:
+		pv_log(DEBUG, "unknown command received");
+	}
+
+	pv_cmd_finish(c);
 
 	return STATE_WAIT;
 }
@@ -496,6 +543,7 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 	_pv_init,
 	_pv_run,
 	_pv_wait,
+	_pv_command,
 	_pv_unclaimed,
 	_pv_update,
 	_pv_rollback,

@@ -94,6 +94,7 @@ struct pv_state {
 	struct pv_volume *volumes;
 	struct pv_object *objects;
 	char *json;
+	int tryonce;
 };
 
 struct pantavisor {
@@ -103,6 +104,7 @@ struct pantavisor {
 	struct trail_remote *remote;
 	struct pv_update *update;
 	struct pv_state *state;
+	struct pv_cmd_req *req;
 	int online;
 	int ctrl_fd;
 	unsigned long flags;
@@ -112,6 +114,9 @@ int *pv_get_revisions(struct pantavisor *pv);
 int pv_rev_is_done(struct pantavisor *pv, int rev);
 void pv_set_current(struct pantavisor *pv, int rev);
 int pv_get_rollback_rev(struct pantavisor *pv);
+int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
+int pv_meta_get_tryonce(struct pantavisor *pv);
+void pv_meta_set_tryonce(struct pantavisor *pv, int value);
 void pv_destroy(struct pantavisor *pv);
 void pv_release_state(struct pantavisor *pv);
 struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int rev);

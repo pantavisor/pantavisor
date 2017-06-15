@@ -46,7 +46,7 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 		goto out;
 	}
 
-	memset(&addr, 0, sizeof(addr));	
+	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
 	strcpy(addr.sun_path, path);
 
@@ -60,9 +60,9 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 	listen(fd, 1);
 
 	pv->ctrl_fd = fd;
-	
+
 out:
-	return fd;		
+	return fd;
 }
 
 void pv_cmd_socket_close(struct pantavisor *pv)
@@ -73,13 +73,13 @@ void pv_cmd_socket_close(struct pantavisor *pv)
 	}
 }
 
-pv_cmd_t *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
+struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 {
 	int fd, ret;
 	char buf[4096];
 	struct timeval tv;
+	struct pv_cmd_req *c = 0;
 	fd_set fdset;
-	pv_cmd_t *cmd = 0;
 
 	fd = pv->ctrl_fd;
 	if (fd <= 0) {
@@ -88,7 +88,7 @@ pv_cmd_t *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 	}
 
 	FD_ZERO(&fdset);
-	FD_SET(fd, &fdset);		
+	FD_SET(fd, &fdset);
 
 	tv.tv_sec = timeout;
 	tv.tv_usec = 0;
@@ -97,7 +97,7 @@ pv_cmd_t *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 
 	if (!ret)
 		goto out;
-	
+
 	if (ret < 0) {
 		pv_log(ERROR, "error reading from socket fd");
 		goto out;
@@ -105,14 +105,37 @@ pv_cmd_t *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 
 	// process command
 	fd = accept(fd, 0, 0);
-	cmd = calloc(1, sizeof(pv_cmd_t));
-	cmd->type = CMD_TRY_ONCE;
-	ret = recv(fd, buf, sizeof(buf), 0);
-	cmd->args = calloc(1, ret + 1);
-	cmd->args = strncpy(cmd->args, buf, ret);
-	cmd->args[ret] = '\0';
+	c = calloc(1, sizeof(struct pv_cmd_req));
+
+	ret = read(fd, &c->cmd, sizeof(char));
+	if (ret != sizeof(char)) {
+		pv_log(WARN, "unknown command format received");
+		goto err;
+	}
+
+	ret = read(fd, buf, sizeof(buf));
+	if (ret < 0) {
+		pv_log(WARN, "unable to read command data");
+		goto err;
+	}
+	c->data = calloc(1, ret);
+	c->data = memcpy(c->data, buf, ret);
+	c->len = ret;
 	close(fd);
 
 out:
-	return cmd;
+	return c;
+err:
+	if (c)
+		free(c);
+
+	return 0;
+}
+
+void pv_cmd_finish(struct pv_cmd_req *c)
+{
+	if (c->data)
+		free(c->data);
+
+	free(c);
 }
