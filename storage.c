@@ -100,22 +100,18 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 	struct dirent **d;
 	char path[PATH_MAX];
 
-	sprintf(path, "%s/trails/%d/meta/state.json", pv->config->storage.mntpoint, rev);
-	if (!remove(path))
-		pv_log(DEBUG, "removing '%s'", path);
-
-	sprintf(path, "%s/trails/%d/meta/", pv->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/.pvr/", pv->config->storage.mntpoint, rev);
 	n = scandir(path, &d, NULL, alphasort);
 	while (n--) {
 		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
 			continue;
 		if (!remove_at(path, d[n]->d_name))
-			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
+			pv_log(DEBUG, "remove '%s'", d[n]->d_name);
 	}
 	if (!remove(path))
 		pv_log(DEBUG, "removing '%s'", path);
 
-	sprintf(path, "%s/trails/%d/data/", pv->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/.pv/", pv->config->storage.mntpoint, rev);
 	n = scandir(path, &d, NULL, alphasort);
 	while (n--) {
 		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
@@ -127,8 +123,16 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 		pv_log(DEBUG, "removing '%s'", path);
 
 	sprintf(path, "%s/trails/%d/", pv->config->storage.mntpoint, rev);
+	n = scandir(path, &d, NULL, alphasort);
+	while (n--) {
+		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
+			continue;
+		if (!remove_at(path, d[n]->d_name))
+			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
+	}
 	if (!remove(path))
 		pv_log(DEBUG, "removing '%s'", path);
+
 	sync();
 }
 
@@ -187,7 +191,7 @@ off_t pv_storage_get_free(struct pantavisor *pv)
 	off_t fs_free, fs_min;
 	struct statfs buf;
 
-	if (statfs("/storage/trails/0/meta/state.json", &buf) < 0)
+	if (statfs("/storage/trails/0/.pvr/json", &buf) < 0)
 		return -1;
 
 	fs_free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;

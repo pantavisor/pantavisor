@@ -909,7 +909,7 @@ int pv_update_install(struct pantavisor *pv)
 {
 	int ret, fd;
 	struct pv_state *pending = pv->update->pending;
-	char state_path[1024];
+	char path[PATH_MAX];
 
 	if (!pv->remote)
 		trail_remote_init(pv);
@@ -934,6 +934,12 @@ int pv_update_install(struct pantavisor *pv)
 	if (trail_update_has_new_initrd(pv))
 		pv->update->need_reboot = 1;
 
+	// make sure target directories exist
+	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
+	mkdir_p(path, 0644);
+	sprintf(path, "%s/trails/%d/.pv", pv->config->storage.mntpoint, pending->rev);
+	mkdir_p(path, 0644);
+
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
 		pv_log(ERROR, "unable to link objects to relative path (failed=%d)", ret);
@@ -942,8 +948,8 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	sprintf(state_path, "%s/trails/%d/meta/state.json", pv->config->storage.mntpoint, pending->rev);
-	fd = open(state_path, O_CREAT | O_WRONLY | O_SYNC, 0644);
+	sprintf(path, "%s/trails/%d/.pvr/json", pv->config->storage.mntpoint, pending->rev);
+	fd = open(path, O_CREAT | O_WRONLY | O_SYNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to write state.json file for update");
 		ret = -1;

@@ -61,7 +61,7 @@ void pv_set_current(struct pantavisor *pv, int rev)
 	int fd;
 	char path[256];
 
-	sprintf(path, "%s/trails/%d/meta/.done", pv->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
 	if (!fd) {
@@ -127,7 +127,7 @@ int pv_rev_is_done(struct pantavisor *pv, int rev)
 	if (!rev)
 		return 1;
 
-	sprintf(path, "%s/trails/%d/meta/.done", pv->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
 	if (stat(path, &st) == 0)
 		return 1;
 
@@ -141,7 +141,7 @@ int pv_get_rollback_rev(struct pantavisor *pv)
 	char path[256];
 
 	while (rev--) {
-		sprintf(path, "%s/trails/%lu/meta/.done", pv->config->storage.mntpoint, rev);
+		sprintf(path, "%s/trails/%lu/.pv/done", pv->config->storage.mntpoint, rev);
 		if (stat(path, &st) == 0)
 			return rev;
 	}
@@ -197,8 +197,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	if (!s)
 		s = pv->state;
 
-	sprintf(dst, "%s/trails/%d/meta/", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/data/%s", c->storage.mntpoint, s->rev, s->initrd);
+	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
+	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->initrd);
 
 	mkdir_p(dst, 0644);
 	strcat(dst, "pv-initrd.img");
@@ -207,8 +207,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	if (link(src, dst) < 0)
 		goto err;
 
-	sprintf(dst, "%s/trails/%d/meta/pv-kernel.img", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/data/%s", c->storage.mntpoint, s->rev, s->kernel);
+	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", c->storage.mntpoint, s->rev);
+	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->kernel);
 
 	remove(dst);
 	if (link(src, dst) < 0)
@@ -234,7 +234,7 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 	if (rev < 0)
 		sprintf(path, "%s/trails/current/state.json", pv->config->storage.mntpoint);
 	else
-	        sprintf(path, "%s/trails/%d/meta/state.json", pv->config->storage.mntpoint, rev);
+	        sprintf(path, "%s/trails/%d/.pvr/json", pv->config->storage.mntpoint, rev);
 
         pv_log(INFO, "reading state from: '%s'", path);
 

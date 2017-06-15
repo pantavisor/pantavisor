@@ -274,7 +274,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		void *data;
 		char **c = p->configs;
 
-		sprintf(conf_path, "%s/trails/%d/data/%s",
+		sprintf(conf_path, "%s/trails/%d/%s",
 			pv->config->storage.mntpoint, s->rev, *c);
 
 		// Get type controller
