@@ -138,7 +138,7 @@ int pv_volumes_mount(struct pantavisor *pv)
 		}
 
                 if (ret < 0)
-                        exit_error(errno, "Could not mount loop device");
+                        goto out;
 
 		// register mount state
 		v->src = strdup(path);

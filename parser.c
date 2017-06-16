@@ -263,8 +263,8 @@ static void pv_print_state(struct pv_state *this)
 	struct pv_platform *p = this->platforms;
 	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
 	pv_log(DEBUG, "initrd: '%s'\n", this->initrd);
-	pv_log(DEBUG, "platform: '%s'\n", p->name);
 	while (p) {
+		pv_log(DEBUG, "platform: '%s'\n", p->name);
 		pv_log(DEBUG, "  type: '%s'\n", p->type);
 		pv_log(DEBUG, "  exec: '%s'\n", p->exec);
 		pv_log(DEBUG, "  configs:\n");
