@@ -269,6 +269,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 	}
 
 	while (p) {
+		pid_t pid = -1;
 		char conf_path[PATH_MAX];
 		const struct pv_cont_ctrl *ctrl;
 		void *data;
@@ -281,7 +282,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		ctrl = _pv_platforms_get_ctrl(p->type);
 
 		// Start the platform
-		data = ctrl->start(p->name, conf_path, NULL);
+		data = ctrl->start(p->name, conf_path, (void *) &pid);
 
 		if (!data) {
 			pv_log(ERROR, "error starting platform: \"%s\"",
@@ -289,13 +290,14 @@ int pv_platforms_start_all(struct pantavisor *pv)
 			return -1;
 		}
 
-		pv_log(INFO, "started platform platform: \"%s\" (data=%p)",
-			p->name, data);
+		pv_log(INFO, "started platform platform: \"%s\" (data=%p), init_pid=%d",
+			p->name, data, pid);
 
 		// FIXME: arbitrary delay between plats
 		sleep(7);
 
 		p->data = data;
+		p->init_pid = pid;
 		p->running = true;
 		num_plats++;
 

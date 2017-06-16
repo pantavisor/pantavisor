@@ -70,6 +70,7 @@ struct pv_platform {
 	unsigned long ns_share;
 	void *data;
 	char *json;
+	pid_t init_pid;
 	bool running;
 	bool done;
 	struct pv_platform *next;

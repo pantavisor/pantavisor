@@ -128,6 +128,8 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 		c = NULL;
 	}
 
+	*((pid_t *) data) = c->init_pid(c);
+
 	return (void *) c;
 }
 
