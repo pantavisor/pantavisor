@@ -89,7 +89,7 @@ static struct config_item* _config_add_item(char *key, char *value)
 	else
 		last->next = this;
 
-	// Set key	
+	// Set key
 	this->key = strdup(key);
 
 	// Check for empty value
@@ -97,7 +97,7 @@ static struct config_item* _config_add_item(char *key, char *value)
 		this->value = strdup(value);
 	else
 		this->value = strdup(""); // Empty value
-	
+
 	this->next = NULL;
 	last = this;
 
@@ -173,15 +173,6 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	if (load_key_value_file(path) < 0)
 		return -1;
 
-	item = _config_get_value("loglevel");
-	if (item)
-		config->loglevel = atoi(item);
-	item = _config_get_value("log.buf_nitems");
-	if (item)
-		config->logsize = atoi(item);
-	else
-		config->logsize = 16;
-
 	item = _config_get_value("bootloader.type");
 	pv_log(DEBUG, "bl_type='%s'\n", item);
 	if (item && !strcmp(item, "uboot-pvk"))
@@ -193,6 +184,28 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.fstype = _config_get_value("storage.fstype");
 	config->storage.opts = _config_get_value("storage.opts");
 	config->storage.mntpoint = _config_get_value("storage.mntpoint");
+
+	return 0;
+}
+
+// FIXME: add override capability for static config
+// Fill config struct after parsing on-initramfs factory config
+int ph_config_from_file(char *path, struct pantavisor_config *config)
+{
+	char *item;
+
+	if (load_key_value_file(path) < 0)
+		return -1;
+
+	item = _config_get_value("log.level");
+	if (item)
+		config->loglevel = atoi(item);
+
+	item = _config_get_value("log.buf_nitems");
+	if (item)
+		config->logsize = atoi(item);
+	else
+		config->logsize = 16;
 
 	// default 300 second update interval
 	item = _config_get_value("updater.interval");
@@ -212,33 +225,21 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	if (item)
 		config->updater.keep_factory = atoi(item);
 
-	return 0;
-}
-
-// FIXME: add override capability for static config
-// Fill config struct after parsing on-initramfs factory config
-int ph_config_from_file(char *path, struct pantavisor_config *config)
-{
-	char *item;
-
-	if (load_key_value_file(path) < 0)
-		return -1;
-
-	config->creds.host = _config_get_value("creds_host");
+	config->creds.host = _config_get_value("creds.host");
 	if (!config->creds.host) {
 		config->creds.host = strdup("192.168.53.1");
 		pv_log(INFO, "no host set, using default: '%s'", config->creds.host);
 	}
 
-	item = _config_get_value("creds_port");
+	item = _config_get_value("creds.port");
 	if (item)
 		config->creds.port = atoi(item);
 	else
 		config->creds.port = 12365;
 
-	config->creds.id = _config_get_value("creds_id");
-	config->creds.prn = _config_get_value("creds_prn");
-	config->creds.secret = _config_get_value("creds_secret");
+	config->creds.id = _config_get_value("creds.id");
+	config->creds.prn = _config_get_value("creds.prn");
+	config->creds.secret = _config_get_value("creds.secret");
 
 	return 0;
 }
@@ -259,7 +260,7 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 {
 	int fd;
 	int bytes;
-	char sport[6];
+	char buf[128];
 
 	fd = open(path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (!fd) {
@@ -267,12 +268,22 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 		return 1;
 	}
 
-	bytes = write_config_tuple(fd, "creds_host", config->creds.host);
-	sprintf(sport, "%d", config->creds.port);
-	bytes = write_config_tuple(fd, "creds_port", sport);
-	bytes = write_config_tuple(fd, "creds_id", config->creds.id);
-	bytes = write_config_tuple(fd, "creds_prn", config->creds.prn);
-	bytes = write_config_tuple(fd, "creds_secret", config->creds.secret);
+	sprintf(buf, "%d", config->loglevel);
+	bytes = write_config_tuple(fd, "log.level", buf);
+	sprintf(buf, "%d", config->logsize);
+	bytes = write_config_tuple(fd, "log.buf_nitems", buf);
+	sprintf(buf, "%d", config->updater.interval);
+	bytes = write_config_tuple(fd, "updater.interval", buf);
+	sprintf(buf, "%d", config->updater.network_timeout);
+	bytes = write_config_tuple(fd, "updater.network_timeout", buf);
+	sprintf(buf, "%d", config->updater.keep_factory);
+	bytes = write_config_tuple(fd, "updater.keep_factory", buf);
+	bytes = write_config_tuple(fd, "creds.host", config->creds.host);
+	sprintf(buf, "%d", config->creds.port);
+	bytes = write_config_tuple(fd, "creds.port", buf);
+	bytes = write_config_tuple(fd, "creds.id", config->creds.id);
+	bytes = write_config_tuple(fd, "creds.prn", config->creds.prn);
+	bytes = write_config_tuple(fd, "creds.secret", config->creds.secret);
 
 	close(fd);
 

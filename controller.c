@@ -49,7 +49,7 @@
 
 #include "storage.h"
 
-#define PV_CONFIG_FILENAME	"/pantavisor/device.config"
+#define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 #define CMDLINE_OFFSET	7
 
 static int rb_count;
@@ -120,18 +120,9 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv->config = c;
 
         if (pv_config_from_file(PV_CONFIG_FILENAME, c) < 0) {
-		pv_log(FATAL, "unable to parse pantavisor config");
+		printf("FATAL: unable to parse pantavisor config");
 		return STATE_EXIT;
 	}
-
-	pv_log_init(pv);
-	if (c->loglevel)
-		pv_log_set_level(c->loglevel);
-
-        pv_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
-        pv_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
-        pv_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
-        pv_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
 
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0644);
@@ -156,6 +147,14 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		return STATE_EXIT;
 	}
 
+	pv_log_init(pv);
+	if (c->loglevel)
+		pv_log_set_level(c->loglevel);
+
+        pv_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
+        pv_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
+        pv_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
+        pv_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
 	pv_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
         pv_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
         pv_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
