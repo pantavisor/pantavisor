@@ -132,7 +132,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	for (int wait = 5; wait > 0; wait--) {
 		if (stat(c->storage.path, &st) == 0)
 			break;
-		pv_log(INFO, "trail storage not yet available, waiting...");
+		printf("INFO: trail storage not yet available, waiting...");
 		sleep(1);
 		continue;
 	}
@@ -143,7 +143,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 
 	sprintf(pconfig_p, "%s/config/pantahub.config", c->storage.mntpoint);
         if (ph_config_from_file(pconfig_p, c) < 0) {
-		pv_log(FATAL, "unable to parse pantahub config");
+		printf("FATAL: unable to parse pantahub config");
 		return STATE_EXIT;
 	}
 

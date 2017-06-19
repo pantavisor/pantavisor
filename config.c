@@ -174,7 +174,6 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 		return -1;
 
 	item = _config_get_value("bootloader.type");
-	pv_log(DEBUG, "bl_type='%s'\n", item);
 	if (item && !strcmp(item, "uboot-pvk"))
 		config->bl_type = UBOOT_PVK;
 	else
