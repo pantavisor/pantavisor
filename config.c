@@ -158,7 +158,8 @@ static int load_key_value_file(char *path)
 		char *key = strtok(buff, "=");
 		char *value = strtok(NULL, "=");
 
-		_config_add_item(key, value);
+		if (key)
+			_config_add_item(key, value);
 	}
 	fclose(fp);
 
