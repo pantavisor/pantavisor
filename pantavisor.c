@@ -149,6 +149,37 @@ int pv_get_rollback_rev(struct pantavisor *pv)
 	return rev;
 }
 
+void pv_meta_set_objdir(struct pantavisor *pv)
+{
+	int fd = 0;
+	char path[PATH_MAX];
+	struct stat st;
+
+	if (!pv)
+		return;
+
+	sprintf(path, "%s/trails/%d/.pvr/config", pv->config->storage.mntpoint, pv->state->rev);
+	if (stat(path, &st) == 0)
+		return;
+
+	fd = open(path, O_CREAT | O_WRONLY, 0644);
+	if (!fd)
+		goto err;
+
+	sprintf(path, "{\"ObjectsDir\": \"%s/objects\"}", pv->config->storage.mntpoint);
+	if (write(fd, path, strlen(path)) < 0)
+		goto err;
+
+	close(fd);
+	pv_log(DEBUG, "wrote '%s' to .pvr/config @rev=%d", path, pv->state->rev);
+
+	return;
+err:
+	pv_log(WARN, "unable to set ObjectsDir pvr config key");
+	if (fd)
+		close(fd);
+}
+
 int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
 	int fd = 0, bytes, tokc;

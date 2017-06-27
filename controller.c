@@ -271,6 +271,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (!pv->state)
 		return STATE_ERROR;
 
+	pv_meta_set_objdir(pv);
+
 	if (pv_volumes_mount(pv) < 0)
 		return STATE_ROLLBACK;
 
