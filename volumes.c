@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <ctype.h>
 
+#include <sys/utsname.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
@@ -70,7 +71,7 @@ void pv_volume_remove(struct pv_state *s, char *name)
 				free(v->src);
 			if (v->dest)
 				free(v->dest);
-			
+
 			if (v == s->volumes)
 				s->volumes = v->next;
 			else
@@ -106,6 +107,7 @@ int pv_volumes_mount(struct pantavisor *pv)
 {
         int ret = -1;
 	struct stat st;
+	struct utsname uts;
 	struct pv_state *s = pv->state;
 	struct pv_volume *v = s->volumes;
 
@@ -159,6 +161,16 @@ int pv_volumes_mount(struct pantavisor *pv)
 		mkdir_p(FW_PATH, 0644);
 
 	ret = mount_bind(pv->state->firmware, FW_PATH);
+	if (ret < 0)
+		goto out;
+
+	if (!uname(&uts) && (stat("/volumes/modules.squashfs", &st) == 0)) {
+		char path[PATH_MAX];
+		sprintf(path, "/lib/modules/%s", uts.release);
+		mkdir_p(path, 0644);
+		ret = mount_bind("/volumes/modules.squashfs", path);
+		pv_log(DEBUG, "bind mounted modules to %s", path);
+	}
 
 out:
         return ret;
