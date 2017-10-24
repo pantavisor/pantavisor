@@ -244,10 +244,12 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	} else {
 		struct pv_state *s = pv->state;
 		pv->state = pv_get_state(pv, bl_rev);
-		pv_update_start(pv, 1);
-		pv_update_set_status(pv, UPDATE_FAILED);
-		pv_state_free(pv->state);
-		pv->state = s;
+		if (pv->state) {
+			pv_update_start(pv, 1);
+			pv_update_set_status(pv, UPDATE_FAILED);
+			pv_state_free(pv->state);
+			pv->state = s;
+		}
 	}
 
 	return STATE_RUN;
@@ -460,6 +462,9 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 	pv_log(WARN, "New trail state accepted, stopping current state.");
 
+	// flush logs to cloud before attempting to start new step
+	pv_log_flush(pv);
+
 	// stop current step
 	if (pv_platforms_stop_all(pv) < 0)
 		return STATE_ROLLBACK;
@@ -469,6 +474,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	// Release current step
 	pv_release_state(pv);
 
+	// For now, trigger a reboot for all updates
 	if (pv->update->need_reboot) {
 		pv_log(WARN, "Update requires reboot, rebooting...");
 		return STATE_REBOOT;
@@ -529,9 +535,13 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	pv_update_finish(pv);
+
+	// unmount storage
+	umount(pv->config->storage.mntpoint);
 	sync();
+
 	pv_log(INFO, "rebooting...");
-	sleep(2);
+	sleep(5);
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;

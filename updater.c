@@ -474,7 +474,8 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT,
 		pv->config->creds.id, rev);
 
-	u->need_reboot = 0;
+	// FIXME: currently we only support strict (always rebot) updates
+	u->need_reboot = 1;
 	u->need_finish = 0;
 	pv->update = u;
 
