@@ -31,6 +31,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include <trest.h>
 #include <thttp.h>
@@ -49,19 +51,16 @@
 
 trest_ptr *client = 0;
 char *endpoint = 0;
+struct sockaddr_in *conn;
 
-static int connect_try(char *host, int port, int h_length)
+static int connect_try(struct sockaddr_in *serv)
 {
 	int ret = 0;
 	int sfd = -1;
-	struct sockaddr_in *serv = malloc(sizeof (struct sockaddr_in));
 
 	sfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
 
-	memcpy((void *) &serv->sin_addr, host, h_length);
-	serv->sin_family = AF_INET;
-	serv->sin_port = htons(port);
-
+	pv_log(DEBUG, "connect(ip='%s')", inet_ntoa(serv->sin_addr));
 	if ((ret = connect(sfd, (struct sockaddr *) serv, sizeof (*serv))) < 0)
 		goto out;
 
@@ -167,10 +166,15 @@ static void pv_ph_set_online(struct pantavisor *pv, int online)
 
 int pv_ph_is_available(struct pantavisor *pv)
 {
-	int ret = 0;
+	int ret = 1;
 	int port = 0;
+	struct addrinfo hints;
+	struct addrinfo *result;
 	struct hostent *ent;
-	char *host;
+	char *host = 0;
+
+	if (conn && (ret = connect_try(conn)))
+		goto out;
 
 	// default to global PH instance
 	if (strcmp(pv->config->creds.host, "") == 0)
@@ -180,19 +184,34 @@ int pv_ph_is_available(struct pantavisor *pv)
 
 	port = pv->config->creds.port;
 	if (!port)
-		port = 80;
+		port = 443;
 
-	if ((ent = gethostbyname(host)) == NULL) {
-		pv_log(DEBUG, "gethostbyname failed for %s", host);
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family |= AF_INET;
+
+	ret = getaddrinfo(host, NULL, &hints, &result);
+	if (ret < 0) {
+		pv_log(DEBUG, "ret=%d errno=%d", ret, errno);
 		goto out;
 	}
 
-	// attempt to connect to host
-	ret = connect_try(ent->h_addr_list[0], port, ent->h_length);
+	while (result) {
+		struct sockaddr_in *sock = (struct sockaddr_in *) result->ai_addr;
+		pv_log(DEBUG, "got ip='%s'", inet_ntoa(sock->sin_addr));
+		sock->sin_family = AF_INET;
+		sock->sin_port = htons(port);
+		if (connect_try(sock)) {
+			ret = 1;
+			conn = sock;
+			break;
+		}
+		result = result->ai_next;
+	}
 
 out:
 	if (ret > 0) {
-		pv_log(DEBUG, "PH available at '%s:%d'", host, port);
+		pv_log(DEBUG, "PH available at '%s:%d'",
+			inet_ntoa(conn->sin_addr), ntohs(conn->sin_port));
 	} else {
 		ret = 0;
 	}
