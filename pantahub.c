@@ -170,7 +170,6 @@ int pv_ph_is_available(struct pantavisor *pv)
 	int port = 0;
 	struct addrinfo hints;
 	struct addrinfo *result;
-	struct hostent *ent;
 	char *host = 0;
 
 	if (conn && (ret = connect_try(conn)))
