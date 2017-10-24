@@ -66,7 +66,7 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	int ret = 0, tokc, size;
 	char *str, *buf;
 	jsmntok_t *tokv;
-	jsmntok_t **key;
+	jsmntok_t **key, **key_i;
 
 	// take null terminate copy of item to parse
 	buf = calloc(1, (n+1) * sizeof(char));
@@ -84,39 +84,43 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 
 	// get platforms and create empty items
 	key = jsmnutil_get_object_keys(buf, tokv);
-	while (*key) {
-		c = (*key)->end - (*key)->start;
-		if (strncmp("platforms", buf+(*key)->start, strlen("platforms"))) {
-			key++;
+	key_i = key;
+	while (*key_i) {
+		c = (*key_i)->end - (*key_i)->start;
+		if (strncmp("platforms", buf+(*key_i)->start, strlen("platforms"))) {
+			key_i++;
 			continue;
 		}
 
 		// parse array data
-		jsmntok_t *k = (*key+2);
-		size = (*key+1)->size;
+		jsmntok_t *k = (*key_i+2);
+		size = (*key_i+1)->size;
 		while ((str = json_array_get_one_str(buf, &size, &k)))
 			pv_platform_add(s, str);
 
 		break;
 	}
+	jsmnutil_tokv_free(key);
 
 	// get volumes and create empty items
 	key = jsmnutil_get_object_keys(buf, tokv);
-	while (*key) {
-		c = (*key)->end - (*key)->start; 
-		if (strncmp("volumes", buf+(*key)->start, strlen("volumes"))) {
-			key++;
+	key_i = key;
+	while (*key_i) {
+		c = (*key_i)->end - (*key_i)->start;
+		if (strncmp("volumes", buf+(*key_i)->start, strlen("volumes"))) {
+			key_i++;
 			continue;
 		}
 
 		// parse array data
-		jsmntok_t *k = (*key+2);
-		size = (*key+1)->size;
+		jsmntok_t *k = (*key_i+2);
+		size = (*key_i+1)->size;
 		while ((str = json_array_get_one_str(buf, &size, &k)))
 			pv_volume_add(s, str);
 
 		break;
 	}
+	jsmnutil_tokv_free(key);
 
 	ret = 1;
 
@@ -188,6 +192,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	this->ns_share = 0;
 	while ((str = json_array_get_one_str(shares, &size, &t))) {
 		this->ns_share |= ns_share_flag(str);
+		free(str);
 		i++;
 	}
 
@@ -296,7 +301,7 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 	char *key = 0, *value = 0, *ext = 0;
 	struct pv_state *this = 0;
 	jsmntok_t *tokv;
-	jsmntok_t **k;
+	jsmntok_t **k, **keys;
 
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
@@ -323,7 +328,8 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 	}
 	free(value);
 
-	k = jsmnutil_get_object_keys(buf, tokv);
+	keys = jsmnutil_get_object_keys(buf, tokv);
+	k = keys;
 
 	// platform head is pv->state->platforms
 	while (*k) {
@@ -363,6 +369,7 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 		}
 		k++;
 	}
+	jsmnutil_tokv_free(keys);
 
 	// copy buffer
 	this->json = strdup(buf);

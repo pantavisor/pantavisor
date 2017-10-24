@@ -70,8 +70,6 @@ static int connect_try(struct sockaddr_in *serv)
 out:
 	if (sfd > -1)
 		close(sfd);
-	if (serv)
-		free(serv);
 
 	return ret;
 }
@@ -169,7 +167,7 @@ int pv_ph_is_available(struct pantavisor *pv)
 	int ret = 1;
 	int port = 0;
 	struct addrinfo hints;
-	struct addrinfo *result;
+	struct addrinfo *result, *rp;
 	char *host = 0;
 
 	if (conn && (ret = connect_try(conn)))
@@ -194,8 +192,9 @@ int pv_ph_is_available(struct pantavisor *pv)
 		goto out;
 	}
 
-	while (result) {
-		struct sockaddr_in *sock = (struct sockaddr_in *) result->ai_addr;
+	rp = result;
+	while (rp) {
+		struct sockaddr_in *sock = (struct sockaddr_in *) rp->ai_addr;
 		pv_log(DEBUG, "got ip='%s'", inet_ntoa(sock->sin_addr));
 		sock->sin_family = AF_INET;
 		sock->sin_port = htons(port);
@@ -204,10 +203,13 @@ int pv_ph_is_available(struct pantavisor *pv)
 			conn = sock;
 			break;
 		}
-		result = result->ai_next;
+		rp = rp->ai_next;
 	}
 
 out:
+	if (result)
+		freeaddrinfo(result);
+
 	if (ret > 0) {
 		pv_log(DEBUG, "PH available at '%s:%d'",
 			inet_ntoa(conn->sin_addr), ntohs(conn->sin_port));
@@ -259,9 +261,9 @@ int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
 
 out:
 	if (req)
-		free(req);
+		trest_request_free(req);
 	if (req)
-		free(res);
+		trest_response_free(res);
 
 	return ret;
 }

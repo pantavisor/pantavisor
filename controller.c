@@ -296,10 +296,12 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	int need_register = 1;
 	struct stat st;
 	char config_path[256];
-	char *c = calloc(1, sizeof(char) * 128);
+	char *c;
 
 	if (!pv_ph_is_available(pv))
 		return STATE_WAIT;
+
+	c = calloc(1, sizeof(char) * 128);
 
 	sprintf(config_path, "%s/config/unclaimed.config", pv->config->storage.mntpoint);
 	if (stat(config_path, &st) == 0)
