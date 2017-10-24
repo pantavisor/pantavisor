@@ -394,41 +394,45 @@ struct pv_state* pv_get_current_state(struct pantavisor *pv)
 	return NULL;
 }
 
-int pantavisor_init()
+static void _pv_init()
 {
+	int ret;
 	struct pantavisor *pv;
 
-        pid_t pid = fork();
+        prctl(PR_SET_NAME, "pantavisor");
+	pv = calloc(1, sizeof(struct pantavisor));
 
-        if (pid < 0)
-                goto out;
+	struct rlimit core_limit;
+	core_limit.rlim_cur = RLIM_INFINITY;
+	core_limit.rlim_max = RLIM_INFINITY;
 
-        if (pid > 0) {
-                // Let init continue
-                pv_pid = pid;
-                goto out;
-        } else {
-		int ret;
-                prctl(PR_SET_NAME, "pantavisor");
-		pv = calloc(1, sizeof(struct pantavisor));
+	setrlimit(RLIMIT_CORE, &core_limit);
 
-		struct rlimit core_limit;
-		core_limit.rlim_cur = RLIM_INFINITY;
-		core_limit.rlim_max = RLIM_INFINITY;
+	char *core = "/storage/corepv";
+	int fd = open("/proc/sys/kernel/core_pattern", O_WRONLY | O_SYNC);
+	if (fd)
+		write(fd, core, strlen(core));
 
-		setrlimit(RLIMIT_CORE, &core_limit);
+	// Enter state machine
+	ret = pv_controller_start(pv);
 
-		char *core = "/storage/corepv";
-		int fd = open("/proc/sys/kernel/core_pattern", O_WRONLY | O_SYNC);
-		if (fd)
-			write(fd, core, strlen(core));
+	// Clean exit -> reboot
+        exit(ret);
+}
 
-		// Enter state machine
-		ret = pv_controller_start(pv);
+int pantavisor_init(bool do_fork)
+{
+	pid_t pid;
+	if (do_fork) {
+	        pid = fork();
+	        if (pid > 0) {
+	                pv_pid = pid;
+	                goto out;
+		}
+	}
 
-		// Clean exit -> reboot
-                exit(ret);
-        }
+	// Start PV
+	_pv_init();
 
 out:
 	return pid;

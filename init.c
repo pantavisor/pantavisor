@@ -99,7 +99,6 @@ static int early_mounts()
 static void debug_telnet()
 {
 	tsh_run("ifconfig lo up");
-	//tsh_run("ifconfig eth0 192.168.20.222");
 	tsh_run("telnetd -l /bin/ash");
 }
 
@@ -152,21 +151,56 @@ static void debug_shell()
 		shell_pid = tsh_run("ash");
 }
 
+#define PV_STANDALONE	(1 << 0)
+#define	PV_DEBUG	(1 << 1)
+
+static int is_arg(int argc, char *argv[], char *arg)
+{
+	if (argc < 2)
+		return 0;
+
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], arg) == 0)
+			return 1;
+	}
+
+	return 0;
+}
+
+static void parse_args(int argc, char *argv[], unsigned short *args)
+{
+	if (is_arg(argc, argv, "pv_standalone"))
+		*args |= PV_STANDALONE;
+
+	if (is_arg(argc, argv, "debug"))
+		*args |= PV_DEBUG;
+	
+	// For now
+	*args |= PV_DEBUG;
+}
 
 int main(int argc, char *argv[])
 {
-	int debug = 1; // Read from cmdline
+	unsigned short args = 0;
+	parse_args(argc, argv, &args);
+
+	if (getpid() != 1) {
+		pantavisor_init(false);
+		return 0;
+	}
 
 	early_mounts();
-
 	signal(SIGCHLD, signal_handler);
-
-	if (debug)
+	
+	if (args & PV_DEBUG)
 		debug_shell();
 		debug_telnet();
 
-	pantavisor_init();
+	// Run PV main loop
+	if (!(args & PV_STANDALONE))
+		pv_pid = pantavisor_init(true);
 
+	// loop init
 	for (;;)
 		pause();
 
