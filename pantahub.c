@@ -207,13 +207,12 @@ int pv_ph_is_available(struct pantavisor *pv)
 	}
 
 out:
-	if (result)
-		freeaddrinfo(result);
-
 	if (ret > 0) {
 		pv_log(DEBUG, "PH available at '%s:%d'",
 			inet_ntoa(conn->sin_addr), ntohs(conn->sin_port));
 	} else {
+		if (result)
+			freeaddrinfo(result);
 		ret = 0;
 	}
 
