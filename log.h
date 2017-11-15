@@ -62,7 +62,7 @@ struct level_name {
 
 void pv_log_init(struct pantavisor *pv);
 void __vlog(char *module, int level, const char *fmt, ...);
-void pv_log_flush(struct pantavisor *pv);
+void pv_log_flush(struct pantavisor *pv, bool force);
 int pv_log_set_level(unsigned int level);
 void pv_log_raw(struct pantavisor *pv, char *buf, int len);
 

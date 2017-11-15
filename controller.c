@@ -470,7 +470,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	pv_log(WARN, "New trail state accepted, stopping current state.");
 
 	// flush logs to cloud before attempting to start new step
-	pv_log_flush(pv);
+	pv_log_flush(pv, true);
 	pv->online = false;
 
 	// stop current step
@@ -585,7 +585,7 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 {
 	// sync logs with remote
-	pv_log_flush(pv);
+	pv_log_flush(pv, true);
 
 	return state_table[state](pv);
 }

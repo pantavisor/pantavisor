@@ -205,7 +205,8 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	free((char *) format);
 
 	// try to push north
-	pv_log_flush(global_pv);
+	if (level < DEBUG)
+		pv_log_flush(global_pv, false);
 
 	va_end(args);
 }
@@ -236,7 +237,7 @@ void pv_log_raw(struct pantavisor *pv, char *buf, int len)
 
 	log_last_entry_to_file();
 
-	pv_log_flush(global_pv);
+	pv_log_flush(global_pv, false);
 }
 
 static int log_entry_null(log_entry_t *e)
@@ -265,7 +266,7 @@ static void log_get_next(log_entry_t **e)
 	return;
 }
 
-void pv_log_flush(struct pantavisor *pv)
+void pv_log_flush(struct pantavisor *pv, bool force)
 {
 	char *entry, *body;
 	unsigned long i = 1;
@@ -282,6 +283,9 @@ void pv_log_flush(struct pantavisor *pv)
 		return;
 
 	if (lb->count == 0)
+		return;
+
+	if (lb->count < 3 && !force)
 		return;
 
 	// take tail of log buffer
