@@ -174,7 +174,7 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 
 	if (is_arg(argc, argv, "debug"))
 		*args |= PV_DEBUG;
-	
+
 	// For now
 	*args |= PV_DEBUG;
 }
@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
 
 	early_mounts();
 	signal(SIGCHLD, signal_handler);
-	
+
 	if (args & PV_DEBUG)
 		debug_shell();
 		debug_telnet();
