@@ -67,6 +67,7 @@ typedef struct {
 } log_buf_t;
 
 static log_buf_t *lb = NULL;
+static struct pantavisor *global_pv = NULL;
 
 static void log_reset(void)
 {
@@ -81,6 +82,11 @@ static void log_reset(void)
 
 void pv_log_init(struct pantavisor *pv)
 {
+	if (!pv)
+		return;
+
+	global_pv = pv;
+
 	if (lb)
 		return;
 
@@ -197,7 +203,40 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	log_last_entry_to_file();
 
 	free((char *) format);
+
+	// try to push north
+	pv_log_flush(global_pv);
+
 	va_end(args);
+}
+
+void pv_log_raw(struct pantavisor *pv, char *buf, int len)
+{
+	struct timeval tv;
+	log_entry_t e;
+
+	memset(&e, 0, sizeof(log_entry_t));
+
+	gettimeofday(&tv, NULL);
+
+	e.tsec = (uint64_t) tv.tv_sec;
+	e.tusec = (uint32_t) tv.tv_usec;
+	e.level = DEBUG;
+
+	snprintf(e.source, 32, "PLATFORM");
+
+	strncpy(e.data, buf, len);
+
+	// escape problematic json chars
+	replace_char(e.data, '\n', ' ');
+	replace_char(e.data, '\"', '\'');
+
+	// add to ring buffer
+	log_add(&e);
+
+	log_last_entry_to_file();
+
+	pv_log_flush(global_pv);
 }
 
 static int log_entry_null(log_entry_t *e)
@@ -231,6 +270,9 @@ void pv_log_flush(struct pantavisor *pv)
 	char *entry, *body;
 	unsigned long i = 1;
 	int size;
+
+	if (!pv)
+		return;
 
 	if (!pv->online)
 		return;

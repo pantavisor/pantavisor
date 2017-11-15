@@ -23,7 +23,8 @@
 #define PV_CMD_H
 
 enum cmd_t {
-	CMD_TRY_ONCE = 1
+	CMD_TRY_ONCE = 1,
+	CMD_LOG
 };
 
 struct pv_cmd_req {

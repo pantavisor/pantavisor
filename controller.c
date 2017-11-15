@@ -433,6 +433,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		return STATE_RUN;
 		}
 		break;
+	case CMD_LOG:
+		{
+		pv_log_raw(pv, c->data, c->len);
+		break;
+		}
 	default:
 		pv_log(DEBUG, "unknown command received");
 	}
@@ -466,6 +471,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 	// flush logs to cloud before attempting to start new step
 	pv_log_flush(pv);
+	pv->online = false;
 
 	// stop current step
 	if (pv_platforms_stop_all(pv) < 0)
