@@ -168,7 +168,7 @@ static void log_last_entry_to_file(void)
 void __vlog(char *module, int level, const char *fmt, ...)
 {
 	struct timeval tv;
-	char buf[LOG_ITEM_SIZE-8];
+	char buf[LOG_ITEM_SIZE-48];
 	char *format = 0;
 	va_list args;
 	va_start(args, fmt);
