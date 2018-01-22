@@ -24,9 +24,11 @@
 #include <string.h>
 #include <libgen.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include <sys/utsname.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 
 #include <lxc/lxccontainer.h>
 
@@ -92,7 +94,7 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 			tok = strtok(NULL, " ");
 		}
 		close(fd);
-		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC);
+		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC, 0644);
 		write(fd, new, strlen(new));
 		close(fd);
 		free(new);
