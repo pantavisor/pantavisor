@@ -187,6 +187,10 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		return STATE_ERROR;
 	}
 
+	// init bootloader ops
+	if (pv_bl_init(pv) < 0)
+		return STATE_ERROR;
+
 	// Get current step revision from cmdline
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd < 0)
@@ -214,16 +218,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv->update = 0;
 	pv->last = -1;
 
-	// Setup PVK hints in case of legacy flash A/B kernel
-	if (pv_boot != -1 && pv->config->bl_type == UBOOT_PVK) {
-		pv_rev = pv_bl_pvk_get_rev(pv, pv_boot);
-		pv_try = pv_bl_get_try(pv);
-		if (pv_try != pv_rev)
-			pv_try = 0;
-	}
-
 	pv_log(DEBUG, "%s():%d pv_try=%d, pv_rev=%d\n", __func__, __LINE__, pv_try, pv_rev);
-
 
 	// parse boot rev
 	pv->state = pv_get_state(pv, pv_rev);
@@ -235,7 +230,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	// get try revision from bl
 	bl_rev = pv_bl_get_try(pv);
 
-	if (!bl_rev)
+	if (bl_rev <= 0)
 		return STATE_RUN;
 
 	if (bl_rev == pv_rev) {

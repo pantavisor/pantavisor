@@ -45,7 +45,7 @@ int pv_check_for_updates(struct pantavisor *pv);
 int pv_do_single_update(struct pantavisor *pv);
 void pv_remote_destroy(struct pantavisor *pv);
 
-void pv_bl_set_current(struct pantavisor *pv, int rev);
+int pv_bl_set_current(struct pantavisor *pv, int rev);
 int pv_bl_get_update(struct pantavisor *pv, int *update);
 int pv_bl_clear_update(struct pantavisor *pv);
 

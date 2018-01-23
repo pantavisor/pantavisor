@@ -597,7 +597,7 @@ static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 	if (strcmp(pv->state->kernel, obj->name))
 		return 0;
 
-	if (pv->config->bl_type == UBOOT_PVK)
+	if (pv->config->bl.type == BL_UBOOT_PVK)
 		return 1;
 
 	return 0;

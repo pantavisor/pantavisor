@@ -23,8 +23,9 @@
 #define PV_CONFIG_H
 
 enum {
-	UBOOT_PLAIN = 0,
-	UBOOT_PVK
+	BL_UBOOT_PLAIN = 0,
+	BL_UBOOT_PVK,
+	BL_GRUB
 };
 
 struct pantavisor_creds {
@@ -48,11 +49,15 @@ struct pantavisor_updater {
 	int network_timeout;
 };
 
+struct pantavisor_bootloader {
+	int type;
+};
+
 struct pantavisor_config {
 	char *name;
 	int loglevel;
 	int logsize;
-	int bl_type;
+	struct pantavisor_bootloader bl;
 	struct pantavisor_creds creds;
 	struct pantavisor_storage storage;
 	struct pantavisor_updater updater;

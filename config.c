@@ -175,10 +175,12 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 		return -1;
 
 	item = _config_get_value("bootloader.type");
-	if (item && !strcmp(item, "uboot-pvk"))
-		config->bl_type = UBOOT_PVK;
-	else
-		config->bl_type = UBOOT_PLAIN;
+	if (item && !strcmp(item, "uboot"))
+		config->bl.type = BL_UBOOT_PLAIN;
+	else if (item && !strcmp(item, "uboot-pvk"))
+		config->bl.type = BL_UBOOT_PVK;
+	else if (item && !strcmp(item, "grub"))
+		config->bl.type = BL_GRUB;
 
 	config->storage.path = _config_get_value("storage.device");
 	config->storage.fstype = _config_get_value("storage.fstype");

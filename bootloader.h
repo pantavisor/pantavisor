@@ -24,14 +24,24 @@
 
 #include "pantavisor.h"
 
-int pv_bl_pvk_get_bank(struct pantavisor *pv);
-int pv_bl_install_kernel(struct pantavisor *pv, char *obj);
-int pv_bl_pvk_get_rev(struct pantavisor *pv, int bank);
+int pv_bl_init(struct pantavisor *pv);
 int pv_bl_set_try(struct pantavisor *pv, int rev);
-void pv_bl_set_current(struct pantavisor *pv, int rev);
-int pv_bl_get_current(struct pantavisor *pv);
-int pv_bl_get_update(struct pantavisor *pv, int *update);
-int pv_bl_clear_update(struct pantavisor *pv);
 int pv_bl_get_try(struct pantavisor *pv);
+int pv_bl_set_current(struct pantavisor *pv, int rev);
+int pv_bl_get_current(struct pantavisor *pv);
+int pv_bl_clear_update(struct pantavisor *pv);
+int pv_bl_install_kernel(struct pantavisor *pv, char *obj);
+
+struct bl_ops {
+	int (*init)(struct pantavisor_config *c);
+	int (*get_env_key)(char *key);
+	int (*set_env_key)(char *key, int value);
+	int (*flush_env)(void);
+	int (*install_kernel)(char *path);
+};
+
+extern const struct bl_ops uboot_ops;
+extern const struct bl_ops uboot_pvk_ops;
+extern const struct bl_ops grub_ops;
 
 #endif
