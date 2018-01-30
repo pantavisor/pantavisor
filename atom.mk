@@ -8,6 +8,7 @@ LOCAL_DESTDIR := ./lib/
 LOCAL_MODULE := pv_lxc
 
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC
+LOCAL_LDFLAGS := -Wl,--no-as-needed
 
 LOCAL_SRC_FILES := plugins/pv_lxc.c
 
@@ -38,6 +39,8 @@ LOCAL_SRC_FILES := init.c \
 		   pantahub.c \
 		   updater.c \
 		   bootloader.c \
+		   uboot.c \
+		   grub.c \
 		   storage.c \
 		   cmd.c
 
