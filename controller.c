@@ -247,8 +247,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		}
 	}
 
-	return STATE_RUN;
-
 	if (bl_rev > 0)
 		pv_bl_clear_update(pv);
 

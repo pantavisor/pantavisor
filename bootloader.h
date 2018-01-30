@@ -36,6 +36,7 @@ struct bl_ops {
 	int (*init)(struct pantavisor_config *c);
 	int (*get_env_key)(char *key);
 	int (*set_env_key)(char *key, int value);
+	int (*unset_env_key)(char *key);
 	int (*flush_env)(void);
 	int (*install_kernel)(char *path);
 };

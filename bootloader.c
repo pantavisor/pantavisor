@@ -87,6 +87,8 @@ int pv_bl_set_current(struct pantavisor *pv, int rev)
 	if (!ops)
 		return -1;
 
+	ops->unset_env_key("pv_try");
+
 	return ops->set_env_key("pv_rev", rev);
 }
 

@@ -137,6 +137,52 @@ static int grub_get_env_key(char *key)
 	return value;
 }
 
+static int grub_unset_env_key(char *key)
+{
+	int fd, ret;
+	char old[1024];
+	char new[1024];
+	char *s, *d;
+
+	fd = read_grubenv(grub_env, old, 1);
+	if (fd < 0)
+		return -1;
+
+	memset(new, '#', sizeof(new));
+	d = new;
+	memcpy(d, GRUB_HDR, HDR_SIZE);
+	d += HDR_SIZE;
+
+	// read all non-hit values into dest buf
+	int len = 0;
+	s = old + HDR_SIZE;
+	for (uint16_t i = HDR_SIZE; i < (sizeof(old)-HDR_SIZE); i++) {
+		if (old[i] != '\n') {
+			len++;
+			continue;
+		}
+
+		// copy each non-hit value
+		if (memcmp(s, key, strlen(key))) {
+			memcpy(d, s, len+1);
+			d += len+1;
+		}
+
+		len = 0;
+		s = old+i+1;
+	}
+
+	lseek(fd, 0, SEEK_SET);
+	ret = write(fd, new, sizeof(new));
+	close(fd);
+	if (ret != 1024) {
+		pv_log(ERROR, "error writing grubenv");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int grub_set_env_key(char *key, int value)
 {
 	int fd, ret;
@@ -205,6 +251,7 @@ const struct bl_ops grub_ops = {
 	.init		= grub_init,
 	.get_env_key	= grub_get_env_key,
 	.set_env_key	= grub_set_env_key,
+	.unset_env_key	= grub_unset_env_key,
 	.flush_env	= grub_flush_env,
 	.install_kernel	= grub_install_kernel,
 };

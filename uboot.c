@@ -24,6 +24,7 @@
 #include <string.h>
 #include <inttypes.h>
 #include <unistd.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
@@ -60,6 +61,8 @@ static int uboot_init(struct pantavisor_config *c)
 	// setup uboot.txt location
 	sprintf(buf, "%s/boot/uboot.txt", c->storage.mntpoint);
 	uboot_txt = strdup(buf);
+
+	pv_log(DEBUG, "uboot.txt@%s", uboot_txt);
 
 	// find pv-env for trying flag store
 	if (stat("/proc/mtd", &st))
@@ -99,6 +102,8 @@ static int uboot_init(struct pantavisor_config *c)
 		}
 		next = ne + 2;
 	}
+
+	pv_log(DEBUG, "pv-env@%s", pv_env);
 
 	return 0;
 }
@@ -141,6 +146,48 @@ static int uboot_get_env_key(char *key)
 }
 
 // this always happens in uboot.txt
+static int uboot_unset_env_key(char *key)
+{
+	int fd, ret;
+	char old[1024] = { 0 };
+	char new[1024] = { 0 };
+	char *s, *d;
+
+	fd = open(uboot_txt, O_CREAT | O_RDWR | O_SYNC, 0600);
+	if (!fd)
+		return 0;
+
+	ret = read(fd, old, sizeof(old));
+	if (ret < 0) {
+		pv_log(ERROR, "error reading uboot.txt");
+		return -1;
+	}
+
+	int len = 0;
+	d = new;
+	s = old;
+	for (uint16_t i = 0; i < ret; i++) {
+		if (old[i] == '\0')
+			continue;
+
+		s = old+i;
+		len = strlen(s);
+		if (memcmp(s, key, strlen(key))) {
+			memcpy(d, s, len+1);
+			d += len+1;
+		}
+		i += len;
+		len = 0;
+	}
+
+	lseek(fd, 0, SEEK_SET);
+	ret = write(fd, new, sizeof(new));
+	fsync(fd);
+	close(fd);
+
+	return 0;
+}
+// this always happens in uboot.txt
 static int uboot_set_env_key(char *key, int value)
 {
 	int fd, ret;
@@ -182,26 +229,46 @@ static int uboot_set_env_key(char *key, int value)
 
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));
+	fsync(fd);
 	close(fd);
-
-	sync();
 
 	return 0;
 }
 
 static int uboot_flush_env(void)
 {
-	int fd, ret;
-	char buf[64] = { 0 };
+	int fd;
 	erase_info_t ei;
+	mtd_info_t mi;
 
 	if (!strstr(pv_env, "mtd"))
 		return 0;
 
+	fd = open(pv_env, O_RDWR | O_SYNC);
+	if (fd < 0)
+		return 0;
+
+	char buf[32];
+	read(fd, buf, sizeof(buf));
+	buf[31] = '\0';
+	pv_log(DEBUG, "Buf-dirty: '%s'\n", buf);
+
+	ioctl(fd, MEMGETINFO, &mi);
 	ei.start = 0;
-	ioctl(fd, MEMUNLOCK, &ei);
-	ioctl(fd, MEMERASE, &ei);
-	sync();
+	ei.length = mi.erasesize;
+	if (ioctl(fd, MEMUNLOCK, &ei))
+		pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s\n", strerror(errno));
+	if (ioctl(fd, MEMERASE, &ei))
+		pv_log(DEBUG, "ioctl: MEMERASE errno=%s\n", strerror(errno));
+
+	close(fd);
+
+	fd = open(pv_env, O_RDONLY);
+	lseek(fd, 0, SEEK_SET);
+	memset(buf, 0, sizeof(buf));
+	read(fd, buf, sizeof(buf));
+	buf[31] = '\0';
+	pv_log(DEBUG, "Buf-clean: '%s'\n", buf);
 
 	close(fd);
 
@@ -217,6 +284,7 @@ const struct bl_ops uboot_ops = {
 	.init		= uboot_init,
 	.get_env_key	= uboot_get_env_key,
 	.set_env_key	= uboot_set_env_key,
+	.unset_env_key	= uboot_unset_env_key,
 	.flush_env	= uboot_flush_env,
 	.install_kernel	= uboot_install_kernel,
 };
