@@ -876,11 +876,11 @@ static int trail_download_objects(struct pantavisor *pv)
 	}
 
 	// Run GC as last resort
-	if (pv_storage_get_free(pv) < get_update_size(u))
+	if (!pv_storage_get_free(pv, get_update_size(u)))
 		pv_storage_gc_run(pv);
 
 	// Check again
-	if (pv_storage_get_free(pv) < get_update_size(u)) {
+	if (!pv_storage_get_free(pv, get_update_size(u))) {
 		pv_log(WARN, "not enough space to process update");
 		goto out;
 	}

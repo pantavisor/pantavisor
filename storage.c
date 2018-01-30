@@ -100,8 +100,15 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 	struct dirent **d;
 	char path[PATH_MAX];
 
+	pv_log(DEBUG, "Removing rev=%d", rev);
+
 	sprintf(path, "%s/trails/%d/.pvr/", pv->config->storage.mntpoint, rev);
 	n = scandir(path, &d, NULL, alphasort);
+	if (n < 0) {
+		pv_log(ERROR, "attempted to remove nonexistant revision");
+		return;
+	}
+
 	while (n--) {
 		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
 			continue;
@@ -155,7 +162,6 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		return -1;
 
 	rev = pv_get_revisions(pv);
-
 	if (!rev) {
 		pv_log(ERROR, "error parsings revs on disk for GC");
 		return -1;
@@ -186,7 +192,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	return reclaimed;
 }
 
-off_t pv_storage_get_free(struct pantavisor *pv)
+off_t pv_storage_get_free(struct pantavisor *pv, int diff)
 {
 	off_t fs_free, fs_min;
 	struct statfs buf;
@@ -202,7 +208,7 @@ off_t pv_storage_get_free(struct pantavisor *pv)
 
 	pv_log(DEBUG, "fs_free: %llu, fs_min: %llu", fs_free, fs_min);
 
-	if (fs_free < fs_min)
+	if ((fs_free - diff) < fs_min)
 		return 0;
 
 	return fs_free;

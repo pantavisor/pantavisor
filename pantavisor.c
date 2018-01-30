@@ -98,9 +98,10 @@ int *pv_get_revisions(struct pantavisor *pv)
 			continue;
 
 		if (i >= bufsize) {
-			revs = realloc(revs, bufsize+1);
-			if (!revs)
+			int *t = realloc(revs, (bufsize+1) * sizeof(int));
+			if (!t)
 				return NULL;
+			revs = t;
 			bufsize++;
 		}
 
@@ -108,8 +109,7 @@ int *pv_get_revisions(struct pantavisor *pv)
 		i++;
 	}
 
-	revs = realloc(revs, bufsize+1);
-
+	revs = realloc(revs, (bufsize+1) * sizeof(int));
 	if (!i)
 		revs[0] = -1;
 
