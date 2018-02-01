@@ -332,7 +332,7 @@ int pv_log_set_level(unsigned int level)
 	if (level <= ALL)
 		prio = level;
 
-	//log_fd = open("/tmp/pantavisor.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
+	log_fd = open("/tmp/pantavisor.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
 
 	return prio;
 }
