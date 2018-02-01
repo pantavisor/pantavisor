@@ -192,9 +192,10 @@ int main(int argc, char *argv[])
 	early_mounts();
 	signal(SIGCHLD, signal_handler);
 
-	if (args & PV_DEBUG)
+	if (args & PV_DEBUG) {
 		debug_shell();
 		debug_telnet();
+	}
 
 	// Run PV main loop
 	if (!(args & PV_STANDALONE))
