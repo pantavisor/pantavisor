@@ -29,6 +29,7 @@
 #include <dirent.h>
 
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <netinet/in.h>
@@ -55,21 +56,36 @@ struct sockaddr_in *conn;
 
 static int connect_try(struct sockaddr_in *serv)
 {
-	int ret = 0;
-	int sfd = -1;
+	int ret, fd;
+	socklen_t len;
+	struct timeval tv;
+	fd_set fdset;
 
-	sfd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+	fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+	fcntl(fd, F_SETFL, O_NONBLOCK);
 
-	pv_log(DEBUG, "connect(ip='%s')", inet_ntoa(serv->sin_addr));
-	if ((ret = connect(sfd, (struct sockaddr *) serv, sizeof (*serv))) < 0)
+	ret = connect(fd, (struct sockaddr *) serv, sizeof (*serv));
+	if (!ret)
 		goto out;
 
-	// succcess
-	ret = 1;
+	if (errno != EINPROGRESS)
+		goto out;
+
+	// 2 second timeout
+	tv.tv_sec = 2;
+	tv.tv_usec = 0;
+
+	FD_ZERO(&fdset);
+	FD_SET(fd, &fdset);
+
+	if (select(fd + 1, 0, &fdset, 0, &tv) <= 0)
+		goto out;
+
+	len = sizeof(ret);
+	getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &len);
 
 out:
-	if (sfd > -1)
-		close(sfd);
+	close(fd);
 
 	return ret;
 }
@@ -91,11 +107,12 @@ static int ph_client_init(struct pantavisor *pv)
 			);
 
 auth:
-	status = trest_update_auth(client);
-	if (status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "unable to auth unclaimed device, status=%d", status);
+	if (!pv->online)
 		return 0;
-	}
+
+	status = trest_update_auth(client);
+	if (status != TREST_AUTH_STATUS_OK)
+		return 0;
 
 	if (!endpoint) {
 		size = sizeof(ENDPOINT_FMT) + strlen(pv->config->creds.id) + 1;
@@ -170,7 +187,7 @@ int pv_ph_is_available(struct pantavisor *pv)
 	struct addrinfo *result, *rp;
 	char *host = 0;
 
-	if (conn && (ret = connect_try(conn)))
+	if (conn && !connect_try(conn))
 		goto out;
 
 	// default to global PH instance
@@ -195,10 +212,9 @@ int pv_ph_is_available(struct pantavisor *pv)
 	rp = result;
 	while (rp) {
 		struct sockaddr_in *sock = (struct sockaddr_in *) rp->ai_addr;
-		pv_log(DEBUG, "got ip='%s'", inet_ntoa(sock->sin_addr));
 		sock->sin_family = AF_INET;
 		sock->sin_port = htons(port);
-		if (connect_try(sock)) {
+		if (connect_try(sock) == 0) {
 			ret = 1;
 			conn = sock;
 			break;
@@ -211,6 +227,7 @@ out:
 		pv_log(DEBUG, "PH available at '%s:%d'",
 			inet_ntoa(conn->sin_addr), ntohs(conn->sin_port));
 	} else {
+		pv_log(DEBUG, "unable to reach Pantahub");
 		if (result)
 			freeaddrinfo(result);
 		ret = 0;
@@ -240,10 +257,8 @@ int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 
-	if (!ph_client_init(pv)) {
-		pv_log(WARN, "failed to initialize PantaHub connection");
+	if (!ph_client_init(pv))
 		goto out;
-	}
 
 	req = trest_make_request(TREST_METHOD_POST,
 				 "/logs/",
