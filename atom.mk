@@ -8,7 +8,7 @@ LOCAL_DESTDIR := ./lib/
 LOCAL_MODULE := pv_lxc
 
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC
-LOCAL_LDFLAGS := -Wl,--no-as-needed
+LOCAL_LDFLAGS := -Wl,--no-as-needed -lutil -Wl,--as-needed
 
 LOCAL_SRC_FILES := plugins/pv_lxc.c
 
@@ -22,7 +22,7 @@ LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
 
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -D_FILE_OFFSET_BITS=64
-LOCAL_LDFLAGS := -static-libgcc
+LOCAL_LDFLAGS := -Wl,--no-as-needed -ldl -Wl,--as-needed -static-libgcc
 
 LOCAL_SRC_FILES := init.c \
 		   tsh.c \
