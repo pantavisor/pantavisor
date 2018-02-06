@@ -241,6 +241,9 @@ static int uboot_flush_env(void)
 	erase_info_t ei;
 	mtd_info_t mi;
 
+	if (!pv_env)
+		return 0;
+
 	if (!strstr(pv_env, "mtd"))
 		return 0;
 
