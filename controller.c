@@ -336,7 +336,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	pv->req = pv_cmd_socket_wait(pv, timeout_max);
+	pv->req = pv_cmd_socket_wait(pv, pv->config->updater.interval);
 	if (pv->req)
 		return STATE_COMMAND;
 
