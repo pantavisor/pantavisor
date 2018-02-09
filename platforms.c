@@ -290,7 +290,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 			return -1;
 		}
 
-		pv_log(INFO, "started platform platform: \"%s\" (data=%p), init_pid=%d",
+		pv_log(INFO, "started platform: \"%s\" (data=%p), init_pid=%d",
 			p->name, data, pid);
 
 		// FIXME: arbitrary delay between plats
