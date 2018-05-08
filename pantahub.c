@@ -268,6 +268,8 @@ int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
 	res = trest_do_json_request(client, req);
 	if (!res->body || res->code != THTTP_STATUS_OK) {
 		pv_log(DEBUG, "logs upload status = %d, body = '%s'", res->code, res->body);
+		if (res->code == THTTP_STATUS_BAD_REQUEST)
+			ret = 1;
 		goto out;
 	}
 

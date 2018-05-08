@@ -856,7 +856,7 @@ static int get_update_size(struct pv_update *u)
 		o = o->next;
 	}
 
-	pv_log(INFO, "update_size: %d bytes", size);
+	pv_log(INFO, "update size: %d bytes", size);
 
 	return size;
 }
