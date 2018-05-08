@@ -61,6 +61,7 @@ static int open_ns(int pid, const char *ns_proc_name)
 static int early_mounts()
 {
 	int ret;
+	struct stat st;
 
 	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC, NULL);
 	if (ret < 0)
@@ -87,6 +88,10 @@ static int early_mounts()
 	ret = mount("cgroup", "/sys/fs/cgroup/systemd", "cgroup", 0, "none,name=systemd");
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
+
+	mkdir("/writable", 0644);
+	if (!stat("/etc/fstab", &st))
+		tsh_run("mount -a");
 
 	mkdir("/root", 0644);
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
