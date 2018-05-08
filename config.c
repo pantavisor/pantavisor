@@ -120,6 +120,25 @@ static char* _config_get_value(char *key)
 	return NULL;
 }
 
+static struct config_item* _config_replace_item(char *key, char *value)
+{
+	struct config_item *curr;
+
+	if (key == NULL)
+		return NULL;
+
+	for (curr = head; curr != NULL; curr = curr->next) {
+		if (strcmp(curr->key, key) == 0) {
+			free(curr->value);
+			curr->value = strdup(value);
+			return curr;
+		}
+	}
+
+	// not found? add it
+	return _config_add_item(key, value);
+}
+
 static void _config_del_item(char *key)
 {
 	struct config_item *curr;
@@ -166,6 +185,38 @@ static int load_key_value_file(char *path)
 	return 0;
 }
 
+#define PV_HINT		"pv_"
+static int _config_parse_cmdline(void)
+{
+	int fd, bytes;
+	char *buf, *k;
+	char *ptr_out, *ptr_in;
+	char *token, *key, *value;
+
+	// Get current step revision from cmdline
+	fd = open("/proc/cmdline", O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	buf = calloc(1, sizeof(char) * (1024 + 1));
+	bytes = read(fd, buf, sizeof(char)*1024);
+	close(fd);
+
+	token = strtok_r(buf, " ", &ptr_out);
+	while (token) {
+		if (strncmp(PV_HINT, token, sizeof(PV_HINT)-1) == 0) {
+			k = token + sizeof(PV_HINT)-1;
+			key = strtok_r(k, "=", &ptr_in);
+			value = strtok_r(NULL, "=", &ptr_in);
+			_config_replace_item(key, value);
+		}
+		token = strtok_r(NULL, " ", &ptr_out);
+	}
+	free(buf);
+
+	return 0;
+}
+
 // Fill config struct after parsing on-initramfs factory config
 int pv_config_from_file(char *path, struct pantavisor_config *config)
 {
@@ -188,6 +239,9 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	else
 		config->bl.mtd_only = 0;
 
+	// for overrides
+	_config_parse_cmdline();
+
 	config->bl.mtd_path = _config_get_value("bootloader.mtd_env");
 	config->storage.path = _config_get_value("storage.device");
 	config->storage.fstype = _config_get_value("storage.fstype");
@@ -197,7 +251,6 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	return 0;
 }
 
-// FIXME: add override capability for static config
 // Fill config struct after parsing on-initramfs factory config
 int ph_config_from_file(char *path, struct pantavisor_config *config)
 {
