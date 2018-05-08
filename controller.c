@@ -147,6 +147,10 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		return STATE_EXIT;
 	}
 
+	// Make pantavisor control area
+	if (stat("/pv", &st) != 0)
+		mkdir_p("/pv", 0400);
+
 	pv_log_init(pv);
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
@@ -160,10 +164,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
         pv_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
         pv_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
         pv_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
-
-	// Make pantavisor control area
-	if (stat("/pv", &st) != 0)
-		mkdir_p("/pv", 0400);
 
 	// create hints
 	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
@@ -247,9 +247,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		}
 	}
 
-	if (bl_rev > 0)
-		pv_bl_clear_update(pv);
-
 	if (!pv->state) {
 		pv_log(ERROR, "invalid state requested, please reconfigure");
 		return STATE_ERROR;
@@ -291,8 +288,9 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char config_path[256];
 	char *c;
 
-	if (!pv_ph_is_available(pv))
+	if (!pv_ph_is_available(pv)) {
 		return STATE_WAIT;
+	}
 
 	c = calloc(1, sizeof(char) * 128);
 
@@ -355,12 +353,18 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// reset rollback rb_count
 	rb_count = 0;
 
-	// FIXME: should use pv_bl_*() helpers
+	// check if any platform has exited and we need to tear down
+	if (pv_platforms_check_exited(pv)) {
+		pv_log(WARN, "one or more platforms exited, tearing down");
+		return STATE_REBOOT;
+	}
+
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY) {
 		pv_set_current(pv, pv->state->rev);
 		pv_update_set_status(pv, UPDATE_DONE);
 		pv_update_finish(pv);
+		pv_bl_clear_update(pv);
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
 		pv_set_current(pv, pv->state->rev);
@@ -515,7 +519,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 
 		ret = pv_volumes_unmount(pv);
 		if (ret < 0)
-			return STATE_ERROR;
+			pv_log(WARN, "unmount error: ignoring due to rollback");
 
 		rb_count = 0;
 		pv_release_state(pv);

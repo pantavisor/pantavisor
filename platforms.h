@@ -36,5 +36,6 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name);
 struct pv_platform* pv_platform_get_by_data(struct pv_state *s, void *data);
 int pv_platforms_start_all(struct pantavisor *pv);
 int pv_platforms_stop_all(struct pantavisor *pv);
+int pv_platforms_check_exited(struct pantavisor *pv);
 
 #endif

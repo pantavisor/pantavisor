@@ -197,7 +197,7 @@ off_t pv_storage_get_free(struct pantavisor *pv, int diff)
 	off_t fs_free, fs_min;
 	struct statfs buf;
 
-	if (statfs("/storage/trails/0/.pvr/json", &buf) < 0)
+	if (statfs("/storage/config/pantahub.config", &buf) < 0)
 		return -1;
 
 	fs_free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;

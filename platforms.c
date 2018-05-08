@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -330,4 +331,21 @@ int pv_platforms_stop_all(struct pantavisor *pv)
 	pv_log(INFO, "stopped %d platforms", num_plats);
 
 	return num_plats;
+}
+
+int pv_platforms_check_exited(struct pantavisor *pv)
+{
+	struct pv_state *s = pv->state;
+	struct pv_platform *p = s->platforms;
+
+	while (p) {
+		if (!kill(p->init_pid, 0)) {
+			p = p->next;
+			continue;
+		}
+		pv_log(WARN, "platform '%s' exited", p->name);
+		return -1;
+	}
+
+	return 0;
 }
