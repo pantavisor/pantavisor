@@ -182,6 +182,13 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	else if (item && !strcmp(item, "grub"))
 		config->bl.type = BL_GRUB;
 
+	item = _config_get_value("bootloader.mtd_only");
+	if (item)
+		config->bl.mtd_only = 1;
+	else
+		config->bl.mtd_only = 0;
+
+	config->bl.mtd_path = _config_get_value("bootloader.mtd_env");
 	config->storage.path = _config_get_value("storage.device");
 	config->storage.fstype = _config_get_value("storage.fstype");
 	config->storage.opts = _config_get_value("storage.opts");

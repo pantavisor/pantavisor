@@ -51,6 +51,8 @@ struct pantavisor_updater {
 
 struct pantavisor_bootloader {
 	int type;
+	int mtd_only;
+	char *mtd_path;
 };
 
 struct pantavisor_config {
