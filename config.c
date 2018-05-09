@@ -225,6 +225,9 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	if (load_key_value_file(path) < 0)
 		return -1;
 
+	// for overrides
+	_config_parse_cmdline();
+
 	item = _config_get_value("bootloader.type");
 	if (item && !strcmp(item, "uboot"))
 		config->bl.type = BL_UBOOT_PLAIN;
@@ -238,9 +241,6 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 		config->bl.mtd_only = 1;
 	else
 		config->bl.mtd_only = 0;
-
-	// for overrides
-	_config_parse_cmdline();
 
 	config->bl.mtd_path = _config_get_value("bootloader.mtd_env");
 	config->storage.path = _config_get_value("storage.device");

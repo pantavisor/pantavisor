@@ -380,7 +380,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	}
 
 	ret = pv_check_for_updates(pv);
-	if (ret) {
+	if (ret > 0) {
 		pv_log(INFO, "updates found");
 		return STATE_UPDATE;
 	}

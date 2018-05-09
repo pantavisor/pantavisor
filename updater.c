@@ -351,6 +351,152 @@ out:
 	return size;
 }
 
+static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const char **crtfiles)
+{
+	int ret = 0;
+	int fd, bytes;
+	int size, pos, i;
+	char *signed_puturl;
+	char sha_str[128];
+	char body[512];
+	unsigned char buf[4096];
+	unsigned char local_sha[32];
+	struct stat st;
+	trest_request_ptr treq = 0;
+	trest_response_ptr tres = 0;
+	thttp_request_t *req = 0;
+	thttp_request_tls_t *tls_req = 0;
+	thttp_response_t *res = 0;
+
+	fd = open(o->objpath, O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	stat(o->objpath, &st);
+	size = st.st_size;
+
+	mbedtls_sha256_context sha256_ctx;
+
+	mbedtls_sha256_init(&sha256_ctx);
+	mbedtls_sha256_starts(&sha256_ctx, 0);
+
+	while ((bytes = read(fd, buf, 4096)) > 0) {
+		mbedtls_sha256_update(&sha256_ctx, buf, bytes);
+	}
+
+	mbedtls_sha256_finish(&sha256_ctx, local_sha);
+	mbedtls_sha256_free(&sha256_ctx);
+
+	pos = 0;
+	i = 0;
+	while(i < 32) {
+		pos += sprintf(sha_str+pos, "%02x", local_sha[i]);
+		i++;
+	}
+
+	sprintf(body,
+		"{ \"objectname\": \"%s\","
+		" \"size\": \"%d\","
+		" \"sha256sum\": \"%s\""
+		" }",
+		o->name,
+		size,
+		sha_str);
+
+	pv_log(DEBUG, "syncing '%s'", o->id, body);
+
+	if (strcmp(o->id,sha_str)) {
+		pv_log(DEBUG, "sha256 mismatch, probably writable image, skipping", o->objpath);
+		goto out;
+	}
+
+	treq = trest_make_request(TREST_METHOD_POST,
+				"/objects/",
+				0,
+				0,
+				body);
+
+	tres = trest_do_json_request(pv->remote->client, treq);
+	if (!tres) {
+		ret = -1;
+		goto out;
+	}
+
+	if (tres->code == THTTP_STATUS_CONFLICT) {
+		pv_log(DEBUG, "'%s' already owned by user, skipping", o->id, tres->code);
+		goto out;
+	}
+	pv_log(DEBUG, "'%s' does not exist, uploading", o->id, tres->code);
+
+	signed_puturl = get_json_key_value(tres->body,
+				"signed-puturl",
+				tres->json_tokv,
+				tres->json_tokc);
+
+	tls_req = (thttp_request_tls_t*) thttp_request_tls_new_0 ();
+	tls_req->crtfiles = (char ** )crtfiles;
+	req = (thttp_request_t*) tls_req;
+	req->is_tls = 1;
+
+	req->method = THTTP_METHOD_PUT;
+	req->proto = THTTP_PROTO_HTTP;
+	req->proto_version = THTTP_PROTO_VERSION_10;
+	req->host = pv->config->creds.host;
+	req->port = pv->config->creds.port;
+
+	req->path = strstr(signed_puturl, "/local-s3");
+
+	req->headers = 0;
+	req->body_content_type = "application/json";
+	lseek(fd, 0, SEEK_SET);
+	req->fd = fd;
+	req->len = size;
+
+	res = thttp_request_do(req);
+	if (!res)
+		ret = -1;
+	else
+		pv_log(DEBUG, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
+
+out:
+	if (treq)
+		trest_request_free(treq);
+	if (tres)
+		trest_response_free(tres);
+	if (req)
+		thttp_request_free(req);
+	if (res)
+		thttp_response_free(res);
+
+	return ret;
+}
+
+static int trail_put_objects(struct pantavisor *pv)
+{
+	int ret = 0;
+	struct pv_object *o = pv->state->objects;
+	const char **crtfiles = pv_ph_get_certs(pv);
+
+	// count
+	while (o) {
+		ret++;
+		o = o->next;
+	}
+
+	o = pv->state->objects;
+	pv_log(DEBUG, "first boot: %d objects found, syncing", ret);
+
+	// push all
+	while (o) {
+		if (trail_put_object(pv, o, crtfiles) < 0)
+			break;
+		ret--;
+		o = o->next;
+	}
+
+	return ret;
+}
+
 static int trail_first_boot(struct pantavisor *pv)
 {
 	int ret = 0;
@@ -361,6 +507,12 @@ static int trail_first_boot(struct pantavisor *pv)
 	status = trest_update_auth(pv->remote->client);
 	if (status != TREST_AUTH_STATUS_OK) {
 		pv_log(INFO, "cannot update auth token");
+		return -1;
+	}
+
+	// first upload all objects
+	if (trail_put_objects(pv) > 0) {
+		pv_log(DEBUG, "error syncing objects on first boot");
 		return -1;
 	}
 
