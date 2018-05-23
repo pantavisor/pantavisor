@@ -259,6 +259,10 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	if (load_key_value_file(path) < 0)
 		return -1;
 
+	config->logdir = _config_get_value("log.dir");
+	if (!config->logdir)
+		config->logdir = strdup("/pv/");
+
 	item = _config_get_value("log.level");
 	if (item)
 		config->loglevel = atoi(item);

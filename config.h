@@ -57,6 +57,7 @@ struct pantavisor_bootloader {
 
 struct pantavisor_config {
 	char *name;
+	char *logdir;
 	int loglevel;
 	int logsize;
 	struct pantavisor_bootloader bl;

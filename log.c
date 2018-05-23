@@ -24,9 +24,15 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <ctype.h>
+#include <dirent.h>
 
+#include <linux/limits.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
 
+#include "tsh.h"
 #include "log.h"
 #include "pantahub.h"
 
@@ -40,9 +46,14 @@ static struct level_name level_names[] = {
 };
 
 static int prio = ERROR;
+static int log_count = 0;
+static int log_written = 0;
+static char *log_dir = 0;
 
 // default STDOUT
 int log_fd = 1;
+
+#define LOG_NAME		"pantavisor.log"
 
 #define LOG_RING_SIZE		LOG_ITEM_SIZE * 64
 #define LOG_ITEM_SIZE		4096	// JSON size
@@ -82,6 +93,8 @@ static void log_reset(void)
 
 void pv_log_init(struct pantavisor *pv)
 {
+	char path[PATH_MAX];
+
 	if (!pv)
 		return;
 
@@ -104,6 +117,12 @@ void pv_log_init(struct pantavisor *pv)
 	lb->buf_end = (char *) lb->buf_start + lb->buf_size;
 	lb->head = (log_entry_t*) lb->buf_start;
 	lb->tail = lb->buf_start;
+
+	// init log file
+	log_dir = pv->config->logdir;
+	sprintf(path, "/%s/%s", log_dir, LOG_NAME);
+	log_fd = open(path, O_CREAT | O_SYNC | O_RDWR | O_TRUNC, 0644);
+	log_count = 0;
 }
 
 void exit_error(int err, char *msg)
@@ -156,13 +175,77 @@ static void log_add(log_entry_t *e)
 		lb->count++;
 }
 
+static void rotate_log(void)
+{
+	int n, fd, bytes;
+	char *at = 0;
+	char path[PATH_MAX];
+	struct dirent **d;
+
+	lseek(log_fd, 0, SEEK_SET);
+
+	char *in = calloc(1, log_written);
+	bytes = read(log_fd, in, log_written);
+
+	sprintf(path, "%s.", LOG_NAME);
+	n = scandir(log_dir, &d, NULL, alphasort);
+	while (n--) {
+		if (strncmp(d[n]->d_name, path, strlen(path))) {
+			free(d[n]);
+			continue;
+		}
+		at = strtok(d[n]->d_name + strlen(path), ".");
+		if (at) {
+			if (atoi(at) >= 3) {
+				free(d[n]);
+				continue;
+			}
+			char new_path[PATH_MAX], old_path[PATH_MAX];
+			sprintf(new_path, "/%s/%s.%d.gz", log_dir, LOG_NAME, atoi(at) + 1);
+			sprintf(old_path, "/%s/%s.%d.gz", log_dir, LOG_NAME, atoi(at));
+			rename(old_path, new_path);
+		}
+		free(d[n]);
+	}
+
+	sprintf(path, "/%s/%s.%d", log_dir, LOG_NAME, 1);
+
+	fd = open(path, O_CREAT | O_WRONLY, 0644);
+	write(fd, in, log_written);
+	close(fd);
+
+	char tmp[1024];
+	sprintf(tmp, "gzip %s", path);
+	tsh_run(tmp);
+
+	sprintf(tmp, "%s.gz", path);
+	remove(tmp);
+
+	lseek(log_fd, 0, SEEK_SET);
+	ftruncate(log_fd, 0);
+	log_count = 0;
+	log_written = 0;
+
+	if (d)
+		free(d);
+	if (fd)
+		close(fd);
+	if (in)
+		free(in);
+}
+
 static void log_last_entry_to_file(void)
 {
 	log_entry_t *e = lb->last;
 
-	dprintf(log_fd, "[pantavisor] %s\t", level_names[e->level].name);
-	dprintf(log_fd, "[%"PRId64".%"PRId32"] ", e->tsec, e->tusec);
-	dprintf(log_fd, "-- [%s]: %s\n", e->source, e->data);
+	// hold 4MiB max of log entries in open file
+	if (log_written > (1 << 22))
+		rotate_log();
+
+	log_written += dprintf(log_fd, "[pantavisor] %s\t", level_names[e->level].name);
+	log_written += dprintf(log_fd, "[%"PRId64".%"PRId32"] ", e->tsec, e->tusec);
+	log_written += dprintf(log_fd, "-- [%s]: %s\n", e->source, e->data);
+	log_count++;
 }
 
 void __vlog(char *module, int level, const char *fmt, ...)
@@ -331,8 +414,6 @@ int pv_log_set_level(unsigned int level)
 {
 	if (level <= ALL)
 		prio = level;
-
-	log_fd = open("/pv/pantavisor.log", O_CREAT | O_SYNC | O_WRONLY | O_APPEND, 0644);
 
 	return prio;
 }
