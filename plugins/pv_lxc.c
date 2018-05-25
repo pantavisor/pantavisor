@@ -67,7 +67,8 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 		return NULL;
 	}
 
-	lxc_log_init(name, "/storage/log", "DEBUG", "init", 0, name);
+	truncate("/storage/lxc-log", 0);
+	lxc_log_init(name, "/storage/lxc-log", "DEBUG", "init", 0, name);
 
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
 	c->set_inherit_namespaces(c, 1, share_ns);
@@ -101,11 +102,9 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 		free(buf);
 	}
 	char entry[1024];
-	//sprintf(entry, "%s proc/cmdline none bind,ro 0 0", tmp_cmd);
-	//c->set_config_item(c, "lxc.mount.entry", entry);
 
-	char *cpath = "/pv/ pantavisor none bind,ro,create=dir 0 0";
-	c->set_config_item(c, "lxc.mount.entry", cpath);
+	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor none bind,ro,create=dir 0 0");
+	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs none bind,ro,create=dir 0 0");
 
 	c->set_config_item(c, "lxc.mount.entry", "/dev dev none bind,rw,create=dir 0 0");
 
