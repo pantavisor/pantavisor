@@ -167,8 +167,8 @@ static int uboot_unset_env_key(char *key)
 {
 	int fd, ret, len;
 	struct stat st;
-	char old[MTD_ENV_SIZE] = { 0 };
-	char new[MTD_ENV_SIZE] = { 0 };
+	unsigned char old[MTD_ENV_SIZE] = { 0 };
+	unsigned char new[MTD_ENV_SIZE] = { 0 };
 	char *s, *d, *path;
 
 	path = uboot_txt;
@@ -190,8 +190,8 @@ static int uboot_unset_env_key(char *key)
 	close(fd);
 
 	len = 0;
-	d = new;
-	s = old;
+	d = (char *) new;
+	s = (char *) old;
 	for (uint16_t i = 0; i < ret; i++) {
 		if ((old[i] == 0xFF && old[i+1] == 0xFF) ||
 		     (old[i] == '\0' && old[i+1] == '\0'))
@@ -200,7 +200,7 @@ static int uboot_unset_env_key(char *key)
 		if (old[i] == '\0')
 			continue;
 
-		s = old+i;
+		s = (char *) old+i;
 		len = strlen(s);
 		if (memcmp(s, key, strlen(key))) {
 			memcpy(d, s, len+1);
@@ -234,8 +234,8 @@ static int uboot_set_env_key(char *key, int value)
 {
 	int fd, ret, len;
 	struct stat st;
-	char old[MTD_ENV_SIZE] = { 0 };
-	char new[MTD_ENV_SIZE] = { 0 };
+	unsigned char old[MTD_ENV_SIZE] = { 0 };
+	unsigned char new[MTD_ENV_SIZE] = { 0 };
 	char *s, *d, *path;
 	char v[128];
 
@@ -258,8 +258,8 @@ static int uboot_set_env_key(char *key, int value)
 	close(fd);
 
 	len = 0;
-	d = new;
-	s = old;
+	d = (char *) new;
+	s = (char *) old;
 	for (uint16_t i = 0; i < ret; i++) {
 		if ((old[i] == 0xFF && old[i+1] == 0xFF) ||
 		     (old[i] == '\0' && old[i+1] == '\0'))
@@ -268,7 +268,7 @@ static int uboot_set_env_key(char *key, int value)
 		if (old[i] == '\0')
 			continue;
 
-		s = old+i;
+		s = (char *) old+i;
 		len = strlen(s);
 		if (memcmp(s, key, strlen(key))) {
 			memcpy(d, s, len+1);
