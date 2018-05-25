@@ -189,7 +189,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 
 	// expose pantahub host
 	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
-	sprintf(tmp, "%s\n", c->creds.host);
+	sprintf(tmp, "https://%s:%d\n", c->creds.host, c->creds.port);
 	write(fd, tmp, strlen(tmp));
 	close(fd);
 
