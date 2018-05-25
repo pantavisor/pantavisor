@@ -444,7 +444,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 		pv_log(INFO, "unable to open device-id hint file");
 		return;
 	}
-	sprintf(buf, "device-id=%s\n", pv->config->creds.id);
+	sprintf(buf, "%s\n", pv->config->creds.id);
 	write(fd, buf, strlen(buf));
 	close(fd);
 
@@ -453,7 +453,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 		pv_log(INFO, "unable to open challenge hint file");
 		return;
 	}
-	sprintf(buf, "challenge=%s\n", c);
+	sprintf(buf, "%s\n", c);
 	write(fd, buf, strlen(buf));
 	close(fd);
 }

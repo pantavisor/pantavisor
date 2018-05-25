@@ -151,6 +151,9 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (stat("/pv", &st) != 0)
 		mkdir_p("/pv", 0400);
 
+	if (stat(c->logdir, &st) != 0)
+		mkdir_p(c->logdir, 0400);
+
 	pv_log_init(pv);
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
@@ -174,10 +177,13 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") > 0)
 		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
 
-	if (strcmp(c->creds.prn, "") == 0)
+	if (strcmp(c->creds.prn, "") == 0) {
 		pv->flags |= DEVICE_UNCLAIMED;
-	else
-		write(fd, c->creds.id, strlen(c->creds.id));
+	} else {
+		char did[256];
+		sprintf(did, "%s\n", c->creds.id);
+		write(fd, did, strlen(did));
+	}
 
 	close(fd);
 
