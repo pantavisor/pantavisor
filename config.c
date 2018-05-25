@@ -261,7 +261,13 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 
 	config->logdir = _config_get_value("log.dir");
 	if (!config->logdir)
-		config->logdir = strdup("/pv/");
+		config->logdir = strdup("/storage/logs/");
+
+	item = _config_get_value("log.maxsize");
+	if (item)
+		config->logmax = atoi(item);
+	else
+		config->logmax = (1 << 21); // 2 MiB
 
 	item = _config_get_value("log.level");
 	if (item)

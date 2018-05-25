@@ -35,6 +35,8 @@
 #include "tsh.h"
 #include "log.h"
 #include "pantahub.h"
+#include "loop.h"
+#include "utils.h"
 
 #define LEVEL_NAME(LEVEL)	{ LEVEL, #LEVEL }
 static struct level_name level_names[] = {
@@ -48,6 +50,7 @@ static struct level_name level_names[] = {
 static int prio = ERROR;
 static int log_count = 0;
 static int log_written = 0;
+static int log_maxsize = 0;
 static char *log_dir = 0;
 
 // default STDOUT
@@ -120,9 +123,14 @@ void pv_log_init(struct pantavisor *pv)
 
 	// init log file
 	log_dir = pv->config->logdir;
+	log_maxsize = pv->config->logmax;
 	sprintf(path, "/%s/%s", log_dir, LOG_NAME);
-	log_fd = open(path, O_CREAT | O_SYNC | O_RDWR | O_TRUNC, 0644);
+	log_fd = open(path, O_CREAT | O_SYNC | O_RDWR | O_APPEND, 0644);
 	log_count = 0;
+
+	// make logs available for platforms
+	mkdir_p("/pv/logs", 0644);
+	mount_bind(pv->config->logdir, "/pv/logs");
 }
 
 void exit_error(int err, char *msg)
@@ -216,10 +224,7 @@ static void rotate_log(void)
 
 	char tmp[1024];
 	sprintf(tmp, "gzip %s", path);
-	tsh_run(tmp);
-
-	sprintf(tmp, "%s.gz", path);
-	remove(tmp);
+	tsh_run(tmp, 1);
 
 	lseek(log_fd, 0, SEEK_SET);
 	ftruncate(log_fd, 0);
@@ -238,8 +243,8 @@ static void log_last_entry_to_file(void)
 {
 	log_entry_t *e = lb->last;
 
-	// hold 4MiB max of log entries in open file
-	if (log_written > (1 << 22))
+	// hold 2MiB max of log entries in open file
+	if (log_written > log_maxsize)
 		rotate_log();
 
 	log_written += dprintf(log_fd, "[pantavisor] %s\t", level_names[e->level].name);
