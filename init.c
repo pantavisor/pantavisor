@@ -91,7 +91,7 @@ static int early_mounts()
 
 	mkdir("/writable", 0644);
 	if (!stat("/etc/fstab", &st))
-		tsh_run("mount -a");
+		tsh_run("mount -a", 1);
 
 	mkdir("/root", 0644);
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
@@ -103,8 +103,8 @@ static int early_mounts()
 
 static void debug_telnet()
 {
-	tsh_run("ifconfig lo up");
-	tsh_run("telnetd -l /bin/ash");
+	tsh_run("ifconfig lo up", 1);
+	tsh_run("telnetd -l /bin/ash", 0);
 }
 
 static void signal_handler(int signal)
@@ -153,7 +153,7 @@ static void debug_shell()
 	dprintf(con_fd, "\n");
 
 	if (c[0] == 'd')
-		shell_pid = tsh_run("ash");
+		shell_pid = tsh_run("ash", 0);
 }
 
 #define PV_STANDALONE	(1 << 0)

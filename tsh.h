@@ -22,6 +22,6 @@
 #ifndef PV_TSH_H
 #define PV_TSH_H
 
-pid_t tsh_run(char *cmd);
+pid_t tsh_run(char *cmd, int wait);
 
 #endif

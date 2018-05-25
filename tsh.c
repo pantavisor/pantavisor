@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include <sys/types.h>
+#include <sys/wait.h>
 
 #include "tsh.h"
 #include "log.h"
@@ -33,7 +34,7 @@
 #define TSH_MAX_LENGTH	32
 #define TSH_DELIM	" \t\r\n\a"
 
-static pid_t _tsh_exec(char **argv)
+static pid_t _tsh_exec(char **argv, int wait)
 {
 	int pid = fork();
 
@@ -41,10 +42,10 @@ static pid_t _tsh_exec(char **argv)
 		return -1;
 	} else if (pid > 0) {
 		// In parent
-		/*
-		int status;
-		waitpid(pid, &status, 0);
-		*/
+		if (wait) {
+			int status;
+			waitpid(pid, &status, 0);
+		}
 		free(argv);
 	} else {
 		// In Child
@@ -77,12 +78,12 @@ static char **_tsh_split_cmd(char *cmd)
 		t = strtok(NULL, TSH_DELIM);
 	}
 	ts[pos] = NULL;
-	
+
 	return ts;
 }
 
 // Run command, either built-in or exec
-pid_t tsh_run(char *cmd)
+pid_t tsh_run(char *cmd, int wait)
 {
 	pid_t pid;
 	char **args;
@@ -95,10 +96,11 @@ pid_t tsh_run(char *cmd)
 	strcpy(vcmd, cmd);
 
 	args = _tsh_split_cmd(vcmd);
-	pid = _tsh_exec(args);
+	pid = _tsh_exec(args, wait);
+	free(vcmd);
 
 	if (pid < 0)
 		printf("Cannot run \"%s\"\n", cmd);
-		
+
 	return pid;
 }
