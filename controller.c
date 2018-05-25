@@ -177,15 +177,22 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") > 0)
 		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
 
+	char tmp[256];
 	if (strcmp(c->creds.prn, "") == 0) {
 		pv->flags |= DEVICE_UNCLAIMED;
 	} else {
-		char did[256];
-		sprintf(did, "%s\n", c->creds.id);
-		write(fd, did, strlen(did));
+		sprintf(tmp, "%s\n", c->creds.id);
+		write(fd, tmp, strlen(tmp));
 	}
 
 	close(fd);
+
+	// expose pantahub host
+	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	sprintf(tmp, "%s\n", c->creds.host);
+	write(fd, tmp, strlen(tmp));
+	close(fd);
+
 
 	// init platform controllers
 	if (!pv_platforms_init_ctrl(pv)) {
