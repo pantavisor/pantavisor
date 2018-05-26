@@ -103,7 +103,7 @@ static int early_mounts()
 
 static void debug_telnet()
 {
-	tsh_run("ifconfig lo up", 1);
+	tsh_run("ifconfig lo up", 0);
 	tsh_run("telnetd -l /bin/ash", 0);
 }
 
