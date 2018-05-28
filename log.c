@@ -356,8 +356,8 @@ static void log_get_next(log_entry_t **e)
 
 void pv_log_flush(struct pantavisor *pv, bool force)
 {
-	char *entry, *body;
-	unsigned long i = 1;
+	char *entry, *body, *tmp;
+	unsigned long i = 1, j = 0, c = 0;
 	int size;
 
 	if (!pv)
@@ -389,9 +389,30 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 		size += strlen(e->data);
 		entry = calloc(1, size * sizeof(char));
 
-		snprintf(entry, size, JSON_FORMAT, e->tsec,
+		for (c = 0, j = 0; e->data[j]; j++)
+			if (e->data[j] == '\\') c++;
+
+		if (c) {
+			tmp = calloc(1, strlen(e->data) + (c * sizeof(char)));
+			c = 0; j = 0;
+			while (c < strlen(e->data)) {
+				if (e->data[c] == '\\') {
+					*(tmp+j) = '\\';
+					j++;
+				}
+				*(tmp+j) = e->data[c];
+				j++;
+				c++;
+			}
+			snprintf(entry, size, JSON_FORMAT, e->tsec,
+				e->tusec, level_names[e->level].name,
+				e->source, tmp);
+			free(tmp);
+		} else {
+			snprintf(entry, size, JSON_FORMAT, e->tsec,
 				e->tusec, level_names[e->level].name,
 				e->source, e->data);
+		}
 
 		if ((strlen(body) + size + 3) > BUF_CHUNK*i) {
 			body = realloc(body, BUF_CHUNK*(i+1)* sizeof(char));
