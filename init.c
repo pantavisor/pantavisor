@@ -40,6 +40,7 @@
 
 #include "tsh.h"
 #include "pantavisor.h"
+#include "version.h"
 
 pid_t pv_pid;
 pid_t shell_pid;
@@ -190,6 +191,14 @@ int main(int argc, char *argv[])
 	parse_args(argc, argv, &args);
 
 	if (getpid() != 1) {
+		if (is_arg(argc, argv, "--version")) {
+			printf("version: %s\n", pv_build_version);
+			return 0;
+		}
+		if (is_arg(argc, argv, "--manifest")) {
+			printf("manifest: \n%s\n", pv_build_manifest);
+			return 0;
+		}
 		pantavisor_init(false);
 		return 0;
 	}

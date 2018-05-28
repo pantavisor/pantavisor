@@ -25,9 +25,9 @@ LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -D_FILE_OFFSE
 LOCAL_LDFLAGS := -Wl,--no-as-needed -ldl -Wl,--as-needed -static-libgcc
 
 PV_BUILD_DIR := $(call local-get-build-dir)
-PV_VERSION_H := $(PV_BUILD_DIR)/version.h
+PV_VERSION_C := $(PV_BUILD_DIR)/version.c
 
-$(PV_VERSION_H): .FORCE
+$(PV_VERSION_C): .FORCE
 	$(Q) $(PRIVATE_PATH)/gen_version.sh $(PRIVATE_PATH) $(PV_BUILD_DIR)
 
 LOCAL_PREREQUISITES += \
@@ -53,6 +53,6 @@ LOCAL_SRC_FILES := init.c \
 		   storage.c \
 		   cmd.c
 
-LOCAL_GENERATED_SRC_FILES := version.h
+LOCAL_GENERATED_SRC_FILES := version.c
 
 include $(BUILD_EXECUTABLE)

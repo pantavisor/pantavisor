@@ -159,7 +159,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
 
-	pv_log(INFO, "init: Pantavisor (build %s-%s)", PV_BUILD_VERSION, PV_BUILD_DATE);
+	pv_log(INFO, "init: Pantavisor (build %s-%s)", pv_build_version, pv_build_date);
 
         pv_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
         pv_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
