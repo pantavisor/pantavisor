@@ -24,6 +24,15 @@ LOCAL_MODULE := init
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -D_FILE_OFFSET_BITS=64
 LOCAL_LDFLAGS := -Wl,--no-as-needed -ldl -Wl,--as-needed -static-libgcc
 
+PV_BUILD_DIR := $(call local-get-build-dir)
+PV_VERSION_H := $(PV_BUILD_DIR)/version.h
+
+$(PV_VERSION_H): .FORCE
+	$(Q) $(PRIVATE_PATH)/gen_version.sh $(PRIVATE_PATH) $(PV_BUILD_DIR)
+
+LOCAL_PREREQUISITES += \
+	$(PV_VERSION_H)
+
 LOCAL_SRC_FILES := init.c \
 		   tsh.c \
 	           loop.c \
@@ -43,5 +52,7 @@ LOCAL_SRC_FILES := init.c \
 		   grub.c \
 		   storage.c \
 		   cmd.c
+
+LOCAL_GENERATED_SRC_FILES := version.h
 
 include $(BUILD_EXECUTABLE)
