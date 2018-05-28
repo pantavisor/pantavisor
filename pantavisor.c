@@ -44,6 +44,7 @@
 #include "controller.h"
 #include "bootloader.h"
 #include "utils.h"
+#include "version.h"
 
 #include "pantavisor.h"
 
@@ -398,6 +399,8 @@ static void _pv_init()
 {
 	int ret;
 	struct pantavisor *pv;
+
+	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
 
         prctl(PR_SET_NAME, "pantavisor");
 	pv = calloc(1, sizeof(struct pantavisor));
