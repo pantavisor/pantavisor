@@ -52,6 +52,11 @@ struct pv_update {
 	struct pv_state *pending;
 };
 
+struct pv_addon {
+	char *name;
+	struct pv_addon *next;
+};
+
 struct pv_volume {
 	char *name;
 	char *mode;
@@ -94,6 +99,7 @@ struct pv_state {
 	char *initrd;
 	struct pv_platform *platforms;
 	struct pv_volume *volumes;
+	struct pv_addon *addons;
 	struct pv_object *objects;
 	char *json;
 	int tryonce;

@@ -288,12 +288,15 @@ void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 
 int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 {
-	char src[PATH_MAX], dst[PATH_MAX];
+	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX];
 	struct pantavisor_config *c = pv->config;
+	struct pv_addon *a;
+	int i;
 
 	if (!s)
 		s = pv->state;
 
+	// initrd
 	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
 	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->initrd);
 
@@ -304,6 +307,21 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	if (link(src, dst) < 0)
 		goto err;
 
+	// addons
+	a = s->addons;
+	i = 0;
+	while (a) {
+		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
+		sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, a->name);
+		sprintf(fname, "pv-initrd.img.%d", i++);
+		strcat(dst, fname);
+		remove(dst);
+		if (link(src, dst) < 0)
+			goto err;
+		a = a->next;
+	}
+
+	// kernel
 	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", c->storage.mntpoint, s->rev);
 	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->kernel);
 
