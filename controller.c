@@ -324,8 +324,10 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	if ((strcmp(pv->config->creds.id, "") != 0) && pv_ph_device_exists(pv))
 		need_register = 0;
 
-	if (need_register && pv_ph_register_self(pv))
+	if (need_register && pv_ph_register_self(pv)) {
 		ph_config_to_file(pv->config, config_path);
+		pv_ph_release_client(pv);
+	}
 
 	if (!pv_ph_device_is_owned(pv, &c)) {
 		pv_log(INFO, "device challenge: '%s'", c);
