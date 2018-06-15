@@ -33,6 +33,7 @@
 #include "log.h"
 
 #include "utils.h"
+#include "addons.h"
 #include "platforms.h"
 #include "volumes.h"
 #include "objects.h"
@@ -81,6 +82,26 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 
 	if (!s->kernel || !s->initrd)
 		goto out;
+
+	// get addons and create empty items
+	key = jsmnutil_get_object_keys(buf, tokv);
+	key_i = key;
+	while (*key_i) {
+		c = (*key_i)->end - (*key_i)->start;
+		if (strncmp("addons", buf+(*key_i)->start, strlen("addons"))) {
+			key_i++;
+			continue;
+		}
+
+		// parse array data
+		jsmntok_t *k = (*key_i+2);
+		size = (*key_i+1)->size;
+		while ((str = json_array_get_one_str(buf, &size, &k)))
+			pv_addon_add(s, str);
+
+		break;
+	}
+	jsmnutil_tokv_free(key);
 
 	// get platforms and create empty items
 	key = jsmnutil_get_object_keys(buf, tokv);
