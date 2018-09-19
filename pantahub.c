@@ -44,6 +44,7 @@
 
 #include "pantavisor.h"
 #include "utils.h"
+#include "device.h"
 
 #include "pantahub.h"
 
@@ -278,7 +279,51 @@ int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
 out:
 	if (req)
 		trest_request_free(req);
+	if (res)
+		trest_response_free(res);
+
+	return ret;
+}
+
+int pv_ph_device_update_meta(struct pantavisor *pv)
+{
+	int ret = -1;
+	struct pv_usermeta *add;
+
+	trest_request_ptr req = 0;
+	trest_response_ptr res = 0;
+
+
+	pv_log(DEBUG, "updating user and device meta");
+
+	if (!ph_client_init(pv))
+		return -1;
+
+	req = trest_make_request(TREST_METHOD_GET,
+				 endpoint,
+				 0, 0, 0);
+
+	res = trest_do_json_request(client, req);
+
+	if (!res->body || res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "error getting device details (code=%d)", res->code);
+		goto out;
+	}
+
+	// parse and update metadata
+	ret = pv_device_update_meta(pv, res->body);
+
+	pv_log(DEBUG, "current user-meta to:");
+	add = pv->dev->usermeta;
+	while (add) {
+		pv_log(DEBUG, "  user-meta['%s'] = '%s'", add->key, add->value);
+		add = add->next;
+	}
+
+out:
 	if (req)
+		trest_request_free(req);
+	if (res)
 		trest_response_free(res);
 
 	return ret;

@@ -42,6 +42,7 @@
 #include "pantahub.h"
 #include "bootloader.h"
 #include "cmd.h"
+#include "device.h"
 #include "version.h"
 
 #define MODULE_NAME		"controller"
@@ -158,6 +159,8 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv_log_init(pv);
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
+
+	pv_device_init(pv);
 
 	pv_log(INFO, "______           _              _                ");
 	pv_log(INFO, "| ___ \\         | |            (_)               ");
@@ -403,6 +406,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv_set_current(pv, current);
 		pv->last = pv->state->rev;
 	}
+
+	// update remote metadata
+	pv_ph_device_update_meta(pv);
 
 	ret = pv_check_for_updates(pv);
 	if (ret > 0) {

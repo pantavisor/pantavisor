@@ -52,7 +52,8 @@ LOCAL_SRC_FILES := init.c \
 		   uboot.c \
 		   grub.c \
 		   storage.c \
-		   cmd.c
+		   cmd.c \
+		   device.c
 
 LOCAL_GENERATED_SRC_FILES := version.c
 

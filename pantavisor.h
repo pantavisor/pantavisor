@@ -105,14 +105,29 @@ struct pv_state {
 	int tryonce;
 };
 
+struct pv_usermeta {
+	char *key;
+	char *value;
+	struct pv_usermeta *next;
+};
+
+struct pv_device {
+	char *id;
+	char *nick;
+	char *owner;
+	char *prn;
+	struct pv_usermeta *usermeta;
+};
+
 struct pantavisor {
 	int last;
 	char *step;
-	struct pantavisor_config *config;
-	struct trail_remote *remote;
+	struct pv_device *dev;
 	struct pv_update *update;
 	struct pv_state *state;
 	struct pv_cmd_req *req;
+	struct pantavisor_config *config;
+	struct trail_remote *remote;
 	int online;
 	int ctrl_fd;
 	unsigned long flags;
@@ -131,6 +146,7 @@ void pv_destroy(struct pantavisor *pv);
 void pv_release_state(struct pantavisor *pv);
 struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int rev);
 struct pv_state* pv_parse_state_from_buf(struct pantavisor *pv, char *buf);
+int pv_parse_usermeta(struct pantavisor *pv, char *buf);
 struct pv_state* pv_get_state(struct pantavisor *pv, int current);
 struct pv_state* pv_get_current_state(struct pantavisor *pv);
 void pv_state_free(struct pv_state *s);

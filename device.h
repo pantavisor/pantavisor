@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2018 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,35 +19,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UPDATER_H
-#define PV_UPDATER_H
+#ifndef PV_DEVICE_H
+#define PV_DEVICE_H
+
+#include <stdbool.h>
 
 #include "pantavisor.h"
-#include <trest.h>
 
-#define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
-#define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%d/progress"
-#define DEVICE_STEP_STATUS_FMT "{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
-
-#define TRAIL_OBJECT_DL_FMT	"/objects/%s"
-
-
-struct trail_remote {
-	trest_ptr client;
-	char *endpoint;
-	struct pv_state *pending;
-};
-
-int pv_update_start(struct pantavisor *pv, int offline);
-int pv_update_set_status(struct pantavisor *pv, enum update_state status);
-int pv_update_finish(struct pantavisor *pv);
-int pv_update_install(struct pantavisor *pv);
-int pv_check_for_updates(struct pantavisor *pv);
-int pv_do_single_update(struct pantavisor *pv);
-void pv_remote_destroy(struct pantavisor *pv);
-
-int pv_bl_set_current(struct pantavisor *pv, int rev);
-int pv_bl_get_update(struct pantavisor *pv, int *update);
-int pv_bl_clear_update(struct pantavisor *pv);
+struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key);
+struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value);
+int pv_device_update_meta(struct pantavisor *pv, char *buf);
+int pv_device_init(struct pantavisor *pv);
 
 #endif
