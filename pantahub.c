@@ -288,13 +288,9 @@ out:
 int pv_ph_device_update_meta(struct pantavisor *pv)
 {
 	int ret = -1;
-	struct pv_usermeta *add;
 
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
-
-
-	pv_log(DEBUG, "updating user and device meta");
 
 	if (!ph_client_init(pv))
 		return -1;
@@ -310,15 +306,7 @@ int pv_ph_device_update_meta(struct pantavisor *pv)
 		goto out;
 	}
 
-	// parse and update metadata
 	ret = pv_device_update_meta(pv, res->body);
-
-	pv_log(DEBUG, "current user-meta to:");
-	add = pv->dev->usermeta;
-	while (add) {
-		pv_log(DEBUG, "  user-meta['%s'] = '%s'", add->key, add->value);
-		add = add->next;
-	}
 
 out:
 	if (req)

@@ -202,3 +202,41 @@ int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc)
 
 	return count;
 }
+
+char *unescape_str_to_ascii(char *buf, char *code, char c)
+{
+	char *p = 0;
+	char *new = 0;
+	char *old;
+	int pos = 0, replaced = 0;
+	char *tmp;
+
+	tmp = malloc(strlen(buf) + strlen(code) + 1);
+	strcpy(tmp, buf);
+	strcat(tmp, code);
+	old = tmp;
+
+	p = strstr(tmp, code);
+	while (p) {
+		*p = '\0';
+		new = realloc(new, pos + strlen(tmp) + 2);
+		strcpy(new+pos, tmp);
+		pos = pos + strlen(tmp);
+		new[pos] = c;
+		pos += 1;
+		new[pos] = '\0';
+		replaced += 1;
+		tmp = p+strlen(code);
+		p = strstr(tmp, code);
+	}
+
+	if (new[strlen(new)-1] == c)
+		new[strlen(new)-1] = '\0';
+
+	if (old)
+		free(old);
+	if (buf)
+		free(buf);
+
+	return new;
+}

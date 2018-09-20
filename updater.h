@@ -31,7 +31,6 @@
 
 #define TRAIL_OBJECT_DL_FMT	"/objects/%s"
 
-
 struct trail_remote {
 	trest_ptr client;
 	char *endpoint;

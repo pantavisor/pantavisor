@@ -144,13 +144,6 @@ struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 	curr->value = strdup(value);
 
 out:
-	add = d->usermeta;
-	pv_log(DEBUG, "updated user-meta to:");
-	while (add) {
-		pv_log(DEBUG, "  user-meta['%s'] = '%s'", add->key, add->value);
-		add = add->next;
-	}
-
 	usermeta_add_hint(curr);
 
 	return curr;
@@ -182,8 +175,19 @@ static void usermeta_clear(struct pantavisor *pv)
 
 int pv_device_update_meta(struct pantavisor *pv, char *buf)
 {
+	int ret;
+	char *body, *esc;
+
+	// clear old
 	usermeta_clear(pv);
-	return pv_parse_usermeta(pv, buf);
+
+	body = strdup(buf);
+	esc = unescape_str_to_ascii(body, "\\n", '\n');
+
+	ret = pv_parse_usermeta(pv, esc);
+	free(esc);
+
+	return ret;
 }
 
 int pv_device_init(struct pantavisor *pv)
