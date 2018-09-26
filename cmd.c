@@ -58,7 +58,7 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 	}
 
 	// queue 5 commands
-	listen(fd, 1);
+	listen(fd, 5);
 
 	pv->ctrl_fd = fd;
 
@@ -119,6 +119,7 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 		pv_log(WARN, "unable to read command data");
 		goto err;
 	}
+
 	c->data = calloc(1, ret);
 	c->data = memcpy(c->data, buf, ret);
 	c->len = ret;

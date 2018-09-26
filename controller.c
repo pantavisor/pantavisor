@@ -56,6 +56,7 @@
 
 static int rb_count;
 static int current;
+static time_t wait_delay;
 
 typedef enum {
 	STATE_INIT,
@@ -156,9 +157,11 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (stat(c->logdir, &st) != 0)
 		mkdir_p(c->logdir, 0400);
 
+	wait_delay = 0;
 	pv_log_init(pv);
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
+
 
 	pv_device_init(pv);
 
@@ -356,15 +359,20 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	int timeout_max = pv->config->updater.network_timeout
 		/ pv->config->updater.interval;
 
+	struct timespec tp;
+
 	if (pv->req) {
 		pv_log(WARN, "stable command found queued, discarding");
 		pv_cmd_finish(pv);
 		return STATE_WAIT;
 	}
 
-	pv->req = pv_cmd_socket_wait(pv, pv->config->updater.interval);
-	if (pv->req)
-		return STATE_COMMAND;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	if (wait_delay > tp.tv_sec) {
+		pv->req = pv_cmd_socket_wait(pv, pv->config->updater.interval);
+		if (pv->req)
+			return STATE_COMMAND;
+	}
 
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
@@ -377,6 +385,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		}
 		return STATE_WAIT;
 	}
+
+	pv_log_flush(pv, true);
 
 	// reset rollback rb_count
 	rb_count = 0;
@@ -409,12 +419,18 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// update remote metadata
 	pv_ph_device_update_meta(pv);
-
 	ret = pv_check_for_updates(pv);
+
+	/* set delay to at most twice the updater interval */
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	wait_delay = tp.tv_sec + (2 * pv->config->updater.interval);
+
 	if (ret > 0) {
 		pv_log(INFO, "updates found");
 		return STATE_UPDATE;
 	}
+
+	pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(STATE_WAIT));
 
 	return STATE_WAIT;
 }
@@ -428,8 +444,6 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 	if (!c)
 		return STATE_WAIT;
-
-	pv_log(DEBUG, "%s():%d -- cmd=%d", __func__, __LINE__, c->cmd);
 
 	switch (c->cmd) {
 	case CMD_TRY_ONCE:
@@ -612,8 +626,8 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 {
-	// sync logs with remote
-	pv_log_flush(pv, true);
+	if ((state != STATE_WAIT) && (state != STATE_COMMAND))
+		pv_log_flush(pv, true);
 
 	return state_table[state](pv);
 }
@@ -625,7 +639,9 @@ int pv_controller_start(struct pantavisor *pv)
 	pv_state_t state = STATE_INIT;
 
 	while (1) {
-		pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(state));
+		if ((state != STATE_WAIT) && (state != STATE_COMMAND))
+			pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(STATE_WAIT));
+
 		state = _pv_run_state(state, pv);
 
 		if (state == STATE_EXIT)

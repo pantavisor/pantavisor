@@ -324,8 +324,6 @@ void pv_log_raw(struct pantavisor *pv, char *buf, int len)
 	log_add(&e);
 
 	log_last_entry_to_file();
-
-	pv_log_flush(global_pv, false);
 }
 
 static int log_entry_null(log_entry_t *e)
