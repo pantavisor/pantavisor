@@ -162,7 +162,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
 
-
 	pv_device_init(pv);
 
 	pv_log(INFO, "______           _              _                ");

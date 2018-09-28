@@ -185,8 +185,7 @@ static int load_key_value_file(char *path)
 	return 0;
 }
 
-#define PV_HINT		"pv_"
-static int _config_parse_cmdline(void)
+static int _config_parse_cmdline(char *hint)
 {
 	int fd, bytes;
 	char *buf, *k;
@@ -204,8 +203,8 @@ static int _config_parse_cmdline(void)
 
 	token = strtok_r(buf, " ", &ptr_out);
 	while (token) {
-		if (strncmp(PV_HINT, token, sizeof(PV_HINT)-1) == 0) {
-			k = token + sizeof(PV_HINT)-1;
+		if (strncmp(hint, token, strlen(hint)) == 0) {
+			k = token + strlen(hint);
 			key = strtok_r(k, "=", &ptr_in);
 			value = strtok_r(NULL, "=", &ptr_in);
 			_config_replace_item(key, value);
@@ -226,7 +225,7 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 		return -1;
 
 	// for overrides
-	_config_parse_cmdline();
+	_config_parse_cmdline("pv_");
 
 	item = _config_get_value("bootloader.type");
 	if (item && !strcmp(item, "uboot"))
@@ -258,6 +257,9 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 
 	if (load_key_value_file(path) < 0)
 		return -1;
+
+	// for overrides
+	_config_parse_cmdline("ph_");
 
 	config->logdir = _config_get_value("log.dir");
 	if (!config->logdir)

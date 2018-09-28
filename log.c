@@ -33,7 +33,11 @@
 #include <sys/time.h>
 
 #include "tsh.h"
+
+#define MODULE_NAME		"log"
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+
 #include "pantahub.h"
 #include "loop.h"
 #include "utils.h"
@@ -47,7 +51,7 @@ static struct level_name level_names[] = {
 	LEVEL_NAME(DEBUG)
 };
 
-static int prio = ERROR;
+static int prio = ALL;
 static int log_count = 0;
 static int log_written = 0;
 static int log_maxsize = 0;
@@ -57,16 +61,14 @@ static char *log_dir = 0;
 int log_fd = 1;
 
 #define LOG_NAME		"pantavisor.log"
-
-#define LOG_RING_SIZE		LOG_ITEM_SIZE * 64
-#define LOG_ITEM_SIZE		4096	// JSON size
+#define LOG_ITEM_SIZE		1024	// JSON size
 
 typedef struct {
 	uint64_t tsec;		// 8 bytes
 	uint32_t tusec;		// 4 bytes
 	uint32_t level;		// 4 bytes
 	char source[32];
-	char data[LOG_ITEM_SIZE-48];	// 4096-48 bytes
+	char data[LOG_ITEM_SIZE-48];
 } log_entry_t;
 
 typedef struct {
@@ -131,6 +133,8 @@ void pv_log_init(struct pantavisor *pv)
 	// make logs available for platforms
 	mkdir_p("/pv/logs", 0644);
 	mount_bind(pv->config->logdir, "/pv/logs");
+
+	pv_log(DEBUG, "%s() logsize: %d items, buffer of %d KiB", __func__, lb->size, lb->buf_size / 1024);
 }
 
 void exit_error(int err, char *msg)
@@ -283,6 +287,7 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	// escape problematic json chars
 	replace_char(e.data, '\n', ' ');
 	replace_char(e.data, '\"', '\'');
+	replace_char(e.data, '\t', ' ');
 
 	// add to ring buffer
 	log_add(&e);
@@ -319,6 +324,7 @@ void pv_log_raw(struct pantavisor *pv, char *buf, int len)
 	// escape problematic json chars
 	replace_char(e.data, '\n', ' ');
 	replace_char(e.data, '\"', '\'');
+	replace_char(e.data, '\t', ' ');
 
 	// add to ring buffer
 	log_add(&e);
