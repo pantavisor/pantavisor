@@ -22,6 +22,8 @@
 #ifndef PV_PANTAHUB_H
 #define PV_PANTAHUB_H
 
+#define DEVICE_TOKEN_FMT	"Pantahub-Devices-Auto-Token-V1: %s"
+
 int pv_ph_is_available(struct pantavisor *pv);
 int pv_ph_upload_logs(struct pantavisor *pv, char *logs);
 int pv_ph_device_update_meta(struct pantavisor *pv);

@@ -34,6 +34,7 @@ struct pantavisor_creds {
 	char *id;
 	char *prn;
 	char *secret;
+	char *token;
 };
 
 struct pantavisor_storage {

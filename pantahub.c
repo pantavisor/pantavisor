@@ -387,7 +387,14 @@ int pv_ph_register_self(struct pantavisor *pv)
 	sprintf(json, DEVICE_REGISTER_FMT, secret);
 	req->body = json;
 
-	req->headers = 0;
+	if (pv->config->creds.token && strcmp(pv->config->creds.token, "")) {
+		req->headers = calloc(1, 2 * sizeof(char *));
+		req->headers[0] = calloc(1, sizeof(DEVICE_TOKEN_FMT) + 64);
+		sprintf(req->headers[0], DEVICE_TOKEN_FMT, pv->config->creds.token);
+	} else {
+		req->headers = 0;
+	}
+
 	req->body_content_type = "application/json";
 
 	res = thttp_request_do(req);
@@ -406,6 +413,10 @@ int pv_ph_register_self(struct pantavisor *pv)
 		ret = 0;
 	}
 
+	if (req->headers) {
+		free(req->headers[0]);
+		free(req->headers);
+	}
 	if (secret)
 		free(secret);
 	if (req)

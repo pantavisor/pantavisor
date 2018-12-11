@@ -314,6 +314,7 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	config->creds.id = _config_get_value("creds.id");
 	config->creds.prn = _config_get_value("creds.prn");
 	config->creds.secret = _config_get_value("creds.secret");
+	config->creds.token = _config_get_value("creds.token");
 
 	return 0;
 }
