@@ -48,7 +48,6 @@
 
 #include "pantahub.h"
 
-#define DEVICE_REGISTER_FMT "{ \"secret\" : \"%s\" }"
 #define ENDPOINT_FMT "/devices/%s"
 
 trest_ptr *client = 0;
@@ -364,7 +363,6 @@ int pv_ph_register_self(struct pantavisor *pv)
 	int ret = 1;
 	int tokc;
 	char json[512];
-	char *secret;
 	thttp_request_tls_t* tls_req = 0;
 	thttp_response_t* res = 0;
 	jsmntok_t *tokv;
@@ -382,10 +380,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 	req->port = pv->config->creds.port;
 
 	req->path = "/devices/";
-
-	secret = rand_string(10);
-	sprintf(json, DEVICE_REGISTER_FMT, secret);
-	req->body = json;
+	req->body = 0;
 
 	if (pv->config->creds.token && strcmp(pv->config->creds.token, "")) {
 		req->headers = calloc(1, 2 * sizeof(char *));
@@ -417,8 +412,6 @@ int pv_ph_register_self(struct pantavisor *pv)
 		free(req->headers[0]);
 		free(req->headers);
 	}
-	if (secret)
-		free(secret);
 	if (req)
 		thttp_request_free(req);
 	if (res)
