@@ -28,6 +28,10 @@ enum {
 	BL_GRUB
 };
 
+struct pantavisor_factory {
+	char *autotok;
+};
+
 struct pantavisor_creds {
 	char *host;
 	int port;
@@ -64,6 +68,7 @@ struct pantavisor_config {
 	int logsize;
 	struct pantavisor_bootloader bl;
 	struct pantavisor_creds creds;
+	struct pantavisor_factory factory;
 	struct pantavisor_storage storage;
 	struct pantavisor_updater updater;
 };

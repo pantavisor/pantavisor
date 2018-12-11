@@ -382,10 +382,10 @@ int pv_ph_register_self(struct pantavisor *pv)
 	req->path = "/devices/";
 	req->body = 0;
 
-	if (pv->config->creds.token && strcmp(pv->config->creds.token, "")) {
+	if (pv->config->factory.autotok && strcmp(pv->config->factory.autotok, "")) {
 		req->headers = calloc(1, 2 * sizeof(char *));
 		req->headers[0] = calloc(1, sizeof(DEVICE_TOKEN_FMT) + 64);
-		sprintf(req->headers[0], DEVICE_TOKEN_FMT, pv->config->creds.token);
+		sprintf(req->headers[0], DEVICE_TOKEN_FMT, pv->config->factory.autotok);
 	} else {
 		req->headers = 0;
 	}
