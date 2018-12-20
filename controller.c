@@ -429,7 +429,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		return STATE_UPDATE;
 	}
 
-	pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(STATE_WAIT));
+	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
 
 	return STATE_WAIT;
 }

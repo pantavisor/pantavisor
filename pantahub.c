@@ -362,7 +362,6 @@ int pv_ph_register_self(struct pantavisor *pv)
 {
 	int ret = 1;
 	int tokc;
-	char json[512];
 	thttp_request_tls_t* tls_req = 0;
 	thttp_response_t* res = 0;
 	jsmntok_t *tokv;
