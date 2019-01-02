@@ -113,6 +113,7 @@ struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 
 struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 {
+	int changed = 1;
 	struct pv_usermeta *curr, *add;
 
 	if (!d || !key)
@@ -120,6 +121,8 @@ struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 
 	for (curr = d->usermeta; curr != NULL; curr = curr->next) {
 		if (strcmp(curr->key, key) == 0) {
+			if (strcmp(curr->value, value) == 0)
+				changed = 0;
 			free(curr->value);
 			curr->value = strdup(value);
 			goto out;
@@ -144,7 +147,8 @@ struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 	curr->value = strdup(value);
 
 out:
-	usermeta_add_hint(curr);
+	if (changed)
+		usermeta_add_hint(curr);
 
 	return curr;
 }
