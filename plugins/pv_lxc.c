@@ -31,14 +31,24 @@
 #include <sys/types.h>
 
 #include <lxc/lxccontainer.h>
+#include <lxc/pv_export.h>
 
 #include "utils.h"
 
 #include "pv_lxc.h"
 
-extern int lxc_log_init(const char *name, const char *file,
+/*extern int lxc_log_init(const char *name, const char *file,
 			const char *priority, const char *prefix, int quiet,
 			const char *lxcpath);
+
+	lxc_log_init(name, "/storage/lxc-log", "DEBUG", "init", 0, name);
+*/
+static struct lxc_log pv_lxc_log = {
+	.file = "/storage/lxc-log",
+	.level = "DEBUG",
+	.prefix = "init",
+	.quiet = false
+};
 
 void *pv_start_container(char *name, char *conf_file, void *data)
 {
@@ -66,9 +76,12 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 		lxc_container_put(c);
 		return NULL;
 	}
+	
+	pv_lxc_log.name = name;
+	pv_lxc_log.lxcpath = name;
 
-	truncate("/storage/lxc-log", 0);
-	lxc_log_init(name, "/storage/lxc-log", "DEBUG", "init", 0, name);
+	truncate(pv_lxc_log.file, 0);
+	lxc_log_init(&pv_lxc_log);
 
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
 	c->set_inherit_namespaces(c, 1, share_ns);
