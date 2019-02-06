@@ -422,12 +422,6 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		goto out;
 	}
 
-	if (tres->code == THTTP_STATUS_INTERNAL_SERVER_ERROR) {
-		pv_log(DEBUG, "'%s' could not be uploaded, code=%d", o->id, tres->code);
-		ret = -1;
-		goto out;
-	}
-
 	if (tres->code == THTTP_STATUS_CONFLICT) {
 		pv_log(DEBUG, "'%s' already owned by user, skipping", o->id, tres->code);
 		goto out;
@@ -459,10 +453,19 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 	req->len = size;
 
 	res = thttp_request_do(req);
-	if (!res)
+
+	if (!res) {
 		ret = -1;
-	else
-		pv_log(DEBUG, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
+		goto out;
+	}
+
+	if (tres->code != THTTP_STATUS_OK) {
+		pv_log(DEBUG, "'%s' could not be uploaded, code=%d", o->id, tres->code);
+		ret = -1;
+		goto out;
+	}
+
+	pv_log(DEBUG, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
 
 out:
 	if (treq)
