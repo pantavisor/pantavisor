@@ -61,14 +61,15 @@ static char *log_dir = 0;
 int log_fd = 1;
 
 #define LOG_NAME		"pantavisor.log"
-#define LOG_ITEM_SIZE		1024	// JSON size
+#define LOG_ITEM_SIZE		1024
+#define LOG_DATA_SIZE		LOG_ITEM_SIZE-48
 
 typedef struct {
 	uint64_t tsec;		// 8 bytes
 	uint32_t tusec;		// 4 bytes
 	uint32_t level;		// 4 bytes
 	char source[32];
-	char data[LOG_ITEM_SIZE-48];
+	char data[LOG_DATA_SIZE];
 } log_entry_t;
 
 typedef struct {
@@ -260,7 +261,7 @@ static void log_last_entry_to_file(void)
 void __vlog(char *module, int level, const char *fmt, ...)
 {
 	struct timeval tv;
-	char buf[LOG_ITEM_SIZE-48];
+	char buf[LOG_DATA_SIZE];
 	char *format = 0;
 	va_list args;
 	va_start(args, fmt);
@@ -319,7 +320,7 @@ void pv_log_raw(struct pantavisor *pv, char *buf, int len)
 
 	snprintf(e.source, 32, "PLATFORM");
 
-	strncpy(e.data, buf, len);
+	strncpy(e.data, buf, len > LOG_DATA_SIZE ? LOG_DATA_SIZE : len);
 
 	// escape problematic json chars
 	replace_char(e.data, '\n', ' ');
