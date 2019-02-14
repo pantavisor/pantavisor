@@ -61,7 +61,7 @@ static char *log_dir = 0;
 int log_fd = 1;
 
 #define LOG_NAME		"pantavisor.log"
-#define LOG_ITEM_SIZE		1024
+#define LOG_ITEM_SIZE		4096
 #define LOG_DATA_SIZE		LOG_ITEM_SIZE-48
 
 typedef struct {
