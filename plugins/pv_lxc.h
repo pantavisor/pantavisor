@@ -22,7 +22,9 @@
 #ifndef PV_LXC_H
 #define PV_LXC_H
 
-void* pv_start_container(char *name, char *conf_file, void *data);
-void* pv_stop_container(char *name, char *conf_file, void *data);
+#include "../pantavisor.h"
+
+void* pv_start_container(struct pv_platform *p, char *conf_file, void *data);
+void* pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
 
 #endif

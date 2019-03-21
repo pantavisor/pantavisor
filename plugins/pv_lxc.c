@@ -37,12 +37,6 @@
 
 #include "pv_lxc.h"
 
-/*extern int lxc_log_init(const char *name, const char *file,
-			const char *priority, const char *prefix, int quiet,
-			const char *lxcpath);
-
-	lxc_log_init(name, "/storage/lxc-log", "DEBUG", "init", 0, name);
-*/
 static struct lxc_log pv_lxc_log = {
 	.file = "/storage/lxc-log",
 	.level = "DEBUG",
@@ -50,7 +44,7 @@ static struct lxc_log pv_lxc_log = {
 	.quiet = false
 };
 
-void *pv_start_container(char *name, char *conf_file, void *data)
+void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 {
 	int fd, err;
 	struct lxc_container *c;
@@ -67,7 +61,7 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 	// Make sure lxc state dir is there
 	mkdir_p("/usr/var/lib/lxc", 0644);
 
-	c = lxc_container_new(name, NULL);
+	c = lxc_container_new(p->name, NULL);
 	if (!c) {
 		return NULL;
 	}
@@ -76,9 +70,9 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 		lxc_container_put(c);
 		return NULL;
 	}
-	
-	pv_lxc_log.name = name;
-	pv_lxc_log.lxcpath = name;
+
+	pv_lxc_log.name = p->name;
+	pv_lxc_log.lxcpath = p->name;
 
 	truncate(pv_lxc_log.file, 0);
 	lxc_log_init(&pv_lxc_log);
@@ -116,6 +110,7 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 	}
 	char entry[1024];
 
+	c->set_config_item(c, "lxc.init.cmd", p->exec);
 	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor none bind,ro,create=dir 0 0");
 	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs none bind,ro,create=dir 0 0");
 
@@ -148,7 +143,7 @@ void *pv_start_container(char *name, char *conf_file, void *data)
 }
 
 // cannot fail if data is valid
-void *pv_stop_container(char *name, char *conf_file, void *data)
+void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data)
 {
 	bool s;
 	struct lxc_container *c = (struct lxc_container *) data;
