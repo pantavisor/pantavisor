@@ -35,6 +35,8 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "wdt.h"
+
 #include "platforms.h"
 
 struct pv_cont_ctrl {
@@ -276,6 +278,8 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		void *data;
 		char **c = p->configs;
 
+		pv_wdt_kick(pv);
+
 		sprintf(conf_path, "%s/trails/%d/%s",
 			pv->config->storage.mntpoint, s->rev, *c);
 
@@ -299,7 +303,12 @@ int pv_platforms_start_all(struct pantavisor *pv)
 
 		p->data = data;
 		p->init_pid = pid;
-		p->running = true;
+
+		if (pid > 0)
+			p->running = true;
+		else
+			return -1;
+
 		num_plats++;
 
 		p = p->next;
@@ -317,7 +326,7 @@ int pv_platforms_stop_all(struct pantavisor *pv)
 	struct pv_platform *p = s->platforms;
 	const struct pv_cont_ctrl *ctrl;
 
-	while (p) {
+	while (p && p->running) {
 		ctrl = _pv_platforms_get_ctrl(p->type);
 		ctrl->stop(p, NULL, p->data);
 		p->running = false;

@@ -46,6 +46,7 @@
 #include "bootloader.h"
 #include "pantahub.h"
 #include "storage.h"
+#include "wdt.h"
 
 static struct trail_object *head;
 static struct trail_object *last;
@@ -544,7 +545,6 @@ static int trail_first_boot(struct pantavisor *pv)
 	ret = 0;
 
 out:
-	sleep(5);
 	if (req)
 		trest_request_free(req);
 	if (res)
@@ -1083,8 +1083,8 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	pv_log(INFO, "applying update...");
-
 	ret = trail_download_objects(pv);
+
 	if (ret < 0) {
 		pv_log(ERROR, "unable to download objects");
 		pv->update->status = UPDATE_NO_DOWNLOAD;

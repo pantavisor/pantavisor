@@ -45,6 +45,7 @@
 #include "bootloader.h"
 #include "utils.h"
 #include "version.h"
+#include "wdt.h"
 
 #include "pantavisor.h"
 
@@ -147,7 +148,7 @@ int pv_get_rollback_rev(struct pantavisor *pv)
 			return rev;
 	}
 
-	return rev;
+	return 0;
 }
 
 void pv_meta_set_objdir(struct pantavisor *pv)

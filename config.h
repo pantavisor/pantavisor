@@ -60,6 +60,11 @@ struct pantavisor_bootloader {
 	char *mtd_path;
 };
 
+struct pantavisor_watchdog {
+	int enabled;
+	int timeout;
+};
+
 struct pantavisor_config {
 	char *name;
 	char *logdir;
@@ -71,6 +76,7 @@ struct pantavisor_config {
 	struct pantavisor_factory factory;
 	struct pantavisor_storage storage;
 	struct pantavisor_updater updater;
+	struct pantavisor_watchdog wdt;
 };
 
 // Fill config struct after parsing on-initramfs factory config

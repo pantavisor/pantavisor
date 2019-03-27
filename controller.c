@@ -44,6 +44,7 @@
 #include "cmd.h"
 #include "device.h"
 #include "version.h"
+#include "wdt.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -368,9 +369,11 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	if (wait_delay > tp.tv_sec) {
-		pv->req = pv_cmd_socket_wait(pv, pv->config->updater.interval);
+		pv->req = pv_cmd_socket_wait(pv, 5);
 		if (pv->req)
 			return STATE_COMMAND;
+		else
+			return STATE_WAIT;
 	}
 
 	if (pv->flags & DEVICE_UNCLAIMED)
@@ -420,9 +423,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	pv_ph_device_update_meta(pv);
 	ret = pv_check_for_updates(pv);
 
-	/* set delay to at most twice the updater interval */
+	/* set delay to at most the updater interval */
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + (2 * pv->config->updater.interval);
+	wait_delay = tp.tv_sec + pv->config->updater.interval;
 
 	if (ret > 0) {
 		pv_log(INFO, "updates found");
@@ -502,6 +505,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 	// download and install pending step
 	ret = pv_update_install(pv);
+
 	if (ret < 0) {
 		pv_log(ERROR, "update has failed, continue");
 		pv_update_finish(pv);
@@ -566,17 +570,11 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 			pv_log(WARN, "unmount error: ignoring due to rollback");
 
 		rb_count = 0;
-		pv_release_state(pv);
 	}
 
-	if (pv->last == -1)
-		pv->last = pv_get_rollback_rev(pv);
+	pv_set_current(pv, pv_get_rollback_rev(pv));
 
-	pv->state = pv_get_state(pv, pv->last);
-	if (pv->state)
-		pv_log(INFO, "loaded previous step %d\n", pv->last);
-
-	return STATE_RUN;
+	return STATE_REBOOT;
 }
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
@@ -584,6 +582,8 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	pv_update_finish(pv);
+
+	pv_wdt_start(pv);
 
 	// unmount storage
 	umount(pv->config->storage.mntpoint);
@@ -625,6 +625,8 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 {
+	pv_wdt_kick(pv);
+
 	if ((state != STATE_WAIT) && (state != STATE_COMMAND))
 		pv_log_flush(pv, true);
 
