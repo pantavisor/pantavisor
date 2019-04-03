@@ -90,6 +90,11 @@ static int early_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
 
+	mkdir("/sys/fs/cgroup/devices", 0644);
+	ret = mount("cgroup", "/sys/fs/cgroup/devices", "cgroup", 0, "none,name=devices");
+	if (ret < 0)
+		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
+
 	mkdir("/writable", 0644);
 	if (!stat("/etc/fstab", &st))
 		tsh_run("mount -a", 1);
@@ -98,6 +103,11 @@ static int early_mounts()
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /root");
+
+	mkdir("/run", 0755);
+	ret = mount("none", "/run", "tmpfs", 0, NULL);
+	if (ret < 0)
+		exit_error(errno, "Could not mount /run");
 
 	return 0;
 }
