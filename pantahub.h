@@ -33,5 +33,6 @@ const char** pv_ph_get_certs(struct pantavisor *pv);
 int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
 void pv_ph_release_client(struct pantavisor *pv);
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
+uint8_t pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
 
 #endif

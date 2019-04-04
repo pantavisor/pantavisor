@@ -35,6 +35,7 @@
 #include "log.h"
 
 #include "cmd.h"
+#include "utils.h"
 
 int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 {
@@ -120,9 +121,20 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 		goto err;
 	}
 
-	c->data = calloc(1, ret);
-	c->data = memcpy(c->data, buf, ret);
-	c->len = ret;
+	if (c->cmd != CMD_JSON) {
+		c->data = calloc(1, ret);
+		c->data = memcpy(c->data, buf, ret);
+		c->len = ret;
+	} else {
+		ret = parse_cmd_req(buf, c);
+		if (ret) {
+			pv_log(WARN, "json command has wrong format");
+			goto err;
+		}
+
+		pv_log(DEBUG, "new json command op=%d payload=%s", c->json_operation, c->data);
+	}
+
 	close(fd);
 
 out:
@@ -146,4 +158,42 @@ void pv_cmd_finish(struct pantavisor *pv)
 	free(c);
 
 	pv->req = NULL;
+}
+
+uint8_t parse_cmd_req(char *buf, struct pv_cmd_req *cmd)
+{
+	int tokc;
+	uint8_t ret = 1;
+	jsmntok_t *tokv;
+	char *op_string = NULL;
+
+	jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	op_string = get_json_key_value(buf, "op", tokv, tokc);
+	if(!op_string) {
+		pv_log(WARN, "Unable to get op value from command");
+		goto out;
+	}
+
+	cmd->json_operation = int_cmd_operation(op_string, strlen(op_string));
+	if (!cmd->json_operation) {
+		pv_log(WARN, "op from command unknown");
+		goto out;
+	}
+
+	cmd->data = get_json_key_value(buf, "payload", tokv, tokc);
+	if (!cmd->data) {
+		pv_log(WARN, "Unable to get payload value from command");
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	if (tokv)
+		free(tokv);
+	if (op_string)
+		free(op_string);
+
+	return ret;
 }

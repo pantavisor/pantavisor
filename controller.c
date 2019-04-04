@@ -482,6 +482,15 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log_raw(pv, c->data, c->len);
 		break;
 		}
+	case CMD_JSON:
+		switch (c->json_operation) {
+		case CMD_JSON_UPDATE_METADATA:
+			pv_ph_upload_metadata(pv, c->data);
+			break;
+		default:
+			pv_log(DEBUG, "unknown json command received");
+		}
+		break;
 	default:
 		pv_log(DEBUG, "unknown command received");
 	}

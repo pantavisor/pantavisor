@@ -22,13 +22,22 @@
 #ifndef PV_CMD_H
 #define PV_CMD_H
 
+// legacy commands, use cmd_json_operation_t for new commands
 enum cmd_t {
 	CMD_TRY_ONCE = 1,
-	CMD_LOG
+	CMD_LOG,
+	CMD_JSON
+};
+
+enum cmd_json_operation_t {
+	CMD_JSON_UPDATE_METADATA = 1,
+	// add new commands here
+	MAX_CMD_JSON_OP
 };
 
 struct pv_cmd_req {
 	char cmd;
+	enum cmd_json_operation_t json_operation ;
 	uint32_t len;
 	char *data;
 };
@@ -37,5 +46,22 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path);
 void pv_cmd_socket_close(struct pantavisor *pv);
 struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout);
 void pv_cmd_finish(struct pantavisor *pv);
+static uint8_t parse_cmd_req(char *buffer, struct pv_cmd_req *cmd);
+
+static inline const char *string_cmd_operation(const enum cmd_json_operation_t op)
+{
+	static const char *strings[] = {"UPDATE_METADATA"};
+	return strings[op];
+}
+
+static inline enum cmd_json_operation_t int_cmd_operation(const char *op_string, const uint8_t op_string_size)
+{
+	for (enum cmd_json_operation_t op_index = 1; op_index < MAX_CMD_JSON_OP; ++op_index) {
+		if (!strncmp(op_string, string_cmd_operation(op_index), op_string_size))
+			return op_index;
+    }
+
+    return 0;
+}
 
 #endif // PV_CMD_H
