@@ -31,6 +31,9 @@
 
 #define TRAIL_OBJECT_DL_FMT	"/objects/%s"
 
+#define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
+#define MMC_TMP_OBJ_SUFFIX ".tmp"
+
 struct trail_remote {
 	trest_ptr client;
 	char *endpoint;

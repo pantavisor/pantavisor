@@ -816,14 +816,15 @@ static int trail_update_has_new_initrd(struct pantavisor *pv)
 static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
 {
 	int ret = 0;
-	int tmp_fd = -1, fd = -1, obj_fd = -1;
+	int volatile_tmp_fd = -1, fd = -1, obj_fd = -1;
 	int bytes, n;
 	int is_kernel_pvk;
-	int use_temp = 0;
-	char *tmp;
+	int use_volatile_tmp = 0;
+	char *tmp_sha;
 	char *host = 0;
 	char *start = 0, *port = 0, *end = 0;
-	char tobj[] = "/tmp/object-XXXXXX";
+	char mmc_tmp_obj_path [PATH_MAX];
+	char volatile_tmp_obj_path[] = VOLATILE_TMP_OBJ_PATH;
 	unsigned char buf[4096];
 	unsigned char cloud_sha[32];
 	unsigned char local_sha[32];
@@ -886,14 +887,17 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 
 	if (!strcmp(pv->config->storage.fstype, "jffs2") ||
 	    !strcmp(pv->config->storage.fstype, "ubifs"))
-		use_temp = 1;
+		use_volatile_tmp = 1;
 
-	obj_fd = open(obj->objpath, O_CREAT | O_RDWR, 0644);
+	// temporary path where we will store the file until validated
+	strncpy(mmc_tmp_obj_path, obj->objpath, strlen(obj->objpath));
+	strncat(mmc_tmp_obj_path, MMC_TMP_OBJ_SUFFIX, strlen(MMC_TMP_OBJ_SUFFIX));
+	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 
-	if (use_temp) {
-		mktemp(tobj);
-		tmp_fd = open(tobj, O_CREAT | O_RDWR, 0644);
-		fd = tmp_fd;
+	if (use_volatile_tmp) {
+		mktemp(volatile_tmp_obj_path);
+		volatile_tmp_fd = open(volatile_tmp_obj_path, O_CREAT | O_RDWR, 0644);
+		fd = volatile_tmp_fd;
 	} else {
 		fd = obj_fd;
 	}
@@ -901,29 +905,29 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	if (is_kernel_pvk) {
 		fsync(obj_fd);
 		close(obj_fd);
-		fd = tmp_fd;
+		fd = volatile_tmp_fd;
 	}
 
 	// download to tmp
 	lseek(fd, 0, SEEK_SET);
-	pv_log(INFO, "downloading object (%s)", obj->objpath);
+	pv_log(INFO, "downloading object to tmp path (%s)", mmc_tmp_obj_path);
 	res = thttp_request_do_file (req, fd);
 	if (!res) {
 		pv_log(WARN, "no response from server");
-		remove(obj->objpath);
+		remove(mmc_tmp_obj_path);
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "error response from server, http code %d", res->code);
-		remove(obj->objpath);
+		remove(mmc_tmp_obj_path);
 		goto out;
 	}
 
-	if (use_temp) {
-		pv_log(INFO, "copying %s to %s", tobj, obj->objpath);
-		bytes = copy_and_close(tmp_fd, obj_fd);
+	if (use_volatile_tmp) {
+		pv_log(INFO, "copying %s to tmp path (%s)", volatile_tmp_obj_path, mmc_tmp_obj_path);
+		bytes = copy_and_close(volatile_tmp_fd, obj_fd);
 		fd = obj_fd;
 	}
-	pv_log(INFO, "downloaded object (%s)", obj->objpath);
+	pv_log(INFO, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
 	fsync(fd);
 
 	// verify file downloaded correctly before syncing to disk
@@ -938,10 +942,10 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	mbedtls_sha256_finish(&sha256_ctx, local_sha);
 	mbedtls_sha256_free(&sha256_ctx);
 
-	tmp = obj->sha256;
-	for (int i = 0, j = 0; i < (int) strlen(tmp); i=i+2, j++) {
+	tmp_sha = obj->sha256;
+	for (int i = 0, j = 0; i < (int) strlen(tmp_sha); i=i+2, j++) {
 		char byte[3];
-		strncpy(byte, tmp+i, 2);
+		strncpy(byte, tmp_sha+i, 2);
 		byte[2] = 0;
 		cloud_sha[j] = strtoul(byte, NULL, 16);
 	}
@@ -950,14 +954,17 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	for (int i = 0; i < 32; i++) {
 		if (cloud_sha[i] != local_sha[i]) {
 			pv_log(WARN, "sha256 mismatch with local object");
-			remove(obj->objpath);
+			remove(mmc_tmp_obj_path);
 			goto out;
 		}
 	}
-	syncdir(obj->objpath);
+	syncdir(mmc_tmp_obj_path);
+
+	pv_log(INFO, "renaming %s to %s", mmc_tmp_obj_path, obj->objpath);
+	rename(mmc_tmp_obj_path, obj->objpath);
 
 	if (is_kernel_pvk)
-		pv_bl_install_kernel(pv, tobj);
+		pv_bl_install_kernel(pv, volatile_tmp_obj_path);
 
 	pv_log(INFO, "verified object (%s)", obj->objpath);
 	ret = 1;
