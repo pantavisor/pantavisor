@@ -110,11 +110,9 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	}
 	char entry[1024];
 
-	c->set_config_item(c, "lxc.init_cmd", p->exec);
+	c->set_config_item(c, "lxc.init.cmd", p->exec);
 	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor none bind,ro,create=dir 0 0");
 	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs none bind,ro,create=dir 0 0");
-
-	c->set_config_item(c, "lxc.mount.entry", "/dev dev none bind,rw,create=dir 0 0");
 
 	int ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
