@@ -493,3 +493,37 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	write(fd, buf, strlen(buf));
 	close(fd);
 }
+
+uint8_t pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
+{
+	uint8_t ret = 1;
+	trest_request_ptr req = 0;
+	trest_response_ptr res = 0;
+	char buf[256];
+
+	if (!ph_client_init(pv))
+		goto out;
+
+	sprintf(buf, "%s%s", endpoint, "/device-meta");
+
+	req = trest_make_request(TREST_METHOD_PATCH,
+				 buf,
+				 0, 0,
+				 metadata);
+
+	res = trest_do_json_request(client, req);
+	if (!res->body || res->code != THTTP_STATUS_OK) {
+		pv_log(DEBUG, "metadata upload status = %d, body = '%s'", res->code, res->body);
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	if (req)
+		trest_request_free(req);
+	if (res)
+		trest_response_free(res);
+
+	return ret;
+}
