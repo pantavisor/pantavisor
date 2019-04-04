@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2019 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_LXC_H
-#define PV_LXC_H
+#ifndef PV_WDT_H
+#define PV_WDT_H
 
-#include "../pantavisor.h"
+#include "pantavisor.h"
 
-void* pv_start_container(struct pv_platform *p, char *conf_file, void *data);
-void* pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
+int pv_wdt_start(struct pantavisor *pv);
+void pv_wdt_kick(struct pantavisor *pv);
+int pv_wdt_stop(struct pantavisor *pv);
 
-#endif
+#endif // PV_WDT_H

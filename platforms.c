@@ -35,12 +35,14 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "wdt.h"
+
 #include "platforms.h"
 
 struct pv_cont_ctrl {
 	char *type;
-	void* (*start)(char *name, char *conf_file, void *data);
-	void* (*stop)(char *name, char *conf_file, void *data);
+	void* (*start)(struct pv_platform *p, char *conf_file, void *data);
+	void* (*stop)(struct pv_platform *p, char *conf_file, void *data);
 };
 
 enum {
@@ -276,6 +278,8 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		void *data;
 		char **c = p->configs;
 
+		pv_wdt_kick(pv);
+
 		sprintf(conf_path, "%s/trails/%d/%s",
 			pv->config->storage.mntpoint, s->rev, *c);
 
@@ -283,7 +287,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		ctrl = _pv_platforms_get_ctrl(p->type);
 
 		// Start the platform
-		data = ctrl->start(p->name, conf_path, (void *) &pid);
+		data = ctrl->start(p, conf_path, (void *) &pid);
 
 		if (!data) {
 			pv_log(ERROR, "error starting platform: \"%s\"",
@@ -299,7 +303,12 @@ int pv_platforms_start_all(struct pantavisor *pv)
 
 		p->data = data;
 		p->init_pid = pid;
-		p->running = true;
+
+		if (pid > 0)
+			p->running = true;
+		else
+			return -1;
+
 		num_plats++;
 
 		p = p->next;
@@ -317,9 +326,9 @@ int pv_platforms_stop_all(struct pantavisor *pv)
 	struct pv_platform *p = s->platforms;
 	const struct pv_cont_ctrl *ctrl;
 
-	while (p) {
+	while (p && p->running) {
 		ctrl = _pv_platforms_get_ctrl(p->type);
-		ctrl->stop(NULL, NULL, p->data);
+		ctrl->stop(p, NULL, p->data);
 		p->running = false;
 		pv_log(INFO, "stopped platform '%s'", p->name);
 		num_plats++;
