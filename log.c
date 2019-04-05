@@ -300,7 +300,7 @@ void __vlog(char *module, int level, const char *fmt, ...)
 
 	// try to push north
 	if (level < DEBUG)
-		pv_log_flush(global_pv, false);
+		pv_log_flush(global_pv, level == ERROR ? true : false);
 
 	va_end(args);
 }

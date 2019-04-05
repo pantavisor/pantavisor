@@ -404,10 +404,10 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		size,
 		sha_str);
 
-	pv_log(DEBUG, "syncing '%s'", o->id, body);
+	pv_log(INFO, "syncing '%s'", o->id, body);
 
 	if (strcmp(o->id,sha_str)) {
-		pv_log(DEBUG, "sha256 mismatch, probably writable image, skipping", o->objpath);
+		pv_log(INFO, "sha256 mismatch, probably writable image, skipping", o->objpath);
 		goto out;
 	}
 
@@ -424,10 +424,10 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 	}
 
 	if (tres->code == THTTP_STATUS_CONFLICT) {
-		pv_log(DEBUG, "'%s' already owned by user, skipping", o->id, tres->code);
+		pv_log(INFO, "'%s' already owned by user, skipping", o->id, tres->code);
 		goto out;
 	}
-	pv_log(DEBUG, "'%s' does not exist, uploading", o->id, tres->code);
+	pv_log(INFO, "'%s' does not exist, uploading", o->id, tres->code);
 
 	signed_puturl = get_json_key_value(tres->body,
 				"signed-puturl",
@@ -461,12 +461,12 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 	}
 
 	if (tres->code != THTTP_STATUS_OK) {
-		pv_log(DEBUG, "'%s' could not be uploaded, code=%d", o->id, tres->code);
+		pv_log(ERROR, "'%s' could not be uploaded, code=%d", o->id, tres->code);
 		ret = -1;
 		goto out;
 	}
 
-	pv_log(DEBUG, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
+	pv_log(INFO, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
 
 out:
 	if (treq)
@@ -777,7 +777,7 @@ static int copy_and_close(int s_fd, int d_fd)
 
 	close(s_fd);
 
-	pv_log(DEBUG, "  bytes_r=%d bytes_w=%d", bytes_r, bytes_w);
+	pv_log(INFO, "  bytes_r=%d bytes_w=%d", bytes_r, bytes_w);
 
 	return bytes_r;
 }
@@ -986,7 +986,7 @@ static int trail_link_objects(struct pantavisor *pv)
 {
 	int err = 0;
 	struct pv_object *obj = pv->update->pending->objects;
-	char *c, *tmp;
+	char *c, *tmp, *ext;
 
 	while (obj) {
 		tmp = strdup(obj->relpath);
@@ -994,6 +994,16 @@ static int trail_link_objects(struct pantavisor *pv)
 		*c = '\0';
 		mkdir_p(tmp, 0644);
 		free(tmp);
+	        ext = strrchr(obj->relpath, '.');
+		if (ext && (strcmp(ext, ".bind") == 0)) {
+			int s_fd, d_fd;
+			s_fd = open(obj->objpath, O_RDONLY);
+			d_fd = open(obj->relpath, O_CREAT | O_WRONLY | O_SYNC, 0644);
+			pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
+			copy_and_close(s_fd, d_fd);
+			obj = obj->next;
+			continue;
+		}
 		if (link(obj->objpath, obj->relpath) < 0) {
 			if (errno != EEXIST)
 				err++;
