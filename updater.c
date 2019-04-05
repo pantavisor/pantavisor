@@ -890,8 +890,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		use_volatile_tmp = 1;
 
 	// temporary path where we will store the file until validated
-	strncpy(mmc_tmp_obj_path, obj->objpath, strlen(obj->objpath));
-	strncat(mmc_tmp_obj_path, MMC_TMP_OBJ_SUFFIX, strlen(MMC_TMP_OBJ_SUFFIX));
+	sprintf(mmc_tmp_obj_path, MMC_TMP_OBJ_FMT, obj->objpath);
 	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 
 	if (use_volatile_tmp) {
@@ -960,13 +959,12 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	}
 	syncdir(mmc_tmp_obj_path);
 
-	pv_log(INFO, "renaming %s to %s", mmc_tmp_obj_path, obj->objpath);
+	pv_log(INFO, "verified object (%s), renaming from (%s)", obj->objpath, mmc_tmp_obj_path);
 	rename(mmc_tmp_obj_path, obj->objpath);
 
 	if (is_kernel_pvk)
 		pv_bl_install_kernel(pv, volatile_tmp_obj_path);
 
-	pv_log(INFO, "verified object (%s)", obj->objpath);
 	ret = 1;
 
 out:
