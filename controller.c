@@ -419,8 +419,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv->last = pv->state->rev;
 	}
 
-	// update remote metadata
-	pv_ph_device_update_meta(pv);
+	// check for updates
 	ret = pv_check_for_updates(pv);
 
 	/* set delay to at most the updater interval */
@@ -431,6 +430,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv_log(INFO, "updates found");
 		return STATE_UPDATE;
 	}
+
+	// update remote metadata
+	pv_ph_device_update_meta(pv);
 
 	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
 
