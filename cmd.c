@@ -54,6 +54,10 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 
 	if (bind(fd, (const struct sockaddr *) &addr, sizeof(addr)) < 0) {
 		pv_log(ERROR, "unable to bind control socket fd=%d", fd);
+		/*
+		 * Close socket
+		 * */
+		close(fd);
 		fd = -1;
 		goto out;
 	}
@@ -140,6 +144,7 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 out:
 	return c;
 err:
+	close(fd);
 	if (c)
 		free(c);
 
