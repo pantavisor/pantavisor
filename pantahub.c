@@ -52,7 +52,7 @@
 
 trest_ptr *client = 0;
 char *endpoint = 0;
-struct sockaddr_in *conn;
+struct sockaddr_in *conn = NULL;
 
 static int connect_try(struct sockaddr_in *serv)
 {
@@ -216,11 +216,31 @@ int pv_ph_is_available(struct pantavisor *pv)
 		sock->sin_port = htons(port);
 		if (connect_try(sock) == 0) {
 			ret = 1;
-			conn = sock;
+			/*
+			 * Copy over the sockaddr_in required
+			 * and free up the rest.
+			 * */
+			if (!conn)
+				conn = (struct sockaddr_in*)
+					calloc(1, sizeof(struct sockaddr_in));
+			/*
+			 * if we're not able to allocate memory, we just do this
+			 * again later.
+			 * */
+			if (conn)
+				memcpy(conn, sock, sizeof(*sock));
+			
 			break;
 		}
 		rp = rp->ai_next;
 	}
+	
+	/*
+	 * If we managed to copy then we don't need to hold on to
+	 * addrinfo result. Could be a big list later :).
+	 * */
+	if (result)
+		freeaddrinfo(result);
 
 out:
 	if (ret > 0) {
@@ -228,8 +248,12 @@ out:
 			inet_ntoa(conn->sin_addr), ntohs(conn->sin_port));
 	} else {
 		pv_log(DEBUG, "unable to reach Pantahub");
-		if (result)
-			freeaddrinfo(result);
+		if (conn) {
+			pv_log(DEBUG, "freeing connection socket for %s:%d",
+					inet_ntoa(conn->sin_addr), ntohs(conn->sin_port));
+			free(conn);
+			conn = NULL;
+		}
 		ret = 0;
 	}
 
