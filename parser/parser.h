@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2017 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,17 +19,44 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_DEVICE_H
-#define PV_DEVICE_H
+#ifndef PV_PARSER_H
+#define PV_PARSER_H
 
 #include <stdbool.h>
 
 #include "pantavisor.h"
 
-struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key);
-struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value);
-int pv_usermeta_parse(struct pantavisor *pv, char *buf);
-int pv_device_update_meta(struct pantavisor *pv, char *buf);
-int pv_device_init(struct pantavisor *pv);
+/*
+ *  pantavisor-multi-platform@1
+ */
+void multi1_free(struct pv_state *this);
+void multi1_print(struct pv_state *this);
+struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+
+/*
+ *  pantavisor-service-system@1
+ */
+void system1_free(struct pv_state *this);
+void system1_print(struct pv_state *this);
+struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+
+
+struct pv_state_parser {
+	char *spec;
+	struct pv_state* (*parse)(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+	void (*free)(struct pv_state *s);
+	void (*print)(struct pv_state *s);
+};
+
+typedef enum {
+	SPEC_MULTI1,
+	SPEC_SYSTEM1,
+	SPEC_UNKNOWN
+} state_spec_t ;
+
+struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev);
+state_spec_t pv_state_spec(struct pv_state *s);
+void pv_state_free(struct pv_state *s);
+void pv_state_print(struct pv_state *s);
 
 #endif

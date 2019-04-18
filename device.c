@@ -153,6 +153,66 @@ out:
 	return curr;
 }
 
+int pv_usermeta_parse(struct pantavisor *pv, char *buf)
+{
+	int ret = 0, tokc, n;
+	jsmntok_t *tokv;
+	jsmntok_t **keys, **key_i;
+	char *um, *key, *value;
+
+	// Parse full device json
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	um = get_json_key_value(buf, "user-meta", tokv, tokc);
+
+	if (!um) {
+		ret = -1;
+		goto out;
+	}
+
+	if (tokv)
+		free(tokv);
+
+	ret = jsmnutil_parse_json(um, &tokv, &tokc);
+	keys = jsmnutil_get_object_keys(um, tokv);
+
+	key_i = keys;
+	while (*key_i) {
+		n = (*key_i)->end - (*key_i)->start;
+
+		// copy key
+		key = malloc(n+1);
+		snprintf(key, n+1, "%s", um+(*key_i)->start);
+
+		// copy value
+		n = (*key_i+1)->end - (*key_i+1)->start;
+		value = malloc(n+1);
+		snprintf(value, n+1, "%s", um+(*key_i+1)->start);
+
+		// add or update metadata
+		pv_usermeta_add(pv->dev, key, value);
+
+		// free intermediates
+		if (key) {
+			free(key);
+			key = 0;
+		}
+		if (value) {
+			free(value);
+			value = 0;
+		}
+
+		key_i++;
+	}
+
+	jsmnutil_tokv_free(keys);
+
+out:
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
 static void usermeta_clear(struct pantavisor *pv)
 {
 	struct pv_usermeta *curr = 0, *prev = 0;
@@ -188,7 +248,7 @@ int pv_device_update_meta(struct pantavisor *pv, char *buf)
 	body = strdup(buf);
 	esc = unescape_str_to_ascii(body, "\\n", '\n');
 
-	ret = pv_parse_usermeta(pv, esc);
+	ret = pv_usermeta_parse(pv, esc);
 	free(esc);
 
 	return ret;

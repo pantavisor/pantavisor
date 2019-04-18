@@ -289,7 +289,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 
 	// parse state
 	rev = atoi(rev_s);
-	r->pending = pv_parse_state(pv, state, strlen(state), rev);
+	r->pending = pv_state_parse(pv, state, rev);
 
 	if (!r->pending) {
 		pv_log(INFO, "invalid rev (%d) found on remote", rev);

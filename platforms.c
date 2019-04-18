@@ -35,6 +35,7 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "parser/parser.h"
 #include "wdt.h"
 
 #include "platforms.h"
@@ -71,7 +72,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 		add->next = this;
 	}
 
-	this->name = name;
+	this->name = strdup(name);
 	this->done = false;
 
 	return this;
@@ -277,11 +278,15 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		const struct pv_cont_ctrl *ctrl;
 		void *data;
 		char **c = p->configs;
+		char prefix[32] = { 0 };
 
 		pv_wdt_kick(pv);
 
-		sprintf(conf_path, "%s/trails/%d/%s",
-			pv->config->storage.mntpoint, s->rev, *c);
+		if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
+			sprintf(prefix, "%s/", p->name);
+
+		sprintf(conf_path, "%s/trails/%d/%s%s",
+			pv->config->storage.mntpoint, s->rev, prefix, *c);
 
 		// Get type controller
 		ctrl = _pv_platforms_get_ctrl(p->type);

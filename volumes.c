@@ -40,6 +40,7 @@
 #include "utils.h"
 #include "pantavisor.h"
 #include "volumes.h"
+#include "parser/parser.h"
 
 #define FW_PATH		"/lib/firmware"
 
@@ -98,7 +99,7 @@ struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
 		add->next = this;
 	}
 
-	this->name = name;
+	this->name = strdup(name);
 
 	return this;
 }
@@ -116,17 +117,28 @@ int pv_volumes_mount(struct pantavisor *pv)
 
 	while (v) {
 		int loop_fd = -1, file_fd = -1;
-                char path[256];
-                char mntpoint[256];
+		char path[256], mntpoint[256];
 
-                sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
-			s->rev, v->name);
-                sprintf(mntpoint, "/volumes/%s", v->name);
+		switch (pv_state_spec(s)) {
+		case SPEC_MULTI1:
+			sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
+				s->rev, v->name);
+			sprintf(mntpoint, "/volumes/%s", v->name);
+			break;
+		case SPEC_SYSTEM1:
+			sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
+				s->rev, v->plat->name, v->name);
+			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
+			break;
+		default:
+			pv_log(WARN, "cannot mount volumes for unknown state spec");
+			goto out;
+		}
 
-                char *fstype = strrchr(v->name, '.');
-                fstype++;
+		char *fstype = strrchr(v->name, '.');
+		fstype++;
 
-                pv_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
+		pv_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
 
 		if (strcmp(fstype, "bind") == 0) {
 			struct stat buf;
