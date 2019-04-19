@@ -138,8 +138,10 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 		// parse array data
 		jsmntok_t *k = (*key_i+2);
 		size = (*key_i+1)->size;
-		while ((str = json_array_get_one_str(buf, &size, &k)))
-			pv_volume_add(s, str);
+		while ((str = json_array_get_one_str(buf, &size, &k))) {
+			struct pv_volume *v = pv_volume_add(s, str);
+			v->type = VOL_LOOPIMG;
+		}
 
 		break;
 	}

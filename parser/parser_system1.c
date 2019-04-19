@@ -98,11 +98,73 @@ out:
 	return ret;
 }
 
+static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
+{
+	int tokc, n, ret;
+	char *key, *value, *pt;
+	jsmntok_t *tokv;
+	jsmntok_t *tokv_t;
+	jsmntok_t **k, **keys;
+
+	if (!buf)
+		return 1;
+
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	keys = jsmnutil_get_object_keys(buf, tokv);
+	k = keys;
+
+	// platform head is pv->state->platforms
+	while (*k) {
+		n = (*k)->end - (*k)->start;
+
+		// copy key
+		key = malloc(n+1);
+		snprintf(key, n+1, "%s", buf+(*k)->start);
+
+		// copy value
+		n = (*k+1)->end - (*k+1)->start;
+		value = malloc(n+1);
+		snprintf(value, n+1, "%s", buf+(*k+1)->start);
+
+		printf("key:%s value:%s\n", key, value);
+
+		ret = jsmnutil_parse_json(value, &tokv_t, &tokc);
+		pt = get_json_key_value(value, "persistence", tokv_t, tokc);
+
+		if (pt) {
+			struct pv_volume *v = pv_volume_add(s, key);
+			v->plat = p;
+			if (!strcmp(pt, "permanent"))
+				v->type = VOL_PERMANENT;
+			else if (!strcmp(pt, "revision"))
+				v->type = VOL_REVISION;
+			else if (!strcmp(pt, "boot"))
+				v->type = VOL_BOOT;
+			free(pt);
+		}
+
+		// free intermediates
+		if (key) {
+			free(key);
+			key = 0;
+		}
+		if (value) {
+			free(value);
+			value = 0;
+		}
+		k++;
+	}
+	jsmnutil_tokv_free(keys);
+
+	return 1;
+}
+
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	int tokc, ret;
 	jsmntok_t *tokv, *t;
-	char *name, *root = 0;
+	char *name, *tmp = 0;
 	char *config, *shares;
 	struct pv_platform *this;
 	struct pv_volume *v;
@@ -119,8 +181,23 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	config = get_json_key_value(buf, "config", tokv, tokc);
 	shares = get_json_key_value(buf, "share", tokv, tokc);
 
-	root = get_json_key_value(buf, "root-volume", tokv, tokc);
-	if (!root)
+	tmp = get_json_key_value(buf, "root-volume", tokv, tokc);
+	if (!tmp)
+		goto out;
+
+	v = pv_volume_add(s, tmp);
+	v->plat = this;
+	v->type = VOL_LOOPIMG;
+
+	if (tmp) {
+		free(tmp);
+		tmp = 0;
+	}
+
+	tmp = get_json_key_value(buf, "storage", tokv, tokc);
+
+	// parse storage volumes
+	if (!parse_storage(s, this, tmp))
 		goto out;
 
 	// free intermediates
@@ -138,9 +215,6 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	this->configs = calloc(1, 2 * sizeof(char *));
 	this->configs[1] = NULL;
 	this->configs[0] = strdup(config);
-
-	v = pv_volume_add(s, root);
-	v->plat = this;
 
 	// free intermediates
 	if (config) {
@@ -163,8 +237,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 out:
 	if (name)
 		free(name);
-	if (root)
-		free(root);
+	if (tmp)
+		free(tmp);
 	if (tokv)
 		free(tokv);
 
@@ -234,6 +308,8 @@ void system1_print(struct pv_state *this)
 	struct pv_volume *v = this->volumes;
 	while (v) {
 		pv_log(DEBUG, "volume: '%s'\n", v->name);
+		pv_log(DEBUG, "  type: '%d'\n", v->type);
+
 		v = v->next;
 	}
 	struct pv_object *o = this->objects;

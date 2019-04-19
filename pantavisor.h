@@ -45,6 +45,14 @@ enum update_state {
 	UPDATE_NO_PARSE
 };
 
+typedef enum {
+	VOL_LOOPIMG,
+	VOL_PERMANENT,
+	VOL_REVISION,
+	VOL_BOOT,
+	VOL_UNKNOWN
+} pv_volume_t;
+
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
@@ -77,6 +85,7 @@ struct pv_volume {
 	char *mode;
 	char *src;
 	char *dest;
+	pv_volume_t type;
 	int loop_fd;
 	int file_fd;
 	struct pv_platform *plat;

@@ -139,7 +139,7 @@ void pv_log_init(struct pantavisor *pv)
 	log_dir = pv->config->logdir;
 	log_maxsize = pv->config->logmax;
 	sprintf(path, "/%s/%s", log_dir, LOG_NAME);
-	log_fd = open(path, O_CREAT | O_SYNC | O_RDWR | O_APPEND, 0644);
+	//log_fd = open(path, O_CREAT | O_SYNC | O_RDWR | O_APPEND, 0644);
 	log_count = 0;
 
 	// make logs available for platforms

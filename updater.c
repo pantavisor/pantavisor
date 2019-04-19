@@ -42,6 +42,7 @@
 #include "utils.h"
 
 #include "objects.h"
+#include "parser/parser.h"
 #include "updater.h"
 #include "bootloader.h"
 #include "pantahub.h"

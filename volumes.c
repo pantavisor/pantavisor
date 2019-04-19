@@ -44,6 +44,19 @@
 
 #define FW_PATH		"/lib/firmware"
 
+const char* pv_volume_type_str(pv_volume_t vt)
+{
+	switch(vt) {
+	case VOL_LOOPIMG: return "LOOP_IMG";
+	case VOL_PERMANENT: return "PERMANENT";
+	case VOL_REVISION: return "REVISION";
+	case VOL_BOOT: return "TMPFS";
+	default: return "UNKNOWN";
+	}
+
+	return "UNKNOWN";
+}
+
 struct pv_volume* pv_volume_get_by_name(struct pv_state *s, char *name)
 {
 	struct pv_volume* v = s->volumes;
@@ -107,6 +120,8 @@ struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
 int pv_volumes_mount(struct pantavisor *pv)
 {
         int ret = -1;
+	char *fstype;
+	char path[PATH_MAX], base[PATH_MAX], mntpoint[PATH_MAX];
 	struct stat st;
 	struct utsname uts;
 	struct pv_state *s = pv->state;
@@ -114,10 +129,11 @@ int pv_volumes_mount(struct pantavisor *pv)
 
         // Create volumes if non-existant
         mkdir("/volumes", 0644);
+	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
+	mkdir_p(base, 0644);
 
 	while (v) {
 		int loop_fd = -1, file_fd = -1;
-		char path[256], mntpoint[256];
 
 		switch (pv_state_spec(s)) {
 		case SPEC_MULTI1:
@@ -135,24 +151,45 @@ int pv_volumes_mount(struct pantavisor *pv)
 			goto out;
 		}
 
-		char *fstype = strrchr(v->name, '.');
-		fstype++;
+		mkdir_p(mntpoint, 0644);
 
-		pv_log(INFO, "mounting volume '%s' to '%s' with type '%s'", path, mntpoint, fstype);
-
-		if (strcmp(fstype, "bind") == 0) {
-			struct stat buf;
-			if (stat(mntpoint, &buf) != 0) {
-				int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
-				close(fd);
+		switch (v->type) {
+		case VOL_LOOPIMG:
+			fstype = strrchr(v->name, '.');
+			fstype++;
+			if (strcmp(fstype, "bind") == 0) {
+				struct stat buf;
+				if (stat(mntpoint, &buf) != 0) {
+					int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
+					close(fd);
+				}
+				ret = mount(path, mntpoint, "none", MS_BIND, "ro");
+			} else {
+				ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
 			}
-			ret = mount(path, mntpoint, "none", MS_BIND, "ro");
-		} else {
-			ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
+			break;
+		case VOL_PERMANENT:
+			sprintf(path, "%s/perm/%s/%s", base, v->plat->name, v->name);
+			mkdir_p(path, 0644);
+			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
+			break;
+		case VOL_REVISION:
+			sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
+			mkdir_p(path, 0644);
+			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
+			break;
+		case VOL_BOOT:
+			ret = mount("none", mntpoint, "tmpfs", 0, NULL);
+			break;
+		default:
+			pv_log(WARN, "unknown volume type %d", v->type);
+			break;
 		}
 
                 if (ret < 0)
                         goto out;
+
+		pv_log(INFO, "mounted '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
 
 		// register mount state
 		v->src = strdup(path);
