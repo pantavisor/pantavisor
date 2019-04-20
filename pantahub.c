@@ -84,6 +84,8 @@ static int connect_try(struct sockaddr *serv)
 	if (ret == 1) {
 		len = sizeof(ret);
 		getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &len);
+	} else {
+		ret = -1;
 	}
 
 out:
