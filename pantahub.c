@@ -79,12 +79,12 @@ static int connect_try(struct sockaddr *serv)
 
 	do {
 		ret = select(fd + 1, 0, &fdset, 0, &tv);
-		if (ret < 0 && errno != EINTR)
-			break;
-	}while(ret <= 0);
+	}while( (ret < 0) && (errno == EINTR));
 
-	len = sizeof(ret);
-	getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &len);
+	if (ret == 1) {
+		len = sizeof(ret);
+		getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &len);
+	}
 
 out:
 	close(fd);
@@ -203,7 +203,7 @@ static int pv_do_ph_resolve(const char *ph_host, int port, struct pv_connection 
 		pv_log(DEBUG, "ph_host = %s, ret=%d errno=%d", ph_host, ret, errno);
 		goto out;
 	}
-
+	ret = -1;
 	rp = result;
 	while (rp) {
 
@@ -225,6 +225,7 @@ static int pv_do_ph_resolve(const char *ph_host, int port, struct pv_connection 
 		if (connect_try(sock) == 0) {
 			memcpy(&pv_conn->sock, sock, sizeof(*sock));
 			pv_conn->since = time(NULL);
+			ret = 0;
 			break;
 		}
 		rp = rp->ai_next;
