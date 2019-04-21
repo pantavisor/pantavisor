@@ -116,7 +116,8 @@ static int trail_remote_init(struct pantavisor *pv)
 		pv->config->creds.port,
 		pv->config->creds.prn,
 		pv->config->creds.secret,
-		(const char **) cafiles
+		(const char **) cafiles,
+		(pv->conn ? &pv->conn->sock : NULL)
 		);
 
 	if (!client) {
@@ -133,6 +134,7 @@ static int trail_remote_init(struct pantavisor *pv)
 
 	remote = malloc(sizeof(struct trail_remote));
 	remote->client = client;
+	
 	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
 				   + strlen(pv->config->creds.id)) * sizeof(char));
 	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, pv->config->creds.id);

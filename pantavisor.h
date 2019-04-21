@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include <trail.h>
 #include "config.h"
+#include <netinet/in.h>
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
@@ -119,6 +120,11 @@ struct pv_device {
 	struct pv_usermeta *usermeta;
 };
 
+struct pv_connection {
+	struct sockaddr sock;
+	time_t since;
+};
+
 struct pantavisor {
 	int last;
 	char *step;
@@ -131,6 +137,7 @@ struct pantavisor {
 	int online;
 	int ctrl_fd;
 	unsigned long flags;
+	struct pv_connection *conn;
 };
 
 int *pv_get_revisions(struct pantavisor *pv);
