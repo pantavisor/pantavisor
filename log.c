@@ -33,6 +33,7 @@
 #include <sys/time.h>
 
 #include "tsh.h"
+#include "thttp.h"
 
 #define MODULE_NAME		"log"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -97,6 +98,16 @@ static void log_reset(void)
 	lb->count = 0;
 }
 
+static int log_external(const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+
+	__vlog("external", DEBUG, fmt, args);
+
+	return 1;
+}
+
 void pv_log_init(struct pantavisor *pv)
 {
 	char path[PATH_MAX];
@@ -134,6 +145,9 @@ void pv_log_init(struct pantavisor *pv)
 	// make logs available for platforms
 	mkdir_p("/pv/logs", 0644);
 	mount_bind(pv->config->logdir, "/pv/logs");
+
+	// enable libthttp debug logs
+	thttp_set_log_func(log_external);
 
 	pv_log(DEBUG, "%s() logsize: %d items, buffer of %d KiB", __func__, lb->size, lb->buf_size / 1024);
 }
