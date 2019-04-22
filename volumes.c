@@ -151,8 +151,6 @@ int pv_volumes_mount(struct pantavisor *pv)
 			goto out;
 		}
 
-		mkdir_p(mntpoint, 0644);
-
 		switch (v->type) {
 		case VOL_LOOPIMG:
 			fstype = strrchr(v->name, '.');
@@ -171,14 +169,17 @@ int pv_volumes_mount(struct pantavisor *pv)
 		case VOL_PERMANENT:
 			sprintf(path, "%s/perm/%s/%s", base, v->plat->name, v->name);
 			mkdir_p(path, 0644);
+			mkdir_p(mntpoint, 0644);
 			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 			break;
 		case VOL_REVISION:
 			sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
 			mkdir_p(path, 0644);
+			mkdir_p(mntpoint, 0644);
 			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 			break;
 		case VOL_BOOT:
+			mkdir_p(mntpoint, 0644);
 			ret = mount("none", mntpoint, "tmpfs", 0, NULL);
 			break;
 		default:
