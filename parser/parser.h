@@ -19,14 +19,44 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_VOLUMES_H
-#define PV_VOLUMES_H
+#ifndef PV_PARSER_H
+#define PV_PARSER_H
 
-struct pv_volume* pv_volume_get_by_name(struct pv_state *s, char *name);
-const char* pv_volume_type_str(pv_volume_t vt);
-void pv_volume_remove(struct pv_state *s, char *name);
-struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
-int pv_volumes_mount(struct pantavisor *pv);
-int pv_volumes_unmount(struct pantavisor *pv);
+#include <stdbool.h>
 
-#endif // PV_VOLUMES_H
+#include "pantavisor.h"
+
+/*
+ *  pantavisor-multi-platform@1
+ */
+void multi1_free(struct pv_state *this);
+void multi1_print(struct pv_state *this);
+struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+
+/*
+ *  pantavisor-service-system@1
+ */
+void system1_free(struct pv_state *this);
+void system1_print(struct pv_state *this);
+struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+
+
+struct pv_state_parser {
+	char *spec;
+	struct pv_state* (*parse)(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+	void (*free)(struct pv_state *s);
+	void (*print)(struct pv_state *s);
+};
+
+typedef enum {
+	SPEC_MULTI1,
+	SPEC_SYSTEM1,
+	SPEC_UNKNOWN
+} state_spec_t ;
+
+struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev);
+state_spec_t pv_state_spec(struct pv_state *s);
+void pv_state_free(struct pv_state *s);
+void pv_state_print(struct pv_state *s);
+
+#endif

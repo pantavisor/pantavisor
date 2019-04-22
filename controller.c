@@ -271,7 +271,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		if (pv->state) {
 			pv_update_start(pv, 1);
 			pv_update_set_status(pv, UPDATE_FAILED);
-			pv_state_free(pv->state);
+			pv_release_state(pv);
 			pv->state = s;
 		}
 	}

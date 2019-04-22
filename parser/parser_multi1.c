@@ -28,7 +28,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#define MODULE_NAME             "parser"
+#define MODULE_NAME             "parser-multi1"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
@@ -39,6 +39,7 @@
 #include "objects.h"
 #include "pantavisor.h"
 #include "device.h"
+#include "parser.h"
 
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
@@ -137,8 +138,10 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 		// parse array data
 		jsmntok_t *k = (*key_i+2);
 		size = (*key_i+1)->size;
-		while ((str = json_array_get_one_str(buf, &size, &k)))
-			pv_volume_add(s, str);
+		while ((str = json_array_get_one_str(buf, &size, &k))) {
+			struct pv_volume *v = pv_volume_add(s, str);
+			v->type = VOL_LOOPIMG;
+		}
 
 		break;
 	}
@@ -221,7 +224,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	// free intermediates
 	if (shares) {
 		free(shares);
-		configs = 0;
+		shares = 0;
 	}
 	if (tokv) {
 		free(tokv);
@@ -240,7 +243,7 @@ out:
 	return 0;
 }
 
-void pv_state_free(struct pv_state *this)
+void multi1_free(struct pv_state *this)
 {
 	if (!this)
 		return;
@@ -284,7 +287,7 @@ void pv_state_free(struct pv_state *this)
 	}
 }
 
-static void pv_print_state(struct pv_state *this)
+void multi1_print(struct pv_state *this)
 {
 	// print
 	struct pv_platform *p = this->platforms;
@@ -317,11 +320,10 @@ static void pv_print_state(struct pv_state *this)
 	}
 }
 
-struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int rev)
+struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev)
 {
 	int tokc, ret, count, n;
 	char *key = 0, *value = 0, *ext = 0;
-	struct pv_state *this = 0;
 	jsmntok_t *tokv;
 	jsmntok_t **k, **keys;
 
@@ -340,7 +342,6 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 		goto out;
 	}
 
-	this = calloc(1, sizeof(struct pv_state));
 	this->rev = rev;
 
 	if (!parse_pantavisor(this, value, strlen(value))) {
@@ -396,7 +397,7 @@ struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int 
 	// copy buffer
 	this->json = strdup(buf);
 
-	pv_print_state(this);
+	multi1_print(this);
 
 	// remove platforms that have no loaded data
 	pv_platforms_remove_not_done(this);
@@ -410,64 +411,4 @@ out:
 		free(tokv);
 
 	return this;
-}
-
-int pv_parse_usermeta(struct pantavisor *pv, char *buf)
-{
-	int ret = 0, tokc, n;
-	jsmntok_t *tokv;
-	jsmntok_t **keys, **key_i;
-	char *um, *key, *value;
-
-	// Parse full device json
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	um = get_json_key_value(buf, "user-meta", tokv, tokc);
-
-	if (!um) {
-		ret = -1;
-		goto out;
-	}
-
-	if (tokv)
-		free(tokv);
-
-	ret = jsmnutil_parse_json(um, &tokv, &tokc);
-	keys = jsmnutil_get_object_keys(um, tokv);
-
-	key_i = keys;
-	while (*key_i) {
-		n = (*key_i)->end - (*key_i)->start;
-
-		// copy key
-		key = malloc(n+1);
-		snprintf(key, n+1, "%s", um+(*key_i)->start);
-
-		// copy value
-		n = (*key_i+1)->end - (*key_i+1)->start;
-		value = malloc(n+1);
-		snprintf(value, n+1, "%s", um+(*key_i+1)->start);
-
-		// add or update metadata
-		pv_usermeta_add(pv->dev, key, value);
-
-		// free intermediates
-		if (key) {
-			free(key);
-			key = 0;
-		}
-		if (value) {
-			free(value);
-			value = 0;
-		}
-
-		key_i++;
-	}
-
-	jsmnutil_tokv_free(keys);
-
-out:
-	if (tokv)
-		free(tokv);
-
-	return ret;
 }

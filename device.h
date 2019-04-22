@@ -28,6 +28,7 @@
 
 struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key);
 struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value);
+int pv_usermeta_parse(struct pantavisor *pv, char *buf);
 int pv_device_update_meta(struct pantavisor *pv, char *buf);
 int pv_device_init(struct pantavisor *pv);
 

@@ -115,7 +115,8 @@ static int early_mounts()
 static void debug_telnet()
 {
 	tsh_run("ifconfig lo up", 0);
-	tsh_run("telnetd -b 127.0.0.1 -l /bin/ash", 0);
+	tsh_run("telnetd -l /bin/ash", 0);
+	//tsh_run("telnetd -b 127.0.0.1 -l /bin/ash", 0);
 }
 
 static void signal_handler(int signal)

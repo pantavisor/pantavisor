@@ -46,6 +46,7 @@
 #include "utils.h"
 #include "version.h"
 #include "wdt.h"
+#include "parser/parser.h"
 
 #include "pantavisor.h"
 
@@ -184,55 +185,61 @@ err:
 
 int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
-	int fd = 0, bytes, tokc;
+	int fd = -1, n, bytes, tokc;
 	int ret = 0;
-	char *buf = 0;
+	char *buf = 0, *key = 0, *ext = 0, *value = 0;
 	char path[PATH_MAX];
 	struct stat st;
-	struct pv_platform *p = 0;
 	jsmntok_t *tokv = 0;
+	jsmntok_t **k, **keys;
 
 	if (!pv || !s)
 		goto out;
 
-	sprintf(path, "%s/trails/%d/pantavisor.json",
-		  pv->config->storage.mntpoint, s->rev);
-	if (stat(path, &st) == 0)
+	buf = strdup(s->json);
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	if (ret < 0)
 		goto out;
 
-	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
-	if (!fd)
-		goto out;
+	keys = jsmnutil_get_object_keys(buf, tokv);
+	k = keys;
 
-	if (jsmnutil_parse_json (s->json, &tokv, &tokc) < 0)
-		goto out;
+	while (*k) {
+		n = (*k)->end - (*k)->start;
 
-	buf = get_json_key_value(s->json, "pantavisor.json", tokv, tokc);
-	bytes = write(fd, buf, strlen(buf));
-	if (bytes)
-		pv_log(DEBUG, "%s: written %d bytes", path, bytes);
+		// copy key
+		key = malloc(n+1);
+		snprintf(key, n+1, "%s", buf+(*k)->start);
+		ext = strrchr(key, '.');
+		if (!ext || strcmp(ext, ".json")) {
+			free(key);
+			k++;
+			continue;
+		}
 
-	close(fd);
+		// copy value
+		n = (*k+1)->end - (*k+1)->start;
+		value = malloc(n+1);
+		snprintf(value, n+1, "%s", buf+(*k+1)->start);
 
-	p = s->platforms;
-	while (p) {
-		sprintf(path, "%s/trails/%d/%s.json",
-			  pv->config->storage.mntpoint, s->rev, p->name);
+		sprintf(path, "%s/trails/%d/%s",
+			pv->config->storage.mntpoint, s->rev, key);
 
 		if (stat(path, &st) == 0)
-			continue;
+			goto out;
 
-		fd = open(path, O_CREAT | O_WRONLY | O_SYNC, 0644);
-		if (!fd)
-			continue;
+		fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
+		if (fd < 0)
+			goto out;
 
-		bytes = write(fd, p->json, strlen(p->json));
+		bytes = write(fd, value, strlen(value));
 		if (bytes)
 			pv_log(DEBUG, "%s: written %d bytes", path, bytes);
 
 		close(fd);
-		p = p->next;
+		k++;
 	}
+	jsmnutil_tokv_free(keys);
 
 	ret = 1;
 
@@ -241,7 +248,7 @@ out:
 		free(buf);
 	if (tokv)
 		free(tokv);
-	if (fd)
+	if (fd > 0)
 		close(fd);
 
 	return ret;
@@ -279,7 +286,7 @@ void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 
 	if (value) {
 		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
-		if (fd)
+		if (fd > 0)
 			close(fd);
 	} else {
 		remove(path);
@@ -289,17 +296,30 @@ void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 
 int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 {
-	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX];
+	int i;
 	struct pantavisor_config *c = pv->config;
 	struct pv_addon *a;
-	int i;
+	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[32];
 
 	if (!s)
 		s = pv->state;
 
+	/*
+	 * Toggle directory depth with null prefix
+	 */
+	switch (pv_state_spec(s)) {
+	case SPEC_SYSTEM1:
+		sprintf(prefix, "bsp/");
+		break;
+	case SPEC_MULTI1:
+	default:
+		prefix[0] = '\0';
+		break;
+	}
+
 	// initrd
 	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->initrd);
+	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->initrd);
 
 	mkdir_p(dst, 0644);
 	strcat(dst, "pv-initrd.img");
@@ -313,7 +333,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	i = 0;
 	while (a) {
 		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, a->name);
+		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, a->name);
 		sprintf(fname, "pv-initrd.img.%d", i++);
 		strcat(dst, fname);
 		remove(dst);
@@ -324,7 +344,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// kernel
 	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->kernel);
+	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->kernel);
 
 	remove(dst);
 	if (link(src, dst) < 0)
@@ -374,7 +394,7 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 
 	pv->step = buf;
 
-	s = pv_parse_state(pv, buf, size, rev);
+	s = pv_state_parse(pv, buf, rev);
 	close(fd);
 
 	return s;

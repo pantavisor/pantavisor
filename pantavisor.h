@@ -45,6 +45,14 @@ enum update_state {
 	UPDATE_NO_PARSE
 };
 
+typedef enum {
+	VOL_LOOPIMG,
+	VOL_PERMANENT,
+	VOL_REVISION,
+	VOL_BOOT,
+	VOL_UNKNOWN
+} pv_volume_t;
+
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
@@ -56,16 +64,6 @@ struct pv_update {
 struct pv_addon {
 	char *name;
 	struct pv_addon *next;
-};
-
-struct pv_volume {
-	char *name;
-	char *mode;
-	char *src;
-	char *dest;
-	int loop_fd;
-	int file_fd;
-	struct pv_volume *next;
 };
 
 struct pv_platform {
@@ -82,6 +80,18 @@ struct pv_platform {
 	struct pv_platform *next;
 };
 
+struct pv_volume {
+	char *name;
+	char *mode;
+	char *src;
+	char *dest;
+	pv_volume_t type;
+	int loop_fd;
+	int file_fd;
+	struct pv_platform *plat;
+	struct pv_volume *next;
+};
+
 struct pv_object {
 	char *name;
 	char *id;
@@ -95,6 +105,7 @@ struct pv_object {
 
 struct pv_state {
 	int rev;
+	char *spec;
 	char *kernel;
 	char *firmware;
 	char *initrd;
@@ -151,8 +162,6 @@ int pv_meta_get_tryonce(struct pantavisor *pv);
 void pv_meta_set_tryonce(struct pantavisor *pv, int value);
 void pv_destroy(struct pantavisor *pv);
 void pv_release_state(struct pantavisor *pv);
-struct pv_state* pv_parse_state(struct pantavisor *pv, char *buf, int size, int rev);
-struct pv_state* pv_parse_state_from_buf(struct pantavisor *pv, char *buf);
 int pv_parse_usermeta(struct pantavisor *pv, char *buf);
 struct pv_state* pv_get_state(struct pantavisor *pv, int current);
 struct pv_state* pv_get_current_state(struct pantavisor *pv);
