@@ -127,8 +127,6 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		value = malloc(n+1);
 		snprintf(value, n+1, "%s", buf+(*k+1)->start);
 
-		printf("key:%s value:%s\n", key, value);
-
 		ret = jsmnutil_parse_json(value, &tokv_t, &tokc);
 		pt = get_json_key_value(value, "persistence", tokv_t, tokc);
 
