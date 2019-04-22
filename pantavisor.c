@@ -185,7 +185,7 @@ err:
 
 int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
-	int fd = 0, n, bytes, tokc;
+	int fd = -1, n, bytes, tokc;
 	int ret = 0;
 	char *buf = 0, *key = 0, *ext = 0, *value = 0;
 	char path[PATH_MAX];
@@ -229,7 +229,7 @@ int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 			goto out;
 
 		fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
-		if (!fd)
+		if (fd < 0)
 			goto out;
 
 		bytes = write(fd, value, strlen(value));
@@ -248,7 +248,7 @@ out:
 		free(buf);
 	if (tokv)
 		free(tokv);
-	if (fd)
+	if (fd > 0)
 		close(fd);
 
 	return ret;
@@ -286,7 +286,7 @@ void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 
 	if (value) {
 		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
-		if (fd)
+		if (fd > 0)
 			close(fd);
 	} else {
 		remove(path);
@@ -304,6 +304,9 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	if (!s)
 		s = pv->state;
 
+	/*
+	 * Toggle directory depth with null prefix
+	 */
 	switch (pv_state_spec(s)) {
 	case SPEC_SYSTEM1:
 		sprintf(prefix, "bsp/");

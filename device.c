@@ -181,11 +181,17 @@ int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 
 		// copy key
 		key = malloc(n+1);
+		if (!key)
+			break;
+
 		snprintf(key, n+1, "%s", um+(*key_i)->start);
 
 		// copy value
 		n = (*key_i+1)->end - (*key_i+1)->start;
 		value = malloc(n+1);
+		if (!value)
+			break;
+
 		snprintf(value, n+1, "%s", um+(*key_i+1)->start);
 
 		// add or update metadata

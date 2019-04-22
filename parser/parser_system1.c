@@ -241,6 +241,8 @@ out:
 		free(tmp);
 	if (tokv)
 		free(tokv);
+	if (config)
+		free(config);
 
 	return 0;
 }
@@ -290,6 +292,9 @@ void system1_free(struct pv_state *this)
 
 void system1_print(struct pv_state *this)
 {
+	if (!this)
+		return;
+
 	// print
 	struct pv_platform *p = this->platforms;
 	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
