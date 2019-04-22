@@ -272,13 +272,11 @@ static void log_last_entry_to_file(void)
 	log_count++;
 }
 
-void __vlog(char *module, int level, const char *fmt, ...)
+void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct timeval tv;
 	char buf[LOG_DATA_SIZE];
 	char *format = 0;
-	va_list args;
-	va_start(args, fmt);
 
 	if (!lb)
 		return;
@@ -315,8 +313,16 @@ void __vlog(char *module, int level, const char *fmt, ...)
 	// try to push north
 	if (level < DEBUG)
 		pv_log_flush(global_pv, level == ERROR ? true : false);
+}
 
-	va_end(args);
+void __log(char *module, int level, const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+
+	__vlog(module, level, fmt, args);
+
+	va_end(args); 
 }
 
 void pv_log_raw(struct pantavisor *pv, char *buf, int len)

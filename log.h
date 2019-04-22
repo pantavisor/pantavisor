@@ -58,10 +58,11 @@ struct level_name {
 // Example log:		"[pantavisor] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
 #define DATE_FORMAT		"2016-12-01 13:22:26"
 
-#define vlog(module, level, ...)	__vlog(module, level, ## __VA_ARGS__);
+#define vlog(module, level, ...)	__log(module, level, ## __VA_ARGS__);
 
 void pv_log_init(struct pantavisor *pv);
-void __vlog(char *module, int level, const char *fmt, ...);
+void __vlog(char *module, int level, const char *fmt, va_list args);
+void __log(char *module, int level, const char *fmt, ...);
 void pv_log_flush(struct pantavisor *pv, bool force);
 int pv_log_set_level(unsigned int level);
 void pv_log_raw(struct pantavisor *pv, char *buf, int len);
