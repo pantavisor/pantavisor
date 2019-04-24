@@ -98,6 +98,46 @@ out:
 	return ret;
 }
 
+static int parse_image_volumes(struct pv_state *s, struct pv_platform *p, char *buf)
+{
+	int tokc, n, ret;
+	char *item;
+	jsmntok_t *tokv;
+	jsmntok_t **k, **keys;
+
+	if (!buf)
+		return 1;
+
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	keys = jsmnutil_get_array_toks(buf, tokv);
+	k = keys;
+
+	// platform head is pv->state->platforms
+	while (*k) {
+		n = (*k)->end - (*k)->start;
+
+		// copy item
+		item = malloc(n+1);
+		snprintf(item, n+1, "%s", buf+(*k)->start);
+
+		struct pv_volume *v = pv_volume_add(s, item);
+		v->plat = p;
+		v->type = VOL_LOOPIMG;
+
+		// free intermediates
+		if (item) {
+			free(item);
+			item = 0;
+		}
+
+		k++;
+	}
+	jsmnutil_tokv_free(keys);
+
+	return 1;
+}
+
 static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 {
 	int tokc, n, ret;
@@ -163,7 +203,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	int tokc, ret;
 	jsmntok_t *tokv, *t;
 	char *name, *tmp = 0;
-	char *config, *shares;
+	char *config = 0, *shares;
 	struct pv_platform *this;
 	struct pv_volume *v;
 
@@ -186,6 +226,16 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	v = pv_volume_add(s, tmp);
 	v->plat = this;
 	v->type = VOL_LOOPIMG;
+
+	if (tmp) {
+		free(tmp);
+		tmp = 0;
+	}
+
+	tmp = get_json_key_value(buf, "image-volumes", tokv, tokc);
+
+	if (!parse_image_volumes(s, this, tmp))
+		goto out;	
 
 	if (tmp) {
 		free(tmp);
