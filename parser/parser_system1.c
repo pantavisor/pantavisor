@@ -50,6 +50,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	int c;
 	int ret = 0, tokc, size;
 	char *str, *buf;
+	struct pv_volume *v;
 	jsmntok_t *tokv;
 	jsmntok_t **key, **key_i;
 
@@ -63,6 +64,19 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
 	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
 	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->modules = get_json_key_value(buf, "modules", tokv, tokc);
+
+	if (s->firmware) {
+		v = pv_volume_add(s, s->firmware);
+		v->plat = NULL;
+		v->type = VOL_LOOPIMG;
+	}
+
+	if (s->modules) {
+		v = pv_volume_add(s, s->modules);
+		v->plat = NULL;
+		v->type = VOL_LOOPIMG;
+	}
 
 	if (!s->kernel || !s->initrd)
 		goto out;
@@ -160,12 +174,13 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
-	int tokc, ret;
-	jsmntok_t *tokv, *t;
+	int tokc, ret, size, c;
 	char *name, *tmp = 0;
-	char *config, *shares;
+	char *config = 0, *shares = 0;
 	struct pv_platform *this;
 	struct pv_volume *v;
+	jsmntok_t *tokv, *t;
+	jsmntok_t **key, **key_i;
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 	name = get_json_key_value(buf, "name", tokv, tokc);
@@ -191,6 +206,29 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		free(tmp);
 		tmp = 0;
 	}
+
+	key = jsmnutil_get_object_keys(buf, tokv);
+	key_i = key;
+	while (*key_i) {
+		c = (*key_i)->end - (*key_i)->start;
+		if (strncmp("volumes", buf+(*key_i)->start, strlen("volumes"))) {
+			key_i++;
+			continue;
+		}
+
+		// parse array data
+		jsmntok_t *k = (*key_i+2);
+		size = (*key_i+1)->size;
+		while ((tmp = json_array_get_one_str(buf, &size, &k))) {
+			v = pv_volume_add(s, tmp);
+			v->plat = this;
+			v->type = VOL_LOOPIMG;
+			free(tmp);
+		}
+
+		break;
+	}
+	jsmnutil_tokv_free(key);
 
 	tmp = get_json_key_value(buf, "storage", tokv, tokc);
 

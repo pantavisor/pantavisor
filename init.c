@@ -81,6 +81,9 @@ static int early_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /dev/pts");
 
+	remove("/dev/ptmx");
+	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
+
 	ret = mount("none", "/sys/fs/cgroup", "cgroup", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup");
@@ -115,8 +118,7 @@ static int early_mounts()
 static void debug_telnet()
 {
 	tsh_run("ifconfig lo up", 0);
-	tsh_run("telnetd -l /bin/ash", 0);
-	//tsh_run("telnetd -b 127.0.0.1 -l /bin/ash", 0);
+	tsh_run("telnetd -b 127.0.0.1 -l /bin/ash", 0);
 }
 
 static void signal_handler(int signal)
