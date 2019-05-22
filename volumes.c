@@ -179,7 +179,6 @@ int pv_volumes_mount(struct pantavisor *pv)
 			mkdir_p(path, 0644);
 			mkdir_p(mntpoint, 0644);
 			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
-				pv_log(DEBUG, "%s():%d mntpoint=%s path=%s ret=%d\n", __func__, __LINE__, mntpoint, path, ret);
 			break;
 		case VOL_REVISION:
 			sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
