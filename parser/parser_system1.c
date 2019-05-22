@@ -50,6 +50,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	int c;
 	int ret = 0, tokc, size;
 	char *str, *buf;
+	struct pv_volume *v;
 	jsmntok_t *tokv;
 	jsmntok_t **key, **key_i;
 
@@ -63,6 +64,19 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
 	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
 	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->modules = get_json_key_value(buf, "modules", tokv, tokc);
+
+	if (s->firmware) {
+		v = pv_volume_add(s, s->firmware);
+		v->plat = NULL;
+		v->type = VOL_LOOPIMG;
+	}
+
+	if (s->modules) {
+		v = pv_volume_add(s, s->modules);
+		v->plat = NULL;
+		v->type = VOL_LOOPIMG;
+	}
 
 	if (!s->kernel || !s->initrd)
 		goto out;

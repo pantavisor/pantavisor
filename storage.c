@@ -208,6 +208,9 @@ off_t pv_storage_get_free(struct pantavisor *pv, int diff)
 
 	pv_log(DEBUG, "fs_free: %llu, fs_min: %llu", fs_free, fs_min);
 
+	if (diff == 0)
+		return fs_free;
+
 	if ((fs_free - diff) < fs_min)
 		return 0;
 

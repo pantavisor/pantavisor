@@ -108,6 +108,7 @@ struct pv_state {
 	char *spec;
 	char *kernel;
 	char *firmware;
+	char *modules;
 	char *initrd;
 	struct pv_platform *platforms;
 	struct pv_volume *volumes;

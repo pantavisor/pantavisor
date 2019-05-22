@@ -136,20 +136,28 @@ int pv_volumes_mount(struct pantavisor *pv)
 		int loop_fd = -1, file_fd = -1;
 
 		switch (pv_state_spec(s)) {
+		case SPEC_SYSTEM1:
+			if (v->plat) {
+				sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
+					s->rev, v->plat->name, v->name);
+				sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
+			} else {
+				sprintf(path, "%s/trails/%d/bsp/%s", pv->config->storage.mntpoint,
+					s->rev, v->name);
+				sprintf(mntpoint, "/volumes/%s", v->name);
+			}
+			break;
 		case SPEC_MULTI1:
 			sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
 				s->rev, v->name);
 			sprintf(mntpoint, "/volumes/%s", v->name);
 			break;
-		case SPEC_SYSTEM1:
-			sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
-				s->rev, v->plat->name, v->name);
-			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
-			break;
 		default:
 			pv_log(WARN, "cannot mount volumes for unknown state spec");
 			goto out;
 		}
+
+		pv_log(INFO, "mounting '%s' of platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
 
 		switch (v->type) {
 		case VOL_LOOPIMG:
@@ -171,6 +179,7 @@ int pv_volumes_mount(struct pantavisor *pv)
 			mkdir_p(path, 0644);
 			mkdir_p(mntpoint, 0644);
 			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
+				pv_log(DEBUG, "%s():%d mntpoint=%s path=%s ret=%d\n", __func__, __LINE__, mntpoint, path, ret);
 			break;
 		case VOL_REVISION:
 			sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
@@ -202,20 +211,28 @@ int pv_volumes_mount(struct pantavisor *pv)
 	}
 
 	if (!pv->state->firmware)
-		goto out;
-
-	if (stat(pv->state->firmware, &st))
-		goto out;
+		goto modules;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
 		mkdir_p(FW_PATH, 0644);
 
-	ret = mount_bind(pv->state->firmware, FW_PATH);
+	if (strchr(pv->state->firmware, '/'))
+		sprintf(path, "%s", pv->state->firmware);
+	else
+		sprintf(path, "/volumes/%s", pv->state->firmware);
+
+	if (stat(path, &st))
+		goto modules;
+
+	ret = mount_bind(path, FW_PATH);
+
 	if (ret < 0)
 		goto out;
 
+	pv_log(DEBUG, "bind mounted firmware to %s", FW_PATH);
+
+modules:
 	if (!uname(&uts) && (stat("/volumes/modules.squashfs", &st) == 0)) {
-		char path[PATH_MAX];
 		sprintf(path, "/lib/modules/%s", uts.release);
 		mkdir_p(path, 0644);
 		ret = mount_bind("/volumes/modules.squashfs", path);
