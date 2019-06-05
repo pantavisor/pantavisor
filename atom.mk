@@ -56,7 +56,8 @@ LOCAL_SRC_FILES := init.c \
 		   storage.c \
 		   cmd.c \
 		   device.c \
-		   wdt.c
+		   wdt.c \
+		   network.c
 
 LOCAL_GENERATED_SRC_FILES := version.c
 

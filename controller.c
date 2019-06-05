@@ -45,6 +45,7 @@
 #include "device.h"
 #include "version.h"
 #include "wdt.h"
+#include "network.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -202,6 +203,9 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	}
 
 	close(fd);
+
+	// init network helpers
+	pv_network_init(pv);
 
 	// expose pantahub host
 	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
