@@ -253,6 +253,10 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	item = _config_get_value("wdt.timeout");
 	config->wdt.timeout = item ? atoi(item) : 15;
 
+	config->net.brdev = _config_get_value("net.brdev");
+	if (!config->net.brdev)
+		config->net.brdev = strdup("pvbr0");
+
 	return 0;
 }
 

@@ -65,6 +65,10 @@ struct pantavisor_watchdog {
 	int timeout;
 };
 
+struct pantavisor_network {
+	char *brdev;
+};
+
 struct pantavisor_config {
 	char *name;
 	char *logdir;
@@ -77,6 +81,7 @@ struct pantavisor_config {
 	struct pantavisor_storage storage;
 	struct pantavisor_updater updater;
 	struct pantavisor_watchdog wdt;
+	struct pantavisor_network net;
 };
 
 // Fill config struct after parsing on-initramfs factory config
