@@ -153,6 +153,10 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 				v->type = VOL_REVISION;
 			else if (!strcmp(pt, "boot"))
 				v->type = VOL_BOOT;
+			else {
+				pv_log(WARN, "invalid persistence value '%s' for platform '%s', default to BOOT", pt, p->name);
+				v->type = VOL_BOOT;
+			}
 			free(pt);
 		}
 
