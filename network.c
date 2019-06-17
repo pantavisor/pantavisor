@@ -24,6 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <netdb.h>
 
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -35,7 +37,11 @@
 #include "log.h"
 
 #include "utils.h"
+#include "pantahub.h"
 #include "network.h"
+
+#define IFACES_FMT "{\"interfaces\":{"
+#define IFACE_FMT "\"%s\":[%s]"
 
 int pv_network_init(struct pantavisor *pv)
 {
@@ -62,4 +68,74 @@ int pv_network_init(struct pantavisor *pv)
 	}
 
 	return ret;
+}
+
+int pv_network_update_meta(struct pantavisor *pv)
+{
+	struct ifaddrs *ifaddr, *ifa;
+	int family, s, n, len, ilen = 0;
+	char host[NI_MAXHOST], ifn[IFNAMSIZ], iff[IFNAMSIZ+4];
+	char *buf, *ifaces = 0, *ifaddrs = 0;
+
+	if (getifaddrs(&ifaddr) < 0) {
+		pv_log(DEBUG, "error calling getifaddrs()\n");
+		return -1;
+	}
+
+	len = sizeof(IFACES_FMT);
+	ifaces = strdup(IFACES_FMT);
+
+	for (ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+		family = ifa->ifa_addr->sa_family;
+
+		if (family == AF_PACKET)
+			continue;
+
+		s = getnameinfo(ifa->ifa_addr,
+			(family == AF_INET) ? sizeof(struct sockaddr_in) :
+					      sizeof(struct sockaddr_in6),
+			host, NI_MAXHOST,
+			NULL, 0, NI_NUMERICHOST);
+
+		sprintf(iff, "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+		if (!strcmp(ifn, iff)) {
+			ilen += strlen(host) + 4;
+			ifaddrs = realloc(ifaddrs, ilen);
+			sprintf(ifaddrs, "%s,\"%s\"", ifaddrs, host);
+		} else {
+			sprintf(ifn, "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+			ilen = 0;
+			ilen += strlen(host) + 4;
+			ifaddrs = realloc(ifaddrs, ilen);
+			sprintf(ifaddrs, "\"%s\"", host);
+		}
+		if (ifa->ifa_next != NULL) {
+			sprintf(iff, "%s.%s", ifa->ifa_next->ifa_name,
+				ifa->ifa_next->ifa_addr->sa_family == AF_INET ? "ipv4" : "ipv6");
+			if (!strcmp(ifn, iff))
+				continue;
+		}
+
+		sprintf(ifn, "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+		buf = calloc(1, sizeof(IFACE_FMT) + strlen(ifn) + strlen(ifaddrs));
+		len += sprintf(buf, IFACE_FMT, ifn, ifaddrs);
+		len++;
+		ifaces = realloc(ifaces, len);
+		strcat(ifaces, buf);
+		free(buf);
+		if (ifa->ifa_next != NULL)
+			strcat(ifaces, ",");
+	}
+	free(ifaddrs);
+
+	ifaces = realloc(ifaces, len + 2);
+	strcat(ifaces, "}}");
+
+	// upload to cloud
+	pv_ph_upload_metadata(pv, ifaces);
+
+	freeifaddrs(ifaddr);
+	free(ifaces);
+
+	return 0;
 }

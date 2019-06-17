@@ -392,6 +392,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
+	// update network meta
+	pv_network_update_meta(pv);
+
 	pv_log_flush(pv, true);
 
 	// reset rollback rb_count
