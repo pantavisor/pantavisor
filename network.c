@@ -75,7 +75,7 @@ int pv_network_update_meta(struct pantavisor *pv)
 	struct ifaddrs *ifaddr, *ifa;
 	int family, s, n, len, ilen = 0;
 	char host[NI_MAXHOST], ifn[IFNAMSIZ], iff[IFNAMSIZ+4];
-	char *buf, *ifaces = 0, *ifaddrs = 0;
+	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
 	if (getifaddrs(&ifaddr) < 0) {
 		pv_log(DEBUG, "error calling getifaddrs()\n");
@@ -101,7 +101,9 @@ int pv_network_update_meta(struct pantavisor *pv)
 		if (!strcmp(ifn, iff)) {
 			ilen += strlen(host) + 4;
 			ifaddrs = realloc(ifaddrs, ilen);
-			sprintf(ifaddrs, "%s,\"%s\"", ifaddrs, host);
+			t = strdup(ifaddrs);
+			sprintf(ifaddrs, "%s,\"%s\"", t, host);
+			free(t);
 		} else {
 			sprintf(ifn, "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
 			ilen = 0;
