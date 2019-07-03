@@ -86,8 +86,10 @@ int pv_network_update_meta(struct pantavisor *pv)
 	ifaces = strdup(IFACES_FMT);
 
 	for (ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
-		family = ifa->ifa_addr->sa_family;
+		if (ifa->ifa_addr == NULL)
+			continue;
 
+		family = ifa->ifa_addr->sa_family;
 		if (family == AF_PACKET)
 			continue;
 
