@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <libgen.h>
 
 #include <sys/utsname.h>
 #include <sys/types.h>
@@ -46,19 +47,30 @@
 static void usermeta_add_hint(struct pv_usermeta *m)
 {
 	int fd;
+	char *path_base;
 	char path[PATH_MAX];
 
 	if (!m)
 		return;
 
 	sprintf(path, "/pv/user-meta/%s", m->key);
+	path_base = strdup(path);
+
+	dirname(path_base);
+	if (strcmp("/pv/user-meta", path_base))
+		mkdir_p(path_base, 0644);
 
 	fd = open(path, O_CREAT | O_RDWR, 0644);
 	if (!fd)
-		return;
+		goto out;
 
 	write(fd, m->value, strlen(m->value));
 	close(fd);
+
+out:
+	free(path_base);
+
+	return;
 }
 
 static void usermeta_remove_hint(struct pv_usermeta *m)
