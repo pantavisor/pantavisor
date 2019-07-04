@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2019 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,45 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_INIT_H
-#define PV_INIT_H
-
-#ifndef CLONE_FS
-#  define CLONE_FS                0x00000200
-#endif
-#ifndef CLONE_NEWNS
-#  define CLONE_NEWNS             0x00020000
-#endif
-#ifndef CLONE_NEWCGROUP
-#  define CLONE_NEWCGROUP         0x02000000
-#endif
-#ifndef CLONE_NEWUTS
-#  define CLONE_NEWUTS            0x04000000
-#endif
-#ifndef CLONE_NEWIPC
-#  define CLONE_NEWIPC            0x08000000
-#endif
-#ifndef CLONE_NEWUSER
-#  define CLONE_NEWUSER           0x10000000
-#endif
-#ifndef CLONE_NEWPID
-#  define CLONE_NEWPID            0x20000000
-#endif
-#ifndef CLONE_NEWNET
-#  define CLONE_NEWNET            0x40000000
-#endif
-
-#include <pthread.h>
+#ifndef __PVCTL_UTILS_H__
+#define __PVCTL_UTILS_H__
 #include <sys/types.h>
-
-struct pv_child_proc_status {
-	pid_t child_pid; /*in*/
-	int   status; /*out*/
-	/*
-	 * private
-	 * */
-	pthread_cond_t cond;
-	pthread_mutex_t mutex;
-};
-int pv_wait_on_reaper_for(pid_t);
+int pvctl_write(const char *buf, ssize_t count);
 #endif

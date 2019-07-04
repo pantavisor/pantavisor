@@ -57,6 +57,7 @@ static int log_count = 0;
 static int log_written = 0;
 static int log_maxsize = 0;
 static char *log_dir = 0;
+static pid_t log_init_pid = -1;
 
 // default STDOUT
 int log_fd = 1;
@@ -148,6 +149,7 @@ void pv_log_init(struct pantavisor *pv)
 
 	// enable libthttp debug logs
 	thttp_set_log_func(log_external);
+	log_init_pid = getpid();
 
 	pv_log(DEBUG, "%s() logsize: %d items, buffer of %d KiB", __func__, lb->size, lb->buf_size / 1024);
 }
@@ -318,6 +320,10 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;
+
+	if (log_init_pid != getpid())
+		return;
+
 	va_start(args, fmt);
 
 	__vlog(module, level, fmt, args);
@@ -325,7 +331,7 @@ void __log(char *module, int level, const char *fmt, ...)
 	va_end(args); 
 }
 
-void pv_log_raw(struct pantavisor *pv, char *buf, int len)
+void pv_log_raw(struct pantavisor *pv, char *buf, int len, const char *platform)
 {
 	struct timeval tv;
 	log_entry_t e;
@@ -338,7 +344,11 @@ void pv_log_raw(struct pantavisor *pv, char *buf, int len)
 	e.tusec = (uint32_t) tv.tv_usec;
 	e.level = DEBUG;
 
-	snprintf(e.source, 32, "PLATFORM");
+	if (!platform)
+		snprintf(e.source, sizeof(e.source), "PLATFORM");
+	else
+		snprintf(e.source, sizeof(e.source), "%s", platform);
+		
 
 	strncpy(e.data, buf, len > LOG_DATA_SIZE ? LOG_DATA_SIZE : len);
 

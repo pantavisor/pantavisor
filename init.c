@@ -41,9 +41,22 @@
 #include "tsh.h"
 #include "pantavisor.h"
 #include "version.h"
+#include "init.h"
 
+#define MAX_PROC_STATUS (10)
 pid_t pv_pid;
 pid_t shell_pid;
+
+static struct pv_child_proc_status waiting_on_reaper;
+
+static void init_waiting_on_reaper()
+{
+	pthread_cond_init(&waiting_on_reaper.cond, NULL);
+	pthread_mutex_init(&waiting_on_reaper.mutex, NULL);
+	waiting_on_reaper.child_pid = -1;
+	waiting_on_reaper.status = 0;
+}
+
 
 static int open_ns(int pid, const char *ns_proc_name)
 {
@@ -129,12 +142,17 @@ static void signal_handler(int signal)
 	if (signal != SIGCHLD)
 		return;
 
-	while (pid == 0) {
-		pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED);
+	while (	(pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED)) > 0) {
+		if (waiting_on_reaper.child_pid > 0 
+				&&
+				waiting_on_reaper.child_pid == pid) {
+			waiting_on_reaper.status = wstatus;
+			pthread_cond_signal(&waiting_on_reaper.cond);
+		}
 	}
 
 	// Check for pantavisor
-	if (pid != pv_pid)
+	if (!pid || pid != pv_pid)
 		return;
 
 	if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
@@ -201,6 +219,7 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 int main(int argc, char *argv[])
 {
 	unsigned short args = 0;
+	init_waiting_on_reaper();
 	parse_args(argc, argv, &args);
 
 	if (getpid() != 1) {
@@ -233,4 +252,16 @@ int main(int argc, char *argv[])
 		pause();
 
 	return 0;
+}
+
+int pv_wait_on_reaper_for(pid_t pid)
+{
+	waiting_on_reaper.child_pid = pid;
+	if (pid > 0) {
+		pthread_mutex_lock(&waiting_on_reaper.mutex);
+		pthread_cond_wait(&waiting_on_reaper.cond,
+				  &waiting_on_reaper.mutex);
+		pthread_mutex_unlock(&waiting_on_reaper.mutex);
+	}
+	return waiting_on_reaper.status;
 }

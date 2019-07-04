@@ -21,6 +21,7 @@
  */
 #ifndef PV_CMD_H
 #define PV_CMD_H
+#include "pantavisor.h"
 
 // legacy commands, use cmd_json_operation_t for new commands
 enum cmd_t {
@@ -40,6 +41,7 @@ struct pv_cmd_req {
 	enum cmd_json_operation_t json_operation ;
 	uint32_t len;
 	char *data;
+	char *platform;
 };
 
 int pv_cmd_socket_open(struct pantavisor *pv, char *path);
