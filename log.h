@@ -65,6 +65,6 @@ void __vlog(char *module, int level, const char *fmt, va_list args);
 void __log(char *module, int level, const char *fmt, ...);
 void pv_log_flush(struct pantavisor *pv, bool force);
 int pv_log_set_level(unsigned int level);
-void pv_log_raw(struct pantavisor *pv, char *buf, int len);
+void pv_log_raw(struct pantavisor *pv, char *buf, int len, const char *platform);
 
 #endif

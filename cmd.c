@@ -36,6 +36,15 @@
 
 #include "cmd.h"
 #include "utils.h"
+#include <stdint.h>
+
+#ifndef _GNU_SOURCE
+struct  ucred {
+	pid_t pid;
+	uid_t uid;
+	gid_t gid;
+};
+#endif
 
 int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 {
@@ -59,8 +68,8 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 		goto out;
 	}
 
-	// queue 5 commands
-	listen(fd, 5);
+	// queue 15 commands
+	listen(fd, 15);
 
 	pv->ctrl_fd = fd;
 
@@ -83,9 +92,13 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 	struct timeval tv;
 	struct pv_cmd_req *c = 0;
 	fd_set fdset;
+	struct ucred peer_cred;
+	socklen_t peer_size = sizeof(peer_cred);
+	int data_written = 0;
+	int avail = 0;
 
 	fd = pv->ctrl_fd;
-	if (fd <= 0) {
+	if (fd < 0) {
 		pv_log(WARN, "control socket not setup");
 		goto out;
 	}
@@ -108,7 +121,48 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 
 	// process command
 	fd = accept(fd, 0, 0);
+
 	c = calloc(1, sizeof(struct pv_cmd_req));
+
+	if (getsockopt(fd, SOL_SOCKET,SO_PEERCRED, &peer_cred, &peer_size) < 0)
+		c->platform = NULL;
+	else {
+		struct pv_platform *walker = pv->state->platforms;
+		while (walker) {
+			if (walker->pid_logger == peer_cred.pid) {
+				c->platform = strdup(walker->name);
+				break;
+			}
+			walker = walker->next;
+		}
+	}
+
+	if (!c->platform) {
+		char buf[64];
+		snprintf(buf, sizeof(buf), "/proc/%d/comm", peer_cred.pid);
+		FILE *fp = fopen(buf, "r");
+		if (fp) {
+			fscanf(fp, "%s", buf);
+			fclose(fp);
+		} else {
+			snprintf(buf, sizeof(buf), "from pid = %d", peer_cred.pid);
+		}
+		c->platform = strdup(buf);
+	}
+
+select_:
+	FD_ZERO(&fdset);
+	FD_SET(fd, &fdset);
+	tv.tv_sec = 2;
+	tv.tv_usec = 0;
+
+	ret = select(fd + 1, &fdset, 0, 0, &tv);
+	if (ret < 0) {
+		if (errno != EINTR)
+			goto err;
+		else
+			goto select_;
+	}
 
 	ret = read(fd, &c->cmd, sizeof(char));
 	if (ret != sizeof(char)) {
@@ -116,36 +170,63 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 		goto err;
 	}
 
-	ret = read(fd, buf, sizeof(buf));
-	if (ret < 0) {
-		pv_log(WARN, "unable to read command data");
-		goto err;
-	}
+	do {
+		fd_set readset;
+		int retries = 5;
+		avail = sizeof(buf) - data_written;
+select_again:
+		FD_ZERO(&readset);
+		FD_SET(fd, &readset);
+		tv.tv_sec = 1;
+		tv.tv_usec = 5000;
+		ret = select(fd + 1, &readset, 0, 0, &tv);
+
+		if ( retries > 0 && ret < 0 && errno == EINTR) {
+			retries -= 1;
+			goto select_again;
+		}
+
+		if (ret > 0 ) {
+read_again:
+			ret = read(fd, ((char*)buf) + data_written, avail);
+			if (ret < 0) {
+				if (errno == EINTR && retries > 0) {
+					retries -= 1;
+					goto read_again;
+				}
+
+				pv_log(WARN, "unable to read command data");
+				goto err;
+			}
+			data_written += ret;
+		}
+	}while (ret > 0 && avail > 0);
 
 	if (c->cmd != CMD_JSON) {
-		c->data = calloc(1, ret);
-		c->data = memcpy(c->data, buf, ret);
-		c->len = ret;
+		c->data = calloc(1, data_written);
+		c->data = memcpy(c->data, buf, data_written);
+		c->len = data_written;
 	} else {
 		ret = parse_cmd_req(buf, c);
 		if (ret) {
 			pv_log(WARN, "json command has wrong format");
 			goto err;
 		}
-
 		pv_log(DEBUG, "new json command op=%d payload=%s", c->json_operation, c->data);
 	}
-
 	close(fd);
-
 out:
 	return c;
 err:
 	close(fd);
-	if (c)
+	if (c) {
+		if (c->data)
+			free(c->data);
+		if (c->platform)
+			free(c->platform);
 		free(c);
-
-	return 0;
+	}
+	return NULL;
 }
 
 void pv_cmd_finish(struct pantavisor *pv)
@@ -157,6 +238,9 @@ void pv_cmd_finish(struct pantavisor *pv)
 
 	if (c->data)
 		free(c->data);
+
+	if (c->platform)
+		free(c->platform);
 	free(c);
 
 	pv->req = NULL;

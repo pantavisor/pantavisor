@@ -156,6 +156,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (stat("/pv", &st) != 0)
 		mkdir_p("/pv", 0400);
 
+
 	if (stat(c->logdir, &st) != 0)
 		mkdir_p(c->logdir, 0400);
 
@@ -452,6 +453,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	char buf[4096] = { 0 };
 	struct pv_cmd_req *c = pv->req;
 	struct pv_state *new;
+	pv_state_t next_state = STATE_WAIT;
 
 	if (!c)
 		return STATE_WAIT;
@@ -470,25 +472,29 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		new = pv_get_state(pv, rev);
 		if (!new) {
 			pv_log(DEBUG, "invalid rev requested %d", rev);
-			return STATE_WAIT;
+			next_state = STATE_WAIT;
+			goto out;
 		}
 
 		// stop current step
-		if (pv_platforms_stop_all(pv) < 0)
-			return STATE_ROLLBACK;
-		if (pv_volumes_unmount(pv) < 0)
-			return STATE_ROLLBACK;
-
+		if (pv_platforms_stop_all(pv) < 0) {
+			next_state = STATE_ROLLBACK;
+			goto out;
+		}
+		if (pv_volumes_unmount(pv) < 0) {
+			next_state = STATE_ROLLBACK;
+			goto out;
+		}
+ 
 		pv->state = new;
 		pv_meta_link_boot(pv, NULL);
 		pv_meta_set_tryonce(pv, 1);
-		pv_cmd_finish(pv);
-		return STATE_RUN;
+		next_state = STATE_RUN;
 		}
 		break;
 	case CMD_LOG:
 		{
-		pv_log_raw(pv, c->data, c->len);
+		pv_log_raw(pv, c->data, c->len, c->platform);
 		break;
 		}
 	case CMD_JSON:
@@ -506,7 +512,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 out:
 	pv_cmd_finish(pv);
-	return STATE_WAIT;
+	return next_state;
 }
 
 static pv_state_t _pv_update(struct pantavisor *pv)
@@ -598,9 +604,13 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+	
+	if (!pv->update)
+		goto out;
 
 	pv_update_finish(pv);
 
+out:
 	pv_wdt_start(pv);
 
 	// unmount storage
@@ -659,8 +669,7 @@ int pv_controller_start(struct pantavisor *pv)
 
 	while (1) {
 		if ((state != STATE_WAIT) && (state != STATE_COMMAND))
-			pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(STATE_WAIT));
-
+			pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(state), state);
 		state = _pv_run_state(state, pv);
 
 		if (state == STATE_EXIT)

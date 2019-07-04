@@ -31,6 +31,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#ifndef _GNU_SOURCE
+int setns(int nsfd, int nstype);
+#else
+#include <sched.h>
+#endif
+
 #define MODULE_NAME             "platforms"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
@@ -39,6 +45,7 @@
 #include "wdt.h"
 
 #include "platforms.h"
+#include "pvlogger.h"
 
 struct pv_cont_ctrl {
 	char *type;
@@ -256,6 +263,39 @@ int pv_platforms_init_ctrl(struct pantavisor *pv)
 	return loaded;
 }
 
+static int start_pvlogger_for_platform(struct pv_platform *platform)
+{
+	/*
+	 * fork, and set the mount namespace for
+	 * pv_logger.
+	 * */
+	platform->pid_logger = -1;
+	int container_pid = platform->init_pid;
+	pid_t pid = fork();
+	if (pid < 0) {
+		return -1;
+	}
+	if (!pid) {
+		char namespace [64];
+		int ns_fd = -1;
+		snprintf(namespace,sizeof(namespace), "/proc/%d/ns/mnt", container_pid);
+		pv_log(DEBUG, "Opening file %s\n",namespace);
+		ns_fd = open(namespace, 0);
+		if (ns_fd < 0) {
+			pv_log(ERROR, "Unable to open namespace file\n");
+			_exit(-1);
+		}
+		if (setns(ns_fd, 0)) {
+			perror("Unable to set Mount namespace\n");
+			_exit(-1);
+		}
+		start_pvlogger(NULL, platform->name);
+		_exit(0);
+	}
+	platform->pid_logger = pid;
+	return pid;
+}
+
 // Iterate list of platforms from state
 // Do setup (chdir to config dir, etc)
 // Setup logging, channels, etc
@@ -314,6 +354,12 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		else
 			return -1;
 
+		if (start_pvlogger_for_platform(p) > 0) {
+			pv_log(INFO, "started pv_logger for platform %s"
+					" with pid = %d \n", p->name, p->pid_logger);
+		} else {
+			pv_log(ERROR, "Could not start pv_logger for platform %s\n",p->name);
+		}
 		num_plats++;
 
 		p = p->next;

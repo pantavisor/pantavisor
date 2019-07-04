@@ -30,6 +30,7 @@
 
 #include "tsh.h"
 #include "log.h"
+#include "init.h"
 
 #define TSH_MAX_LENGTH	32
 #define TSH_DELIM	" \t\r\n\a"
@@ -44,7 +45,17 @@ static pid_t _tsh_exec(char **argv, int wait)
 		// In parent
 		if (wait) {
 			int status;
-			waitpid(pid, &status, 0);
+			/*
+			 * waitpid will block here,
+			 * as it seems to be automatically
+			 * restarted when using signal and
+			 * not sigaction.
+			 * Since this pid will be reaped by
+			 * SIGCHLD handler, ask the handler
+			 * if it got this pid or not.
+			 * */
+			//waitpid(pid, &status, 0);
+			status = pv_wait_on_reaper_for(pid);
 		}
 		free(argv);
 	} else {
@@ -89,7 +100,7 @@ pid_t tsh_run(char *cmd, int wait)
 	char **args;
 	char *vcmd;
 
-	vcmd = malloc(strlen(cmd));
+	vcmd = malloc(strlen(cmd) + 1);
 	if (!vcmd)
 		exit_error(ENOMEM, "Unable to allocate cmd memory\n");
 

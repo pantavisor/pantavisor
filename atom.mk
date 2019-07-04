@@ -3,7 +3,6 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_LIBRARIES := lxc
-
 LOCAL_DESTDIR := ./lib/
 LOCAL_MODULE := pv_lxc
 
@@ -16,7 +15,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_LIBRARIES := libthttp
+LOCAL_LIBRARIES := libthttp libpvlogger
 
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
@@ -57,8 +56,11 @@ LOCAL_SRC_FILES := init.c \
 		   cmd.c \
 		   device.c \
 		   wdt.c \
-		   network.c
+		   network.c \
+		   pvlogger.c \
+		   pvctl_utils.c
 
+LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
 
 include $(BUILD_EXECUTABLE)
