@@ -112,7 +112,7 @@ write_again:
 				memset(__logger_cmd + logger_pos, 0, sizeof(logger_cmd) - logger_pos - 1);
 				goto write_again;
 			} else {
-				pv_log(WARN, "BUG on logger_pos =%d, to_write = %d\n", 
+				pv_log(WARN, "BUG on logger_pos =%d, to_write = %zd\n", 
 						logger_pos, to_write);
 				logger_pos = 0;
 			}
