@@ -354,11 +354,13 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		else
 			return -1;
 
-		if (start_pvlogger_for_platform(p) > 0) {
-			pv_log(INFO, "started pv_logger for platform %s"
-					" with pid = %d \n", p->name, p->pid_logger);
-		} else {
-			pv_log(ERROR, "Could not start pv_logger for platform %s\n",p->name);
+		if (pv_state_spec(pv->state) != SPEC_MULTI1) {
+			if (start_pvlogger_for_platform(p) > 0) {
+				pv_log(INFO, "started pv_logger for platform %s"
+						" with pid = %d \n", p->name, p->pid_logger);
+			} else {
+				pv_log(ERROR, "Could not start pv_logger for platform %s\n",p->name);
+			}
 		}
 		num_plats++;
 
