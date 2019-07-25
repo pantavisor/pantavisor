@@ -110,6 +110,7 @@ int *pv_get_revisions(struct pantavisor *pv)
 
 		revs[i] = atoi(dirs[n]->d_name);
 		i++;
+		free(dirs[n]);
 	}
 
 	revs = realloc(revs, (bufsize+1) * sizeof(int));
@@ -118,6 +119,8 @@ int *pv_get_revisions(struct pantavisor *pv)
 
 	// terminate with -1
 	revs[bufsize] = -1;
+
+	free(dirs);
 
 	return revs;
 }

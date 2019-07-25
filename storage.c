@@ -44,8 +44,45 @@ static int remove_at(char *path, char *filename)
 {
 	char full_path[PATH_MAX];
 
-	sprintf(full_path, "%s%s", path, filename);
+	sprintf(full_path, "%s/%s", path, filename);
 	return remove(full_path);
+}
+
+static int remove_in(char *path, char *dirname)
+{
+	int n = 0;
+	struct dirent **d;
+	char full_path[PATH_MAX];
+
+	sprintf(full_path, "%s/%s/", path, dirname);
+	n = scandir(full_path, &d, NULL, alphasort);
+
+	if (n < 0) {
+		pv_log(ERROR, "attempted to remove %s", full_path);
+		goto out;
+	}
+
+	while (n--) {
+		// discard . and .. from scandir
+		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
+			continue;
+		// first try to remove it as a file
+		if (!remove_at(full_path, d[n]->d_name))
+			pv_log(DEBUG, "remove '%s'", d[n]->d_name)
+		// remove it as a dir if not a file
+		else
+			remove_in(full_path, d[n]->d_name);
+		free(d[n]);
+	}
+	free(d);
+
+	if (!remove(full_path))
+		pv_log(DEBUG, "remove '%s'", full_path)
+	else
+		pv_log(ERROR, "attempted to remove %s", full_path);
+
+out:
+	return n;
 }
 
 int pv_storage_gc_objects(struct pantavisor *pv)
@@ -96,49 +133,15 @@ out:
 
 void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 {
-	int n = 0;
-	struct dirent **d;
 	char path[PATH_MAX];
+	char revision[PATH_MAX];
 
 	pv_log(DEBUG, "Removing rev=%d", rev);
 
-	sprintf(path, "%s/trails/%d/.pvr/", pv->config->storage.mntpoint, rev);
-	n = scandir(path, &d, NULL, alphasort);
-	if (n < 0) {
-		pv_log(ERROR, "attempted to remove nonexistant revision");
-		return;
-	}
+	sprintf(path, "%s/trails", pv->config->storage.mntpoint);
+	sprintf(revision, "%d", rev);
 
-	while (n--) {
-		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
-			continue;
-		if (!remove_at(path, d[n]->d_name))
-			pv_log(DEBUG, "remove '%s'", d[n]->d_name);
-	}
-	if (!remove(path))
-		pv_log(DEBUG, "removing '%s'", path);
-
-	sprintf(path, "%s/trails/%d/.pv/", pv->config->storage.mntpoint, rev);
-	n = scandir(path, &d, NULL, alphasort);
-	while (n--) {
-		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
-			continue;
-		if (!remove_at(path, d[n]->d_name))
-			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
-	}
-	if (!remove(path))
-		pv_log(DEBUG, "removing '%s'", path);
-
-	sprintf(path, "%s/trails/%d/", pv->config->storage.mntpoint, rev);
-	n = scandir(path, &d, NULL, alphasort);
-	while (n--) {
-		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
-			continue;
-		if (!remove_at(path, d[n]->d_name))
-			pv_log(DEBUG, "unlink '%s'", d[n]->d_name);
-	}
-	if (!remove(path))
-		pv_log(DEBUG, "removing '%s'", path);
+	remove_in(path, revision);
 
 	sync();
 }
