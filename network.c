@@ -63,7 +63,7 @@ int pv_network_init(struct pantavisor *pv)
 
 	ret = ioctl(fd, SIOCBRADDBR, c->net.brdev);
 	if (ret < 0) {
-		pv_log(DEBUG, "unable to create bridge dev %s: %s",
+		pv_log(WARN, "unable to create bridge dev %s: %s",
 			c->net.brdev, strerror(errno));
 	}
 
