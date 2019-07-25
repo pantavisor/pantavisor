@@ -155,7 +155,10 @@ const char** pv_ph_get_certs(struct pantavisor *pv)
 		strncpy(cafiles[i], path, size);
 		cafiles[i][size] = '\0';
 		i++;
+		free(files[n]);
 	}
+
+	free(files);
 
 	return (const char **) cafiles;
 }

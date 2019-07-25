@@ -57,10 +57,13 @@ char** pv_objects_get_all_ids(struct pantavisor *pv)
 			continue;
 		ids[i] = strdup(tmp);
 		i++;
+		free(dirs[n]);
 	}
 
 	// null terminate string array
 	ids[bufsize-1] = 0;
+
+	free(dirs);
 
 out:
 	return ids;
