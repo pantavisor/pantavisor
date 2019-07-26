@@ -74,30 +74,34 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 	while (buflen > 0) {
 		int avail_buflen = 0;
 		char *new_line_at = NULL;
+		int written = 0;
 try_again:
 		avail_buflen = sizeof(logger_cmd) - logger_pos - 1;
 
-		if (avail_buflen > 0) {
-			/*
-			 * buf may not have a null byte, or it may have
-			 * one at a place > buflen .To make sure
-			 * we don't go past the amount actually sent to
-			 * us, limit it using buflen for the incoming
-			 * buffer.
-			 * */
-			int written = snprintf(__logger_cmd + logger_pos, avail_buflen,
-						"%.*s", buflen, buf);
-			if (written > avail_buflen)
-				written = avail_buflen;
-			bytes_written += written;
-			logger_pos += written;
-		}
-		else {
+		if (!avail_buflen) {
 			pvctl_write(logger_cmd, sizeof(logger_cmd));
-
 			logger_pos = 0;
 			goto try_again;
 		}
+		/*
+		 * buf may not have a null byte, or it may have
+		 * one at a place > buflen .To make sure
+		 * we don't go past the amount actually sent to
+		 * us, limit it using buflen for the incoming
+		 * buffer.
+		 * */
+		written = snprintf(__logger_cmd + logger_pos, avail_buflen,
+				"%.*s", buflen, buf);
+		if (written >= avail_buflen)
+			written = avail_buflen;
+
+		logger_pos += written;
+		if (written < avail_buflen) {
+			/*Account for the NULL byte in buf*/
+			buf += 1;    
+			buflen -= 1; 
+		}
+		bytes_written += written;
 		buflen -= bytes_written;
 		buf += bytes_written;
 write_again:
