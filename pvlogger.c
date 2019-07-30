@@ -35,6 +35,8 @@
 #include <signal.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
+#include <libgen.h>
+#include <errno.h>
 #include "cmd.h"
 
 
@@ -147,8 +149,7 @@ static int pvlogger_start(struct log *log, int was_init_ok)
  * */
 static int wait_for_logfile(const char *logfile)
 {
-	const char *parent_dir = NULL;
-	char *tmp_buf = NULL;
+	char *parent_dir = NULL;
 	int fd_dir_notify = -1;
 	struct timeval tv;
 	int ret = LOG_OK;
@@ -156,6 +157,8 @@ static int wait_for_logfile(const char *logfile)
 	struct inotify_event *inotify_ev = NULL;
 	fd_set fdset;
 	struct stat stbuf;
+	char *file_dup = NULL;
+	char *dir_dup = NULL;
 
 	FD_ZERO(&fdset);
 
@@ -168,34 +171,35 @@ static int wait_for_logfile(const char *logfile)
 		ret = LOG_OK;
 		goto out;
 	}
+ 	file_dup = strdup(logfile);
+	dir_dup = strdup(logfile);
 
-	if (logfile[0] == '/') {
-		parent_dir = strrchr(logfile, '/');
-		if (!parent_dir) {
-			ret = LOG_NOK;
-			goto out;
-		}
-		filename = parent_dir + 1;
+	if (!file_dup || !dir_dup) {
+		pv_log(WARN, "Memory allocation failed for logfile duplication\n");
+		ret = LOG_NOK;
+		goto out;
 	}
-	else {
-		tmp_buf = (char*)calloc(1, PATH_MAX);
-		if (!tmp_buf) {
-			ret = LOG_NOK;
-			goto out;
-		}
-		getcwd(tmp_buf, PATH_MAX);
-		parent_dir = tmp_buf;
-		filename = logfile;
-	}
+	parent_dir = dirname(dir_dup);
+	filename = basename(file_dup);
 
+	if ( (!strlen(filename)) || *filename == '/' || *filename == '.') {
+		pv_log(WARN, "Configured log file name %s is not correct"
+				".\n", logfile);
+		ret = LOG_NOK;
+		goto out;
+	}
 	fd_dir_notify = inotify_init1(IN_NONBLOCK);
 
 	if (fd_dir_notify < 0) {
+		pv_log(WARN, "Unable to initialize inotfy event watcher."
+			"errno = %d (%s)\n", errno, strerror(errno));
 		ret = LOG_NOK;
 		goto out;
 	}
 	
 	if (inotify_add_watch(fd_dir_notify, parent_dir, IN_CREATE) < 0 ) {
+		pv_log(WARN, "Unable to create inotify watch."
+			"errno = %d (%s)\n", errno, strerror(errno));
 		ret = LOG_NOK;
 		goto out;
 	}
@@ -203,6 +207,7 @@ static int wait_for_logfile(const char *logfile)
 	inotify_ev = (struct inotify_event*)calloc(1, INOTIFY_SIZE);
 
 	if (!inotify_ev) {
+		pv_log(WARN, "Couldn't allocate memory for inotify event\n");
 		ret = LOG_NOK;
 		goto out;
 	}
@@ -229,10 +234,12 @@ read_again:
 		ret = LOG_OK;
 	else
 		ret = LOG_NOK;
-
 out:
-	if (tmp_buf)
-		free(tmp_buf);
+	if (dir_dup)
+		free(dir_dup);
+	
+	if (file_dup)
+		free(file_dup);
 
 	if (inotify_ev)
 		free(inotify_ev);
@@ -258,6 +265,15 @@ init_again:
 	tv.tv_usec = 0;
 	memset(&default_log, 0, sizeof(default_log));
 	default_log.do_start_log = pvlogger_start;
+
+	if (logfile && logfile[0] != '/') {
+		if (!logfile)
+			pv_log(WARN, "Logfile can't be null\n");
+		else 
+			pv_log(WARN, "Logfile must be an absolute pathname"
+					" %s\n", logfile);
+		return -1;
+	}
 
 	ret = log_init(&default_log, logfile ? logfile : "/var/log/messages");
 	while (ret != LOG_OK) {
