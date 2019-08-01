@@ -38,7 +38,6 @@
 #include "pv_lxc.h"
 
 static struct lxc_log pv_lxc_log = {
-	.file = "/storage/lxc-log",
 	.level = "DEBUG",
 	.prefix = "init",
 	.quiet = false
