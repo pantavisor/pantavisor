@@ -23,4 +23,5 @@
 #define __PVCTL_UTILS_H__
 #include <sys/types.h>
 int pvctl_write(const char *buf, ssize_t count);
+int pvctl_write_to_path(const char *path, const char *buf, ssize_t count);
 #endif
