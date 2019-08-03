@@ -46,7 +46,7 @@
 #include "log.h"
 
 
-static int open_socket(char *path)
+static int open_socket(const char *path)
 {
 	int fd, ret;
 	struct sockaddr_un addr;
@@ -73,7 +73,12 @@ try_again:
 
 int pvctl_write(const char *buf, ssize_t count)
 {
-	int fd = open_socket("/pantavisor/pv-ctrl");
+	return pvctl_write_to_path("/pantavisor/pv-ctrl", buf, count);
+}
+
+int pvctl_write_to_path(const char *path, const char *buf, ssize_t count)
+{
+	int fd = open_socket(path);
 	ssize_t written = 0;
 	if (fd < 0) {
 		return -1;
@@ -90,4 +95,5 @@ int pvctl_write(const char *buf, ssize_t count)
 	}
 	close(fd);
 	return count;
+
 }
