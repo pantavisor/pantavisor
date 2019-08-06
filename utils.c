@@ -132,7 +132,9 @@ int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc)
 
 	for(i=0; i<tokc; i++) {
 		int n = tok[i].end - tok[i].start;
+		int m = strlen (key);
 		if (tok[i].type == JSMN_PRIMITIVE
+		    && n == m
 		    && !strncmp(buf + tok[i].start, key, n)) {
 			t=1;
 		} else if (t==1) {
@@ -156,7 +158,9 @@ char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 
 	for(i=0; i<tokc; i++) {
 		int n = tok[i].end - tok[i].start;
-		if (n && tok[i].type == JSMN_STRING
+		int m = strlen (key);
+		if (n == m
+		    && tok[i].type == JSMN_STRING
 		    && !strncmp(buf + tok[i].start, key, n)) {
 			t=1;
 		} else if (t==1) {
@@ -194,7 +198,10 @@ int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc)
 
 	for (int i=0; i<tokc; i++) {
 		int n = tok[i].end - tok[i].start;
-		if (tok[i].type == JSMN_STRING
+		int m = strlen(key);
+
+		if (n == m &&
+		    tok[i].type == JSMN_STRING
 		    && !strncmp(buf + tok[i].start, key, n)) {
 			count += 1;
 		}
