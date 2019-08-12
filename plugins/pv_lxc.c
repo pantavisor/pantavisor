@@ -43,50 +43,41 @@ static struct lxc_log pv_lxc_log = {
 	.quiet = false
 };
 
-void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
+static void pv_setup_lxc_container(struct lxc_container *c,
+					unsigned int share_ns)
 {
-	int fd, err;
-	struct lxc_container *c;
-	char *dname;
+	int fd, ret;
 	struct utsname uts;
 	struct stat st;
-
-	// Go to LXC config dir for platform
-	dname = strdup(conf_file);
-	dname = dirname(dname);
-	chdir(dname);
-	free(dname);
-
-	// Make sure lxc state dir is there
-	mkdir_p("/usr/var/lib/lxc", 0644);
-
-	c = lxc_container_new(p->name, NULL);
-	if (!c) {
-		return NULL;
-	}
-	c->clear_config(c);
-	if (!c->load_config(c, conf_file)) {
-		lxc_container_put(c);
-		return NULL;
-	}
-
-	pv_lxc_log.name = p->name;
-	pv_lxc_log.lxcpath = p->name;
-
-	truncate(pv_lxc_log.file, 0);
-	lxc_log_init(&pv_lxc_log);
-
-	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
+	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
+	char entry[1024];
 	c->set_inherit_namespaces(c, 1, share_ns);
-
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
-
+	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
+						" none bind,ro,create=dir 0 0");
+	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
+						" none bind,ro,create=dir 0 0");
+	if (stat("/lib/firmware", &st) == 0)
+		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
+					" lib/firmware none bind,ro,create=dir"
+					" 0 0");
+	ret = uname(&uts);
+	// FIXME: Implement modules volume and use that instead
+	if (!ret) {
+		if (stat("/volumes/modules.squashfs", &st) == 0) {
+			sprintf(entry, "/volumes/modules.squashfs "
+					"lib/modules/%s "
+					"none bind,ro,create=dir 0 0",
+					uts.release
+				);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+		}
+	}
 	// Strip consoles from kernel cmdline
-	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
 	mktemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd) {
+	if (fd > 0) {
 		char *buf = calloc(1024, 1);
 		char *new = calloc(1024, 1);
 		read(fd, buf, 1024);
@@ -102,41 +93,55 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		}
 		close(fd);
 		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC, 0644);
-		write(fd, new, strlen(new));
+		if (fd > 0)
+			write(fd, new, strlen(new));
 		close(fd);
 		free(new);
 		free(buf);
 	}
-	char entry[1024];
-
-	if (p->exec)
-		c->set_config_item(c, "lxc.init.cmd", p->exec);
-	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor none bind,ro,create=dir 0 0");
-	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs none bind,ro,create=dir 0 0");
-
-	int ret = uname(&uts);
-	// FIXME: Implement modules volume and use that instead
-	if (!ret) {
-		if (stat("/volumes/modules.squashfs", &st) == 0) {
-			sprintf(entry, "/volumes/modules.squashfs lib/modules/%s none bind,ro,create=dir 0 0", uts.release);
-			c->set_config_item(c, "lxc.mount.entry", entry);
-		}
-	}
-	if (stat("/lib/firmware", &st) == 0)
-		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware lib/firmware none bind,ro,create=dir 0 0");
-
 	// override container=lxc environment of pid 1
 	c->set_container_type(c, "pv-platform");
+}
 
+void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
+{
+	int err;
+	struct lxc_container *c;
+	char *dname;
+	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS)
+	       				| (1 << LXC_NS_IPC);
+	// Go to LXC config dir for platform
+	dname = strdup(conf_file);
+	dname = dirname(dname);
+	chdir(dname);
+	free(dname);
+	// Make sure lxc state dir is there
+	mkdir_p("/usr/var/lib/lxc", 0644);
+
+	c = lxc_container_new(p->name, NULL);
+	if (!c) {
+		return NULL;
+	}
+	c->clear_config(c);
+	if (!c->load_config(c, conf_file)) {
+		lxc_container_put(c);
+		return NULL;
+	}
+
+	pv_lxc_log.name = p->name;
+	pv_lxc_log.lxcpath = p->name;
+	truncate(pv_lxc_log.file, 0);
+	lxc_log_init(&pv_lxc_log);
+
+	pv_setup_lxc_container(c, share_ns);
+	if (p->exec)
+		c->set_config_item(c, "lxc.init.cmd", p->exec);
 	err = c->start(c, 0, NULL) ? 0 : 1;
-
 	if (err && (c->error_num != 1)) {
 		lxc_container_put(c);
 		c = NULL;
 	}
-
 	*((pid_t *) data) = c->init_pid(c);
-
 	return (void *) c;
 }
 
