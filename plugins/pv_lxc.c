@@ -33,6 +33,8 @@
 #include <lxc/lxccontainer.h>
 #include <lxc/pv_export.h>
 
+#include <signal.h>
+#include <limits.h>
 #include "utils.h"
 
 #include "pv_lxc.h"
@@ -43,6 +45,41 @@ static struct lxc_log pv_lxc_log = {
 	.quiet = false
 };
 
+/*
+ * Use only after loading config.
+ * Use threshold as 0 to always truncate.
+ * */
+static void pv_truncate_lxc_log(struct lxc_container *c,
+				const char *platform_name, off_t threshold) {
+	char *logfile_name = NULL;
+	const char *key = "lxc.log.file";
+	
+	logfile_name = (char*)calloc(1, PATH_MAX);
+	if (!logfile_name)
+		return;
+	c->get_config_item(c, key, logfile_name, PATH_MAX); 
+	if (!strlen(logfile_name)) {
+		/*
+		 * /storage/logs is hardcoded in pv_lxc_log->lxcpath
+		 * and used when lxc.log.file isn't set in lxc.conf of
+		 * the container.
+		 * */
+		snprintf(logfile_name, PATH_MAX, "/storage/logs/%s/%s.log",
+				platform_name, platform_name);
+	} 
+
+	if (!threshold)
+		truncate(logfile_name, 0);
+	else {
+		struct stat st;
+		if (!stat(logfile_name, &st)) {
+			if (st.st_size >= threshold)
+				truncate(logfile_name, 0);
+		}
+	}
+	free(logfile_name);
+}
+ 
 static void pv_setup_lxc_container(struct lxc_container *c,
 					unsigned int share_ns)
 {
@@ -108,8 +145,10 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	int err;
 	struct lxc_container *c;
 	char *dname;
+	int pipefd[2];
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS)
-	       				| (1 << LXC_NS_IPC);
+					| (1 << LXC_NS_IPC);
+	pid_t child_pid = -1;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
 	dname = dirname(dname);
@@ -119,29 +158,106 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	mkdir_p("/usr/var/lib/lxc", 0644);
 
 	c = lxc_container_new(p->name, NULL);
-	if (!c) {
-		return NULL;
-	}
+	if (!c) 
+		goto out_no_container;
+
 	c->clear_config(c);
-	if (!c->load_config(c, conf_file)) {
-		lxc_container_put(c);
-		return NULL;
-	}
-
-	pv_lxc_log.name = p->name;
-	pv_lxc_log.lxcpath = p->name;
-	truncate(pv_lxc_log.file, 0);
-	lxc_log_init(&pv_lxc_log);
-
-	pv_setup_lxc_container(c, share_ns);
-	if (p->exec)
-		c->set_config_item(c, "lxc.init.cmd", p->exec);
-	err = c->start(c, 0, NULL) ? 0 : 1;
-	if (err && (c->error_num != 1)) {
+	/*
+	 * For returning back the
+	 * container_pid to pv parent
+	 * process.
+	 * */
+	if (pipe(pipefd)) {
 		lxc_container_put(c);
 		c = NULL;
+		goto out_no_container;
 	}
+
+	child_pid = fork();
+	if (child_pid < 0) {
+		lxc_container_put(c);
+		close(pipefd[0]);
+		close(pipefd[1]);
+		c = NULL;
+		goto out_no_container;
+	}
+	else if (child_pid){ /*Parent*/
+		pid_t container_pid = -1;
+		close(pipefd[1]); /*Parent would read*/
+		while (read(pipefd[0], &container_pid, 
+				sizeof(container_pid)) < 0 && errno == EINTR)
+			;
+
+		if (container_pid <= 0) {
+			lxc_container_put(c);
+			c = NULL;
+			goto out_no_container;
+		}
+		*((pid_t *) data) = container_pid;
+		close(pipefd[0]);
+	}
+	else { /* Child process */
+		close(pipefd[0]);
+		*( (pid_t*) data) = -1;
+		pv_lxc_log.name = p->name;
+		pv_lxc_log.lxcpath = "/storage/logs";
+		lxc_log_init(&pv_lxc_log);
+		c = lxc_container_new(p->name, NULL);
+
+		if (!c) 
+			goto out_container_init;
+		c->clear_config(c);
+		/*
+		 * Load config later which allows us to
+		 * override the log file configured by default.
+		 * */
+		if (!c->load_config(c, conf_file)) {
+			lxc_container_put(c);
+			*((pid_t *) data) = -1;
+			goto out_container_init;
+		}
+		/*
+		 * Truncate the logs for now everytime
+		 * a container is started.
+		 * This will be changed later.
+		 * */
+		pv_truncate_lxc_log(c, p->name, 0);
+		pv_setup_lxc_container(c, share_ns);
+		if (p->exec)
+			c->set_config_item(c, "lxc.init.cmd", p->exec);
+		err = c->start(c, 0, NULL) ? 0 : 1;
+
+		if (err && (c->error_num != 1)) {
+			lxc_container_put(c);
+			c = NULL;
+		}
+
+		if (c)
+			*((pid_t *) data) = c->init_pid(c);
+out_container_init:
+		while (write(pipefd[1], data, sizeof(pid_t)) < 0
+				&& errno == EINTR)
+			;
+		_exit(0);
+	}
+	/*
+	 * Parent loads the config after container is setup.
+	 * This is just required to stop container and get
+	 * any config items required in the parent.
+	 * */
+	if (!c->load_config(c, conf_file)) {
+		pid_t *container_pid = (pid_t*)data;
+		lxc_container_put(c);
+		if (*container_pid > 0) {
+			kill(*container_pid, SIGKILL);
+		}
+		c = NULL;
+		goto out_no_container;
+	}
+	pv_setup_lxc_container(c, share_ns);
 	*((pid_t *) data) = c->init_pid(c);
+
+out_no_container:
 	return (void *) c;
 }
 
