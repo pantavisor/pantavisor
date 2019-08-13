@@ -129,10 +129,22 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 	else {
 		struct pv_platform *walker = pv->state->platforms;
 		while (walker) {
-			if (walker->pid_logger == peer_cred.pid) {
-				c->platform = strdup(walker->name);
-				break;
+			struct pv_log_info *item, *tmp;
+			struct dl_list *head = &walker->logger_list;
+			bool found = false;
+			dl_list_for_each_safe(item, tmp, head,
+					struct pv_log_info, next) {
+				if (item->logger_pid == peer_cred.pid) {
+					if (item->islxc)
+						c->platform = strdup(item->name);
+					else
+						c->platform = strdup(walker->name);
+					found = true;
+					break;
+				}
 			}
+			if (found)
+				break;
 			walker = walker->next;
 		}
 	}

@@ -42,6 +42,8 @@
 #include "pantavisor.h"
 #include "version.h"
 #include "init.h"
+#include "utils/list.h"
+#include <stdbool.h>
 
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
@@ -138,16 +140,45 @@ static void signal_handler(int signal)
 {
 	pid_t pid = 0;
 	int wstatus;
+	struct pantavisor *pv = get_pv_instance();
 
 	if (signal != SIGCHLD)
 		return;
 
 	while (	(pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED)) > 0) {
+		struct pv_platform *p = NULL;
+		struct pv_log_info *item, *tmp;
+		struct dl_list *head;
+		bool found = false;
+
 		if (waiting_on_reaper.child_pid > 0 
 				&&
 				waiting_on_reaper.child_pid == pid) {
 			waiting_on_reaper.status = wstatus;
 			pthread_cond_signal(&waiting_on_reaper.cond);
+		}
+		/*
+		 * See if the pid is one of the loggers
+		 * */
+		if (pv) {
+			p = pv->state->platforms;
+		}
+		while (p) {
+			head = &p->logger_list;
+			dl_list_for_each_safe(item, tmp, head,
+					struct pv_log_info, next) {
+				if (item->logger_pid == pid) {
+					dl_list_del(&item->next);
+					if (item->on_logger_closed) {
+						item->on_logger_closed(item);
+					}
+					free(item);
+					found = true;
+				}
+			}
+			if (found)
+				break;
+			p = p->next;
 		}
 	}
 

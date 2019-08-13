@@ -1,4 +1,5 @@
 #ifndef __PV_LOGGER_H_
 #define __PV_LOGGER_H_
-int start_pvlogger(const char * filename, const char *platform);
+#include "pantavisor.h"
+int start_pvlogger(struct pv_log_info *log_info, const char *platform);
 #endif  /*__PV_LOGGER_H_*/
