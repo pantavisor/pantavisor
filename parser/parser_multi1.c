@@ -333,7 +333,7 @@ struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char
 
 	count = json_get_key_count(buf, "pantavisor.json", tokv, tokc);
 	if (!count || (count > 1)) {
-		pv_log(WARN, "Invalid pantavisor.json count in state");
+		pv_log(WARN, "Invalid pantavisor.json count in state (%d)", count);
 		goto out;
 	}
 
