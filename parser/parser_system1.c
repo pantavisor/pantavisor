@@ -78,8 +78,10 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 		v->type = VOL_LOOPIMG;
 	}
 
-	if (!s->kernel || !s->initrd)
+	if (!s->kernel || !s->initrd) {
+		pv_log(ERROR, "kernel or initrd not configured in bsp/run.json. Cannot continue.", strlen(buf), buf);
 		goto out;
+	}
 
 	// get addons and create empty items
 	key = jsmnutil_get_object_keys(buf, tokv);
