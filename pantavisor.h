@@ -26,6 +26,7 @@
 #include <trail.h>
 #include "config.h"
 #include <netinet/in.h>
+#include "utils/list.h"
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
@@ -78,6 +79,7 @@ struct pv_platform {
 	bool running;
 	bool done;
 	struct pv_platform *next;
+	struct dl_list logger_list;
 	pid_t pid_logger;
 };
 
@@ -138,6 +140,16 @@ struct pv_connection {
 	time_t since;
 };
 
+struct pv_log_info {
+	const char *logfile;
+	char *name;
+	struct dl_list next;
+	void (*on_logger_closed)(struct pv_log_info*);
+	off_t truncate_size;
+	bool islxc;
+	pid_t logger_pid;
+};
+
 struct pantavisor {
 	int last;
 	char *step;
@@ -150,6 +162,7 @@ struct pantavisor {
 	int online;
 	int ctrl_fd;
 	unsigned long flags;
+	bool signal_caught; /*For code too big for handlers*/
 	struct pv_connection *conn;
 };
 
@@ -170,4 +183,6 @@ struct pv_state* pv_get_current_state(struct pantavisor *pv);
 void pv_state_free(struct pv_state *s);
 int pv_start_platforms(struct pantavisor *pv);
 int pantavisor_init(bool do_fork);
+struct pantavisor* get_pv_instance();
+struct pv_log_info* pv_new_log(bool islxc, const void *config_unused, const char *name);
 #endif

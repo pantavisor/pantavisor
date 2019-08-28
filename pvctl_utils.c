@@ -66,6 +66,8 @@ try_again:
 	ret = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
 	if (ret < 0) {
 		close(fd);
+		printf("Connect failed for %s, pid = %d, errno = %d\n",
+				path, getpid(), errno);
 		goto try_again;
 	}
 	return fd;

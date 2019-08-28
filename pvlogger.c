@@ -54,18 +54,24 @@ static const char *module_name = MODULE_NAME;
 #include <sys/inotify.h>
 #include "pvctl_utils.h"
 #include "pvlogger.h"
+#include "pantavisor.h"
+
+static char logger_cmd [4096];
+static struct log default_log;
+static int logger_pos = 0;
+struct pv_log_info *pv_log_info = NULL;
+
 
 #define pv_log(level, msg, args...)\
 ({\
  	char buffer[128];\
 	buffer[0] = CMD_LOG;\
 	snprintf(&buffer[1], sizeof(buffer) - 1, "[%s]" msg, module_name, ##args);\
-	pvctl_write(buffer, strlen(buffer));\
+	if (!pv_log_info->islxc)\
+		pvctl_write(buffer, strlen(buffer));\
+	else\
+		pvctl_write_to_path("/pv/pv-ctrl", buffer, strlen(buffer));\
  })
-
-static char logger_cmd [4096];
-static struct log default_log;
-static int logger_pos = 0;
 
 static int pvlogger_flush(struct log *log, char *buf, int buflen)
 {
@@ -81,7 +87,10 @@ try_again:
 		avail_buflen = sizeof(logger_cmd) - logger_pos - 1;
 
 		if (!avail_buflen) {
-			pvctl_write(logger_cmd, sizeof(logger_cmd));
+			if (pv_log_info->islxc)
+				pvctl_write_to_path("/pv/pv-ctrl", logger_cmd, sizeof(logger_cmd));
+			else
+				pvctl_write(logger_cmd, sizeof(logger_cmd));
 			logger_pos = 0;
 			goto try_again;
 		}
@@ -111,7 +120,10 @@ write_again:
 
 		if (new_line_at) {
 			ssize_t to_write = new_line_at - __logger_cmd + 1;
-			pvctl_write(logger_cmd, to_write + 1);
+			if (pv_log_info->islxc)
+				pvctl_write_to_path("/pv/pv-ctrl", logger_cmd, to_write + 1);
+			else
+				pvctl_write(logger_cmd, to_write + 1);
 			if (logger_pos - to_write >= 0) {
 				memmove(__logger_cmd, new_line_at + 1, logger_pos - to_write);
 				logger_pos -= to_write;
@@ -248,7 +260,7 @@ out:
 	return ret;
 }
 
-int start_pvlogger(const char *logfile, const char *platform)
+int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 {
 	int ret = -1;
 	struct timeval tv = {
@@ -256,10 +268,15 @@ int start_pvlogger(const char *logfile, const char *platform)
 		.tv_usec = 0
 	};
 	char pr_name[16] = {0};
+	const char *logfile = NULL;
+	pv_log_info = log_info;
 	module_name = strdup(platform);
 	snprintf(pr_name, sizeof(pr_name), "pvlogger-%s", module_name);
 	prctl(PR_SET_NAME, (unsigned long)pr_name,0,0,0);
 
+	if (!pv_log_info) /*We can't even try and log cuz it maybe for lxc.*/
+		return 0;
+	logfile = pv_log_info->logfile;
 init_again:
 	tv.tv_sec = 2;
 	tv.tv_usec = 0;

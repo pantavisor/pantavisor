@@ -49,8 +49,17 @@
 #include "parser/parser.h"
 
 #include "pantavisor.h"
+#include "utils/list.h"
+#include <lxc/lxccontainer.h>
+#include <lxc/pv_export.h>
 
 pid_t pv_pid;
+static struct pantavisor* global_pv;
+
+struct pantavisor* get_pv_instance()
+{
+	return global_pv;
+}
 
 void pv_destroy(struct pantavisor *pv)
 {
@@ -433,8 +442,6 @@ struct pv_state* pv_get_current_state(struct pantavisor *pv)
 	}
 
 	return pv_get_state(pv, step_rev);
-
-	return NULL;
 }
 
 static void _pv_init()
@@ -446,6 +453,8 @@ static void _pv_init()
 
         prctl(PR_SET_NAME, "pantavisor");
 	pv = calloc(1, sizeof(struct pantavisor));
+	if (pv)
+		global_pv = pv;
 
 	struct rlimit core_limit;
 	core_limit.rlim_cur = RLIM_INFINITY;
@@ -481,4 +490,32 @@ int pantavisor_init(bool do_fork)
 
 out:
 	return pid;
+}
+
+struct pv_log_info* pv_new_log(bool islxc,const void *config_unused,
+					const char *name)
+{
+	struct pv_log_info *log_info = NULL;
+	const char *const logger_name_plat= "pvlogger";
+	const char *const logger_name_lxc = "pvlogger-lxc";
+	const char *logger_name = NULL;
+
+	log_info = (struct pv_log_info*) calloc(1, sizeof(*log_info));
+
+	if (!log_info)
+		goto out;
+	log_info->islxc = islxc;
+
+	if (name)
+		logger_name = name;
+	else if (islxc)
+		logger_name = logger_name_lxc;
+	else
+		logger_name = logger_name_plat;
+
+	log_info->name = strdup(logger_name);
+	dl_list_init(&log_info->next);
+	return log_info;
+out:
+	return NULL;
 }

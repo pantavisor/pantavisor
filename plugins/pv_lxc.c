@@ -25,68 +25,101 @@
 #include <libgen.h>
 #include <unistd.h>
 #include <fcntl.h>
-
 #include <sys/utsname.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
+#include <signal.h>
 #include <lxc/lxccontainer.h>
 #include <lxc/pv_export.h>
-
+#include <limits.h>
+#include <unistd.h>
 #include "utils.h"
-
 #include "pv_lxc.h"
+#include "utils/list.h"
+#include <stdbool.h>
+#include <limits.h>
+#define LXC_LOG_DEFAULT_PREFIX	"/storage/logs/"
+#define free_member(ptr, member)\
+({\
+	if (ptr->member)\
+		free((void*)ptr->member);\
+})
 
 static struct lxc_log pv_lxc_log = {
 	.level = "DEBUG",
 	.prefix = "init",
 	.quiet = false
 };
+ 
+struct pv_log_info* (*__pv_new_log)(bool,const void*, const char*) = NULL;
 
-void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
+void pv_set_new_log_fn( void *fn_pv_new_log)
 {
-	int fd, err;
-	struct lxc_container *c;
-	char *dname;
+	__pv_new_log = fn_pv_new_log;
+}
+
+static void pv_free_lxc_log(struct pv_log_info *pv_log_i)
+{
+	free_member(pv_log_i, name);
+	free_member(pv_log_i, logfile);
+}
+
+static void pv_setup_lxc_log(struct pv_log_info *pv_log_i,
+				const char *plat_name, struct lxc_container *c)
+{
+	char   logfile[PATH_MAX] = {0};
+	const char *key = "lxc.log.file";
+
+	c->get_config_item(c, key, logfile, PATH_MAX);
+	if (!strlen(logfile)) {
+		snprintf(logfile, sizeof(logfile), 
+				LXC_LOG_DEFAULT_PREFIX"%s/%s.log",
+				plat_name,plat_name);
+	}
+	pv_log_i->logfile = strdup(logfile);
+	/*
+	 * This is the default truncate size.
+	 * Caller can change this before logging starts.
+	 * */
+	pv_log_i->truncate_size = (2 * 1024 * 1024);
+	pv_log_i->on_logger_closed = pv_free_lxc_log;
+}
+
+static void pv_setup_lxc_container(struct lxc_container *c,
+					unsigned int share_ns)
+{
+	int fd, ret;
 	struct utsname uts;
 	struct stat st;
-
-	// Go to LXC config dir for platform
-	dname = strdup(conf_file);
-	dname = dirname(dname);
-	chdir(dname);
-	free(dname);
-
-	// Make sure lxc state dir is there
-	mkdir_p("/usr/var/lib/lxc", 0644);
-
-	c = lxc_container_new(p->name, NULL);
-	if (!c) {
-		return NULL;
-	}
-	c->clear_config(c);
-	if (!c->load_config(c, conf_file)) {
-		lxc_container_put(c);
-		return NULL;
-	}
-
-	pv_lxc_log.name = p->name;
-	pv_lxc_log.lxcpath = p->name;
-
-	truncate(pv_lxc_log.file, 0);
-	lxc_log_init(&pv_lxc_log);
-
-	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) | (1 << LXC_NS_IPC);
+	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
+	char entry[1024];
 	c->set_inherit_namespaces(c, 1, share_ns);
-
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
-
+	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
+						" none bind,ro,create=dir 0 0");
+	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
+						" none bind,ro,create=dir 0 0");
+	if (stat("/lib/firmware", &st) == 0)
+		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
+					" lib/firmware none bind,ro,create=dir"
+					" 0 0");
+	ret = uname(&uts);
+	// FIXME: Implement modules volume and use that instead
+	if (!ret) {
+		if (stat("/volumes/modules.squashfs", &st) == 0) {
+			sprintf(entry, "/volumes/modules.squashfs "
+					"lib/modules/%s "
+					"none bind,ro,create=dir 0 0",
+					uts.release
+				);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+		}
+	}
 	// Strip consoles from kernel cmdline
-	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
 	mktemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd) {
+	if (fd > 0) {
 		char *buf = calloc(1024, 1);
 		char *new = calloc(1024, 1);
 		read(fd, buf, 1024);
@@ -102,41 +135,186 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		}
 		close(fd);
 		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC, 0644);
-		write(fd, new, strlen(new));
+		if (fd > 0)
+			write(fd, new, strlen(new));
 		close(fd);
 		free(new);
 		free(buf);
 	}
-	char entry[1024];
-
-	if (p->exec)
-		c->set_config_item(c, "lxc.init.cmd", p->exec);
-	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor none bind,ro,create=dir 0 0");
-	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs none bind,ro,create=dir 0 0");
-
-	int ret = uname(&uts);
-	// FIXME: Implement modules volume and use that instead
-	if (!ret) {
-		if (stat("/volumes/modules.squashfs", &st) == 0) {
-			sprintf(entry, "/volumes/modules.squashfs lib/modules/%s none bind,ro,create=dir 0 0", uts.release);
-			c->set_config_item(c, "lxc.mount.entry", entry);
-		}
-	}
-	if (stat("/lib/firmware", &st) == 0)
-		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware lib/firmware none bind,ro,create=dir 0 0");
-
 	// override container=lxc environment of pid 1
 	c->set_container_type(c, "pv-platform");
+}
 
-	err = c->start(c, 0, NULL) ? 0 : 1;
+/*
+ * Use only after loading config.
+ * Use threshold as 0 to always truncate.
+ * */
+static void pv_truncate_lxc_log(struct lxc_container *c,
+				const char *platform_name, off_t threshold) {
+	char *logfile_name = NULL;
+	const char *key = "lxc.log.file";
 
-	if (err && (c->error_num != 1)) {
-		lxc_container_put(c);
-		c = NULL;
+	logfile_name = (char*)calloc(1, PATH_MAX);
+	if (!logfile_name)
+		return;
+
+	c->get_config_item(c, key, logfile_name, PATH_MAX); 
+	if (!strlen(logfile_name)) {
+		/*
+		 * /storage/logs is hardcoded in pv_lxc_log->lxcpath
+		 * and used when lxc.log.file isn't set in lxc.conf of
+		 * the container.
+		 * */
+		snprintf(logfile_name, PATH_MAX,
+				LXC_LOG_DEFAULT_PREFIX"/%s/%s.log",
+				platform_name, platform_name);
 	}
 
-	*((pid_t *) data) = c->init_pid(c);
+	if (!threshold)
+		truncate(logfile_name, 0);
+	else {
+		struct stat st;
+		if (!stat(logfile_name, &st)) {
+			if (st.st_size >= threshold)
+				truncate(logfile_name, 0);
+		}
+	}
+	free(logfile_name);
+}
 
+void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
+{
+	int err;
+	struct lxc_container *c;
+	char *dname;
+	int pipefd[2];
+	struct pv_log_info *pv_log_i = NULL;
+	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) 
+					| (1 << LXC_NS_IPC);
+	const char *__pv_config_data_for_log = NULL;
+	pid_t child_pid = -1;
+	// Go to LXC config dir for platform
+	dname = strdup(conf_file);
+	dname = dirname(dname);
+	chdir(dname);
+	free(dname);
+	// Make sure lxc state dir is there
+	mkdir_p("/usr/var/lib/lxc", 0644);
+
+	c = lxc_container_new(p->name, NULL);
+	if (!c) {
+		goto out_no_container;
+	}
+	c->clear_config(c);
+	/*
+	 * For returning back the
+	 * container_pid to pv parent
+	 * process.
+	 * */
+	if (pipe(pipefd)) {
+		lxc_container_put(c);
+		c = NULL;
+		goto out_no_container;
+	}
+
+	child_pid = fork();
+
+	if (child_pid < 0) {
+		lxc_container_put(c);
+		close(pipefd[0]);
+		close(pipefd[1]);
+		c = NULL;
+		goto out_no_container;
+	}
+	else if (child_pid){ /*Parent*/
+		pid_t container_pid = -1;
+		close(pipefd[1]); /*Parent would read*/
+		while (read(pipefd[0], &container_pid, 
+				sizeof(container_pid)) < 0 && errno == EINTR)
+			;
+
+		if (container_pid <= 0) {
+			lxc_container_put(c);
+			c = NULL;
+			goto out_no_container;
+		}
+		*((pid_t *) data) = container_pid;
+		close(pipefd[0]);
+	}
+	else { /* Child process */
+		close(pipefd[0]);
+		*( (pid_t*) data) = -1;
+		pv_lxc_log.name = p->name;
+		pv_lxc_log.lxcpath = LXC_LOG_DEFAULT_PREFIX;
+		lxc_log_init(&pv_lxc_log);
+		c = lxc_container_new(p->name, NULL);
+
+		if (!c) {
+			goto out_container_init;
+		}
+		c->clear_config(c);
+		/*
+		 * Load config later which allows us to
+		 * override the log file configured by default.
+		 * */
+		if (!c->load_config(c, conf_file)) {
+			lxc_container_put(c);
+			*((pid_t *) data) = -1;
+			goto out_container_init;
+		}
+		/*
+		 * Truncate the logs for now.
+		 * platform will have information on when
+		 * to truncate the logs.
+		 * */
+		pv_truncate_lxc_log(c, p->name, 0);
+		pv_setup_lxc_container(c, share_ns);
+		if (p->exec)
+			c->set_config_item(c, "lxc.init.cmd", p->exec);
+		err = c->start(c, 0, NULL) ? 0 : 1;
+
+		if (err && (c->error_num != 1)) {
+			lxc_container_put(c);
+			c = NULL;
+		}
+
+		if (c)
+			*((pid_t *) data) = c->init_pid(c);
+out_container_init:
+		while (write(pipefd[1], data, sizeof(pid_t)) < 0
+				&& errno == EINTR)
+			;
+		_exit(0);
+	}
+	/*
+	 * Parent loads the config after container is setup.
+	 * This is just required to stop container and get
+	 * any config items required in the parent.
+	 * */
+	if (!c->load_config(c, conf_file)) {
+		pid_t *container_pid = (pid_t*)data;
+		lxc_container_put(c);
+		if (*container_pid > 0) {
+			kill(*container_pid, SIGKILL);
+		}
+		c = NULL;
+		goto out_no_container;
+	}
+	pv_setup_lxc_container(c, share_ns); /*Do we need this?*/
+	if (__pv_new_log) {
+		char logger_name[32] = {0};
+		snprintf(logger_name, sizeof(logger_name), "%s-lxc", p->name);
+		pv_log_i = __pv_new_log(true, __pv_config_data_for_log, logger_name);
+	}
+	if (pv_log_i) {
+		pv_setup_lxc_log(pv_log_i, p->name, c);
+		/*
+		 * Change pv_log_i->truncate_size here
+		 * if required.
+		 * */
+		dl_list_add(&p->logger_list, &pv_log_i->next);
+	}
+out_no_container:
 	return (void *) c;
 }
 

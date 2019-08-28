@@ -46,6 +46,7 @@ int setns(int nsfd, int nstype);
 
 #include "platforms.h"
 #include "pvlogger.h"
+#include "utils/list.h"
 
 struct pv_cont_ctrl {
 	char *type;
@@ -81,6 +82,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 
 	this->name = strdup(name);
 	this->done = false;
+	dl_list_init(&this->logger_list);
 
 	return this;
 }
@@ -246,6 +248,12 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	if (c->start == NULL || c->stop == NULL)
 		return 0;
 
+	void (*__pv_new_log)(void*) = dlsym(lib, "pv_set_new_log_fn");
+	if (__pv_new_log)
+		__pv_new_log(pv_new_log);
+	else
+		pv_log(ERROR, "Couldn't locate symbol pv_set_new_log_fn\n");
+
 	return 1;
 }
 
@@ -263,14 +271,18 @@ int pv_platforms_init_ctrl(struct pantavisor *pv)
 	return loaded;
 }
 
-static int start_pvlogger_for_platform(struct pv_platform *platform)
+static int __start_pvlogger_for_platform(struct pv_platform *platform,
+					 struct pv_log_info *log_info)
 {
 	/*
 	 * fork, and set the mount namespace for
 	 * pv_logger.
 	 * */
-	platform->pid_logger = -1;
 	int container_pid = platform->init_pid;
+
+	if (!log_info)
+		return -1;
+
 	pid_t pid = fork();
 	if (pid < 0) {
 		return -1;
@@ -278,22 +290,99 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	if (!pid) {
 		char namespace [64];
 		int ns_fd = -1;
-		snprintf(namespace,sizeof(namespace), "/proc/%d/ns/mnt", container_pid);
-		pv_log(DEBUG, "Opening file %s\n",namespace);
-		ns_fd = open(namespace, 0);
-		if (ns_fd < 0) {
-			pv_log(ERROR, "Unable to open namespace file\n");
-			_exit(-1);
+		/*
+		 * lxc_logger will not move
+		 * into mount namespace of platform.
+		 * */
+		if (!log_info->islxc) {
+			snprintf(namespace,sizeof(namespace), "/proc/%d/ns/mnt",
+					container_pid);
+			pv_log(DEBUG, "Opening file %s\n",namespace);
+			ns_fd = open(namespace, 0);
+			if (ns_fd < 0) {
+				pv_log(ERROR, "Unable to open namespace file\n");
+				_exit(-1);
+			}
+			if (setns(ns_fd, 0)) {
+				perror("Unable to set Mount namespace\n");
+				_exit(-1);
+			}
 		}
-		if (setns(ns_fd, 0)) {
-			perror("Unable to set Mount namespace\n");
-			_exit(-1);
-		}
-		start_pvlogger(NULL, platform->name);
+		start_pvlogger(log_info, (log_info->islxc ? log_info->name 
+				 		: platform->name)
+				);
 		_exit(0);
 	}
-	platform->pid_logger = pid;
+	log_info->logger_pid = pid;
 	return pid;
+}
+
+static void pv_free_platform_log(struct pv_log_info *info)
+{
+	/*
+	 * Free any resources taken up by info,
+	 * specially logfile
+	 * */
+	if (info->logfile)
+		free((void*)(info->logfile));
+	if (info->name)
+		free(info->name);
+}
+
+static void pv_setup_platform_log(struct pv_log_info *info,
+				  void *config_data_unused)
+{
+	if (!info)
+		return;
+	/*
+	 * We would read the config data from platform,
+	 * and set this up.
+	 * */
+	info->logfile = NULL; /*Defaults to /var/log/messages in pvlogger*/
+	info->on_logger_closed = pv_free_platform_log;
+}
+
+static int start_pvlogger_for_platform(struct pv_platform *platform)
+{
+	struct pv_log_info *log_info = NULL, *tmp;
+	struct dl_list *head = &platform->logger_list;
+	pid_t logger_pid = -1;
+	/*
+	 * First add all the loggers in the list.
+	 * This will probably in a loop on the platform
+	 * config data.
+	 * */
+	log_info = pv_new_log(false, NULL, platform->name);
+	pv_setup_platform_log(log_info, NULL);
+	dl_list_init(&log_info->next);
+	dl_list_add(&platform->logger_list, &log_info->next);
+
+	/*
+	 * This includes the ones for lxc.
+	 * */
+	dl_list_for_each_safe(log_info, tmp, head,
+				struct pv_log_info, next) {
+		logger_pid =
+			__start_pvlogger_for_platform(platform, log_info);
+		/*
+		 * So this logger didn't succeeded,
+		 * */
+		if (logger_pid < 0) {
+			dl_list_del(&log_info->next);
+			pv_log(WARN, "Logger %s was not started\n",
+				(log_info->name ? log_info->name : "pvlogger")
+				);
+			if (log_info->on_logger_closed) {
+				log_info->on_logger_closed(log_info);
+			}
+			free(log_info);
+		} else {
+			pv_log(INFO, "started pv_logger for platform %s"
+				"(name=%s) with pid = %d \n", platform->name,
+				log_info->name, logger_pid);
+		}
+	}
+	return logger_pid;
 }
 
 // Iterate list of platforms from state
@@ -355,10 +444,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 			return -1;
 
 		if (pv_state_spec(pv->state) != SPEC_MULTI1) {
-			if (start_pvlogger_for_platform(p) > 0) {
-				pv_log(INFO, "started pv_logger for platform %s"
-						" with pid = %d \n", p->name, p->pid_logger);
-			} else {
+			if (start_pvlogger_for_platform(p) < 0) {
 				pv_log(ERROR, "Could not start pv_logger for platform %s\n",p->name);
 			}
 		}
