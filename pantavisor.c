@@ -50,8 +50,6 @@
 
 #include "pantavisor.h"
 #include "utils/list.h"
-#include <lxc/lxccontainer.h>
-#include <lxc/pv_export.h>
 
 pid_t pv_pid;
 static struct pantavisor* global_pv;
