@@ -133,7 +133,7 @@ static int early_mounts()
 static void debug_telnet()
 {
 	tsh_run("ifconfig lo up", 0);
-	tsh_run("telnetd -b 127.0.0.1 -l /bin/ash", 0);
+	tsh_run("telnetd -b 127.0.0.1 -l /bin/sh", 0);
 }
 
 static void signal_handler(int signal)
@@ -216,7 +216,7 @@ static void debug_shell()
 	dprintf(con_fd, "\n");
 
 	if (c[0] == 'd')
-		shell_pid = tsh_run("ash", 0);
+		shell_pid = tsh_run("sh", 0);
 }
 
 #define PV_STANDALONE	(1 << 0)
