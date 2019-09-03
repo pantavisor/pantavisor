@@ -187,7 +187,7 @@ static void signal_handler(int signal)
 static void debug_shell()
 {
 	char c[64] = { 0 };
-	int t = 3;
+	int t = 5;
 	int con_fd;
 
 	con_fd = open("/dev/console", O_RDWR);

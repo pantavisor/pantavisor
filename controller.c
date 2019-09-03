@@ -27,6 +27,8 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <netdb.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #include <sys/reboot.h>
 #include <linux/limits.h>
@@ -53,6 +55,7 @@
 #include "log.h"
 
 #include "storage.h"
+#include "tsh.h"
 
 #define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 #define CMDLINE_OFFSET	7
@@ -154,12 +157,26 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		continue;
 	}
 
-        ret = mount(dev_info.device, c->storage.mntpoint, c->storage.fstype, 0, NULL);
-        if (ret < 0)
-                exit_error(errno, "Could not mount trails storage");
+	if (!c->storage.mnttype) {
+		printf("Mounting direct storage path: %s\n", c->storage.path);
+		ret = mount(dev_info.device, c->storage.mntpoint, c->storage.fstype, 0, NULL);
+	} else {
+		int status;
+		char *mntcmd = calloc(sizeof(char), strlen("/btools/pvmnt.%s %s") + strlen (c->storage.mnttype) + strlen (c->storage.mntpoint) + 1);
+		sprintf(mntcmd, "/btools/pvmnt.%s %s", c->storage.mnttype, c->storage.mntpoint);
+		printf("Mounting through helper: %s\n", mntcmd);
+		ret = tsh_run(mntcmd, 1, &status);
+		free(mntcmd);
+	}
+	if (ret < 0)
+		exit_error(errno, "Could not mount trails storage");
+
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
+
+	printf("Storage mounted at %s\n", c->storage.mntpoint);
+
 	sprintf(pconfig_p, "%s/config/pantahub.config", c->storage.mntpoint);
-        if (ph_config_from_file(pconfig_p, c) < 0) {
+	if (ph_config_from_file(pconfig_p, c) < 0) {
 		printf("FATAL: unable to parse pantahub config");
 		return STATE_EXIT;
 	}
@@ -190,15 +207,16 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv_log(INFO, "                                                 ");
 	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
 	pv_log(INFO, "                                                 ");
-        pv_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
-        pv_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
-        pv_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
-        pv_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
+	pv_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
+	pv_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
+	pv_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
+	pv_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
+	pv_log(DEBUG, "c->storage.mnttype = '%s'\n", c->storage.mnttype ? c->storage.mnttype : "");
 	pv_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
-        pv_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
-        pv_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
-        pv_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
-        pv_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
+	pv_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
+	pv_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
+	pv_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
+	pv_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
 
 	// create hints
 	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
@@ -307,6 +325,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
 	int ret;
+	struct timespec tp;
 
 	if (!pv->state)
 		return STATE_ERROR;
@@ -325,6 +344,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(INFO, "started %d platforms", ret);
 
 	rb_count = 0;
+
+	// set initial wait delay
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	wait_delay = tp.tv_sec + pv->config->updater.interval;
 
 	return STATE_WAIT;
 }
@@ -359,6 +382,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 		pv_ph_update_hint_file(pv, c);
 	} else {
 		pv_log(INFO, "device has been claimed, proceeding normally");
+		printf("INFO: pantavisor device has been claimed, proceeding normally\n");
 		sprintf(config_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
 		ph_config_to_file(pv->config, config_path);
 		pv_ph_release_client(pv);
@@ -406,6 +430,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			 (rb_count > timeout_max)) {
 			return STATE_ROLLBACK;
 		}
+		clock_gettime(CLOCK_MONOTONIC, &tp);
+		wait_delay = tp.tv_sec + pv->config->updater.interval;
 		return STATE_WAIT;
 	}
 
@@ -625,7 +651,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-	
+
 	if (!pv->update)
 		goto out;
 

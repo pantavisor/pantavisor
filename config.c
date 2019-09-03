@@ -251,6 +251,7 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.fstype = _config_get_value("storage.fstype");
 	config->storage.opts = _config_get_value("storage.opts");
 	config->storage.mntpoint = _config_get_value("storage.mntpoint");
+	config->storage.mnttype = _config_get_value("storage.mnttype");
 
 	item = _config_get_value("wdt.enabled");
 	config->wdt.enabled = item ? 1 : 0;
