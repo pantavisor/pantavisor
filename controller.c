@@ -46,6 +46,7 @@
 #include "version.h"
 #include "wdt.h"
 #include "network.h"
+#include "blkid.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -117,9 +118,11 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	char pconfig_p[256];
 	struct pantavisor_config *c;
 	struct stat st;
+	struct blkid_info dev_info;
 
 	// Initialize flags
 	pv->flags = 0;
+	blkid_init(&dev_info);
 
 	c = calloc(1, sizeof(struct pantavisor_config));
 	pv->config = c;
@@ -131,21 +134,30 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0644);
-
+	
+	/*
+	 * storage.path will contain UUID=XXXX or LABEL=XXXX
+	 * */
+	get_blkid(&dev_info, c->storage.path);
+	if (!dev_info.device)
+                exit_error(errno, "Could not mount trails storage. No device found.");
+	/*
+	 * Should we need this?
+	 * */
 	// Check that storage device has been enumerated and wait if not there yet
 	// (RPi2 for example is too slow to pvan the MMC devices in time)
 	for (int wait = 5; wait > 0; wait--) {
-		if (stat(c->storage.path, &st) == 0)
+		if (stat(dev_info.device, &st) == 0)
 			break;
 		printf("INFO: trail storage not yet available, waiting...");
 		sleep(1);
 		continue;
 	}
 
-        ret = mount(c->storage.path, c->storage.mntpoint, c->storage.fstype, 0, NULL);
+        ret = mount(dev_info.device, c->storage.mntpoint, dev_info.fstype, 0, NULL);
         if (ret < 0)
                 exit_error(errno, "Could not mount trails storage");
-
+	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
 	sprintf(pconfig_p, "%s/config/pantahub.config", c->storage.mntpoint);
         if (ph_config_from_file(pconfig_p, c) < 0) {
 		printf("FATAL: unable to parse pantahub config");
@@ -155,7 +167,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	// Make pantavisor control area
 	if (stat("/pv", &st) != 0)
 		mkdir_p("/pv", 0400);
-
 
 	if (stat(c->logdir, &st) != 0)
 		mkdir_p(c->logdir, 0400);

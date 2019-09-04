@@ -58,7 +58,8 @@ LOCAL_SRC_FILES := init.c \
 		   wdt.c \
 		   network.c \
 		   pvlogger.c \
-		   pvctl_utils.c
+		   pvctl_utils.c \
+		   blkid.c
 
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
