@@ -32,6 +32,10 @@ $(PV_VERSION_C): .FORCE
 LOCAL_PREREQUISITES += \
 	$(PV_VERSION_H)
 
+ifneq ($(PANTAVISOR_DEBUG),"")
+LOCAL_CFLAGS += -DPANTAVISOR_DEBUG
+endif
+
 LOCAL_SRC_FILES := init.c \
 		   tsh.c \
 	           loop.c \
@@ -64,3 +68,4 @@ LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
 
 include $(BUILD_EXECUTABLE)
+
