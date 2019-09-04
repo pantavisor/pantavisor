@@ -163,6 +163,7 @@ static int load_key_value_file(char *path)
 {
 	char buff[1024];
 	FILE *fp;
+	char *__real_key = NULL;
 
 	fp = fopen(path, "r");
 	if (!fp) {
@@ -173,12 +174,16 @@ static int load_key_value_file(char *path)
 	while (fgets(buff, sizeof(buff), fp)) {
 		// Remove newline from value (hacky)
 		buff[strlen(buff)-1] = '\0';
-
-		char *key = strtok(buff, "=");
-		char *value = strtok(NULL, "=");
-
-		if (key)
-			_config_add_item(key, value);
+		char *key = strstr(buff, "=");
+		if (key) {
+			char *value = key + 1;
+			__real_key = (char*) calloc(1, key - buff + 1);
+			if (__real_key) {
+				sprintf(__real_key, "%.*s", key - buff, buff);
+				_config_add_item(__real_key, value);
+				free(__real_key);
+			}
+		}
 	}
 	fclose(fp);
 
