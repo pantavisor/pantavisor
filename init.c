@@ -130,11 +130,18 @@ static int early_mounts()
 	return 0;
 }
 
+#ifdef PANTAVISOR_DEBUG
 static void debug_telnet()
 {
 	tsh_run("ifconfig lo up", 0);
 	tsh_run("telnetd -b 127.0.0.1 -l /bin/sh", 0);
 }
+#else
+static void debug_telnet()
+{
+	printf("Pantavisor debug telnet disabled in production builds.\n");
+}
+#endif
 
 static void signal_handler(int signal)
 {
@@ -193,6 +200,7 @@ static void signal_handler(int signal)
 	}
 }
 
+#ifdef PANTAVISOR_DEBUG
 static void debug_shell()
 {
 	char c[64] = { 0 };
@@ -218,6 +226,13 @@ static void debug_shell()
 	if (c[0] == 'd')
 		shell_pid = tsh_run("sh", 0);
 }
+#else
+static void debug_shell()
+{
+	printf("Pantavisor debug shell disabled in production builds\n");
+}
+
+#endif
 
 #define PV_STANDALONE	(1 << 0)
 #define	PV_DEBUG	(1 << 1)
