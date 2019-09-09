@@ -490,29 +490,64 @@ out:
 	return pid;
 }
 
-struct pv_log_info* pv_new_log(bool islxc,const void *config_unused,
-					const char *name)
+struct pv_log_info* pv_new_log(bool islxc,
+				struct pv_logger_config *logger_config,
+				const char *name)
 {
 	struct pv_log_info *log_info = NULL;
 	const char *const logger_name_plat= "pvlogger";
 	const char *const logger_name_lxc = "pvlogger-lxc";
 	const char *logger_name = NULL;
+	const char *trunc_val = NULL;
 
+	if (!logger_config)
+		goto out;
+
+	if (islxc) {
+		const char *enabled = NULL;
+		/*
+		 * Check lxc or console item in config.
+		 * */
+		enabled = pv_get_log_config_item(logger_config, "lxc");
+		if (!enabled)
+			enabled = pv_get_log_config_item(logger_config,
+								"console");
+		if (!enabled)
+			goto out;
+		else if (strncmp(enabled, "enable", strlen("enable")))
+			goto out;
+	}
 	log_info = (struct pv_log_info*) calloc(1, sizeof(*log_info));
 
 	if (!log_info)
 		goto out;
+
+	logger_name = pv_get_log_config_item(logger_config, "name");
 	log_info->islxc = islxc;
 
-	if (name)
-		logger_name = name;
-	else if (islxc)
-		logger_name = logger_name_lxc;
-	else
-		logger_name = logger_name_plat;
-
+	if (!logger_name) {
+		if (name)
+			logger_name = name;
+		else if (islxc)
+			logger_name = logger_name_lxc;
+		else
+			logger_name = logger_name_plat;
+	}
 	log_info->name = strdup(logger_name);
+	trunc_val = pv_get_log_config_item(logger_config, "truncate");
+	if (trunc_val) {
+		if (!strncmp(trunc_val, "true", strlen("true"))) {
+			trunc_val = pv_get_log_config_item(logger_config, "maxsize");
+			if (trunc_val)
+				sscanf(trunc_val,"%lld",&log_info->truncate_size);
+		}
+	}
 	dl_list_init(&log_info->next);
+	/*
+	 * Used from the pv_lxc plugin
+	 * */
+	log_info->pv_get_log_config_item =
+				pv_get_log_config_item;
 	return log_info;
 out:
 	return NULL;

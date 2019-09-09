@@ -40,6 +40,7 @@
 #include "pantavisor.h"
 #include "device.h"
 #include "parser.h"
+#include "parser_bundle.h"
 
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
@@ -125,6 +126,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 	if (!buf)
 		return 1;
 
+	pv_log(DEBUG, "calling %s buf =%s\n", __func__, buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
@@ -178,114 +180,397 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 	return 1;
 }
 
+static int do_json_key_action_object(struct json_key_action *jka)
+{
+	int  ret = 0;
+
+	pv_log(DEBUG, "calling %s \n", __func__);
+	ret = jsmnutil_parse_json(jka->buf, &jka->tokv, &jka->tokc);
+	if (ret <= 0) {
+		ret = -1;
+		goto free_tokens;
+	}
+	if (jka->action)
+		ret = jka->action(jka, NULL);
+free_tokens:
+	if (jka->tokv)
+		free(jka->tokv);
+	return ret;
+}
+
+static void do_json_key_action_save(struct json_key_action *jka, char *value)
+{
+	pv_log(DEBUG, "calling %s, value = %s\n", __func__, value);
+	if (jka->opaque) {
+		*jka->opaque = strdup(value);
+	}
+}
+
+/*
+ * For arrays, the callback provided will be called
+ * for all tokens found in array. Caller can define
+ * the json structure to operate on in a similar way
+ * and may use start_json_parsing_with_action again,
+ * provided the array is a object. Otherwise caller needs
+ * to handle the keys passed using the jsmnutil_* functions.
+ * */
+static int do_json_key_action_array(struct json_key_action *jka)
+{
+	int i = 0, arr_count = 0, ret = 0;
+	jsmntok_t **arr = NULL, **arr_i = NULL;
+	jsmntok_t *array_token = jka->tokv + 1;
+
+	arr_count = array_token->size;
+
+	arr_i = arr = jsmnutil_get_array_toks(jka->buf, array_token);
+	pv_log(DEBUG, "calling %s arr_count = %d\n", __func__,
+			arr_count);
+
+	for ( i = 0; i < arr_count && !ret; i++, arr_i++) {
+		jsmntok_t *prev_tok = jka->tokv;
+		if (jka->action) {
+			jka->tokv = *arr_i;/*This is the usable token*/
+			/*
+			 * Actions for arrays must be provided.
+			 * The value is always NULL but action gets
+			 * the next token which can be parsed by it.
+			 * */
+			ret = jka->action(jka, NULL);
+		}
+		jka->tokv = prev_tok;
+	}
+	if (arr)
+		jsmnutil_tokv_free(arr);
+	return ret;
+}
+
+
+static int do_one_jka_action(struct json_key_action *jka)
+{
+	char *value = NULL;
+	jsmntok_t* val_token = NULL;
+	int ret = 0;
+	int length = 0;
+	char *buf = jka->buf;
+
+	switch(jka->type) {
+		case JSMN_STRING:
+			val_token = jka->tokv + 1;
+			value = json_get_one_str(buf, &val_token);
+			if (jka->save)
+				do_json_key_action_save(jka, value);
+
+			if (jka->action)
+				ret = jka->action(jka, value);
+			free(value);
+			break;
+
+		case JSMN_ARRAY:
+			ret = do_json_key_action_array(jka);
+			break;
+
+		case JSMN_OBJECT:
+			//create a new buffer.
+			length = (jka->tokv + 1)->end - (jka->tokv + 1)->start;
+			value = (char*) calloc(1, sizeof(char) * (length + 1));
+			if (value) {
+				char *orig_buf = NULL;
+				snprintf(value, length + 1, "%s",
+						buf + (jka->tokv + 1)->start);
+				orig_buf = jka->buf;
+				jka->buf = value;
+				ret = do_json_key_action_object(jka);
+				free(value);
+				jka->buf = orig_buf;
+			}
+			break;
+		default:
+			break;
+	}
+	return ret;
+}
+
+static int start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
+						jsmntype_t type)
+{
+	jsmntok_t *tokv;
+	int tokc, ret = 0;
+	pv_log(DEBUG, "calling %s \n", __func__);
+
+	if (jka_arr) {
+		jsmntok_t** keys;
+		jsmntok_t** keys_i;
+		struct json_key_action *jka = jka_arr;
+		
+		ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	
+		if ( ret <= 0)
+			goto out;
+		if (type != JSMN_OBJECT) {
+			ret = -1;
+			goto free_tokens;
+		}
+
+		keys = jsmnutil_get_object_keys(buf, tokv);
+		keys_i = keys;
+		ret = 0;
+		while ( !ret && jka->key ) {
+			bool found = false;
+			int length = 0;
+			char *key = NULL;
+			
+			keys = keys_i;
+			jka->tokc = tokc;
+			jka->buf = buf;
+
+			while(*keys && !ret && !found) {
+				length = (*keys)->end - (*keys)->start;
+				pv_log(DEBUG, "Keys is %p, *keys = %p\n",
+						keys, *keys);
+				// copy key 
+				key = (char*) calloc(1,
+						sizeof(char) * (length + 1));
+				if (!key) {
+					ret = -1;
+					break;
+				}
+				snprintf(key, length + 1, "%s",
+						buf + (*keys)->start);
+				if (strncmp(jka->key, key,
+							strlen(jka->key)) != 0)
+					goto skip;
+
+				jka->tokv = (*keys); /*tokv is the matched key*/
+				found = true;
+				ret = do_one_jka_action(jka);
+skip:
+				free(key);
+				keys++;
+			}
+			jka->tokv = NULL;
+			jka->buf = NULL;
+			jka++;
+		}
+		if (keys_i)
+			jsmnutil_tokv_free(keys_i);
+	}
+free_tokens:
+	if (tokv)
+		free(tokv);
+out:
+	return ret;
+}
+
+static int do_action_for_name(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = 
+		(struct platform_bundle*) jka->opaque;
+
+	pv_log(DEBUG, "calling %s value is %s\n", __func__,
+			(value ? value : "null"));
+	if (!value)
+		goto fail;
+
+	*bundle->platform = pv_platform_add(bundle->s, value);
+
+	if (! (*bundle->platform))
+		goto fail;
+	return 0;
+fail:
+	return -1;
+}
+
+static int do_action_for_type(struct json_key_action *jka,
+					char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+	pv_log(DEBUG, "calling %s value = %s\n", __func__,
+			(value ? value : "null"));
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+	(*bundle->platform)->type = strdup(value);
+	return 0;
+}
+
+static int do_action_for_one_volume(struct json_key_action *jka,
+					char *value)
+{
+	/*
+	 * Opaque will contain the platform
+	 * */
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+	struct pv_volume *v = NULL;
+	bool value_alloced = false;
+	int ret = 0;
+
+	pv_log(DEBUG, "calling %s value = %s \n", __func__,
+			(value ? value : "null"));
+	/*
+	 * for root-volume value will be provided.
+	 * */
+	if (!value && jka->type == JSMN_ARRAY) {
+		value = json_get_one_str(jka->buf, &jka->tokv);
+		value_alloced = true;
+	}
+	
+	if (!value) {
+		ret = -1;
+		goto fail;
+	}
+
+	if (!(*bundle->platform)) {
+		ret = -1;
+		goto fail;
+	}
+	v = pv_volume_add(bundle->s, value);
+	if (!v) {
+		ret = -1;
+		goto fail;
+	}
+	v->plat = *bundle->platform;
+	v->type = VOL_LOOPIMG;
+	pv_log(DEBUG, "Added volume %s to platform %s\n",
+			v->name, (*bundle->platform)->name);
+fail:
+	if (value_alloced && value)
+		free(value);
+	return ret;
+}
+
+static int do_action_for_one_log(struct json_key_action *jka,
+					char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+	struct pv_platform *platform = *bundle->platform;
+	int ret = 0, i;
+	struct pv_logger_config *config = NULL;
+	const int key_count = 
+		jsmnutil_object_key_count(jka->buf, jka->tokv);
+	jsmntok_t **keys = jsmnutil_get_object_keys(jka->buf, jka->tokv);
+	jsmntok_t **keys_i = keys;
+
+	pv_log(DEBUG, "calling %s keys count = %d\n", __func__, key_count);
+	if (!key_count) {
+		ret = 0;
+		goto free_config;
+	}
+
+	config = (struct pv_logger_config*)calloc(1, sizeof(*config));
+	if (!config) {
+		ret = -1;
+		goto free_config;
+	}
+
+	config->pair = (const char ***)calloc(key_count + 1, sizeof(char*));
+	if (!config->pair) {
+		ret = -1;
+		goto free_config;
+	}
+	/*
+	 * Allocate 2D configuration array..
+	 * config->pair[i][0] = key
+	 * config->pair[i][1] = value
+	 * */
+	for ( i = 0; i < key_count + 1; i++) {
+		config->pair[i] = (const char**)calloc(2, sizeof(char*));
+		if (!config->pair[i]) {
+			while (i) {
+				i -= 1;
+				free(config->pair[i]);
+			}
+			free(config->pair);
+			ret = -1;
+			goto free_config;
+		}
+	}
+	/*
+	 * Populate the values
+	 * */
+	i = 0;
+	while (*keys_i && (i < key_count + 1)) {
+		char *value = NULL;
+		char *key = NULL;
+		jsmntok_t *val_tok = *keys_i + 1;
+
+		key = json_get_one_str(jka->buf, keys_i);
+		value = json_get_one_str(jka->buf, &val_tok);
+		
+		pv_log(DEBUG, "Got log value as %s-%s\n", key, value);
+		if (value) {
+			config->pair[i][0] = key;
+			config->pair[i][1] = value;
+			i++;
+		}else if (key) {
+			free(key);
+		}
+		keys_i++;
+	}
+	if (keys)
+		jsmnutil_tokv_free(keys);
+	dl_list_init(&config->item_list);
+	dl_list_add(&platform->logger_configs, &config->item_list);
+	return 0;
+free_config:
+	if (keys)
+		jsmnutil_tokv_free(keys);
+	free(config);
+	return ret;
+}
+
+static int do_action_for_storage(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+	pv_log(DEBUG, "calling %s \n", __func__);
+	/*
+	 * BUG_ON(value)
+	 * */
+	value = jka->buf;
+	if (value)
+		parse_storage(bundle->s, *bundle->platform, value);
+	return 0;
+}
+
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
-	int tokc, ret, size, c;
-	char *name, *tmp = 0;
-	char *config = 0, *shares = 0;
+	char *config = NULL, *shares = NULL;
 	struct pv_platform *this;
-	struct pv_volume *v;
-	jsmntok_t *tokv, *t;
-	jsmntok_t **key, **key_i;
+	int ret = 0;
+	struct platform_bundle bundle = {
+		.s = s,
+		.platform = &this,
+	};
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	name = get_json_key_value(buf, "name", tokv, tokc);
+	struct json_key_action system1_platform_key_action [] = {
+		ADD_JKA_ENTRY("name", JSMN_STRING, &bundle, do_action_for_name, false),
+		ADD_JKA_ENTRY("type", JSMN_STRING, &bundle, do_action_for_type, false),
+		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
+		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
+		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_one_volume, false),
+		ADD_JKA_ENTRY("volumes", JSMN_ARRAY, &bundle, do_action_for_one_volume, false),
+		ADD_JKA_ENTRY("logs", JSMN_ARRAY, &bundle, do_action_for_one_log, false),
+		ADD_JKA_ENTRY("storage", JSMN_OBJECT, &bundle, do_action_for_storage, false),
+		ADD_JKA_NULL_ENTRY()
+	};
 
-	this = pv_platform_add(s, name);
-	if (!this)
+	ret = start_json_parsing_with_action(buf, system1_platform_key_action, JSMN_OBJECT);
+	if (!this || ret)
 		goto out;
-
-	this->type = get_json_key_value(buf, "type", tokv, tokc);
-
-	config = get_json_key_value(buf, "config", tokv, tokc);
-	shares = get_json_key_value(buf, "share", tokv, tokc);
-
-	tmp = get_json_key_value(buf, "root-volume", tokv, tokc);
-	if (!tmp)
-		goto out;
-
-	v = pv_volume_add(s, tmp);
-	v->plat = this;
-	v->type = VOL_LOOPIMG;
-
-	if (tmp) {
-		free(tmp);
-		tmp = 0;
-	}
-
-	key = jsmnutil_get_object_keys(buf, tokv);
-	key_i = key;
-	while (*key_i) {
-		c = (*key_i)->end - (*key_i)->start;
-		if (strncmp("volumes", buf+(*key_i)->start, strlen("volumes"))) {
-			key_i++;
-			continue;
-		}
-
-		// parse array data
-		jsmntok_t *k = (*key_i+2);
-		size = (*key_i+1)->size;
-		while ((tmp = json_array_get_one_str(buf, &size, &k))) {
-			v = pv_volume_add(s, tmp);
-			v->plat = this;
-			v->type = VOL_LOOPIMG;
-			free(tmp);
-		}
-
-		break;
-	}
-	jsmnutil_tokv_free(key);
-
-	tmp = get_json_key_value(buf, "storage", tokv, tokc);
-
-	// parse storage volumes
-	if (!parse_storage(s, this, tmp))
-		goto out;
-
-	// free intermediates
-	if (name) {
-		free(name);
-		name = 0;
-	}
-	if (tokv) {
-		free(tokv);
-		tokv = 0;
-	}
-
-	ret = jsmnutil_parse_json(config, &tokv, &tokc);
-	t = tokv+1;
-	this->configs = calloc(1, 2 * sizeof(char *));
-	this->configs[1] = NULL;
-	this->configs[0] = strdup(config);
-
+	
 	// free intermediates
 	if (config) {
+		this->configs = calloc(1, 2 * sizeof(char *));
+		this->configs[1] = NULL;
+		this->configs[0] = strdup(config);
 		free(config);
 		config = 0;
-	}
-	if (tokv) {
-		free(tokv);
-		tokv = 0;
-	}
-
-	if (tokv) {
-		free(tokv);
-		tokv = 0;
 	}
 
 	this->json = strdup(buf);
 	this->done = true;
-
 out:
-	if (name)
-		free(name);
-	if (tmp)
-		free(tmp);
-	if (tokv)
-		free(tokv);
 	if (config)
 		free(config);
-
 	return 0;
 }
 

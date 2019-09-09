@@ -175,20 +175,28 @@ char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
 	return NULL;
 }
 
-char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok)
+char* json_get_one_str(char *buf, jsmntok_t **tok)
 {
 	int c;
-	char *value;
+	char *value = NULL;
+	c = (*tok)->end - (*tok)->start;
+	value = calloc(1, (c+1) * sizeof(char));
+	if (value)
+		strncpy(value, buf+(*tok)->start, c);
+	return value;
+}
+
+char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok)
+{
+	char *value = NULL;
 
 	if (*n == 0)
 		return NULL;
-
-	c = (*tok)->end - (*tok)->start;
-	value = calloc(1, (c+1) * sizeof(char));
-	strncpy(value, buf+(*tok)->start, c);
-	(*tok)++;
-	(*n)--;
-
+	value = json_get_one_str(buf, tok);
+	if (value) {
+		(*tok)++;
+		(*n)--;
+	}
 	return value;
 }
 

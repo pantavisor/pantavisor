@@ -19,38 +19,48 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UTILS_H
-#define PV_UTILS_H
 
-#include <sys/types.h>
+#ifndef __PARSER_BUNDLE_H__
+#define __PARSER_BUNDLE_H__
 
-#include <jsmn/jsmnutil.h>
+#include "pantavisor.h"
+#include "platforms.h"
+#include "utils.h"
+#include "parser.h"
 
-int mkdir_p(const char *dir, mode_t mode);
+struct  json_key_action {
+	char *key;
+	void **opaque;
+	jsmntype_t type;
+	bool save; /*Not applicable for array type*/
+	/*
+	 * Return 0 for success and non 0 for failure.
+	 * */
+	int (*action)(struct json_key_action *, char *value);
+	/*
+	 * Use for custom action or when using arrays within arrays.
+	 * */
+	jsmntok_t *tokv;
+	int tokc;
+	char *buf;
+};
 
-void syncdir(char *dir);
-char *rand_string(int size);
-int traverse_token (char *buf, jsmntok_t* tok, int t);
-int get_digit_count(int number);
-int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
-int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
-char *unescape_str_to_ascii(char *buf, char *code, char c);
-char *skip_prefix(char *str, const char *key);
-char* json_get_one_str(char *buf, jsmntok_t **tok);
+#define ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save)  \
+{\
+	.key = __key, .type = __type, .opaque = (void*)__opaque,\
+	.action = __action, .save = __save\
+}
 
-#ifndef ARRAY_LEN
-#define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
-#endif /* ARRAY_LEN*/
+#define ADD_JKA_NULL_ENTRY() 				\
+{\
+	.key = NULL, .type = JSMN_UNDEFINED,\
+       	.opaque = (void**)NULL,\
+	.action = NULL, .save = false\
+}
 
-#ifndef free_member
-#define free_member(ptr, member)\
-({\
- if (ptr->member)\
-	free((void*)(ptr->member));\
- ptr->member = NULL;\
-})
-#endif /* free_member */
 
-#endif
+struct platform_bundle {
+	struct pv_state *s;
+	struct pv_platform **platform;
+};
+#endif /* __PARSER_BUNDLE_H__ */

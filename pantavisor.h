@@ -67,6 +67,8 @@ struct pv_addon {
 	struct pv_addon *next;
 };
 
+
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -80,7 +82,10 @@ struct pv_platform {
 	bool done;
 	struct pv_platform *next;
 	struct dl_list logger_list;
-	pid_t pid_logger;
+	/*
+	 * To be freed once logger_list is setup.
+	 * */
+	struct dl_list logger_configs;
 };
 
 struct pv_volume {
@@ -140,16 +145,6 @@ struct pv_connection {
 	time_t since;
 };
 
-struct pv_log_info {
-	const char *logfile;
-	char *name;
-	struct dl_list next;
-	void (*on_logger_closed)(struct pv_log_info*);
-	off_t truncate_size;
-	bool islxc;
-	pid_t logger_pid;
-};
-
 struct pantavisor {
 	int last;
 	char *step;
@@ -184,5 +179,6 @@ void pv_state_free(struct pv_state *s);
 int pv_start_platforms(struct pantavisor *pv);
 int pantavisor_init(bool do_fork);
 struct pantavisor* get_pv_instance(void);
-struct pv_log_info* pv_new_log(bool islxc, const void *config_unused, const char *name);
+struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
+const char* pv_get_log_config_item(struct pv_logger_config *config, const char *key);
 #endif

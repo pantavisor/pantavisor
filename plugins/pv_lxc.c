@@ -67,17 +67,27 @@ static void pv_free_lxc_log(struct pv_log_info *pv_log_i)
 	free_member(pv_log_i, logfile);
 }
 
-static void pv_setup_lxc_log(struct pv_log_info *pv_log_i,
-				const char *plat_name, struct lxc_container *c)
+static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
+				const char *plat_name,
+				struct lxc_container *c,
+				const char *key)
 {
-	char   logfile[PATH_MAX] = {0};
-	const char *key = "lxc.log.file";
+	char logfile[PATH_MAX] = {0};
 
 	c->get_config_item(c, key, logfile, PATH_MAX);
 	if (!strlen(logfile)) {
-		snprintf(logfile, sizeof(logfile), 
-				LXC_LOG_DEFAULT_PREFIX"%s/%s.log",
-				plat_name,plat_name);
+		if (!strcmp(key, "lxc.log.file")) {
+			snprintf(logfile, sizeof(logfile), 
+					LXC_LOG_DEFAULT_PREFIX"%s/%s_%s.log",
+					plat_name,plat_name,key);
+		} else {
+			/*
+			 * We've a console log but no console file
+			 * specified.
+			 * */
+			pv_free_lxc_log(pv_log_i);
+			return -1;
+		}
 	}
 	pv_log_i->logfile = strdup(logfile);
 	/*
@@ -86,6 +96,7 @@ static void pv_setup_lxc_log(struct pv_log_info *pv_log_i,
 	 * */
 	pv_log_i->truncate_size = (2 * 1024 * 1024);
 	pv_log_i->on_logger_closed = pv_free_lxc_log;
+	return 0;
 }
 
 static void pv_setup_lxc_container(struct lxc_container *c,
@@ -153,9 +164,9 @@ static void pv_setup_lxc_container(struct lxc_container *c,
  * Use threshold as 0 to always truncate.
  * */
 static void pv_truncate_lxc_log(struct lxc_container *c,
-				const char *platform_name, off_t threshold) {
+				const char *platform_name, off_t threshold,
+				const char *key) {
 	char *logfile_name = NULL;
-	const char *key = "lxc.log.file";
 
 	logfile_name = (char*)calloc(1, PATH_MAX);
 	if (!logfile_name)
@@ -185,6 +196,60 @@ static void pv_truncate_lxc_log(struct lxc_container *c,
 	free(logfile_name);
 }
 
+static struct pv_log_info*  pv_create_lxc_log(struct pv_platform *p,
+				struct lxc_container *c,
+				struct pv_logger_config *item_config)
+{
+	struct pv_log_info *pv_log_i = NULL;
+	const char *log_key = NULL;
+	char logger_name[128] = {0};
+	const char *lxc_log_key [][2] = {
+		{"lxc", "lxc.log.file"},
+		{"console","lxc.console.logfile"},
+	        {NULL, NULL}
+	};
+	int i = 0, j = 0;
+	while (lxc_log_key[j][0]) {
+		bool found = false;
+		const char *key = lxc_log_key[j][0];
+		i = 0;
+		while (item_config->pair[i][0]) {
+			if (!strncmp(item_config->pair[i][0], key,
+						strlen(key))) {
+				log_key = lxc_log_key[j][1];
+				found = true;
+				break;
+			}
+			i++;
+		}
+		if (found)
+			break;
+		j++;
+	}
+
+	if (!log_key) {
+		printf("Configuration not for lxc/console log"
+			" Skipping for %s.\n", __func__);
+		goto out;
+	}
+	snprintf(logger_name, sizeof(logger_name), "%s-%s", p->name,
+			(strstr("lxc.console", log_key) ? "console" : "lxc"));
+
+	pv_log_i = __pv_new_log(true, item_config, logger_name);
+
+	if (pv_log_i) {
+		int ret = 
+			pv_setup_lxc_log(pv_log_i, p->name, c, log_key);
+		if (!ret) {
+			pv_free_lxc_log(pv_log_i);
+			free(pv_log_i);
+			pv_log_i = NULL;
+		}
+	}
+out:
+	return pv_log_i;
+}
+
 void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 {
 	int err;
@@ -194,7 +259,6 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	struct pv_log_info *pv_log_i = NULL;
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) 
 					| (1 << LXC_NS_IPC);
-	const char *__pv_config_data_for_log = NULL;
 	pid_t child_pid = -1;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
@@ -265,12 +329,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 			*((pid_t *) data) = -1;
 			goto out_container_init;
 		}
-		/*
-		 * Truncate the logs for now.
-		 * platform will have information on when
-		 * to truncate the logs.
-		 * */
-		pv_truncate_lxc_log(c, p->name, 0);
+
 		pv_setup_lxc_container(c, share_ns);
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
@@ -304,18 +363,52 @@ out_container_init:
 		goto out_no_container;
 	}
 	pv_setup_lxc_container(c, share_ns); /*Do we need this?*/
+
 	if (__pv_new_log) {
-		char logger_name[32] = {0};
-		snprintf(logger_name, sizeof(logger_name), "%s-lxc", p->name);
-		pv_log_i = __pv_new_log(true, __pv_config_data_for_log, logger_name);
-	}
-	if (pv_log_i) {
-		pv_setup_lxc_log(pv_log_i, p->name, c);
-		/*
-		 * Change pv_log_i->truncate_size here
-		 * if required.
-		 * */
-		dl_list_add(&p->logger_list, &pv_log_i->next);
+		struct pv_logger_config *item_config, *tmp_config;
+		struct dl_list *head = &p->logger_list;
+		struct dl_list *config_head = &p->logger_configs;
+
+		dl_list_for_each_safe(item_config, tmp_config,
+				config_head, struct pv_logger_config,
+				item_list) {
+			/*
+			 * Change pv_log_i->truncate_size here
+			 * if required.
+			 * */
+			pv_log_i = pv_create_lxc_log(p, c,item_config);
+			if (pv_log_i) {
+				const char *truncate_item = 
+					pv_log_i->pv_get_log_config_item(item_config,
+							"maxsize");
+				if (truncate_item) {
+					sscanf(truncate_item, "%lld",
+							&pv_log_i->truncate_size);	
+				}
+				/*
+				 * Truncate the logs for now.
+				 * platform will have information on when
+				 * to truncate the logs.
+				 * */
+
+				if (pv_log_i->
+						pv_get_log_config_item(item_config, "lxc"))
+					pv_truncate_lxc_log(c, p->name,
+							pv_log_i->truncate_size,
+							"lxc.log.file");
+				else if (pv_log_i->
+						pv_get_log_config_item(item_config, "console"))
+					pv_truncate_lxc_log(c, p->name,
+							pv_log_i->truncate_size,
+							"lxc.console.logfile");
+				dl_list_add(head, &pv_log_i->next);
+			}
+			/*
+			 * Free config items.
+			 * */
+			dl_list_del(&item_config->item_list);
+			pv_free_logger_config(item_config);
+		}
 	}
 out_no_container:
 	return (void *) c;
@@ -339,4 +432,3 @@ void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data)
 
 	return NULL;
 }
-
