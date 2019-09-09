@@ -39,11 +39,14 @@
 #include <stdbool.h>
 #include <limits.h>
 #define LXC_LOG_DEFAULT_PREFIX	"/storage/logs/"
+
+#ifndef free_member
 #define free_member(ptr, member)\
 ({\
 	if (ptr->member)\
 		free((void*)ptr->member);\
 })
+#endif
 
 static struct lxc_log pv_lxc_log = {
 	.level = "DEBUG",

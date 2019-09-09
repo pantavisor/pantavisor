@@ -1,5 +1,7 @@
+#ifndef __PV_BLKID_H__
+#define __PV_BLKID_H__
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2019 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,37 +21,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UTILS_H
-#define PV_UTILS_H
 
-#include <sys/types.h>
+#include "utils.h"
 
-#include <jsmn/jsmnutil.h>
+struct blkid_info {
+	char *fstype;
+	char *uuid;
+	char *label;
+	char *sec_type;
+	char *device;
+};
 
-int mkdir_p(const char *dir, mode_t mode);
-
-void syncdir(char *dir);
-char *rand_string(int size);
-int traverse_token (char *buf, jsmntok_t* tok, int t);
-int get_digit_count(int number);
-int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
-int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
-char *unescape_str_to_ascii(char *buf, char *code, char c);
-char *skip_prefix(char *str, const char *key);
-
-#ifndef ARRAY_LEN
-#define ARRAY_LEN(X) 	(sizeof(X)/sizeof(X[0]))
-#endif /* ARRAY_LEN*/
-
-#ifndef free_member
-#define free_member(ptr, member)\
-({\
- if (ptr->member)\
-	free(ptr->member);\
- ptr->member = NULL;\
-})
-#endif /* free_member */
-
-#endif
+static inline void free_blkid_info(struct blkid_info *info)
+{
+	free_member(info, fstype);
+	free_member(info, uuid);
+	free_member(info, label);
+	free_member(info, sec_type);
+	free_member(info, device);
+}
+static inline void blkid_init(struct blkid_info *info)
+{
+	memset(info, 0, sizeof(*info));
+}
+int get_blkid(struct blkid_info *info, const char *key);
+#endif /*__PV_BUILD_H__*/

@@ -187,16 +187,15 @@ static void signal_handler(int signal)
 				break;
 			p = p->next;
 		}
-	}
+		// Check for pantavisor
+		if (pid != pv_pid)
+			continue;
 
-	// Check for pantavisor
-	if (!pid || pid != pv_pid)
-		return;
-
-	if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
-		sleep(10);
-		sync();
-		reboot(LINUX_REBOOT_CMD_RESTART);
+		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
+			sleep(10);
+			sync();
+			reboot(LINUX_REBOOT_CMD_RESTART);
+		}
 	}
 }
 

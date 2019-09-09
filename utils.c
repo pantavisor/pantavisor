@@ -247,3 +247,16 @@ char *unescape_str_to_ascii(char *buf, char *code, char c)
 
 	return new;
 }
+
+char* skip_prefix(char *str, const char *key)
+{
+	if (!str || !key)
+		return str;
+	while (*key) {
+		if (*key != *str)
+			break;
+		key++;
+		str++;
+	}
+	return str;
+}
