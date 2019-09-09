@@ -122,7 +122,7 @@ static char* _config_get_value(char *key)
 
 static struct config_item* _config_replace_item(char *key, char *value)
 {
-	struct config_item *curr;
+	struct config_item *curr = NULL;
 
 	if (key == NULL)
 		return NULL;
@@ -179,7 +179,7 @@ static int load_key_value_file(char *path)
 			char *value = key + 1;
 			__real_key = (char*) calloc(1, key - buff + 1);
 			if (__real_key) {
-				sprintf(__real_key, "%.*s", key - buff, buff);
+				sprintf(__real_key, "%.*s", (int)(key - buff), buff);
 				_config_add_item(__real_key, value);
 				free(__real_key);
 			}
@@ -193,9 +193,9 @@ static int load_key_value_file(char *path)
 static int _config_parse_cmdline(char *hint)
 {
 	int fd, bytes;
-	char *buf, *k;
-	char *ptr_out, *ptr_in;
-	char *token, *key, *value;
+	char *buf = NULL, *k = NULL;
+	char *ptr_out = NULL, *ptr_in = NULL;
+	char *token = NULL, *key = NULL, *value = NULL;
 
 	// Get current step revision from cmdline
 	fd = open("/proc/cmdline", O_RDONLY);

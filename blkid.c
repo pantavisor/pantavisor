@@ -131,7 +131,7 @@ static void do_blkid(int fd, char *name, struct blkid_info *info)
       uint64_t test;
 
       // Skip tests not in this 4k block
-      if (fstypes[i].magic_offset > off+sizeof(toybuf)) {
+      if (fstypes[i].magic_offset > off+ (ssize_t)sizeof(toybuf)) {
         pass++;
         continue;
       }
@@ -213,7 +213,8 @@ static void do_blkid(int fd, char *name, struct blkid_info *info)
  * */
 int get_blkid(struct blkid_info *info, const char *key)
 {
-    unsigned int ma, mi, sz, fd;
+    unsigned int ma, mi, sz;
+    int fd;
     char *name = toybuf, *buffer = toybuf+1024, device[32];
     FILE *fp = fopen("/proc/partitions", "r");
     char *id_or_label = NULL;
