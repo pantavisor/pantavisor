@@ -40,14 +40,14 @@ char *unescape_str_to_ascii(char *buf, char *code, char c);
 char *skip_prefix(char *str, const char *key);
 
 #ifndef ARRAY_LEN
-#define ARRAY_LEN(X) 	(sizeof(X)/sizeof(X[0]))
+#define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
 #endif /* ARRAY_LEN*/
 
 #ifndef free_member
 #define free_member(ptr, member)\
 ({\
  if (ptr->member)\
-	free(ptr->member);\
+	free((void*)(ptr->member));\
  ptr->member = NULL;\
 })
 #endif /* free_member */
