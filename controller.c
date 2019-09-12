@@ -154,7 +154,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		continue;
 	}
 
-        ret = mount(dev_info.device, c->storage.mntpoint, dev_info.fstype, 0, NULL);
+        ret = mount(dev_info.device, c->storage.mntpoint, c->storage.fstype, 0, NULL);
         if (ret < 0)
                 exit_error(errno, "Could not mount trails storage");
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
