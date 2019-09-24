@@ -210,6 +210,7 @@ static void rotate_log(void)
 	char *at = 0;
 	char path[PATH_MAX];
 	struct dirent **d;
+	int cmd_status;
 
 	lseek(log_fd, 0, SEEK_SET);
 
@@ -245,12 +246,18 @@ static void rotate_log(void)
 
 	char tmp[1024];
 	sprintf(tmp, "gzip %s", path);
-	tsh_run(tmp, 1);
+	tsh_run(tmp, 1, &cmd_status);
 
 	lseek(log_fd, 0, SEEK_SET);
 	ftruncate(log_fd, 0);
 	log_count = 0;
 	log_written = 0;
+	/*
+	 * We just resetted the counts above. So this
+	 * should be safe to do.
+	 * */
+	__log("pantavisor", DEBUG, "Command %s execution status was %d\n",
+			tmp, cmd_status);
 
 	if (d)
 		free(d);

@@ -50,14 +50,4 @@
 #include <pthread.h>
 #include <sys/types.h>
 
-struct pv_child_proc_status {
-	pid_t child_pid; /*in*/
-	int   status; /*out*/
-	/*
-	 * private
-	 * */
-	pthread_cond_t cond;
-	pthread_mutex_t mutex;
-};
-int pv_wait_on_reaper_for(pid_t);
 #endif
