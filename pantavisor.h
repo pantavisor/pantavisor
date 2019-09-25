@@ -103,7 +103,7 @@ struct pv_object {
 	char *relpath;
 	off_t size;
 	char *sha256;
-	struct pv_object *next;
+	struct dl_list list;
 };
 
 struct pv_state {
@@ -117,6 +117,7 @@ struct pv_state {
 	struct pv_volume *volumes;
 	struct pv_addon *addons;
 	struct pv_object *objects;
+	struct dl_list obj_list;;
 	char *json;
 	int tryonce;
 };

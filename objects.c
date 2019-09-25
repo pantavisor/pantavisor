@@ -71,92 +71,88 @@ out:
 
 int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id)
 {
-	struct pv_object *o;
+	struct pv_object *curr, *tmp;
+	struct dl_list *head;
 
 	if (!s)
 		return 0;
-
-	o = s->objects;
-	while (o) {
-		if (!strcmp(o->id, id))
+	head = &s->obj_list;
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_object, list) {
+		if (!strcmp(curr->id, id))
 			return 1;
-		o = o->next;
 	}
-
 	return 0;
 }
 
 struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *c)
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
-	struct pv_object *add = s->objects;
 	int size;
 
-	while (add && add->next) {
-		add = add->next;
+	if (this) {
+		this->name = strdup(filename);
+		this->id = strdup(id);
+
+		size = sizeof(RELPATH_FMT) + strlen(c) +
+			strlen(filename) + get_digit_count(s->rev);
+
+		this->relpath = calloc(1, size * sizeof(char));
+		if (this->relpath)
+			sprintf(this->relpath , RELPATH_FMT, c, s->rev, filename);
+		else
+			goto free_object;
+
+		size = sizeof(OBJPATH_FMT) + strlen(c) + strlen(id);
+
+		this->objpath = calloc(1, size * sizeof(char));
+		if (this->objpath)
+			sprintf(this->objpath, OBJPATH_FMT, c, id);
+		else
+			goto free_object;
+		dl_list_init(&this->list);
+		dl_list_add(&s->obj_list, &this->list);
+		return this;
+free_object:
+		pv_object_free(this);
 	}
-
-	if (!add) {
-		s->objects = add = this;
-	} else {
-		add->next = this;
-	}
-
-	this->name = strdup(filename);
-	this->id = strdup(id);
-
-	size = sizeof(RELPATH_FMT) + strlen(c) +
-		strlen(filename) + get_digit_count(s->rev);
-
-	this->relpath = calloc(1, size * sizeof(char));
-	sprintf(this->relpath , RELPATH_FMT, c, s->rev, filename);
-
-	size = sizeof(OBJPATH_FMT) + strlen(c) + strlen(id);
-
-	this->objpath = calloc(1, size * sizeof(char));
-	sprintf(this->objpath, OBJPATH_FMT, c, id);
-
-	return this;
+	return NULL;
 }
 
 struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
 {
-	struct pv_object *o = s->objects;
+	struct pv_object *curr, *tmp;
+	struct dl_list *head = &s->obj_list;
 
-	while (o) {
-		if (!strcmp(o->name, name))
-			return o;
-		o = o->next;
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_object, list) {
+		if (!strcmp(curr->name, name))
+			return curr;
 	}
-
 	return NULL;
 }
 
 struct pv_object* pv_objects_get_by_id(struct pv_state *s, char *id)
 {
-	struct pv_object *o = s->objects;
+	struct pv_object *curr, *tmp;
+	struct dl_list *head = &s->obj_list;
 
-	while (o) {
-		if (!strcmp(o->id, id))
-			return o;
-		o = o->next;
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_object, list) {
+		if (!strcmp(curr->id, id))
+			return curr;
 	}
-
 	return NULL;
 }
 
 void pv_objects_remove_all(struct pv_state *s)
 {
-	struct pv_object *o = s->objects;
-	struct pv_object *t;
+	struct pv_object *curr, *tmp;
+	struct dl_list *head = &s->obj_list;
 
-	while (o) {
-		if (o->name)
-			free(o->name);
-		if (o->id)
-			free(o->id);
-		t = o->next;
-		free(o);
-		o = t;
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_object, list) {
+		dl_list_del(&curr->list);
+		pv_object_free(curr);
 	}
 }

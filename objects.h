@@ -26,6 +26,7 @@
 #define RELPATH_FMT	"%s/trails/%d/%s"
 
 #include "pantavisor.h"
+#include <stdlib.h>
 
 char** pv_objects_get_all_ids(struct pantavisor *pv);
 int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id);
@@ -34,4 +35,27 @@ struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name);
 struct pv_object* pv_objects_get_by_id(struct pv_state *s, char *id);
 void pv_objects_remove_all(struct pv_state *s);
 
+static inline void pv_object_free(struct pv_object *obj)
+{
+	if (obj->name)
+		free(obj->name);
+	if (obj->id)
+		free(obj->id);
+	if (obj->relpath)
+		free(obj->relpath);
+	if (obj->geturl)
+		free(obj->geturl);
+	if (obj->objpath)
+		free(obj->objpath);
+	free(obj);
+}
+
+#define pv_objects_iter_begin(state, item) 	\
+{\
+	struct pv_object *item##__tmp;\
+	struct dl_list *item##__head = &(state)->obj_list;\
+	dl_list_for_each_safe(item, item##__tmp, item##__head,\
+			struct pv_object, list)
+
+#define pv_objects_iter_end	}
 #endif // PV_OBJECTS_H
