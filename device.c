@@ -84,40 +84,38 @@ static void usermeta_remove_hint(struct pv_usermeta *m)
 	remove(path);
 }
 
+
+static void usermeta_free_one(struct pv_usermeta *usermeta)
+{
+	if (usermeta->key)
+		free(usermeta->key);
+
+	if (usermeta->value)
+		free(usermeta->value);
+	free(usermeta);
+}
+
 static void usermeta_remove(struct pv_device *d, char *key)
 {
-	struct pv_usermeta *curr = d->usermeta;
-	struct pv_usermeta *prev = NULL;
+	struct pv_usermeta *curr, *tmp;
+	struct dl_list *head = &d->metalist;
 
-	while (curr) {
-		if (!strcmp(curr->key, key)) {
-			if (curr->key) {
-				usermeta_remove_hint(curr);
-				free(curr->key);
-			}
-			if (curr->value)
-				free(curr->value);
-
-			if (curr == d->usermeta)
-				d->usermeta = curr->next;
-			else
-				prev->next = curr->next;
-
-			free(curr);
-			return;
-		}
-		prev = curr;
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_usermeta, list) {
+		usermeta_remove_hint(curr);
+		usermeta_free_one(curr);
 	}
 }
 
 struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 {
-	struct pv_usermeta* curr = d->usermeta;
+	struct pv_usermeta *curr, *tmp;
+	struct dl_list *head = &d->metalist;
 
-	while (curr) {
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_usermeta, list) {
 		if (!strcmp(key, curr->key))
 			return curr;
-		curr = curr->next;
 	}
 
 	return NULL;
@@ -126,38 +124,28 @@ struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 {
 	int changed = 1;
-	struct pv_usermeta *curr, *add;
+	struct pv_usermeta *curr;
 
 	if (!d || !key)
 		return NULL;
 
-	for (curr = d->usermeta; curr != NULL; curr = curr->next) {
-		if (strcmp(curr->key, key) == 0) {
-			if (strcmp(curr->value, value) == 0)
-				changed = 0;
-			free(curr->value);
-			curr->value = strdup(value);
-			goto out;
-		}
+	curr = pv_usermeta_get_by_key(d, key);
+	if (curr) {
+		if (strcmp(curr->value, value) == 0)
+			changed = 0;
+		free(curr->value);
+		curr->value = strdup(value);
+		goto out;
 	}
 
 	// not found? add
 	curr = calloc(1, sizeof(struct pv_usermeta));
-	add = d->usermeta;
-
-	while (add && add->next) {
-		add = add->next;
+	if (curr) {
+		dl_list_init(&curr->list);
+		curr->key = strdup(key);
+		curr->value = strdup(value);
+		dl_list_add(&d->metalist, &curr->list);
 	}
-
-	if (!add) {
-		d->usermeta = add = curr;
-	} else {
-		add->next = curr;
-	}
-
-	curr->key = strdup(key);
-	curr->value = strdup(value);
-
 out:
 	if (changed)
 		usermeta_add_hint(curr);
@@ -233,26 +221,20 @@ out:
 
 static void usermeta_clear(struct pantavisor *pv)
 {
-	struct pv_usermeta *curr = 0, *prev = 0;
+	struct pv_usermeta *curr, *tmp;
+	struct dl_list *head = NULL;
 
 	if (!pv)
 		return;
 	if (!pv->dev)
 		return;
 
-	curr = pv->dev->usermeta;
-	while (curr) {
-		usermeta_remove_hint(curr);
-		if (curr->key)
-			free(curr->key);
-		if (curr->value)
-			free(curr->value);
-		prev = curr;
-		curr = curr->next;
-		free(prev);
+	head = &pv->dev->metalist;
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_usermeta, list) {
+		dl_list_del(&curr->list);
+		usermeta_free_one(curr);
 	}
-
-	pv->dev->usermeta = NULL;
 }
 
 int pv_device_update_meta(struct pantavisor *pv, char *buf)
@@ -281,6 +263,7 @@ int pv_device_init(struct pantavisor *pv)
 
 	pv->dev = calloc(1, sizeof(struct pv_device));
 	pv->dev->id = strdup(pv->config->creds.id);
+	dl_list_init(&pv->dev->metalist);
 
 	mkdir_p("/pv/user-meta/", 0644);
 

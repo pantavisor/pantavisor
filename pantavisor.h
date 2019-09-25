@@ -124,7 +124,7 @@ struct pv_state {
 struct pv_usermeta {
 	char *key;
 	char *value;
-	struct pv_usermeta *next;
+	struct dl_list list;
 };
 
 struct pv_device {
@@ -132,7 +132,7 @@ struct pv_device {
 	char *nick;
 	char *owner;
 	char *prn;
-	struct pv_usermeta *usermeta;
+	struct dl_list metalist;
 };
 
 struct pv_connection {
