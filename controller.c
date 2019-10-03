@@ -376,6 +376,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		/ pv->config->updater.interval;
 
 	struct timespec tp;
+	static bool status_updated = false;
 
 	if (pv->req) {
 		pv_log(WARN, "stable command found queued, discarding");
@@ -453,6 +454,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// update remote metadata
 	pv_ph_device_update_meta(pv);
 
+	if (!status_updated && !pv_set_current_status(pv, UPDATE_DONE))
+		status_updated = true;
 	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
 
 	return STATE_WAIT;

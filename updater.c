@@ -1172,3 +1172,8 @@ void pv_remote_destroy(struct pantavisor *pv)
 	free(pv->remote->endpoint);
 	free(pv->remote);
 }
+
+int pv_set_current_status(struct pantavisor *pv, enum update_state state)
+{
+	return trail_remote_set_status(pv, state, pv->state->rev);
+}
