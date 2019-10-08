@@ -83,7 +83,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 	this->name = strdup(name);
 	this->done = false;
 	dl_list_init(&this->logger_list);
-
+	dl_list_init(&this->logger_configs);
 	return this;
 }
 
@@ -346,17 +346,28 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 {
 	struct pv_log_info *log_info = NULL, *tmp;
 	struct dl_list *head = &platform->logger_list;
+	struct dl_list *config_head = &platform->logger_configs;
+	struct pv_logger_config *item_config, *tmp_config;
 	pid_t logger_pid = -1;
 	/*
 	 * First add all the loggers in the list.
 	 * This will probably in a loop on the platform
 	 * config data.
 	 * */
-	log_info = pv_new_log(false, NULL, platform->name);
-	pv_setup_platform_log(log_info, NULL);
-	dl_list_init(&log_info->next);
-	dl_list_add(&platform->logger_list, &log_info->next);
-
+	dl_list_for_each_safe(item_config, tmp_config, config_head,
+			struct pv_logger_config, item_list) {
+		log_info = pv_new_log(false, item_config, platform->name);
+		if (log_info) {
+			pv_setup_platform_log(log_info, item_config);
+			dl_list_init(&log_info->next);
+			dl_list_add(&platform->logger_list, &log_info->next);
+		}
+		/*
+		 * logger config item isn't required anymore
+		 * */
+		dl_list_del(&item_config->item_list);
+		pv_free_logger_config(item_config);
+	}
 	/*
 	 * This includes the ones for lxc.
 	 * */

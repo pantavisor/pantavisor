@@ -307,6 +307,8 @@ init_again:
 	 * */
 	default_log.tv_notify = &tv;
 	default_log.do_flush_log = pvlogger_flush;
+	if (pv_log_info->truncate_size)
+		default_log.log_limit = pv_log_info->truncate_size;
 
 	while (!stop_logger) {
 		if (log_flush_pv(&default_log) < 0) {

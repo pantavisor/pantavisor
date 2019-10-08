@@ -21,7 +21,8 @@
  */
 #ifndef PV_CONFIG_H
 #define PV_CONFIG_H
-
+#include<stdbool.h>
+#include "utils/list.h"
 enum {
 	BL_UBOOT_PLAIN = 0,
 	BL_UBOOT_PVK,
@@ -88,5 +89,46 @@ struct pantavisor_config {
 int pv_config_from_file(char *path, struct pantavisor_config *config);
 int ph_config_from_file(char *path, struct pantavisor_config *config);
 int ph_config_to_file(struct pantavisor_config *config, char *path);
+
+struct pv_logger_config {
+	struct dl_list item_list;
+	/*
+	 * This is a null terminated list of key/value
+	 * pairs for the log configuration.
+	 * */
+	const char ***pair; /*equiv to char *pair[][2]. key, val*/
+};
+struct pv_log_info {
+	const char *logfile;
+	char *name;
+	struct dl_list next;
+	void (*on_logger_closed)(struct pv_log_info*);
+	off_t truncate_size;
+	bool islxc;
+	pid_t logger_pid;
+	const char*(*pv_get_log_config_item)
+		(struct pv_logger_config *config, const char *key);
+};
+
+static void pv_free_logger_config(struct pv_logger_config *item_config)
+{
+	int i = 0;
+
+	if (!item_config)
+		return;
+
+	while (item_config->pair[i][0]) {
+		if (item_config->pair[i][1])
+			free((void*)item_config->pair[i][1]);
+		free((void*)item_config->pair[i][0]);
+		free((void*)item_config->pair[i]);
+		i++;
+	}
+	/*
+	 * We've a NULL terminated pair..
+	 * */
+	free((void*)item_config->pair[i]);
+	free(item_config);
+}
 
 #endif

@@ -379,3 +379,18 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 
 	return bytes;
 }
+
+/*
+ * Don't free the returned value.
+ * */
+const char* pv_get_log_config_item(struct pv_logger_config *config,
+					const char *key) {
+	int i = 0;
+	while (config->pair[i][0]) {
+		if (!strncmp(config->pair[i][0], key,strlen(key))) {
+			return config->pair[i][1];
+		}
+		i++;
+	}
+	return NULL;
+}
