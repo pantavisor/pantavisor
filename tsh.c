@@ -31,31 +31,39 @@
 #include "tsh.h"
 #include "log.h"
 #include "init.h"
+#include <signal.h>
 
 #define TSH_MAX_LENGTH	32
 #define TSH_DELIM	" \t\r\n\a"
 
-static pid_t _tsh_exec(char **argv, int wait)
+static pid_t _tsh_exec(char **argv, int wait, int *status)
 {
-	int pid = fork();
+	int pid = -1;
+	sigset_t blocked_sig, old_sigset;
+	int ret = 0;
+	
+	if (wait) {
+		sigemptyset(&blocked_sig);
+		sigaddset(&blocked_sig, SIGCHLD);
+		/*
+		 * Block SIGCHLD while we want to wait on this child.
+		 * */
+		ret = sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
+	}
+	pid = fork();
 
 	if (pid == -1) {
+		if ( (ret == 0) && wait)
+			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		return -1;
 	} else if (pid > 0) {
 		// In parent
 		if (wait) {
-			int status;
-			/*
-			 * waitpid will block here,
-			 * as it seems to be automatically
-			 * restarted when using signal and
-			 * not sigaction.
-			 * Since this pid will be reaped by
-			 * SIGCHLD handler, ask the handler
-			 * if it got this pid or not.
-			 * */
-			//waitpid(pid, &status, 0);
-			status = pv_wait_on_reaper_for(pid);
+			if (ret == 0) { 
+				/*wait only if we blocked SIGCHLD*/
+				waitpid(pid, status, 0);
+				sigprocmask(SIG_SETMASK, &old_sigset, NULL);
+			}
 		}
 		free(argv);
 	} else {
@@ -94,7 +102,7 @@ static char **_tsh_split_cmd(char *cmd)
 }
 
 // Run command, either built-in or exec
-pid_t tsh_run(char *cmd, int wait)
+pid_t tsh_run(char *cmd, int wait, int *status)
 {
 	pid_t pid;
 	char **args;
@@ -107,7 +115,7 @@ pid_t tsh_run(char *cmd, int wait)
 	strcpy(vcmd, cmd);
 
 	args = _tsh_split_cmd(vcmd);
-	pid = _tsh_exec(args, wait);
+	pid = _tsh_exec(args, wait, status);
 	free(vcmd);
 
 	if (pid < 0)

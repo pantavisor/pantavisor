@@ -49,17 +49,6 @@
 pid_t pv_pid;
 pid_t shell_pid;
 
-static struct pv_child_proc_status waiting_on_reaper;
-
-static void init_waiting_on_reaper()
-{
-	pthread_cond_init(&waiting_on_reaper.cond, NULL);
-	pthread_mutex_init(&waiting_on_reaper.mutex, NULL);
-	waiting_on_reaper.child_pid = -1;
-	waiting_on_reaper.status = 0;
-}
-
-
 static int open_ns(int pid, const char *ns_proc_name)
 {
 	int fd;
@@ -115,7 +104,7 @@ static int early_mounts()
 
 	mkdir("/writable", 0644);
 	if (!stat("/etc/fstab", &st))
-		tsh_run("mount -a", 1);
+		tsh_run("mount -a", 1, NULL);
 
 	mkdir("/root", 0644);
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
@@ -133,8 +122,8 @@ static int early_mounts()
 #ifdef PANTAVISOR_DEBUG
 static void debug_telnet()
 {
-	tsh_run("ifconfig lo up", 0);
-	tsh_run("telnetd -b 127.0.0.1 -l /bin/sh", 0);
+	tsh_run("ifconfig lo up", 0, NULL);
+	tsh_run("telnetd -b 127.0.0.1 -l /bin/sh", 0, NULL);
 }
 #else
 static void debug_telnet()
@@ -158,12 +147,6 @@ static void signal_handler(int signal)
 		struct dl_list *head;
 		bool found = false;
 
-		if (waiting_on_reaper.child_pid > 0 
-				&&
-				waiting_on_reaper.child_pid == pid) {
-			waiting_on_reaper.status = wstatus;
-			pthread_cond_signal(&waiting_on_reaper.cond);
-		}
 		/*
 		 * See if the pid is one of the loggers
 		 * */
@@ -223,7 +206,7 @@ static void debug_shell()
 	dprintf(con_fd, "\n");
 
 	if (c[0] == 'd')
-		shell_pid = tsh_run("sh", 0);
+		shell_pid = tsh_run("sh", 0, NULL);
 }
 #else
 static void debug_shell()
@@ -264,7 +247,6 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 int main(int argc, char *argv[])
 {
 	unsigned short args = 0;
-	init_waiting_on_reaper();
 	parse_args(argc, argv, &args);
 
 	if (getpid() != 1) {
@@ -297,16 +279,4 @@ int main(int argc, char *argv[])
 		pause();
 
 	return 0;
-}
-
-int pv_wait_on_reaper_for(pid_t pid)
-{
-	waiting_on_reaper.child_pid = pid;
-	if (pid > 0) {
-		pthread_mutex_lock(&waiting_on_reaper.mutex);
-		pthread_cond_wait(&waiting_on_reaper.cond,
-				  &waiting_on_reaper.mutex);
-		pthread_mutex_unlock(&waiting_on_reaper.mutex);
-	}
-	return waiting_on_reaper.status;
 }
