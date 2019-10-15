@@ -604,17 +604,7 @@ void system1_free(struct pv_state *this)
 		v = v->next;
 		free(vt);
 	}
-	struct pv_object *ot, *o = this->objects;
-	while (o) {
-		free(o->name);
-		free(o->id);
-		free(o->relpath);
-		free(o->geturl);
-		free(o->objpath);
-		ot = o;
-		o = o->next;
-		free(ot);
-	}
+	pv_objects_remove_all(this);
 }
 
 void system1_print(struct pv_state *this)
@@ -624,6 +614,7 @@ void system1_print(struct pv_state *this)
 
 	// print
 	struct pv_platform *p = this->platforms;
+	struct pv_object *curr;
 	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
 	pv_log(DEBUG, "initrd: '%s'\n", this->initrd);
 	while (p) {
@@ -644,13 +635,13 @@ void system1_print(struct pv_state *this)
 
 		v = v->next;
 	}
-	struct pv_object *o = this->objects;
-	while (o) {
+	
+	pv_objects_iter_begin(this, curr) {
 		pv_log(DEBUG, "object: \n");
-		pv_log(DEBUG, "  name: '%s'\n", o->name);
-		pv_log(DEBUG, "  name: '%s'\n", o->id);
-		o = o->next;
+		pv_log(DEBUG, "  name: '%s'\n", curr->name);
+		pv_log(DEBUG, "  id: '%s'\n", curr->id);
 	}
+	pv_objects_iter_end;
 }
 
 struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev)

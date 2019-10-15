@@ -101,11 +101,12 @@ struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev)
 	}
 
 	this = calloc(1, sizeof(struct pv_state));
-	this->rev = rev;
-	this->spec = strdup(spec);
-
-	p->parse(pv, this, buf, rev);
-
+	if (this) {
+		this->rev = rev;
+		this->spec = strdup(spec);
+		dl_list_init(&this->obj_list);
+		p->parse(pv, this, buf, rev);
+	}
 out:
 	if (tokv)
 		free(tokv);

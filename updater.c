@@ -487,25 +487,23 @@ out:
 static int trail_put_objects(struct pantavisor *pv)
 {
 	int ret = 0;
-	struct pv_object *o = pv->state->objects;
+	struct pv_object *curr = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
 
-	// count
-	while (o) {
+	pv_objects_iter_begin(pv->state, curr) {
 		ret++;
-		o = o->next;
 	}
+	pv_objects_iter_end;
 
-	o = pv->state->objects;
 	pv_log(DEBUG, "first boot: %d objects found, syncing", ret);
 
 	// push all
-	while (o) {
-		if (trail_put_object(pv, o, crtfiles) < 0)
+	pv_objects_iter_begin(pv->state, curr) {
+		if (trail_put_object(pv, curr, crtfiles) < 0)
 			break;
 		ret--;
-		o = o->next;
 	}
+	pv_objects_iter_end;
 
 	return ret;
 }
@@ -986,10 +984,10 @@ out:
 static int trail_link_objects(struct pantavisor *pv)
 {
 	int err = 0;
-	struct pv_object *obj = pv->update->pending->objects;
+	struct pv_object *obj = NULL;
 	char *c, *tmp, *ext;
 
-	while (obj) {
+	pv_objects_iter_begin(pv->update->pending, obj) {
 		tmp = strdup(obj->relpath);
 		c = strrchr(tmp, '/');
 		*c = '\0';
@@ -1002,7 +1000,6 @@ static int trail_link_objects(struct pantavisor *pv)
 			d_fd = open(obj->relpath, O_CREAT | O_WRONLY | O_SYNC, 0644);
 			pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
 			copy_and_close(s_fd, d_fd);
-			obj = obj->next;
 			continue;
 		}
 		if (link(obj->objpath, obj->relpath) < 0) {
@@ -1015,8 +1012,8 @@ static int trail_link_objects(struct pantavisor *pv)
 			pv_log(INFO, "linked %s to %s",
 				obj->relpath, obj->objpath);
 		}
-		obj = obj->next;
 	}
+	pv_objects_iter_end;
 
 	err += pv_meta_link_boot(pv, pv->update->pending);
 
@@ -1027,14 +1024,13 @@ static int get_update_size(struct pv_update *u)
 {
 	int size = 0;
 	struct stat st;
-	struct pv_object *o = u->pending->objects;
+	struct pv_object *curr = NULL;
 
-	while (o) {
-		if (stat(o->objpath, &st) < 0)
-			size += o->size;
-		o = o->next;
+	pv_objects_iter_begin(u->pending, curr) {
+		if (stat(curr->objpath, &st) < 0)
+			size += curr->size;
 	}
-
+	pv_objects_iter_end;
 	pv_log(INFO, "update size: %d bytes", size);
 
 	return size;
@@ -1045,14 +1041,14 @@ static int trail_download_objects(struct pantavisor *pv)
 	int ret = -1;
 	struct pv_object *k_new, *k_old;
 	struct pv_update *u = pv->update;
-	struct pv_object *o = u->pending->objects;
+	struct pv_object *o = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
 
-	while (o) {
+	pv_objects_iter_begin(u->pending, o) {
 		if (!trail_download_get_meta(pv, o))
 			goto out;
-		o = o->next;
 	}
+	pv_objects_iter_end;
 
 	// Run GC as last resort
 	if (!pv_storage_get_free(pv, get_update_size(u)))
@@ -1072,12 +1068,11 @@ static int trail_download_objects(struct pantavisor *pv)
 	if (k_new && k_old && strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
 
-	o = u->pending->objects;
-	while (o) {
+	pv_objects_iter_begin(u->pending, o) {
 		if (!trail_download_object(pv, o, crtfiles))
 			goto out;
-		o = o->next;
 	}
+	pv_objects_iter_end;
 
 	ret = 0;
 
