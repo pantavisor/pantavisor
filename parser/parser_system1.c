@@ -184,7 +184,6 @@ static int do_json_key_action_object(struct json_key_action *jka)
 {
 	int  ret = 0;
 
-	pv_log(DEBUG, "calling %s \n", __func__);
 	ret = jsmnutil_parse_json(jka->buf, &jka->tokv, &jka->tokc);
 	if (ret <= 0) {
 		ret = -1;
@@ -200,7 +199,6 @@ free_tokens:
 
 static void do_json_key_action_save(struct json_key_action *jka, char *value)
 {
-	pv_log(DEBUG, "calling %s, value = %s\n", __func__, value);
 	if (jka->opaque) {
 		*jka->opaque = strdup(value);
 	}
@@ -223,8 +221,6 @@ static int do_json_key_action_array(struct json_key_action *jka)
 	arr_count = array_token->size;
 
 	arr_i = arr = jsmnutil_get_array_toks(jka->buf, array_token);
-	pv_log(DEBUG, "calling %s arr_count = %d\n", __func__,
-			arr_count);
 
 	for ( i = 0; i < arr_count && !ret; i++, arr_i++) {
 		jsmntok_t *prev_tok = jka->tokv;
@@ -295,7 +291,6 @@ static int start_json_parsing_with_action(char *buf, struct json_key_action *jka
 {
 	jsmntok_t *tokv;
 	int tokc, ret = 0;
-	pv_log(DEBUG, "calling %s \n", __func__);
 
 	if (jka_arr) {
 		jsmntok_t** keys;
@@ -366,8 +361,6 @@ static int do_action_for_name(struct json_key_action *jka, char *value)
 	struct platform_bundle *bundle = 
 		(struct platform_bundle*) jka->opaque;
 
-	pv_log(DEBUG, "calling %s value is %s\n", __func__,
-			(value ? value : "null"));
 	if (!value)
 		goto fail;
 
@@ -384,8 +377,6 @@ static int do_action_for_type(struct json_key_action *jka,
 					char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
-	pv_log(DEBUG, "calling %s value = %s\n", __func__,
-			(value ? value : "null"));
 
 	if (!(*bundle->platform) || !value)
 		return -1;
@@ -404,8 +395,6 @@ static int do_action_for_one_volume(struct json_key_action *jka,
 	bool value_alloced = false;
 	int ret = 0;
 
-	pv_log(DEBUG, "calling %s value = %s \n", __func__,
-			(value ? value : "null"));
 	/*
 	 * for root-volume value will be provided.
 	 * */
@@ -450,7 +439,6 @@ static int do_action_for_one_log(struct json_key_action *jka,
 	jsmntok_t **keys = jsmnutil_get_object_keys(jka->buf, jka->tokv);
 	jsmntok_t **keys_i = keys;
 
-	pv_log(DEBUG, "calling %s keys count = %d\n", __func__, key_count);
 	if (!key_count) {
 		ret = 0;
 		goto free_config;
@@ -521,7 +509,6 @@ free_config:
 static int do_action_for_storage(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
-	pv_log(DEBUG, "calling %s \n", __func__);
 	/*
 	 * BUG_ON(value)
 	 * */
