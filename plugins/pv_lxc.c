@@ -240,7 +240,7 @@ static struct pv_log_info*  pv_create_lxc_log(struct pv_platform *p,
 	if (pv_log_i) {
 		int ret = 
 			pv_setup_lxc_log(pv_log_i, p->name, c, log_key);
-		if (!ret) {
+		if (ret) {
 			pv_free_lxc_log(pv_log_i);
 			free(pv_log_i);
 			pv_log_i = NULL;
