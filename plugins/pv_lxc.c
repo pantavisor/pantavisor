@@ -78,8 +78,8 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	if (!strlen(logfile)) {
 		if (!strcmp(key, "lxc.log.file")) {
 			snprintf(logfile, sizeof(logfile), 
-					LXC_LOG_DEFAULT_PREFIX"%s/%s_%s.log",
-					plat_name,plat_name,key);
+					LXC_LOG_DEFAULT_PREFIX"%s/%s.log",
+					plat_name,plat_name);
 		} else {
 			/*
 			 * We've a console log but no console file
@@ -157,6 +157,99 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	}
 	// override container=lxc environment of pid 1
 	c->set_container_type(c, "pv-platform");
+
+	/*
+	 * Set console filename if not provided.
+	 * */
+	memset(entry, 0, sizeof(entry));
+	c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
+	if (!strlen(entry)) {
+		snprintf(entry, sizeof(entry), LXC_LOG_DEFAULT_PREFIX"/%s_console.log",
+				c->name);
+		c->set_config_item(c, "lxc.console.logfile", entry);
+	}
+}
+
+static void pv_setup_default_log(struct pv_platform *p,
+				struct lxc_container *c,
+				const char *logger_key)
+{
+	struct pv_logger_config *item_config;
+	struct dl_list *config_head = &p->logger_configs;
+	bool found = false;
+
+	/*
+	 * Check for logger_key as console and if terminal
+	 * was requested in the lxc.conf.
+	 * We don't require to add the lxc console config otherwise
+	 * that would also start logger on non-existent file resulting
+	 * in unnecessary logger messages.
+	 * */
+	if (strncmp("console", logger_key, strlen("console")) == 0) {
+		char *console_path = (char*) calloc(1, PATH_MAX);
+		bool do_nothing = false;
+
+		if (console_path) {
+			c->get_config_item(c, "lxc.console.path",
+						console_path, PATH_MAX);
+			if (strlen(console_path) &&
+					strcmp("none", console_path) == 0) {
+				do_nothing = true;
+			}
+			free(console_path);
+			if (do_nothing)
+				return;
+		}
+	}
+	dl_list_for_each(item_config, config_head,
+			struct pv_logger_config, item_list) {
+		int i = 0;
+		found = false;
+		while (item_config->pair[i][0]) {
+			if (!strncmp(item_config->pair[i][0],
+					logger_key,strlen(logger_key))) {
+				found = true;
+				break;
+			}
+			i++;
+		}
+		if (found)
+			break;
+	}
+	/*
+	 * Add a new logger_config item
+	 * */
+	if (!found) {
+		struct pv_logger_config *new_config =
+			(struct pv_logger_config*) calloc(1, sizeof(*new_config));
+		const int config_count = 2;
+		int j = 0;
+
+		if (!new_config)
+			return;
+		new_config->pair = (const char ***)
+					calloc(2, sizeof(char*));
+		if (!new_config->pair)
+			goto out_config;
+
+		for (j = 0; j < config_count; j++) {
+		new_config->pair[j] = (const char**)calloc(2, sizeof(char*));
+		if (!new_config->pair[j])
+			goto out_pair;
+		}
+
+		new_config->pair[0][0] = strdup(logger_key);
+		new_config->pair[0][1] = strdup("enable");
+		dl_list_add(&p->logger_configs, &new_config->item_list);
+		return;
+out_pair:
+		while(j) {
+			j--;
+			free(new_config->pair[j]);
+		}
+out_config:
+		free(new_config);
+	}
 }
 
 /*
@@ -233,7 +326,7 @@ static struct pv_log_info*  pv_create_lxc_log(struct pv_platform *p,
 		goto out;
 	}
 	snprintf(logger_name, sizeof(logger_name), "%s-%s", p->name,
-			(strstr("lxc.console", log_key) ? "console" : "lxc"));
+			(strstr(log_key, "lxc.console") ? "console" : "lxc"));
 
 	pv_log_i = __pv_new_log(true, item_config, logger_name);
 
@@ -363,6 +456,8 @@ out_container_init:
 		goto out_no_container;
 	}
 	pv_setup_lxc_container(c, share_ns); /*Do we need this?*/
+	pv_setup_default_log(p, c, "lxc");
+	pv_setup_default_log(p, c, "console");
 
 	if (__pv_new_log) {
 		struct pv_logger_config *item_config, *tmp_config;
