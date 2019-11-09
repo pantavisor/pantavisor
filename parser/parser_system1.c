@@ -320,8 +320,7 @@ static int start_json_parsing_with_action(char *buf, struct json_key_action *jka
 
 			while(*keys && !ret && !found) {
 				length = (*keys)->end - (*keys)->start;
-				pv_log(DEBUG, "Keys is %p, *keys = %p\n",
-						keys, *keys);
+
 				// copy key 
 				key = (char*) calloc(1,
 						sizeof(char) * (length + 1));
