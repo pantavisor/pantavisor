@@ -363,6 +363,7 @@ void pv_log_raw(struct pantavisor *pv, char *buf, int len, const char *platform)
 	replace_char(e.data, '\n', ' ');
 	replace_char(e.data, '\"', '\'');
 	replace_char(e.data, '\t', ' ');
+	replace_char(e.data, '\r', ' ');
 
 	// add to ring buffer
 	log_add(&e);
