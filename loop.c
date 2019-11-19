@@ -127,7 +127,7 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 		return -1;
 
 	// Make dest if it doesn't exist
-	if (mkdir_p(dest, 0644) < 0)
+	if (mkdir_p(dest, 0755) < 0)
 		return -1;
 
 	// if ext4 make sure we mount journaled

@@ -331,7 +331,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
 	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->initrd);
 
-	mkdir_p(dst, 0644);
+	mkdir_p(dst, 0755);
 	strcat(dst, "pv-initrd.img");
 
 	remove(dst);

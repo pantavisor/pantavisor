@@ -144,7 +144,7 @@ void pv_log_init(struct pantavisor *pv)
 	log_count = 0;
 
 	// make logs available for platforms
-	mkdir_p("/pv/logs", 0644);
+	mkdir_p("/pv/logs", 0755);
 	mount_bind(pv->config->logdir, "/pv/logs");
 
 	// enable libthttp debug logs

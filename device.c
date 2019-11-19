@@ -58,7 +58,7 @@ static void usermeta_add_hint(struct pv_usermeta *m)
 
 	dirname(path_base);
 	if (strcmp("/pv/user-meta", path_base))
-		mkdir_p(path_base, 0644);
+		mkdir_p(path_base, 0755);
 
 	fd = open(path, O_CREAT | O_RDWR, 0644);
 	if (!fd)
@@ -265,7 +265,7 @@ int pv_device_init(struct pantavisor *pv)
 	pv->dev->id = strdup(pv->config->creds.id);
 	dl_list_init(&pv->dev->metalist);
 
-	mkdir_p("/pv/user-meta/", 0644);
+	mkdir_p("/pv/user-meta/", 0755);
 
 	return 0;
 }
