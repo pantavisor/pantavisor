@@ -133,7 +133,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	}
 
 	// Create storage mountpoint and mount device
-        mkdir_p(c->storage.mntpoint, 0644);
+        mkdir_p(c->storage.mntpoint, 0755);
 	
 	/*
 	 * storage.path will contain UUID=XXXX or LABEL=XXXX
@@ -166,10 +166,10 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 
 	// Make pantavisor control area
 	if (stat("/pv", &st) != 0)
-		mkdir_p("/pv", 0400);
+		mkdir_p("/pv", 0500);
 
 	if (stat(c->logdir, &st) != 0)
-		mkdir_p(c->logdir, 0400);
+		mkdir_p(c->logdir, 0500);
 
 	wait_delay = 0;
 	pv_log_init(pv);

@@ -127,10 +127,10 @@ int pv_volumes_mount(struct pantavisor *pv)
 	struct pv_state *s = pv->state;
 	struct pv_volume *v = s->volumes;
 
-        // Create volumes if non-existant
-        mkdir("/volumes", 0644);
+	// Create volumes if non-existant
+	mkdir("/volumes", 0755);
 	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
-	mkdir_p(base, 0644);
+	mkdir_p(base, 0755);
 
 	while (v) {
 		int loop_fd = -1, file_fd = -1;
@@ -176,18 +176,18 @@ int pv_volumes_mount(struct pantavisor *pv)
 			break;
 		case VOL_PERMANENT:
 			sprintf(path, "%s/perm/%s/%s", base, v->plat->name, v->name);
-			mkdir_p(path, 0644);
-			mkdir_p(mntpoint, 0644);
+			mkdir_p(path, 0755);
+			mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 			break;
 		case VOL_REVISION:
 			sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
-			mkdir_p(path, 0644);
-			mkdir_p(mntpoint, 0644);
+			mkdir_p(path, 0755);
+			mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 			break;
 		case VOL_BOOT:
-			mkdir_p(mntpoint, 0644);
+			mkdir_p(mntpoint, 0755);
 			ret = mount("none", mntpoint, "tmpfs", 0, NULL);
 			break;
 		default:
@@ -213,7 +213,7 @@ int pv_volumes_mount(struct pantavisor *pv)
 		goto modules;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
-		mkdir_p(FW_PATH, 0644);
+		mkdir_p(FW_PATH, 0755);
 
 	if (strchr(pv->state->firmware, '/'))
 		sprintf(path, "%s", pv->state->firmware);
@@ -233,7 +233,7 @@ int pv_volumes_mount(struct pantavisor *pv)
 modules:
 	if (!uname(&uts) && (stat("/volumes/modules.squashfs", &st) == 0)) {
 		sprintf(path, "/lib/modules/%s", uts.release);
-		mkdir_p(path, 0644);
+		mkdir_p(path, 0755);
 		ret = mount_bind("/volumes/modules.squashfs", path);
 		pv_log(DEBUG, "bind mounted modules to %s", path);
 	}

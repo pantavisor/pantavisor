@@ -991,7 +991,7 @@ static int trail_link_objects(struct pantavisor *pv)
 		tmp = strdup(obj->relpath);
 		c = strrchr(tmp, '/');
 		*c = '\0';
-		mkdir_p(tmp, 0644);
+		mkdir_p(tmp, 0755);
 		free(tmp);
 	        ext = strrchr(obj->relpath, '.');
 		if (ext && (strcmp(ext, ".bind") == 0)) {
@@ -1111,9 +1111,9 @@ int pv_update_install(struct pantavisor *pv)
 
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
-	mkdir_p(path, 0644);
+	mkdir_p(path, 0755);
 	sprintf(path, "%s/trails/%d/.pv", pv->config->storage.mntpoint, pending->rev);
-	mkdir_p(path, 0644);
+	mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
