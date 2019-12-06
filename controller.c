@@ -377,6 +377,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	struct timespec tp;
 	static bool status_updated = false;
+	static enum update_state current_status = UPDATE_DONE;
 
 	if (pv->req) {
 		pv_log(WARN, "stable command found queued, discarding");
@@ -423,13 +424,16 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->update && pv->update->status == UPDATE_TRY) {
 		pv_set_current(pv, pv->state->rev);
 		pv_update_set_status(pv, UPDATE_DONE);
-		pv_update_finish(pv);
+		if (!pv_update_finish(pv))
+			status_updated = true;
 		pv_bl_clear_update(pv);
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
 		pv_set_current(pv, pv->state->rev);
 		pv_update_set_status(pv, UPDATE_FAILED);
-		pv_update_finish(pv);
+		if (!pv_update_finish(pv))
+			status_updated = true;
+		current_status = UPDATE_FAILED;
 	}
 
 	// make sure we always keep a ref to the latest working DONE step
@@ -454,7 +458,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// update remote metadata
 	pv_ph_device_update_meta(pv);
 
-	if (!status_updated && !pv_set_current_status(pv, UPDATE_DONE))
+	if (!status_updated && !pv_set_current_status(pv, current_status))
 		status_updated = true;
 	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
 
