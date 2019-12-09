@@ -73,6 +73,7 @@ struct pantavisor_network {
 struct pantavisor_config {
 	char *name;
 	char *logdir;
+	char *metacachedir;
 	int logmax;
 	int loglevel;
 	int logsize;
