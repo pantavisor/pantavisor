@@ -280,6 +280,10 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	if (!config->logdir)
 		config->logdir = strdup("/storage/logs/");
 
+	config->metacachedir = _config_get_value("meta.cache.dir");
+	if (!config->metacachedir)
+		config->metacachedir = strdup("/storage/cache/meta");
+
 	item = _config_get_value("log.maxsize");
 	if (item)
 		config->logmax = atoi(item);

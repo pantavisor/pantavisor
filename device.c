@@ -267,5 +267,9 @@ int pv_device_init(struct pantavisor *pv)
 
 	mkdir_p("/pv/user-meta/", 0755);
 
+	if (pv->config->metacachedir)
+		mount_bind(pv->config->metacachedir, "/pv/user-meta");
+
 	return 0;
 }
+
