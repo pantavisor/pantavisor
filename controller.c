@@ -313,6 +313,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (pv_volumes_mount(pv) < 0)
 		return STATE_ROLLBACK;
 
+	pv_set_active(pv);
 	ret = pv_platforms_start_all(pv);
 	if (ret < 0) {
 		pv_log(ERROR, "error starting platforms");
