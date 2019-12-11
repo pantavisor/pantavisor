@@ -47,6 +47,7 @@ struct pantavisor_storage {
 	char *fstype;
 	char *opts;
 	char *mntpoint;
+	char *mnttype;
 };
 
 struct pantavisor_updater {
