@@ -211,7 +211,7 @@ static int _config_parse_cmdline(char *hint)
 		if (strncmp(hint, token, strlen(hint)) == 0) {
 			k = token + strlen(hint);
 			key = strtok_r(k, "=", &ptr_in);
-			value = strtok_r(NULL, "=", &ptr_in);
+			value = strtok_r(NULL, "\0", &ptr_in);
 			_config_replace_item(key, value);
 		}
 		token = strtok_r(NULL, " ", &ptr_out);
