@@ -38,6 +38,7 @@
 #include <libgen.h>
 #include <errno.h>
 #include "cmd.h"
+#include <sys/xattr.h>
 
 
 #ifndef MODULE_NAME
@@ -73,9 +74,31 @@ struct pv_log_info *pv_log_info = NULL;
 		pvctl_write_to_path("/pv/pv-ctrl", buffer, strlen(buffer));\
  })
 
+static int set_logger_xattr(struct log *log)
+{
+	int log_fd = fileno(log->backing_file);
+	int val_len = fgetxattr(log_fd, PV_LOGGER_POS_XATTR, NULL, 0);
+	int set_flag = XATTR_REPLACE;
+	char place_holder[32];
+	int ret = 0;
+	off_t pos = ftello(log->backing_file);
+
+	if (pos < 0)
+		return ret;
+
+	snprintf(place_holder, sizeof(place_holder), "%lld", pos);
+
+	if (val_len < 0 && errno == ENODATA)
+		set_flag = XATTR_CREATE;
+	ret = fsetxattr(log_fd, PV_LOGGER_POS_XATTR, place_holder,
+				strlen(place_holder), set_flag);
+	return ret < 0 ? errno : ret;
+}
+
 static int pvlogger_flush(struct log *log, char *buf, int buflen)
 {
 	int bytes_written = 0;
+	int ret = 0;
 	char *const __logger_cmd = &logger_cmd[1];
 	logger_cmd[0] = CMD_LOG;
 
@@ -136,19 +159,51 @@ write_again:
 			}
 		}
 	}
+	ret = set_logger_xattr(log);
+	if (ret)
+		pv_log(DEBUG, "Setting xattr failed, return code is %d \n", ret);
 	return 0;
 }
 
 static int stop_logger = 0;
 
+static int get_logger_xattr(int log_fd)
+{
+	int val_len = -1;
+	off_t stored_pos = 0;
+
+	val_len = fgetxattr(log_fd, PV_LOGGER_POS_XATTR, NULL, 0);
+	if (val_len > 0) {
+		char *value = (char*)calloc(1, val_len);
+		if (value) {
+			val_len = fgetxattr(log_fd, PV_LOGGER_POS_XATTR,
+						value, val_len);
+			if (val_len > 0)
+				sscanf(value, "%lld",&stored_pos);
+			free(value);
+		}
+	} else
+		pv_log(DEBUG, "Attribute %s not present\n", PV_LOGGER_POS_XATTR);
+
+	return stored_pos;
+}
 
 static int pvlogger_start(struct log *log, int was_init_ok)
 {
+	int log_file_fd = fileno(log->backing_file);
+	off_t stored_pos = 0;
+
 	pv_log(INFO, "Started pvlogger\n");
 	
 	if (was_init_ok != LOG_OK) {
 		pv_log(WARN, "Waiting for log file\n");
+		goto out;
 	}
+	stored_pos = get_logger_xattr(log_file_fd);
+	pv_log(DEBUG, "pvlogger %s seeking to position %lld\n",
+			module_name, stored_pos);
+	fseek(log->backing_file, stored_pos, SEEK_SET);
+out:
 	return was_init_ok;
 }
 
@@ -171,6 +226,7 @@ static int wait_for_logfile(const char *logfile)
 	struct stat stbuf;
 	char *file_dup = NULL;
 	char *dir_dup = NULL;
+	bool did_wait = false;
 
 	FD_ZERO(&fdset);
 
@@ -229,6 +285,7 @@ static int wait_for_logfile(const char *logfile)
 read_again:
 	tv.tv_sec = 5;
 	tv.tv_usec = 0;
+	did_wait = true;
 	ret = select(fd_dir_notify + 1, &fdset, NULL, NULL, &tv);
 	if (ret < 0) {
 		if (errno == EINTR)
@@ -257,6 +314,8 @@ out:
 		free(inotify_ev);
 
 	close(fd_dir_notify);
+	if (!did_wait)
+		sleep(PV_LOGGER_FILE_WAIT_TIMEOUT);
 	return ret;
 }
 
