@@ -140,7 +140,7 @@ static void do_blkid(int fd, char *name, struct blkid_info *info)
       // Populate 64 bit little endian magic value
       test = 0;
       for (j = 0; j < fstypes[i].magic_len; j++)
-        test += ((uint64_t)toybuf[j+fstypes[i].magic_offset-off])<<(8*j);
+        test += (((uint64_t)toybuf[j+fstypes[i].magic_offset-off]) & 0xff) <<(8*j);
       if (test == fstypes[i].magic) break;
     }
 
