@@ -66,6 +66,33 @@ void pv_destroy(struct pantavisor *pv)
         free(pv);
 }
 
+void pv_set_active(struct pantavisor *pv)
+{
+	struct stat st;
+	char *path, *cur;
+
+	path = calloc(1, PATH_MAX);
+	if (!path)
+		return;
+
+	sprintf(path, "%s/trails/%d", pv->config->storage.mntpoint, pv->state->rev);
+	cur = calloc(1, PATH_MAX);
+	if (!cur)
+		goto out;
+
+	sprintf(cur, "%s/trails/current", pv->config->storage.mntpoint);
+	unlink(cur);
+
+	if (!stat(path, &st))
+		symlink(path, cur);
+
+out:
+	if (cur)
+		free(cur);
+	if (path)
+		free(path);
+}
+
 void pv_set_current(struct pantavisor *pv, int rev)
 {
 	int fd;
