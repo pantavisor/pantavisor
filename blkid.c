@@ -224,13 +224,16 @@ int get_blkid(struct blkid_info *info, const char *key)
 	    char **store;
     };
     struct type_store key_store [] = {
-	    { .key = "LABEL=", &info->label},
-	    { .key = "UUID=", &info->uuid}
+	    { .key = "LABEL=", .store = &info->label},
+	    { .key = "UUID=", .store = &info->uuid}
     };
 
     for ( i = 0; i < ARRAY_LEN(key_store); i++) {
-	    if (strncmp(key, key_store[i].key,
-				    strlen(key_store[i].key)) == 0) {
+	    size_t kl = strlen (key);
+	    size_t sl = strlen (key_store[i].key);
+	    if (kl < sl)
+		    continue;
+	    if (strncmp(key, key_store[i].key, sl) == 0) {
 		    id_or_label = skip_prefix( (char*)key, key_store[i].key);
 		    break;
 	    }
@@ -253,6 +256,7 @@ int get_blkid(struct blkid_info *info, const char *key)
 			    continue;
 		    sprintf(device, "/dev/%.20s", name);
 		    if (-1 == (fd = open(device, O_RDONLY))) {
+			    printf("Failed Device: %s\n", device);
 			    if (errno != ENOMEDIUM)
 				    printf("Unable to open device file %s", device);
 			    continue;
