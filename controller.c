@@ -139,23 +139,23 @@ static pv_state_t _pv_init(struct pantavisor *pv)
         mkdir_p(c->storage.mntpoint, 0755);
 	
 	/*
-	 * storage.path will contain UUID=XXXX or LABEL=XXXX
-	 * */
-	get_blkid(&dev_info, c->storage.path);
-	if (!dev_info.device)
-                exit_error(errno, "Could not mount trails storage. No device found.");
-	/*
-	 * Should we need this?
-	 * */
-	// Check that storage device has been enumerated and wait if not there yet
-	// (RPi2 for example is too slow to pvan the MMC devices in time)
+	 * Check that storage device has been enumerated and wait if not there yet
+	 * (RPi2 for example is too slow to pvan the MMC devices in time)
+	 */
 	for (int wait = 5; wait > 0; wait--) {
-		if (stat(dev_info.device, &st) == 0)
+		/*
+		 * storage.path will contain UUID=XXXX or LABEL=XXXX
+		 * */
+		get_blkid(&dev_info, c->storage.path);
+		if (dev_info.device && stat(dev_info.device, &st) == 0)
 			break;
 		printf("INFO: trail storage not yet available, waiting...");
 		sleep(1);
 		continue;
 	}
+
+	if (!dev_info.device)
+		exit_error(errno, "Could not mount trails storage. No device found.");
 
 	if (!c->storage.mnttype) {
 		printf("Mounting direct storage path: %s\n", c->storage.path);
