@@ -158,7 +158,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		exit_error(errno, "Could not mount trails storage. No device found.");
 
 	if (!c->storage.mnttype) {
-		printf("Mounting direct storage path: %s\n", c->storage.path);
 		ret = mount(dev_info.device, c->storage.mntpoint, c->storage.fstype, 0, NULL);
 	} else {
 		int status;
@@ -172,8 +171,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		exit_error(errno, "Could not mount trails storage");
 
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
-
-	printf("Storage mounted at %s\n", c->storage.mntpoint);
 
 	sprintf(pconfig_p, "%s/config/pantahub.config", c->storage.mntpoint);
 	if (ph_config_from_file(pconfig_p, c) < 0) {
