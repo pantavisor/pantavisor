@@ -115,6 +115,7 @@ struct pv_state {
 	int rev;
 	char *spec;
 	char *kernel;
+	char *fdt;
 	char *firmware;
 	char *modules;
 	char *initrd;
