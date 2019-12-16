@@ -266,9 +266,12 @@ int pv_device_init(struct pantavisor *pv)
 	dl_list_init(&pv->dev->metalist);
 
 	mkdir_p("/pv/user-meta/", 0755);
-
 	if (pv->config->metacachedir)
 		mount_bind(pv->config->metacachedir, "/pv/user-meta");
+
+	mkdir_p("/etc/dropbear/", 0755);
+	if (pv->config->dropbearcachedir)
+		mount_bind(pv->config->dropbearcachedir, "/etc/dropbear");
 
 	return 0;
 }

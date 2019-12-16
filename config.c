@@ -281,6 +281,10 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	if (!config->logdir)
 		config->logdir = strdup("/storage/logs/");
 
+	config->dropbearcachedir = _config_get_value("dropbear.cache.dir");
+	if (!config->dropbearcachedir)
+		config->dropbearcachedir = strdup("/storage/cache/dropbear");
+
 	config->metacachedir = _config_get_value("meta.cache.dir");
 	if (!config->metacachedir)
 		config->metacachedir = strdup("/storage/cache/meta");

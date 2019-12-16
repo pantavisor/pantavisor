@@ -75,6 +75,7 @@ struct pantavisor_config {
 	char *name;
 	char *logdir;
 	char *metacachedir;
+	char *dropbearcachedir;
 	int logmax;
 	int loglevel;
 	int logsize;

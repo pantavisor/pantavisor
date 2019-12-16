@@ -188,6 +188,9 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (stat(c->metacachedir, &st) != 0)
 		mkdir_p(c->metacachedir, 0500);
 
+	if (stat(c->dropbearcachedir, &st) != 0)
+		mkdir_p(c->dropbearcachedir, 0500);
+
 	wait_delay = 0;
 	pv_log_init(pv);
 	if (c->loglevel)
