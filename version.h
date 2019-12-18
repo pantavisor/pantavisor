@@ -22,6 +22,7 @@
 #ifndef PV_VERSION_H
 #define PV_VERSION_H
 
+extern const char *pv_build_arch;
 extern const char *pv_build_version;
 extern const char *pv_build_manifest;
 extern const char *pv_build_date;

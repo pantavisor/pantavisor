@@ -108,8 +108,12 @@ static int ph_client_init(struct pantavisor *pv)
 			pv->config->creds.prn,
 			pv->config->creds.secret,
 			pv_ph_get_certs(pv),
+			pv_user_agent,
 			(pv->conn ? &pv->conn->sock : NULL)
 			);
+
+	if (!client)
+		return 0;
 
 auth:
 	if (!pv->online)
@@ -457,6 +461,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 	req->method = THTTP_METHOD_POST;
 	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;
+	req->user_agent = pv_user_agent;
 
 	req->host = pv->config->creds.host;
 	req->port = pv->config->creds.port;

@@ -27,7 +27,7 @@ PV_BUILD_DIR := $(call local-get-build-dir)
 PV_VERSION_C := $(PV_BUILD_DIR)/version.c
 
 $(PV_VERSION_C): .FORCE
-	$(Q) $(PRIVATE_PATH)/gen_version.sh $(PRIVATE_PATH) $(PV_BUILD_DIR)
+	$(Q) $(PRIVATE_PATH)/gen_version.sh $(PRIVATE_PATH) $(PV_BUILD_DIR) $(TARGET)
 
 LOCAL_PREREQUISITES += \
 	$(PV_VERSION_H)
