@@ -79,6 +79,7 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
 	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
 	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 
@@ -252,6 +253,9 @@ void multi1_free(struct pv_state *this)
 	if (this->initrd)
 		free(this->initrd);
 
+	if (this->fdt)
+		free(this->fdt);
+
 	free(this->json);
 
 	struct pv_platform *pt, *p = this->platforms;
@@ -285,6 +289,7 @@ void multi1_print(struct pv_state *this)
 	struct pv_object *curr;
 	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
 	pv_log(DEBUG, "initrd: '%s'\n", this->initrd);
+	pv_log(DEBUG, "fdt: '%s'\n", this->fdt ? this->fdt : "(null)");
 	while (p) {
 		pv_log(DEBUG, "platform: '%s'\n", p->name);
 		pv_log(DEBUG, "  type: '%s'\n", p->type);

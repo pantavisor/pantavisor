@@ -387,6 +387,17 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	if (link(src, dst) < 0)
 		goto err;
 
+	// fdt
+	if (s->fdt) {
+		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", c->storage.mntpoint, s->rev);
+		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->kernel);
+
+		remove(dst);
+		if (link(src, dst) < 0)
+			goto err;
+	}
+
+
 	pv_log(DEBUG, "linked boot assets for rev=%d", s->rev);
 
 	return 0;

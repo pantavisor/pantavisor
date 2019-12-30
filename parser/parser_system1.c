@@ -63,6 +63,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
 	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
 	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 	s->modules = get_json_key_value(buf, "modules", tokv, tokc);
@@ -567,6 +568,9 @@ void system1_free(struct pv_state *this)
 
 	if (this->initrd)
 		free(this->initrd);
+
+	if (this->fdt)
+		free(this->fdt);
 
 	free(this->json);
 
