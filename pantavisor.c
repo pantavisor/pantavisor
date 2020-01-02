@@ -95,6 +95,11 @@ out:
 
 void pv_set_current(struct pantavisor *pv, int rev)
 {
+	__pv_set_current(pv, rev, true);
+}
+
+void __pv_set_current(struct pantavisor *pv, int rev, bool unset_pvtry)
+{
 	int fd;
 	char path[256];
 
@@ -111,7 +116,7 @@ void pv_set_current(struct pantavisor *pv, int rev)
 	close(fd);
 
 	// commit to bootloader
-	pv_bl_set_current(pv, rev);
+	__pv_bl_set_current(pv, rev, unset_pvtry);
 }
 
 #define REV_BUF_SIZE	5

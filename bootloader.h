@@ -23,11 +23,13 @@
 #define PV_BOOTLOADER_H
 
 #include "pantavisor.h"
+#include <stdbool.h>
 
 int pv_bl_init(struct pantavisor *pv);
 int pv_bl_set_try(struct pantavisor *pv, int rev);
 int pv_bl_get_try(struct pantavisor *pv);
 int pv_bl_set_current(struct pantavisor *pv, int rev);
+int __pv_bl_set_current(struct pantavisor *pv, int rev, bool unset_pvtry);
 int pv_bl_get_current(struct pantavisor *pv);
 int pv_bl_clear_update(struct pantavisor *pv);
 int pv_bl_install_kernel(struct pantavisor *pv, char *obj);
