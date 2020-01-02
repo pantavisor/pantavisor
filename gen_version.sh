@@ -11,3 +11,5 @@ now=$(date +'%y%m%d')
 
 echo "const char *pv_build_manifest = \"${manifest}\";" > $buildir/version.c
 echo "const char *pv_build_version = \"${PANTAVISOR_VERSION}-${now}-${sha256:0:7}\";" >> $buildir/version.c
+echo "const char *pv_build_date = \"${now}\";" >> $buildir/version.c
+echo "const char *pv_build_arch = \"${3}\";" >> $buildir/version.c

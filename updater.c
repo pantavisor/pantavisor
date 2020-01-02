@@ -118,6 +118,7 @@ static int trail_remote_init(struct pantavisor *pv)
 		pv->config->creds.prn,
 		pv->config->creds.secret,
 		(const char **) cafiles,
+		pv_user_agent,
 		(pv->conn ? &pv->conn->sock : NULL)
 		);
 
@@ -450,6 +451,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 	req->proto_version = THTTP_PROTO_VERSION_10;
 	req->host = pv->config->creds.host;
 	req->port = pv->config->creds.port;
+	req->user_agent = pv_user_agent;
 
 	req->path = strstr(signed_puturl, "/local-s3");
 
@@ -846,6 +848,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 
 	req = (thttp_request_t*) tls_req;
 
+	req->user_agent = pv_user_agent;
 	req->method = THTTP_METHOD_GET;
 	req->proto = THTTP_PROTO_HTTP;
 	req->proto_version = THTTP_PROTO_VERSION_10;

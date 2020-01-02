@@ -491,6 +491,7 @@ static void _pv_init()
 	struct pantavisor *pv;
 
 	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
+	sprintf(pv_user_agent, "Pantavisor/2 (Linux; %s) PV/%s Date/%s", pv_build_arch, pv_build_version, pv_build_date);
 
         prctl(PR_SET_NAME, "pantavisor");
 	pv = calloc(1, sizeof(struct pantavisor));

@@ -32,6 +32,8 @@
 
 // pantavisor.h
 
+char pv_user_agent[4096];
+
 struct trail_remote;
 
 enum update_state {
