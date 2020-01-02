@@ -158,8 +158,8 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 {
 	int ret = 0;
 	struct pv_update *u = pv->update;
-	trest_request_ptr req;
-	trest_response_ptr res;
+	trest_request_ptr req = 0;
+	trest_response_ptr res = 0;
 	char json[1024];
 	char *endpoint;
 
