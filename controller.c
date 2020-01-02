@@ -644,7 +644,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		rb_count = 0;
 	}
 
-	pv_set_current(pv, pv_get_rollback_rev(pv));
+	__pv_set_current(pv, pv_get_rollback_rev(pv), false);
 
 	return STATE_REBOOT;
 }

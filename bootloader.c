@@ -84,10 +84,16 @@ int pv_bl_get_try(struct pantavisor *pv)
 
 int pv_bl_set_current(struct pantavisor *pv, int rev)
 {
+	return __pv_bl_set_current(pv, rev, true);
+}
+
+int __pv_bl_set_current(struct pantavisor *pv, int rev, bool unset_pvtry)
+{
 	if (!ops)
 		return -1;
 
-	ops->unset_env_key("pv_try");
+	if (unset_pvtry)
+		ops->unset_env_key("pv_try");
 
 	return ops->set_env_key("pv_rev", rev);
 }
