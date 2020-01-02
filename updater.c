@@ -135,7 +135,7 @@ static int trail_remote_init(struct pantavisor *pv)
 
 	remote = malloc(sizeof(struct trail_remote));
 	remote->client = client;
-	
+
 	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
 				   + strlen(pv->config->creds.id)) * sizeof(char));
 	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, pv->config->creds.id);
@@ -172,6 +172,9 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 
 	if (!pv->remote)
 		trail_remote_init(pv);
+
+	if (!pv->remote)
+		goto out;
 
 	switch (status) {
 	case UPDATE_QUEUED:
