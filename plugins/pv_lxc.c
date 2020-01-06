@@ -24,6 +24,7 @@
 #include <string.h>
 #include <libgen.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <sys/utsname.h>
 #include <sys/stat.h>
@@ -479,7 +480,7 @@ out_container_init:
 					pv_log_i->pv_get_log_config_item(item_config,
 							"maxsize");
 				if (truncate_item) {
-					sscanf(truncate_item, "%lld",
+					sscanf(truncate_item, "%" PRId64,
 							&pv_log_i->truncate_size);	
 				}
 				/*
