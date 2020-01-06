@@ -85,6 +85,99 @@ typedef struct {
 	uint32_t count;
 } log_buf_t;
 
+struct pv_json_format {
+	char ch;
+	int *off_dst;
+	int *off_src;
+	const char *src;
+	char *dst;
+	int (*format)(struct pv_json_format *);
+};
+
+static bool pv_log_is_json_special(char ch)
+{
+	switch(ch) {
+		case '\\':
+		case '\"':
+		case '\n':
+		case '\r':
+		case '\t':
+			return true;
+		default:
+			return false;
+	}
+}
+
+static int pv_log_modify_to_json(struct pv_json_format *json_fmt)
+{
+	char replacement_char;
+
+	json_fmt->dst[(*json_fmt->off_dst)++] = '\\';
+
+	switch(json_fmt->ch) {
+		case '\\':
+		case '\"':
+		case '/':
+			replacement_char = json_fmt->ch;
+			break;
+		case '\n':
+			replacement_char = 'n';
+			break;
+		case '\t':
+			replacement_char = 't';
+			break;
+		case '\f':
+			replacement_char = 'f';
+			break;
+		case '\b':
+			replacement_char = 'b';
+			break;
+		case '\r':
+			replacement_char = 'r';
+			break;
+		default:
+			/*
+			 * TODO: Return non-zero here instead of replacing
+			 * with space.
+			 * */
+			replacement_char = ' ';
+			break;
+
+	}
+	json_fmt->dst[(*json_fmt->off_dst)++] = replacement_char;
+	return 0;
+}
+
+static char* pv_log_format_json(char *buf, int len)
+{
+	char *json_string = NULL;
+	int idx = 0;
+	int json_str_idx = 0;
+
+	if (len > 0) //We make enough room for worst case.
+		json_string = (char*) calloc(1, (len * 2) + 1); //Add 1 for '\0'.
+
+	if (!json_string)
+		goto out;
+	while (len > idx) {
+		if (pv_log_is_json_special(buf[idx])) {
+			struct pv_json_format json_fmt = {
+				.src = buf,
+				.dst = json_string,
+				.off_dst = &json_str_idx,
+				.off_src = &idx,
+				.ch = buf[idx],
+				.format = pv_log_modify_to_json
+			};
+			json_fmt.format(&json_fmt);
+		} else
+			json_string[json_str_idx++] = buf[idx];
+		idx++;
+	}
+out:
+	return json_string;
+}
+
 static log_buf_t *lb = NULL;
 static struct pantavisor *global_pv = NULL;
 
@@ -281,6 +374,9 @@ static void log_last_entry_to_file(void)
 	log_count++;
 }
 
+
+
+
 void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct timeval tv;
@@ -305,11 +401,6 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 	snprintf(e.source, 32, "%s", module);
 
 	vsnprintf(e.data, sizeof(buf), fmt, args);
-
-	// escape problematic json chars
-	replace_char(e.data, '\n', ' ');
-	replace_char(e.data, '\"', '\'');
-	replace_char(e.data, '\t', ' ');
 
 	// add to ring buffer
 	log_add(&e);
@@ -359,12 +450,6 @@ void pv_log_raw(struct pantavisor *pv, char *buf, int len, const char *platform)
 
 	strncpy(e.data, buf, len > LOG_DATA_SIZE ? LOG_DATA_SIZE : len);
 
-	// escape problematic json chars
-	replace_char(e.data, '\n', ' ');
-	replace_char(e.data, '\"', '\'');
-	replace_char(e.data, '\t', ' ');
-	replace_char(e.data, '\r', ' ');
-
 	// add to ring buffer
 	log_add(&e);
 
@@ -399,8 +484,8 @@ static void log_get_next(log_entry_t **e)
 
 void pv_log_flush(struct pantavisor *pv, bool force)
 {
-	char *entry, *body, *tmp;
-	unsigned long i = 1, j = 0, c = 0;
+	char *entry, *body, *formatted_json;
+	unsigned long i = 1;
 	int size;
 
 	if (!pv)
@@ -429,33 +514,15 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 		size = sizeof(JSON_FORMAT) + 32;  // adjust timestamp
 		size += strlen(level_names[e->level].name);
 		size += strlen(e->source);
-		size += strlen(e->data);
+		formatted_json = pv_log_format_json(e->data, strlen(e->data));
+		if (!formatted_json)
+			break;
+		size += strlen(formatted_json);
 		entry = calloc(1, size * sizeof(char));
-
-		for (c = 0, j = 0; e->data[j]; j++)
-			if (e->data[j] == '\\') c++;
-
-		if (c) {
-			tmp = calloc(1, strlen(e->data) + (c * sizeof(char)));
-			c = 0; j = 0;
-			while (c < strlen(e->data)) {
-				if (e->data[c] == '\\') {
-					*(tmp+j) = '\\';
-					j++;
-				}
-				*(tmp+j) = e->data[c];
-				j++;
-				c++;
-			}
-			snprintf(entry, size, JSON_FORMAT, e->tsec,
+		snprintf(entry, size, JSON_FORMAT, e->tsec,
 				e->tusec, level_names[e->level].name,
-				e->source, tmp);
-			free(tmp);
-		} else {
-			snprintf(entry, size, JSON_FORMAT, e->tsec,
-				e->tusec, level_names[e->level].name,
-				e->source, e->data);
-		}
+				e->source, formatted_json);
+
 
 		if ((strlen(body) + size + 3) > BUF_CHUNK*i) {
 			body = realloc(body, BUF_CHUNK*(i+1)* sizeof(char));
@@ -464,6 +531,7 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 		}
 		body = strncat(body, entry, size);
 		free(entry);
+		free(formatted_json);
 		log_get_next(&e);
 		if (log_entry_null(e))
 			break;
