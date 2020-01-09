@@ -94,6 +94,34 @@ out:
 		free(path);
 }
 
+int pv_make_config(struct pantavisor *pv)
+{
+	struct stat st;
+	char targetpath[PATH_MAX];
+	char srcpath[PATH_MAX];
+	char cmd[PATH_MAX];
+	int rv;
+
+	sprintf(srcpath, "%s/trails/%d/_config/", pv->config->storage.mntpoint, pv->state->rev);
+	sprintf(targetpath, "/configs/");
+
+	if (stat(targetpath, &st))
+		mkdir_p(targetpath, 0755);
+
+	// we allow overloading behaviour via plugin from initrd addon
+	if (!stat("/usr/local/bin/pvext_sysconfig", &st) ||
+			st.st_mode & S_IXUSR ) {
+		sprintf(cmd, "/usr/local/bin/pvext_sysconfig %s %s", srcpath, targetpath);
+		pv_log(INFO, "%s", cmd);
+	} else {
+		sprintf(cmd, "/bin/cp -a %s/* %s/", srcpath, targetpath);
+		pv_log(INFO, "%s", cmd);
+	}
+
+	rv = system(cmd);
+	return rv;
+}
+
 void pv_set_current(struct pantavisor *pv, int rev)
 {
 	__pv_set_current(pv, rev, true);

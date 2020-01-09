@@ -171,6 +171,7 @@ void pv_set_active(struct pantavisor *pv);
 void pv_set_current(struct pantavisor *pv, int rev);
 void __pv_set_current(struct pantavisor *pv, int rev, bool unset_pvtry);
 int pv_get_rollback_rev(struct pantavisor *pv);
+int pv_make_config(struct pantavisor *pv);
 void pv_meta_set_objdir(struct pantavisor *pv);
 int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
 int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
