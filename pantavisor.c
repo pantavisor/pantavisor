@@ -27,6 +27,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <netdb.h>
+#include <inttypes.h>
 
 #include <linux/limits.h>
 
@@ -583,7 +584,7 @@ struct pv_log_info* pv_new_log(bool islxc,
 		if (!strncmp(trunc_val, "true", strlen("true"))) {
 			trunc_val = pv_get_log_config_item(logger_config, "maxsize");
 			if (trunc_val)
-				sscanf(trunc_val,"%lld",&log_info->truncate_size);
+				sscanf(trunc_val,"%" PRId64,&log_info->truncate_size);
 		}
 	}
 	dl_list_init(&log_info->next);

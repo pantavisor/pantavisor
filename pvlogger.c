@@ -25,7 +25,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
-
+#include <inttypes.h>
 #include <pthread.h>
 
 #include <sys/types.h>
@@ -86,7 +86,7 @@ static int set_logger_xattr(struct log *log)
 	if (pos < 0)
 		return ret;
 
-	snprintf(place_holder, sizeof(place_holder), "%lld", pos);
+	snprintf(place_holder, sizeof(place_holder), "%" PRId64, pos);
 
 	if (val_len < 0 && errno == ENODATA)
 		set_flag = XATTR_CREATE;
@@ -179,7 +179,7 @@ static int get_logger_xattr(int log_fd)
 			val_len = fgetxattr(log_fd, PV_LOGGER_POS_XATTR,
 						value, val_len);
 			if (val_len > 0)
-				sscanf(value, "%lld",&stored_pos);
+				sscanf(value, "%" PRId64,&stored_pos);
 			free(value);
 		}
 	} else
@@ -200,7 +200,7 @@ static int pvlogger_start(struct log *log, int was_init_ok)
 		goto out;
 	}
 	stored_pos = get_logger_xattr(log_file_fd);
-	pv_log(DEBUG, "pvlogger %s seeking to position %lld\n",
+	pv_log(DEBUG, "pvlogger %s seeking to position %" PRId64 "\n",
 			module_name, stored_pos);
 	fseek(log->backing_file, stored_pos, SEEK_SET);
 out:
