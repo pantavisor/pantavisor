@@ -336,6 +336,13 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 
 	pv_set_active(pv);
+
+	ret = pv_make_config(pv);
+	if (ret < 0) {
+		pv_log(ERROR, "error making config");
+		return STATE_ROLLBACK;
+	}
+
 	ret = pv_platforms_start_all(pv);
 	if (ret < 0) {
 		pv_log(ERROR, "error starting platforms");

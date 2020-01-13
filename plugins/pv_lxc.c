@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 #include <stdio.h>
+#include <dirent.h>
 #include <errno.h>
 #include <string.h>
 #include <libgen.h>
@@ -98,6 +99,54 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	pv_log_i->truncate_size = (2 * 1024 * 1024);
 	pv_log_i->on_logger_closed = pv_free_lxc_log;
 	return 0;
+}
+
+static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, char *basedir)
+{
+	char path[PATH_MAX];
+	struct dirent *dp;
+	struct stat st;
+
+	if (!basedir)
+		basedir = srcdir;
+
+	DIR *dir = opendir(srcdir);
+
+	// Unable to open directory stream
+	if (!dir)
+	    return 0;
+
+	while ((dp = readdir(dir)) != NULL) {
+
+		if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0) {
+
+			// Construct new path from our base path
+			strcpy(path, srcdir);
+			strcat(path, "/");
+			strcat(path, dp->d_name);
+
+			if (stat(path, &st)){
+				printf("ERROR: path %s not available", path);
+			} else if (!pv_setup_config_bindmounts(c, path, basedir)) {
+				// add the lxc config
+				char *inpath;
+				char mountstr[PATH_MAX];
+
+				inpath = path + strlen(basedir);
+
+				while(inpath[0] == '/')
+					inpath++;
+
+
+				sprintf(mountstr, "%s %s none bind,rw,create=file 0 0", path, inpath);
+				c->set_config_item(c, "lxc.mount.entry", mountstr);
+				printf("Adding lxc config mount: %s %s\n", "lxc.mount.entry", mountstr);
+			}
+		}
+	}
+
+	closedir(dir);
+	return 1;
 }
 
 static void pv_setup_lxc_container(struct lxc_container *c,
@@ -405,6 +454,8 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		close(pipefd[0]);
 	}
 	else { /* Child process */
+		char configdir[PATH_MAX];
+
 		close(pipefd[0]);
 		*( (pid_t*) data) = -1;
 		pv_lxc_log.name = p->name;
@@ -429,6 +480,11 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		pv_setup_lxc_container(c, share_ns);
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
+
+		// setup config bindmounts
+		sprintf(configdir, "/configs/%s", p->name);
+		pv_setup_config_bindmounts(c, configdir, configdir);
+
 		err = c->start(c, 0, NULL) ? 0 : 1;
 
 		if (err && (c->error_num != 1)) {
