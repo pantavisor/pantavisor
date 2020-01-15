@@ -100,6 +100,11 @@ struct pv_logger_config {
 	 * pairs for the log configuration.
 	 * */
 	const char ***pair; /*equiv to char *pair[][2]. key, val*/
+	/*
+	 * Only when logger config is statically allocated.
+	 * Do not use both pair and static_pair.
+	 * */
+	const char* (*static_pair)[2];
 };
 struct pv_log_info {
 	const char *logfile;

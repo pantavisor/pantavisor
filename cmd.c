@@ -135,10 +135,7 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 			dl_list_for_each_safe(item, tmp, head,
 					struct pv_log_info, next) {
 				if (item->logger_pid == peer_cred.pid) {
-					if (item->islxc)
-						c->platform = strdup(item->name);
-					else
-						c->platform = strdup(walker->name);
+					c->platform = (item->name ? strdup(item->name) : NULL);
 					found = true;
 					break;
 				}

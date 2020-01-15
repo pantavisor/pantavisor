@@ -351,9 +351,9 @@ init_again:
 		return -1;
 	}
 
+	pv_log(INFO, "pvlogger %s has been setup.", module_name);
 	ret = log_init(&default_log, logfile ? logfile : "/var/log/messages");
 	while (ret != LOG_OK) {
-		pv_log(WARN, "Waiting for logfile for %s\n", module_name);
 		ret = wait_for_logfile((logfile ? logfile : "/var/log/messages"));
 		if (ret == LOG_OK)
 			goto init_again;
@@ -371,13 +371,13 @@ init_again:
 
 	while (!stop_logger) {
 		if (log_flush_pv(&default_log) < 0) {
-			pv_log(WARN, "Stopping log for platform %s\n", module_name);
+			pv_log(WARN, "Stopping pvlogger %s\n", module_name);
 			log_stop(&default_log);
 			goto init_again;
 		}
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 	}
-	pv_log(WARN, "Exiting, pv_logger for platform %s\n", module_name);
+	pv_log(WARN, "Exiting, pv_logger %s\n", module_name);
 	return 0;
 }

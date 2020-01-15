@@ -48,6 +48,32 @@ int setns(int nsfd, int nstype);
 #include "pvlogger.h"
 #include "utils/list.h"
 
+static const char *syslog[][2] = {
+		{"file", "/var/log/syslog"},
+		{"truncate", "true"},
+		{"maxsize", "2097152"},
+		{"name", NULL},
+		{NULL, NULL}
+
+};
+
+static const char *messages[][2] = {
+		{"file", "/var/log/messages"},
+		{"truncate", "true"},
+		{"maxsize", "2097152"},
+		{"name", NULL},
+		{NULL, NULL}
+};
+static struct pv_logger_config plat_logger_config_syslog = {
+	.static_pair = syslog,
+	.pair = NULL,
+};
+
+static struct pv_logger_config plat_logger_config_messages = {
+	.static_pair = messages,
+	.pair = NULL,
+};
+
 struct pv_cont_ctrl {
 	char *type;
 	void* (*start)(struct pv_platform *p, char *conf_file, void *data);
@@ -330,16 +356,33 @@ static void pv_free_platform_log(struct pv_log_info *info)
 }
 
 static void pv_setup_platform_log(struct pv_log_info *info,
-				  void *config_data_unused)
+				  struct pv_logger_config *logger_config)
 {
+	const char *logfile = NULL;
+
 	if (!info)
 		return;
 	/*
 	 * We would read the config data from platform,
 	 * and set this up.
 	 * */
-	info->logfile = NULL; /*Defaults to /var/log/messages in pvlogger*/
+	logfile = pv_get_log_config_item(logger_config, "file"); /*Defaults to /var/log/messages in pvlogger*/
+	info->logfile = (logfile ? strdup(logfile) : NULL);
 	info->on_logger_closed = pv_free_platform_log;
+}
+
+static struct pv_log_info* pv_add_platform_logger(struct pv_platform *platform, 
+			struct pv_logger_config *logger_config)
+{
+	struct pv_log_info *log_info = NULL;
+
+	log_info = pv_new_log(false, logger_config, platform->name);
+	if (log_info) {
+		pv_setup_platform_log(log_info, logger_config);
+		dl_list_init(&log_info->next);
+		dl_list_add(&platform->logger_list, &log_info->next);
+	}
+	return log_info;
 }
 
 static int start_pvlogger_for_platform(struct pv_platform *platform)
@@ -349,6 +392,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	struct dl_list *config_head = &platform->logger_configs;
 	struct pv_logger_config *item_config, *tmp_config;
 	pid_t logger_pid = -1;
+	bool plat_needs_default_logger = true;
 	/*
 	 * First add all the loggers in the list.
 	 * This will probably in a loop on the platform
@@ -356,17 +400,28 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	 * */
 	dl_list_for_each_safe(item_config, tmp_config, config_head,
 			struct pv_logger_config, item_list) {
-		log_info = pv_new_log(false, item_config, platform->name);
-		if (log_info) {
-			pv_setup_platform_log(log_info, item_config);
-			dl_list_init(&log_info->next);
-			dl_list_add(&platform->logger_list, &log_info->next);
-		}
+		pv_add_platform_logger(platform, item_config);
 		/*
 		 * logger config item isn't required anymore
 		 * */
 		dl_list_del(&item_config->item_list);
 		pv_free_logger_config(item_config);
+		plat_needs_default_logger = false;
+	}
+
+	if (plat_needs_default_logger) {
+		char logger_name[32] = {0};
+		/*
+		 * The name key is at index 3
+		 * */
+		snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
+				platform->name);
+		plat_logger_config_syslog.static_pair[3][1] = logger_name;
+		pv_add_platform_logger(platform, &plat_logger_config_syslog);
+		snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
+				platform->name);
+		plat_logger_config_messages.static_pair[3][1] = logger_name;
+		pv_add_platform_logger(platform, &plat_logger_config_messages);
 	}
 	/*
 	 * This includes the ones for lxc.
