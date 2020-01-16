@@ -290,6 +290,7 @@ static void log_add(log_entry_t *e)
 	memcpy(lb->head, e, sizeof(log_entry_t));
 	lb->head += 1;
 	if (lb->head == lb->buf_end) {
+		pv_log_flush(global_pv, true);
 		lb->head = lb->buf_start;
 	}
 
@@ -412,8 +413,6 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 	// if config-logfile
 	log_last_entry_to_file();
 
-	free((char *) format);
-
 	// try to push north
 	if (level < DEBUG)
 		pv_log_flush(global_pv, level == ERROR ? true : false);
@@ -491,6 +490,8 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 	char *entry, *body, *formatted_json;
 	unsigned long i = 1;
 	int size;
+	ssize_t buf_len = 0;
+	ssize_t buf_rem = BUF_CHUNK - 1;/*Leave 1 NULL byte*/
 
 	if (!pv)
 		return;
@@ -512,9 +513,14 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 	log_entry_t *e = lb->tail;
 
 	body = calloc(1, BUF_CHUNK * sizeof(char));
-	sprintf(body, "[");
+	if (!body)
+		return;
+	buf_len += sprintf(body, "[");
 
 	for (;;) {
+		bool break_loop = false;
+
+		buf_rem -= buf_len;
 		size = sizeof(JSON_FORMAT) + 32;  // adjust timestamp
 		size += strlen(level_names[e->level].name);
 		size += strlen(e->source);
@@ -522,26 +528,62 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 		if (!formatted_json)
 			break;
 		size += strlen(formatted_json);
-		entry = calloc(1, size * sizeof(char));
-		snprintf(entry, size, JSON_FORMAT, e->tsec,
+		entry = calloc(1, (size + 1) * sizeof(char)); /* Add one for null*/
+		if (!entry) {
+			break_loop = true;
+			goto free_json;
+		}
+		snprintf(entry, size + 1, JSON_FORMAT, e->tsec,
 				e->tusec, level_names[e->level].name,
 				e->source, formatted_json);
 
+		if (buf_rem < size + 3) { /*3 = , ] and \0*/
+			char *new_body = realloc(body, BUF_CHUNK*(i+1)* sizeof(char));
 
-		if ((strlen(body) + size + 3) > BUF_CHUNK*i) {
-			body = realloc(body, BUF_CHUNK*(i+1)* sizeof(char));
-			memset(body+(BUF_CHUNK*i), 0, BUF_CHUNK * sizeof(char));
+			if (!new_body) {
+				break_loop = true;
+				goto free_entry;
+			}
+			body = new_body;
+			buf_rem += BUF_CHUNK;
 			i++;
 		}
 		body = strncat(body, entry, size);
+		buf_len += size;
+free_entry:
 		free(entry);
+free_json:
 		free(formatted_json);
+		if (break_loop) /*Check separately to avoid loosing the next entry.*/
+			break;
 		log_get_next(&e);
 		if (log_entry_null(e))
 			break;
-		body = strncat(body, ",", 1);
+		body = strcat(body, ",");
+		buf_len += 1;
 	}
-	body = strcat(body, "]");
+	if (buf_rem > 0)
+		body = strcat(body, "]");
+	else {
+		/*
+		 * We need to put the remaining ] and a NULL byte at the
+		 * end.
+		 * */
+		char *new_body = realloc(body, strlen(body) + 2);
+
+		if (new_body) {
+			strcat(new_body, "]");
+			body = new_body;
+		} else {
+			/*
+			 * Worst case.
+			 * Miss a byte instead of missing everything.
+			 * */
+			int body_len = strlen(body);
+
+			body[body_len - 2] = ']';
+		}
+	}
 
 	if (pv_ph_upload_logs(pv, body))
 		log_reset();
