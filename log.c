@@ -286,13 +286,13 @@ static char *replace_char(char *str, char c, char r)
 static void log_add(log_entry_t *e)
 {
 	// FIXME: backup to disk if (lb->head == lb->tail)
-	lb->last = lb->head;
-	memcpy(lb->head, e, sizeof(log_entry_t));
-	lb->head += 1;
-	if (lb->head == lb->buf_end) {
+	if (lb->head >= lb->buf_end) {
 		pv_log_flush(global_pv, true);
 		lb->head = lb->buf_start;
 	}
+	lb->last = lb->head;
+	memcpy(lb->head, e, sizeof(log_entry_t));
+	lb->head += 1;
 
 	if (lb->count < lb->size)
 		lb->count++;
@@ -383,6 +383,7 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 	struct timeval tv;
 	char *format = 0;
 	unsigned int written = 0;
+	log_entry_t e;
 
 	if (!lb)
 		return;
@@ -391,7 +392,6 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 		return;
 
 	// construct log entry in heap to copy
-	log_entry_t e;
 
 	gettimeofday(&tv, NULL);
 
@@ -399,7 +399,7 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 	e.tusec = (uint32_t) tv.tv_usec;
 	e.level = level;
 
-	snprintf(e.source, 32, "%s", module);
+	snprintf(e.source, sizeof(e.source), "%s", module);
 
 	written = vsnprintf(e.data, sizeof(e.data), fmt, args);
 	if (written >= sizeof(e.data))
@@ -492,6 +492,7 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 	int size;
 	ssize_t buf_len = 0;
 	ssize_t buf_rem = BUF_CHUNK - 1;/*Leave 1 NULL byte*/
+	static volatile bool in_progress = false;
 
 	if (!pv)
 		return;
@@ -511,6 +512,11 @@ void pv_log_flush(struct pantavisor *pv, bool force)
 
 	// take tail of log buffer
 	log_entry_t *e = lb->tail;
+
+	if (!in_progress)
+		in_progress = true;
+	else
+		goto exit;
 
 	body = calloc(1, BUF_CHUNK * sizeof(char));
 	if (!body)
@@ -584,12 +590,12 @@ free_json:
 			body[body_len - 2] = ']';
 		}
 	}
-
 	if (pv_ph_upload_logs(pv, body))
 		log_reset();
-
+	
+	in_progress = false;
 	free(body);
-
+exit:
 	return;
 }
 

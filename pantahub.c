@@ -341,6 +341,7 @@ void pv_ph_release_client(struct pantavisor *pv)
 int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
 {
 	int ret = 0;
+
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 
@@ -351,10 +352,14 @@ int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
 				 "/logs/",
 				 0, 0,
 				 logs);
-
+	if (!req)
+		goto out;
 	res = trest_do_json_request(client, req);
+	if (!res)
+		goto out;
 	if (!res->body || res->code != THTTP_STATUS_OK) {
-		pv_log(DEBUG, "logs upload status = %d, body = '%s'", res->code, res->body);
+		pv_log(DEBUG, "logs upload status = %d, body = '%s'", 
+				res->code, (res->body ? res->body : ""));
 		if (res->code == THTTP_STATUS_BAD_REQUEST)
 			ret = 1;
 		goto out;
