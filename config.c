@@ -263,6 +263,10 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	if (!config->net.brdev)
 		config->net.brdev = strdup("lxcbr0");
 
+	config->net.braddress4 = _config_get_value("net.braddress4");
+	if (!config->net.braddress4)
+		config->net.braddress4 = strdup("10.0.3.1");
+
 	return 0;
 }
 
