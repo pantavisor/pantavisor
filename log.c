@@ -380,8 +380,8 @@ static void log_last_entry_to_file(void)
 void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct timeval tv;
-	char buf[LOG_DATA_SIZE];
 	char *format = 0;
+	unsigned int written = 0;
 
 	if (!lb)
 		return;
@@ -400,7 +400,11 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 
 	snprintf(e.source, 32, "%s", module);
 
-	vsnprintf(e.data, sizeof(buf), fmt, args);
+	written = vsnprintf(e.data, sizeof(e.data), fmt, args);
+	if (written >= sizeof(e.data))
+		written = sizeof(e.data) - 1;
+	if (e.data[written - 1] == '\n')
+		e.data[written - 1] = ' ';
 
 	// add to ring buffer
 	log_add(&e);
