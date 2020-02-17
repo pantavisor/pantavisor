@@ -299,6 +299,9 @@ int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		if (stat(path, &st) == 0)
 			goto out;
 
+		if (stat(dirname(path), &st))
+			mkdir_p(dirname(path), 755);
+
 		fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
 		if (fd < 0)
 			goto out;
