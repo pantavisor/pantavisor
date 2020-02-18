@@ -20,15 +20,17 @@
  * SOFTWARE.
  */
 
+#include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
 #include <netdb.h>
-
+#include <netinet/in.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <unistd.h>
 #include <linux/if.h>
 #include <linux/sockios.h>
 
@@ -40,6 +42,8 @@
 #include "pantahub.h"
 #include "network.h"
 
+#define ifreq_offsetof(x)  offsetof(struct ifreq, x)
+
 #define IFACES_FMT "{\"interfaces\":{"
 #define IFACE_FMT "\"%s\":[%s]"
 
@@ -47,6 +51,10 @@ int pv_network_init(struct pantavisor *pv)
 {
 	int fd, ret;
 	struct pantavisor_config *c;
+	struct ifreq ifr;
+	struct sockaddr_in sai;
+	int sockfd;                     /* socket fd we use to manipulate stuff with */
+	char *p;
 
 	if (!pv)
 		return -1;
@@ -66,6 +74,47 @@ int pv_network_init(struct pantavisor *pv)
 		pv_log(WARN, "unable to create bridge dev %s: %s",
 			c->net.brdev, strerror(errno));
 	}
+
+        /* Create a channel to the NET kernel. */
+        sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+        /* get interface name */
+        strncpy(ifr.ifr_name, c->net.brdev, IFNAMSIZ);
+
+        memset(&sai, 0, sizeof(struct sockaddr));
+        sai.sin_family = AF_INET;
+        sai.sin_port = 0;
+
+        sai.sin_addr.s_addr = inet_addr(c->net.braddress4);
+
+        p = (char *) &sai;
+        memcpy( (((char *)&ifr + ifreq_offsetof(ifr_addr) )),
+                        p, sizeof(struct sockaddr));
+
+        ret = ioctl(sockfd, SIOCSIFADDR, &ifr);
+	if (!ret) {
+		pv_log(WARN, "unable to set IPv4 of bridge dev %s to %s: %s",
+			c->net.brdev, c->net.braddress4, strerror(errno));
+		goto out;
+	}
+
+        ret = ioctl(sockfd, SIOCGIFFLAGS, &ifr);
+	if (!ret) {
+		pv_log(WARN, "unable to get flags for bridge dev %s: %s",
+			c->net.brdev, strerror(errno));
+		goto out;
+	}
+
+	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
+        ret = ioctl(sockfd, SIOCSIFFLAGS, &ifr);
+	if (!ret) {
+		pv_log(WARN, "unable to update flags for bridge dev %s: %s",
+			c->net.brdev, strerror(errno));
+		goto out;
+	}
+
+out:
+        close(sockfd);
 
 	return ret;
 }

@@ -69,6 +69,7 @@ struct pantavisor_watchdog {
 
 struct pantavisor_network {
 	char *brdev;
+	char *braddress4;
 };
 
 struct pantavisor_config {
