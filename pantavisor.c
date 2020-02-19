@@ -28,6 +28,7 @@
 #include <dirent.h>
 #include <netdb.h>
 #include <inttypes.h>
+#include <libgen.h>
 
 #include <linux/limits.h>
 
@@ -300,7 +301,7 @@ int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 			goto out;
 
 		if (stat(dirname(path), &st))
-			mkdir_p(dirname(path), 755);
+			mkdir_p(dirname(path), 0755);
 
 		fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
 		if (fd < 0)

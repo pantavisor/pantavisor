@@ -26,7 +26,7 @@
 
 #include <jsmn/jsmnutil.h>
 
-int mkdir_p(const char *dir, mode_t mode);
+int mkdir_p(char *dir, mode_t mode);
 
 void syncdir(char *dir);
 char *rand_string(int size);
