@@ -35,7 +35,7 @@
 
 static int seeded = 0;
 
-int mkdir_p(const char *dir, mode_t mode)
+int mkdir_p(char *dir, mode_t mode)
 {
 	const char *tmp = dir;
 	const char *orig = dir;
