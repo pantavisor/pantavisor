@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,50 +19,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef __CMD_JSON_LOG_H__
+#define __CMD_JSON_LOG_H__
 
-#ifndef __PARSER_BUNDLE_H__
-#define __PARSER_BUNDLE_H__
+#define JSON_ATTR_SOURCE 	"source"
+#define JSON_ATTR_LEVEL 	"level"
+#define JSON_ATTR_MSG 		"msg"
 
-#include "pantavisor.h"
-#include "platforms.h"
-#include "utils.h"
-#include "parser.h"
+#define CMD_JSON_FMT(msg_fmt) 	\
+	"{\"" JSON_ATTR_SOURCE "\":\"%s\","\
+	"\"" JSON_ATTR_LEVEL "\":%d,"\
+	"\"" JSON_ATTR_MSG "\":\""msg_fmt"\"}"
 
-struct  json_key_action {
-	char *key;
-	void **opaque;
-	jsmntype_t type;
-	bool save; /*Not applicable for array type*/
-	/*
-	 * Return 0 for success and non 0 for failure.
-	 * */
-	int (*action)(struct json_key_action *, char *value);
-	/*
-	 * Use for custom action or when using arrays within arrays.
-	 * */
-	jsmntok_t *tokv;
-	int tokc;
-	char *buf;
-};
-
-#define ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save)  \
-{\
-	.key = __key, .type = __type, .opaque = (void*)__opaque,\
-	.action = __action, .save = __save\
-}
-
-#define ADD_JKA_NULL_ENTRY() 				\
-{\
-	.key = NULL, .type = JSMN_UNDEFINED,\
-       	.opaque = (void**)NULL,\
-	.action = NULL, .save = false\
-}
-
-
-struct platform_bundle {
-	struct pv_state *s;
-	struct pv_platform **platform;
-};
-int start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
-					jsmntype_t type);
-#endif /* __PARSER_BUNDLE_H__ */
+int push_cmd_json_log(char *json_buf);
+#endif /*__CMD_JSON_LOG_H__*/

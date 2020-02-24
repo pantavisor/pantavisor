@@ -22,6 +22,8 @@
 #ifndef PV_CONFIG_H
 #define PV_CONFIG_H
 #include<stdbool.h>
+#include <sys/types.h>
+#include <stdlib.h>
 #include "utils/list.h"
 enum {
 	BL_UBOOT_PLAIN = 0,

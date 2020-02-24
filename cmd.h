@@ -33,6 +33,7 @@ enum cmd_t {
 enum cmd_json_operation_t {
 	CMD_JSON_UPDATE_METADATA = 1,
 	// add new commands here
+	CMD_JSON_LOG,
 	MAX_CMD_JSON_OP
 };
 
@@ -52,7 +53,7 @@ static uint8_t parse_cmd_req(char *buffer, struct pv_cmd_req *cmd);
 
 static inline const char *string_cmd_operation(const enum cmd_json_operation_t op)
 {
-	static const char *strings[] = {"UPDATE_METADATA"};
+	static const char *strings[] = {NULL, "UPDATE_METADATA","JSON_LOG" };
 	return strings[op];
 }
 

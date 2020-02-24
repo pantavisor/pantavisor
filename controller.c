@@ -56,6 +56,7 @@
 
 #include "storage.h"
 #include "tsh.h"
+#include "parser/cmd_json_log.h"
 
 #define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 #define CMDLINE_OFFSET	7
@@ -502,6 +503,19 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	return STATE_WAIT;
 }
 
+/*
+ * cmd is a json itself of the following format.
+ * {
+ * 	"source":"",
+ * 	"level" :<int>,
+ * 	"msg" : ""
+ * }
+ * */
+static void pv_cmd_log(char *cmd)
+{
+	push_cmd_json_log(cmd);
+}
+
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
 	int rev;
@@ -556,6 +570,9 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		switch (c->json_operation) {
 		case CMD_JSON_UPDATE_METADATA:
 			pv_ph_upload_metadata(pv, c->data);
+			break;
+		case CMD_JSON_LOG:
+			pv_cmd_log(c->data);
 			break;
 		default:
 			pv_log(DEBUG, "unknown json command received");
