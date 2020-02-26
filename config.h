@@ -82,6 +82,8 @@ struct pantavisor_config {
 	int logmax;
 	int loglevel;
 	int logsize;
+	int revision_retries;
+	int revision_retry_timeout;
 	struct pantavisor_bootloader bl;
 	struct pantavisor_creds creds;
 	struct pantavisor_factory factory;

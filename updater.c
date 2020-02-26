@@ -49,6 +49,9 @@
 #include "storage.h"
 #include "wdt.h"
 
+int MAX_REVISION_RETRIES = 0;
+int DOWNLOAD_RETRY_WAIT = 0;
+
 static struct trail_object *head;
 static struct trail_object *last;
 
@@ -157,18 +160,20 @@ err:
 static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_state status)
 {
 	int ret = 0;
-	struct pv_update *u = pv->update;
+	struct pv_update *pending_update = pv->update;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 	char json[1024];
+	char retries[6]; /*We wouldn't want a very big number here anyway*/
 	char *endpoint;
+	char retry_message[128];
 
-	if (!u) {
+	if (!pending_update) {
 		endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT) +
 			strlen(pv->config->creds.id) + get_digit_count(rev));
 		sprintf(endpoint, DEVICE_STEP_ENDPOINT_FMT, pv->config->creds.id, rev);
 	} else {
-		endpoint = u->endpoint;
+		endpoint = pending_update->endpoint;
 	}
 
 	if (!pv->remote)
@@ -179,8 +184,13 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 
 	switch (status) {
 	case UPDATE_QUEUED:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"QUEUED", "Update queued", 0);
+		if (pending_update)
+			snprintf(retries, sizeof(retries), "%d", pending_update->pending->retries);
+		else
+			sprintf(retries, "%d", 0);
+
+		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
+			"QUEUED","Update queued", 0, retries);
 		break;
 	case UPDATE_DOWNLOADED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -210,6 +220,20 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"WONTGO", "Remote state cannot be parsed", 0);
 		break;
+	case UPDATE_RETRY_DOWNLOAD:
+		//BUG_ON(!u)
+		if (pending_update->pending->retries) {
+			snprintf(retry_message, sizeof(retry_message),
+				"Network unavailable while downloading."
+				"Retried %d times.",pending_update->pending->retries);
+		} else {
+			snprintf(retry_message, sizeof(retry_message),
+				"Network unavailable while downloading. Retrying shortly");
+		}
+		snprintf(retries, sizeof(retries), "%d", pending_update->pending->retries);
+		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
+			"QUEUED", retry_message, 0, retries);
+		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"ERROR", "Error during update", 0);
@@ -236,7 +260,7 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 	}
 
 out:
-	if (!u && endpoint)
+	if (!pending_update && endpoint)
 		free(endpoint);
 	if (req)
 		trest_request_free(req);
@@ -246,24 +270,23 @@ out:
 	return ret;
 }
 
-static int trail_get_new_steps(struct pantavisor *pv)
+
+static trest_response_ptr trail_get_steps_response(struct pantavisor *pv,
+							char *endpoint)
 {
-	int size = 0, tokc = 0, rev;
-	char *state = 0, *rev_s = 0;
-	struct trail_remote *r = pv->remote;
-	trest_request_ptr req = 0;
-	trest_response_ptr res = 0;
-	jsmntok_t *tokv = 0;
+	trest_request_ptr req = NULL;
+	trest_response_ptr res = NULL;
+	struct trail_remote *remote = NULL;
+	int size = 0;
 
-	if (!r)
-		return 0;
-
+	if (!endpoint || !pv)
+		goto out;
+	remote = pv->remote;
 	req = trest_make_request(TREST_METHOD_GET,
-				 r->endpoint,
-				 0, 0, 0);
+			endpoint,
+			0, 0, 0);
 
-	res = trest_do_json_request(r->client, req);
-
+	res = trest_do_json_request(remote->client, req);
 	if (!res) {
 		pv_log(INFO, "unable to do trail request");
 		goto out;
@@ -272,39 +295,112 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		pv_log(WARN, "http error (%d) on trail request", res->code);
 		goto out;
 	}
-
 	size = jsmnutil_array_count(res->body, res->json_tokv);
-	pv_log(DEBUG, "steps found in NEW state = '%d'", size);
-
 	if (!size)
 		goto out;
 
-	if (jsmnutil_parse_json (res->body, &tokv, &tokc) < 0)
-		goto out;
+	pv_log(DEBUG, "steps found in NEW state = '%d'", size);
+	trest_request_free(req);
+	return res;
+out:
+	if (req)
+		trest_request_free(req);
+	if (res)
+		trest_response_free(res);
+	return NULL;
+}
 
-	rev_s = get_json_key_value(res->body, "rev",
-		res->json_tokv, res->json_tokc);
-	state = get_json_key_value(res->body, "state",
-		res->json_tokv, res->json_tokc);
+static int trail_get_new_steps(struct pantavisor *pv)
+{
+	int rev = 0, ret = 0;
+	char *state = 0, *rev_s = 0;
+	struct trail_remote *remote = pv->remote;
+	trest_response_ptr res = 0;
+	jsmntok_t *tokv = 0;
+	char *retry_endpoint = NULL;
+	int retries = 0;
+	bool update_pending = false;
 
+	if (!remote)
+		return 0;
+	if (pv->update)
+		return 1; /*A revision is pending, let's take care of that.*/
+	/*
+	 * Check for pending updates first.
+	 * */
+	retry_endpoint = (char*)calloc(1, strlen(remote->endpoint)
+			+ sizeof(DEVICE_TRAIL_ENDPOINT_QUERY));
+	if (retry_endpoint) {
+		sprintf(retry_endpoint, "%s%s",remote->endpoint,DEVICE_TRAIL_ENDPOINT_QUERY);
+		res = trail_get_steps_response(pv, retry_endpoint);
+		if (res) {
+			char *data = NULL;
+
+			update_pending = true;
+			data = get_json_key_value(res->body, "progress",
+					res->json_tokv, res->json_tokc);
+			if (data) {
+				jsmntok_t *tokv = 0;
+				int toks_out = 0;
+
+				if (jsmnutil_parse_json(data, &tokv, &toks_out)>=0) {
+					char *__retries = get_json_key_value(data,"data", tokv, toks_out);
+					if (__retries) {
+						sscanf(__retries, "%d", &retries);
+						free(__retries);
+					}
+					if (tokv)
+						free(tokv);
+				}
+				free(data);
+				data = NULL;
+			}
+		}
+		free(retry_endpoint);
+		retry_endpoint = NULL;
+	}
+
+	/*
+	 * If there's no QUEUED ones, check for
+	 * any NEW ones.
+	 * */
+	if (!update_pending)
+		res = trail_get_steps_response(pv, remote->endpoint);
+
+	if (res) {
+		rev_s = get_json_key_value(res->body, "rev",
+				res->json_tokv, res->json_tokc);
+		state = get_json_key_value(res->body, "state",
+				res->json_tokv, res->json_tokc);
+	}
+	
 	if (!rev_s || !state) {
-		pv_log(WARN, "invalid data found on trail, ignoring");
+		pv_log(WARN, "invalid or no data found on trail, ignoring");
 		goto out;
 	}
 
 	// parse state
 	rev = atoi(rev_s);
-	r->pending = pv_state_parse(pv, state, rev);
+	remote->pending = pv_state_parse(pv, state, rev);
 
-	if (!r->pending) {
+	if (!remote->pending) {
 		pv_log(INFO, "invalid rev (%d) found on remote", rev);
 		trail_remote_set_status(pv, rev, UPDATE_NO_PARSE);
-		size = 0;
 	} else {
 		pv_log(DEBUG, "adding rev (%d), state = '%s'", rev, state);
-		pv_log(DEBUG, "first pending found to be rev = %d", r->pending->rev);
+		pv_log(DEBUG, "first pending found to be rev = %d", remote->pending->rev);
+		retries++; /*Add one since we're now retrying this.*/
+		remote->pending->retries = retries;
+		pv_log(DEBUG, "current retry count  = %d", retries);
+		if (retries > MAX_REVISION_RETRIES) {
+			pv_log(WARN, "Revision %d exceeded download retries."
+					"Max set at %d, current attempt =%d", rev, MAX_REVISION_RETRIES, retries);
+			trail_remote_set_status(pv, rev, UPDATE_FAILED);
+			pv_state_free(remote->pending);
+			remote->pending = NULL;
+		}
 	}
-
+	ret = 1;/*A revision is pending, either a new one or a queued one*/
 out:
 	if (rev_s)
 		free(rev_s);
@@ -312,12 +408,9 @@ out:
 		free(state);
 	if (tokv)
 		free(tokv);
-	if (req)
-		trest_request_free(req);
 	if (res)
 		trest_response_free(res);
-
-	return size;
+	return ret;
 }
 
 static int trail_is_available(struct trail_remote *r)
@@ -604,7 +697,12 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status)
 
 	return 1;
 }
-
+/*
+ * Return value
+ * -ve for error,
+ *  0 for success,
+ * +ve for retry time not yet reached.
+ * */
 int pv_update_start(struct pantavisor *pv, int offline)
 {
 	int c;
@@ -618,6 +716,26 @@ int pv_update_start(struct pantavisor *pv, int offline)
 
 	if (!pv->state) {
 		pv_log(WARN, "invalid pantavisor state");
+		goto out;
+	}
+
+	/*
+	 * From a retry.
+	 * */
+	if (pv->update) {
+		if (time(NULL) >=  pv->update->retry_at) {
+			pv->update->pending->retries++;
+			ret = 0;
+			if (!offline)
+				trail_remote_set_status(pv, -1, pv->update->status);
+
+			pv_log(INFO, "Retrying revision %d ,turn = %d",
+					pv->update->pending->rev, pv->update->pending->retries);
+			goto update_status;
+		}
+		else {
+			ret = 1;
+		}
 		goto out;
 	}
 
@@ -649,12 +767,12 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	// all done up to here for offline
 	ret = 0;
 
+update_status:
 	if (!offline) {
 		ret = trail_remote_set_status(pv, -1, UPDATE_QUEUED);
 		if (ret < 0)
 			pv_log(INFO, "failed to update cloud status, possibly offline");
 	}
-
 out:
 	return ret;
 }
@@ -676,12 +794,20 @@ int pv_update_finish(struct pantavisor *pv)
 		ret = trail_remote_set_status(pv, -1, UPDATE_FAILED);
 		pv_log(ERROR, "update has failed");
 		goto out;
+	case UPDATE_RETRY_DOWNLOAD:
+		pv->update->retry_at = time(NULL) + DOWNLOAD_RETRY_WAIT;
+		if (pv->update->pending->retries >= MAX_REVISION_RETRIES) {
+			ret = trail_remote_set_status(pv, -1, UPDATE_FAILED);
+			goto out;
+		}
+		pv_log(WARN, "Unable to download revision, retrying update in %d seconds",
+				pv->update->retry_at);
+		goto retry_update;
 	default:
 		ret = -1;
 		goto out;
 		break;
 	}
-
 out:
 	if (pv->update->pending)
 		pv_state_free(pv->update->pending);
@@ -691,6 +817,7 @@ out:
 	free(pv->update);
 
 	pv->update = NULL;
+retry_update:
 	return ret;
 }
 
@@ -1051,8 +1178,10 @@ static int trail_download_objects(struct pantavisor *pv)
 	const char **crtfiles = pv_ph_get_certs(pv);
 
 	pv_objects_iter_begin(u->pending, o) {
-		if (!trail_download_get_meta(pv, o))
+		if (!trail_download_get_meta(pv, o)) {
+			ret = TRAIL_NO_NETWORK;
 			goto out;
+		}
 	}
 	pv_objects_iter_end;
 
@@ -1063,6 +1192,7 @@ static int trail_download_objects(struct pantavisor *pv)
 	// Check again
 	if (!pv_storage_get_free(pv, get_update_size(u))) {
 		pv_log(WARN, "not enough space to process update");
+		ret = TRAIL_NO_SPACE;
 		goto out;
 	}
 
@@ -1075,8 +1205,10 @@ static int trail_download_objects(struct pantavisor *pv)
 		u->need_reboot = 1;
 
 	pv_objects_iter_begin(u->pending, o) {
-		if (!trail_download_object(pv, o, crtfiles))
+		if (!trail_download_object(pv, o, crtfiles)) {
+			ret = TRAIL_NO_NETWORK;
 			goto out;
+		}
 	}
 	pv_objects_iter_end;
 
@@ -1106,7 +1238,10 @@ int pv_update_install(struct pantavisor *pv)
 
 	if (ret < 0) {
 		pv_log(ERROR, "unable to download objects");
-		pv->update->status = UPDATE_NO_DOWNLOAD;
+		if (ret == TRAIL_NO_NETWORK)
+			pv->update->status = UPDATE_RETRY_DOWNLOAD;
+		else
+			pv->update->status = UPDATE_NO_DOWNLOAD;
 		goto out;
 	}
 
