@@ -287,7 +287,7 @@ static int do_one_jka_action(struct json_key_action *jka)
 	return ret;
 }
 
-static int start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
+int start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
 						jsmntype_t type)
 {
 	jsmntok_t *tokv;

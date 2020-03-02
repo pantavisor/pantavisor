@@ -51,6 +51,7 @@ LOCAL_SRC_FILES := init.c \
 		   parser/parser.c \
 		   parser/parser_multi1.c \
 		   parser/parser_system1.c \
+		   parser/cmd_json_log.c \
 		   objects.c \
 		   pantahub.c \
 		   updater.c \

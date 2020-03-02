@@ -56,6 +56,7 @@ static const char *module_name = MODULE_NAME;
 #include "pvctl_utils.h"
 #include "pvlogger.h"
 #include "pantavisor.h"
+#include "parser/cmd_json_log.h"
 
 static char logger_cmd [4096];
 static struct log default_log;
@@ -65,9 +66,15 @@ struct pv_log_info *pv_log_info = NULL;
 
 #define pv_log(level, msg, args...)\
 ({\
- 	char buffer[128];\
-	buffer[0] = CMD_LOG;\
-	snprintf(&buffer[1], sizeof(buffer) - 1, "[%s]" msg, module_name, ##args);\
+ 	char buffer[256];\
+	buffer[0] = CMD_JSON;\
+	snprintf(&buffer[1], sizeof(buffer) - 1,\
+		"{\"op\":\"%s\",\"payload\":"\
+		CMD_JSON_FMT(msg)"}", \
+		string_cmd_operation(CMD_JSON_LOG),\
+		module_name,\
+		level,\
+		##args);\
 	if (!pv_log_info->islxc)\
 		pvctl_write(buffer, strlen(buffer));\
 	else\

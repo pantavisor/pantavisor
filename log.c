@@ -286,7 +286,7 @@ static char *replace_char(char *str, char c, char r)
 static void log_add(log_entry_t *e)
 {
 	// FIXME: backup to disk if (lb->head == lb->tail)
-	if (lb->head >= lb->buf_end) {
+	if (lb->head >= (log_entry_t*)lb->buf_end) {
 		pv_log_flush(global_pv, true);
 		lb->head = lb->buf_start;
 	}
@@ -381,7 +381,6 @@ static void log_last_entry_to_file(void)
 void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct timeval tv;
-	char *format = 0;
 	unsigned int written = 0;
 	log_entry_t e;
 
@@ -391,6 +390,8 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 	if (level >= prio)
 		return;
 
+	if (log_init_pid != getpid())
+		return;
 	// construct log entry in heap to copy
 
 	gettimeofday(&tv, NULL);
