@@ -50,6 +50,9 @@ static int open_socket(const char *path)
 {
 	int fd, ret;
 	struct sockaddr_un addr;
+	int retries = 5;
+	const int wait_secs = 2;
+	char str_err[128];
 
 try_again:
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -66,9 +69,16 @@ try_again:
 	ret = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
 	if (ret < 0) {
 		close(fd);
-		printf("Connect failed for %s, pid = %d, errno = %d\n",
-				path, getpid(), errno);
-		goto try_again;
+		if (retries > 0) {
+			sleep(wait_secs);
+			retries--;
+			goto try_again;
+		} else {
+			strerror_r(errno, str_err, sizeof(str_err));
+			printf("Connect error on path %s, errno = %d (%s)\n",
+					path, errno, str_err);
+			return -errno;
+		}
 	}
 	return fd;
 }
