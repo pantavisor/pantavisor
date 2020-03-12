@@ -28,11 +28,21 @@
 #define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
 #define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%d/progress"
 #define DEVICE_STEP_STATUS_FMT "{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
+#define DEVICE_STEP_STATUS_FMT_WITH_DATA  	\
+	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%s\"}"
 
 #define TRAIL_OBJECT_DL_FMT	"/objects/%s"
+#define DEVICE_TRAIL_ENDPOINT_QUERY 	"?progress.status=QUEUED"
 
 #define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
+
+#define DEFAULT_DOWNLOAD_RETRY_WAIT  (2 * 60) /*2 minutes*/
+
+extern int MAX_REVISION_RETRIES;
+extern int DOWNLOAD_RETRY_WAIT;
+
+#define DEFAULT_MAX_REVISION_RETRIES 	(10)
 
 struct trail_remote {
 	trest_ptr client;

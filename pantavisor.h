@@ -36,6 +36,8 @@ char pv_user_agent[4096];
 
 struct trail_remote;
 
+#define TRAIL_NO_SPACE 		(-1)
+#define TRAIL_NO_NETWORK 	(-2)
 enum update_state {
 	UPDATE_QUEUED,
 	UPDATE_DOWNLOADED,
@@ -45,7 +47,8 @@ enum update_state {
 	UPDATE_DONE,
 	UPDATE_FAILED,
 	UPDATE_NO_DOWNLOAD,
-	UPDATE_NO_PARSE
+	UPDATE_NO_PARSE,
+	UPDATE_RETRY_DOWNLOAD
 };
 
 typedef enum {
@@ -61,6 +64,7 @@ struct pv_update {
 	char *endpoint;
 	int need_reboot;
 	int need_finish;
+	time_t retry_at;
 	struct pv_state *pending;
 };
 
@@ -126,6 +130,7 @@ struct pv_state {
 	struct pv_addon *addons;
 	struct pv_object *objects;
 	struct dl_list obj_list;;
+	int retries;
 	char *json;
 	int tryonce;
 };

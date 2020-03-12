@@ -136,6 +136,16 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		return STATE_EXIT;
 	}
 
+	if (c->revision_retries <= 0)
+		MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
+	else 
+		MAX_REVISION_RETRIES = c->revision_retries;
+
+	if (c->revision_retry_timeout <= 0)
+		DOWNLOAD_RETRY_WAIT = DEFAULT_DOWNLOAD_RETRY_WAIT;
+	else
+		DOWNLOAD_RETRY_WAIT = c->revision_retry_timeout;
+
 	// Create storage mountpoint and mount device
         mkdir_p(c->storage.mntpoint, 0755);
 	
@@ -596,6 +606,11 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	ret = pv_update_start(pv, 0);
 	if (ret < 0) {
 		pv_log(INFO, "unable to queue update, abandoning it");
+		return STATE_WAIT;
+	} else if (ret > 0) {
+		int time_left = pv->update->retry_at - time(NULL);
+
+		pv_log(INFO, "Retrying in %d seconds", (time_left > 0 ? time_left : 0));
 		return STATE_WAIT;
 	}
 
