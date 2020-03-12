@@ -188,9 +188,11 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 			snprintf(retries, sizeof(retries), "%d", pending_update->pending->retries);
 		else
 			sprintf(retries, "%d", 0);
-
+		pv_log(DEBUG, "Update queued, retry count is %s", retries);
+		sprintf(retry_message, "Update queued (%s/%d)", retries,
+				MAX_REVISION_RETRIES);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
-			"QUEUED","Update queued", 0, retries);
+			"QUEUED", retry_message, 0, retries);
 		break;
 	case UPDATE_DOWNLOADED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -224,8 +226,9 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 		//BUG_ON(!u)
 		if (pending_update->pending->retries) {
 			snprintf(retry_message, sizeof(retry_message),
-				"Network unavailable while downloading."
-				"Retried %d times.",pending_update->pending->retries);
+				"Network unavailable while downloading "
+				"(%d/%d)",pending_update->pending->retries,
+				MAX_REVISION_RETRIES);
 		} else {
 			snprintf(retry_message, sizeof(retry_message),
 				"Network unavailable while downloading. Retrying shortly");
