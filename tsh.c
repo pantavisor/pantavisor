@@ -36,7 +36,7 @@
 #define TSH_MAX_LENGTH	32
 #define TSH_DELIM	" \t\r\n\a"
 
-static pid_t _tsh_exec(char **argv, int wait, int *status)
+static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int stdout_p[], int stderr_p[])
 {
 	int pid = -1;
 	sigset_t blocked_sig, old_sigset;
@@ -67,9 +67,38 @@ static pid_t _tsh_exec(char **argv, int wait, int *status)
 		}
 		free(argv);
 	} else {
-		// In Child
+		ret = 0;
+		// closed all unused fds right away ..
+		if(stdin_p) // close writing end for stdin dup
+			close(stdin_p[1]);
+		if(stdout_p) // close reading ends for out and err dup
+			close(stdout_p[0]);
+		if(stderr_p)
+			close(stderr_p[0]);
+
+		// dup2 things
+		while (stdin_p && ((ret = dup2(stdin_p[0], STDIN_FILENO)) == -1) && (errno == EINTR)) {}
+		if (ret == -1)
+			goto exit_failure;
+		while (stdout_p && ((ret = dup2(stdout_p[1], STDOUT_FILENO)) == -1) && (errno == EINTR)) {}
+		if (ret == -1)
+			goto exit_failure;
+		while (stderr_p && ((ret = dup2(stderr_p[1], STDERR_FILENO)) == -1) && (errno == EINTR)) {}
+		if (ret == -1)
+			goto exit_failure;
+
+		// close all the duped ones now too
+		if(stdin_p) // close reading end for stdin dup
+			close(stdin_p[0]);
+		if(stdout_p) // close writing ends for out and err dup
+			close(stdout_p[1]);
+		if(stderr_p)
+			close(stderr_p[1]);
+
+		// now we let it flow ...
 		setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin", 1);
 		execvp(argv[0], argv);
+	exit_failure:
 		exit(EXIT_FAILURE);
 	}
 
@@ -102,7 +131,7 @@ static char **_tsh_split_cmd(char *cmd)
 }
 
 // Run command, either built-in or exec
-pid_t tsh_run(char *cmd, int wait, int *status)
+pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[], int stdout_p[], int stderr_p[])
 {
 	pid_t pid;
 	char **args;
@@ -115,11 +144,17 @@ pid_t tsh_run(char *cmd, int wait, int *status)
 	strcpy(vcmd, cmd);
 
 	args = _tsh_split_cmd(vcmd);
-	pid = _tsh_exec(args, wait, status);
+	pid = _tsh_exec(args, wait, status, stdin_p, stdout_p, stderr_p);
 	free(vcmd);
 
 	if (pid < 0)
 		printf("Cannot run \"%s\"\n", cmd);
 
 	return pid;
+}
+
+// Run command, either built-in or exec
+pid_t tsh_run(char *cmd, int wait, int *status)
+{
+	return tsh_run_io(cmd, wait, status, NULL, NULL, NULL);
 }
