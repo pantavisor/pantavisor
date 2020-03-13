@@ -23,5 +23,7 @@
 #define PV_TSH_H
 
 pid_t tsh_run(char *cmd, int wait, int *status);
+pid_t tsh_run_io(char *cmd, int wait, int *status,
+	int stdin_p[], int stdout_p[], int stderr_p[]);
 
 #endif
