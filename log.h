@@ -52,6 +52,8 @@ struct level_name {
 	char *name;
 };
 
+#define LOG_NAME		"pantavisor.log"
+
 #define BUF_CHUNK	4096
 #define JSON_FORMAT	"{ \"tsec\": %"PRId64", \"tnano\": %"PRId32", \"lvl\": \"%s\", \"src\": \"%s\", \"msg\": \"%s\" }"
 
@@ -60,11 +62,19 @@ struct level_name {
 
 #define vlog(module, level, ...)	__log(module, level, ## __VA_ARGS__);
 
-void pv_log_init(struct pantavisor *pv);
+#define LOG_CTRL_FNAME 			"pv-ctrl-log"
+#define LOG_CTRL_PATH 			"/pv/"LOG_CTRL_FNAME
+#define LOG_CTRL_PLATFORM_PATH 		"/pantavisor/"LOG_CTRL_FNAME
+#define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
+/*
+ * fname can't go away even after function call.
+ */
+void pv_log_init(struct pantavisor *pv, int revision);
 void __vlog(char *module, int level, const char *fmt, va_list args);
 void __log(char *module, int level, const char *fmt, ...);
-void pv_log_flush(struct pantavisor *pv, bool force);
 int pv_log_set_level(unsigned int level);
-void pv_log_raw(struct pantavisor *pv, char *buf, int len, const char *platform);
-
+/*
+ * Don't free the return value!
+ */
+const char *pv_log_level_name(int level);
 #endif

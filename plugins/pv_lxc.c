@@ -40,7 +40,7 @@
 #include "utils/list.h"
 #include <stdbool.h>
 #include <limits.h>
-#define LXC_LOG_DEFAULT_PREFIX	"/storage/logs/"
+#define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
 #ifndef free_member
 #define free_member(ptr, member)\
@@ -58,9 +58,16 @@ static struct lxc_log pv_lxc_log = {
  
 struct pv_log_info* (*__pv_new_log)(bool,const void*, const char*) = NULL;
 
+struct pantavisor* (*__get_pv_instance)(void) = NULL;
+
 void pv_set_new_log_fn( void *fn_pv_new_log)
 {
 	__pv_new_log = fn_pv_new_log;
+}
+
+void pv_set_pv_instance_fn(void *fn_get_pv_instance)
+{
+	__get_pv_instance = fn_get_pv_instance;
 }
 
 static void pv_free_lxc_log(struct pv_log_info *pv_log_i)
@@ -75,27 +82,32 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 				const char *key)
 {
 	char logfile[PATH_MAX] = {0};
+	char default_prefix[PATH_MAX] = {0};
 
 	c->get_config_item(c, key, logfile, PATH_MAX);
-	if (!strlen(logfile)) {
-		if (!strcmp(key, "lxc.log.file")) {
-			snprintf(logfile, sizeof(logfile), 
-					LXC_LOG_DEFAULT_PREFIX"%s/%s.log",
-					plat_name,plat_name);
-		} else {
-			/*
-			 * We've a console log but no console file
-			 * specified.
-			 * */
-			pv_free_lxc_log(pv_log_i);
-			return -1;
-		}
-	}
+	/*
+	 * Anything under the revision directory will
+	 * automatically be picked up by pusher service.
+	 * So no need to create a pvlogger process if the
+	 * log files are created in the revision directory.
+	 */
+	snprintf(default_prefix, sizeof(default_prefix), "%s/%d/", 
+			LXC_LOG_DEFAULT_PREFIX,
+			__get_pv_instance()->state->rev);
+	/*
+	 * If lxc.log.file or lxc.console.logfile isn't set or
+	 * it has the same location from where PH helper can post
+	 * it then we don't require a pvlogger in such a case.
+	 */
+	if (!strlen(logfile) ||
+		strncmp(default_prefix, logfile, strlen(default_prefix)) == 0)
+		return -1;
+
 	pv_log_i->logfile = strdup(logfile);
 	/*
 	 * This is the default truncate size.
 	 * Caller can change this before logging starts.
-	 * */
+	 */
 	pv_log_i->truncate_size = (2 * 1024 * 1024);
 	pv_log_i->on_logger_closed = pv_free_lxc_log;
 	return 0;
@@ -212,13 +224,22 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 
 	/*
 	 * Set console filename if not provided.
-	 * */
+	 */
 	memset(entry, 0, sizeof(entry));
 	c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 	if (!strlen(entry)) {
-		snprintf(entry, sizeof(entry), LXC_LOG_DEFAULT_PREFIX"/%s_console.log",
-				c->name);
+		snprintf(entry, sizeof(entry),
+			LXC_LOG_DEFAULT_PREFIX"/%d/%s/%s/%s.log",
+			__get_pv_instance()->state->rev, c->name,
+			LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
 		c->set_config_item(c, "lxc.console.logfile", entry);
+	}
+	/*
+	 * Put a hard limit of 2MiB on console file size if one is not defined.
+	 */
+	if (c->get_config_item(c, "lxc.console.size", NULL, 0)) {
+		snprintf(entry, sizeof(entry), "2MB");
+		c->set_config_item(c, "lxc.console.size", entry);
 	}
 }
 
@@ -236,7 +257,7 @@ static void pv_setup_default_log(struct pv_platform *p,
 	 * We don't require to add the lxc console config otherwise
 	 * that would also start logger on non-existent file resulting
 	 * in unnecessary logger messages.
-	 * */
+	 */
 	if (strncmp("console", logger_key, strlen("console")) == 0) {
 		char *console_path = (char*) calloc(1, PATH_MAX);
 		bool do_nothing = false;
@@ -270,7 +291,7 @@ static void pv_setup_default_log(struct pv_platform *p,
 	}
 	/*
 	 * Add a new logger_config item
-	 * */
+	 */
 	if (!found) {
 		struct pv_logger_config *new_config =
 			(struct pv_logger_config*) calloc(1, sizeof(*new_config));
@@ -307,7 +328,7 @@ out_config:
 /*
  * Use only after loading config.
  * Use threshold as 0 to always truncate.
- * */
+ */
 static void pv_truncate_lxc_log(struct lxc_container *c,
 				const char *platform_name, off_t threshold,
 				const char *key) {
@@ -323,12 +344,12 @@ static void pv_truncate_lxc_log(struct lxc_container *c,
 		 * /storage/logs is hardcoded in pv_lxc_log->lxcpath
 		 * and used when lxc.log.file isn't set in lxc.conf of
 		 * the container.
-		 * */
+		 */
 		snprintf(logfile_name, PATH_MAX,
-				LXC_LOG_DEFAULT_PREFIX"/%s/%s.log",
-				platform_name, platform_name);
+				LXC_LOG_DEFAULT_PREFIX"/%d/%s.log",
+				__get_pv_instance()->state->rev,
+				LXC_LOG_FNAME);
 	}
-
 	if (!threshold)
 		truncate(logfile_name, 0);
 	else {
@@ -422,7 +443,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	 * For returning back the
 	 * container_pid to pv parent
 	 * process.
-	 * */
+	 */
 	if (pipe(pipefd)) {
 		lxc_container_put(c);
 		c = NULL;
@@ -440,9 +461,10 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	}
 	else if (child_pid){ /*Parent*/
 		pid_t container_pid = -1;
-		close(pipefd[1]); /*Parent would read*/
+		/*Parent would read*/
+		close(pipefd[1]); 
 		while (read(pipefd[0], &container_pid, 
-				sizeof(container_pid)) < 0 && errno == EINTR)
+					sizeof(container_pid)) < 0 && errno == EINTR)
 			;
 
 		if (container_pid <= 0) {
@@ -455,11 +477,24 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	}
 	else { /* Child process */
 		char configdir[PATH_MAX];
-
+		char log_dir[PATH_MAX];
+		int revision;
+		
 		close(pipefd[0]);
 		*( (pid_t*) data) = -1;
-		pv_lxc_log.name = p->name;
-		pv_lxc_log.lxcpath = LXC_LOG_DEFAULT_PREFIX;
+		/*
+		 * We need this for getting the revision..
+		 */
+		if (!__get_pv_instance)
+			goto out_container_init;
+		revision = __get_pv_instance()->state->rev;
+		snprintf(log_dir, sizeof(log_dir), 
+				LXC_LOG_DEFAULT_PREFIX"/%d/%s",
+				revision, p->name);
+		pv_lxc_log.name = LXC_LOG_FNAME;
+		pv_lxc_log.lxcpath = strdup(log_dir);
+		if (!pv_lxc_log.lxcpath)
+			goto out_container_init;
 		lxc_log_init(&pv_lxc_log);
 		c = lxc_container_new(p->name, NULL);
 
@@ -470,7 +505,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		/*
 		 * Load config later which allows us to
 		 * override the log file configured by default.
-		 * */
+		 */
 		if (!c->load_config(c, conf_file)) {
 			lxc_container_put(c);
 			*((pid_t *) data) = -1;
@@ -504,7 +539,7 @@ out_container_init:
 	 * Parent loads the config after container is setup.
 	 * This is just required to stop container and get
 	 * any config items required in the parent.
-	 * */
+	 */
 	if (!c->load_config(c, conf_file)) {
 		pid_t *container_pid = (pid_t*)data;
 		lxc_container_put(c);
@@ -529,11 +564,11 @@ out_container_init:
 			/*
 			 * Change pv_log_i->truncate_size here
 			 * if required.
-			 * */
+			 */
 			pv_log_i = pv_create_lxc_log(p, c,item_config);
 			if (pv_log_i) {
 				const char *truncate_item = 
-					pv_log_i->pv_get_log_config_item(item_config,
+					pv_log_i->pv_log_get_config_item(item_config,
 							"maxsize");
 				if (truncate_item) {
 					sscanf(truncate_item, "%" PRId64,
@@ -543,15 +578,15 @@ out_container_init:
 				 * Truncate the logs for now.
 				 * platform will have information on when
 				 * to truncate the logs.
-				 * */
+				 */
 
 				if (pv_log_i->
-						pv_get_log_config_item(item_config, "lxc"))
+						pv_log_get_config_item(item_config, "lxc"))
 					pv_truncate_lxc_log(c, p->name,
 							pv_log_i->truncate_size,
 							"lxc.log.file");
 				else if (pv_log_i->
-						pv_get_log_config_item(item_config, "console"))
+						pv_log_get_config_item(item_config, "console"))
 					pv_truncate_lxc_log(c, p->name,
 							pv_log_i->truncate_size,
 							"lxc.console.logfile");

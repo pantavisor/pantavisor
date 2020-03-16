@@ -30,6 +30,7 @@
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
+#define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 // pantavisor.h
 
 char pv_user_agent[4096];
@@ -38,6 +39,7 @@ struct trail_remote;
 
 #define TRAIL_NO_SPACE 		(-1)
 #define TRAIL_NO_NETWORK 	(-2)
+#define PV_USER_AGENT_FMT 	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 enum update_state {
 	UPDATE_QUEUED,
 	UPDATE_DOWNLOADED,
@@ -192,5 +194,5 @@ int pv_start_platforms(struct pantavisor *pv);
 int pantavisor_init(bool do_fork);
 struct pantavisor* get_pv_instance(void);
 struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
-const char* pv_get_log_config_item(struct pv_logger_config *config, const char *key);
+const char* pv_log_get_config_item(struct pv_logger_config *config, const char *key);
 #endif

@@ -28,9 +28,11 @@
 #include <libgen.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <linux/limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
+#include <stdbool.h>
+#include <sys/xattr.h>
 #include "utils.h"
 /*
  * private struct.
@@ -43,6 +45,7 @@ struct pv_json_format {
        char *dst;
        int (*format)(struct pv_json_format *);
 };
+#include "tsh.h"
 
 static int seeded = 0;
 
@@ -355,8 +358,11 @@ char* format_json(char *buf, int len)
 		idx++;
 	}
 out:
-	if (json_string)
-		json_string = realloc(json_string, strlen(json_string) + 1);
+	if (json_string) {
+		char *shrinked = realloc(json_string, strlen(json_string) + 1);
+		if (shrinked)
+			json_string = shrinked;
+	}
 	return json_string;
 }
 
@@ -372,4 +378,137 @@ char *str_replace(char *str, int len, char which, char what)
 			str[char_at] = what;
 	}
 	return str;
+}
+
+int set_xattr_on_file(const char *filename, char *attr, char *value)
+{
+	int val_len = getxattr(filename, attr, NULL, 0);
+	int set_flag = XATTR_REPLACE;
+	int ret = 0;
+
+	if (val_len < 0 && errno == ENODATA)
+		set_flag = XATTR_CREATE;
+	ret = setxattr(filename, attr, value, strlen(value), set_flag);
+	return ret < 0 ? -errno : ret;
+}
+
+
+int get_xattr_on_file(const char *filename, char *attr, char **dst, int(*alloc)(char**, int))
+{
+	int val_len = -1;
+
+	val_len = getxattr(filename, attr, NULL, 0);
+	if (val_len > 0) {
+		int ret = 0;
+
+		if (alloc)
+			ret = alloc(dst, val_len + 1);
+		if (!ret)
+			val_len = getxattr(filename, attr, *dst, val_len);
+	}
+	return val_len < 0 ? -errno : val_len;
+}
+
+ssize_t write_nointr(int fd, char *buf, ssize_t len)
+{
+	ssize_t written = 0;
+	
+	while (written != len) {
+		int __written = write(fd, buf + written, len - written);
+		
+		if (__written < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		written += __written;
+	}
+	return written;
+}
+
+ssize_t read_nointr(int fd, char *buf, ssize_t len)
+{
+	ssize_t nr_read = 0;
+	
+	while (nr_read != len) {
+		int __read = read(fd, buf + nr_read, len - nr_read);
+		
+		if (__read < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		/*
+		 * If it's EOF, let the caller know.
+		 */
+		if (__read == 0)
+			break;
+		nr_read += __read;
+	}
+	return nr_read;
+}
+
+int lock_file(int fd)
+{
+	struct flock flock;
+	int ret = 0;
+
+	flock.l_whence = SEEK_SET;
+	/*Lock the whole file*/
+	flock.l_len = 0; 
+	flock.l_start = 0;
+	flock.l_type = F_WRLCK;
+
+	while ( (ret = fcntl(fd, F_SETLK, &flock)) < 0 && errno == EINTR)
+		;
+	return ret;
+}
+
+/*
+ * Returns the open file descriptor, if successful.
+ * */
+int open_and_lock_file(const char *fname, int flags, mode_t mode)
+{
+	int fd = -1;
+	int ret = -1;
+
+	fd = open(fname, flags, mode);
+	if (fd > 0)
+		ret = lock_file(fd);		
+	if (ret) {
+		close(fd);
+		fd = -1;
+	}
+	return fd;
+}
+
+int unlock_file(int fd)
+{
+	struct flock flock;
+	int ret = 0;
+
+	flock.l_whence = SEEK_SET;
+	/*Lock the whole file*/
+	flock.l_len = 0; 
+	flock.l_start = 0;
+	flock.l_type = F_UNLCK;
+
+	while ( (ret = fcntl(fd, F_SETLK, &flock)) < 0 && errno == EINTR)
+		;
+	return ret;
+}
+
+int gzip_file(const char *filename, const char *target_name)
+{
+	int __outfile[] = {-1, -1};
+	char cmd[PATH_MAX + 32];
+
+	snprintf(cmd, sizeof(cmd), "gzip %s", filename);
+	__outfile[1] = open(target_name, O_RDWR | O_APPEND | O_CREAT);
+	if (__outfile[1] >= 0) {
+		tsh_run_io(cmd, 1, NULL, NULL, __outfile, NULL);
+		close(__outfile[1]);
+		return 0;
+	}
+	return -1;
 }

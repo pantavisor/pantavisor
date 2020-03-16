@@ -280,6 +280,11 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_new_log_fn");
 
+	void (*__pv_get_instance)(void*) = dlsym(lib, "pv_set_pv_instance_fn");
+	if (__pv_get_instance)
+		__pv_get_instance(get_pv_instance);
+	else
+		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_instance_fn");
 	return 1;
 }
 
@@ -366,7 +371,7 @@ static void pv_setup_platform_log(struct pv_log_info *info,
 	 * We would read the config data from platform,
 	 * and set this up.
 	 * */
-	logfile = pv_get_log_config_item(logger_config, "file"); /*Defaults to /var/log/messages in pvlogger*/
+	logfile = pv_log_get_config_item(logger_config, "file"); /*Defaults to /var/log/messages in pvlogger*/
 	info->logfile = (logfile ? strdup(logfile) : NULL);
 	info->on_logger_closed = pv_free_platform_log;
 }
@@ -400,13 +405,13 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	 * */
 	dl_list_for_each_safe(item_config, tmp_config, config_head,
 			struct pv_logger_config, item_list) {
-		pv_add_platform_logger(platform, item_config);
+		if (pv_add_platform_logger(platform, item_config))
+			plat_needs_default_logger = false;
 		/*
 		 * logger config item isn't required anymore
 		 * */
 		dl_list_del(&item_config->item_list);
 		pv_free_logger_config(item_config);
-		plat_needs_default_logger = false;
 	}
 
 	if (plat_needs_default_logger) {
@@ -428,6 +433,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	 * */
 	dl_list_for_each_safe(log_info, tmp, head,
 				struct pv_log_info, next) {
+		log_info->platform = platform;
 		logger_pid =
 			__start_pvlogger_for_platform(platform, log_info);
 		/*

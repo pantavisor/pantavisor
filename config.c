@@ -33,6 +33,7 @@
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+#include "utils.h"
 
 struct config_item {
 	char *key;
@@ -68,6 +69,7 @@ static struct config_item* _config_add_item(char *key, char *value)
 	if (this) {
 		if (this->value)
 			free(this->value);
+
 		this->value = strdup(value);
 		return this;
 	}
@@ -131,7 +133,8 @@ static struct config_item* _config_replace_item(char *key, char *value)
 
 	for (curr = head; curr != NULL; curr = curr->next) {
 		if (strcmp(curr->key, key) == 0) {
-			free(curr->value);
+			if (curr->value)
+				free(curr->value);
 			curr->value = strdup(value);
 			return curr;
 		}
@@ -205,9 +208,17 @@ static int _config_parse_cmdline(char *hint)
 		return -1;
 
 	buf = calloc(1, sizeof(char) * (1024 + 1));
-	bytes = read(fd, buf, sizeof(char)*1024);
-	close(fd);
+	if (!buf) {
+		close(fd);
+		return -1;
+	}
 
+	bytes = read_nointr(fd, buf, sizeof(char)*1024);
+	if (!bytes) {
+		close(fd);
+		return -1;
+	}
+	close(fd);
 	token = strtok_r(buf, " ", &ptr_out);
 	while (token) {
 		if (strncmp(hint, token, strlen(hint)) == 0) {
@@ -412,7 +423,7 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 /*
  * Don't free the returned value.
  * */
-const char* pv_get_log_config_item(struct pv_logger_config *config,
+const char* pv_log_get_config_item(struct pv_logger_config *config,
 		const char *key) {
 	int i = 0;
 	if (config->static_pair) {

@@ -54,4 +54,21 @@ char *str_replace(char *str, int len, char which, char what);
  ptr->member = NULL;\
 })
 #endif /* free_member */
+
+/*
+ * Returns 0 on success.
+ * For setting, value holds a null terminated string.
+ * For get, the value is returned back in dst.
+ */
+int set_xattr_on_file(const char *filename, char *attr, char *value);
+int get_xattr_on_file(const char *filename, char *attr, char **dst, int (*alloc)(char **, int));
+ssize_t write_nointr(int fd, char *buf, ssize_t len);
+ssize_t read_nointr(int fd, char *buf, ssize_t len);
+int lock_file(int fd);
+/*
+ * Returns the file descriptor on success.
+ */
+int open_and_lock_file(const char *fname, int flags, mode_t mode);
+int unlock_file(int fd);
+int gzip_file(const char *filename, const char *target_name);
 #endif

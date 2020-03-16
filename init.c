@@ -151,7 +151,7 @@ static void signal_handler(int signal)
 		/*
 		 * See if the pid is one of the loggers
 		 * */
-		if (pv) {
+		if (pv && pv->state) {
 			p = pv->state->platforms;
 		}
 		while (p) {
