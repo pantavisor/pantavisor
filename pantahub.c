@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <limits.h>
 
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -47,6 +48,8 @@
 #include "device.h"
 
 #include "pantahub.h"
+#include "trestclient.h"
+#include "tsh.h"
 
 #define ENDPOINT_FMT "/devices/%s"
 
@@ -102,15 +105,7 @@ static int ph_client_init(struct pantavisor *pv)
 	if (client)
 		goto auth;
 
-	client = trest_new_tls_from_userpass(
-			pv->config->creds.host,
-			pv->config->creds.port,
-			pv->config->creds.prn,
-			pv->config->creds.secret,
-			pv_ph_get_certs(pv),
-			pv_user_agent,
-			(pv->conn ? &pv->conn->sock : NULL)
-			);
+	client = pv_get_trest_client(pv);
 
 	if (!client)
 		return 0;
@@ -482,7 +477,7 @@ out:
 	return ret;
 }
 
-int pv_ph_register_self(struct pantavisor *pv)
+static int pv_ph_register_self_builtin(struct pantavisor *pv)
 {
 	int ret = 1;
 	int tokc;
@@ -543,6 +538,88 @@ int pv_ph_register_self(struct pantavisor *pv)
 	if (res)
 		thttp_response_free(res);
 
+	return ret;
+}
+
+
+static int pv_ph_register_self_ext(struct pantavisor *pv, char *cmd)
+{
+	int ret = 0;
+	int status = -1;
+	char config_path[PATH_MAX];
+
+	if (tsh_run(cmd, 1, &status) < 0) {
+		pv_log(ERROR, "registration attempt with cmd: %s", cmd);
+		goto exit;
+	}
+
+	// If registered, override in-memory PantaHub credentials
+	sprintf(config_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
+	if (ph_config_from_file(config_path, pv->config) < 0) {
+		pv_log(ERROR, "error loading updated config file");
+		goto exit;
+	}
+
+	ret = 1;
+exit:
+	return ret;
+}
+
+#define PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT "/btools/%s.register"
+
+int pv_ph_register_self(struct pantavisor *pv)
+{
+	int ret = 1;
+	char cmd[PATH_MAX];
+	enum {
+		HUB_CREDS_TYPE_BUILTIN=0,
+		HUB_CREDS_TYPE_EXTERNAL,
+		HUB_CREDS_TYPE_ERROR
+	} creds_type;
+
+        if (!strcmp(pv->config->creds.type, "builtin")) {
+		creds_type = HUB_CREDS_TYPE_BUILTIN;
+	} else if(strlen(pv->config->creds.type) >= 4 &&
+			!strncmp(pv->config->creds.type, "ext-", 4)) {
+		struct stat sb;
+		int rv;
+
+		// if no executable handler is found; fall back to builtin
+		sprintf(cmd, PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT,
+			pv->config->creds.type);
+		rv = stat(cmd, &sb);
+		if (rv) {
+			pv_log(ERROR, "unable to stat trest client for cmd %s: %s", cmd, strerror(errno));
+			goto err;
+		}
+		if (!(sb.st_mode & S_IXUSR)) {
+			pv_log(ERROR, "unable to get trest client for cmd %s ... not executable.", cmd);
+			goto err;
+		}
+
+		creds_type = HUB_CREDS_TYPE_EXTERNAL;
+	} else {
+		pv_log(ERROR, "unable to get trest client for creds_type %s.",
+				pv->config->creds.type);
+		goto err;
+	}
+
+	switch (creds_type) {
+	case HUB_CREDS_TYPE_BUILTIN:
+		ret = pv_ph_register_self_builtin(pv); 
+		break;
+	case HUB_CREDS_TYPE_EXTERNAL:
+		ret = pv_ph_register_self_ext(pv, cmd);
+		break;
+	default:
+		pv_log(ERROR, "unable to register for creds_type %s. "
+				"Currently supported: builtin and ext-* handlers",
+				pv->config->creds.type);
+		ret = 0;
+		goto err;
+	}
+
+err:
 	return ret;
 }
 

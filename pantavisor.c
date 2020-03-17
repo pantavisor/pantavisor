@@ -51,6 +51,8 @@
 #include "parser/parser.h"
 
 #include "pantavisor.h"
+#include "pantahub.h"
+#include "tsh.h"
 #include "utils/list.h"
 
 pid_t pv_pid;

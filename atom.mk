@@ -55,6 +55,7 @@ LOCAL_SRC_FILES := init.c \
 		   pantahub.c \
 		   updater.c \
 		   bootloader.c \
+		   trestclient.c \
 		   uboot.c \
 		   grub.c \
 		   storage.c \

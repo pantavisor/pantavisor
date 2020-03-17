@@ -27,6 +27,7 @@
 #include "config.h"
 #include <netinet/in.h>
 #include "utils/list.h"
+#include <trest.h>
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 

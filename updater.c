@@ -47,6 +47,7 @@
 #include "bootloader.h"
 #include "pantahub.h"
 #include "storage.h"
+#include "trestclient.h"
 #include "wdt.h"
 
 int MAX_REVISION_RETRIES = 0;
@@ -99,31 +100,10 @@ static char *unescape_utf8_to_apvii(char *buf, char *code, char c)
 static int trail_remote_init(struct pantavisor *pv)
 {
 	struct trail_remote *remote = NULL;
-	const char **cafiles;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_ptr client = 0;
 
-	// Make sure values are reasonable
-	if ((strcmp(pv->config->creds.id, "") == 0) ||
-	    (strcmp(pv->config->creds.prn, "") == 0))
-		return 0;
-
-	cafiles = pv_ph_get_certs(pv);
-	if (!cafiles) {
-		pv_log(ERROR, "unable to assemble cert list");
-		goto err;
-	}
-
-	// Create client
-	client = trest_new_tls_from_userpass(
-		pv->config->creds.host,
-		pv->config->creds.port,
-		pv->config->creds.prn,
-		pv->config->creds.secret,
-		(const char **) cafiles,
-		pv_user_agent,
-		(pv->conn ? &pv->conn->sock : NULL)
-		);
+	client = pv_get_trest_client(pv);
 
 	if (!client) {
 		pv_log(INFO, "unable to create device client");

@@ -366,6 +366,20 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	if (item)
 		config->updater.keep_factory = atoi(item);
 
+	config->creds.type = _config_get_value("creds.type");
+	if (!config->creds.type)
+		config->creds.type = strdup("builtin");
+
+	if (!strcmp("builtin", config->creds.type)) {
+		pv_log(INFO, "using builtin credential handler");
+	} else if (strlen(config->creds.type) >= 4 &&
+		!strncmp("ext-", config->creds.type, 4)) {
+		pv_log(INFO, "using external credential handler %s", config->creds.type);
+	} else {
+		pv_log(ERROR, "no valid pantavisor credential type (%s) configured; giving up", config->creds.type);
+		return -1;
+	}
+
 	config->creds.host = _config_get_value("creds.host");
 	if (!config->creds.host) {
 		config->creds.host = strdup("192.168.53.1");
@@ -420,6 +434,7 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	bytes = write_config_tuple(fd, "updater.network_timeout", buf);
 	sprintf(buf, "%d", config->updater.keep_factory);
 	bytes = write_config_tuple(fd, "updater.keep_factory", buf);
+	bytes = write_config_tuple(fd, "creds.type", config->creds.type);
 	bytes = write_config_tuple(fd, "creds.host", config->creds.host);
 	sprintf(buf, "%d", config->creds.port);
 	bytes = write_config_tuple(fd, "creds.port", buf);
