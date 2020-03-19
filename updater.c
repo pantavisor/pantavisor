@@ -375,6 +375,9 @@ static int trail_get_new_steps(struct pantavisor *pv)
 				res->json_tokv, res->json_tokc);
 		state = get_json_key_value(res->body, "state",
 				res->json_tokv, res->json_tokc);
+	} else {
+		pv_log(DEBUG, "no steps to process found, continuing");
+		goto out;
 	}
 	
 	if (!rev_s || !state) {
