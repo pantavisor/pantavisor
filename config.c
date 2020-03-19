@@ -66,6 +66,8 @@ static struct config_item* _config_add_item(char *key, char *value)
 	// Check if it already exists in config and change value instead
 	this = _config_get_by_key(key);
 	if (this) {
+		if (this->value)
+			free(this->value);
 		this->value = strdup(value);
 		return this;
 	}
