@@ -197,15 +197,16 @@ static int get_logger_xattr(int log_fd)
 
 static int pvlogger_start(struct log *log, int was_init_ok)
 {
-	int log_file_fd = fileno(log->backing_file);
+	int log_file_fd;
 	off_t stored_pos = 0;
 
-	pv_log(INFO, "Started pvlogger\n");
-	
 	if (was_init_ok != LOG_OK) {
 		pv_log(WARN, "Waiting for log file\n");
 		goto out;
 	}
+
+	pv_log(INFO, "Started pvlogger\n");
+	log_file_fd = fileno(log->backing_file);
 	stored_pos = get_logger_xattr(log_file_fd);
 	pv_log(DEBUG, "pvlogger %s seeking to position %" PRId64 "\n",
 			module_name, stored_pos);
