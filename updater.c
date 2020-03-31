@@ -525,15 +525,21 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 
 	tres = trest_do_json_request(pv->remote->client, treq);
 	if (!tres) {
+		pv_log(ERROR, "'%s' could not be registered, request error", o->id);
 		ret = -1;
 		goto out;
 	}
 
 	if (tres->code == THTTP_STATUS_CONFLICT) {
-		pv_log(INFO, "'%s' already owned by user, skipping", o->id, tres->code);
+		pv_log(INFO, "'%s' already owned by user, skipping", o->id);
 		goto out;
 	}
-	pv_log(INFO, "'%s' does not exist, uploading", o->id, tres->code);
+
+	if (tres->code != THTTP_STATUS_OK) {
+		pv_log(ERROR, "'%s' could not be registered, code=%d", o->id, tres->code);
+		ret = -1;
+		goto out;
+	}
 
 	signed_puturl = get_json_key_value(tres->body,
 				"signed-puturl",
@@ -541,41 +547,52 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 				tres->json_tokc);
 
 	tls_req = (thttp_request_tls_t*) thttp_request_tls_new_0 ();
-	tls_req->crtfiles = (char ** )crtfiles;
-	req = (thttp_request_t*) tls_req;
-	req->is_tls = 1;
 
-	req->method = THTTP_METHOD_PUT;
-	req->proto = THTTP_PROTO_HTTP;
-	req->proto_version = THTTP_PROTO_VERSION_10;
-	req->host = pv->config->creds.host;
-	req->port = pv->config->creds.port;
-	req->user_agent = pv_user_agent;
+	if (signed_puturl && tls_req) {
+		tls_req->crtfiles = (char ** )crtfiles;
+		req = (thttp_request_t*) tls_req;
+		req->is_tls = 1;
 
-	req->path = strstr(signed_puturl, "/local-s3");
+		req->method = THTTP_METHOD_PUT;
+		req->proto = THTTP_PROTO_HTTP;
+		req->proto_version = THTTP_PROTO_VERSION_10;
+		req->host = pv->config->creds.host;
+		req->port = pv->config->creds.port;
+		req->user_agent = pv_user_agent;
 
-	req->headers = 0;
-	req->body_content_type = "application/json";
-	lseek(fd, 0, SEEK_SET);
-	req->fd = fd;
-	req->len = size;
+		req->path = strstr(signed_puturl, "/local-s3");
 
-	res = thttp_request_do(req);
+		req->headers = NULL;
+		req->body_content_type = "application/json";
+		lseek(fd, 0, SEEK_SET);
+		req->fd = fd;
+		req->len = size;
 
-	if (!res) {
-		ret = -1;
-		goto out;
+		pv_log(INFO, "'%s' does not exist, uploading", o->id);
+
+		res = thttp_request_do(req);
+
+		if (!res) {
+			pv_log(ERROR, "'%s' could not be uploaded, request error", o->id);
+			ret = -1;
+			goto out;
+		}
+
+		if (res->code != THTTP_STATUS_OK) {
+			pv_log(ERROR, "'%s' could not be uploaded, code=%d", o->id, res->code);
+			ret = -1;
+			goto out;
+		}
+
+		pv_log(INFO, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
 	}
-
-	if (tres->code != THTTP_STATUS_OK) {
-		pv_log(ERROR, "'%s' could not be uploaded, code=%d", o->id, tres->code);
+	else {
+		pv_log(ERROR, "'%s' could not be registered, signed_puturl not retrieved", o->id);
 		ret = -1;
-		goto out;
 	}
-
-	pv_log(INFO, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
 
 out:
+	close(fd);
 	if (treq)
 		trest_request_free(treq);
 	if (tres)
