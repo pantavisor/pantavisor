@@ -214,6 +214,13 @@ static int _config_parse_cmdline(char *hint)
 			k = token + strlen(hint);
 			key = strtok_r(k, "=", &ptr_in);
 			value = strtok_r(NULL, "\0", &ptr_in);
+			/*
+			 * for things like XYZ= there would be nothing
+			 * in the value as strtok returns only non-empty
+			 * strings.
+			 * */
+			if (!value)
+				value = ""; /*We keep the key but give it an empty value*/
 			_config_replace_item(key, value);
 		}
 		token = strtok_r(NULL, " ", &ptr_out);
