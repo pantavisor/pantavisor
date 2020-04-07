@@ -60,7 +60,7 @@ static void usermeta_add_hint(struct pv_usermeta *m)
 	if (strcmp("/pv/user-meta", path_base))
 		mkdir_p(path_base, 0755);
 
-	fd = open(path, O_CREAT | O_RDWR, 0644);
+	fd = open(path, O_CREAT | O_RDWR | O_TRUNC, 0644);
 	if (!fd)
 		goto out;
 
