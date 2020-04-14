@@ -217,6 +217,10 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
 		break;
+	case UPDATE_DEVICE_AUTH_OK:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"AUTHENTICATED", "Device Login Successful.", 0);
+		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"ERROR", "Error during update", 0);
@@ -240,6 +244,7 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 		pv_log(INFO, "remote state updated to %s", res->body);
 	} else {
 		pv_log(WARN, "unable to update remote status, http code %d", res->code);
+		ret = -1;
 	}
 
 out:
