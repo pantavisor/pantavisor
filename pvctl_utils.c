@@ -57,7 +57,7 @@ static int open_socket(const char *path)
 try_again:
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
-		pv_log(WARN, "Socket creation failed\n");
+		pv_log(WARN, "Socket creation failed");
 		return fd;
 	}
 

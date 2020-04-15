@@ -271,7 +271,7 @@ int pv_ph_is_available(struct pantavisor *pv)
 	conn = pv->conn;
 
 	if (!conn) {
-		pv_log(DEBUG, "Unable to allocate memory for connection\n");
+		pv_log(DEBUG, "Unable to allocate memory for connection");
 		goto out;
 	}
 	ret = pv_do_ph_resolve(host, port, pv->conn);

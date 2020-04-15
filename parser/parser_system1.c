@@ -127,7 +127,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 	if (!buf)
 		return 1;
 
-	pv_log(DEBUG, "calling %s buf =%s\n", __func__, buf);
+	pv_log(DEBUG, "calling %s buf =%s", __func__, buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
@@ -419,7 +419,7 @@ static int do_action_for_one_volume(struct json_key_action *jka,
 	}
 	v->plat = *bundle->platform;
 	v->type = VOL_LOOPIMG;
-	pv_log(DEBUG, "Added volume %s to platform %s\n",
+	pv_log(DEBUG, "Added volume %s to platform %s",
 			v->name, (*bundle->platform)->name);
 fail:
 	if (value_alloced && value)
@@ -484,7 +484,7 @@ static int do_action_for_one_log(struct json_key_action *jka,
 		key = json_get_one_str(jka->buf, keys_i);
 		value = json_get_one_str(jka->buf, &val_tok);
 		
-		pv_log(DEBUG, "Got log value as %s-%s\n", key, value);
+		pv_log(DEBUG, "Got log value as %s-%s", key, value);
 		if (value) {
 			config->pair[i][0] = key;
 			config->pair[i][1] = value;
@@ -605,31 +605,31 @@ void system1_print(struct pv_state *this)
 	// print
 	struct pv_platform *p = this->platforms;
 	struct pv_object *curr;
-	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
-	pv_log(DEBUG, "initrd: '%s'\n", this->initrd);
+	pv_log(DEBUG, "kernel: '%s'", this->kernel);
+	pv_log(DEBUG, "initrd: '%s'", this->initrd);
 	while (p) {
-		pv_log(DEBUG, "platform: '%s'\n", p->name);
-		pv_log(DEBUG, "  type: '%s'\n", p->type);
-		pv_log(DEBUG, "  configs:\n");
+		pv_log(DEBUG, "platform: '%s'", p->name);
+		pv_log(DEBUG, "  type: '%s'", p->type);
+		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
-			pv_log(DEBUG, "    '%s'\n", *config);
+			pv_log(DEBUG, "    '%s'", *config);
 			config++;
 		}
 		p = p->next;
 	}
 	struct pv_volume *v = this->volumes;
 	while (v) {
-		pv_log(DEBUG, "volume: '%s'\n", v->name);
-		pv_log(DEBUG, "  type: '%d'\n", v->type);
+		pv_log(DEBUG, "volume: '%s'", v->name);
+		pv_log(DEBUG, "  type: '%d'", v->type);
 
 		v = v->next;
 	}
 	
 	pv_objects_iter_begin(this, curr) {
-		pv_log(DEBUG, "object: \n");
-		pv_log(DEBUG, "  name: '%s'\n", curr->name);
-		pv_log(DEBUG, "  id: '%s'\n", curr->id);
+		pv_log(DEBUG, "object: ");
+		pv_log(DEBUG, "  name: '%s'", curr->name);
+		pv_log(DEBUG, "  id: '%s'", curr->id);
 	}
 	pv_objects_iter_end;
 }
@@ -693,7 +693,7 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		if (ext && !strcmp(ext, "/run.json")) {
 			parse_platform(this, value, strlen(value));
 		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
-			pv_log(DEBUG, "skipping '%s'\n", key);
+			pv_log(DEBUG, "skipping '%s'", key);
 		} else {
 			pv_objects_add(this, key, value, pv->config->storage.mntpoint);
 		}

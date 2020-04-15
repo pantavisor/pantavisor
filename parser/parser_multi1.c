@@ -287,31 +287,31 @@ void multi1_print(struct pv_state *this)
 	// print
 	struct pv_platform *p = this->platforms;
 	struct pv_object *curr;
-	pv_log(DEBUG, "kernel: '%s'\n", this->kernel);
-	pv_log(DEBUG, "initrd: '%s'\n", this->initrd);
-	pv_log(DEBUG, "fdt: '%s'\n", this->fdt ? this->fdt : "(null)");
+	pv_log(DEBUG, "kernel: '%s'", this->kernel);
+	pv_log(DEBUG, "initrd: '%s'", this->initrd);
+	pv_log(DEBUG, "fdt: '%s'", this->fdt ? this->fdt : "(null)");
 	while (p) {
-		pv_log(DEBUG, "platform: '%s'\n", p->name);
-		pv_log(DEBUG, "  type: '%s'\n", p->type);
-		pv_log(DEBUG, "  exec: '%s'\n", p->exec);
-		pv_log(DEBUG, "  configs:\n");
+		pv_log(DEBUG, "platform: '%s'", p->name);
+		pv_log(DEBUG, "  type: '%s'", p->type);
+		pv_log(DEBUG, "  exec: '%s'", p->exec);
+		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
-			pv_log(DEBUG, "    '%s'\n", *config);
+			pv_log(DEBUG, "    '%s'", *config);
 			config++;
 		}
-		pv_log(DEBUG, "  shares: 0x%08lx\n", p->ns_share);
+		pv_log(DEBUG, "  shares: 0x%08lx", p->ns_share);
 		p = p->next;
 	}
 	struct pv_volume *v = this->volumes;
 	while (v) {
-		pv_log(DEBUG, "volume: '%s'\n", v->name);
+		pv_log(DEBUG, "volume: '%s'", v->name);
 		v = v->next;
 	}
 	pv_objects_iter_begin(this, curr) {
-		pv_log(DEBUG, "object: \n");
-		pv_log(DEBUG, "  name: '%s'\n", curr->name);
-		pv_log(DEBUG, "  id: '%s'\n", curr->id);
+		pv_log(DEBUG, "object: ");
+		pv_log(DEBUG, "  name: '%s'", curr->name);
+		pv_log(DEBUG, "  id: '%s'", curr->id);
 	}
 	pv_objects_iter_end;
 }

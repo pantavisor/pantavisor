@@ -278,7 +278,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	if (__pv_new_log)
 		__pv_new_log(pv_new_log);
 	else
-		pv_log(ERROR, "Couldn't locate symbol pv_set_new_log_fn\n");
+		pv_log(ERROR, "Couldn't locate symbol pv_set_new_log_fn");
 
 	return 1;
 }
@@ -323,10 +323,10 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 		if (!log_info->islxc) {
 			snprintf(namespace,sizeof(namespace), "/proc/%d/ns/mnt",
 					container_pid);
-			pv_log(DEBUG, "Opening file %s\n",namespace);
+			pv_log(DEBUG, "Opening file %s",namespace);
 			ns_fd = open(namespace, 0);
 			if (ns_fd < 0) {
-				pv_log(ERROR, "Unable to open namespace file\n");
+				pv_log(ERROR, "Unable to open namespace file");
 				_exit(-1);
 			}
 			if (setns(ns_fd, 0)) {
@@ -435,7 +435,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 		 * */
 		if (logger_pid < 0) {
 			dl_list_del(&log_info->next);
-			pv_log(WARN, "Logger %s was not started\n",
+			pv_log(WARN, "Logger %s was not started",
 				(log_info->name ? log_info->name : "pvlogger")
 				);
 			if (log_info->on_logger_closed) {
@@ -511,7 +511,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 
 		if (pv_state_spec(pv->state) != SPEC_MULTI1) {
 			if (start_pvlogger_for_platform(p) < 0) {
-				pv_log(ERROR, "Could not start pv_logger for platform %s\n",p->name);
+				pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
 			}
 		}
 		num_plats++;

@@ -218,9 +218,9 @@ static int uboot_unset_env_key(char *key)
 		ei.start = 0;
 		ei.length = mi.erasesize;
 		if (ioctl(fd, MEMUNLOCK, &ei))
-			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s\n", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s", strerror(errno));
 		if (ioctl(fd, MEMERASE, &ei))
-			pv_log(DEBUG, "ioctl: MEMERASE errno=%s\n", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
 	}
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));
@@ -291,9 +291,9 @@ static int uboot_set_env_key(char *key, int value)
 		ei.start = 0;
 		ei.length = mi.erasesize;
 		if (ioctl(fd, MEMUNLOCK, &ei))
-			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s\n", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s", strerror(errno));
 		if (ioctl(fd, MEMERASE, &ei))
-			pv_log(DEBUG, "ioctl: MEMERASE errno=%s\n", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
 	}
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));
@@ -327,15 +327,15 @@ static int uboot_flush_env(void)
 	char buf[32];
 	read(fd, buf, sizeof(buf));
 	buf[31] = '\0';
-	pv_log(DEBUG, "Buf-dirty: '%s'\n", buf);
+	pv_log(DEBUG, "Buf-dirty: '%s'", buf);
 
 	ioctl(fd, MEMGETINFO, &mi);
 	ei.start = 0;
 	ei.length = mi.erasesize;
 	if (ioctl(fd, MEMUNLOCK, &ei))
-		pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s\n", strerror(errno));
+		pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s", strerror(errno));
 	if (ioctl(fd, MEMERASE, &ei))
-		pv_log(DEBUG, "ioctl: MEMERASE errno=%s\n", strerror(errno));
+		pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
 
 	close(fd);
 
@@ -344,7 +344,7 @@ static int uboot_flush_env(void)
 	memset(buf, 0, sizeof(buf));
 	read(fd, buf, sizeof(buf));
 	buf[31] = '\0';
-	pv_log(DEBUG, "Buf-clean: '%s'\n", buf);
+	pv_log(DEBUG, "Buf-clean: '%s'", buf);
 
 	close(fd);
 

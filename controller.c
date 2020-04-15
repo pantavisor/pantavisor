@@ -218,16 +218,16 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv_log(INFO, "                                                 ");
 	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
 	pv_log(INFO, "                                                 ");
-	pv_log(DEBUG, "c->storage.path = '%s'\n", c->storage.path);
-	pv_log(DEBUG, "c->storage.fstype = '%s'\n", c->storage.fstype);
-	pv_log(DEBUG, "c->storage.opts = '%s'\n", c->storage.opts);
-	pv_log(DEBUG, "c->storage.mntpoint = '%s'\n", c->storage.mntpoint);
-	pv_log(DEBUG, "c->storage.mnttype = '%s'\n", c->storage.mnttype ? c->storage.mnttype : "");
-	pv_log(DEBUG, "c->creds.host = '%s'\n", c->creds.host);
-	pv_log(DEBUG, "c->creds.port = '%d'\n", c->creds.port);
-	pv_log(DEBUG, "c->creds.id = '%s'\n", c->creds.id);
-	pv_log(DEBUG, "c->creds.prn = '%s'\n", c->creds.prn);
-	pv_log(DEBUG, "c->creds.secret = '%s'\n", c->creds.secret);
+	pv_log(DEBUG, "c->storage.path = '%s'", c->storage.path);
+	pv_log(DEBUG, "c->storage.fstype = '%s'", c->storage.fstype);
+	pv_log(DEBUG, "c->storage.opts = '%s'", c->storage.opts);
+	pv_log(DEBUG, "c->storage.mntpoint = '%s'", c->storage.mntpoint);
+	pv_log(DEBUG, "c->storage.mnttype = '%s'", c->storage.mnttype ? c->storage.mnttype : "");
+	pv_log(DEBUG, "c->creds.host = '%s'", c->creds.host);
+	pv_log(DEBUG, "c->creds.port = '%d'", c->creds.port);
+	pv_log(DEBUG, "c->creds.id = '%s'", c->creds.id);
+	pv_log(DEBUG, "c->creds.prn = '%s'", c->creds.prn);
+	pv_log(DEBUG, "c->creds.secret = '%s'", c->creds.secret);
 
 	// create hints
 	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
@@ -295,7 +295,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv->update = 0;
 	pv->last = -1;
 
-	pv_log(DEBUG, "%s():%d pv_try=%d, pv_rev=%d\n", __func__, __LINE__, pv_try, pv_rev);
+	pv_log(DEBUG, "%s():%d pv_try=%d, pv_rev=%d", __func__, __LINE__, pv_try, pv_rev);
 
 	// parse boot rev
 	pv->state = pv_get_state(pv, pv_rev);
@@ -334,7 +334,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 
 static pv_state_t _pv_run(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	int ret;
 	struct timespec tp;
 
@@ -660,7 +660,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
 	int ret = 0;
-	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
 	if (pv->state && pv->state->rev == 0)
@@ -715,7 +715,7 @@ static pv_state_t _pv_error(struct pantavisor *pv)
 {
 	int count = 0;
 
-	pv_log(DEBUG, "%s():%d\n", __func__, __LINE__);
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	while (count < 2) {
 		sleep(5);

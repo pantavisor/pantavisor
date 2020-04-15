@@ -160,7 +160,7 @@ write_again:
 				memset(__logger_cmd + logger_pos, 0, sizeof(logger_cmd) - logger_pos - 1);
 				goto write_again;
 			} else {
-				pv_log(WARN, "BUG on logger_pos =%d, to_write = %zd\n", 
+				pv_log(WARN, "BUG on logger_pos =%d, to_write = %zd", 
 						logger_pos, to_write);
 				logger_pos = 0;
 			}
@@ -168,7 +168,7 @@ write_again:
 	}
 	ret = set_logger_xattr(log);
 	if (ret)
-		pv_log(DEBUG, "Setting xattr failed, return code is %d \n", ret);
+		pv_log(DEBUG, "Setting xattr failed, return code is %d ", ret);
 	return 0;
 }
 
@@ -190,7 +190,7 @@ static int get_logger_xattr(int log_fd)
 			free(value);
 		}
 	} else
-		pv_log(DEBUG, "Attribute %s not present\n", PV_LOGGER_POS_XATTR);
+		pv_log(DEBUG, "Attribute %s not present", PV_LOGGER_POS_XATTR);
 
 	return stored_pos;
 }
@@ -201,14 +201,14 @@ static int pvlogger_start(struct log *log, int was_init_ok)
 	off_t stored_pos = 0;
 
 	if (was_init_ok != LOG_OK) {
-		pv_log(WARN, "Waiting for log file\n");
+		pv_log(WARN, "Waiting for log file");
 		goto out;
 	}
 
-	pv_log(INFO, "Started pvlogger\n");
+	pv_log(INFO, "Started pvlogger");
 	log_file_fd = fileno(log->backing_file);
 	stored_pos = get_logger_xattr(log_file_fd);
-	pv_log(DEBUG, "pvlogger %s seeking to position %" PRId64 "\n",
+	pv_log(DEBUG, "pvlogger %s seeking to position %" PRId64 "",
 			module_name, stored_pos);
 	fseek(log->backing_file, stored_pos, SEEK_SET);
 out:
@@ -251,7 +251,7 @@ static int wait_for_logfile(const char *logfile)
 	dir_dup = strdup(logfile);
 
 	if (!file_dup || !dir_dup) {
-		pv_log(WARN, "Memory allocation failed for logfile duplication\n");
+		pv_log(WARN, "Memory allocation failed for logfile duplication");
 		ret = LOG_NOK;
 		goto out;
 	}
@@ -283,7 +283,7 @@ static int wait_for_logfile(const char *logfile)
 	inotify_ev = (struct inotify_event*)calloc(1, INOTIFY_SIZE);
 
 	if (!inotify_ev) {
-		pv_log(WARN, "Couldn't allocate memory for inotify event\n");
+		pv_log(WARN, "Couldn't allocate memory for inotify event");
 		ret = LOG_NOK;
 		goto out;
 	}
@@ -352,7 +352,7 @@ init_again:
 
 	if (logfile && logfile[0] != '/') {
 		if (!logfile)
-			pv_log(WARN, "Logfile can't be null\n");
+			pv_log(WARN, "Logfile can't be null");
 		else 
 			pv_log(WARN, "Logfile must be an absolute pathname"
 					" %s\n", logfile);
@@ -379,13 +379,13 @@ init_again:
 
 	while (!stop_logger) {
 		if (log_flush_pv(&default_log) < 0) {
-			pv_log(WARN, "Stopping pvlogger %s\n", module_name);
+			pv_log(WARN, "Stopping pvlogger %s", module_name);
 			log_stop(&default_log);
 			goto init_again;
 		}
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 	}
-	pv_log(WARN, "Exiting, pv_logger %s\n", module_name);
+	pv_log(WARN, "Exiting, pv_logger %s", module_name);
 	return 0;
 }
