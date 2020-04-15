@@ -127,7 +127,7 @@ int pv_network_update_meta(struct pantavisor *pv)
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
 	if (getifaddrs(&ifaddr) < 0) {
-		pv_log(DEBUG, "error calling getifaddrs()\n");
+		pv_log(DEBUG, "error calling getifaddrs()");
 		return -1;
 	}
 
