@@ -27,11 +27,22 @@
 #include <unistd.h>
 #include <libgen.h>
 #include <errno.h>
-
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #include "utils.h"
+/*
+ * private struct.
+ */
+struct pv_json_format {
+       char ch;
+       int *off_dst;
+       int *off_src;
+       const char *src;
+       char *dst;
+       int (*format)(struct pv_json_format *);
+};
 
 static int seeded = 0;
 
@@ -42,7 +53,7 @@ int mkdir_p(char *dir, mode_t mode)
 	char *makeme;
 
 	do {
-		dir = tmp + strspn(tmp, "/");
+		dir = (char*)tmp + strspn(tmp, "/");
 		tmp = dir + strcspn(dir, "/");
 		makeme = strndup(orig, dir - orig);
 		if (*makeme) {
@@ -265,6 +276,100 @@ char* skip_prefix(char *str, const char *key)
 			break;
 		key++;
 		str++;
+	}
+	return str;
+}
+static bool char_is_json_special(char ch)
+{
+	/* From RFC 7159, section 7 Strings
+	 * All Unicode characters may be placed within the
+	 * quotation marks, except for the characters that must be escaped:
+	 * quotation mark, reverse solidus, and the control characters (U+0000
+	 * through U+001F).
+	 */
+
+	switch(ch) {
+		case 0x00 ... 0x1f:
+		case '\\':
+		case '\"':
+			return true;
+		default:
+			return false;
+	}
+}
+
+static char nibble_to_hexchar(char nibble_val) {
+
+	if (nibble_val <= 9)
+		return '0' + nibble_val;
+	nibble_val -= 10;
+	return 'A' + nibble_val;
+}
+
+static int modify_to_json(struct pv_json_format *json_fmt)
+{
+	char nibble_val;
+
+	json_fmt->dst[(*json_fmt->off_dst)++] = '\\';
+	json_fmt->dst[(*json_fmt->off_dst)++] = 'u';
+	json_fmt->dst[(*json_fmt->off_dst)++] = '0';
+	json_fmt->dst[(*json_fmt->off_dst)++] = '0';
+	/*
+	 * get the higher order byte nibble.
+	 */
+	nibble_val = (json_fmt->ch & 0xff) >> 4;
+	json_fmt->dst[(*json_fmt->off_dst)++] = nibble_to_hexchar(nibble_val);
+	/*
+	 * get the lower order byte nibble.
+	 */
+	nibble_val = (json_fmt->ch & 0x0f);
+	json_fmt->dst[(*json_fmt->off_dst)++] = nibble_to_hexchar(nibble_val);
+
+	return 0;
+}
+
+char* format_json(char *buf, int len)
+{
+	char *json_string = NULL;
+	int idx = 0;
+	int json_str_idx = 0;
+
+	if (len > 0) //We make enough room for worst case.
+		json_string = (char*) calloc(1, (len * 6) + 1); //Add 1 for '\0'.
+
+	if (!json_string)
+		goto out;
+	while (len > idx) {
+		if (char_is_json_special(buf[idx])) {
+			struct pv_json_format json_fmt = {
+				.src = buf,
+				.dst = json_string,
+				.off_dst = &json_str_idx,
+				.off_src = &idx,
+				.ch = buf[idx],
+				.format = modify_to_json
+			};
+			json_fmt.format(&json_fmt);
+		} else
+			json_string[json_str_idx++] = buf[idx];
+		idx++;
+	}
+out:
+	if (json_string)
+		json_string = realloc(json_string, strlen(json_string) + 1);
+	return json_string;
+}
+
+char *str_replace(char *str, int len, char which, char what)
+{
+	int char_at = 0;
+
+	if (!str)
+		return NULL;
+
+	for (char_at = 0; char_at < len; char_at++){
+		if (str[char_at] == which)
+			str[char_at] = what;
 	}
 	return str;
 }
