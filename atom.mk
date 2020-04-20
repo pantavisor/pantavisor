@@ -15,7 +15,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_LIBRARIES := libthttp libpvlogger
+LOCAL_LIBRARIES := libthttp libpvlogger mbedtls
 
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
