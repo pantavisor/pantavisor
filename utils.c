@@ -373,6 +373,7 @@ char *str_replace(char *str, int len, char which, char what)
 			str[char_at] = what;
 	}
 	return str;
+}
 
 int get_endian(void)
 {
@@ -406,7 +407,7 @@ char* get_cpu_model(void)
 {
 	int fd = -1;
 	struct stat st;
-	char *model = NULL, *buf, *tmp, *value;
+	char *model = NULL, *buf, *cur, *value;
 
 	if (stat("/proc/cpuinfo", &st))
 		return NULL;
@@ -421,14 +422,13 @@ char* get_cpu_model(void)
 		if (cur) {
 			value = cur + sizeof(PREFIX_MODEL);
 			cur = strchr(value, '\n');
-			if (cur && (model = calloc(1, cur-value+1))
+			if (cur && (model = calloc(1, cur-value+1)))
 				memcpy(model, value, cur-value);
 		}
 	}
-
-out:
 	close(fd);
-	free(buf);
+	if (buf)
+		free(buf);
 
 	return model;
 }

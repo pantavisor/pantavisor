@@ -270,7 +270,7 @@ struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *va
 
 int pv_device_info_upload(struct pantavisor *pv)
 {
-	int len = 0;
+	unsigned int len = 0;
 	char *json, *buf, *t;
 	struct pv_devinfo *info, *tmp;
 	struct dl_list *head;
@@ -281,14 +281,14 @@ int pv_device_info_upload(struct pantavisor *pv)
 	dl_list_init(&pv->dev->infolist);
 
 	buf = calloc(1, BUF_CHUNK * sizeof(char));
-	sprintf(buf, "%s/%s/%s", PV_ARCH, PV_BITS, _get_endian() ? "EL" : "EB");
+	sprintf(buf, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
 	pv_device_info_add(pv->dev, "pantavisor.arch", buf);
 	pv_device_info_add(pv->dev, "pantavisor.version", (char *) pv_build_version);
-	if ((t = _get_dt_model())) {
+	if ((t = get_dt_model())) {
 		pv_device_info_add(pv->dev, "pantavisor.dtmodel", t);
 		free(t);
 	}
-	if ((t = _get_cpu_model())) {
+	if ((t = get_cpu_model())) {
 		pv_device_info_add(pv->dev, "pantavisor.cpumodel", t);
 		free(t);
 	}
@@ -312,12 +312,15 @@ upload:
 		sprintf(buf, "\"%s\":\"%s\",", info->key, info->value);
 		if (strlen(buf) > (BUF_CHUNK - len))
 			goto out;
-		strcat(json, bup);
+		strcat(json, buf);
 		len += strlen(buf);
 	}
 	json[len-1] = '}';
 	json[len] = '\0';
-	info_uploaded = !pv_ph_upload_metadata(pv, json);
+
+	t = format_json(json, strlen(json));
+	if (t)
+		info_uploaded = !pv_ph_upload_metadata(pv, json);
 
 out:
 	if (buf)
