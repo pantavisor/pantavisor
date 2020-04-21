@@ -376,7 +376,7 @@ out:
 	return ret;
 }
 
-int pv_ph_device_update_meta(struct pantavisor *pv)
+int pv_ph_device_get_meta(struct pantavisor *pv)
 {
 	int ret = -1;
 
@@ -397,7 +397,7 @@ int pv_ph_device_update_meta(struct pantavisor *pv)
 		goto out;
 	}
 
-	ret = pv_device_update_meta(pv, res->body);
+	ret = pv_device_update_usermeta(pv, res->body);
 
 out:
 	if (req)

@@ -26,10 +26,30 @@
 
 #include "pantavisor.h"
 
+#ifdef __arm__
+#define PV_ARCH		"arm"
+#elif __x86_64__
+#define PV_ARCH		"x86_64"
+#elif __mips__
+#define	PV_ARCH		"mips"
+#else
+#define PV_ARCH		"unknown"
+#endif
+
+#if UINTPTR_MAX == 0xffffffff
+#define	PV_BITS		"32"
+#else
+#define	PV_BITS		"64"
+#endif
+
+#define PREFIX_MODEL	"model name\t:"
+
 struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key);
 struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value);
+struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value);
 int pv_usermeta_parse(struct pantavisor *pv, char *buf);
-int pv_device_update_meta(struct pantavisor *pv, char *buf);
+int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
+int pv_device_info_upload(struct pantavisor *pv);
 int pv_device_init(struct pantavisor *pv);
 
 #endif

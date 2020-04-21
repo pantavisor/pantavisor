@@ -135,6 +135,12 @@ struct pv_state {
 	int tryonce;
 };
 
+struct pv_devinfo {
+	char *key;
+	char *value;
+	struct dl_list list;
+};
+
 struct pv_usermeta {
 	char *key;
 	char *value;
@@ -147,6 +153,7 @@ struct pv_device {
 	char *owner;
 	char *prn;
 	struct dl_list metalist;
+	struct dl_list infolist;
 };
 
 struct pv_connection {

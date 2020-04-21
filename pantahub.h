@@ -26,7 +26,7 @@
 
 int pv_ph_is_available(struct pantavisor *pv);
 int pv_ph_upload_logs(struct pantavisor *pv, char *logs);
-int pv_ph_device_update_meta(struct pantavisor *pv);
+int pv_ph_device_get_meta(struct pantavisor *pv);
 int pv_ph_device_exists(struct pantavisor *pv);
 int pv_ph_register_self(struct pantavisor *pv);
 const char** pv_ph_get_certs(struct pantavisor *pv);

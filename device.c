@@ -40,9 +40,14 @@
 
 #include "utils.h"
 #include "pantavisor.h"
+#include "pantahub.h"
 #include "device.h"
+#include "version.h"
 
 #define FW_PATH		"/lib/firmware"
+
+static bool info_uploaded = 0;
+static bool info_parsed = 0;
 
 static void usermeta_add_hint(struct pv_usermeta *m)
 {
@@ -237,7 +242,131 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-int pv_device_update_meta(struct pantavisor *pv, char *buf)
+struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
+{
+	struct pv_devinfo *this;
+
+	if (!key || !value)
+		return NULL;
+
+	this = calloc(1, sizeof(struct pv_devinfo));
+	if (!this)
+		return NULL;
+
+	dl_list_init(&this->list);
+	this->key = strdup(key);
+	this->value = strdup(value);
+	dl_list_add(&dev->infolist, &this->list);
+	free(value);
+
+	return this;
+}
+
+static int _get_endian(void)
+{
+	unsigned long t = 0x00102040;
+	return ((((char*)(&t))[0]) == 0x40);
+}
+
+static char* _get_dt_model(void)
+{
+	int fd;
+	char *buf;
+	struct stat st;
+
+	if (stat("/proc/device-tree/model", &st))
+		return NULL;
+
+	buf = calloc(1, 256);
+	if (!buf)
+		return NULL;
+
+	fd = open("/proc/device-tree/model", O_RDONLY);
+	if (fd >= 0) {
+		read(fd, buf, 256);
+		close(fd);
+	}
+
+	return buf;
+}
+
+static char* _get_cpu_model(void)
+{
+	int fd;
+	struct stat st;
+	char *model = NULL, *buf, *p, *m;
+
+	if (stat("/proc/cpuinfo", &st))
+		return NULL;
+
+	buf = calloc(1, 4096);
+	if (!buf)
+		return NULL;
+
+	fd = open("/proc/cpuinfo", O_RDONLY);
+	if ((fd >= 0) && read(fd, buf, 4096)) {
+		p = strstr(buf, PREFIX_MODEL);
+		if (p) {
+			m = p + sizeof(PREFIX_MODEL);
+			p = strchr(m, '\n');
+			model = calloc(1, p-m+1);
+			memcpy(model, m, p-m);
+		}
+	}
+	close(fd);
+	free(buf);
+
+	return model;
+}
+
+int pv_device_info_upload(struct pantavisor *pv)
+{
+	int len = 0;
+	char *json, *buf;
+	struct pv_devinfo *info, *tmp;
+	struct dl_list *head;
+
+	if (info_parsed)
+		goto upload;
+
+	dl_list_init(&pv->dev->infolist);
+
+	buf = calloc(1, BUF_CHUNK * sizeof(char));
+	sprintf(buf, "%s/%s/%s", PV_ARCH, PV_BITS, _get_endian() ? "EL" : "EB");
+	pv_device_info_add(pv->dev, "pantavisor.arch", strdup(buf));
+	pv_device_info_add(pv->dev, "pantavisor.version", strdup(pv_build_version));
+	pv_device_info_add(pv->dev, "pantavisor.dtmodel", _get_dt_model());
+	pv_device_info_add(pv->dev, "pantavisor.cpumodel", _get_cpu_model());
+
+	sprintf(buf, "%d", pv->state->rev);
+	pv_device_info_add(pv->dev, "pantavisor.revision", strdup(buf));
+
+upload:
+	if (info_uploaded)
+		goto out;
+
+	json = calloc(1, BUF_CHUNK * sizeof(char));
+	sprintf(json, "{");
+	len += 1;
+	head = &pv->dev->infolist;
+	dl_list_for_each_safe(info, tmp, head,
+			struct pv_devinfo, list) {
+		sprintf(buf, "\"%s\":\"%s\",", info->key, info->value);
+		strcat(json, buf);
+		len += strlen(buf);
+	}
+	json[len-1] = '}';
+	json[len] = '\0';
+	if (buf)
+		free(buf);
+
+	info_uploaded = !pv_ph_upload_metadata(pv, json);
+
+out:
+	return 0;
+}
+
+int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
 {
 	int ret;
 	char *body, *esc;
