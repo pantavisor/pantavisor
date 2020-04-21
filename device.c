@@ -242,7 +242,7 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-struct pv_devinfo* pv_device_info_add_and_free(struct pv_device *dev, char *key, char *value)
+struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
 {
 	struct pv_devinfo *this;
 
@@ -257,7 +257,6 @@ struct pv_devinfo* pv_device_info_add_and_free(struct pv_device *dev, char *key,
 	this->key = strdup(key);
 	this->value = strdup(value);
 	dl_list_add(&dev->infolist, &this->list);
-	free(value);
 
 	return this;
 }
@@ -292,7 +291,7 @@ static char* _get_dt_model(void)
 
 static char* _get_cpu_model(void)
 {
-	int fd;
+	int fd = -1;
 	struct stat st;
 	char *model = NULL, *buf, *p, *m;
 
@@ -309,10 +308,13 @@ static char* _get_cpu_model(void)
 		if (p) {
 			m = p + sizeof(PREFIX_MODEL);
 			p = strchr(m, '\n');
+			if (!p) goto out;
 			model = calloc(1, p-m+1);
 			memcpy(model, m, p-m);
 		}
 	}
+
+out:
 	close(fd);
 	free(buf);
 
@@ -322,7 +324,7 @@ static char* _get_cpu_model(void)
 int pv_device_info_upload(struct pantavisor *pv)
 {
 	int len = 0;
-	char *json, *buf;
+	char *json, *buf, *t;
 	struct pv_devinfo *info, *tmp;
 	struct dl_list *head;
 
@@ -333,13 +335,19 @@ int pv_device_info_upload(struct pantavisor *pv)
 
 	buf = calloc(1, BUF_CHUNK * sizeof(char));
 	sprintf(buf, "%s/%s/%s", PV_ARCH, PV_BITS, _get_endian() ? "EL" : "EB");
-	pv_device_info_add_and_free(pv->dev, "pantavisor.arch", strdup(buf));
-	pv_device_info_add_and_free(pv->dev, "pantavisor.version", strdup(pv_build_version));
-	pv_device_info_add_and_free(pv->dev, "pantavisor.dtmodel", _get_dt_model());
-	pv_device_info_add_and_free(pv->dev, "pantavisor.cpumodel", _get_cpu_model());
+	pv_device_info_add(pv->dev, "pantavisor.arch", buf);
+	pv_device_info_add(pv->dev, "pantavisor.version", (char *) pv_build_version);
+	if ((t = _get_dt_model())) {
+		pv_device_info_add(pv->dev, "pantavisor.dtmodel", t);
+		free(t);
+	}
+	if ((t = _get_cpu_model())) {
+		pv_device_info_add(pv->dev, "pantavisor.cpumodel", t);
+		free(t);
+	}
 
 	sprintf(buf, "%d", pv->state->rev);
-	pv_device_info_add_and_free(pv->dev, "pantavisor.revision", strdup(buf));
+	pv_device_info_add(pv->dev, "pantavisor.revision", buf);
 
 upload:
 	if (info_uploaded)
