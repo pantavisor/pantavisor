@@ -41,6 +41,9 @@ char *skip_prefix(char *str, const char *key);
 char* json_get_one_str(char *buf, jsmntok_t **tok);
 char* format_json(char *buf, int len);
 char *str_replace(char *str, int len, char which, char what);
+int get_endian(void);
+char* get_dt_model(void);
+char* get_cpu_model(void);
 
 #ifndef ARRAY_LEN
 #define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
@@ -54,4 +57,23 @@ char *str_replace(char *str, int len, char which, char what);
  ptr->member = NULL;\
 })
 #endif /* free_member */
+
+#ifdef __arm__
+#define PV_ARCH		"arm"
+#elif __x86_64__
+#define PV_ARCH		"x86_64"
+#elif __mips__
+#define	PV_ARCH		"mips"
+#else
+#define PV_ARCH		"unknown"
 #endif
+
+#if UINTPTR_MAX == 0xffffffff
+#define	PV_BITS		"32"
+#else
+#define	PV_BITS		"64"
+#endif
+
+#define PREFIX_MODEL	"model name\t:"
+
+#endif // PV_UTILS_H

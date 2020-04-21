@@ -255,70 +255,17 @@ struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *va
 
 	dl_list_init(&this->list);
 	this->key = strdup(key);
+	if (!this->key)
+		return NULL;
+
 	this->value = strdup(value);
+	if (!this->value) {
+		free(this->key);
+		return NULL;
+	}
 	dl_list_add(&dev->infolist, &this->list);
 
 	return this;
-}
-
-static int _get_endian(void)
-{
-	unsigned long t = 0x00102040;
-	return ((((char*)(&t))[0]) == 0x40);
-}
-
-static char* _get_dt_model(void)
-{
-	int fd;
-	char *buf;
-	struct stat st;
-
-	if (stat("/proc/device-tree/model", &st))
-		return NULL;
-
-	buf = calloc(1, 256);
-	if (!buf)
-		return NULL;
-
-	fd = open("/proc/device-tree/model", O_RDONLY);
-	if (fd >= 0) {
-		read(fd, buf, 256);
-		close(fd);
-	}
-
-	return buf;
-}
-
-static char* _get_cpu_model(void)
-{
-	int fd = -1;
-	struct stat st;
-	char *model = NULL, *buf, *p, *m;
-
-	if (stat("/proc/cpuinfo", &st))
-		return NULL;
-
-	buf = calloc(1, 4096);
-	if (!buf)
-		return NULL;
-
-	fd = open("/proc/cpuinfo", O_RDONLY);
-	if ((fd >= 0) && read(fd, buf, 4096)) {
-		p = strstr(buf, PREFIX_MODEL);
-		if (p) {
-			m = p + sizeof(PREFIX_MODEL);
-			p = strchr(m, '\n');
-			if (!p) goto out;
-			model = calloc(1, p-m+1);
-			memcpy(model, m, p-m);
-		}
-	}
-
-out:
-	close(fd);
-	free(buf);
-
-	return model;
 }
 
 int pv_device_info_upload(struct pantavisor *pv)
@@ -354,23 +301,28 @@ upload:
 		goto out;
 
 	json = calloc(1, BUF_CHUNK * sizeof(char));
+	if (!json)
+		goto out;
+
 	sprintf(json, "{");
 	len += 1;
 	head = &pv->dev->infolist;
 	dl_list_for_each_safe(info, tmp, head,
 			struct pv_devinfo, list) {
 		sprintf(buf, "\"%s\":\"%s\",", info->key, info->value);
-		strcat(json, buf);
+		if (strlen(buf) > (BUF_CHUNK - len))
+			goto out;
+		strcat(json, bup);
 		len += strlen(buf);
 	}
 	json[len-1] = '}';
 	json[len] = '\0';
-	if (buf)
-		free(buf);
-
 	info_uploaded = !pv_ph_upload_metadata(pv, json);
 
 out:
+	if (buf)
+		free(buf);
+
 	return 0;
 }
 
