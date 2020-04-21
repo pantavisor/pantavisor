@@ -39,6 +39,8 @@ int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
 char *unescape_str_to_ascii(char *buf, char *code, char c);
 char *skip_prefix(char *str, const char *key);
 char* json_get_one_str(char *buf, jsmntok_t **tok);
+char* format_json(char *buf, int len);
+char *str_replace(char *str, int len, char which, char what);
 
 #ifndef ARRAY_LEN
 #define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
@@ -52,5 +54,4 @@ char* json_get_one_str(char *buf, jsmntok_t **tok);
  ptr->member = NULL;\
 })
 #endif /* free_member */
-
 #endif
