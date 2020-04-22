@@ -2,7 +2,7 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-LOCAL_LIBRARIES := lxc mbedtls
+LOCAL_LIBRARIES := lxc libthttp
 LOCAL_DESTDIR := ./lib/
 LOCAL_MODULE := pv_lxc
 
