@@ -259,7 +259,8 @@ int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
 	int fd = -1, n, bytes, tokc;
 	int ret = 0;
-	char *buf = 0, *key = 0, *ext = 0, *value = 0;
+	char *buf = 0, *key = 0, *ext = 0;
+	char *value = 0, *file = 0, *dir = 0;
 	char path[PATH_MAX];
 	struct stat st;
 	jsmntok_t *tokv = 0;
@@ -300,8 +301,11 @@ int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		if (stat(path, &st) == 0)
 			goto out;
 
-		if (stat(dirname(path), &st))
-			mkdir_p(dirname(path), 0755);
+		file = strdup(path);
+		dir = dirname(file);
+		if (stat(dir, &st))
+			mkdir_p(dir, 0755);
+		free(file);
 
 		fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
 		if (fd < 0)
