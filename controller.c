@@ -454,8 +454,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	// update network meta
+	// update meta
+	pv_device_info_upload(pv);
 	pv_network_update_meta(pv);
+	pv_ph_device_get_meta(pv);
 
 	pv_log_flush(pv, true);
 
@@ -502,9 +504,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv_log(INFO, "updates found");
 		return STATE_UPDATE;
 	}
-
-	// update remote metadata
-	pv_ph_device_update_meta(pv);
 
 	if (!status_updated && !pv_set_current_status(pv, current_status))
 		status_updated = true;

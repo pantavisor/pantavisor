@@ -279,6 +279,7 @@ char* skip_prefix(char *str, const char *key)
 	}
 	return str;
 }
+
 static bool char_is_json_special(char ch)
 {
 	/* From RFC 7159, section 7 Strings
@@ -372,4 +373,62 @@ char *str_replace(char *str, int len, char which, char what)
 			str[char_at] = what;
 	}
 	return str;
+}
+
+int get_endian(void)
+{
+	unsigned long t = 0x00102040;
+	return ((((char*)(&t))[0]) == 0x40);
+}
+
+char* get_dt_model(void)
+{
+	int fd;
+	char *buf;
+	struct stat st;
+
+	if (stat("/proc/device-tree/model", &st))
+		return NULL;
+
+	buf = calloc(1, 256);
+	if (!buf)
+		return NULL;
+
+	fd = open("/proc/device-tree/model", O_RDONLY);
+	if (fd >= 0) {
+		read(fd, buf, 256);
+		close(fd);
+	}
+
+	return buf;
+}
+
+char* get_cpu_model(void)
+{
+	int fd = -1;
+	struct stat st;
+	char *model = NULL, *buf, *cur, *value;
+
+	if (stat("/proc/cpuinfo", &st))
+		return NULL;
+
+	buf = calloc(1, 4096);
+	if (!buf)
+		return NULL;
+
+	fd = open("/proc/cpuinfo", O_RDONLY);
+	if ((fd >= 0) && read(fd, buf, 4096)) {
+		cur = strstr(buf, PREFIX_MODEL);
+		if (cur) {
+			value = cur + sizeof(PREFIX_MODEL);
+			cur = strchr(value, '\n');
+			if (cur && (model = calloc(1, cur-value+1)))
+				memcpy(model, value, cur-value);
+		}
+	}
+	close(fd);
+	if (buf)
+		free(buf);
+
+	return model;
 }

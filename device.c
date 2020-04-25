@@ -40,9 +40,14 @@
 
 #include "utils.h"
 #include "pantavisor.h"
+#include "pantahub.h"
 #include "device.h"
+#include "version.h"
 
 #define FW_PATH		"/lib/firmware"
+
+static bool info_uploaded = 0;
+static bool info_parsed = 0;
 
 static void usermeta_add_hint(struct pv_usermeta *m)
 {
@@ -237,7 +242,94 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-int pv_device_update_meta(struct pantavisor *pv, char *buf)
+struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
+{
+	struct pv_devinfo *this;
+
+	if (!key || !value)
+		return NULL;
+
+	this = calloc(1, sizeof(struct pv_devinfo));
+	if (!this)
+		return NULL;
+
+	dl_list_init(&this->list);
+	this->key = strdup(key);
+	if (!this->key)
+		return NULL;
+
+	this->value = strdup(value);
+	if (!this->value) {
+		free(this->key);
+		return NULL;
+	}
+	dl_list_add(&dev->infolist, &this->list);
+
+	return this;
+}
+
+int pv_device_info_upload(struct pantavisor *pv)
+{
+	unsigned int len = 0;
+	char *json, *buf, *t;
+	struct pv_devinfo *info, *tmp;
+	struct dl_list *head;
+
+	if (info_parsed)
+		goto upload;
+
+	dl_list_init(&pv->dev->infolist);
+
+	buf = calloc(1, BUF_CHUNK * sizeof(char));
+	sprintf(buf, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
+	pv_device_info_add(pv->dev, "pantavisor.arch", buf);
+	pv_device_info_add(pv->dev, "pantavisor.version", (char *) pv_build_version);
+	if ((t = get_dt_model())) {
+		pv_device_info_add(pv->dev, "pantavisor.dtmodel", t);
+		free(t);
+	}
+	if ((t = get_cpu_model())) {
+		pv_device_info_add(pv->dev, "pantavisor.cpumodel", t);
+		free(t);
+	}
+
+	sprintf(buf, "%d", pv->state->rev);
+	pv_device_info_add(pv->dev, "pantavisor.revision", buf);
+
+upload:
+	if (info_uploaded)
+		goto out;
+
+	json = calloc(1, BUF_CHUNK * sizeof(char));
+	if (!json)
+		goto out;
+
+	sprintf(json, "{");
+	len += 1;
+	head = &pv->dev->infolist;
+	dl_list_for_each_safe(info, tmp, head,
+			struct pv_devinfo, list) {
+		sprintf(buf, "\"%s\":\"%s\",", info->key, info->value);
+		if (strlen(buf) > (BUF_CHUNK - len))
+			goto out;
+		strcat(json, buf);
+		len += strlen(buf);
+	}
+	json[len-1] = '}';
+	json[len] = '\0';
+
+	t = format_json(json, strlen(json));
+	if (t)
+		info_uploaded = !pv_ph_upload_metadata(pv, json);
+
+out:
+	if (buf)
+		free(buf);
+
+	return 0;
+}
+
+int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
 {
 	int ret;
 	char *body, *esc;
