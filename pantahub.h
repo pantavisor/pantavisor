@@ -23,7 +23,7 @@
 #define PV_PANTAHUB_H
 
 #define DEVICE_TOKEN_FMT	"Pantahub-Devices-Auto-Token-V1: %s"
-
+#include "pantavisor.h"
 int pv_ph_is_available(struct pantavisor *pv);
 int pv_ph_upload_logs(struct pantavisor *pv, char *logs);
 int pv_ph_device_get_meta(struct pantavisor *pv);
@@ -34,5 +34,7 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
 void pv_ph_release_client(struct pantavisor *pv);
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
 uint8_t pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
+struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config);
+int connect_try(struct sockaddr *serv);
 
 #endif

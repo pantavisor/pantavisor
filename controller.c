@@ -56,9 +56,8 @@
 
 #include "storage.h"
 #include "tsh.h"
-#include "parser/cmd_json_log.h"
+#include "ph_logger/ph_logger.h"
 
-#define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 #define CMDLINE_OFFSET	7
 
 static int rb_count;
@@ -203,7 +202,28 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		mkdir_p(c->dropbearcachedir, 0500);
 
 	wait_delay = 0;
-	pv_log_init(pv);
+	// Get current step revision from cmdline
+	fd = open("/proc/cmdline", O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	buf = calloc(1, sizeof(char) * (1024 + 1));
+	bytes = read(fd, buf, sizeof(char)*1024);
+	close(fd);
+
+	token = strtok(buf, " ");
+	while (token) {
+		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0)
+			pv_rev = atoi(token + CMDLINE_OFFSET);
+		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
+			pv_try = atoi(token + CMDLINE_OFFSET);
+		else if (strncmp("pv_boot=", token, CMDLINE_OFFSET) == 0)
+			pv_boot = atoi(token + CMDLINE_OFFSET + 1);
+		token = strtok(NULL, " ");
+	}
+	free(buf);
+	pv_log_init(pv, pv_rev);
+
 	if (c->loglevel)
 		pv_log_set_level(c->loglevel);
 
@@ -268,26 +288,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	if (pv_bl_init(pv) < 0)
 		return STATE_ERROR;
 
-	// Get current step revision from cmdline
-	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0)
-		return -1;
 
-	buf = calloc(1, sizeof(char) * (1024 + 1));
-	bytes = read(fd, buf, sizeof(char)*1024);
-	close(fd);
-
-	token = strtok(buf, " ");
-	while (token) {
-		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0)
-			pv_rev = atoi(token + CMDLINE_OFFSET);
-		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
-			pv_try = atoi(token + CMDLINE_OFFSET);
-		else if (strncmp("pv_boot=", token, CMDLINE_OFFSET) == 0)
-			pv_boot = atoi(token + CMDLINE_OFFSET + 1);
-		token = strtok(NULL, " ");
-	}
-	free(buf);
 
 	// Make sure this is initialized
 	pv->state = 0;
@@ -296,6 +297,14 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv->last = -1;
 
 	pv_log(DEBUG, "%s():%d pv_try=%d, pv_rev=%d", __func__, __LINE__, pv_try, pv_rev);
+
+	if (ph_logger_service_start(pv, LOG_CTRL_PATH, pv_rev) <= 0) {
+		pv_log(ERROR, "Unable to start logger service.");
+	}
+
+	if (ph_logger_service_start_for_range(pv, pv_rev - 1) <= 0) {
+		pv_log(ERROR, "Unable to start range logger service.");
+	}
 
 	// parse boot rev
 	pv->state = pv_get_state(pv, pv_rev);
@@ -459,8 +468,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	pv_network_update_meta(pv);
 	pv_ph_device_get_meta(pv);
 
-	pv_log_flush(pv, true);
-
 	// reset rollback rb_count
 	rb_count = 0;
 
@@ -512,19 +519,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	return STATE_WAIT;
 }
 
-/*
- * cmd is a json itself of the following format.
- * {
- * 	"source":"",
- * 	"level" :<int>,
- * 	"msg" : ""
- * }
- * */
-static void pv_cmd_log(char *cmd)
-{
-	push_cmd_json_log(cmd);
-}
-
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
 	int rev;
@@ -571,17 +565,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		break;
 	case CMD_LOG:
-		{
-		pv_log_raw(pv, c->data, c->len, c->platform);
 		break;
-		}
 	case CMD_JSON:
 		switch (c->json_operation) {
 		case CMD_JSON_UPDATE_METADATA:
 			pv_ph_upload_metadata(pv, c->data);
-			break;
-		case CMD_JSON_LOG:
-			pv_cmd_log(c->data);
 			break;
 		default:
 			pv_log(DEBUG, "unknown json command received");
@@ -624,8 +612,6 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 	pv_log(WARN, "New trail state accepted, stopping current state.");
 
-	// flush logs to cloud before attempting to start new step
-	pv_log_flush(pv, true);
 	pv->online = false;
 
 	// stop current step
@@ -740,9 +726,6 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 {
 	pv_wdt_kick(pv);
-
-	if ((state != STATE_WAIT) && (state != STATE_COMMAND))
-		pv_log_flush(pv, true);
 
 	return state_table[state](pv);
 }

@@ -51,7 +51,6 @@ LOCAL_SRC_FILES := init.c \
 		   parser/parser.c \
 		   parser/parser_multi1.c \
 		   parser/parser_system1.c \
-		   parser/cmd_json_log.c \
 		   objects.c \
 		   pantahub.c \
 		   updater.c \
@@ -65,6 +64,8 @@ LOCAL_SRC_FILES := init.c \
 		   network.c \
 		   pvlogger.c \
 		   pvctl_utils.c \
+		   ph_logger/ph_logger.c \
+		   ph_logger/ph_logger_v1.c \
 		   blkid.c
 
 LOCAL_INSTALL_HEADERS := log.h

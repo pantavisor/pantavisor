@@ -528,7 +528,7 @@ static void _pv_init()
 	struct pantavisor *pv;
 
 	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
-	sprintf(pv_user_agent, "Pantavisor/2 (Linux; %s) PV/%s Date/%s", pv_build_arch, pv_build_version, pv_build_date);
+	sprintf(pv_user_agent, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
 
         prctl(PR_SET_NAME, "pantavisor");
 	pv = calloc(1, sizeof(struct pantavisor));
@@ -580,30 +580,43 @@ struct pv_log_info* pv_new_log(bool islxc,
 	const char *const logger_name_lxc = "pvlogger-lxc";
 	const char *logger_name = NULL;
 	const char *trunc_val = NULL;
+	const char *enabled = NULL;
 
 	if (!logger_config)
 		goto out;
 
 	if (islxc) {
-		const char *enabled = NULL;
 		/*
 		 * Check lxc or console item in config.
-		 * */
-		enabled = pv_get_log_config_item(logger_config, "lxc");
+		 */
+		enabled = pv_log_get_config_item(logger_config, "lxc");
 		if (!enabled)
-			enabled = pv_get_log_config_item(logger_config,
+			enabled = pv_log_get_config_item(logger_config,
 								"console");
 		if (!enabled)
 			goto out;
 		else if (strncmp(enabled, "enable", strlen("enable")))
 			goto out;
+	} else {
+		/*
+		 * Check if something from lxc was left over.
+		 * if the config contains lxc or console keys then
+		 * don't create this logger.
+		 */
+		;
+		if (pv_log_get_config_item(logger_config, "lxc"))
+			goto out;
+		else {
+			if (pv_log_get_config_item(logger_config, "console"))
+				goto out;
+		}
 	}
 	log_info = (struct pv_log_info*) calloc(1, sizeof(*log_info));
 
 	if (!log_info)
 		goto out;
 
-	logger_name = pv_get_log_config_item(logger_config, "name");
+	logger_name = pv_log_get_config_item(logger_config, "name");
 	log_info->islxc = islxc;
 
 	if (!logger_name) {
@@ -615,10 +628,10 @@ struct pv_log_info* pv_new_log(bool islxc,
 			logger_name = logger_name_plat;
 	}
 	log_info->name = strdup(logger_name);
-	trunc_val = pv_get_log_config_item(logger_config, "truncate");
+	trunc_val = pv_log_get_config_item(logger_config, "truncate");
 	if (trunc_val) {
 		if (!strncmp(trunc_val, "true", strlen("true"))) {
-			trunc_val = pv_get_log_config_item(logger_config, "maxsize");
+			trunc_val = pv_log_get_config_item(logger_config, "maxsize");
 			if (trunc_val)
 				sscanf(trunc_val,"%" PRId64,&log_info->truncate_size);
 		}
@@ -627,8 +640,8 @@ struct pv_log_info* pv_new_log(bool islxc,
 	/*
 	 * Used from the pv_lxc plugin
 	 * */
-	log_info->pv_get_log_config_item =
-				pv_get_log_config_item;
+	log_info->pv_log_get_config_item =
+				pv_log_get_config_item;
 	return log_info;
 out:
 	return NULL;

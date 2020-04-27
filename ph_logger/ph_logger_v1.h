@@ -19,54 +19,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "parser_bundle.h"
-#define MODULE_NAME 	"cmd-json-log"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-#include "cmd_json_log.h"
+#include <stdio.h>
+#include <stdarg.h>
+#include "ph_logger.h"
+/*
+ * v1 has the following message format in buffer
+ * level (int),
+ * platform (NULL terminated string),
+ * source (NULL terminated string),
+ *
+ * args should contain the valid addresses for the above in the order they appear above.
+ */
+int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va_list args);
 
-static int do_level_action(struct json_key_action *jka, char *value)
-{
-	int *level = (int*)jka->opaque;
+/*
+ * v1 has the following message format in buffer
+ * level (int),
+ * platform (NULL terminated string),
+ * source (NULL terminated string),
+ * len (length of the data in buf)
+ * args should contain the valid addresses for the above in the order they appear above.
+ */
+int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va_list args);
 
-	*level = -1;
-	sscanf(value, "%d", level);
-	switch (*level) {
-		case FATAL:
-		case ERROR:
-		case WARN:
-		case INFO:
-		case DEBUG:
-		case ALL:
-			break;
-		default:
-			*level = DEBUG;
-	}
-	return 0;
-}
+int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, const char *log_dir, int rev);
 
-int push_cmd_json_log(char *json_buf)
-{
-	char *src = NULL;
-	char *msg = NULL;
-	int level = -1;
-	int ret = 0;
-
-	struct json_key_action cmd_json [] = {
-		ADD_JKA_ENTRY(JSON_ATTR_SOURCE, JSMN_STRING, &src, NULL, true),
-		ADD_JKA_ENTRY(JSON_ATTR_LEVEL, JSMN_STRING, &level, do_level_action, false),
-		ADD_JKA_ENTRY(JSON_ATTR_MSG, JSMN_STRING, &msg, NULL, true),
-		ADD_JKA_NULL_ENTRY()
-	};
-
-	ret = start_json_parsing_with_action(json_buf, cmd_json, JSMN_OBJECT);
-	if (ret == 0) {
-		if (msg && src && (level >= 0))
-			__log(src, level, "%s", msg);
-	}
-	if (msg)
-		free(msg);
-	if (src)
-		free(src);
-	return ret;
-}

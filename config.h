@@ -119,8 +119,9 @@ struct pv_log_info {
 	off_t truncate_size;
 	bool islxc;
 	pid_t logger_pid;
-	const char*(*pv_get_log_config_item)
+	const char*(*pv_log_get_config_item)
 		(struct pv_logger_config *config, const char *key);
+	struct pv_platform *platform;
 };
 
 static void pv_free_logger_config(struct pv_logger_config *item_config)

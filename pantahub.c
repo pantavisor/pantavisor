@@ -53,7 +53,7 @@
 trest_ptr *client = 0;
 char *endpoint = 0;
 
-static int connect_try(struct sockaddr *serv)
+int connect_try(struct sockaddr *serv)
 {
 	int ret, fd;
 	socklen_t len;
@@ -134,7 +134,7 @@ auth:
 
 /* API */
 
-const char** pv_ph_get_certs(struct pantavisor *pv)
+const char** pv_ph_get_certs(struct pantavisor *__unused)
 {
 	struct dirent **files;
 	char **cafiles;
@@ -245,36 +245,29 @@ out:
 
 }
 
-int pv_ph_is_available(struct pantavisor *pv)
+struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config)
 {
+	struct pv_connection *conn = NULL;
 	int ret = 1;
 	int port = 0;
 	char *host = NULL;
-	struct pv_connection *conn = pv->conn;
 	char dbg_addr[INET6_ADDRSTRLEN];
 
-	if (conn && !connect_try(&conn->sock)) {
-		ret = 0; 
+	conn = (struct pv_connection*)calloc(1, sizeof(struct pv_connection));
+	if (!conn) {
+		pv_log(DEBUG, "Unable to allocate memory for connection\n");
 		goto out;
 	}
-
 	// default to global PH instance
-	if (strcmp(pv->config->creds.host, "") == 0)
+	if (strcmp(config->creds.host, "") == 0)
 		host = "api.pantahub.com";
 	else
-		host = pv->config->creds.host;
+		host = config->creds.host;
 
-	port = pv->config->creds.port;
+	port = config->creds.port;
 	if (!port)
 		port = 443;
-	pv->conn = (struct pv_connection*)calloc(1, sizeof(struct pv_connection));
-	conn = pv->conn;
-
-	if (!conn) {
-		pv_log(DEBUG, "Unable to allocate memory for connection");
-		goto out;
-	}
-	ret = pv_do_ph_resolve(host, port, pv->conn);
+	ret = pv_do_ph_resolve(host, port, conn);
 out:
 	if (!ret) {
 		void *ip = NULL;
@@ -294,19 +287,18 @@ out:
 			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
 			)
 			);
-		ret = 1;
 	} else {
 		pv_log(DEBUG, "unable to reach Pantahub");
 		if (conn) {
 			void *ip = NULL;
 			switch(conn->sock.sa_family) {
-				case AF_INET6:
-					ip = &((struct sockaddr_in6*)&conn->sock)->sin6_addr;
-					break;
-				case AF_INET:
-				default:
-					ip = &((struct sockaddr_in*)&conn->sock)->sin_addr;
-					break;
+			case AF_INET6:
+				ip = &((struct sockaddr_in6*)&conn->sock)->sin6_addr;
+				break;
+			case AF_INET:
+			default:
+				ip = &((struct sockaddr_in*)&conn->sock)->sin_addr;
+				break;
 			}
 			pv_log(DEBUG, "freeing connection socket for %s:%d",
 					inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
@@ -316,13 +308,53 @@ out:
 					)
 			      );
 			free(conn);
-			pv->conn = NULL;
+			conn = NULL;
 		}
-		ret = 0;
 	}
-	pv_ph_set_online(pv, ret);
+	return conn;
+}
 
-	return ret;
+int pv_ph_is_available(struct pantavisor *pv)
+{
+	struct pv_connection *conn = NULL;
+	
+	if (pv)
+		conn = pv->conn;
+	else
+		return 0;
+
+	if (conn && !connect_try(&conn->sock)) {
+		void *ip = NULL;
+		char dbg_addr[INET6_ADDRSTRLEN];
+
+		switch(conn->sock.sa_family) {
+		case AF_INET6:
+			ip = &((struct sockaddr_in6*)&conn->sock)->sin6_addr;
+			break;
+		case AF_INET:
+		default:
+			ip = &((struct sockaddr_in*)&conn->sock)->sin_addr;
+			break;
+		}
+		pv_log(DEBUG, "PH available at '%s:%d'",
+			inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
+			( conn->sock.sa_family == AF_INET ?
+			ntohs(((struct sockaddr_in*)&conn->sock)->sin_port):
+			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
+			)
+			);
+		goto out;
+	}
+	/*
+	 * Free the old connection first.
+	 * */
+	if (conn)
+		free(conn);
+	pv->conn = pv_get_pv_connection(pv->config);
+out:
+	pv_ph_set_online(pv, pv->conn ? 1 : 0);
+
+	return !!pv->conn;
 }
 
 void pv_ph_release_client(struct pantavisor *pv)

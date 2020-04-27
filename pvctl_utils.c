@@ -75,8 +75,10 @@ try_again:
 			goto try_again;
 		} else {
 			strerror_r(errno, str_err, sizeof(str_err));
+#ifdef DEBUG
 			printf("Connect error on path %s, errno = %d (%s)\n",
 					path, errno, str_err);
+#endif
 			return -errno;
 		}
 	}
@@ -85,7 +87,7 @@ try_again:
 
 int pvctl_write(const char *buf, ssize_t count)
 {
-	return pvctl_write_to_path("/pantavisor/pv-ctrl", buf, count);
+	return pvctl_write_to_path(LOG_CTRL_PLATFORM_PATH, buf, count);
 }
 
 int pvctl_write_to_path(const char *path, const char *buf, ssize_t count)
