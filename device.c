@@ -49,6 +49,105 @@
 static bool info_uploaded = 0;
 static bool info_parsed = 0;
 
+static int pv_device_info_buf_check(struct pv_device_info_read *pv_device_info_read)
+{
+	char *buf = pv_device_info_read->buf;
+	int buflen = pv_device_info_read->buflen;
+
+	if (!buf || buflen <= 0)
+		return -1;
+	return 0;
+}
+
+static int pv_device_info_read_version(struct pv_device_info_read
+						*pv_device_info_read)
+{
+	char *buf = pv_device_info_read->buf;
+	int buflen = pv_device_info_read->buflen;
+
+	if (pv_device_info_buf_check(pv_device_info_read))
+		return -1;
+	snprintf(buf, buflen,"%s",(char *) pv_build_version);
+	return 0;
+}
+
+static int pv_device_info_read_arch(struct pv_device_info_read 
+						*pv_device_info_read)
+{
+	char *buf = pv_device_info_read->buf;
+	int buflen = pv_device_info_read->buflen;
+
+	if (pv_device_info_buf_check(pv_device_info_read))
+		return -1;
+	snprintf(buf, buflen, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
+	return 0;
+}
+
+static int pv_device_info_read_dtmodel(struct pv_device_info_read 
+						*pv_device_info_read) 
+{
+	char *buf = pv_device_info_read->buf;
+	int buflen = pv_device_info_read->buflen;
+	int ret = -1;
+
+	if (pv_device_info_buf_check(pv_device_info_read))
+		return -1;
+
+	ret = get_dt_model(buf, buflen);
+	if (ret < 0)
+		memset(buf, 0, buflen);
+	return 0;
+}
+
+static int pv_device_info_read_cpumodel(struct pv_device_info_read
+						*pv_device_info_read)
+{
+	char *buf = pv_device_info_read->buf;
+	int buflen = pv_device_info_read->buflen;
+	int ret = -1;
+
+	if (pv_device_info_buf_check(pv_device_info_read))
+		return -1;
+
+	ret = get_cpu_model(buf, buflen);
+	if (ret < 0)
+		memset(buf, 0, buflen);
+	return 0;
+}
+
+static int pv_device_info_read_revision(struct pv_device_info_read
+						*pv_device_info_read)
+{
+	char *buf = pv_device_info_read->buf;
+	int buflen = pv_device_info_read->buflen;
+	struct pantavisor *pv = get_pv_instance();
+
+	if (pv_device_info_buf_check(pv_device_info_read))
+		return -1;
+
+	snprintf(buf, buflen, "%d", pv->state->rev);
+	return 0;
+}
+
+static struct pv_device_info_read pv_device_info_readkeys[] = {
+	{
+		.key = "pantavisor.arch",
+		.reader = pv_device_info_read_arch
+	},
+	{	.key = "pantavisor.version",
+		.reader = pv_device_info_read_version
+	},
+	{	.key = "pantavisor.dtmodel",
+		.reader = pv_device_info_read_dtmodel
+	},
+	{	.key = "pantavisor.cpumodel",
+		.reader = pv_device_info_read_cpumodel
+	},
+	{	.key = "pantavisor.revision",
+		.reader = pv_device_info_read_revision
+	}
+};
+
 static void usermeta_add_hint(struct pv_usermeta *m)
 {
 	int fd;
@@ -244,36 +343,49 @@ static void usermeta_clear(struct pantavisor *pv)
 
 struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
 {
-	struct pv_devinfo *this;
+	struct pv_devinfo *this = NULL;
 
 	if (!key || !value)
-		return NULL;
+		goto out;
 
 	this = calloc(1, sizeof(struct pv_devinfo));
 	if (!this)
-		return NULL;
+		goto out;
 
 	dl_list_init(&this->list);
 	this->key = strdup(key);
-	if (!this->key)
-		return NULL;
+	if (!this->key) {
+		free(this);
+		this = NULL;
+		goto out;
+	}
 
 	this->value = strdup(value);
 	if (!this->value) {
 		free(this->key);
-		return NULL;
+		free(this);
+		this = NULL;
+		goto out;
 	}
 	dl_list_add(&dev->infolist, &this->list);
-
+out:
+	if (!this) {
+		pv_log(WARN, "Skipping device meta information [%s : %s]",
+				(key ? key : "nil"),
+				(value ? value : "nil"));
+	}
 	return this;
 }
 
 int pv_device_info_upload(struct pantavisor *pv)
 {
 	unsigned int len = 0;
-	char *json, *buf, *t;
-	struct pv_devinfo *info, *tmp;
-	struct dl_list *head;
+	char *json = NULL, *buf = NULL, *t = NULL;
+	struct pv_devinfo *info = NULL, *tmp = NULL;
+	struct dl_list *head = NULL;
+	int json_avail = BUF_CHUNK;
+	int nr_frags = 0;
+	int i = 0;
 
 	if (info_parsed)
 		goto upload;
@@ -281,21 +393,23 @@ int pv_device_info_upload(struct pantavisor *pv)
 	dl_list_init(&pv->dev->infolist);
 
 	buf = calloc(1, BUF_CHUNK * sizeof(char));
-	sprintf(buf, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
-	pv_device_info_add(pv->dev, "pantavisor.arch", buf);
-	pv_device_info_add(pv->dev, "pantavisor.version", (char *) pv_build_version);
-	if ((t = get_dt_model())) {
-		pv_device_info_add(pv->dev, "pantavisor.dtmodel", t);
-		free(t);
-	}
-	if ((t = get_cpu_model())) {
-		pv_device_info_add(pv->dev, "pantavisor.cpumodel", t);
-		free(t);
-	}
+	if (!buf)
+		goto out;
 
-	sprintf(buf, "%d", pv->state->rev);
-	pv_device_info_add(pv->dev, "pantavisor.revision", buf);
-
+	for (i = 0; i < ARRAY_LEN(pv_device_info_readkeys); i++) {
+		int ret = 0;
+		
+		pv_device_info_readkeys[i].buf = buf;
+		pv_device_info_readkeys[i].buflen = BUF_CHUNK;
+		ret = pv_device_info_readkeys[i].reader(&pv_device_info_readkeys[i]);
+		if (!ret) {
+			/*
+			 * we managed to add at least one item in the list.
+			 */
+			if (pv_device_info_add(pv->dev, pv_device_info_readkeys[i].key, buf))
+				info_parsed = true;
+		}
+	}
 upload:
 	if (info_uploaded)
 		goto out;
@@ -303,29 +417,44 @@ upload:
 	json = calloc(1, BUF_CHUNK * sizeof(char));
 	if (!json)
 		goto out;
-
-	sprintf(json, "{");
+	json_avail = BUF_CHUNK;
+	json_avail -= sprintf(json, "{");
 	len += 1;
 	head = &pv->dev->infolist;
 	dl_list_for_each_safe(info, tmp, head,
 			struct pv_devinfo, list) {
-		sprintf(buf, "\"%s\":\"%s\",", info->key, info->value);
-		if (strlen(buf) > (BUF_CHUNK - len))
-			goto out;
-		strcat(json, buf);
-		len += strlen(buf);
+		char *key = format_json(info->key, strlen(info->key));
+		char *val = format_json(info->value, strlen(info->value));
+
+		if (key && val) {
+			int frag_len = strlen(key) + strlen(val) +
+					/* 2 pairs of quotes*/
+					2 * 2 +
+					/* 1 colon and a ,*/
+					1 + 1;
+			if (json_avail > frag_len) {
+				snprintf(json + len, json_avail,
+					       	"\"%s\":\"%s\",",
+						info->key, info->value);
+				len += frag_len;
+				json_avail -= frag_len;
+			}
+		}
+		if (key)
+			free(key);
+		if (val)
+			free(val);
 	}
-	json[len-1] = '}';
-	json[len] = '\0';
-
-	t = format_json(json, strlen(json));
-	if (t)
-		info_uploaded = !pv_ph_upload_metadata(pv, json);
-
+	/*
+	 * replace , with closing brace.
+	 */
+	json[len - 1] = '}';
+	pv_log(INFO, "device info json = %s", json);
+	info_uploaded = !pv_ph_upload_metadata(pv, json);
+	free(json);
 out:
 	if (buf)
 		free(buf);
-
 	return 0;
 }
 

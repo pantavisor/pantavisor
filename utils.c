@@ -387,56 +387,81 @@ int get_endian(void)
 	return ((((char*)(&t))[0]) == 0x40);
 }
 
-char* get_dt_model(void)
-{
-	int fd;
-	char *buf;
-	struct stat st;
-
-	if (stat("/proc/device-tree/model", &st))
-		return NULL;
-
-	buf = calloc(1, 256);
-	if (!buf)
-		return NULL;
-
-	fd = open("/proc/device-tree/model", O_RDONLY);
-	if (fd >= 0) {
-		read(fd, buf, 256);
-		close(fd);
-	}
-
-	return buf;
-}
-
-char* get_cpu_model(void)
+int get_dt_model(char *buf, int buflen)
 {
 	int fd = -1;
+	int ret = -1;
+
+	fd = check_and_open_file("/proc/device-tree/model", O_RDONLY, 0);
+	if (fd >= 0) {
+		ret = read_nointr(fd, buf, buflen);
+		close(fd);
+	}
+	return ret >= 0 ? 0 : ret;
+}
+
+int check_and_open_file(const char *fname, int flags,
+			mode_t mode)
+{
 	struct stat st;
-	char *model = NULL, *buf, *cur, *value;
+	int fd = -1;
 
-	if (stat("/proc/cpuinfo", &st))
-		return NULL;
+	if (!fname)
+		goto out;
+	if (stat(fname, &st))
+		goto out;
+	fd = open(fname, flags, mode);
+out:
+	return fd;
+}
 
-	buf = calloc(1, 4096);
-	if (!buf)
-		return NULL;
+int get_cpu_model(char *buf, int buflen)
+{
+	int fd = -1;
+	int ret = -1;
+	char *cur = NULL, *value = NULL;
+	int bytes_read = 0;
 
-	fd = open("/proc/cpuinfo", O_RDONLY);
-	if ((fd >= 0) && read(fd, buf, 4096)) {
-		cur = strstr(buf, PREFIX_MODEL);
+	if (!buf || buflen <= 0)
+		goto out;
+
+	fd = check_and_open_file("/proc/cpuinfo", O_RDONLY, 0);
+	if (fd >= 0) {
+		bytes_read = read_nointr(fd, buf, buflen);
+		close(fd);
+	}
+	if (bytes_read > 0)
+		buf[bytes_read - 1] = '\0';
+	else
+		goto out;
+
+	cur = strstr(buf, PREFIX_MODEL);
+	if (cur) {
+		int len = 0;
+		/*
+		 * sizeof gets us past the space after
+		 * colon as well if present. For example
+		 * model name	: XXX Processor rev YY (ZZZ)
+		 */
+		value = cur + sizeof(PREFIX_MODEL);
+		cur = strchr(value, '\n');
 		if (cur) {
-			value = cur + sizeof(PREFIX_MODEL);
-			cur = strchr(value, '\n');
-			if (cur && (model = calloc(1, cur-value+1)))
-				memcpy(model, value, cur-value);
+			char *__value = NULL;
+			/*
+			 * don't copy the newline
+			 */
+			len = cur - value;
+			__value = (char*)calloc(1, len + 1);
+			if (__value) {
+				memcpy(__value, value, len);
+				snprintf(buf, buflen, "%s", __value);
+				free(__value);
+				ret = 0;
+			}
 		}
 	}
-	close(fd);
-	if (buf)
-		free(buf);
-
-	return model;
+out:
+	return ret;
 }
 
 int set_xattr_on_file(const char *filename, char *attr, char *value)
