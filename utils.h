@@ -42,8 +42,8 @@ char* json_get_one_str(char *buf, jsmntok_t **tok);
 char* format_json(char *buf, int len);
 char *str_replace(char *str, int len, char which, char what);
 int get_endian(void);
-char* get_dt_model(void);
-char* get_cpu_model(void);
+int get_dt_model(char *buf, int buflen);
+int get_cpu_model(char *buf, int buflen);
 
 #ifndef ARRAY_LEN
 #define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
@@ -90,6 +90,7 @@ int lock_file(int fd);
 int open_and_lock_file(const char *fname, int flags, mode_t mode);
 int unlock_file(int fd);
 int gzip_file(const char *filename, const char *target_name);
+int check_and_open_file(const char *fname, int flags, mode_t mode);
 
 #define PREFIX_MODEL	"model name\t:"
 

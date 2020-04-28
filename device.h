@@ -26,6 +26,13 @@
 
 #include "pantavisor.h"
 
+struct pv_device_info_read{
+	char *key;
+	char *buf;
+	int buflen;
+	int (*reader)(struct pv_device_info_read*);
+};
+
 struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key);
 struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value);
 struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value);
