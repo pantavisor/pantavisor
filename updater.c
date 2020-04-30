@@ -1246,6 +1246,7 @@ int pv_update_install(struct pantavisor *pv)
 	int ret, fd;
 	struct pv_state *pending = pv->update->pending;
 	char path[PATH_MAX];
+	char path_new[PATH_MAX];
 
 	if (!pv->remote)
 		trail_remote_init(pv);
@@ -1287,15 +1288,17 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
+	sprintf(path_new, "%s/trails/%d/.pvr/json.new", pv->config->storage.mntpoint, pending->rev);
 	sprintf(path, "%s/trails/%d/.pvr/json", pv->config->storage.mntpoint, pending->rev);
-	fd = open(path, O_CREAT | O_WRONLY | O_SYNC, 0644);
+	fd = open(path_new, O_CREAT | O_WRONLY | O_SYNC | O_TRUNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to write state.json file for update");
 		ret = -1;
 		goto out;
 	}
-	write(fd, pending->json, strlen(pending->json));
+	write_nointr(fd, pending->json, strlen(pending->json));
 	close(fd);
+	rename(path_new, path);
 
 	if (!pv_meta_expand_jsons(pv, pending)) {
 		pv_log(ERROR, "unable to install platform and pantavisor jsons");
