@@ -1,0 +1,2 @@
+include:
+  remote: https://gitlab.com/pantacor/ci/device-ci/raw/master/yml/pvdeps-ci.yml
