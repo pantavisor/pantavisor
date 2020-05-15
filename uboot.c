@@ -86,7 +86,7 @@ static int uboot_init(struct pantavisor_config *c)
 	if (ret < 0)
 		return -1;
 
-	if (!strcmp(buf, MTD_MATCH))
+	if (strcmp(buf, MTD_MATCH))
 		return -1;
 
 	char *ns, *ne;
