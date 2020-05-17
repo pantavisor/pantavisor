@@ -432,7 +432,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	// fdt
 	if (s->fdt) {
 		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->kernel);
+		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->fdt);
 
 		remove(dst);
 		if (link(src, dst) < 0)
