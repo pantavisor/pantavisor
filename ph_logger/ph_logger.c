@@ -66,6 +66,10 @@
 #undef pv_log
 #endif
 
+/*
+ * msg can be at most twice the size of log configured
+ * in ph config file.
+ */
 static void pv_log(int level, char *msg, ...)
 {
 	struct ph_logger_msg *ph_logger_msg = NULL;
@@ -75,26 +79,30 @@ static void pv_log(int level, char *msg, ...)
 	int len = 0;
 	int max_size = 0;
 	char *shrinked = NULL;
+	struct log_buffer *log_buffer = NULL;
+	struct log_buffer *ph_log_buffer = NULL;
 
-	buffer = (char*)calloc(1, BUF_CHUNK * 3);
+	log_buffer = pv_log_get_buffer(true);
+	if (!log_buffer)
+		goto out_no_buffer;
+	
+	ph_log_buffer = pv_log_get_buffer(true);
+	if (!ph_log_buffer)
+		goto out_no_buffer;
 
-	if (!buffer)
-		return;
+	buffer = log_buffer->buf;
+	logger_buffer = ph_log_buffer->buf;
+
 	va_start(args, msg);
-	vsnprintf(buffer, BUF_CHUNK * 3, msg, args);
+	vsnprintf(buffer, log_buffer->size, msg, args);
 	va_end(args);
 	len = strlen(buffer);
-	shrinked = realloc(buffer, len + 1);
-
-	if (shrinked)
-		buffer = shrinked;
 
 	max_size = (len + 1) + strlen(MODULE_NAME) + strlen(PH_LOGGER_LOGFILE) + 
 		6/*6 digits for revision*/ + 4/*null*/;
-	logger_buffer = (char*)calloc(1 , sizeof(*ph_logger_msg) + max_size);
+	if (max_size > ph_log_buffer->size)
+		goto out_no_buffer;
 
-	if (!logger_buffer)
-		goto out;
 	ph_logger_msg = (struct ph_logger_msg*)logger_buffer;
 	ph_logger_msg->version = PH_LOGGER_V1;
 	ph_logger_msg->len = sizeof(*ph_logger_msg) + max_size;
@@ -102,9 +110,10 @@ static void pv_log(int level, char *msg, ...)
 	ph_logger_write_bytes(ph_logger_msg, buffer, level, 
 			MODULE_NAME, PH_LOGGER_LOGFILE, len + 1);
 	pvctl_write_to_path(LOG_CTRL_PATH, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
-	free(logger_buffer);
-out:
-	free(buffer);
+
+out_no_buffer:
+	pv_log_put_buffer(log_buffer);
+	pv_log_put_buffer(ph_log_buffer);
 }
 /*
  * Include after defining MODULE_NAME.
@@ -505,10 +514,25 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	off_t read_pos = 0;
 	struct stat st;
 	int fd = -1;
-	char buf[BUF_CHUNK];
+	char *buf = NULL;
 	int bytes_read = 0;
 	int nr_frags = 0;
 	int len_frags = 0;
+	struct log_buffer *log_buff = NULL;
+	struct log_buffer *large_buff = NULL;
+
+	large_buff = pv_log_get_buffer(true);
+	if (!large_buff) {
+		ret = -1;
+		goto out;
+	}
+
+	log_buff = pv_log_get_buffer(false);
+	if (!log_buff) {
+		ret = -1;
+		goto out;
+	}
+	buf = log_buff->buf;
 
 	ret = get_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst, NULL);
 	if (ret > 0) {
@@ -550,7 +574,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		}
 	}
 
-	bytes_read = read_nointr(fd, buf, sizeof(buf));
+	bytes_read = read_nointr(fd, buf, log_buff->size);
 	/*
 	 * we've to get rid of all NULL bytes in buf
 	 * otherwise the format_json won't really work as it'll
@@ -561,11 +585,9 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		char *newline_at = NULL;
 		char *src = buf + offset;
 		char *formatted_json = NULL;
-		/*
-		 * add 1 for holding a null byte.
-		 * */
-		char json_holder[sizeof(buf)  + 1];
+		char *json_holder = NULL;
 
+		json_holder = large_buff->buf;
 		newline_at = strnchr(src, '\n', bytes_read);
 		if (newline_at) {
 			int len = newline_at - src + 1;
@@ -580,13 +602,13 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			json_holder[len - 1] = '\0';
 		} else {
 			/* No new line found, there can be 2 cases here,
-			 * either we've read a full BUF_CHUNK and found no newline
+			 * either we've read a full log_buf->size and found no newline
 			 * in which case there's nothing else we can do but dump
-			 * it. But if bytes_read are != BUF_CHUNK then we can
+			 * it. But if bytes_read are != log_buf->size then we can
 			 * safely assume we might get a new line later and in this
 			 * case we simply bail out.
 			 */
-			if (bytes_read == sizeof(buf)) {
+			if (bytes_read == log_buff->size) {
 				sprintf(json_holder, "%.*s", bytes_read, src);
 				offset += bytes_read;
 				json_holder[bytes_read] = '\0';
@@ -595,7 +617,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 				/*
 				 * A small file will not be pushed out
 				 * if it doesn't contain a '\n'. Similarly a large file's
-				 * last chunk(BUF_CHUNK) size may not be pushed out as it's
+				 * last chunk log_buf->size may not be pushed out as it's
 				 * similar to the case of small file.
 				 * The reason being we can't differentiate between a slow
 				 * growing file and a file that doesn't grow at all.
@@ -613,20 +635,20 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			struct ph_logger_fragment *frag = NULL;
 			char *__json_frag = NULL;
 			int frag_len = 0;
-			
+
 			snprintf(__rev_str, sizeof(__rev_str), "%d", rev);
 			frag_len = sizeof(PH_LOGGER_JSON_FORMAT) + 
-					strlen(pv_log_level_name(INFO)) +
-					strlen(source) +
-					strlen(platform) +
-					strlen(__rev_str) +
-					strlen(formatted_json) +
-					/*largest 64 bit is 19 digits*/
-					19 +
-					/*largest 32 bit is 10 digits.
-					 * sizeof accomodates for null
-					 */
-					10;
+				strlen(pv_log_level_name(INFO)) +
+				strlen(source) +
+				strlen(platform) +
+				strlen(__rev_str) +
+				strlen(formatted_json) +
+				/*largest 64 bit is 19 digits*/
+				19 +
+				/*largest 32 bit is 10 digits.
+				 * sizeof accomodates for null
+				 */
+				10;
 			__json_frag = (char*)calloc(1, frag_len);
 			if (__json_frag) {
 				char *shrinked = NULL;
@@ -729,22 +751,6 @@ close_fd:
 			 * revisions doesn't exit.
 			 */
 			ret = 0;
-#ifdef DEBUG
-			{
-				int to_send = strlen(json_frag_array);
-				int __send_off = 0;
-
-				printf("sending for filename %s: \n %s\n==\n", filename, json_frag_array);
-
-				while (to_send > 0) {
-					pv_log(INFO, "Sending json as , len = %d,\n: %.*s", to_send,
-							BUF_CHUNK * 3  - 100,
-							json_frag_array + __send_off);
-					to_send -= BUF_CHUNK * 3 - 100;
-					__send_off += BUF_CHUNK *3 - 100;
-				}
-			}
-#endif
 			if (!ph_logger_push_logs(&ph_logger, pv_global->config, json_frag_array)) {
 				char value[20];
 
@@ -755,6 +761,8 @@ close_fd:
 		}
 	}
 out:
+	pv_log_put_buffer(log_buff);
+	pv_log_put_buffer(large_buff);
 	return ret;
 }
 
@@ -814,17 +822,23 @@ accept_again:
 				goto accept_again;
 		} else {
 			/* We've data to read.*/
-			char buf[BUF_CHUNK + sizeof(struct ph_logger_msg)];
-			int nr_read = 0;
-			struct ph_logger_msg *msg = (struct ph_logger_msg*)buf;
+			struct log_buffer *log_buffer = NULL;
 
-			nr_read = read_nointr(work_fd, buf, sizeof(buf));
-			if (nr_read > 0) {
-				ph_logger_write_to_log_file(msg);
-				nr_logs++;
+			log_buffer = pv_log_get_buffer(true);
+			if (log_buffer) {
+				char *buf = log_buffer->buf;
+				int nr_read = 0;
+				struct ph_logger_msg *msg = (struct ph_logger_msg*)buf;
+
+				nr_read = read_nointr(work_fd, buf, log_buffer->size);
+				if (nr_read > 0) {
+					ph_logger_write_to_log_file(msg);
+					nr_logs++;
+				}
 			}
 			epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_DEL, work_fd, &ep_event[ret]);
 			close(work_fd);
+			pv_log_put_buffer(log_buffer);
 		}
 	}
 	return nr_logs;

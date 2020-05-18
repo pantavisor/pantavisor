@@ -56,7 +56,93 @@ static int prio = ALL;
 static char *log_dir = 0;
 static pid_t log_init_pid = -1;
 
+static DEFINE_DL_LIST(log_buffer_list);
+static DEFINE_DL_LIST(log_buffer_list_double);
+static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
+
+static struct log_buffer* __pv_log_get_buffer(struct dl_list *head)
+{
+	struct log_buffer *log_buffer = NULL;
+
+	if (dl_list_empty(head))
+		return NULL;
+	log_buffer = dl_list_first(head, 
+			struct log_buffer, free_list);
+	dl_list_del(&log_buffer->free_list);
+	dl_list_init(&log_buffer->free_list);
+	return log_buffer;
+}
+
+struct log_buffer* pv_log_get_buffer(bool large)
+{
+	if (large)
+		return __pv_log_get_buffer(&log_buffer_list_double);
+	return __pv_log_get_buffer(&log_buffer_list);
+}
+
+void pv_log_put_buffer(struct log_buffer *log_buffer)
+{
+	if (!log_buffer)
+		return;
+	if (!dl_list_empty(&log_buffer->free_list))
+		return;
+	if (global_pv->config->logsize == log_buffer->size)
+		dl_list_add(&log_buffer_list, &log_buffer->free_list);
+	else
+		dl_list_add(&log_buffer_list_double, &log_buffer->free_list);
+
+}
+
+static struct log_buffer* pv_log_alloc_buffer(int buf_size)
+{
+	struct log_buffer *buffer =  NULL;
+
+	if (buf_size <= 0)
+		return NULL;
+	buffer = (struct log_buffer*) calloc(1, sizeof(*buffer));
+	if (buffer) {
+		buffer->buf = (char*)calloc(1, buf_size);
+		if (!buffer->buf) {
+			free(buffer);
+			buffer = NULL;
+		} else {
+			buffer->size = buf_size;
+		}
+	}
+	return buffer;
+}
+
+static int pv_log_init_buf_cache(int items, int size, struct dl_list *head) 
+{
+	int allocated = 0;
+
+	if (!dl_list_empty(head)) {
+		struct log_buffer *item, *tmp;
+		dl_list_for_each_safe(item, tmp, head,
+				struct log_buffer, free_list) {
+			dl_list_del(&item->free_list);
+			free(item->buf);
+			free(item);
+		}
+	}
+	while (items > 0) {
+		struct log_buffer *buffer =  NULL;
+
+		if (allocated >= MAX_BUFFER_COUNT)
+			break;
+		buffer = pv_log_alloc_buffer(size);
+		if (buffer) {
+			dl_list_add(head, &buffer->free_list);
+			allocated++;
+		}
+		items--;
+	}
+	return allocated;
+}
+
+
+
 
 static int log_external(const char *fmt, ...)
 {
@@ -76,8 +162,15 @@ void pv_log_init(struct pantavisor *pv, int rev)
 	thttp_set_log_func(log_external);
 	log_init_pid = getpid();
 	global_pv = pv;
-
+	int allocated_cache = 0;
+	int allocated_dcache = 0;
 	
+	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
+					pv->config->logsize, &log_buffer_list);
+
+	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
+					pv->config->logsize * 2, &log_buffer_list_double);
+
 	mkdir_p("/pv/logs", 0755);
 	mount_bind(pv->config->logdir, "/pv/logs");
 	log_dir = calloc(1, PATH_MAX);
@@ -91,9 +184,12 @@ void pv_log_init(struct pantavisor *pv, int rev)
 		printf("Couldn't make dir %s,"
 			"pantavisor logs won't be available\n", log_dir);
 	}
-
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
+	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
+			allocated_cache, pv->config->logsize);
+	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
+			allocated_dcache, pv->config->logsize * 2);
 }
 
 void exit_error(int err, char *msg)

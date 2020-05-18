@@ -93,5 +93,4 @@ int gzip_file(const char *filename, const char *target_name);
 int check_and_open_file(const char *fname, int flags, mode_t mode);
 
 #define PREFIX_MODEL	"model name\t:"
-
 #endif // PV_UTILS_H

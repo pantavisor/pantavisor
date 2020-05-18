@@ -58,12 +58,12 @@ static const char *module_name = MODULE_NAME;
 #include "utils.h"
 #include "ph_logger/ph_logger.h"
 
-static char logger_cmd [BUF_CHUNK]; //Leave some room to create json
+static char *logger_cmd; //Leave some room to create json
 static struct log default_log;
 struct pv_log_info *pv_log_info = NULL;
 
 #define PV_LOG_BUF_START_OFFSET 	(0)
-#define PV_LOG_BUF_SIZE 		(BUF_CHUNK)
+#define PV_LOG_BUF_SIZE 		(4096)
 
 static int logger_pos = PV_LOG_BUF_START_OFFSET;
 
@@ -151,7 +151,7 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 			logger_pos = PV_LOG_BUF_START_OFFSET;
 			avail_buflen = PV_LOG_BUF_SIZE - 1;
 			memset(logger_cmd + PV_LOG_BUF_START_OFFSET,
-					0, sizeof(logger_cmd) - PV_LOG_BUF_START_OFFSET);
+					0, PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
 		}
 
 		new_line_at = strchr(buf, '\n');
@@ -184,7 +184,7 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 			buflen -= 1;
 			pv_log(INFO, "%s", logger_cmd);
 			memset(logger_cmd + PV_LOG_BUF_START_OFFSET, 0, 
-					sizeof(logger_cmd) - PV_LOG_BUF_START_OFFSET);
+					PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
 			logger_pos = PV_LOG_BUF_START_OFFSET;
 		}
 	}
@@ -357,6 +357,12 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	};
 	char pr_name[16] = {0};
 	const char *logfile = NULL;
+
+	logger_cmd = (char*)calloc(1, PV_LOG_BUF_SIZE);
+
+	/*Can't log it only thing we can do is print it on console*/
+	if (!logger_cmd)
+		return -1;
 	
 	pv_log_info = log_info;
 	module_name = strdup(platform);
