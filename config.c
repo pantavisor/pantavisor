@@ -198,7 +198,7 @@ static int load_key_value_file(char *path)
 static int _config_parse_cmdline(char *hint)
 {
 	int fd, bytes;
-	char *buf = NULL, *k = NULL;
+	char *buf = NULL, *k = NULL, *nl = NULL;
 	char *ptr_out = NULL, *ptr_in = NULL;
 	char *token = NULL, *key = NULL, *value = NULL;
 
@@ -232,6 +232,9 @@ static int _config_parse_cmdline(char *hint)
 			 * */
 			if (!value)
 				value = ""; /*We keep the key but give it an empty value*/
+			nl = strchr(value, '\n');
+			if (nl) /* get rid of newline at end */
+				*nl = '\0';
 			_config_replace_item(key, value);
 		}
 		token = strtok_r(NULL, " ", &ptr_out);
