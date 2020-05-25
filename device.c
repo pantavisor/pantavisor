@@ -380,27 +380,38 @@ out:
 int pv_device_info_upload(struct pantavisor *pv)
 {
 	unsigned int len = 0;
-	char *json = NULL, *buf = NULL, *t = NULL;
+	char *json = NULL, *buf = NULL;
 	struct pv_devinfo *info = NULL, *tmp = NULL;
 	struct dl_list *head = NULL;
-	int json_avail = BUF_CHUNK;
-	int nr_frags = 0;
+	int json_avail = 0;
 	int i = 0;
+	int bufsize = 0;
+	struct log_buffer *log_buffer = NULL;
+	/*
+	 * we can use one of the large log_buffer. Since
+	 * this information won't be very large, it's safe
+	 * to assume even the complete json would
+	 * be small enough to fit inside this log_buffer.
+	 */
+	log_buffer = pv_log_get_buffer(true);
+	if (!log_buffer) {
+		pv_log(INFO, "couldn't allocate buffer to upload device info");
+		return -1;
+	}
 
 	if (info_parsed)
 		goto upload;
 
 	dl_list_init(&pv->dev->infolist);
 
-	buf = calloc(1, BUF_CHUNK * sizeof(char));
-	if (!buf)
-		goto out;
+	buf = log_buffer->buf;
+	bufsize = log_buffer->size;
 
 	for (i = 0; i < ARRAY_LEN(pv_device_info_readkeys); i++) {
 		int ret = 0;
-		
+
 		pv_device_info_readkeys[i].buf = buf;
-		pv_device_info_readkeys[i].buflen = BUF_CHUNK;
+		pv_device_info_readkeys[i].buflen = bufsize;
 		ret = pv_device_info_readkeys[i].reader(&pv_device_info_readkeys[i]);
 		if (!ret) {
 			/*
@@ -413,11 +424,8 @@ int pv_device_info_upload(struct pantavisor *pv)
 upload:
 	if (info_uploaded)
 		goto out;
-
-	json = calloc(1, BUF_CHUNK * sizeof(char));
-	if (!json)
-		goto out;
-	json_avail = BUF_CHUNK;
+	json = log_buffer->buf;
+	json_avail = log_buffer->size;
 	json_avail -= sprintf(json, "{");
 	len += 1;
 	head = &pv->dev->infolist;
@@ -428,13 +436,13 @@ upload:
 
 		if (key && val) {
 			int frag_len = strlen(key) + strlen(val) +
-					/* 2 pairs of quotes*/
-					2 * 2 +
-					/* 1 colon and a ,*/
-					1 + 1;
+				/* 2 pairs of quotes*/
+				2 * 2 +
+				/* 1 colon and a ,*/
+				1 + 1;
 			if (json_avail > frag_len) {
 				snprintf(json + len, json_avail,
-					       	"\"%s\":\"%s\",",
+						"\"%s\":\"%s\",",
 						info->key, info->value);
 				len += frag_len;
 				json_avail -= frag_len;
@@ -451,10 +459,8 @@ upload:
 	json[len - 1] = '}';
 	pv_log(INFO, "device info json = %s", json);
 	info_uploaded = !pv_ph_upload_metadata(pv, json);
-	free(json);
 out:
-	if (buf)
-		free(buf);
+	pv_log_put_buffer(log_buffer);
 	return 0;
 }
 

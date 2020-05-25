@@ -29,8 +29,10 @@
 #include <errno.h>
 #include <time.h>
 #include <sys/time.h>
+#include <stdbool.h>
 
 #include "pantavisor.h"
+#include "utils.h"
 
 void exit_error(int err, char *msg);
 
@@ -52,9 +54,15 @@ struct level_name {
 	char *name;
 };
 
+struct log_buffer {
+	char *buf;
+	int size;
+	struct dl_list free_list;
+};
 #define LOG_NAME		"pantavisor.log"
 
-#define BUF_CHUNK	4096
+#define __put_buf_back__ 	__cleanup__(__put_log_buff)
+
 #define JSON_FORMAT	"{ \"tsec\": %"PRId64", \"tnano\": %"PRId32", \"lvl\": \"%s\", \"src\": \"%s\", \"msg\": \"%s\" }"
 
 // Example log:		"[pantavisor] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
@@ -77,4 +85,12 @@ int pv_log_set_level(unsigned int level);
  * Don't free the return value!
  */
 const char *pv_log_level_name(int level);
+struct log_buffer* pv_log_get_buffer(bool large);
+void pv_log_put_buffer(struct log_buffer*);
+static void __put_log_buff(struct log_buffer **log_buf)
+{
+	if (*log_buf) {
+		pv_log_put_buffer(*log_buf);
+	}
+}
 #endif

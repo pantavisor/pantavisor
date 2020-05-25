@@ -334,10 +334,19 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 		config->loglevel = atoi(item);
 
 	item = _config_get_value("log.buf_nitems");
-	if (item)
-		config->logsize = atoi(item);
-	else
-		config->logsize = 16;
+	if (item) {
+		int size_in_kb = 0;
+		if (sscanf(item, "%d", &size_in_kb) == 1) {
+			if (size_in_kb <=0 || size_in_kb >= 1024)
+				size_in_kb = 128;
+			config->logsize = size_in_kb * 1024;
+		}
+		else
+			config->logsize = 128 * 1024;
+	}
+	else {
+		config->logsize = 128 * 1024;
+	}
 
 	// default 300 second update interval
 	item = _config_get_value("updater.interval");
