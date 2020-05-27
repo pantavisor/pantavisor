@@ -35,6 +35,11 @@ struct pantavisor_factory {
 	char *autotok;
 };
 
+struct pantavisor_tpm {
+	char *key;
+	char *cert;
+};
+
 struct pantavisor_creds {
 	char *type;
 	char *host;
@@ -43,6 +48,7 @@ struct pantavisor_creds {
 	char *prn;
 	char *secret;
 	char *token;
+	struct pantavisor_tpm tpm;
 };
 
 struct pantavisor_storage {

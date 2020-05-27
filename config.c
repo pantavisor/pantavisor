@@ -380,6 +380,9 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 		return -1;
 	}
 
+	config->creds.tpm.key = _config_get_value("creds.tpm.key");
+	config->creds.tpm.cert = _config_get_value("creds.tpm.cert");
+
 	config->creds.host = _config_get_value("creds.host");
 	if (!config->creds.host) {
 		config->creds.host = strdup("192.168.53.1");
@@ -441,6 +444,10 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	bytes = write_config_tuple(fd, "creds.id", config->creds.id);
 	bytes = write_config_tuple(fd, "creds.prn", config->creds.prn);
 	bytes = write_config_tuple(fd, "creds.secret", config->creds.secret);
+	if (config->creds.tpm.key && config->creds.tpm.cert) {
+		bytes = write_config_tuple(fd, "creds.secret.tpm.key", config->creds.tpm.key);
+		bytes = write_config_tuple(fd, "creds.secret.tpm.cert", config->creds.tpm.cert);
+	}
 
 	close(fd);
 
