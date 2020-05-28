@@ -166,9 +166,9 @@ static void _config_del_item(char *key)
 
 static int load_key_value_file(char *path)
 {
-	char buff[1024];
 	FILE *fp;
-	char *__real_key = NULL;
+	char *buff = NULL, *__real_key = NULL;
+	struct stat st;
 
 	fp = fopen(path, "r");
 	if (!fp) {
@@ -176,7 +176,12 @@ static int load_key_value_file(char *path)
 		return -1;
 	}
 
-	while (fgets(buff, sizeof(buff), fp)) {
+	stat(path, &st);
+	buff = calloc(1, st.st_size);
+	if (!buff)
+		goto out;
+
+	while (fgets(buff, st.st_size, fp)) {
 		// Remove newline from value (hacky)
 		buff[strlen(buff)-1] = '\0';
 		char *key = strstr(buff, "=");
@@ -190,6 +195,8 @@ static int load_key_value_file(char *path)
 			}
 		}
 	}
+	free(buff);
+out:
 	fclose(fp);
 
 	return 0;
@@ -445,8 +452,8 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	bytes = write_config_tuple(fd, "creds.prn", config->creds.prn);
 	bytes = write_config_tuple(fd, "creds.secret", config->creds.secret);
 	if (config->creds.tpm.key && config->creds.tpm.cert) {
-		bytes = write_config_tuple(fd, "creds.secret.tpm.key", config->creds.tpm.key);
-		bytes = write_config_tuple(fd, "creds.secret.tpm.cert", config->creds.tpm.cert);
+		bytes = write_config_tuple(fd, "creds.tpm.key", config->creds.tpm.key);
+		bytes = write_config_tuple(fd, "creds.tpm.cert", config->creds.tpm.cert);
 	}
 
 	close(fd);
