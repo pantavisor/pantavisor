@@ -41,6 +41,7 @@
 #include "utils.h"
 #include "pantahub.h"
 #include "network.h"
+#include "init.h"
 
 #define ifreq_offsetof(x)  offsetof(struct ifreq, x)
 
@@ -192,3 +193,19 @@ int pv_network_update_meta(struct pantavisor *pv)
 
 	return 0;
 }
+
+static int pv_network_early_init(struct pv_init *this)
+{
+	struct pantavisor *pv = NULL;
+
+	pv = get_pv_instance();
+	if (!pv || !pv->config)
+		return 0;
+	pv_network_init(pv);
+	return 0;
+}
+
+struct pv_init pv_init_network = {
+	.init_fn = pv_network_early_init,
+	.flags = PV_INIT_FLAG_CANFAIL,
+};

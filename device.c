@@ -44,6 +44,8 @@
 #include "pantahub.h"
 #include "device.h"
 #include "version.h"
+#include "init.h"
+#include "cmd.h"
 
 #define FW_PATH		"/lib/firmware"
 
@@ -253,7 +255,16 @@ struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 		dl_list_init(&curr->list);
 		curr->key = strdup(key);
 		curr->value = strdup(value);
-		dl_list_add(&d->metalist, &curr->list);
+		if (curr->key && curr->value)
+			dl_list_add(&d->metalist, &curr->list);
+		else {
+			if (curr->key)
+				free(curr->key);
+			if (curr->value)
+				free(curr->value);
+			free(curr);
+			curr = NULL;
+		}
 	}
 out:
 	if (curr)
@@ -639,24 +650,44 @@ int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
 	return ret;
 }
 
-int pv_device_init(struct pantavisor *pv)
+static int pv_device_init(struct pv_init *this)
 {
-	if (!pv)
-		return -1;
-	if (!pv->config)
-		return -1;
+	struct pantavisor *pv = NULL;
+	struct pantavisor_config *config = NULL;
+	char tmp[256];
+	int fd = -1;
 
+	pv = get_pv_instance();
+	if (!pv || !pv->config)
+		return -1;
+	config = pv->config;
+	// create hints
+	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	close(fd);
+	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	if (strcmp(config->creds.prn, "") == 0) {
+		pv->flags |= DEVICE_UNCLAIMED;
+	} else {
+		sprintf(tmp, "%s\n", config->creds.id);
+		write(fd, tmp, strlen(tmp));
+	}
+	close(fd);
+	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	sprintf(tmp, "https://%s:%d\n", config->creds.host, config->creds.port);
+	write(fd, tmp, strlen(tmp));
+	close(fd);
+	
 	pv->dev = calloc(1, sizeof(struct pv_device));
-	pv->dev->id = strdup(pv->config->creds.id);
-	dl_list_init(&pv->dev->metalist);
-
-	mkdir_p("/pv/user-meta/", 0755);
-	if (pv->config->metacachedir)
-		mount_bind(pv->config->metacachedir, "/pv/user-meta");
-
-	mkdir_p("/etc/dropbear/", 0755);
-	if (pv->config->dropbearcachedir)
-		mount_bind(pv->config->dropbearcachedir, "/etc/dropbear");
+	if (pv->dev) {
+		dl_list_init(&pv->dev->metalist);
+		pv->dev->id = strdup(pv->config->creds.id);
+		if (!pv->dev->id) {
+			free(pv->dev);
+			pv->dev = NULL;
+		}
+	}
+	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") < 0)
+		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
 
 	return 0;
 }
@@ -672,3 +703,7 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 		return false;
 	return true;
 }
+struct pv_init pv_init_device = {
+	.init_fn = pv_device_init,
+	.flags = 0,
+};

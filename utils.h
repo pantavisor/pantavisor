@@ -25,6 +25,7 @@
 #include <sys/types.h>
 
 #include <jsmn/jsmnutil.h>
+#include <stdlib.h>
 
 int mkdir_p(char *dir, mode_t mode);
 

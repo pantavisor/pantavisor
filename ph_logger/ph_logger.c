@@ -79,7 +79,6 @@ static void pv_log(int level, char *msg, ...)
 	va_list args;
 	int len = 0;
 	int max_size = 0;
-	char *shrinked = NULL;
 	struct log_buffer *log_buffer = NULL;
 	struct log_buffer *ph_log_buffer = NULL;
 

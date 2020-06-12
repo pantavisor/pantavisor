@@ -42,6 +42,10 @@
 #include "pantahub.h"
 #include "loop.h"
 #include "utils.h"
+#include "init.h"
+#include "revision.h"
+#include "version.h"
+#include "ph_logger/ph_logger.h"
 
 #define LEVEL_NAME(LEVEL)	{ LEVEL, #LEVEL }
 static struct level_name level_names[] = {
@@ -272,3 +276,58 @@ const char *pv_log_level_name(int level)
 		return "UNDEFINED";
 	return level_names[level].name;
 }
+
+static int pv_log_early_init(struct pv_init *this)
+{
+	struct pantavisor *pv = NULL;
+	struct pantavisor_config *config = NULL;
+	int pv_rev = 0;
+	int ret = -1;
+
+	pv = get_pv_instance();
+	if (!pv || !pv->config)
+		goto out;
+
+	ret = 0;
+	config = pv->config;
+	pv_rev = pv_revision_get_rev();
+
+	pv_log_init(pv, pv_rev);
+
+	pv_log(INFO, "______           _              _                ");
+	pv_log(INFO, "| ___ \\         | |            (_)               ");
+	pv_log(INFO, "| |_/ /_ _ _ __ | |_ __ ___   ___ ___  ___  _ __ ");
+	pv_log(INFO, "|  __/ _` | '_ \\| __/ _` \\ \\ / / / __|/ _ \\| '__|");
+	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
+	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
+	pv_log(INFO, "                                                 ");
+	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
+	pv_log(INFO, "                                                 ");
+	pv_log(DEBUG, "c->storage.path = '%s'", config->storage.path);
+	pv_log(DEBUG, "c->storage.fstype = '%s'", config->storage.fstype);
+	pv_log(DEBUG, "c->storage.opts = '%s'", config->storage.opts);
+	pv_log(DEBUG, "c->storage.mntpoint = '%s'", config->storage.mntpoint);
+	pv_log(DEBUG, "c->storage.mnttype = '%s'", config->storage.mnttype ? config->storage.mnttype : "");
+	pv_log(DEBUG, "c->creds.host = '%s'", config->creds.host);
+	pv_log(DEBUG, "c->creds.port = '%d'", config->creds.port);
+	pv_log(DEBUG, "c->creds.id = '%s'", config->creds.id);
+	pv_log(DEBUG, "c->creds.prn = '%s'", config->creds.prn);
+	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret);
+
+	if (ph_logger_service_start(pv, LOG_CTRL_PATH, pv_rev) <= 0) {
+		pv_log(ERROR, "Unable to start logger service.");
+	}
+
+	if (ph_logger_service_start_for_range(pv, pv_rev - 1) <= 0) {
+		pv_log(ERROR, "Unable to start range logger service.");
+	}
+
+
+out:
+	return ret;
+}
+
+struct pv_init pv_init_log = {
+	.init_fn = pv_log_early_init,
+	.flags = 0,
+};

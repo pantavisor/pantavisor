@@ -49,6 +49,8 @@
 #include "storage.h"
 #include "trestclient.h"
 #include "wdt.h"
+#include "init.h"
+#include "revision.h"
 
 int MAX_REVISION_RETRIES = 0;
 int DOWNLOAD_RETRY_WAIT = 0;
@@ -770,6 +772,11 @@ int pv_check_for_updates(struct pantavisor *pv)
 		return 0;
 	}
 
+	/*
+	 * [PKS]
+	 * Improve first boot object upload,
+	 * on an error case this won't be retried.
+	 */
 	ret = trail_is_available(pv->remote);
 	if (ret == 0)
 		return trail_first_boot(pv);
@@ -1414,3 +1421,57 @@ int pv_set_current_status(struct pantavisor *pv, enum update_state state)
 {
 	return trail_remote_set_status(pv, pv->state->rev, state);
 }
+
+static int pv_update_init(struct pv_init *this)
+{
+	struct pantavisor *pv = NULL;
+	struct pantavisor_config *config = NULL;
+	int bl_rev = 0;
+	int pv_rev = 0;
+	int ret = -1;
+
+	pv = get_pv_instance();
+
+	if (!pv || !pv->config)
+		goto out;
+	config = pv->config;
+	if (config->revision_retries <= 0)
+		MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
+	else 
+		MAX_REVISION_RETRIES = config->revision_retries;
+
+	if (config->revision_retry_timeout <= 0)
+		DOWNLOAD_RETRY_WAIT = DEFAULT_DOWNLOAD_RETRY_WAIT;
+	else
+		DOWNLOAD_RETRY_WAIT = config->revision_retry_timeout;
+
+	// get try revision from bl
+	bl_rev = pv_bl_get_try(pv);
+	pv_rev = pv_revision_get_rev();
+
+	if (bl_rev <= 0) {
+		ret = 0;
+		goto out;
+	}
+	if (bl_rev == pv_rev) {
+		pv_update_start(pv, 1);
+		pv_update_set_status(pv, UPDATE_TRY);
+	} else {
+		struct pv_state *s = pv->state;
+		pv->state = pv_get_state(pv, bl_rev);
+		if (pv->state) {
+			pv_update_start(pv, 1);
+			pv_update_set_status(pv, UPDATE_FAILED);
+			pv_release_state(pv);
+		}
+		pv->state = s;
+	}
+	ret = 0;
+out:
+	return ret;
+}
+
+struct pv_init pv_init_update = {
+	.init_fn = pv_update_init,
+	.flags = 0,
+};

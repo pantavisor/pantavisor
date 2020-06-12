@@ -43,6 +43,7 @@
 #include "pantavisor.h"
 #include "version.h"
 #include "init.h"
+#include "utils.h"
 #include "utils/list.h"
 #include <stdbool.h>
 
@@ -280,5 +281,41 @@ int main(int argc, char *argv[])
 	for (;;)
 		pause();
 
+	return 0;
+}
+/*
+ * The order of appearence is important here.
+ * Make sure to list the initializer in the correct
+ * order.
+ */
+struct pv_init *pv_init_tbl [] = {
+	&pv_init_config,
+	&pv_init_mount,
+	&ph_init_config,
+	&ph_init_mount,
+	&pv_init_revision,
+	&pv_init_log,
+	&pv_init_device,
+	&pv_init_network,
+	&pv_init_platform,
+	&pv_init_bl,
+	&pv_init_state,
+	&pv_init_update
+};
+
+int pv_do_execute_init()
+{
+	int i = 0;
+
+	for ( i = 0; i < ARRAY_LEN(pv_init_tbl); i++) {
+		struct pv_init *init = pv_init_tbl[i];
+		int ret = 0;
+
+		ret = init->init_fn(init);
+		if (ret) {
+			if (!(init->flags & PV_INIT_FLAG_CANFAIL))
+				return -1;
+		}
+	}
 	return 0;
 }
