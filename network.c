@@ -123,7 +123,7 @@ int pv_network_update_meta(struct pantavisor *pv)
 {
 	struct ifaddrs *ifaddr, *ifa;
 	int family, s, n, len, ilen = 0;
-	char host[NI_MAXHOST], ifn[IFNAMSIZ], iff[IFNAMSIZ+4];
+	char host[NI_MAXHOST], ifn[IFNAMSIZ+5], iff[IFNAMSIZ+5];
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
 	if (getifaddrs(&ifaddr) < 0) {
