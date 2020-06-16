@@ -27,6 +27,7 @@
 #include "config.h"
 #include <netinet/in.h>
 #include "utils/list.h"
+#include <trest.h>
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
@@ -50,7 +51,8 @@ enum update_state {
 	UPDATE_FAILED,
 	UPDATE_NO_DOWNLOAD,
 	UPDATE_NO_PARSE,
-	UPDATE_RETRY_DOWNLOAD
+	UPDATE_RETRY_DOWNLOAD,
+	UPDATE_DEVICE_AUTH_OK
 };
 
 typedef enum {

@@ -21,7 +21,7 @@
  */
 #ifndef PV_CONFIG_H
 #define PV_CONFIG_H
-#include<stdbool.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <stdlib.h>
 #include "utils/list.h"
@@ -35,13 +35,20 @@ struct pantavisor_factory {
 	char *autotok;
 };
 
+struct pantavisor_tpm {
+	char *key;
+	char *cert;
+};
+
 struct pantavisor_creds {
+	char *type;
 	char *host;
 	int port;
 	char *id;
 	char *prn;
 	char *secret;
 	char *token;
+	struct pantavisor_tpm tpm;
 };
 
 struct pantavisor_storage {

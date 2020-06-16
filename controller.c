@@ -462,6 +462,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		wait_delay = tp.tv_sec + pv->config->updater.interval;
 		return STATE_WAIT;
 	}
+	
 
 	// update meta
 	pv_device_info_upload(pv);
@@ -479,11 +480,23 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY) {
-		pv_set_current(pv, pv->state->rev);
-		pv_update_set_status(pv, UPDATE_DONE);
-		if (!pv_update_finish(pv))
-			status_updated = true;
-		pv_bl_clear_update(pv);
+		if (pv_set_current_status(pv, UPDATE_DEVICE_AUTH_OK)) {
+			if (rb_count > timeout_max)
+				return STATE_ROLLBACK;
+
+			clock_gettime(CLOCK_MONOTONIC, &tp);
+			wait_delay = tp.tv_sec + pv->config->updater.interval;
+			pv_log(WARN, "Device couldn't authenticate to Pantahub. Retrying in %d seconds",
+					pv->config->updater.interval);
+			rb_count++;
+			return STATE_WAIT;
+		} else {
+			pv_set_current(pv, pv->state->rev);
+			pv_update_set_status(pv, UPDATE_DONE);
+			if (!pv_update_finish(pv))
+				status_updated = true;
+			pv_bl_clear_update(pv);
+		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
 		pv_set_current(pv, pv->state->rev);
