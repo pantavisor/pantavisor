@@ -990,23 +990,71 @@ static pid_t ph_logger_create_push_helper(int revision)
 	return helper_pid;
 }
 
-int ph_logger_service_start_for_range(struct pantavisor *pv, int max_revisions)
+static int ph_logger_get_max_revision(struct pantavisor *pv)
+{
+	const char *cmd = "find /pv/logs -type d -mindepth 1 -maxdepth 1";
+	FILE *fp = NULL;
+	char *buf = NULL;
+	size_t buf_size = 0;
+	int max_revision = 0;
+
+	fp = popen(cmd, "r");
+	if (!fp)
+		goto out;
+	while (!feof(fp)) {
+			ssize_t ret = 0;
+
+			ret = getline(&buf, &buf_size, fp);
+			if (ret > 0) {
+				char *rev_dir = NULL;
+				int this_rev = -1;
+
+				//Throw away null byte.
+				buf[ret - 1] = '\0';
+				rev_dir = basename(buf);
+				sscanf(rev_dir, "%d", &this_rev);
+				if (this_rev > max_revision)
+					max_revision = this_rev;
+			} else {
+				break;
+			}
+	}
+	if (buf)
+		free(buf);
+	pclose(fp);
+out:
+	return max_revision;
+}
+
+int ph_logger_service_start_for_range(struct pantavisor *pv, int curr_revision)
 {
 	pid_t range_service = -1;
+	int max_revisions = -1;
 	/*
 	 * Don't start anything for invalid
 	 * revisions.
 	 */
-	if (max_revisions < 0)
+	if (curr_revision < 0)
 		goto out;
 	range_service = fork();
 	if (range_service == 0) {
 		unsigned int iterations = 0;
-		
+		int curr_revision = 0;
+
+		max_revisions = ph_logger_get_max_revision(pv);
 		__ph_logger_init_basic(&ph_logger);
+
 		while (max_revisions >= 0) {
 			bool sent_one = false;
 
+			/*
+			 * skip current revision.
+			 */
+			if (curr_revision == max_revisions) {
+				max_revisions--;
+				iterations = 0;
+				continue;
+			}
 			iterations++;
 			ph_logger.revision = max_revisions;
 			sent_one = ph_logger_helper_function(max_revisions);

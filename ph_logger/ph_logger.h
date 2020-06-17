@@ -95,6 +95,6 @@ int ph_logger_write_bytes(struct ph_logger_msg *, const char *buf, ...);
  * returns 0 on success.
  * */
 int ph_logger_read_bytes(struct ph_logger_msg *, char *buf, ...);
-int ph_logger_service_start(struct pantavisor *pv, const char *sock_path, int revision);
+int ph_logger_service_start(struct pantavisor *pv, const char *sock_path, int curr_rev);
 int ph_logger_service_start_for_range(struct pantavisor *pv, int max_revisions);
 #endif /* __PH_LOGGER_H__ */
