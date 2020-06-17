@@ -111,14 +111,16 @@ int pv_make_config(struct pantavisor *pv)
 	if (stat(targetpath, &st))
 		mkdir_p(targetpath, 0755);
 
+	memset(&st, '\0', sizeof(st));
+
 	// we allow overloading behaviour via plugin from initrd addon
-	if (!stat("/usr/local/bin/pvext_sysconfig", &st) ||
+	if (!stat("/usr/local/bin/pvext_sysconfig", &st) &&
 			st.st_mode & S_IXUSR ) {
 		sprintf(cmd, "/usr/local/bin/pvext_sysconfig %s %s", srcpath, targetpath);
-		pv_log(INFO, "%s", cmd);
+		pv_log(INFO, "Processing trail _config: %s", cmd);
 	} else {
 		sprintf(cmd, "/bin/cp -a %s/* %s/", srcpath, targetpath);
-		pv_log(INFO, "%s", cmd);
+		pv_log(INFO, "Processing trail_config: %s", cmd);
 	}
 
 	rv = system(cmd);
