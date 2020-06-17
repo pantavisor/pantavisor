@@ -302,7 +302,7 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 		pv_log(ERROR, "Unable to start logger service.");
 	}
 
-	if (ph_logger_service_start_for_range(pv, pv_rev - 1) <= 0) {
+	if (ph_logger_service_start_for_range(pv, pv_rev) <= 0) {
 		pv_log(ERROR, "Unable to start range logger service.");
 	}
 
