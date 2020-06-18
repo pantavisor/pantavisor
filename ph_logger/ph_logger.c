@@ -1134,7 +1134,7 @@ retry:
 		ph_logger.revision = revision;
 		push_pid = ph_logger_create_push_helper(revision);
 		if (push_pid > 0)
-			printf("Initialized PH push helper, pid = %d by service process (%d)\n",
+			pv_log(INFO, "Initialized PH push helper, pid = %d by service process (%d)\n",
 					push_pid, getpid());
 		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
 			ph_logger_read_write(&ph_logger);
@@ -1145,7 +1145,7 @@ retry:
 
 	close(pipefd[1]);
 	read_nointr(pipefd[0], (char*)&service_status, sizeof(service_status));
-	printf("Pantahub logger service initialized with return code %d\n",
+	pv_log(INFO, "Pantahub logger service initialized with return code %d\n",
 			service_status);
 	close(pipefd[0]);
 	return service_pid;
