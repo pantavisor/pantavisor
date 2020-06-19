@@ -540,6 +540,11 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	} else {
 		pv_log(DEBUG, "XATTR %s errno = %d .Start position of file %s is %lld\n",
 				PH_LOGGER_POS_XATTR, -ret, filename, pos);
+		sprintf(dst, "%d", 0);
+		/*
+		 * set xattr to quiet the verbose-ness otherwise.
+		 */
+		set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst);
 	}
 	ret = -1;
 #ifdef DEBUG
@@ -977,13 +982,14 @@ static pid_t ph_logger_create_push_helper(int revision)
 			 * but don't stay idle for more than 10 seconds at most.
 			 */
 			if (!sent_one) {
-				pv_log(WARN, "Sleeping for revision %d", revision);
-				sleep(sleep_secs);
 				sleep_secs ++;
-				sleep_secs = (sleep_secs == max_sleep ? max_sleep : sleep_secs);
+				sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
+				pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
+						revision);
+				sleep(sleep_secs);
 			} else {
 				sleep_secs -= 1;
-				sleep_secs = (sleep_secs == 0 ? 1 : sleep_secs);
+				sleep_secs = (sleep_secs <= 0 ? 1 : sleep_secs);
 			}
 		}
 	}
