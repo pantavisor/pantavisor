@@ -79,15 +79,21 @@ static int uboot_init(struct pantavisor_config *c)
 		return 0;
 
 	fd = open("/proc/mtd", O_RDONLY);
-	if (fd < 0)
+	if (fd < 0) {
+		pv_log(ERROR, "Cannot open /proc/mtd for reading");
 		return -1;
+	}
 
 	ret = read(fd, buf, sizeof(MTD_MATCH));
-	if (ret < 0)
-		return -1;
+	if (ret < 0) {
+		pv_log(ERROR, "Failed to read from %d bytes from /proc/mtd", sizeof(MTD_MATCH));
+		return -2;
+	}
 
-	if (strcmp(buf, MTD_MATCH))
-		return -1;
+	if (strncmp(buf, MTD_MATCH, strlen(MTD_MATCH))) {
+		pv_log(ERROR, "First line of /proc/mtd does not match '%s' instead we have '%s'", MTD_MATCH, buf);
+		return -3;
+	}
 
 	char *ns, *ne;
 	ret = read(fd, buf, sizeof(buf));
