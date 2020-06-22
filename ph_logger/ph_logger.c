@@ -544,7 +544,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */
-		set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst);
+		set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, dst);
 	}
 	ret = -1;
 #ifdef DEBUG
