@@ -1,2 +1,4 @@
 include:
-  remote: https://gitlab.com/pantacor/ci/device-ci/raw/master/yml/pvdeps-ci.yml
+  project: 'pantacor/ci/device-ci'
+  ref: '011'
+  file: '/yml/pvdeps-ci.yml'
