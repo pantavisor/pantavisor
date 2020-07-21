@@ -134,10 +134,13 @@ err:
 	return response;
 }
 
-trest_ptr pv_get_trest_client(struct pantavisor *pv)
+trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 {
 	const char **cafiles;
 	trest_ptr client;
+
+	if (!conn)
+		conn = pv->conn;
 
 	enum {
 		HUB_CREDS_TYPE_BUILTIN=0,
@@ -194,7 +197,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv)
 			pv->config->creds.secret,
 			(const char **) cafiles,
 			pv_user_agent,
-			(pv->conn ? &pv->conn->sock : NULL)
+			(conn ? &conn->sock : NULL)
 			);
 
 		if (!client) {
@@ -210,7 +213,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv)
 			pv,
 			(const char **) cafiles,
 			pv_user_agent,
-			(pv->conn ? &pv->conn->sock : NULL)
+			(conn ? &conn->sock : NULL)
 			);
 
 		if (!client) {

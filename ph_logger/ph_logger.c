@@ -47,6 +47,7 @@
 #include "../version.h"
 #include "../utils/list.h"
 #include "../pvctl_utils.h"
+#include "../trestclient.h"
 
 #define MODULE_NAME             "ph_logger"
 #include "../log.h"
@@ -436,15 +437,8 @@ static int ph_logger_push_logs(	struct ph_logger *ph_logger,
 			ret = -1;
 			goto out;
 	}
-	ph_logger->client = trest_new_tls_from_userpass(
-			config->creds.host,
-			config->creds.port,
-			config->creds.prn,
-			config->creds.secret,
-			pv_ph_get_certs(NULL),
-			ph_logger->user_agent,
-			&ph_logger->pv_conn->sock);
-	
+	ph_logger->client = pv_get_trest_client(pv_global, ph_logger->pv_conn);
+
 	if (!ph_logger->client) {
 		ret = -1;
 		goto out;
@@ -895,10 +889,12 @@ static int __ph_logger_push_one_log(char *buf, int len, int revision, int offset
 		source = slash_at;
 
 	if (ph_logger_get_connection(&ph_logger, pv_global->config)) {
-		if (!pv_global->config->creds.prn || 
-				strcmp(pv_global->config->creds.prn, "") == 0) {
+		bool load_config = false;
+
+		load_config = (!pv_global->config->creds.prn ||
+			strcmp(pv_global->config->creds.prn, "") == 0);
+		if (load_config)
 			ph_logger_load_config(pv_global);
-		}
 		return ph_logger_push_from_file(filename, platform, source, revision);
 	}
 	return -1;
@@ -975,6 +971,8 @@ static pid_t ph_logger_create_push_helper(int revision)
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
+		pv_log(INFO, "Initialized PH push helper, pid = %d by service process (%d)\n",
+				getpid(), getppid());
 		while (1) {
 			bool sent_one = ph_logger_helper_function(revision);
 			/*
@@ -1139,9 +1137,14 @@ retry:
 		}
 		ph_logger.revision = revision;
 		push_pid = ph_logger_create_push_helper(revision);
-		if (push_pid > 0)
-			pv_log(INFO, "Initialized PH push helper, pid = %d by service process (%d)\n",
-					push_pid, getpid());
+#ifdef DEBUG
+		/*
+		 * Don't use pv_log as we risk blocking on write
+		 * on a filled up socket buffer.
+		 */
+		if (push_pid <= 0)
+			printf("Error starting log push service\n");
+#endif
 		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
 			ph_logger_read_write(&ph_logger);
 		}

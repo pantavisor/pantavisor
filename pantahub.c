@@ -105,7 +105,7 @@ static int ph_client_init(struct pantavisor *pv)
 	if (client)
 		goto auth;
 
-	client = pv_get_trest_client(pv);
+	client = pv_get_trest_client(pv, NULL);
 
 	if (!client)
 		return 0;
