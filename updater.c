@@ -443,12 +443,90 @@ out:
 	return size;
 }
 
+static void __trail_log_resp_err(char *buf, jsmntok_t *tokv, int tokc)
+{
+	char *error = NULL, *msg = NULL, *__code = NULL;
+	int code = 0;
+	/*
+	 * Error response looks like
+	 * {
+	 *  "error": <String>
+	 *  "msg": <String> <Maybe empty>
+	 *  "code": <int> <Maybe empty>
+	 * }
+	 */
+	error = get_json_key_value(buf,
+			"error",
+			tokv,
+			tokc);
+
+	msg = get_json_key_value(buf,
+			"msg",
+			tokv,
+			tokc);
+
+	__code = get_json_key_value(buf,
+			"code",
+			tokv,
+			tokc);
+	if (__code) {
+		sscanf(__code, "%d", &code);
+		free(__code);
+		__code = NULL;
+	}
+
+	if (error && msg) {
+		pv_log(WARN, "Error %s: Message %s, code = %d", 
+				error, msg, code);
+	}
+	else {
+		pv_log(WARN, "Malformed Error JSON from API,"
+				" error:%s,msg:%s, code=%d",
+				(error ? error : "nil"),
+				(msg ? msg : "nil"),
+				code);
+	}
+	if (error)
+		free(error);
+	if (msg)
+		free(msg);
+}
+
+static void trail_log_thttp_err(thttp_response_t *thttp_res)
+{
+	int tokc;
+	jsmntok_t *tokv = NULL;
+	char *buf = NULL;
+
+	if (!thttp_res || thttp_res->code == THTTP_STATUS_OK)
+		return;
+	buf = thttp_res->body;
+	if (!buf)
+		return;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) >=0 ) {
+		__trail_log_resp_err(buf, tokv, tokc);
+	}
+	if (tokv)
+		free(tokv);
+}
+
+static void trail_log_trest_err(trest_response_ptr tres)
+{
+
+	if (!tres || tres->code == THTTP_STATUS_OK)
+		return;
+	if (!tres->json_tokv)
+		return;
+	__trail_log_resp_err(tres->body, tres->json_tokv, 
+			tres->json_tokc);
+}
+
 static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const char **crtfiles)
 {
 	int ret = 0;
 	int fd, bytes;
 	int size, pos, i;
-	char *signed_puturl;
+	char *signed_puturl = NULL;
 	char sha_str[128];
 	char body[512];
 	unsigned char buf[4096];
@@ -578,14 +656,26 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 
 out:
 	close(fd);
+	if (signed_puturl)
+		free(signed_puturl);
 	if (treq)
 		trest_request_free(treq);
-	if (tres)
+	if (tres) {
+		/*
+		 * For Conflict on an object we don't see it
+		 * as an error so skip the trail_log in this
+		 * case.
+		 */
+		if (tres->code != THTTP_STATUS_CONFLICT)
+			trail_log_trest_err(tres);
 		trest_response_free(tres);
+	}
 	if (req)
 		thttp_request_free(req);
-	if (res)
+	if (res) {
+		trail_log_thttp_err(res);
 		thttp_response_free(res);
+	}
 
 	return ret;
 }
