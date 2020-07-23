@@ -145,9 +145,11 @@ struct pv_devinfo {
 	struct dl_list list;
 };
 
+#define PV_USERMETA_ADD 	(1<<0)
 struct pv_usermeta {
 	char *key;
 	char *value;
+	long flags;
 	struct dl_list list;
 };
 

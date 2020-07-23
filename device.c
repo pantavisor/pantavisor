@@ -191,6 +191,8 @@ static void usermeta_remove_hint(struct pv_usermeta *m)
 
 static void usermeta_free_one(struct pv_usermeta *usermeta)
 {
+	usermeta_remove_hint(usermeta);
+
 	if (usermeta->key)
 		free(usermeta->key);
 
@@ -237,8 +239,10 @@ struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 	if (curr) {
 		if (strcmp(curr->value, value) == 0)
 			changed = 0;
-		free(curr->value);
-		curr->value = strdup(value);
+		if (changed) {
+			free(curr->value);
+			curr->value = strdup(value);
+		}
 		goto out;
 	}
 
@@ -251,9 +255,11 @@ struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 		dl_list_add(&d->metalist, &curr->list);
 	}
 out:
-	if (changed)
-		usermeta_add_hint(curr);
+	if (curr)
+		curr->flags |= PV_USERMETA_ADD;
 
+	if (changed && curr)
+		usermeta_add_hint(curr);
 	return curr;
 }
 
@@ -336,8 +342,16 @@ static void usermeta_clear(struct pantavisor *pv)
 	head = &pv->dev->metalist;
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_usermeta, list) {
-		dl_list_del(&curr->list);
-		usermeta_free_one(curr);
+		/*
+		 * If ADD flag is set then clear it
+		 * for the next check cycle.
+		 */
+		if (curr->flags & PV_USERMETA_ADD)
+			curr->flags &= ~PV_USERMETA_ADD;
+		else {
+			dl_list_del(&curr->list);
+			usermeta_free_one(curr);
+		}
 	}
 }
 
@@ -469,15 +483,12 @@ int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
 	int ret;
 	char *body, *esc;
 
-	// clear old
-	usermeta_clear(pv);
-
 	body = strdup(buf);
 	esc = unescape_str_to_ascii(body, "\\n", '\n');
-
 	ret = pv_usermeta_parse(pv, esc);
 	free(esc);
-
+	// clear old
+	usermeta_clear(pv);
 	return ret;
 }
 
