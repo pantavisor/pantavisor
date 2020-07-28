@@ -103,7 +103,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_ptr client = 0;
 
-	client = pv_get_trest_client(pv);
+	client = pv_get_trest_client(pv, NULL);
 
 	if (!client) {
 		pv_log(INFO, "unable to create device client");
