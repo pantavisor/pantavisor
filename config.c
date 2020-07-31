@@ -199,7 +199,7 @@ void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *v
 	}
 }
 
-int load_key_value_file(char *path, struct dl_list *list)
+int load_key_value_file(const char *path, struct dl_list *list)
 {
 	FILE *fp;
 	char *buff = NULL, *__real_key = NULL;
