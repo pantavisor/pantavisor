@@ -75,6 +75,7 @@ typedef enum {
 	STATE_REBOOT,
 	STATE_ERROR,
 	STATE_EXIT,
+	STATE_FACTORY_UPLOAD,
 	MAX_STATES
 } pv_state_t;
 
@@ -91,6 +92,7 @@ static const char* pv_state_string(pv_state_t st)
 	case STATE_REBOOT: return "STATE_REBOOT";
 	case STATE_ERROR: return "STATE_ERROR";
 	case STATE_EXIT: return "STATE_EXIT";
+	case STATE_FACTORY_UPLOAD: return "STATE_FACTORY_UPLOAD";
 	default: return "STATE_UNKNOWN";
 	}
 
@@ -98,6 +100,16 @@ static const char* pv_state_string(pv_state_t st)
 }
 
 typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
+
+static pv_state_t _pv_factory_upload(struct pantavisor *pv)
+{
+	int ret = -1;
+	
+	ret = pv_device_factory_meta(pv);
+	if (ret)
+		return STATE_FACTORY_UPLOAD;
+	return STATE_WAIT;
+}
 
 static int pv_step_get_prev(struct pantavisor *pv)
 {
@@ -421,7 +433,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	if (c)
 		free(c);
 
-	return STATE_WAIT;
+	return STATE_FACTORY_UPLOAD;
 }
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
@@ -463,6 +475,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 	
+	if (!pv_device_factory_meta_done(pv))
+		return STATE_FACTORY_UPLOAD;
 
 	// update meta
 	pv_device_info_upload(pv);
@@ -733,7 +747,8 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 	_pv_rollback,
 	_pv_reboot,
 	_pv_error,
-	NULL
+	NULL,
+	_pv_factory_upload,
 };
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
