@@ -131,6 +131,15 @@ struct pv_log_info {
 	struct pv_platform *platform;
 };
 
+int load_key_value_file(const char *path, struct dl_list *list);
+char* config_get_value(struct dl_list *list, char *key);
+void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque);
+void config_clear_items(struct dl_list *list);
+/*
+ * returns 0 if item was actually deleted.
+ */
+int config_del_item(struct dl_list *list, char *key);
+
 static void pv_free_logger_config(struct pv_logger_config *item_config)
 {
 	int i = 0;
@@ -151,5 +160,4 @@ static void pv_free_logger_config(struct pv_logger_config *item_config)
 	free((void*)item_config->pair[i]);
 	free(item_config);
 }
-
 #endif
