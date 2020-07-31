@@ -35,39 +35,38 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 #include "utils.h"
-#include "utils/list.h"
 
 struct config_item {
 	char *key;
 	char *value;
 	struct config_item *next;
-	struct dl_list list;
 };
 
-static DEFINE_DL_LIST(config_list);
+static struct config_item *head = 0;
+static struct config_item *last;
 
-static struct config_item* _config_get_by_key(struct dl_list *list, char *key)
+static struct config_item* _config_get_by_key(char *key)
 {
-	struct config_item *curr = NULL, *tmp;
-	if (key == NULL || dl_list_empty(list))
+	struct config_item *curr;
+
+	if (key == NULL)
 		return NULL;
-	
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
+
+	for (curr = head; curr != NULL; curr = curr->next) {
 		if (strcmp(curr->key, key) == 0)
 			return curr;
 	}
+
 	// Value not found
 	return NULL;
 }
 
-static struct config_item* _config_add_item(struct dl_list *list,
-						char *key, char *value)
+static struct config_item* _config_add_item(char *key, char *value)
 {
 	struct config_item *this;
 
 	// Check if it already exists in config and change value instead
-	this = _config_get_by_key(list, key);
+	this = _config_get_by_key(key);
 	if (this) {
 		if (this->value)
 			free(this->value);
@@ -81,13 +80,20 @@ static struct config_item* _config_add_item(struct dl_list *list,
 
 	if (!this) {
 		pv_log(ERROR, "unable to allocate config item");
-		goto out;
+		return NULL;
 	}
 
 	// Check empty key
 	if (strcmp(key, "") == 0) {
-		goto out;
+		free(this);
+		return NULL;
 	}
+
+	if (!head)
+		head = this;
+	else
+		last->next = this;
+
 	// Set key
 	this->key = strdup(key);
 
@@ -96,110 +102,70 @@ static struct config_item* _config_add_item(struct dl_list *list,
 		this->value = strdup(value);
 	else
 		this->value = strdup(""); // Empty value
-	if (this->key && this->value)
-		dl_list_add_tail(list, &this->list);
-	else {
-		goto out;
-	}
+
+	this->next = NULL;
+	last = this;
+
 	return this;
-out:
-	if (this && this->key)
-		free(this->key);
-	if (this && this->value)
-		free(this->value);
-	free(this);
-	return NULL;
-}
-
-char* config_get_value(struct dl_list *list, char *key)
-{
-	struct config_item *curr = _config_get_by_key(list, key);
-
-	if (curr)
-		return curr->value;
-	// Value not found
-	return NULL;
 }
 
 static char* _config_get_value(char *key)
 {
-	return config_get_value(&config_list, key);
+	struct config_item *curr;
+
+	if (key == NULL)
+		return NULL;
+
+	for (curr = head; curr != NULL; curr = curr->next) {
+		if (strcmp(curr->key, key) == 0)
+			return curr->value;
+	}
+
+	// Value not found
+	return NULL;
 }
 
-static struct config_item* _config_replace_item(struct dl_list *list,
-						char *key, char *value)
+static struct config_item* _config_replace_item(char *key, char *value)
 {
 	struct config_item *curr = NULL;
 
-	if (key == NULL || dl_list_empty(list))
+	if (key == NULL)
 		return NULL;
 
-	curr = _config_get_by_key(list, key);
-	if (curr) {
-		char *tmp_val = strdup(value);
-
-		if (tmp_val) {
-			free(curr->value);
-			curr->value = tmp_val;
+	for (curr = head; curr != NULL; curr = curr->next) {
+		if (strcmp(curr->key, key) == 0) {
+			if (curr->value)
+				free(curr->value);
+			curr->value = strdup(value);
+			return curr;
 		}
-		return curr;
 	}
+
 	// not found? add it
-	return _config_add_item(list, key, value);
+	return _config_add_item(key, value);
 }
 
-int config_del_item(struct dl_list *list, char *key)
+static void _config_del_item(char *key)
 {
-	struct config_item *curr = NULL, *tmp;
-	int ret = -1;
+	struct config_item *curr;
+	struct config_item *prev;
 
-	if (key == NULL || dl_list_empty(list))
+	if (key == NULL)
 		return;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
+
+	for (curr = prev = head; curr != NULL; curr = curr->next) {
 		if (strcmp(curr->key, key) == 0) {
-			dl_list_del(&curr->list);
 			free(curr->key);
 			free(curr->value);
+			if (prev != curr)
+				prev->next = curr->next;
 			free(curr);
-			ret = 0;
-			break;
 		}
-	}
-	return -1;
-}
-
-void config_clear_items(struct dl_list *list)
-{
-	struct config_item *curr = NULL, *tmp;
-
-	if (dl_list_empty(list))
-		return;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
-		dl_list_del(&curr->list);
-		free(curr->key);
-		free(curr->value);
-		free(curr);
+		prev = curr;
 	}
 }
 
-void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque)
-{
-	struct config_item *curr = NULL, *tmp;
-	
-	if (dl_list_empty(list))
-		return;
-	if (!action)
-		return;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
-		if (action(curr->key, curr->value, opaque))
-			break;
-	}
-}
-
-int load_key_value_file(const char *path, struct dl_list *list)
+static int load_key_value_file(char *path)
 {
 	FILE *fp;
 	char *buff = NULL, *__real_key = NULL;
@@ -225,7 +191,7 @@ int load_key_value_file(const char *path, struct dl_list *list)
 			__real_key = (char*) calloc(1, key - buff + 1);
 			if (__real_key) {
 				sprintf(__real_key, "%.*s", (int)(key - buff), buff);
-				_config_add_item(list, __real_key, value);
+				_config_add_item(__real_key, value);
 				free(__real_key);
 			}
 		}
@@ -277,7 +243,7 @@ static int _config_parse_cmdline(char *hint)
 			nl = strchr(value, '\n');
 			if (nl) /* get rid of newline at end */
 				*nl = '\0';
-			_config_replace_item(&config_list, key, value);
+			_config_replace_item(key, value);
 		}
 		token = strtok_r(NULL, " ", &ptr_out);
 	}
@@ -291,7 +257,7 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 {
 	char *item;
 
-	if (load_key_value_file(path, &config_list) < 0)
+	if (load_key_value_file(path) < 0)
 		return -1;
 
 	// for overrides
@@ -347,7 +313,7 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 {
 	char *item;
 
-	if (load_key_value_file(path, &config_list) < 0)
+	if (load_key_value_file(path) < 0)
 		return -1;
 
 	// for overrides

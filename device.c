@@ -31,7 +31,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
-#include <dirent.h>
 
 #define MODULE_NAME             "device"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -458,7 +457,7 @@ upload:
 			if (json_avail > frag_len) {
 				snprintf(json + len, json_avail,
 						"\"%s\":\"%s\",",
-						key, val);
+						info->key, info->value);
 				len += frag_len;
 				json_avail -= frag_len;
 			}
@@ -477,154 +476,6 @@ upload:
 out:
 	pv_log_put_buffer(log_buffer);
 	return 0;
-}
-
-/*
- * For iteration over config items.
- */
-struct json_buf {
-	char *buf;
-	const char *factory_file;
-	int len;
-	int avail;
-};
-/*
- * opaque is the json buffer.
- */
-static int on_factory_meta_iterate(char *key, char *value, void *opaque)
-{
-	struct json_buf *json_buf = (struct json_buf*) opaque;
-	char abs_key[PATH_MAX + (PATH_MAX / 2)];
-	char *formatted_key = NULL;
-	char *formatted_val = NULL;
-	int json_avail = json_buf->avail;
-	int len = json_buf->len;
-	bool written = false;
-	char file[PATH_MAX];
-	char *fname = NULL;
-
-	strcpy(file, json_buf->factory_file);
-	fname = basename(file);
-	snprintf(abs_key, sizeof(abs_key), "factory/%s/%s", fname, key);
-	formatted_key = format_json(abs_key, strlen(abs_key));
-	formatted_val = format_json(value, strlen(value));
-
-	if (formatted_key && formatted_val) {
-		int frag_len = strlen(formatted_key) + strlen(formatted_val) +
-			/* 2 pairs of quotes*/
-			2 * 2 +
-			/* 1 colon and a ,*/
-			1 + 1;
-		if (json_avail > frag_len) {
-			snprintf(json_buf->buf + len, json_avail,
-					"\"%s\":\"%s\",",
-					formatted_key, formatted_val);
-			len += frag_len;
-			json_avail -= frag_len;
-			json_buf->len = len;
-			json_buf->avail = json_avail;
-			written = true;
-		}
-	}
-	if (formatted_key)
-		free(formatted_key);
-	if (formatted_val)
-		free(formatted_val);
-	return written ? 0 : -1;
-}
-
-static int __pv_device_factory_meta(struct pantavisor *pv, const char *factory_file)
-{
-	int ret = -1;
-	DEFINE_DL_LIST(factory_kv_list);
-	struct log_buffer *log_buffer = NULL;
-	char *json_holder = NULL;
-	int json_len = 0;
-	int json_avail = 0;
-	struct json_buf json_buf;
-
-	if (!factory_file)
-		goto out;
-	ret = load_key_value_file(factory_file, &factory_kv_list);
-	if (ret < 0)
-		goto out;
-	log_buffer = pv_log_get_buffer(true);
-	if (!log_buffer)
-		goto out;
-
-	json_holder = log_buffer->buf;
-	json_avail = log_buffer->size;
-	json_avail -= sprintf(json_holder, "{");
-	json_len += 1;
-
-	json_buf.buf = json_holder;
-	json_buf.len = json_len;
-	json_buf.avail = json_avail;
-	json_buf.factory_file = factory_file;
-	config_iterate_items(&factory_kv_list,
-			on_factory_meta_iterate, &json_buf);
-	json_len = json_buf.len;
-	/*
-	 * replace last ,.
-	 */
-	json_holder[json_len - 1] = '}';
-	
-	ret = pv_ph_upload_metadata(pv, json_holder);
-	pv_log_put_buffer(log_buffer);
-	pv_log(INFO, "metadata_json : %s", json_holder);
-	config_clear_items(&factory_kv_list);
-out:
-	return ret;
-}
-
-int pv_device_factory_meta(struct pantavisor *pv)
-{
-	struct dirent **dirlist = NULL;
-	int n = 0;
-	char abs_path[PATH_MAX];
-	char factory_dir[PATH_MAX];
-	bool upload_failed = false;
-
-	snprintf(factory_dir, sizeof(factory_dir), "%s/%s",
-			pv->config->storage.mntpoint, "factory/meta");
-	n = scandir(factory_dir, &dirlist, NULL, alphasort);
-	if (n < 0) {
-		pv_log(WARN, "%s :", strerror(errno));
-		return -1;
-	}
-	while (n > 0) {
-		struct stat st;
-		n--;
-		if (!upload_failed) {
-			snprintf(abs_path, sizeof(abs_path),
-				"%s/%s", factory_dir, dirlist[n]->d_name);
-			if (!stat(abs_path, &st)) {
-				if ((st.st_mode & S_IFMT) == S_IFREG) {
-					int ret = -1;
-
-					ret = __pv_device_factory_meta(pv,
-							(const char*)abs_path);
-					if (ret)
-						upload_failed = true;
-				}
-			}
-		}
-		free(dirlist[n]);
-	}
-	if (dirlist)
-		free(dirlist);
-	if (!upload_failed) {
-		int fd;
-		/*
-		 * reusing abs_path
-		 */
-		snprintf(abs_path, sizeof(abs_path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
-		fd = open(abs_path, O_CREAT | O_SYNC);
-		if (fd < 0)
-			pv_log(ERROR, "Unable to open file %s", abs_path);
-		close(fd);
-	}
-	return upload_failed ? -1 : 0;
 }
 
 int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
@@ -663,14 +514,3 @@ int pv_device_init(struct pantavisor *pv)
 	return 0;
 }
 
-bool pv_device_factory_meta_done(struct pantavisor *pv)
-{
-	char path[PATH_MAX];
-	struct stat st;
-
-	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
-
-	if (stat(path, &st))
-		return false;
-	return true;
-}
