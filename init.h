@@ -50,4 +50,38 @@
 #include <pthread.h>
 #include <sys/types.h>
 
+#define PV_INIT_FLAG_CANFAIL 	(1<<0)
+
+struct pv_init {
+	int flags;
+	/*
+	 * Initializer function to call.
+	 */
+	int (*init_fn)(struct pv_init*);
+	/*
+	 * Data for use by init_fn.
+	 */
+	void *data;
+	/*
+	 * private data for internal use, not
+	 * available to init_fn.
+	 */
+	void *priv;
+};
+
+extern struct pv_init *pv_init_tbl[];
+extern struct pv_init pv_init_bl;
+extern struct pv_init pv_init_config;
+extern struct pv_init ph_init_config;
+extern struct pv_init pv_init_device;
+extern struct pv_init pv_init_log;
+extern struct pv_init pv_init_mount;
+extern struct pv_init ph_init_mount;
+extern struct pv_init pv_init_network;
+extern struct pv_init pv_init_state;
+extern struct pv_init pv_init_revision;
+extern struct pv_init pv_init_platform;
+extern struct pv_init pv_init_update;
+
+int pv_do_execute_init(void);
 #endif

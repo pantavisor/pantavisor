@@ -48,6 +48,7 @@ int setns(int nsfd, int nstype);
 #include "pvlogger.h"
 #include "utils/list.h"
 #include "utils.h"
+#include "init.h"
 
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
@@ -570,3 +571,21 @@ int pv_platforms_check_exited(struct pantavisor *pv)
 
 	return 0;
 }
+
+static int pv_platforms_early_init(struct pv_init *this)
+{
+	struct pantavisor *pv = NULL;
+
+	pv = get_pv_instance();
+	// init platform controllers
+	if (!pv_platforms_init_ctrl(pv)) {
+		pv_log(ERROR, "unable to load any container runtime plugin");
+		return -1;
+	}
+	return 0;
+}
+
+struct pv_init pv_init_platform = {
+	.init_fn = pv_platforms_early_init,
+	.flags = 0,
+};

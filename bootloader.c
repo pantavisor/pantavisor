@@ -38,6 +38,7 @@
 #include "utils.h"
 
 #include "bootloader.h"
+#include "init.h"
 
 const struct bl_ops *ops = 0;
 
@@ -121,3 +122,21 @@ int pv_bl_install_kernel(struct pantavisor *pv, char *obj)
 
 	return ops->install_kernel(obj);
 }
+
+static int pv_bl_early_init(struct pv_init *this)
+{
+	struct pantavisor *pv = NULL;
+
+	pv = get_pv_instance();
+	if (!pv)
+		return -1;
+	// init bootloader ops
+	if (pv_bl_init(pv) < 0)
+		return -1;
+	return 0;
+}
+
+struct pv_init pv_init_bl = {
+	.init_fn = pv_bl_early_init,
+	.flags = 0,
+};

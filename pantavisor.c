@@ -54,6 +54,8 @@
 #include "pantahub.h"
 #include "tsh.h"
 #include "utils/list.h"
+#include "revision.h"
+#include "init.h"
 
 pid_t pv_pid;
 static struct pantavisor* global_pv;
@@ -75,12 +77,24 @@ void pv_set_active(struct pantavisor *pv)
 	struct stat st;
 	char *path, *cur;
 
+	/*
+	 * Error case should at least remove
+	 * the trails/current symlink so we don't
+	 * point to a previous revision.
+	 */
 	path = calloc(1, PATH_MAX);
 	if (!path)
 		return;
 
 	sprintf(path, "%s/trails/%d", pv->config->storage.mntpoint, pv->state->rev);
 	cur = calloc(1, PATH_MAX);
+
+	/*
+	 * [PKS]
+	 * Instead of bailing out should we remove
+	 * the current link at-least to the current
+	 * doesn't point to a previous revision?
+	 */
 	if (!cur)
 		goto out;
 
@@ -123,6 +137,11 @@ int pv_make_config(struct pantavisor *pv)
 		pv_log(INFO, "Processing trail_config: %s", cmd);
 	}
 
+	/*
+	 * [PKS]
+	 * Should we do a tsh_run and wait
+	 * for command to finish?
+	 */
 	rv = system(cmd);
 	return rv;
 }
@@ -242,10 +261,19 @@ void pv_meta_set_objdir(struct pantavisor *pv)
 		return;
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
+	/*
+	 * [PKS]
+	 * check for
+	 * fd < 0
+	 */
 	if (!fd)
 		goto err;
 
 	sprintf(path, "{\"ObjectsDir\": \"%s/objects\"}", pv->config->storage.mntpoint);
+	/*
+	 * [PKS]
+	 * Use write_nointr
+	 */
 	if (write(fd, path, strlen(path)) < 0)
 		goto err;
 
@@ -650,3 +678,32 @@ struct pv_log_info* pv_new_log(bool islxc,
 out:
 	return NULL;
 }
+
+static int pv_state_init(struct pv_init *this)
+{
+	struct pantavisor *pv = NULL;
+	int ret = -1;
+	int pv_rev = 0;
+
+	pv = get_pv_instance();
+	if (!pv)
+		goto out;
+	pv_rev = pv_revision_get_rev();
+	// Make sure this is initialized
+	pv->state = NULL;
+	pv->remote = NULL;
+	pv->update = NULL;
+	pv->last = -1;
+	// parse boot rev
+	pv->state = pv_get_state(pv, pv_rev);
+	if (!pv->state)
+		goto out;
+	ret = 0;
+out:
+	return ret;
+}
+
+struct pv_init pv_init_state = {
+	.init_fn = pv_state_init,
+	.flags = 0,
+};

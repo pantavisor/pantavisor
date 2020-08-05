@@ -49,6 +49,7 @@
 #include "wdt.h"
 #include "network.h"
 #include "blkid.h"
+#include "init.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -61,7 +62,6 @@
 #define CMDLINE_OFFSET	7
 
 static int rb_count;
-static int current;
 static time_t wait_delay;
 
 typedef enum {
@@ -125,231 +125,14 @@ static int pv_step_get_prev(struct pantavisor *pv)
 static pv_state_t _pv_init(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-	int fd, ret, bytes;
-	int pv_rev = 0, pv_try = 0, pv_boot = -1;
-	int bl_rev = 0;
-	char *buf;
-	char *token;
-	char pconfig_p[256];
 	struct pantavisor_config *c;
-	struct stat st;
-	struct blkid_info dev_info;
 
 	// Initialize flags
 	pv->flags = 0;
-	blkid_init(&dev_info);
-
 	c = calloc(1, sizeof(struct pantavisor_config));
 	pv->config = c;
-
-        if (pv_config_from_file(PV_CONFIG_FILENAME, c) < 0) {
-		printf("FATAL: unable to parse pantavisor config");
+	if (pv_do_execute_init())
 		return STATE_EXIT;
-	}
-
-	if (c->revision_retries <= 0)
-		MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
-	else 
-		MAX_REVISION_RETRIES = c->revision_retries;
-
-	if (c->revision_retry_timeout <= 0)
-		DOWNLOAD_RETRY_WAIT = DEFAULT_DOWNLOAD_RETRY_WAIT;
-	else
-		DOWNLOAD_RETRY_WAIT = c->revision_retry_timeout;
-
-	// Create storage mountpoint and mount device
-        mkdir_p(c->storage.mntpoint, 0755);
-	
-	/*
-	 * Check that storage device has been enumerated and wait if not there yet
-	 * (RPi2 for example is too slow to pvan the MMC devices in time)
-	 */
-	for (int wait = 5; wait > 0; wait--) {
-		/*
-		 * storage.path will contain UUID=XXXX or LABEL=XXXX
-		 * */
-		get_blkid(&dev_info, c->storage.path);
-		if (dev_info.device && stat(dev_info.device, &st) == 0)
-			break;
-		printf("INFO: trail storage not yet available, waiting...");
-		sleep(1);
-		continue;
-	}
-
-	if (!dev_info.device)
-		exit_error(errno, "Could not mount trails storage. No device found.");
-
-	if (!c->storage.mnttype) {
-		ret = mount(dev_info.device, c->storage.mntpoint, c->storage.fstype, 0, NULL);
-	} else {
-		int status;
-		char *mntcmd = calloc(sizeof(char), strlen("/btools/pvmnt.%s %s") + strlen (c->storage.mnttype) + strlen (c->storage.mntpoint) + 1);
-		sprintf(mntcmd, "/btools/pvmnt.%s %s", c->storage.mnttype, c->storage.mntpoint);
-		printf("Mounting through helper: %s\n", mntcmd);
-		ret = tsh_run(mntcmd, 1, &status);
-		free(mntcmd);
-	}
-	if (ret < 0)
-		exit_error(errno, "Could not mount trails storage");
-
-	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
-
-	sprintf(pconfig_p, "%s/config/pantahub.config", c->storage.mntpoint);
-	if (ph_config_from_file(pconfig_p, c) < 0) {
-		printf("FATAL: unable to parse pantahub config");
-		return STATE_EXIT;
-	}
-
-	// Make pantavisor control area
-	if (stat("/pv", &st) != 0)
-		mkdir_p("/pv", 0500);
-
-	if (stat(c->logdir, &st) != 0)
-		mkdir_p(c->logdir, 0500);
-
-	if (stat(c->metacachedir, &st) != 0)
-		mkdir_p(c->metacachedir, 0500);
-
-	if (stat(c->dropbearcachedir, &st) != 0)
-		mkdir_p(c->dropbearcachedir, 0500);
-
-	wait_delay = 0;
-	// Get current step revision from cmdline
-	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0)
-		return -1;
-
-	buf = calloc(1, sizeof(char) * (1024 + 1));
-	bytes = read(fd, buf, sizeof(char)*1024);
-	close(fd);
-
-	token = strtok(buf, " ");
-	while (token) {
-		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0)
-			pv_rev = atoi(token + CMDLINE_OFFSET);
-		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
-			pv_try = atoi(token + CMDLINE_OFFSET);
-		else if (strncmp("pv_boot=", token, CMDLINE_OFFSET) == 0)
-			pv_boot = atoi(token + CMDLINE_OFFSET + 1);
-		token = strtok(NULL, " ");
-	}
-	free(buf);
-	pv_log_init(pv, pv_rev);
-
-	if (c->loglevel)
-		pv_log_set_level(c->loglevel);
-
-	pv_device_init(pv);
-
-	pv_log(INFO, "______           _              _                ");
-	pv_log(INFO, "| ___ \\         | |            (_)               ");
-	pv_log(INFO, "| |_/ /_ _ _ __ | |_ __ ___   ___ ___  ___  _ __ ");
-	pv_log(INFO, "|  __/ _` | '_ \\| __/ _` \\ \\ / / / __|/ _ \\| '__|");
-	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
-	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
-	pv_log(INFO, "                                                 ");
-	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
-	pv_log(INFO, "                                                 ");
-	pv_log(DEBUG, "c->storage.path = '%s'", c->storage.path);
-	pv_log(DEBUG, "c->storage.fstype = '%s'", c->storage.fstype);
-	pv_log(DEBUG, "c->storage.opts = '%s'", c->storage.opts);
-	pv_log(DEBUG, "c->storage.mntpoint = '%s'", c->storage.mntpoint);
-	pv_log(DEBUG, "c->storage.mnttype = '%s'", c->storage.mnttype ? c->storage.mnttype : "");
-	pv_log(DEBUG, "c->creds.host = '%s'", c->creds.host);
-	pv_log(DEBUG, "c->creds.port = '%d'", c->creds.port);
-	pv_log(DEBUG, "c->creds.id = '%s'", c->creds.id);
-	pv_log(DEBUG, "c->creds.prn = '%s'", c->creds.prn);
-	pv_log(DEBUG, "c->creds.secret = '%s'", c->creds.secret);
-
-	// create hints
-	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
-	close(fd);
-	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
-
-	// init pv cmd control socket
-	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") > 0)
-		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
-
-	char tmp[256];
-	if (strcmp(c->creds.prn, "") == 0) {
-		pv->flags |= DEVICE_UNCLAIMED;
-	} else {
-		sprintf(tmp, "%s\n", c->creds.id);
-		write(fd, tmp, strlen(tmp));
-	}
-
-	close(fd);
-
-	// init network helpers
-	pv_network_init(pv);
-
-	// expose pantahub host
-	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
-	sprintf(tmp, "https://%s:%d\n", c->creds.host, c->creds.port);
-	write(fd, tmp, strlen(tmp));
-	close(fd);
-
-
-	// init platform controllers
-	if (!pv_platforms_init_ctrl(pv)) {
-		pv_log(ERROR, "unable to load any container runtime plugin");
-		return STATE_ERROR;
-	}
-
-	// init bootloader ops
-	if (pv_bl_init(pv) < 0)
-		return STATE_ERROR;
-
-
-
-	// Make sure this is initialized
-	pv->state = 0;
-	pv->remote = 0;
-	pv->update = 0;
-	pv->last = -1;
-
-	pv_log(DEBUG, "%s():%d pv_try=%d, pv_rev=%d", __func__, __LINE__, pv_try, pv_rev);
-
-	if (ph_logger_service_start(pv, LOG_CTRL_PATH, pv_rev) <= 0) {
-		pv_log(ERROR, "Unable to start logger service.");
-	}
-
-	if (ph_logger_service_start_for_range(pv, pv_rev) <= 0) {
-		pv_log(ERROR, "Unable to start range logger service.");
-	}
-
-	// parse boot rev
-	pv->state = pv_get_state(pv, pv_rev);
-
-	// FIXME: maybe add some fallback configuration option
-	if (!pv->state)
-		return STATE_ERROR;
-
-	// get try revision from bl
-	bl_rev = pv_bl_get_try(pv);
-
-	if (bl_rev <= 0)
-		return STATE_RUN;
-
-	if (bl_rev == pv_rev) {
-		pv_update_start(pv, 1);
-		pv_update_set_status(pv, UPDATE_TRY);
-	} else {
-		struct pv_state *s = pv->state;
-		pv->state = pv_get_state(pv, bl_rev);
-		if (pv->state) {
-			pv_update_start(pv, 1);
-			pv_update_set_status(pv, UPDATE_FAILED);
-			pv_release_state(pv);
-			pv->state = s;
-		}
-	}
-
-	if (!pv->state) {
-		pv_log(ERROR, "invalid state requested, please reconfigure");
-		return STATE_ERROR;
-	}
-
         return STATE_RUN;
 }
 
@@ -367,6 +150,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (pv_volumes_mount(pv) < 0)
 		return STATE_ROLLBACK;
 
+	/*
+	 * [PKS]
+	 * mark active only when platforms have been started.
+	 */
 	pv_set_active(pv);
 
 	ret = pv_make_config(pv);
@@ -436,61 +223,73 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	return STATE_FACTORY_UPLOAD;
 }
 
-static pv_state_t _pv_wait(struct pantavisor *pv)
+/*
+ * Network intensive work should be ideally
+ * done in it's own process.
+ * Most of the time we don't need anything from pantavisor
+ * apart from endpoints which can be created locally.
+ */
+static int pv_meta_update_to_ph(struct pantavisor *pv)
 {
-	int ret;
-	int timeout_max = pv->config->updater.network_timeout
-		/ pv->config->updater.interval;
-
-	struct timespec tp;
-	static bool status_updated = false;
-	static enum update_state current_status = UPDATE_DONE;
-
-	if (pv->req) {
-		pv_log(WARN, "stable command found queued, discarding");
-		pv_cmd_finish(pv);
-		return STATE_WAIT;
-	}
-
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	if (wait_delay > tp.tv_sec) {
-		pv->req = pv_cmd_socket_wait(pv, 5);
-		if (pv->req)
-			return STATE_COMMAND;
-		else
-			return STATE_WAIT;
-	}
-
-	if (pv->flags & DEVICE_UNCLAIMED)
-		return STATE_UNCLAIMED;
-
-	if (!pv_ph_is_available(pv)) {
-		rb_count++;
-		if (!pv_rev_is_done(pv, pv->state->rev) &&
-			 (rb_count > timeout_max)) {
-			return STATE_ROLLBACK;
-		}
-		clock_gettime(CLOCK_MONOTONIC, &tp);
-		wait_delay = tp.tv_sec + pv->config->updater.interval;
-		return STATE_WAIT;
-	}
-	
-	if (!pv_device_factory_meta_done(pv))
-		return STATE_FACTORY_UPLOAD;
-
+	if (!pv)
+		return 0;
 	// update meta
 	pv_device_info_upload(pv);
 	pv_network_update_meta(pv);
 	pv_ph_device_get_meta(pv);
+	return 0;
+}
 
-	// reset rollback rb_count
-	rb_count = 0;
+/*
+ * _pv_wait is doing the following,
+ *
+ * 1. Waiting for a command on commad socket,
+ * 2. Checking if device is unclaimed,
+ * 3. Checking if ph is available,
+ * 4. Updating meta information to PH,
+ * 5. Check if a platform has exited,
+ * 6. Clears an update if pending, either failed or success,
+ * 7. Sets device status.
+ *
+ * I propose to move all network part or things which can
+ * be offloaded to separate process. These would include mostly
+ * the network operations.
+ *
+ * In above network operations include,
+ * -> check if PH is available.
+ * -> updating meta infromation to PH,
+ * -> check if update is available,
+ *
+ * -> Update needs to be cleared later after we've successfully
+ * started all the platforms and uploaded the information to PH
+ * 
+ * This can be taken care of in the helper thread as follows,
+ * -> When the update is cleared, the helper posts a command
+ * to pv to clear bl
+ * 
+ * All the above operations can be done in a separate helper
+ * process. That process will post a command to pv which we'll
+ * read in _pv_wait below and act upon that.
+ *
+ * Device update / pending etc should be done while handling
+ * update state.
+ */
 
-	// check if any platform has exited and we need to tear down
-	if (pv_platforms_check_exited(pv)) {
-		pv_log(WARN, "one or more platforms exited, tearing down");
-		return STATE_REBOOT;
-	}
+static pv_state_t pv_update_helper(struct pantavisor *pv)
+{
+	static enum update_state current_status = UPDATE_DONE;
+	static bool status_updated = false;
+	struct timespec tp;
+	pv_state_t next_state = STATE_WAIT;
+	int ret = 0;
+	int timeout_max = pv->config->updater.network_timeout
+		/ pv->config->updater.interval;
+
+	/*
+	 * The update struct would become private and not
+	 * associated with pv at all. pv would only contain
+	 * state and config information.
+	 */
 
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY) {
@@ -519,31 +318,93 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			status_updated = true;
 		current_status = UPDATE_FAILED;
 	}
-
-	// make sure we always keep a ref to the latest working DONE step
-	if (current != pv->state->rev && !pv_meta_get_tryonce(pv)) {
-		current = pv->state->rev;
-		pv_set_current(pv, current);
-		pv->last = pv->state->rev;
-	}
-
 	// check for updates
 	ret = pv_check_for_updates(pv);
-
+	
 	/* set delay to at most the updater interval */
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = tp.tv_sec + pv->config->updater.interval;
-
 	if (ret > 0) {
 		pv_log(INFO, "updates found");
-		return STATE_UPDATE;
+		next_state = STATE_UPDATE;
+		goto out;
 	}
 
 	if (!status_updated && !pv_set_current_status(pv, current_status))
 		status_updated = true;
-	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
+out:
+	return next_state;
+}
 
-	return STATE_WAIT;
+/*
+ * Helper process comprises of most of the network actions.
+ * 1. Uploading Meta information (One time).
+ * 2. Checking for updates.
+ * 3. Checking for PH availability
+ *
+ * Return statement of helper process would be made into
+ * a separate command for command socket.
+ */
+static pv_state_t pv_helper_process(struct pantavisor *pv)
+{
+	pv_state_t next_state = STATE_WAIT;
+	struct timespec tp;
+	int timeout_max = pv->config->updater.network_timeout
+		/ pv->config->updater.interval;
+
+	if (!pv_ph_is_available(pv)) {
+		rb_count++;
+		if (!pv_rev_is_done(pv, pv->state->rev) &&
+				(rb_count > timeout_max)) {
+			next_state = STATE_ROLLBACK;
+			goto out;
+		}
+		clock_gettime(CLOCK_MONOTONIC, &tp);
+		wait_delay = tp.tv_sec + pv->config->updater.interval;
+		goto out;
+	}
+	if (!pv_device_factory_meta_done(pv)) {
+		next_state = STATE_FACTORY_UPLOAD;
+		goto out;
+	}
+	pv_meta_update_to_ph(pv);
+	next_state = pv_update_helper(pv);
+out:
+	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
+	return next_state;
+}
+
+static pv_state_t _pv_wait(struct pantavisor *pv)
+{
+	struct timespec tp;
+	pv_state_t next_state = STATE_WAIT;
+
+	if (pv->req) {
+		pv_log(WARN, "stable command found queued, discarding");
+		pv_cmd_finish(pv);
+		goto out;
+	}
+
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	if (wait_delay > tp.tv_sec) {
+		pv->req = pv_cmd_socket_wait(pv, 5);
+		if (pv->req)
+			next_state = STATE_COMMAND;
+		goto out;
+	}
+
+	if (pv->flags & DEVICE_UNCLAIMED)
+		return STATE_UNCLAIMED;
+	// check if any platform has exited and we need to tear down
+	if (pv_platforms_check_exited(pv)) {
+		pv_log(WARN, "one or more platforms exited, tearing down");
+		next_state = STATE_REBOOT;
+		goto out;
+	}
+	next_state = pv_helper_process(pv);
+out:
+	pv_log(DEBUG, "going to state = %s", pv_state_string(next_state));
+	return next_state;
 }
 
 static pv_state_t _pv_command(struct pantavisor *pv)
@@ -611,41 +472,24 @@ out:
 	return next_state;
 }
 
-static pv_state_t _pv_update(struct pantavisor *pv)
+/*
+ * This is going to be part of CMD_UPDATE_DOWNLOAD
+ * this command will trigger the platforms to be stopped
+ * and device to be rebooted.
+ *
+ * The return statement would become a message to pv process.
+ */
+static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 {
-	int ret;
-
-	// queue locally and in cloud, block step
-	// FIXME: requires pv_update_finish() call after RUN or boot
-	ret = pv_update_start(pv, 0);
-	if (ret < 0) {
-		pv_log(INFO, "unable to queue update, abandoning it");
-		return STATE_WAIT;
-	} else if (ret > 0) {
-		int time_left = pv->update->retry_at - time(NULL);
-
-		pv_log(INFO, "Retrying in %d seconds", (time_left > 0 ? time_left : 0));
-		return STATE_WAIT;
-	}
-
-	// download and install pending step
-	ret = pv_update_install(pv);
-
-	if (ret < 0) {
-		pv_log(ERROR, "update has failed, continue");
-		pv_update_finish(pv);
-		return STATE_WAIT;
-	}
-
-	pv_log(WARN, "New trail state accepted, stopping current state.");
+	pv_state_t next_state = STATE_RUN;
 
 	pv->online = false;
-
 	// stop current step
-	if (pv_platforms_stop_all(pv) < 0)
-		return STATE_ROLLBACK;
-	if (pv_volumes_unmount(pv) < 0)
-		return STATE_ROLLBACK;
+	if (pv_platforms_stop_all(pv) < 0 || 
+			pv_volumes_unmount(pv) < 0) {
+		next_state = STATE_ROLLBACK;
+		goto out;
+	}
 
 	// Release current step
 	pv_release_state(pv);
@@ -653,20 +497,50 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	// For now, trigger a reboot for all updates
 	if (pv->update->need_reboot) {
 		pv_log(WARN, "Update requires reboot, rebooting...");
-		return STATE_REBOOT;
+		next_state = STATE_REBOOT;
+		goto out;
 	}
 
-	pv_log(WARN, "State update applied, starting new revision.", ret);
+	pv_log(WARN, "State update applied, starting new revision %d", rev);
 
 	// Load installed step
-	pv->state = pv_get_state(pv, ret);
+	pv->state = pv_get_state(pv, rev);
 
 	if (pv->state == NULL) {
 		pv_log(WARN, "unable to load new step state, rolling back");
-		return STATE_ROLLBACK;
+		next_state = STATE_ROLLBACK;
 	}
+out:
+	return next_state;
+}
 
-	return STATE_RUN;
+static pv_state_t _pv_update(struct pantavisor *pv)
+{
+	int ret = -1;
+	pv_state_t next_state = STATE_WAIT;
+
+	// queue locally and in cloud, block step
+	// FIXME: requires pv_update_finish() call after RUN or boot
+	ret = pv_update_start(pv, 0);
+	if (ret < 0) {
+		pv_log(INFO, "unable to queue update, abandoning it");
+		goto out;
+	} else if (ret > 0) {
+		int time_left = pv->update->retry_at - time(NULL);
+
+		pv_log(INFO, "Retrying in %d seconds", (time_left > 0 ? time_left : 0));
+		goto out;
+	}
+	// download and install pending step
+	ret = pv_update_install(pv);
+	if (ret < 0) {
+		pv_log(ERROR, "update has failed, continue");
+		pv_update_finish(pv);
+		goto out;
+	}
+	next_state = pv_do_post_download_update(pv, ret);
+out:
+	return next_state;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
@@ -678,6 +552,13 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	if (pv->state && pv->state->rev == 0)
 		return STATE_ERROR;
 
+	/*
+	 * [PKS]
+	 * rollback will only do rollback without posting
+	 * any update status. When an update fails, the updater
+	 * process will itself post the status message that update
+	 * failed.
+	 */
 	// If we rollback, it means the considered OK update (kernel)
 	// actually failed to start platforms or mount volumes
 	if (pv->update)
@@ -707,6 +588,11 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 	if (!pv->update)
 		goto out;
 
+	/*
+	 * [PKS]
+	 * This will move to updater process.
+	 * Reboot will only sync + reboot.
+	 */
 	pv_update_finish(pv);
 
 out:
@@ -725,15 +611,8 @@ out:
 
 static pv_state_t _pv_error(struct pantavisor *pv)
 {
-	int count = 0;
-
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-
-	while (count < 2) {
-		sleep(5);
-		return STATE_ERROR;
-	}
-
+	
 	return STATE_REBOOT;
 }
 

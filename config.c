@@ -36,6 +36,7 @@
 #include "log.h"
 #include "utils.h"
 #include "utils/list.h"
+#include "init.h"
 
 struct config_item {
 	char *key;
@@ -154,7 +155,7 @@ int config_del_item(struct dl_list *list, char *key)
 	int ret = -1;
 
 	if (key == NULL || dl_list_empty(list))
-		return;
+		goto out;
 	dl_list_for_each_safe(curr, tmp, list,
 			struct config_item, list) {
 		if (strcmp(curr->key, key) == 0) {
@@ -166,7 +167,8 @@ int config_del_item(struct dl_list *list, char *key)
 			break;
 		}
 	}
-	return -1;
+out:
+	return ret;
 }
 
 void config_clear_items(struct dl_list *list)
@@ -521,3 +523,51 @@ const char* pv_log_get_config_item(struct pv_logger_config *config,
 	}
 	return NULL;
 }
+static int pv_config_init(struct pv_init *this)
+{
+	struct pantavisor *pv = NULL;
+	struct pantavisor_config *config = NULL;
+	int ret = -1;
+
+	pv = get_pv_instance();
+	if (!pv || !pv->config)
+		goto out;
+	config = pv->config;
+        if (pv_config_from_file(PV_CONFIG_FILENAME, config) < 0) {
+		printf("FATAL: unable to parse pantavisor config");
+		goto out;
+	}
+	ret = 0;
+out:
+	return ret;
+}
+
+static int ph_config_init(struct pv_init *this)
+{
+	char pconfig_p[256];
+	struct pantavisor *pv = NULL;
+	struct pantavisor_config *config = NULL;
+	int ret = -1;
+
+	pv = get_pv_instance();
+	if (!pv || !pv->config)
+		goto out;
+	config = pv->config;
+	sprintf(pconfig_p, "%s/config/pantahub.config", config->storage.mntpoint);
+	if (ph_config_from_file(pconfig_p, config) < 0) {
+		printf("FATAL: unable to parse pantahub config");
+		goto out;
+	}
+	ret = 0;
+out:
+	return ret;
+}
+struct pv_init pv_init_config =  {
+	.init_fn = pv_config_init,
+	.flags = 0,
+};
+struct pv_init ph_init_config =  {
+	.init_fn = ph_config_init,
+	.flags = 0,
+};
+
