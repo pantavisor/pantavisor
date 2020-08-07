@@ -697,6 +697,14 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	char path[PATH_MAX];
 	struct stat st;
 
+	/*
+	 * Don't check for meta done for non-factory
+	 * boot revision. It's possible that trails/0
+	 * may not exist and the device would then be
+	 * stuck getting any updates.
+	 */
+	if (pv_revision_get_rev() !=0 )
+		return true;
 	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
 
 	if (stat(path, &st))
