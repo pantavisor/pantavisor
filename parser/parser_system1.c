@@ -62,11 +62,40 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
-	s->modules = get_json_key_value(buf, "modules", tokv, tokc);
+	str = get_json_key_value(buf, "linux", tokv, tokc);
+	if (str) {
+		s->kernel = malloc(strlen(str)+5);
+		sprintf(s->kernel, "bsp/%s", str);
+		free(str);
+	}
+	
+	str = get_json_key_value(buf, "fdt", tokv, tokc);
+	if (str) {
+		s->fdt = malloc(strlen(str)+5);
+		sprintf(s->fdt, "bsp/%s", str);
+		free(str);
+	}
+
+	str = get_json_key_value(buf, "initrd", tokv, tokc);
+	if (str) {
+		s->initrd = malloc(strlen(str)+5);
+		sprintf(s->initrd, "bsp/%s", str);
+		free(str);
+	}
+
+	str = get_json_key_value(buf, "firmware", tokv, tokc);
+	if (str) {
+		s->firmware = malloc(strlen(str)+5);
+		sprintf(s->firmware, "bsp/%s", str);
+		free(str);
+	}
+	
+	str = get_json_key_value(buf, "modules", tokv, tokc);
+	if (str) {
+		s->modules = malloc(strlen(str)+5);
+		sprintf(s->modules, "bsp/%s", str);
+		free(str);
+	}
 
 	if (s->firmware) {
 		v = pv_volume_add(s, s->firmware);
@@ -106,6 +135,34 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	jsmnutil_tokv_free(key);
 
 	ret = 1;
+
+out:
+	if (tokv)
+		free(tokv);
+	if (buf)
+		free(buf);
+
+	return ret;
+}
+
+static int parse_init_json(struct pv_state *s, char *value, int n)
+{
+	int ret = 0, tokc;
+	char *buf;
+	jsmntok_t *tokv;
+
+	// take null terminate copy of item to parse
+	buf = calloc(1, (n+1) * sizeof(char));
+	buf = strncpy(buf, value, n);
+
+	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	s->root_platform = get_json_key_value(buf, "root_platform", tokv, tokc);
+
+	if (s->root_platform) {
+		pv_log(DEBUG, "root_platform set as %s", s->root_platform);
+	}
 
 out:
 	if (tokv)
@@ -427,6 +484,21 @@ fail:
 	return ret;
 }
 
+static int do_action_for_root_volume(struct json_key_action *jka,
+					char *value)
+{
+
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	(*bundle->platform)->root_volume = malloc(strlen(value));
+	sprintf((*bundle->platform)->root_volume, "%s/%s", (*bundle->platform)->name, value);
+
+	return do_action_for_one_volume(jka, value);
+}
+
 static int do_action_for_one_log(struct json_key_action *jka,
 					char *value)
 {
@@ -533,7 +605,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		ADD_JKA_ENTRY("type", JSMN_STRING, &bundle, do_action_for_type, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
-		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_one_volume, false),
+		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_root_volume, false),
 		ADD_JKA_ENTRY("volumes", JSMN_ARRAY, &bundle, do_action_for_one_volume, false),
 		ADD_JKA_ENTRY("logs", JSMN_ARRAY, &bundle, do_action_for_one_log, false),
 		ADD_JKA_ENTRY("storage", JSMN_OBJECT, &bundle, do_action_for_storage, false),
@@ -548,7 +620,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	if (config) {
 		this->configs = calloc(1, 2 * sizeof(char *));
 		this->configs[1] = NULL;
-		this->configs[0] = strdup(config);
+		this->configs[0] = malloc(strlen(config));
+		sprintf(this->configs[0], "%s/%s", this->name, config);
 		free(config);
 		config = 0;
 	}
@@ -609,6 +682,7 @@ void system1_print(struct pv_state *this)
 	pv_log(DEBUG, "initrd: '%s'", this->initrd);
 	while (p) {
 		pv_log(DEBUG, "platform: '%s'", p->name);
+		pv_log(DEBUG, "  root volume: '%s'", p->root_volume);
 		pv_log(DEBUG, "  type: '%s'", p->type);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
@@ -664,6 +738,12 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		goto out;
 	}
 	free(value);
+
+	value = get_json_key_value(buf, "init.json", tokv, tokc);
+	if (value) {
+		parse_init_json(this, value, strlen(value));
+		free(value);
+	}
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	k = keys;

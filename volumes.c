@@ -135,26 +135,14 @@ int pv_volumes_mount(struct pantavisor *pv)
 	while (v) {
 		int loop_fd = -1, file_fd = -1;
 
-		switch (pv_state_spec(s)) {
-		case SPEC_SYSTEM1:
-			if (v->plat) {
-				sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
-					s->rev, v->plat->name, v->name);
-				sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
-			} else {
-				sprintf(path, "%s/trails/%d/bsp/%s", pv->config->storage.mntpoint,
-					s->rev, v->name);
-				sprintf(mntpoint, "/volumes/%s", v->name);
-			}
-			break;
-		case SPEC_MULTI1:
+		if (v->plat) {
+			sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
+				s->rev, v->plat->name, v->name);
+			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
+		} else {
 			sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
 				s->rev, v->name);
 			sprintf(mntpoint, "/volumes/%s", v->name);
-			break;
-		default:
-			pv_log(WARN, "cannot mount volumes for unknown state spec");
-			goto out;
 		}
 
 		pv_log(INFO, "mounting '%s' of platform '%s'", v->name, v->plat ? v->plat->name : "NONE");

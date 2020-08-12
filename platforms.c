@@ -481,15 +481,11 @@ int pv_platforms_start_all(struct pantavisor *pv)
 		const struct pv_cont_ctrl *ctrl;
 		void *data;
 		char **c = p->configs;
-		char prefix[32] = { 0 };
 
 		pv_wdt_kick(pv);
 
-		if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
-			sprintf(prefix, "%s/", p->name);
-
-		sprintf(conf_path, "%s/trails/%d/%s%s",
-			pv->config->storage.mntpoint, s->rev, prefix, *c);
+		sprintf(conf_path, "%s/trails/%d/%s",
+			pv->config->storage.mntpoint, s->rev, *c);
 
 		// Get type controller
 		ctrl = _pv_platforms_get_ctrl(p->type);

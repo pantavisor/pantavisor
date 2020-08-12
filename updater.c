@@ -51,6 +51,7 @@
 #include "wdt.h"
 #include "init.h"
 #include "revision.h"
+#include "platforms.h"
 
 int MAX_REVISION_RETRIES = 0;
 int DOWNLOAD_RETRY_WAIT = 0;
@@ -864,9 +865,6 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT,
 		pv->config->creds.id, rev);
 
-	// FIXME: currently we only support strict (always rebot) updates
-	u->need_reboot = 1;
-	u->need_finish = 0;
 	pv->update = u;
 
 	// all done up to here for offline
@@ -1020,19 +1018,11 @@ static int copy_and_close(int s_fd, int d_fd)
 	return bytes_r;
 }
 
-static int trail_update_has_new_initrd(struct pantavisor *pv)
+static int are_objects_equal(struct pantavisor *pv, char* old, char* new)
 {
-	char *old = 0, *new = 0;
 	struct pv_object *o_new = 0, *o_old = 0;
 
-	if (!pv)
-		return 0;
-
-	if (pv->state)
-		old = pv->state->initrd;
-
-	if (pv->update && pv->update->pending)
-		new = pv->update->pending->initrd;
+	pv_log(DEBUG, "old name: %s, new name:%s", old, new);
 
 	if (!old || !new)
 		return 0;
@@ -1042,13 +1032,48 @@ static int trail_update_has_new_initrd(struct pantavisor *pv)
 
 	o_new = pv_objects_get_by_name(pv->update->pending, new);
 	o_old = pv_objects_get_by_name(pv->state, old);
+	pv_log(DEBUG, "old object: %p, new object:%p", o_old, o_new);
 	if (!o_new || !o_old)
 		return 1;
 
+	pv_log(DEBUG, "old object id: %s, new object id:%s", o_old->id, o_new->id);
 	if (strcmp(o_new->id, o_old->id))
 		return 1;
 
 	return 0;
+}
+
+static int trail_update_has_new_bsp(struct pantavisor *pv)
+{
+	if (!pv || !pv->state || !pv->update || !pv->update->pending)
+		return 0;
+
+	return (are_objects_equal(pv, pv->state->initrd, pv->update->pending->initrd) ||
+			are_objects_equal(pv, pv->state->kernel, pv->update->pending->kernel) ||
+			are_objects_equal(pv, pv->state->firmware, pv->update->pending->firmware) ||
+			are_objects_equal(pv, pv->state->modules, pv->update->pending->modules));
+}
+
+static int trail_update_has_new_root_platform(struct pantavisor *pv)
+{
+	struct pv_platform *p_old, *p_new;
+
+	if (!pv || !pv->state || !pv->update || !pv->update->pending)
+		return 0;
+
+	pv_log(DEBUG, "old root platform: %s, new root platform:%s", pv->state->root_platform, pv->update->pending->root_platform);
+
+	if (strcmp(pv->state->root_platform, pv->update->pending->root_platform))
+		return 1;
+
+	p_old = pv_platform_get_by_name(pv->state, pv->state->root_platform);
+	p_new = pv_platform_get_by_name(pv->update->pending, pv->update->pending->root_platform);
+
+	if (!p_new || !p_old)
+		return 1;
+
+	return (are_objects_equal(pv, p_old->root_volume, p_new->root_volume) ||
+			are_objects_equal(pv, *(p_old->configs), *(p_new->configs)));
 }
 
 static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
@@ -1277,7 +1302,6 @@ static int get_update_size(struct pv_update *u)
 static int trail_download_objects(struct pantavisor *pv)
 {
 	int ret = -1;
-	struct pv_object *k_new, *k_old;
 	struct pv_update *u = pv->update;
 	struct pv_object *o = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
@@ -1301,14 +1325,6 @@ static int trail_download_objects(struct pantavisor *pv)
 		goto out;
 	}
 
-	k_new = pv_objects_get_by_name(u->pending,
-			u->pending->kernel);
-	k_old = pv_objects_get_by_name(pv->state,
-			pv->state->kernel);
-
-	if (k_new && k_old && strcmp(k_new->id, k_old->id))
-		u->need_reboot = 1;
-
 	pv_objects_iter_begin(u->pending, o) {
 		if (!trail_download_object(pv, o, crtfiles)) {
 			ret = TRAIL_NO_NETWORK;
@@ -1329,6 +1345,8 @@ int pv_update_install(struct pantavisor *pv)
 	struct pv_state *pending = pv->update->pending;
 	char path[PATH_MAX];
 	char path_new[PATH_MAX];
+
+	pv->update->reset = NORESET;
 
 	if (!pv->remote)
 		trail_remote_init(pv);
@@ -1353,8 +1371,14 @@ int pv_update_install(struct pantavisor *pv)
 
 	trail_remote_set_status(pv, -1, UPDATE_DOWNLOADED);
 
-	if (trail_update_has_new_initrd(pv))
-		pv->update->need_reboot = 1;
+	if (trail_update_has_new_bsp(pv))
+		pv->update->reset = HARD;
+	else if (trail_update_has_new_root_platform(pv))
+		pv->update->reset = SOFT_ROOT;
+	else
+		pv->update->reset = SOFT_NOROOT;
+
+	pv_log(INFO, "reset set to %d", pv->update->reset);
 
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
@@ -1394,7 +1418,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	if (pv->update->need_reboot) {
+	if (pv->update->reset != NORESET) {
 		pv->update->status = UPDATE_REBOOT;
 		pv_bl_set_try(pv, ret);
 	}

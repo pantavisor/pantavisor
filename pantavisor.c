@@ -410,27 +410,14 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	int i;
 	struct pantavisor_config *c = pv->config;
 	struct pv_addon *a;
-	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[32];
+	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX];
 
 	if (!s)
 		s = pv->state;
 
-	/*
-	 * Toggle directory depth with null prefix
-	 */
-	switch (pv_state_spec(s)) {
-	case SPEC_SYSTEM1:
-		sprintf(prefix, "bsp/");
-		break;
-	case SPEC_MULTI1:
-	default:
-		prefix[0] = '\0';
-		break;
-	}
-
 	// initrd
 	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->initrd);
+	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->initrd);
 
 	mkdir_p(dst, 0755);
 	strcat(dst, "pv-initrd.img");
@@ -444,7 +431,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	i = 0;
 	while (a) {
 		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, a->name);
+		sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, a->name);
 		sprintf(fname, "pv-initrd.img.%d", i++);
 		strcat(dst, fname);
 		remove(dst);
@@ -455,7 +442,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// kernel
 	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->kernel);
+	sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->kernel);
 
 	remove(dst);
 	if (link(src, dst) < 0)
@@ -464,7 +451,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	// fdt
 	if (s->fdt) {
 		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->fdt);
+		sprintf(src, "%s/trails/%d/%s", c->storage.mntpoint, s->rev, s->fdt);
 
 		remove(dst);
 		if (link(src, dst) < 0)

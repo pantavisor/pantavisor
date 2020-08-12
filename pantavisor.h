@@ -63,11 +63,17 @@ typedef enum {
 	VOL_UNKNOWN
 } pv_volume_t;
 
+typedef enum {
+	NORESET,
+	HARD,
+	SOFT_ROOT,
+	SOFT_NOROOT
+} reset_t;
+
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	int need_reboot;
-	int need_finish;
+	reset_t reset;
 	time_t retry_at;
 	struct pv_state *pending;
 };
@@ -81,6 +87,7 @@ struct pv_addon {
 
 struct pv_platform {
 	char *name;
+    char *root_volume;
 	char *type;
 	char **configs;
 	char *exec;
@@ -129,6 +136,7 @@ struct pv_state {
 	char *firmware;
 	char *modules;
 	char *initrd;
+    char *root_platform;
 	struct pv_platform *platforms;
 	struct pv_volume *volumes;
 	struct pv_addon *addons;
