@@ -1022,25 +1022,24 @@ static int are_objects_equal(struct pantavisor *pv, char* old, char* new)
 {
 	struct pv_object *o_new = 0, *o_old = 0;
 
-	pv_log(DEBUG, "old name: %s, new name:%s", old, new);
-
 	if (!old || !new)
 		return 0;
 
 	if (strcmp(old, new))
-		return 1;
+		goto out;
 
 	o_new = pv_objects_get_by_name(pv->update->pending, new);
 	o_old = pv_objects_get_by_name(pv->state, old);
-	pv_log(DEBUG, "old object: %p, new object:%p", o_old, o_new);
 	if (!o_new || !o_old)
-		return 1;
+		goto out;
 
-	pv_log(DEBUG, "old object id: %s, new object id:%s", o_old->id, o_new->id);
 	if (strcmp(o_new->id, o_old->id))
-		return 1;
+		goto out;
 
 	return 0;
+out:
+	pv_log(WARN, "object %s (%s) changed to %s (%s)", old, o_old, new, o_new);
+	return 1;
 }
 
 static int trail_update_has_new_bsp(struct pantavisor *pv)
@@ -1061,16 +1060,18 @@ static int trail_update_has_new_root_platform(struct pantavisor *pv)
 	if (!pv || !pv->state || !pv->update || !pv->update->pending)
 		return 0;
 
-	pv_log(DEBUG, "old root platform: %s, new root platform:%s", pv->state->root_platform, pv->update->pending->root_platform);
-
-	if (strcmp(pv->state->root_platform, pv->update->pending->root_platform))
+	if (strcmp(pv->state->root_platform, pv->update->pending->root_platform)) {
+		pv_log(WARN, "root_platform will change from %s to %s", pv->state->root_platform, pv->update->pending->root_platform);
 		return 1;
+	}
 
 	p_old = pv_platform_get_by_name(pv->state, pv->state->root_platform);
 	p_new = pv_platform_get_by_name(pv->update->pending, pv->update->pending->root_platform);
 
-	if (!p_new || !p_old)
+	if (!p_new || !p_old) {
+		pv_log(WARN, "root_platform could not be retreived");
 		return 1;
+	}
 
 	return (are_objects_equal(pv, p_old->root_volume, p_new->root_volume) ||
 			are_objects_equal(pv, *(p_old->configs), *(p_new->configs)));
@@ -1346,7 +1347,7 @@ int pv_update_install(struct pantavisor *pv)
 	char path[PATH_MAX];
 	char path_new[PATH_MAX];
 
-	pv->update->reset = NORESET;
+	pv->update->level = TRIVIAL;
 
 	if (!pv->remote)
 		trail_remote_init(pv);
@@ -1372,13 +1373,13 @@ int pv_update_install(struct pantavisor *pv)
 	trail_remote_set_status(pv, -1, UPDATE_DOWNLOADED);
 
 	if (trail_update_has_new_bsp(pv))
-		pv->update->reset = HARD;
+		pv->update->level = BSP;
 	else if (trail_update_has_new_root_platform(pv))
-		pv->update->reset = SOFT_ROOT;
+		pv->update->level = ROOT_PLATFORM;
 	else
-		pv->update->reset = SOFT_NOROOT;
+		pv->update->level = OTHER_PLATFORM;
 
-	pv_log(INFO, "reset set to %d", pv->update->reset);
+	pv_log(INFO, "reset set to %d", pv->update->level);
 
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
@@ -1418,7 +1419,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	if (pv->update->reset != NORESET) {
+	if (pv->update->level > TRIVIAL) {
 		pv->update->status = UPDATE_REBOOT;
 		pv_bl_set_try(pv, ret);
 	}

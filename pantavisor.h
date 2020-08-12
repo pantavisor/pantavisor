@@ -64,16 +64,16 @@ typedef enum {
 } pv_volume_t;
 
 typedef enum {
-	NORESET,
-	HARD,
-	SOFT_ROOT,
-	SOFT_NOROOT
-} reset_t;
+	TRIVIAL,
+	OTHER_PLATFORM,
+	ROOT_PLATFORM,
+	BSP
+} update_level_t;
 
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	reset_t reset;
+	update_level_t level;
 	time_t retry_at;
 	struct pv_state *pending;
 };

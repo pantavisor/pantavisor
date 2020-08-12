@@ -494,21 +494,17 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	// Release current step
 	pv_release_state(pv);
 
-	pv_log(WARN, "update reset code %d", pv->update->reset);
+	pv_log(DEBUG, "update level code %d", pv->update->level);
 
-	if (pv->update->reset == HARD) {
-		pv_log(WARN, "Update requires reboot, rebooting...");
+	if (pv->update->level >= ROOT_PLATFORM) {
+		pv_log(WARN, "Update requires hard reset, rebooting...");
 		next_state = STATE_REBOOT;
 		goto out;
 	}
-	else if (pv->update->reset == SOFT_ROOT) {
+	else if (pv->update->level == OTHER_PLATFORM) {
 		pv_log(WARN, "Update requires soft reset...");
 		next_state = STATE_REBOOT;
-		goto out;
-	}
-	else if (pv->update->reset == SOFT_NOROOT) {
-		pv_log(WARN, "Update requires soft reset...");
-		next_state = STATE_REBOOT;
+		// TODO: do the actual soft reset
 		goto out;
 	}
 
