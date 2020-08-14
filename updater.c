@@ -1018,12 +1018,12 @@ static int copy_and_close(int s_fd, int d_fd)
 	return bytes_r;
 }
 
-static int are_objects_equal(struct pantavisor *pv, char* old, char* new)
+static bool are_objects_equal(struct pantavisor *pv, char* old, char* new)
 {
 	struct pv_object *o_new = 0, *o_old = 0;
 
 	if (!old || !new)
-		return 0;
+		return false;
 
 	if (strcmp(old, new))
 		goto out;
@@ -1036,45 +1036,52 @@ static int are_objects_equal(struct pantavisor *pv, char* old, char* new)
 	if (strcmp(o_new->id, o_old->id))
 		goto out;
 
-	return 0;
+	return true;
 out:
-	pv_log(WARN, "object %s (%s) changed to %s (%s)", old, o_old, new, o_new);
-	return 1;
+	pv_log(WARN, "object %s (%s) changed to %s (%s)", old, o_old->id, new, o_new->id);
+	return false;
 }
 
-static int trail_update_has_new_bsp(struct pantavisor *pv)
+static component_level_t check_update_level(struct pantavisor *pv)
 {
-	if (!pv || !pv->state || !pv->update || !pv->update->pending)
-		return 0;
+	component_level_t level = BSP;
+	struct pv_platform *p_old, *p;
+	int count = 0;
 
-	return (are_objects_equal(pv, pv->state->initrd, pv->update->pending->initrd) ||
-			are_objects_equal(pv, pv->state->kernel, pv->update->pending->kernel) ||
-			are_objects_equal(pv, pv->state->firmware, pv->update->pending->firmware) ||
-			are_objects_equal(pv, pv->state->modules, pv->update->pending->modules));
-}
-
-static int trail_update_has_new_root_platform(struct pantavisor *pv)
-{
-	struct pv_platform *p_old, *p_new;
-
-	if (!pv || !pv->state || !pv->update || !pv->update->pending)
-		return 0;
-
-	if (strcmp(pv->state->root_platform, pv->update->pending->root_platform)) {
-		pv_log(WARN, "root_platform will change from %s to %s", pv->state->root_platform, pv->update->pending->root_platform);
-		return 1;
+	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
+		goto out;
 	}
 
-	p_old = pv_platform_get_by_name(pv->state, pv->state->root_platform);
-	p_new = pv_platform_get_by_name(pv->update->pending, pv->update->pending->root_platform);
-
-	if (!p_new || !p_old) {
-		pv_log(WARN, "root_platform could not be retreived");
-		return 1;
+	// check bsp
+	if (!are_objects_equal(pv, pv->state->initrd, pv->update->pending->initrd) ||
+		!are_objects_equal(pv, pv->state->kernel, pv->update->pending->kernel) ||
+		!are_objects_equal(pv, pv->state->firmware, pv->update->pending->firmware) ||
+		!are_objects_equal(pv, pv->state->modules, pv->update->pending->modules)) {
+		goto out;
 	}
 
-	return (are_objects_equal(pv, p_old->root_volume, p_new->root_volume) ||
-			are_objects_equal(pv, *(p_old->configs), *(p_new->configs)));
+	// check platforms
+	p = pv->update->pending->platforms;
+
+    while (p) {
+		p_old = pv_platform_get_by_name(pv->state, p->name);
+
+		if (!p_old ||
+			!are_objects_equal(pv, p_old->root_volume, p->root_volume) ||
+			!are_objects_equal(pv, *(p_old->configs), *(p->configs))) {
+			level = p->level;
+			goto out;
+		}
+
+		count++;
+		p = p->next;
+	}
+
+	pv_log(DEBUG, "checked %d platforms for update", count);
+
+out:
+	pv_log(DEBUG, "update level set to %d", level);
+	return level;
 }
 
 static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
@@ -1347,7 +1354,7 @@ int pv_update_install(struct pantavisor *pv)
 	char path[PATH_MAX];
 	char path_new[PATH_MAX];
 
-	pv->update->level = TRIVIAL;
+	pv->update->level = BSP;
 
 	if (!pv->remote)
 		trail_remote_init(pv);
@@ -1372,15 +1379,8 @@ int pv_update_install(struct pantavisor *pv)
 
 	trail_remote_set_status(pv, -1, UPDATE_DOWNLOADED);
 
-	if (trail_update_has_new_bsp(pv))
-		pv->update->level = BSP;
-	else if (trail_update_has_new_root_platform(pv))
-		pv->update->level = ROOT_PLATFORM;
-	else
-		pv->update->level = OTHER_PLATFORM;
-
-	pv_log(INFO, "reset set to %d", pv->update->level);
-
+	pv->update->level = check_update_level(pv);
+	
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
 	mkdir_p(path, 0755);
@@ -1419,7 +1419,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	if (pv->update->level > TRIVIAL) {
+	if (pv->update->level < NONE) {
 		pv->update->status = UPDATE_REBOOT;
 		pv_bl_set_try(pv, ret);
 	}

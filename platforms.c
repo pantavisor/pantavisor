@@ -147,31 +147,24 @@ struct pv_platform* pv_platform_get_by_data(struct pv_state *s, void *data)
 	return NULL;
 }
 
-void pv_platforms_remove_all(struct pv_state *s)
+void pv_platforms_remove(struct pv_platform *p)
 {
-	struct pv_platform *p = s->platforms;
-	struct pv_platform *t;
+	int i;
 	char **c;
 
-	while (p) {
-		if (p->name)
-			free(p->name);
-		if (p->type)
-			free(p->type);
-		if (p->exec)
-			free(p->exec);
+	if (p->name)
+		free(p->name);
+	if (p->type)
+		free(p->type);
+	if (p->exec)
+		free(p->exec);
 
-		c = p->configs;
-		while (*c) {
-			free(*c);
-			c++;
-		}
-		t = p->next;
-		free(p);
-		p = t;
+	c = p->configs;
+	while (c[i]) {
+		free(c[i]);
+		i++;
 	}
-
-	s->platforms = NULL;
+	free(c);
 }
 
 void pv_platforms_remove_not_done(struct pv_state *s)
@@ -330,7 +323,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 		if (!log_info->islxc) {
 			snprintf(namespace,sizeof(namespace), "/proc/%d/ns/mnt",
 					container_pid);
-			pv_log(DEBUG, "Opening file %s",namespace);
+			pv_log(DEBUG, "Opening file %s\n",namespace);
 			ns_fd = open(namespace, 0);
 			if (ns_fd < 0) {
 				pv_log(ERROR, "Unable to open namespace file");
@@ -451,12 +444,58 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 			}
 			free(log_info);
 		} else {
-			pv_log(INFO, "started pv_logger for platform %s"
-				"(name=%s) with pid = %d \n", platform->name,
-				log_info->name, logger_pid);
+			pv_log(INFO, "started pv_logger for platform %s (name=%s) with pid=%d",
+				platform->name, log_info->name, logger_pid);
 		}
 	}
 	return logger_pid;
+}
+
+static int pv_platforms_start(struct pantavisor *pv, struct pv_platform *p)
+{
+	pid_t pid = -1;
+	char conf_path[PATH_MAX];
+	const struct pv_cont_ctrl *ctrl;
+	void *data;
+	char **c = p->configs;
+
+	pv_wdt_kick(pv);
+
+	sprintf(conf_path, "%s/trails/%d/%s",
+		pv->config->storage.mntpoint, pv->state->rev, *c);
+
+	// Get type controller
+	ctrl = _pv_platforms_get_ctrl(p->type);
+
+	// Start the platform
+	data = ctrl->start(p, conf_path, (void *) &pid);
+
+	if (!data) {
+		pv_log(ERROR, "error starting container");
+		return -1;
+	}
+
+	pv_log(INFO, "started container: \"%s\" (data=%p), init_pid=%d",
+		p->name, data, pid);
+
+	// FIXME: arbitrary delay between plats
+	sleep(7);
+
+	p->data = data;
+	p->init_pid = pid;
+
+	if (pid > 0)
+		p->running = true;
+	else
+		return -1;
+
+	if (pv_state_spec(pv->state) != SPEC_MULTI1) {
+		if (start_pvlogger_for_platform(p) < 0) {
+			pv_log(ERROR, "could not start pv_logger");
+		}
+	}
+
+	return 0;
 }
 
 // Iterate list of platforms from state
@@ -467,8 +506,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 int pv_platforms_start_all(struct pantavisor *pv)
 {
 	int num_plats = 0;
-	struct pv_state *s = pv->state;
-	struct pv_platform *p = s->platforms;
+	struct pv_platform *p = pv->state->platforms;
 
 	if (!p) {
 		pv_log(ERROR, "no platforms available");
@@ -476,79 +514,61 @@ int pv_platforms_start_all(struct pantavisor *pv)
 	}
 
 	while (p) {
-		pid_t pid = -1;
-		char conf_path[PATH_MAX];
-		const struct pv_cont_ctrl *ctrl;
-		void *data;
-		char **c = p->configs;
-
-		pv_wdt_kick(pv);
-
-		sprintf(conf_path, "%s/trails/%d/%s",
-			pv->config->storage.mntpoint, s->rev, *c);
-
-		// Get type controller
-		ctrl = _pv_platforms_get_ctrl(p->type);
-
-		// Start the platform
-		data = ctrl->start(p, conf_path, (void *) &pid);
-
-		if (!data) {
-			pv_log(ERROR, "error starting platform: \"%s\"",
-				p->name);
-			return -1;
-		}
-
-		pv_log(INFO, "started platform: \"%s\" (data=%p), init_pid=%d",
-			p->name, data, pid);
-
-		// FIXME: arbitrary delay between plats
-		sleep(7);
-
-		p->data = data;
-		p->init_pid = pid;
-
-		if (pid > 0)
-			p->running = true;
-		else
-			return -1;
-
-		if (pv_state_spec(pv->state) != SPEC_MULTI1) {
-			if (start_pvlogger_for_platform(p) < 0) {
-				pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
+		if (!p->running) {
+			if (pv_platforms_start(pv, p)) {
+				pv_log(ERROR, "error starting platform: \"%s\"", p->name);
+				return -1;
 			}
+			num_plats++;
 		}
-		num_plats++;
-
 		p = p->next;
 	}
 
+	pv_log(INFO, "started %d platforms", num_plats);
+
 	return num_plats;
+}
+
+static void pv_platforms_stop(struct pv_platform *p)
+{
+	const struct pv_cont_ctrl *ctrl;
+
+	ctrl = _pv_platforms_get_ctrl(p->type);
+	ctrl->stop(p, NULL, p->data);
+	p->running = false;
+	pv_log(INFO, "stopped platform '%s'", p->name);
+}
+
+int pv_platforms_stop_level(struct pantavisor *pv, component_level_t level)
+{
+	int num_plats = 0;
+	struct pv_platform *p = pv->state->platforms;
+	struct pv_platform *t;
+
+	while (p && p->running) {
+		if (level <= p->level) {
+			pv_platforms_stop(p);
+			num_plats++;
+			t = p;
+			p = p->next;
+			pv_platforms_remove(t);
+		}
+		else {
+			p = p->next;
+		}
+	}
+
+	pv_log(INFO, "stopped %d platforms", num_plats);
+
+	return num_plats;
+
 }
 
 // Iterate all underlying impl objects, stop one by one
 // Cannot fail, force stop and/or kill if necessary
 int pv_platforms_stop_all(struct pantavisor *pv)
 {
-	int num_plats = 0;
-	struct pv_state *s = pv->state;
-	struct pv_platform *p = s->platforms;
-	const struct pv_cont_ctrl *ctrl;
-
-	while (p && p->running) {
-		ctrl = _pv_platforms_get_ctrl(p->type);
-		ctrl->stop(p, NULL, p->data);
-		p->running = false;
-		pv_log(INFO, "stopped platform '%s'", p->name);
-		num_plats++;
-		p = p->next;
-	}
-
-	pv_platforms_remove_all(s);
-
-	pv_log(INFO, "stopped %d platforms", num_plats);
-
-	return num_plats;
+	return pv_platforms_stop_level(pv, BSP);
 }
 
 int pv_platforms_check_exited(struct pantavisor *pv)

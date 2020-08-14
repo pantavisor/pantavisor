@@ -27,6 +27,7 @@ const char* pv_volume_type_str(pv_volume_t vt);
 void pv_volume_remove(struct pv_state *s, char *name);
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
 int pv_volumes_mount(struct pantavisor *pv);
-int pv_volumes_unmount(struct pantavisor *pv);
+int pv_volumes_unmount_level(struct pantavisor *pv, component_level_t level);
+int pv_volumes_unmount_all(struct pantavisor *pv);
 
 #endif // PV_VOLUMES_H

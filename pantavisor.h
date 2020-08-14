@@ -64,16 +64,17 @@ typedef enum {
 } pv_volume_t;
 
 typedef enum {
-	TRIVIAL,
-	OTHER_PLATFORM,
-	ROOT_PLATFORM,
-	BSP
-} update_level_t;
+	BSP,
+	ROOT,
+	MIDDLEWARE,
+	APP,
+	NONE
+} component_level_t;
 
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	update_level_t level;
+	int level;
 	time_t retry_at;
 	struct pv_state *pending;
 };
@@ -82,8 +83,6 @@ struct pv_addon {
 	char *name;
 	struct pv_addon *next;
 };
-
-
 
 struct pv_platform {
 	char *name;
@@ -97,7 +96,8 @@ struct pv_platform {
 	pid_t init_pid;
 	bool running;
 	bool done;
-	struct pv_platform *next;
+	component_level_t level;
+	 struct pv_platform *next;
 	struct dl_list logger_list;
 	/*
 	 * To be freed once logger_list is setup.

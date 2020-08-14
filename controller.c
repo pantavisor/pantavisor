@@ -441,7 +441,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			next_state = STATE_ROLLBACK;
 			goto out;
 		}
-		if (pv_volumes_unmount(pv) < 0) {
+		if (pv_volumes_unmount_all(pv) < 0) {
 			next_state = STATE_ROLLBACK;
 			goto out;
 		}
@@ -483,34 +483,40 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 {
 	pv_state_t next_state = STATE_RUN;
 
-	pv->online = false;
-	// stop current step
-	if (pv_platforms_stop_all(pv) < 0 || 
-			pv_volumes_unmount(pv) < 0) {
-		next_state = STATE_ROLLBACK;
-		goto out;
-	}
-
-	// Release current step
-	pv_release_state(pv);
-
-	pv_log(DEBUG, "update level code %d", pv->update->level);
-
-	if (pv->update->level >= ROOT_PLATFORM) {
+	if (pv->update->level <= ROOT) {
 		pv_log(WARN, "Update requires hard reset, rebooting...");
+
+		pv->online = false;
+
+		if (pv_platforms_stop_all(pv) < 0 || 
+				pv_volumes_unmount_all(pv) < 0) {
+			next_state = STATE_ROLLBACK;
+			goto out;
+		}
+	
+		pv_release_state(pv);
+
 		next_state = STATE_REBOOT;
 		goto out;
 	}
-	else if (pv->update->level == OTHER_PLATFORM) {
+	else {
 		pv_log(WARN, "Update requires soft reset...");
-		next_state = STATE_REBOOT;
-		// TODO: do the actual soft reset
+
+		if (pv_platforms_stop_level(pv, pv->update->level) < 0 || 
+				pv_volumes_unmount_level(pv, pv->update->level) < 0) {
+			next_state = STATE_ROLLBACK;
+			goto out;
+		}
+
+		pv_release_state(pv);
+
+		next_state = STATE_RUN;
 		goto out;
 	}
 
 	pv_log(WARN, "State update applied, starting new revision %d", rev);
 
-	// Load installed step
+	// load installed step
 	pv->state = pv_get_state(pv, rev);
 
 	if (pv->state == NULL) {
@@ -576,7 +582,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		if (ret < 0)
 			return STATE_ERROR;
 
-		ret = pv_volumes_unmount(pv);
+		ret = pv_volumes_unmount_all(pv);
 		if (ret < 0)
 			pv_log(WARN, "unmount error: ignoring due to rollback");
 

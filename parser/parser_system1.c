@@ -145,34 +145,6 @@ out:
 	return ret;
 }
 
-static int parse_init_json(struct pv_state *s, char *value, int n)
-{
-	int ret = 0, tokc;
-	char *buf;
-	jsmntok_t *tokv;
-
-	// take null terminate copy of item to parse
-	buf = calloc(1, (n+1) * sizeof(char));
-	buf = strncpy(buf, value, n);
-
-	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-
-	s->root_platform = get_json_key_value(buf, "root_platform", tokv, tokc);
-
-	if (s->root_platform) {
-		pv_log(DEBUG, "root_platform set as %s", s->root_platform);
-	}
-
-out:
-	if (tokv)
-		free(tokv);
-	if (buf)
-		free(buf);
-
-	return ret;
-}
-
 static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 {
 	int tokc, n, ret;
@@ -441,6 +413,31 @@ static int do_action_for_type(struct json_key_action *jka,
 	return 0;
 }
 
+static int do_action_for_level(struct json_key_action *jka,
+					char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	if (value) {
+		if (!strcmp(value, "bsp"))
+			(*bundle->platform)->level = BSP;
+		else if (!strcmp(value, "root"))
+			(*bundle->platform)->level = ROOT;
+		else if (!strcmp(value, "middleware"))
+			(*bundle->platform)->level = MIDDLEWARE;
+		else if (!strcmp(value, "app"))
+			(*bundle->platform)->level = APP;
+		else {
+			pv_log(WARN, "invalid level value '%s' for platform '%s', default to %d", value, (*bundle->platform)->name, (*bundle->platform)->level);
+		}
+	}
+
+	return 0;
+}
+
 static int do_action_for_one_volume(struct json_key_action *jka,
 					char *value)
 {
@@ -603,6 +600,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	struct json_key_action system1_platform_key_action [] = {
 		ADD_JKA_ENTRY("name", JSMN_STRING, &bundle, do_action_for_name, false),
 		ADD_JKA_ENTRY("type", JSMN_STRING, &bundle, do_action_for_type, false),
+		ADD_JKA_ENTRY("level", JSMN_STRING, &bundle, do_action_for_level, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
 		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_root_volume, false),
@@ -684,6 +682,7 @@ void system1_print(struct pv_state *this)
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  root volume: '%s'", p->root_volume);
 		pv_log(DEBUG, "  type: '%s'", p->type);
+		pv_log(DEBUG, "  level: '%d'", p->level);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
@@ -696,6 +695,8 @@ void system1_print(struct pv_state *this)
 	while (v) {
 		pv_log(DEBUG, "volume: '%s'", v->name);
 		pv_log(DEBUG, "  type: '%d'", v->type);
+		if (v->plat)
+			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
 
 		v = v->next;
 	}
@@ -738,12 +739,6 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		goto out;
 	}
 	free(value);
-
-	value = get_json_key_value(buf, "init.json", tokv, tokc);
-	if (value) {
-		parse_init_json(this, value, strlen(value));
-		free(value);
-	}
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	k = keys;

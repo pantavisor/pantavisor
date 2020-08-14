@@ -28,13 +28,13 @@
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
-struct pv_platform* pv_platform_remove(struct pv_state *s, char *name);
-void pv_platforms_remove_all(struct pv_state *s);
+void pv_platforms_remove(struct pv_platform *p);
 void pv_platforms_remove_not_done(struct pv_state *s);
 void pv_platforms_remove_by_data(struct pv_state *s, void *data);
 struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name);
 struct pv_platform* pv_platform_get_by_data(struct pv_state *s, void *data);
 int pv_platforms_start_all(struct pantavisor *pv);
+int pv_platforms_stop_level(struct pantavisor *pv, component_level_t level);
 int pv_platforms_stop_all(struct pantavisor *pv);
 int pv_platforms_check_exited(struct pantavisor *pv);
 

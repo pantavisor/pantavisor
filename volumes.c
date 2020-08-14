@@ -230,28 +230,40 @@ out:
         return ret;
 }
 
-int pv_volumes_unmount(struct pantavisor *pv)
+static int pv_volumes_unmount(struct pantavisor *pv, struct pv_volume *v)
 {
 	int ret;
+	if (v->loop_fd == -1) {
+		ret = umount(v->dest);
+	} else {
+		ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
+	}
+
+	if (ret < 0) {
+		pv_log(ERROR, "error umounting volume %s", v->name);
+		return -1;
+	}
+
+	pv_log(INFO, "unmounted volume '%s' successfully", v->name);
+	pv_volume_remove(pv->state, v->name);
+
+	return 0;
+}
+
+int pv_volumes_unmount_level(struct pantavisor *pv, component_level_t level)
+{
 	int count = 0;
-	struct pv_state *s = pv->state;
-	struct pv_volume *v = s->volumes;
+	struct pv_volume *v = pv->state->volumes;
 
-        while(v) {
-		if (v->loop_fd == -1) {
-			ret = umount(v->dest);
-		} else {
-			ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
-		}
-
-		if (ret < 0) {
-			pv_log(ERROR, "error umounting volumes");
-			return -1;
-		} else {
-			pv_log(INFO, "unmounted '%s' successfully", v->dest);
-			pv_volume_remove(s, v->name);
+	while(v) {
+		if (!v->plat || (level <= v->plat->level)) {
+			if (pv_volumes_unmount(pv,v)) {
+				pv_log(ERROR, "error umounting volumes");
+				return -1;
+			}
 			count++;
 		}
+
 		v = v->next;
 	}
 
@@ -261,4 +273,9 @@ int pv_volumes_unmount(struct pantavisor *pv)
 	pv_log(INFO, "unmounted '%d' volumes", count);
 
 	return count;
+}
+
+int pv_volumes_unmount_all(struct pantavisor *pv)
+{
+	return pv_volumes_unmount_level(pv, BSP);
 }
