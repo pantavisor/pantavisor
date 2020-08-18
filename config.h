@@ -91,6 +91,7 @@ struct pantavisor_config {
 	int logsize;
 	int revision_retries;
 	int revision_retry_timeout;
+	int update_commit_delay;
 	struct pantavisor_bootloader bl;
 	struct pantavisor_creds creds;
 	struct pantavisor_factory factory;
