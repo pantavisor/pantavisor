@@ -223,6 +223,10 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"AUTHENTICATED", "Device Login Successful.", 0);
 		break;
+	case UPDATE_DEVICE_COMMIT_WAIT:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"UPDATED", "Awaiting update commit.",0);
+		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"ERROR", "Error during update", 0);
@@ -908,6 +912,10 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(WARN, "Unable to download revision, retrying update in %d seconds",
 				pv->update->retry_at);
 		goto retry_update;
+	case UPDATE_DEVICE_COMMIT_WAIT:
+		ret = trail_remote_set_status(pv, -1, UPDATE_DEVICE_COMMIT_WAIT);
+		pv_log(ERROR, "update has failed");
+		break;
 	default:
 		ret = -1;
 		goto out;
@@ -1444,6 +1452,9 @@ static int pv_update_init(struct pv_init *this)
 		DOWNLOAD_RETRY_WAIT = DEFAULT_DOWNLOAD_RETRY_WAIT;
 	else
 		DOWNLOAD_RETRY_WAIT = config->revision_retry_timeout;
+
+	if (config->update_commit_delay <= 0)
+		config->update_commit_delay = DEFAULT_UPDATE_COMMIT_DELAY;
 
 	// get try revision from bl
 	bl_rev = pv_bl_get_try(pv);

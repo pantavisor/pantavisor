@@ -443,7 +443,9 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	config->creds.prn = _config_get_value("creds.prn");
 	config->creds.secret = _config_get_value("creds.secret");
 	config->factory.autotok = _config_get_value("factory.autotok");
-
+	item = _config_get_value("updater.commit.delay");
+	if (item)
+		sscanf(item, "%d", &config->update_commit_delay);
 	return 0;
 }
 

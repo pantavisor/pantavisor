@@ -43,6 +43,7 @@ extern int MAX_REVISION_RETRIES;
 extern int DOWNLOAD_RETRY_WAIT;
 
 #define DEFAULT_MAX_REVISION_RETRIES 	(10)
+#define DEFAULT_UPDATE_COMMIT_DELAY 	(3 * 60)
 
 struct trail_remote {
 	trest_ptr client;

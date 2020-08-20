@@ -63,6 +63,7 @@
 
 static int rb_count;
 static time_t wait_delay;
+static time_t commit_delay;
 
 typedef enum {
 	STATE_INIT,
@@ -175,6 +176,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// set initial wait delay
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = tp.tv_sec + pv->config->updater.interval;
+	commit_delay = tp.tv_sec + pv->config->update_commit_delay;
 
 	return STATE_WAIT;
 }
@@ -284,7 +286,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 	int ret = 0;
 	int timeout_max = pv->config->updater.network_timeout
 		/ pv->config->updater.interval;
-
+	static bool pending_commit = false;
 	/*
 	 * The update struct would become private and not
 	 * associated with pv at all. pv would only contain
@@ -304,11 +306,13 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 			rb_count++;
 			return STATE_WAIT;
 		} else {
-			pv_set_current(pv, pv->state->rev);
-			pv_update_set_status(pv, UPDATE_DONE);
-			if (!pv_update_finish(pv))
-				status_updated = true;
-			pv_bl_clear_update(pv);
+			/*
+			 * we clear the pending update
+			 * but we delay the commit of this update.
+			 */
+			pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
+			pv_update_finish(pv);
+			pending_commit = true;
 		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
@@ -318,21 +322,33 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 			status_updated = true;
 		current_status = UPDATE_FAILED;
 	}
+	if (pending_commit) {
+			clock_gettime(CLOCK_MONOTONIC, &tp);
+			if (commit_delay > tp.tv_sec) {
+				current_status = UPDATE_DEVICE_COMMIT_WAIT;
+				pv_log(WARN, "Committing new update in %d seconds", commit_delay - tp.tv_sec);
+				goto out;
+			}
+			pv_bl_clear_update(pv);
+			pv_set_current(pv, pv->state->rev);
+			pending_commit = false;
+			status_updated = false;
+			current_status = UPDATE_DONE;
+			pv_log(INFO, "Marking revision %d as DONE",
+					pv->state->rev);
+	}
 	// check for updates
 	ret = pv_check_for_updates(pv);
-	
-	/* set delay to at most the updater interval */
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + pv->config->updater.interval;
 	if (ret > 0) {
 		pv_log(INFO, "updates found");
 		next_state = STATE_UPDATE;
-		goto out;
 	}
-
+out:
 	if (!status_updated && !pv_set_current_status(pv, current_status))
 		status_updated = true;
-out:
+	/* set delay to at most the updater interval */
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	wait_delay = tp.tv_sec + pv->config->updater.interval;
 	return next_state;
 }
 
@@ -349,7 +365,7 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 {
 	pv_state_t next_state = STATE_WAIT;
 	struct timespec tp;
-	int timeout_max = pv->config->updater.network_timeout
+	int timeout_max = pv->config->update_commit_delay
 		/ pv->config->updater.interval;
 
 	if (!pv_ph_is_available(pv)) {
@@ -361,6 +377,8 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 		}
 		clock_gettime(CLOCK_MONOTONIC, &tp);
 		wait_delay = tp.tv_sec + pv->config->updater.interval;
+		pv_log(WARN, "current rb_count = %d, max_allowed = %d",
+				rb_count, timeout_max);
 		goto out;
 	}
 	if (!pv_device_factory_meta_done(pv)) {
