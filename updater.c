@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <mtd/mtd-user.h>
+#include <inttypes.h>
 
 #include <thttp.h>
 #include <mbedtls/sha256.h>
@@ -51,6 +52,7 @@
 #include "wdt.h"
 #include "init.h"
 #include "revision.h"
+#include "parser/parser_bundle.h"
 
 int MAX_REVISION_RETRIES = 0;
 int DOWNLOAD_RETRY_WAIT = 0;
@@ -139,16 +141,42 @@ err:
 	return -1;
 }
 
-static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_state status)
+static void object_update_json(struct object_update *object_update,
+		char *buffer, ssize_t buflen)
+{
+	buflen -= snprintf(buffer, buflen,
+			"{\"object_name\":\"%s\""
+			",\"object_id\":\"%s\""
+			",\"total_size\":%"PRIu64
+			",\"start_time\":%"PRIu64
+			",\"current_time\":%"PRIu64
+			",\"total_downloaded\":%"PRIu64
+			"}"
+			,
+			object_update->object_name,
+			object_update->object_id,
+			object_update->total_size,
+			object_update->start_time,
+			object_update->current_time,
+			object_update->total_downloaded
+			);
+}
+
+static int __trail_remote_set_status(struct pantavisor *pv, int rev,
+					enum update_state status, const char *msg)
 {
 	int ret = 0;
 	struct pv_update *pending_update = pv->update;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
-	char json[1024];
-	char retries[6]; /*We wouldn't want a very big number here anyway*/
+	char __json[1024];
+	char *json = __json;
+	char *json_progress = "";
+	char retries[6]; /*json holder for retry_count*/
 	char *endpoint;
 	char retry_message[128];
+	char total_progress_json[512];
+	int __retries = 0;
 
 	if (!pending_update) {
 		endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT) +
@@ -167,14 +195,18 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 	switch (status) {
 	case UPDATE_QUEUED:
 		if (pending_update)
-			snprintf(retries, sizeof(retries), "%d", pending_update->pending->retries);
-		else
-			sprintf(retries, "%d", 0);
+			__retries = pending_update->pending->retries;
+
+		snprintf(retries, sizeof(retries), "%d", __retries);
 		pv_log(DEBUG, "Update queued, retry count is %s", retries);
 		sprintf(retry_message, "Update queued (%s/%d)", retries,
 				MAX_REVISION_RETRIES);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
+		if (pending_update) {
+			snprintf(pending_update->retry_data, 
+				sizeof(pending_update->retry_data), "%s", retries);
+		}
 		break;
 	case UPDATE_DOWNLOADED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -205,7 +237,7 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 			"WONTGO", "Remote state cannot be parsed", 0);
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		//BUG_ON(!u)
+		//BUG_ON(!pending_update)
 		if (pending_update->pending->retries) {
 			snprintf(retry_message, sizeof(retry_message),
 				"Network unavailable while downloading "
@@ -215,9 +247,17 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 			snprintf(retry_message, sizeof(retry_message),
 				"Network unavailable while downloading. Retrying shortly");
 		}
-		snprintf(retries, sizeof(retries), "%d", pending_update->pending->retries);
+		snprintf(retries, sizeof(retries), "%d",
+				pending_update->pending->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
+		
+		snprintf(pending_update->retry_data,
+				sizeof(pending_update->retry_data), "%s", retries);
+		/*
+		 * Clear what was downloaded.
+		 */
+		pending_update->total_update->total_downloaded = 0;
 		break;
 	case UPDATE_DEVICE_AUTH_OK:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -226,6 +266,67 @@ static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_s
 	case UPDATE_DEVICE_COMMIT_WAIT:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"UPDATED", "Awaiting update commit.",0);
+		break;
+	case UPDATE_DOWNLOAD_PROGRESS:
+		/*
+		 * check if there is retry data pending.
+		 */
+		if (strlen(pending_update->retry_data))
+			json_progress = pending_update->retry_data;
+
+		if (pending_update->total_update) {
+			object_update_json(pending_update->total_update,
+					total_progress_json, sizeof(total_progress_json));
+		}
+		if (pending_update->progress_objects) {
+			char *buff = pending_update->progress_objects;
+			/*
+			 * append the message to the end of
+			 * progress_objects. Avoid another allocation,
+			 * and cleanup progress_objects from the msg location.
+			 */
+			int len = strlen(buff);
+
+			/*
+			 * if there are no previous objects,
+			 * we don't need to allocate buffer space.
+			 */
+			if (len) {
+				json = (char*)calloc(1, 
+						PATH_MAX + pending_update->progress_size);
+			}
+			/*
+			 * we must post the total
+			 */
+			if (!json)
+				json = __json;
+			/*
+			 * just post the total and bail out.
+			 */
+			if (__json == json) {
+				sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
+						"DOWNLOADING", "Progress", 0, json_progress,
+						total_progress_json,
+						"");
+				pv_log(INFO, "Progress, %s", json);
+				break;
+			}
+			if (msg) {
+				if (len) {
+					strncat(buff + len, ",", 1);
+					len += 1;
+				}
+				snprintf(buff + len,
+						pv->update->progress_size - len, "%s", msg);
+				len = (len > 0 ? len - 1 : len);
+			}
+			sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
+					"DOWNLOADING", "Progress", 0, json_progress,
+					total_progress_json,
+					pending_update->progress_objects);
+			pending_update->progress_objects[len] = '\0';
+		}
+		pv_log(INFO, "Progress, %s", json);
 		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -260,10 +361,16 @@ out:
 		trest_request_free(req);
 	if (res)
 		trest_response_free(res);
+	if (json != __json)
+		free(json);
 
 	return ret;
 }
 
+static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_state status)
+{
+	return __trail_remote_set_status(pv, rev, status, NULL);
+}
 
 static trest_response_ptr trail_get_steps_response(struct pantavisor *pv,
 							char *endpoint)
@@ -304,6 +411,37 @@ out:
 	return NULL;
 }
 
+/*
+ * the "data" field is structured as,
+ * "data" : "value"
+ * }
+ */
+struct jka_update_ctx {
+	int *retries;
+};
+
+static int do_progress_action(struct json_key_action *jka, char *value)
+{
+	char *buf = jka->buf;
+	char *retry_count = NULL;
+	int ret = 0;
+	struct jka_update_ctx *ctx = (struct jka_update_ctx*) jka->opaque;
+	struct json_key_action jka_objs[] = {
+		ADD_JKA_ENTRY("data", JSMN_STRING, &retry_count, NULL, true),
+		ADD_JKA_NULL_ENTRY()
+	};
+
+	ret = start_json_parsing_with_action(buf, jka_objs, JSMN_OBJECT);
+	if (!ret) {
+		if (retry_count) {
+			sscanf(retry_count, "%d", ctx->retries);
+			free(retry_count);
+		}
+	}
+	return ret;
+}
+
+
 static int trail_get_new_steps(struct pantavisor *pv)
 {
 	int rev = 0, ret = 0;
@@ -313,7 +451,15 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	jsmntok_t *tokv = 0;
 	char *retry_endpoint = NULL;
 	int retries = 0;
+	struct jka_update_ctx update_ctx = {
+		.retries = &retries
+	};
 	bool update_pending = false;
+	struct json_key_action jka[] = {
+		ADD_JKA_ENTRY("progress", JSMN_OBJECT, &update_ctx, 
+				do_progress_action, false),
+		ADD_JKA_NULL_ENTRY()
+	};
 
 	if (!remote)
 		return 0;
@@ -325,30 +471,15 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	retry_endpoint = (char*)calloc(1, strlen(remote->endpoint)
 			+ sizeof(DEVICE_TRAIL_ENDPOINT_QUERY));
 	if (retry_endpoint) {
+		int ret = 0;
+
 		sprintf(retry_endpoint, "%s%s",remote->endpoint,DEVICE_TRAIL_ENDPOINT_QUERY);
 		res = trail_get_steps_response(pv, retry_endpoint);
 		if (res) {
-			char *data = NULL;
-
 			update_pending = true;
-			data = get_json_key_value(res->body, "progress",
-					res->json_tokv, res->json_tokc);
-			if (data) {
-				jsmntok_t *tokv = 0;
-				int toks_out = 0;
-
-				if (jsmnutil_parse_json(data, &tokv, &toks_out)>=0) {
-					char *__retries = get_json_key_value(data,"data", tokv, toks_out);
-					if (__retries) {
-						sscanf(__retries, "%d", &retries);
-						free(__retries);
-					}
-					if (tokv)
-						free(tokv);
-				}
-				free(data);
-				data = NULL;
-			}
+			ret = start_json_parsing_with_action(res->body, jka, JSMN_OBJECT);
+			if (ret)
+				pv_log(WARN, "Failed to parse retries");
 		}
 		free(retry_endpoint);
 		retry_endpoint = NULL;
@@ -849,7 +980,11 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	}
 
 	u = calloc(sizeof(struct pv_update), 1);
-
+	if (u) {
+		u->total_update = (struct object_update*) calloc(1, sizeof(struct object_update));
+		u->progress_size = PATH_MAX;
+		u->progress_objects = (char*)calloc(1, u->progress_size);
+	}
 	head = NULL;
 	last = NULL;
 
@@ -926,7 +1061,10 @@ out:
 		pv_state_free(pv->update->pending);
 	if (pv->update->endpoint)
 		free(pv->update->endpoint);
-
+	if (pv->update->progress_objects)
+		free(pv->update->progress_objects);
+	if (pv->update->total_update)
+		free(pv->update->total_update);
 	free(pv->update);
 
 	pv->update = NULL;
@@ -1058,6 +1196,82 @@ static int trail_update_has_new_initrd(struct pantavisor *pv)
 
 	return 0;
 }
+/*
+ * used to update progress of an object.
+ */
+
+
+struct progress_update {
+	time_t next_update_at;
+	struct pantavisor *pv;
+	struct object_update *object_update;
+	struct pv_object *pv_object;
+};
+
+static uint64_t get_update_size(struct pv_update *u)
+{
+	uint64_t size = 0;
+	struct stat st;
+	struct pv_object *curr = NULL;
+
+	pv_objects_iter_begin(u->pending, curr) {
+		if (stat(curr->objpath, &st) < 0)
+			size += curr->size;
+	}
+	pv_objects_iter_end;
+	pv_log(INFO, "update size: %" PRIu64 " bytes", size);
+
+	return size;
+}
+/*
+ * see object_update
+ */
+static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, void *obj)
+{
+	struct progress_update *progress_update = (struct progress_update*)obj;
+	struct pv_object *pv_object = NULL;
+	char *msg = NULL;
+	const int OBJ_JSON_SIZE = 1024;
+	struct object_update *total_update = NULL;
+
+	if (!obj)
+		return;
+	total_update = progress_update->pv->update->total_update;
+	if (progress_update->next_update_at > time(NULL)) {
+		if (chunk_size == written) {
+			progress_update->object_update->total_downloaded += chunk_size;
+			total_update->total_downloaded += chunk_size;
+			return;
+		}
+		/*
+		 * written != chunk_size then allow for
+		 * error message to be posted.
+		 */
+	}
+	pv_object = progress_update->pv_object;
+	if (!pv_object)
+		return;
+
+	msg = (char*)calloc(1, OBJ_JSON_SIZE);
+	if (!msg)
+		return;
+
+	if (written != chunk_size) {
+		pv_log(ERROR, "Error downloading object %s", pv_object->name);
+		goto out;
+	}
+	else {
+		progress_update->object_update->total_downloaded += chunk_size;
+		total_update->total_downloaded += chunk_size;
+		progress_update->object_update->current_time = time(NULL);
+		object_update_json(progress_update->object_update, msg, OBJ_JSON_SIZE);
+	}
+	progress_update->next_update_at = time(NULL) + UPDATE_PROGRESS_FREQ;
+	pv_log(INFO, "%s", msg);
+	__trail_remote_set_status(progress_update->pv, -1, UPDATE_DOWNLOAD_PROGRESS, msg);
+out:
+	free(msg);
+}
 
 static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
 {
@@ -1079,7 +1293,12 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	thttp_response_t* res = 0;
 	thttp_request_tls_t* tls_req = 0;
 	thttp_request_t* req = 0;
-
+	struct object_update object_update;
+	struct progress_update progress_update = {
+		.pv = pv,
+		.pv_object = obj,
+		.object_update = &object_update,
+	};
 	if (!obj)
 		goto out;
 
@@ -1157,7 +1376,16 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	// download to tmp
 	lseek(fd, 0, SEEK_SET);
 	pv_log(INFO, "downloading object to tmp path (%s)", mmc_tmp_obj_path);
-	res = thttp_request_do_file (req, fd);
+	object_update.start_time = time(NULL);
+	object_update.object_name = obj->name;
+	object_update.object_id = obj->id;
+	object_update.total_size = obj->size;
+	object_update.current_time = object_update.start_time;
+	object_update.total_downloaded = 0;
+	progress_update.next_update_at = object_update.start_time + 
+						UPDATE_PROGRESS_FREQ;
+	res = thttp_request_do_file_with_cb (req, fd,
+			trail_download_object_progress, &progress_update);
 	if (!res) {
 		pv_log(WARN, "no response from server");
 		remove(mmc_tmp_obj_path);
@@ -1175,6 +1403,8 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	}
 	pv_log(INFO, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
 	fsync(fd);
+	object_update.current_time = time(NULL);
+
 
 	// verify file downloaded correctly before syncing to disk
 	lseek(fd, 0, SEEK_SET);
@@ -1213,7 +1443,52 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		pv_bl_install_kernel(pv, volatile_tmp_obj_path);
 
 	ret = 1;
+	if (pv->update && pv->update->progress_objects) {
+		int data_len = strlen(pv->update->progress_objects);
+		char this_obj_json[512];
+		int to_write = 0;
+		int remaining = pv->update->progress_size - data_len - 1;
+		bool can_write = true;
 
+		/*
+		 * Use a placeholder for this object's json.
+		 */
+		object_update_json(&object_update, this_obj_json,
+					sizeof(this_obj_json));
+		to_write += strlen(this_obj_json);
+		/*
+		 * if there already were other objects we would
+		 * need to add a ,
+		 */
+		if (data_len)
+			to_write += 1;
+		
+		if (to_write > remaining) {
+			char *__new_progress_objects = 
+				(char*)realloc(pv->update->progress_objects,
+						(2 * pv->update->progress_size));
+			if (!__new_progress_objects)
+				can_write = false;
+			else {
+				pv->update->progress_size *= 2;
+				pv->update->progress_objects = __new_progress_objects;
+			}
+		}
+		if (can_write) {
+			if (data_len) {
+				strncat(pv->update->progress_objects, ",", 1);
+				data_len += 1;
+			}
+			sprintf(pv->update->progress_objects + data_len,"%s",
+					this_obj_json);
+		} else {
+			pv_log(ERROR, "Failed to allocate space for progress data");
+		}
+		pv_log(DEBUG, "retry_data is %s", 
+				pv->update->retry_data);
+		pv_log(DEBUG, "progress_objects is %s", 
+				pv->update->progress_objects);
+	}
 out:
 	if (fd)
 		close(fd);
@@ -1266,21 +1541,7 @@ static int trail_link_objects(struct pantavisor *pv)
 	return -err;
 }
 
-static int get_update_size(struct pv_update *u)
-{
-	int size = 0;
-	struct stat st;
-	struct pv_object *curr = NULL;
 
-	pv_objects_iter_begin(u->pending, curr) {
-		if (stat(curr->objpath, &st) < 0)
-			size += curr->size;
-	}
-	pv_objects_iter_end;
-	pv_log(INFO, "update size: %d bytes", size);
-
-	return size;
-}
 
 static int trail_download_objects(struct pantavisor *pv)
 {
@@ -1316,15 +1577,23 @@ static int trail_download_objects(struct pantavisor *pv)
 
 	if (k_new && k_old && strcmp(k_new->id, k_old->id))
 		u->need_reboot = 1;
-
+	
+	if (u->total_update) {
+		u->total_update->object_name = "total";
+		u->total_update->object_id = "none";
+		u->total_update->total_size = get_update_size(u);
+		u->total_update->start_time = time(NULL);
+		u->total_update->total_downloaded = 0;
+	}
 	pv_objects_iter_begin(u->pending, o) {
 		if (!trail_download_object(pv, o, crtfiles)) {
 			ret = TRAIL_NO_NETWORK;
 			goto out;
 		}
+		u->total_update->current_time = time(NULL);
+		trail_remote_set_status(pv, -1, UPDATE_DOWNLOAD_PROGRESS);
 	}
 	pv_objects_iter_end;
-
 	ret = 0;
 
 out:

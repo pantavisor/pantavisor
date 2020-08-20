@@ -185,16 +185,8 @@ static int do_json_key_action_object(struct json_key_action *jka)
 {
 	int  ret = 0;
 
-	ret = jsmnutil_parse_json(jka->buf, &jka->tokv, &jka->tokc);
-	if (ret <= 0) {
-		ret = -1;
-		goto free_tokens;
-	}
 	if (jka->action)
 		ret = jka->action(jka, NULL);
-free_tokens:
-	if (jka->tokv)
-		free(jka->tokv);
 	return ret;
 }
 
