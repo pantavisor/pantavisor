@@ -64,6 +64,7 @@
 static int rb_count;
 static time_t wait_delay;
 static time_t commit_delay;
+static bool pending_commit = false;
 
 typedef enum {
 	STATE_INIT,
@@ -286,7 +287,6 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 	int ret = 0;
 	int timeout_max = pv->config->updater.network_timeout
 		/ pv->config->updater.interval;
-	static bool pending_commit = false;
 	/*
 	 * The update struct would become private and not
 	 * associated with pv at all. pv would only contain
@@ -416,7 +416,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
-		next_state = STATE_REBOOT;
+		next_state = pending_commit ? STATE_ROLLBACK : STATE_REBOOT;
 		goto out;
 	}
 	next_state = pv_helper_process(pv);

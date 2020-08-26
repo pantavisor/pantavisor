@@ -30,6 +30,10 @@
 #define DEVICE_STEP_STATUS_FMT "{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
 #define DEVICE_STEP_STATUS_FMT_WITH_DATA  	\
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%s\"}"
+#define DEVICE_STEP_STATUS_FMT_PROGRESS_DATA  	\
+	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%s\",\
+	\"downloads\": {\"total\":%s, \"objects\":[%s]}}"
+
 
 #define TRAIL_OBJECT_DL_FMT	"/objects/%s"
 #define DEVICE_TRAIL_ENDPOINT_QUERY 	"?progress.status=QUEUED"
@@ -38,6 +42,7 @@
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
 #define DEFAULT_DOWNLOAD_RETRY_WAIT  (2 * 60) /*2 minutes*/
+#define UPDATE_PROGRESS_FREQ 	(3) /*3 seconds for update*/
 
 extern int MAX_REVISION_RETRIES;
 extern int DOWNLOAD_RETRY_WAIT;

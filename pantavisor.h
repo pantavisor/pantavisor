@@ -53,7 +53,8 @@ enum update_state {
 	UPDATE_NO_PARSE,
 	UPDATE_RETRY_DOWNLOAD,
 	UPDATE_DEVICE_AUTH_OK,
-	UPDATE_DEVICE_COMMIT_WAIT
+	UPDATE_DEVICE_COMMIT_WAIT,
+	UPDATE_DOWNLOAD_PROGRESS
 };
 
 typedef enum {
@@ -64,13 +65,26 @@ typedef enum {
 	VOL_UNKNOWN
 } pv_volume_t;
 
+struct object_update {
+	char *object_name;
+	char *object_id;
+	uint64_t total_size;
+	uint64_t start_time;
+	uint64_t current_time;
+	uint64_t total_downloaded;
+};
+
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
 	int need_reboot;
 	int need_finish;
+	int progress_size;
 	time_t retry_at;
 	struct pv_state *pending;
+	char *progress_objects;
+	struct object_update *total_update;
+	char retry_data[64];
 };
 
 struct pv_addon {
