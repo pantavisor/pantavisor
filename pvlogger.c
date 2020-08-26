@@ -316,7 +316,7 @@ read_again:
 	tv.tv_usec = 0;
 	did_wait = true;
 	ret = select(fd_dir_notify + 1, &fdset, NULL, NULL, &tv);
-	if (ret < 0) {
+	if (ret <= 0) {
 		if (errno == EINTR)
 			goto read_again;
 		else {
