@@ -65,4 +65,7 @@ struct platform_bundle {
 };
 int start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
 					jsmntype_t type);
+
+int __start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr, 
+		jsmntype_t type, jsmntok_t *__tokv, int __tokc);
 #endif /* __PARSER_BUNDLE_H__ */
