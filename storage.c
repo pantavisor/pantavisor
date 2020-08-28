@@ -143,6 +143,12 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 
 	remove_in(path, revision);
 
+	sprintf(path, "%s/logs", pv->config->storage.mntpoint);
+	sprintf(revision, "%d", rev);
+
+	remove_in(path, revision);
+
+
 	sync();
 }
 
