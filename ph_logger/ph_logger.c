@@ -801,11 +801,11 @@ again:
 		work_fd = ep_event[ret].data.fd;
 
 		if (work_fd == ph_logger->sock_fd) {
-			socklen_t sock_size;
+			socklen_t sock_size = sizeof(__unused);
 			int client_fd = -1;
 accept_again:
 			client_fd = accept(ph_logger->sock_fd, &__unused, &sock_size);
-			if (client_fd > 0) {
+			if (client_fd >= 0) {
 				/* reuse ep_event to add the new client_fd
 				 * to epoll.
 				 */
@@ -813,11 +813,20 @@ accept_again:
 				ep_event[ret].events = EPOLLIN;
 				ep_event[ret].data.fd = client_fd;
 
-				if (epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_ADD, client_fd, &ep_event[ret]))
+				if (epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_ADD, client_fd, &ep_event[ret])) {
+#ifdef DEBUG
+					printf("Error adding to epoll %s\n",
+							strerror(errno));
+#endif
 					close(client_fd);/*So client would know*/
-
+				}
 			} else if (client_fd < 0 && errno == EINTR)
 				goto accept_again;
+			else {
+#ifdef DEBUG
+				printf("Error accepting %s\n", strerror(errno));
+#endif
+			}
 		} else {
 			/* We've data to read.*/
 			struct log_buffer *log_buffer = NULL;
@@ -834,7 +843,8 @@ accept_again:
 					nr_logs++;
 				}
 			}
-			epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_DEL, work_fd, &ep_event[ret]);
+			ep_event[ret].events = EPOLLIN;
+			epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_DEL, work_fd,&ep_event[ret]);
 			close(work_fd);
 			pv_log_put_buffer(log_buffer);
 		}

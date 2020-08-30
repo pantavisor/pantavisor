@@ -218,6 +218,11 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 		return;
 	snprintf(log_path, sizeof(log_path), "%s/%s",log_dir, LOG_NAME);
 	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
+	
+	if (log_fd >= 0) {
+		while (lock_file(log_fd))
+			;
+	}
 
 	if (!stat(log_path, &log_stat)) {
 		if (log_stat.st_size >= LOG_MAX_FILE_SIZE) {
@@ -243,6 +248,7 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 		dprintf(log_fd, "[%s]: ", module);
 		vdprintf(log_fd, fmt, args);
 		dprintf(log_fd, "\n");
+		unlock_file(log_fd);
 		close(log_fd);
 	}
 }
