@@ -60,6 +60,7 @@ struct log_buffer {
 	struct dl_list free_list;
 };
 #define LOG_NAME		"pantavisor.log"
+#define ERROR_DIR		"error"
 
 #define __put_buf_back__ 	__cleanup__(__put_log_buff)
 

@@ -308,7 +308,6 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 						"DOWNLOADING", "Progress", 0, json_progress,
 						total_progress_json,
 						"");
-				pv_log(INFO, "Progress, %s", json);
 				break;
 			}
 			if (msg) {
@@ -326,7 +325,6 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 					pending_update->progress_objects);
 			pending_update->progress_objects[len] = '\0';
 		}
-		pv_log(INFO, "Progress, %s", json);
 		break;
 	default:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -422,18 +420,19 @@ struct jka_update_ctx {
 
 static int do_progress_action(struct json_key_action *jka, char *value)
 {
-	char *buf = jka->buf;
 	char *retry_count = NULL;
 	int ret = 0;
+	char *json_val = NULL;
 	struct jka_update_ctx *ctx = (struct jka_update_ctx*) jka->opaque;
-	struct json_key_action jka_objs[] = {
+	struct json_key_action jka_arr[] = {
 		ADD_JKA_ENTRY("data", JSMN_STRING, &retry_count, NULL, true),
 		ADD_JKA_NULL_ENTRY()
 	};
 
-	ret = start_json_parsing_with_action(buf, jka_objs, JSMN_OBJECT);
+	ret = __start_json_parsing_with_action(jka->buf, jka_arr, JSMN_OBJECT, jka->tokv, jka->tokc);
 	if (!ret) {
 		if (retry_count) {
+			pv_log(INFO, "retry_count = %s", retry_count);
 			sscanf(retry_count, "%d", ctx->retries);
 			free(retry_count);
 		}
@@ -456,7 +455,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	};
 	bool update_pending = false;
 	struct json_key_action jka[] = {
-		ADD_JKA_ENTRY("progress", JSMN_OBJECT, &update_ctx, 
+		ADD_JKA_ENTRY("progress", JSMN_OBJECT, &update_ctx,
 				do_progress_action, false),
 		ADD_JKA_NULL_ENTRY()
 	};
@@ -477,7 +476,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		res = trail_get_steps_response(pv, retry_endpoint);
 		if (res) {
 			update_pending = true;
-			ret = start_json_parsing_with_action(res->body, jka, JSMN_OBJECT);
+			ret = start_json_parsing_with_action(res->body, jka, JSMN_ARRAY);
 			if (ret)
 				pv_log(WARN, "Failed to parse retries");
 		}
@@ -1267,7 +1266,6 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 		object_update_json(progress_update->object_update, msg, OBJ_JSON_SIZE);
 	}
 	progress_update->next_update_at = time(NULL) + UPDATE_PROGRESS_FREQ;
-	pv_log(INFO, "%s", msg);
 	__trail_remote_set_status(progress_update->pv, -1, UPDATE_DOWNLOAD_PROGRESS, msg);
 out:
 	free(msg);

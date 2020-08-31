@@ -522,9 +522,6 @@ ssize_t read_nointr(int fd, char *buf, ssize_t len)
 				continue;
 			break;
 		}
-		/*
-		 * If it's EOF, let the caller know.
-		 */
 		if (__read == 0)
 			break;
 		nr_read += __read;
