@@ -466,7 +466,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 // store per-platform (void*) type object to underlying impl (lxc, docker)
 int pv_platforms_start_all(struct pantavisor *pv)
 {
-	int num_plats = 0;
+	int num_plats = 0, first = 1;
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = s->platforms;
 
@@ -507,7 +507,10 @@ int pv_platforms_start_all(struct pantavisor *pv)
 			p->name, data, pid);
 
 		// FIXME: arbitrary delay between plats
-		sleep(7);
+		if (first) {
+			sleep(5);
+			first = 0;
+		}
 
 		p->data = data;
 		p->init_pid = pid;
@@ -534,7 +537,7 @@ int pv_platforms_start_all(struct pantavisor *pv)
 // Cannot fail, force stop and/or kill if necessary
 int pv_platforms_stop_all(struct pantavisor *pv)
 {
-	int num_plats = 0;
+	int num_plats = 0, exited = 0;
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = s->platforms;
 	const struct pv_cont_ctrl *ctrl;
@@ -543,9 +546,27 @@ int pv_platforms_stop_all(struct pantavisor *pv)
 		ctrl = _pv_platforms_get_ctrl(p->type);
 		ctrl->stop(p, NULL, p->data);
 		p->running = false;
-		pv_log(INFO, "stopped platform '%s'", p->name);
+		pv_log(INFO, "sent SIGTERM to platform '%s'", p->name);
 		num_plats++;
 		p = p->next;
+	}
+
+	for (int i = 0; i < 5; i++) {
+		exited = pv_platforms_check_exited(pv);
+		if (exited == -num_plats)
+			break;
+		sleep(1);
+	}
+
+	if (exited != -num_plats) {
+		p = s->platforms;
+		while (p) {
+			if (!kill(p->init_pid, 0)) {
+				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
+				kill(p->init_pid, SIGKILL);
+			}
+			p = p->next;
+		}
 	}
 
 	pv_platforms_remove_all(s);
@@ -559,17 +580,18 @@ int pv_platforms_check_exited(struct pantavisor *pv)
 {
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = s->platforms;
+	int exited = 0;
 
 	while (p) {
 		if (!kill(p->init_pid, 0)) {
 			p = p->next;
 			continue;
 		}
-		pv_log(WARN, "platform '%s' exited", p->name);
-		return -1;
+		p = p->next;
+		exited--;
 	}
 
-	return 0;
+	return exited;
 }
 
 static int pv_platforms_early_init(struct pv_init *this)
