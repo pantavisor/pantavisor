@@ -612,9 +612,7 @@ void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data)
 	if (!data)
 		return NULL;
 
-	s = c->shutdown(c, 5); // 5 second timeout
-	if (!s)
-		c->stop(c);
+	s = c->shutdown(c, 0);
 
 	// unref
 	lxc_container_put(c);
