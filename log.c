@@ -222,9 +222,13 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 	
 	if (log_fd >= 0) {
 		int ret = 0;
+		int lock_file_errno = 0;
 		do {
 			ret = lock_file(log_fd);
-		}while (ret == EAGAIN || ret == EACCES);
+		} while (ret < 0 && (errno == EAGAIN || ret == EACCES));
+
+		if (ret < 0)
+			lock_file_errno = errno;
 		/*
 		 * We weren't able to take the lock.
 		 */
@@ -233,6 +237,7 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 			char proc_name[17] = {0};
 			int len = 0;
 			int err_fd = -1;
+
 
 			snprintf(err_file, PATH_MAX, "%s/%s", log_dir, ERROR_DIR);
 			mkdir_p(err_file, 0755);
@@ -244,7 +249,7 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 			if (err_fd >= 0) {
 				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
 				dprintf(err_fd, "process %s couldn't acquire pantavisor.log lock\n", proc_name);
-				dprintf(err_fd, "error code %d: %s\n", ret, strerror(ret));
+				dprintf(err_fd, "error code %d: %s\n", errno, strerror(lock_file_errno));
 				dprintf(err_fd, "[pantavisor] %s\t -- ", level_names[level].name);
 				dprintf(err_fd, "[%s]: ", module);
 				vdprintf(err_fd, fmt, args);
