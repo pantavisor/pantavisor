@@ -244,6 +244,7 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 			if (err_fd >= 0) {
 				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
 				dprintf(err_fd, "process %s couldn't acquire pantavisor.log lock\n", proc_name);
+				dprintf(err_fd, "error code %d: %s\n", ret, strerror(ret));
 				dprintf(err_fd, "[pantavisor] %s\t -- ", level_names[level].name);
 				dprintf(err_fd, "[%s]: ", module);
 				vdprintf(err_fd, fmt, args);
