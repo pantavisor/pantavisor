@@ -225,7 +225,7 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 		int lock_file_errno = 0;
 		do {
 			ret = lock_file(log_fd);
-		} while (ret < 0 && (errno == EAGAIN || ret == EACCES));
+		} while (ret < 0 && (errno == EAGAIN || errno == EACCES));
 
 		if (ret < 0)
 			lock_file_errno = errno;
