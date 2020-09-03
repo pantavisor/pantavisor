@@ -485,7 +485,7 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	sprintf(buf, "%d", config->updater.network_timeout);
 	bytes = write_config_tuple(fd, "updater.network_timeout", buf);
 	sprintf(buf, "%d", config->update_commit_delay);
-	bytes = write_config_tuple(fd, "updater.commit_delay", buf);
+	bytes = write_config_tuple(fd, "updater.commit.delay", buf);
 	sprintf(buf, "%d", config->updater.keep_factory);
 	bytes = write_config_tuple(fd, "updater.keep_factory", buf);
 	bytes = write_config_tuple(fd, "creds.type", config->creds.type);
