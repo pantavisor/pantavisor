@@ -49,8 +49,6 @@
 
 #define FW_PATH		"/lib/firmware"
 
-static bool info_uploaded = 0;
-static bool info_parsed = 0;
 
 static int pv_device_info_buf_check(struct pv_device_info_read *pv_device_info_read)
 {
@@ -413,6 +411,8 @@ int pv_device_info_upload(struct pantavisor *pv)
 	int i = 0;
 	int bufsize = 0;
 	struct log_buffer *log_buffer = NULL;
+	static bool info_parsed = false;
+	bool info_uploaded = false;
 	/*
 	 * we can use one of the large log_buffer. Since
 	 * this information won't be very large, it's safe
@@ -448,7 +448,7 @@ int pv_device_info_upload(struct pantavisor *pv)
 		}
 	}
 upload:
-	if (info_uploaded)
+	if (dl_list_empty(&pv->dev->infolist))
 		goto out;
 	json = log_buffer->buf;
 	json_avail = log_buffer->size;
@@ -486,6 +486,16 @@ upload:
 	pv_log(INFO, "device info json = %s", json);
 	info_uploaded = !pv_ph_upload_metadata(pv, json);
 out:
+	if (info_uploaded && !dl_list_empty(&pv->dev->infolist)) {
+		head = &pv->dev->infolist;
+		dl_list_for_each_safe(info, tmp, head,
+				struct pv_devinfo, list) {
+			free(info->key);
+			free(info->value);
+			dl_list_del(&info->list);
+			free(info);
+		}
+	}
 	pv_log_put_buffer(log_buffer);
 	return 0;
 }
