@@ -50,6 +50,7 @@
 #include "network.h"
 #include "blkid.h"
 #include "init.h"
+#include "plat_meta.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -235,6 +236,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 	pv_device_info_upload(pv);
 	pv_network_update_meta(pv);
 	pv_ph_device_get_meta(pv);
+	pv_plat_meta_upload();
 	return 0;
 }
 

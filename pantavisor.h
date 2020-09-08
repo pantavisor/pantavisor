@@ -28,6 +28,7 @@
 #include <netinet/in.h>
 #include "utils/list.h"
 #include <trest.h>
+#include "plat_meta.h"
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
@@ -112,6 +113,7 @@ struct pv_platform {
 	 * To be freed once logger_list is setup.
 	 * */
 	struct dl_list logger_configs;
+	struct pv_plat_meta_watch meta_watch;
 };
 
 struct pv_volume {

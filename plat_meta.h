@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,22 +19,37 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAHUB_H
-#define PV_PANTAHUB_H
 
-#define DEVICE_TOKEN_FMT	"Pantahub-Devices-Auto-Token-V1: %s"
-#include "pantavisor.h"
-int pv_ph_is_available(struct pantavisor *pv);
-int pv_ph_upload_logs(struct pantavisor *pv, char *logs);
-int pv_ph_device_get_meta(struct pantavisor *pv);
-int pv_ph_device_exists(struct pantavisor *pv);
-int pv_ph_register_self(struct pantavisor *pv);
-const char** pv_ph_get_certs(struct pantavisor *pv);
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
-void pv_ph_release_client(struct pantavisor *pv);
-void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
-uint8_t pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
-struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config);
-int connect_try(struct sockaddr *serv);
-int ph_client_init(struct pantavisor *pv);
-#endif
+#ifndef __PV_PLAT_META_H__
+#define __PV_PLAT_META_H__
+
+#include <sys/inotify.h>
+#include "utils/list.h"
+#include "init.h"
+
+#define PV_PLAT_META_DIR 	"/pv-plat-meta"
+
+#define PV_META_FLAG_NOCREATE 	(1<<0)
+#define PV_META_FLAG_NOMODIFY 	(1<<1)
+#define PV_META_FLAG_NODELETE 	(1<<2)
+#define PV_META_FLAG_NODEFACT 	(1<<3)
+
+struct pv_plat_meta_watch {
+	int flags;
+	void *opaque;
+	int (*action)(struct pv_plat_meta_watch *, struct inotify_event *ev);
+};
+
+static inline void pv_plat_meta_watch_init(struct pv_plat_meta_watch *watch,
+						void *opaque)
+{
+	watch->flags = 0;
+	watch->action = NULL;
+	watch->opaque = opaque;
+}
+
+int pv_plat_meta_watch_action(struct pv_plat_meta_watch *watch,
+					struct inotify_event *ev);
+int pv_plat_meta_add_watch(struct pv_plat_meta_watch *watch, int flags);
+int pv_plat_meta_upload(void);
+#endif /*__PV_PLAT_META_H__*/

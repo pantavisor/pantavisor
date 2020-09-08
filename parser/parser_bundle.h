@@ -33,6 +33,7 @@ struct  json_key_action {
 	void **opaque;
 	jsmntype_t type;
 	bool save; /*Not applicable for array type*/
+	bool itr_keys; /*iterate over all keys not just first match*/
 	/*
 	 * Return 0 for success and non 0 for failure.
 	 * */
@@ -45,17 +46,26 @@ struct  json_key_action {
 	char *buf;
 };
 
+#define __ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save)  \
+	.key = __key, .type = __type, .opaque = (void*)__opaque,\
+	.action = __action, .save = __save
+
+#define ADD_JKA_ENTRY_ITR(__key, __type, __opaque, __action, __save)  \
+{\
+	__ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save),\
+	.itr_keys = true\
+}
+
 #define ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save)  \
 {\
-	.key = __key, .type = __type, .opaque = (void*)__opaque,\
-	.action = __action, .save = __save\
+	__ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save),\
+	.itr_keys = false\
 }
 
 #define ADD_JKA_NULL_ENTRY() 				\
 {\
-	.key = NULL, .type = JSMN_UNDEFINED,\
-       	.opaque = (void**)NULL,\
-	.action = NULL, .save = false\
+	__ADD_JKA_ENTRY(NULL,JSMN_UNDEFINED,NULL, NULL, NULL),\
+	.itr_keys = false\
 }
 
 

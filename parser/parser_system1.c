@@ -295,14 +295,16 @@ static int do_one_jka_action(struct json_key_action *jka)
  * check if key is present in keys.
  * returns the key from jsmntok_t **keys that matched.
  */
-static jsmntok_t* do_lookup_json_key(jsmntok_t **keys, char *json_buf, char *key)
+static jsmntok_t* do_lookup_json_key(jsmntok_t ***last, char *json_buf, char *key)
 {
 	bool found = false;
 	jsmntok_t **keys_walker = NULL;
 
-	if (!keys || !key)
+	if (!last)
 		return NULL;
-	keys_walker = keys;
+	keys_walker = *last;
+	if (!keys_walker || !key)
+		return NULL;
 	while(*keys_walker) {
 		// copy key 
 		char *curr_key = NULL;
@@ -324,6 +326,10 @@ static jsmntok_t* do_lookup_json_key(jsmntok_t **keys, char *json_buf, char *key
 			break;
 		keys_walker++;
 	}
+	if (found)
+		*last = keys_walker + 1;
+	else
+		*last = keys_walker;
 	return found ? (*keys_walker) : NULL;
 }
 
@@ -414,11 +420,16 @@ int __start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
 			goto free_tokens;
 		}
 		while ( !ret && jka->key ) {
+			jsmntok_t **last_key = keys;
 			jka->tokc = tokc;
 			jka->buf = buf;
-			jka->tokv = do_lookup_json_key(keys, buf, jka->key);
-			if (jka->tokv)
+do_iter:
+			jka->tokv = do_lookup_json_key(&last_key, buf, jka->key);
+			if (jka->tokv) {
 				ret = do_one_jka_action(jka);
+				if (!ret && jka->itr_keys)
+					goto do_iter;
+			}
 			jka->tokv = NULL;
 			jka->buf = NULL;
 			jka++;
