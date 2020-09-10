@@ -422,7 +422,6 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 {
 	char *retry_count = NULL;
 	int ret = 0;
-	char *json_val = NULL;
 	struct jka_update_ctx *ctx = (struct jka_update_ctx*) jka->opaque;
 	struct json_key_action jka_arr[] = {
 		ADD_JKA_ENTRY("data", JSMN_STRING, &retry_count, NULL, true),
@@ -1004,9 +1003,6 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT,
 		pv->config->creds.id, rev);
 
-	// FIXME: currently we only support strict (always rebot) updates
-	u->need_reboot = 1;
-	u->need_finish = 0;
 	pv->update = u;
 
 	// all done up to here for offline
@@ -1167,41 +1163,82 @@ static int copy_and_close(int s_fd, int d_fd)
 	return bytes_r;
 }
 
-static int trail_update_has_new_initrd(struct pantavisor *pv)
+static bool are_objects_equal(struct pantavisor *pv, char *prefix, char *old, char *new)
 {
-	char *old = 0, *new = 0;
+	char *full_path_old, *full_path_new;
 	struct pv_object *o_new = 0, *o_old = 0;
 
-	if (!pv)
-		return 0;
-
-	if (pv->state)
-		old = pv->state->initrd;
-
-	if (pv->update && pv->update->pending)
-		new = pv->update->pending->initrd;
-
 	if (!old || !new)
-		return 0;
+		return false;
 
-	if (strcmp(old, new))
-		return 1;
+	full_path_old = malloc(strlen(prefix)+strlen(old));
+	sprintf(full_path_old, "%s/%s", prefix, old);
 
-	o_new = pv_objects_get_by_name(pv->update->pending, new);
-	o_old = pv_objects_get_by_name(pv->state, old);
+	full_path_new = malloc(strlen(prefix)+strlen(new));
+	sprintf(full_path_new, "%s/%s", prefix, new);
+
+	if (strcmp(full_path_old, full_path_new))
+		goto out;
+
+	o_new = pv_objects_get_by_name(pv->update->pending, full_path_new);
+	o_old = pv_objects_get_by_name(pv->state, full_path_old);
 	if (!o_new || !o_old)
-		return 1;
+		goto out;
 
 	if (strcmp(o_new->id, o_old->id))
-		return 1;
+		goto out;
 
-	return 0;
+	return true;
+out:
+	pv_log(WARN, "object %s (%s) changed to %s (%s)", full_path_old, o_old->id, full_path_new, o_new->id);
+	return false;
 }
+
+static component_runlevel_t check_update_runlevel(struct pantavisor *pv)
+{
+	component_runlevel_t runlevel = ROOT;
+	struct pv_platform *p_old, *p;
+	int count = 0;
+
+	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
+		goto out;
+	}
+
+	// check bsp
+	if (!are_objects_equal(pv, "bsp", pv->state->initrd, pv->update->pending->initrd) ||
+		!are_objects_equal(pv, "bsp", pv->state->kernel, pv->update->pending->kernel) ||
+		!are_objects_equal(pv, "bsp", pv->state->firmware, pv->update->pending->firmware) ||
+		!are_objects_equal(pv, "bsp", pv->state->modules, pv->update->pending->modules)) {
+		goto out;
+	}
+
+	// check platforms
+	p = pv->update->pending->platforms;
+
+	while (p) {
+		p_old = pv_platform_get_by_name(pv->state, p->name);
+
+		if (!p_old ||
+			!are_objects_equal(pv, p->name, p_old->root_volume, p->root_volume) ||
+			!are_objects_equal(pv, p->name, *(p_old->configs), *(p->configs))) {
+			runlevel = p->runlevel;
+			goto out;
+		}
+
+		count++;
+		p = p->next;
+	}
+
+	pv_log(DEBUG, "checked %d platforms for update", count);
+
+out:
+	pv_log(DEBUG, "update runlevel set to %d", runlevel);
+	return runlevel;
+}
+
 /*
  * used to update progress of an object.
  */
-
-
 struct progress_update {
 	time_t next_update_at;
 	struct pantavisor *pv;
@@ -1546,7 +1583,6 @@ static int trail_link_objects(struct pantavisor *pv)
 static int trail_download_objects(struct pantavisor *pv)
 {
 	int ret = -1;
-	struct pv_object *k_new, *k_old;
 	struct pv_update *u = pv->update;
 	struct pv_object *o = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
@@ -1570,14 +1606,6 @@ static int trail_download_objects(struct pantavisor *pv)
 		goto out;
 	}
 
-	k_new = pv_objects_get_by_name(u->pending,
-			u->pending->kernel);
-	k_old = pv_objects_get_by_name(pv->state,
-			pv->state->kernel);
-
-	if (k_new && k_old && strcmp(k_new->id, k_old->id))
-		u->need_reboot = 1;
-	
 	if (u->total_update) {
 		u->total_update->object_name = "total";
 		u->total_update->object_id = "none";
@@ -1630,8 +1658,7 @@ int pv_update_install(struct pantavisor *pv)
 
 	trail_remote_set_status(pv, -1, UPDATE_DOWNLOADED);
 
-	if (trail_update_has_new_initrd(pv))
-		pv->update->need_reboot = 1;
+	pv->update->runlevel = check_update_runlevel(pv);
 
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
@@ -1671,7 +1698,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	if (pv->update->need_reboot) {
+	if (pv->update->runlevel >= ROOT) {
 		pv->update->status = UPDATE_REBOOT;
 		pv_bl_set_try(pv, ret);
 	}

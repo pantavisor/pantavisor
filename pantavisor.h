@@ -65,6 +65,12 @@ typedef enum {
 	VOL_UNKNOWN
 } pv_volume_t;
 
+typedef enum {
+	ROOT,
+	MIDDLEWARE,
+	APP
+} component_runlevel_t;
+
 struct object_update {
 	char *object_name;
 	char *object_id;
@@ -77,8 +83,7 @@ struct object_update {
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	int need_reboot;
-	int need_finish;
+	component_runlevel_t runlevel;
 	int progress_size;
 	time_t retry_at;
 	struct pv_state *pending;
@@ -97,6 +102,7 @@ struct pv_addon {
 struct pv_platform {
 	char *name;
 	char *type;
+	char *root_volume;
 	char **configs;
 	char *exec;
 	unsigned long ns_share;
@@ -105,6 +111,7 @@ struct pv_platform {
 	pid_t init_pid;
 	bool running;
 	bool done;
+	component_runlevel_t runlevel;
 	struct pv_platform *next;
 	struct dl_list logger_list;
 	/*
