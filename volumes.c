@@ -57,26 +57,23 @@ const char* pv_volume_type_str(pv_volume_t vt)
 	return "UNKNOWN";
 }
 
-struct pv_volume* pv_volume_get_by_name(struct pv_state *s, char *name)
+void pv_volumes_remove(struct pv_state *s, component_runlevel_t runlevel)
 {
-	struct pv_volume* v = s->volumes;
-
-	while (v) {
-		if (!strcmp(name, v->name))
-			return v;
-		v = v->next;
-	}
-
-	return NULL;
-}
-
-void pv_volume_remove(struct pv_state *s, char *name)
-{
+	int count = 0;
 	struct pv_volume *v = s->volumes;
-	struct pv_volume *prev = NULL;
+	struct pv_volume *prev = s->volumes, *t = NULL;
 
-	while (v) {
-		if (!strcmp(v->name, name)) {
+	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+		pv_log(INFO, "removing volumes with runlevel %d", i);
+		while (v) {
+			if ((!v->plat && (i > ROOT)) || (v->plat && (i > v->plat->runlevel))) {
+				prev = v;
+				v = v->next;
+				continue;
+			}
+
+			pv_log(INFO, "removing volume %s", v->name);
+
 			if (v->name)
 				free(v->name);
 			if (v->mode)
@@ -90,11 +87,18 @@ void pv_volume_remove(struct pv_state *s, char *name)
 				s->volumes = v->next;
 			else
 				prev->next = v->next;
-			free(v);
-			return;
+
+			t = v;
+			v = v->next;
+			free(t);
+			count++;
 		}
-		prev = v;
 	}
+
+	if (runlevel <= ROOT)
+		s->platforms = NULL;
+
+	pv_log(INFO, "removed '%d' volumes", count);
 }
 
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
@@ -117,9 +121,10 @@ struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
 	return this;
 }
 
-int pv_volumes_mount(struct pantavisor *pv)
+int pv_volumes_mount(struct pantavisor *pv, component_runlevel_t runlevel)
 {
-        int ret = -1;
+	int ret = -1;
+	int num_vol = 0;
 	char *fstype;
 	char path[PATH_MAX], base[PATH_MAX], mntpoint[PATH_MAX];
 	struct stat st;
@@ -132,82 +137,94 @@ int pv_volumes_mount(struct pantavisor *pv)
 	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
 	mkdir_p(base, 0755);
 
-	while (v) {
-		int loop_fd = -1, file_fd = -1;
+	for (component_runlevel_t i = runlevel; i <= APP; i++) {
+		pv_log(INFO, "mounting volumes with runlevel %d", i);
+		while (v) {
+			if ((!v->plat && (i > ROOT)) || (v->plat && (i > v->plat->runlevel))) {
+				v = v->next;
+				continue;
+			}
 
-		switch (pv_state_spec(s)) {
-		case SPEC_SYSTEM1:
-			if (v->plat) {
-				sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
-					s->rev, v->plat->name, v->name);
-				sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
-			} else {
-				sprintf(path, "%s/trails/%d/bsp/%s", pv->config->storage.mntpoint,
+			int loop_fd = -1, file_fd = -1;
+
+			switch (pv_state_spec(s)) {
+			case SPEC_SYSTEM1:
+				if (v->plat) {
+					sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
+						s->rev, v->plat->name, v->name);
+					sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
+				} else {
+					sprintf(path, "%s/trails/%d/bsp/%s", pv->config->storage.mntpoint,
+						s->rev, v->name);
+					sprintf(mntpoint, "/volumes/%s", v->name);
+				}
+				break;
+			case SPEC_MULTI1:
+				sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
 					s->rev, v->name);
 				sprintf(mntpoint, "/volumes/%s", v->name);
+				break;
+			default:
+				pv_log(WARN, "cannot mount volumes for unknown state spec");
+				goto out;
 			}
-			break;
-		case SPEC_MULTI1:
-			sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
-				s->rev, v->name);
-			sprintf(mntpoint, "/volumes/%s", v->name);
-			break;
-		default:
-			pv_log(WARN, "cannot mount volumes for unknown state spec");
-			goto out;
-		}
 
-		pv_log(INFO, "mounting '%s' of platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
+			pv_log(INFO, "mounting '%s' of platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
 
-		switch (v->type) {
-		case VOL_LOOPIMG:
-			fstype = strrchr(v->name, '.');
-			fstype++;
-			if (strcmp(fstype, "bind") == 0) {
-				struct stat buf;
-				if (stat(mntpoint, &buf) != 0) {
-					int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
-					close(fd);
+			switch (v->type) {
+			case VOL_LOOPIMG:
+				fstype = strrchr(v->name, '.');
+				fstype++;
+				if (strcmp(fstype, "bind") == 0) {
+					struct stat buf;
+					if (stat(mntpoint, &buf) != 0) {
+						int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
+						close(fd);
+					}
+					ret = mount(path, mntpoint, "none", MS_BIND, "ro");
+				} else {
+					ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
 				}
-				ret = mount(path, mntpoint, "none", MS_BIND, "ro");
-			} else {
-				ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
+				break;
+			case VOL_PERMANENT:
+				sprintf(path, "%s/perm/%s/%s", base, v->plat->name, v->name);
+				mkdir_p(path, 0755);
+				mkdir_p(mntpoint, 0755);
+				ret = mount(path, mntpoint, "none", MS_BIND, "rw");
+				break;
+			case VOL_REVISION:
+				sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
+				mkdir_p(path, 0755);
+				mkdir_p(mntpoint, 0755);
+				ret = mount(path, mntpoint, "none", MS_BIND, "rw");
+				break;
+			case VOL_BOOT:
+				mkdir_p(mntpoint, 0755);
+				ret = mount("none", mntpoint, "tmpfs", 0, NULL);
+				break;
+			default:
+				pv_log(WARN, "unknown volume type %d", v->type);
+				break;
 			}
-			break;
-		case VOL_PERMANENT:
-			sprintf(path, "%s/perm/%s/%s", base, v->plat->name, v->name);
-			mkdir_p(path, 0755);
-			mkdir_p(mntpoint, 0755);
-			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
-			break;
-		case VOL_REVISION:
-			sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
-			mkdir_p(path, 0755);
-			mkdir_p(mntpoint, 0755);
-			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
-			break;
-		case VOL_BOOT:
-			mkdir_p(mntpoint, 0755);
-			ret = mount("none", mntpoint, "tmpfs", 0, NULL);
-			break;
-		default:
-			pv_log(WARN, "unknown volume type %d", v->type);
-			break;
+
+			if (ret < 0)
+				goto out;
+
+			pv_log(INFO, "mounted '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
+			num_vol++;
+
+			// register mount state
+			v->src = strdup(path);
+			v->dest = strdup(mntpoint);
+			v->loop_fd = loop_fd;
+			v->file_fd = file_fd;
+
+			v = v->next;
 		}
-
-                if (ret < 0)
-                        goto out;
-
-		pv_log(INFO, "mounted '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
-
-		// register mount state
-		v->src = strdup(path);
-		v->dest = strdup(mntpoint);
-		v->loop_fd = loop_fd;
-		v->file_fd = file_fd;
-
-                v = v->next;
 	}
+
+	if (runlevel > ROOT)
+		goto out;
 
 	if (!pv->state->firmware)
 		goto modules;
@@ -239,36 +256,46 @@ modules:
 	}
 
 out:
-        return ret;
+	pv_log(INFO, "mounted %d volumes", num_vol);
+	return ret;
 }
 
-int pv_volumes_unmount(struct pantavisor *pv)
+int pv_volumes_unmount(struct pantavisor *pv, component_runlevel_t runlevel)
 {
 	int ret;
 	int count = 0;
 	struct pv_state *s = pv->state;
 	struct pv_volume *v = s->volumes;
 
-        while(v) {
-		if (v->loop_fd == -1) {
-			ret = umount(v->dest);
-		} else {
-			ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
-		}
+	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+		pv_log(INFO, "unmounting volumes with runlevel %d", i);
+		while(v) {
+			if ((!v->plat && (i > ROOT)) || (v->plat && (i > v->plat->runlevel))) {
+				v = v->next;
+				continue;
+			}
 
-		if (ret < 0) {
-			pv_log(ERROR, "error umounting volumes");
-			return -1;
-		} else {
-			pv_log(INFO, "unmounted '%s' successfully", v->dest);
-			pv_volume_remove(s, v->name);
-			count++;
+			if (v->loop_fd == -1) {
+				ret = umount(v->dest);
+			} else {
+				ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
+			}
+
+			if (ret < 0) {
+				pv_log(ERROR, "error umounting volumes");
+				return -1;
+			} else {
+				pv_log(INFO, "unmounted '%s' successfully", v->dest);
+				count++;
+			}
+			v = v->next;
 		}
-		v = v->next;
 	}
 
-	if (pv->state->firmware)
+	if ((runlevel > ROOT) && pv->state->firmware)
 		umount(FW_PATH);
+
+	pv_volumes_remove(s, runlevel);
 
 	pv_log(INFO, "unmounted '%d' volumes", count);
 

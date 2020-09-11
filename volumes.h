@@ -22,11 +22,10 @@
 #ifndef PV_VOLUMES_H
 #define PV_VOLUMES_H
 
-struct pv_volume* pv_volume_get_by_name(struct pv_state *s, char *name);
 const char* pv_volume_type_str(pv_volume_t vt);
-void pv_volume_remove(struct pv_state *s, char *name);
+void pv_volumes_remove(struct pv_state *s, component_runlevel_t runlevel);
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
-int pv_volumes_mount(struct pantavisor *pv);
-int pv_volumes_unmount(struct pantavisor *pv);
+int pv_volumes_mount(struct pantavisor *pv, component_runlevel_t runlevel);
+int pv_volumes_unmount(struct pantavisor *pv, component_runlevel_t runlevel);
 
 #endif // PV_VOLUMES_H
