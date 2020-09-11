@@ -110,6 +110,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 
 	this->name = strdup(name);
 	this->done = false;
+	this->runlevel = ROOT;
 	dl_list_init(&this->logger_list);
 	dl_list_init(&this->logger_configs);
 	return this;
@@ -169,6 +170,8 @@ void pv_platforms_remove(struct pv_state *s, component_runlevel_t runlevel)
 				free(p->name);
 			if (p->type)
 				free(p->type);
+			if (p->root_volume)
+				free(p->root_volume);
 			if (p->exec)
 				free(p->exec);
 
@@ -208,48 +211,18 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 			p = p->next;
 			continue;
 		}
+
 		if (p->name)
 			free(p->name);
 		if (p->type)
 			free(p->type);
+		if (p->root_volume)
+			free(p->root_volume);
 		if (p->exec)
 			free(p->exec);
 
 		c = p->configs;
 		while (c && *c) {
-			free(*c);
-			c++;
-		}
-		if (s->platforms == p)
-			s->platforms = p->next;
-		else
-			prev->next = p->next;
-		free(p);
-		break;
-	}
-}
-
-void pv_platforms_remove_by_data(struct pv_state *s, void *data)
-{
-	struct pv_platform *p = s->platforms;
-	struct pv_platform *prev = p;
-	char **c;
-
-	while (p) {
-		if (p->data != data) {
-			prev = p;
-			p = p->next;
-			continue;
-		}
-		if (p->name)
-			free(p->name);
-		if (p->type)
-			free(p->type);
-		if (p->exec)
-			free(p->exec);
-
-		c = p->configs;
-		while (*c) {
 			free(*c);
 			c++;
 		}
@@ -565,6 +538,27 @@ int pv_platforms_start(struct pantavisor *pv, component_runlevel_t runlevel)
 	return num_plats;
 }
 
+void pv_platforms_force_kill(struct pantavisor *pv, component_runlevel_t runlevel)
+{
+	int num_plats = 0;
+	struct pv_state *s = pv->state;
+	struct pv_platform *p = s->platforms;
+
+	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+		pv_log(INFO, "force killing platforms with runlevel %d", i);
+		while (p) {
+			if (!kill(p->init_pid, 0)) {
+				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
+				kill(p->init_pid, SIGKILL);
+				num_plats++;
+			}
+			p = p->next;
+		}
+	}
+
+	pv_log(INFO, "force killed %d platforms", num_plats);
+}
+
 // Iterate all underlying impl objects, stop one by one
 // Cannot fail, force stop and/or kill if necessary
 int pv_platforms_stop(struct pantavisor *pv, component_runlevel_t runlevel)
@@ -593,21 +587,13 @@ int pv_platforms_stop(struct pantavisor *pv, component_runlevel_t runlevel)
 
 	for (int i = 0; i < 5; i++) {
 		exited = pv_platforms_check_exited(pv, runlevel);
-		if (exited == -num_plats)
+		if (exited == num_plats)
 			break;
 		sleep(1);
 	}
 
-	if (exited != -num_plats) {
-		p = s->platforms;
-		while (p) {
-			if (!kill(p->init_pid, 0)) {
-				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
-				kill(p->init_pid, SIGKILL);
-			}
-			p = p->next;
-		}
-	}
+	if (exited != num_plats)
+		pv_platforms_force_kill(pv, runlevel);
 
 	pv_platforms_remove(s, runlevel);
 
@@ -624,12 +610,15 @@ int pv_platforms_check_exited(struct pantavisor *pv, component_runlevel_t runlev
 
 	for (component_runlevel_t i = APP; i >= runlevel; i--) {
 		while (p) {
-			if ((p->runlevel != i) || !kill(p->init_pid, 0)) {
+			if (p->runlevel != i) {
 				p = p->next;
 				continue;
 			}
+
+			if (kill(p->init_pid, 0))
+				exited++;
+
 			p = p->next;
-			exited--;
 		}
 	}
 

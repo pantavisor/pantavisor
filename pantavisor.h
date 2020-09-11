@@ -66,6 +66,7 @@ typedef enum {
 } pv_volume_t;
 
 typedef enum {
+	NONE,
 	ROOT,
 	MIDDLEWARE,
 	APP
