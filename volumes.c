@@ -60,13 +60,14 @@ const char* pv_volume_type_str(pv_volume_t vt)
 void pv_volumes_remove(struct pv_state *s, component_runlevel_t runlevel)
 {
 	int count = 0;
-	struct pv_volume *v = s->volumes;
-	struct pv_volume *prev = s->volumes, *t = NULL;
+	struct pv_volume *v = NULL, *prev = NULL, *t = NULL;
 
 	for (component_runlevel_t i = APP; i >= runlevel; i--) {
 		pv_log(INFO, "removing volumes with runlevel %d", i);
+		v = s->volumes;
+		prev = s->volumes;
 		while (v) {
-			if ((!v->plat && (i > ROOT)) || (v->plat && (i > v->plat->runlevel))) {
+			if (!v->plat || (v->plat && (i != v->plat->runlevel))) {
 				prev = v;
 				v = v->next;
 				continue;
@@ -130,7 +131,7 @@ int pv_volumes_mount(struct pantavisor *pv, component_runlevel_t runlevel)
 	struct stat st;
 	struct utsname uts;
 	struct pv_state *s = pv->state;
-	struct pv_volume *v = s->volumes;
+	struct pv_volume *v = NULL;
 
 	// Create volumes if non-existant
 	mkdir("/volumes", 0755);
@@ -139,8 +140,9 @@ int pv_volumes_mount(struct pantavisor *pv, component_runlevel_t runlevel)
 
 	for (component_runlevel_t i = runlevel; i <= APP; i++) {
 		pv_log(INFO, "mounting volumes with runlevel %d", i);
+		v = s->volumes;
 		while (v) {
-			if ((!v->plat && (i > ROOT)) || (v->plat && (i > v->plat->runlevel))) {
+			if (!v->plat || (v->plat && (i != v->plat->runlevel))) {
 				v = v->next;
 				continue;
 			}
@@ -265,12 +267,13 @@ int pv_volumes_unmount(struct pantavisor *pv, component_runlevel_t runlevel)
 	int ret;
 	int count = 0;
 	struct pv_state *s = pv->state;
-	struct pv_volume *v = s->volumes;
+	struct pv_volume *v = NULL;
 
 	for (component_runlevel_t i = APP; i >= runlevel; i--) {
 		pv_log(INFO, "unmounting volumes with runlevel %d", i);
+		v = s->volumes;
 		while(v) {
-			if ((!v->plat && (i > ROOT)) || (v->plat && (i > v->plat->runlevel))) {
+			if (!v->plat || (v->plat && (i != v->plat->runlevel))) {
 				v = v->next;
 				continue;
 			}

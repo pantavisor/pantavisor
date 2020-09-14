@@ -146,7 +146,7 @@ int pv_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-void pv_set_current(struct pantavisor *pv, int rev)
+void pv_set_rev_done(struct pantavisor *pv, int rev)
 {
 	__pv_set_current(pv, rev, true);
 }

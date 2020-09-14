@@ -1046,7 +1046,6 @@ int pv_update_finish(struct pantavisor *pv)
 		goto retry_update;
 	case UPDATE_DEVICE_COMMIT_WAIT:
 		ret = trail_remote_set_status(pv, -1, UPDATE_DEVICE_COMMIT_WAIT);
-		pv_log(ERROR, "update has failed");
 		break;
 	default:
 		ret = -1;
@@ -1698,7 +1697,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	if (pv->update->runlevel >= ROOT) {
+	if (pv->update->runlevel <= ROOT) {
 		pv->update->status = UPDATE_REBOOT;
 		pv_bl_set_try(pv, ret);
 	}

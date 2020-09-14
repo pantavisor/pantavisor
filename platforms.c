@@ -151,12 +151,13 @@ struct pv_platform* pv_platform_get_by_data(struct pv_state *s, void *data)
 void pv_platforms_remove(struct pv_state *s, component_runlevel_t runlevel)
 {
 	int num_plat = 0;
-	struct pv_platform *p = s->platforms;
-	struct pv_platform *prev = s->platforms, *t = NULL;
+	struct pv_platform *p = NULL, *prev = NULL, *t = NULL;
 	char **c;
 
 	for (component_runlevel_t i = APP; i >= runlevel; i--) {
 		pv_log(INFO, "removing platforms with runlevel %d", i);
+		p = s->platforms;
+		prev = s->platforms;
 		while (p) {
 			if (p->runlevel != i) {
 				prev = p;
@@ -463,15 +464,11 @@ int pv_platforms_start(struct pantavisor *pv, component_runlevel_t runlevel)
 {
 	int num_plats = 0, first = 1;
 	struct pv_state *s = pv->state;
-	struct pv_platform *p = s->platforms;
-
-	if (!p) {
-		pv_log(ERROR, "no platforms available");
-		return -1;
-	}
+	struct pv_platform *p = NULL;
 
 	for (component_runlevel_t i = runlevel; i <= APP; i++) {
 		pv_log(INFO, "starting platforms with runlevel %d", i);
+		p = s->platforms;
 		while (p) {
 			if (p->runlevel != i) {
 				p = p->next;
@@ -542,10 +539,11 @@ void pv_platforms_force_kill(struct pantavisor *pv, component_runlevel_t runleve
 {
 	int num_plats = 0;
 	struct pv_state *s = pv->state;
-	struct pv_platform *p = s->platforms;
+	struct pv_platform *p = NULL;
 
 	for (component_runlevel_t i = APP; i >= runlevel; i--) {
 		pv_log(INFO, "force killing platforms with runlevel %d", i);
+		p = s->platforms;
 		while (p) {
 			if (!kill(p->init_pid, 0)) {
 				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
@@ -565,11 +563,12 @@ int pv_platforms_stop(struct pantavisor *pv, component_runlevel_t runlevel)
 {
 	int num_plats = 0, exited = 0;
 	struct pv_state *s = pv->state;
-	struct pv_platform *p = s->platforms;
+	struct pv_platform *p = NULL;
 	const struct pv_cont_ctrl *ctrl;
 
 	for (component_runlevel_t i = APP; i >= runlevel; i--) {
 		pv_log(INFO, "stopping platforms with runlevel %d", i);
+		p = s->platforms;
 		while (p && p->running) {
 			if (p->runlevel != i) {
 				p = p->next;
@@ -585,6 +584,8 @@ int pv_platforms_stop(struct pantavisor *pv, component_runlevel_t runlevel)
 		}
 	}
 
+	pv_log(INFO, "stopped %d platforms", num_plats);
+
 	for (int i = 0; i < 5; i++) {
 		exited = pv_platforms_check_exited(pv, runlevel);
 		if (exited == num_plats)
@@ -597,18 +598,17 @@ int pv_platforms_stop(struct pantavisor *pv, component_runlevel_t runlevel)
 
 	pv_platforms_remove(s, runlevel);
 
-	pv_log(INFO, "stopped %d platforms", num_plats);
-
 	return num_plats;
 }
 
 int pv_platforms_check_exited(struct pantavisor *pv, component_runlevel_t runlevel)
 {
 	struct pv_state *s = pv->state;
-	struct pv_platform *p = s->platforms;
+	struct pv_platform *p = NULL;
 	int exited = 0;
 
 	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+		p = s->platforms;
 		while (p) {
 			if (p->runlevel != i) {
 				p = p->next;

@@ -149,6 +149,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ERROR;
 
 	if (pv->update && pv->update->runlevel > ROOT) {
+		pv_log(DEBUG, "log dir about to change to %d", pv->update->pending->rev);
+		pv_log_dir(pv, pv->update->pending->rev);
 		runlevel = pv->update->runlevel;
 	}
 
@@ -323,7 +325,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
-		pv_set_current(pv, pv->state->rev);
+		pv_set_rev_done(pv, pv->state->rev);
 		pv_update_set_status(pv, UPDATE_FAILED);
 		if (!pv_update_finish(pv))
 			status_updated = true;
@@ -337,7 +339,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 				goto out;
 			}
 			pv_bl_clear_update(pv);
-			pv_set_current(pv, pv->state->rev);
+			pv_set_rev_done(pv, pv->state->rev);
 			pending_commit = false;
 			status_updated = false;
 			current_status = UPDATE_DONE;
@@ -520,7 +522,7 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	pv_release_state(pv);
 
 	// For now, trigger a reboot for all updates
-	if (pv->update->runlevel >= ROOT) {
+	if (pv->update->runlevel <= ROOT) {
 		pv_log(WARN, "Update requires reboot, rebooting...");
 		next_state = STATE_REBOOT;
 		goto out;
