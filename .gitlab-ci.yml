@@ -1,4 +1,7 @@
 include:
   project: 'pantacor/ci/device-ci'
-  ref: 9cb46285fc408844c7e0fe88f11bab57fb096d52
+  ref: 75b084e92fc396121d9f41d8ccb17834f69a80e9
   file: '/yml/pvdeps-ci.yml'
+
+variables:
+  PH_PREMERGE_DISABLE_DEFAULTS: "no"
