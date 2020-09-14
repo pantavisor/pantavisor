@@ -509,10 +509,12 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	// parse state
 	rev = atoi(rev_s);
 	remote->pending = pv_state_parse(pv, state, rev);
-
+	/*A revision is pending, either a new one or a queued one*/
+	ret = 1;
 	if (!remote->pending) {
 		pv_log(INFO, "invalid rev (%d) found on remote", rev);
 		trail_remote_set_status(pv, rev, UPDATE_NO_PARSE);
+		ret = 0;
 	} else {
 		pv_log(DEBUG, "adding rev (%d), state = '%s'", rev, state);
 		pv_log(DEBUG, "first pending found to be rev = %d", remote->pending->rev);
@@ -525,9 +527,9 @@ static int trail_get_new_steps(struct pantavisor *pv)
 			trail_remote_set_status(pv, rev, UPDATE_FAILED);
 			pv_state_free(remote->pending);
 			remote->pending = NULL;
+			ret = 0;
 		}
 	}
-	ret = 1;/*A revision is pending, either a new one or a queued one*/
 out:
 	if (rev_s)
 		free(rev_s);

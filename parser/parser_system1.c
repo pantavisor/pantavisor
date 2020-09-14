@@ -82,6 +82,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	if (!s->kernel || !s->initrd) {
 		pv_log(ERROR, "kernel or initrd not configured in bsp/run.json. Cannot continue.", strlen(buf), buf);
+		ret = 0;
 		goto out;
 	}
 
@@ -723,23 +724,25 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	count = json_get_key_count(buf, "bsp/run.json", tokv, tokc);
 	if (!count || (count > 1)) {
 		pv_log(WARN, "Invalid bsp/run.json count in state");
+		this = NULL;
 		goto out;
 	}
 
 	value = get_json_key_value(buf, "bsp/run.json", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "Unable to get pantavisor.json value from state");
+		this = NULL;
 		goto out;
 	}
 
 	this->rev = rev;
 
 	if (!parse_bsp(this, value, strlen(value))) {
-		free(this);
-		this = 0;
+		this = NULL;
 		goto out;
 	}
 	free(value);
+	value = NULL;
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	k = keys;
