@@ -105,7 +105,10 @@ struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev)
 		this->rev = rev;
 		this->spec = strdup(spec);
 		dl_list_init(&this->obj_list);
-		p->parse(pv, this, buf, rev);
+		if (!p->parse(pv, this, buf, rev)) {
+			free(this);
+			this = NULL;
+		}
 	}
 out:
 	if (tokv)
