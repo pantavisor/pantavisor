@@ -149,8 +149,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ERROR;
 
 	if (pv->update && pv->update->runlevel > ROOT) {
-		pv_log(DEBUG, "log dir about to change to %d", pv->update->pending->rev);
-		pv_log_dir(pv, pv->update->pending->rev);
 		runlevel = pv->update->runlevel;
 	}
 
@@ -521,11 +519,14 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	// Release current step
 	pv_release_state(pv);
 
-	// For now, trigger a reboot for all updates
 	if (pv->update->runlevel <= ROOT) {
 		pv_log(WARN, "Update requires reboot, rebooting...");
 		next_state = STATE_REBOOT;
 		goto out;
+	} else {
+		pv_log(WARN, "Update does not requires reboot");
+		pv_log(INFO, "log dir about to change to %d", pv->update->pending->rev);
+		pv_log_dir(pv, pv->update->pending->rev);
 	}
 
 	pv_log(WARN, "State update applied, starting new revision %d", rev);
