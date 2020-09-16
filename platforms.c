@@ -171,8 +171,6 @@ void pv_platforms_remove(struct pv_state *s, component_runlevel_t runlevel)
 				free(p->name);
 			if (p->type)
 				free(p->type);
-			if (p->root_volume)
-				free(p->root_volume);
 			if (p->exec)
 				free(p->exec);
 
@@ -217,8 +215,6 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 			free(p->name);
 		if (p->type)
 			free(p->type);
-		if (p->root_volume)
-			free(p->root_volume);
 		if (p->exec)
 			free(p->exec);
 

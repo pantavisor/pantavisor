@@ -513,7 +513,7 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	pv_release_state(pv);
 
 	// For now, trigger a reboot for all updates
-	if (pv->update->runlevel >= NONE) {
+	if (pv->update->need_reboot) {
 		pv_log(WARN, "Update requires reboot, rebooting...");
 		next_state = STATE_REBOOT;
 		goto out;

@@ -68,7 +68,6 @@ typedef enum {
 typedef enum {
 	NONE,
 	ROOT,
-	MIDDLEWARE,
 	APP
 } component_runlevel_t;
 
@@ -84,7 +83,8 @@ struct object_update {
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	component_runlevel_t runlevel;
+	int need_reboot;
+	int need_finish;
 	int progress_size;
 	time_t retry_at;
 	struct pv_state *pending;
@@ -103,7 +103,6 @@ struct pv_addon {
 struct pv_platform {
 	char *name;
 	char *type;
-	char *root_volume;
 	char **configs;
 	char *exec;
 	unsigned long ns_share;

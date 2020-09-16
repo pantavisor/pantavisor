@@ -471,8 +471,6 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 
 	if (!strcmp(value, "root"))
 		(*bundle->platform)->runlevel = ROOT;
-	else if (!strcmp(value, "middleware"))
-		(*bundle->platform)->runlevel = MIDDLEWARE;
 	else if (!strcmp(value, "app"))
 		(*bundle->platform)->runlevel = APP;
 	else {
@@ -523,20 +521,6 @@ fail:
 	if (value_alloced && value)
 		free(value);
 	return ret;
-}
-
-static int do_action_for_root_volume(struct json_key_action *jka,
-					char *value)
-{
-
-	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
-
-	if (!(*bundle->platform) || !value)
-		return -1;
-
-	(*bundle->platform)->root_volume = strdup(value);
-
-	return do_action_for_one_volume(jka, value);
 }
 
 static int do_action_for_one_log(struct json_key_action *jka,
@@ -646,7 +630,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		ADD_JKA_ENTRY("runlevel", JSMN_STRING, &bundle, do_action_for_runlevel, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
-		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_root_volume, false),
+		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_one_volume, false),
 		ADD_JKA_ENTRY("volumes", JSMN_ARRAY, &bundle, do_action_for_one_volume, false),
 		ADD_JKA_ENTRY("logs", JSMN_ARRAY, &bundle, do_action_for_one_log, false),
 		ADD_JKA_ENTRY("storage", JSMN_OBJECT, &bundle, do_action_for_storage, false),
@@ -724,7 +708,6 @@ void system1_print(struct pv_state *this)
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
 		pv_log(DEBUG, "  runlevel: '%d'", p->runlevel);
-		pv_log(DEBUG, "  root volume: '%s'", p->root_volume);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
