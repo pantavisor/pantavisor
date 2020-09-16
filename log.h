@@ -78,7 +78,6 @@ struct log_buffer {
 /*
  * fname can't go away even after function call.
  */
-int pv_log_dir(struct pantavisor *pv, int rev);
 void pv_log_init(struct pantavisor *pv, int revision);
 void __vlog(char *module, int level, const char *fmt, va_list args);
 void __log(char *module, int level, const char *fmt, ...);

@@ -143,20 +143,13 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	int ret;
 	struct timespec tp;
-	component_runlevel_t runlevel = ROOT;
 
 	if (!pv->state)
 		return STATE_ERROR;
 
-	if (pv->update && pv->update->runlevel > ROOT) {
-		runlevel = pv->update->runlevel;
-	}
-
-	pv_log(DEBUG, "runlevel %d", runlevel);
-
 	pv_meta_set_objdir(pv);
 
-	if (pv_volumes_mount(pv, runlevel) < 0)
+	if (pv_volumes_mount(pv, ROOT) < 0)
 		return STATE_ROLLBACK;
 
 	/*
@@ -171,7 +164,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	ret = pv_platforms_start(pv, runlevel);
+	ret = pv_platforms_start(pv, ROOT);
 	if (ret < 0) {
 		pv_log(ERROR, "error starting platforms");
 		return STATE_ROLLBACK;
@@ -323,7 +316,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
-		pv_set_rev_done(pv, pv->state->rev);
+		pv_set_current(pv, pv->state->rev);
 		pv_update_set_status(pv, UPDATE_FAILED);
 		if (!pv_update_finish(pv))
 			status_updated = true;
@@ -337,7 +330,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 				goto out;
 			}
 			pv_bl_clear_update(pv);
-			pv_set_rev_done(pv, pv->state->rev);
+			pv_set_current(pv, pv->state->rev);
 			pending_commit = false;
 			status_updated = false;
 			current_status = UPDATE_DONE;
@@ -510,8 +503,8 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 
 	pv->online = false;
 	// stop current step
-	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 || 
-			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
+	if (pv_platforms_stop(pv, ROOT) < 0 || 
+			pv_volumes_unmount(pv, ROOT) < 0) {
 		next_state = STATE_ROLLBACK;
 		goto out;
 	}
@@ -519,14 +512,11 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	// Release current step
 	pv_release_state(pv);
 
-	if (pv->update->runlevel <= ROOT) {
+	// For now, trigger a reboot for all updates
+	if (pv->update->runlevel >= NONE) {
 		pv_log(WARN, "Update requires reboot, rebooting...");
 		next_state = STATE_REBOOT;
 		goto out;
-	} else {
-		pv_log(WARN, "Update does not requires reboot");
-		pv_log(INFO, "log dir about to change to %d", pv->update->pending->rev);
-		pv_log_dir(pv, pv->update->pending->rev);
 	}
 
 	pv_log(WARN, "State update applied, starting new revision %d", rev);

@@ -161,28 +161,6 @@ static int log_external(const char *fmt, ...)
 	return 1;
 }
 
-int pv_log_dir(struct pantavisor *pv, int rev)
-{
-	if (log_dir)
-		free(log_dir);
-
-	mkdir_p("/pv/logs", 0755);
-	mount_bind(pv->config->logdir, "/pv/logs");
-	log_dir = calloc(1, PATH_MAX);
-	if (!log_dir) {
-		printf("Couldn't reserve space for log directory\n");
-		printf("Pantavisor logs won't be available\n");
-		return 1;
-	}
-	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
-	if (mkdir_p(log_dir, 0755)) {
-		printf("Couldn't make dir %s,"
-			"pantavisor logs won't be available\n", log_dir);
-	}
-
-	return 0;
-}
-
 void pv_log_init(struct pantavisor *pv, int rev)
 {
 	// make logs available for platforms
@@ -198,9 +176,19 @@ void pv_log_init(struct pantavisor *pv, int rev)
 	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
 					pv->config->logsize * 2, &log_buffer_list_double);
 
-	if (pv_log_dir(pv, rev))
+	mkdir_p("/pv/logs", 0755);
+	mount_bind(pv->config->logdir, "/pv/logs");
+	log_dir = calloc(1, PATH_MAX);
+	if (!log_dir) {
+		printf("Couldn't reserve space for log directory\n");
+		printf("Pantavisor logs won't be available\n");
 		return;
-
+	}
+	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
+	if (mkdir_p(log_dir, 0755)) {
+		printf("Couldn't make dir %s,"
+			"pantavisor logs won't be available\n", log_dir);
+	}
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",

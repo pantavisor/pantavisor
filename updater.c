@@ -1697,7 +1697,8 @@ int pv_update_install(struct pantavisor *pv)
 	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
 
-	if (pv->update->runlevel <= ROOT) {
+	// For now, reboot for all runlevels
+	if (pv->update->runlevel >= NONE) {
 		pv->update->status = UPDATE_REBOOT;
 		pv_bl_set_try(pv, ret);
 	}
