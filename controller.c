@@ -149,7 +149,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	pv_meta_set_objdir(pv);
 
-	if (pv_volumes_mount(pv, ROOT) < 0)
+	if (pv_volumes_mount(pv, 0) < 0)
 		return STATE_ROLLBACK;
 
 	/*
@@ -164,7 +164,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	ret = pv_platforms_start(pv, ROOT);
+	ret = pv_platforms_start(pv, 0);
 	if (ret < 0) {
 		pv_log(ERROR, "error starting platforms");
 		return STATE_ROLLBACK;
@@ -414,7 +414,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
 	// check if any platform has exited and we need to tear down
-	if (pv_platforms_check_exited(pv, ROOT)) {
+	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
 		next_state = pending_commit ? STATE_ROLLBACK : STATE_REBOOT;
 		goto out;
@@ -455,11 +455,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 
 		// stop current step
-		if (pv_platforms_stop(pv, ROOT) < 0) {
+		if (pv_platforms_stop(pv, 0) < 0) {
 			next_state = STATE_ROLLBACK;
 			goto out;
 		}
-		if (pv_volumes_unmount(pv, ROOT) < 0) {
+		if (pv_volumes_unmount(pv, 0) < 0) {
 			next_state = STATE_ROLLBACK;
 			goto out;
 		}
@@ -503,8 +503,8 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 
 	pv->online = false;
 	// stop current step
-	if (pv_platforms_stop(pv, ROOT) < 0 || 
-			pv_volumes_unmount(pv, ROOT) < 0) {
+	if (pv_platforms_stop(pv, 0) < 0 || 
+			pv_volumes_unmount(pv, 0) < 0) {
 		next_state = STATE_ROLLBACK;
 		goto out;
 	}
@@ -583,11 +583,11 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		pv_update_set_status(pv, UPDATE_FAILED);
 
 	if (pv->state) {
-		ret = pv_platforms_stop(pv, ROOT);
+		ret = pv_platforms_stop(pv, 0);
 		if (ret < 0)
 			return STATE_ERROR;
 
-		ret = pv_volumes_unmount(pv, ROOT);
+		ret = pv_volumes_unmount(pv, 0);
 		if (ret < 0)
 			pv_log(WARN, "unmount error: ignoring due to rollback");
 

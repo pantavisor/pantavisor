@@ -65,12 +65,6 @@ typedef enum {
 	VOL_UNKNOWN
 } pv_volume_t;
 
-typedef enum {
-	NONE,
-	ROOT,
-	APP
-} component_runlevel_t;
-
 struct object_update {
 	char *object_name;
 	char *object_id;
@@ -98,7 +92,7 @@ struct pv_addon {
 	struct pv_addon *next;
 };
 
-
+#define MAX_RUNLEVEL 1
 
 struct pv_platform {
 	char *name;
@@ -111,7 +105,7 @@ struct pv_platform {
 	pid_t init_pid;
 	bool running;
 	bool done;
-	component_runlevel_t runlevel;
+	int runlevel;
 	struct pv_platform *next;
 	struct dl_list logger_list;
 	/*

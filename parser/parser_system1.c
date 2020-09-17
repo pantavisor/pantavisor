@@ -470,9 +470,9 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 		return -1;
 
 	if (!strcmp(value, "root"))
-		(*bundle->platform)->runlevel = ROOT;
+		(*bundle->platform)->runlevel = 0;
 	else if (!strcmp(value, "app"))
-		(*bundle->platform)->runlevel = APP;
+		(*bundle->platform)->runlevel = 1;
 	else {
 		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'. Set to %d by default", value, (*bundle->platform)->name, (*bundle->platform)->runlevel);
 	}
@@ -694,6 +694,17 @@ void system1_free(struct pv_state *this)
 	pv_objects_remove_all(this);
 }
 
+static void post_parse_validation(struct pv_state *this)
+{
+	if (!this)
+		return;
+
+	// remove platforms that have no loaded data
+	pv_platforms_remove_not_done(this);
+
+	pv_platforms_default_runlevel(this);
+}
+
 void system1_print(struct pv_state *this)
 {
 	if (!this)
@@ -816,10 +827,9 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// copy buffer
 	this->json = strdup(buf);
 
-	system1_print(this);
+	post_parse_validation(this);
 
-	// remove platforms that have no loaded data
-	pv_platforms_remove_not_done(this);
+	system1_print(this);
 
 out:
 	if (key)

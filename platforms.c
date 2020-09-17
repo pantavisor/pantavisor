@@ -110,7 +110,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 
 	this->name = strdup(name);
 	this->done = false;
-	this->runlevel = ROOT;
+	this->runlevel = -1;
 	dl_list_init(&this->logger_list);
 	dl_list_init(&this->logger_configs);
 	return this;
@@ -132,29 +132,32 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-struct pv_platform* pv_platform_get_by_data(struct pv_state *s, void *data)
+static void pv_platforms_free_platform(struct pv_state *s, struct pv_platform *p)
 {
-	struct pv_platform *p = s->platforms;
+	char **c;
 
-	if (data == NULL)
-		return NULL;
+	pv_log(INFO, "removing platform %s", p->name);
 
-	while (p) {
-		if (p->data == data)
-			return p;
-		p = p->next;
+	if (p->name)
+		free(p->name);
+	if (p->type)
+		free(p->type);
+	if (p->exec)
+		free(p->exec);
+
+	c = p->configs;
+	while (*c) {
+		free(*c);
+		c++;
 	}
-
-	return NULL;
 }
 
-void pv_platforms_remove(struct pv_state *s, component_runlevel_t runlevel)
+static void pv_platforms_remove(struct pv_state *s, int runlevel)
 {
 	int num_plat = 0;
 	struct pv_platform *p = NULL, *prev = NULL, *t = NULL;
-	char **c;
 
-	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "removing platforms with runlevel %d", i);
 		p = s->platforms;
 		prev = s->platforms;
@@ -165,20 +168,7 @@ void pv_platforms_remove(struct pv_state *s, component_runlevel_t runlevel)
 				continue;
 			}
 
-			pv_log(INFO, "removing platform %s", p->name);
-
-			if (p->name)
-				free(p->name);
-			if (p->type)
-				free(p->type);
-			if (p->exec)
-				free(p->exec);
-
-			c = p->configs;
-			while (*c) {
-				free(*c);
-				c++;
-			}
+			pv_platforms_free_platform(s, p);			
 
 			if (p == s->platforms)
 				s->platforms = p->next;
@@ -192,7 +182,7 @@ void pv_platforms_remove(struct pv_state *s, component_runlevel_t runlevel)
 		}
 	}
 
-	if (runlevel <= ROOT)
+	if (runlevel <= 0)
 		s->platforms = NULL;
 
 	pv_log(INFO, "removed '%d' platforms", num_plat);
@@ -202,7 +192,6 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 {
 	struct pv_platform *p = s->platforms;
 	struct pv_platform *prev = p;
-	char **c;
 
 	while (p) {
 		if (p->done) {
@@ -211,24 +200,39 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 			continue;
 		}
 
-		if (p->name)
-			free(p->name);
-		if (p->type)
-			free(p->type);
-		if (p->exec)
-			free(p->exec);
+		pv_platforms_free_platform(s, p);
 
-		c = p->configs;
-		while (c && *c) {
-			free(*c);
-			c++;
-		}
 		if (s->platforms == p)
 			s->platforms = p->next;
 		else
 			prev->next = p->next;
 		free(p);
 		break;
+	}
+}
+
+void pv_platforms_default_runlevel(struct pv_state *s)
+{
+	bool root_configured = false;
+	struct pv_platform *p = s->platforms;
+
+	// check if any platform has been configured with runlevel 0
+	while (p) {
+		if (p->runlevel == 0)
+			root_configured = true;
+		p = p->next;
+	}
+
+	// if not, set first platform as runlevel 0
+	p = s->platforms;
+	if (!root_configured)
+		p->runlevel = 0;
+
+	// set rest of the non configured platforms with runlevel 1
+	while (p) {
+		if (p->runlevel < 0)
+			p->runlevel = MAX_RUNLEVEL;
+		p = p->next;
 	}
 }
 
@@ -451,18 +455,68 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	return logger_pid;
 }
 
+static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform *p)
+{
+	struct pv_state *s = pv->state;
+	pid_t pid = -1;
+	char conf_path[PATH_MAX];
+	const struct pv_cont_ctrl *ctrl;
+	void *data;
+	char **c = p->configs;
+	char prefix[32] = { 0 };
+
+	pv_wdt_kick(pv);
+
+	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
+		sprintf(prefix, "%s/", p->name);
+
+	sprintf(conf_path, "%s/trails/%d/%s%s",
+		pv->config->storage.mntpoint, s->rev, prefix, *c);
+
+	// Get type controller
+	ctrl = _pv_platforms_get_ctrl(p->type);
+
+	// Start the platform
+	data = ctrl->start(p, conf_path, (void *) &pid);
+
+	if (!data) {
+		pv_log(ERROR, "error starting platform: \"%s\"",
+			p->name);
+		return -1;
+	}
+
+	pv_log(INFO, "started platform: \"%s\" (data=%p), init_pid=%d",
+		p->name, data, pid);
+
+	p->data = data;
+	p->init_pid = pid;
+
+	if (pid > 0)
+		p->running = true;
+	else
+		return -1;
+
+	if (pv_state_spec(pv->state) != SPEC_MULTI1) {
+		if (start_pvlogger_for_platform(p) < 0) {
+			pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
+		}
+	}
+
+	return 0;
+}
+
 // Iterate list of platforms from state
 // Do setup (chdir to config dir, etc)
 // Setup logging, channels, etc
 // start_by_type (fetch start function (i.e. start_lxc_platform)
 // store per-platform (void*) type object to underlying impl (lxc, docker)
-int pv_platforms_start(struct pantavisor *pv, component_runlevel_t runlevel)
+int pv_platforms_start(struct pantavisor *pv, int runlevel)
 {
-	int num_plats = 0, first = 1;
+	int num_plats = 0;
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = NULL;
 
-	for (component_runlevel_t i = runlevel; i <= APP; i++) {
+	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
 		pv_log(INFO, "starting platforms with runlevel %d", i);
 		p = s->platforms;
 		while (p) {
@@ -471,59 +525,15 @@ int pv_platforms_start(struct pantavisor *pv, component_runlevel_t runlevel)
 				continue;
 			}
 
-			pid_t pid = -1;
-			char conf_path[PATH_MAX];
-			const struct pv_cont_ctrl *ctrl;
-			void *data;
-			char **c = p->configs;
-			char prefix[32] = { 0 };
-
-			pv_wdt_kick(pv);
-
-			if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
-				sprintf(prefix, "%s/", p->name);
-
-			sprintf(conf_path, "%s/trails/%d/%s%s",
-				pv->config->storage.mntpoint, s->rev, prefix, *c);
-
-			// Get type controller
-			ctrl = _pv_platforms_get_ctrl(p->type);
-
-			// Start the platform
-			data = ctrl->start(p, conf_path, (void *) &pid);
-
-			if (!data) {
-				pv_log(ERROR, "error starting platform: \"%s\"",
-					p->name);
+			if (pv_platforms_start_platform(pv, p))
 				return -1;
-			}
-
-			pv_log(INFO, "started platform: \"%s\" (data=%p), init_pid=%d",
-				p->name, data, pid);
-
-			// FIXME: arbitrary delay between plats
-			if (first) {
-				sleep(5);
-				first = 0;
-			}
-
-			p->data = data;
-			p->init_pid = pid;
-
-			if (pid > 0)
-				p->running = true;
-			else
-				return -1;
-
-			if (pv_state_spec(pv->state) != SPEC_MULTI1) {
-				if (start_pvlogger_for_platform(p) < 0) {
-					pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
-				}
-			}
+			
 			num_plats++;
-
 			p = p->next;
 		}
+
+		// FIXME: arbitrary delay between plats
+		sleep(5);
 	}
 
 	pv_log(INFO, "started %d platforms", num_plats);
@@ -531,16 +541,21 @@ int pv_platforms_start(struct pantavisor *pv, component_runlevel_t runlevel)
 	return num_plats;
 }
 
-void pv_platforms_force_kill(struct pantavisor *pv, component_runlevel_t runlevel)
+static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0;
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = NULL;
 
-	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "force killing platforms with runlevel %d", i);
 		p = s->platforms;
 		while (p) {
+			if (p->runlevel != i) {
+				p = p->next;
+				continue;
+			}
+
 			if (!kill(p->init_pid, 0)) {
 				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
 				kill(p->init_pid, SIGKILL);
@@ -555,14 +570,14 @@ void pv_platforms_force_kill(struct pantavisor *pv, component_runlevel_t runleve
 
 // Iterate all underlying impl objects, stop one by one
 // Cannot fail, force stop and/or kill if necessary
-int pv_platforms_stop(struct pantavisor *pv, component_runlevel_t runlevel)
+int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0, exited = 0;
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = NULL;
 	const struct pv_cont_ctrl *ctrl;
 
-	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "stopping platforms with runlevel %d", i);
 		p = s->platforms;
 		while (p && p->running) {
@@ -597,13 +612,13 @@ int pv_platforms_stop(struct pantavisor *pv, component_runlevel_t runlevel)
 	return num_plats;
 }
 
-int pv_platforms_check_exited(struct pantavisor *pv, component_runlevel_t runlevel)
+int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 {
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = NULL;
 	int exited = 0;
 
-	for (component_runlevel_t i = APP; i >= runlevel; i--) {
+	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		p = s->platforms;
 		while (p) {
 			if (p->runlevel != i) {
