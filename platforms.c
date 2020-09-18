@@ -132,9 +132,10 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-static void pv_platforms_free_platform(struct pv_state *s, struct pv_platform *p)
+static void pv_platforms_remove_platform(struct pv_state *s, struct pv_platform *p, struct pv_platform *prev)
 {
 	char **c;
+	struct pv_platform *t = NULL;
 
 	pv_log(INFO, "removing platform %s", p->name);
 
@@ -150,38 +151,42 @@ static void pv_platforms_free_platform(struct pv_state *s, struct pv_platform *p
 		free(*c);
 		c++;
 	}
+
+	if (p == s->platforms)
+		s->platforms = p->next;
+	else
+		prev->next = p->next;
+
+	t = p;
+	p = p->next;
+	free(t);
 }
 
 static void pv_platforms_remove(struct pv_state *s, int runlevel)
 {
 	int num_plat = 0;
-	struct pv_platform *p = NULL, *prev = NULL, *t = NULL;
+	struct pv_platform *p = NULL, *prev = NULL;
 
+	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "removing platforms with runlevel %d", i);
+		// Iterate over all plats from state
 		p = s->platforms;
 		prev = s->platforms;
 		while (p) {
+			// Remove platforms in this runlevel only
 			if (p->runlevel != i) {
 				prev = p;
 				p = p->next;
 				continue;
 			}
 
-			pv_platforms_free_platform(s, p);			
-
-			if (p == s->platforms)
-				s->platforms = p->next;
-			else
-				prev->next = p->next;
-
-			t = p;
-			p = p->next;
-			free(t);
+			pv_platforms_remove_platform(s, p, prev);			
 			num_plat++;
 		}
 	}
 
+	// no plats should be left if runlevel was 0 (highest priority)
 	if (runlevel <= 0)
 		s->platforms = NULL;
 
@@ -200,14 +205,7 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 			continue;
 		}
 
-		pv_platforms_free_platform(s, p);
-
-		if (s->platforms == p)
-			s->platforms = p->next;
-		else
-			prev->next = p->next;
-		free(p);
-		break;
+		pv_platforms_remove_platform(s, p, prev);
 	}
 }
 
@@ -225,10 +223,13 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 
 	// if not, set first platform as runlevel 0
 	p = s->platforms;
-	if (!root_configured)
+	if (!root_configured) {
+		pv_log(WARN, "no platform was found with root runlevel, "
+				"so the first one in alphabetical order will be set");
 		p->runlevel = 0;
+	}
 
-	// set rest of the non configured platforms with runlevel 1
+	// set rest of the non configured platforms with the lower priority
 	while (p) {
 		if (p->runlevel < 0)
 			p->runlevel = MAX_RUNLEVEL;
@@ -505,21 +506,19 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	return 0;
 }
 
-// Iterate list of platforms from state
-// Do setup (chdir to config dir, etc)
-// Setup logging, channels, etc
-// start_by_type (fetch start function (i.e. start_lxc_platform)
-// store per-platform (void*) type object to underlying impl (lxc, docker)
 int pv_platforms_start(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0;
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = NULL;
 
+	// Iterate between runlevel plats and lowest priority plats 
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
 		pv_log(INFO, "starting platforms with runlevel %d", i);
+		// Iterate over all plats from state
 		p = s->platforms;
 		while (p) {
+			// Start platforms in this runlevel only
 			if (p->runlevel != i) {
 				p = p->next;
 				continue;
@@ -532,7 +531,7 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 			p = p->next;
 		}
 
-		// FIXME: arbitrary delay between plats
+		// FIXME: arbitrary delay between runlevels
 		sleep(5);
 	}
 
@@ -547,10 +546,13 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 	struct pv_state *s = pv->state;
 	struct pv_platform *p = NULL;
 
+	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "force killing platforms with runlevel %d", i);
+		// Iterate over all plats from state
 		p = s->platforms;
 		while (p) {
+			// Force kill platforms in this runlevel only
 			if (p->runlevel != i) {
 				p = p->next;
 				continue;
@@ -568,8 +570,6 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 	pv_log(INFO, "force killed %d platforms", num_plats);
 }
 
-// Iterate all underlying impl objects, stop one by one
-// Cannot fail, force stop and/or kill if necessary
 int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0, exited = 0;
@@ -577,10 +577,13 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 	struct pv_platform *p = NULL;
 	const struct pv_cont_ctrl *ctrl;
 
+	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "stopping platforms with runlevel %d", i);
+		// Iterate over all plats from state
 		p = s->platforms;
 		while (p && p->running) {
+			// Stop platforms with in this runlevel only
 			if (p->runlevel != i) {
 				p = p->next;
 				continue;
@@ -597,6 +600,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 
 	pv_log(INFO, "stopped %d platforms", num_plats);
 
+	// Check all plats in runlevel and lower priority have been stopped
 	for (int i = 0; i < 5; i++) {
 		exited = pv_platforms_check_exited(pv, runlevel);
 		if (exited == num_plats)
@@ -604,9 +608,11 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 		sleep(1);
 	}
 
+	// Kill all plats in runlevel and lower priority
 	if (exited != num_plats)
 		pv_platforms_force_kill(pv, runlevel);
 
+	// Remove all plats in runlevel and lower priority
 	pv_platforms_remove(s, runlevel);
 
 	return num_plats;
@@ -618,9 +624,12 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 	struct pv_platform *p = NULL;
 	int exited = 0;
 
+	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
+		// Iterate over all plats from state
 		p = s->platforms;
 		while (p) {
+			// Check platforms in this runlevel only
 			if (p->runlevel != i) {
 				p = p->next;
 				continue;

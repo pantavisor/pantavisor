@@ -474,7 +474,7 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 	else if (!strcmp(value, "app"))
 		(*bundle->platform)->runlevel = 1;
 	else {
-		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'. Set to %d by default", value, (*bundle->platform)->name, (*bundle->platform)->runlevel);
+		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'", value, (*bundle->platform)->name);
 	}
 
 	return 0;
@@ -702,6 +702,7 @@ static void post_parse_validation(struct pv_state *this)
 	// remove platforms that have no loaded data
 	pv_platforms_remove_not_done(this);
 
+	// set runlevel in all undefined platforms
 	pv_platforms_default_runlevel(this);
 }
 
