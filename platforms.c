@@ -132,12 +132,11 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-static void pv_platforms_remove_platform(struct pv_state *s, struct pv_platform *p, struct pv_platform *prev)
+static void pv_platforms_free_platform(struct pv_state *s, struct pv_platform *p)
 {
 	char **c;
-	struct pv_platform *t = NULL;
 
-	pv_log(INFO, "removing platform %s", p->name);
+	pv_log(INFO, "freeing platform %s", p->name);
 
 	if (p->name)
 		free(p->name);
@@ -151,21 +150,12 @@ static void pv_platforms_remove_platform(struct pv_state *s, struct pv_platform 
 		free(*c);
 		c++;
 	}
-
-	if (p == s->platforms)
-		s->platforms = p->next;
-	else
-		prev->next = p->next;
-
-	t = p;
-	p = p->next;
-	free(t);
 }
 
 static void pv_platforms_remove(struct pv_state *s, int runlevel)
 {
 	int num_plat = 0;
-	struct pv_platform *p = NULL, *prev = NULL;
+	struct pv_platform *p = NULL, *prev = NULL, *t = NULL;
 
 	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
@@ -181,7 +171,16 @@ static void pv_platforms_remove(struct pv_state *s, int runlevel)
 				continue;
 			}
 
-			pv_platforms_remove_platform(s, p, prev);			
+			pv_platforms_free_platform(s, p);			
+
+			if (p == s->platforms)
+				s->platforms = p->next;
+			else
+				prev->next = p->next;
+
+			t = p;
+			p = p->next;
+			free(t);
 			num_plat++;
 		}
 	}
@@ -195,8 +194,7 @@ static void pv_platforms_remove(struct pv_state *s, int runlevel)
 
 void pv_platforms_remove_not_done(struct pv_state *s)
 {
-	struct pv_platform *p = s->platforms;
-	struct pv_platform *prev = p;
+	struct pv_platform *p = s->platforms, *prev = p, *t = NULL;
 
 	while (p) {
 		if (p->done) {
@@ -205,7 +203,16 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 			continue;
 		}
 
-		pv_platforms_remove_platform(s, p, prev);
+		pv_platforms_free_platform(s, p);
+
+		if (s->platforms == p)
+			s->platforms = p->next;
+		else
+			prev->next = p->next;
+
+		t = p;
+		p = p->next;
+		free(t);
 	}
 }
 

@@ -57,11 +57,9 @@ static const char* pv_volume_type_str(pv_volume_t vt)
 	return "UNKNOWN";
 }
 
-static void pv_volumes_remove_volume(struct pv_state *s, struct pv_volume *v, struct pv_volume *prev)
+static void pv_volumes_free_volume(struct pv_volume *v)
 {
-	struct pv_volume *t = NULL;
-
-	pv_log(INFO, "removing volume %s", v->name);
+	pv_log(INFO, "freeing volume %s", v->name);
 
 	if (v->name)
 		free(v->name);
@@ -71,21 +69,12 @@ static void pv_volumes_remove_volume(struct pv_state *s, struct pv_volume *v, st
 		free(v->src);
 	if (v->dest)
 		free(v->dest);
-
-	if (v == s->volumes)
-		s->volumes = v->next;
-	else
-		prev->next = v->next;
-
-	t = v;
-	v = v->next;
-	free(t);
 }
 
 static void pv_volumes_remove(struct pv_state *s, int runlevel)
 {
 	int num_vol = 0;
-	struct pv_volume *v = NULL, *prev = NULL;
+	struct pv_volume *v = NULL, *prev = NULL, *t = NULL;
 
 	// Iterate between lowest priority vols and runlevel vols
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
@@ -102,7 +91,18 @@ static void pv_volumes_remove(struct pv_state *s, int runlevel)
 				continue;
 			}
 
-			pv_volumes_remove_volume(s, v, prev);
+			pv_log(INFO, "removing volume %s", v->name);
+
+			pv_volumes_free_volume(v);
+
+			if (v == s->volumes)
+				s->volumes = v->next;
+			else
+				prev->next = v->next;
+
+			t = v;
+			v = v->next;
+			free(t);
 
 			num_vol++;
 		}
@@ -237,13 +237,10 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 	else
 		sprintf(path, "/volumes/%s", pv->state->firmware);
 
-	pv_log(DEBUG, "firmware path %s", path);
-
 	if (stat(path, &st))
 		goto modules;
 
 	ret = mount_bind(path, FW_PATH);
-	pv_log(DEBUG, "firmware res %d", ret);
 
 	if (ret < 0)
 		goto out;
@@ -253,10 +250,8 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 modules:
 	if (!uname(&uts) && (stat("/volumes/modules.squashfs", &st) == 0)) {
 		sprintf(path, "/lib/modules/%s", uts.release);
-		pv_log(DEBUG, "modules path %s", path);
 		mkdir_p(path, 0755);
 		ret = mount_bind("/volumes/modules.squashfs", path);
-		pv_log(DEBUG, "modules res %d", ret);
 		pv_log(DEBUG, "bind mounted modules to %s", path);
 	}
 
