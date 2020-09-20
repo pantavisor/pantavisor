@@ -236,7 +236,7 @@ static int plat_meta_device_meta_action(struct json_key_action *jka, char *value
 		}
 	}
 	if (!ispresent) {
-		snprintf(json_buf, sizeof(json_buf), "{\"%s\":\"\"}", fname);
+		snprintf(json_buf, sizeof(json_buf), "{\"%s\":null}", fname);
 		pv_log(INFO, "Clearing plat meta for %s", fname);
 		pv_ph_upload_metadata(pv, json_buf);
 	}
