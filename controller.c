@@ -141,7 +141,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-	int ret;
 	struct timespec tp;
 
 	if (!pv->state)
@@ -158,19 +157,15 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	 */
 	pv_set_active(pv);
 
-	ret = pv_make_config(pv);
-	if (ret < 0) {
+	if (pv_make_config(pv) < 0) {
 		pv_log(ERROR, "error making config");
 		return STATE_ROLLBACK;
 	}
 
-	ret = pv_platforms_start(pv, 0);
-	if (ret < 0) {
+	if (pv_platforms_start(pv, 0) < 0) {
 		pv_log(ERROR, "error starting platforms");
 		return STATE_ROLLBACK;
 	}
-
-	pv_log(INFO, "started %d platforms", ret);
 
 	rb_count = 0;
 

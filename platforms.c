@@ -230,7 +230,7 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 
 	// if not, set first platform as runlevel 0
 	p = s->platforms;
-	if (!root_configured) {
+	if (p && !root_configured) {
 		pv_log(WARN, "no platform was found with root runlevel, "
 				"so the first one in alphabetical order will be set");
 		p->runlevel = 0;
