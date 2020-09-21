@@ -112,7 +112,7 @@ static void pv_volumes_remove(struct pv_state *s, int runlevel)
 	if (runlevel <= 0)
 		s->platforms = NULL;
 
-	pv_log(INFO, "removed '%d' volumes", num_vol);
+	pv_log(INFO, "removed %d volumes", num_vol);
 }
 
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
@@ -343,7 +343,7 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 
 	pv_volumes_remove(s, runlevel);
 
-	pv_log(INFO, "unmounted '%d' volumes", num_vol);
+	pv_log(INFO, "unmounted %d volumes", num_vol);
 
 	return num_vol;
 }

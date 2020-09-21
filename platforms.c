@@ -589,18 +589,20 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 		pv_log(INFO, "stopping platforms with runlevel %d", i);
 		// Iterate over all plats from state
 		p = s->platforms;
-		while (p && p->running) {
-			// Stop platforms with in this runlevel only
+		while (p) {
+			// Stop platforms in this runlevel only
 			if (p->runlevel != i) {
 				p = p->next;
 				continue;
 			}
 
-			ctrl = _pv_platforms_get_ctrl(p->type);
-			ctrl->stop(p, NULL, p->data);
-			p->running = false;
-			pv_log(INFO, "sent SIGTERM to platform '%s'", p->name);
-			num_plats++;
+			if (p->running) {
+				ctrl = _pv_platforms_get_ctrl(p->type);
+				ctrl->stop(p, NULL, p->data);
+				p->running = false;
+				pv_log(INFO, "sent SIGTERM to platform '%s'", p->name);
+				num_plats++;
+			}
 			p = p->next;
 		}
 	}
