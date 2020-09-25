@@ -49,11 +49,6 @@ enum log_level {
 	ALL	// 5
 };
 
-struct level_name {
-	int log_level;
-	char *name;
-};
-
 struct log_buffer {
 	char *buf;
 	int size;
@@ -78,10 +73,7 @@ struct log_buffer {
 /*
  * fname can't go away even after function call.
  */
-void pv_log_init(struct pantavisor *pv, int revision);
-void __vlog(char *module, int level, const char *fmt, va_list args);
 void __log(char *module, int level, const char *fmt, ...);
-int pv_log_set_level(unsigned int level);
 /*
  * Don't free the return value!
  */

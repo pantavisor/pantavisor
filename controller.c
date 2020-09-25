@@ -50,6 +50,7 @@
 #include "network.h"
 #include "blkid.h"
 #include "init.h"
+#include "state.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -111,17 +112,6 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
 	return STATE_WAIT;
-}
-
-static int pv_step_get_prev(struct pantavisor *pv)
-{
-	if (!pv)
-		return -1;
-
-	if (pv->state)
-		return (pv->state->rev - 1);
-
-	return -1;
 }
 
 static pv_state_t _pv_init(struct pantavisor *pv)
@@ -505,7 +495,7 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	}
 
 	// Release current step
-	pv_release_state(pv);
+	pv_state_free(pv->state);
 
 	// For now, trigger a reboot for all updates
 	if (pv->update->need_reboot) {

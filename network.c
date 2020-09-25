@@ -48,7 +48,7 @@
 #define IFACES_FMT "{\"interfaces\":{"
 #define IFACE_FMT "\"%s\":[%s]"
 
-int pv_network_init(struct pantavisor *pv)
+static int pv_network_init(struct pantavisor *pv)
 {
 	int fd, ret;
 	struct pantavisor_config *c;

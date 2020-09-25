@@ -39,6 +39,8 @@
 
 #include "objects.h"
 #include "storage.h"
+#include "updater.h"
+#include "state.h"
 
 static int remove_at(char *path, char *filename)
 {
@@ -85,7 +87,7 @@ out:
 	return n;
 }
 
-int pv_storage_gc_objects(struct pantavisor *pv)
+static int pv_storage_gc_objects(struct pantavisor *pv)
 {
 	int reclaimed = 0;
 	struct stat st;

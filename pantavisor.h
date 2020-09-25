@@ -41,6 +41,7 @@ struct trail_remote;
 #define TRAIL_NO_SPACE 		(-1)
 #define TRAIL_NO_NETWORK 	(-2)
 #define PV_USER_AGENT_FMT 	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
+
 enum update_state {
 	UPDATE_QUEUED,
 	UPDATE_DOWNLOADED,
@@ -195,7 +196,6 @@ struct pantavisor {
 	int online;
 	int ctrl_fd;
 	unsigned long flags;
-	bool signal_caught; /*For code too big for handlers*/
 	struct pv_connection *conn;
 };
 
@@ -209,17 +209,10 @@ int pv_make_config(struct pantavisor *pv);
 void pv_meta_set_objdir(struct pantavisor *pv);
 int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
 int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
-int pv_meta_get_tryonce(struct pantavisor *pv);
 void pv_meta_set_tryonce(struct pantavisor *pv, int value);
-void pv_destroy(struct pantavisor *pv);
-void pv_release_state(struct pantavisor *pv);
-int pv_parse_usermeta(struct pantavisor *pv, char *buf);
 struct pv_state* pv_get_state(struct pantavisor *pv, int current);
-struct pv_state* pv_get_current_state(struct pantavisor *pv);
-void pv_state_free(struct pv_state *s);
-int pv_start_platforms(struct pantavisor *pv);
 int pantavisor_init(bool do_fork);
 struct pantavisor* get_pv_instance(void);
 struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
-const char* pv_log_get_config_item(struct pv_logger_config *config, const char *key);
+void pantavisor_free(struct pantavisor *pv);
 #endif

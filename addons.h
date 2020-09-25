@@ -22,10 +22,13 @@
 #ifndef PV_ADDONS_H
 #define PV_ADDONS_H
 
-struct pv_addon* pv_addon_get_by_name(struct pv_state *s, char *name);
-void pv_addon_remove(struct pv_state *s, char *name);
+struct pv_addon {
+	char *name;
+	struct pv_addon *next;
+};
+
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name);
-int pv_addons_link(struct pantavisor *pv);
-int pv_addons_unlink(struct pantavisor *pv);
+
+void pv_addons_remove(struct pv_state *s);
 
 #endif // PV_VOLUMES_H

@@ -22,9 +22,30 @@
 #ifndef PV_VOLUMES_H
 #define PV_VOLUMES_H
 
+typedef enum {
+	VOL_LOOPIMG,
+	VOL_PERMANENT,
+	VOL_REVISION,
+	VOL_BOOT,
+	VOL_UNKNOWN
+} pv_volume_t;
+
+struct pv_volume {
+	char *name;
+	char *mode;
+	char *src;
+	char *dest;
+	pv_volume_t type;
+	int loop_fd;
+	int file_fd;
+	struct pv_platform *plat;
+	struct pv_volume *next;
+};
+
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
 
 int pv_volumes_mount(struct pantavisor *pv, int runlevel);
 int pv_volumes_unmount(struct pantavisor *pv, int runlevel);
+void pv_volumes_remove(struct pv_state *s);
 
 #endif // PV_VOLUMES_H

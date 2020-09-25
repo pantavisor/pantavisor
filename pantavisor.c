@@ -49,13 +49,15 @@
 #include "version.h"
 #include "wdt.h"
 #include "parser/parser.h"
-
 #include "pantavisor.h"
 #include "pantahub.h"
 #include "tsh.h"
 #include "utils/list.h"
 #include "revision.h"
 #include "init.h"
+#include "addons.h"
+#include "pvlogger.h"
+#include "state.h"
 
 pid_t pv_pid;
 static struct pantavisor* global_pv;
@@ -65,11 +67,19 @@ struct pantavisor* get_pv_instance()
 	return global_pv;
 }
 
-void pv_destroy(struct pantavisor *pv)
+void pantavisor_free(struct pantavisor *pv)
 {
-        pv_release_state(pv);
-        free(pv->config);
-        free(pv);
+	if (pv->step)
+		free(pv->step);
+
+	pv_device_free(pv->dev);
+	pv_update_free(pv->update);
+	pv_state_free(pv->state);
+	pv_cmd_req_free(pv->pv_cmd_req);
+	pv_trail_remote_free(pv->remote);
+	pv_connection_free(pv->conn);
+
+	free(pv);
 }
 
 void pv_set_active(struct pantavisor *pv)
@@ -365,24 +375,6 @@ out:
 	return ret;
 }
 
-int pv_meta_get_tryonce(struct pantavisor *pv)
-{
-	char path[PATH_MAX];
-	struct pantavisor_config *c;
-	struct stat st;
-
-	if (!pv)
-		return 0;
-
-	c = pv->config;
-	sprintf(path, "%s/trails/%d/.pv/.tryonce", c->storage.mntpoint, pv->state->rev);
-
-	if (stat(path, &st) == 0)
-		return 1;
-
-	return 0;
-}
-
 void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 {
 	int fd;
@@ -492,27 +484,27 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 	if (rev < 0)
 		sprintf(path, "%s/trails/current/state.json", pv->config->storage.mntpoint);
 	else
-	        sprintf(path, "%s/trails/%d/.pvr/json", pv->config->storage.mntpoint, rev);
+		sprintf(path, "%s/trails/%d/.pvr/json", pv->config->storage.mntpoint, rev);
 
-        pv_log(INFO, "reading state from: '%s'", path);
+	pv_log(INFO, "reading state from: '%s'", path);
 
-        fd = open(path, O_RDONLY);
-        if (fd < 0) {
-                pv_log(WARN, "unable to find state JSON for current step");
-                return NULL;
-        }
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		pv_log(WARN, "unable to find state JSON for current step");
+		return NULL;
+	}
 
 	stat(path, &st);
 	size = st.st_size;
 
 	buf = calloc(1, size+1);
-        size = read(fd, buf, size);
+	size = read(fd, buf, size);
 	buf[size] = '\0';
 
-        if (size < 0) {
-                pv_log(ERROR, "unable to read device state");
-                return NULL;
-        }
+	if (size < 0) {
+		pv_log(ERROR, "unable to read device state");
+		return NULL;
+	}
 
 	pv->step = buf;
 
@@ -520,38 +512,6 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 	close(fd);
 
 	return s;
-}
-
-void pv_release_state(struct pantavisor *pv)
-{
-	if (pv->state)
-		pv_state_free(pv->state);
-}
-
-struct pv_state* pv_get_current_state(struct pantavisor *pv)
-{
-	int step_rev = 0;
-	struct dirent **dirs;
-	char basedir[PATH_MAX];
-
-	sprintf(basedir, "%s/trails/", pv->config->storage.mntpoint);
-
-	int n = scandir(basedir, &dirs, NULL, alphasort);
-	while (n--) {
-		char *tmp = dirs[n]->d_name;
-
-		while (*tmp && isdigit(*tmp))
-			tmp++;
-
-		if(tmp[0] != '\0')
-			continue;
-
-		pv_log(INFO, "default to newest step_rev: '%s'", dirs[n]->d_name);
-		step_rev = atoi(dirs[n]->d_name);
-		break;
-	}
-
-	return pv_get_state(pv, step_rev);
 }
 
 static void _pv_init()
@@ -679,7 +639,7 @@ out:
 	return NULL;
 }
 
-static int pv_state_init(struct pv_init *this)
+static int pv_pantavisor_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 	int ret = -1;
@@ -704,6 +664,6 @@ out:
 }
 
 struct pv_init pv_init_state = {
-	.init_fn = pv_state_init,
+	.init_fn = pv_pantavisor_init,
 	.flags = 0,
 };

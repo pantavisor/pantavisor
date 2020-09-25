@@ -32,6 +32,7 @@
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/sysmacros.h>
+#include <stdbool.h>
 
 #include <linux/reboot.h>
 
@@ -45,25 +46,13 @@
 #include "init.h"
 #include "utils.h"
 #include "utils/list.h"
-#include <stdbool.h>
+#include "pvlogger.h"
+#include "platforms.h"
+#include "state.h"
 
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
 pid_t shell_pid;
-
-static int open_ns(int pid, const char *ns_proc_name)
-{
-	int fd;
-	char path[MAXPATHLEN];
-	snprintf(path, MAXPATHLEN, "/proc/%d/ns/%s", pid, ns_proc_name);
-
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		printf("failed to open %s", path);
-		return -1;
-	}
-	return fd;
-}
 
 static int early_mounts()
 {

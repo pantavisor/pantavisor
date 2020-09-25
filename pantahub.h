@@ -24,8 +24,13 @@
 
 #define DEVICE_TOKEN_FMT	"Pantahub-Devices-Auto-Token-V1: %s"
 #include "pantavisor.h"
+
+struct pv_connection {
+	struct sockaddr sock;
+	time_t since;
+};
+
 int pv_ph_is_available(struct pantavisor *pv);
-int pv_ph_upload_logs(struct pantavisor *pv, char *logs);
 int pv_ph_device_get_meta(struct pantavisor *pv);
 int pv_ph_device_exists(struct pantavisor *pv);
 int pv_ph_register_self(struct pantavisor *pv);

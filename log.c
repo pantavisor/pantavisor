@@ -48,6 +48,11 @@
 #include "version.h"
 #include "ph_logger/ph_logger.h"
 
+struct level_name {
+	int log_level;
+	char *name;
+};
+
 #define LEVEL_NAME(LEVEL)	{ LEVEL, #LEVEL }
 static struct level_name level_names[] = {
 	LEVEL_NAME(FATAL),
@@ -57,7 +62,6 @@ static struct level_name level_names[] = {
 	LEVEL_NAME(DEBUG)
 };
 
-static int prio = ALL;
 static char *log_dir = 0;
 static pid_t log_init_pid = -1;
 
@@ -146,67 +150,7 @@ static int pv_log_init_buf_cache(int items, int size, struct dl_list *head)
 	return allocated;
 }
 
-
-
-
-static int log_external(const char *fmt, ...)
-{
-	va_list args;
-	va_start(args, fmt);
-
-	__vlog("external", DEBUG, fmt, args);
-
-	va_end(args);
-
-	return 1;
-}
-
-void pv_log_init(struct pantavisor *pv, int rev)
-{
-	// make logs available for platforms
-	thttp_set_log_func(log_external);
-	log_init_pid = getpid();
-	global_pv = pv;
-	int allocated_cache = 0;
-	int allocated_dcache = 0;
-	
-	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv->config->logsize, &log_buffer_list);
-
-	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv->config->logsize * 2, &log_buffer_list_double);
-
-	mkdir_p("/pv/logs", 0755);
-	mount_bind(pv->config->logdir, "/pv/logs");
-	log_dir = calloc(1, PATH_MAX);
-	if (!log_dir) {
-		printf("Couldn't reserve space for log directory\n");
-		printf("Pantavisor logs won't be available\n");
-		return;
-	}
-	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
-	if (mkdir_p(log_dir, 0755)) {
-		printf("Couldn't make dir %s,"
-			"pantavisor logs won't be available\n", log_dir);
-	}
-	// enable libthttp debug logs
-	pv_log(DEBUG, "Initialized pantavisor logs...");
-	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
-			allocated_cache, pv->config->logsize);
-	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
-			allocated_dcache, pv->config->logsize * 2);
-}
-
-void exit_error(int err, char *msg)
-{
-	printf("ERROR: %s (err=%d)", msg, err);
-	printf("ERROR: rebooting system in 30 seconds");
-
-	sleep(20);
-	exit(0);
-}
-
-void __vlog(char *module, int level, const char *fmt, va_list args)
+static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct stat log_stat;
 	char log_path [PATH_MAX];
@@ -290,6 +234,63 @@ void __vlog(char *module, int level, const char *fmt, va_list args)
 	}
 }
 
+static int log_external(const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+
+	__vlog("external", DEBUG, fmt, args);
+
+	va_end(args);
+
+	return 1;
+}
+
+static void pv_log_init(struct pantavisor *pv, int rev)
+{
+	// make logs available for platforms
+	thttp_set_log_func(log_external);
+	log_init_pid = getpid();
+	global_pv = pv;
+	int allocated_cache = 0;
+	int allocated_dcache = 0;
+	
+	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
+					pv->config->logsize, &log_buffer_list);
+
+	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
+					pv->config->logsize * 2, &log_buffer_list_double);
+
+	mkdir_p("/pv/logs", 0755);
+	mount_bind(pv->config->logdir, "/pv/logs");
+	log_dir = calloc(1, PATH_MAX);
+	if (!log_dir) {
+		printf("Couldn't reserve space for log directory\n");
+		printf("Pantavisor logs won't be available\n");
+		return;
+	}
+	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
+	if (mkdir_p(log_dir, 0755)) {
+		printf("Couldn't make dir %s,"
+			"pantavisor logs won't be available\n", log_dir);
+	}
+	// enable libthttp debug logs
+	pv_log(DEBUG, "Initialized pantavisor logs...");
+	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
+			allocated_cache, pv->config->logsize);
+	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
+			allocated_dcache, pv->config->logsize * 2);
+}
+
+void exit_error(int err, char *msg)
+{
+	printf("ERROR: %s (err=%d)", msg, err);
+	printf("ERROR: rebooting system in 30 seconds");
+
+	sleep(20);
+	exit(0);
+}
+
 void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;
@@ -303,14 +304,6 @@ void __log(char *module, int level, const char *fmt, ...)
 	__vlog(module, level, fmt, args);
 
 	va_end(args); 
-}
-
-int pv_log_set_level(unsigned int level)
-{
-	if (level <= ALL)
-		prio = level;
-
-	return prio;
 }
 
 const char *pv_log_level_name(int level)

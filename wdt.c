@@ -71,19 +71,3 @@ void pv_wdt_kick(struct pantavisor *pv)
 
 	ioctl(fd, WDIOC_KEEPALIVE, 0);
 }
-
-int pv_wdt_stop(struct pantavisor *pv)
-{
-	if (!fd) {
-		pv_log(DEBUG, "No watchdog timer available to stop");
-		return -1;
-	}
-
-	pv_wdt_kick(pv);
-	write(fd, "V", 1);
-	close(fd);
-
-	fd = 0;
-
-	return 0;
-}

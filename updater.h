@@ -50,6 +50,44 @@ extern int DOWNLOAD_RETRY_WAIT;
 #define DEFAULT_MAX_REVISION_RETRIES 	(10)
 #define DEFAULT_UPDATE_COMMIT_DELAY 	(3 * 60)
 
+enum update_state {
+	UPDATE_QUEUED,
+	UPDATE_DOWNLOADED,
+	UPDATE_INSTALLED,
+	UPDATE_TRY,
+	UPDATE_REBOOT,
+	UPDATE_DONE,
+	UPDATE_FAILED,
+	UPDATE_NO_DOWNLOAD,
+	UPDATE_NO_PARSE,
+	UPDATE_RETRY_DOWNLOAD,
+	UPDATE_DEVICE_AUTH_OK,
+	UPDATE_DEVICE_COMMIT_WAIT,
+	UPDATE_DOWNLOAD_PROGRESS
+};
+
+struct object_update {
+	char *object_name;
+	char *object_id;
+	uint64_t total_size;
+	uint64_t start_time;
+	uint64_t current_time;
+	uint64_t total_downloaded;
+};
+
+struct pv_update {
+	enum update_state status;
+	char *endpoint;
+	int need_reboot;
+	int need_finish;
+	int progress_size;
+	time_t retry_at;
+	struct pv_state *pending;
+	char *progress_objects;
+	struct object_update *total_update;
+	char retry_data[64];
+};
+
 struct trail_remote {
 	trest_ptr client;
 	char *endpoint;
@@ -61,12 +99,6 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status);
 int pv_update_finish(struct pantavisor *pv);
 int pv_update_install(struct pantavisor *pv);
 int pv_check_for_updates(struct pantavisor *pv);
-int pv_do_single_update(struct pantavisor *pv);
-void pv_remote_destroy(struct pantavisor *pv);
-
-int pv_bl_set_current(struct pantavisor *pv, int rev);
-int pv_bl_get_update(struct pantavisor *pv, int *update);
-int pv_bl_clear_update(struct pantavisor *pv);
 
 int pv_set_current_status(struct pantavisor *, enum update_state);
 #endif

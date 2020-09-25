@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,11 +19,31 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_STORAGE_H
-#define PV_STORAGE_H
 
-int pv_storage_gc_run(struct pantavisor *pv);
-off_t pv_storage_get_free(struct pantavisor *pv, int diff);
-void pv_storage_rm_rev(struct pantavisor *pv, int rev);
+#ifndef PV_STATE_H
+#define PV_STATE_H
 
-#endif // PV_STORAGE_H
+struct pv_state {
+	int rev;
+	char *spec;
+	char *kernel;
+	char *fdt;
+	char *firmware;
+	char *modules;
+	char *initrd;
+	struct pv_platform *platforms;
+	struct pv_volume *volumes;
+	struct pv_addon *addons;
+	struct dl_list objects;
+	int retries;
+	char *json;
+	int tryonce;
+};
+
+struct pv_state* pv_state_init(int rev, char *spec);
+void pv_state_free(struct pv_state *s);
+
+void pv_state_print(struct pv_state *s);
+void pv_state_validate(struct pv_state *s);
+
+#endif

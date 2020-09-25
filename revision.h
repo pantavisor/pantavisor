@@ -27,7 +27,5 @@
  * These are the revisions we got from kernel as command
  * line parameters.
  */
-int pv_revision_get_try(void);
-int pv_revision_get_boot(void);
 int pv_revision_get_rev(void);
 #endif /*__REVISION__H__*/

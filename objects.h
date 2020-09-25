@@ -28,12 +28,22 @@
 #include "pantavisor.h"
 #include <stdlib.h>
 
+struct pv_object {
+	char *name;
+	char *id;
+	char *geturl;
+	char *objpath;
+	char *relpath;
+	off_t size;
+	char *sha256;
+	struct dl_list list;
+};
+
 char** pv_objects_get_all_ids(struct pantavisor *pv);
 int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id);
 struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *c);
 struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name);
-struct pv_object* pv_objects_get_by_id(struct pv_state *s, char *id);
-void pv_objects_remove_all(struct pv_state *s);
+void pv_objects_remove(struct pv_state *s);
 
 static inline void pv_object_free(struct pv_object *obj)
 {
@@ -41,19 +51,22 @@ static inline void pv_object_free(struct pv_object *obj)
 		free(obj->name);
 	if (obj->id)
 		free(obj->id);
-	if (obj->relpath)
-		free(obj->relpath);
 	if (obj->geturl)
 		free(obj->geturl);
 	if (obj->objpath)
 		free(obj->objpath);
+	if (obj->relpath)
+		free(obj->relpath);
+	if (obj->sha256)
+		free(obj->sha256);
+
 	free(obj);
 }
 
 #define pv_objects_iter_begin(state, item) 	\
 {\
 	struct pv_object *item##__tmp;\
-	struct dl_list *item##__head = &(state)->obj_list;\
+	struct dl_list *item##__head = &(state)->objects;\
 	dl_list_for_each_safe(item, item##__tmp, item##__head,\
 			struct pv_object, list)
 

@@ -34,6 +34,7 @@
 
 #include "utils.h"
 #include "objects.h"
+#include "state.h"
 
 char** pv_objects_get_all_ids(struct pantavisor *pv)
 {
@@ -76,7 +77,7 @@ int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id)
 
 	if (!s)
 		return 0;
-	head = &s->obj_list;
+	head = &s->objects;
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_object, list) {
 		if (!strcmp(curr->id, id))
@@ -111,7 +112,7 @@ struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, c
 		else
 			goto free_object;
 		dl_list_init(&this->list);
-		dl_list_add(&s->obj_list, &this->list);
+		dl_list_add(&s->objects, &this->list);
 		return this;
 free_object:
 		pv_object_free(this);
@@ -122,7 +123,7 @@ free_object:
 struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
 {
 	struct pv_object *curr, *tmp;
-	struct dl_list *head = &s->obj_list;
+	struct dl_list *head = &s->objects;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_object, list) {
@@ -132,23 +133,10 @@ struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-struct pv_object* pv_objects_get_by_id(struct pv_state *s, char *id)
+void pv_objects_remove(struct pv_state *s)
 {
 	struct pv_object *curr, *tmp;
-	struct dl_list *head = &s->obj_list;
-
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_object, list) {
-		if (!strcmp(curr->id, id))
-			return curr;
-	}
-	return NULL;
-}
-
-void pv_objects_remove_all(struct pv_state *s)
-{
-	struct pv_object *curr, *tmp;
-	struct dl_list *head = &s->obj_list;
+	struct dl_list *head = &s->objects;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_object, list) {

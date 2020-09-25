@@ -35,11 +35,14 @@
 #include <lxc/pv_export.h>
 #include <limits.h>
 #include <unistd.h>
+#include <stdbool.h>
+
+
 #include "utils.h"
 #include "pv_lxc.h"
 #include "utils/list.h"
-#include <stdbool.h>
-#include <limits.h>
+#include "pvlogger.h"
+
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
 #ifndef free_member
@@ -195,7 +198,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		}
 	}
 	// Strip consoles from kernel cmdline
-	mktemp(tmp_cmd);
+	mkstemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd > 0) {
 		char *buf = calloc(1024, 1);

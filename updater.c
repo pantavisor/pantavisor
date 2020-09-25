@@ -41,7 +41,6 @@
 #include "log.h"
 
 #include "utils.h"
-
 #include "objects.h"
 #include "parser/parser.h"
 #include "updater.h"
@@ -53,6 +52,7 @@
 #include "init.h"
 #include "revision.h"
 #include "parser/parser_bundle.h"
+#include "state.h"
 
 int MAX_REVISION_RETRIES = 0;
 int DOWNLOAD_RETRY_WAIT = 0;
@@ -1355,7 +1355,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 
 	if (use_volatile_tmp) {
-		mktemp(volatile_tmp_obj_path);
+		mkstemp(volatile_tmp_obj_path);
 		volatile_tmp_fd = open(volatile_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 		fd = volatile_tmp_fd;
 	} else {
@@ -1679,16 +1679,6 @@ out:
 	return ret;
 }
 
-void pv_remote_destroy(struct pantavisor *pv)
-{
-	if (!pv->remote)
-		return;
-
-	free(pv->remote->client);
-	free(pv->remote->endpoint);
-	free(pv->remote);
-}
-
 int pv_set_current_status(struct pantavisor *pv, enum update_state state)
 {
 	return trail_remote_set_status(pv, pv->state->rev, state);
@@ -1737,7 +1727,7 @@ static int pv_update_init(struct pv_init *this)
 		if (pv->state) {
 			pv_update_start(pv, 1);
 			pv_update_set_status(pv, UPDATE_FAILED);
-			pv_release_state(pv);
+			pv_state_free(pv->state);
 		}
 		pv->state = s;
 	}

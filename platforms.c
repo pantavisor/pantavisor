@@ -43,12 +43,12 @@ int setns(int nsfd, int nstype);
 
 #include "parser/parser.h"
 #include "wdt.h"
-
 #include "platforms.h"
 #include "pvlogger.h"
 #include "utils/list.h"
 #include "utils.h"
 #include "init.h"
+#include "state.h"
 
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
@@ -142,52 +142,49 @@ static void pv_platforms_free_platform(struct pv_state *s, struct pv_platform *p
 		free(p->name);
 	if (p->type)
 		free(p->type);
-	if (p->exec)
-		free(p->exec);
 
 	c = p->configs;
 	while (*c) {
 		free(*c);
 		c++;
 	}
+
+	if (p->exec)
+		free(p->exec);
+	if (p->data)
+		free(p->data);
+	if (p->json)
+		free(p->json);
+
+	// FIXME: free logger_list and logger_configs
 }
 
-static void pv_platforms_remove(struct pv_state *s, int runlevel)
+void pv_platforms_remove(struct pv_state *s)
 {
 	int num_plat = 0;
 	struct pv_platform *p = NULL, *prev = NULL, *t = NULL;
 
-	// Iterate between lowest priority plats and runlevel plats
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		pv_log(INFO, "removing platforms with runlevel %d", i);
-		// Iterate over all plats from state
-		p = s->platforms;
-		prev = s->platforms;
-		while (p) {
-			// Remove platforms in this runlevel only
-			if (p->runlevel != i) {
-				prev = p;
-				p = p->next;
-				continue;
-			}
+	if (!s->platforms)
+		return;
 
-			pv_platforms_free_platform(s, p);			
+	// Iterate over all plats from state
+	p = s->platforms;
+	prev = s->platforms;
+	while (p) {
+		pv_log(INFO, "removing platform %s", p->name);
 
-			if (p == s->platforms)
-				s->platforms = p->next;
-			else
-				prev->next = p->next;
+		pv_platforms_free_platform(s, p);			
 
-			t = p;
-			p = p->next;
-			free(t);
-			num_plat++;
-		}
+		if (p == s->platforms)
+			s->platforms = p->next;
+		else
+			prev->next = p->next;
+
+		t = p;
+		p = p->next;
+		free(t);
+		num_plat++;
 	}
-
-	// no plats should be left if runlevel was 0 (highest priority)
-	if (runlevel <= 0)
-		s->platforms = NULL;
 
 	pv_log(INFO, "removed '%d' platforms", num_plat);
 }
@@ -597,6 +594,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 			}
 
 			if (p->running) {
+				// FIXME: stop logger_list
 				ctrl = _pv_platforms_get_ctrl(p->type);
 				ctrl->stop(p, NULL, p->data);
 				p->running = false;
@@ -620,9 +618,6 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 	// Kill all plats in runlevel and lower priority
 	if (exited != num_plats)
 		pv_platforms_force_kill(pv, runlevel);
-
-	// Remove all plats in runlevel and lower priority
-	pv_platforms_remove(s, runlevel);
 
 	return num_plats;
 }

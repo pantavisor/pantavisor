@@ -41,6 +41,8 @@
 #include "pantavisor.h"
 #include "volumes.h"
 #include "parser/parser.h"
+#include "platforms.h"
+#include "state.h"
 
 #define FW_PATH		"/lib/firmware"
 
@@ -71,46 +73,33 @@ static void pv_volumes_free_volume(struct pv_volume *v)
 		free(v->dest);
 }
 
-static void pv_volumes_remove(struct pv_state *s, int runlevel)
+void pv_volumes_remove(struct pv_state *s)
 {
 	int num_vol = 0;
 	struct pv_volume *v = NULL, *prev = NULL, *t = NULL;
 
-	// Iterate between lowest priority vols and runlevel vols
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		pv_log(INFO, "removing volumes with runlevel %d", i);
-		// Iterate over all volumes from state
-		v = s->volumes;
-		prev = s->volumes;
-		while (v) {
-			// Remove volumes without platforms in runlevel 0 (firmware and modules)
-			// Remove volumes with platforms in this runlevel only 
-			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel))) {
-				prev = v;
-				v = v->next;
-				continue;
-			}
+	if (!s->volumes)
+		return;
 
-			pv_log(INFO, "removing volume %s", v->name);
+	// Iterate over all volumes from state
+	v = s->volumes;
+	prev = s->volumes;
+	while (v) {
+		pv_log(INFO, "removing volume %s", v->name);
 
-			pv_volumes_free_volume(v);
+		pv_volumes_free_volume(v);
 
-			if (v == s->volumes)
-				s->volumes = v->next;
-			else
-				prev->next = v->next;
+		if (v == s->volumes)
+			s->volumes = v->next;
+		else
+			prev->next = v->next;
 
-			t = v;
-			v = v->next;
-			free(t);
+		t = v;
+		v = v->next;
+		free(t);
 
-			num_vol++;
-		}
+		num_vol++;
 	}
-
-	// no volumes should be left if runlevel was 0 (highest priority)
-	if (runlevel <= 0)
-		s->platforms = NULL;
 
 	pv_log(INFO, "removed %d volumes", num_vol);
 }
@@ -340,8 +329,6 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 			v = v->next;
 		}
 	}
-
-	pv_volumes_remove(s, runlevel);
 
 	pv_log(INFO, "unmounted %d volumes", num_vol);
 

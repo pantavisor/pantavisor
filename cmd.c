@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <stdint.h>
 
 #define MODULE_NAME             "cmd"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -36,7 +37,9 @@
 
 #include "cmd.h"
 #include "utils.h"
-#include <stdint.h>
+#include "pvlogger.h"
+#include "platforms.h"
+#include "state.h"
 
 #ifndef _GNU_SOURCE
 struct  ucred {
@@ -77,12 +80,42 @@ out:
 	return fd;
 }
 
-void pv_cmd_socket_close(struct pantavisor *pv)
+static uint8_t parse_cmd_req(char *buf, struct pv_cmd_req *cmd)
 {
-	if (pv->ctrl_fd > 0) {
-		pv_log(DEBUG, "closing control socket");
-		close(pv->ctrl_fd);
+	int tokc;
+	uint8_t ret = 1;
+	jsmntok_t *tokv;
+	char *op_string = NULL;
+
+	jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	op_string = get_json_key_value(buf, "op", tokv, tokc);
+	if(!op_string) {
+		pv_log(WARN, "Unable to get op value from command");
+		goto out;
 	}
+
+	cmd->json_operation = int_cmd_operation(op_string, strlen(op_string));
+	if (!cmd->json_operation) {
+		pv_log(WARN, "op from command unknown");
+		goto out;
+	}
+
+	cmd->data = get_json_key_value(buf, "payload", tokv, tokc);
+	if (!cmd->data) {
+		pv_log(WARN, "Unable to get payload value from command");
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	if (tokv)
+		free(tokv);
+	if (op_string)
+		free(op_string);
+
+	return ret;
 }
 
 struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
@@ -253,42 +286,4 @@ void pv_cmd_finish(struct pantavisor *pv)
 	free(c);
 
 	pv->req = NULL;
-}
-
-uint8_t parse_cmd_req(char *buf, struct pv_cmd_req *cmd)
-{
-	int tokc;
-	uint8_t ret = 1;
-	jsmntok_t *tokv;
-	char *op_string = NULL;
-
-	jsmnutil_parse_json(buf, &tokv, &tokc);
-
-	op_string = get_json_key_value(buf, "op", tokv, tokc);
-	if(!op_string) {
-		pv_log(WARN, "Unable to get op value from command");
-		goto out;
-	}
-
-	cmd->json_operation = int_cmd_operation(op_string, strlen(op_string));
-	if (!cmd->json_operation) {
-		pv_log(WARN, "op from command unknown");
-		goto out;
-	}
-
-	cmd->data = get_json_key_value(buf, "payload", tokv, tokc);
-	if (!cmd->data) {
-		pv_log(WARN, "Unable to get payload value from command");
-		goto out;
-	}
-
-	ret = 0;
-
-out:
-	if (tokv)
-		free(tokv);
-	if (op_string)
-		free(op_string);
-
-	return ret;
 }

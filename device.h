@@ -26,19 +26,19 @@
 
 #include "pantavisor.h"
 
-struct pv_device_info_read{
-	char *key;
-	char *buf;
-	int buflen;
-	int (*reader)(struct pv_device_info_read*);
+struct pv_device {
+    char *id;
+    char *nick;
+    char *owner;
+    char *prn;
+    struct dl_list metalist;
+    struct dl_list infolist;
 };
 
-struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key);
-struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value);
-struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value);
-int pv_usermeta_parse(struct pantavisor *pv, char *buf);
 int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
 int pv_device_factory_meta(struct pantavisor *pv);
 int pv_device_info_upload(struct pantavisor *pv);
 bool pv_device_factory_meta_done(struct pantavisor *pv);
+
+void pv_device_free(pv_device *dev);
 #endif

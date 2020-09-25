@@ -23,7 +23,6 @@
 #ifndef PV_NETWORK_H
 #define PV_NETWORK_H
 
-int pv_network_init(struct pantavisor *pv);
 int pv_network_update_meta(struct pantavisor *pv);
 
 #endif // PV_NETWORK_H

@@ -46,9 +46,25 @@
 #include "version.h"
 #include "init.h"
 #include "cmd.h"
+#include "revision.h"
+#include "state.h"
 
 #define FW_PATH		"/lib/firmware"
 
+#define PV_USERMETA_ADD     (1<<0)
+struct pv_usermeta {
+    char *key;
+    char *value;
+    long flags;
+    struct dl_list list;
+};
+
+struct pv_device_info_read{
+	char *key;
+	char *buf;
+	int buflen;
+	int (*reader)(struct pv_device_info_read*);
+};
 
 static int pv_device_info_buf_check(struct pv_device_info_read *pv_device_info_read)
 {
@@ -202,19 +218,7 @@ static void usermeta_free_one(struct pv_usermeta *usermeta)
 	free(usermeta);
 }
 
-static void usermeta_remove(struct pv_device *d, char *key)
-{
-	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &d->metalist;
-
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_usermeta, list) {
-		usermeta_remove_hint(curr);
-		usermeta_free_one(curr);
-	}
-}
-
-struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
+static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 {
 	struct pv_usermeta *curr, *tmp;
 	struct dl_list *head = &d->metalist;
@@ -228,7 +232,7 @@ struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 	return NULL;
 }
 
-struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
+static struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 {
 	int changed = 1;
 	struct pv_usermeta *curr;
@@ -273,7 +277,7 @@ out:
 	return curr;
 }
 
-int pv_usermeta_parse(struct pantavisor *pv, char *buf)
+static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 {
 	int ret = 0, tokc, n;
 	jsmntok_t *tokv;
@@ -365,7 +369,7 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
+static struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
 {
 	struct pv_devinfo *this = NULL;
 
@@ -721,6 +725,20 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 		return false;
 	return true;
 }
+
+void pv_device_free(pv_device *dev) {
+	if (dev->id)
+		free(dev->id)
+	if (dev->nick)
+		free(dev->nick)
+	if (dev->owner)
+		free(dev->owner)
+	if (dev->prn)
+		free(dev->prn)
+
+	free(dev);
+}
+
 struct pv_init pv_init_device = {
 	.init_fn = pv_device_init,
 	.flags = 0,
