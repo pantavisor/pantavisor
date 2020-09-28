@@ -422,7 +422,6 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 {
 	char *retry_count = NULL;
 	int ret = 0;
-	char *json_val = NULL;
 	struct jka_update_ctx *ctx = (struct jka_update_ctx*) jka->opaque;
 	struct json_key_action jka_arr[] = {
 		ADD_JKA_ENTRY("data", JSMN_STRING, &retry_count, NULL, true),
@@ -1004,9 +1003,6 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT,
 		pv->config->creds.id, rev);
 
-	// FIXME: currently we only support strict (always rebot) updates
-	u->need_reboot = 1;
-	u->need_finish = 0;
 	pv->update = u;
 
 	// all done up to here for offline
@@ -1050,7 +1046,6 @@ int pv_update_finish(struct pantavisor *pv)
 		goto retry_update;
 	case UPDATE_DEVICE_COMMIT_WAIT:
 		ret = trail_remote_set_status(pv, -1, UPDATE_DEVICE_COMMIT_WAIT);
-		pv_log(ERROR, "update has failed");
 		break;
 	default:
 		ret = -1;

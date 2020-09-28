@@ -92,7 +92,7 @@ struct pv_addon {
 	struct pv_addon *next;
 };
 
-
+#define MAX_RUNLEVEL 1
 
 struct pv_platform {
 	char *name;
@@ -105,6 +105,7 @@ struct pv_platform {
 	pid_t init_pid;
 	bool running;
 	bool done;
+	int runlevel;
 	struct pv_platform *next;
 	struct dl_list logger_list;
 	/*

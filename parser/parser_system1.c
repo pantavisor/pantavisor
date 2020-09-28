@@ -461,6 +461,25 @@ static int do_action_for_type(struct json_key_action *jka,
 	return 0;
 }
 
+static int do_action_for_runlevel(struct json_key_action *jka,
+					char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	if (!strcmp(value, "root"))
+		(*bundle->platform)->runlevel = 0;
+	else if (!strcmp(value, "app"))
+		(*bundle->platform)->runlevel = 1;
+	else {
+		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'", value, (*bundle->platform)->name);
+	}
+
+	return 0;
+}
+
 static int do_action_for_one_volume(struct json_key_action *jka,
 					char *value)
 {
@@ -608,6 +627,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	struct json_key_action system1_platform_key_action [] = {
 		ADD_JKA_ENTRY("name", JSMN_STRING, &bundle, do_action_for_name, false),
 		ADD_JKA_ENTRY("type", JSMN_STRING, &bundle, do_action_for_type, false),
+		ADD_JKA_ENTRY("runlevel", JSMN_STRING, &bundle, do_action_for_runlevel, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
 		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_one_volume, false),
@@ -674,6 +694,18 @@ void system1_free(struct pv_state *this)
 	pv_objects_remove_all(this);
 }
 
+static void post_parse_validation(struct pv_state *this)
+{
+	if (!this)
+		return;
+
+	// remove platforms that have no loaded data
+	pv_platforms_remove_not_done(this);
+
+	// set runlevel in all undefined platforms
+	pv_platforms_default_runlevel(this);
+}
+
 void system1_print(struct pv_state *this)
 {
 	if (!this)
@@ -687,6 +719,7 @@ void system1_print(struct pv_state *this)
 	while (p) {
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
+		pv_log(DEBUG, "  runlevel: '%d'", p->runlevel);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
@@ -699,6 +732,8 @@ void system1_print(struct pv_state *this)
 	while (v) {
 		pv_log(DEBUG, "volume: '%s'", v->name);
 		pv_log(DEBUG, "  type: '%d'", v->type);
+		if (v->plat)
+			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
 
 		v = v->next;
 	}
@@ -793,10 +828,9 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// copy buffer
 	this->json = strdup(buf);
 
-	system1_print(this);
+	post_parse_validation(this);
 
-	// remove platforms that have no loaded data
-	pv_platforms_remove_not_done(this);
+	system1_print(this);
 
 out:
 	if (key)
