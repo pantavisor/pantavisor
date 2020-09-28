@@ -76,28 +76,16 @@ static void pv_volumes_free_volume(struct pv_volume *v)
 void pv_volumes_remove(struct pv_state *s)
 {
 	int num_vol = 0;
-	struct pv_volume *v = NULL, *prev = NULL, *t = NULL;
-
-	if (!s->volumes)
-		return;
+	struct pv_volume *v, *tmp;
+	struct dl_list *head = &s->volumes;
 
 	// Iterate over all volumes from state
-	v = s->volumes;
-	prev = s->volumes;
-	while (v) {
+	dl_list_for_each_safe(v, tmp, head,
+			struct pv_volume, list) {
 		pv_log(INFO, "removing volume %s", v->name);
-
+        dl_list_del(&v->list);
 		pv_volumes_free_volume(v);
-
-		if (v == s->volumes)
-			s->volumes = v->next;
-		else
-			prev->next = v->next;
-
-		t = v;
-		v = v->next;
-		free(t);
-
+		free(v);
 		num_vol++;
 	}
 
@@ -107,21 +95,14 @@ void pv_volumes_remove(struct pv_state *s)
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
 {
 	struct pv_volume *this = calloc(1, sizeof(struct pv_volume));
-	struct pv_volume *add = s->volumes;
 
-	while (add && add->next) {
-		add = add->next;
+	if (this) {
+		this->name = strdup(name);
+		dl_list_init(&this->list);
+        dl_list_add(&s->objects, &this->list);
 	}
 
-	if (!add) {
-		s->volumes = add = this;
-	} else {
-		add->next = this;
-	}
-
-	this->name = strdup(name);
-
-	return this;
+	return NULL;
 }
 
 static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
@@ -251,10 +232,10 @@ out:
 int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 {
 	int ret = -1;
-	struct pv_state *s = pv->state;
 	int num_vol = 0;
 	char base[PATH_MAX];
-	struct pv_volume *v = NULL;
+	struct pv_volume *v, *tmp;
+	struct dl_list *head = NULL;
 
 	// Create volumes if non-existant
 	mkdir("/volumes", 0755);
@@ -265,12 +246,12 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
 		pv_log(INFO, "mounting volumes with runlevel %d", i);
 		// Iterate over all volumes from state
-		v = s->volumes;
-		while (v) {
+		head = &pv->state->volumes;
+		dl_list_for_each_safe(v, tmp, head,
+				struct pv_volume, list) {
 			// Mount volumes without platforms in runlevel 0 (firmware and modules)
 			// Mount volumes with platforms in this runlevel only 
 			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel))) {
-				v = v->next;
 				continue;
 			}
 
@@ -279,8 +260,6 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 				num_vol++;
 			else
 				goto out;
-
-			v = v->next;
 		}
 	}
 
@@ -297,19 +276,19 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 {
 	int ret;
 	int num_vol = 0;
-	struct pv_state *s = pv->state;
-	struct pv_volume *v = NULL;
+	struct pv_volume *v, *tmp;
+	struct dl_list *head = NULL;
 
 	// Iterate between lowest priority vols and runlevel vols
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "unmounting volumes with runlevel %d", i);
 		// Iterate over all volumes from state
-		v = s->volumes;
-		while(v) {
+		head = &pv->state->volumes;
+		dl_list_for_each_safe(v, tmp, head,
+				struct pv_volume, list) {
 			// Mount volumes without platforms in runlevel 0 (firmware and modules)
 			// Mount volumes with platforms in this runlevel only 
 			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel))) {
-				v = v->next;
 				continue;
 			}
 
@@ -326,7 +305,6 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 				pv_log(INFO, "unmounted '%s' successfully", v->dest);
 				num_vol++;
 			}
-			v = v->next;
 		}
 	}
 

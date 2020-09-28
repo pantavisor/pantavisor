@@ -384,7 +384,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	if (pv->req) {
 		pv_log(WARN, "stable command found queued, discarding");
-		pv_cmd_finish(pv);
+		pv_cmd_req_free(pv);
 		goto out;
 	}
 
@@ -471,7 +471,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	}
 
 out:
-	pv_cmd_finish(pv);
+	pv_cmd_req_free(pv);
 	return next_state;
 }
 
@@ -607,6 +607,7 @@ out:
 
 	pv_log(INFO, "rebooting...");
 	sleep(5);
+	pantavisor_free(pv);
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;

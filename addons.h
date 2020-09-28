@@ -24,7 +24,7 @@
 
 struct pv_addon {
 	char *name;
-	struct pv_addon *next;
+	struct dl_list list; // pv_addon
 };
 
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name);

@@ -31,8 +31,8 @@ struct pv_device {
     char *nick;
     char *owner;
     char *prn;
-    struct dl_list metalist;
-    struct dl_list infolist;
+    struct dl_list metalist; // pv_usermeta
+    struct dl_list infolist; // pv_devinfo
 };
 
 int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
@@ -40,5 +40,5 @@ int pv_device_factory_meta(struct pantavisor *pv);
 int pv_device_info_upload(struct pantavisor *pv);
 bool pv_device_factory_meta_done(struct pantavisor *pv);
 
-void pv_device_free(pv_device *dev);
+void pv_device_free(struct pantavisor *pv);
 #endif

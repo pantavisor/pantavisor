@@ -1018,6 +1018,50 @@ out:
 	return ret;
 }
 
+void pv_update_free(struct pantavisor *pv)
+{
+	struct pv_update *update = pv->update;
+
+	if (!update)
+		return;
+
+	pv_log(DEBUG, "removing update");
+
+	if (update->endpoint)
+		free(update->endpoint);
+	if (update->pending) {
+		pv_state_free(update->pending);
+		update->pending = NULL;
+	}
+	if (update->progress_objects)
+		free(update->progress_objects);
+	if (update->total_update)
+		free(update->total_update);
+
+	free(pv->update);
+	pv->update = NULL;
+}
+
+void pv_trail_remote_free(struct pantavisor *pv)
+{
+	struct trail_remote *trail = pv->remote;
+
+	if (!trail)
+		return;
+
+	pv_log(DEBUG, "removing trail");
+
+	if (trail->endpoint)
+		free(trail->endpoint);
+	if (trail->pending) {
+		pv_state_free(trail->pending);
+		trail->pending = NULL;
+	}
+
+	free(trail);
+	pv->remote = NULL;
+}
+
 int pv_update_finish(struct pantavisor *pv)
 {
 	int ret = 0;
@@ -1053,17 +1097,7 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	}
 out:
-	if (pv->update->pending)
-		pv_state_free(pv->update->pending);
-	if (pv->update->endpoint)
-		free(pv->update->endpoint);
-	if (pv->update->progress_objects)
-		free(pv->update->progress_objects);
-	if (pv->update->total_update)
-		free(pv->update->total_update);
-	free(pv->update);
-
-	pv->update = NULL;
+	pv_update_free(pv);
 retry_update:
 	return ret;
 }

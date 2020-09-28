@@ -46,7 +46,7 @@ struct pv_state* pv_state_init(int rev, char *spec)
 
 void pv_state_free(struct pv_state *s)
 {
-	pv_log(INFO, "removing state with revision %d", s->rev);
+	pv_log(DEBUG, "removing state with revision %d", s->rev);
 
 	if (!s)
 		return;
@@ -69,7 +69,8 @@ void pv_state_free(struct pv_state *s)
 	pv_addons_remove(s);
 	pv_objects_remove(s);
 
-	free(s->json);
+	if (s->json)
+		free(s->json);
 
 	free(s);
 }
@@ -80,12 +81,13 @@ void pv_state_print(struct pv_state *s)
 		return;
 
 	// print
-	struct pv_platform *p = s->platforms;
-	struct pv_object *curr;
 	pv_log(DEBUG, "kernel: '%s'", s->kernel);
 	pv_log(DEBUG, "initrd: '%s'", s->initrd);
 	pv_log(DEBUG, "fdt: '%s'", s->fdt);
-	while (p) {
+	struct pv_platform *p, *tmp_p;
+    struct dl_list *head = &s->platforms;
+    dl_list_for_each_safe(p, tmp_p, head,
+            struct pv_platform, list) {
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
 		pv_log(DEBUG, "  exec: '%s'", p->exec);
@@ -96,18 +98,17 @@ void pv_state_print(struct pv_state *s)
 			pv_log(DEBUG, "    '%s'", *config);
 			config++;
 		}
-		p = p->next;
-	}
-	struct pv_volume *v = s->volumes;
-	while (v) {
+    }
+	struct pv_volume *v, *tmp_v;
+	head = &s->volumes;
+    dl_list_for_each_safe(v, tmp_v, head,
+            struct pv_volume, list) {
 		pv_log(DEBUG, "volume: '%s'", v->name);
 		pv_log(DEBUG, "  type: '%d'", v->type);
 		if (v->plat)
 			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
-
-		v = v->next;
 	}
-	
+	struct pv_object *curr;
 	pv_objects_iter_begin(s, curr) {
 		pv_log(DEBUG, "object: ");
 		pv_log(DEBUG, "  name: '%s'", curr->name);

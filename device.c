@@ -56,7 +56,7 @@ struct pv_usermeta {
     char *key;
     char *value;
     long flags;
-    struct dl_list list;
+	struct dl_list list; // pv_usermeta
 };
 
 struct pv_device_info_read{
@@ -64,6 +64,12 @@ struct pv_device_info_read{
 	char *buf;
 	int buflen;
 	int (*reader)(struct pv_device_info_read*);
+};
+
+struct pv_devinfo {
+    char *key;
+    char *value;
+	struct dl_list list; // pv_devinfo
 };
 
 static int pv_device_info_buf_check(struct pv_device_info_read *pv_device_info_read)
@@ -405,6 +411,21 @@ out:
 	return this;
 }
 
+static void pv_devinfo_free(struct pv_device *dev)
+{
+	struct pv_devinfo *curr, *tmp;
+	struct dl_list *head = &dev->infolist;
+
+	dl_list_for_each_safe(curr, tmp, head,
+		struct pv_devinfo, list) {
+		free(curr->key);
+		free(curr->value);
+		dl_list_del(&curr->list);
+		free(curr);
+	}
+}
+
+
 int pv_device_info_upload(struct pantavisor *pv)
 {
 	unsigned int len = 0;
@@ -490,16 +511,8 @@ upload:
 	pv_log(INFO, "device info json = %s", json);
 	info_uploaded = !pv_ph_upload_metadata(pv, json);
 out:
-	if (info_uploaded && !dl_list_empty(&pv->dev->infolist)) {
-		head = &pv->dev->infolist;
-		dl_list_for_each_safe(info, tmp, head,
-				struct pv_devinfo, list) {
-			free(info->key);
-			free(info->value);
-			dl_list_del(&info->list);
-			free(info);
-		}
-	}
+	if (info_uploaded && !dl_list_empty(&pv->dev->infolist))
+		pv_devinfo_free(pv->dev);
 	pv_log_put_buffer(log_buffer);
 	return 0;
 }
@@ -726,17 +739,41 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	return true;
 }
 
-void pv_device_free(pv_device *dev) {
+static void pv_usermeta_free(struct pv_device *dev)
+{
+	struct pv_usermeta *curr, *tmp;
+	struct dl_list *head = &dev->metalist;
+
+	dl_list_for_each_safe(curr, tmp, head,
+		struct pv_usermeta, list) {
+		usermeta_free_one(curr);
+		dl_list_del(&curr->list);
+	}
+}
+
+void pv_device_free(struct pantavisor *pv)
+{
+	struct pv_device *dev = pv->dev;
+
+	if (!dev)
+		return;
+
+	pv_log(DEBUG, "removing device");
+
 	if (dev->id)
-		free(dev->id)
+		free(dev->id);
 	if (dev->nick)
-		free(dev->nick)
+		free(dev->nick);
 	if (dev->owner)
-		free(dev->owner)
+		free(dev->owner);
 	if (dev->prn)
-		free(dev->prn)
+		free(dev->prn);
+
+	pv_usermeta_free(dev);
+	pv_devinfo_free(dev);
 
 	free(dev);
+	pv->dev = NULL;
 }
 
 struct pv_init pv_init_device = {

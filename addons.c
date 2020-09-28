@@ -46,21 +46,15 @@
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
 {
 	struct pv_addon *this = calloc(1, sizeof(struct pv_addon));
-	struct pv_addon *add = s->addons;
 
-	while (add && add->next) {
-		add = add->next;
+	if (this) {
+		this->name = name;
+		dl_list_init(&this->list);
+        dl_list_add(&s->addons, &this->list);
+		return this;
 	}
 
-	if (!add) {
-		s->addons = add = this;
-	} else {
-		add->next = this;
-	}
-
-	this->name = name;
-
-	return this;
+	return NULL;
 }
 
 static void pv_addons_free_addon(struct pv_addon *a)
@@ -77,27 +71,16 @@ static void pv_addons_free_addon(struct pv_addon *a)
 void pv_addons_remove(struct pv_state *s)
 {
 	int num_addons = 0;
-	struct pv_addon *a = NULL, *prev = NULL, *t = NULL;
-
-	if (!s->addons)
-		return;
+	struct pv_addon *a, *tmp;
+	struct dl_list *head = &s->addons;
 
 	// Iterate over all plats from state
-	a = s->addons;
-	prev = s->addons;
-	while (a) {
+    dl_list_for_each_safe(a, tmp, head,
+            struct pv_addon, list) {
 		pv_log(INFO, "removing addon %s", a->name);
-
+		dl_list_del(&a->list);
 		pv_addons_free_addon(a);			
-
-		if (a == s->addons)
-			s->addons = a->next;
-		else
-			prev->next = a->next;
-
-		t = a;
-		a = a->next;
-		free(t);
+		free(a);
 		num_addons++;
 	}
 

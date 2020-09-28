@@ -31,10 +31,10 @@ struct pv_state {
 	char *firmware;
 	char *modules;
 	char *initrd;
-	struct pv_platform *platforms;
-	struct pv_volume *volumes;
-	struct pv_addon *addons;
-	struct dl_list objects;
+	struct dl_list platforms; // pv_platform
+	struct dl_list volumes; // pv_volume
+	struct dl_list addons; // pv_addon
+	struct dl_list objects; //pv_object
 	int retries;
 	char *json;
 	int tryonce;

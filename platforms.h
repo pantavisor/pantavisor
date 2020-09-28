@@ -40,12 +40,12 @@ struct pv_platform {
 	bool running;
 	bool done;
 	int runlevel;
-	struct pv_platform *next;
-	struct dl_list logger_list;
+	struct dl_list list; // pv_platform
+	struct dl_list logger_list; // pv_log_info
 	/*
 	 * To be freed once logger_list is setup.
 	 * */
-	struct dl_list logger_configs;
+	struct dl_list logger_configs; // pv_logger_config
 };
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);

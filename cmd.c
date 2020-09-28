@@ -160,22 +160,24 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 	if (getsockopt(fd, SOL_SOCKET,SO_PEERCRED, &peer_cred, &peer_size) < 0)
 		c->platform = NULL;
 	else {
-		struct pv_platform *walker = pv->state->platforms;
-		while (walker) {
-			struct pv_log_info *item, *tmp;
-			struct dl_list *head = &walker->logger_list;
-			bool found = false;
-			dl_list_for_each_safe(item, tmp, head,
+		struct pv_platform *p, *tmp_p;
+		struct pv_log_info *l, *tmp_l;
+		struct dl_list *head_platforms, *head_logger;
+		bool found = false;
+		dl_list_for_each_safe(p, tmp_p, head_platforms,
+       		    struct pv_platform, list) {
+			head_logger = &p->logger_list;
+			found = false;
+			dl_list_for_each_safe(l, tmp_l, head_logger,
 					struct pv_log_info, next) {
-				if (item->logger_pid == peer_cred.pid) {
-					c->platform = (item->name ? strdup(item->name) : NULL);
+				if (l->logger_pid == peer_cred.pid) {
+					c->platform = (l->name ? strdup(l->name) : NULL);
 					found = true;
 					break;
 				}
 			}
 			if (found)
 				break;
-			walker = walker->next;
 		}
 	}
 
@@ -271,19 +273,20 @@ err:
 	return NULL;
 }
 
-void pv_cmd_finish(struct pantavisor *pv)
+void pv_cmd_req_free(struct pantavisor *pv)
 {
-	struct pv_cmd_req *c = pv->req;
+	struct pv_cmd_req *req = pv->req;
 
-	if (!c)
+	if (!req)
 		return;
 
-	if (c->data)
-		free(c->data);
+	pv_log(DEBUG, "removing cmd req");
 
-	if (c->platform)
-		free(c->platform);
-	free(c);
+	if (req->data)
+		free(req->data);
+	if (req->platform)
+		free(req->platform);
 
+	free(req);
 	pv->req = NULL;
 }

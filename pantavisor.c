@@ -58,6 +58,9 @@
 #include "addons.h"
 #include "pvlogger.h"
 #include "state.h"
+#include "device.h"
+#include "updater.h"
+#include "cmd.h"
 
 pid_t pv_pid;
 static struct pantavisor* global_pv;
@@ -69,15 +72,22 @@ struct pantavisor* get_pv_instance()
 
 void pantavisor_free(struct pantavisor *pv)
 {
+	if (!pv)
+		return;
+
+	pv_log(DEBUG, "removing pantavisor");
+
 	if (pv->step)
 		free(pv->step);
+	if (pv->conn)
+		free(pv->conn);
 
-	pv_device_free(pv->dev);
-	pv_update_free(pv->update);
+	pv_device_free(pv);
+	pv_update_free(pv);
 	pv_state_free(pv->state);
-	pv_cmd_req_free(pv->pv_cmd_req);
-	pv_trail_remote_free(pv->remote);
-	pv_connection_free(pv->conn);
+	pv->state = NULL;
+	pv_cmd_req_free(pv);
+	pv_trail_remote_free(pv);
 
 	free(pv);
 }
@@ -401,7 +411,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 {
 	int i;
 	struct pantavisor_config *c = pv->config;
-	struct pv_addon *a;
+	struct pv_addon *a, *tmp;
+	struct dl_list *addons = &s->addons;
 	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[32];
 
 	if (!s)
@@ -432,9 +443,9 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		goto err;
 
 	// addons
-	a = s->addons;
 	i = 0;
-	while (a) {
+    dl_list_for_each_safe(a, tmp, addons,
+            struct pv_addon, list) {
 		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
 		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, a->name);
 		sprintf(fname, "pv-initrd.img.%d", i++);
@@ -442,7 +453,6 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		remove(dst);
 		if (link(src, dst) < 0)
 			goto err;
-		a = a->next;
 	}
 
 	// kernel

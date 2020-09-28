@@ -39,7 +39,7 @@ struct pv_volume {
 	int loop_fd;
 	int file_fd;
 	struct pv_platform *plat;
-	struct pv_volume *next;
+	struct dl_list list; // pv_volume
 };
 
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
