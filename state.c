@@ -38,6 +38,9 @@ struct pv_state* pv_state_init(int rev, char *spec)
 	if (s) {
 		s->rev = rev;
 		s->spec = strdup(spec);
+		dl_list_init(&s->platforms);
+		dl_list_init(&s->volumes);
+		dl_list_init(&s->addons);
 		dl_list_init(&s->objects);
 	}
 
@@ -83,14 +86,12 @@ void pv_state_print(struct pv_state *s)
 	// print
 	pv_log(DEBUG, "kernel: '%s'", s->kernel);
 	pv_log(DEBUG, "initrd: '%s'", s->initrd);
-	pv_log(DEBUG, "fdt: '%s'", s->fdt);
 	struct pv_platform *p, *tmp_p;
-    struct dl_list *head = &s->platforms;
-    dl_list_for_each_safe(p, tmp_p, head,
+    struct dl_list *platforms = &s->platforms;
+    dl_list_for_each_safe(p, tmp_p, platforms,
             struct pv_platform, list) {
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
-		pv_log(DEBUG, "  exec: '%s'", p->exec);
 		pv_log(DEBUG, "  runlevel: '%d'", p->runlevel);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
@@ -100,8 +101,8 @@ void pv_state_print(struct pv_state *s)
 		}
     }
 	struct pv_volume *v, *tmp_v;
-	head = &s->volumes;
-    dl_list_for_each_safe(v, tmp_v, head,
+	struct dl_list *volumes = &s->volumes;
+    dl_list_for_each_safe(v, tmp_v, volumes,
             struct pv_volume, list) {
 		pv_log(DEBUG, "volume: '%s'", v->name);
 		pv_log(DEBUG, "  type: '%d'", v->type);

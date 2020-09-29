@@ -607,7 +607,6 @@ out:
 
 	pv_log(INFO, "rebooting...");
 	sleep(5);
-	pv_teardown(pv);
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;

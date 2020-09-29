@@ -100,7 +100,7 @@ struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
 	if (v) {
 		v->name = strdup(name);
 		dl_list_init(&v->list);
-		dl_list_add(&s->objects, &v->list);
+		dl_list_add(&s->volumes, &v->list);
 	}
 
 	return v;

@@ -104,7 +104,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
-		dl_list_add(&s->platforms, &p->list);
+		dl_list_add_tail(&s->platforms, &p->list);
 	}
 
 	return p;
@@ -207,6 +207,7 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 	}
 
 	// set rest of the non configured platforms with the lower priority
+	platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp, platforms,
             struct pv_platform, list) {
 		if (p->runlevel < 0)
