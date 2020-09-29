@@ -24,6 +24,7 @@
 
 #include "../pantavisor.h"
 #include "../config.h"
+#include "../platforms.h"
 
 #define LXC_LOG_FNAME 		"lxc"
 #define LXC_CONSOLE_LOG_FNAME 	"console"

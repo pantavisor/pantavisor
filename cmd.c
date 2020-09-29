@@ -164,6 +164,7 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 		struct pv_log_info *l, *tmp_l;
 		struct dl_list *head_platforms, *head_logger;
 		bool found = false;
+		head_platforms = &pv->state->platforms;
 		dl_list_for_each_safe(p, tmp_p, head_platforms,
        		    struct pv_platform, list) {
 			head_logger = &p->logger_list;

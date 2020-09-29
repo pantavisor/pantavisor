@@ -42,6 +42,8 @@
 #include "pv_lxc.h"
 #include "utils/list.h"
 #include "pvlogger.h"
+#include "state.h"
+#include "platforms.h"
 
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
