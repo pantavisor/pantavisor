@@ -80,6 +80,14 @@ out:
 	return fd;
 }
 
+void pv_cmd_socket_close(struct pantavisor *pv)
+{
+	if (pv->ctrl_fd > 0) {
+		pv_log(DEBUG, "closing control socket");
+		close(pv->ctrl_fd);
+	}
+}
+
 static uint8_t parse_cmd_req(char *buf, struct pv_cmd_req *cmd)
 {
 	int tokc;
@@ -157,9 +165,7 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 
 	c = calloc(1, sizeof(struct pv_cmd_req));
 
-	if (getsockopt(fd, SOL_SOCKET,SO_PEERCRED, &peer_cred, &peer_size) < 0)
-		c->platform = NULL;
-	else {
+	if (!getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer_cred, &peer_size)) {
 		struct pv_platform *p, *tmp_p;
 		struct pv_log_info *l, *tmp_l;
 		struct dl_list *head_platforms, *head_logger;
@@ -274,7 +280,7 @@ err:
 	return NULL;
 }
 
-void pv_cmd_req_free(struct pantavisor *pv)
+void pv_cmd_req_remove(struct pantavisor *pv)
 {
 	struct pv_cmd_req *req = pv->req;
 

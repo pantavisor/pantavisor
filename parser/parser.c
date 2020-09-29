@@ -100,7 +100,7 @@ struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev)
 	state = pv_state_init(rev, spec);
 	if (state) {
 		if (!p->parse(pv, state, buf, rev)) {
-			pv_state_free(state);
+			pv_state_remove(state);
 			state = NULL;
 		}
 	}

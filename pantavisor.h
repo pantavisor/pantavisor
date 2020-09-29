@@ -210,9 +210,9 @@ void pv_meta_set_objdir(struct pantavisor *pv);
 int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
 int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
 void pv_meta_set_tryonce(struct pantavisor *pv, int value);
+void pv_teardown(struct pantavisor *pv);
 struct pv_state* pv_get_state(struct pantavisor *pv, int current);
 int pantavisor_init(bool do_fork);
 struct pantavisor* get_pv_instance(void);
 struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
-void pantavisor_free(struct pantavisor *pv);
 #endif

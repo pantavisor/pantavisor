@@ -169,7 +169,7 @@ static void signal_handler(int signal)
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
 			sleep(10);
 			sync();
-			pantavisor_free(pv);
+			pv_teardown(pv);
 			reboot(LINUX_REBOOT_CMD_RESTART);
 		}
 	}

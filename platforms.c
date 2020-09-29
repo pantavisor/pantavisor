@@ -95,34 +95,33 @@ struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 {
-	struct pv_platform *this = calloc(1, sizeof(struct pv_platform));
+	struct pv_platform *p = calloc(1, sizeof(struct pv_platform));
 
-	if (this) {
-		this->name = strdup(name);
-		this->done = false;
-		this->runlevel = -1;
-		dl_list_init(&this->logger_list);
-		dl_list_init(&this->logger_configs);
-		dl_list_init(&this->list);
-		dl_list_add(&s->platforms, &this->list);
-		return this;
+	if (p) {
+		p->name = strdup(name);
+		p->done = false;
+		p->runlevel = -1;
+		dl_list_init(&p->logger_list);
+		dl_list_init(&p->logger_configs);
+		dl_list_init(&p->list);
+		dl_list_add(&s->platforms, &p->list);
 	}
 
-	return NULL;
+	return p;
 }
 
 struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 {
 
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = &s->platforms;
+	struct dl_list *platforms = &s->platforms;
 
-    dl_list_for_each_safe(p, tmp, head,
-            struct pv_platform, list) {
-        if (!strcmp(p->name, name))
-            return p;
-    }   
-    return NULL;
+	dl_list_for_each_safe(p, tmp, platforms,
+			struct pv_platform, list) {
+		if (!strcmp(p->name, name))
+			return p;
+	}
+	return NULL;
 }
 
 static void pv_platforms_free_platform(struct pv_platform *p)
@@ -149,6 +148,8 @@ static void pv_platforms_free_platform(struct pv_platform *p)
 	if (p->json)
 		free(p->json);
 
+	free(p);
+
 	// FIXME: free logger_list and logger_configs
 }
 
@@ -156,14 +157,13 @@ void pv_platforms_remove(struct pv_state *s)
 {
 	int num_plat = 0;
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = &s->platforms;
+	struct dl_list *platforms = &s->platforms;
 
-	dl_list_for_each_safe(p, tmp, head,
+	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
-		dl_list_del(&p->list);
 		pv_log(DEBUG, "removing platform %s", p->name);
+		dl_list_del(&p->list);
 		pv_platforms_free_platform(p);
-		free(p);
 		num_plat++;
 	}
 }
@@ -171,16 +171,15 @@ void pv_platforms_remove(struct pv_state *s)
 void pv_platforms_remove_not_done(struct pv_state *s)
 {
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = &s->platforms;
+	struct dl_list *platforms = &s->platforms;
 
-	dl_list_for_each_safe(p, tmp, head,
+	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
 		if (p->done)
 			continue;
 
 		dl_list_del(&p->list);
 		pv_platforms_free_platform(p);
-		free(p);
 	}
 }
 
@@ -188,27 +187,27 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 {
 	bool root_configured = false;
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = &s->platforms;
+	struct dl_list *platforms = &s->platforms;
 
-	if (dl_list_empty(head))
+	if (dl_list_empty(platforms))
 		return;
 
 	// check if any platform has been configured with runlevel 0
-    dl_list_for_each_safe(p, tmp, head,
-            struct pv_platform, list) {
+	dl_list_for_each_safe(p, tmp, platforms,
+			struct pv_platform, list) {
 		if (p->runlevel == 0)
 			root_configured = true;
-    }
+	}
 
 	// if not, set first platform as runlevel 0
 	if (!root_configured) {
 		pv_log(WARN, "no platform was found with root runlevel, "
 				"so the first one in alphabetical order will be set");
-		dl_list_first(head, struct pv_platform, list)->runlevel = 0;
+		dl_list_first(platforms, struct pv_platform, list)->runlevel = 0;
 	}
 
 	// set rest of the non configured platforms with the lower priority
-	dl_list_for_each_safe(p, tmp, head,
+	dl_list_for_each_safe(p, tmp, platforms,
             struct pv_platform, list) {
 		if (p->runlevel < 0)
 			root_configured = MAX_RUNLEVEL;
@@ -370,8 +369,8 @@ static struct pv_log_info* pv_add_platform_logger(struct pv_platform *platform,
 static int start_pvlogger_for_platform(struct pv_platform *platform)
 {
 	struct pv_log_info *log_info = NULL, *tmp;
-	struct dl_list *head = &platform->logger_list;
-	struct dl_list *config_head = &platform->logger_configs;
+	struct dl_list *loggers = &platform->logger_list;
+	struct dl_list *configs = &platform->logger_configs;
 	struct pv_logger_config *item_config, *tmp_config;
 	pid_t logger_pid = -1;
 	bool plat_needs_default_logger = true;
@@ -380,7 +379,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	 * This will probably in a loop on the platform
 	 * config data.
 	 * */
-	dl_list_for_each_safe(item_config, tmp_config, config_head,
+	dl_list_for_each_safe(item_config, tmp_config, configs,
 			struct pv_logger_config, item_list) {
 		if (pv_add_platform_logger(platform, item_config))
 			plat_needs_default_logger = false;
@@ -408,7 +407,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	/*
 	 * This includes the ones for lxc.
 	 * */
-	dl_list_for_each_safe(log_info, tmp, head,
+	dl_list_for_each_safe(log_info, tmp, loggers,
 				struct pv_log_info, next) {
 		log_info->platform = platform;
 		logger_pid =
@@ -488,15 +487,15 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0;
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = NULL;
+	struct dl_list *platforms = NULL;
 
 	// Iterate between runlevel plats and lowest priority plats 
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
 		pv_log(DEBUG, "starting platforms with runlevel %d", i);
 		// Iterate over all plats from state
-		head = &pv->state->platforms;
-	    dl_list_for_each_safe(p, tmp, head,
-	            struct pv_platform, list) {
+		platforms = &pv->state->platforms;
+		dl_list_for_each_safe(p, tmp, platforms,
+				struct pv_platform, list) {
 			// Start platforms in this runlevel only
 			if (p->runlevel != i) {
 				continue;
@@ -506,7 +505,7 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 				return -1;
 
 			num_plats++;
-	    }
+		}
 
 		// FIXME: arbitrary delay between runlevels
 		sleep(5);
@@ -521,15 +520,15 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0;
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = NULL;
+	struct dl_list *platforms = NULL;
 
 	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(DEBUG, "force killing platforms with runlevel %d", i);
 		// Iterate over all plats from state
-		head = &pv->state->platforms;
-	    dl_list_for_each_safe(p, tmp, head,
-	            struct pv_platform, list) {
+		platforms = &pv->state->platforms;
+		dl_list_for_each_safe(p, tmp, platforms,
+				struct pv_platform, list) {
 			// Start platforms in this runlevel only
 			if (p->runlevel != i) {
 				continue;
@@ -540,7 +539,7 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 				kill(p->init_pid, SIGKILL);
 				num_plats++;
 			}
-	    }
+		}
 	}
 
 	pv_log(INFO, "force killed %d platforms", num_plats);
@@ -550,16 +549,16 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0, exited = 0;
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = NULL;
+	struct dl_list *platforms = NULL;
 	const struct pv_cont_ctrl *ctrl;
 
 	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(DEBUG, "stopping platforms with runlevel %d", i);
 		// Iterate over all plats from state
-		head = &pv->state->platforms;
-		dl_list_for_each_safe(p, tmp, head,
-	            struct pv_platform, list) {
+		platforms = &pv->state->platforms;
+		dl_list_for_each_safe(p, tmp, platforms,
+			struct pv_platform, list) {
 			// Start platforms in this runlevel only
 			if (p->runlevel != i) {
 				continue;
@@ -573,7 +572,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 				pv_log(INFO, "sent SIGTERM to platform '%s'", p->name);
 				num_plats++;
 			}
-	    }
+		}
 	}
 
 	pv_log(INFO, "stopped %d platforms", num_plats);
@@ -596,14 +595,14 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 {
 	struct pv_platform *p, *tmp;
-	struct dl_list *head = NULL;
+	struct dl_list *platforms = NULL;
 	int exited = 0;
 
 	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		// Iterate over all plats from state
-		head = &pv->state->platforms;
-		dl_list_for_each_safe(p, tmp, head,
+		platforms = &pv->state->platforms;
+		dl_list_for_each_safe(p, tmp, platforms,
 	            struct pv_platform, list) {
 			// Check platforms in this runlevel only
 			if (p->runlevel != i) {

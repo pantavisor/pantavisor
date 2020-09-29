@@ -384,7 +384,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	if (pv->req) {
 		pv_log(WARN, "stable command found queued, discarding");
-		pv_cmd_req_free(pv);
+		pv_cmd_req_remove(pv);
 		goto out;
 	}
 
@@ -471,7 +471,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	}
 
 out:
-	pv_cmd_req_free(pv);
+	pv_cmd_req_remove(pv);
 	return next_state;
 }
 
@@ -495,7 +495,7 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	}
 
 	// Release current step
-	pv_state_free(pv->state);
+	pv_state_remove(pv->state);
 
 	// For now, trigger a reboot for all updates
 	if (pv->update->need_reboot) {
@@ -607,7 +607,7 @@ out:
 
 	pv_log(INFO, "rebooting...");
 	sleep(5);
-	pantavisor_free(pv);
+	pv_teardown(pv);
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;

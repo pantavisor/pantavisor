@@ -44,7 +44,7 @@ struct pv_state* pv_state_init(int rev, char *spec)
 	return s;
 }
 
-void pv_state_free(struct pv_state *s)
+void pv_state_remove(struct pv_state *s)
 {
 	pv_log(DEBUG, "removing state with revision %d", s->rev);
 

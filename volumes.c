@@ -71,21 +71,22 @@ static void pv_volumes_free_volume(struct pv_volume *v)
 		free(v->src);
 	if (v->dest)
 		free(v->dest);
+
+	free(v);
 }
 
 void pv_volumes_remove(struct pv_state *s)
 {
 	int num_vol = 0;
 	struct pv_volume *v, *tmp;
-	struct dl_list *head = &s->volumes;
+	struct dl_list *volumes = &s->volumes;
 
 	// Iterate over all volumes from state
-	dl_list_for_each_safe(v, tmp, head,
+	dl_list_for_each_safe(v, tmp, volumes,
 			struct pv_volume, list) {
 		pv_log(INFO, "removing volume %s", v->name);
-        dl_list_del(&v->list);
+		dl_list_del(&v->list);
 		pv_volumes_free_volume(v);
-		free(v);
 		num_vol++;
 	}
 
@@ -94,15 +95,15 @@ void pv_volumes_remove(struct pv_state *s)
 
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
 {
-	struct pv_volume *this = calloc(1, sizeof(struct pv_volume));
+	struct pv_volume *v = calloc(1, sizeof(struct pv_volume));
 
-	if (this) {
-		this->name = strdup(name);
-		dl_list_init(&this->list);
-        dl_list_add(&s->objects, &this->list);
+	if (v) {
+		v->name = strdup(name);
+		dl_list_init(&v->list);
+		dl_list_add(&s->objects, &v->list);
 	}
 
-	return NULL;
+	return v;
 }
 
 static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
@@ -235,7 +236,7 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 	int num_vol = 0;
 	char base[PATH_MAX];
 	struct pv_volume *v, *tmp;
-	struct dl_list *head = NULL;
+	struct dl_list *volumes = NULL;
 
 	// Create volumes if non-existant
 	mkdir("/volumes", 0755);
@@ -246,8 +247,8 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
 		pv_log(INFO, "mounting volumes with runlevel %d", i);
 		// Iterate over all volumes from state
-		head = &pv->state->volumes;
-		dl_list_for_each_safe(v, tmp, head,
+		volumes = &pv->state->volumes;
+		dl_list_for_each_safe(v, tmp, volumes,
 				struct pv_volume, list) {
 			// Mount volumes without platforms in runlevel 0 (firmware and modules)
 			// Mount volumes with platforms in this runlevel only 
@@ -277,14 +278,14 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 	int ret;
 	int num_vol = 0;
 	struct pv_volume *v, *tmp;
-	struct dl_list *head = NULL;
+	struct dl_list *volumes = NULL;
 
 	// Iterate between lowest priority vols and runlevel vols
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(INFO, "unmounting volumes with runlevel %d", i);
 		// Iterate over all volumes from state
-		head = &pv->state->volumes;
-		dl_list_for_each_safe(v, tmp, head,
+		volumes = &pv->state->volumes;
+		dl_list_for_each_safe(v, tmp, volumes,
 				struct pv_volume, list) {
 			// Mount volumes without platforms in runlevel 0 (firmware and modules)
 			// Mount volumes with platforms in this runlevel only 

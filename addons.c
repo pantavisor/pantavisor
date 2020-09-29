@@ -43,20 +43,6 @@
 
 #define FW_PATH		"/lib/firmware"
 
-struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
-{
-	struct pv_addon *this = calloc(1, sizeof(struct pv_addon));
-
-	if (this) {
-		this->name = name;
-		dl_list_init(&this->list);
-        dl_list_add(&s->addons, &this->list);
-		return this;
-	}
-
-	return NULL;
-}
-
 static void pv_addons_free_addon(struct pv_addon *a)
 {
 	if (!a)
@@ -72,18 +58,29 @@ void pv_addons_remove(struct pv_state *s)
 {
 	int num_addons = 0;
 	struct pv_addon *a, *tmp;
-	struct dl_list *head = &s->addons;
+	struct dl_list *addons = &s->addons;
 
 	// Iterate over all plats from state
-    dl_list_for_each_safe(a, tmp, head,
+    dl_list_for_each_safe(a, tmp, addons,
             struct pv_addon, list) {
-		pv_log(INFO, "removing addon %s", a->name);
+		pv_log(DEBUG, "removing addon %s", a->name);
 		dl_list_del(&a->list);
 		pv_addons_free_addon(a);			
-		free(a);
 		num_addons++;
 	}
 
 	pv_log(INFO, "removed '%d' addons", num_addons);
+}
 
+struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
+{
+	struct pv_addon *a = calloc(1, sizeof(struct pv_addon));
+
+	if (a) {
+		a->name = name;
+		dl_list_init(&a->list);
+        dl_list_add(&s->addons, &a->list);
+	}
+
+	return a;
 }

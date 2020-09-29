@@ -53,9 +53,9 @@
 
 #define PV_USERMETA_ADD     (1<<0)
 struct pv_usermeta {
-    char *key;
-    char *value;
-    long flags;
+	char *key;
+	char *value;
+	long flags;
 	struct dl_list list; // pv_usermeta
 };
 
@@ -67,8 +67,8 @@ struct pv_device_info_read{
 };
 
 struct pv_devinfo {
-    char *key;
-    char *value;
+	char *key;
+	char *value;
 	struct dl_list list; // pv_devinfo
 };
 
@@ -211,7 +211,6 @@ static void usermeta_remove_hint(struct pv_usermeta *m)
 	remove(path);
 }
 
-
 static void usermeta_free_one(struct pv_usermeta *usermeta)
 {
 	usermeta_remove_hint(usermeta);
@@ -222,6 +221,32 @@ static void usermeta_free_one(struct pv_usermeta *usermeta)
 	if (usermeta->value)
 		free(usermeta->value);
 	free(usermeta);
+}
+
+static void pv_usermeta_remove(struct pv_device *dev)
+{
+	struct pv_usermeta *curr, *tmp;
+	struct dl_list *head = &dev->metalist;
+
+	dl_list_for_each_safe(curr, tmp, head,
+		struct pv_usermeta, list) {
+		usermeta_free_one(curr);
+		dl_list_del(&curr->list);
+	}
+}
+
+static void pv_devinfo_remove(struct pv_device *dev)
+{
+	struct pv_devinfo *curr, *tmp;
+	struct dl_list *head = &dev->infolist;
+
+	dl_list_for_each_safe(curr, tmp, head,
+		struct pv_devinfo, list) {
+		free(curr->key);
+		free(curr->value);
+		dl_list_del(&curr->list);
+		free(curr);
+	}
 }
 
 static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
@@ -411,21 +436,6 @@ out:
 	return this;
 }
 
-static void pv_devinfo_free(struct pv_device *dev)
-{
-	struct pv_devinfo *curr, *tmp;
-	struct dl_list *head = &dev->infolist;
-
-	dl_list_for_each_safe(curr, tmp, head,
-		struct pv_devinfo, list) {
-		free(curr->key);
-		free(curr->value);
-		dl_list_del(&curr->list);
-		free(curr);
-	}
-}
-
-
 int pv_device_info_upload(struct pantavisor *pv)
 {
 	unsigned int len = 0;
@@ -512,7 +522,7 @@ upload:
 	info_uploaded = !pv_ph_upload_metadata(pv, json);
 out:
 	if (info_uploaded && !dl_list_empty(&pv->dev->infolist))
-		pv_devinfo_free(pv->dev);
+		pv_devinfo_remove(pv->dev);
 	pv_log_put_buffer(log_buffer);
 	return 0;
 }
@@ -739,19 +749,7 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	return true;
 }
 
-static void pv_usermeta_free(struct pv_device *dev)
-{
-	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &dev->metalist;
-
-	dl_list_for_each_safe(curr, tmp, head,
-		struct pv_usermeta, list) {
-		usermeta_free_one(curr);
-		dl_list_del(&curr->list);
-	}
-}
-
-void pv_device_free(struct pantavisor *pv)
+void pv_device_remove(struct pantavisor *pv)
 {
 	struct pv_device *dev = pv->dev;
 
@@ -769,8 +767,8 @@ void pv_device_free(struct pantavisor *pv)
 	if (dev->prn)
 		free(dev->prn);
 
-	pv_usermeta_free(dev);
-	pv_devinfo_free(dev);
+	pv_usermeta_remove(dev);
+	pv_devinfo_remove(dev);
 
 	free(dev);
 	pv->dev = NULL;

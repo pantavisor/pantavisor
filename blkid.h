@@ -45,6 +45,5 @@ static inline void blkid_init(struct blkid_info *info)
 {
 	memset(info, 0, sizeof(*info));
 }
-
 int get_blkid(struct blkid_info *info, const char *key);
 #endif /*__PV_BUILD_H__*/

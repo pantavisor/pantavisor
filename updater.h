@@ -95,8 +95,8 @@ struct trail_remote {
 };
 
 int pv_update_start(struct pantavisor *pv, int offline);
-void pv_update_free(struct pantavisor *pv);
-void pv_trail_remote_free(struct pantavisor *pv);
+void pv_update_remove(struct pantavisor *pv);
+void pv_trail_remote_remove(struct pantavisor *pv);
 int pv_update_set_status(struct pantavisor *pv, enum update_state status);
 int pv_update_finish(struct pantavisor *pv);
 int pv_update_install(struct pantavisor *pv);

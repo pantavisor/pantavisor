@@ -70,10 +70,8 @@ struct pantavisor* get_pv_instance()
 	return global_pv;
 }
 
-void pantavisor_free(struct pantavisor *pv)
+static void pv_remove(struct pantavisor *pv)
 {
-	if (!pv)
-		return;
 
 	pv_log(DEBUG, "removing pantavisor");
 
@@ -82,14 +80,24 @@ void pantavisor_free(struct pantavisor *pv)
 	if (pv->conn)
 		free(pv->conn);
 
-	pv_device_free(pv);
-	pv_update_free(pv);
-	pv_state_free(pv->state);
+	pv_device_remove(pv);
+	pv_update_remove(pv);
+	pv_state_remove(pv->state);
 	pv->state = NULL;
-	pv_cmd_req_free(pv);
-	pv_trail_remote_free(pv);
+	pv_cmd_req_remove(pv);
+	pv_trail_remote_remove(pv);
 
 	free(pv);
+}
+
+void pv_teardown(struct pantavisor *pv)
+{
+	if (!pv)
+		return;
+
+	pv_cmd_socket_close(pv);
+
+	pv_remove(pv);
 }
 
 void pv_set_active(struct pantavisor *pv)
@@ -444,8 +452,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// addons
 	i = 0;
-    dl_list_for_each_safe(a, tmp, addons,
-            struct pv_addon, list) {
+	dl_list_for_each_safe(a, tmp, addons,
+			struct pv_addon, list) {
 		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
 		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, a->name);
 		sprintf(fname, "pv-initrd.img.%d", i++);
