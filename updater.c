@@ -499,7 +499,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		pv_log(DEBUG, "no steps to process found, continuing");
 		goto out;
 	}
-	
+
 	if (!rev_s || !state) {
 		pv_log(WARN, "invalid or no data found on trail, ignoring");
 		goto out;

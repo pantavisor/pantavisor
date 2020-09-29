@@ -142,8 +142,8 @@ static void signal_handler(int signal)
 		/*
 		 * See if the pid is one of the loggers
 		 * */
-		head_platforms = &pv->state->platforms;
 		if (pv && pv->state) {
+			head_platforms = &pv->state->platforms;
 			dl_list_for_each_safe(p, tmp_p, head_platforms,
         	    struct pv_platform, list) {
 				head_logger = &p->logger_list;
