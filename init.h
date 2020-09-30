@@ -82,7 +82,6 @@ extern struct pv_init pv_init_state;
 extern struct pv_init pv_init_revision;
 extern struct pv_init pv_init_platform;
 extern struct pv_init pv_init_update;
-extern struct pv_init pv_init_plat_meta;
 
 int pv_do_execute_init(void);
 #endif

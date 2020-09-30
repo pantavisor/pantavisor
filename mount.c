@@ -30,7 +30,6 @@
 #include "utils.h"
 #include "loop.h"
 #include "cmd.h"
-#include "plat_meta.h"
 
 #define MODULE_NAME		"mount-init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -67,7 +66,6 @@ static int ph_mount_init(struct pv_init *this)
 	mkdir_p("/etc/dropbear/", 0755);
 	if (config->dropbearcachedir)
 		mount_bind(config->dropbearcachedir, "/etc/dropbear");
-	mkdir_p(PV_PLAT_META_DIR, 0755);
 	ret = 0;
 out:
 	return ret;

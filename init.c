@@ -300,8 +300,7 @@ struct pv_init *pv_init_tbl [] = {
 	&pv_init_platform,
 	&pv_init_bl,
 	&pv_init_state,
-	&pv_init_update,
-	&pv_init_plat_meta
+	&pv_init_update
 };
 
 int pv_do_execute_init()

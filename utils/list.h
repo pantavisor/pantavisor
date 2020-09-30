@@ -95,5 +95,5 @@ static inline unsigned int dl_list_len(struct dl_list *list)
 	struct dl_list name = { &(name), &(name) }
 
 #define container_of(ptr, type, mem)\
-	(type*)((char*)ptr - offsetof(type, mem))
+	(type*)((char*)ptr - offset_of(type, mem))
 #endif /* LIST_H */

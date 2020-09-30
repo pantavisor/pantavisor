@@ -49,7 +49,6 @@ int setns(int nsfd, int nstype);
 #include "utils/list.h"
 #include "utils.h"
 #include "init.h"
-#include "plat_meta.h"
 
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
@@ -476,16 +475,9 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 
 	pv_wdt_kick(pv);
 
-	/*
-	 * create platform dir in plat-meta
-	 */
-	sprintf(conf_path, "%s/%s", PV_PLAT_META_DIR, p->name);
-	mkdir_p(conf_path, 0755);
-	pv_plat_meta_watch_init(&p->meta_watch, pv);
-	pv_plat_meta_add_watch(&p->meta_watch, 0);
-	
 	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
 		sprintf(prefix, "%s/", p->name);
+
 	sprintf(conf_path, "%s/trails/%d/%s%s",
 		pv->config->storage.mntpoint, s->rev, prefix, *c);
 
