@@ -97,7 +97,7 @@ out:
 	return ret;
 }
 
-int ph_client_init(struct pantavisor *pv)
+static int ph_client_init(struct pantavisor *pv)
 {
 	int size;
         trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;

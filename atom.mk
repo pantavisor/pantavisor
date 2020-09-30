@@ -67,7 +67,6 @@ LOCAL_SRC_FILES := init.c \
 		   pvctl_utils.c \
 		   mount.c \
 		   revision.c \
-		   plat_meta.c \
 		   ph_logger/ph_logger.c \
 		   ph_logger/ph_logger_v1.c \
 		   blkid.c

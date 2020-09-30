@@ -40,7 +40,6 @@
 #include "utils/list.h"
 #include <stdbool.h>
 #include <limits.h>
-#include "plat_meta.h"
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
 #ifndef free_member
@@ -194,13 +193,6 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 				);
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
-	}
-	//Reuse entry to temporarily hold plat-meta dir.
-	sprintf(entry, "%s/%s", PV_PLAT_META_DIR, c->name);
-	if (!stat(entry, &st)) {
-		sprintf(entry, "%s/%s pv-plat-meta none bind,rw,create=dir 0 0",
-				PV_PLAT_META_DIR, c->name);
-		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
 	// Strip consoles from kernel cmdline
 	mktemp(tmp_cmd);

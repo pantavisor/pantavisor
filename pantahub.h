@@ -36,5 +36,5 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
 uint8_t pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
 struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config);
 int connect_try(struct sockaddr *serv);
-int ph_client_init(struct pantavisor *pv);
+
 #endif
