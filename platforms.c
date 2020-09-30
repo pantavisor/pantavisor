@@ -211,7 +211,7 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 	dl_list_for_each_safe(p, tmp, platforms,
             struct pv_platform, list) {
 		if (p->runlevel < 0)
-			root_configured = MAX_RUNLEVEL;
+			p->runlevel = MAX_RUNLEVEL;
     }
 }
 

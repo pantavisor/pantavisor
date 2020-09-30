@@ -145,7 +145,7 @@ static void signal_handler(int signal)
 		if (pv && pv->state) {
 			head_platforms = &pv->state->platforms;
 			dl_list_for_each_safe(p, tmp_p, head_platforms,
-        	    struct pv_platform, list) {
+					struct pv_platform, list) {
 				head_logger = &p->logger_list;
 				dl_list_for_each_safe(l, tmp_l, head_logger,
 						struct pv_log_info, next) {

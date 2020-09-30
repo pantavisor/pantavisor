@@ -112,7 +112,7 @@ struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, c
 		else
 			goto free_object;
 		dl_list_init(&this->list);
-		dl_list_add(&s->objects, &this->list);
+		dl_list_add_tail(&s->objects, &this->list);
 		return this;
 free_object:
 		pv_object_free(this);
