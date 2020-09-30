@@ -570,6 +570,8 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 				ctrl = _pv_platforms_get_ctrl(p->type);
 				ctrl->stop(p, NULL, p->data);
 				p->running = false;
+				// we dereference data after platform stop
+				p->data = NULL;
 				pv_log(INFO, "sent SIGTERM to platform '%s'", p->name);
 				num_plats++;
 			}

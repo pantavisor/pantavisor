@@ -347,7 +347,7 @@ static int do_action_for_array(struct json_key_action *jka, char *value)
 		goto out;
 	}
 	while(real_jka->key && !ret) {
-		real_jka->tokv = do_lookup_json_key(&keys, jka->buf, real_jka->key);
+		real_jka->tokv = do_lookup_json_key(keys, jka->buf, real_jka->key);
 		real_jka->tokc = jka->tokc;
 		real_jka->buf = jka->buf;
 		if (real_jka->tokv) {

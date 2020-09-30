@@ -46,7 +46,6 @@ struct pv_platform {
 	 * To be freed once logger_list is setup.
 	 * */
 	struct dl_list logger_configs; // pv_logger_config
-	struct pv_plat_meta_watch meta_watch;
 };
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);
