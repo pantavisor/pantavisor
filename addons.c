@@ -61,11 +61,11 @@ void pv_addons_remove(struct pv_state *s)
 	struct dl_list *addons = &s->addons;
 
 	// Iterate over all plats from state
-    dl_list_for_each_safe(a, tmp, addons,
+	dl_list_for_each_safe(a, tmp, addons,
             struct pv_addon, list) {
 		pv_log(DEBUG, "removing addon %s", a->name);
 		dl_list_del(&a->list);
-		pv_addons_free_addon(a);			
+		pv_addons_free_addon(a);
 		num_addons++;
 	}
 
@@ -79,7 +79,7 @@ struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
 	if (a) {
 		a->name = name;
 		dl_list_init(&a->list);
-        dl_list_add(&s->addons, &a->list);
+		dl_list_add_tail(&s->addons, &a->list);
 	}
 
 	return a;
