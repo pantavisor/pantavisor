@@ -419,8 +419,6 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 {
 	int i;
 	struct pantavisor_config *c = pv->config;
-	struct pv_addon *a, *tmp;
-	struct dl_list *addons = &s->addons;
 	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[32];
 
 	if (!s)
@@ -452,6 +450,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// addons
 	i = 0;
+	struct pv_addon *a, *tmp;
+	struct dl_list *addons = &s->addons;
 	dl_list_for_each_safe(a, tmp, addons,
 			struct pv_addon, list) {
 		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
@@ -459,6 +459,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		sprintf(fname, "pv-initrd.img.%d", i++);
 		strcat(dst, fname);
 		remove(dst);
+		pv_log(DEBUG, "linking %s and %s", src, dst);
 		if (link(src, dst) < 0)
 			goto err;
 	}

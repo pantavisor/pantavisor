@@ -604,10 +604,10 @@ out:
 
 	// unmount storage
 	umount(pv->config->storage.mntpoint);
+	pv_teardown(pv);
 	sync();
 
 	sleep(5);
-	pv_teardown(pv);
 	pv_log(INFO, "rebooting...");
 	reboot(LINUX_REBOOT_CMD_RESTART);
 

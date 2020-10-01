@@ -211,15 +211,13 @@ static void usermeta_remove_hint(struct pv_usermeta *m)
 	remove(path);
 }
 
-static void usermeta_free_one(struct pv_usermeta *usermeta)
+static void pv_usermeta_free(struct pv_usermeta *usermeta)
 {
-	usermeta_remove_hint(usermeta);
-
 	if (usermeta->key)
 		free(usermeta->key);
-
 	if (usermeta->value)
 		free(usermeta->value);
+
 	free(usermeta);
 }
 
@@ -230,8 +228,8 @@ static void pv_usermeta_remove(struct pv_device *dev)
 
 	dl_list_for_each_safe(curr, tmp, head,
 		struct pv_usermeta, list) {
-		usermeta_free_one(curr);
 		dl_list_del(&curr->list);
+		pv_usermeta_free(curr);
 	}
 }
 
@@ -242,9 +240,11 @@ static void pv_devinfo_remove(struct pv_device *dev)
 
 	dl_list_for_each_safe(curr, tmp, head,
 		struct pv_devinfo, list) {
-		free(curr->key);
-		free(curr->value);
 		dl_list_del(&curr->list);
+		if (curr->key)
+			free(curr->key);
+		if (curr->value)
+			free(curr->value);
 		free(curr);
 	}
 }
@@ -395,7 +395,8 @@ static void usermeta_clear(struct pantavisor *pv)
 			curr->flags &= ~PV_USERMETA_ADD;
 		else {
 			dl_list_del(&curr->list);
-			usermeta_free_one(curr);
+			usermeta_remove_hint(curr);
+			pv_usermeta_free(curr);
 		}
 	}
 }

@@ -88,8 +88,8 @@ void pv_state_print(struct pv_state *s)
 	pv_log(DEBUG, "initrd: '%s'", s->initrd);
 	struct pv_platform *p, *tmp_p;
     struct dl_list *platforms = &s->platforms;
-    dl_list_for_each_safe(p, tmp_p, platforms,
-            struct pv_platform, list) {
+	dl_list_for_each_safe(p, tmp_p, platforms,
+			struct pv_platform, list) {
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
 		pv_log(DEBUG, "  runlevel: '%d'", p->runlevel);
@@ -99,20 +99,25 @@ void pv_state_print(struct pv_state *s)
 			pv_log(DEBUG, "    '%s'", *config);
 			config++;
 		}
-    }
+	}
 	struct pv_volume *v, *tmp_v;
 	struct dl_list *volumes = &s->volumes;
-    dl_list_for_each_safe(v, tmp_v, volumes,
-            struct pv_volume, list) {
+	dl_list_for_each_safe(v, tmp_v, volumes,
+			struct pv_volume, list) {
 		pv_log(DEBUG, "volume: '%s'", v->name);
 		pv_log(DEBUG, "  type: '%d'", v->type);
 		if (v->plat)
 			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
 	}
+	struct pv_addon *a, *tmp_a;
+	struct dl_list *addons = &s->addons;
+	dl_list_for_each_safe(a, tmp_a, addons,
+			struct pv_addon, list) {
+		pv_log(DEBUG, "addon: '%s'", a->name);
+	}
 	struct pv_object *curr;
 	pv_objects_iter_begin(s, curr) {
-		pv_log(DEBUG, "object: ");
-		pv_log(DEBUG, "  name: '%s'", curr->name);
+		pv_log(DEBUG, "object: '%s'", curr->name);
 		pv_log(DEBUG, "  id: '%s'", curr->id);
 	}
 	pv_objects_iter_end;
