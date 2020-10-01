@@ -49,10 +49,10 @@ struct pv_state* pv_state_init(int rev, char *spec)
 
 void pv_state_remove(struct pv_state *s)
 {
-	pv_log(DEBUG, "removing state with revision %d", s->rev);
-
 	if (!s)
 		return;
+
+	pv_log(INFO, "removing state with revision %d", s->rev);
 
 	if (s->spec)
 		free(s->spec);

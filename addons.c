@@ -69,7 +69,7 @@ void pv_addons_remove(struct pv_state *s)
 		num_addons++;
 	}
 
-	pv_log(INFO, "removed '%d' addons", num_addons);
+	pv_log(INFO, "removed %d addons", num_addons);
 }
 
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name)

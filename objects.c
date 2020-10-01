@@ -135,6 +135,7 @@ struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
 
 void pv_objects_remove(struct pv_state *s)
 {
+	int num_obj = 0;
 	struct pv_object *curr, *tmp;
 	struct dl_list *head = &s->objects;
 
@@ -142,5 +143,8 @@ void pv_objects_remove(struct pv_state *s)
 			struct pv_object, list) {
 		dl_list_del(&curr->list);
 		pv_object_free(curr);
+		num_obj++;
 	}
+
+	pv_log(INFO, "removed %d objects", num_obj);
 }

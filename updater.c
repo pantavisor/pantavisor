@@ -121,7 +121,7 @@ static int trail_remote_init(struct pantavisor *pv)
 		goto err;
 	}
 
-	remote = malloc(sizeof(struct trail_remote));
+	remote = calloc(1, sizeof(struct trail_remote));
 	remote->client = client;
 
 	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
@@ -979,7 +979,7 @@ int pv_update_start(struct pantavisor *pv, int offline)
 		goto out;
 	}
 
-	u = calloc(sizeof(struct pv_update), 1);
+	u = calloc(1, sizeof(struct pv_update));
 	if (u) {
 		u->total_update = (struct object_update*) calloc(1, sizeof(struct object_update));
 		u->progress_size = PATH_MAX;
@@ -994,6 +994,7 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	} else {
 		u->pending = pv->remote->pending;
 		rev = u->pending->rev;
+		pv->remote->pending = NULL;
 	}
 
 	// to construct endpoint
@@ -1097,6 +1098,7 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	}
 out:
+	pv_trail_remote_remove(pv);
 	pv_update_remove(pv);
 retry_update:
 	return ret;

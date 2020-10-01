@@ -128,8 +128,6 @@ static void pv_platforms_free_platform(struct pv_platform *p)
 {
 	char **c;
 
-	pv_log(DEBUG, "freeing platform %s", p->name);
-
 	if (p->name)
 		free(p->name);
 	if (p->type)
@@ -155,7 +153,7 @@ static void pv_platforms_free_platform(struct pv_platform *p)
 
 void pv_platforms_remove(struct pv_state *s)
 {
-	int num_plat = 0;
+	int num_plats = 0;
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &s->platforms;
 
@@ -164,8 +162,10 @@ void pv_platforms_remove(struct pv_state *s)
 		pv_log(DEBUG, "removing platform %s", p->name);
 		dl_list_del(&p->list);
 		pv_platforms_free_platform(p);
-		num_plat++;
+		num_plats++;
 	}
+
+	pv_log(INFO, "removed %d platforms", num_plats);
 }
 
 void pv_platforms_remove_not_done(struct pv_state *s)
@@ -426,7 +426,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 			}
 			free(log_info);
 		} else {
-			pv_log(INFO, "started pv_logger for platform %s"
+			pv_log(DEBUG, "started pv_logger for platform %s"
 				"(name=%s) with pid = %d \n", platform->name,
 				log_info->name, logger_pid);
 		}
@@ -464,7 +464,7 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 		return -1;
 	}
 
-	pv_log(INFO, "started platform: \"%s\" (data=%p), init_pid=%d",
+	pv_log(DEBUG, "started platform: \"%s\" (data=%p), init_pid=%d",
 		p->name, data, pid);
 
 	p->data = data;
@@ -572,7 +572,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 				p->running = false;
 				// we dereference data after platform stop
 				p->data = NULL;
-				pv_log(INFO, "sent SIGTERM to platform '%s'", p->name);
+				pv_log(DEBUG, "sent SIGTERM to platform '%s'", p->name);
 				num_plats++;
 			}
 		}

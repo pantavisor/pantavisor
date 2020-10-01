@@ -61,8 +61,6 @@ static const char* pv_volume_type_str(pv_volume_t vt)
 
 static void pv_volumes_free_volume(struct pv_volume *v)
 {
-	pv_log(INFO, "freeing volume %s", v->name);
-
 	if (v->name)
 		free(v->name);
 	if (v->mode)
@@ -84,7 +82,7 @@ void pv_volumes_remove(struct pv_state *s)
 	// Iterate over all volumes from state
 	dl_list_for_each_safe(v, tmp, volumes,
 			struct pv_volume, list) {
-		pv_log(INFO, "removing volume %s", v->name);
+		pv_log(DEBUG, "removing volume %s", v->name);
 		dl_list_del(&v->list);
 		pv_volumes_free_volume(v);
 		num_vol++;
@@ -138,7 +136,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 		goto out;
 	}
 
-	pv_log(INFO, "mounting '%s' of platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
+	pv_log(DEBUG, "mounting '%s' of platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
 
 	switch (v->type) {
 	case VOL_LOOPIMG:
@@ -179,7 +177,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	if (ret < 0)
 		goto out;
 
-	pv_log(INFO, "mounted '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
+	pv_log(DEBUG, "mounted '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
 	// register mount state
 	v->src = strdup(path);
 	v->dest = strdup(mntpoint);
@@ -245,7 +243,7 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 
 	// Iterate between runlevel vols and lowest priority vols
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
-		pv_log(INFO, "mounting volumes with runlevel %d", i);
+		pv_log(DEBUG, "mounting volumes with runlevel %d", i);
 		// Iterate over all volumes from state
 		volumes = &pv->state->volumes;
 		dl_list_for_each_safe(v, tmp, volumes,
@@ -282,7 +280,7 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 
 	// Iterate between lowest priority vols and runlevel vols
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		pv_log(INFO, "unmounting volumes with runlevel %d", i);
+		pv_log(DEBUG, "unmounting volumes with runlevel %d", i);
 		// Iterate over all volumes from state
 		volumes = &pv->state->volumes;
 		dl_list_for_each_safe(v, tmp, volumes,
@@ -303,7 +301,7 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 				pv_log(ERROR, "error umounting volumes");
 				return -1;
 			} else {
-				pv_log(INFO, "unmounted '%s' successfully", v->dest);
+				pv_log(DEBUG, "unmounted '%s' successfully", v->dest);
 				num_vol++;
 			}
 		}

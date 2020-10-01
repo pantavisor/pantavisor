@@ -496,6 +496,7 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 
 	// Release current step
 	pv_state_remove(pv->state);
+	pv->state = NULL;
 
 	// For now, trigger a reboot for all updates
 	if (pv->update->need_reboot) {
@@ -605,8 +606,9 @@ out:
 	umount(pv->config->storage.mntpoint);
 	sync();
 
-	pv_log(INFO, "rebooting...");
 	sleep(5);
+	pv_teardown(pv);
+	pv_log(INFO, "rebooting...");
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;
