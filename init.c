@@ -122,11 +122,24 @@ static int early_mounts()
 }
 
 #ifdef PANTAVISOR_DEBUG
+
+#define DROPBEARCMD_FMT "dropbear -p 0.0.0.0:8222 -n %s/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd"
 static void debug_telnet()
 {
+	char *dropbearcmd;
+	const char *pvdir_usermeta;
+
+	if (!get_pv_config())
+		pvdir_usermeta = "/pv/user-meta";
+	else
+		pvdir_usermeta = get_pv_config()->pvdir_usermeta;
+
+	dropbearcmd = malloc (sizeof(char) * strlen(DROPBEARCMD_FMT) + strlen(pvdir_usermeta) + 2);
+	sprintf(dropbearcmd, DROPBEARCMD_FMT, pvdir_usermeta);
+
 	tsh_run("ifconfig lo up", 0, NULL);
 	tsh_run("telnetd -b 127.0.0.1 -l /bin/sh", 0, NULL);
-	tsh_run("dropbear -p 0.0.0.0:8222 -n /pv/user-meta/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd", 0, NULL);
+	tsh_run(dropbearcmd, 0, NULL);
 }
 #else
 static void debug_telnet()
@@ -268,7 +281,7 @@ int main(int argc, char *argv[])
 	early_mounts();
 	signal(SIGCHLD, signal_handler);
 
-	if (args & PV_DEBUG) {
+	if ((args & PV_DEBUG) && (args & PV_STANDALONE)) {
 		debug_shell();
 		debug_telnet();
 	}
@@ -283,6 +296,19 @@ int main(int argc, char *argv[])
 
 	return 0;
 }
+
+static int pv_debug_init(struct pv_init *this)
+{
+	debug_shell();
+	debug_telnet();
+	return 0;
+}
+
+struct pv_init pv_init_debug = {
+        .init_fn = pv_debug_init,
+        .flags = 0,
+};
+
 /*
  * The order of appearence is important here.
  * Make sure to list the initializer in the correct
@@ -290,6 +316,7 @@ int main(int argc, char *argv[])
  */
 struct pv_init *pv_init_tbl [] = {
 	&pv_init_config,
+	&pv_init_debug,
 	&pv_init_mount,
 	&ph_init_config,
 	&ph_init_mount,
