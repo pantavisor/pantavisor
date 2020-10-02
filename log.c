@@ -176,15 +176,15 @@ void pv_log_init(struct pantavisor *pv, int rev)
 	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
 					pv->config->logsize * 2, &log_buffer_list_double);
 
-	mkdir_p("/pv/logs", 0755);
-	mount_bind(pv->config->logdir, "/pv/logs");
+	mkdir_p(pv->config->pvdir_logsdir, 0755);
+	mount_bind(pv->config->logdir, pv->config->pvdir_logsdir);
 	log_dir = calloc(1, PATH_MAX);
 	if (!log_dir) {
 		printf("Couldn't reserve space for log directory\n");
 		printf("Pantavisor logs won't be available\n");
 		return;
 	}
-	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
+	snprintf(log_dir, PATH_MAX, "%s/%d/pantavisor", pv->config->pvdir_logsdir, rev);
 	if (mkdir_p(log_dir, 0755)) {
 		printf("Couldn't make dir %s,"
 			"pantavisor logs won't be available\n", log_dir);

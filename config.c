@@ -314,6 +314,30 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 		config->bl.mtd_only = 0;
 
 	config->bl.mtd_path = _config_get_value("bootloader.mtd_env");
+
+	config->pvdir_ = getenv ("PV_RUNDIR");
+	/* if no env, we get from config 'pvdir_' in pantavisor.config */
+	if (!config->pvdir_ || !strlen(config->pvdir_))
+		config->pvdir_ = _config_get_value("pvdir_");
+	/* otherwise we fall back to old style '/' like in PID 1 runmode */
+	if (!config->pvdir_ || !strlen(config->pvdir_))
+		config->pvdir_ = "/pv";
+
+	config->pvdir_challenge = malloc((strlen(config->pvdir_) + 1 + strlen("challenge") + 1) * sizeof(char));
+	sprintf(config->pvdir_challenge, "%s/%s", config->pvdir_, "challenge");
+	config->pvdir_deviceid = malloc((strlen(config->pvdir_) + 1 + strlen("device-id") + 1) * sizeof(char));
+	sprintf(config->pvdir_deviceid, "%s/%s", config->pvdir_, "device-id");
+	config->pvdir_logsdir = malloc((strlen(config->pvdir_) + 1 + strlen("logs") + 1) * sizeof(char));
+	sprintf(config->pvdir_logsdir, "%s/%s", config->pvdir_, "logs");
+	config->pvdir_pantahubhost = malloc((strlen(config->pvdir_) + 1 + strlen("pantahub-host") + 1) * sizeof(char));
+	sprintf(config->pvdir_pantahubhost, "%s/%s", config->pvdir_, "pantahub-host");
+	config->pvdir_pvctrl = malloc((strlen(config->pvdir_) + 1 + strlen("pv-ctrl") + 1) * sizeof(char));
+	sprintf(config->pvdir_pvctrl, "%s/%s", config->pvdir_, "pv-ctrl");
+	config->pvdir_logctrl = malloc((strlen(config->pvdir_) + 1 + strlen("pv-ctrl-log") + 1) * sizeof(char));
+	sprintf(config->pvdir_logctrl, "%s/%s", config->pvdir_, "pv-ctrl-log");
+	config->pvdir_usermeta = malloc((strlen(config->pvdir_) + 1 + strlen("user-meta") + 1) * sizeof(char));
+	sprintf(config->pvdir_usermeta, "%s/%s", config->pvdir_, "user-meta");
+
 	config->storage.path = _config_get_value("storage.device");
 	config->storage.fstype = _config_get_value("storage.fstype");
 	config->storage.opts = _config_get_value("storage.opts");
@@ -597,12 +621,21 @@ static int ph_config_init(struct pv_init *this)
 out:
 	return ret;
 }
+
 struct pv_init pv_init_config =  {
 	.init_fn = pv_config_init,
 	.flags = 0,
 };
+
 struct pv_init ph_init_config =  {
 	.init_fn = ph_config_init,
 	.flags = 0,
 };
+
+struct pantavisor_config* get_pv_config(void)
+{
+	if (!get_pv_instance())
+		return NULL;
+        return get_pv_instance()->config;
+}
 
