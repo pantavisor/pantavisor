@@ -260,7 +260,11 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	char lib_path[PATH_MAX];
 	void *lib;
 
-	sprintf(lib_path, "/lib/pv_%s.so", c->type);
+	char *plugins_dir = getenv("PV_PLUGINS_DIR");
+	if (!plugins_dir) {
+		plugins_dir = "/usr/lib/pantavisor/plugins";
+	}
+	sprintf(lib_path, "%s/pv_%s.so", plugins_dir, c->type);
 
 	lib = dlopen(lib_path, RTLD_NOW);
 	if (!lib) {
