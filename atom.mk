@@ -3,7 +3,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_LIBRARIES := lxc libthttp
-LOCAL_DESTDIR := ./lib/
+LOCAL_DESTDIR := ./usr/lib/pantavisor/plugins
 LOCAL_MODULE := pv_lxc
 
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC
