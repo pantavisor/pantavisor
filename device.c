@@ -176,15 +176,17 @@ static void usermeta_add_hint(struct pv_usermeta *m)
 	int fd;
 	char *path_base;
 	char path[PATH_MAX];
+	char *pvdir_usermeta;
 
 	if (!m)
 		return;
 
-	sprintf(path, "/pv/user-meta/%s", m->key);
+	pvdir_usermeta = get_pv_config()->pvdir_usermeta;
+	sprintf(path, "%s/%s",pvdir_usermeta, m->key);
 	path_base = strdup(path);
 
 	dirname(path_base);
-	if (strcmp("/pv/user-meta", path_base))
+	if (strcmp(pvdir_usermeta, path_base))
 		mkdir_p(path_base, 0755);
 
 	fd = open(path, O_CREAT | O_RDWR | O_TRUNC, 0644);
@@ -203,11 +205,13 @@ out:
 static void usermeta_remove_hint(struct pv_usermeta *m)
 {
 	char path[PATH_MAX];
+	char *pvdir_usermeta;
 
 	if (!m)
 		return;
 
-	sprintf(path, "/pv/user-meta/%s", m->key);
+	pvdir_usermeta = get_pv_config()->pvdir_usermeta;
+	sprintf(path, "%s/%s", pvdir_usermeta, m->key);
 	remove(path);
 }
 
@@ -700,9 +704,9 @@ static int pv_device_init(struct pv_init *this)
 		return -1;
 	config = pv->config;
 	// create hints
-	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(config->pvdir_challenge, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
-	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(config->pvdir_deviceid, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	if (strcmp(config->creds.prn, "") == 0) {
 		pv->flags |= DEVICE_UNCLAIMED;
 	} else {
@@ -710,7 +714,7 @@ static int pv_device_init(struct pv_init *this)
 		write(fd, tmp, strlen(tmp));
 	}
 	close(fd);
-	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(config->pvdir_pantahubhost, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	sprintf(tmp, "https://%s:%d\n", config->creds.host, config->creds.port);
 	write(fd, tmp, strlen(tmp));
 	close(fd);
@@ -724,7 +728,7 @@ static int pv_device_init(struct pv_init *this)
 			pv->dev = NULL;
 		}
 	}
-	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") < 0)
+	if (pv_cmd_socket_open(pv, config->pvdir_pvctrl) < 0)
 		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
 
 	return 0;

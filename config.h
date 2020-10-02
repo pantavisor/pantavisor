@@ -83,6 +83,14 @@ struct pantavisor_network {
 
 struct pantavisor_config {
 	char *name;
+	char *pvdir_;
+	char *pvdir_challenge;
+	char *pvdir_deviceid;
+	char *pvdir_pantahubhost;
+	char *pvdir_pvctrl;
+	char *pvdir_logctrl;
+	char *pvdir_logsdir;
+	char *pvdir_usermeta;
 	char *logdir;
 	char *metacachedir;
 	char *dropbearcachedir;
@@ -100,6 +108,8 @@ struct pantavisor_config {
 	struct pantavisor_watchdog wdt;
 	struct pantavisor_network net;
 };
+
+struct pantavisor_config* get_pv_config(void);
 
 // Fill config struct after parsing on-initramfs factory config
 int pv_config_from_file(char *path, struct pantavisor_config *config);
