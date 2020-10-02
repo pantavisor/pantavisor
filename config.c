@@ -510,16 +510,47 @@ static int pv_config_init(struct pv_init *this)
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
 	int ret = -1;
+	char *configfile;
 
 	pv = get_pv_instance();
 	if (!pv || !pv->config)
 		goto out;
 	config = pv->config;
-        if (pv_config_from_file(PV_CONFIG_FILENAME, config) < 0) {
-		printf("FATAL: unable to parse pantavisor config");
-		goto out;
+
+	configfile = getenv("PV_CONFIG");
+	if (configfile) {
+		/* pantavisor must use this config if env is set */
+	        if (pv_config_from_file(configfile, config) < 0) {
+			printf("FATAL: unable to parse pantavisor config");
+			goto out;
+		}
+		ret = 0;
+	} else if (!pv->is_embedded && !access(PV_CONFIG_FILENAME, R_OK)) {
+		/* pantavisor as PID 1 uses this place */
+	        if (pv_config_from_file(PV_CONFIG_FILENAME, config) < 0) {
+			printf("FATAL: unable to parse standalone pantavisor config");
+			goto out;
+		}
+		ret = 0;
+	} else if (pv->is_embedded && !access(PV_CONFIG_FILENAME_FHSRH, R_OK)) {
+		/* on RH/FHS systems we use this location for admins to configure pantavisor */
+	        if (pv_config_from_file(PV_CONFIG_FILENAME_FHSRH, config) < 0) {
+			printf("FATAL: unable to parse admin pantavisor config");
+			goto out;
+		}
+		ret = 0;
+
+	} else if (pv->is_embedded && !access(PV_CONFIG_FILENAME_DEFAULT_FHSRH, R_OK)) {
+		/* on RH/FHS systems we look for the default INSIDE the RO /usr/lib... */
+	        if (pv_config_from_file(PV_CONFIG_FILENAME_DEFAULT_FHSRH, config) < 0) {
+			printf("FATAL: unable to parse default pantavisor config");
+			goto out;
+		}
+		ret = 0;
+	} else {
+		printf("WARNING: no pantavisor.config found, trying with defaults....\n");
 	}
-	ret = 0;
+
 out:
 	return ret;
 }
