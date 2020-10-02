@@ -459,7 +459,6 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		sprintf(fname, "pv-initrd.img.%d", i++);
 		strcat(dst, fname);
 		remove(dst);
-		pv_log(DEBUG, "linking %s and %s", src, dst);
 		if (link(src, dst) < 0)
 			goto err;
 	}
