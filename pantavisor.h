@@ -32,6 +32,8 @@
 #define DEVICE_UNCLAIMED	(1 << 0)
 
 #define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
+#define PV_CONFIG_FILENAME_FHSRH	"/etc/pantavisor/pantavisor.config"
+#define PV_CONFIG_FILENAME_DEFAULT_FHSRH	"/usr/lib/pantavisor/etc/pantavisor/pantavisor.config"
 // pantavisor.h
 
 char pv_user_agent[4096];
@@ -184,6 +186,7 @@ struct pv_connection {
 };
 
 struct pantavisor {
+	bool is_embedded;
 	int last;
 	char *step;
 	struct pv_device *dev;
