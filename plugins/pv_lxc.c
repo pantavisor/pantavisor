@@ -200,7 +200,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		}
 	}
 	// Strip consoles from kernel cmdline
-	mkstemp(tmp_cmd);
+	mktemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd > 0) {
 		char *buf = calloc(1024, 1);

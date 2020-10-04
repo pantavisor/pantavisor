@@ -1391,7 +1391,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 
 	if (use_volatile_tmp) {
-		mkstemp(volatile_tmp_obj_path);
+		mktemp(volatile_tmp_obj_path);
 		volatile_tmp_fd = open(volatile_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 		fd = volatile_tmp_fd;
 	} else {

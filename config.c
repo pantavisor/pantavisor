@@ -447,7 +447,7 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	char tmp_path[PATH_MAX];
 
 	sprintf(tmp_path, "%s-XXXXXX", path);
-	mkstemp(tmp_path);
+	mktemp(tmp_path);
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (!fd) {
 		pv_log(ERROR, "unable to open temporary credentials config");
