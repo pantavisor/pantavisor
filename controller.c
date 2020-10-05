@@ -604,7 +604,6 @@ out:
 
 	// unmount storage
 	umount(pv->config->storage.mntpoint);
-	pv_teardown(pv);
 	sync();
 
 	sleep(5);
