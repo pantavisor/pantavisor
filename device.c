@@ -46,6 +46,7 @@
 #include "version.h"
 #include "init.h"
 #include "cmd.h"
+#include "revision.h"
 
 #define FW_PATH		"/lib/firmware"
 
@@ -601,12 +602,16 @@ out:
 int pv_device_factory_meta(struct pantavisor *pv)
 {
 	struct dirent **dirlist = NULL;
-	int n = 0;
-	char abs_path[PATH_MAX];
-	char factory_dir[PATH_MAX];
+	int n = 0, len = 0;
+	char *abs_path = 0, *factory_dir = 0;
 	bool upload_failed = false;
 
-	snprintf(factory_dir, sizeof(factory_dir), "%s/%s",
+	len = strlen(pv->config->storage.mntpoint) + 16;
+	factory_dir = calloc(1, len * sizeof(char));
+	if (!factory_dir)
+		return -1;
+
+	snprintf(factory_dir, len, "%s/%s",
 			pv->config->storage.mntpoint, "factory/meta");
 	n = scandir(factory_dir, &dirlist, NULL, alphasort);
 	if (n < 0)
@@ -615,7 +620,11 @@ int pv_device_factory_meta(struct pantavisor *pv)
 		struct stat st;
 		n--;
 		if (!upload_failed) {
-			snprintf(abs_path, sizeof(abs_path),
+			len = strlen(factory_dir) + strlen(dirlist[n]->d_name) + 1;
+			abs_path = calloc(1, len * sizeof(char));
+			if (!abs_path)
+				return -1;
+			snprintf(abs_path, len,
 				"%s/%s", factory_dir, dirlist[n]->d_name);
 			if (!stat(abs_path, &st)) {
 				if ((st.st_mode & S_IFMT) == S_IFREG) {
@@ -627,22 +636,31 @@ int pv_device_factory_meta(struct pantavisor *pv)
 						upload_failed = true;
 				}
 			}
+			free(abs_path);
+			abs_path = 0;
 		}
 		free(dirlist[n]);
 	}
+	if (factory_dir)
+		free(factory_dir);
 	if (dirlist)
 		free(dirlist);
 	if (!upload_failed) {
 		int fd;
-		/*
-		 * reusing abs_path
-		 */
-		snprintf(abs_path, sizeof(abs_path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
-		fd = open(abs_path, O_CREAT | O_SYNC);
-		if (fd < 0)
-			pv_log(ERROR, "Unable to open file %s", abs_path);
-		close(fd);
+		abs_path = calloc(1, strlen(pv->config->storage.mntpoint) + 64);
+		if (abs_path) {
+			sprintf(abs_path, "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
+			fd = open(abs_path, O_CREAT | O_SYNC);
+			if (fd < 0)
+				pv_log(ERROR, "Unable to open file %s", abs_path);
+			close(fd);
+			free(abs_path);
+			abs_path = 0;
+		}
 	}
+	if (abs_path)
+		free(abs_path);
+
 	return upload_failed ? -1 : 0;
 }
 

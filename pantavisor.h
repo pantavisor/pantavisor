@@ -199,6 +199,9 @@ struct pantavisor {
 	struct pv_connection *conn;
 };
 
+#define PV_CONFIG_EXTHOOK_FMT	"/usr/local/bin/pvext_sysconfig %s %s"
+#define PV_CONFIG_CPHOOK_FMT	"/bin/cp -a %s/* %s/"
+
 int *pv_get_revisions(struct pantavisor *pv);
 int pv_rev_is_done(struct pantavisor *pv, int rev);
 void pv_set_active(struct pantavisor *pv);

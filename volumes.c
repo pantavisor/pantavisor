@@ -140,7 +140,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	int ret = -1;
 	int loop_fd = -1, file_fd = -1;
 	struct pv_state *s = pv->state;
-	char path[PATH_MAX], base[PATH_MAX], mntpoint[PATH_MAX];
+	char path[PATH_MAX], base[PATH_MAX-8], mntpoint[PATH_MAX];
 	char *fstype;
 
 	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
@@ -191,7 +191,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
 	case VOL_REVISION:
-		sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
+		snprintf(path, sizeof(path), "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
 		mkdir_p(path, 0755);
 		mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");

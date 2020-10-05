@@ -116,7 +116,7 @@ int pv_make_config(struct pantavisor *pv)
 	struct stat st;
 	char targetpath[PATH_MAX];
 	char srcpath[PATH_MAX];
-	char cmd[PATH_MAX];
+	char *cmd;
 	int rv;
 
 	sprintf(srcpath, "%s/trails/%d/_config/", pv->config->storage.mntpoint, pv->state->rev);
@@ -128,12 +128,17 @@ int pv_make_config(struct pantavisor *pv)
 	memset(&st, '\0', sizeof(st));
 
 	// we allow overloading behaviour via plugin from initrd addon
+	cmd = calloc(1, sizeof(PV_CONFIG_EXTHOOK_FMT)
+		 + sizeof(targetpath) + sizeof(srcpath));
+	if (!cmd)
+		return -1;
+
 	if (!stat("/usr/local/bin/pvext_sysconfig", &st) &&
 			st.st_mode & S_IXUSR ) {
-		sprintf(cmd, "/usr/local/bin/pvext_sysconfig %s %s", srcpath, targetpath);
+		sprintf(cmd, PV_CONFIG_EXTHOOK_FMT, srcpath, targetpath);
 		pv_log(INFO, "Processing trail _config: %s", cmd);
 	} else {
-		sprintf(cmd, "/bin/cp -a %s/* %s/", srcpath, targetpath);
+		sprintf(cmd, PV_CONFIG_CPHOOK_FMT, srcpath, targetpath);
 		pv_log(INFO, "Processing trail_config: %s", cmd);
 	}
 
@@ -143,6 +148,9 @@ int pv_make_config(struct pantavisor *pv)
 	 * for command to finish?
 	 */
 	rv = system(cmd);
+	if (cmd)
+		free(cmd);
+
 	return rv;
 }
 

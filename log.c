@@ -209,7 +209,7 @@ void exit_error(int err, char *msg)
 void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct stat log_stat;
-	char log_path [PATH_MAX];
+	char log_path [PATH_MAX-16];
 	int log_fd = -1;
 	int max_gzip = 3;
 	// hold 2MiB max of log entries in open file

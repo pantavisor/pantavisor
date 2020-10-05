@@ -42,10 +42,21 @@
 
 static int remove_at(char *path, char *filename)
 {
-	char full_path[PATH_MAX];
+	int rv = -1, len = 0;
+	char *full_path = 0;
 
-	sprintf(full_path, "%s/%s", path, filename);
-	return remove(full_path);
+	len = strlen(path) + strlen(filename) + 1;
+	if (len > 1)
+		full_path = calloc(1, len * sizeof(char));
+
+	if (!full_path)
+		return rv;
+
+	snprintf(full_path, len, "%s/%s", path, filename);
+	rv = remove(full_path);
+	free(full_path);
+
+	return rv;
 }
 
 static int remove_in(char *path, char *dirname)

@@ -80,7 +80,7 @@ int pv_network_init(struct pantavisor *pv)
         sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
         /* get interface name */
-        strncpy(ifr.ifr_name, c->net.brdev, IFNAMSIZ);
+        strncpy(ifr.ifr_name, c->net.brdev, IFNAMSIZ-1);
 
         memset(&sai, 0, sizeof(struct sockaddr));
         sai.sin_family = AF_INET;

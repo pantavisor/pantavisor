@@ -312,7 +312,7 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 			}
 			if (msg) {
 				if (len) {
-					strncat(buff + len, ",", 1);
+					strcat(buff + len, ",");
 					len += 1;
 				}
 				snprintf(buff + len,
@@ -1471,7 +1471,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		}
 		if (can_write) {
 			if (data_len) {
-				strncat(pv->update->progress_objects, ",", 1);
+				strcat(pv->update->progress_objects, ",");
 				data_len += 1;
 			}
 			sprintf(pv->update->progress_objects + data_len,"%s",
