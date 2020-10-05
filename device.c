@@ -468,6 +468,8 @@ int pv_device_info_upload(struct pantavisor *pv)
 	if (info_parsed)
 		goto upload;
 
+	dl_list_init(&pv->dev->infolist);
+
 	buf = log_buffer->buf;
 	bufsize = log_buffer->size;
 
@@ -716,11 +718,10 @@ static int pv_device_init(struct pv_init *this)
 	sprintf(tmp, "https://%s:%d\n", config->creds.host, config->creds.port);
 	write(fd, tmp, strlen(tmp));
 	close(fd);
-
+	
 	pv->dev = calloc(1, sizeof(struct pv_device));
 	if (pv->dev) {
 		dl_list_init(&pv->dev->metalist);
-		dl_list_init(&pv->dev->infolist);
 		pv->dev->id = strdup(pv->config->creds.id);
 		if (!pv->dev->id) {
 			free(pv->dev);
