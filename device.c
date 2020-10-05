@@ -231,8 +231,6 @@ static void pv_usermeta_remove(struct pv_device *dev)
 		dl_list_del(&curr->list);
 		pv_usermeta_free(curr);
 	}
-
-	dl_list_del(&dev->metalist);
 }
 
 static void pv_devinfo_remove(struct pv_device *dev)
@@ -249,8 +247,6 @@ static void pv_devinfo_remove(struct pv_device *dev)
 			free(curr->value);
 		free(curr);
 	}
-
-	dl_list_del(&dev->infolist);
 }
 
 static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
