@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,6 +21,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -69,12 +70,14 @@ static int get_free_loop(char *devname)
 
 	dev = ioctl(lctlfd, LOOP_CTL_GET_FREE);
 	if (dev < 0)
-               goto out;
+		goto out;
 
 	sprintf(devname, "/dev/loop%d", dev);
 	ret = 0;
 
-out:
+	mknod(devname, 0550 | S_IFBLK , makedev(7, dev));
+
+ out:
 	if (lctlfd > 0)
 		close(lctlfd);
 
@@ -109,7 +112,7 @@ int mount_bind(char *src, char *dest)
 
 	ret = mount(src, dest, "none", MS_BIND, 0);
 	if (ret < 0)
-		pv_log(WARN, "unable to bind mount from %s to %s", src, dest);
+		pv_log(WARN, "unable to bind mount from %s to %s: %s", src, dest, strerror(errno));
 
 	return ret;
 }
@@ -120,15 +123,22 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 	char devname[128];
 	char *opts = NULL;
 
-	if (get_free_loop(devname) < 0)
+	if (get_free_loop(devname) < 0) {
+		pv_log(ERROR, "get_free_loop failed for devname=%s", devname);
 		return -1;
+	}
 
-	if (bind_loop_dev(devname, src, loop_fd, file_fd) < 0)
+	if (bind_loop_dev(devname, src, loop_fd, file_fd) < 0) {
+		pv_log(ERROR, "bind_loop_dev failed for devname=%s src=%s", devname, src);
+
 		return -1;
+	}
 
 	// Make dest if it doesn't exist
-	if (mkdir_p(dest, 0755) < 0)
+	if (mkdir_p(dest, 0755) < 0) {
+		pv_log(ERROR, "mkdir_p failed for dest=%s", dest);
 		return -1;
+	}
 
 	// if ext4 make sure we mount journaled
 	if (strcmp(fstype, "ext4") == 0)
@@ -137,11 +147,11 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 		ret = mount(devname, dest, fstype, 0, opts);
 
 	if (ret < 0) {
-		pv_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
+		pv_log(ERROR, "could not mount \"%s\" (\"%s\"): %s", src, fstype, strerror(errno));
 		goto out;
 	}
 
-out:
+ out:
 	if (opts)
 		free(opts);
 
@@ -171,6 +181,6 @@ int unmount_loop(char *dest, int loop_fd, int file_fd)
 
 	pv_log(INFO, "umounted '%s' volume", dest);
 
-out:
+ out:
 	return ret;
 }

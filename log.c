@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -63,6 +63,7 @@ static struct level_name level_names[] = {
 };
 
 static char *log_dir = 0;
+static bool log_stdout;
 static pid_t log_init_pid = -1;
 
 static DEFINE_DL_LIST(log_buffer_list);
@@ -76,7 +77,7 @@ static struct log_buffer* __pv_log_get_buffer(struct dl_list *head)
 
 	if (dl_list_empty(head))
 		return NULL;
-	log_buffer = dl_list_first(head, 
+	log_buffer = dl_list_first(head,
 			struct log_buffer, free_list);
 	dl_list_del(&log_buffer->free_list);
 	dl_list_init(&log_buffer->free_list);
@@ -122,7 +123,7 @@ static struct log_buffer* pv_log_alloc_buffer(int buf_size)
 	return buffer;
 }
 
-static int pv_log_init_buf_cache(int items, int size, struct dl_list *head) 
+static int pv_log_init_buf_cache(int items, int size, struct dl_list *head)
 {
 	int allocated = 0;
 
@@ -158,12 +159,24 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 	int max_gzip = 3;
 	// hold 2MiB max of log entries in open file
 	//Check on disk file size.
-	
+
+	if (log_stdout){
+		va_list argscopy;
+		va_copy(argscopy, args);
+		log_fd = STDOUT_FILENO;
+		dprintf(log_fd, "[pantavisor] %s\t -- ", level_names[level].name);
+		dprintf(log_fd, "[%s]: ", module);
+		vdprintf(log_fd, fmt, argscopy);
+		dprintf(log_fd, "\n");
+		log_fd = -1;
+		va_end(argscopy);
+	}
+
 	if (!log_dir)
 		return;
 	snprintf(log_path, sizeof(log_path), "%s/%s",log_dir, LOG_NAME);
 	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
-	
+
 	if (log_fd >= 0) {
 		int ret = 0;
 		int lock_file_errno = 0;
@@ -188,7 +201,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 			len = strlen(err_file);
 			snprintf(err_file + len, PATH_MAX - len, "/%d.error",getpid());
 
-			err_fd = open(err_file, 
+			err_fd = open(err_file,
 					O_EXCL|O_RDWR|O_CREAT|O_APPEND|O_SYNC, 0644);
 			if (err_fd >= 0) {
 				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
@@ -248,28 +261,32 @@ static int log_external(const char *fmt, ...)
 
 static void pv_log_init(struct pantavisor *pv, int rev)
 {
+	struct pv_system *system = pv->system;
 	// make logs available for platforms
 	thttp_set_log_func(log_external);
 	log_init_pid = getpid();
 	global_pv = pv;
 	int allocated_cache = 0;
 	int allocated_dcache = 0;
-	
+
+	if (system->is_embedded)
+		log_stdout = true;
+	else
+		log_stdout = false;
+
 	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
 					pv->config->logsize, &log_buffer_list);
 
 	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
 					pv->config->logsize * 2, &log_buffer_list_double);
 
-	mkdir_p(pv->config->pvdir_logsdir, 0755);
-	mount_bind(pv->config->logdir, pv->config->pvdir_logsdir);
 	log_dir = calloc(1, PATH_MAX);
 	if (!log_dir) {
 		printf("Couldn't reserve space for log directory\n");
 		printf("Pantavisor logs won't be available\n");
 		return;
 	}
-	snprintf(log_dir, PATH_MAX, "%s/%d/pantavisor", pv->config->pvdir_logsdir, rev);
+	snprintf(log_dir, PATH_MAX, "%s/%d/pantavisor", pv->config->logdir, rev);
 	if (mkdir_p(log_dir, 0755)) {
 		printf("Couldn't make dir %s,"
 			"pantavisor logs won't be available\n", log_dir);
@@ -280,6 +297,7 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 			allocated_cache, pv->config->logsize);
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
 			allocated_dcache, pv->config->logsize * 2);
+
 }
 
 void exit_error(int err, char *msg)
@@ -303,7 +321,7 @@ void __log(char *module, int level, const char *fmt, ...)
 
 	__vlog(module, level, fmt, args);
 
-	va_end(args); 
+	va_end(args);
 }
 
 const char *pv_log_level_name(int level)
@@ -317,12 +335,15 @@ static int pv_log_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
+	struct pv_system *system = NULL;
 	int pv_rev = 0;
 	int ret = -1;
 
 	pv = get_pv_instance();
-	if (!pv || !pv->config)
+	if (!pv || !pv->config || !pv->system)
 		goto out;
+
+	system = pv->system;
 
 	ret = 0;
 	config = pv->config;
@@ -337,7 +358,13 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
 	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
 	pv_log(INFO, "                                                 ");
-	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
+
+	if (!system->is_embedded) {
+		pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
+	} else {
+		pv_log(INFO, "Pantavisor Embedded (TM) (%s) - www.pantahub.com", pv_build_version);
+	}
+
 	pv_log(INFO, "                                                 ");
 	pv_log(DEBUG, "c->storage.path = '%s'", config->storage.path);
 	pv_log(DEBUG, "c->storage.fstype = '%s'", config->storage.fstype);
@@ -348,9 +375,9 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(DEBUG, "c->creds.port = '%d'", config->creds.port);
 	pv_log(DEBUG, "c->creds.id = '%s'", config->creds.id);
 	pv_log(DEBUG, "c->creds.prn = '%s'", config->creds.prn);
-	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret);
+	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret ? "xxxxxx" : "<Not Set>");
 
-	if (ph_logger_service_start(pv, LOG_CTRL_PATH, pv_rev) <= 0) {
+	if (ph_logger_service_start(pv, config->pvdir_logctrl, pv_rev) <= 0) {
 		pv_log(ERROR, "Unable to start logger service.");
 	}
 

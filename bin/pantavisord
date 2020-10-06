@@ -1,0 +1,76 @@
+#!/bin/sh
+#
+# Copyright (c) 2020 Pantacor Ltd.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+
+cmd=$0
+dir=`sh -c "cd $(dirname $cmd); pwd"`
+
+PV_RUNDIR=${PV_RUNDIR:-$dir/../run}
+mkdir -p $PV_RUNDIR
+PV_VARDIR=${PV_VARDIR:-$dir/../var}
+
+tmptxt=`mktemp -t uboot.txt.XXXXXXXX`
+
+txt2sourcable() {
+    seddy=
+    # if we have busybox awk lets use that...
+    if echo "" | busybox awk '' > /dev/null; then
+       cat $1 | tr '\0' '\n' | busybox awk '!/^$/' > $2
+    elif echo "" | awk '' > /dev/null; then
+       cat $1 | tr '\0' '\n' | awk '!/^$/' > $2
+    else
+	echo "ERROR: no sed installed to source uboot.txt type env; install busybox or gnu sed please."
+	exit 1
+    fi
+}
+
+pv_rev=
+while true; do
+    # source uboot.txt in a sh manner into vars
+    if [ -f $PV_VARDIR/boot/uboot.txt ]; then
+	txt2sourcable $PV_VARDIR/boot/uboot.txt $tmptxt
+        set -a
+        source $tmptxt
+        set +a
+    else
+	pv_rev=0
+	echo -en "pv_rev=0\0" > $PV_VARDIR/boot/uboot.txt
+    fi
+
+    boot_rev=$pv_rev
+    if [ -n "$pv_try" ] && ! [ -f $PV_VARDIR/boot/uboot.txt.try ]; then
+        boot_rev=$pv_try
+        touch $PV_VARDIR/boot/uboot.txt.try
+    elif [ -n "$pv_try" ]; then
+        boot_rev=$pv_rev
+        rm -f $PV_VARDIR/boot/uboot.txt.try
+    else
+        boot_rev=$pv_rev
+        rm -f $PV_VARDIR/boot/uboot.txt.try
+    fi
+
+    $dir/pantavisor pv_embedded $DEBUG pv_rev=$boot_rev pv_try=$pv_try $EXTRA_ARGS
+
+    echo "Pantavisor exited. Restarting in 5 seconds ..."
+    sleep 5
+done
+

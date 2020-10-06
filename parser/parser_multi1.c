@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -78,12 +78,13 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->bsp = calloc(sizeof(struct pv_bsp), 1);
+	s->bsp->kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->bsp->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
+	s->bsp->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
+	s->bsp->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 
-	if (!s->kernel || !s->initrd)
+	if (!s->bsp->kernel || !s->bsp->initrd)
 		goto out;
 
 	// get addons and create empty items

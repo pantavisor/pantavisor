@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2018-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -58,7 +58,7 @@ void pv_addons_empty(struct pv_state *s)
 {
 	int num_addons = 0;
 	struct pv_addon *a, *tmp;
-	struct dl_list *addons = &s->addons;
+	struct dl_list *addons = &s->bsp->pv_addon_dl;
 
 	// Iterate over all plats from state
 	dl_list_for_each_safe(a, tmp, addons,
@@ -79,7 +79,7 @@ struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
 	if (a) {
 		a->name = name;
 		dl_list_init(&a->list);
-		dl_list_add_tail(&s->addons, &a->list);
+		dl_list_add_tail(&s->bsp->pv_addon_dl, &a->list);
 	}
 
 	return a;

@@ -57,16 +57,28 @@ void pv_state_free(struct pv_state *s)
 
 	if (s->spec)
 		free(s->spec);
-	if (s->kernel)
-		free(s->kernel);
-	if (s->fdt)
-		free(s->fdt);
-	if (s->firmware)
-		free(s->firmware);
-	if (s->modules)
-		free(s->modules);
-	if (s->initrd)
-		free(s->initrd);
+
+	if (s->bsp) {
+		if (s->bsp->kernel)
+			free(s->bsp->kernel);
+		if (s->bsp->fdt)
+			free(s->bsp->fdt);
+		if (s->bsp->firmware)
+			free(s->bsp->firmware);
+		if (s->bsp->modules)
+			free(s->bsp->modules);
+		if (s->bsp->initrd)
+			free(s->bsp->initrd);
+		pv_addons_empty(s);
+
+		free(s->bsp);
+	}
+
+	if (s->os) {
+		free(s->os->spec);
+		free(s->os->ref);
+		free(s->os->args);
+	}
 
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
@@ -84,11 +96,28 @@ void pv_state_print(struct pv_state *s)
 	if (!s)
 		return;
 
-	pv_log(DEBUG, "state %d:", s->rev);
-	pv_log(DEBUG, " kernel: '%s'", s->kernel);
-	pv_log(DEBUG, " initrd: '%s'", s->initrd);
+	// print
+	pv_log(DEBUG, "spec: '%s'", s->spec);
+	if (s->bsp) {
+		pv_log(DEBUG, "BSP: ");
+		pv_log(DEBUG, "  kernel: '%s'", s->bsp->kernel);
+		pv_log(DEBUG, "  initrd: '%s'", s->bsp->initrd);
+		struct pv_addon *a, *tmp_a;
+		struct dl_list *addons = &s->bsp->pv_addon_dl;
+		dl_list_for_each_safe(a, tmp_a, addons,
+				      struct pv_addon, list) {
+			pv_log(DEBUG, "  addon: '%s'", a->name);
+		}
+	}
+	if (s->os) {
+		pv_log(DEBUG, "OS: ");
+		pv_log(DEBUG, "  type: '%s'", s->os->spec);
+		pv_log(DEBUG, "  ref: '%s'", s->os->ref);
+		pv_log(DEBUG, "  args: '%s'", s->os->args);
+	}
+
 	struct pv_platform *p, *tmp_p;
-    struct dl_list *platforms = &s->platforms;
+	struct dl_list *platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp_p, platforms,
 			struct pv_platform, list) {
 		pv_log(DEBUG, " platform: '%s'", p->name);
@@ -110,12 +139,6 @@ void pv_state_print(struct pv_state *s)
 		if (v->plat)
 			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
 	}
-	struct pv_addon *a, *tmp_a;
-	struct dl_list *addons = &s->addons;
-	dl_list_for_each_safe(a, tmp_a, addons,
-			struct pv_addon, list) {
-		pv_log(DEBUG, " addon: '%s'", a->name);
-	}
 	struct pv_object *curr;
 	pv_objects_iter_begin(s, curr) {
 		pv_log(DEBUG, " object: '%s'", curr->name);
@@ -130,7 +153,7 @@ void pv_state_validate(struct pv_state *s)
 		return;
 
 	// remove platforms that have no loaded data
-	pv_platforms_remove_not_done(s); 
+	pv_platforms_remove_not_done(s);
 	// set runlevel in all undefined platforms
 	pv_platforms_default_runlevel(s);
 }

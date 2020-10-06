@@ -54,14 +54,12 @@
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
 
-#define PH_LOGGER_POS_FILE 	"/pv/.ph_logger"
 #define PH_LOGGER_SKIP_FILE	".ph_logger_skip_list"
-#define PH_LOGGER_LOGDIR 	"/pv/logs"
 #define PH_LOGGER_BACKLOG	(20)
-#define PH_LOGGER_LOGFILE 	"/ph_logger.log"
+#define PH_LOGGER_LOGFILE	"/ph_logger.log"
 
-#define PH_LOGGER_FLAG_STOP 	(1<<0)
-#define USER_AGENT_LEN 		(128)
+#define PH_LOGGER_FLAG_STOP	(1<<0)
+#define USER_AGENT_LEN		(128)
 
 #ifdef pv_log
 #undef pv_log
@@ -73,6 +71,8 @@
  */
 static void pv_log(int level, char *msg, ...)
 {
+	const char *log_ctrl_path = get_pv_instance()->config->pvdir_logctrl;
+
 	struct ph_logger_msg *ph_logger_msg = NULL;
 	char *buffer = NULL;
 	char *logger_buffer = NULL;
@@ -85,7 +85,7 @@ static void pv_log(int level, char *msg, ...)
 	log_buffer = pv_log_get_buffer(true);
 	if (!log_buffer)
 		goto out_no_buffer;
-	
+
 	ph_log_buffer = pv_log_get_buffer(true);
 	if (!ph_log_buffer)
 		goto out_no_buffer;
@@ -98,7 +98,7 @@ static void pv_log(int level, char *msg, ...)
 	va_end(args);
 	len = strlen(buffer);
 
-	max_size = (len + 1) + strlen(MODULE_NAME) + strlen(PH_LOGGER_LOGFILE) + 
+	max_size = (len + 1) + strlen(MODULE_NAME) + strlen(PH_LOGGER_LOGFILE) +
 		6/*6 digits for revision*/ + 4/*null*/;
 	if (max_size > ph_log_buffer->size)
 		goto out_no_buffer;
@@ -107,9 +107,9 @@ static void pv_log(int level, char *msg, ...)
 	ph_logger_msg->version = PH_LOGGER_V1;
 	ph_logger_msg->len = sizeof(*ph_logger_msg) + max_size;
 
-	ph_logger_write_bytes(ph_logger_msg, buffer, level, 
+	ph_logger_write_bytes(ph_logger_msg, buffer, level,
 			MODULE_NAME, PH_LOGGER_LOGFILE, len + 1);
-	pvctl_write_to_path(LOG_CTRL_PATH, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
+	pvctl_write_to_path(log_ctrl_path, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
 
 out_no_buffer:
 	pv_log_put_buffer(log_buffer);
@@ -118,7 +118,7 @@ out_no_buffer:
 /*
  * Include after defining MODULE_NAME.
  */
-#define PH_LOGGER_MAX_EPOLL_FD 	(50)
+#define PH_LOGGER_MAX_EPOLL_FD	(50)
 
 static struct pantavisor *pv_global;
 
@@ -169,7 +169,7 @@ static ph_logger_file_rw_handler_t file_rw_handler[] = {
 static struct ph_logger_skip_prefix* ph_logger_skip_prefix(char *prefix)
 {
 	struct ph_logger_skip_prefix *skip_prefix = NULL;
-	
+
 	if (!prefix || !strlen(prefix))
 		return NULL;
 
@@ -263,7 +263,7 @@ static bool ph_logger_add_skip_prefixes(struct ph_logger *ph_logger, const char 
 	return false;
 }
 
-static struct ph_logger_fragment* __ph_logger_alloc_frag(char *json_frag, bool do_frag_dup) 
+static struct ph_logger_fragment* __ph_logger_alloc_frag(char *json_frag, bool do_frag_dup)
 {
 	struct ph_logger_fragment *frag = NULL;
 
@@ -300,7 +300,7 @@ static ph_logger_handler_t get_read_handler(int version)
 {
 	if (version < PH_LOGGER_V1 || version >= PH_LOGGER_MAX_HANDLERS)
 		return NULL;
-	
+
 	return read_handler[version];
 }
 
@@ -308,7 +308,7 @@ static ph_logger_handler_t get_write_handler(int version)
 {
 	if (version < PH_LOGGER_V1 || version >= PH_LOGGER_MAX_HANDLERS)
 		return NULL;
-	
+
 	return write_handler[version];
 }
 
@@ -346,14 +346,26 @@ static int ph_logger_get_connection(struct ph_logger *ph_logger, struct pantavis
 	return __ph_logger_get_connection(ph_logger, config, false);
 }
 
-static int ph_logger_open_socket(const char *path) 
+static int ph_logger_open_socket(const char *path)
 {
 	int fd;
+	int enable = 1;
 	struct sockaddr_un addr;
+	static bool is_setup = 0;
+
+	if (!is_setup) {
+		unlink(path);
+		is_setup = 1;
+	}
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to open control socket");
+		goto out;
+	}
+
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+		pv_log(ERROR, "unable to set sockopt to SO_REUSEADDR");
 		goto out;
 	}
 
@@ -362,13 +374,19 @@ static int ph_logger_open_socket(const char *path)
 	strcpy(addr.sun_path, path);
 
 	if (bind(fd, (const struct sockaddr *) &addr, sizeof(addr)) < 0) {
+		pv_log(ERROR, "unable to bind to log control %s: %s", path, strerror(errno));
 		close(fd);
 		fd = -1;
 		goto out;
 	}
 
 	// queue upto PH_LOGGER_BACKLOG commands
-	listen(fd, PH_LOGGER_BACKLOG);
+	if (listen(fd, PH_LOGGER_BACKLOG)) {
+		pv_log(ERROR, "unable to to listen on log control socket %s: %s", path, strerror(errno));
+		close (fd);
+		fd = -1;
+		goto out;
+	}
 out:
 	return fd;
 }
@@ -384,21 +402,23 @@ static int ph_logger_init(const char *sock_path, char *log_path)
 
 	ph_logger.sock_fd = ph_logger_open_socket(sock_path);
 	ph_logger.epoll_fd = epoll_create1(0);
-	
+
 	if (ph_logger.epoll_fd < 0 || ph_logger.sock_fd < 0) {
-#ifdef DEBUG
 		printf("ph_logger epoll_fd = %d\n",ph_logger.epoll_fd);
 		printf("ph_logger sock_fd = %d\n",ph_logger.sock_fd);
-		printf("errno  =%d\n", errno);
-#endif
+		printf("error  = %s\n", strerror(errno));
 		goto out;
 	}
 
 	ep_event.events = EPOLLIN;
 	ep_event.data.fd = ph_logger.sock_fd;
 	__ph_logger_init_basic(&ph_logger);
-	if (epoll_ctl(ph_logger.epoll_fd, EPOLL_CTL_ADD, ep_event.data.fd, &ep_event))
+	if (epoll_ctl(ph_logger.epoll_fd, EPOLL_CTL_ADD, ep_event.data.fd, &ep_event)) {
+		printf("1 ph_logger epoll_fd = %d\n",ph_logger.epoll_fd);
+		printf("1 ph_logger sock_fd = %d\n",ph_logger.sock_fd);
+		printf("1 error  = %s\n", strerror(errno));
 		goto out;
+	}
 	return 0;
 out:
 	close(ph_logger.sock_fd);
@@ -417,7 +437,7 @@ static void sigchld_handler(int signum)
 	 * Reap the child procs.
 	 */
 	while(waitpid(-1, NULL, WNOHANG) > 0)
-		;	
+		;
 }
 
 static int ph_logger_push_logs(	struct ph_logger *ph_logger,
@@ -425,7 +445,7 @@ static int ph_logger_push_logs(	struct ph_logger *ph_logger,
 				char *logs)
 {
 	int ret = 0;
-        trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
+	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_request_ptr req = NULL;
 	trest_response_ptr res = NULL;
 
@@ -462,7 +482,7 @@ auth:
 		goto out;
 	}
 	if (!res->body || res->code != THTTP_STATUS_OK) {
-		pv_log(DEBUG, "logs upload status = %d, body = '%s'", 
+		pv_log(DEBUG, "logs upload status = %d, body = '%s'",
 				res->code, (res->body ? res->body : ""));
 		if (res->code == THTTP_STATUS_BAD_REQUEST)
 			ret = -1;
@@ -591,7 +611,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			int len = newline_at - src + 1;
 			/*
 			 * Use json_holder temporarily to
-			 * get the source name and platform 
+			 * get the source name and platform
 			 * name.
 			 */
 			sprintf(json_holder, "%.*s", len - 1, src);
@@ -635,7 +655,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			int frag_len = 0;
 
 			snprintf(__rev_str, sizeof(__rev_str), "%d", rev);
-			frag_len = sizeof(PH_LOGGER_JSON_FORMAT) + 
+			frag_len = sizeof(PH_LOGGER_JSON_FORMAT) +
 				strlen(pv_log_level_name(INFO)) +
 				strlen(source) +
 				strlen(platform) +
@@ -717,7 +737,7 @@ close_fd:
 			avail -= off;
 		}
 
-		dl_list_for_each_safe(item, tmp, &frag_list, 
+		dl_list_for_each_safe(item, tmp, &frag_list,
 				struct ph_logger_fragment, list) {
 			if (json_frag_array) {
 				written = snprintf(json_frag_array + off, avail, "%s",
@@ -766,10 +786,12 @@ out:
 
 static int ph_logger_write_to_log_file(struct ph_logger_msg  *ph_logger_msg)
 {
-	char *log_dir = PH_LOGGER_LOGDIR;
+	char *log_dir;
 	int rev = ph_logger.revision;
 	ph_logger_file_rw_handler_t  file_handler = NULL;
 	int ret = 0;
+
+	log_dir = get_pv_instance()->config->pvdir_logsdir;
 
 	file_handler = get_file_rw_handler(ph_logger_msg->version);
 	if (file_handler)
@@ -797,7 +819,7 @@ again:
 		/* Only one way comm.*/
 		struct sockaddr __unused;
 		/* index into event array*/
-		ret -= 1; 
+		ret -= 1;
 		work_fd = ep_event[ret].data.fd;
 
 		if (work_fd == ph_logger->sock_fd) {
@@ -856,10 +878,6 @@ static void ph_logger_load_config(struct pantavisor *pv)
 {
 	char ph_path[PATH_MAX];
 
-	if (pv_config_from_file(PV_CONFIG_FILENAME, pv->config)) {
-		WARN_ONCE("Error starting pantahub logger service."
-				"Unable to parse pantavisor config.\n");
-	}
 	/* Load PH config. */
 	sprintf(ph_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
 
@@ -881,7 +899,7 @@ static int __ph_logger_push_one_log(char *buf, int len, int revision, int offset
 
 
 	if (!slash_at)
-		sprintf(platform, "pantavisor-UNKNOWN"); 
+		sprintf(platform, "pantavisor-UNKNOWN");
 	else {
 		/*
 		 * platform is before the first /.
@@ -915,6 +933,7 @@ static bool ph_logger_helper_function(int revision)
 	FILE *find_fp = NULL;
 	int offset_bytes = 0;
 	bool sent_one = false;
+	const char *pvlogsdir = get_pv_instance()->config->pvdir_logsdir;
 
 	/*
 	 * Figure out how much to move
@@ -924,38 +943,38 @@ static bool ph_logger_helper_function(int revision)
 	 * actual file path.
 	 */
 
-	snprintf(find_cmd, sizeof(find_cmd), "%s/%d/", PH_LOGGER_LOGDIR, revision);
+	snprintf(find_cmd, sizeof(find_cmd), "%s/%d/", pvlogsdir, revision);
 	offset_bytes = strlen(find_cmd);
 
 	/*
 	 * reuse find_cmd to load all skip_prefixes if any.
 	 */
-	snprintf(find_cmd, sizeof(find_cmd), "%s/%d/%s", PH_LOGGER_LOGDIR, revision, PH_LOGGER_SKIP_FILE);
+	snprintf(find_cmd, sizeof(find_cmd), "%s/%d/%s", pvlogsdir, revision, PH_LOGGER_SKIP_FILE);
 	ph_logger_add_skip_prefixes(&ph_logger, find_cmd);
 
-	snprintf(find_cmd, sizeof(find_cmd), "find %s/%d -type f ! -name '*.gz*' 2>/dev/null", PH_LOGGER_LOGDIR, revision);
+	snprintf(find_cmd, sizeof(find_cmd), "find %s/%d -type f ! -name '*.gz*' 2>/dev/null", pvlogsdir, revision);
 	find_fp = popen(find_cmd, "r");
 
 	if (find_fp) {
 		char *buf = NULL;
 		size_t size = 0;
-		
+
 		while (!feof(find_fp)) {
 			ssize_t nr_read = 0;
-			
+
 			nr_read = getline(&buf, &size, find_fp);
 			if ( nr_read> 0) {
 				int ret = -1;
-				
+
 				/*Get rid of '\n'*/
 				buf[nr_read - 1] = '\0';
 				if (ph_logger_contains_skip_prefix(&ph_logger, buf + offset_bytes))
 					continue;
-				ret = __ph_logger_push_one_log(buf, nr_read, 
+				ret = __ph_logger_push_one_log(buf, nr_read,
 						revision, offset_bytes);
 				if (!sent_one) {
 					/*ret == 0 for one sent item*/
-					sent_one = (ret == 0); 
+					sent_one = (ret == 0);
 				}
 			}
 			else {
@@ -1003,13 +1022,18 @@ static pid_t ph_logger_create_push_helper(int revision)
 	return helper_pid;
 }
 
+#define PH_LOGGER_FIND_FMT_1 "find %s -type d -mindepth 1 -maxdepth 1"
+
 static int ph_logger_get_max_revision(struct pantavisor *pv)
 {
-	const char *cmd = "find /pv/logs -type d -mindepth 1 -maxdepth 1";
+	char *cmd;
 	FILE *fp = NULL;
 	char *buf = NULL;
 	size_t buf_size = 0;
 	int max_revision = 0;
+
+	cmd = malloc(strlen(PH_LOGGER_FIND_FMT_1) + strlen(pv->config->pvdir_logsdir) + 2);
+	sprintf(cmd, PH_LOGGER_FIND_FMT_1, pv->config->pvdir_logsdir);
 
 	fp = popen(cmd, "r");
 	if (!fp)
@@ -1036,6 +1060,7 @@ static int ph_logger_get_max_revision(struct pantavisor *pv)
 		free(buf);
 	pclose(fp);
 out:
+	if (cmd) free (cmd);
 	return max_revision;
 }
 
@@ -1116,7 +1141,7 @@ int ph_logger_service_start(struct pantavisor *pv, const char *sock_path, int re
 		 */
 		pv_global->online = false;
 		memset(&sa, 0, sizeof(sa));
-		
+
 		sa.sa_handler = sigterm_handler;
 		sa.sa_flags = SA_RESTART;
 		sigaction(SIGTERM, &sa, NULL);
@@ -1124,6 +1149,8 @@ int ph_logger_service_start(struct pantavisor *pv, const char *sock_path, int re
 		sa.sa_handler = sigchld_handler;
 		sigaction(SIGCHLD, &sa, NULL);
 retry:
+		if (ph_logger.flags & PH_LOGGER_FLAG_STOP)
+			goto exit1;
 		service_status = ph_logger_init(sock_path, NULL);
 		if (service_status) {
 			printf("Error initializing pantahub logger service %s\n", sock_path);
@@ -1141,7 +1168,7 @@ retry:
 		if (pipefd[1] >= 0) {
 			write_nointr(pipefd[1], (char*)&service_status, sizeof(service_status));
 			/*Allow the parent process to be able to read correct status code.*/
-			sleep(10); 
+			sleep(10);
 			close(pipefd[1]);
 		}
 		ph_logger.revision = revision;
@@ -1157,6 +1184,7 @@ retry:
 		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
 			ph_logger_read_write(&ph_logger);
 		}
+	exit1:
 		printf("Exiting ph logger service.\n");
 		_exit(EXIT_SUCCESS);
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -43,6 +43,7 @@ int setns(int nsfd, int nstype);
 
 #include "parser/parser.h"
 #include "wdt.h"
+
 #include "platforms.h"
 #include "pvlogger.h"
 #include "utils/list.h"
@@ -56,7 +57,6 @@ static const char *syslog[][2] = {
 		{"maxsize", "2097152"},
 		{"name", NULL},
 		{NULL, NULL}
-
 };
 
 static const char *messages[][2] = {
@@ -78,7 +78,7 @@ static struct pv_logger_config plat_logger_config_messages = {
 
 struct pv_cont_ctrl {
 	char *type;
-	void* (*start)(struct pv_platform *p, char *conf_file, void *data);
+	void* (*start)(struct pv_platform *p, struct pv_system *system, char *conf_file, void *data);
 	void* (*stop)(struct pv_platform *p, char *conf_file, void *data);
 };
 
@@ -233,7 +233,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 
 	char *plugins_dir = getenv("PV_PLUGINS_DIR");
 	if (!plugins_dir) {
-		plugins_dir = "/usr/lib/pantavisor/plugins";
+		plugins_dir = LIBDIR "/plugins";
 	}
 	sprintf(lib_path, "%s/pv_%s.so", plugins_dir, c->type);
 
@@ -450,7 +450,7 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 
 	pv_wdt_kick(pv);
 
-	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
+	if (pv_state_spec(pv->state) == SPEC_SYSTEM1 || pv_state_spec(pv->state) == SPEC_EMBED1)
 		sprintf(prefix, "%s/", p->name);
 
 	sprintf(conf_path, "%s/trails/%d/%s%s",
@@ -460,7 +460,7 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	ctrl = _pv_platforms_get_ctrl(p->type);
 
 	// Start the platform
-	data = ctrl->start(p, conf_path, (void *) &pid);
+	data = ctrl->start(p, pv->system, conf_path, (void *) &pid);
 
 	if (!data) {
 		pv_log(ERROR, "error starting platform: \"%s\"",

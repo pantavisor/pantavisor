@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -115,21 +115,22 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
 
 	switch (pv_state_spec(s)) {
+	case SPEC_EMBED1:
 	case SPEC_SYSTEM1:
 		if (v->plat) {
 			sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
 				s->rev, v->plat->name, v->name);
-			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
+			sprintf(mntpoint, "%s/volumes/%s/%s", pv->config->rundir, v->plat->name, v->name);
 		} else {
 			sprintf(path, "%s/trails/%d/bsp/%s", pv->config->storage.mntpoint,
 				s->rev, v->name);
-			sprintf(mntpoint, "/volumes/%s", v->name);
+			sprintf(mntpoint, "%s/volumes/%s", pv->config->rundir, v->name);
 		}
 		break;
 	case SPEC_MULTI1:
 		sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
 			s->rev, v->name);
-		sprintf(mntpoint, "/volumes/%s", v->name);
+		sprintf(mntpoint, "%s/volumes/%s", pv->config->rundir, v->name);
 		break;
 	default:
 		pv_log(WARN, "cannot mount volumes for unknown state spec");
@@ -151,6 +152,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 			ret = mount(path, mntpoint, "none", MS_BIND, "ro");
 		} else {
 			ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
+			pv_log(INFO, "Mount Loop: path=%s, mntpoint=%s, fstype=%s, ret=%d", path, mntpoint,fstype, ret);
 		}
 		break;
 	case VOL_PERMANENT:
@@ -192,19 +194,19 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 {
 	int ret = -1;
 	struct stat st;
-	char path[PATH_MAX];
+	char path[PATH_MAX], path2[PATH_MAX];
 	struct utsname uts;
 
-	if (!pv->state->firmware)
+	if (!pv->state->bsp->firmware)
 		goto modules;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
 		mkdir_p(FW_PATH, 0755);
 
-	if (strchr(pv->state->firmware, '/'))
-		sprintf(path, "%s", pv->state->firmware);
+	if (strchr(pv->state->bsp->firmware, '/'))
+		sprintf(path, "%s", pv->state->bsp->firmware);
 	else
-		sprintf(path, "/volumes/%s", pv->state->firmware);
+		sprintf(path, "%s/volumes/%s", pv->config->rundir, pv->state->bsp->firmware);
 
 	if (stat(path, &st))
 		goto modules;
@@ -217,10 +219,12 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 	pv_log(DEBUG, "bind mounted firmware to %s", FW_PATH);
 
 modules:
-	if (!uname(&uts) && (stat("/volumes/modules.squashfs", &st) == 0)) {
+	sprintf(path, "%s/volumes/modules.squashfs", pv->config->rundir);
+	if (!uname(&uts) && (stat(path, &st) == 0) && !pv->system->is_embedded) {
 		sprintf(path, "/lib/modules/%s", uts.release);
 		mkdir_p(path, 0755);
-		ret = mount_bind("/volumes/modules.squashfs", path);
+		sprintf(path2, "%s/volumes/modules.squashfs", pv->config->rundir);
+		ret = mount_bind(path2, path);
 		pv_log(DEBUG, "bind mounted modules to %s", path);
 	}
 
@@ -237,13 +241,19 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 	struct dl_list *volumes = NULL;
 
 	// Create volumes if non-existant
-	mkdir("/volumes", 0755);
+	sprintf(base, "%s/volumes", pv->config->storage.mntpoint);
+	mkdir_p(base, 0755);
 	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
 	mkdir_p(base, 0755);
 
 	// Iterate between runlevel vols and lowest priority vols
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
 		pv_log(DEBUG, "mounting volumes with runlevel %d", i);
+
+		// if is embedded its ok to not have any volumes/platforms.
+		if (pv->system->is_embedded)
+			ret = 0;
+
 		// Iterate over all volumes from state
 		volumes = &pv->state->volumes;
 		dl_list_for_each_safe(v, tmp, volumes,
@@ -263,11 +273,16 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 	}
 
 	// Mount firmware and modules in runlevel 0
-	if (runlevel == 0)
+	if (runlevel == 0  && !pv->system->is_embedded)
 		ret = pv_volumes_mount_firmware_modules(pv);
 
 out:
-	pv_log(INFO, "mounted %d volumes", num_vol);
+	if (ret < 0) {
+		pv_log(INFO, "mounted %d volumes with error: %s", num_vol, strerror(errno));
+	} else {
+		pv_log(INFO, "mounted %d volumes without error", num_vol);
+	}
+
 	return ret;
 }
 

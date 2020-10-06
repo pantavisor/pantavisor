@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -31,6 +31,7 @@
 
 #include "config.h"
 
+
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
@@ -52,9 +53,9 @@ static struct config_item* _config_get_by_key(struct dl_list *list, char *key)
 	struct config_item *curr = NULL, *tmp;
 	if (key == NULL || dl_list_empty(list))
 		return NULL;
-	
+
 	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
+			      struct config_item, list) {
 		if (strcmp(curr->key, key) == 0)
 			return curr;
 	}
@@ -167,7 +168,7 @@ void config_clear_items(struct dl_list *list)
 void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque)
 {
 	struct config_item *curr = NULL, *tmp;
-	
+
 	if (dl_list_empty(list))
 		return;
 	if (!action)
@@ -217,30 +218,13 @@ out:
 	return 0;
 }
 
-static int _config_parse_cmdline(char *hint)
+static int _config_parse_cmdline(char *cmdline, char *hint)
 {
-	int fd, bytes;
 	char *buf = NULL, *k = NULL, *nl = NULL;
 	char *ptr_out = NULL, *ptr_in = NULL;
 	char *token = NULL, *key = NULL, *value = NULL;
 
-	// Get current step revision from cmdline
-	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0)
-		return -1;
-
-	buf = calloc(1, sizeof(char) * (1024 + 1));
-	if (!buf) {
-		close(fd);
-		return -1;
-	}
-
-	bytes = read_nointr(fd, buf, sizeof(char)*1024);
-	if (!bytes) {
-		close(fd);
-		return -1;
-	}
-	close(fd);
+	buf = strdup(cmdline);
 	token = strtok_r(buf, " ", &ptr_out);
 	while (token) {
 		if (strncmp(hint, token, strlen(hint)) == 0) {
@@ -270,12 +254,13 @@ static int _config_parse_cmdline(char *hint)
 int pv_config_from_file(char *path, struct pantavisor_config *config)
 {
 	char *item;
+	struct pv_system *system = get_pv_system();
 
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
 	// for overrides
-	_config_parse_cmdline("pv_");
+	_config_parse_cmdline(system->cmdline, "pv_");
 
 	item = _config_get_value("bootloader.type");
 	if (item && !strcmp(item, "uboot"))
@@ -293,34 +278,63 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 
 	config->bl.mtd_path = _config_get_value("bootloader.mtd_env");
 
-	config->pvdir_ = getenv ("PV_RUNDIR");
-	/* if no env, we get from config 'pvdir_' in pantavisor.config */
-	if (!config->pvdir_ || !strlen(config->pvdir_))
-		config->pvdir_ = _config_get_value("pvdir_");
-	/* otherwise we fall back to old style '/' like in PID 1 runmode */
-	if (!config->pvdir_ || !strlen(config->pvdir_))
-		config->pvdir_ = "/pv";
+	config->rundir = getenv ("PV_RUNDIR");
+	if (!config->rundir || !strlen(config->rundir))
+		config->rundir = _config_get_value("rundir");
+	if (!config->rundir || !strlen(config->rundir))
+		config->rundir = system->rundir;
 
-	config->pvdir_challenge = malloc((strlen(config->pvdir_) + 1 + strlen("challenge") + 1) * sizeof(char));
-	sprintf(config->pvdir_challenge, "%s/%s", config->pvdir_, "challenge");
-	config->pvdir_deviceid = malloc((strlen(config->pvdir_) + 1 + strlen("device-id") + 1) * sizeof(char));
-	sprintf(config->pvdir_deviceid, "%s/%s", config->pvdir_, "device-id");
-	config->pvdir_logsdir = malloc((strlen(config->pvdir_) + 1 + strlen("logs") + 1) * sizeof(char));
-	sprintf(config->pvdir_logsdir, "%s/%s", config->pvdir_, "logs");
-	config->pvdir_pantahubhost = malloc((strlen(config->pvdir_) + 1 + strlen("pantahub-host") + 1) * sizeof(char));
-	sprintf(config->pvdir_pantahubhost, "%s/%s", config->pvdir_, "pantahub-host");
-	config->pvdir_pvctrl = malloc((strlen(config->pvdir_) + 1 + strlen("pv-ctrl") + 1) * sizeof(char));
-	sprintf(config->pvdir_pvctrl, "%s/%s", config->pvdir_, "pv-ctrl");
-	config->pvdir_logctrl = malloc((strlen(config->pvdir_) + 1 + strlen("pv-ctrl-log") + 1) * sizeof(char));
-	sprintf(config->pvdir_logctrl, "%s/%s", config->pvdir_, "pv-ctrl-log");
-	config->pvdir_usermeta = malloc((strlen(config->pvdir_) + 1 + strlen("user-meta") + 1) * sizeof(char));
-	sprintf(config->pvdir_usermeta, "%s/%s", config->pvdir_, "user-meta");
+	config->pvdir = getenv ("PV_PVDIR");
+	if (!config->pvdir || !strlen(config->pvdir))
+		config->pvdir = _config_get_value("pvdir");
+	if (!config->pvdir || !strlen(config->pvdir))
+		config->pvdir = system->pvdir;
+
+	config->etcdir = getenv ("PV_ETCDIR");
+	if (!config->etcdir || !strlen(config->etcdir))
+		config->etcdir = _config_get_value("etcdir");
+	if (!config->etcdir || !strlen(config->etcdir))
+		config->etcdir = system->etcdir;
+
+
+	free(config->pvdir_challenge);
+	config->pvdir_challenge = malloc((strlen(config->pvdir) + 1 + strlen("challenge") + 1) * sizeof(char));
+	sprintf(config->pvdir_challenge, "%s/%s", config->pvdir, "challenge");
+
+	free(config->pvdir_deviceid);
+	config->pvdir_deviceid = malloc((strlen(config->pvdir) + 1 + strlen("device-id") + 1) * sizeof(char));
+	sprintf(config->pvdir_deviceid, "%s/%s", config->pvdir, "device-id");
+
+	free(config->pvdir_logsdir);
+	config->pvdir_logsdir = malloc((strlen(config->pvdir) + 1 + strlen("logs") + 1) * sizeof(char));
+	sprintf(config->pvdir_logsdir, "%s/%s", config->pvdir, "logs");
+
+	free(config->pvdir_pantahubhost);
+	config->pvdir_pantahubhost = malloc((strlen(config->pvdir) + 1 + strlen("pantahub-host") + 1) * sizeof(char));
+	sprintf(config->pvdir_pantahubhost, "%s/%s", config->pvdir, "pantahub-host");
+
+	free(config->pvdir_pvctrl);
+	config->pvdir_pvctrl = malloc((strlen(config->pvdir) + 1 + strlen("pv-ctrl") + 1) * sizeof(char));
+	sprintf(config->pvdir_pvctrl, "%s/%s", config->pvdir, "pv-ctrl");
+
+	free(config->pvdir_logctrl);
+	config->pvdir_logctrl = malloc((strlen(config->pvdir) + 1 + strlen("pv-ctrl-log") + 1) * sizeof(char));
+	sprintf(config->pvdir_logctrl, "%s/%s", config->pvdir, "pv-ctrl-log");
+
+	free(config->pvdir_usermeta);
+	config->pvdir_usermeta = malloc((strlen(config->pvdir) + 1 + strlen("user-meta") + 1) * sizeof(char));
+	sprintf(config->pvdir_usermeta, "%s/%s", config->pvdir, "user-meta");
 
 	config->storage.path = _config_get_value("storage.device");
 	config->storage.fstype = _config_get_value("storage.fstype");
 	config->storage.opts = _config_get_value("storage.opts");
-	config->storage.mntpoint = _config_get_value("storage.mntpoint");
 	config->storage.mnttype = _config_get_value("storage.mnttype");
+
+	config->storage.mntpoint = _config_get_value("storage.mntpoint");
+	if(!config->storage.mntpoint || !strlen(config->storage.mntpoint)){
+		/* on embedded systems we default to vardir */
+		config->storage.mntpoint = system->vardir;
+	}
 
 	item = _config_get_value("wdt.enabled");
 	config->wdt.enabled = item ? atoi(item) : 1;
@@ -350,24 +364,41 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 int ph_config_from_file(char *path, struct pantavisor_config *config)
 {
 	char *item;
+	struct pv_system *system;
 
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
+	system = get_pv_system();
+
 	// for overrides
-	_config_parse_cmdline("ph_");
+	_config_parse_cmdline(system->cmdline, "ph_");
 
-	config->logdir = _config_get_value("log.dir");
-	if (!config->logdir)
-		config->logdir = strdup("/storage/logs/");
+	config->logdir = getenv ("PV_LOGDIR");
+	if (!config->logdir || !strlen(config->logdir))
+		config->logdir = _config_get_value("log.dir");
+	if (!config->logdir || !strlen(config->logdir))
+		config->logdir = system->logdir;
 
+	if (config->dropbearcachedir) free(config->dropbearcachedir);
 	config->dropbearcachedir = _config_get_value("dropbear.cache.dir");
-	if (!config->dropbearcachedir)
-		config->dropbearcachedir = strdup("/storage/cache/dropbear");
+	if (!config->dropbearcachedir) {
+		config->dropbearcachedir = calloc (sizeof(char) * (strlen(config->storage.mntpoint) + strlen("/cache/dropbear") + 2),1);
+		config->dropbearcachedir = strcpy(config->dropbearcachedir, config->storage.mntpoint);
+		config->dropbearcachedir = strcat(config->dropbearcachedir, "/cache/dropbear");
+	} else {
+		config->dropbearcachedir = strdup(config->dropbearcachedir);
+	}
 
+	if (config->metacachedir) free(config->metacachedir);
 	config->metacachedir = _config_get_value("meta.cache.dir");
-	if (!config->metacachedir)
-		config->metacachedir = strdup("/storage/cache/meta");
+	if (!config->metacachedir) {
+		config->metacachedir = calloc (sizeof(char) * (strlen(config->storage.mntpoint) + strlen("/cache/meta") + 2),1);
+		config->metacachedir = strcpy(config->metacachedir, config->storage.mntpoint);
+		config->metacachedir = strcat(config->metacachedir, "/cache/meta");
+	} else {
+		config->metacachedir = strdup(config->metacachedir);
+	}
 
 	item = _config_get_value("log.maxsize");
 	if (item)
@@ -428,10 +459,9 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 
 	config->creds.tpm.key = _config_get_value("creds.tpm.key");
 	config->creds.tpm.cert = _config_get_value("creds.tpm.cert");
-
 	config->creds.host = _config_get_value("creds.host");
 	if (!config->creds.host) {
-		config->creds.host = strdup("192.168.53.1");
+		config->creds.host = "192.168.0.2";
 		pv_log(INFO, "no host set, using default: '%s'", config->creds.host);
 	}
 
@@ -529,10 +559,12 @@ const char* pv_log_get_config_item(struct pv_logger_config *config,
 	}
 	return NULL;
 }
+
 static int pv_config_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
+	struct pv_system *system = NULL;
 	int ret = -1;
 	char *configfile;
 
@@ -541,47 +573,37 @@ static int pv_config_init(struct pv_init *this)
 		goto out;
 	config = pv->config;
 
-	configfile = getenv("PV_CONFIG");
-	if (configfile) {
-		/* pantavisor must use this config if env is set */
-	        if (pv_config_from_file(configfile, config) < 0) {
-			printf("FATAL: unable to parse pantavisor config");
-			goto out;
-		}
-		ret = 0;
-	} else if (!pv->is_embedded && !access(PV_CONFIG_FILENAME, R_OK)) {
-		/* pantavisor as PID 1 uses this place */
-	        if (pv_config_from_file(PV_CONFIG_FILENAME, config) < 0) {
-			printf("FATAL: unable to parse standalone pantavisor config");
-			goto out;
-		}
-		ret = 0;
-	} else if (pv->is_embedded && !access(PV_CONFIG_FILENAME_FHSRH, R_OK)) {
-		/* on RH/FHS systems we use this location for admins to configure pantavisor */
-	        if (pv_config_from_file(PV_CONFIG_FILENAME_FHSRH, config) < 0) {
-			printf("FATAL: unable to parse admin pantavisor config");
-			goto out;
-		}
-		ret = 0;
+	system = get_pv_system();
 
-	} else if (pv->is_embedded && !access(PV_CONFIG_FILENAME_DEFAULT_FHSRH, R_OK)) {
-		/* on RH/FHS systems we look for the default INSIDE the RO /usr/lib... */
-	        if (pv_config_from_file(PV_CONFIG_FILENAME_DEFAULT_FHSRH, config) < 0) {
-			printf("FATAL: unable to parse default pantavisor config");
-			goto out;
-		}
-		ret = 0;
-	} else {
-		printf("WARNING: no pantavisor.config found, trying with defaults....\n");
+	configfile = getenv("PV_CONFIG");
+	if (!configfile) {
+		configfile = calloc (sizeof(char) * (strlen(system->etcdir) + 1 + strlen("/pantavisor.config")),1);
+		strcat(configfile, system->etcdir);
+		strcat(configfile, "/pantavisor.config");
 	}
 
-out:
+	/* if file does not exist; use datadir one */
+	if (access(configfile, R_OK)) {
+		configfile = realloc(configfile, sizeof(char) * (strlen(system->datadir) + 1 + strlen("/pantavisor.config")));
+		configfile[0] = 0;
+		strcat(configfile, system->datadir);
+		strcat(configfile, "/pantavisor.config");
+	}
+
+	/* pantavisor must use this config if env is set */
+	if (pv_config_from_file(configfile, config) < 0) {
+		printf("FATAL: unable to parse pantavisor config %s", configfile);
+		goto out;
+	}
+	ret = 0;
+ out:
 	return ret;
 }
 
 static int ph_config_init(struct pv_init *this)
 {
-	char pconfig_p[256];
+	const struct pv_system *system = get_pv_system();
+	char *configfile;
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
 	int ret = -1;
@@ -590,13 +612,37 @@ static int ph_config_init(struct pv_init *this)
 	if (!pv || !pv->config)
 		goto out;
 	config = pv->config;
-	sprintf(pconfig_p, "%s/config/pantahub.config", config->storage.mntpoint);
-	if (ph_config_from_file(pconfig_p, config) < 0) {
-		printf("FATAL: unable to parse pantahub config");
+
+
+	configfile = getenv("PH_CONFIG");
+	if (!configfile) {
+		configfile = calloc (sizeof(char) * (strlen(config->storage.mntpoint) + 1 + strlen("/config/pantahub.config")),1);
+		strcat(configfile, config->storage.mntpoint);
+		strcat(configfile, "/config/pantahub.config");
+	}
+
+	if (access(configfile, R_OK)) {
+		configfile = calloc (sizeof(char) * (strlen(pv->system->etcdir) + 1 + strlen("/pantahub.config")),1);
+		strcat(configfile, pv->system->etcdir);
+		strcat(configfile, "/pantahub.config");
+	}
+
+	/* if file does not exist; use datadir one */
+	if (access(configfile, R_OK)) {
+		configfile = realloc(configfile, sizeof(char) * (strlen(system->datadir) + 1 + strlen("/pantahub.config")));
+		configfile[0] = 0;
+		strcat(configfile, system->datadir);
+		strcat(configfile, "/pantahub.config");
+	}
+
+	if (ph_config_from_file(configfile, config) < 0) {
+		setenv("PH_CONFIG", configfile, true);
+		printf("FATAL: error to parse pantahub config");
 		goto out;
 	}
+
 	ret = 0;
-out:
+ out:
 	return ret;
 }
 
@@ -614,6 +660,5 @@ struct pantavisor_config* get_pv_config(void)
 {
 	if (!get_pv_instance())
 		return NULL;
-        return get_pv_instance()->config;
+	return get_pv_instance()->config;
 }
-

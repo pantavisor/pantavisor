@@ -22,6 +22,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <limits.h>
 #include <unistd.h>
 #include "init.h"
 #include "blkid.h"
@@ -47,9 +48,9 @@ static int ph_mount_init(struct pv_init *this)
 		goto out;
 	config = pv->config;
 
-	// Make pantavisor control area
-	if (stat("/pv", &st) != 0)
-		mkdir_p("/pv", 0500);
+	// Make pantavisor control area - host parts
+	if (stat(config->rundir, &st) != 0)
+		mkdir_p(config->rundir, 0500);
 
 	if (stat(config->logdir, &st) != 0)
 		mkdir_p(config->logdir, 0500);
@@ -59,15 +60,33 @@ static int ph_mount_init(struct pv_init *this)
 
 	if (stat(config->dropbearcachedir, &st) != 0)
 		mkdir_p(config->dropbearcachedir, 0500);
-	mkdir_p("/pv/user-meta/", 0755);
-	if (config->metacachedir)
-		mount_bind(config->metacachedir, "/pv/user-meta");
 
-	mkdir_p("/etc/dropbear/", 0755);
-	if (config->dropbearcachedir)
-		mount_bind(config->dropbearcachedir, "/etc/dropbear");
+	char dropbeardir[PATH_MAX];
+	sprintf(dropbeardir, "%s/dropbear/", config->etcdir);
+
+	if (stat(dropbeardir, &st) != 0)
+		mkdir_p(dropbeardir, 0755);
+
+	// Make pantavisor control area - run part
+	if (stat(config->pvdir_usermeta, &st) != 0)
+		mkdir_p(config->pvdir_usermeta, 0755);
+
+	if (stat(config->pvdir_logsdir, &st) != 0)
+		mkdir_p(config->pvdir_logsdir, 0500);
+
+
+	// setup bind mounts - if not in place
+	while (umount2(config->pvdir_usermeta, MNT_FORCE) == 0);
+	mount_bind(config->metacachedir, config->pvdir_usermeta);
+
+	while(umount2(config->pvdir_logsdir, MNT_FORCE) == 0);
+	mount_bind(pv->config->logdir, pv->config->pvdir_logsdir);
+
+	while(umount2(dropbeardir, MNT_FORCE) == 0);
+	mount_bind(config->dropbearcachedir, dropbeardir);
+
 	ret = 0;
-out:
+ out:
 	return ret;
 }
 
@@ -81,9 +100,18 @@ static int pv_mount_init(struct pv_init *this)
 
 	pv = get_pv_instance();
 	if (!pv || !pv->config)
-		goto out;
+		exit_error(errno, "Pantavisor must be configured before pv_mount_init can be done");
 
 	config = pv->config;
+
+	if ((!config->storage.path || !strlen(config->storage.path))) {
+		if (!pv->system->is_embedded)
+			exit_error(errno, "Mount storage.path config is required unless pantavisor runs in embedded mode");
+		ret = 0;
+		// skip the mount code ...
+		goto out;
+	}
+
 	// Create storage mountpoint and mount device
 	mkdir_p(config->storage.mntpoint, 0755);
 	blkid_init(&dev_info);
@@ -98,7 +126,7 @@ static int pv_mount_init(struct pv_init *this)
 		get_blkid(&dev_info, config->storage.path);
 		if (dev_info.device && stat(dev_info.device, &st) == 0)
 			break;
-		printf("INFO: trail storage not yet available, waiting...");
+		printf("INFO: trail storage not yet available, waiting...\n");
 		sleep(1);
 		continue;
 	}
@@ -111,7 +139,7 @@ static int pv_mount_init(struct pv_init *this)
 	} else {
 		int status;
 		char *mntcmd = calloc(sizeof(char), strlen("/btools/pvmnt.%s %s") +
-						strlen (config->storage.mnttype) + 
+						strlen (config->storage.mnttype) +
 						strlen (config->storage.mntpoint) + 1);
 
 		if (!mntcmd) {
@@ -139,4 +167,3 @@ struct pv_init ph_init_mount = {
 	.init_fn = ph_mount_init,
 	.flags = 0,
 };
-

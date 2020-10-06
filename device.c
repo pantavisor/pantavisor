@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2018-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -44,6 +44,7 @@
 #include "pantahub.h"
 #include "device.h"
 #include "version.h"
+#include "revision.h"
 #include "init.h"
 #include "cmd.h"
 #include "revision.h"
@@ -94,7 +95,7 @@ static int pv_device_info_read_version(struct pv_device_info_read
 	return 0;
 }
 
-static int pv_device_info_read_arch(struct pv_device_info_read 
+static int pv_device_info_read_arch(struct pv_device_info_read
 						*pv_device_info_read)
 {
 	char *buf = pv_device_info_read->buf;
@@ -106,8 +107,21 @@ static int pv_device_info_read_arch(struct pv_device_info_read
 	return 0;
 }
 
-static int pv_device_info_read_dtmodel(struct pv_device_info_read 
-						*pv_device_info_read) 
+static int pv_device_info_read_pvmode(struct pv_device_info_read
+				      *pv_device_info_read)
+{
+	char *buf = pv_device_info_read->buf;
+	int buflen = pv_device_info_read->buflen;
+	struct pv_system *system = get_pv_system();
+
+	if (pv_device_info_buf_check(pv_device_info_read))
+		return -1;
+	snprintf(buf, buflen, "%s", system->is_embedded ? "embedded": "system");
+	return 0;
+}
+
+static int pv_device_info_read_dtmodel(struct pv_device_info_read
+						*pv_device_info_read)
 {
 	char *buf = pv_device_info_read->buf;
 	int buflen = pv_device_info_read->buflen;
@@ -162,6 +176,9 @@ static struct pv_device_info_read pv_device_info_readkeys[] = {
 	},
 	{	.key = "pantavisor.dtmodel",
 		.reader = pv_device_info_read_dtmodel
+	},
+	{	.key = "pantavisor.mode",
+		.reader = pv_device_info_read_pvmode
 	},
 	{	.key = "pantavisor.cpumodel",
 		.reader = pv_device_info_read_cpumodel
@@ -621,7 +638,7 @@ static int __pv_device_factory_meta(struct pantavisor *pv, const char *factory_f
 	 * replace last ,.
 	 */
 	json_holder[json_len - 1] = '}';
-	
+
 	ret = pv_ph_upload_metadata(pv, json_holder);
 	pv_log_put_buffer(log_buffer);
 	pv_log(INFO, "metadata_json : %s", json_holder);
@@ -696,13 +713,14 @@ static int pv_device_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
-	char tmp[256];
+	char tmp[PATH_MAX];
 	int fd = -1;
 
 	pv = get_pv_instance();
 	if (!pv || !pv->config)
 		return -1;
 	config = pv->config;
+
 	// create hints
 	fd = open(config->pvdir_challenge, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
@@ -718,7 +736,7 @@ static int pv_device_init(struct pv_init *this)
 	sprintf(tmp, "https://%s:%d\n", config->creds.host, config->creds.port);
 	write(fd, tmp, strlen(tmp));
 	close(fd);
-	
+
 	pv->dev = calloc(1, sizeof(struct pv_device));
 	if (pv->dev) {
 		dl_list_init(&pv->dev->metalist);
@@ -747,7 +765,8 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	 */
 	if (pv->state->rev != 0)
 		return true;
-	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
+	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done",
+		 pv->config->storage.mntpoint);
 
 	if (stat(path, &st))
 		return false;

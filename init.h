@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -73,6 +73,7 @@ extern struct pv_init *pv_init_tbl[];
 extern struct pv_init pv_init_bl;
 extern struct pv_init pv_init_config;
 extern struct pv_init ph_init_config;
+extern struct pv_init pv_init_skel;
 extern struct pv_init pv_init_device;
 extern struct pv_init pv_init_log;
 extern struct pv_init pv_init_mount;

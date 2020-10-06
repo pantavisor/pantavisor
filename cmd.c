@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -52,11 +52,23 @@ struct  ucred {
 int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 {
 	int fd;
+	int enable = 1;
 	struct sockaddr_un addr;
+	static bool is_setup = 0;
+
+	if (!is_setup) {
+		unlink(path);
+		is_setup = 1;
+	}
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to open control socket");
+		goto out;
+	}
+
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+		pv_log(ERROR, "unable to set sockopt to SO_REUSEADDR");
 		goto out;
 	}
 
@@ -65,18 +77,21 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 	strcpy(addr.sun_path, path);
 
 	if (bind(fd, (const struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		pv_log(ERROR, "unable to bind control socket fd=%d", fd);
+		pv_log(ERROR, "unable to bind control socket fd=%d; %s", fd, strerror(errno));
 		close(fd);
 		fd = -1;
 		goto out;
 	}
 
 	// queue 15 commands
-	listen(fd, 15);
+	if (listen(fd, 15)) {
+		pv_log(ERROR, "unable to listen on control socket %s; %s", path, strerror(errno));
+		close(fd);
+		fd = -1;
+	}
 
+ out:
 	pv->ctrl_fd = fd;
-
-out:
 	return fd;
 }
 

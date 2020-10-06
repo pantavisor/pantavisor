@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -31,12 +31,10 @@
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
-#define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
-#define PV_CONFIG_FILENAME_FHSRH	"/etc/pantavisor/pantavisor.config"
-#define PV_CONFIG_FILENAME_DEFAULT_FHSRH	"/usr/lib/pantavisor/etc/pantavisor/pantavisor.config"
 // pantavisor.h
 
 char pv_user_agent[4096];
+char cmdline[4096];
 
 struct trail_remote;
 
@@ -44,10 +42,47 @@ struct trail_remote;
 #define TRAIL_NO_NETWORK 	(-2)
 #define PV_USER_AGENT_FMT 	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
-struct pantavisor {
+struct pv_bsp {
+	char *kernel;
+	char *fdt;
+	char *firmware;
+	char *modules;
+	char *initrd;
+	struct dl_list pv_addon_dl;
+};
+
+struct pv_os {
+	char *spec;
+	char *ref;
+	char *args;
+};
+
+struct pv_system {
+	/* true if we run inside a main OS; false if we run as PID 1 */
 	bool is_embedded;
+
+	/* true if we want to run in foreground */
+	bool is_standalone;
+
+	/* cmdline from /proc/cmdline or actual argv in embedded case */
+	char *cmdline;
+
+	/* common directories */
+	char *prefix; /* PID1: / | EMBED: /opt/pantavisor */
+	char *bindir; /* PID1: / | EMBED: /opt/pantavisor/bin */
+	char *vardir; /* PID1: /storage | EMBED: $prefix/var/pantavisor */
+	char *logdir; /* PID1: /storage/logs | EMBED: $prefix/var/log/pantavisor */
+	char *etcdir; /* PID1: /etc | EMBED: $prefix/etc/ */
+	char *rundir; /* PID1: / | EMBED: $prefix/run/pantavisor */
+	char *pvdir; /* PID1: /pv | EMBED: $rundir/pv */
+	char *datadir; /* PID1: /pshare | EMBED: /opt/pantavisor/share */;
+	char *pluginsdir /* PID1: /plugins | EMBED: /opt/pantavisor/plugins */;
+};
+
+struct pantavisor {
 	int last;
 	char *step;
+	struct pv_system *system;
 	struct pv_device *dev;
 	struct pv_update *update;
 	struct pv_state *state;
@@ -69,7 +104,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
 void pv_meta_set_tryonce(struct pantavisor *pv, int value);
 void pv_teardown(struct pantavisor *pv);
 struct pv_state* pv_get_state(struct pantavisor *pv, int current);
-int pantavisor_init(bool do_fork);
+int pantavisor_init(struct pv_system *system, bool do_fork);
 struct pantavisor* get_pv_instance(void);
+struct pv_system* get_pv_system(void);
 struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
 #endif

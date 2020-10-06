@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include "utils/list.h"
+
 enum {
 	BL_UBOOT_PLAIN = 0,
 	BL_UBOOT_PVK,
@@ -83,7 +84,9 @@ struct pantavisor_network {
 
 struct pantavisor_config {
 	char *name;
-	char *pvdir_;
+	char *rundir;
+	char *pvdir;
+	char *etcdir;
 	char *pvdir_challenge;
 	char *pvdir_deviceid;
 	char *pvdir_pantahubhost;
@@ -130,6 +133,7 @@ struct pv_logger_config {
 	const char* (*static_pair)[2];
 };
 
+
 int load_key_value_file(const char *path, struct dl_list *list);
 char* config_get_value(struct dl_list *list, char *key);
 void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque);
@@ -156,4 +160,5 @@ static void pv_free_logger_config(struct pv_logger_config *item_config)
 	free((void*)item_config->pair[i]);
 	free(item_config);
 }
+
 #endif

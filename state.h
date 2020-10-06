@@ -28,11 +28,8 @@
 struct pv_state {
 	int rev;
 	char *spec;
-	char *kernel;
-	char *fdt;
-	char *firmware;
-	char *modules;
-	char *initrd;
+	struct pv_bsp *bsp;
+	struct pv_os *os;
 	struct dl_list platforms; // pv_platform
 	struct dl_list volumes; // pv_volume
 	struct dl_list addons; // pv_addon

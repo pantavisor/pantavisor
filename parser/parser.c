@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -44,6 +44,10 @@ struct pv_state_parser parsers[SPEC_UNKNOWN] = {
 	},
 	{
 		.spec = "pantavisor-service-system@1",
+		.parse = system1_parse,
+	},
+	{
+		.spec = "pantavisor-service-embed@1",
 		.parse = system1_parse,
 	}
 };

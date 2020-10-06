@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -100,7 +100,7 @@ out:
 static int ph_client_init(struct pantavisor *pv)
 {
 	int size;
-        trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
+	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 
 	if (client)
 		goto auth;
@@ -129,13 +129,15 @@ auth:
 
 /* API */
 
-const char** pv_ph_get_certs(struct pantavisor *__unused)
+const char** pv_ph_get_certs(struct pantavisor *pv)
 {
 	struct dirent **files;
 	char **cafiles;
-	char *dir = "/certs/";
-	char path[128];
+	char dir[PATH_MAX];
+	char path[PATH_MAX];
 	int n = 0, i = 0, size = 0;
+
+	snprintf(dir, PATH_MAX, "%s/certs", pv->system->datadir);
 
 	n = scandir(dir, &files, NULL, alphasort);
 	if (n < 0)
@@ -148,7 +150,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 		if (!strncmp(files[n]->d_name, ".", 1))
 			continue;
 
-		sprintf(path, "/certs/%s", files[n]->d_name);
+		sprintf(path, "%s/%s", dir, files[n]->d_name);
 		size = strlen(path);
 		cafiles[i] = malloc((size+1) * sizeof(char));
 		strncpy(cafiles[i], path, size);
@@ -214,7 +216,7 @@ static int pv_do_ph_resolve(const char *ph_host, int port, struct pv_connection 
 		struct sockaddr *sock = rp->ai_addr;
 
 		if  (rp->ai_family == AF_INET) {
-			
+
 			struct sockaddr_in *_sock = (struct sockaddr_in *) rp->ai_addr;
 			_sock->sin_family = AF_INET;
 			_sock->sin_port = htons(port);
@@ -279,7 +281,7 @@ out:
 			inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
 			( conn->sock.sa_family == AF_INET ?
 			ntohs(((struct sockaddr_in*)&conn->sock)->sin_port):
-			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
+			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port)
 			)
 			);
 	} else {
@@ -299,7 +301,7 @@ out:
 					inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
 					( conn->sock.sa_family == AF_INET ?
 					  ntohs(((struct sockaddr_in*)&conn->sock)->sin_port):
-					  ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
+					  ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port)
 					)
 			      );
 			free(conn);
@@ -312,7 +314,7 @@ out:
 int pv_ph_is_available(struct pantavisor *pv)
 {
 	struct pv_connection *conn = NULL;
-	
+
 	if (pv)
 		conn = pv->conn;
 	else
@@ -335,7 +337,7 @@ int pv_ph_is_available(struct pantavisor *pv)
 			inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
 			( conn->sock.sa_family == AF_INET ?
 			ntohs(((struct sockaddr_in*)&conn->sock)->sin_port):
-			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
+			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port)
 			)
 			);
 		goto out;
@@ -539,7 +541,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 		HUB_CREDS_TYPE_ERROR
 	} creds_type;
 
-        if (!strcmp(pv->config->creds.type, "builtin")) {
+	if (!strcmp(pv->config->creds.type, "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
 	} else if(strlen(pv->config->creds.type) >= 4 &&
 			!strncmp(pv->config->creds.type, "ext-", 4)) {
@@ -568,7 +570,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 
 	switch (creds_type) {
 	case HUB_CREDS_TYPE_BUILTIN:
-		ret = pv_ph_register_self_builtin(pv); 
+		ret = pv_ph_register_self_builtin(pv);
 		break;
 	case HUB_CREDS_TYPE_EXTERNAL:
 		ret = pv_ph_register_self_ext(pv, cmd);
@@ -639,9 +641,10 @@ out:
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 {
 	int fd;
-	char buf[256];
+	char buf[PATH_MAX];
 
-	fd = open("/pv/device-id", O_TRUNC | O_SYNC | O_RDWR);
+	sprintf(buf, "%s", pv->config->pvdir_deviceid);
+	fd = open(buf, O_TRUNC | O_SYNC | O_RDWR);
 	if (!fd) {
 		pv_log(INFO, "unable to open device-id hint file");
 		return;
@@ -650,6 +653,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	write(fd, buf, strlen(buf));
 	close(fd);
 
+	sprintf(buf, "%s", pv->config->pvdir_challenge);
 	fd = open("/pv/challenge", O_TRUNC | O_SYNC | O_RDWR);
 	if (!fd) {
 		pv_log(INFO, "unable to open challenge hint file");
@@ -665,7 +669,7 @@ uint8_t pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 	uint8_t ret = 1;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
-	char buf[256];
+	char buf[PATH_MAX];
 
 	if (!ph_client_init(pv))
 		goto out;

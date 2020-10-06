@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -83,6 +83,13 @@ typedef enum {
 	MAX_STATES
 } pv_state_t;
 
+static pv_state_t pv_wait(int wait_sec) {
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	wait_delay = tp.tv_sec + wait_sec;
+	return STATE_WAIT;
+}
+
 static const char* pv_state_string(pv_state_t st)
 {
 	switch(st) {
@@ -112,7 +119,7 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 	ret = pv_device_factory_meta(pv);
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
-	return STATE_WAIT;
+	return pv_wait(5);
 }
 
 static pv_state_t _pv_init(struct pantavisor *pv)
@@ -145,8 +152,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "running pantavisor with runlevel %d and rev %d", runlevel, rev);
 
 	pv->state = pv_get_state(pv, rev);
-	if (!pv->state)
-	{
+	if (!pv->state && pv->system->is_embedded) {
+		pv->state = calloc(sizeof(struct pv_state), 1);
+		pv->state->spec = "pantavisor-service-embedded@1";
+	} else if (!pv->state) {
 		pv_log(ERROR, "state could not be loaded");
 		return STATE_ROLLBACK;
 	}
@@ -190,7 +199,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char *c;
 
 	if (!pv_ph_is_available(pv)) {
-		return STATE_WAIT;
+		return pv_wait(5);
 	}
 
 	c = calloc(1, sizeof(char) * 128);
@@ -354,7 +363,7 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 	pv_meta_update_to_ph(pv);
 	next_state = pv_update_helper(pv);
 out:
-	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
+	pv_log(DEBUG, "going to state = %s", pv_state_string(next_state));
 	return next_state;
 }
 
@@ -379,6 +388,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
+
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
@@ -539,15 +549,19 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	pv_wdt_start(pv);
+	if (!pv->system->is_embedded)
+		pv_wdt_start(pv);
 
 	// unmount storage
 	umount(pv->config->storage.mntpoint);
 	sync();
 
 	sleep(5);
-	pv_log(INFO, "rebooting...");
-	reboot(LINUX_REBOOT_CMD_RESTART);
+	pv_log(INFO, "rebooting/restarting...");
+	if (!pv->system->is_embedded)
+		reboot(LINUX_REBOOT_CMD_RESTART);
+	else
+		exit(0);
 
 	return STATE_EXIT;
 }

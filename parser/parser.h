@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -51,6 +51,7 @@ struct pv_state_parser {
 typedef enum {
 	SPEC_MULTI1,
 	SPEC_SYSTEM1,
+	SPEC_EMBED1,
 	SPEC_UNKNOWN
 } state_spec_t ;
 

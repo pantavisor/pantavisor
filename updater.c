@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -193,7 +193,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
 		if (pending_update) {
-			snprintf(pending_update->retry_data, 
+			snprintf(pending_update->retry_data,
 				sizeof(pending_update->retry_data), "%s", retries);
 		}
 		break;
@@ -241,7 +241,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 				pending_update->pending->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
-		
+
 		snprintf(pending_update->retry_data,
 				sizeof(pending_update->retry_data), "%s", retries);
 		/*
@@ -278,7 +278,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 			 * we don't need to allocate buffer space.
 			 */
 			if (len) {
-				json = (char*)calloc(1, 
+				json = (char*)calloc(1,
 						PATH_MAX + pending_update->progress_size);
 			}
 			/*
@@ -612,7 +612,7 @@ static void __trail_log_resp_err(char *buf, jsmntok_t *tokv, int tokc)
 	}
 
 	if (error && msg) {
-		pv_log(WARN, "Error %s: Message %s, code = %d", 
+		pv_log(WARN, "Error %s: Message %s, code = %d",
 				error, msg, code);
 	}
 	else {
@@ -653,7 +653,7 @@ static void trail_log_trest_err(trest_response_ptr tres)
 		return;
 	if (!tres->json_tokv)
 		return;
-	__trail_log_resp_err(tres->body, tres->json_tokv, 
+	__trail_log_resp_err(tres->body, tres->json_tokv,
 			tres->json_tokc);
 }
 
@@ -1133,7 +1133,10 @@ out:
 
 static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 {
-	if (strcmp(pv->state->kernel, obj->name))
+	if (pv->system->is_embedded)
+		return 0;
+
+	if (strcmp(pv->state->bsp->kernel, obj->name))
 		return 0;
 
 	if (pv->config->bl.type == BL_UBOOT_PVK)
@@ -1340,7 +1343,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	object_update.total_size = obj->size;
 	object_update.current_time = object_update.start_time;
 	object_update.total_downloaded = 0;
-	progress_update.next_update_at = object_update.start_time + 
+	progress_update.next_update_at = object_update.start_time +
 						UPDATE_PROGRESS_FREQ;
 	res = thttp_request_do_file_with_cb (req, fd,
 			trail_download_object_progress, &progress_update);
@@ -1417,9 +1420,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		 */
 		if (data_len)
 			to_write += 1;
-		
+
 		if (to_write > remaining) {
-			char *__new_progress_objects = 
+			char *__new_progress_objects =
 				(char*)realloc(pv->update->progress_objects,
 						(2 * pv->update->progress_size));
 			if (!__new_progress_objects)
@@ -1439,9 +1442,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		} else {
 			pv_log(ERROR, "Failed to allocate space for progress data");
 		}
-		pv_log(DEBUG, "retry_data is %s", 
+		pv_log(DEBUG, "retry_data is %s",
 				pv->update->retry_data);
-		pv_log(DEBUG, "progress_objects is %s", 
+		pv_log(DEBUG, "progress_objects is %s",
 				pv->update->progress_objects);
 	}
 out:
@@ -1469,7 +1472,7 @@ static int trail_link_objects(struct pantavisor *pv)
 		*c = '\0';
 		mkdir_p(tmp, 0755);
 		free(tmp);
-	        ext = strrchr(obj->relpath, '.');
+		ext = strrchr(obj->relpath, '.');
 		if (ext && (strcmp(ext, ".bind") == 0)) {
 			int s_fd, d_fd;
 			s_fd = open(obj->objpath, O_RDONLY);
@@ -1491,7 +1494,8 @@ static int trail_link_objects(struct pantavisor *pv)
 	}
 	pv_objects_iter_end;
 
-	err += pv_meta_link_boot(pv, pv->update->pending);
+	if (!pv->system->is_embedded)
+		err += pv_meta_link_boot(pv, pv->update->pending);
 
 	return -err;
 }
@@ -1501,7 +1505,6 @@ static int trail_link_objects(struct pantavisor *pv)
 static int trail_download_objects(struct pantavisor *pv)
 {
 	int ret = -1;
-	struct pv_object *k_new, *k_old;
 	struct pv_update *u = pv->update;
 	struct pv_object *o = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
@@ -1525,12 +1528,6 @@ static int trail_download_objects(struct pantavisor *pv)
 			goto out;
 		}
 	}
-
-	k_new = pv_objects_get_by_name(u->pending,
-			u->pending->kernel);
-	k_old = pv_objects_get_by_name(pv->state,
-			pv->state->kernel);
-
 
 	if (u->total_update) {
 		u->total_update->object_name = "total";
@@ -1635,12 +1632,17 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	ret = pending->rev;
+
 	pv_log(INFO, "update successfully installed, so next boot will start rev %d", ret);
 	if (pv_revision_set_installed(ret)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
 		goto out;
 	}
+	/* always remember next rev as a try boot revision so that a cold
+	 * reboot will happily try boot into that making it a checkpoint if
+	 * feasible ... */
+	pv_bl_set_try(ret);
 
 	pv_update_set_status(pv, UPDATE_INSTALLED);
 
@@ -1689,7 +1691,8 @@ static int pv_update_init(struct pv_init *this)
 	if (!pv || !pv->config)
 		goto out;
 	config = pv->config;
-	if (config->revision_retries <= 0) MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
+	if (config->revision_retries <= 0)
+		MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
 	else
 		MAX_REVISION_RETRIES = config->revision_retries;
 
