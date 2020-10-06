@@ -21,6 +21,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -109,7 +110,7 @@ int mount_bind(char *src, char *dest)
 
 	ret = mount(src, dest, "none", MS_BIND, 0);
 	if (ret < 0)
-		pv_log(WARN, "unable to bind mount from %s to %s", src, dest);
+		pv_log(WARN, "unable to bind mount from %s to %s: %s", src, dest, strerror(errno));
 
 	return ret;
 }

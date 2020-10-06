@@ -49,11 +49,23 @@ struct  ucred {
 int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 {
 	int fd;
+	int enable = 1;
 	struct sockaddr_un addr;
+	static bool is_setup = 0;
+
+	if (!is_setup) {
+		unlink(path);
+		is_setup = 1;
+	}
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to open control socket");
+		goto out;
+	}
+
+	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0) {
+		pv_log(ERROR, "unable to set sockopt to SO_REUSEADDR");
 		goto out;
 	}
 
@@ -62,18 +74,21 @@ int pv_cmd_socket_open(struct pantavisor *pv, char *path)
 	strcpy(addr.sun_path, path);
 
 	if (bind(fd, (const struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		pv_log(ERROR, "unable to bind control socket fd=%d", fd);
+		pv_log(ERROR, "unable to bind control socket fd=%d; %s", fd, strerror(errno));
 		close(fd);
 		fd = -1;
 		goto out;
 	}
 
 	// queue 15 commands
-	listen(fd, 15);
+	if (listen(fd, 15)) {
+		pv_log(ERROR, "unable to listen on control socket %s; %s", path, strerror(errno));
+		close(fd);
+		fd = -1;
+	}
 
+ out:
 	pv->ctrl_fd = fd;
-
-out:
 	return fd;
 }
 
@@ -124,9 +139,9 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 
 	c = calloc(1, sizeof(struct pv_cmd_req));
 
-	if (getsockopt(fd, SOL_SOCKET,SO_PEERCRED, &peer_cred, &peer_size) < 0)
+	if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer_cred, &peer_size) < 0) {
 		c->platform = NULL;
-	else {
+	} else {
 		struct pv_platform *walker = pv->state->platforms;
 		while (walker) {
 			struct pv_log_info *item, *tmp;

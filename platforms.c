@@ -44,6 +44,7 @@ int setns(int nsfd, int nstype);
 #include "parser/parser.h"
 #include "wdt.h"
 
+#include "const.h"
 #include "platforms.h"
 #include "pvlogger.h"
 #include "utils/list.h"
@@ -262,7 +263,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 
 	char *plugins_dir = getenv("PV_PLUGINS_DIR");
 	if (!plugins_dir) {
-		plugins_dir = "/usr/lib/pantavisor/plugins";
+		plugins_dir = LIBDIR "/plugins";
 	}
 	sprintf(lib_path, "%s/pv_%s.so", plugins_dir, c->type);
 

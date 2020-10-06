@@ -67,18 +67,7 @@ static int pv_revision_init(struct pv_init *this)
 	int pv_rev = 0, pv_try = 0, pv_boot = -1;
 	const int CMDLINE_OFFSET = 7;
 
-		// Get current step revision from cmdline
-		fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0)
-		goto out;
-
-	buf = calloc(1, sizeof(char) * (1024 + 1));
-	if (!buf)
-		goto out;
-	bytes = read_nointr(fd, buf, sizeof(char)*1024);
-	close(fd);
-	if (bytes <= 0)
-		goto out;
+	buf = strdup(get_pv_system()->cmdline);
 
 	token = strtok(buf, " ");
 	while (token) {
@@ -95,7 +84,7 @@ static int pv_revision_init(struct pv_init *this)
 	pv_revision.pv_try = pv_try;
 	pv_revision.pv_boot = pv_boot;
 	ret = 0;
-out:
+ out:
 	return ret;
 }
 

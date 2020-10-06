@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include "utils/list.h"
+
 enum {
 	BL_UBOOT_PLAIN = 0,
 	BL_UBOOT_PVK,
@@ -83,7 +84,9 @@ struct pantavisor_network {
 
 struct pantavisor_config {
 	char *name;
-	char *pvdir_;
+	char *rundir;
+	char *pvdir;
+	char *etcdir;
 	char *pvdir_challenge;
 	char *pvdir_deviceid;
 	char *pvdir_pantahubhost;
@@ -129,6 +132,7 @@ struct pv_logger_config {
 	 * */
 	const char* (*static_pair)[2];
 };
+
 struct pv_log_info {
 	const char *logfile;
 	char *name;
@@ -171,4 +175,5 @@ static void pv_free_logger_config(struct pv_logger_config *item_config)
 	free((void*)item_config->pair[i]);
 	free(item_config);
 }
+
 #endif

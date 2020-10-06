@@ -44,6 +44,7 @@
 #include "pantahub.h"
 #include "device.h"
 #include "version.h"
+#include "revision.h"
 #include "init.h"
 #include "cmd.h"
 
@@ -72,7 +73,7 @@ static int pv_device_info_read_version(struct pv_device_info_read
 	return 0;
 }
 
-static int pv_device_info_read_arch(struct pv_device_info_read 
+static int pv_device_info_read_arch(struct pv_device_info_read
 						*pv_device_info_read)
 {
 	char *buf = pv_device_info_read->buf;
@@ -84,8 +85,8 @@ static int pv_device_info_read_arch(struct pv_device_info_read
 	return 0;
 }
 
-static int pv_device_info_read_dtmodel(struct pv_device_info_read 
-						*pv_device_info_read) 
+static int pv_device_info_read_dtmodel(struct pv_device_info_read
+						*pv_device_info_read)
 {
 	char *buf = pv_device_info_read->buf;
 	int buflen = pv_device_info_read->buflen;
@@ -593,7 +594,7 @@ static int __pv_device_factory_meta(struct pantavisor *pv, const char *factory_f
 	 * replace last ,.
 	 */
 	json_holder[json_len - 1] = '}';
-	
+
 	ret = pv_ph_upload_metadata(pv, json_holder);
 	pv_log_put_buffer(log_buffer);
 	pv_log(INFO, "metadata_json : %s", json_holder);
@@ -675,6 +676,7 @@ static int pv_device_init(struct pv_init *this)
 	if (!pv || !pv->config)
 		return -1;
 	config = pv->config;
+
 	// create hints
 	fd = open(config->pvdir_challenge, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
@@ -690,7 +692,7 @@ static int pv_device_init(struct pv_init *this)
 	sprintf(tmp, "https://%s:%d\n", config->creds.host, config->creds.port);
 	write(fd, tmp, strlen(tmp));
 	close(fd);
-	
+
 	pv->dev = calloc(1, sizeof(struct pv_device));
 	if (pv->dev) {
 		dl_list_init(&pv->dev->metalist);
@@ -719,7 +721,8 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	 */
 	if (pv_revision_get_rev() !=0 )
 		return true;
-	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
+	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done",
+		 pv->config->storage.mntpoint);
 
 	if (stat(path, &st))
 		return false;

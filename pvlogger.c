@@ -62,8 +62,8 @@ static char *logger_cmd; //Leave some room to create json
 static struct log default_log;
 struct pv_log_info *pv_log_info = NULL;
 
-#define PV_LOG_BUF_START_OFFSET 	(0)
-#define PV_LOG_BUF_SIZE 		(4096)
+#define PV_LOG_BUF_START_OFFSET		(0)
+#define PV_LOG_BUF_SIZE			(4096)
 
 static int logger_pos = PV_LOG_BUF_START_OFFSET;
 
@@ -78,6 +78,8 @@ static const char* pv_logger_get_logfile(struct pv_log_info *log_info)
 
 static void pv_log(int level, char *msg, ...)
 {
+	const char *log_ctrl_path = get_pv_instance()->config->pvdir_logctrl;
+
 	char __buffer[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
 	char __formatted[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
 	int to_write = 0;
@@ -100,15 +102,15 @@ static void pv_log(int level, char *msg, ...)
 				pv_logger_get_logfile(pv_log_info), to_write);
 
 		if (!pv_log_info->islxc) {
-			int ret = pvctl_write(__buffer, 
+			int ret = pvctl_write(__buffer,
 					ph_logger_msg->len + sizeof(struct ph_logger_msg));
 			if (ret < 0) {
 				printf("Error in pvctl_write"
 						" %d from pvlogger\n", ret);
-			} 
+			}
 
 		} else {
-			int ret = pvctl_write_to_path(LOG_CTRL_PATH, 
+			int ret = pvctl_write_to_path(log_ctrl_path,
 					__buffer,
 					ph_logger_msg->len + sizeof(struct ph_logger_msg));
 			if (ret < 0) {
@@ -132,7 +134,7 @@ static int set_logger_xattr(struct log *log)
 	if (pos < 0)
 		return 0;
 	snprintf(place_holder, sizeof(place_holder), "%" PRId64, pos);
-	
+
 	return set_xattr_on_file(fname, PV_LOGGER_POS_XATTR, place_holder);
 }
 
@@ -172,7 +174,7 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 							to_write, buf);
 			written = to_write;
 		}
-		
+
 		buf += written;
 		buflen -= written;
 		logger_pos += written;
@@ -183,7 +185,7 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 			/*move past the new line.*/
 			buflen -= 1;
 			pv_log(INFO, "%s", logger_cmd);
-			memset(logger_cmd + PV_LOG_BUF_START_OFFSET, 0, 
+			memset(logger_cmd + PV_LOG_BUF_START_OFFSET, 0,
 					PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
 			logger_pos = PV_LOG_BUF_START_OFFSET;
 		}
@@ -268,7 +270,7 @@ static int wait_for_logfile(const char *logfile)
 		ret = LOG_OK;
 		goto out;
 	}
- 	file_dup = strdup(logfile);
+	file_dup = strdup(logfile);
 	dir_dup = strdup(logfile);
 
 	if (!file_dup || !dir_dup) {
@@ -293,7 +295,7 @@ static int wait_for_logfile(const char *logfile)
 		ret = LOG_NOK;
 		goto out;
 	}
-	
+
 	if (inotify_add_watch(fd_dir_notify, parent_dir, IN_CREATE) < 0 ) {
 		pv_log(WARN, "Unable to create inotify watch."
 			"errno = %d (%s)\n", errno, strerror(errno));
@@ -308,7 +310,7 @@ static int wait_for_logfile(const char *logfile)
 		ret = LOG_NOK;
 		goto out;
 	}
-	
+
 	FD_SET(fd_dir_notify, &fdset);
 
 read_again:
@@ -326,7 +328,7 @@ read_again:
 			goto out;
 		}
 	}
-	while (read(fd_dir_notify, inotify_ev, INOTIFY_SIZE) < 0 
+	while (read(fd_dir_notify, inotify_ev, INOTIFY_SIZE) < 0
 			&& errno == EINTR)
 		;
 
@@ -337,7 +339,7 @@ read_again:
 out:
 	if (dir_dup)
 		free(dir_dup);
-	
+
 	if (file_dup)
 		free(file_dup);
 
@@ -365,7 +367,7 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	/*Can't log it only thing we can do is print it on console*/
 	if (!logger_cmd)
 		return -1;
-	
+
 	pv_log_info = log_info;
 	module_name = strdup(platform);
 	snprintf(pr_name, sizeof(pr_name), "pvlogger-%s", module_name);

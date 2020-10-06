@@ -25,6 +25,7 @@
 struct pv_addon* pv_addon_get_by_name(struct pv_state *s, char *name);
 void pv_addon_remove(struct pv_state *s, char *name);
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name);
+void pv_addon_free(struct pv_state *s);
 int pv_addons_link(struct pantavisor *pv);
 int pv_addons_unlink(struct pantavisor *pv);
 

@@ -204,10 +204,16 @@ static void debug_shell()
 	char c[64] = { 0 };
 	int t = 5;
 	int con_fd;
+	char *ttyf;
 
-	con_fd = open("/dev/console", O_RDWR);
+	ttyf = ttyname(STDIN_FILENO);
+	if (!ttyf) {
+		printf("ERROR opening debug shell: %s\n", strerror(errno));
+		return;
+	}
+	con_fd = open(ttyf , O_RDWR);
 	if (!con_fd) {
-		printf("Unable to open /dev/console\n");
+		printf("Unable to open %s\n", ttyf);
 		return;
 	}
 
@@ -232,8 +238,30 @@ static void debug_shell()
 
 #endif
 
+/* PV_STANDALONE will run pantavisor as pid 1, but without starting the
+ * pantavisor main code itself; in this way one can boot the system
+ * and run pantavisor in valgrind etc. from a shell for debugging
+ */
 #define PV_STANDALONE	(1 << 0)
-#define	PV_DEBUG	(1 << 1)
+
+/* PV_EMBEDDED will assume pantavisor is run inside an existing OS
+ * it is similar to the manual run pantavisor in PV_STANDALONE case,
+ * except that it also run the setup code to ensure that all the
+ * essential mounts,etc. are available on the host OS.
+ */
+#define	PV_EMBEDDED	(1 << 1)
+
+/* PV_EARLYMOUNTS enable earlymounts for embedded (non embedded is on by default)
+ * Use this if you run in embedded mode on a system that has all the bits that
+ * pantavisor needs
+ */
+#define PV_EARLYMOUNTS (1 << 2)
+
+/*
+ * PV_DEBUG will run pantavisor in DEBUG mode; this is the default at
+ * this point
+ */
+#define	PV_DEBUG	(1 << 3)
 
 static int is_arg(int argc, char *argv[], char *arg)
 {
@@ -242,7 +270,7 @@ static int is_arg(int argc, char *argv[], char *arg)
 
 	for (int i = 1; i < argc; i++) {
 		if (strcmp(argv[i], arg) == 0)
-			return 1;
+			return i;
 	}
 
 	return 0;
@@ -253,6 +281,12 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 	if (is_arg(argc, argv, "pv_standalone"))
 		*args |= PV_STANDALONE;
 
+	if (is_arg(argc, argv, "pv_embedded"))
+		*args |= PV_EMBEDDED;
+
+	if (is_arg(argc, argv, "pv_earlymounts"))
+		*args |= PV_EARLYMOUNTS;
+
 	if (is_arg(argc, argv, "debug"))
 		*args |= PV_DEBUG;
 
@@ -260,12 +294,207 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 	*args |= PV_DEBUG;
 }
 
+static void usage(char *cmd) {
+	printf("%s [pv_embedded | pv_standalone |] [pv_earlymounts] [debug]\n"
+	       "\t[--version|--manifest]\n"
+	       "\t[--prefix <prefix>] - custom prefix, e.g. /opt/pantavisor or PV_PREFIX\n"
+	       "\t[--rundir <rundir>] - custom rundir, e.g. $prefix/run/ or PV_RUNDIR\n"
+	       "\t[--pvdir <pvdirdir>] - custom prefix, e.g. $rundir/pv or PV_PVDIR\n"
+	       "\t[--vardir <vardir>] - custom vardir, e.g. $prefix/var or PV_VARDIR\n"
+	       "\t[--logdir <vardir>] - custom vardir, e.g. $vardir/log/pantavisor or PV_LOGDIR\n"
+	       "\t[--datadir <datadir>] - custom datadir, e.g. /usr/share/pantavisor or PV_DATADIR\n"
+	       "\t[--etcdir <etcdir>] - custom etcdir, e.g. /etc/pantavisor or PV_ETCDIR\n", cmd);
+	exit (1);
+}
+
+static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) {
+
+	bool is_standalone;
+	char *prefix = NULL, *rundir = NULL, *etcdir = NULL;
+	char *vardir = NULL, *logdir = NULL, *pvdir = NULL;
+	char *pluginsdir = NULL, *datadir = NULL;
+	char *cmd = argv[0];
+	char cmdline[4096];
+	int pos = 0;
+
+	is_standalone = is_arg(argc, argv, "pv_standalone");
+
+	if (is_embedded && is_standalone) {
+		printf ("ERROR: cannot use pv_embedded and pv_standalone at the same time\n");
+		usage(cmd);
+	}
+
+	if ((pos = is_arg(argc, argv, "--prefix"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		prefix = strdup(argv[pos]);
+	} else if (getenv("PV_PREFIX")) {
+		prefix = strdup(getenv("PV_PREFIX"));
+	} else {
+		prefix = is_embedded ? strdup("/opt/pantavisor/") : strdup("/");
+	}
+
+	if ((pos = is_arg(argc, argv, "--rundir"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		rundir = strdup(argv[pos]);
+	} else if (getenv("PV_RUNDIR")) {
+		rundir = strdup(getenv("PV_RUNDIR"));
+	} else {
+		rundir = strdup(prefix);
+		rundir = realloc(rundir, strlen(rundir) + strlen("/run") + 1);
+		rundir = strcat(rundir, "/run");
+	}
+
+	if ((pos = is_arg(argc, argv, "--pvdir"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		pvdir = strdup(argv[pos]);
+	} else if (getenv("PV_PVDIR")) {
+		pvdir = strdup(getenv("PV_PVDIR"));
+	} else {
+		pvdir = strdup(rundir);
+		pvdir = realloc(pvdir, strlen(pvdir) + strlen("/pv") + 1);
+		pvdir = strcat(pvdir, "/pv");
+	}
+
+	if ((pos = is_arg(argc, argv, "--etcdir"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		etcdir = strdup(argv[pos]);
+	} else if (getenv("PV_ETCDIR")) {
+		etcdir = strdup(getenv("PV_ETCDIR"));
+	} else {
+		etcdir = strdup(prefix);
+		etcdir = realloc(etcdir, strlen(etcdir) + strlen("/etc") + 1);
+		etcdir = strcat(etcdir, "/etc");
+	}
+
+	if ((pos = is_arg(argc, argv, "--vardir"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		vardir = strdup(argv[pos]);
+	} else if (getenv("PV_VARDIR")) {
+		vardir = strdup(getenv("PV_VARDIR"));
+	} else {
+		vardir = strdup(prefix);
+		vardir = realloc(vardir, strlen(vardir) + strlen("/var") + 1);
+		vardir = strcat(vardir, "/var");
+	}
+
+	if ((pos = is_arg(argc, argv, "--logdir"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		logdir = strdup(argv[pos]);
+	} else if (getenv("PV_LOGDIR")) {
+		logdir = strdup(getenv("PV_LOGDIR"));
+	} else {
+		logdir = strdup(prefix);
+		logdir = realloc(logdir, (strlen(prefix) + strlen("/var/log/pantavisor") + 1) * sizeof(char));
+		logdir = strcat(logdir, "/var/log/pantavisor");
+	}
+
+	if ((pos = is_arg(argc, argv, "--pluginsdir"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		pluginsdir = strdup(argv[pos]);
+	} else if (getenv("PV_PLUGINSDIR")) {
+		pluginsdir = strdup(getenv("PV_PLUGINSDIR"));
+	} else {
+		pluginsdir = strdup(prefix);
+		pluginsdir = realloc(pluginsdir, strlen(pluginsdir) + strlen("/plugins") + 1);
+		pluginsdir = strcat(pluginsdir, "/plugins");
+	}
+
+	if ((pos = is_arg(argc, argv, "--datadir"))) {
+		if (pos+1 == argc) {
+			usage(cmd);
+		}
+		datadir = strdup(argv[pos]);
+	} else if (getenv("PV_DATADIR")) {
+		datadir = strdup(getenv("PV_DATADIR"));
+	} else {
+		datadir = strdup(prefix);
+		datadir = realloc(datadir, strlen(datadir) + strlen("/share") + 1);
+		datadir = strcat(datadir, "/share");
+	}
+
+	/* lets parse/assemble commandline */
+	if (is_embedded) {
+		int c = 2;
+		for (int i = 1; i < argc; i++) {
+			if ( (c + strlen(argv[i])) >= 4096) {
+				printf("ERROR: cmdline is longer than 4096 characters ...\n");
+				usage(cmd);
+			}
+			if (i > 1)
+				strcat(cmdline," ");
+			strcat(cmdline,argv[i]);
+		}
+	} else {
+		int fd, bytes;
+		char *buf;
+
+		// Get current step revision from cmdline
+		fd = open("/proc/cmdline", O_RDONLY);
+		if (fd < 0) {
+			printf("ERROR: cannot read /proc/cmdline for not embedded pantavisor: %s\n", strerror(errno));
+			usage(cmd);
+		}
+
+		buf = calloc(1, sizeof(char) * 4096);
+		if (!buf) {
+			printf("ERROR: cannot allocate buf %s ...\n", strerror(errno));
+			close(fd);
+			usage(cmd);
+		}
+
+		bytes = read_nointr(fd, buf, sizeof(char)*4095);
+		if (!bytes) {
+			printf("ERROR: error reading bytes from /proc/cmdline %s ...\n", strerror(errno));
+			close(fd);
+			free(buf);
+			usage(cmd);
+		}
+		buf[bytes] = 0;
+		close(fd);
+		strncpy(cmdline, buf, 4096);
+		free(buf);
+	}
+
+	struct pv_system *pv_system = calloc(sizeof(struct pv_system), 1);
+	pv_system->cmdline = strdup(cmdline);
+	pv_system->prefix = prefix;
+	pv_system->etcdir = etcdir;
+	pv_system->vardir = vardir;
+	pv_system->rundir = rundir;
+	pv_system->pvdir  = pvdir;
+	pv_system->logdir  = logdir;
+	pv_system->pluginsdir = pluginsdir;
+	pv_system->datadir = datadir;
+	pv_system->is_embedded = is_embedded;
+	pv_system->is_standalone = is_standalone;
+
+	return pv_system;
+}
+
 int main(int argc, char *argv[])
 {
 	unsigned short args = 0;
-	parse_args(argc, argv, &args);
+	bool is_embedded;
+	struct pv_system *system;
 
-	if (getpid() != 1) {
+	parse_args(argc, argv, &args);
+	is_embedded = (args & PV_EMBEDDED);
+
+	if (getpid() != 1 && !is_embedded) {
 		if (is_arg(argc, argv, "--version")) {
 			printf("version: %s\n", pv_build_version);
 			return 0;
@@ -274,21 +503,30 @@ int main(int argc, char *argv[])
 			printf("manifest: \n%s\n", pv_build_manifest);
 			return 0;
 		}
-		pantavisor_init(false);
-		return 0;
+		if (is_arg(argc, argv, "--help")) {
+			usage(argv[0]);
+		}
+		goto run_pv;
 	}
 
-	early_mounts();
+	system = _init_system(is_embedded, argc, argv);
+
+	if (!is_embedded || (args & PV_EARLYMOUNTS))
+		early_mounts();
+
 	signal(SIGCHLD, signal_handler);
 
-	if ((args & PV_DEBUG) && (args & PV_STANDALONE)) {
+	if ((args & PV_DEBUG) && system->is_standalone) {
 		debug_shell();
 		debug_telnet();
 	}
 
+ run_pv:
 	// Run PV main loop
-	if (!(args & PV_STANDALONE))
-		pv_pid = pantavisor_init(true);
+	if (!system->is_standalone && !system->is_embedded)
+		pv_pid = pantavisor_init(system, true);
+	else
+		pv_pid = pantavisor_init(system, false);
 
 	// loop init
 	for (;;)
@@ -305,8 +543,8 @@ static int pv_debug_init(struct pv_init *this)
 }
 
 struct pv_init pv_init_debug = {
-        .init_fn = pv_debug_init,
-        .flags = 0,
+	.init_fn = pv_debug_init,
+	.flags = 0,
 };
 
 /*
@@ -316,6 +554,7 @@ struct pv_init pv_init_debug = {
  */
 struct pv_init *pv_init_tbl [] = {
 	&pv_init_config,
+	&pv_init_skel,
 	&pv_init_debug,
 	&pv_init_mount,
 	&ph_init_config,

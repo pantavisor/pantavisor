@@ -22,7 +22,6 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <limits.h>
 #include <unistd.h>
 #include "init.h"
 #include "blkid.h"
@@ -31,6 +30,7 @@
 #include "utils.h"
 #include "loop.h"
 #include "cmd.h"
+#include "plat_meta.h"
 
 #define MODULE_NAME		"mount-init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -48,9 +48,9 @@ static int ph_mount_init(struct pv_init *this)
 		goto out;
 	config = pv->config;
 
-	// Make pantavisor control area - host parts
-	if (stat(config->rundir, &st) != 0)
-		mkdir_p(config->rundir, 0500);
+	// Make pantavisor control area
+	if (stat("/pv", &st) != 0)
+		mkdir_p("/pv", 0500);
 
 	if (stat(config->logdir, &st) != 0)
 		mkdir_p(config->logdir, 0500);
@@ -60,31 +60,14 @@ static int ph_mount_init(struct pv_init *this)
 
 	if (stat(config->dropbearcachedir, &st) != 0)
 		mkdir_p(config->dropbearcachedir, 0500);
+	mkdir_p("/pv/user-meta/", 0755);
+	if (config->metacachedir)
+		mount_bind(config->metacachedir, "/pv/user-meta");
 
-	char dropbeardir[PATH_MAX];
-	sprintf(dropbeardir, "%s/dropbear/", config->etcdir);
-
-	if (stat(dropbeardir, &st) != 0)
-		mkdir_p(dropbeardir, 0755);
-
-	// Make pantavisor control area - run part
-	if (stat(config->pvdir_usermeta, &st) != 0)
-		mkdir_p(config->pvdir_usermeta, 0755);
-
-	if (stat(config->pvdir_logsdir, &st) != 0)
-		mkdir_p(config->pvdir_logsdir, 0500);
-
-
-	// setup bind mounts - if not in place
-	while (umount2(config->pvdir_usermeta, MNT_FORCE) == 0);
-	mount_bind(config->metacachedir, config->pvdir_usermeta);
-
-	while(umount2(config->pvdir_logsdir, MNT_FORCE) == 0);
-	mount_bind(pv->config->logdir, pv->config->pvdir_logsdir);
-
-	while(umount2(dropbeardir, MNT_FORCE) == 0);
-	mount_bind(config->dropbearcachedir, dropbeardir);
-
+	mkdir_p("/etc/dropbear/", 0755);
+	if (config->dropbearcachedir)
+		mount_bind(config->dropbearcachedir, "/etc/dropbear");
+	mkdir_p(PV_PLAT_META_DIR, 0755);
 	ret = 0;
  out:
 	return ret;

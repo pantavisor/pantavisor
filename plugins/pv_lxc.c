@@ -40,7 +40,6 @@
 #include "utils/list.h"
 #include <stdbool.h>
 #include <limits.h>
-#define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
 #ifndef free_member
 #define free_member(ptr, member)\
@@ -92,7 +91,7 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	 * log files are created in the revision directory.
 	 */
 	snprintf(default_prefix, sizeof(default_prefix), "%s/%d/", 
-			LXC_LOG_DEFAULT_PREFIX,
+			__get_pv_instance()->system->logdir,
 			__get_pv_instance()->state->rev);
 	/*
 	 * If lxc.log.file or lxc.console.logfile isn't set or
@@ -161,6 +160,9 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, cha
 	return 1;
 }
 
+#define MOUNT_ENTRY_FMT_PV "%s pantavisor none bind,ro,create=dir 0 0"
+
+
 static void pv_setup_lxc_container(struct lxc_container *c,
 					unsigned int share_ns)
 {
@@ -169,22 +171,29 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	struct stat st;
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
 	char entry[1024];
+	struct pantavisor_config *systemconfig = get_pv_instance()->config;
+	bool is_embedded = get_system_instance()->is_embedded;
+
 	c->set_inherit_namespaces(c, 1, share_ns);
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
-	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
-						" none bind,ro,create=dir 0 0");
-	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
-						" none bind,ro,create=dir 0 0");
-	c->set_config_item(c, "lxc.mount.entry", "/pv/user-meta pantavisor/user-meta"
-						" none bind,ro,create=dir 0 0");
-	if (stat("/lib/firmware", &st) == 0)
+
+	snprintf(entry, sizeof(entry), MOUNT_ENTRY_FMT_PV, systemconfig->pvdir);
+	c->set_config_item(c, "lxc.mount.entry", entry);
+	snprintf(entry, sizeof(entry), MOUNT_ENTRY_FMT_PV, systemconfig->pvdir_logsdir);
+	c->set_config_item(c, "lxc.mount.entry", entry);
+	snprintf(entry, sizeof(entry), MOUNT_ENTRY_FMT_PV, systemconfig->pvdir_usermeta);
+	c->set_config_item(c, "lxc.mount.entry", entry);
+
+	if (!is_embedded && stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
 					" lib/firmware none bind,ro,create=dir"
 					" 0 0");
 	ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
 	if (!ret) {
+		char vpath[PATH_MAX];
+		sprintf(vpath, "%s/volumes/modules.squashfs", systemconfig->pvdir);
 		if (stat("/volumes/modules.squashfs", &st) == 0) {
 			sprintf(entry, "/volumes/modules.squashfs "
 					"lib/modules/%s "
@@ -229,7 +238,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 	if (!strlen(entry)) {
 		snprintf(entry, sizeof(entry),
-			LXC_LOG_DEFAULT_PREFIX"/%d/%s/%s/%s.log",
+			"%s/%d/%s/%s/%s.log",
+			__get_pv_instance()->system->logdir,
 			__get_pv_instance()->state->rev, c->name,
 			LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
 		c->set_config_item(c, "lxc.console.logfile", entry);
@@ -346,7 +356,8 @@ static void pv_truncate_lxc_log(struct lxc_container *c,
 		 * the container.
 		 */
 		snprintf(logfile_name, PATH_MAX,
-				LXC_LOG_DEFAULT_PREFIX"/%d/%s.log",
+				"%s/%d/%s.log",
+				__get_pv_instance()->system->logdir,
 				__get_pv_instance()->state->rev,
 				LXC_LOG_FNAME);
 	}
@@ -489,7 +500,8 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 			goto out_container_init;
 		revision = __get_pv_instance()->state->rev;
 		snprintf(log_dir, sizeof(log_dir), 
-				LXC_LOG_DEFAULT_PREFIX"/%d/%s",
+				"%s/%d/%s",
+				__get_pv_instance()->system->logdir,
 				revision, p->name);
 		pv_lxc_log.name = LXC_LOG_FNAME;
 		pv_lxc_log.lxcpath = strdup(log_dir);

@@ -72,7 +72,6 @@ struct log_buffer {
 #define vlog(module, level, ...)	__log(module, level, ## __VA_ARGS__);
 
 #define LOG_CTRL_FNAME 			"pv-ctrl-log"
-#define LOG_CTRL_PATH 			"/pv/"LOG_CTRL_FNAME
 #define LOG_CTRL_PLATFORM_PATH 		"/pantavisor/"LOG_CTRL_FNAME
 #define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
 /*

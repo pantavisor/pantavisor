@@ -81,6 +81,13 @@ typedef enum {
 	MAX_STATES
 } pv_state_t;
 
+static pv_state_t pv_wait(int wait_sec) {
+	struct timespec tp;
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	wait_delay = tp.tv_sec + wait_sec;
+	return STATE_WAIT;
+}
+
 static const char* pv_state_string(pv_state_t st)
 {
 	switch(st) {
@@ -110,7 +117,7 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 	ret = pv_device_factory_meta(pv);
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
-	return STATE_WAIT;
+	return pv_wait(5);
 }
 
 static int pv_step_get_prev(struct pantavisor *pv)
@@ -185,7 +192,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char *c;
 
 	if (!pv_ph_is_available(pv)) {
-		return STATE_WAIT;
+		return pv_wait(5);
 	}
 
 	c = calloc(1, sizeof(char) * 128);
@@ -294,12 +301,10 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 			if (rb_count > timeout_max)
 				return STATE_ROLLBACK;
 
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			wait_delay = tp.tv_sec + pv->config->updater.interval;
 			pv_log(WARN, "Device couldn't authenticate to Pantahub. Retrying in %d seconds",
 					pv->config->updater.interval);
 			rb_count++;
-			return STATE_WAIT;
+			return pv_wait(pv->config->updater.interval);
 		} else {
 			/*
 			 * we clear the pending update
@@ -383,7 +388,7 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 	pv_meta_update_to_ph(pv);
 	next_state = pv_update_helper(pv);
 out:
-	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
+	pv_log(DEBUG, "going to state = %s", pv_state_string(next_state));
 	return next_state;
 }
 
@@ -408,6 +413,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
+
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");

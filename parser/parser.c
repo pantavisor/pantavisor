@@ -48,6 +48,12 @@ struct pv_state_parser parsers[SPEC_UNKNOWN] = {
 		.parse = system1_parse,
 		.free = system1_free,
 		.print = system1_print,
+	},
+	{
+		.spec = "pantavisor-service-embed@1",
+		.parse = system1_parse,
+		.free = system1_free,
+		.print = system1_print,
 	}
 };
 

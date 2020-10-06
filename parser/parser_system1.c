@@ -46,6 +46,32 @@
 #define PV_NS_UTS	0x2
 #define PV_NS_IPC	0x4
 
+static int parse_os(struct pv_state *s, char *value, int n)
+{
+	int ret = 0, tokc;
+	jsmntok_t *tokv;
+	char *buf;
+
+	// take null terminate copy of item to parse
+	buf = calloc(1, (n+1) * sizeof(char));
+	buf = strncpy(buf, value, n);
+
+	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	s->os = calloc(sizeof(struct pv_os), 1);
+	s->os->spec = get_json_key_value(buf, "#spec", tokv, tokc);
+	s->os->ref = get_json_key_value(buf, "ref", tokv, tokc);
+	s->os->args = get_json_key_value(buf, "args", tokv, tokc);
+
+	if (tokv)
+		free(tokv);
+	if (buf)
+		free(buf);
+
+	return ret;
+}
+
 static int parse_bsp(struct pv_state *s, char *value, int n)
 {
 	int c;
@@ -62,25 +88,26 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
-	s->modules = get_json_key_value(buf, "modules", tokv, tokc);
+	s->bsp = calloc(sizeof(struct pv_bsp), 1);
+	s->bsp->kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->bsp->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
+	s->bsp->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
+	s->bsp->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->bsp->modules = get_json_key_value(buf, "modules", tokv, tokc);
 
-	if (s->firmware) {
-		v = pv_volume_add(s, s->firmware);
+	if (s->bsp->firmware) {
+		v = pv_volume_add(s, s->bsp->firmware);
 		v->plat = NULL;
 		v->type = VOL_LOOPIMG;
 	}
 
-	if (s->modules) {
-		v = pv_volume_add(s, s->modules);
+	if (s->bsp->modules) {
+		v = pv_volume_add(s, s->bsp->modules);
 		v->plat = NULL;
 		v->type = VOL_LOOPIMG;
 	}
 
-	if (!s->kernel || !s->initrd) {
+	if (!s->bsp->kernel || !s->bsp->initrd) {
 		pv_log(ERROR, "kernel or initrd not configured in bsp/run.json. Cannot continue.", strlen(buf), buf);
 		ret = 0;
 		goto out;
@@ -304,12 +331,12 @@ static jsmntok_t* do_lookup_json_key(jsmntok_t **keys, char *json_buf, char *key
 		return NULL;
 	keys_walker = keys;
 	while(*keys_walker) {
-		// copy key 
+		// copy key
 		char *curr_key = NULL;
 		int length = 0;
 
 		length = (*keys_walker)->end - (*keys_walker)->start;
-		
+
 		curr_key = (char*) calloc(1, sizeof(char) * (length + 1));
 		if (!curr_key) {
 			keys_walker++;
@@ -365,7 +392,7 @@ int start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
 }
 
 int __start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
-						jsmntype_t type, 
+						jsmntype_t type,
 						jsmntok_t *__tokv, int __tokc)
 {
 	jsmntok_t *tokv = NULL;
@@ -380,7 +407,7 @@ int __start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
 	if (jka_arr) {
 		jsmntok_t** keys;
 		struct json_key_action *jka = jka_arr;
-		
+
 		if (!tokv) {
 			ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 			if ( ret <= 0)
@@ -435,7 +462,7 @@ out:
 
 static int do_action_for_name(struct json_key_action *jka, char *value)
 {
-	struct platform_bundle *bundle = 
+	struct platform_bundle *bundle =
 		(struct platform_bundle*) jka->opaque;
 
 	if (!value)
@@ -498,7 +525,7 @@ static int do_action_for_one_volume(struct json_key_action *jka,
 		value = json_get_one_str(jka->buf, &jka->tokv);
 		value_alloced = true;
 	}
-	
+
 	if (!value) {
 		ret = -1;
 		goto fail;
@@ -530,7 +557,7 @@ static int do_action_for_one_log(struct json_key_action *jka,
 	struct pv_platform *platform = *bundle->platform;
 	int ret = 0, i;
 	struct pv_logger_config *config = NULL;
-	const int key_count = 
+	const int key_count =
 		jsmnutil_object_key_count(jka->buf, jka->tokv);
 	jsmntok_t **keys = jsmnutil_get_object_keys(jka->buf, jka->tokv);
 	jsmntok_t **keys_i = keys;
@@ -579,7 +606,7 @@ static int do_action_for_one_log(struct json_key_action *jka,
 
 		key = json_get_one_str(jka->buf, keys_i);
 		value = json_get_one_str(jka->buf, &val_tok);
-		
+
 		pv_log(DEBUG, "Got log value as %s-%s", key, value);
 		if (value) {
 			config->pair[i][0] = key;
@@ -640,7 +667,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	ret = start_json_parsing_with_action(buf, system1_platform_key_action, JSMN_OBJECT);
 	if (!this || ret)
 		goto out;
-	
+
 	// free intermediates
 	if (config) {
 		this->configs = calloc(1, 2 * sizeof(char *));
@@ -663,11 +690,26 @@ void system1_free(struct pv_state *this)
 	if (!this)
 		return;
 
-	if (this->initrd)
-		free(this->initrd);
+	if (this->bsp) {
+		if (this->bsp->initrd)
+			free(this->bsp->initrd);
 
-	if (this->fdt)
-		free(this->fdt);
+		if (this->bsp->fdt)
+			free(this->bsp->fdt);
+
+		if (this->bsp->kernel)
+			free(this->bsp->kernel);
+
+		if (this->bsp->firmware)
+			free(this->bsp->firmware);
+
+		if (this->bsp->modules)
+			free(this->bsp->modules);
+
+		free(this->bsp);
+	}
+
+	pv_addon_free(this);
 
 	free(this->json);
 
@@ -684,6 +726,7 @@ void system1_free(struct pv_state *this)
 		p = p->next;
 		free(pt);
 	}
+
 	struct pv_volume *vt, *v = this->volumes;
 	while (v) {
 		free(v->name);
@@ -714,8 +757,18 @@ void system1_print(struct pv_state *this)
 	// print
 	struct pv_platform *p = this->platforms;
 	struct pv_object *curr;
-	pv_log(DEBUG, "kernel: '%s'", this->kernel);
-	pv_log(DEBUG, "initrd: '%s'", this->initrd);
+	pv_log(DEBUG, "spec: '%s'", this->spec);
+	if (this->bsp) {
+		pv_log(DEBUG, "BSP: ");
+		pv_log(DEBUG, "  kernel: '%s'", this->bsp->kernel);
+		pv_log(DEBUG, "  initrd: '%s'", this->bsp->initrd);
+	}
+	if (this->os) {
+		pv_log(DEBUG, "OS: ");
+		pv_log(DEBUG, "  type: '%s'", this->os->spec);
+		pv_log(DEBUG, "  ref: '%s'", this->os->ref);
+		pv_log(DEBUG, "  args: '%s'", this->os->args);
+	}
 	while (p) {
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
@@ -737,7 +790,7 @@ void system1_print(struct pv_state *this)
 
 		v = v->next;
 	}
-	
+
 	pv_objects_iter_begin(this, curr) {
 		pv_log(DEBUG, "object: ");
 		pv_log(DEBUG, "  name: '%s'", curr->name);
@@ -756,28 +809,29 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	count = json_get_key_count(buf, "bsp/run.json", tokv, tokc);
-	if (!count || (count > 1)) {
-		pv_log(WARN, "Invalid bsp/run.json count in state");
-		this = NULL;
-		goto out;
-	}
+	if (!pv->system->is_embedded) {
+		count = json_get_key_count(buf, "bsp/run.json", tokv, tokc);
+		if (!count || (count > 1)) {
+			pv_log(WARN, "Invalid bsp/run.json count in state");
+			goto out;
+		}
 
-	value = get_json_key_value(buf, "bsp/run.json", tokv, tokc);
-	if (!value) {
-		pv_log(WARN, "Unable to get pantavisor.json value from state");
-		this = NULL;
-		goto out;
-	}
+		value = get_json_key_value(buf, "bsp/run.json", tokv, tokc);
+		if (!value) {
+			pv_log(WARN, "Unable to get pantavisor.json value from state");
+			goto out;
+		}
 
-	this->rev = rev;
+		this->rev = rev;
 
-	if (!parse_bsp(this, value, strlen(value))) {
-		this = NULL;
-		goto out;
+		if (!parse_bsp(this, value, strlen(value))) {
+			pv_log(WARN, "Unable to parse bsp from state");
+			goto out;
+		}
+		if (value)
+			free(value);
+		value = NULL;
 	}
-	free(value);
-	value = NULL;
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	k = keys;
@@ -832,7 +886,7 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 
 	system1_print(this);
 
-out:
+ out:
 	if (key)
 		free(key);
 	if (value)

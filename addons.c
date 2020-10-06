@@ -45,7 +45,7 @@
 
 struct pv_addon* pv_addon_get_by_name(struct pv_state *s, char *name)
 {
-	struct pv_addon* v = s->addons;
+	struct pv_addon* v = s->bsp->addons;
 
 	while (v) {
 		if (!strcmp(name, v->name))
@@ -58,7 +58,7 @@ struct pv_addon* pv_addon_get_by_name(struct pv_state *s, char *name)
 
 void pv_addon_remove(struct pv_state *s, char *name)
 {
-	struct pv_addon *v = s->addons;
+	struct pv_addon *v = s->bsp->addons;
 	struct pv_addon *prev = NULL;
 
 	while (v) {
@@ -66,8 +66,8 @@ void pv_addon_remove(struct pv_state *s, char *name)
 			if (v->name)
 				free(v->name);
 
-			if (v == s->addons)
-				s->addons = v->next;
+			if (v == s->bsp->addons)
+				s->bsp->addons = v->next;
 			else
 				prev->next = v->next;
 			free(v);
@@ -80,14 +80,14 @@ void pv_addon_remove(struct pv_state *s, char *name)
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
 {
 	struct pv_addon *this = calloc(1, sizeof(struct pv_addon));
-	struct pv_addon *add = s->addons;
+	struct pv_addon *add = s->bsp->addons;
 
 	while (add && add->next) {
 		add = add->next;
 	}
 
 	if (!add) {
-		s->addons = add = this;
+		s->bsp->addons = add = this;
 	} else {
 		add->next = this;
 	}
@@ -97,3 +97,12 @@ struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
 	return this;
 }
 
+void pv_addon_free(struct pv_state *s)
+{
+	struct pv_addon *this = s->bsp->addons;
+	while (this) {
+		struct pv_addon *a = this;
+		this = a->next;
+		free(this);
+	}
+}

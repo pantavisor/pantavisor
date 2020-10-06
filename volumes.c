@@ -150,17 +150,17 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 		if (v->plat) {
 			sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
 				s->rev, v->plat->name, v->name);
-			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
+			sprintf(mntpoint, "%s/volumes/%s/%s", pv->config->rundir, v->plat->name, v->name);
 		} else {
 			sprintf(path, "%s/trails/%d/bsp/%s", pv->config->storage.mntpoint,
 				s->rev, v->name);
-			sprintf(mntpoint, "/volumes/%s", v->name);
+			sprintf(mntpoint, "%s/volumes/%s", pv->config->rundir, v->name);
 		}
 		break;
 	case SPEC_MULTI1:
 		sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
 			s->rev, v->name);
-		sprintf(mntpoint, "/volumes/%s", v->name);
+		sprintf(mntpoint, "%s/volumes/%s", pv->config->rundir, v->name);
 		break;
 	default:
 		pv_log(WARN, "cannot mount volumes for unknown state spec");
@@ -223,19 +223,19 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 {
 	int ret = -1;
 	struct stat st;
-	char path[PATH_MAX];
+	char path[PATH_MAX], path2[PATH_MAX];
 	struct utsname uts;
 
-	if (!pv->state->firmware)
+	if (!pv->state->bsp->firmware)
 		goto modules;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
 		mkdir_p(FW_PATH, 0755);
 
-	if (strchr(pv->state->firmware, '/'))
-		sprintf(path, "%s", pv->state->firmware);
+	if (strchr(pv->state->bsp->firmware, '/'))
+		sprintf(path, "%s", pv->state->bsp->firmware);
 	else
-		sprintf(path, "/volumes/%s", pv->state->firmware);
+		sprintf(path, "%s/volumes/%s", pv->config->rundir, pv->state->bsp->firmware);
 
 	if (stat(path, &st))
 		goto modules;
@@ -248,10 +248,12 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 	pv_log(DEBUG, "bind mounted firmware to %s", FW_PATH);
 
 modules:
-	if (!uname(&uts) && (stat("/volumes/modules.squashfs", &st) == 0)) {
+	sprintf(path, "%s/volumes/modules.squashfs", pv->config->rundir);
+	if (!uname(&uts) && (stat(path, &st) == 0) && !pv->system->is_embedded) {
 		sprintf(path, "/lib/modules/%s", uts.release);
 		mkdir_p(path, 0755);
-		ret = mount_bind("/volumes/modules.squashfs", path);
+		sprintf(path2, "%s/volumes/modules.squashfs", pv->config->rundir);
+		ret = mount_bind(path2, path);
 		pv_log(DEBUG, "bind mounted modules to %s", path);
 	}
 
@@ -277,6 +279,9 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 		pv_log(INFO, "mounting volumes with runlevel %d", i);
 		// Iterate over all volumes from state
 		v = s->volumes;
+		if (!v && pv->system->is_embedded)
+			ret = 0;
+			
 		while (v) {
 			// Mount volumes without platforms in runlevel 0 (firmware and modules)
 			// Mount volumes with platforms in this runlevel only 
@@ -296,7 +301,7 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 	}
 
 	// Mount firmware and modules in runlevel 0
-	if (runlevel == 0)
+	if (runlevel == 0  && !pv->system->is_embedded)
 		ret = pv_volumes_mount_firmware_modules(pv);
 
 out:

@@ -78,12 +78,13 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->bsp = calloc(sizeof(struct pv_bsp), 1);
+	s->bsp->kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->bsp->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
+	s->bsp->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
+	s->bsp->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 
-	if (!s->kernel || !s->initrd)
+	if (!s->bsp->kernel || !s->bsp->initrd)
 		goto out;
 
 	// get addons and create empty items
@@ -250,12 +251,14 @@ void multi1_free(struct pv_state *this)
 	if (!this)
 		return;
 
-	if (this->initrd)
-		free(this->initrd);
+	if (this->bsp) {
+		if (this->bsp->initrd)
+			free(this->bsp->initrd);
 
-	if (this->fdt)
-		free(this->fdt);
-
+		if (this->bsp->fdt)
+			free(this->bsp->fdt);
+		free (this->bsp);
+	}
 	free(this->json);
 
 	struct pv_platform *pt, *p = this->platforms;
@@ -287,9 +290,9 @@ void multi1_print(struct pv_state *this)
 	// print
 	struct pv_platform *p = this->platforms;
 	struct pv_object *curr;
-	pv_log(DEBUG, "kernel: '%s'", this->kernel);
-	pv_log(DEBUG, "initrd: '%s'", this->initrd);
-	pv_log(DEBUG, "fdt: '%s'", this->fdt ? this->fdt : "(null)");
+	pv_log(DEBUG, "kernel: '%s'", this->bsp->kernel);
+	pv_log(DEBUG, "initrd: '%s'", this->bsp->initrd);
+	pv_log(DEBUG, "fdt: '%s'", this->bsp->fdt ? this->bsp->fdt : "(null)");
 	while (p) {
 		pv_log(DEBUG, "platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);

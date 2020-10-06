@@ -129,13 +129,15 @@ auth:
 
 /* API */
 
-const char** pv_ph_get_certs(struct pantavisor *__unused)
+const char** pv_ph_get_certs(struct pantavisor *pv)
 {
 	struct dirent **files;
 	char **cafiles;
-	char *dir = "/certs/";
-	char path[128];
+	char dir[PATH_MAX];
+	char path[PATH_MAX];
 	int n = 0, i = 0, size = 0;
+
+	snprintf(dir, PATH_MAX, "%s/certs", pv->system->datadir);
 
 	n = scandir(dir, &files, NULL, alphasort);
 	if (n < 0)
@@ -148,7 +150,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 		if (!strncmp(files[n]->d_name, ".", 1))
 			continue;
 
-		sprintf(path, "/certs/%s", files[n]->d_name);
+		sprintf(path, "%s/%s", dir, files[n]->d_name);
 		size = strlen(path);
 		cafiles[i] = malloc((size+1) * sizeof(char));
 		strncpy(cafiles[i], path, size);

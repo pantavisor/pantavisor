@@ -28,21 +28,20 @@
 #include <netinet/in.h>
 #include "utils/list.h"
 #include <trest.h>
+#include "const.h"
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
-#define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
-#define PV_CONFIG_FILENAME_FHSRH	"/etc/pantavisor/pantavisor.config"
-#define PV_CONFIG_FILENAME_DEFAULT_FHSRH	"/usr/lib/pantavisor/etc/pantavisor/pantavisor.config"
 // pantavisor.h
 
 char pv_user_agent[4096];
+char cmdline[4096];
 
 struct trail_remote;
 
-#define TRAIL_NO_SPACE 		(-1)
-#define TRAIL_NO_NETWORK 	(-2)
-#define PV_USER_AGENT_FMT 	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
+#define TRAIL_NO_SPACE		(-1)
+#define TRAIL_NO_NETWORK	(-2)
+#define PV_USER_AGENT_FMT	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 enum update_state {
 	UPDATE_QUEUED,
 	UPDATE_DOWNLOADED,
@@ -139,17 +138,28 @@ struct pv_object {
 	struct dl_list list;
 };
 
-struct pv_state {
-	int rev;
-	char *spec;
+struct pv_bsp {
 	char *kernel;
 	char *fdt;
 	char *firmware;
 	char *modules;
 	char *initrd;
+	struct pv_addon *addons;
+};
+
+struct pv_os {
+	char *spec;
+	char *ref;
+	char *args;
+};
+
+struct pv_state {
+	int rev;
+	char *spec;
+	struct pv_bsp *bsp;
+	struct pv_os *os;
 	struct pv_platform *platforms;
 	struct pv_volume *volumes;
-	struct pv_addon *addons;
 	struct pv_object *objects;
 	struct dl_list obj_list;;
 	int retries;
@@ -163,7 +173,7 @@ struct pv_devinfo {
 	struct dl_list list;
 };
 
-#define PV_USERMETA_ADD 	(1<<0)
+#define PV_USERMETA_ADD		(1<<0)
 struct pv_usermeta {
 	char *key;
 	char *value;
@@ -185,10 +195,32 @@ struct pv_connection {
 	time_t since;
 };
 
-struct pantavisor {
+struct pv_system {
+	/* true if we run inside a main OS; false if we run as PID 1 */
 	bool is_embedded;
+
+	/* true if we want to run in foreground */
+	bool is_standalone;
+
+	/* cmdline from /proc/cmdline or actual argv in embedded case */
+	char *cmdline;
+
+	/* common directories */
+	char *prefix; /* PID1: / | EMBED: /opt/pantavisor */
+	char *bindir; /* PID1: / | EMBED: /opt/pantavisor/bin */
+	char *vardir; /* PID1: /storage | EMBED: $prefix/var/pantavisor */
+	char *logdir; /* PID1: /storage/logs | EMBED: $prefix/var/log/pantavisor */
+	char *etcdir; /* PID1: /etc | EMBED: $prefix/etc/ */
+	char *rundir; /* PID1: / | EMBED: $prefix/run/pantavisor */
+	char *pvdir; /* PID1: /pv | EMBED: $rundir/pv */
+	char *datadir; /* PID1: /pshare | EMBED: /opt/pantavisor/share */;
+	char *pluginsdir /* PID1: /plugins | EMBED: /opt/pantavisor/plugins */;
+};
+
+struct pantavisor {
 	int last;
 	char *step;
+	struct pv_system *system;
 	struct pv_device *dev;
 	struct pv_update *update;
 	struct pv_state *state;
@@ -221,8 +253,9 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int current);
 struct pv_state* pv_get_current_state(struct pantavisor *pv);
 void pv_state_free(struct pv_state *s);
 int pv_start_platforms(struct pantavisor *pv);
-int pantavisor_init(bool do_fork);
+int pantavisor_init(struct pv_system *system, bool do_fork);
 struct pantavisor* get_pv_instance(void);
+struct pv_system* get_pv_system(void);
 struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
 const char* pv_log_get_config_item(struct pv_logger_config *config, const char *key);
 #endif

@@ -65,6 +65,11 @@ struct pantavisor* get_pv_instance()
 	return global_pv;
 }
 
+struct pv_system* get_pv_system()
+{
+	return global_pv ? global_pv->system : NULL;
+}
+
 void pv_destroy(struct pantavisor *pv)
 {
         pv_release_state(pv);
@@ -120,7 +125,7 @@ int pv_make_config(struct pantavisor *pv)
 	int rv;
 
 	sprintf(srcpath, "%s/trails/%d/_config/", pv->config->storage.mntpoint, pv->state->rev);
-	sprintf(targetpath, "/configs/");
+	sprintf(targetpath, "%s/configs/", pv->config->rundir);
 
 	if (stat(targetpath, &st))
 		mkdir_p(targetpath, 0755);
@@ -430,7 +435,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// initrd
 	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->initrd);
+	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp->initrd);
 
 	mkdir_p(dst, 0755);
 	strcat(dst, "pv-initrd.img");
@@ -440,7 +445,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		goto err;
 
 	// addons
-	a = s->addons;
+	a = s->bsp->addons;
 	i = 0;
 	while (a) {
 		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
@@ -455,16 +460,16 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// kernel
 	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->kernel);
+	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp->kernel);
 
 	remove(dst);
 	if (link(src, dst) < 0)
 		goto err;
 
 	// fdt
-	if (s->fdt) {
+	if (s->bsp->fdt) {
 		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->fdt);
+		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp->fdt);
 
 		remove(dst);
 		if (link(src, dst) < 0)
@@ -554,12 +559,16 @@ struct pv_state* pv_get_current_state(struct pantavisor *pv)
 	return pv_get_state(pv, step_rev);
 }
 
-static void _pv_init()
+static void _pv_init(struct pv_system *system)
 {
 	int ret;
 	struct pantavisor *pv;
 
-	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
+	if (!system->is_embedded)
+		printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
+	else
+		printf("Pantavisor Embedded (TM) (%s) - www.pantahub.com\n", pv_build_version);
+
 	sprintf(pv_user_agent, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
 
         prctl(PR_SET_NAME, "pantavisor");
@@ -567,13 +576,16 @@ static void _pv_init()
 	if (pv)
 		global_pv = pv;
 
+	pv->system = system;
+
 	struct rlimit core_limit;
 	core_limit.rlim_cur = RLIM_INFINITY;
 	core_limit.rlim_max = RLIM_INFINITY;
 
 	setrlimit(RLIMIT_CORE, &core_limit);
 
-	char *core = "/storage/corepv";
+	char core[PATH_MAX];
+	sprintf(core, "%s/%s", system->vardir, "corepv");
 	int fd = open("/proc/sys/kernel/core_pattern", O_WRONLY | O_SYNC);
 	if (fd)
 		write(fd, core, strlen(core));
@@ -585,7 +597,7 @@ static void _pv_init()
         exit(ret);
 }
 
-int pantavisor_init(bool do_fork)
+int pantavisor_init(struct pv_system *system, bool do_fork)
 {
 	pid_t pid;
 	if (do_fork) {
@@ -597,7 +609,7 @@ int pantavisor_init(bool do_fork)
 	}
 
 	// Start PV
-	_pv_init();
+	_pv_init(system);
 
 out:
 	return pid;
@@ -696,8 +708,12 @@ static int pv_state_init(struct pv_init *this)
 	pv->last = -1;
 	// parse boot rev
 	pv->state = pv_get_state(pv, pv_rev);
-	if (!pv->state)
+	if (!pv->state && pv->system->is_embedded) {
+		pv->state = calloc(sizeof(struct pv_state), 1);
+		pv->state->spec = "pantavisor-service-embedded@1";
+	} else if (!pv->state) {
 		goto out;
+	}
 	ret = 0;
 out:
 	return ret;

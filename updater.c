@@ -1135,7 +1135,7 @@ out:
 
 static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 {
-	if (strcmp(pv->state->kernel, obj->name))
+	if (strcmp(pv->state->bsp->kernel, obj->name))
 		return 0;
 
 	if (pv->config->bl.type == BL_UBOOT_PVK)
@@ -1171,10 +1171,10 @@ static int trail_update_has_new_initrd(struct pantavisor *pv)
 		return 0;
 
 	if (pv->state)
-		old = pv->state->initrd;
+		old = pv->state->bsp->initrd;
 
 	if (pv->update && pv->update->pending)
-		new = pv->update->pending->initrd;
+		new = pv->update->pending->bsp->initrd;
 
 	if (!old || !new)
 		return 0;
@@ -1565,13 +1565,16 @@ static int trail_download_objects(struct pantavisor *pv)
 		goto out;
 	}
 
-	k_new = pv_objects_get_by_name(u->pending,
-			u->pending->kernel);
-	k_old = pv_objects_get_by_name(pv->state,
-			pv->state->kernel);
 
-	if (k_new && k_old && strcmp(k_new->id, k_old->id))
-		u->need_reboot = 1;
+	if (!pv->system->is_embedded) {
+		k_new = pv_objects_get_by_name(u->pending,
+					       u->pending->bsp->kernel);
+		k_old = pv_objects_get_by_name(pv->state,
+					       pv->state->bsp->kernel);
+
+		if (k_new && k_old && strcmp(k_new->id, k_old->id))
+			u->need_reboot = 1;
+	}
 	
 	if (u->total_update) {
 		u->total_update->object_name = "total";
