@@ -33,7 +33,7 @@
 
 #include "wdt.h"
 
-int fd;
+int fd = -1;
 
 int pv_wdt_start(struct pantavisor *pv)
 {
