@@ -177,7 +177,7 @@ static int uboot_unset_env_key(char *key)
 	unsigned char new[MTD_ENV_SIZE] = { 0 };
 	char *s, *d, *path;
 
-	pv_log(DEBUG, "unset key %s", key);
+	pv_log(DEBUG, "unset boot env key %s", key);
 
 	path = uboot_txt;
 	if (single_env) {
@@ -247,7 +247,7 @@ static int uboot_set_env_key(char *key, int value)
 	char *s, *d, *path;
 	char v[128];
 
-	pv_log(DEBUG, "set key %s with value %d", key, value);
+	pv_log(DEBUG, "set boot env key %s with value %d", key, value);
 
 	path = uboot_txt;
 	if (single_env) {

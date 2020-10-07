@@ -51,6 +51,7 @@ extern int DOWNLOAD_RETRY_WAIT;
 #define DEFAULT_UPDATE_COMMIT_DELAY 	(3 * 60)
 
 enum update_state {
+	UPDATE_INIT,
 	UPDATE_QUEUED,
 	UPDATE_DOWNLOADED,
 	UPDATE_INSTALLED,
@@ -78,8 +79,7 @@ struct object_update {
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	int need_reboot;
-	int need_finish;
+	int runlevel;
 	int progress_size;
 	time_t retry_at;
 	struct pv_state *pending;
@@ -94,7 +94,7 @@ struct trail_remote {
 	struct pv_state *pending;
 };
 
-int pv_update_start(struct pantavisor *pv, int offline);
+int pv_update_start(struct pantavisor *pv);
 void pv_update_remove(struct pantavisor *pv);
 void pv_trail_remote_remove(struct pantavisor *pv);
 int pv_update_set_status(struct pantavisor *pv, enum update_state status);

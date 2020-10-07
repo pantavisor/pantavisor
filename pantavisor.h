@@ -60,8 +60,8 @@ struct pantavisor {
 int *pv_get_revisions(struct pantavisor *pv);
 int pv_rev_is_done(struct pantavisor *pv, int rev);
 void pv_set_active(struct pantavisor *pv);
-void pv_set_current(struct pantavisor *pv, int rev);
-void __pv_set_current(struct pantavisor *pv, int rev, bool unset_pvtry);
+void pv_set_rev_done(struct pantavisor *pv, int rev);
+void __pv_set_rev_done(struct pantavisor *pv, int rev, bool unset_pvtry);
 int pv_get_rollback_rev(struct pantavisor *pv);
 int pv_make_config(struct pantavisor *pv);
 void pv_meta_set_objdir(struct pantavisor *pv);

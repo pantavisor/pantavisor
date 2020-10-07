@@ -174,12 +174,12 @@ int pv_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-void pv_set_current(struct pantavisor *pv, int rev)
+void pv_set_rev_done(struct pantavisor *pv, int rev)
 {
-	__pv_set_current(pv, rev, true);
+	__pv_set_rev_done(pv, rev, true);
 }
 
-void __pv_set_current(struct pantavisor *pv, int rev, bool unset_pvtry)
+void __pv_set_rev_done(struct pantavisor *pv, int rev, bool unset_pvtry)
 {
 	int fd;
 	char path[256];
@@ -482,8 +482,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 			goto err;
 	}
 
-
-	pv_log(DEBUG, "linked boot assets for rev=%d", s->rev);
+	pv_log(DEBUG, "linked boot assets for rev %d", s->rev);
 
 	return 0;
 err:
@@ -674,6 +673,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->update = NULL;
 	pv->last = -1;
 	// parse boot rev
+	// FIXME: load new state would be better in _pv_run for non reboot updates, is it possible?
 	pv->state = pv_get_state(pv, pv_rev);
 	if (!pv->state)
 		goto out;

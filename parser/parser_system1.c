@@ -60,7 +60,6 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	buf = calloc(1, (n+1) * sizeof(char));
 	buf = strncpy(buf, value, n);
 
-	pv_log(DEBUG, "buf_size=%d, buf='%s'", strlen(buf), buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
@@ -129,7 +128,6 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 	if (!buf)
 		return 1;
 
-	pv_log(DEBUG, "calling %s buf =%s", __func__, buf);
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
@@ -499,7 +497,7 @@ static int do_action_for_one_volume(struct json_key_action *jka,
 		value = json_get_one_str(jka->buf, &jka->tokv);
 		value_alloced = true;
 	}
-	
+
 	if (!value) {
 		ret = -1;
 		goto fail;
@@ -516,8 +514,6 @@ static int do_action_for_one_volume(struct json_key_action *jka,
 	}
 	v->plat = *bundle->platform;
 	v->type = VOL_LOOPIMG;
-	pv_log(DEBUG, "Added volume %s to platform %s",
-			v->name, (*bundle->platform)->name);
 fail:
 	if (value_alloced && value)
 		free(value);
@@ -718,10 +714,12 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		// check extension in case of file (json=platform, other=file)
 		ext = strrchr(key, '/');
 		if (ext && !strcmp(ext, "/run.json")) {
+			pv_log(DEBUG, "parsing '%s'", key);
 			parse_platform(this, value, strlen(value));
 		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
 			pv_log(DEBUG, "skipping '%s'", key);
 		} else {
+			pv_log(DEBUG, "adding object '%s'", key);
 			pv_objects_add(this, key, value, pv->config->storage.mntpoint);
 		}
 
@@ -741,6 +739,7 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// copy buffer
 	this->json = strdup(buf);
 
+	pv_log(DEBUG, "post parse validation");
 	pv_state_validate(this);
 
 	pv_state_print(this);
