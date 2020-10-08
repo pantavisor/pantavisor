@@ -42,7 +42,7 @@
 
 const struct bl_ops *ops = 0;
 
-int pv_bl_init(struct pantavisor *pv)
+static int pv_bl_init(struct pantavisor *pv)
 {
 	int ret;
 
@@ -97,14 +97,6 @@ int __pv_bl_set_current(struct pantavisor *pv, int rev, bool unset_pvtry)
 		ops->unset_env_key("pv_try");
 
 	return ops->set_env_key("pv_rev", rev);
-}
-
-int pv_bl_get_current(struct pantavisor *pv)
-{
-	if (!ops)
-		return -1;
-
-	return ops->get_env_key("pv_rev");
 }
 
 int pv_bl_clear_update(struct pantavisor *pv)

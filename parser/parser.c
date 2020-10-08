@@ -35,19 +35,16 @@
 #include "pantavisor.h"
 #include "utils.h"
 #include "parser.h"
+#include "state.h"
 
 struct pv_state_parser parsers[SPEC_UNKNOWN] = {
 	{
 		.spec = "pantavisor-multi-platform@1",
 		.parse = multi1_parse,
-		.free = multi1_free,
-		.print = multi1_print,
 	},
 	{
 		.spec = "pantavisor-service-system@1",
 		.parse = system1_parse,
-		.free = system1_free,
-		.print = system1_print,
 	}
 };
 
@@ -77,7 +74,7 @@ struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev)
 {
 	int tokc, ret;
 	char *spec = 0;
-	struct pv_state *this = 0;
+	struct pv_state *state = 0;
 	struct pv_state_parser *p;
 	jsmntok_t *tokv;
 
@@ -100,14 +97,11 @@ struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev)
 		goto out;
 	}
 
-	this = calloc(1, sizeof(struct pv_state));
-	if (this) {
-		this->rev = rev;
-		this->spec = strdup(spec);
-		dl_list_init(&this->obj_list);
-		if (!p->parse(pv, this, buf, rev)) {
-			free(this);
-			this = NULL;
+	state = pv_state_init(rev, spec);
+	if (state) {
+		if (!p->parse(pv, state, buf, rev)) {
+			pv_state_remove(state);
+			state = NULL;
 		}
 	}
 out:
@@ -116,29 +110,5 @@ out:
 	if (spec)
 		free(spec);
 
-	return this;
-}
-
-void pv_state_free(struct pv_state *this)
-{
-	struct pv_state_parser *p;
-
-	if (!this)
-		return;
-
-	p = _get_parser(this->spec);
-
-	p->free(this);
-}
-
-void pv_state_print(struct pv_state *this)
-{
-	struct pv_state_parser *p;
-
-	if (!this)
-		return;
-
-	p = _get_parser(this->spec);
-
-	p->print(this);
+	return state;
 }

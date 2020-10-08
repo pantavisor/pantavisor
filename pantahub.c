@@ -365,44 +365,6 @@ void pv_ph_release_client(struct pantavisor *pv)
 	}
 }
 
-int pv_ph_upload_logs(struct pantavisor *pv, char *logs)
-{
-	int ret = 0;
-
-	trest_request_ptr req = 0;
-	trest_response_ptr res = 0;
-
-	if (!ph_client_init(pv))
-		goto out;
-
-	req = trest_make_request(TREST_METHOD_POST,
-				 "/logs/",
-				 0, 0,
-				 logs);
-	if (!req)
-		goto out;
-	res = trest_do_json_request(client, req);
-	if (!res)
-		goto out;
-	if (!res->body || res->code != THTTP_STATUS_OK) {
-		pv_log(DEBUG, "logs upload status = %d, body = '%s'", 
-				res->code, (res->body ? res->body : ""));
-		if (res->code == THTTP_STATUS_BAD_REQUEST)
-			ret = 1;
-		goto out;
-	}
-
-	ret = 1;
-
-out:
-	if (req)
-		trest_request_free(req);
-	if (res)
-		trest_response_free(res);
-
-	return ret;
-}
-
 int pv_ph_device_get_meta(struct pantavisor *pv)
 {
 	int ret = -1;

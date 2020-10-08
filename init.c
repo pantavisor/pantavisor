@@ -32,6 +32,7 @@
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/sysmacros.h>
+#include <stdbool.h>
 
 #include <linux/reboot.h>
 
@@ -45,25 +46,13 @@
 #include "init.h"
 #include "utils.h"
 #include "utils/list.h"
-#include <stdbool.h>
+#include "pvlogger.h"
+#include "platforms.h"
+#include "state.h"
 
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
 pid_t shell_pid;
-
-static int open_ns(int pid, const char *ns_proc_name)
-{
-	int fd;
-	char path[MAXPATHLEN];
-	snprintf(path, MAXPATHLEN, "/proc/%d/ns/%s", pid, ns_proc_name);
-
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		printf("failed to open %s", path);
-		return -1;
-	}
-	return fd;
-}
 
 static int early_mounts()
 {
@@ -145,33 +134,33 @@ static void signal_handler(int signal)
 		return;
 
 	while (	(pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED)) > 0) {
-		struct pv_platform *p = NULL;
-		struct pv_log_info *item, *tmp;
-		struct dl_list *head;
+		struct pv_platform *p, *tmp_p;
+		struct pv_log_info *l, *tmp_l;
+		struct dl_list *head_platforms, *head_logger;
 		bool found = false;
 
 		/*
 		 * See if the pid is one of the loggers
 		 * */
 		if (pv && pv->state) {
-			p = pv->state->platforms;
-		}
-		while (p) {
-			head = &p->logger_list;
-			dl_list_for_each_safe(item, tmp, head,
-					struct pv_log_info, next) {
-				if (item->logger_pid == pid) {
-					dl_list_del(&item->next);
-					if (item->on_logger_closed) {
-						item->on_logger_closed(item);
+			head_platforms = &pv->state->platforms;
+			dl_list_for_each_safe(p, tmp_p, head_platforms,
+					struct pv_platform, list) {
+				head_logger = &p->logger_list;
+				dl_list_for_each_safe(l, tmp_l, head_logger,
+						struct pv_log_info, next) {
+					if (l->logger_pid == pid) {
+						dl_list_del(&l->next);
+						if (l->on_logger_closed) {
+							l->on_logger_closed(l);
+						}
+						free(l);
+						found = true;
 					}
-					free(item);
-					found = true;
 				}
+				if (found)
+					break;
 			}
-			if (found)
-				break;
-			p = p->next;
 		}
 		// Check for pantavisor
 		if (pid != pv_pid)

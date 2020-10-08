@@ -39,16 +39,6 @@ struct pv_revision {
 
 static struct pv_revision pv_revision;
 
-int pv_revision_get_try()
-{
-	return pv_revision.pv_try;
-}
-
-int pv_revision_get_boot()
-{
-	return pv_revision.pv_boot;
-}
-
 int pv_revision_get_rev()
 {
 	return pv_revision.pv_rev;

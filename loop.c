@@ -58,7 +58,7 @@ static int mount_ext4(char *dev, char *dest)
 	return mount(dev, dest, "ext4", 0, 0);
 }
 
-int get_free_loop(char *devname)
+static int get_free_loop(char *devname)
 {
 	int ret = -1;
 	int lctlfd, dev;
@@ -81,7 +81,7 @@ out:
 	return ret;
 }
 
-int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
+static int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
 {
 	int loopfd = *loop_fd;
 	int filefd = *file_fd;

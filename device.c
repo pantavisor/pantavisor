@@ -46,9 +46,31 @@
 #include "version.h"
 #include "init.h"
 #include "cmd.h"
+#include "revision.h"
+#include "state.h"
 
 #define FW_PATH		"/lib/firmware"
 
+#define PV_USERMETA_ADD     (1<<0)
+struct pv_usermeta {
+	char *key;
+	char *value;
+	long flags;
+	struct dl_list list; // pv_usermeta
+};
+
+struct pv_device_info_read{
+	char *key;
+	char *buf;
+	int buflen;
+	int (*reader)(struct pv_device_info_read*);
+};
+
+struct pv_devinfo {
+	char *key;
+	char *value;
+	struct dl_list list; // pv_devinfo
+};
 
 static int pv_device_info_buf_check(struct pv_device_info_read *pv_device_info_read)
 {
@@ -189,32 +211,45 @@ static void usermeta_remove_hint(struct pv_usermeta *m)
 	remove(path);
 }
 
-
-static void usermeta_free_one(struct pv_usermeta *usermeta)
+static void pv_usermeta_free(struct pv_usermeta *usermeta)
 {
-	usermeta_remove_hint(usermeta);
-
 	if (usermeta->key)
 		free(usermeta->key);
-
 	if (usermeta->value)
 		free(usermeta->value);
+
 	free(usermeta);
 }
 
-static void usermeta_remove(struct pv_device *d, char *key)
+static void pv_usermeta_remove(struct pv_device *dev)
 {
 	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &d->metalist;
+	struct dl_list *head = &dev->metalist;
 
 	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_usermeta, list) {
-		usermeta_remove_hint(curr);
-		usermeta_free_one(curr);
+		struct pv_usermeta, list) {
+		dl_list_del(&curr->list);
+		pv_usermeta_free(curr);
 	}
 }
 
-struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
+static void pv_devinfo_remove(struct pv_device *dev)
+{
+	struct pv_devinfo *curr, *tmp;
+	struct dl_list *head = &dev->infolist;
+
+	dl_list_for_each_safe(curr, tmp, head,
+		struct pv_devinfo, list) {
+		dl_list_del(&curr->list);
+		if (curr->key)
+			free(curr->key);
+		if (curr->value)
+			free(curr->value);
+		free(curr);
+	}
+}
+
+static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 {
 	struct pv_usermeta *curr, *tmp;
 	struct dl_list *head = &d->metalist;
@@ -228,7 +263,7 @@ struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 	return NULL;
 }
 
-struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
+static struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
 {
 	int changed = 1;
 	struct pv_usermeta *curr;
@@ -273,7 +308,7 @@ out:
 	return curr;
 }
 
-int pv_usermeta_parse(struct pantavisor *pv, char *buf)
+static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 {
 	int ret = 0, tokc, n;
 	jsmntok_t *tokv;
@@ -360,12 +395,13 @@ static void usermeta_clear(struct pantavisor *pv)
 			curr->flags &= ~PV_USERMETA_ADD;
 		else {
 			dl_list_del(&curr->list);
-			usermeta_free_one(curr);
+			usermeta_remove_hint(curr);
+			pv_usermeta_free(curr);
 		}
 	}
 }
 
-struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
+static struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
 {
 	struct pv_devinfo *this = NULL;
 
@@ -486,16 +522,8 @@ upload:
 	pv_log(INFO, "device info json = %s", json);
 	info_uploaded = !pv_ph_upload_metadata(pv, json);
 out:
-	if (info_uploaded && !dl_list_empty(&pv->dev->infolist)) {
-		head = &pv->dev->infolist;
-		dl_list_for_each_safe(info, tmp, head,
-				struct pv_devinfo, list) {
-			free(info->key);
-			free(info->value);
-			dl_list_del(&info->list);
-			free(info);
-		}
-	}
+	if (info_uploaded && !dl_list_empty(&pv->dev->infolist))
+		pv_devinfo_remove(pv->dev);
 	pv_log_put_buffer(log_buffer);
 	return 0;
 }
@@ -721,6 +749,32 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 		return false;
 	return true;
 }
+
+void pv_device_remove(struct pantavisor *pv)
+{
+	struct pv_device *dev = pv->dev;
+
+	if (!dev)
+		return;
+
+	pv_log(DEBUG, "removing device");
+
+	if (dev->id)
+		free(dev->id);
+	if (dev->nick)
+		free(dev->nick);
+	if (dev->owner)
+		free(dev->owner);
+	if (dev->prn)
+		free(dev->prn);
+
+	pv_usermeta_remove(dev);
+	pv_devinfo_remove(dev);
+
+	free(dev);
+	pv->dev = NULL;
+}
+
 struct pv_init pv_init_device = {
 	.init_fn = pv_device_init,
 	.flags = 0,

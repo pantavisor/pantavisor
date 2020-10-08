@@ -144,6 +144,8 @@ static int grub_unset_env_key(char *key)
 	char new[1024];
 	char *s, *d;
 
+	pv_log(DEBUG, "unset key %s", key);
+
 	fd = read_grubenv(grub_env, old, 1);
 	if (fd < 0)
 		return -1;
@@ -189,6 +191,8 @@ static int grub_set_env_key(char *key, int value)
 	char old[1024];
 	char new[1024];
 	char *s, *d;
+
+	pv_log(DEBUG, "set key %s with value %d", key, value);
 
 	fd = read_grubenv(grub_env, old, 1);
 	if (fd < 0)

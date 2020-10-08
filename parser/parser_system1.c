@@ -41,6 +41,7 @@
 #include "device.h"
 #include "parser.h"
 #include "parser_bundle.h"
+#include "state.h"
 
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
@@ -309,7 +310,7 @@ static jsmntok_t* do_lookup_json_key(jsmntok_t **keys, char *json_buf, char *key
 		int length = 0;
 
 		length = (*keys_walker)->end - (*keys_walker)->start;
-		
+
 		curr_key = (char*) calloc(1, sizeof(char) * (length + 1));
 		if (!curr_key) {
 			keys_walker++;
@@ -658,94 +659,6 @@ out:
 	return 0;
 }
 
-void system1_free(struct pv_state *this)
-{
-	if (!this)
-		return;
-
-	if (this->initrd)
-		free(this->initrd);
-
-	if (this->fdt)
-		free(this->fdt);
-
-	free(this->json);
-
-	struct pv_platform *pt, *p = this->platforms;
-	while (p) {
-		free(p->type);
-		char **config = p->configs;
-		while (config && *config) {
-			free(*config);
-			config++;
-		}
-		free(p->json);
-		pt = p;
-		p = p->next;
-		free(pt);
-	}
-	struct pv_volume *vt, *v = this->volumes;
-	while (v) {
-		free(v->name);
-		vt = v;
-		v = v->next;
-		free(vt);
-	}
-	pv_objects_remove_all(this);
-}
-
-static void post_parse_validation(struct pv_state *this)
-{
-	if (!this)
-		return;
-
-	// remove platforms that have no loaded data
-	pv_platforms_remove_not_done(this);
-
-	// set runlevel in all undefined platforms
-	pv_platforms_default_runlevel(this);
-}
-
-void system1_print(struct pv_state *this)
-{
-	if (!this)
-		return;
-
-	// print
-	struct pv_platform *p = this->platforms;
-	struct pv_object *curr;
-	pv_log(DEBUG, "kernel: '%s'", this->kernel);
-	pv_log(DEBUG, "initrd: '%s'", this->initrd);
-	while (p) {
-		pv_log(DEBUG, "platform: '%s'", p->name);
-		pv_log(DEBUG, "  type: '%s'", p->type);
-		pv_log(DEBUG, "  runlevel: '%d'", p->runlevel);
-		pv_log(DEBUG, "  configs:");
-		char **config = p->configs;
-		while (config && *config) {
-			pv_log(DEBUG, "    '%s'", *config);
-			config++;
-		}
-		p = p->next;
-	}
-	struct pv_volume *v = this->volumes;
-	while (v) {
-		pv_log(DEBUG, "volume: '%s'", v->name);
-		pv_log(DEBUG, "  type: '%d'", v->type);
-		if (v->plat)
-			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
-
-		v = v->next;
-	}
-	
-	pv_objects_iter_begin(this, curr) {
-		pv_log(DEBUG, "object: ");
-		pv_log(DEBUG, "  name: '%s'", curr->name);
-		pv_log(DEBUG, "  id: '%s'", curr->id);
-	}
-	pv_objects_iter_end;
-}
-
 struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev)
 {
 	int tokc, ret, count, n;
@@ -828,9 +741,9 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// copy buffer
 	this->json = strdup(buf);
 
-	post_parse_validation(this);
+	pv_state_validate(this);
 
-	system1_print(this);
+	pv_state_print(this);
 
 out:
 	if (key)

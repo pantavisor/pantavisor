@@ -1,6 +1,20 @@
 #ifndef __PV_LOGGER_H_
 #define __PV_LOGGER_H_
 #include "pantavisor.h"
+
+struct pv_log_info {
+	const char *logfile;
+	char *name;
+	struct dl_list next;
+	void (*on_logger_closed)(struct pv_log_info*);
+	off_t truncate_size;
+	bool islxc;
+	pid_t logger_pid;
+	const char*(*pv_log_get_config_item)
+		(struct pv_logger_config *config, const char *key);
+	struct pv_platform *platform;
+};
+
 int start_pvlogger(struct pv_log_info *log_info, const char *platform);
 
 /*

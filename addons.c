@@ -35,65 +35,52 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "addons.h"
 #include "loop.h"
-
 #include "utils.h"
 #include "pantavisor.h"
-#include "addons.h"
+#include "state.h"
 
 #define FW_PATH		"/lib/firmware"
 
-struct pv_addon* pv_addon_get_by_name(struct pv_state *s, char *name)
+static void pv_addons_free_addon(struct pv_addon *a)
 {
-	struct pv_addon* v = s->addons;
+	if (!a)
+		return;
 
-	while (v) {
-		if (!strcmp(name, v->name))
-			return v;
-		v = v->next;
-	}
+	if (a->name)
+		free(a->name);
 
-	return NULL;
+	free(a);
 }
 
-void pv_addon_remove(struct pv_state *s, char *name)
+void pv_addons_remove(struct pv_state *s)
 {
-	struct pv_addon *v = s->addons;
-	struct pv_addon *prev = NULL;
+	int num_addons = 0;
+	struct pv_addon *a, *tmp;
+	struct dl_list *addons = &s->addons;
 
-	while (v) {
-		if (!strcmp(v->name, name)) {
-			if (v->name)
-				free(v->name);
-
-			if (v == s->addons)
-				s->addons = v->next;
-			else
-				prev->next = v->next;
-			free(v);
-			return;
-		}
-		prev = v;
+	// Iterate over all plats from state
+	dl_list_for_each_safe(a, tmp, addons,
+            struct pv_addon, list) {
+		pv_log(DEBUG, "removing addon %s", a->name);
+		dl_list_del(&a->list);
+		pv_addons_free_addon(a);
+		num_addons++;
 	}
+
+	pv_log(INFO, "removed %d addons", num_addons);
 }
 
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
 {
-	struct pv_addon *this = calloc(1, sizeof(struct pv_addon));
-	struct pv_addon *add = s->addons;
+	struct pv_addon *a = calloc(1, sizeof(struct pv_addon));
 
-	while (add && add->next) {
-		add = add->next;
+	if (a) {
+		a->name = name;
+		dl_list_init(&a->list);
+		dl_list_add_tail(&s->addons, &a->list);
 	}
 
-	if (!add) {
-		s->addons = add = this;
-	} else {
-		add->next = this;
-	}
-
-	this->name = name;
-
-	return this;
+	return a;
 }
-

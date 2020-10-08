@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,16 +19,31 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_ADDONS_H
-#define PV_ADDONS_H
 
-struct pv_addon {
-	char *name;
-	struct dl_list list; // pv_addon
+#ifndef PV_STATE_H
+#define PV_STATE_H
+
+struct pv_state {
+	int rev;
+	char *spec;
+	char *kernel;
+	char *fdt;
+	char *firmware;
+	char *modules;
+	char *initrd;
+	struct dl_list platforms; // pv_platform
+	struct dl_list volumes; // pv_volume
+	struct dl_list addons; // pv_addon
+	struct dl_list objects; //pv_object
+	int retries;
+	char *json;
+	int tryonce;
 };
 
-struct pv_addon* pv_addon_add(struct pv_state *s, char *name);
+struct pv_state* pv_state_init(int rev, char *spec);
+void pv_state_remove(struct pv_state *s);
 
-void pv_addons_remove(struct pv_state *s);
+void pv_state_print(struct pv_state *s);
+void pv_state_validate(struct pv_state *s);
 
-#endif // PV_VOLUMES_H
+#endif

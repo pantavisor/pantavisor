@@ -23,7 +23,6 @@
 #define PV_STORAGE_H
 
 int pv_storage_gc_run(struct pantavisor *pv);
-int pv_storage_gc_objects(struct pantavisor *pv);
 off_t pv_storage_get_free(struct pantavisor *pv, int diff);
 void pv_storage_rm_rev(struct pantavisor *pv, int rev);
 

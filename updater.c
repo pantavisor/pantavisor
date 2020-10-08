@@ -41,7 +41,6 @@
 #include "log.h"
 
 #include "utils.h"
-
 #include "objects.h"
 #include "parser/parser.h"
 #include "updater.h"
@@ -53,6 +52,7 @@
 #include "init.h"
 #include "revision.h"
 #include "parser/parser_bundle.h"
+#include "state.h"
 
 int MAX_REVISION_RETRIES = 0;
 int DOWNLOAD_RETRY_WAIT = 0;
@@ -121,7 +121,7 @@ static int trail_remote_init(struct pantavisor *pv)
 		goto err;
 	}
 
-	remote = malloc(sizeof(struct trail_remote));
+	remote = calloc(1, sizeof(struct trail_remote));
 	remote->client = client;
 
 	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
@@ -499,7 +499,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		pv_log(DEBUG, "no steps to process found, continuing");
 		goto out;
 	}
-	
+
 	if (!rev_s || !state) {
 		pv_log(WARN, "invalid or no data found on trail, ignoring");
 		goto out;
@@ -524,7 +524,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 			pv_log(WARN, "Revision %d exceeded download retries."
 					"Max set at %d, current attempt =%d", rev, MAX_REVISION_RETRIES, retries);
 			trail_remote_set_status(pv, rev, UPDATE_FAILED);
-			pv_state_free(remote->pending);
+			pv_state_remove(remote->pending);
 			remote->pending = NULL;
 			ret = 0;
 		}
@@ -979,7 +979,7 @@ int pv_update_start(struct pantavisor *pv, int offline)
 		goto out;
 	}
 
-	u = calloc(sizeof(struct pv_update), 1);
+	u = calloc(1, sizeof(struct pv_update));
 	if (u) {
 		u->total_update = (struct object_update*) calloc(1, sizeof(struct object_update));
 		u->progress_size = PATH_MAX;
@@ -994,6 +994,7 @@ int pv_update_start(struct pantavisor *pv, int offline)
 	} else {
 		u->pending = pv->remote->pending;
 		rev = u->pending->rev;
+		pv->remote->pending = NULL;
 	}
 
 	// to construct endpoint
@@ -1016,6 +1017,50 @@ update_status:
 	}
 out:
 	return ret;
+}
+
+void pv_update_remove(struct pantavisor *pv)
+{
+	struct pv_update *update = pv->update;
+
+	if (!update)
+		return;
+
+	pv_log(DEBUG, "removing update");
+
+	if (update->endpoint)
+		free(update->endpoint);
+	if (update->pending) {
+		pv_state_remove(update->pending);
+		update->pending = NULL;
+	}
+	if (update->progress_objects)
+		free(update->progress_objects);
+	if (update->total_update)
+		free(update->total_update);
+
+	free(pv->update);
+	pv->update = NULL;
+}
+
+void pv_trail_remote_remove(struct pantavisor *pv)
+{
+	struct trail_remote *trail = pv->remote;
+
+	if (!trail)
+		return;
+
+	pv_log(DEBUG, "removing trail");
+
+	if (trail->endpoint)
+		free(trail->endpoint);
+	if (trail->pending) {
+		pv_state_remove(trail->pending);
+		trail->pending = NULL;
+	}
+
+	free(trail);
+	pv->remote = NULL;
 }
 
 int pv_update_finish(struct pantavisor *pv)
@@ -1053,17 +1098,8 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	}
 out:
-	if (pv->update->pending)
-		pv_state_free(pv->update->pending);
-	if (pv->update->endpoint)
-		free(pv->update->endpoint);
-	if (pv->update->progress_objects)
-		free(pv->update->progress_objects);
-	if (pv->update->total_update)
-		free(pv->update->total_update);
-	free(pv->update);
-
-	pv->update = NULL;
+	pv_trail_remote_remove(pv);
+	pv_update_remove(pv);
 retry_update:
 	return ret;
 }
@@ -1355,7 +1391,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 
 	if (use_volatile_tmp) {
-		mktemp(volatile_tmp_obj_path);
+		mkstemp(volatile_tmp_obj_path);
 		volatile_tmp_fd = open(volatile_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 		fd = volatile_tmp_fd;
 	} else {
@@ -1679,16 +1715,6 @@ out:
 	return ret;
 }
 
-void pv_remote_destroy(struct pantavisor *pv)
-{
-	if (!pv->remote)
-		return;
-
-	free(pv->remote->client);
-	free(pv->remote->endpoint);
-	free(pv->remote);
-}
-
 int pv_set_current_status(struct pantavisor *pv, enum update_state state)
 {
 	return trail_remote_set_status(pv, pv->state->rev, state);
@@ -1737,7 +1763,7 @@ static int pv_update_init(struct pv_init *this)
 		if (pv->state) {
 			pv_update_start(pv, 1);
 			pv_update_set_status(pv, UPDATE_FAILED);
-			pv_release_state(pv);
+			pv_state_remove(pv->state);
 		}
 		pv->state = s;
 	}

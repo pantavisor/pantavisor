@@ -48,8 +48,7 @@ struct pv_cmd_req {
 int pv_cmd_socket_open(struct pantavisor *pv, char *path);
 void pv_cmd_socket_close(struct pantavisor *pv);
 struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout);
-void pv_cmd_finish(struct pantavisor *pv);
-static uint8_t parse_cmd_req(char *buffer, struct pv_cmd_req *cmd);
+void pv_cmd_req_remove(struct pantavisor *pv);
 
 static inline const char *string_cmd_operation(const enum cmd_json_operation_t op)
 {

@@ -50,6 +50,7 @@
 #include "network.h"
 #include "blkid.h"
 #include "init.h"
+#include "state.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -111,17 +112,6 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
 	return STATE_WAIT;
-}
-
-static int pv_step_get_prev(struct pantavisor *pv)
-{
-	if (!pv)
-		return -1;
-
-	if (pv->state)
-		return (pv->state->rev - 1);
-
-	return -1;
 }
 
 static pv_state_t _pv_init(struct pantavisor *pv)
@@ -394,7 +384,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	if (pv->req) {
 		pv_log(WARN, "stable command found queued, discarding");
-		pv_cmd_finish(pv);
+		pv_cmd_req_remove(pv);
 		goto out;
 	}
 
@@ -481,7 +471,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	}
 
 out:
-	pv_cmd_finish(pv);
+	pv_cmd_req_remove(pv);
 	return next_state;
 }
 
@@ -505,7 +495,8 @@ static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
 	}
 
 	// Release current step
-	pv_release_state(pv);
+	pv_state_remove(pv->state);
+	pv->state = NULL;
 
 	// For now, trigger a reboot for all updates
 	if (pv->update->need_reboot) {
@@ -615,8 +606,8 @@ out:
 	umount(pv->config->storage.mntpoint);
 	sync();
 
-	pv_log(INFO, "rebooting...");
 	sleep(5);
+	pv_log(INFO, "rebooting...");
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;

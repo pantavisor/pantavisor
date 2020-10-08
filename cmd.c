@@ -29,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <stdint.h>
 
 #define MODULE_NAME             "cmd"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -36,7 +37,9 @@
 
 #include "cmd.h"
 #include "utils.h"
-#include <stdint.h>
+#include "pvlogger.h"
+#include "platforms.h"
+#include "state.h"
 
 #ifndef _GNU_SOURCE
 struct  ucred {
@@ -85,6 +88,44 @@ void pv_cmd_socket_close(struct pantavisor *pv)
 	}
 }
 
+static uint8_t parse_cmd_req(char *buf, struct pv_cmd_req *cmd)
+{
+	int tokc;
+	uint8_t ret = 1;
+	jsmntok_t *tokv;
+	char *op_string = NULL;
+
+	jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	op_string = get_json_key_value(buf, "op", tokv, tokc);
+	if(!op_string) {
+		pv_log(WARN, "Unable to get op value from command");
+		goto out;
+	}
+
+	cmd->json_operation = int_cmd_operation(op_string, strlen(op_string));
+	if (!cmd->json_operation) {
+		pv_log(WARN, "op from command unknown");
+		goto out;
+	}
+
+	cmd->data = get_json_key_value(buf, "payload", tokv, tokc);
+	if (!cmd->data) {
+		pv_log(WARN, "Unable to get payload value from command");
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	if (tokv)
+		free(tokv);
+	if (op_string)
+		free(op_string);
+
+	return ret;
+}
+
 struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 {
 	int fd, ret;
@@ -124,25 +165,26 @@ struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout)
 
 	c = calloc(1, sizeof(struct pv_cmd_req));
 
-	if (getsockopt(fd, SOL_SOCKET,SO_PEERCRED, &peer_cred, &peer_size) < 0)
-		c->platform = NULL;
-	else {
-		struct pv_platform *walker = pv->state->platforms;
-		while (walker) {
-			struct pv_log_info *item, *tmp;
-			struct dl_list *head = &walker->logger_list;
-			bool found = false;
-			dl_list_for_each_safe(item, tmp, head,
+	if (!getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer_cred, &peer_size)) {
+		struct pv_platform *p, *tmp_p;
+		struct pv_log_info *l, *tmp_l;
+		struct dl_list *head_platforms, *head_logger;
+		bool found = false;
+		head_platforms = &pv->state->platforms;
+		dl_list_for_each_safe(p, tmp_p, head_platforms,
+				struct pv_platform, list) {
+			head_logger = &p->logger_list;
+			found = false;
+			dl_list_for_each_safe(l, tmp_l, head_logger,
 					struct pv_log_info, next) {
-				if (item->logger_pid == peer_cred.pid) {
-					c->platform = (item->name ? strdup(item->name) : NULL);
+				if (l->logger_pid == peer_cred.pid) {
+					c->platform = (l->name ? strdup(l->name) : NULL);
 					found = true;
 					break;
 				}
 			}
 			if (found)
 				break;
-			walker = walker->next;
 		}
 	}
 
@@ -238,57 +280,20 @@ err:
 	return NULL;
 }
 
-void pv_cmd_finish(struct pantavisor *pv)
+void pv_cmd_req_remove(struct pantavisor *pv)
 {
-	struct pv_cmd_req *c = pv->req;
+	struct pv_cmd_req *req = pv->req;
 
-	if (!c)
+	if (!req)
 		return;
 
-	if (c->data)
-		free(c->data);
+	pv_log(DEBUG, "removing cmd req");
 
-	if (c->platform)
-		free(c->platform);
-	free(c);
+	if (req->data)
+		free(req->data);
+	if (req->platform)
+		free(req->platform);
 
+	free(req);
 	pv->req = NULL;
-}
-
-uint8_t parse_cmd_req(char *buf, struct pv_cmd_req *cmd)
-{
-	int tokc;
-	uint8_t ret = 1;
-	jsmntok_t *tokv;
-	char *op_string = NULL;
-
-	jsmnutil_parse_json(buf, &tokv, &tokc);
-
-	op_string = get_json_key_value(buf, "op", tokv, tokc);
-	if(!op_string) {
-		pv_log(WARN, "Unable to get op value from command");
-		goto out;
-	}
-
-	cmd->json_operation = int_cmd_operation(op_string, strlen(op_string));
-	if (!cmd->json_operation) {
-		pv_log(WARN, "op from command unknown");
-		goto out;
-	}
-
-	cmd->data = get_json_key_value(buf, "payload", tokv, tokc);
-	if (!cmd->data) {
-		pv_log(WARN, "Unable to get payload value from command");
-		goto out;
-	}
-
-	ret = 0;
-
-out:
-	if (tokv)
-		free(tokv);
-	if (op_string)
-		free(op_string);
-
-	return ret;
 }

@@ -149,28 +149,6 @@ static struct config_item* _config_replace_item(struct dl_list *list,
 	return _config_add_item(list, key, value);
 }
 
-int config_del_item(struct dl_list *list, char *key)
-{
-	struct config_item *curr = NULL, *tmp;
-	int ret = -1;
-
-	if (key == NULL || dl_list_empty(list))
-		goto out;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
-		if (strcmp(curr->key, key) == 0) {
-			dl_list_del(&curr->list);
-			free(curr->key);
-			free(curr->value);
-			free(curr);
-			ret = 0;
-			break;
-		}
-	}
-out:
-	return ret;
-}
-
 void config_clear_items(struct dl_list *list)
 {
 	struct config_item *curr = NULL, *tmp;
@@ -469,7 +447,7 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	char tmp_path[PATH_MAX];
 
 	sprintf(tmp_path, "%s-XXXXXX", path);
-	mktemp(tmp_path);
+	mkstemp(tmp_path);
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (!fd) {
 		pv_log(ERROR, "unable to open temporary credentials config");

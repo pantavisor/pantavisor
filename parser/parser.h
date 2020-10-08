@@ -56,7 +56,6 @@ typedef enum {
 
 struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev);
 state_spec_t pv_state_spec(struct pv_state *s);
-void pv_state_free(struct pv_state *s);
 void pv_state_print(struct pv_state *s);
 
 #endif

@@ -26,6 +26,28 @@
 
 #include "pantavisor.h"
 
+#define MAX_RUNLEVEL 1
+
+struct pv_platform {
+	char *name;
+	char *type;
+	char **configs;
+	char *exec;
+	unsigned long ns_share;
+	void *data;
+	char *json;
+	pid_t init_pid;
+	bool running;
+	bool done;
+	int runlevel;
+	struct dl_list list; // pv_platform
+	struct dl_list logger_list; // pv_log_info
+	/*
+	 * To be freed once logger_list is setup.
+	 * */
+	struct dl_list logger_configs; // pv_logger_config
+};
+
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
@@ -37,5 +59,6 @@ void pv_platforms_default_runlevel(struct pv_state *s);
 int pv_platforms_start(struct pantavisor *pv, int runlevel);
 int pv_platforms_check_exited(struct pantavisor *pv, int runlevel);
 int pv_platforms_stop(struct pantavisor *pv, int runlevel);
+void pv_platforms_remove(struct pv_state *s);
 
 #endif

@@ -27,7 +27,6 @@
 #include <string.h>
 #include <inttypes.h>
 #include <pthread.h>
-
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -37,10 +36,10 @@
 #include <sys/stat.h>
 #include <libgen.h>
 #include <errno.h>
-#include "cmd.h"
 #include <sys/xattr.h>
 #include <stdarg.h>
-
+#include <limits.h>
+#include <sys/inotify.h>
 
 #ifndef MODULE_NAME
 #define MODULE_NAME             "pvlogger"
@@ -48,10 +47,10 @@
 
 static const char *module_name = MODULE_NAME;
 
+#include "cmd.h"
+#include "platforms.h"
 #include "log.h"
 #include "logger.h"
-#include <limits.h>
-#include <sys/inotify.h>
 #include "pvctl_utils.h"
 #include "pvlogger.h"
 #include "pantavisor.h"
