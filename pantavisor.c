@@ -97,7 +97,8 @@ void pv_teardown(struct pantavisor *pv)
 
 	pv_cmd_socket_close(pv);
 
-	pv_remove(pv);
+	// TODO: might be necessary for valgrind
+	//pv_remove(pv);
 }
 
 void pv_set_active(struct pantavisor *pv)
@@ -660,26 +661,17 @@ out:
 static int pv_pantavisor_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
-	int ret = -1;
-	int pv_rev = 0;
 
 	pv = get_pv_instance();
 	if (!pv)
 		goto out;
-	pv_rev = pv_revision_get_rev();
 	// Make sure this is initialized
 	pv->state = NULL;
 	pv->remote = NULL;
 	pv->update = NULL;
 	pv->last = -1;
-	// parse boot rev
-	// FIXME: load new state would be better in _pv_run for non reboot updates, is it possible?
-	pv->state = pv_get_state(pv, pv_rev);
-	if (!pv->state)
-		goto out;
-	ret = 0;
 out:
-	return ret;
+	return 0;
 }
 
 struct pv_init pv_init_state = {

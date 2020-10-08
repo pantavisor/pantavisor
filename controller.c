@@ -51,6 +51,7 @@
 #include "blkid.h"
 #include "init.h"
 #include "state.h"
+#include "revision.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -65,7 +66,6 @@
 static int rb_count;
 static time_t wait_delay;
 static time_t commit_delay;
-static bool pending_commit = false;
 
 typedef enum {
 	STATE_INIT,
@@ -134,6 +134,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	struct timespec tp;
 	int runlevel = 0;
 
+	// FIXME: init state, remote and update?
+	// FIXME manage bootloader env
+
+	// load state for this revision
+	pv->state = pv_get_state(pv, pv_revision_get_rev());
 	if (!pv->state)
 		return STATE_ERROR;
 
@@ -271,8 +276,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 
 static pv_state_t pv_update_helper(struct pantavisor *pv)
 {
-	static enum update_state current_status = UPDATE_DONE;
-	static bool status_updated = false;
+	// FIXME: move to updater
 	struct timespec tp;
 	pv_state_t next_state = STATE_WAIT;
 	int ret = 0;
@@ -286,7 +290,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY) {
-		if (pv_set_current_status(pv, UPDATE_DEVICE_AUTH_OK)) {
+		if (pv_update_set_status(pv, UPDATE_DEVICE_AUTH_OK)) {
 			if (rb_count > timeout_max)
 				return STATE_ROLLBACK;
 
@@ -302,31 +306,24 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 			 * but we delay the commit of this update.
 			 */
 			pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
-			pv_update_finish(pv);
-			pending_commit = true;
 		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
 		// We come from a forced rollback
+		// FIXME: why setting it as done if it failed?
 		pv_set_rev_done(pv, pv->state->rev);
-		pv_update_set_status(pv, UPDATE_FAILED);
-		if (!pv_update_finish(pv))
-			status_updated = true;
-		current_status = UPDATE_FAILED;
+		pv_update_finish(pv);
 	}
-	if (pending_commit) {
+	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
-				current_status = UPDATE_DEVICE_COMMIT_WAIT;
 				pv_log(WARN, "Committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
 			pv_bl_clear_update(pv);
 			pv_set_rev_done(pv, pv->state->rev);
-			pending_commit = false;
-			status_updated = false;
-			current_status = UPDATE_DONE;
-			pv_log(INFO, "Marking revision %d as DONE",
-					pv->state->rev);
+			pv_update_set_status(pv, UPDATE_DONE);
+			pv_log(INFO, "Marking revision %d as DONE", pv->state->rev);
+			pv_update_finish(pv);
 	}
 	// check for updates
 	ret = pv_check_for_updates(pv);
@@ -335,8 +332,6 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 		next_state = STATE_UPDATE;
 	}
 out:
-	if (!status_updated && !pv_set_current_status(pv, current_status))
-		status_updated = true;
 	/* set delay to at most the updater interval */
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = tp.tv_sec + pv->config->updater.interval;
@@ -354,6 +349,7 @@ out:
  */
 static pv_state_t pv_helper_process(struct pantavisor *pv)
 {
+	// FIXME: This needs a refactor
 	pv_state_t next_state = STATE_WAIT;
 	struct timespec tp;
 	int timeout_max = pv->config->update_commit_delay
@@ -407,7 +403,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
-		next_state = pending_commit ? STATE_ROLLBACK : STATE_REBOOT;
+		next_state = (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) ? STATE_ROLLBACK : STATE_REBOOT;
 		goto out;
 	}
 	next_state = pv_helper_process(pv);
@@ -513,13 +509,13 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	if (pv->update->runlevel <= 0) {
 		pv_log(WARN, "update runlevel %d requires reboot, rebooting...",
 				pv->update->runlevel);
-		pv_set_current_status(pv, UPDATE_REBOOT);
+		pv_update_set_status(pv, UPDATE_REBOOT);
 		return STATE_REBOOT;
 	}
 
 	pv_log(WARN, "update runlevel %d does not require reboot, running new revision...",
 				pv->update->runlevel);
-	pv_set_current_status(pv, UPDATE_TRY);
+	pv_update_set_status(pv, UPDATE_TRY);
 	return STATE_RUN;
 }
 

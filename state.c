@@ -84,7 +84,7 @@ void pv_state_print(struct pv_state *s)
 	if (!s)
 		return;
 
-	pv_log(DEBUG, "state %d:'", s->rev);
+	pv_log(DEBUG, "state %d:", s->rev);
 	pv_log(DEBUG, " kernel: '%s'", s->kernel);
 	pv_log(DEBUG, " initrd: '%s'", s->initrd);
 	struct pv_platform *p, *tmp_p;
@@ -93,7 +93,7 @@ void pv_state_print(struct pv_state *s)
 			struct pv_platform, list) {
 		pv_log(DEBUG, " platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
-		pv_log(DEBUG, "  runlevel: '%d'", p->runlevel);
+		pv_log(DEBUG, "  runlevel: %d", p->runlevel);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
@@ -106,7 +106,7 @@ void pv_state_print(struct pv_state *s)
 	dl_list_for_each_safe(v, tmp_v, volumes,
 			struct pv_volume, list) {
 		pv_log(DEBUG, " volume: '%s'", v->name);
-		pv_log(DEBUG, "  type: '%d'", v->type);
+		pv_log(DEBUG, "  type: %d", v->type);
 		if (v->plat)
 			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
 	}
