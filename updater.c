@@ -229,8 +229,9 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 			"DONE", "Update finished", 100);
 		break;
 	case UPDATE_NO_DOWNLOAD:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"WONTGO", "Unable to download and/or install update", 0);
+		if (!msg)
+			msg = "Unable to download and/or install update";
+		sprintf(json, DEVICE_STEP_STATUS_FMT, "WONTGO", msg, 0);
 		break;
 	case UPDATE_NO_PARSE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -1637,6 +1638,7 @@ int pv_update_install(struct pantavisor *pv)
 	struct pv_state *pending = pv->update->pending;
 	char path[PATH_MAX];
 	char path_new[PATH_MAX];
+	char *msg = NULL;
 
 	if (!pv->remote)
 		trail_remote_init(pv);
@@ -1654,8 +1656,24 @@ int pv_update_install(struct pantavisor *pv)
 		pv_log(ERROR, "unable to download objects");
 		if (ret == TRAIL_NO_NETWORK)
 			pv->update->status = UPDATE_RETRY_DOWNLOAD;
-		else
+		else {
+			/*
+			 * Required space wasn't available.
+			 * reusing, path to store message.
+			 */
+			uint64_t reqd_bytes = (uint64_t)get_update_size(pv->update);
+			uint64_t have_bytes = (uint64_t)pv_storage_get_free(pv, 0);
+			const uint32_t one_mib = (1024 * 1024);
+			
+			msg = path;
+			sprintf(msg, "Space required %"PRIu64".%"PRIu64" MB"
+					",available %"PRIu64".%"PRIu64 " MB",
+					reqd_bytes / one_mib,
+					reqd_bytes % one_mib,
+					have_bytes / one_mib,
+					have_bytes % one_mib);
 			pv->update->status = UPDATE_NO_DOWNLOAD;
+		}
 		goto out;
 	}
 
@@ -1708,7 +1726,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 out:
-	trail_remote_set_status(pv, -1, pv->update->status);
+	__trail_remote_set_status(pv, -1, pv->update->status, msg);
 	if (pending && (ret < 0))
 		pv_storage_rm_rev(pv, pending->rev);
 
