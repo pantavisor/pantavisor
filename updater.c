@@ -980,7 +980,6 @@ int pv_update_start(struct pantavisor *pv)
 	pv->remote->pending = NULL;
 
 update_status:
-	// FIXME: it would be interesting to have some solid knowledge on update status, remote status and rev
 	ret = pv_update_set_status(pv, UPDATE_QUEUED);
 	if (ret < 0)
 		pv_log(INFO, "failed to update cloud status, possibly offline");
@@ -1397,9 +1396,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	pv_log(INFO, "verified object (%s), renaming from (%s)", obj->objpath, mmc_tmp_obj_path);
 	rename(mmc_tmp_obj_path, obj->objpath);
 
-	if (is_kernel_pvk)
-		pv_bl_install_kernel(pv, volatile_tmp_obj_path);
-
 	ret = 1;
 	if (pv->update && pv->update->progress_objects) {
 		int data_len = strlen(pv->update->progress_objects);
@@ -1640,7 +1636,11 @@ int pv_update_install(struct pantavisor *pv)
 	ret = pending->rev;
 
 	// update has been sucessfully installed, so next boot should try to boot it
-	pv_bl_set_try(pv, ret);
+	if (pv_revision_set_try(pv, ret)) {
+		pv_log(ERROR, "unable to write pv_try to boot cmd env");
+		ret = -1;
+		goto out;
+	}
 
 	pv_update_set_status(pv, UPDATE_INSTALLED);
 out:
@@ -1677,7 +1677,7 @@ static int pv_update_init(struct pv_init *this)
 
 	// get try revision from bl
 	// FIXME: is revison.c with pv_tru necessary? merge revision and bl reads and writes?
-	bl_rev = pv_bl_get_try(pv);
+	bl_rev = pv_revision_get_try();
 	pv_rev = pv_revision_get_rev();
 
 	if (bl_rev <= 0) {

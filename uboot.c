@@ -361,16 +361,10 @@ static int uboot_flush_env(void)
 	return 0;
 }
 
-static int uboot_install_kernel(char *path)
-{
-	return 0;
-}
-
 const struct bl_ops uboot_ops = {
 	.init		= uboot_init,
 	.get_env_key	= uboot_get_env_key,
 	.set_env_key	= uboot_set_env_key,
 	.unset_env_key	= uboot_unset_env_key,
 	.flush_env	= uboot_flush_env,
-	.install_kernel	= uboot_install_kernel,
 };

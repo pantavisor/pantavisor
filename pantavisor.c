@@ -175,33 +175,28 @@ int pv_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-void pv_set_rev_done(struct pantavisor *pv, int rev)
-{
-	__pv_set_rev_done(pv, rev, true);
-}
-
-void __pv_set_rev_done(struct pantavisor *pv, int rev, bool unset_pvtry)
+int pv_set_rev_done(struct pantavisor *pv, int rev)
 {
 	int fd;
 	char path[256];
+
+	pv_bl_clear_update(pv);
 
 	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
 	if (!fd) {
 		pv_log(WARN, "unable to set current(done) flag for revision %d", rev);
-		return;
+		return -1;
 	}
 
 	// commit to disk
 	fsync(fd);
 	close(fd);
 
-	// commit to bootloader
-	__pv_bl_set_current(pv, rev, unset_pvtry);
+	return pv_revision_unset_try(pv);
 }
 
-#define REV_BUF_SIZE	5
 int *pv_get_revisions(struct pantavisor *pv)
 {
 	int n, i = 0;

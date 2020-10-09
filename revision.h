@@ -27,5 +27,13 @@
  * These are the revisions we got from kernel as command
  * line parameters.
  */
+
 int pv_revision_get_rev(void);
+int pv_revision_get_try(void);
+
+int pv_revision_set_rev(struct pantavisor *pv, int rev);
+int pv_revision_set_try(struct pantavisor *pv, int rev);
+
+int pv_revision_unset_try(struct pantavisor *pv, int rev);
+
 #endif /*__REVISION__H__*/

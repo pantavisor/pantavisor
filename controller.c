@@ -308,9 +308,6 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 			pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
 		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
-		// We come from a forced rollback
-		// FIXME: why setting it as done if it failed?
-		pv_set_rev_done(pv, pv->state->rev);
 		pv_update_finish(pv);
 	}
 	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
@@ -319,8 +316,10 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 				pv_log(WARN, "Committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
-			pv_bl_clear_update(pv);
-			pv_set_rev_done(pv, pv->state->rev);
+			if (pv_set_rev_done(pv, pv->state->rev)) {
+				pv_log(ERROR, "Revision could not be set as done");
+				return STATE_ROLLBACK;
+			}
 			pv_update_set_status(pv, UPDATE_DONE);
 			pv_log(INFO, "Marking revision %d as DONE", pv->state->rev);
 			pv_update_finish(pv);
@@ -551,8 +550,6 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 
 		rb_count = 0;
 	}
-
-	__pv_set_rev_done(pv, pv_get_rollback_rev(pv), false);
 
 	return STATE_REBOOT;
 }
