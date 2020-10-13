@@ -34,6 +34,6 @@ int pv_revision_get_try(void);
 int pv_revision_set_rev(struct pantavisor *pv, int rev);
 int pv_revision_set_try(struct pantavisor *pv, int rev);
 
-int pv_revision_unset_try(struct pantavisor *pv, int rev);
+int pv_revision_unset_try(struct pantavisor *pv);
 
 #endif /*__REVISION__H__*/

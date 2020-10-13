@@ -308,6 +308,8 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 			pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
 		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
+		pv_revision_set_rev(pv, pv->state->rev);
+		pv_revision_unset_try(pv);
 		pv_update_finish(pv);
 	}
 	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
@@ -320,6 +322,8 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 				pv_log(ERROR, "Revision could not be set as done");
 				return STATE_ROLLBACK;
 			}
+			pv_revision_set_rev(pv, pv->state->rev);
+			pv_revision_unset_try(pv);
 			pv_update_set_status(pv, UPDATE_DONE);
 			pv_log(INFO, "Marking revision %d as DONE", pv->state->rev);
 			pv_update_finish(pv);
@@ -550,6 +554,9 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 
 		rb_count = 0;
 	}
+
+	pv_revision_set_rev(pv, pv_get_rollback_rev(pv));
+	pv_revision_unset_try(pv);
 
 	return STATE_REBOOT;
 }
