@@ -1634,8 +1634,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	ret = pending->rev;
-
-	// update has been sucessfully installed, so next boot should try to boot it
+	pv_log(INFO, "Update successfully installed, so next boot will start rev %d", ret);
 	if (pv_revision_set_try(pv, ret)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
@@ -1650,12 +1649,31 @@ out:
 	return ret;
 }
 
+int pv_update_resume(struct pantavisor *pv)
+{
+	int bl_rev;
+
+	if (pv->update)
+		return pv->update->runlevel;
+
+	bl_rev = pv_revision_get_try();
+	if (bl_rev > 0) {
+		pv_log(INFO, "loading update data after reboot...");
+
+		pv->update = pv_update_new(pv->config->creds.id, bl_rev);
+		if (!pv->update)
+			return -1;
+
+		pv_update_set_status(pv, UPDATE_TRY);
+	}
+
+	return 0;
+}
+
 static int pv_update_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
-	int bl_rev = 0;
-	int pv_rev = 0;
 	int ret = -1;
 
 	pv = get_pv_instance();
@@ -1675,34 +1693,9 @@ static int pv_update_init(struct pv_init *this)
 	if (config->update_commit_delay <= 0)
 		config->update_commit_delay = DEFAULT_UPDATE_COMMIT_DELAY;
 
-	// get try revision from bl
-	// FIXME: is revison.c with pv_tru necessary? merge revision and bl reads and writes?
-	bl_rev = pv_revision_get_try();
-	pv_rev = pv_revision_get_rev();
-
-	if (bl_rev <= 0) {
-		ret = 0;
-		goto out;
-	}
-	if (bl_rev == pv_rev) {
-		pv_log(INFO, "loading update after regular reboot...");
-		pv->update = pv_update_new(config->creds.id, pv_rev);
-		pv_update_set_status(pv, UPDATE_TRY);
-	} else {
-		pv_log(INFO, "current rev and bootloader try rev do not match");
-		struct pv_state *s = pv->state;
-		pv->state = pv_get_state(pv, bl_rev);
-		if (pv->state) {
-			pv_log(ERROR, "pv_rev and pv_try do not match, loading update to report failure...");
-			pv->update = pv_update_new(config->creds.id, pv->state->rev);
-			pv_update_set_status(pv, UPDATE_FAILED);
-			pv_state_remove(pv->state);
-		}
-		pv->state = s;
-	}
 	ret = 0;
 out:
-	return ret;
+	return 0;
 }
 
 struct pv_init pv_init_update = {

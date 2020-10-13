@@ -52,6 +52,7 @@
 #include "init.h"
 #include "state.h"
 #include "revision.h"
+#include "updater.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -134,20 +135,22 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	struct timespec tp;
 	int runlevel = 0;
 
-	// FIXME: init state, remote and update?
-	// FIXME manage bootloader env
-
-	// load state for this revision
 	pv->state = pv_get_state(pv, pv_revision_get_rev());
 	if (!pv->state)
-		return STATE_ERROR;
+	{
+		pv_log(ERROR, "state could not be loaded");
+		return STATE_ROLLBACK;
+	}
 
-	if (pv->update)
-		runlevel = pv->update->runlevel;
-
-	pv_log(DEBUG, "starting pantavisor runlevel %d and above", runlevel);
+	runlevel = pv_update_resume(pv);
+	if (runlevel < 0) {
+		pv_log(ERROR, "update could not be resumed");
+		return STATE_ROLLBACK;
+	}
 
 	pv_meta_set_objdir(pv);
+
+	pv_log(DEBUG, "starting pantavisor runlevel %d and above", runlevel);
 
 	if (pv_volumes_mount(pv, runlevel) < 0)
 		return STATE_ROLLBACK;
@@ -296,7 +299,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			wait_delay = tp.tv_sec + pv->config->updater.interval;
-			pv_log(WARN, "Device couldn't authenticate to Pantahub. Retrying in %d seconds",
+			pv_log(WARN, "device couldn't authenticate to Pantahub. Retrying in %d seconds",
 					pv->config->updater.interval);
 			rb_count++;
 			return STATE_WAIT;
@@ -308,24 +311,29 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 			pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
 		}
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
-		pv_revision_set_rev(pv, pv->state->rev);
-		pv_revision_unset_try(pv);
+		pv_log(INFO, "if no new update is queued, next boot will start rev %d", pv->state->rev);
+		if (pv_set_rev_next_boot(pv, pv->state->rev)) {
+			pv_log(ERROR, "boot env could not be set");
+		}
 		pv_update_finish(pv);
 	}
 	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
-				pv_log(WARN, "Committing new update in %d seconds", commit_delay - tp.tv_sec);
+				pv_log(WARN, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
+			pv_log(INFO, "marking revision %d as DONE", pv->state->rev);
 			if (pv_set_rev_done(pv, pv->state->rev)) {
-				pv_log(ERROR, "Revision could not be set as done");
+				pv_log(ERROR, "revision could not be set as done");
 				return STATE_ROLLBACK;
 			}
-			pv_revision_set_rev(pv, pv->state->rev);
-			pv_revision_unset_try(pv);
+			pv_log(INFO, "if no update is queued, next boot will start rev %d", pv->state->rev);
+			if (pv_set_rev_next_boot(pv, pv->state->rev)) {
+				pv_log(ERROR, "boot env could not be set");
+				return STATE_ROLLBACK;
+			}
 			pv_update_set_status(pv, UPDATE_DONE);
-			pv_log(INFO, "Marking revision %d as DONE", pv->state->rev);
 			pv_update_finish(pv);
 	}
 	// check for updates
@@ -555,8 +563,12 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		rb_count = 0;
 	}
 
-	pv_revision_set_rev(pv, pv_get_rollback_rev(pv));
-	pv_revision_unset_try(pv);
+	int rollback_rev = pv_get_rollback_rev(pv);
+	pv_log(INFO, "rolling back, next boot will start rev %d", rollback_rev);
+	if (pv_set_rev_next_boot(pv, rollback_rev)) {
+		pv_log(ERROR, "boot env could not be set");
+		return STATE_ERROR;
+	}
 
 	return STATE_REBOOT;
 }

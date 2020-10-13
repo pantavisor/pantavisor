@@ -194,7 +194,19 @@ int pv_set_rev_done(struct pantavisor *pv, int rev)
 	fsync(fd);
 	close(fd);
 
-	return pv_revision_unset_try(pv);
+	return 0;
+}
+
+int pv_set_rev_next_boot(struct pantavisor *pv, int rev)
+{
+	// we set pv_rev, the boot env used to boot when there is no pv_try
+	if (pv_revision_set_rev(pv, rev))
+		return -1;
+	// we unset pv_try for a regular non update boot up
+	if (pv_revision_unset_try(pv))
+		return -1;
+
+	return 0;
 }
 
 int *pv_get_revisions(struct pantavisor *pv)

@@ -100,6 +100,7 @@ void pv_trail_remote_remove(struct pantavisor *pv);
 // FIXME: start and install could be the same
 int pv_update_start(struct pantavisor *pv);
 int pv_update_install(struct pantavisor *pv);
+int pv_update_resume(struct pantavisor *pv);
 // FIXME: finish may not be necessary
 void pv_update_finish(struct pantavisor *pv);
 void pv_update_remove(struct pantavisor *pv);
