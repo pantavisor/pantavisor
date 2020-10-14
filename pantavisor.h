@@ -57,12 +57,9 @@ struct pantavisor {
 	struct pv_connection *conn;
 };
 
-int pv_set_rev_done(struct pantavisor *pv, int rev);
 int pv_set_rev_next_boot(struct pantavisor *pv, int rev);
 int *pv_get_revisions(struct pantavisor *pv);
-int pv_rev_is_done(struct pantavisor *pv, int rev);
 void pv_set_active(struct pantavisor *pv);
-int pv_get_rollback_rev(struct pantavisor *pv);
 int pv_make_config(struct pantavisor *pv);
 void pv_meta_set_objdir(struct pantavisor *pv);
 int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);

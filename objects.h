@@ -40,7 +40,7 @@ struct pv_object {
 };
 
 char** pv_objects_get_all_ids(struct pantavisor *pv);
-int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id);
+int pv_objects_id_in_step(struct pv_state *s, char *id);
 struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *c);
 struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name);
 void pv_objects_remove(struct pv_state *s);

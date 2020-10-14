@@ -70,7 +70,7 @@ out:
 	return ids;
 }
 
-int pv_objects_id_in_step(struct pantavisor *pv, struct pv_state *s, char *id)
+int pv_objects_id_in_step(struct pv_state *s, char *id)
 {
 	struct pv_object *curr, *tmp;
 	struct dl_list *head;

@@ -133,14 +133,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	struct timespec tp;
-	int runlevel = 0;
-
-	pv->state = pv_get_state(pv, pv_revision_get_rev());
-	if (!pv->state)
-	{
-		pv_log(ERROR, "state could not be loaded");
-		return STATE_ROLLBACK;
-	}
+	int runlevel = 0, rev = 0;
 
 	runlevel = pv_update_resume(pv);
 	if (runlevel < 0) {
@@ -148,9 +141,18 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	pv_meta_set_objdir(pv);
+	rev = (p->update) ? pv->update->pending->rev : pv_revision_get_rev();
 
-	pv_log(DEBUG, "starting pantavisor runlevel %d and above", runlevel);
+	pv_log(DEBUG, "starting pantavisor with runlevel %d and rev %d", runlevel, rev);
+
+	pv->state = pv_get_state(pv, pv->update->pending->rev);
+	if (!pv->state)
+	{
+		pv_log(ERROR, "state could not be loaded");
+		return STATE_ROLLBACK;
+	}
+
+	pv_meta_set_objdir(pv);
 
 	if (pv_volumes_mount(pv, runlevel) < 0)
 		return STATE_ROLLBACK;
@@ -283,38 +285,11 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 	struct timespec tp;
 	pv_state_t next_state = STATE_WAIT;
 	int ret = 0;
-	int timeout_max = pv->config->updater.network_timeout
-		/ pv->config->updater.interval;
-	/*
-	 * The update struct would become private and not
-	 * associated with pv at all. pv would only contain
-	 * state and config information.
-	 */
 
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY) {
-		if (pv_update_set_status(pv, UPDATE_DEVICE_AUTH_OK)) {
-			if (rb_count > timeout_max)
-				return STATE_ROLLBACK;
-
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			wait_delay = tp.tv_sec + pv->config->updater.interval;
-			pv_log(WARN, "device couldn't authenticate to Pantahub. Retrying in %d seconds",
-					pv->config->updater.interval);
-			rb_count++;
-			return STATE_WAIT;
-		} else {
-			/*
-			 * we clear the pending update
-			 * but we delay the commit of this update.
-			 */
-			pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
-		}
+		pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
-		pv_log(INFO, "if no new update is queued, next boot will start rev %d", pv->state->rev);
-		if (pv_set_rev_next_boot(pv, pv->state->rev)) {
-			pv_log(ERROR, "boot env could not be set");
-		}
 		pv_update_finish(pv);
 	}
 	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
@@ -323,13 +298,9 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 				pv_log(WARN, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
-			pv_log(INFO, "marking revision %d as DONE", pv->state->rev);
-			if (pv_set_rev_done(pv, pv->state->rev)) {
-				pv_log(ERROR, "revision could not be set as done");
-				return STATE_ROLLBACK;
-			}
-			pv_log(INFO, "if no update is queued, next boot will start rev %d", pv->state->rev);
-			if (pv_set_rev_next_boot(pv, pv->state->rev)) {
+			pv_log(INFO, "setting %d as next revision to be started after reboot", pv->state->rev);
+			if (pv_revision_set_rev(pv, pv->state->rev) ||
+				pv_revision_unset_try(pv)) {
 				pv_log(ERROR, "boot env could not be set");
 				return STATE_ROLLBACK;
 			}
@@ -360,7 +331,7 @@ out:
  */
 static pv_state_t pv_helper_process(struct pantavisor *pv)
 {
-	// FIXME: This needs a refactor
+	// FIXME: Move to wait
 	pv_state_t next_state = STATE_WAIT;
 	struct timespec tp;
 	int timeout_max = pv->config->update_commit_delay
@@ -368,8 +339,10 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 
 	if (!pv_ph_is_available(pv)) {
 		rb_count++;
-		if (!pv_rev_is_done(pv, pv->state->rev) &&
-				(rb_count > timeout_max)) {
+		if (pv->update &&
+			(pv->update->status == UPDATE_TRY ||
+			pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) &&
+			(rb_count > timeout_max)) {
 			next_state = STATE_ROLLBACK;
 			goto out;
 		}
@@ -501,12 +474,10 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	rev = pv_update_install(pv);
 	if (rev < 0) {
 		pv_log(ERROR, "update has failed, continue...");
-		// FIXME: check where we finish updates
 		pv_update_finish(pv);
 		return STATE_WAIT;
 	}
 
-	// FIXME: investigate this variable
 	pv->online = false;
 
 	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
@@ -559,13 +530,10 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		ret = pv_volumes_unmount(pv, 0);
 		if (ret < 0)
 			pv_log(WARN, "unmount error: ignoring due to rollback");
-
-		rb_count = 0;
 	}
 
-	int rollback_rev = pv_get_rollback_rev(pv);
-	pv_log(INFO, "rolling back, next boot will start rev %d", rollback_rev);
-	if (pv_set_rev_next_boot(pv, rollback_rev)) {
+	pv_log(INFO, "setting last commited revision to be started after reboot");
+	if (pv_revision_unset_try(pv)) {
 		pv_log(ERROR, "boot env could not be set");
 		return STATE_ERROR;
 	}

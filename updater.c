@@ -250,10 +250,6 @@ static int __trail_remote_set_status(struct pantavisor *pv, enum update_state st
 		 */
 		pending_update->total_update->total_downloaded = 0;
 		break;
-	case UPDATE_DEVICE_AUTH_OK:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"AUTHENTICATED", "Device Login Successful.", 0);
-		break;
 	case UPDATE_DEVICE_COMMIT_WAIT:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"UPDATED", "Awaiting update commit.",0);
@@ -1634,7 +1630,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	ret = pending->rev;
-	pv_log(INFO, "Update successfully installed, so next boot will start rev %d", ret);
+	pv_log(INFO, "update successfully installed, so next boot will start rev %d", ret);
 	if (pv_revision_set_try(pv, ret)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
@@ -1642,6 +1638,9 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	pv_update_set_status(pv, UPDATE_INSTALLED);
+
+	pv->update->runlevel = 0;
+	pv_log(INFO, "update runlevel set to %d", pv->update->runlevel);
 out:
 	if (pending && (ret < 0))
 		pv_storage_rm_rev(pv, pending->rev);
@@ -1658,7 +1657,7 @@ int pv_update_resume(struct pantavisor *pv)
 
 	bl_rev = pv_revision_get_try();
 	if (bl_rev > 0) {
-		pv_log(INFO, "loading update data after reboot...");
+		pv_log(INFO, "loading update data from rev %d after reboot...", bl_rev);
 
 		pv->update = pv_update_new(pv->config->creds.id, bl_rev);
 		if (!pv->update)

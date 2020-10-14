@@ -741,7 +741,7 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	 * may not exist and the device would then be
 	 * stuck getting any updates.
 	 */
-	if (pv_revision_get_rev() !=0 )
+	if (pv->state->rev != 0)
 		return true;
 	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
 

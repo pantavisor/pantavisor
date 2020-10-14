@@ -175,28 +175,6 @@ int pv_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-int pv_set_rev_done(struct pantavisor *pv, int rev)
-{
-	int fd;
-	char path[256];
-
-	pv_bl_clear_update(pv);
-
-	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
-
-	fd = open(path, O_CREAT | O_WRONLY, 0644);
-	if (!fd) {
-		pv_log(WARN, "unable to set current(done) flag for revision %d", rev);
-		return -1;
-	}
-
-	// commit to disk
-	fsync(fd);
-	close(fd);
-
-	return 0;
-}
-
 int pv_set_rev_next_boot(struct pantavisor *pv, int rev)
 {
 	// we set pv_rev, the boot env used to boot when there is no pv_try
@@ -251,36 +229,6 @@ int *pv_get_revisions(struct pantavisor *pv)
 	free(dirs);
 
 	return revs;
-}
-
-int pv_rev_is_done(struct pantavisor *pv, int rev)
-{
-	struct stat st;
-	char path[256];
-
-	if (!rev)
-		return 1;
-
-	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
-	if (stat(path, &st) == 0)
-		return 1;
-
-	return 0;
-}
-
-int pv_get_rollback_rev(struct pantavisor *pv)
-{
-	unsigned long rev = pv->state->rev;
-	struct stat st;
-	char path[256];
-
-	while (rev--) {
-		sprintf(path, "%s/trails/%lu/.pv/done", pv->config->storage.mntpoint, rev);
-		if (stat(path, &st) == 0)
-			return rev;
-	}
-
-	return 0;
 }
 
 void pv_meta_set_objdir(struct pantavisor *pv)
