@@ -162,7 +162,7 @@ static void object_update_json(struct object_update *object_update,
 			);
 }
 
-static int __trail_remote_set_status(struct pantavisor *pv, enum update_state status, const char *msg)
+static int trail_remote_set_status(struct pantavisor *pv, enum update_state status, const char *msg)
 {
 	int ret = 0;
 	struct pv_update *pending_update = pv->update;
@@ -348,11 +348,6 @@ out:
 		free(json);
 
 	return ret;
-}
-
-static int trail_remote_set_status(struct pantavisor *pv, enum update_state status)
-{
-	return __trail_remote_set_status(pv, status, NULL);
 }
 
 static trest_response_ptr trail_get_steps_response(struct pantavisor *pv,
@@ -922,7 +917,7 @@ int pv_check_for_updates(struct pantavisor *pv)
 		return 0;
 }
 
-int pv_update_set_status(struct pantavisor *pv, enum update_state status)
+static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, char *msg)
 {
 	if (!pv || !pv->update) {
 		pv_log(WARN, "uninitialized update");
@@ -936,7 +931,12 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status)
 		return 0;
 	}
 
-	return trail_remote_set_status(pv, status);
+	return trail_remote_set_status(pv, status, msg);
+}
+
+int pv_update_set_status(struct pantavisor *pv, enum update_state status)
+{
+	return pv_update_set_status_msg(pv, status, NULL);
 }
 
 /*
@@ -1221,7 +1221,7 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 		object_update_json(progress_update->object_update, msg, OBJ_JSON_SIZE);
 	}
 	progress_update->next_update_at = time(NULL) + UPDATE_PROGRESS_FREQ;
-	__trail_remote_set_status(progress_update->pv, UPDATE_DOWNLOAD_PROGRESS, msg);
+	pv_update_set_status_msg(progress_update->pv, UPDATE_DOWNLOAD_PROGRESS, msg);
 out:
 	free(msg);
 }
@@ -1582,7 +1582,7 @@ int pv_update_install(struct pantavisor *pv)
 			uint64_t reqd_bytes = (uint64_t)get_update_size(pv->update);
 			uint64_t have_bytes = (uint64_t)pv_storage_get_free(pv, 0);
 			const uint32_t one_mib = (1024 * 1024);
-			
+
 			msg = path;
 			sprintf(msg, "Space required %"PRIu64".%"PRIu64" MB"
 					",available %"PRIu64".%"PRIu64 " MB",
@@ -1590,7 +1590,7 @@ int pv_update_install(struct pantavisor *pv)
 					reqd_bytes % one_mib,
 					have_bytes / one_mib,
 					have_bytes % one_mib);
-			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD, msg);
+			pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
 		}
 		goto out;
 	}

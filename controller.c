@@ -141,7 +141,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	rev = (p->update) ? pv->update->pending->rev : pv_revision_get_rev();
+	rev = (pv->update) ? pv->update->pending->rev : pv_revision_get_rev();
 
 	pv_log(DEBUG, "starting pantavisor with runlevel %d and rev %d", runlevel, rev);
 
