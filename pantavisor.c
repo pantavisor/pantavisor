@@ -70,35 +70,12 @@ struct pantavisor* get_pv_instance()
 	return global_pv;
 }
 
-static void pv_remove(struct pantavisor *pv)
-{
-
-	pv_log(DEBUG, "removing pantavisor");
-
-	if (pv->step)
-		free(pv->step);
-	if (pv->conn)
-		free(pv->conn);
-
-	pv_device_remove(pv);
-	pv_update_remove(pv);
-	pv_state_remove(pv->state);
-	pv->state = NULL;
-	pv_cmd_req_remove(pv);
-	pv_trail_remote_remove(pv);
-
-	free(pv);
-}
-
 void pv_teardown(struct pantavisor *pv)
 {
 	if (!pv)
 		return;
 
 	pv_cmd_socket_close(pv);
-
-	// TODO: might be necessary for valgrind
-	//pv_remove(pv);
 }
 
 void pv_set_active(struct pantavisor *pv)

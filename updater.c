@@ -523,7 +523,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 			pv_log(WARN, "Revision %d exceeded download retries."
 					"Max set at %d, current attempt =%d", rev, MAX_REVISION_RETRIES, retries);
 			pv_update_set_status(pv, UPDATE_FAILED);
-			pv_state_remove(remote->pending);
+			pv_state_free(remote->pending);
 			remote->pending = NULL;
 			ret = 0;
 		}
@@ -990,10 +990,8 @@ static void object_update_free(struct object_update* o)
 	free(o);
 }
 
-void pv_update_remove(struct pantavisor *pv)
+static void pv_update_free(struct pv_update *update)
 {
-	struct pv_update *update = pv->update;
-
 	if (!update)
 		return;
 
@@ -1002,21 +1000,24 @@ void pv_update_remove(struct pantavisor *pv)
 	if (update->endpoint)
 		free(update->endpoint);
 	if (update->pending) {
-		pv_state_remove(update->pending);
+		pv_state_free(update->pending);
 		update->pending = NULL;
 	}
 	if (update->progress_objects)
 		free(update->progress_objects);
 	object_update_free(update->total_update);
 
-	free(pv->update);
+	free(update);
+}
+
+void pv_update_remove(struct pantavisor *pv)
+{
+	pv_update_free(pv->update);
 	pv->update = NULL;
 }
 
-void pv_trail_remote_remove(struct pantavisor *pv)
+static void pv_trail_remote_free(struct trail_remote *trail)
 {
-	struct trail_remote *trail = pv->remote;
-
 	if (!trail)
 		return;
 
@@ -1025,11 +1026,16 @@ void pv_trail_remote_remove(struct pantavisor *pv)
 	if (trail->endpoint)
 		free(trail->endpoint);
 	if (trail->pending) {
-		pv_state_remove(trail->pending);
+		pv_state_free(trail->pending);
 		trail->pending = NULL;
 	}
 
 	free(trail);
+}
+
+void pv_trail_remote_remove(struct pantavisor *pv)
+{
+	pv_trail_remote_free(pv->remote);
 	pv->remote = NULL;
 }
 

@@ -59,7 +59,7 @@ static const char* pv_volume_type_str(pv_volume_t vt)
 	return "UNKNOWN";
 }
 
-static void pv_volumes_free_volume(struct pv_volume *v)
+static void pv_volume_free(struct pv_volume *v)
 {
 	if (v->name)
 		free(v->name);
@@ -73,7 +73,7 @@ static void pv_volumes_free_volume(struct pv_volume *v)
 	free(v);
 }
 
-void pv_volumes_remove(struct pv_state *s)
+void pv_volumes_empty(struct pv_state *s)
 {
 	int num_vol = 0;
 	struct pv_volume *v, *tmp;
@@ -84,7 +84,7 @@ void pv_volumes_remove(struct pv_state *s)
 			struct pv_volume, list) {
 		pv_log(DEBUG, "removing volume %s", v->name);
 		dl_list_del(&v->list);
-		pv_volumes_free_volume(v);
+		pv_volume_free(v);
 		num_vol++;
 	}
 

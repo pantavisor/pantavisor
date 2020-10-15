@@ -133,7 +133,7 @@ struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-void pv_objects_remove(struct pv_state *s)
+void pv_objects_empty(struct pv_state *s)
 {
 	int num_obj = 0;
 	struct pv_object *curr, *tmp;

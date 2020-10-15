@@ -46,6 +46,6 @@ struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
 
 int pv_volumes_mount(struct pantavisor *pv, int runlevel);
 int pv_volumes_unmount(struct pantavisor *pv, int runlevel);
-void pv_volumes_remove(struct pv_state *s);
+void pv_volumes_empty(struct pv_state *s);
 
 #endif // PV_VOLUMES_H

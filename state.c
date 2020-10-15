@@ -48,7 +48,7 @@ struct pv_state* pv_state_new(int rev, char *spec)
 	return s;
 }
 
-void pv_state_remove(struct pv_state *s)
+void pv_state_free(struct pv_state *s)
 {
 	if (!s)
 		return;
@@ -68,10 +68,10 @@ void pv_state_remove(struct pv_state *s)
 	if (s->initrd)
 		free(s->initrd);
 
-	pv_platforms_remove(s);
-	pv_volumes_remove(s);
-	pv_addons_remove(s);
-	pv_objects_remove(s);
+	pv_platforms_empty(s);
+	pv_volumes_empty(s);
+	pv_addons_empty(s);
+	pv_objects_empty(s);
 
 	if (s->json)
 		free(s->json);

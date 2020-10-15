@@ -750,10 +750,8 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	return true;
 }
 
-void pv_device_remove(struct pantavisor *pv)
+static void pv_device_free(struct pv_device *dev)
 {
-	struct pv_device *dev = pv->dev;
-
 	if (!dev)
 		return;
 
@@ -772,6 +770,11 @@ void pv_device_remove(struct pantavisor *pv)
 	pv_devinfo_remove(dev);
 
 	free(dev);
+}
+
+void pv_device_remove(struct pantavisor *pv)
+{
+	pv_device_free(pv->dev);
 	pv->dev = NULL;
 }
 
