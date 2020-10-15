@@ -1042,6 +1042,8 @@ void pv_update_finish(struct pantavisor *pv)
 	switch (pv->update->status) {
 	case UPDATE_DONE:
 	case UPDATE_FAILED:
+		pv_revision_set_failed();
+		pv_update_set_status(pv, pv->update->status);
 		pv_update_remove(pv);
 		pv_log(INFO, "update commit done");
 		break;
@@ -1631,7 +1633,7 @@ int pv_update_install(struct pantavisor *pv)
 
 	ret = pending->rev;
 	pv_log(INFO, "update successfully installed, so next boot will start rev %d", ret);
-	if (pv_revision_set_try(pv, ret)) {
+	if (pv_revision_set_installed(ret)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
 		goto out;
@@ -1650,20 +1652,24 @@ out:
 
 int pv_update_resume(struct pantavisor *pv)
 {
-	int bl_rev;
+	int rev;
 
+	// If update exist, it means we come from a non reboot start
 	if (pv->update)
 		return pv->update->runlevel;
 
-	bl_rev = pv_revision_get_try();
-	if (bl_rev > 0) {
-		pv_log(INFO, "loading update data from rev %d after reboot...", bl_rev);
-
-		pv->update = pv_update_new(pv->config->creds.id, bl_rev);
+	// If update is in progress, we are going to load it to report its completion or failure
+	if (pv_revision_update_in_progress()) {
+		rev = pv_revision_get_try();
+		pv_log(INFO, "loading update data from rev %d after reboot...", rev);
+		pv->update = pv_update_new(pv->config->creds.id, rev);
 		if (!pv->update)
 			return -1;
 
-		pv_update_set_status(pv, UPDATE_TRY);
+		if (pv_revision_trying_update())
+			pv_update_set_status(pv, UPDATE_TRY);
+		else
+			pv_update_set_status(pv, UPDATE_FAILED);
 	}
 
 	return 0;
@@ -1681,7 +1687,7 @@ static int pv_update_init(struct pv_init *this)
 		goto out;
 	config = pv->config;
 	if (config->revision_retries <= 0) MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
-	else 
+	else
 		MAX_REVISION_RETRIES = config->revision_retries;
 
 	if (config->revision_retry_timeout <= 0)

@@ -31,9 +31,12 @@
 int pv_revision_get_rev(void);
 int pv_revision_get_try(void);
 
-int pv_revision_set_rev(struct pantavisor *pv, int rev);
-int pv_revision_set_try(struct pantavisor *pv, int rev);
+bool pv_revision_update_in_progress(void);
+bool pv_revision_trying_update(void);
 
-int pv_revision_unset_try(struct pantavisor *pv);
+int pv_revision_set_installed(int rev);
+int pv_revision_set_roolledback(void);
+int pv_revision_set_commited(int rev);
+int pv_revision_set_failed(void);
 
 #endif /*__REVISION__H__*/

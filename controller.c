@@ -141,11 +141,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	rev = (pv->update) ? pv->update->pending->rev : pv_revision_get_rev();
-
+	rev = pv_revision_get_rev();
 	pv_log(DEBUG, "starting pantavisor with runlevel %d and rev %d", runlevel, rev);
 
-	pv->state = pv_get_state(pv, pv->update->pending->rev);
+	pv->state = pv_get_state(pv, rev);
 	if (!pv->state)
 	{
 		pv_log(ERROR, "state could not be loaded");
@@ -298,10 +297,8 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 				pv_log(WARN, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
-			pv_log(INFO, "setting %d as next revision to be started after reboot", pv->state->rev);
-			if (pv_revision_set_rev(pv, pv->state->rev) ||
-				pv_revision_unset_try(pv)) {
-				pv_log(ERROR, "boot env could not be set");
+			if (pv_revision_set_commited(pv->state->rev)) {
+				pv_log(ERROR, "revision for next boot could not be set");
 				return STATE_ROLLBACK;
 			}
 			pv_update_set_status(pv, UPDATE_DONE);
@@ -532,9 +529,8 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 			pv_log(WARN, "unmount error: ignoring due to rollback");
 	}
 
-	pv_log(INFO, "setting last commited revision to be started after reboot");
-	if (pv_revision_unset_try(pv)) {
-		pv_log(ERROR, "boot env could not be set");
+	if (pv_revision_set_roolledback()) {
+		pv_log(ERROR, "revision for next boot could not be set");
 		return STATE_ERROR;
 	}
 
