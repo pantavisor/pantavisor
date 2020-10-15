@@ -142,7 +142,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	rev = pv_revision_get_rev();
-	pv_log(DEBUG, "starting pantavisor with runlevel %d and rev %d", runlevel, rev);
+	pv_log(DEBUG, "running pantavisor with runlevel %d and rev %d", runlevel, rev);
 
 	pv->state = pv_get_state(pv, rev);
 	if (!pv->state)
@@ -280,7 +280,6 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 
 static pv_state_t pv_update_helper(struct pantavisor *pv)
 {
-	// FIXME: move to updater
 	struct timespec tp;
 	pv_state_t next_state = STATE_WAIT;
 	int ret = 0;
@@ -328,7 +327,6 @@ out:
  */
 static pv_state_t pv_helper_process(struct pantavisor *pv)
 {
-	// FIXME: Move to wait
 	pv_state_t next_state = STATE_WAIT;
 	struct timespec tp;
 	int timeout_max = pv->config->update_commit_delay

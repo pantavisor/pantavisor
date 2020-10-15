@@ -183,7 +183,6 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 
 	switch (status) {
 	case UPDATE_QUEUED:
-		// FIXME: is it all this retries logging necessary here?
 		if (pending_update)
 			__retries = pending_update->pending->retries;
 
@@ -970,7 +969,6 @@ int pv_update_start(struct pantavisor *pv)
 		goto out;
 	}
 
-	// FIXME: does config exist here? what about other places?
 	pv->update = pv_update_new(pv->config->creds.id, pv->remote->pending->rev);
 	pv->update->pending = pv->remote->pending;
 	pv->remote->pending = NULL;
@@ -1047,7 +1045,6 @@ void pv_update_finish(struct pantavisor *pv)
 		pv_update_remove(pv);
 		pv_log(INFO, "update commit done");
 		break;
-	// FIXME: move this to install ?
 	case UPDATE_RETRY_DOWNLOAD:
 		pv->update->retry_at = time(NULL) + DOWNLOAD_RETRY_WAIT;
 		if (pv->update->pending->retries >= MAX_REVISION_RETRIES) {

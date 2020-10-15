@@ -426,7 +426,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 			goto err;
 	}
 
-	pv_log(DEBUG, "linked boot assets for rev %d", s->rev);
+
+	pv_log(DEBUG, "linked boot assets for rev=%d", s->rev);
 
 	return 0;
 err:
@@ -604,6 +605,7 @@ out:
 static int pv_pantavisor_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
+	int ret = -1;
 
 	pv = get_pv_instance();
 	if (!pv)
@@ -613,6 +615,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->remote = NULL;
 	pv->update = NULL;
 	pv->last = -1;
+	ret = 0;
 out:
 	return 0;
 }

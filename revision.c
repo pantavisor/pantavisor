@@ -52,7 +52,7 @@ int pv_revision_get_try()
 
 static int pv_revision_set_rev(int rev)
 {
-	if (pv_bl_set_current(rev))
+	if (pv_bl_set_rev(rev))
 		return -1;
 
 	pv_revision.pv_rev = rev;
@@ -104,7 +104,8 @@ int pv_revision_set_commited(int rev)
 {
 	pv_log(INFO, "setting done revision %d to be started after next reboot", rev);
 	return (pv_revision_set_rev(rev) ||
-			pv_revision_unset_try());
+			pv_revision_unset_try() ||
+			pv_bl_clear_update());
 }
 
 int pv_revision_set_failed()

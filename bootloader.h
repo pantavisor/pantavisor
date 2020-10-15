@@ -25,12 +25,13 @@
 #include "pantavisor.h"
 #include <stdbool.h>
 
-int pv_bl_get_rev(void);
 
 int pv_bl_set_try(int rev);
-int pv_bl_set_current(int rev);
-
 int pv_bl_unset_try(void);
+
+int pv_bl_get_rev(void);
+int pv_bl_set_rev(int rev);
+
 int pv_bl_clear_update(void);
 
 struct bl_ops {

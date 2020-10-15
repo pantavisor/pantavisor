@@ -67,14 +67,6 @@ static int pv_bl_init(struct pantavisor *pv)
 	return ret;
 }
 
-int pv_bl_get_rev()
-{
-	if (!ops)
-		return -1;
-
-	return ops->get_env_key("pv_rev");
-}
-
 int pv_bl_set_try(int rev)
 {
 	if (!ops)
@@ -83,20 +75,29 @@ int pv_bl_set_try(int rev)
 	return ops->set_env_key("pv_try", rev);
 }
 
-int pv_bl_set_current(int rev)
-{
-	if (!ops)
-		return -1;
-
-	return ops->set_env_key("pv_rev", rev);
-}
-
 int pv_bl_unset_try()
 {
 	if (!ops)
 		return -1;
 
 	return ops->unset_env_key("pv_try");
+}
+
+
+int pv_bl_get_rev()
+{
+	if (!ops)
+		return -1;
+
+	return ops->get_env_key("pv_rev");
+}
+
+int pv_bl_set_rev(int rev)
+{
+	if (!ops)
+		return -1;
+
+	return ops->set_env_key("pv_rev", rev);
 }
 
 int pv_bl_clear_update()
