@@ -57,9 +57,6 @@
 int MAX_REVISION_RETRIES = 0;
 int DOWNLOAD_RETRY_WAIT = 0;
 
-static struct trail_object *head;
-static struct trail_object *last;
-
 typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 
 // takes an allocated buffer
@@ -106,6 +103,9 @@ static int trail_remote_init(struct pantavisor *pv)
 	struct trail_remote *remote = NULL;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_ptr client = 0;
+
+	if (pv->remote)
+		return 0;
 
 	client = pv_get_trest_client(pv, NULL);
 
@@ -162,8 +162,7 @@ static void object_update_json(struct object_update *object_update,
 			);
 }
 
-static int __trail_remote_set_status(struct pantavisor *pv, int rev,
-					enum update_state status, const char *msg)
+static int trail_remote_set_status(struct pantavisor *pv, enum update_state status, const char *msg)
 {
 	int ret = 0;
 	struct pv_update *pending_update = pv->update;
@@ -173,24 +172,14 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 	char *json = __json;
 	char *json_progress = "";
 	char retries[6]; /*json holder for retry_count*/
-	char *endpoint;
 	char retry_message[128];
 	char total_progress_json[512];
 	int __retries = 0;
 
-	if (!pending_update) {
-		endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT) +
-			strlen(pv->config->creds.id) + get_digit_count(rev));
-		sprintf(endpoint, DEVICE_STEP_ENDPOINT_FMT, pv->config->creds.id, rev);
-	} else {
-		endpoint = pending_update->endpoint;
-	}
-
-	if (!pv->remote)
-		trail_remote_init(pv);
-
-	if (!pv->remote)
+	if (!pv->remote || !pending_update) {
+		pv_log(WARN, "remote or update not initialized");
 		goto out;
+	}
 
 	switch (status) {
 	case UPDATE_QUEUED:
@@ -259,10 +248,6 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 		 * Clear what was downloaded.
 		 */
 		pending_update->total_update->total_downloaded = 0;
-		break;
-	case UPDATE_DEVICE_AUTH_OK:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"AUTHENTICATED", "Device Login Successful.", 0);
 		break;
 	case UPDATE_DEVICE_COMMIT_WAIT:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -334,7 +319,7 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 	}
 
 	req = trest_make_request(TREST_METHOD_PUT,
-				 endpoint,
+				 pending_update->endpoint,
 				 0, 0,
 				 json);
 
@@ -354,8 +339,6 @@ static int __trail_remote_set_status(struct pantavisor *pv, int rev,
 	}
 
 out:
-	if (!pending_update && endpoint)
-		free(endpoint);
 	if (req)
 		trest_request_free(req);
 	if (res)
@@ -364,11 +347,6 @@ out:
 		free(json);
 
 	return ret;
-}
-
-static int trail_remote_set_status(struct pantavisor *pv, int rev, enum update_state status)
-{
-	return __trail_remote_set_status(pv, rev, status, NULL);
 }
 
 static trest_response_ptr trail_get_steps_response(struct pantavisor *pv,
@@ -399,7 +377,7 @@ static trest_response_ptr trail_get_steps_response(struct pantavisor *pv,
 	if (!size)
 		goto out;
 
-	pv_log(DEBUG, "steps found in NEW state = '%d'", size);
+	pv_log(DEBUG, "%d steps found", size);
 	trest_request_free(req);
 	return res;
 out:
@@ -440,6 +418,26 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	return ret;
 }
 
+static struct pv_update* pv_update_new(char *id, int rev)
+{
+	struct pv_update *u;
+
+	u = calloc(1, sizeof(struct pv_update));
+	if (u) {
+		u->total_update = (struct object_update*) calloc(1, sizeof(struct object_update));
+		u->progress_size = PATH_MAX;
+		u->progress_objects = (char*)calloc(1, u->progress_size);
+		u->status = UPDATE_INIT;
+
+		// to construct endpoint
+		u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
+					+ (strlen(id))
+					+ get_digit_count(rev)) * sizeof(char));
+		sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT, id, rev);
+	}
+
+	return u;
+}
 
 static int trail_get_new_steps(struct pantavisor *pv)
 {
@@ -508,24 +506,24 @@ static int trail_get_new_steps(struct pantavisor *pv)
 
 	// parse state
 	rev = atoi(rev_s);
+	pv_log(DEBUG, "parse rev %d with json state = '%s'", rev, state);
 	remote->pending = pv_state_parse(pv, state, rev);
 	/*A revision is pending, either a new one or a queued one*/
 	ret = 1;
 	if (!remote->pending) {
 		pv_log(INFO, "invalid rev (%d) found on remote", rev);
-		trail_remote_set_status(pv, rev, UPDATE_NO_PARSE);
+		pv_update_set_status(pv, UPDATE_NO_PARSE);
 		ret = 0;
 	} else {
-		pv_log(DEBUG, "adding rev (%d), state = '%s'", rev, state);
-		pv_log(DEBUG, "first pending found to be rev = %d", remote->pending->rev);
+		pv_log(DEBUG, "first pending step found is rev %d", remote->pending->rev);
 		retries++; /*Add one since we're now retrying this.*/
 		remote->pending->retries = retries;
-		pv_log(DEBUG, "current retry count  = %d", retries);
+		pv_log(DEBUG, "current retry count is %d", retries);
 		if (retries > MAX_REVISION_RETRIES) {
 			pv_log(WARN, "Revision %d exceeded download retries."
 					"Max set at %d, current attempt =%d", rev, MAX_REVISION_RETRIES, retries);
-			trail_remote_set_status(pv, rev, UPDATE_FAILED);
-			pv_state_remove(remote->pending);
+			pv_update_set_status(pv, UPDATE_FAILED);
+			pv_state_free(remote->pending);
 			remote->pending = NULL;
 			ret = 0;
 		}
@@ -893,17 +891,13 @@ out:
 int pv_check_for_updates(struct pantavisor *pv)
 {
 	int ret;
-	trest_auth_status_enum auth_status;
 
-	if (!pv->remote)
-		trail_remote_init(pv);
-
-	// Offline
-	if (!pv->remote)
+	if (trail_remote_init(pv)) {
+		pv_log(WARN, "remote not initialized");
 		return 0;
+	}
 
-	auth_status = trest_update_auth(pv->remote->client);
-	if (auth_status != TREST_AUTH_STATUS_OK) {
+	if (trest_update_auth(pv->remote->client) != TREST_AUTH_STATUS_OK) {
 		pv_log(INFO, "cannot authenticate to cloud");
 		return 0;
 	}
@@ -922,108 +916,82 @@ int pv_check_for_updates(struct pantavisor *pv)
 		return 0;
 }
 
-int pv_update_set_status(struct pantavisor *pv, enum update_state status)
+static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, char *msg)
 {
-	if (!pv) {
-		pv_log(WARN, "uninitialized pantavisor object");
-		return 0;
-	}
-
-	if (!pv->update) {
-		pv_log(WARN, "invalid update in current state");
-		return 0;
+	if (!pv || !pv->update) {
+		pv_log(WARN, "uninitialized update");
+		return -1;
 	}
 
 	pv->update->status = status;
 
-	return 1;
+	if (trail_remote_init(pv)) {
+		pv_log(WARN, "status will not be send to cloud");
+		return 0;
+	}
+
+	return trail_remote_set_status(pv, status, msg);
 }
+
+int pv_update_set_status(struct pantavisor *pv, enum update_state status)
+{
+	return pv_update_set_status_msg(pv, status, NULL);
+}
+
 /*
  * Return value
  * -ve for error,
  *  0 for success,
  * +ve for retry time not yet reached.
  * */
-int pv_update_start(struct pantavisor *pv, int offline)
+int pv_update_start(struct pantavisor *pv)
 {
-	int c;
-	int ret = -1, rev = -1;
-	struct pv_update *u;
+	int ret = -1;
 
-	if (!pv) {
-		pv_log(WARN, "uninitialized pantavisor object");
+	if (!pv || !pv->state) {
+		pv_log(WARN, "uninitialized state");
 		goto out;
 	}
 
-	if (!pv->state) {
-		pv_log(WARN, "invalid pantavisor state");
-		goto out;
-	}
-
-	/*
-	 * From a retry.
-	 * */
+	// From a retry
 	if (pv->update) {
-		if (time(NULL) >=  pv->update->retry_at) {
-			pv->update->pending->retries++;
-			ret = 0;
-			if (!offline)
-				trail_remote_set_status(pv, -1, pv->update->status);
+		int time_left = pv->update->retry_at - time(NULL);
 
+		if (time_left <= 0) {
+			pv->update->pending->retries++;
 			pv_log(INFO, "Retrying revision %d ,turn = %d",
 					pv->update->pending->rev, pv->update->pending->retries);
 			goto update_status;
 		}
-		else {
-			ret = 1;
-		}
+
+		pv_log(INFO, "Retrying in %d seconds", (time_left > 0 ? time_left : 0));
+		ret = 1;
 		goto out;
 	}
 
-	u = calloc(1, sizeof(struct pv_update));
-	if (u) {
-		u->total_update = (struct object_update*) calloc(1, sizeof(struct object_update));
-		u->progress_size = PATH_MAX;
-		u->progress_objects = (char*)calloc(1, u->progress_size);
-	}
-	head = NULL;
-	last = NULL;
-
-	// Offline update
-	if (!pv->remote && offline) {
-		rev = pv->state->rev;
-	} else {
-		u->pending = pv->remote->pending;
-		rev = u->pending->rev;
-		pv->remote->pending = NULL;
-	}
-
-	// to construct endpoint
-	c = get_digit_count(rev);
-	u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
-		          + (strlen(pv->config->creds.id)) + c) * sizeof(char));
-	sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT,
-		pv->config->creds.id, rev);
-
-	pv->update = u;
-
-	// all done up to here for offline
-	ret = 0;
+	pv->update = pv_update_new(pv->config->creds.id, pv->remote->pending->rev);
+	pv->update->pending = pv->remote->pending;
+	pv->remote->pending = NULL;
 
 update_status:
-	if (!offline) {
-		ret = trail_remote_set_status(pv, -1, UPDATE_QUEUED);
-		if (ret < 0)
-			pv_log(INFO, "failed to update cloud status, possibly offline");
-	}
+	ret = pv_update_set_status(pv, UPDATE_QUEUED);
+	if (ret < 0)
+		pv_log(INFO, "failed to update cloud status, possibly offline");
 out:
 	return ret;
 }
 
-void pv_update_remove(struct pantavisor *pv)
+static void object_update_free(struct object_update* o)
 {
-	struct pv_update *update = pv->update;
+	if (o->object_name)
+		free(o->object_name);
+	if (o->object_id)
+		free(o->object_id);
+	free(o);
+}
 
+static void pv_update_free(struct pv_update *update)
+{
 	if (!update)
 		return;
 
@@ -1032,22 +1000,24 @@ void pv_update_remove(struct pantavisor *pv)
 	if (update->endpoint)
 		free(update->endpoint);
 	if (update->pending) {
-		pv_state_remove(update->pending);
+		pv_state_free(update->pending);
 		update->pending = NULL;
 	}
 	if (update->progress_objects)
 		free(update->progress_objects);
-	if (update->total_update)
-		free(update->total_update);
+	object_update_free(update->total_update);
 
-	free(pv->update);
+	free(update);
+}
+
+void pv_update_remove(struct pantavisor *pv)
+{
+	pv_update_free(pv->update);
 	pv->update = NULL;
 }
 
-void pv_trail_remote_remove(struct pantavisor *pv)
+static void pv_trail_remote_free(struct trail_remote *trail)
 {
-	struct trail_remote *trail = pv->remote;
-
 	if (!trail)
 		return;
 
@@ -1056,53 +1026,44 @@ void pv_trail_remote_remove(struct pantavisor *pv)
 	if (trail->endpoint)
 		free(trail->endpoint);
 	if (trail->pending) {
-		pv_state_remove(trail->pending);
+		pv_state_free(trail->pending);
 		trail->pending = NULL;
 	}
 
 	free(trail);
+}
+
+void pv_trail_remote_remove(struct pantavisor *pv)
+{
+	pv_trail_remote_free(pv->remote);
 	pv->remote = NULL;
 }
 
-int pv_update_finish(struct pantavisor *pv)
+void pv_update_finish(struct pantavisor *pv)
 {
 	int ret = 0;
 
 	switch (pv->update->status) {
 	case UPDATE_DONE:
-		ret = trail_remote_set_status(pv, -1, UPDATE_DONE);
-		goto out;
-		break;
-	case UPDATE_REBOOT:
-		pv_log(INFO, "update requires reboot, cleaning up...");
-		goto out;
-		break;
 	case UPDATE_FAILED:
-		ret = trail_remote_set_status(pv, -1, UPDATE_FAILED);
-		pv_log(ERROR, "update has failed");
-		goto out;
+		pv_revision_set_failed();
+		pv_update_set_status(pv, pv->update->status);
+		pv_update_remove(pv);
+		pv_log(INFO, "update commit done");
+		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		pv->update->retry_at = time(NULL) + DOWNLOAD_RETRY_WAIT;
 		if (pv->update->pending->retries >= MAX_REVISION_RETRIES) {
-			ret = trail_remote_set_status(pv, -1, UPDATE_FAILED);
-			goto out;
+			ret = pv_update_set_status(pv, UPDATE_FAILED);
+			return;
 		}
 		pv_log(WARN, "Unable to download revision, retrying update in %d seconds",
 				pv->update->retry_at);
-		goto retry_update;
-	case UPDATE_DEVICE_COMMIT_WAIT:
-		ret = trail_remote_set_status(pv, -1, UPDATE_DEVICE_COMMIT_WAIT);
 		break;
 	default:
-		ret = -1;
-		goto out;
+		pv_log(WARN, "update finished during wrong state %d", pv->update->status);
 		break;
 	}
-out:
-	pv_trail_remote_remove(pv);
-	pv_update_remove(pv);
-retry_update:
-	return ret;
 }
 
 static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
@@ -1199,41 +1160,6 @@ static int copy_and_close(int s_fd, int d_fd)
 	return bytes_r;
 }
 
-static int trail_update_has_new_initrd(struct pantavisor *pv)
-{
-	char *old = 0, *new = 0;
-	struct pv_object *o_new = 0, *o_old = 0;
-
-	if (!pv)
-		return 0;
-
-	if (pv->state)
-		old = pv->state->initrd;
-
-	if (pv->update && pv->update->pending)
-		new = pv->update->pending->initrd;
-
-	if (!old || !new)
-		return 0;
-
-	if (strcmp(old, new))
-		return 1;
-
-	o_new = pv_objects_get_by_name(pv->update->pending, new);
-	o_old = pv_objects_get_by_name(pv->state, old);
-	if (!o_new || !o_old)
-		return 1;
-
-	if (strcmp(o_new->id, o_old->id))
-		return 1;
-
-	return 0;
-}
-/*
- * used to update progress of an object.
- */
-
-
 struct progress_update {
 	time_t next_update_at;
 	struct pantavisor *pv;
@@ -1300,7 +1226,7 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 		object_update_json(progress_update->object_update, msg, OBJ_JSON_SIZE);
 	}
 	progress_update->next_update_at = time(NULL) + UPDATE_PROGRESS_FREQ;
-	__trail_remote_set_status(progress_update->pv, -1, UPDATE_DOWNLOAD_PROGRESS, msg);
+	pv_update_set_status_msg(progress_update->pv, UPDATE_DOWNLOAD_PROGRESS, msg);
 out:
 	free(msg);
 }
@@ -1471,9 +1397,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	pv_log(INFO, "verified object (%s), renaming from (%s)", obj->objpath, mmc_tmp_obj_path);
 	rename(mmc_tmp_obj_path, obj->objpath);
 
-	if (is_kernel_pvk)
-		pv_bl_install_kernel(pv, volatile_tmp_obj_path);
-
 	ret = 1;
 	if (pv->update && pv->update->progress_objects) {
 		int data_len = strlen(pv->update->progress_objects);
@@ -1591,15 +1514,16 @@ static int trail_download_objects(struct pantavisor *pv)
 	}
 	pv_objects_iter_end;
 
-	// Run GC as last resort
-	if (!pv_storage_get_free(pv, get_update_size(u)))
-		pv_storage_gc_run(pv);
-
-	// Check again
+	// Check free space for update
 	if (!pv_storage_get_free(pv, get_update_size(u))) {
-		pv_log(WARN, "not enough space to process update");
-		ret = TRAIL_NO_SPACE;
-		goto out;
+		// Run GC as last resort
+		pv_storage_gc_run(pv);
+		// Check again
+		if (!pv_storage_get_free(pv, get_update_size(u))) {
+			pv_log(WARN, "not enough space to process update");
+			ret = TRAIL_NO_SPACE;
+			goto out;
+		}
 	}
 
 	k_new = pv_objects_get_by_name(u->pending,
@@ -1607,9 +1531,7 @@ static int trail_download_objects(struct pantavisor *pv)
 	k_old = pv_objects_get_by_name(pv->state,
 			pv->state->kernel);
 
-	if (k_new && k_old && strcmp(k_new->id, k_old->id))
-		u->need_reboot = 1;
-	
+
 	if (u->total_update) {
 		u->total_update->object_name = "total";
 		u->total_update->object_id = "none";
@@ -1623,7 +1545,7 @@ static int trail_download_objects(struct pantavisor *pv)
 			goto out;
 		}
 		u->total_update->current_time = time(NULL);
-		trail_remote_set_status(pv, -1, UPDATE_DOWNLOAD_PROGRESS);
+		pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
 	}
 	pv_objects_iter_end;
 	ret = 0;
@@ -1634,28 +1556,29 @@ out:
 
 int pv_update_install(struct pantavisor *pv)
 {
-	int ret, fd;
+	int ret = -1, fd;
 	struct pv_state *pending = pv->update->pending;
 	char path[PATH_MAX];
 	char path_new[PATH_MAX];
 	char *msg = NULL;
 
-	if (!pv->remote)
-		trail_remote_init(pv);
-
-	if (!pending) {
-		ret = -1;
-		pv_log(ERROR, "update data is invalid");
+	if (trail_remote_init(pv)) {
+		pv_log(WARN, "remote not initialized");
 		goto out;
 	}
 
-	pv_log(INFO, "applying update...");
+	if (!pending) {
+		pv_log(WARN, "update not initialized started");
+		goto out;
+	}
+
+	pv_log(INFO, "installing update...");
 	ret = trail_download_objects(pv);
 
 	if (ret < 0) {
 		pv_log(ERROR, "unable to download objects");
 		if (ret == TRAIL_NO_NETWORK)
-			pv->update->status = UPDATE_RETRY_DOWNLOAD;
+			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
 		else {
 			/*
 			 * Required space wasn't available.
@@ -1664,7 +1587,7 @@ int pv_update_install(struct pantavisor *pv)
 			uint64_t reqd_bytes = (uint64_t)get_update_size(pv->update);
 			uint64_t have_bytes = (uint64_t)pv_storage_get_free(pv, 0);
 			const uint32_t one_mib = (1024 * 1024);
-			
+
 			msg = path;
 			sprintf(msg, "Space required %"PRIu64".%"PRIu64" MB"
 					",available %"PRIu64".%"PRIu64 " MB",
@@ -1672,15 +1595,12 @@ int pv_update_install(struct pantavisor *pv)
 					reqd_bytes % one_mib,
 					have_bytes / one_mib,
 					have_bytes % one_mib);
-			pv->update->status = UPDATE_NO_DOWNLOAD;
+			pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
 		}
 		goto out;
 	}
 
-	trail_remote_set_status(pv, -1, UPDATE_DOWNLOADED);
-
-	if (trail_update_has_new_initrd(pv))
-		pv->update->need_reboot = 1;
+	pv_update_set_status(pv, UPDATE_DOWNLOADED);
 
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
@@ -1691,7 +1611,7 @@ int pv_update_install(struct pantavisor *pv)
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
 		pv_log(ERROR, "unable to link objects to relative path (failed=%d)", ret);
-		pv->update->status = UPDATE_FAILED;
+		pv_update_set_status(pv, UPDATE_FAILED);
 		goto out;
 	}
 
@@ -1714,36 +1634,54 @@ int pv_update_install(struct pantavisor *pv)
 		goto out;
 	}
 
-	trail_remote_set_status(pv, -1, UPDATE_INSTALLED);
-
-	sleep(2);
-	pv->update->status = UPDATE_TRY;
 	ret = pending->rev;
-
-	if (pv->update->need_reboot) {
-		pv->update->status = UPDATE_REBOOT;
-		pv_bl_set_try(pv, ret);
+	pv_log(INFO, "update successfully installed, so next boot will start rev %d", ret);
+	if (pv_revision_set_installed(ret)) {
+		pv_log(ERROR, "unable to write pv_try to boot cmd env");
+		ret = -1;
+		goto out;
 	}
 
+	pv_update_set_status(pv, UPDATE_INSTALLED);
+
+	pv->update->runlevel = 0;
+	pv_log(INFO, "update runlevel set to %d", pv->update->runlevel);
 out:
-	__trail_remote_set_status(pv, -1, pv->update->status, msg);
 	if (pending && (ret < 0))
 		pv_storage_rm_rev(pv, pending->rev);
 
 	return ret;
 }
 
-int pv_set_current_status(struct pantavisor *pv, enum update_state state)
+int pv_update_resume(struct pantavisor *pv)
 {
-	return trail_remote_set_status(pv, pv->state->rev, state);
+	int rev;
+
+	// If update exist, it means we come from a non reboot start
+	if (pv->update)
+		return pv->update->runlevel;
+
+	// If update is in progress, we are going to load it to report its completion or failure
+	if (pv_revision_update_in_progress()) {
+		rev = pv_revision_get_try();
+		pv_log(INFO, "loading update data from rev %d after reboot...", rev);
+		pv->update = pv_update_new(pv->config->creds.id, rev);
+		if (!pv->update)
+			return -1;
+
+		if (pv_revision_trying_update())
+			pv_update_set_status(pv, UPDATE_TRY);
+		else
+			pv_update_set_status(pv, UPDATE_FAILED);
+	}
+
+	return 0;
 }
 
 static int pv_update_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
-	int bl_rev = 0;
-	int pv_rev = 0;
 	int ret = -1;
 
 	pv = get_pv_instance();
@@ -1751,9 +1689,8 @@ static int pv_update_init(struct pv_init *this)
 	if (!pv || !pv->config)
 		goto out;
 	config = pv->config;
-	if (config->revision_retries <= 0)
-		MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
-	else 
+	if (config->revision_retries <= 0) MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
+	else
 		MAX_REVISION_RETRIES = config->revision_retries;
 
 	if (config->revision_retry_timeout <= 0)
@@ -1764,30 +1701,9 @@ static int pv_update_init(struct pv_init *this)
 	if (config->update_commit_delay <= 0)
 		config->update_commit_delay = DEFAULT_UPDATE_COMMIT_DELAY;
 
-	// get try revision from bl
-	bl_rev = pv_bl_get_try(pv);
-	pv_rev = pv_revision_get_rev();
-
-	if (bl_rev <= 0) {
-		ret = 0;
-		goto out;
-	}
-	if (bl_rev == pv_rev) {
-		pv_update_start(pv, 1);
-		pv_update_set_status(pv, UPDATE_TRY);
-	} else {
-		struct pv_state *s = pv->state;
-		pv->state = pv_get_state(pv, bl_rev);
-		if (pv->state) {
-			pv_update_start(pv, 1);
-			pv_update_set_status(pv, UPDATE_FAILED);
-			pv_state_remove(pv->state);
-		}
-		pv->state = s;
-	}
 	ret = 0;
 out:
-	return ret;
+	return 0;
 }
 
 struct pv_init pv_init_update = {

@@ -29,8 +29,9 @@
 #include "platforms.h"
 #include "objects.h"
 #include "addons.h"
+#include "pantavisor.h"
 
-struct pv_state* pv_state_init(int rev, char *spec)
+struct pv_state* pv_state_new(int rev, char *spec)
 {
 	struct pv_state *s;
 
@@ -47,7 +48,7 @@ struct pv_state* pv_state_init(int rev, char *spec)
 	return s;
 }
 
-void pv_state_remove(struct pv_state *s)
+void pv_state_free(struct pv_state *s)
 {
 	if (!s)
 		return;
@@ -67,10 +68,10 @@ void pv_state_remove(struct pv_state *s)
 	if (s->initrd)
 		free(s->initrd);
 
-	pv_platforms_remove(s);
-	pv_volumes_remove(s);
-	pv_addons_remove(s);
-	pv_objects_remove(s);
+	pv_platforms_empty(s);
+	pv_volumes_empty(s);
+	pv_addons_empty(s);
+	pv_objects_empty(s);
 
 	if (s->json)
 		free(s->json);
@@ -83,20 +84,20 @@ void pv_state_print(struct pv_state *s)
 	if (!s)
 		return;
 
-	// print
-	pv_log(DEBUG, "kernel: '%s'", s->kernel);
-	pv_log(DEBUG, "initrd: '%s'", s->initrd);
+	pv_log(DEBUG, "state %d:", s->rev);
+	pv_log(DEBUG, " kernel: '%s'", s->kernel);
+	pv_log(DEBUG, " initrd: '%s'", s->initrd);
 	struct pv_platform *p, *tmp_p;
     struct dl_list *platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp_p, platforms,
 			struct pv_platform, list) {
-		pv_log(DEBUG, "platform: '%s'", p->name);
+		pv_log(DEBUG, " platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
-		pv_log(DEBUG, "  runlevel: '%d'", p->runlevel);
+		pv_log(DEBUG, "  runlevel: %d", p->runlevel);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
-			pv_log(DEBUG, "    '%s'", *config);
+			pv_log(DEBUG, "   '%s'", *config);
 			config++;
 		}
 	}
@@ -104,8 +105,8 @@ void pv_state_print(struct pv_state *s)
 	struct dl_list *volumes = &s->volumes;
 	dl_list_for_each_safe(v, tmp_v, volumes,
 			struct pv_volume, list) {
-		pv_log(DEBUG, "volume: '%s'", v->name);
-		pv_log(DEBUG, "  type: '%d'", v->type);
+		pv_log(DEBUG, " volume: '%s'", v->name);
+		pv_log(DEBUG, "  type: %d", v->type);
 		if (v->plat)
 			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
 	}
@@ -113,11 +114,11 @@ void pv_state_print(struct pv_state *s)
 	struct dl_list *addons = &s->addons;
 	dl_list_for_each_safe(a, tmp_a, addons,
 			struct pv_addon, list) {
-		pv_log(DEBUG, "addon: '%s'", a->name);
+		pv_log(DEBUG, " addon: '%s'", a->name);
 	}
 	struct pv_object *curr;
 	pv_objects_iter_begin(s, curr) {
-		pv_log(DEBUG, "object: '%s'", curr->name);
+		pv_log(DEBUG, " object: '%s'", curr->name);
 		pv_log(DEBUG, "  id: '%s'", curr->id);
 	}
 	pv_objects_iter_end;

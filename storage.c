@@ -41,6 +41,7 @@
 #include "storage.h"
 #include "updater.h"
 #include "state.h"
+#include "revision.h"
 
 static int remove_at(char *path, char *filename)
 {
@@ -110,7 +111,7 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 		if (st.st_nlink > 1)
 			continue;
 
-		if (pv_objects_id_in_step(pv, u, *obj_i))
+		if (pv_objects_id_in_step(u, *obj_i))
 			continue;
 
 		// remove,unlink object and sync fs
@@ -168,10 +169,6 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	if (pv->update)
 		u = pv->update->pending;
 
-	// make sure our current is marked done
-	if (!pv_rev_is_done(pv, s->rev))
-		return -1;
-
 	rev = pv_get_revisions(pv);
 	if (!rev) {
 		pv_log(ERROR, "error parsings revs on disk for GC");
@@ -180,8 +177,10 @@ int pv_storage_gc_run(struct pantavisor *pv)
 
 	rev_i = rev;
 	for (rev_i = rev; *rev_i != -1; rev_i++) {
-		// dont reclaim update or current
-		if ((*rev_i == s->rev) || (u && (*rev_i == u->rev)))
+		// dont reclaim current, update or last booted up revisions
+		if ((*rev_i == s->rev) ||
+			(u && (*rev_i == u->rev)) ||
+			(*rev_i == pv_revision_get_rev()))
 			continue;
 
 		// if configured, keep factory too

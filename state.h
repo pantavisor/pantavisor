@@ -23,6 +23,8 @@
 #ifndef PV_STATE_H
 #define PV_STATE_H
 
+#include "pantavisor.h"
+
 struct pv_state {
 	int rev;
 	char *spec;
@@ -40,8 +42,8 @@ struct pv_state {
 	int tryonce;
 };
 
-struct pv_state* pv_state_init(int rev, char *spec);
-void pv_state_remove(struct pv_state *s);
+struct pv_state* pv_state_new(int rev, char *spec);
+void pv_state_free(struct pv_state *s);
 
 void pv_state_print(struct pv_state *s);
 void pv_state_validate(struct pv_state *s);

@@ -26,15 +26,16 @@
 #include <string.h>
 #include "init.h"
 #include "utils.h"
-#define MODULE_NAME		"revision-init"
+#define MODULE_NAME		"revision"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 #include "revision.h"
+#include "bootloader.h"
 
 struct pv_revision {
 	int pv_rev;
 	int pv_try;
-	int pv_boot;
+	int pv_trying;
 };
 
 static struct pv_revision pv_revision;
@@ -42,6 +43,75 @@ static struct pv_revision pv_revision;
 int pv_revision_get_rev()
 {
 	return pv_revision.pv_rev;
+}
+
+int pv_revision_get_try()
+{
+	return pv_revision.pv_try;
+}
+
+static int pv_revision_set_rev(int rev)
+{
+	if (pv_bl_set_rev(rev))
+		return -1;
+
+	pv_revision.pv_rev = rev;
+	return 0;
+}
+
+static int pv_revision_set_try(int rev)
+{
+	if (pv_bl_set_try(rev))
+		return -1;
+
+	pv_revision.pv_try = rev;
+	return 0;
+}
+
+static int pv_revision_unset_try()
+{
+	if (pv_bl_unset_try())
+		return -1;
+
+	pv_revision.pv_try = 0;
+	return 0;
+}
+
+bool pv_revision_update_in_progress()
+{
+	return (pv_revision_get_try() > 0);
+}
+
+bool pv_revision_trying_update()
+{
+	return (pv_revision_update_in_progress() &&
+			(pv_revision_get_try() == pv_revision_get_rev()));
+}
+
+int pv_revision_set_installed(int rev)
+{
+	pv_log(INFO, "setting installed revision %d to be started after next reboot", rev);
+	return pv_revision_set_try(rev);
+}
+
+int pv_revision_set_roolledback()
+{
+	pv_log(INFO, "setting old revision %d to be started after next reboot", pv_bl_get_rev());
+	return 0;
+}
+
+int pv_revision_set_commited(int rev)
+{
+	pv_log(INFO, "setting done revision %d to be started after next reboot", rev);
+	return (pv_revision_set_rev(rev) ||
+			pv_revision_unset_try() ||
+			pv_bl_clear_update());
+}
+
+int pv_revision_set_failed()
+{
+	pv_log(INFO, "setting failed revision %d not to be started after next reboot", pv_revision_get_try());
+	return pv_revision_unset_try();
 }
 
 /*
@@ -54,11 +124,11 @@ static int pv_revision_init(struct pv_init *this)
 	char *buf = NULL;
 	char *token = NULL;
 	ssize_t bytes = 0;
-	int pv_rev = 0, pv_try = 0, pv_boot = -1;
+	int pv_rev = 0, pv_try = 0, pv_trying = 0;
 	const int CMDLINE_OFFSET = 7;
 
-		// Get current step revision from cmdline
-		fd = open("/proc/cmdline", O_RDONLY);
+	// Get current step revision from cmdline
+	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd < 0)
 		goto out;
 
@@ -76,14 +146,14 @@ static int pv_revision_init(struct pv_init *this)
 			pv_rev = atoi(token + CMDLINE_OFFSET);
 		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
 			pv_try = atoi(token + CMDLINE_OFFSET);
-		else if (strncmp("pv_boot=", token, CMDLINE_OFFSET) == 0)
-			pv_boot = atoi(token + CMDLINE_OFFSET + 1);
+		else if (strncmp("pv_trying=", token, CMDLINE_OFFSET) == 0)
+			pv_trying = atoi(token + CMDLINE_OFFSET);
 		token = strtok(NULL, " ");
 	}
 	free(buf);
 	pv_revision.pv_rev = pv_rev;
 	pv_revision.pv_try = pv_try;
-	pv_revision.pv_boot = pv_boot;
+	pv_revision.pv_trying = pv_trying;
 	ret = 0;
 out:
 	return ret;

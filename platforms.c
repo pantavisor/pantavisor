@@ -124,7 +124,7 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-static void pv_platforms_free_platform(struct pv_platform *p)
+static void pv_platform_free(struct pv_platform *p)
 {
 	char **c;
 
@@ -151,7 +151,7 @@ static void pv_platforms_free_platform(struct pv_platform *p)
 	// FIXME: free logger_list and logger_configs
 }
 
-void pv_platforms_remove(struct pv_state *s)
+void pv_platforms_empty(struct pv_state *s)
 {
 	int num_plats = 0;
 	struct pv_platform *p, *tmp;
@@ -161,7 +161,7 @@ void pv_platforms_remove(struct pv_state *s)
 		struct pv_platform, list) {
 		pv_log(DEBUG, "removing platform %s", p->name);
 		dl_list_del(&p->list);
-		pv_platforms_free_platform(p);
+		pv_platform_free(p);
 		num_plats++;
 	}
 
@@ -179,7 +179,7 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 			continue;
 
 		dl_list_del(&p->list);
-		pv_platforms_free_platform(p);
+		pv_platform_free(p);
 	}
 }
 

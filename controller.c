@@ -51,6 +51,8 @@
 #include "blkid.h"
 #include "init.h"
 #include "state.h"
+#include "revision.h"
+#include "updater.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -65,7 +67,6 @@
 static int rb_count;
 static time_t wait_delay;
 static time_t commit_delay;
-static bool pending_commit = false;
 
 typedef enum {
 	STATE_INIT,
@@ -132,13 +133,27 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	struct timespec tp;
+	int runlevel = 0, rev = 0;
 
+	runlevel = pv_update_resume(pv);
+	if (runlevel < 0) {
+		pv_log(ERROR, "update could not be resumed");
+		return STATE_ROLLBACK;
+	}
+
+	rev = pv_revision_get_rev();
+	pv_log(DEBUG, "running pantavisor with runlevel %d and rev %d", runlevel, rev);
+
+	pv->state = pv_get_state(pv, rev);
 	if (!pv->state)
-		return STATE_ERROR;
+	{
+		pv_log(ERROR, "state could not be loaded");
+		return STATE_ROLLBACK;
+	}
 
 	pv_meta_set_objdir(pv);
 
-	if (pv_volumes_mount(pv, 0) < 0)
+	if (pv_volumes_mount(pv, runlevel) < 0)
 		return STATE_ROLLBACK;
 
 	/*
@@ -152,7 +167,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	if (pv_platforms_start(pv, 0) < 0) {
+	if (pv_platforms_start(pv, runlevel) < 0) {
 		pv_log(ERROR, "error starting platforms");
 		return STATE_ROLLBACK;
 	}
@@ -265,62 +280,28 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 
 static pv_state_t pv_update_helper(struct pantavisor *pv)
 {
-	static enum update_state current_status = UPDATE_DONE;
-	static bool status_updated = false;
 	struct timespec tp;
 	pv_state_t next_state = STATE_WAIT;
 	int ret = 0;
-	int timeout_max = pv->config->updater.network_timeout
-		/ pv->config->updater.interval;
-	/*
-	 * The update struct would become private and not
-	 * associated with pv at all. pv would only contain
-	 * state and config information.
-	 */
 
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY) {
-		if (pv_set_current_status(pv, UPDATE_DEVICE_AUTH_OK)) {
-			if (rb_count > timeout_max)
-				return STATE_ROLLBACK;
-
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			wait_delay = tp.tv_sec + pv->config->updater.interval;
-			pv_log(WARN, "Device couldn't authenticate to Pantahub. Retrying in %d seconds",
-					pv->config->updater.interval);
-			rb_count++;
-			return STATE_WAIT;
-		} else {
-			/*
-			 * we clear the pending update
-			 * but we delay the commit of this update.
-			 */
-			pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
-			pv_update_finish(pv);
-			pending_commit = true;
-		}
+		pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
 	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
-		// We come from a forced rollback
-		pv_set_current(pv, pv->state->rev);
-		pv_update_set_status(pv, UPDATE_FAILED);
-		if (!pv_update_finish(pv))
-			status_updated = true;
-		current_status = UPDATE_FAILED;
+		pv_update_finish(pv);
 	}
-	if (pending_commit) {
+	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
-				current_status = UPDATE_DEVICE_COMMIT_WAIT;
-				pv_log(WARN, "Committing new update in %d seconds", commit_delay - tp.tv_sec);
+				pv_log(WARN, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
-			pv_bl_clear_update(pv);
-			pv_set_current(pv, pv->state->rev);
-			pending_commit = false;
-			status_updated = false;
-			current_status = UPDATE_DONE;
-			pv_log(INFO, "Marking revision %d as DONE",
-					pv->state->rev);
+			if (pv_revision_set_commited(pv->state->rev)) {
+				pv_log(ERROR, "revision for next boot could not be set");
+				return STATE_ROLLBACK;
+			}
+			pv_update_set_status(pv, UPDATE_DONE);
+			pv_update_finish(pv);
 	}
 	// check for updates
 	ret = pv_check_for_updates(pv);
@@ -329,8 +310,6 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 		next_state = STATE_UPDATE;
 	}
 out:
-	if (!status_updated && !pv_set_current_status(pv, current_status))
-		status_updated = true;
 	/* set delay to at most the updater interval */
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = tp.tv_sec + pv->config->updater.interval;
@@ -355,8 +334,10 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 
 	if (!pv_ph_is_available(pv)) {
 		rb_count++;
-		if (!pv_rev_is_done(pv, pv->state->rev) &&
-				(rb_count > timeout_max)) {
+		if (pv->update &&
+			(pv->update->status == UPDATE_TRY ||
+			pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) &&
+			(rb_count > timeout_max)) {
 			next_state = STATE_ROLLBACK;
 			goto out;
 		}
@@ -401,7 +382,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
-		next_state = pending_commit ? STATE_ROLLBACK : STATE_REBOOT;
+		next_state = (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) ? STATE_ROLLBACK : STATE_REBOOT;
 		goto out;
 	}
 	next_state = pv_helper_process(pv);
@@ -475,76 +456,44 @@ out:
 	return next_state;
 }
 
-/*
- * This is going to be part of CMD_UPDATE_DOWNLOAD
- * this command will trigger the platforms to be stopped
- * and device to be rebooted.
- *
- * The return statement would become a message to pv process.
- */
-static pv_state_t pv_do_post_download_update(struct pantavisor *pv, int rev)
-{
-	pv_state_t next_state = STATE_RUN;
-
-	pv->online = false;
-	// stop current step
-	if (pv_platforms_stop(pv, 0) < 0 || 
-			pv_volumes_unmount(pv, 0) < 0) {
-		next_state = STATE_ROLLBACK;
-		goto out;
-	}
-
-	// Release current step
-	pv_state_remove(pv->state);
-	pv->state = NULL;
-
-	// For now, trigger a reboot for all updates
-	if (pv->update->need_reboot) {
-		pv_log(WARN, "Update requires reboot, rebooting...");
-		next_state = STATE_REBOOT;
-		goto out;
-	}
-
-	pv_log(WARN, "State update applied, starting new revision %d", rev);
-
-	// Load installed step
-	pv->state = pv_get_state(pv, rev);
-
-	if (pv->state == NULL) {
-		pv_log(WARN, "unable to load new step state, rolling back");
-		next_state = STATE_ROLLBACK;
-	}
-out:
-	return next_state;
-}
-
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
-	int ret = -1;
-	pv_state_t next_state = STATE_WAIT;
+	int rev = -1;
 
+	pv_log(INFO, "starting update");
 	// queue locally and in cloud, block step
-	// FIXME: requires pv_update_finish() call after RUN or boot
-	ret = pv_update_start(pv, 0);
-	if (ret < 0) {
-		pv_log(INFO, "unable to queue update, abandoning it");
-		goto out;
-	} else if (ret > 0) {
-		int time_left = pv->update->retry_at - time(NULL);
+	if (pv_update_start(pv))
+		return STATE_WAIT;
 
-		pv_log(INFO, "Retrying in %d seconds", (time_left > 0 ? time_left : 0));
-		goto out;
-	}
 	// download and install pending step
-	ret = pv_update_install(pv);
-	if (ret < 0) {
-		pv_log(ERROR, "update has failed, continue");
+	rev = pv_update_install(pv);
+	if (rev < 0) {
+		pv_log(ERROR, "update has failed, continue...");
 		pv_update_finish(pv);
-		goto out;
+		return STATE_WAIT;
 	}
-	next_state = pv_do_post_download_update(pv, ret);
-out:
-	return next_state;
+
+	pv->online = false;
+
+	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
+	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
+			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
+		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
+		return STATE_ROLLBACK;
+	}
+
+	// if everything went well, decide wether update requires reboot
+	if (pv->update->runlevel <= 0) {
+		pv_log(WARN, "update runlevel %d requires reboot, rebooting...",
+				pv->update->runlevel);
+		pv_update_set_status(pv, UPDATE_REBOOT);
+		return STATE_REBOOT;
+	}
+
+	pv_log(WARN, "update runlevel %d does not require reboot, running new revision...",
+				pv->update->runlevel);
+	pv_update_set_status(pv, UPDATE_TRY);
+	return STATE_RUN;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
@@ -576,11 +525,12 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		ret = pv_volumes_unmount(pv, 0);
 		if (ret < 0)
 			pv_log(WARN, "unmount error: ignoring due to rollback");
-
-		rb_count = 0;
 	}
 
-	__pv_set_current(pv, pv_get_rollback_rev(pv), false);
+	if (pv_revision_set_roolledback()) {
+		pv_log(ERROR, "revision for next boot could not be set");
+		return STATE_ERROR;
+	}
 
 	return STATE_REBOOT;
 }
@@ -589,17 +539,6 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	if (!pv->update)
-		goto out;
-
-	/*
-	 * [PKS]
-	 * This will move to updater process.
-	 * Reboot will only sync + reboot.
-	 */
-	pv_update_finish(pv);
-
-out:
 	pv_wdt_start(pv);
 
 	// unmount storage
@@ -616,7 +555,6 @@ out:
 static pv_state_t _pv_error(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-	
 	return STATE_REBOOT;
 }
 

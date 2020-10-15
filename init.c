@@ -166,6 +166,8 @@ static void signal_handler(int signal)
 		if (pid != pv_pid)
 			continue;
 
+		pv_teardown(pv);
+
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
 			sleep(10);
 			sync();

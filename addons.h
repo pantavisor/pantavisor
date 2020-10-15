@@ -29,6 +29,6 @@ struct pv_addon {
 
 struct pv_addon* pv_addon_add(struct pv_state *s, char *name);
 
-void pv_addons_remove(struct pv_state *s);
+void pv_addons_empty(struct pv_state *s);
 
 #endif // PV_VOLUMES_H

@@ -70,34 +70,12 @@ struct pantavisor* get_pv_instance()
 	return global_pv;
 }
 
-static void pv_remove(struct pantavisor *pv)
-{
-
-	pv_log(DEBUG, "removing pantavisor");
-
-	if (pv->step)
-		free(pv->step);
-	if (pv->conn)
-		free(pv->conn);
-
-	pv_device_remove(pv);
-	pv_update_remove(pv);
-	pv_state_remove(pv->state);
-	pv->state = NULL;
-	pv_cmd_req_remove(pv);
-	pv_trail_remote_remove(pv);
-
-	free(pv);
-}
-
 void pv_teardown(struct pantavisor *pv)
 {
 	if (!pv)
 		return;
 
 	pv_cmd_socket_close(pv);
-
-	pv_remove(pv);
 }
 
 void pv_set_active(struct pantavisor *pv)
@@ -174,33 +152,6 @@ int pv_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-void pv_set_current(struct pantavisor *pv, int rev)
-{
-	__pv_set_current(pv, rev, true);
-}
-
-void __pv_set_current(struct pantavisor *pv, int rev, bool unset_pvtry)
-{
-	int fd;
-	char path[256];
-
-	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
-
-	fd = open(path, O_CREAT | O_WRONLY, 0644);
-	if (!fd) {
-		pv_log(WARN, "unable to set current(done) flag for revision %d", rev);
-		return;
-	}
-
-	// commit to disk
-	fsync(fd);
-	close(fd);
-
-	// commit to bootloader
-	__pv_bl_set_current(pv, rev, unset_pvtry);
-}
-
-#define REV_BUF_SIZE	5
 int *pv_get_revisions(struct pantavisor *pv)
 {
 	int n, i = 0;
@@ -243,36 +194,6 @@ int *pv_get_revisions(struct pantavisor *pv)
 	free(dirs);
 
 	return revs;
-}
-
-int pv_rev_is_done(struct pantavisor *pv, int rev)
-{
-	struct stat st;
-	char path[256];
-
-	if (!rev)
-		return 1;
-
-	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
-	if (stat(path, &st) == 0)
-		return 1;
-
-	return 0;
-}
-
-int pv_get_rollback_rev(struct pantavisor *pv)
-{
-	unsigned long rev = pv->state->rev;
-	struct stat st;
-	char path[256];
-
-	while (rev--) {
-		sprintf(path, "%s/trails/%lu/.pv/done", pv->config->storage.mntpoint, rev);
-		if (stat(path, &st) == 0)
-			return rev;
-	}
-
-	return 0;
 }
 
 void pv_meta_set_objdir(struct pantavisor *pv)
@@ -662,24 +583,18 @@ static int pv_pantavisor_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 	int ret = -1;
-	int pv_rev = 0;
 
 	pv = get_pv_instance();
 	if (!pv)
 		goto out;
-	pv_rev = pv_revision_get_rev();
 	// Make sure this is initialized
 	pv->state = NULL;
 	pv->remote = NULL;
 	pv->update = NULL;
 	pv->last = -1;
-	// parse boot rev
-	pv->state = pv_get_state(pv, pv_rev);
-	if (!pv->state)
-		goto out;
 	ret = 0;
 out:
-	return ret;
+	return 0;
 }
 
 struct pv_init pv_init_state = {

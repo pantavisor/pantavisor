@@ -144,7 +144,7 @@ static int grub_unset_env_key(char *key)
 	char new[1024];
 	char *s, *d;
 
-	pv_log(DEBUG, "unset key %s", key);
+	pv_log(DEBUG, "unset boot env key %s", key);
 
 	fd = read_grubenv(grub_env, old, 1);
 	if (fd < 0)
@@ -192,7 +192,7 @@ static int grub_set_env_key(char *key, int value)
 	char new[1024];
 	char *s, *d;
 
-	pv_log(DEBUG, "set key %s with value %d", key, value);
+	pv_log(DEBUG, "set boot env key %s with value %d", key, value);
 
 	fd = read_grubenv(grub_env, old, 1);
 	if (fd < 0)
@@ -246,16 +246,10 @@ static int grub_flush_env(void)
 	return 0;
 }
 
-static int grub_install_kernel(char *path)
-{
-	return 0;
-}
-
 const struct bl_ops grub_ops = {
 	.init		= grub_init,
 	.get_env_key	= grub_get_env_key,
 	.set_env_key	= grub_set_env_key,
 	.unset_env_key	= grub_unset_env_key,
 	.flush_env	= grub_flush_env,
-	.install_kernel	= grub_install_kernel,
 };

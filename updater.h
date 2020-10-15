@@ -51,6 +51,7 @@ extern int DOWNLOAD_RETRY_WAIT;
 #define DEFAULT_UPDATE_COMMIT_DELAY 	(3 * 60)
 
 enum update_state {
+	UPDATE_INIT,
 	UPDATE_QUEUED,
 	UPDATE_DOWNLOADED,
 	UPDATE_INSTALLED,
@@ -61,7 +62,6 @@ enum update_state {
 	UPDATE_NO_DOWNLOAD,
 	UPDATE_NO_PARSE,
 	UPDATE_RETRY_DOWNLOAD,
-	UPDATE_DEVICE_AUTH_OK,
 	UPDATE_DEVICE_COMMIT_WAIT,
 	UPDATE_DOWNLOAD_PROGRESS
 };
@@ -78,8 +78,7 @@ struct object_update {
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	int need_reboot;
-	int need_finish;
+	int runlevel;
 	int progress_size;
 	time_t retry_at;
 	struct pv_state *pending;
@@ -94,13 +93,15 @@ struct trail_remote {
 	struct pv_state *pending;
 };
 
-int pv_update_start(struct pantavisor *pv, int offline);
-void pv_update_remove(struct pantavisor *pv);
-void pv_trail_remote_remove(struct pantavisor *pv);
-int pv_update_set_status(struct pantavisor *pv, enum update_state status);
-int pv_update_finish(struct pantavisor *pv);
-int pv_update_install(struct pantavisor *pv);
 int pv_check_for_updates(struct pantavisor *pv);
+void pv_trail_remote_remove(struct pantavisor *pv);
 
-int pv_set_current_status(struct pantavisor *, enum update_state);
+int pv_update_start(struct pantavisor *pv);
+int pv_update_install(struct pantavisor *pv);
+int pv_update_resume(struct pantavisor *pv);
+void pv_update_finish(struct pantavisor *pv);
+void pv_update_remove(struct pantavisor *pv);
+
+int pv_update_set_status(struct pantavisor *pv, enum update_state status);
+
 #endif

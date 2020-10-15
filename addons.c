@@ -43,7 +43,7 @@
 
 #define FW_PATH		"/lib/firmware"
 
-static void pv_addons_free_addon(struct pv_addon *a)
+static void pv_addon_free(struct pv_addon *a)
 {
 	if (!a)
 		return;
@@ -54,7 +54,7 @@ static void pv_addons_free_addon(struct pv_addon *a)
 	free(a);
 }
 
-void pv_addons_remove(struct pv_state *s)
+void pv_addons_empty(struct pv_state *s)
 {
 	int num_addons = 0;
 	struct pv_addon *a, *tmp;
@@ -65,7 +65,7 @@ void pv_addons_remove(struct pv_state *s)
             struct pv_addon, list) {
 		pv_log(DEBUG, "removing addon %s", a->name);
 		dl_list_del(&a->list);
-		pv_addons_free_addon(a);
+		pv_addon_free(a);
 		num_addons++;
 	}
 

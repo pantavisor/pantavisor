@@ -27,5 +27,16 @@
  * These are the revisions we got from kernel as command
  * line parameters.
  */
+
 int pv_revision_get_rev(void);
+int pv_revision_get_try(void);
+
+bool pv_revision_update_in_progress(void);
+bool pv_revision_trying_update(void);
+
+int pv_revision_set_installed(int rev);
+int pv_revision_set_roolledback(void);
+int pv_revision_set_commited(int rev);
+int pv_revision_set_failed(void);
+
 #endif /*__REVISION__H__*/
