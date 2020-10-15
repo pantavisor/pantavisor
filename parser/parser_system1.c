@@ -739,7 +739,6 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// copy buffer
 	this->json = strdup(buf);
 
-	pv_log(DEBUG, "post parse validation");
 	pv_state_validate(this);
 
 	pv_state_print(this);
