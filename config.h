@@ -126,7 +126,7 @@ void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *v
 void config_clear_items(struct dl_list *list);
 
 const char* pv_log_get_config_item(struct pv_logger_config *config, const char *key);
-static void pv_free_logger_config(struct pv_logger_config *item_config)
+static void pv_logger_config_free(struct pv_logger_config *item_config)
 {
 	int i = 0;
 

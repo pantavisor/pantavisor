@@ -415,3 +415,13 @@ init_again:
 	pv_log(WARN, "Exiting, pv_logger %s", module_name);
 	return 0;
 }
+
+void pv_log_info_free(struct pv_log_info * l)
+{
+	if (l->logfile)
+		free(l->logfile);
+	if (l->name)
+		free(l->name);
+
+	free(l);
+}

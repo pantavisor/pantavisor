@@ -124,6 +124,39 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
+static void pv_platform_empty_logger_list(struct pv_platform *p)
+{
+	int num_loggers = 0;
+	struct pv_log_info *l, *tmp;
+	struct dl_list *logger_list = &p->logger_list;
+
+	dl_list_for_each_safe(l, tmp, logger_list,
+		struct pv_log_info, next) {
+		pv_log(DEBUG, "removing logger %s", l->name);
+		dl_list_del(&l->next);
+		pv_log_info_free(l);
+		num_loggers++;
+	}
+
+	pv_log(INFO, "removed %d loggers", num_loggers);
+}
+
+static void pv_platform_empty_logger_configs(struct pv_platform *p)
+{
+	int num_logger_configs = 0;
+	struct pv_logger_config *l, *tmp;
+	struct dl_list *logger_configs = &p->logger_configs;
+
+	dl_list_for_each_safe(l, tmp, logger_configs,
+		struct pv_logger_config, item_list) {
+		dl_list_del(&l->item_list);
+		pv_logger_config_free(l);
+		num_logger_configs++;
+	}
+
+	pv_log(INFO, "removed %d logger configs", num_logger_configs);
+}
+
 static void pv_platform_free(struct pv_platform *p)
 {
 	char **c;
@@ -146,9 +179,10 @@ static void pv_platform_free(struct pv_platform *p)
 	if (p->json)
 		free(p->json);
 
-	free(p);
+	pv_platform_empty_logger_list(p);
+	pv_platform_empty_logger_configs(p);
 
-	// FIXME: free logger_list and logger_configs
+	free(p);
 }
 
 void pv_platforms_empty(struct pv_state *s)
@@ -388,7 +422,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 		 * logger config item isn't required anymore
 		 * */
 		dl_list_del(&item_config->item_list);
-		pv_free_logger_config(item_config);
+		pv_logger_config_free(item_config);
 	}
 
 	if (plat_needs_default_logger) {
@@ -546,6 +580,49 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 	pv_log(INFO, "force killed %d platforms", num_plats);
 }
 
+static void pv_platform_stop_loggers(struct pv_platform *p)
+{
+	int num_loggers = 0, exited = 0;
+	struct pv_log_info *l, *tmp;
+	struct dl_list *logger_list = &p->logger_list;
+
+	pv_log(DEBUG, "stopping loggers attached to platform %s", p->name);
+
+	// send SIGTERM to logger attached to platform
+	dl_list_for_each_safe(l, tmp, logger_list,
+		struct pv_log_info, next) {
+		kill(l->logger_pid, SIGTERM);
+		pv_log(DEBUG, "sent SIGTERM to logger '%s'", l->name, p->name);
+		num_loggers++;
+	}
+
+	// check logger processes have ended
+	for (int i = 0; i < 5; i++) {
+		exited = 0;
+		logger_list = &p->logger_list;
+		dl_list_for_each_safe(l, tmp, logger_list,
+			struct pv_log_info, next) {
+			if (kill(l->logger_pid, 0))
+				exited++;
+		}
+		if (exited == num_loggers)
+			break;
+		sleep(1);
+	}
+
+	// force kill logger processes
+	if (exited != num_loggers) {
+		logger_list = &p->logger_list;
+		dl_list_for_each_safe(l, tmp, logger_list,
+			struct pv_log_info, next) {
+			kill(l->logger_pid, SIGKILL);
+			pv_log(WARN, "sent SIGKILL to logger '%s'", l->name, p->name);
+		}
+	}
+
+	pv_log(INFO, "stopped %d loggers", num_loggers);
+}
+
 int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0, exited = 0;
@@ -566,7 +643,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 			}
 
 			if (p->running) {
-				// FIXME: stop logger_list
+				pv_platform_stop_loggers(p);
 				ctrl = _pv_platforms_get_ctrl(p->type);
 				ctrl->stop(p, NULL, p->data);
 				p->running = false;

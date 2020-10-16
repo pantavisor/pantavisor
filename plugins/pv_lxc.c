@@ -600,7 +600,7 @@ out_container_init:
 				 * Free config items.
 				 * */
 				dl_list_del(&item_config->item_list);
-				pv_free_logger_config(item_config);
+				pv_logger_config_free(item_config);
 			}
 		}
 	}

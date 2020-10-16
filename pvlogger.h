@@ -17,6 +17,8 @@ struct pv_log_info {
 
 int start_pvlogger(struct pv_log_info *log_info, const char *platform);
 
+void pv_log_info_free(struct pv_log_info * l);
+
 /*
  * user.* attributes are available usually for most file systems.
  * user. prefix is hence necessary! Otherwise filesystem(s) complaint
