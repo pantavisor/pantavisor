@@ -118,6 +118,8 @@ struct pantavisor_config* get_pv_config(void);
 int pv_config_from_file(char *path, struct pantavisor_config *config);
 int ph_config_from_file(char *path, struct pantavisor_config *config);
 int ph_config_to_file(struct pantavisor_config *config, char *path);
+// find path to readable config
+char* ph_config_file_for_read();
 
 struct pv_logger_config {
 	struct dl_list item_list;

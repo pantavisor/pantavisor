@@ -874,17 +874,27 @@ accept_again:
 	return nr_logs;
 }
 
-static void ph_logger_load_config(struct pantavisor *pv)
+static int ph_logger_load_config(struct pantavisor *pv)
 {
-	char ph_path[PATH_MAX];
+	char *ph_path;
+	int ret = -1;
 
 	/* Load PH config. */
-	sprintf(ph_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
+	ph_path =  ph_config_file_for_read();
 
-	if (ph_config_from_file(ph_path, pv->config)) {
+	if (!ph_path) {
+		pv_log(INFO, "error finding ph_config_file_for_read");
+		goto out;
+	}
+
+	if ((ret = ph_config_from_file(ph_path, pv->config))) {
 		WARN_ONCE("Error starting pantahub logger service."
 				"Unable to parse pantahub config.\n");
 	}
+
+	free(ph_path);
+ out:
+	return ret;
 }
 
 /*
@@ -896,7 +906,7 @@ static int __ph_logger_push_one_log(char *buf, int len, int revision, int offset
 	char *source = NULL;
 	char *filename = buf;
 	char *slash_at = strchr(buf + offset, '/');
-
+	int ret = -1;
 
 	if (!slash_at)
 		sprintf(platform, "pantavisor-UNKNOWN");
@@ -920,10 +930,15 @@ static int __ph_logger_push_one_log(char *buf, int len, int revision, int offset
 
 		load_config = (!pv_global->config->creds.prn ||
 			strcmp(pv_global->config->creds.prn, "") == 0);
-		if (load_config)
-			ph_logger_load_config(pv_global);
-		return ph_logger_push_from_file(filename, platform, source, revision);
+		if (load_config) {
+			ret = ph_logger_load_config(pv_global);
+			if (ret)
+				goto out;
+		} else {
+			ret = ph_logger_push_from_file(filename, platform, source, revision);
+		}
 	}
+ out:
 	return -1;
 }
 

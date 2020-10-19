@@ -31,7 +31,6 @@
 
 #include "config.h"
 
-
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
@@ -538,6 +537,46 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	return bytes;
 }
 
+char* ph_config_file_for_read()
+{
+	struct pantavisor *pv = NULL;
+	struct pantavisor_config *config = NULL;
+	const struct pv_system *system = get_pv_system();
+	char *configfile = NULL;
+
+	pv = get_pv_instance();
+	if (!pv || !pv->config)
+		goto out;
+	config = pv->config;
+
+	if (!system)
+		goto out;
+
+	configfile = getenv("PH_CONFIG") ? strdup(getenv("PH_CONFIG")) : NULL;
+	if (!configfile) {
+		configfile = calloc (sizeof(char) * (strlen(config->storage.mntpoint) + 1 + strlen("/config/pantahub.config")),1);
+		strcat(configfile, config->storage.mntpoint);
+		strcat(configfile, "/config/pantahub.config");
+	}
+
+	if (access(configfile, R_OK)) {
+		configfile = calloc (sizeof(char) * (strlen(pv->system->etcdir) + 1 + strlen("/pantahub.config")),1);
+		strcat(configfile, pv->system->etcdir);
+		strcat(configfile, "/pantahub.config");
+	}
+
+	/* if file does not exist; use datadir one */
+	if (access(configfile, R_OK)) {
+		configfile = realloc(configfile, sizeof(char) * (strlen(system->datadir) + 1 + strlen("/pantahub.config")));
+		configfile[0] = 0;
+		strcat(configfile, system->datadir);
+		strcat(configfile, "/pantahub.config");
+	}
+
+ out:
+	return configfile;
+}
+
 /*
  * Don't free the returned value.
  * */
@@ -602,7 +641,6 @@ static int pv_config_init(struct pv_init *this)
 
 static int ph_config_init(struct pv_init *this)
 {
-	const struct pv_system *system = get_pv_system();
 	char *configfile;
 	struct pantavisor *pv = NULL;
 	struct pantavisor_config *config = NULL;
@@ -613,33 +651,13 @@ static int ph_config_init(struct pv_init *this)
 		goto out;
 	config = pv->config;
 
-
-	configfile = getenv("PH_CONFIG");
-	if (!configfile) {
-		configfile = calloc (sizeof(char) * (strlen(config->storage.mntpoint) + 1 + strlen("/config/pantahub.config")),1);
-		strcat(configfile, config->storage.mntpoint);
-		strcat(configfile, "/config/pantahub.config");
-	}
-
-	if (access(configfile, R_OK)) {
-		configfile = calloc (sizeof(char) * (strlen(pv->system->etcdir) + 1 + strlen("/pantahub.config")),1);
-		strcat(configfile, pv->system->etcdir);
-		strcat(configfile, "/pantahub.config");
-	}
-
-	/* if file does not exist; use datadir one */
-	if (access(configfile, R_OK)) {
-		configfile = realloc(configfile, sizeof(char) * (strlen(system->datadir) + 1 + strlen("/pantahub.config")));
-		configfile[0] = 0;
-		strcat(configfile, system->datadir);
-		strcat(configfile, "/pantahub.config");
-	}
+	configfile = ph_config_file_for_read();
 
 	if (ph_config_from_file(configfile, config) < 0) {
-		setenv("PH_CONFIG", configfile, true);
 		printf("FATAL: error to parse pantahub config");
 		goto out;
 	}
+	setenv("PH_CONFIG", configfile, true);
 
 	ret = 0;
  out:

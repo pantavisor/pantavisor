@@ -41,7 +41,7 @@ do {\
 	static bool __warned = false; 	\
 	if (! __warned) { 		\
 		printf(msg, ##args); 	\
-		__warned = true; 	\
+		__warned = false; 	\
 	}\
 }while(0)
 #else
