@@ -24,9 +24,20 @@
 cmd=$0
 dir=`sh -c "cd $(dirname $cmd); pwd"`
 
+if [ -f /etc/default/pantavisord ]; then
+    set -a
+    . /etc/default/pantavisord
+    set +a
+fi
+
 PV_RUNDIR=${PV_RUNDIR:-$dir/../run}
 mkdir -p $PV_RUNDIR
 PV_VARDIR=${PV_VARDIR:-$dir/../var}
+
+# normalize paths
+PV_VARDIR=`sh -c "cd $PV_VARDIR; pwd"`
+PV_RUNDIR=`sh -c "cd $PV_VARDIR; pwd"`
+
 
 tmptxt=`mktemp -t uboot.txt.XXXXXXXX`
 
