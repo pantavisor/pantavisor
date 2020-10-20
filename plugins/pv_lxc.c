@@ -560,7 +560,6 @@ out_container_init:
 
 	if (__pv_new_log) {
 		struct pv_logger_config *item_config, *tmp_config;
-		struct dl_list *head = &p->logger_list;
 		struct dl_list *config_head = &p->logger_configs;
 
 		dl_list_for_each_safe(item_config, tmp_config,
@@ -595,7 +594,8 @@ out_container_init:
 					pv_truncate_lxc_log(c, p->name,
 							pv_log_i->truncate_size,
 							"lxc.console.logfile");
-				dl_list_add(head, &pv_log_i->next);
+				dl_list_init(&pv_log_i->next);
+				dl_list_add(&p->logger_list, &pv_log_i->next);
 				/*
 				 * Free config items.
 				 * */

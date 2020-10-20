@@ -543,7 +543,7 @@ struct pv_log_info* pv_new_log(bool islxc,
 				goto out;
 		}
 	}
-	log_info = (struct pv_log_info*) calloc(1, sizeof(*log_info));
+	log_info = calloc(1, sizeof(struct pv_log_info));
 
 	if (!log_info)
 		goto out;

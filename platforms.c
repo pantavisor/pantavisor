@@ -434,7 +434,7 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 				platform->name);
 		plat_logger_config_syslog.static_pair[3][1] = logger_name;
 		pv_add_platform_logger(platform, &plat_logger_config_syslog);
-		snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
+		snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-messages",
 				platform->name);
 		plat_logger_config_messages.static_pair[3][1] = logger_name;
 		pv_add_platform_logger(platform, &plat_logger_config_messages);
@@ -461,10 +461,11 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 			free(log_info);
 		} else {
 			pv_log(DEBUG, "started pv_logger for platform %s"
-				"(name=%s) with pid = %d \n", platform->name,
+				"(name=%s) with pid = %d", platform->name,
 				log_info->name, logger_pid);
 		}
 	}
+
 	return logger_pid;
 }
 
@@ -592,7 +593,7 @@ static void pv_platform_stop_loggers(struct pv_platform *p)
 	dl_list_for_each_safe(l, tmp, logger_list,
 		struct pv_log_info, next) {
 		kill(l->logger_pid, SIGTERM);
-		pv_log(DEBUG, "sent SIGTERM to logger '%s'", l->name, p->name);
+		pv_log(DEBUG, "sent SIGTERM to logger '%s' with pid %d", l->name, l->logger_pid);
 		num_loggers++;
 	}
 
@@ -616,7 +617,7 @@ static void pv_platform_stop_loggers(struct pv_platform *p)
 		dl_list_for_each_safe(l, tmp, logger_list,
 			struct pv_log_info, next) {
 			kill(l->logger_pid, SIGKILL);
-			pv_log(WARN, "sent SIGKILL to logger '%s'", l->name, p->name);
+			pv_log(WARN, "sent SIGKILL to logger '%s' with pid %d", l->name, l->logger_pid);
 		}
 	}
 
