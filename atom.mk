@@ -14,10 +14,14 @@ LOCAL_LIBRARIES := lxc libthttp
 LOCAL_DESTDIR := .$(PV_LIBDIR)/plugins
 LOCAL_MODULE := pv_lxc
 
-LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC -DPREFIX=$(PV_PREFIX)
+LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC -DPREFIX=$(PV_PREFIX) -DDEBUG
 LOCAL_LDFLAGS := -Wl,--no-as-needed -lutil -Wl,--as-needed
 
 LOCAL_SRC_FILES := plugins/pv_lxc.c
+
+ifeq ($(PANTAVISOR_DEBUG), yes)
+LOCAL_CFLAGS += -DPANTAVISOR_DEBUG -DDEBUG
+endif
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -42,7 +46,7 @@ LOCAL_PREREQUISITES += \
 	$(PV_VERSION_H)
 
 ifeq ($(PANTAVISOR_DEBUG), yes)
-LOCAL_CFLAGS += -DPANTAVISOR_DEBUG
+LOCAL_CFLAGS += -DPANTAVISOR_DEBUG -DDEBUG
 LOCAL_DEPENDS_MODULES += dropbear-pv
 endif
 

@@ -51,7 +51,7 @@ static int pv_skel_init(struct pv_init *this)
 		goto out;
 	system = pv->system;
 
-	snprintf(_dir, PATH_MAX, "%s/lxcrootfs", system->rundir);
+	snprintf(_dir, PATH_MAX, "%s/lxc/rootfs", system->vardir);
 	if (stat(_dir, &st) != 0)
 		mkdir_p(_dir, 0500);
 

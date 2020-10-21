@@ -182,8 +182,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	bool is_embedded = system->is_embedded;
 
 	if (lxc_rootfs_path == NULL) {
-		lxc_rootfs_path = malloc ((strlen(system->rundir) + strlen ("/lxcrootfs") + 2) * sizeof(char));
-		sprintf(lxc_rootfs_path, "%s%s", system->rundir, "/lxcrootfs");
+		lxc_rootfs_path = malloc ((strlen(system->vardir) + strlen ("/lxc/rootfs") + 2) * sizeof(char));
+		sprintf(lxc_rootfs_path, "%s%s", system->vardir, "/lxc/rootfs");
 	}
 
 	c->set_inherit_namespaces(c, 1, share_ns);
@@ -271,6 +271,9 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	}
 
 	c->set_config_item(c, "lxc.rootfs.mount", lxc_rootfs_path);
+
+	c->set_config_item(c, "lxc.cgroup.devices.allow", "");
+	c->set_config_item(c, "lxc.cgroup.devices.deny", "");
 }
 
 static void pv_setup_default_log(struct pv_platform *p,
@@ -450,7 +453,6 @@ static struct pv_log_info*  pv_create_lxc_log(struct pv_platform *p,
 extern char *lxc_string_replace(const char *needle, const char *replacement,
 				const char *haystack);
 
-
 static void _rundirify_rootfs_volumes(struct lxc_container *c, struct pv_system *system)
 {
 
@@ -498,15 +500,18 @@ void *pv_start_container(struct pv_platform *p, struct pv_system *system, char *
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS)
 		| (1 << LXC_NS_IPC);
 	pid_t child_pid = -1;
+	char *lxcpath = NULL;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
 	dname = dirname(dname);
 	chdir(dname);
 	free(dname);
-	// Make sure lxc state dir is there
-	mkdir_p("/usr/var/lib/lxc", 0755);
 
-	c = lxc_container_new(p->name, NULL);
+	lxcpath = malloc(strlen(system->vardir) + strlen("/lxc") + 1);
+	sprintf(lxcpath, "%s%s", system->vardir, "/lxc");
+	mkdir_p(lxcpath, 0755);
+	c = lxc_container_new(p->name, lxcpath);
+	free(lxcpath);
 
 	if (!c) {
 		goto out_no_container;
@@ -572,7 +577,13 @@ void *pv_start_container(struct pv_platform *p, struct pv_system *system, char *
 		if (!pv_lxc_log.lxcpath)
 			goto out_container_init;
 		lxc_log_init(&pv_lxc_log);
-		c = lxc_container_new(p->name, NULL);
+
+		// init container with proper lxcpath ...
+		lxcpath = malloc(strlen(system->vardir) + strlen("/lxc") + 1);
+		sprintf(lxcpath, "%s%s", system->vardir, "/lxc");
+		mkdir_p(lxcpath, 0755);
+		c = lxc_container_new(p->name, lxcpath);
+		free(lxcpath);
 
 		if (!c) {
 			goto out_container_init;

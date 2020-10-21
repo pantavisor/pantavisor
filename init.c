@@ -394,9 +394,9 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 	} else if (getenv("PV_LOGDIR")) {
 		logdir = strdup(getenv("PV_LOGDIR"));
 	} else {
-		logdir = strdup(prefix);
-		logdir = realloc(logdir, (strlen(prefix) + strlen("/var/log/pantavisor") + 1) * sizeof(char));
-		logdir = strcat(logdir, "/var/log/pantavisor");
+		logdir = strdup(vardir);
+		logdir = realloc(logdir, (strlen(vardir) + strlen("/log/pantavisor") + 1) * sizeof(char));
+		logdir = strcat(logdir, "/log/pantavisor");
 	}
 
 	if ((pos = is_arg(argc, argv, "--pluginsdir"))) {
