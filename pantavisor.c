@@ -362,7 +362,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// initrd
 	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->initrd);
+	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp.initrd);
 
 	mkdir_p(dst, 0755);
 	strcat(dst, "pv-initrd.img");
@@ -387,16 +387,16 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// kernel
 	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->kernel);
+	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp.kernel);
 
 	remove(dst);
 	if (link(src, dst) < 0)
 		goto err;
 
 	// fdt
-	if (s->fdt) {
+	if (s->bsp.fdt) {
 		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->fdt);
+		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp.fdt);
 
 		remove(dst);
 		if (link(src, dst) < 0)

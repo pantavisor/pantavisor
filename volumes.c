@@ -59,7 +59,7 @@ static const char* pv_volume_type_str(pv_volume_t vt)
 	return "UNKNOWN";
 }
 
-static void pv_volume_free(struct pv_volume *v)
+void pv_volume_free(struct pv_volume *v)
 {
 	if (v->name)
 		free(v->name);
@@ -195,16 +195,16 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 	char path[PATH_MAX];
 	struct utsname uts;
 
-	if (!pv->state->firmware)
+	if (!pv->state->bsp.firmware)
 		goto modules;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
 		mkdir_p(FW_PATH, 0755);
 
-	if (strchr(pv->state->firmware, '/'))
-		sprintf(path, "%s", pv->state->firmware);
+	if (strchr(pv->state->bsp.firmware, '/'))
+		sprintf(path, "%s", pv->state->bsp.firmware);
 	else
-		sprintf(path, "/volumes/%s", pv->state->firmware);
+		sprintf(path, "/volumes/%s", pv->state->bsp.firmware);
 
 	if (stat(path, &st))
 		goto modules;

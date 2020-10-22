@@ -29,15 +29,11 @@
 /*
  *  pantavisor-multi-platform@1
  */
-void multi1_free(struct pv_state *this);
-void multi1_print(struct pv_state *this);
 struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
 
 /*
  *  pantavisor-service-system@1
  */
-void system1_free(struct pv_state *this);
-void system1_print(struct pv_state *this);
 struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
 
 
@@ -48,14 +44,6 @@ struct pv_state_parser {
 	void (*print)(struct pv_state *s);
 };
 
-typedef enum {
-	SPEC_MULTI1,
-	SPEC_SYSTEM1,
-	SPEC_UNKNOWN
-} state_spec_t ;
-
 struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev);
-state_spec_t pv_state_spec(struct pv_state *s);
-void pv_state_print(struct pv_state *s);
 
 #endif

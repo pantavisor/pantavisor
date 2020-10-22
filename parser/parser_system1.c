@@ -62,25 +62,27 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
-	s->modules = get_json_key_value(buf, "modules", tokv, tokc);
+	s->bsp.kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->bsp.fdt = get_json_key_value(buf, "fdt", tokv, tokc);
+	s->bsp.initrd = get_json_key_value(buf, "initrd", tokv, tokc);
+	s->bsp.firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->bsp.modules = get_json_key_value(buf, "modules", tokv, tokc);
 
-	if (s->firmware) {
-		v = pv_volume_add(s, s->firmware);
+	s->json = strdup(value);
+
+	if (s->bsp.firmware) {
+		v = pv_volume_add(s, s->bsp.firmware);
 		v->plat = NULL;
 		v->type = VOL_LOOPIMG;
 	}
 
-	if (s->modules) {
-		v = pv_volume_add(s, s->modules);
+	if (s->bsp.modules) {
+		v = pv_volume_add(s, s->bsp.modules);
 		v->plat = NULL;
 		v->type = VOL_LOOPIMG;
 	}
 
-	if (!s->kernel || !s->initrd) {
+	if (!s->bsp.kernel || !s->bsp.initrd) {
 		pv_log(ERROR, "kernel or initrd not configured in bsp/run.json. Cannot continue.", strlen(buf), buf);
 		ret = 0;
 		goto out;
@@ -648,11 +650,29 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	}
 
 	this->json = strdup(buf);
-	this->done = true;
+	this->status = PLAT_INSTALLED;
 out:
 	if (config)
 		free(config);
 	return 0;
+}
+
+static void system1_link_object_platforms(struct pv_state *s)
+{
+	struct pv_object *o, *tmp;
+	struct dl_list *new_objects = &s->objects;
+	char *o_name, *dir;
+
+	if (!new_objects)
+		return;
+
+	dl_list_for_each_safe(o, tmp, new_objects,
+		struct pv_object, list) {
+		o_name = strdup(o->name);
+		dir = strtok(o_name, "/");
+		o->plat = pv_platform_get_by_name(s, dir);
+		free(o_name);
+	}
 }
 
 struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev)
@@ -713,11 +733,14 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 
 		// check extension in case of file (json=platform, other=file)
 		ext = strrchr(key, '/');
+		// if the extension is run.json, we have a new platform
 		if (ext && !strcmp(ext, "/run.json")) {
 			pv_log(DEBUG, "parsing '%s'", key);
 			parse_platform(this, value, strlen(value));
+		// if the extension is other .json, we ignore it
 		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
 			pv_log(DEBUG, "skipping '%s'", key);
+		// everything else is added to the list of objects
 		} else {
 			pv_log(DEBUG, "adding object '%s'", key);
 			pv_objects_add(this, key, value, pv->config->storage.mntpoint);
@@ -738,6 +761,8 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 
 	// copy buffer
 	this->json = strdup(buf);
+
+	system1_link_object_platforms(this);
 
 	pv_state_validate(this);
 

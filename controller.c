@@ -144,7 +144,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	rev = pv_revision_get_rev();
 	pv_log(DEBUG, "running pantavisor with runlevel %d and rev %d", runlevel, rev);
 
-	pv->state = pv_get_state(pv, rev);
+	if (pv_update_is_transition(pv->update))
+		pv_state_transfer(pv->update->pending, pv->state, runlevel);
+	else
+		pv->state = pv_get_state(pv, rev);
 	if (!pv->state)
 	{
 		pv_log(ERROR, "state could not be loaded");
@@ -285,11 +288,12 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 	int ret = 0;
 
 	// if online update pending to clear, commit update to cloud
-	if (pv->update && pv->update->status == UPDATE_TRY) {
+	if (pv->update && pv->update->status == UPDATE_TRY)
 		pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
-	} else if (pv->update && pv->update->status == UPDATE_FAILED) {
+	else if (pv->update && pv->update->status == UPDATE_TRANSITION)
+		pv_update_set_status(pv, UPDATE_UPDATED);
+	else if (pv->update && pv->update->status == UPDATE_FAILED)
 		pv_update_finish(pv);
-	}
 	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
@@ -483,16 +487,9 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	}
 
 	// if everything went well, decide wether update requires reboot
-	if (pv->update->runlevel <= 0) {
-		pv_log(WARN, "update runlevel %d requires reboot, rebooting...",
-				pv->update->runlevel);
-		pv_update_set_status(pv, UPDATE_REBOOT);
+	if (pv_update_requires_reboot(pv))
 		return STATE_REBOOT;
-	}
 
-	pv_log(WARN, "update runlevel %d does not require reboot, running new revision...",
-				pv->update->runlevel);
-	pv_update_set_status(pv, UPDATE_TRY);
 	return STATE_RUN;
 }
 

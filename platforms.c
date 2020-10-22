@@ -99,7 +99,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 
 	if (p) {
 		p->name = strdup(name);
-		p->done = false;
+		p->status = PLAT_NONE;
 		p->runlevel = -1;
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
@@ -157,7 +157,7 @@ static void pv_platform_empty_logger_configs(struct pv_platform *p)
 	pv_log(INFO, "removed %d logger configs", num_logger_configs);
 }
 
-static void pv_platform_free(struct pv_platform *p)
+void pv_platform_free(struct pv_platform *p)
 {
 	char **c;
 
@@ -202,14 +202,14 @@ void pv_platforms_empty(struct pv_state *s)
 	pv_log(INFO, "removed %d platforms", num_plats);
 }
 
-void pv_platforms_remove_not_done(struct pv_state *s)
+void pv_platforms_remove_not_installed(struct pv_state *s)
 {
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &s->platforms;
 
 	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
-		if (p->done)
+		if (p->status == PLAT_INSTALLED)
 			continue;
 
 		dl_list_del(&p->list);
@@ -220,24 +220,27 @@ void pv_platforms_remove_not_done(struct pv_state *s)
 void pv_platforms_default_runlevel(struct pv_state *s)
 {
 	bool root_configured = false;
-	struct pv_platform *p, *tmp;
+	struct pv_platform *p, *tmp, *first_p = NULL;
 	struct dl_list *platforms = &s->platforms;
 
 	if (dl_list_empty(platforms))
 		return;
 
-	// check if any platform has been configured with runlevel 0
 	dl_list_for_each_safe(p, tmp, platforms,
 			struct pv_platform, list) {
+		// check if any platform has been configured with runlevel 0
 		if (p->runlevel == 0)
 			root_configured = true;
+		// get first unconfigured platform
+		if (p->runlevel == -1)
+			first_p = p;
 	}
 
 	// if not, set first platform as runlevel 0
-	if (!root_configured) {
+	if (!root_configured && first_p) {
 		pv_log(WARN, "no platform was found with root runlevel, "
-				"so the first one in alphabetical order will be set");
-		dl_list_first(platforms, struct pv_platform, list)->runlevel = 0;
+				"so the first unconfigured one in alphabetical order will be set");
+		first_p->runlevel = 0;
 	}
 
 	// set rest of the non configured platforms with the lower priority
@@ -506,7 +509,7 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	p->init_pid = pid;
 
 	if (pid > 0)
-		p->running = true;
+		p->status = PLAT_STARTED;
 	else
 		return -1;
 
@@ -643,11 +646,11 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 				continue;
 			}
 
-			if (p->running) {
+			if (p->status == PLAT_STARTED) {
 				pv_platform_stop_loggers(p);
 				ctrl = _pv_platforms_get_ctrl(p->type);
 				ctrl->stop(p, NULL, p->data);
-				p->running = false;
+				p->status = PLAT_STOPPED;
 				// we dereference data after platform stop
 				p->data = NULL;
 				pv_log(DEBUG, "sent SIGTERM to platform '%s'", p->name);

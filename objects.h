@@ -25,8 +25,9 @@
 #define OBJPATH_FMT	"%s/objects/%s"
 #define RELPATH_FMT	"%s/trails/%d/%s"
 
-#include "pantavisor.h"
 #include <stdlib.h>
+
+#include "pantavisor.h"
 
 struct pv_object {
 	char *name;
@@ -36,12 +37,13 @@ struct pv_object {
 	char *relpath;
 	off_t size;
 	char *sha256;
+	struct pv_platform *plat;
 	struct dl_list list;
 };
 
 char** pv_objects_get_all_ids(struct pantavisor *pv);
 int pv_objects_id_in_step(struct pv_state *s, char *id);
-struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *c);
+struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *mntpoint);
 struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name);
 void pv_objects_empty(struct pv_state *s);
 

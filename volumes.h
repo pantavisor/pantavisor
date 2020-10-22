@@ -42,6 +42,8 @@ struct pv_volume {
 	struct dl_list list; // pv_volume
 };
 
+void pv_volume_free(struct pv_volume *v);
+
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
 
 int pv_volumes_mount(struct pantavisor *pv, int runlevel);

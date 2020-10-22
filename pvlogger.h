@@ -3,7 +3,7 @@
 #include "pantavisor.h"
 
 struct pv_log_info {
-	const char *logfile;
+	char *logfile;
 	char *name;
 	struct dl_list next;
 	void (*on_logger_closed)(struct pv_log_info*);

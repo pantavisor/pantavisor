@@ -59,12 +59,12 @@ static struct pv_state_parser* _get_parser(char *spec)
 	return NULL;
 }
 
-state_spec_t pv_state_spec(struct pv_state *s)
+static state_spec_t pv_parser_convert_spec(char *spec)
 {
 	int i;
 
 	for (i = 0; i < SPEC_UNKNOWN; i++)
-		if (strcmp(parsers[i].spec, s->spec) == 0)
+		if (strcmp(parsers[i].spec, spec) == 0)
 			return i;
 
 	return SPEC_UNKNOWN;
@@ -97,7 +97,7 @@ struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev)
 		goto out;
 	}
 
-	state = pv_state_new(rev, spec);
+	state = pv_state_new(rev, pv_parser_convert_spec(spec));
 	if (state) {
 		if (!p->parse(pv, state, buf, rev)) {
 			pv_state_free(state);

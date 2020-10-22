@@ -56,7 +56,9 @@ enum update_state {
 	UPDATE_DOWNLOADED,
 	UPDATE_INSTALLED,
 	UPDATE_TRY,
+	UPDATE_TRANSITION,
 	UPDATE_REBOOT,
+	UPDATE_UPDATED,
 	UPDATE_DONE,
 	UPDATE_FAILED,
 	UPDATE_NO_DOWNLOAD,
@@ -101,6 +103,9 @@ int pv_update_install(struct pantavisor *pv);
 int pv_update_resume(struct pantavisor *pv);
 void pv_update_finish(struct pantavisor *pv);
 void pv_update_remove(struct pantavisor *pv);
+
+bool pv_update_requires_reboot(struct pantavisor *pv);
+bool pv_update_is_transition(struct pv_update *u);
 
 int pv_update_set_status(struct pantavisor *pv, enum update_state status);
 

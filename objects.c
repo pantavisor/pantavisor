@@ -86,7 +86,7 @@ int pv_objects_id_in_step(struct pv_state *s, char *id)
 	return 0;
 }
 
-struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *c)
+struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *mntpoint)
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
 	int size;
@@ -95,22 +95,25 @@ struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, c
 		this->name = strdup(filename);
 		this->id = strdup(id);
 
-		size = sizeof(RELPATH_FMT) + strlen(c) +
+		// init relpath
+		size = sizeof(RELPATH_FMT) + strlen(mntpoint) +
 			strlen(filename) + get_digit_count(s->rev);
 
 		this->relpath = calloc(1, size * sizeof(char));
 		if (this->relpath)
-			sprintf(this->relpath , RELPATH_FMT, c, s->rev, filename);
+			sprintf(this->relpath , RELPATH_FMT, mntpoint, s->rev, filename);
 		else
 			goto free_object;
 
-		size = sizeof(OBJPATH_FMT) + strlen(c) + strlen(id);
+		// init objpath
+		size = sizeof(OBJPATH_FMT) + strlen(mntpoint) + strlen(id);
 
 		this->objpath = calloc(1, size * sizeof(char));
 		if (this->objpath)
-			sprintf(this->objpath, OBJPATH_FMT, c, id);
+			sprintf(this->objpath, OBJPATH_FMT, mntpoint, id);
 		else
 			goto free_object;
+
 		dl_list_init(&this->list);
 		dl_list_add(&s->objects, &this->list);
 		return this;

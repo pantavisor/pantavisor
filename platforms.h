@@ -28,6 +28,13 @@
 
 #define MAX_RUNLEVEL 1
 
+typedef enum {
+	PLAT_NONE,
+	PLAT_INSTALLED,
+	PLAT_STARTED,
+	PLAT_STOPPED
+} plat_status_t;
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -37,8 +44,7 @@ struct pv_platform {
 	void *data;
 	char *json;
 	pid_t init_pid;
-	bool running;
-	bool done;
+	plat_status_t status;
 	int runlevel;
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
@@ -48,12 +54,14 @@ struct pv_platform {
 	struct dl_list logger_configs; // pv_logger_config
 };
 
+void pv_platform_free(struct pv_platform *p);
+
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
 struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name);
 
-void pv_platforms_remove_not_done(struct pv_state *s);
+void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_default_runlevel(struct pv_state *s);
 
 int pv_platforms_start(struct pantavisor *pv, int runlevel);

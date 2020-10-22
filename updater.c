@@ -209,13 +209,21 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"INPROGRESS", "Starting updated version", 90);
 		break;
+	case UPDATE_TRANSITION:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"INPROGRESS", "Transitioning to new revision without rebooting", 95);
+		break;
 	case UPDATE_REBOOT:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"INPROGRESS", "Rebooting", 95);
 		break;
+	case UPDATE_UPDATED:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"UPDATED", "Update finished, revision not set as rollback point", 0);
+		break;
 	case UPDATE_DONE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"DONE", "Update finished", 100);
+			"DONE", "Update finished, revision set as rollback point", 100);
 		break;
 	case UPDATE_NO_DOWNLOAD:
 		if (!msg)
@@ -1044,12 +1052,13 @@ void pv_update_finish(struct pantavisor *pv)
 	int ret = 0;
 
 	switch (pv->update->status) {
-	case UPDATE_DONE:
 	case UPDATE_FAILED:
 		pv_revision_set_failed();
+	case UPDATE_UPDATED:
+	case UPDATE_DONE:
 		pv_update_set_status(pv, pv->update->status);
 		pv_update_remove(pv);
-		pv_log(INFO, "update commit done");
+		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		pv->update->retry_at = time(NULL) + DOWNLOAD_RETRY_WAIT;
@@ -1133,7 +1142,7 @@ out:
 
 static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 {
-	if (strcmp(pv->state->kernel, obj->name))
+	if (strcmp(pv->state->bsp.kernel, obj->name))
 		return 0;
 
 	if (pv->config->bl.type == BL_UBOOT_PVK)
@@ -1527,9 +1536,9 @@ static int trail_download_objects(struct pantavisor *pv)
 	}
 
 	k_new = pv_objects_get_by_name(u->pending,
-			u->pending->kernel);
+			u->pending->bsp.kernel);
 	k_old = pv_objects_get_by_name(pv->state,
-			pv->state->kernel);
+			pv->state->bsp.kernel);
 
 
 	if (u->total_update) {
@@ -1644,7 +1653,7 @@ int pv_update_install(struct pantavisor *pv)
 
 	pv_update_set_status(pv, UPDATE_INSTALLED);
 
-	pv->update->runlevel = 0;
+	pv->update->runlevel = pv_state_compare_states(pending, pv->state);
 	pv_log(INFO, "update runlevel set to %d", pv->update->runlevel);
 out:
 	if (pending && (ret < 0))
@@ -1676,6 +1685,26 @@ int pv_update_resume(struct pantavisor *pv)
 	}
 
 	return 0;
+}
+
+bool pv_update_requires_reboot(struct pantavisor *pv)
+{
+	if (pv->update->runlevel <= 0) {
+		pv_log(WARN, "update runlevel %d requires reboot, rebooting...",
+			pv->update->runlevel);
+		pv_update_set_status(pv, UPDATE_REBOOT);
+		return true;
+	}
+
+	pv_log(WARN, "update runlevel %d does not require reboot, running new revision...",
+		pv->update->runlevel);
+	pv_update_set_status(pv, UPDATE_TRANSITION);
+	return false;
+}
+
+bool pv_update_is_transition(struct pv_update *u)
+{
+	return (u && u->status == UPDATE_TRANSITION);
 }
 
 static int pv_update_init(struct pv_init *this)

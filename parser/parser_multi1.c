@@ -78,12 +78,12 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->bsp.kernel = get_json_key_value(buf, "linux", tokv, tokc);
+	s->bsp.fdt = get_json_key_value(buf, "fdt", tokv, tokc);
+	s->bsp.initrd = get_json_key_value(buf, "initrd", tokv, tokc);
+	s->bsp.firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 
-	if (!s->kernel || !s->initrd)
+	if (!s->bsp.kernel || !s->bsp.initrd)
 		goto out;
 
 	// get addons and create empty items
@@ -234,7 +234,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	}
 
 	this->json = strdup(buf);
-	this->done = true;
+	this->status = PLAT_INSTALLED;
 
 out:
 	if (name)
@@ -325,7 +325,7 @@ struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char
 	pv_state_print(this);
 
 	// remove platforms that have no loaded data
-	pv_platforms_remove_not_done(this);
+	pv_platforms_remove_not_installed(this);
 
 out:
 	if (key)

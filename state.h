@@ -25,27 +25,43 @@
 
 #include "pantavisor.h"
 
-struct pv_state {
-	int rev;
-	char *spec;
+typedef enum {
+	SPEC_MULTI1,
+	SPEC_SYSTEM1,
+	SPEC_UNKNOWN
+} state_spec_t ;
+
+struct pv_bsp {
 	char *kernel;
 	char *fdt;
 	char *firmware;
 	char *modules;
 	char *initrd;
+	char *json;
+};
+
+struct pv_state {
+	int rev;
+	state_spec_t spec;
+	struct pv_bsp bsp;
 	struct dl_list platforms; // pv_platform
 	struct dl_list volumes; // pv_volume
 	struct dl_list addons; // pv_addon
 	struct dl_list objects; //pv_object
-	int retries;
 	char *json;
+	int retries;
 	int tryonce;
 };
 
-struct pv_state* pv_state_new(int rev, char *spec);
+struct pv_state* pv_state_new(int rev, state_spec_t spec);
 void pv_state_free(struct pv_state *s);
 
 void pv_state_print(struct pv_state *s);
 void pv_state_validate(struct pv_state *s);
+
+void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel);
+int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);
+
+state_spec_t pv_state_spec(struct pv_state *s);
 
 #endif
