@@ -68,7 +68,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	s->bsp.firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 	s->bsp.modules = get_json_key_value(buf, "modules", tokv, tokc);
 
-	s->json = strdup(value);
+	s->bsp.json = strdup(value);
 
 	if (s->bsp.firmware) {
 		v = pv_volume_add(s, s->bsp.firmware);
@@ -670,6 +670,8 @@ static void system1_link_object_platforms(struct pv_state *s)
 		struct pv_object, list) {
 		o_name = strdup(o->name);
 		dir = strtok(o_name, "/");
+		if (!strcmp(dir, "_config"))
+			dir = strtok(NULL, "/");
 		o->plat = pv_platform_get_by_name(s, dir);
 		free(o_name);
 	}

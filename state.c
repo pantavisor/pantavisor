@@ -208,25 +208,43 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 {
 	int runlevel = MAX_RUNLEVEL;
 	struct pv_platform *p, *tmp_p, *curr_p;
-    struct dl_list *new_platforms = &pending->platforms;
+    struct dl_list *platforms ;
 	struct pv_object *o, *tmp_o, *curr_o;
 	struct dl_list *new_objects = &pending->objects;
 
-	if (!new_objects)
+	if (!pending || !current || !new_objects)
 		return 0;
 
 	// search for changes in bsp json
-	if (strcmp(pending->bsp.json, current->bsp.json))
+	if (!pending->bsp.json ||
+		!current->bsp.json ||
+		strcmp(pending->bsp.json, current->bsp.json)) {
+		pv_log(DEBUG, "bsp run.json has changed in last update");
 		return 0;
+	}
 
 	// search for changes in platforms json
-	dl_list_for_each_safe(p, tmp_p, new_platforms,
+	platforms = &pending->platforms;
+	dl_list_for_each_safe(p, tmp_p, platforms,
 		struct pv_platform, list) {
 		curr_p = pv_platform_get_by_name(current, p->name);
 		if (!curr_p || strcmp(p->json, curr_p->json)) {
-			if(p->runlevel < runlevel)
+			if(p->runlevel < runlevel) {
+				pv_log(DEBUG, "platform %d run.json has changed in last update", p->name);
 				runlevel = p->runlevel;
+			}
 		}
+	}
+
+	// search for deleted platforms
+	platforms = &current->platforms;
+	dl_list_for_each_safe(p, tmp_p, platforms,
+		struct pv_platform, list) {
+		if (!pv_platform_get_by_name(pending, p->name))
+			if(p->runlevel < runlevel) {
+				pv_log(DEBUG, "platform %d from current revision will be deleted", p->name);
+				runlevel = p->runlevel;
+			}
 	}
 
 	// seach for changes in objects
@@ -234,11 +252,15 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		struct pv_object, list) {
 		curr_o = pv_objects_get_by_name(current, o->name);
 		if (!curr_o || strcmp(o->id, curr_o->id)) {
-			if (!o->plat)
+			if (!o->plat) {
+				pv_log(DEBUG, "bsp objects have changed in last update");
 				return 0;
+			}
 
-			if (o->plat->runlevel < runlevel)
+			if (o->plat->runlevel < runlevel) {
+				pv_log(DEBUG, "platform %d objects have changed in last update", o->plat->name);
 				runlevel = o->plat->runlevel;
+			}
 		}
 	}
 
