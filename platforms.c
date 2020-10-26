@@ -232,7 +232,7 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 		if (p->runlevel == 0)
 			root_configured = true;
 		// get first unconfigured platform
-		if (p->runlevel == -1)
+		if (!first_p && (p->runlevel == -1))
 			first_p = p;
 	}
 

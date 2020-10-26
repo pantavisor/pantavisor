@@ -91,17 +91,19 @@ static void pv_state_transfer_platforms(struct pv_state *in, struct pv_state *ou
 		if (p->runlevel >= runlevel)
 			continue;
 
+		pv_log(DEBUG, "removing platform %s from rev %d", p->name, out->rev);
 		dl_list_del(&p->list);
 		pv_platform_free(p);
 	}
 
-	// tranfer existing platforms from in to out 
+	// tranfer existing platforms from in to out
 	platforms = &in->platforms;
 	dl_list_for_each_safe(p, p_tmp, platforms,
 		struct pv_platform, list) {
 		if (p->runlevel >= runlevel)
 			continue;
 
+		pv_log(DEBUG, "transferring platform %s from rev %d to rev", p->name, in->rev, out->rev);
 		dl_list_del(&p->list);
 		dl_list_add(&out->platforms, &p->list);
 	}
@@ -119,6 +121,7 @@ static void pv_state_transfer_volumes(struct pv_state *in, struct pv_state *out,
 		if (!v->plat || (v->plat->runlevel >= runlevel))
 			continue;
 
+		pv_log(DEBUG, "removing volume %s linked to platform %s from rev %d", v->name, v->plat->name, out->rev);
 		dl_list_del(&v->list);
 		pv_volume_free(v);
 	}
@@ -130,8 +133,39 @@ static void pv_state_transfer_volumes(struct pv_state *in, struct pv_state *out,
 		if (!v->plat || (v->plat->runlevel >= runlevel))
 			continue;
 
+		pv_log(DEBUG, "transferring volume %s linked to platform %s from rev %d to rev %d", v->name, v->plat->name, in->rev, out->rev);
 		dl_list_del(&v->list);
 		dl_list_add(&out->volumes, &v->list);
+	}
+}
+
+static void	pv_state_transfer_objects(struct pv_state *in, struct pv_state *out, int runlevel)
+{
+	struct pv_object *o, *o_tmp;
+	struct dl_list *objects;
+
+	// remove existing objects from out
+	objects = &out->objects;
+	dl_list_for_each_safe(o, o_tmp, objects,
+		struct pv_object, list) {
+		if (!o->plat || (o->plat->runlevel >= runlevel))
+			continue;
+
+		pv_log(DEBUG, "removing object %s linked to platform %s from rev %d", o->name, o->plat->name, out->rev);
+		dl_list_del(&o->list);
+		pv_object_free(o);
+	}
+
+	// transfer existing objects from in to out
+	objects = &in->objects;
+	dl_list_for_each_safe(o, o_tmp, objects,
+		struct pv_object, list) {
+		if (!o->plat || (o->plat->runlevel >= runlevel))
+			continue;
+
+		pv_log(DEBUG, "transferring object %s linked to platform %s from rev %d to rev %d", o->name, o->plat->name, in->rev, out->rev);
+		dl_list_del(&o->list);
+		dl_list_add(&out->objects, &o->list);
 	}
 }
 
@@ -195,11 +229,12 @@ void pv_state_validate(struct pv_state *s)
 
 void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 {
-	pv_log(INFO, "transferring state with rev %d to rev %d", in->rev, out->rev);
+	pv_log(INFO, "transferring state from rev %d to rev %d", in->rev, out->rev);
 	out->rev = in->rev;
 
 	pv_state_transfer_platforms(in, out, runlevel);
 	pv_state_transfer_volumes(in, out, runlevel);
+	pv_state_transfer_objects(in, out, runlevel);
 
 	pv_state_print(out);
 }
@@ -219,7 +254,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 	if (!pending->bsp.json ||
 		!current->bsp.json ||
 		strcmp(pending->bsp.json, current->bsp.json)) {
-		pv_log(DEBUG, "bsp run.json has changed in last update");
+		pv_log(DEBUG, "bsp run.json has been changed in last update");
 		return 0;
 	}
 
@@ -229,8 +264,8 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		struct pv_platform, list) {
 		curr_p = pv_platform_get_by_name(current, p->name);
 		if (!curr_p || strcmp(p->json, curr_p->json)) {
+			pv_log(DEBUG, "platform %d run.json has been changed in last update", p->name);
 			if(p->runlevel < runlevel) {
-				pv_log(DEBUG, "platform %d run.json has changed in last update", p->name);
 				runlevel = p->runlevel;
 			}
 		}
@@ -241,8 +276,8 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 	dl_list_for_each_safe(p, tmp_p, platforms,
 		struct pv_platform, list) {
 		if (!pv_platform_get_by_name(pending, p->name))
+			pv_log(DEBUG, "platform %d has been deleted in last update", p->name);
 			if(p->runlevel < runlevel) {
-				pv_log(DEBUG, "platform %d from current revision will be deleted", p->name);
 				runlevel = p->runlevel;
 			}
 	}
@@ -253,12 +288,12 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		curr_o = pv_objects_get_by_name(current, o->name);
 		if (!curr_o || strcmp(o->id, curr_o->id)) {
 			if (!o->plat) {
-				pv_log(DEBUG, "bsp objects have changed in last update");
+				pv_log(DEBUG, "bsp objects have been changed in last update");
 				return 0;
 			}
 
+			pv_log(DEBUG, "platform %s objects have been changed in last update", o->plat->name);
 			if (o->plat->runlevel < runlevel) {
-				pv_log(DEBUG, "platform %d objects have changed in last update", o->plat->name);
 				runlevel = o->plat->runlevel;
 			}
 		}

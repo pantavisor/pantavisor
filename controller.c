@@ -133,7 +133,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	struct timespec tp;
-	int runlevel = 0, rev = 0;
+	int runlevel = 0;
 
 	runlevel = pv_update_resume(pv);
 	if (runlevel < 0) {
@@ -141,13 +141,12 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	rev = pv_revision_get_rev();
-	pv_log(DEBUG, "running pantavisor with runlevel %d and rev %d", runlevel, rev);
-
-	if (pv_update_is_transition(pv->update))
+	if (pv_update_is_transition(pv->update)) {
+		pv_log_stop(pv);
+		pv_log_start(pv, pv->state->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
-	else
-		pv->state = pv_get_state(pv, rev);
+	} else
+		pv->state = pv_get_state(pv, pv_revision_get_rev());
 	if (!pv->state)
 	{
 		pv_log(ERROR, "state could not be loaded");
@@ -155,6 +154,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	pv_meta_set_objdir(pv);
+
+	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
 	if (pv_volumes_mount(pv, runlevel) < 0)
 		return STATE_ROLLBACK;

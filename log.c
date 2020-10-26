@@ -246,6 +246,25 @@ static int log_external(const char *fmt, ...)
 	return 1;
 }
 
+static int pv_log_set_log_dir(int rev)
+{
+	log_dir = calloc(1, PATH_MAX);
+	if (!log_dir) {
+		printf("Couldn't reserve space for log directory\n");
+		printf("Pantavisor logs won't be available\n");
+		return -1;
+	}
+
+	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
+	if (mkdir_p(log_dir, 0755)) {
+		printf("Couldn't make dir %s,"
+			"pantavisor logs won't be available\n", log_dir);
+		return -1;
+	}
+
+	return 0;
+}
+
 static void pv_log_init(struct pantavisor *pv, int rev)
 {
 	// make logs available for platforms
@@ -254,7 +273,7 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 	global_pv = pv;
 	int allocated_cache = 0;
 	int allocated_dcache = 0;
-	
+
 	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
 					pv->config->logsize, &log_buffer_list);
 
@@ -263,17 +282,10 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 
 	mkdir_p("/pv/logs", 0755);
 	mount_bind(pv->config->logdir, "/pv/logs");
-	log_dir = calloc(1, PATH_MAX);
-	if (!log_dir) {
-		printf("Couldn't reserve space for log directory\n");
-		printf("Pantavisor logs won't be available\n");
+
+	if (pv_log_start(pv, rev) < 0)
 		return;
-	}
-	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
-	if (mkdir_p(log_dir, 0755)) {
-		printf("Couldn't make dir %s,"
-			"pantavisor logs won't be available\n", log_dir);
-	}
+
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
@@ -289,6 +301,31 @@ void exit_error(int err, char *msg)
 
 	sleep(20);
 	exit(0);
+}
+
+int pv_log_start(struct pantavisor *pv, int rev)
+{
+	if (!pv)
+		return -1;
+
+	if (pv_log_set_log_dir(rev) < 0) {
+		printf("Error: unable to start pantavisor.log");
+		return -1;
+	}
+
+	pv->log = calloc(1, sizeof(struct pv_log));
+
+	ph_logger_start(pv, LOG_CTRL_PATH, rev);
+
+	return 0;
+}
+
+void pv_log_stop(struct pantavisor *pv)
+{
+	ph_logger_stop(pv);
+
+	free(pv->log);
+	pv->log = NULL;
 }
 
 void __log(char *module, int level, const char *fmt, ...)
@@ -349,15 +386,6 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(DEBUG, "c->creds.id = '%s'", config->creds.id);
 	pv_log(DEBUG, "c->creds.prn = '%s'", config->creds.prn);
 	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret);
-
-	if (ph_logger_service_start(pv, LOG_CTRL_PATH, pv_rev) <= 0) {
-		pv_log(ERROR, "Unable to start logger service.");
-	}
-
-	if (ph_logger_service_start_for_range(pv, pv_rev - 1) <= 0) {
-		pv_log(ERROR, "Unable to start range logger service.");
-	}
-
 
 out:
 	return ret;

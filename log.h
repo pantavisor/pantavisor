@@ -54,6 +54,13 @@ struct log_buffer {
 	int size;
 	struct dl_list free_list;
 };
+
+struct pv_log {
+	pid_t rev_logger;
+	pid_t range_logger;
+	pid_t push_helper;
+};
+
 #define LOG_NAME		"pantavisor.log"
 #define ERROR_DIR		"error"
 
@@ -70,9 +77,10 @@ struct log_buffer {
 #define LOG_CTRL_PATH 			"/pv/"LOG_CTRL_FNAME
 #define LOG_CTRL_PLATFORM_PATH 		"/pantavisor/"LOG_CTRL_FNAME
 #define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
-/*
- * fname can't go away even after function call.
- */
+
+int pv_log_start(struct pantavisor *pv, int rev);
+void pv_log_stop(struct pantavisor *pv);
+
 void __log(char *module, int level, const char *fmt, ...);
 /*
  * Don't free the return value!
