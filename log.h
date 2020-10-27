@@ -79,7 +79,6 @@ struct pv_log {
 #define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
 
 int pv_log_start(struct pantavisor *pv, int rev);
-void pv_log_stop(struct pantavisor *pv);
 
 void __log(char *module, int level, const char *fmt, ...);
 /*

@@ -142,8 +142,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	if (pv_update_is_transition(pv->update)) {
-		pv_log_stop(pv);
-		pv_log_start(pv, pv->state->rev);
+		pv_log_start(pv, pv->update->pending->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
 	} else
 		pv->state = pv_get_state(pv, pv_revision_get_rev());
@@ -486,6 +485,8 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
 		return STATE_ROLLBACK;
 	}
+
+	ph_logger_stop(pv);
 
 	// if everything went well, decide wether update requires reboot
 	if (pv_update_requires_reboot(pv))

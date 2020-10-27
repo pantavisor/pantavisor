@@ -1115,7 +1115,7 @@ static int ph_logger_service_start(struct pantavisor *pv, const char *sock_path,
 		 */
 		pv_global->online = false;
 		memset(&sa, 0, sizeof(sa));
-		
+
 		sa.sa_handler = sigterm_handler;
 		sa.sa_flags = SA_RESTART;
 		sigaction(SIGTERM, &sa, NULL);
@@ -1187,13 +1187,18 @@ int ph_logger_write_bytes(struct ph_logger_msg *ph_logger_msg, const char *buf, 
 	return written;
 }
 
-void ph_logger_start(struct pantavisor *pv, const char *sock_path, int rev)
+void ph_logger_start(struct pantavisor *pv, int rev)
 {
 	if (!pv || !pv->log)
 		return;
 
+	if (!pv->log)
+		pv->log = calloc(1, sizeof(struct pv_log));
 
-	pv->log->rev_logger = ph_logger_service_start(pv, sock_path, rev);
+	if (!pv->log)
+		return;
+
+	pv->log->rev_logger = ph_logger_service_start(pv, LOG_CTRL_PATH, rev);
 	if (pv->log->rev_logger <= 0)
 		pv_log(ERROR, "unable to start logger service.");
 
@@ -1241,4 +1246,7 @@ void ph_logger_stop(struct pantavisor *pv)
 		kill(pv->log->push_helper, SIGKILL);
 		kill(pv->log->range_logger, SIGKILL);
 	}
+
+	free(pv->log);
+	pv->log = NULL;
 }

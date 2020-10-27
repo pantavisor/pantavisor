@@ -96,6 +96,6 @@ int ph_logger_write_bytes(struct ph_logger_msg *, const char *buf, ...);
  * */
 int ph_logger_read_bytes(struct ph_logger_msg *, char *buf, ...);
 
-void ph_logger_start(struct pantavisor *pv, const char *sock_path, int rev);
+void ph_logger_start(struct pantavisor *pv, int rev);
 void ph_logger_stop(struct pantavisor *pv);
 #endif /* __PH_LOGGER_H__ */

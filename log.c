@@ -248,7 +248,9 @@ static int log_external(const char *fmt, ...)
 
 static int pv_log_set_log_dir(int rev)
 {
-	log_dir = calloc(1, PATH_MAX);
+	if (!log_dir)
+		log_dir = calloc(1, PATH_MAX);
+
 	if (!log_dir) {
 		printf("Couldn't reserve space for log directory\n");
 		printf("Pantavisor logs won't be available\n");
@@ -287,7 +289,6 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 		return;
 
 	// enable libthttp debug logs
-	pv_log(DEBUG, "Initialized pantavisor logs...");
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
 			allocated_cache, pv->config->logsize);
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
@@ -313,19 +314,19 @@ int pv_log_start(struct pantavisor *pv, int rev)
 		return -1;
 	}
 
-	pv->log = calloc(1, sizeof(struct pv_log));
+	pv_log(DEBUG, "Initialized pantavisor logs...");
 
-	ph_logger_start(pv, LOG_CTRL_PATH, rev);
+	pv_log(INFO, "______           _              _                ");
+	pv_log(INFO, "| ___ \\         | |            (_)               ");
+	pv_log(INFO, "| |_/ /_ _ _ __ | |_ __ ___   ___ ___  ___  _ __ ");
+	pv_log(INFO, "|  __/ _` | '_ \\| __/ _` \\ \\ / / / __|/ _ \\| '__|");
+	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
+	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
+	pv_log(INFO, "                                                 ");
+	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
+	pv_log(INFO, "                                                 ");
 
 	return 0;
-}
-
-void pv_log_stop(struct pantavisor *pv)
-{
-	ph_logger_stop(pv);
-
-	free(pv->log);
-	pv->log = NULL;
 }
 
 void __log(char *module, int level, const char *fmt, ...)
@@ -367,15 +368,6 @@ static int pv_log_early_init(struct pv_init *this)
 
 	pv_log_init(pv, pv_rev);
 
-	pv_log(INFO, "______           _              _                ");
-	pv_log(INFO, "| ___ \\         | |            (_)               ");
-	pv_log(INFO, "| |_/ /_ _ _ __ | |_ __ ___   ___ ___  ___  _ __ ");
-	pv_log(INFO, "|  __/ _` | '_ \\| __/ _` \\ \\ / / / __|/ _ \\| '__|");
-	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
-	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
-	pv_log(INFO, "                                                 ");
-	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
-	pv_log(INFO, "                                                 ");
 	pv_log(DEBUG, "c->storage.path = '%s'", config->storage.path);
 	pv_log(DEBUG, "c->storage.fstype = '%s'", config->storage.fstype);
 	pv_log(DEBUG, "c->storage.opts = '%s'", config->storage.opts);
@@ -386,6 +378,8 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(DEBUG, "c->creds.id = '%s'", config->creds.id);
 	pv_log(DEBUG, "c->creds.prn = '%s'", config->creds.prn);
 	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret);
+
+	ph_logger_start(pv, pv_rev);
 
 out:
 	return ret;
