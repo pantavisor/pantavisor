@@ -980,6 +980,8 @@ static pid_t ph_logger_create_push_helper(int revision)
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
+		pv_global->online = false;
+		__ph_logger_init_basic(&ph_logger);
 		pv_log(INFO, "Initialized PH push helper, pid = %d by service process (%d)\n",
 				getpid(), getppid());
 		while (1) {
@@ -1107,7 +1109,6 @@ static pid_t ph_logger_service_start(struct pantavisor *pv, const char *sock_pat
 	service_pid = fork();
 	if (service_pid == 0) {
 		struct sigaction sa;
-		pid_t push_pid = -1;
 		close(pipefd[0]);
 		/*
 		 * We set the online status of this dummy to be
@@ -1145,15 +1146,6 @@ retry:
 			close(pipefd[1]);
 		}
 		ph_logger.revision = revision;
-		push_pid = ph_logger_create_push_helper(revision);
-#ifdef DEBUG
-		/*
-		 * Don't use pv_log as we risk blocking on write
-		 * on a filled up socket buffer.
-		 */
-		if (push_pid <= 0)
-			printf("Error starting log push service\n");
-#endif
 		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
 			ph_logger_read_write(&ph_logger);
 		}
@@ -1183,15 +1175,16 @@ void ph_logger_start(struct pantavisor *pv, int revision)
 	pv_log(DEBUG, "starting ph logger with rev %d", revision);
 
 	pv->log->rev_logger = ph_logger_service_start(pv, LOG_CTRL_PATH, revision);
-	if (pv->log->rev_logger <= 0) {
-
+	if (pv->log->rev_logger <= 0)
 		pv_log(ERROR, "unable to start logger service");
-	}
+
+	pv->log->push_helper = ph_logger_create_push_helper(revision);
+	if (pv->log->push_helper <= 0)
+		pv_log(ERROR, "unable to start push helper");
 
 	pv->log->range_logger = ph_logger_service_start_for_range(pv, revision - 1);
-	if (pv->log->range_logger <= 0) {
+	if (pv->log->range_logger <= 0)
 		pv_log(ERROR, "unable to start range logger service");
-	}
 }
 
 void ph_logger_stop(struct pantavisor *pv)
@@ -1204,11 +1197,13 @@ void ph_logger_stop(struct pantavisor *pv)
 
 	// send SIGTERM to logger pids
 	kill(pv->log->rev_logger, SIGTERM);
+	kill(pv->log->push_helper, SIGTERM);
 	kill(pv->log->range_logger, SIGTERM);
 
 	// check logger processes have ended
 	for (int i = 0; i < 5; i++) {
 		if (kill(pv->log->rev_logger, 0) ||
+			kill(pv->log->push_helper, 0) ||
 			kill(pv->log->range_logger, 0))
 			exited = true;
 		if (exited)
@@ -1219,6 +1214,7 @@ void ph_logger_stop(struct pantavisor *pv)
 	// force kill logger processes
 	if (!exited) {
 		kill(pv->log->rev_logger, SIGKILL);
+		kill(pv->log->push_helper, SIGKILL);
 		kill(pv->log->range_logger, SIGKILL);
 	}
 	if (!pv->log)

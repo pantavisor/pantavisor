@@ -143,7 +143,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	if (pv_update_is_transition(pv->update)) {
 		pv_log_start(pv, pv->update->pending->rev);
-		ph_logger_start(pv, pv->update->pending->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
 	} else
 		pv->state = pv_get_state(pv, pv_revision_get_rev());
@@ -156,6 +155,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_meta_set_objdir(pv);
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
+
+	ph_logger_start(pv, pv->state->rev);
 
 	if (pv_volumes_mount(pv, runlevel) < 0)
 		return STATE_ROLLBACK;

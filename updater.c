@@ -933,7 +933,7 @@ static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state sta
 
 	pv->update->status = status;
 
-	if (trail_remote_init(pv)) {
+	if (!pv->online || trail_remote_init(pv)) {
 		pv_log(WARN, "status will not be send to cloud");
 		return 0;
 	}
