@@ -143,6 +143,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	if (pv_update_is_transition(pv->update)) {
 		pv_log_start(pv, pv->update->pending->rev);
+		ph_logger_start(pv, pv->update->pending->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
 	} else
 		pv->state = pv_get_state(pv, pv_revision_get_rev());

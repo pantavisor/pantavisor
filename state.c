@@ -96,7 +96,7 @@ static void pv_state_transfer_platforms(struct pv_state *in, struct pv_state *ou
 		pv_platform_free(p);
 	}
 
-	// tranfer existing platforms from in to out
+	// transfer existing platforms from in to out
 	platforms = &in->platforms;
 	dl_list_for_each_safe(p, p_tmp, platforms,
 		struct pv_platform, list) {

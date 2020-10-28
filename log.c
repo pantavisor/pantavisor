@@ -289,6 +289,7 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 		return;
 
 	// enable libthttp debug logs
+	pv_log(DEBUG, "Initialized pantavisor logs...");
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
 			allocated_cache, pv->config->logsize);
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
@@ -306,25 +307,11 @@ void exit_error(int err, char *msg)
 
 int pv_log_start(struct pantavisor *pv, int rev)
 {
-	if (!pv)
-		return -1;
-
 	if (pv_log_set_log_dir(rev) < 0) {
 		printf("Error: unable to start pantavisor.log");
 		return -1;
 	}
 
-	pv_log(DEBUG, "Initialized pantavisor logs...");
-
-	pv_log(INFO, "______           _              _                ");
-	pv_log(INFO, "| ___ \\         | |            (_)               ");
-	pv_log(INFO, "| |_/ /_ _ _ __ | |_ __ ___   ___ ___  ___  _ __ ");
-	pv_log(INFO, "|  __/ _` | '_ \\| __/ _` \\ \\ / / / __|/ _ \\| '__|");
-	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
-	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
-	pv_log(INFO, "                                                 ");
-	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
-	pv_log(INFO, "                                                 ");
 
 	return 0;
 }
@@ -368,6 +355,15 @@ static int pv_log_early_init(struct pv_init *this)
 
 	pv_log_init(pv, pv_rev);
 
+	pv_log(INFO, "______           _              _                ");
+	pv_log(INFO, "| ___ \\         | |            (_)               ");
+	pv_log(INFO, "| |_/ /_ _ _ __ | |_ __ ___   ___ ___  ___  _ __ ");
+	pv_log(INFO, "|  __/ _` | '_ \\| __/ _` \\ \\ / / / __|/ _ \\| '__|");
+	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
+	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
+	pv_log(INFO, "                                                 ");
+	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
+	pv_log(INFO, "                                                 ");
 	pv_log(DEBUG, "c->storage.path = '%s'", config->storage.path);
 	pv_log(DEBUG, "c->storage.fstype = '%s'", config->storage.fstype);
 	pv_log(DEBUG, "c->storage.opts = '%s'", config->storage.opts);

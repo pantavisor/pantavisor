@@ -1039,7 +1039,7 @@ out:
 	return max_revision;
 }
 
-static int ph_logger_service_start_for_range(struct pantavisor *pv, int curr_revision)
+static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int curr_revision)
 {
 	pid_t range_service = -1;
 	int max_revisions = -1;
@@ -1088,7 +1088,7 @@ out:
 	return range_service;
 }
 
-static int ph_logger_service_start(struct pantavisor *pv, const char *sock_path, int revision)
+static pid_t ph_logger_service_start(struct pantavisor *pv, const char *sock_path, int revision)
 {
 	pid_t service_pid = -1;
 	int pipefd[2] = {-1, -1};
@@ -1107,6 +1107,7 @@ static int ph_logger_service_start(struct pantavisor *pv, const char *sock_path,
 	service_pid = fork();
 	if (service_pid == 0) {
 		struct sigaction sa;
+		pid_t push_pid = -1;
 		close(pipefd[0]);
 		/*
 		 * We set the online status of this dummy to be
@@ -1115,7 +1116,7 @@ static int ph_logger_service_start(struct pantavisor *pv, const char *sock_path,
 		 */
 		pv_global->online = false;
 		memset(&sa, 0, sizeof(sa));
-
+		
 		sa.sa_handler = sigterm_handler;
 		sa.sa_flags = SA_RESTART;
 		sigaction(SIGTERM, &sa, NULL);
@@ -1144,7 +1145,15 @@ retry:
 			close(pipefd[1]);
 		}
 		ph_logger.revision = revision;
-
+		push_pid = ph_logger_create_push_helper(revision);
+#ifdef DEBUG
+		/*
+		 * Don't use pv_log as we risk blocking on write
+		 * on a filled up socket buffer.
+		 */
+		if (push_pid <= 0)
+			printf("Error starting log push service\n");
+#endif
 		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
 			ph_logger_read_write(&ph_logger);
 		}
@@ -1158,6 +1167,62 @@ retry:
 			service_status);
 	close(pipefd[0]);
 	return service_pid;
+}
+
+void ph_logger_start(struct pantavisor *pv, int revision)
+{
+	if (!pv)
+		return;
+
+	if (!pv->log)
+		pv->log = calloc(1, sizeof(struct pv_log));
+
+	if (!pv->log)
+		return;
+
+	pv_log(DEBUG, "starting ph logger with rev %d", revision);
+
+	pv->log->rev_logger = ph_logger_service_start(pv, LOG_CTRL_PATH, revision);
+	if (pv->log->rev_logger <= 0) {
+
+		pv_log(ERROR, "unable to start logger service");
+	}
+
+	pv->log->range_logger = ph_logger_service_start_for_range(pv, revision - 1);
+	if (pv->log->range_logger <= 0) {
+		pv_log(ERROR, "unable to start range logger service");
+	}
+}
+
+void ph_logger_stop(struct pantavisor *pv)
+{
+	pv_log(DEBUG, "stopping ph logger");
+	bool exited = false;
+
+	if (!pv || !pv->log)
+		return;
+
+	// send SIGTERM to logger pids
+	kill(pv->log->rev_logger, SIGTERM);
+	kill(pv->log->range_logger, SIGTERM);
+
+	// check logger processes have ended
+	for (int i = 0; i < 5; i++) {
+		if (kill(pv->log->rev_logger, 0) ||
+			kill(pv->log->range_logger, 0))
+			exited = true;
+		if (exited)
+			break;
+		sleep(1);
+	}
+
+	// force kill logger processes
+	if (!exited) {
+		kill(pv->log->rev_logger, SIGKILL);
+		kill(pv->log->range_logger, SIGKILL);
+	}
+	if (!pv->log)
+		free(pv->log);
 }
 
 int ph_logger_read_bytes(struct ph_logger_msg *ph_logger_msg, char *buf, ...)
@@ -1185,68 +1250,4 @@ int ph_logger_write_bytes(struct ph_logger_msg *ph_logger_msg, const char *buf, 
 		written = writer(ph_logger_msg, (char*)buf, args);
 	va_end(args);
 	return written;
-}
-
-void ph_logger_start(struct pantavisor *pv, int rev)
-{
-	if (!pv || !pv->log)
-		return;
-
-	if (!pv->log)
-		pv->log = calloc(1, sizeof(struct pv_log));
-
-	if (!pv->log)
-		return;
-
-	pv->log->rev_logger = ph_logger_service_start(pv, LOG_CTRL_PATH, rev);
-	if (pv->log->rev_logger <= 0)
-		pv_log(ERROR, "unable to start logger service.");
-
-#ifdef DEBUG
-		/*
-		 * Don't use pv_log as we risk blocking on write
-		 * on a filled up socket buffer.
-		 */
-	pv->log->push_helper = ph_logger_create_push_helper(rev);
-	if (pv->log->push_helper <= 0)
-		printf("unable to start push helper\n");
-#endif
-
-	pv->log->range_logger = ph_logger_service_start_for_range(pv, rev -1);
-	if (pv->log->range_logger <= 0)
-		pv_log(ERROR, "unable to start range logger service.");
-}
-
-void ph_logger_stop(struct pantavisor *pv)
-{
-	bool exited = false;
-
-	if (!pv || !pv->log)
-		return;
-
-	// send SIGTERM to logger pids
-	kill(pv->log->rev_logger, SIGTERM);
-	kill(pv->log->push_helper, SIGTERM);
-	kill(pv->log->range_logger, SIGTERM);
-
-	// check logger processes have ended
-	for (int i = 0; i < 5; i++) {
-		if (kill(pv->log->rev_logger, 0) ||
-			kill(pv->log->push_helper, 0) ||
-			kill(pv->log->range_logger, 0))
-			exited = true;
-		if (exited)
-			break;
-		sleep(1);
-	}
-
-	// force kill logger processes
-	if (!exited) {
-		kill(pv->log->rev_logger, SIGKILL);
-		kill(pv->log->push_helper, SIGKILL);
-		kill(pv->log->range_logger, SIGKILL);
-	}
-
-	free(pv->log);
-	pv->log = NULL;
 }
