@@ -6,7 +6,6 @@ struct pv_log_info {
 	char *logfile;
 	char *name;
 	struct dl_list next;
-	void (*on_logger_closed)(struct pv_log_info*);
 	off_t truncate_size;
 	bool islxc;
 	pid_t logger_pid;

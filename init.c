@@ -134,34 +134,6 @@ static void signal_handler(int signal)
 		return;
 
 	while (	(pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED)) > 0) {
-		struct pv_platform *p, *tmp_p;
-		struct pv_log_info *l, *tmp_l;
-		struct dl_list *head_platforms, *head_logger;
-		bool found = false;
-
-		/*
-		 * See if the pid is one of the loggers
-		 * */
-		if (pv && pv->state) {
-			head_platforms = &pv->state->platforms;
-			dl_list_for_each_safe(p, tmp_p, head_platforms,
-					struct pv_platform, list) {
-				head_logger = &p->logger_list;
-				dl_list_for_each_safe(l, tmp_l, head_logger,
-						struct pv_log_info, next) {
-					if (l->logger_pid == pid) {
-						dl_list_del(&l->next);
-						if (l->on_logger_closed) {
-							l->on_logger_closed(l);
-						}
-						free(l);
-						found = true;
-					}
-				}
-				if (found)
-					break;
-			}
-		}
 		// Check for pantavisor
 		if (pid != pv_pid)
 			continue;

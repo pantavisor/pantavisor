@@ -156,8 +156,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
-	ph_logger_start(pv, pv->state->rev);
-
 	if (pv_volumes_mount(pv, runlevel) < 0)
 		return STATE_ROLLBACK;
 
@@ -171,6 +169,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(ERROR, "error making config");
 		return STATE_ROLLBACK;
 	}
+
+	ph_logger_start(pv, pv->state->rev);
 
 	if (pv_platforms_start(pv, runlevel) < 0) {
 		pv_log(ERROR, "error starting platforms");
@@ -292,9 +292,10 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY)
 		pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
-	else if (pv->update && pv->update->status == UPDATE_TRANSITION)
+	else if (pv->update && pv->update->status == UPDATE_TRANSITION) {
 		pv_update_set_status(pv, UPDATE_UPDATED);
-	else if (pv->update && pv->update->status == UPDATE_FAILED)
+		pv_update_finish(pv);
+	} else if (pv->update && pv->update->status == UPDATE_FAILED)
 		pv_update_finish(pv);
 	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
@@ -464,6 +465,7 @@ out:
 
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
+	pv_state_t next_state = STATE_RUN;
 	int rev = -1;
 
 	pv_log(INFO, "starting update");
@@ -479,22 +481,23 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
+	// if everything went well, decide wether update requires reboot
+	if (pv_update_requires_reboot(pv))
+		next_state = STATE_REBOOT;
+
+	// stop running state
 	pv->online = false;
 
 	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
 	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
 			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
 		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
-		return STATE_ROLLBACK;
+		next_state = STATE_ROLLBACK;
 	}
 
 	ph_logger_stop(pv);
 
-	// if everything went well, decide wether update requires reboot
-	if (pv_update_requires_reboot(pv))
-		return STATE_REBOOT;
-
-	return STATE_RUN;
+	return next_state;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)

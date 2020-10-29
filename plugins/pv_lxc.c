@@ -114,7 +114,6 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	 * Caller can change this before logging starts.
 	 */
 	pv_log_i->truncate_size = (2 * 1024 * 1024);
-	pv_log_i->on_logger_closed = pv_free_lxc_log;
 	return 0;
 }
 

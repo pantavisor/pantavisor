@@ -375,8 +375,6 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(DEBUG, "c->creds.prn = '%s'", config->creds.prn);
 	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret);
 
-	ph_logger_start(pv, pv_rev);
-
 out:
 	return ret;
 }

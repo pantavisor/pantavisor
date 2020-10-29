@@ -26,7 +26,7 @@
 
 #include "pantavisor.h"
 
-#define MAX_RUNLEVEL 1
+extern const int MAX_RUNLEVEL;
 
 typedef enum {
 	PLAT_NONE,

@@ -188,7 +188,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 
 		snprintf(retries, sizeof(retries), "%d", __retries);
 		pv_log(DEBUG, "Update queued, retry count is %s", retries);
-		sprintf(retry_message, "Update queued (%s/%d)", retries,
+		sprintf(retry_message, "Update queued, retry %s of %d", retries,
 				MAX_REVISION_RETRIES);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
@@ -989,15 +989,6 @@ out:
 	return ret;
 }
 
-static void object_update_free(struct object_update* o)
-{
-	if (o->object_name)
-		free(o->object_name);
-	if (o->object_id)
-		free(o->object_id);
-	free(o);
-}
-
 static void pv_update_free(struct pv_update *update)
 {
 	if (!update)
@@ -1013,7 +1004,9 @@ static void pv_update_free(struct pv_update *update)
 	}
 	if (update->progress_objects)
 		free(update->progress_objects);
-	object_update_free(update->total_update);
+
+	if (update->total_update)
+		free(update->total_update);
 
 	free(update);
 }
@@ -1054,9 +1047,9 @@ void pv_update_finish(struct pantavisor *pv)
 	switch (pv->update->status) {
 	case UPDATE_FAILED:
 		pv_revision_set_failed();
+		pv_update_set_status(pv, pv->update->status);
 	case UPDATE_UPDATED:
 	case UPDATE_DONE:
-		pv_update_set_status(pv, pv->update->status);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
 		break;

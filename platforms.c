@@ -50,6 +50,8 @@ int setns(int nsfd, int nstype);
 #include "init.h"
 #include "state.h"
 
+const int MAX_RUNLEVEL = 1;
+
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
 		{"truncate", "true"},
@@ -362,18 +364,6 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 	return pid;
 }
 
-static void pv_free_platform_log(struct pv_log_info *info)
-{
-	/*
-	 * Free any resources taken up by info,
-	 * specially logfile
-	 * */
-	if (info->logfile)
-		free((void*)(info->logfile));
-	if (info->name)
-		free(info->name);
-}
-
 static void pv_setup_platform_log(struct pv_log_info *info,
 				  struct pv_logger_config *logger_config)
 {
@@ -387,7 +377,6 @@ static void pv_setup_platform_log(struct pv_log_info *info,
 	 * */
 	logfile = pv_log_get_config_item(logger_config, "file"); /*Defaults to /var/log/messages in pvlogger*/
 	info->logfile = (logfile ? strdup(logfile) : NULL);
-	info->on_logger_closed = pv_free_platform_log;
 }
 
 static struct pv_log_info* pv_add_platform_logger(struct pv_platform *platform, 
@@ -454,14 +443,9 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 		 * So this logger didn't succeeded,
 		 * */
 		if (logger_pid < 0) {
-			dl_list_del(&log_info->next);
 			pv_log(WARN, "Logger %s was not started",
 				(log_info->name ? log_info->name : "pvlogger")
 				);
-			if (log_info->on_logger_closed) {
-				log_info->on_logger_closed(log_info);
-			}
-			free(log_info);
 		} else {
 			pv_log(DEBUG, "started pv_logger for platform %s"
 				"(name=%s) with pid = %d", platform->name,
@@ -631,7 +615,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0, exited = 0;
 	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = NULL;
+	struct dl_list *platforms = &pv->state->platforms;
 	const struct pv_cont_ctrl *ctrl;
 
 	// Iterate between lowest priority plats and runlevel plats

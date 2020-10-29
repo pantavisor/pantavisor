@@ -915,6 +915,8 @@ static bool ph_logger_helper_function(int revision)
 	FILE *find_fp = NULL;
 	int offset_bytes = 0;
 	bool sent_one = false;
+	const int max_sleep = 10;
+	int sleep_secs = 0;
 
 	/*
 	 * Figure out how much to move
@@ -939,14 +941,14 @@ static bool ph_logger_helper_function(int revision)
 	if (find_fp) {
 		char *buf = NULL;
 		size_t size = 0;
-		
+
 		while (!feof(find_fp)) {
 			ssize_t nr_read = 0;
-			
+
 			nr_read = getline(&buf, &size, find_fp);
 			if ( nr_read> 0) {
 				int ret = -1;
-				
+
 				/*Get rid of '\n'*/
 				buf[nr_read - 1] = '\0';
 				if (ph_logger_contains_skip_prefix(&ph_logger, buf + offset_bytes))
@@ -956,6 +958,14 @@ static bool ph_logger_helper_function(int revision)
 				if (!sent_one) {
 					/*ret == 0 for one sent item*/
 					sent_one = (ret == 0); 
+					sleep_secs ++;
+					sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
+					pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
+						revision);
+					sleep(sleep_secs);
+				} else {
+					sleep_secs -= 1;
+					sleep_secs = (sleep_secs <= 0 ? 0 : sleep_secs);
 				}
 			}
 			else {
@@ -973,8 +983,6 @@ static bool ph_logger_helper_function(int revision)
 static pid_t ph_logger_create_push_helper(int revision)
 {
 	pid_t helper_pid = -1;
-	const int max_sleep = 10;
-	int sleep_secs = 1;
 
 	helper_pid = fork();
 	if (helper_pid == 0) {
@@ -991,14 +999,7 @@ static pid_t ph_logger_create_push_helper(int revision)
 			 * but don't stay idle for more than 10 seconds at most.
 			 */
 			if (!sent_one) {
-				sleep_secs ++;
-				sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
-				pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
-						revision);
-				sleep(sleep_secs);
-			} else {
-				sleep_secs -= 1;
-				sleep_secs = (sleep_secs <= 0 ? 1 : sleep_secs);
+				pv_log(WARN, "Helper could not send anything");
 			}
 		}
 	}
