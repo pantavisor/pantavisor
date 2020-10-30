@@ -55,12 +55,6 @@ struct log_buffer {
 	struct dl_list free_list;
 };
 
-struct pv_log {
-	pid_t rev_logger;
-	pid_t range_logger;
-	pid_t push_helper;
-};
-
 #define LOG_NAME		"pantavisor.log"
 #define ERROR_DIR		"error"
 

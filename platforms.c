@@ -497,12 +497,6 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	else
 		return -1;
 
-	if (pv_state_spec(pv->state) != SPEC_MULTI1) {
-		if (start_pvlogger_for_platform(p) < 0) {
-			pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
-		}
-	}
-
 	return 0;
 }
 
@@ -532,6 +526,12 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 
 		// FIXME: arbitrary delay between runlevels
 		sleep(5);
+	}
+
+	dl_list_for_each_safe(p, tmp, platforms,
+		struct pv_platform, list) {
+		if (start_pvlogger_for_platform(p) < 0)
+			pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
 	}
 
 	pv_log(INFO, "started %d platforms", num_plats);
@@ -618,6 +618,11 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 	struct dl_list *platforms = &pv->state->platforms;
 	const struct pv_cont_ctrl *ctrl;
 
+	dl_list_for_each_safe(p, tmp, platforms,
+		struct pv_platform, list) {
+		pv_platform_stop_loggers(p);
+	}
+
 	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
 		pv_log(DEBUG, "stopping platforms with runlevel %d", i);
@@ -631,7 +636,6 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 			}
 
 			if (p->status == PLAT_STARTED) {
-				pv_platform_stop_loggers(p);
 				ctrl = _pv_platforms_get_ctrl(p->type);
 				ctrl->stop(p, NULL, p->data);
 				p->status = PLAT_STOPPED;

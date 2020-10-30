@@ -375,6 +375,11 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(DEBUG, "c->creds.prn = '%s'", config->creds.prn);
 	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret);
 
+	if (ph_logger_init(LOG_CTRL_PATH)) {
+		pv_log(ERROR, "ph logger initialization failed");
+		ret = -1;
+	}
+
 out:
 	return ret;
 }

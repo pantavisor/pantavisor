@@ -55,7 +55,6 @@ struct pantavisor {
 	int ctrl_fd;
 	unsigned long flags;
 	struct pv_connection *conn;
-	struct pv_log *log;
 };
 
 int *pv_get_revisions(struct pantavisor *pv);

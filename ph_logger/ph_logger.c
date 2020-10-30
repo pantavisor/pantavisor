@@ -133,9 +133,7 @@ struct ph_logger_skip_prefix {
 };
 
 static DEFINE_DL_LIST(frag_list);
-/*
- * This is a private struct.
- */
+
 struct ph_logger {
 	int sock_fd;
 	int flags;
@@ -145,6 +143,9 @@ struct ph_logger {
 	struct pv_connection *pv_conn;
 	char user_agent[USER_AGENT_LEN];
 	struct dl_list skip_list;
+	pid_t rev_logger;
+	pid_t range_logger;
+	pid_t push_helper;
 };
 
 static struct ph_logger ph_logger = {
@@ -378,7 +379,7 @@ static int __ph_logger_init_basic(struct ph_logger *ph_logger) {
 	return 0;
 }
 
-static int ph_logger_init(const char *sock_path, char *log_path)
+int ph_logger_init(const char *sock_path)
 {
 	struct epoll_event ep_event;
 
@@ -1091,26 +1092,15 @@ out:
 	return range_service;
 }
 
-static pid_t ph_logger_service_start(struct pantavisor *pv, const char *sock_path, int revision)
+static pid_t ph_logger_service_start(struct pantavisor *pv, int revision)
 {
 	pid_t service_pid = -1;
-	int pipefd[2] = {-1, -1};
-	int service_status = -1;
 
 	pv_global = pv;
 
-	/*
-	 * We must tell parent process to wait
-	 * for initialization.
-	 */
-	if (pipe(pipefd)) {
-		printf("Not waiting for PH logger service"
-			" some logs may not be available\n");
-	}
 	service_pid = fork();
 	if (service_pid == 0) {
 		struct sigaction sa;
-		close(pipefd[0]);
 		/*
 		 * We set the online status of this dummy to be
 		 * false so that we never flush while adding to
@@ -1118,34 +1108,14 @@ static pid_t ph_logger_service_start(struct pantavisor *pv, const char *sock_pat
 		 */
 		pv_global->online = false;
 		memset(&sa, 0, sizeof(sa));
-		
+
 		sa.sa_handler = sigterm_handler;
 		sa.sa_flags = SA_RESTART;
 		sigaction(SIGTERM, &sa, NULL);
 
 		sa.sa_handler = sigchld_handler;
 		sigaction(SIGCHLD, &sa, NULL);
-retry:
-		service_status = ph_logger_init(sock_path, NULL);
-		if (service_status) {
-			printf("Error initializing pantahub logger service %s\n", sock_path);
-			printf("Retrying initialization in 10 seconds\n");
-			if (pipefd[1] >= 0)
-				write_nointr(pipefd[1], (char*)&service_status, sizeof(service_status));
-			pipefd[1] = -1;
-			sleep(10);
-			goto retry;
-		}
-		/*
-		 * The control socket has now been initialized.
-		 * We can ask the parent process to continue.
-		 */
-		if (pipefd[1] >= 0) {
-			write_nointr(pipefd[1], (char*)&service_status, sizeof(service_status));
-			/*Allow the parent process to be able to read correct status code.*/
-			sleep(10); 
-			close(pipefd[1]);
-		}
+
 		ph_logger.revision = revision;
 		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
 			ph_logger_read_write(&ph_logger);
@@ -1154,11 +1124,6 @@ retry:
 		_exit(EXIT_SUCCESS);
 	}
 
-	close(pipefd[1]);
-	read_nointr(pipefd[0], (char*)&service_status, sizeof(service_status));
-	pv_log(INFO, "Pantahub logger service initialized with return code %d\n",
-			service_status);
-	close(pipefd[0]);
 	return service_pid;
 }
 
@@ -1167,45 +1132,40 @@ void ph_logger_start(struct pantavisor *pv, int revision)
 	if (!pv)
 		return;
 
-	if (!pv->log)
-		pv->log = calloc(1, sizeof(struct pv_log));
-
-	if (!pv->log)
-		return;
-
 	pv_log(DEBUG, "starting ph logger with rev %d", revision);
 
-	pv->log->rev_logger = ph_logger_service_start(pv, LOG_CTRL_PATH, revision);
-	if (pv->log->rev_logger <= 0)
+	ph_logger.rev_logger = ph_logger_service_start(pv, revision);
+	if (ph_logger.rev_logger <= 0)
 		pv_log(ERROR, "unable to start logger service");
 
-	pv->log->push_helper = ph_logger_create_push_helper(revision);
-	if (pv->log->push_helper <= 0)
+	ph_logger.push_helper = ph_logger_create_push_helper(revision);
+	if (ph_logger.push_helper <= 0)
 		pv_log(ERROR, "unable to start push helper");
 
-	pv->log->range_logger = ph_logger_service_start_for_range(pv, revision - 1);
-	if (pv->log->range_logger <= 0)
+	ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision - 1);
+	if (ph_logger.range_logger <= 0)
 		pv_log(ERROR, "unable to start range logger service");
 }
 
 void ph_logger_stop(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "stopping ph logger");
 	bool exited = false;
 
-	if (!pv || !pv->log)
+	if (!pv)
 		return;
 
+	pv_log(DEBUG, "stopping ph logger");
+
 	// send SIGTERM to logger pids
-	kill(pv->log->rev_logger, SIGTERM);
-	kill(pv->log->push_helper, SIGTERM);
-	kill(pv->log->range_logger, SIGTERM);
+	kill(ph_logger.rev_logger, SIGTERM);
+	kill(ph_logger.push_helper, SIGTERM);
+	kill(ph_logger.range_logger, SIGTERM);
 
 	// check logger processes have ended
 	for (int i = 0; i < 5; i++) {
-		if (kill(pv->log->rev_logger, 0) ||
-			kill(pv->log->push_helper, 0) ||
-			kill(pv->log->range_logger, 0))
+		if (kill(ph_logger.rev_logger, 0) ||
+			kill(ph_logger.push_helper, 0) ||
+			kill(ph_logger.range_logger, 0))
 			exited = true;
 		if (exited)
 			break;
@@ -1214,12 +1174,10 @@ void ph_logger_stop(struct pantavisor *pv)
 
 	// force kill logger processes
 	if (!exited) {
-		kill(pv->log->rev_logger, SIGKILL);
-		kill(pv->log->push_helper, SIGKILL);
-		kill(pv->log->range_logger, SIGKILL);
+		kill(ph_logger.rev_logger, SIGKILL);
+		kill(ph_logger.push_helper, SIGKILL);
+		kill(ph_logger.range_logger, SIGKILL);
 	}
-	if (!pv->log)
-		free(pv->log);
 }
 
 int ph_logger_read_bytes(struct ph_logger_msg *ph_logger_msg, char *buf, ...)

@@ -142,6 +142,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	if (pv_update_is_transition(pv->update)) {
+		ph_logger_stop(pv);
 		pv_log_start(pv, pv->update->pending->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
 	} else
@@ -151,6 +152,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(ERROR, "state could not be loaded");
 		return STATE_ROLLBACK;
 	}
+
+	ph_logger_start(pv, pv->state->rev);
 
 	pv_meta_set_objdir(pv);
 
@@ -169,8 +172,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(ERROR, "error making config");
 		return STATE_ROLLBACK;
 	}
-
-	ph_logger_start(pv, pv->state->rev);
 
 	if (pv_platforms_start(pv, runlevel) < 0) {
 		pv_log(ERROR, "error starting platforms");
@@ -494,8 +495,6 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
 		next_state = STATE_ROLLBACK;
 	}
-
-	ph_logger_stop(pv);
 
 	return next_state;
 }
