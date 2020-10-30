@@ -959,11 +959,13 @@ static bool ph_logger_helper_function(int revision)
 				if (!sent_one) {
 					/*ret == 0 for one sent item*/
 					sent_one = (ret == 0); 
-					sleep_secs ++;
 					sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
-					pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
-						revision);
-					sleep(sleep_secs);
+					if (sleep_secs > 0) {
+						pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
+							revision);
+						sleep(sleep_secs);
+					}
+					sleep_secs ++;
 				} else {
 					sleep_secs -= 1;
 					sleep_secs = (sleep_secs <= 0 ? 0 : sleep_secs);

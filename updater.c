@@ -1682,7 +1682,8 @@ int pv_update_resume(struct pantavisor *pv)
 
 bool pv_update_requires_reboot(struct pantavisor *pv)
 {
-	if (pv->update->runlevel <= 0) {
+	// we reboot for changes with explicitly configured "root" platforms and non-configured ones
+	if (pv->update->runlevel <= 1) {
 		pv_log(WARN, "update runlevel %d requires reboot, rebooting...",
 			pv->update->runlevel);
 		pv_update_set_status(pv, UPDATE_REBOOT);

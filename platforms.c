@@ -50,7 +50,7 @@ int setns(int nsfd, int nstype);
 #include "init.h"
 #include "state.h"
 
-const int MAX_RUNLEVEL = 1;
+const int MAX_RUNLEVEL = 2;
 
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
@@ -245,12 +245,12 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 		first_p->runlevel = 0;
 	}
 
-	// set rest of the non configured platforms with the lower priority
+	// set rest of the non configured platforms with runlevel 1, reserved for non-explicilty configured ones
 	platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp, platforms,
             struct pv_platform, list) {
 		if (p->runlevel < 0)
-			p->runlevel = MAX_RUNLEVEL;
+			p->runlevel = 1;
     }
 }
 

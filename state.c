@@ -139,7 +139,7 @@ static void pv_state_transfer_volumes(struct pv_state *in, struct pv_state *out,
 	}
 }
 
-static void	pv_state_transfer_objects(struct pv_state *in, struct pv_state *out, int runlevel)
+static void pv_state_transfer_objects(struct pv_state *in, struct pv_state *out, int runlevel)
 {
 	struct pv_object *o, *o_tmp;
 	struct dl_list *objects;
@@ -266,8 +266,9 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		curr_p = pv_platform_get_by_name(current, p->name);
 		if (!curr_p || strcmp(p->json, curr_p->json)) {
 			pv_log(DEBUG, "platform %d run.json has been changed in last update", p->name);
+			// if run.json has changed, we use the old runlevel instead of the new one
 			if(p->runlevel < runlevel) {
-				runlevel = p->runlevel;
+				runlevel = curr_p->runlevel;
 			}
 		}
 	}
@@ -278,6 +279,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		struct pv_platform, list) {
 		if (!pv_platform_get_by_name(pending, p->name)) {
 			pv_log(DEBUG, "platform %d has been deleted in last update", p->name);
+			// if the platform has been deleted, we respect its runlevel
 			if(p->runlevel < runlevel) {
 				runlevel = p->runlevel;
 			}
