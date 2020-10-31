@@ -292,23 +292,26 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 
 	// if online update pending to clear, commit update to cloud
 	if (pv->update && pv->update->status == UPDATE_TRY)
-		pv_update_set_status(pv, UPDATE_DEVICE_COMMIT_WAIT);
-	else if (pv->update && pv->update->status == UPDATE_TRANSITION) {
-		pv_update_set_status(pv, UPDATE_UPDATED);
+		pv_update_set_status(pv, UPDATE_TESTING_REBOOT);
+	else if (pv->update && pv->update->status == UPDATE_TRANSITION)
+		pv_update_set_status(pv, UPDATE_TESTING_NONREBOOT);
+	 else if (pv->update && pv->update->status == UPDATE_FAILED)
 		pv_update_finish(pv);
-	} else if (pv->update && pv->update->status == UPDATE_FAILED)
-		pv_update_finish(pv);
-	if (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) {
+	if (pv_update_is_testing(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
 				pv_log(WARN, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
-			if (pv_revision_set_commited(pv->state->rev)) {
-				pv_log(ERROR, "revision for next boot could not be set");
-				return STATE_ROLLBACK;
+			if (pv->update->status == UPDATE_TESTING_REBOOT) {
+				if (pv_revision_set_commited(pv->state->rev)) {
+					pv_log(ERROR, "revision for next boot could not be set");
+					return STATE_ROLLBACK;
+				}
+				pv_update_set_status(pv, UPDATE_DONE);
 			}
-			pv_update_set_status(pv, UPDATE_DONE);
+			else
+				pv_update_set_status(pv, UPDATE_UPDATED);
 			pv_update_finish(pv);
 	}
 	// check for updates
@@ -342,9 +345,7 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 
 	if (!pv_ph_is_available(pv)) {
 		rb_count++;
-		if (pv->update &&
-			(pv->update->status == UPDATE_TRY ||
-			pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) &&
+		if (pv_update_is_testing(pv->update) &&
 			(rb_count > timeout_max)) {
 			next_state = STATE_ROLLBACK;
 			goto out;
@@ -390,7 +391,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
-		next_state = (pv->update && pv->update->status == UPDATE_DEVICE_COMMIT_WAIT) ? STATE_ROLLBACK : STATE_REBOOT;
+		next_state = (pv_update_is_testing(pv->update)) ? STATE_ROLLBACK : STATE_REBOOT;
 		goto out;
 	}
 	next_state = pv_helper_process(pv);

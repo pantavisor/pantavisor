@@ -207,7 +207,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 		break;
 	case UPDATE_TRY:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Starting updated version", 90);
+			"INPROGRESS", "Starting updated version", 95);
 		break;
 	case UPDATE_TRANSITION:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -219,7 +219,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 		break;
 	case UPDATE_UPDATED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"UPDATED", "Update finished, revision not set as rollback point", 0);
+			"UPDATED", "Update finished, revision not set as rollback point", 100);
 		break;
 	case UPDATE_DONE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -257,9 +257,13 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 		 */
 		pending_update->total_update->total_downloaded = 0;
 		break;
-	case UPDATE_DEVICE_COMMIT_WAIT:
+	case UPDATE_TESTING_REBOOT:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"UPDATED", "Awaiting update commit.",0);
+			"TESTING", "Awaiting to set rollback point if update is stable", 95);
+		break;
+	case UPDATE_TESTING_NONREBOOT:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"TESTING", "Awaiting to see if update is stable", 95);
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
 		/*
@@ -1699,6 +1703,13 @@ bool pv_update_requires_reboot(struct pantavisor *pv)
 bool pv_update_is_transition(struct pv_update *u)
 {
 	return (u && u->status == UPDATE_TRANSITION);
+}
+
+bool pv_update_is_testing(struct pv_update *u)
+{
+	return (u &&
+		((u->status == UPDATE_TESTING_REBOOT) ||
+		(u->status == UPDATE_TESTING_NONREBOOT)));
 }
 
 static int pv_update_init(struct pv_init *this)
