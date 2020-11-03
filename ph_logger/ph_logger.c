@@ -152,7 +152,10 @@ static struct ph_logger ph_logger = {
 	.epoll_fd = -1,
 	.sock_fd = -1,
 	.pv_conn = NULL,
-	.client = NULL
+	.client = NULL,
+	.rev_logger = -1,
+	.range_logger = -1,
+	.push_helper = -1
 };
 
 static ph_logger_handler_t read_handler[] = {
@@ -916,8 +919,6 @@ static bool ph_logger_helper_function(int revision)
 	FILE *find_fp = NULL;
 	int offset_bytes = 0;
 	bool sent_one = false;
-	const int max_sleep = 10;
-	int sleep_secs = 0;
 
 	/*
 	 * Figure out how much to move
@@ -959,16 +960,6 @@ static bool ph_logger_helper_function(int revision)
 				if (!sent_one) {
 					/*ret == 0 for one sent item*/
 					sent_one = (ret == 0); 
-					sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
-					if (sleep_secs > 0) {
-						pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
-							revision);
-						sleep(sleep_secs);
-					}
-					sleep_secs ++;
-				} else {
-					sleep_secs -= 1;
-					sleep_secs = (sleep_secs <= 0 ? 0 : sleep_secs);
 				}
 			}
 			else {
@@ -986,13 +977,13 @@ static bool ph_logger_helper_function(int revision)
 static pid_t ph_logger_create_push_helper(int revision)
 {
 	pid_t helper_pid = -1;
+	const int max_sleep = 10;
+	int sleep_secs = 1;
 
 	helper_pid = fork();
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
-		pv_global->online = false;
-		__ph_logger_init_basic(&ph_logger);
 		pv_log(INFO, "Initialized PH push helper, pid = %d by service process (%d)\n",
 				getpid(), getppid());
 		while (1) {
@@ -1002,7 +993,14 @@ static pid_t ph_logger_create_push_helper(int revision)
 			 * but don't stay idle for more than 10 seconds at most.
 			 */
 			if (!sent_one) {
-				pv_log(WARN, "Helper could not send anything");
+				sleep_secs ++;
+				sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
+				pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
+						revision);
+				sleep(sleep_secs);
+			} else {
+				sleep_secs -= 1;
+				sleep_secs = (sleep_secs <= 0 ? 1 : sleep_secs);
 			}
 		}
 	}
@@ -1061,7 +1059,6 @@ static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int curr_r
 		int curr_revision = 0;
 
 		max_revisions = ph_logger_get_max_revision(pv);
-		__ph_logger_init_basic(&ph_logger);
 
 		while (max_revisions >= 0) {
 			bool sent_one = false;
@@ -1082,7 +1079,7 @@ static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int curr_r
 				iterations = 0;
 			}
 		}
-		pv_log(INFO, "PH pusher service stopped for revision %d", max_revisions + 1);
+		pv_log(INFO, "range logger service stopped for revision %d", max_revisions + 1);
 		_exit(EXIT_SUCCESS);
 	}
 #ifdef DEBUG
@@ -1103,12 +1100,6 @@ static pid_t ph_logger_service_start(struct pantavisor *pv, int revision)
 	service_pid = fork();
 	if (service_pid == 0) {
 		struct sigaction sa;
-		/*
-		 * We set the online status of this dummy to be
-		 * false so that we never flush while adding to
-		 * the ring buffer.
-		 */
-		pv_global->online = false;
 		memset(&sa, 0, sizeof(sa));
 
 		sa.sa_handler = sigterm_handler;
@@ -1129,24 +1120,37 @@ static pid_t ph_logger_service_start(struct pantavisor *pv, int revision)
 	return service_pid;
 }
 
-void ph_logger_start(struct pantavisor *pv, int revision)
+void ph_logger_start_local(struct pantavisor *pv, int revision)
 {
 	if (!pv)
 		return;
 
-	pv_log(DEBUG, "starting ph logger with rev %d", revision);
+	if (ph_logger.rev_logger == -1) {
+		ph_logger.rev_logger = ph_logger_service_start(pv, revision);
+		if (ph_logger.rev_logger <= 0)
+			pv_log(ERROR, "unable to start logger service");
+	}
 
-	ph_logger.rev_logger = ph_logger_service_start(pv, revision);
-	if (ph_logger.rev_logger <= 0)
-		pv_log(ERROR, "unable to start logger service");
+	if (pv->online)
+		ph_logger_start_cloud(pv, revision);
+}
 
-	ph_logger.push_helper = ph_logger_create_push_helper(revision);
-	if (ph_logger.push_helper <= 0)
-		pv_log(ERROR, "unable to start push helper");
+void ph_logger_start_cloud(struct pantavisor *pv, int revision)
+{
+	if (!pv || !pv->online)
+		return;
 
-	ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision - 1);
-	if (ph_logger.range_logger <= 0)
-		pv_log(ERROR, "unable to start range logger service");
+	if (ph_logger.push_helper == -1) {
+		ph_logger.push_helper = ph_logger_create_push_helper(revision);
+		if (ph_logger.push_helper <= 0)
+			pv_log(ERROR, "unable to start push helper");
+	}
+
+	if ((ph_logger.range_logger == -1) && (revision > 0)) {
+		ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision - 1);
+		if (ph_logger.range_logger <= 0)
+			pv_log(ERROR, "unable to start range logger service");
+	}
 }
 
 void ph_logger_stop(struct pantavisor *pv)
@@ -1180,6 +1184,10 @@ void ph_logger_stop(struct pantavisor *pv)
 		kill(ph_logger.push_helper, SIGKILL);
 		kill(ph_logger.range_logger, SIGKILL);
 	}
+
+	ph_logger.rev_logger = -1;
+	ph_logger.push_helper = -1;
+	ph_logger.range_logger = -1;
 }
 
 int ph_logger_read_bytes(struct ph_logger_msg *ph_logger_msg, char *buf, ...)

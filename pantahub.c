@@ -162,7 +162,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	return (const char **) cafiles;
 }
 
-static void pv_ph_set_online(struct pantavisor *pv, int online)
+static void pv_ph_set_online(struct pantavisor *pv, bool online)
 {
 	int fd, hint;
 	char *path = "/pv/online";
@@ -170,17 +170,14 @@ static void pv_ph_set_online(struct pantavisor *pv, int online)
 
 	hint = stat(path, &st) ? 0 : 1;
 
-	switch (online) {
-	case 0:
-		if (hint)
-			remove(path);
-		break;
-	default:
+	if (online) {
 		if (!hint) {
 			fd = open(path, O_CREAT | O_SYNC, 0400);
 			close(fd);
 		}
-		break;
+	} else {
+		if (hint)
+			remove(path);
 	}
 
 	pv->online = online;
@@ -347,7 +344,7 @@ int pv_ph_is_available(struct pantavisor *pv)
 		free(conn);
 	pv->conn = pv_get_pv_connection(pv->config);
 out:
-	pv_ph_set_online(pv, pv->conn ? 1 : 0);
+	pv_ph_set_online(pv, pv->conn ? true : false);
 
 	return !!pv->conn;
 }

@@ -153,7 +153,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	ph_logger_start(pv, pv->state->rev);
+	ph_logger_start_local(pv, pv->state->rev);
 
 	pv_meta_set_objdir(pv);
 
@@ -388,6 +388,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
+
+	ph_logger_start_cloud(pv, pv->state->rev);
+
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
@@ -486,9 +489,6 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	// if everything went well, decide wether update requires reboot
 	if (pv_update_requires_reboot(pv))
 		next_state = STATE_REBOOT;
-
-	// stop running state
-	pv->online = false;
 
 	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
 	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||

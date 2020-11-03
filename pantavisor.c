@@ -592,6 +592,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->remote = NULL;
 	pv->update = NULL;
 	pv->last = -1;
+	pv->online = false;
 	ret = 0;
 out:
 	return 0;
