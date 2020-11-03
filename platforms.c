@@ -681,8 +681,10 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 				continue;
 			}
 
-			if (kill(p->init_pid, 0))
+			if (kill(p->init_pid, 0)) {
+				pv_log(ERROR, "platform %s with pid %d not running", p->name, p->init_pid);
 				exited++;
+			}
 		}
 	}
 

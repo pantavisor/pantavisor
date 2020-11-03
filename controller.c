@@ -142,6 +142,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	if (pv_update_is_transition(pv->update)) {
+		pv_log(INFO, "transitioning...");
 		ph_logger_stop(pv);
 		pv_log_start(pv, pv->update->pending->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
@@ -345,7 +346,7 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 
 	if (!pv_ph_is_available(pv)) {
 		rb_count++;
-		if (pv_update_is_testing(pv->update) &&
+		if (pv_update_is_trying(pv->update) &&
 			(rb_count > timeout_max)) {
 			next_state = STATE_ROLLBACK;
 			goto out;

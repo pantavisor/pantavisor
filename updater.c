@@ -1712,6 +1712,15 @@ bool pv_update_is_testing(struct pv_update *u)
 		(u->status == UPDATE_TESTING_NONREBOOT)));
 }
 
+bool pv_update_is_trying(struct pv_update *u)
+{
+	return (u &&
+		((u->status == UPDATE_TESTING_REBOOT) ||
+		(u->status == UPDATE_TESTING_NONREBOOT) ||
+		(u->status == UPDATE_TRY) ||
+		(u->status == UPDATE_TRANSITION)));
+}
+
 static int pv_update_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;

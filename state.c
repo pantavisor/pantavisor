@@ -265,7 +265,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		struct pv_platform, list) {
 		curr_p = pv_platform_get_by_name(current, p->name);
 		if (!curr_p || strcmp(p->json, curr_p->json)) {
-			pv_log(DEBUG, "platform %d run.json has been changed in last update", p->name);
+			pv_log(DEBUG, "platform %s run.json has been changed in last update", p->name);
 			// if run.json has changed, we use the old runlevel instead of the new one
 			if(p->runlevel < runlevel) {
 				runlevel = curr_p->runlevel;
@@ -278,7 +278,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 	dl_list_for_each_safe(p, tmp_p, platforms,
 		struct pv_platform, list) {
 		if (!pv_platform_get_by_name(pending, p->name)) {
-			pv_log(DEBUG, "platform %d has been deleted in last update", p->name);
+			pv_log(DEBUG, "platform %s has been deleted in last update", p->name);
 			// if the platform has been deleted, we respect its runlevel
 			if(p->runlevel < runlevel) {
 				runlevel = p->runlevel;
