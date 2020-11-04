@@ -33,6 +33,8 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <sys/xattr.h>
+#include <signal.h>
+
 #include "utils.h"
 /*
  * private struct.
@@ -462,6 +464,30 @@ int get_cpu_model(char *buf, int buflen)
 	}
 out:
 	return ret;
+}
+
+void kill_child_process(pid_t pid)
+{
+	bool exited = false;
+
+	if (pid <= 0)
+		return;
+
+	// first, try to kill gracefully
+	kill(pid, SIGTERM);
+
+	// check process has end
+	for (int i = 0; i < 5; i++) {
+		if (kill(pid, 0))
+			exited = true;
+		if (exited)
+			break;
+		sleep(1);
+	}
+
+	// force kill if process could not finish
+	if (!exited)
+		kill(pid, SIGKILL);
 }
 
 int set_xattr_on_file(const char *filename, char *attr, char *value)

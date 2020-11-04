@@ -225,6 +225,8 @@ void pv_state_validate(struct pv_state *s)
 	pv_platforms_remove_not_installed(s);
 	// set runlevel in all undefined platforms
 	pv_platforms_default_runlevel(s);
+	// add loggers for all platforms
+	pv_platforms_add_all_loggers(s);
 }
 
 void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
@@ -266,9 +268,9 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		curr_p = pv_platform_get_by_name(current, p->name);
 		if (!curr_p || strcmp(p->json, curr_p->json)) {
 			pv_log(DEBUG, "platform %s run.json has been changed in last update", p->name);
-			// if run.json has changed, we use the old runlevel instead of the new one
+			// if run.json has changed, we use the new runlevel
 			if(p->runlevel < runlevel) {
-				runlevel = curr_p->runlevel;
+				runlevel = p->runlevel;
 			}
 		}
 	}

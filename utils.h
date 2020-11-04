@@ -45,6 +45,7 @@ char *str_replace(char *str, int len, char which, char what);
 int get_endian(void);
 int get_dt_model(char *buf, int buflen);
 int get_cpu_model(char *buf, int buflen);
+void kill_child_process(pid_t pid);
 
 #ifndef ARRAY_LEN
 #define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))

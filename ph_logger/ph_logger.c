@@ -27,7 +27,6 @@
 #include <sys/un.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <signal.h>
 #include <trest.h>
 #include <thttp.h>
 #include <sys/epoll.h>
@@ -1162,28 +1161,12 @@ void ph_logger_stop(struct pantavisor *pv)
 
 	pv_log(DEBUG, "stopping ph logger");
 
-	// send SIGTERM to logger pids
-	kill(ph_logger.rev_logger, SIGTERM);
-	kill(ph_logger.push_helper, SIGTERM);
-	kill(ph_logger.range_logger, SIGTERM);
-
-	// check logger processes have ended
-	for (int i = 0; i < 5; i++) {
-		if (kill(ph_logger.rev_logger, 0) ||
-			kill(ph_logger.push_helper, 0) ||
-			kill(ph_logger.range_logger, 0))
-			exited = true;
-		if (exited)
-			break;
-		sleep(1);
-	}
-
-	// force kill logger processes
-	if (!exited) {
-		kill(ph_logger.rev_logger, SIGKILL);
-		kill(ph_logger.push_helper, SIGKILL);
-		kill(ph_logger.range_logger, SIGKILL);
-	}
+	if (ph_logger.rev_logger > 0)
+		kill_child_process(ph_logger.rev_logger);
+	if (ph_logger.push_helper > 0)
+		kill_child_process(ph_logger.push_helper);
+	if (ph_logger.range_logger > 0)
+		kill_child_process(ph_logger.range_logger);
 
 	ph_logger.rev_logger = -1;
 	ph_logger.push_helper = -1;

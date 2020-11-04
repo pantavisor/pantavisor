@@ -250,9 +250,8 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 				struct pv_volume, list) {
 			// Mount volumes without platforms in runlevel 0 (firmware and modules)
 			// Mount volumes with platforms in this runlevel only 
-			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel))) {
+			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel)))
 				continue;
-			}
 
 			ret = pv_volumes_mount_volume(pv, v);
 			if (!ret)
@@ -287,15 +286,13 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 				struct pv_volume, list) {
 			// Mount volumes without platforms in runlevel 0 (firmware and modules)
 			// Mount volumes with platforms in this runlevel only 
-			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel))) {
+			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel)))
 				continue;
-			}
 
-			if (v->loop_fd == -1) {
+			if (v->loop_fd == -1)
 				ret = umount(v->dest);
-			} else {
+			else
 				ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
-			}
 
 			if (ret < 0) {
 				pv_log(ERROR, "error umounting volumes");

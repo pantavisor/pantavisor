@@ -379,7 +379,7 @@ static void pv_setup_platform_log(struct pv_log_info *info,
 	info->logfile = (logfile ? strdup(logfile) : NULL);
 }
 
-static struct pv_log_info* pv_add_platform_logger(struct pv_platform *platform, 
+static struct pv_log_info* pv_add_platform_logger(struct pv_platform *platform,
 			struct pv_logger_config *logger_config)
 {
 	struct pv_log_info *log_info = NULL;
@@ -393,44 +393,57 @@ static struct pv_log_info* pv_add_platform_logger(struct pv_platform *platform,
 	return log_info;
 }
 
+void pv_platforms_add_all_loggers(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+	struct dl_list *platforms = NULL, *configs = NULL;
+	struct pv_logger_config *item_config, *tmp_config;
+	bool plat_needs_default_logger;
+
+	platforms = &s->platforms;
+	dl_list_for_each_safe(p, tmp, platforms,
+		struct pv_platform, list) {
+		configs = &p->logger_configs;
+		plat_needs_default_logger = true;
+		/*
+		 * First add all the loggers in the list.
+		 * This will probably in a loop on the platform
+		 * config data.
+		 * */
+		dl_list_for_each_safe(item_config, tmp_config, configs,
+				struct pv_logger_config, item_list) {
+			if (pv_add_platform_logger(p, item_config))
+				plat_needs_default_logger = false;
+			/*
+			 * logger config item isn't required anymore
+			 * */
+			dl_list_del(&item_config->item_list);
+			pv_logger_config_free(item_config);
+		}
+
+		if (plat_needs_default_logger) {
+			char logger_name[32] = {0};
+			/*
+			 * The name key is at index 3
+			 * */
+			snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
+					p->name);
+			plat_logger_config_syslog.static_pair[3][1] = logger_name;
+			pv_add_platform_logger(p, &plat_logger_config_syslog);
+			snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-messages",
+					p->name);
+			plat_logger_config_messages.static_pair[3][1] = logger_name;
+			pv_add_platform_logger(p, &plat_logger_config_messages);
+		}
+	}
+}
+
 static int start_pvlogger_for_platform(struct pv_platform *platform)
 {
 	struct pv_log_info *log_info = NULL, *tmp;
 	struct dl_list *loggers = &platform->logger_list;
-	struct dl_list *configs = &platform->logger_configs;
-	struct pv_logger_config *item_config, *tmp_config;
 	pid_t logger_pid = -1;
-	bool plat_needs_default_logger = true;
-	/*
-	 * First add all the loggers in the list.
-	 * This will probably in a loop on the platform
-	 * config data.
-	 * */
-	dl_list_for_each_safe(item_config, tmp_config, configs,
-			struct pv_logger_config, item_list) {
-		if (pv_add_platform_logger(platform, item_config))
-			plat_needs_default_logger = false;
-		/*
-		 * logger config item isn't required anymore
-		 * */
-		dl_list_del(&item_config->item_list);
-		pv_logger_config_free(item_config);
-	}
 
-	if (plat_needs_default_logger) {
-		char logger_name[32] = {0};
-		/*
-		 * The name key is at index 3
-		 * */
-		snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
-				platform->name);
-		plat_logger_config_syslog.static_pair[3][1] = logger_name;
-		pv_add_platform_logger(platform, &plat_logger_config_syslog);
-		snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-messages",
-				platform->name);
-		plat_logger_config_messages.static_pair[3][1] = logger_name;
-		pv_add_platform_logger(platform, &plat_logger_config_messages);
-	}
 	/*
 	 * This includes the ones for lxc.
 	 * */
@@ -514,9 +527,8 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 		dl_list_for_each_safe(p, tmp, platforms,
 				struct pv_platform, list) {
 			// Start platforms in this runlevel only
-			if (p->runlevel != i) {
+			if (p->runlevel != i)
 				continue;
-			}
 
 			if (pv_platforms_start_platform(pv, p))
 				return -1;
@@ -528,13 +540,16 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 		sleep(5);
 	}
 
+	pv_log(INFO, "started %d platforms", num_plats);
+
+	pv_log(DEBUG, "starting all platforms pv loggers");
+
+	platforms = &pv->state->platforms;
 	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
 		if (start_pvlogger_for_platform(p) < 0)
 			pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
 	}
-
-	pv_log(INFO, "started %d platforms", num_plats);
 
 	return num_plats;
 }
@@ -553,9 +568,8 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 		dl_list_for_each_safe(p, tmp, platforms,
 				struct pv_platform, list) {
 			// Start platforms in this runlevel only
-			if (p->runlevel != i) {
+			if (p->runlevel != i)
 				continue;
-			}
 
 			if (!kill(p->init_pid, 0)) {
 				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
@@ -579,9 +593,11 @@ static void pv_platform_stop_loggers(struct pv_platform *p)
 	// send SIGTERM to logger attached to platform
 	dl_list_for_each_safe(l, tmp, logger_list,
 		struct pv_log_info, next) {
-		kill(l->logger_pid, SIGTERM);
-		pv_log(DEBUG, "sent SIGTERM to logger '%s' with pid %d", l->name, l->logger_pid);
-		num_loggers++;
+		if (l->logger_pid > 0) {
+			kill(l->logger_pid, SIGTERM);
+			pv_log(DEBUG, "sent SIGTERM to logger '%s' with pid %d", l->name, l->logger_pid);
+			num_loggers++;
+		}
 	}
 
 	// check logger processes have ended
@@ -603,8 +619,10 @@ static void pv_platform_stop_loggers(struct pv_platform *p)
 		logger_list = &p->logger_list;
 		dl_list_for_each_safe(l, tmp, logger_list,
 			struct pv_log_info, next) {
-			kill(l->logger_pid, SIGKILL);
-			pv_log(WARN, "sent SIGKILL to logger '%s' with pid %d", l->name, l->logger_pid);
+			if (!kill(l->logger_pid, 0)) { 
+				kill(l->logger_pid, SIGKILL);
+				pv_log(WARN, "sent SIGKILL to logger '%s' with pid %d", l->name, l->logger_pid);
+			}
 		}
 	}
 
@@ -617,6 +635,8 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &pv->state->platforms;
 	const struct pv_cont_ctrl *ctrl;
+
+	pv_log(DEBUG, "stopping all platforms pv loggers");
 
 	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
@@ -631,11 +651,10 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 		dl_list_for_each_safe(p, tmp, platforms,
 			struct pv_platform, list) {
 			// Start platforms in this runlevel only
-			if (p->runlevel != i) {
+			if (p->runlevel != i)
 				continue;
-			}
 
-			if (p->status == PLAT_STARTED) {
+			if ((p->status == PLAT_STARTED) && (p->init_pid > 0)) {
 				ctrl = _pv_platforms_get_ctrl(p->type);
 				ctrl->stop(p, NULL, p->data);
 				p->status = PLAT_STOPPED;
@@ -677,9 +696,8 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 		dl_list_for_each_safe(p, tmp, platforms,
 	            struct pv_platform, list) {
 			// Check platforms in this runlevel only
-			if (p->runlevel != i) {
+			if (p->runlevel != i)
 				continue;
-			}
 
 			if (kill(p->init_pid, 0)) {
 				pv_log(ERROR, "platform %s with pid %d not running", p->name, p->init_pid);
