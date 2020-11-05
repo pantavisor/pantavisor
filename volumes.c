@@ -230,7 +230,7 @@ out:
 
 int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 {
-	int ret = -1;
+	int ret = 0;
 	int num_vol = 0;
 	char base[PATH_MAX];
 	struct pv_volume *v, *tmp;
@@ -262,7 +262,7 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 	}
 
 	// Mount firmware and modules in runlevel 0
-	if (runlevel == 0)
+	if (runlevel <= 1)
 		ret = pv_volumes_mount_firmware_modules(pv);
 
 out:
