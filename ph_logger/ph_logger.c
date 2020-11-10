@@ -62,15 +62,15 @@
 #define PH_LOGGER_FLAG_STOP 	(1<<0)
 #define USER_AGENT_LEN 		(128)
 
-#ifdef pv_log
-#undef pv_log
-#endif
+#define MODULE_NAME             "ph_logger"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 /*
  * msg can be at most twice the size of log configured
  * in ph config file.
  */
-static void pv_log(int level, char *msg, ...)
+static void ph_log(int level, char *msg, ...)
 {
 	struct ph_logger_msg *ph_logger_msg = NULL;
 	char *buffer = NULL;
@@ -356,7 +356,7 @@ static int ph_logger_open_socket(const char *path)
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
-		pv_log(ERROR, "unable to open control socket");
+		ph_log(ERROR, "unable to open control socket");
 		goto out;
 	}
 
@@ -465,7 +465,7 @@ auth:
 		goto out;
 	}
 	if (!res->body || res->code != THTTP_STATUS_OK) {
-		pv_log(DEBUG, "logs upload status = %d, body = '%s'", 
+		ph_log(DEBUG, "logs upload status = %d, body = '%s'", 
 				res->code, (res->body ? res->body : ""));
 		if (res->code == THTTP_STATUS_BAD_REQUEST)
 			ret = -1;
@@ -533,10 +533,14 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	ret = get_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst, NULL);
 	if (ret > 0) {
 		sscanf(dst, "%" PRId64, &pos);
+		ph_log(DEBUG, "get XATTT %s from %s. Position set to pos %lld", PH_LOGGER_POS_XATTR, filename, pos);
 	} else {
-		pv_log(DEBUG, "XATTR %s errno = %d .Start position of file %s is %lld\n",
-				PH_LOGGER_POS_XATTR, -ret, filename, pos);
-		sprintf(dst, "%d", 0);
+		if (-ret != ENODATA)
+			ph_log(ERROR, "XATTR could not be read. Errno %s", -ret);
+
+		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
+				PH_LOGGER_POS_XATTR, filename, pos);
+		sprintf(dst, "%lld", pos);
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */
@@ -551,12 +555,12 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	dl_list_init(&frag_list);
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
-		pv_log(ERROR, "Unable to open file %s\n", filename);
+		ph_log(ERROR, "Unable to open file %s", filename);
 		goto out;
 	}
 
 	if (lseek(fd, pos, SEEK_SET) == (off_t) -1) {
-		pv_log(ERROR, "Unable to seek to position %lld for %s\n", pos, filename);
+		ph_log(ERROR, "Unable to seek to position %lld for %s", pos, filename);
 		goto close_fd;
 	}
 
@@ -628,7 +632,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			}
 		}
 #ifdef DEBUG
-		pv_log(DEBUG, "buf strlen = %d for file %s\n", strlen(json_holder), filename);
+		ph_log(DEBUG, "buf strlen = %d for file %s", strlen(json_holder), filename);
 #endif
 		formatted_json = format_json(json_holder, strlen(json_holder));
 		if (formatted_json) {
@@ -676,7 +680,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			 * couldn't be json escaped.
 			 */
 #ifdef DEBUG
-			pv_log(WARN, "json_format failed for %s", filename);
+			ph_log(WARN, "json_format failed for %s", filename);
 #endif
 			bytes_read = 0;
 		} else {
@@ -696,6 +700,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			pos = read_pos + offset;
 			snprintf(value, sizeof(value), "%"PRId64, pos);
 			set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, value);
+			ph_log(DEBUG, "set XATTT %s in %s. Position set to pos %lld", PH_LOGGER_POS_XATTR, filename, pos);
 		}
 	}
 close_fd:
@@ -757,6 +762,7 @@ close_fd:
 
 				sprintf(value, "%"PRId64, pos);
 				set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, value);
+				ph_log(DEBUG, "set XATTT %s in %s. Position set to pos %lld", PH_LOGGER_POS_XATTR, filename, pos);
 			}
 			free(json_frag_array);
 		}
@@ -983,7 +989,7 @@ static pid_t ph_logger_create_push_helper(int revision)
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
-		pv_log(INFO, "Initialized PH push helper, pid = %d by service process (%d)\n",
+		ph_log(INFO, "Initialized PH logger push helper, pid = %d by service process (%d)",
 				getpid(), getppid());
 		while (1) {
 			bool sent_one = ph_logger_helper_function(revision);
@@ -994,7 +1000,7 @@ static pid_t ph_logger_create_push_helper(int revision)
 			if (!sent_one) {
 				sleep_secs ++;
 				sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
-				pv_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
+				ph_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
 						revision);
 				sleep(sleep_secs);
 			} else {
@@ -1054,6 +1060,8 @@ static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int curr_r
 		goto out;
 	range_service = fork();
 	if (range_service == 0) {
+		ph_log(INFO, "Initialized PH logger range, pid = %d by service process (%d)",
+				getpid(), getppid());
 		unsigned int iterations = 0;
 		int curr_revision = 0;
 
@@ -1078,7 +1086,7 @@ static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int curr_r
 				iterations = 0;
 			}
 		}
-		pv_log(INFO, "range logger service stopped for revision %d", max_revisions + 1);
+		ph_log(INFO, "range logger service stopped for revision %d", max_revisions + 1);
 		_exit(EXIT_SUCCESS);
 	}
 #ifdef DEBUG
@@ -1126,6 +1134,7 @@ void ph_logger_start_local(struct pantavisor *pv, int revision)
 
 	if (ph_logger.rev_logger == -1) {
 		ph_logger.rev_logger = ph_logger_service_start(pv, revision);
+		pv_log(DEBUG, "started ph logger with pid %d", ph_logger.rev_logger);
 		if (ph_logger.rev_logger <= 0)
 			pv_log(ERROR, "unable to start logger service");
 	}
@@ -1141,12 +1150,14 @@ void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 
 	if (ph_logger.push_helper == -1) {
 		ph_logger.push_helper = ph_logger_create_push_helper(revision);
+		pv_log(DEBUG, "started push helper with pid %d", ph_logger.push_helper);
 		if (ph_logger.push_helper <= 0)
 			pv_log(ERROR, "unable to start push helper");
 	}
 
 	if ((ph_logger.range_logger == -1) && (revision > 0)) {
 		ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision - 1);
+		pv_log(DEBUG, "started range logger with pid %d", ph_logger.range_logger);
 		if (ph_logger.range_logger <= 0)
 			pv_log(ERROR, "unable to start range logger service");
 	}
@@ -1154,19 +1165,25 @@ void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 
 void ph_logger_stop(struct pantavisor *pv)
 {
-	bool exited = false;
-
 	if (!pv)
 		return;
 
 	pv_log(DEBUG, "stopping ph logger");
 
-	if (ph_logger.rev_logger > 0)
+	if (ph_logger.rev_logger > 0) {
 		kill_child_process(ph_logger.rev_logger);
-	if (ph_logger.push_helper > 0)
+		pv_log(DEBUG, "stopped ph logger with pid %d", ph_logger.rev_logger);
+	}
+
+	if (ph_logger.push_helper > 0) {
 		kill_child_process(ph_logger.push_helper);
-	if (ph_logger.range_logger > 0)
+		pv_log(DEBUG, "stopped push helper with pid %d", ph_logger.push_helper);
+	}
+
+	if (ph_logger.range_logger > 0) {
 		kill_child_process(ph_logger.range_logger);
+		pv_log(DEBUG, "stopped range logger with pid %d", ph_logger.range_logger);
+	}
 
 	ph_logger.rev_logger = -1;
 	ph_logger.push_helper = -1;
