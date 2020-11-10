@@ -183,7 +183,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 
 	switch (status) {
 	case UPDATE_QUEUED:
-		if (pending_update)
+		if (pending_update->pending)
 			__retries = pending_update->pending->retries;
 
 		snprintf(retries, sizeof(retries), "%d", __retries);
@@ -193,7 +193,7 @@ static int trail_remote_set_status(struct pantavisor *pv, enum update_state stat
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
 		if (pending_update) {
-			snprintf(pending_update->retry_data, 
+			snprintf(pending_update->retry_data,
 				sizeof(pending_update->retry_data), "%s", retries);
 		}
 		break;
@@ -520,11 +520,15 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	rev = atoi(rev_s);
 	pv_log(DEBUG, "parse rev %d with json state = '%s'", rev, state);
 	remote->pending = pv_state_parse(pv, state, rev);
+	pv->update = pv_update_new(pv->config->creds.id, rev);
 	/*A revision is pending, either a new one or a queued one*/
 	ret = 1;
 	if (!remote->pending) {
 		pv_log(INFO, "invalid rev (%d) found on remote", rev);
 		pv_update_set_status(pv, UPDATE_NO_PARSE);
+		pv_state_free(remote->pending);
+		remote->pending = NULL;
+		pv_update_remove(pv);
 		ret = 0;
 	} else {
 		pv_log(DEBUG, "first pending step found is rev %d", remote->pending->rev);
@@ -534,9 +538,10 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		if (retries > MAX_REVISION_RETRIES) {
 			pv_log(WARN, "Revision %d exceeded download retries."
 					"Max set at %d, current attempt =%d", rev, MAX_REVISION_RETRIES, retries);
-			pv_update_set_status(pv, UPDATE_FAILED);
+			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
 			pv_state_free(remote->pending);
 			remote->pending = NULL;
+			pv_update_remove(pv);
 			ret = 0;
 		}
 	}
@@ -966,7 +971,7 @@ int pv_update_start(struct pantavisor *pv)
 	}
 
 	// From a retry
-	if (pv->update) {
+	if (pv->update->pending) {
 		int time_left = pv->update->retry_at - time(NULL);
 
 		if (time_left <= 0) {
@@ -981,7 +986,6 @@ int pv_update_start(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv->update = pv_update_new(pv->config->creds.id, pv->remote->pending->rev);
 	pv->update->pending = pv->remote->pending;
 	pv->remote->pending = NULL;
 
