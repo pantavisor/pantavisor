@@ -533,7 +533,6 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	ret = get_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst, NULL);
 	if (ret > 0) {
 		sscanf(dst, "%" PRId64, &pos);
-		ph_log(DEBUG, "get XATTT %s from %s. Position set to pos %lld", PH_LOGGER_POS_XATTR, filename, pos);
 	} else {
 		if (-ret != ENODATA)
 			ph_log(ERROR, "XATTR could not be read. Errno %s", -ret);
@@ -547,11 +546,9 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, dst);
 	}
 	ret = -1;
-#ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
 		printf("BUG!! .Frag list must be empty\n");
 	}
-#endif
 	dl_list_init(&frag_list);
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
@@ -586,6 +583,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	 * see the length of the string short.
 	 */
 	str_replace(buf, bytes_read, '\0',' ');
+	ph_log(DEBUG, "bytes read %d offset %d", bytes_read, offset);
 	while(bytes_read > 0) {
 		char *newline_at = NULL;
 		char *src = buf + offset;
@@ -631,9 +629,8 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 				break;
 			}
 		}
-#ifdef DEBUG
-		ph_log(DEBUG, "buf strlen = %d for file %s", strlen(json_holder), filename);
-#endif
+		if (json_holder[1] == 'p')
+			ph_log(DEBUG, "buf trlen = %d bytes read %d for file %s in pid %d json_holder '%s'", strlen(json_holder), bytes_read, filename, getpid(), json_holder);
 		formatted_json = format_json(json_holder, strlen(json_holder));
 		if (formatted_json) {
 			char __rev_str[8];
@@ -671,6 +668,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 				pos = read_pos + offset;
 			} else {
 				/*Bail out on the first error*/
+				ph_log(ERROR, "alloc error");
 				bytes_read = 0;
 			}
 			free(formatted_json);
@@ -682,6 +680,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 #ifdef DEBUG
 			ph_log(WARN, "json_format failed for %s", filename);
 #endif
+			ph_log(ERROR, "json format error");
 			bytes_read = 0;
 		} else {
 			/*
@@ -700,7 +699,6 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			pos = read_pos + offset;
 			snprintf(value, sizeof(value), "%"PRId64, pos);
 			set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, value);
-			ph_log(DEBUG, "set XATTT %s in %s. Position set to pos %lld", PH_LOGGER_POS_XATTR, filename, pos);
 		}
 	}
 close_fd:
@@ -762,7 +760,6 @@ close_fd:
 
 				sprintf(value, "%"PRId64, pos);
 				set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, value);
-				ph_log(DEBUG, "set XATTT %s in %s. Position set to pos %lld", PH_LOGGER_POS_XATTR, filename, pos);
 			}
 			free(json_frag_array);
 		}
@@ -1060,8 +1057,6 @@ static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int curr_r
 		goto out;
 	range_service = fork();
 	if (range_service == 0) {
-		ph_log(INFO, "Initialized PH logger range, pid = %d by service process (%d)",
-				getpid(), getppid());
 		unsigned int iterations = 0;
 		int curr_revision = 0;
 
@@ -1133,10 +1128,13 @@ void ph_logger_start_local(struct pantavisor *pv, int revision)
 		return;
 
 	if (ph_logger.rev_logger == -1) {
+		pv_log(DEBUG, "starting local ph logger");
 		ph_logger.rev_logger = ph_logger_service_start(pv, revision);
-		pv_log(DEBUG, "started ph logger with pid %d", ph_logger.rev_logger);
-		if (ph_logger.rev_logger <= 0)
+		if (ph_logger.rev_logger > 0) {
+			pv_log(DEBUG, "started ph logger with pid %d", ph_logger.rev_logger);
+		} else {
 			pv_log(ERROR, "unable to start logger service");
+		}
 	}
 
 	if (pv->online)
@@ -1149,17 +1147,23 @@ void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 		return;
 
 	if (ph_logger.push_helper == -1) {
+		pv_log(DEBUG, "starting push helper");
 		ph_logger.push_helper = ph_logger_create_push_helper(revision);
-		pv_log(DEBUG, "started push helper with pid %d", ph_logger.push_helper);
-		if (ph_logger.push_helper <= 0)
+		if (ph_logger.push_helper > 0) {
+			pv_log(DEBUG, "started push helper with pid %d", ph_logger.push_helper);
+		} else {
 			pv_log(ERROR, "unable to start push helper");
+		}
 	}
 
 	if ((ph_logger.range_logger == -1) && (revision > 0)) {
+		pv_log(DEBUG, "starting range logger");
 		ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision - 1);
-		pv_log(DEBUG, "started range logger with pid %d", ph_logger.range_logger);
-		if (ph_logger.range_logger <= 0)
+		if (ph_logger.range_logger > 0) {
+			pv_log(DEBUG, " started range logger with pid %d", ph_logger.range_logger);
+		} else {
 			pv_log(ERROR, "unable to start range logger service");
+		}
 	}
 }
 
