@@ -152,6 +152,27 @@ int pv_make_config(struct pantavisor *pv)
 	return rv;
 }
 
+void pv_set_rev_done(struct pantavisor *pv, int rev)
+{
+	// DEPRECATED: this done files are not used anymore for rollback and bootloader env
+	// are used insted. We keep it here to serve old versions in case a device needs to
+	// be downgraded
+
+	int fd;
+	char path[256];
+
+	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
+
+	fd = open(path, O_CREAT | O_WRONLY, 0644);
+	if (!fd) {
+		pv_log(WARN, "unable to set current(done) flag for revision %d", rev);
+		return;
+	}
+
+	// commit to disk
+	fsync(fd);
+	close(fd);
+}
 int *pv_get_revisions(struct pantavisor *pv)
 {
 	int n, i = 0;
