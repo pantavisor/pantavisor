@@ -57,6 +57,7 @@ struct pantavisor {
 	struct pv_connection *conn;
 };
 
+void pv_set_rev_done(struct pantavisor *pv, int rev);
 int *pv_get_revisions(struct pantavisor *pv);
 void pv_set_active(struct pantavisor *pv);
 int pv_make_config(struct pantavisor *pv);

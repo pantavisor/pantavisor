@@ -310,6 +310,8 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 					return STATE_ROLLBACK;
 				}
 				pv_update_set_status(pv, UPDATE_DONE);
+				// we keep this here so we can rollback to new DONE revisions from old pantavisor versions
+				pv_set_rev_done(pv, pv->state->rev);
 			}
 			else
 				pv_update_set_status(pv, UPDATE_UPDATED);
