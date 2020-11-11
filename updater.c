@@ -1645,7 +1645,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	ret = pending->rev;
-	pv_log(INFO, "update successfully installed, so next boot will start rev %d", ret);
+	pv_log(INFO, "update successfully installed");
 	if (pv_revision_set_installed(ret)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;

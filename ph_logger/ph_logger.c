@@ -546,9 +546,11 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, dst);
 	}
 	ret = -1;
+#ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
 		printf("BUG!! .Frag list must be empty\n");
 	}
+#endif
 	dl_list_init(&frag_list);
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
@@ -583,7 +585,6 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	 * see the length of the string short.
 	 */
 	str_replace(buf, bytes_read, '\0',' ');
-	ph_log(DEBUG, "bytes read %d offset %d", bytes_read, offset);
 	while(bytes_read > 0) {
 		char *newline_at = NULL;
 		char *src = buf + offset;
@@ -629,8 +630,9 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 				break;
 			}
 		}
-		if (json_holder[1] == 'p')
-			ph_log(DEBUG, "buf trlen = %d bytes read %d for file %s in pid %d json_holder '%s'", strlen(json_holder), bytes_read, filename, getpid(), json_holder);
+#ifdef DEBUG
+		pv_log(DEBUG, "buf strlen = %d for file %s\n", strlen(json_holder), filename);
+#endif
 		formatted_json = format_json(json_holder, strlen(json_holder));
 		if (formatted_json) {
 			char __rev_str[8];
@@ -668,7 +670,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 				pos = read_pos + offset;
 			} else {
 				/*Bail out on the first error*/
-				ph_log(ERROR, "alloc error");
+				ph_log(ERROR, "alloc error for filename %s", filename);
 				bytes_read = 0;
 			}
 			free(formatted_json);
@@ -677,10 +679,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			 * Dont' try for next block if this block
 			 * couldn't be json escaped.
 			 */
-#ifdef DEBUG
-			ph_log(WARN, "json_format failed for %s", filename);
-#endif
-			ph_log(ERROR, "json format error");
+			ph_log(ERROR, "json format error for filename %s", filename);
 			bytes_read = 0;
 		} else {
 			/*
@@ -986,8 +985,9 @@ static pid_t ph_logger_create_push_helper(int revision)
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
-		ph_log(INFO, "Initialized PH logger push helper, pid = %d by service process (%d)",
+		ph_log(INFO, "Initialized PH logger push helper with pid = %d by process with pid %d",
 				getpid(), getppid());
+		ph_log(DEBUG, "Push helper pushing logs for rev %d", revision);
 		while (1) {
 			bool sent_one = ph_logger_helper_function(revision);
 			/*
@@ -1045,51 +1045,36 @@ out:
 	return max_revision;
 }
 
-static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int curr_revision)
+static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int avoid_rev)
 {
 	pid_t range_service = -1;
-	int max_revisions = -1;
-	/*
-	 * Don't start anything for invalid
-	 * revisions.
-	 */
-	if (curr_revision < 0)
-		goto out;
+	int current_rev = -1;
+
 	range_service = fork();
 	if (range_service == 0) {
-		unsigned int iterations = 0;
-		int curr_revision = 0;
+		current_rev = ph_logger_get_max_revision(pv);
 
-		max_revisions = ph_logger_get_max_revision(pv);
-
-		while (max_revisions >= 0) {
+		ph_log(INFO, "Initialized PH logger range service with pid = %d by process with pid %d",
+			getpid(), getppid());
+		while (current_rev >= 0) {
 			bool sent_one = false;
 
-			/*
-			 * skip current revision.
-			 */
-			if (curr_revision == max_revisions) {
-				max_revisions--;
-				iterations = 0;
+			// skip current revision.
+			if (avoid_rev == current_rev) {
+				current_rev--;
 				continue;
 			}
-			iterations++;
-			ph_logger.revision = max_revisions;
-			sent_one = ph_logger_helper_function(max_revisions);
-			if (!sent_one) {
-				max_revisions--;
-				iterations = 0;
-			}
+			ph_log(DEBUG, "Range service about to push remaining logs for rev %d",
+				current_rev);
+			ph_logger.revision = current_rev;
+			sent_one = ph_logger_helper_function(current_rev);
+			if (!sent_one)
+				current_rev--;
 		}
-		ph_log(INFO, "range logger service stopped for revision %d", max_revisions + 1);
+		ph_log(INFO, "Range service stopped normally");
 		_exit(EXIT_SUCCESS);
 	}
-#ifdef DEBUG
-	if (range_service > 0) {
-		printf("Started range service for PH logs upto revision %d\n", max_revisions);
-	}
-#endif
-out:
+
 	return range_service;
 }
 
@@ -1128,7 +1113,6 @@ void ph_logger_start_local(struct pantavisor *pv, int revision)
 		return;
 
 	if (ph_logger.rev_logger == -1) {
-		pv_log(DEBUG, "starting local ph logger");
 		ph_logger.rev_logger = ph_logger_service_start(pv, revision);
 		if (ph_logger.rev_logger > 0) {
 			pv_log(DEBUG, "started ph logger with pid %d", ph_logger.rev_logger);
@@ -1147,7 +1131,6 @@ void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 		return;
 
 	if (ph_logger.push_helper == -1) {
-		pv_log(DEBUG, "starting push helper");
 		ph_logger.push_helper = ph_logger_create_push_helper(revision);
 		if (ph_logger.push_helper > 0) {
 			pv_log(DEBUG, "started push helper with pid %d", ph_logger.push_helper);
@@ -1157,8 +1140,7 @@ void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 	}
 
 	if ((ph_logger.range_logger == -1) && (revision > 0)) {
-		pv_log(DEBUG, "starting range logger");
-		ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision - 1);
+		ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision);
 		if (ph_logger.range_logger > 0) {
 			pv_log(DEBUG, " started range logger with pid %d", ph_logger.range_logger);
 		} else {
@@ -1171,8 +1153,6 @@ void ph_logger_stop(struct pantavisor *pv)
 {
 	if (!pv)
 		return;
-
-	pv_log(DEBUG, "stopping ph logger");
 
 	if (ph_logger.rev_logger > 0) {
 		kill_child_process(ph_logger.rev_logger);
