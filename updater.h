@@ -97,6 +97,7 @@ struct trail_remote {
 };
 
 int pv_check_for_updates(struct pantavisor *pv);
+bool pv_trail_is_authenticated(struct pantavisor *pv);
 void pv_trail_remote_remove(struct pantavisor *pv);
 
 int pv_update_start(struct pantavisor *pv);
@@ -106,6 +107,7 @@ void pv_update_finish(struct pantavisor *pv);
 void pv_update_remove(struct pantavisor *pv);
 
 bool pv_update_requires_reboot(struct pantavisor *pv);
+
 bool pv_update_is_transition(struct pv_update *u);
 bool pv_update_is_testing(struct pv_update *u);
 bool pv_update_is_trying(struct pv_update *u);

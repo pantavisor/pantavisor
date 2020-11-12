@@ -346,7 +346,9 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 	int timeout_max = pv->config->update_commit_delay
 		/ pv->config->updater.interval;
 
-	if (!pv_ph_is_available(pv)) {
+	// check if we are online and authenticated
+	if (!pv_ph_is_available(pv) ||
+		!pv_trail_is_authenticated(pv)) {
 		rb_count++;
 		if (pv_update_is_trying(pv->update) &&
 			(rb_count > timeout_max)) {

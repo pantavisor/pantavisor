@@ -114,7 +114,6 @@ static int trail_remote_init(struct pantavisor *pv)
 		goto err;
 	}
 
-	// FIXME: Crash here if unable to auth
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
 		pv_log(INFO, "unable to auth device client");
@@ -931,6 +930,22 @@ int pv_check_for_updates(struct pantavisor *pv)
 		return trail_get_new_steps(pv);
 	else
 		return 0;
+}
+
+bool pv_trail_is_authenticated(struct pantavisor *pv)
+{
+	// if remote exist, it means we have already authenticate
+	if (pv->remote)
+		return true;
+
+	// authenticate if possible 
+	if (pv->online)
+		trail_remote_init(pv);
+
+	if (pv->remote)
+		return true;
+
+	return false;
 }
 
 static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, char *msg)
