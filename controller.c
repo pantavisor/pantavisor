@@ -301,7 +301,7 @@ static pv_state_t pv_update_helper(struct pantavisor *pv)
 	if (pv_update_is_testing(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
-				pv_log(WARN, "committing new update in %d seconds", commit_delay - tp.tv_sec);
+				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				goto out;
 			}
 			if (pv->update->status == UPDATE_TESTING_REBOOT) {
@@ -348,7 +348,8 @@ static pv_state_t pv_helper_process(struct pantavisor *pv)
 
 	// check if we are online and authenticated
 	if (!pv_ph_is_available(pv) ||
-		!pv_trail_is_authenticated(pv)) {
+		!pv_ph_is_auth(pv) ||
+		!pv_trail_is_auth(pv)) {
 		rb_count++;
 		if (pv_update_is_trying(pv->update) &&
 			(rb_count > timeout_max)) {

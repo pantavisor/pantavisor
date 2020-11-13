@@ -311,25 +311,12 @@ static ph_logger_handler_t get_write_handler(int version)
 {
 	if (version < PH_LOGGER_V1 || version >= PH_LOGGER_MAX_HANDLERS)
 		return NULL;
-	
+
 	return write_handler[version];
 }
 
-
-static int __ph_logger_get_connection(struct ph_logger *ph_logger,
-					struct pantavisor_config *config,
-					bool force_free)
+static int ph_logger_get_connection(struct ph_logger *ph_logger, struct pantavisor_config *config)
 {
-	if (force_free) {
-		if (ph_logger->pv_conn) {
-			free(ph_logger->pv_conn);
-			ph_logger->pv_conn = NULL;
-		}
-		if (ph_logger->client) {
-			trest_free(ph_logger->client);
-			ph_logger->client = NULL;
-		}
-	}
 	if (ph_logger->pv_conn && !connect_try(&ph_logger->pv_conn->sock))
 		goto out;
 
@@ -342,11 +329,6 @@ static int __ph_logger_get_connection(struct ph_logger *ph_logger,
 	}
 out:
 	return !!ph_logger->pv_conn;;
-
-}
-static int ph_logger_get_connection(struct ph_logger *ph_logger, struct pantavisor_config *config)
-{
-	return __ph_logger_get_connection(ph_logger, config, false);
 }
 
 static int ph_logger_open_socket(const char *path) 

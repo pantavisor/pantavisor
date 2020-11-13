@@ -518,28 +518,24 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	// parse state
 	rev = atoi(rev_s);
 	pv_log(DEBUG, "parse rev %d with json state = '%s'", rev, state);
-	remote->pending = pv_state_parse(pv, state, rev);
 	pv->update = pv_update_new(pv->config->creds.id, rev);
+	pv->update->pending = pv_state_parse(pv, state, rev);
 	/*A revision is pending, either a new one or a queued one*/
 	ret = 1;
-	if (!remote->pending) {
+	if (pv->update && !pv->update->pending) {
 		pv_log(INFO, "invalid rev (%d) found on remote", rev);
 		pv_update_set_status(pv, UPDATE_NO_PARSE);
-		pv_state_free(remote->pending);
-		remote->pending = NULL;
 		pv_update_remove(pv);
 		ret = 0;
 	} else {
-		pv_log(DEBUG, "first pending step found is rev %d", remote->pending->rev);
+		pv_log(DEBUG, "first pending step found is rev %d", pv->update->pending->rev);
 		retries++; /*Add one since we're now retrying this.*/
-		remote->pending->retries = retries;
+		pv->update->pending->retries = retries;
 		pv_log(DEBUG, "current retry count is %d", retries);
 		if (retries > MAX_REVISION_RETRIES) {
 			pv_log(WARN, "Revision %d exceeded download retries."
 					"Max set at %d, current attempt =%d", rev, MAX_REVISION_RETRIES, retries);
 			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
-			pv_state_free(remote->pending);
-			remote->pending = NULL;
 			pv_update_remove(pv);
 			ret = 0;
 		}
@@ -932,7 +928,7 @@ int pv_check_for_updates(struct pantavisor *pv)
 		return 0;
 }
 
-bool pv_trail_is_authenticated(struct pantavisor *pv)
+bool pv_trail_is_auth(struct pantavisor *pv)
 {
 	// if remote exist, it means we have already authenticate
 	if (pv->remote)
@@ -980,13 +976,13 @@ int pv_update_start(struct pantavisor *pv)
 {
 	int ret = -1;
 
-	if (!pv || !pv->state) {
-		pv_log(WARN, "uninitialized state");
+	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
+		pv_log(WARN, "uninitialized state or update");
 		goto out;
 	}
 
 	// From a retry
-	if (pv->update->pending) {
+	if (pv_update_is_queued(pv->update)) {
 		int time_left = pv->update->retry_at - time(NULL);
 
 		if (time_left <= 0) {
@@ -1000,9 +996,6 @@ int pv_update_start(struct pantavisor *pv)
 		ret = 1;
 		goto out;
 	}
-
-	pv->update->pending = pv->remote->pending;
-	pv->remote->pending = NULL;
 
 update_status:
 	ret = pv_update_set_status(pv, UPDATE_QUEUED);
@@ -1049,10 +1042,6 @@ static void pv_trail_remote_free(struct trail_remote *trail)
 
 	if (trail->endpoint)
 		free(trail->endpoint);
-	if (trail->pending) {
-		pv_state_free(trail->pending);
-		trail->pending = NULL;
-	}
 
 	free(trail);
 }
@@ -1082,7 +1071,7 @@ void pv_update_finish(struct pantavisor *pv)
 			ret = pv_update_set_status(pv, UPDATE_FAILED);
 			return;
 		}
-		pv_log(WARN, "Unable to download revision, retrying update in %d seconds",
+		pv_log(WARN, "unable to download revision",
 				pv->update->retry_at);
 		break;
 	default:
@@ -1717,6 +1706,11 @@ bool pv_update_requires_reboot(struct pantavisor *pv)
 		pv->update->runlevel);
 	pv_update_set_status(pv, UPDATE_TRANSITION);
 	return false;
+}
+
+bool pv_update_is_queued(struct pv_update *u)
+{
+	return (u && u->status == UPDATE_QUEUED);
 }
 
 bool pv_update_is_transition(struct pv_update *u)
