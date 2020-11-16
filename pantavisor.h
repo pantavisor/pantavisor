@@ -31,6 +31,10 @@
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
+#define RUNLEVEL_ROOT 0
+#define RUNLEVEL_PLATFORM 1
+#define RUNLEVEL_APP 2
+
 #define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 // pantavisor.h
 

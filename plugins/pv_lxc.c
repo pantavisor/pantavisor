@@ -166,7 +166,8 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, cha
 }
 
 static void pv_setup_lxc_container(struct lxc_container *c,
-					unsigned int share_ns)
+					unsigned int share_ns,
+					int runlevel)
 {
 	int fd, ret;
 	struct utsname uts;
@@ -224,7 +225,14 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		free(buf);
 	}
 	// override container=lxc environment of pid 1
-	c->set_container_type(c, "pv-platform");
+	if (runlevel == RUNLEVEL_ROOT)
+		c->set_container_type(c, "pv-root");
+	else if (runlevel == RUNLEVEL_PLATFORM)
+		c->set_container_type(c, "pv-platform");
+	else if (runlevel == RUNLEVEL_APP)
+		c->set_container_type(c, "pv-app");
+	else
+		c->set_container_type(c, "pv-unknown");
 
 	/*
 	 * Set console filename if not provided.
@@ -516,7 +524,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 			goto out_container_init;
 		}
 
-		pv_setup_lxc_container(c, share_ns);
+		pv_setup_lxc_container(c, share_ns, p->runlevel);
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
