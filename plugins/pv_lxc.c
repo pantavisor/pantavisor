@@ -561,7 +561,7 @@ out_container_init:
 		c = NULL;
 		goto out_no_container;
 	}
-	pv_setup_lxc_container(c, share_ns); /*Do we need this?*/
+	pv_setup_lxc_container(c, share_ns, p->runlevel); /*Do we need this?*/
 	pv_setup_default_log(p, c, "lxc");
 	pv_setup_default_log(p, c, "console");
 
