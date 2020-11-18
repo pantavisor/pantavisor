@@ -59,23 +59,6 @@ int DOWNLOAD_RETRY_WAIT = 0;
 
 typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 
-static bool pv_update_is_queued(struct pv_update *u)
-{
-	return (u && u->status == UPDATE_QUEUED);
-}
-
-bool pv_update_is_transition(struct pv_update *u)
-{
-	return (u && u->status == UPDATE_TRANSITION);
-}
-
-bool pv_update_is_testing(struct pv_update *u)
-{
-	return (u &&
-		((u->status == UPDATE_TESTING_REBOOT) ||
-		(u->status == UPDATE_TESTING_NONREBOOT)));
-}
-
 static void pv_update_free(struct pv_update *update)
 {
 	if (!update)
@@ -1031,7 +1014,7 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status)
 
 static int pv_update_start(struct pantavisor *pv)
 {
-	if (pv_update_is_queued(pv->update)) {
+	if (pv->update && pv->update->status == UPDATE_QUEUED) {
 		int time_left = pv->update->retry_at - time(NULL);
 
 		if (time_left <= 0) {
@@ -1770,6 +1753,19 @@ bool pv_update_requires_reboot(struct pantavisor *pv)
 	pv_update_set_status(pv, UPDATE_TRANSITION);
 	return false;
 }
+
+bool pv_update_is_transitioning(struct pv_update *u)
+{
+	return (u && u->status == UPDATE_TRANSITION);
+}
+
+bool pv_update_is_testing(struct pv_update *u)
+{
+	return (u &&
+		((u->status == UPDATE_TESTING_REBOOT) ||
+		(u->status == UPDATE_TESTING_NONREBOOT)));
+}
+
 
 static int pv_update_init(struct pv_init *this)
 {

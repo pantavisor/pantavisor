@@ -105,24 +105,21 @@ static const char* pv_state_string(pv_state_t st)
 
 typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
 
-static void pv_wait_set_delay(int seconds)
-{
-	struct timespec tp;
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + seconds;
-}
-
-static void pv_wait_delay()
+static void pv_wait_delay(int seconds)
 {
 	struct timespec tp;
 	int sleep_time;
 
+	// first, we wait until wait_delay
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	if (wait_delay > tp.tv_sec) {
 		sleep_time = wait_delay - tp.tv_sec;
 		pv_log(DEBUG, "sleep for %d seconds", sleep_time);
 		sleep(sleep_time);
 	}
+
+	// then, we set wait_delay for next call
+	wait_delay = tp.tv_sec + seconds;
 }
 
 static pv_state_t _pv_factory_upload(struct pantavisor *pv)
@@ -132,7 +129,6 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 	ret = pv_device_factory_meta(pv);
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
-	pv_wait_set_delay(pv->config->updater.interval);
 	return STATE_WAIT;
 }
 
@@ -156,14 +152,14 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	struct timespec tp;
 	int runlevel = 0;
 
-	// resume update if we have booted to test one
+	// resume update if we have booted to test a new revision
 	runlevel = pv_update_resume(pv);
 	if (runlevel < 0) {
 		pv_log(ERROR, "update could not be resumed");
 		return STATE_ROLLBACK;
 	}
 
-	if (pv_update_is_transition(pv->update)) {
+	if (pv_update_is_transitioning(pv->update)) {
 		// for non-reboot updates...
 		pv_log(INFO, "transitioning...");
 		ph_logger_stop(pv);
@@ -181,7 +177,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// only start local ph logger, cloud services will be started when connected
 	ph_logger_start_local(pv, pv->state->rev);
 
-	// meta data initialization
+	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_meta_set_objdir(pv);
 	pv_device_info_parse(pv);
 
@@ -201,10 +197,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	// set active only after plats are started
+	// set active only after plats have been started
 	pv_set_active(pv);
 
-	// set initial wait delay and rollback count
+	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = 0;
 	commit_delay = tp.tv_sec + pv->config->update_commit_delay;
@@ -220,10 +216,8 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char config_path[256];
 	char *c;
 
-	if (!pv_ph_is_available(pv)) {
-		pv_wait_set_delay(pv->config->updater.interval);
+	if (!pv_ph_is_available(pv))
 		return STATE_WAIT;
-	}
 
 	c = calloc(1, sizeof(char) * 128);
 
@@ -331,8 +325,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 {
 	pv_state_t next_state = STATE_WAIT;
 
-	// sleep if idle
-	pv_wait_delay();
+	// this will prevent WAIT to be executed again before interval,
+	// this way we avoid multiple ph request in a row
+	pv_wait_delay(pv->config->updater.interval);
 
 	// receive new command
 	if (pv->req)
@@ -356,11 +351,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	// update management
+	// network wait stuff: connectivity check. update management,
+ 	// meta data uppload, ph logger push start...
 	next_state = pv_wait_network(pv);
 out:
-	if (next_state == STATE_WAIT)
-		pv_wait_set_delay(pv->config->updater.interval);
 	pv_log(DEBUG, "going to state = %s", pv_state_string(next_state));
 	return next_state;
 }
@@ -435,6 +429,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	pv_state_t next_state = STATE_RUN;
 	int rev = -1;
 
+	// download and install pending step
 	rev = pv_update_install(pv);
 	if (rev < 0) {
 		pv_log(ERROR, "update has failed, continue...");
@@ -464,6 +459,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	if (pv->state && pv->state->rev == 0)
 		return STATE_ERROR;
 
+	// rollback means current update needs to be reported to PH as FAILED
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
 

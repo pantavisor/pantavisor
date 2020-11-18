@@ -110,7 +110,7 @@ int pv_update_finish(struct pantavisor *pv);
 
 bool pv_update_requires_reboot(struct pantavisor *pv);
 
-bool pv_update_is_transition(struct pv_update *u);
+bool pv_update_is_transitioning(struct pv_update *u);
 bool pv_update_is_testing(struct pv_update *u);
 
 int pv_update_set_status(struct pantavisor *pv, enum update_state status);
