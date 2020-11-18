@@ -93,7 +93,9 @@ struct pv_update {
 
 struct trail_remote {
 	trest_ptr client;
-	char *endpoint;
+	char *endpoint_trail;
+	char *endpoint_trail_queued;
+	char *endpoint_trail_new;
 	struct pv_state *pending;
 };
 

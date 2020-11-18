@@ -148,6 +148,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	struct trail_remote *remote = NULL;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_ptr client = 0;
+	char *endpoint_trail = NULL;
 
 	if (pv->remote)
 		return 0;
@@ -168,9 +169,23 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote = calloc(1, sizeof(struct trail_remote));
 	remote->client = client;
 
-	remote->endpoint = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
-				   + strlen(pv->config->creds.id)) * sizeof(char));
-	sprintf(remote->endpoint, DEVICE_TRAIL_ENDPOINT_FMT, pv->config->creds.id);
+	endpoint_trail = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
+		+ strlen(pv->config->creds.id)) * sizeof(char));
+	if (endpoint_trail)
+		goto err;
+	sprintf(endpoint_trail, DEVICE_TRAIL_ENDPOINT_FMT, pv->config->creds.id);
+
+	remote->endpoint_trail_queued = (char*)calloc(1, strlen(endpoint_trail)
+		+ sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED));
+	if (!remote->endpoint_trail_queued)
+		goto err;
+	sprintf(remote->endpoint_trail_queued, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_QUEUED);
+
+	remote->endpoint_trail_new = (char*)calloc(1, strlen(endpoint_trail)
+		+ sizeof(DEVICE_TRAIL_ENDPOINT_NEW));
+	if (!remote->endpoint_trail_new)
+		goto err;
+	sprintf(remote->endpoint_trail_new, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
 
 	pv->remote = remote;
 
@@ -181,6 +196,8 @@ err:
 		free(client);
 	if (remote)
 		free(remote);
+	if (endpoint_trail)
+		free(endpoint_trail);
 
 	return -1;
 }
@@ -229,10 +246,13 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		if (update->pending)
 			__retries = update->pending->retries;
 
-		snprintf(retries, sizeof(retries), "%d", __retries);
-		pv_log(DEBUG, "update queued, retry count is %s", retries);
-		sprintf(retry_message, "Update queued, retry %s of %d", retries,
-				MAX_REVISION_RETRIES);
+		pv_log(DEBUG, "update queued, retry count is %d", __retries);
+		if (__retries > 0) {
+			snprintf(retries, sizeof(retries), "%d", __retries);
+			sprintf(retry_message, "Update queued, retry %s of %d", retries,
+					MAX_REVISION_RETRIES);
+		} else
+			sprintf(retry_message, "Update queued");
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
 		if (update) {
@@ -292,7 +312,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 				update->pending->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
-		
+
 		snprintf(update->retry_data,
 				sizeof(update->retry_data), "%s", retries);
 		/*
@@ -501,7 +521,6 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	struct trail_remote *remote = pv->remote;
 	trest_response_ptr res = 0;
 	jsmntok_t *tokv = 0;
-	char *queued_endpoint = NULL, *new_endpoint = NULL;
 	int retries = 0;
 	struct jka_update_ctx update_ctx = {
 		.retries = &retries
@@ -521,33 +540,21 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		goto new_update;
 
 	// check for QUEUED updates
-	queued_endpoint = (char*)calloc(1, strlen(remote->endpoint)
-		+ sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED));
-	if (queued_endpoint) {
-		sprintf(queued_endpoint, "%s%s", remote->endpoint, DEVICE_TRAIL_ENDPOINT_QUEUED);
-		res = trail_get_steps_response(pv, queued_endpoint);
-		if (res) {
-			pv_log(DEBUG, "found QUEUED revision");
-			if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-				pv_log(WARN, "failed to parse QUEUED revision");
-			goto process_response;
-		}
-		free(queued_endpoint);
+	res = trail_get_steps_response(pv, remote->endpoint_trail_queued);
+	if (res) {
+		pv_log(DEBUG, "found QUEUED revision");
+		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
+			pv_log(WARN, "failed to parse QUEUED revision");
+		goto process_response;
 	}
 
 new_update:
 	// check for NEW updates
-	new_endpoint = (char*)calloc(1, strlen(remote->endpoint)
-		+ sizeof(DEVICE_TRAIL_ENDPOINT_NEW));
-	if (new_endpoint) {
-		sprintf(new_endpoint, "%s%s", remote->endpoint, DEVICE_TRAIL_ENDPOINT_NEW);
-		res = trail_get_steps_response(pv, new_endpoint);
-		if (res) {
-			pv_log(DEBUG, "found NEW revision");
-			if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-				pv_log(WARN, "failed to parse NEW revision");
-		}
-		free(new_endpoint);
+	res = trail_get_steps_response(pv, remote->endpoint_trail_new);
+	if (res) {
+		pv_log(DEBUG, "found NEW revision");
+		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
+			pv_log(WARN, "failed to parse NEW revision");
 	}
 
 process_response:
@@ -1051,8 +1058,10 @@ static void pv_trail_remote_free(struct trail_remote *trail)
 
 	pv_log(DEBUG, "removing trail");
 
-	if (trail->endpoint)
-		free(trail->endpoint);
+	if (trail->endpoint_trail_queued)
+		free(trail->endpoint_trail_queued);
+	if (trail->endpoint_trail_new)
+		free(trail->endpoint_trail_new);
 
 	free(trail);
 }
