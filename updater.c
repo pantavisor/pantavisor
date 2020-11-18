@@ -154,7 +154,7 @@ static int trail_remote_init(struct pantavisor *pv)
 
 	endpoint_trail = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
 		+ strlen(pv->config->creds.id)) * sizeof(char));
-	if (endpoint_trail)
+	if (!endpoint_trail)
 		goto err;
 	sprintf(endpoint_trail, DEVICE_TRAIL_ENDPOINT_FMT, pv->config->creds.id);
 
