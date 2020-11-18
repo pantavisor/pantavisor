@@ -37,6 +37,7 @@ struct pv_device {
 
 int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
 int pv_device_factory_meta(struct pantavisor *pv);
+int pv_device_info_parse(struct pantavisor *pv);
 int pv_device_info_upload(struct pantavisor *pv);
 bool pv_device_factory_meta_done(struct pantavisor *pv);
 

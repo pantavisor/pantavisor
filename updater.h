@@ -36,7 +36,8 @@
 
 
 #define TRAIL_OBJECT_DL_FMT	"/objects/%s"
-#define DEVICE_TRAIL_ENDPOINT_QUERY 	"?progress.status=QUEUED"
+#define DEVICE_TRAIL_ENDPOINT_QUEUED "?progress.status=QUEUED"
+#define DEVICE_TRAIL_ENDPOINT_NEW "?progress.status=NEW"
 
 #define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
@@ -100,18 +101,15 @@ int pv_check_for_updates(struct pantavisor *pv);
 bool pv_trail_is_auth(struct pantavisor *pv);
 void pv_trail_remote_remove(struct pantavisor *pv);
 
-int pv_update_start(struct pantavisor *pv);
 int pv_update_install(struct pantavisor *pv);
 int pv_update_resume(struct pantavisor *pv);
-void pv_update_finish(struct pantavisor *pv);
-void pv_update_remove(struct pantavisor *pv);
+void pv_update_test(struct pantavisor *pv);
+int pv_update_finish(struct pantavisor *pv);
 
 bool pv_update_requires_reboot(struct pantavisor *pv);
 
-bool pv_update_is_queued(struct pv_update *u);
 bool pv_update_is_transition(struct pv_update *u);
 bool pv_update_is_testing(struct pv_update *u);
-bool pv_update_is_trying(struct pv_update *u);
 
 int pv_update_set_status(struct pantavisor *pv, enum update_state status);
 

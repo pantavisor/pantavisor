@@ -226,6 +226,8 @@ static void pv_usermeta_remove(struct pv_device *dev)
 	struct pv_usermeta *curr, *tmp;
 	struct dl_list *head = &dev->metalist;
 
+	pv_log(DEBUG, "removing user meta");
+
 	dl_list_for_each_safe(curr, tmp, head,
 		struct pv_usermeta, list) {
 		dl_list_del(&curr->list);
@@ -237,6 +239,8 @@ static void pv_devinfo_remove(struct pv_device *dev)
 {
 	struct pv_devinfo *curr, *tmp;
 	struct dl_list *head = &dev->infolist;
+
+	pv_log(DEBUG, "removing devinfo");
 
 	dl_list_for_each_safe(curr, tmp, head,
 		struct pv_devinfo, list) {
@@ -437,18 +441,11 @@ out:
 	return this;
 }
 
-int pv_device_info_upload(struct pantavisor *pv)
+int pv_device_info_parse(struct pantavisor *pv)
 {
-	unsigned int len = 0;
-	char *json = NULL, *buf = NULL;
-	struct pv_devinfo *info = NULL, *tmp = NULL;
-	struct dl_list *head = NULL;
-	int json_avail = 0;
-	int i = 0;
-	int bufsize = 0;
+	char *buf = NULL;
 	struct log_buffer *log_buffer = NULL;
-	static bool info_parsed = false;
-	bool info_uploaded = false;
+	int i = 0, bufsize = 0;
 	/*
 	 * we can use one of the large log_buffer. Since
 	 * this information won't be very large, it's safe
@@ -460,9 +457,6 @@ int pv_device_info_upload(struct pantavisor *pv)
 		pv_log(INFO, "couldn't allocate buffer to upload device info");
 		return -1;
 	}
-
-	if (info_parsed)
-		goto upload;
 
 	dl_list_init(&pv->dev->infolist);
 
@@ -479,11 +473,33 @@ int pv_device_info_upload(struct pantavisor *pv)
 			/*
 			 * we managed to add at least one item in the list.
 			 */
-			if (pv_device_info_add(pv->dev, pv_device_info_readkeys[i].key, buf))
-				info_parsed = true;
+			pv_device_info_add(pv->dev, pv_device_info_readkeys[i].key, buf);
 		}
 	}
-upload:
+	pv_log_put_buffer(log_buffer);
+	return 0;
+}
+
+int pv_device_info_upload(struct pantavisor *pv)
+{
+	unsigned int len = 0;
+	char *json = NULL;
+	struct pv_devinfo *info = NULL, *tmp = NULL;
+	struct dl_list *head = NULL;
+	int json_avail = 0;
+	struct log_buffer *log_buffer = NULL;
+	/*
+	 * we can use one of the large log_buffer. Since
+	 * this information won't be very large, it's safe
+	 * to assume even the complete json would
+	 * be small enough to fit inside this log_buffer.
+	 */
+	log_buffer = pv_log_get_buffer(true);
+	if (!log_buffer) {
+		pv_log(INFO, "couldn't allocate buffer to upload device info");
+		return -1;
+	}
+
 	if (dl_list_empty(&pv->dev->infolist))
 		goto out;
 	json = log_buffer->buf;
@@ -520,10 +536,9 @@ upload:
 	 */
 	json[len - 1] = '}';
 	pv_log(INFO, "device info json = %s", json);
-	info_uploaded = !pv_ph_upload_metadata(pv, json);
-out:
-	if (info_uploaded && !dl_list_empty(&pv->dev->infolist))
+	if(!pv_ph_upload_metadata(pv, json))
 		pv_devinfo_remove(pv->dev);
+out:
 	pv_log_put_buffer(log_buffer);
 	return 0;
 }
