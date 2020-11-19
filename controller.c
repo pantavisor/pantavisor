@@ -64,7 +64,7 @@
 
 #define CMDLINE_OFFSET	7
 
-static int rb_count;
+static int rollback_time;
 static time_t wait_delay;
 static time_t commit_delay;
 
@@ -119,6 +119,7 @@ static void pv_wait_delay(int seconds)
 	}
 
 	// then, we set wait_delay for next call
+	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = tp.tv_sec + seconds;
 }
 
@@ -204,7 +205,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = 0;
 	commit_delay = tp.tv_sec + pv->config->update_commit_delay;
-	rb_count = 0;
+	rollback_time = tp.tv_sec;
 
 	return STATE_WAIT;
 }
@@ -273,11 +274,11 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timespec tp;
 
-	int timeout_max = pv->config->update_commit_delay
-		/ pv->config->updater.interval;
-
 	// report testing update if new revision is ready
 	pv_update_test(pv);
+
+	if (pv_update_is_testing(pv->update))
+		clock_gettime(CLOCK_MONOTONIC, &tp);
 
 	// check if we are online and authenticated
 	if (!pv_ph_is_available(pv) ||
@@ -285,12 +286,13 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		!pv_trail_is_auth(pv)) {
 		// this could mean the testing update is not good
 		if (pv_update_is_testing(pv->update)) {
-			rb_count++;
-			pv_log(WARN, "current rb_count = %d, max_allowed = %d",
-				rb_count, timeout_max);
-			if (rb_count > timeout_max)
+			rollback_time = tp.tv_sec - rollback_time;
+			pv_log(WARN, "%d seconds without connection since boot. Will rollback when %d is reached", rollback_time, pv->config->update_commit_delay);
+			if (rollback_time >= pv->config->update_commit_delay)
 				return STATE_ROLLBACK;
 		}
+		// if there is no connection, we avoid the rest of network operations
+		return STATE_WAIT;
 	}
 
 	// start ph logger cloud if not done and if possible
@@ -306,13 +308,15 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	if (pv_check_for_updates(pv) > 0)
 		return STATE_UPDATE;
 
-	// if an update is being tested
-	if (pv_update_is_testing(pv->update)) {
-		// progress if possible the state of testing update
-		clock_gettime(CLOCK_MONOTONIC, &tp);
-		if (commit_delay > tp.tv_sec) {
-			pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
-			return STATE_WAIT;
+	// if an update is going on at this point, it means we still have to finish it
+	if (pv->update) {
+		// if the update is being tested, we might have to wait
+		if (pv_update_is_testing(pv->update)) {
+			// progress if possible the state of testing update
+			if (commit_delay > tp.tv_sec) {
+				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
+				return STATE_WAIT;
+			}
 		}
 		if (pv_update_finish(pv) < 0)
 			return STATE_ROLLBACK;
@@ -325,8 +329,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 {
 	pv_state_t next_state = STATE_WAIT;
 
-	// this will prevent WAIT to be executed again before interval,
-	// this way we avoid multiple ph request in a row
+	// with this wait, we make sure we have not consecutively executed two WAITs
+	// in less than the configured interval
 	pv_wait_delay(pv->config->updater.interval);
 
 	// receive new command
@@ -352,10 +356,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	}
 
 	// network wait stuff: connectivity check. update management,
- 	// meta data uppload, ph logger push start...
+	// meta data uppload, ph logger push start...
 	next_state = pv_wait_network(pv);
 out:
-	pv_log(DEBUG, "going to state = %s", pv_state_string(next_state));
 	return next_state;
 }
 
@@ -530,8 +533,7 @@ int pv_controller_start(struct pantavisor *pv)
 	pv_state_t state = STATE_INIT;
 
 	while (1) {
-		if ((state != STATE_WAIT) && (state != STATE_COMMAND))
-			pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(state), state);
+		pv_log(DEBUG, "going to state = %s", pv_state_string(state));
 		state = _pv_run_state(state, pv);
 
 		if (state == STATE_EXIT)

@@ -1124,7 +1124,7 @@ void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 	if ((ph_logger.range_logger == -1) && (revision > 0)) {
 		ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision);
 		if (ph_logger.range_logger > 0) {
-			pv_log(DEBUG, " started range logger with pid %d", ph_logger.range_logger);
+			pv_log(DEBUG, "started range logger with pid %d", ph_logger.range_logger);
 		} else {
 			pv_log(ERROR, "unable to start range logger service");
 		}

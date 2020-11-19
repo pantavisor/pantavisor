@@ -1069,9 +1069,6 @@ void pv_update_test(struct pantavisor *pv)
 	case UPDATE_TRANSITION:
 		pv_update_set_status(pv, UPDATE_TESTING_NONREBOOT);
 		break;
-	case UPDATE_FAILED:
-		pv_update_finish(pv);
-		break;
 	default:
 		break;
 	}
