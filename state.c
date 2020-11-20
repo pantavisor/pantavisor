@@ -37,6 +37,7 @@ struct pv_state* pv_state_new(int rev, state_spec_t spec)
 
 	s = calloc(1, sizeof(struct pv_state));
 	if (s) {
+		s->retries = 0;
 		s->rev = rev;
 		s->spec = spec;
 		dl_list_init(&s->platforms);

@@ -64,7 +64,7 @@
 
 #define CMDLINE_OFFSET	7
 
-static int rb_count;
+static int rollback_time;
 static time_t wait_delay;
 static time_t commit_delay;
 
@@ -105,10 +105,28 @@ static const char* pv_state_string(pv_state_t st)
 
 typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
 
+static void pv_wait_delay(int seconds)
+{
+	struct timespec tp;
+	int sleep_time;
+
+	// first, we wait until wait_delay
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	if (wait_delay > tp.tv_sec) {
+		sleep_time = wait_delay - tp.tv_sec;
+		pv_log(DEBUG, "sleep for %d seconds", sleep_time);
+		sleep(sleep_time);
+	}
+
+	// then, we set wait_delay for next call
+	clock_gettime(CLOCK_MONOTONIC, &tp);
+	wait_delay = tp.tv_sec + seconds;
+}
+
 static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 {
 	int ret = -1;
-	
+
 	ret = pv_device_factory_meta(pv);
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
@@ -133,20 +151,23 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	struct timespec tp;
-	int runlevel = 0;
+	int runlevel = RUNLEVEL_ROOT;
 
+	// resume update if we have booted to test a new revision
 	runlevel = pv_update_resume(pv);
-	if (runlevel < 0) {
+	if (runlevel < RUNLEVEL_ROOT) {
 		pv_log(ERROR, "update could not be resumed");
 		return STATE_ROLLBACK;
 	}
 
-	if (pv_update_is_transition(pv->update)) {
+	if (pv_update_is_transitioning(pv->update)) {
+		// for non-reboot updates...
 		pv_log(INFO, "transitioning...");
 		ph_logger_stop(pv);
 		pv_log_start(pv, pv->update->pending->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
 	} else
+		// after a reboot...
 		pv->state = pv_get_state(pv, pv_revision_get_rev());
 	if (!pv->state)
 	{
@@ -154,20 +175,18 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
+	// only start local ph logger, cloud services will be started when connected
 	ph_logger_start_local(pv, pv->state->rev);
 
+	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_meta_set_objdir(pv);
+	pv_device_parse_devmeta(pv);
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
+	// start up volumes and platforms
 	if (pv_volumes_mount(pv, runlevel) < 0)
 		return STATE_ROLLBACK;
-
-	/*
-	 * [PKS]
-	 * mark active only when platforms have been started.
-	 */
-	pv_set_active(pv);
 
 	if (pv_make_config(pv) < 0) {
 		pv_log(ERROR, "error making config");
@@ -179,12 +198,14 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	rb_count = 0;
+	// set active only after plats have been started
+	pv_set_active(pv);
 
-	// set initial wait delay
+	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + pv->config->updater.interval;
+	wait_delay = 0;
 	commit_delay = tp.tv_sec + pv->config->update_commit_delay;
+	rollback_time = tp.tv_sec;
 
 	return STATE_WAIT;
 }
@@ -196,9 +217,8 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char config_path[256];
 	char *c;
 
-	if (!pv_ph_is_available(pv)) {
+	if (!pv_ph_is_available(pv))
 		return STATE_WAIT;
-	}
 
 	c = calloc(1, sizeof(char) * 128);
 
@@ -244,155 +264,88 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 	if (!pv)
 		return 0;
 	// update meta
-	pv_device_info_upload(pv);
+	pv_device_upload_devmeta(pv);
 	pv_network_update_meta(pv);
 	pv_ph_device_get_meta(pv);
 	return 0;
 }
 
-/*
- * _pv_wait is doing the following,
- *
- * 1. Waiting for a command on commad socket,
- * 2. Checking if device is unclaimed,
- * 3. Checking if ph is available,
- * 4. Updating meta information to PH,
- * 5. Check if a platform has exited,
- * 6. Clears an update if pending, either failed or success,
- * 7. Sets device status.
- *
- * I propose to move all network part or things which can
- * be offloaded to separate process. These would include mostly
- * the network operations.
- *
- * In above network operations include,
- * -> check if PH is available.
- * -> updating meta infromation to PH,
- * -> check if update is available,
- *
- * -> Update needs to be cleared later after we've successfully
- * started all the platforms and uploaded the information to PH
- * 
- * This can be taken care of in the helper thread as follows,
- * -> When the update is cleared, the helper posts a command
- * to pv to clear bl
- * 
- * All the above operations can be done in a separate helper
- * process. That process will post a command to pv which we'll
- * read in _pv_wait below and act upon that.
- *
- * Device update / pending etc should be done while handling
- * update state.
- */
-
-static pv_state_t pv_update_helper(struct pantavisor *pv)
+static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timespec tp;
-	pv_state_t next_state = STATE_WAIT;
-	int ret = 0;
 
-	// if online update pending to clear, commit update to cloud
-	if (pv->update && pv->update->status == UPDATE_TRY)
-		pv_update_set_status(pv, UPDATE_TESTING_REBOOT);
-	else if (pv->update && pv->update->status == UPDATE_TRANSITION)
-		pv_update_set_status(pv, UPDATE_TESTING_NONREBOOT);
-	 else if (pv->update && pv->update->status == UPDATE_FAILED)
-		pv_update_finish(pv);
-	if (pv_update_is_testing(pv->update)) {
+	// report testing update if new revision is ready
+	pv_update_test(pv);
+
+	// check if we are online and authenticated
+	if (!pv_ph_is_available(pv) ||
+		!pv_ph_is_auth(pv) ||
+		!pv_trail_is_auth(pv)) {
+		// this could mean the testing update is not good
+		if (pv_update_is_testing(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (commit_delay > tp.tv_sec) {
-				pv_log(WARN, "committing new update in %d seconds", commit_delay - tp.tv_sec);
-				goto out;
-			}
-			if (pv->update->status == UPDATE_TESTING_REBOOT) {
-				if (pv_revision_set_commited(pv->state->rev)) {
-					pv_log(ERROR, "revision for next boot could not be set");
-					return STATE_ROLLBACK;
-				}
-				pv_update_set_status(pv, UPDATE_DONE);
-				// we keep this here so we can rollback to new DONE revisions from old pantavisor versions
-				pv_set_rev_done(pv, pv->state->rev);
-			}
-			else
-				pv_update_set_status(pv, UPDATE_UPDATED);
-			pv_update_finish(pv);
-	}
-	// check for updates
-	ret = pv_check_for_updates(pv);
-	if (ret > 0) {
-		pv_log(INFO, "updates found");
-		next_state = STATE_UPDATE;
-	}
-out:
-	/* set delay to at most the updater interval */
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + pv->config->updater.interval;
-	return next_state;
-}
-
-/*
- * Helper process comprises of most of the network actions.
- * 1. Uploading Meta information (One time).
- * 2. Checking for updates.
- * 3. Checking for PH availability
- *
- * Return statement of helper process would be made into
- * a separate command for command socket.
- */
-static pv_state_t pv_helper_process(struct pantavisor *pv)
-{
-	pv_state_t next_state = STATE_WAIT;
-	struct timespec tp;
-	int timeout_max = pv->config->update_commit_delay
-		/ pv->config->updater.interval;
-
-	if (!pv_ph_is_available(pv)) {
-		rb_count++;
-		if (pv_update_is_trying(pv->update) &&
-			(rb_count > timeout_max)) {
-			next_state = STATE_ROLLBACK;
-			goto out;
+			rollback_time = tp.tv_sec - rollback_time;
+			pv_log(WARN, "%d seconds without connection since boot. Will rollback when %d is reached", rollback_time, pv->config->update_commit_delay);
+			if (rollback_time >= pv->config->update_commit_delay)
+				return STATE_ROLLBACK;
 		}
-		clock_gettime(CLOCK_MONOTONIC, &tp);
-		wait_delay = tp.tv_sec + pv->config->updater.interval;
-		pv_log(WARN, "current rb_count = %d, max_allowed = %d",
-				rb_count, timeout_max);
-		goto out;
+		// if there is no connection, we avoid the rest of network operations
+		return STATE_WAIT;
 	}
+
+	// start ph logger cloud if not done and if possible
+	ph_logger_start_cloud(pv, pv->state->rev);
+
+	// update meta info
 	if (!pv_device_factory_meta_done(pv)) {
-		next_state = STATE_FACTORY_UPLOAD;
-		goto out;
+		return STATE_FACTORY_UPLOAD;
 	}
 	pv_meta_update_to_ph(pv);
-	next_state = pv_update_helper(pv);
-out:
-	pv_log(DEBUG, "going to state = %s", pv_state_string(STATE_WAIT));
-	return next_state;
+
+	// check for new updates
+	if (pv_check_for_updates(pv) > 0)
+		return STATE_UPDATE;
+
+	// if an update is going on at this point, it means we still have to finish it
+	if (pv->update) {
+		// if the update is being tested, we might have to wait
+		if (pv_update_is_testing(pv->update)) {
+			// progress if possible the state of testing update
+			clock_gettime(CLOCK_MONOTONIC, &tp);
+			if (commit_delay > tp.tv_sec) {
+				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
+				return STATE_WAIT;
+			}
+		}
+		if (pv_update_finish(pv) < 0)
+			return STATE_ROLLBACK;
+	}
+
+	return STATE_WAIT;
 }
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
-	struct timespec tp;
 	pv_state_t next_state = STATE_WAIT;
 
-	if (pv->req) {
-		pv_log(WARN, "stable command found queued, discarding");
+	// with this wait, we make sure we have not consecutively executed two WAITs
+	// in less than the configured interval
+	pv_wait_delay(pv->config->updater.interval);
+
+	// receive new command
+	if (pv->req)
 		pv_cmd_req_remove(pv);
+	pv->req = pv_cmd_socket_wait(pv, 5);
+	if (pv->req) {
+		next_state = STATE_COMMAND;
 		goto out;
 	}
 
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	if (wait_delay > tp.tv_sec) {
-		pv->req = pv_cmd_socket_wait(pv, 5);
-		if (pv->req)
-			next_state = STATE_COMMAND;
+	// check if device is unclaimed
+	if (pv->flags & DEVICE_UNCLAIMED) {
+		next_state = STATE_UNCLAIMED;
 		goto out;
 	}
-
-	if (pv->flags & DEVICE_UNCLAIMED)
-		return STATE_UNCLAIMED;
-
-	ph_logger_start_cloud(pv, pv->state->rev);
 
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
@@ -400,9 +353,11 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		next_state = (pv_update_is_testing(pv->update)) ? STATE_ROLLBACK : STATE_REBOOT;
 		goto out;
 	}
-	next_state = pv_helper_process(pv);
+
+	// network wait stuff: connectivity check. update management,
+	// meta data uppload, ph logger push start...
+	next_state = pv_wait_network(pv);
 out:
-	pv_log(DEBUG, "going to state = %s", pv_state_string(next_state));
 	return next_state;
 }
 
@@ -476,11 +431,6 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	pv_state_t next_state = STATE_RUN;
 	int rev = -1;
 
-	pv_log(INFO, "starting update");
-	// queue locally and in cloud, block step
-	if (pv_update_start(pv))
-		return STATE_WAIT;
-
 	// download and install pending step
 	rev = pv_update_install(pv);
 	if (rev < 0) {
@@ -489,7 +439,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	// if everything went well, decide wether update requires reboot
+	// if everything went well, decide whether update requires reboot or not
 	if (pv_update_requires_reboot(pv))
 		next_state = STATE_REBOOT;
 
@@ -505,32 +455,21 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
-	int ret = 0;
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
 	if (pv->state && pv->state->rev == 0)
 		return STATE_ERROR;
 
-	/*
-	 * [PKS]
-	 * rollback will only do rollback without posting
-	 * any update status. When an update fails, the updater
-	 * process will itself post the status message that update
-	 * failed.
-	 */
-	// If we rollback, it means the considered OK update (kernel)
-	// actually failed to start platforms or mount volumes
+	// rollback means current update needs to be reported to PH as FAILED
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
 
 	if (pv->state) {
-		ret = pv_platforms_stop(pv, 0);
-		if (ret < 0)
+		if (pv_platforms_stop(pv, 0) < 0)
 			return STATE_ERROR;
 
-		ret = pv_volumes_unmount(pv, 0);
-		if (ret < 0)
+		if (pv_volumes_unmount(pv, 0) < 0)
 			pv_log(WARN, "unmount error: ignoring due to rollback");
 	}
 
@@ -593,8 +532,7 @@ int pv_controller_start(struct pantavisor *pv)
 	pv_state_t state = STATE_INIT;
 
 	while (1) {
-		if ((state != STATE_WAIT) && (state != STATE_COMMAND))
-			pv_log(DEBUG, "going to state = %s(%d)", pv_state_string(state), state);
+		pv_log(DEBUG, "going to state = %s", pv_state_string(state));
 		state = _pv_run_state(state, pv);
 
 		if (state == STATE_EXIT)

@@ -230,27 +230,27 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 
 	dl_list_for_each_safe(p, tmp, platforms,
 			struct pv_platform, list) {
-		// check if any platform has been configured with runlevel 0
-		if (p->runlevel == 0)
+		// check if any platform has been configured as ROOT
+		if (p->runlevel == RUNLEVEL_ROOT)
 			root_configured = true;
 		// get first unconfigured platform
 		if (!first_p && (p->runlevel == -1))
 			first_p = p;
 	}
 
-	// if not, set first platform as runlevel 0
+	// if not, set first platform as runlevel ROOT
 	if (!root_configured && first_p) {
 		pv_log(WARN, "no platform was found with root runlevel, "
 				"so the first unconfigured one in alphabetical order will be set");
-		first_p->runlevel = 0;
+		first_p->runlevel = RUNLEVEL_ROOT;
 	}
 
-	// set rest of the non configured platforms with runlevel 1, reserved for non-explicilty configured ones
+	// set rest of the non configured platforms with runlevel PLATFORM, reserved for non-explicilty configured ones
 	platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp, platforms,
             struct pv_platform, list) {
-		if (p->runlevel < 0)
-			p->runlevel = 1;
+		if (p->runlevel < RUNLEVEL_ROOT)
+			p->runlevel = RUNLEVEL_PLATFORM;
     }
 }
 
@@ -700,7 +700,6 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 				continue;
 
 			if (kill(p->init_pid, 0)) {
-				pv_log(ERROR, "platform %s with pid %d not running", p->name, p->init_pid);
 				exited++;
 			}
 		}

@@ -129,6 +129,22 @@ auth:
 
 /* API */
 
+bool pv_ph_is_auth(struct pantavisor *pv)
+{
+	// if client and endpoint exists, it means we have authenticate
+	if (client && endpoint)
+		return true;
+
+	//authenticate if possible
+	if (pv->online)
+		ph_client_init(pv);
+
+	if (client && endpoint)
+		return true;
+
+	return false;
+}
+
 const char** pv_ph_get_certs(struct pantavisor *__unused)
 {
 	struct dirent **files;

@@ -34,6 +34,7 @@ int pv_ph_is_available(struct pantavisor *pv);
 int pv_ph_device_get_meta(struct pantavisor *pv);
 int pv_ph_device_exists(struct pantavisor *pv);
 int pv_ph_register_self(struct pantavisor *pv);
+bool pv_ph_is_auth(struct pantavisor *pv);
 const char** pv_ph_get_certs(struct pantavisor *pv);
 int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
 void pv_ph_release_client(struct pantavisor *pv);
