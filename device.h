@@ -31,15 +31,18 @@ struct pv_device {
     char *nick;
     char *owner;
     char *prn;
-    struct dl_list metalist; // pv_usermeta
-    struct dl_list infolist; // pv_devinfo
+    struct dl_list usermeta_list; // pv_usermeta
+    struct dl_list devmeta_list; // pv_devmeta
 };
 
-int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
 int pv_device_factory_meta(struct pantavisor *pv);
-int pv_device_info_parse(struct pantavisor *pv);
-int pv_device_info_upload(struct pantavisor *pv);
 bool pv_device_factory_meta_done(struct pantavisor *pv);
 
+int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
+
+int pv_device_parse_devmeta(struct pantavisor *pv);
+int pv_device_upload_metadata(struct pantavisor *pv);
+
 void pv_device_remove(struct pantavisor *pv);
+
 #endif

@@ -59,61 +59,61 @@ struct pv_usermeta {
 	struct dl_list list; // pv_usermeta
 };
 
-struct pv_device_info_read{
+struct pv_devmeta_read{
 	char *key;
 	char *buf;
 	int buflen;
-	int (*reader)(struct pv_device_info_read*);
+	int (*reader)(struct pv_devmeta_read*);
 };
 
-struct pv_devinfo {
+struct pv_devmeta {
 	char *key;
 	char *value;
-	struct dl_list list; // pv_devinfo
+	struct dl_list list; // pv_devmeta
 };
 
-static int pv_device_info_buf_check(struct pv_device_info_read *pv_device_info_read)
+static int pv_devmeta_buf_check(struct pv_devmeta_read *pv_devmeta_read)
 {
-	char *buf = pv_device_info_read->buf;
-	int buflen = pv_device_info_read->buflen;
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
 
 	if (!buf || buflen <= 0)
 		return -1;
 	return 0;
 }
 
-static int pv_device_info_read_version(struct pv_device_info_read
-						*pv_device_info_read)
+static int pv_devmeta_read_version(struct pv_devmeta_read
+						*pv_devmeta_read)
 {
-	char *buf = pv_device_info_read->buf;
-	int buflen = pv_device_info_read->buflen;
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
 
-	if (pv_device_info_buf_check(pv_device_info_read))
+	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 	snprintf(buf, buflen,"%s",(char *) pv_build_version);
 	return 0;
 }
 
-static int pv_device_info_read_arch(struct pv_device_info_read 
-						*pv_device_info_read)
+static int pv_devmeta_read_arch(struct pv_devmeta_read 
+						*pv_devmeta_read)
 {
-	char *buf = pv_device_info_read->buf;
-	int buflen = pv_device_info_read->buflen;
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
 
-	if (pv_device_info_buf_check(pv_device_info_read))
+	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 	snprintf(buf, buflen, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
 	return 0;
 }
 
-static int pv_device_info_read_dtmodel(struct pv_device_info_read 
-						*pv_device_info_read) 
+static int pv_devmeta_read_dtmodel(struct pv_devmeta_read 
+						*pv_devmeta_read) 
 {
-	char *buf = pv_device_info_read->buf;
-	int buflen = pv_device_info_read->buflen;
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
 	int ret = -1;
 
-	if (pv_device_info_buf_check(pv_device_info_read))
+	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
 	ret = get_dt_model(buf, buflen);
@@ -122,14 +122,14 @@ static int pv_device_info_read_dtmodel(struct pv_device_info_read
 	return 0;
 }
 
-static int pv_device_info_read_cpumodel(struct pv_device_info_read
-						*pv_device_info_read)
+static int pv_devmeta_read_cpumodel(struct pv_devmeta_read
+						*pv_devmeta_read)
 {
-	char *buf = pv_device_info_read->buf;
-	int buflen = pv_device_info_read->buflen;
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
 	int ret = -1;
 
-	if (pv_device_info_buf_check(pv_device_info_read))
+	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
 	ret = get_cpu_model(buf, buflen);
@@ -138,36 +138,36 @@ static int pv_device_info_read_cpumodel(struct pv_device_info_read
 	return 0;
 }
 
-static int pv_device_info_read_revision(struct pv_device_info_read
-						*pv_device_info_read)
+static int pv_devmeta_read_revision(struct pv_devmeta_read
+						*pv_devmeta_read)
 {
-	char *buf = pv_device_info_read->buf;
-	int buflen = pv_device_info_read->buflen;
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
 	struct pantavisor *pv = get_pv_instance();
 
-	if (pv_device_info_buf_check(pv_device_info_read))
+	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
 	snprintf(buf, buflen, "%d", pv->state->rev);
 	return 0;
 }
 
-static struct pv_device_info_read pv_device_info_readkeys[] = {
+static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{
 		.key = "pantavisor.arch",
-		.reader = pv_device_info_read_arch
+		.reader = pv_devmeta_read_arch
 	},
 	{	.key = "pantavisor.version",
-		.reader = pv_device_info_read_version
+		.reader = pv_devmeta_read_version
 	},
 	{	.key = "pantavisor.dtmodel",
-		.reader = pv_device_info_read_dtmodel
+		.reader = pv_devmeta_read_dtmodel
 	},
 	{	.key = "pantavisor.cpumodel",
-		.reader = pv_device_info_read_cpumodel
+		.reader = pv_devmeta_read_cpumodel
 	},
 	{	.key = "pantavisor.revision",
-		.reader = pv_device_info_read_revision
+		.reader = pv_devmeta_read_revision
 	}
 };
 
@@ -224,9 +224,9 @@ static void pv_usermeta_free(struct pv_usermeta *usermeta)
 static void pv_usermeta_remove(struct pv_device *dev)
 {
 	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &dev->metalist;
+	struct dl_list *head = &dev->usermeta_list;
 
-	pv_log(DEBUG, "removing user meta");
+	pv_log(DEBUG, "removing user meta list");
 
 	dl_list_for_each_safe(curr, tmp, head,
 		struct pv_usermeta, list) {
@@ -235,15 +235,15 @@ static void pv_usermeta_remove(struct pv_device *dev)
 	}
 }
 
-static void pv_devinfo_remove(struct pv_device *dev)
+static void pv_devmeta_remove(struct pv_device *dev)
 {
-	struct pv_devinfo *curr, *tmp;
-	struct dl_list *head = &dev->infolist;
+	struct pv_devmeta *curr, *tmp;
+	struct dl_list *head = &dev->devmeta_list;
 
-	pv_log(DEBUG, "removing devinfo");
+	pv_log(DEBUG, "removing devmeta list");
 
 	dl_list_for_each_safe(curr, tmp, head,
-		struct pv_devinfo, list) {
+		struct pv_devmeta, list) {
 		dl_list_del(&curr->list);
 		if (curr->key)
 			free(curr->key);
@@ -256,7 +256,7 @@ static void pv_devinfo_remove(struct pv_device *dev)
 static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
 {
 	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &d->metalist;
+	struct dl_list *head = &d->usermeta_list;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_usermeta, list) {
@@ -293,7 +293,7 @@ static struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char 
 		curr->key = strdup(key);
 		curr->value = strdup(value);
 		if (curr->key && curr->value)
-			dl_list_add(&d->metalist, &curr->list);
+			dl_list_add(&d->usermeta_list, &curr->list);
 		else {
 			if (curr->key)
 				free(curr->key);
@@ -388,7 +388,7 @@ static void usermeta_clear(struct pantavisor *pv)
 	if (!pv->dev)
 		return;
 
-	head = &pv->dev->metalist;
+	head = &pv->dev->usermeta_list;
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_usermeta, list) {
 		/*
@@ -405,14 +405,14 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-static struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, char *value)
+static struct pv_devmeta* pv_devmeta_add(struct pv_device *dev, char *key, char *value)
 {
-	struct pv_devinfo *this = NULL;
+	struct pv_devmeta *this = NULL;
 
 	if (!key || !value)
 		goto out;
 
-	this = calloc(1, sizeof(struct pv_devinfo));
+	this = calloc(1, sizeof(struct pv_devmeta));
 	if (!this)
 		goto out;
 
@@ -431,7 +431,7 @@ static struct pv_devinfo* pv_device_info_add(struct pv_device *dev, char *key, c
 		this = NULL;
 		goto out;
 	}
-	dl_list_add(&dev->infolist, &this->list);
+	dl_list_add(&dev->devmeta_list, &this->list);
 out:
 	if (!this) {
 		pv_log(WARN, "Skipping device meta information [%s : %s]",
@@ -441,7 +441,7 @@ out:
 	return this;
 }
 
-int pv_device_info_parse(struct pantavisor *pv)
+int pv_device_parse_devmeta(struct pantavisor *pv)
 {
 	char *buf = NULL;
 	struct log_buffer *log_buffer = NULL;
@@ -458,33 +458,33 @@ int pv_device_info_parse(struct pantavisor *pv)
 		return -1;
 	}
 
-	dl_list_init(&pv->dev->infolist);
+	dl_list_init(&pv->dev->devmeta_list);
 
 	buf = log_buffer->buf;
 	bufsize = log_buffer->size;
 
-	for (i = 0; i < ARRAY_LEN(pv_device_info_readkeys); i++) {
+	for (i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
 		int ret = 0;
 
-		pv_device_info_readkeys[i].buf = buf;
-		pv_device_info_readkeys[i].buflen = bufsize;
-		ret = pv_device_info_readkeys[i].reader(&pv_device_info_readkeys[i]);
+		pv_devmeta_readkeys[i].buf = buf;
+		pv_devmeta_readkeys[i].buflen = bufsize;
+		ret = pv_devmeta_readkeys[i].reader(&pv_devmeta_readkeys[i]);
 		if (!ret) {
 			/*
 			 * we managed to add at least one item in the list.
 			 */
-			pv_device_info_add(pv->dev, pv_device_info_readkeys[i].key, buf);
+			pv_devmeta_add(pv->dev, pv_devmeta_readkeys[i].key, buf);
 		}
 	}
 	pv_log_put_buffer(log_buffer);
 	return 0;
 }
 
-int pv_device_info_upload(struct pantavisor *pv)
+int pv_device_upload_devmeta(struct pantavisor *pv)
 {
 	unsigned int len = 0;
 	char *json = NULL;
-	struct pv_devinfo *info = NULL, *tmp = NULL;
+	struct pv_devmeta *info = NULL, *tmp = NULL;
 	struct dl_list *head = NULL;
 	int json_avail = 0;
 	struct log_buffer *log_buffer = NULL;
@@ -500,15 +500,15 @@ int pv_device_info_upload(struct pantavisor *pv)
 		return -1;
 	}
 
-	if (dl_list_empty(&pv->dev->infolist))
+	if (dl_list_empty(&pv->dev->devmeta_list))
 		goto out;
 	json = log_buffer->buf;
 	json_avail = log_buffer->size;
 	json_avail -= sprintf(json, "{");
 	len += 1;
-	head = &pv->dev->infolist;
+	head = &pv->dev->devmeta_list;
 	dl_list_for_each_safe(info, tmp, head,
-			struct pv_devinfo, list) {
+			struct pv_devmeta, list) {
 		char *key = format_json(info->key, strlen(info->key));
 		char *val = format_json(info->value, strlen(info->value));
 
@@ -537,7 +537,7 @@ int pv_device_info_upload(struct pantavisor *pv)
 	json[len - 1] = '}';
 	pv_log(INFO, "device info json = %s", json);
 	if(!pv_ph_upload_metadata(pv, json))
-		pv_devinfo_remove(pv->dev);
+		pv_devmeta_remove(pv->dev);
 out:
 	pv_log_put_buffer(log_buffer);
 	return 0;
@@ -729,10 +729,10 @@ static int pv_device_init(struct pv_init *this)
 	sprintf(tmp, "https://%s:%d\n", config->creds.host, config->creds.port);
 	write(fd, tmp, strlen(tmp));
 	close(fd);
-	
+
 	pv->dev = calloc(1, sizeof(struct pv_device));
 	if (pv->dev) {
-		dl_list_init(&pv->dev->metalist);
+		dl_list_init(&pv->dev->usermeta_list);
 		pv->dev->id = strdup(pv->config->creds.id);
 		if (!pv->dev->id) {
 			free(pv->dev);
@@ -782,7 +782,7 @@ static void pv_device_free(struct pv_device *dev)
 		free(dev->prn);
 
 	pv_usermeta_remove(dev);
-	pv_devinfo_remove(dev);
+	pv_devmeta_remove(dev);
 
 	free(dev);
 }

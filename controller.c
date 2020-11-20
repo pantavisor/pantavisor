@@ -180,7 +180,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_meta_set_objdir(pv);
-	pv_device_info_parse(pv);
+	pv_device_parse_devmeta(pv);
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
@@ -264,7 +264,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 	if (!pv)
 		return 0;
 	// update meta
-	pv_device_info_upload(pv);
+	pv_device_upload_devmeta(pv);
 	pv_network_update_meta(pv);
 	pv_ph_device_get_meta(pv);
 	return 0;
@@ -277,16 +277,13 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	// report testing update if new revision is ready
 	pv_update_test(pv);
 
-	// get current time for testing and rollback time
-	if (pv_update_is_testing(pv->update))
-		clock_gettime(CLOCK_MONOTONIC, &tp);
-
 	// check if we are online and authenticated
 	if (!pv_ph_is_available(pv) ||
 		!pv_ph_is_auth(pv) ||
 		!pv_trail_is_auth(pv)) {
 		// this could mean the testing update is not good
 		if (pv_update_is_testing(pv->update)) {
+			clock_gettime(CLOCK_MONOTONIC, &tp);
 			rollback_time = tp.tv_sec - rollback_time;
 			pv_log(WARN, "%d seconds without connection since boot. Will rollback when %d is reached", rollback_time, pv->config->update_commit_delay);
 			if (rollback_time >= pv->config->update_commit_delay)
@@ -314,6 +311,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		// if the update is being tested, we might have to wait
 		if (pv_update_is_testing(pv->update)) {
 			// progress if possible the state of testing update
+			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
 				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				return STATE_WAIT;
