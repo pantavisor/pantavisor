@@ -151,11 +151,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	struct timespec tp;
-	int runlevel = 0;
+	int runlevel = RUNLEVEL_ROOT;
 
 	// resume update if we have booted to test a new revision
 	runlevel = pv_update_resume(pv);
-	if (runlevel < 0) {
+	if (runlevel < RUNLEVEL_ROOT) {
 		pv_log(ERROR, "update could not be resumed");
 		return STATE_ROLLBACK;
 	}

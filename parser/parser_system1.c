@@ -471,10 +471,10 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 		return -1;
 
 	if (!strcmp(value, "root"))
-		(*bundle->platform)->runlevel = 0;
-	// runlevel 1 is reserved for platforms without explicily configured runlevel
+		(*bundle->platform)->runlevel = RUNLEVEL_ROOT;
+	// runlevel PLATFORM is reserved for platforms without explicily configured runlevel
 	else if (!strcmp(value, "app"))
-		(*bundle->platform)->runlevel = 2;
+		(*bundle->platform)->runlevel = RUNLEVEL_APP;
 	else {
 		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'", value, (*bundle->platform)->name);
 	}

@@ -1734,15 +1734,19 @@ int pv_update_resume(struct pantavisor *pv)
 			pv_update_set_status(pv, UPDATE_FAILED);
 	}
 
-	return 0;
+	return RUNLEVEL_ROOT;
 }
 
 bool pv_update_requires_reboot(struct pantavisor *pv)
 {
 	// we reboot for changes with explicitly configured "root" platforms and non-configured ones
-	if (pv->update->runlevel <= 1) {
+	if (pv->update->runlevel <= RUNLEVEL_PLATFORM) {
 		pv_log(WARN, "update runlevel %d requires reboot, rebooting...",
 			pv->update->runlevel);
+
+		// we want to stop and unmount all plats and volumes, so we change the runlevel to ROOT
+		pv->update->runlevel = RUNLEVEL_ROOT;
+
 		pv_update_set_status(pv, UPDATE_REBOOT);
 		return true;
 	}
