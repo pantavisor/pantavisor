@@ -1100,6 +1100,8 @@ int pv_update_finish(struct pantavisor *pv)
 			return -1;
 		}
 		pv_update_set_status(pv, UPDATE_DONE);
+		// we keep this here so we can rollback to new DONE revisions from old pantavisor versio
+		pv_set_rev_done(pv, pv->state->rev);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
 		break;

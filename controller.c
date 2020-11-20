@@ -277,6 +277,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	// report testing update if new revision is ready
 	pv_update_test(pv);
 
+	// get current time for testing and rollback time
 	if (pv_update_is_testing(pv->update))
 		clock_gettime(CLOCK_MONOTONIC, &tp);
 
