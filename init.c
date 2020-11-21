@@ -171,8 +171,9 @@ static void debug_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd')
-		shell_pid = tsh_run("sh", 0, NULL);
+	if (c[0] == 'd') {
+		shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+	}
 }
 #else
 static void debug_shell()
