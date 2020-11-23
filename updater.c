@@ -170,6 +170,18 @@ static int trail_remote_init(struct pantavisor *pv)
 		goto err;
 	sprintf(remote->endpoint_trail_new, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
 
+	remote->endpoint_trail_downloading = (char*)calloc(1, strlen(endpoint_trail)
+		+ sizeof(DEVICE_TRAIL_ENDPOINT_DOWNLOADING));
+	if (!remote->endpoint_trail_downloading)
+		goto err;
+	sprintf(remote->endpoint_trail_downloading, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
+
+	remote->endpoint_trail_inprogress = (char*)calloc(1, strlen(endpoint_trail)
+		+ sizeof(DEVICE_TRAIL_ENDPOINT_INPROGRESS));
+	if (!remote->endpoint_trail_inprogress)
+		goto err;
+	sprintf(remote->endpoint_trail_inprogress, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_INPROGRESS);
+
 	pv->remote = remote;
 
 	return 0;
@@ -522,6 +534,24 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	if (pv->update)
 		goto new_update;
 
+	// check for DOWNLOADING updates
+	res = trail_get_steps_response(pv, remote->endpoint_trail_downloading);
+	if (res) {
+		pv_log(DEBUG, "found DOWNLOADING revision");
+		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
+			pv_log(WARN, "failed to parse DOWNLOADING revision");
+		goto process_response;
+	}
+
+	// check for INPROGRESS updates
+	res = trail_get_steps_response(pv, remote->endpoint_trail_inprogress);
+	if (res) {
+		pv_log(DEBUG, "found INPROGRESS revision");
+		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
+			pv_log(WARN, "failed to parse INPROGRESS revision");
+		goto process_response;
+	}
+
 	// check for QUEUED updates
 	res = trail_get_steps_response(pv, remote->endpoint_trail_queued);
 	if (res) {
@@ -566,9 +596,18 @@ process_response:
 
 	// parse state
 	update->pending = pv_state_parse(pv, state, rev);
+
 	if (!update->pending) {
-		pv_log(INFO, "invalid rev (%d) found on remote", rev);
+		pv_log(INFO, "invalid rev %d found on remote", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		pv_update_free(update);
+		goto out;
+	}
+
+	// if this is an old busted revision, set is as FAILED so it is no longer listed
+	if (rev < pv->state->rev) {
+		pv_log(INFO, "stale rev %d found on remote", rev);
+		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -584,7 +623,6 @@ process_response:
 		trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
 		pv_update_free(update);
 	}
-
 
 out:
 	if (rev_s)
@@ -1045,6 +1083,10 @@ static void pv_trail_remote_free(struct trail_remote *trail)
 		free(trail->endpoint_trail_queued);
 	if (trail->endpoint_trail_new)
 		free(trail->endpoint_trail_new);
+	if (trail->endpoint_trail_queued)
+		free(trail->endpoint_trail_queued);
+	if (trail->endpoint_trail_inprogress)
+		free(trail->endpoint_trail_inprogress);
 
 	free(trail);
 }

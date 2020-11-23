@@ -38,6 +38,8 @@
 #define TRAIL_OBJECT_DL_FMT	"/objects/%s"
 #define DEVICE_TRAIL_ENDPOINT_QUEUED "?progress.status=QUEUED"
 #define DEVICE_TRAIL_ENDPOINT_NEW "?progress.status=NEW"
+#define DEVICE_TRAIL_ENDPOINT_DOWNLOADING "?progress.status=DOWNLOADING"
+#define DEVICE_TRAIL_ENDPOINT_INPROGRESS "?progress.status=INPROGRESS"
 
 #define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
@@ -95,6 +97,8 @@ struct trail_remote {
 	trest_ptr client;
 	char *endpoint_trail_queued;
 	char *endpoint_trail_new;
+	char *endpoint_trail_downloading;
+	char *endpoint_trail_inprogress;
 	struct pv_state *pending;
 };
 
