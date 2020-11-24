@@ -539,8 +539,6 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	res = trail_get_steps_response(pv, remote->endpoint_trail_downloading);
 	if (res) {
 		pv_log(DEBUG, "found DOWNLOADING revision");
-		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-			pv_log(WARN, "failed to parse DOWNLOADING revision");
 		goto process_response;
 	}
 
@@ -549,8 +547,6 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	if (res) {
 		pv_log(DEBUG, "found INPROGRESS revision");
 		wrong_revision = true;
-		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-			pv_log(WARN, "failed to parse INPROGRESS revision");
 		goto process_response;
 	}
 
@@ -558,19 +554,14 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	res = trail_get_steps_response(pv, remote->endpoint_trail_queued);
 	if (res) {
 		pv_log(DEBUG, "found QUEUED revision");
-		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-			pv_log(WARN, "failed to parse QUEUED revision");
 		goto process_response;
 	}
 
 new_update:
 	// check for NEW updates
 	res = trail_get_steps_response(pv, remote->endpoint_trail_new);
-	if (res) {
+	if (res)
 		pv_log(DEBUG, "found NEW revision");
-		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-			pv_log(WARN, "failed to parse NEW revision");
-	}
 
 process_response:
 	if (res) {
@@ -590,6 +581,8 @@ process_response:
 
 	rev = atoi(rev_s);
 	pv_log(DEBUG, "parse rev %d with json state = '%s'", rev, state);
+	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
+		pv_log(WARN, "failed to parse the rest of the response");
 
 	if (rev < pv->state->rev) {
 		wrong_revision = true;
