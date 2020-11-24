@@ -1061,11 +1061,9 @@ void pv_update_test(struct pantavisor *pv)
 		return;
 
 	switch (pv->update->status) {
-	case UPDATE_TESTING_REBOOT:
 	case UPDATE_TRY:
 		pv_update_set_status(pv, UPDATE_TESTING_REBOOT);
 		break;
-	case UPDATE_TESTING_NONREBOOT:
 	case UPDATE_TRANSITION:
 		pv_update_set_status(pv, UPDATE_TESTING_NONREBOOT);
 		break;
@@ -1762,13 +1760,19 @@ bool pv_update_is_transitioning(struct pv_update *u)
 	return (u && u->status == UPDATE_TRANSITION);
 }
 
+bool pv_update_is_trying(struct pv_update *u)
+{
+	return (u &&
+		((u->status == UPDATE_TRANSITION) ||
+		(u->status == UPDATE_TRY)));
+}
+
 bool pv_update_is_testing(struct pv_update *u)
 {
 	return (u &&
 		((u->status == UPDATE_TESTING_REBOOT) ||
 		(u->status == UPDATE_TESTING_NONREBOOT)));
 }
-
 
 static int pv_update_init(struct pv_init *this)
 {

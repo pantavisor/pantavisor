@@ -204,7 +204,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = 0;
-	commit_delay = tp.tv_sec + pv->config->update_commit_delay;
+	commit_delay = 0;
 	rollback_time = tp.tv_sec;
 
 	return STATE_WAIT;
@@ -274,23 +274,30 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timespec tp;
 
-	// report testing update if new revision is ready
-	pv_update_test(pv);
-
 	// check if we are online and authenticated
 	if (!pv_ph_is_available(pv) ||
 		!pv_ph_is_auth(pv) ||
 		!pv_trail_is_auth(pv)) {
-		// this could mean the testing update is not good
-		if (pv_update_is_testing(pv->update)) {
+		// this could mean the trying update cannot connect to ph
+		if (pv_update_is_trying(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			rollback_time = tp.tv_sec - rollback_time;
-			pv_log(WARN, "%d seconds without connection since boot. Will rollback when %d is reached", rollback_time, pv->config->update_commit_delay);
-			if (rollback_time >= pv->config->update_commit_delay)
+			pv_log(WARN, "%d seconds without connection since boot. Will rollback when %d is reached", rollback_time, pv->config->updater.network_timeout);
+			if (rollback_time >= pv->config->updater.network_timeout)
 				return STATE_ROLLBACK;
+		// or we directly rollback is connection is not stable during testing
+		} else if (pv_update_is_testing(pv->update)) {
+			return STATE_ROLLBACK;
 		}
-		// if there is no connection, we avoid the rest of network operations
+		// if there is no connection and no rollback yet, we avoid the rest of network operations
 		return STATE_WAIT;
+	}
+
+	if (pv_update_is_trying(pv->update)) {
+		// set initial testing time
+		commit_delay = tp.tv_sec + pv->config->update_commit_delay;
+		// progress update state to testing
+		pv_update_test(pv);
 	}
 
 	// start ph logger cloud if not done and if possible
@@ -350,7 +357,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
-		next_state = (pv_update_is_testing(pv->update)) ? STATE_ROLLBACK : STATE_REBOOT;
+		if (pv_update_is_trying(pv->update) || pv_update_is_testing(pv->update))
+			next_state = STATE_ROLLBACK;
+		else
+			next_state = STATE_REBOOT;
 		goto out;
 	}
 

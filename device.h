@@ -41,7 +41,7 @@ bool pv_device_factory_meta_done(struct pantavisor *pv);
 int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
 
 int pv_device_parse_devmeta(struct pantavisor *pv);
-int pv_device_upload_metadata(struct pantavisor *pv);
+int pv_device_upload_devmeta(struct pantavisor *pv);
 
 void pv_device_remove(struct pantavisor *pv);
 
