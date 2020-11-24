@@ -136,7 +136,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 		goto out;
 	}
 
-	pv_log(DEBUG, "mounting '%s' of platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
+	pv_log(DEBUG, "mounting '%s' from platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
 
 	switch (v->type) {
 	case VOL_LOOPIMG:
@@ -174,8 +174,10 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 		break;
 	}
 
-	if (ret < 0)
+	if (ret < 0) {
+		pv_log(ERROR, "error mounting '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
 		goto out;
+	}
 
 	pv_log(DEBUG, "mounted '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
 	// register mount state
@@ -254,10 +256,10 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 				continue;
 
 			ret = pv_volumes_mount_volume(pv, v);
-			if (!ret)
-				num_vol++;
-			else
+			if (ret)
 				goto out;
+
+			num_vol++;
 		}
 	}
 

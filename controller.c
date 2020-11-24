@@ -185,8 +185,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
 	// start up volumes and platforms
-	if (pv_volumes_mount(pv, runlevel) < 0)
+	if (pv_volumes_mount(pv, runlevel) < 0) {
+		pv_log(ERROR, "error mounting volumes");
 		return STATE_ROLLBACK;
+	}
 
 	if (pv_make_config(pv) < 0) {
 		pv_log(ERROR, "error making config");

@@ -511,6 +511,7 @@ static struct pv_update* pv_update_new(char *id, int rev)
 
 static int trail_get_new_steps(struct pantavisor *pv)
 {
+	bool wrong_revision = false;
 	int rev = 0, ret = 0;
 	char *state = 0, *rev_s = 0;
 	struct trail_remote *remote = pv->remote;
@@ -547,6 +548,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	res = trail_get_steps_response(pv, remote->endpoint_trail_inprogress);
 	if (res) {
 		pv_log(DEBUG, "found INPROGRESS revision");
+		wrong_revision = true;
 		if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
 			pv_log(WARN, "failed to parse INPROGRESS revision");
 		goto process_response;
@@ -589,6 +591,11 @@ process_response:
 	rev = atoi(rev_s);
 	pv_log(DEBUG, "parse rev %d with json state = '%s'", rev, state);
 
+	if (rev < pv->state->rev) {
+		wrong_revision = true;
+		pv_log(WARN, "stale rev %d found on remote", rev);
+	}
+
 	// create temp update to be able to report the revision state
 	update = pv_update_new(pv->config->creds.id, rev);
 	if (!update)
@@ -598,15 +605,14 @@ process_response:
 	update->pending = pv_state_parse(pv, state, rev);
 
 	if (!update->pending) {
-		pv_log(INFO, "invalid rev %d found on remote", rev);
+		pv_log(WARN, "invalid rev %d found on remote", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
 
 	// if this is an old busted revision, set is as FAILED so it is no longer listed
-	if (rev < pv->state->rev) {
-		pv_log(INFO, "stale rev %d found on remote", rev);
+	if (wrong_revision) {
 		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
 		pv_update_free(update);
 		goto out;
