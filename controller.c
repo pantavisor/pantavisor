@@ -283,7 +283,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		if (pv_update_is_trying(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
-			if (rollback_time >= tp.tv_sec)
+			if (rollback_time <= tp.tv_sec)
 				return STATE_ROLLBACK;
 		// or we directly rollback is connection is not stable during testing
 		} else if (pv_update_is_testing(pv->update)) {
@@ -319,7 +319,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		if (pv_update_is_testing(pv->update)) {
 			// progress if possible the state of testing update
 			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (commit_delay >= tp.tv_sec) {
+			if (commit_delay > tp.tv_sec) {
 				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				return STATE_WAIT;
 			}
