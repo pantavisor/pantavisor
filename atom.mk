@@ -16,6 +16,7 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_LIBRARIES := libthttp libpvlogger mbedtls
+LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:e2fsprogs
 
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
@@ -74,6 +75,8 @@ LOCAL_SRC_FILES := init.c \
 
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
+
+LOCAL_COPY_FILES := pv_e2fsgrow:sbin/pv_e2fsgrow
 
 include $(BUILD_EXECUTABLE)
 

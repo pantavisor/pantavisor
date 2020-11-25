@@ -106,6 +106,15 @@ static int pv_mount_init(struct pv_init *this)
 	if (!dev_info.device)
 		exit_error(errno, "Could not mount trails storage. No device found.");
 
+
+	// attempt auto resize only if we have ext4
+	if (!strcmp(config->storage.fstype, "ext4")) {
+		char *run = malloc(sizeof(char) * (strlen("/sbin/pv_e2fsgrow") + strlen(dev_info.device) + 3));
+		sprintf(run, "/sbin/pv_e2fsgrow %s", dev_info.device);
+		tsh_run(run, 1, NULL);
+		free(run);
+	}
+
 	if (!config->storage.mnttype) {
 		ret = mount(dev_info.device, config->storage.mntpoint, config->storage.fstype, 0, NULL);
 	} else {

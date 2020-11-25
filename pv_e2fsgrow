@@ -1,0 +1,89 @@
+#!/bin/sh
+
+set -e
+
+exec >/dev/kmsg 2>&1
+
+echo_err() {
+	echo "pv_e2fsgrow|ERROR: $1"
+}
+
+echo_info() {
+	echo "pv_e2fsgrow|INFO: $1"
+}
+
+if ! test -x /sbin/fdisk; then
+	echo_info "/sbin/fdisk not installed; skipping..."
+	exit 0
+fi
+
+if ! test -x /usr/sbin/resize2fs; then
+	echo_info "/usr/sbin/resize2fs not installed; skipping..."
+	exit 0
+fi
+
+
+if cat /proc/cmdline | grep -q pv_autogrow=debug; then
+	echo_info "system integrator enabled autogrow feature with debug..."
+	set -x
+fi
+
+if cat /proc/cmdline | grep -q pv_autogrow=off; then
+	echo_info "system integrator disabled autogrow feature; skipping..."
+	exit 0
+fi
+
+basename_i() {
+	echo $1 | sed -e 's/.*\/\([^/]*\)$/\1/'
+}
+
+rootpart=$1
+
+if ! [ -b $rootpart ]; then
+	echo_err "ERROR: rootpart not found $rootpart"
+	exit 1
+fi
+
+rootbase=`basename_i $rootpart`
+
+if [ "" = "$rootbase" ];then
+	echo_err "something went wrong; could not find root storage mmc partition ... continuing in hope ..."
+	exit 2
+fi
+
+rootdisk=`echo $rootpart | sed -e 's/[p]*[0-9][0-9]*$//'`
+
+if ! [ -b "$rootdisk" ];then
+	echo_err "something went wrong; could not find root disk dev node $rootdisk ... continuing anyway..."
+	exit 3
+fi
+
+/sbin/fdisk -l $rootdisk
+
+if /sbin/fdisk -l $rootdisk | grep GPT; then
+	echo_info "GPT table not supported; skipping grow partition ..."
+	exit 0
+fi
+
+sectors=`/sbin/fdisk -l $rootdisk | grep Disk.*$rootdisk | sed -e 's/^.* \([0-9]*\) sectors$/\1/'`
+partstart=`/sbin/fdisk -l $rootdisk | grep $rootbase | awk '{ print $4 }'`
+partend=`/sbin/fdisk -l $rootdisk |  grep $rootbase | awk '{ print $5 }'`
+
+if test -z "$sectors"; then echo "ERROR parsing fdisk output (sectors empty); skipping grow partition"; exit 4; fi
+if test -z "$partstart"; then echo "ERROR parsing fdisk output (partstart empty); skipping grow partition"; exit 5; fi
+if test -z "$partend"; then echo "ERROR parsing fdisk output (partstart empty); skipping grow partition"; exit 6; fi
+
+if test $(( $sectors - $partend )) -lt 10; then
+	echo_info "partition already maximized; skipping."
+	exit 0
+fi
+
+partno=`echo $rootpart | sed -e 's/.*\([0-9][0-9]*\)$/\1/'`
+
+echo_info "Repartition rootdisk ext4 part $partno of $rootpart"
+echo -e "p\nd\n${partno}\nn\np\n${partno}\n${partstart}\n\np\nw\n" | /sbin/fdisk $rootdisk
+echo_info "Resizing rootdisk ext4 $rootpart"
+
+/usr/sbin/resize2fs $rootpart
+sync
+echo_info "Successfully repartitioned ..."  
