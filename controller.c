@@ -205,7 +205,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = 0;
 	commit_delay = 0;
-	rollback_time = tp.tv_sec;
+	rollback_time = tp.tv_sec + pv->config->updater.network_timeout;
+	pv_log(INFO, "will rollback in %d seconds if connection cannot be established", pv->config->updater.network_timeout);
 
 	return STATE_WAIT;
 }
@@ -281,9 +282,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
-			rollback_time = tp.tv_sec - rollback_time;
-			pv_log(WARN, "%d seconds without connection since boot. Will rollback when %d is reached", rollback_time, pv->config->updater.network_timeout);
-			if (rollback_time >= pv->config->updater.network_timeout)
+			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
+			if (rollback_time >= tp.tv_sec)
 				return STATE_ROLLBACK;
 		// or we directly rollback is connection is not stable during testing
 		} else if (pv_update_is_testing(pv->update)) {
@@ -291,13 +291,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		}
 		// if there is no connection and no rollback yet, we avoid the rest of network operations
 		return STATE_WAIT;
-	}
-
-	if (pv_update_is_trying(pv->update)) {
-		// set initial testing time
-		commit_delay = tp.tv_sec + pv->config->update_commit_delay;
-		// progress update state to testing
-		pv_update_test(pv);
 	}
 
 	// start ph logger cloud if not done and if possible
@@ -315,11 +308,18 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update) {
+		if (pv_update_is_trying(pv->update)) {
+			// set initial testing time
+			clock_gettime(CLOCK_MONOTONIC, &tp);
+			commit_delay = tp.tv_sec + pv->config->update_commit_delay;
+			// progress update state to testing
+			pv_update_test(pv);
+		} 
 		// if the update is being tested, we might have to wait
 		if (pv_update_is_testing(pv->update)) {
 			// progress if possible the state of testing update
 			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (commit_delay > tp.tv_sec) {
+			if (commit_delay >= tp.tv_sec) {
 				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
 				return STATE_WAIT;
 			}
