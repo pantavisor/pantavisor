@@ -282,9 +282,9 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
-			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
 			if (rollback_time <= tp.tv_sec)
 				return STATE_ROLLBACK;
+			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
 		// or we directly rollback is connection is not stable during testing
 		} else if (pv_update_is_testing(pv->update)) {
 			return STATE_ROLLBACK;
