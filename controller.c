@@ -185,8 +185,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
 	// start up volumes and platforms
-	if (pv_volumes_mount(pv, runlevel) < 0)
+	if (pv_volumes_mount(pv, runlevel) < 0) {
+		pv_log(ERROR, "error mounting volumes");
 		return STATE_ROLLBACK;
+	}
 
 	if (pv_make_config(pv) < 0) {
 		pv_log(ERROR, "error making config");
@@ -206,7 +208,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	wait_delay = 0;
 	commit_delay = 0;
 	rollback_time = tp.tv_sec + pv->config->updater.network_timeout;
-	pv_log(INFO, "will rollback in %d seconds if connection cannot be established", pv->config->updater.network_timeout);
 
 	return STATE_WAIT;
 }
@@ -314,7 +315,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 			commit_delay = tp.tv_sec + pv->config->update_commit_delay;
 			// progress update state to testing
 			pv_update_test(pv);
-		} 
+		}
 		// if the update is being tested, we might have to wait
 		if (pv_update_is_testing(pv->update)) {
 			// progress if possible the state of testing update
