@@ -90,7 +90,6 @@ struct pv_update {
 	struct pv_state *pending;
 	char *progress_objects;
 	struct object_update *total_update;
-	char retry_data[64];
 };
 
 struct trail_remote {

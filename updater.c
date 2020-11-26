@@ -225,7 +225,6 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	trest_response_ptr res = 0;
 	char __json[1024];
 	char *json = __json;
-	char *json_progress = "";
 	char retries[6]; /*json holder for retry_count*/
 	char retry_message[128];
 	char total_progress_json[512];
@@ -242,18 +241,17 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			__retries = update->pending->retries;
 
 		pv_log(DEBUG, "update queued, retry count is %d", __retries);
+		// form message
 		if (__retries > 0) {
-			snprintf(retries, sizeof(retries), "%d", __retries);
-			sprintf(retry_message, "Update queued, retry %s of %d", retries,
-					MAX_REVISION_RETRIES);
+			sprintf(retry_message, "Update queued, retry %d of %d",
+				__retries,
+				MAX_REVISION_RETRIES);
 		} else
 			sprintf(retry_message, "Update queued");
+		// form request
+		snprintf(retries, sizeof(retries), "%d", __retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
-		if (update) {
-			snprintf(update->retry_data,
-				sizeof(update->retry_data), "%s", retries);
-		}
 		break;
 	case UPDATE_DOWNLOADED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -293,26 +291,20 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			"WONTGO", "Remote state cannot be parsed", 0);
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		//BUG_ON(!update)
-		if (update->pending->retries) {
-			snprintf(retry_message, sizeof(retry_message),
-				"Network unavailable while downloading "
-				"(%d/%d)",update->pending->retries,
-				MAX_REVISION_RETRIES);
-		} else {
-			snprintf(retry_message, sizeof(retry_message),
-				"Network unavailable while downloading. Retrying shortly");
-		}
-		snprintf(retries, sizeof(retries), "%d",
-				update->pending->retries);
+		if (update->pending)
+			__retries = update->pending->retries;
+
+		pv_log(DEBUG, "download needs to be retried, retry count is %d", __retries);
+		// form message
+		snprintf(retry_message, sizeof(retry_message),
+			"Network unavailable while downloading, retry %d of %d",
+			__retries,
+			MAX_REVISION_RETRIES);
+		// form request
+		snprintf(retries, sizeof(retries), "%d", __retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
-
-		snprintf(update->retry_data,
-				sizeof(update->retry_data), "%s", retries);
-		/*
-		 * Clear what was downloaded.
-		 */
+		// Clear what was downloaded.
 		update->total_update->total_downloaded = 0;
 		break;
 	case UPDATE_TESTING_REBOOT:
@@ -324,11 +316,10 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			"TESTING", "Awaiting to see if update is stable", 95);
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
-		/*
-		 * check if there is retry data pending.
-		 */
-		if (strlen(update->retry_data))
-			json_progress = update->retry_data;
+		// form retries string 
+		if (update->pending)
+			__retries = update->pending->retries;
+		snprintf(retries, sizeof(retries), "%d", __retries);
 
 		if (update->total_update) {
 			object_update_json(update->total_update,
@@ -361,7 +352,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			 */
 			if (__json == json) {
 				sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-						"DOWNLOADING", "Progress", 0, json_progress,
+						"DOWNLOADING", "Progress", 0, retries,
 						total_progress_json,
 						"");
 				break;
@@ -376,7 +367,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 				len = (len > 0 ? len - 1 : len);
 			}
 			sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-					"DOWNLOADING", "Progress", 0, json_progress,
+					"DOWNLOADING", "Progress", 0, retries,
 					total_progress_json,
 					update->progress_objects);
 			update->progress_objects[len] = '\0';
@@ -535,18 +526,18 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	if (pv->update)
 		goto new_update;
 
-	// check for DOWNLOADING updates
-	res = trail_get_steps_response(pv, remote->endpoint_trail_downloading);
-	if (res) {
-		pv_log(DEBUG, "found DOWNLOADING revision");
-		goto process_response;
-	}
-
 	// check for INPROGRESS updates
 	res = trail_get_steps_response(pv, remote->endpoint_trail_inprogress);
 	if (res) {
 		pv_log(DEBUG, "found INPROGRESS revision");
 		wrong_revision = true;
+		goto process_response;
+	}
+
+	// check for DOWNLOADING updates
+	res = trail_get_steps_response(pv, remote->endpoint_trail_downloading);
+	if (res) {
+		pv_log(DEBUG, "found DOWNLOADING revision");
 		goto process_response;
 	}
 
@@ -560,53 +551,69 @@ static int trail_get_new_steps(struct pantavisor *pv)
 new_update:
 	// check for NEW updates
 	res = trail_get_steps_response(pv, remote->endpoint_trail_new);
-	if (res)
-		pv_log(DEBUG, "found NEW revision");
-
-process_response:
 	if (res) {
-		rev_s = get_json_key_value(res->body, "rev",
-				res->json_tokv, res->json_tokc);
-		state = get_json_key_value(res->body, "state",
-				res->json_tokv, res->json_tokc);
-	} else {
-		pv_log(DEBUG, "no steps to process found, continuing");
-		goto out;
+		pv_log(DEBUG, "found NEW revision");
+		goto process_response;
 	}
 
-	if (!rev_s || !state) {
-		pv_log(WARN, "invalid or no data found on trail, ignoring");
+process_response:
+	// if we have no response, we go out normally
+	if (!res)
+		goto out;
+
+	// parse revision id
+	rev_s = get_json_key_value(res->body, "rev",
+			res->json_tokv, res->json_tokc);
+
+	// this could mean either the server is returning a malformed response or json parser is not working properly
+	// TODO: stop trying until a number of retries
+	if (!rev_s) {
+		pv_log(ERROR, "rev not found in endpoint response, ignoring...");
 		goto out;
 	}
 
 	rev = atoi(rev_s);
-	pv_log(DEBUG, "parse rev %d with json state = '%s'", rev, state);
-	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-		pv_log(WARN, "failed to parse the rest of the response");
-
-	if (rev < pv->state->rev) {
-		wrong_revision = true;
-		pv_log(WARN, "stale rev %d found on remote", rev);
-	}
+	pv_log(INFO, "parse rev %d...", rev);
 
 	// create temp update to be able to report the revision state
 	update = pv_update_new(pv->config->creds.id, rev);
 	if (!update)
 		goto out;
 
-	// parse state
-	update->pending = pv_state_parse(pv, state, rev);
+	if (rev < pv->state->rev) {
+		pv_log(WARN, "stale rev %d found on remote", rev);
+		wrong_revision = true;
+		goto send_feedback;
+	}
 
-	if (!update->pending) {
-		pv_log(WARN, "invalid rev %d found on remote", rev);
+	// parse revision state
+	state = get_json_key_value(res->body, "state",
+			res->json_tokv, res->json_tokc);
+	if (!state) {
+		pv_log(WARN, "state not found in endpoint response");
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		pv_update_free(update);
+		goto send_feedback;
+	}
+
+	// parse revision retry
+	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
+		pv_log(WARN, "failed to parse the rest of the response");
+
+send_feedback:
+
+	if (wrong_revision) {
+		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
 		pv_update_free(update);
 		goto out;
 	}
 
-	// if this is an old busted revision, set is as FAILED so it is no longer listed
-	if (wrong_revision) {
-		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
+	// parse state
+	update->pending = pv_state_parse(pv, state, rev);
+
+	if (!update->pending) {
+		pv_log(WARN, "invalid state from rev %d", rev);
+		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -615,9 +622,11 @@ process_response:
 	if (!pv->update) {
 		pv->update = update;
 		pv_log(DEBUG, "first pending step found is rev %d", pv->update->pending->rev);
+		// set retry number recovered from endpoint response
+		pv->update->pending->retries = retries;
 		pv_update_set_status(pv, UPDATE_QUEUED);
 		ret = 1;
-	// if update is going on, just report the update as QUEUED
+	// if another update is going on, just report the update as QUEUED to be installed later
 	} else {
 		trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
 		pv_update_free(update);
@@ -997,6 +1006,10 @@ int pv_check_for_updates(struct pantavisor *pv)
 		return 0;
 	}
 
+	// if an update is going, we might come from a download retry
+	if (pv->update && pv->update->status == UPDATE_RETRY_DOWNLOAD)
+		return 1;
+
 	/*
 	 * [PKS]
 	 * Improve first boot object upload,
@@ -1051,7 +1064,7 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status)
 
 static int pv_update_start(struct pantavisor *pv)
 {
-	if (pv->update && pv->update->status == UPDATE_QUEUED) {
+	if (pv->update) {
 		int time_left = pv->update->retry_at - time(NULL);
 
 		if (time_left <= 0) {
@@ -1530,8 +1543,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		} else {
 			pv_log(ERROR, "Failed to allocate space for progress data");
 		}
-		pv_log(DEBUG, "retry_data is %s", 
-				pv->update->retry_data);
 		pv_log(DEBUG, "progress_objects is %s", 
 				pv->update->progress_objects);
 	}
