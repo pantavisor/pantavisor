@@ -586,19 +586,16 @@ process_response:
 		goto send_feedback;
 	}
 
-	// parse revision state
+	// parse revision state and retry
 	state = get_json_key_value(res->body, "state",
 			res->json_tokv, res->json_tokc);
-	if (!state) {
-		pv_log(WARN, "state not found in endpoint response");
+	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
+		!state) {
+		pv_log(WARN, "failed to parse the rest of the response");
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto send_feedback;
 	}
-
-	// parse revision retry
-	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY))
-		pv_log(WARN, "failed to parse the rest of the response");
 
 send_feedback:
 
@@ -1521,7 +1518,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		 */
 		if (data_len)
 			to_write += 1;
-		
+
 		if (to_write > remaining) {
 			char *__new_progress_objects = 
 				(char*)realloc(pv->update->progress_objects,
