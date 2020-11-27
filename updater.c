@@ -240,14 +240,8 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		if (update->pending)
 			__retries = update->pending->retries;
 
-		pv_log(DEBUG, "update queued, retry count is %d", __retries);
 		// form message
-		if (__retries > 0) {
-			sprintf(retry_message, "Update queued, retry %d of %d",
-				__retries,
-				MAX_REVISION_RETRIES);
-		} else
-			sprintf(retry_message, "Update queued");
+		sprintf(retry_message, "Update queued");
 		// form request
 		snprintf(retries, sizeof(retries), "%d", __retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
@@ -621,6 +615,13 @@ send_feedback:
 		pv_log(DEBUG, "first pending step found is rev %d", pv->update->pending->rev);
 		// set retry number recovered from endpoint response
 		pv->update->pending->retries = retries;
+		// if a revision has reached the max number of retries and could not be reported at the moment
+		if (pv->update->pending->retries > MAX_REVISION_RETRIES) {
+			pv_log(WARN, "max retries reached in rev %d", rev);
+			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
+			pv_update_free(update);
+			goto out;
+		}
 		pv_update_set_status(pv, UPDATE_QUEUED);
 		ret = 1;
 	// if another update is going on, just report the update as QUEUED to be installed later
@@ -1066,6 +1067,8 @@ static int pv_update_start(struct pantavisor *pv)
 
 		if (time_left <= 0) {
 			pv->update->pending->retries++;
+			if (pv->update->pending->retries > MAX_REVISION_RETRIES)
+				return -1;
 			pv_log(INFO, "trying revision %d ,retry = %d",
 					pv->update->pending->rev, pv->update->pending->retries);
 			// set timer for next retry
@@ -1136,7 +1139,7 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		if (pv->update->pending->retries >= MAX_REVISION_RETRIES) {
+		if (pv->update->pending->retries > MAX_REVISION_RETRIES) {
 			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
 			pv_update_remove(pv);
 			pv_log(INFO, "update finished");
