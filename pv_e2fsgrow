@@ -81,12 +81,13 @@ fi
 echo "running fsck.ext4 $rootpart"
 
 /usr/sbin/fsck.ext4 -p -f $rootpart || true
-
 partno=`echo $rootpart | sed -e 's/.*\([0-9][0-9]*\)$/\1/'`
 
 echo_info "Repartition rootdisk ext4 part $partno of $rootpart"
 echo -e "p\nd\n${partno}\nn\np\n${partno}\n${partstart}\n\np\nw\n" | /sbin/fdisk $rootdisk
 echo_info "Resizing rootdisk ext4 $rootpart"
+
+/usr/sbin/fsck.ext4 -p -f $rootpart || true
 
 /usr/sbin/resize2fs $rootpart || true
 sync
