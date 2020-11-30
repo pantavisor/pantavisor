@@ -76,7 +76,9 @@ LOCAL_SRC_FILES := init.c \
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
 
-LOCAL_COPY_FILES := pv_e2fsgrow:sbin/pv_e2fsgrow
+LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
+	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
+	scripts/JSON.sh:lib/pv/JSON.sh
 
 include $(BUILD_EXECUTABLE)
 

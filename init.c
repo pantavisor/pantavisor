@@ -107,6 +107,13 @@ static int early_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /run");
 
+	mkdir("/exports", 0755);
+	ret = mount("none", "/exports", "tmpfs", 0, NULL);
+	if (!ret)
+		ret = mount("none", "/exports", "tmpfs", MS_REC | MS_SHARED, NULL);
+	if (ret < 0)
+		exit_error(errno, "Could not create /exports disk");
+
 	return 0;
 }
 

@@ -109,8 +109,8 @@ static int pv_mount_init(struct pv_init *this)
 
 	// attempt auto resize only if we have ext4
 	if (!strcmp(config->storage.fstype, "ext4")) {
-		char *run = malloc(sizeof(char) * (strlen("/sbin/pv_e2fsgrow") + strlen(dev_info.device) + 3));
-		sprintf(run, "/sbin/pv_e2fsgrow %s", dev_info.device);
+		char *run = malloc(sizeof(char) * (strlen("/lib/pv/pv_e2fsgrow") + strlen(dev_info.device) + 3));
+		sprintf(run, "/lib/pv/pv_e2fsgrow %s", dev_info.device);
 		tsh_run(run, 1, NULL);
 		free(run);
 	}
