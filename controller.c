@@ -291,7 +291,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	// first thing after checking if device has connection is to try claiming it
+	// first thing after checking if device has connection is to try to claim it
 	if (pv->flags & DEVICE_UNCLAIMED)
 		return STATE_UNCLAIMED;
 
