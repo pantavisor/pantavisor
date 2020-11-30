@@ -219,9 +219,6 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char config_path[256];
 	char *c;
 
-	if (!pv_ph_is_available(pv))
-		return STATE_WAIT;
-
 	c = calloc(1, sizeof(char) * 128);
 
 	sprintf(config_path, "%s/config/unclaimed.config", pv->config->storage.mntpoint);
@@ -252,7 +249,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	if (c)
 		free(c);
 
-	return STATE_FACTORY_UPLOAD;
+	return STATE_WAIT;
 }
 
 /*
@@ -293,6 +290,10 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		// if there is no connection and no rollback yet, we avoid the rest of network operations
 		return STATE_WAIT;
 	}
+
+	// first thing after checking if device has connection is to try claiming it
+	if (pv->flags & DEVICE_UNCLAIMED)
+		return STATE_UNCLAIMED;
 
 	// start ph logger cloud if not done and if possible
 	ph_logger_start_cloud(pv, pv->state->rev);
@@ -349,12 +350,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	// check if device is unclaimed
-	if (pv->flags & DEVICE_UNCLAIMED) {
-		next_state = STATE_UNCLAIMED;
-		goto out;
-	}
-
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
@@ -365,7 +360,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	// network wait stuff: connectivity check. update management,
+	// network wait stuff: claim, connectivity check. update management,
 	// meta data uppload, ph logger push start...
 	next_state = pv_wait_network(pv);
 out:
