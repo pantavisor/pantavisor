@@ -219,6 +219,9 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char config_path[256];
 	char *c;
 
+	if (!pv_ph_is_available(pv))
+		return STATE_WAIT;
+
 	c = calloc(1, sizeof(char) * 128);
 
 	sprintf(config_path, "%s/config/unclaimed.config", pv->config->storage.mntpoint);
@@ -291,10 +294,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	// first thing after checking if device has connection is to try to claim it
-	if (pv->flags & DEVICE_UNCLAIMED)
-		return STATE_UNCLAIMED;
-
 	// start ph logger cloud if not done and if possible
 	ph_logger_start_cloud(pv, pv->state->rev);
 
@@ -335,8 +334,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
-	pv_state_t next_state = STATE_WAIT;
-
 	// with this wait, we make sure we have not consecutively executed two WAITs
 	// in less than the configured interval
 	pv_wait_delay(pv->config->updater.interval);
@@ -345,26 +342,25 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->req)
 		pv_cmd_req_remove(pv);
 	pv->req = pv_cmd_socket_wait(pv, 5);
-	if (pv->req) {
-		next_state = STATE_COMMAND;
-		goto out;
-	}
+	if (pv->req)
+		return STATE_COMMAND;
+
+	// check if device is unclaimed
+	if (pv->flags & DEVICE_UNCLAIMED)
+		return STATE_UNCLAIMED;
 
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
 		if (pv_update_is_trying(pv->update) || pv_update_is_testing(pv->update))
-			next_state = STATE_ROLLBACK;
+			return STATE_ROLLBACK;
 		else
-			next_state = STATE_REBOOT;
-		goto out;
+			return STATE_REBOOT;
 	}
 
-	// network wait stuff: claim, connectivity check. update management,
+	// network wait stuff: connectivity check. update management,
 	// meta data uppload, ph logger push start...
-	next_state = pv_wait_network(pv);
-out:
-	return next_state;
+	return pv_wait_network(pv);
 }
 
 static pv_state_t _pv_command(struct pantavisor *pv)
