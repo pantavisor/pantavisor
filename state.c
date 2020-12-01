@@ -28,6 +28,7 @@
 #include "volumes.h"
 #include "platforms.h"
 #include "objects.h"
+#include "jsons.h"
 #include "addons.h"
 #include "pantavisor.h"
 
@@ -73,6 +74,7 @@ void pv_state_free(struct pv_state *s)
 	pv_volumes_empty(s);
 	pv_addons_empty(s);
 	pv_objects_empty(s);
+	pv_jsons_empty(s);
 
 	if (s->json)
 		free(s->json);
@@ -246,32 +248,29 @@ void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 {
 	int runlevel = MAX_RUNLEVEL;
-	struct pv_platform *p, *tmp_p, *curr_p;
-    struct dl_list *platforms ;
+	struct pv_json *j, *tmp_j, *curr_j;
+    struct dl_list *new_jsons = &pending->jsons;
+	struct pv_platform *p, *tmp_p;
+    struct dl_list *platforms;
 	struct pv_object *o, *tmp_o, *curr_o;
 	struct dl_list *new_objects = &pending->objects;
 
 	if (!pending || !current || !new_objects)
 		return 0;
 
-	// search for changes in bsp json
-	if (!pending->bsp.json ||
-		!current->bsp.json ||
-		strcmp(pending->bsp.json, current->bsp.json)) {
-		pv_log(DEBUG, "bsp run.json has been changed in last update");
-		return 0;
-	}
+	// search for changes in jsons
+	dl_list_for_each_safe(j, tmp_j, new_jsons,
+		struct pv_json, list) {
+		curr_j = pv_jsons_get_by_name(current, j->name);
+		if (!curr_j || strcmp(j->value, curr_j->value)) {
+			if (!j->plat) {
+				pv_log(DEBUG, "global or bsp json %s have been changed in last update", j->name);
+				return 0;
+			}
 
-	// search for changes in platforms json
-	platforms = &pending->platforms;
-	dl_list_for_each_safe(p, tmp_p, platforms,
-		struct pv_platform, list) {
-		curr_p = pv_platform_get_by_name(current, p->name);
-		if (!curr_p || strcmp(p->json, curr_p->json)) {
-			pv_log(DEBUG, "platform %s run.json has been changed in last update", p->name);
-			// if run.json has changed, we use the new runlevel
-			if(p->runlevel < runlevel) {
-				runlevel = p->runlevel;
+			pv_log(DEBUG, "json %s from platform %s has been changed in last update", j->name, j->plat->name);
+			if (j->plat->runlevel < runlevel) {
+				runlevel = j->plat->runlevel;
 			}
 		}
 	}

@@ -20,49 +20,18 @@
  * SOFTWARE.
  */
 
-#ifndef PV_STATE_H
-#define PV_STATE_H
+#ifndef PV_JSONS_H
+#define PV_JSONS_H
 
-#include "pantavisor.h"
-
-typedef enum {
-	SPEC_MULTI1,
-	SPEC_SYSTEM1,
-	SPEC_UNKNOWN
-} state_spec_t ;
-
-struct pv_bsp {
-	char *kernel;
-	char *fdt;
-	char *firmware;
-	char *modules;
-	char *initrd;
-	char *json;
+struct pv_json {
+	char *name;
+	char *value;
+	struct pv_platform *plat;
+	struct dl_list list;
 };
 
-struct pv_state {
-	int rev;
-	state_spec_t spec;
-	struct pv_bsp bsp;
-	struct dl_list platforms; // pv_platform
-	struct dl_list volumes; // pv_volume
-	struct dl_list addons; // pv_addon
-	struct dl_list objects; //pv_object
-	struct dl_list jsons; //pv_json
-	char *json;
-	int retries;
-	int tryonce;
-};
+struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value);
+struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name);
+void pv_jsons_empty(struct pv_state *s);
 
-struct pv_state* pv_state_new(int rev, state_spec_t spec);
-void pv_state_free(struct pv_state *s);
-
-void pv_state_print(struct pv_state *s);
-void pv_state_validate(struct pv_state *s);
-
-void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel);
-int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);
-
-state_spec_t pv_state_spec(struct pv_state *s);
-
-#endif
+#endif // PV_JSONS_H

@@ -650,7 +650,6 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		config = 0;
 	}
 
-	this->json = strdup(buf);
 	this->status = PLAT_INSTALLED;
 out:
 	if (config)
@@ -740,9 +739,15 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		if (ext && !strcmp(ext, "/run.json")) {
 			pv_log(DEBUG, "parsing '%s'", key);
 			parse_platform(this, value, strlen(value));
-		// if the extension is other .json, we ignore it
-		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
+			pv_jsons_add(this, key, value);
+		// if the extension is either src.json or build.json, we ignore it
+		if (ext && (!strcmp(ext, "/src.json") ||
+					!strcmp(ext, "/build.json")))
 			pv_log(DEBUG, "skipping '%s'", key);
+		// if the extension is other .json, we add it to the list of jsons
+		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
+			pv_log(DEBUG, "adding json '%s'", key);
+			pv_jsons_add(this, key, value);
 		// everything else is added to the list of objects
 		} else {
 			pv_log(DEBUG, "adding object '%s'", key);
