@@ -253,6 +253,21 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		snprintf(entry, sizeof(entry), "2MB");
 		c->set_config_item(c, "lxc.console.size", entry);
 	}
+
+	/*
+	 * Enable mount hooks
+	 */
+	DIR *d;
+	struct dirent *dir;
+	d = opendir("/lib/pv/hooks_lxc-mount.d");
+	if (d) {
+		char buf[PATH_MAX];
+		while ((dir = readdir(d)) != NULL) {
+			sprintf(buf, "%s/%s", "/lib/pv/hooks_lxc-mount.d", dir->d_name);
+			c->set_config_item(c, "lxc.hook.mount", buf);
+		}
+		closedir(d);
+	}
 }
 
 static void pv_setup_default_log(struct pv_platform *p,
