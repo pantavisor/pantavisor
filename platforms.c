@@ -178,8 +178,6 @@ void pv_platform_free(struct pv_platform *p)
 		free(p->exec);
 	if (p->data)
 		free(p->data);
-	if (p->json)
-		free(p->json);
 
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);

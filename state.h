@@ -37,7 +37,6 @@ struct pv_bsp {
 	char *firmware;
 	char *modules;
 	char *initrd;
-	char *json;
 };
 
 struct pv_state {

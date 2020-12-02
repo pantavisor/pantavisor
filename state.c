@@ -45,6 +45,7 @@ struct pv_state* pv_state_new(int rev, state_spec_t spec)
 		dl_list_init(&s->volumes);
 		dl_list_init(&s->addons);
 		dl_list_init(&s->objects);
+		dl_list_init(&s->jsons);
 	}
 
 	return s;
@@ -67,8 +68,6 @@ void pv_state_free(struct pv_state *s)
 		free(s->bsp.modules);
 	if (s->bsp.initrd)
 		free(s->bsp.initrd);
-	if (s->bsp.json)
-		free(s->bsp.json);
 
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
@@ -217,6 +216,14 @@ void pv_state_print(struct pv_state *s)
 			pv_log(DEBUG, "  platform: '%s'", curr->plat->name);
 	}
 	pv_objects_iter_end;
+	struct pv_json *j, *tmp_j;
+	struct dl_list *jsons = &s->jsons;
+	dl_list_for_each_safe(j, tmp_j, jsons,
+			struct pv_json, list) {
+		pv_log(DEBUG, " json: '%s'", j->name);
+		if (j->plat)
+			pv_log(DEBUG, "  platform: '%s'", j->plat->name);
+	}
 }
 
 void pv_state_validate(struct pv_state *s)
@@ -250,7 +257,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 	int runlevel = MAX_RUNLEVEL;
 	struct pv_json *j, *tmp_j, *curr_j;
     struct dl_list *new_jsons = &pending->jsons;
-	struct pv_platform *p, *tmp_p;
+	struct pv_platform *p, *tmp_p, *curr_p;
     struct dl_list *platforms;
 	struct pv_object *o, *tmp_o, *curr_o;
 	struct dl_list *new_objects = &pending->objects;
@@ -275,11 +282,17 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		}
 	}
 
-	// search for deleted platforms
+	// search for deleted platforms or changes in runlevel
 	platforms = &current->platforms;
 	dl_list_for_each_safe(p, tmp_p, platforms,
 		struct pv_platform, list) {
-		if (!pv_platform_get_by_name(pending, p->name)) {
+		curr_p = pv_platform_get_by_name(pending, p->name);
+		// if exist, check if runlevel has changed
+		if (curr_p && (curr_p->runlevel != p->runlevel)) {
+			pv_log(DEBUG, "platform %s runlevel has changed", p->name);
+			return 0;
+		// if not, it means the platform has been deleted
+		} else {
 			pv_log(DEBUG, "platform %s has been deleted in last update", p->name);
 			// if the platform has been deleted, we respect its runlevel
 			if(p->runlevel < runlevel) {

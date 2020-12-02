@@ -233,7 +233,6 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
-	this->json = strdup(buf);
 	this->status = PLAT_INSTALLED;
 
 out:
