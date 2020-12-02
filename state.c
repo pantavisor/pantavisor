@@ -292,7 +292,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			pv_log(DEBUG, "platform %s runlevel has changed", p->name);
 			return 0;
 		// if not, it means the platform has been deleted
-		} else {
+		} else if (!curr_p) {
 			pv_log(DEBUG, "platform %s has been deleted in last update", p->name);
 			// if the platform has been deleted, we respect its runlevel
 			if(p->runlevel < runlevel) {
