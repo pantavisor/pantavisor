@@ -256,9 +256,9 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 {
 	int runlevel = MAX_RUNLEVEL;
 	struct pv_json *j, *tmp_j, *curr_j;
-    struct dl_list *new_jsons = &pending->jsons;
+	struct dl_list *new_jsons = &pending->jsons;
 	struct pv_platform *p, *tmp_p, *curr_p;
-    struct dl_list *platforms;
+	struct dl_list *platforms;
 	struct pv_object *o, *tmp_o, *curr_o;
 	struct dl_list *new_objects = &pending->objects;
 
