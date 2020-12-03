@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+#set -e
 
 dirname_r() {
 	echo $1 | sed 's/\(.*\)\/.*/\1/'
