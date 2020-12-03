@@ -140,10 +140,14 @@ static void signal_handler(int signal)
 	if (signal != SIGCHLD)
 		return;
 
-	while (	(pid = waitpid(-1, &wstatus, WNOHANG | WUNTRACED)) > 0) {
+	while (	(pid = waitpid(-1, &wstatus, WNOWAIT| WNOHANG | WUNTRACED)) > 0) {
 		// Check for pantavisor
 		if (pid != pv_pid)
 			continue;
+
+		if ((pid = waitpid(pid, &wstatus, WNOHANG)) <=0) {
+			break;
+		}
 
 		pv_teardown(pv);
 
