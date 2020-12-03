@@ -133,7 +133,6 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, cha
 	    return 0;
 
 	while ((dp = readdir(dir)) != NULL) {
-
 		if (strcmp(dp->d_name, ".") != 0 && strcmp(dp->d_name, "..") != 0) {
 
 			// Construct new path from our base path
@@ -260,14 +259,17 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	DIR *d;
 	struct dirent *dir;
 	d = opendir("/lib/pv/hooks_lxc-mount.d");
-	if (d) {
-		char buf[PATH_MAX];
-		while ((dir = readdir(d)) != NULL) {
-			sprintf(buf, "%s/%s", "/lib/pv/hooks_lxc-mount.d", dir->d_name);
-			c->set_config_item(c, "lxc.hook.mount", buf);
-		}
-		closedir(d);
+	if (!d)
+		return;
+
+	char buf[PATH_MAX];
+	while ((dir = readdir(d)) != NULL) {
+		if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
+			continue;
+		sprintf(buf, "%s/%s", "/lib/pv/hooks_lxc-mount.d", dir->d_name);
+		c->set_config_item(c, "lxc.hook.mount", buf);
 	}
+	closedir(d);
 }
 
 static void pv_setup_default_log(struct pv_platform *p,
