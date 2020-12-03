@@ -35,7 +35,7 @@ exports=`cat $runjson | \
 	sh $LIBDIR/JSON.sh -l -n | \
 	grep '\["exports",[0-9][0-9]*\]' | \
 	sed -e 's/^"\(.*\)"$/\1/' | \
-	awk '{ print $2}'`
+	awk '{ print $2}'` || true
 
 if test -z "$exports"; then
 	echo "No exports ... nothing to do ..."
