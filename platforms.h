@@ -42,7 +42,6 @@ struct pv_platform {
 	char *exec;
 	unsigned long ns_share;
 	void *data;
-	char *json;
 	pid_t init_pid;
 	plat_status_t status;
 	int runlevel;

@@ -37,6 +37,7 @@
 #include "platforms.h"
 #include "volumes.h"
 #include "objects.h"
+#include "jsons.h"
 #include "pantavisor.h"
 #include "device.h"
 #include "parser.h"
@@ -67,8 +68,6 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	s->bsp.initrd = get_json_key_value(buf, "initrd", tokv, tokc);
 	s->bsp.firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 	s->bsp.modules = get_json_key_value(buf, "modules", tokv, tokc);
-
-	s->bsp.json = strdup(value);
 
 	if (s->bsp.firmware) {
 		v = pv_volume_add(s, s->bsp.firmware);
@@ -650,7 +649,6 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		config = 0;
 	}
 
-	this->json = strdup(buf);
 	this->status = PLAT_INSTALLED;
 out:
 	if (config)
@@ -658,23 +656,38 @@ out:
 	return 0;
 }
 
-static void system1_link_object_platforms(struct pv_state *s)
+static void system1_link_object_json_platforms(struct pv_state *s)
 {
-	struct pv_object *o, *tmp;
+	struct pv_json *j, *tmp_j;
+	struct dl_list *new_jsons = &s->jsons;
+	struct pv_object *o, *tmp_o;
 	struct dl_list *new_objects = &s->objects;
-	char *o_name, *dir;
+	char *name, *dir;
 
+	// link objects
 	if (!new_objects)
 		return;
-
-	dl_list_for_each_safe(o, tmp, new_objects,
+	dl_list_for_each_safe(o, tmp_o, new_objects,
 		struct pv_object, list) {
-		o_name = strdup(o->name);
-		dir = strtok(o_name, "/");
+		name = strdup(o->name);
+		dir = strtok(name, "/");
 		if (!strcmp(dir, "_config"))
 			dir = strtok(NULL, "/");
 		o->plat = pv_platform_get_by_name(s, dir);
-		free(o_name);
+		free(name);
+	}
+
+	// link jsons
+	if (!new_jsons)
+		return;
+	dl_list_for_each_safe(j, tmp_j, new_jsons,
+		struct pv_json, list) {
+		name = strdup(j->name);
+		dir = strtok(name, "/");
+		if (!strcmp(dir, "_config"))
+			dir = strtok(NULL, "/");
+		j->plat = pv_platform_get_by_name(s, dir);
+		free(name);
 	}
 }
 
@@ -738,11 +751,17 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		ext = strrchr(key, '/');
 		// if the extension is run.json, we have a new platform
 		if (ext && !strcmp(ext, "/run.json")) {
-			pv_log(DEBUG, "parsing '%s'", key);
+			pv_log(DEBUG, "parsing and adding json '%s'", key);
 			parse_platform(this, value, strlen(value));
-		// if the extension is other .json, we ignore it
-		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
+			pv_jsons_add(this, key, value);
+		// if the extension is either src.json or build.json, we ignore it
+		} else if (ext && (!strcmp(ext, "/src.json") ||
+					!strcmp(ext, "/build.json"))) {
 			pv_log(DEBUG, "skipping '%s'", key);
+		// if the extension is other .json, we add it to the list of jsons
+		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
+			pv_log(DEBUG, "adding json '%s'", key);
+			pv_jsons_add(this, key, value);
 		// everything else is added to the list of objects
 		} else {
 			pv_log(DEBUG, "adding object '%s'", key);
@@ -765,7 +784,7 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// copy buffer
 	this->json = strdup(buf);
 
-	system1_link_object_platforms(this);
+	system1_link_object_json_platforms(this);
 
 	pv_state_validate(this);
 
