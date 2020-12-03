@@ -140,14 +140,7 @@ static void signal_handler(int signal)
 	if (signal != SIGCHLD)
 		return;
 
-	while (	(pid = waitpid(-1, &wstatus, WNOWAIT| WNOHANG | WUNTRACED)) > 0) {
-		// Check for pantavisor
-		if (pid != pv_pid)
-			continue;
-
-		if ((pid = waitpid(pid, &wstatus, WNOHANG)) <=0) {
-			break;
-		}
+	while (	(pid = waitpid(pv_pid, &wstatus, WNOHANG)) > 0) {
 
 		pv_teardown(pv);
 
@@ -236,6 +229,7 @@ int main(int argc, char *argv[])
 			printf("manifest: \n%s\n", pv_build_manifest);
 			return 0;
 		}
+		pv_pid = getpid();
 		pantavisor_init(false);
 		return 0;
 	}
