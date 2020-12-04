@@ -141,6 +141,8 @@ static void signal_handler(int signal)
 		return;
 
 	while (	(pid = waitpid(pv_pid, &wstatus, WNOHANG)) > 0) {
+		if (pv_pid == 0)
+			continue;
 
 		pv_teardown(pv);
 
