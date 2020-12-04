@@ -1,7 +1,6 @@
 #!/bin/sh
 
 set -e
-exec 2>&1 > /dev/kmsg
 
 dirname_r() {
 	echo $1 | sed 's/\(.*\)\/.*/\1/'
