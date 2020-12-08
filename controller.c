@@ -219,7 +219,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char config_path[256];
 	char *c;
 
-	if (!pv_ph_is_available(pv))
+	if (!pv_ph_is_auth(pv))
 		return STATE_WAIT;
 
 	c = calloc(1, sizeof(char) * 128);
@@ -277,8 +277,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	struct timespec tp;
 
 	// check if we are online and authenticated
-	if (!pv_ph_is_available(pv) ||
-		!pv_ph_is_auth(pv) ||
+	if (!pv_ph_is_auth(pv) ||
 		!pv_trail_is_auth(pv)) {
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {

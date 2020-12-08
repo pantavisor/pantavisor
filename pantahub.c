@@ -111,9 +111,6 @@ static int ph_client_init(struct pantavisor *pv)
 		return 0;
 
 auth:
-	if (!pv->online)
-		return 0;
-
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK)
 		return 0;
@@ -127,22 +124,46 @@ auth:
 	return 1;
 }
 
+static void pv_ph_set_online(struct pantavisor *pv, bool online)
+{
+	int fd, hint;
+	char *path = "/pv/online";
+	struct stat st;
+
+	hint = stat(path, &st) ? 0 : 1;
+
+	if (online) {
+		if (!hint) {
+			fd = open(path, O_CREAT | O_SYNC, 0400);
+			close(fd);
+		}
+	} else {
+		if (hint)
+			remove(path);
+	}
+
+	pv->online = online;
+}
+
 /* API */
 
 bool pv_ph_is_auth(struct pantavisor *pv)
 {
 	// if client and endpoint exists, it means we have authenticate
 	if (client && endpoint)
-		return true;
+		goto success;
 
-	//authenticate if possible
-	if (pv->online)
-		ph_client_init(pv);
+	ph_client_init(pv);
 
 	if (client && endpoint)
-		return true;
+		goto success;
 
+	pv_ph_set_online(pv, false);
 	return false;
+
+ success:
+	pv_ph_set_online(pv, true);
+	return true;
 }
 
 const char** pv_ph_get_certs(struct pantavisor *__unused)
@@ -176,27 +197,6 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	free(files);
 
 	return (const char **) cafiles;
-}
-
-static void pv_ph_set_online(struct pantavisor *pv, bool online)
-{
-	int fd, hint;
-	char *path = "/pv/online";
-	struct stat st;
-
-	hint = stat(path, &st) ? 0 : 1;
-
-	if (online) {
-		if (!hint) {
-			fd = open(path, O_CREAT | O_SYNC, 0400);
-			close(fd);
-		}
-	} else {
-		if (hint)
-			remove(path);
-	}
-
-	pv->online = online;
 }
 
 /*
@@ -322,48 +322,6 @@ out:
 	return conn;
 }
 
-int pv_ph_is_available(struct pantavisor *pv)
-{
-	struct pv_connection *conn = NULL;
-	
-	if (pv)
-		conn = pv->conn;
-	else
-		return 0;
-
-	if (conn && !connect_try(&conn->sock)) {
-		void *ip = NULL;
-		char dbg_addr[INET6_ADDRSTRLEN];
-
-		switch(conn->sock.sa_family) {
-		case AF_INET6:
-			ip = &((struct sockaddr_in6*)&conn->sock)->sin6_addr;
-			break;
-		case AF_INET:
-		default:
-			ip = &((struct sockaddr_in*)&conn->sock)->sin_addr;
-			break;
-		}
-		pv_log(DEBUG, "PH available at '%s:%d'",
-			inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
-			( conn->sock.sa_family == AF_INET ?
-			ntohs(((struct sockaddr_in*)&conn->sock)->sin_port):
-			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
-			)
-			);
-		goto out;
-	}
-	/*
-	 * Free the old connection first.
-	 * */
-	if (conn)
-		free(conn);
-	pv->conn = pv_get_pv_connection(pv->config);
-out:
-	pv_ph_set_online(pv, pv->conn ? true : false);
-
-	return !!pv->conn;
-}
 
 void pv_ph_release_client(struct pantavisor *pv)
 {
