@@ -317,11 +317,9 @@ static ph_logger_handler_t get_write_handler(int version)
 
 static int ph_logger_get_connection(struct ph_logger *ph_logger, struct pantavisor_config *config)
 {
-	if (ph_logger->pv_conn && !connect_try(&ph_logger->pv_conn->sock))
+	if (ph_logger->pv_conn)
 		goto out;
 
-	if (ph_logger->pv_conn)
-		free(ph_logger->pv_conn);
 	ph_logger->pv_conn = pv_get_pv_connection(config);
 	if (ph_logger->client) {
 		trest_free(ph_logger->client);
