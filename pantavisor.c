@@ -62,6 +62,10 @@
 #include "updater.h"
 #include "cmd.h"
 
+#ifndef O_LARGEFILE
+#define O_LARGEFILE 0
+#endif
+
 pid_t pv_pid;
 static struct pantavisor* global_pv;
 
@@ -510,8 +514,8 @@ int pantavisor_init(bool do_fork)
 {
 	pid_t pid;
 	int nullfd, outfd;
-	outfd = open("/dev/kmsg", O_RDWR|O_LARGEFILE);
-	nullfd = open("/dev/null", O_RDWR|O_LARGEFILE);
+	outfd = open("/dev/kmsg", O_RDWR | O_LARGEFILE);
+	nullfd = open("/dev/null", O_RDWR | O_LARGEFILE);
 	if (outfd) {
 		dup2(outfd, fileno(stdout));
 		dup2(outfd, fileno(stderr));
