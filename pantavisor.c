@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2020 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -435,10 +435,10 @@ err:
 
 struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 {
-        int fd;
-        int size;
-        char path[256];
-        char *buf;
+	int fd;
+	int size;
+	char path[256];
+	char *buf;
 	struct stat st;
 	struct pv_state *s;
 
@@ -509,11 +509,19 @@ static void _pv_init()
 int pantavisor_init(bool do_fork)
 {
 	pid_t pid;
+	int nullfd, outfd;
+	outfd = open("/dev/kmsg", O_RDWR|O_LARGEFILE);
+	nullfd = open("/dev/null", O_RDWR|O_LARGEFILE);
+	if (outfd) {
+		dup2(outfd, fileno(stdout));
+		dup2(outfd, fileno(stderr));
+		dup2(nullfd, fileno(stdin));
+	}
 	if (do_fork) {
-	        pid = fork();
-	        if (pid > 0) {
-	                pv_pid = pid;
-	                goto out;
+		pid = fork();
+		if (pid > 0) {
+			pv_pid = pid;
+			goto out;
 		}
 	}
 
