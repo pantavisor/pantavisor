@@ -197,7 +197,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 			pv->config->creds.secret,
 			(const char **) cafiles,
 			pv_user_agent,
-			(conn ? &conn->sock : NULL)
+			(conn ? NULL : NULL)
 			);
 
 		if (!client) {
@@ -213,7 +213,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 			pv,
 			(const char **) cafiles,
 			pv_user_agent,
-			(conn ? &conn->sock : NULL)
+			(conn ? NULL : NULL)
 			);
 
 		if (!client) {

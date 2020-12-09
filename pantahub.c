@@ -56,51 +56,10 @@
 trest_ptr *client = 0;
 char *endpoint = 0;
 
-int connect_try(struct sockaddr *serv)
-{
-	int ret, fd;
-	socklen_t len;
-	struct timeval tv;
-	fd_set fdset;
-
-	fd = socket(serv->sa_family, SOCK_STREAM, IPPROTO_IP);
-	fcntl(fd, F_SETFL, O_NONBLOCK);
-
-	ret = connect(fd, (struct sockaddr *) serv, sizeof (*serv));
-	if (!ret)
-		goto out;
-
-	if (errno != EINPROGRESS)
-		goto out;
-
-	// 2 second timeout
-	tv.tv_sec = 2;
-	tv.tv_usec = 0;
-
-	FD_ZERO(&fdset);
-	FD_SET(fd, &fdset);
-
-	do {
-		ret = select(fd + 1, 0, &fdset, 0, &tv);
-	}while( (ret < 0) && (errno == EINTR));
-
-	if (ret == 1) {
-		len = sizeof(ret);
-		getsockopt(fd, SOL_SOCKET, SO_ERROR, &ret, &len);
-	} else {
-		ret = -1;
-	}
-
-out:
-	close(fd);
-
-	return ret;
-}
-
 static int ph_client_init(struct pantavisor *pv)
 {
 	int size;
-        trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
+	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 
 	if (client)
 		goto auth;
@@ -112,8 +71,10 @@ static int ph_client_init(struct pantavisor *pv)
 
 auth:
 	status = trest_update_auth(client);
-	if (status != TREST_AUTH_STATUS_OK)
+	if (status != TREST_AUTH_STATUS_OK) {
+		client = NULL; // XXX: free here
 		return 0;
+	}
 
 	if (!endpoint) {
 		size = sizeof(ENDPOINT_FMT) + strlen(pv->config->creds.id) + 1;
@@ -199,60 +160,6 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	return (const char **) cafiles;
 }
 
-/*
- * Returns 0 on success and out can be used,
- * a negative value otherwise and out can't be used.
- *
- * TODO: Add IPv6
- * */
-
-static int pv_do_ph_resolve(const char *ph_host, int port, struct pv_connection *pv_conn)
-{
-	int ret;
-	struct addrinfo hints;
-	struct addrinfo *result = 0, *rp = 0;
-
-	memset(&hints, 0, sizeof(hints));
-	hints.ai_family |= AF_UNSPEC;
-
-	ret = getaddrinfo(ph_host, NULL, &hints, &result);
-	if (ret < 0) {
-		pv_log(DEBUG, "ph_host = %s, ret=%d errno=%d", ph_host, ret, errno);
-		goto out;
-	}
-	ret = -1;
-	rp = result;
-	while (rp) {
-
-		struct sockaddr *sock = rp->ai_addr;
-
-		if  (rp->ai_family == AF_INET) {
-			
-			struct sockaddr_in *_sock = (struct sockaddr_in *) rp->ai_addr;
-			_sock->sin_family = AF_INET;
-			_sock->sin_port = htons(port);
-
-		} else if (rp->ai_family == AF_INET6) {
-
-			struct sockaddr_in6 *_sock = (struct sockaddr_in6 *) rp->ai_addr;
-			_sock->sin6_family = AF_INET6;
-			_sock->sin6_port = htons(port);
-		}
-
-		if (connect_try(sock) == 0) {
-			memcpy(&pv_conn->sock, sock, sizeof(*sock));
-			pv_conn->since = time(NULL);
-			ret = 0;
-			break;
-		}
-		rp = rp->ai_next;
-	}
-	freeaddrinfo(result);
-out:
-	return ret;
-
-}
-
 struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config)
 {
 	struct pv_connection *conn = NULL;
@@ -264,7 +171,7 @@ struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config)
 	conn = (struct pv_connection*)calloc(1, sizeof(struct pv_connection));
 	if (!conn) {
 		pv_log(DEBUG, "Unable to allocate memory for connection\n");
-		goto out;
+		return NULL;
 	}
 	// default to global PH instance
 	if (strcmp(config->creds.host, "") == 0)
@@ -275,50 +182,10 @@ struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config)
 	port = config->creds.port;
 	if (!port)
 		port = 443;
-	ret = pv_do_ph_resolve(host, port, conn);
-out:
-	if (!ret) {
-		void *ip = NULL;
-		switch(conn->sock.sa_family) {
-			case AF_INET6:
-				ip = &((struct sockaddr_in6*)&conn->sock)->sin6_addr;
-				break;
-			case AF_INET:
-			default:
-				ip = &((struct sockaddr_in*)&conn->sock)->sin_addr;
-				break;
-		}
-		pv_log(DEBUG, "PH available at '%s:%d'",
-			inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
-			( conn->sock.sa_family == AF_INET ?
-			ntohs(((struct sockaddr_in*)&conn->sock)->sin_port):
-			ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
-			)
-			);
-	} else {
-		pv_log(DEBUG, "unable to reach Pantahub");
-		if (conn) {
-			void *ip = NULL;
-			switch(conn->sock.sa_family) {
-			case AF_INET6:
-				ip = &((struct sockaddr_in6*)&conn->sock)->sin6_addr;
-				break;
-			case AF_INET:
-			default:
-				ip = &((struct sockaddr_in*)&conn->sock)->sin_addr;
-				break;
-			}
-			pv_log(DEBUG, "freeing connection socket for %s:%d",
-					inet_ntop(conn->sock.sa_family, ip, dbg_addr, sizeof(dbg_addr)),
-					( conn->sock.sa_family == AF_INET ?
-					  ntohs(((struct sockaddr_in*)&conn->sock)->sin_port):
-					  ntohs(((struct sockaddr_in6*)&conn->sock)->sin6_port) 
-					)
-			      );
-			free(conn);
-			conn = NULL;
-		}
-	}
+
+	conn->hostorip = host;
+	conn->port = port;
+
 	return conn;
 }
 
@@ -433,8 +300,6 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 	req->path = "/devices/";
 	req->body = 0;
-	if (pv->conn)
-		req->conn = pv->conn->sock;
 
 	if (pv->config->factory.autotok && strcmp(pv->config->factory.autotok, "")) {
 		req->headers = calloc(1, 2 * sizeof(char *));
@@ -510,7 +375,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 		HUB_CREDS_TYPE_ERROR
 	} creds_type;
 
-        if (!strcmp(pv->config->creds.type, "builtin")) {
+	if (!strcmp(pv->config->creds.type, "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
 	} else if(strlen(pv->config->creds.type) >= 4 &&
 			!strncmp(pv->config->creds.type, "ext-", 4)) {
@@ -539,7 +404,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 
 	switch (creds_type) {
 	case HUB_CREDS_TYPE_BUILTIN:
-		ret = pv_ph_register_self_builtin(pv); 
+		ret = pv_ph_register_self_builtin(pv);
 		break;
 	case HUB_CREDS_TYPE_EXTERNAL:
 		ret = pv_ph_register_self_ext(pv, cmd);
