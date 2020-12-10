@@ -426,6 +426,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		case CMD_JSON_UPDATE_METADATA:
 			pv_ph_upload_metadata(pv, c->data);
 			break;
+		case CMD_JSON_REBOOT_DEVICE:
+			pv_log(DEBUG, "reboot command with message '%s' received. Rebooting...",
+				c->data);
+			next_state = STATE_REBOOT;
+			break;
 		default:
 			pv_log(DEBUG, "unknown json command received");
 		}
@@ -478,14 +483,6 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
 
-	if (pv->state) {
-		if (pv_platforms_stop(pv, 0) < 0)
-			return STATE_ERROR;
-
-		if (pv_volumes_unmount(pv, 0) < 0)
-			pv_log(WARN, "unmount error: ignoring due to rollback");
-	}
-
 	if (pv_revision_set_roolledback()) {
 		pv_log(ERROR, "revision for next boot could not be set");
 		return STATE_ERROR;
@@ -497,6 +494,14 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+
+	if (pv->state) {
+		if (pv_platforms_stop(pv, 0) < 0)
+			pv_log(WARN, "stop error: ignoring due to reboot");
+
+		if (pv_volumes_unmount(pv, 0) < 0)
+			pv_log(WARN, "unmount error: ignoring due to reboot");
+	}
 
 	pv_wdt_start(pv);
 

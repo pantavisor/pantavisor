@@ -34,6 +34,7 @@ enum cmd_json_operation_t {
 	CMD_JSON_UPDATE_METADATA = 1,
 	// add new commands here
 	CMD_JSON_LOG,
+	CMD_JSON_REBOOT_DEVICE,
 	MAX_CMD_JSON_OP
 };
 
@@ -52,7 +53,7 @@ void pv_cmd_req_remove(struct pantavisor *pv);
 
 static inline const char *string_cmd_operation(const enum cmd_json_operation_t op)
 {
-	static const char *strings[] = {NULL, "UPDATE_METADATA","JSON_LOG" };
+	static const char *strings[] = {NULL, "UPDATE_METADATA","JSON_LOG","REBOOT_DEVICE"};
 	return strings[op];
 }
 
