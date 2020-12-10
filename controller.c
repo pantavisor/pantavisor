@@ -342,9 +342,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// in less than the configured interval
 	pv_wait_delay(pv->config->updater.interval);
 
-	// receive new command
+	// free up previous command
 	if (pv->req)
 		pv_cmd_req_remove(pv);
+	// receive new command
 	pv->req = pv_cmd_socket_wait(pv, 5);
 	if (pv->req) {
 		next_state = STATE_COMMAND;
@@ -399,7 +400,6 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		new = pv_get_state(pv, rev);
 		if (!new) {
 			pv_log(DEBUG, "invalid rev requested %d", rev);
-			next_state = STATE_WAIT;
 			goto out;
 		}
 
@@ -427,6 +427,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			pv_ph_upload_metadata(pv, c->data);
 			break;
 		case CMD_JSON_REBOOT_DEVICE:
+			if (pv->update) {
+				pv_log(WARN, "ignoring reboot command as an update is in progress");
+				goto out;
+			}
+
 			pv_log(DEBUG, "reboot command with message '%s' received. Rebooting...",
 				c->data);
 			next_state = STATE_REBOOT;
