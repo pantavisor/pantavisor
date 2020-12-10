@@ -219,9 +219,6 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	char config_path[256];
 	char *c;
 
-	if (!pv_ph_is_auth(pv))
-		return STATE_WAIT;
-
 	c = calloc(1, sizeof(char) * 128);
 
 	sprintf(config_path, "%s/config/unclaimed.config", pv->config->storage.mntpoint);
@@ -231,7 +228,13 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	if ((strcmp(pv->config->creds.id, "") != 0) && pv_ph_device_exists(pv))
 		need_register = 0;
 
-	if (need_register && pv_ph_register_self(pv)) {
+	if (need_register) {
+		if (!pv_ph_register_self(pv)) {
+			pv_ph_release_client(pv);
+			if (c)
+				free(c);
+			return STATE_WAIT;
+		}
 		ph_config_to_file(pv->config, config_path);
 		pv_ph_release_client(pv);
 	}
