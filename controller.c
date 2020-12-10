@@ -451,7 +451,6 @@ out:
 
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
-	pv_state_t next_state = STATE_RUN;
 	int rev = -1;
 
 	// download and install pending step
@@ -464,16 +463,16 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 	// if everything went well, decide whether update requires reboot or not
 	if (pv_update_requires_reboot(pv))
-		next_state = STATE_REBOOT;
+		return STATE_REBOOT;
 
 	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
 	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
 			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
 		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
-		next_state = STATE_ROLLBACK;
+		return STATE_ROLLBACK;
 	}
 
-	return next_state;
+	return STATE_RUN;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
@@ -501,6 +500,7 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	if (pv->state) {
+		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
 		if (pv_platforms_stop(pv, 0) < 0)
 			pv_log(WARN, "stop error: ignoring due to reboot");
 
