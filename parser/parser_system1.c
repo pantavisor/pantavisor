@@ -710,10 +710,12 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 
 	value = get_json_key_value(buf, "bsp/run.json", tokv, tokc);
 	if (!value) {
-		pv_log(WARN, "Unable to get pantavisor.json value from state");
+		pv_log(WARN, "Unable to get bsp/run.json value from state");
 		this = NULL;
 		goto out;
 	}
+
+	pv_jsons_add(this, "bsp/run.json", value);
 
 	this->rev = rev;
 
