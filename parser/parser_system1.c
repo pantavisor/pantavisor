@@ -715,6 +715,7 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		goto out;
 	}
 
+	pv_log(DEBUG, "adding json 'bsp/run.json'");
 	pv_jsons_add(this, "bsp/run.json", value);
 
 	this->rev = rev;
