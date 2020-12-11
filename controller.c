@@ -342,9 +342,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// in less than the configured interval
 	pv_wait_delay(pv->config->updater.interval);
 
-	// receive new command
+	// free up previous command
 	if (pv->req)
 		pv_cmd_req_remove(pv);
+	// receive new command
 	pv->req = pv_cmd_socket_wait(pv, 5);
 	if (pv->req) {
 		next_state = STATE_COMMAND;
@@ -399,7 +400,6 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		new = pv_get_state(pv, rev);
 		if (!new) {
 			pv_log(DEBUG, "invalid rev requested %d", rev);
-			next_state = STATE_WAIT;
 			goto out;
 		}
 
@@ -426,6 +426,16 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		case CMD_JSON_UPDATE_METADATA:
 			pv_ph_upload_metadata(pv, c->data);
 			break;
+		case CMD_JSON_REBOOT_DEVICE:
+			if (pv->update) {
+				pv_log(WARN, "ignoring reboot command because an update is in progress");
+				goto out;
+			}
+
+			pv_log(DEBUG, "reboot command with message '%s' received. Rebooting...",
+				c->data);
+			next_state = STATE_REBOOT;
+			break;
 		default:
 			pv_log(DEBUG, "unknown json command received");
 		}
@@ -441,7 +451,6 @@ out:
 
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
-	pv_state_t next_state = STATE_RUN;
 	int rev = -1;
 
 	// download and install pending step
@@ -454,16 +463,16 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 	// if everything went well, decide whether update requires reboot or not
 	if (pv_update_requires_reboot(pv))
-		next_state = STATE_REBOOT;
+		return STATE_REBOOT;
 
 	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
 	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
 			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
 		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
-		next_state = STATE_ROLLBACK;
+		return STATE_ROLLBACK;
 	}
 
-	return next_state;
+	return STATE_RUN;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
@@ -478,14 +487,6 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
 
-	if (pv->state) {
-		if (pv_platforms_stop(pv, 0) < 0)
-			return STATE_ERROR;
-
-		if (pv_volumes_unmount(pv, 0) < 0)
-			pv_log(WARN, "unmount error: ignoring due to rollback");
-	}
-
 	if (pv_revision_set_roolledback()) {
 		pv_log(ERROR, "revision for next boot could not be set");
 		return STATE_ERROR;
@@ -497,6 +498,15 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+
+	if (pv->state) {
+		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
+		if (pv_platforms_stop(pv, 0) < 0)
+			pv_log(WARN, "stop error: ignoring due to reboot");
+
+		if (pv_volumes_unmount(pv, 0) < 0)
+			pv_log(WARN, "unmount error: ignoring due to reboot");
+	}
 
 	pv_wdt_start(pv);
 
