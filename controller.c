@@ -428,7 +428,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			break;
 		case CMD_JSON_REBOOT_DEVICE:
 			if (pv->update) {
-				pv_log(WARN, "ignoring reboot command as an update is in progress");
+				pv_log(WARN, "ignoring reboot command because an update is in progress");
 				goto out;
 			}
 
