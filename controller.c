@@ -77,6 +77,7 @@ typedef enum {
 	STATE_UPDATE,
 	STATE_ROLLBACK,
 	STATE_REBOOT,
+	STATE_POWEROFF,
 	STATE_ERROR,
 	STATE_EXIT,
 	STATE_FACTORY_UPLOAD,
@@ -94,6 +95,7 @@ static const char* pv_state_string(pv_state_t st)
 	case STATE_UPDATE: return "STATE_UPDATE";
 	case STATE_ROLLBACK: return "STATE_ROLLBACK";
 	case STATE_REBOOT: return "STATE_REBOOT";
+	case STATE_POWEROFF: return "STATE_POWEROFF";
 	case STATE_ERROR: return "STATE_ERROR";
 	case STATE_EXIT: return "STATE_EXIT";
 	case STATE_FACTORY_UPLOAD: return "STATE_FACTORY_UPLOAD";
@@ -436,6 +438,16 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 				c->data);
 			next_state = STATE_REBOOT;
 			break;
+		case CMD_JSON_POWEROFF_DEVICE:
+			if (pv->update) {
+				pv_log(WARN, "ignoring poweroff command because an update is in progress");
+				goto out;
+			}
+
+			pv_log(DEBUG, "poweroff command with messaeg '%s' received. Powering off...",
+				c->data);
+			next_state = STATE_POWEROFF;
+			break;
 		default:
 			pv_log(DEBUG, "unknown json command received");
 		}
@@ -521,6 +533,30 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 	return STATE_EXIT;
 }
 
+static pv_state_t _pv_poweroff(struct pantavisor *pv)
+{
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+
+	if (pv->state) {
+		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
+		if (pv_platforms_stop(pv, 0) < 0)
+			pv_log(WARN, "stop error: ignoring due to poweroff");
+
+		if (pv_volumes_unmount(pv, 0) < 0)
+			pv_log(WARN, "unmount error: ignoring due to poweroff");
+	}
+
+	// unmount storage
+	umount(pv->config->storage.mntpoint);
+	sync();
+
+	sleep(5);
+	pv_log(INFO, "powering off...");
+	reboot(LINUX_REBOOT_CMD_POWER_OFF);
+
+	return STATE_EXIT;
+}
+
 static pv_state_t _pv_error(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
@@ -536,6 +572,7 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 	_pv_update,
 	_pv_rollback,
 	_pv_reboot,
+	_pv_poweroff,
 	_pv_error,
 	NULL,
 	_pv_factory_upload,
