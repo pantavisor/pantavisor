@@ -141,6 +141,36 @@ static void pv_state_transfer_volumes(struct pv_state *in, struct pv_state *out,
 	}
 }
 
+static void pv_state_transfer_jsons(struct pv_state *in, struct pv_state *out, int runlevel)
+{
+	struct pv_json *j, *j_tmp;
+	struct dl_list *jsons;
+
+	// remove existing jsons from out
+	jsons = &out->jsons;
+	dl_list_for_each_safe(j, j_tmp, jsons,
+		struct pv_json, list) {
+		if (!j->plat || (j->plat->runlevel < runlevel))
+			continue;
+
+		pv_log(DEBUG, "removing json %s linked to platform %s from rev %d", j->name, j->plat->name, out->rev);
+		dl_list_del(&j->list);
+		pv_json_free(j);
+	}
+
+	// transfer existing json from in to out
+	jsons = &in->jsons;
+	dl_list_for_each_safe(j, j_tmp, jsons,
+		struct pv_json, list) {
+		if (!j->plat || (j->plat->runlevel < runlevel))
+			continue;
+
+		pv_log(DEBUG, "transferring json %s linked to platform %s from rev %d to rev %d", j->name, j->plat->name, in->rev, out->rev);
+		dl_list_del(&j->list);
+		dl_list_add_tail(&out->jsons, &j->list);
+	}
+}
+
 static void pv_state_transfer_objects(struct pv_state *in, struct pv_state *out, int runlevel)
 {
 	struct pv_object *o, *o_tmp;
@@ -245,6 +275,7 @@ void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 
 	pv_state_transfer_objects(in, out, runlevel);
 	pv_state_transfer_volumes(in, out, runlevel);
+	pv_state_transfer_jsons(in, out, runlevel);
 	pv_state_transfer_platforms(in, out, runlevel);
 
 	out->rev = in->rev;

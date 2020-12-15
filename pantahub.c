@@ -163,10 +163,8 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config)
 {
 	struct pv_connection *conn = NULL;
-	int ret = 1;
 	int port = 0;
 	char *host = NULL;
-	char dbg_addr[INET6_ADDRSTRLEN];
 
 	conn = (struct pv_connection*)calloc(1, sizeof(struct pv_connection));
 	if (!conn) {

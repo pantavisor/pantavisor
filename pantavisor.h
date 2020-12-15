@@ -42,9 +42,7 @@ char pv_user_agent[4096];
 
 struct trail_remote;
 
-#define TRAIL_NO_SPACE 		(-1)
-#define TRAIL_NO_NETWORK 	(-2)
-#define PV_USER_AGENT_FMT 	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
+#define PV_USER_AGENT_FMT	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
 struct pantavisor {
 	int last;

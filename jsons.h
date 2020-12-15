@@ -34,4 +34,6 @@ struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value);
 struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name);
 void pv_jsons_empty(struct pv_state *s);
 
+void pv_json_free(struct pv_json *json);
+
 #endif // PV_JSONS_H

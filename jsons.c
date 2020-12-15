@@ -58,7 +58,7 @@ struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-static void pv_json_free(struct pv_json *json)
+void pv_json_free(struct pv_json *json)
 {
 	if (json->name)
 		free(json->name);
