@@ -1146,6 +1146,10 @@ int pv_update_finish(struct pantavisor *pv)
 			return 0;
 		}
 		break;
+	case UPDATE_NO_DOWNLOAD:
+		pv_update_remove(pv);
+		pv_log(INFO, "update finished");
+		break;
 	case UPDATE_TESTING_REBOOT:
 		if (pv_revision_set_commited(pv->state->rev)) {
 			pv_log(ERROR, "revision for next boot could not be set");
@@ -1163,6 +1167,8 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(INFO, "update finished");
 		break;
 	default:
+		pv_update_set_status(pv, pv->update->status);
+		pv_update_remove(pv);
 		pv_log(WARN, "update finished during wrong state %d", pv->update->status);
 		break;
 	}
@@ -1598,11 +1604,39 @@ static int trail_link_objects(struct pantavisor *pv)
 	return -err;
 }
 
+static int trail_check_update_size(struct pantavisor *pv)
+{
+	uint64_t update_size, free_size;
+	char msg[64];
 
+	update_size = (uint64_t)get_update_size(pv->update);
+	free_size = (uint64_t)pv_storage_get_free(pv);
+
+	pv_log(DEBUG, "update_size = %"PRIu64" B, free_size = %"PRIu64" B",
+		update_size, free_size);
+
+	if (update_size > free_size) {
+		pv_log(WARN, "not enough space to process update. Freeing up space...");
+		pv_storage_gc_run(pv);
+
+		free_size = (uint64_t)pv_storage_get_free(pv);
+		pv_log(DEBUG, "update_size = %"PRIu64" B, free_size = %"PRIu64" B",
+			update_size, free_size);
+
+		if (update_size > free_size) {
+			pv_log(WARN, "not enough space to process update. Aborting update...");
+			sprintf(msg, "Space required %"PRIu64" B, available %"PRIu64" B",
+				update_size, free_size);
+			pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
+			return -1;
+		}
+	}
+
+	return 0;
+}
 
 static int trail_download_objects(struct pantavisor *pv)
 {
-	int ret = -1;
 	struct pv_object *k_new, *k_old;
 	struct pv_update *u = pv->update;
 	struct pv_object *o = NULL;
@@ -1610,29 +1644,20 @@ static int trail_download_objects(struct pantavisor *pv)
 
 	pv_objects_iter_begin(u->pending, o) {
 		if (!trail_download_get_meta(pv, o)) {
-			ret = TRAIL_NO_NETWORK;
-			goto out;
+			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
+			return -1;
 		}
 	}
 	pv_objects_iter_end;
 
-	// Check free space for update
-	if (!pv_storage_get_free(pv, get_update_size(u))) {
-		// Run GC as last resort
-		pv_storage_gc_run(pv);
-		// Check again
-		if (!pv_storage_get_free(pv, get_update_size(u))) {
-			pv_log(WARN, "not enough space to process update");
-			ret = TRAIL_NO_SPACE;
-			goto out;
-		}
-	}
+	// check size and collect garbage if needed
+	if (trail_check_update_size(pv))
+		return -1;
 
 	k_new = pv_objects_get_by_name(u->pending,
 			u->pending->bsp.kernel);
 	k_old = pv_objects_get_by_name(pv->state,
 			pv->state->bsp.kernel);
-
 
 	if (u->total_update) {
 		u->total_update->object_name = "total";
@@ -1643,17 +1668,14 @@ static int trail_download_objects(struct pantavisor *pv)
 	}
 	pv_objects_iter_begin(u->pending, o) {
 		if (!trail_download_object(pv, o, crtfiles)) {
-			ret = TRAIL_NO_NETWORK;
-			goto out;
+			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
+			return -1;
 		}
 		u->total_update->current_time = time(NULL);
 		pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
 	}
 	pv_objects_iter_end;
-	ret = 0;
-
-out:
-	return ret;
+	return 0;
 }
 
 int pv_update_install(struct pantavisor *pv)
@@ -1684,26 +1706,6 @@ int pv_update_install(struct pantavisor *pv)
 
 	if (ret < 0) {
 		pv_log(ERROR, "unable to download objects");
-		if (ret == TRAIL_NO_NETWORK)
-			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
-		else {
-			/*
-			 * Required space wasn't available.
-			 * reusing, path to store message.
-			 */
-			uint64_t reqd_bytes = (uint64_t)get_update_size(pv->update);
-			uint64_t have_bytes = (uint64_t)pv_storage_get_free(pv, 0);
-			const uint32_t one_mib = (1024 * 1024);
-
-			msg = path;
-			sprintf(msg, "Space required %"PRIu64".%"PRIu64" MB"
-					",available %"PRIu64".%"PRIu64 " MB",
-					reqd_bytes / one_mib,
-					reqd_bytes % one_mib,
-					have_bytes / one_mib,
-					have_bytes % one_mib);
-			pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
-		}
 		goto out;
 	}
 

@@ -178,7 +178,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	rev_i = rev;
 	for (rev_i = rev; *rev_i != -1; rev_i++) {
 		// dont reclaim current, update or last booted up revisions
-		if ((*rev_i == s->rev) ||
+		if ((s && (*rev_i == s->rev)) ||
 			(u && (*rev_i == u->rev)) ||
 			(*rev_i == pv_revision_get_rev()))
 			continue;
@@ -202,7 +202,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	return reclaimed;
 }
 
-off_t pv_storage_get_free(struct pantavisor *pv, int diff)
+off_t pv_storage_get_free(struct pantavisor *pv)
 {
 	off_t fs_free, fs_min;
 	struct statfs buf;
@@ -210,19 +210,18 @@ off_t pv_storage_get_free(struct pantavisor *pv, int diff)
 	if (statfs("/storage/config/pantahub.config", &buf) < 0)
 		return -1;
 
+	// free disk space
 	fs_free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
-	fs_min = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
 
-	// Always leave 5%
+	// 5% of total disk space
+	fs_min = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
 	fs_min -= (fs_min * 95) / 100;
 
-	pv_log(DEBUG, "fs_free: %llu, fs_min: %llu", fs_free, fs_min);
-
-	if (diff == 0)
-		return fs_free;
-
-	if ((fs_free - diff) < fs_min)
+	if (fs_free < fs_min) {
+		pv_log(WARN, "free space is less than 5\% of total disk space");
 		return 0;
+	}
 
-	return fs_free;
+	return (fs_free - fs_min);
+
 }
