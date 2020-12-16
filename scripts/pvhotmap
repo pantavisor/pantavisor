@@ -1,0 +1,83 @@
+#!/bin/sh
+
+action=$ACTION
+devpath=$DEVPATH
+subsys=$SUBSYSTEM
+
+echo_debug() {
+	if [ -n "$DEBUG"]; then
+		echo $@
+	fi
+}
+
+make_rules() {
+	for i in /storage/trails/cur/*/dev.json; do
+		# make a list of <n>:<globpattern> with space separator
+		mangled_rules="$mangled_rules `cat $i | JSON.sh |  \
+			grep '\[[0-9]*,\"match\"\]' | \
+			sed -e 's/\[\([0-9][0-9]*\),.*\][[:space:]]*"\(.*\)"/\1:\2/' | \
+			sed -e "s:\\$:\:$i:" | tr '\n' ' '`"
+	done
+	echo $mangled_rules
+}
+
+execute() {
+	num=$1
+	MAJOR=$(sed 's/:.*//' < /sys/$DEVPATH/dev)
+	MINOR=$(sed 's/.*://' < /sys/$DEVPATH/dev)
+	plat=`echo $2 | sed -e 's:.*/cur/\(.*\)/dev.json/\1/'`
+	pid=`lxc-info $plat | grep PID: | sed -e 's/PID:[[:space:]]*//'`
+	op=`cat $2 | JSON.sh | grep "^\[$num,\"action\"\]" | \
+		sed -e 's/\[\([0-9][0-9]*\),.*\][[:space:]]*"\(.*\)"/\2/'`
+	consume=`cat $2 | JSON.sh | grep "^\[$num,\"action\"\]" | \
+		sed -e 's/\[\([0-9][0-9]*\),.*\][[:space:]]*\(.*\)/\2/'`
+
+	type=c
+	if [ "$subsys" = block ]; then
+		type=b
+	fi
+	# now lets make the nod - requires container to have mknod
+	if [ -n "$pid" -a "$op" = "mknod" ]; then
+		# get devname
+		devname=`sh -c "source $DEVPATH/uevent; echo $DEVNAME"`
+		if [ $ACTION = add ]; then
+			nsenter -m/proc/$pid/ns/mnt /sbin/mknod /dev/$devname $type $MAJOR $MINOR
+			nsenter -m/proc/$pid/ns/mnt /sbin/mknod /dev/pv/$devname $type $MAJOR $MINOR
+		elif [ $ACTION = remove ]; then
+			nsenter -m/proc/$pid/ns/mnt /bin/rm -f /dev/$devname
+			nsenter -m/proc/$pid/ns/mnt /bin/rm -f /dev/pv/$devname
+		fi
+	fi
+	# consume?
+	if [ $consume = true ]; then
+		exit 1
+	fi
+	exit 0
+}
+
+process_event() {
+	for i in $make_rules;do
+		# NUM:GLOB:SOURCE
+		num=`echo $i | sed -e 's/\([0-9]*\):.*/\1/'`
+		glob=`echo $i | sed -e 's/[0-9]*:\(.*\):.*/\1/'`
+		source=`echo $i | sed -e 's/[0-9]*:.*://'`
+		# if we have a full match we process the action
+		if [ -n `echo ${i#$glob}} ]; then
+			continue
+		fi
+		if ! execute_add $num $source; then
+			break
+		fi
+	fi
+}
+
+rules=`make_rules`
+
+if [ $ACTION = "add" ]; then
+	process_event
+elif [ $ACTION = "delete" ]; then
+	process_event
+else
+	echo_debug "Skipping event of action type: $ACTION"
+fi
+
