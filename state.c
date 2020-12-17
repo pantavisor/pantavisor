@@ -286,32 +286,15 @@ void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 {
 	int runlevel = MAX_RUNLEVEL;
-	struct pv_json *j, *tmp_j, *curr_j;
-	struct dl_list *new_jsons = &pending->jsons;
 	struct pv_platform *p, *tmp_p, *curr_p;
 	struct dl_list *platforms;
 	struct pv_object *o, *tmp_o, *curr_o;
-	struct dl_list *new_objects = &pending->objects;
+	struct dl_list *objects;
+	struct pv_json *j, *tmp_j, *curr_j;
+	struct dl_list *jsons;
 
-	if (!pending || !current || !new_objects)
+	if (!pending || !current)
 		return 0;
-
-	// search for changes in jsons
-	dl_list_for_each_safe(j, tmp_j, new_jsons,
-		struct pv_json, list) {
-		curr_j = pv_jsons_get_by_name(current, j->name);
-		if (!curr_j || strcmp(j->value, curr_j->value)) {
-			if (!j->plat) {
-				pv_log(DEBUG, "global or bsp json %s have been changed in last update", j->name);
-				return 0;
-			}
-
-			pv_log(DEBUG, "json %s from platform %s has been changed in last update", j->name, j->plat->name);
-			if (j->plat->runlevel < runlevel) {
-				runlevel = j->plat->runlevel;
-			}
-		}
-	}
 
 	// search for deleted platforms or changes in runlevel
 	platforms = &current->platforms;
@@ -332,19 +315,74 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		}
 	}
 
-	// seach for changes in objects
-	dl_list_for_each_safe(o, tmp_o, new_objects,
+	// search for changes in objects
+	objects = &pending->objects;
+	dl_list_for_each_safe(o, tmp_o, objects,
 		struct pv_object, list) {
 		curr_o = pv_objects_get_by_name(current, o->name);
 		if (!curr_o || strcmp(o->id, curr_o->id)) {
 			if (!o->plat) {
-				pv_log(DEBUG, "bsp object %s have been changed in last update", o->name);
+				pv_log(DEBUG, "bsp object %s has been changed in last update", o->name);
 				return 0;
 			}
 
 			pv_log(DEBUG, "object %s from platform %s has been changed in last update", o->name, o->plat->name);
 			if (o->plat->runlevel < runlevel) {
 				runlevel = o->plat->runlevel;
+			}
+		}
+	}
+
+	// search for deleted objects
+	objects = &current->objects;
+	dl_list_for_each_safe(o, tmp_o, objects,
+		struct pv_object, list) {
+		curr_o = pv_objects_get_by_name(pending, o->name);
+		if (!curr_o) {
+			if (!o->plat) {
+				pv_log(DEBUG, "bsp object %s has been deleted in last update", o->name);
+				return 0;
+			}
+
+			pv_log(DEBUG, "object %s from platform %s has been deleted in last update", o->name, o->plat->name);
+			if (o->plat->runlevel < runlevel) {
+				runlevel = o->plat->runlevel;
+			}
+		}
+	}
+
+	// search for changes in jsons
+	jsons = &pending->jsons;
+	dl_list_for_each_safe(j, tmp_j, jsons,
+		struct pv_json, list) {
+		curr_j = pv_jsons_get_by_name(current, j->name);
+		if (!curr_j || strcmp(j->value, curr_j->value)) {
+			if (!j->plat) {
+				pv_log(DEBUG, "global or bsp json %s has been changed in last update", j->name);
+				return 0;
+			}
+
+			pv_log(DEBUG, "json %s from platform %s has been changed in last update", j->name, j->plat->name);
+			if (j->plat->runlevel < runlevel) {
+				runlevel = j->plat->runlevel;
+			}
+		}
+	}
+
+	// search for deleted jsons
+	jsons = &current->jsons;
+	dl_list_for_each_safe(j, tmp_j, jsons,
+		struct pv_json, list) {
+		curr_j = pv_jsons_get_by_name(current, j->name);
+		if (!curr_j) {
+			if (!j->plat) {
+				pv_log(DEBUG, "global or bsp json %s has been deleted in last update", j->name);
+				return 0;
+			}
+
+			pv_log(DEBUG, "json %s from platform %s has been changed in last update", j->name, j->plat->name);
+			if (j->plat->runlevel < runlevel) {
+				runlevel = j->plat->runlevel;
 			}
 		}
 	}
