@@ -380,7 +380,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 				return 0;
 			}
 
-			pv_log(DEBUG, "json %s from platform %s has been changed in last update", j->name, j->plat->name);
+			pv_log(DEBUG, "json %s from platform %s has been deleted in last update", j->name, j->plat->name);
 			if (j->plat->runlevel < runlevel) {
 				runlevel = j->plat->runlevel;
 			}
