@@ -373,7 +373,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 	jsons = &current->jsons;
 	dl_list_for_each_safe(j, tmp_j, jsons,
 		struct pv_json, list) {
-		curr_j = pv_jsons_get_by_name(current, j->name);
+		curr_j = pv_jsons_get_by_name(pending, j->name);
 		if (!curr_j) {
 			if (!j->plat) {
 				pv_log(DEBUG, "global or bsp json %s has been deleted in last update", j->name);
