@@ -24,5 +24,5 @@ void pv_log_info_free(struct pv_log_info * l);
  * of ENOTSUP.
  * */
 #define PV_LOGGER_POS_XATTR 	"trusted.pv.logger.pos"
-#define PV_LOGGER_FILE_WAIT_TIMEOUT 	(5)
+#define PV_LOGGER_FILE_WAIT_TIMEOUT 	(1)
 #endif  /*__PV_LOGGER_H_*/
