@@ -39,7 +39,6 @@
 #include <sys/xattr.h>
 #include <stdarg.h>
 #include <limits.h>
-#include <sys/inotify.h>
 
 #ifndef MODULE_NAME
 #define MODULE_NAME             "pvlogger"
@@ -218,7 +217,7 @@ static int pvlogger_start(struct log *log, int was_init_ok)
 	struct stat st;
 
 	if (was_init_ok != LOG_OK) {
-		pv_log(WARN, "Waiting for log file");
+		pv_log(WARN, "Cannot init log file");
 		goto out;
 	}
 	pv_log(INFO, "Started pvlogger\n");
@@ -235,8 +234,6 @@ out:
 	return was_init_ok;
 }
 
-#define INOTIFY_SIZE (sizeof(struct inotify_event) + NAME_MAX + 1)
-
 /*
  * There's a window where while we're setting up the watch
  * the file has been created and hence no event will come to us.
@@ -244,38 +241,23 @@ out:
  * */
 static int wait_for_logfile(const char *logfile)
 {
-	char *parent_dir = NULL;
-	int fd_dir_notify = -1;
-	struct timeval tv;
-	int ret = LOG_OK;
+	int ret = LOG_NOK;
 	const char *filename = NULL;
-	struct inotify_event *inotify_ev = NULL;
-	fd_set fdset;
 	struct stat stbuf;
 	char *file_dup = NULL;
-	char *dir_dup = NULL;
-	bool did_wait = false;
-
-	FD_ZERO(&fdset);
 
 	if (!logfile) {
 		ret = LOG_NOK;
 		goto out;
 	}
 
-	if (!stat(logfile, &stbuf)) {
-		ret = LOG_OK;
-		goto out;
-	}
- 	file_dup = strdup(logfile);
-	dir_dup = strdup(logfile);
+	file_dup = strdup(logfile);
 
-	if (!file_dup || !dir_dup) {
+	if (!file_dup) {
 		pv_log(WARN, "Memory allocation failed for logfile duplication");
 		ret = LOG_NOK;
 		goto out;
 	}
-	parent_dir = dirname(dir_dup);
 	filename = basename(file_dup);
 
 	if ( (!strlen(filename)) || *filename == '/' || *filename == '.') {
@@ -284,68 +266,17 @@ static int wait_for_logfile(const char *logfile)
 		ret = LOG_NOK;
 		goto out;
 	}
-	fd_dir_notify = inotify_init1(IN_NONBLOCK);
 
-	if (fd_dir_notify < 0) {
-		pv_log(WARN, "Unable to initialize inotfy event watcher."
-			"errno = %d (%s)\n", errno, strerror(errno));
-		ret = LOG_NOK;
-		goto out;
-	}
-	
-	if (inotify_add_watch(fd_dir_notify, parent_dir, IN_CREATE) < 0 ) {
-		pv_log(WARN, "Unable to create inotify watch."
-			"errno = %d (%s)\n", errno, strerror(errno));
-		ret = LOG_NOK;
-		goto out;
-	}
-
-	inotify_ev = (struct inotify_event*)calloc(1, INOTIFY_SIZE);
-
-	if (!inotify_ev) {
-		pv_log(WARN, "Couldn't allocate memory for inotify event");
-		ret = LOG_NOK;
-		goto out;
-	}
-	
-	FD_SET(fd_dir_notify, &fdset);
-
-read_again:
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	did_wait = true;
-	ret = select(fd_dir_notify + 1, &fdset, NULL, NULL, &tv);
-	if (ret == 0) {
-		goto read_again;
-	} else if (ret < 0) {
-		if (errno == EINTR)
-			goto read_again;
-		else {
-			ret = LOG_NOK;
-			goto out;
-		}
-	}
-	while (read(fd_dir_notify, inotify_ev, INOTIFY_SIZE) < 0 
-			&& errno == EINTR)
-		;
-
-	if (!strncmp(inotify_ev->name, filename, strlen(filename)))
+	if (!stat(logfile, &stbuf)) {
 		ret = LOG_OK;
-	else
-		ret = LOG_NOK;
+		goto out;
+	}
+
+	sleep(PV_LOGGER_FILE_WAIT_TIMEOUT);
 out:
-	if (dir_dup)
-		free(dir_dup);
-	
 	if (file_dup)
 		free(file_dup);
 
-	if (inotify_ev)
-		free(inotify_ev);
-
-	close(fd_dir_notify);
-	if (!did_wait)
-		sleep(PV_LOGGER_FILE_WAIT_TIMEOUT);
 	return ret;
 }
 
