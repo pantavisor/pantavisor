@@ -267,12 +267,10 @@ static int wait_for_logfile(const char *logfile)
 		goto out;
 	}
 
-	pv_log(DEBUG, "Checking if %s exists...", logfile);
 	if (!stat(logfile, &stbuf)) {
 		ret = LOG_OK;
 		goto out;
 	}
-	pv_log(DEBUG, "File does not exist. Waiting...");
 
 	sleep(PV_LOGGER_FILE_WAIT_TIMEOUT);
 out:
