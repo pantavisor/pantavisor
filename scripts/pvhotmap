@@ -12,13 +12,40 @@ echo_debug() {
 
 make_rules() {
 	for i in /storage/trails/cur/*/dev.json; do
-		# make a list of <n>:<globpattern> with space separator
+		# make a list of <n>:<globpattern>:$i with space separator
 		mangled_rules="$mangled_rules `cat $i | JSON.sh |  \
 			grep '\[[0-9]*,\"match\"\]' | \
 			sed -e 's/\[\([0-9][0-9]*\),.*\][[:space:]]*"\(.*\)"/\1:\2/' | \
 			sed -e "s:\\$:\:$i:" | tr '\n' ' '`"
 	done
 	echo $mangled_rules
+
+	dev_lookup=""
+	# block devs
+	for i in /sys/block/*/dev /sys/block/*/*/dev
+	do
+		# here we make a list of tuples that allow for looking up
+		# the matching sysfs /block paths for /devices paths.
+		if [ -f $i ]
+		then
+			MAJOR=$(sed 's/:.*//' < $i)
+			MINOR=$(sed 's/.*://' < $i)
+			DEVNAME=$(echo $i | sed -e 's@/dev@@' -e 's@.*/@@')
+			dev_lookup="$dev_lookup $i:`realpath $i`:/dev/$DEVNAME b $MAJOR $MINOR" 
+		fi
+	done
+
+	# char devs
+	for i in /sys/bus/*/devices/*/dev /sys/class/*/*/dev
+	do
+		if [ -f $i ]
+		then
+			MAJOR=$(sed 's/:.*//' < $i)
+			MINOR=$(sed 's/.*://' < $i)
+			DEVNAME=$(echo $i | sed -e 's@/dev@@' -e 's@.*/@@')
+			dev_lookup="$dev_lookup $i:`realpath $i`:/dev/$DEVNAME b $MAJOR $MINOR" 
+		fi
+	done
 }
 
 execute() {
