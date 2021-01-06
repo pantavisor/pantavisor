@@ -348,7 +348,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->req)
 		pv_cmd_req_remove(pv);
 	// receive new command
-	pv->req = pv_cmd_socket_wait(pv, 5);
+	pv->req = pv_cmd_socket_wait(pv, 0);
 	if (pv->req) {
 		next_state = STATE_COMMAND;
 		goto out;
@@ -456,6 +456,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG, "unknown command received");
 	}
 
+	// reset wait_delay so we can process commands quickly
+	wait_delay = 0;
 out:
 	pv_cmd_req_remove(pv);
 	return next_state;
