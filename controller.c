@@ -350,7 +350,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// with this wait, we make sure we have not consecutively executed network stuff
 	// twice in less than the configured interval
 	if (pv_wait_delay_timedout(pv->config->updater.interval)) {
-		pv_log(DEBUG, "network operations");
 		// check if device is unclaimed
 		if (pv->flags & DEVICE_UNCLAIMED) {
 			next_state = STATE_UNCLAIMED;
@@ -364,7 +363,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			goto out;
 	}
 
-	pv_log(DEBUG, "command operations");
 	// free up previous command
 	if (pv->req)
 		pv_cmd_req_remove(pv);
