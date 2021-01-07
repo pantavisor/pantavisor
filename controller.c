@@ -65,7 +65,6 @@
 #define CMDLINE_OFFSET	7
 
 static int rollback_time;
-static time_t wait_delay;
 static time_t commit_delay;
 
 typedef enum {
@@ -189,7 +188,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + pv->config->updater.interval;
 	commit_delay = 0;
 	rollback_time = tp.tv_sec + pv->config->updater.network_timeout;
 
