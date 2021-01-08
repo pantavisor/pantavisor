@@ -366,8 +366,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// free up previous command
 	if (pv->req)
 		pv_cmd_req_remove(pv);
-	// receive new command. Set updater interval as the select max blocking time
-	pv->req = pv_cmd_socket_wait(pv, pv->config->updater.interval);
+	// receive new command. Set 2 secs as the select max blocking time, so we can do the
+	// rest of WAIT operations
+	pv->req = pv_cmd_socket_wait(pv, 2);
 	if (pv->req) {
 		next_state = STATE_COMMAND;
 		goto out;
