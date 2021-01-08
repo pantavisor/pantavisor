@@ -107,22 +107,19 @@ static const char* pv_state_string(pv_state_t st)
 
 typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
 
-static void pv_wait_delay(int seconds)
+static bool pv_wait_delay_timedout(int seconds)
 {
 	struct timespec tp;
-	int sleep_time;
 
 	// first, we wait until wait_delay
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-	if (wait_delay > tp.tv_sec) {
-		sleep_time = wait_delay - tp.tv_sec;
-		pv_log(DEBUG, "sleep for %d seconds", sleep_time);
-		sleep(sleep_time);
-	}
+	if (wait_delay > tp.tv_sec)
+		return false;
 
 	// then, we set wait_delay for next call
-	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = tp.tv_sec + seconds;
+
+	return true;
 }
 
 static pv_state_t _pv_factory_upload(struct pantavisor *pv)
@@ -207,7 +204,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = 0;
+	wait_delay = tp.tv_sec + pv->config->updater.interval;
 	commit_delay = 0;
 	rollback_time = tp.tv_sec + pv->config->updater.network_timeout;
 
@@ -340,26 +337,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 {
 	pv_state_t next_state = STATE_WAIT;
 
-	// with this wait, we make sure we have not consecutively executed two WAITs
-	// in less than the configured interval
-	pv_wait_delay(pv->config->updater.interval);
-
-	// free up previous command
-	if (pv->req)
-		pv_cmd_req_remove(pv);
-	// receive new command
-	pv->req = pv_cmd_socket_wait(pv, 0);
-	if (pv->req) {
-		next_state = STATE_COMMAND;
-		goto out;
-	}
-
-	// check if device is unclaimed
-	if (pv->flags & DEVICE_UNCLAIMED) {
-		next_state = STATE_UNCLAIMED;
-		goto out;
-	}
-
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(WARN, "one or more platforms exited, tearing down");
@@ -370,9 +347,33 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	// network wait stuff: connectivity check. update management,
-	// meta data uppload, ph logger push start...
-	next_state = pv_wait_network(pv);
+	// with this wait, we make sure we have not consecutively executed network stuff
+	// twice in less than the configured interval
+	if (pv_wait_delay_timedout(pv->config->updater.interval)) {
+		// check if device is unclaimed
+		if (pv->flags & DEVICE_UNCLAIMED) {
+			next_state = STATE_UNCLAIMED;
+			goto out;
+		}
+
+		// rest of network wait stuff: connectivity check. update management,
+		// meta data uppload, ph logger push start...
+		next_state = pv_wait_network(pv);
+		if (next_state != STATE_WAIT)
+			goto out;
+	}
+
+	// free up previous command
+	if (pv->req)
+		pv_cmd_req_remove(pv);
+	// receive new command. Set 2 secs as the select max blocking time, so we can do the
+	// rest of WAIT operations
+	pv->req = pv_cmd_socket_wait(pv, 2);
+	if (pv->req) {
+		next_state = STATE_COMMAND;
+		goto out;
+	}
+
 out:
 	return next_state;
 }
@@ -455,9 +456,6 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	default:
 		pv_log(DEBUG, "unknown command received");
 	}
-
-	// reset wait_delay so we can process commands quickly
-	wait_delay = 0;
 out:
 	pv_cmd_req_remove(pv);
 	return next_state;
