@@ -367,7 +367,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->req)
 		pv_cmd_req_remove(pv);
 	// receive new command
-	pv->req = pv_cmd_socket_wait(pv, 1);
+	pv->req = pv_cmd_socket_wait(pv, pv->config->updater.interval);
 	if (pv->req) {
 		next_state = STATE_COMMAND;
 		goto out;
