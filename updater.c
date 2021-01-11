@@ -617,10 +617,12 @@ send_feedback:
 		goto out;
 	}
 
-	// set newly processed update
-	pv->update = update;
-
-	ret = 1;
+	// set newly processed update if no update is going on
+	if (!pv->update) {
+		pv->update = update;
+		ret = 1;
+	} else
+		pv_update_free(update);
 
 out:
 	if (rev_s)
