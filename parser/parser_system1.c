@@ -89,6 +89,12 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	// get addons and create empty items
 	key = jsmnutil_get_object_keys(buf, tokv);
+	if (!key) {
+		pv_log(ERROR, "addon list cannot be parsed");
+		ret = 0;
+		goto out;
+	}
+
 	key_i = key;
 	while (*key_i) {
 		c = (*key_i)->end - (*key_i)->start;
@@ -127,11 +133,15 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 	jsmntok_t **k, **keys;
 
 	if (!buf)
-		return 1;
+		return 0;
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
+	if (!keys) {
+		pv_log(ERROR, "storage list cannot be parsed");
+		return 0;
+	}
 	k = keys;
 
 	// platform head is pv->state->platforms
@@ -342,6 +352,7 @@ static int do_action_for_array(struct json_key_action *jka, char *value)
 	 */
 	keys = jsmnutil_get_object_keys(jka->buf, jka->tokv);
 	if (!keys) {
+		pv_log(ERROR, "array cannot be parsed");
 		ret = -1;
 		goto out;
 	}
@@ -410,6 +421,7 @@ int __start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
 		keys = jsmnutil_get_object_keys(buf, tokv);
 		ret = 0;
 		if (!keys) {
+			pv_log(ERROR, "json cannot be parsed");
 			ret = -1;
 			goto free_tokens;
 		}
@@ -534,7 +546,8 @@ static int do_action_for_one_log(struct json_key_action *jka,
 	jsmntok_t **keys = jsmnutil_get_object_keys(jka->buf, jka->tokv);
 	jsmntok_t **keys_i = keys;
 
-	if (!key_count) {
+	if (!key_count || !keys) {
+		pv_log(ERROR, "logs cannot be parsed");
 		ret = 0;
 		goto free_config;
 	}
@@ -728,6 +741,11 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	value = NULL;
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
+	if (!keys) {
+		pv_log(ERROR, "json cannot be parsed");
+		this = NULL;
+		goto out;
+	}
 	k = keys;
 
 	// platform head is pv->state->platforms

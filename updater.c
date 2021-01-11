@@ -1684,7 +1684,6 @@ int pv_update_install(struct pantavisor *pv)
 	struct pv_state *pending = pv->update->pending;
 	char path[PATH_MAX];
 	char path_new[PATH_MAX];
-	char *msg = NULL;
 
 	if (trail_remote_init(pv)) {
 		pv_log(WARN, "remote not initialized");
