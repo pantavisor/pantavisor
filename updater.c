@@ -228,7 +228,6 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	char retries[6]; /*json holder for retry_count*/
 	char retry_message[128];
 	char total_progress_json[512];
-	int __retries = 0;
 
 	if (!pv->remote || !update) {
 		pv_log(WARN, "remote or update not initialized");
@@ -237,13 +236,13 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 
 	switch (status) {
 	case UPDATE_QUEUED:
-		if (update->pending)
-			__retries = update->pending->retries;
-
 		// form message
-		sprintf(retry_message, "Update queued");
+		sprintf(retry_message, "Update queued, retry %d of %d",
+			update->retries,
+			MAX_REVISION_RETRIES);
 		// form request
-		snprintf(retries, sizeof(retries), "%d", __retries);
+		// form request
+		snprintf(retries, sizeof(retries), "%d", update->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
 		break;
@@ -285,17 +284,14 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			"WONTGO", "Remote state cannot be parsed", 0);
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		if (update->pending)
-			__retries = update->pending->retries;
-
-		pv_log(DEBUG, "download needs to be retried, retry count is %d", __retries);
+		pv_log(DEBUG, "download needs to be retried, retry count is %d", update->retries);
 		// form message
 		snprintf(retry_message, sizeof(retry_message),
 			"Network unavailable while downloading, retry %d of %d",
-			__retries,
+			update->retries,
 			MAX_REVISION_RETRIES);
 		// form request
-		snprintf(retries, sizeof(retries), "%d", __retries);
+		snprintf(retries, sizeof(retries), "%d", update->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", retry_message, 0, retries);
 		// Clear what was downloaded.
@@ -311,9 +307,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
 		// form retries string 
-		if (update->pending)
-			__retries = update->pending->retries;
-		snprintf(retries, sizeof(retries), "%d", __retries);
+		snprintf(retries, sizeof(retries), "%d", update->retries);
 
 		if (update->total_update) {
 			object_update_json(update->total_update,
@@ -483,6 +477,7 @@ static struct pv_update* pv_update_new(char *id, int rev)
 		u->progress_size = PATH_MAX;
 		u->progress_objects = (char*)calloc(1, u->progress_size);
 		u->status = UPDATE_INIT;
+		u->retries = 0;
 
 		// to construct endpoint
 		u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
@@ -599,7 +594,8 @@ send_feedback:
 		goto out;
 	}
 
-	// report revision retry max reached
+	// increment and report revision retry max reached
+	retries++;
 	if (retries > MAX_REVISION_RETRIES) {
 		pv_log(WARN, "max retries reached in rev %d", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
@@ -607,8 +603,8 @@ send_feedback:
 		goto out;
 	}
 
-	// set retry number recovered from endpoint response
-	update->pending->retries = retries;
+	// retry number recovered from endpoint response
+	update->retries = retries;
 	// if everything went well until this point, put revision to queue
 	trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
 
@@ -1062,11 +1058,10 @@ static int pv_update_start(struct pantavisor *pv)
 		int time_left = pv->update->retry_at - time(NULL);
 
 		if (time_left <= 0) {
-			pv->update->pending->retries++;
-			if (pv->update->pending->retries > MAX_REVISION_RETRIES)
+			if (pv->update->retries > MAX_REVISION_RETRIES)
 				return -1;
 			pv_log(INFO, "trying revision %d ,retry = %d",
-					pv->update->pending->rev, pv->update->pending->retries);
+					pv->update->pending->rev, pv->update->retries);
 			// set timer for next retry
 			pv->update->retry_at = time(NULL) + DOWNLOAD_RETRY_WAIT;
 			return 0;
@@ -1135,7 +1130,7 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		if (pv->update->pending->retries > MAX_REVISION_RETRIES) {
+		if (pv->update->retries > MAX_REVISION_RETRIES) {
 			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
 			pv_update_remove(pv);
 			pv_log(INFO, "update finished");

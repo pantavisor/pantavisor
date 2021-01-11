@@ -89,6 +89,7 @@ struct pv_update {
 	time_t retry_at;
 	struct pv_state *pending;
 	char *progress_objects;
+	int retries;
 	struct object_update *total_update;
 };
 
