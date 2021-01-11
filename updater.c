@@ -560,7 +560,6 @@ process_response:
 			res->json_tokv, res->json_tokc);
 
 	// this could mean either the server is returning a malformed response or json parser is not working properly
-	// TODO: stop trying until a number of retries
 	if (!rev_s) {
 		pv_log(ERROR, "rev not found in endpoint response, ignoring...");
 		goto out;
@@ -580,7 +579,7 @@ process_response:
 		goto send_feedback;
 	}
 
-	// parse revision state and retry
+	// get raw revision state and parse retry
 	state = get_json_key_value(res->body, "state",
 			res->json_tokv, res->json_tokc);
 	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
@@ -588,20 +587,33 @@ process_response:
 		pv_log(WARN, "failed to parse the rest of the response");
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
-		goto send_feedback;
+		goto out;
 	}
 
 send_feedback:
 
+	// report stale revision
 	if (wrong_revision) {
 		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
 		pv_update_free(update);
 		goto out;
 	}
 
+	// report revision retry max reached
+	if (retries > MAX_REVISION_RETRIES) {
+		pv_log(WARN, "max retries reached in rev %d", rev);
+		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
+		pv_update_free(update);
+		goto out;
+	}
+
+	// set retry number recovered from endpoint response
+	update->pending->retries = retries;
+	// if everything went well until this point, put revision to queue
+	trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
+
 	// parse state
 	update->pending = pv_state_parse(pv, state, rev);
-
 	if (!update->pending) {
 		pv_log(WARN, "invalid state from rev %d", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
@@ -609,26 +621,10 @@ send_feedback:
 		goto out;
 	}
 
-	// if update is not going on, we prepare this one to be installed
-	if (!pv->update) {
-		pv->update = update;
-		pv_log(DEBUG, "first pending step found is rev %d", pv->update->pending->rev);
-		// set retry number recovered from endpoint response
-		pv->update->pending->retries = retries;
-		// if a revision has reached the max number of retries and could not be reported at the moment
-		if (pv->update->pending->retries > MAX_REVISION_RETRIES) {
-			pv_log(WARN, "max retries reached in rev %d", rev);
-			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
-			pv_update_free(update);
-			goto out;
-		}
-		pv_update_set_status(pv, UPDATE_QUEUED);
-		ret = 1;
-	// if another update is going on, just report the update as QUEUED to be installed later
-	} else {
-		trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
-		pv_update_free(update);
-	}
+	// set newly processed update
+	pv->update = update;
+
+	ret = 1;
 
 out:
 	if (rev_s)
