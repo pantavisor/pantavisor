@@ -49,7 +49,6 @@ struct pv_state {
 	struct dl_list objects; //pv_object
 	struct dl_list jsons; //pv_json
 	char *json;
-	int retries;
 	int tryonce;
 };
 

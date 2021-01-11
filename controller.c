@@ -204,7 +204,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + pv->config->updater.interval;
+	wait_delay = 0;
 	commit_delay = 0;
 	rollback_time = tp.tv_sec + pv->config->updater.network_timeout;
 
