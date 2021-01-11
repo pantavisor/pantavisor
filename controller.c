@@ -204,7 +204,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = tp.tv_sec + pv->config->updater.interval;
+	wait_delay = 0;
 	commit_delay = 0;
 	rollback_time = tp.tv_sec + pv->config->updater.network_timeout;
 
@@ -304,10 +304,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 	pv_meta_update_to_ph(pv);
 
-	// check for new updates
-	if (pv_check_for_updates(pv) > 0)
-		return STATE_UPDATE;
-
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update) {
 		if (pv_update_is_trying(pv->update)) {
@@ -329,6 +325,10 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		if (pv_update_finish(pv) < 0)
 			return STATE_ROLLBACK;
 	}
+
+	// check for new updates
+	if (pv_check_for_updates(pv) > 0)
+		return STATE_UPDATE;
 
 	return STATE_WAIT;
 }

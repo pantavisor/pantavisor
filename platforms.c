@@ -169,9 +169,11 @@ void pv_platform_free(struct pv_platform *p)
 		free(p->type);
 
 	c = p->configs;
-	while (*c) {
-		free(*c);
-		c++;
+	if (c) {
+		while (*c) {
+			free(*c);
+			c++;
+		}
 	}
 
 	if (p->exec)

@@ -548,7 +548,7 @@ static int do_action_for_one_log(struct json_key_action *jka,
 
 	if (!key_count || !keys) {
 		pv_log(ERROR, "logs cannot be parsed");
-		ret = 0;
+		ret = -1;
 		goto free_config;
 	}
 
@@ -610,7 +610,8 @@ static int do_action_for_one_log(struct json_key_action *jka,
 free_config:
 	if (keys)
 		jsmnutil_tokv_free(keys);
-	free(config);
+	if (config)
+		free(config);
 	return ret;
 }
 
@@ -666,7 +667,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 out:
 	if (config)
 		free(config);
-	return 0;
+	return ret;
 }
 
 static void system1_link_object_json_platforms(struct pv_state *s)
@@ -773,7 +774,10 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		// if the extension is run.json, we have a new platform
 		if (ext && !strcmp(ext, "/run.json")) {
 			pv_log(DEBUG, "parsing and adding json '%s'", key);
-			parse_platform(this, value, strlen(value));
+			if (parse_platform(this, value, strlen(value))) {
+				this = NULL;
+				goto out;
+			}
 			pv_jsons_add(this, key, value);
 		// if the extension is either src.json or build.json, we ignore it
 		} else if (ext && (!strcmp(ext, "/src.json") ||
