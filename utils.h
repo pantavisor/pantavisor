@@ -62,7 +62,7 @@ void kill_child_process(pid_t pid);
 
 #ifdef __arm__
 #define PV_ARCH		"arm"
-#ifdef __aarch64__
+#elif __aarch64__
 #define PV_ARCH		"aarch64"
 #elif __x86_64__
 #define PV_ARCH		"x86_64"
