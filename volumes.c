@@ -192,9 +192,10 @@ out:
 
 static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 {
-	int ret = -1;
+	int ret = 0;
 	struct stat st;
-	char path[PATH_MAX];
+	char path_volumes[PATH_MAX];
+	char path_lib[PATH_MAX];
 	struct utsname uts;
 
 	if (!pv->state->bsp.firmware)
@@ -204,14 +205,14 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 		mkdir_p(FW_PATH, 0755);
 
 	if (strchr(pv->state->bsp.firmware, '/'))
-		sprintf(path, "%s", pv->state->bsp.firmware);
+		sprintf(path_volumes, "%s", pv->state->bsp.firmware);
 	else
-		sprintf(path, "/volumes/%s", pv->state->bsp.firmware);
+		sprintf(path_volumes, "/volumes/%s", pv->state->bsp.firmware);
 
-	if (stat(path, &st))
+	if (stat(path_volumes, &st))
 		goto modules;
 
-	ret = mount_bind(path, FW_PATH);
+	ret = mount_bind(path_volumes, FW_PATH);
 
 	if (ret < 0)
 		goto out;
@@ -219,11 +220,20 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 	pv_log(DEBUG, "bind mounted firmware to %s", FW_PATH);
 
 modules:
-	if (!uname(&uts) && (stat("/volumes/modules.squashfs", &st) == 0)) {
-		sprintf(path, "/lib/modules/%s", uts.release);
-		mkdir_p(path, 0755);
-		ret = mount_bind("/volumes/modules.squashfs", path);
-		pv_log(DEBUG, "bind mounted modules to %s", path);
+
+	if (!pv->state->bsp.modules)
+		goto out;
+
+	if (strchr(pv->state->bsp.modules, '/'))
+		sprintf(path_volumes, "%s", pv->state->bsp.modules);
+	else
+		sprintf(path_volumes, "/volumes/%s", pv->state->bsp.modules);
+
+	if (!uname(&uts) && (stat(path_volumes, &st) == 0)) {
+		sprintf(path_lib, "/lib/modules/%s", uts.release);
+		mkdir_p(path_lib, 0755);
+		ret = mount_bind(path_volumes, path_lib);
+		pv_log(DEBUG, "bind mounted modules to %s", path_lib);
 	}
 
 out:
