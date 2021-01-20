@@ -66,7 +66,6 @@
 #define O_LARGEFILE 0
 #endif
 
-pid_t pv_pid;
 static struct pantavisor* global_pv;
 
 struct pantavisor* get_pv_instance()
@@ -479,7 +478,7 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 	return s;
 }
 
-static void _pv_init()
+void pantavisor_init()
 {
 	int ret;
 	struct pantavisor *pv;
@@ -508,32 +507,6 @@ static void _pv_init()
 
 	// Clean exit -> reboot
 	exit(ret);
-}
-
-int pantavisor_init(bool do_fork)
-{
-	pid_t pid;
-	int nullfd, outfd;
-	outfd = open("/dev/kmsg", O_RDWR | O_LARGEFILE);
-	nullfd = open("/dev/null", O_RDWR | O_LARGEFILE);
-	if (outfd) {
-		dup2(outfd, fileno(stdout));
-		dup2(outfd, fileno(stderr));
-		dup2(nullfd, fileno(stdin));
-	}
-	if (do_fork) {
-		pid = fork();
-		if (pid > 0) {
-			pv_pid = pid;
-			goto out;
-		}
-	}
-
-	// Start PV
-	_pv_init();
-
-out:
-	return pid;
 }
 
 struct pv_log_info* pv_new_log(bool islxc,

@@ -511,11 +511,12 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 
 static void wait_shell()
 {
+#ifdef PANTAVISOR_DEBUG
 	if (shell_pid) {
-		int wstatus = 0;
-		pv_log(WARN, "waiting for debug shell to exit before reboot: %d", shell_pid);
-		while (waitpid(shell_pid, &wstatus, 0));
+		pv_log(WARN, "waiting for debug shell with pid %d to exit", shell_pid);
+		waitpid(shell_pid, NULL, 0);
 	}
+#endif
 }
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
