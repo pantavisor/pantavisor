@@ -68,6 +68,8 @@ static int rollback_time;
 static time_t wait_delay;
 static time_t commit_delay;
 
+extern pid_t shell_pid;
+
 typedef enum {
 	STATE_INIT,
 	STATE_RUN,
@@ -507,9 +509,21 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	return STATE_REBOOT;
 }
 
+static void wait_shell()
+{
+#ifdef PANTAVISOR_DEBUG
+	if (shell_pid) {
+		pv_log(WARN, "waiting for debug shell with pid %d to exit", shell_pid);
+		waitpid(shell_pid, NULL, 0);
+	}
+#endif
+}
+
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+
+	wait_shell();
 
 	if (pv->state) {
 		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
@@ -536,6 +550,8 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 static pv_state_t _pv_poweroff(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+
+	wait_shell();
 
 	if (pv->state) {
 		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");

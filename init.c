@@ -50,6 +50,10 @@
 #include "platforms.h"
 #include "state.h"
 
+#ifndef O_LARGEFILE
+#define O_LARGEFILE 0
+#endif
+
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
 pid_t shell_pid;
@@ -147,8 +151,8 @@ static void signal_handler(int signal)
 		pv_teardown(pv);
 
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
-			sleep(10);
 			sync();
+			sleep(10);
 			reboot(LINUX_REBOOT_CMD_RESTART);
 		}
 	}
@@ -177,9 +181,8 @@ static void debug_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd') {
+	if (c[0] == 'd')
 		shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
-	}
 }
 #else
 static void debug_shell()
@@ -212,16 +215,29 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 
 	if (is_arg(argc, argv, "debug"))
 		*args |= PV_DEBUG;
+}
 
-	// For now
-	*args |= PV_DEBUG;
+static void redirect_io()
+{
+	int nullfd, outfd;
+	outfd = open("/dev/kmsg", O_RDWR | O_LARGEFILE);
+	nullfd = open("/dev/null", O_RDWR | O_LARGEFILE);
+	if (outfd) {
+		dup2(outfd, fileno(stdout));
+		dup2(outfd, fileno(stderr));
+		dup2(nullfd, fileno(stdin));
+	}
 }
 
 int main(int argc, char *argv[])
 {
+	pv_pid = 0;
+	shell_pid = 0;
+
 	unsigned short args = 0;
 	parse_args(argc, argv, &args);
 
+	// executed from shell
 	if (getpid() != 1) {
 		if (is_arg(argc, argv, "--version")) {
 			printf("version: %s\n", pv_build_version);
@@ -231,24 +247,39 @@ int main(int argc, char *argv[])
 			printf("manifest: \n%s\n", pv_build_manifest);
 			return 0;
 		}
+		// we are going to use this thread for pv
 		pv_pid = getpid();
-		pantavisor_init(false);
+		redirect_io();
+		pantavisor_init();
 		return 0;
 	}
 
+	// extecuted as init
 	early_mounts();
 	signal(SIGCHLD, signal_handler);
 
+	// in case of standalone is set, we only start debugging tools up in main thread
+	if ((args & PV_STANDALONE) && (args & PV_DEBUG)) {
+		debug_shell();
+		debug_telnet();
+		goto loop;
+	}
+
+	// create pv thread
+	pv_pid = fork();
+	if (pv_pid > 0)
+		goto loop;
+
+	// these debugging tools will be children of the pv thread, so we can controll them
 	if (args & PV_DEBUG) {
 		debug_shell();
 		debug_telnet();
 	}
+	redirect_io();
+	pantavisor_init();
 
-	// Run PV main loop
-	if (!(args & PV_STANDALONE))
-		pv_pid = pantavisor_init(true);
-
-	// loop init
+loop:
+	redirect_io();
 	for (;;)
 		pause();
 
