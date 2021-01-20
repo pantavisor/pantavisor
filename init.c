@@ -215,6 +215,9 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 
 	if (is_arg(argc, argv, "debug"))
 		*args |= PV_DEBUG;
+
+	// For now
+	*args |= PV_DEBUG;
 }
 
 static void redirect_io()
