@@ -89,13 +89,13 @@ process_event() {
 		glob=`echo $i | sed -e 's/[0-9]*:\(.*\):.*/\1/'`
 		source=`echo $i | sed -e 's/[0-9]*:.*://'`
 		# if we have a full match we process the action
-		if [ -n `echo ${i#$glob}} ]; then
+		if [ -n `echo ${i#$glob}}` ]; then
 			continue
 		fi
 		if ! execute_add $num $source; then
 			break
 		fi
-	fi
+	done
 }
 
 rules=`make_rules`
