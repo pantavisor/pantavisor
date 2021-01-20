@@ -62,10 +62,6 @@
 #include "updater.h"
 #include "cmd.h"
 
-#ifndef O_LARGEFILE
-#define O_LARGEFILE 0
-#endif
-
 static struct pantavisor* global_pv;
 
 struct pantavisor* get_pv_instance()

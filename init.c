@@ -50,6 +50,10 @@
 #include "platforms.h"
 #include "state.h"
 
+#ifndef O_LARGEFILE
+#define O_LARGEFILE 0
+#endif
+
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
 pid_t shell_pid;
