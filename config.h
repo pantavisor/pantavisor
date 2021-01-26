@@ -57,6 +57,7 @@ struct pantavisor_storage {
 	char *opts;
 	char *mntpoint;
 	char *mnttype;
+	int wait;
 };
 
 struct pantavisor_updater {

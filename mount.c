@@ -91,14 +91,14 @@ static int pv_mount_init(struct pv_init *this)
 	 * Check that storage device has been enumerated and wait if not there yet
 	 * (RPi2 for example is too slow to pvan the MMC devices in time)
 	 */
-	for (int wait = 5; wait > 0; wait--) {
+	for (int wait = config->storage.wait; wait > 0; wait--) {
 		/*
 		 * storage.path will contain UUID=XXXX or LABEL=XXXX
 		 * */
 		get_blkid(&dev_info, config->storage.path);
 		if (dev_info.device && stat(dev_info.device, &st) == 0)
 			break;
-		printf("INFO: trail storage not yet available, waiting...");
+		printf("INFO: trail storage not yet available, waiting %d seconds...", wait);
 		sleep(1);
 		continue;
 	}
