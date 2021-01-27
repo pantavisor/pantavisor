@@ -47,6 +47,7 @@
 #include "../utils/list.h"
 #include "../pvctl_utils.h"
 #include "../trestclient.h"
+#include "../device.h"
 
 #define MODULE_NAME             "ph_logger"
 #include "../log.h"
@@ -1087,27 +1088,9 @@ static pid_t ph_logger_service_start(struct pantavisor *pv, int revision)
 	return service_pid;
 }
 
-void ph_logger_start_local(struct pantavisor *pv, int revision)
+static void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 {
-	if (!pv)
-		return;
-
-	if (ph_logger.rev_logger == -1) {
-		ph_logger.rev_logger = ph_logger_service_start(pv, revision);
-		if (ph_logger.rev_logger > 0) {
-			pv_log(DEBUG, "started ph logger with pid %d", ph_logger.rev_logger);
-		} else {
-			pv_log(ERROR, "unable to start logger service");
-		}
-	}
-
-	if (pv->online)
-		ph_logger_start_cloud(pv, revision);
-}
-
-void ph_logger_start_cloud(struct pantavisor *pv, int revision)
-{
-	if (!pv || !pv->online)
+	if (!pv->online)
 		return;
 
 	if (ph_logger.push_helper == -1) {
@@ -1129,16 +1112,8 @@ void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 	}
 }
 
-void ph_logger_stop(struct pantavisor *pv)
+static void ph_logger_stop_cloud(struct pantavisor *pv)
 {
-	if (!pv)
-		return;
-
-	if (ph_logger.rev_logger > 0) {
-		kill_child_process(ph_logger.rev_logger);
-		pv_log(DEBUG, "stopped ph logger with pid %d", ph_logger.rev_logger);
-	}
-
 	if (ph_logger.push_helper > 0) {
 		kill_child_process(ph_logger.push_helper);
 		pv_log(DEBUG, "stopped push helper with pid %d", ph_logger.push_helper);
@@ -1149,9 +1124,54 @@ void ph_logger_stop(struct pantavisor *pv)
 		pv_log(DEBUG, "stopped range logger with pid %d", ph_logger.range_logger);
 	}
 
-	ph_logger.rev_logger = -1;
 	ph_logger.push_helper = -1;
 	ph_logger.range_logger = -1;
+}
+
+void ph_logger_start_local(struct pantavisor *pv, int revision)
+{
+	if (!pv)
+		return;
+
+	if (ph_logger.rev_logger == -1) {
+		ph_logger.rev_logger = ph_logger_service_start(pv, revision);
+		if (ph_logger.rev_logger > 0) {
+			pv_log(DEBUG, "started ph logger with pid %d", ph_logger.rev_logger);
+		} else {
+			pv_log(ERROR, "unable to start logger service");
+		}
+	}
+
+	if (pv->online)
+		ph_logger_start_cloud(pv, revision);
+}
+
+void ph_logger_toggle_cloud(struct pantavisor *pv, int rev)
+{
+	if (!pv)
+		return;
+
+	if (!pv_device_push_logs_activated(pv)) {
+		ph_logger_stop_cloud(pv);
+		return;
+	}
+
+	ph_logger_start_cloud(pv, rev);
+}
+
+void ph_logger_stop(struct pantavisor *pv)
+{
+	if (!pv)
+		return;
+
+	if (ph_logger.rev_logger > 0) {
+		kill_child_process(ph_logger.rev_logger);
+		pv_log(DEBUG, "stopped ph logger with pid %d", ph_logger.rev_logger);
+	}
+
+	ph_logger.rev_logger = -1;
+
+	ph_logger_stop_cloud(pv);
 }
 
 int ph_logger_read_bytes(struct ph_logger_msg *ph_logger_msg, char *buf, ...)

@@ -297,8 +297,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	// start ph logger cloud if not done and if possible
-	ph_logger_start_cloud(pv, pv->state->rev);
+	// start or stop ph logger depending on network and metadata configuration
+	ph_logger_toggle_cloud(pv, pv->state->rev);
 
 	// update meta info
 	if (!pv_device_factory_meta_done(pv)) {
