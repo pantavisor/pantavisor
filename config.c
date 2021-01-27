@@ -297,6 +297,11 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.opts = _config_get_value("storage.opts");
 	config->storage.mntpoint = _config_get_value("storage.mntpoint");
 	config->storage.mnttype = _config_get_value("storage.mnttype");
+	item = _config_get_value("storage.wait");
+	if (item)
+		config->storage.wait = atoi(item);
+	else
+		config->storage.wait = 5;
 
 	item = _config_get_value("wdt.enabled");
 	config->wdt.enabled = item ? atoi(item) : 1;
