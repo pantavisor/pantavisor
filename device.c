@@ -703,6 +703,33 @@ int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
 	return ret;
 }
 
+static struct pv_usermeta* pv_device_get_usermeta(struct pantavisor *pv, char *key)
+{
+	if (!pv || !pv->dev)
+		return NULL;
+
+	struct pv_usermeta *curr, *tmp;
+	struct dl_list *head = &pv->dev->usermeta_list;
+
+	dl_list_for_each_safe(curr, tmp, head,
+			struct pv_usermeta, list) {
+		if (!strcmp(curr->key, key))
+			return curr;
+	}
+	return NULL;
+}
+
+bool pv_device_push_logs_activated(struct pantavisor *pv)
+{
+	struct pv_usermeta* usermeta = NULL;
+
+    usermeta = pv_device_get_usermeta(pv, "pantahub.push_logs");
+    if (usermeta && !strcmp(usermeta->value, "no"))
+		return false;
+
+	return true;
+}
+
 static int pv_device_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
