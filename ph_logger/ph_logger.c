@@ -1083,12 +1083,28 @@ static pid_t ph_logger_start_log_service(struct pantavisor *pv, char *revision)
 	return service_pid;
 }
 
+static bool ph_logger_is_pid_running(pid_t pid)
+{
+	// if process was stopped normally
+	if (pid == -1)
+		return false;
+
+	// if process stopped unexpectedly
+	if (waitpid(pid, NULL, WNOHANG)) {
+		kill_child_process(pid);
+		pv_log(WARN, "process with pid %d stopped unexpectedly, resuming...");
+		return false;
+	}
+
+	return true;
+}
+
 static void ph_logger_start_cloud(struct pantavisor *pv, char *revision)
 {
 	if (!pv || !pv->online)
 		return;
 
-	if (ph_logger.push_service == -1) {
+	if (!ph_logger_is_pid_running(ph_logger.push_service)) {
 		ph_logger.push_service = ph_logger_start_push_service(revision);
 		if (ph_logger.push_service > 0) {
 			pv_log(DEBUG, "started push service with pid %d", ph_logger.push_service);
@@ -1097,7 +1113,7 @@ static void ph_logger_start_cloud(struct pantavisor *pv, char *revision)
 		}
 	}
 
-	if (ph_logger.range_service == -1) {
+	if (!ph_logger_is_pid_running(ph_logger.range_service)) {
 		ph_logger.range_service = ph_logger_start_range_service(pv, revision);
 		if (ph_logger.range_service > 0) {
 			pv_log(DEBUG, "started range service with pid %d", ph_logger.range_service);
@@ -1128,7 +1144,7 @@ static void ph_logger_start_local(struct pantavisor *pv, char *revision)
 	if (!pv)
 		return;
 
-	if (ph_logger.log_service == -1) {
+	if (!ph_logger_is_pid_running(ph_logger.log_service)) {
 		ph_logger.log_service = ph_logger_start_log_service(pv, revision);
 		if (ph_logger.log_service > 0) {
 			pv_log(DEBUG, "started log service with pid %d", ph_logger.log_service);
