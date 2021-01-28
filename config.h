@@ -82,14 +82,18 @@ struct pantavisor_network {
 	char *braddress4;
 };
 
-struct pantavisor_config {
-	char *name;
+struct pantavisor_log {
 	char *logdir;
-	char *metacachedir;
-	char *dropbearcachedir;
 	int logmax;
 	int loglevel;
 	int logsize;
+	bool push;
+};
+
+struct pantavisor_config {
+	char *name;
+	char *metacachedir;
+	char *dropbearcachedir;
 	int revision_retries;
 	int revision_retry_timeout;
 	int update_commit_delay;
@@ -100,6 +104,7 @@ struct pantavisor_config {
 	struct pantavisor_updater updater;
 	struct pantavisor_watchdog wdt;
 	struct pantavisor_network net;
+	struct pantavisor_log log;
 };
 
 // Fill config struct after parsing on-initramfs factory config

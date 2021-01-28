@@ -723,8 +723,8 @@ bool pv_device_push_logs_activated(struct pantavisor *pv)
 {
 	struct pv_usermeta* usermeta = NULL;
 
-    usermeta = pv_device_get_usermeta(pv, "pantahub.push_logs");
-    if (usermeta && !strcmp(usermeta->value, "no"))
+    usermeta = pv_device_get_usermeta(pv, "pantahub.log.push");
+    if (usermeta && !strcmp(usermeta->value, "0"))
 		return false;
 
 	return true;
