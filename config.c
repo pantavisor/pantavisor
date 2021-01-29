@@ -317,6 +317,10 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	if (!config->net.braddress4)
 		config->net.braddress4 = strdup("10.0.3.1");
 
+	config->net.brmask4 = _config_get_value("net.brmask4");
+	if (!config->net.brmask4)
+		config->net.brmask4 = strdup("255.255.255.0");
+
 	item = _config_get_value("revision.retries");
 	if (item)
 		sscanf(item, "%d", &config->revision_retries);

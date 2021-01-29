@@ -48,6 +48,23 @@
 #define IFACES_FMT "{\"interfaces\":{"
 #define IFACE_FMT "\"%s\":[%s]"
 
+static int _set_netmask(int skfd, char *intf, char *newmask)
+{
+	struct ifreq ifr;
+	unsigned int dst;
+	struct sockaddr_in *sin = (struct sockaddr_in *) &ifr.ifr_addr;
+	memset(&ifr, 0, sizeof(ifr));
+	sin->sin_family = AF_INET;
+	if (!inet_pton(AF_INET, newmask, &sin->sin_addr)) {
+		return 0;
+	}
+	strncpy(ifr.ifr_name, intf, IFNAMSIZ-1);
+	if (ioctl(skfd,SIOCSIFNETMASK,&ifr) == -1) {
+		return 0;
+	}
+	return 1;
+}
+
 static int pv_network_init(struct pantavisor *pv)
 {
 	int fd, ret;
@@ -59,6 +76,8 @@ static int pv_network_init(struct pantavisor *pv)
 
 	if (!pv)
 		return -1;
+
+	memset(&ifr, 0, sizeof(ifr));
 
 	c = pv->config;
 	if (!c->net.brdev)
@@ -96,6 +115,13 @@ static int pv_network_init(struct pantavisor *pv)
 	if (!ret) {
 		pv_log(WARN, "unable to set IPv4 of bridge dev %s to %s: %s",
 			c->net.brdev, c->net.braddress4, strerror(errno));
+		goto out;
+	}
+
+	ret = _set_netmask(sockfd, c->net.brdev, c->net.brmask4);
+	if (!ret) {
+		pv_log(WARN, "unable to set netmask %s: %s",
+			c->net.brdev, strerror(errno));
 		goto out;
 	}
 
