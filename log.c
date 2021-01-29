@@ -96,7 +96,7 @@ void pv_log_put_buffer(struct log_buffer *log_buffer)
 		return;
 	if (!dl_list_empty(&log_buffer->free_list))
 		return;
-	if (global_pv->config->logsize == log_buffer->size)
+	if (global_pv->config->log.logsize == log_buffer->size)
 		dl_list_add(&log_buffer_list, &log_buffer->free_list);
 	else
 		dl_list_add(&log_buffer_list_double, &log_buffer->free_list);
@@ -277,13 +277,13 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 	int allocated_dcache = 0;
 
 	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv->config->logsize, &log_buffer_list);
+					pv->config->log.logsize, &log_buffer_list);
 
 	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv->config->logsize * 2, &log_buffer_list_double);
+					pv->config->log.logsize * 2, &log_buffer_list_double);
 
 	mkdir_p("/pv/logs", 0755);
-	mount_bind(pv->config->logdir, "/pv/logs");
+	mount_bind(pv->config->log.logdir, "/pv/logs");
 
 	if (pv_log_start(pv, rev) < 0)
 		return;
@@ -291,9 +291,9 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
-			allocated_cache, pv->config->logsize);
+			allocated_cache, pv->config->log.logsize);
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
-			allocated_dcache, pv->config->logsize * 2);
+			allocated_dcache, pv->config->log.logsize * 2);
 }
 
 void exit_error(int err, char *msg)
