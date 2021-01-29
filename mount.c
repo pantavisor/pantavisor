@@ -51,8 +51,8 @@ static int ph_mount_init(struct pv_init *this)
 	if (stat("/pv", &st) != 0)
 		mkdir_p("/pv", 0500);
 
-	if (stat(config->logdir, &st) != 0)
-		mkdir_p(config->logdir, 0500);
+	if (stat(config->log.logdir, &st) != 0)
+		mkdir_p(config->log.logdir, 0500);
 
 	if (stat(config->metacachedir, &st) != 0)
 		mkdir_p(config->metacachedir, 0500);
