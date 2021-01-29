@@ -342,9 +342,9 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	// for overrides
 	_config_parse_cmdline("ph_");
 
-	config->logdir = _config_get_value("log.dir");
-	if (!config->logdir)
-		config->logdir = strdup("/storage/logs/");
+	config->log.logdir = _config_get_value("log.dir");
+	if (!config->log.logdir)
+		config->log.logdir = strdup("/storage/logs/");
 
 	config->dropbearcachedir = _config_get_value("dropbear.cache.dir");
 	if (!config->dropbearcachedir)
@@ -356,13 +356,13 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 
 	item = _config_get_value("log.maxsize");
 	if (item)
-		config->logmax = atoi(item);
+		config->log.logmax = atoi(item);
 	else
-		config->logmax = (1 << 21); // 2 MiB
+		config->log.logmax = (1 << 21); // 2 MiB
 
 	item = _config_get_value("log.level");
 	if (item)
-		config->loglevel = atoi(item);
+		config->log.loglevel = atoi(item);
 
 	item = _config_get_value("log.buf_nitems");
 	if (item) {
@@ -370,16 +370,18 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 		if (sscanf(item, "%d", &size_in_kb) == 1) {
 			if (size_in_kb <=0 || size_in_kb >= 1024)
 				size_in_kb = 128;
-			config->logsize = size_in_kb * 1024;
+			config->log.logsize = size_in_kb * 1024;
 		}
 		else
-			config->logsize = 128 * 1024;
+			config->log.logsize = 128 * 1024;
 	}
 	else {
-		config->logsize = 128 * 1024;
+		config->log.logsize = 128 * 1024;
 	}
+	item = _config_get_value("log.push");
+	config->log.push = item ? atoi(item) : 1;
 
-	// default 300 second update interval
+	// default 60 second update interval
 	item = _config_get_value("updater.interval");
 	if (item)
 		config->updater.interval = atoi(item);
@@ -463,9 +465,9 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 		return 1;
 	}
 
-	sprintf(buf, "%d", config->loglevel);
+	sprintf(buf, "%d", config->log.loglevel);
 	bytes = write_config_tuple(fd, "log.level", buf);
-	sprintf(buf, "%d", config->logsize);
+	sprintf(buf, "%d", config->log.logsize);
 	bytes = write_config_tuple(fd, "log.buf_nitems", buf);
 	sprintf(buf, "%d", config->updater.interval);
 	bytes = write_config_tuple(fd, "updater.interval", buf);

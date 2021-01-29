@@ -542,6 +542,7 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 
 	sleep(5);
 	pv_log(INFO, "rebooting...");
+	ph_logger_stop(pv);
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
 	return STATE_EXIT;
@@ -568,6 +569,7 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 
 	sleep(5);
 	pv_log(INFO, "powering off...");
+	ph_logger_stop(pv);
 	reboot(LINUX_REBOOT_CMD_POWER_OFF);
 
 	return STATE_EXIT;
