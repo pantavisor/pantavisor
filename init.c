@@ -125,7 +125,6 @@ static int early_mounts()
 static void debug_telnet()
 {
 	tsh_run("ifconfig lo up", 0, NULL);
-	tsh_run("telnetd -b 127.0.0.1 -l /bin/sh", 0, NULL);
 	tsh_run("dropbear -p 0.0.0.0:8222 -n /pv/user-meta/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd", 0, NULL);
 }
 #else
