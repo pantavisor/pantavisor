@@ -446,7 +446,7 @@ auth:
 		goto out;
 	}
 	if (!res->body || res->code != THTTP_STATUS_OK) {
-		ph_log(WARN, "logs upload status = %d, body = '%s'", 
+		ph_log(WARN, "Logs upload status = %d, body = '%s'", 
 				res->code, (res->body ? res->body : ""));
 		ret = -1;
 		goto out;
@@ -510,13 +510,9 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	}
 	buf = log_buff->buf;
 
-	ret = get_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst, NULL);
-	if (ret > 0) {
+	if (get_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst, NULL) > 0) {
 		sscanf(dst, "%" PRId64, &pos);
 	} else {
-		if (-ret != ENODATA)
-			ph_log(ERROR, "XATTR could not be read. Errno %s", -ret);
-
 		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
 				PH_LOGGER_POS_XATTR, filename, pos);
 		sprintf(dst, "%ld", pos);
@@ -525,7 +521,6 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		 */
 		set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, dst);
 	}
-	ret = -1;
 #ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
 		printf("BUG!! .Frag list must be empty\n");
@@ -535,6 +530,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
 		ph_log(ERROR, "Unable to open file %s", filename);
+		ret = -1;
 		goto out;
 	}
 
@@ -723,8 +719,6 @@ close_fd:
 			free(item->json_frag);
 			free(item);
 		}
-		// we init ret to 0, which means nothing can be sent
-		ret = 0;
 		if (json_frag_array) {
 			snprintf(json_frag_array + off, avail, "]");
 			// set ret to 1, something pending to be sent
@@ -889,6 +883,7 @@ static int ph_logger_push_from_file_parse_info(char *buf, int len, int revision,
 			ph_logger_load_config(pv_global);
 		return ph_logger_push_from_file(filename, platform, source, revision);
 	}
+	ph_log(DEBUG, "exits this way");
 	return -1;
 }
 
@@ -934,14 +929,16 @@ static int ph_logger_push_revision(int revision)
 				buf[nr_read - 1] = '\0';
 				if (ph_logger_contains_skip_prefix(&ph_logger, buf + offset_bytes))
 					continue;
-				ret = ph_logger_push_from_file_parse_info(buf, nr_read, 
+				ret = ph_logger_push_from_file_parse_info(buf, nr_read,
 						revision, offset_bytes);
 				// if there was something to send for al least one file, return 1
 				if (ret > 0)
 					result = 1;
 				// if we got an error while pushing any of the files, return -1
-				else if (ret < 0)
-					return ret;
+				else if (ret < 0) {
+					result = ret;
+					break;
+				}
 			}
 			else {
 				break;
@@ -964,7 +961,7 @@ static pid_t ph_logger_start_push_service(int revision)
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
-		ph_log(INFO, "Initialized push service with pid = %d by process with pid %d",
+		ph_log(INFO, "Initialized push service with pid %d by process with pid %d",
 				getpid(), getppid());
 		ph_log(DEBUG, "Push service pushing logs for rev %d", revision);
 		while (1) {
@@ -978,8 +975,8 @@ static pid_t ph_logger_start_push_service(int revision)
 				sleep(sleep_secs);
 			// if we have more things to push, just decrement sleep time
 			} else {
-				sleep_secs -= 1;
-				sleep_secs = (sleep_secs <= 0 ? 0 : sleep_secs);
+				sleep_secs--;
+				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
 			}
 		}
 	}
@@ -1033,7 +1030,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
 	if (range_service == 0) {
 		current_rev = ph_logger_get_max_revision(pv);
 
-		ph_log(INFO, "Initialized range service with pid = %d by process with pid %d",
+		ph_log(INFO, "Initialized range service with pid %d by process with pid %d",
 			getpid(), getppid());
 		while (current_rev >= 0) {
 			// skip current revision.
@@ -1048,8 +1045,8 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
 			// if nothing else to send, go to previous revision
 			if (result == 0) {
 				current_rev--;
-				sleep_secs -= 1;
-				sleep_secs = (sleep_secs <= 0 ? 1 : sleep_secs);
+				sleep_secs--;
+				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
 			}
 			// if error while sending, sleep
 			else if (result < 0) {
@@ -1061,8 +1058,8 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
 				sleep(sleep_secs);
 			// if more things to send, just decrement sleep time
 			} else {
-				sleep_secs -= 1;
-				sleep_secs = (sleep_secs <= 0 ? 1 : sleep_secs);
+				sleep_secs--;
+				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
 			}
 		}
 		ph_log(INFO, "Range service stopped normally");
