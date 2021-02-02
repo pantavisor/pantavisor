@@ -58,6 +58,21 @@
 pid_t pv_pid;
 pid_t shell_pid;
 
+static int mkcgroup(const char* cgroup) {
+	char path[PATH_MAX];
+	int ret;
+	sprintf(path, "/sys/fs/cgroup/%s", cgroup);
+	mkdir(path, 0555);
+	ret = mount("cgroup", path, "cgroup", 0, cgroup);
+	if (ret < 0) {
+		char *err = malloc(sizeof(char) * (strlen(path) + strlen("Could not mount cgroup %s") + 2));
+		sprintf(err, "Could not mount cgroup %s", path);
+		printf("ERROR: %s\n", err);
+		return -1;
+	}
+	return 0;
+}
+
 static int early_mounts()
 {
 	int ret;
@@ -83,7 +98,8 @@ static int early_mounts()
 	remove("/dev/ptmx");
 	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
 
-	ret = mount("none", "/sys/fs/cgroup", "cgroup", 0, NULL);
+	mkdir("/sys/fs/cgroup", 0755);
+	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup");
 
@@ -92,10 +108,20 @@ static int early_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
 
-	mkdir("/sys/fs/cgroup/devices", 0555);
-	ret = mount("cgroup", "/sys/fs/cgroup/devices", "cgroup", 0, "none,name=devices");
-	if (ret < 0)
-		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
+	mkcgroup("blkio");
+	mkcgroup("cpu,cpuacct");
+	mkcgroup("cpu");
+	mkcgroup("cpuset");
+	mkcgroup("devices");
+	mkcgroup("freezer");
+	mkcgroup("hugetlb");
+	mkcgroup("memory");
+	mkcgroup("net_cls,net_prio");
+	mkcgroup("net_cls");
+	mkcgroup("net_prio");
+	mkcgroup("perf_event");
+	mkcgroup("pids");
+	mkcgroup("rdma");
 
 	mkdir("/writable", 0755);
 	if (!stat("/etc/fstab", &st))
