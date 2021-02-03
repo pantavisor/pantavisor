@@ -143,9 +143,9 @@ struct ph_logger {
 	struct pv_connection *pv_conn;
 	char user_agent[USER_AGENT_LEN];
 	struct dl_list skip_list;
-	pid_t rev_logger;
-	pid_t range_logger;
-	pid_t push_helper;
+	pid_t log_service;
+	pid_t range_service;
+	pid_t push_service;
 };
 
 static struct ph_logger ph_logger = {
@@ -153,9 +153,9 @@ static struct ph_logger ph_logger = {
 	.sock_fd = -1,
 	.pv_conn = NULL,
 	.client = NULL,
-	.rev_logger = -1,
-	.range_logger = -1,
-	.push_helper = -1
+	.log_service = -1,
+	.range_service = -1,
+	.push_service = -1
 };
 
 static ph_logger_handler_t read_handler[] = {
@@ -404,12 +404,12 @@ static void sigchld_handler(int signum)
 		;	
 }
 
-static int ph_logger_push_logs(	struct ph_logger *ph_logger,
+static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger,
 				struct pantavisor_config *config,
 				char *logs)
 {
 	int ret = 0;
-        trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
+	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_request_ptr req = NULL;
 	trest_response_ptr res = NULL;
 
@@ -417,8 +417,8 @@ static int ph_logger_push_logs(	struct ph_logger *ph_logger,
 		goto auth;
 
 	if (!config->creds.prn || strcmp(config->creds.prn, "") == 0) {
-			ret = -1;
-			goto out;
+		ret = -1;
+		goto out;
 	}
 	ph_logger->client = pv_get_trest_client(pv_global, ph_logger->pv_conn);
 
@@ -446,10 +446,9 @@ auth:
 		goto out;
 	}
 	if (!res->body || res->code != THTTP_STATUS_OK) {
-		ph_log(DEBUG, "logs upload status = %d, body = '%s'", 
+		ph_log(WARN, "Logs upload status = %d, body = '%s'", 
 				res->code, (res->body ? res->body : ""));
-		if (res->code == THTTP_STATUS_BAD_REQUEST)
-			ret = -1;
+		ret = -1;
 		goto out;
 	}
 out:
@@ -511,22 +510,17 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	}
 	buf = log_buff->buf;
 
-	ret = get_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst, NULL);
-	if (ret > 0) {
+	if (get_xattr_on_file(filename, PH_LOGGER_POS_XATTR, &dst, NULL) > 0) {
 		sscanf(dst, "%" PRId64, &pos);
 	} else {
-		if (-ret != ENODATA)
-			ph_log(ERROR, "XATTR could not be read. Errno %s", -ret);
-
 		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
 				PH_LOGGER_POS_XATTR, filename, pos);
-		sprintf(dst, "%lld", pos);
+		sprintf(dst, "%ld", pos);
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */
 		set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, dst);
 	}
-	ret = -1;
 #ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
 		printf("BUG!! .Frag list must be empty\n");
@@ -536,6 +530,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
 		ph_log(ERROR, "Unable to open file %s", filename);
+		ret = -1;
 		goto out;
 	}
 
@@ -726,21 +721,17 @@ close_fd:
 		}
 		if (json_frag_array) {
 			snprintf(json_frag_array + off, avail, "]");
-			/*
-			 * We've something to send. Mark that with
-			 * ret = 0. Though we may fail to push things
-			 * upstream recording the fact that there was
-			 * indeed something to send counts.
-			 * This is required so that pusher service for other
-			 * revisions doesn't exit.
-			 */
-			ret = 0;
-			if (!ph_logger_push_logs(&ph_logger, pv_global->config, json_frag_array)) {
+			// set ret to 1, something pending to be sent
+			ret = 1;
+			if (!ph_logger_push_logs_endpoint(&ph_logger, pv_global->config, json_frag_array)) {
 				char value[20];
 
 				sprintf(value, "%"PRId64, pos);
 				set_xattr_on_file(filename, PH_LOGGER_POS_XATTR, value);
 			}
+			// in case of error while sending, we return -1
+			else
+				ret = -1;
 			free(json_frag_array);
 		}
 	}
@@ -858,7 +849,7 @@ static void ph_logger_load_config(struct pantavisor *pv)
 /*
  * For each newline found in buf, construct a filename to read from.
  */
-static int __ph_logger_push_one_log(char *buf, int len, int revision, int offset)
+static int ph_logger_push_from_file_parse_info(char *buf, int len, int revision, int offset)
 {
 	char platform[64];
 	char *source = NULL;
@@ -892,15 +883,16 @@ static int __ph_logger_push_one_log(char *buf, int len, int revision, int offset
 			ph_logger_load_config(pv_global);
 		return ph_logger_push_from_file(filename, platform, source, revision);
 	}
+	ph_log(DEBUG, "exits this way");
 	return -1;
 }
 
-static bool ph_logger_helper_function(int revision)
+static int ph_logger_push_revision(int revision)
 {
 	char find_cmd[1024];
 	FILE *find_fp = NULL;
 	int offset_bytes = 0;
-	bool sent_one = false;
+	int result = 0;
 
 	/*
 	 * Figure out how much to move
@@ -937,11 +929,15 @@ static bool ph_logger_helper_function(int revision)
 				buf[nr_read - 1] = '\0';
 				if (ph_logger_contains_skip_prefix(&ph_logger, buf + offset_bytes))
 					continue;
-				ret = __ph_logger_push_one_log(buf, nr_read, 
+				ret = ph_logger_push_from_file_parse_info(buf, nr_read,
 						revision, offset_bytes);
-				if (!sent_one) {
-					/*ret == 0 for one sent item*/
-					sent_one = (ret == 0); 
+				// if there was something to send for al least one file, return 1
+				if (ret > 0)
+					result = 1;
+				// if we got an error while pushing any of the files, return -1
+				else if (ret < 0) {
+					result = ret;
+					break;
 				}
 			}
 			else {
@@ -953,37 +949,34 @@ static bool ph_logger_helper_function(int revision)
 		pclose(find_fp);
 	}
 	ph_logger_clear_skip_prefix(&ph_logger);
-	return sent_one;
+	return result;
 }
 
-static pid_t ph_logger_create_push_helper(int revision)
+static pid_t ph_logger_start_push_service(int revision)
 {
 	pid_t helper_pid = -1;
-	const int max_sleep = 10;
-	int sleep_secs = 1;
+	int sleep_secs = 0;
 
 	helper_pid = fork();
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
-		ph_log(INFO, "Initialized PH logger push helper with pid = %d by process with pid %d",
+		ph_log(INFO, "Initialized push service with pid %d by process with pid %d",
 				getpid(), getppid());
-		ph_log(DEBUG, "Push helper pushing logs for rev %d", revision);
+		ph_log(DEBUG, "Push service pushing logs for rev %d", revision);
 		while (1) {
-			bool sent_one = ph_logger_helper_function(revision);
-			/*
-			 * Don't keep poking if there was nothing to send out
-			 * but don't stay idle for more than 10 seconds at most.
-			 */
-			if (!sent_one) {
+			// if nothing to push or error while pushing, sleep
+			if (ph_logger_push_revision(revision) <= 0) {
+				// increment sleep time until 10
 				sleep_secs ++;
-				sleep_secs = (sleep_secs >= max_sleep ? max_sleep : sleep_secs);
-				ph_log(WARN, "Sleeping %d seconds for revision %d", sleep_secs,
-						revision);
+				sleep_secs = (sleep_secs > 10 ? 10 : sleep_secs);
+				ph_log(WARN, "Push service sleeping %d seconds for revision %d",
+						sleep_secs, revision);
 				sleep(sleep_secs);
+			// if we have more things to push, just decrement sleep time
 			} else {
-				sleep_secs -= 1;
-				sleep_secs = (sleep_secs <= 0 ? 1 : sleep_secs);
+				sleep_secs--;
+				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
 			}
 		}
 	}
@@ -1026,20 +1019,20 @@ out:
 	return max_revision;
 }
 
-static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int avoid_rev)
+static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
 {
 	pid_t range_service = -1;
 	int current_rev = -1;
+	int sleep_secs = 0;
+	int result;
 
 	range_service = fork();
 	if (range_service == 0) {
 		current_rev = ph_logger_get_max_revision(pv);
 
-		ph_log(INFO, "Initialized PH logger range service with pid = %d by process with pid %d",
+		ph_log(INFO, "Initialized range service with pid %d by process with pid %d",
 			getpid(), getppid());
 		while (current_rev >= 0) {
-			bool sent_one = false;
-
 			// skip current revision.
 			if (avoid_rev == current_rev) {
 				current_rev--;
@@ -1048,9 +1041,26 @@ static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int avoid_
 			ph_log(DEBUG, "Range service about to push remaining logs for rev %d",
 				current_rev);
 			ph_logger.revision = current_rev;
-			sent_one = ph_logger_helper_function(current_rev);
-			if (!sent_one)
+			result = ph_logger_push_revision(current_rev);
+			// if nothing else to send, go to previous revision
+			if (result == 0) {
 				current_rev--;
+				sleep_secs--;
+				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
+			}
+			// if error while sending, sleep
+			else if (result < 0) {
+				sleep_secs ++;
+				// increment sleep time until 10
+				sleep_secs = (sleep_secs > 10 ? 10 : sleep_secs);
+				ph_log(WARN, "Range service sleeping %d seconds for revision %d",
+						sleep_secs, current_rev);
+				sleep(sleep_secs);
+			// if more things to send, just decrement sleep time
+			} else {
+				sleep_secs--;
+				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
+			}
 		}
 		ph_log(INFO, "Range service stopped normally");
 		_exit(EXIT_SUCCESS);
@@ -1059,7 +1069,7 @@ static pid_t ph_logger_service_start_for_range(struct pantavisor *pv, int avoid_
 	return range_service;
 }
 
-static pid_t ph_logger_service_start(struct pantavisor *pv, int revision)
+static pid_t ph_logger_start_log_service(struct pantavisor *pv, int revision)
 {
 	pid_t service_pid = -1;
 
@@ -1093,39 +1103,39 @@ static void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 	if (!pv->online)
 		return;
 
-	if (ph_logger.push_helper == -1) {
-		ph_logger.push_helper = ph_logger_create_push_helper(revision);
-		if (ph_logger.push_helper > 0) {
-			pv_log(DEBUG, "started push helper with pid %d", ph_logger.push_helper);
+	if (ph_logger.push_service == -1) {
+		ph_logger.push_service = ph_logger_start_push_service(revision);
+		if (ph_logger.push_service > 0) {
+			pv_log(DEBUG, "started push service with pid %d", ph_logger.push_service);
 		} else {
-			pv_log(ERROR, "unable to start push helper");
+			pv_log(ERROR, "unable to start push service");
 		}
 	}
 
-	if ((ph_logger.range_logger == -1) && (revision > 0)) {
-		ph_logger.range_logger = ph_logger_service_start_for_range(pv, revision);
-		if (ph_logger.range_logger > 0) {
-			pv_log(DEBUG, "started range logger with pid %d", ph_logger.range_logger);
+	if ((ph_logger.range_service == -1) && (revision > 0)) {
+		ph_logger.range_service = ph_logger_start_range_service(pv, revision);
+		if (ph_logger.range_service > 0) {
+			pv_log(DEBUG, "started range service with pid %d", ph_logger.range_service);
 		} else {
-			pv_log(ERROR, "unable to start range logger service");
+			pv_log(ERROR, "unable to start range service");
 		}
 	}
 }
 
 static void ph_logger_stop_cloud(struct pantavisor *pv)
 {
-	if (ph_logger.push_helper > 0) {
-		kill_child_process(ph_logger.push_helper);
-		pv_log(DEBUG, "stopped push helper with pid %d", ph_logger.push_helper);
+	if (ph_logger.push_service > 0) {
+		kill_child_process(ph_logger.push_service);
+		pv_log(DEBUG, "stopped push service with pid %d", ph_logger.push_service);
 	}
 
-	if (ph_logger.range_logger > 0) {
-		kill_child_process(ph_logger.range_logger);
-		pv_log(DEBUG, "stopped range logger with pid %d", ph_logger.range_logger);
+	if (ph_logger.range_service > 0) {
+		kill_child_process(ph_logger.range_service);
+		pv_log(DEBUG, "stopped range service with pid %d", ph_logger.range_service);
 	}
 
-	ph_logger.push_helper = -1;
-	ph_logger.range_logger = -1;
+	ph_logger.push_service = -1;
+	ph_logger.range_service = -1;
 }
 
 void ph_logger_start_local(struct pantavisor *pv, int revision)
@@ -1133,12 +1143,12 @@ void ph_logger_start_local(struct pantavisor *pv, int revision)
 	if (!pv)
 		return;
 
-	if (ph_logger.rev_logger == -1) {
-		ph_logger.rev_logger = ph_logger_service_start(pv, revision);
-		if (ph_logger.rev_logger > 0) {
-			pv_log(DEBUG, "started ph logger with pid %d", ph_logger.rev_logger);
+	if (ph_logger.log_service == -1) {
+		ph_logger.log_service = ph_logger_start_log_service(pv, revision);
+		if (ph_logger.log_service > 0) {
+			pv_log(DEBUG, "started log service with pid %d", ph_logger.log_service);
 		} else {
-			pv_log(ERROR, "unable to start logger service");
+			pv_log(ERROR, "unable to start log service");
 		}
 	}
 
@@ -1164,12 +1174,12 @@ void ph_logger_stop(struct pantavisor *pv)
 	if (!pv)
 		return;
 
-	if (ph_logger.rev_logger > 0) {
-		kill_child_process(ph_logger.rev_logger);
-		pv_log(DEBUG, "stopped ph logger with pid %d", ph_logger.rev_logger);
+	if (ph_logger.log_service > 0) {
+		kill_child_process(ph_logger.log_service);
+		pv_log(DEBUG, "stopped log service with pid %d", ph_logger.log_service);
 	}
 
-	ph_logger.rev_logger = -1;
+	ph_logger.log_service = -1;
 
 	ph_logger_stop_cloud(pv);
 }
