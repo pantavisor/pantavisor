@@ -501,10 +501,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
 
-	if (pv_revision_set_roolledback()) {
-		pv_log(ERROR, "revision for next boot could not be set");
-		return STATE_ERROR;
-	}
+	pv_revision_set_rolledback();
 
 	return STATE_REBOOT;
 }
