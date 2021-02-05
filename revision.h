@@ -35,7 +35,7 @@ bool pv_revision_update_in_progress(void);
 bool pv_revision_trying_update(void);
 
 int pv_revision_set_installed(int rev);
-int pv_revision_set_roolledback(void);
+void pv_revision_set_rolledback(void);
 int pv_revision_set_commited(int rev);
 int pv_revision_set_failed(void);
 

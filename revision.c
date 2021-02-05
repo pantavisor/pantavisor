@@ -94,10 +94,9 @@ int pv_revision_set_installed(int rev)
 	return pv_revision_set_try(rev);
 }
 
-int pv_revision_set_roolledback()
+void pv_revision_set_rolledback()
 {
 	pv_log(INFO, "setting old revision %d to be started after next reboot", pv_bl_get_rev());
-	return pv_revision_unset_try();
 }
 
 int pv_revision_set_commited(int rev)
