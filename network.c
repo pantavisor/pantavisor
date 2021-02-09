@@ -56,13 +56,13 @@ static int _set_netmask(int skfd, char *intf, char *newmask)
 	memset(&ifr, 0, sizeof(ifr));
 	sin->sin_family = AF_INET;
 	if (!inet_pton(AF_INET, newmask, &sin->sin_addr)) {
-		return 0;
+		return -1;
 	}
 	strncpy(ifr.ifr_name, intf, IFNAMSIZ-1);
 	if (ioctl(skfd,SIOCSIFNETMASK,&ifr) == -1) {
-		return 0;
+		return -1;
 	}
-	return 1;
+	return 0;
 }
 
 static int pv_network_init(struct pantavisor *pv)
@@ -92,14 +92,31 @@ static int pv_network_init(struct pantavisor *pv)
 	ret = ioctl(fd, SIOCBRADDBR, c->net.brdev);
 	if (ret < 0) {
 		pv_log(WARN, "unable to create bridge dev %s: %s",
-			c->net.brdev, strerror(errno));
+		       c->net.brdev, strerror(errno));
 	}
 
-        /* Create a channel to the NET kernel. */
-        sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
-        /* get interface name */
-        strncpy(ifr.ifr_name, c->net.brdev, IFNAMSIZ);
+	/* Create a channel to the NET kernel. */
+	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+
+	/* get interface name */
+	strncpy(ifr.ifr_name, c->net.brdev, IFNAMSIZ);
+
+	ret = ioctl(sockfd, SIOCGIFFLAGS, &ifr);
+	if (ret < 0) {
+		pv_log(WARN, "unable to get flags for bridge dev %s: %s",
+		       c->net.brdev, strerror(errno));
+		goto out;
+	}
+
+	ifr.ifr_flags |= IFF_UP;
+	ifr.ifr_flags |= IFF_RUNNING;
+        ret = ioctl(sockfd, SIOCSIFFLAGS, &ifr);
+	if (ret < 0) {
+		pv_log(WARN, "unable to update flags for bridge dev %s: %s",
+		       c->net.brdev, strerror(errno));
+		goto out;
+	}
 
         memset(&sai, 0, sizeof(struct sockaddr));
         sai.sin_family = AF_INET;
@@ -109,38 +126,23 @@ static int pv_network_init(struct pantavisor *pv)
 
         p = (char *) &sai;
         memcpy( (((char *)&ifr + ifreq_offsetof(ifr_addr) )),
-                        p, sizeof(struct sockaddr));
+		p, sizeof(struct sockaddr));
 
         ret = ioctl(sockfd, SIOCSIFADDR, &ifr);
-	if (!ret) {
+	if (ret < 0) {
 		pv_log(WARN, "unable to set IPv4 of bridge dev %s to %s: %s",
-			c->net.brdev, c->net.braddress4, strerror(errno));
+		       c->net.brdev, c->net.braddress4, strerror(errno));
 		goto out;
 	}
 
 	ret = _set_netmask(sockfd, c->net.brdev, c->net.brmask4);
-	if (!ret) {
+	if (ret < 0) {
 		pv_log(WARN, "unable to set netmask %s: %s",
-			c->net.brdev, strerror(errno));
+		       c->net.brdev, strerror(errno));
 		goto out;
 	}
 
-        ret = ioctl(sockfd, SIOCGIFFLAGS, &ifr);
-	if (!ret) {
-		pv_log(WARN, "unable to get flags for bridge dev %s: %s",
-			c->net.brdev, strerror(errno));
-		goto out;
-	}
-
-	ifr.ifr_flags |= IFF_UP | IFF_RUNNING;
-        ret = ioctl(sockfd, SIOCSIFFLAGS, &ifr);
-	if (!ret) {
-		pv_log(WARN, "unable to update flags for bridge dev %s: %s",
-			c->net.brdev, strerror(errno));
-		goto out;
-	}
-
-out:
+ out:
         close(sockfd);
 
 	return ret;
