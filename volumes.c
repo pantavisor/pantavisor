@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,6 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -148,7 +149,11 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 				int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
 				close(fd);
 			}
-			ret = mount(path, mntpoint, "none", MS_BIND, "ro");
+			ret = mount(path, mntpoint, NULL, MS_BIND, NULL);
+		} else if (strcmp(fstype, "data") == 0) {
+			pv_log(INFO, "mounting proper .data dir");
+			mkdir_p(mntpoint, 0755);
+			ret = mount(path, mntpoint, NULL, MS_BIND | MS_REC, NULL);
 		} else {
 			ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
 		}
@@ -175,7 +180,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	}
 
 	if (ret < 0) {
-		pv_log(ERROR, "error mounting '%s' (%s) at '%s'", path, pv_volume_type_str(v->type), mntpoint);
+		pv_log(ERROR, "error mounting '%s' (%s) at '%s' -> %s", path, pv_volume_type_str(v->type), mntpoint, strerror(errno));
 		goto out;
 	}
 
