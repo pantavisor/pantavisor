@@ -176,6 +176,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
+	if (pv && pv->config && (pv->config->storage.gc.mode == GC_MODE_ALWAYS)) {
+		pv_storage_gc_run(pv);
+		pv_storage_get_free(pv);
+	}
+
 	// only start local ph logger, cloud services will be started when connected
 	ph_logger_start_local(pv, pv->state->rev);
 

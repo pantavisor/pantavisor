@@ -1605,16 +1605,13 @@ static int trail_check_update_size(struct pantavisor *pv)
 	update_size = (uint64_t)get_update_size(pv->update);
 	free_size = (uint64_t)pv_storage_get_free(pv);
 
-	pv_log(DEBUG, "update_size = %"PRIu64" B, free_size = %"PRIu64" B",
-		update_size, free_size);
+	pv_log(DEBUG, "update size %"PRIu64" B", update_size);
 
 	if (update_size > free_size) {
 		pv_log(WARN, "not enough space to process update. Freeing up space...");
 		pv_storage_gc_run(pv);
 
 		free_size = (uint64_t)pv_storage_get_free(pv);
-		pv_log(DEBUG, "update_size = %"PRIu64" B, free_size = %"PRIu64" B",
-			update_size, free_size);
 
 		if (update_size > free_size) {
 			pv_log(WARN, "not enough space to process update. Aborting update...");

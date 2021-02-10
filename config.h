@@ -51,6 +51,17 @@ struct pantavisor_creds {
 	struct pantavisor_tpm tpm;
 };
 
+enum {
+	GC_MODE_ONDEMAND = 0,
+	GC_MODE_ALWAYS
+};
+
+struct pantavisor_gc {
+	int mode;
+	int reserved;
+	bool keep_factory;
+};
+
 struct pantavisor_storage {
 	char *path;
 	char *fstype;
@@ -58,11 +69,11 @@ struct pantavisor_storage {
 	char *mntpoint;
 	char *mnttype;
 	int wait;
+	struct pantavisor_gc gc;
 };
 
 struct pantavisor_updater {
 	int interval;
-	int keep_factory;
 	int network_timeout;
 };
 

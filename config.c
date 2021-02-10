@@ -298,10 +298,17 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.mntpoint = _config_get_value("storage.mntpoint");
 	config->storage.mnttype = _config_get_value("storage.mnttype");
 	item = _config_get_value("storage.wait");
-	if (item)
-		config->storage.wait = atoi(item);
-	else
-		config->storage.wait = 5;
+	config->storage.wait = item ? atoi(item) : 5;
+
+	item = _config_get_value("storage.gc.mode");
+	if (item && !strcmp(item, "ondemand"))
+		config->storage.gc.mode = GC_MODE_ONDEMAND;
+	else if (item && !strcmp(item, "always"))
+		config->storage.gc.mode = GC_MODE_ALWAYS;
+	item = _config_get_value("storage.gc.reserved");
+	config->storage.gc.reserved = item ? atoi(item) : 5;
+	item = _config_get_value("storage.gc.keep_factory");
+	config->storage.gc.keep_factory = item ? atoi(item) : 0;
 
 	item = _config_get_value("wdt.enabled");
 	config->wdt.enabled = item ? atoi(item) : 1;
@@ -395,9 +402,9 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	else
 		config->updater.network_timeout = 120;
 
+	// deprecated in favor of storage.gc.keep_factory
 	item = _config_get_value("updater.keep_factory");
-	if (item)
-		config->updater.keep_factory = atoi(item);
+	config->storage.gc.keep_factory = item ? atoi(item) : 0;
 
 	config->creds.type = _config_get_value("creds.type");
 	if (!config->creds.type)
@@ -475,8 +482,6 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	bytes = write_config_tuple(fd, "updater.network_timeout", buf);
 	sprintf(buf, "%d", config->update_commit_delay);
 	bytes = write_config_tuple(fd, "updater.commit.delay", buf);
-	sprintf(buf, "%d", config->updater.keep_factory);
-	bytes = write_config_tuple(fd, "updater.keep_factory", buf);
 	bytes = write_config_tuple(fd, "creds.type", config->creds.type);
 	bytes = write_config_tuple(fd, "creds.host", config->creds.host);
 	sprintf(buf, "%d", config->creds.port);
