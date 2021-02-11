@@ -51,13 +51,7 @@ struct pantavisor_creds {
 	struct pantavisor_tpm tpm;
 };
 
-enum {
-	GC_MODE_ONDEMAND = 0,
-	GC_MODE_ALWAYS
-};
-
 struct pantavisor_gc {
-	int mode;
 	int reserved;
 	bool keep_factory;
 };

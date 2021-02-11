@@ -300,11 +300,6 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	item = _config_get_value("storage.wait");
 	config->storage.wait = item ? atoi(item) : 5;
 
-	item = _config_get_value("storage.gc.mode");
-	if (item && !strcmp(item, "ondemand"))
-		config->storage.gc.mode = GC_MODE_ONDEMAND;
-	else if (item && !strcmp(item, "always"))
-		config->storage.gc.mode = GC_MODE_ALWAYS;
 	item = _config_get_value("storage.gc.reserved");
 	config->storage.gc.reserved = item ? atoi(item) : 5;
 	item = _config_get_value("storage.gc.keep_factory");
