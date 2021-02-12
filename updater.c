@@ -347,7 +347,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			}
 			if (msg) {
 				if (len) {
-					strncat(buff + len, ",", 1);
+					strcat(buff + len, ",");
 					len += 1;
 				}
 				snprintf(buff + len,
@@ -1534,7 +1534,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		}
 		if (can_write) {
 			if (data_len) {
-				strncat(pv->update->progress_objects, ",", 1);
+				strcat(pv->update->progress_objects, ",");
 				data_len += 1;
 			}
 			sprintf(pv->update->progress_objects + data_len,"%s",
@@ -1600,7 +1600,7 @@ static int trail_link_objects(struct pantavisor *pv)
 static int trail_check_update_size(struct pantavisor *pv)
 {
 	uint64_t update_size, free_size;
-	char msg[64];
+	char msg[128];
 
 	update_size = (uint64_t)get_update_size(pv->update);
 	free_size = (uint64_t)pv_storage_get_free(pv);

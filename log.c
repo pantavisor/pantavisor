@@ -153,7 +153,7 @@ static int pv_log_init_buf_cache(int items, int size, struct dl_list *head)
 static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct stat log_stat;
-	char log_path [PATH_MAX];
+	char log_path [128];
 	int log_fd = -1;
 	int max_gzip = 3;
 	// hold 2MiB max of log entries in open file
@@ -249,7 +249,7 @@ static int log_external(const char *fmt, ...)
 static int pv_log_set_log_dir(int rev)
 {
 	if (!log_dir)
-		log_dir = calloc(1, PATH_MAX);
+		log_dir = calloc(1, 128);
 
 	if (!log_dir) {
 		printf("Couldn't reserve space for log directory\n");

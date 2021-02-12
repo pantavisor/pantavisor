@@ -646,7 +646,7 @@ int pv_device_factory_meta(struct pantavisor *pv)
 	struct dirent **dirlist = NULL;
 	int n = 0;
 	char abs_path[PATH_MAX];
-	char factory_dir[PATH_MAX];
+	char factory_dir[128];
 	bool upload_failed = false;
 
 	snprintf(factory_dir, sizeof(factory_dir), "%s/%s",

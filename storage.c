@@ -55,7 +55,7 @@ static int remove_in(char *path, char *dirname)
 {
 	int n = 0;
 	struct dirent **d;
-	char full_path[PATH_MAX];
+	char full_path[512];
 
 	sprintf(full_path, "%s/%s/", path, dirname);
 	n = scandir(full_path, &d, NULL, alphasort);
