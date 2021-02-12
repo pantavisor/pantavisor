@@ -210,8 +210,6 @@ off_t pv_storage_get_free(struct pantavisor *pv)
 	if (!pv || !pv->config)
 		return 0;
 
-	pv_log(INFO, "calculating free disk space...");
-
 	if (statfs("/storage/config/pantahub.config", &buf) < 0)
 		return -1;
 
