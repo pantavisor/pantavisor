@@ -25,6 +25,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <netdb.h>
+#include <inttypes.h>
 
 #include <linux/limits.h>
 
