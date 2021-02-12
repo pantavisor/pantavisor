@@ -141,16 +141,16 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 
 	pv_log(DEBUG, "Removing rev=%d", rev);
 
-	sprintf(path, "%s/trails", pv->config->storage.mntpoint);
 	sprintf(revision, "%d", rev);
 
+	sprintf(path, "%s/trails", pv->config->storage.mntpoint);
 	remove_in(path, revision);
 
 	sprintf(path, "%s/logs", pv->config->storage.mntpoint);
-	sprintf(revision, "%d", rev);
-
 	remove_in(path, revision);
 
+	sprintf(path, "%s/disks/rev", pv->config->storage.mntpoint);
+	remove_in(path, revision);
 
 	sync();
 }
@@ -184,7 +184,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 			continue;
 
 		// if configured, keep factory too
-		if (pv->config->updater.keep_factory &&	*rev_i == 0)
+		if (pv->config->storage.gc.keep_factory && *rev_i == 0)
 			continue;
 
 		// unlink the given revision from local storage
@@ -204,8 +204,11 @@ int pv_storage_gc_run(struct pantavisor *pv)
 
 off_t pv_storage_get_free(struct pantavisor *pv)
 {
-	off_t fs_free, fs_min;
+	off_t fs_total, fs_free, fs_reserved, fs_real_free = 0;
 	struct statfs buf;
+
+	if (!pv || !pv->config)
+		return 0;
 
 	if (statfs("/storage/config/pantahub.config", &buf) < 0)
 		return -1;
@@ -213,15 +216,20 @@ off_t pv_storage_get_free(struct pantavisor *pv)
 	// free disk space
 	fs_free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
 
-	// 5% of total disk space
-	fs_min = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
-	fs_min -= (fs_min * 95) / 100;
+	// total disk space
+	fs_total = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
 
-	if (fs_free < fs_min) {
-		pv_log(WARN, "free space is less than 5\% of total disk space");
-		return 0;
-	}
+	// reserved percentage of total disk space
+	fs_reserved = (fs_total * pv->config->storage.gc.reserved) / 100;
 
-	return (fs_free - fs_min);
+	// real free space, not counting with reserved space
+	if (fs_free > fs_reserved)
+		fs_real_free = fs_free - fs_reserved;
 
+	pv_log(INFO, "total disk space: %"PRIu64" B", fs_total);
+	pv_log(INFO, "free disk space: %"PRIu64" B", fs_free);
+	pv_log(INFO, "reserved disk space: %"PRIu64" B (%d%% of total)", fs_reserved, pv->config->storage.gc.reserved);
+	pv_log(INFO, "real free disk space: %"PRIu64" B", fs_real_free);
+
+	return fs_real_free;
 }
