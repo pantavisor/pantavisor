@@ -119,8 +119,8 @@ out:
 int pv_make_config(struct pantavisor *pv)
 {
 	struct stat st;
-	char targetpath[PATH_MAX];
-	char srcpath[PATH_MAX];
+	char targetpath[128];
+	char srcpath[128];
 	char cmd[PATH_MAX];
 	int rv;
 

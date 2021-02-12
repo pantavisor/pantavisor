@@ -132,7 +132,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	struct dirent **files;
 	char **cafiles;
 	char *dir = "/certs/";
-	char path[128];
+	char path[512];
 	int n = 0, i = 0, size = 0;
 
 	n = scandir(dir, &files, NULL, alphasort);
@@ -149,7 +149,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 		sprintf(path, "/certs/%s", files[n]->d_name);
 		size = strlen(path);
 		cafiles[i] = malloc((size+1) * sizeof(char));
-		strncpy(cafiles[i], path, size);
+		memcpy(cafiles[i], path, size);
 		cafiles[i][size] = '\0';
 		i++;
 		free(files[n]);

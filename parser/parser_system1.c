@@ -59,7 +59,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	// take null terminate copy of item to parse
 	buf = calloc(1, (n+1) * sizeof(char));
-	buf = strncpy(buf, value, n);
+	buf = memcpy(buf, value, n);
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 

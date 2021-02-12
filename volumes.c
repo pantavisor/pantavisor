@@ -110,7 +110,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	int ret = -1;
 	int loop_fd = -1, file_fd = -1;
 	struct pv_state *s = pv->state;
-	char path[PATH_MAX], base[PATH_MAX], mntpoint[PATH_MAX];
+	char path[PATH_MAX], base[128], mntpoint[521];
 	char *fstype;
 
 	sprintf(base, "%s/disks", pv->config->storage.mntpoint);

@@ -51,7 +51,6 @@
 static int _set_netmask(int skfd, char *intf, char *newmask)
 {
 	struct ifreq ifr;
-	unsigned int dst;
 	struct sockaddr_in *sin = (struct sockaddr_in *) &ifr.ifr_addr;
 	memset(&ifr, 0, sizeof(ifr));
 	sin->sin_family = AF_INET;
@@ -100,7 +99,7 @@ static int pv_network_init(struct pantavisor *pv)
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
 	/* get interface name */
-	strncpy(ifr.ifr_name, c->net.brdev, IFNAMSIZ);
+	memcpy(ifr.ifr_name, c->net.brdev, IFNAMSIZ);
 
 	ret = ioctl(sockfd, SIOCGIFFLAGS, &ifr);
 	if (ret < 0) {
