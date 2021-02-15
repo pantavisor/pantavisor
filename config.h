@@ -94,6 +94,7 @@ struct pantavisor_log {
 	int loglevel;
 	int logsize;
 	bool push;
+	bool store;
 };
 
 struct pantavisor_config {

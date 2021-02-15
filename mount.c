@@ -98,7 +98,7 @@ static int pv_mount_init(struct pv_init *this)
 		get_blkid(&dev_info, config->storage.path);
 		if (dev_info.device && stat(dev_info.device, &st) == 0)
 			break;
-		printf("INFO: trail storage not yet available, waiting %d seconds...", wait);
+		printf("INFO: trail storage not yet available, waiting %d seconds...\n", wait);
 		sleep(1);
 		continue;
 	}
@@ -106,6 +106,7 @@ static int pv_mount_init(struct pv_init *this)
 	if (!dev_info.device)
 		exit_error(errno, "Could not mount trails storage. No device found.");
 
+	printf("INFO: trail storage found: %s.\n", dev_info.device);
 
 	// attempt auto resize only if we have ext4
 	if (!strcmp(config->storage.fstype, "ext4")) {
