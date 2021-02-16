@@ -97,6 +97,10 @@ struct pantavisor_log {
 	bool store;
 };
 
+struct pantavisor_lxc {
+	int log_level;
+};
+
 struct pantavisor_config {
 	char *name;
 	char *metacachedir;
@@ -112,6 +116,7 @@ struct pantavisor_config {
 	struct pantavisor_watchdog wdt;
 	struct pantavisor_network net;
 	struct pantavisor_log log;
+	struct pantavisor_lxc lxc;
 };
 
 // Fill config struct after parsing on-initramfs factory config

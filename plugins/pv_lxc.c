@@ -44,6 +44,7 @@
 #include "pvlogger.h"
 #include "state.h"
 #include "platforms.h"
+#include "device.h"
 
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
@@ -176,6 +177,14 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	c->set_inherit_namespaces(c, 1, share_ns);
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
+	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
+		if (__get_pv_instance() &&
+				__get_pv_instance()->config) {
+			char log_level[64];
+			snprintf(log_level, sizeof(log_level), "%d", __get_pv_instance()->config->lxc.log_level);
+			c->set_config_item(c, "lxc.log.level", log_level);
+		}
+	}
 	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
 						" none bind,ro,create=dir 0 0");
 	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
@@ -236,14 +245,18 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	/*
 	 * Set console filename if not provided.
 	 */
-	memset(entry, 0, sizeof(entry));
-	c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
-	if (!strlen(entry)) {
-		snprintf(entry, sizeof(entry),
-			LXC_LOG_DEFAULT_PREFIX"/%d/%s/%s/%s.log",
-			__get_pv_instance()->state->rev, c->name,
-			LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
-		c->set_config_item(c, "lxc.console.logfile", entry);
+	if (__get_pv_instance() &&
+		__get_pv_instance()->config &&
+		__get_pv_instance()->config->log.store) {
+		memset(entry, 0, sizeof(entry));
+		c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
+		if (!strlen(entry)) {
+			snprintf(entry, sizeof(entry),
+				LXC_LOG_DEFAULT_PREFIX"/%d/%s/%s/%s.log",
+				__get_pv_instance()->state->rev, c->name,
+				LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
+			c->set_config_item(c, "lxc.console.logfile", entry);
+		}
 	}
 	/*
 	 * Put a hard limit of 2MiB on console file size if one is not defined.
@@ -517,14 +530,18 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		if (!__get_pv_instance)
 			goto out_container_init;
 		revision = __get_pv_instance()->state->rev;
-		snprintf(log_dir, sizeof(log_dir), 
-				LXC_LOG_DEFAULT_PREFIX"/%d/%s",
-				revision, p->name);
-		pv_lxc_log.name = LXC_LOG_FNAME;
-		pv_lxc_log.lxcpath = strdup(log_dir);
-		if (!pv_lxc_log.lxcpath)
-			goto out_container_init;
-		lxc_log_init(&pv_lxc_log);
+		if (__get_pv_instance() &&
+			__get_pv_instance()->config &&
+			__get_pv_instance()->config->log.store) {
+			snprintf(log_dir, sizeof(log_dir), 
+					LXC_LOG_DEFAULT_PREFIX"/%d/%s",
+					revision, p->name);
+			pv_lxc_log.name = LXC_LOG_FNAME;
+			pv_lxc_log.lxcpath = strdup(log_dir);
+			if (!pv_lxc_log.lxcpath)
+				goto out_container_init;
+			lxc_log_init(&pv_lxc_log);
+		}
 		c = lxc_container_new(p->name, NULL);
 
 		if (!c) {
@@ -579,6 +596,12 @@ out_container_init:
 		goto out_no_container;
 	}
 	pv_setup_lxc_container(c, share_ns, p->runlevel); /*Do we need this?*/
+
+	if (__get_pv_instance() &&
+		__get_pv_instance()->config &&
+		__get_pv_instance()->config->log.store)
+		goto out_no_container;
+
 	pv_setup_default_log(p, c, "lxc");
 	pv_setup_default_log(p, c, "console");
 
