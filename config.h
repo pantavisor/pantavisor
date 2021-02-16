@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -96,6 +96,10 @@ struct pantavisor_log {
 	bool push;
 };
 
+struct pantavisor_lxc {
+	char *log_level;
+};
+
 struct pantavisor_config {
 	char *name;
 	char *metacachedir;
@@ -111,6 +115,7 @@ struct pantavisor_config {
 	struct pantavisor_watchdog wdt;
 	struct pantavisor_network net;
 	struct pantavisor_log log;
+	struct pantavisor_lxc lxc;
 };
 
 // Fill config struct after parsing on-initramfs factory config

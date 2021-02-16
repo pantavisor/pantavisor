@@ -44,6 +44,7 @@
 #include "pvlogger.h"
 #include "state.h"
 #include "platforms.h"
+#include "pantavisor.h"
 
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
@@ -173,9 +174,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	struct stat st;
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
 	char entry[1024];
+	struct pantavisor* pv = get_pv_instance();
+
 	c->set_inherit_namespaces(c, 1, share_ns);
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
+	if (pv && pv->config && c->get_config_item(c, "lxc.log.level", NULL, 0) <= 0)
+		 c->set_config_item(c, "lxc.log.level", pv->config->lxc.log_level);
 	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
 						" none bind,ro,create=dir 0 0");
 	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"

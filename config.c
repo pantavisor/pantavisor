@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -330,6 +330,10 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	item = _config_get_value("revision.retries.timeout");
 	if (item)
 		sscanf(item, "%d", &config->revision_retry_timeout);
+
+	item = _config_get_value("lxc.log.level");
+	config->lxc.log_level = item ? item : strdup("2");
+
 	return 0;
 }
 
