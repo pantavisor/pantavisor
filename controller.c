@@ -177,7 +177,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	// only start local ph logger, cloud services will be started when connected
-	ph_logger_start(pv, pv->state->rev);
+	ph_logger_toggle(pv, pv->state->rev);
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_meta_set_objdir(pv);

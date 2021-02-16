@@ -119,7 +119,7 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 
 static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, char *basedir)
 {
-	char path[PATH_MAX];
+	char path[512];
 	struct dirent *dp;
 	struct stat st;
 

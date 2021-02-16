@@ -1096,10 +1096,7 @@ static pid_t ph_logger_start_log_service(struct pantavisor *pv, int revision)
 
 static void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 {
-	if (!pv->online)
-		return;
-
-	if (!pv_config_push_logs_activated(pv))
+	if (!pv || !pv->online)
 		return;
 
 	if (ph_logger.push_service == -1) {
@@ -1137,12 +1134,9 @@ static void ph_logger_stop_cloud(struct pantavisor *pv)
 	ph_logger.range_service = -1;
 }
 
-void ph_logger_start_local(struct pantavisor *pv, int revision)
+static void ph_logger_start_local(struct pantavisor *pv, int revision)
 {
 	if (!pv)
-		return;
-
-	if (!pv_config_store_logs_activated(pv))
 		return;
 
 	if (ph_logger.log_service == -1) {
@@ -1155,17 +1149,27 @@ void ph_logger_start_local(struct pantavisor *pv, int revision)
 	}
 }
 
+static void ph_logger_stop_local(struct pantavisor *pv)
+{
+	if (ph_logger.log_service > 0) {
+		kill_child_process(ph_logger.log_service);
+		pv_log(DEBUG, "stopped log service with pid %d", ph_logger.log_service);
+	}
+
+	ph_logger.log_service = -1;
+}
+
 void ph_logger_toggle(struct pantavisor *pv, int rev)
 {
 	if (!pv)
 		return;
 
-	if (pv_config_store_logs_activated(pv))
+	if (pv_device_store_logs_activated(pv))
 		ph_logger_start_local(pv, rev);
 	else
 		ph_logger_stop_local(pv);
 
-	if (pv_config_push_logs_activated(pv))
+	if (pv_device_push_logs_activated(pv))
 		ph_logger_start_cloud(pv, rev);
 	else
 		ph_logger_stop_cloud(pv);
