@@ -76,6 +76,24 @@ void pv_set_pv_instance_fn(void *fn_get_pv_instance)
 	__get_pv_instance = fn_get_pv_instance;
 }
 
+static int pv_lxc_get_lxc_log_level()
+{
+	if (__get_pv_instance() && __get_pv_instance()->config)
+		return __get_pv_instance()->config->lxc.log_level;
+
+	// default
+	return 2;
+}
+
+static bool pv_lxc_store_logs_activated()
+{
+	if (__get_pv_instance() && __get_pv_instance()->config)
+		return __get_pv_instance()->config->log.store;
+
+	// default
+	return true;
+}
+
 static void pv_free_lxc_log(struct pv_log_info *pv_log_i)
 {
 	free_member(pv_log_i, name);
@@ -174,16 +192,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	struct stat st;
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
 	char entry[1024];
+	char log_level[32];
 	c->set_inherit_namespaces(c, 1, share_ns);
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
 	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
-		if (__get_pv_instance() &&
-				__get_pv_instance()->config) {
-			char log_level[64];
-			snprintf(log_level, sizeof(log_level), "%d", __get_pv_instance()->config->lxc.log_level);
-			c->set_config_item(c, "lxc.log.level", log_level);
-		}
+		snprintf(log_level, sizeof(log_level), "%d", pv_lxc_get_lxc_log_level());
+		c->set_config_item(c, "lxc.log.level", log_level);
 	}
 	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
 						" none bind,ro,create=dir 0 0");
@@ -245,9 +260,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	/*
 	 * Set console filename if not provided.
 	 */
-	if (__get_pv_instance() &&
-		__get_pv_instance()->config &&
-		__get_pv_instance()->config->log.store) {
+	if (pv_lxc_store_logs_activated()) {
 		memset(entry, 0, sizeof(entry));
 		c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 		if (!strlen(entry)) {
@@ -530,9 +543,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		if (!__get_pv_instance)
 			goto out_container_init;
 		revision = __get_pv_instance()->state->rev;
-		if (__get_pv_instance() &&
-			__get_pv_instance()->config &&
-			__get_pv_instance()->config->log.store) {
+		if (pv_lxc_store_logs_activated()) {
 			snprintf(log_dir, sizeof(log_dir), 
 					LXC_LOG_DEFAULT_PREFIX"/%d/%s",
 					revision, p->name);
@@ -597,9 +608,7 @@ out_container_init:
 	}
 	pv_setup_lxc_container(c, share_ns, p->runlevel); /*Do we need this?*/
 
-	if (__get_pv_instance() &&
-		__get_pv_instance()->config &&
-		__get_pv_instance()->config->log.store)
+	if (!pv_lxc_store_logs_activated())
 		goto out_no_container;
 
 	pv_setup_default_log(p, c, "lxc");

@@ -176,7 +176,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
-	// only start local ph logger, cloud services will be started when connected
+	// only start local ph logger, start cloud services if connected
 	ph_logger_toggle(pv, pv->state->rev);
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
@@ -297,7 +297,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	// start or stop ph logger depending on network and metadata configuration
+	// start or stop ph logger depending on network and configuration
 	ph_logger_toggle(pv, pv->state->rev);
 
 	// update meta info
