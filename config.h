@@ -54,6 +54,7 @@ struct pantavisor_creds {
 struct pantavisor_gc {
 	int reserved;
 	bool keep_factory;
+	int threshold;
 };
 
 struct pantavisor_storage {
@@ -69,6 +70,7 @@ struct pantavisor_storage {
 struct pantavisor_updater {
 	int interval;
 	int network_timeout;
+	bool use_tmp_objects;
 };
 
 struct pantavisor_bootloader {
@@ -94,7 +96,7 @@ struct pantavisor_log {
 	int loglevel;
 	int logsize;
 	bool push;
-	bool store;
+	bool capture;
 };
 
 struct pantavisor_lxc {

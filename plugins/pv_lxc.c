@@ -85,10 +85,10 @@ static int pv_lxc_get_lxc_log_level()
 	return 2;
 }
 
-static bool pv_lxc_store_logs_activated()
+static bool pv_lxc_capture_logs_activated()
 {
 	if (__get_pv_instance() && __get_pv_instance()->config)
-		return __get_pv_instance()->config->log.store;
+		return __get_pv_instance()->config->log.capture;
 
 	// default
 	return true;
@@ -260,7 +260,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	/*
 	 * Set console filename if not provided.
 	 */
-	if (pv_lxc_store_logs_activated()) {
+	if (pv_lxc_capture_logs_activated()) {
 		memset(entry, 0, sizeof(entry));
 		c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 		if (!strlen(entry)) {
@@ -543,7 +543,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		if (!__get_pv_instance)
 			goto out_container_init;
 		revision = __get_pv_instance()->state->rev;
-		if (pv_lxc_store_logs_activated()) {
+		if (pv_lxc_capture_logs_activated()) {
 			snprintf(log_dir, sizeof(log_dir), 
 					LXC_LOG_DEFAULT_PREFIX"/%d/%s",
 					revision, p->name);
@@ -608,7 +608,7 @@ out_container_init:
 	}
 	pv_setup_lxc_container(c, share_ns, p->runlevel); /*Do we need this?*/
 
-	if (!pv_lxc_store_logs_activated())
+	if (!pv_lxc_capture_logs_activated())
 		goto out_no_container;
 
 	pv_setup_default_log(p, c, "lxc");

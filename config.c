@@ -304,6 +304,11 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.gc.reserved = item ? atoi(item) : 5;
 	item = _config_get_value("storage.gc.keep_factory");
 	config->storage.gc.keep_factory = item ? atoi(item) : 0;
+	item = _config_get_value("storage.gc.threshold");
+	config->storage.gc.threshold = item ? atoi(item) : 0;
+
+	item = _config_get_value("updater.use_tmp_objects");
+	config->updater.use_tmp_objects = item ? atoi(item) : 1;
 
 	item = _config_get_value("wdt.enabled");
 	config->wdt.enabled = item ? atoi(item) : 1;
@@ -386,8 +391,8 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	}
 	item = _config_get_value("log.push");
 	config->log.push = item ? atoi(item) : 1;
-	item = _config_get_value("log.store");
-	config->log.store = item ? atoi(item) : 1;
+	item = _config_get_value("log.capture");
+	config->log.capture = item ? atoi(item) : 1;
 
 	// default 60 second update interval
 	item = _config_get_value("updater.interval");
