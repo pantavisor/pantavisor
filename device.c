@@ -741,6 +741,15 @@ bool pv_device_push_logs_activated(struct pantavisor *pv)
 	return true;
 }
 
+bool pv_device_store_logs_activated(struct pantavisor *pv)
+{
+	if (pv && pv->config)
+		return pv->config->log.store;
+
+	// default
+	return true;
+}
+
 static int pv_device_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;

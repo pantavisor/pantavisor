@@ -330,6 +330,10 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	item = _config_get_value("revision.retries.timeout");
 	if (item)
 		sscanf(item, "%d", &config->revision_retry_timeout);
+
+	item = _config_get_value("lxc.log.level");
+	config->lxc.log_level = item ? atoi(item) : 2;
+
 	return 0;
 }
 
@@ -382,6 +386,8 @@ int ph_config_from_file(char *path, struct pantavisor_config *config)
 	}
 	item = _config_get_value("log.push");
 	config->log.push = item ? atoi(item) : 1;
+	item = _config_get_value("log.store");
+	config->log.store = item ? atoi(item) : 1;
 
 	// default 60 second update interval
 	item = _config_get_value("updater.interval");

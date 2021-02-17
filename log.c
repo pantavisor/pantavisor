@@ -47,6 +47,7 @@
 #include "revision.h"
 #include "version.h"
 #include "ph_logger/ph_logger.h"
+#include "device.h"
 
 struct level_name {
 	int log_level;
@@ -307,11 +308,13 @@ void exit_error(int err, char *msg)
 
 int pv_log_start(struct pantavisor *pv, int rev)
 {
+	if (!pv_device_store_logs_activated(pv))
+		return 0;
+
 	if (pv_log_set_log_dir(rev) < 0) {
 		printf("Error: unable to start pantavisor.log");
 		return -1;
 	}
-
 
 	return 0;
 }

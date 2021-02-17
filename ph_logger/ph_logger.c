@@ -970,8 +970,6 @@ static pid_t ph_logger_start_push_service(int revision)
 				// increment sleep time until 10
 				sleep_secs ++;
 				sleep_secs = (sleep_secs > 10 ? 10 : sleep_secs);
-				ph_log(WARN, "Push service sleeping %d seconds for revision %d",
-						sleep_secs, revision);
 				sleep(sleep_secs);
 			// if we have more things to push, just decrement sleep time
 			} else {
@@ -1053,8 +1051,6 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
 				sleep_secs ++;
 				// increment sleep time until 10
 				sleep_secs = (sleep_secs > 10 ? 10 : sleep_secs);
-				ph_log(WARN, "Range service sleeping %d seconds for revision %d",
-						sleep_secs, current_rev);
 				sleep(sleep_secs);
 			// if more things to send, just decrement sleep time
 			} else {
@@ -1100,7 +1096,7 @@ static pid_t ph_logger_start_log_service(struct pantavisor *pv, int revision)
 
 static void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 {
-	if (!pv->online)
+	if (!pv || !pv->online)
 		return;
 
 	if (ph_logger.push_service == -1) {
@@ -1138,7 +1134,7 @@ static void ph_logger_stop_cloud(struct pantavisor *pv)
 	ph_logger.range_service = -1;
 }
 
-void ph_logger_start_local(struct pantavisor *pv, int revision)
+static void ph_logger_start_local(struct pantavisor *pv, int revision)
 {
 	if (!pv)
 		return;
@@ -1151,22 +1147,32 @@ void ph_logger_start_local(struct pantavisor *pv, int revision)
 			pv_log(ERROR, "unable to start log service");
 		}
 	}
-
-	if (pv->online)
-		ph_logger_start_cloud(pv, revision);
 }
 
-void ph_logger_toggle_cloud(struct pantavisor *pv, int rev)
+static void ph_logger_stop_local(struct pantavisor *pv)
+{
+	if (ph_logger.log_service > 0) {
+		kill_child_process(ph_logger.log_service);
+		pv_log(DEBUG, "stopped log service with pid %d", ph_logger.log_service);
+	}
+
+	ph_logger.log_service = -1;
+}
+
+void ph_logger_toggle(struct pantavisor *pv, int rev)
 {
 	if (!pv)
 		return;
 
-	if (!pv_device_push_logs_activated(pv)) {
-		ph_logger_stop_cloud(pv);
-		return;
-	}
+	if (pv_device_store_logs_activated(pv))
+		ph_logger_start_local(pv, rev);
+	else
+		ph_logger_stop_local(pv);
 
-	ph_logger_start_cloud(pv, rev);
+	if (pv_device_push_logs_activated(pv))
+		ph_logger_start_cloud(pv, rev);
+	else
+		ph_logger_stop_cloud(pv);
 }
 
 void ph_logger_stop(struct pantavisor *pv)
