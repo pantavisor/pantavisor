@@ -700,10 +700,14 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 				continue;
 
 			if (kill(p->init_pid, 0)) {
+				pv_log(INFO, "platform exited: %s", p->name);
 				exited++;
 			}
 		}
 	}
+
+	if (exited)
+		pv_log(WARN, "%d platforms exited", exited);
 
 	return exited;
 }
