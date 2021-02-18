@@ -750,6 +750,31 @@ bool pv_device_capture_logs_activated(struct pantavisor *pv)
 	return true;
 }
 
+bool pv_device_use_updater_tmp_objects(struct pantavisor *pv)
+{
+	if (pv && pv->config)
+		return pv->config->updater.use_tmp_objects;
+
+	// default
+	return true;
+}
+
+int pv_device_get_gc_reserved(struct pantavisor *pv)
+{
+	if (pv && pv->config)
+		return pv->config->storage.gc.reserved;
+
+	return 0;
+}
+
+int pv_device_get_gc_threshold(struct pantavisor *pv)
+{
+	if (pv && pv->config)
+		return pv->config->storage.gc.threshold;
+
+	return 0;
+}
+
 static int pv_device_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
