@@ -53,6 +53,7 @@
 #include "revision.h"
 #include "parser/parser_bundle.h"
 #include "state.h"
+#include "device.h"
 
 int MAX_REVISION_RETRIES = 0;
 int DOWNLOAD_RETRY_WAIT = 0;
@@ -1412,8 +1413,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	req->path = obj->geturl;
 	req->headers = 0;
 
-	if (!strcmp(pv->config->storage.fstype, "jffs2") ||
-	    !strcmp(pv->config->storage.fstype, "ubifs"))
+	if (pv_device_use_updater_tmp_objects(pv) &&
+		(!strcmp(pv->config->storage.fstype, "jffs2") ||
+	    !strcmp(pv->config->storage.fstype, "ubifs")))
 		use_volatile_tmp = 1;
 
 	// temporary path where we will store the file until validated

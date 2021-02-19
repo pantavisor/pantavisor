@@ -24,6 +24,7 @@
 
 int pv_storage_gc_run(struct pantavisor *pv);
 off_t pv_storage_get_free(struct pantavisor *pv);
+bool pv_storage_threshold_reached(struct pantavisor *pv);
 void pv_storage_rm_rev(struct pantavisor *pv, int rev);
 
 #endif // PV_STORAGE_H

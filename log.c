@@ -308,7 +308,7 @@ void exit_error(int err, char *msg)
 
 int pv_log_start(struct pantavisor *pv, int rev)
 {
-	if (!pv_device_store_logs_activated(pv))
+	if (!pv_device_capture_logs_activated(pv))
 		return 0;
 
 	if (pv_log_set_log_dir(rev) < 0) {

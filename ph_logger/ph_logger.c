@@ -1164,7 +1164,7 @@ void ph_logger_toggle(struct pantavisor *pv, int rev)
 	if (!pv)
 		return;
 
-	if (pv_device_store_logs_activated(pv))
+	if (pv_device_capture_logs_activated(pv))
 		ph_logger_start_local(pv, rev);
 	else
 		ph_logger_stop_local(pv);

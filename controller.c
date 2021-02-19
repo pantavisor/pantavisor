@@ -365,6 +365,13 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			goto out;
 	}
 
+	// check if we need to run garbage collector
+	if (pv_device_get_gc_threshold(pv) && pv_storage_threshold_reached(pv)) {
+		pv_log(WARN, "freeing up space...");
+		pv_storage_gc_run(pv);
+	}
+
+
 	// free up previous command
 	if (pv->req)
 		pv_cmd_req_remove(pv);

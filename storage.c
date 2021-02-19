@@ -43,6 +43,7 @@
 #include "updater.h"
 #include "state.h"
 #include "revision.h"
+#include "device.h"
 
 static int remove_at(char *path, char *filename)
 {
@@ -203,34 +204,86 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	return reclaimed;
 }
 
-off_t pv_storage_get_free(struct pantavisor *pv)
-{
-	off_t fs_total, fs_free, fs_reserved, fs_real_free = 0;
-	struct statfs buf;
+struct pv_storage {
+	off_t total;
+	off_t free;
+	int free_percentage;
+	off_t reserved;
+	int reserved_percentage;
+	off_t real_free;
+	int real_free_percentage;
+	int threshold;
+};
 
-	if (!pv || !pv->config)
-		return 0;
+static struct pv_storage* pv_storage_init(struct pantavisor *pv)
+{
+	struct statfs buf;
+	struct pv_storage* this;
+
+	if (!pv)
+		return NULL;
 
 	if (statfs("/storage/config/pantahub.config", &buf) < 0)
-		return -1;
+		return NULL;
 
-	// free disk space
-	fs_free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
 
-	// total disk space
-	fs_total = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
+	this = calloc(1, sizeof(struct pv_storage));
+	if (this) {
+		this->total = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
+		this->free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
+		if (this->total)
+			this->free_percentage = (this->free * 100) / this->total;
+		this->reserved_percentage = pv_device_get_gc_reserved(pv);
+		this->reserved = (this->total * this->reserved_percentage) / 100;
+		if (this->free > this->reserved)
+			this->real_free = this->free - this->reserved;
+		if (this->total)
+			this->real_free_percentage = (this->real_free * 100) / this->total;
+		this->threshold = pv_device_get_gc_threshold(pv);
+		return this;
+	}
 
-	// reserved percentage of total disk space
-	fs_reserved = (fs_total * pv->config->storage.gc.reserved) / 100;
+	return NULL;
+}
 
-	// real free space, not counting with reserved space
-	if (fs_free > fs_reserved)
-		fs_real_free = fs_free - fs_reserved;
+static void pv_storage_print(struct pv_storage* storage)
+{
+	pv_log(INFO, "total disk space: %"PRIu64" B", storage->total);
+	pv_log(INFO, "free disk space: %"PRIu64" B (%d%% of total)", storage->free, storage->free_percentage);
+	pv_log(INFO, "reserved disk space: %"PRIu64" B (%d%% of total)", storage->reserved, storage->reserved_percentage);
+	pv_log(INFO, "real free disk space: %"PRIu64" B (%d%% of total)", storage->real_free, storage->real_free_percentage);
+}
 
-	pv_log(INFO, "total disk space: %"PRIu64" B", fs_total);
-	pv_log(INFO, "free disk space: %"PRIu64" B", fs_free);
-	pv_log(INFO, "reserved disk space: %"PRIu64" B (%d%% of total)", fs_reserved, pv->config->storage.gc.reserved);
-	pv_log(INFO, "real free disk space: %"PRIu64" B", fs_real_free);
+off_t pv_storage_get_free(struct pantavisor *pv)
+{
+	off_t real_free = 0;
+	struct pv_storage* storage;
 
-	return fs_real_free;
+	storage = pv_storage_init(pv);
+	if (storage) {
+		pv_storage_print(storage);
+		real_free = storage->real_free;
+	}
+
+	free(storage);
+
+	return real_free;
+}
+
+bool pv_storage_threshold_reached(struct pantavisor *pv)
+{
+	bool threshold_reached = false;
+	struct pv_storage* storage;
+
+	storage = pv_storage_init(pv);
+	if (storage &&
+		(storage->real_free_percentage < storage->threshold)) {
+		pv_log(WARN, "usage threshold %d reached on disk", storage->threshold);
+		pv_storage_print(storage);
+		threshold_reached = true;
+	}
+
+	free(storage);
+
+	return threshold_reached;
 }
