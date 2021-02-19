@@ -53,6 +53,7 @@
 #include "state.h"
 #include "revision.h"
 #include "updater.h"
+#include "metadata.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -128,7 +129,7 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 {
 	int ret = -1;
 
-	ret = pv_device_factory_meta(pv);
+	ret = pv_metadata_factory_meta(pv);
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
 	return STATE_WAIT;
@@ -181,7 +182,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_meta_set_objdir(pv);
-	pv_device_parse_devmeta(pv);
+	pv_metadata_parse_devmeta(pv);
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
@@ -271,7 +272,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 	if (!pv)
 		return 0;
 	// update meta
-	pv_device_upload_devmeta(pv);
+	pv_metadata_upload_devmeta(pv);
 	pv_network_update_meta(pv);
 	pv_ph_device_get_meta(pv);
 	return 0;
@@ -302,7 +303,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	ph_logger_toggle(pv, pv->state->rev);
 
 	// update meta info
-	if (!pv_device_factory_meta_done(pv)) {
+	if (!pv_metadata_factory_meta_done(pv)) {
 		return STATE_FACTORY_UPLOAD;
 	}
 	pv_meta_update_to_ph(pv);

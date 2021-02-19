@@ -74,6 +74,7 @@ extern struct pv_init pv_init_bl;
 extern struct pv_init pv_init_config;
 extern struct pv_init ph_init_config;
 extern struct pv_init pv_init_device;
+extern struct pv_init pv_init_metadata;
 extern struct pv_init pv_init_log;
 extern struct pv_init pv_init_mount;
 extern struct pv_init ph_init_mount;

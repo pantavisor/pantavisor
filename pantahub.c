@@ -50,6 +50,7 @@
 #include "pantahub.h"
 #include "trestclient.h"
 #include "tsh.h"
+#include "metadata.h"
 
 #define ENDPOINT_FMT "/devices/%s"
 
@@ -222,7 +223,7 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 		goto out;
 	}
 
-	ret = pv_device_update_usermeta(pv, res->body);
+	ret = pv_metadata_update_usermeta(pv, res->body);
 
 out:
 	if (req)

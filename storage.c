@@ -278,9 +278,9 @@ bool pv_storage_threshold_reached(struct pantavisor *pv)
 	storage = pv_storage_init(pv);
 	if (storage &&
 		(storage->real_free_percentage < storage->threshold)) {
-		pv_log(WARN, "usage threshold %d reached on disk", storage->threshold);
 		pv_storage_print(storage);
 		threshold_reached = true;
+		pv_log(WARN, "free disk space is %d%%, which is under the %d%% threshold", storage->real_free_percentage, storage->threshold);
 	}
 
 	free(storage);

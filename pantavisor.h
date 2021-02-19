@@ -53,6 +53,7 @@ struct pantavisor {
 	struct pv_cmd_req *req;
 	struct pantavisor_config *config;
 	struct trail_remote *remote;
+	struct pv_metadata *metadata;
 	bool online;
 	int ctrl_fd;
 	unsigned long flags;
