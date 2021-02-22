@@ -680,27 +680,39 @@ static void system1_link_object_json_platforms(struct pv_state *s)
 
 	// link objects
 	if (!new_objects)
-		return;
+		goto link_jsons;
 	dl_list_for_each_safe(o, tmp_o, new_objects,
 		struct pv_object, list) {
 		name = strdup(o->name);
 		dir = strtok(name, "/");
-		if (!strcmp(dir, "_config"))
+		if (!strcmp(dir, "_config")) {
 			dir = strtok(NULL, "/");
-		o->plat = pv_platform_get_by_name(s, dir);
+			o->plat = pv_platform_get_by_name(s, dir);
+			if (!o->plat) {
+				pv_log(WARN, "discarding unassociated object '%s'", o->name);
+				pv_objects_remove(o);
+			}
+		} else
+			o->plat = pv_platform_get_by_name(s, dir);
 		free(name);
 	}
 
-	// link jsons
+link_jsons:
 	if (!new_jsons)
 		return;
 	dl_list_for_each_safe(j, tmp_j, new_jsons,
 		struct pv_json, list) {
 		name = strdup(j->name);
 		dir = strtok(name, "/");
-		if (!strcmp(dir, "_config"))
+		if (!strcmp(dir, "_config")) {
 			dir = strtok(NULL, "/");
-		j->plat = pv_platform_get_by_name(s, dir);
+			j->plat = pv_platform_get_by_name(s, dir);
+			if (!j->plat) {
+				pv_log(WARN, "discarding unassociated json '%s'", j->name);
+				pv_jsons_remove(j);
+			}
+		} else
+			j->plat = pv_platform_get_by_name(s, dir);
 		free(name);
 	}
 }
