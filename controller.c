@@ -250,6 +250,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 		ph_config_to_file(pv->config, config_path);
 		pv_ph_release_client(pv);
 		pv->flags &= ~DEVICE_UNCLAIMED;
+		pv_ph_update_hint_file(pv, NULL);
 		open("/pv/challenge", O_TRUNC | O_WRONLY);
 	}
 

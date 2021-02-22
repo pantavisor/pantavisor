@@ -484,6 +484,9 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	write(fd, buf, strlen(buf));
 	close(fd);
 
+	if (!c)
+		return;
+
 	fd = open("/pv/challenge", O_TRUNC | O_SYNC | O_RDWR);
 	if (!fd) {
 		pv_log(INFO, "unable to open challenge hint file");
