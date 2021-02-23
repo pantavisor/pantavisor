@@ -123,6 +123,12 @@ free_object:
 	return NULL;
 }
 
+void pv_objects_remove(struct pv_object *o)
+{
+	dl_list_del(&o->list);
+	pv_object_free(o);
+}
+
 struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
 {
 	struct pv_object *curr, *tmp;
