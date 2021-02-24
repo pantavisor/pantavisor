@@ -20,9 +20,13 @@
  * SOFTWARE.
  */
 
+#include <stdio.h>
+#include <unistd.h>
+#include <errno.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
+
 #include "init.h"
 #include "blkid.h"
 #include "tsh.h"
@@ -30,6 +34,7 @@
 #include "utils.h"
 #include "loop.h"
 #include "cmd.h"
+#include "blkid.h"
 
 #define MODULE_NAME		"mount-init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -37,37 +42,30 @@
 
 static int ph_mount_init(struct pv_init *this)
 {
-	struct pantavisor *pv = NULL;
-	struct pantavisor_config *config = NULL;
 	struct stat st;
 	int ret = -1;
-
-	pv = get_pv_instance();
-	if (!pv || !pv->config)
-		goto out;
-	config = pv->config;
 
 	// Make pantavisor control area
 	if (stat("/pv", &st) != 0)
 		mkdir_p("/pv", 0500);
 
-	if (stat(config->log.logdir, &st) != 0)
-		mkdir_p(config->log.logdir, 0500);
+	if (stat(pv_config_get_log_logdir(), &st) != 0)
+		mkdir_p(pv_config_get_log_logdir(), 0500);
 
-	if (stat(config->metacachedir, &st) != 0)
-		mkdir_p(config->metacachedir, 0500);
+	if (stat(pv_config_get_cache_metacachedir(), &st) != 0)
+		mkdir_p(pv_config_get_cache_metacachedir(), 0500);
 
-	if (stat(config->dropbearcachedir, &st) != 0)
-		mkdir_p(config->dropbearcachedir, 0500);
+	if (stat(pv_config_get_cache_dropbearcachedir(), &st) != 0)
+		mkdir_p(pv_config_get_cache_dropbearcachedir(), 0500);
 	mkdir_p("/pv/user-meta/", 0755);
-	if (config->metacachedir)
-		mount_bind(config->metacachedir, "/pv/user-meta");
+	if (pv_config_get_cache_metacachedir())
+		mount_bind(pv_config_get_cache_metacachedir(), "/pv/user-meta");
 
 	mkdir_p("/etc/dropbear/", 0755);
-	if (config->dropbearcachedir)
-		mount_bind(config->dropbearcachedir, "/etc/dropbear");
+	if (pv_config_get_cache_dropbearcachedir())
+		mount_bind(pv_config_get_cache_dropbearcachedir(), "/etc/dropbear");
 	ret = 0;
-out:
+
 	return ret;
 }
 
@@ -75,27 +73,20 @@ static int pv_mount_init(struct pv_init *this)
 {
 	struct stat st;
 	struct blkid_info dev_info;
-	struct pantavisor *pv = NULL;
-	struct pantavisor_config *config = NULL;
 	int ret = -1;
 
-	pv = get_pv_instance();
-	if (!pv || !pv->config)
-		goto out;
-
-	config = pv->config;
 	// Create storage mountpoint and mount device
-	mkdir_p(config->storage.mntpoint, 0755);
+	mkdir_p(pv_config_get_storage_mntpoint(), 0755);
 	blkid_init(&dev_info);
 	/*
 	 * Check that storage device has been enumerated and wait if not there yet
 	 * (RPi2 for example is too slow to pvan the MMC devices in time)
 	 */
-	for (int wait = config->storage.wait; wait > 0; wait--) {
+	for (int wait = pv_config_get_storage_wait(); wait > 0; wait--) {
 		/*
 		 * storage.path will contain UUID=XXXX or LABEL=XXXX
 		 * */
-		get_blkid(&dev_info, config->storage.path);
+		get_blkid(&dev_info, pv_config_get_storage_path());
 		if (dev_info.device && stat(dev_info.device, &st) == 0)
 			break;
 		printf("INFO: trail storage not yet available, waiting %d seconds...\n", wait);
@@ -109,28 +100,28 @@ static int pv_mount_init(struct pv_init *this)
 	printf("INFO: trail storage found: %s.\n", dev_info.device);
 
 	// attempt auto resize only if we have ext4
-	if (!strcmp(config->storage.fstype, "ext4")) {
+	if (!strcmp(pv_config_get_storage_fstype(), "ext4")) {
 		char *run = malloc(sizeof(char) * (strlen("/lib/pv/pv_e2fsgrow") + strlen(dev_info.device) + 3));
 		sprintf(run, "/lib/pv/pv_e2fsgrow %s", dev_info.device);
 		tsh_run(run, 1, NULL);
 		free(run);
 	}
 
-	if (!config->storage.mnttype) {
-		ret = mount(dev_info.device, config->storage.mntpoint, config->storage.fstype, 0, NULL);
+	if (!pv_config_get_storage_mnttype()) {
+		ret = mount(dev_info.device, pv_config_get_storage_mntpoint(), pv_config_get_storage_fstype(), 0, NULL);
 		if (ret < 0)
 			goto out;
 	} else {
 		int status;
 		char *mntcmd = calloc(sizeof(char), strlen("/btools/pvmnt.%s %s") +
-						strlen (config->storage.mnttype) + 
-						strlen (config->storage.mntpoint) + 1);
+						strlen (pv_config_get_storage_mnttype()) +
+						strlen (pv_config_get_storage_mntpoint()) + 1);
 
 		if (!mntcmd) {
 			printf("Couldn't allocate mount command \n");
 			goto out;
 		}
-		sprintf(mntcmd, "/btools/pvmnt.%s %s", config->storage.mnttype, config->storage.mntpoint);
+		sprintf(mntcmd, "/btools/pvmnt.%s %s", pv_config_get_storage_mnttype(), pv_config_get_storage_mntpoint());
 		printf("Mounting through helper: %s\n", mntcmd);
 		ret = tsh_run(mntcmd, 1, &status);
 		free(mntcmd);

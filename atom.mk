@@ -42,6 +42,7 @@ LOCAL_SRC_FILES := init.c \
 		   tsh.c \
 	           loop.c \
 	           log.c \
+		   config_parser.c \
 		   config.c \
 		   pantavisor.c \
 		   state.c \
@@ -62,8 +63,8 @@ LOCAL_SRC_FILES := init.c \
 		   uboot.c \
 		   grub.c \
 		   storage.c \
+		   metadata.c \
 		   cmd.c \
-		   device.c \
 		   wdt.c \
 		   network.c \
 		   pvlogger.c \

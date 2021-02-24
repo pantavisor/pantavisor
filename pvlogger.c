@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2018-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,42 +19,30 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <fcntl.h>
+
+#include <stdarg.h>
+#include <stddef.h>
 #include <string.h>
-#include <inttypes.h>
-#include <pthread.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <signal.h>
+#include <stdio.h>
+#include <logger.h>
+#include <libgen.h>
+
 #include <sys/prctl.h>
 #include <sys/stat.h>
-#include <libgen.h>
-#include <errno.h>
-#include <sys/xattr.h>
-#include <stdarg.h>
-#include <limits.h>
+#include <sys/types.h>
 
 #ifndef MODULE_NAME
 #define MODULE_NAME             "pvlogger"
 #endif
 
-static const char *module_name = MODULE_NAME;
-
-#include "cmd.h"
-#include "platforms.h"
-#include "log.h"
-#include "logger.h"
-#include "pvctl_utils.h"
 #include "pvlogger.h"
-#include "pantavisor.h"
-#include "utils.h"
 #include "ph_logger/ph_logger.h"
+#include "platforms.h"
+#include "pvctl_utils.h"
+#include "log.h"
+#include "utils.h"
+
+static const char *module_name = MODULE_NAME;
 
 static char *logger_cmd; //Leave some room to create json
 static struct log default_log;
@@ -356,3 +344,103 @@ void pv_log_info_free(struct pv_log_info * l)
 
 	free(l);
 }
+
+/*
+ * Don't free the returned value.
+ * */
+const char* pv_log_get_config_item(struct pv_logger_config *config,
+		const char *key) {
+	int i = 0;
+	if (config->static_pair) {
+		while (config->static_pair[i][0]) {
+			if (!strncmp(config->static_pair[i][0], key, strlen(key)))
+				return config->static_pair[i][1];
+			i++;
+		}
+	} else if (config->pair) {
+		while (config->pair[i][0]) {
+			if (!strncmp(config->pair[i][0], key,strlen(key)))
+				return config->pair[i][1];
+			i++;
+		}
+	}
+	return NULL;
+}
+
+struct pv_log_info* pv_new_log(bool islxc,
+				struct pv_logger_config *logger_config,
+				const char *name)
+{
+	struct pv_log_info *log_info = NULL;
+	const char *const logger_name_plat= "pvlogger";
+	const char *const logger_name_lxc = "pvlogger-lxc";
+	const char *logger_name = NULL;
+	const char *trunc_val = NULL;
+	const char *enabled = NULL;
+
+	if (!logger_config)
+		goto out;
+
+	if (islxc) {
+		/*
+		 * Check lxc or console item in config.
+		 */
+		enabled = pv_log_get_config_item(logger_config, "lxc");
+		if (!enabled)
+			enabled = pv_log_get_config_item(logger_config,
+								"console");
+		if (!enabled)
+			goto out;
+		else if (strncmp(enabled, "enable", strlen("enable")))
+			goto out;
+	} else {
+		/*
+		 * Check if something from lxc was left over.
+		 * if the config contains lxc or console keys then
+		 * don't create this logger.
+		 */
+		;
+		if (pv_log_get_config_item(logger_config, "lxc"))
+			goto out;
+		else {
+			if (pv_log_get_config_item(logger_config, "console"))
+				goto out;
+		}
+	}
+	log_info = calloc(1, sizeof(struct pv_log_info));
+
+	if (!log_info)
+		goto out;
+
+	logger_name = pv_log_get_config_item(logger_config, "name");
+	log_info->islxc = islxc;
+
+	if (!logger_name) {
+		if (name)
+			logger_name = name;
+		else if (islxc)
+			logger_name = logger_name_lxc;
+		else
+			logger_name = logger_name_plat;
+	}
+	log_info->name = strdup(logger_name);
+	trunc_val = pv_log_get_config_item(logger_config, "truncate");
+	if (trunc_val) {
+		if (!strncmp(trunc_val, "true", strlen("true"))) {
+			trunc_val = pv_log_get_config_item(logger_config, "maxsize");
+			if (trunc_val)
+				sscanf(trunc_val,"%" PRId64,&log_info->truncate_size);
+		}
+	}
+	dl_list_init(&log_info->next);
+	/*
+	 * Used from the pv_lxc plugin
+	 * */
+	log_info->pv_log_get_config_item =
+				pv_log_get_config_item;
+	return log_info;
+out:
+	return NULL;
+}
+
+

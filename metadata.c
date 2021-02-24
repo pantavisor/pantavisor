@@ -24,7 +24,24 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include <linux/limits.h>
+#include <libgen.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+
 #include "metadata.h"
+
+#include "version.h"
+#include "state.h"
+#include "pantahub.h"
+#include "init.h"
+#include "utils.h"
+#include "config_parser.h"
 
 #define PV_USERMETA_ADD     (1<<0)
 struct pv_usermeta {
@@ -196,10 +213,10 @@ static void pv_usermeta_free(struct pv_usermeta *usermeta)
 	free(usermeta);
 }
 
-static void pv_usermeta_remove(struct pv_metadata *dev)
+static void pv_usermeta_remove(struct pv_metadata *metadata)
 {
 	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &dev->usermeta_list;
+	struct dl_list *head = &metadata->usermeta_list;
 
 	pv_log(DEBUG, "removing user meta list");
 
@@ -210,10 +227,10 @@ static void pv_usermeta_remove(struct pv_metadata *dev)
 	}
 }
 
-static void pv_devmeta_remove(struct pv_metadata *dev)
+static void pv_devmeta_remove(struct pv_metadata *metadata)
 {
 	struct pv_devmeta *curr, *tmp;
-	struct dl_list *head = &dev->devmeta_list;
+	struct dl_list *head = &metadata->devmeta_list;
 
 	pv_log(DEBUG, "removing devmeta list");
 
@@ -329,7 +346,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		snprintf(value, n+1, "%s", um+(*key_i+1)->start);
 
 		// add or update metadata
-		pv_usermeta_add(pv->dev, key, value);
+		pv_usermeta_add(pv->metadata, key, value);
 
 		// free intermediates
 		if (key) {
@@ -360,10 +377,10 @@ static void usermeta_clear(struct pantavisor *pv)
 
 	if (!pv)
 		return;
-	if (!pv->dev)
+	if (!pv->metadata)
 		return;
 
-	head = &pv->dev->usermeta_list;
+	head = &pv->metadata->usermeta_list;
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_usermeta, list) {
 		/*
@@ -380,7 +397,7 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-static struct pv_devmeta* pv_devmeta_add(struct pv_usermeta *dev, char *key, char *value)
+static struct pv_devmeta* pv_devmeta_add(struct pv_metadata *metadata, char *key, char *value)
 {
 	struct pv_devmeta *this = NULL;
 
@@ -406,7 +423,7 @@ static struct pv_devmeta* pv_devmeta_add(struct pv_usermeta *dev, char *key, cha
 		this = NULL;
 		goto out;
 	}
-	dl_list_add(&dev->devmeta_list, &this->list);
+	dl_list_add(&metadata->devmeta_list, &this->list);
 out:
 	if (!this) {
 		pv_log(WARN, "Skipping device meta information [%s : %s]",
@@ -433,7 +450,7 @@ int pv_metadata_parse_devmeta(struct pantavisor *pv)
 		return -1;
 	}
 
-	dl_list_init(&pv->dev->devmeta_list);
+	dl_list_init(&pv->metadata->devmeta_list);
 
 	buf = log_buffer->buf;
 	bufsize = log_buffer->size;
@@ -448,7 +465,7 @@ int pv_metadata_parse_devmeta(struct pantavisor *pv)
 			/*
 			 * we managed to add at least one item in the list.
 			 */
-			pv_devmeta_add(pv->dev, pv_devmeta_readkeys[i].key, buf);
+			pv_devmeta_add(pv->metadata, pv_devmeta_readkeys[i].key, buf);
 		}
 	}
 	pv_log_put_buffer(log_buffer);
@@ -475,13 +492,13 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 		return -1;
 	}
 
-	if (dl_list_empty(&pv->dev->devmeta_list))
+	if (dl_list_empty(&pv->metadata->devmeta_list))
 		goto out;
 	json = log_buffer->buf;
 	json_avail = log_buffer->size;
 	json_avail -= sprintf(json, "{");
 	len += 1;
-	head = &pv->dev->devmeta_list;
+	head = &pv->metadata->devmeta_list;
 	dl_list_for_each_safe(info, tmp, head,
 			struct pv_devmeta, list) {
 		char *key = format_json(info->key, strlen(info->key));
@@ -512,7 +529,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	json[len - 1] = '}';
 	pv_log(INFO, "device info json = %s", json);
 	if(!pv_ph_upload_metadata(pv, json))
-		pv_devmeta_remove(pv->dev);
+		pv_devmeta_remove(pv->metadata);
 out:
 	pv_log_put_buffer(log_buffer);
 	return 0;
@@ -625,7 +642,7 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 	bool upload_failed = false;
 
 	snprintf(factory_dir, sizeof(factory_dir), "%s/%s",
-			pv->config->storage.mntpoint, "factory/meta");
+			pv_config_get_storage_mntpoint(), "factory/meta");
 	n = scandir(factory_dir, &dirlist, NULL, alphasort);
 	if (n < 0)
 		pv_log(WARN, "%s: %s", factory_dir, strerror(errno));
@@ -655,7 +672,7 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		/*
 		 * reusing abs_path
 		 */
-		snprintf(abs_path, sizeof(abs_path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
+		snprintf(abs_path, sizeof(abs_path), "%s/trails/0/.pv/factory-meta.done", pv_config_get_storage_mntpoint());
 		fd = open(abs_path, O_CREAT | O_SYNC);
 		if (fd < 0)
 			pv_log(ERROR, "Unable to open file %s", abs_path);
@@ -680,11 +697,11 @@ int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf)
 
 static struct pv_usermeta* pv_metadata_get_usermeta(struct pantavisor *pv, char *key)
 {
-	if (!pv || !pv->dev)
+	if (!pv || !pv->metadata)
 		return NULL;
 
 	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &pv->dev->usermeta_list;
+	struct dl_list *head = &pv->metadata->usermeta_list;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_usermeta, list) {
@@ -720,7 +737,7 @@ bool pv_metadata_factory_meta_done(struct pantavisor *pv)
 	 */
 	if (pv->state->rev != 0)
 		return true;
-	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
+	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv_config_get_storage_mntpoint());
 
 	if (stat(path, &st))
 		return false;

@@ -19,11 +19,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <signal.h>
 
 #include <sys/param.h>
 #include <sys/types.h>
@@ -32,18 +27,24 @@
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/sysmacros.h>
+#include <string.h>
 #include <stdbool.h>
-
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <signal.h>
 #include <linux/reboot.h>
 
 #define MODULE_NAME			"updater"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "init.h"
+
 #include "tsh.h"
 #include "pantavisor.h"
 #include "version.h"
-#include "init.h"
 #include "utils.h"
 #include "utils/list.h"
 #include "pvlogger.h"
@@ -321,17 +322,16 @@ loop:
 struct pv_init *pv_init_tbl [] = {
 	&pv_init_config,
 	&pv_init_mount,
-	&ph_init_config,
 	&ph_init_mount,
 	&pv_init_revision,
 	&pv_init_log,
-	&pv_init_device,
+	&pv_init_storage,
+	&pv_init_cmd,
 	&pv_init_metadata,
 	&pv_init_network,
 	&pv_init_platform,
 	&pv_init_bl,
 	&pv_init_state,
-	&pv_init_update
 };
 
 int pv_do_execute_init()

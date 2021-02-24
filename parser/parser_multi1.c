@@ -38,7 +38,6 @@
 #include "volumes.h"
 #include "objects.h"
 #include "pantavisor.h"
-#include "device.h"
 #include "parser.h"
 #include "state.h"
 
@@ -303,7 +302,7 @@ struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char
 		if (ext && !strcmp(ext, ".json"))
 			parse_platform(this, value, strlen(value));
 		else
-			pv_objects_add(this, key, value, pv->config->storage.mntpoint);
+			pv_objects_add(this, key, value, pv_config_get_storage_mntpoint());
 
 		// free intermediates
 		if (key) {

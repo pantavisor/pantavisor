@@ -50,7 +50,7 @@ static int single_env;
 #define MTD_ENV		"pv-env"
 #define MTD_ENV_SIZE	65536
 
-static int uboot_init(struct pantavisor_config *c)
+static int uboot_init()
 {
 	int fd, ret;
 	struct stat st;
@@ -62,15 +62,15 @@ static int uboot_init(struct pantavisor_config *c)
 		return 0;
 
 	// setup uboot.txt location
-	sprintf(buf, "%s/boot/uboot.txt", c->storage.mntpoint);
+	sprintf(buf, "%s/boot/uboot.txt", pv_config_get_storage_mntpoint());
 	uboot_txt = strdup(buf);
 
 	pv_log(DEBUG, "uboot.txt@%s", uboot_txt);
 
 	// get mtd_path from config or else use default
-	single_env = c->bl.mtd_only;
-	if (c->bl.mtd_path)
-		memcpy(mtd_env_str, c->bl.mtd_path, strlen(c->bl.mtd_path));
+	single_env = pv_config_get_bl_mtd_only();
+	if (pv_config_get_bl_mtd_path())
+		memcpy(mtd_env_str, pv_config_get_bl_mtd_path(), strlen(pv_config_get_bl_mtd_path()));
 	else
 		memcpy(mtd_env_str, MTD_ENV, sizeof(MTD_ENV));
 

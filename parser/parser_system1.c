@@ -39,10 +39,10 @@
 #include "objects.h"
 #include "jsons.h"
 #include "pantavisor.h"
-#include "device.h"
 #include "parser.h"
 #include "parser_bundle.h"
 #include "state.h"
+#include "pvlogger.h"
 
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
@@ -802,7 +802,7 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		// everything else is added to the list of objects
 		} else {
 			pv_log(DEBUG, "adding object '%s'", key);
-			pv_objects_add(this, key, value, pv->config->storage.mntpoint);
+			pv_objects_add(this, key, value, pv_config_get_storage_mntpoint());
 		}
 
 		// free intermediates

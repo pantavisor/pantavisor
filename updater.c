@@ -53,14 +53,10 @@
 #include "revision.h"
 #include "parser/parser_bundle.h"
 #include "state.h"
-#include "device.h"
-
-int MAX_REVISION_RETRIES = 0;
-int DOWNLOAD_RETRY_WAIT = 0;
 
 typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 
-static void pv_update_free(struct pv_update *update)
+void pv_update_free(struct pv_update *update)
 {
 	if (!update)
 		return;
@@ -154,10 +150,10 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote->client = client;
 
 	endpoint_trail = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
-		+ strlen(pv->config->creds.id)) * sizeof(char));
+		+ strlen(pv_config_get_creds_id())) * sizeof(char));
 	if (!endpoint_trail)
 		goto err;
-	sprintf(endpoint_trail, DEVICE_TRAIL_ENDPOINT_FMT, pv->config->creds.id);
+	sprintf(endpoint_trail, DEVICE_TRAIL_ENDPOINT_FMT, pv_config_get_creds_id());
 
 	remote->endpoint_trail_queued = (char*)calloc(1, strlen(endpoint_trail)
 		+ sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED));
@@ -240,7 +236,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		// form message
 		sprintf(retry_message, "Update queued, retry %d of %d",
 			update->retries,
-			MAX_REVISION_RETRIES);
+			pv_config_get_updater_revision_retries());
 		// form request
 		// form request
 		snprintf(retries, sizeof(retries), "%d", update->retries);
@@ -290,7 +286,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		snprintf(retry_message, sizeof(retry_message),
 			"Network unavailable while downloading, retry %d of %d",
 			update->retries,
-			MAX_REVISION_RETRIES);
+			pv_config_get_updater_revision_retries());
 		// form request
 		snprintf(retries, sizeof(retries), "%d", update->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
@@ -565,7 +561,7 @@ process_response:
 	pv_log(INFO, "parse rev %d...", rev);
 
 	// create temp update to be able to report the revision state
-	update = pv_update_new(pv->config->creds.id, rev);
+	update = pv_update_new(pv_config_get_creds_id(), rev);
 	if (!update)
 		goto out;
 
@@ -597,7 +593,7 @@ send_feedback:
 
 	// increment and report revision retry max reached
 	retries++;
-	if (retries > MAX_REVISION_RETRIES) {
+	if (retries > pv_config_get_updater_revision_retries()) {
 		pv_log(WARN, "max retries reached in rev %d", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
 		pv_update_free(update);
@@ -852,8 +848,8 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		req->method = THTTP_METHOD_PUT;
 		req->proto = THTTP_PROTO_HTTP;
 		req->proto_version = THTTP_PROTO_VERSION_10;
-		req->host = pv->config->creds.host;
-		req->port = pv->config->creds.port;
+		req->host = pv_config_get_creds_host();
+		req->port = pv_config_get_creds_port();
 		req->user_agent = pv_user_agent;
 
 		req->path = strstr(signed_puturl, "/local-s3");
@@ -1061,12 +1057,12 @@ static int pv_update_start(struct pantavisor *pv)
 		int time_left = pv->update->retry_at - time(NULL);
 
 		if (time_left <= 0) {
-			if (pv->update->retries > MAX_REVISION_RETRIES)
+			if (pv->update->retries > pv_config_get_updater_revision_retries())
 				return -1;
 			pv_log(INFO, "trying revision %d ,retry = %d",
 					pv->update->pending->rev, pv->update->retries);
 			// set timer for next retry
-			pv->update->retry_at = time(NULL) + DOWNLOAD_RETRY_WAIT;
+			pv->update->retry_at = time(NULL) + pv_config_get_storage_wait();
 			return 0;
 		}
 
@@ -1133,7 +1129,7 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		if (pv->update->retries > MAX_REVISION_RETRIES) {
+		if (pv->update->retries > pv_config_get_updater_revision_retries()) {
 			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
 			pv_update_remove(pv);
 			pv_log(INFO, "update finished");
@@ -1240,7 +1236,7 @@ static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 	if (strcmp(pv->state->bsp.kernel, obj->name))
 		return 0;
 
-	if (pv->config->bl.type == BL_UBOOT_PVK)
+	if (pv_config_get_bl_type() == BL_UBOOT_PVK)
 		return 1;
 
 	return 0;
@@ -1413,9 +1409,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	req->path = obj->geturl;
 	req->headers = 0;
 
-	if (pv_device_use_updater_tmp_objects(pv) &&
-		(!strcmp(pv->config->storage.fstype, "jffs2") ||
-	    !strcmp(pv->config->storage.fstype, "ubifs")))
+	if (pv_config_get_updater_network_use_tmp_objects() &&
+		(!strcmp(pv_config_get_storage_fstype(), "jffs2") ||
+	    !strcmp(pv_config_get_storage_fstype(), "ubifs")))
 		use_volatile_tmp = 1;
 
 	// temporary path where we will store the file until validated
@@ -1705,9 +1701,9 @@ int pv_update_install(struct pantavisor *pv)
 	pv_log(INFO, "installing update...");
 
 	// make sure target directories exist
-	sprintf(path, "%s/trails/%d/.pvr", pv->config->storage.mntpoint, pending->rev);
+	sprintf(path, "%s/trails/%d/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
 	mkdir_p(path, 0755);
-	sprintf(path, "%s/trails/%d/.pv", pv->config->storage.mntpoint, pending->rev);
+	sprintf(path, "%s/trails/%d/.pv", pv_config_get_storage_mntpoint(), pending->rev);
 	mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
@@ -1718,8 +1714,8 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	sprintf(path_new, "%s/trails/%d/.pvr/json.new", pv->config->storage.mntpoint, pending->rev);
-	sprintf(path, "%s/trails/%d/.pvr/json", pv->config->storage.mntpoint, pending->rev);
+	sprintf(path_new, "%s/trails/%d/.pvr/json.new", pv_config_get_storage_mntpoint(), pending->rev);
+	sprintf(path, "%s/trails/%d/.pvr/json", pv_config_get_storage_mntpoint(), pending->rev);
 	fd = open(path_new, O_CREAT | O_WRONLY | O_SYNC | O_TRUNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to write state.json file for update");
@@ -1767,7 +1763,7 @@ int pv_update_resume(struct pantavisor *pv)
 	if (pv_revision_update_in_progress()) {
 		rev = pv_revision_get_try();
 		pv_log(INFO, "loading update data from rev %d after reboot...", rev);
-		pv->update = pv_update_new(pv->config->creds.id, rev);
+		pv->update = pv_update_new(pv_config_get_creds_id(), rev);
 		if (!pv->update)
 			return -1;
 
@@ -1818,36 +1814,3 @@ bool pv_update_is_testing(struct pv_update *u)
 		((u->status == UPDATE_TESTING_REBOOT) ||
 		(u->status == UPDATE_TESTING_NONREBOOT)));
 }
-
-static int pv_update_init(struct pv_init *this)
-{
-	struct pantavisor *pv = NULL;
-	struct pantavisor_config *config = NULL;
-	int ret = -1;
-
-	pv = get_pv_instance();
-
-	if (!pv || !pv->config)
-		goto out;
-	config = pv->config;
-	if (config->revision_retries <= 0) MAX_REVISION_RETRIES = DEFAULT_MAX_REVISION_RETRIES;
-	else
-		MAX_REVISION_RETRIES = config->revision_retries;
-
-	if (config->revision_retry_timeout <= 0)
-		DOWNLOAD_RETRY_WAIT = DEFAULT_DOWNLOAD_RETRY_WAIT;
-	else
-		DOWNLOAD_RETRY_WAIT = config->revision_retry_timeout;
-
-	if (config->update_commit_delay <= 0)
-		config->update_commit_delay = DEFAULT_UPDATE_COMMIT_DELAY;
-
-	ret = 0;
-out:
-	return 0;
-}
-
-struct pv_init pv_init_update = {
-	.init_fn = pv_update_init,
-	.flags = 0,
-};

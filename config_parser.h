@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2021 Pantacor Ltd.
+ * Copyright (c) 2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,26 +19,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_DEVICE_H
-#define PV_DEVICE_H
 
-#include <stdbool.h>
+#ifndef PV_CONFIG_PARSER_H
+#define PV_CONFIG_PARSER_H
 
-#include "pantavisor.h"
-
-struct pv_device {
-    char *id;
-    char *nick;
-    char *owner;
-    char *prn;
-};
-
-bool pv_device_push_logs_activated(struct pantavisor *pv);
-int pv_device_capture_logs_activated(struct pantavisor *pv);
-bool pv_device_use_updater_tmp_objects(struct pantavisor *pv);
-int pv_device_get_gc_reserved(struct pantavisor *pv);
-int pv_device_get_gc_threshold(struct pantavisor *pv);
-
-void pv_device_remove(struct pantavisor *pv);
+int config_parse_cmdline(struct dl_list *list, char *hint);
+int load_key_value_file(const char *path, struct dl_list *list);
+char* config_get_value(struct dl_list *list, char *key);
+void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque);
+void config_clear_items(struct dl_list *list);
 
 #endif

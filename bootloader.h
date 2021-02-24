@@ -35,7 +35,7 @@ int pv_bl_set_rev(int rev);
 int pv_bl_clear_update(void);
 
 struct bl_ops {
-	int (*init)(struct pantavisor_config *c);
+	int (*init)(void);
 	int (*get_env_key)(char *key);
 	int (*set_env_key)(char *key, int value);
 	int (*unset_env_key)(char *key);

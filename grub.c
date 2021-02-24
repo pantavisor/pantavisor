@@ -42,7 +42,7 @@
 
 static char *grub_env = 0;
 
-static int grub_init(struct pantavisor_config *c)
+static int grub_init()
 {
 	int fd, ret;
 	char buf[1024];
@@ -51,7 +51,7 @@ static int grub_init(struct pantavisor_config *c)
 	if (grub_env)
 		return 0;
 
-	sprintf(buf, GRUB_FMT, c->storage.mntpoint);
+	sprintf(buf, GRUB_FMT, pv_config_get_storage_mntpoint());
 	grub_env  = strdup(buf);
 
 	if (stat(grub_env, &st))

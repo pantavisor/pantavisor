@@ -19,17 +19,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
 #include <signal.h>
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <linux/limits.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <linux/limits.h>
 
 #ifndef _GNU_SOURCE
 int setns(int nsfd, int nstype);
@@ -485,7 +485,7 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 		sprintf(prefix, "%s/", p->name);
 
 	sprintf(conf_path, "%s/trails/%d/%s%s",
-		pv->config->storage.mntpoint, s->rev, prefix, *c);
+		pv_config_get_storage_mntpoint(), s->rev, prefix, *c);
 
 	// Get type controller
 	ctrl = _pv_platforms_get_ctrl(p->type);

@@ -23,6 +23,9 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
 
 #define MODULE_NAME             "client"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -62,10 +65,10 @@ static struct trest_response* external_login_handler (trest_ptr self, void* data
 		goto err;
 	}
 
-	pv_log(INFO, "external login handler called for creds type '%s'", pv->config->creds.type);
+	pv_log(INFO, "external login handler called for creds type '%s'", pv_config_get_creds_type());
 
 	sprintf(loginhandler_cmd, PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
-		pv->config->creds.type);
+		pv_config_get_creds_type());
 
 	rv = pipe(fd_outerr);
 	if (rv < 0) {
@@ -149,21 +152,21 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	} creds_type;
 
         // Make sure values are reasonable
-	if ((strcmp(pv->config->creds.id, "") == 0) ||
-		(strcmp(pv->config->creds.prn, "") == 0))
+	if ((strcmp(pv_config_get_creds_id(), "") == 0) ||
+		(strcmp(pv_config_get_creds_prn(), "") == 0))
 		return NULL;
 
-	if (!strcmp(pv->config->creds.type, "builtin")) {
+	if (!strcmp(pv_config_get_creds_type(), "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
-	} else if(strlen(pv->config->creds.type) >= 4 &&
-			!strncmp(pv->config->creds.type, "ext-", 4)) {
+	} else if(strlen(pv_config_get_creds_type()) >= 4 &&
+			!strncmp(pv_config_get_creds_type(), "ext-", 4)) {
 		char cmd[PATH_MAX];
 		struct stat sb;
 		int rv;
 
 		// if no executable handler is found; fall back to builtin
 		sprintf(cmd, PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
-			pv->config->creds.type);
+			pv_config_get_creds_type());
 		rv = stat(cmd, &sb);
 		if (rv) {
 			pv_log(ERROR, "unable to stat trest client for cmd %s: %s", cmd, strerror(errno));
@@ -177,7 +180,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		creds_type = HUB_CREDS_TYPE_EXTERNAL;
 	} else {
 		pv_log(ERROR, "unable to get trest client for creds_type %s.",
-				pv->config->creds.type);
+				pv_config_get_creds_type());
 		goto err;
 	}
 
@@ -191,10 +194,10 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	case HUB_CREDS_TYPE_BUILTIN:
 		// Create client
 		client = trest_new_tls_from_userpass(
-			pv->config->creds.host,
-			pv->config->creds.port,
-			pv->config->creds.prn,
-			pv->config->creds.secret,
+			pv_config_get_creds_host(),
+			pv_config_get_creds_port(),
+			pv_config_get_creds_prn(),
+			pv_config_get_creds_secret(),
 			(const char **) cafiles,
 			pv_user_agent,
 			(conn ? NULL : NULL)
@@ -207,8 +210,8 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		break;
 	case HUB_CREDS_TYPE_EXTERNAL:
 		client = trest_new_tls_with_login_handler(
-			pv->config->creds.host,
-			pv->config->creds.port,
+			pv_config_get_creds_host(),
+			pv_config_get_creds_port(),
 			external_login_handler,
 			pv,
 			(const char **) cafiles,
@@ -224,7 +227,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	default:
 		pv_log(ERROR, "unable to get trest client for creds_type %s. "
 				"Currently supported: builtin and ext-* handlers",
-				pv->config->creds.type);
+				pv_config_get_creds_type());
 		goto err;
 	}
 

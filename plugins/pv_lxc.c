@@ -44,7 +44,6 @@
 #include "pvlogger.h"
 #include "state.h"
 #include "platforms.h"
-#include "device.h"
 
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 
@@ -78,8 +77,8 @@ void pv_set_pv_instance_fn(void *fn_get_pv_instance)
 
 static int pv_lxc_get_lxc_log_level()
 {
-	if (__get_pv_instance() && __get_pv_instance()->config)
-		return __get_pv_instance()->config->lxc.log_level;
+	if (__get_pv_instance())
+		return __get_pv_instance()->config.lxc.log_level;
 
 	// default
 	return 2;
@@ -87,8 +86,8 @@ static int pv_lxc_get_lxc_log_level()
 
 static int pv_lxc_capture_logs_activated()
 {
-	if (__get_pv_instance() && __get_pv_instance()->config)
-		return __get_pv_instance()->config->log.capture;
+	if (__get_pv_instance())
+		return __get_pv_instance()->config.log.capture;
 
 	// default
 	return 1;

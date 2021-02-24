@@ -39,4 +39,6 @@ int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf);
 int pv_metadata_parse_devmeta(struct pantavisor *pv);
 int pv_metadata_upload_devmeta(struct pantavisor *pv);
 
+void pv_metadata_remove(struct pantavisor *pv);
+
 #endif
