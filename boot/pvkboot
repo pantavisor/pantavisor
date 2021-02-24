@@ -1,0 +1,77 @@
+#!/bin/sh
+
+set -e
+
+mkdir -p /dev
+mkdir -p /proc
+mkdir -p /sys
+mount -t sysfs none /sys &>/dev/null || true
+mount -t proc none /proc &>/dev/null || true
+mount -t devtmpfs none /dev &>/dev/null || true
+
+baseargs="root=/dev/ram rootfstype=ramfs pv_storage.device=LABEL=pvroot pv_storage.fstype=ext4"
+dev=`cat /proc/cmdline  | grep pvkexec_root= | sed -e 's/.* pvkexec_root=\([^ ]*\) .*/\1/'`
+DEV=${dev:-${DEV:-/dev/sda3}}
+
+mkdir -p /storage
+
+for i in 1 2 3 4 5 6 7 8 9 10; do
+	umount $DEV &>/dev/null || true
+	if mount $DEV /storage; then
+		break
+	fi
+	echo "waiting for storage device to appear $i/10"
+	sleep 2
+done
+
+cat /storage/boot/uboot.txt \
+	| sed  's/^\(..*\)$/\1\n/' \
+	| sed 's/\x0/\n/g' \
+	> /tmp/uboot.txt.env
+
+. /tmp/uboot.txt.env
+
+
+bootit() {
+	rev=$1
+	try=$2
+	cmdline=`cat /proc/cmdline`
+
+	if [ -n "$try" ]; then
+		cmdline="$cmdline pv_try=$try"
+	fi
+	bootrev=$rev
+	if [ -e /storage/boot/.pv-trying ]; then
+		rm -f /storage/boot/.pv-trying
+	elif [ -n "$try" ]; then
+		bootrev=$try
+		touch /storage/boot/.pv-trying
+	fi
+
+	dtcargs=
+	if dtc -I fs -O dtb /proc/device-tree > /tmp/devtree.dtb 2>dev/null; then
+		dtcargs="--dtb=/tmp/devtree.dtb"
+	else
+		echo "using existing device tree"
+	fi
+
+	cmdline=`echo $cmdline | sed -e 's/nr_cpus=1//' -e 's:rdinit=[^ ]*::'`
+	cmdline="$cmdline pv_rev=$bootrev"
+	cmdline="$cmdline $baseargs"
+	kernel=/storage/trails/$bootrev/.pv/pv-kernel.img
+	initrd=/storage/trails/$bootrev/.pv/pv-initrd.img
+
+	kexec -s \
+		--initrd=$initrd \
+		-l $kernel \
+		$dtcargs \
+		--command-line="$cmdline"
+
+	umount /storage
+	echo "Going for kexec after umount"
+	kexec -e
+}
+
+echo "Booting pv_rev: $pv_rev and pv_try: $pv_try"
+bootit $pv_rev $pv_try
+
