@@ -9,8 +9,11 @@ mount -t sysfs none /sys &>/dev/null || true
 mount -t proc none /proc &>/dev/null || true
 mount -t devtmpfs none /dev &>/dev/null || true
 
+PATH=$PATH:/sbin:/usr/sbin
+export PATH
+
 baseargs="root=/dev/ram rootfstype=ramfs pv_storage.device=LABEL=pvroot pv_storage.fstype=ext4"
-dev=`cat /proc/cmdline  | grep pvkexec_root= | sed -e 's/.* pvkexec_root=\([^ ]*\) .*/\1/'`
+dev=`cat /proc/cmdline  | grep pvkroot= | sed -e 's/.* pvkroot=\([^ ]*\).*/\1/'`
 DEV=${dev:-${DEV:-/dev/sda3}}
 
 mkdir -p /storage
