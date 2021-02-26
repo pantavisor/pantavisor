@@ -5,6 +5,7 @@ set -e
 mkdir -p /dev
 mkdir -p /proc
 mkdir -p /sys
+mkdir -p /tmp
 mount -t sysfs none /sys &>/dev/null || true
 mount -t proc none /proc &>/dev/null || true
 mount -t devtmpfs none /dev &>/dev/null || true
@@ -14,18 +15,32 @@ export PATH
 
 baseargs="root=/dev/ram rootfstype=ramfs pv_storage.device=LABEL=pvroot pv_storage.fstype=ext4"
 dev=`cat /proc/cmdline  | grep pvkroot= | sed -e 's/.* pvkroot=\([^ ]*\).*/\1/'`
-DEV=${dev:-${DEV:-/dev/sda3}}
+dev=${DEV:-${dev:-/dev/sda3}}
+
+for w in 1 2 3 4 5 6 7 8 9 10; do
+	DEV=`findfs $dev`
+	if [ -b "$DEV" ]; then	
+		echo "Found storage device $DEV online."
+		break
+	fi
+	echo "Waiting for storage device $dev to come online."
+	DEV=
+done
+
+
+if [ -z "$DEV" ]; then
+	echo "Storage device $dev never came online ... exiting in 5 seconds."
+	sleep 5
+	exit 10
+fi
 
 mkdir -p /storage
 
-for i in 1 2 3 4 5 6 7 8 9 10; do
-	umount $DEV &>/dev/null || true
-	if mount $DEV /storage; then
-		break
-	fi
-	echo "waiting for storage device to appear $i/10"
-	sleep 2
-done
+umount $DEV &>/dev/null || true
+if ! mount $DEV /storage; then
+	echo "Storage device $dev could not be mounted to /storage ... exiting in 5"
+	sleep 5
+fi
 
 cat /storage/boot/uboot.txt \
 	| sed  's/^\(..*\)$/\1\n/' \
