@@ -32,7 +32,6 @@
 #define RUNLEVEL_PLATFORM 1
 #define RUNLEVEL_APP 2
 
-#define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 // pantavisor.h
 
 char pv_user_agent[4096];

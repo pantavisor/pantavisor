@@ -716,6 +716,10 @@ static int pv_metadata_init(struct pv_init *this)
 {
 	struct pantavisor *pv = get_pv_instance();
 
+	pv->metadata = calloc(1, sizeof(struct pv_metadata));
+	if (!pv->metadata)
+		return -1;
+
 	dl_list_init(&pv->metadata->usermeta_list);
 
 	return 0;

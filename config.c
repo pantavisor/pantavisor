@@ -50,7 +50,7 @@ static char* config_get_value_string(char *key, char* default_value)
 {
 	char *item = _config_get_value(key);
 
-	if (!item)
+	if (!item && default_value)
 		item = strdup(default_value);
 
 	return item;
@@ -413,24 +413,37 @@ bool pv_config_get_log_capture() { return get_pv_instance()->config.log.capture;
 
 static int pv_config_init(struct pv_init *this)
 {
-	char config_file[256];
 	struct pantavisor *pv = get_pv_instance();
 
-	if (pv_config_from_file(PV_CONFIG_FILENAME, &pv->config) < 0) {
-		printf("FATAL: unable to parse pantavisor.config");
-		return -1;
-	}
-
-	sprintf(config_file, "%s/config/pantahub.config", pv->config.storage.mntpoint);
-	if (ph_config_from_file(config_file, &pv->config) < 0) {
-		printf("FATAL: unable to parse pantahub.config");
+	if (pv_config_from_file("/etc/pantavisor.config", &pv->config) < 0) {
+		printf("FATAL: unable to parse /etc/pantavisor.config\n");
 		return -1;
 	}
 
 	return 0;
 }
 
+static int ph_config_init(struct pv_init *this)
+{
+	char config_file[256];
+	struct pantavisor *pv = get_pv_instance();
+
+	sprintf(config_file, "%s/config/pantahub.config", pv_config_get_storage_mntpoint());
+	if (ph_config_from_file(config_file, &pv->config) < 0) {
+		printf("FATAL: unable to parse %s/config/pantahub.config\n", pv_config_get_storage_mntpoint());
+		return -1;
+	}
+
+	return 0;
+
+}
+
 struct pv_init pv_init_config =  {
 	.init_fn = pv_config_init,
+	.flags = 0,
+};
+
+struct pv_init ph_init_config =  {
+	.init_fn = ph_config_init,
 	.flags = 0,
 };

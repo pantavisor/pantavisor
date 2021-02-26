@@ -323,6 +323,7 @@ loop:
 struct pv_init *pv_init_tbl [] = {
 	&pv_init_config,
 	&pv_init_mount,
+	&ph_init_config,
 	&ph_init_mount,
 	&pv_init_revision,
 	&pv_init_log,
