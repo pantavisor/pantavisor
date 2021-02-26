@@ -40,7 +40,7 @@ bool pv_device_factory_meta_done(struct pantavisor *pv);
 
 int pv_device_update_usermeta(struct pantavisor *pv, char *buf);
 bool pv_device_push_logs_activated(struct pantavisor *pv);
-bool pv_device_capture_logs_activated(struct pantavisor *pv);
+int pv_device_capture_logs_activated(struct pantavisor *pv);
 bool pv_device_use_updater_tmp_objects(struct pantavisor *pv);
 int pv_device_get_gc_reserved(struct pantavisor *pv);
 int pv_device_get_gc_threshold(struct pantavisor *pv);
