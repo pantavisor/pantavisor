@@ -505,7 +505,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	} else {
 		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
 				PH_LOGGER_POS_XATTR, filename, pos);
-		sprintf(dst, "%ld", pos);
+		sprintf(dst, "%lld", pos);
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */

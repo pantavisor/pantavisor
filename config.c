@@ -413,19 +413,19 @@ bool pv_config_get_log_capture() { return get_pv_instance()->config.log.capture;
 
 static int pv_config_init(struct pv_init *this)
 {
-//	char config_file[256];
-//	struct pantavisor *pv = get_pv_instance();
-//
-//	if (pv_config_from_file(PV_CONFIG_FILENAME, &pv->config) < 0) {
-//		printf("FATAL: unable to parse pantavisor.config");
-//		return -1;
-//	}
-//
-//	sprintf(config_file, "%s/config/pantahub.config", pv->config.storage.mntpoint);
-//	if (ph_config_from_file(config_file, &pv->config) < 0) {
-//		printf("FATAL: unable to parse pantahub.config");
-//		return -1;
-//	}
+	char config_file[256];
+	struct pantavisor *pv = get_pv_instance();
+
+	if (pv_config_from_file(PV_CONFIG_FILENAME, &pv->config) < 0) {
+		printf("FATAL: unable to parse pantavisor.config");
+		return -1;
+	}
+
+	sprintf(config_file, "%s/config/pantahub.config", pv->config.storage.mntpoint);
+	if (ph_config_from_file(config_file, &pv->config) < 0) {
+		printf("FATAL: unable to parse pantahub.config");
+		return -1;
+	}
 
 	return 0;
 }
