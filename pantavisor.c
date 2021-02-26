@@ -20,11 +20,6 @@
  * SOFTWARE.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/prctl.h>
-#include <sys/time.h>
-#include <sys/resource.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -33,6 +28,13 @@
 #include <ctype.h>
 #include <libgen.h>
 #include <errno.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/prctl.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include <linux/limits.h>
 
 #define MODULE_NAME             "core"
@@ -40,7 +42,6 @@
 #include "log.h"
 
 #include "pantavisor.h"
-
 #include "cmd.h"
 #include "config.h"
 #include "state.h"
@@ -532,7 +533,7 @@ out:
 	return 0;
 }
 
-struct pv_init pv_init_state = {
+struct pv_init pv_init_pantavisor = {
 	.init_fn = pv_pantavisor_init,
 	.flags = 0,
 };

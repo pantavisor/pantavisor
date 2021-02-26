@@ -20,13 +20,6 @@
  * SOFTWARE.
  */
 
-#include <sys/param.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/stat.h>
-#include <sys/mount.h>
-#include <sys/reboot.h>
-#include <sys/sysmacros.h>
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -34,6 +27,15 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <signal.h>
+
+#include <sys/param.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <sys/mount.h>
+#include <sys/reboot.h>
+#include <sys/sysmacros.h>
+
 #include <linux/reboot.h>
 
 #define MODULE_NAME			"updater"
@@ -41,7 +43,6 @@
 #include "log.h"
 
 #include "init.h"
-
 #include "tsh.h"
 #include "pantavisor.h"
 #include "version.h"
@@ -331,7 +332,7 @@ struct pv_init *pv_init_tbl [] = {
 	&pv_init_network,
 	&pv_init_platform,
 	&pv_init_bl,
-	&pv_init_state,
+	&pv_init_pantavisor,
 };
 
 int pv_do_execute_init()

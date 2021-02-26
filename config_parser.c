@@ -20,20 +20,20 @@
  * SOFTWARE.
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 #define MODULE_NAME             "config_parser"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "config_parser.h"
-
 #include "utils.h"
 
 struct config_item {

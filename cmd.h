@@ -27,7 +27,6 @@
 #include <string.h>
 
 #include "cmd.h"
-
 #include "pantavisor.h"
 
 // legacy commands, use cmd_json_operation_t for new commands

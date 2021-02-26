@@ -27,7 +27,6 @@
 #include <string.h>
 
 #include "state.h"
-
 #include "volumes.h"
 #include "platforms.h"
 #include "objects.h"

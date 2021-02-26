@@ -21,11 +21,12 @@
  */
 
 #include <limits.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+
+#include <sys/stat.h>
 
 #define MODULE_NAME             "client"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

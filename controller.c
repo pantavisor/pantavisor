@@ -27,10 +27,11 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <netdb.h>
+
 #include <sys/types.h>
 #include <sys/wait.h>
-
 #include <sys/reboot.h>
+
 #include <linux/limits.h>
 #include <linux/reboot.h>
 

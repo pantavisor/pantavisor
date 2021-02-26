@@ -24,9 +24,7 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#include <linux/limits.h>
 #include <libgen.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -34,8 +32,11 @@
 #include <string.h>
 #include <errno.h>
 
-#include "metadata.h"
+#include <sys/stat.h>
 
+#include <linux/limits.h>
+
+#include "metadata.h"
 #include "version.h"
 #include "state.h"
 #include "pantahub.h"
@@ -713,11 +714,7 @@ static struct pv_usermeta* pv_metadata_get_usermeta(struct pantavisor *pv, char 
 
 static int pv_metadata_init(struct pv_init *this)
 {
-	struct pantavisor *pv = NULL;
-
-	pv = get_pv_instance();
-	if (!pv)
-		return -1;
+	struct pantavisor *pv = get_pv_instance();
 
 	dl_list_init(&pv->metadata->usermeta_list);
 

@@ -20,12 +20,14 @@
  * SOFTWARE.
  */
 
-#include <sys/stat.h>
 #include <string.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+
+#include <sys/stat.h>
+
 #include <linux/limits.h>
 
 #define MODULE_NAME             "config"
@@ -33,7 +35,6 @@
 #include "log.h"
 
 #include "config.h"
-
 #include "init.h"
 #include "config_parser.h"
 #include "utils.h"
@@ -361,25 +362,6 @@ inline void pv_config_set_creds_secret(char *secret)
 	pv->config.creds.secret = secret;
 }
 
-static int pv_config_init(struct pv_init *this)
-{
-	char config_file[256];
-	struct pantavisor *pv = get_pv_instance();
-
-	if (pv_config_from_file(PV_CONFIG_FILENAME, &pv->config) < 0) {
-		printf("FATAL: unable to parse pantavisor.config");
-		return -1;
-	}
-
-	sprintf(config_file, "%s/config/pantahub.config", pv->config.storage.mntpoint);
-	if (ph_config_from_file(config_file, &pv->config) < 0) {
-		printf("FATAL: unable to parse pantahub.config");
-		return -1;
-	}
-
-	return 0;
-}
-
 char* pv_config_get_cache_metacachedir() { return get_pv_instance()->config.cache.metacachedir; }
 char* pv_config_get_cache_dropbearcachedir() { return get_pv_instance()->config.cache.dropbearcachedir; }
 
@@ -428,6 +410,25 @@ int pv_config_get_log_loglevel() { return get_pv_instance()->config.log.loglevel
 int pv_config_get_log_logsize() { return get_pv_instance()->config.log.logsize; }
 bool pv_config_get_log_push() { return get_pv_instance()->config.log.push; }
 bool pv_config_get_log_capture() { return get_pv_instance()->config.log.capture; }
+
+static int pv_config_init(struct pv_init *this)
+{
+	char config_file[256];
+	struct pantavisor *pv = get_pv_instance();
+
+	if (pv_config_from_file(PV_CONFIG_FILENAME, &pv->config) < 0) {
+		printf("FATAL: unable to parse pantavisor.config");
+		return -1;
+	}
+
+	sprintf(config_file, "%s/config/pantahub.config", pv->config.storage.mntpoint);
+	if (ph_config_from_file(config_file, &pv->config) < 0) {
+		printf("FATAL: unable to parse pantahub.config");
+		return -1;
+	}
+
+	return 0;
+}
 
 struct pv_init pv_init_config =  {
 	.init_fn = pv_config_init,

@@ -23,14 +23,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <stdint.h>
+#include <errno.h>
 
 #include <sys/time.h>
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <stdint.h>
-#include <errno.h>
 
 #define MODULE_NAME             "cmd"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -302,11 +302,7 @@ void pv_cmd_req_remove(struct pantavisor *pv)
 
 static int pv_cmd_init(struct pv_init *this)
 {
-	struct pantavisor *pv = NULL;
-
-	pv = get_pv_instance();
-	if (!pv)
-		return -1;
+	struct pantavisor *pv = get_pv_instance();
 
 	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") < 0)
 		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);

@@ -30,25 +30,26 @@
 #include <limits.h>
 #include <errno.h>
 #include <string.h>
+#include <trest.h>
+#include <thttp.h>
 
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
 #include <netinet/in.h>
+
 #include <arpa/inet.h>
 
-#include <trest.h>
-#include <thttp.h>
 
 #define MODULE_NAME             "pantahub-api"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "pantahub.h"
 #include "pantavisor.h"
 #include "utils.h"
-
-#include "pantahub.h"
 #include "trestclient.h"
 #include "tsh.h"
 #include "metadata.h"

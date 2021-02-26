@@ -23,6 +23,7 @@
 #define PV_PLATFORMS_H
 
 #include <stdbool.h>
+
 #include <sys/types.h>
 
 #include "pantavisor.h"

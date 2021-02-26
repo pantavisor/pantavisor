@@ -39,41 +39,41 @@ LOCAL_DEPENDS_MODULES += dropbear-pv
 endif
 
 LOCAL_SRC_FILES := init.c \
-		   tsh.c \
-	           loop.c \
-	           log.c \
-		   config_parser.c \
-		   config.c \
-		   pantavisor.c \
-		   state.c \
-		   controller.c \
-		   platforms.c \
-		   addons.c \
-		   utils.c \
-		   volumes.c \
-		   parser/parser.c \
-		   parser/parser_multi1.c \
-		   parser/parser_system1.c \
-		   objects.c \
-           jsons.c \
-		   pantahub.c \
-		   updater.c \
-		   bootloader.c \
-		   trestclient.c \
-		   uboot.c \
-		   grub.c \
-		   storage.c \
-		   metadata.c \
-		   cmd.c \
-		   wdt.c \
-		   network.c \
-		   pvlogger.c \
-		   pvctl_utils.c \
-		   mount.c \
-		   revision.c \
-		   ph_logger/ph_logger.c \
-		   ph_logger/ph_logger_v1.c \
-		   blkid.c
+			tsh.c \
+			loop.c \
+			log.c \
+			config_parser.c \
+			config.c \
+			pantavisor.c \
+			state.c \
+			controller.c \
+			platforms.c \
+			addons.c \
+			utils.c \
+			volumes.c \
+			parser/parser.c \
+			parser/parser_multi1.c \
+			parser/parser_system1.c \
+			objects.c \
+			jsons.c \
+			pantahub.c \
+			updater.c \
+			bootloader.c \
+			trestclient.c \
+			uboot.c \
+			grub.c \
+			storage.c \
+			metadata.c \
+			cmd.c \
+			wdt.c \
+			network.c \
+			pvlogger.c \
+			pvctl_utils.c \
+			mount.c \
+			revision.c \
+			ph_logger/ph_logger.c \
+			ph_logger/ph_logger_v1.c \
+			blkid.c
 
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
