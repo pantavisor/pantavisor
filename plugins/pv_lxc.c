@@ -85,13 +85,13 @@ static int pv_lxc_get_lxc_log_level()
 	return 2;
 }
 
-static bool pv_lxc_capture_logs_activated()
+static int pv_lxc_capture_logs_activated()
 {
 	if (__get_pv_instance() && __get_pv_instance()->config)
 		return __get_pv_instance()->config->log.capture;
 
 	// default
-	return true;
+	return 1;
 }
 
 static void pv_free_lxc_log(struct pv_log_info *pv_log_i)
@@ -174,7 +174,6 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, cha
 
 				sprintf(mountstr, "%s %s none bind,rw,create=file 0 0", path, inpath);
 				c->set_config_item(c, "lxc.mount.entry", mountstr);
-				printf("Adding lxc config mount: %s %s\n", "lxc.mount.entry", mountstr);
 			}
 		}
 	}

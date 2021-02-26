@@ -741,7 +741,7 @@ bool pv_device_push_logs_activated(struct pantavisor *pv)
 	return true;
 }
 
-bool pv_device_capture_logs_activated(struct pantavisor *pv)
+int pv_device_capture_logs_activated(struct pantavisor *pv)
 {
 	if (pv && pv->config)
 		return pv->config->log.capture;

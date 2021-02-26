@@ -118,6 +118,8 @@ static int pv_mount_init(struct pv_init *this)
 
 	if (!config->storage.mnttype) {
 		ret = mount(dev_info.device, config->storage.mntpoint, config->storage.fstype, 0, NULL);
+		if (ret < 0)
+			goto out;
 	} else {
 		int status;
 		char *mntcmd = calloc(sizeof(char), strlen("/btools/pvmnt.%s %s") +
@@ -134,6 +136,14 @@ static int pv_mount_init(struct pv_init *this)
 		free(mntcmd);
 	}
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
+
+	/* log.capture == 2 -> we capture to tmpfs */
+	if (config->log.capture == 2) {
+		char *logmount = malloc(sizeof(char) * (strlen(config->storage.mntpoint) + strlen("/logs  ")));
+		sprintf(logmount, "%s%s", config->storage.mntpoint,"/logs");
+		mkdir_p(logmount, 0755);
+		ret = mount("none", logmount, "tmpfs", 0, NULL);
+	}
 out:
 	if (ret < 0)
 		exit_error(errno, "Could not mount trails storage");
