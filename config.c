@@ -87,7 +87,7 @@ static bool config_get_value_bool(char *key, bool default_value)
 static int config_get_value_bl_type(char *key, int default_value)
 {
 	char *item = _config_get_value(key);
-	bool value = default_value;
+	int value = default_value;
 
 	if (!item)
 		return value;
@@ -98,6 +98,16 @@ static int config_get_value_bl_type(char *key, int default_value)
 		value = BL_UBOOT_PVK;
 	else if (!strcmp(item, "grub"))
 		value = BL_GRUB;
+
+	return value;
+}
+
+static int config_get_value_logsize(char *key, int default_value)
+{
+	int value = config_get_value_int(key, default_value);
+
+	if (value >= 1024)
+		value = default_value;
 
 	return value;
 }
@@ -177,7 +187,7 @@ static int ph_config_from_file(char *path, struct pantavisor_config *config)
 	config->log.logdir = config_get_value_string("log.dir", "/storage/logs/");
 	config->log.logmax = config_get_value_int("log.maxsize", (1 << 21)); // 2 MiB
 	config->log.loglevel = config_get_value_int("log.level", 0);
-	config->log.logsize = config_get_value_int("log.buf_nitems", 128) * 1024;
+	config->log.logsize = config_get_value_logsize("log.buf_nitems", 128) * 1024;
 	config->log.push = config_get_value_bool("log.push", true);
 	config->log.capture = config_get_value_bool("log.capture", true);
 
@@ -239,7 +249,7 @@ static int ph_config_to_file(struct pantavisor_config *config, char *path)
 	write_config_tuple_int(fd, "updater.keep_factory", config->storage.gc.keep_factory); // deprecated
 
 	write_config_tuple_int(fd, "log.level", config->log.loglevel);
-	write_config_tuple_int(fd, "log.buf_nitems", config->log.logsize);
+	write_config_tuple_int(fd, "log.buf_nitems", config->log.logsize / 1024);
 
 	close(fd);
 	rename(tmp_path, path);
