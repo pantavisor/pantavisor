@@ -110,6 +110,24 @@ static int config_get_value_logsize(char *key, int default_value)
 	return value;
 }
 
+static int config_get_value_capture(char *key, int default_value)
+{
+	char *item = _config_get_value(key);
+	int value = default_value;
+
+	if (!item)
+		return value;
+
+	if (!strcmp(item, "disabled"))
+		value = CAPTURE_DISABLED;
+	else if (!strcmp(item, "disk"))
+		value = CAPTURE_DISK;
+	else if (!strcmp(item, "tempfs"))
+		value = CAPTURE_TMPFS;
+
+	return value;
+}
+
 // Fill config struct after parsing on-initramfs factory config
 static int pv_config_from_file(char *path, struct pantavisor_config *config)
 {
@@ -187,7 +205,7 @@ static int ph_config_from_file(char *path, struct pantavisor_config *config)
 	config->log.loglevel = config_get_value_int("log.level", 0);
 	config->log.logsize = config_get_value_logsize("log.buf_nitems", 128) * 1024;
 	config->log.push = config_get_value_bool("log.push", true);
-	config->log.capture = config_get_value_bool("log.capture", true);
+	config->log.capture = config_get_value_capture("log.capture", CAPTURE_DISK);
 
 	return 0;
 }
@@ -344,6 +362,12 @@ inline void pv_config_set_creds_id(char *id) { get_pv_instance()->config.creds.i
 inline void pv_config_set_creds_prn(char *prn) { get_pv_instance()->config.creds.prn = prn; }
 inline void pv_config_set_creds_secret(char *secret) { get_pv_instance()->config.creds.secret = secret; }
 
+void pv_config_set_storage_gc_reserved(int reserved) { get_pv_instance()->config.storage.gc.reserved = reserved; }
+void pv_config_set_storage_gc_keep_factory(bool keep_factory) { get_pv_instance()->config.storage.gc.keep_factory = keep_factory; }
+void pv_config_set_storage_gc_threshold(int threshold) { get_pv_instance()->config.storage.gc.threshold = threshold; }
+
+void pv_config_set_log_push(bool push) { get_pv_instance()->config.log.push = push; }
+
 char* pv_config_get_cache_metacachedir() { return get_pv_instance()->config.cache.metacachedir; }
 char* pv_config_get_cache_dropbearcachedir() { return get_pv_instance()->config.cache.dropbearcachedir; }
 
@@ -391,7 +415,7 @@ int pv_config_get_log_logmax() { return get_pv_instance()->config.log.logmax; }
 int pv_config_get_log_loglevel() { return get_pv_instance()->config.log.loglevel; }
 int pv_config_get_log_logsize() { return get_pv_instance()->config.log.logsize; }
 bool pv_config_get_log_push() { return get_pv_instance()->config.log.push; }
-bool pv_config_get_log_capture() { return get_pv_instance()->config.log.capture; }
+int pv_config_get_log_capture() { return get_pv_instance()->config.log.capture; }
 
 static int pv_config_init(struct pv_init *this)
 {

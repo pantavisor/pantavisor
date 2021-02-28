@@ -90,7 +90,7 @@ static int pv_lxc_capture_logs_activated()
 		return __get_pv_instance()->config.log.capture;
 
 	// default
-	return 1;
+	return CAPTURE_DISK;
 }
 
 static void pv_free_lxc_log(struct pv_log_info *pv_log_i)

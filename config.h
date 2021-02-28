@@ -31,6 +31,12 @@ enum {
 	BL_GRUB
 };
 
+enum {
+	CAPTURE_DISABLED = 0,
+	CAPTURE_DISK = 1,
+	CAPTURE_TMPFS = 2
+};
+
 struct pantavisor_cache {
 	char *metacachedir;
 	char *dropbearcachedir;
@@ -134,6 +140,12 @@ void pv_config_set_creds_id(char *id);
 void pv_config_set_creds_prn(char *prn);
 void pv_config_set_creds_secret(char *secret);
 
+void pv_config_set_storage_gc_reserved(int reserved);
+void pv_config_set_storage_gc_keep_factory(bool keep_factory);
+void pv_config_set_storage_gc_threshold(int threshold);
+
+void pv_config_set_log_push(bool push);
+
 char* pv_config_get_cache_metacachedir(void);
 char* pv_config_get_cache_dropbearcachedir(void);
 
@@ -181,6 +193,6 @@ int pv_config_get_log_logmax(void);
 int pv_config_get_log_loglevel(void);
 int pv_config_get_log_logsize(void);
 bool pv_config_get_log_push(void);
-bool pv_config_get_log_capture(void);
+int pv_config_get_log_capture(void);
 
 #endif
