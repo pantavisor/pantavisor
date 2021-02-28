@@ -65,7 +65,6 @@ static int config_get_value_int(char *key, int default_value)
 		return value;
 
 	value = atoi(item);
-	free(item);
 
 	return value;
 }
@@ -79,7 +78,6 @@ static bool config_get_value_bool(char *key, bool default_value)
 		return value;
 
 	value = atoi(item);
-	free(item);
 
 	return value;
 }
@@ -342,35 +340,9 @@ void pv_config_free()
 		free(pv->config.factory.autotok);
 }
 
-inline void pv_config_set_creds_id(char *id)
-{
-	struct pantavisor *pv = get_pv_instance();
-
-	if (pv->config.creds.id)
-		free(pv->config.creds.id);
-
-	pv->config.creds.id = id;
-}
-
-inline void pv_config_set_creds_prn(char *prn)
-{
-	struct pantavisor *pv = get_pv_instance();
-
-	if (pv->config.creds.prn)
-		free(pv->config.creds.prn);
-
-	pv->config.creds.prn = prn;
-}
-
-inline void pv_config_set_creds_secret(char *secret)
-{
-	struct pantavisor *pv = get_pv_instance();
-
-	if (pv->config.creds.secret)
-		free(pv->config.creds.secret);
-
-	pv->config.creds.secret = secret;
-}
+inline void pv_config_set_creds_id(char *id) { get_pv_instance()->config.creds.id = id; }
+inline void pv_config_set_creds_prn(char *prn) { get_pv_instance()->config.creds.prn = prn; }
+inline void pv_config_set_creds_secret(char *secret) { get_pv_instance()->config.creds.secret = secret; }
 
 char* pv_config_get_cache_metacachedir() { return get_pv_instance()->config.cache.metacachedir; }
 char* pv_config_get_cache_dropbearcachedir() { return get_pv_instance()->config.cache.dropbearcachedir; }
