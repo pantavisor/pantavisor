@@ -110,24 +110,6 @@ static int config_get_value_logsize(char *key, int default_value)
 	return value;
 }
 
-static int config_get_value_capture(char *key, int default_value)
-{
-	char *item = _config_get_value(key);
-	int value = default_value;
-
-	if (!item)
-		return value;
-
-	if (!strcmp(item, "disabled"))
-		value = CAPTURE_DISABLED;
-	else if (!strcmp(item, "disk"))
-		value = CAPTURE_DISK;
-	else if (!strcmp(item, "tempfs"))
-		value = CAPTURE_TMPFS;
-
-	return value;
-}
-
 // Fill config struct after parsing on-initramfs factory config
 static int pv_config_from_file(char *path, struct pantavisor_config *config)
 {
@@ -205,7 +187,7 @@ static int ph_config_from_file(char *path, struct pantavisor_config *config)
 	config->log.loglevel = config_get_value_int("log.level", 0);
 	config->log.logsize = config_get_value_logsize("log.buf_nitems", 128) * 1024;
 	config->log.push = config_get_value_bool("log.push", true);
-	config->log.capture = config_get_value_capture("log.capture", CAPTURE_DISK);
+	config->log.capture = config_get_value_bool("log.capture", true);
 
 	return 0;
 }
@@ -415,7 +397,7 @@ int pv_config_get_log_logmax() { return get_pv_instance()->config.log.logmax; }
 int pv_config_get_log_loglevel() { return get_pv_instance()->config.log.loglevel; }
 int pv_config_get_log_logsize() { return get_pv_instance()->config.log.logsize; }
 bool pv_config_get_log_push() { return get_pv_instance()->config.log.push; }
-int pv_config_get_log_capture() { return get_pv_instance()->config.log.capture; }
+bool pv_config_get_log_capture() { return get_pv_instance()->config.log.capture; }
 
 static int pv_config_init(struct pv_init *this)
 {

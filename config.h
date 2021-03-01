@@ -31,12 +31,6 @@ enum {
 	BL_GRUB
 };
 
-enum {
-	CAPTURE_DISABLED = 0,
-	CAPTURE_DISK = 1,
-	CAPTURE_TMPFS = 2
-};
-
 struct pantavisor_cache {
 	char *metacachedir;
 	char *dropbearcachedir;
@@ -111,7 +105,7 @@ struct pantavisor_log {
 	int loglevel;
 	int logsize;
 	bool push;
-	int capture;
+	bool capture;
 };
 
 struct pantavisor_lxc {
@@ -193,6 +187,6 @@ int pv_config_get_log_logmax(void);
 int pv_config_get_log_loglevel(void);
 int pv_config_get_log_logsize(void);
 bool pv_config_get_log_push(void);
-int pv_config_get_log_capture(void);
+bool pv_config_get_log_capture(void);
 
 #endif
