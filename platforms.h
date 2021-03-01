@@ -24,7 +24,10 @@
 
 #include <stdbool.h>
 
+#include <sys/types.h>
+
 #include "pantavisor.h"
+#include "utils/list.h"
 
 extern const int MAX_RUNLEVEL;
 

@@ -19,48 +19,39 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
+
 #include <unistd.h>
-#include <ctype.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <fcntl.h>
 #include <dirent.h>
-#include <netdb.h>
-#include <inttypes.h>
+#include <ctype.h>
 #include <libgen.h>
+#include <errno.h>
 
-#include <linux/limits.h>
-
-#include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/prctl.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+
+#include <linux/limits.h>
 
 #define MODULE_NAME             "core"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#include "loop.h"
-#include "controller.h"
-#include "bootloader.h"
-#include "utils.h"
-#include "version.h"
-#include "wdt.h"
-#include "parser/parser.h"
 #include "pantavisor.h"
-#include "pantahub.h"
-#include "tsh.h"
-#include "utils/list.h"
-#include "revision.h"
-#include "init.h"
-#include "addons.h"
-#include "pvlogger.h"
-#include "state.h"
-#include "device.h"
-#include "updater.h"
 #include "cmd.h"
+#include "config.h"
+#include "state.h"
+#include "utils.h"
+#include "addons.h"
+#include "parser/parser.h"
+#include "version.h"
+#include "controller.h"
+#include "init.h"
+#include "updater.h"
 
 static struct pantavisor* global_pv;
 
@@ -69,12 +60,36 @@ struct pantavisor* get_pv_instance()
 	return global_pv;
 }
 
+static void pv_remove(struct pantavisor *pv)
+{
+
+	pv_log(DEBUG, "removing pantavisor");
+
+	if (pv->step)
+		free(pv->step);
+	if (pv->conn)
+		free(pv->conn);
+
+	pv_update_free(pv->update);
+	pv->update = NULL;
+	pv_state_free(pv->state);
+	pv->state = NULL;
+	pv_cmd_req_remove(pv);
+	pv_trail_remote_remove(pv);
+	pv_config_free();
+
+	free(pv);
+	pv = NULL;
+}
+
 void pv_teardown(struct pantavisor *pv)
 {
 	if (!pv)
 		return;
 
 	pv_cmd_socket_close(pv);
+
+	pv_remove(pv);
 }
 
 void pv_set_active(struct pantavisor *pv)
@@ -91,7 +106,7 @@ void pv_set_active(struct pantavisor *pv)
 	if (!path)
 		return;
 
-	sprintf(path, "%s/trails/%d", pv->config->storage.mntpoint, pv->state->rev);
+	sprintf(path, "%s/trails/%d", pv_config_get_storage_mntpoint(), pv->state->rev);
 	cur = calloc(1, PATH_MAX);
 
 	/*
@@ -103,7 +118,7 @@ void pv_set_active(struct pantavisor *pv)
 	if (!cur)
 		goto out;
 
-	sprintf(cur, "%s/trails/current", pv->config->storage.mntpoint);
+	sprintf(cur, "%s/trails/current", pv_config_get_storage_mntpoint());
 	unlink(cur);
 
 	if (!stat(path, &st))
@@ -124,7 +139,7 @@ int pv_make_config(struct pantavisor *pv)
 	char cmd[PATH_MAX];
 	int rv;
 
-	sprintf(srcpath, "%s/trails/%d/_config/", pv->config->storage.mntpoint, pv->state->rev);
+	sprintf(srcpath, "%s/trails/%d/_config/", pv_config_get_storage_mntpoint(), pv->state->rev);
 	sprintf(targetpath, "/configs/");
 
 	if (stat(targetpath, &st))
@@ -160,7 +175,7 @@ void pv_set_rev_done(struct pantavisor *pv, int rev)
 	int fd;
 	char path[256];
 
-	sprintf(path, "%s/trails/%d/.pv/done", pv->config->storage.mntpoint, rev);
+	sprintf(path, "%s/trails/%d/.pv/done", pv_config_get_storage_mntpoint(), rev);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
 	if (!fd) {
@@ -180,7 +195,7 @@ int *pv_get_revisions(struct pantavisor *pv)
 	struct dirent **dirs;
 	char basedir[PATH_MAX];
 
-	sprintf(basedir, "%s/trails/", pv->config->storage.mntpoint);
+	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
 	n = scandir(basedir, &dirs, NULL, alphasort);
 	while (n--) {
 		char *tmp = dirs[n]->d_name;
@@ -225,7 +240,7 @@ void pv_meta_set_objdir(struct pantavisor *pv)
 	if (!pv)
 		return;
 
-	sprintf(path, "%s/trails/%d/.pvr/config", pv->config->storage.mntpoint, pv->state->rev);
+	sprintf(path, "%s/trails/%d/.pvr/config", pv_config_get_storage_mntpoint(), pv->state->rev);
 	if (stat(path, &st) == 0)
 		return;
 
@@ -238,7 +253,7 @@ void pv_meta_set_objdir(struct pantavisor *pv)
 	if (!fd)
 		goto err;
 
-	sprintf(path, "{\"ObjectsDir\": \"%s/objects\"}", pv->config->storage.mntpoint);
+	sprintf(path, "{\"ObjectsDir\": \"%s/objects\"}", pv_config_get_storage_mntpoint());
 	/*
 	 * [PKS]
 	 * Use write_nointr
@@ -297,7 +312,7 @@ int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		snprintf(value, n+1, "%s", buf+(*k+1)->start);
 
 		sprintf(path, "%s/trails/%d/%s",
-			pv->config->storage.mntpoint, s->rev, key);
+			pv_config_get_storage_mntpoint(), s->rev, key);
 
 		if (stat(path, &st) == 0)
 			goto out;
@@ -338,13 +353,8 @@ void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 {
 	int fd;
 	char path[PATH_MAX];
-	struct pantavisor_config *c;
 
-	if (!pv)
-		return;
-
-	c = pv->config;
-	sprintf(path, "%s/trails/%d/.pv/.tryonce", c->storage.mntpoint, pv->state->rev);
+	sprintf(path, "%s/trails/%d/.pv/.tryonce", pv_config_get_storage_mntpoint(), pv->state->rev);
 
 	if (value) {
 		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
@@ -359,7 +369,6 @@ void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 {
 	int i;
-	struct pantavisor_config *c = pv->config;
 	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[32];
 	struct pv_addon *a, *tmp;
 	struct dl_list *addons = NULL;
@@ -381,8 +390,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	}
 
 	// initrd
-	sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp.initrd);
+	sprintf(dst, "%s/trails/%d/.pv/", pv_config_get_storage_mntpoint(), s->rev);
+	sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.initrd);
 
 	mkdir_p(dst, 0755);
 	strcat(dst, "pv-initrd.img");
@@ -396,8 +405,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	addons = &s->addons;
 	dl_list_for_each_safe(a, tmp, addons,
 			struct pv_addon, list) {
-		sprintf(dst, "%s/trails/%d/.pv/", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, a->name);
+		sprintf(dst, "%s/trails/%d/.pv/", pv_config_get_storage_mntpoint(), s->rev);
+		sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, a->name);
 		sprintf(fname, "pv-initrd.img.%d", i++);
 		strcat(dst, fname);
 		remove(dst);
@@ -406,8 +415,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	}
 
 	// kernel
-	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", c->storage.mntpoint, s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp.kernel);
+	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", pv_config_get_storage_mntpoint(), s->rev);
+	sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.kernel);
 
 	remove(dst);
 	if (link(src, dst) < 0)
@@ -415,8 +424,8 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// fdt
 	if (s->bsp.fdt) {
-		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", c->storage.mntpoint, s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", c->storage.mntpoint, s->rev, prefix, s->bsp.fdt);
+		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", pv_config_get_storage_mntpoint(), s->rev);
+		sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.fdt);
 
 		remove(dst);
 		if (link(src, dst) < 0)
@@ -442,9 +451,9 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 	struct pv_state *s;
 
 	if (rev < 0)
-		sprintf(path, "%s/trails/current/state.json", pv->config->storage.mntpoint);
+		sprintf(path, "%s/trails/current/state.json", pv_config_get_storage_mntpoint());
 	else
-		sprintf(path, "%s/trails/%d/.pvr/json", pv->config->storage.mntpoint, rev);
+		sprintf(path, "%s/trails/%d/.pvr/json", pv_config_get_storage_mntpoint(), rev);
 
 	pv_log(INFO, "reading state from: '%s'", path);
 
@@ -505,82 +514,6 @@ void pantavisor_init()
 	exit(ret);
 }
 
-struct pv_log_info* pv_new_log(bool islxc,
-				struct pv_logger_config *logger_config,
-				const char *name)
-{
-	struct pv_log_info *log_info = NULL;
-	const char *const logger_name_plat= "pvlogger";
-	const char *const logger_name_lxc = "pvlogger-lxc";
-	const char *logger_name = NULL;
-	const char *trunc_val = NULL;
-	const char *enabled = NULL;
-
-	if (!logger_config)
-		goto out;
-
-	if (islxc) {
-		/*
-		 * Check lxc or console item in config.
-		 */
-		enabled = pv_log_get_config_item(logger_config, "lxc");
-		if (!enabled)
-			enabled = pv_log_get_config_item(logger_config,
-								"console");
-		if (!enabled)
-			goto out;
-		else if (strncmp(enabled, "enable", strlen("enable")))
-			goto out;
-	} else {
-		/*
-		 * Check if something from lxc was left over.
-		 * if the config contains lxc or console keys then
-		 * don't create this logger.
-		 */
-		;
-		if (pv_log_get_config_item(logger_config, "lxc"))
-			goto out;
-		else {
-			if (pv_log_get_config_item(logger_config, "console"))
-				goto out;
-		}
-	}
-	log_info = calloc(1, sizeof(struct pv_log_info));
-
-	if (!log_info)
-		goto out;
-
-	logger_name = pv_log_get_config_item(logger_config, "name");
-	log_info->islxc = islxc;
-
-	if (!logger_name) {
-		if (name)
-			logger_name = name;
-		else if (islxc)
-			logger_name = logger_name_lxc;
-		else
-			logger_name = logger_name_plat;
-	}
-	log_info->name = strdup(logger_name);
-	trunc_val = pv_log_get_config_item(logger_config, "truncate");
-	if (trunc_val) {
-		if (!strncmp(trunc_val, "true", strlen("true"))) {
-			trunc_val = pv_log_get_config_item(logger_config, "maxsize");
-			if (trunc_val)
-				sscanf(trunc_val,"%" PRId64,&log_info->truncate_size);
-		}
-	}
-	dl_list_init(&log_info->next);
-	/*
-	 * Used from the pv_lxc plugin
-	 * */
-	log_info->pv_log_get_config_item =
-				pv_log_get_config_item;
-	return log_info;
-out:
-	return NULL;
-}
-
 static int pv_pantavisor_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
@@ -600,7 +533,7 @@ out:
 	return 0;
 }
 
-struct pv_init pv_init_state = {
+struct pv_init pv_init_pantavisor = {
 	.init_fn = pv_pantavisor_init,
 	.flags = 0,
 };

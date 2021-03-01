@@ -26,6 +26,8 @@
 #include <dirent.h>
 #include <netdb.h>
 #include <inttypes.h>
+#include <string.h>
+#include <fcntl.h>
 
 #include <linux/limits.h>
 
@@ -43,7 +45,7 @@
 #include "updater.h"
 #include "state.h"
 #include "revision.h"
-#include "device.h"
+#include "init.h"
 
 static int remove_at(char *path, char *filename)
 {
@@ -105,7 +107,7 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 
 	obj = pv_objects_get_all_ids(pv);
 	for (obj_i = obj; *obj_i; obj_i++) {
-		sprintf(path, "%s/objects/%s", pv->config->storage.mntpoint, *obj_i);
+		sprintf(path, "%s/objects/%s", pv_config_get_storage_mntpoint(), *obj_i);
 		memset(&st, 0, sizeof(struct stat));
 		if (stat(path, &st) < 0)
 			continue;
@@ -145,13 +147,13 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 
 	sprintf(revision, "%d", rev);
 
-	sprintf(path, "%s/trails", pv->config->storage.mntpoint);
+	sprintf(path, "%s/trails", pv_config_get_storage_mntpoint());
 	remove_in(path, revision);
 
-	sprintf(path, "%s/logs", pv->config->storage.mntpoint);
+	sprintf(path, "%s/logs", pv_config_get_storage_mntpoint());
 	remove_in(path, revision);
 
-	sprintf(path, "%s/disks/rev", pv->config->storage.mntpoint);
+	sprintf(path, "%s/disks/rev", pv_config_get_storage_mntpoint());
 	remove_in(path, revision);
 
 	sync();
@@ -186,7 +188,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 			continue;
 
 		// if configured, keep factory too
-		if (pv->config->storage.gc.keep_factory && *rev_i == 0)
+		if (pv_config_get_storage_gc_keep_factory() && *rev_i == 0)
 			continue;
 
 		// unlink the given revision from local storage
@@ -215,7 +217,7 @@ struct pv_storage {
 	int threshold;
 };
 
-static struct pv_storage* pv_storage_init(struct pantavisor *pv)
+static struct pv_storage* pv_storage_new(struct pantavisor *pv)
 {
 	struct statfs buf;
 	struct pv_storage* this;
@@ -233,13 +235,13 @@ static struct pv_storage* pv_storage_init(struct pantavisor *pv)
 		this->free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
 		if (this->total)
 			this->free_percentage = (this->free * 100) / this->total;
-		this->reserved_percentage = pv_device_get_gc_reserved(pv);
+		this->reserved_percentage = pv_config_get_storage_gc_reserved();
 		this->reserved = (this->total * this->reserved_percentage) / 100;
 		if (this->free > this->reserved)
 			this->real_free = this->free - this->reserved;
 		if (this->total)
 			this->real_free_percentage = (this->real_free * 100) / this->total;
-		this->threshold = pv_device_get_gc_threshold(pv);
+		this->threshold = pv_config_get_storage_gc_threshold();
 		return this;
 	}
 
@@ -259,7 +261,7 @@ off_t pv_storage_get_free(struct pantavisor *pv)
 	off_t real_free = 0;
 	struct pv_storage* storage;
 
-	storage = pv_storage_init(pv);
+	storage = pv_storage_new(pv);
 	if (storage) {
 		pv_storage_print(storage);
 		real_free = storage->real_free;
@@ -275,15 +277,45 @@ bool pv_storage_threshold_reached(struct pantavisor *pv)
 	bool threshold_reached = false;
 	struct pv_storage* storage;
 
-	storage = pv_storage_init(pv);
+	storage = pv_storage_new(pv);
 	if (storage &&
 		(storage->real_free_percentage < storage->threshold)) {
-		pv_log(WARN, "usage threshold %d reached on disk", storage->threshold);
 		pv_storage_print(storage);
 		threshold_reached = true;
+		pv_log(WARN, "free disk space is %d%%, which is under the %d%% threshold", storage->real_free_percentage, storage->threshold);
 	}
 
 	free(storage);
 
 	return threshold_reached;
 }
+
+static int pv_storage_init(struct pv_init *this)
+{
+	struct pantavisor *pv = get_pv_instance();
+	char tmp[256];
+	int fd = -1;
+
+	// create hints
+	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	close(fd);
+	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	if (strcmp(pv_config_get_creds_prn(), "") == 0) {
+		pv->flags |= DEVICE_UNCLAIMED;
+	} else {
+		sprintf(tmp, "%s\n", pv_config_get_creds_id());
+		write(fd, tmp, strlen(tmp));
+	}
+	close(fd);
+	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	sprintf(tmp, "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
+	write(fd, tmp, strlen(tmp));
+	close(fd);
+
+	return 0;
+}
+
+struct pv_init pv_init_storage = {
+	.init_fn = pv_storage_init,
+	.flags = 0,
+};

@@ -28,28 +28,31 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <limits.h>
+#include <errno.h>
+#include <string.h>
+#include <trest.h>
+#include <thttp.h>
 
 #include <sys/socket.h>
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
 #include <netinet/in.h>
+
 #include <arpa/inet.h>
 
-#include <trest.h>
-#include <thttp.h>
 
 #define MODULE_NAME             "pantahub-api"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "pantahub.h"
 #include "pantavisor.h"
 #include "utils.h"
-#include "device.h"
-
-#include "pantahub.h"
 #include "trestclient.h"
 #include "tsh.h"
+#include "metadata.h"
 
 #define ENDPOINT_FMT "/devices/%s"
 
@@ -77,9 +80,9 @@ auth:
 	}
 
 	if (!endpoint) {
-		size = sizeof(ENDPOINT_FMT) + strlen(pv->config->creds.id) + 1;
+		size = sizeof(ENDPOINT_FMT) + strlen(pv_config_get_creds_id()) + 1;
 		endpoint = malloc(size * sizeof(char));
-		sprintf(endpoint, ENDPOINT_FMT, pv->config->creds.id);
+		sprintf(endpoint, ENDPOINT_FMT, pv_config_get_creds_id());
 	}
 
 	return 1;
@@ -160,7 +163,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	return (const char **) cafiles;
 }
 
-struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config)
+struct pv_connection* pv_get_pv_connection()
 {
 	struct pv_connection *conn = NULL;
 	int port = 0;
@@ -172,12 +175,12 @@ struct pv_connection* pv_get_pv_connection(struct pantavisor_config *config)
 		return NULL;
 	}
 	// default to global PH instance
-	if (strcmp(config->creds.host, "") == 0)
+	if (strcmp(pv_config_get_creds_host(), "") == 0)
 		host = "api.pantahub.com";
 	else
-		host = config->creds.host;
+		host = pv_config_get_creds_host();
 
-	port = config->creds.port;
+	port = pv_config_get_creds_port();
 	if (!port)
 		port = 443;
 
@@ -222,7 +225,7 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 		goto out;
 	}
 
-	ret = pv_device_update_usermeta(pv, res->body);
+	ret = pv_metadata_update_usermeta(pv, res->body);
 
 out:
 	if (req)
@@ -293,16 +296,16 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->proto_version = THTTP_PROTO_VERSION_10;
 	req->user_agent = pv_user_agent;
 
-	req->host = pv->config->creds.host;
-	req->port = pv->config->creds.port;
+	req->host = pv_config_get_creds_host();
+	req->port = pv_config_get_creds_port();
 
 	req->path = "/devices/";
 	req->body = 0;
 
-	if (pv->config->factory.autotok && strcmp(pv->config->factory.autotok, "")) {
+	if (pv_config_get_factory_autotok() && strcmp(pv_config_get_factory_autotok(), "")) {
 		req->headers = calloc(1, 2 * sizeof(char *));
 		req->headers[0] = calloc(1, sizeof(DEVICE_TOKEN_FMT) + 64);
-		sprintf(req->headers[0], DEVICE_TOKEN_FMT, pv->config->factory.autotok);
+		sprintf(req->headers[0], DEVICE_TOKEN_FMT, pv_config_get_factory_autotok());
 	} else {
 		req->headers = 0;
 	}
@@ -314,12 +317,9 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	// If registered, override in-memory PantaHub credentials
 	if (res->code == THTTP_STATUS_OK && res->body) {
 		jsmnutil_parse_json(res->body, &tokv, &tokc);
-		pv->config->creds.id = get_json_key_value(res->body, "id",
-							tokv, tokc);
-		pv->config->creds.prn = get_json_key_value(res->body, "prn",
-							tokv, tokc);
-		pv->config->creds.secret = get_json_key_value(res->body, "secret",
-							tokv, tokc);
+		pv_config_set_creds_id(get_json_key_value(res->body, "id", tokv, tokc));
+		pv_config_set_creds_prn(get_json_key_value(res->body, "prn", tokv, tokc));
+		pv_config_set_creds_secret(get_json_key_value(res->body, "secret", tokv, tokc));
 	} else {
 		pv_log(ERROR, "registration attempt failed (http code %d)", res->code);
 		ret = 0;
@@ -342,7 +342,6 @@ static int pv_ph_register_self_ext(struct pantavisor *pv, char *cmd)
 {
 	int ret = 0;
 	int status = -1;
-	char config_path[PATH_MAX];
 
 	if (tsh_run(cmd, 1, &status) < 0) {
 		pv_log(ERROR, "registration attempt with cmd: %s", cmd);
@@ -350,8 +349,7 @@ static int pv_ph_register_self_ext(struct pantavisor *pv, char *cmd)
 	}
 
 	// If registered, override in-memory PantaHub credentials
-	sprintf(config_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
-	if (ph_config_from_file(config_path, pv->config) < 0) {
+	if (pv_config_load()) {
 		pv_log(ERROR, "error loading updated config file");
 		goto exit;
 	}
@@ -373,16 +371,16 @@ int pv_ph_register_self(struct pantavisor *pv)
 		HUB_CREDS_TYPE_ERROR
 	} creds_type;
 
-	if (!strcmp(pv->config->creds.type, "builtin")) {
+	if (!strcmp(pv_config_get_creds_type(), "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
-	} else if(strlen(pv->config->creds.type) >= 4 &&
-			!strncmp(pv->config->creds.type, "ext-", 4)) {
+	} else if(strlen(pv_config_get_creds_type()) >= 4 &&
+			!strncmp(pv_config_get_creds_type(), "ext-", 4)) {
 		struct stat sb;
 		int rv;
 
 		// if no executable handler is found; fall back to builtin
 		sprintf(cmd, PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT,
-			pv->config->creds.type);
+			pv_config_get_creds_type());
 		rv = stat(cmd, &sb);
 		if (rv) {
 			pv_log(ERROR, "unable to stat trest client for cmd %s: %s", cmd, strerror(errno));
@@ -396,7 +394,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 		creds_type = HUB_CREDS_TYPE_EXTERNAL;
 	} else {
 		pv_log(ERROR, "unable to get trest client for creds_type %s.",
-				pv->config->creds.type);
+				pv_config_get_creds_type());
 		goto err;
 	}
 
@@ -410,7 +408,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 	default:
 		pv_log(ERROR, "unable to register for creds_type %s. "
 				"Currently supported: builtin and ext-* handlers",
-				pv->config->creds.type);
+				pv_config_get_creds_type());
 		ret = 0;
 		goto err;
 	}
@@ -480,7 +478,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 		pv_log(INFO, "unable to open device-id hint file");
 		return;
 	}
-	sprintf(buf, "%s\n", pv->config->creds.id);
+	sprintf(buf, "%s\n", pv_config_get_creds_id());
 	write(fd, buf, strlen(buf));
 	close(fd);
 
@@ -497,7 +495,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	close(fd);
 }
 
-uint8_t pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
+int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 {
 	uint8_t ret = 1;
 	trest_request_ptr req = 0;

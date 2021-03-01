@@ -128,12 +128,18 @@ static int pv_mount_init(struct pv_init *this)
 	}
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
 
-	if (pv_config_get_storage_logtempsize()) {
-		char *logmount = malloc(sizeof(char) * (strlen(pv_config_get_storage_mntpoint()) + strlen("/logs  ")));
+	/* log.capture == 2 -> we capture to tmpfs */
+<<<<<<< HEAD
+	if (config->storage.logtempsize && strlen(config->storage.logtempsize)) {
+		char *logmount = malloc(sizeof(char) * (strlen(config->storage.mntpoint) + strlen("/logs  ")));
 		char *opts = NULL;
-		opts = malloc(sizeof(char) * (strlen(pv_config_get_storage_logtempsize()) + strlen("size=%s") + 1));
-		sprintf(opts, "size=%s", pv_config_get_storage_logtempsize());
-		sprintf(logmount, "%s%s", pv_config_get_storage_logtempsize(), "/logs");
+		opts = malloc(sizeof(char) * (strlen(config->storage.logtempsize) + strlen("size=%s") + 1));
+		sprintf(opts, "size=%s",config->storage.logtempsize);
+=======
+	if (config->log.capture == 2) {
+		char *logmount = malloc(sizeof(char) * (strlen(config->storage.mntpoint) + strlen("/logs  ")));
+>>>>>>> set log capture back to bool
+		sprintf(logmount, "%s%s", config->storage.mntpoint,"/logs");
 		mkdir_p(logmount, 0755);
 		printf("Mounting tmpfs logmount: %s with opts: %s\n", logmount, opts);
 		ret = mount("none", logmount, "tmpfs", 0, opts);

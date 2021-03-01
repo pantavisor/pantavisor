@@ -20,6 +20,9 @@
  * SOFTWARE.
  */
 
+#include <stdlib.h>
+#include <string.h>
+
 #define MODULE_NAME			"jsons"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"

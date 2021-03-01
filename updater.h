@@ -44,14 +44,7 @@
 #define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
-#define DEFAULT_DOWNLOAD_RETRY_WAIT  (2 * 60) /*2 minutes*/
 #define UPDATE_PROGRESS_FREQ 	(3) /*3 seconds for update*/
-
-extern int MAX_REVISION_RETRIES;
-extern int DOWNLOAD_RETRY_WAIT;
-
-#define DEFAULT_MAX_REVISION_RETRIES 	(10)
-#define DEFAULT_UPDATE_COMMIT_DELAY 	(3 * 60)
 
 enum update_state {
 	UPDATE_INIT,
@@ -101,6 +94,8 @@ struct trail_remote {
 	char *endpoint_trail_inprogress;
 	struct pv_state *pending;
 };
+
+void pv_update_free(struct pv_update *update);
 
 int pv_check_for_updates(struct pantavisor *pv);
 bool pv_trail_is_auth(struct pantavisor *pv);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2018-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,37 +19,30 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <ctype.h>
-#include <libgen.h>
 
-#include <sys/utsname.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <linux/limits.h>
-#include <dirent.h>
-
-#define MODULE_NAME             "device"
+#define MODULE_NAME             "metadata"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#include "loop.h"
+#include <libgen.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
 
-#include "utils.h"
-#include "pantavisor.h"
-#include "pantahub.h"
-#include "device.h"
+#include <sys/stat.h>
+
+#include <linux/limits.h>
+
+#include "metadata.h"
 #include "version.h"
-#include "init.h"
-#include "cmd.h"
-#include "revision.h"
 #include "state.h"
-
-#define FW_PATH		"/lib/firmware"
+#include "pantahub.h"
+#include "init.h"
+#include "utils.h"
+#include "config_parser.h"
 
 #define PV_USERMETA_ADD     (1<<0)
 struct pv_usermeta {
@@ -221,10 +214,10 @@ static void pv_usermeta_free(struct pv_usermeta *usermeta)
 	free(usermeta);
 }
 
-static void pv_usermeta_remove(struct pv_device *dev)
+static void pv_usermeta_remove(struct pv_metadata *metadata)
 {
 	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &dev->usermeta_list;
+	struct dl_list *head = &metadata->usermeta_list;
 
 	pv_log(DEBUG, "removing user meta list");
 
@@ -235,10 +228,10 @@ static void pv_usermeta_remove(struct pv_device *dev)
 	}
 }
 
-static void pv_devmeta_remove(struct pv_device *dev)
+static void pv_devmeta_remove(struct pv_metadata *metadata)
 {
 	struct pv_devmeta *curr, *tmp;
-	struct dl_list *head = &dev->devmeta_list;
+	struct dl_list *head = &metadata->devmeta_list;
 
 	pv_log(DEBUG, "removing devmeta list");
 
@@ -253,7 +246,7 @@ static void pv_devmeta_remove(struct pv_device *dev)
 	}
 }
 
-static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key)
+static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_metadata *d, char *key)
 {
 	struct pv_usermeta *curr, *tmp;
 	struct dl_list *head = &d->usermeta_list;
@@ -267,7 +260,23 @@ static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_device *d, char *key
 	return NULL;
 }
 
-static struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char *value)
+static void pv_metadata_override_config(char *key, char *value)
+{
+	if (!key || !value)
+		return;
+
+	if (!strcmp(key, "storage.gc.reserved")) {
+		pv_config_set_storage_gc_reserved(atoi(value));
+	} else if (!strcmp(key, "storage.gc.keep_factory")) {
+		pv_config_set_storage_gc_keep_factory(atoi(value));
+	} else if (!strcmp(key, "storage.gc.threshold")) {
+		pv_config_set_storage_gc_threshold(atoi(value));
+	} else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push")) {
+		pv_config_set_log_push(atoi(value));
+	}
+}
+
+static struct pv_usermeta* pv_usermeta_add(struct pv_metadata *d, char *key, char *value)
 {
 	int changed = 1;
 	struct pv_usermeta *curr;
@@ -280,6 +289,7 @@ static struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char 
 		if (strcmp(curr->value, value) == 0)
 			changed = 0;
 		if (changed) {
+			pv_metadata_override_config(key, value);
 			free(curr->value);
 			curr->value = strdup(value);
 		}
@@ -289,6 +299,7 @@ static struct pv_usermeta* pv_usermeta_add(struct pv_device *d, char *key, char 
 	// not found? add
 	curr = calloc(1, sizeof(struct pv_usermeta));
 	if (curr) {
+		pv_metadata_override_config(key, value);
 		dl_list_init(&curr->list);
 		curr->key = strdup(key);
 		curr->value = strdup(value);
@@ -354,7 +365,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		snprintf(value, n+1, "%s", um+(*key_i+1)->start);
 
 		// add or update metadata
-		pv_usermeta_add(pv->dev, key, value);
+		pv_usermeta_add(pv->metadata, key, value);
 
 		// free intermediates
 		if (key) {
@@ -385,10 +396,10 @@ static void usermeta_clear(struct pantavisor *pv)
 
 	if (!pv)
 		return;
-	if (!pv->dev)
+	if (!pv->metadata)
 		return;
 
-	head = &pv->dev->usermeta_list;
+	head = &pv->metadata->usermeta_list;
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_usermeta, list) {
 		/*
@@ -405,7 +416,7 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-static struct pv_devmeta* pv_devmeta_add(struct pv_device *dev, char *key, char *value)
+static struct pv_devmeta* pv_devmeta_add(struct pv_metadata *metadata, char *key, char *value)
 {
 	struct pv_devmeta *this = NULL;
 
@@ -431,7 +442,7 @@ static struct pv_devmeta* pv_devmeta_add(struct pv_device *dev, char *key, char 
 		this = NULL;
 		goto out;
 	}
-	dl_list_add(&dev->devmeta_list, &this->list);
+	dl_list_add(&metadata->devmeta_list, &this->list);
 out:
 	if (!this) {
 		pv_log(WARN, "Skipping device meta information [%s : %s]",
@@ -441,7 +452,7 @@ out:
 	return this;
 }
 
-int pv_device_parse_devmeta(struct pantavisor *pv)
+int pv_metadata_parse_devmeta(struct pantavisor *pv)
 {
 	char *buf = NULL;
 	struct log_buffer *log_buffer = NULL;
@@ -458,7 +469,7 @@ int pv_device_parse_devmeta(struct pantavisor *pv)
 		return -1;
 	}
 
-	dl_list_init(&pv->dev->devmeta_list);
+	dl_list_init(&pv->metadata->devmeta_list);
 
 	buf = log_buffer->buf;
 	bufsize = log_buffer->size;
@@ -473,14 +484,14 @@ int pv_device_parse_devmeta(struct pantavisor *pv)
 			/*
 			 * we managed to add at least one item in the list.
 			 */
-			pv_devmeta_add(pv->dev, pv_devmeta_readkeys[i].key, buf);
+			pv_devmeta_add(pv->metadata, pv_devmeta_readkeys[i].key, buf);
 		}
 	}
 	pv_log_put_buffer(log_buffer);
 	return 0;
 }
 
-int pv_device_upload_devmeta(struct pantavisor *pv)
+int pv_metadata_upload_devmeta(struct pantavisor *pv)
 {
 	unsigned int len = 0;
 	char *json = NULL;
@@ -500,13 +511,13 @@ int pv_device_upload_devmeta(struct pantavisor *pv)
 		return -1;
 	}
 
-	if (dl_list_empty(&pv->dev->devmeta_list))
+	if (dl_list_empty(&pv->metadata->devmeta_list))
 		goto out;
 	json = log_buffer->buf;
 	json_avail = log_buffer->size;
 	json_avail -= sprintf(json, "{");
 	len += 1;
-	head = &pv->dev->devmeta_list;
+	head = &pv->metadata->devmeta_list;
 	dl_list_for_each_safe(info, tmp, head,
 			struct pv_devmeta, list) {
 		char *key = format_json(info->key, strlen(info->key));
@@ -537,7 +548,7 @@ int pv_device_upload_devmeta(struct pantavisor *pv)
 	json[len - 1] = '}';
 	pv_log(INFO, "device info json = %s", json);
 	if(!pv_ph_upload_metadata(pv, json))
-		pv_devmeta_remove(pv->dev);
+		pv_devmeta_remove(pv->metadata);
 out:
 	pv_log_put_buffer(log_buffer);
 	return 0;
@@ -597,7 +608,7 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 	return written ? 0 : -1;
 }
 
-static int __pv_device_factory_meta(struct pantavisor *pv, const char *factory_file)
+static int __pv_metadata_factory_meta(struct pantavisor *pv, const char *factory_file)
 {
 	int ret = -1;
 	DEFINE_DL_LIST(factory_kv_list);
@@ -641,7 +652,7 @@ out:
 	return ret;
 }
 
-int pv_device_factory_meta(struct pantavisor *pv)
+int pv_metadata_factory_meta(struct pantavisor *pv)
 {
 	struct dirent **dirlist = NULL;
 	int n = 0;
@@ -650,7 +661,7 @@ int pv_device_factory_meta(struct pantavisor *pv)
 	bool upload_failed = false;
 
 	snprintf(factory_dir, sizeof(factory_dir), "%s/%s",
-			pv->config->storage.mntpoint, "factory/meta");
+			pv_config_get_storage_mntpoint(), "factory/meta");
 	n = scandir(factory_dir, &dirlist, NULL, alphasort);
 	if (n < 0)
 		pv_log(WARN, "%s: %s", factory_dir, strerror(errno));
@@ -664,7 +675,7 @@ int pv_device_factory_meta(struct pantavisor *pv)
 				if ((st.st_mode & S_IFMT) == S_IFREG) {
 					int ret = -1;
 
-					ret = __pv_device_factory_meta(pv,
+					ret = __pv_metadata_factory_meta(pv,
 							(const char*)abs_path);
 					if (ret)
 						upload_failed = true;
@@ -680,7 +691,7 @@ int pv_device_factory_meta(struct pantavisor *pv)
 		/*
 		 * reusing abs_path
 		 */
-		snprintf(abs_path, sizeof(abs_path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
+		snprintf(abs_path, sizeof(abs_path), "%s/trails/0/.pv/factory-meta.done", pv_config_get_storage_mntpoint());
 		fd = open(abs_path, O_CREAT | O_SYNC);
 		if (fd < 0)
 			pv_log(ERROR, "Unable to open file %s", abs_path);
@@ -689,7 +700,7 @@ int pv_device_factory_meta(struct pantavisor *pv)
 	return upload_failed ? -1 : 0;
 }
 
-int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
+int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf)
 {
 	int ret;
 	char *body, *esc;
@@ -703,13 +714,13 @@ int pv_device_update_usermeta(struct pantavisor *pv, char *buf)
 	return ret;
 }
 
-static struct pv_usermeta* pv_device_get_usermeta(struct pantavisor *pv, char *key)
+static struct pv_usermeta* pv_metadata_get_usermeta(struct pantavisor *pv, char *key)
 {
-	if (!pv || !pv->dev)
+	if (!pv || !pv->metadata)
 		return NULL;
 
 	struct pv_usermeta *curr, *tmp;
-	struct dl_list *head = &pv->dev->usermeta_list;
+	struct dl_list *head = &pv->metadata->usermeta_list;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_usermeta, list) {
@@ -719,105 +730,20 @@ static struct pv_usermeta* pv_device_get_usermeta(struct pantavisor *pv, char *k
 	return NULL;
 }
 
-bool pv_device_push_logs_activated(struct pantavisor *pv)
+static int pv_metadata_init(struct pv_init *this)
 {
-	struct pv_usermeta* usermeta = NULL;
+	struct pantavisor *pv = get_pv_instance();
 
-	// check metadata first
-    usermeta = pv_device_get_usermeta(pv, "pantahub.log.push");
-	if (usermeta)
-	{
-		if (!strcmp(usermeta->value, "0"))
-			return false;
-
-		return true;
-	}
-
-	// then, check config
-	if (pv && pv->config)
-		return pv->config->log.push;
-
-	// default
-	return true;
-}
-
-int pv_device_capture_logs_activated(struct pantavisor *pv)
-{
-	if (pv && pv->config)
-		return pv->config->log.capture;
-
-	// default
-	return true;
-}
-
-bool pv_device_use_updater_tmp_objects(struct pantavisor *pv)
-{
-	if (pv && pv->config)
-		return pv->config->updater.use_tmp_objects;
-
-	// default
-	return true;
-}
-
-int pv_device_get_gc_reserved(struct pantavisor *pv)
-{
-	if (pv && pv->config)
-		return pv->config->storage.gc.reserved;
-
-	return 0;
-}
-
-int pv_device_get_gc_threshold(struct pantavisor *pv)
-{
-	if (pv && pv->config)
-		return pv->config->storage.gc.threshold;
-
-	return 0;
-}
-
-static int pv_device_init(struct pv_init *this)
-{
-	struct pantavisor *pv = NULL;
-	struct pantavisor_config *config = NULL;
-	char tmp[256];
-	int fd = -1;
-
-	pv = get_pv_instance();
-	if (!pv || !pv->config)
+	pv->metadata = calloc(1, sizeof(struct pv_metadata));
+	if (!pv->metadata)
 		return -1;
-	config = pv->config;
-	// create hints
-	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
-	close(fd);
-	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
-	if (strcmp(config->creds.prn, "") == 0) {
-		pv->flags |= DEVICE_UNCLAIMED;
-	} else {
-		sprintf(tmp, "%s\n", config->creds.id);
-		write(fd, tmp, strlen(tmp));
-	}
-	close(fd);
-	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
-	sprintf(tmp, "https://%s:%d\n", config->creds.host, config->creds.port);
-	write(fd, tmp, strlen(tmp));
-	close(fd);
 
-	pv->dev = calloc(1, sizeof(struct pv_device));
-	if (pv->dev) {
-		dl_list_init(&pv->dev->usermeta_list);
-		pv->dev->id = strdup(pv->config->creds.id);
-		if (!pv->dev->id) {
-			free(pv->dev);
-			pv->dev = NULL;
-		}
-	}
-	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") < 0)
-		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
+	dl_list_init(&pv->metadata->usermeta_list);
 
 	return 0;
 }
 
-bool pv_device_factory_meta_done(struct pantavisor *pv)
+bool pv_metadata_factory_meta_done(struct pantavisor *pv)
 {
 	char path[PATH_MAX];
 	struct stat st;
@@ -830,42 +756,33 @@ bool pv_device_factory_meta_done(struct pantavisor *pv)
 	 */
 	if (pv->state->rev != 0)
 		return true;
-	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv->config->storage.mntpoint);
+	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv_config_get_storage_mntpoint());
 
 	if (stat(path, &st))
 		return false;
 	return true;
 }
 
-static void pv_device_free(struct pv_device *dev)
+static void pv_metadata_free(struct pv_metadata *metadata)
 {
-	if (!dev)
+	if (!metadata)
 		return;
 
-	pv_log(DEBUG, "removing device");
+	pv_log(DEBUG, "removing metadata");
 
-	if (dev->id)
-		free(dev->id);
-	if (dev->nick)
-		free(dev->nick);
-	if (dev->owner)
-		free(dev->owner);
-	if (dev->prn)
-		free(dev->prn);
+	pv_usermeta_remove(metadata);
+	pv_devmeta_remove(metadata);
 
-	pv_usermeta_remove(dev);
-	pv_devmeta_remove(dev);
-
-	free(dev);
+	free(metadata);
 }
 
-void pv_device_remove(struct pantavisor *pv)
+void pv_metadata_remove(struct pantavisor *pv)
 {
-	pv_device_free(pv->dev);
-	pv->dev = NULL;
+	pv_metadata_free(pv->metadata);
+	pv->metadata = NULL;
 }
 
-struct pv_init pv_init_device = {
-	.init_fn = pv_device_init,
+struct pv_init pv_init_metadata = {
+	.init_fn = pv_metadata_init,
 	.flags = 0,
 };

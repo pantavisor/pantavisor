@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,13 +23,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <stdint.h>
+#include <errno.h>
 
 #include <sys/time.h>
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <stdint.h>
 
 #define MODULE_NAME             "cmd"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -40,6 +41,7 @@
 #include "pvlogger.h"
 #include "platforms.h"
 #include "state.h"
+#include "init.h"
 
 #ifndef _GNU_SOURCE
 struct  ucred {
@@ -297,3 +299,18 @@ void pv_cmd_req_remove(struct pantavisor *pv)
 	free(req);
 	pv->req = NULL;
 }
+
+static int pv_cmd_init(struct pv_init *this)
+{
+	struct pantavisor *pv = get_pv_instance();
+
+	if (pv_cmd_socket_open(pv, "/pv/pv-ctrl") < 0)
+		pv_log(DEBUG, "control socket initialized fd=%d", pv->ctrl_fd);
+
+	return 0;
+}
+
+struct pv_init pv_init_cmd = {
+	.init_fn = pv_cmd_init,
+	.flags = 0,
+};

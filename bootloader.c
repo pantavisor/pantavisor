@@ -46,7 +46,7 @@ static int pv_bl_init(struct pantavisor *pv)
 {
 	int ret;
 
-	switch (pv->config->bl.type) {
+	switch (pv_config_get_bl_type()) {
 	case BL_UBOOT_PLAIN:
 	case BL_UBOOT_PVK:
 		ops = &uboot_ops;
@@ -60,7 +60,7 @@ static int pv_bl_init(struct pantavisor *pv)
 		break;
 	}
 
-	ret = ops->init(pv->config);
+	ret = ops->init();
 	if (ret)
 		pv_log(ERROR, "Unable to initialize bl controls");
 

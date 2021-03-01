@@ -19,35 +19,35 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <ctype.h>
-#include <dirent.h>
 
-#include <linux/limits.h>
+
+#include <stdlib.h>
+#include <stdarg.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/time.h>
 #include <sys/prctl.h>
 
-#include "tsh.h"
-#include "thttp.h"
+#include <linux/limits.h>
 
 #define MODULE_NAME		"log"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#include "pantahub.h"
-#include "loop.h"
+#include "config.h"
 #include "utils.h"
+#include "thttp.h"
+#include "utils.h"
+#include "loop.h"
 #include "init.h"
 #include "revision.h"
 #include "version.h"
 #include "ph_logger/ph_logger.h"
-#include "device.h"
 
 struct level_name {
 	int log_level;
@@ -97,7 +97,7 @@ void pv_log_put_buffer(struct log_buffer *log_buffer)
 		return;
 	if (!dl_list_empty(&log_buffer->free_list))
 		return;
-	if (global_pv->config->log.logsize == log_buffer->size)
+	if (pv_config_get_log_logsize() == log_buffer->size)
 		dl_list_add(&log_buffer_list, &log_buffer->free_list);
 	else
 		dl_list_add(&log_buffer_list_double, &log_buffer->free_list);
@@ -278,13 +278,13 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 	int allocated_dcache = 0;
 
 	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv->config->log.logsize, &log_buffer_list);
+					pv_config_get_log_logsize(), &log_buffer_list);
 
 	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv->config->log.logsize * 2, &log_buffer_list_double);
+					pv_config_get_log_logsize() * 2, &log_buffer_list_double);
 
 	mkdir_p("/pv/logs", 0755);
-	mount_bind(pv->config->log.logdir, "/pv/logs");
+	mount_bind(pv_config_get_log_logdir(), "/pv/logs");
 
 	if (pv_log_start(pv, rev) < 0)
 		return;
@@ -292,9 +292,9 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
-			allocated_cache, pv->config->log.logsize);
+			allocated_cache, pv_config_get_log_logsize());
 	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
-			allocated_dcache, pv->config->log.logsize * 2);
+			allocated_dcache, pv_config_get_log_logsize() * 2);
 }
 
 void exit_error(int err, char *msg)
@@ -308,7 +308,7 @@ void exit_error(int err, char *msg)
 
 int pv_log_start(struct pantavisor *pv, int rev)
 {
-	if (!pv_device_capture_logs_activated(pv))
+	if (!pv_config_get_log_capture())
 		return 0;
 
 	if (pv_log_set_log_dir(rev) < 0) {
@@ -343,17 +343,11 @@ const char *pv_log_level_name(int level)
 
 static int pv_log_early_init(struct pv_init *this)
 {
-	struct pantavisor *pv = NULL;
-	struct pantavisor_config *config = NULL;
+	struct pantavisor *pv = get_pv_instance();
 	int pv_rev = 0;
 	int ret = -1;
 
-	pv = get_pv_instance();
-	if (!pv || !pv->config)
-		goto out;
-
 	ret = 0;
-	config = pv->config;
 	pv_rev = pv_revision_get_rev();
 
 	pv_log_init(pv, pv_rev);
@@ -367,23 +361,22 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "                                                 ");
 	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
 	pv_log(INFO, "                                                 ");
-	pv_log(DEBUG, "c->storage.path = '%s'", config->storage.path);
-	pv_log(DEBUG, "c->storage.fstype = '%s'", config->storage.fstype);
-	pv_log(DEBUG, "c->storage.opts = '%s'", config->storage.opts);
-	pv_log(DEBUG, "c->storage.mntpoint = '%s'", config->storage.mntpoint);
-	pv_log(DEBUG, "c->storage.mnttype = '%s'", config->storage.mnttype ? config->storage.mnttype : "");
-	pv_log(DEBUG, "c->creds.host = '%s'", config->creds.host);
-	pv_log(DEBUG, "c->creds.port = '%d'", config->creds.port);
-	pv_log(DEBUG, "c->creds.id = '%s'", config->creds.id);
-	pv_log(DEBUG, "c->creds.prn = '%s'", config->creds.prn);
-	pv_log(DEBUG, "c->creds.secret = '%s'", config->creds.secret);
+	pv_log(DEBUG, "c->storage.path = '%s'", pv_config_get_storage_path());
+	pv_log(DEBUG, "c->storage.fstype = '%s'", pv_config_get_storage_fstype());
+	pv_log(DEBUG, "c->storage.opts = '%s'", pv_config_get_storage_opts());
+	pv_log(DEBUG, "c->storage.mntpoint = '%s'", pv_config_get_storage_mntpoint());
+	pv_log(DEBUG, "c->storage.mnttype = '%s'", pv_config_get_storage_mnttype());
+	pv_log(DEBUG, "c->creds.host = '%s'", pv_config_get_creds_host());
+	pv_log(DEBUG, "c->creds.port = '%d'", pv_config_get_creds_port());
+	pv_log(DEBUG, "c->creds.id = '%s'", pv_config_get_creds_id());
+	pv_log(DEBUG, "c->creds.prn = '%s'", pv_config_get_creds_prn());
+	pv_log(DEBUG, "c->creds.secret = '%s'", pv_config_get_creds_secret());
 
 	if (ph_logger_init(LOG_CTRL_PATH)) {
 		pv_log(ERROR, "ph logger initialization failed");
 		ret = -1;
 	}
 
-out:
 	return ret;
 }
 

@@ -43,7 +43,7 @@ char** pv_objects_get_all_ids(struct pantavisor *pv)
 	char **ids = 0;
 	char path[PATH_MAX];
 
-	sprintf(path, "%s/objects/", pv->config->storage.mntpoint);
+	sprintf(path, "%s/objects/", pv_config_get_storage_mntpoint());
 	n = scandir(path, &dirs, NULL, alphasort);
 	if (n < 0)
 		goto out;

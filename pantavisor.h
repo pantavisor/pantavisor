@@ -23,11 +23,8 @@
 #define PV_SYSTEMC_H
 
 #include <stdbool.h>
-#include <trail.h>
+
 #include "config.h"
-#include <netinet/in.h>
-#include "utils/list.h"
-#include <trest.h>
 
 #define DEVICE_UNCLAIMED	(1 << 0)
 
@@ -35,7 +32,6 @@
 #define RUNLEVEL_PLATFORM 1
 #define RUNLEVEL_APP 2
 
-#define PV_CONFIG_FILENAME	"/etc/pantavisor.config"
 // pantavisor.h
 
 char pv_user_agent[4096];
@@ -51,8 +47,9 @@ struct pantavisor {
 	struct pv_update *update;
 	struct pv_state *state;
 	struct pv_cmd_req *req;
-	struct pantavisor_config *config;
+	struct pantavisor_config config;
 	struct trail_remote *remote;
+	struct pv_metadata *metadata;
 	bool online;
 	int ctrl_fd;
 	unsigned long flags;
@@ -71,5 +68,5 @@ void pv_teardown(struct pantavisor *pv);
 struct pv_state* pv_get_state(struct pantavisor *pv, int current);
 void pantavisor_init(void);
 struct pantavisor* get_pv_instance(void);
-struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
+
 #endif

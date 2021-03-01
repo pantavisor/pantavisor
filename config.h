@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,16 +19,21 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 #ifndef PV_CONFIG_H
 #define PV_CONFIG_H
-#include <stdbool.h>
-#include <sys/types.h>
-#include <stdlib.h>
+
 #include "utils/list.h"
+
 enum {
 	BL_UBOOT_PLAIN = 0,
 	BL_UBOOT_PVK,
 	BL_GRUB
+};
+
+struct pantavisor_cache {
+	char *metacachedir;
+	char *dropbearcachedir;
 };
 
 struct pantavisor_factory {
@@ -72,16 +77,19 @@ struct pantavisor_updater {
 	int interval;
 	int network_timeout;
 	bool use_tmp_objects;
+	int revision_retries;
+	int revision_retry_timeout;
+	int commit_delay;
 };
 
 struct pantavisor_bootloader {
 	int type;
-	int mtd_only;
+	bool mtd_only;
 	char *mtd_path;
 };
 
 struct pantavisor_watchdog {
-	int enabled;
+	bool enabled;
 	int timeout;
 };
 
@@ -97,7 +105,7 @@ struct pantavisor_log {
 	int loglevel;
 	int logsize;
 	bool push;
-	int capture;
+	bool capture;
 };
 
 struct pantavisor_lxc {
@@ -105,12 +113,7 @@ struct pantavisor_lxc {
 };
 
 struct pantavisor_config {
-	char *name;
-	char *metacachedir;
-	char *dropbearcachedir;
-	int revision_retries;
-	int revision_retry_timeout;
-	int update_commit_delay;
+	struct pantavisor_cache cache;
 	struct pantavisor_bootloader bl;
 	struct pantavisor_creds creds;
 	struct pantavisor_factory factory;
@@ -122,49 +125,69 @@ struct pantavisor_config {
 	struct pantavisor_lxc lxc;
 };
 
-// Fill config struct after parsing on-initramfs factory config
-int pv_config_from_file(char *path, struct pantavisor_config *config);
-int ph_config_from_file(char *path, struct pantavisor_config *config);
-int ph_config_to_file(struct pantavisor_config *config, char *path);
+int pv_config_load(void);
+int pv_config_save(void);
 
-struct pv_logger_config {
-	struct dl_list item_list;
-	/*
-	 * This is a null terminated list of key/value
-	 * pairs for the log configuration.
-	 * */
-	const char ***pair; /*equiv to char *pair[][2]. key, val*/
-	/*
-	 * Only when logger config is statically allocated.
-	 * Do not use both pair and static_pair.
-	 * */
-	const char* (*static_pair)[2];
-};
+void pv_config_free(void);
 
-int load_key_value_file(const char *path, struct dl_list *list);
-char* config_get_value(struct dl_list *list, char *key);
-void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque);
-void config_clear_items(struct dl_list *list);
+void pv_config_set_creds_id(char *id);
+void pv_config_set_creds_prn(char *prn);
+void pv_config_set_creds_secret(char *secret);
 
-const char* pv_log_get_config_item(struct pv_logger_config *config, const char *key);
-static void pv_logger_config_free(struct pv_logger_config *item_config)
-{
-	int i = 0;
+void pv_config_set_storage_gc_reserved(int reserved);
+void pv_config_set_storage_gc_keep_factory(bool keep_factory);
+void pv_config_set_storage_gc_threshold(int threshold);
 
-	if (!item_config)
-		return;
+void pv_config_set_log_push(bool push);
 
-	while (item_config->pair[i][0]) {
-		if (item_config->pair[i][1])
-			free((void*)item_config->pair[i][1]);
-		free((void*)item_config->pair[i][0]);
-		free((void*)item_config->pair[i]);
-		i++;
-	}
-	/*
-	 * We've a NULL terminated pair..
-	 * */
-	free((void*)item_config->pair[i]);
-	free(item_config);
-}
+char* pv_config_get_cache_metacachedir(void);
+char* pv_config_get_cache_dropbearcachedir(void);
+
+char* pv_config_get_creds_type(void);
+char* pv_config_get_creds_host(void);
+int pv_config_get_creds_port(void);
+char* pv_config_get_creds_id(void);
+char* pv_config_get_creds_prn(void);
+char* pv_config_get_creds_secret(void);
+char* pv_config_get_creds_token(void);
+
+char* pv_config_get_factory_autotok(void);
+
+char* pv_config_get_storage_path(void);
+char* pv_config_get_storage_fstype(void);
+char* pv_config_get_storage_opts(void);
+char* pv_config_get_storage_mntpoint(void);
+char* pv_config_get_storage_mnttype(void);
+char* pv_config_get_storage_logtempsize(void);
+int pv_config_get_storage_wait(void);
+
+int pv_config_get_storage_gc_reserved(void);
+bool pv_config_get_storage_gc_keep_factory(void);
+int pv_config_get_storage_gc_threshold(void);
+
+int pv_config_get_updater_interval(void);
+int pv_config_get_updater_network_timeout(void);
+bool pv_config_get_updater_network_use_tmp_objects(void);
+int pv_config_get_updater_revision_retries(void);
+int pv_config_get_updater_revision_retry_timeout(void);
+int pv_config_get_updater_commit_delay(void);
+
+int pv_config_get_bl_type(void);
+bool pv_config_get_bl_mtd_only(void);
+char* pv_config_get_bl_mtd_path(void);
+
+bool pv_config_get_watchdog_enabled(void);
+int pv_config_get_watchdog_timeout(void);
+
+char* pv_config_get_network_brdev(void);
+char* pv_config_get_network_braddress4(void);
+char* pv_config_get_network_brmask4(void);
+
+char* pv_config_get_log_logdir(void);
+int pv_config_get_log_logmax(void);
+int pv_config_get_log_loglevel(void);
+int pv_config_get_log_logsize(void);
+bool pv_config_get_log_push(void);
+bool pv_config_get_log_capture(void);
+
 #endif

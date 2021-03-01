@@ -19,20 +19,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 #ifndef PV_LOG_H
 #define PV_LOG_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <errno.h>
-#include <time.h>
-#include <sys/time.h>
-#include <stdbool.h>
-
+#include "utils/list.h"
 #include "pantavisor.h"
-#include "utils.h"
 
 void exit_error(int err, char *msg);
 

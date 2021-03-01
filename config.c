@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,457 +19,207 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
-#include <stdlib.h>
+
 #include <string.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdio.h>
 
-#include <linux/limits.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 
-#include "config.h"
+#include <linux/limits.h>
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-#include "utils.h"
-#include "utils/list.h"
-#include "init.h"
 
-struct config_item {
-	char *key;
-	char *value;
-	struct config_item *next;
-	struct dl_list list;
-};
+#include "config.h"
+#include "init.h"
+#include "config_parser.h"
+#include "utils.h"
 
 static DEFINE_DL_LIST(config_list);
-
-static struct config_item* _config_get_by_key(struct dl_list *list, char *key)
-{
-	struct config_item *curr = NULL, *tmp;
-	if (key == NULL || dl_list_empty(list))
-		return NULL;
-	
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
-		if (strcmp(curr->key, key) == 0)
-			return curr;
-	}
-	// Value not found
-	return NULL;
-}
-
-static struct config_item* _config_add_item(struct dl_list *list,
-						char *key, char *value)
-{
-	struct config_item *this;
-
-	// Check if it already exists in config and change value instead
-	this = _config_get_by_key(list, key);
-	if (this) {
-		if (this->value)
-			free(this->value);
-
-		this->value = strdup(value);
-		return this;
-	}
-
-	// New item
-	this = (struct config_item *) malloc(sizeof(struct config_item));
-
-	if (!this) {
-		pv_log(ERROR, "unable to allocate config item");
-		goto out;
-	}
-
-	// Check empty key
-	if (strcmp(key, "") == 0) {
-		goto out;
-	}
-	// Set key
-	this->key = strdup(key);
-
-	// Check for empty value
-	if (value)
-		this->value = strdup(value);
-	else
-		this->value = strdup(""); // Empty value
-	if (this->key && this->value)
-		dl_list_add_tail(list, &this->list);
-	else {
-		goto out;
-	}
-	return this;
-out:
-	if (this && this->key)
-		free(this->key);
-	if (this && this->value)
-		free(this->value);
-	free(this);
-	return NULL;
-}
-
-char* config_get_value(struct dl_list *list, char *key)
-{
-	struct config_item *curr = _config_get_by_key(list, key);
-
-	if (curr)
-		return curr->value;
-	// Value not found
-	return NULL;
-}
 
 static char* _config_get_value(char *key)
 {
 	return config_get_value(&config_list, key);
 }
 
-static struct config_item* _config_replace_item(struct dl_list *list,
-						char *key, char *value)
+static char* config_get_value_string(char *key, char* default_value)
 {
-	struct config_item *curr = NULL;
+	char *item = _config_get_value(key);
 
-	if (key == NULL || dl_list_empty(list))
-		return NULL;
+	if (!item && default_value)
+		item = strdup(default_value);
 
-	curr = _config_get_by_key(list, key);
-	if (curr) {
-		char *tmp_val = strdup(value);
-
-		if (tmp_val) {
-			free(curr->value);
-			curr->value = tmp_val;
-		}
-		return curr;
-	}
-	// not found? add it
-	return _config_add_item(list, key, value);
+	return item;
 }
 
-void config_clear_items(struct dl_list *list)
+static int config_get_value_int(char *key, int default_value)
 {
-	struct config_item *curr = NULL, *tmp;
+	char *item = _config_get_value(key);
+	int value = default_value;
 
-	if (dl_list_empty(list))
-		return;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
-		dl_list_del(&curr->list);
-		free(curr->key);
-		free(curr->value);
-		free(curr);
-	}
+	if (!item)
+		return value;
+
+	value = atoi(item);
+
+	return value;
 }
 
-void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque)
+static bool config_get_value_bool(char *key, bool default_value)
 {
-	struct config_item *curr = NULL, *tmp;
-	
-	if (dl_list_empty(list))
-		return;
-	if (!action)
-		return;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
-		if (action(curr->key, curr->value, opaque))
-			break;
-	}
+	char *item = _config_get_value(key);
+	bool value = default_value;
+
+	if (!item)
+		return value;
+
+	value = atoi(item);
+
+	return value;
 }
 
-int load_key_value_file(const char *path, struct dl_list *list)
+static int config_get_value_bl_type(char *key, int default_value)
 {
-	FILE *fp;
-	char *buff = NULL, *__real_key = NULL;
-	struct stat st;
+	char *item = _config_get_value(key);
+	int value = default_value;
 
-	fp = fopen(path, "r");
-	if (!fp) {
-		pv_log(INFO, "unable to find %s config file", path);
-		return -1;
-	}
+	if (!item)
+		return value;
 
-	stat(path, &st);
-	buff = calloc(1, st.st_size);
-	if (!buff)
-		goto out;
+	if (!strcmp(item, "uboot"))
+		value = BL_UBOOT_PLAIN;
+	else if (!strcmp(item, "uboot-pvk"))
+		value = BL_UBOOT_PVK;
+	else if (!strcmp(item, "grub"))
+		value = BL_GRUB;
 
-	while (fgets(buff, st.st_size, fp)) {
-		// Remove newline from value (hacky)
-		buff[strlen(buff)-1] = '\0';
-		char *key = strstr(buff, "=");
-		if (key) {
-			char *value = key + 1;
-			__real_key = (char*) calloc(1, key - buff + 1);
-			if (__real_key) {
-				sprintf(__real_key, "%.*s", (int)(key - buff), buff);
-				_config_add_item(list, __real_key, value);
-				free(__real_key);
-			}
-		}
-	}
-	free(buff);
-out:
-	fclose(fp);
-
-	return 0;
+	return value;
 }
 
-static int _config_parse_cmdline(char *hint)
+static int config_get_value_logsize(char *key, int default_value)
 {
-	int fd, bytes;
-	char *buf = NULL, *k = NULL, *nl = NULL;
-	char *ptr_out = NULL, *ptr_in = NULL;
-	char *token = NULL, *key = NULL, *value = NULL;
+	int value = config_get_value_int(key, default_value);
 
-	// Get current step revision from cmdline
-	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0)
+	if (value >= 1024)
+		value = default_value;
+
+	return value;
+}
+
+// Fill config struct after parsing on-initramfs factory config
+static int pv_config_from_file(char *path, struct pantavisor_config *config)
+{
+	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
-	buf = calloc(1, sizeof(char) * (1024 + 1));
-	if (!buf) {
-		close(fd);
-		return -1;
-	}
+	// for overrides
+	config_parse_cmdline(&config_list, "pv_");
 
-	bytes = read_nointr(fd, buf, sizeof(char)*1024);
-	if (!bytes) {
-		close(fd);
-		return -1;
-	}
-	close(fd);
-	token = strtok_r(buf, " ", &ptr_out);
-	while (token) {
-		if (strncmp(hint, token, strlen(hint)) == 0) {
-			k = token + strlen(hint);
-			key = strtok_r(k, "=", &ptr_in);
-			value = strtok_r(NULL, "\0", &ptr_in);
-			/*
-			 * for things like XYZ= there would be nothing
-			 * in the value as strtok returns only non-empty
-			 * strings.
-			 * */
-			if (!value)
-				value = ""; /*We keep the key but give it an empty value*/
-			nl = strchr(value, '\n');
-			if (nl) /* get rid of newline at end */
-				*nl = '\0';
-			_config_replace_item(&config_list, key, value);
-		}
-		token = strtok_r(NULL, " ", &ptr_out);
-	}
-	free(buf);
+	config->cache.dropbearcachedir = config_get_value_string("dropbear.cache.dir", "/storage/cache/dropbear");
+	config->cache.metacachedir = config_get_value_string("meta.cache.dir", "/storage/cache/meta");
+
+	config->bl.type = config_get_value_bl_type("bootloader.type", BL_UBOOT_PLAIN);
+	config->bl.mtd_only = config_get_value_bool("bootloader.mtd_only", false);
+	config->bl.mtd_path = config_get_value_string("bootloader.mtd_env", NULL);
+
+	config->storage.path = config_get_value_string("storage.device", NULL);
+	config->storage.fstype = config_get_value_string("storage.fstype", NULL);
+	config->storage.opts = config_get_value_string("storage.opts", NULL);
+	config->storage.mntpoint = config_get_value_string("storage.mntpoint", NULL);
+	config->storage.mnttype = config_get_value_string("storage.mnttype", NULL);
+	config->storage.logtempsize = config_get_value_string("storage.logtempsize", NULL);
+	config->storage.wait = config_get_value_int("storage.wait", 5);
+
+	config->storage.gc.reserved = config_get_value_int("storage.gc.reserved", 5);
+	config->storage.gc.keep_factory = config_get_value_bool("storage.gc.keep_factory", false);
+	config->storage.gc.threshold = config_get_value_int("storage.gc.threshold", 0);
+
+	config->updater.use_tmp_objects = config_get_value_bool("updater.use_tmp_objects", true);
+	config->updater.revision_retries = config_get_value_int("revision.retries", 10);
+	config->updater.revision_retry_timeout = config_get_value_int("revision.retries.timeout", 2 * 60);
+
+	config->wdt.enabled = config_get_value_bool("wdt.enabled", true);
+	config->wdt.timeout = config_get_value_int("wdt.timeout", 15);
+
+	config->net.brdev = config_get_value_string("net.brdev", "lxcbr0");
+	config->net.braddress4 = config_get_value_string("net.braddress4", "10.0.3.1");
+	config->net.brmask4 = config_get_value_string("net.brmask4", "255.255.255.0");
+
+	config->lxc.log_level = config_get_value_int("lxc.log.level", 2);
 
 	return 0;
 }
 
 // Fill config struct after parsing on-initramfs factory config
-int pv_config_from_file(char *path, struct pantavisor_config *config)
+static int ph_config_from_file(char *path, struct pantavisor_config *config)
 {
-	char *item;
-
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
 	// for overrides
-	_config_parse_cmdline("pv_");
+	config_parse_cmdline(&config_list, "ph_");
 
-	item = _config_get_value("bootloader.type");
-	if (item && !strcmp(item, "uboot"))
-		config->bl.type = BL_UBOOT_PLAIN;
-	else if (item && !strcmp(item, "uboot-pvk"))
-		config->bl.type = BL_UBOOT_PVK;
-	else if (item && !strcmp(item, "grub"))
-		config->bl.type = BL_GRUB;
+	config->creds.type = config_get_value_string("creds.type", "builtin");
+	config->creds.host = config_get_value_string("creds.host", "192.168.53.1");
+	config->creds.port = config_get_value_int("creds.port", 12365);
+	config->creds.id = config_get_value_string("creds.id", NULL);
+	config->creds.prn = config_get_value_string("creds.prn", NULL);
+	config->creds.secret = config_get_value_string("creds.secret", NULL);
 
-	item = _config_get_value("bootloader.mtd_only");
-	if (item)
-		config->bl.mtd_only = 1;
-	else
-		config->bl.mtd_only = 0;
+	config->creds.tpm.key = config_get_value_string("creds.tpm.key", NULL);
+	config->creds.tpm.cert = config_get_value_string("creds.tpm.cert", NULL);
 
-	config->bl.mtd_path = _config_get_value("bootloader.mtd_env");
-	config->storage.path = _config_get_value("storage.device");
-	config->storage.fstype = _config_get_value("storage.fstype");
-	config->storage.opts = _config_get_value("storage.opts");
-	config->storage.mntpoint = _config_get_value("storage.mntpoint");
-	config->storage.mnttype = _config_get_value("storage.mnttype");
-	item = _config_get_value("storage.wait");
-	config->storage.wait = item ? atoi(item) : 5;
-	item = _config_get_value("storage.logtempsize");
-	config->storage.logtempsize = item ? strdup(item) : NULL;
+	config->factory.autotok = config_get_value_string("factory.autotok", NULL);
 
-	item = _config_get_value("storage.gc.reserved");
-	config->storage.gc.reserved = item ? atoi(item) : 5;
-	item = _config_get_value("storage.gc.keep_factory");
-	config->storage.gc.keep_factory = item ? atoi(item) : 0;
-	item = _config_get_value("storage.gc.threshold");
-	config->storage.gc.threshold = item ? atoi(item) : 0;
+	config->storage.gc.keep_factory = config_get_value_bool("updater.keep_factory", false);
 
-	item = _config_get_value("updater.use_tmp_objects");
-	config->updater.use_tmp_objects = item ? atoi(item) : 1;
+	config->updater.interval = config_get_value_int("updater.interval", 60);
+	config->updater.network_timeout = config_get_value_int("updater.network_timeout", 2 * 60);
+	config->updater.commit_delay = config_get_value_int("updater.commit.delay", 3 * 60);
 
-	item = _config_get_value("wdt.enabled");
-	config->wdt.enabled = item ? atoi(item) : 1;
-
-	item = _config_get_value("wdt.timeout");
-	config->wdt.timeout = item ? atoi(item) : 15;
-
-	config->net.brdev = _config_get_value("net.brdev");
-	if (!config->net.brdev)
-		config->net.brdev = strdup("lxcbr0");
-
-	config->net.braddress4 = _config_get_value("net.braddress4");
-	if (!config->net.braddress4)
-		config->net.braddress4 = strdup("10.0.3.1");
-
-	config->net.brmask4 = _config_get_value("net.brmask4");
-	if (!config->net.brmask4)
-		config->net.brmask4 = strdup("255.255.255.0");
-
-	item = _config_get_value("revision.retries");
-	if (item)
-		sscanf(item, "%d", &config->revision_retries);
-
-	item = _config_get_value("revision.retries.timeout");
-	if (item)
-		sscanf(item, "%d", &config->revision_retry_timeout);
-
-	item = _config_get_value("lxc.log.level");
-	config->lxc.log_level = item ? atoi(item) : 2;
+	config->log.logdir = config_get_value_string("log.dir", "/storage/logs/");
+	config->log.logmax = config_get_value_int("log.maxsize", (1 << 21)); // 2 MiB
+	config->log.loglevel = config_get_value_int("log.level", 0);
+	config->log.logsize = config_get_value_logsize("log.buf_nitems", 128) * 1024;
+	config->log.push = config_get_value_bool("log.push", true);
+	config->log.capture = config_get_value_bool("log.capture", true);
 
 	return 0;
 }
 
-// Fill config struct after parsing on-initramfs factory config
-int ph_config_from_file(char *path, struct pantavisor_config *config)
+static int write_config_tuple_string(int fd, char *key, char *value)
 {
-	char *item;
+	if (!key || !value)
+		return 0;
 
-	if (load_key_value_file(path, &config_list) < 0)
+	if (write(fd, key, strlen(key)) < 0)
+		return -1;
+	if (write(fd, "=", 1) < 0)
+		return -1;
+	if (write(fd, value, strlen(value)) < 0)
+		return -1;
+	if (write(fd, "\n", 1) < 0)
 		return -1;
 
-	// for overrides
-	_config_parse_cmdline("ph_");
-
-	config->log.logdir = _config_get_value("log.dir");
-	if (!config->log.logdir)
-		config->log.logdir = strdup("/storage/logs/");
-
-	config->dropbearcachedir = _config_get_value("dropbear.cache.dir");
-	if (!config->dropbearcachedir)
-		config->dropbearcachedir = strdup("/storage/cache/dropbear");
-
-	config->metacachedir = _config_get_value("meta.cache.dir");
-	if (!config->metacachedir)
-		config->metacachedir = strdup("/storage/cache/meta");
-
-	item = _config_get_value("log.maxsize");
-	if (item)
-		config->log.logmax = atoi(item);
-	else
-		config->log.logmax = (1 << 21); // 2 MiB
-
-	item = _config_get_value("log.level");
-	if (item)
-		config->log.loglevel = atoi(item);
-
-	item = _config_get_value("log.buf_nitems");
-	if (item) {
-		int size_in_kb = 0;
-		if (sscanf(item, "%d", &size_in_kb) == 1) {
-			if (size_in_kb <=0 || size_in_kb >= 1024)
-				size_in_kb = 128;
-			config->log.logsize = size_in_kb * 1024;
-		}
-		else
-			config->log.logsize = 128 * 1024;
-	}
-	else {
-		config->log.logsize = 128 * 1024;
-	}
-	item = _config_get_value("log.push");
-	config->log.push = item ? atoi(item) : 1;
-	item = _config_get_value("log.capture");
-	config->log.capture = item ? atoi(item) : 1;
-
-	// default 60 second update interval
-	item = _config_get_value("updater.interval");
-	if (item)
-		config->updater.interval = atoi(item);
-	else
-		config->updater.interval = 60;
-
-	// default timeout for network-down rollback
-	item = _config_get_value("updater.network_timeout");
-	if (item)
-		config->updater.network_timeout = atoi(item);
-	else
-		config->updater.network_timeout = 120;
-
-	// deprecated in favor of storage.gc.keep_factory
-	item = _config_get_value("updater.keep_factory");
-	config->storage.gc.keep_factory = item ? atoi(item) : 0;
-
-	config->creds.type = _config_get_value("creds.type");
-	if (!config->creds.type)
-		config->creds.type = strdup("builtin");
-
-	if (!strcmp("builtin", config->creds.type)) {
-		pv_log(INFO, "using builtin credential handler");
-	} else if (strlen(config->creds.type) >= 4 &&
-		!strncmp("ext-", config->creds.type, 4)) {
-		pv_log(INFO, "using external credential handler %s", config->creds.type);
-	} else {
-		pv_log(ERROR, "no valid pantavisor credential type (%s) configured; giving up", config->creds.type);
-		return -1;
-	}
-
-	config->creds.tpm.key = _config_get_value("creds.tpm.key");
-	config->creds.tpm.cert = _config_get_value("creds.tpm.cert");
-
-	config->creds.host = _config_get_value("creds.host");
-	if (!config->creds.host) {
-		config->creds.host = strdup("192.168.53.1");
-		pv_log(INFO, "no host set, using default: '%s'", config->creds.host);
-	}
-
-	item = _config_get_value("creds.port");
-	if (item)
-		config->creds.port = atoi(item);
-	else
-		config->creds.port = 12365;
-
-	config->creds.id = _config_get_value("creds.id");
-	config->creds.prn = _config_get_value("creds.prn");
-	config->creds.secret = _config_get_value("creds.secret");
-	config->factory.autotok = _config_get_value("factory.autotok");
-	item = _config_get_value("updater.commit.delay");
-	if (item)
-		sscanf(item, "%d", &config->update_commit_delay);
-	return 0;
+	return 1;
 }
 
-static int write_config_tuple(int fd, char *key, char *value)
+static int write_config_tuple_int(int fd, char *key, int value)
 {
-	int bytes = 0;
+	char buf[128];
 
-	bytes = write(fd, key, strlen(key));
-	bytes += write(fd, "=", 1);
-	bytes += write(fd, value, strlen(value));
-	bytes += write(fd, "\n", 1);
+	sprintf(buf, "%d", value);
 
-	return bytes;
+	return write_config_tuple_string(fd, key, buf);
 }
 
-int ph_config_to_file(struct pantavisor_config *config, char *path)
+static int ph_config_to_file(struct pantavisor_config *config, char *path)
 {
 	int fd;
-	int bytes;
-	char buf[128];
 	char tmp_path[PATH_MAX];
 
 	sprintf(tmp_path, "%s-XXXXXX", path);
@@ -477,105 +227,213 @@ int ph_config_to_file(struct pantavisor_config *config, char *path)
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (!fd) {
 		pv_log(ERROR, "unable to open temporary credentials config");
-		return 1;
+		return -1;
 	}
 
-	sprintf(buf, "%d", config->log.loglevel);
-	bytes = write_config_tuple(fd, "log.level", buf);
-	sprintf(buf, "%d", config->log.logsize);
-	bytes = write_config_tuple(fd, "log.buf_nitems", buf);
-	sprintf(buf, "%d", config->updater.interval);
-	bytes = write_config_tuple(fd, "updater.interval", buf);
-	sprintf(buf, "%d", config->updater.network_timeout);
-	bytes = write_config_tuple(fd, "updater.network_timeout", buf);
-	sprintf(buf, "%d", config->update_commit_delay);
-	bytes = write_config_tuple(fd, "updater.commit.delay", buf);
-	sprintf(buf, "%d", config->storage.gc.keep_factory);
-	bytes = write_config_tuple(fd, "updater.keep_factory", buf);
-	bytes = write_config_tuple(fd, "creds.type", config->creds.type);
-	bytes = write_config_tuple(fd, "creds.host", config->creds.host);
-	sprintf(buf, "%d", config->creds.port);
-	bytes = write_config_tuple(fd, "creds.port", buf);
-	bytes = write_config_tuple(fd, "creds.id", config->creds.id);
-	bytes = write_config_tuple(fd, "creds.prn", config->creds.prn);
-	bytes = write_config_tuple(fd, "creds.secret", config->creds.secret);
-	if (config->creds.tpm.key && config->creds.tpm.cert) {
-		bytes = write_config_tuple(fd, "creds.tpm.key", config->creds.tpm.key);
-		bytes = write_config_tuple(fd, "creds.tpm.cert", config->creds.tpm.cert);
-	}
+	write_config_tuple_string(fd, "creds.type", config->creds.type);
+	write_config_tuple_string(fd, "creds.host", config->creds.host);
+	write_config_tuple_int(fd, "creds.port", config->creds.port);
+	write_config_tuple_string(fd, "creds.id", config->creds.id);
+	write_config_tuple_string(fd, "creds.prn", config->creds.prn);
+	write_config_tuple_string(fd, "creds.secret", config->creds.secret);
+
+	write_config_tuple_string(fd, "creds.tpm.key", config->creds.tpm.key);
+	write_config_tuple_string(fd, "creds.tpm.cert", config->creds.tpm.cert);
+
+	write_config_tuple_int(fd, "updater.interval", config->updater.interval);
+	write_config_tuple_int(fd, "updater.network_timeout", config->updater.network_timeout);
+	write_config_tuple_int(fd, "updater.commit.delay", config->updater.commit_delay);
+	write_config_tuple_int(fd, "updater.keep_factory", config->storage.gc.keep_factory); // deprecated
+
+	write_config_tuple_int(fd, "log.level", config->log.loglevel);
+	write_config_tuple_int(fd, "log.buf_nitems", config->log.logsize / 1024);
 
 	close(fd);
 	rename(tmp_path, path);
 
-	return bytes;
+	return 0;
 }
 
-/*
- * Don't free the returned value.
- * */
-const char* pv_log_get_config_item(struct pv_logger_config *config,
-		const char *key) {
-	int i = 0;
-	if (config->static_pair) {
-		while (config->static_pair[i][0]) {
-			if (!strncmp(config->static_pair[i][0], key, strlen(key)))
-				return config->static_pair[i][1];
-			i++;
-		}
-	} else if (config->pair) {
-		while (config->pair[i][0]) {
-			if (!strncmp(config->pair[i][0], key,strlen(key)))
-				return config->pair[i][1];
-			i++;
-		}
-	}
-	return NULL;
+int pv_config_load()
+{
+	struct pantavisor *pv = get_pv_instance();
+	char config_path[256];
+	struct stat st;
+
+	if (pv->flags & DEVICE_UNCLAIMED)
+		sprintf(config_path, "%s/config/unclaimed.config", pv->config.storage.mntpoint);
+	else
+		sprintf(config_path, "%s/config/pantahub.config", pv->config.storage.mntpoint);
+
+	if (stat(config_path, &st))
+		return -1;
+
+	return ph_config_from_file(config_path, &pv->config);
 }
+
+int pv_config_save()
+{
+	struct pantavisor *pv = get_pv_instance();
+	char config_path[256];
+
+	if (pv->flags & DEVICE_UNCLAIMED)
+		sprintf(config_path, "%s/config/unclaimed.config", pv->config.storage.mntpoint);
+	else
+		sprintf(config_path, "%s/config/pantahub.config", pv->config.storage.mntpoint);
+
+	return ph_config_to_file(&pv->config, config_path);
+}
+
+void pv_config_free()
+{
+	struct pantavisor *pv = get_pv_instance();
+
+	if (pv->config.cache.metacachedir)
+		free(pv->config.cache.metacachedir);
+	if (pv->config.cache.dropbearcachedir)
+		free(pv->config.cache.dropbearcachedir);
+
+	if (pv->config.log.logdir)
+		free(pv->config.log.logdir);
+
+	if (pv->config.net.brdev)
+		free(pv->config.net.brdev);
+	if (pv->config.net.braddress4)
+		free(pv->config.net.braddress4);
+	if (pv->config.net.brmask4)
+		free(pv->config.net.brmask4);
+
+	if (pv->config.bl.mtd_path)
+		free(pv->config.bl.mtd_path);
+
+	if (pv->config.storage.path)
+		free(pv->config.storage.path);
+	if (pv->config.storage.fstype)
+		free(pv->config.storage.fstype);
+	if (pv->config.storage.opts)
+		free(pv->config.storage.opts);
+	if (pv->config.storage.mntpoint)
+		free(pv->config.storage.mntpoint);
+	if (pv->config.storage.mnttype)
+		free(pv->config.storage.mnttype);
+	if (pv->config.storage.logtempsize)
+		free(pv->config.storage.logtempsize);
+
+	if (pv->config.creds.type)
+		free(pv->config.creds.type);
+	if (pv->config.creds.host)
+		free(pv->config.creds.host);
+	if (pv->config.creds.id)
+		free(pv->config.creds.id);
+	if (pv->config.creds.prn)
+		free(pv->config.creds.prn);
+	if (pv->config.creds.secret)
+		free(pv->config.creds.secret);
+	if (pv->config.creds.token)
+		free(pv->config.creds.token);
+
+	if (pv->config.creds.tpm.key)
+		free(pv->config.creds.tpm.key);
+	if (pv->config.creds.tpm.cert)
+		free(pv->config.creds.tpm.cert);
+
+	if (pv->config.factory.autotok)
+		free(pv->config.factory.autotok);
+}
+
+inline void pv_config_set_creds_id(char *id) { get_pv_instance()->config.creds.id = id; }
+inline void pv_config_set_creds_prn(char *prn) { get_pv_instance()->config.creds.prn = prn; }
+inline void pv_config_set_creds_secret(char *secret) { get_pv_instance()->config.creds.secret = secret; }
+
+void pv_config_set_storage_gc_reserved(int reserved) { get_pv_instance()->config.storage.gc.reserved = reserved; }
+void pv_config_set_storage_gc_keep_factory(bool keep_factory) { get_pv_instance()->config.storage.gc.keep_factory = keep_factory; }
+void pv_config_set_storage_gc_threshold(int threshold) { get_pv_instance()->config.storage.gc.threshold = threshold; }
+
+void pv_config_set_log_push(bool push) { get_pv_instance()->config.log.push = push; }
+
+char* pv_config_get_cache_metacachedir() { return get_pv_instance()->config.cache.metacachedir; }
+char* pv_config_get_cache_dropbearcachedir() { return get_pv_instance()->config.cache.dropbearcachedir; }
+
+char* pv_config_get_creds_type() { return get_pv_instance()->config.creds.type; }
+char* pv_config_get_creds_host() { return get_pv_instance()->config.creds.host; }
+int pv_config_get_creds_port() { return get_pv_instance()->config.creds.port; }
+char* pv_config_get_creds_id() { return get_pv_instance()->config.creds.id; }
+char* pv_config_get_creds_prn() { return get_pv_instance()->config.creds.prn; }
+char* pv_config_get_creds_secret() { return get_pv_instance()->config.creds.secret; }
+char* pv_config_get_creds_token() { return get_pv_instance()->config.creds.token; }
+
+char* pv_config_get_factory_autotok() { return get_pv_instance()->config.factory.autotok; }
+
+char* pv_config_get_storage_path() { return get_pv_instance()->config.storage.path; }
+char* pv_config_get_storage_fstype() { return get_pv_instance()->config.storage.fstype; }
+char* pv_config_get_storage_opts() { return get_pv_instance()->config.storage.opts; }
+char* pv_config_get_storage_mntpoint() { return get_pv_instance()->config.storage.mntpoint; }
+char* pv_config_get_storage_mnttype() { return get_pv_instance()->config.storage.mnttype; }
+char* pv_config_get_storage_logtempsize() { return get_pv_instance()->config.storage.logtempsize; }
+int pv_config_get_storage_wait() { return get_pv_instance()->config.storage.wait; }
+
+int pv_config_get_storage_gc_reserved() { return get_pv_instance()->config.storage.gc.reserved; }
+bool pv_config_get_storage_gc_keep_factory() { return get_pv_instance()->config.storage.gc.keep_factory; }
+int pv_config_get_storage_gc_threshold() { return get_pv_instance()->config.storage.gc.threshold; }
+
+int pv_config_get_updater_interval() { return get_pv_instance()->config.updater.interval; }
+int pv_config_get_updater_network_timeout() { return get_pv_instance()->config.updater.network_timeout; }
+bool pv_config_get_updater_network_use_tmp_objects() { return get_pv_instance()->config.updater.use_tmp_objects; }
+int pv_config_get_updater_revision_retries() { return get_pv_instance()->config.updater.revision_retries; }
+int pv_config_get_updater_revision_retry_timeout() { return get_pv_instance()->config.updater.revision_retry_timeout; }
+int pv_config_get_updater_commit_delay() { return get_pv_instance()->config.updater.commit_delay; }
+
+int pv_config_get_bl_type() { return get_pv_instance()->config.bl.type; }
+bool pv_config_get_bl_mtd_only() { return get_pv_instance()->config.bl.mtd_only; }
+char* pv_config_get_bl_mtd_path() { return get_pv_instance()->config.bl.mtd_path; }
+
+bool pv_config_get_watchdog_enabled() { return get_pv_instance()->config.wdt.enabled; }
+int pv_config_get_watchdog_timeout() { return get_pv_instance()->config.wdt.timeout; }
+
+char* pv_config_get_network_brdev() { return get_pv_instance()->config.net.brdev; }
+char* pv_config_get_network_braddress4() { return get_pv_instance()->config.net.braddress4; }
+char* pv_config_get_network_brmask4() { return get_pv_instance()->config.net.brmask4; }
+
+char* pv_config_get_log_logdir() { return get_pv_instance()->config.log.logdir; }
+int pv_config_get_log_logmax() { return get_pv_instance()->config.log.logmax; }
+int pv_config_get_log_loglevel() { return get_pv_instance()->config.log.loglevel; }
+int pv_config_get_log_logsize() { return get_pv_instance()->config.log.logsize; }
+bool pv_config_get_log_push() { return get_pv_instance()->config.log.push; }
+bool pv_config_get_log_capture() { return get_pv_instance()->config.log.capture; }
+
 static int pv_config_init(struct pv_init *this)
 {
-	struct pantavisor *pv = NULL;
-	struct pantavisor_config *config = NULL;
-	int ret = -1;
+	struct pantavisor *pv = get_pv_instance();
 
-	pv = get_pv_instance();
-	if (!pv || !pv->config)
-		goto out;
-	config = pv->config;
-        if (pv_config_from_file(PV_CONFIG_FILENAME, config) < 0) {
-		printf("FATAL: unable to parse pantavisor config");
-		goto out;
+	if (pv_config_from_file("/etc/pantavisor.config", &pv->config) < 0) {
+		printf("FATAL: unable to parse /etc/pantavisor.config\n");
+		return -1;
 	}
-	ret = 0;
-out:
-	return ret;
+
+	return 0;
 }
 
 static int ph_config_init(struct pv_init *this)
 {
-	char pconfig_p[256];
-	struct pantavisor *pv = NULL;
-	struct pantavisor_config *config = NULL;
-	int ret = -1;
+	char config_file[256];
+	struct pantavisor *pv = get_pv_instance();
 
-	pv = get_pv_instance();
-	if (!pv || !pv->config)
-		goto out;
-	config = pv->config;
-	sprintf(pconfig_p, "%s/config/pantahub.config", config->storage.mntpoint);
-	if (ph_config_from_file(pconfig_p, config) < 0) {
-		printf("FATAL: unable to parse pantahub config");
-		goto out;
+	sprintf(config_file, "%s/config/pantahub.config", pv_config_get_storage_mntpoint());
+	if (ph_config_from_file(config_file, &pv->config) < 0) {
+		printf("FATAL: unable to parse %s/config/pantahub.config\n", pv_config_get_storage_mntpoint());
+		return -1;
 	}
-	ret = 0;
-out:
-	return ret;
+
+	return 0;
+
 }
+
 struct pv_init pv_init_config =  {
 	.init_fn = pv_config_init,
 	.flags = 0,
 };
+
 struct pv_init ph_init_config =  {
 	.init_fn = ph_config_init,
 	.flags = 0,
 };
-

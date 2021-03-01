@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2018-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,32 +19,26 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_BOOTLOADER_H
-#define PV_BOOTLOADER_H
+#ifndef PV_METADATA_H
+#define PV_METADATA_H
 
-#include "pantavisor.h"
 #include <stdbool.h>
 
+#include "pantavisor.h"
 
-int pv_bl_set_try(int rev);
-int pv_bl_unset_try(void);
-
-int pv_bl_get_rev(void);
-int pv_bl_set_rev(int rev);
-
-int pv_bl_clear_update(void);
-
-struct bl_ops {
-	int (*init)(void);
-	int (*get_env_key)(char *key);
-	int (*set_env_key)(char *key, int value);
-	int (*unset_env_key)(char *key);
-	int (*flush_env)(void);
-	int (*install_kernel)(char *path);
+struct pv_metadata {
+    struct dl_list usermeta_list; // pv_usermeta
+    struct dl_list devmeta_list; // pv_devmeta
 };
 
-extern const struct bl_ops uboot_ops;
-extern const struct bl_ops uboot_pvk_ops;
-extern const struct bl_ops grub_ops;
+int pv_metadata_factory_meta(struct pantavisor *pv);
+bool pv_metadata_factory_meta_done(struct pantavisor *pv);
+
+int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf);
+
+int pv_metadata_parse_devmeta(struct pantavisor *pv);
+int pv_metadata_upload_devmeta(struct pantavisor *pv);
+
+void pv_metadata_remove(struct pantavisor *pv);
 
 #endif

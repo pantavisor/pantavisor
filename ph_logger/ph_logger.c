@@ -39,15 +39,15 @@
 #include <string.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <errno.h>
+
 #include "../utils.h"
 #include "../pantavisor.h"
-#include "../config.h"
 #include "../pantahub.h"
 #include "../version.h"
 #include "../utils/list.h"
 #include "../pvctl_utils.h"
 #include "../trestclient.h"
-#include "../device.h"
 
 #define MODULE_NAME             "ph_logger"
 #include "../log.h"
@@ -67,10 +67,6 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-/*
- * msg can be at most twice the size of log configured
- * in ph config file.
- */
 static void ph_log(int level, char *msg, ...)
 {
 	struct ph_logger_msg *ph_logger_msg = NULL;
@@ -316,12 +312,12 @@ static ph_logger_handler_t get_write_handler(int version)
 	return write_handler[version];
 }
 
-static int ph_logger_get_connection(struct ph_logger *ph_logger, struct pantavisor_config *config)
+static int ph_logger_get_connection(struct ph_logger *ph_logger)
 {
 	if (ph_logger->pv_conn)
 		goto out;
 
-	ph_logger->pv_conn = pv_get_pv_connection(config);
+	ph_logger->pv_conn = pv_get_pv_connection();
 	if (ph_logger->client) {
 		trest_free(ph_logger->client);
 		ph_logger->client = NULL;
@@ -404,9 +400,7 @@ static void sigchld_handler(int signum)
 		;	
 }
 
-static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger,
-				struct pantavisor_config *config,
-				char *logs)
+static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger, char *logs)
 {
 	int ret = 0;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
@@ -416,10 +410,6 @@ static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger,
 	if (ph_logger->client)
 		goto auth;
 
-	if (!config->creds.prn || strcmp(config->creds.prn, "") == 0) {
-		ret = -1;
-		goto out;
-	}
 	ph_logger->client = pv_get_trest_client(pv_global, ph_logger->pv_conn);
 
 	if (!ph_logger->client) {
@@ -515,7 +505,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	} else {
 		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
 				PH_LOGGER_POS_XATTR, filename, pos);
-		sprintf(dst, "%ld", pos);
+		sprintf(dst, "%lld", pos);
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */
@@ -723,7 +713,7 @@ close_fd:
 			snprintf(json_frag_array + off, avail, "]");
 			// set ret to 1, something pending to be sent
 			ret = 1;
-			if (!ph_logger_push_logs_endpoint(&ph_logger, pv_global->config, json_frag_array)) {
+			if (!ph_logger_push_logs_endpoint(&ph_logger, json_frag_array)) {
 				char value[20];
 
 				sprintf(value, "%"PRId64, pos);
@@ -829,23 +819,6 @@ accept_again:
 	return nr_logs;
 }
 
-static void ph_logger_load_config(struct pantavisor *pv)
-{
-	char ph_path[PATH_MAX];
-
-	if (pv_config_from_file(PV_CONFIG_FILENAME, pv->config)) {
-		WARN_ONCE("Error starting pantahub logger service."
-				"Unable to parse pantavisor config.\n");
-	}
-	/* Load PH config. */
-	sprintf(ph_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
-
-	if (ph_config_from_file(ph_path, pv->config)) {
-		WARN_ONCE("Error starting pantahub logger service."
-				"Unable to parse pantahub config.\n");
-	}
-}
-
 /*
  * For each newline found in buf, construct a filename to read from.
  */
@@ -874,15 +847,8 @@ static int ph_logger_push_from_file_parse_info(char *buf, int len, int revision,
 	else
 		source = slash_at;
 
-	if (ph_logger_get_connection(&ph_logger, pv_global->config)) {
-		bool load_config = false;
-
-		load_config = (!pv_global->config->creds.prn ||
-			strcmp(pv_global->config->creds.prn, "") == 0);
-		if (load_config)
-			ph_logger_load_config(pv_global);
+	if (ph_logger_get_connection(&ph_logger))
 		return ph_logger_push_from_file(filename, platform, source, revision);
-	}
 	ph_log(DEBUG, "exits this way");
 	return -1;
 }
@@ -1108,7 +1074,7 @@ static void ph_logger_start_cloud(struct pantavisor *pv, int revision)
 		}
 	}
 
-	if ((ph_logger.range_service == -1) && (revision > 0)) {
+	if (ph_logger.range_service == -1) {
 		ph_logger.range_service = ph_logger_start_range_service(pv, revision);
 		if (ph_logger.range_service > 0) {
 			pv_log(DEBUG, "started range service with pid %d", ph_logger.range_service);
@@ -1164,12 +1130,12 @@ void ph_logger_toggle(struct pantavisor *pv, int rev)
 	if (!pv)
 		return;
 
-	if (pv_device_capture_logs_activated(pv))
+	if (pv_config_get_log_capture())
 		ph_logger_start_local(pv, rev);
 	else
 		ph_logger_stop_local(pv);
 
-	if (pv_device_push_logs_activated(pv))
+	if (pv_config_get_log_push())
 		ph_logger_start_cloud(pv, rev);
 	else
 		ph_logger_stop_cloud(pv);

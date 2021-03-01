@@ -19,6 +19,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
+#include <string.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -32,7 +35,6 @@
 #include <sys/mount.h>
 #include <sys/reboot.h>
 #include <sys/sysmacros.h>
-#include <stdbool.h>
 
 #include <linux/reboot.h>
 
@@ -40,10 +42,10 @@
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "init.h"
 #include "tsh.h"
 #include "pantavisor.h"
 #include "version.h"
-#include "init.h"
 #include "utils.h"
 #include "utils/list.h"
 #include "pvlogger.h"
@@ -325,12 +327,13 @@ struct pv_init *pv_init_tbl [] = {
 	&ph_init_mount,
 	&pv_init_revision,
 	&pv_init_log,
-	&pv_init_device,
+	&pv_init_storage,
+	&pv_init_metadata,
+	&pv_init_cmd,
 	&pv_init_network,
 	&pv_init_platform,
 	&pv_init_bl,
-	&pv_init_state,
-	&pv_init_update
+	&pv_init_pantavisor,
 };
 
 int pv_do_execute_init()

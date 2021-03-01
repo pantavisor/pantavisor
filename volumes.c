@@ -113,22 +113,22 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	char path[PATH_MAX], base[128], mntpoint[521];
 	char *fstype;
 
-	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
+	sprintf(base, "%s/disks", pv_config_get_storage_mntpoint());
 
 	switch (pv_state_spec(s)) {
 	case SPEC_SYSTEM1:
 		if (v->plat) {
-			sprintf(path, "%s/trails/%d/%s/%s", pv->config->storage.mntpoint,
+			sprintf(path, "%s/trails/%d/%s/%s", pv_config_get_storage_mntpoint(),
 				s->rev, v->plat->name, v->name);
 			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
 		} else {
-			sprintf(path, "%s/trails/%d/bsp/%s", pv->config->storage.mntpoint,
+			sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(),
 				s->rev, v->name);
 			sprintf(mntpoint, "/volumes/%s", v->name);
 		}
 		break;
 	case SPEC_MULTI1:
-		sprintf(path, "%s/trails/%d/%s", pv->config->storage.mntpoint,
+		sprintf(path, "%s/trails/%d/%s", pv_config_get_storage_mntpoint(),
 			s->rev, v->name);
 		sprintf(mntpoint, "/volumes/%s", v->name);
 		break;
@@ -255,7 +255,7 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 
 	// Create volumes if non-existant
 	mkdir("/volumes", 0755);
-	sprintf(base, "%s/disks", pv->config->storage.mntpoint);
+	sprintf(base, "%s/disks", pv_config_get_storage_mntpoint());
 	mkdir_p(base, 0755);
 
 	// Iterate between runlevel vols and lowest priority vols

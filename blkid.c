@@ -34,9 +34,10 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdint.h>
 
-#include "utils.h"
 #include "blkid.h"
+#include "utils.h"
 #include "log.h"
 
 #define MODULE_NAME			"blkid"

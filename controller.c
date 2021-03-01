@@ -27,10 +27,11 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <netdb.h>
+
 #include <sys/types.h>
 #include <sys/wait.h>
-
 #include <sys/reboot.h>
+
 #include <linux/limits.h>
 #include <linux/reboot.h>
 
@@ -44,7 +45,6 @@
 #include "pantahub.h"
 #include "bootloader.h"
 #include "cmd.h"
-#include "device.h"
 #include "version.h"
 #include "wdt.h"
 #include "network.h"
@@ -53,6 +53,7 @@
 #include "state.h"
 #include "revision.h"
 #include "updater.h"
+#include "metadata.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -128,7 +129,7 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 {
 	int ret = -1;
 
-	ret = pv_device_factory_meta(pv);
+	ret = pv_metadata_factory_meta(pv);
 	if (ret)
 		return STATE_FACTORY_UPLOAD;
 	return STATE_WAIT;
@@ -137,12 +138,9 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 static pv_state_t _pv_init(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-	struct pantavisor_config *c;
 
 	// Initialize flags
 	pv->flags = 0;
-	c = calloc(1, sizeof(struct pantavisor_config));
-	pv->config = c;
 	if (pv_do_execute_init())
 		return STATE_EXIT;
         return STATE_RUN;
@@ -181,7 +179,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_meta_set_objdir(pv);
-	pv_device_parse_devmeta(pv);
+	pv_metadata_parse_devmeta(pv);
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
@@ -208,7 +206,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	clock_gettime(CLOCK_MONOTONIC, &tp);
 	wait_delay = 0;
 	commit_delay = 0;
-	rollback_time = tp.tv_sec + pv->config->updater.network_timeout;
+	rollback_time = tp.tv_sec + pv_config_get_updater_network_timeout();
 
 	return STATE_WAIT;
 }
@@ -216,17 +214,13 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 {
 	int need_register = 1;
-	struct stat st;
-	char config_path[256];
 	char *c;
 
 	c = calloc(1, sizeof(char) * 128);
 
-	sprintf(config_path, "%s/config/unclaimed.config", pv->config->storage.mntpoint);
-	if (stat(config_path, &st) == 0)
-		ph_config_from_file(config_path, pv->config);
+	pv_config_load();
 
-	if ((strcmp(pv->config->creds.id, "") != 0) && pv_ph_device_exists(pv))
+	if ((strcmp(pv_config_get_creds_id(), "") != 0) && pv_ph_device_exists(pv))
 		need_register = 0;
 
 	if (need_register) {
@@ -236,7 +230,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 				free(c);
 			return STATE_WAIT;
 		}
-		ph_config_to_file(pv->config, config_path);
+		pv_config_save();
 		pv_ph_release_client(pv);
 	}
 
@@ -246,13 +240,13 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	} else {
 		pv_log(INFO, "device has been claimed, proceeding normally");
 		printf("INFO: pantavisor device has been claimed, proceeding normally\n");
-		sprintf(config_path, "%s/config/pantahub.config", pv->config->storage.mntpoint);
-		ph_config_to_file(pv->config, config_path);
-		pv_ph_release_client(pv);
 		pv->flags &= ~DEVICE_UNCLAIMED;
-		pv_ph_update_hint_file(pv, NULL);
+		pv_config_save();
+		pv_ph_release_client(pv);
 		open("/pv/challenge", O_TRUNC | O_WRONLY);
 	}
+
+	pv_ph_update_hint_file(pv, NULL);
 
 	if (c)
 		free(c);
@@ -271,7 +265,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 	if (!pv)
 		return 0;
 	// update meta
-	pv_device_upload_devmeta(pv);
+	pv_metadata_upload_devmeta(pv);
 	pv_network_update_meta(pv);
 	pv_ph_device_get_meta(pv);
 	return 0;
@@ -302,7 +296,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	ph_logger_toggle(pv, pv->state->rev);
 
 	// update meta info
-	if (!pv_device_factory_meta_done(pv)) {
+	if (!pv_metadata_factory_meta_done(pv)) {
 		return STATE_FACTORY_UPLOAD;
 	}
 	pv_meta_update_to_ph(pv);
@@ -316,7 +310,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		if (pv_update_is_trying(pv->update)) {
 			// set initial testing time
 			clock_gettime(CLOCK_MONOTONIC, &tp);
-			commit_delay = tp.tv_sec + pv->config->update_commit_delay;
+			commit_delay = tp.tv_sec + pv_config_get_updater_commit_delay();
 			// progress update state to testing
 			pv_update_test(pv);
 		}
@@ -352,7 +346,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// with this wait, we make sure we have not consecutively executed network stuff
 	// twice in less than the configured interval
-	if (pv_wait_delay_timedout(pv->config->updater.interval)) {
+	if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
 		// check if device is unclaimed
 		if (pv->flags & DEVICE_UNCLAIMED) {
 			next_state = STATE_UNCLAIMED;
@@ -367,7 +361,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	}
 
 	// check if we need to run garbage collector
-	if (pv_device_get_gc_threshold(pv) && pv_storage_threshold_reached(pv)) {
+	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
 		pv_log(WARN, "freeing up space...");
 		pv_storage_gc_run(pv);
 	}
@@ -542,7 +536,7 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 	pv_wdt_start(pv);
 
 	// unmount storage
-	umount(pv->config->storage.mntpoint);
+	umount(pv_config_get_storage_mntpoint());
 	sync();
 
 	sleep(5);
@@ -569,7 +563,7 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 	}
 
 	// unmount storage
-	umount(pv->config->storage.mntpoint);
+	umount(pv_config_get_storage_mntpoint());
 	sync();
 
 	sleep(5);

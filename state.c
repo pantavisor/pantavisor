@@ -24,6 +24,8 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include <string.h>
+
 #include "state.h"
 #include "volumes.h"
 #include "platforms.h"
