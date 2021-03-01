@@ -1,0 +1,55 @@
+{
+  "rules": [
+    {
+      "match": {
+        "ACTION" : ["ADD", "REMOVE"],
+        "DEVNAME": [
+            "hd*",
+            "fd[0-9]*",
+            "ram[0-9]*",
+            "raw[0-9]*",
+            "sd[a-z]",
+            "sd[a-z][0-9]*",
+            "sd[a-i][a-z]",
+            "sd[a-i][a-z][0-9]*",
+            "dasd[0-9]*",
+            "loop[0-9]*",
+            "md[0-9]*",
+            "mmc[0-9]blk[0-9]*",
+            "mmcblk[0-9]*"
+        ],
+        "SUBSYSTEM": "block",
+        "ID_VENDOR_ID": "0781",
+        "ID_MODEL_ID": "558b",
+        "MAJOR" : 8,
+        "MINOR" : 16
+      },
+      "apply": {
+        "perm": 666,
+        "gid": 5,
+        "uid": 0
+      }
+    },
+    {
+      "match": {
+        "ACTION": ["ADD", "REMOVE"],
+        "DEVNAME": [
+          "ttyS[0-9]*",
+          "ttyUSB[0-9]*",
+          "ttyACM[0-9]*",
+          "ttyS[ACIR][0-9]*"
+        ],
+        "SUBSYSTEM": "tty",
+        "ID_VENDOR_ID": "0403",
+        "ID_MODEL_ID": "6001",
+        "MAJOR" : 188,
+        "MINOR" : 0
+      },
+      "apply": {
+        "perm": 644,
+        "gid": 11,
+        "uid": 0
+      }
+    }
+  ]
+}
