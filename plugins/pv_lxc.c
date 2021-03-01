@@ -84,13 +84,13 @@ static int pv_lxc_get_lxc_log_level()
 	return 2;
 }
 
-static int pv_lxc_capture_logs_activated()
+static bool pv_lxc_capture_logs_activated()
 {
 	if (__get_pv_instance())
 		return __get_pv_instance()->config.log.capture;
 
 	// default
-	return CAPTURE_DISK;
+	return true;
 }
 
 static void pv_free_lxc_log(struct pv_log_info *pv_log_i)

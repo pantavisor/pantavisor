@@ -158,6 +158,7 @@ char* pv_config_get_storage_fstype(void);
 char* pv_config_get_storage_opts(void);
 char* pv_config_get_storage_mntpoint(void);
 char* pv_config_get_storage_mnttype(void);
+char* pv_config_get_storage_logtempsize(void);
 int pv_config_get_storage_wait(void);
 
 int pv_config_get_storage_gc_reserved(void);

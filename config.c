@@ -131,6 +131,7 @@ static int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.opts = config_get_value_string("storage.opts", NULL);
 	config->storage.mntpoint = config_get_value_string("storage.mntpoint", NULL);
 	config->storage.mnttype = config_get_value_string("storage.mnttype", NULL);
+	config->storage.logtempsize = config_get_value_string("storage.logtempsize", NULL);
 	config->storage.wait = config_get_value_int("storage.wait", 5);
 
 	config->storage.gc.reserved = config_get_value_int("storage.gc.reserved", 5);
@@ -162,8 +163,6 @@ static int ph_config_from_file(char *path, struct pantavisor_config *config)
 	// for overrides
 	config_parse_cmdline(&config_list, "ph_");
 
-	item = _config_get_value("storage.logtempsize");
-	config->storage.logtempsize = item ? strdup(item) : NULL;
 	config->creds.type = config_get_value_string("creds.type", "builtin");
 	config->creds.host = config_get_value_string("creds.host", "192.168.53.1");
 	config->creds.port = config_get_value_int("creds.port", 12365);
@@ -317,6 +316,8 @@ void pv_config_free()
 		free(pv->config.storage.mntpoint);
 	if (pv->config.storage.mnttype)
 		free(pv->config.storage.mnttype);
+	if (pv->config.storage.logtempsize)
+		free(pv->config.storage.logtempsize);
 
 	if (pv->config.creds.type)
 		free(pv->config.creds.type);
@@ -368,6 +369,7 @@ char* pv_config_get_storage_fstype() { return get_pv_instance()->config.storage.
 char* pv_config_get_storage_opts() { return get_pv_instance()->config.storage.opts; }
 char* pv_config_get_storage_mntpoint() { return get_pv_instance()->config.storage.mntpoint; }
 char* pv_config_get_storage_mnttype() { return get_pv_instance()->config.storage.mnttype; }
+char* pv_config_get_storage_logtempsize() { return get_pv_instance()->config.storage.logtempsize; }
 int pv_config_get_storage_wait() { return get_pv_instance()->config.storage.wait; }
 
 int pv_config_get_storage_gc_reserved() { return get_pv_instance()->config.storage.gc.reserved; }
