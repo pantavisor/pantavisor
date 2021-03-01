@@ -299,6 +299,8 @@ int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.mnttype = _config_get_value("storage.mnttype");
 	item = _config_get_value("storage.wait");
 	config->storage.wait = item ? atoi(item) : 5;
+	item = _config_get_value("storage.logtempsize");
+	config->storage.logtempsize = item ? strdup(item) : NULL;
 
 	item = _config_get_value("storage.gc.reserved");
 	config->storage.gc.reserved = item ? atoi(item) : 5;

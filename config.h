@@ -63,6 +63,7 @@ struct pantavisor_storage {
 	char *opts;
 	char *mntpoint;
 	char *mnttype;
+	char *logtempsize;
 	int wait;
 	struct pantavisor_gc gc;
 };

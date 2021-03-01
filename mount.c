@@ -138,11 +138,17 @@ static int pv_mount_init(struct pv_init *this)
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
 
 	/* log.capture == 2 -> we capture to tmpfs */
-	if (config->log.capture == 2) {
+	if (config->storage.logtempsize && strlen(config->storage.logtempsize)) {
 		char *logmount = malloc(sizeof(char) * (strlen(config->storage.mntpoint) + strlen("/logs  ")));
+		char *opts = NULL;
+		opts = malloc(sizeof(char) * (strlen(config->storage.logtempsize) + strlen("size=%s") + 1));
+		sprintf(opts, "size=%s",config->storage.logtempsize);
 		sprintf(logmount, "%s%s", config->storage.mntpoint,"/logs");
 		mkdir_p(logmount, 0755);
-		ret = mount("none", logmount, "tmpfs", 0, NULL);
+		printf("Mounting tmpfs logmount: %s with opts: %s\n", logmount, opts);
+		ret = mount("none", logmount, "tmpfs", 0, opts);
+		free (logmount);
+		if (opts) free (opts);
 	}
 out:
 	if (ret < 0)
