@@ -38,10 +38,6 @@
 
 #include <linux/reboot.h>
 
-#define MODULE_NAME			"updater"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "init.h"
 #include "tsh.h"
 #include "pantavisor.h"
@@ -51,6 +47,10 @@
 #include "pvlogger.h"
 #include "platforms.h"
 #include "state.h"
+
+#define MODULE_NAME			"updater"
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 #ifndef O_LARGEFILE
 #define O_LARGEFILE 0

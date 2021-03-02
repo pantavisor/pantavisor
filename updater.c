@@ -36,23 +36,24 @@
 #include <thttp.h>
 #include <mbedtls/sha256.h>
 
-#define MODULE_NAME			"updater"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
+#include "trestclient.h"
+#include "updater.h"
 #include "utils.h"
 #include "objects.h"
 #include "parser/parser.h"
-#include "updater.h"
 #include "bootloader.h"
 #include "pantahub.h"
 #include "storage.h"
-#include "trestclient.h"
 #include "wdt.h"
 #include "init.h"
 #include "revision.h"
 #include "parser/parser_bundle.h"
 #include "state.h"
+
+#define MODULE_NAME			"updater"
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
+
 
 typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 

@@ -42,17 +42,16 @@
 
 #include <arpa/inet.h>
 
+#include "trestclient.h"
+#include "pantahub.h"
+#include "pantavisor.h"
+#include "utils.h"
+#include "tsh.h"
+#include "metadata.h"
 
 #define MODULE_NAME             "pantahub-api"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#include "pantahub.h"
-#include "pantavisor.h"
-#include "utils.h"
-#include "trestclient.h"
-#include "tsh.h"
-#include "metadata.h"
 
 #define ENDPOINT_FMT "/devices/%s"
 

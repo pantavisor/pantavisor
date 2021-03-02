@@ -23,6 +23,9 @@
 #ifndef PV_JSONS_H
 #define PV_JSONS_H
 
+#include "utils/list.h"
+#include "state.h"
+
 struct pv_json {
 	char *name;
 	char *value;

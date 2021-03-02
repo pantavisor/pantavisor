@@ -23,13 +23,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "jsons.h"
+#include "state.h"
+
 #define MODULE_NAME			"jsons"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#include "jsons.h"
-
-#include "state.h"
 
 struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value)
 {

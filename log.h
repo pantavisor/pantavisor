@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifdef DEBUG
+#undef DEBUG
+#endif
+
 #ifndef PV_LOG_H
 #define PV_LOG_H
 
@@ -27,10 +31,6 @@
 #include "pantavisor.h"
 
 void exit_error(int err, char *msg);
-
-#ifdef DEBUG
-#undef DEBUG
-#endif
 
 enum log_level {
 	FATAL,	// 0

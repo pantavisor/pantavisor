@@ -39,10 +39,6 @@ int setns(int nsfd, int nstype);
 #include <sched.h>
 #endif
 
-#define MODULE_NAME             "platforms"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "parser/parser.h"
 #include "wdt.h"
 #include "platforms.h"
@@ -51,6 +47,10 @@ int setns(int nsfd, int nstype);
 #include "utils.h"
 #include "init.h"
 #include "state.h"
+
+#define MODULE_NAME             "platforms"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 const int MAX_RUNLEVEL = 2;
 

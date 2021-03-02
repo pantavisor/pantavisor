@@ -31,14 +31,14 @@
 #include <errno.h>
 #include <mtd/mtd-user.h>
 
-#define MODULE_NAME			"bootloader"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "utils.h"
 
 #include "bootloader.h"
 #include "init.h"
+
+#define MODULE_NAME			"bootloader"
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 const struct bl_ops *ops = 0;
 

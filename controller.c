@@ -40,7 +40,6 @@
 #include "loop.h"
 #include "platforms.h"
 #include "controller.h"
-#include "updater.h"
 #include "volumes.h"
 #include "pantahub.h"
 #include "bootloader.h"
@@ -54,14 +53,13 @@
 #include "revision.h"
 #include "updater.h"
 #include "metadata.h"
+#include "storage.h"
+#include "tsh.h"
+#include "ph_logger/ph_logger.h"
 
 #define MODULE_NAME		"controller"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#include "storage.h"
-#include "tsh.h"
-#include "ph_logger/ph_logger.h"
 
 #define CMDLINE_OFFSET	7
 
@@ -362,7 +360,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
-		pv_log(WARN, "freeing up space...");
 		pv_storage_gc_run(pv);
 	}
 

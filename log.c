@@ -35,10 +35,6 @@
 
 #include <linux/limits.h>
 
-#define MODULE_NAME		"log"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "config.h"
 #include "utils.h"
 #include "thttp.h"
@@ -48,6 +44,10 @@
 #include "revision.h"
 #include "version.h"
 #include "ph_logger/ph_logger.h"
+
+#define MODULE_NAME		"log"
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 struct level_name {
 	int log_level;
@@ -323,10 +323,12 @@ void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;
 
-#if 0
+	if (level > pv_config_get_log_loglevel())
+		return;
+
 	if (log_init_pid != getpid())
 		return;
-#endif
+
 	va_start(args, fmt);
 
 	__vlog(module, level, fmt, args);

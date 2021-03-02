@@ -26,11 +26,12 @@
 #include <string.h>
 #include "init.h"
 #include "utils.h"
+#include "revision.h"
+#include "bootloader.h"
+
 #define MODULE_NAME		"revision"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-#include "revision.h"
-#include "bootloader.h"
 
 struct pv_revision {
 	int pv_rev;
