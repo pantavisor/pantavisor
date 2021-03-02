@@ -133,7 +133,7 @@ static int pv_mount_init(struct pv_init *this)
 		char *opts = NULL;
 		opts = malloc(sizeof(char) * (strlen(pv_config_get_storage_logtempsize()) + strlen("size=%s") + 1));
 		sprintf(opts, "size=%s", pv_config_get_storage_logtempsize());
-		sprintf(logmount, "%s%s", pv_config_get_storage_logtempsize(), "/logs");
+		sprintf(logmount, "%s%s", pv_config_get_storage_mntpoint(), "/logs");
 		mkdir_p(logmount, 0755);
 		printf("Mounting tmpfs logmount: %s with opts: %s\n", logmount, opts);
 		ret = mount("none", logmount, "tmpfs", 0, opts);
