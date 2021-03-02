@@ -347,7 +347,7 @@ inline void pv_config_set_creds_secret(char *secret) { get_pv_instance()->config
 
 void pv_config_set_storage_gc_reserved(int reserved) { get_pv_instance()->config.storage.gc.reserved = reserved; }
 void pv_config_set_storage_gc_keep_factory(bool keep_factory) { get_pv_instance()->config.storage.gc.keep_factory = keep_factory; }
-void pv_config_set_storage_gc_threshold(int threshold) { get_pv_instance()->config.storage.gc.threshold = threshold; }
+void pv_config_set_storage_gc_threshold(off_t threshold) { get_pv_instance()->config.storage.gc.threshold = threshold; }
 
 void pv_config_set_log_push(bool push) { get_pv_instance()->config.log.push = push; }
 
@@ -374,7 +374,7 @@ int pv_config_get_storage_wait() { return get_pv_instance()->config.storage.wait
 
 int pv_config_get_storage_gc_reserved() { return get_pv_instance()->config.storage.gc.reserved; }
 bool pv_config_get_storage_gc_keep_factory() { return get_pv_instance()->config.storage.gc.keep_factory; }
-int pv_config_get_storage_gc_threshold() { return get_pv_instance()->config.storage.gc.threshold; }
+off_t pv_config_get_storage_gc_threshold() { return get_pv_instance()->config.storage.gc.threshold; }
 
 int pv_config_get_updater_interval() { return get_pv_instance()->config.updater.interval; }
 int pv_config_get_updater_network_timeout() { return get_pv_instance()->config.updater.network_timeout; }

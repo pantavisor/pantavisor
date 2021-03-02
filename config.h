@@ -25,6 +25,8 @@
 
 #include <stdbool.h>
 
+#include <sys/types.h>
+
 #include "utils/list.h"
 
 enum {

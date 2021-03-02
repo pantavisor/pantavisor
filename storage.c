@@ -216,7 +216,6 @@ struct pv_storage {
 	off_t real_free;
 	int real_free_percentage;
 	off_t threshold;
-	int threshold_percentage;
 };
 
 static struct pv_storage* pv_storage_new(struct pantavisor *pv)
@@ -244,8 +243,6 @@ static struct pv_storage* pv_storage_new(struct pantavisor *pv)
 		if (this->total)
 			this->real_free_percentage = (this->real_free * 100) / this->total;
 		this->threshold = pv_config_get_storage_gc_threshold();
-		if (this->total)
-			this->threshold = (this->threshold * 100) / this->total;
 		return this;
 	}
 
