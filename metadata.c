@@ -270,7 +270,7 @@ static void pv_metadata_override_config(char *key, char *value)
 	} else if (!strcmp(key, "storage.gc.keep_factory")) {
 		pv_config_set_storage_gc_keep_factory(atoi(value));
 	} else if (!strcmp(key, "storage.gc.threshold")) {
-		pv_config_set_storage_gc_threshold(atoi(value));
+		pv_config_set_storage_gc_threshold(atoi(value) * 1024 * 1024);
 	} else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push")) {
 		pv_config_set_log_push(atoi(value));
 	}

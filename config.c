@@ -136,7 +136,7 @@ static int pv_config_from_file(char *path, struct pantavisor_config *config)
 
 	config->storage.gc.reserved = config_get_value_int("storage.gc.reserved", 5);
 	config->storage.gc.keep_factory = config_get_value_bool("storage.gc.keep_factory", false);
-	config->storage.gc.threshold = config_get_value_int("storage.gc.threshold", 0);
+	config->storage.gc.threshold = config_get_value_int("storage.gc.threshold", 0) * 1024 * 1024;
 
 	config->updater.use_tmp_objects = config_get_value_bool("updater.use_tmp_objects", true);
 	config->updater.revision_retries = config_get_value_int("revision.retries", 10);
@@ -183,7 +183,7 @@ static int ph_config_from_file(char *path, struct pantavisor_config *config)
 
 	config->log.logdir = config_get_value_string("log.dir", "/storage/logs/");
 	config->log.logmax = config_get_value_int("log.maxsize", (1 << 21)); // 2 MiB
-	config->log.loglevel = config_get_value_int("log.level", 0);
+	config->log.loglevel = config_get_value_int("log.level", 5);
 	config->log.logsize = config_get_value_logsize("log.buf_nitems", 128) * 1024;
 	config->log.push = config_get_value_bool("log.push", true);
 	config->log.capture = config_get_value_bool("log.capture", true);

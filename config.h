@@ -61,7 +61,7 @@ struct pantavisor_creds {
 struct pantavisor_gc {
 	int reserved;
 	bool keep_factory;
-	int threshold;
+	off_t threshold;
 };
 
 struct pantavisor_storage {
@@ -138,7 +138,7 @@ void pv_config_set_creds_secret(char *secret);
 
 void pv_config_set_storage_gc_reserved(int reserved);
 void pv_config_set_storage_gc_keep_factory(bool keep_factory);
-void pv_config_set_storage_gc_threshold(int threshold);
+void pv_config_set_storage_gc_threshold(off_t threshold);
 
 void pv_config_set_log_push(bool push);
 
@@ -165,7 +165,7 @@ int pv_config_get_storage_wait(void);
 
 int pv_config_get_storage_gc_reserved(void);
 bool pv_config_get_storage_gc_keep_factory(void);
-int pv_config_get_storage_gc_threshold(void);
+off_t pv_config_get_storage_gc_threshold(void);
 
 int pv_config_get_updater_interval(void);
 int pv_config_get_updater_network_timeout(void);
