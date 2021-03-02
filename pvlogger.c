@@ -31,16 +31,14 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#ifndef MODULE_NAME
-#define MODULE_NAME             "pvlogger"
-#endif
-
 #include "pvlogger.h"
 #include "ph_logger/ph_logger.h"
 #include "platforms.h"
 #include "pvctl_utils.h"
-#include "log.h"
 #include "utils.h"
+
+#define MODULE_NAME             "pvlogger"
+#include "log.h"
 
 static const char *module_name = MODULE_NAME;
 

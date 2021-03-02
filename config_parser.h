@@ -23,6 +23,8 @@
 #ifndef PV_CONFIG_PARSER_H
 #define PV_CONFIG_PARSER_H
 
+#include "utils/list.h"
+
 int config_parse_cmdline(struct dl_list *list, char *hint);
 int load_key_value_file(const char *path, struct dl_list *list);
 char* config_get_value(struct dl_list *list, char *key);

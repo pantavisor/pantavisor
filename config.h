@@ -23,6 +23,8 @@
 #ifndef PV_CONFIG_H
 #define PV_CONFIG_H
 
+#include <stdbool.h>
+
 #include "utils/list.h"
 
 enum {

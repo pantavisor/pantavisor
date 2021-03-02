@@ -20,10 +20,6 @@
  * SOFTWARE.
  */
 
-#define MODULE_NAME             "state"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include <string.h>
 
 #include "state.h"
@@ -33,6 +29,10 @@
 #include "jsons.h"
 #include "addons.h"
 #include "pantavisor.h"
+
+#define MODULE_NAME             "state"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 struct pv_state* pv_state_new(int rev, state_spec_t spec)
 {

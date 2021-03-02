@@ -39,14 +39,14 @@
 #include <linux/if.h>
 #include <linux/sockios.h>
 
-#define MODULE_NAME		"network"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "utils.h"
 #include "pantahub.h"
 #include "network.h"
 #include "init.h"
+
+#define MODULE_NAME		"network"
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 #define ifreq_offsetof(x)  offsetof(struct ifreq, x)
 

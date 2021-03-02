@@ -23,6 +23,8 @@
 #ifndef __REVISION__H__
 #define __REVISION__H__
 
+#include <stdbool.h>
+
 /*
  * These are the revisions we got from kernel as command
  * line parameters.

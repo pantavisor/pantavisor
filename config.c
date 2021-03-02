@@ -30,14 +30,14 @@
 
 #include <linux/limits.h>
 
-#define MODULE_NAME             "config"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "config.h"
 #include "init.h"
 #include "config_parser.h"
 #include "utils.h"
+
+#define MODULE_NAME             "config"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 static DEFINE_DL_LIST(config_list);
 

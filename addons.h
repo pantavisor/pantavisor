@@ -22,6 +22,9 @@
 #ifndef PV_ADDONS_H
 #define PV_ADDONS_H
 
+#include "utils/list.h"
+#include "state.h"
+
 struct pv_addon {
 	char *name;
 	struct dl_list list; // pv_addon

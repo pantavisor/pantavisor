@@ -28,14 +28,14 @@
 
 #include <sys/stat.h>
 
+#include "trestclient.h"
+#include "pantahub.h"
+#include "tsh.h"
+#include "utils.h"
+
 #define MODULE_NAME             "client"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#include "pantahub.h"
-#include "trestclient.h"
-#include "tsh.h"
-#include "utils.h"
 
 #define PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT "/btools/%s.login"
 #define PV_TRESTCLIENT_MAX_READ 4096

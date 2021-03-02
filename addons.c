@@ -31,15 +31,15 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 
-#define MODULE_NAME             "addon"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "addons.h"
 #include "loop.h"
 #include "utils.h"
 #include "pantavisor.h"
 #include "state.h"
+
+#define MODULE_NAME             "addon"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 #define FW_PATH		"/lib/firmware"
 

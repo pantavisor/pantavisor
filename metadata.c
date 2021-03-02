@@ -20,10 +20,6 @@
  * SOFTWARE.
  */
 
-#define MODULE_NAME             "metadata"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include <libgen.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -43,6 +39,10 @@
 #include "init.h"
 #include "utils.h"
 #include "config_parser.h"
+
+#define MODULE_NAME             "metadata"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 #define PV_USERMETA_ADD     (1<<0)
 struct pv_usermeta {

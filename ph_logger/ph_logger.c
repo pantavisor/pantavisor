@@ -41,18 +41,18 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include "../trestclient.h"
 #include "../utils.h"
 #include "../pantavisor.h"
 #include "../pantahub.h"
 #include "../version.h"
 #include "../utils/list.h"
 #include "../pvctl_utils.h"
-#include "../trestclient.h"
+#include "ph_logger.h"
+#include "ph_logger_v1.h"
 
 #define MODULE_NAME             "ph_logger"
 #include "../log.h"
-#include "ph_logger.h"
-#include "ph_logger_v1.h"
 
 #define PH_LOGGER_POS_FILE 	"/pv/.ph_logger"
 #define PH_LOGGER_SKIP_FILE	".ph_logger_skip_list"
@@ -505,7 +505,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	} else {
 		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
 				PH_LOGGER_POS_XATTR, filename, pos);
-		sprintf(dst, "%lld", pos);
+		sprintf(dst, "%ld", pos);
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */

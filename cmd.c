@@ -32,16 +32,16 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#define MODULE_NAME             "cmd"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "cmd.h"
 #include "utils.h"
 #include "pvlogger.h"
 #include "platforms.h"
 #include "state.h"
 #include "init.h"
+
+#define MODULE_NAME             "cmd"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 #ifndef _GNU_SOURCE
 struct  ucred {

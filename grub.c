@@ -24,17 +24,17 @@
 #include <string.h>
 #include <inttypes.h>
 #include <unistd.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+
+#include <sys/stat.h>
+
+#include "utils.h"
+#include "bootloader.h"
 
 #define MODULE_NAME			"grub"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#include "utils.h"
-
-#include "bootloader.h"
 
 #define GRUB_FMT		"%s/boot/grubenv"
 #define GRUB_HDR		"# GRUB Environment Block\n"

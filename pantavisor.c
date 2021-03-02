@@ -37,10 +37,7 @@
 
 #include <linux/limits.h>
 
-#define MODULE_NAME             "core"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
+#include "updater.h"
 #include "pantavisor.h"
 #include "cmd.h"
 #include "config.h"
@@ -51,7 +48,10 @@
 #include "version.h"
 #include "controller.h"
 #include "init.h"
-#include "updater.h"
+
+#define MODULE_NAME             "core"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 static struct pantavisor* global_pv;
 

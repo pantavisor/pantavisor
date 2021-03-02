@@ -33,13 +33,12 @@
 #include <errno.h>
 #include <mtd/mtd-user.h>
 
+#include "utils.h"
+#include "bootloader.h"
+
 #define MODULE_NAME			"uboot"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#include "utils.h"
-
-#include "bootloader.h"
 
 static char *pv_env = 0;
 static char *uboot_txt = 0;

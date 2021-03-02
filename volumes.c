@@ -32,10 +32,6 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 
-#define MODULE_NAME             "volumes"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "loop.h"
 
 #include "utils.h"
@@ -44,6 +40,10 @@
 #include "parser/parser.h"
 #include "platforms.h"
 #include "state.h"
+
+#define MODULE_NAME             "volumes"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 #define FW_PATH		"/lib/firmware"
 

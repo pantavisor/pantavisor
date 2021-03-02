@@ -28,13 +28,13 @@
 
 #include <linux/limits.h>
 
-#define MODULE_NAME			"objects"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
-#include "log.h"
-
 #include "utils.h"
 #include "objects.h"
 #include "state.h"
+
+#define MODULE_NAME			"objects"
+#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 char** pv_objects_get_all_ids(struct pantavisor *pv)
 {
