@@ -254,7 +254,7 @@ static void pv_storage_print(struct pv_storage* storage)
 	pv_log(DEBUG, "total disk space: %"PRIu64" B", storage->total);
 	pv_log(DEBUG, "free disk space: %"PRIu64" B (%d%% of total)", storage->free, storage->free_percentage);
 	pv_log(DEBUG, "reserved disk space: %"PRIu64" B (%d%% of total)", storage->reserved, storage->reserved_percentage);
-	pv_log(DEBUG, "real free disk space: %"PRIu64" B (%d%% of total)", storage->real_free, storage->real_free_percentage);
+	pv_log(INFO, "real free disk space: %"PRIu64" B (%d%% of total)", storage->real_free, storage->real_free_percentage);
 }
 
 off_t pv_storage_get_free(struct pantavisor *pv)
@@ -282,7 +282,6 @@ bool pv_storage_threshold_reached(struct pantavisor *pv)
 	if (storage &&
 		(storage->real_free < storage->threshold)) {
 		threshold_reached = true;
-		pv_storage_print(storage);
 		pv_log(INFO, "free disk space is %"PRIu64" B, which is under the %"PRIu64" threshold. Freeing up space", storage->real_free, storage->threshold);
 	}
 
