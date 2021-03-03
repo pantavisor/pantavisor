@@ -259,7 +259,7 @@ int get_blkid(struct blkid_info *info, const char *key)
 		    if (-1 == (fd = open(device, O_RDONLY))) {
 			    printf("Failed Device: %s\n", device);
 			    if (errno != ENOMEDIUM)
-				    printf("Unable to open device file %s", device);
+				    printf("Unable to open device file %s\n", device);
 			    continue;
 		    } else {
 			    do_blkid(fd, device, info);

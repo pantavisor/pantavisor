@@ -37,6 +37,7 @@ struct pv_bsp {
 	char *firmware;
 	char *modules;
 	char *initrd;
+	char *initrd_config;
 };
 
 struct pv_state {

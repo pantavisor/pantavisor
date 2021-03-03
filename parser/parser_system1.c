@@ -66,6 +66,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	s->bsp.kernel = get_json_key_value(buf, "linux", tokv, tokc);
 	s->bsp.fdt = get_json_key_value(buf, "fdt", tokv, tokc);
 	s->bsp.initrd = get_json_key_value(buf, "initrd", tokv, tokc);
+	s->bsp.initrd_config = get_json_key_value(buf, "initrd_config", tokv, tokc);
 	s->bsp.firmware = get_json_key_value(buf, "firmware", tokv, tokc);
 	s->bsp.modules = get_json_key_value(buf, "modules", tokv, tokc);
 

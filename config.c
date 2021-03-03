@@ -39,26 +39,22 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-static DEFINE_DL_LIST(config_list);
-
-static char* _config_get_value(char *key)
+static char* config_get_value_string(struct dl_list *config_list, char *key, char* default_value)
 {
-	return config_get_value(&config_list, key);
+	char *item = config_get_value(config_list, key);
+
+	if (!item)
+		item = default_value;
+
+	if (!item)
+		return NULL;
+
+	return strdup(item);
 }
 
-static char* config_get_value_string(char *key, char* default_value)
+static int config_get_value_int(struct dl_list *config_list, char *key, int default_value)
 {
-	char *item = _config_get_value(key);
-
-	if (!item && default_value)
-		item = strdup(default_value);
-
-	return item;
-}
-
-static int config_get_value_int(char *key, int default_value)
-{
-	char *item = _config_get_value(key);
+	char *item = config_get_value(config_list, key);
 	int value = default_value;
 
 	if (!item)
@@ -69,9 +65,9 @@ static int config_get_value_int(char *key, int default_value)
 	return value;
 }
 
-static bool config_get_value_bool(char *key, bool default_value)
+static bool config_get_value_bool(struct dl_list *config_list, char *key, bool default_value)
 {
-	char *item = _config_get_value(key);
+	char *item = config_get_value(config_list, key);
 	bool value = default_value;
 
 	if (!item)
@@ -82,9 +78,9 @@ static bool config_get_value_bool(char *key, bool default_value)
 	return value;
 }
 
-static int config_get_value_bl_type(char *key, int default_value)
+static int config_get_value_bl_type(struct dl_list *config_list, char *key, int default_value)
 {
-	char *item = _config_get_value(key);
+	char *item = config_get_value(config_list, key);
 	int value = default_value;
 
 	if (!item)
@@ -100,9 +96,9 @@ static int config_get_value_bl_type(char *key, int default_value)
 	return value;
 }
 
-static int config_get_value_logsize(char *key, int default_value)
+static int config_get_value_logsize(struct dl_list *config_list, char *key, int default_value)
 {
-	int value = config_get_value_int(key, default_value);
+	int value = config_get_value_int(config_list, key, default_value);
 
 	if (value >= 1024)
 		value = default_value;
@@ -110,46 +106,59 @@ static int config_get_value_logsize(char *key, int default_value)
 	return value;
 }
 
+static void pv_config_compile_time_values(struct dl_list *config_list, struct pantavisor_config *config)
+{
+	config->cache.dropbearcachedir = config_get_value_string(config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
+	config->cache.metacachedir = config_get_value_string(config_list, "meta.cache.dir", "/storage/cache/meta");
+
+	config->bl.type = config_get_value_bl_type(config_list, "bootloader.type", BL_UBOOT_PLAIN);
+	config->bl.mtd_only = config_get_value_bool(config_list, "bootloader.mtd_only", false);
+	config->bl.mtd_path = config_get_value_string(config_list, "bootloader.mtd_env", NULL);
+
+	config->storage.path = config_get_value_string(config_list, "storage.device", NULL);
+	config->storage.fstype = config_get_value_string(config_list, "storage.fstype", NULL);
+	config->storage.opts = config_get_value_string(config_list, "storage.opts", NULL);
+	config->storage.mntpoint = config_get_value_string(config_list, "storage.mntpoint", NULL);
+	config->storage.mnttype = config_get_value_string(config_list, "storage.mnttype", NULL);
+	config->storage.logtempsize = config_get_value_string(config_list, "storage.logtempsize", NULL);
+
+	config->net.brdev = config_get_value_string(config_list, "net.brdev", "lxcbr0");
+	config->net.braddress4 = config_get_value_string(config_list, "net.braddress4", "10.0.3.1");
+	config->net.brmask4 = config_get_value_string(config_list, "net.brmask4", "255.255.255.0");
+
+	config->log.logdir = config_get_value_string(config_list, "log.dir", "/storage/logs/");
+}
+
+static void pv_config_trail_values(struct dl_list *config_list, struct pantavisor_config *config)
+{
+	config->storage.wait = config_get_value_int(config_list, "storage.wait", 5);
+
+	config->storage.gc.reserved = config_get_value_int(config_list, "storage.gc.reserved", 5);
+	config->storage.gc.keep_factory = config_get_value_bool(config_list, "storage.gc.keep_factory", false);
+	config->storage.gc.threshold = config_get_value_int(config_list, "storage.gc.threshold", 0);
+	config->storage.gc.keep_factory = config_get_value_bool(config_list, "updater.keep_factory", false);
+
+	config->updater.use_tmp_objects = config_get_value_bool(config_list, "updater.use_tmp_objects", true);
+
+	config->updater.use_tmp_objects = config_get_value_bool("updater.use_tmp_objects", false);
+	config->updater.revision_retries = config_get_value_int("revision.retries", 10);
+	config->updater.revision_retry_timeout = config_get_value_int("revision.retries.timeout", 2 * 60);
+
 // Fill config struct after parsing on-initramfs factory config
 static int pv_config_from_file(char *path, struct pantavisor_config *config)
 {
+	DEFINE_DL_LIST(config_list);
+
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
 	// for overrides
 	config_parse_cmdline(&config_list, "pv_");
 
-	config->cache.dropbearcachedir = config_get_value_string("dropbear.cache.dir", "/storage/cache/dropbear");
-	config->cache.metacachedir = config_get_value_string("meta.cache.dir", "/storage/cache/meta");
+	pv_config_compile_time_values(&config_list, config);
+	pv_config_trail_values(&config_list, config);
 
-	config->bl.type = config_get_value_bl_type("bootloader.type", BL_UBOOT_PLAIN);
-	config->bl.mtd_only = config_get_value_bool("bootloader.mtd_only", false);
-	config->bl.mtd_path = config_get_value_string("bootloader.mtd_env", NULL);
-
-	config->storage.path = config_get_value_string("storage.device", NULL);
-	config->storage.fstype = config_get_value_string("storage.fstype", NULL);
-	config->storage.opts = config_get_value_string("storage.opts", NULL);
-	config->storage.mntpoint = config_get_value_string("storage.mntpoint", NULL);
-	config->storage.mnttype = config_get_value_string("storage.mnttype", NULL);
-	config->storage.logtempsize = config_get_value_string("storage.logtempsize", NULL);
-	config->storage.wait = config_get_value_int("storage.wait", 5);
-
-	config->storage.gc.reserved = config_get_value_int("storage.gc.reserved", 5);
-	config->storage.gc.keep_factory = config_get_value_bool("storage.gc.keep_factory", false);
-	config->storage.gc.threshold = config_get_value_int("storage.gc.threshold", 0);
-
-	config->updater.use_tmp_objects = config_get_value_bool("updater.use_tmp_objects", false);
-	config->updater.revision_retries = config_get_value_int("revision.retries", 10);
-	config->updater.revision_retry_timeout = config_get_value_int("revision.retries.timeout", 2 * 60);
-
-	config->wdt.enabled = config_get_value_bool("wdt.enabled", true);
-	config->wdt.timeout = config_get_value_int("wdt.timeout", 15);
-
-	config->net.brdev = config_get_value_string("net.brdev", "lxcbr0");
-	config->net.braddress4 = config_get_value_string("net.braddress4", "10.0.3.1");
-	config->net.brmask4 = config_get_value_string("net.brmask4", "255.255.255.0");
-
-	config->lxc.log_level = config_get_value_int("lxc.log.level", 2);
+	config_clear_items(&config_list);
 
 	return 0;
 }
@@ -157,36 +166,27 @@ static int pv_config_from_file(char *path, struct pantavisor_config *config)
 // Fill config struct after parsing on-initramfs factory config
 static int ph_config_from_file(char *path, struct pantavisor_config *config)
 {
+	DEFINE_DL_LIST(config_list);
+
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
 	// for overrides
 	config_parse_cmdline(&config_list, "ph_");
 
-	config->creds.type = config_get_value_string("creds.type", "builtin");
-	config->creds.host = config_get_value_string("creds.host", "192.168.53.1");
-	config->creds.port = config_get_value_int("creds.port", 12365);
-	config->creds.id = config_get_value_string("creds.id", NULL);
-	config->creds.prn = config_get_value_string("creds.prn", NULL);
-	config->creds.secret = config_get_value_string("creds.secret", NULL);
+	config->creds.type = config_get_value_string(&config_list, "creds.type", "builtin");
+	config->creds.host = config_get_value_string(&config_list, "creds.host", "192.168.53.1");
+	config->creds.port = config_get_value_int(&config_list, "creds.port", 12365);
+	config->creds.id = config_get_value_string(&config_list, "creds.id", NULL);
+	config->creds.prn = config_get_value_string(&config_list, "creds.prn", NULL);
+	config->creds.secret = config_get_value_string(&config_list, "creds.secret", NULL);
 
-	config->creds.tpm.key = config_get_value_string("creds.tpm.key", NULL);
-	config->creds.tpm.cert = config_get_value_string("creds.tpm.cert", NULL);
+	config->creds.tpm.key = config_get_value_string(&config_list, "creds.tpm.key", NULL);
+	config->creds.tpm.cert = config_get_value_string(&config_list, "creds.tpm.cert", NULL);
 
-	config->factory.autotok = config_get_value_string("factory.autotok", NULL);
+	config->factory.autotok = config_get_value_string(&config_list, "factory.autotok", NULL);
 
-	config->storage.gc.keep_factory = config_get_value_bool("updater.keep_factory", false);
-
-	config->updater.interval = config_get_value_int("updater.interval", 60);
-	config->updater.network_timeout = config_get_value_int("updater.network_timeout", 2 * 60);
-	config->updater.commit_delay = config_get_value_int("updater.commit.delay", 3 * 60);
-
-	config->log.logdir = config_get_value_string("log.dir", "/storage/logs/");
-	config->log.logmax = config_get_value_int("log.maxsize", (1 << 21)); // 2 MiB
-	config->log.loglevel = config_get_value_int("log.level", 0);
-	config->log.logsize = config_get_value_logsize("log.buf_nitems", 128) * 1024;
-	config->log.push = config_get_value_bool("log.push", true);
-	config->log.capture = config_get_value_bool("log.capture", true);
+	config_clear_items(&config_list);
 
 	return 0;
 }
@@ -239,14 +239,6 @@ static int ph_config_to_file(struct pantavisor_config *config, char *path)
 
 	write_config_tuple_string(fd, "creds.tpm.key", config->creds.tpm.key);
 	write_config_tuple_string(fd, "creds.tpm.cert", config->creds.tpm.cert);
-
-	write_config_tuple_int(fd, "updater.interval", config->updater.interval);
-	write_config_tuple_int(fd, "updater.network_timeout", config->updater.network_timeout);
-	write_config_tuple_int(fd, "updater.commit.delay", config->updater.commit_delay);
-	write_config_tuple_int(fd, "updater.keep_factory", config->storage.gc.keep_factory); // deprecated
-
-	write_config_tuple_int(fd, "log.level", config->log.loglevel);
-	write_config_tuple_int(fd, "log.buf_nitems", config->log.logsize / 1024);
 
 	close(fd);
 	rename(tmp_path, path);
