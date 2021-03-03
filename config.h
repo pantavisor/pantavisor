@@ -127,20 +127,18 @@ struct pantavisor_config {
 	struct pantavisor_lxc lxc;
 };
 
-int pv_config_load(void);
-int pv_config_save(void);
+int pv_config_load_creds(void);
+int pv_config_save_creds(void);
+
+void pv_config_override_from_file(char* path);
+
+void pv_config_override_value(char* key, char* value);
 
 void pv_config_free(void);
 
 void pv_config_set_creds_id(char *id);
 void pv_config_set_creds_prn(char *prn);
 void pv_config_set_creds_secret(char *secret);
-
-void pv_config_set_storage_gc_reserved(int reserved);
-void pv_config_set_storage_gc_keep_factory(bool keep_factory);
-void pv_config_set_storage_gc_threshold(int threshold);
-
-void pv_config_set_log_push(bool push);
 
 char* pv_config_get_cache_metacachedir(void);
 char* pv_config_get_cache_dropbearcachedir(void);

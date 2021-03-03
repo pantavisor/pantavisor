@@ -216,7 +216,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 
 	c = calloc(1, sizeof(char) * 128);
 
-	pv_config_load();
+	pv_config_load_creds();
 
 	if ((strcmp(pv_config_get_creds_id(), "") != 0) && pv_ph_device_exists(pv))
 		need_register = 0;
@@ -228,7 +228,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 				free(c);
 			return STATE_WAIT;
 		}
-		pv_config_save();
+		pv_config_save_creds();
 		pv_ph_release_client(pv);
 	}
 
@@ -239,7 +239,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 		pv_log(INFO, "device has been claimed, proceeding normally");
 		printf("INFO: pantavisor device has been claimed, proceeding normally\n");
 		pv->flags &= ~DEVICE_UNCLAIMED;
-		pv_config_save();
+		pv_config_save_creds();
 		pv_ph_release_client(pv);
 		open("/pv/challenge", O_TRUNC | O_WRONLY);
 	}

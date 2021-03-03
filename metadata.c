@@ -260,22 +260,6 @@ static struct pv_usermeta* pv_usermeta_get_by_key(struct pv_metadata *d, char *k
 	return NULL;
 }
 
-static void pv_metadata_override_config(char *key, char *value)
-{
-	if (!key || !value)
-		return;
-
-	if (!strcmp(key, "storage.gc.reserved")) {
-		pv_config_set_storage_gc_reserved(atoi(value));
-	} else if (!strcmp(key, "storage.gc.keep_factory")) {
-		pv_config_set_storage_gc_keep_factory(atoi(value));
-	} else if (!strcmp(key, "storage.gc.threshold")) {
-		pv_config_set_storage_gc_threshold(atoi(value));
-	} else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push")) {
-		pv_config_set_log_push(atoi(value));
-	}
-}
-
 static struct pv_usermeta* pv_usermeta_add(struct pv_metadata *d, char *key, char *value)
 {
 	int changed = 1;
@@ -289,7 +273,7 @@ static struct pv_usermeta* pv_usermeta_add(struct pv_metadata *d, char *key, cha
 		if (strcmp(curr->value, value) == 0)
 			changed = 0;
 		if (changed) {
-			pv_metadata_override_config(key, value);
+			pv_config_override_value(key, value);
 			free(curr->value);
 			curr->value = strdup(value);
 		}
@@ -299,7 +283,7 @@ static struct pv_usermeta* pv_usermeta_add(struct pv_metadata *d, char *key, cha
 	// not found? add
 	curr = calloc(1, sizeof(struct pv_usermeta));
 	if (curr) {
-		pv_metadata_override_config(key, value);
+		pv_config_override_value(key, value);
 		dl_list_init(&curr->list);
 		curr->key = strdup(key);
 		curr->value = strdup(value);
