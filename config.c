@@ -34,6 +34,8 @@
 #include "init.h"
 #include "config_parser.h"
 #include "utils.h"
+#include "revision.h"
+#include "state.h"
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -112,6 +114,17 @@ static void config_override_value_int(struct dl_list *config_list, char *key, in
 
 	if (item)
 		*out = atoi(item);
+}
+
+static void config_override_value_loglevel(struct dl_list *config_list, char *key, int *out)
+{
+	printf("hello %s\n", key);
+	char *item = config_get_value(config_list, key);
+
+	if (item)
+		*out = atoi(item);
+
+	printf("%s %d\n", item, *out);
 }
 
 static void config_override_value_bool(struct dl_list *config_list, char *key, bool *out)
@@ -208,14 +221,12 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	return 0;
 }
 
-static void pv_config_override_config_from_file(char *path, struct pantavisor_config *config)
+static int pv_config_override_config_from_file(char *path, struct pantavisor_config *config)
 {
 	DEFINE_DL_LIST(config_list);
 
 	if (load_key_value_file(path, &config_list) < 0)
-		return;
-
-	config_override_value_int(&config_list, "storage.wait", &config->storage.wait);
+		return -1;
 
 	config_override_value_int(&config_list, "storage.gc.reserved", &config->storage.gc.reserved);
 	config_override_value_bool(&config_list, "storage.gc.keep_factory", &config->storage.gc.keep_factory);
@@ -228,18 +239,12 @@ static void pv_config_override_config_from_file(char *path, struct pantavisor_co
 	config_override_value_int(&config_list, "updater.network_timeout", &config->updater.network_timeout);
 	config_override_value_int(&config_list, "updater.commit.delay", &config->updater.commit_delay);
 
-	config_override_value_int(&config_list, "log.level", &config->log.loglevel);
+	config_override_value_loglevel(&config_list, "log.level", &config->log.loglevel);
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
-	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
-
-	config_override_value_bool(&config_list, "wdt.enabled", &config->wdt.enabled);
-	config_override_value_int(&config_list, "wdt.timeout", &config->wdt.timeout);
-
-	config_override_value_int(&config_list, "lxc.log.level", &config->lxc.log_level);
 
 	config_clear_items(&config_list);
 
-	return;
+	return 0;
 }
 
 static int write_config_tuple_string(int fd, char *key, char *value)
@@ -333,15 +338,6 @@ int pv_config_save_creds()
 		sprintf(config_path, "%s/config/pantahub.config", pv->config.storage.mntpoint);
 
 	return pv_config_save_creds_to_file(&pv->config, config_path);
-}
-
-void pv_config_override_from_file(int rev, char* config_name)
-{
-	char path[PATH_MAX];
-	struct pantavisor *pv = get_pv_instance();
-
-	sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
-	pv_config_override_config_from_file(path, &pv->config);
 }
 
 void pv_config_override_value(char* key, char* value)
@@ -488,7 +484,7 @@ static int pv_config_init(struct pv_init *this)
 	return 0;
 }
 
-static int ph_config_init(struct pv_init *this)
+static int pv_config_creds(struct pv_init *this)
 {
 	char config_file[256];
 	struct pantavisor *pv = get_pv_instance();
@@ -500,7 +496,28 @@ static int ph_config_init(struct pv_init *this)
 	}
 
 	return 0;
+}
 
+static int pv_config_trail(struct pv_init *this)
+{
+	char path[PATH_MAX];
+	struct pantavisor *pv = get_pv_instance();
+	int rev = pv_revision_get_rev();
+	char* config_name;
+
+	config_name = pv_get_initrd_config_name(rev);
+	if (!config_name) {
+		printf("INFO: initrd config not found\n");
+		return 0;
+	}
+
+	sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
+	if (pv_config_override_config_from_file(path, &pv->config)) {
+		printf("FATAL: initrd config %s not found\n", config_name);
+		return -1;
+	}
+
+	return 0;
 }
 
 struct pv_init pv_init_config =  {
@@ -508,7 +525,12 @@ struct pv_init pv_init_config =  {
 	.flags = 0,
 };
 
-struct pv_init ph_init_config =  {
-	.init_fn = ph_config_init,
+struct pv_init pv_init_creds =  {
+	.init_fn = pv_config_creds,
+	.flags = 0,
+};
+
+struct pv_init pv_init_config_trail =  {
+	.init_fn = pv_config_trail,
 	.flags = 0,
 };

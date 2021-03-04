@@ -66,6 +66,7 @@ int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
 void pv_meta_set_tryonce(struct pantavisor *pv, int value);
 void pv_teardown(struct pantavisor *pv);
 struct pv_state* pv_get_state(struct pantavisor *pv, int current);
+char* pv_get_initrd_config_name(int rev);
 void pantavisor_init(void);
 struct pantavisor* get_pv_instance(void);
 

@@ -166,8 +166,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	} else {
 		// after a reboot...
 		pv->state = pv_get_state(pv, pv_revision_get_rev());
-		if (pv->state)
-			pv_config_override_from_file(pv->state->rev, pv->state->bsp.initrd_config);
 	}
 
 	if (!pv->state)

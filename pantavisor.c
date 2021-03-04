@@ -477,10 +477,40 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 
 	pv->step = buf;
 
-	s = pv_state_parse(pv, buf, rev);
+	s = pv_parser_get_state(pv, buf, rev);
 	close(fd);
 
 	return s;
+}
+
+char* pv_get_initrd_config_name(int rev)
+{
+	int fd;
+	int size;
+	char path[256];
+	char *buf, *config_name = NULL;
+	struct stat st;
+
+	sprintf(path, "%s/trails/%d/.pvr/json", pv_config_get_storage_mntpoint(), rev);
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return NULL;
+
+	stat(path, &st);
+	size = st.st_size;
+
+	buf = calloc(1, size+1);
+	size = read(fd, buf, size);
+	buf[size] = '\0';
+
+	if (size < 0)
+		return NULL;
+
+	config_name = pv_parser_get_initrd_config_name(buf);
+	close(fd);
+
+	return config_name;
 }
 
 void pantavisor_init()

@@ -607,7 +607,7 @@ send_feedback:
 	trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
 
 	// parse state
-	update->pending = pv_state_parse(pv, state, rev);
+	update->pending = pv_parser_get_state(pv, state, rev);
 	if (!update->pending) {
 		pv_log(WARN, "invalid state from rev %d", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
