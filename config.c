@@ -150,7 +150,6 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->storage.gc.reserved = config_get_value_int(&config_list, "storage.gc.reserved", 5);
 	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "storage.gc.keep_factory", false);
 	config->storage.gc.threshold = config_get_value_int(&config_list, "storage.gc.threshold", 0);
-	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "updater.keep_factory", false);
 
 	config->net.brdev = config_get_value_string(&config_list, "net.brdev", "lxcbr0");
 	config->net.braddress4 = config_get_value_string(&config_list, "net.braddress4", "10.0.3.1");
@@ -209,7 +208,7 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	return 0;
 }
 
-static void pv_config_overrride_config_from_file(char *path, struct pantavisor_config *config)
+static void pv_config_override_config_from_file(char *path, struct pantavisor_config *config)
 {
 	DEFINE_DL_LIST(config_list);
 
@@ -221,7 +220,6 @@ static void pv_config_overrride_config_from_file(char *path, struct pantavisor_c
 	config_override_value_int(&config_list, "storage.gc.reserved", &config->storage.gc.reserved);
 	config_override_value_bool(&config_list, "storage.gc.keep_factory", &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "storage.gc.threshold", &config->storage.gc.threshold);
-	config_override_value_bool(&config_list, "updater.keep_factory", &config->storage.gc.keep_factory);
 
 	config_override_value_bool(&config_list, "updater.use_tmp_objects", &config->updater.use_tmp_objects);
 	config_override_value_int(&config_list, "revision.retries", &config->updater.revision_retries);
@@ -339,11 +337,13 @@ int pv_config_save_creds()
 	return pv_config_save_creds_to_file(&pv->config, config_path);
 }
 
-void pv_config_override_from_file(char* path)
+void pv_config_override_from_file(int rev, char* config_name)
 {
+	char path[PATH_MAX];
 	struct pantavisor *pv = get_pv_instance();
 
-	pv_config_overrride_config_from_file(path, &pv->config);
+	sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
+	pv_config_override_config_from_file(path, &pv->config);
 }
 
 void pv_config_override_value(char* key, char* value)
@@ -359,9 +359,12 @@ void pv_config_override_value(char* key, char* value)
 		pv->config.storage.gc.keep_factory = atoi(value);
 	else if (!strcmp(key, "storage.gc.threshold"))
 		pv->config.storage.gc.threshold = atoi(value);
+	else if (!strcmp(key, "updater.interval"))
+		pv->config.updater.interval = atoi(value);
+	else if (!strcmp(key, "log.level"))
+		pv->config.log.loglevel = atoi(value);
 	else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push"))
 		pv->config.log.push = atoi(value);
-
 }
 
 void pv_config_free()

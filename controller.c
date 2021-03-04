@@ -163,9 +163,13 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		ph_logger_stop(pv);
 		pv_log_start(pv, pv->update->pending->rev);
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
-	} else
+	} else {
 		// after a reboot...
 		pv->state = pv_get_state(pv, pv_revision_get_rev());
+		if (pv->state)
+			pv_config_override_from_file(pv->state->rev, pv->state->bsp.initrd_config);
+	}
+
 	if (!pv->state)
 	{
 		pv_log(ERROR, "state could not be loaded");

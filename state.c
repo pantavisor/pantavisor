@@ -212,7 +212,8 @@ void pv_state_print(struct pv_state *s)
 	pv_log(DEBUG, "state %d:", s->rev);
 	pv_log(DEBUG, " kernel: '%s'", s->bsp.kernel);
 	pv_log(DEBUG, " initrd: '%s'", s->bsp.initrd);
-	pv_log(DEBUG, " pantavisor config: '%s'", s->bsp.initrd_config);
+	if (s->bsp.initrd_config)
+		pv_log(DEBUG, " pantavisor config: '%s'", s->bsp.initrd_config);
 	struct pv_platform *p, *tmp_p;
     struct dl_list *platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp_p, platforms,

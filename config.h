@@ -130,7 +130,7 @@ struct pantavisor_config {
 int pv_config_load_creds(void);
 int pv_config_save_creds(void);
 
-void pv_config_override_from_file(char* path);
+void pv_config_override_from_file(int rev, char* config_name);
 
 void pv_config_override_value(char* key, char* value);
 
