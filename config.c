@@ -228,9 +228,7 @@ static void pv_config_override_config_from_file(char *path, struct pantavisor_co
 	config_override_value_int(&config_list, "updater.network_timeout", &config->updater.network_timeout);
 	config_override_value_int(&config_list, "updater.commit.delay", &config->updater.commit_delay);
 
-	config_override_value_int(&config_list, "log.maxsize", &config->log.logmax);
 	config_override_value_int(&config_list, "log.level", &config->log.loglevel);
-	config_override_value_int(&config_list, "log.buf_nitems", &config->log.logsize);
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
 	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
 
