@@ -512,8 +512,10 @@ static int pv_config_trail(struct pv_init *this)
 	}
 
 	sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
+	free(config_name);
+	printf("INFO: loading %s\n", path);
 	if (pv_config_override_config_from_file(path, &pv->config)) {
-		printf("FATAL: initrd config %s not found\n", config_name);
+		printf("FATAL: initrd config %s not found\n", path);
 		return -1;
 	}
 

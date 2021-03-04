@@ -504,7 +504,7 @@ char* pv_get_initrd_config_name(int rev)
 	size = read(fd, buf, size);
 	buf[size] = '\0';
 
-	if (size < 0)
+	if ((size < 0) || (!buf))
 		return NULL;
 
 	config_name = pv_parser_get_initrd_config_name(buf);
