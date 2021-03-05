@@ -186,17 +186,15 @@ int load_key_value_file(const char *path, struct dl_list *list)
 	struct stat st;
 
 	fp = fopen(path, "r");
-	if (!fp) {
-		pv_log(INFO, "unable to find %s config file", path);
+	if (!fp)
 		return -1;
-	}
 
 	stat(path, &st);
 	buff = calloc(1, st.st_size);
 	if (!buff)
 		goto out;
 
-	while (fgets(buff, st.st_size, fp)) {
+	while (fgets(buff, st.st_size+1, fp)) {
 		// Remove newline from value (hacky)
 		buff[strlen(buff)-1] = '\0';
 		char *key = strstr(buff, "=");

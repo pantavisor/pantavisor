@@ -159,7 +159,7 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, cha
 			strcat(path, dp->d_name);
 
 			if (stat(path, &st)){
-				printf("ERROR: path %s not available", path);
+				printf("ERROR: path %s not available\n", path);
 			} else if (!pv_setup_config_bindmounts(c, path, basedir)) {
 				// add the lxc config
 				char *inpath;

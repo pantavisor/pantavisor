@@ -72,7 +72,8 @@ struct pv_init {
 extern struct pv_init *pv_init_tbl[];
 extern struct pv_init pv_init_bl;
 extern struct pv_init pv_init_config;
-extern struct pv_init ph_init_config;
+extern struct pv_init pv_init_creds;
+extern struct pv_init pv_init_config_trail;
 extern struct pv_init pv_init_storage;
 extern struct pv_init pv_init_cmd;
 extern struct pv_init pv_init_metadata;

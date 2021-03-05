@@ -348,7 +348,7 @@ static int pv_ph_register_self_ext(struct pantavisor *pv, char *cmd)
 	}
 
 	// If registered, override in-memory PantaHub credentials
-	if (pv_config_load()) {
+	if (pv_config_load_creds()) {
 		pv_log(ERROR, "error loading updated config file");
 		goto exit;
 	}

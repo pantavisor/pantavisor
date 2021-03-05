@@ -37,14 +37,24 @@
 #include "parser.h"
 #include "state.h"
 
+struct pv_state_parser {
+	char *spec;
+	struct pv_state* (*parse)(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+	char* (*parse_initrd_config_name)(char *buf);
+	void (*free)(struct pv_state *s);
+	void (*print)(struct pv_state *s);
+};
+
 struct pv_state_parser parsers[SPEC_UNKNOWN] = {
 	{
 		.spec = "pantavisor-multi-platform@1",
 		.parse = multi1_parse,
+		.parse_initrd_config_name = multi1_parse_initrd_config_name,
 	},
 	{
 		.spec = "pantavisor-service-system@1",
 		.parse = system1_parse,
+		.parse_initrd_config_name = system1_parse_initrd_config_name,
 	}
 };
 
@@ -70,7 +80,7 @@ static state_spec_t pv_parser_convert_spec(char *spec)
 	return SPEC_UNKNOWN;
 }
 
-struct pv_state* pv_state_parse(struct pantavisor *pv, char *buf, int rev)
+struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, int rev)
 {
 	int tokc, ret;
 	char *spec = 0;
@@ -111,4 +121,34 @@ out:
 		free(spec);
 
 	return state;
+}
+
+char* pv_parser_get_initrd_config_name(char *buf)
+{
+	int tokc;
+	char *spec = 0;
+	struct pv_state_parser *p;
+	jsmntok_t *tokv;
+	char* config_name = NULL;
+
+	// Parse full state json
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+		return NULL;
+
+	spec = get_json_key_value(buf, "#spec", tokv, tokc);
+	if (!spec)
+		return NULL;
+
+	p = _get_parser(spec);
+	if (!p)
+		return NULL;
+
+	config_name = p->parse_initrd_config_name(buf);
+
+	if (tokv)
+		free(tokv);
+	if (spec)
+		free(spec);
+
+	return config_name;
 }

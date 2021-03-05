@@ -299,8 +299,8 @@ static void pv_log_init(struct pantavisor *pv, int rev)
 
 void exit_error(int err, char *msg)
 {
-	printf("ERROR: %s (err=%d)", msg, err);
-	printf("ERROR: rebooting system in 30 seconds");
+	printf("ERROR: %s (err=%d)\n", msg, err);
+	printf("ERROR: rebooting system in 30 seconds\n");
 
 	sleep(20);
 	exit(0);
@@ -312,7 +312,7 @@ int pv_log_start(struct pantavisor *pv, int rev)
 		return 0;
 
 	if (pv_log_set_log_dir(rev) < 0) {
-		printf("Error: unable to start pantavisor.log");
+		printf("Error: unable to start pantavisor.log\n");
 		return -1;
 	}
 
