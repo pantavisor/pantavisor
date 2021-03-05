@@ -116,23 +116,20 @@ static void config_override_value_int(struct dl_list *config_list, char *key, in
 		*out = atoi(item);
 }
 
-static void config_override_value_loglevel(struct dl_list *config_list, char *key, int *out)
-{
-	printf("hello %s\n", key);
-	char *item = config_get_value(config_list, key);
-
-	if (item)
-		*out = atoi(item);
-
-	printf("%s %d\n", item, *out);
-}
-
 static void config_override_value_bool(struct dl_list *config_list, char *key, bool *out)
 {
 	char *item = config_get_value(config_list, key);
 
 	if (item)
 		*out = atoi(item);
+}
+
+static void config_override_value_logsize(struct dl_list *config_list, char *key, int *out)
+{
+	char *item = config_get_value(config_list, key);
+
+	if (item)
+		*out = atoi(item) * 1024;
 }
 
 static int pv_config_load_config_from_file(char *path, struct pantavisor_config *config)
@@ -228,6 +225,8 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
+	config_override_value_int(&config_list, "storage.wait", &config->storage.wait);
+
 	config_override_value_int(&config_list, "storage.gc.reserved", &config->storage.gc.reserved);
 	config_override_value_bool(&config_list, "storage.gc.keep_factory", &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "storage.gc.threshold", &config->storage.gc.threshold);
@@ -235,12 +234,18 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_bool(&config_list, "updater.use_tmp_objects", &config->updater.use_tmp_objects);
 	config_override_value_int(&config_list, "revision.retries", &config->updater.revision_retries);
 	config_override_value_int(&config_list, "revision.retries.timeout", &config->updater.revision_retry_timeout);
+	config_override_value_bool(&config_list, "updater.keep_factory", &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "updater.interval", &config->updater.interval);
 	config_override_value_int(&config_list, "updater.network_timeout", &config->updater.network_timeout);
 	config_override_value_int(&config_list, "updater.commit.delay", &config->updater.commit_delay);
 
-	config_override_value_loglevel(&config_list, "log.level", &config->log.loglevel);
+	config_override_value_int(&config_list, "log.maxsize", &config->log.logmax);
+	config_override_value_int(&config_list, "log.level", &config->log.loglevel);
+	config_override_value_logsize(&config_list, "log.buf_nitems", &config->log.logsize);
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
+	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
+
+	config_override_value_int(&config_list, "lxc.log.level", &config->lxc.log_level);
 
 	config_clear_items(&config_list);
 
@@ -513,7 +518,7 @@ static int pv_config_trail(struct pv_init *this)
 
 	sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
 	free(config_name);
-	printf("INFO: loading %s\n", path);
+
 	if (pv_config_override_config_from_file(path, &pv->config)) {
 		printf("FATAL: initrd config %s not found\n", path);
 		return -1;

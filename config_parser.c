@@ -36,13 +36,6 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-struct config_item {
-	char *key;
-	char *value;
-	struct config_item *next;
-	struct dl_list list;
-};
-
 static struct config_item* _config_get_by_key(struct dl_list *list, char *key)
 {
 	struct config_item *curr = NULL, *tmp;
@@ -194,7 +187,7 @@ int load_key_value_file(const char *path, struct dl_list *list)
 	if (!buff)
 		goto out;
 
-	while (fgets(buff, st.st_size, fp)) {
+	while (fgets(buff, st.st_size+1, fp)) {
 		// Remove newline from value (hacky)
 		buff[strlen(buff)-1] = '\0';
 		char *key = strstr(buff, "=");
