@@ -25,12 +25,6 @@
 
 #include "utils/list.h"
 
-struct config_item {
-	char *key;
-	char *value;
-	struct dl_list list;
-};
-
 int config_parse_cmdline(struct dl_list *list, char *hint);
 int load_key_value_file(const char *path, struct dl_list *list);
 char* config_get_value(struct dl_list *list, char *key);
