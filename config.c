@@ -165,7 +165,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->net.braddress4 = config_get_value_string(&config_list, "net.braddress4", "10.0.3.1");
 	config->net.brmask4 = config_get_value_string(&config_list, "net.brmask4", "255.255.255.0");
 
-	config->updater.use_tmp_objects = config_get_value_bool(&config_list, "updater.use_tmp_objects", true);
+	config->updater.use_tmp_objects = config_get_value_bool(&config_list, "updater.use_tmp_objects", false);
 
 	config->updater.revision_retries = config_get_value_int(&config_list, "revision.retries", 10);
 	config->updater.revision_retry_timeout = config_get_value_int(&config_list, "revision.retries.timeout", 2 * 60);
