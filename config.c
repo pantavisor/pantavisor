@@ -138,7 +138,7 @@ static int pv_config_from_file(char *path, struct pantavisor_config *config)
 	config->storage.gc.keep_factory = config_get_value_bool("storage.gc.keep_factory", false);
 	config->storage.gc.threshold = config_get_value_int("storage.gc.threshold", 0);
 
-	config->updater.use_tmp_objects = config_get_value_bool("updater.use_tmp_objects", true);
+	config->updater.use_tmp_objects = config_get_value_bool("updater.use_tmp_objects", false);
 	config->updater.revision_retries = config_get_value_int("revision.retries", 10);
 	config->updater.revision_retry_timeout = config_get_value_int("revision.retries.timeout", 2 * 60);
 
