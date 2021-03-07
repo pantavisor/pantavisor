@@ -43,10 +43,15 @@ if test -z "$exports"; then
 fi
 
 for e in $exports; do
-	a=`eval echo $e`
-	volume=/exports/$CONTAINER_NAME/$a
-	mkdir -p $volume
-	echo "exporting mount -o bind $LXC_ROOTFS_MOUNT/$a $volume"
-	mount -o bind $LXC_ROOTFS_MOUNT/$a $volume || true
+       a=`eval echo $e`
+       volume=/exports/$CONTAINER_NAME/$a
+       mntpoint=$LXC_ROOTFS_MOUNT/$a
+       if ! cat /proc/self/mountinfo | awk '{ print $5 }' | grep "^$mntpoint\$"; then
+               mount -o bind $mntpoint $mntpoint
+       fi
+       mount --make-shared $mntpoint
+       mkdir -p $volume
+       echo "exporting mount -o bind $mntpoint $volume"
+       mount -o bind $mntpoint $volume || true
 done
 
