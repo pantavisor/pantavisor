@@ -14,19 +14,21 @@ PATH=$PATH:/sbin:/usr/sbin
 export PATH
 
 baseargs="root=/dev/ram rootfstype=ramfs pv_storage.device=LABEL=pvroot pv_storage.fstype=ext4"
-dev=`cat /proc/cmdline  | grep pvkroot= | sed -e 's/.* pvkroot=\([^ ]*\).*/\1/'`
+dev=`cat /proc/cmdline  | grep pvkroot= | sed -e 's/.* pvkroot=\([^ ]*\).*/\1/' || true`
 dev=${DEV:-${dev:-/dev/sda3}}
 
+echo "Finding Storage ..."
+
 for w in 1 2 3 4 5 6 7 8 9 10; do
-	DEV=`findfs $dev`
+	DEV=`findfs $dev || true`
 	if [ -b "$DEV" ]; then	
 		echo "Found storage device $DEV online."
 		break
 	fi
 	echo "Waiting for storage device $dev to come online."
 	DEV=
+	sleep 1
 done
-
 
 if [ -z "$DEV" ]; then
 	echo "Storage device $dev never came online ... exiting in 5 seconds."
@@ -34,8 +36,9 @@ if [ -z "$DEV" ]; then
 	exit 10
 fi
 
-mkdir -p /storage
+echo "Found storage device $DEV."
 
+mkdir -p /storage
 umount $DEV &>/dev/null || true
 if ! mount $DEV /storage; then
 	echo "Storage device $dev could not be mounted to /storage ... exiting in 5"
@@ -49,6 +52,21 @@ cat /storage/boot/uboot.txt \
 
 . /tmp/uboot.txt.env
 
+splash() {
+
+cat <<EOF
++++ ----- pvkboot - simply the boot ----- +++
+             __   ___.                  __   
+_________  _|  | _\\_ |__   ____   _____/  |_ 
+\\____ \\  \\/ /  |/ /| __ \\ /  _ \\ /  _ \\   __\\
+|  |_> >   /|    < | \_\ (  <_> |  <_> )  |  
+|   __/ \\_/ |__|_ \\|___  /\\____/ \\____/|__|  
+|__|             \\/    \\/                    
+
++++ ----------- by Pantacor  ------------ +++
+EOF
+}
+
 
 bootit() {
 	rev=$1
@@ -61,16 +79,21 @@ bootit() {
 	bootrev=$rev
 	if [ -e /storage/boot/.pv-trying ]; then
 		rm -f /storage/boot/.pv-trying
+		echo "Booting revision (rollback): $bootrev (from $try)"
 	elif [ -n "$try" ]; then
 		bootrev=$try
 		touch /storage/boot/.pv-trying
+		echo "Booting revision (trying): $try"
+	else
+		echo "Booting revision (regular): $bootrev"
 	fi
 
 	dtcargs=
 	if dtc -I fs -O dtb /proc/device-tree > /tmp/devtree.dtb 2>dev/null; then
 		dtcargs="--dtb=/tmp/devtree.dtb"
+		echo "Booting with device tree copy."
 	else
-		echo "using existing device tree"
+		echo "Booting with no device tree changes."
 	fi
 
 	cmdline=`echo $cmdline | sed -e 's/nr_cpus=1//' -e 's:rdinit=[^ ]*::'`
@@ -79,17 +102,20 @@ bootit() {
 	kernel=/storage/trails/$bootrev/.pv/pv-kernel.img
 	initrd=/storage/trails/$bootrev/.pv/pv-initrd.img
 
-	kexec -s \
+	# unset kaslr-seed in case of bogus kernel (XXX: bogus if not enabled)
+	# fdtput /tmp/devtree.dtb /chosen kaslr-seed || true
+
+	echo "Loading kernel: $kernel and initrd: $initrd with cmdline: $cmdline."
+	kexec -a \
 		--initrd=$initrd \
 		-l $kernel \
 		$dtcargs \
 		--command-line="$cmdline"
 
 	umount /storage
-	echo "Going for kexec after umount"
+	echo "Starting linux..."
 	kexec -e
 }
 
-echo "Booting pv_rev: $pv_rev and pv_try: $pv_try"
+splash
 bootit $pv_rev $pv_try
-
