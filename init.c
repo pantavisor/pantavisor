@@ -330,7 +330,7 @@ struct pv_init *pv_init_tbl [] = {
 	&pv_init_log,
 	&pv_init_storage,
 	&pv_init_metadata,
-	&pv_init_cmd,
+	&pv_init_ctrl,
 	&pv_init_network,
 	&pv_init_platform,
 	&pv_init_bl,

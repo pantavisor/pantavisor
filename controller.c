@@ -43,7 +43,7 @@
 #include "volumes.h"
 #include "pantahub.h"
 #include "bootloader.h"
-#include "cmd.h"
+#include "ctrl.h"
 #include "version.h"
 #include "wdt.h"
 #include "network.h"
@@ -363,17 +363,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv_storage_gc_run(pv);
 	}
 
-
-	// free up previous command
-	if (pv->req)
-		pv_cmd_req_remove(pv);
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
-	pv->req = pv_cmd_socket_wait(pv, 2);
-	if (pv->req) {
+	pv_ctrl_free_cmd(pv->cmd);
+	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
+	if (pv->cmd)
 		next_state = STATE_COMMAND;
-		goto out;
-	}
 
 out:
 	return next_state;
@@ -381,84 +376,41 @@ out:
 
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
-	int rev;
-	char buf[4096] = { 0 };
-	struct pv_cmd_req *c = pv->req;
-	struct pv_state *new;
+	struct pv_cmd *cmd = pv->cmd;
 	pv_state_t next_state = STATE_WAIT;
 
-	if (!c)
+	if (!cmd)
 		return STATE_WAIT;
 
-	switch (c->cmd) {
-	case CMD_TRY_ONCE:
-		{
-		memcpy(buf, c->data, c->len);
-		rev = atoi(buf);
-
-		// lets not tryonce factory
-		if (rev == 0)
-			goto out;
-
-		// load try state
-		new = pv_get_state(pv, rev);
-		if (!new) {
-			pv_log(DEBUG, "invalid rev requested %d", rev);
-			goto out;
-		}
-
-		// stop current step
-		if (pv_platforms_stop(pv, 0) < 0) {
-			next_state = STATE_ROLLBACK;
-			goto out;
-		}
-		if (pv_volumes_unmount(pv, 0) < 0) {
-			next_state = STATE_ROLLBACK;
-			goto out;
-		}
- 
-		pv->state = new;
-		pv_meta_link_boot(pv, NULL);
-		pv_meta_set_tryonce(pv, 1);
-		next_state = STATE_RUN;
-		}
+	switch (cmd->op) {
+	case CMD_UPDATE_METADATA:
+		pv_ph_upload_metadata(pv, cmd->payload);
 		break;
-	case CMD_LOG:
-		break;
-	case CMD_JSON:
-		switch (c->json_operation) {
-		case CMD_JSON_UPDATE_METADATA:
-			pv_ph_upload_metadata(pv, c->data);
-			break;
-		case CMD_JSON_REBOOT_DEVICE:
-			if (pv->update) {
-				pv_log(WARN, "ignoring reboot command because an update is in progress");
-				goto out;
-			}
-
-			pv_log(DEBUG, "reboot command with message '%s' received. Rebooting...",
-				c->data);
-			next_state = STATE_REBOOT;
-			break;
-		case CMD_JSON_POWEROFF_DEVICE:
-			if (pv->update) {
-				pv_log(WARN, "ignoring poweroff command because an update is in progress");
-				goto out;
-			}
-
-			pv_log(DEBUG, "poweroff command with messaeg '%s' received. Powering off...",
-				c->data);
-			next_state = STATE_POWEROFF;
-			break;
-		default:
-			pv_log(DEBUG, "unknown json command received");
+	case CMD_REBOOT_DEVICE:
+		if (pv->update) {
+			pv_log(WARN, "ignoring reboot command because an update is in progress");
+			goto out;
 		}
+
+		pv_log(DEBUG, "reboot command with message '%s' received. Rebooting...",
+			cmd->payload);
+		next_state = STATE_REBOOT;
+		break;
+	case CMD_POWEROFF_DEVICE:
+		if (pv->update) {
+			pv_log(WARN, "ignoring poweroff command because an update is in progress");
+			goto out;
+		}
+
+		pv_log(DEBUG, "poweroff command with message '%s' received. Powering off...",
+			cmd->payload);
+		next_state = STATE_POWEROFF;
 		break;
 	default:
-		pv_log(DEBUG, "unknown command received");
+		pv_log(WARN, "unknown command. Ignoring...");
 	}
 out:
-	pv_cmd_req_remove(pv);
+	pv_ctrl_free_cmd(pv->cmd);
 	return next_state;
 }
 

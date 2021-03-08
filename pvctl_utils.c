@@ -35,7 +35,6 @@
 #include <sys/un.h>
 #include <signal.h>
 #include <sys/prctl.h>
-#include "cmd.h"
 #include <errno.h>
 
 #ifndef MODULE_NAME
