@@ -75,7 +75,6 @@ static int pv_ctrl_socket_open(char *path)
 	// queue 15 commands
 	listen(fd, 15);
 
-
 out:
 	return fd;
 }
@@ -151,7 +150,7 @@ static struct pv_cmd* pv_ctrl_process_cmd(int fd)
 	pv_log(DEBUG, "received command with op %d and payload %s", cmd->op, cmd->payload);
 
 	// write response
-	if (write(fd, "OK", 2) < 0 ) {
+	if (write(fd, "OK", 2) < 0) {
 		pv_log(ERROR, "cmd response could not be sent to ctrl socket");
 		goto err;
 	}
@@ -175,36 +174,39 @@ static void pv_ctrl_process_get_object(int fd)
 
 struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 {
-	int fd, ret;
+	int req_fd = 0, ret;
 	fd_set fdset;
 	struct timeval tv;
-	ctrl_code_t ctrl_code;
+	char ctrl_code;
 	struct pv_cmd *cmd = NULL;
 
-	fd = ctrl_fd;
-	if (fd < 0) {
+	if (ctrl_fd < 0) {
 		pv_log(WARN, "control socket not setup");
 		goto out;
 	}
 
 	FD_ZERO(&fdset);
-	FD_SET(fd, &fdset);
+	FD_SET(ctrl_fd, &fdset);
 	tv.tv_sec = timeout;
 	tv.tv_usec = 0;
 
 	// select with blocking time
-	ret = select(fd + 1, &fdset, 0, 0, &tv);
+	ret = select(ctrl_fd + 1, &fdset, 0, 0, &tv);
 	if (!ret)
 		goto out;
-	if (ret < 0) {
-		pv_log(ERROR, "error reading from socket fd");
+	else if (ret < 0) {
+		pv_log(ERROR, "select wait failed");
 		goto out;
 	}
 
 	// create dedicated fd
-	fd = accept(fd, 0, 0);
+	req_fd = accept(ctrl_fd, 0, 0);
+	if (req_fd <= 0) {
+		goto out;
+	}
 
-	if (read(fd, &ctrl_code, sizeof(char)) != sizeof(char)) {
+
+	if (read(req_fd, &ctrl_code, sizeof(char)) != sizeof(char)) {
 		pv_log(WARN, "unknown command format received");
 		goto out;
 	}
@@ -212,20 +214,20 @@ struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 	// process request
 	switch (ctrl_code) {
 	case CTRL_CMD:
-		cmd = pv_ctrl_process_cmd(fd);
+		cmd = pv_ctrl_process_cmd(req_fd);
 		break;
 	case CTRL_PUT_OBJECT:
-		pv_ctrl_process_put_object(fd);
+		pv_ctrl_process_put_object(req_fd);
 		break;
 	case CTRL_GET_OBJECT:
-		pv_ctrl_process_get_object(fd);
+		pv_ctrl_process_get_object(req_fd);
 		break;
 	default:
 		pv_log(DEBUG, "received unknown ctrl request %d", ctrl_code);
 	}
 
 out:
-	close(fd);
+	close(req_fd);
 	return cmd;
 }
 

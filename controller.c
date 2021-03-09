@@ -365,7 +365,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
-	pv_ctrl_free_cmd(pv->cmd);
 	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
 	if (pv->cmd)
 		next_state = STATE_COMMAND;
@@ -411,6 +410,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	}
 out:
 	pv_ctrl_free_cmd(pv->cmd);
+	pv->cmd = NULL;
 	return next_state;
 }
 
