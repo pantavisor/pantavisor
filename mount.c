@@ -33,7 +33,6 @@
 #include "pantavisor.h"
 #include "utils.h"
 #include "loop.h"
-#include "cmd.h"
 #include "blkid.h"
 
 #define MODULE_NAME		"mount-init"

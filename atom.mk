@@ -64,7 +64,7 @@ LOCAL_SRC_FILES := init.c \
 			grub.c \
 			storage.c \
 			metadata.c \
-			cmd.c \
+			ctrl.c \
 			wdt.c \
 			network.c \
 			pvlogger.c \

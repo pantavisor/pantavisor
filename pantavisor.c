@@ -39,7 +39,7 @@
 
 #include "updater.h"
 #include "pantavisor.h"
-#include "cmd.h"
+#include "ctrl.h"
 #include "config.h"
 #include "state.h"
 #include "utils.h"
@@ -74,7 +74,7 @@ static void pv_remove(struct pantavisor *pv)
 	pv->update = NULL;
 	pv_state_free(pv->state);
 	pv->state = NULL;
-	pv_cmd_req_remove(pv);
+	pv_ctrl_free_cmd(pv->cmd);
 	pv_trail_remote_remove(pv);
 	pv_config_free();
 
@@ -87,7 +87,7 @@ void pv_teardown(struct pantavisor *pv)
 	if (!pv)
 		return;
 
-	pv_cmd_socket_close(pv);
+	pv_ctrl_socket_close(pv->ctrl_fd);
 
 	pv_remove(pv);
 }

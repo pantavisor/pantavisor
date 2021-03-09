@@ -20,58 +20,50 @@
  * SOFTWARE.
  */
 
-#ifndef PV_CMD_H
-#define PV_CMD_H
+#ifndef PV_CTRL_H
+#define PV_CTRL_H
 
 #include <stdint.h>
 #include <string.h>
 
-#include "cmd.h"
-#include "pantavisor.h"
+typedef enum {
+	CTRL_CMD = 3,
+	CTRL_PUT_OBJECT = 4,
+	CTRL_GET_OBJECT = 5
+} ctrl_code_t;
 
-// legacy commands, use cmd_json_operation_t for new commands
-enum cmd_t {
-	CMD_TRY_ONCE = 1,
-	CMD_LOG,
-	CMD_JSON
+typedef enum {
+	CMD_UPDATE_METADATA = 1,
+	CMD_REBOOT_DEVICE = 2,
+	CMD_POWEROFF_DEVICE = 3,
+	CMD_TRY_ONCE = 4,
+	MAX_CMD_OP
+} pv_cmd_operation_t;
+
+struct pv_cmd {
+	pv_cmd_operation_t op;
+	char* payload;
 };
 
-enum cmd_json_operation_t {
-	CMD_JSON_UPDATE_METADATA = 1,
-	// add new commands here
-	CMD_JSON_LOG,
-	CMD_JSON_REBOOT_DEVICE,
-	CMD_JSON_POWEROFF_DEVICE,
-	MAX_CMD_JSON_OP
-};
+struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout);
+void pv_ctrl_free_cmd(struct pv_cmd *cmd);
 
-struct pv_cmd_req {
-	char cmd;
-	enum cmd_json_operation_t json_operation ;
-	uint32_t len;
-	char *data;
-	char *platform;
-};
+void pv_ctrl_socket_close(int ctrl_fd);
 
-int pv_cmd_socket_open(struct pantavisor *pv, char *path);
-void pv_cmd_socket_close(struct pantavisor *pv);
-struct pv_cmd_req *pv_cmd_socket_wait(struct pantavisor *pv, int timeout);
-void pv_cmd_req_remove(struct pantavisor *pv);
-
-static inline const char *string_cmd_operation(const enum cmd_json_operation_t op)
+static inline const char* pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 {
 	static const char *strings[] = {NULL, "UPDATE_METADATA","JSON_LOG","REBOOT_DEVICE","POWEROFF_DEVICE"};
 	return strings[op];
 }
 
-static inline enum cmd_json_operation_t int_cmd_operation(const char *op_string, const uint8_t op_string_size)
+static inline pv_cmd_operation_t pv_ctrl_int_cmd_operation(const char *op_string, const int op_string_size)
 {
-	for (enum cmd_json_operation_t op_index = 1; op_index < MAX_CMD_JSON_OP; ++op_index) {
-		if (!strncmp(op_string, string_cmd_operation(op_index), op_string_size))
+	for (pv_cmd_operation_t op_index = 1; op_index < MAX_CMD_OP; ++op_index) {
+		if (!strncmp(op_string, pv_ctrl_string_cmd_operation(op_index), op_string_size))
 			return op_index;
     }
 
     return 0;
 }
 
-#endif // PV_CMD_H
+#endif // PV_CTRL_H
