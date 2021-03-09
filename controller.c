@@ -375,13 +375,44 @@ out:
 
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
+	int rev;
 	struct pv_cmd *cmd = pv->cmd;
+	struct pv_state *new;
 	pv_state_t next_state = STATE_WAIT;
 
 	if (!cmd)
 		return STATE_WAIT;
 
 	switch (cmd->op) {
+	case CMD_TRY_ONCE:
+		rev = atoi(cmd->payload);
+
+		// lets not tryonce factory
+		if (rev == 0)
+			goto out;
+
+		// load try state
+		new = pv_get_state(pv, rev);
+		if (!new) {
+			pv_log(DEBUG, "invalid rev requested %d", rev);
+			goto out;
+		}
+
+		// stop current step
+		if (pv_platforms_stop(pv, 0) < 0) {
+			next_state = STATE_ROLLBACK;
+			goto out;
+		}
+		if (pv_volumes_unmount(pv, 0) < 0) {
+			next_state = STATE_ROLLBACK;
+			goto out;
+		}
+
+		pv->state = new;
+		pv_meta_link_boot(pv, NULL);
+		pv_meta_set_tryonce(pv, 1);
+		next_state = STATE_RUN;
+		break;
 	case CMD_UPDATE_METADATA:
 		pv_ph_upload_metadata(pv, cmd->payload);
 		break;

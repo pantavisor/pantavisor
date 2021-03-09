@@ -36,6 +36,7 @@ typedef enum {
 	CMD_UPDATE_METADATA = 1,
 	CMD_REBOOT_DEVICE = 2,
 	CMD_POWEROFF_DEVICE = 3,
+	CMD_TRY_ONCE = 4,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 

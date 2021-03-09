@@ -90,7 +90,7 @@ void pv_ctrl_socket_close(int ctrl_fd)
 static int pv_ctrl_parse_command(char *buf, struct pv_cmd *cmd)
 {
 	int tokc;
-	uint8_t ret = 1;
+	uint8_t ret = -1;
 	jsmntok_t *tokv;
 	char *op_string = NULL;
 
@@ -128,7 +128,10 @@ out:
 static struct pv_cmd* pv_ctrl_process_cmd(int fd)
 {
 	struct pv_cmd *cmd = NULL;
-	char buf[4096];
+	char req[4096], res[8];
+
+	memset(req, 0, sizeof(req));
+	memset(res, 0, sizeof(res));
 
 	cmd = calloc(1, sizeof(struct pv_cmd));
 	if (!cmd) {
@@ -137,20 +140,21 @@ static struct pv_cmd* pv_ctrl_process_cmd(int fd)
 	}
 
 	// read request
-	if (read(fd, buf, 4096) <= 0) {
+	if (read(fd, req, 4096) <= 0) {
 		pv_log(ERROR, "cmd request could not be received from ctrl socket");
 		goto err;
 	}
 
-	if (pv_ctrl_parse_command(buf, cmd)) {
+	if (!pv_ctrl_parse_command(req, cmd)) {
+		pv_log(DEBUG, "received command with op %d and payload %s", cmd->op, cmd->payload);
+		sprintf(res, "%s", "OK");
+	} else {
 		pv_log(WARN, "json command has wrong format");
-		goto err;
+		sprintf(res, "%s", "ERROR");
 	}
 
-	pv_log(DEBUG, "received command with op %d and payload %s", cmd->op, cmd->payload);
-
 	// write response
-	if (write(fd, "OK", 2) < 0) {
+	if (write(fd, res, strlen(res)) < 0) {
 		pv_log(ERROR, "cmd response could not be sent to ctrl socket");
 		goto err;
 	}
