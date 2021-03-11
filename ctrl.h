@@ -27,12 +27,6 @@
 #include <string.h>
 
 typedef enum {
-	CTRL_CMD = 3,
-	CTRL_PUT_OBJECT = 4,
-	CTRL_GET_OBJECT = 5
-} ctrl_code_t;
-
-typedef enum {
 	CMD_UPDATE_METADATA = 1,
 	CMD_REBOOT_DEVICE = 2,
 	CMD_POWEROFF_DEVICE = 3,
