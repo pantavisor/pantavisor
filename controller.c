@@ -414,6 +414,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		next_state = STATE_RUN;
 		break;
 	case CMD_UPDATE_METADATA:
+		pv_log(DEBUG, "metadata command with payload '%s' received. Uploading metadata...",
+			cmd->payload);
 		pv_ph_upload_metadata(pv, cmd->payload);
 		break;
 	case CMD_REBOOT_DEVICE:

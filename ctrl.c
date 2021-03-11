@@ -25,6 +25,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <errno.h>
+#include <picohttpparser.h>
 
 #include <sys/time.h>
 #include <sys/select.h>
@@ -125,7 +126,7 @@ out:
 	return ret;
 }
 
-static struct pv_cmd* pv_ctrl_process_cmd(int fd)
+static struct pv_cmd* pv_ctrl_process_cmd(int req_fd)
 {
 	struct pv_cmd *cmd = NULL;
 	char req[4096], res[8];
@@ -140,22 +141,19 @@ static struct pv_cmd* pv_ctrl_process_cmd(int fd)
 	}
 
 	// read request
-	if (read(fd, req, 4096) <= 0) {
+	if (read(req_fd, req, 4096) <= 0) {
 		pv_log(ERROR, "cmd request could not be received from ctrl socket");
 		goto err;
 	}
 
-	if (!pv_ctrl_parse_command(req, cmd)) {
-		pv_log(DEBUG, "received command with op %d and payload %s", cmd->op, cmd->payload);
-		sprintf(res, "%s", "OK");
-	} else {
+	if (pv_ctrl_parse_command(req, cmd)) {
 		pv_log(WARN, "json command has wrong format");
-		sprintf(res, "%s", "ERROR");
+		goto err;
 	}
 
 	// write response
-	if (write(fd, res, strlen(res)) < 0) {
-		pv_log(ERROR, "cmd response could not be sent to ctrl socket");
+	if (write(req_fd, "HTTP/1.1 200 OK\r\n\r\n", 19) < 0) {
+		pv_log(ERROR, "write error");
 		goto err;
 	}
 
@@ -166,14 +164,74 @@ err:
 	return NULL;
 }
 
-static void pv_ctrl_process_put_object(int fd)
+static void pv_ctrl_process_put_object(int req_fd)
 {
 	pv_log(DEBUG, "received put object. NOT IMPLEMENTED");
 }
 
-static void pv_ctrl_process_get_object(int fd)
+static void pv_ctrl_process_get_object(int req_fd)
 {
 	pv_log(DEBUG, "received get object. NOT IMPLEMENTED");
+}
+
+static int pv_ctrl_read_parse_request_header(int req_fd, char *buf, const char **method, size_t *method_len, const char **path, size_t *path_len)
+{
+	int minor_version, buf_index = 0;
+	struct phr_header headers[8];
+	size_t num_headers = 8;
+
+	// read from socket until end of HTTP header
+	while ((buf_index < 4096) &&
+			(1 == read(req_fd, &buf[buf_index], 1))) {
+		if ((buf_index > 0) &&
+			(buf[buf_index-3] == '\r') &&
+			(buf[buf_index-2] == '\n') &&
+			(buf[buf_index-1] == '\r') &&
+			(buf[buf_index] == '\n')) {
+			break;
+		}
+		buf_index++;
+	}
+
+	// parse HTTP header
+	return phr_parse_request(buf, buf_index+1, method, method_len, path, path_len, &minor_version, headers, &num_headers, 0);
+}
+
+static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
+{
+	char buf[4096];
+	int buf_index = 0;
+	const char *method, *path;
+	size_t method_len, path_len;
+	struct pv_cmd *cmd = NULL;
+
+	// read and parse request line
+	buf_index = pv_ctrl_read_parse_request_header(req_fd, buf, &method, &method_len, &path, &path_len);
+	if (buf_index < 0) {
+		pv_log(WARN, "HTTP request recived has bad format");
+		goto out;
+	}
+
+	// read and parse rest of message
+	if (!strncmp("/command", path, path_len)) {
+		if (!strncmp("POST", method, method_len)) {
+			pv_log(DEBUG, "POST /command");
+			cmd = pv_ctrl_process_cmd(req_fd);
+		}
+	} else if (!strncmp("/objects", path, path_len)) {
+		if (!strncmp("PUT", method, method_len)) {
+			pv_log(DEBUG, "PUT /objects");
+		} else if (!strncmp("GET", method, method_len)) {
+			pv_log(DEBUG, "GET /objects");
+		}
+	} else {
+		if (write(req_fd, "HTTP/1.1 400 Bad Request\r\n\r\n", 28) < 0) {
+			pv_log(ERROR, "write error");
+		}
+	}
+
+out:
+	return cmd;
 }
 
 struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
@@ -181,11 +239,10 @@ struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 	int req_fd = 0, ret;
 	fd_set fdset;
 	struct timeval tv;
-	char ctrl_code;
 	struct pv_cmd *cmd = NULL;
 
 	if (ctrl_fd < 0) {
-		pv_log(WARN, "control socket not setup");
+		pv_log(ERROR, "control socket not setup");
 		goto out;
 	}
 
@@ -206,32 +263,14 @@ struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 	// create dedicated fd
 	req_fd = accept(ctrl_fd, 0, 0);
 	if (req_fd <= 0) {
+		pv_log(ERROR, "accept connection failed");
 		goto out;
 	}
 
+	cmd = pv_ctrl_read_parse_request(req_fd);
 
-	if (read(req_fd, &ctrl_code, sizeof(char)) != sizeof(char)) {
-		pv_log(WARN, "unknown command format received");
-		goto out;
-	}
-
-	// process request
-	switch (ctrl_code) {
-	case CTRL_CMD:
-		cmd = pv_ctrl_process_cmd(req_fd);
-		break;
-	case CTRL_PUT_OBJECT:
-		pv_ctrl_process_put_object(req_fd);
-		break;
-	case CTRL_GET_OBJECT:
-		pv_ctrl_process_get_object(req_fd);
-		break;
-	default:
-		pv_log(DEBUG, "received unknown ctrl request %d", ctrl_code);
-	}
-
-out:
 	close(req_fd);
+out:
 	return cmd;
 }
 
