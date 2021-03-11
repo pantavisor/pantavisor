@@ -43,13 +43,11 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#ifndef _GNU_SOURCE
-struct  ucred {
-	pid_t pid;
-	uid_t uid;
-	gid_t gid;
-};
-#endif
+#define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
+#define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
+
+static const int HTTP_REQ_BUFFER_SIZE = 4096;
+static const int HTTP_REQ_NUM_HEADERS = 8;
 
 static int pv_ctrl_socket_open(char *path)
 {
@@ -88,12 +86,19 @@ void pv_ctrl_socket_close(int ctrl_fd)
 	}
 }
 
-static int pv_ctrl_parse_command(char *buf, struct pv_cmd *cmd)
+static struct pv_cmd* pv_ctrl_parse_command(char *buf)
 {
 	int tokc;
 	uint8_t ret = -1;
 	jsmntok_t *tokv;
 	char *op_string = NULL;
+	struct pv_cmd* cmd = NULL;
+
+	cmd = calloc(1, sizeof(struct pv_cmd));
+	if (!cmd) {
+		pv_log(ERROR, "cmd could not be allocated");
+		goto out;
+	}
 
 	jsmnutil_parse_json(buf, &tokv, &tokc);
 
@@ -123,65 +128,56 @@ out:
 	if (op_string)
 		free(op_string);
 
-	return ret;
+	return cmd;
 }
 
-static struct pv_cmd* pv_ctrl_process_cmd(int req_fd)
+static int pv_ctrl_process_cmd(int req_fd, int content_length, struct pv_cmd** cmd)
 {
-	struct pv_cmd *cmd = NULL;
-	char req[4096], res[8];
+	char req[HTTP_REQ_BUFFER_SIZE];
 
 	memset(req, 0, sizeof(req));
-	memset(res, 0, sizeof(res));
-
-	cmd = calloc(1, sizeof(struct pv_cmd));
-	if (!cmd) {
-		pv_log(ERROR, "cmd could not be allocated");
-		goto err;
-	}
 
 	// read request
-	if (read(req_fd, req, 4096) <= 0) {
+	if (read(req_fd, req, content_length) <= 0) {
 		pv_log(ERROR, "cmd request could not be received from ctrl socket");
 		goto err;
 	}
 
-	if (pv_ctrl_parse_command(req, cmd)) {
-		pv_log(WARN, "json command has wrong format");
+	*cmd = pv_ctrl_parse_command(req);
+	if (!*cmd)
 		goto err;
-	}
 
-	// write response
-	if (write(req_fd, "HTTP/1.1 200 OK\r\n\r\n", 19) < 0) {
-		pv_log(ERROR, "write error");
-		goto err;
-	}
-
-	return cmd;
+	return 0;
 
 err:
-	pv_ctrl_free_cmd(cmd);
-	return NULL;
+	pv_ctrl_free_cmd(*cmd);
+	*cmd = NULL;
+	return -1;
 }
 
 static void pv_ctrl_process_put_object(int req_fd)
 {
-	pv_log(DEBUG, "received put object. NOT IMPLEMENTED");
+	pv_log(DEBUG, "PUT OBJECT NOT IMPLEMENTED");
 }
 
 static void pv_ctrl_process_get_object(int req_fd)
 {
-	pv_log(DEBUG, "received get object. NOT IMPLEMENTED");
+	pv_log(DEBUG, "GET OBJECT NOT IMPLEMENTED");
 }
 
-static int pv_ctrl_read_parse_request_header(int req_fd, char *buf, const char **method, size_t *method_len, const char **path, size_t *path_len)
+static int pv_ctrl_read_parse_request_header(int req_fd,
+											char *buf,
+											const char **method,
+											size_t *method_len,
+											const char **path,
+											size_t *path_len,
+											struct phr_header *headers,
+											size_t *num_headers)
 {
 	int minor_version, buf_index = 0;
-	struct phr_header headers[8];
-	size_t num_headers = 8;
 
 	// read from socket until end of HTTP header
-	while ((buf_index < 4096) &&
+	while ((buf_index < HTTP_REQ_BUFFER_SIZE) &&
 			(1 == read(req_fd, &buf[buf_index], 1))) {
 		if ((buf_index > 0) &&
 			(buf[buf_index-3] == '\r') &&
@@ -194,41 +190,86 @@ static int pv_ctrl_read_parse_request_header(int req_fd, char *buf, const char *
 	}
 
 	// parse HTTP header
-	return phr_parse_request(buf, buf_index+1, method, method_len, path, path_len, &minor_version, headers, &num_headers, 0);
+	return phr_parse_request(buf,
+							buf_index+1,
+							method,
+							method_len,
+							path,
+							path_len,
+							&minor_version,
+							headers,
+							num_headers,
+							0);
+}
+
+static int pv_ctrl_get_value_header_int(struct phr_header *headers,
+										size_t num_headers,
+										char* name)
+{
+	for (size_t header_index = 0; header_index < num_headers; header_index++)
+		if (!strncmp(headers[header_index].name, name, headers[header_index].name_len))
+			return atoi(headers[header_index].value);
+
+	return -1;
 }
 
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
-	char buf[4096];
-	int buf_index = 0;
+	char buf[HTTP_REQ_BUFFER_SIZE];
+	int buf_index = 0, content_length = 0, res = 0;
 	const char *method, *path;
-	size_t method_len, path_len;
+	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS;
+	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
 
 	// read and parse request line
-	buf_index = pv_ctrl_read_parse_request_header(req_fd, buf, &method, &method_len, &path, &path_len);
+	buf_index = pv_ctrl_read_parse_request_header(req_fd,
+												buf,
+												&method,
+												&method_len,
+												&path,
+												&path_len,
+												headers,
+												&num_headers);
 	if (buf_index < 0) {
 		pv_log(WARN, "HTTP request recived has bad format");
+		goto out;
+	}
+
+	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
+	if (content_length <= 0) {
+		pv_log(WARN, "HTTP request received has empty body");
+		goto out;
+	}
+
+	if ((content_length+buf_index) > HTTP_REQ_BUFFER_SIZE) {
+		pv_log(WARN, "HTTP request body overflows buffer");
 		goto out;
 	}
 
 	// read and parse rest of message
 	if (!strncmp("/command", path, path_len)) {
 		if (!strncmp("POST", method, method_len)) {
-			pv_log(DEBUG, "POST /command");
-			cmd = pv_ctrl_process_cmd(req_fd);
+			pv_log(DEBUG, "POST /command request received");
+			res = pv_ctrl_process_cmd(req_fd, content_length, &cmd);
 		}
 	} else if (!strncmp("/objects", path, path_len)) {
 		if (!strncmp("PUT", method, method_len)) {
-			pv_log(DEBUG, "PUT /objects");
+			pv_log(DEBUG, "PUT /objects request received");
 		} else if (!strncmp("GET", method, method_len)) {
-			pv_log(DEBUG, "GET /objects");
-		}
-	} else {
-		if (write(req_fd, "HTTP/1.1 400 Bad Request\r\n\r\n", 28) < 0) {
-			pv_log(ERROR, "write error");
+			pv_log(DEBUG, "GET /objects request received");
 		}
 	}
+
+	// write response
+	if (res < 0){
+		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
+			pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
+		goto out;
+	}
+
+	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) < 0)
+		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 
 out:
 	return cmd;

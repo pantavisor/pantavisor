@@ -439,7 +439,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		next_state = STATE_POWEROFF;
 		break;
 	default:
-		pv_log(WARN, "unknown command. Ignoring...");
+		pv_log(WARN, "unknown command received. Ignoring...");
 	}
 out:
 	pv_ctrl_free_cmd(pv->cmd);
