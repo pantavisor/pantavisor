@@ -15,7 +15,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_LIBRARIES := libthttp libpvlogger mbedtls
+LOCAL_LIBRARIES := libthttp libpvlogger mbedtls picohttpparser
 LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:e2fsprogs
 
 LOCAL_DESTDIR := ./

@@ -25,6 +25,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 #include <errno.h>
+#include <picohttpparser.h>
 
 #include <sys/time.h>
 #include <sys/select.h>
@@ -42,13 +43,11 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#ifndef _GNU_SOURCE
-struct  ucred {
-	pid_t pid;
-	uid_t uid;
-	gid_t gid;
-};
-#endif
+#define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
+#define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
+
+static const int HTTP_REQ_BUFFER_SIZE = 4096;
+static const int HTTP_REQ_NUM_HEADERS = 8;
 
 static int pv_ctrl_socket_open(char *path)
 {
@@ -87,34 +86,47 @@ void pv_ctrl_socket_close(int ctrl_fd)
 	}
 }
 
-static int pv_ctrl_parse_command(char *buf, struct pv_cmd *cmd)
+static struct pv_cmd* pv_ctrl_parse_command(char *buf)
 {
 	int tokc;
 	uint8_t ret = -1;
 	jsmntok_t *tokv;
 	char *op_string = NULL;
+	struct pv_cmd* cmd = NULL;
+
+	cmd = calloc(1, sizeof(struct pv_cmd));
+	if (!cmd) {
+		pv_log(ERROR, "cmd could not be allocated");
+		goto out;
+	}
 
 	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	op_string = get_json_key_value(buf, "op", tokv, tokc);
 	if(!op_string) {
 		pv_log(WARN, "Unable to get op value from command");
-		goto out;
+		goto err;
 	}
 
 	cmd->op = pv_ctrl_int_cmd_operation(op_string, strlen(op_string));
 	if (!cmd->op) {
 		pv_log(WARN, "op from command unknown");
-		goto out;
+		goto err;
 	}
 
 	cmd->payload = get_json_key_value(buf, "payload", tokv, tokc);
 	if (!cmd->payload) {
 		pv_log(WARN, "Unable to get payload value from command");
-		goto out;
+		goto err;
 	}
 
 	ret = 0;
+
+	goto out;
+
+err:
+	pv_ctrl_free_cmd(cmd);
+	cmd = NULL;
 
 out:
 	if (tokv)
@@ -122,58 +134,161 @@ out:
 	if (op_string)
 		free(op_string);
 
-	return ret;
+	return cmd;
 }
 
-static struct pv_cmd* pv_ctrl_process_cmd(int fd)
+static int pv_ctrl_read_parse_cmd(int req_fd, int content_length, struct pv_cmd** cmd)
 {
-	struct pv_cmd *cmd = NULL;
-	char req[4096], res[8];
+	char req[HTTP_REQ_BUFFER_SIZE];
 
 	memset(req, 0, sizeof(req));
-	memset(res, 0, sizeof(res));
-
-	cmd = calloc(1, sizeof(struct pv_cmd));
-	if (!cmd) {
-		pv_log(ERROR, "cmd could not be allocated");
-		goto err;
-	}
 
 	// read request
-	if (read(fd, req, 4096) <= 0) {
+	if (read(req_fd, req, content_length) <= 0) {
 		pv_log(ERROR, "cmd request could not be received from ctrl socket");
 		goto err;
 	}
 
-	if (!pv_ctrl_parse_command(req, cmd)) {
-		pv_log(DEBUG, "received command with op %d and payload %s", cmd->op, cmd->payload);
-		sprintf(res, "%s", "OK");
-	} else {
-		pv_log(WARN, "json command has wrong format");
-		sprintf(res, "%s", "ERROR");
+	*cmd = pv_ctrl_parse_command(req);
+	if (!*cmd)
+		goto err;
+
+	return 0;
+
+err:
+	return -1;
+}
+
+static void pv_ctrl_read_parse_put_object(int req_fd)
+{
+	pv_log(DEBUG, "PUT OBJECT NOT IMPLEMENTED");
+}
+
+static void pv_ctrl_read_parse_get_object(int req_fd)
+{
+	pv_log(DEBUG, "GET OBJECT NOT IMPLEMENTED");
+}
+
+static int pv_ctrl_read_parse_request_header(int req_fd,
+											char *buf,
+											int buf_index,
+											const char **method,
+											size_t *method_len,
+											const char **path,
+											size_t *path_len,
+											struct phr_header *headers,
+											size_t *num_headers)
+{
+	int minor_version;
+
+	// read from socket until end of HTTP header
+	while ((buf_index < HTTP_REQ_BUFFER_SIZE) &&
+			(1 == read(req_fd, &buf[buf_index], 1))) {
+		if ((buf[buf_index-3] == '\r') &&
+			(buf[buf_index-2] == '\n') &&
+			(buf[buf_index-1] == '\r') &&
+			(buf[buf_index] == '\n')) {
+			break;
+		}
+		buf_index++;
+	}
+
+	// parse HTTP header
+	return phr_parse_request(buf,
+							buf_index+1,
+							method,
+							method_len,
+							path,
+							path_len,
+							&minor_version,
+							headers,
+							num_headers,
+							0);
+}
+
+static int pv_ctrl_get_value_header_int(struct phr_header *headers,
+										size_t num_headers,
+										char* name)
+{
+	for (size_t header_index = 0; header_index < num_headers; header_index++)
+		if (!strncmp(headers[header_index].name, name, headers[header_index].name_len))
+			return atoi(headers[header_index].value);
+
+	return -1;
+}
+
+static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
+{
+	char buf[HTTP_REQ_BUFFER_SIZE];
+	int buf_index = 0, content_length = 0, res = -1;
+	const char *method, *path;
+	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS;
+	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
+	struct pv_cmd *cmd = NULL;
+
+	// read first character to see if the request is a non-HTTP legacy one
+	if (read(req_fd, &buf[0], 1) < 0)
+		goto out;
+	buf_index++;
+
+	// if character is 3 (old code for json command), it is non-HTTP
+	if (buf[0] == 3) {
+		res = pv_ctrl_read_parse_cmd(req_fd, HTTP_REQ_BUFFER_SIZE, &cmd);
+		goto out;
+	}
+
+	// at this point, the request can only be either HTTP or bad formatted
+	buf_index = pv_ctrl_read_parse_request_header(req_fd,
+												buf,
+												buf_index,
+												&method,
+												&method_len,
+												&path,
+												&path_len,
+												headers,
+												&num_headers);
+	if (buf_index < 0) {
+		pv_log(WARN, "HTTP request recived has bad format");
+		goto out;
+	}
+
+	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
+	if (content_length <= 0) {
+		pv_log(WARN, "HTTP request received has empty body");
+		goto out;
+	}
+
+	if ((content_length+buf_index) > HTTP_REQ_BUFFER_SIZE) {
+		pv_log(WARN, "HTTP request body overflows buffer");
+		goto out;
+	}
+
+	// read and parse rest of message
+	if (!strncmp("/command", path, path_len)) {
+		if (!strncmp("POST", method, method_len)) {
+			pv_log(DEBUG, "POST /command request received");
+			res = pv_ctrl_read_parse_cmd(req_fd, content_length, &cmd);
+		}
+	} else if (!strncmp("/objects", path, path_len)) {
+		if (!strncmp("PUT", method, method_len)) {
+			pv_log(DEBUG, "PUT /objects request received");
+		} else if (!strncmp("GET", method, method_len)) {
+			pv_log(DEBUG, "GET /objects request received");
+		}
 	}
 
 	// write response
-	if (write(fd, res, strlen(res)) < 0) {
-		pv_log(ERROR, "cmd response could not be sent to ctrl socket");
-		goto err;
+	if (res < 0){
+		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
+			pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
+		goto out;
 	}
 
+	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) < 0)
+		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
+
+out:
 	return cmd;
-
-err:
-	pv_ctrl_free_cmd(cmd);
-	return NULL;
-}
-
-static void pv_ctrl_process_put_object(int fd)
-{
-	pv_log(DEBUG, "received put object. NOT IMPLEMENTED");
-}
-
-static void pv_ctrl_process_get_object(int fd)
-{
-	pv_log(DEBUG, "received get object. NOT IMPLEMENTED");
 }
 
 struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
@@ -181,11 +296,10 @@ struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 	int req_fd = 0, ret;
 	fd_set fdset;
 	struct timeval tv;
-	char ctrl_code;
 	struct pv_cmd *cmd = NULL;
 
 	if (ctrl_fd < 0) {
-		pv_log(WARN, "control socket not setup");
+		pv_log(ERROR, "control socket not setup");
 		goto out;
 	}
 
@@ -206,32 +320,14 @@ struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 	// create dedicated fd
 	req_fd = accept(ctrl_fd, 0, 0);
 	if (req_fd <= 0) {
+		pv_log(ERROR, "accept connection failed");
 		goto out;
 	}
 
+	cmd = pv_ctrl_read_parse_request(req_fd);
 
-	if (read(req_fd, &ctrl_code, sizeof(char)) != sizeof(char)) {
-		pv_log(WARN, "unknown command format received");
-		goto out;
-	}
-
-	// process request
-	switch (ctrl_code) {
-	case CTRL_CMD:
-		cmd = pv_ctrl_process_cmd(req_fd);
-		break;
-	case CTRL_PUT_OBJECT:
-		pv_ctrl_process_put_object(req_fd);
-		break;
-	case CTRL_GET_OBJECT:
-		pv_ctrl_process_get_object(req_fd);
-		break;
-	default:
-		pv_log(DEBUG, "received unknown ctrl request %d", ctrl_code);
-	}
-
-out:
 	close(req_fd);
+out:
 	return cmd;
 }
 
