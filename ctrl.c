@@ -42,6 +42,7 @@
 #include "pvlogger.h"
 #include "state.h"
 #include "init.h"
+#include "storage.h"
 
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -142,11 +143,16 @@ out:
 	return cmd;
 }
 
-static int pv_ctrl_read_parse_cmd(int req_fd, int content_length, struct pv_cmd** cmd)
+static int pv_ctrl_read_parse_cmd(int req_fd, size_t content_length, struct pv_cmd** cmd)
 {
 	char req[HTTP_REQ_BUFFER_SIZE];
 
 	memset(req, 0, sizeof(req));
+
+	if (content_length > HTTP_REQ_BUFFER_SIZE) {
+		pv_log(WARN, "cmd request too long");
+		goto err;
+	}
 
 	// read request
 	if (read(req_fd, req, content_length) <= 0) {
@@ -164,37 +170,58 @@ err:
 	return -1;
 }
 
-static int pv_ctrl_read_parse_put_object(int req_fd, int content_length, char* object_name)
+static int pv_ctrl_read_parse_put_object(int req_fd, size_t content_length, char* object_name)
 {
-	int obj_fd, read_length;
+	int obj_fd, read_length, write_length, ret = -1;
 	char object_path[PATH_MAX];
 	char req[HTTP_REQ_BUFFER_SIZE];
 
 	sprintf(object_path, "%s/objects/%s", pv_config_get_storage_mntpoint(), object_name);
 	memset(req, 0, sizeof(req));
 
-	obj_fd = open(object_path, O_CREAT | O_RDWR, 0644);
+	pv_log(INFO, "putting object in %s...", object_path);
+
+	obj_fd = open(object_path, O_CREAT | O_WRONLY, 0644);
 	if (obj_fd <= 0) {
-		pv_log(ERROR, "%s could not be opened", object_path);
-		return -1;
+		pv_log(ERROR, "%s could not be opened for write", object_path);
+		goto out;
 	}
 
-	// read request
-	read_length = read(req_fd, req, content_length);
-	if (read_length <= 0) {
-		pv_log(ERROR, "req body could not be read");
-		return -1;
+	while (content_length > 0) {
+		if (content_length > HTTP_REQ_BUFFER_SIZE)
+			read_length = HTTP_REQ_BUFFER_SIZE;
+		else
+			read_length = content_length;
+
+		write_length = read(req_fd, req, read_length);
+		if (write_length <= 0) {
+			pv_log(ERROR, "HTTP req body could not be read");
+			goto sha;
+		}
+
+		if (write(obj_fd, req, write_length) <= 0) {
+			pv_log(ERROR, "object could not be written");
+			goto sha;
+		}
+
+		content_length-=write_length;
 	}
 
-	if (write(obj_fd, req, read_length) <= 0) {
-		pv_log(ERROR, "req body could not be written to %s", object_path);
-		return -1;
-	}
-
+sha:
 	fsync(obj_fd);
 	close(obj_fd);
 
-	return 0;
+	if (pv_storage_validate_file_checksum(object_path, object_name)) {
+		pv_log(DEBUG, "removing %s...", object_path);
+		remove(object_path);
+		syncdir(object_path);
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	return ret;
 }
 
 static void pv_ctrl_read_parse_get_object(int req_fd)
@@ -239,7 +266,7 @@ static int pv_ctrl_read_parse_request_header(int req_fd,
 							0);
 }
 
-static int pv_ctrl_get_value_header_int(struct phr_header *headers,
+static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 										size_t num_headers,
 										char* name)
 {
@@ -248,6 +275,42 @@ static int pv_ctrl_get_value_header_int(struct phr_header *headers,
 			return atoi(headers[header_index].value);
 
 	return -1;
+}
+
+static int pv_ctrl_write_get_object(int req_fd, char* object_name)
+{
+	int obj_fd, read_length, ret = -1;
+	char object_path[PATH_MAX];
+	char buf[4096];
+
+	memset(buf, 0, sizeof(buf));
+
+	sprintf(object_path, "%s/objects/%s", pv_config_get_storage_mntpoint(), object_name);
+
+	pv_log(INFO, "getting object from %s...", object_path);
+
+	obj_fd = open(object_path, O_RDONLY);
+	if (obj_fd <= 0) {
+		pv_log(ERROR, "%s could not be opened for read", object_path);
+		goto out;
+	}
+
+	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) < 0)
+		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
+
+	while ((read_length = read(obj_fd, buf, 4096)) > 0) {
+		if (write(req_fd, buf, read_length) != read_length) {
+			pv_log(ERROR, "could not write on req fd");
+			goto out;
+		}
+	}
+
+	ret = 0;
+
+out:
+	close(obj_fd);
+
+	return ret;
 }
 
 static char* pv_ctrl_get_object_name(const char* path, int buf_index, size_t path_len)
@@ -269,9 +332,9 @@ static char* pv_ctrl_get_object_name(const char* path, int buf_index, size_t pat
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
-	int buf_index = 0, content_length = 0, res = -1;
+	int buf_index = 0, res = -1;
 	const char *method, *path;
-	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS;
+	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
 	char* object_name = NULL;
@@ -308,16 +371,12 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		goto out;
 	}
 
-	if ((content_length+buf_index) > HTTP_REQ_BUFFER_SIZE) {
-		pv_log(WARN, "HTTP request body overflows buffer");
-		goto out;
-	}
-
 	// read and parse rest of message
 	if (!strncmp("/commands", path, path_len)) {
 		if (!strncmp("POST", method, method_len)) {
 			pv_log(DEBUG, "POST /commands request received");
 			res = pv_ctrl_read_parse_cmd(req_fd, content_length, &cmd);
+			goto response;
 		}
 	} else if (!strncmp("/objects/", path, sizeof("/objects/")-1)) {
 		object_name = pv_ctrl_get_object_name(path, sizeof("/objects/")-1, path_len);
@@ -326,18 +385,20 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			goto out;
 		}
 
-		if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
-			pv_log(ERROR, "HTTP Continue response could not be sent to ctrl socket");
-
 		if (!strncmp("PUT", method, method_len)) {
 			pv_log(DEBUG, "PUT /objects request received");
+			if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
+				pv_log(ERROR, "HTTP  response could not be sent to ctrl socket");
 			res = pv_ctrl_read_parse_put_object(req_fd, content_length, object_name);
+			goto response;
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_log(DEBUG, "GET /objects request received");
+			res = pv_ctrl_write_get_object(req_fd, object_name);
+			goto out;
 		}
 	}
 
-out:
+response:
 	// write response
 	if (res < 0) {
 		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
@@ -347,6 +408,7 @@ out:
 			pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 	}
 
+out:
 	if (object_name)
 		free(object_name);
 

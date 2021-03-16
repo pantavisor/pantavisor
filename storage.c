@@ -36,6 +36,8 @@
 #include <sys/prctl.h>
 #include <sys/statfs.h>
 
+#include <mbedtls/sha256.h>
+
 #include "updater.h"
 #include "objects.h"
 #include "storage.h"
@@ -288,6 +290,49 @@ bool pv_storage_threshold_reached(struct pantavisor *pv)
 	free(storage);
 
 	return threshold_reached;
+}
+
+int pv_storage_validate_file_checksum(char* path, char* checksum)
+{
+	int fd, ret = -1, bytes;
+	mbedtls_sha256_context sha256_ctx;
+	unsigned char buf[4096];
+	unsigned char cloud_sha[32];
+	unsigned char local_sha[32];
+	char tmp_sha[64];
+	char byte[3];
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0)
+		goto out;
+
+	mbedtls_sha256_init(&sha256_ctx);
+	mbedtls_sha256_starts(&sha256_ctx, 0);
+
+	while ((bytes = read(fd, buf, 4096)) > 0)
+		mbedtls_sha256_update(&sha256_ctx, buf, bytes);
+
+	mbedtls_sha256_finish(&sha256_ctx, local_sha);
+	mbedtls_sha256_free(&sha256_ctx);
+
+	strncpy(tmp_sha, checksum, 64);
+	for (int i = 0, j = 0; j < 32; i=i+2, j++) {
+		strncpy(byte, &tmp_sha[i], 2);
+		byte[2] = 0;
+		cloud_sha[j] = strtoul(byte, NULL, 16);
+	}
+
+	if(strncmp((char*)cloud_sha, (char*)local_sha, 32)) {
+		pv_log(WARN, "sha256 mismatch in %s", path);
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	close (fd);
+
+	return ret;
 }
 
 static int pv_storage_init(struct pv_init *this)
