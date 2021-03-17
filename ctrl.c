@@ -48,6 +48,8 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#define CTRL_SOCKET_PATH "/pv/pv-ctrl"
+
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
 
@@ -290,7 +292,7 @@ static void pv_ctrl_process_get_object(int req_fd, char* object_name)
 {
 	int obj_fd, read_length;
 	char object_path[PATH_MAX];
-	char buf[4096];
+	char buf[HTTP_REQ_BUFFER_SIZE];
 
 	memset(buf, 0, sizeof(buf));
 
@@ -304,11 +306,11 @@ static void pv_ctrl_process_get_object(int req_fd, char* object_name)
 		goto out;
 	}
 
-	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) < 0)
+	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
 		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 
 	// read and send
-	while ((read_length = read(obj_fd, buf, 4096)) > 0) {
+	while ((read_length = read(obj_fd, buf, HTTP_REQ_BUFFER_SIZE)) > 0) {
 		if (write(req_fd, buf, read_length) != read_length) {
 			pv_log(ERROR, "write failed");
 			goto out;
@@ -402,7 +404,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
 			pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
 	} else {
-		if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) < 0)
+		if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
 			pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 	}
 
@@ -468,7 +470,7 @@ static int pv_ctrl_init(struct pv_init *this)
 {
 	struct pantavisor *pv = get_pv_instance();
 
-	pv->ctrl_fd = pv_ctrl_socket_open("/pv/pv-ctrl");
+	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
 	if (pv->ctrl_fd <= 0) {
 		pv_log(ERROR, "ctrl socket could not be initialized");
 		return -1;
