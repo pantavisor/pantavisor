@@ -803,7 +803,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		size,
 		sha_str);
 
-	pv_log(INFO, "syncing '%s'", o->id, body);
+	pv_log(INFO, "syncing '%s'", o->id);
 
 	if (strcmp(o->id,sha_str)) {
 		pv_log(INFO, "sha256 mismatch, probably writable image, skipping", o->objpath);
