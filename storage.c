@@ -315,6 +315,7 @@ int pv_storage_validate_file_checksum(char* path, char* checksum)
 	mbedtls_sha256_finish(&sha256_ctx, local_sha);
 	mbedtls_sha256_free(&sha256_ctx);
 
+	// signed to unsigned
 	strncpy(tmp_sha, checksum, 64);
 	for (int i = 0, j = 0; j < 32; i=i+2, j++) {
 		strncpy(byte, &tmp_sha[i], 2);

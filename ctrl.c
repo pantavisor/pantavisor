@@ -48,6 +48,9 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#define ENDPOINT_COMMANDS "/commands"
+#define ENDPOINT_OBJECTS "/objects"
+
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
@@ -110,7 +113,7 @@ static struct pv_cmd* pv_ctrl_parse_command(char *buf)
 
 	op_string = get_json_key_value(buf, "op", tokv, tokc);
 	if(!op_string) {
-		pv_log(WARN, "Unable to get op value from command");
+		pv_log(WARN, "unable to get op value from command");
 		goto err;
 	}
 
@@ -122,7 +125,7 @@ static struct pv_cmd* pv_ctrl_parse_command(char *buf)
 
 	cmd->payload = get_json_key_value(buf, "payload", tokv, tokc);
 	if (!cmd->payload) {
-		pv_log(WARN, "Unable to get payload value from command");
+		pv_log(WARN, "unable to get payload value from command");
 		goto err;
 	}
 
@@ -143,11 +146,13 @@ out:
 	return cmd;
 }
 
-static int pv_ctrl_read_parse_cmd(int req_fd, size_t content_length, struct pv_cmd** cmd)
+static int pv_ctrl_process_cmd(int req_fd, size_t content_length, struct pv_cmd** cmd)
 {
 	char req[HTTP_REQ_BUFFER_SIZE];
 
 	memset(req, 0, sizeof(req));
+
+	pv_log(DEBUG, "reading and parsing command...");
 
 	if (content_length > HTTP_REQ_BUFFER_SIZE) {
 		pv_log(WARN, "cmd request too long");
@@ -170,7 +175,7 @@ err:
 	return -1;
 }
 
-static int pv_ctrl_read_parse_put_object(int req_fd, size_t content_length, char* object_name)
+static int pv_ctrl_process_put_object(int req_fd, size_t content_length, char* object_name)
 {
 	int obj_fd, read_length, write_length, ret = -1;
 	char object_path[PATH_MAX];
@@ -179,14 +184,18 @@ static int pv_ctrl_read_parse_put_object(int req_fd, size_t content_length, char
 	sprintf(object_path, "%s/objects/%s", pv_config_get_storage_mntpoint(), object_name);
 	memset(req, 0, sizeof(req));
 
-	pv_log(INFO, "putting object in %s...", object_path);
+	pv_log(INFO, "reading object from endpoint and putting it in %s...", object_path);
+
+	if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
+		pv_log(ERROR, "HTTP Continue response could not be sent to ctrl socket");
 
 	obj_fd = open(object_path, O_CREAT | O_WRONLY, 0644);
 	if (obj_fd <= 0) {
-		pv_log(ERROR, "%s could not be opened for write", object_path);
+		pv_log(ERROR, "%s could not be created", object_path);
 		goto out;
 	}
 
+	// read and save
 	while (content_length > 0) {
 		if (content_length > HTTP_REQ_BUFFER_SIZE)
 			read_length = HTTP_REQ_BUFFER_SIZE;
@@ -195,12 +204,12 @@ static int pv_ctrl_read_parse_put_object(int req_fd, size_t content_length, char
 
 		write_length = read(req_fd, req, read_length);
 		if (write_length <= 0) {
-			pv_log(ERROR, "HTTP req body could not be read");
+			pv_log(ERROR, "read failed");
 			goto sha;
 		}
 
 		if (write(obj_fd, req, write_length) <= 0) {
-			pv_log(ERROR, "object could not be written");
+			pv_log(ERROR, "write failed");
 			goto sha;
 		}
 
@@ -277,9 +286,9 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 	return -1;
 }
 
-static int pv_ctrl_write_get_object(int req_fd, char* object_name)
+static void pv_ctrl_process_get_object(int req_fd, char* object_name)
 {
-	int obj_fd, read_length, ret = -1;
+	int obj_fd, read_length;
 	char object_path[PATH_MAX];
 	char buf[4096];
 
@@ -287,7 +296,7 @@ static int pv_ctrl_write_get_object(int req_fd, char* object_name)
 
 	sprintf(object_path, "%s/objects/%s", pv_config_get_storage_mntpoint(), object_name);
 
-	pv_log(INFO, "getting object from %s...", object_path);
+	pv_log(INFO, "reading object from %s and sending it to endpoint...", object_path);
 
 	obj_fd = open(object_path, O_RDONLY);
 	if (obj_fd <= 0) {
@@ -298,19 +307,16 @@ static int pv_ctrl_write_get_object(int req_fd, char* object_name)
 	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) < 0)
 		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 
+	// read and send
 	while ((read_length = read(obj_fd, buf, 4096)) > 0) {
 		if (write(req_fd, buf, read_length) != read_length) {
-			pv_log(ERROR, "could not write on req fd");
+			pv_log(ERROR, "write failed");
 			goto out;
 		}
 	}
 
-	ret = 0;
-
 out:
 	close(obj_fd);
-
-	return ret;
 }
 
 static char* pv_ctrl_get_object_name(const char* path, int buf_index, size_t path_len)
@@ -346,7 +352,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 	// if character is 3 (old code for json command), it is non-HTTP
 	if (buf[0] == 3) {
-		res = pv_ctrl_read_parse_cmd(req_fd, HTTP_REQ_BUFFER_SIZE, &cmd);
+		res = pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE, &cmd);
 		goto out;
 	}
 
@@ -372,33 +378,25 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	}
 
 	// read and parse rest of message
-	if (!strncmp("/commands", path, path_len)) {
+	if (!strncmp(ENDPOINT_COMMANDS, path, sizeof(ENDPOINT_COMMANDS)-1)) {
 		if (!strncmp("POST", method, method_len)) {
-			pv_log(DEBUG, "POST /commands request received");
-			res = pv_ctrl_read_parse_cmd(req_fd, content_length, &cmd);
-			goto response;
+			res = pv_ctrl_process_cmd(req_fd, content_length, &cmd);
 		}
-	} else if (!strncmp("/objects/", path, sizeof("/objects/")-1)) {
-		object_name = pv_ctrl_get_object_name(path, sizeof("/objects/")-1, path_len);
+	} else if (!strncmp(ENDPOINT_OBJECTS, path, sizeof(ENDPOINT_OBJECTS)-1)) {
+		object_name = pv_ctrl_get_object_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
 		if (!object_name) {
 			pv_log(WARN, "HTTP request has bad object name");
 			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			pv_log(DEBUG, "PUT /objects request received");
-			if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
-				pv_log(ERROR, "HTTP  response could not be sent to ctrl socket");
-			res = pv_ctrl_read_parse_put_object(req_fd, content_length, object_name);
-			goto response;
+			res = pv_ctrl_process_put_object(req_fd, content_length, object_name);
 		} else if (!strncmp("GET", method, method_len)) {
-			pv_log(DEBUG, "GET /objects request received");
-			res = pv_ctrl_write_get_object(req_fd, object_name);
+			pv_ctrl_process_get_object(req_fd, object_name);
 			goto out;
 		}
 	}
 
-response:
 	// write response
 	if (res < 0) {
 		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
