@@ -136,7 +136,7 @@ static int pv_devmeta_read_revision(struct pv_devmeta_read
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
-	struct pantavisor *pv = pv_get_pv();
+	struct pantavisor *pv = pv_get_instance();
 
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
@@ -716,7 +716,7 @@ static struct pv_usermeta* pv_metadata_get_usermeta(struct pantavisor *pv, char 
 
 static int pv_metadata_init(struct pv_init *this)
 {
-	struct pantavisor *pv = pv_get_pv();
+	struct pantavisor *pv = pv_get_instance();
 
 	pv->metadata = calloc(1, sizeof(struct pv_metadata));
 	if (!pv->metadata)

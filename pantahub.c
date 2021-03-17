@@ -162,7 +162,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	return (const char **) cafiles;
 }
 
-struct pv_connection* pv_get_pv_connection()
+struct pv_connection* pv_get_instance_connection()
 {
 	struct pv_connection *conn = NULL;
 	int port = 0;

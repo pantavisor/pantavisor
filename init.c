@@ -166,7 +166,7 @@ static void signal_handler(int signal)
 {
 	pid_t pid = 0;
 	int wstatus;
-	struct pantavisor *pv = pv_get_pv();
+	struct pantavisor *pv = pv_get_instance();
 
 	if (signal != SIGCHLD)
 		return;

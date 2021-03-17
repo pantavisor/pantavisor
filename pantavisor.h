@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_SYSTEMC_H
-#define PV_SYSTEMC_H
+#ifndef PV_PANTAVISOR_H
+#define PV_PANTAVISOR_H
 
 #include <stdbool.h>
 
@@ -51,8 +51,9 @@ struct pantavisor {
 };
 
 void pv_init(void);
+int pv_start(struct pantavisor *pv);
 void pv_teardown(struct pantavisor *pv);
 
-struct pantavisor* pv_get_pv(void);
+struct pantavisor* pv_get_instance(void);
 
 #endif

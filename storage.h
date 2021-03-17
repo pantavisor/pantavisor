@@ -27,15 +27,15 @@ off_t pv_storage_get_free(struct pantavisor *pv);
 bool pv_storage_threshold_reached(struct pantavisor *pv);
 void pv_storage_rm_rev(struct pantavisor *pv, int rev);
 int pv_storage_validate_file_checksum(char* path, char* checksum);
-void pv_set_rev_done(struct pantavisor *pv, int rev);
-int *pv_get_revisions(struct pantavisor *pv);
-void pv_set_active(struct pantavisor *pv);
-int pv_make_config(struct pantavisor *pv);
-void pv_meta_set_objdir(struct pantavisor *pv);
-int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
-int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
-void pv_meta_set_tryonce(struct pantavisor *pv, int value);
-struct pv_state* pv_get_state(struct pantavisor *pv, int current);
-char* pv_get_initrd_config_name(int rev);
+void pv_storage_set_rev_done(struct pantavisor *pv, int rev);
+int *pv_storage_get_revisions(struct pantavisor *pv);
+void pv_storage_set_active(struct pantavisor *pv);
+int pv_storage_make_config(struct pantavisor *pv);
+void pv_storage_meta_set_objdir(struct pantavisor *pv);
+int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
+int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
+void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value);
+struct pv_state* pv_storage_get_state(struct pantavisor *pv, int current);
+char* pv_storage_get_initrd_config_name(int rev);
 
 #endif // PV_STORAGE_H

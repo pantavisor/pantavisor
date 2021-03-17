@@ -468,7 +468,7 @@ void pv_ctrl_free_cmd(struct pv_cmd *cmd)
 
 static int pv_ctrl_init(struct pv_init *this)
 {
-	struct pantavisor *pv = pv_get_pv();
+	struct pantavisor *pv = pv_get_instance();
 
 	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
 	if (pv->ctrl_fd <= 0) {

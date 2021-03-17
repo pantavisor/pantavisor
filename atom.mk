@@ -46,7 +46,6 @@ LOCAL_SRC_FILES := init.c \
 			config.c \
 			pantavisor.c \
 			state.c \
-			controller.c \
 			platforms.c \
 			addons.c \
 			utils.c \

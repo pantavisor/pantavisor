@@ -28,6 +28,8 @@
 #include <inttypes.h>
 #include <string.h>
 #include <fcntl.h>
+#include <libgen.h>
+#include <errno.h>
 
 #include <linux/limits.h>
 
@@ -44,6 +46,10 @@
 #include "state.h"
 #include "revision.h"
 #include "init.h"
+#include "utils.h"
+#include "addons.h"
+#include "parser/parser.h"
+#include "state.h"
 
 #define MODULE_NAME             "storage"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -175,7 +181,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	if (pv->update)
 		u = pv->update->pending;
 
-	rev = pv_get_revisions(pv);
+	rev = pv_storage_get_revisions(pv);
 	if (!rev) {
 		pv_log(ERROR, "error parsings revs on disk for GC");
 		return -1;
@@ -336,7 +342,7 @@ out:
 	return ret;
 }
 
-void pv_set_active(struct pantavisor *pv)
+void pv_storage_set_active(struct pantavisor *pv)
 {
 	struct stat st;
 	char *path, *cur;
@@ -375,7 +381,7 @@ out:
 		free(path);
 }
 
-int pv_make_config(struct pantavisor *pv)
+int pv_storage_make_config(struct pantavisor *pv)
 {
 	struct stat st;
 	char targetpath[128];
@@ -410,7 +416,7 @@ int pv_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-void pv_set_rev_done(struct pantavisor *pv, int rev)
+void pv_storage_set_rev_done(struct pantavisor *pv, int rev)
 {
 	// DEPRECATED: this done files are not used anymore for rollback and bootloader env
 	// are used insted. We keep it here to serve old versions in case a device needs to
@@ -431,7 +437,7 @@ void pv_set_rev_done(struct pantavisor *pv, int rev)
 	fsync(fd);
 	close(fd);
 }
-int *pv_get_revisions(struct pantavisor *pv)
+int *pv_storage_get_revisions(struct pantavisor *pv)
 {
 	int n, i = 0;
 	int bufsize = 1;
@@ -475,7 +481,7 @@ int *pv_get_revisions(struct pantavisor *pv)
 	return revs;
 }
 
-void pv_meta_set_objdir(struct pantavisor *pv)
+void pv_storage_meta_set_objdir(struct pantavisor *pv)
 {
 	int fd = 0;
 	char path[PATH_MAX];
@@ -515,7 +521,7 @@ err:
 		close(fd);
 }
 
-int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
 	int fd = -1, n, bytes, tokc;
 	int ret = 0;
@@ -593,7 +599,7 @@ out:
 	return ret;
 }
 
-void pv_meta_set_tryonce(struct pantavisor *pv, int value)
+void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value)
 {
 	int fd;
 	char path[PATH_MAX];
@@ -610,7 +616,7 @@ void pv_meta_set_tryonce(struct pantavisor *pv, int value)
 	}
 }
 
-int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 {
 	int i;
 	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[32];
@@ -685,7 +691,7 @@ err:
 	return 1;
 }
 
-struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
+struct pv_state* pv_storage_get_state(struct pantavisor *pv, int rev)
 {
 	int fd;
 	int size;
@@ -725,7 +731,7 @@ struct pv_state* pv_get_state(struct pantavisor *pv, int rev)
 	return s;
 }
 
-char* pv_get_initrd_config_name(int rev)
+char* pv_storage_get_initrd_config_name(int rev)
 {
 	int fd;
 	int size;
@@ -757,7 +763,7 @@ char* pv_get_initrd_config_name(int rev)
 
 static int pv_storage_init(struct pv_init *this)
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 	char tmp[256];
 	int fd = -1;
 
