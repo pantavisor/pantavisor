@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,8 +26,6 @@
 
 #include "config.h"
 
-#define DEVICE_UNCLAIMED	(1 << 0)
-
 #define RUNLEVEL_ROOT 0
 #define RUNLEVEL_PLATFORM 1
 #define RUNLEVEL_APP 2
@@ -36,13 +34,9 @@
 
 char pv_user_agent[4096];
 
-struct trail_remote;
-
-#define PV_USER_AGENT_FMT	"Pantavisor/2 (Linux; %s) PV/%s Date/%s"
+#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
 struct pantavisor {
-	int last;
-	char *step;
 	struct pv_device *dev;
 	struct pv_update *update;
 	struct pv_state *state;
@@ -50,24 +44,15 @@ struct pantavisor {
 	struct pantavisor_config config;
 	struct trail_remote *remote;
 	struct pv_metadata *metadata;
-	bool online;
-	int ctrl_fd;
-	unsigned long flags;
 	struct pv_connection *conn;
+	bool online;
+	bool unclaimed;
+	int ctrl_fd;
 };
 
-void pv_set_rev_done(struct pantavisor *pv, int rev);
-int *pv_get_revisions(struct pantavisor *pv);
-void pv_set_active(struct pantavisor *pv);
-int pv_make_config(struct pantavisor *pv);
-void pv_meta_set_objdir(struct pantavisor *pv);
-int pv_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
-int pv_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
-void pv_meta_set_tryonce(struct pantavisor *pv, int value);
+void pv_init(void);
 void pv_teardown(struct pantavisor *pv);
-struct pv_state* pv_get_state(struct pantavisor *pv, int current);
-char* pv_get_initrd_config_name(int rev);
-void pantavisor_init(void);
-struct pantavisor* get_pv_instance(void);
+
+struct pantavisor* pv_get_pv(void);
 
 #endif

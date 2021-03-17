@@ -166,7 +166,7 @@ static void signal_handler(int signal)
 {
 	pid_t pid = 0;
 	int wstatus;
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_pv();
 
 	if (signal != SIGCHLD)
 		return;
@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
 		// we are going to use this thread for pv
 		pv_pid = getpid();
 		redirect_io();
-		pantavisor_init();
+		pv_init();
 		return 0;
 	}
 
@@ -306,7 +306,7 @@ int main(int argc, char *argv[])
 		debug_telnet();
 	}
 	redirect_io();
-	pantavisor_init();
+	pv_init();
 
 loop:
 	redirect_io();

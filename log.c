@@ -345,7 +345,7 @@ const char *pv_log_level_name(int level)
 
 static int pv_log_early_init(struct pv_init *this)
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_pv();
 	int pv_rev = 0;
 	int ret = -1;
 

@@ -57,7 +57,7 @@
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
 
-static const int HTTP_REQ_BUFFER_SIZE = 4096;
+static const int HTTP_REQ_BUFFER_SIZE = 16384;
 static const int HTTP_REQ_NUM_HEADERS = 8;
 
 static int pv_ctrl_socket_open(char *path)
@@ -468,7 +468,7 @@ void pv_ctrl_free_cmd(struct pv_cmd *cmd)
 
 static int pv_ctrl_init(struct pv_init *this)
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_pv();
 
 	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
 	if (pv->ctrl_fd <= 0) {

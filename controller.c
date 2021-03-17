@@ -137,8 +137,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	// Initialize flags
-	pv->flags = 0;
 	if (pv_do_execute_init())
 		return STATE_EXIT;
         return STATE_RUN;
@@ -238,7 +236,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 	} else {
 		pv_log(INFO, "device has been claimed, proceeding normally");
 		printf("INFO: pantavisor device has been claimed, proceeding normally\n");
-		pv->flags &= ~DEVICE_UNCLAIMED;
+		pv->unclaimed = false;
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
 		open("/pv/challenge", O_TRUNC | O_WRONLY);
@@ -346,7 +344,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// twice in less than the configured interval
 	if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
 		// check if device is unclaimed
-		if (pv->flags & DEVICE_UNCLAIMED) {
+		if (pv->unclaimed) {
 			next_state = STATE_UNCLAIMED;
 			goto out;
 		}
@@ -437,6 +435,9 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG, "poweroff command with message '%s' received. Powering off...",
 			cmd->payload);
 		next_state = STATE_POWEROFF;
+		break;
+	case CMD_INSTALL_JSON:
+		pv_log(DEBUG, "install json received");
 		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");

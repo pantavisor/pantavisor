@@ -63,22 +63,22 @@ static struct lxc_log pv_lxc_log = {
  
 struct pv_log_info* (*__pv_new_log)(bool,const void*, const char*) = NULL;
 
-struct pantavisor* (*__get_pv_instance)(void) = NULL;
+struct pantavisor* (*__pv_get_pv)(void) = NULL;
 
 void pv_set_new_log_fn( void *fn_pv_new_log)
 {
 	__pv_new_log = fn_pv_new_log;
 }
 
-void pv_set_pv_instance_fn(void *fn_get_pv_instance)
+void pv_set_pv_instance_fn(void *fn_pv_get_pv)
 {
-	__get_pv_instance = fn_get_pv_instance;
+	__pv_get_pv = fn_pv_get_pv;
 }
 
 static int pv_lxc_get_lxc_log_level()
 {
-	if (__get_pv_instance())
-		return __get_pv_instance()->config.lxc.log_level;
+	if (__pv_get_pv())
+		return __pv_get_pv()->config.lxc.log_level;
 
 	// default
 	return 2;
@@ -86,8 +86,8 @@ static int pv_lxc_get_lxc_log_level()
 
 static bool pv_lxc_capture_logs_activated()
 {
-	if (__get_pv_instance())
-		return __get_pv_instance()->config.log.capture;
+	if (__pv_get_pv())
+		return __pv_get_pv()->config.log.capture;
 
 	// default
 	return true;
@@ -116,7 +116,7 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	 */
 	snprintf(default_prefix, sizeof(default_prefix), "%s/%d/", 
 			LXC_LOG_DEFAULT_PREFIX,
-			__get_pv_instance()->state->rev);
+			__pv_get_pv()->state->rev);
 	/*
 	 * If lxc.log.file or lxc.console.logfile isn't set or
 	 * it has the same location from where PH helper can post
@@ -264,7 +264,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		if (!strlen(entry)) {
 			snprintf(entry, sizeof(entry),
 				LXC_LOG_DEFAULT_PREFIX"/%d/%s/%s/%s.log",
-				__get_pv_instance()->state->rev, c->name,
+				__pv_get_pv()->state->rev, c->name,
 				LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
 			c->set_config_item(c, "lxc.console.logfile", entry);
 		}
@@ -400,7 +400,7 @@ static void pv_truncate_lxc_log(struct lxc_container *c,
 		 */
 		snprintf(logfile_name, PATH_MAX,
 				LXC_LOG_DEFAULT_PREFIX"/%d/%s.log",
-				__get_pv_instance()->state->rev,
+				__pv_get_pv()->state->rev,
 				LXC_LOG_FNAME);
 	}
 	if (!threshold)
@@ -538,9 +538,9 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		/*
 		 * We need this for getting the revision..
 		 */
-		if (!__get_pv_instance)
+		if (!__pv_get_pv)
 			goto out_container_init;
-		revision = __get_pv_instance()->state->rev;
+		revision = __pv_get_pv()->state->rev;
 		if (pv_lxc_capture_logs_activated()) {
 			snprintf(log_dir, sizeof(log_dir), 
 					LXC_LOG_DEFAULT_PREFIX"/%d/%s",

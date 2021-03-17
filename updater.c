@@ -953,7 +953,7 @@ static int trail_first_boot(struct pantavisor *pv)
 		return -1;
 	}
 
-	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, pv->step);
+	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, pv->state->json);
 	res = trest_do_json_request(pv->remote->client, req);
 
 	if (!res) {
