@@ -34,13 +34,13 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-struct pv_state* pv_state_new(int rev, state_spec_t spec)
+struct pv_state* pv_state_new(char *rev, state_spec_t spec)
 {
 	struct pv_state *s;
 
 	s = calloc(1, sizeof(struct pv_state));
 	if (s) {
-		s->rev = rev;
+		strncpy(s->rev, rev, strlen(rev));
 		s->spec = spec;
 		dl_list_init(&s->platforms);
 		dl_list_init(&s->volumes);
@@ -57,7 +57,7 @@ void pv_state_free(struct pv_state *s)
 	if (!s)
 		return;
 
-	pv_log(INFO, "removing state with revision %d", s->rev);
+	pv_log(INFO, "removing state with revision %s", s->rev);
 
 	if (s->bsp.kernel)
 		free(s->bsp.kernel);
@@ -94,7 +94,7 @@ static void pv_state_transfer_platforms(struct pv_state *in, struct pv_state *ou
 		if (p->runlevel < runlevel)
 			continue;
 
-		pv_log(DEBUG, "removing platform %s from rev %d", p->name, out->rev);
+		pv_log(DEBUG, "removing platform %s from rev %s", p->name, out->rev);
 		dl_list_del(&p->list);
 		pv_platform_free(p);
 	}
@@ -106,7 +106,7 @@ static void pv_state_transfer_platforms(struct pv_state *in, struct pv_state *ou
 		if (p->runlevel < runlevel)
 			continue;
 
-		pv_log(DEBUG, "transferring platform %s from rev %d to rev %d", p->name, in->rev, out->rev);
+		pv_log(DEBUG, "transferring platform %s from rev %s to rev %s", p->name, in->rev, out->rev);
 		dl_list_del(&p->list);
 		dl_list_add_tail(&out->platforms, &p->list);
 	}
@@ -124,7 +124,7 @@ static void pv_state_transfer_volumes(struct pv_state *in, struct pv_state *out,
 		if (!v->plat || (v->plat->runlevel < runlevel))
 			continue;
 
-		pv_log(DEBUG, "removing volume %s linked to platform %s from rev %d", v->name, v->plat->name, out->rev);
+		pv_log(DEBUG, "removing volume %s linked to platform %s from rev %s", v->name, v->plat->name, out->rev);
 		dl_list_del(&v->list);
 		pv_volume_free(v);
 	}
@@ -136,7 +136,7 @@ static void pv_state_transfer_volumes(struct pv_state *in, struct pv_state *out,
 		if (!v->plat || (v->plat->runlevel < runlevel))
 			continue;
 
-		pv_log(DEBUG, "transferring volume %s linked to platform %s from rev %d to rev %d", v->name, v->plat->name, in->rev, out->rev);
+		pv_log(DEBUG, "transferring volume %s linked to platform %s from rev %s to rev %s", v->name, v->plat->name, in->rev, out->rev);
 		dl_list_del(&v->list);
 		dl_list_add_tail(&out->volumes, &v->list);
 	}
@@ -154,7 +154,7 @@ static void pv_state_transfer_jsons(struct pv_state *in, struct pv_state *out, i
 		if (!j->plat || (j->plat->runlevel < runlevel))
 			continue;
 
-		pv_log(DEBUG, "removing json %s linked to platform %s from rev %d", j->name, j->plat->name, out->rev);
+		pv_log(DEBUG, "removing json %s linked to platform %s from rev %s", j->name, j->plat->name, out->rev);
 		dl_list_del(&j->list);
 		pv_json_free(j);
 	}
@@ -166,7 +166,7 @@ static void pv_state_transfer_jsons(struct pv_state *in, struct pv_state *out, i
 		if (!j->plat || (j->plat->runlevel < runlevel))
 			continue;
 
-		pv_log(DEBUG, "transferring json %s linked to platform %s from rev %d to rev %d", j->name, j->plat->name, in->rev, out->rev);
+		pv_log(DEBUG, "transferring json %s linked to platform %s from rev %s to rev %s", j->name, j->plat->name, in->rev, out->rev);
 		dl_list_del(&j->list);
 		dl_list_add_tail(&out->jsons, &j->list);
 	}
@@ -184,7 +184,7 @@ static void pv_state_transfer_objects(struct pv_state *in, struct pv_state *out,
 		if (!o->plat || (o->plat->runlevel < runlevel))
 			continue;
 
-		pv_log(DEBUG, "removing object %s linked to platform %s from rev %d", o->name, o->plat->name, out->rev);
+		pv_log(DEBUG, "removing object %s linked to platform %s from rev %s", o->name, o->plat->name, out->rev);
 		dl_list_del(&o->list);
 		pv_object_free(o);
 	}
@@ -196,7 +196,7 @@ static void pv_state_transfer_objects(struct pv_state *in, struct pv_state *out,
 		if (!o->plat || (o->plat->runlevel < runlevel))
 			continue;
 
-		pv_log(DEBUG, "transferring object %s linked to platform %s from rev %d to rev %d", o->name, o->plat->name, in->rev, out->rev);
+		pv_log(DEBUG, "transferring object %s linked to platform %s from rev %s to rev %s", o->name, o->plat->name, in->rev, out->rev);
 		dl_list_del(&o->list);
 		dl_list_add_tail(&out->objects, &o->list);
 	}
@@ -272,14 +272,14 @@ void pv_state_validate(struct pv_state *s)
 
 void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 {
-	pv_log(INFO, "transferring state from rev %d to rev %d", in->rev, out->rev);
+	pv_log(INFO, "transferring state from rev %s to rev %s", in->rev, out->rev);
 
 	pv_state_transfer_objects(in, out, runlevel);
 	pv_state_transfer_volumes(in, out, runlevel);
 	pv_state_transfer_jsons(in, out, runlevel);
 	pv_state_transfer_platforms(in, out, runlevel);
 
-	out->rev = in->rev;
+	strncpy(out->rev, in->rev, strlen(in->rev));
 
 	pv_state_print(out);
 }

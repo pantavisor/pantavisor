@@ -717,7 +717,7 @@ link_jsons:
 	}
 }
 
-struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev)
+struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf)
 {
 	int tokc, ret, count, n;
 	char *key = 0, *value = 0, *ext = 0;
@@ -743,8 +743,6 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 
 	pv_log(DEBUG, "adding json 'bsp/run.json'");
 	pv_jsons_add(this, "bsp/run.json", value);
-
-	this->rev = rev;
 
 	if (!parse_bsp(this, value, strlen(value))) {
 		this = NULL;

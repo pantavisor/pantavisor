@@ -141,7 +141,7 @@ static int pv_devmeta_read_revision(struct pv_devmeta_read
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
-	snprintf(buf, buflen, "%d", pv->state->rev);
+	snprintf(buf, buflen, "%s", pv->state->rev);
 	return 0;
 }
 
@@ -738,7 +738,7 @@ bool pv_metadata_factory_meta_done(struct pantavisor *pv)
 	 * may not exist and the device would then be
 	 * stuck getting any updates.
 	 */
-	if (pv->state->rev != 0)
+	if (strncmp(pv->state->rev, "0", strlen(pv->state->rev)))
 		return true;
 	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv_config_get_storage_mntpoint());
 

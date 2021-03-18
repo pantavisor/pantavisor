@@ -106,37 +106,6 @@ static int read_grubenv(char *path, char *buf, int writable)
 	return fd;
 }
 
-static int grub_get_env_key(char *key)
-{
-	int fd, n;
-	int value = 0;
-	char buf[1024];
-	char *next;
-
-	fd = read_grubenv(grub_env, buf, 0);
-	if (fd < 0)
-		return -1;
-
-	n = strlen(key);
-	next = buf + HDR_SIZE;
-	for (uint16_t i = 0; i < (sizeof(buf)-HDR_SIZE); i++) {
-		if (buf[i] != '\n')
-			continue;
-
-		// null terminate key/value pair
-		buf[i] = '\0';
-
-		if (!strncmp(next, key, n)) {
-			value = atoi(next+n+1);
-			break;
-		}
-		next = buf+i+1;
-	}
-	close(fd);
-
-	return value;
-}
-
 static int grub_unset_env_key(char *key)
 {
 	int fd, ret;
@@ -185,14 +154,14 @@ static int grub_unset_env_key(char *key)
 	return 0;
 }
 
-static int grub_set_env_key(char *key, int value)
+static int grub_set_env_key(char *key, char *value)
 {
 	int fd, ret;
 	char old[1024];
 	char new[1024];
 	char *s, *d;
 
-	pv_log(DEBUG, "set boot env key %s with value %d", key, value);
+	pv_log(DEBUG, "set boot env key %s with value %s", key, value);
 
 	fd = read_grubenv(grub_env, old, 1);
 	if (fd < 0)
@@ -224,7 +193,7 @@ static int grub_set_env_key(char *key, int value)
 
 	// convert value
 	char v[128];
-	sprintf(v, "%s=%d\n", key, value);
+	sprintf(v, "%s=%s\n", key, value);
 
 	// write new key/value pair to destination
 	memcpy(d, v, strlen(v));

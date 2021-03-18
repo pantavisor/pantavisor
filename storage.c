@@ -44,7 +44,7 @@
 #include "objects.h"
 #include "storage.h"
 #include "state.h"
-#include "revision.h"
+#include "bootloader.h"
 #include "init.h"
 #include "utils.h"
 #include "addons.h"
@@ -169,11 +169,9 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 
 int pv_storage_gc_run(struct pantavisor *pv)
 {
-	int reclaimed = 0;
-	int *rev, *rev_i;
+	int reclaimed = 0, len;
+	char **rev, *rev_i;
 	struct pv_state *s = 0, *u = 0;
-
-	// FIXME: global GC disable check
 
 	if (pv->state)
 		s = pv->state;
@@ -187,12 +185,12 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		return -1;
 	}
 
-	rev_i = rev;
-	for (rev_i = rev; *rev_i != -1; rev_i++) {
+	for (rev_i = rev; *rev_i != NULL; rev_i++) {
 		// dont reclaim current, update or last booted up revisions
-		if ((s && (*rev_i == s->rev)) ||
-			(u && (*rev_i == u->rev)) ||
-			(*rev_i == pv_revision_get_rev()))
+		len = strlen(*rev_i);
+		if ((s && !strncmp(*rev_i, s->rev, len)) ||
+			(u && !strncmp(*rev_i, u->rev, len)) ||
+			!strncmp(*rev_i, pv_bootloader_get_rev(), len))
 			continue;
 
 		// if configured, keep factory too
@@ -201,6 +199,8 @@ int pv_storage_gc_run(struct pantavisor *pv)
 
 		// unlink the given revision from local storage
 		pv_storage_rm_rev(pv, *rev_i);
+
+		free(rev_i);
 	}
 
 	// get rid of orphaned objects
@@ -437,11 +437,12 @@ void pv_storage_set_rev_done(struct pantavisor *pv, int rev)
 	fsync(fd);
 	close(fd);
 }
-int *pv_storage_get_revisions(struct pantavisor *pv)
+
+static char** pv_storage_get_revisions(struct pantavisor *pv)
 {
-	int n, i = 0;
+	int n, i = 0, len;
 	int bufsize = 1;
-	int *revs = calloc(1, bufsize * sizeof (int));
+	char **revs = calloc(1, bufsize * sizeof (char**));
 	struct dirent **dirs;
 	char basedir[PATH_MAX];
 
@@ -457,24 +458,26 @@ int *pv_storage_get_revisions(struct pantavisor *pv)
 			continue;
 
 		if (i >= bufsize) {
-			int *t = realloc(revs, (bufsize+1) * sizeof(int));
+			char **t = realloc(revs, (bufsize+1) * sizeof(char**));
 			if (!t)
 				return NULL;
 			revs = t;
 			bufsize++;
 		}
 
-		revs[i] = atoi(dirs[n]->d_name);
+		len = strlen(dirs[n]->d_name);
+		revs[i] = calloc(1, len * sizeof(char*));
+		strncpy(revs[i], dirs[n]->d_name, len);
 		i++;
 		free(dirs[n]);
 	}
 
-	revs = realloc(revs, (bufsize+1) * sizeof(int));
+	revs = realloc(revs, (bufsize+1) * sizeof(char**));
 	if (!i)
-		revs[0] = -1;
+		revs[0] = NULL;
 
-	// terminate with -1
-	revs[bufsize] = -1;
+	// terminate with NULL
+	revs[bufsize] = NULL;
 
 	free(dirs);
 
@@ -731,7 +734,7 @@ struct pv_state* pv_storage_get_state(struct pantavisor *pv, int rev)
 	return s;
 }
 
-char* pv_storage_get_initrd_config_name(int rev)
+char* pv_storage_get_initrd_config_name(char *rev)
 {
 	int fd;
 	int size;
@@ -739,7 +742,7 @@ char* pv_storage_get_initrd_config_name(int rev)
 	char *buf, *config_name = NULL;
 	struct stat st;
 
-	sprintf(path, "%s/trails/%d/.pvr/json", pv_config_get_storage_mntpoint(), rev);
+	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0)

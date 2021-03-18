@@ -123,50 +123,6 @@ static int uboot_init()
 	return 0;
 }
 
-static int uboot_get_env_key(char *key)
-{
-	int fd, n, len, ret;
-	int value = 0;
-	char *buf, *path;
-	struct stat st;
-
-	path = uboot_txt;
-	if (single_env) {
-		path = pv_env;
-		len = MTD_ENV_SIZE * sizeof(char);
-	} else {
-		if (stat(path, &st))
-			return -1;
-		len = st.st_size * sizeof(char);
-	}
-
-	fd = open(path, O_RDONLY);
-	if (!fd)
-		return -1;
-
-	lseek(fd, 0, SEEK_SET);
-	buf = calloc(1, len);
-	ret = read(fd, buf, len);
-	close(fd);
-
-	n = strlen(key);
-
-	int k = 0;
-	for (int i = 0; i < ret; i++) {
-		if (buf[i] != '\0')
-			continue;
-
-		if (!strncmp(buf+k, key, n)) {
-			value = atoi(buf+k+n+1);
-			break;
-		}
-		k = i+1;
-	}
-	free(buf);
-
-	return value;
-}
-
 // this always happens in uboot.txt
 static int uboot_unset_env_key(char *key)
 {
@@ -237,7 +193,7 @@ static int uboot_unset_env_key(char *key)
 	return 0;
 }
 // this always happens in uboot.txt
-static int uboot_set_env_key(char *key, int value)
+static int uboot_set_env_key(char *key, char *value)
 {
 	int fd, ret, len;
 	struct stat st;
@@ -246,7 +202,7 @@ static int uboot_set_env_key(char *key, int value)
 	char *s, *d, *path;
 	char v[128];
 
-	pv_log(DEBUG, "set boot env key %s with value %d", key, value);
+	pv_log(DEBUG, "set boot env key %s with value %s", key, value);
 
 	path = uboot_txt;
 	if (single_env) {
@@ -287,7 +243,7 @@ static int uboot_set_env_key(char *key, int value)
 		len = 0;
 	}
 
-	sprintf(v, "%s=%d\0", key, value);
+	sprintf(v, "%s=%s\0", key, value);
 	memcpy(d, v, strlen(v)+1);
 	d += strlen(v)+1;
 

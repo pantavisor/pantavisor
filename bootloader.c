@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -40,6 +40,16 @@
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+struct pv_bootloader {
+	char pv_rev[64];
+	char pv_try[64];
+};
+
+static struct pv_bootloader pv_bootloader;
+
+extern const struct bl_ops uboot_ops;
+extern const struct bl_ops grub_ops;
+
 const struct bl_ops *ops = 0;
 
 static int pv_bl_init(struct pantavisor *pv)
@@ -67,57 +77,143 @@ static int pv_bl_init(struct pantavisor *pv)
 	return ret;
 }
 
-int pv_bl_set_try(int rev)
+char* pv_bootloader_get_rev()
 {
-	if (!ops)
-		return -1;
-
-	return ops->set_env_key("pv_try", rev);
+	return pv_bootloader.pv_rev;
 }
 
-int pv_bl_unset_try()
+char* pv_bootloader_get_try()
 {
-	if (!ops)
-		return -1;
-
-	return ops->unset_env_key("pv_try");
+	return pv_bootloader.pv_try;
 }
 
-
-int pv_bl_get_rev()
+static int pv_bootloader_set_rev(char *rev)
 {
+	int len = strnlen(rev);
+
 	if (!ops)
 		return -1;
 
-	return ops->get_env_key("pv_rev");
-}
-
-int pv_bl_set_rev(int rev)
-{
-	if (!ops)
+	if (len >= 64)
 		return -1;
 
+	strncpy(pv_bootloader.pv_rev, rev, len);
 	return ops->set_env_key("pv_rev", rev);
 }
 
-int pv_bl_clear_update()
+static int pv_bootloader_set_try(char *rev)
+{
+	int len = strnlen(rev);
+
+	if (!ops)
+		return -1;
+
+	if (len >= 64)
+		return -1;
+
+	strncpy(pv_bootloader.pv_try, rev, len);
+	return ops->set_env_key("pv_try", rev);
+}
+
+static int pv_bootloader_unset_try()
 {
 	if (!ops)
 		return -1;
 
-	return ops->flush_env();
+	memset(pv_bootloader.pv_try, 0, sizeof(pv_bootloader.pv_try));
+	return ops->unset_env_key("pv_try");
+}
+
+bool pv_bootloader_update_in_progress()
+{
+	return (pv_bootloader_get_try()[0] != '\0');
+}
+
+bool pv_bootloader_trying_update()
+{
+	return (pv_bootloader_update_in_progress() &&
+			!strncmp(pv_bootloader_get_rev(),
+					pv_bootloader_get_try(),
+					sizeof(pv_bootloader_get_rev())));
+}
+
+int pv_bootloader_set_installed(char *rev)
+{
+	pv_log(INFO, "setting installed bootloader %s to be started after next reboot", rev);
+	return pv_bootloader_set_try(rev);
+}
+
+void pv_bootloader_set_rolledback()
+{
+	if (!ops)
+		return -1;
+
+	pv_log(INFO, "setting old bootloader %s to be started after next reboot", pv_bootloader_get_rev());
+}
+
+int pv_bootloader_set_commited(char *rev)
+{
+	if (!ops)
+		return -1;
+
+	pv_log(INFO, "setting done bootloader %s to be started after next reboot", rev);
+	return (pv_bootloader_set_rev(rev) ||
+			pv_bootloader_unset_try() ||
+			ops->flush_env());
+}
+
+int pv_bootloader_set_failed()
+{
+	pv_log(INFO, "setting failed bootloader %s not to be started after next reboot", pv_bootloader_get_try());
+	return pv_bootloader_unset_try();
 }
 
 static int pv_bl_early_init(struct pv_init *this)
 {
-	struct pantavisor *pv = NULL;
+	struct pantavisor *pv = pv_get_instance();
+	int fd = -1;
+	char *buf = NULL;
+	char *token = NULL;
+	ssize_t bytes = 0;
+	const int CMDLINE_OFFSET = 7;
 
-	pv = pv_get_instance();
 	if (!pv)
 		return -1;
+
+	memset(pv_bootloader.pv_rev, 0, sizeof(pv_bootloader.pv_rev));
+	memset(pv_bootloader.pv_try, 0, sizeof(pv_bootloader.pv_try));
+
+	// Get current step bootloader from cmdline
+	fd = open("/proc/cmdline", O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	buf = calloc(1, sizeof(char) * (1024 + 1));
+	if (!buf)
+		return -1;
+	bytes = read_nointr(fd, buf, sizeof(char)*1024);
+	close(fd);
+	if (bytes <= 0)
+		return -1;
+
+	token = strtok(buf, " ");
+	while (token) {
+		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0)
+			strncpy(pv_bootloader.pv_rev,
+					token + CMDLINE_OFFSET,
+					strlen(token + CMDLINE_OFFSET));
+		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
+			strncpy(pv_bootloader.pv_try,
+					token + CMDLINE_OFFSET
+					strlen(token + CMDLINE_OFFSET));
+		token = strtok(NULL, " ");
+	}
+	free(buf);
+
 	// init bootloader ops
 	if (pv_bl_init(pv) < 0)
 		return -1;
+
 	return 0;
 }
 

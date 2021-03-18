@@ -324,7 +324,6 @@ struct pv_init *pv_init_tbl [] = {
 	&pv_init_mount,
 	&pv_init_creds,
 	&ph_init_mount,
-	&pv_init_revision,
 	&pv_init_config_trail,
 	&pv_init_log,
 	&pv_init_storage,

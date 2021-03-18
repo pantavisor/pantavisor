@@ -486,7 +486,7 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
 		sprintf(prefix, "%s/", p->name);
 
-	sprintf(conf_path, "%s/trails/%d/%s%s",
+	sprintf(conf_path, "%s/trails/%s/%s%s",
 		pv_config_get_storage_mntpoint(), s->rev, prefix, *c);
 
 	// Get type controller

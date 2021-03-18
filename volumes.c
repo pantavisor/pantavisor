@@ -118,17 +118,17 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	switch (pv_state_spec(s)) {
 	case SPEC_SYSTEM1:
 		if (v->plat) {
-			sprintf(path, "%s/trails/%d/%s/%s", pv_config_get_storage_mntpoint(),
+			sprintf(path, "%s/trails/%s/%s/%s", pv_config_get_storage_mntpoint(),
 				s->rev, v->plat->name, v->name);
 			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
 		} else {
-			sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(),
+			sprintf(path, "%s/trails/%s/bsp/%s", pv_config_get_storage_mntpoint(),
 				s->rev, v->name);
 			sprintf(mntpoint, "/volumes/%s", v->name);
 		}
 		break;
 	case SPEC_MULTI1:
-		sprintf(path, "%s/trails/%d/%s", pv_config_get_storage_mntpoint(),
+		sprintf(path, "%s/trails/%s/%s", pv_config_get_storage_mntpoint(),
 			s->rev, v->name);
 		sprintf(mntpoint, "/volumes/%s", v->name);
 		break;
@@ -165,7 +165,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
 	case VOL_REVISION:
-		sprintf(path, "%s/rev/%d/%s/%s", base, s->rev, v->plat->name, v->name);
+		sprintf(path, "%s/rev/%s/%s/%s", base, s->rev, v->plat->name, v->name);
 		mkdir_p(path, 0755);
 		mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");

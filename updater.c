@@ -46,7 +46,7 @@
 #include "storage.h"
 #include "wdt.h"
 #include "init.h"
-#include "revision.h"
+#include "bootloader.h"
 #include "parser/parser_bundle.h"
 #include "state.h"
 
@@ -465,7 +465,7 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	return ret;
 }
 
-static struct pv_update* pv_update_new(char *id, int rev)
+static struct pv_update* pv_update_new(char *id, char *rev)
 {
 	struct pv_update *u;
 
@@ -478,9 +478,9 @@ static struct pv_update* pv_update_new(char *id, int rev)
 		u->retries = 0;
 
 		// to construct endpoint
-		u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
-					+ (strlen(id))
-					+ get_digit_count(rev)) * sizeof(char));
+		u->endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT)
+					+ strlen(id)
+					+ strlen(rev));
 		sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT, id, rev);
 	}
 
@@ -1124,7 +1124,7 @@ int pv_update_finish(struct pantavisor *pv)
 
 	switch (pv->update->status) {
 	case UPDATE_FAILED:
-		pv_revision_set_failed();
+		pv_bootloader_set_failed();
 		pv_update_set_status(pv, UPDATE_FAILED);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
@@ -1142,7 +1142,7 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_TESTING_REBOOT:
-		if (pv_revision_set_commited(pv->state->rev)) {
+		if (pv_bootloader_set_commited(pv->state->rev)) {
 			pv_log(ERROR, "revision for next boot could not be set");
 			return -1;
 		}
@@ -1735,7 +1735,7 @@ int pv_update_install(struct pantavisor *pv)
 
 	ret = pending->rev;
 	pv_log(INFO, "update successfully installed");
-	if (pv_revision_set_installed(ret)) {
+	if (pv_bootloader_set_installed(ret)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
 		goto out;
@@ -1754,21 +1754,21 @@ out:
 
 int pv_update_resume(struct pantavisor *pv)
 {
-	int rev;
+	char *rev;
 
 	// If update exist, it means we come from a non reboot start
 	if (pv->update)
 		return pv->update->runlevel;
 
 	// If update is in progress, we are going to load it to report its completion or failure
-	if (pv_revision_update_in_progress()) {
-		rev = pv_revision_get_try();
-		pv_log(INFO, "loading update data from rev %d after reboot...", rev);
+	if (pv_bootloader_update_in_progress()) {
+		rev = pv_bootloader_get_try();
+		pv_log(INFO, "loading update data from rev %s after reboot...", rev);
 		pv->update = pv_update_new(pv_config_get_creds_id(), rev);
 		if (!pv->update)
 			return -1;
 
-		if (pv_revision_trying_update())
+		if (pv_bootloader_trying_update())
 			pv_update_set_status(pv, UPDATE_TRY);
 		else
 			pv_update_set_status(pv, UPDATE_FAILED);

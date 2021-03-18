@@ -34,9 +34,9 @@
 #include "init.h"
 #include "config_parser.h"
 #include "utils.h"
-#include "revision.h"
 #include "state.h"
 #include "storage.h"
+#include "bootloader.h"
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -508,8 +508,8 @@ static int pv_config_trail(struct pv_init *this)
 {
 	char path[PATH_MAX];
 	struct pantavisor *pv = pv_get_instance();
-	int rev = pv_revision_get_rev();
-	char* config_name;
+	char * rev = pv_bootloader_get_rev();
+	char *config_name;
 
 	config_name = pv_storage_get_initrd_config_name(rev);
 	if (!config_name) {
@@ -517,7 +517,7 @@ static int pv_config_trail(struct pv_init *this)
 		return 0;
 	}
 
-	sprintf(path, "%s/trails/%d/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
+	sprintf(path, "%s/trails/%s/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
 	free(config_name);
 
 	if (pv_config_override_config_from_file(path, &pv->config)) {

@@ -97,7 +97,7 @@ struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, c
 
 		// init relpath
 		size = sizeof(RELPATH_FMT) + strlen(mntpoint) +
-			strlen(filename) + get_digit_count(s->rev);
+			strlen(filename) + strlen(s->rev);
 
 		this->relpath = calloc(1, size * sizeof(char));
 		if (this->relpath)

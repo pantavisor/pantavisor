@@ -23,7 +23,7 @@
 #define PV_OBJECTS_H
 
 #define OBJPATH_FMT	"%s/objects/%s"
-#define RELPATH_FMT	"%s/trails/%d/%s"
+#define RELPATH_FMT	"%s/trails/%s/%s"
 
 #include <stdlib.h>
 
