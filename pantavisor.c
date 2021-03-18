@@ -58,7 +58,7 @@
 #include "tsh.h"
 #include "ph_logger/ph_logger.h"
 
-#define MODULE_NAME             "pantavisor"
+#define MODULE_NAME             "controller"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
@@ -679,7 +679,6 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->remote = NULL;
 	pv->update = NULL;
 	pv->online = false;
-	pv->unclaimed = false;
 	ret = 0;
 out:
 	return 0;

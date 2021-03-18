@@ -774,6 +774,7 @@ static int pv_storage_init(struct pv_init *this)
 	if (strcmp(pv_config_get_creds_prn(), "") == 0) {
 		pv->unclaimed = true;
 	} else {
+		pv->unclaimed = false;
 		sprintf(tmp, "%s\n", pv_config_get_creds_id());
 		write(fd, tmp, strlen(tmp));
 	}
