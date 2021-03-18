@@ -51,8 +51,8 @@ struct pantavisor {
 };
 
 void pv_init(void);
-int pv_start(struct pantavisor *pv);
-void pv_teardown(struct pantavisor *pv);
+int pv_start(void);
+void pv_stop(void);
 
 struct pantavisor* pv_get_instance(void);
 

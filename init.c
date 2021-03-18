@@ -166,7 +166,6 @@ static void signal_handler(int signal)
 {
 	pid_t pid = 0;
 	int wstatus;
-	struct pantavisor *pv = pv_get_instance();
 
 	if (signal != SIGCHLD)
 		return;
@@ -175,7 +174,7 @@ static void signal_handler(int signal)
 		if (pv_pid == 0)
 			continue;
 
-		pv_teardown(pv);
+		pv_stop();
 
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
 			sync();

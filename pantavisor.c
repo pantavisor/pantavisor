@@ -587,9 +587,11 @@ static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 	return state_table[state](pv);
 }
 
-int pv_start(struct pantavisor *pv)
+int pv_start()
 {
-	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return 1;
 
 	pv_state_t state = STATE_INIT;
 
@@ -622,8 +624,9 @@ static void pv_remove(struct pantavisor *pv)
 	pv = NULL;
 }
 
-void pv_teardown(struct pantavisor *pv)
+void pv_stop()
 {
+	struct pantavisor *pv = pv_get_instance();
 	if (!pv)
 		return;
 
@@ -657,7 +660,7 @@ void pv_init()
 		write(fd, core, strlen(core));
 
 	// Enter state machine
-	ret = pv_start(pv);
+	ret = pv_start();
 
 	// Clean exit -> reboot
 	exit(ret);
