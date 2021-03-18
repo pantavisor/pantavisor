@@ -953,7 +953,7 @@ static int trail_first_boot(struct pantavisor *pv)
 		return -1;
 	}
 
-	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, pv->step);
+	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, pv->state->json);
 	res = trest_do_json_request(pv->remote->client, req);
 
 	if (!res) {
@@ -1148,7 +1148,7 @@ int pv_update_finish(struct pantavisor *pv)
 		}
 		pv_update_set_status(pv, UPDATE_DONE);
 		// we keep this here so we can rollback to new DONE revisions from old pantavisor versio
-		pv_set_rev_done(pv, pv->state->rev);
+		pv_storage_set_rev_done(pv, pv->state->rev);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
 		break;
@@ -1591,7 +1591,7 @@ static int trail_link_objects(struct pantavisor *pv)
 	}
 	pv_objects_iter_end;
 
-	err += pv_meta_link_boot(pv, pv->update->pending);
+	err += pv_storage_meta_link_boot(pv, pv->update->pending);
 
 	return -err;
 }
@@ -1727,7 +1727,7 @@ int pv_update_install(struct pantavisor *pv)
 	close(fd);
 	rename(path_new, path);
 
-	if (!pv_meta_expand_jsons(pv, pending)) {
+	if (!pv_storage_meta_expand_jsons(pv, pending)) {
 		pv_log(ERROR, "unable to install platform and pantavisor jsons");
 		ret = -1;
 		goto out;

@@ -317,7 +317,7 @@ static int ph_logger_get_connection(struct ph_logger *ph_logger)
 	if (ph_logger->pv_conn)
 		goto out;
 
-	ph_logger->pv_conn = pv_get_pv_connection();
+	ph_logger->pv_conn = pv_get_instance_connection();
 	if (ph_logger->client) {
 		trest_free(ph_logger->client);
 		ph_logger->client = NULL;

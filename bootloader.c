@@ -112,7 +112,7 @@ static int pv_bl_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 
-	pv = get_pv_instance();
+	pv = pv_get_instance();
 	if (!pv)
 		return -1;
 	// init bootloader ops

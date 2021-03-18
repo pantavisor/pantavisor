@@ -300,7 +300,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 
 	void (*__pv_get_instance)(void*) = dlsym(lib, "pv_set_pv_instance_fn");
 	if (__pv_get_instance)
-		__pv_get_instance(get_pv_instance);
+		__pv_get_instance(pv_get_instance);
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_instance_fn");
 	return 1;
@@ -718,7 +718,7 @@ static int pv_platforms_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
 
-	pv = get_pv_instance();
+	pv = pv_get_instance();
 	// init platform controllers
 	if (!pv_platforms_init_ctrl(pv)) {
 		pv_log(ERROR, "unable to load any container runtime plugin");

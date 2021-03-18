@@ -30,7 +30,7 @@
 #define LXC_CONSOLE_LOG_FNAME 	"console"
 
 void pv_set_new_log_fn( void *fn_pv_new_log);
-void pv_set_pv_instance_fn( void *fn_get_pv_instance);
+void pv_set_pv_instance_fn( void *fn_pv_get_instance);
 void* pv_start_container(struct pv_platform *p, char *conf_file, void *data);
 void* pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
 

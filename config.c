@@ -36,6 +36,7 @@
 #include "utils.h"
 #include "revision.h"
 #include "state.h"
+#include "storage.h"
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -317,11 +318,11 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 
 int pv_config_load_creds()
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 	char config_path[256];
 	struct stat st;
 
-	if (pv->flags & DEVICE_UNCLAIMED)
+	if (pv->unclaimed)
 		sprintf(config_path, "%s/config/unclaimed.config", pv->config.storage.mntpoint);
 	else
 		sprintf(config_path, "%s/config/pantahub.config", pv->config.storage.mntpoint);
@@ -334,10 +335,10 @@ int pv_config_load_creds()
 
 int pv_config_save_creds()
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 	char config_path[256];
 
-	if (pv->flags & DEVICE_UNCLAIMED)
+	if (pv->unclaimed)
 		sprintf(config_path, "%s/config/unclaimed.config", pv->config.storage.mntpoint);
 	else
 		sprintf(config_path, "%s/config/pantahub.config", pv->config.storage.mntpoint);
@@ -347,7 +348,7 @@ int pv_config_save_creds()
 
 void pv_config_override_value(char* key, char* value)
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 
 	if (!key || !value)
 		return;
@@ -368,7 +369,7 @@ void pv_config_override_value(char* key, char* value)
 
 void pv_config_free()
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 
 	if (pv->config.cache.metacachedir)
 		free(pv->config.cache.metacachedir);
@@ -423,63 +424,63 @@ void pv_config_free()
 		free(pv->config.factory.autotok);
 }
 
-inline void pv_config_set_creds_id(char *id) { get_pv_instance()->config.creds.id = id; }
-inline void pv_config_set_creds_prn(char *prn) { get_pv_instance()->config.creds.prn = prn; }
-inline void pv_config_set_creds_secret(char *secret) { get_pv_instance()->config.creds.secret = secret; }
+inline void pv_config_set_creds_id(char *id) { pv_get_instance()->config.creds.id = id; }
+inline void pv_config_set_creds_prn(char *prn) { pv_get_instance()->config.creds.prn = prn; }
+inline void pv_config_set_creds_secret(char *secret) { pv_get_instance()->config.creds.secret = secret; }
 
-char* pv_config_get_cache_metacachedir() { return get_pv_instance()->config.cache.metacachedir; }
-char* pv_config_get_cache_dropbearcachedir() { return get_pv_instance()->config.cache.dropbearcachedir; }
+char* pv_config_get_cache_metacachedir() { return pv_get_instance()->config.cache.metacachedir; }
+char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.cache.dropbearcachedir; }
 
-char* pv_config_get_creds_type() { return get_pv_instance()->config.creds.type; }
-char* pv_config_get_creds_host() { return get_pv_instance()->config.creds.host; }
-int pv_config_get_creds_port() { return get_pv_instance()->config.creds.port; }
-char* pv_config_get_creds_id() { return get_pv_instance()->config.creds.id; }
-char* pv_config_get_creds_prn() { return get_pv_instance()->config.creds.prn; }
-char* pv_config_get_creds_secret() { return get_pv_instance()->config.creds.secret; }
-char* pv_config_get_creds_token() { return get_pv_instance()->config.creds.token; }
+char* pv_config_get_creds_type() { return pv_get_instance()->config.creds.type; }
+char* pv_config_get_creds_host() { return pv_get_instance()->config.creds.host; }
+int pv_config_get_creds_port() { return pv_get_instance()->config.creds.port; }
+char* pv_config_get_creds_id() { return pv_get_instance()->config.creds.id; }
+char* pv_config_get_creds_prn() { return pv_get_instance()->config.creds.prn; }
+char* pv_config_get_creds_secret() { return pv_get_instance()->config.creds.secret; }
+char* pv_config_get_creds_token() { return pv_get_instance()->config.creds.token; }
 
-char* pv_config_get_factory_autotok() { return get_pv_instance()->config.factory.autotok; }
+char* pv_config_get_factory_autotok() { return pv_get_instance()->config.factory.autotok; }
 
-char* pv_config_get_storage_path() { return get_pv_instance()->config.storage.path; }
-char* pv_config_get_storage_fstype() { return get_pv_instance()->config.storage.fstype; }
-char* pv_config_get_storage_opts() { return get_pv_instance()->config.storage.opts; }
-char* pv_config_get_storage_mntpoint() { return get_pv_instance()->config.storage.mntpoint; }
-char* pv_config_get_storage_mnttype() { return get_pv_instance()->config.storage.mnttype; }
-char* pv_config_get_storage_logtempsize() { return get_pv_instance()->config.storage.logtempsize; }
-int pv_config_get_storage_wait() { return get_pv_instance()->config.storage.wait; }
+char* pv_config_get_storage_path() { return pv_get_instance()->config.storage.path; }
+char* pv_config_get_storage_fstype() { return pv_get_instance()->config.storage.fstype; }
+char* pv_config_get_storage_opts() { return pv_get_instance()->config.storage.opts; }
+char* pv_config_get_storage_mntpoint() { return pv_get_instance()->config.storage.mntpoint; }
+char* pv_config_get_storage_mnttype() { return pv_get_instance()->config.storage.mnttype; }
+char* pv_config_get_storage_logtempsize() { return pv_get_instance()->config.storage.logtempsize; }
+int pv_config_get_storage_wait() { return pv_get_instance()->config.storage.wait; }
 
-int pv_config_get_storage_gc_reserved() { return get_pv_instance()->config.storage.gc.reserved; }
-bool pv_config_get_storage_gc_keep_factory() { return get_pv_instance()->config.storage.gc.keep_factory; }
-int pv_config_get_storage_gc_threshold() { return get_pv_instance()->config.storage.gc.threshold; }
+int pv_config_get_storage_gc_reserved() { return pv_get_instance()->config.storage.gc.reserved; }
+bool pv_config_get_storage_gc_keep_factory() { return pv_get_instance()->config.storage.gc.keep_factory; }
+int pv_config_get_storage_gc_threshold() { return pv_get_instance()->config.storage.gc.threshold; }
 
-int pv_config_get_updater_interval() { return get_pv_instance()->config.updater.interval; }
-int pv_config_get_updater_network_timeout() { return get_pv_instance()->config.updater.network_timeout; }
-bool pv_config_get_updater_network_use_tmp_objects() { return get_pv_instance()->config.updater.use_tmp_objects; }
-int pv_config_get_updater_revision_retries() { return get_pv_instance()->config.updater.revision_retries; }
-int pv_config_get_updater_revision_retry_timeout() { return get_pv_instance()->config.updater.revision_retry_timeout; }
-int pv_config_get_updater_commit_delay() { return get_pv_instance()->config.updater.commit_delay; }
+int pv_config_get_updater_interval() { return pv_get_instance()->config.updater.interval; }
+int pv_config_get_updater_network_timeout() { return pv_get_instance()->config.updater.network_timeout; }
+bool pv_config_get_updater_network_use_tmp_objects() { return pv_get_instance()->config.updater.use_tmp_objects; }
+int pv_config_get_updater_revision_retries() { return pv_get_instance()->config.updater.revision_retries; }
+int pv_config_get_updater_revision_retry_timeout() { return pv_get_instance()->config.updater.revision_retry_timeout; }
+int pv_config_get_updater_commit_delay() { return pv_get_instance()->config.updater.commit_delay; }
 
-int pv_config_get_bl_type() { return get_pv_instance()->config.bl.type; }
-bool pv_config_get_bl_mtd_only() { return get_pv_instance()->config.bl.mtd_only; }
-char* pv_config_get_bl_mtd_path() { return get_pv_instance()->config.bl.mtd_path; }
+int pv_config_get_bl_type() { return pv_get_instance()->config.bl.type; }
+bool pv_config_get_bl_mtd_only() { return pv_get_instance()->config.bl.mtd_only; }
+char* pv_config_get_bl_mtd_path() { return pv_get_instance()->config.bl.mtd_path; }
 
-bool pv_config_get_watchdog_enabled() { return get_pv_instance()->config.wdt.enabled; }
-int pv_config_get_watchdog_timeout() { return get_pv_instance()->config.wdt.timeout; }
+bool pv_config_get_watchdog_enabled() { return pv_get_instance()->config.wdt.enabled; }
+int pv_config_get_watchdog_timeout() { return pv_get_instance()->config.wdt.timeout; }
 
-char* pv_config_get_network_brdev() { return get_pv_instance()->config.net.brdev; }
-char* pv_config_get_network_braddress4() { return get_pv_instance()->config.net.braddress4; }
-char* pv_config_get_network_brmask4() { return get_pv_instance()->config.net.brmask4; }
+char* pv_config_get_network_brdev() { return pv_get_instance()->config.net.brdev; }
+char* pv_config_get_network_braddress4() { return pv_get_instance()->config.net.braddress4; }
+char* pv_config_get_network_brmask4() { return pv_get_instance()->config.net.brmask4; }
 
-char* pv_config_get_log_logdir() { return get_pv_instance()->config.log.logdir; }
-int pv_config_get_log_logmax() { return get_pv_instance()->config.log.logmax; }
-int pv_config_get_log_loglevel() { return get_pv_instance()->config.log.loglevel; }
-int pv_config_get_log_logsize() { return get_pv_instance()->config.log.logsize; }
-bool pv_config_get_log_push() { return get_pv_instance()->config.log.push; }
-bool pv_config_get_log_capture() { return get_pv_instance()->config.log.capture; }
+char* pv_config_get_log_logdir() { return pv_get_instance()->config.log.logdir; }
+int pv_config_get_log_logmax() { return pv_get_instance()->config.log.logmax; }
+int pv_config_get_log_loglevel() { return pv_get_instance()->config.log.loglevel; }
+int pv_config_get_log_logsize() { return pv_get_instance()->config.log.logsize; }
+bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
+bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
 
 static int pv_config_init(struct pv_init *this)
 {
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 
 	if (pv_config_load_config_from_file("/etc/pantavisor.config", &pv->config) < 0) {
 		printf("FATAL: unable to parse /etc/pantavisor.config\n");
@@ -492,7 +493,7 @@ static int pv_config_init(struct pv_init *this)
 static int pv_config_creds(struct pv_init *this)
 {
 	char config_file[256];
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 
 	sprintf(config_file, "%s/config/pantahub.config", pv_config_get_storage_mntpoint());
 	if (pv_config_load_creds_from_file(config_file, &pv->config) < 0) {
@@ -506,11 +507,11 @@ static int pv_config_creds(struct pv_init *this)
 static int pv_config_trail(struct pv_init *this)
 {
 	char path[PATH_MAX];
-	struct pantavisor *pv = get_pv_instance();
+	struct pantavisor *pv = pv_get_instance();
 	int rev = pv_revision_get_rev();
 	char* config_name;
 
-	config_name = pv_get_initrd_config_name(rev);
+	config_name = pv_storage_get_initrd_config_name(rev);
 	if (!config_name) {
 		printf("INFO: initrd config not found\n");
 		return 0;
