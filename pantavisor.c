@@ -33,6 +33,8 @@
 #include <sys/wait.h>
 #include <sys/reboot.h>
 #include <sys/prctl.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include <linux/limits.h>
 #include <linux/reboot.h>
