@@ -21,6 +21,7 @@
  */
 
 #include <string.h>
+#include <stdio.h>
 
 #include "state.h"
 #include "volumes.h"
@@ -36,11 +37,13 @@
 
 struct pv_state* pv_state_new(char *rev, state_spec_t spec)
 {
+	int len = strlen(rev);
 	struct pv_state *s;
 
 	s = calloc(1, sizeof(struct pv_state));
 	if (s) {
-		strncpy(s->rev, rev, strlen(rev));
+		s->rev = calloc(1, len * sizeof(char*));
+		snprintf(s->rev, len, "%s", rev);
 		s->spec = spec;
 		dl_list_init(&s->platforms);
 		dl_list_init(&s->volumes);
@@ -59,6 +62,8 @@ void pv_state_free(struct pv_state *s)
 
 	pv_log(INFO, "removing state with revision %s", s->rev);
 
+	if (s->rev)
+		free(s->rev);
 	if (s->bsp.kernel)
 		free(s->bsp.kernel);
 	if (s->bsp.fdt)
@@ -272,6 +277,8 @@ void pv_state_validate(struct pv_state *s)
 
 void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 {
+	int len = strlen(in->rev);
+
 	pv_log(INFO, "transferring state from rev %s to rev %s", in->rev, out->rev);
 
 	pv_state_transfer_objects(in, out, runlevel);
@@ -279,7 +286,8 @@ void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 	pv_state_transfer_jsons(in, out, runlevel);
 	pv_state_transfer_platforms(in, out, runlevel);
 
-	strncpy(out->rev, in->rev, strlen(in->rev));
+	out->rev = realloc(out->rev, len);
+	snprintf(out->rev, len, "%s", in->rev);
 
 	pv_state_print(out);
 }

@@ -53,7 +53,6 @@
 #include "blkid.h"
 #include "init.h"
 #include "state.h"
-#include "bootloader.h"
 #include "updater.h"
 #include "metadata.h"
 #include "storage.h"
@@ -634,6 +633,7 @@ void pv_stop()
 
 	pv_ctrl_socket_close(pv->ctrl_fd);
 
+	pv_bootloader_remove();
 	pv_remove(pv);
 }
 

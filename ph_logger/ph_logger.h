@@ -77,7 +77,7 @@ struct ph_logger_msg {
 
 typedef int (*ph_logger_handler_t)(struct ph_logger_msg*, char *buf, va_list args);
 
-typedef int (*ph_logger_file_rw_handler_t)(struct ph_logger_msg*, const char *log_dir, int rev);
+typedef int (*ph_logger_file_rw_handler_t)(struct ph_logger_msg*, const char *log_dir, char *rev);
 
 
 /*
@@ -97,6 +97,6 @@ int ph_logger_write_bytes(struct ph_logger_msg *, const char *buf, ...);
 int ph_logger_read_bytes(struct ph_logger_msg *, char *buf, ...);
 
 int ph_logger_init(const char *sock_path);
-void ph_logger_toggle(struct pantavisor *pv, int rev);
+void ph_logger_toggle(struct pantavisor *pv, char *rev);
 void ph_logger_stop(struct pantavisor *pv);
 #endif /* __PH_LOGGER_H__ */

@@ -123,7 +123,7 @@ int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, v
 	return to_copy;
 }
 
-int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, const char *log_dir, int rev)
+int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, const char *log_dir, char *rev)
 {
 	char pathname[PATH_MAX];
 	int written = 0;
@@ -141,7 +141,7 @@ int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, cons
 	ph_logger_read_bytes(ph_logger_msg, NULL, &level, &platform, &source);
 	/*Data is after source*/
 	data = source + strlen(source) + 1;
-	written = snprintf(pathname, sizeof(pathname), "%s/%d/%s/%s", log_dir, rev, platform, source);
+	written = snprintf(pathname, sizeof(pathname), "%s/%s/%s/%s", log_dir, rev, platform, source);
 	dup_pathname = strdup(pathname);
 	fname = dirname(dup_pathname);
 	/*

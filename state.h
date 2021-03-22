@@ -40,7 +40,7 @@ struct pv_bsp {
 };
 
 struct pv_state {
-	char rev[64];
+	char *rev;
 	state_spec_t spec;
 	struct pv_bsp bsp;
 	struct dl_list platforms; // pv_platform

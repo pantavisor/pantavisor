@@ -41,8 +41,8 @@
 #include "log.h"
 
 struct pv_bootloader {
-	char pv_rev[64];
-	char pv_try[64];
+	char *pv_rev;
+	char *pv_try;
 };
 
 static struct pv_bootloader pv_bootloader;
@@ -89,7 +89,7 @@ char* pv_bootloader_get_try()
 
 static int pv_bootloader_set_rev(char *rev)
 {
-	int len = strnlen(rev);
+	int len = strlen(rev);
 
 	if (!ops)
 		return -1;
@@ -97,13 +97,14 @@ static int pv_bootloader_set_rev(char *rev)
 	if (len >= 64)
 		return -1;
 
-	strncpy(pv_bootloader.pv_rev, rev, len);
+	pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, len * sizeof(char*));
+	snprintf(pv_bootloader.pv_rev, len, "%s", rev);
 	return ops->set_env_key("pv_rev", rev);
 }
 
 static int pv_bootloader_set_try(char *rev)
 {
-	int len = strnlen(rev);
+	int len = strlen(rev);
 
 	if (!ops)
 		return -1;
@@ -111,7 +112,8 @@ static int pv_bootloader_set_try(char *rev)
 	if (len >= 64)
 		return -1;
 
-	strncpy(pv_bootloader.pv_try, rev, len);
+	pv_bootloader.pv_try = realloc(pv_bootloader.pv_try, len * sizeof(char*));
+	snprintf(pv_bootloader.pv_try, len, "%s", rev);
 	return ops->set_env_key("pv_try", rev);
 }
 
@@ -120,20 +122,26 @@ static int pv_bootloader_unset_try()
 	if (!ops)
 		return -1;
 
-	memset(pv_bootloader.pv_try, 0, sizeof(pv_bootloader.pv_try));
+	if(pv_bootloader.pv_try)
+		free(pv_bootloader.pv_try);
+	pv_bootloader.pv_try= NULL;
 	return ops->unset_env_key("pv_try");
 }
 
 bool pv_bootloader_update_in_progress()
 {
-	return (pv_bootloader_get_try()[0] != '\0');
+	return pv_bootloader_get_try();
 }
 
 bool pv_bootloader_trying_update()
 {
+	char *pv_try = pv_bootloader_get_try();
+	if (!pv_try)
+		return false;
+
 	return (pv_bootloader_update_in_progress() &&
 			!strncmp(pv_bootloader_get_rev(),
-					pv_bootloader_get_try(),
+					pv_try,
 					sizeof(pv_bootloader_get_rev())));
 }
 
@@ -146,7 +154,7 @@ int pv_bootloader_set_installed(char *rev)
 void pv_bootloader_set_rolledback()
 {
 	if (!ops)
-		return -1;
+		return;
 
 	pv_log(INFO, "setting old bootloader %s to be started after next reboot", pv_bootloader_get_rev());
 }
@@ -168,10 +176,18 @@ int pv_bootloader_set_failed()
 	return pv_bootloader_unset_try();
 }
 
+void pv_bootloader_remove()
+{
+	if (pv_bootloader.pv_rev)
+		free(pv_bootloader.pv_rev);
+	if (pv_bootloader.pv_try)
+		free(pv_bootloader.pv_try);
+}
+
 static int pv_bl_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
-	int fd = -1;
+	int fd = -1, len;
 	char *buf = NULL;
 	char *token = NULL;
 	ssize_t bytes = 0;
@@ -179,9 +195,6 @@ static int pv_bl_early_init(struct pv_init *this)
 
 	if (!pv)
 		return -1;
-
-	memset(pv_bootloader.pv_rev, 0, sizeof(pv_bootloader.pv_rev));
-	memset(pv_bootloader.pv_try, 0, sizeof(pv_bootloader.pv_try));
 
 	// Get current step bootloader from cmdline
 	fd = open("/proc/cmdline", O_RDONLY);
@@ -198,14 +211,15 @@ static int pv_bl_early_init(struct pv_init *this)
 
 	token = strtok(buf, " ");
 	while (token) {
-		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0)
-			strncpy(pv_bootloader.pv_rev,
-					token + CMDLINE_OFFSET,
-					strlen(token + CMDLINE_OFFSET));
-		else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0)
-			strncpy(pv_bootloader.pv_try,
-					token + CMDLINE_OFFSET
-					strlen(token + CMDLINE_OFFSET));
+		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
+			len = strlen(token + CMDLINE_OFFSET);
+			pv_bootloader.pv_rev = calloc(1, len * sizeof(char*));
+			snprintf(pv_bootloader.pv_rev, len, "%s", token + CMDLINE_OFFSET);
+		} else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0) {
+			len = strlen(token + CMDLINE_OFFSET);
+			pv_bootloader.pv_try = calloc(1, len * sizeof(char*));
+			snprintf(pv_bootloader.pv_try, len, "%s", token + CMDLINE_OFFSET);
+		}
 		token = strtok(NULL, " ");
 	}
 	free(buf);

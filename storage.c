@@ -146,14 +146,14 @@ out:
 	return reclaimed;
 }
 
-void pv_storage_rm_rev(struct pantavisor *pv, int rev)
+void pv_storage_rm_rev(struct pantavisor *pv, char *rev)
 {
 	char path[PATH_MAX];
 	char revision[PATH_MAX];
 
-	pv_log(DEBUG, "Removing rev=%d", rev);
+	pv_log(DEBUG, "Removing rev=%s", rev);
 
-	sprintf(revision, "%d", rev);
+	sprintf(revision, "%s", rev);
 
 	sprintf(path, "%s/trails", pv_config_get_storage_mntpoint());
 	remove_in(path, revision);
@@ -167,10 +167,56 @@ void pv_storage_rm_rev(struct pantavisor *pv, int rev)
 	sync();
 }
 
+static char** pv_storage_get_revisions(struct pantavisor *pv)
+{
+	int n, i = 0, len;
+	int bufsize = 1;
+	char **revs = calloc(1, bufsize * sizeof (char**));
+	struct dirent **dirs;
+	char basedir[PATH_MAX];
+
+	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
+	n = scandir(basedir, &dirs, NULL, alphasort);
+	while (n--) {
+		char *tmp = dirs[n]->d_name;
+
+		while (*tmp && isdigit(*tmp))
+			tmp++;
+
+		if (tmp[0] != '\0')
+			continue;
+
+		if (i >= bufsize) {
+			char **t = realloc(revs, (bufsize+1) * sizeof(char**));
+			if (!t)
+				return NULL;
+			revs = t;
+			bufsize++;
+		}
+
+		len = strlen(dirs[n]->d_name);
+		revs[i] = calloc(1, len * sizeof(char*));
+		snprintf(revs[i], len, "%s", dirs[n]->d_name);
+		i++;
+		free(dirs[n]);
+	}
+
+	revs = realloc(revs, (bufsize+1) * sizeof(char**));
+	if (!i)
+		revs[0] = NULL;
+
+	// terminate with NULL
+	revs[bufsize] = NULL;
+
+	free(dirs);
+
+	return revs;
+}
+
 int pv_storage_gc_run(struct pantavisor *pv)
 {
 	int reclaimed = 0, len;
-	char **rev, *rev_i;
+	char **rev, **rev_i;
 	struct pv_state *s = 0, *u = 0;
 
 	if (pv->state)
@@ -194,7 +240,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 			continue;
 
 		// if configured, keep factory too
-		if (pv_config_get_storage_gc_keep_factory() && *rev_i == 0)
+		if (pv_config_get_storage_gc_keep_factory() && !strncmp(*rev_i, "0", len))
 			continue;
 
 		// unlink the given revision from local storage
@@ -356,7 +402,7 @@ void pv_storage_set_active(struct pantavisor *pv)
 	if (!path)
 		return;
 
-	sprintf(path, "%s/trails/%d", pv_config_get_storage_mntpoint(), pv->state->rev);
+	sprintf(path, "%s/trails/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
 	cur = calloc(1, PATH_MAX);
 
 	/*
@@ -389,7 +435,7 @@ int pv_storage_make_config(struct pantavisor *pv)
 	char cmd[PATH_MAX];
 	int rv;
 
-	sprintf(srcpath, "%s/trails/%d/_config/", pv_config_get_storage_mntpoint(), pv->state->rev);
+	sprintf(srcpath, "%s/trails/%s/_config/", pv_config_get_storage_mntpoint(), pv->state->rev);
 	sprintf(targetpath, "/configs/");
 
 	if (stat(targetpath, &st))
@@ -416,7 +462,7 @@ int pv_storage_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-void pv_storage_set_rev_done(struct pantavisor *pv, int rev)
+void pv_storage_set_rev_done(struct pantavisor *pv, char *rev)
 {
 	// DEPRECATED: this done files are not used anymore for rollback and bootloader env
 	// are used insted. We keep it here to serve old versions in case a device needs to
@@ -425,63 +471,17 @@ void pv_storage_set_rev_done(struct pantavisor *pv, int rev)
 	int fd;
 	char path[256];
 
-	sprintf(path, "%s/trails/%d/.pv/done", pv_config_get_storage_mntpoint(), rev);
+	sprintf(path, "%s/trails/%s/.pv/done", pv_config_get_storage_mntpoint(), rev);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
 	if (!fd) {
-		pv_log(WARN, "unable to set current(done) flag for revision %d", rev);
+		pv_log(WARN, "unable to set current(done) flag for revision %s", rev);
 		return;
 	}
 
 	// commit to disk
 	fsync(fd);
 	close(fd);
-}
-
-static char** pv_storage_get_revisions(struct pantavisor *pv)
-{
-	int n, i = 0, len;
-	int bufsize = 1;
-	char **revs = calloc(1, bufsize * sizeof (char**));
-	struct dirent **dirs;
-	char basedir[PATH_MAX];
-
-	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
-	n = scandir(basedir, &dirs, NULL, alphasort);
-	while (n--) {
-		char *tmp = dirs[n]->d_name;
-
-		while (*tmp && isdigit(*tmp))
-			tmp++;
-
-		if (tmp[0] != '\0')
-			continue;
-
-		if (i >= bufsize) {
-			char **t = realloc(revs, (bufsize+1) * sizeof(char**));
-			if (!t)
-				return NULL;
-			revs = t;
-			bufsize++;
-		}
-
-		len = strlen(dirs[n]->d_name);
-		revs[i] = calloc(1, len * sizeof(char*));
-		strncpy(revs[i], dirs[n]->d_name, len);
-		i++;
-		free(dirs[n]);
-	}
-
-	revs = realloc(revs, (bufsize+1) * sizeof(char**));
-	if (!i)
-		revs[0] = NULL;
-
-	// terminate with NULL
-	revs[bufsize] = NULL;
-
-	free(dirs);
-
-	return revs;
 }
 
 void pv_storage_meta_set_objdir(struct pantavisor *pv)
@@ -493,7 +493,7 @@ void pv_storage_meta_set_objdir(struct pantavisor *pv)
 	if (!pv)
 		return;
 
-	sprintf(path, "%s/trails/%d/.pvr/config", pv_config_get_storage_mntpoint(), pv->state->rev);
+	sprintf(path, "%s/trails/%s/.pvr/config", pv_config_get_storage_mntpoint(), pv->state->rev);
 	if (stat(path, &st) == 0)
 		return;
 
@@ -515,7 +515,7 @@ void pv_storage_meta_set_objdir(struct pantavisor *pv)
 		goto err;
 
 	close(fd);
-	pv_log(DEBUG, "wrote '%s' to .pvr/config @rev=%d", path, pv->state->rev);
+	pv_log(DEBUG, "wrote '%s' to .pvr/config @rev=%s", path, pv->state->rev);
 
 	return;
 err:
@@ -564,7 +564,7 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		value = malloc(n+1);
 		snprintf(value, n+1, "%s", buf+(*k+1)->start);
 
-		sprintf(path, "%s/trails/%d/%s",
+		sprintf(path, "%s/trails/%s/%s",
 			pv_config_get_storage_mntpoint(), s->rev, key);
 
 		if (stat(path, &st) == 0)
@@ -607,7 +607,7 @@ void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value)
 	int fd;
 	char path[PATH_MAX];
 
-	sprintf(path, "%s/trails/%d/.pv/.tryonce", pv_config_get_storage_mntpoint(), pv->state->rev);
+	sprintf(path, "%s/trails/%s/.pv/.tryonce", pv_config_get_storage_mntpoint(), pv->state->rev);
 
 	if (value) {
 		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
@@ -643,8 +643,8 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	}
 
 	// initrd
-	sprintf(dst, "%s/trails/%d/.pv/", pv_config_get_storage_mntpoint(), s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.initrd);
+	sprintf(dst, "%s/trails/%s/.pv/", pv_config_get_storage_mntpoint(), s->rev);
+	sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.initrd);
 
 	mkdir_p(dst, 0755);
 	strcat(dst, "pv-initrd.img");
@@ -658,8 +658,8 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	addons = &s->addons;
 	dl_list_for_each_safe(a, tmp, addons,
 			struct pv_addon, list) {
-		sprintf(dst, "%s/trails/%d/.pv/", pv_config_get_storage_mntpoint(), s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, a->name);
+		sprintf(dst, "%s/trails/%s/.pv/", pv_config_get_storage_mntpoint(), s->rev);
+		sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, a->name);
 		sprintf(fname, "pv-initrd.img.%d", i++);
 		strcat(dst, fname);
 		remove(dst);
@@ -668,8 +668,8 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	}
 
 	// kernel
-	sprintf(dst, "%s/trails/%d/.pv/pv-kernel.img", pv_config_get_storage_mntpoint(), s->rev);
-	sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.kernel);
+	sprintf(dst, "%s/trails/%s/.pv/pv-kernel.img", pv_config_get_storage_mntpoint(), s->rev);
+	sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.kernel);
 
 	remove(dst);
 	if (link(src, dst) < 0)
@@ -677,8 +677,8 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 	// fdt
 	if (s->bsp.fdt) {
-		sprintf(dst, "%s/trails/%d/.pv/pv-fdt.dtb", pv_config_get_storage_mntpoint(), s->rev);
-		sprintf(src, "%s/trails/%d/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.fdt);
+		sprintf(dst, "%s/trails/%s/.pv/pv-fdt.dtb", pv_config_get_storage_mntpoint(), s->rev);
+		sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.fdt);
 
 		remove(dst);
 		if (link(src, dst) < 0)
@@ -686,7 +686,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	}
 
 
-	pv_log(DEBUG, "linked boot assets for rev=%d", s->rev);
+	pv_log(DEBUG, "linked boot assets for rev=%s", s->rev);
 
 	return 0;
 err:
@@ -694,7 +694,7 @@ err:
 	return 1;
 }
 
-struct pv_state* pv_storage_get_state(struct pantavisor *pv, int rev)
+struct pv_state* pv_storage_get_state(struct pantavisor *pv, char *rev)
 {
 	int fd;
 	int size;
@@ -703,10 +703,7 @@ struct pv_state* pv_storage_get_state(struct pantavisor *pv, int rev)
 	struct stat st;
 	struct pv_state *s;
 
-	if (rev < 0)
-		sprintf(path, "%s/trails/current/state.json", pv_config_get_storage_mntpoint());
-	else
-		sprintf(path, "%s/trails/%d/.pvr/json", pv_config_get_storage_mntpoint(), rev);
+	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
 
 	pv_log(INFO, "reading state from: '%s'", path);
 

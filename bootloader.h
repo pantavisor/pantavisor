@@ -43,4 +43,6 @@ void pv_bootloader_set_rolledback(void);
 int pv_bootloader_set_commited(char* rev);
 int pv_bootloader_set_failed(void);
 
+void pv_bootloader_remove(void);
+
 #endif

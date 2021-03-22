@@ -508,7 +508,7 @@ static int pv_config_trail(struct pv_init *this)
 {
 	char path[PATH_MAX];
 	struct pantavisor *pv = pv_get_instance();
-	char * rev = pv_bootloader_get_rev();
+	char *rev = pv_bootloader_get_rev();
 	char *config_name;
 
 	config_name = pv_storage_get_initrd_config_name(rev);

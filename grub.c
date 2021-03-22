@@ -217,7 +217,6 @@ static int grub_flush_env(void)
 
 const struct bl_ops grub_ops = {
 	.init		= grub_init,
-	.get_env_key	= grub_get_env_key,
 	.set_env_key	= grub_set_env_key,
 	.unset_env_key	= grub_unset_env_key,
 	.flush_env	= grub_flush_env,
