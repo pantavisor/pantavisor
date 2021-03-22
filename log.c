@@ -41,9 +41,9 @@
 #include "utils.h"
 #include "loop.h"
 #include "init.h"
+#include "bootloader.h"
 #include "version.h"
 #include "ph_logger/ph_logger.h"
-#include "bootloader.h"
 
 #define MODULE_NAME		"log"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

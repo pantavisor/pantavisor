@@ -194,7 +194,7 @@ static char** pv_storage_get_revisions(struct pantavisor *pv)
 			bufsize++;
 		}
 
-		len = strlen(dirs[n]->d_name);
+		len = strlen(dirs[n]->d_name) + 1;
 		revs[i] = calloc(1, len * sizeof(char*));
 		snprintf(revs[i], len, "%s", dirs[n]->d_name);
 		i++;
@@ -233,7 +233,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 
 	for (rev_i = rev; *rev_i != NULL; rev_i++) {
 		// dont reclaim current, update or last booted up revisions
-		len = strlen(*rev_i);
+		len = strlen(*rev_i) + 1;
 		if ((s && !strncmp(*rev_i, s->rev, len)) ||
 			(u && !strncmp(*rev_i, u->rev, len)) ||
 			!strncmp(*rev_i, pv_bootloader_get_rev(), len))

@@ -389,7 +389,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		rev = cmd->payload;
 
 		// lets not tryonce factory
-		if (!strncmp(rev, "0", strlen(rev)))
+		if (!strncmp(rev, "0", sizeof("0")))
 			goto out;
 
 		// load try state
@@ -453,11 +453,8 @@ out:
 
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
-	int res;
-
 	// download and install pending step
-	res = pv_update_install(pv);
-	if (res < 0) {
+	if (pv_update_install(pv) < 0) {
 		pv_log(ERROR, "update has failed, continue...");
 		pv_update_finish(pv);
 		return STATE_WAIT;
@@ -482,7 +479,7 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
-	if (pv->state && strncmp(pv->state->rev, "0", strlen(pv->state->rev)))
+	if (pv->state && strncmp(pv->state->rev, "0", sizeof("0")))
 		return STATE_ERROR;
 
 	// rollback means current update needs to be reported to PH as FAILED

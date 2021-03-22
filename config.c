@@ -34,9 +34,9 @@
 #include "init.h"
 #include "config_parser.h"
 #include "utils.h"
+#include "bootloader.h"
 #include "state.h"
 #include "storage.h"
-#include "bootloader.h"
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

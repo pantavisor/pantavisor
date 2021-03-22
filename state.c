@@ -37,7 +37,7 @@
 
 struct pv_state* pv_state_new(char *rev, state_spec_t spec)
 {
-	int len = strlen(rev);
+	int len = strlen(rev) + 1;
 	struct pv_state *s;
 
 	s = calloc(1, sizeof(struct pv_state));
@@ -212,7 +212,7 @@ void pv_state_print(struct pv_state *s)
 	if (!s)
 		return;
 
-	pv_log(DEBUG, "state %d:", s->rev);
+	pv_log(DEBUG, "state %s:", s->rev);
 	pv_log(DEBUG, " kernel: '%s'", s->bsp.kernel);
 	pv_log(DEBUG, " initrd: '%s'", s->bsp.initrd);
 	struct pv_platform *p, *tmp_p;
@@ -277,7 +277,7 @@ void pv_state_validate(struct pv_state *s)
 
 void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
 {
-	int len = strlen(in->rev);
+	int len = strlen(in->rev) + 1;
 
 	pv_log(INFO, "transferring state from rev %s to rev %s", in->rev, out->rev);
 
