@@ -105,6 +105,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 		p->name = strdup(name);
 		p->status = PLAT_NONE;
 		p->runlevel = -1;
+		p->updated = false;
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -528,8 +529,9 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 		platforms = &pv->state->platforms;
 		dl_list_for_each_safe(p, tmp, platforms,
 				struct pv_platform, list) {
-			// Start platforms in this runlevel only
-			if (p->runlevel != i)
+			// Start platforms in this runlevel only and avoid the already started ones
+			if ((p->runlevel != i) ||
+				(p->status == PLAT_STARTED))
 				continue;
 
 			if (pv_platforms_start_platform(pv, p))
@@ -571,6 +573,10 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 				struct pv_platform, list) {
 			// Start platforms in this runlevel only
 			if (p->runlevel != i)
+				continue;
+
+			// If runlevel is APP, we only stop the updated ones
+			if ((runlevel == RUNLEVEL_APP) && !p->updated)
 				continue;
 
 			if (!kill(p->init_pid, 0)) {
@@ -656,11 +662,18 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 			if (p->runlevel != i)
 				continue;
 
+			// Start platforms with runlevel APP if update runlevel is APP and plat was upated
+			if ((runlevel == RUNLEVEL_APP) &&
+				(p->runlevel == RUNLEVEL_APP) &&
+				!p->updated)
+				continue;
+
+			// Stop plats that have been started
 			if ((p->status == PLAT_STARTED) && (p->init_pid > 0)) {
 				ctrl = _pv_platforms_get_ctrl(p->type);
 				ctrl->stop(p, NULL, p->data);
 				p->status = PLAT_STOPPED;
-				// we dereference data after platform stop
+				// We dereference data after platform stop
 				p->data = NULL;
 				pv_log(DEBUG, "sent SIGTERM to platform '%s'", p->name);
 				num_plats++;
@@ -699,6 +712,10 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 	            struct pv_platform, list) {
 			// Check platforms in this runlevel only
 			if (p->runlevel != i)
+				continue;
+
+			// If runlevel is APP, we only stop the updated ones
+			if ((runlevel == RUNLEVEL_APP) && !p->updated)
 				continue;
 
 			if (kill(p->init_pid, 0)) {

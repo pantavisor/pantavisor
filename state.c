@@ -320,6 +320,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			// if the platform has been deleted, we respect its runlevel
 			if(p->runlevel < runlevel) {
 				runlevel = p->runlevel;
+				p->updated = true;
 			}
 		}
 	}
@@ -338,6 +339,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			pv_log(DEBUG, "object %s from platform %s has been changed in last update", o->name, o->plat->name);
 			if (o->plat->runlevel < runlevel) {
 				runlevel = o->plat->runlevel;
+				o->plat->updated = true;
 			}
 		}
 	}
@@ -356,6 +358,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			pv_log(DEBUG, "object %s from platform %s has been deleted in last update", o->name, o->plat->name);
 			if (o->plat->runlevel < runlevel) {
 				runlevel = o->plat->runlevel;
+				o->plat->updated = true;
 			}
 		}
 	}
@@ -374,6 +377,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			pv_log(DEBUG, "json %s from platform %s has been changed in last update", j->name, j->plat->name);
 			if (j->plat->runlevel < runlevel) {
 				runlevel = j->plat->runlevel;
+				j->plat->updated = true;
 			}
 		}
 	}
@@ -392,6 +396,7 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			pv_log(DEBUG, "json %s from platform %s has been deleted in last update", j->name, j->plat->name);
 			if (j->plat->runlevel < runlevel) {
 				runlevel = j->plat->runlevel;
+				j->plat->updated = true;
 			}
 		}
 	}
