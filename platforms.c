@@ -575,8 +575,10 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 			if (p->runlevel != i)
 				continue;
 
-			// If runlevel is APP, we only stop the updated ones
-			if ((runlevel == RUNLEVEL_APP) && !p->updated)
+			// Stop platforms with runlevel APP if update runlevel is APP and plat was upated
+			if ((runlevel == RUNLEVEL_APP) &&
+				(p->runlevel == RUNLEVEL_APP) &&
+				!p->updated)
 				continue;
 
 			if (!kill(p->init_pid, 0)) {
@@ -662,7 +664,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 			if (p->runlevel != i)
 				continue;
 
-			// Start platforms with runlevel APP if update runlevel is APP and plat was upated
+			// Stop platforms with runlevel APP if update runlevel is APP and plat was upated
 			if ((runlevel == RUNLEVEL_APP) &&
 				(p->runlevel == RUNLEVEL_APP) &&
 				!p->updated)
@@ -714,8 +716,10 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 			if (p->runlevel != i)
 				continue;
 
-			// If runlevel is APP, we only stop the updated ones
-			if ((runlevel == RUNLEVEL_APP) && !p->updated)
+			// Stop platforms with runlevel APP if update runlevel is APP and plat was upated
+			if ((runlevel == RUNLEVEL_APP) &&
+				(p->runlevel == RUNLEVEL_APP) &&
+				!p->updated)
 				continue;
 
 			if (kill(p->init_pid, 0)) {
