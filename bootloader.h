@@ -32,8 +32,8 @@ struct bl_ops {
 	int (*install_kernel)(char *path);
 };
 
-char* pv_bootloader_get_rev(void);
-char* pv_bootloader_get_try(void);
+const char* pv_bootloader_get_rev(void);
+const char* pv_bootloader_get_try(void);
 
 bool pv_bootloader_update_in_progress(void);
 bool pv_bootloader_trying_update(void);

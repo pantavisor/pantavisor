@@ -247,7 +247,7 @@ static int log_external(const char *fmt, ...)
 	return 1;
 }
 
-static int pv_log_set_log_dir(char *rev)
+static int pv_log_set_log_dir(const char *rev)
 {
 	if (!log_dir)
 		log_dir = calloc(1, 128);
@@ -268,7 +268,7 @@ static int pv_log_set_log_dir(char *rev)
 	return 0;
 }
 
-static void pv_log_init(struct pantavisor *pv, char *rev)
+static void pv_log_init(struct pantavisor *pv, const char *rev)
 {
 	// make logs available for platforms
 	thttp_set_log_func(log_external);
@@ -306,7 +306,7 @@ void exit_error(int err, char *msg)
 	exit(0);
 }
 
-int pv_log_start(struct pantavisor *pv, char *rev)
+int pv_log_start(struct pantavisor *pv, const char *rev)
 {
 	if (!pv_config_get_log_capture())
 		return 0;

@@ -77,12 +77,12 @@ static int pv_bl_init(struct pantavisor *pv)
 	return ret;
 }
 
-char* pv_bootloader_get_rev()
+const char* pv_bootloader_get_rev()
 {
 	return pv_bootloader.pv_rev;
 }
 
-char* pv_bootloader_get_try()
+const char* pv_bootloader_get_try()
 {
 	return pv_bootloader.pv_try;
 }
@@ -129,7 +129,7 @@ bool pv_bootloader_update_in_progress()
 
 bool pv_bootloader_trying_update()
 {
-	char *pv_try = pv_bootloader_get_try();
+	const char *pv_try = pv_bootloader_get_try();
 	if (!pv_try)
 		return false;
 

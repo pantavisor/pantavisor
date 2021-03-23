@@ -34,7 +34,7 @@ char* multi1_parse_initrd_config_name(char *buf);
 struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf);
 char* system1_parse_initrd_config_name(char *buf);
 
-struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, char *rev);
+struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, const char *rev);
 char* pv_parser_get_initrd_config_name(char *buf);
 
 #endif

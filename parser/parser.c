@@ -80,7 +80,7 @@ static state_spec_t pv_parser_convert_spec(char *spec)
 	return SPEC_UNKNOWN;
 }
 
-struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, char *rev)
+struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, const char *rev)
 {
 	int tokc, ret;
 	char *spec = 0;

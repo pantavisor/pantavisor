@@ -35,7 +35,7 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-struct pv_state* pv_state_new(char *rev, state_spec_t spec)
+struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 {
 	int len = strlen(rev) + 1;
 	struct pv_state *s;

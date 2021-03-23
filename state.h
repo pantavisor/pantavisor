@@ -52,7 +52,7 @@ struct pv_state {
 	int tryonce;
 };
 
-struct pv_state* pv_state_new(char *rev, state_spec_t spec);
+struct pv_state* pv_state_new(const char *rev, state_spec_t spec);
 void pv_state_free(struct pv_state *s);
 
 void pv_state_print(struct pv_state *s);

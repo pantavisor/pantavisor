@@ -146,7 +146,7 @@ out:
 	return reclaimed;
 }
 
-void pv_storage_rm_rev(struct pantavisor *pv, char *rev)
+void pv_storage_rm_rev(struct pantavisor *pv, const char *rev)
 {
 	char path[PATH_MAX];
 	char revision[PATH_MAX];
@@ -167,13 +167,17 @@ void pv_storage_rm_rev(struct pantavisor *pv, char *rev)
 	sync();
 }
 
-static char** pv_storage_get_revisions(struct pantavisor *pv)
+struct pv_revision {
+	char* rev;
+	struct dl_list list;
+};
+
+static int pv_storage_get_revisions(struct dl_list *revisions)
 {
-	int n, i = 0, len;
-	int bufsize = 1;
-	char **revs = calloc(1, bufsize * sizeof (char**));
+	int n, len, ret = -1;
 	struct dirent **dirs;
 	char basedir[PATH_MAX];
+	struct pv_revision *revision;
 
 	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
 	n = scandir(basedir, &dirs, NULL, alphasort);
@@ -186,38 +190,31 @@ static char** pv_storage_get_revisions(struct pantavisor *pv)
 		if (tmp[0] != '\0')
 			continue;
 
-		if (i >= bufsize) {
-			char **t = realloc(revs, (bufsize+1) * sizeof(char**));
-			if (!t)
-				return NULL;
-			revs = t;
-			bufsize++;
-		}
+		revision = calloc(1, sizeof(struct pv_revision));
+		if (!revision)
+			goto out;
 
 		len = strlen(dirs[n]->d_name) + 1;
-		revs[i] = calloc(1, len * sizeof(char*));
-		snprintf(revs[i], len, "%s", dirs[n]->d_name);
-		i++;
-		free(dirs[n]);
+		revision->rev = calloc(1, len * sizeof(char*));
+		snprintf(revision->rev, len, "%s", dirs[n]->d_name);
+		dl_list_init(&revision->list);
+		dl_list_add_tail(revisions, &revision->list);
 	}
 
-	revs = realloc(revs, (bufsize+1) * sizeof(char**));
-	if (!i)
-		revs[0] = NULL;
+	ret = 0;
 
-	// terminate with NULL
-	revs[bufsize] = NULL;
-
+out:
 	free(dirs);
 
-	return revs;
+	return ret;
 }
 
 int pv_storage_gc_run(struct pantavisor *pv)
 {
 	int reclaimed = 0, len;
-	char **rev, **rev_i;
 	struct pv_state *s = 0, *u = 0;
+	struct dl_list revisions; // pv_revision
+	struct pv_revision *r, *tmp;
 
 	if (pv->state)
 		s = pv->state;
@@ -225,28 +222,25 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	if (pv->update)
 		u = pv->update->pending;
 
-	rev = pv_storage_get_revisions(pv);
-	if (!rev) {
+	dl_list_init(&revisions);
+
+	if (pv_storage_get_revisions(&revisions)) {
 		pv_log(ERROR, "error parsings revs on disk for GC");
 		return -1;
 	}
 
-	for (rev_i = rev; *rev_i != NULL; rev_i++) {
-		// dont reclaim current, update or last booted up revisions
-		len = strlen(*rev_i) + 1;
-		if ((s && !strncmp(*rev_i, s->rev, len)) ||
-			(u && !strncmp(*rev_i, u->rev, len)) ||
-			!strncmp(*rev_i, pv_bootloader_get_rev(), len))
-			continue;
-
-		// if configured, keep factory too
-		if (pv_config_get_storage_gc_keep_factory() && !strncmp(*rev_i, "0", len))
+	// check all revisions in list
+	dl_list_for_each_safe(r, tmp, &revisions, struct pv_revision, list) {
+		len = strlen(r->rev) + 1;
+		// dont reclaim current, update, last booted up revisions or factory if configured
+		if ((s && !strncmp(r->rev, s->rev, len)) ||
+			(u && !strncmp(r->rev, u->rev, len)) ||
+			!strncmp(r->rev, pv_bootloader_get_rev(), len) ||
+			(pv_config_get_storage_gc_keep_factory() && !strncmp(r->rev, "0", len)))
 			continue;
 
 		// unlink the given revision from local storage
-		pv_storage_rm_rev(pv, *rev_i);
-
-		free(rev_i);
+		pv_storage_rm_rev(pv, r->rev);
 	}
 
 	// get rid of orphaned objects
@@ -255,8 +249,11 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	if (reclaimed)
 		pv_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
 
-	if (rev)
-		free(rev);
+	// free temporary revision list
+	dl_list_for_each_safe(r, tmp, &revisions, struct pv_revision, list) {
+		dl_list_del(&r->list);
+		free(r->rev);
+	}
 
 	return reclaimed;
 }
@@ -462,7 +459,7 @@ int pv_storage_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-void pv_storage_set_rev_done(struct pantavisor *pv, char *rev)
+void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 {
 	// DEPRECATED: this done files are not used anymore for rollback and bootloader env
 	// are used insted. We keep it here to serve old versions in case a device needs to
@@ -694,7 +691,7 @@ err:
 	return 1;
 }
 
-struct pv_state* pv_storage_get_state(struct pantavisor *pv, char *rev)
+struct pv_state* pv_storage_get_state(struct pantavisor *pv, const char *rev)
 {
 	int fd;
 	int size;
@@ -731,7 +728,7 @@ struct pv_state* pv_storage_get_state(struct pantavisor *pv, char *rev)
 	return s;
 }
 
-char* pv_storage_get_initrd_config_name(char *rev)
+char* pv_storage_get_initrd_config_name(const char *rev)
 {
 	int fd;
 	int size;

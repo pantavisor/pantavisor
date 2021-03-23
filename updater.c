@@ -465,7 +465,7 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	return ret;
 }
 
-static struct pv_update* pv_update_new(char *id, char *rev)
+static struct pv_update* pv_update_new(const char *id, const char *rev)
 {
 	struct pv_update *u;
 
@@ -1752,7 +1752,7 @@ out:
 
 int pv_update_resume(struct pantavisor *pv)
 {
-	char *rev;
+	const char *rev;
 
 	// If update exist, it means we come from a non reboot start
 	if (pv->update)

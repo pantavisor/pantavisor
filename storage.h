@@ -25,16 +25,16 @@
 int pv_storage_gc_run(struct pantavisor *pv);
 off_t pv_storage_get_free(struct pantavisor *pv);
 bool pv_storage_threshold_reached(struct pantavisor *pv);
-void pv_storage_rm_rev(struct pantavisor *pv, char *rev);
+void pv_storage_rm_rev(struct pantavisor *pv, const char *rev);
 int pv_storage_validate_file_checksum(char* path, char* checksum);
-void pv_storage_set_rev_done(struct pantavisor *pv, char *rev);
+void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
 void pv_storage_set_active(struct pantavisor *pv);
 int pv_storage_make_config(struct pantavisor *pv);
 void pv_storage_meta_set_objdir(struct pantavisor *pv);
 int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
 int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
 void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value);
-struct pv_state* pv_storage_get_state(struct pantavisor *pv, char *rev);
-char* pv_storage_get_initrd_config_name(char *rev);
+struct pv_state* pv_storage_get_state(struct pantavisor *pv, const char *rev);
+char* pv_storage_get_initrd_config_name(const char *rev);
 
 #endif // PV_STORAGE_H
