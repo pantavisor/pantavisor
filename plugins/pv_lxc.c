@@ -114,7 +114,7 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	 * So no need to create a pvlogger process if the
 	 * log files are created in the revision directory.
 	 */
-	snprintf(default_prefix, sizeof(default_prefix), "%s/%d/", 
+	snprintf(default_prefix, sizeof(default_prefix), "%s/%s/",
 			LXC_LOG_DEFAULT_PREFIX,
 			__pv_get_instance()->state->rev);
 	/*
@@ -263,7 +263,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 		if (!strlen(entry)) {
 			snprintf(entry, sizeof(entry),
-				LXC_LOG_DEFAULT_PREFIX"/%d/%s/%s/%s.log",
+				LXC_LOG_DEFAULT_PREFIX"/%s/%s/%s/%s.log",
 				__pv_get_instance()->state->rev, c->name,
 				LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
 			c->set_config_item(c, "lxc.console.logfile", entry);
@@ -399,7 +399,7 @@ static void pv_truncate_lxc_log(struct lxc_container *c,
 		 * the container.
 		 */
 		snprintf(logfile_name, PATH_MAX,
-				LXC_LOG_DEFAULT_PREFIX"/%d/%s.log",
+				LXC_LOG_DEFAULT_PREFIX"/%s/%s.log",
 				__pv_get_instance()->state->rev,
 				LXC_LOG_FNAME);
 	}
@@ -531,8 +531,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	else { /* Child process */
 		char configdir[PATH_MAX];
 		char log_dir[PATH_MAX];
-		int revision;
-		
+
 		close(pipefd[0]);
 		*( (pid_t*) data) = -1;
 		/*
@@ -540,11 +539,10 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		 */
 		if (!__pv_get_instance)
 			goto out_container_init;
-		revision = __pv_get_instance()->state->rev;
 		if (pv_lxc_capture_logs_activated()) {
 			snprintf(log_dir, sizeof(log_dir), 
-					LXC_LOG_DEFAULT_PREFIX"/%d/%s",
-					revision, p->name);
+					LXC_LOG_DEFAULT_PREFIX"/%s/%s",
+					__pv_get_instance()->state->rev, p->name);
 			pv_lxc_log.name = LXC_LOG_FNAME;
 			pv_lxc_log.lxcpath = strdup(log_dir);
 			if (!pv_lxc_log.lxcpath)

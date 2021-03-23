@@ -243,7 +243,7 @@ out:
 	return 0;
 }
 
-struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev)
+struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf)
 {
 	int tokc, ret, count, n;
 	char *key = 0, *value = 0, *ext = 0;
@@ -264,8 +264,6 @@ struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char
 		pv_log(WARN, "Unable to get pantavisor.json value from state");
 		goto out;
 	}
-
-	this->rev = rev;
 
 	if (!parse_pantavisor(this, value, strlen(value))) {
 		free(this);

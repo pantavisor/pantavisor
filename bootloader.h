@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,29 +22,27 @@
 #ifndef PV_BOOTLOADER_H
 #define PV_BOOTLOADER_H
 
-#include "pantavisor.h"
 #include <stdbool.h>
-
-
-int pv_bl_set_try(int rev);
-int pv_bl_unset_try(void);
-
-int pv_bl_get_rev(void);
-int pv_bl_set_rev(int rev);
-
-int pv_bl_clear_update(void);
 
 struct bl_ops {
 	int (*init)(void);
-	int (*get_env_key)(char *key);
-	int (*set_env_key)(char *key, int value);
+	int (*set_env_key)(char *key, char *value);
 	int (*unset_env_key)(char *key);
 	int (*flush_env)(void);
 	int (*install_kernel)(char *path);
 };
 
-extern const struct bl_ops uboot_ops;
-extern const struct bl_ops uboot_pvk_ops;
-extern const struct bl_ops grub_ops;
+const char* pv_bootloader_get_rev(void);
+const char* pv_bootloader_get_try(void);
+
+bool pv_bootloader_update_in_progress(void);
+bool pv_bootloader_trying_update(void);
+
+int pv_bootloader_set_installed(char* rev);
+void pv_bootloader_set_rolledback(void);
+int pv_bootloader_set_commited(char* rev);
+int pv_bootloader_set_failed(void);
+
+void pv_bootloader_remove(void);
 
 #endif

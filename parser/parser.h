@@ -27,14 +27,14 @@
 #include "pantavisor.h"
 
 //  pantavisor-multi-platform@1
-struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf);
 char* multi1_parse_initrd_config_name(char *buf);
 
 //  pantavisor-service-system@1
-struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf);
 char* system1_parse_initrd_config_name(char *buf);
 
-struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, int rev);
+struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, const char *rev);
 char* pv_parser_get_initrd_config_name(char *buf);
 
 #endif

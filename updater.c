@@ -46,7 +46,7 @@
 #include "storage.h"
 #include "wdt.h"
 #include "init.h"
-#include "revision.h"
+#include "bootloader.h"
 #include "parser/parser_bundle.h"
 #include "state.h"
 
@@ -465,7 +465,7 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	return ret;
 }
 
-static struct pv_update* pv_update_new(char *id, int rev)
+static struct pv_update* pv_update_new(const char *id, const char *rev)
 {
 	struct pv_update *u;
 
@@ -478,9 +478,9 @@ static struct pv_update* pv_update_new(char *id, int rev)
 		u->retries = 0;
 
 		// to construct endpoint
-		u->endpoint = malloc((sizeof(DEVICE_STEP_ENDPOINT_FMT)
-					+ (strlen(id))
-					+ get_digit_count(rev)) * sizeof(char));
+		u->endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT)
+					+ strlen(id)
+					+ strlen(rev));
 		sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT, id, rev);
 	}
 
@@ -490,8 +490,8 @@ static struct pv_update* pv_update_new(char *id, int rev)
 static int trail_get_new_steps(struct pantavisor *pv)
 {
 	bool wrong_revision = false;
-	int rev = 0, ret = 0;
-	char *state = 0, *rev_s = 0;
+	int ret = 0;
+	char *state = 0, *rev = 0;
 	struct trail_remote *remote = pv->remote;
 	trest_response_ptr res = 0;
 	jsmntok_t *tokv = 0;
@@ -549,25 +549,24 @@ process_response:
 		goto out;
 
 	// parse revision id
-	rev_s = get_json_key_value(res->body, "rev",
+	rev = get_json_key_value(res->body, "rev",
 			res->json_tokv, res->json_tokc);
 
 	// this could mean either the server is returning a malformed response or json parser is not working properly
-	if (!rev_s) {
+	if (!rev) {
 		pv_log(ERROR, "rev not found in endpoint response, ignoring...");
 		goto out;
 	}
 
-	rev = atoi(rev_s);
-	pv_log(INFO, "parse rev %d...", rev);
+	pv_log(INFO, "parse rev %s...", rev);
 
 	// create temp update to be able to report the revision state
 	update = pv_update_new(pv_config_get_creds_id(), rev);
 	if (!update)
 		goto out;
 
-	if (rev < pv->state->rev) {
-		pv_log(WARN, "stale rev %d found on remote", rev);
+	if (atoi(rev) < atoi(pv->state->rev)) {
+		pv_log(WARN, "stale rev %s found on remote", rev);
 		wrong_revision = true;
 		goto send_feedback;
 	}
@@ -595,7 +594,7 @@ send_feedback:
 	// increment and report revision retry max reached
 	retries++;
 	if (retries > pv_config_get_updater_revision_retries()) {
-		pv_log(WARN, "max retries reached in rev %d", rev);
+		pv_log(WARN, "max retries reached in rev %s", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
 		pv_update_free(update);
 		goto out;
@@ -609,7 +608,7 @@ send_feedback:
 	// parse state
 	update->pending = pv_parser_get_state(pv, state, rev);
 	if (!update->pending) {
-		pv_log(WARN, "invalid state from rev %d", rev);
+		pv_log(WARN, "invalid state from rev %s", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
@@ -623,8 +622,8 @@ send_feedback:
 		pv_update_free(update);
 
 out:
-	if (rev_s)
-		free(rev_s);
+	if (rev)
+		free(rev);
 	if (state)
 		free(state);
 	if (tokv)
@@ -1060,7 +1059,7 @@ static int pv_update_start(struct pantavisor *pv)
 		if (time_left <= 0) {
 			if (pv->update->retries > pv_config_get_updater_revision_retries())
 				return -1;
-			pv_log(INFO, "trying revision %d ,retry = %d",
+			pv_log(INFO, "trying revision %s ,retry = %d",
 					pv->update->pending->rev, pv->update->retries);
 			// set timer for next retry
 			pv->update->retry_at = time(NULL) + pv_config_get_storage_wait();
@@ -1124,7 +1123,7 @@ int pv_update_finish(struct pantavisor *pv)
 
 	switch (pv->update->status) {
 	case UPDATE_FAILED:
-		pv_revision_set_failed();
+		pv_bootloader_set_failed();
 		pv_update_set_status(pv, UPDATE_FAILED);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
@@ -1142,7 +1141,7 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_TESTING_REBOOT:
-		if (pv_revision_set_commited(pv->state->rev)) {
+		if (pv_bootloader_set_commited(pv->state->rev)) {
 			pv_log(ERROR, "revision for next boot could not be set");
 			return -1;
 		}
@@ -1702,9 +1701,9 @@ int pv_update_install(struct pantavisor *pv)
 	pv_log(INFO, "installing update...");
 
 	// make sure target directories exist
-	sprintf(path, "%s/trails/%d/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
+	sprintf(path, "%s/trails/%s/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
 	mkdir_p(path, 0755);
-	sprintf(path, "%s/trails/%d/.pv", pv_config_get_storage_mntpoint(), pending->rev);
+	sprintf(path, "%s/trails/%s/.pv", pv_config_get_storage_mntpoint(), pending->rev);
 	mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
@@ -1715,8 +1714,8 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	sprintf(path_new, "%s/trails/%d/.pvr/json.new", pv_config_get_storage_mntpoint(), pending->rev);
-	sprintf(path, "%s/trails/%d/.pvr/json", pv_config_get_storage_mntpoint(), pending->rev);
+	sprintf(path_new, "%s/trails/%s/.pvr/json.new", pv_config_get_storage_mntpoint(), pending->rev);
+	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), pending->rev);
 	fd = open(path_new, O_CREAT | O_WRONLY | O_SYNC | O_TRUNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to write state.json file for update");
@@ -1733,9 +1732,8 @@ int pv_update_install(struct pantavisor *pv)
 		goto out;
 	}
 
-	ret = pending->rev;
 	pv_log(INFO, "update successfully installed");
-	if (pv_revision_set_installed(ret)) {
+	if (pv_bootloader_set_installed(pending->rev)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
 		goto out;
@@ -1754,21 +1752,23 @@ out:
 
 int pv_update_resume(struct pantavisor *pv)
 {
-	int rev;
+	const char *rev;
 
 	// If update exist, it means we come from a non reboot start
 	if (pv->update)
 		return pv->update->runlevel;
 
 	// If update is in progress, we are going to load it to report its completion or failure
-	if (pv_revision_update_in_progress()) {
-		rev = pv_revision_get_try();
-		pv_log(INFO, "loading update data from rev %d after reboot...", rev);
+	if (pv_bootloader_update_in_progress()) {
+		rev = pv_bootloader_get_try();
+		pv_log(INFO, "loading update data from rev %s after reboot...", rev);
+		if (!rev)
+			return -1;
 		pv->update = pv_update_new(pv_config_get_creds_id(), rev);
 		if (!pv->update)
 			return -1;
 
-		if (pv_revision_trying_update())
+		if (pv_bootloader_trying_update())
 			pv_update_set_status(pv, UPDATE_TRY);
 		else
 			pv_update_set_status(pv, UPDATE_FAILED);

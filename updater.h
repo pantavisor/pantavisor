@@ -26,7 +26,7 @@
 #include <trest.h>
 
 #define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
-#define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%d/progress"
+#define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%s/progress"
 #define DEVICE_STEP_STATUS_FMT "{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
 #define DEVICE_STEP_STATUS_FMT_WITH_DATA  	\
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%s\"}"

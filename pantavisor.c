@@ -53,7 +53,6 @@
 #include "blkid.h"
 #include "init.h"
 #include "state.h"
-#include "revision.h"
 #include "updater.h"
 #include "metadata.h"
 #include "storage.h"
@@ -173,7 +172,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_state_transfer(pv->update->pending, pv->state, runlevel);
 	} else
 		// after a reboot...
-		pv->state = pv_storage_get_state(pv, pv_revision_get_rev());
+		pv->state = pv_storage_get_state(pv, pv_bootloader_get_rev());
 	if (!pv->state)
 	{
 		pv_log(ERROR, "state could not be loaded");
@@ -377,7 +376,7 @@ out:
 
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
-	int rev;
+	char *rev;
 	struct pv_cmd *cmd = pv->cmd;
 	struct pv_state *new;
 	pv_state_t next_state = STATE_WAIT;
@@ -387,16 +386,16 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 	switch (cmd->op) {
 	case CMD_TRY_ONCE:
-		rev = atoi(cmd->payload);
+		rev = cmd->payload;
 
 		// lets not tryonce factory
-		if (rev == 0)
+		if (!strncmp(rev, "0", sizeof("0")))
 			goto out;
 
 		// load try state
 		new = pv_storage_get_state(pv, rev);
 		if (!new) {
-			pv_log(DEBUG, "invalid rev requested %d", rev);
+			pv_log(DEBUG, "invalid rev requested %s", rev);
 			goto out;
 		}
 
@@ -454,11 +453,8 @@ out:
 
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
-	int rev = -1;
-
 	// download and install pending step
-	rev = pv_update_install(pv);
-	if (rev < 0) {
+	if (pv_update_install(pv) < 0) {
 		pv_log(ERROR, "update has failed, continue...");
 		pv_update_finish(pv);
 		return STATE_WAIT;
@@ -483,14 +479,14 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
-	if (pv->state && pv->state->rev == 0)
+	if (pv->state && strncmp(pv->state->rev, "0", sizeof("0")))
 		return STATE_ERROR;
 
 	// rollback means current update needs to be reported to PH as FAILED
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
 
-	pv_revision_set_rolledback();
+	pv_bootloader_set_rolledback();
 
 	return STATE_REBOOT;
 }
@@ -634,6 +630,7 @@ void pv_stop()
 
 	pv_ctrl_socket_close(pv->ctrl_fd);
 
+	pv_bootloader_remove();
 	pv_remove(pv);
 }
 

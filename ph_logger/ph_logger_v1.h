@@ -42,5 +42,5 @@ int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va
  */
 int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va_list args);
 
-int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, const char *log_dir, int rev);
+int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, const char *log_dir, char *rev);
 

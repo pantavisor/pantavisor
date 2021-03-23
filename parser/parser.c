@@ -39,7 +39,7 @@
 
 struct pv_state_parser {
 	char *spec;
-	struct pv_state* (*parse)(struct pantavisor *pv, struct pv_state *this, char *buf, int rev);
+	struct pv_state* (*parse)(struct pantavisor *pv, struct pv_state *this, char *buf);
 	char* (*parse_initrd_config_name)(char *buf);
 	void (*free)(struct pv_state *s);
 	void (*print)(struct pv_state *s);
@@ -80,7 +80,7 @@ static state_spec_t pv_parser_convert_spec(char *spec)
 	return SPEC_UNKNOWN;
 }
 
-struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, int rev)
+struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, const char *rev)
 {
 	int tokc, ret;
 	char *spec = 0;
@@ -109,7 +109,7 @@ struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, int rev)
 
 	state = pv_state_new(rev, pv_parser_convert_spec(spec));
 	if (state) {
-		if (!p->parse(pv, state, buf, rev)) {
+		if (!p->parse(pv, state, buf)) {
 			pv_state_free(state);
 			state = NULL;
 		}

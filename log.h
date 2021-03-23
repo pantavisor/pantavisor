@@ -64,7 +64,7 @@ struct log_buffer {
 #define LOG_CTRL_PLATFORM_PATH 		"/pantavisor/"LOG_CTRL_FNAME
 #define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
 
-int pv_log_start(struct pantavisor *pv, int rev);
+int pv_log_start(struct pantavisor *pv, const char *rev);
 
 void __log(char *module, int level, const char *fmt, ...);
 /*

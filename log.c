@@ -41,7 +41,7 @@
 #include "utils.h"
 #include "loop.h"
 #include "init.h"
-#include "revision.h"
+#include "bootloader.h"
 #include "version.h"
 #include "ph_logger/ph_logger.h"
 
@@ -247,7 +247,7 @@ static int log_external(const char *fmt, ...)
 	return 1;
 }
 
-static int pv_log_set_log_dir(int rev)
+static int pv_log_set_log_dir(const char *rev)
 {
 	if (!log_dir)
 		log_dir = calloc(1, 128);
@@ -258,7 +258,7 @@ static int pv_log_set_log_dir(int rev)
 		return -1;
 	}
 
-	snprintf(log_dir, PATH_MAX, "/pv/logs/%d/pantavisor", rev);
+	snprintf(log_dir, PATH_MAX, "/pv/logs/%s/pantavisor", rev);
 	if (mkdir_p(log_dir, 0755)) {
 		printf("Couldn't make dir %s,"
 			"pantavisor logs won't be available\n", log_dir);
@@ -268,7 +268,7 @@ static int pv_log_set_log_dir(int rev)
 	return 0;
 }
 
-static void pv_log_init(struct pantavisor *pv, int rev)
+static void pv_log_init(struct pantavisor *pv, const char *rev)
 {
 	// make logs available for platforms
 	thttp_set_log_func(log_external);
@@ -306,7 +306,7 @@ void exit_error(int err, char *msg)
 	exit(0);
 }
 
-int pv_log_start(struct pantavisor *pv, int rev)
+int pv_log_start(struct pantavisor *pv, const char *rev)
 {
 	if (!pv_config_get_log_capture())
 		return 0;
@@ -346,13 +346,8 @@ const char *pv_log_level_name(int level)
 static int pv_log_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
-	int pv_rev = 0;
-	int ret = -1;
 
-	ret = 0;
-	pv_rev = pv_revision_get_rev();
-
-	pv_log_init(pv, pv_rev);
+	pv_log_init(pv, pv_bootloader_get_rev());
 
 	pv_log(INFO, "______           _              _                ");
 	pv_log(INFO, "| ___ \\         | |            (_)               ");
@@ -376,10 +371,10 @@ static int pv_log_early_init(struct pv_init *this)
 
 	if (ph_logger_init(LOG_CTRL_PATH)) {
 		pv_log(ERROR, "ph logger initialization failed");
-		ret = -1;
+		return -1;
 	}
 
-	return ret;
+	return 0;
 }
 
 struct pv_init pv_init_log = {

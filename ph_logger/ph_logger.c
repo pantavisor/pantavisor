@@ -134,7 +134,6 @@ struct ph_logger {
 	int sock_fd;
 	int flags;
 	int epoll_fd;
-	int revision;
 	trest_ptr *client;
 	struct pv_connection *pv_conn;
 	char user_agent[USER_AGENT_LEN];
@@ -470,7 +469,7 @@ static char *strnchr(char *src, char ch, int len)
  * If a new line isn't found, it's probably not written yet so wait
  * for it to appear and try again later.
  */
-static int ph_logger_push_from_file(const char *filename, char *platform, char *source, int rev)
+static int ph_logger_push_from_file(const char *filename, char *platform, char *source, char *rev)
 {
 	int ret = 0;
 	char buff[32] = {0};
@@ -601,17 +600,15 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 #endif
 		formatted_json = format_json(json_holder, strlen(json_holder));
 		if (formatted_json) {
-			char __rev_str[8];
 			struct ph_logger_fragment *frag = NULL;
 			char *__json_frag = NULL;
 			int frag_len = 0;
 
-			snprintf(__rev_str, sizeof(__rev_str), "%d", rev);
 			frag_len = sizeof(PH_LOGGER_JSON_FORMAT) + 
 				strlen(pv_log_level_name(INFO)) +
 				strlen(source) +
 				strlen(platform) +
-				strlen(__rev_str) +
+				strlen(rev) +
 				strlen(formatted_json) +
 				/*largest 64 bit is 19 digits*/
 				19 +
@@ -625,7 +622,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 
 				snprintf(__json_frag, frag_len, PH_LOGGER_JSON_FORMAT,
 						(uint64_t)0, (uint32_t)0, pv_log_level_name(INFO), source,
-						platform, __rev_str, formatted_json);
+						platform, rev, formatted_json);
 				shrinked = realloc(__json_frag, strlen(__json_frag) + 1);
 				if (shrinked)
 					__json_frag = shrinked;
@@ -731,20 +728,19 @@ out:
 	return ret;
 }
 
-static int ph_logger_write_to_log_file(struct ph_logger_msg  *ph_logger_msg)
+static int ph_logger_write_to_log_file(struct ph_logger_msg  *ph_logger_msg, char *revision)
 {
 	char *log_dir = PH_LOGGER_LOGDIR;
-	int rev = ph_logger.revision;
 	ph_logger_file_rw_handler_t  file_handler = NULL;
 	int ret = 0;
 
 	file_handler = get_file_rw_handler(ph_logger_msg->version);
 	if (file_handler)
-		ret = file_handler(ph_logger_msg, log_dir, rev);
+		ret = file_handler(ph_logger_msg, log_dir, revision);
 	return ret;
 }
 
-static int ph_logger_read_write(struct ph_logger *ph_logger)
+static int ph_logger_read_write(struct ph_logger *ph_logger, char *revision)
 {
 	struct epoll_event ep_event[PH_LOGGER_MAX_EPOLL_FD];
 	int ret = 0;
@@ -806,7 +802,7 @@ accept_again:
 
 				nr_read = read_nointr(work_fd, buf, log_buffer->size);
 				if (nr_read > 0) {
-					ph_logger_write_to_log_file(msg);
+					ph_logger_write_to_log_file(msg, revision);
 					nr_logs++;
 				}
 			}
@@ -822,7 +818,7 @@ accept_again:
 /*
  * For each newline found in buf, construct a filename to read from.
  */
-static int ph_logger_push_from_file_parse_info(char *buf, int len, int revision, int offset)
+static int ph_logger_push_from_file_parse_info(char *buf, int len, char *revision, int offset)
 {
 	char platform[64];
 	char *source = NULL;
@@ -853,7 +849,7 @@ static int ph_logger_push_from_file_parse_info(char *buf, int len, int revision,
 	return -1;
 }
 
-static int ph_logger_push_revision(int revision)
+static int ph_logger_push_revision(char *revision)
 {
 	char find_cmd[1024];
 	FILE *find_fp = NULL;
@@ -868,16 +864,16 @@ static int ph_logger_push_revision(int revision)
 	 * actual file path.
 	 */
 
-	snprintf(find_cmd, sizeof(find_cmd), "%s/%d/", PH_LOGGER_LOGDIR, revision);
+	snprintf(find_cmd, sizeof(find_cmd), "%s/%s/", PH_LOGGER_LOGDIR, revision);
 	offset_bytes = strlen(find_cmd);
 
 	/*
 	 * reuse find_cmd to load all skip_prefixes if any.
 	 */
-	snprintf(find_cmd, sizeof(find_cmd), "%s/%d/%s", PH_LOGGER_LOGDIR, revision, PH_LOGGER_SKIP_FILE);
+	snprintf(find_cmd, sizeof(find_cmd), "%s/%s/%s", PH_LOGGER_LOGDIR, revision, PH_LOGGER_SKIP_FILE);
 	ph_logger_add_skip_prefixes(&ph_logger, find_cmd);
 
-	snprintf(find_cmd, sizeof(find_cmd), "find %s/%d -type f ! -name '*.gz*' 2>/dev/null", PH_LOGGER_LOGDIR, revision);
+	snprintf(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", PH_LOGGER_LOGDIR, revision);
 	find_fp = popen(find_cmd, "r");
 
 	if (find_fp) {
@@ -918,7 +914,7 @@ static int ph_logger_push_revision(int revision)
 	return result;
 }
 
-static pid_t ph_logger_start_push_service(int revision)
+static pid_t ph_logger_start_push_service(char *revision)
 {
 	pid_t helper_pid = -1;
 	int sleep_secs = 0;
@@ -929,7 +925,7 @@ static pid_t ph_logger_start_push_service(int revision)
 		close(ph_logger.sock_fd);
 		ph_log(INFO, "Initialized push service with pid %d by process with pid %d",
 				getpid(), getppid());
-		ph_log(DEBUG, "Push service pushing logs for rev %d", revision);
+		ph_log(DEBUG, "Push service pushing logs for rev %s", revision);
 		while (1) {
 			// if nothing to push or error while pushing, sleep
 			if (ph_logger_push_revision(revision) <= 0) {
@@ -983,12 +979,13 @@ out:
 	return max_revision;
 }
 
-static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
+static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_rev)
 {
 	pid_t range_service = -1;
 	int current_rev = -1;
 	int sleep_secs = 0;
-	int result;
+	int result, len;
+	char *rev;
 
 	range_service = fork();
 	if (range_service == 0) {
@@ -998,14 +995,17 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
 			getpid(), getppid());
 		while (current_rev >= 0) {
 			// skip current revision.
-			if (avoid_rev == current_rev) {
+			if (atoi(avoid_rev) == current_rev) {
 				current_rev--;
 				continue;
 			}
 			ph_log(DEBUG, "Range service about to push remaining logs for rev %d",
 				current_rev);
-			ph_logger.revision = current_rev;
-			result = ph_logger_push_revision(current_rev);
+			len = snprintf(NULL, 0, "%d", current_rev) + 1;
+			rev = calloc(1, len * sizeof(char*));
+			snprintf(rev, len, "%d", current_rev);
+			result = ph_logger_push_revision(rev);
+			free(rev);
 			// if nothing else to send, go to previous revision
 			if (result == 0) {
 				current_rev--;
@@ -1031,7 +1031,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, int avoid_rev)
 	return range_service;
 }
 
-static pid_t ph_logger_start_log_service(struct pantavisor *pv, int revision)
+static pid_t ph_logger_start_log_service(struct pantavisor *pv, char *revision)
 {
 	pid_t service_pid = -1;
 
@@ -1049,9 +1049,8 @@ static pid_t ph_logger_start_log_service(struct pantavisor *pv, int revision)
 		sa.sa_handler = sigchld_handler;
 		sigaction(SIGCHLD, &sa, NULL);
 
-		ph_logger.revision = revision;
 		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
-			ph_logger_read_write(&ph_logger);
+			ph_logger_read_write(&ph_logger, revision);
 		}
 		printf("Exiting ph logger service.\n");
 		_exit(EXIT_SUCCESS);
@@ -1060,7 +1059,7 @@ static pid_t ph_logger_start_log_service(struct pantavisor *pv, int revision)
 	return service_pid;
 }
 
-static void ph_logger_start_cloud(struct pantavisor *pv, int revision)
+static void ph_logger_start_cloud(struct pantavisor *pv, char *revision)
 {
 	if (!pv || !pv->online)
 		return;
@@ -1100,7 +1099,7 @@ static void ph_logger_stop_cloud(struct pantavisor *pv)
 	ph_logger.range_service = -1;
 }
 
-static void ph_logger_start_local(struct pantavisor *pv, int revision)
+static void ph_logger_start_local(struct pantavisor *pv, char *revision)
 {
 	if (!pv)
 		return;
@@ -1125,7 +1124,7 @@ static void ph_logger_stop_local(struct pantavisor *pv)
 	ph_logger.log_service = -1;
 }
 
-void ph_logger_toggle(struct pantavisor *pv, int rev)
+void ph_logger_toggle(struct pantavisor *pv, char *rev)
 {
 	if (!pv)
 		return;
