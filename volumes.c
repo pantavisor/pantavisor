@@ -272,13 +272,8 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 				continue;
 
 			// Ignore volumes linked to platforms that are already running
-			if (v->plat &&
-				(v->plat->status == PLAT_STARTED)) {
-				pv_log(DEBUG, "volume %s linked to platform %s will not be mounted because it alread is",
-					v->name,
-					v->plat->name);
+			if (v->plat && (v->plat->status == PLAT_STARTED))
 				continue;
-			}
 
 			ret = pv_volumes_mount_volume(pv, v);
 			if (ret)
