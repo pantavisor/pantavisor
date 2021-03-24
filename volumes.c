@@ -265,9 +265,14 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 		volumes = &pv->state->volumes;
 		dl_list_for_each_safe(v, tmp, volumes,
 				struct pv_volume, list) {
-			// Mount volumes without platforms in runlevel 0 (firmware and modules)
-			// Mount volumes with platforms in this runlevel only 
-			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel)))
+			// Ignore volumes not linked to platforms (firmware and modules) in non root runlevel
+			// Ignore volumes linked to platforms for other runlevels
+			if ((!v->plat && (i != RUNLEVEL_ROOT)) ||
+				(v->plat && (i != v->plat->runlevel)))
+				continue;
+
+			// Ignore volumes linked to platforms that are already running
+			if (v->plat && (v->plat->status == PLAT_STARTED))
 				continue;
 
 			ret = pv_volumes_mount_volume(pv, v);
@@ -301,9 +306,14 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 		volumes = &pv->state->volumes;
 		dl_list_for_each_safe(v, tmp, volumes,
 				struct pv_volume, list) {
-			// Mount volumes without platforms in runlevel 0 (firmware and modules)
-			// Mount volumes with platforms in this runlevel only 
-			if ((!v->plat && (i != 0)) || (v->plat && (i != v->plat->runlevel)))
+			// Ignore volumes not linked to platforms (firmware and modules) in non root runlevel
+			// Ignore volumes linked to platforms for other runlevels
+			if ((!v->plat && (i != RUNLEVEL_ROOT)) ||
+				(v->plat && (i != v->plat->runlevel)))
+				continue;
+
+			// Ignore volumes linked to platforms that are running
+			if (v->plat && (v->plat->status == PLAT_STARTED))
 				continue;
 
 			if (v->loop_fd == -1)

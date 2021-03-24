@@ -58,7 +58,7 @@ void pv_state_free(struct pv_state *s);
 void pv_state_print(struct pv_state *s);
 void pv_state_validate(struct pv_state *s);
 
-void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel);
+void pv_state_transfer(struct pv_state *in, struct pv_state *out);
 int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);
 
 state_spec_t pv_state_spec(struct pv_state *s);
