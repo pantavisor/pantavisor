@@ -265,12 +265,20 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 		volumes = &pv->state->volumes;
 		dl_list_for_each_safe(v, tmp, volumes,
 				struct pv_volume, list) {
-			// Mount volumes without platforms in ROOT runlevel (firmware and modules)
-			// Mount volumes with platforms in this runlevel and not started
+			// Ignore volumes not linked to platforms (firmware and modules) in non root runlevel
+			// Ignore volumes linked to platforms for other runlevels
 			if ((!v->plat && (i != RUNLEVEL_ROOT)) ||
-				(v->plat && ((i != v->plat->runlevel) ||
-				(v->plat->status == PLAT_STARTED))))
+				(v->plat && (i != v->plat->runlevel)))
 				continue;
+
+			// Ignore volumes linked to platforms that are already running
+			if (v->plat &&
+				(v->plat->status == PLAT_STARTED)) {
+				pv_log(DEBUG, "volume %s linked to platform %s will not be mounted because it alread is",
+					v->name,
+					v->plat->name);
+				continue;
+			}
 
 			ret = pv_volumes_mount_volume(pv, v);
 			if (ret)
@@ -303,17 +311,14 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 		volumes = &pv->state->volumes;
 		dl_list_for_each_safe(v, tmp, volumes,
 				struct pv_volume, list) {
-			// Unmount volumes without platforms (firmware and modules) in ROOT runlevel
-			// Unmount volumes with platforms for this runlevel
+			// Ignore volumes not linked to platforms (firmware and modules) in non root runlevel
+			// Ignore volumes linked to platforms for other runlevels
 			if ((!v->plat && (i != RUNLEVEL_ROOT)) ||
 				(v->plat && (i != v->plat->runlevel)))
 				continue;
 
-			// Unmount volumes with platforms with APP runlevel if update runlevel is APP and plat was updated
-			if (v->plat &&
-				(runlevel == RUNLEVEL_APP) &&
-				(v->plat->runlevel == RUNLEVEL_APP) &&
-				(!v->plat->updated))
+			// Ignore volumes linked to platforms that are running
+			if (v->plat && (v->plat->status == PLAT_STARTED))
 				continue;
 
 			if (v->loop_fd == -1)

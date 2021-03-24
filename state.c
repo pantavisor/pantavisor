@@ -87,126 +87,6 @@ void pv_state_free(struct pv_state *s)
 	free(s);
 }
 
-static void pv_state_transfer_platforms(struct pv_state *in, struct pv_state *out, int runlevel)
-{
-	struct pv_platform *p, *p_tmp;
-	struct dl_list *platforms;
-
-	// remove existing platforms from out
-	platforms = &out->platforms;
-	dl_list_for_each_safe(p, p_tmp, platforms,
-		struct pv_platform, list) {
-		if (p->runlevel < runlevel)
-			continue;
-
-		pv_log(DEBUG, "removing platform %s from rev %s", p->name, out->rev);
-		dl_list_del(&p->list);
-		pv_platform_free(p);
-	}
-
-	// transfer existing platforms from in to out
-	platforms = &in->platforms;
-	dl_list_for_each_safe(p, p_tmp, platforms,
-		struct pv_platform, list) {
-		if (p->runlevel < runlevel)
-			continue;
-
-		pv_log(DEBUG, "transferring platform %s from rev %s to rev %s", p->name, in->rev, out->rev);
-		dl_list_del(&p->list);
-		dl_list_add_tail(&out->platforms, &p->list);
-	}
-}
-
-static void pv_state_transfer_volumes(struct pv_state *in, struct pv_state *out, int runlevel)
-{
-	struct pv_volume *v, *v_tmp;
-	struct dl_list *volumes;
-
-	// remove existing volumes from out
-	volumes = &out->volumes;
-	dl_list_for_each_safe(v, v_tmp, volumes,
-		struct pv_volume, list) {
-		if (!v->plat || (v->plat->runlevel < runlevel))
-			continue;
-
-		pv_log(DEBUG, "removing volume %s linked to platform %s from rev %s", v->name, v->plat->name, out->rev);
-		dl_list_del(&v->list);
-		pv_volume_free(v);
-	}
-
-	// transfer existing volumes from in to out
-	volumes = &in->volumes;
-	dl_list_for_each_safe(v, v_tmp, volumes,
-		struct pv_volume, list) {
-		if (!v->plat || (v->plat->runlevel < runlevel))
-			continue;
-
-		pv_log(DEBUG, "transferring volume %s linked to platform %s from rev %s to rev %s", v->name, v->plat->name, in->rev, out->rev);
-		dl_list_del(&v->list);
-		dl_list_add_tail(&out->volumes, &v->list);
-	}
-}
-
-static void pv_state_transfer_jsons(struct pv_state *in, struct pv_state *out, int runlevel)
-{
-	struct pv_json *j, *j_tmp;
-	struct dl_list *jsons;
-
-	// remove existing jsons from out
-	jsons = &out->jsons;
-	dl_list_for_each_safe(j, j_tmp, jsons,
-		struct pv_json, list) {
-		if (!j->plat || (j->plat->runlevel < runlevel))
-			continue;
-
-		pv_log(DEBUG, "removing json %s linked to platform %s from rev %s", j->name, j->plat->name, out->rev);
-		dl_list_del(&j->list);
-		pv_json_free(j);
-	}
-
-	// transfer existing json from in to out
-	jsons = &in->jsons;
-	dl_list_for_each_safe(j, j_tmp, jsons,
-		struct pv_json, list) {
-		if (!j->plat || (j->plat->runlevel < runlevel))
-			continue;
-
-		pv_log(DEBUG, "transferring json %s linked to platform %s from rev %s to rev %s", j->name, j->plat->name, in->rev, out->rev);
-		dl_list_del(&j->list);
-		dl_list_add_tail(&out->jsons, &j->list);
-	}
-}
-
-static void pv_state_transfer_objects(struct pv_state *in, struct pv_state *out, int runlevel)
-{
-	struct pv_object *o, *o_tmp;
-	struct dl_list *objects;
-
-	// remove existing objects from out
-	objects = &out->objects;
-	dl_list_for_each_safe(o, o_tmp, objects,
-		struct pv_object, list) {
-		if (!o->plat || (o->plat->runlevel < runlevel))
-			continue;
-
-		pv_log(DEBUG, "removing object %s linked to platform %s from rev %s", o->name, o->plat->name, out->rev);
-		dl_list_del(&o->list);
-		pv_object_free(o);
-	}
-
-	// transfer existing objects from in to out
-	objects = &in->objects;
-	dl_list_for_each_safe(o, o_tmp, objects,
-		struct pv_object, list) {
-		if (!o->plat || (o->plat->runlevel < runlevel))
-			continue;
-
-		pv_log(DEBUG, "transferring object %s linked to platform %s from rev %s to rev %s", o->name, o->plat->name, in->rev, out->rev);
-		dl_list_del(&o->list);
-		dl_list_add_tail(&out->objects, &o->list);
-	}
-}
-
 void pv_state_print(struct pv_state *s)
 {
 	if (!s)
@@ -275,16 +155,129 @@ void pv_state_validate(struct pv_state *s)
 	pv_platforms_add_all_loggers(s);
 }
 
-void pv_state_transfer(struct pv_state *in, struct pv_state *out, int runlevel)
+
+static void pv_state_remove_platforms(struct pv_state *out)
+{
+	struct pv_json *j, *j_tmp;
+	struct pv_object *o, *o_tmp;
+	struct pv_volume *v, *v_tmp;
+	struct pv_platform *p, *p_tmp;
+	struct dl_list *jsons, *objects, *volumes, *platforms;
+
+	// remove existing jsons from out
+	jsons = &out->jsons;
+	dl_list_for_each_safe(j, j_tmp, jsons,
+		struct pv_json, list) {
+		if (!j->plat || (j->plat->status == PLAT_STARTED))
+			continue;
+
+		pv_log(DEBUG, "removing json %s linked to platform %s from rev %s", j->name, j->plat->name, out->rev);
+		dl_list_del(&j->list);
+		pv_json_free(j);
+	}
+
+	// remove existing objects from out
+	objects = &out->objects;
+	dl_list_for_each_safe(o, o_tmp, objects,
+		struct pv_object, list) {
+		if (!o->plat || (o->plat->status == PLAT_STARTED))
+			continue;
+
+		pv_log(DEBUG, "removing object %s linked to platform %s from rev %s", o->name, o->plat->name, out->rev);
+		dl_list_del(&o->list);
+		pv_object_free(o);
+	}
+
+	// remove existing volumes from out
+	volumes = &out->volumes;
+	dl_list_for_each_safe(v, v_tmp, volumes,
+		struct pv_volume, list) {
+		if (!v->plat || (v->plat->status == PLAT_STARTED))
+			continue;
+
+		pv_log(DEBUG, "removing volume %s linked to platform %s from rev %s", v->name, v->plat->name, out->rev);
+		dl_list_del(&v->list);
+		pv_volume_free(v);
+	}
+
+	// remove existing platforms from out
+	platforms = &out->platforms;
+	dl_list_for_each_safe(p, p_tmp, platforms,
+		struct pv_platform, list) {
+		if (p->status == PLAT_STARTED)
+			continue;
+
+		pv_log(DEBUG, "removing platform %s from rev %s", p->name, out->rev);
+		dl_list_del(&p->list);
+		pv_platform_free(p);
+	}
+}
+
+static void pv_state_transfer_platforms(struct pv_state *in, struct pv_state *out)
+{
+	struct pv_json *j, *j_tmp;
+	struct pv_object *o, *o_tmp;
+	struct pv_volume *v, *v_tmp;
+	struct pv_platform *p, *p_tmp;
+	struct dl_list *jsons, *objects, *volumes, *platforms;
+
+	// transfer existing json from in to out
+	jsons = &in->jsons;
+	dl_list_for_each_safe(j, j_tmp, jsons,
+		struct pv_json, list) {
+		if (!j->plat || pv_platform_get_by_name(out, j->plat->name))
+			continue;
+
+		pv_log(DEBUG, "transferring json %s linked to platform %s from rev %s to rev %s", j->name, j->plat->name, in->rev, out->rev);
+		dl_list_del(&j->list);
+		dl_list_add_tail(&out->jsons, &j->list);
+	}
+
+	// transfer existing objects from in to out
+	objects = &in->objects;
+	dl_list_for_each_safe(o, o_tmp, objects,
+		struct pv_object, list) {
+		if (!o->plat || pv_platform_get_by_name(out, o->plat->name))
+			continue;
+
+		pv_log(DEBUG, "transferring object %s linked to platform %s from rev %s to rev %s", o->name, o->plat->name, in->rev, out->rev);
+		dl_list_del(&o->list);
+		dl_list_add_tail(&out->objects, &o->list);
+	}
+
+	// transfer existing volumes from in to out
+	volumes = &in->volumes;
+	dl_list_for_each_safe(v, v_tmp, volumes,
+		struct pv_volume, list) {
+		if (!v->plat || pv_platform_get_by_name(out, v->plat->name))
+			continue;
+
+		pv_log(DEBUG, "transferring volume %s linked to platform %s from rev %s to rev %s", v->name, v->plat->name, in->rev, out->rev);
+		dl_list_del(&v->list);
+		dl_list_add_tail(&out->volumes, &v->list);
+	}
+
+	// transfer existing platforms from in to out
+	platforms = &in->platforms;
+	dl_list_for_each_safe(p, p_tmp, platforms,
+		struct pv_platform, list) {
+		if (pv_platform_get_by_name(out, p->name))
+			continue;
+
+		pv_log(DEBUG, "transferring platform %s from rev %s to rev %s", p->name, in->rev, out->rev);
+		dl_list_del(&p->list);
+		dl_list_add_tail(&out->platforms, &p->list);
+	}
+}
+
+void pv_state_transfer(struct pv_state *in, struct pv_state *out)
 {
 	int len = strlen(in->rev) + 1;
 
 	pv_log(INFO, "transferring state from rev %s to rev %s", in->rev, out->rev);
 
-	pv_state_transfer_objects(in, out, runlevel);
-	pv_state_transfer_volumes(in, out, runlevel);
-	pv_state_transfer_jsons(in, out, runlevel);
-	pv_state_transfer_platforms(in, out, runlevel);
+	pv_state_remove_platforms(out);
+	pv_state_transfer_platforms(in, out);
 
 	out->rev = realloc(out->rev, len);
 	snprintf(out->rev, len, "%s", in->rev);
@@ -317,10 +310,10 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 		// if not, it means the platform has been deleted
 		} else if (!curr_p) {
 			pv_log(DEBUG, "platform %s has been deleted in last update", p->name);
+			p->updated = true;
 			// if the platform has been deleted, we respect its runlevel
 			if(p->runlevel < runlevel) {
 				runlevel = p->runlevel;
-				p->updated = true;
 			}
 		}
 	}
@@ -337,9 +330,10 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			}
 
 			pv_log(DEBUG, "object %s from platform %s has been changed in last update", o->name, o->plat->name);
+			if (curr_o)
+				curr_o->plat->updated = true;
 			if (o->plat->runlevel < runlevel) {
 				runlevel = o->plat->runlevel;
-				o->plat->updated = true;
 			}
 		}
 	}
@@ -356,9 +350,9 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			}
 
 			pv_log(DEBUG, "object %s from platform %s has been deleted in last update", o->name, o->plat->name);
+			o->plat->updated = true;
 			if (o->plat->runlevel < runlevel) {
 				runlevel = o->plat->runlevel;
-				o->plat->updated = true;
 			}
 		}
 	}
@@ -375,9 +369,10 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			}
 
 			pv_log(DEBUG, "json %s from platform %s has been changed in last update", j->name, j->plat->name);
+			if (curr_j)
+				curr_j->plat->updated = true;
 			if (j->plat->runlevel < runlevel) {
 				runlevel = j->plat->runlevel;
-				j->plat->updated = true;
 			}
 		}
 	}
@@ -394,9 +389,9 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 			}
 
 			pv_log(DEBUG, "json %s from platform %s has been deleted in last update", j->name, j->plat->name);
+			j->plat->updated = true;
 			if (j->plat->runlevel < runlevel) {
 				runlevel = j->plat->runlevel;
-				j->plat->updated = true;
 			}
 		}
 	}
