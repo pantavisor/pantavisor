@@ -101,6 +101,9 @@ int pv_check_for_updates(struct pantavisor *pv);
 bool pv_trail_is_auth(struct pantavisor *pv);
 void pv_trail_remote_remove(struct pantavisor *pv);
 
+struct pv_update* pv_update_get_step_local(char *rev);
+
+int pv_update_download(struct pantavisor *pv);
 int pv_update_install(struct pantavisor *pv);
 int pv_update_resume(struct pantavisor *pv);
 void pv_update_test(struct pantavisor *pv);

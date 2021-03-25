@@ -477,6 +477,9 @@ static struct pv_update* pv_update_new(const char *id, const char *rev)
 		u->status = UPDATE_INIT;
 		u->retries = 0;
 
+		if (!id)
+			goto out;
+
 		// to construct endpoint
 		u->endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT)
 					+ strlen(id)
@@ -484,6 +487,7 @@ static struct pv_update* pv_update_new(const char *id, const char *rev)
 		sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT, id, rev);
 	}
 
+out:
 	return u;
 }
 
@@ -1038,7 +1042,7 @@ static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state sta
 
 	pv->update->status = status;
 
-	if (!pv->online || trail_remote_init(pv)) {
+	if (!pv->update->endpoint || !pv->online || trail_remote_init(pv)) {
 		pv_log(WARN, "status will not be send to cloud");
 		return 0;
 	}
@@ -1051,7 +1055,7 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status)
 	return pv_update_set_status_msg(pv, status, NULL);
 }
 
-static int pv_update_start(struct pantavisor *pv)
+static int pv_update_check_download_retry(struct pantavisor *pv)
 {
 	if (pv->update) {
 		int time_left = pv->update->retry_at - time(NULL);
@@ -1158,8 +1162,8 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	default:
 		pv_update_set_status(pv, pv->update->status);
-		pv_update_remove(pv);
 		pv_log(WARN, "update finished during wrong state %d", pv->update->status);
+		pv_update_remove(pv);
 		break;
 	}
 
@@ -1666,6 +1670,60 @@ static int trail_download_objects(struct pantavisor *pv)
 	return 0;
 }
 
+struct pv_update* pv_update_get_step_local(char *rev)
+{
+	struct pv_update *update = NULL;
+
+	update = pv_update_new(NULL, rev);
+	if (!update)
+		goto err;
+
+	update->pending = pv_storage_get_state(pv_get_instance(), rev);
+	if (!update->pending)
+		goto err;
+
+	return update;
+
+err:
+	pv_update_free(update);
+	return NULL;
+}
+
+int pv_update_download(struct pantavisor *pv)
+{
+	int ret = -1;
+
+	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
+		pv_log(WARN, "uninitialized state or update");
+		goto out;
+	}
+
+	if (!pv->update->endpoint)
+		return 0;
+
+	if (trail_remote_init(pv)) {
+		pv_log(WARN, "remote not initialized");
+		goto out;
+	}
+
+	pv_log(INFO, "downloading update...");
+
+	if (pv_update_check_download_retry(pv))
+		goto out;
+
+	ret = trail_download_objects(pv);
+	if (ret < 0) {
+		pv_log(ERROR, "unable to download objects");
+		goto out;
+	}
+
+	pv_update_set_status(pv, UPDATE_DOWNLOADED);
+
+	ret = 0;
+out:
+	return ret;
+}
+
 int pv_update_install(struct pantavisor *pv)
 {
 	int ret = -1, fd;
@@ -1673,30 +1731,10 @@ int pv_update_install(struct pantavisor *pv)
 	char path[PATH_MAX];
 	char path_new[PATH_MAX];
 
-	if (trail_remote_init(pv)) {
-		pv_log(WARN, "remote not initialized");
-		goto out;
-	}
-
 	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
 		pv_log(WARN, "uninitialized state or update");
 		goto out;
 	}
-
-	pv_log(INFO, "starting update...");
-
-	if (pv_update_start(pv))
-		goto out;
-
-	pv_log(INFO, "downloading update...");
-	ret = trail_download_objects(pv);
-
-	if (ret < 0) {
-		pv_log(ERROR, "unable to download objects");
-		goto out;
-	}
-
-	pv_update_set_status(pv, UPDATE_DOWNLOADED);
 
 	pv_log(INFO, "installing update...");
 
