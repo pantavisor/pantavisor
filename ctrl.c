@@ -52,6 +52,11 @@
 
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
+#define ENDPOINT_TRAILS "/trails"
+
+#define PATH_OBJECTS "%s/objects/%s"
+#define PATH_TRAILS_PARENT "%s/trails/%s/.pvr"
+#define PATH_TRAILS "%s/trails/%s/.pvr/json"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
@@ -177,23 +182,22 @@ err:
 	return -1;
 }
 
-static int pv_ctrl_process_put_object(int req_fd, size_t content_length, char* object_name)
+static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* file_path)
 {
 	int obj_fd, read_length, write_length, ret = -1;
-	char object_path[PATH_MAX];
 	char req[HTTP_REQ_BUFFER_SIZE];
 
-	sprintf(object_path, "%s/objects/%s", pv_config_get_storage_mntpoint(), object_name);
 	memset(req, 0, sizeof(req));
 
-	pv_log(INFO, "reading object from endpoint and putting it in %s...", object_path);
+	pv_log(INFO, "reading file from endpoint and putting it in %s...", file_path);
 
 	if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
 		pv_log(ERROR, "HTTP Continue response could not be sent to ctrl socket");
 
-	obj_fd = open(object_path, O_CREAT | O_WRONLY, 0644);
+	// open will fail if the file exist so we do not overwrite it
+	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
 	if (obj_fd <= 0) {
-		pv_log(ERROR, "%s could not be created", object_path);
+		pv_log(ERROR, "%s could not be created", file_path);
 		goto out;
 	}
 
@@ -207,37 +211,36 @@ static int pv_ctrl_process_put_object(int req_fd, size_t content_length, char* o
 		write_length = read(req_fd, req, read_length);
 		if (write_length <= 0) {
 			pv_log(ERROR, "read failed");
-			goto sha;
+			goto out;
 		}
 
 		if (write(obj_fd, req, write_length) <= 0) {
 			pv_log(ERROR, "write failed");
-			goto sha;
+			goto out;
 		}
 
 		content_length-=write_length;
 	}
 
-sha:
-	fsync(obj_fd);
-	close(obj_fd);
-
-	if (pv_storage_validate_file_checksum(object_path, object_name)) {
-		pv_log(DEBUG, "removing %s...", object_path);
-		remove(object_path);
-		syncdir(object_path);
-		goto out;
-	}
-
 	ret = 0;
 
 out:
+	fsync(obj_fd);
+	close(obj_fd);
+
 	return ret;
 }
 
-static void pv_ctrl_read_parse_get_object(int req_fd)
+static int pv_ctrl_validate_object_checksum(char *file_path, char *sha)
 {
-	pv_log(DEBUG, "GET OBJECT NOT IMPLEMENTED");
+	if (pv_storage_validate_file_checksum(file_path, sha)) {
+		pv_log(DEBUG, "removing %s...", file_path);
+		remove(file_path);
+		syncdir(file_path);
+		return -1;
+	}
+
+	return 0;
 }
 
 static int pv_ctrl_read_parse_request_header(int req_fd,
@@ -288,21 +291,18 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 	return -1;
 }
 
-static void pv_ctrl_process_get_object(int req_fd, char* object_name)
+static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 {
 	int obj_fd, read_length;
-	char object_path[PATH_MAX];
 	char buf[HTTP_REQ_BUFFER_SIZE];
 
 	memset(buf, 0, sizeof(buf));
 
-	sprintf(object_path, "%s/objects/%s", pv_config_get_storage_mntpoint(), object_name);
+	pv_log(INFO, "reading file from %s and sending it to endpoint...", file_path);
 
-	pv_log(INFO, "reading object from %s and sending it to endpoint...", object_path);
-
-	obj_fd = open(object_path, O_RDONLY);
+	obj_fd = open(file_path, O_RDONLY);
 	if (obj_fd <= 0) {
-		pv_log(ERROR, "%s could not be opened for read", object_path);
+		pv_log(ERROR, "%s could not be opened for read", file_path);
 		goto out;
 	}
 
@@ -321,20 +321,34 @@ out:
 	close(obj_fd);
 }
 
-static char* pv_ctrl_get_object_name(const char* path, int buf_index, size_t path_len)
+static char* pv_ctrl_get_file_name(const char* path, int buf_index, size_t path_len)
 {
-	char* object_name;
+	int len;
+	char* file_name;
 
-	if ((path_len - buf_index) != 64)
+	len = path_len - buf_index;
+
+	file_name = calloc(1, len * sizeof(char));
+	if (!file_name)
 		return NULL;
 
-	object_name = calloc(1, 64 * sizeof(char));
-	if (!object_name)
+	strncpy(file_name, &path[buf_index], len);
+
+	return file_name;
+}
+
+static char* pv_ctrl_get_file_path(const char* path, const char* file_name)
+{
+	int len;
+	char* file_path;
+
+	len = strlen(path) + strlen(pv_config_get_storage_mntpoint()) + strlen(file_name) + 1;
+	file_path = calloc(1, len * sizeof(char*));
+	if (!file_path)
 		return NULL;
+	snprintf(file_path, len, path, pv_config_get_storage_mntpoint(), file_name);
 
-	strncpy(object_name, &path[buf_index], 64);
-
-	return object_name;
+	return file_path;
 }
 
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
@@ -345,7 +359,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
-	char* object_name = NULL;
+	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL;
 
 	// read first character to see if the request is a non-HTTP legacy one
 	if (read(req_fd, &buf[0], 1) < 0)
@@ -370,13 +384,13 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 												&num_headers);
 	if (buf_index < 0) {
 		pv_log(WARN, "HTTP request recived has bad format");
-		goto out;
+		goto response;
 	}
 
 	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
 	if (content_length <= 0) {
 		pv_log(WARN, "HTTP request received has empty body");
-		goto out;
+		goto response;
 	}
 
 	// read and parse rest of message
@@ -385,20 +399,43 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			res = pv_ctrl_process_cmd(req_fd, content_length, &cmd);
 		}
 	} else if (!strncmp(ENDPOINT_OBJECTS, path, sizeof(ENDPOINT_OBJECTS)-1)) {
-		object_name = pv_ctrl_get_object_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
-		if (!object_name) {
-			pv_log(WARN, "HTTP request has bad object name");
-			goto out;
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
+		file_path = pv_ctrl_get_file_path(PATH_OBJECTS, file_name);
+
+		// sha must have 64 characters
+		if (!file_name || !file_path || (strlen(file_name) != 64)) {
+			pv_log(WARN, "HTTP request has bad object name %s", file_name);
+			goto response;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			res = pv_ctrl_process_put_object(req_fd, content_length, object_name);
+			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+			if (!res)
+				res = pv_ctrl_validate_object_checksum(file_path, file_name);
 		} else if (!strncmp("GET", method, method_len)) {
-			pv_ctrl_process_get_object(req_fd, object_name);
+			pv_ctrl_process_get_file(req_fd, file_path);
+			goto out;
+		}
+	} else if (!strncmp(ENDPOINT_TRAILS, path, sizeof(ENDPOINT_TRAILS)-1)) {
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len);
+		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
+		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
+
+		if (!file_name || !file_path_parent || !file_path) {
+			pv_log(WARN, "HTTP request has bad trail name %s", file_name);
+			goto response;
+		}
+
+		if (!strncmp("PUT", method, method_len)) {
+			mkdir_p(file_path_parent, 0755);
+			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+		} else if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
 	}
 
+response:
 	// write response
 	if (res < 0) {
 		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
@@ -409,8 +446,12 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	}
 
 out:
-	if (object_name)
-		free(object_name);
+	if (file_name)
+		free(file_name);
+	if (file_path_parent)
+		free(file_path_parent);
+	if (file_path)
+		free(file_path);
 
 	return cmd;
 }
