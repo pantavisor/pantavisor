@@ -84,6 +84,7 @@ struct pv_update {
 	char *progress_objects;
 	int retries;
 	struct object_update *total_update;
+	bool local;
 };
 
 struct trail_remote {

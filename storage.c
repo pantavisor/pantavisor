@@ -251,8 +251,9 @@ int pv_storage_gc_run(struct pantavisor *pv)
 
 	// free temporary revision list
 	dl_list_for_each_safe(r, tmp, &revisions, struct pv_revision, list) {
-		dl_list_del(&r->list);
 		free(r->rev);
+		dl_list_del(&r->list);
+		free(r);
 	}
 
 	return reclaimed;

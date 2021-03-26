@@ -465,7 +465,7 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	return ret;
 }
 
-static struct pv_update* pv_update_new(const char *id, const char *rev)
+static struct pv_update* pv_update_new(const char *id, const char *rev, bool local)
 {
 	struct pv_update *u;
 
@@ -476,9 +476,7 @@ static struct pv_update* pv_update_new(const char *id, const char *rev)
 		u->progress_objects = (char*)calloc(1, u->progress_size);
 		u->status = UPDATE_INIT;
 		u->retries = 0;
-
-		if (!id)
-			goto out;
+		u->local = local;
 
 		// to construct endpoint
 		u->endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT)
@@ -487,7 +485,6 @@ static struct pv_update* pv_update_new(const char *id, const char *rev)
 		sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT, id, rev);
 	}
 
-out:
 	return u;
 }
 
@@ -565,7 +562,7 @@ process_response:
 	pv_log(INFO, "parse rev %s...", rev);
 
 	// create temp update to be able to report the revision state
-	update = pv_update_new(pv_config_get_creds_id(), rev);
+	update = pv_update_new(pv_config_get_creds_id(), rev, false);
 	if (!update)
 		goto out;
 
@@ -1040,9 +1037,11 @@ static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state sta
 		return -1;
 	}
 
+	// update the update state machine
 	pv->update->status = status;
 
-	if (!pv->update->endpoint || !pv->online || trail_remote_init(pv)) {
+	// do not report to cloud if that is not possible
+	if (pv->update->local || !pv->online || trail_remote_init(pv)) {
 		pv_log(WARN, "status will not be send to cloud");
 		return 0;
 	}
@@ -1674,7 +1673,7 @@ struct pv_update* pv_update_get_step_local(char *rev)
 {
 	struct pv_update *update = NULL;
 
-	update = pv_update_new(NULL, rev);
+	update = pv_update_new(pv_config_get_creds_id(), rev, true);
 	if (!update)
 		goto err;
 
@@ -1698,7 +1697,8 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (!pv->update->endpoint)
+	// do not download if this is a local update
+	if (pv->update->local)
 		return 0;
 
 	if (trail_remote_init(pv)) {
@@ -1802,7 +1802,7 @@ int pv_update_resume(struct pantavisor *pv)
 		pv_log(INFO, "loading update data from rev %s after reboot...", rev);
 		if (!rev)
 			return -1;
-		pv->update = pv_update_new(pv_config_get_creds_id(), rev);
+		pv->update = pv_update_new(pv_config_get_creds_id(), rev, false);
 		if (!pv->update)
 			return -1;
 
