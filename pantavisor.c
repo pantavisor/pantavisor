@@ -439,8 +439,16 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			cmd->payload);
 		next_state = STATE_POWEROFF;
 		break;
-	case CMD_INSTALL_JSON:
-		pv_log(DEBUG, "install json received");
+	case CMD_INSTALL_LOCAL:
+		if (pv->update) {
+			pv_log(WARN, "ignoring install local command because an update is in progress");
+			goto out;
+		}
+
+		pv_log(DEBUG, "install local received. Processing %s json...", cmd->payload);
+		pv->update = pv_update_get_step_local(cmd->payload);
+		if (pv->update)
+			next_state = STATE_UPDATE;
 		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
@@ -454,7 +462,7 @@ out:
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
 	// download and install pending step
-	if (pv_update_install(pv) < 0) {
+	if (pv_update_download(pv) || pv_update_install(pv)) {
 		pv_log(ERROR, "update has failed, continue...");
 		pv_update_finish(pv);
 		return STATE_WAIT;
