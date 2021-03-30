@@ -43,6 +43,7 @@
 #include "state.h"
 #include "init.h"
 #include "storage.h"
+#include "metadata.h"
 
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -53,6 +54,8 @@
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
 #define ENDPOINT_TRAILS "/trails"
+#define ENDPOINT_USER_META "/user-meta"
+#define ENDPOINT_DEVICE_META "/device-meta"
 
 #define PATH_OBJECTS "%s/objects/%s"
 #define PATH_TRAILS_PARENT "%s/trails/%s/.pvr"
@@ -351,6 +354,47 @@ static char* pv_ctrl_get_file_path(const char* path, const char* file_name)
 	return file_path;
 }
 
+static void pv_ctrl_process_get_user_meta(int req_fd)
+{
+	int buf_len;
+	char *buf;
+
+	pv_log(INFO, "converting user meta to string and sending it to endpoint...");
+
+	buf = pv_metadata_get_user_meta_string();
+	buf_len = strlen(buf);
+	pv_log(DEBUG, "buf_len %d", buf_len);
+
+	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
+		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
+
+	if (write(req_fd, buf, buf_len) != buf_len)
+		pv_log(ERROR, "write failed");
+
+	if (buf)
+		free(buf);
+}
+
+static void pv_ctrl_process_get_device_meta(int req_fd)
+{
+	int buf_len;
+	char *buf;
+
+	pv_log(INFO, "converting device meta to string and sending it to endpoint...");
+
+	buf = pv_metadata_get_device_meta_string();
+	buf_len = strlen(buf);
+
+	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
+		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
+
+	if (write(req_fd, buf, buf_len) != buf_len)
+		pv_log(ERROR, "write failed");
+
+	if (buf)
+		free(buf);
+}
+
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
@@ -431,6 +475,16 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
+			goto out;
+		}
+	} else if (!strncmp(ENDPOINT_USER_META, path, sizeof(ENDPOINT_USER_META)-1)) {
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_user_meta(req_fd);
+			goto out;
+		}
+	} else if (!strncmp(ENDPOINT_DEVICE_META, path, sizeof(ENDPOINT_DEVICE_META)-1)) {
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_device_meta(req_fd);
 			goto out;
 		}
 	}

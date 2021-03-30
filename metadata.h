@@ -27,8 +27,9 @@
 #include "pantavisor.h"
 
 struct pv_metadata {
-    struct dl_list usermeta_list; // pv_usermeta
-    struct dl_list devmeta_list; // pv_devmeta
+    struct dl_list usermeta_list; // pv_meta
+    struct dl_list devmeta_list; // pv_meta
+	bool devmeta_uploaded;
 };
 
 int pv_metadata_factory_meta(struct pantavisor *pv);
@@ -40,5 +41,8 @@ int pv_metadata_parse_devmeta(struct pantavisor *pv);
 int pv_metadata_upload_devmeta(struct pantavisor *pv);
 
 void pv_metadata_remove(struct pantavisor *pv);
+
+char* pv_metadata_get_user_meta_string(void);
+char* pv_metadata_get_device_meta_string(void);
 
 #endif
