@@ -20,9 +20,7 @@
         ],
         "SUBSYSTEM": "block",
         "ID_VENDOR_ID": "0781",
-        "ID_MODEL_ID": "558b",
-        "MAJOR" : 8,
-        "MINOR" : 16
+        "ID_MODEL_ID": "558b"
       },
       "apply": {
         "perm": 666,
@@ -42,8 +40,6 @@
         "SUBSYSTEM": "tty",
         "ID_VENDOR_ID": "0403",
         "ID_MODEL_ID": "6001",
-        "MAJOR" : 188,
-        "MINOR" : 0
       },
       "apply": {
         "perm": 644,

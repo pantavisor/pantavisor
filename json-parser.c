@@ -18,11 +18,29 @@
 #include "utils.h"
 #include "utils/list.h"
 
+/*
 typedef struct _devlist {
 	struct dl_list next_match;
 	char pv_devtype[32];	//store PV_DEVTYPE
 	char **devname;			// should get malloced during runtime to store DEVNAME
 	unsigned short int major;
+	struct _apply {
+		int perm;
+		unsigned int gid;
+		unsigned int uid;
+	}apply;
+}devlist;
+*/
+
+struct _devlist *tmp_list;
+
+typedef struct _devlist {
+	struct dl_list next_match;
+	char action[20];	//store ACTION
+	char subsystem[10];
+	char vendor_id[10];
+	char model_id[10];
+	char **devname;			// should get malloced during runtime to store DEVNAME
 	struct _apply {
 		int perm;
 		unsigned int gid;
@@ -41,49 +59,58 @@ static void dump_list(struct dl_list *head, int size)
 	int i = 0;
 	printf("dump:\n");
 	dl_list_for_each(t, head, struct _devlist, next_match) {
-		printf("devtype: %s\nmajor: %d\ngid: %d\nuid: %d\nperm: %d\n", t->pv_devtype, t->major, t->apply.gid, t->apply.uid, t->apply.perm);
+		printf("action: %s\nsubsystem: %s\ngid: %d\nuid: %d\nperm: %d\n", t->action, t->subsystem, t->apply.gid, t->apply.uid, t->apply.perm);
 		for (i=0; i<size; i++)
 			printf("devname: %s\n", t->devname[i]);
 	}
-//	dl_list_for_each(t, head, struct _devlist, next_match)
-//			for (i=0; i<size; i++)
-//				printf("devname: %s\n", t->devname[i]);
-
 	printf(" (len=%d%s)\n", dl_list_len(head),
 	       dl_list_empty(head) ? " empty" : "");
 }
 
-
-static int append (struct dl_list *head, char *pv_dtype, unsigned short int major, int gid, int perm, int uid, char **dname, int dnamesize) {
+static void free_list(struct dl_list *head, int size)
+{
 	struct _devlist *t;
-	t = malloc(sizeof(*t));
-	if (t == NULL)
+	int i = 0;
+	printf("dump:\n");
+	dl_list_for_each(t, head, struct _devlist, next_match) {
+		if(t->devname) {
+			free(t->devname);
+			t->devname = 0;
+		}
+	}
+}
+
+static int append (struct dl_list *head, char *pv_action, char *subsys, char *vid, char *model, int gid, int perm, int uid, char **dname, int dnamesize) {
+	tmp_list = malloc(sizeof(*tmp_list));
+	if (tmp_list == NULL)
 		return -1;
-	strcpy(t->pv_devtype, pv_dtype);
-	t->major = major;
-	t->apply.gid = gid;
-	t->apply.perm = perm;
-	t->apply.uid = uid;
-	t->devname = calloc(1, (dnamesize + 1) * sizeof(char *));
-	t->devname[dnamesize] = NULL;
-	memcpy(t->devname, dname, ((dnamesize + 1) * sizeof(char *)));
-	dl_list_add_tail(head, &t->next_match);
-//	free(t);
+	strcpy(tmp_list->action, pv_action);
+	strcpy(tmp_list->subsystem, subsys);
+	strcpy(tmp_list->vendor_id, vid);
+	strcpy(tmp_list->model_id, model);
+	tmp_list->apply.gid = gid;
+	tmp_list->apply.perm = perm;
+	tmp_list->apply.uid = uid;
+	tmp_list->devname = calloc(1, (dnamesize + 1) * sizeof(char *));
+	tmp_list->devname[dnamesize] = NULL;
+	memcpy(tmp_list->devname, dname, ((dnamesize + 1) * sizeof(char *)));
+	dl_list_add_tail(head, &tmp_list->next_match);
+	return 0;
 }
 
 int main(void) {
 
 	FILE *json_fd;
 	char *json_content, *key, *um;
-	char *match, *apply, *pv_devtype, *DEVNAME, **tmp_devname, *str;//, *gid, *uid, *perm;
-	int parse_rv, key_len, tokc, tok_c, size, major, perm, gid, uid, tmp_idx;
+	char *match, *apply, *action, *subsys, *vid, *model, *DEVNAME, **tmp_devname, *str;//, *gid, *uid, *perm;
+	int parse_rv, key_len, tokc, tok_c, size, perm, gid, uid, tmp_idx;
 	long int json_len;
 	size_t rv = 0;
 	jsmn_parser p;
 	jsmntok_t t[128]; /* We expect no more than 128 tokens */
 	jsmntok_t *tokv, *tok_v;
 	jsmntok_t **key_i, **keys, **keyss, *t_arr_tok;
-	devlist *device_list;
+	devlist *device_list, *tmp;
 
 	json_fd = fopen("devlist.json", "r");
 	if(json_fd == NULL) {
@@ -174,18 +201,17 @@ int main(void) {
 		perm = get_json_key_value_int(apply, "perm", tok_v, tok_c);
 		gid = get_json_key_value_int(apply, "gid", tok_v, tok_c);
 		uid = get_json_key_value_int(apply, "uid", tok_v, tok_c);
-	//		printf("perm: %d gid: %d uid: %d\n", perm, gid, uid);
 		if (tok_v) {
 			free(tok_v);
 			tok_v = 0;
 		}
 
 		rv = jsmnutil_parse_json(match, &tok_v, &tok_c);
-		pv_devtype = get_json_key_value(match, "PV_DEVTYPE", tok_v, tok_c);
-		major = get_json_key_value_int(match, "MAJOR", tok_v, tok_c);
+		action = get_json_key_value(match, "ACTION", tok_v, tok_c);
+		subsys = get_json_key_value(match, "SUBSYSTEM", tok_v, tok_c);
+		vid = get_json_key_value(match, "ID_VENDOR_ID", tok_v, tok_c);
+		model = get_json_key_value(match, "ID_MODEL_ID", tok_v, tok_c);
 		DEVNAME = get_json_key_value(match, "DEVNAME", tok_v, tok_c);
-
-//		printf("Major: %d\n", major);
 
 		if (tok_v) {
 			free(tok_v);
@@ -204,12 +230,17 @@ int main(void) {
 			tmp_idx++;
 		}
 
+		if(str) {
+			free(str);
+			str = 0;
+		}
+
 		if (tok_v) {
 			free(tok_v);
 			tok_v = 0;
 		}
 
-		append(&device_list->next_match, pv_devtype, major, gid, perm, uid, tmp_devname, key_len);
+		append(&device_list->next_match, action, subsys, vid, model, gid, perm, uid, tmp_devname, key_len);
 
 		if (key) {
 			free(key);
@@ -234,14 +265,37 @@ int main(void) {
 			free(apply);
 			apply = 0;
 		}
-		if(pv_devtype)
+		if(action)
 		{
-			free(pv_devtype);
-			pv_devtype = 0;
+			free(action);
+			action = 0;
+		}
+		if(vid)
+		{
+			free(vid);
+			vid = 0;
+		}
+		if(subsys)
+		{
+			free(subsys);
+			subsys = 0;
+		}
+		if(model)
+		{
+			free(model);
+			model = 0;
+		}
+		if(DEVNAME)
+		{
+			free(DEVNAME);
+			DEVNAME = 0;
+		}
+		if(tmp_devname) {
+			free(tmp_devname);
 		}
 		key_i++;
-		dump_list(&device_list->next_match, key_len);
 	}
+	dump_list(&device_list->next_match, key_len);
 	out:
 	if (tokv) {
 		free(tokv);
@@ -263,6 +317,11 @@ int main(void) {
 	if(json_content) {
 		free(json_content);
 		json_content = 0;
+	}
+	if (device_list) {
+		free_list(&device_list->next_match, key_len);
+		free(device_list);
+		device_list = 0;
 	}
 	fclose(json_fd);
 
