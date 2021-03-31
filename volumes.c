@@ -331,7 +331,8 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 		}
 	}
 
-	pv_log(INFO, "unmounted %d volumes", num_vol);
+	if (num_vol)
+		pv_log(INFO, "unmounted %d volumes", num_vol);
 
 	return num_vol;
 }

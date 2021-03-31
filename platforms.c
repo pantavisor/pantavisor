@@ -588,10 +588,11 @@ static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
 		}
 	}
 
-	pv_log(INFO, "force killed %d platforms", num_plats);
+	if (num_plats)
+		pv_log(INFO, "force killed %d platforms", num_plats);
 }
 
-static void pv_platform_stop_loggers(struct pv_platform *p)
+static int pv_platform_stop_loggers(struct pv_platform *p)
 {
 	int num_loggers = 0, exited = 0;
 	struct pv_log_info *l, *tmp;
@@ -635,12 +636,12 @@ static void pv_platform_stop_loggers(struct pv_platform *p)
 		}
 	}
 
-	pv_log(INFO, "stopped %d loggers", num_loggers);
+	return num_loggers;
 }
 
 int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 {
-	int num_plats = 0, exited = 0;
+	int num_loggers = 0, num_plats = 0, exited = 0;
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &pv->state->platforms;
 	const struct pv_cont_ctrl *ctrl;
@@ -649,8 +650,11 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 
 	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
-		pv_platform_stop_loggers(p);
+		num_loggers += pv_platform_stop_loggers(p);
 	}
+
+	if (num_loggers)
+		pv_log(INFO, "stopped %d platform loggers", num_loggers);
 
 	// Iterate between lowest priority plats and runlevel plats
 	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
@@ -681,13 +685,15 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 		}
 	}
 
-	pv_log(INFO, "stopped %d platforms", num_plats);
+	if (num_plats)
+		pv_log(INFO, "leniently stopped %d platforms", num_plats);
 
 	// Check all plats in runlevel and lower priority have been stopped
 	for (int i = 0; i < 5; i++) {
 		exited = pv_platforms_check_exited(pv, runlevel);
 		if (exited == num_plats)
 			break;
+		pv_log(WARN, "only %d out of %d platforms exited. Sleeping 1 second to check again...", exited, num_plats);
 		sleep(1);
 	}
 
@@ -721,14 +727,11 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 				continue;
 
 			if (kill(p->init_pid, 0)) {
-				pv_log(INFO, "platform exited: %s", p->name);
+				pv_log(DEBUG, "platform exited: %s", p->name);
 				exited++;
 			}
 		}
 	}
-
-	if (exited)
-		pv_log(WARN, "%d platforms exited", exited);
 
 	return exited;
 }

@@ -73,7 +73,7 @@ static int remove_in(char *path, char *dirname)
 	n = scandir(full_path, &d, NULL, alphasort);
 
 	if (n < 0) {
-		pv_log(ERROR, "attempted to remove %s", full_path);
+		pv_log(WARN, "attempted to remove %s", full_path);
 		goto out;
 	}
 
@@ -94,7 +94,7 @@ static int remove_in(char *path, char *dirname)
 	if (!remove(full_path))
 		pv_log(DEBUG, "remove '%s'", full_path)
 	else
-		pv_log(ERROR, "attempted to remove %s", full_path);
+		pv_log(WARN, "attempted to remove %s", full_path);
 
 out:
 	return n;
@@ -445,11 +445,10 @@ int pv_storage_make_config(struct pantavisor *pv)
 	if (!stat("/usr/local/bin/pvext_sysconfig", &st) &&
 			st.st_mode & S_IXUSR ) {
 		sprintf(cmd, "/usr/local/bin/pvext_sysconfig %s %s", srcpath, targetpath);
-		pv_log(INFO, "Processing trail _config: %s", cmd);
 	} else {
 		sprintf(cmd, "/bin/cp -a %s/* %s/", srcpath, targetpath);
-		pv_log(INFO, "Processing trail_config: %s", cmd);
 	}
+	pv_log(INFO, "processing trail _config: %s", cmd);
 
 	/*
 	 * [PKS]
@@ -689,7 +688,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	return 0;
 err:
 	pv_log(ERROR, "unable to link '%s' to '%s', errno %d", src, dst, errno);
-	return 1;
+	return -1;
 }
 
 struct pv_state* pv_storage_get_state(struct pantavisor *pv, const char *rev)
@@ -703,7 +702,7 @@ struct pv_state* pv_storage_get_state(struct pantavisor *pv, const char *rev)
 
 	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
 
-	pv_log(INFO, "reading state from: '%s'", path);
+	pv_log(DEBUG, "reading state from: '%s'", path);
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
