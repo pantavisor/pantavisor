@@ -223,8 +223,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	trest_response_ptr res = 0;
 	char __json[1024];
 	char *json = __json;
-	char retries[6]; /*json holder for retry_count*/
-	char retry_message[128];
+	char message[128];
 	char total_progress_json[512];
 
 	if (!pv->remote || !update) {
@@ -235,14 +234,12 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	switch (status) {
 	case UPDATE_QUEUED:
 		// form message
-		sprintf(retry_message, "Update queued, retry %d of %d",
+		sprintf(message, "Retried %d of %d",
 			update->retries,
 			pv_config_get_updater_revision_retries());
 		// form request
-		// form request
-		snprintf(retries, sizeof(retries), "%d", update->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
-			"QUEUED", retry_message, 0, retries);
+			"QUEUED", message, 0, update->retries);
 		break;
 	case UPDATE_DOWNLOADED:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -284,14 +281,13 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	case UPDATE_RETRY_DOWNLOAD:
 		pv_log(DEBUG, "download needs to be retried, retry count is %d", update->retries);
 		// form message
-		snprintf(retry_message, sizeof(retry_message),
+		snprintf(message, sizeof(message),
 			"Network unavailable while downloading, retry %d of %d",
 			update->retries,
 			pv_config_get_updater_revision_retries());
 		// form request
-		snprintf(retries, sizeof(retries), "%d", update->retries);
 		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
-			"QUEUED", retry_message, 0, retries);
+			"QUEUED", message, 0, update->retries);
 		// Clear what was downloaded.
 		update->total_update->total_downloaded = 0;
 		break;
@@ -304,14 +300,16 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			"TESTING", "Awaiting to see if update is stable", 95);
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
-		// form retries string 
-		snprintf(retries, sizeof(retries), "%d", update->retries);
-
-		if (update->total_update) {
-			object_update_json(update->total_update,
-					total_progress_json, sizeof(total_progress_json));
-		}
 		if (update->progress_objects) {
+			// form message
+			sprintf(message, "Retry %d of %d",
+				update->retries,
+				pv_config_get_updater_revision_retries());
+			// form retries string
+			if (update->total_update) {
+				object_update_json(update->total_update,
+						total_progress_json, sizeof(total_progress_json));
+			}
 			char *buff = update->progress_objects;
 			/*
 			 * append the message to the end of
@@ -338,7 +336,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			 */
 			if (__json == json) {
 				sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-						"DOWNLOADING", "Progress", 0, retries,
+						"DOWNLOADING", message, 0, update->retries,
 						total_progress_json,
 						"");
 				break;
@@ -353,7 +351,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 				len = (len > 0 ? len - 1 : len);
 			}
 			sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-					"DOWNLOADING", "Progress", 0, retries,
+					"DOWNLOADING", message, 0, update->retries,
 					total_progress_json,
 					update->progress_objects);
 			update->progress_objects[len] = '\0';
@@ -457,7 +455,7 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	ret = __start_json_parsing_with_action(jka->buf, jka_arr, JSMN_OBJECT, jka->tokv, jka->tokc);
 	if (!ret) {
 		if (retry_count) {
-			pv_log(INFO, "retry_count = %s", retry_count);
+			pv_log(DEBUG, "retry_count = %s", retry_count);
 			sscanf(retry_count, "%d", ctx->retries);
 			free(retry_count);
 		}
@@ -559,7 +557,7 @@ process_response:
 		goto out;
 	}
 
-	pv_log(INFO, "parse rev %s...", rev);
+	pv_log(DEBUG, "parse rev %s...", rev);
 
 	// create temp update to be able to report the revision state
 	update = pv_update_new(pv_config_get_creds_id(), rev, false);
@@ -593,7 +591,6 @@ send_feedback:
 	}
 
 	// increment and report revision retry max reached
-	retries++;
 	if (retries > pv_config_get_updater_revision_retries()) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
@@ -1060,6 +1057,7 @@ static int pv_update_check_download_retry(struct pantavisor *pv)
 		int time_left = pv->update->retry_at - time(NULL);
 
 		if (time_left <= 0) {
+			pv->update->retries++;
 			if (pv->update->retries > pv_config_get_updater_revision_retries())
 				return -1;
 			pv_log(INFO, "trying revision %s ,retry = %d",
@@ -1281,7 +1279,6 @@ static uint64_t get_update_size(struct pv_update *u)
 			size += curr->size;
 	}
 	pv_objects_iter_end;
-	pv_log(INFO, "update size: %" PRIu64 " bytes", size);
 
 	return size;
 }
@@ -1463,7 +1460,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		bytes = copy_and_close(volatile_tmp_fd, obj_fd);
 		fd = obj_fd;
 	}
-	pv_log(INFO, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
+	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
 	fsync(fd);
 	object_update.current_time = time(NULL);
 
@@ -1498,7 +1495,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	}
 	syncdir(mmc_tmp_obj_path);
 
-	pv_log(INFO, "verified object (%s), renaming from (%s)", obj->objpath, mmc_tmp_obj_path);
+	pv_log(DEBUG, "verified object (%s), renaming from (%s)", obj->objpath, mmc_tmp_obj_path);
 	rename(mmc_tmp_obj_path, obj->objpath);
 
 	ret = 1;
@@ -1561,7 +1558,6 @@ out:
 
 static int trail_link_objects(struct pantavisor *pv)
 {
-	int err = 0;
 	struct pv_object *obj = NULL;
 	char *c, *tmp, *ext;
 
@@ -1581,21 +1577,18 @@ static int trail_link_objects(struct pantavisor *pv)
 			continue;
 		}
 		if (link(obj->objpath, obj->relpath) < 0) {
-			if (errno != EEXIST)
-				err++;
-			pv_log(ERROR, "unable to link %s, errno=%d",
-				obj->relpath, errno);
+			if (errno != EEXIST) {
+				pv_log(ERROR, "unable to link %s, errno=%d", obj->relpath, errno);
+				return -1;
+			}
 		} else {
 			syncdir(obj->objpath);
-			pv_log(INFO, "linked %s to %s",
-				obj->relpath, obj->objpath);
+			pv_log(DEBUG, "linked %s to %s", obj->relpath, obj->objpath);
 		}
 	}
 	pv_objects_iter_end;
 
-	err += pv_storage_meta_link_boot(pv, pv->update->pending);
-
-	return -err;
+	return pv_storage_meta_link_boot(pv, pv->update->pending);
 }
 
 static int trail_check_update_size(struct pantavisor *pv)
@@ -1606,7 +1599,7 @@ static int trail_check_update_size(struct pantavisor *pv)
 	update_size = (uint64_t)get_update_size(pv->update);
 	free_size = (uint64_t)pv_storage_get_free(pv);
 
-	pv_log(DEBUG, "update size %"PRIu64" B", update_size);
+	pv_log(INFO, "update size: %" PRIu64 " B", update_size);
 
 	if (update_size > free_size) {
 		pv_log(WARN, "not enough space to process update. Freeing up space...");
@@ -1656,15 +1649,17 @@ static int trail_download_objects(struct pantavisor *pv)
 		u->total_update->total_size = get_update_size(u);
 		u->total_update->start_time = time(NULL);
 		u->total_update->total_downloaded = 0;
+		u->total_update->current_time = time(NULL);
+		pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
 	}
 	pv_objects_iter_begin(u->pending, o) {
 		if (!trail_download_object(pv, o, crtfiles)) {
 			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
 			return -1;
 		}
-		u->total_update->current_time = time(NULL);
-		pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
 	}
+	u->total_update->current_time = time(NULL);
+	pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
 	pv_objects_iter_end;
 	return 0;
 }
@@ -1706,14 +1701,14 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_log(INFO, "downloading update...");
+	pv_log(DEBUG, "downloading update...");
 
 	if (pv_update_check_download_retry(pv))
 		goto out;
 
 	ret = trail_download_objects(pv);
 	if (ret < 0) {
-		pv_log(ERROR, "unable to download objects");
+		pv_log(WARN, "unable to download objects");
 		goto out;
 	}
 
@@ -1736,7 +1731,7 @@ int pv_update_install(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_log(INFO, "installing update...");
+	pv_log(DEBUG, "installing update...");
 
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%s/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
@@ -1746,7 +1741,7 @@ int pv_update_install(struct pantavisor *pv)
 
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
-		pv_log(ERROR, "unable to link objects to relative path (failed=%d)", ret);
+		pv_log(ERROR, "unable to link objects to relative path");
 		pv_update_set_status(pv, UPDATE_FAILED);
 		goto out;
 	}
@@ -1770,7 +1765,7 @@ int pv_update_install(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_log(INFO, "update successfully installed");
+	pv_log(DEBUG, "update successfully installed");
 	if (pv_bootloader_set_installed(pending->rev)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
@@ -1780,7 +1775,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv_update_set_status(pv, UPDATE_INSTALLED);
 
 	pv->update->runlevel = pv_state_compare_states(pending, pv->state);
-	pv_log(INFO, "update runlevel set to %d", pv->update->runlevel);
+	pv_log(DEBUG, "update runlevel set to %d", pv->update->runlevel);
 out:
 	if (pending && (ret < 0))
 		pv_storage_rm_rev(pv, pending->rev);
@@ -1819,7 +1814,7 @@ bool pv_update_requires_reboot(struct pantavisor *pv)
 {
 	// we reboot for changes with explicitly configured "root" platforms and non-configured ones
 	if (pv->update->runlevel <= RUNLEVEL_PLATFORM) {
-		pv_log(WARN, "update runlevel %d requires reboot, rebooting...",
+		pv_log(INFO, "update runlevel %d requires reboot, rebooting...",
 			pv->update->runlevel);
 
 		// we want to stop and unmount all plats and volumes, so we change the runlevel to ROOT
@@ -1829,7 +1824,7 @@ bool pv_update_requires_reboot(struct pantavisor *pv)
 		return true;
 	}
 
-	pv_log(WARN, "update runlevel %d does not require reboot, running new revision...",
+	pv_log(INFO, "update runlevel %d does not require reboot, running new revision...",
 		pv->update->runlevel);
 	pv_update_set_status(pv, UPDATE_TRANSITION);
 	return false;

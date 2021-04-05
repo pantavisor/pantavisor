@@ -291,9 +291,9 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
-	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
+	pv_log(DEBUG, "Allocated %d log buffers of size %d bytes",
 			allocated_cache, pv_config_get_log_logsize());
-	pv_log(INFO, "Allocated %d log buffers of size %d bytes",
+	pv_log(DEBUG, "Allocated %d log buffers of size %d bytes",
 			allocated_dcache, pv_config_get_log_logsize() * 2);
 }
 
