@@ -27,8 +27,8 @@
 #include "pantavisor.h"
 
 struct pv_metadata {
-    struct dl_list usermeta_list; // pv_meta
-    struct dl_list devmeta_list; // pv_meta
+	struct dl_list usermeta_list; // pv_meta
+	struct dl_list devmeta_list; // pv_meta
 	bool devmeta_uploaded;
 };
 

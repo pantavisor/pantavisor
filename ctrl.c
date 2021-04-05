@@ -65,8 +65,8 @@
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
 
-static const int HTTP_REQ_BUFFER_SIZE = 16384;
-static const int HTTP_REQ_NUM_HEADERS = 8;
+static const unsigned int HTTP_REQ_BUFFER_SIZE = 16384;
+static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
 static int pv_ctrl_socket_open(char *path)
 {
@@ -248,7 +248,7 @@ static int pv_ctrl_validate_object_checksum(char *file_path, char *sha)
 
 static int pv_ctrl_read_parse_request_header(int req_fd,
 											char *buf,
-											int buf_index,
+											unsigned int buf_index,
 											const char **method,
 											size_t *method_len,
 											const char **path,
@@ -354,35 +354,12 @@ static char* pv_ctrl_get_file_path(const char* path, const char* file_name)
 	return file_path;
 }
 
-static void pv_ctrl_process_get_user_meta(int req_fd)
+static void pv_ctrl_process_get_string(int req_fd, char* buf)
 {
 	int buf_len;
-	char *buf;
 
-	pv_log(INFO, "converting user meta to string and sending it to endpoint...");
+	pv_log(INFO, "converting meta to string and sending it to endpoint...");
 
-	buf = pv_metadata_get_user_meta_string();
-	buf_len = strlen(buf);
-	pv_log(DEBUG, "buf_len %d", buf_len);
-
-	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
-		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
-
-	if (write(req_fd, buf, buf_len) != buf_len)
-		pv_log(ERROR, "write failed");
-
-	if (buf)
-		free(buf);
-}
-
-static void pv_ctrl_process_get_device_meta(int req_fd)
-{
-	int buf_len;
-	char *buf;
-
-	pv_log(INFO, "converting device meta to string and sending it to endpoint...");
-
-	buf = pv_metadata_get_device_meta_string();
 	buf_len = strlen(buf);
 
 	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
@@ -479,12 +456,12 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		}
 	} else if (!strncmp(ENDPOINT_USER_META, path, sizeof(ENDPOINT_USER_META)-1)) {
 		if (!strncmp("GET", method, method_len)) {
-			pv_ctrl_process_get_user_meta(req_fd);
+			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
 			goto out;
 		}
 	} else if (!strncmp(ENDPOINT_DEVICE_META, path, sizeof(ENDPOINT_DEVICE_META)-1)) {
 		if (!strncmp("GET", method, method_len)) {
-			pv_ctrl_process_get_device_meta(req_fd);
+			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 			goto out;
 		}
 	}

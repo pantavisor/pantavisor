@@ -56,6 +56,7 @@
 #include "updater.h"
 #include "storage.h"
 #include "tsh.h"
+#include "metadata.h"
 #include "ph_logger/ph_logger.h"
 
 #define MODULE_NAME             "controller"

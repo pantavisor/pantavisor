@@ -761,7 +761,9 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 	int len = 1, line_len;
 	char *out = calloc(1, len * sizeof(char*));
 
+	// open json
 	out[0]='{';
+	// add value,key pair to json
 	dl_list_for_each_safe(curr, tmp, meta_list,
 		struct pv_meta, list) {
 		line_len = strlen(curr->key) + strlen(curr->value) + 7;
@@ -772,6 +774,7 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 
 	len += 2;
 	out = realloc(out, len * sizeof(char*));
+	// close json
 	out[len-2] = '}';
 	out[len-1] = '\0';
 
