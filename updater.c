@@ -85,6 +85,27 @@ static void pv_update_remove(struct pantavisor *pv)
 	pv->update = NULL;
 }
 
+static void pv_trail_remote_free(struct trail_remote *trail)
+{
+	if (!trail)
+		return;
+
+	pv_log(DEBUG, "removing trail");
+
+	if (trail->client)
+		trest_free(trail->client);
+	if (trail->endpoint_trail_queued)
+		free(trail->endpoint_trail_queued);
+	if (trail->endpoint_trail_new)
+		free(trail->endpoint_trail_new);
+	if (trail->endpoint_trail_downloading)
+		free(trail->endpoint_trail_downloading);
+	if (trail->endpoint_trail_inprogress)
+		free(trail->endpoint_trail_inprogress);
+
+	free(trail);
+}
+
 // takes an allocated buffer
 static char *unescape_utf8_to_apvii(char *buf, char *code, char c)
 {
@@ -150,7 +171,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote = calloc(1, sizeof(struct trail_remote));
 	remote->client = client;
 
-	endpoint_trail = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
+	endpoint_trail = calloc(1, (sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
 		+ strlen(pv_config_get_creds_id())) * sizeof(char));
 	if (!endpoint_trail)
 		goto err;
@@ -182,15 +203,15 @@ static int trail_remote_init(struct pantavisor *pv)
 
 	pv->remote = remote;
 
+	if (endpoint_trail)
+		free(endpoint_trail);
+
 	return 0;
 
 err:
-	if (client)
-		free(client);
-	if (remote)
-		free(remote);
 	if (endpoint_trail)
 		free(endpoint_trail);
+	pv_trail_remote_free(remote);
 
 	return -1;
 }
@@ -493,7 +514,6 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	char *state = 0, *rev = 0;
 	struct trail_remote *remote = pv->remote;
 	trest_response_ptr res = 0;
-	jsmntok_t *tokv = 0;
 	int retries = 0;
 	struct jka_update_ctx update_ctx = {
 		.retries = &retries
@@ -624,8 +644,6 @@ out:
 		free(rev);
 	if (state)
 		free(state);
-	if (tokv)
-		free(tokv);
 	if (res)
 		trest_response_free(res);
 	return ret;
@@ -977,8 +995,6 @@ out:
 	return ret;
 }
 
-/* API */
-
 int pv_check_for_updates(struct pantavisor *pv)
 {
 	int ret;
@@ -1073,25 +1089,6 @@ static int pv_update_check_download_retry(struct pantavisor *pv)
 
 	pv_update_set_status(pv, UPDATE_FAILED);
 	return -1;
-}
-
-static void pv_trail_remote_free(struct trail_remote *trail)
-{
-	if (!trail)
-		return;
-
-	pv_log(DEBUG, "removing trail");
-
-	if (trail->endpoint_trail_queued)
-		free(trail->endpoint_trail_queued);
-	if (trail->endpoint_trail_new)
-		free(trail->endpoint_trail_new);
-	if (trail->endpoint_trail_queued)
-		free(trail->endpoint_trail_queued);
-	if (trail->endpoint_trail_inprogress)
-		free(trail->endpoint_trail_inprogress);
-
-	free(trail);
 }
 
 void pv_trail_remote_remove(struct pantavisor *pv)
