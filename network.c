@@ -145,7 +145,7 @@ int pv_network_update_meta(struct pantavisor *pv)
 
 static int pv_network_early_init(struct pv_init *this)
 {
-	int fd, ret;
+	int fd, ret, len;
 	struct ifreq ifr;
 	struct sockaddr_in sai;
 	int sockfd;                     /* socket fd we use to manipulate stuff with */
@@ -173,7 +173,10 @@ static int pv_network_early_init(struct pv_init *this)
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
 	/* get interface name */
-	memcpy(ifr.ifr_name, pv_config_get_network_brdev(), IFNAMSIZ);
+	len = strlen(pv_config_get_network_brdev()) + 1;
+	if (len > IFNAMSIZ)
+		len = IFNAMSIZ;
+	memcpy(ifr.ifr_name, pv_config_get_network_brdev(), len);
 
 	ret = ioctl(sockfd, SIOCGIFFLAGS, &ifr);
 	if (ret < 0) {

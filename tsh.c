@@ -41,7 +41,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int st
 	int pid = -1;
 	sigset_t blocked_sig, old_sigset;
 	int ret = 0;
-	
+
 	if (wait) {
 		sigemptyset(&blocked_sig);
 		sigaddset(&blocked_sig, SIGCHLD);
@@ -50,7 +50,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int st
 		 * */
 		ret = sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
 	}
-	pid = fork();
+	pid = fork_child_process("pvtsh");
 
 	if (pid == -1) {
 		if ( (ret == 0) && wait)
@@ -59,7 +59,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int st
 	} else if (pid > 0) {
 		// In parent
 		if (wait) {
-			if (ret == 0) { 
+			if (ret == 0) {
 				/*wait only if we blocked SIGCHLD*/
 				waitpid(pid, status, 0);
 				sigprocmask(SIG_SETMASK, &old_sigset, NULL);

@@ -28,12 +28,15 @@
 #include <libgen.h>
 #include <errno.h>
 #include <stdbool.h>
+#include <stdbool.h>
+#include <signal.h>
+
 #include <linux/limits.h>
+
+#include <sys/xattr.h>
+#include <sys/prctl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <stdbool.h>
-#include <sys/xattr.h>
-#include <signal.h>
 
 #include "utils.h"
 /*
@@ -464,6 +467,17 @@ int get_cpu_model(char *buf, int buflen)
 	}
 out:
 	return ret;
+}
+
+pid_t fork_child_process(const char* name)
+{
+	pid_t pid = fork();
+	if (pid < 0)
+		return -1;
+	else if (!pid)
+		prctl(PR_SET_NAME, name);
+
+	return pid;
 }
 
 void kill_child_process(pid_t pid)

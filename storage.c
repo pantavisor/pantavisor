@@ -35,7 +35,6 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/prctl.h>
 #include <sys/statfs.h>
 
 #include <mbedtls/sha256.h>

@@ -32,7 +32,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/reboot.h>
-#include <sys/prctl.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 
@@ -650,7 +649,6 @@ void pv_init()
 	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
 	sprintf(pv_user_agent, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
 
-	prctl(PR_SET_NAME, "pantavisor");
 	pv = calloc(1, sizeof(struct pantavisor));
 	if (pv)
 		global_pv = pv;

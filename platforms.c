@@ -324,16 +324,17 @@ int pv_platforms_init_ctrl(struct pantavisor *pv)
 static int __start_pvlogger_for_platform(struct pv_platform *platform,
 					 struct pv_log_info *log_info)
 {
-	/*
-	 * fork, and set the mount namespace for
-	 * pv_logger.
-	 * */
+	char pvlogger_process_name[64];
+	memset(pvlogger_process_name, 0, sizeof(pvlogger_process_name));
+
+	// fork, and set the mount namespace for
 	int container_pid = platform->init_pid;
 
 	if (!log_info)
 		return -1;
 
-	pid_t pid = fork();
+	sprintf(pvlogger_process_name, "pvlogger-%s", platform->name);
+	pid_t pid = fork_child_process(pvlogger_process_name);
 	if (pid < 0) {
 		return -1;
 	}
@@ -358,9 +359,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 				_exit(-1);
 			}
 		}
-		start_pvlogger(log_info, (log_info->islxc ? log_info->name 
-				 		: platform->name)
-				);
+		start_pvlogger(log_info, (log_info->islxc ? log_info->name : platform->name));
 		_exit(0);
 	}
 	log_info->logger_pid = pid;

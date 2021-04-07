@@ -27,16 +27,18 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <fcntl.h>
-#include <sys/utsname.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <signal.h>
-#include <lxc/lxccontainer.h>
-#include <lxc/pv_export.h>
 #include <limits.h>
 #include <unistd.h>
 #include <stdbool.h>
+#include <signal.h>
 
+#include <lxc/lxccontainer.h>
+#include <lxc/pv_export.h>
+
+#include <sys/prctl.h>
+#include <sys/utsname.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "utils.h"
 #include "pv_lxc.h"
@@ -478,6 +480,9 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	struct pv_log_info *pv_log_i = NULL;
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) 
 					| (1 << LXC_NS_IPC);
+	char plat_process_name[64];
+	memset(plat_process_name, 0, sizeof(plat_process_name));
+
 	pid_t child_pid = -1;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
@@ -503,6 +508,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 		goto out_no_container;
 	}
 
+	sprintf(plat_process_name, "pvplatform-%s", p->name);
 	child_pid = fork();
 
 	if (child_pid < 0) {
@@ -531,6 +537,8 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 	else { /* Child process */
 		char configdir[PATH_MAX];
 		char log_dir[PATH_MAX];
+
+		prctl(PR_SET_NAME, plat_process_name);
 
 		close(pipefd[0]);
 		*( (pid_t*) data) = -1;

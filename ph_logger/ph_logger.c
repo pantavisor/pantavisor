@@ -919,7 +919,7 @@ static pid_t ph_logger_start_push_service(char *revision)
 	pid_t helper_pid = -1;
 	int sleep_secs = 0;
 
-	helper_pid = fork();
+	helper_pid = fork_child_process("phlogger-push");
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
@@ -987,7 +987,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_re
 	int result, len;
 	char *rev;
 
-	range_service = fork();
+	range_service = fork_child_process("phlogger-range");;
 	if (range_service == 0) {
 		current_rev = ph_logger_get_max_revision(pv);
 
@@ -1037,7 +1037,7 @@ static pid_t ph_logger_start_log_service(struct pantavisor *pv, char *revision)
 
 	pv_global = pv;
 
-	service_pid = fork();
+	service_pid = fork_child_process("phlogger-service");
 	if (service_pid == 0) {
 		struct sigaction sa;
 		memset(&sa, 0, sizeof(sa));

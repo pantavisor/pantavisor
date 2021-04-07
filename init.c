@@ -295,7 +295,7 @@ int main(int argc, char *argv[])
 	}
 
 	// create pv thread
-	pv_pid = fork();
+	pv_pid = fork_child_process("pantavisor");
 	if (pv_pid > 0)
 		goto loop;
 

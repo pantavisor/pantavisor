@@ -34,7 +34,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <signal.h>
-#include <sys/prctl.h>
 #include <errno.h>
 
 #ifndef MODULE_NAME

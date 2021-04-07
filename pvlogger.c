@@ -273,7 +273,6 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 		.tv_sec = 2,
 		.tv_usec = 0
 	};
-	char pr_name[16] = {0};
 	const char *logfile = NULL;
 
 	logger_cmd = (char*)calloc(1, PV_LOG_BUF_SIZE);
@@ -281,11 +280,9 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	/*Can't log it only thing we can do is print it on console*/
 	if (!logger_cmd)
 		return -1;
-	
+
 	pv_log_info = log_info;
 	module_name = strdup(platform);
-	snprintf(pr_name, sizeof(pr_name), "pvlogger-%s", module_name);
-	prctl(PR_SET_NAME, (unsigned long)pr_name,0,0,0);
 
 	if (!pv_log_info) /*We can't even try and log cuz it maybe for lxc.*/
 		return 0;
