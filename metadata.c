@@ -361,6 +361,8 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 	jsmnutil_tokv_free(keys);
 
 out:
+	if (um)
+		free(um);
 	if (tokv)
 		free(tokv);
 
@@ -684,7 +686,10 @@ int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf)
 	body = strdup(buf);
 	esc = unescape_str_to_ascii(body, "\\n", '\n');
 	ret = pv_usermeta_parse(pv, esc);
-	free(esc);
+	if (body)
+		free(body);
+	if (esc)
+		free(esc);
 	// clear old
 	usermeta_clear(pv);
 	return ret;

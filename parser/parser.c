@@ -133,18 +133,19 @@ char* pv_parser_get_initrd_config_name(char *buf)
 
 	// Parse full state json
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
-		return NULL;
+		goto out;
 
 	spec = get_json_key_value(buf, "#spec", tokv, tokc);
 	if (!spec)
-		return NULL;
+		goto out;
 
 	p = _get_parser(spec);
 	if (!p)
-		return NULL;
+		goto out;
 
 	config_name = p->parse_initrd_config_name(buf);
 
+out:
 	if (tokv)
 		free(tokv);
 	if (spec)

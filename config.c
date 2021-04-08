@@ -424,9 +424,32 @@ void pv_config_free()
 		free(pv->config.factory.autotok);
 }
 
-inline void pv_config_set_creds_id(char *id) { pv_get_instance()->config.creds.id = id; }
-inline void pv_config_set_creds_prn(char *prn) { pv_get_instance()->config.creds.prn = prn; }
-inline void pv_config_set_creds_secret(char *secret) { pv_get_instance()->config.creds.secret = secret; }
+inline void pv_config_set_creds_id(char *id)
+{
+	char *cid = pv_get_instance()->config.creds.id;
+
+	if (cid)
+		free(cid);
+	cid = id;
+}
+
+inline void pv_config_set_creds_prn(char *prn)
+{
+	char *cprn = pv_get_instance()->config.creds.prn;
+
+	if (cprn)
+		free(cprn);
+	cprn = prn;
+}
+
+inline void pv_config_set_creds_secret(char *secret)
+{
+	char *csecret = pv_get_instance()->config.creds.secret;
+
+	if (csecret)
+		free(csecret);
+	csecret = secret;
+}
 
 char* pv_config_get_cache_metacachedir() { return pv_get_instance()->config.cache.metacachedir; }
 char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.cache.dropbearcachedir; }
