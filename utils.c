@@ -266,8 +266,6 @@ char *unescape_str_to_ascii(char *buf, char *code, char c)
 
 	if (old)
 		free(old);
-	if (buf)
-		free(buf);
 
 	return new;
 }

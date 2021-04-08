@@ -1172,7 +1172,7 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 	int ret = 0;
 	char *endpoint = 0;
 	char *url = 0;
-	char *prn, *size;
+	char *prn, *size = NULL;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 
@@ -1228,6 +1228,8 @@ out:
 		trest_response_free(res);
 	if (endpoint)
 		free(endpoint);
+	if (size)
+		free(size);
 
 	return ret;
 }
