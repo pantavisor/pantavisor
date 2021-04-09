@@ -64,6 +64,7 @@
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
+#define HTTP_RES_ERROR "HTTP/1.1 500 Internal Server Error\r\n\r\n"
 
 static const unsigned int HTTP_REQ_BUFFER_SIZE = 16384;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
@@ -306,7 +307,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 	obj_fd = open(file_path, O_RDONLY);
 	if (obj_fd <= 0) {
 		pv_log(ERROR, "%s could not be opened for read", file_path);
-		goto out;
+		goto error;
 	}
 
 	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
@@ -320,6 +321,11 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 		}
 	}
 
+	goto out;
+
+error:
+	if (write(req_fd, HTTP_RES_ERROR, sizeof(HTTP_RES_ERROR)-1) <= 0)
+		pv_log(ERROR, "HTTP Internal Server Error response could not be sent to ctrl socket");
 out:
 	close(obj_fd);
 }
@@ -405,13 +411,13 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 												&num_headers);
 	if (buf_index < 0) {
 		pv_log(WARN, "HTTP request recived has bad format");
-		goto response;
+		goto bad_request;
 	}
 
 	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
 	if (content_length <= 0) {
 		pv_log(WARN, "HTTP request received has empty body");
-		goto response;
+		goto bad_request;
 	}
 
 	// read and parse rest of message
@@ -448,8 +454,10 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			mkdir_p(file_path_parent, 0755);
-			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+			if (pv_storage_is_revision_local(file_name)) {
+				mkdir_p(file_path_parent, 0755);
+				res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
@@ -467,14 +475,18 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	}
 
 response:
-	// write response
 	if (res < 0) {
-		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
-			pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
+		if (write(req_fd, HTTP_RES_ERROR, sizeof(HTTP_RES_ERROR)-1) <= 0)
+			pv_log(ERROR, "HTTP Internal Server Error response could not be sent to ctrl socket");
 	} else {
 		if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
 			pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 	}
+	goto out;
+
+bad_request:
+	if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
+		pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
 
 out:
 	if (file_name)
