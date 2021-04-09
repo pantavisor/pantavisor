@@ -16,75 +16,33 @@
 #include <jsmn/jsmn.h>
 #include <jsmn/jsmnutil.h>
 #include "utils.h"
-#include "utils/list.h"
-
-/*
-typedef struct _devlist {
-	struct dl_list next_match;
-	char pv_devtype[32];	//store PV_DEVTYPE
-	char **devname;			// should get malloced during runtime to store DEVNAME
-	unsigned short int major;
-	struct _apply {
-		int perm;
-		unsigned int gid;
-		unsigned int uid;
-	}apply;
-}devlist;
-*/
-
-struct _devlist *tmp_list;
-
-typedef struct _devlist {
-	struct dl_list next_match;
-	char action[20];	//store ACTION
-	char subsystem[10];
-	char vendor_id[10];
-	char model_id[10];
-	char **devname;			// should get malloced during runtime to store DEVNAME
-	struct _apply {
-		int perm;
-		unsigned int gid;
-		unsigned int uid;
-	}apply;
-}devlist;
+#include "json-parser.h"
 
 int tsh_run_io(char *cmd, int wait, int *status,
 		int stdin_p[], int stdout_p[], int stderr_p[]) {
 	return 0;
 }
 
-static void dump_list(struct dl_list *head, int size)
+static void free_list(struct dl_list *head)
 {
-	struct _devlist *t;
-	int i = 0;
-	printf("dump:\n");
-	dl_list_for_each(t, head, struct _devlist, next_match) {
-		printf("action: %s\nsubsystem: %s\ngid: %d\nuid: %d\nperm: %d\n", t->action, t->subsystem, t->apply.gid, t->apply.uid, t->apply.perm);
-		for (i=0; i<size; i++)
-			printf("devname: %s\n", t->devname[i]);
-	}
-	printf(" (len=%d%s)\n", dl_list_len(head),
-	       dl_list_empty(head) ? " empty" : "");
-}
-
-static void free_list(struct dl_list *head, int size)
-{
-	struct _devlist *t;
-	int i = 0;
-	printf("dump:\n");
-	dl_list_for_each(t, head, struct _devlist, next_match) {
-		if(t->devname) {
-			free(t->devname);
-			t->devname = 0;
+	struct _match *t;
+	dl_list_for_each(t, head, struct _match, next_match) {
+		for(int i=0; i<t->devname_size; i++) {
+			if(t->devname) {
+				free(t->devname);
+				t->devname = 0;
+			}
 		}
 	}
 }
 
-static int append (struct dl_list *head, char *pv_action, char *subsys, char *vid, char *model, int gid, int perm, int uid, char **dname, int dnamesize) {
+static int append (struct dl_list *head, char **pv_action, int actkeylen, char *subsys,
+		char *vid, char *model, int gid, int perm, int uid, char **dname, int dnamesize) {
+	match *tmp_list;
 	tmp_list = malloc(sizeof(*tmp_list));
 	if (tmp_list == NULL)
 		return -1;
-	strcpy(tmp_list->action, pv_action);
+	memcpy(tmp_list->action, pv_action, ((actkeylen + 1) * sizeof(char *)));
 	strcpy(tmp_list->subsystem, subsys);
 	strcpy(tmp_list->vendor_id, vid);
 	strcpy(tmp_list->model_id, model);
@@ -93,33 +51,37 @@ static int append (struct dl_list *head, char *pv_action, char *subsys, char *vi
 	tmp_list->apply.uid = uid;
 	tmp_list->devname = calloc(1, (dnamesize + 1) * sizeof(char *));
 	tmp_list->devname[dnamesize] = NULL;
+	tmp_list->devname_size = dnamesize;
 	memcpy(tmp_list->devname, dname, ((dnamesize + 1) * sizeof(char *)));
 	dl_list_add_tail(head, &tmp_list->next_match);
+//	free(tmp_list);
 	return 0;
 }
 
-int main(void) {
+struct dl_list *parse_json(void) {
 
 	FILE *json_fd;
 	char *json_content, *key, *um;
-	char *match, *apply, *action, *subsys, *vid, *model, *DEVNAME, **tmp_devname, *str;//, *gid, *uid, *perm;
-	int parse_rv, key_len, tokc, tok_c, size, perm, gid, uid, tmp_idx;
+	char *match_p, *apply, *action, **tmp_action, *subsys, *vid, *model, *DEVNAME, **tmp_devname, *str;//, *gid, *uid, *perm;
+	int parse_rv, key_len, act_key_len, tokc, tok_c, arr_tok_c, size, perm, gid, uid, tmp_idx;
 	long int json_len;
 	size_t rv = 0;
 	jsmn_parser p;
 	jsmntok_t t[128]; /* We expect no more than 128 tokens */
-	jsmntok_t *tokv, *tok_v;
+	jsmntok_t *tokv, *tok_v, *arr_tok_v;
 	jsmntok_t **key_i, **keys, **keyss, *t_arr_tok;
-	devlist *device_list, *tmp;
+	match *device_list;
 
 	json_fd = fopen("devlist.json", "r");
 	if(json_fd == NULL) {
 		perror("Cannot open file");
-		return -ENOENT;
+		rv = -ENOENT;
+		exit(rv);
 	}
 	if(fseek(json_fd, 0L, SEEK_END)) {
 		perror("Cannot seek to end\n");
-		return -EBADF;
+		rv = -EBADF;
+		exit(rv);
 	}
 	json_len = ftell(json_fd);
 	printf("Length of Json File: %ld\n", json_len);
@@ -128,12 +90,14 @@ int main(void) {
 	json_content = malloc(json_len);
 	if(json_content == NULL) {
 		perror("Error during malloc\n");
-		return -ENOMEM;
+		rv = -ENOMEM;
+		exit(rv);
 	}
 	rv = fread(json_content, 1, json_len, json_fd);
 	if((rv != json_len) || (rv == 0)) {
 		perror("Cannot Read from json file\n");
-		return -EXIT_FAILURE;
+		rv = -EXIT_FAILURE;
+		exit(rv);
 	}
 
 	/**************************************************************************************************************/
@@ -141,15 +105,17 @@ int main(void) {
 	parse_rv = jsmn_parse(&p, json_content, json_len, t, sizeof(t)/sizeof(t[0]));
 	if (parse_rv < 0) {
 		printf("Failed to parse JSON: %d\n", parse_rv);
-		return 1;
+		rv = -1;
+		exit(rv);
 	}
 
 	/* Assume the top-level element is an object */
 	if (parse_rv < 1 || t[0].type != JSMN_OBJECT) {
 		printf("Object expected\n");
-		return 1;
+		rv = 1;
+		exit(rv);
 	}
-	jsmnutil_parse_json(json_content,&tokv, &tokc);
+	jsmnutil_parse_json(json_content, &tokv, &tokc);
 	um = get_json_key_value(json_content, "rules", tokv, tokc);
 	if (!um) {
 		rv = -1;
@@ -162,6 +128,7 @@ int main(void) {
 	if (device_list == NULL)
 		goto out;
 	dl_list_init(&device_list->next_match);
+//	dl_list_init(&head);
 
 	rv = jsmnutil_parse_json(um, &tokv, &tokc);
 	keys = jsmnutil_get_array_toks(um, tokv);
@@ -180,14 +147,14 @@ int main(void) {
 		snprintf(key, key_len+1, "%s", um+(*key_i)->start);
 		rv = jsmnutil_parse_json(key, &tok_v, &tok_c);
 
-		match = get_json_key_value(key, "match", tok_v, tok_c);
+		match_p = get_json_key_value(key, "match", tok_v, tok_c);
 		apply = get_json_key_value(key, "apply", tok_v, tok_c);
 
 		if (!apply) {
 			rv = -1;
 			goto out;
 		}
-		if (!match) {
+		if (!match_p) {
 			rv = -1;
 			goto out;
 		}
@@ -206,12 +173,33 @@ int main(void) {
 			tok_v = 0;
 		}
 
-		rv = jsmnutil_parse_json(match, &tok_v, &tok_c);
-		action = get_json_key_value(match, "ACTION", tok_v, tok_c);
-		subsys = get_json_key_value(match, "SUBSYSTEM", tok_v, tok_c);
-		vid = get_json_key_value(match, "ID_VENDOR_ID", tok_v, tok_c);
-		model = get_json_key_value(match, "ID_MODEL_ID", tok_v, tok_c);
-		DEVNAME = get_json_key_value(match, "DEVNAME", tok_v, tok_c);
+		rv = jsmnutil_parse_json(match_p, &tok_v, &tok_c);
+		action = get_json_key_value(match_p, "ACTION", tok_v, tok_c);
+
+		rv = jsmnutil_parse_json(action, &arr_tok_v, &arr_tok_c);
+		keyss = jsmnutil_get_array_toks(action, arr_tok_v);
+		act_key_len = size = jsmnutil_array_count(action, arr_tok_v);
+		t_arr_tok = arr_tok_v+1;
+		tmp_action = calloc(1, (size + 1) * sizeof(char *));
+		tmp_action[size] = NULL;
+		tmp_idx = 0;
+		while ((str = json_array_get_one_str(action, &size, &t_arr_tok))) {
+			tmp_action[tmp_idx] = str;
+			tmp_idx++;
+		}
+//		if(keyss){
+//			jsmnutil_tokv_free(keyss);
+//		}
+//		if(arr_tok_v){
+//			jsmnutil_tokv_free(&arr_tok_v);
+//		}
+		t_arr_tok = NULL;
+		str = NULL;
+
+		subsys = get_json_key_value(match_p, "SUBSYSTEM", tok_v, tok_c);
+		vid = get_json_key_value(match_p, "ID_VENDOR_ID", tok_v, tok_c);
+		model = get_json_key_value(match_p, "ID_MODEL_ID", tok_v, tok_c);
+		DEVNAME = get_json_key_value(match_p, "DEVNAME", tok_v, tok_c);
 
 		if (tok_v) {
 			free(tok_v);
@@ -240,7 +228,7 @@ int main(void) {
 			tok_v = 0;
 		}
 
-		append(&device_list->next_match, action, subsys, vid, model, gid, perm, uid, tmp_devname, key_len);
+		append(&device_list->next_match, tmp_action, act_key_len, subsys, vid, model, gid, perm, uid, tmp_devname, key_len);
 
 		if (key) {
 			free(key);
@@ -255,10 +243,10 @@ int main(void) {
 			free(tok_v);
 			tok_v = 0;
 		}
-		if(match)
+		if(match_p)
 		{
-			free(match);
-			match = 0;
+			free(match_p);
+			match_p = 0;
 		}
 		if(apply)
 		{
@@ -295,7 +283,6 @@ int main(void) {
 		}
 		key_i++;
 	}
-	dump_list(&device_list->next_match, key_len);
 	out:
 	if (tokv) {
 		free(tokv);
@@ -318,12 +305,7 @@ int main(void) {
 		free(json_content);
 		json_content = 0;
 	}
-	if (device_list) {
-		free_list(&device_list->next_match, key_len);
-		free(device_list);
-		device_list = 0;
-	}
 	fclose(json_fd);
 
-	return rv;
+	return &device_list->next_match;
 }

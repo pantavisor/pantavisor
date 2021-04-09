@@ -2,21 +2,17 @@
   "rules": [
     {
       "match": {
-        "ACTION" : ["ADD", "REMOVE"],
+        "ACTION" : ["add", "remove"],
         "DEVNAME": [
             "hd*",
-            "fd[0-9]*",
-            "ram[0-9]*",
-            "raw[0-9]*",
-            "sd[a-z]",
-            "sd[a-z][0-9]*",
-            "sd[a-i][a-z]",
-            "sd[a-i][a-z][0-9]*",
-            "dasd[0-9]*",
-            "loop[0-9]*",
-            "md[0-9]*",
-            "mmc[0-9]blk[0-9]*",
-            "mmcblk[0-9]*"
+            "fd*",
+            "ram*",
+            "raw*",
+            "sd*",
+            "dasd*",
+            "loop*",
+            "md*",
+            "mmc*",
         ],
         "SUBSYSTEM": "block",
         "ID_VENDOR_ID": "0781",
@@ -30,12 +26,11 @@
     },
     {
       "match": {
-        "ACTION": ["ADD", "REMOVE"],
+        "ACTION": ["add", "remove"],
         "DEVNAME": [
-          "ttyS[0-9]*",
-          "ttyUSB[0-9]*",
-          "ttyACM[0-9]*",
-          "ttyS[ACIR][0-9]*"
+          "ttyUSB*",
+          "ttyS*",
+          "ttyACM*"
         ],
         "SUBSYSTEM": "tty",
         "ID_VENDOR_ID": "0403",
