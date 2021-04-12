@@ -48,7 +48,7 @@
 struct pv_meta {
 	char *key;
 	char *value;
-	long flags;
+	bool updated;
 	struct dl_list list; // pv_meta
 };
 
@@ -158,16 +158,16 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	}
 };
 
-static void usermeta_add_hint(struct pv_meta *m)
+static void usermeta_add_hint(const char *key, const char *value)
 {
 	int fd;
 	char *path_base;
 	char path[PATH_MAX];
 
-	if (!m)
+	if (!key || !value)
 		return;
 
-	sprintf(path, "/pv/user-meta/%s", m->key);
+	sprintf(path, "/pv/user-meta/%s", key);
 	path_base = strdup(path);
 
 	dirname(path_base);
@@ -178,7 +178,7 @@ static void usermeta_add_hint(struct pv_meta *m)
 	if (!fd)
 		goto out;
 
-	write(fd, m->value, strlen(m->value));
+	write(fd, value, strlen(value));
 	close(fd);
 
 out:
@@ -211,7 +211,7 @@ static void pv_usermeta_free(struct pv_meta *usermeta)
 static void pv_usermeta_remove(struct pv_metadata *metadata)
 {
 	struct pv_meta *curr, *tmp;
-	struct dl_list *head = &metadata->usermeta_list;
+	struct dl_list *head = &metadata->usermeta;
 
 	pv_log(DEBUG, "removing user meta list");
 
@@ -225,7 +225,7 @@ static void pv_usermeta_remove(struct pv_metadata *metadata)
 static void pv_devmeta_remove(struct pv_metadata *metadata)
 {
 	struct pv_meta *curr, *tmp;
-	struct dl_list *head = &metadata->devmeta_list;
+	struct dl_list *head = &metadata->devmeta;
 
 	pv_log(DEBUG, "removing devmeta list");
 
@@ -240,10 +240,9 @@ static void pv_devmeta_remove(struct pv_metadata *metadata)
 	}
 }
 
-static struct pv_meta* pv_usermeta_get_by_key(struct pv_metadata *d, char *key)
+static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, char *key)
 {
 	struct pv_meta *curr, *tmp;
-	struct dl_list *head = &d->usermeta_list;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_meta, list) {
@@ -254,51 +253,61 @@ static struct pv_meta* pv_usermeta_get_by_key(struct pv_metadata *d, char *key)
 	return NULL;
 }
 
-static struct pv_meta* pv_usermeta_add(struct pv_metadata *d, char *key, char *value)
+static int pv_metadata_add(struct dl_list *head, char *key, char *value)
 {
-	int changed = 1;
+	int ret = -1;
 	struct pv_meta *curr;
 
-	if (!d || !key)
-		return NULL;
+	if (!head || !key || !value)
+		goto out;
 
-	curr = pv_usermeta_get_by_key(d, key);
+	// find and update value
+	curr = pv_metadata_get_by_key(head, key);
 	if (curr) {
-		if (strcmp(curr->value, value) == 0)
-			changed = 0;
-		if (changed) {
-			pv_config_override_value(key, value);
+		if (strcmp(curr->value, value) == 0) {
+			curr->updated = true;
+			ret = 0;
+		} else {
 			free(curr->value);
 			curr->value = strdup(value);
+			curr->updated = true;
+			ret = 1;
 		}
 		goto out;
 	}
 
-	// not found? add
+	// add new key and value pair
 	curr = calloc(1, sizeof(struct pv_meta));
 	if (curr) {
-		pv_config_override_value(key, value);
 		dl_list_init(&curr->list);
 		curr->key = strdup(key);
 		curr->value = strdup(value);
-		if (curr->key && curr->value)
-			dl_list_add(&d->usermeta_list, &curr->list);
-		else {
+		if (curr->key && curr->value) {
+			dl_list_add(head, &curr->list);
+			curr->updated = true;
+			ret = 1;
+		} else {
 			if (curr->key)
 				free(curr->key);
 			if (curr->value)
 				free(curr->value);
 			free(curr);
-			curr = NULL;
 		}
 	}
-out:
-	if (curr)
-		curr->flags |= PV_USERMETA_ADD;
 
-	if (changed && curr)
-		usermeta_add_hint(curr);
-	return curr;
+out:
+	return ret;
+}
+
+static void pv_usermeta_add(struct pv_metadata *d, char *key, char *value)
+{
+	int ret = pv_metadata_add(&d->usermeta, key, value);
+
+	if (ret > 0) {
+		pv_log(DEBUG, "user metadata key %s added or updated", key);
+		pv_config_override_value(key, value);
+		usermeta_add_hint(key, value);
+	}
 }
 
 static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
@@ -379,15 +388,13 @@ static void usermeta_clear(struct pantavisor *pv)
 	if (!pv->metadata)
 		return;
 
-	head = &pv->metadata->usermeta_list;
+	head = &pv->metadata->usermeta;
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_meta, list) {
-		/*
-		 * If ADD flag is set then clear it
-		 * for the next check cycle.
-		 */
-		if (curr->flags & PV_USERMETA_ADD)
-			curr->flags &= ~PV_USERMETA_ADD;
+		// clear the flag updated for next iteration
+		if (curr->updated)
+			curr->updated = false;
+		// not updated means user meta is no longer in cloud
 		else {
 			dl_list_del(&curr->list);
 			usermeta_remove_hint(curr);
@@ -396,40 +403,12 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-static struct pv_meta* pv_devmeta_add(struct pv_metadata *metadata, char *key, char *value)
+static void pv_devmeta_add(struct pv_metadata *metadata, char *key, char *value)
 {
-	struct pv_meta *this = NULL;
+	int ret = pv_metadata_add(&metadata->devmeta, key, value);
 
-	if (!key || !value)
-		goto out;
-
-	this = calloc(1, sizeof(struct pv_meta));
-	if (!this)
-		goto out;
-
-	dl_list_init(&this->list);
-	this->key = strdup(key);
-	if (!this->key) {
-		free(this);
-		this = NULL;
-		goto out;
-	}
-
-	this->value = strdup(value);
-	if (!this->value) {
-		free(this->key);
-		free(this);
-		this = NULL;
-		goto out;
-	}
-	dl_list_add(&metadata->devmeta_list, &this->list);
-out:
-	if (!this) {
-		pv_log(WARN, "Skipping device meta information [%s : %s]",
-				(key ? key : "nil"),
-				(value ? value : "nil"));
-	}
-	return this;
+	if (ret > 0)
+		pv_log(INFO, "device metadata key %s added or updated with value %s", key, value);
 }
 
 int pv_metadata_parse_devmeta(struct pantavisor *pv)
@@ -458,14 +437,11 @@ int pv_metadata_parse_devmeta(struct pantavisor *pv)
 		pv_devmeta_readkeys[i].buf = buf;
 		pv_devmeta_readkeys[i].buflen = bufsize;
 		ret = pv_devmeta_readkeys[i].reader(&pv_devmeta_readkeys[i]);
-		if (!ret) {
-			/*
-			 * we managed to add at least one item in the list.
-			 */
+		if (!ret)
 			pv_devmeta_add(pv->metadata, pv_devmeta_readkeys[i].key, buf);
-		}
 	}
 	pv_log_put_buffer(log_buffer);
+	pv->metadata->devmeta_uploaded = false;
 	return 0;
 }
 
@@ -495,7 +471,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	json_avail = log_buffer->size;
 	json_avail -= sprintf(json, "{");
 	len += 1;
-	head = &pv->metadata->devmeta_list;
+	head = &pv->metadata->devmeta;
 	dl_list_for_each_safe(info, tmp, head,
 			struct pv_meta, list) {
 		char *key = format_json(info->key, strlen(info->key));
@@ -701,7 +677,7 @@ static struct pv_meta* pv_metadata_get_usermeta(struct pantavisor *pv, char *key
 		return NULL;
 
 	struct pv_meta *curr, *tmp;
-	struct dl_list *head = &pv->metadata->usermeta_list;
+	struct dl_list *head = &pv->metadata->usermeta;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_meta, list) {
@@ -719,8 +695,8 @@ static int pv_metadata_init(struct pv_init *this)
 	if (!pv->metadata)
 		return -1;
 
-	dl_list_init(&pv->metadata->usermeta_list);
-	dl_list_init(&pv->metadata->devmeta_list);
+	dl_list_init(&pv->metadata->usermeta);
+	dl_list_init(&pv->metadata->devmeta);
 
 	pv->metadata->devmeta_uploaded = false;
 
@@ -788,12 +764,12 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 
 char* pv_metadata_get_user_meta_string()
 {
-	return pv_metadata_get_meta_string(&pv_get_instance()->metadata->usermeta_list);
+	return pv_metadata_get_meta_string(&pv_get_instance()->metadata->usermeta);
 }
 
 char* pv_metadata_get_device_meta_string()
 {
-	return pv_metadata_get_meta_string(&pv_get_instance()->metadata->devmeta_list);
+	return pv_metadata_get_meta_string(&pv_get_instance()->metadata->devmeta);
 }
 
 void pv_metadata_remove(struct pantavisor *pv)
