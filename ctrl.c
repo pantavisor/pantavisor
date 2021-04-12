@@ -262,7 +262,8 @@ static int pv_ctrl_read_parse_request_header(int req_fd,
 	// read from socket until end of HTTP header
 	while ((buf_index < HTTP_REQ_BUFFER_SIZE) &&
 			(1 == read(req_fd, &buf[buf_index], 1))) {
-		if ((buf[buf_index-3] == '\r') &&
+		if ((buf_index > 3) &&
+			(buf[buf_index-3] == '\r') &&
 			(buf[buf_index-2] == '\n') &&
 			(buf[buf_index-1] == '\r') &&
 			(buf[buf_index] == '\n')) {
