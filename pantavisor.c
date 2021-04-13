@@ -446,7 +446,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			cmd->payload);
 		next_state = STATE_POWEROFF;
 		break;
-	case CMD_INSTALL_LOCAL:
+	case CMD_LOCAL_RUN:
 		if (pv->update) {
 			pv_log(WARN, "ignoring install local command because an update is in progress");
 			goto out;
