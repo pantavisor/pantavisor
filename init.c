@@ -22,6 +22,7 @@
 
 #include <string.h>
 #include <stdbool.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -184,6 +185,37 @@ static void signal_handler(int signal)
 	}
 }
 
+#define HOOKS_EARLY_SPAWN "/lib/pv/hooks_early.spawn"
+
+static void early_spawns()
+{
+
+	DIR *d;
+	struct dirent *dir;
+
+	printf("starting early spawns from: %s\n", HOOKS_EARLY_SPAWN);
+	d = opendir(HOOKS_EARLY_SPAWN);
+	while (d && (dir = readdir(d)) != NULL) {
+		char buf[PATH_MAX];
+		struct stat sb;
+
+		if (!strcmp("..", dir->d_name) || !strcmp(".", dir->d_name))
+			continue;
+
+
+		sprintf(buf, "%s/%s", HOOKS_EARLY_SPAWN, dir->d_name);
+
+		if (!(stat(buf, &sb) == 0 && sb.st_mode & S_IXUSR)) {
+			printf("early_spawns: skipping not executable hook: %s\n", buf);
+			continue;
+		}
+		printf("early_spawns: starting: %s\n", buf);
+		tsh_run(buf, 0, NULL);
+	}
+	if (d)
+		closedir(d);
+}
+
 #ifdef PANTAVISOR_DEBUG
 static void debug_shell()
 {
@@ -305,6 +337,7 @@ int main(int argc, char *argv[])
 		debug_telnet();
 	}
 	redirect_io();
+	early_spawns();
 	pv_init();
 
 loop:
