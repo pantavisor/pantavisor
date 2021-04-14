@@ -55,6 +55,11 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+struct pv_path {
+	char* path;
+	struct dl_list list;
+};
+
 static int remove_at(char *path, char *filename)
 {
 	char full_path[PATH_MAX];
@@ -167,17 +172,12 @@ void pv_storage_rm_rev(struct pantavisor *pv, const char *rev)
 	sync();
 }
 
-struct pv_revision {
-	char* rev;
-	struct dl_list list;
-};
-
 static int pv_storage_get_revisions(struct dl_list *revisions)
 {
 	int n, len, ret = -1;
 	struct dirent **dirs;
 	char basedir[PATH_MAX];
-	struct pv_revision *revision;
+	struct pv_path *revision;
 
 	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
 	n = scandir(basedir, &dirs, NULL, alphasort);
@@ -190,13 +190,13 @@ static int pv_storage_get_revisions(struct dl_list *revisions)
 		if (tmp[0] != '\0')
 			continue;
 
-		revision = calloc(1, sizeof(struct pv_revision));
+		revision = calloc(1, sizeof(struct pv_path));
 		if (!revision)
 			goto out;
 
 		len = strlen(dirs[n]->d_name) + 1;
-		revision->rev = calloc(1, len * sizeof(char*));
-		snprintf(revision->rev, len, "%s", dirs[n]->d_name);
+		revision->path = calloc(1, len * sizeof(char*));
+		snprintf(revision->path, len, "%s", dirs[n]->d_name);
 		dl_list_init(&revision->list);
 		dl_list_add_tail(revisions, &revision->list);
 	}
@@ -213,8 +213,8 @@ int pv_storage_gc_run(struct pantavisor *pv)
 {
 	int reclaimed = 0, len;
 	struct pv_state *s = 0, *u = 0;
-	struct dl_list revisions; // pv_revision
-	struct pv_revision *r, *tmp;
+	struct dl_list revisions; // pv_path
+	struct pv_path *r, *tmp;
 
 	if (pv->state)
 		s = pv->state;
@@ -230,17 +230,17 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	}
 
 	// check all revisions in list
-	dl_list_for_each_safe(r, tmp, &revisions, struct pv_revision, list) {
-		len = strlen(r->rev) + 1;
+	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
+		len = strlen(r->path) + 1;
 		// dont reclaim current, update, last booted up revisions or factory if configured
-		if ((s && !strncmp(r->rev, s->rev, len)) ||
-			(u && !strncmp(r->rev, u->rev, len)) ||
-			!strncmp(r->rev, pv_bootloader_get_rev(), len) ||
-			(pv_config_get_storage_gc_keep_factory() && !strncmp(r->rev, "0", len)))
+		if ((s && !strncmp(r->path, s->rev, len)) ||
+			(u && !strncmp(r->path, u->rev, len)) ||
+			!strncmp(r->path, pv_bootloader_get_rev(), len) ||
+			(pv_config_get_storage_gc_keep_factory() && !strncmp(r->path, "0", len)))
 			continue;
 
 		// unlink the given revision from local storage
-		pv_storage_rm_rev(pv, r->rev);
+		pv_storage_rm_rev(pv, r->path);
 	}
 
 	// get rid of orphaned objects
@@ -250,8 +250,8 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		pv_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
 
 	// free temporary revision list
-	dl_list_for_each_safe(r, tmp, &revisions, struct pv_revision, list) {
-		free(r->rev);
+	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
+		free(r->path);
 		dl_list_del(&r->list);
 		free(r);
 	}
@@ -463,6 +463,9 @@ bool pv_storage_is_revision_local(const char* rev)
 {
 	char *first = strchr(rev, '/');
 	char *last = strrchr(rev, '/');
+
+	if (isdigit(rev[0]))
+		return false;
 
 	if (first && (first == last))
 		return true;
