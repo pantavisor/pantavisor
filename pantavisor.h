@@ -46,6 +46,7 @@ struct pantavisor {
 	struct pv_metadata *metadata;
 	struct pv_connection *conn;
 	bool online;
+	bool local;
 	bool unclaimed;
 	int ctrl_fd;
 };

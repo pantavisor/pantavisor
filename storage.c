@@ -459,6 +459,18 @@ int pv_storage_make_config(struct pantavisor *pv)
 	return rv;
 }
 
+bool pv_storage_is_revision_local(const char* rev)
+{
+	char *first = strchr(rev, '/');
+	char *last = strrchr(rev, '/');
+
+	if (first && (first == last))
+		return true;
+
+	pv_log(WARN, "revision name %s not valid", rev);
+	return false;
+}
+
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 {
 	// DEPRECATED: this done files are not used anymore for rollback and bootloader env

@@ -53,17 +53,21 @@
 
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
-#define ENDPOINT_TRAILS "/trails"
+#define ENDPOINT_REMOTES "/remotes"
+#define ENDPOINT_LOCALS "/locals"
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 
 #define PATH_OBJECTS "%s/objects/%s"
-#define PATH_TRAILS_PARENT "%s/trails/%s/.pvr"
-#define PATH_TRAILS "%s/trails/%s/.pvr/json"
+#define PATH_REMOTES_PARENT "%s/trails/%s/.pvr"
+#define PATH_REMOTES "%s/trails/%s/.pvr/json"
+#define PATH_LOCALS_PARENT "%s/locals/%s/.pvr"
+#define PATH_LOCALS "%s/locals/%s/.pvr/json"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
+#define HTTP_RES_ERROR "HTTP/1.1 500 Internal Server Error\r\n\r\n"
 
 static const unsigned int HTTP_REQ_BUFFER_SIZE = 16384;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
@@ -261,7 +265,8 @@ static int pv_ctrl_read_parse_request_header(int req_fd,
 	// read from socket until end of HTTP header
 	while ((buf_index < HTTP_REQ_BUFFER_SIZE) &&
 			(1 == read(req_fd, &buf[buf_index], 1))) {
-		if ((buf[buf_index-3] == '\r') &&
+		if ((buf_index > 3) &&
+			(buf[buf_index-3] == '\r') &&
 			(buf[buf_index-2] == '\n') &&
 			(buf[buf_index-1] == '\r') &&
 			(buf[buf_index] == '\n')) {
@@ -306,7 +311,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 	obj_fd = open(file_path, O_RDONLY);
 	if (obj_fd <= 0) {
 		pv_log(ERROR, "%s could not be opened for read", file_path);
-		goto out;
+		goto error;
 	}
 
 	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
@@ -320,6 +325,11 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 		}
 	}
 
+	goto out;
+
+error:
+	if (write(req_fd, HTTP_RES_ERROR, sizeof(HTTP_RES_ERROR)-1) <= 0)
+		pv_log(ERROR, "HTTP Internal Server Error response could not be sent to ctrl socket");
 out:
 	close(obj_fd);
 }
@@ -382,6 +392,8 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	struct pv_cmd *cmd = NULL;
 	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL;
 
+	memset(buf, 0, sizeof(buf));
+
 	// read first character to see if the request is a non-HTTP legacy one
 	if (read(req_fd, &buf[0], 1) < 0)
 		goto out;
@@ -405,13 +417,13 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 												&num_headers);
 	if (buf_index < 0) {
 		pv_log(WARN, "HTTP request recived has bad format");
-		goto response;
+		goto bad_request;
 	}
 
 	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
 	if (content_length <= 0) {
 		pv_log(WARN, "HTTP request received has empty body");
-		goto response;
+		goto bad_request;
 	}
 
 	// read and parse rest of message
@@ -437,19 +449,34 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (!strncmp(ENDPOINT_TRAILS, path, sizeof(ENDPOINT_TRAILS)-1)) {
-		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len);
-		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
-		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
+	} else if (!strncmp(ENDPOINT_REMOTES, path, sizeof(ENDPOINT_REMOTES)-1)) {
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_REMOTES), path_len);
+		file_path = pv_ctrl_get_file_path(PATH_REMOTES, file_name);
+
+		if (!file_name || !file_path) {
+			pv_log(WARN, "HTTP request has bad remotes name %s", file_name);
+			goto response;
+		}
+
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_file(req_fd, file_path);
+			goto out;
+		}
+	} else if (!strncmp(ENDPOINT_LOCALS, path, sizeof(ENDPOINT_LOCALS)-1)) {
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_LOCALS), path_len);
+		file_path_parent = pv_ctrl_get_file_path(PATH_LOCALS, file_name);
+		file_path = pv_ctrl_get_file_path(PATH_LOCALS, file_name);
 
 		if (!file_name || !file_path_parent || !file_path) {
-			pv_log(WARN, "HTTP request has bad trail name %s", file_name);
+			pv_log(WARN, "HTTP request has bad local name %s", file_name);
 			goto response;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			mkdir_p(file_path_parent, 0755);
-			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+			if (pv_storage_is_revision_local(file_name)) {
+				mkdir_p(file_path_parent, 0755);
+				res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
@@ -467,14 +494,18 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	}
 
 response:
-	// write response
 	if (res < 0) {
-		if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
-			pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
+		if (write(req_fd, HTTP_RES_ERROR, sizeof(HTTP_RES_ERROR)-1) <= 0)
+			pv_log(ERROR, "HTTP Internal Server Error response could not be sent to ctrl socket");
 	} else {
 		if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
 			pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 	}
+	goto out;
+
+bad_request:
+	if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
+		pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
 
 out:
 	if (file_name)
