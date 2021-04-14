@@ -53,16 +53,14 @@
 
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
-#define ENDPOINT_REMOTES "/remotes"
-#define ENDPOINT_LOCALS "/locals"
+#define ENDPOINT_REMOTES "/trails/remotes"
+#define ENDPOINT_LOCALS "/trails/locals"
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 
 #define PATH_OBJECTS "%s/objects/%s"
-#define PATH_REMOTES_PARENT "%s/trails/%s/.pvr"
-#define PATH_REMOTES "%s/trails/%s/.pvr/json"
-#define PATH_LOCALS_PARENT "%s/locals/%s/.pvr"
-#define PATH_LOCALS "%s/locals/%s/.pvr/json"
+#define PATH_TRAILS_PARENT "%s/trails/%s/.pvr"
+#define PATH_TRAILS "%s/trails/%s/.pvr/json"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
@@ -451,7 +449,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		}
 	} else if (!strncmp(ENDPOINT_REMOTES, path, sizeof(ENDPOINT_REMOTES)-1)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_REMOTES), path_len);
-		file_path = pv_ctrl_get_file_path(PATH_REMOTES, file_name);
+		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
 
 		if (!file_name || !file_path) {
 			pv_log(WARN, "HTTP request has bad remotes name %s", file_name);
@@ -464,8 +462,8 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		}
 	} else if (!strncmp(ENDPOINT_LOCALS, path, sizeof(ENDPOINT_LOCALS)-1)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_LOCALS), path_len);
-		file_path_parent = pv_ctrl_get_file_path(PATH_LOCALS, file_name);
-		file_path = pv_ctrl_get_file_path(PATH_LOCALS, file_name);
+		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
+		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
 
 		if (!file_name || !file_path_parent || !file_path) {
 			pv_log(WARN, "HTTP request has bad local name %s", file_name);
@@ -481,12 +479,14 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (!strncmp(ENDPOINT_USER_META, path, sizeof(ENDPOINT_USER_META)-1)) {
+	} else if (!strncmp(ENDPOINT_USER_META, path, sizeof(ENDPOINT_USER_META)-1) &&
+		(path_len == sizeof(ENDPOINT_USER_META)-1)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
 			goto out;
 		}
-	} else if (!strncmp(ENDPOINT_DEVICE_META, path, sizeof(ENDPOINT_DEVICE_META)-1)) {
+	} else if (!strncmp(ENDPOINT_DEVICE_META, path, sizeof(ENDPOINT_DEVICE_META)-1) &&
+		(path_len == sizeof(ENDPOINT_DEVICE_META)-1)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 			goto out;

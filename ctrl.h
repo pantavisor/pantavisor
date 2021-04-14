@@ -47,7 +47,7 @@ void pv_ctrl_socket_close(int ctrl_fd);
 
 static inline const char* pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 {
-	static const char *strings[] = {NULL, "UPDATE_METADATA","JSON_LOG","REBOOT_DEVICE","POWEROFF_DEVICE","LOCAL_RUN"};
+	static const char *strings[] = {NULL, "UPDATE_METADATA","REBOOT_DEVICE","POWEROFF_DEVICE","TRY_ONCE","LOCAL_RUN"};
 	return strings[op];
 }
 
