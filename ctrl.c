@@ -53,8 +53,7 @@
 
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
-#define ENDPOINT_REMOTES "/trails/remotes"
-#define ENDPOINT_LOCALS "/trails/locals"
+#define ENDPOINT_TRAILS "/trails"
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 
@@ -447,26 +446,13 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (!strncmp(ENDPOINT_REMOTES, path, sizeof(ENDPOINT_REMOTES)-1)) {
-		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_REMOTES), path_len);
-		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
-
-		if (!file_name || !file_path) {
-			pv_log(WARN, "HTTP request has bad remotes name %s", file_name);
-			goto response;
-		}
-
-		if (!strncmp("GET", method, method_len)) {
-			pv_ctrl_process_get_file(req_fd, file_path);
-			goto out;
-		}
-	} else if (!strncmp(ENDPOINT_LOCALS, path, sizeof(ENDPOINT_LOCALS)-1)) {
-		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_LOCALS), path_len);
+	} else if (!strncmp(ENDPOINT_TRAILS, path, sizeof(ENDPOINT_TRAILS)-1)) {
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len);
 		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
 
 		if (!file_name || !file_path_parent || !file_path) {
-			pv_log(WARN, "HTTP request has bad local name %s", file_name);
+			pv_log(WARN, "HTTP request has bad trail name %s", file_name);
 			goto response;
 		}
 

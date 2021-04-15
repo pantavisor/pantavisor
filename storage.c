@@ -464,7 +464,7 @@ bool pv_storage_is_revision_local(const char* rev)
 	char *first = strchr(rev, '/');
 	char *last = strrchr(rev, '/');
 
-	if (isdigit(rev[0]))
+	if (strncmp(rev, "locals/", strlen("locals/")))
 		return false;
 
 	if (first && (first == last))
