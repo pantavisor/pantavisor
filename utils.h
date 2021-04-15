@@ -22,10 +22,13 @@
 #ifndef PV_UTILS_H
 #define PV_UTILS_H
 
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <sys/types.h>
 
 #include <jsmn/jsmnutil.h>
-#include <stdlib.h>
 
 int mkdir_p(char *dir, mode_t mode);
 
@@ -97,4 +100,20 @@ int gzip_file(const char *filename, const char *target_name);
 int check_and_open_file(const char *fname, int flags, mode_t mode);
 
 #define PREFIX_MODEL	"model name\t:"
+
+static inline bool str_startswith(const char* str1, int str1len, const char* str2)
+{
+	return !strncmp(str1, str2, str1len);
+}
+
+static inline bool str_matches(const char* str1, int str1len, const char* str2, int str2len)
+{
+	return ((str1len == str2len) && !strncmp(str1, str2, str1len));
+}
+
+static inline bool str_endswith(const char* str1, int str1len, const char* str2, int str2len)
+{
+	return ((str2len > str1len) && !strncmp(str1, &str2[str2len - str1len], str1len));
+}
+
 #endif // PV_UTILS_H

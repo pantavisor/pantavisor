@@ -25,6 +25,7 @@
 struct pv_state* pv_storage_get_state(struct pantavisor *pv, const char *rev);
 char* pv_storage_get_initrd_config_name(const char *rev);
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
+void pv_storage_set_rev_progress(const char *rev, const char *progress);
 void pv_storage_rm_rev(struct pantavisor *pv, const char *rev);
 void pv_storage_set_active(struct pantavisor *pv);
 int pv_storage_make_config(struct pantavisor *pv);

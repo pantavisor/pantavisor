@@ -54,12 +54,14 @@
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
 #define ENDPOINT_TRAILS "/trails"
+#define ENDPOINT_PROGRESS "/progress"
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 
 #define PATH_OBJECTS "%s/objects/%s"
 #define PATH_TRAILS_PARENT "%s/trails/%s/.pvr"
 #define PATH_TRAILS "%s/trails/%s/.pvr/json"
+#define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
@@ -424,11 +426,11 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	}
 
 	// read and parse rest of message
-	if (!strncmp(ENDPOINT_COMMANDS, path, sizeof(ENDPOINT_COMMANDS)-1)) {
+	if (str_startswith(ENDPOINT_COMMANDS, strlen(ENDPOINT_COMMANDS), path)) {
 		if (!strncmp("POST", method, method_len)) {
 			res = pv_ctrl_process_cmd(req_fd, content_length, &cmd);
 		}
-	} else if (!strncmp(ENDPOINT_OBJECTS, path, sizeof(ENDPOINT_OBJECTS)-1)) {
+	} else if (str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
 		file_path = pv_ctrl_get_file_path(PATH_OBJECTS, file_name);
 
@@ -446,7 +448,21 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (!strncmp(ENDPOINT_TRAILS, path, sizeof(ENDPOINT_TRAILS)-1)) {
+	} else if (str_startswith(ENDPOINT_TRAILS, strlen(ENDPOINT_TRAILS), path) &&
+		str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len - strlen(ENDPOINT_PROGRESS));
+		file_path = pv_ctrl_get_file_path(PATH_TRAILS_PROGRESS, file_name);
+
+		if (!file_name || !file_path) {
+			pv_log(WARN, "HTTP request has bad object name %s", file_name);
+			goto response;
+		}
+
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_file(req_fd, file_path);
+		}
+		goto out;
+	} else if (str_startswith(ENDPOINT_TRAILS, strlen(ENDPOINT_TRAILS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len);
 		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
@@ -465,14 +481,12 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (!strncmp(ENDPOINT_USER_META, path, sizeof(ENDPOINT_USER_META)-1) &&
-		(path_len == sizeof(ENDPOINT_USER_META)-1)) {
+	} else if (str_matches(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
 			goto out;
 		}
-	} else if (!strncmp(ENDPOINT_DEVICE_META, path, sizeof(ENDPOINT_DEVICE_META)-1) &&
-		(path_len == sizeof(ENDPOINT_DEVICE_META)-1)) {
+	} else if (str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 			goto out;
@@ -481,16 +495,16 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 response:
 	if (res < 0) {
-		if (write(req_fd, HTTP_RES_ERROR, sizeof(HTTP_RES_ERROR)-1) <= 0)
+		if (write(req_fd, HTTP_RES_ERROR, strlen(HTTP_RES_ERROR)) <= 0)
 			pv_log(ERROR, "HTTP Internal Server Error response could not be sent to ctrl socket");
 	} else {
-		if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
+		if (write(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK)) <= 0)
 			pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
 	}
 	goto out;
 
 bad_request:
-	if (write(req_fd, HTTP_RES_BAD_REQ, sizeof(HTTP_RES_BAD_REQ)-1) <= 0)
+	if (write(req_fd, HTTP_RES_BAD_REQ, strlen(HTTP_RES_BAD_REQ)) <= 0)
 		pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
 
 out:

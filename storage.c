@@ -496,6 +496,29 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 	close(fd);
 }
 
+void pv_storage_set_rev_progress(const char *rev, const char *progress)
+{
+	int fd;
+	char path[256];
+
+	sprintf(path, "%s/trails/%s/.pv/progress", pv_config_get_storage_mntpoint(), rev);
+
+	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC , 0644);
+	if (!fd) {
+		pv_log(WARN, "unable to open progress file for revision %s", rev);
+		return;
+	}
+
+	if (write(fd, progress, strlen(progress)) < 0) {
+		pv_log(WARN, "unable to write progress file for revision %s", rev);
+		return;
+	}
+
+	// commit to disk
+	fsync(fd);
+	close(fd);
+}
+
 void pv_storage_meta_set_objdir(struct pantavisor *pv)
 {
 	int fd = 0;

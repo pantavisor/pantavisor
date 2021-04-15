@@ -182,7 +182,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// we know if we are in local if the running revision has the local format
 	if (pv_storage_is_revision_local(pv->state->rev)) {
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
-		pv->local = true;
+		pv->state->local = true;
 	}
 
 	// only start local ph logger, start cloud services if connected
@@ -281,7 +281,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	struct timespec tp;
 
 	// check if we are online and authenticated
-	if (!pv->local &&
+	if (!pv->state->local &&
 		(!pv_ph_is_auth(pv) ||
 		!pv_trail_is_auth(pv))) {
 		// this could mean the trying update cannot connect to ph
@@ -354,7 +354,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// twice in less than the configured interval
 	if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
 		// check if device is unclaimed
-		if (pv->unclaimed && !pv->local) {
+		if (pv->unclaimed && !pv->state->local) {
 			next_state = STATE_UNCLAIMED;
 			goto out;
 		}
@@ -693,7 +693,6 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->remote = NULL;
 	pv->update = NULL;
 	pv->online = false;
-	pv->local = false;
 	ret = 0;
 out:
 	return 0;
