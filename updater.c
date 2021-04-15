@@ -216,7 +216,7 @@ static void object_update_json(struct object_update *object_update,
 			);
 }
 
-static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *update, enum update_state status, const char *msg)
+static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, const char *msg)
 {
 	int ret = 0;
 	trest_request_ptr req = 0;
@@ -225,12 +225,18 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	char *json = __json;
 	char message[128];
 	char total_progress_json[512];
+	struct pv_update *update;
 
-	if (!pv->remote || !update) {
-		pv_log(WARN, "remote or update not initialized");
-		goto out;
+	if (!pv || !pv->update) {
+		pv_log(WARN, "uninitialized update");
+		return -1;
 	}
 
+	// update the update state machine
+	update = pv->update;
+	pv->update->status = status;
+
+	// create json according to status
 	switch (status) {
 	case UPDATE_QUEUED:
 		// form message
@@ -361,6 +367,20 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
 			"ERROR", "Error during update", 0);
 		break;
+	}
+
+	// store progress in trails
+	if (update->pending && update->pending->rev)
+		pv_storage_set_rev_progress(update->pending->rev, json);
+	else
+		pv_log(WARN, "progress will not be stored in trails");
+
+	// do not report to cloud if that is not possible
+	if ((update->pending && update->pending->local) ||
+		!pv->online ||
+		trail_remote_init(pv)) {
+		pv_log(WARN, "status will not be send to cloud");
+		goto out;
 	}
 
 	req = trest_make_request(TREST_METHOD_PUT,
@@ -576,7 +596,7 @@ process_response:
 	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
 		!state) {
 		pv_log(WARN, "failed to parse the rest of the response");
-		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		pv_update_set_status_msg(pv, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -585,7 +605,7 @@ send_feedback:
 
 	// report stale revision
 	if (wrong_revision) {
-		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
+		pv_update_set_status_msg(pv, UPDATE_FAILED, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -593,7 +613,7 @@ send_feedback:
 	// increment and report revision retry max reached
 	if (retries > pv_config_get_updater_revision_retries()) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
-		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
+		pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -601,13 +621,13 @@ send_feedback:
 	// retry number recovered from endpoint response
 	update->retries = retries;
 	// if everything went well until this point, put revision to queue
-	trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
+	pv_update_set_status_msg(pv, UPDATE_QUEUED, NULL);
 
 	// parse state
 	update->pending = pv_parser_get_state(pv, state, rev);
 	if (!update->pending) {
 		pv_log(WARN, "invalid state from rev %s", rev);
-		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		pv_update_set_status_msg(pv, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -1025,25 +1045,6 @@ bool pv_trail_is_auth(struct pantavisor *pv)
 		return true;
 
 	return false;
-}
-
-static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, char *msg)
-{
-	if (!pv || !pv->update) {
-		pv_log(WARN, "uninitialized update");
-		return -1;
-	}
-
-	// update the update state machine
-	pv->update->status = status;
-
-	// do not report to cloud if that is not possible
-	if (pv->update->local || !pv->online || trail_remote_init(pv)) {
-		pv_log(WARN, "status will not be send to cloud");
-		return 0;
-	}
-
-	return trail_remote_set_status(pv, pv->update, status, msg);
 }
 
 int pv_update_set_status(struct pantavisor *pv, enum update_state status)
@@ -1677,6 +1678,8 @@ struct pv_update* pv_update_get_step_local(char *rev)
 	update->pending = pv_storage_get_state(pv_get_instance(), rev);
 	if (!update->pending)
 		goto err;
+
+	update->pending->local = true;
 
 	return update;
 
