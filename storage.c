@@ -474,6 +474,23 @@ bool pv_storage_is_revision_local(const char* rev)
 	return false;
 }
 
+char* pv_storage_get_revisions_string()
+{
+	int len = 1;
+	char *out = calloc(1, len * sizeof(char));
+
+	// open json
+	out[0]='{';
+
+	// close json
+	len += 1;
+	out = realloc(out, len * sizeof(char));
+	out[len-2] = '}';
+	out[len-1] = '\0';
+
+	return out;
+}
+
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 {
 	// DEPRECATED: this done files are not used anymore for rollback and bootloader env

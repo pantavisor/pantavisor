@@ -448,6 +448,11 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
+	} else if (str_matches(ENDPOINT_TRAILS, strlen(ENDPOINT_TRAILS), path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_string(req_fd, pv_storage_get_revisions_string());
+			goto out;
+		}
 	} else if (str_startswith(ENDPOINT_TRAILS, strlen(ENDPOINT_TRAILS), path) &&
 		str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len - strlen(ENDPOINT_PROGRESS));

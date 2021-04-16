@@ -30,6 +30,7 @@ void pv_storage_rm_rev(struct pantavisor *pv, const char *rev);
 void pv_storage_set_active(struct pantavisor *pv);
 int pv_storage_make_config(struct pantavisor *pv);
 bool pv_storage_is_revision_local(const char* rev);
+char* pv_storage_get_revisions_string(void);
 
 int pv_storage_validate_file_checksum(char* path, char* checksum);
 
