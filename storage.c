@@ -263,7 +263,6 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		// dont reclaim current, locals, update, last booted up revisions or factory if configured
 		if (!strncmp(r->path, "..", len) ||
 			!strncmp(r->path, ".", len) ||
-			!strncmp(r->path, "current", len) ||
 			!strncmp(r->path, "locals", len) ||
 			(s && !strncmp(r->path, s->rev, len)) ||
 			(u && !strncmp(r->path, u->rev, len)) ||
