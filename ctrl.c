@@ -53,7 +53,7 @@
 
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
-#define ENDPOINT_TRAILS "/trails"
+#define ENDPOINT_STEPS "/steps"
 #define ENDPOINT_PROGRESS "/progress"
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
@@ -367,7 +367,7 @@ static void pv_ctrl_process_get_string(int req_fd, char* buf)
 {
 	int buf_len;
 
-	pv_log(INFO, "converting meta to string and sending it to endpoint...");
+	pv_log(INFO, "converting data to string and sending it to endpoint...");
 
 	buf_len = strlen(buf);
 
@@ -448,9 +448,14 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (str_startswith(ENDPOINT_TRAILS, strlen(ENDPOINT_TRAILS), path) &&
+	} else if (str_matches(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_string(req_fd, pv_storage_get_revisions_string());
+			goto out;
+		}
+	} else if (str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
-		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len - strlen(ENDPOINT_PROGRESS));
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_PROGRESS));
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS_PROGRESS, file_name);
 
 		if (!file_name || !file_path) {
@@ -462,13 +467,13 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 		}
 		goto out;
-	} else if (str_startswith(ENDPOINT_TRAILS, strlen(ENDPOINT_TRAILS), path)) {
-		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_TRAILS), path_len);
+	} else if (str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
 		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
 
 		if (!file_name || !file_path_parent || !file_path) {
-			pv_log(WARN, "HTTP request has bad trail name %s", file_name);
+			pv_log(WARN, "HTTP request has bad step name %s", file_name);
 			goto response;
 		}
 
