@@ -172,39 +172,67 @@ void pv_storage_rm_rev(struct pantavisor *pv, const char *rev)
 	sync();
 }
 
-static int pv_storage_get_revisions(struct dl_list *revisions)
+static int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs)
 {
 	int n, len, ret = -1;
+	char *basedir;
 	struct dirent **dirs;
-	char basedir[PATH_MAX];
-	struct pv_path *revision;
+	struct pv_path *subdir;
 
-	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
+	len = strlen(path) + strlen(prefix) + 1;
+	basedir = calloc(1, len + sizeof(char));
+	sprintf(basedir, "%s%s", path, prefix);
+
 	n = scandir(basedir, &dirs, NULL, alphasort);
 	while (n--) {
 		char *tmp = dirs[n]->d_name;
 
-		while (*tmp && isdigit(*tmp))
+		while (*tmp && isalnum(*tmp))
 			tmp++;
 
 		if (tmp[0] != '\0')
 			continue;
 
-		revision = calloc(1, sizeof(struct pv_path));
-		if (!revision)
+		subdir = calloc(1, sizeof(struct pv_path));
+		if (!subdir)
 			goto out;
 
-		len = strlen(dirs[n]->d_name) + 1;
-		revision->path = calloc(1, len * sizeof(char*));
-		snprintf(revision->path, len, "%s", dirs[n]->d_name);
-		dl_list_init(&revision->list);
-		dl_list_add_tail(revisions, &revision->list);
+		len = strlen(prefix) + strlen(dirs[n]->d_name) + 1;
+		subdir->path = calloc(1, len * sizeof(char*));
+		snprintf(subdir->path, len, "%s%s", prefix, dirs[n]->d_name);
+		dl_list_init(&subdir->list);
+		dl_list_add(subdirs, &subdir->list);
 	}
 
 	ret = 0;
 
 out:
-	free(dirs);
+	if (basedir)
+		free(basedir);
+	if (dirs)
+		free(dirs);
+
+	return ret;
+}
+
+static int pv_storage_get_revisions(struct dl_list *revisions)
+{
+	int ret = -1, len;
+	char *basedir;
+
+	len = strlen("%s/trails/") + strlen(pv_config_get_storage_mntpoint()) + 1;
+	basedir = calloc(1, len + sizeof(char));
+	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
+
+	if (pv_storage_get_subdir(basedir, "locals/", revisions) ||
+		pv_storage_get_subdir(basedir, "", revisions))
+		goto out;
+
+	ret = 0;
+
+out:
+	if (basedir)
+		free(basedir);
 
 	return ret;
 }
@@ -232,8 +260,12 @@ int pv_storage_gc_run(struct pantavisor *pv)
 	// check all revisions in list
 	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
 		len = strlen(r->path) + 1;
-		// dont reclaim current, update, last booted up revisions or factory if configured
-		if ((s && !strncmp(r->path, s->rev, len)) ||
+		// dont reclaim current, locals, update, last booted up revisions or factory if configured
+		if (!strncmp(r->path, "..", len) ||
+			!strncmp(r->path, ".", len) ||
+			!strncmp(r->path, "current", len) ||
+			!strncmp(r->path, "locals", len) ||
+			(s && !strncmp(r->path, s->rev, len)) ||
 			(u && !strncmp(r->path, u->rev, len)) ||
 			!strncmp(r->path, pv_bootloader_get_rev(), len) ||
 			(pv_config_get_storage_gc_keep_factory() && !strncmp(r->path, "0", len)))
@@ -476,17 +508,45 @@ bool pv_storage_is_revision_local(const char* rev)
 
 char* pv_storage_get_revisions_string()
 {
-	int len = 1;
+	int len = 1, line_len;
 	char *out = calloc(1, len * sizeof(char));
+	struct dl_list revisions; // pv_path
+	struct pv_path *r, *tmp;
+
+	dl_list_init(&revisions);
+	if (pv_storage_get_revisions(&revisions))
+		pv_log(ERROR, "error parsings revs on disk for ctrl");
 
 	// open json
 	out[0]='{';
+
+	// fill up revision list in json
+	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
+		line_len = strlen(r->path) + 3;
+		// dont list current or locals dir
+		if (!strncmp(r->path, "..", strlen("..") + 1) ||
+			!strncmp(r->path, ".", strlen(".") + 1) ||
+			!strncmp(r->path, "current", strlen("current") + 1) ||
+			!strncmp(r->path, "locals", strlen("locals") + 1))
+			continue;
+
+		out = realloc(out, (len + line_len) * sizeof(char));
+		snprintf(&out[len], line_len + 1, "\"%s\",", r->path);
+		len += line_len;
+	}
 
 	// close json
 	len += 1;
 	out = realloc(out, len * sizeof(char));
 	out[len-2] = '}';
 	out[len-1] = '\0';
+
+	// free temporary revision list
+	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
+		free(r->path);
+		dl_list_del(&r->list);
+		free(r);
+	}
 
 	return out;
 }
