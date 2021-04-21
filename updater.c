@@ -81,6 +81,9 @@ void pv_update_free(struct pv_update *update)
 
 static void pv_update_remove(struct pantavisor *pv)
 {
+	// do not remove state if the one update is the same currently running
+	if (pv->update->pending == pv->state)
+		pv->update->pending = NULL;
 	pv_update_free(pv->update);
 	pv->update = NULL;
 }
@@ -368,7 +371,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	}
 
 	// store progress in trails
-	if ((update == pv->update) && update->pending && update->pending->rev)
+	if (update->pending && update->pending->rev)
 		pv_storage_set_rev_progress(update->pending->rev, json);
 	else
 		pv_log(WARN, "progress will not be stored in trails");
