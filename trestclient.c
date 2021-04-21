@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012 Pantacor Ltd.
+ * Copyright (c) 2020-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -194,15 +194,16 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	switch (creds_type) {
 	case HUB_CREDS_TYPE_BUILTIN:
 		// Create client
+
 		client = trest_new_tls_from_userpass(
-			pv_config_get_creds_host(),
-			pv_config_get_creds_port(),
-			pv_config_get_creds_prn(),
-			pv_config_get_creds_secret(),
-			(const char **) cafiles,
-			pv_user_agent,
-			(conn ? NULL : NULL)
-			);
+						     pv_config_get_creds_host(),
+						     pv_config_get_creds_port(),
+						     pv_config_get_creds_prn(),
+						     pv_config_get_creds_secret(),
+						     (const char **) cafiles,
+						     pv_user_agent,
+						     (conn ? NULL : NULL)
+						     );
 
 		if (!client) {
 			pv_log(INFO, "unable to create device client");
@@ -211,14 +212,14 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		break;
 	case HUB_CREDS_TYPE_EXTERNAL:
 		client = trest_new_tls_with_login_handler(
-			pv_config_get_creds_host(),
-			pv_config_get_creds_port(),
-			external_login_handler,
-			pv,
-			(const char **) cafiles,
-			pv_user_agent,
-			(conn ? NULL : NULL)
-			);
+							  pv_config_get_creds_host(),
+							  pv_config_get_creds_port(),
+							  external_login_handler,
+							  pv,
+							  (const char **) cafiles,
+							  pv_user_agent,
+							  (conn ? NULL : NULL)
+							  );
 
 		if (!client) {
 			pv_log(INFO, "unable to create device client");
@@ -230,6 +231,13 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 				"Currently supported: builtin and ext-* handlers",
 				pv_config_get_creds_type());
 		goto err;
+	}
+
+	// not a proxy -> use tls
+	if (pv_config_get_creds_host_proxy()) {
+		trest_set_proxy(client, pv_config_get_creds_host_proxy(),
+				pv_config_get_creds_port_proxy(),
+				false);
 	}
 
 	return client;

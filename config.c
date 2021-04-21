@@ -109,6 +109,19 @@ static int config_get_value_logsize(struct dl_list *config_list, char *key, int 
 	return value;
 }
 
+static void config_override_value_string(struct dl_list *config_list, char *key, char **out)
+{
+	char *item = config_get_value(config_list, key);
+
+	if (*out)
+		free(*out);
+
+	if (item)
+		*out = strdup(item);
+	else
+		*out = NULL;
+}
+
 static void config_override_value_int(struct dl_list *config_list, char *key, int *out)
 {
 	char *item = config_get_value(config_list, key);
@@ -193,6 +206,8 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	config->creds.type = config_get_value_string(&config_list, "creds.type", "builtin");
 	config->creds.host = config_get_value_string(&config_list, "creds.host", "192.168.53.1");
 	config->creds.port = config_get_value_int(&config_list, "creds.port", 12365);
+	config->creds.host_proxy = config_get_value_string(&config_list, "creds.proxy.host", NULL);
+	config->creds.port_proxy = config_get_value_int(&config_list, "creds.proxy.port", 3218);
 	config->creds.id = config_get_value_string(&config_list, "creds.id", NULL);
 	config->creds.prn = config_get_value_string(&config_list, "creds.prn", NULL);
 	config->creds.secret = config_get_value_string(&config_list, "creds.secret", NULL);
@@ -226,8 +241,8 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
-	config_override_value_int(&config_list, "storage.wait", &config->storage.wait);
-
+	config_override_value_string(&config_list, "creds.proxy.host", &config->creds.host_proxy);
+	config_override_value_int(&config_list, "creds.proxy.port", &config->creds.port_proxy);
 	config_override_value_int(&config_list, "storage.gc.reserved", &config->storage.gc.reserved);
 	config_override_value_bool(&config_list, "storage.gc.keep_factory", &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "storage.gc.threshold", &config->storage.gc.threshold);
@@ -295,6 +310,10 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	write_config_tuple_string(fd, "creds.type", config->creds.type);
 	write_config_tuple_string(fd, "creds.host", config->creds.host);
 	write_config_tuple_int(fd, "creds.port", config->creds.port);
+	if (config->creds.host_proxy) {
+		write_config_tuple_string(fd, "creds.proxy.host", config->creds.host_proxy);
+		write_config_tuple_int(fd, "creds.proxy.port", config->creds.port_proxy);
+	}
 	write_config_tuple_string(fd, "creds.id", config->creds.id);
 	write_config_tuple_string(fd, "creds.prn", config->creds.prn);
 	write_config_tuple_string(fd, "creds.secret", config->creds.secret);
@@ -406,6 +425,8 @@ void pv_config_free()
 		free(pv->config.creds.type);
 	if (pv->config.creds.host)
 		free(pv->config.creds.host);
+	if (pv->config.creds.host_proxy)
+		free(pv->config.creds.host_proxy);
 	if (pv->config.creds.id)
 		free(pv->config.creds.id);
 	if (pv->config.creds.prn)
@@ -434,6 +455,8 @@ char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.
 char* pv_config_get_creds_type() { return pv_get_instance()->config.creds.type; }
 char* pv_config_get_creds_host() { return pv_get_instance()->config.creds.host; }
 int pv_config_get_creds_port() { return pv_get_instance()->config.creds.port; }
+char* pv_config_get_creds_host_proxy() { return pv_get_instance()->config.creds.host_proxy; }
+int pv_config_get_creds_port_proxy() { return pv_get_instance()->config.creds.port_proxy; }
 char* pv_config_get_creds_id() { return pv_get_instance()->config.creds.id; }
 char* pv_config_get_creds_prn() { return pv_get_instance()->config.creds.prn; }
 char* pv_config_get_creds_secret() { return pv_get_instance()->config.creds.secret; }

@@ -51,6 +51,8 @@ struct pantavisor_creds {
 	char *type;
 	char *host;
 	int port;
+	char *host_proxy;
+	int port_proxy;
 	char *id;
 	char *prn;
 	char *secret;
@@ -144,6 +146,8 @@ char* pv_config_get_cache_dropbearcachedir(void);
 char* pv_config_get_creds_type(void);
 char* pv_config_get_creds_host(void);
 int pv_config_get_creds_port(void);
+char* pv_config_get_creds_host_proxy(void);
+int pv_config_get_creds_port_proxy(void);
 char* pv_config_get_creds_id(void);
 char* pv_config_get_creds_prn(void);
 char* pv_config_get_creds_secret(void);
