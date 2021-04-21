@@ -216,7 +216,7 @@ static void object_update_json(struct object_update *object_update,
 			);
 }
 
-static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, const char *msg)
+static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *update, enum update_state status, const char *msg)
 {
 	int ret = 0;
 	trest_request_ptr req = 0;
@@ -225,16 +225,14 @@ static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state sta
 	char *json = __json;
 	char message[128];
 	char total_progress_json[512];
-	struct pv_update *update;
 
-	if (!pv || !pv->update) {
+	if (!pv || !update) {
 		pv_log(WARN, "uninitialized update");
 		return -1;
 	}
 
 	// update the update state machine
-	update = pv->update;
-	pv->update->status = status;
+	update->status = status;
 
 	// create json according to status
 	switch (status) {
@@ -370,7 +368,7 @@ static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state sta
 	}
 
 	// store progress in trails
-	if (update->pending && update->pending->rev)
+	if ((update == pv->update) && update->pending && update->pending->rev)
 		pv_storage_set_rev_progress(update->pending->rev, json);
 	else
 		pv_log(WARN, "progress will not be stored in trails");
@@ -596,7 +594,7 @@ process_response:
 	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
 		!state) {
 		pv_log(WARN, "failed to parse the rest of the response");
-		pv_update_set_status_msg(pv, UPDATE_NO_PARSE, NULL);
+		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -605,7 +603,7 @@ send_feedback:
 
 	// report stale revision
 	if (wrong_revision) {
-		pv_update_set_status_msg(pv, UPDATE_FAILED, NULL);
+		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -613,7 +611,7 @@ send_feedback:
 	// increment and report revision retry max reached
 	if (retries > pv_config_get_updater_revision_retries()) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
-		pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, NULL);
+		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -621,13 +619,13 @@ send_feedback:
 	// retry number recovered from endpoint response
 	update->retries = retries;
 	// if everything went well until this point, put revision to queue
-	pv_update_set_status_msg(pv, UPDATE_QUEUED, NULL);
+	trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
 
 	// parse state
 	update->pending = pv_parser_get_state(pv, state, rev);
 	if (!update->pending) {
 		pv_log(WARN, "invalid state from rev %s", rev);
-		pv_update_set_status_msg(pv, UPDATE_NO_PARSE, NULL);
+		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -1045,6 +1043,16 @@ bool pv_trail_is_auth(struct pantavisor *pv)
 		return true;
 
 	return false;
+}
+
+static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, char *msg)
+{
+	if (!pv || !pv->update) {
+		pv_log(WARN, "uninitialized update");
+		return -1;
+	}
+
+	return trail_remote_set_status(pv, pv->update, status, msg);
 }
 
 int pv_update_set_status(struct pantavisor *pv, enum update_state status)
