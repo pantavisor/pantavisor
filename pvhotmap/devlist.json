@@ -12,16 +12,16 @@
             "dasd*",
             "loop*",
             "md*",
-            "mmc*",
+            "mmc*"
         ],
         "SUBSYSTEM": "block",
         "ID_VENDOR_ID": "0781",
         "ID_MODEL_ID": "558b"
       },
       "apply": {
-        "perm": 666,
-        "gid": 5,
-        "uid": 0
+        "perm": "666",
+        "gid": "5",
+        "uid": "0"
       }
     },
     {
@@ -34,12 +34,12 @@
         ],
         "SUBSYSTEM": "tty",
         "ID_VENDOR_ID": "0403",
-        "ID_MODEL_ID": "6001",
+        "ID_MODEL_ID": "6001"
       },
       "apply": {
-        "perm": 644,
-        "gid": 11,
-        "uid": 0
+        "perm": "644",
+        "gid": "11",
+        "uid": "0"
       }
     }
   ]

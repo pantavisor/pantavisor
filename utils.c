@@ -149,7 +149,7 @@ int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc)
 	for(i=0; i<tokc; i++) {
 		int n = tok[i].end - tok[i].start;
 		int m = strlen (key);
-		if (tok[i].type == JSMN_STRING
+		if (tok[i].type == JSMN_PRIMITIVE
 		    && n == m
 		    && !strncmp(buf + tok[i].start, key, n)) {
 			t=1;

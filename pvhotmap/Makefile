@@ -1,8 +1,8 @@
 CC = gcc
 
-OBJS = udevmap.o json-parser.o ../libthttp/jsmn/jsmn.o ../libthttp/jsmn/jsmnutil.o utils.o
+OBJS = udevmap.o pvhotmap_parser.o ../../libthttp/jsmn/jsmn.o ../../libthttp/jsmn/jsmnutil.o ../utils.o
 
-CFLAGS += -Wunused -g -I ../libthttp/ -I ./
+CFLAGS += -Wunused -g -I ../../libthttp/ -I ./ -I ../
 
 LDFLAGS = -lpthread
 
