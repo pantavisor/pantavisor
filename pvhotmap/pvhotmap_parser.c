@@ -46,7 +46,7 @@ static int append (struct dl_list *head, char **pv_action, int actkeylen, char *
 	char call_itr = 0;
 	int total_size = 0;
 
-	for(call_itr=0; call_itr<actkeylen; call_itr++) {
+	for(call_itr = 0; call_itr < actkeylen; call_itr++) {
 
 		tmp_list = malloc(sizeof(*tmp_list));
 		if (tmp_list == NULL)
@@ -88,7 +88,7 @@ static int append (struct dl_list *head, char **pv_action, int actkeylen, char *
 		tmp_list->devname = calloc(1, (dnamesize+1)*sizeof(char *));
 		tmp_list->devname[dnamesize] = NULL;
 		tmp_list->devname_size = dnamesize;
-		for(int i=0; i<dnamesize; i++) {
+		for(int i = 0; i < dnamesize; i++) {
 			tmp_list->devname[i] = calloc(1, (strlen("DEVNAME=")+strlen(dname[i])));
 			strcpy(tmp_list->devname[i], "DEVNAME=");
 			strcat(tmp_list->devname[i], dname[i]);
@@ -154,9 +154,8 @@ struct dl_list *parse_rules_file(void) {
 
 	/*extract the values of top most key from json rules which is "rules"*/
 	um = get_json_key_value(json_content, "rules", tokv, tokc);
-	if (!um) {
+	if (!um)
 		goto out;
-	}
 	if (tokv)
 		free(tokv);
 
@@ -269,21 +268,21 @@ struct dl_list *parse_rules_file(void) {
 		append(&device_list->next_match, tmp_action, act_key_len, subsys, vid, model, gid, perm, uid, tmp_devname, key_len);
 
 		if (key) free(key);
-		if(keyss) jsmnutil_tokv_free(keyss);
-		if(match_p) free(match_p);
-		if(apply) free(apply);
-		if(action) free(action);
-		if(vid) free(vid);
-		if(subsys) free(subsys);
-		if(model) free(model);
-		if(gid) free(gid);
-		if(uid) free(uid);
-		if(perm) free(perm);
-		if(dev_name) free(dev_name);
-		for(int i=0; i<act_key_len; i++) {
+		if (keyss) jsmnutil_tokv_free(keyss);
+		if (match_p) free(match_p);
+		if (apply) free(apply);
+		if (action) free(action);
+		if (vid) free(vid);
+		if (subsys) free(subsys);
+		if (model) free(model);
+		if (gid) free(gid);
+		if (uid) free(uid);
+		if (perm) free(perm);
+		if (dev_name) free(dev_name);
+		for(int i = 0; i < act_key_len; i++) {
 			if(tmp_action[i]) free(tmp_action[i]);
 		}
-		for(int i=0; i<key_len; i++) {
+		for(int i = 0; i < key_len; i++) {
 			if(tmp_devname[i]) free(tmp_devname[i]);
 		}
 		free(tmp_action);
@@ -291,7 +290,7 @@ struct dl_list *parse_rules_file(void) {
 
 		key_i++;
 	}
-	out:
+out:
 	if (tokv) free(tokv);
 	if (tok_v) free(tok_v);
 	if(um) free(um);

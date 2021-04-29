@@ -61,11 +61,11 @@ struct udevmap_rule {
 
 	/* what uevent node to execute against */
 	char **matches;
-	int matches_c;
+	int matches_cnt;
 
 	/* what ancestor conditions to filter for */
 	char **in_matches;
-	int in_matches_c;
+	int in_matches_cnt;
 };
 
 static pthread_mutex_t _mutex_in = PTHREAD_MUTEX_INITIALIZER;
@@ -81,13 +81,13 @@ static char** matches_add;
 
 struct udevmap_rule rule_add = {
 		.command = "mknod b %MAJOR% %MINOR% /dev/pv/%DEVNAME%",
-		.matches_c = 1
+		.matches_cnt = 1
 };
 
 char** matches_rm;
 struct udevmap_rule rule_rm = {
 		.command = "rm -f /dev/pv/%DEVNAME%",
-		.matches_c = 1
+		.matches_cnt = 1
 };
 
 struct udevmap_rule *global_rules[] = {
@@ -102,26 +102,25 @@ bool process_rule(struct udevmap_rule *rule,
 
 	bool rv;
 	int is_fnm_match, f;
-	char** matches = malloc(sizeof(char*) * rule->matches_c);
+	char** matches = malloc(sizeof(char*) * rule->matches_cnt);
 	char** matches_p = matches;
 
-	memcpy(matches_p, rule->matches, sizeof(char*) * rule->matches_c);
+	memcpy(matches_p, rule->matches, sizeof(char*) * rule->matches_cnt);
 
 	f = 0;
 
-	for(int x=0; x < rule->matches_c; x++) {
+	for(int x=0; x < rule->matches_cnt; x++) {
 		is_fnm_match = 0;
 		for (int j=0; j < event->envc; j++) {
-			printf("Matching: %s fn %s\n", matches_p[x], event->envv[j]);
+//			printf("Matching: %s fn %s\n", matches_p[x], event->envv[j]);
 			if (!fnmatch(matches_p[x], event->envv[j], FNM_PATHNAME)) {
 				is_fnm_match = 1;
 				break;
 			}
 		}
 	}
-	if (!is_fnm_match) {
+	if (!is_fnm_match)
 		f=1;
-	}
 	//Increment matches_p?
 
 	rv = 1;
@@ -146,9 +145,8 @@ int process_event(struct udevmap_rule **rules, int rules_c, struct uevent_kobjec
 		return 0;
 
 	while(*rules_p) {
-		if (process_rule(*rules_p, event, ancestors) == 1) {
+		if (process_rule(*rules_p, event, ancestors) == 1)
 			break;
-		}
 		rules_p++;
 	}
 	return 0;
@@ -168,14 +166,14 @@ void* do_work(void *arg)
 		while (*m++) {
 			mc++;
 		}
-		(*r)->matches_c = mc;
+		(*r)->matches_cnt = mc;
 
 		char **im = (*r)->in_matches;
 		int imc = 0;
 		while (im && *im++) {
 			imc++;
 		}
-		(*r)->in_matches_c = imc;
+		(*r)->in_matches_cnt = imc;
 		c++; r++;
 	}
 
@@ -268,17 +266,17 @@ static int uevent_parse(struct uevent_kobject* event, char *bufp, int len)
 	pc = strlen(bufp);
 	bufp += (pc+1);
 	len -= (pc+1);
-	if (!strcmp(key, "add")) {
+	if (!strcmp(key, "add"))
 		event->op = ADD;
-	} else if (!strcmp(key, "bind")) {
+	else if (!strcmp(key, "bind"))
 		event->op = BIND;
-	} else if (!strcmp(key, "change")) {
+	else if (!strcmp(key, "change"))
 		event->op = CHANGE;
-	} else if (!strcmp(key, "remove")) {
+	else if (!strcmp(key, "remove"))
 		event->op = REMOVE;
-	} else if (!strcmp(key, "unbind")) {
+	else if (!strcmp(key, "unbind"))
 		event->op = UNBIND;
-	} else {
+	else {
 		printf ("unknown action: %s\n", key);
 		if (key) free(key);
 		if (value) free(value);
@@ -316,69 +314,68 @@ static int generate_match_rule(void) {
 
 	head = parse_rules_file();
 
-	if(head != NULL) {
+	if(!head)
+		return 0;
 
-		len_rule_add = len_rule_rm = s_action_itr = 0;
+	len_rule_add = len_rule_rm = s_action_itr = 0;
 
-		dl_list_for_each(temp_p, head, struct _match, next_match) {
-			// iterate through linked list and compute the size of linked list to be used
-			//later for allocating memory for match rules array matches_add[] and matches_rm[] individually
-			if (!strcmp(temp_p->action[s_action_itr], "ACTION=add")) {
-				//compute length of all add rules needed for allocating memory for *match_add[]
-				len_rule_add += strlen(temp_p->subsystem) + temp_p->devname_size + sizeof(char);
+	dl_list_for_each(temp_p, head, struct _match, next_match) {
+		// iterate through linked list and compute the size of linked list to be used
+		//later for allocating memory for match rules array matches_add[] and matches_rm[] individually
+		if (!strcmp(temp_p->action[s_action_itr], "ACTION=add"))
+			//compute length of all add rules needed for allocating memory for *match_add[]
+			len_rule_add += strlen(temp_p->subsystem) + temp_p->devname_size + sizeof(char);
+		if (!strcmp(temp_p->action[s_action_itr], "ACTION=remove"))
+			//compute length of all remove rules needed for allocating memory for *match_rm[]
+			len_rule_rm += strlen(temp_p->subsystem) + temp_p->devname_size + sizeof(char);
+		s_action_itr ^= 1;
+	}
+	printf("LenRuleAdd: %d LenRuleRm: %d\n", len_rule_add, len_rule_rm);
+	matches_add = calloc(len_rule_add, sizeof(char *));
+	matches_rm = calloc(len_rule_rm, sizeof(char *));
+	len_rule_add = len_rule_rm = s_action_itr = add_counter = rm_counter = 0;
+
+	dl_list_for_each(temp_p, head, struct _match, next_match) {
+
+		if (!strcmp(temp_p->action[s_action_itr], "ACTION=add")) {
+
+			for(int i=0; i<temp_p->devname_size; i++) {
+				matches_add[i+len_rule_add+add_counter] = calloc(1, strlen(temp_p->devname[i])+sizeof(char));
+				memcpy(matches_add[i+len_rule_add+add_counter], temp_p->devname[i], strlen(temp_p->devname[i])+sizeof(char));
 			}
-			if (!strcmp(temp_p->action[s_action_itr], "ACTION=remove")) {
-				//compute length of all remove rules needed for allocating memory for *match_rm[]
-				len_rule_rm += strlen(temp_p->subsystem) + temp_p->devname_size + sizeof(char);
-			}
-			s_action_itr ^= 1;
+			len_rule_add += temp_p->devname_size;
+
+			matches_add[s_action_itr+len_rule_add+add_counter] = calloc(1, strlen(temp_p->action[s_action_itr])+sizeof(char));
+			strcpy(matches_add[s_action_itr+len_rule_add+add_counter], temp_p->action[s_action_itr]);
+
+			matches_add[s_action_itr+len_rule_add+1+add_counter] = calloc(1, strlen(temp_p->subsystem)+sizeof(char));
+			strcpy(matches_add[s_action_itr+len_rule_add+1+add_counter], temp_p->subsystem);
+			len_rule_add += s_action_itr+add_counter+1;
+			add_counter++;
 		}
-		printf("LenRuleAdd: %d LenRuleRm: %d\n", len_rule_add, len_rule_rm);
-		matches_add = calloc(len_rule_add, sizeof(char *));
-		matches_rm = calloc(len_rule_rm, sizeof(char *));
-		len_rule_add = len_rule_rm = s_action_itr = add_counter = rm_counter = 0;
-
-		dl_list_for_each(temp_p, head, struct _match, next_match) {
-
-			if (!strcmp(temp_p->action[s_action_itr], "ACTION=add")) {
-
-				for(int i=0; i<temp_p->devname_size; i++) {
-					matches_add[i+len_rule_add+add_counter] = calloc(1, strlen(temp_p->devname[i])+sizeof(char));
-					memcpy(matches_add[i+len_rule_add+add_counter], temp_p->devname[i], strlen(temp_p->devname[i])+sizeof(char));
-				}
-				len_rule_add += temp_p->devname_size;
-
-				matches_add[s_action_itr+len_rule_add+add_counter] = calloc(1, strlen(temp_p->action[s_action_itr])+sizeof(char));
-				strcpy(matches_add[s_action_itr+len_rule_add+add_counter], temp_p->action[s_action_itr]);
-
-				matches_add[s_action_itr+len_rule_add+1+add_counter] = calloc(1, strlen(temp_p->subsystem)+sizeof(char));
-				strcpy(matches_add[s_action_itr+len_rule_add+1+add_counter], temp_p->subsystem);
-				len_rule_add += s_action_itr+add_counter+1;
-				add_counter++;
+		if (!strcmp(temp_p->action[s_action_itr], "ACTION=remove")) {
+			for(int i=0; i<temp_p->devname_size; i++) {
+				matches_rm[len_rule_rm+rm_counter+i] = calloc(1, strlen(temp_p->devname[i])+sizeof(char));
+				strcpy(matches_rm[len_rule_rm+rm_counter+i], temp_p->devname[i]);
 			}
-			if (!strcmp(temp_p->action[s_action_itr], "ACTION=remove")) {
-				for(int i=0; i<temp_p->devname_size; i++) {
-					matches_rm[len_rule_rm+rm_counter+i] = calloc(1, strlen(temp_p->devname[i])+sizeof(char));
-					strcpy(matches_rm[len_rule_rm+rm_counter+i], temp_p->devname[i]);
-				}
-				len_rule_rm += temp_p->devname_size;
+			len_rule_rm += temp_p->devname_size;
 
-				matches_rm[len_rule_rm+rm_counter] = calloc(1, strlen(temp_p->action[s_action_itr])+sizeof(char));
-				strcpy(matches_rm[len_rule_rm+rm_counter], temp_p->action[s_action_itr]);
+			matches_rm[len_rule_rm+rm_counter] = calloc(1, strlen(temp_p->action[s_action_itr])+sizeof(char));
+			strcpy(matches_rm[len_rule_rm+rm_counter], temp_p->action[s_action_itr]);
 
-				matches_rm[s_action_itr+len_rule_rm+rm_counter] = calloc(1, strlen(temp_p->subsystem)+sizeof(char));
-				strcpy(matches_rm[s_action_itr+len_rule_rm+rm_counter], temp_p->subsystem);
+			matches_rm[s_action_itr+len_rule_rm+rm_counter] = calloc(1, strlen(temp_p->subsystem)+sizeof(char));
+			strcpy(matches_rm[s_action_itr+len_rule_rm+rm_counter], temp_p->subsystem);
 
-				len_rule_rm += s_action_itr+rm_counter;
-				rm_counter++;
-			}
-			s_action_itr ^= 1;
+			len_rule_rm += s_action_itr+rm_counter;
+			rm_counter++;
 		}
+		s_action_itr ^= 1;
 	}
 	matches_add[len_rule_add+1] = NULL;
 	matches_rm[len_rule_rm+1] = NULL;
 	rule_add.matches = matches_add;
 	rule_rm.matches = matches_rm;
+
 	return 0;
 }
 int main()
