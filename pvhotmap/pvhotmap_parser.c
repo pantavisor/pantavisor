@@ -34,6 +34,9 @@
 #include "utils.h"
 #include "pvhotmap_parser.h"
 
+char *rule_file="devlist.json";
+
+
 int tsh_run_io(char *cmd, int wait, int *status,
 		int stdin_p[], int stdout_p[], int stderr_p[]) {
 	return 0;
@@ -114,7 +117,7 @@ struct dl_list *parse_rules_file(void) {
 	jsmntok_t **key_i, **keys, **keyss, *t_arr_tok;
 	struct _match *device_list;
 
-	json_fd = fopen("devlist.json", "r");
+	json_fd = fopen(rule_file, "r");
 	if(json_fd == NULL) {
 		perror("Cannot open file");
 		return NULL;
