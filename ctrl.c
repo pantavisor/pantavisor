@@ -340,7 +340,7 @@ static char* pv_ctrl_get_file_name(const char* path, int buf_index, size_t path_
 
 	len = path_len - buf_index;
 
-	file_name = calloc(1, len * sizeof(char));
+	file_name = calloc(1, (len + 1) * sizeof(char));
 	if (!file_name)
 		return NULL;
 
