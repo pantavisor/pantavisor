@@ -297,6 +297,20 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 	req->host = pv_config_get_creds_host();
 	req->port = pv_config_get_creds_port();
+	req->host_proxy = pv_config_get_creds_host_proxy();
+	req->port_proxy = pv_config_get_creds_port_proxy();
+
+	if (req->is_tls) {
+		req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
+		sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
+	} else {
+		((thttp_request_tls_t*)req)->crtfiles = NULL;
+		req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
+		sprintf(req->baseurl, "http://%s:%d", req->host, req->port);
+	}
+
+	if (req->host_proxy)
+                req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
 
 	req->path = "/devices/";
 	req->body = 0;
