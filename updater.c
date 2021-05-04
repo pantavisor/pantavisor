@@ -869,6 +869,18 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		req->proto_version = THTTP_PROTO_VERSION_10;
 		req->host = pv_config_get_creds_host();
 		req->port = pv_config_get_creds_port();
+		req->host_proxy = pv_config_get_creds_host_proxy();
+		req->port_proxy = pv_config_get_creds_port_proxy();
+		if (req->is_tls) {
+			req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
+			sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
+		} else {
+			((thttp_request_tls_t*)req)->crtfiles = NULL;
+			req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
+			sprintf(req->baseurl, "http://%s:%d", req->host, req->port);
+		}
+		if (req->host_proxy)
+			req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
 		req->user_agent = pv_user_agent;
 
 		req->path = strstr(signed_puturl, "/local-s3");
@@ -1419,8 +1431,21 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	host[n] = '\0';
 
 	req->host = host;
+	req->host_proxy = pv_config_get_creds_host_proxy();
+	req->port_proxy = pv_config_get_creds_port_proxy();
+	if (req->is_tls) {
+		req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
+		sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
+	} else {
+		((thttp_request_tls_t*)req)->crtfiles = NULL;
+		req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
+		sprintf(req->baseurl, "http://%s:%d", req->host, req->port);
+	}
 
-	req->path = obj->geturl;
+	if (req->host_proxy)
+		req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
+
+	req->path = end;
 	req->headers = 0;
 
 	if (pv_config_get_updater_network_use_tmp_objects() &&
