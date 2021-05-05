@@ -43,12 +43,12 @@
 
 #include "../state.h"
 #include "../trestclient.h"
-#include "../utils.h"
 #include "../pantavisor.h"
 #include "../pantahub.h"
 #include "../version.h"
-#include "../utils/list.h"
 #include "../pvctl_utils.h"
+#include "list.h"
+#include "utils.h"
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
 

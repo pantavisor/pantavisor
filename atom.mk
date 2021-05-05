@@ -38,6 +38,8 @@ LOCAL_CFLAGS += -DPANTAVISOR_DEBUG
 LOCAL_DEPENDS_MODULES += dropbear-pv
 endif
 
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/utils/
+
 LOCAL_SRC_FILES := init.c \
 			tsh.c \
 			loop.c \
@@ -48,7 +50,7 @@ LOCAL_SRC_FILES := init.c \
 			state.c \
 			platforms.c \
 			addons.c \
-			utils.c \
+			utils/utils.c \
 			volumes.c \
 			parser/parser.c \
 			parser/parser_multi1.c \
