@@ -50,7 +50,6 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->addons);
 		dl_list_init(&s->objects);
 		dl_list_init(&s->jsons);
-		s->local = false;
 	}
 
 	return s;

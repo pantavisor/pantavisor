@@ -184,10 +184,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	// we know if we are in local if the running revision has the local format
-	if (pv_storage_is_revision_local(pv->state->rev)) {
+	if (pv_storage_is_revision_local(pv->state->rev))
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
-		pv->state->local = true;
-	}
 
 	// only start local ph logger, start cloud services if connected
 	ph_logger_toggle(pv, pv->state->rev);
@@ -285,9 +283,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	struct timespec tp;
 
 	// check if we are online and authenticated
-	if (!pv->state->local &&
-		(!pv_ph_is_auth(pv) ||
-		!pv_trail_is_auth(pv))) {
+	if (!pv_ph_is_auth(pv) ||
+		!pv_trail_is_auth(pv)) {
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
@@ -354,11 +351,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	// with this wait, we make sure we have not consecutively executed network stuff
-	// twice in less than the configured interval
-	if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
+	if (pv_config_get_control_remote() &&
+		// with this wait, we make sure we have not consecutively executed network stuff
+		// twice in less than the configured interval
+		(pv_wait_delay_timedout(pv_config_get_updater_interval()))) {
 		// check if device is unclaimed
-		if (pv->unclaimed && !pv->state->local) {
+		if (pv->unclaimed) {
 			next_state = STATE_UNCLAIMED;
 			goto out;
 		}
@@ -375,11 +373,13 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv_storage_gc_run(pv);
 	}
 
-	// receive new command. Set 2 secs as the select max blocking time, so we can do the
-	// rest of WAIT operations
-	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
-	if (pv->cmd)
-		next_state = STATE_COMMAND;
+	if (pv_config_get_control_local()) {
+		// receive new command. Set 2 secs as the select max blocking time, so we can do the
+		// rest of WAIT operations
+		pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
+		if (pv->cmd)
+			next_state = STATE_COMMAND;
+	}
 
 out:
 	return next_state;

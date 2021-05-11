@@ -50,7 +50,6 @@ struct pv_state {
 	struct dl_list jsons; //pv_json
 	char *json;
 	int tryonce;
-	bool local;
 };
 
 struct pv_state* pv_state_new(const char *rev, state_spec_t spec);

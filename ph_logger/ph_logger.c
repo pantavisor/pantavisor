@@ -1135,7 +1135,8 @@ void ph_logger_toggle(struct pantavisor *pv, char *rev)
 	else
 		ph_logger_stop_local(pv);
 
-	if (pv_config_get_log_push() && !pv->state->local)
+	if (pv_config_get_log_push() &&
+		pv_config_get_control_remote())
 		ph_logger_start_cloud(pv, rev);
 	else
 		ph_logger_stop_cloud(pv);

@@ -116,6 +116,11 @@ struct pantavisor_lxc {
 	int log_level;
 };
 
+struct pantavisor_control {
+	bool remote;
+	bool local;
+};
+
 struct pantavisor_config {
 	struct pantavisor_cache cache;
 	struct pantavisor_bootloader bl;
@@ -127,6 +132,7 @@ struct pantavisor_config {
 	struct pantavisor_network net;
 	struct pantavisor_log log;
 	struct pantavisor_lxc lxc;
+	struct pantavisor_control control;
 };
 
 int pv_config_load_creds(void);
@@ -191,5 +197,8 @@ int pv_config_get_log_loglevel(void);
 int pv_config_get_log_logsize(void);
 bool pv_config_get_log_push(void);
 bool pv_config_get_log_capture(void);
+
+bool pv_config_get_control_remote(void);
+bool pv_config_get_control_local(void);
 
 #endif
