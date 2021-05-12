@@ -38,6 +38,7 @@
 
 #include "blkid.h"
 #include "utils.h"
+#include "str.h"
 #include "log.h"
 
 #define MODULE_NAME			"blkid"
@@ -235,7 +236,7 @@ int get_blkid(struct blkid_info *info, const char *key)
 	    if (kl < sl)
 		    continue;
 	    if (strncmp(key, key_store[i].key, sl) == 0) {
-		    id_or_label = skip_prefix( (char*)key, key_store[i].key);
+		    id_or_label = pv_str_skip_prefix( (char*)key, key_store[i].key);
 		    break;
 	    }
     }

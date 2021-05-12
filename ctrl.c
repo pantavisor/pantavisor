@@ -39,6 +39,7 @@
 
 #include "ctrl.h"
 #include "utils.h"
+#include "str.h"
 #include "pvlogger.h"
 #include "state.h"
 #include "init.h"
@@ -426,11 +427,11 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	}
 
 	// read and parse rest of message
-	if (str_startswith(ENDPOINT_COMMANDS, strlen(ENDPOINT_COMMANDS), path)) {
+	if (pv_str_startswith(ENDPOINT_COMMANDS, strlen(ENDPOINT_COMMANDS), path)) {
 		if (!strncmp("POST", method, method_len)) {
 			res = pv_ctrl_process_cmd(req_fd, content_length, &cmd);
 		}
-	} else if (str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
+	} else if (pv_str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
 		file_path = pv_ctrl_get_file_path(PATH_OBJECTS, file_name);
 
@@ -448,13 +449,13 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (str_matches(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path, path_len)) {
+	} else if (pv_str_matches(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_storage_get_revisions_string());
 			goto out;
 		}
-	} else if (str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
-		str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
+	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
+		pv_str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_PROGRESS));
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS_PROGRESS, file_name);
 
@@ -467,7 +468,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 		}
 		goto out;
-	} else if (str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
+	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
 		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
@@ -486,12 +487,12 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
 		}
-	} else if (str_matches(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path, path_len)) {
+	} else if (pv_str_matches(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
 			goto out;
 		}
-	} else if (str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
+	} else if (pv_str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 			goto out;

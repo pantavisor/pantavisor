@@ -38,6 +38,7 @@
 #include "pantahub.h"
 #include "init.h"
 #include "utils.h"
+#include "str.h"
 #include "config_parser.h"
 
 #define MODULE_NAME             "metadata"
@@ -660,7 +661,7 @@ int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf)
 	char *body, *esc;
 
 	body = strdup(buf);
-	esc = unescape_str_to_ascii(body, "\\n", '\n');
+	esc = pv_str_unescape_to_ascii(body, "\\n", '\n');
 	ret = pv_usermeta_parse(pv, esc);
 	if (body)
 		free(body);

@@ -234,55 +234,6 @@ int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc)
 	return count;
 }
 
-char *unescape_str_to_ascii(char *buf, char *code, char c)
-{
-	char *p = 0;
-	char *new = 0;
-	char *old;
-	int pos = 0, replaced = 0;
-	char *tmp;
-
-	tmp = malloc(strlen(buf) + strlen(code) + 1);
-	strcpy(tmp, buf);
-	strcat(tmp, code);
-	old = tmp;
-
-	p = strstr(tmp, code);
-	while (p) {
-		*p = '\0';
-		new = realloc(new, pos + strlen(tmp) + 2);
-		strcpy(new+pos, tmp);
-		pos = pos + strlen(tmp);
-		new[pos] = c;
-		pos += 1;
-		new[pos] = '\0';
-		replaced += 1;
-		tmp = p+strlen(code);
-		p = strstr(tmp, code);
-	}
-
-	if (new[strlen(new)-1] == c)
-		new[strlen(new)-1] = '\0';
-
-	if (old)
-		free(old);
-
-	return new;
-}
-
-char* skip_prefix(char *str, const char *key)
-{
-	if (!str || !key)
-		return str;
-	while (*key) {
-		if (*key != *str)
-			break;
-		key++;
-		str++;
-	}
-	return str;
-}
-
 static bool char_is_json_special(char ch)
 {
 	/* From RFC 7159, section 7 Strings
@@ -365,20 +316,6 @@ out:
 			json_string = shrinked;
 	}
 	return json_string;
-}
-
-char *str_replace(char *str, int len, char which, char what)
-{
-	int char_at = 0;
-
-	if (!str)
-		return NULL;
-
-	for (char_at = 0; char_at < len; char_at++){
-		if (str[char_at] == which)
-			str[char_at] = what;
-	}
-	return str;
 }
 
 int get_endian(void)
