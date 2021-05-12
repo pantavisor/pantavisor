@@ -578,9 +578,6 @@ static int pv_ctrl_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
 
-	if(!pv_config_get_control_local())
-		return 0;
-
 	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
 	if (pv->ctrl_fd <= 0) {
 		pv_log(ERROR, "ctrl socket could not be initialized");

@@ -529,13 +529,13 @@ char* pv_storage_get_revisions_string()
 			!strncmp(r->path, "locals", strlen("locals") + 1))
 			continue;
 
-		out = realloc(out, (len + line_len) * sizeof(char));
+		out = realloc(out, (len + line_len + 1) * sizeof(char));
 		snprintf(&out[len], line_len + 1, "\"%s\",", r->path);
 		len += line_len;
 	}
 
 	// close json
-	len += 1;
+	len += 2;
 	out = realloc(out, len * sizeof(char));
 	out[len-2] = '}';
 	out[len-1] = '\0';

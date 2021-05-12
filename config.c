@@ -189,7 +189,6 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->lxc.log_level = config_get_value_int(&config_list, "lxc.log.level", 2);
 
 	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
-	config->control.local = config_get_value_bool(&config_list, "control.local", true);
 
 	config_clear_items(&config_list);
 
@@ -267,7 +266,6 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_int(&config_list, "lxc.log.level", &config->lxc.log_level);
 
 	config_override_value_bool(&config_list, "control.remote", &config->control.remote);
-	config_override_value_bool(&config_list, "control.local", &config->control.local);
 
 	config_clear_items(&config_list);
 
@@ -390,6 +388,8 @@ void pv_config_override_value(char* key, char* value)
 		pv->config.log.loglevel = atoi(value);
 	else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push"))
 		pv->config.log.push = atoi(value);
+	else if (!strcmp(key, "control.remote"))
+		pv->config.control.remote = atoi(value);
 }
 
 void pv_config_free()
@@ -508,7 +508,6 @@ bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
 bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
 
 bool pv_config_get_control_remote() { return pv_get_instance()->config.control.remote; }
-bool pv_config_get_control_local() { return pv_get_instance()->config.control.local; }
 
 static int pv_config_init(struct pv_init *this)
 {

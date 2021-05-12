@@ -118,7 +118,6 @@ struct pantavisor_lxc {
 
 struct pantavisor_control {
 	bool remote;
-	bool local;
 };
 
 struct pantavisor_config {
@@ -199,6 +198,5 @@ bool pv_config_get_log_push(void);
 bool pv_config_get_log_capture(void);
 
 bool pv_config_get_control_remote(void);
-bool pv_config_get_control_local(void);
 
 #endif

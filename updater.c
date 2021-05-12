@@ -378,7 +378,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	if ((update->pending && update->pending->local) ||
 		!pv_config_get_control_remote() ||
 		!pv->online ||
-		trail_remote_init(pv)) {
+		trail_remote_init(pv))
 		goto out;
 
 	req = trest_make_request(TREST_METHOD_PUT,
@@ -1711,6 +1711,8 @@ struct pv_update* pv_update_get_step_local(char *rev)
 	update->pending = pv_storage_get_state(pv_get_instance(), rev);
 	if (!update->pending)
 		goto err;
+
+	update->pending->local = true;
 
 	return update;
 

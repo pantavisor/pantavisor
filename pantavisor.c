@@ -184,8 +184,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	// we know if we are in local if the running revision has the local format
-	if (pv_storage_is_revision_local(pv->state->rev))
+	if (pv_storage_is_revision_local(pv->state->rev)) {
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
+		pv->state->local = true;
+	}
 
 	// only start local ph logger, start cloud services if connected
 	ph_logger_toggle(pv, pv->state->rev);
@@ -308,9 +310,17 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 	pv_meta_update_to_ph(pv);
 
-	// check for new updates
+	// check for new remote update
 	if (pv_check_for_updates(pv) > 0)
 		return STATE_UPDATE;
+
+	return STATE_WAIT;
+}
+
+static pv_state_t pv_wait_update()
+{
+	struct pantavisor *pv = pv_get_instance();
+	struct timespec tp;
 
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update) {
@@ -368,18 +378,21 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			goto out;
 	}
 
+	// process ongoing updates, if any
+	next_state = pv_wait_update();
+	if (next_state != STATE_WAIT)
+		goto out;
+
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
 		pv_storage_gc_run(pv);
 	}
 
-	if (pv_config_get_control_local()) {
-		// receive new command. Set 2 secs as the select max blocking time, so we can do the
-		// rest of WAIT operations
-		pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
-		if (pv->cmd)
-			next_state = STATE_COMMAND;
-	}
+	// receive new command. Set 2 secs as the select max blocking time, so we can do the
+	// rest of WAIT operations
+	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
+	if (pv->cmd)
+		next_state = STATE_COMMAND;
 
 out:
 	return next_state;
