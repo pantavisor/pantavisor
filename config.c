@@ -265,8 +265,6 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 
 	config_override_value_int(&config_list, "lxc.log.level", &config->lxc.log_level);
 
-	config_override_value_bool(&config_list, "control.remote", &config->control.remote);
-
 	config_clear_items(&config_list);
 
 	return 0;
@@ -388,8 +386,6 @@ void pv_config_override_value(char* key, char* value)
 		pv->config.log.loglevel = atoi(value);
 	else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push"))
 		pv->config.log.push = atoi(value);
-	else if (!strcmp(key, "control.remote"))
-		pv->config.control.remote = atoi(value);
 }
 
 void pv_config_free()
