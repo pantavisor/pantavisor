@@ -39,6 +39,7 @@
 #include "init.h"
 #include "utils.h"
 #include "str.h"
+#include "json.h"
 #include "config_parser.h"
 
 #define MODULE_NAME             "metadata"
@@ -320,7 +321,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 
 	// Parse full device json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	um = get_json_key_value(buf, "user-meta", tokv, tokc);
+	um = pv_json_get_key_value(buf, "user-meta", tokv, tokc);
 
 	if (!um) {
 		ret = -1;
@@ -475,8 +476,8 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	head = &pv->metadata->devmeta;
 	dl_list_for_each_safe(info, tmp, head,
 			struct pv_meta, list) {
-		char *key = format_json(info->key, strlen(info->key));
-		char *val = format_json(info->value, strlen(info->value));
+		char *key = pv_json_format(info->key, strlen(info->key));
+		char *val = pv_json_format(info->value, strlen(info->value));
 
 		if (key && val) {
 			int frag_len = strlen(key) + strlen(val) +
@@ -536,8 +537,8 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 	strcpy(file, json_buf->factory_file);
 	fname = basename(file);
 	snprintf(abs_key, sizeof(abs_key), "factory/%s/%s", fname, key);
-	formatted_key = format_json(abs_key, strlen(abs_key));
-	formatted_val = format_json(value, strlen(value));
+	formatted_key = pv_json_format(abs_key, strlen(abs_key));
+	formatted_val = pv_json_format(value, strlen(value));
 
 	if (formatted_key && formatted_val) {
 		int frag_len = strlen(formatted_key) + strlen(formatted_val) +

@@ -34,6 +34,7 @@
 
 #include "pantavisor.h"
 #include "utils.h"
+#include "json.h"
 #include "parser.h"
 #include "state.h"
 
@@ -95,7 +96,7 @@ struct pv_state* pv_parser_get_state(struct pantavisor *pv, char *buf, const cha
 		goto out;
 	}
 
-	spec = get_json_key_value(buf, "#spec", tokv, tokc);
+	spec = pv_json_get_key_value(buf, "#spec", tokv, tokc);
 	if (!spec) {
 		pv_log(WARN, "step JSON has no valid #spec key");
 		goto out;
@@ -135,7 +136,7 @@ char* pv_parser_get_initrd_config_name(char *buf)
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
 		goto out;
 
-	spec = get_json_key_value(buf, "#spec", tokv, tokc);
+	spec = pv_json_get_key_value(buf, "#spec", tokv, tokc);
 	if (!spec)
 		goto out;
 

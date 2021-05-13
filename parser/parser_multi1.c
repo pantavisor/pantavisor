@@ -40,6 +40,7 @@
 #include "pantavisor.h"
 #include "parser.h"
 #include "state.h"
+#include "json.h"
 
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
@@ -77,10 +78,10 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->bsp.kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->bsp.fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->bsp.initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->bsp.firmware = get_json_key_value(buf, "firmware", tokv, tokc);
+	s->bsp.kernel = pv_json_get_key_value(buf, "linux", tokv, tokc);
+	s->bsp.fdt = pv_json_get_key_value(buf, "fdt", tokv, tokc);
+	s->bsp.initrd = pv_json_get_key_value(buf, "initrd", tokv, tokc);
+	s->bsp.firmware = pv_json_get_key_value(buf, "firmware", tokv, tokc);
 
 	if (!s->bsp.kernel || !s->bsp.initrd)
 		goto out;
@@ -98,7 +99,7 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 		// parse array data
 		jsmntok_t *k = (*key_i+2);
 		size = (*key_i+1)->size;
-		while ((str = json_array_get_one_str(buf, &size, &k)))
+		while ((str = pv_json_array_get_one_str(buf, &size, &k)))
 			pv_addon_add(s, str);
 
 		break;
@@ -118,7 +119,7 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 		// parse array data
 		jsmntok_t *k = (*key_i+2);
 		size = (*key_i+1)->size;
-		while ((str = json_array_get_one_str(buf, &size, &k)))
+		while ((str = pv_json_array_get_one_str(buf, &size, &k)))
 			pv_platform_add(s, str);
 
 		break;
@@ -138,7 +139,7 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 		// parse array data
 		jsmntok_t *k = (*key_i+2);
 		size = (*key_i+1)->size;
-		while ((str = json_array_get_one_str(buf, &size, &k))) {
+		while ((str = pv_json_array_get_one_str(buf, &size, &k))) {
 			struct pv_volume *v = pv_volume_add(s, str);
 			v->type = VOL_LOOPIMG;
 			free(str);
@@ -169,17 +170,17 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	struct pv_platform *this;
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	name = get_json_key_value(buf, "name", tokv, tokc);
+	name = pv_json_get_key_value(buf, "name", tokv, tokc);
 
 	this = pv_platform_get_by_name(s, name);
 	if (!this)
 		goto out;
 
-	this->type = get_json_key_value(buf, "type", tokv, tokc);
-	this->exec = get_json_key_value(buf, "exec", tokv, tokc);
+	this->type = pv_json_get_key_value(buf, "type", tokv, tokc);
+	this->exec = pv_json_get_key_value(buf, "exec", tokv, tokc);
 
-	configs = get_json_key_value(buf, "configs", tokv, tokc);
-	shares = get_json_key_value(buf, "share", tokv, tokc);
+	configs = pv_json_get_key_value(buf, "configs", tokv, tokc);
+	shares = pv_json_get_key_value(buf, "share", tokv, tokc);
 
 	// free intermediates
 	if (name) {
@@ -197,7 +198,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	this->configs = calloc(1, (size + 1) * sizeof(char *));
 	this->configs[size] = NULL;
 	i = 0;
-	while ((str = json_array_get_one_str(configs, &size, &t))) {
+	while ((str = pv_json_array_get_one_str(configs, &size, &t))) {
 		this->configs[i] = str;
 		i++;
 	}
@@ -216,7 +217,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	size = jsmnutil_array_count(shares, tokv);
 	t = tokv+1;
 	this->ns_share = 0;
-	while ((str = json_array_get_one_str(shares, &size, &t))) {
+	while ((str = pv_json_array_get_one_str(shares, &size, &t))) {
 		this->ns_share |= ns_share_flag(str);
 		free(str);
 		i++;
@@ -253,13 +254,13 @@ struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	count = json_get_key_count(buf, "pantavisor.json", tokv, tokc);
+	count = pv_json_get_key_count(buf, "pantavisor.json", tokv, tokc);
 	if (!count || (count > 1)) {
 		pv_log(WARN, "Invalid pantavisor.json count in state (%d)", count);
 		goto out;
 	}
 
-	value = get_json_key_value(buf, "pantavisor.json", tokv, tokc);
+	value = pv_json_get_key_value(buf, "pantavisor.json", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "Unable to get pantavisor.json value from state");
 		goto out;
