@@ -740,10 +740,10 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 {
 	struct pv_meta *curr, *tmp;
 	int len = 1, line_len;
-	char *out = calloc(1, len * sizeof(char));
+	char *json = calloc(1, len);
 
 	// open json
-	out[0]='{';
+	json[0]='{';
 
 	if (dl_list_empty(meta_list)) {
 		len++;
@@ -754,19 +754,19 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 	dl_list_for_each_safe(curr, tmp, meta_list,
 		struct pv_meta, list) {
 		line_len = strlen(curr->key) + strlen(curr->value) + 7;
-		out = realloc(out, (len + line_len + 1) * sizeof(char));
-		snprintf(&out[len], line_len + 1, "\"%s\": \"%s\",", curr->key, curr->value);
+		json = realloc(json, len + line_len + 1);
+		snprintf(&json[len], line_len + 1, "\"%s\": \"%s\",", curr->key, curr->value);
 		len += line_len;
 	}
 
 out:
 	len += 1;
-	out = realloc(out, len * sizeof(char));
+	json = realloc(json, len);
 	// close json
-	out[len-2] = '}';
-	out[len-1] = '\0';
+	json[len-2] = '}';
+	json[len-1] = '\0';
 
-	return out;
+	return json;
 }
 
 char* pv_metadata_get_user_meta_string()
