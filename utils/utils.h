@@ -40,11 +40,8 @@ int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
 char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc);
 char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
 int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
-char *unescape_str_to_ascii(char *buf, char *code, char c);
-char *skip_prefix(char *str, const char *key);
 char* json_get_one_str(char *buf, jsmntok_t **tok);
 char* format_json(char *buf, int len);
-char *str_replace(char *str, int len, char which, char what);
 int get_endian(void);
 int get_dt_model(char *buf, int buflen);
 int get_cpu_model(char *buf, int buflen);
@@ -100,20 +97,5 @@ int gzip_file(const char *filename, const char *target_name);
 int check_and_open_file(const char *fname, int flags, mode_t mode);
 
 #define PREFIX_MODEL	"model name\t:"
-
-static inline bool str_startswith(const char* str1, int str1len, const char* str2)
-{
-	return !strncmp(str1, str2, str1len);
-}
-
-static inline bool str_matches(const char* str1, int str1len, const char* str2, int str2len)
-{
-	return ((str1len == str2len) && !strncmp(str1, str2, str1len));
-}
-
-static inline bool str_endswith(const char* str1, int str1len, const char* str2, int str2len)
-{
-	return ((str2len > str1len) && !strncmp(str1, &str2[str2len - str1len], str1len));
-}
 
 #endif // PV_UTILS_H

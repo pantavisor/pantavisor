@@ -49,6 +49,7 @@
 #include "../pvctl_utils.h"
 #include "list.h"
 #include "utils.h"
+#include "str.h"
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
 
@@ -550,7 +551,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	 * otherwise the format_json won't really work as it'll
 	 * see the length of the string short.
 	 */
-	str_replace(buf, bytes_read, '\0',' ');
+	pv_str_replace_char(buf, bytes_read, '\0',' ');
 	while(bytes_read > 0) {
 		char *newline_at = NULL;
 		char *src = buf + offset;

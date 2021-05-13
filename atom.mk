@@ -50,12 +50,13 @@ LOCAL_SRC_FILES := init.c \
 			state.c \
 			platforms.c \
 			addons.c \
-			utils/utils.c \
 			volumes.c \
 			parser/parser.c \
 			parser/parser_multi1.c \
 			parser/parser_system1.c \
 			objects.c \
+			utils/utils.c \
+			utils/str.c \
 			jsons.c \
 			pantahub.c \
 			updater.c \
