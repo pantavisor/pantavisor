@@ -56,8 +56,8 @@ LOCAL_SRC_FILES := init.c \
 			parser/parser_system1.c \
 			objects.c \
 			utils/utils.c \
-			utils/jsons.c \
 			utils/str.c \
+			jsons.c \
 			pantahub.c \
 			updater.c \
 			bootloader.c \
