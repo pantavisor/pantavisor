@@ -368,6 +368,7 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(DEBUG, "c->creds.port = '%d'", pv_config_get_creds_port());
 	pv_log(DEBUG, "c->creds.host_proxy = '%s'", pv_config_get_creds_host_proxy());
 	pv_log(DEBUG, "c->creds.port_proxy = '%d'", pv_config_get_creds_port_proxy());
+	pv_log(DEBUG, "c->creds.noproxyconnect = '%d'", pv_config_get_creds_noproxyconnect());
 	pv_log(DEBUG, "c->creds.id = '%s'", pv_config_get_creds_id());
 	pv_log(DEBUG, "c->creds.prn = '%s'", pv_config_get_creds_prn());
 	pv_log(DEBUG, "c->creds.secret = '%s'", pv_config_get_creds_secret());
