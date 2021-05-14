@@ -37,6 +37,7 @@
 #include "pvctl_utils.h"
 #include "utils.h"
 #include "json.h"
+#include "fops.h"
 
 #define MODULE_NAME             "pvlogger"
 #include "log.h"
