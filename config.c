@@ -49,7 +49,7 @@ static char* config_get_value_string(struct dl_list *config_list, char *key, cha
 	if (!item)
 		item = default_value;
 
-	if (!item)
+	if (!item || !strlen(item))
 		return NULL;
 
 	return strdup(item);
@@ -116,7 +116,7 @@ static void config_override_value_string(struct dl_list *config_list, char *key,
 	if (*out)
 		free(*out);
 
-	if (item)
+	if (item && strlen(item) > 0)
 		*out = strdup(item);
 	else
 		*out = NULL;
@@ -208,6 +208,7 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	config->creds.port = config_get_value_int(&config_list, "creds.port", 12365);
 	config->creds.host_proxy = config_get_value_string(&config_list, "creds.proxy.host", NULL);
 	config->creds.port_proxy = config_get_value_int(&config_list, "creds.proxy.port", 3218);
+	config->creds.noproxyconnect = config_get_value_int(&config_list, "creds.proxy.noproxyconnect", 0);
 	config->creds.id = config_get_value_string(&config_list, "creds.id", NULL);
 	config->creds.prn = config_get_value_string(&config_list, "creds.prn", NULL);
 	config->creds.secret = config_get_value_string(&config_list, "creds.secret", NULL);
@@ -243,6 +244,7 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 
 	config_override_value_string(&config_list, "creds.proxy.host", &config->creds.host_proxy);
 	config_override_value_int(&config_list, "creds.proxy.port", &config->creds.port_proxy);
+	config_override_value_int(&config_list, "creds.proxy.noproxyconnect", &config->creds.noproxyconnect);
 	config_override_value_int(&config_list, "storage.gc.reserved", &config->storage.gc.reserved);
 	config_override_value_bool(&config_list, "storage.gc.keep_factory", &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "storage.gc.threshold", &config->storage.gc.threshold);
@@ -313,6 +315,7 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	if (config->creds.host_proxy) {
 		write_config_tuple_string(fd, "creds.proxy.host", config->creds.host_proxy);
 		write_config_tuple_int(fd, "creds.proxy.port", config->creds.port_proxy);
+		write_config_tuple_int(fd, "creds.proxy.noproxyconnect", config->creds.noproxyconnect);
 	}
 	write_config_tuple_string(fd, "creds.id", config->creds.id);
 	write_config_tuple_string(fd, "creds.prn", config->creds.prn);
@@ -457,6 +460,7 @@ char* pv_config_get_creds_host() { return pv_get_instance()->config.creds.host; 
 int pv_config_get_creds_port() { return pv_get_instance()->config.creds.port; }
 char* pv_config_get_creds_host_proxy() { return pv_get_instance()->config.creds.host_proxy; }
 int pv_config_get_creds_port_proxy() { return pv_get_instance()->config.creds.port_proxy; }
+int pv_config_get_creds_noproxyconnect() { return pv_get_instance()->config.creds.noproxyconnect; }
 char* pv_config_get_creds_id() { return pv_get_instance()->config.creds.id; }
 char* pv_config_get_creds_prn() { return pv_get_instance()->config.creds.prn; }
 char* pv_config_get_creds_secret() { return pv_get_instance()->config.creds.secret; }

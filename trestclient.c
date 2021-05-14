@@ -233,11 +233,12 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		goto err;
 	}
 
-	// not a proxy -> use tls
+	// a proxy -> dont use tls unless proxyconnect configured
 	if (pv_config_get_creds_host_proxy()) {
-		trest_set_proxy(client, pv_config_get_creds_host_proxy(),
-				pv_config_get_creds_port_proxy(),
-				false);
+		trest_set_proxy_connect(client, pv_config_get_creds_host_proxy(),
+					pv_config_get_creds_port_proxy(),
+					false,
+					!pv_config_get_creds_noproxyconnect());
 	}
 
 	return client;

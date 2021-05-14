@@ -871,6 +871,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		req->port = pv_config_get_creds_port();
 		req->host_proxy = pv_config_get_creds_host_proxy();
 		req->port_proxy = pv_config_get_creds_port_proxy();
+		req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 		if (req->is_tls) {
 			req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
 			sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
@@ -1433,6 +1434,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	req->host = host;
 	req->host_proxy = pv_config_get_creds_host_proxy();
 	req->port_proxy = pv_config_get_creds_port_proxy();
+	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 	if (req->is_tls) {
 		req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
 		sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
