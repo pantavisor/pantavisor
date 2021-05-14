@@ -50,6 +50,7 @@
 #include "parser/parser_bundle.h"
 #include "state.h"
 #include "json.h"
+#include "fops.h"
 
 #define MODULE_NAME			"updater"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -1794,7 +1795,7 @@ int pv_update_install(struct pantavisor *pv)
 		ret = -1;
 		goto out;
 	}
-	write_nointr(fd, pending->json, strlen(pending->json));
+	pv_fops_write_nointr(fd, pending->json, strlen(pending->json));
 	close(fd);
 	rename(path_new, path);
 

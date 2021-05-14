@@ -47,6 +47,7 @@
 #include "bootloader.h"
 #include "init.h"
 #include "utils.h"
+#include "fops.h"
 #include "addons.h"
 #include "parser/parser.h"
 #include "state.h"
@@ -631,7 +632,7 @@ void pv_storage_meta_set_objdir(struct pantavisor *pv)
 	sprintf(path, "{\"ObjectsDir\": \"%s/objects\"}", pv_config_get_storage_mntpoint());
 	/*
 	 * [PKS]
-	 * Use write_nointr
+	 * Use pv_fops_write_nointr
 	 */
 	if (write(fd, path, strlen(path)) < 0)
 		goto err;

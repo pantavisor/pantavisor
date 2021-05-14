@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,56 +19,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UTILS_H
-#define PV_UTILS_H
 
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
+#ifndef UTILS_PV_FOPS_H_
+#define UTILS_PV_FOPS_H_
 
 #include <sys/types.h>
 
-#include <jsmn/jsmnutil.h>
+/*
+ * Returns 0 on success.
+ * For setting, value holds a null terminated string.
+ * For get, the value is returned back in dst.
+ */
+int pv_fops_set_file_xattr(const char *filename, char *attr, char *value);
+int pv_fops_get_file_xattr(const char *filename, char *attr, char **dst, int (*alloc)(char **, int));
+ssize_t pv_fops_write_nointr(int fd, char *buf, ssize_t len);
+ssize_t pv_fops_read_nointr(int fd, char *buf, ssize_t len);
+int pv_fops_lock_file(int fd);
+/*
+ * Returns the file descriptor on success.
+ */
+int pv_fops_open_and_lock_file(const char *fname, int flags, mode_t mode);
+int pv_fops_unlock_file(int fd);
+int pv_fops_gzip_file(const char *filename, const char *target_name);
+int pv_fops_check_and_open_file(const char *fname, int flags,
+			mode_t mode);
 
-int mkdir_p(char *dir, mode_t mode);
-void syncdir(char *dir);
-int get_digit_count(int number);
-int get_endian(void);
-int get_dt_model(char *buf, int buflen);
-int get_cpu_model(char *buf, int buflen);
-void kill_child_process(pid_t pid);
-
-#ifndef ARRAY_LEN
-#define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
-#endif /* ARRAY_LEN*/
-
-#ifndef free_member
-#define free_member(ptr, member)\
-({\
- if (ptr->member)\
-	free((void*)(ptr->member));\
- ptr->member = NULL;\
-})
-#endif /* free_member */
-
-#ifdef __arm__
-#define PV_ARCH		"arm"
-#elif __aarch64__
-#define PV_ARCH		"aarch64"
-#elif __x86_64__
-#define PV_ARCH		"x86_64"
-#elif __mips__
-#define	PV_ARCH		"mips"
-#else
-#define PV_ARCH		"unknown"
-#endif
-
-#if UINTPTR_MAX == 0xffffffff
-#define	PV_BITS		"32"
-#else
-#define	PV_BITS		"64"
-#endif
-
-#define PREFIX_MODEL	"model name\t:"
-
-#endif // PV_UTILS_H
+#endif /* UTILS_PV_FOPS_H_ */
