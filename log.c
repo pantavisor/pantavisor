@@ -37,6 +37,7 @@
 
 #include "config.h"
 #include "utils.h"
+#include "fops.h"
 #include "thttp.h"
 #include "utils.h"
 #include "loop.h"
@@ -169,7 +170,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		int ret = 0;
 		int lock_file_errno = 0;
 		do {
-			ret = lock_file(log_fd);
+			ret = pv_fops_lock_file(log_fd);
 		} while (ret < 0 && (errno == EAGAIN || errno == EACCES));
 
 		if (ret < 0)
@@ -217,7 +218,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 				snprintf(gzip_path, sizeof(gzip_path),
 						"%s.%d.gzip", log_path, (i+1));
 				if (stat(gzip_path, &stat_gz))
-					gzip_file(log_path, gzip_path);
+					pv_fops_gzip_file(log_path, gzip_path);
 			}
 			if (log_fd >= 0) {
 				ftruncate(log_fd, 0);
@@ -230,7 +231,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		dprintf(log_fd, "[%s]: ", module);
 		vdprintf(log_fd, fmt, args);
 		dprintf(log_fd, "\n");
-		unlock_file(log_fd);
+		pv_fops_unlock_file(log_fd);
 		close(log_fd);
 	}
 }

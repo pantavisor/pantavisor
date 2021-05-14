@@ -32,6 +32,7 @@
 #include <mtd/mtd-user.h>
 
 #include "utils.h"
+#include "fops.h"
 
 #include "bootloader.h"
 #include "init.h"
@@ -195,7 +196,7 @@ static int pv_bl_early_init(struct pv_init *this)
 	buf = calloc(1, sizeof(char) * (1024 + 1));
 	if (!buf)
 		return -1;
-	bytes = read_nointr(fd, buf, sizeof(char)*1024);
+	bytes = pv_fops_read_nointr(fd, buf, sizeof(char)*1024);
 	close(fd);
 	if (bytes <= 0)
 		return -1;
