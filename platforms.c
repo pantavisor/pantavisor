@@ -52,8 +52,6 @@ int setns(int nsfd, int nstype);
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-const int MAX_RUNLEVEL = 2;
-
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
 		{"truncate", "true"},

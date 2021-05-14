@@ -26,10 +26,6 @@
 
 #include "config.h"
 
-#define RUNLEVEL_ROOT 0
-#define RUNLEVEL_PLATFORM 1
-#define RUNLEVEL_APP 2
-
 // pantavisor.h
 
 char pv_user_agent[4096];

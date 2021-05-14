@@ -29,14 +29,19 @@
 #include "pantavisor.h"
 #include "utils/list.h"
 
-extern const int MAX_RUNLEVEL;
-
 typedef enum {
 	PLAT_NONE,
 	PLAT_INSTALLED,
 	PLAT_STARTED,
 	PLAT_STOPPED
 } plat_status_t;
+
+typedef enum {
+	RUNLEVEL_ROOT,
+	RUNLEVEL_PLATFORM,
+	RUNLEVEL_APP,
+	MAX_RUNLEVEL = RUNLEVEL_APP
+} plat_runlevel_t;
 
 struct pv_platform {
 	char *name;
