@@ -285,9 +285,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	struct timespec tp;
 
 	// check if we are online and authenticated
-	if (!pv->state->local &&
-		(!pv_ph_is_auth(pv) ||
-		!pv_trail_is_auth(pv))) {
+	if (!pv_ph_is_auth(pv) ||
+		!pv_trail_is_auth(pv)) {
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
@@ -311,9 +310,17 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 	pv_meta_update_to_ph(pv);
 
-	// check for new updates
+	// check for new remote update
 	if (pv_check_for_updates(pv) > 0)
 		return STATE_UPDATE;
+
+	return STATE_WAIT;
+}
+
+static pv_state_t pv_wait_update()
+{
+	struct pantavisor *pv = pv_get_instance();
+	struct timespec tp;
 
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update) {
@@ -354,11 +361,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	// with this wait, we make sure we have not consecutively executed network stuff
-	// twice in less than the configured interval
-	if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
+	if (pv_config_get_control_remote() &&
+		// with this wait, we make sure we have not consecutively executed network stuff
+		// twice in less than the configured interval
+		(pv_wait_delay_timedout(pv_config_get_updater_interval()))) {
 		// check if device is unclaimed
-		if (pv->unclaimed && !pv->state->local) {
+		if (pv->unclaimed) {
 			next_state = STATE_UNCLAIMED;
 			goto out;
 		}
@@ -369,6 +377,11 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		if (next_state != STATE_WAIT)
 			goto out;
 	}
+
+	// process ongoing updates, if any
+	next_state = pv_wait_update();
+	if (next_state != STATE_WAIT)
+		goto out;
 
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
@@ -426,9 +439,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		next_state = STATE_RUN;
 		break;
 	case CMD_UPDATE_METADATA:
-		pv_log(DEBUG, "metadata command with payload '%s' received. Uploading metadata...",
-			cmd->payload);
-		pv_ph_upload_metadata(pv, cmd->payload);
+		if (pv_config_get_control_remote()) {
+			pv_log(DEBUG, "metadata command with payload '%s' received. Uploading metadata...",
+				cmd->payload);
+			pv_ph_upload_metadata(pv, cmd->payload);
+		}
 		break;
 	case CMD_REBOOT_DEVICE:
 		if (pv->update) {

@@ -373,16 +373,13 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	// store progress in trails
 	if (update->pending && update->pending->rev)
 		pv_storage_set_rev_progress(update->pending->rev, json);
-	else
-		pv_log(WARN, "progress will not be stored in trails");
 
 	// do not report to cloud if that is not possible
 	if ((update->pending && update->pending->local) ||
+		!pv_config_get_control_remote() ||
 		!pv->online ||
-		trail_remote_init(pv)) {
-		pv_log(WARN, "status will not be send to cloud");
+		trail_remote_init(pv))
 		goto out;
-	}
 
 	req = trest_make_request(TREST_METHOD_PUT,
 				 update->endpoint,
