@@ -46,6 +46,7 @@
 #include "pantahub.h"
 #include "pantavisor.h"
 #include "utils.h"
+#include "json.h"
 #include "tsh.h"
 #include "metadata.h"
 
@@ -258,7 +259,7 @@ int pv_ph_device_exists(struct pantavisor *pv)
 		goto out;
 	}
 
-	id = get_json_key_value(res->body, "id",
+	id = pv_json_get_value(res->body, "id",
 			res->json_tokv, res->json_tokc);
 
 	if (id && (strcmp(id, "") != 0)) {
@@ -330,9 +331,9 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	// If registered, override in-memory PantaHub credentials
 	if (res->code == THTTP_STATUS_OK && res->body) {
 		jsmnutil_parse_json(res->body, &tokv, &tokc);
-		pv_config_set_creds_id(get_json_key_value(res->body, "id", tokv, tokc));
-		pv_config_set_creds_prn(get_json_key_value(res->body, "prn", tokv, tokc));
-		pv_config_set_creds_secret(get_json_key_value(res->body, "secret", tokv, tokc));
+		pv_config_set_creds_id(pv_json_get_value(res->body, "id", tokv, tokc));
+		pv_config_set_creds_prn(pv_json_get_value(res->body, "prn", tokv, tokc));
+		pv_config_set_creds_secret(pv_json_get_value(res->body, "secret", tokv, tokc));
 	} else {
 		pv_log(ERROR, "registration attempt failed (http code %d)", res->code);
 		ret = 0;
@@ -454,7 +455,7 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 		goto out;
 	}
 
-	owner = get_json_key_value(res->body, "owner",
+	owner = pv_json_get_value(res->body, "owner",
 			res->json_tokv, res->json_tokc);
 
 	if (owner && (strcmp(owner, "") != 0)) {
@@ -462,7 +463,7 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 		goto out;
 	}
 
-	challenge = get_json_key_value(res->body, "challenge",
+	challenge = pv_json_get_value(res->body, "challenge",
 			res->json_tokv, res->json_tokc);
 
 	strcpy(*c, challenge);

@@ -36,20 +36,7 @@
 #include <signal.h>
 
 #include "utils.h"
-/*
- * private struct.
- */
-struct pv_json_format {
-       char ch;
-       int *off_dst;
-       int *off_src;
-       const char *src;
-       char *dst;
-       int (*format)(struct pv_json_format *);
-};
 #include "tsh.h"
-
-static int seeded = 0;
 
 int mkdir_p(char *dir, mode_t mode)
 {
@@ -94,39 +81,6 @@ void syncdir(char *file)
 	close(fd);
 }
 
-char *rand_string(int size)
-{
-	char set[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK";
-	char *str;
-	time_t t;
-
-	if (!seeded)
-		srand(time(&t));
-
-	str = malloc(sizeof(char) * (size + 1));
-
-	for (int i = 0; i < size; i++) {
-		int key = rand() % (sizeof(set) - 1);
-		str[i] = set[key];
-	}
-
-	// null terminate string
-	str[size] = '\0';
-
-	return str;
-}
-
-int traverse_token (char *buf, jsmntok_t* tok, int t)
-{
-	int i;
-	int c;
-	c=t;
-	for (i=0; i < tok[t].size; i++) {
-		c = traverse_token (buf, tok, c+1);
-	}
-	return c;
-}
-
 int get_digit_count(int number)
 {
 	int c = 0;
@@ -138,100 +92,6 @@ int get_digit_count(int number)
 	c++;
 
 	return c;
-}
-
-int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc)
-{
-	int i;
-	int val = 0;
-	int t=-1;
-
-	for(i=0; i<tokc; i++) {
-		int n = tok[i].end - tok[i].start;
-		int m = strlen (key);
-		if (tok[i].type == JSMN_PRIMITIVE
-		    && n == m
-		    && !strncmp(buf + tok[i].start, key, n)) {
-			t=1;
-		} else if (t==1) {
-			char *idval = malloc(n+1);
-			idval[n] = 0;
-			strncpy(idval, buf + tok[i].start, n);
-			val = atoi(idval);
-			free(idval);
-			return val;
-		} else if (t==1) {
-			return val;
-		}
-	}
-	return val;
-}
-
-char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc)
-{
-	int i;
-	int t=-1;
-
-	for(i=0; i<tokc; i++) {
-		int n = tok[i].end - tok[i].start;
-		int m = strlen (key);
-		if (n == m
-		    && tok[i].type == JSMN_STRING
-		    && !strncmp(buf + tok[i].start, key, n)) {
-			t=1;
-		} else if (t==1) {
-			char *idval = malloc(n+1);
-			idval[n] = 0;
-			strncpy(idval, buf + tok[i].start, n);
-			return idval;
-		} else if (t==1) {
-			return NULL;
-		}
-	}
-	return NULL;
-}
-
-char* json_get_one_str(char *buf, jsmntok_t **tok)
-{
-	int c;
-	char *value = NULL;
-	c = (*tok)->end - (*tok)->start;
-	value = calloc(1, (c+1) * sizeof(char));
-	if (value)
-		strncpy(value, buf+(*tok)->start, c);
-	return value;
-}
-
-char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok)
-{
-	char *value = NULL;
-
-	if (*n == 0)
-		return NULL;
-	value = json_get_one_str(buf, tok);
-	if (value) {
-		(*tok)++;
-		(*n)--;
-	}
-	return value;
-}
-
-int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc)
-{
-	int count = 0;
-
-	for (int i=0; i<tokc; i++) {
-		int n = tok[i].end - tok[i].start;
-		int m = strlen(key);
-
-		if (n == m &&
-		    tok[i].type == JSMN_STRING
-		    && !strncmp(buf + tok[i].start, key, n)) {
-			count += 1;
-		}
-	}
-
-	return count;
 }
 
 static bool char_is_json_special(char ch)
@@ -259,63 +119,6 @@ static char nibble_to_hexchar(char nibble_val) {
 		return '0' + nibble_val;
 	nibble_val -= 10;
 	return 'A' + nibble_val;
-}
-
-static int modify_to_json(struct pv_json_format *json_fmt)
-{
-	char nibble_val;
-
-	json_fmt->dst[(*json_fmt->off_dst)++] = '\\';
-	json_fmt->dst[(*json_fmt->off_dst)++] = 'u';
-	json_fmt->dst[(*json_fmt->off_dst)++] = '0';
-	json_fmt->dst[(*json_fmt->off_dst)++] = '0';
-	/*
-	 * get the higher order byte nibble.
-	 */
-	nibble_val = (json_fmt->ch & 0xff) >> 4;
-	json_fmt->dst[(*json_fmt->off_dst)++] = nibble_to_hexchar(nibble_val);
-	/*
-	 * get the lower order byte nibble.
-	 */
-	nibble_val = (json_fmt->ch & 0x0f);
-	json_fmt->dst[(*json_fmt->off_dst)++] = nibble_to_hexchar(nibble_val);
-
-	return 0;
-}
-
-char* format_json(char *buf, int len)
-{
-	char *json_string = NULL;
-	int idx = 0;
-	int json_str_idx = 0;
-
-	if (len > 0) //We make enough room for worst case.
-		json_string = (char*) calloc(1, (len * 6) + 1); //Add 1 for '\0'.
-
-	if (!json_string)
-		goto out;
-	while (len > idx) {
-		if (char_is_json_special(buf[idx])) {
-			struct pv_json_format json_fmt = {
-				.src = buf,
-				.dst = json_string,
-				.off_dst = &json_str_idx,
-				.off_src = &idx,
-				.ch = buf[idx],
-				.format = modify_to_json
-			};
-			json_fmt.format(&json_fmt);
-		} else
-			json_string[json_str_idx++] = buf[idx];
-		idx++;
-	}
-out:
-	if (json_string) {
-		char *shrinked = realloc(json_string, strlen(json_string) + 1);
-		if (shrinked)
-			json_string = shrinked;
-	}
-	return json_string;
 }
 
 int get_endian(void)

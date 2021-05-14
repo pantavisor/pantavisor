@@ -50,6 +50,7 @@
 #include "list.h"
 #include "utils.h"
 #include "str.h"
+#include "json.h"
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
 
@@ -548,7 +549,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	bytes_read = read_nointr(fd, buf, log_buff->size);
 	/*
 	 * we've to get rid of all NULL bytes in buf
-	 * otherwise the format_json won't really work as it'll
+	 * otherwise the pv_json_format won't really work as it'll
 	 * see the length of the string short.
 	 */
 	pv_str_replace_char(buf, bytes_read, '\0',' ');
@@ -600,7 +601,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 #ifdef DEBUG
 		pv_log(DEBUG, "buf strlen = %d for file %s\n", strlen(json_holder), filename);
 #endif
-		formatted_json = format_json(json_holder, strlen(json_holder));
+		formatted_json = pv_json_format(json_holder, strlen(json_holder));
 		if (formatted_json) {
 			struct ph_logger_fragment *frag = NULL;
 			char *__json_frag = NULL;

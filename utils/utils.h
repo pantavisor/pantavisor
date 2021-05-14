@@ -31,17 +31,8 @@
 #include <jsmn/jsmnutil.h>
 
 int mkdir_p(char *dir, mode_t mode);
-
 void syncdir(char *dir);
-char *rand_string(int size);
-int traverse_token (char *buf, jsmntok_t* tok, int t);
 int get_digit_count(int number);
-int get_json_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* get_json_key_value(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
-int json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
-char* json_get_one_str(char *buf, jsmntok_t **tok);
-char* format_json(char *buf, int len);
 int get_endian(void);
 int get_dt_model(char *buf, int buflen);
 int get_cpu_model(char *buf, int buflen);

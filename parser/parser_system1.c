@@ -38,6 +38,7 @@
 #include "volumes.h"
 #include "objects.h"
 #include "jsons.h"
+#include "json.h"
 #include "pantavisor.h"
 #include "parser.h"
 #include "parser_bundle.h"
@@ -63,11 +64,11 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->bsp.kernel = get_json_key_value(buf, "linux", tokv, tokc);
-	s->bsp.fdt = get_json_key_value(buf, "fdt", tokv, tokc);
-	s->bsp.initrd = get_json_key_value(buf, "initrd", tokv, tokc);
-	s->bsp.firmware = get_json_key_value(buf, "firmware", tokv, tokc);
-	s->bsp.modules = get_json_key_value(buf, "modules", tokv, tokc);
+	s->bsp.kernel = pv_json_get_value(buf, "linux", tokv, tokc);
+	s->bsp.fdt = pv_json_get_value(buf, "fdt", tokv, tokc);
+	s->bsp.initrd = pv_json_get_value(buf, "initrd", tokv, tokc);
+	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
+	s->bsp.modules = pv_json_get_value(buf, "modules", tokv, tokc);
 
 	if (s->bsp.firmware) {
 		v = pv_volume_add(s, s->bsp.firmware);
@@ -106,7 +107,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 		// parse array data
 		jsmntok_t *k = (*key_i+2);
 		size = (*key_i+1)->size;
-		while ((str = json_array_get_one_str(buf, &size, &k)))
+		while ((str = pv_json_array_get_one_str(buf, &size, &k)))
 			pv_addon_add(s, str);
 
 		break;
@@ -158,7 +159,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		snprintf(value, n+1, "%s", buf+(*k+1)->start);
 
 		ret = jsmnutil_parse_json(value, &tokv_t, &tokc);
-		pt = get_json_key_value(value, "persistence", tokv_t, tokc);
+		pt = pv_json_get_value(value, "persistence", tokv_t, tokc);
 
 		if (pt) {
 			struct pv_volume *v = pv_volume_add(s, key);
@@ -267,7 +268,7 @@ static int do_one_jka_action(struct json_key_action *jka)
 	switch(jka->type) {
 		case JSMN_STRING:
 			val_token = jka->tokv + 1;
-			value = json_get_one_str(buf, &val_token);
+			value = pv_json_get_one_str(buf, &val_token);
 			if (jka->save)
 				do_json_key_action_save(jka, value);
 
@@ -508,7 +509,7 @@ static int do_action_for_one_volume(struct json_key_action *jka,
 	 * for root-volume value will be provided.
 	 * */
 	if (!value && jka->type == JSMN_ARRAY) {
-		value = json_get_one_str(jka->buf, &jka->tokv);
+		value = pv_json_get_one_str(jka->buf, &jka->tokv);
 		value_alloced = true;
 	}
 
@@ -589,8 +590,8 @@ static int do_action_for_one_log(struct json_key_action *jka,
 		char *key = NULL;
 		jsmntok_t *val_tok = *keys_i + 1;
 
-		key = json_get_one_str(jka->buf, keys_i);
-		value = json_get_one_str(jka->buf, &val_tok);
+		key = pv_json_get_one_str(jka->buf, keys_i);
+		value = pv_json_get_one_str(jka->buf, &val_tok);
 		
 		pv_log(DEBUG, "Got log value as %s-%s", key, value);
 		if (value) {
@@ -727,14 +728,14 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	count = json_get_key_count(buf, "bsp/run.json", tokv, tokc);
+	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
 	if (!count || (count > 1)) {
 		pv_log(WARN, "Invalid bsp/run.json count in state");
 		this = NULL;
 		goto out;
 	}
 
-	value = get_json_key_value(buf, "bsp/run.json", tokv, tokc);
+	value = pv_json_get_value(buf, "bsp/run.json", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "Unable to get bsp/run.json value from state");
 		this = NULL;
@@ -850,7 +851,7 @@ static char* parse_config_name(char *value, int n)
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
 		return NULL;
 
-	config_name = get_json_key_value(buf, "initrd_config", tokv, tokc);
+	config_name = pv_json_get_value(buf, "initrd_config", tokv, tokc);
 
 	if (tokv)
 		free(tokv);
@@ -870,11 +871,11 @@ char* system1_parse_initrd_config_name(char *buf)
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
 		return NULL;
 
-	count = json_get_key_count(buf, "bsp/run.json", tokv, tokc);
+	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
 	if (!count || (count > 1))
 		return NULL;
 
-	value = get_json_key_value(buf, "bsp/run.json", tokv, tokc);
+	value = pv_json_get_value(buf, "bsp/run.json", tokv, tokc);
 	if (!value)
 		return NULL;
 
