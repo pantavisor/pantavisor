@@ -64,11 +64,11 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->bsp.kernel = pv_json_get_key_value(buf, "linux", tokv, tokc);
-	s->bsp.fdt = pv_json_get_key_value(buf, "fdt", tokv, tokc);
-	s->bsp.initrd = pv_json_get_key_value(buf, "initrd", tokv, tokc);
-	s->bsp.firmware = pv_json_get_key_value(buf, "firmware", tokv, tokc);
-	s->bsp.modules = pv_json_get_key_value(buf, "modules", tokv, tokc);
+	s->bsp.kernel = pv_json_get_value(buf, "linux", tokv, tokc);
+	s->bsp.fdt = pv_json_get_value(buf, "fdt", tokv, tokc);
+	s->bsp.initrd = pv_json_get_value(buf, "initrd", tokv, tokc);
+	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
+	s->bsp.modules = pv_json_get_value(buf, "modules", tokv, tokc);
 
 	if (s->bsp.firmware) {
 		v = pv_volume_add(s, s->bsp.firmware);
@@ -159,7 +159,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		snprintf(value, n+1, "%s", buf+(*k+1)->start);
 
 		ret = jsmnutil_parse_json(value, &tokv_t, &tokc);
-		pt = pv_json_get_key_value(value, "persistence", tokv_t, tokc);
+		pt = pv_json_get_value(value, "persistence", tokv_t, tokc);
 
 		if (pt) {
 			struct pv_volume *v = pv_volume_add(s, key);
@@ -735,7 +735,7 @@ struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, cha
 		goto out;
 	}
 
-	value = pv_json_get_key_value(buf, "bsp/run.json", tokv, tokc);
+	value = pv_json_get_value(buf, "bsp/run.json", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "Unable to get bsp/run.json value from state");
 		this = NULL;
@@ -851,7 +851,7 @@ static char* parse_config_name(char *value, int n)
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
 		return NULL;
 
-	config_name = pv_json_get_key_value(buf, "initrd_config", tokv, tokc);
+	config_name = pv_json_get_value(buf, "initrd_config", tokv, tokc);
 
 	if (tokv)
 		free(tokv);
@@ -875,7 +875,7 @@ char* system1_parse_initrd_config_name(char *buf)
 	if (!count || (count > 1))
 		return NULL;
 
-	value = pv_json_get_key_value(buf, "bsp/run.json", tokv, tokc);
+	value = pv_json_get_value(buf, "bsp/run.json", tokv, tokc);
 	if (!value)
 		return NULL;
 

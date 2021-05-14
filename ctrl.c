@@ -126,7 +126,7 @@ static struct pv_cmd* pv_ctrl_parse_command(char *buf)
 
 	jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	op_string = pv_json_get_key_value(buf, "op", tokv, tokc);
+	op_string = pv_json_get_value(buf, "op", tokv, tokc);
 	if(!op_string) {
 		pv_log(WARN, "unable to get op value from command");
 		goto err;
@@ -138,7 +138,7 @@ static struct pv_cmd* pv_ctrl_parse_command(char *buf)
 		goto err;
 	}
 
-	cmd->payload = pv_json_get_key_value(buf, "payload", tokv, tokc);
+	cmd->payload = pv_json_get_value(buf, "payload", tokv, tokc);
 	if (!cmd->payload) {
 		pv_log(WARN, "unable to get payload value from command");
 		goto err;

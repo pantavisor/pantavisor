@@ -570,7 +570,7 @@ process_response:
 		goto out;
 
 	// parse revision id
-	rev = pv_json_get_key_value(res->body, "rev",
+	rev = pv_json_get_value(res->body, "rev",
 			res->json_tokv, res->json_tokc);
 
 	// this could mean either the server is returning a malformed response or json parser is not working properly
@@ -593,7 +593,7 @@ process_response:
 	}
 
 	// get raw revision state and parse retry
-	state = pv_json_get_key_value(res->body, "state",
+	state = pv_json_get_value(res->body, "state",
 			res->json_tokv, res->json_tokc);
 	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
 		!state) {
@@ -704,17 +704,17 @@ static void __trail_log_resp_err(char *buf, jsmntok_t *tokv, int tokc)
 	 *  "code": <int> <Maybe empty>
 	 * }
 	 */
-	error = pv_json_get_key_value(buf,
+	error = pv_json_get_value(buf,
 			"error",
 			tokv,
 			tokc);
 
-	msg = pv_json_get_key_value(buf,
+	msg = pv_json_get_value(buf,
 			"msg",
 			tokv,
 			tokc);
 
-	__code = pv_json_get_key_value(buf,
+	__code = pv_json_get_value(buf,
 			"code",
 			tokv,
 			tokc);
@@ -853,7 +853,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		goto out;
 	}
 
-	signed_puturl = pv_json_get_key_value(tres->body,
+	signed_puturl = pv_json_get_value(tres->body,
 				"signed-puturl",
 				tres->json_tokv,
 				tres->json_tokc);
@@ -1225,15 +1225,15 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 		goto out;
 	}
 
-	size = pv_json_get_key_value(res->body, "size",
+	size = pv_json_get_value(res->body, "size",
 			res->json_tokv, res->json_tokc);
 	if (size)
 		o->size = atoll(size);
 
-	o->sha256 = pv_json_get_key_value(res->body, "sha256sum",
+	o->sha256 = pv_json_get_value(res->body, "sha256sum",
 				 res->json_tokv, res->json_tokc);
 
-	url = pv_json_get_key_value(res->body, "signed-geturl",
+	url = pv_json_get_value(res->body, "signed-geturl",
 				 res->json_tokv, res->json_tokc);
 	if (!url) {
 		pv_log(ERROR, "unable to get download url for object");

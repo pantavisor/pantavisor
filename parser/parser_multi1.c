@@ -78,10 +78,10 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->bsp.kernel = pv_json_get_key_value(buf, "linux", tokv, tokc);
-	s->bsp.fdt = pv_json_get_key_value(buf, "fdt", tokv, tokc);
-	s->bsp.initrd = pv_json_get_key_value(buf, "initrd", tokv, tokc);
-	s->bsp.firmware = pv_json_get_key_value(buf, "firmware", tokv, tokc);
+	s->bsp.kernel = pv_json_get_value(buf, "linux", tokv, tokc);
+	s->bsp.fdt = pv_json_get_value(buf, "fdt", tokv, tokc);
+	s->bsp.initrd = pv_json_get_value(buf, "initrd", tokv, tokc);
+	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
 
 	if (!s->bsp.kernel || !s->bsp.initrd)
 		goto out;
@@ -170,17 +170,17 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	struct pv_platform *this;
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	name = pv_json_get_key_value(buf, "name", tokv, tokc);
+	name = pv_json_get_value(buf, "name", tokv, tokc);
 
 	this = pv_platform_get_by_name(s, name);
 	if (!this)
 		goto out;
 
-	this->type = pv_json_get_key_value(buf, "type", tokv, tokc);
-	this->exec = pv_json_get_key_value(buf, "exec", tokv, tokc);
+	this->type = pv_json_get_value(buf, "type", tokv, tokc);
+	this->exec = pv_json_get_value(buf, "exec", tokv, tokc);
 
-	configs = pv_json_get_key_value(buf, "configs", tokv, tokc);
-	shares = pv_json_get_key_value(buf, "share", tokv, tokc);
+	configs = pv_json_get_value(buf, "configs", tokv, tokc);
+	shares = pv_json_get_value(buf, "share", tokv, tokc);
 
 	// free intermediates
 	if (name) {
@@ -260,7 +260,7 @@ struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char
 		goto out;
 	}
 
-	value = pv_json_get_key_value(buf, "pantavisor.json", tokv, tokc);
+	value = pv_json_get_value(buf, "pantavisor.json", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "Unable to get pantavisor.json value from state");
 		goto out;

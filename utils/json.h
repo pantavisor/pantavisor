@@ -27,11 +27,9 @@
 
 
 int pv_json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
-int pv_json_traverse_token (char *buf, jsmntok_t* tok, int t);
-
 char* pv_json_get_one_str(char *buf, jsmntok_t **tok);
 char* pv_json_format(char *buf, int len);
-int pv_json_get_key_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* pv_json_get_key_value(char *buf, char *key, jsmntok_t* tok, int tokc);
+int pv_json_get_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
+char* pv_json_get_value(char *buf, char *key, jsmntok_t* tok, int tokc);
 char* pv_json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
 #endif /* UTILS_PV_JSON_H_ */

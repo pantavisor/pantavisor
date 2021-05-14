@@ -321,7 +321,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 
 	// Parse full device json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	um = pv_json_get_key_value(buf, "user-meta", tokv, tokc);
+	um = pv_json_get_value(buf, "user-meta", tokv, tokc);
 
 	if (!um) {
 		ret = -1;
