@@ -65,6 +65,8 @@
 
 #define CMDLINE_OFFSET	7
 
+char pv_user_agent[4096];
+
 static struct pantavisor* global_pv;
 
 struct pantavisor* pv_get_instance()
