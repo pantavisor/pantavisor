@@ -32,7 +32,7 @@
 
 // pantavisor.h
 
-char pv_user_agent[4096];
+extern char pv_user_agent[4096];
 
 #define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
