@@ -232,6 +232,8 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	config->log.push = config_get_value_bool(&config_list, "log.push", true);
 	config->log.capture = config_get_value_bool(&config_list, "log.capture", true);
 
+	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
+
 	config_clear_items(&config_list);
 
 	return 0;

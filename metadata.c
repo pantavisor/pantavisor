@@ -656,8 +656,9 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 	return upload_failed ? -1 : 0;
 }
 
-int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf)
+int pv_metadata_update_usermeta(char *buf)
 {
+	struct pantavisor *pv = pv_get_instance();
 	int ret;
 	char *body, *esc;
 

@@ -35,7 +35,7 @@ struct pv_metadata {
 int pv_metadata_factory_meta(struct pantavisor *pv);
 bool pv_metadata_factory_meta_done(struct pantavisor *pv);
 
-int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf);
+int pv_metadata_update_usermeta(char *buf);
 
 int pv_metadata_parse_devmeta(struct pantavisor *pv);
 int pv_metadata_upload_devmeta(struct pantavisor *pv);

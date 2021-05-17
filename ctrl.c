@@ -383,6 +383,34 @@ static void pv_ctrl_process_get_string(int req_fd, char* buf)
 		free(buf);
 }
 
+static int pv_ctrl_process_user_meta(int req_fd, size_t content_length)
+{
+	char req[HTTP_REQ_BUFFER_SIZE];
+
+	memset(req, 0, sizeof(req));
+
+	pv_log(DEBUG, "reading and parsing user metadata...");
+
+	if (content_length > HTTP_REQ_BUFFER_SIZE) {
+		pv_log(WARN, "cmd request too long");
+		goto err;
+	}
+
+	// read request
+	if (read(req_fd, req, content_length) <= 0) {
+		pv_log(ERROR, "user metadata could not be received from ctrl socket");
+		goto err;
+	}
+
+	if (pv_metadata_update_usermeta(req))
+		goto err;
+
+	return 0;
+
+err:
+	return -1;
+}
+
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
@@ -491,6 +519,9 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	} else if (pv_str_matches(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
+			goto out;
+		}  else if (!strncmp("PUT", method, method_len)) {
+			res = pv_ctrl_process_user_meta(req_fd, content_length);
 			goto out;
 		}
 	} else if (pv_str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
