@@ -237,7 +237,9 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 
 	pv_config_load_creds();
 
-	if ((strcmp(pv_config_get_creds_id(), "") != 0) && pv_ph_device_exists(pv))
+	if (pv_config_get_creds_id() &&
+		strcmp(pv_config_get_creds_id(), "") &&
+		pv_ph_device_exists(pv))
 		need_register = 0;
 
 	if (need_register) {
