@@ -28,13 +28,13 @@
 /*
  * private struct.
  */
-static struct pv_json_format {
+struct json_format {
        char ch;
        int *off_dst;
        int *off_src;
        const char *src;
        char *dst;
-       int (*format)(struct pv_json_format *);
+       int (*format)(struct json_format *);
 };
 
 
@@ -46,7 +46,7 @@ static char nibble_to_hexchar(char nibble_val) {
 	return 'A' + nibble_val;
 }
 
-static int modify_to_json(struct pv_json_format *json_fmt)
+static int modify_to_json(struct json_format *json_fmt)
 {
 	char nibble_val;
 
@@ -194,7 +194,7 @@ char* pv_json_format(char *buf, int len)
 		goto out;
 	while (len > idx) {
 		if (char_is_json_special(buf[idx])) {
-			struct pv_json_format json_fmt = {
+			struct json_format json_fmt = {
 				.src = buf,
 				.dst = json_string,
 				.off_dst = &json_str_idx,
