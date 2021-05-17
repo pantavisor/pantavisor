@@ -383,32 +383,30 @@ static void pv_ctrl_process_get_string(int req_fd, char* buf)
 		free(buf);
 }
 
-static int pv_ctrl_process_user_meta(int req_fd, size_t content_length)
+static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 {
-	char req[HTTP_REQ_BUFFER_SIZE];
-
-	memset(req, 0, sizeof(req));
-
-	pv_log(DEBUG, "reading and parsing user metadata...");
+	char *req = NULL;
 
 	if (content_length > HTTP_REQ_BUFFER_SIZE) {
-		pv_log(WARN, "cmd request too long");
+		pv_log(WARN, "body too long");
 		goto err;
 	}
+
+	req = calloc(1, content_length);
 
 	// read request
 	if (read(req_fd, req, content_length) <= 0) {
-		pv_log(ERROR, "user metadata could not be received from ctrl socket");
+		pv_log(ERROR, "body could not be reveived from ctrl socket");
 		goto err;
 	}
 
-	if (pv_metadata_update_usermeta(req))
-		goto err;
-
-	return 0;
+	return req;
 
 err:
-	return -1;
+	if (req)
+		free(req);
+
+	return NULL;
 }
 
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
@@ -420,6 +418,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
 	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL;
+	char *metakey = NULL, *metavalue = NULL;
 
 	memset(buf, 0, sizeof(buf));
 
@@ -520,16 +519,29 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
 			goto out;
-		}  else if (!strncmp("PUT", method, method_len)) {
-			res = pv_ctrl_process_user_meta(req_fd, content_length);
-			goto out;
 		}
+
 	} else if (pv_str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 			goto out;
 		}
-	}
+	} else if (pv_str_startswith(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path)) {
+		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_DEVICE_META), path_len);
+
+		if (!metakey) {
+			pv_log(WARN, "HTTP request has bad step name %s", file_name);
+			goto response;
+		}
+
+		if (!strncmp("PUT", method, method_len)) {
+			metavalue = pv_ctrl_get_body(req_fd, content_length);
+			pv_log(DEBUG, "put device meta key %s value %s", metakey, metavalue);
+		} else if (!strncmp("DELETE", method, method_len)) {
+			pv_log(DEBUG, "delete device meta key %s", metakey);
+		}
+	} else
+		pv_log(WARN, "HTTP request received has bad endpoint");
 
 response:
 	if (res < 0) {
@@ -552,6 +564,10 @@ out:
 		free(file_path_parent);
 	if (file_path)
 		free(file_path);
+	if (metakey)
+		free(metakey);
+	if (metavalue)
+		free(metavalue);
 
 	return cmd;
 }
