@@ -894,7 +894,8 @@ static int pv_storage_init(struct pv_init *this)
 	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
 	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
-	if (strcmp(pv_config_get_creds_prn(), "") == 0) {
+	if (!pv_config_get_creds_prn() ||
+		(!strcmp(pv_config_get_creds_prn(), ""))) {
 		pv->unclaimed = true;
 	} else {
 		pv->unclaimed = false;
