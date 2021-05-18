@@ -662,6 +662,7 @@ static void pv_remove(struct pantavisor *pv)
 	pv_ctrl_free_cmd(pv->cmd);
 	pv_trail_remote_remove(pv);
 	pv_config_free();
+	pv_metadata_remove();
 
 	free(pv);
 	pv = NULL;

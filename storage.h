@@ -22,6 +22,11 @@
 #ifndef PV_STORAGE_H
 #define PV_STORAGE_H
 
+struct pv_path {
+	char* path;
+	struct dl_list list;
+};
+
 struct pv_state* pv_storage_get_state(struct pantavisor *pv, const char *rev);
 char* pv_storage_get_initrd_config_name(const char *rev);
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
@@ -31,6 +36,8 @@ void pv_storage_set_active(struct pantavisor *pv);
 int pv_storage_make_config(struct pantavisor *pv);
 bool pv_storage_is_revision_local(const char* rev);
 char* pv_storage_get_revisions_string(void);
+
+int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs);
 
 int pv_storage_validate_file_checksum(char* path, char* checksum);
 
@@ -43,5 +50,8 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
 int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
 void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value);
 
+char *pv_storage_load_metadata(const char *path_base, const char *key, const unsigned int max_size);
+void pv_storage_add_metadata(const char *path_base, const char *key, const char *value);
+void pv_storage_rm_metadata(const char *path_base, const char *key);
 
 #endif // PV_STORAGE_H

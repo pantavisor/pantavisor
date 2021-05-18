@@ -56,11 +56,6 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-struct pv_path {
-	char* path;
-	struct dl_list list;
-};
-
 static int remove_at(char *path, char *filename)
 {
 	char full_path[PATH_MAX];
@@ -173,7 +168,7 @@ void pv_storage_rm_rev(struct pantavisor *pv, const char *rev)
 	sync();
 }
 
-static int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs)
+int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs)
 {
 	int n, len, ret = 0;
 	char *basedir;
@@ -882,6 +877,56 @@ char* pv_storage_get_initrd_config_name(const char *rev)
 	close(fd);
 
 	return config_name;
+}
+
+char *pv_storage_load_metadata(const char *path_base, const char *key, const unsigned int max_size)
+{
+	int fd, size;
+	char path[PATH_MAX], buf[max_size];
+	char *value = NULL;
+
+	sprintf(path, "%s/%s", path_base, key);
+
+	fd = open(path, O_RDONLY, 0644);
+	if (!fd)
+		goto out;
+
+	size = read(fd, buf, max_size);
+	value = calloc(1, size);
+	strncpy(value, buf, size);
+	close(fd);
+
+out:
+	return value;
+}
+
+void pv_storage_add_metadata(const char *path_base, const char *key, const char *value)
+{
+	int fd;
+	char path[PATH_MAX];
+
+	if (!key || !value)
+		return;
+
+	sprintf(path, "%s/%s", path_base, key);
+
+	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	if (!fd)
+		goto out;
+
+	write(fd, value, strlen(value));
+	close(fd);
+
+out:
+	return;
+}
+
+void pv_storage_rm_metadata(const char *path_base, const char *key)
+{
+	char path[PATH_MAX];
+
+	sprintf(path, "%s/%s", path_base, key);
+	remove(path);
 }
 
 static int pv_storage_init(struct pv_init *this)
