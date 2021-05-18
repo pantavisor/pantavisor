@@ -294,11 +294,14 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {
 			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (rollback_time <= tp.tv_sec)
+			if (rollback_time <= tp.tv_sec) {
+				pv_log(ERROR, "timed out before getting any response from cloud. Rolling back...");
 				return STATE_ROLLBACK;
+			}
 			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
 		// or we directly rollback is connection is not stable during testing
 		} else if (pv_update_is_testing(pv->update)) {
+			pv_log(ERROR, "connection with cloud not stable during testing, Rolling back...");
 			return STATE_ROLLBACK;
 		}
 		// if there is no connection and no rollback yet, we avoid the rest of network operations
@@ -344,8 +347,10 @@ static pv_state_t pv_wait_update()
 				return STATE_WAIT;
 			}
 		}
-		if (pv_update_finish(pv) < 0)
+		if (pv_update_finish(pv) < 0) {
+			pv_log(ERROR, "update could not be finished. Rolling back...");
 			return STATE_ROLLBACK;
+		}
 	}
 
 	return STATE_WAIT;
@@ -357,7 +362,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
-		pv_log(WARN, "one or more platforms exited, tearing down");
+		pv_log(ERROR, "one or more platforms exited. Tearing down...");
 		if (pv_update_is_trying(pv->update) || pv_update_is_testing(pv->update))
 			next_state = STATE_ROLLBACK;
 		else
@@ -514,11 +519,13 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+	pv_log(DEBUG, "Rolling back to revision %s...", pv_bootloader_get_rev());
 
 	// We shouldnt get a rollback event on rev 0
-	if (pv->state && strncmp(pv->state->rev, "0", sizeof("0")))
+	if (pv->state && !strncmp(pv->state->rev, "0", sizeof("0"))) {
+		pv_log(ERROR, "bad factory revision");
 		return STATE_ERROR;
+	}
 
 	// rollback means current update needs to be reported to PH as FAILED
 	if (pv->update)
