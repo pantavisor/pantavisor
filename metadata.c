@@ -47,7 +47,7 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-static const unsigned int METADATA_MAX_SIZE = 16384;
+static const unsigned int METADATA_MAX_SIZE = 4096;
 
 #define PV_USERMETA_ADD     (1<<0)
 struct pv_meta {
@@ -404,7 +404,7 @@ void pv_metadata_rm_devmeta(const char *key)
 	}
 }
 
-int pv_metadata_parse_devmeta(struct pantavisor *pv)
+int pv_metadata_init_devmeta(struct pantavisor *pv)
 {
 	char *buf = NULL;
 	struct log_buffer *log_buffer = NULL;
@@ -424,6 +424,7 @@ int pv_metadata_parse_devmeta(struct pantavisor *pv)
 	buf = log_buffer->buf;
 	bufsize = log_buffer->size;
 
+	// add system info to initial device metadata
 	for (i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
 		int ret = 0;
 

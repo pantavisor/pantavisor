@@ -197,7 +197,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_storage_meta_set_objdir(pv);
-	pv_metadata_parse_devmeta(pv);
+	pv_metadata_init_devmeta(pv);
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 

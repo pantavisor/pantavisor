@@ -70,7 +70,7 @@
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
 #define HTTP_RES_ERROR "HTTP/1.1 500 Internal Server Error\r\n\r\n"
 
-static const unsigned int HTTP_REQ_BUFFER_SIZE = 16384;
+static const unsigned int HTTP_REQ_BUFFER_SIZE = 4096;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
 static int pv_ctrl_socket_open(char *path)
