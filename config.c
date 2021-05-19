@@ -188,8 +188,6 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 
 	config->lxc.log_level = config_get_value_int(&config_list, "lxc.log.level", 2);
 
-	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
-
 	config_clear_items(&config_list);
 
 	return 0;
@@ -506,8 +504,6 @@ int pv_config_get_log_loglevel() { return pv_get_instance()->config.log.loglevel
 int pv_config_get_log_logsize() { return pv_get_instance()->config.log.logsize; }
 bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
 bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
-
-bool pv_config_get_control_remote() { return pv_get_instance()->config.control.remote; }
 
 static int pv_config_init(struct pv_init *this)
 {

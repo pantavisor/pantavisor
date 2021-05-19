@@ -175,19 +175,16 @@ void pv_storage_rm_rev(struct pantavisor *pv, const char *rev)
 
 static int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs)
 {
-	int n, len, ret = 0;
+	int n, len, ret = -1;
 	char *basedir;
-	struct dirent **dirs = NULL;
+	struct dirent **dirs;
 	struct pv_path *subdir;
 
 	len = strlen(path) + strlen(prefix) + 1;
-	basedir = calloc(1, len);
+	basedir = calloc(1, len + sizeof(char));
 	sprintf(basedir, "%s%s", path, prefix);
 
 	n = scandir(basedir, &dirs, NULL, alphasort);
-	if (n < 0)
-		goto out;
-
 	while (n--) {
 		char *tmp = dirs[n]->d_name;
 
@@ -198,17 +195,17 @@ static int pv_storage_get_subdir(const char* path, const char* prefix, struct dl
 			continue;
 
 		subdir = calloc(1, sizeof(struct pv_path));
-		if (!subdir) {
-			ret = -1;
+		if (!subdir)
 			goto out;
-		}
 
 		len = strlen(prefix) + strlen(dirs[n]->d_name) + 1;
-		subdir->path = calloc(1, len );
+		subdir->path = calloc(1, len * sizeof(char*));
 		snprintf(subdir->path, len, "%s%s", prefix, dirs[n]->d_name);
 		dl_list_init(&subdir->list);
 		dl_list_add(subdirs, &subdir->list);
 	}
+
+	ret = 0;
 
 out:
 	if (basedir)
@@ -225,7 +222,7 @@ static int pv_storage_get_revisions(struct dl_list *revisions)
 	char *basedir;
 
 	len = strlen("%s/trails/") + strlen(pv_config_get_storage_mntpoint()) + 1;
-	basedir = calloc(1, len);
+	basedir = calloc(1, len + sizeof(char));
 	sprintf(basedir, "%s/trails/", pv_config_get_storage_mntpoint());
 
 	if (pv_storage_get_subdir(basedir, "locals/", revisions) ||
@@ -512,23 +509,16 @@ bool pv_storage_is_revision_local(const char* rev)
 char* pv_storage_get_revisions_string()
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len);
+	char *out = calloc(1, len * sizeof(char));
 	struct dl_list revisions; // pv_path
 	struct pv_path *r, *tmp;
 
 	dl_list_init(&revisions);
-	if (pv_storage_get_revisions(&revisions)) {
+	if (pv_storage_get_revisions(&revisions))
 		pv_log(ERROR, "error parsings revs on disk for ctrl");
-		goto out;
-	}
 
 	// open json
-	json[0]='{';
-
-	if (dl_list_empty(&revisions)) {
-		len++;
-		goto out;
-	}
+	out[0]='{';
 
 	// fill up revision list in json
 	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
@@ -540,17 +530,16 @@ char* pv_storage_get_revisions_string()
 			!strncmp(r->path, "locals", strlen("locals") + 1))
 			continue;
 
-		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "\"%s\",", r->path);
+		out = realloc(out, (len + line_len) * sizeof(char));
+		snprintf(&out[len], line_len + 1, "\"%s\",", r->path);
 		len += line_len;
 	}
 
-out:
-	len += 1;
-	json = realloc(json, len);
 	// close json
-	json[len-2] = '}';
-	json[len-1] = '\0';
+	len += 1;
+	out = realloc(out, len * sizeof(char));
+	out[len-2] = '}';
+	out[len-1] = '\0';
 
 	// free temporary revision list
 	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
@@ -559,7 +548,7 @@ out:
 		free(r);
 	}
 
-	return json;
+	return out;
 }
 
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
