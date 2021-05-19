@@ -144,11 +144,6 @@ int pv_bootloader_set_installed(char *rev)
 	return pv_bootloader_set_try(rev);
 }
 
-void pv_bootloader_set_rolledback()
-{
-	pv_log(INFO, "setting old revision %s to be started after next reboot", pv_bootloader_get_rev());
-}
-
 int pv_bootloader_set_commited(char *rev)
 {
 	if (!ops)

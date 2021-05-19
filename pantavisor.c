@@ -284,46 +284,6 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 	return 0;
 }
 
-static pv_state_t pv_wait_network(struct pantavisor *pv)
-{
-	struct timespec tp;
-
-	// check if we are online and authenticated
-	if (!pv_ph_is_auth(pv) ||
-		!pv_trail_is_auth(pv)) {
-		// this could mean the trying update cannot connect to ph
-		if (pv_update_is_trying(pv->update)) {
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (rollback_time <= tp.tv_sec) {
-				pv_log(ERROR, "timed out before getting any response from cloud. Rolling back...");
-				return STATE_ROLLBACK;
-			}
-			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
-		// or we directly rollback is connection is not stable during testing
-		} else if (pv_update_is_testing(pv->update)) {
-			pv_log(ERROR, "connection with cloud not stable during testing, Rolling back...");
-			return STATE_ROLLBACK;
-		}
-		// if there is no connection and no rollback yet, we avoid the rest of network operations
-		return STATE_WAIT;
-	}
-
-	// start or stop ph logger depending on network and configuration
-	ph_logger_toggle(pv, pv->state->rev);
-
-	// update meta info
-	if (!pv_metadata_factory_meta_done(pv)) {
-		return STATE_FACTORY_UPLOAD;
-	}
-	pv_meta_update_to_ph(pv);
-
-	// check for new remote update
-	if (pv_check_for_updates(pv) > 0)
-		return STATE_UPDATE;
-
-	return STATE_WAIT;
-}
-
 static pv_state_t pv_wait_update()
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -356,8 +316,56 @@ static pv_state_t pv_wait_update()
 	return STATE_WAIT;
 }
 
+static pv_state_t pv_wait_network(struct pantavisor *pv)
+{
+	struct timespec tp;
+	pv_log(DEBUG, "wait network");
+
+	// check if we are online and authenticated
+	if (!pv_ph_is_auth(pv) ||
+		!pv_trail_is_auth(pv)) {
+		// this could mean the trying update cannot connect to ph
+		pv_log(DEBUG, "no connection");
+		if (pv_update_is_trying(pv->update)) {
+			pv_log(DEBUG, "trying");
+			clock_gettime(CLOCK_MONOTONIC, &tp);
+			if (rollback_time <= tp.tv_sec) {
+				pv_log(ERROR, "timed out before getting any response from cloud. Rolling back...");
+				return STATE_ROLLBACK;
+			}
+			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
+		// or we directly rollback is connection is not stable during testing
+		} else if (pv_update_is_testing(pv->update)) {
+			pv_log(ERROR, "connection with cloud not stable during testing, Rolling back...");
+			return STATE_ROLLBACK;
+		}
+		// if there is no connection and no rollback yet, we avoid the rest of network operations
+		return STATE_WAIT;
+	}
+
+	pv_log(DEBUG, "connection");
+
+	// start or stop ph logger depending on network and configuration
+	ph_logger_toggle(pv, pv->state->rev);
+
+	// update meta info
+	if (!pv_metadata_factory_meta_done(pv)) {
+		return STATE_FACTORY_UPLOAD;
+	}
+	pv_meta_update_to_ph(pv);
+
+	// check for new remote update
+	if (pv_check_for_updates(pv) > 0)
+		return STATE_UPDATE;
+
+	// process ongoing updates, if any
+	pv_log(DEBUG, "process ongoing updates");
+	return pv_wait_update();
+}
+
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
+	pv_log(DEBUG, "wait");
 	pv_state_t next_state = STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
@@ -370,10 +378,13 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
+	pv_log(DEBUG, "plats checked");
+
 	if (pv_config_get_control_remote() &&
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
 		(pv_wait_delay_timedout(pv_config_get_updater_interval()))) {
+		pv_log(DEBUG, "remote");
 		// check if device is unclaimed
 		if (pv->unclaimed) {
 			next_state = STATE_UNCLAIMED;
@@ -385,23 +396,30 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		next_state = pv_wait_network(pv);
 		if (next_state != STATE_WAIT)
 			goto out;
+	} else {
+		pv_log(DEBUG, "local");
+		// process ongoing updates, if any
+		next_state = pv_wait_update();
+		if (next_state != STATE_WAIT)
+			goto out;
 	}
 
-	// process ongoing updates, if any
-	next_state = pv_wait_update();
-	if (next_state != STATE_WAIT)
-		goto out;
+	pv_log(DEBUG, "network and upate completed");
 
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
 		pv_storage_gc_run(pv);
 	}
 
+	pv_log(DEBUG, "gc checkd");
+
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
 	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
 	if (pv->cmd)
 		next_state = STATE_COMMAND;
+
+	pv_log(DEBUG, "command checked");
 
 out:
 	return next_state;
@@ -519,7 +537,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "Rolling back to revision %s...", pv_bootloader_get_rev());
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
 	if (pv->state && !strncmp(pv->state->rev, "0", sizeof("0"))) {
@@ -530,8 +548,6 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	// rollback means current update needs to be reported to PH as FAILED
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
-
-	pv_bootloader_set_rolledback();
 
 	return STATE_REBOOT;
 }

@@ -39,7 +39,6 @@ bool pv_bootloader_update_in_progress(void);
 bool pv_bootloader_trying_update(void);
 
 int pv_bootloader_set_installed(char* rev);
-void pv_bootloader_set_rolledback(void);
 int pv_bootloader_set_commited(char* rev);
 int pv_bootloader_set_failed(void);
 
