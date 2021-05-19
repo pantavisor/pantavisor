@@ -319,15 +319,12 @@ static pv_state_t pv_wait_update()
 static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timespec tp;
-	pv_log(DEBUG, "wait network");
 
 	// check if we are online and authenticated
 	if (!pv_ph_is_auth(pv) ||
 		!pv_trail_is_auth(pv)) {
 		// this could mean the trying update cannot connect to ph
-		pv_log(DEBUG, "no connection");
 		if (pv_update_is_trying(pv->update)) {
-			pv_log(DEBUG, "trying");
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (rollback_time <= tp.tv_sec) {
 				pv_log(ERROR, "timed out before getting any response from cloud. Rolling back...");
@@ -343,8 +340,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		return STATE_WAIT;
 	}
 
-	pv_log(DEBUG, "connection");
-
 	// start or stop ph logger depending on network and configuration
 	ph_logger_toggle(pv, pv->state->rev);
 
@@ -359,13 +354,11 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		return STATE_UPDATE;
 
 	// process ongoing updates, if any
-	pv_log(DEBUG, "process ongoing updates");
 	return pv_wait_update();
 }
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "wait");
 	pv_state_t next_state = STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
@@ -378,13 +371,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_log(DEBUG, "plats checked");
-
 	if (pv_config_get_control_remote() &&
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
 		(pv_wait_delay_timedout(pv_config_get_updater_interval()))) {
-		pv_log(DEBUG, "remote");
 		// check if device is unclaimed
 		if (pv->unclaimed) {
 			next_state = STATE_UNCLAIMED;
@@ -404,22 +394,17 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			goto out;
 	}
 
-	pv_log(DEBUG, "network and upate completed");
 
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
 		pv_storage_gc_run(pv);
 	}
 
-	pv_log(DEBUG, "gc checkd");
-
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
 	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
 	if (pv->cmd)
 		next_state = STATE_COMMAND;
-
-	pv_log(DEBUG, "command checked");
 
 out:
 	return next_state;
