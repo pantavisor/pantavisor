@@ -233,8 +233,6 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	config->log.push = config_get_value_bool(&config_list, "log.push", true);
 	config->log.capture = config_get_value_bool(&config_list, "log.capture", true);
 
-	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
-
 	config_clear_items(&config_list);
 
 	return 0;
@@ -458,6 +456,8 @@ void pv_config_free()
 inline void pv_config_set_creds_id(char *id) { pv_get_instance()->config.creds.id = id; }
 inline void pv_config_set_creds_prn(char *prn) { pv_get_instance()->config.creds.prn = prn; }
 inline void pv_config_set_creds_secret(char *secret) { pv_get_instance()->config.creds.secret = secret; }
+
+void pv_config_set_control_remote(bool remote) { pv_get_instance()->config.control.remote = remote; }
 
 char* pv_config_get_cache_usermetacachedir() { return pv_get_instance()->config.cache.usermetacachedir; }
 char* pv_config_get_cache_devicemetacachedir() { return pv_get_instance()->config.cache.devicemetacachedir; }

@@ -147,6 +147,8 @@ void pv_config_set_creds_id(char *id);
 void pv_config_set_creds_prn(char *prn);
 void pv_config_set_creds_secret(char *secret);
 
+void pv_config_set_control_remote(bool remote);
+
 char* pv_config_get_cache_usermetacachedir(void);
 char* pv_config_get_cache_devicemetacachedir(void);
 char* pv_config_get_cache_dropbearcachedir(void);
