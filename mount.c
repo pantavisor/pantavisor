@@ -51,19 +51,14 @@ static int ph_mount_init(struct pv_init *this)
 	if (stat(pv_config_get_log_logdir(), &st) != 0)
 		mkdir_p(pv_config_get_log_logdir(), 0500);
 
-	if (stat(pv_config_get_cache_usermetacachedir(), &st) != 0)
-		mkdir_p(pv_config_get_cache_usermetacachedir(), 0500);
-	if (stat(pv_config_get_cache_devicemetacachedir(), &st) != 0)
-		mkdir_p(pv_config_get_cache_devicemetacachedir(), 0500);
+	if (stat(pv_config_get_cache_metacachedir(), &st) != 0)
+		mkdir_p(pv_config_get_cache_metacachedir(), 0500);
 
 	if (stat(pv_config_get_cache_dropbearcachedir(), &st) != 0)
 		mkdir_p(pv_config_get_cache_dropbearcachedir(), 0500);
 	mkdir_p("/pv/user-meta/", 0755);
-	if (pv_config_get_cache_usermetacachedir())
-		mount_bind(pv_config_get_cache_usermetacachedir(), "/pv/user-meta");
-	mkdir_p("/pv/device-meta/", 0755);
-	if (pv_config_get_cache_devicemetacachedir())
-		mount_bind(pv_config_get_cache_devicemetacachedir(), "/pv/device-meta");
+	if (pv_config_get_cache_metacachedir())
+		mount_bind(pv_config_get_cache_metacachedir(), "/pv/user-meta");
 
 	mkdir_p("/etc/dropbear/", 0755);
 	if (pv_config_get_cache_dropbearcachedir())

@@ -525,20 +525,12 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 			goto out;
 		}
-	} else if (pv_str_startswith(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path)) {
-		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_DEVICE_META), path_len);
-
-		if (!metakey) {
-			pv_log(WARN, "HTTP request has bad step name %s", file_name);
+	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
+		if (pv_config_get_control_remote()) {
+			pv_log(WARN, "HTTP resquest cannot be done while on remote revision");
 			goto response;
 		}
 
-		if (!strncmp("PUT", method, method_len)) {
-			metavalue = pv_ctrl_get_body(req_fd, content_length);
-			pv_metadata_add_devmeta(metakey, metavalue);
-		} else if (!strncmp("DELETE", method, method_len))
-			pv_metadata_rm_devmeta(metakey);
-	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
 		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_USER_META), path_len);
 
 		if (!metakey) {

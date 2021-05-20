@@ -203,8 +203,6 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 						" none bind,ro,create=dir 0 0");
 	c->set_config_item(c, "lxc.mount.entry", "/pv/user-meta pantavisor/user-meta"
 						" none bind,ro,create=dir 0 0");
-	c->set_config_item(c, "lxc.mount.entry", "/pv/device-meta pantavisor/device-meta"
-						" none bind,ro,create=dir 0 0");
 	if (stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
 					" lib/firmware none bind,ro,create=dir"

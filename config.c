@@ -157,8 +157,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config_parse_cmdline(&config_list, "pv_");
 
 	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
-	config->cache.usermetacachedir = config_get_value_string(&config_list, "meta.user.cache.dir", "/storage/cache/user-meta");
-	config->cache.devicemetacachedir = config_get_value_string(&config_list, "meta.device.cache.dir", "/storage/cache/device-meta");
+	config->cache.metacachedir = config_get_value_string(&config_list, "meta.cache.dir", "/storage/cache/meta");
 
 	config->bl.type = config_get_value_bl_type(&config_list, "bootloader.type", BL_UBOOT_PLAIN);
 	config->bl.mtd_only = config_get_value_bool(&config_list, "bootloader.mtd_only", false);
@@ -396,10 +395,8 @@ void pv_config_free()
 {
 	struct pantavisor *pv = pv_get_instance();
 
-	if (pv->config.cache.usermetacachedir)
-		free(pv->config.cache.usermetacachedir);
-	if (pv->config.cache.devicemetacachedir)
-		free(pv->config.cache.devicemetacachedir);
+	if (pv->config.cache.metacachedir)
+		free(pv->config.cache.metacachedir);
 	if (pv->config.cache.dropbearcachedir)
 		free(pv->config.cache.dropbearcachedir);
 
@@ -459,8 +456,7 @@ inline void pv_config_set_creds_secret(char *secret) { pv_get_instance()->config
 
 void pv_config_set_control_remote(bool remote) { pv_get_instance()->config.control.remote = remote; }
 
-char* pv_config_get_cache_usermetacachedir() { return pv_get_instance()->config.cache.usermetacachedir; }
-char* pv_config_get_cache_devicemetacachedir() { return pv_get_instance()->config.cache.devicemetacachedir; }
+char* pv_config_get_cache_metacachedir() { return pv_get_instance()->config.cache.metacachedir; }
 char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.cache.dropbearcachedir; }
 
 char* pv_config_get_creds_type() { return pv_get_instance()->config.creds.type; }

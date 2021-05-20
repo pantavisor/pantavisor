@@ -454,7 +454,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv_config_get_control_remote()) {
 			pv_log(DEBUG, "metadata command with payload '%s' received. Uploading metadata...",
 				cmd->payload);
-			pv_ph_upload_metadata(pv, cmd->payload);
+			if (!pv_ph_upload_metadata(pv, cmd->payload))
+				pv_metadata_parse_devmeta_pair(cmd->payload);
 		}
 		break;
 	case CMD_REBOOT_DEVICE:

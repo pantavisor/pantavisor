@@ -34,8 +34,7 @@ enum {
 };
 
 struct pantavisor_cache {
-	char *usermetacachedir;
-	char *devicemetacachedir;
+	char *metacachedir;
 	char *dropbearcachedir;
 };
 
@@ -149,8 +148,7 @@ void pv_config_set_creds_secret(char *secret);
 
 void pv_config_set_control_remote(bool remote);
 
-char* pv_config_get_cache_usermetacachedir(void);
-char* pv_config_get_cache_devicemetacachedir(void);
+char* pv_config_get_cache_metacachedir(void);
 char* pv_config_get_cache_dropbearcachedir(void);
 
 char* pv_config_get_creds_type(void);
