@@ -190,6 +190,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
 		pv->state->local = true;
 		pv_config_set_control_remote(false);
+	} else {
+		pv->state->local = false;
+		pv_config_set_control_remote(true);
 	}
 
 	// only start local ph logger, start cloud services if connected
