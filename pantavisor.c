@@ -284,6 +284,38 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 	return 0;
 }
 
+static pv_state_t pv_wait_update()
+{
+	struct pantavisor *pv = pv_get_instance();
+	struct timespec tp;
+
+	// if an update is going on at this point, it means we still have to finish it
+	if (pv->update) {
+		if (pv_update_is_trying(pv->update)) {
+			// set initial testing time
+			clock_gettime(CLOCK_MONOTONIC, &tp);
+			commit_delay = tp.tv_sec + pv_config_get_updater_commit_delay();
+			// progress update state to testing
+			pv_update_test(pv);
+		}
+		// if the update is being tested, we might have to wait
+		if (pv_update_is_testing(pv->update)) {
+			// progress if possible the state of testing update
+			clock_gettime(CLOCK_MONOTONIC, &tp);
+			if (commit_delay > tp.tv_sec) {
+				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
+				return STATE_WAIT;
+			}
+		}
+		if (pv_update_finish(pv) < 0) {
+			pv_log(ERROR, "update could not be finished. Rolling back...");
+			return STATE_ROLLBACK;
+		}
+	}
+
+	return STATE_WAIT;
+}
+
 static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
 	struct timespec tp;
@@ -321,39 +353,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	if (pv_check_for_updates(pv) > 0)
 		return STATE_UPDATE;
 
-	return STATE_WAIT;
-}
-
-static pv_state_t pv_wait_update()
-{
-	struct pantavisor *pv = pv_get_instance();
-	struct timespec tp;
-
-	// if an update is going on at this point, it means we still have to finish it
-	if (pv->update) {
-		if (pv_update_is_trying(pv->update)) {
-			// set initial testing time
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			commit_delay = tp.tv_sec + pv_config_get_updater_commit_delay();
-			// progress update state to testing
-			pv_update_test(pv);
-		}
-		// if the update is being tested, we might have to wait
-		if (pv_update_is_testing(pv->update)) {
-			// progress if possible the state of testing update
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (commit_delay > tp.tv_sec) {
-				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
-				return STATE_WAIT;
-			}
-		}
-		if (pv_update_finish(pv) < 0) {
-			pv_log(ERROR, "update could not be finished. Rolling back...");
-			return STATE_ROLLBACK;
-		}
-	}
-
-	return STATE_WAIT;
+	// process ongoing updates, if any
+	return pv_wait_update();
 }
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
@@ -370,27 +371,28 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv_config_get_control_remote() &&
+	if (pv_config_get_control_remote()) {
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
-		(pv_wait_delay_timedout(pv_config_get_updater_interval()))) {
-		// check if device is unclaimed
-		if (pv->unclaimed) {
-			next_state = STATE_UNCLAIMED;
-			goto out;
-		}
+		if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
+			// check if device is unclaimed
+			if (pv->unclaimed) {
+				next_state = STATE_UNCLAIMED;
+				goto out;
+			}
 
-		// rest of network wait stuff: connectivity check. update management,
-		// meta data uppload, ph logger push start...
-		next_state = pv_wait_network(pv);
+			// rest of network wait stuff: connectivity check. update management,
+			// meta data uppload, ph logger push start...
+			next_state = pv_wait_network(pv);
+			if (next_state != STATE_WAIT)
+				goto out;
+		}
+	} else {
+		// process ongoing updates, if any
+		next_state = pv_wait_update();
 		if (next_state != STATE_WAIT)
 			goto out;
 	}
-
-	// process ongoing updates, if any
-	next_state = pv_wait_update();
-	if (next_state != STATE_WAIT)
-		goto out;
 
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
@@ -519,7 +521,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "Rolling back to revision %s...", pv_bootloader_get_rev());
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	// We shouldnt get a rollback event on rev 0
 	if (pv->state && !strncmp(pv->state->rev, "0", sizeof("0"))) {
@@ -530,8 +532,6 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	// rollback means current update needs to be reported to PH as FAILED
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
-
-	pv_bootloader_set_rolledback();
 
 	return STATE_REBOOT;
 }
