@@ -387,7 +387,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		if (next_state != STATE_WAIT)
 			goto out;
 	} else {
-		pv_log(DEBUG, "local");
 		// process ongoing updates, if any
 		next_state = pv_wait_update();
 		if (next_state != STATE_WAIT)
