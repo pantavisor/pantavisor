@@ -721,6 +721,11 @@ static void pv_metadata_load_usermeta()
 
 	dl_list_for_each_safe(curr, tmp, &files,
 		struct pv_path, list) {
+
+		if (!strncmp(curr->path, "..", strlen("..")) ||
+			!strncmp(curr->path, ".", strlen(".")))
+			continue;
+
 		value = pv_storage_load_metadata(PATH_USER_META, curr->path, METADATA_MAX_SIZE);
 		if (!value)
 			continue;

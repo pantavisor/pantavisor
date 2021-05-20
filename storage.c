@@ -186,7 +186,7 @@ int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *
 	while (n--) {
 		char *tmp = dirs[n]->d_name;
 
-		while (*tmp && isalnum(*tmp))
+		while (*tmp)
 			tmp++;
 
 		if (tmp[0] != '\0')
