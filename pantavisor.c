@@ -371,28 +371,28 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv_config_get_control_remote() &&
+	if (pv_config_get_control_remote()) {
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
-		(pv_wait_delay_timedout(pv_config_get_updater_interval()))) {
-		// check if device is unclaimed
-		if (pv->unclaimed) {
-			next_state = STATE_UNCLAIMED;
-			goto out;
-		}
+		if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
+			// check if device is unclaimed
+			if (pv->unclaimed) {
+				next_state = STATE_UNCLAIMED;
+				goto out;
+			}
 
-		// rest of network wait stuff: connectivity check. update management,
-		// meta data uppload, ph logger push start...
-		next_state = pv_wait_network(pv);
-		if (next_state != STATE_WAIT)
-			goto out;
+			// rest of network wait stuff: connectivity check. update management,
+			// meta data uppload, ph logger push start...
+			next_state = pv_wait_network(pv);
+			if (next_state != STATE_WAIT)
+				goto out;
+		}
 	} else {
 		// process ongoing updates, if any
 		next_state = pv_wait_update();
 		if (next_state != STATE_WAIT)
 			goto out;
 	}
-
 
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
