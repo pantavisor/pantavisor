@@ -225,7 +225,7 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 		goto out;
 	}
 
-	ret = pv_metadata_update_usermeta(pv, res->body);
+	ret = pv_metadata_parse_usermeta(res->body);
 
 out:
 	if (req)

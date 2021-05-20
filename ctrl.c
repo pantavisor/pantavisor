@@ -70,7 +70,7 @@
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
 #define HTTP_RES_ERROR "HTTP/1.1 500 Internal Server Error\r\n\r\n"
 
-static const unsigned int HTTP_REQ_BUFFER_SIZE = 16384;
+static const unsigned int HTTP_REQ_BUFFER_SIZE = 4096;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
 static int pv_ctrl_socket_open(char *path)
@@ -383,6 +383,32 @@ static void pv_ctrl_process_get_string(int req_fd, char* buf)
 		free(buf);
 }
 
+static char *pv_ctrl_get_body(int req_fd, size_t content_length)
+{
+	char *req = NULL;
+
+	if (content_length > HTTP_REQ_BUFFER_SIZE) {
+		pv_log(WARN, "body too long");
+		goto err;
+	}
+
+	req = calloc(1, content_length);
+
+	// read request
+	if (read(req_fd, req, content_length) <= 0) {
+		pv_log(ERROR, "body could not be reveived from ctrl socket");
+		goto err;
+	}
+
+	return req;
+
+err:
+	if (req)
+		free(req);
+
+	return NULL;
+}
+
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
@@ -392,6 +418,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
 	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL;
+	char *metakey = NULL, *metavalue = NULL;
 
 	memset(buf, 0, sizeof(buf));
 
@@ -498,7 +525,26 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 			goto out;
 		}
-	}
+	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
+		if (pv_config_get_control_remote()) {
+			pv_log(WARN, "HTTP resquest cannot be done while on remote revision");
+			goto response;
+		}
+
+		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_USER_META), path_len);
+
+		if (!metakey) {
+			pv_log(WARN, "HTTP request has bad step name %s", file_name);
+			goto response;
+		}
+
+		if (!strncmp("PUT", method, method_len)) {
+			metavalue = pv_ctrl_get_body(req_fd, content_length);
+			pv_metadata_add_usermeta(metakey, metavalue);
+		} else if (!strncmp("DELETE", method, method_len))
+			pv_metadata_rm_usermeta(metakey);
+	} else
+		pv_log(WARN, "HTTP request received has bad endpoint");
 
 response:
 	if (res < 0) {
@@ -521,6 +567,10 @@ out:
 		free(file_path_parent);
 	if (file_path)
 		free(file_path);
+	if (metakey)
+		free(metakey);
+	if (metavalue)
+		free(metavalue);
 
 	return cmd;
 }

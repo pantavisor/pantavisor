@@ -189,6 +189,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (pv_storage_is_revision_local(pv->state->rev)) {
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
 		pv->state->local = true;
+		pv_config_set_control_remote(false);
+	} else {
+		pv->state->local = false;
+		pv_config_set_control_remote(true);
 	}
 
 	// only start local ph logger, start cloud services if connected
@@ -196,7 +200,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_storage_meta_set_objdir(pv);
-	pv_metadata_parse_devmeta(pv);
+	pv_metadata_init_devmeta(pv);
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
@@ -453,7 +457,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv_config_get_control_remote()) {
 			pv_log(DEBUG, "metadata command with payload '%s' received. Uploading metadata...",
 				cmd->payload);
-			pv_ph_upload_metadata(pv, cmd->payload);
+			if (!pv_ph_upload_metadata(pv, cmd->payload))
+				pv_metadata_parse_devmeta_pair(cmd->payload);
 		}
 		break;
 	case CMD_REBOOT_DEVICE:
@@ -662,6 +667,7 @@ static void pv_remove(struct pantavisor *pv)
 	pv_ctrl_free_cmd(pv->cmd);
 	pv_trail_remote_remove(pv);
 	pv_config_free();
+	pv_metadata_remove();
 
 	free(pv);
 	pv = NULL;

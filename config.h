@@ -138,13 +138,15 @@ struct pantavisor_config {
 int pv_config_load_creds(void);
 int pv_config_save_creds(void);
 
-void pv_config_override_value(char* key, char* value);
+void pv_config_override_value(const char* key, const char* value);
 
 void pv_config_free(void);
 
 void pv_config_set_creds_id(char *id);
 void pv_config_set_creds_prn(char *prn);
 void pv_config_set_creds_secret(char *secret);
+
+void pv_config_set_control_remote(bool remote);
 
 char* pv_config_get_cache_metacachedir(void);
 char* pv_config_get_cache_dropbearcachedir(void);

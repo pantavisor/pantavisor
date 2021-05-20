@@ -41,10 +41,13 @@
 #include "str.h"
 #include "json.h"
 #include "config_parser.h"
+#include "storage.h"
 
 #define MODULE_NAME             "metadata"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+
+static const unsigned int METADATA_MAX_SIZE = 4096;
 
 #define PV_USERMETA_ADD     (1<<0)
 struct pv_meta {
@@ -95,8 +98,8 @@ static int pv_devmeta_read_arch(struct pv_devmeta_read
 	return 0;
 }
 
-static int pv_devmeta_read_dtmodel(struct pv_devmeta_read 
-						*pv_devmeta_read) 
+static int pv_devmeta_read_dtmodel(struct pv_devmeta_read
+						*pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
@@ -160,47 +163,7 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	}
 };
 
-static void usermeta_add_hint(const char *key, const char *value)
-{
-	int fd;
-	char *path_base;
-	char path[PATH_MAX];
-
-	if (!key || !value)
-		return;
-
-	sprintf(path, "/pv/user-meta/%s", key);
-	path_base = strdup(path);
-
-	dirname(path_base);
-	if (strcmp("/pv/user-meta", path_base))
-		mkdir_p(path_base, 0755);
-
-	fd = open(path, O_CREAT | O_RDWR | O_TRUNC, 0644);
-	if (!fd)
-		goto out;
-
-	write(fd, value, strlen(value));
-	close(fd);
-
-out:
-	free(path_base);
-
-	return;
-}
-
-static void usermeta_remove_hint(struct pv_meta *m)
-{
-	char path[PATH_MAX];
-
-	if (!m)
-		return;
-
-	sprintf(path, "/pv/user-meta/%s", m->key);
-	remove(path);
-}
-
-static void pv_usermeta_free(struct pv_meta *usermeta)
+static void pv_metadata_free(struct pv_meta *usermeta)
 {
 	if (usermeta->key)
 		free(usermeta->key);
@@ -220,7 +183,7 @@ static void pv_usermeta_remove(struct pv_metadata *metadata)
 	dl_list_for_each_safe(curr, tmp, head,
 		struct pv_meta, list) {
 		dl_list_del(&curr->list);
-		pv_usermeta_free(curr);
+		pv_metadata_free(curr);
 	}
 }
 
@@ -234,15 +197,11 @@ static void pv_devmeta_remove(struct pv_metadata *metadata)
 	dl_list_for_each_safe(curr, tmp, head,
 		struct pv_meta, list) {
 		dl_list_del(&curr->list);
-		if (curr->key)
-			free(curr->key);
-		if (curr->value)
-			free(curr->value);
-		free(curr);
+		pv_metadata_free(curr);
 	}
 }
 
-static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, char *key)
+static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, const char *key)
 {
 	struct pv_meta *curr, *tmp;
 
@@ -255,7 +214,7 @@ static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, char *key)
 	return NULL;
 }
 
-static int pv_metadata_add(struct dl_list *head, char *key, char *value)
+static int pv_metadata_add(struct dl_list *head, const char *key, const char *value)
 {
 	int ret = -1;
 	struct pv_meta *curr;
@@ -301,14 +260,29 @@ out:
 	return ret;
 }
 
-static void pv_usermeta_add(struct pv_metadata *d, char *key, char *value)
+void pv_metadata_add_usermeta(const char *key, const char *value)
 {
-	int ret = pv_metadata_add(&d->usermeta, key, value);
+	struct pantavisor *pv = pv_get_instance();
+	int ret = pv_metadata_add(&pv->metadata->usermeta, key, value);
 
 	if (ret > 0) {
 		pv_log(DEBUG, "user metadata key %s added or updated", key);
 		pv_config_override_value(key, value);
-		usermeta_add_hint(key, value);
+		pv_storage_save_file(PATH_USER_META, key, value);
+	}
+}
+
+void pv_metadata_rm_usermeta(const char *key)
+{
+	struct pantavisor *pv = pv_get_instance();
+	struct pv_meta *meta;
+
+	meta = pv_metadata_get_by_key(&pv->metadata->usermeta, key);
+
+	if (meta) {
+		dl_list_del(&meta->list);
+		pv_storage_rm_file(PATH_USER_META, meta->key);
+		pv_metadata_free(meta);
 	}
 }
 
@@ -319,7 +293,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 	jsmntok_t **keys, **key_i;
 	char *um, *key, *value;
 
-	// Parse full device json
+	// parse user metadata json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 	um = pv_json_get_value(buf, "user-meta", tokv, tokc);
 
@@ -354,7 +328,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		snprintf(value, n+1, "%s", um+(*key_i+1)->start);
 
 		// add or update metadata
-		pv_usermeta_add(pv->metadata, key, value);
+		pv_metadata_add_usermeta(key, value);
 
 		// free intermediates
 		if (key) {
@@ -399,21 +373,66 @@ static void usermeta_clear(struct pantavisor *pv)
 		// not updated means user meta is no longer in cloud
 		else {
 			dl_list_del(&curr->list);
-			usermeta_remove_hint(curr);
-			pv_usermeta_free(curr);
+			pv_storage_rm_file(PATH_USER_META, curr->key);
+			pv_metadata_free(curr);
 		}
 	}
 }
 
-static void pv_devmeta_add(struct pv_metadata *metadata, char *key, char *value)
+static void pv_metadata_add_devmeta(const char *key, const char *value)
 {
-	int ret = pv_metadata_add(&metadata->devmeta, key, value);
+	struct pantavisor *pv = pv_get_instance();
+	int ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
 
 	if (ret > 0)
-		pv_log(INFO, "device metadata key %s added or updated with value %s", key, value);
+		pv_log(DEBUG, "device metadata key %s added or updated", key);
 }
 
-int pv_metadata_parse_devmeta(struct pantavisor *pv)
+void pv_metadata_parse_devmeta_pair(const char *buf)
+{
+	int ret = 0, tokc, n;
+	jsmntok_t *tokv = NULL;
+	jsmntok_t **key = NULL;
+	char *metakey = NULL, *metavalue = NULL;
+
+	// parse device metadata json
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	key = jsmnutil_get_object_keys(buf, tokv);
+
+	if (!key)
+		goto out;
+
+	// parse key
+	n = (*key)->end - (*key)->start;
+	metakey = malloc(n+1);
+	if (!metakey)
+		goto out;
+
+	snprintf(metakey, n+1, "%s", buf+(*key)->start);
+
+	// parse value
+	n = (*key+1)->end - (*key+1)->start;
+	metavalue = malloc(n+1);
+	if (!metavalue)
+		goto out;
+
+	snprintf(metavalue, n+1, "%s", buf+(*key+1)->start);
+
+	pv_metadata_add_devmeta(metakey, metavalue);
+
+out:
+	if (metakey)
+		free(metakey);
+	if (metavalue)
+		free(metavalue);
+
+	jsmnutil_tokv_free(key);
+
+	if (tokv)
+		free(tokv);
+}
+
+int pv_metadata_init_devmeta(struct pantavisor *pv)
 {
 	char *buf = NULL;
 	struct log_buffer *log_buffer = NULL;
@@ -433,6 +452,7 @@ int pv_metadata_parse_devmeta(struct pantavisor *pv)
 	buf = log_buffer->buf;
 	bufsize = log_buffer->size;
 
+	// add system info to initial device metadata
 	for (i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
 		int ret = 0;
 
@@ -440,7 +460,7 @@ int pv_metadata_parse_devmeta(struct pantavisor *pv)
 		pv_devmeta_readkeys[i].buflen = bufsize;
 		ret = pv_devmeta_readkeys[i].reader(&pv_devmeta_readkeys[i]);
 		if (!ret)
-			pv_devmeta_add(pv->metadata, pv_devmeta_readkeys[i].key, buf);
+			pv_metadata_add_devmeta(pv_devmeta_readkeys[i].key, buf);
 	}
 	pv_log_put_buffer(log_buffer);
 	pv->metadata->devmeta_uploaded = false;
@@ -599,7 +619,7 @@ static int __pv_metadata_factory_meta(struct pantavisor *pv, const char *factory
 	 * replace last ,.
 	 */
 	json_holder[json_len - 1] = '}';
-	
+
 	ret = pv_ph_upload_metadata(pv, json_holder);
 	pv_log_put_buffer(log_buffer);
 	pv_log(INFO, "metadata_json : %s", json_holder);
@@ -656,8 +676,9 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 	return upload_failed ? -1 : 0;
 }
 
-int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf)
+int pv_metadata_parse_usermeta(char *buf)
 {
+	struct pantavisor *pv = pv_get_instance();
 	int ret;
 	char *body, *esc;
 
@@ -689,6 +710,31 @@ static struct pv_meta* pv_metadata_get_usermeta(struct pantavisor *pv, char *key
 	return NULL;
 }
 
+static void pv_metadata_load_usermeta()
+{
+	struct dl_list files;
+	struct pv_path *curr, *tmp;
+	char *value;
+
+	dl_list_init(&files);
+	pv_storage_get_subdir(PATH_USER_META, "", &files);
+
+	dl_list_for_each_safe(curr, tmp, &files,
+		struct pv_path, list) {
+
+		if (!strncmp(curr->path, "..", strlen("..")) ||
+			!strncmp(curr->path, ".", strlen(".")))
+			continue;
+
+		value = pv_storage_load_file(PATH_USER_META, curr->path, METADATA_MAX_SIZE);
+		if (!value)
+			continue;
+
+		pv_metadata_add_usermeta(curr->path, value);
+		free(value);
+	}
+}
+
 static int pv_metadata_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -701,6 +747,8 @@ static int pv_metadata_init(struct pv_init *this)
 	dl_list_init(&pv->metadata->devmeta);
 
 	pv->metadata->devmeta_uploaded = false;
+
+	pv_metadata_load_usermeta();
 
 	return 0;
 }
@@ -723,19 +771,6 @@ bool pv_metadata_factory_meta_done(struct pantavisor *pv)
 	if (stat(path, &st))
 		return false;
 	return true;
-}
-
-static void pv_metadata_free(struct pv_metadata *metadata)
-{
-	if (!metadata)
-		return;
-
-	pv_log(DEBUG, "removing metadata");
-
-	pv_usermeta_remove(metadata);
-	pv_devmeta_remove(metadata);
-
-	free(metadata);
 }
 
 static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
@@ -781,9 +816,16 @@ char* pv_metadata_get_device_meta_string()
 	return pv_metadata_get_meta_string(&pv_get_instance()->metadata->devmeta);
 }
 
-void pv_metadata_remove(struct pantavisor *pv)
+void pv_metadata_remove()
 {
-	pv_metadata_free(pv->metadata);
+	struct pantavisor *pv = pv_get_instance();
+
+	pv_log(DEBUG, "removing metadata");
+
+	pv_usermeta_remove(pv->metadata);
+	pv_devmeta_remove(pv->metadata);
+
+	free(pv->metadata);
 	pv->metadata = NULL;
 }
 

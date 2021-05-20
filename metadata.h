@@ -26,6 +26,8 @@
 
 #include "pantavisor.h"
 
+#define PATH_USER_META "/pv/user-meta"
+
 struct pv_metadata {
 	struct dl_list usermeta; // pv_meta
 	struct dl_list devmeta; // pv_meta
@@ -35,12 +37,15 @@ struct pv_metadata {
 int pv_metadata_factory_meta(struct pantavisor *pv);
 bool pv_metadata_factory_meta_done(struct pantavisor *pv);
 
-int pv_metadata_update_usermeta(struct pantavisor *pv, char *buf);
+void pv_metadata_add_usermeta(const char *key, const char *value);
+void pv_metadata_rm_usermeta(const char *key);
+int pv_metadata_parse_usermeta(char *buf);
 
-int pv_metadata_parse_devmeta(struct pantavisor *pv);
+void pv_metadata_parse_devmeta_pair(const char *buf);
+int pv_metadata_init_devmeta(struct pantavisor *pv);
 int pv_metadata_upload_devmeta(struct pantavisor *pv);
 
-void pv_metadata_remove(struct pantavisor *pv);
+void pv_metadata_remove(void);
 
 char* pv_metadata_get_user_meta_string(void);
 char* pv_metadata_get_device_meta_string(void);

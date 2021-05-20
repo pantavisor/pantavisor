@@ -370,7 +370,7 @@ int pv_config_save_creds()
 	return pv_config_save_creds_to_file(&pv->config, config_path);
 }
 
-void pv_config_override_value(char* key, char* value)
+void pv_config_override_value(const char* key, const char* value)
 {
 	struct pantavisor *pv = pv_get_instance();
 
@@ -453,6 +453,8 @@ void pv_config_free()
 inline void pv_config_set_creds_id(char *id) { pv_get_instance()->config.creds.id = id; }
 inline void pv_config_set_creds_prn(char *prn) { pv_get_instance()->config.creds.prn = prn; }
 inline void pv_config_set_creds_secret(char *secret) { pv_get_instance()->config.creds.secret = secret; }
+
+void pv_config_set_control_remote(bool remote) { pv_get_instance()->config.control.remote = remote; }
 
 char* pv_config_get_cache_metacachedir() { return pv_get_instance()->config.cache.metacachedir; }
 char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.cache.dropbearcachedir; }
