@@ -268,7 +268,7 @@ void pv_metadata_add_usermeta(const char *key, const char *value)
 	if (ret > 0) {
 		pv_log(DEBUG, "user metadata key %s added or updated", key);
 		pv_config_override_value(key, value);
-		pv_storage_add_metadata(PATH_USER_META, key, value);
+		pv_storage_save_file(PATH_USER_META, key, value);
 	}
 }
 
@@ -281,7 +281,7 @@ void pv_metadata_rm_usermeta(const char *key)
 
 	if (meta) {
 		dl_list_del(&meta->list);
-		pv_storage_rm_metadata(PATH_USER_META, meta->key);
+		pv_storage_rm_file(PATH_USER_META, meta->key);
 		pv_metadata_free(meta);
 	}
 }
@@ -373,7 +373,7 @@ static void usermeta_clear(struct pantavisor *pv)
 		// not updated means user meta is no longer in cloud
 		else {
 			dl_list_del(&curr->list);
-			pv_storage_rm_metadata(PATH_USER_META, curr->key);
+			pv_storage_rm_file(PATH_USER_META, curr->key);
 			pv_metadata_free(curr);
 		}
 	}
@@ -726,7 +726,7 @@ static void pv_metadata_load_usermeta()
 			!strncmp(curr->path, ".", strlen(".")))
 			continue;
 
-		value = pv_storage_load_metadata(PATH_USER_META, curr->path, METADATA_MAX_SIZE);
+		value = pv_storage_load_file(PATH_USER_META, curr->path, METADATA_MAX_SIZE);
 		if (!value)
 			continue;
 

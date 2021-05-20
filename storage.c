@@ -879,53 +879,53 @@ char* pv_storage_get_initrd_config_name(const char *rev)
 	return config_name;
 }
 
-char *pv_storage_load_metadata(const char *path_base, const char *key, const unsigned int max_size)
+char *pv_storage_load_file(const char *path_base, const char *name, const unsigned int max_size)
 {
 	int fd, size;
 	char path[PATH_MAX], buf[max_size];
-	char *value = NULL;
+	char *content = NULL;
 
-	sprintf(path, "%s/%s", path_base, key);
+	sprintf(path, "%s/%s", path_base, name);
 
 	fd = open(path, O_RDONLY, 0644);
 	if (!fd)
 		goto out;
 
 	size = read(fd, buf, max_size);
-	value = calloc(1, size);
-	strncpy(value, buf, size);
+	content = calloc(1, size);
+	strncpy(content, buf, size);
 	close(fd);
 
 out:
-	return value;
+	return content;
 }
 
-void pv_storage_add_metadata(const char *path_base, const char *key, const char *value)
+void pv_storage_save_file(const char *path_base, const char *name, const char *content)
 {
 	int fd;
 	char path[PATH_MAX];
 
-	if (!key || !value)
+	if (!name || !content)
 		return;
 
-	sprintf(path, "%s/%s", path_base, key);
+	sprintf(path, "%s/%s", path_base, name);
 
 	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (!fd)
 		goto out;
 
-	write(fd, value, strlen(value));
+	write(fd, content, strlen(content));
 	close(fd);
 
 out:
 	return;
 }
 
-void pv_storage_rm_metadata(const char *path_base, const char *key)
+void pv_storage_rm_file(const char *path_base, const char *name)
 {
 	char path[PATH_MAX];
 
-	sprintf(path, "%s/%s", path_base, key);
+	sprintf(path, "%s/%s", path_base, name);
 	remove(path);
 }
 
