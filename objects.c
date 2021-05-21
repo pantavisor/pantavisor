@@ -31,6 +31,7 @@
 #include "utils.h"
 #include "objects.h"
 #include "state.h"
+#include "storage.h"
 
 #define MODULE_NAME			"objects"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -156,4 +157,61 @@ void pv_objects_empty(struct pv_state *s)
 	}
 
 	pv_log(INFO, "removed %d objects", num_obj);
+}
+
+char *pv_objects_get_list_string()
+{
+	struct dl_list objects; // pv_path
+	char path[PATH_MAX];
+	struct pv_path *curr, *tmp;
+	int len = 1, line_len;
+	char *json = calloc(1, len);
+	unsigned int size_object;
+
+	sprintf(path, "%s/objects/", pv_config_get_storage_mntpoint());
+
+	dl_list_init(&objects);
+	pv_storage_get_subdir(path, "", &objects);
+
+	// open json
+	json[0]='[';
+
+	if (dl_list_empty(&objects)) {
+		len++;
+		goto out;
+	}
+
+	// add object info to json
+	dl_list_for_each_safe(curr, tmp, &objects,
+		struct pv_path, list) {
+
+		if (!strncmp(curr->path, "..", strlen("..")) ||
+			!strncmp(curr->path, ".", strlen(".")))
+			continue;
+
+		size_object = pv_storage_get_file_size(path, curr->path);
+		if (size_object <= 0)
+			continue;
+
+		line_len = strlen(curr->path) + get_digit_count(size_object) + 26;
+		json = realloc(json, len + line_len + 1);
+		snprintf(&json[len], line_len + 1, "{\"sha256\": \"%s\", \"size\": \"%d\"},", curr->path, size_object);
+		len += line_len;
+	}
+
+	// free temporary path list
+	dl_list_for_each_safe(curr, tmp, &objects,
+		struct pv_path, list) {
+		free(curr->path);
+		dl_list_del(&curr->list);
+		free(curr);
+	}
+out:
+	len += 1;
+	json = realloc(json, len);
+	// close json
+	json[len-2] = ']';
+	json[len-1] = '\0';
+
+	return json;
 }

@@ -929,6 +929,17 @@ void pv_storage_rm_file(const char *path_base, const char *name)
 	remove(path);
 }
 
+unsigned int pv_storage_get_file_size(const char *path_base, const char *name)
+{
+	char path[PATH_MAX];
+	struct stat st;
+
+	sprintf(path, "%s/%s", path_base, name);
+
+	stat(path, &st);
+	return st.st_size;
+}
+
 static int pv_storage_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();

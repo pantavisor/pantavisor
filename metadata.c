@@ -712,7 +712,7 @@ static struct pv_meta* pv_metadata_get_usermeta(struct pantavisor *pv, char *key
 
 static void pv_metadata_load_usermeta()
 {
-	struct dl_list files;
+	struct dl_list files; // pv_path
 	struct pv_path *curr, *tmp;
 	char *value;
 
@@ -732,6 +732,14 @@ static void pv_metadata_load_usermeta()
 
 		pv_metadata_add_usermeta(curr->path, value);
 		free(value);
+	}
+
+	// free temporary path list
+	dl_list_for_each_safe(curr, tmp, &files,
+		struct pv_path, list) {
+		free(curr->path);
+		dl_list_del(&curr->list);
+		free(curr);
 	}
 }
 

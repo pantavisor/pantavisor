@@ -53,5 +53,6 @@ void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value);
 char *pv_storage_load_file(const char *path_base, const char *name, const unsigned int max_size);
 void pv_storage_save_file(const char *path_base, const char *name, const char *content);
 void pv_storage_rm_file(const char *path_base, const char *name);
+unsigned int pv_storage_get_file_size(const char *path_base, const char *name);
 
 #endif // PV_STORAGE_H
