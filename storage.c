@@ -524,7 +524,7 @@ char* pv_storage_get_revisions_string()
 	}
 
 	// open json
-	json[0]='{';
+	json[0]='[';
 
 	if (dl_list_empty(&revisions)) {
 		len++;
@@ -550,7 +550,7 @@ out:
 	len += 1;
 	json = realloc(json, len);
 	// close json
-	json[len-2] = '}';
+	json[len-2] = ']';
 	json[len-1] = '\0';
 
 	// free temporary revision list
