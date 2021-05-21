@@ -38,6 +38,7 @@ bool pv_storage_is_revision_local(const char* rev);
 char* pv_storage_get_revisions_string(void);
 
 int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs);
+void pv_storage_free_subdir(struct dl_list *subdirs);
 
 int pv_storage_validate_file_checksum(char* path, char* checksum);
 

@@ -199,13 +199,7 @@ char *pv_objects_get_list_string()
 		len += line_len;
 	}
 
-	// free temporary path list
-	dl_list_for_each_safe(curr, tmp, &objects,
-		struct pv_path, list) {
-		free(curr->path);
-		dl_list_del(&curr->list);
-		free(curr);
-	}
+	pv_storage_free_subdir(&objects);
 out:
 	len += 1;
 	json = realloc(json, len);

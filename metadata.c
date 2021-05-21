@@ -734,13 +734,7 @@ static void pv_metadata_load_usermeta()
 		free(value);
 	}
 
-	// free temporary path list
-	dl_list_for_each_safe(curr, tmp, &files,
-		struct pv_path, list) {
-		free(curr->path);
-		dl_list_del(&curr->list);
-		free(curr);
-	}
+	pv_storage_free_subdir(&files);
 }
 
 static int pv_metadata_init(struct pv_init *this)

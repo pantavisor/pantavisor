@@ -214,6 +214,17 @@ out:
 	return ret;
 }
 
+void pv_storage_free_subdir(struct dl_list *subdirs)
+{
+	struct pv_path *p, *tmp;
+
+	dl_list_for_each_safe(p, tmp, subdirs, struct pv_path, list) {
+		free(p->path);
+		dl_list_del(&p->list);
+		free(p);
+	}
+}
+
 static int pv_storage_get_revisions(struct dl_list *revisions)
 {
 	int ret = -1, len;
@@ -273,18 +284,13 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		pv_storage_rm_rev(pv, r->path);
 	}
 
+	pv_storage_free_subdir(&revisions);
+
 	// get rid of orphaned objects
 	reclaimed = pv_storage_gc_objects(pv);
 
 	if (reclaimed)
 		pv_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
-
-	// free temporary revision list
-	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
-		free(r->path);
-		dl_list_del(&r->list);
-		free(r);
-	}
 
 	return reclaimed;
 }
