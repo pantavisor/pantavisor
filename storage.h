@@ -38,6 +38,7 @@ bool pv_storage_is_revision_local(const char* rev);
 char* pv_storage_get_revisions_string(void);
 
 int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs);
+void pv_storage_free_subdir(struct dl_list *subdirs);
 
 int pv_storage_validate_file_checksum(char* path, char* checksum);
 
@@ -53,5 +54,6 @@ void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value);
 char *pv_storage_load_file(const char *path_base, const char *name, const unsigned int max_size);
 void pv_storage_save_file(const char *path_base, const char *name, const char *content);
 void pv_storage_rm_file(const char *path_base, const char *name);
+unsigned int pv_storage_get_file_size(const char *path_base, const char *name);
 
 #endif // PV_STORAGE_H

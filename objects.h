@@ -48,6 +48,8 @@ void pv_objects_remove(struct pv_object *o);
 struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name);
 void pv_objects_empty(struct pv_state *s);
 
+char *pv_objects_get_list_string(void);
+
 static inline void pv_object_free(struct pv_object *obj)
 {
 	if (obj->name)
