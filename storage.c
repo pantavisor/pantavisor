@@ -593,13 +593,14 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 	sprintf(path, "%s/trails/%s/.pv/progress", pv_config_get_storage_mntpoint(), rev);
 
 	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC , 0644);
-	if (!fd) {
-		pv_log(DEBUG, "unable to open progress file for revision %s", rev);
+	if (fd < 0) {
+		pv_log(DEBUG, "unable to open progress file %s for revision %s"
+				" (err=%s)", path, rev, strerror(errno));
 		return;
 	}
 
 	if (write(fd, progress, strlen(progress)) < 0) {
-		pv_log(DEBUG, "unable to write progress file for revision %s", rev);
+		pv_log(DEBUG, "unable to write progress  (%s) to file (%s) for revision %s (err=%s)", progress, path, rev, strerror(errno));
 		return;
 	}
 
@@ -627,7 +628,7 @@ void pv_storage_meta_set_objdir(struct pantavisor *pv)
 	 * check for
 	 * fd < 0
 	 */
-	if (!fd)
+	if (fd < 0)
 		goto err;
 
 	sprintf(path, "{\"ObjectsDir\": \"%s/objects\"}", pv_config_get_storage_mntpoint());
@@ -735,7 +736,7 @@ void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value)
 
 	if (value) {
 		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
-		if (fd > 0)
+		if (fd >= 0)
 			close(fd);
 	} else {
 		remove(path);
@@ -894,7 +895,7 @@ char *pv_storage_load_file(const char *path_base, const char *name, const unsign
 	sprintf(path, "%s/%s", path_base, name);
 
 	fd = open(path, O_RDONLY, 0644);
-	if (!fd)
+	if (fd < 0)
 		goto out;
 
 	size = read(fd, buf, max_size);
@@ -917,7 +918,7 @@ void pv_storage_save_file(const char *path_base, const char *name, const char *c
 	sprintf(path, "%s/%s", path_base, name);
 
 	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-	if (!fd)
+	if (fd < 0)
 		goto out;
 
 	write(fd, content, strlen(content));
