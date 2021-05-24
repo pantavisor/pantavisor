@@ -44,6 +44,7 @@
 #include "pvlogger.h"
 #include "state.h"
 #include "init.h"
+#include "objects.h"
 #include "storage.h"
 #include "metadata.h"
 
@@ -96,7 +97,8 @@ static int pv_ctrl_socket_open(char *path)
 	}
 
 	// queue 15 commands
-	listen(fd, 15);
+	if (listen(fd, 15))
+		return -1;
 
 out:
 	return fd;
@@ -104,7 +106,7 @@ out:
 
 void pv_ctrl_socket_close(int ctrl_fd)
 {
-	if (ctrl_fd > 0) {
+	if (ctrl_fd >= 0) {
 		pv_log(DEBUG, "closing ctrl socket");
 		close(ctrl_fd);
 	}
@@ -204,7 +206,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 
 	// open will fail if the file exist so we do not overwrite it
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
-	if (obj_fd <= 0) {
+	if (obj_fd < 0) {
 		pv_log(ERROR, "%s could not be created", file_path);
 		goto out;
 	}
@@ -310,7 +312,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 	pv_log(INFO, "reading file from %s and sending it to endpoint...", file_path);
 
 	obj_fd = open(file_path, O_RDONLY);
-	if (obj_fd <= 0) {
+	if (obj_fd < 0) {
 		pv_log(ERROR, "%s could not be opened for read", file_path);
 		goto error;
 	}
@@ -608,7 +610,7 @@ struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 
 	// create dedicated fd
 	req_fd = accept(ctrl_fd, 0, 0);
-	if (req_fd <= 0) {
+	if (req_fd < 0) {
 		pv_log(ERROR, "accept connection failed");
 		goto out;
 	}
@@ -636,8 +638,8 @@ static int pv_ctrl_init(struct pv_init *this)
 	struct pantavisor *pv = pv_get_instance();
 
 	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
-	if (pv->ctrl_fd <= 0) {
-		pv_log(ERROR, "ctrl socket could not be initialized");
+	if (pv->ctrl_fd < 0) {
+		pv_log(ERROR, "ctrl socket could not be initialized: %s", strerror(errno));
 		return -1;
 	}
 
