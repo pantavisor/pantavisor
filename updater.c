@@ -1728,11 +1728,15 @@ err:
 int pv_update_download(struct pantavisor *pv)
 {
 	int ret = -1;
+	char path[PATH_MAX];
 
 	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
 		pv_log(WARN, "uninitialized state or update");
 		goto out;
 	}
+
+	sprintf(path, "%s/trails/%s/.pv", pv_config_get_storage_mntpoint(), pv->update->pending->rev);
+	mkdir_p(path, 0755);
 
 	// do not download if this is a local update
 	if (pv->update->local)
@@ -1777,8 +1781,6 @@ int pv_update_install(struct pantavisor *pv)
 
 	// make sure target directories exist
 	sprintf(path, "%s/trails/%s/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
-	mkdir_p(path, 0755);
-	sprintf(path, "%s/trails/%s/.pv", pv_config_get_storage_mntpoint(), pending->rev);
 	mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
