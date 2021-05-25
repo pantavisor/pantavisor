@@ -81,7 +81,7 @@ static int pv_ctrl_socket_open(char *path)
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
-		pv_log(ERROR, "unable to open control socket");
+		pv_log(ERROR, "ctrl socket open error: %s", strerror(errno));
 		goto out;
 	}
 
@@ -90,15 +90,17 @@ static int pv_ctrl_socket_open(char *path)
 	strcpy(addr.sun_path, path);
 
 	if (bind(fd, (const struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		pv_log(ERROR, "unable to bind control socket fd=%d", fd);
+		pv_log(ERROR, "ctrl socket with fd %d open error: %s", fd, strerror(errno));
 		close(fd);
 		fd = -1;
 		goto out;
 	}
 
 	// queue 15 commands
-	if (listen(fd, 15))
+	if (listen(fd, 15)) {
+		pv_log(ERROR, "ctrl socket with fd %d listen error: %s", fd, strerror(errno));
 		return -1;
+	}
 
 out:
 	return fd;
@@ -107,7 +109,7 @@ out:
 void pv_ctrl_socket_close(int ctrl_fd)
 {
 	if (ctrl_fd >= 0) {
-		pv_log(DEBUG, "closing ctrl socket");
+		pv_log(DEBUG, "closing ctrl socket with fd %d", ctrl_fd);
 		close(ctrl_fd);
 	}
 }
@@ -178,7 +180,8 @@ static int pv_ctrl_process_cmd(int req_fd, size_t content_length, struct pv_cmd*
 
 	// read request
 	if (read(req_fd, req, content_length) <= 0) {
-		pv_log(ERROR, "cmd request could not be received from ctrl socket");
+		pv_log(ERROR, "cmd request could not be read from ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
 		goto err;
 	}
 
@@ -202,7 +205,8 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 	pv_log(INFO, "reading file from endpoint and putting it in %s...", file_path);
 
 	if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
-		pv_log(ERROR, "HTTP Continue response could not be sent to ctrl socket");
+		pv_log(ERROR, "HTTP CONTINUE response could not be sent to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
 
 	// open will fail if the file exist so we do not overwrite it
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
@@ -220,12 +224,14 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 
 		write_length = read(req_fd, req, read_length);
 		if (write_length <= 0) {
-			pv_log(ERROR, "read failed");
+			pv_log(ERROR, "HTTP PUT content could not be read from ctrl socket with fd %d: %s",
+				req_fd, strerror(errno));
 			goto out;
 		}
 
 		if (write(obj_fd, req, write_length) <= 0) {
-			pv_log(ERROR, "write failed");
+			pv_log(ERROR, "HTTP PUT content could not be written from ctrl socket with fd %d: %s",
+				req_fd, strerror(errno));
 			goto out;
 		}
 
@@ -318,12 +324,14 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 	}
 
 	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
-		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
+		pv_log(ERROR, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
 
 	// read and send
 	while ((read_length = read(obj_fd, buf, HTTP_REQ_BUFFER_SIZE)) > 0) {
 		if (write(req_fd, buf, read_length) != read_length) {
-			pv_log(ERROR, "write failed");
+			pv_log(ERROR, "HTTP GET content could not be written to ctrl socket with fd %d: %s",
+				req_fd, strerror(errno));
 			goto out;
 		}
 	}
@@ -376,10 +384,12 @@ static void pv_ctrl_process_get_string(int req_fd, char* buf)
 	buf_len = strlen(buf);
 
 	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
-		pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
+		pv_log(ERROR, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
 
 	if (write(req_fd, buf, buf_len) != buf_len)
-		pv_log(ERROR, "write failed");
+		pv_log(ERROR, "HTTP GET content could not be written to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
 
 	if (buf)
 		free(buf);
@@ -398,7 +408,8 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 
 	// read request
 	if (read(req_fd, req, content_length) <= 0) {
-		pv_log(ERROR, "body could not be reveived from ctrl socket");
+		pv_log(ERROR, "HTTP GET body could not be read to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
 		goto err;
 	}
 
@@ -556,16 +567,19 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 response:
 	if (res < 0) {
 		if (write(req_fd, HTTP_RES_ERROR, strlen(HTTP_RES_ERROR)) <= 0)
-			pv_log(ERROR, "HTTP Internal Server Error response could not be sent to ctrl socket");
+			pv_log(ERROR, "HTTP ERROR response could not be written to ctrl socket with fd %d: %s",
+				req_fd, strerror(errno));
 	} else {
 		if (write(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK)) <= 0)
-			pv_log(ERROR, "HTTP OK response could not be sent to ctrl socket");
+			pv_log(ERROR, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
+				req_fd, strerror(errno));
 	}
 	goto out;
 
 bad_request:
 	if (write(req_fd, HTTP_RES_BAD_REQ, strlen(HTTP_RES_BAD_REQ)) <= 0)
-		pv_log(ERROR, "HTTP Bad Request response could not be sent to ctrl socket");
+		pv_log(ERROR, "HTTP BAD REQUEST response could not be written to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
 
 out:
 	if (file_name)
@@ -604,14 +618,16 @@ struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 	if (!ret)
 		goto out;
 	else if (ret < 0) {
-		pv_log(ERROR, "select wait failed");
+		pv_log(ERROR, "could not select ctrl socket with fd %d: %s",
+			ctrl_fd, strerror(errno));
 		goto out;
 	}
 
 	// create dedicated fd
 	req_fd = accept(ctrl_fd, 0, 0);
 	if (req_fd < 0) {
-		pv_log(ERROR, "accept connection failed");
+		pv_log(ERROR, "could not accept ctrl socket with fd %d: %s",
+			ctrl_fd, strerror(errno));
 		goto out;
 	}
 
@@ -639,9 +655,11 @@ static int pv_ctrl_init(struct pv_init *this)
 
 	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
 	if (pv->ctrl_fd < 0) {
-		pv_log(ERROR, "ctrl socket could not be initialized: %s", strerror(errno));
+		pv_log(ERROR, "ctrl socket could not be initialized");
 		return -1;
 	}
+
+	pv_log(DEBUG, "ctrl socket initialized with fd %d", pv->ctrl_fd);
 
 	return 0;
 }
