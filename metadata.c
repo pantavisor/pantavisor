@@ -310,22 +310,24 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 
 	key_i = keys;
 	while (*key_i) {
-		n = (*key_i)->end - (*key_i)->start;
+		n = (*key_i)->end - (*key_i)->start + 1;
 
 		// copy key
 		key = malloc(n+1);
 		if (!key)
 			break;
 
-		snprintf(key, n+1, "%s", um+(*key_i)->start);
+		key[n] = 0;
+		snprintf(key, n, "%s", um+(*key_i)->start);
 
 		// copy value
-		n = (*key_i+1)->end - (*key_i+1)->start;
+		n = (*key_i+1)->end - (*key_i+1)->start + 1;
 		value = malloc(n+1);
 		if (!value)
 			break;
 
-		snprintf(value, n+1, "%s", um+(*key_i+1)->start);
+		value[n] = 0;
+		snprintf(value, n, "%s", um+(*key_i+1)->start);
 
 		// add or update metadata
 		pv_metadata_add_usermeta(key, value);
