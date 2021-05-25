@@ -388,19 +388,17 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 				 0, 0,
 				 json);
 
+	ret = -1;
 	res = trest_do_json_request(pv->remote->client, req);
-
 	if (!res) {
-		pv_log(INFO, "unable to do trail request");
-		ret = -1;
-		goto out;
-	}
-
-	if (res->code == THTTP_STATUS_OK) {
-		pv_log(INFO, "remote state updated to %s", res->body);
+		pv_log(WARN, "HTTP request PUT %s could not be initialized", update->endpoint);
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request PUT %s could not auth (status=%d)", update->endpoint, res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "HTTP request PUT %s returned error (code=%d; body='%s')", update->endpoint, res->code, res->body);
 	} else {
-		pv_log(WARN, "unable to update remote status, http code %d", res->code);
-		ret = -1;
+		pv_log(INFO, "remote state updated to %s", res->body);
+		ret = 0;
 	}
 
 out:
@@ -414,13 +412,11 @@ out:
 	return ret;
 }
 
-static trest_response_ptr trail_get_steps_response(struct pantavisor *pv,
-							char *endpoint)
+static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest_response_ptr res)
 {
 	trest_request_ptr req = NULL;
-	trest_response_ptr res = NULL;
 	struct trail_remote *remote = NULL;
-	int size = 0;
+	int ret = -1, size = 0;
 
 	if (!endpoint || !pv)
 		goto out;
@@ -431,26 +427,28 @@ static trest_response_ptr trail_get_steps_response(struct pantavisor *pv,
 
 	res = trest_do_json_request(remote->client, req);
 	if (!res) {
-		pv_log(INFO, "unable to do trail request");
-		goto out;
-	}
-	if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "http error (%d) on trail request", res->code);
-		goto out;
-	}
-	size = jsmnutil_array_count(res->body, res->json_tokv);
-	if (!size)
-		goto out;
+		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s returned error (code=%d; body='%s')", endpoint, res->code, res->body);
+	} else {
+		size = jsmnutil_array_count(res->body, res->json_tokv);
+		if (!size) {
+			ret = 0;
+			goto out;
+		}
 
-	pv_log(DEBUG, "%d steps found", size);
-	trest_request_free(req);
-	return res;
+		pv_log(DEBUG, "%d steps found", size);
+		trest_request_free(req);
+		return 1;
+	}
 out:
 	if (req)
 		trest_request_free(req);
 	if (res)
 		trest_response_free(res);
-	return NULL;
+	return ret;
 }
 
 /*
@@ -512,7 +510,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	int ret = 0;
 	char *state = 0, *rev = 0;
 	struct trail_remote *remote = pv->remote;
-	trest_response_ptr res = 0;
+	trest_response_ptr res = NULL;
 	jsmntok_t *tokv = 0;
 	int retries = 0;
 	struct jka_update_ctx update_ctx = {
@@ -533,36 +531,45 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		goto new_update;
 
 	// check for INPROGRESS updates
-	res = trail_get_steps_response(pv, remote->endpoint_trail_inprogress);
-	if (res) {
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_inprogress, res);
+	if (ret > 0) {
 		pv_log(DEBUG, "found INPROGRESS revision");
 		wrong_revision = true;
 		goto process_response;
+	} else if (ret < 0) {
+		goto out;
 	}
 
 	// check for DOWNLOADING updates
-	res = trail_get_steps_response(pv, remote->endpoint_trail_downloading);
-	if (res) {
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_downloading, res);
+	if (ret > 0) {
 		pv_log(DEBUG, "found DOWNLOADING revision");
 		goto process_response;
+	} else if (ret < 0) {
+		goto out;
 	}
 
 	// check for QUEUED updates
-	res = trail_get_steps_response(pv, remote->endpoint_trail_queued);
-	if (res) {
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_queued, res);
+	if (ret > 0) {
 		pv_log(DEBUG, "found QUEUED revision");
 		goto process_response;
+	} else if (ret < 0) {
+		goto out;
 	}
 
 new_update:
 	// check for NEW updates
-	res = trail_get_steps_response(pv, remote->endpoint_trail_new);
-	if (res) {
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_new, res);
+	if (ret > 0) {
 		pv_log(DEBUG, "found NEW revision");
 		goto process_response;
+	} else if (ret < 0) {
+		goto out;
 	}
 
 process_response:
+	ret = 0;
 	// if we have no response, we go out normally
 	if (!res)
 		goto out;
@@ -655,33 +662,28 @@ static int trail_is_available(struct trail_remote *r)
 {
 	trest_request_ptr req;
 	trest_response_ptr res;
-	int size = 0;
+	int size = -1;
 
 	if (!r)
-		return -1;
+		return size;
 
 	req = trest_make_request(TREST_METHOD_GET,
 				 "/trails/",
 				 0, 0, 0);
 
 	res = trest_do_json_request(r->client, req);
-
 	if (!res) {
-		pv_log(INFO, "unable to do trail request");
-		size = -1;
-		goto out;
+		pv_log(WARN, "GET /trails/ could not be initialized");
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "GET /trails/ could not auth (status=%d)", res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "GET /trails/ returned error (code=%d; body='%s')", res->code, res->body);
+	} else {
+	    size = jsmnutil_array_count(res->body, res->json_tokv);
+	    if (size)
+			pv_log(DEBUG, "trail found, using remote");
 	}
 
-	if (res->code != THTTP_STATUS_OK || res->body == NULL) {
-		size = -1;
-		goto out;
-	}
-
-	size = jsmnutil_array_count(res->body, res->json_tokv);
-	if (size)
-		pv_log(DEBUG, "trail found, using remote");
-
-out:
 	if (req)
 		trest_request_free(req);
 	if (res)
@@ -835,18 +837,18 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 
 	tres = trest_do_json_request(pv->remote->client, treq);
 	if (!tres) {
-		pv_log(ERROR, "'%s' could not be registered, request error", o->id);
+		pv_log(WARN, "POST /objects/ could not be initialized");
 		ret = -1;
 		goto out;
-	}
-
-	if (tres->code == THTTP_STATUS_CONFLICT) {
-		pv_log(INFO, "'%s' already owned by user, skipping", o->id);
+	} else if (tres->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "POST /objects/ could not auth (status=%d)", tres->status);
+		ret = -1;
 		goto out;
-	}
-
-	if (tres->code != THTTP_STATUS_OK) {
-		pv_log(ERROR, "'%s' could not be registered, code=%d", o->id, tres->code);
+	} else if (tres->code == THTTP_STATUS_OK) {
+		pv_log(INFO, "object '%s' already owned by user, skipping", o->id);
+		goto out;
+	} else if (tres->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "POST /objects/ returned error (code=%d; body='%s')", tres->code, tres->body);
 		ret = -1;
 		goto out;
 	}
@@ -985,23 +987,17 @@ static int trail_first_boot(struct pantavisor *pv)
 
 	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, pv->state->json);
 	res = trest_do_json_request(pv->remote->client, req);
-
 	if (!res) {
-		pv_log(ERROR, "error on first boot json request");
-		ret = -1;
-		goto out;
+		pv_log(WARN, "POST /trails/ could not be initialized");
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "POST /trails/ could not auth (status=%d)", res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "POST /trails/ returned error (code=%d; body='%s')", res->code, res->body);
+	} else {
+		pv_log(INFO, "factory revision (base trail) pushed to remote correctly");
+		ret = 0;
 	}
 
-	if (res->code != THTTP_STATUS_OK) {
-		pv_log(ERROR, "http request error (%d) for initial trail", res->code);
-		ret = -1;
-		goto out;
-	}
-
-	pv_log(INFO, "factory revision (base trail) pushed to remote correctly");
-	ret = 0;
-
-out:
 	if (req)
 		trest_request_free(req);
 	if (res)
@@ -1216,11 +1212,13 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
-		pv_log(WARN, "unable to do trail request");
+		pv_log(WARN, "GET %s could not be initialized", endpoint);
 		goto out;
-	}
-	if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "http request error (%d) on object metadata", res->code);
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "GET %s could not auth (status=%d)", endpoint, res->status);
+		goto out;
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "GET %s returned error (code=%d; body='%s')", endpoint, res->code, res->body);
 		goto out;
 	}
 

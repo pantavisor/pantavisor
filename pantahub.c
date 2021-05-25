@@ -219,15 +219,17 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 				 0, 0, 0);
 
 	res = trest_do_json_request(client, req);
-
-	if (!res->body || res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "error getting device details (code=%d)", res->code);
-		goto out;
+	if (!res) {
+		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "request GET %s returned HTTP error (code=%d; body='%s')", endpoint, res->code, res->body);
+	} else {
+		pv_metadata_parse_usermeta(res->body);
+		ret = 0;
 	}
 
-	ret = pv_metadata_parse_usermeta(res->body);
-
-out:
 	if (req)
 		trest_request_free(req);
 	if (res)
@@ -253,18 +255,20 @@ int pv_ph_device_exists(struct pantavisor *pv)
 				 0, 0, 0);
 
 	res = trest_do_json_request(client, req);
-
-	if (!res->body || res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "error verifying device exists (code=%d)", res->code);
-		goto out;
-	}
-
-	id = pv_json_get_value(res->body, "id",
+	if (!res) {
+		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s returned HTTP error (code=%d; body='%s')", endpoint, res->code, res->body);
+	} else {
+		id = pv_json_get_value(res->body, "id",
 			res->json_tokv, res->json_tokc);
 
-	if (id && (strcmp(id, "") != 0)) {
-		pv_log(DEBUG, "device exists: '%s'", id);
-		ret = 1;
+		if (id && (strcmp(id, "") != 0)) {
+			pv_log(DEBUG, "device exists: '%s'", id);
+			ret = 1;
+		}
 	}
 
 out:
@@ -430,14 +434,13 @@ err:
 
 int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 {
-	int ret = 1;
+	int ret = 0;
 	char *owner = 0, *challenge = 0;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 
 	if (!ph_client_init(pv)) {
 		pv_log(ERROR, "failed to initialize PantaHub connection");
-		ret = 0;
 		goto out;
 	}
 
@@ -446,25 +449,27 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 				 0, 0, 0);
 
 	res = trest_do_json_request(client, req);
-	if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "unable to query device information, code %d", res->code);
-		ret = 0;
-		goto out;
-	}
-
-	owner = pv_json_get_value(res->body, "owner",
+	if (!res) {
+		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s returned HTTP error (code=%d; body='%s')", endpoint, res->code, res->body);
+	} else {
+		owner = pv_json_get_value(res->body, "owner",
 			res->json_tokv, res->json_tokc);
 
-	if (owner && (strcmp(owner, "") != 0)) {
-		pv_log(DEBUG, "device-owner: '%s'", owner);
-		goto out;
+		if (owner && (strcmp(owner, "") != 0)) {
+			pv_log(DEBUG, "device-owner: '%s'", owner);
+			ret = 1;
+			goto out;
+		}
+
+		challenge = pv_json_get_value(res->body, "challenge",
+				res->json_tokv, res->json_tokc);
+
+		strcpy(*c, challenge);
 	}
-
-	challenge = pv_json_get_value(res->body, "challenge",
-			res->json_tokv, res->json_tokc);
-
-	strcpy(*c, challenge);
-	ret = 0;
 
 out:
 	if (owner)
@@ -508,7 +513,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 {
-	uint8_t ret = 1;
+	uint8_t ret = -1;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 	char buf[256];
@@ -524,12 +529,16 @@ int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 				 metadata);
 
 	res = trest_do_json_request(client, req);
-	if (!res->body || res->code != THTTP_STATUS_OK) {
-		pv_log(DEBUG, "metadata upload status = %d, body = '%s'", res->code, res->body);
-		goto out;
+	if (!res) {
+		pv_log(WARN, "PATCH %s could not be initialized", endpoint);
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request PATCH %s could not auth (status=%d)", endpoint, res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN, "HTTP request PATCH %s returned HTTP error (code=%d; body='%s')",
+			endpoint, res->code, res->body);
+	} else {
+		ret = 0;
 	}
-
-	ret = 0;
 
 out:
 	if (req)

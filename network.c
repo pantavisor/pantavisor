@@ -72,7 +72,7 @@ static int _set_netmask(int skfd, char *intf, char *newmask)
 int pv_network_update_meta(struct pantavisor *pv)
 {
 	struct ifaddrs *ifaddr, *ifa;
-	int family, s, n, len, ilen = 0;
+	int family, s, n, len, ilen = 0, ret = 0;
 	char host[NI_MAXHOST], ifn[IFNAMSIZ+5], iff[IFNAMSIZ+5];
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
@@ -135,12 +135,12 @@ int pv_network_update_meta(struct pantavisor *pv)
 	strcat(ifaces, "}}");
 
 	// upload to cloud
-	pv_ph_upload_metadata(pv, ifaces);
+	ret = pv_ph_upload_metadata(pv, ifaces);
 
 	freeifaddrs(ifaddr);
 	free(ifaces);
 
-	return 0;
+	return ret;
 }
 
 static int pv_network_early_init(struct pv_init *this)
