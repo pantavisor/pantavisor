@@ -672,11 +672,12 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 	k = keys;
 
 	while (*k) {
-		n = (*k)->end - (*k)->start;
+		n = (*k)->end - (*k)->start + 1;
 
 		// copy key
 		key = malloc(n+1);
-		snprintf(key, n+1, "%s", buf+(*k)->start);
+		key[n] = 0;
+		snprintf(key, n, "%s", buf+(*k)->start);
 		ext = strrchr(key, '.');
 		if (!ext || strcmp(ext, ".json")) {
 			free(key);
@@ -685,9 +686,10 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		}
 
 		// copy value
-		n = (*k+1)->end - (*k+1)->start;
+		n = (*k+1)->end - (*k+1)->start + 1;
 		value = malloc(n+1);
-		snprintf(value, n+1, "%s", buf+(*k+1)->start);
+		value[n] = 0;
+		snprintf(value, n, "%s", buf+(*k+1)->start);
 
 		sprintf(path, "%s/trails/%s/%s",
 			pv_config_get_storage_mntpoint(), s->rev, key);
