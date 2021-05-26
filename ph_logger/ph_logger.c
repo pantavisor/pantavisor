@@ -71,12 +71,11 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-static void ph_log(int level, char *msg, ...)
+static void __ph_log(int level, const char *msg, va_list args)
 {
 	struct ph_logger_msg *ph_logger_msg = NULL;
 	char *buffer = NULL;
 	char *logger_buffer = NULL;
-	va_list args;
 	int len = 0;
 	int max_size = 0;
 	struct log_buffer *log_buffer = NULL;
@@ -85,7 +84,7 @@ static void ph_log(int level, char *msg, ...)
 	log_buffer = pv_log_get_buffer(true);
 	if (!log_buffer)
 		goto out_no_buffer;
-	
+
 	ph_log_buffer = pv_log_get_buffer(true);
 	if (!ph_log_buffer)
 		goto out_no_buffer;
@@ -93,9 +92,7 @@ static void ph_log(int level, char *msg, ...)
 	buffer = log_buffer->buf;
 	logger_buffer = ph_log_buffer->buf;
 
-	va_start(args, msg);
 	vsnprintf(buffer, log_buffer->size, msg, args);
-	va_end(args);
 	len = strlen(buffer);
 
 	max_size = (len + 1) + strlen(MODULE_NAME) + strlen(PH_LOGGER_LOGFILE) + 
@@ -115,6 +112,21 @@ out_no_buffer:
 	pv_log_put_buffer(log_buffer);
 	pv_log_put_buffer(ph_log_buffer);
 }
+
+static void ph_log(int level, const char *msg, ...)
+{
+	va_list args;
+
+	if (level > pv_config_get_log_loglevel())
+		return;
+
+	va_start(args, msg);
+
+	__ph_log(level, msg, args);
+
+	va_end(args);
+}
+
 /*
  * Include after defining MODULE_NAME.
  */
@@ -915,6 +927,18 @@ static int ph_logger_push_revision(char *revision)
 	return result;
 }
 
+static int log_libthttp(const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+
+	__ph_log(DEBUG, fmt, args);
+
+	va_end(args);
+
+	return 1;
+}
+
 static pid_t ph_logger_start_push_service(char *revision)
 {
 	pid_t helper_pid = -1;
@@ -927,6 +951,7 @@ static pid_t ph_logger_start_push_service(char *revision)
 		ph_log(INFO, "Initialized push service with pid %d by process with pid %d",
 				getpid(), getppid());
 		ph_log(DEBUG, "Push service pushing logs for rev %s", revision);
+		thttp_set_log_func(log_libthttp);
 		while (1) {
 			// if nothing to push or error while pushing, sleep
 			if (ph_logger_push_revision(revision) <= 0) {
@@ -994,6 +1019,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_re
 
 		ph_log(INFO, "Initialized range service with pid %d by process with pid %d",
 			getpid(), getppid());
+		thttp_set_log_func(log_libthttp);
 		while (current_rev >= 0) {
 			// skip current revision.
 			if (atoi(avoid_rev) == current_rev) {
