@@ -405,7 +405,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		if (tp2.tv_sec > tp1.tv_sec) {
 			network_time = tp2.tv_sec - tp1.tv_sec;
 			if (network_time > 5)
-				pv_log(WARN, "network operations are taking %d seconds!", network_time);
+				pv_log(DEBUG, "network operations are taking %d seconds!", network_time);
 		}
 	} else {
 		// process ongoing updates, if any
