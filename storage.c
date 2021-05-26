@@ -901,7 +901,7 @@ char *pv_storage_load_file(const char *path_base, const char *name, const unsign
 		goto out;
 
 	size = read(fd, buf, max_size);
-	content = calloc(1, size);
+	content = calloc(1, size+1);
 	strncpy(content, buf, size);
 	close(fd);
 
