@@ -405,7 +405,7 @@ static void sigchld_handler(int signum)
 
 static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger, char *logs)
 {
-	int ret = 0;
+	int ret = -1;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_request_ptr req = NULL;
 	trest_response_ptr res = NULL;
@@ -416,13 +416,11 @@ static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger, char *logs)
 	ph_logger->client = pv_get_trest_client(pv_global, ph_logger->pv_conn);
 
 	if (!ph_logger->client) {
-		ret = -1;
 		goto out;
 	}
 auth:
 	status = trest_update_auth(ph_logger->client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		ret = -1;
 		goto out;
 	}
 	req = trest_make_request(TREST_METHOD_POST,
@@ -430,20 +428,19 @@ auth:
 				 0, 0,
 				 logs);
 	if (!req) {
-		ret = -1;
 		goto out;
 	}
 	res = trest_do_json_request(ph_logger->client, req);
 	if (!res) {
-		ret = -1;
-		goto out;
+		ph_log(WARN, "HTTP request POST /logs/ could not be initialized");
+	} else if (res->status != TREST_AUTH_STATUS_OK) {
+		ph_log(WARN, "HTTP request POST /logs/ could not auth (status=%d)", res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		ph_log(WARN, "HTTP request POST /logs/ returned HTTP error (code=%d; body='%s')", res->code, res->body);
+	} else {
+		ret = 0;
 	}
-	if (!res->body || res->code != THTTP_STATUS_OK) {
-		ph_log(WARN, "Logs upload status = %d, body = '%s'", 
-				res->code, (res->body ? res->body : ""));
-		ret = -1;
-		goto out;
-	}
+
 out:
 	if (req)
 		trest_request_free(req);

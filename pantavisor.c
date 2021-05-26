@@ -280,11 +280,15 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 static int pv_meta_update_to_ph(struct pantavisor *pv)
 {
 	if (!pv)
-		return 0;
-	// update meta
-	pv_metadata_upload_devmeta(pv);
-	pv_network_update_meta(pv);
-	pv_ph_device_get_meta(pv);
+		return -1;
+
+	if (pv_ph_device_get_meta(pv))
+		return -1;
+	if (pv_metadata_upload_devmeta(pv))
+		return -1;
+	if (pv_network_update_meta(pv))
+		return -1;
+
 	return 0;
 }
 
@@ -351,18 +355,23 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	if (!pv_metadata_factory_meta_done(pv)) {
 		return STATE_FACTORY_UPLOAD;
 	}
-	pv_meta_update_to_ph(pv);
+	if (pv_meta_update_to_ph(pv))
+		goto out;
 
 	// check for new remote update
 	if (pv_check_for_updates(pv) > 0)
 		return STATE_UPDATE;
 
+out:
 	// process ongoing updates, if any
 	return pv_wait_update();
 }
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
+	struct timespec tp1;
+	struct timespec tp2;
+	time_t network_time;
 	pv_state_t next_state = STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
@@ -376,6 +385,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	}
 
 	if (pv_config_get_control_remote()) {
+		clock_gettime(CLOCK_MONOTONIC, &tp1);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
 		if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
@@ -390,6 +400,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			next_state = pv_wait_network(pv);
 			if (next_state != STATE_WAIT)
 				goto out;
+		}
+		clock_gettime(CLOCK_MONOTONIC, &tp2);
+		if (tp2.tv_sec > tp1.tv_sec) {
+			network_time = tp2.tv_sec - tp1.tv_sec;
+			if (network_time > 5)
+				pv_log(DEBUG, "network operations are taking %d seconds!", network_time);
 		}
 	} else {
 		// process ongoing updates, if any

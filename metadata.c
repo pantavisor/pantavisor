@@ -475,7 +475,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	char *json = NULL;
 	struct pv_meta *info = NULL, *tmp = NULL;
 	struct dl_list *head = NULL;
-	int json_avail = 0;
+	int json_avail = 0, ret = 0;
 	struct log_buffer *log_buffer = NULL;
 	/*
 	 * we can use one of the large log_buffer. Since
@@ -525,7 +525,8 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	 */
 	json[len - 1] = '}';
 	pv_log(INFO, "device info json = %s", json);
-	if(!pv_ph_upload_metadata(pv, json))
+	ret = pv_ph_upload_metadata(pv, json);
+	if(!ret)
 		pv->metadata->devmeta_uploaded = true;
 out:
 	pv_log_put_buffer(log_buffer);
@@ -678,22 +679,21 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 	return upload_failed ? -1 : 0;
 }
 
-int pv_metadata_parse_usermeta(char *buf)
+void pv_metadata_parse_usermeta(char *buf)
 {
 	struct pantavisor *pv = pv_get_instance();
-	int ret;
 	char *body, *esc;
 
 	body = strdup(buf);
 	esc = pv_str_unescape_to_ascii(body, "\\n", '\n');
-	ret = pv_usermeta_parse(pv, esc);
+	pv_usermeta_parse(pv, esc);
+
 	if (body)
 		free(body);
 	if (esc)
 		free(esc);
 	// clear old
 	usermeta_clear(pv);
-	return ret;
 }
 
 static struct pv_meta* pv_metadata_get_usermeta(struct pantavisor *pv, char *key)
