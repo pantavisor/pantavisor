@@ -442,7 +442,7 @@ static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest
 
 		pv_log(DEBUG, "%d steps found", size);
 		trest_request_free(req);
-		response = &res;
+		*response = res;
 		return 1;
 	}
 out:
@@ -573,8 +573,10 @@ new_update:
 process_response:
 	ret = 0;
 	// if we have no response, we go out normally
-	if (!res)
+	if (!res) {
+		pv_log(DEBUG, "no response");
 		goto out;
+	}
 
 	// parse revision id
 	rev = pv_json_get_value(res->body, "rev",
