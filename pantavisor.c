@@ -369,9 +369,6 @@ out:
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
-	struct timespec tp1;
-	struct timespec tp2;
-	time_t network_time;
 	pv_state_t next_state = STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
@@ -385,7 +382,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	}
 
 	if (pv_config_get_control_remote()) {
-		clock_gettime(CLOCK_MONOTONIC, &tp1);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
 		if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
@@ -400,12 +396,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			next_state = pv_wait_network(pv);
 			if (next_state != STATE_WAIT)
 				goto out;
-		}
-		clock_gettime(CLOCK_MONOTONIC, &tp2);
-		if (tp2.tv_sec > tp1.tv_sec) {
-			network_time = tp2.tv_sec - tp1.tv_sec;
-			if (network_time > 3)
-				pv_log(WARN, "network operations are taking %d seconds!", network_time);
 		}
 	} else {
 		// process ongoing updates, if any

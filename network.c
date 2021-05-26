@@ -72,13 +72,13 @@ static int _set_netmask(int skfd, char *intf, char *newmask)
 int pv_network_update_meta(struct pantavisor *pv)
 {
 	struct ifaddrs *ifaddr, *ifa;
-	int family, s, n, len, ilen = 0, ret = 0;
+	int family, s, n, len, ilen = 0, ret = -1;
 	char host[NI_MAXHOST], ifn[IFNAMSIZ+5], iff[IFNAMSIZ+5];
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
 	if (getifaddrs(&ifaddr) < 0) {
 		pv_log(DEBUG, "error calling getifaddrs()");
-		return -1;
+		return ret;
 	}
 
 	len = sizeof(IFACES_FMT);

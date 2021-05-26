@@ -412,9 +412,10 @@ out:
 	return ret;
 }
 
-static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest_response_ptr res)
+static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest_response_ptr *response)
 {
 	trest_request_ptr req = NULL;
+	trest_response_ptr res = NULL;
 	struct trail_remote *remote = NULL;
 	int ret = -1, size = 0;
 
@@ -441,6 +442,7 @@ static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest
 
 		pv_log(DEBUG, "%d steps found", size);
 		trest_request_free(req);
+		response = &res;
 		return 1;
 	}
 out:
@@ -531,7 +533,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		goto new_update;
 
 	// check for INPROGRESS updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_inprogress, res);
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_inprogress, &res);
 	if (ret > 0) {
 		pv_log(DEBUG, "found INPROGRESS revision");
 		wrong_revision = true;
@@ -541,7 +543,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	}
 
 	// check for DOWNLOADING updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_downloading, res);
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_downloading, &res);
 	if (ret > 0) {
 		pv_log(DEBUG, "found DOWNLOADING revision");
 		goto process_response;
@@ -550,7 +552,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	}
 
 	// check for QUEUED updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_queued, res);
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_queued, &res);
 	if (ret > 0) {
 		pv_log(DEBUG, "found QUEUED revision");
 		goto process_response;
@@ -560,7 +562,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 
 new_update:
 	// check for NEW updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_new, res);
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_new, &res);
 	if (ret > 0) {
 		pv_log(DEBUG, "found NEW revision");
 		goto process_response;
