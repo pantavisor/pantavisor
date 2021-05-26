@@ -573,10 +573,8 @@ new_update:
 process_response:
 	ret = 0;
 	// if we have no response, we go out normally
-	if (!res) {
-		pv_log(DEBUG, "no response");
+	if (!res)
 		goto out;
-	}
 
 	// parse revision id
 	rev = pv_json_get_value(res->body, "rev",
