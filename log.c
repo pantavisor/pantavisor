@@ -236,12 +236,12 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 	}
 }
 
-static int log_external(const char *fmt, ...)
+static int log_libthttp(const char *fmt, ...)
 {
 	va_list args;
 	va_start(args, fmt);
 
-	__vlog("external", DEBUG, fmt, args);
+	__vlog("libthttp", DEBUG, fmt, args);
 
 	va_end(args);
 
@@ -271,8 +271,6 @@ static int pv_log_set_log_dir(const char *rev)
 
 static void pv_log_init(struct pantavisor *pv, const char *rev)
 {
-	// make logs available for platforms
-	thttp_set_log_func(log_external);
 	log_init_pid = getpid();
 	global_pv = pv;
 	int allocated_cache = 0;
@@ -296,6 +294,8 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 			allocated_cache, pv_config_get_log_logsize());
 	pv_log(DEBUG, "Allocated %d log buffers of size %d bytes",
 			allocated_dcache, pv_config_get_log_logsize() * 2);
+
+	thttp_set_log_func(log_libthttp);
 }
 
 void exit_error(int err, char *msg)
