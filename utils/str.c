@@ -22,6 +22,7 @@
 
 #include <time.h>
 #include <libgen.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include "str.h"
 
@@ -38,7 +39,6 @@ char *pv_str_replace_char(char *str, int len, char which, char what)
 	}
 	return str;
 }
-
 
 char *pv_str_unescape_to_ascii(char *buf, char *code, char c)
 {

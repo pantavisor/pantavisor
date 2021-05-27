@@ -57,6 +57,7 @@ LOCAL_SRC_FILES := init.c \
 			objects.c \
 			utils/utils.c \
 			utils/str.c \
+			utils/strrep.c \
 			utils/json.c \
 			utils/fops.c \
 			jsons.c \
