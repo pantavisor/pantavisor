@@ -515,7 +515,7 @@ bool pv_storage_is_revision_local(const char* rev)
 char* pv_storage_get_revisions_string()
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len);
+	char *json = calloc(1, len), *basedir = NULL, *progress = NULL, *commitmsg = NULL;
 	struct dl_list revisions; // pv_path
 	struct pv_path *r, *tmp;
 
@@ -535,7 +535,6 @@ char* pv_storage_get_revisions_string()
 
 	// fill up revision list in json
 	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
-		line_len = strlen(r->path) + 3;
 		// dont list current or locals dir
 		if (!strncmp(r->path, "..", strlen("..") + 1) ||
 			!strncmp(r->path, ".", strlen(".") + 1) ||
@@ -545,9 +544,43 @@ char* pv_storage_get_revisions_string()
 			!strncmp(r->path, "locals/.", strlen("locals/.") + 1))
 			continue;
 
+		// get revision base path
+		line_len = strlen("%s/trails/%s") + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
+		basedir = calloc(1, line_len);
+		sprintf(basedir, "%s/trails/%s", pv_config_get_storage_mntpoint(), r->path);
+
+		// get revision progress
+		progress = pv_storage_load_file(basedir, ".pv/progress", 512);
+		if (!progress) {
+			progress = calloc(1, 3);
+			sprintf (progress, "{}");
+		}
+
+		// get revision commit message
+		commitmsg = pv_storage_load_file(basedir, ".pv/commitmsg", 512);
+		if (!commitmsg) {
+			commitmsg = calloc(1, 1);
+			commitmsg[0] = '\0';
+		}
+
+		// add new revision line to json
+		line_len = strlen(r->path) + strlen(progress) + 43;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "\"%s\",", r->path);
+		snprintf(&json[len], line_len + 1, "{\"name\":\"%s\", \"commitmsg\":\"%s\", \"progress\":\"%s\"},", r->path, commitmsg, progress);
 		len += line_len;
+
+		if (basedir) {
+			free (basedir);
+			basedir = NULL;
+		}
+		if (progress) {
+			free (progress);
+			progress = NULL;
+		}
+		if (commitmsg) {
+			free (commitmsg);
+			commitmsg = NULL;
+		}
 	}
 
 out:
@@ -563,6 +596,13 @@ out:
 		dl_list_del(&r->list);
 		free(r);
 	}
+
+	if (basedir)
+		free(basedir);
+	if (progress)
+		free(progress);
+	if (commitmsg)
+		free(commitmsg);
 
 	return json;
 }
