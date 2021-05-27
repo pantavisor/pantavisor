@@ -794,10 +794,12 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 	// add value,key pair to json
 	dl_list_for_each_safe(curr, tmp, meta_list,
 		struct pv_meta, list) {
-		line_len = strlen(curr->key) + strlen(curr->value) + 7;
+		char *escaped = pv_str_replace_str(curr->value, "\n", "\\n");
+		line_len = strlen(curr->key) + strlen(escaped) + 7;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "\"%s\": \"%s\",", curr->key, curr->value);
+		snprintf(&json[len], line_len + 1, "\"%s\": \"%s\",", curr->key, escaped);
 		len += line_len;
+		free(escaped);
 	}
 
 out:
