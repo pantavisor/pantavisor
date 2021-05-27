@@ -274,6 +274,8 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		if (!strncmp(r->path, "..", len) ||
 			!strncmp(r->path, ".", len) ||
 			!strncmp(r->path, "locals", len) ||
+			!strncmp(r->path, "locals/..", len) ||
+			!strncmp(r->path, "locals/.", len) ||
 			(s && !strncmp(r->path, s->rev, len)) ||
 			(u && !strncmp(r->path, u->rev, len)) ||
 			!strncmp(r->path, pv_bootloader_get_rev(), len) ||
@@ -538,7 +540,9 @@ char* pv_storage_get_revisions_string()
 		if (!strncmp(r->path, "..", strlen("..") + 1) ||
 			!strncmp(r->path, ".", strlen(".") + 1) ||
 			!strncmp(r->path, "current", strlen("current") + 1) ||
-			!strncmp(r->path, "locals", strlen("locals") + 1))
+			!strncmp(r->path, "locals", strlen("locals") + 1) ||
+			!strncmp(r->path, "locals/..", strlen("locals/..") + 1) ||
+			!strncmp(r->path, "locals/.", strlen("locals/.") + 1))
 			continue;
 
 		json = realloc(json, len + line_len + 1);
