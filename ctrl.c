@@ -58,13 +58,16 @@
 #define ENDPOINT_OBJECTS "/objects"
 #define ENDPOINT_STEPS "/steps"
 #define ENDPOINT_PROGRESS "/progress"
+#define ENDPOINT_COMMITMSG "/commitmsg"
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 
 #define PATH_OBJECTS "%s/objects/%s"
-#define PATH_TRAILS_PARENT "%s/trails/%s/.pvr"
+#define PATH_TRAILS_PVR_PARENT "%s/trails/%s/.pvr"
+#define PATH_TRAILS_PV_PARENT "%s/trails/%s/.pv"
 #define PATH_TRAILS "%s/trails/%s/.pvr/json"
 #define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
+#define PATH_TRAILS_COMMITMSG "%s/trails/%s/.pv/commitmsg"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
@@ -514,9 +517,24 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			pv_ctrl_process_get_file(req_fd, file_path);
 		}
 		goto out;
+	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
+		pv_str_endswith(ENDPOINT_COMMITMSG, strlen(ENDPOINT_COMMITMSG), path, path_len)) {
+		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_COMMITMSG));
+		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PV_PARENT, file_name);
+		file_path = pv_ctrl_get_file_path(PATH_TRAILS_COMMITMSG, file_name);
+
+		if (!file_name || !file_path) {
+			pv_log(WARN, "HTTP request has bad step name %s", file_name);
+			goto response;
+		}
+
+		if (!strncmp("PUT", method, method_len)) {
+			mkdir_p(file_path_parent, 0755);
+			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+		}
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
-		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PARENT, file_name);
+		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PVR_PARENT, file_name);
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
 
 		if (!file_name || !file_path_parent || !file_path) {
