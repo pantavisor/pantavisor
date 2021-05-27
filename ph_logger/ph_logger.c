@@ -929,7 +929,7 @@ static int ph_logger_push_revision(char *revision)
 
 static void log_libthttp(int level, const char *fmt, va_list args)
 {
-	if (level > pv_config_get_network_loglevel())
+	if (level > pv_config_get_libthttp_loglevel())
 		return;
 
 	__ph_log(DEBUG, fmt, args);

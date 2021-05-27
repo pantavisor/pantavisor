@@ -102,7 +102,6 @@ struct pantavisor_network {
 	char *brdev;
 	char *braddress4;
 	char *brmask4;
-	int loglevel;
 };
 
 struct pantavisor_log {
@@ -122,6 +121,10 @@ struct pantavisor_control {
 	bool remote;
 };
 
+struct pantavisor_libthttp {
+	int loglevel;
+};
+
 struct pantavisor_config {
 	struct pantavisor_cache cache;
 	struct pantavisor_bootloader bl;
@@ -134,6 +137,7 @@ struct pantavisor_config {
 	struct pantavisor_log log;
 	struct pantavisor_lxc lxc;
 	struct pantavisor_control control;
+	struct pantavisor_libthttp libthttp;
 };
 
 int pv_config_load_creds(void);
@@ -194,7 +198,6 @@ int pv_config_get_watchdog_timeout(void);
 char* pv_config_get_network_brdev(void);
 char* pv_config_get_network_braddress4(void);
 char* pv_config_get_network_brmask4(void);
-int pv_config_get_network_loglevel(void);
 
 char* pv_config_get_log_logdir(void);
 int pv_config_get_log_logmax(void);
@@ -202,6 +205,7 @@ int pv_config_get_log_loglevel(void);
 int pv_config_get_log_logsize(void);
 bool pv_config_get_log_push(void);
 bool pv_config_get_log_capture(void);
+int pv_config_get_libthttp_loglevel(void);
 
 bool pv_config_get_control_remote(void);
 

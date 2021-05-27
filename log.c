@@ -238,7 +238,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 
 static void log_libthttp(int level, const char *fmt, va_list args)
 {
-	if (level > pv_config_get_network_loglevel())
+	if (level > pv_config_get_libthttp_loglevel())
 		return;
 
 	if (log_init_pid != getpid())
