@@ -236,16 +236,15 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 	}
 }
 
-static int log_libthttp(const char *fmt, ...)
+static void log_libthttp(int level, const char *fmt, va_list args)
 {
-	va_list args;
-	va_start(args, fmt);
+	if (level > pv_config_get_network_loglevel())
+		return;
+
+	if (log_init_pid != getpid())
+		return;
 
 	__vlog("libthttp", DEBUG, fmt, args);
-
-	va_end(args);
-
-	return 1;
 }
 
 static int pv_log_set_log_dir(const char *rev)

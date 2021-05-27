@@ -927,16 +927,12 @@ static int ph_logger_push_revision(char *revision)
 	return result;
 }
 
-static int log_libthttp(const char *fmt, ...)
+static void log_libthttp(int level, const char *fmt, va_list args)
 {
-	va_list args;
-	va_start(args, fmt);
+	if (level > pv_config_get_network_loglevel())
+		return;
 
 	__ph_log(DEBUG, fmt, args);
-
-	va_end(args);
-
-	return 1;
 }
 
 static pid_t ph_logger_start_push_service(char *revision)

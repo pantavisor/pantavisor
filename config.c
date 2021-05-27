@@ -178,6 +178,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->net.brdev = config_get_value_string(&config_list, "net.brdev", "lxcbr0");
 	config->net.braddress4 = config_get_value_string(&config_list, "net.braddress4", "10.0.3.1");
 	config->net.brmask4 = config_get_value_string(&config_list, "net.brmask4", "255.255.255.0");
+	config->net.loglevel = config_get_value_int(&config_list, "net.log.level", 3);
 
 	config->updater.use_tmp_objects = config_get_value_bool(&config_list, "updater.use_tmp_objects", false);
 
@@ -264,6 +265,8 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_logsize(&config_list, "log.buf_nitems", &config->log.logsize);
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
 	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
+
+	config_override_value_int(&config_list, "net.log.level", &config->lxc.log_level);
 
 	config_override_value_int(&config_list, "lxc.log.level", &config->lxc.log_level);
 
@@ -389,6 +392,8 @@ void pv_config_override_value(const char* key, const char* value)
 		pv->config.log.loglevel = atoi(value);
 	else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push"))
 		pv->config.log.push = atoi(value);
+	else if (!strcmp(key, "net.log.level"))
+		pv->config.net.loglevel = atoi(value);
 }
 
 void pv_config_free()
@@ -501,6 +506,7 @@ int pv_config_get_watchdog_timeout() { return pv_get_instance()->config.wdt.time
 char* pv_config_get_network_brdev() { return pv_get_instance()->config.net.brdev; }
 char* pv_config_get_network_braddress4() { return pv_get_instance()->config.net.braddress4; }
 char* pv_config_get_network_brmask4() { return pv_get_instance()->config.net.brmask4; }
+int pv_config_get_network_loglevel() { return pv_get_instance()->config.net.loglevel; }
 
 char* pv_config_get_log_logdir() { return pv_get_instance()->config.log.logdir; }
 int pv_config_get_log_logmax() { return pv_get_instance()->config.log.logmax; }

@@ -102,6 +102,7 @@ struct pantavisor_network {
 	char *brdev;
 	char *braddress4;
 	char *brmask4;
+	int loglevel;
 };
 
 struct pantavisor_log {
@@ -193,6 +194,7 @@ int pv_config_get_watchdog_timeout(void);
 char* pv_config_get_network_brdev(void);
 char* pv_config_get_network_braddress4(void);
 char* pv_config_get_network_brmask4(void);
+int pv_config_get_network_loglevel(void);
 
 char* pv_config_get_log_logdir(void);
 int pv_config_get_log_logmax(void);
