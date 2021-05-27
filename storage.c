@@ -564,9 +564,9 @@ char* pv_storage_get_revisions_string()
 		}
 
 		// add new revision line to json
-		line_len = strlen(r->path) + strlen(progress) + 43;
+		line_len = strlen(r->path) + strlen(commitmsg) + strlen(progress) + 41;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "{\"name\":\"%s\", \"commitmsg\":\"%s\", \"progress\":\"%s\"},", r->path, commitmsg, progress);
+		snprintf(&json[len], line_len + 1, "{\"name\":\"%s\", \"commitmsg\":\"%s\", \"progress\":%s},", r->path, commitmsg, progress);
 		len += line_len;
 
 		if (basedir) {
