@@ -551,7 +551,7 @@ char* pv_storage_get_revisions_string()
 
 		// get revision progress
 		progress = pv_storage_load_file(basedir, ".pv/progress", 512);
-		if (!progress) {
+		if (!progress || !strlen(progress)) {
 			progress = calloc(1, 3);
 			sprintf (progress, "{}");
 		}
@@ -945,6 +945,9 @@ char *pv_storage_load_file(const char *path_base, const char *name, const unsign
 		goto out;
 
 	size = read(fd, buf, max_size);
+	if (size < 0)
+		goto out;
+
 	content = calloc(1, size+1);
 	strncpy(content, buf, size);
 	close(fd);
