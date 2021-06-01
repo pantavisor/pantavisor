@@ -62,6 +62,7 @@
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 
+#define PATH_OBJECTS_TMP "%s/objects/%s.new"
 #define PATH_OBJECTS "%s/objects/%s"
 #define PATH_TRAILS_PVR_PARENT "%s/trails/%s/.pvr"
 #define PATH_TRAILS_PV_PARENT "%s/trails/%s/.pv"
@@ -250,16 +251,20 @@ out:
 	return ret;
 }
 
-static int pv_ctrl_validate_object_checksum(char *file_path, char *sha)
+static int pv_ctrl_validate_object_checksum(char *file_path_tmp, char *file_path, char *sha)
 {
-	if (pv_storage_validate_file_checksum(file_path, sha)) {
-		pv_log(DEBUG, "removing %s...", file_path);
-		remove(file_path);
+	if (!pv_storage_validate_file_checksum(file_path_tmp, sha)) {
+		pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
+		rename(file_path_tmp, file_path);
 		syncdir(file_path);
-		return -1;
+		return 0;
 	}
 
-	return 0;
+	pv_log(DEBUG, "removing %s...", file_path_tmp);
+	remove(file_path_tmp);
+	syncdir(file_path_tmp);
+
+	return -1;
 }
 
 static int pv_ctrl_read_parse_request_header(int req_fd,
@@ -433,7 +438,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
-	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL;
+	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL, *file_path_tmp = NULL;
 	char *metakey = NULL, *metavalue = NULL;
 
 	memset(buf, 0, sizeof(buf));
@@ -482,18 +487,19 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		}
 	} else if (pv_str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
+		file_path_tmp = pv_ctrl_get_file_path(PATH_OBJECTS_TMP, file_name);
 		file_path = pv_ctrl_get_file_path(PATH_OBJECTS, file_name);
 
 		// sha must have 64 characters
-		if (!file_name || !file_path || (strlen(file_name) != 64)) {
+		if (!file_name || !file_path_tmp || !file_path || (strlen(file_name) != 64)) {
 			pv_log(WARN, "HTTP request has bad object name %s", file_name);
 			goto response;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+			res = pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp);
 			if (!res)
-				res = pv_ctrl_validate_object_checksum(file_path, file_name);
+				res = pv_ctrl_validate_object_checksum(file_path_tmp, file_path, file_name);
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
@@ -606,6 +612,8 @@ out:
 		free(file_path_parent);
 	if (file_path)
 		free(file_path);
+	if (file_path_tmp)
+		free(file_path_tmp);
 	if (metakey)
 		free(metakey);
 	if (metavalue)

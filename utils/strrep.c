@@ -17,6 +17,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "str.h"
+
 /*
  * This file includes a main() function so that the file can be
  * compiled into an executable, in order to run some simple test cases
