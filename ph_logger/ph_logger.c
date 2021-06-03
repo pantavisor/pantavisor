@@ -445,7 +445,8 @@ auth:
 	res = trest_do_json_request(ph_logger->client, req);
 	if (!res) {
 		ph_log(WARN, "HTTP request POST /logs/ could not be initialized");
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		ph_log(WARN, "HTTP request POST /logs/ could not auth (status=%d)", res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		ph_log(WARN, "HTTP request POST /logs/ returned HTTP error (code=%d; body='%s')", res->code, res->body);
