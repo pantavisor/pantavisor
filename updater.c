@@ -392,7 +392,8 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
 		pv_log(WARN, "HTTP request PUT %s could not be initialized", update->endpoint);
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request PUT %s could not auth (status=%d)", update->endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "HTTP request PUT %s returned error (code=%d; body='%s')", update->endpoint, res->code, res->body);
@@ -429,7 +430,8 @@ static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest
 	res = trest_do_json_request(remote->client, req);
 	if (!res) {
 		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s returned error (code=%d; body='%s')", endpoint, res->code, res->body);
@@ -676,7 +678,8 @@ static int trail_is_available(struct trail_remote *r)
 	res = trest_do_json_request(r->client, req);
 	if (!res) {
 		pv_log(WARN, "GET /trails/ could not be initialized");
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "GET /trails/ could not auth (status=%d)", res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "GET /trails/ returned error (code=%d; body='%s')", res->code, res->body);
@@ -842,12 +845,13 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		pv_log(WARN, "POST /objects/ could not be initialized");
 		ret = -1;
 		goto out;
-	} else if (tres->status != TREST_AUTH_STATUS_OK) {
+	} else if (tres->code == THTTP_STATUS_CONFLICT) {
+		pv_log(INFO, "object '%s' already owned by user, skipping", o->id);
+		goto out;
+	} else if (!tres->code &&
+		tres->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "POST /objects/ could not auth (status=%d)", tres->status);
 		ret = -1;
-		goto out;
-	} else if (tres->code == THTTP_STATUS_OK) {
-		pv_log(INFO, "object '%s' already owned by user, skipping", o->id);
 		goto out;
 	} else if (tres->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "POST /objects/ returned error (code=%d; body='%s')", tres->code, tres->body);
@@ -991,7 +995,8 @@ static int trail_first_boot(struct pantavisor *pv)
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
 		pv_log(WARN, "POST /trails/ could not be initialized");
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "POST /trails/ could not auth (status=%d)", res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "POST /trails/ returned error (code=%d; body='%s')", res->code, res->body);
@@ -1216,7 +1221,8 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 	if (!res) {
 		pv_log(WARN, "GET %s could not be initialized", endpoint);
 		goto out;
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "GET %s could not auth (status=%d)", endpoint, res->status);
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {

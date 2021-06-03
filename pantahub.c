@@ -221,7 +221,8 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 	res = trest_do_json_request(client, req);
 	if (!res) {
 		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "request GET %s returned HTTP error (code=%d; body='%s')", endpoint, res->code, res->body);
@@ -257,7 +258,8 @@ int pv_ph_device_exists(struct pantavisor *pv)
 	res = trest_do_json_request(client, req);
 	if (!res) {
 		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s returned HTTP error (code=%d; body='%s')", endpoint, res->code, res->body);
@@ -451,7 +453,8 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 	res = trest_do_json_request(client, req);
 	if (!res) {
 		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s returned HTTP error (code=%d; body='%s')", endpoint, res->code, res->body);
@@ -531,7 +534,8 @@ int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 	res = trest_do_json_request(client, req);
 	if (!res) {
 		pv_log(WARN, "PATCH %s could not be initialized", endpoint);
-	} else if (res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code &&
+		res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request PATCH %s could not auth (status=%d)", endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "HTTP request PATCH %s returned HTTP error (code=%d; body='%s')",
