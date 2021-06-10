@@ -185,15 +185,19 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
+	// reload remote bool after non reboot updates, when we don't load config again
+	pv->remote_mode = pv_config_get_control_remote();
+	pv->state->local = !pv_config_get_control_remote();
+
 	// we know if we are in local if the running revision has the local format
 	if (pv_storage_is_revision_local(pv->state->rev)) {
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
 		pv->state->local = true;
-		pv_config_set_control_remote(false);
-	} else {
-		pv->state->local = false;
-		pv_config_set_control_remote(true);
+		pv->remote_mode = false;
 	}
+
+	if (!pv->remote_mode)
+		pv_log(INFO, "running in local mode. Will not consume new updates from Pantahub");
 
 	// only start local ph logger, start cloud services if connected
 	ph_logger_toggle(pv, pv->state->rev);
@@ -384,7 +388,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv_config_get_control_remote()) {
+	if (pv->remote_mode) {
 		clock_gettime(CLOCK_MONOTONIC, &tp1);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
@@ -470,7 +474,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		next_state = STATE_RUN;
 		break;
 	case CMD_UPDATE_METADATA:
-		if (pv_config_get_control_remote()) {
+		if (pv->remote_mode) {
 			pv_log(DEBUG, "metadata command with payload '%s' received. Uploading metadata...",
 				cmd->payload);
 			if (!pv_ph_upload_metadata(pv, cmd->payload))
@@ -745,6 +749,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->remote = NULL;
 	pv->update = NULL;
 	pv->online = false;
+	pv->remote_mode = false;
 	ret = 0;
 out:
 	return 0;
