@@ -152,9 +152,9 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		HUB_CREDS_TYPE_ERROR
 	} creds_type;
 
-        // Make sure values are reasonable
-	if ((strcmp(pv_config_get_creds_id(), "") == 0) ||
-		(strcmp(pv_config_get_creds_prn(), "") == 0))
+    // Make sure values are reasonable
+	if (!pv_config_get_creds_host() ||
+		(strcmp(pv_config_get_creds_host(), "") == 0))
 		return NULL;
 
 	if (!strcmp(pv_config_get_creds_type(), "builtin")) {
@@ -194,6 +194,13 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	switch (creds_type) {
 	case HUB_CREDS_TYPE_BUILTIN:
 		// Create client
+
+		if (!pv_config_get_creds_prn() ||
+			(strcmp(pv_config_get_creds_prn(), "") == 0) ||
+			!pv_config_get_creds_secret() ||
+			(strcmp(pv_config_get_creds_secret(), "") == 0)) {
+			goto err;
+		}
 
 		client = trest_new_tls_from_userpass(
 						     pv_config_get_creds_host(),
