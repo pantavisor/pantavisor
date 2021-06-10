@@ -379,7 +379,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 
 	// do not report to cloud if that is not possible
 	if ((update->pending && update->pending->local) ||
-		!pv_config_get_control_remote() ||
+		!pv_get_instance()->remote_mode ||
 		!pv->online ||
 		trail_remote_init(pv))
 		goto out;

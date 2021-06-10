@@ -568,7 +568,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			goto out;
 		}
 	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
-		if (pv_config_get_control_remote()) {
+		if (pv_get_instance()->remote_mode) {
 			pv_log(WARN, "HTTP resquest cannot be done while on remote revision");
 			goto response;
 		}
