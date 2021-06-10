@@ -144,6 +144,23 @@ static int pv_devmeta_read_revision(struct pv_devmeta_read
 	return 0;
 }
 
+static int pv_devmeta_read_mode(struct pv_devmeta_read
+						*pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+	struct pantavisor *pv = pv_get_instance();
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	if (pv->remote)
+		snprintf(buf, buflen, "remote");
+	else
+		snprintf(buf, buflen, "local");
+	return 0;
+}
+
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{
 		.key = "pantavisor.arch",
@@ -160,6 +177,9 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	},
 	{	.key = "pantavisor.revision",
 		.reader = pv_devmeta_read_revision
+	},
+	{	.key = "pantavisor.mode",
+		.reader = pv_devmeta_read_mode
 	}
 };
 
