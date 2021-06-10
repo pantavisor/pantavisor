@@ -132,21 +132,25 @@ static int uboot_unset_env_key(char *key)
 	unsigned char new[MTD_ENV_SIZE] = { 0 };
 	char *s, *d, *path;
 
-	pv_log(DEBUG, "unset boot env key %s", key);
+	pv_log(DEBUG, "unsetting boot env key %s", key);
 
 	path = uboot_txt;
 	if (single_env) {
 		path = pv_env;
 		len = MTD_ENV_SIZE * sizeof(char);
 	} else {
-		if (stat(path, &st))
+		if (stat(path, &st)) {
+			pv_log(ERROR, "stat failed for %s: %s", path, strerror(errno));
 			return -1;
+		}
 		len = st.st_size * sizeof(char);
 	}
 
 	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
-	if (!fd)
+	if (!fd) {
+		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
 		return -1;
+	}
 
 	lseek(fd, 0, SEEK_SET);
 	ret = read(fd, old, len);
@@ -202,21 +206,25 @@ static int uboot_set_env_key(char *key, char *value)
 	char *s, *d, *path;
 	char v[128];
 
-	pv_log(DEBUG, "set boot env key %s with value %s", key, value);
+	pv_log(DEBUG, "setting boot env key %s with value %s", key, value);
 
 	path = uboot_txt;
 	if (single_env) {
 		path = pv_env;
 		len = MTD_ENV_SIZE * sizeof(char);
 	} else {
-		if (stat(path, &st))
+		if (stat(path, &st)) {
+			pv_log(ERROR, "stat failed for %s: %s", path, strerror(errno));
 			return -1;
+		}
 		len = st.st_size * sizeof(char);
 	}
 
 	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
-	if (!fd)
+	if (!fd) {
+		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
 		return -1;
+	}
 
 	lseek(fd, 0, SEEK_SET);
 	ret = read(fd, old, len);
