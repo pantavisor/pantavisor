@@ -79,7 +79,7 @@ auth:
 		return 0;
 	}
 
-	if (!endpoint) {
+	if (!endpoint && pv_config_get_creds_id()) {
 		size = sizeof(ENDPOINT_FMT) + strlen(pv_config_get_creds_id()) + 1;
 		endpoint = malloc(size * sizeof(char));
 		sprintf(endpoint, ENDPOINT_FMT, pv_config_get_creds_id());

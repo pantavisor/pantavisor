@@ -136,7 +136,8 @@ static int trail_remote_init(struct pantavisor *pv)
 	trest_ptr client = 0;
 	char *endpoint_trail = NULL;
 
-	if (pv->remote)
+	if (pv->remote ||
+		!pv_config_get_creds_id())
 		return 0;
 
 	client = pv_get_trest_client(pv, NULL);
@@ -488,6 +489,9 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 static struct pv_update* pv_update_new(const char *id, const char *rev, bool local)
 {
 	struct pv_update *u;
+	
+	if (!rev)
+		return NULL;
 
 	u = calloc(1, sizeof(struct pv_update));
 	if (u) {
@@ -498,13 +502,18 @@ static struct pv_update* pv_update_new(const char *id, const char *rev, bool loc
 		u->retries = 0;
 		u->local = local;
 
-		// to construct endpoint
+		if (!id) {
+			u->local = true;
+			goto out;
+		}
+
 		u->endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT)
 					+ strlen(id)
 					+ strlen(rev));
 		sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT, id, rev);
 	}
 
+out:
 	return u;
 }
 
