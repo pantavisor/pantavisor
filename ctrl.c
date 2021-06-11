@@ -47,6 +47,7 @@
 #include "objects.h"
 #include "storage.h"
 #include "metadata.h"
+#include "version.h"
 
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -61,6 +62,7 @@
 #define ENDPOINT_COMMITMSG "/commitmsg"
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
+#define ENDPOINT_BUILDINFO "/buildinfo"
 
 #define PATH_OBJECTS_TMP "%s/objects/%s.new"
 #define PATH_OBJECTS "%s/objects/%s"
@@ -565,6 +567,11 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	} else if (pv_str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
+			goto out;
+		}
+	} else if (pv_str_matches(ENDPOINT_BUILDINFO, strlen(ENDPOINT_BUILDINFO), path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_string(req_fd, strdup(pv_build_manifest));
 			goto out;
 		}
 	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
