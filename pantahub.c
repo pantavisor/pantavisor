@@ -327,8 +327,6 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 	req->body_content_type = "application/json";
 
-	pv_log(WARN, "host/port/proxy/port=path pv_ph_register_self_builtin %s/%d/%s/%d=%s\n", req->host, req->port, req->host_proxy, req->port_proxy, req->path);
-
 	res = thttp_request_do(req);
 
 	// If registered, override in-memory PantaHub credentials
