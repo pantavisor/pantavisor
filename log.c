@@ -165,46 +165,46 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		return;
 	snprintf(log_path, sizeof(log_path), "%s/%s",log_dir, LOG_NAME);
 	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
-	if (log_fd < 0)
-		return;
 
-	int ret = 0;
-	int lock_file_errno = 0;
-	do {
-		ret = pv_fops_lock_file(log_fd);
-	} while (ret < 0 && (errno == EAGAIN || errno == EACCES));
+	if (log_fd >= 0) {
+		int ret = 0;
+		int lock_file_errno = 0;
+		do {
+			ret = pv_fops_lock_file(log_fd);
+		} while (ret < 0 && (errno == EAGAIN || errno == EACCES));
 
-	if (ret < 0)
-		lock_file_errno = errno;
-	/*
-	 * We weren't able to take the lock.
-	 */
-	if (ret) {
-		char err_file[PATH_MAX];
-		char proc_name[17] = {0};
-		int len = 0;
-		int err_fd = -1;
+		if (ret < 0)
+			lock_file_errno = errno;
+		/*
+		 * We weren't able to take the lock.
+		 */
+		if (ret) {
+			char err_file[PATH_MAX];
+			char proc_name[17] = {0};
+			int len = 0;
+			int err_fd = -1;
 
 
-		snprintf(err_file, PATH_MAX, "%s/%s", log_dir, ERROR_DIR);
-		mkdir_p(err_file, 0755);
-		len = strlen(err_file);
-		snprintf(err_file + len, PATH_MAX - len, "/%d.error",getpid());
+			snprintf(err_file, PATH_MAX, "%s/%s", log_dir, ERROR_DIR);
+			mkdir_p(err_file, 0755);
+			len = strlen(err_file);
+			snprintf(err_file + len, PATH_MAX - len, "/%d.error",getpid());
 
-		err_fd = open(err_file, 
-				O_EXCL|O_RDWR|O_CREAT|O_APPEND|O_SYNC, 0644);
-		if (err_fd >= 0) {
-			prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
-			dprintf(err_fd, "process %s couldn't acquire pantavisor.log lock\n", proc_name);
-			dprintf(err_fd, "error code %d: %s\n", errno, strerror(lock_file_errno));
-			dprintf(err_fd, "[pantavisor] %s\t -- ", level_names[level].name);
-			dprintf(err_fd, "[%s]: ", module);
-			vdprintf(err_fd, fmt, args);
-			dprintf(err_fd, "\n");
-			close(err_fd);
+			err_fd = open(err_file, 
+					O_EXCL|O_RDWR|O_CREAT|O_APPEND|O_SYNC, 0644);
+			if (err_fd >= 0) {
+				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
+				dprintf(err_fd, "process %s couldn't acquire pantavisor.log lock\n", proc_name);
+				dprintf(err_fd, "error code %d: %s\n", errno, strerror(lock_file_errno));
+				dprintf(err_fd, "[pantavisor] %s\t -- ", level_names[level].name);
+				dprintf(err_fd, "[%s]: ", module);
+				vdprintf(err_fd, fmt, args);
+				dprintf(err_fd, "\n");
+				close(err_fd);
+			}
+			close(log_fd);
+			return;
 		}
-		close(log_fd);
-		return;
 	}
 
 	if (!stat(log_path, &log_stat)) {

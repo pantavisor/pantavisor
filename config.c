@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <errno.h>
 
 #include <sys/stat.h>
 
@@ -311,7 +312,7 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	mkstemp(tmp_path);
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (fd < 0) {
-		pv_log(ERROR, "unable to open temporary credentials config");
+		pv_log(ERROR, "unable to open temporary credentials config: %s", strerror(errno));
 		return -1;
 	}
 

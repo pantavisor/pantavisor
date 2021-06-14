@@ -263,7 +263,7 @@ static int uboot_set_env_key(char *key, char *value)
 
 	fd = open(path, O_RDWR);
 	if (fd < 0) {
-		pv_log(ERROR, "open failed returned %d for %s: %s", fd, path, strerror(errno));
+		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
 		return -1;
 	}
 
@@ -323,8 +323,10 @@ static int uboot_flush_env(void)
 	close(fd);
 
 	fd = open(pv_env, O_RDONLY);
-	if (fd < 0)
+	if (fd < 0) {
+		pv_log(ERROR, "open failed for %s: %s", pv_env, strerror(errno));
 		return 0;
+	}
 
 	lseek(fd, 0, SEEK_SET);
 	memset(buf, 0, sizeof(buf));
