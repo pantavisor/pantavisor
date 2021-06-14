@@ -493,7 +493,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 	fd = open("/pv/device-id", O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
-		pv_log(INFO, "unable to open device-id hint file");
+		pv_log(INFO, "unable to open device-id hint file: %s", strerror(errno));
 		return;
 	}
 	sprintf(buf, "%s\n", pv_config_get_creds_id());
@@ -505,7 +505,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 	fd = open("/pv/challenge", O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
-		pv_log(INFO, "unable to open challenge hint file");
+		pv_log(INFO, "unable to open challenge hint file: %s", strerror(errno));
 		return;
 	}
 	sprintf(buf, "%s\n", c);
