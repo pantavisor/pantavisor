@@ -27,6 +27,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -350,7 +351,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 			pv_log(DEBUG, "Opening file %s",namespace);
 			ns_fd = open(namespace, 0);
 			if (ns_fd < 0) {
-				pv_log(ERROR, "Unable to open namespace file");
+				pv_log(ERROR, "Unable to open namespace file: %s", strerror(errno));
 				_exit(-1);
 			}
 			if (setns(ns_fd, 0)) {

@@ -28,6 +28,7 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <netdb.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -726,7 +727,9 @@ void pv_init()
 
 	char *core = "/storage/corepv";
 	int fd = open("/proc/sys/kernel/core_pattern", O_WRONLY | O_SYNC);
-	if (fd)
+	if (fd < 0)
+		printf("open failed for /proc/sys/kernel/core_pattern: %s", strerror(errno));
+	else
 		write(fd, core, strlen(core));
 
 	// Enter state machine

@@ -99,7 +99,8 @@ static void pv_ph_set_online(struct pantavisor *pv, bool online)
 	if (online) {
 		if (!hint) {
 			fd = open(path, O_CREAT | O_SYNC, 0400);
-			close(fd);
+			if (fd >= 0)
+				close(fd);
 		}
 	} else {
 		if (hint)
@@ -491,7 +492,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	char buf[256];
 
 	fd = open("/pv/device-id", O_TRUNC | O_SYNC | O_RDWR);
-	if (!fd) {
+	if (fd < 0) {
 		pv_log(INFO, "unable to open device-id hint file");
 		return;
 	}
@@ -503,7 +504,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 		return;
 
 	fd = open("/pv/challenge", O_TRUNC | O_SYNC | O_RDWR);
-	if (!fd) {
+	if (fd < 0) {
 		pv_log(INFO, "unable to open challenge hint file");
 		return;
 	}

@@ -124,7 +124,7 @@ int pv_fops_open_and_lock_file(const char *fname, int flags, mode_t mode)
 	int ret = -1;
 
 	fd = open(fname, flags, mode);
-	if (fd > 0)
+	if (fd >= 0)
 		ret = pv_fops_lock_file(fd);
 	if (ret) {
 		close(fd);

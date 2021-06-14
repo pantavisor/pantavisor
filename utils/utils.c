@@ -73,13 +73,13 @@ void syncdir(char *file)
 	dirname(dir);
 
 	fd = open(dir, O_RDONLY);
-	if (fd)
+	if (fd >= 0) {
 		fsync(fd);
+		close(fd);
+	}
 
 	if (dir)
 		free(dir);
-
-	close(fd);
 }
 
 int get_digit_count(int number)

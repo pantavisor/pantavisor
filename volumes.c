@@ -147,7 +147,8 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 			struct stat buf;
 			if (stat(mntpoint, &buf) != 0) {
 				int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
-				close(fd);
+				if (fd >= 0)
+					close(fd);
 			}
 			ret = mount(path, mntpoint, NULL, MS_BIND, NULL);
 		} else if (strcmp(fstype, "data") == 0) {
