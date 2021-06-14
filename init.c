@@ -224,7 +224,7 @@ static void debug_shell()
 	int con_fd;
 
 	con_fd = open("/dev/console", O_RDWR);
-	if (!con_fd) {
+	if (con_fd < 0) {
 		printf("Unable to open /dev/console\n");
 		return;
 	}
@@ -283,7 +283,8 @@ static void redirect_io()
 	int nullfd, outfd;
 	outfd = open("/dev/kmsg", O_RDWR | O_LARGEFILE);
 	nullfd = open("/dev/null", O_RDWR | O_LARGEFILE);
-	if (outfd) {
+	if ((outfd >= 0) &&
+		(nullfd >= 0)) {
 		dup2(outfd, fileno(stdout));
 		dup2(outfd, fileno(stderr));
 		dup2(nullfd, fileno(stdin));

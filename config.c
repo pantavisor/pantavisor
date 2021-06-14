@@ -310,7 +310,7 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	sprintf(tmp_path, "%s-XXXXXX", path);
 	mkstemp(tmp_path);
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
-	if (!fd) {
+	if (fd < 0) {
 		pv_log(ERROR, "unable to open temporary credentials config");
 		return -1;
 	}

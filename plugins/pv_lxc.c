@@ -222,7 +222,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	// Strip consoles from kernel cmdline
 	mkstemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd > 0) {
+	if (fd >= 0) {
 		char *buf = calloc(1024, 1);
 		char *new = calloc(1024, 1);
 		read(fd, buf, 1024);
@@ -238,7 +238,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		}
 		close(fd);
 		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC, 0644);
-		if (fd > 0)
+		if (fd >= 0)
 			write(fd, new, strlen(new));
 		close(fd);
 		free(new);

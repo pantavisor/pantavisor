@@ -619,7 +619,7 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 	sprintf(path, "%s/trails/%s/.pv/done", pv_config_get_storage_mntpoint(), rev);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
-	if (!fd) {
+	if (fd < 0) {
 		pv_log(WARN, "unable to set current(done) flag for revision %s", rev);
 		return;
 	}

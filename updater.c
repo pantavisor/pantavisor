@@ -1472,6 +1472,10 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	// temporary path where we will store the file until validated
 	sprintf(mmc_tmp_obj_path, MMC_TMP_OBJ_FMT, obj->objpath);
 	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
+	if (obj_fd < 0) {
+		pv_log(ERROR, "open failed for %s: %s", mmc_tmp_obj_path, strerror(errno));
+		goto out;
+	}
 
 	if (use_volatile_tmp) {
 		mkstemp(volatile_tmp_obj_path);
@@ -1627,8 +1631,11 @@ static int trail_link_objects(struct pantavisor *pv)
 			int s_fd, d_fd;
 			s_fd = open(obj->objpath, O_RDONLY);
 			d_fd = open(obj->relpath, O_CREAT | O_WRONLY | O_SYNC, 0644);
-			pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
-			copy_and_close(s_fd, d_fd);
+			if ((s_fd >= 0) &&
+				(d_fd >= 0)) {
+				pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
+				copy_and_close(s_fd, d_fd);
+			}
 			continue;
 		}
 		if (link(obj->objpath, obj->relpath) < 0) {
@@ -1810,7 +1817,7 @@ int pv_update_install(struct pantavisor *pv)
 	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), pending->rev);
 	fd = open(path_new, O_CREAT | O_WRONLY | O_SYNC | O_TRUNC, 0644);
 	if (fd < 0) {
-		pv_log(ERROR, "unable to write state.json file for update");
+		pv_log(ERROR, "unable to write state.json file for update: %s", strerror(errno));
 		ret = -1;
 		goto out;
 	}

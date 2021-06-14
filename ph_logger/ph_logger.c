@@ -532,7 +532,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	dl_list_init(&frag_list);
 	fd = open(filename, O_RDONLY);
 	if (fd < 0) {
-		ph_log(ERROR, "Unable to open file %s", filename);
+		pv_log(ERROR, "open failed for %s: %s", filename, strerror(errno));
 		ret = -1;
 		goto out;
 	}

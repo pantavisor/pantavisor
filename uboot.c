@@ -79,7 +79,7 @@ static int uboot_init()
 
 	fd = open("/proc/mtd", O_RDONLY);
 	if (fd < 0) {
-		pv_log(ERROR, "Cannot open /proc/mtd for reading");
+		pv_log(ERROR, "open failed for /proc/mtd: %s", strerror(errno));
 		return -1;
 	}
 
@@ -147,7 +147,7 @@ static int uboot_unset_env_key(char *key)
 	}
 
 	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
-	if (!fd) {
+	if (fd < 0) {
 		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
 		return -1;
 	}
@@ -178,6 +178,11 @@ static int uboot_unset_env_key(char *key)
 	}
 
 	fd = open(path, O_RDWR);
+	if (fd < 0) {
+		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
+		return -1;
+	}
+
 	if (single_env) {
 		erase_info_t ei;
 		mtd_info_t mi;
@@ -221,7 +226,7 @@ static int uboot_set_env_key(char *key, char *value)
 	}
 
 	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
-	if (!fd) {
+	if (fd < 0) {
 		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
 		return -1;
 	}
@@ -257,6 +262,11 @@ static int uboot_set_env_key(char *key, char *value)
 
 
 	fd = open(path, O_RDWR);
+	if (fd < 0) {
+		pv_log(ERROR, "open failed returned %d for %s: %s", fd, path, strerror(errno));
+		return -1;
+	}
+
 	if (single_env) {
 		erase_info_t ei;
 		mtd_info_t mi;
@@ -313,6 +323,9 @@ static int uboot_flush_env(void)
 	close(fd);
 
 	fd = open(pv_env, O_RDONLY);
+	if (fd < 0)
+		return 0;
+
 	lseek(fd, 0, SEEK_SET);
 	memset(buf, 0, sizeof(buf));
 	read(fd, buf, sizeof(buf));
