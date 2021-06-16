@@ -41,9 +41,10 @@ void pv_metadata_add_usermeta(const char *key, const char *value);
 void pv_metadata_rm_usermeta(const char *key);
 void pv_metadata_parse_usermeta(char *buf);
 
-void pv_metadata_parse_devmeta_pair(const char *buf);
 int pv_metadata_init_devmeta(struct pantavisor *pv);
 int pv_metadata_upload_devmeta(struct pantavisor *pv);
+void pv_metadata_add_devmeta(const char *key, const char *value);
+void pv_metadata_parse_devmeta(const char *buf);
 
 void pv_metadata_remove(void);
 

@@ -43,6 +43,7 @@
 #include "pantahub.h"
 #include "network.h"
 #include "init.h"
+#include "metadata.h"
 
 #define MODULE_NAME		"network"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -50,7 +51,7 @@
 
 #define ifreq_offsetof(x)  offsetof(struct ifreq, x)
 
-#define IFACES_FMT "{\"interfaces\":{"
+#define IFACES_FMT "{"
 #define IFACE_FMT "\"%s\":[%s]"
 
 static int _set_netmask(int skfd, char *intf, char *newmask)
@@ -69,16 +70,16 @@ static int _set_netmask(int skfd, char *intf, char *newmask)
 	return 0;
 }
 
-int pv_network_update_meta(struct pantavisor *pv)
+void pv_network_update_meta(struct pantavisor *pv)
 {
 	struct ifaddrs *ifaddr, *ifa;
-	int family, s, n, len, ilen = 0, ret = -1;
+	int family, s, n, len, ilen = 0;
 	char host[NI_MAXHOST], ifn[IFNAMSIZ+5], iff[IFNAMSIZ+5];
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
 	if (getifaddrs(&ifaddr) < 0) {
 		pv_log(DEBUG, "error calling getifaddrs()");
-		return ret;
+		return;
 	}
 
 	len = sizeof(IFACES_FMT);
@@ -131,16 +132,13 @@ int pv_network_update_meta(struct pantavisor *pv)
 	}
 	free(ifaddrs);
 
-	ifaces = realloc(ifaces, len + 2);
-	strcat(ifaces, "}}");
+	ifaces = realloc(ifaces, len + 1);
+	strcat(ifaces, "}");
 
-	// upload to cloud
-	ret = pv_ph_upload_metadata(pv, ifaces);
+	pv_metadata_add_devmeta("interfaces", ifaces);
 
 	freeifaddrs(ifaddr);
 	free(ifaces);
-
-	return ret;
 }
 
 static int pv_network_early_init(struct pv_init *this)
