@@ -427,30 +427,26 @@ out:
 void pv_storage_set_active(struct pantavisor *pv)
 {
 	struct stat st;
-	char *path, *cur;
+	char *path = NULL, *cur = NULL;
 
-	/*
-	 * Error case should at least remove
-	 * the trails/current symlink so we don't
-	 * point to a previous revision.
-	 */
 	path = calloc(1, PATH_MAX);
-	if (!path)
-		return;
-
-	sprintf(path, "%s/trails/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
 	cur = calloc(1, PATH_MAX);
-
-	/*
-	 * [PKS]
-	 * Instead of bailing out should we remove
-	 * the current link at-least to the current
-	 * doesn't point to a previous revision?
-	 */
-	if (!cur)
+	if (!path || !cur)
 		goto out;
 
+	// path to current revision
+	sprintf(path, "%s/trails/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
+
 	sprintf(cur, "%s/trails/current", pv_config_get_storage_mntpoint());
+	unlink(cur);
+
+	if (!stat(path, &st))
+		symlink(path, cur);
+
+	// path to current logs
+	sprintf(path, "%s/logs/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
+
+	sprintf(cur, "%s/logs/current", pv_config_get_storage_mntpoint());
 	unlink(cur);
 
 	if (!stat(path, &st))
