@@ -246,12 +246,10 @@ static int pv_metadata_add(struct dl_list *head, const char *key, const char *va
 	curr = pv_metadata_get_by_key(head, key);
 	if (curr) {
 		if (strcmp(curr->value, value) == 0) {
-			curr->updated = true;
 			ret = 0;
 		} else {
 			free(curr->value);
 			curr->value = strdup(value);
-			curr->updated = true;
 			ret = 1;
 		}
 		goto out;
@@ -265,7 +263,6 @@ static int pv_metadata_add(struct dl_list *head, const char *key, const char *va
 		curr->value = strdup(value);
 		if (curr->key && curr->value) {
 			dl_list_add(head, &curr->list);
-			curr->updated = true;
 			ret = 1;
 		} else {
 			if (curr->key)
@@ -283,7 +280,15 @@ out:
 void pv_metadata_add_usermeta(const char *key, const char *value)
 {
 	struct pantavisor *pv = pv_get_instance();
+	struct pv_meta *curr;
 	int ret = pv_metadata_add(&pv->metadata->usermeta, key, value);
+
+	// set updated flags for all current existing pairs so they are not deleted
+	if (ret >= 0) {
+		curr = pv_metadata_get_by_key(&pv->metadata->usermeta, key);
+		if (curr)
+			curr->updated = true;
+	}
 
 	if (ret > 0) {
 		pv_log(DEBUG, "user metadata key %s added or updated", key);
@@ -401,16 +406,24 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-static void pv_metadata_add_devmeta(const char *key, const char *value)
+void pv_metadata_add_devmeta(const char *key, const char *value)
 {
 	struct pantavisor *pv = pv_get_instance();
+	struct pv_meta *curr;
 	int ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
 
-	if (ret > 0)
+	if (ret > 0) {
+		// set updated flag only for added or updated so they can be uploaded
+		curr = pv_metadata_get_by_key(&pv->metadata->devmeta, key);
+		if (curr)
+			curr->updated = true;
+
 		pv_log(DEBUG, "device metadata key %s added or updated", key);
+		pv->metadata->devmeta_uploaded = false;
+	}
 }
 
-void pv_metadata_parse_devmeta_pair(const char *buf)
+void pv_metadata_parse_devmeta(const char *buf)
 {
 	int ret = 0, tokc, n;
 	jsmntok_t *tokv = NULL;
@@ -518,21 +531,41 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	head = &pv->metadata->devmeta;
 	dl_list_for_each_safe(info, tmp, head,
 			struct pv_meta, list) {
+		if (!info->updated)
+			continue;
+
 		char *key = pv_json_format(info->key, strlen(info->key));
 		char *val = pv_json_format(info->value, strlen(info->value));
 
 		if (key && val) {
-			int frag_len = strlen(key) + strlen(val) +
-				/* 2 pairs of quotes*/
-				2 * 2 +
-				/* 1 colon and a ,*/
-				1 + 1;
-			if (json_avail > frag_len) {
-				snprintf(json + len, json_avail,
-						"\"%s\":\"%s\",",
-						key, val);
-				len += frag_len;
-				json_avail -= frag_len;
+			// if value is a regular string
+			if (info->value[0] != '{') {
+				int frag_len = strlen(key) + strlen(val) +
+					// 2 pairs of quotes
+					2 * 2 +
+					// 1 colon and a ,
+					1 + 1;
+				if (json_avail > frag_len) {
+					snprintf(json + len, json_avail,
+							"\"%s\":\"%s\",",
+							key, val);
+					len += frag_len;
+					json_avail -= frag_len;
+				}
+			// if value is a json
+			} else {
+				int frag_len = strlen(info->key) + strlen(info->value) +
+					// 1 pair of quotes
+					1 * 2 +
+					// 1 colon and a ,
+					1 + 1;
+				if (json_avail > frag_len) {
+					snprintf(json + len, json_avail,
+							"\"%s\":%s,",
+							info->key, info->value);
+					len += frag_len;
+					json_avail -= frag_len;
+				}
 			}
 		}
 		if (key)
@@ -544,10 +577,16 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	 * replace , with closing brace.
 	 */
 	json[len - 1] = '}';
-	pv_log(INFO, "device info json = %s", json);
+	pv_log(INFO, "uploading devmeta json '%s'", json);
 	ret = pv_ph_upload_metadata(pv, json);
-	if(!ret)
+	if(!ret) {
 		pv->metadata->devmeta_uploaded = true;
+
+		dl_list_for_each_safe(info, tmp, head,
+			struct pv_meta, list) {
+			info->updated = false;
+		}
+	}
 out:
 	pv_log_put_buffer(log_buffer);
 	return 0;
@@ -770,7 +809,7 @@ static int pv_metadata_init(struct pv_init *this)
 	dl_list_init(&pv->metadata->usermeta);
 	dl_list_init(&pv->metadata->devmeta);
 
-	pv->metadata->devmeta_uploaded = false;
+	pv->metadata->devmeta_uploaded = true;
 
 	pv_metadata_load_usermeta();
 
@@ -815,9 +854,17 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 	dl_list_for_each_safe(curr, tmp, meta_list,
 		struct pv_meta, list) {
 		char *escaped = pv_str_replace_str(curr->value, "\n", "\\n");
-		line_len = strlen(curr->key) + strlen(escaped) + 7;
-		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "\"%s\": \"%s\",", curr->key, escaped);
+		if (curr->value[0] != '{') {
+			// value is a plain string
+			line_len = strlen(curr->key) + strlen(escaped) + 7;
+			json = realloc(json, len + line_len + 1);
+			snprintf(&json[len], line_len + 1, "\"%s\": \"%s\",", curr->key, escaped);
+		} else {
+			// value is a json
+			line_len = strlen(curr->key) + strlen(escaped) + 4;
+			json = realloc(json, len + line_len + 1);
+			snprintf(&json[len], line_len + 1, "\"%s\":%s,", curr->key, escaped);
+		}
 		len += line_len;
 		free(escaped);
 	}

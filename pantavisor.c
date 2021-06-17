@@ -289,9 +289,8 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 
 	if (pv_ph_device_get_meta(pv))
 		return -1;
+	pv_network_update_meta(pv);
 	if (pv_metadata_upload_devmeta(pv))
-		return -1;
-	if (pv_network_update_meta(pv))
 		return -1;
 
 	return 0;
@@ -476,10 +475,9 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		break;
 	case CMD_UPDATE_METADATA:
 		if (pv->remote_mode) {
-			pv_log(DEBUG, "metadata command with payload '%s' received. Uploading metadata...",
+			pv_log(DEBUG, "metadata command with payload '%s' received. Parsing metadata...",
 				cmd->payload);
-			if (!pv_ph_upload_metadata(pv, cmd->payload))
-				pv_metadata_parse_devmeta_pair(cmd->payload);
+			pv_metadata_parse_devmeta(cmd->payload);
 		}
 		break;
 	case CMD_REBOOT_DEVICE:
