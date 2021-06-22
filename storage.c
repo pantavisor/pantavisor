@@ -459,6 +459,35 @@ out:
 		free(path);
 }
 
+void pv_storage_update_factory()
+{
+	struct pantavisor *pv = pv_get_instance();
+	struct stat st;
+	char *path = NULL, *cur = NULL;
+
+	path = calloc(1, PATH_MAX);
+	cur = calloc(1, PATH_MAX);
+	if (!path || !cur)
+		goto out;
+
+	// first, remove revision 0 that is going to be substituted
+	pv_storage_rm_rev(pv, "0");
+
+	// symlink revision 0 to current revision
+	sprintf(path, "%s/trails/0", pv_config_get_storage_mntpoint());
+
+	sprintf(cur, "%s/trails/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
+
+	if (!stat(cur, &st))
+		symlink(cur, path);
+
+out:
+	if (cur)
+		free(cur);
+	if (path)
+		free(path);
+}
+
 int pv_storage_make_config(struct pantavisor *pv)
 {
 	struct stat st;

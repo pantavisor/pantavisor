@@ -511,6 +511,24 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update)
 			next_state = STATE_UPDATE;
 		break;
+	case CMD_MAKE_FACTORY:
+		if (pv->update) {
+			pv_log(WARN, "ignoring make factory command because an update is in progress");
+			goto out;
+		}
+
+		if (!pv->unclaimed) {
+			pv_log(WARN, "ignoring make factory command because device is already claimed");
+			goto out;
+		}
+
+		pv_log(DEBUG, "make factory received. Transferring current revision to remote revision 0");
+		pv_storage_update_factory();
+		pv_log(INFO, "revision 0 updated. Progressing to revision 0");
+		pv->update = pv_update_get_step_local("0");
+		if (pv->update)
+			next_state = STATE_UPDATE;
+		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
