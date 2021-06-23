@@ -32,6 +32,7 @@ typedef enum {
 	CMD_POWEROFF_DEVICE = 3,
 	CMD_TRY_ONCE = 4,
 	CMD_LOCAL_RUN = 5,
+	CMD_MAKE_FACTORY = 6,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 
@@ -47,7 +48,7 @@ void pv_ctrl_socket_close(int ctrl_fd);
 
 static inline const char* pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 {
-	static const char *strings[] = {NULL, "UPDATE_METADATA","REBOOT_DEVICE","POWEROFF_DEVICE","TRY_ONCE","LOCAL_RUN"};
+	static const char *strings[] = {NULL, "UPDATE_METADATA","REBOOT_DEVICE","POWEROFF_DEVICE","TRY_ONCE","LOCAL_RUN","MAKE_FACTORY"};
 	return strings[op];
 }
 
