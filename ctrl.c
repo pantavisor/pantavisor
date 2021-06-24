@@ -75,10 +75,27 @@
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
-#define HTTP_RES_ERROR "HTTP/1.1 500 Internal Server Error\r\n\r\n"
+
+#define HTTP_RESPONSE "HTTP/1.1 %s \r\nContent-Length: %d\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"Error\":\"%s\"}\r\n"
 
 static const unsigned int HTTP_REQ_BUFFER_SIZE = 4096;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
+
+typedef enum {
+	HTTP_STATUS_BAD_REQ,
+	HTTP_STATUS_NOT_FOUND,
+	HTTP_STATUS_CONFLICT,
+	HTTP_STATUS_ERROR,
+} pv_http_status_code_t;
+
+static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
+{
+	static const char *strings[] = {"400 Bad Request",
+		"404 Not Found",
+		"409 Conflict",
+		"500 Internal Server Error"};
+	return strings[code];
+}
 
 static int pv_ctrl_socket_open(char *path)
 {
@@ -201,6 +218,45 @@ err:
 	return -1;
 }
 
+static void pv_ctrl_write_response(int req_fd,
+								pv_http_status_code_t code,
+								const char* message)
+{
+	unsigned int content_len, response_len;
+	char* response = NULL;
+
+
+	content_len = 12 + // {\"Error\":\"%s\"}
+		strlen(message);
+
+	response_len = 91 + // HTTP/1.1...
+		strlen(pv_ctrl_string_http_status_code(code)) +
+		get_digit_count(content_len) +
+		strlen(message);
+	if (response_len > HTTP_REQ_BUFFER_SIZE) {
+		pv_log(ERROR, "HTTP response too long");
+		goto out;
+	}
+
+	response = calloc(1, response_len);
+	if (!response) {
+		pv_log(ERROR, "HTTP response cannot be allocated");
+		goto out;
+	}
+
+	snprintf(response, response_len, HTTP_RESPONSE,
+				pv_ctrl_string_http_status_code(code), content_len, message);
+
+	if (write(req_fd, response, response_len) <= 0) {
+		pv_log(ERROR, "HTTP response could not be written to ctrl socket with fd %d: %s",
+				req_fd, strerror(errno));
+	}
+
+out:
+	if (response)
+		free(response);
+}
+
 static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* file_path)
 {
 	int obj_fd, read_length, write_length, ret = -1;
@@ -218,6 +274,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
 	if (obj_fd < 0) {
 		pv_log(ERROR, "%s could not be created", file_path);
+		pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot create file");
 		goto out;
 	}
 
@@ -232,12 +289,14 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 		if (write_length <= 0) {
 			pv_log(INFO, "HTTP PUT content could not be read from ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
+			pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot read from socket");
 			goto out;
 		}
 
 		if (write(obj_fd, req, write_length) <= 0) {
 			pv_log(INFO, "HTTP PUT content could not be written from ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
+			pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot write into file");
 			goto out;
 		}
 
@@ -349,8 +408,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 	goto out;
 
 error:
-	if (write(req_fd, HTTP_RES_ERROR, sizeof(HTTP_RES_ERROR)-1) <= 0)
-		pv_log(ERROR, "HTTP Internal Server Error response could not be sent to ctrl socket");
+	pv_ctrl_write_response(req_fd, HTTP_STATUS_NOT_FOUND, "Resource does not exist");
 out:
 	close(obj_fd);
 }
@@ -432,6 +490,48 @@ err:
 	return NULL;
 }
 
+static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
+{
+	if (!cmd || !(*cmd))
+		return -1;
+
+	struct pantavisor *pv = pv_get_instance();
+
+	if (!pv->remote_mode &&
+		((*cmd)->op == CMD_UPDATE_METADATA)) {
+		pv_ctrl_write_response(req_fd,
+			HTTP_STATUS_CONFLICT,
+			"Cannot do this operation while on local mode");
+		goto error;
+	}
+
+	if (pv->update &&
+		(((*cmd)->op == CMD_REBOOT_DEVICE) ||
+		 ((*cmd)->op == CMD_POWEROFF_DEVICE) ||
+		 ((*cmd)->op == CMD_LOCAL_RUN) ||
+		 ((*cmd)->op == CMD_MAKE_FACTORY))) {
+		pv_ctrl_write_response(req_fd,
+			HTTP_STATUS_CONFLICT,
+			"Cannot do this operation while update is ongoing");
+		goto error;
+	}
+
+	if (!pv->unclaimed &&
+		((*cmd)->op == CMD_MAKE_FACTORY)) {
+		pv_ctrl_write_response(req_fd,
+			HTTP_STATUS_CONFLICT,
+			"Cannot do this operation if device is already claimed");
+		goto error;
+	}
+
+	return 0;
+
+error:
+	pv_ctrl_free_cmd(*cmd);
+	*cmd = NULL;
+	return -1;
+}
+
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
@@ -468,19 +568,30 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 												&num_headers);
 	if (buf_index < 0) {
 		pv_log(WARN, "HTTP request recived has bad format");
-		goto bad_request;
+		pv_ctrl_write_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad format");
+		goto out;
 	}
 
 	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
 	if (content_length <= 0) {
 		pv_log(WARN, "HTTP request received has empty body");
-		goto bad_request;
+		pv_ctrl_write_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has empty body");
+		goto out;
 	}
 
 	// read and parse rest of message
 	if (pv_str_startswith(ENDPOINT_COMMANDS, strlen(ENDPOINT_COMMANDS), path)) {
 		if (!strncmp("POST", method, method_len)) {
 			res = pv_ctrl_process_cmd(req_fd, content_length, &cmd);
+			if (res < 0) {
+				pv_ctrl_write_response(req_fd,
+					HTTP_STATUS_BAD_REQ,
+					"Command has bad format");
+				goto out;
+			}
+			res = pv_ctrl_check_command(req_fd, &cmd);
+			if (res < 0)
+				goto out;
 		}
 	} else if (pv_str_matches(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
@@ -495,13 +606,25 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		// sha must have 64 characters
 		if (!file_name || !file_path_tmp || !file_path || (strlen(file_name) != 64)) {
 			pv_log(WARN, "HTTP request has bad object name %s", file_name);
-			goto response;
+			pv_ctrl_write_response(req_fd,
+				HTTP_STATUS_BAD_REQ,
+				"Request has bad object name");
+			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
 			res = pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp);
-			if (!res)
+			if (res < 0) {
+				goto out;
+			} else {
 				res = pv_ctrl_validate_object_checksum(file_path_tmp, file_path, file_name);
+				if (res < 0) {
+					pv_ctrl_write_response(req_fd,
+						HTTP_STATUS_BAD_REQ,
+						"Object has bad checksum");
+					goto out;
+				}
+			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
 			goto out;
@@ -517,8 +640,11 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		file_path = pv_ctrl_get_file_path(PATH_TRAILS_PROGRESS, file_name);
 
 		if (!file_name || !file_path) {
-			pv_log(WARN, "HTTP request has bad object name %s", file_name);
-			goto response;
+			pv_log(WARN, "HTTP request has bad step name %s", file_name);
+			pv_ctrl_write_response(req_fd,
+				HTTP_STATUS_BAD_REQ,
+				"Request has bad step name");
+			goto out;
 		}
 
 		if (!strncmp("GET", method, method_len)) {
@@ -533,12 +659,17 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 		if (!file_name || !file_path) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
-			goto response;
+			pv_ctrl_write_response(req_fd,
+				HTTP_STATUS_BAD_REQ,
+				"Request has bad step name");
+			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
 			mkdir_p(file_path_parent, 0755);
 			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+			if (res < 0)
+				goto out;
 		}
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
@@ -547,13 +678,18 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 		if (!file_name || !file_path_parent || !file_path) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
-			goto response;
+			pv_ctrl_write_response(req_fd,
+				HTTP_STATUS_BAD_REQ,
+				"Request has bad step name");
+			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
 			if (pv_storage_is_revision_local(file_name)) {
 				mkdir_p(file_path_parent, 0755);
 				res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
+				if (res < 0)
+					goto out;
 			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
@@ -576,15 +712,21 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		}
 	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
 		if (pv_get_instance()->remote_mode) {
-			pv_log(WARN, "HTTP resquest cannot be done while on remote revision");
-			goto response;
+			pv_log(WARN, "HTTP resquest cannot be done during remote revision");
+			pv_ctrl_write_response(req_fd,
+				HTTP_STATUS_CONFLICT,
+				"Cannot do this operation during remote mode");
+			goto out;
 		}
 
 		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_USER_META), path_len);
 
 		if (!metakey) {
-			pv_log(WARN, "HTTP request has bad step name %s", file_name);
-			goto response;
+			pv_log(WARN, "HTTP request has bad meta name %s", file_name);
+			pv_ctrl_write_response(req_fd,
+				HTTP_STATUS_BAD_REQ,
+				"Request has bad metadata key name");
+			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
@@ -595,22 +737,13 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	} else
 		pv_log(WARN, "HTTP request received has bad endpoint");
 
-response:
 	if (res < 0) {
-		if (write(req_fd, HTTP_RES_ERROR, strlen(HTTP_RES_ERROR)) <= 0)
-			pv_log(INFO, "HTTP ERROR response could not be written to ctrl socket with fd %d: %s",
-				req_fd, strerror(errno));
+		pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Unknown request");
 	} else {
 		if (write(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK)) <= 0)
 			pv_log(INFO, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
 	}
-	goto out;
-
-bad_request:
-	if (write(req_fd, HTTP_RES_BAD_REQ, strlen(HTTP_RES_BAD_REQ)) <= 0)
-		pv_log(INFO, "HTTP BAD REQUEST response could not be written to ctrl socket with fd %d: %s",
-			req_fd, strerror(errno));
 
 out:
 	if (file_name)
