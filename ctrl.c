@@ -83,16 +83,16 @@ static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
 typedef enum {
 	HTTP_STATUS_BAD_REQ,
-	HTTP_STATUS_FORBIDDEN,
 	HTTP_STATUS_NOT_FOUND,
+	HTTP_STATUS_CONFLICT,
 	HTTP_STATUS_ERROR,
 } pv_http_status_code_t;
 
 static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 {
 	static const char *strings[] = {"400 Bad Request",
-		"403 Forbidden",
 		"404 Not Found",
+		"409 Conflict",
 		"500 Internal Server Error"};
 	return strings[code];
 }
@@ -500,7 +500,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 	if (!pv->remote_mode &&
 		((*cmd)->op == CMD_UPDATE_METADATA)) {
 		pv_ctrl_write_response(req_fd,
-			HTTP_STATUS_FORBIDDEN,
+			HTTP_STATUS_CONFLICT,
 			"Cannot do this operation while on local mode");
 		goto error;
 	}
@@ -511,7 +511,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		 ((*cmd)->op == CMD_LOCAL_RUN) ||
 		 ((*cmd)->op == CMD_MAKE_FACTORY))) {
 		pv_ctrl_write_response(req_fd,
-			HTTP_STATUS_FORBIDDEN,
+			HTTP_STATUS_CONFLICT,
 			"Cannot do this operation while update is ongoing");
 		goto error;
 	}
@@ -519,7 +519,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 	if (!pv->unclaimed &&
 		((*cmd)->op == CMD_MAKE_FACTORY)) {
 		pv_ctrl_write_response(req_fd,
-			HTTP_STATUS_FORBIDDEN,
+			HTTP_STATUS_CONFLICT,
 			"Cannot do this operation if device is already claimed");
 		goto error;
 	}
@@ -714,7 +714,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		if (pv_get_instance()->remote_mode) {
 			pv_log(WARN, "HTTP resquest cannot be done during remote revision");
 			pv_ctrl_write_response(req_fd,
-				HTTP_STATUS_FORBIDDEN,
+				HTTP_STATUS_CONFLICT,
 				"Cannot do this operation during remote mode");
 			goto out;
 		}
