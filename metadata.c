@@ -853,7 +853,7 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 	// add value,key pair to json
 	dl_list_for_each_safe(curr, tmp, meta_list,
 		struct pv_meta, list) {
-		char *escaped = pv_str_replace_str(curr->value, "\n", "\\n");
+		char *escaped = pv_json_format(curr->value, strlen(curr->value));
 		if (curr->value[0] != '{') {
 			// value is a plain string
 			line_len = strlen(curr->key) + strlen(escaped) + 7;
