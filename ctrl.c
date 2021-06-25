@@ -196,7 +196,7 @@ static int pv_ctrl_process_cmd(int req_fd, size_t content_length, struct pv_cmd*
 
 	pv_log(DEBUG, "reading and parsing command...");
 
-	if (content_length > HTTP_REQ_BUFFER_SIZE) {
+	if (content_length >= HTTP_REQ_BUFFER_SIZE) {
 		pv_log(WARN, "cmd request too long");
 		goto err;
 	}
@@ -207,6 +207,8 @@ static int pv_ctrl_process_cmd(int req_fd, size_t content_length, struct pv_cmd*
 			req_fd, strerror(errno));
 		goto err;
 	}
+
+	req[content_length] = 0;
 
 	*cmd = pv_ctrl_parse_command(req);
 	if (!*cmd)
@@ -467,7 +469,7 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 {
 	char *req = NULL;
 
-	if (content_length > HTTP_REQ_BUFFER_SIZE) {
+	if (content_length >= HTTP_REQ_BUFFER_SIZE) {
 		pv_log(WARN, "body too long");
 		goto err;
 	}
@@ -480,6 +482,7 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 			req_fd, strerror(errno));
 		goto err;
 	}
+	req[content_length] = 0;
 
 	return req;
 
