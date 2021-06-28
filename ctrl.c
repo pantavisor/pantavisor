@@ -652,6 +652,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
+			goto out;
 		}
 		goto out;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
@@ -734,9 +735,10 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 		if (!strncmp("PUT", method, method_len)) {
 			metavalue = pv_ctrl_get_body(req_fd, content_length);
-			pv_metadata_add_usermeta(metakey, metavalue);
-		} else if (!strncmp("DELETE", method, method_len))
-			pv_metadata_rm_usermeta(metakey);
+			res = pv_metadata_add_usermeta(metakey, metavalue);
+		} else if (!strncmp("DELETE", method, method_len)) {
+			res = pv_metadata_rm_usermeta(metakey);
+		}
 	} else
 		pv_log(WARN, "HTTP request received has bad endpoint");
 

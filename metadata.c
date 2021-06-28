@@ -277,7 +277,7 @@ out:
 	return ret;
 }
 
-void pv_metadata_add_usermeta(const char *key, const char *value)
+int pv_metadata_add_usermeta(const char *key, const char *value)
 {
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_meta *curr;
@@ -294,10 +294,13 @@ void pv_metadata_add_usermeta(const char *key, const char *value)
 		pv_log(DEBUG, "user metadata key %s added or updated", key);
 		pv_config_override_value(key, value);
 		pv_storage_save_file(PATH_USER_META, key, value);
+		return 0;
 	}
+
+	return -1;
 }
 
-void pv_metadata_rm_usermeta(const char *key)
+int pv_metadata_rm_usermeta(const char *key)
 {
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_meta *meta;
@@ -308,7 +311,10 @@ void pv_metadata_rm_usermeta(const char *key)
 		dl_list_del(&meta->list);
 		pv_storage_rm_file(PATH_USER_META, meta->key);
 		pv_metadata_free(meta);
+		return 0;
 	}
+
+	return -1;
 }
 
 static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
