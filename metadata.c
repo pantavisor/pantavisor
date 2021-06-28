@@ -859,23 +859,25 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 	// add value,key pair to json
 	dl_list_for_each_safe(curr, tmp, meta_list,
 		struct pv_meta, list) {
-		char *escaped = pv_json_format(curr->value, strlen(curr->value));
-		if (!escaped)
-			continue;
 
 		if (curr->value[0] != '{') {
+			if (!curr->value)
+				continue;
 			// value is a plain string
-			line_len = strlen(curr->key) + strlen(escaped) + 7;
+			line_len = strlen(curr->key) + strlen(curr->value) + 7;
 			json = realloc(json, len + line_len + 1);
-			snprintf(&json[len], line_len + 1, "\"%s\": \"%s\",", curr->key, escaped);
+			snprintf(&json[len], line_len + 1, "\"%s\": \"%s\",", curr->key, curr->value);
 		} else {
+			char *escaped = pv_json_format(curr->value, strlen(curr->value));
+			if (!escaped)
+				continue;
 			// value is a json
 			line_len = strlen(curr->key) + strlen(escaped) + 4;
 			json = realloc(json, len + line_len + 1);
 			snprintf(&json[len], line_len + 1, "\"%s\":%s,", curr->key, escaped);
+			free(escaped);
 		}
 		len += line_len;
-		free(escaped);
 	}
 
 out:
