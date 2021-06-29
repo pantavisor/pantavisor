@@ -161,6 +161,40 @@ static int pv_devmeta_read_mode(struct pv_devmeta_read
 	return 0;
 }
 
+static int pv_devmeta_read_online(struct pv_devmeta_read
+						*pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+	struct pantavisor *pv = pv_get_instance();
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	if (pv->online)
+		snprintf(buf, buflen, "1");
+	else
+		snprintf(buf, buflen, "0");
+	return 0;
+}
+
+static int pv_devmeta_read_claimed(struct pv_devmeta_read
+						*pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+	struct pantavisor *pv = pv_get_instance();
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	if (pv->unclaimed)
+		snprintf(buf, buflen, "0");
+	else
+		snprintf(buf, buflen, "1");
+	return 0;
+}
+
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{
 		.key = "pantavisor.arch",
@@ -180,6 +214,12 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	},
 	{	.key = "pantavisor.mode",
 		.reader = pv_devmeta_read_mode
+	},
+	{	.key = "pantahub.online",
+		.reader = pv_devmeta_read_online
+	},
+	{	.key = "pantahub.claimed",
+		.reader = pv_devmeta_read_claimed
 	}
 };
 

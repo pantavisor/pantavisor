@@ -272,6 +272,7 @@ static pv_state_t _pv_unclaimed(struct pantavisor *pv)
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
 		open("/pv/challenge", O_TRUNC | O_WRONLY);
+		pv_metadata_add_devmeta("pantahub.claimed", "1");
 	}
 
 	pv_ph_update_hint_file(pv, NULL);
