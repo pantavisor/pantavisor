@@ -102,9 +102,11 @@ static void pv_ph_set_online(struct pantavisor *pv, bool online)
 			if (fd >= 0)
 				close(fd);
 		}
+		pv_metadata_add_devmeta("pantahub.online", "1");
 	} else {
 		if (hint)
 			remove(path);
+		pv_metadata_add_devmeta("pantahub.online", "0");
 	}
 
 	pv->online = online;
