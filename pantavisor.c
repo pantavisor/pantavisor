@@ -186,6 +186,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return STATE_ROLLBACK;
 	}
 
+	// set factory revision progress
+	if (!strncmp(pv->state->rev, "0", sizeof("0")))
+		pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS);
+
 	// reload remote bool after non reboot updates, when we don't load config again
 	pv->remote_mode = pv_config_get_control_remote();
 	pv->state->local = !pv_config_get_control_remote();
