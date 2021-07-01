@@ -575,6 +575,8 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		goto out;
 	}
 
+	pv_log(DEBUG, "new request received: %.*s %.*s", method_len, method, path_len, path);
+
 	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
 	if (content_length <= 0) {
 		pv_log(WARN, "HTTP request received has empty body");
