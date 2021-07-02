@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -487,6 +487,8 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 	// runlevel PLATFORM is reserved for platforms without explicily configured runlevel
 	else if (!strcmp(value, "app"))
 		(*bundle->platform)->runlevel = RUNLEVEL_APP;
+	else if (!strcmp(value, "platform"))
+		(*bundle->platform)->runlevel = RUNLEVEL_PLATFORM;
 	else {
 		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'", value, (*bundle->platform)->name);
 	}
