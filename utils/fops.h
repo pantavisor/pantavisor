@@ -41,7 +41,7 @@ int pv_fops_lock_file(int fd);
 int pv_fops_open_and_lock_file(const char *fname, int flags, mode_t mode);
 int pv_fops_unlock_file(int fd);
 int pv_fops_gzip_file(const char *filename, const char *target_name);
-int pv_fops_check_and_open_file(const char *fname, int flags,
-			mode_t mode);
+int pv_fops_check_and_open_file(const char *fname, int flags, mode_t mode);
+int pv_fops_copy_and_close(int s_fd, int d_fd);
 
 #endif /* UTILS_PV_FOPS_H_ */

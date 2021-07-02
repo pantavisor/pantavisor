@@ -164,8 +164,7 @@ int pv_fops_gzip_file(const char *filename, const char *target_name)
 	return -1;
 }
 
-int pv_fops_check_and_open_file(const char *fname, int flags,
-			mode_t mode)
+int pv_fops_check_and_open_file(const char *fname, int flags, mode_t mode)
 {
 	struct stat st;
 	int fd = -1;
@@ -177,4 +176,20 @@ int pv_fops_check_and_open_file(const char *fname, int flags,
 	fd = open(fname, flags, mode);
 out:
 	return fd;
+}
+
+int pv_fops_copy_and_close(int s_fd, int d_fd)
+{
+	int bytes_r = 0, bytes_w = 0;
+	char buf[4096];
+
+	lseek(s_fd, 0, SEEK_SET);
+	lseek(d_fd, 0, SEEK_SET);
+
+	while (bytes_r = read(s_fd, buf, sizeof(buf)), bytes_r > 0)
+		bytes_w += write(d_fd, buf, bytes_r);
+
+	close(s_fd);
+
+	return bytes_r;
 }

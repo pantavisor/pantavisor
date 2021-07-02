@@ -64,14 +64,6 @@
 #define ENDPOINT_DEVICE_META "/device-meta"
 #define ENDPOINT_BUILDINFO "/buildinfo"
 
-#define PATH_OBJECTS_TMP "%s/objects/%s.new"
-#define PATH_OBJECTS "%s/objects/%s"
-#define PATH_TRAILS_PVR_PARENT "%s/trails/%s/.pvr"
-#define PATH_TRAILS_PV_PARENT "%s/trails/%s/.pv"
-#define PATH_TRAILS "%s/trails/%s/.pvr/json"
-#define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
-#define PATH_TRAILS_COMMITMSG "%s/trails/%s/.pv/commitmsg"
-
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 #define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
@@ -474,7 +466,7 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 		goto err;
 	}
 
-	req = calloc(1, content_length);
+	req = calloc(1, content_length + 1);
 
 	// read request
 	if (read(req_fd, req, content_length) <= 0) {
@@ -717,14 +709,6 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 			goto out;
 		}
 	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
-		if (pv_get_instance()->remote_mode) {
-			pv_log(WARN, "HTTP resquest cannot be done during remote revision");
-			pv_ctrl_write_response(req_fd,
-				HTTP_STATUS_CONFLICT,
-				"Cannot do this operation during remote mode");
-			goto out;
-		}
-
 		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_USER_META), path_len);
 
 		if (!metakey) {

@@ -528,7 +528,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 
 		pv_log(DEBUG, "make factory received. Transferring current revision to remote revision 0");
-		pv_storage_update_factory();
+		if (pv_storage_update_factory() < 0) {
+			pv_log(ERROR, "cannot update factory revision");
+			goto out;
+		}
+
 		pv_log(INFO, "revision 0 updated. Progressing to revision 0");
 		pv->update = pv_update_get_step_local("0");
 		if (pv->update)

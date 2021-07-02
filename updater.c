@@ -1284,24 +1284,6 @@ static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 	return 0;
 }
 
-static int copy_and_close(int s_fd, int d_fd)
-{
-	int bytes_r = 0, bytes_w = 0;
-	char buf[4096];
-
-	lseek(s_fd, 0, SEEK_SET);
-	lseek(d_fd, 0, SEEK_SET);
-
-	while (bytes_r = read(s_fd, buf, sizeof(buf)), bytes_r > 0)
-		bytes_w += write(d_fd, buf, bytes_r);
-
-	close(s_fd);
-
-	pv_log(INFO, "  bytes_r=%d bytes_w=%d", bytes_r, bytes_w);
-
-	return bytes_r;
-}
-
 struct progress_update {
 	time_t next_update_at;
 	struct pantavisor *pv;
@@ -1516,7 +1498,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 
 	if (use_volatile_tmp) {
 		pv_log(INFO, "copying %s to tmp path (%s)", volatile_tmp_obj_path, mmc_tmp_obj_path);
-		bytes = copy_and_close(volatile_tmp_fd, obj_fd);
+		bytes = pv_fops_copy_and_close(volatile_tmp_fd, obj_fd);
 		fd = obj_fd;
 	}
 	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
@@ -1634,7 +1616,7 @@ static int trail_link_objects(struct pantavisor *pv)
 			if ((s_fd >= 0) &&
 				(d_fd >= 0)) {
 				pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
-				copy_and_close(s_fd, d_fd);
+				pv_fops_copy_and_close(s_fd, d_fd);
 			}
 			continue;
 		}

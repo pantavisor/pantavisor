@@ -459,33 +459,47 @@ out:
 		free(path);
 }
 
-void pv_storage_update_factory()
+int pv_storage_update_factory()
 {
+	int res = -1, fd_c = -1, fd_f = -1;
 	struct pantavisor *pv = pv_get_instance();
-	struct stat st;
-	char *path = NULL, *cur = NULL;
+	char current[PATH_MAX], factory[PATH_MAX], factory_parent[PATH_MAX];
 
-	path = calloc(1, PATH_MAX);
-	cur = calloc(1, PATH_MAX);
-	if (!path || !cur)
-		goto out;
+	// init paths
+	sprintf(factory_parent, PATH_TRAILS_PVR_PARENT, pv_config_get_storage_mntpoint(), "0");
+	sprintf(factory, PATH_TRAILS, pv_config_get_storage_mntpoint(), "0");
+	sprintf(current, PATH_TRAILS, pv_config_get_storage_mntpoint(), pv->state->rev);
 
 	// first, remove revision 0 that is going to be substituted
 	pv_storage_rm_rev(pv, "0");
 
-	// symlink revision 0 to current revision
-	sprintf(path, "%s/trails/0", pv_config_get_storage_mntpoint());
+	// now, create revision 0
+	mkdir_p(factory_parent, 0755);
 
-	sprintf(cur, "%s/trails/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
+	// finally, copy current json to revision 0
+	fd_f = open(factory, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	if (fd_f < 0) {
+		pv_log(ERROR, "cannot open %s revision json: %s", factory, strerror(errno));
+		goto out;
+	}
 
-	if (!stat(cur, &st))
-		symlink(cur, path);
+	fd_c = open(current, O_RDONLY, 0);
+	if (fd_c < 0) {
+		pv_log(ERROR, "cannot open %s revision json: %s", current, strerror(errno));
+		goto out;
+	}
 
+	if (pv_fops_copy_and_close(fd_c, fd_f) < 0) {
+		pv_log(ERROR, "cannot copy %s into %s: %s", current, factory, strerror(errno));
+		goto out;
+	}
+
+	res = 0;
 out:
-	if (cur)
-		free(cur);
-	if (path)
-		free(path);
+	close(fd_c);
+	close(fd_f);
+
+	return res;
 }
 
 int pv_storage_make_config(struct pantavisor *pv)
