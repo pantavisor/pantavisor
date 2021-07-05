@@ -294,7 +294,6 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 
 	if (pv_ph_device_get_meta(pv))
 		return -1;
-	pv_network_update_meta(pv);
 	if (pv_metadata_upload_devmeta(pv))
 		return -1;
 
@@ -422,6 +421,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		if (next_state != STATE_WAIT)
 			goto out;
 	}
+
+	// update network info in devmeta
+	pv_network_update_meta(pv);
 
 	// check if we need to run garbage collector
 	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
