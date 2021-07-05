@@ -22,6 +22,14 @@
 #ifndef PV_STORAGE_H
 #define PV_STORAGE_H
 
+#define PATH_OBJECTS_TMP "%s/objects/%s.new"
+#define PATH_OBJECTS "%s/objects/%s"
+#define PATH_TRAILS_PVR_PARENT "%s/trails/%s/.pvr"
+#define PATH_TRAILS_PV_PARENT "%s/trails/%s/.pv"
+#define PATH_TRAILS "%s/trails/%s/.pvr/json"
+#define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
+#define PATH_TRAILS_COMMITMSG "%s/trails/%s/.pv/commitmsg"
+
 struct pv_path {
 	char* path;
 	struct dl_list list;
@@ -33,7 +41,7 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);
 void pv_storage_rm_rev(struct pantavisor *pv, const char *rev);
 void pv_storage_set_active(struct pantavisor *pv);
-void pv_storage_update_factory(void);
+int pv_storage_update_factory(void);
 int pv_storage_make_config(struct pantavisor *pv);
 bool pv_storage_is_revision_local(const char* rev);
 char* pv_storage_get_revisions_string(void);

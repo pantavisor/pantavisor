@@ -392,7 +392,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv->remote_mode) {
+	// if not claimed and update already processed, we get into network stuff (for rev 0 from make factory command)
+	// if claimed and in remote mode, we do it too
+	if ((pv->unclaimed &&
+		!pv->update) ||
+		(!pv->unclaimed &&
+		pv->remote_mode)) {
 		clock_gettime(CLOCK_MONOTONIC, &tp1);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
@@ -530,7 +535,11 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 
 		pv_log(DEBUG, "make factory received. Transferring current revision to remote revision 0");
-		pv_storage_update_factory();
+		if (pv_storage_update_factory() < 0) {
+			pv_log(ERROR, "cannot update factory revision");
+			goto out;
+		}
+
 		pv_log(INFO, "revision 0 updated. Progressing to revision 0");
 		pv->update = pv_update_get_step_local("0");
 		if (pv->update)
