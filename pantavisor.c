@@ -393,7 +393,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv->remote_mode) {
+	// if not claimed and update already processed, we get into network stuff (for rev 0 from make factory command)
+	// if claimed and in remote mode, we do it too
+	if ((pv->unclaimed &&
+		!pv->update) ||
+		(!pv->unclaimed &&
+		pv->remote_mode)) {
 		clock_gettime(CLOCK_MONOTONIC, &tp1);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
