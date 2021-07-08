@@ -86,7 +86,6 @@ typedef enum {
 	STATE_RUN,
 	STATE_WAIT,
 	STATE_COMMAND,
-	STATE_UNCLAIMED,
 	STATE_UPDATE,
 	STATE_ROLLBACK,
 	STATE_REBOOT,
@@ -104,7 +103,6 @@ static const char* pv_state_string(pv_state_t st)
 	case STATE_RUN: return "STATE_RUN";
 	case STATE_WAIT: return "STATE_WAIT";
 	case STATE_COMMAND: return "STATE_COMMAND";
-	case STATE_UNCLAIMED: return "STATE_UNCLAIMED";
 	case STATE_UPDATE: return "STATE_UPDATE";
 	case STATE_ROLLBACK: return "STATE_ROLLBACK";
 	case STATE_REBOOT: return "STATE_REBOOT";
@@ -241,7 +239,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	return STATE_WAIT;
 }
 
-static pv_state_t _pv_unclaimed(struct pantavisor *pv)
+static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 {
 	int need_register = 1;
 	char *c;
@@ -403,15 +401,13 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
 			// check if device is unclaimed
 			if (pv->unclaimed) {
-				next_state = STATE_UNCLAIMED;
-				goto out;
+				// unclaimed wait operations
+				next_state = pv_wait_unclaimed(pv);
+			} else {
+				// rest of network wait stuff: connectivity check. update management,
+				// meta data uppload, ph logger push start...
+				next_state = pv_wait_network(pv);
 			}
-
-			// rest of network wait stuff: connectivity check. update management,
-			// meta data uppload, ph logger push start...
-			next_state = pv_wait_network(pv);
-			if (next_state != STATE_WAIT)
-				goto out;
 		}
 		clock_gettime(CLOCK_MONOTONIC, &tp2);
 		if (tp2.tv_sec > tp1.tv_sec) {
@@ -422,9 +418,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	} else {
 		// process ongoing updates, if any
 		next_state = pv_wait_update();
-		if (next_state != STATE_WAIT)
-			goto out;
 	}
+
+	if (next_state != STATE_WAIT)
+		goto out;
 
 	// update network info in devmeta
 	pv_network_update_meta(pv);
@@ -670,7 +667,6 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 	_pv_run,
 	_pv_wait,
 	_pv_command,
-	_pv_unclaimed,
 	_pv_update,
 	_pv_rollback,
 	_pv_reboot,
