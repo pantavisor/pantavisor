@@ -154,7 +154,7 @@ static int pv_devmeta_read_mode(struct pv_devmeta_read
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
-	if (pv->remote)
+	if (pv->remote_mode)
 		snprintf(buf, buflen, "remote");
 	else
 		snprintf(buf, buflen, "local");
