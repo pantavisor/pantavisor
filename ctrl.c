@@ -373,10 +373,9 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 
 static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 {
-	int obj_fd, read_length;
-	char buf[HTTP_REQ_BUFFER_SIZE];
-
-	memset(buf, 0, sizeof(buf));
+	int obj_fd;
+	ssize_t sent, file_size = pv_storage_get_file_size(file_path);
+	off_t offset = 0;
 
 	pv_log(INFO, "reading file from %s and sending it to endpoint...", file_path);
 
@@ -391,12 +390,17 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 			req_fd, strerror(errno));
 
 	// read and send
-	while ((read_length = read(obj_fd, buf, HTTP_REQ_BUFFER_SIZE)) > 0) {
-		if (write(req_fd, buf, read_length) != read_length) {
-			pv_log(INFO, "HTTP GET content could not be written to ctrl socket with fd %d: %s",
+
+	for (size_t to_send = file_size; to_send > 0; ) {
+		sent = sendfile(req_fd, obj_fd, &offset, to_send);
+		if (sent < 0)
+			pv_log(INFO, "HTTP GET file could not be written to ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
+
+		if (sent <= 0)
 			goto out;
-		}
+
+		to_send -= sent;
 	}
 
 	goto out;

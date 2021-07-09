@@ -1024,12 +1024,9 @@ void pv_storage_rm_file(const char *path_base, const char *name)
 	remove(path);
 }
 
-unsigned int pv_storage_get_file_size(const char *path_base, const char *name)
+size_t pv_storage_get_file_size(const char *path)
 {
-	char path[PATH_MAX];
 	struct stat st;
-
-	sprintf(path, "%s/%s", path_base, name);
 
 	stat(path, &st);
 	return st.st_size;
