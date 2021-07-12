@@ -189,7 +189,8 @@ char *pv_objects_get_list_string()
 			!strncmp(curr->path, ".", strlen(".")))
 			continue;
 
-		size_object = pv_storage_get_file_size(path, curr->path);
+		sprintf(path, "%s/objects/%s", pv_config_get_storage_mntpoint(), curr->path);
+		size_object = pv_storage_get_file_size(path);
 		if (size_object <= 0)
 			continue;
 
