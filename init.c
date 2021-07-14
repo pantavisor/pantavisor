@@ -252,6 +252,7 @@ static void debug_shell()
 
 #define PV_STANDALONE	(1 << 0)
 #define	PV_DEBUG	(1 << 1)
+#define PV_DEBUG_SH	(1 << 2)
 
 static int is_arg(int argc, char *argv[], char *arg)
 {
@@ -273,6 +274,9 @@ static void parse_args(int argc, char *argv[], unsigned short *args)
 
 	if (is_arg(argc, argv, "debug"))
 		*args |= PV_DEBUG;
+
+	if (!is_arg(argc, argv, "splash"))
+		*args |= PV_DEBUG_SH;
 
 	// For now
 	*args |= PV_DEBUG;
@@ -322,7 +326,8 @@ int main(int argc, char *argv[])
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if ((args & PV_STANDALONE) && (args & PV_DEBUG)) {
-		debug_shell();
+		if (args & PV_DEBUG_SH)
+			debug_shell();
 		debug_telnet();
 		goto loop;
 	}
@@ -334,7 +339,8 @@ int main(int argc, char *argv[])
 
 	// these debugging tools will be children of the pv thread, so we can controll them
 	if (args & PV_DEBUG) {
-		debug_shell();
+		if (args & PV_DEBUG_SH)
+			debug_shell();
 		debug_telnet();
 	}
 	redirect_io();
