@@ -401,7 +401,9 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		snprintf(value, n, "%s", um+(*key_i+1)->start);
 
 		// add or update metadata
-		pv_metadata_add_usermeta(key, value);
+		// primitives with value 'null' have value NULL
+		if ((*key_i+1)->type != JSMN_PRIMITIVE || strcmp("null", value))
+			pv_metadata_add_usermeta(key, value);
 
 		// free intermediates
 		if (key) {
