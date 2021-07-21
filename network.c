@@ -135,7 +135,7 @@ void pv_network_update_meta(struct pantavisor *pv)
 	ifaces = realloc(ifaces, len + 1);
 	strcat(ifaces, "}");
 
-	pv_metadata_add_devmeta("interfaces", ifaces);
+	pv_metadata_add_devmeta(DEVMETA_KEY_INTERFACES, ifaces);
 
 	freeifaddrs(ifaddr);
 	free(ifaces);

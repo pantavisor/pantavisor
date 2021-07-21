@@ -983,7 +983,6 @@ static int trail_put_objects(struct pantavisor *pv)
 
 static int trail_first_boot(struct pantavisor *pv)
 {
-	int ret = 0;
 	trest_request_ptr req;
 	trest_response_ptr res;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
@@ -1011,7 +1010,6 @@ static int trail_first_boot(struct pantavisor *pv)
 		pv_log(WARN, "POST /trails/ returned error (code=%d; body='%s')", res->code, res->body);
 	} else {
 		pv_log(INFO, "factory revision (base trail) pushed to remote correctly");
-		ret = 0;
 	}
 
 	if (req)
@@ -1019,12 +1017,10 @@ static int trail_first_boot(struct pantavisor *pv)
 	if (res)
 		trest_response_free(res);
 
-	return ret;
+	return 0;
 }
 
-/* API */
-
-int pv_check_for_updates(struct pantavisor *pv)
+int pv_updater_check_for_updates(struct pantavisor *pv)
 {
 	int ret;
 
@@ -1042,17 +1038,13 @@ int pv_check_for_updates(struct pantavisor *pv)
 	if (pv->update && pv->update->status == UPDATE_RETRY_DOWNLOAD)
 		return 1;
 
-	/*
-	 * [PKS]
-	 * Improve first boot object upload,
-	 * on an error case this won't be retried.
-	 */
 	ret = trail_is_available(pv->remote);
 	if (ret == 0)
 		return trail_first_boot(pv);
-	else if (ret > 0)
+	else if (ret > 0) {
+		pv->synced = true;
 		return trail_get_new_steps(pv);
-	else
+	} else
 		return 0;
 }
 

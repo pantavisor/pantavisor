@@ -34,6 +34,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
+#include <sys/sendfile.h>
 
 #include <linux/limits.h>
 

@@ -197,28 +197,28 @@ static int pv_devmeta_read_claimed(struct pv_devmeta_read
 
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{
-		.key = "pantavisor.arch",
+		.key = DEVMETA_KEY_PV_ARCH,
 		.reader = pv_devmeta_read_arch
 	},
-	{	.key = "pantavisor.version",
+	{	.key = DEVMETA_KEY_PV_VERSION,
 		.reader = pv_devmeta_read_version
 	},
-	{	.key = "pantavisor.dtmodel",
+	{	.key = DEVMETA_KEY_PV_DTMODEL,
 		.reader = pv_devmeta_read_dtmodel
 	},
-	{	.key = "pantavisor.cpumodel",
+	{	.key = DEVMETA_KEY_PV_CPUMODEL,
 		.reader = pv_devmeta_read_cpumodel
 	},
-	{	.key = "pantavisor.revision",
+	{	.key = DEVMETA_KEY_PV_REVISION,
 		.reader = pv_devmeta_read_revision
 	},
-	{	.key = "pantavisor.mode",
+	{	.key = DEVMETA_KEY_PV_MODE,
 		.reader = pv_devmeta_read_mode
 	},
-	{	.key = "pantahub.online",
+	{	.key = DEVMETA_KEY_PH_ONLINE,
 		.reader = pv_devmeta_read_online
 	},
-	{	.key = "pantahub.claimed",
+	{	.key = DEVMETA_KEY_PH_CLAIMED,
 		.reader = pv_devmeta_read_claimed
 	}
 };
