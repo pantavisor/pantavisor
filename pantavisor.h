@@ -48,6 +48,7 @@ struct pantavisor {
 	bool remote_mode;
 	bool online;
 	bool unclaimed;
+	bool synced;
 	int ctrl_fd;
 };
 

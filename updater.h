@@ -100,7 +100,7 @@ struct trail_remote {
 
 void pv_update_free(struct pv_update *update);
 
-int pv_check_for_updates(struct pantavisor *pv);
+int pv_updater_check_for_updates(struct pantavisor *pv);
 bool pv_trail_is_auth(struct pantavisor *pv);
 void pv_trail_remote_remove(struct pantavisor *pv);
 

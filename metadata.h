@@ -28,6 +28,19 @@
 
 #define PATH_USER_META "/pv/user-meta"
 
+#define DEVMETA_KEY_INTERFACES "interfaces"
+#define DEVMETA_KEY_PH_CLAIMED "pantahub.claimed"
+#define DEVMETA_KEY_PH_ONLINE "pantahub.online"
+#define DEVMETA_KEY_PV_CLAIMED "pantavisor.claimed"
+#define DEVMETA_KEY_PH_STATE "pantahub.state"
+#define DEVMETA_KEY_PV_ARCH "pantavisor.arch"
+#define DEVMETA_KEY_PV_DTMODEL "pantavisor.dtmodel"
+#define DEVMETA_KEY_PV_CPUMODEL "pantavisor.cpumodel"
+#define DEVMETA_KEY_PV_MODE "pantavisor.mode"
+#define DEVMETA_KEY_PV_REVISION "pantavisor.revision"
+#define DEVMETA_KEY_PV_VERSION "pantavisor.version"
+
+
 struct pv_metadata {
 	struct dl_list usermeta; // pv_meta
 	struct dl_list devmeta; // pv_meta

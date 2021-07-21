@@ -82,41 +82,65 @@ static time_t commit_delay;
 extern pid_t shell_pid;
 
 typedef enum {
-	STATE_INIT,
-	STATE_RUN,
-	STATE_WAIT,
-	STATE_COMMAND,
-	STATE_UPDATE,
-	STATE_ROLLBACK,
-	STATE_REBOOT,
-	STATE_POWEROFF,
-	STATE_ERROR,
-	STATE_EXIT,
-	STATE_FACTORY_UPLOAD,
+	PV_STATE_INIT,
+	PV_STATE_RUN,
+	PV_STATE_WAIT,
+	PV_STATE_COMMAND,
+	PV_STATE_UPDATE,
+	PV_STATE_ROLLBACK,
+	PV_STATE_REBOOT,
+	PV_STATE_POWEROFF,
+	PV_STATE_ERROR,
+	PV_STATE_EXIT,
+	PV_STATE_FACTORY_UPLOAD,
 	MAX_STATES
 } pv_state_t;
 
 static const char* pv_state_string(pv_state_t st)
 {
 	switch(st) {
-	case STATE_INIT: return "STATE_INIT";
-	case STATE_RUN: return "STATE_RUN";
-	case STATE_WAIT: return "STATE_WAIT";
-	case STATE_COMMAND: return "STATE_COMMAND";
-	case STATE_UPDATE: return "STATE_UPDATE";
-	case STATE_ROLLBACK: return "STATE_ROLLBACK";
-	case STATE_REBOOT: return "STATE_REBOOT";
-	case STATE_POWEROFF: return "STATE_POWEROFF";
-	case STATE_ERROR: return "STATE_ERROR";
-	case STATE_EXIT: return "STATE_EXIT";
-	case STATE_FACTORY_UPLOAD: return "STATE_FACTORY_UPLOAD";
-	default: return "STATE_UNKNOWN";
+		case PV_STATE_INIT: return "STATE_INIT";
+		case PV_STATE_RUN: return "STATE_RUN";
+		case PV_STATE_WAIT: return "STATE_WAIT";
+		case PV_STATE_COMMAND: return "STATE_COMMAND";
+		case PV_STATE_UPDATE: return "STATE_UPDATE";
+		case PV_STATE_ROLLBACK: return "STATE_ROLLBACK";
+		case PV_STATE_REBOOT: return "STATE_REBOOT";
+		case PV_STATE_POWEROFF: return "STATE_POWEROFF";
+		case PV_STATE_ERROR: return "STATE_ERROR";
+		case PV_STATE_EXIT: return "STATE_EXIT";
+		case PV_STATE_FACTORY_UPLOAD: return "STATE_FACTORY_UPLOAD";
+		default: return "STATE_UNKNOWN";
 	}
 
-	return "UNKNOWN PV STATE";
+	return "STATE_UNKNOWN";
 }
 
 typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
+
+typedef enum {
+    PH_STATE_INIT,
+    PH_STATE_REGISTER,
+    PH_STATE_CLAIM,
+    PH_STATE_SYNC,
+    PH_STATE_IDLE,
+    PH_STATE_UPDATE,
+} ph_state_t;
+
+static const char* ph_state_string(ph_state_t st)
+{
+	switch(st) {
+		case PH_STATE_INIT: return "init";
+		case PH_STATE_REGISTER: return "register";
+		case PH_STATE_CLAIM: return "claim";
+		case PH_STATE_SYNC: return "sync";
+		case PH_STATE_IDLE: return "idle";
+		case PH_STATE_UPDATE: return "update";
+		default: return "STATE_UNKNOWN";
+	}
+
+	return "STATE_UNKNOWN";
+}
 
 static bool pv_wait_delay_timedout(int seconds)
 {
@@ -139,8 +163,8 @@ static pv_state_t _pv_factory_upload(struct pantavisor *pv)
 
 	ret = pv_metadata_factory_meta(pv);
 	if (ret)
-		return STATE_FACTORY_UPLOAD;
-	return STATE_WAIT;
+		return PV_STATE_FACTORY_UPLOAD;
+	return PV_STATE_WAIT;
 }
 
 static pv_state_t _pv_init(struct pantavisor *pv)
@@ -148,8 +172,8 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
 	if (pv_do_execute_init())
-		return STATE_EXIT;
-        return STATE_RUN;
+		return PV_STATE_EXIT;
+        return PV_STATE_RUN;
 }
 
 static pv_state_t _pv_run(struct pantavisor *pv)
@@ -162,7 +186,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	runlevel = pv_update_resume(pv);
 	if (runlevel < RUNLEVEL_ROOT) {
 		pv_log(ERROR, "update could not be resumed");
-		return STATE_ROLLBACK;
+		return PV_STATE_ROLLBACK;
 	}
 
 	if (pv_update_is_transitioning(pv->update)) {
@@ -181,7 +205,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (!pv->state)
 	{
 		pv_log(ERROR, "state could not be loaded");
-		return STATE_ROLLBACK;
+		return PV_STATE_ROLLBACK;
 	}
 
 	// set factory revision progress
@@ -199,7 +223,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv->remote_mode = false;
 	}
 
-	if (!pv->remote_mode)
+	if (pv->remote_mode)
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_INIT));
+	else
 		pv_log(INFO, "running in local mode. Will not consume new updates from Pantahub");
 
 	// only start local ph logger, start cloud services if connected
@@ -214,17 +240,17 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// start up volumes and platforms
 	if (pv_volumes_mount(pv, runlevel) < 0) {
 		pv_log(ERROR, "error mounting volumes");
-		return STATE_ROLLBACK;
+		return PV_STATE_ROLLBACK;
 	}
 
 	if (pv_storage_make_config(pv) < 0) {
 		pv_log(ERROR, "error making config");
-		return STATE_ROLLBACK;
+		return PV_STATE_ROLLBACK;
 	}
 
 	if (pv_platforms_start(pv, runlevel) < 0) {
 		pv_log(ERROR, "error starting platforms");
-		return STATE_ROLLBACK;
+		return PV_STATE_ROLLBACK;
 	}
 
 	// set active only after plats have been started
@@ -236,7 +262,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	commit_delay = 0;
 	rollback_time = tp.tv_sec + pv_config_get_updater_network_timeout();
 
-	return STATE_WAIT;
+	return PV_STATE_WAIT;
 }
 
 static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
@@ -254,20 +280,23 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		need_register = 0;
 
 	if (need_register) {
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_REGISTER));
 		if (!pv_ph_register_self(pv)) {
 			pv_ph_release_client(pv);
 			if (c)
 				free(c);
-			return STATE_WAIT;
+			return PV_STATE_WAIT;
 		}
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
 	}
 
 	if (!pv_ph_device_is_owned(pv, &c)) {
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_CLAIM));
 		pv_log(INFO, "device challenge: '%s'", c);
 		pv_ph_update_hint_file(pv, c);
 	} else {
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_SYNC));
 		pv_log(INFO, "device has been claimed, proceeding normally");
 		printf("INFO: pantavisor device has been claimed, proceeding normally\n");
 		pv->unclaimed = false;
@@ -282,7 +311,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 	if (c)
 		free(c);
 
-	return STATE_FACTORY_UPLOAD;
+	return PV_STATE_FACTORY_UPLOAD;
 }
 
 static int pv_meta_update_to_ph(struct pantavisor *pv)
@@ -318,16 +347,16 @@ static pv_state_t pv_wait_update()
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (commit_delay > tp.tv_sec) {
 				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
-				return STATE_WAIT;
+				return PV_STATE_WAIT;
 			}
 		}
 		if (pv_update_finish(pv) < 0) {
 			pv_log(ERROR, "update could not be finished. Rolling back...");
-			return STATE_ROLLBACK;
+			return PV_STATE_ROLLBACK;
 		}
 	}
 
-	return STATE_WAIT;
+	return PV_STATE_WAIT;
 }
 
 static pv_state_t pv_wait_network(struct pantavisor *pv)
@@ -342,16 +371,16 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			if (rollback_time <= tp.tv_sec) {
 				pv_log(ERROR, "timed out before getting any response from cloud. Rolling back...");
-				return STATE_ROLLBACK;
+				return PV_STATE_ROLLBACK;
 			}
 			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
 		// or we directly rollback is connection is not stable during testing
 		} else if (pv_update_is_testing(pv->update)) {
 			pv_log(ERROR, "connection with cloud not stable during testing, Rolling back...");
-			return STATE_ROLLBACK;
+			return PV_STATE_ROLLBACK;
 		}
 		// if there is no connection and no rollback yet, we avoid the rest of network operations
-		return STATE_WAIT;
+		return PV_STATE_WAIT;
 	}
 
 	// start or stop ph logger depending on network and configuration
@@ -359,14 +388,19 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 
 	// update meta info
 	if (!pv_metadata_factory_meta_done(pv)) {
-		return STATE_FACTORY_UPLOAD;
+		return PV_STATE_FACTORY_UPLOAD;
 	}
 	if (pv_meta_update_to_ph(pv))
 		goto out;
 
 	// check for new remote update
-	if (pv_check_for_updates(pv) > 0)
-		return STATE_UPDATE;
+	if (pv_updater_check_for_updates(pv) > 0) {
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_UPDATE));
+		return PV_STATE_UPDATE;
+	}
+
+	if (pv->synced)
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_IDLE));
 
 out:
 	// process ongoing updates, if any
@@ -378,15 +412,15 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	struct timespec tp1;
 	struct timespec tp2;
 	time_t network_time;
-	pv_state_t next_state = STATE_WAIT;
+	pv_state_t next_state = PV_STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
 	if (pv_platforms_check_exited(pv, 0)) {
 		pv_log(ERROR, "one or more platforms exited. Tearing down...");
 		if (pv_update_is_trying(pv->update) || pv_update_is_testing(pv->update))
-			next_state = STATE_ROLLBACK;
+			next_state = PV_STATE_ROLLBACK;
 		else
-			next_state = STATE_REBOOT;
+			next_state = PV_STATE_REBOOT;
 		goto out;
 	}
 
@@ -420,7 +454,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		next_state = pv_wait_update();
 	}
 
-	if (next_state != STATE_WAIT)
+	if (next_state != PV_STATE_WAIT)
 		goto out;
 
 	// update network info in devmeta
@@ -435,7 +469,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// rest of WAIT operations
 	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
 	if (pv->cmd)
-		next_state = STATE_COMMAND;
+		next_state = PV_STATE_COMMAND;
 
 out:
 	return next_state;
@@ -446,10 +480,10 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	char *rev;
 	struct pv_cmd *cmd = pv->cmd;
 	struct pv_state *new;
-	pv_state_t next_state = STATE_WAIT;
+	pv_state_t next_state = PV_STATE_WAIT;
 
 	if (!cmd)
-		return STATE_WAIT;
+		return PV_STATE_WAIT;
 
 	switch (cmd->op) {
 	case CMD_TRY_ONCE:
@@ -468,18 +502,18 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		// stop current step
 		if (pv_platforms_stop(pv, 0) < 0) {
-			next_state = STATE_ROLLBACK;
+			next_state = PV_STATE_ROLLBACK;
 			goto out;
 		}
 		if (pv_volumes_unmount(pv, 0) < 0) {
-			next_state = STATE_ROLLBACK;
+			next_state = PV_STATE_ROLLBACK;
 			goto out;
 		}
 
 		pv->state = new;
 		pv_storage_meta_link_boot(pv, NULL);
 		pv_storage_meta_set_tryonce(pv, 1);
-		next_state = STATE_RUN;
+		next_state = PV_STATE_RUN;
 		break;
 	case CMD_UPDATE_METADATA:
 		if (pv->remote_mode) {
@@ -496,7 +530,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG, "reboot command with message '%s' received. Rebooting...",
 			cmd->payload);
-		next_state = STATE_REBOOT;
+		next_state = PV_STATE_REBOOT;
 		break;
 	case CMD_POWEROFF_DEVICE:
 		if (pv->update) {
@@ -506,7 +540,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG, "poweroff command with message '%s' received. Powering off...",
 			cmd->payload);
-		next_state = STATE_POWEROFF;
+		next_state = PV_STATE_POWEROFF;
 		break;
 	case CMD_LOCAL_RUN:
 		if (pv->update) {
@@ -517,7 +551,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG, "install local received. Processing %s json...", cmd->payload);
 		pv->update = pv_update_get_step_local(cmd->payload);
 		if (pv->update)
-			next_state = STATE_UPDATE;
+			next_state = PV_STATE_UPDATE;
 		break;
 	case CMD_MAKE_FACTORY:
 		if (pv->update) {
@@ -539,7 +573,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(INFO, "revision 0 updated. Progressing to revision 0");
 		pv->update = pv_update_get_step_local("0");
 		if (pv->update)
-			next_state = STATE_UPDATE;
+			next_state = PV_STATE_UPDATE;
 		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
@@ -552,25 +586,27 @@ out:
 
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_UPDATE));
+
 	// download and install pending step
 	if (pv_update_download(pv) || pv_update_install(pv)) {
 		pv_log(ERROR, "update has failed, continue...");
 		pv_update_finish(pv);
-		return STATE_WAIT;
+		return PV_STATE_WAIT;
 	}
 
 	// if everything went well, decide whether update requires reboot or not
 	if (pv_update_requires_reboot(pv))
-		return STATE_REBOOT;
+		return PV_STATE_REBOOT;
 
 	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
 	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
 			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
 		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
-		return STATE_ROLLBACK;
+		return PV_STATE_ROLLBACK;
 	}
 
-	return STATE_RUN;
+	return PV_STATE_RUN;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
@@ -580,14 +616,14 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	// We shouldnt get a rollback event on rev 0
 	if (pv->state && !strncmp(pv->state->rev, "0", sizeof("0"))) {
 		pv_log(ERROR, "bad factory revision");
-		return STATE_ERROR;
+		return PV_STATE_ERROR;
 	}
 
 	// rollback means current update needs to be reported to PH as FAILED
 	if (pv->update)
 		pv_update_set_status(pv, UPDATE_FAILED);
 
-	return STATE_REBOOT;
+	return PV_STATE_REBOOT;
 }
 
 static void wait_shell()
@@ -626,7 +662,7 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 	ph_logger_stop(pv);
 	reboot(LINUX_REBOOT_CMD_RESTART);
 
-	return STATE_EXIT;
+	return PV_STATE_EXIT;
 }
 
 static pv_state_t _pv_poweroff(struct pantavisor *pv)
@@ -653,13 +689,13 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 	ph_logger_stop(pv);
 	reboot(LINUX_REBOOT_CMD_POWER_OFF);
 
-	return STATE_EXIT;
+	return PV_STATE_EXIT;
 }
 
 static pv_state_t _pv_error(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-	return STATE_REBOOT;
+	return PV_STATE_REBOOT;
 }
 
 pv_state_func_t* const state_table[MAX_STATES] = {
@@ -689,13 +725,13 @@ int pv_start()
 	if (!pv)
 		return 1;
 
-	pv_state_t state = STATE_INIT;
+	pv_state_t state = PV_STATE_INIT;
 
 	while (1) {
 		pv_log(DEBUG, "going to state = %s", pv_state_string(state));
 		state = _pv_run_state(state, pv);
 
-		if (state == STATE_EXIT)
+		if (state == PV_STATE_EXIT)
 			return 1;
 	}
 }
@@ -780,6 +816,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->update = NULL;
 	pv->online = false;
 	pv->remote_mode = false;
+	pv->synced = false;
 	ret = 0;
 out:
 	return 0;
