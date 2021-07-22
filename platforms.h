@@ -64,6 +64,8 @@ int pv_platforms_init_ctrl(struct pantavisor *pv);
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
 struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name);
 
+bool pv_platform_verify_signature(struct pv_state *s, const char *name);
+
 void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_default_runlevel(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);

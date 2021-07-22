@@ -100,6 +100,24 @@ static int config_get_value_bl_type(struct dl_list *config_list, char *key, int 
 	return value;
 }
 
+static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key, secureboot_mode_t default_value)
+{
+	char *item = config_get_value(config_list, key);
+	secureboot_mode_t value = default_value;
+
+	if (!item)
+		return value;
+
+	if (!strcmp(item, "disabled"))
+		value = SB_DISABLED;
+	else if (!strcmp(item, "lenient"))
+		value = SB_LENIENT;
+	else if (!strcmp(item, "strict"))
+		value = SB_STRICT;
+
+	return value;
+}
+
 static int config_get_value_logsize(struct dl_list *config_list, char *key, int default_value)
 {
 	int value = config_get_value_int(config_list, key, default_value);
@@ -190,6 +208,8 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->lxc.log_level = config_get_value_int(&config_list, "lxc.log.level", 2);
 
 	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
+
+	config->secureboot.mode = config_get_value_sb_mode_type(&config_list, "secureboot.mode", SB_DISABLED);
 
 	config_clear_items(&config_list);
 
@@ -518,6 +538,8 @@ bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture;
 int pv_config_get_libthttp_loglevel() { return pv_get_instance()->config.libthttp.loglevel; }
 
 bool pv_config_get_control_remote() { return pv_get_instance()->config.control.remote; }
+
+secureboot_mode_t pv_config_get_secureboot_mode() { return pv_get_instance()->config.secureboot.mode; }
 
 static int pv_config_init(struct pv_init *this)
 {

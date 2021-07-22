@@ -208,6 +208,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		return PV_STATE_ROLLBACK;
 	}
 
+	// check here secure boot runtime
+	if (!pv_state_verify_signatures_plats(pv->state))
+		return PV_STATE_ROLLBACK;
+
 	// set factory revision progress
 	if (!strncmp(pv->state->rev, "0", sizeof("0")))
 		pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS_UNREGISTERED);
@@ -482,44 +486,13 @@ out:
 
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
-	char *rev;
 	struct pv_cmd *cmd = pv->cmd;
-	struct pv_state *new;
 	pv_state_t next_state = PV_STATE_WAIT;
 
 	if (!cmd)
 		return PV_STATE_WAIT;
 
 	switch (cmd->op) {
-	case CMD_TRY_ONCE:
-		rev = cmd->payload;
-
-		// lets not tryonce factory
-		if (!strncmp(rev, "0", sizeof("0")))
-			goto out;
-
-		// load try state
-		new = pv_storage_get_state(pv, rev);
-		if (!new) {
-			pv_log(DEBUG, "invalid rev requested %s", rev);
-			goto out;
-		}
-
-		// stop current step
-		if (pv_platforms_stop(pv, 0) < 0) {
-			next_state = PV_STATE_ROLLBACK;
-			goto out;
-		}
-		if (pv_volumes_unmount(pv, 0) < 0) {
-			next_state = PV_STATE_ROLLBACK;
-			goto out;
-		}
-
-		pv->state = new;
-		pv_storage_meta_link_boot(pv, NULL);
-		pv_storage_meta_set_tryonce(pv, 1);
-		next_state = PV_STATE_RUN;
-		break;
 	case CMD_UPDATE_METADATA:
 		if (pv->remote_mode) {
 			pv_log(DEBUG, "metadata command with payload '%s' received. Parsing metadata...",
@@ -593,8 +566,10 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 {
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_UPDATE));
 
-	// download and install pending step
-	if (pv_update_download(pv) || pv_update_install(pv)) {
+	// download, validate and install pending step
+	if (pv_update_download(pv) ||
+		!pv_state_verify_signatures_all(pv->update->pending) ||
+		pv_update_install(pv)) {
 		pv_log(ERROR, "update has failed, continue...");
 		pv_update_finish(pv);
 		return PV_STATE_WAIT;

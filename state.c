@@ -404,3 +404,37 @@ state_spec_t pv_state_spec(struct pv_state *s)
 {
 	return s->spec;
 }
+
+bool pv_state_verify_signatures_all(struct pv_state *s)
+{
+	if (pv_config_get_secureboot_mode() < SB_LENIENT)
+		return true;
+
+	pv_log(INFO, "verifying signature of bsp and platforms");
+
+	// check signatures bsp
+	if (!pv_platform_verify_signature(s, "bsp"))
+		return false;
+
+	// check signatures plats
+	return pv_state_verify_signatures_plats(s);
+}
+
+bool pv_state_verify_signatures_plats(struct pv_state *s)
+{
+	struct pv_platform *p, *p_tmp;
+
+	if (pv_config_get_secureboot_mode() < SB_LENIENT)
+		return true;
+
+	pv_log(INFO, "verifying signature of platforms");
+
+	// check signatures plats
+	dl_list_for_each_safe(p, p_tmp, &s->platforms,
+		struct pv_platform, list) {
+		if (!pv_platform_verify_signature(s, p->name))
+			return false;
+	}
+
+	return true;
+}

@@ -157,7 +157,7 @@ int pv_json_get_value_int(char *buf, char *key, jsmntok_t* tok, int tokc)
 	return val;
 }
 
-char* pv_json_get_value(char *buf, char *key, jsmntok_t* tok, int tokc)
+char* pv_json_get_value(const char *buf, const char *key, jsmntok_t* tok, int tokc)
 {
 	int i;
 	int t=-1;

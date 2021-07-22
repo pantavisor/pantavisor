@@ -19,17 +19,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_SIGNATURE_H
+#define PV_SIGNATURE_H
 
-#ifndef UTILS_PV_JSON_H_
-#define UTILS_PV_JSON_H_
+struct pv_signature {
+	char *header;
+	char *value;
+};
 
-#include <jsmn/jsmnutil.h>
+struct pv_signature* pv_signature_parse(const char *json);
+void pv_signature_free(struct pv_signature *signature);
 
+bool pv_signature_verify(const struct pv_signature *signature);
 
-int pv_json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
-char* pv_json_get_one_str(char *buf, jsmntok_t **tok);
-char* pv_json_format(char *buf, int len);
-int pv_json_get_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* pv_json_get_value(const char *buf, const char *key, jsmntok_t* tok, int tokc);
-char* pv_json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
-#endif /* UTILS_PV_JSON_H_ */
+#endif // PV_SIGNATURE_H

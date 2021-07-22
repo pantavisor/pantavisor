@@ -125,6 +125,16 @@ struct pantavisor_libthttp {
 	int loglevel;
 };
 
+typedef enum {
+	SB_DISABLED,
+	SB_LENIENT,
+	SB_STRICT,
+} secureboot_mode_t;
+
+struct pantavisor_secureboot {
+	secureboot_mode_t mode;
+};
+
 struct pantavisor_config {
 	struct pantavisor_cache cache;
 	struct pantavisor_bootloader bl;
@@ -138,6 +148,7 @@ struct pantavisor_config {
 	struct pantavisor_lxc lxc;
 	struct pantavisor_control control;
 	struct pantavisor_libthttp libthttp;
+	struct pantavisor_secureboot secureboot;
 };
 
 int pv_config_load_creds(void);
@@ -206,5 +217,6 @@ bool pv_config_get_log_capture(void);
 int pv_config_get_libthttp_loglevel(void);
 
 bool pv_config_get_control_remote(void);
+secureboot_mode_t pv_config_get_secureboot_mode(void);
 
 #endif
