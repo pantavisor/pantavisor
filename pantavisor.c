@@ -210,7 +210,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// set factory revision progress
 	if (!strncmp(pv->state->rev, "0", sizeof("0")))
-		pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS);
+		pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS_UNREGISTERED);
 
 	// reload remote bool after non reboot updates, when we don't load config again
 	pv->remote_mode = pv_config_get_control_remote();
@@ -293,10 +293,12 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 
 	if (!pv_ph_device_is_owned(pv, &c)) {
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_CLAIM));
+		pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS_UNCLAIMED);
 		pv_log(INFO, "device challenge: '%s'", c);
 		pv_ph_update_hint_file(pv, c);
 	} else {
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_SYNC));
+		pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS_SYNCING);
 		pv_log(INFO, "device has been claimed, proceeding normally");
 		printf("INFO: pantavisor device has been claimed, proceeding normally\n");
 		pv->unclaimed = false;
@@ -399,8 +401,11 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		return PV_STATE_UPDATE;
 	}
 
-	if (pv->synced)
+	if (pv->synced) {
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_IDLE));
+		if (!strncmp(pv->state->rev, "0", sizeof("0")))
+			pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS_DONE);
+	}
 
 out:
 	// process ongoing updates, if any
