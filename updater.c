@@ -786,7 +786,7 @@ static void trail_log_trest_err(trest_response_ptr tres)
 
 static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const char **crtfiles)
 {
-	int ret = 0;
+	int ret = -1;
 	int fd, bytes;
 	int size, pos, i;
 	char *signed_puturl = NULL;
@@ -852,19 +852,17 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 	tres = trest_do_json_request(pv->remote->client, treq);
 	if (!tres) {
 		pv_log(WARN, "POST /objects/ could not be initialized");
-		ret = -1;
 		goto out;
 	} else if (tres->code == THTTP_STATUS_CONFLICT) {
 		pv_log(INFO, "object '%s' already owned by user, skipping", o->id);
+		ret = 0;
 		goto out;
 	} else if (!tres->code &&
 		tres->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "POST /objects/ could not auth (status=%d)", tres->status);
-		ret = -1;
 		goto out;
 	} else if (tres->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "POST /objects/ returned error (code=%d; body='%s')", tres->code, tres->body);
-		ret = -1;
 		goto out;
 	}
 
@@ -913,22 +911,19 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		res = thttp_request_do(req);
 
 		if (!res) {
-			pv_log(ERROR, "'%s' could not be uploaded, request error", o->id);
-			ret = -1;
-			goto out;
+			pv_log(WARN, "'%s' could not be uploaded: could not be initialized", o->id);
+		} else if (!res->code) {
+			pv_log(WARN, "'%s' could not be uploaded: got no response", o->id);
+		} else if (res->code != THTTP_STATUS_OK) {
+			pv_log(WARN, "'%s' could not be uploaded: returned HTTP error (code=%d; body='%s')",
+				o->id, res->code, res->body);
+		} else {
+			pv_log(INFO, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
+			ret = 0;
 		}
-
-		if (res->code != THTTP_STATUS_OK) {
-			pv_log(ERROR, "'%s' could not be uploaded, code=%d", o->id, res->code);
-			ret = -1;
-			goto out;
-		}
-
-		pv_log(INFO, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
 	}
 	else {
 		pv_log(ERROR, "'%s' could not be registered, signed_puturl not retrieved", o->id);
-		ret = -1;
 	}
 
 out:
@@ -1479,11 +1474,16 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	res = thttp_request_do_file_with_cb (req, fd,
 			trail_download_object_progress, &progress_update);
 	if (!res) {
-		pv_log(WARN, "no response from server");
+		pv_log(WARN, "'%s' could not be downloaded: could not be initialized", obj->id);
+		remove(mmc_tmp_obj_path);
+		goto out;
+	} else if (!res->code) {
+		pv_log(WARN, "'%s' could not be downloaded: got no response", obj->id);
 		remove(mmc_tmp_obj_path);
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "error response from server, http code %d", res->code);
+		pv_log(WARN, "'%s' could not be downloaded: returned HTTP error (code=%d; body='%s')",
+			obj->id, res->code, res->body);
 		remove(mmc_tmp_obj_path);
 		goto out;
 	}

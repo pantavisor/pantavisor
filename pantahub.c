@@ -289,7 +289,7 @@ out:
 
 static int pv_ph_register_self_builtin(struct pantavisor *pv)
 {
-	int ret = 1;
+	int ret = 0;
 	int tokc;
 	thttp_request_tls_t* tls_req = 0;
 	thttp_response_t* res = 0;
@@ -333,14 +333,19 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	res = thttp_request_do(req);
 
 	// If registered, override in-memory PantaHub credentials
-	if (res->code == THTTP_STATUS_OK && res->body) {
+	if (!res) {
+		pv_log(WARN, "HTTP request GET %s could not be initialized", req->path);
+	} else if (res->code == THTTP_STATUS_OK && res->body) {
 		jsmnutil_parse_json(res->body, &tokv, &tokc);
 		pv_config_set_creds_id(pv_json_get_value(res->body, "id", tokv, tokc));
 		pv_config_set_creds_prn(pv_json_get_value(res->body, "prn", tokv, tokc));
 		pv_config_set_creds_secret(pv_json_get_value(res->body, "secret", tokv, tokc));
+		ret = 1;
+	} else if (!res->code) {
+		pv_log(WARN, "HTTP request GET %s got no response", req->path);
 	} else {
-		pv_log(ERROR, "registration attempt failed (http code %d)", res->code);
-		ret = 0;
+		pv_log(WARN, "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
+			req->path, res->code, res->body);
 	}
 
 	if (req->headers) {
