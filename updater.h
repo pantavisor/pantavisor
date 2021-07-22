@@ -33,7 +33,13 @@
 #define DEVICE_STEP_STATUS_FMT_PROGRESS_DATA  	\
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%d\",\
 	\"downloads\": {\"total\":%s, \"objects\":[%s]}}"
-#define DEVICE_STEP_FACTORY_PROGRESS \
+#define DEVICE_STEP_FACTORY_PROGRESS_UNREGISTERED \
+	"{ \"status\" : \"UNREGISTERED\", \"status-msg\" : \"Registering\", \"progress\" : 0 }"
+#define DEVICE_STEP_FACTORY_PROGRESS_UNCLAIMED \
+	"{ \"status\" : \"UNCLAIMED\", \"status-msg\" : \"Waiting for claim\", \"progress\" : 0 }"
+#define DEVICE_STEP_FACTORY_PROGRESS_SYNCING \
+	"{ \"status\" : \"SYNCING\", \"status-msg\" : \"Uploading initial data\", \"progress\" : 20 }"
+#define DEVICE_STEP_FACTORY_PROGRESS_DONE \
 	"{ \"status\" : \"DONE\", \"status-msg\" : \"Factory revision\", \"progress\" : 100 }"
 
 
