@@ -51,6 +51,7 @@
 #include "addons.h"
 #include "parser/parser.h"
 #include "state.h"
+#include "utils/json.h"
 
 #define MODULE_NAME             "storage"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -554,7 +555,7 @@ bool pv_storage_is_revision_local(const char* rev)
 char* pv_storage_get_revisions_string()
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len), *basedir = NULL, *progress = NULL, *commitmsg = NULL;
+	char *json = calloc(1, len), *basedir = NULL, *progress = NULL, *commitmsg = NULL, *esc_commitmsg = NULL;
 	struct dl_list revisions; // pv_path
 	struct pv_path *r, *tmp;
 
@@ -597,15 +598,22 @@ char* pv_storage_get_revisions_string()
 
 		// get revision commit message
 		commitmsg = pv_storage_load_file(basedir, ".pv/commitmsg", 512);
-		if (!commitmsg) {
-			commitmsg = calloc(1, 1);
-			commitmsg[0] = '\0';
+		if (commitmsg)
+			esc_commitmsg = pv_json_format(commitmsg, strlen(commitmsg));
+
+		if (!commitmsg || !esc_commitmsg) {
+			esc_commitmsg = calloc(1, 1);
+			esc_commitmsg[0] = '\0';
+		}
+		if (commitmsg) {
+			free (commitmsg);
+			commitmsg = NULL;
 		}
 
 		// add new revision line to json
-		line_len = strlen(r->path) + strlen(commitmsg) + strlen(progress) + 41;
+		line_len = strlen(r->path) + strlen(esc_commitmsg) + strlen(progress) + 41;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "{\"name\":\"%s\", \"commitmsg\":\"%s\", \"progress\":%s},", r->path, commitmsg, progress);
+		snprintf(&json[len], line_len + 1, "{\"name\":\"%s\", \"commitmsg\":\"%s\", \"progress\":%s},", r->path, esc_commitmsg, progress);
 		len += line_len;
 
 		if (basedir) {
@@ -616,9 +624,9 @@ char* pv_storage_get_revisions_string()
 			free (progress);
 			progress = NULL;
 		}
-		if (commitmsg) {
-			free (commitmsg);
-			commitmsg = NULL;
+		if (esc_commitmsg) {
+			free (esc_commitmsg);
+			esc_commitmsg = NULL;
 		}
 	}
 
