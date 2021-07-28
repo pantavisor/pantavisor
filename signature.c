@@ -32,53 +32,103 @@
 #include "log.h"
 
 #define SPEC_PVS1 "pvs@1"
+#define TYP_PVS "PVS"
 
-struct pv_signature* pv_signature_parse(const char *json)
+struct pv_signature_headers_pvs {
+	char *part;
+	char *include;
+	char *exclude;
+};
+
+struct pv_signature_headers {
+	char *alg;
+	struct pv_signature_headers_pvs *pvs;
+};
+
+struct pv_signature {
+	char *protected;
+	char *signature;
+};
+
+static void pv_signature_free_headers_pvs(struct pv_signature_headers_pvs *pvs)
+{
+	if (!pvs)
+		return;
+
+	if (pvs->part)
+		free(pvs->part);
+	if (pvs->include)
+		free(pvs->include);
+	if (pvs->exclude)
+		free(pvs->exclude);
+}
+
+static void pv_signature_free_headers(struct pv_signature_headers *headers)
+{
+	if (!headers)
+		return;
+
+	pv_signature_free_headers_pvs(headers->pvs);
+
+	if (headers->alg)
+		free(headers->alg);
+}
+
+static void pv_signature_free(struct pv_signature *signature)
+{
+	if (!signature)
+		return;
+
+	if (signature->protected)
+		free(signature->protected);
+	if (signature->signature)
+		free(signature->signature);
+}
+
+static struct pv_signature* pv_signature_parse_pvs(const char *json)
 {
 	struct pv_signature* signature = NULL;
-	int tokc, len;
+	int tokc;
 	jsmntok_t *tokv = NULL;
 	char *spec = NULL, *protected = NULL;
 
 	signature = calloc(1, sizeof(struct pv_signature));
-	if (signature) {
-		jsmnutil_parse_json(json, &tokv, &tokc);
-
-		spec = pv_json_get_value(json, "#spec", tokv, tokc);
-		if (!pv_str_matches(spec, strlen(spec), SPEC_PVS1, strlen(SPEC_PVS1))) {
-			pv_log(ERROR, "wrong spec %s", spec);
-			goto error;
-		}
-
-		protected = pv_json_get_value(json, "protected", tokv, tokc);
-		if (!protected) {
-			pv_log(ERROR, "no protected key found");
-			goto error;
-		}
-		len = strlen(protected) + 1;
-
-		signature->header = calloc(1, b64d_size(len));
-		if (!signature->header) {
-			pv_log(ERROR, "could not alloc header");
-			goto error;
-		}
-
-		if (!b64_decode((unsigned char*)protected, len, (unsigned char*)signature->header)) {
-			pv_log(ERROR, "protected value could not be decoded");
-			goto error;
-		}
-
-		signature->value = pv_json_get_value(json, "signature", tokv, tokc);
-		if (!signature->value) {
-			pv_log(ERROR, "no signature key found");
-			goto error;
-		}
-	} else
+	if (!signature) {
 		pv_log(ERROR, "could not alloc signature");
+		goto out;
+	}
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format pvs.json");
+		goto out;
+	}
+
+	spec = pv_json_get_value(json, "#spec", tokv, tokc);
+	if (!spec) {
+		pv_log(ERROR, "no #spec key found");
+		goto err;
+	}
+
+	if (!pv_str_matches(spec, strlen(spec), SPEC_PVS1, strlen(SPEC_PVS1))) {
+		pv_log(ERROR, "wrong spec %s", spec);
+		goto err;
+	}
+
+	signature->protected = pv_json_get_value(json, "protected", tokv, tokc);
+	if (!signature->protected) {
+		pv_log(ERROR, "no protected key found");
+		goto err;
+	}
+
+	signature->signature = pv_json_get_value(json, "signature", tokv, tokc);
+	if (!signature->signature) {
+		pv_log(ERROR, "no signature key found");
+		goto err;
+	}
 
 	goto out;
 
-error:
+err:
 	if (signature) {
 		pv_signature_free(signature);
 		signature = NULL;
@@ -95,18 +145,162 @@ out:
 	return signature;
 }
 
-void pv_signature_free(struct pv_signature *signature)
+static struct pv_signature_headers_pvs* pv_signature_parse_headers_pvs(const char *json)
 {
-	if (!signature)
-		return;
+	struct pv_signature_headers_pvs *headers_pvs = NULL;
+	int tokc;
+	jsmntok_t *tokv = NULL;
 
-	if (signature->header)
-		free(signature->header);
-	if (signature->value)
-		free(signature->value);
+	headers_pvs = calloc(1, sizeof(struct pv_signature_headers_pvs));
+	if (!headers_pvs) {
+		pv_log(ERROR, "could not alloc headers pvs");
+		goto out;
+	}
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format headers pvs json");
+		goto out;
+	}
+
+	headers_pvs->part = pv_json_get_value(json, "part", tokv, tokc);
+	if (!headers_pvs->part) {
+		pv_log(ERROR, "no part key found");
+		goto err;
+	}
+
+	headers_pvs->include = pv_json_get_value(json, "include", tokv, tokc);
+	if (!headers_pvs->include) {
+		pv_log(ERROR, "no include key found");
+		goto err;
+	}
+
+	headers_pvs->exclude = pv_json_get_value(json, "exclude", tokv, tokc);
+	if (!headers_pvs->exclude) {
+		pv_log(ERROR, "no exclude key found");
+		goto err;
+	}
+
+	goto out;
+
+err:
+	if (headers_pvs) {
+		pv_signature_free_headers_pvs(headers_pvs);
+		headers_pvs = NULL;
+	}
+
+out:
+	if (tokv)
+		free(tokv);
+
+	return headers_pvs;
 }
 
-bool pv_signature_verify(const struct pv_signature *signature)
+static struct pv_signature_headers* pv_signature_parse_protected(const char *protected)
 {
-	return true;
+	struct pv_signature_headers *headers = NULL;
+	char *json = NULL, *typ = NULL, *pvs = NULL;
+	int tokc, len;
+	jsmntok_t *tokv = NULL;
+
+	len = strlen(protected) + 1;
+
+	headers = calloc(1, sizeof(struct pv_signature_headers));
+	if (!headers) {
+		pv_log(ERROR, "could not alloc signature headers");
+		goto out;
+	}
+
+	json = calloc(1, b64d_size(len));
+	if (!json) {
+		pv_log(ERROR, "could not alloc json");
+		goto err;
+	}
+
+	if (!b64_decode((unsigned char*)protected, len, (unsigned char*)json)) {
+		pv_log(ERROR, "protected value could not be decoded");
+		goto err;
+	}
+
+	pv_log(DEBUG, "decoded headers %s", json);
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format headers json");
+		goto out;
+	}
+
+	typ = pv_json_get_value(json, "typ", tokv, tokc);
+	if (!typ) {
+		pv_log(ERROR, "no typ key found");
+		goto err;
+	}
+
+	if (!pv_str_matches(typ, strlen(typ), TYP_PVS, strlen(TYP_PVS))) {
+		pv_log(ERROR, "wrong typ %s", typ);
+		goto err;
+	}
+
+	pvs = pv_json_get_value(json, "pvs", tokv, tokc);
+	if (!pvs) {
+		pv_log(ERROR, "no pvr key found");
+		goto err;
+	}
+
+	headers->pvs = pv_signature_parse_headers_pvs(pvs);
+
+	headers->alg = pv_json_get_value(json, "alg", tokv, tokc);
+	if (!headers->alg) {
+		pv_log(ERROR, "no alg key found");
+		goto err;
+	}
+
+	goto out;
+
+err:
+	if (headers) {
+		pv_signature_free_headers(headers);
+		headers = NULL;
+	}
+
+out:
+	if (json)
+		free(json);
+	if (typ)
+		free(typ);
+	if (tokv)
+		free(tokv);
+
+	return headers;
+}
+
+bool pv_signature_verify(const char *name, const char *json)
+{
+	struct pv_signature *signature = NULL;
+	struct pv_signature_headers *headers = NULL;
+
+	pv_log(DEBUG, "verifying signature of component %s", name);
+
+	signature = pv_signature_parse_pvs(json);
+	if (!signature) {
+		pv_log(ERROR, "could not parse pvr.json");
+		goto out;
+	}
+
+	pv_log(DEBUG, "parsed pvs.json with protected %s", signature->protected);
+	pv_log(DEBUG, "parsed pvs.json with signature %s", signature->signature);
+
+	headers = pv_signature_parse_protected(signature->protected);
+	if (!headers) {
+		pv_log(ERROR, "could not parse protected json");
+		goto out;
+	}
+
+	pv_log(DEBUG, "parsed protected with alg %s", headers->alg);
+	pv_log(DEBUG, "parsed protected with part %s", headers->pvs->part);
+	pv_log(DEBUG, "parsed protected with include %s", headers->pvs->include);
+	pv_log(DEBUG, "parsed protected with exclude %s", headers->pvs->exclude);
+
+out:
+	if (signature)
+		pv_signature_free(signature);
+	return false;
 }

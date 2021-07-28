@@ -138,7 +138,6 @@ bool pv_platform_verify_signature(struct pv_state *s, const char *name)
 	int len;
 	char path[PATH_MAX];
 	struct pv_json *json;
-	struct pv_signature *signature = NULL;
 
 	// read pvs.json
 	len = strlen("%s/pvs.json") + strlen(name);
@@ -146,29 +145,15 @@ bool pv_platform_verify_signature(struct pv_state *s, const char *name)
 	json = pv_jsons_get_by_name(s, path);
 	if (!json && (pv_config_get_secureboot_mode() == SB_STRICT)) {
 		pv_log(ERROR, "%s not found", path);
-		goto out;
+		return res;
 	}
 	if (!json) {
 		pv_log(DEBUG, "%s not found. Ignoring...", path);
 		//res = true;
-		goto out;
+		return res;
 	}
 
-	pv_log(DEBUG, "verifying signature of component %s", name);
-
-	signature = pv_signature_parse(json->value);
-	if (!signature)
-		goto out;
-
-	pv_log(DEBUG, "header %s", signature->header);
-	pv_log(DEBUG, "value %s", signature->value);
-
-	//res = true;
-
-out:
-	if (signature)
-		pv_signature_free(signature);
-	return res;
+	return pv_signature_verify(name, json->value);
 }
 
 static void pv_platform_empty_logger_list(struct pv_platform *p)

@@ -22,14 +22,6 @@
 #ifndef PV_SIGNATURE_H
 #define PV_SIGNATURE_H
 
-struct pv_signature {
-	char *header;
-	char *value;
-};
-
-struct pv_signature* pv_signature_parse(const char *json);
-void pv_signature_free(struct pv_signature *signature);
-
-bool pv_signature_verify(const struct pv_signature *signature);
+bool pv_signature_verify(const char *name, const char *json);
 
 #endif // PV_SIGNATURE_H
