@@ -88,3 +88,15 @@ char *pv_str_skip_prefix(char *str, const char *key)
 	}
 	return str;
 }
+
+char *pv_str_padding_multi4(char *str, char c)
+{
+	int old_len = strlen(str);
+	int padding = old_len % 4;
+	int new_len = old_len + padding;
+	str = realloc(str, new_len);
+	for (int i = 1; i <= padding; i++) {
+		str[new_len-i] = c;
+	}
+	return str;
+}

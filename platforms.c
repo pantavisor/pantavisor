@@ -49,7 +49,6 @@ int setns(int nsfd, int nstype);
 #include "init.h"
 #include "state.h"
 #include "jsons.h"
-#include "signature.h"
 
 #define MODULE_NAME             "platforms"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -130,30 +129,6 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
 			return p;
 	}
 	return NULL;
-}
-
-bool pv_platform_verify_signature(struct pv_state *s, const char *name)
-{
-	bool res = false;
-	int len;
-	char path[PATH_MAX];
-	struct pv_json *json;
-
-	// read pvs.json
-	len = strlen("%s/pvs.json") + strlen(name);
-	snprintf(path, len, "%s/pvs.json", name);
-	json = pv_jsons_get_by_name(s, path);
-	if (!json && (pv_config_get_secureboot_mode() == SB_STRICT)) {
-		pv_log(ERROR, "%s not found", path);
-		return res;
-	}
-	if (!json) {
-		pv_log(DEBUG, "%s not found. Ignoring...", path);
-		//res = true;
-		return res;
-	}
-
-	return pv_signature_verify(name, json->value);
 }
 
 static void pv_platform_empty_logger_list(struct pv_platform *p)

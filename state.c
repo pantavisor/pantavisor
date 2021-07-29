@@ -22,6 +22,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <limits.h>
 
 #include "state.h"
 #include "volumes.h"
@@ -30,6 +31,7 @@
 #include "jsons.h"
 #include "addons.h"
 #include "pantavisor.h"
+#include "signature.h"
 
 #define MODULE_NAME             "state"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -174,7 +176,7 @@ static void pv_state_remove_platforms(struct pv_state *out)
 
 		pv_log(DEBUG, "removing json %s linked to platform %s from rev %s", j->name, j->plat->name, out->rev);
 		dl_list_del(&j->list);
-		pv_json_free(j);
+		pv_jsons_free(j);
 	}
 
 	// remove existing objects from out
@@ -405,6 +407,28 @@ state_spec_t pv_state_spec(struct pv_state *s)
 	return s->spec;
 }
 
+static bool pv_state_verify_signature_component(struct pv_state *s, const char *component)
+{
+	struct pv_json *json;
+	int len;
+	char path[PATH_MAX];
+
+	len = strlen("%s/pvs.json") + strlen(component);
+	snprintf(path, len, "%s/pvs.json", component);
+
+	json = pv_jsons_get_by_name(s, path);
+	if (!json && (pv_config_get_secureboot_mode() == SB_STRICT)) {
+		pv_log(ERROR, "%s not found", path);
+		return false;
+	}
+	if (!json) {
+		pv_log(DEBUG, "%s not found. Ignoring...", path);
+		return true;
+	}
+
+	return pv_signature_verify(s, component, json->value);
+}
+
 bool pv_state_verify_signatures_all(struct pv_state *s)
 {
 	if (pv_config_get_secureboot_mode() < SB_LENIENT)
@@ -412,8 +436,7 @@ bool pv_state_verify_signatures_all(struct pv_state *s)
 
 	pv_log(INFO, "verifying signature of bsp and platforms");
 
-	// check signatures bsp
-	if (!pv_platform_verify_signature(s, "bsp"))
+	if (!pv_state_verify_signature_component(s, "bsp"))
 		return false;
 
 	// check signatures plats
@@ -432,7 +455,7 @@ bool pv_state_verify_signatures_plats(struct pv_state *s)
 	// check signatures plats
 	dl_list_for_each_safe(p, p_tmp, &s->platforms,
 		struct pv_platform, list) {
-		if (!pv_platform_verify_signature(s, p->name))
+		if (!pv_state_verify_signature_component(s, p->name))
 			return false;
 	}
 

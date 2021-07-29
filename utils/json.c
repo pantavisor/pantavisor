@@ -105,7 +105,7 @@ int pv_json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc)
 	return count;
 }
 
-char* pv_json_get_one_str(char *buf, jsmntok_t **tok)
+char* pv_json_get_one_str(const char *buf, jsmntok_t **tok)
 {
 	int c;
 	char *value = NULL;
@@ -116,7 +116,7 @@ char* pv_json_get_one_str(char *buf, jsmntok_t **tok)
 	return value;
 }
 
-char* pv_json_array_get_one_str(char *buf, int *n, jsmntok_t **tok)
+char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok)
 {
 	char *value = NULL;
 

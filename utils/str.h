@@ -57,6 +57,9 @@ char *pv_str_unescape_to_ascii(char *buf, char *code, char c);
 char *pv_str_replace_char(char *str, int len, char which, char what);
 char *pv_str_skip_prefix(char *str, const char *key);
 
+// return str with multiple 4 length padding. New characters are set to c
+char *pv_str_padding_multi4(char *str, char c);
+
 static inline bool pv_str_startswith(const char* str1, int str1len, const char* str2)
 {
 	return !strncmp(str1, str2, str1len);

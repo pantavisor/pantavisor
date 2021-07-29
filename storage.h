@@ -22,6 +22,11 @@
 #ifndef PV_STORAGE_H
 #define PV_STORAGE_H
 
+#include <sys/types.h>
+
+#include "pantavisor.h"
+#include "utils/list.h"
+
 #define PATH_OBJECTS_TMP "%s/objects/%s.new"
 #define PATH_OBJECTS "%s/objects/%s"
 #define PATH_TRAILS_PVR_PARENT "%s/trails/%s/.pvr"

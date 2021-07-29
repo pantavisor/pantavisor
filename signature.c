@@ -24,6 +24,7 @@
 #include <base64.h>
 
 #include "signature.h"
+#include "storage.h"
 #include "utils/json.h"
 #include "utils/str.h"
 
@@ -119,6 +120,7 @@ static struct pv_signature* pv_signature_parse_pvs(const char *json)
 		pv_log(ERROR, "no protected key found");
 		goto err;
 	}
+	signature->protected = pv_str_padding_multi4(signature->protected, '=');
 
 	signature->signature = pv_json_get_value(json, "signature", tokv, tokc);
 	if (!signature->signature) {
@@ -195,14 +197,12 @@ out:
 	return headers_pvs;
 }
 
-static struct pv_signature_headers* pv_signature_parse_protected(const char *protected)
+static struct pv_signature_headers* pv_signature_parse_protected(char *protected)
 {
 	struct pv_signature_headers *headers = NULL;
 	char *json = NULL, *typ = NULL, *pvs = NULL;
-	int tokc, len;
+	int tokc;
 	jsmntok_t *tokv = NULL;
-
-	len = strlen(protected) + 1;
 
 	headers = calloc(1, sizeof(struct pv_signature_headers));
 	if (!headers) {
@@ -210,13 +210,8 @@ static struct pv_signature_headers* pv_signature_parse_protected(const char *pro
 		goto out;
 	}
 
-	json = calloc(1, b64d_size(len));
+	json = base64_decode (protected);
 	if (!json) {
-		pv_log(ERROR, "could not alloc json");
-		goto err;
-	}
-
-	if (!b64_decode((unsigned char*)protected, len, (unsigned char*)json)) {
 		pv_log(ERROR, "protected value could not be decoded");
 		goto err;
 	}
@@ -225,7 +220,7 @@ static struct pv_signature_headers* pv_signature_parse_protected(const char *pro
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
 		pv_log(ERROR, "wrong format headers json");
-		goto out;
+		goto err;
 	}
 
 	typ = pv_json_get_value(json, "typ", tokv, tokc);
@@ -272,7 +267,63 @@ out:
 	return headers;
 }
 
-bool pv_signature_verify(const char *name, const char *json)
+static void pv_signature_parse_globs(const char *json)
+{
+	char *str;
+	int tokc, size;
+	jsmntok_t *tokv, *t;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format include");
+		goto out;
+	}
+
+	size = jsmnutil_array_count(json, tokv);
+	if (size <= 0) {
+		pv_log(ERROR, "empty include");
+		goto out;
+	}
+
+	pv_log(DEBUG, "include globs:");
+	t = tokv+1;
+	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
+		pv_log(DEBUG, "%s", str);
+		free(str);
+	}
+
+out:
+	if (tokv)
+		free(tokv);
+}
+
+static int pv_signature_fillup_globs(struct pv_signature_headers_pvs *pvs)
+{
+	pv_signature_parse_globs(pvs->include);
+	pv_signature_parse_globs(pvs->exclude);
+
+	// parse include
+	// for glob in include
+		// if glob is **
+			// for glob in part
+				// check glob not in globs
+					// add glob to globs
+		// else
+			// check glob in part and not in globs
+				// add glob to globs
+
+	// parse exclude
+	// for glob in exclude
+		// if glob is **
+			// remove everything from globs
+			// return 0
+		// else
+			// check glob in globs
+				// remove glob from globs
+
+	return 0;
+}
+
+bool pv_signature_verify(struct pv_state *s, const char *name, const char *json)
 {
 	struct pv_signature *signature = NULL;
 	struct pv_signature_headers *headers = NULL;
@@ -299,8 +350,24 @@ bool pv_signature_verify(const char *name, const char *json)
 	pv_log(DEBUG, "parsed protected with include %s", headers->pvs->include);
 	pv_log(DEBUG, "parsed protected with exclude %s", headers->pvs->exclude);
 
+	if (!pv_str_matches(name, strlen(name), headers->pvs->part, strlen(headers->pvs->part))) {
+		pv_log(ERROR, "protected part does not match with platform name");
+		goto out;
+	}
+
+	if (pv_signature_fillup_globs(headers->pvs) <= 0) {
+		pv_log(ERROR, "could not get signature globs");
+		goto out;
+	}
+
+	// calculate signature from list of globs, alg and pub key
+	// verify signature
+
 out:
 	if (signature)
 		pv_signature_free(signature);
+	if (headers)
+		pv_signature_free_headers(headers);
+
 	return false;
 }

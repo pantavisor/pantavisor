@@ -22,6 +22,8 @@
 #ifndef PV_SIGNATURE_H
 #define PV_SIGNATURE_H
 
-bool pv_signature_verify(const char *name, const char *json);
+#include "state.h"
+
+bool pv_signature_verify(struct pv_state *s, const char *name, const char *json);
 
 #endif // PV_SIGNATURE_H
