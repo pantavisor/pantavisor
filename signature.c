@@ -22,9 +22,13 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <base64.h>
+#include <stdio.h>
 
 #include "signature.h"
 #include "storage.h"
+#include "platforms.h"
+#include "objects.h"
+#include "jsons.h"
 #include "utils/json.h"
 #include "utils/str.h"
 
@@ -267,11 +271,88 @@ out:
 	return headers;
 }
 
-static void pv_signature_parse_globs(const char *json)
+struct pv_signature_file {
+	char *key;
+	char *value;
+	bool included;
+	struct dl_list list; // pv_signature_file
+};
+
+static void pv_signature_free_file(struct pv_signature_file *file)
 {
-	char *str;
-	int tokc, size;
+	if (!file)
+		return;
+
+	if (file->key)
+		free(file->key);
+	if (file->value)
+		free(file->value);
+}
+
+static void pv_signature_free_files(struct dl_list *plat_files)
+{
+	struct pv_signature_file *f, *tmp;
+
+	dl_list_for_each_safe(f, tmp, plat_files,
+			struct pv_signature_file, list) {
+		dl_list_del(&f->list);
+		pv_signature_free_file(f);
+	}
+}
+
+static void pv_signature_get_plat_files(const char *plat,
+										struct pv_state *s,
+										struct dl_list *plat_files)
+{
+	struct pv_signature_file *f;
+	struct pv_platform *p;
+	struct pv_json *j;
+
+	p = pv_platform_get_by_name(s, plat);
+
+	struct pv_object *o;
+	pv_objects_iter_begin(s, o) {
+		if (p && (p != o->plat))
+			continue;
+
+		f = calloc(1, sizeof(struct pv_signature_file));
+		if (f) {
+			f->key = strdup(o->name);
+			f->value = strdup(o->id);
+			dl_list_add(plat_files, &f->list);
+		}
+	}
+	pv_objects_iter_end;
+
+	pv_jsons_iter_begin(s, j) {
+		if (p && (p != j->plat))
+			continue;
+
+		f = calloc(1, sizeof(struct pv_signature_file));
+		if (f) {
+			f->key = strdup(j->name);
+			f->value = strdup(j->value);
+			dl_list_add(plat_files, &f->list);
+		}
+	}
+	pv_jsons_iter_end;
+}
+
+static void pv_signature_include_files(const char *component,
+									const char *json,
+									bool include,
+									struct dl_list *plat_files)
+{
+	char *str = NULL, *path = NULL;
+	int tokc, size, len;
 	jsmntok_t *tokv, *t;
+	struct pv_signature_file *f, *tmp;
+
+	if (include) {
+		pv_log(DEBUG, "include");
+	} else {
+		pv_log(DEBUG, "exclude");
+	}
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
 		pv_log(ERROR, "wrong format include");
@@ -284,11 +365,40 @@ static void pv_signature_parse_globs(const char *json)
 		goto out;
 	}
 
-	pv_log(DEBUG, "include globs:");
 	t = tokv+1;
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
-		pv_log(DEBUG, "%s", str);
-		free(str);
+		if (pv_str_matches("**", strlen("**"), str, strlen(str))) {
+			// if ** is in include, set everything as included
+			dl_list_for_each_safe(f, tmp, plat_files,
+					struct pv_signature_file, list) {
+				f->included = include;
+				pv_log(DEBUG, "set include");
+			}
+		} else {
+			// search and set included key
+			len = strlen("%s/%s") + strlen(component) + strlen(str);
+			path = calloc(1, len);
+			snprintf(path, len, "%s/%s", component, str);
+			dl_list_for_each_safe(f, tmp, plat_files,
+					struct pv_signature_file, list) {
+				pv_log(DEBUG, "%s", path);
+				pv_log(DEBUG, "%s", f->key);
+				if (pv_str_matches(f->key, strlen(f->key), path, strlen(path))) {
+					pv_log(DEBUG, "set include");
+					f->included = include;
+					break;
+				}
+			}
+		}
+
+		if (str) {
+			free(str);
+			str = NULL;
+		}
+		if (path) {
+			free(path);
+			path = NULL;
+		}
 	}
 
 out:
@@ -296,37 +406,71 @@ out:
 		free(tokv);
 }
 
-static int pv_signature_fillup_globs(struct pv_signature_headers_pvs *pvs)
+static void pv_signature_filter_files(struct pv_signature_headers_pvs *pvs,
+									struct dl_list *plat_files)
 {
-	pv_signature_parse_globs(pvs->include);
-	pv_signature_parse_globs(pvs->exclude);
+	struct pv_signature_file *f, *tmp;
 
-	// parse include
-	// for glob in include
-		// if glob is **
-			// for glob in part
-				// check glob not in globs
-					// add glob to globs
-		// else
-			// check glob in part and not in globs
-				// add glob to globs
+	pv_signature_include_files(pvs->part, pvs->include, true, plat_files);
+	pv_signature_include_files(pvs->part, pvs->exclude, false, plat_files);
 
-	// parse exclude
-	// for glob in exclude
-		// if glob is **
-			// remove everything from globs
-			// return 0
-		// else
-			// check glob in globs
-				// remove glob from globs
+	pv_log(DEBUG, "there are %d files for the component before include filter",
+		dl_list_len(plat_files));
 
-	return 0;
+	// now, remove everything that was not included
+	dl_list_for_each_safe(f, tmp, plat_files,
+			struct pv_signature_file, list) {
+		if (!f->included) {
+			dl_list_del(&f->list);
+			pv_signature_free_file(f);
+		}
+	}
+
+	pv_log(DEBUG, "there are %d files for the component after include filter",
+		dl_list_len(plat_files));
+}
+
+static char* pv_signature_get_json_files(struct dl_list *plat_files)
+{
+	char *out;
+	struct pv_signature_file *f, *tmp;
+
+	dl_list_for_each_safe(f, tmp, plat_files,
+			struct pv_signature_file, list) {
+		pv_log(DEBUG, "file %s", f->key);
+	}
+
+	out = calloc(1, 25);
+	out[0]='h';
+	out[1]='o';
+	out[2]='l';
+	out[3]='a';
+	out[4]='\0';
+	return out;
+}
+
+static char* pv_signature_get_files(struct pv_state *s,
+									struct pv_signature_headers_pvs *pvs)
+{
+	struct dl_list plat_files;
+	char *json;
+
+	dl_list_init(&plat_files);
+
+	pv_signature_get_plat_files(pvs->part, s, &plat_files);
+	pv_signature_filter_files(pvs, &plat_files);
+	json = pv_signature_get_json_files(&plat_files);
+
+	pv_signature_free_files(&plat_files);
+
+	return json;
 }
 
 bool pv_signature_verify(struct pv_state *s, const char *name, const char *json)
 {
 	struct pv_signature *signature = NULL;
 	struct pv_signature_headers *headers = NULL;
+	char *files = NULL;
 
 	pv_log(DEBUG, "verifying signature of component %s", name);
 
@@ -355,12 +499,15 @@ bool pv_signature_verify(struct pv_state *s, const char *name, const char *json)
 		goto out;
 	}
 
-	if (pv_signature_fillup_globs(headers->pvs) <= 0) {
-		pv_log(ERROR, "could not get signature globs");
+	files = pv_signature_get_files(s, headers->pvs);
+	if (!files) {
+		pv_log(ERROR, "could not get signature files");
 		goto out;
 	}
 
-	// calculate signature from list of globs, alg and pub key
+	pv_log(DEBUG, "signature files %s", files);
+
+	// calculate signature from list of files, alg and pub key
 	// verify signature
 
 out:
@@ -368,6 +515,8 @@ out:
 		pv_signature_free(signature);
 	if (headers)
 		pv_signature_free_headers(headers);
+	if (files)
+		free(files);
 
 	return false;
 }
