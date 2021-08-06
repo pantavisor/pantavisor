@@ -21,8 +21,11 @@
  */
 #include <stdlib.h>
 #include <stdbool.h>
-#include <base64.h>
 #include <stdio.h>
+#include <base64.h>
+#include <mbedtls/base64.h>
+#include <mbedtls/pk.h>
+#include <mbedtls/md_internal.h>
 
 #include "signature.h"
 #include "storage.h"
@@ -131,6 +134,7 @@ static struct pv_signature* pv_signature_parse_pvs(const char *json)
 		pv_log(ERROR, "no signature key found");
 		goto err;
 	}
+	signature->signature = pv_str_padding_multi4(signature->signature, '=');
 
 	goto out;
 
@@ -201,9 +205,15 @@ out:
 	return headers_pvs;
 }
 
+static int pv_signature_base64_decode_length(const char *str)
+{
+	return ((4 * strlen(str) / 3) + 3) & ~3;
+}
+
 static struct pv_signature_headers* pv_signature_parse_protected(char *protected)
 {
 	struct pv_signature_headers *headers = NULL;
+	size_t len, olen;
 	char *json = NULL, *typ = NULL, *pvs = NULL;
 	int tokc;
 	jsmntok_t *tokv = NULL;
@@ -214,8 +224,9 @@ static struct pv_signature_headers* pv_signature_parse_protected(char *protected
 		goto out;
 	}
 
-	json = base64_decode (protected);
-	if (!json) {
+	len = pv_signature_base64_decode_length(protected);
+	json = calloc(1, len);
+	if (mbedtls_base64_decode((unsigned char*)json, len, &olen, (unsigned char*)protected, strlen(protected))) {
 		pv_log(ERROR, "protected value could not be decoded");
 		goto err;
 	}
@@ -348,12 +359,6 @@ static void pv_signature_include_files(const char *component,
 	jsmntok_t *tokv, *t;
 	struct pv_signature_file *f, *tmp;
 
-	if (include) {
-		pv_log(DEBUG, "include");
-	} else {
-		pv_log(DEBUG, "exclude");
-	}
-
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
 		pv_log(ERROR, "wrong format include");
 		goto out;
@@ -372,7 +377,6 @@ static void pv_signature_include_files(const char *component,
 			dl_list_for_each_safe(f, tmp, plat_files,
 					struct pv_signature_file, list) {
 				f->included = include;
-				pv_log(DEBUG, "set include");
 			}
 		} else {
 			// search and set included key
@@ -381,10 +385,7 @@ static void pv_signature_include_files(const char *component,
 			snprintf(path, len, "%s/%s", component, str);
 			dl_list_for_each_safe(f, tmp, plat_files,
 					struct pv_signature_file, list) {
-				pv_log(DEBUG, "%s", path);
-				pv_log(DEBUG, "%s", f->key);
 				if (pv_str_matches(f->key, strlen(f->key), path, strlen(path))) {
-					pv_log(DEBUG, "set include");
 					f->included = include;
 					break;
 				}
@@ -430,22 +431,53 @@ static void pv_signature_filter_files(struct pv_signature_headers_pvs *pvs,
 		dl_list_len(plat_files));
 }
 
-static char* pv_signature_get_json_files(struct dl_list *plat_files)
+static char* pv_signature_get_json_files(const char *json, struct dl_list *plat_files)
 {
 	char *out;
-	struct pv_signature_file *f, *tmp;
+	int len, files;
+	struct pv_signature_file *f, *tmp, *curr = NULL;
 
-	dl_list_for_each_safe(f, tmp, plat_files,
-			struct pv_signature_file, list) {
-		pv_log(DEBUG, "file %s", f->key);
+	len = strlen(json);
+	out = calloc(1, len);
+	if (!out)
+		return out;
+
+	strcpy(out, "{");
+
+	files = dl_list_len(plat_files);
+	for (int i = 0; i < files; i++) {
+		dl_list_for_each_safe(f, tmp, plat_files,
+				struct pv_signature_file, list) {
+			if (!curr || (strcmp(curr->key, f->key) > 0))
+				curr = f;
+		}
+
+		if (!curr)
+			break;
+
+		pv_log(DEBUG, "%s %s", curr->key, curr->value);
+		strcat(out, "\"");
+		strcat(out, curr->key);
+		if (curr->value[0] != '{') {
+			strcat(out, "\":\"");
+			strcat(out, curr->value);
+			strcat(out, "\"");
+		} else {
+			strcat(out, "\":");
+			strcat(out, curr->value);
+		}
+
+		if (i < files - 1)
+			strcat(out, ",");
+
+		dl_list_del(&curr->list);
+		pv_signature_free_file(curr);
+
+		curr = NULL;
 	}
 
-	out = calloc(1, 25);
-	out[0]='h';
-	out[1]='o';
-	out[2]='l';
-	out[3]='a';
-	out[4]='\0';
+	strcat(out, "}");
+
 	return out;
 }
 
@@ -459,15 +491,108 @@ static char* pv_signature_get_files(struct pv_state *s,
 
 	pv_signature_get_plat_files(pvs->part, s, &plat_files);
 	pv_signature_filter_files(pvs, &plat_files);
-	json = pv_signature_get_json_files(&plat_files);
+	json = pv_signature_get_json_files(s->json, &plat_files);
 
 	pv_signature_free_files(&plat_files);
 
 	return json;
 }
 
+static unsigned char *pv_signature_base64_url(const char *str)
+{
+	char *tmp = strdup(str);
+	size_t len = strlen(tmp), olen;
+	unsigned char *out = NULL;
+
+	for (size_t i = 0; i < len; i++) {
+		if (tmp[i] == '_')
+			tmp[i] = '/';
+		if (tmp[i] == '-')
+			tmp[i] = '+';
+	}
+
+	len = pv_signature_base64_decode_length(tmp);
+	out = calloc(1, len);
+	if (mbedtls_base64_decode((unsigned char*)out, len, &olen, (unsigned char*)tmp, strlen(tmp))) {
+		pv_log(ERROR, "json could not be decoded");
+	}
+
+	if (tmp)
+		free(tmp);
+
+	return out;
+}
+
+static bool pv_signature_verify_files(const char *files, const char *alg, const char *proc, const char *sig)
+{
+	int res;
+	char *payload = NULL, *files_encoded = NULL;
+	unsigned char *sig_decoded = NULL;
+	unsigned char hash[32];
+	size_t len, olen;
+
+	mbedtls_pk_context pk;
+
+	mbedtls_pk_init(&pk);
+
+	if (mbedtls_pk_parse_public_keyfile(&pk, "/pub.pem")) {
+		pv_log(ERROR, "cannot read public key");
+		goto out;
+	}
+
+	if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
+		pv_log(ERROR, "key is not a RSA key");
+		goto out;
+	}
+
+	len = strlen(files) * 4 / 3 + 4;
+	files_encoded = calloc(1, len);
+	if (mbedtls_base64_encode((unsigned char*)files_encoded, len, &olen, (unsigned char*)files, strlen(files))) {
+		pv_log(ERROR, "protected value could not be encoded %d %d", len, olen);
+		goto out;
+	}
+
+	payload = calloc(1, strlen(files)+strlen(proc)+2);
+	strcpy(payload, proc);
+	strcat(payload, ".");
+	strcat(payload, files_encoded);
+
+	pv_log(DEBUG, "%s", payload);
+
+	res = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (unsigned char*)payload, strlen(payload), hash);
+	if (res) {
+		pv_log(ERROR, "cannot create hash with code %d", res);
+		goto out;
+	}
+
+	for (int i = 0; i < 32; i++) {
+		pv_log(ERROR, "%d %x", i, hash[i]);
+	}
+
+	sig_decoded = pv_signature_base64_url(sig);
+
+	for (int i = 0; i < 256; i++) {
+		pv_log(ERROR, "%d %x", i, sig_decoded[i]);
+	}
+
+	res = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, 0, sig_decoded, 256);
+	if (res) {
+		pv_log(ERROR, "verification went wrong with code %d", res);
+		goto out;
+	}
+
+out:
+	if (files_encoded)
+		free(files_encoded);
+	if (sig_decoded)
+		free(sig_decoded);
+	mbedtls_pk_free(&pk);
+	return false;
+}
+
 bool pv_signature_verify(struct pv_state *s, const char *name, const char *json)
 {
+	bool res = false;
 	struct pv_signature *signature = NULL;
 	struct pv_signature_headers *headers = NULL;
 	char *files = NULL;
@@ -507,8 +632,7 @@ bool pv_signature_verify(struct pv_state *s, const char *name, const char *json)
 
 	pv_log(DEBUG, "signature files %s", files);
 
-	// calculate signature from list of files, alg and pub key
-	// verify signature
+	res = pv_signature_verify_files(files, headers->alg, signature->protected, signature->signature);
 
 out:
 	if (signature)
@@ -518,5 +642,5 @@ out:
 	if (files)
 		free(files);
 
-	return false;
+	return res;
 }
