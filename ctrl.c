@@ -67,7 +67,6 @@
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
-#define HTTP_RES_BAD_REQ "HTTP/1.1 400 Bad Request\r\n\r\n"
 
 #define HTTP_RESPONSE "HTTP/1.1 %s \r\nContent-Length: %d\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"Error\":\"%s\"}\r\n"
 
@@ -268,9 +267,13 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 	// open will fail if the file exist so we do not overwrite it
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
 	if (obj_fd < 0) {
-		pv_log(ERROR, "%s could not be created", file_path);
+		pv_log(ERROR, "%s could not be created: %s", file_path, strerror(errno));
 		pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot create file");
-		goto out;
+		// skip clean if the error was about the file already existing
+		if (errno == EEXIST)
+			goto out;
+		else
+			goto clean;
 	}
 
 	// read and save
@@ -285,14 +288,14 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 			pv_log(INFO, "HTTP PUT content could not be read from ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
 			pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot read from socket");
-			goto out;
+			goto clean;
 		}
 
 		if (write(obj_fd, req, write_length) <= 0) {
 			pv_log(INFO, "HTTP PUT content could not be written from ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
 			pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot write into file");
-			goto out;
+			goto clean;
 		}
 
 		content_length-=write_length;
@@ -300,7 +303,11 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 
 	ret = 0;
 
-out:
+ clean:
+	remove(file_path);
+	syncdir(file_path);
+
+ out:
 	fsync(obj_fd);
 	close(obj_fd);
 
