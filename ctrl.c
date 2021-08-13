@@ -302,6 +302,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 	}
 
 	ret = 0;
+	goto out;
 
  clean:
 	remove(file_path);
