@@ -38,6 +38,7 @@
 #include "bootloader.h"
 #include "state.h"
 #include "storage.h"
+#include "parser/parser.h"
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -569,15 +570,24 @@ static int pv_config_creds(struct pv_init *this)
 
 static int pv_config_trail(struct pv_init *this)
 {
+	int res = -1;
 	char path[PATH_MAX];
 	struct pantavisor *pv = pv_get_instance();
 	const char *rev = pv_bootloader_get_rev();
-	char *config_name;
+	char *json = NULL, *config_name;
 
-	config_name = pv_storage_get_initrd_config_name(rev);
+	json = pv_storage_get_state_json(rev);
+	if (!json) {
+		printf("INFO: json state not found\n");
+		res = 0;
+		goto out;
+	}
+
+	config_name = pv_parser_get_initrd_config_name(json);
 	if (!config_name) {
 		printf("INFO: initrd config not found\n");
-		return 0;
+		res = 0;
+		goto out;
 	}
 
 	sprintf(path, "%s/trails/%s/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
@@ -585,10 +595,14 @@ static int pv_config_trail(struct pv_init *this)
 
 	if (pv_config_override_config_from_file(path, &pv->config)) {
 		printf("FATAL: initrd config %s not found\n", path);
-		return -1;
+		goto out;
 	}
 
-	return 0;
+	res = 0;
+out:
+	if (json)
+		free(json);
+	return res;
 }
 
 struct pv_init pv_init_config =  {

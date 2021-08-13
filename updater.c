@@ -51,6 +51,7 @@
 #include "state.h"
 #include "json.h"
 #include "fops.h"
+#include "signature.h"
 
 #define MODULE_NAME			"updater"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -283,6 +284,10 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		if (!msg)
 			msg = "Unable to download and/or install update";
 		sprintf(json, DEVICE_STEP_STATUS_FMT, "WONTGO", msg, 0);
+		break;
+	case UPDATE_NO_SIGNATURE:
+		sprintf(json, DEVICE_STEP_STATUS_FMT,
+			"WONTGO", "Remote state signature cannot be verified", 0);
 		break;
 	case UPDATE_NO_PARSE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
@@ -644,7 +649,13 @@ send_feedback:
 	trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
 
 	// parse state
-	update->pending = pv_parser_get_state(pv, state, rev);
+	if (!pv_signature_verify(state)) {
+		pv_log(WARN, "invalid state signature");
+		trail_remote_set_status(pv, update, UPDATE_NO_SIGNATURE, NULL);
+		pv_update_free(update);
+		goto out;
+	}
+	update->pending = pv_parser_get_state(state, rev);
 	if (!update->pending) {
 		pv_log(WARN, "invalid state from rev %s", rev);
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
@@ -1702,21 +1713,36 @@ static int trail_download_objects(struct pantavisor *pv)
 
 struct pv_update* pv_update_get_step_local(char *rev)
 {
+	struct pantavisor *pv = pv_get_instance();
 	struct pv_update *update = NULL;
+	char *json = NULL;
 
 	update = pv_update_new(pv_config_get_creds_id(), rev, true);
 	if (!update)
 		goto err;
 
-	update->pending = pv_storage_get_state(pv_get_instance(), rev);
-	if (!update->pending)
+	json = pv_storage_get_state_json(rev);
+	if (!pv_signature_verify(json)) {
+		trail_remote_set_status(pv, update, UPDATE_NO_SIGNATURE, NULL);
+		pv_log(WARN, "state signature verification went wrong");
 		goto err;
+	}
+	update->pending = pv_parser_get_state(json, rev);
+	if (!update->pending) {
+		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		pv_log(WARN, "state parse went wrong");
+		goto err;
+	}
 
 	update->pending->local = true;
 
+	if (json)
+		free(json);
 	return update;
 
 err:
+	if (json)
+		free(json);
 	pv_update_free(update);
 	return NULL;
 }

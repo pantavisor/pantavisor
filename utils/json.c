@@ -87,7 +87,7 @@ static bool char_is_json_special(char ch)
 	}
 }
 
-int pv_json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc)
+int pv_json_get_key_count(const char *buf, const char *key, jsmntok_t *tok, int tokc)
 {
 	int count = 0;
 
@@ -130,7 +130,7 @@ char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok)
 	return value;
 }
 
-int pv_json_get_value_int(char *buf, char *key, jsmntok_t* tok, int tokc)
+int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t* tok, int tokc)
 {
 	int i;
 	int val = 0;
@@ -181,7 +181,7 @@ char* pv_json_get_value(const char *buf, const char *key, jsmntok_t* tok, int to
 	return NULL;
 }
 
-char* pv_json_format(char *buf, int len)
+char* pv_json_format(const char *buf, int len)
 {
 	char *json_string = NULL;
 	int idx = 0;

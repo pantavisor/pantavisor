@@ -720,7 +720,7 @@ link_jsons:
 	}
 }
 
-struct pv_state* system1_parse(struct pantavisor *pv, struct pv_state *this, char *buf)
+struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 {
 	int tokc, ret, count, n;
 	char *key = 0, *value = 0, *ext = 0;
@@ -859,7 +859,7 @@ static char* parse_config_name(char *value, int n)
 	return config_name;
 }
 
-char* system1_parse_initrd_config_name(char *buf)
+char* system1_parse_initrd_config_name(const char *buf)
 {
 	int tokc, count;
 	jsmntok_t *tokv;

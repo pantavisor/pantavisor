@@ -912,93 +912,58 @@ err:
 	return -1;
 }
 
-struct pv_state* pv_storage_get_state(struct pantavisor *pv, const char *rev)
+char* pv_storage_get_state_json(const char *rev)
 {
-	int fd;
-	int size;
 	char path[256];
-	char *buf;
-	struct stat st;
-	struct pv_state *s;
 
 	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
 
 	pv_log(DEBUG, "reading state from: '%s'", path);
 
-	fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		pv_log(WARN, "unable to find state JSON for current step");
-		return NULL;
-	}
-
-	stat(path, &st);
-	size = st.st_size;
-
-	buf = calloc(1, size+1);
-	size = read(fd, buf, size);
-	buf[size] = '\0';
-
-	if (size < 0) {
-		pv_log(ERROR, "unable to read device state");
-		return NULL;
-	}
-
-	s = pv_parser_get_state(pv, buf, rev);
-	close(fd);
-
-	return s;
+	return pv_storage_load_file(NULL, path, 0);
 }
 
-char* pv_storage_get_initrd_config_name(const char *rev)
+char *pv_storage_load_file(const char *prefix, const char *path, const unsigned int max_size)
 {
-	int fd;
-	int size;
-	char path[256];
-	char *buf, *config_name = NULL;
 	struct stat st;
-
-	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
-
-	fd = open(path, O_RDONLY);
-	if (fd < 0)
-		return NULL;
-
-	stat(path, &st);
-	size = st.st_size;
-
-	buf = calloc(1, size+1);
-	size = read(fd, buf, size);
-	buf[size] = '\0';
-
-	if ((size < 0) || (!buf))
-		return NULL;
-
-	config_name = pv_parser_get_initrd_config_name(buf);
-	close(fd);
-
-	return config_name;
-}
-
-char *pv_storage_load_file(const char *path_base, const char *name, const unsigned int max_size)
-{
-	int fd, size;
-	char path[PATH_MAX], buf[max_size];
+	unsigned int size;
+	int fd, res;
+	char abs_path[PATH_MAX];
 	char *content = NULL;
 
-	sprintf(path, "%s/%s", path_base, name);
+	if (!prefix) {
+		sprintf(abs_path, "%s", path);
+	} else {
+		sprintf(abs_path, "%s/%s", prefix, path);
+	}
 
-	fd = open(path, O_RDONLY, 0644);
-	if (fd < 0)
-		goto out;
+	stat(abs_path, &st);
+	size = st.st_size;
 
-	size = read(fd, buf, max_size);
-	if (size < 0)
+	if (max_size && (size > max_size)) {
+		pv_log(ERROR, "file size is too big %d %d", size, max_size);
 		goto out;
+	}
 
 	content = calloc(1, size+1);
-	strncpy(content, buf, size);
-	close(fd);
+	if (!content) {
+		pv_log(ERROR, "cannot alloc file buffer");
+		goto out;
+	}
 
+	fd = open(abs_path, O_RDONLY, 0644);
+	if (fd < 0) {
+		pv_log(ERROR, "cannot open file: %s", strerror(errno));
+		goto out;
+	}
+
+	res = read(fd, content, size);
+	if (res < 0) {
+		pv_log(ERROR, "cannot read file: %s", strerror(errno));
+		goto out;
+	}
+
+	close(fd);
 out:
 	return content;
 }
