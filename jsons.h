@@ -40,14 +40,4 @@ void pv_jsons_empty(struct pv_state *s);
 
 void pv_jsons_free(struct pv_json *json);
 
-bool pv_jsons_verify_signature(struct pv_state *s, const char *component);
-
-#define pv_jsons_iter_begin(state, item) 	\
-{\
-	struct pv_json *item##__tmp;\
-	struct dl_list *item##__head = &(state)->jsons;\
-	dl_list_for_each_safe(item, item##__tmp, item##__head,\
-			struct pv_json, list)
-
-#define pv_jsons_iter_end }
 #endif // PV_JSONS_H

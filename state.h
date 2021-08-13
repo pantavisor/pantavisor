@@ -56,15 +56,12 @@ struct pv_state {
 struct pv_state* pv_state_new(const char *rev, state_spec_t spec);
 void pv_state_free(struct pv_state *s);
 
-state_spec_t pv_state_spec(struct pv_state *s);
-
 void pv_state_print(struct pv_state *s);
+void pv_state_validate(struct pv_state *s);
 
 void pv_state_transfer(struct pv_state *in, struct pv_state *out);
 int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);
 
-void pv_state_validate(struct pv_state *s);
-bool pv_state_verify_signatures_all(struct pv_state *s);
-bool pv_state_verify_signatures_plats(struct pv_state *s);
+state_spec_t pv_state_spec(struct pv_state *s);
 
 #endif

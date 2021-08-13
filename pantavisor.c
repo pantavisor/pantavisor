@@ -576,9 +576,8 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 {
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_UPDATE));
 
-	// download, validate and install pending step
-	if (pv_update_download(pv) ||
-		pv_update_install(pv)) {
+	// download and install pending step
+	if (pv_update_download(pv) || pv_update_install(pv)) {
 		pv_log(ERROR, "update has failed, continue...");
 		pv_update_finish(pv);
 		return PV_STATE_WAIT;

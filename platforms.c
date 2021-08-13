@@ -48,7 +48,6 @@ int setns(int nsfd, int nstype);
 #include "utils.h"
 #include "init.h"
 #include "state.h"
-#include "jsons.h"
 
 #define MODULE_NAME             "platforms"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

@@ -792,7 +792,11 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 				goto out;
 			}
 			pv_jsons_add(this, key, value);
-		// if the extension is .json, we add it to the list of jsons
+		// if the extension is either src.json or build.json, we ignore it
+		} else if (ext && (!strcmp(ext, "/src.json") ||
+					!strcmp(ext, "/build.json"))) {
+			pv_log(DEBUG, "skipping '%s'", key);
+		// if the extension is other .json, we add it to the list of jsons
 		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
 			pv_log(DEBUG, "adding json '%s'", key);
 			pv_jsons_add(this, key, value);

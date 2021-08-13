@@ -22,7 +22,6 @@
 
 #include <string.h>
 #include <stdio.h>
-#include <limits.h>
 
 #include "state.h"
 #include "volumes.h"
@@ -31,7 +30,6 @@
 #include "jsons.h"
 #include "addons.h"
 #include "pantavisor.h"
-#include "signature.h"
 
 #define MODULE_NAME             "state"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

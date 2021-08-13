@@ -15,7 +15,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_LIBRARIES := libthttp libpvlogger mbedtls picohttpparser base64
+LOCAL_LIBRARIES := libthttp libpvlogger mbedtls picohttpparser
 LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:e2fsprogs
 
 LOCAL_DESTDIR := ./
@@ -61,6 +61,7 @@ LOCAL_SRC_FILES := init.c \
 			utils/strrep.c \
 			utils/json.c \
 			utils/fops.c \
+			utils/base64.c \
 			jsons.c \
 			pantahub.c \
 			updater.c \

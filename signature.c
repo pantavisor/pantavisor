@@ -22,17 +22,13 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <base64.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/md_internal.h>
 
 #include "signature.h"
-#include "storage.h"
-#include "platforms.h"
-#include "objects.h"
-#include "jsons.h"
 #include "utils/json.h"
 #include "utils/str.h"
+#include "utils/base64.h"
 
 #define MODULE_NAME             "signature"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
