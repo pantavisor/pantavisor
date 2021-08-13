@@ -534,6 +534,12 @@ static void pv_signature_parse_json(const char *json, struct dl_list *json_pairs
 		if (!pair)
 			goto out;
 
+		// discard #spec
+		if (pv_str_matches(json+(*k)->start, n, "#spec", strlen("#spec"))) {
+			k++;
+			continue;
+		}
+
 		// copy key
 		pair->key = calloc(1, n+1);
 		if (!pair->key)
