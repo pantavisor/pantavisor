@@ -449,7 +449,7 @@ static bool pv_signature_verify_rs256(const char *payload, struct pv_signature *
 
 	mbedtls_pk_init(&pk);
 
-	if (mbedtls_pk_parse_public_keyfile(&pk, "/pub.pem")) {
+	if (mbedtls_pk_parse_public_keyfile(&pk, "/etc/pvs/pub.pem")) {
 		pv_log(ERROR, "cannot read public key");
 		goto out;
 	}
