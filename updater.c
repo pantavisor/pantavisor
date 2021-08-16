@@ -287,11 +287,11 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		break;
 	case UPDATE_NO_SIGNATURE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"WONTGO", "Remote state signature cannot be verified", 0);
+			"WONTGO", "State signatures cannot be verified", 0);
 		break;
 	case UPDATE_NO_PARSE:
 		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"WONTGO", "Remote state cannot be parsed", 0);
+			"WONTGO", "State cannot be parsed", 0);
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		pv_log(DEBUG, "download needs to be retried, retry count is %d", update->retries);

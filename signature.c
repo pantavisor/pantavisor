@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <libgen.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/md_internal.h>
 
@@ -34,11 +35,10 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#define SPEC_PVS1 "pvs@1"
+#define SPEC_PVS2 "pvs@2"
 #define TYP_PVS "PVS"
 
 struct pv_signature_headers_pvs {
-	char *part;
 	char *include;
 	char *exclude;
 };
@@ -66,8 +66,6 @@ static void pv_signature_free_headers_pvs(struct pv_signature_headers_pvs *pvs)
 	if (!pvs)
 		return;
 
-	if (pvs->part)
-		free(pvs->part);
 	if (pvs->include)
 		free(pvs->include);
 	if (pvs->exclude)
@@ -118,7 +116,7 @@ static struct pv_signature* pv_signature_parse_pvs(const char *json)
 		goto err;
 	}
 
-	if (!pv_str_matches(spec, strlen(spec), SPEC_PVS1, strlen(SPEC_PVS1))) {
+	if (!pv_str_matches(spec, strlen(spec), SPEC_PVS2, strlen(SPEC_PVS2))) {
 		goto err;
 	}
 
@@ -168,12 +166,6 @@ static struct pv_signature_headers_pvs* pv_signature_parse_headers_pvs(const cha
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
 		pv_log(ERROR, "wrong format headers pvs json");
 		goto out;
-	}
-
-	headers_pvs->part = pv_json_get_value(json, "part", tokv, tokc);
-	if (!headers_pvs->part) {
-		pv_log(ERROR, "no part key found");
-		goto err;
 	}
 
 	headers_pvs->include = pv_json_get_value(json, "include", tokv, tokc);
@@ -293,20 +285,19 @@ static void pv_signature_free_pairs(struct dl_list *json_pairs)
 	}
 }
 
-static void pv_signature_include_files(const char *component,
-									const char *json,
+static void pv_signature_include_files(const char *json,
 									bool include,
 									struct dl_list *json_pairs)
 {
 	char *str = NULL, *path = NULL;
-	int tokc, size, len;
+	int tokc, size;
 	jsmntok_t *tokv, *t;
 	struct pv_signature_pair *pair, *tmp;
 
 	if (include) {
-		pv_log(DEBUG, "incluiding %s from part %s", json, component);
+		pv_log(DEBUG, "including %s", json);
 	} else {
-		pv_log(DEBUG, "excluiding %s from part %s", json, component);
+		pv_log(DEBUG, "excluding %s", json);
 	}
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
@@ -322,30 +313,29 @@ static void pv_signature_include_files(const char *component,
 
 	t = tokv+1;
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
-		if (pv_str_matches("**", strlen("**"), str, strlen(str))) {
-			// if ** is in include, set everything as included
+		if (pv_str_endswith("/**", strlen("/**"), str, strlen(str))) {
+			// if ** is in include, get path and set everything as included
+			path = strdup(str);
+			path = dirname(path);
 			dl_list_for_each_safe(pair, tmp, json_pairs,
 					struct pv_signature_pair, list) {
-				if (pv_str_startswith(component, strlen(component), pair->key)) {
+				if (pv_str_startswith(path, strlen(path), pair->key)) {
 					pair->included = include;
 					pair->covered = true;
 				}
 			}
 		} else {
-			// search and set included key
-			len = strlen("%s/%s") + strlen(component) + strlen(str);
-			path = calloc(1, len);
-			snprintf(path, len, "%s/%s", component, str);
+			// if none of the above, include the pair that matches
 			dl_list_for_each_safe(pair, tmp, json_pairs,
 					struct pv_signature_pair, list) {
-				if (pv_str_matches(pair->key, strlen(pair->key), path, strlen(path))) {
+				if (pv_str_matches(str, strlen(str), pair->key, strlen(pair->key))) {
 					pair->included = include;
 					pair->covered = true;
 					break;
 				}
 			}
 		}
-
+next:
 		if (str) {
 			free(str);
 			str = NULL;
@@ -374,8 +364,8 @@ static void pv_signature_reset_included(struct dl_list *json_pairs)
 static void pv_signature_filter_files(struct pv_signature_headers_pvs *pvs,
 									struct dl_list *json_pairs)
 {
-	pv_signature_include_files(pvs->part, pvs->include, true, json_pairs);
-	pv_signature_include_files(pvs->part, pvs->exclude, false, json_pairs);
+	pv_signature_include_files(pvs->include, true, json_pairs);
+	pv_signature_include_files(pvs->exclude, false, json_pairs);
 }
 
 static char* pv_signature_get_json_files(struct dl_list *json_pairs)
@@ -497,6 +487,7 @@ static bool pv_signature_verify_rs256(const char *payload, struct pv_signature *
 		goto out;
 	}
 
+	pv_log(ERROR, "signature OK");
 	ret = true;
 
 out:
@@ -601,7 +592,7 @@ out:
 
 static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 {
-	bool ret = true;
+	bool ret = true, found = false;
 	struct pv_signature_pair *pair, *tmp;
 	struct pv_signature *signature;
 
@@ -609,11 +600,15 @@ static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 		struct pv_signature_pair, list) {
 		signature = pv_signature_parse_pvs(pair->value);
 		if (signature) {
+			found = true;
 			pv_log(DEBUG, "%s found", pair->key);
 			ret = pv_signature_verify_pvs(signature, json_pairs);
 			pv_signature_free(signature);
 		}
 	}
+
+	if (!found)
+		pv_log(DEBUG, "no json with %s specification found in revision", SPEC_PVS2);
 
 	return ret;
 }
@@ -627,6 +622,9 @@ static bool pv_signature_all_covered(struct dl_list *json_pairs)
 
 	dl_list_for_each_safe(pair, tmp, json_pairs,
 		struct pv_signature_pair, list) {
+		// skip everything in the _sigs folder
+		if (pv_str_startswith("_sigs/", strlen("_sigs/"), pair->key))
+			continue;
 		if(!pair->covered) {
 			pv_log(ERROR, "%s is not covered by any signature", pair->key);
 			ret = false;
