@@ -26,20 +26,38 @@
 
 #include "base64.h"
 
+#define MODULE_NAME             "base64"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
+
 static char* pv_base64_padding_multi4(char *str)
 {
-	int old_len = strlen(str);
-	int padding = old_len % 4;
-	int new_len = old_len + padding;
-	str = realloc(str, new_len);
-	for (int i = 1; i <= padding; i++) {
-		str[new_len-i] = '=';
+	int old_len = strlen(str), padding = 0, new_len;
+	switch (old_len % 4)
+	{
+		case 2:
+			padding = 2;
+			break;
+		case 3:
+			padding = 1;
+			break;
+		default:
+			pv_log(ERROR, "wrong base64 encoded input");
+			return str;
 	}
+
+	new_len = old_len + padding;
+	str = realloc(str, new_len);
+	for (int i = old_len; i < new_len; i++) {
+		str[i] = '=';
+	}
+
 	return str;
 }
 
 int pv_base64_url_decode(const char *scr, char **dst, size_t *olen)
 {
+	int res;
 	size_t len, ilen;
 	char *itmp = strdup(scr);
 	*olen = 0;
@@ -63,18 +81,24 @@ int pv_base64_url_decode(const char *scr, char **dst, size_t *olen)
 	if (!*dst)
 		goto err;
 
-	if (mbedtls_base64_decode((unsigned char*)*dst, len, olen, (unsigned char*)itmp, ilen))
+	res = mbedtls_base64_decode((unsigned char*)*dst, len, olen, (unsigned char*)itmp, ilen);
+	if (res) {
+		pv_log(ERROR, "cannot decode base64 with code %d", res);
 		goto err;
+	}
 
 	return 0;
 err:
-	if (*dst)
+	if (*dst) {
 		free(*dst);
+		*dst = NULL;
+	}
 	return -1;
 }
 
 int pv_base64_url_encode(const char *scr, char **dst, size_t *olen)
 {
+	int res;
 	size_t len, ilen;
 	*olen = 0;
 
@@ -88,8 +112,11 @@ int pv_base64_url_encode(const char *scr, char **dst, size_t *olen)
 	if (!*dst)
 		goto err;
 
-	if (mbedtls_base64_encode((unsigned char*)*dst, len, olen, (unsigned char*)scr, ilen))
+	res = mbedtls_base64_encode((unsigned char*)*dst, len, olen, (unsigned char*)scr, ilen);
+	if (res) {
+		pv_log(ERROR, "cannot encode base64 with code %d", res);
 		goto err;
+	}
 
 	for (size_t i = 0; i < len; i++) {
 		if ((*dst)[i] == '/')
@@ -100,7 +127,9 @@ int pv_base64_url_encode(const char *scr, char **dst, size_t *olen)
 
 	return 0;
 err:
-	if(*dst)
+	if(*dst) {
 		free(*dst);
+		*dst = NULL;
+	}
 	return -1;
 }

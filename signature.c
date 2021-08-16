@@ -164,7 +164,7 @@ static struct pv_signature_headers_pvs* pv_signature_parse_headers_pvs(const cha
 	}
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		pv_log(ERROR, "wrong format headers pvs json");
+		pv_log(ERROR, "wrong format headers pvs JSON");
 		goto out;
 	}
 
@@ -215,7 +215,7 @@ static struct pv_signature_headers* pv_signature_parse_protected(char *protected
 	}
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		pv_log(ERROR, "wrong format headers json");
+		pv_log(ERROR, "wrong format headers JSON");
 		goto err;
 	}
 
@@ -439,7 +439,7 @@ static bool pv_signature_verify_rs256(const char *payload, struct pv_signature *
 
 	mbedtls_pk_init(&pk);
 
-	if (mbedtls_pk_parse_public_keyfile(&pk, "/etc/pvs/pub.pem")) {
+	if (mbedtls_pk_parse_public_keyfile(&pk, "/etc/pantavisor/pvs/pub.pem")) {
 		pv_log(ERROR, "cannot read public key");
 		goto out;
 	}
@@ -565,7 +565,7 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 
 	headers = pv_signature_parse_protected(signature->protected);
 	if (!headers) {
-		pv_log(ERROR, "could not parse protected json");
+		pv_log(ERROR, "could not parse protected JSON");
 		goto out;
 	}
 
@@ -580,7 +580,7 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256", strlen("RS256"))) {
 		ret = pv_signature_verify_rs256(payload, signature);
 	} else {
-		pv_log(ERROR, "unknown algorithm in protected json %s", headers->alg);
+		pv_log(ERROR, "unknown algorithm in protected JSON %s", headers->alg);
 	}
 out:
 	if (headers)
@@ -611,7 +611,7 @@ static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 	}
 
 	if (!found)
-		pv_log(DEBUG, "no json with %s specification found in revision", SPEC_PVS2);
+		pv_log(DEBUG, "no JSON with %s specification found in revision", SPEC_PVS2);
 
 	ret = true;
 
@@ -626,7 +626,7 @@ static bool pv_signature_all_covered(struct dl_list *json_pairs)
 	bool ret = true;
 	struct pv_signature_pair *pair, *tmp;
 
-	pv_log(DEBUG, "checking all state json items are covered by signatures");
+	pv_log(DEBUG, "checking all state JSON items are covered by signatures");
 
 	dl_list_for_each_safe(pair, tmp, json_pairs,
 		struct pv_signature_pair, list) {
@@ -639,6 +639,9 @@ static bool pv_signature_all_covered(struct dl_list *json_pairs)
 		}
 	}
 
+	if (ret)
+		pv_log(DEBUG, "state JSON coverage OK");
+
 	return ret;
 }
 
@@ -650,7 +653,7 @@ bool pv_signature_verify(const char *json)
 	if (pv_config_get_secureboot_mode() == SB_DISABLED)
 		return true;
 
-	pv_log(DEBUG, "verifying signatures of state json");
+	pv_log(DEBUG, "verifying signatures of state JSON");
 
 	dl_list_init(&json_pairs);
 
