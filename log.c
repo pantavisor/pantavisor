@@ -363,6 +363,7 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(DEBUG, "c->storage.opts = '%s'", pv_config_get_storage_opts());
 	pv_log(DEBUG, "c->storage.mntpoint = '%s'", pv_config_get_storage_mntpoint());
 	pv_log(DEBUG, "c->storage.mnttype = '%s'", pv_config_get_storage_mnttype());
+	pv_log(DEBUG, "c->secureboot.mode = '%d'", pv_config_get_secureboot_mode());
 	pv_log(DEBUG, "c->creds.host = '%s'", pv_config_get_creds_host());
 	pv_log(DEBUG, "c->creds.port = '%d'", pv_config_get_creds_port());
 	pv_log(DEBUG, "c->creds.host_proxy = '%s'", pv_config_get_creds_host_proxy());

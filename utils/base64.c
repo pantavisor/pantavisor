@@ -35,6 +35,8 @@ static char* pv_base64_padding_multi4(char *str)
 	int old_len = strlen(str), padding = 0, new_len;
 	switch (old_len % 4)
 	{
+		case 0:
+			return str;
 		case 2:
 			padding = 2;
 			break;
@@ -42,7 +44,7 @@ static char* pv_base64_padding_multi4(char *str)
 			padding = 1;
 			break;
 		default:
-			pv_log(ERROR, "wrong base64 encoded input");
+			pv_log(WARN, "wrong base64 encoded input");
 			return str;
 	}
 
