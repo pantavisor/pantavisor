@@ -30,6 +30,7 @@
 #include "jsons.h"
 #include "addons.h"
 #include "pantavisor.h"
+#include "storage.h"
 
 #define MODULE_NAME             "state"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -403,4 +404,18 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 state_spec_t pv_state_spec(struct pv_state *s)
 {
 	return s->spec;
+}
+
+bool pv_state_validate_object_checksum(struct pv_state *s)
+{
+	struct pv_object *o;
+	pv_objects_iter_begin(s, o) {
+		if (pv_storage_validate_file_checksum(o->objpath, o->id) < 0) {
+			pv_log(ERROR, "object %s with checksum %s failed", o->objpath, o->id);
+			return false;
+		}
+	}
+	pv_objects_iter_end;
+
+	return true;
 }
