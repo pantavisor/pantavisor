@@ -62,7 +62,7 @@ void pv_platform_free(struct pv_platform *p);
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
-struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name);
+struct pv_platform* pv_platform_get_by_name(struct pv_state *s, const char *name);
 
 void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_default_runlevel(struct pv_state *s);

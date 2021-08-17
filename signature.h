@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,25 +19,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_SIGNATURE_H
+#define PV_SIGNATURE_H
 
-#ifndef PV_JSONS_H
-#define PV_JSONS_H
-
-#include "utils/list.h"
 #include "state.h"
 
-struct pv_json {
-	char *name;
-	char *value;
-	struct pv_platform *plat;
-	struct dl_list list;
-};
+bool pv_signature_verify(const char *json);
 
-struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value);
-void pv_jsons_remove(struct pv_json *j);
-struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name);
-void pv_jsons_empty(struct pv_state *s);
-
-void pv_jsons_free(struct pv_json *json);
-
-#endif // PV_JSONS_H
+#endif // PV_SIGNATURE_H

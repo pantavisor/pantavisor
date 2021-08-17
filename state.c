@@ -174,7 +174,7 @@ static void pv_state_remove_platforms(struct pv_state *out)
 
 		pv_log(DEBUG, "removing json %s linked to platform %s from rev %s", j->name, j->plat->name, out->rev);
 		dl_list_del(&j->list);
-		pv_json_free(j);
+		pv_jsons_free(j);
 	}
 
 	// remove existing objects from out

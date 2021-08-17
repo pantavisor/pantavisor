@@ -116,7 +116,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 	return p;
 }
 
-struct pv_platform* pv_platform_get_by_name(struct pv_state *s, char *name)
+struct pv_platform* pv_platform_get_by_name(struct pv_state *s, const char *name)
 {
 
 	struct pv_platform *p, *tmp;

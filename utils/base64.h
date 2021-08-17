@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,24 +20,10 @@
  * SOFTWARE.
  */
 
-#ifndef PV_JSONS_H
-#define PV_JSONS_H
+#ifndef UTILS_BASE64_H_
+#define UTILS_BASE64_H_
 
-#include "utils/list.h"
-#include "state.h"
+int pv_base64_url_decode(const char *scr, char **dst, size_t *olen);
+int pv_base64_url_encode(const char *str, char **dst, size_t *olen);
 
-struct pv_json {
-	char *name;
-	char *value;
-	struct pv_platform *plat;
-	struct dl_list list;
-};
-
-struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value);
-void pv_jsons_remove(struct pv_json *j);
-struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name);
-void pv_jsons_empty(struct pv_state *s);
-
-void pv_jsons_free(struct pv_json *json);
-
-#endif // PV_JSONS_H
+#endif /* UTILS_BASE64_H_ */

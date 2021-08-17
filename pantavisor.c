@@ -58,7 +58,9 @@
 #include "storage.h"
 #include "tsh.h"
 #include "metadata.h"
+#include "signature.h"
 #include "ph_logger/ph_logger.h"
+#include "parser/parser.h"
 
 #define MODULE_NAME             "controller"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -179,6 +181,8 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 static pv_state_t _pv_run(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+	pv_state_t next_state = PV_STATE_ROLLBACK;
+	char *json = NULL;
 	struct timespec tp;
 	int runlevel = RUNLEVEL_ROOT;
 
@@ -186,7 +190,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	runlevel = pv_update_resume(pv);
 	if (runlevel < RUNLEVEL_ROOT) {
 		pv_log(ERROR, "update could not be resumed");
-		return PV_STATE_ROLLBACK;
+		goto out;
 	}
 
 	if (pv_update_is_transitioning(pv->update)) {
@@ -197,7 +201,12 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_state_transfer(pv->update->pending, pv->state);
 	} else {
 		// after a reboot...
-		pv->state = pv_storage_get_state(pv, pv_bootloader_get_rev());
+		json = pv_storage_get_state_json(pv_bootloader_get_rev());
+		if (!pv_signature_verify(json)) {
+			pv_log(ERROR, "state signature verification went wrong");
+			goto out;
+		}
+		pv->state = pv_parser_get_state(json, pv_bootloader_get_rev());
 		if (pv->update)
 			pv->update->pending = pv->state;
 	}
@@ -205,7 +214,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (!pv->state)
 	{
 		pv_log(ERROR, "state could not be loaded");
-		return PV_STATE_ROLLBACK;
+		goto out;
 	}
 
 	// set factory revision progress
@@ -240,17 +249,17 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// start up volumes and platforms
 	if (pv_volumes_mount(pv, runlevel) < 0) {
 		pv_log(ERROR, "error mounting volumes");
-		return PV_STATE_ROLLBACK;
+		goto out;
 	}
 
 	if (pv_storage_make_config(pv) < 0) {
 		pv_log(ERROR, "error making config");
-		return PV_STATE_ROLLBACK;
+		goto out;
 	}
 
 	if (pv_platforms_start(pv, runlevel) < 0) {
 		pv_log(ERROR, "error starting platforms");
-		return PV_STATE_ROLLBACK;
+		goto out;
 	}
 
 	// set active only after plats have been started
@@ -262,7 +271,12 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	commit_delay = 0;
 	rollback_time = tp.tv_sec + pv_config_get_updater_network_timeout();
 
-	return PV_STATE_WAIT;
+	next_state = PV_STATE_WAIT;
+out:
+	if (json)
+		free(json);
+
+	return next_state;
 }
 
 static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
@@ -482,44 +496,13 @@ out:
 
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
-	char *rev;
 	struct pv_cmd *cmd = pv->cmd;
-	struct pv_state *new;
 	pv_state_t next_state = PV_STATE_WAIT;
 
 	if (!cmd)
 		return PV_STATE_WAIT;
 
 	switch (cmd->op) {
-	case CMD_TRY_ONCE:
-		rev = cmd->payload;
-
-		// lets not tryonce factory
-		if (!strncmp(rev, "0", sizeof("0")))
-			goto out;
-
-		// load try state
-		new = pv_storage_get_state(pv, rev);
-		if (!new) {
-			pv_log(DEBUG, "invalid rev requested %s", rev);
-			goto out;
-		}
-
-		// stop current step
-		if (pv_platforms_stop(pv, 0) < 0) {
-			next_state = PV_STATE_ROLLBACK;
-			goto out;
-		}
-		if (pv_volumes_unmount(pv, 0) < 0) {
-			next_state = PV_STATE_ROLLBACK;
-			goto out;
-		}
-
-		pv->state = new;
-		pv_storage_meta_link_boot(pv, NULL);
-		pv_storage_meta_set_tryonce(pv, 1);
-		next_state = PV_STATE_RUN;
-		break;
 	case CMD_UPDATE_METADATA:
 		if (pv->remote_mode) {
 			pv_log(DEBUG, "metadata command with payload '%s' received. Parsing metadata...",

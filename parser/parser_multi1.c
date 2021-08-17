@@ -244,7 +244,7 @@ out:
 	return 0;
 }
 
-struct pv_state* multi1_parse(struct pantavisor *pv, struct pv_state *this, char *buf)
+struct pv_state* multi1_parse(struct pv_state *this, const char *buf)
 {
 	int tokc, ret, count, n;
 	char *key = 0, *value = 0, *ext = 0;
@@ -335,7 +335,7 @@ out:
 	return this;
 }
 
-char* multi1_parse_initrd_config_name(char *buf)
+char* multi1_parse_initrd_config_name(const char *buf)
 {
 	return NULL;
 }

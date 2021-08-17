@@ -50,7 +50,7 @@ struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value)
 void pv_jsons_remove(struct pv_json *j)
 {
 	dl_list_del(&j->list);
-	pv_json_free(j);
+	pv_jsons_free(j);
 }
 
 struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name)
@@ -66,7 +66,7 @@ struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name)
 	return NULL;
 }
 
-void pv_json_free(struct pv_json *json)
+void pv_jsons_free(struct pv_json *json)
 {
 	if (json->name)
 		free(json->name);
@@ -85,7 +85,7 @@ void pv_jsons_empty(struct pv_state *s)
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_json, list) {
 		dl_list_del(&curr->list);
-		pv_json_free(curr);
+		pv_jsons_free(curr);
 		num_obj++;
 	}
 

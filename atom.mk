@@ -51,6 +51,7 @@ LOCAL_SRC_FILES := init.c \
 			platforms.c \
 			addons.c \
 			volumes.c \
+			signature.c \
 			parser/parser.c \
 			parser/parser_multi1.c \
 			parser/parser_system1.c \
@@ -60,6 +61,7 @@ LOCAL_SRC_FILES := init.c \
 			utils/strrep.c \
 			utils/json.c \
 			utils/fops.c \
+			utils/base64.c \
 			jsons.c \
 			pantahub.c \
 			updater.c \

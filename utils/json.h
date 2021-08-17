@@ -26,10 +26,10 @@
 #include <jsmn/jsmnutil.h>
 
 
-int pv_json_get_key_count(char *buf, char *key, jsmntok_t *tok, int tokc);
-char* pv_json_get_one_str(char *buf, jsmntok_t **tok);
-char* pv_json_format(char *buf, int len);
-int pv_json_get_value_int(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* pv_json_get_value(char *buf, char *key, jsmntok_t* tok, int tokc);
-char* pv_json_array_get_one_str(char *buf, int *n, jsmntok_t **tok);
+int pv_json_get_key_count(const char *buf, const char *key, jsmntok_t *tok, int tokc);
+char* pv_json_get_one_str(const char *buf, jsmntok_t **tok);
+char* pv_json_format(const char *buf, int len);
+int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t* tok, int tokc);
+char* pv_json_get_value(const char *buf, const char *key, jsmntok_t* tok, int tokc);
+char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
 #endif /* UTILS_PV_JSON_H_ */
