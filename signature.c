@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <libgen.h>
+#include <fnmatch.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/md_internal.h>
 
@@ -313,26 +314,11 @@ static void pv_signature_include_files(const char *json,
 
 	t = tokv+1;
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
-		if (pv_str_endswith("/**", strlen("/**"), str, strlen(str))) {
-			// if ** is in include, get path and set everything as included
-			path = strdup(str);
-			path = dirname(path);
-			dl_list_for_each_safe(pair, tmp, json_pairs,
-					struct pv_signature_pair, list) {
-				if (pv_str_startswith(path, strlen(path), pair->key)) {
-					pair->included = include;
-					pair->covered = true;
-				}
-			}
-		} else {
-			// if none of the above, include the pair that matches
-			dl_list_for_each_safe(pair, tmp, json_pairs,
-					struct pv_signature_pair, list) {
-				if (pv_str_matches(str, strlen(str), pair->key, strlen(pair->key))) {
-					pair->included = include;
-					pair->covered = true;
-					break;
-				}
+		dl_list_for_each_safe(pair, tmp, json_pairs,
+				struct pv_signature_pair, list) {
+			if (!fnmatch(str, pair->key, 0)) {
+				pair->included = include;
+				pair->covered = true;
 			}
 		}
 
@@ -476,12 +462,9 @@ static bool pv_signature_verify_rs256(const char *payload, struct pv_signature *
 		goto out;
 	}
 
-	if (olen != 256) {
-		pv_log(ERROR, "signature does not have the expected length of 256");
-		goto out;
-	}
+	pv_log(DEBUG, "signature length is %d", olen);
 
-	res = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, 0, (unsigned char*)sig_decoded, 256);
+	res = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, 0, (unsigned char*)sig_decoded, olen);
 	if (res) {
 		pv_log(ERROR, "verification returned error code %d", res);
 		goto out;
