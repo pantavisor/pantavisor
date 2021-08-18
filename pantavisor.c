@@ -563,6 +563,10 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update)
 			next_state = PV_STATE_UPDATE;
 		break;
+	case CMD_RUN_GC:
+		pv_log(DEBUG, "run garbage collector reveived. Running...");
+		pv_storage_gc_run(pv);
+		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
