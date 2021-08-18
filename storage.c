@@ -75,7 +75,6 @@ static int remove_in(char *path, char *dirname)
 	n = scandir(full_path, &d, NULL, alphasort);
 
 	if (n < 0) {
-		pv_log(WARN, "attempted to remove %s", full_path);
 		goto out;
 	}
 
@@ -84,18 +83,14 @@ static int remove_in(char *path, char *dirname)
 		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
 			continue;
 		// first try to remove it as a file
-		if (!remove_at(full_path, d[n]->d_name))
-			pv_log(DEBUG, "remove '%s'", d[n]->d_name)
-		// remove it as a dir if not a file
-		else
+		if (remove_at(full_path, d[n]->d_name))
+			// remove it as a dir if not a file
 			remove_in(full_path, d[n]->d_name);
 		free(d[n]);
 	}
 	free(d);
 
-	if (!remove(full_path))
-		pv_log(DEBUG, "remove '%s'", full_path)
-	else
+	if (remove(full_path))
 		pv_log(WARN, "attempted to remove %s", full_path);
 
 out:
@@ -153,7 +148,7 @@ void pv_storage_rm_rev(struct pantavisor *pv, const char *rev)
 	char path[PATH_MAX];
 	char revision[PATH_MAX];
 
-	pv_log(DEBUG, "Removing rev=%s", rev);
+	pv_log(DEBUG, "removing revision %s from disk", rev);
 
 	sprintf(revision, "%s", rev);
 
@@ -274,6 +269,7 @@ int pv_storage_gc_run(struct pantavisor *pv)
 		// dont reclaim current, locals, update, last booted up revisions or factory if configured
 		if (!strncmp(r->path, "..", len) ||
 			!strncmp(r->path, ".", len) ||
+			!strncmp(r->path, "current", len) ||
 			!strncmp(r->path, "locals", len) ||
 			!strncmp(r->path, "locals/..", len) ||
 			!strncmp(r->path, "locals/.", len) ||
