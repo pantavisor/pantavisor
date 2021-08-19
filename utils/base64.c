@@ -30,7 +30,7 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-static char* pv_base64_padding_multi4(char *str)
+static char* pv_base64_add_padding_multi4(char *str)
 {
 	int old_len = strlen(str), padding = 0, new_len;
 	switch (old_len % 4)
@@ -57,6 +57,19 @@ static char* pv_base64_padding_multi4(char *str)
 	return str;
 }
 
+static char *pv_base64_remove_padding_multi4(char *str)
+{
+	int len = strlen(str);
+	for (int i = 0; i < len; i++) {
+		if (str[i] == '=') {
+			str[i] = '\0';
+			break;
+		}
+	}
+
+	return str;
+}
+
 int pv_base64_url_decode(const char *scr, char **dst, size_t *olen)
 {
 	int res;
@@ -67,7 +80,7 @@ int pv_base64_url_decode(const char *scr, char **dst, size_t *olen)
 	if (*dst)
 		goto err;
 
-	itmp = pv_base64_padding_multi4(itmp);
+	itmp = pv_base64_add_padding_multi4(itmp);
 
 	ilen = strlen(itmp);
 	len = ((4 * ilen / 3) + 3) & ~3;
@@ -126,6 +139,8 @@ int pv_base64_url_encode(const char *scr, char **dst, size_t *olen)
 		if ((*dst)[i] == '+')
 			(*dst)[i] = '-';
 	}
+
+	*dst = pv_base64_remove_padding_multi4(*dst);
 
 	return 0;
 err:

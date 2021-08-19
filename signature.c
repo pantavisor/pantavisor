@@ -558,7 +558,7 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 		goto out;
 	}
 
-	pv_log(DEBUG, "filtered json %s", payload);
+	pv_log(DEBUG, "filtered json '%s'", payload);
 
 	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256", strlen("RS256"))) {
 		ret = pv_signature_verify_rs256(payload, signature);
