@@ -498,6 +498,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 {
 	struct pv_cmd *cmd = pv->cmd;
 	pv_state_t next_state = PV_STATE_WAIT;
+	char *rev;
 
 	if (!cmd)
 		return PV_STATE_WAIT;
@@ -552,8 +553,13 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			goto out;
 		}
 
-		pv_log(DEBUG, "make factory received. Transferring current revision to remote revision 0");
-		if (pv_storage_update_factory() < 0) {
+		if (strlen(cmd->payload) > 0)
+			rev = cmd->payload;
+		else
+			rev = pv->state->rev;
+
+		pv_log(DEBUG, "make factory received. Transferring revision %s to remote revision 0", rev);
+		if (pv_storage_update_factory(rev) < 0) {
 			pv_log(ERROR, "cannot update factory revision");
 			goto out;
 		}
