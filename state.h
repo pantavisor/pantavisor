@@ -64,6 +64,6 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);
 
 state_spec_t pv_state_spec(struct pv_state *s);
 
-bool pv_state_validate_object_checksum(struct pv_state *s);
+bool pv_state_validate_checksum(struct pv_state *s);
 
 #endif
