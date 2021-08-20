@@ -30,6 +30,7 @@
 #include "jsons.h"
 #include "addons.h"
 #include "pantavisor.h"
+#include "storage.h"
 
 #define MODULE_NAME             "state"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -403,4 +404,28 @@ int pv_state_compare_states(struct pv_state *pending, struct pv_state *current)
 state_spec_t pv_state_spec(struct pv_state *s)
 {
 	return s->spec;
+}
+
+bool pv_state_validate_checksum(struct pv_state *s)
+{
+	struct pv_object *o;
+	struct pv_json *j;
+
+	pv_objects_iter_begin(s, o) {
+		if (!pv_storage_validate_trails_object_checksum(s->rev, o->name, o->id)) {
+			pv_log(ERROR, "object %s with checksum %s failed", o->name, o->id);
+			return false;
+		}
+	}
+	pv_objects_iter_end;
+
+	pv_jsons_iter_begin(s, j) {
+		if (!pv_storage_validate_trails_json_value(s->rev, j->name, j->value)) {
+			pv_log(ERROR, "json %s with value %s failed", j->name, j->value);
+			return false;
+		}
+	}
+	pv_objects_iter_end;
+
+	return true;
 }

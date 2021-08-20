@@ -211,9 +211,13 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 			pv->update->pending = pv->state;
 	}
 
-	if (!pv->state)
-	{
+	if (!pv->state) {
 		pv_log(ERROR, "state could not be loaded");
+		goto out;
+	}
+
+	if (!pv_state_validate_checksum(pv->state)) {
+		pv_log(ERROR, "state objects validation went wrong");
 		goto out;
 	}
 
