@@ -314,11 +314,26 @@ static void pv_signature_include_files(const char *json,
 
 	t = tokv+1;
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
-		dl_list_for_each_safe(pair, tmp, json_pairs,
-				struct pv_signature_pair, list) {
-			if (!fnmatch(str, pair->key, 0)) {
-				pair->included = include;
-				pair->covered = true;
+		if (pv_str_endswith("/**", strlen("/**"), str, strlen(str))) {
+			// if ** is in include, get path and set everything as included
+			path = strdup(str);
+			path = dirname(path);
+			dl_list_for_each_safe(pair, tmp, json_pairs,
+					struct pv_signature_pair, list) {
+				if (pv_str_startswith(path, strlen(path), pair->key)) {
+					pair->included = include;
+					pair->covered = true;
+				}
+			}
+		} else {
+			// if none of the above, include the pair that matches
+			dl_list_for_each_safe(pair, tmp, json_pairs,
+					struct pv_signature_pair, list) {
+				if (!fnmatch(str, pair->key, FNM_PATHNAME)) {
+					pair->included = include;
+					pair->covered = true;
+					break;
+				}
 			}
 		}
 
@@ -397,8 +412,15 @@ static char* pv_signature_get_json_files(struct dl_list *json_pairs)
 		i++;
 	}
 
-	out[len - 2] = '}';
-	out[len - 1] = '\0';
+	if (len > 2) {
+		out[len - 2] = '}';
+		out[len - 1] = '\0';
+	} else {
+		out = realloc(out, 3);
+		out[0] = '{';
+		out[1] = '}';
+		out[2] = '\0';
+	}
 
 	return out;
 }
@@ -507,12 +529,6 @@ static void pv_signature_parse_json(const char *json, struct dl_list *json_pairs
 		pair = calloc(1, sizeof(struct pv_signature_pair));
 		if (!pair)
 			goto out;
-
-		// discard #spec
-		if (pv_str_matches(json+(*k)->start, n, "#spec", strlen("#spec"))) {
-			k++;
-			continue;
-		}
 
 		// copy key
 		pair->key = calloc(1, n+1);
