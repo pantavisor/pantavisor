@@ -423,33 +423,31 @@ out:
 
 void pv_storage_set_active(struct pantavisor *pv)
 {
-	struct stat st;
-	char *path = NULL, *cur = NULL;
+	char *path = NULL, *cur = NULL, *pdir = NULL;
 
 	path = calloc(1, PATH_MAX);
 	cur = calloc(1, PATH_MAX);
-	if (!path || !cur)
+	pdir = calloc(1, PATH_MAX);
+	if (!path || !cur || !pdir)
 		goto out;
 
-	// path to current revision
-	sprintf(path, "%s/trails/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
-
-	sprintf(cur, "%s/trails/current", pv_config_get_storage_mntpoint());
+	// path to current revision - relative and dir for fd
+	sprintf(pdir, "%s/trails/", pv_config_get_storage_mntpoint());
+	sprintf(path, "%s%s", pdir, pv->state->rev);
+	sprintf(cur, "%s" "current", pdir);
 	unlink(cur);
+	symlink(path + strlen(pdir), cur);
 
-	if (!stat(path, &st))
-		symlink(path, cur);
-
-	// path to current logs
-	sprintf(path, "%s/logs/%s", pv_config_get_storage_mntpoint(), pv->state->rev);
-
-	sprintf(cur, "%s/logs/current", pv_config_get_storage_mntpoint());
+	// path to current logs - relative and fd for dir
+	sprintf(pdir, "%s/logs/", pv_config_get_storage_mntpoint());
+	sprintf(path, "%s%s", pdir, pv->state->rev);
+	sprintf(cur, "%scurrent", pdir);
 	unlink(cur);
-
-	if (!stat(path, &st))
-		symlink(path, cur);
+	symlink(path + strlen(pdir), cur);
 
 out:
+	if (pdir)
+		free(pdir);
 	if (cur)
 		free(cur);
 	if (path)
