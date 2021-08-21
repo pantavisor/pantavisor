@@ -293,6 +293,7 @@ static void pv_signature_include_files(const char *json,
 	char *str = NULL, *path = NULL;
 	int tokc, size;
 	jsmntok_t *tokv, *t;
+	int fnflags;
 	struct pv_signature_pair *pair, *tmp;
 
 	if (include) {
@@ -314,26 +315,27 @@ static void pv_signature_include_files(const char *json,
 
 	t = tokv+1;
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
-		if (pv_str_endswith("/**", strlen("/**"), str, strlen(str))) {
-			// if ** is in include, get path and set everything as included
+		fnflags = FNM_PATHNAME;
+
+		if (pv_str_matches("**", 2, str, strlen(str))) {
+			path = strdup("");
+			fnflags |= FNM_LEADING_DIR;
+		} else if (pv_str_endswith("/**", strlen("/**"), str, strlen(str))) {
+			// if ** is in include, set path for fnmatch w/ FNM_LEADING_DIR
 			path = strdup(str);
 			path = dirname(path);
-			dl_list_for_each_safe(pair, tmp, json_pairs,
-					struct pv_signature_pair, list) {
-				if (pv_str_startswith(path, strlen(path), pair->key)) {
-					pair->included = include;
-					pair->covered = true;
-				}
-			}
+			fnflags |= FNM_LEADING_DIR;
 		} else {
-			// if none of the above, include the pair that matches
-			dl_list_for_each_safe(pair, tmp, json_pairs,
-					struct pv_signature_pair, list) {
-				if (!fnmatch(str, pair->key, FNM_PATHNAME)) {
-					pair->included = include;
-					pair->covered = true;
-					break;
-				}
+			// boaring dup
+			path = strdup(str);
+		}
+
+		// if none of the above, include the pair that matches
+		dl_list_for_each_safe(pair, tmp, json_pairs,
+				struct pv_signature_pair, list) {
+			if (!fnmatch(path, pair->key, fnflags)) {
+				pair->included = include;
+				pair->covered = true;
 			}
 		}
 
