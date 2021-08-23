@@ -52,7 +52,6 @@
 #include "state.h"
 #include "parser/parser.h"
 #include "utils/json.h"
-#include "utils/str.h"
 
 #define MODULE_NAME             "storage"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -420,50 +419,6 @@ out:
 	close (fd);
 
 	return ret;
-}
-
-bool pv_storage_validate_trails_object_checksum(const char *rev, const char *name, char *checksum)
-{
-	int len;
-	char path[PATH_MAX];
-
-	len = strlen("%s/trails/%s/%s") +
-		strlen(pv_config_get_storage_mntpoint()) +
-		strlen(rev) +
-		strlen(name);
-	snprintf(path, len, "%s/trails/%s/%s",
-		pv_config_get_storage_mntpoint(),
-		rev,
-		name);
-
-	pv_log(DEBUG, "validating checksum for object %s", path);
-	return !pv_storage_validate_file_checksum(path, checksum);
-}
-
-bool pv_storage_validate_trails_json_value(const char *rev, const char *name, char *val)
-{
-	int len;
-	char path[PATH_MAX];
-	char *buf;
-
-	len = strlen("%s/trails/%s/%s") +
-		strlen(pv_config_get_storage_mntpoint()) +
-		strlen(rev) +
-		strlen(name);
-	snprintf(path, len, "%s/trails/%s/%s",
-		pv_config_get_storage_mntpoint(),
-		rev,
-		name);
-
-	buf = pv_storage_load_file(NULL, path, 0);
-	if (!buf) {
-		pv_log(ERROR, "could not find %s", path);
-		return false;
-	}
-
-	pv_log(DEBUG, "validating value for json %s", path);
-	return pv_str_matches(val, strlen(val), buf, strlen(buf));
-
 }
 
 void pv_storage_set_active(struct pantavisor *pv)
