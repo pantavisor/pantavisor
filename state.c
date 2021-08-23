@@ -406,22 +406,12 @@ state_spec_t pv_state_spec(struct pv_state *s)
 	return s->spec;
 }
 
-bool pv_state_validate_checksum(struct pv_state *s)
+bool pv_state_validate_object_checksum(struct pv_state *s)
 {
 	struct pv_object *o;
-	struct pv_json *j;
-
 	pv_objects_iter_begin(s, o) {
-		if (!pv_storage_validate_trails_object_checksum(s->rev, o->name, o->id)) {
-			pv_log(ERROR, "object %s with checksum %s failed", o->name, o->id);
-			return false;
-		}
-	}
-	pv_objects_iter_end;
-
-	pv_jsons_iter_begin(s, j) {
-		if (!pv_storage_validate_trails_json_value(s->rev, j->name, j->value)) {
-			pv_log(ERROR, "json %s with value %s failed", j->name, j->value);
+		if (pv_storage_validate_file_checksum(o->objpath, o->id) < 0) {
+			pv_log(ERROR, "object %s with checksum %s failed", o->objpath, o->id);
 			return false;
 		}
 	}
