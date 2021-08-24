@@ -216,7 +216,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (!pv_state_validate_object_checksum(pv->state)) {
+	if (!pv_state_validate_checksum(pv->state)) {
 		pv_log(ERROR, "state objects validation went wrong");
 		goto out;
 	}
