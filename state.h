@@ -32,11 +32,18 @@ typedef enum {
 } state_spec_t ;
 
 struct pv_bsp {
-	char *kernel;
-	char *fdt;
+	union {
+		struct {
+			char *initrd;
+			char *kernel;
+			char *fdt;
+		} std;
+		struct {
+			char *fit;
+		} ut;
+	} img;
 	char *firmware;
 	char *modules;
-	char *initrd;
 };
 
 struct pv_state {

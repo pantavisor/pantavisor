@@ -78,12 +78,15 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
-	s->bsp.kernel = pv_json_get_value(buf, "linux", tokv, tokc);
-	s->bsp.fdt = pv_json_get_value(buf, "fdt", tokv, tokc);
-	s->bsp.initrd = pv_json_get_value(buf, "initrd", tokv, tokc);
+	s->bsp.img.ut.fit = pv_json_get_value(buf, "fit", tokv, tokc);
+	if (!s->bsp.img.ut.fit) {
+		s->bsp.img.std.kernel = pv_json_get_value(buf, "linux", tokv, tokc);
+		s->bsp.img.std.fdt = pv_json_get_value(buf, "fdt", tokv, tokc);
+		s->bsp.img.std.initrd = pv_json_get_value(buf, "initrd", tokv, tokc);
+	}
 	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
 
-	if (!s->bsp.kernel || !s->bsp.initrd)
+	if ((!s->bsp.img.std.kernel || !s->bsp.img.std.initrd) && !s->bsp.img.ut.fit)
 		goto out;
 
 	// get addons and create empty items

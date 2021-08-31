@@ -66,16 +66,18 @@ void pv_state_free(struct pv_state *s)
 
 	if (s->rev)
 		free(s->rev);
-	if (s->bsp.kernel)
-		free(s->bsp.kernel);
-	if (s->bsp.fdt)
-		free(s->bsp.fdt);
+	if (s->bsp.img.ut.fit)
+		free(s->bsp.img.ut.fit);
+	if (s->bsp.img.std.kernel)
+		free(s->bsp.img.std.kernel);
+	if (s->bsp.img.std.fdt)
+		free(s->bsp.img.std.fdt);
 	if (s->bsp.firmware)
 		free(s->bsp.firmware);
 	if (s->bsp.modules)
 		free(s->bsp.modules);
-	if (s->bsp.initrd)
-		free(s->bsp.initrd);
+	if (s->bsp.img.std.initrd)
+		free(s->bsp.img.std.initrd);
 
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
@@ -95,8 +97,8 @@ void pv_state_print(struct pv_state *s)
 		return;
 
 	pv_log(DEBUG, "state %s:", s->rev);
-	pv_log(DEBUG, " kernel: '%s'", s->bsp.kernel);
-	pv_log(DEBUG, " initrd: '%s'", s->bsp.initrd);
+	pv_log(DEBUG, " kernel: '%s'", s->bsp.img.std.kernel);
+	pv_log(DEBUG, " initrd: '%s'", s->bsp.img.std.initrd);
 	struct pv_platform *p, *tmp_p;
     struct dl_list *platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp_p, platforms,

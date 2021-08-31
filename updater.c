@@ -1273,8 +1273,14 @@ out:
 
 static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 {
-	if (strcmp(pv->state->bsp.kernel, obj->name))
-		return 0;
+	if (pv->state->bsp.img.std.kernel) {
+		if (strcmp(pv->state->bsp.img.std.kernel, obj->name))
+			return 0;
+	}
+	else {
+		if (strcmp(pv->state->bsp.img.ut.fit, obj->name))
+			return 0;
+	}
 
 	if (pv_config_get_bl_type() == BL_UBOOT_PVK)
 		return 1;
@@ -1685,10 +1691,18 @@ static int trail_download_objects(struct pantavisor *pv)
 	if (trail_check_update_size(pv))
 		return -1;
 
-	k_new = pv_objects_get_by_name(u->pending,
-			u->pending->bsp.kernel);
-	k_old = pv_objects_get_by_name(pv->state,
-			pv->state->bsp.kernel);
+	if (pv->state->bsp.img.std.kernel) {
+		k_new = pv_objects_get_by_name(u->pending,
+				u->pending->bsp.img.std.kernel);
+		k_old = pv_objects_get_by_name(pv->state,
+				pv->state->bsp.img.std.kernel);
+	}
+	else {
+		k_new = pv_objects_get_by_name(u->pending,
+				u->pending->bsp.img.ut.fit);
+		k_old = pv_objects_get_by_name(pv->state,
+				pv->state->bsp.img.ut.fit);
+	}
 
 	if (u->total_update) {
 		u->total_update->object_name = "total";
