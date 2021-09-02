@@ -422,6 +422,24 @@ out:
 	return ret;
 }
 
+
+bool pv_storage_validate_objects_object_checksum(char *checksum)
+{
+	int len;
+	char path[PATH_MAX];
+
+	len = strlen("%s/objects/%s") +
+		strlen(pv_config_get_storage_mntpoint()) +
+		strlen(checksum);
+	snprintf(path, len, "%s/objects/%s",
+		 pv_config_get_storage_mntpoint(),
+		 checksum);
+
+	pv_log(DEBUG, "validating checksum for object %s", path);
+	return !pv_storage_validate_file_checksum(path, checksum);
+}
+
+
 bool pv_storage_validate_trails_object_checksum(const char *rev, const char *name, char *checksum)
 {
 	int len;
