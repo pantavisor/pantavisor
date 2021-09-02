@@ -571,8 +571,9 @@ int pv_storage_make_config(struct pantavisor *pv)
 	sprintf(srcpath, "%s/trails/%s/_config/", pv_config_get_storage_mntpoint(), pv->state->rev);
 	sprintf(targetpath, "/configs/");
 
-	if (stat(targetpath, &st))
-		mkdir_p(targetpath, 0755);
+	if (!stat(targetpath, &st))
+		sprintf(cmd, "/bin/rm -rf %s/*", targetpath);
+	mkdir_p(targetpath, 0755);
 
 	memset(&st, '\0', sizeof(st));
 
