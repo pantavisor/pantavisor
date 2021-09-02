@@ -412,7 +412,13 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	struct pv_json *j;
 
 	pv_objects_iter_begin(s, o) {
+		/* validate instance in $rev/trails/$name to match */
 		if (!pv_storage_validate_trails_object_checksum(s->rev, o->name, o->id)) {
+			pv_log(ERROR, "trails object %s with checksum %s failed", o->name, o->id);
+			return false;
+		}
+		/* validate object in pool to match */
+		if (!pv_storage_validate_objects_object_checksum(o->id)) {
 			pv_log(ERROR, "object %s with checksum %s failed", o->name, o->id);
 			return false;
 		}
