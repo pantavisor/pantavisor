@@ -34,9 +34,9 @@ typedef enum {
 struct pv_bsp {
 	union {
 		struct {
-			char *initrd;
 			char *kernel;
 			char *fdt;
+			char *initrd;
 		} std;
 		struct {
 			char *fit;
