@@ -918,17 +918,6 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		break;
 	}
 
-	// initrd
-	sprintf(dst, "%s/trails/%s/.pv/", pv_config_get_storage_mntpoint(), s->rev);
-	sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.img.std.initrd);
-
-	mkdir_p(dst, 0755);
-	strcat(dst, "pv-initrd.img");
-
-	remove(dst);
-	if (link(src, dst) < 0)
-		goto err;
-
 	// addons
 	i = 0;
 	addons = &s->addons;
@@ -943,16 +932,17 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 			goto err;
 	}
 
-	if (s->bsp.img.ut.fit) {
-		// pantavisor.fit
-		sprintf(dst, "%s/trails/%s/.pv/pantavisor.fit", pv_config_get_storage_mntpoint(), s->rev);
-		sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.img.ut.fit);
+	sprintf(dst, "%s/trails/%s/.pv/", pv_config_get_storage_mntpoint(), s->rev);
+	mkdir_p(dst, 0755);
+	if (s->bsp.img.std.initrd) {
+		// initrd
+		sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.img.std.initrd);
+		strcat(dst, "pv-initrd.img");
 
 		remove(dst);
 		if (link(src, dst) < 0)
 			goto err;
-	}
-	else {
+
 		// kernel
 		sprintf(dst, "%s/trails/%s/.pv/pv-kernel.img", pv_config_get_storage_mntpoint(), s->rev);
 		sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.img.std.kernel);
@@ -970,8 +960,15 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 			if (link(src, dst) < 0)
 				goto err;
 		}
-	}
+	} else {
+		// pantavisor.fit
+		sprintf(dst, "%s/trails/%s/.pv/pantavisor.fit", pv_config_get_storage_mntpoint(), s->rev);
+		sprintf(src, "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.img.ut.fit);
 
+		remove(dst);
+		if (link(src, dst) < 0)
+			goto err;
+	}
 
 	pv_log(DEBUG, "linked boot assets for rev=%s", s->rev);
 
