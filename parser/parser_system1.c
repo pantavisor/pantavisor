@@ -499,6 +499,29 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 	return 0;
 }
 
+static int do_action_for_usernsidmap(struct json_key_action *jka,
+					char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	if (!strcmp(value, "root"))
+		(*bundle->platform)->runlevel = RUNLEVEL_ROOT;
+	// runlevel PLATFORM is reserved for platforms without explicily configured runlevel
+	else if (!strcmp(value, "app"))
+		(*bundle->platform)->runlevel = RUNLEVEL_APP;
+	else if (!strcmp(value, "platform"))
+		(*bundle->platform)->runlevel = RUNLEVEL_PLATFORM;
+	else {
+		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'", value, (*bundle->platform)->name);
+	}
+
+	return 0;
+}
+
+
 static int do_action_for_one_volume(struct json_key_action *jka,
 					char *value)
 {
@@ -649,6 +672,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		ADD_JKA_ENTRY("runlevel", JSMN_STRING, &bundle, do_action_for_runlevel, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
+		ADD_JKA_ENTRY("newuid", JSMN_PRIMITIVE, &shares, NULL, true),
+		ADD_JKA_ENTRY("newgid", JSMN_PRIMITIVE, &shares, NULL, true),
 		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_one_volume, false),
 		ADD_JKA_ENTRY("volumes", JSMN_ARRAY, &bundle, do_action_for_one_volume, false),
 		ADD_JKA_ENTRY("logs", JSMN_ARRAY, &bundle, do_action_for_one_log, false),
