@@ -582,7 +582,7 @@ int pv_storage_make_config(struct pantavisor *pv)
 			st.st_mode & S_IXUSR ) {
 		sprintf(cmd, "/usr/local/bin/pvext_sysconfig %s %s", srcpath, targetpath);
 	} else {
-		sprintf(cmd, "/bin/cp -a %s/* %s/", srcpath, targetpath);
+		sprintf(cmd, "/bin/cp -aL %s/* %s/", srcpath, targetpath);
 	}
 	pv_log(INFO, "processing trail _config: %s", cmd);
 
