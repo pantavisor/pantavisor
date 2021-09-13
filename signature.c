@@ -39,6 +39,14 @@
 #define SPEC_PVS2 "pvs@2"
 #define TYP_PVS "PVS"
 
+typedef enum {
+      PVS_KEY_UNSUPPORTED = -1,
+      PVS_KEY_RSA,
+      PVS_KEY_ECDSA,
+      PVS_KEY_ECKEY,
+      PVS_KEY_END
+} pvs_key_e;
+
 struct pv_signature_headers_pvs {
 	char *include;
 	char *exclude;
@@ -435,29 +443,47 @@ static char* pv_signature_get_filtered_json(struct pv_signature_headers_pvs *pvs
 	return pv_signature_get_json_files(json_pairs);
 }
 
-static bool pv_signature_verify_rs256(const char *payload, struct pv_signature *signature)
+static bool pv_signature_verify_sha256(const char *payload, struct pv_signature *signature)
 {
 	bool ret = false;
 	int res;
 	char *payload_encoded = NULL, *files_encoded = NULL, *sig_decoded = NULL;
 	unsigned char *hash = NULL;
 	size_t olen;
+	pvs_key_e keytype = PVS_KEY_UNSUPPORTED;
 
-	pv_log(DEBUG, "using RS256 algorithm");
+	pv_log(DEBUG, "using PVS verify with sha256");
 
 	mbedtls_pk_context pk;
-
 	mbedtls_pk_init(&pk);
 
-	if (mbedtls_pk_parse_public_keyfile(&pk, "/etc/pantavisor/pvs/pub.pem")) {
-		pv_log(ERROR, "cannot read public key");
+	if ((res = mbedtls_pk_parse_public_keyfile(&pk, "/etc/pantavisor/pvs/pub.pem"))) {
+		pv_log(ERROR, "cannot read public key %d", res);
 		goto out;
 	}
 
-	if (!mbedtls_pk_can_do(&pk, MBEDTLS_PK_RSA)) {
-		pv_log(ERROR, "key is not a RSA key");
+	mbedtls_pk_type_t pktype;
+	pktype = mbedtls_pk_get_type(&pk);
+
+	if (pktype == MBEDTLS_PK_ECDSA) {
+		keytype = PVS_KEY_ECDSA;
+		pv_log(DEBUG, "key type is MBEDTLS_PK_ECDSA / PVS_KEY_ECDSA");
+	} else if (pktype == MBEDTLS_PK_ECKEY) {
+		keytype = PVS_KEY_ECKEY;
+		pv_log(DEBUG, "key type is MBEDTLS_PK_ECKEY / PVS_KEY_ECKEY");
+	} else if (pktype == MBEDTLS_PK_RSA ) {
+		keytype = PVS_KEY_RSA;
+		pv_log(DEBUG, "key type is MBEDTLS_PK_RSA / PVS_KEY_RSA");
+	} else {
+		pv_log(ERROR, "keytype is not supported %d", pktype);
 		goto out;
 	}
+
+	if (!mbedtls_pk_can_do(&pk, pktype)) {
+		pv_log(ERROR, "key is not usable/supported");
+		goto out;
+	}
+	pv_log(INFO, "pvs pub key is usable/supported");
 
 	if (pv_base64_url_encode(payload, &files_encoded, &olen)) {
 		pv_log(ERROR, "payload could not be encoded");
@@ -578,8 +604,9 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 
 	pv_log(DEBUG, "filtered json '%s'", payload);
 
-	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256", strlen("RS256"))) {
-		ret = pv_signature_verify_rs256(payload, signature);
+	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256", strlen("RS256")) ||
+	    pv_str_matches(headers->alg, strlen(headers->alg), "ES256", strlen("ES256"))) {
+		ret = pv_signature_verify_sha256(payload, signature);
 	} else {
 		pv_log(ERROR, "unknown algorithm in protected JSON %s", headers->alg);
 	}
