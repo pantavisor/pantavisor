@@ -227,7 +227,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		}
 	}
 	if (log_fd >= 0) {
-		dprintf(log_fd, "[pantavisor] %s\t -- ", level_names[level].name);
+		dprintf(log_fd, "[pantavisor] %ld %s\t -- ", time(NULL), level_names[level].name);
 		dprintf(log_fd, "[%s]: ", module);
 		vdprintf(log_fd, fmt, args);
 		dprintf(log_fd, "\n");
