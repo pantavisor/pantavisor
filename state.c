@@ -66,18 +66,21 @@ void pv_state_free(struct pv_state *s)
 
 	if (s->rev)
 		free(s->rev);
-	if (s->bsp.img.ut.fit)
-		free(s->bsp.img.ut.fit);
-	if (s->bsp.img.std.kernel)
-		free(s->bsp.img.std.kernel);
-	if (s->bsp.img.std.fdt)
-		free(s->bsp.img.std.fdt);
+	if (!s->bsp.img.std.initrd) {
+		if (s->bsp.img.ut.fit)
+			free(s->bsp.img.ut.fit);
+	} else {
+		if (s->bsp.img.std.kernel)
+			free(s->bsp.img.std.kernel);
+		if (s->bsp.img.std.fdt)
+			free(s->bsp.img.std.fdt);
+		if (s->bsp.img.std.initrd)
+			free(s->bsp.img.std.initrd);
+	}
 	if (s->bsp.firmware)
 		free(s->bsp.firmware);
 	if (s->bsp.modules)
 		free(s->bsp.modules);
-	if (s->bsp.img.std.initrd)
-		free(s->bsp.img.std.initrd);
 
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
