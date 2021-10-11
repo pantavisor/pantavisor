@@ -517,14 +517,14 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	return 0;
 }
 
-int pv_platforms_start(struct pantavisor *pv, int runlevel)
+int pv_platforms_start(struct pantavisor *pv, int lowrunlevel, int highrunlevel)
 {
 	int num_plats = 0;
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = NULL;
 
 	// Iterate between runlevel plats and lowest priority plats 
-	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
+	for (int i = lowrunlevel; i <= highrunlevel; i++) {
 		pv_log(DEBUG, "starting platforms with runlevel %d", i);
 		// Iterate over all plats from state
 		platforms = &pv->state->platforms;
@@ -640,7 +640,7 @@ static int pv_platform_stop_loggers(struct pv_platform *p)
 	return num_loggers;
 }
 
-int pv_platforms_stop(struct pantavisor *pv, int runlevel)
+int pv_platforms_stop(struct pantavisor *pv, int lowrunlevel, int highrunlevel)
 {
 	int num_loggers = 0, num_plats = 0, exited = 0;
 	struct pv_platform *p, *tmp;
@@ -658,7 +658,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 		pv_log(INFO, "stopped %d platform loggers", num_loggers);
 
 	// Iterate between lowest priority plats and runlevel plats
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
+	for (int i = highrunlevel; i >= lowrunlevel; i--) {
 		pv_log(DEBUG, "stopping platforms with runlevel %d", i);
 		// Iterate over all plats from state
 		platforms = &pv->state->platforms;
@@ -669,7 +669,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 				continue;
 
 			// Ignore non updated apps if update runlevel is app
-			if ((runlevel == RUNLEVEL_APP) &&
+			if ((highrunlevel == RUNLEVEL_APP) &&
 				(p->runlevel == RUNLEVEL_APP) &&
 				!p->updated)
 				continue;
@@ -691,7 +691,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 
 	// Check all plats in runlevel and lower priority have been stopped
 	for (int i = 0; i < 5; i++) {
-		exited = pv_platforms_check_exited(pv, runlevel);
+		exited = pv_platforms_check_exited(pv, 0, 1);
 		if (exited == num_plats)
 			break;
 		pv_log(WARN, "only %d out of %d platforms exited. Sleeping 1 second to check again...", exited, num_plats);
@@ -700,19 +700,19 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 
 	// Kill all plats in runlevel and lower priority
 	if (exited != num_plats)
-		pv_platforms_force_kill(pv, runlevel);
+		pv_platforms_force_kill(pv, highrunlevel);
 
 	return num_plats;
 }
 
-int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
+int pv_platforms_check_exited(struct pantavisor *pv, int lowrunlevel, int highrunlevel)
 {
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = NULL;
 	int exited = 0;
 
 	// Iterate between lowest priority plats and runlevel plats
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
+	for (int i = highrunlevel; i >= lowrunlevel; i--) {
 		// Iterate over all plats from state
 		platforms = &pv->state->platforms;
 		dl_list_for_each_safe(p, tmp, platforms,
@@ -722,7 +722,7 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 				continue;
 
 			// Ignore non updated apps if update runlevel is app
-			if ((runlevel == RUNLEVEL_APP) &&
+			if ((highrunlevel == RUNLEVEL_APP) &&
 				(p->runlevel == RUNLEVEL_APP) &&
 				!p->updated)
 				continue;

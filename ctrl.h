@@ -34,6 +34,8 @@ typedef enum {
 	CMD_LOCAL_RUN = 5,
 	CMD_MAKE_FACTORY = 6,
 	CMD_RUN_GC = 7,
+	CMD_START_APPS = 8,
+	CMD_STOP_APPS = 9,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 
@@ -49,7 +51,7 @@ void pv_ctrl_socket_close(int ctrl_fd);
 
 static inline const char* pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 {
-	static const char *strings[] = {NULL, "UPDATE_METADATA","REBOOT_DEVICE","POWEROFF_DEVICE","TRY_ONCE","LOCAL_RUN","MAKE_FACTORY", "RUN_GC"};
+	static const char *strings[] = {NULL, "UPDATE_METADATA","REBOOT_DEVICE","POWEROFF_DEVICE","TRY_ONCE","LOCAL_RUN","MAKE_FACTORY", "RUN_GC", "START_APPS", "STOP_APPS"};
 	return strings[op];
 }
 

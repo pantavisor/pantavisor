@@ -216,11 +216,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (!pv_state_validate_checksum(pv->state)) {
-		pv_log(ERROR, "state objects validation went wrong");
-		goto out;
-	}
-
 	// set factory revision progress
 	if (!strncmp(pv->state->rev, "0", sizeof("0")))
 		pv_storage_set_rev_progress("0", DEVICE_STEP_FACTORY_PROGRESS_UNREGISTERED);
@@ -261,7 +256,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv_platforms_start(pv, runlevel) < 0) {
+	if (pv_platforms_start(pv, 0, 1) < 0) {
 		pv_log(ERROR, "error starting platforms");
 		goto out;
 	}
@@ -438,7 +433,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	pv_state_t next_state = PV_STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
-	if (pv_platforms_check_exited(pv, 0)) {
+	if (pv_platforms_check_exited(pv, 0, 1)) {
 		pv_log(ERROR, "one or more platforms exited. Tearing down...");
 		if (pv_update_is_trying(pv->update) || pv_update_is_testing(pv->update))
 			next_state = PV_STATE_ROLLBACK;
@@ -577,6 +572,14 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG, "run garbage collector reveived. Running...");
 		pv_storage_gc_run(pv);
 		break;
+	case CMD_START_APPS:
+		pv_log(DEBUG, "start apps received. Starting...");
+		pv_platforms_start(pv, 2, 2);
+		break;
+	case CMD_STOP_APPS:
+		pv_log(DEBUG, "stop apps received. Stopping...");
+		pv_platforms_stop(pv, 2, 2);
+		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
@@ -602,7 +605,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return PV_STATE_REBOOT;
 
 	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
-	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
+	if (pv_platforms_stop(pv, 0, 1) < 0 ||
 			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
 		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
 		return PV_STATE_ROLLBACK;
@@ -646,7 +649,7 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 
 	if (pv->state) {
 		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
-		if (pv_platforms_stop(pv, 0) < 0)
+		if (pv_platforms_stop(pv, 0, 1) < 0)
 			pv_log(WARN, "stop error: ignoring due to reboot");
 
 		if (pv_volumes_unmount(pv, 0) < 0)
@@ -675,7 +678,7 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 
 	if (pv->state) {
 		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
-		if (pv_platforms_stop(pv, 0) < 0)
+		if (pv_platforms_stop(pv, 0, 1) < 0)
 			pv_log(WARN, "stop error: ignoring due to poweroff");
 
 		if (pv_volumes_unmount(pv, 0) < 0)

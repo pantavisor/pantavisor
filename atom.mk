@@ -87,7 +87,10 @@ LOCAL_GENERATED_SRC_FILES := version.c
 
 LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
-	scripts/JSON.sh:lib/pv/JSON.sh
+	scripts/JSON.sh:lib/pv/JSON.sh \
+	etc/subgid:etc/subgid \
+	etc/subuid:etc/subuid \
+	etc/passwd:etc/passwd
 
 include $(BUILD_EXECUTABLE)
 

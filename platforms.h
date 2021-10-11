@@ -68,9 +68,9 @@ void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_default_runlevel(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);
 
-int pv_platforms_start(struct pantavisor *pv, int runlevel);
-int pv_platforms_check_exited(struct pantavisor *pv, int runlevel);
-int pv_platforms_stop(struct pantavisor *pv, int runlevel);
+int pv_platforms_start(struct pantavisor *pv,  int lowrunlevel, int highrunlevel);
+int pv_platforms_check_exited(struct pantavisor *pv, int lowrunlevel, int highrunlevel);
+int pv_platforms_stop(struct pantavisor *pv, int lowrunlevel, int highrunlevel);
 void pv_platforms_empty(struct pv_state *s);
 
 #endif
