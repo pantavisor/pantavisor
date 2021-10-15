@@ -199,12 +199,12 @@ static int pv_bl_early_init(struct pv_init *this)
 	token = strtok(buf, " ");
 	while (token) {
 		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
-			len = strlen(token + CMDLINE_OFFSET);
-			pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, (len + 1) * sizeof(char*));
+			len = strlen(token + CMDLINE_OFFSET) + 1;
+			pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, len * sizeof(char*));
 			snprintf(pv_bootloader.pv_rev, len, "%s", token + CMDLINE_OFFSET);
 		} else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0) {
 			len = strlen(token + CMDLINE_OFFSET) + 1;
-			pv_bootloader.pv_try = realloc(pv_bootloader.pv_try, (len + 1) * sizeof(char*));
+			pv_bootloader.pv_try = realloc(pv_bootloader.pv_try, len * sizeof(char*));
 			snprintf(pv_bootloader.pv_try, len, "%s", token + CMDLINE_OFFSET);
 		}
 		token = strtok(NULL, " ");
