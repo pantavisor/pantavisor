@@ -196,6 +196,9 @@ static int pv_bl_early_init(struct pv_init *this)
 	if (bytes <= 0)
 		return -1;
 
+	// remove trailing \n
+	buf[bytes-1] = '\0';
+
 	token = strtok(buf, " ");
 	while (token) {
 		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
