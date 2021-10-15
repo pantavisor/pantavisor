@@ -111,6 +111,7 @@ struct pantavisor_log {
 	int logsize;
 	bool push;
 	bool capture;
+	bool loggers;
 };
 
 struct pantavisor_lxc {
@@ -214,6 +215,7 @@ int pv_config_get_log_loglevel(void);
 int pv_config_get_log_logsize(void);
 bool pv_config_get_log_push(void);
 bool pv_config_get_log_capture(void);
+bool pv_config_get_log_loggers(void);
 int pv_config_get_libthttp_loglevel(void);
 
 bool pv_config_get_control_remote(void);

@@ -549,10 +549,13 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 	pv_log(DEBUG, "starting all platforms pv loggers");
 
 	platforms = &pv->state->platforms;
-	dl_list_for_each_safe(p, tmp, platforms,
-		struct pv_platform, list) {
-		if (start_pvlogger_for_platform(p) < 0)
-			pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
+
+	if (pv_config_get_log_loggers()) {
+		dl_list_for_each_safe(p, tmp, platforms,
+			struct pv_platform, list) {
+			if (start_pvlogger_for_platform(p) < 0)
+				pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
+		}
 	}
 
 	return num_plats;

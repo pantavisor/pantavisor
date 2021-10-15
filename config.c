@@ -253,6 +253,7 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	config->log.logsize = config_get_value_logsize(&config_list, "log.buf_nitems", 128) * 1024;
 	config->log.push = config_get_value_bool(&config_list, "log.push", true);
 	config->log.capture = config_get_value_bool(&config_list, "log.capture", true);
+	config->log.loggers = config_get_value_bool(&config_list, "log.loggers", true);
 
 	config->libthttp.loglevel = config_get_value_int(&config_list, "libthttp.log.level", 3);
 
@@ -288,6 +289,7 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_logsize(&config_list, "log.buf_nitems", &config->log.logsize);
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
 	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
+	config_override_value_bool(&config_list, "log.loggers", &config->log.loggers);
 
 	config_override_value_int(&config_list, "libthttp.log.level", &config->libthttp.loglevel);
 
@@ -417,6 +419,10 @@ void pv_config_override_value(const char* key, const char* value)
 		pv->config.log.loglevel = atoi(value);
 	else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push"))
 		pv->config.log.push = atoi(value);
+	else if (!strcmp(key, "pantahub.log.capture") || !strcmp(key, "log.capture"))
+		pv->config.log.capture = atoi(value);
+	else if (!strcmp(key, "pantahub.log.loggers") || !strcmp(key, "log.loggers"))
+		pv->config.log.loggers = atoi(value);
 	else if (!strcmp(key, "libthttp.log.level"))
 		pv->config.libthttp.loglevel = atoi(value);
 }
@@ -536,6 +542,7 @@ int pv_config_get_log_loglevel() { return pv_get_instance()->config.log.loglevel
 int pv_config_get_log_logsize() { return pv_get_instance()->config.log.logsize; }
 bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
 bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
+bool pv_config_get_log_loggers() { return pv_get_instance()->config.log.loggers; }
 int pv_config_get_libthttp_loglevel() { return pv_get_instance()->config.libthttp.loglevel; }
 
 bool pv_config_get_control_remote() { return pv_get_instance()->config.control.remote; }
