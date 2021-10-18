@@ -419,10 +419,6 @@ void pv_config_override_value(const char* key, const char* value)
 		pv->config.log.loglevel = atoi(value);
 	else if (!strcmp(key, "pantahub.log.push") || !strcmp(key, "log.push"))
 		pv->config.log.push = atoi(value);
-	else if (!strcmp(key, "pantahub.log.capture") || !strcmp(key, "log.capture"))
-		pv->config.log.capture = atoi(value);
-	else if (!strcmp(key, "pantahub.log.loggers") || !strcmp(key, "log.loggers"))
-		pv->config.log.loggers = atoi(value);
 	else if (!strcmp(key, "libthttp.log.level"))
 		pv->config.libthttp.loglevel = atoi(value);
 }
