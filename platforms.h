@@ -48,6 +48,7 @@ struct pv_platform {
 	pid_t init_pid;
 	plat_status_t status;
 	int runlevel;
+	bool mgmt;
 	bool updated;
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info

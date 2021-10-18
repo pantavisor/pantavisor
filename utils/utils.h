@@ -30,6 +30,7 @@
 
 #include <jsmn/jsmnutil.h>
 
+bool dir_exist(const char *dir);
 int mkdir_p(char *dir, mode_t mode);
 void syncdir(char *dir);
 int get_digit_count(int number);

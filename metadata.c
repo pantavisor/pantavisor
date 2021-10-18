@@ -42,6 +42,7 @@
 #include "json.h"
 #include "config_parser.h"
 #include "storage.h"
+#include "platforms.h"
 
 #define MODULE_NAME             "metadata"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -261,6 +262,17 @@ static void pv_devmeta_remove(struct pv_metadata *metadata)
 	}
 }
 
+void pv_metadata_init_usermeta(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+	struct dl_list *platforms = &s->platforms;
+
+	dl_list_for_each_safe(p, tmp, platforms,
+		struct pv_platform, list) {
+		pv_storage_init_plat_usermeta(p->name);
+	}
+}
+
 static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, const char *key)
 {
 	struct pv_meta *curr, *tmp;
@@ -332,8 +344,10 @@ int pv_metadata_add_usermeta(const char *key, const char *value)
 
 	if (ret > 0) {
 		pv_log(DEBUG, "user metadata key %s added or updated", key);
+		// save usermeta in config
 		pv_config_override_value(key, value);
-		pv_storage_save_file(PATH_USER_META, key, value);
+		// save in usermeta in storage
+		pv_storage_save_usermeta(key, value);
 		return 0;
 	}
 
@@ -349,7 +363,8 @@ int pv_metadata_rm_usermeta(const char *key)
 
 	if (meta) {
 		dl_list_del(&meta->list);
-		pv_storage_rm_file(PATH_USER_META, meta->key);
+		//remove from storage
+		pv_storage_rm_usermeta(meta->key);
 		pv_metadata_free(meta);
 		return 0;
 	}
@@ -446,11 +461,8 @@ static void usermeta_clear(struct pantavisor *pv)
 		if (curr->updated)
 			curr->updated = false;
 		// not updated means user meta is no longer in cloud
-		else {
-			dl_list_del(&curr->list);
-			pv_storage_rm_file(PATH_USER_META, curr->key);
-			pv_metadata_free(curr);
-		}
+		else
+			pv_metadata_rm_usermeta(curr->key);
 	}
 }
 

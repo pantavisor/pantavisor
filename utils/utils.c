@@ -34,10 +34,24 @@
 #include <stdbool.h>
 #include <sys/xattr.h>
 #include <signal.h>
+#include <dirent.h>
 
 #include "utils.h"
 #include "fops.h"
 #include "tsh.h"
+
+bool dir_exist(const char *dir)
+{
+	bool exists = false;
+
+	DIR* tmp = opendir(dir);
+	if (tmp) {
+		exists = true;
+		closedir(tmp);
+	}
+
+	return exists;
+}
 
 int mkdir_p(char *dir, mode_t mode)
 {

@@ -83,7 +83,7 @@ static struct pv_logger_config plat_logger_config_messages = {
 
 struct pv_cont_ctrl {
 	char *type;
-	void* (*start)(struct pv_platform *p, char *conf_file, void *data);
+	void* (*start)(struct pv_platform *p, const char *rev, char *conf_file, void *data);
 	void* (*stop)(struct pv_platform *p, char *conf_file, void *data);
 };
 
@@ -107,6 +107,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 		p->status = PLAT_NONE;
 		p->runlevel = -1;
 		p->updated = false;
+		p->mgmt = true;
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -495,7 +496,7 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	ctrl = _pv_platforms_get_ctrl(p->type);
 
 	// Start the platform
-	data = ctrl->start(p, conf_path, (void *) &pid);
+	data = ctrl->start(p, s->rev, conf_path, (void *) &pid);
 
 	if (!data) {
 		pv_log(ERROR, "error starting platform: \"%s\"",

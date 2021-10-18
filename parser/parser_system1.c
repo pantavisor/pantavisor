@@ -499,6 +499,45 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 	return 0;
 }
 
+static int do_action_for_roles_object(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+
+	if (*bundle->platform)
+		(*bundle->platform)->mgmt = false;
+
+	return 0;
+}
+
+static int do_action_for_roles_array(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+	bool value_alloced = false;
+	int ret = -1;
+
+
+	if (!value && (jka->type == JSMN_ARRAY)) {
+		value = pv_json_get_one_str(jka->buf, &jka->tokv);
+		value_alloced = true;
+	}
+
+	if (!(*bundle->platform) || !value)
+		goto out;
+
+	pv_log(DEBUG, "setting role %s to platform %s", value, (*bundle->platform)->name);
+	if (!strcmp(value, "mgmt"))
+		(*bundle->platform)->mgmt = true;
+	else
+		pv_log(WARN, "invalid role value '%s'", value);
+
+	ret = 0;
+
+out:
+	if (value_alloced && value)
+		free(value);
+	return ret;
+}
+
 static int do_action_for_one_volume(struct json_key_action *jka,
 					char *value)
 {
@@ -647,6 +686,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		ADD_JKA_ENTRY("name", JSMN_STRING, &bundle, do_action_for_name, false),
 		ADD_JKA_ENTRY("type", JSMN_STRING, &bundle, do_action_for_type, false),
 		ADD_JKA_ENTRY("runlevel", JSMN_STRING, &bundle, do_action_for_runlevel, false),
+		ADD_JKA_ENTRY("roles", JSMN_OBJECT, &bundle, do_action_for_roles_object, false),
+		ADD_JKA_ENTRY("roles", JSMN_ARRAY, &bundle, do_action_for_roles_array, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
 		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle, do_action_for_one_volume, false),
