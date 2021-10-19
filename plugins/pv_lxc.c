@@ -182,7 +182,8 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, cha
 
 static void pv_setup_lxc_container(struct lxc_container *c,
 					unsigned int share_ns,
-					int runlevel)
+					struct pv_platform *p,
+					const char *rev)
 {
 	int fd, ret;
 	struct utsname uts;
@@ -197,12 +198,23 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		snprintf(log_level, sizeof(log_level), "%d", pv_lxc_get_lxc_log_level());
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
-	c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
-						" none bind,ro,create=dir 0 0");
-	c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
-						" none bind,ro,create=dir 0 0");
-	c->set_config_item(c, "lxc.mount.entry", "/pv/user-meta pantavisor/user-meta"
-						" none bind,ro,create=dir 0 0");
+	if (p->mgmt) {
+		c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
+							" none bind,ro,create=dir 0 0");
+		c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
+							" none bind,ro,create=dir 0 0");
+		c->set_config_item(c, "lxc.mount.entry", "/pv/user-meta pantavisor/user-meta"
+							" none bind,ro,create=dir 0 0");
+	} else {
+		c->set_config_item(c, "lxc.mount.entry", "/pv/pv-ctrl-log pantavisor/pv-ctrl-log"
+							" none bind,rw,create=file 0 0");
+		sprintf(entry, "/pv/logs/%s/%s pantavisor/logs none bind,ro,create=dir 0 0",
+			rev, p->name);
+		c->set_config_item(c, "lxc.mount.entry", entry);
+		sprintf(entry, "/pv/user-meta.%s pantavisor/user-meta none bind,ro,create=dir 0 0",
+			p->name);
+		c->set_config_item(c, "lxc.mount.entry", entry);
+	}
 	if (stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
 					" lib/firmware none bind,ro,create=dir"
@@ -245,11 +257,11 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		free(buf);
 	}
 	// override container=lxc environment of pid 1
-	if (runlevel == RUNLEVEL_ROOT)
+	if (p->runlevel == RUNLEVEL_ROOT)
 		c->set_container_type(c, "pv-root");
-	else if (runlevel == RUNLEVEL_PLATFORM)
+	else if (p->runlevel == RUNLEVEL_PLATFORM)
 		c->set_container_type(c, "pv-platform");
-	else if (runlevel == RUNLEVEL_APP)
+	else if (p->runlevel == RUNLEVEL_APP)
 		c->set_container_type(c, "pv-app");
 	else
 		c->set_container_type(c, "pv-unknown");
@@ -468,7 +480,7 @@ out:
 	return pv_log_i;
 }
 
-void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
+void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file, void *data)
 {
 	int err;
 	struct lxc_container *c;
@@ -564,7 +576,7 @@ void *pv_start_container(struct pv_platform *p, char *conf_file, void *data)
 			goto out_container_init;
 		}
 
-		pv_setup_lxc_container(c, share_ns, p->runlevel);
+		pv_setup_lxc_container(c, share_ns, p, rev);
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
@@ -601,7 +613,7 @@ out_container_init:
 		c = NULL;
 		goto out_no_container;
 	}
-	pv_setup_lxc_container(c, share_ns, p->runlevel); /*Do we need this?*/
+	pv_setup_lxc_container(c, share_ns, p, rev); /*Do we need this?*/
 
 	if (!pv_lxc_capture_logs_activated())
 		goto out_no_container;

@@ -989,6 +989,88 @@ char* pv_storage_get_state_json(const char *rev)
 	return pv_storage_load_file(NULL, path, 0);
 }
 
+int pv_storage_init_plat_usermeta(const char *name)
+{
+	char path[PATH_MAX];
+	int len;
+
+	len = strlen(PATH_USERMETA_PLAT) + strlen(name) + 1;
+	snprintf(path, len, PATH_USERMETA_PLAT, name);
+	if (!dir_exist(path))
+		mkdir_p(path, 0755);
+}
+
+static void pv_storage_save_file(const char *path, const char *content)
+{
+	int fd;
+
+	if (!path || !content)
+		return;
+
+	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	if (fd < 0) {
+		pv_log(WARN, "cannot create file: %s", strerror(errno));
+		goto out;
+	}
+
+	write(fd, content, strlen(content));
+	close(fd);
+
+out:
+	return;
+}
+
+void pv_storage_save_usermeta(const char *key, const char *value)
+{
+	char path[PATH_MAX];
+	char *pname, *pkey;
+	int len;
+
+	len = strlen(PATH_USERMETA_KEY) + strlen(key) + 1;
+	snprintf(path, len, PATH_USERMETA_KEY, key);
+	pv_storage_save_file(path, value);
+	pv_log(DEBUG, "saved usermeta in %s", path);
+
+	pname = strdup(key);
+	pkey = strchr(pname, '.');
+	if (pkey) {
+		*pkey = '\0';
+		pkey++;
+		pv_storage_init_plat_usermeta(pname);
+		len = strlen(PATH_USERMETA_PLAT_KEY) + strlen(pname) + strlen(pkey) + 1;
+		snprintf(path, len, PATH_USERMETA_PLAT_KEY, pname, pkey);
+		pv_storage_save_file(path, value);
+		pv_log(DEBUG, "saved usermeta in %s", path);
+	}
+
+	free(pname);
+}
+
+void pv_storage_rm_usermeta(const char *key)
+{
+	char path[PATH_MAX];
+	char *pname, *pkey;
+	int len;
+
+	len = strlen(PATH_USERMETA_KEY) + strlen(key) + 1;
+	snprintf(path, len, PATH_USERMETA_KEY, key);
+	remove(path);
+	pv_log(DEBUG, "removed usermeta in %s", path);
+
+	pname = strdup(key);
+	pkey = strchr(pname, '.');
+	if (pkey) {
+		*pkey = '\0';
+		pkey++;
+		len = strlen(PATH_USERMETA_PLAT_KEY) + strlen(pname) + strlen(pkey) + 1;
+		snprintf(path, len, PATH_USERMETA_PLAT_KEY, pname, pkey);
+		remove(path);
+		pv_log(DEBUG, "removed usermeta in %s", path);
+	}
+
+	free(pname);
+}
+
 char *pv_storage_load_file(const char *prefix, const char *path, const unsigned int max_size)
 {
 	struct stat st;
@@ -1032,27 +1114,6 @@ char *pv_storage_load_file(const char *prefix, const char *path, const unsigned 
 	close(fd);
 out:
 	return content;
-}
-
-void pv_storage_save_file(const char *path_base, const char *name, const char *content)
-{
-	int fd;
-	char path[PATH_MAX];
-
-	if (!name || !content)
-		return;
-
-	sprintf(path, "%s/%s", path_base, name);
-
-	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-	if (fd < 0)
-		goto out;
-
-	write(fd, content, strlen(content));
-	close(fd);
-
-out:
-	return;
 }
 
 void pv_storage_rm_file(const char *path_base, const char *name)
