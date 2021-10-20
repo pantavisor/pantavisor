@@ -66,7 +66,7 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
 int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
 void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value);
 
-int pv_storage_init_plat_usermeta(const char *name);
+void pv_storage_init_plat_usermeta(const char *name);
 void pv_storage_save_usermeta(const char *key, const char *value);
 void pv_storage_rm_usermeta(const char *key);
 

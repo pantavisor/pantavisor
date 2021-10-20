@@ -1276,7 +1276,7 @@ static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 	if (pv->state->bsp.img.std.kernel) {
 		if (strcmp(pv->state->bsp.img.std.kernel, obj->name))
 			return 0;
-	} else {
+	} else if (pv->state->bsp.img.ut.fit) {
 		if (strcmp(pv->state->bsp.img.ut.fit, obj->name))
 			return 0;
 	}

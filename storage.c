@@ -989,7 +989,7 @@ char* pv_storage_get_state_json(const char *rev)
 	return pv_storage_load_file(NULL, path, 0);
 }
 
-int pv_storage_init_plat_usermeta(const char *name)
+void pv_storage_init_plat_usermeta(const char *name)
 {
 	char path[PATH_MAX];
 	int len;
@@ -1114,14 +1114,6 @@ char *pv_storage_load_file(const char *prefix, const char *path, const unsigned 
 	close(fd);
 out:
 	return content;
-}
-
-void pv_storage_rm_file(const char *path_base, const char *name)
-{
-	char path[PATH_MAX];
-
-	sprintf(path, "%s/%s", path_base, name);
-	remove(path);
 }
 
 size_t pv_storage_get_file_size(const char *path)
