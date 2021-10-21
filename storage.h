@@ -29,6 +29,7 @@
 #define PATH_TRAILS "%s/trails/%s/.pvr/json"
 #define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
 #define PATH_TRAILS_COMMITMSG "%s/trails/%s/.pv/commitmsg"
+#define PATH_USER_META "/pv/user-meta"
 #define PATH_USERMETA_KEY "/pv/user-meta/%s"
 #define PATH_USERMETA_PLAT "/pv/user-meta.%s"
 #define PATH_USERMETA_PLAT_KEY "/pv/user-meta.%s/%s"
@@ -70,7 +71,7 @@ void pv_storage_init_plat_usermeta(const char *name);
 void pv_storage_save_usermeta(const char *key, const char *value);
 void pv_storage_rm_usermeta(const char *key);
 
-char *pv_storage_load_file(const char *path_base, const char *name, const unsigned int max_size);
+char *pv_storage_load_file(const char *path, const unsigned int max_size);
 size_t pv_storage_get_file_size(const char *path);
 
 

@@ -473,7 +473,7 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name, ch
 		rev,
 		name);
 
-	buf = pv_storage_load_file(NULL, path, 0);
+	buf = pv_storage_load_file(path, 0);
 	if (!buf) {
 		pv_log(ERROR, "could not find %s", path);
 		return false;
@@ -595,7 +595,7 @@ int pv_storage_make_config(struct pantavisor *pv)
 	return rv;
 }
 
-bool pv_storage_is_revision_local(const char* rev)
+bool pv_storage_is_revision_local(const char *rev)
 {
 	char *first = strchr(rev, '/');
 	char *last = strrchr(rev, '/');
@@ -610,10 +610,25 @@ bool pv_storage_is_revision_local(const char* rev)
 	return false;
 }
 
+static char* pv_storage_get_file_date(const char *path)
+{
+	struct stat st;
+	struct tm *nowtm;
+	char *date = calloc(1, 32);
+
+	stat(path, &st);
+
+	nowtm = localtime(&st.st_mtim.tv_sec);
+	strftime(date, 32, "%Y-%m-%dT%H:%M:%SZ", nowtm);
+
+	return date;
+}
+
 char* pv_storage_get_revisions_string()
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len), *basedir = NULL, *progress = NULL, *commitmsg = NULL, *esc_commitmsg = NULL;
+	char path[PATH_MAX];
+	char *json = calloc(1, len), *progress = NULL, *date = NULL, *commitmsg = NULL, *esc_commitmsg = NULL;
 	struct dl_list revisions; // pv_path
 	struct pv_path *r, *tmp;
 
@@ -642,20 +657,24 @@ char* pv_storage_get_revisions_string()
 			!strncmp(r->path, "locals/.", strlen("locals/.") + 1))
 			continue;
 
-		// get revision base path
-		line_len = strlen("%s/trails/%s") + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
-		basedir = calloc(1, line_len);
-		sprintf(basedir, "%s/trails/%s", pv_config_get_storage_mntpoint(), r->path);
-
 		// get revision progress
-		progress = pv_storage_load_file(basedir, ".pv/progress", 512);
+		line_len = strlen(PATH_TRAILS_PROGRESS) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
+		snprintf(path, line_len, PATH_TRAILS_PROGRESS, pv_config_get_storage_mntpoint(), r->path);
+		progress = pv_storage_load_file(path, 512);
 		if (!progress || !strlen(progress)) {
 			progress = calloc(1, 3);
 			sprintf (progress, "{}");
 		}
 
+		// get revision date
+		line_len = strlen(PATH_TRAILS) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
+		snprintf(path, line_len, PATH_TRAILS, pv_config_get_storage_mntpoint(), r->path);
+		date = pv_storage_get_file_date(path);
+
 		// get revision commit message
-		commitmsg = pv_storage_load_file(basedir, ".pv/commitmsg", 512);
+		line_len = strlen(PATH_TRAILS_COMMITMSG) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
+		snprintf(path, line_len, PATH_TRAILS_COMMITMSG, pv_config_get_storage_mntpoint(), r->path);
+		commitmsg = pv_storage_load_file(path, 512);
 		if (commitmsg)
 			esc_commitmsg = pv_json_format(commitmsg, strlen(commitmsg));
 
@@ -669,22 +688,22 @@ char* pv_storage_get_revisions_string()
 		}
 
 		// add new revision line to json
-		line_len = strlen(r->path) + strlen(esc_commitmsg) + strlen(progress) + 41;
+		line_len = strlen(r->path) + strlen(esc_commitmsg) + strlen(date) + strlen(progress) + 52;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "{\"name\":\"%s\", \"commitmsg\":\"%s\", \"progress\":%s},", r->path, esc_commitmsg, progress);
+		snprintf(&json[len], line_len + 1, "{\"name\":\"%s\", \"date\":\"%s\", \"commitmsg\":\"%s\", \"progress\":%s},", r->path, date, esc_commitmsg, progress);
 		len += line_len;
 
-		if (basedir) {
-			free (basedir);
-			basedir = NULL;
-		}
 		if (progress) {
-			free (progress);
+			free(progress);
 			progress = NULL;
 		}
 		if (esc_commitmsg) {
-			free (esc_commitmsg);
+			free(esc_commitmsg);
 			esc_commitmsg = NULL;
+		}
+		if (date) {
+			free(date);
+			date = NULL;
 		}
 	}
 
@@ -702,8 +721,6 @@ out:
 		free(r);
 	}
 
-	if (basedir)
-		free(basedir);
 	if (progress)
 		free(progress);
 	if (commitmsg)
@@ -986,7 +1003,7 @@ char* pv_storage_get_state_json(const char *rev)
 
 	pv_log(DEBUG, "reading state from: '%s'", path);
 
-	return pv_storage_load_file(NULL, path, 0);
+	return pv_storage_load_file(path, 0);
 }
 
 void pv_storage_init_plat_usermeta(const char *name)
@@ -1071,21 +1088,14 @@ void pv_storage_rm_usermeta(const char *key)
 	free(pname);
 }
 
-char *pv_storage_load_file(const char *prefix, const char *path, const unsigned int max_size)
+char *pv_storage_load_file(const char *path, const unsigned int max_size)
 {
 	struct stat st;
 	unsigned int size;
 	int fd, res;
-	char abs_path[PATH_MAX];
 	char *content = NULL;
 
-	if (!prefix) {
-		sprintf(abs_path, "%s", path);
-	} else {
-		sprintf(abs_path, "%s/%s", prefix, path);
-	}
-
-	stat(abs_path, &st);
+	stat(path, &st);
 	size = st.st_size;
 
 	if (max_size && (size > max_size)) {
@@ -1099,7 +1109,7 @@ char *pv_storage_load_file(const char *prefix, const char *path, const unsigned 
 		goto out;
 	}
 
-	fd = open(abs_path, O_RDONLY, 0644);
+	fd = open(path, O_RDONLY, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "cannot open file: %s", strerror(errno));
 		goto out;
