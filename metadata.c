@@ -835,6 +835,8 @@ static void pv_metadata_load_usermeta()
 {
 	struct dl_list files; // pv_path
 	struct pv_path *curr, *tmp;
+	int len;
+	char path[PATH_MAX];
 	char *value;
 
 	dl_list_init(&files);
@@ -847,7 +849,9 @@ static void pv_metadata_load_usermeta()
 			!strncmp(curr->path, ".", strlen(".")))
 			continue;
 
-		value = pv_storage_load_file(PATH_USER_META, curr->path, METADATA_MAX_SIZE);
+		len = strlen(PATH_USERMETA_KEY) + strlen(curr->path) + 1;
+		snprintf(path, len, PATH_USERMETA_KEY, curr->path);
+		value = pv_storage_load_file(path, METADATA_MAX_SIZE);
 		if (!value)
 			continue;
 

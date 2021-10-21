@@ -26,8 +26,6 @@
 
 #include "pantavisor.h"
 
-#define PATH_USER_META "/pv/user-meta"
-
 #define DEVMETA_KEY_INTERFACES "interfaces"
 #define DEVMETA_KEY_PH_CLAIMED "pantahub.claimed"
 #define DEVMETA_KEY_PH_ONLINE "pantahub.online"
