@@ -413,6 +413,7 @@ static bool pv_signature_get_certs_raw(const char *x5c, struct dl_list *certs_ra
 
 	dl_list_init(certs_raw);
 
+	// x5c field is optional
 	if (!x5c)
 		return true;
 
@@ -511,35 +512,66 @@ static char* pv_signature_get_filtered_json(struct pv_signature_headers_pvs *pvs
 	return pv_signature_get_json_files(json_pairs);
 }
 
+static int pv_signature_print_cert(void *data,
+									mbedtls_x509_crt *crt,
+									int depth, uint32_t *flags)
+{
+	// this callback is intentianally empty
+	// but it could be used to get info about the certs into the logs
+	return 0;
+}
+
 static int pv_signature_parse_certs(struct dl_list *certs_raw,
 									struct mbedtls_x509_crt *certs)
 {
 	int ret = -1, res;
+	unsigned int flags;
 	char *content = NULL;
 	size_t olen;
-	struct pv_signature_cert_raw *cert_raw;
+	struct pv_signature_cert_raw *cert_raw, *tmp;
+	struct mbedtls_x509_crt cacerts;
 
 	pv_log(DEBUG, "parsing public key from x5c certificate");
 
-	cert_raw = dl_list_first(certs_raw, struct pv_signature_cert_raw, list);
-	if (!cert_raw) {
-		pv_log(DEBUG, "no certs!!");
+	mbedtls_x509_crt_init(certs);
+	mbedtls_x509_crt_init(&cacerts);
+
+	dl_list_for_each_safe(cert_raw, tmp, certs_raw,
+		struct pv_signature_cert_raw, list) {
+		if (pv_base64_decode(cert_raw->content, &content, &olen)) {
+			pv_log(ERROR, "cert could not be decoded");
+			goto out;
+		}
+
+		res = mbedtls_x509_crt_parse_der(certs, (const unsigned char*) content, olen);
+		if (res) {
+			pv_log(ERROR, "cert could not be parsed: %d", res);
+			goto out;
+		}
+
+		if (content) {
+			free(content);
+			content = NULL;
+		}
+	}
+
+	pv_log(DEBUG, "parsing public key from %s", PATH_PVS_CERTS);
+	res = mbedtls_x509_crt_parse_file(&cacerts, PATH_PVS_CERTS);
+	if (res) {
+		pv_log(ERROR, "ca certs could not be parsed: %d", res);
 		goto out;
 	}
 
-	if (pv_base64_decode(cert_raw->content, &content, &olen)) {
-		pv_log(ERROR, "cert could not be decoded");
+	if (mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL)) {
+		pv_log(ERROR, "cert chain could not be verified");
+		goto out;
 	}
-
-	mbedtls_x509_crt_init(certs);
-	res = mbedtls_x509_crt_parse_der(certs, (const unsigned char*) content, olen);
-	if (res)
-		pv_log(ERROR, "cert could not be parsed: %d", res);
 
 	ret = 0;
 out:
 	if (content)
 		free(content);
+	mbedtls_x509_crt_free(&cacerts);
 
 	return ret;
 }
@@ -554,8 +586,8 @@ static int pv_signature_load_pk(struct mbedtls_pk_context **pk)
 
 	mbedtls_pk_init(*pk);
 
-	pv_log(DEBUG, "parsing public key from /etc/pantavisor/pvs/pub.pem");
-	res = mbedtls_pk_parse_public_keyfile(*pk, "/etc/pantavisor/pvs/pub.pem");
+	pv_log(DEBUG, "parsing public key from %s", PATH_PVS_PK);
+	res = mbedtls_pk_parse_public_keyfile(*pk, PATH_PVS_PK);
 	if (res) {
 		pv_log(ERROR, "cannot read public key %d", res);
 		goto out;
@@ -611,12 +643,14 @@ static bool pv_signature_verify_sha256(const char *payload, struct dl_list *cert
 
 	pv_log(DEBUG, "using PVS verify with sha256");
 
+	// if list is not empty, we verify with pub key from first cert
 	if (!dl_list_empty(certs_raw)) {
 		if (pv_signature_parse_certs(certs_raw, &certs)) {
 			pv_log(ERROR, "certs could not be parsed");
 			goto out;
 		}
 		pk = &certs.pk;
+	// if not, we load it from disk
 	} else {
 		if (pv_signature_load_pk(&pk)) {
 			pv_log(ERROR, "public key could not be loaded");
@@ -749,6 +783,7 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 		goto out;
 	}
 
+	// parse x5c value into list of base64 encoded certificates
 	if (!pv_signature_get_certs_raw(headers->x5c, &certs_raw)) {
 		pv_log(ERROR, "could not parse certs");
 		goto out;

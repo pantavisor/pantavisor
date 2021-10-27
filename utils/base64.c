@@ -102,8 +102,7 @@ err:
 
 int pv_base64_url_decode(const char *src, char **dst, size_t *olen)
 {
-	int res;
-	size_t len, ilen;
+	size_t ilen;
 	char *itmp = strdup(src);
 	*olen = 0;
 
@@ -113,7 +112,6 @@ int pv_base64_url_decode(const char *src, char **dst, size_t *olen)
 	itmp = pv_base64_add_padding_multi4(itmp);
 
 	ilen = strlen(itmp);
-	len = ((4 * ilen / 3) + 3) & ~3;
 
 	for (size_t i = 0; i < ilen; i++) {
 		if (itmp[i] == '_')
@@ -122,18 +120,16 @@ int pv_base64_url_decode(const char *src, char **dst, size_t *olen)
 			itmp[i] = '+';
 	}
 
-	*dst = calloc(1, len);
-	if (!*dst)
+	if (pv_base64_decode(itmp, dst, olen))
 		goto err;
 
-	res = mbedtls_base64_decode((unsigned char*)*dst, len, olen, (unsigned char*)itmp, ilen);
-	if (res) {
-		pv_log(ERROR, "cannot decode base64 with code %d", res);
-		goto err;
-	}
+	if (itmp)
+		free(itmp);
 
 	return 0;
 err:
+	if (itmp)
+		free(itmp);
 	if (*dst) {
 		free(*dst);
 		*dst = NULL;

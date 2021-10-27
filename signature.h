@@ -24,6 +24,9 @@
 
 #include "state.h"
 
+#define PATH_PVS_CERTS "/etc/pantavisor/pvs/certs/ca.pem"
+#define PATH_PVS_PK "/etc/pantavisor/pvs/pub.pem"
+
 bool pv_signature_verify(const char *json);
 
 #endif // PV_SIGNATURE_H
