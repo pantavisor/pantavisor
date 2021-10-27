@@ -639,60 +639,69 @@ static void wait_shell()
 #endif
 }
 
-static pv_state_t _pv_reboot(struct pantavisor *pv)
-{
-	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+typedef enum {
+	POWEROFF,
+	REBOOT
+} shutdown_type_t;
 
+static char * shutdown_type_string(shutdown_type_t t) {
+	switch (t) {
+		case POWEROFF: return "powering off";
+		case REBOOT: return "rebooting";
+		default: return "error: invalid shutdown type";
+	}
+}
+
+static int shutdown_type_reboot_cmd(shutdown_type_t t) {
+	switch (t) {
+		case POWEROFF: return LINUX_REBOOT_CMD_POWER_OFF;
+		case REBOOT: return LINUX_REBOOT_CMD_RESTART;
+		default: return LINUX_REBOOT_CMD_RESTART;
+	}
+}
+
+
+static pv_state_t pv_do_shutdown(struct pantavisor *pv, shutdown_type_t t)
+{
+	pv_log(INFO, "prepare %s...", shutdown_type_string(t));
 	wait_shell();
 
 	if (pv->state) {
 		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
 		if (pv_platforms_stop(pv, 0) < 0)
-			pv_log(WARN, "stop error: ignoring due to reboot");
+			pv_log(WARN, "stop error: ignoring due to %s", shutdown_type_string(t));
 
 		if (pv_volumes_unmount(pv, 0) < 0)
-			pv_log(WARN, "unmount error: ignoring due to reboot");
+			pv_log(WARN, "unmount error: ignoring due to %s", shutdown_type_string(t));
 	}
 
-	pv_wdt_start(pv);
+	if (REBOOT == t)
+		pv_wdt_start(pv);
 
 	// unmount storage
 	umount(pv_config_get_storage_mntpoint());
 	sync();
 
 	sleep(5);
-	pv_log(INFO, "rebooting...");
+	pv_log(INFO, "%s...", shutdown_type_string(t));
 	ph_logger_stop(pv);
-	reboot(LINUX_REBOOT_CMD_RESTART);
+	reboot(shutdown_type_reboot_cmd(t));
 
 	return PV_STATE_EXIT;
+}
+
+static pv_state_t _pv_reboot(struct pantavisor *pv)
+{
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+
+	return pv_do_shutdown(pv, REBOOT);
 }
 
 static pv_state_t _pv_poweroff(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	wait_shell();
-
-	if (pv->state) {
-		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
-		if (pv_platforms_stop(pv, 0) < 0)
-			pv_log(WARN, "stop error: ignoring due to poweroff");
-
-		if (pv_volumes_unmount(pv, 0) < 0)
-			pv_log(WARN, "unmount error: ignoring due to poweroff");
-	}
-
-	// unmount storage
-	umount(pv_config_get_storage_mntpoint());
-	sync();
-
-	sleep(5);
-	pv_log(INFO, "powering off...");
-	ph_logger_stop(pv);
-	reboot(LINUX_REBOOT_CMD_POWER_OFF);
-
-	return PV_STATE_EXIT;
+	return pv_do_shutdown(pv, POWEROFF);
 }
 
 static pv_state_t _pv_error(struct pantavisor *pv)
