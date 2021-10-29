@@ -29,9 +29,25 @@
 #include <linux/limits.h>
 #include <stdio.h>
 #include <errno.h>
+
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
 #include "utils.h"
+#include "log.h"
+
+struct level_name {
+    int log_level;
+    char *name;
+};
+
+#define LEVEL_NAME(LEVEL)   { LEVEL, #LEVEL }
+static struct level_name level_names[] = { 
+    LEVEL_NAME(FATAL),
+    LEVEL_NAME(ERROR),
+    LEVEL_NAME(WARN),
+    LEVEL_NAME(INFO),
+    LEVEL_NAME(DEBUG)
+};
 
 /*
  * v1 has the following message format in buffer
@@ -156,7 +172,7 @@ int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, cons
 			if (st.st_size >= MAX_SIZE) 
 				ftruncate(log_fd, 0);
 		}
-		dprintf(log_fd, "%.*s\n", ph_logger_msg->len, data);
+		dprintf(log_fd, "%s -- %.*s\n", level_names[level].name, ph_logger_msg->len, data);
 		close(log_fd);
 		ret = 0;
 	} else {
