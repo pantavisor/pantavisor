@@ -249,7 +249,9 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		free(buf);
 	}
 	// override container=lxc environment of pid 1
-	if (p->runlevel == RUNLEVEL_ROOT)
+	if (p->runlevel == RUNLEVEL_DATA)
+		c->set_container_type(c, "pv-data");
+	else if (p->runlevel == RUNLEVEL_ROOT)
 		c->set_container_type(c, "pv-root");
 	else if (p->runlevel == RUNLEVEL_PLATFORM)
 		c->set_container_type(c, "pv-platform");
