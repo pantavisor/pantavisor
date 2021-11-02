@@ -180,11 +180,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	pv_state_t next_state = PV_STATE_ROLLBACK;
 	char *json = NULL;
-	int runlevel = RUNLEVEL_ROOT;
+	int runlevel = RUNLEVEL_DATA;
 
 	// resume update if we have booted to test a new revision
 	runlevel = pv_update_resume(pv);
-	if (runlevel < RUNLEVEL_ROOT) {
+	if (runlevel < RUNLEVEL_DATA) {
 		pv_log(ERROR, "update could not be resumed");
 		goto out;
 	}
