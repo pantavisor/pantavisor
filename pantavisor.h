@@ -26,9 +26,10 @@
 
 #include "config.h"
 
-#define RUNLEVEL_ROOT 0
-#define RUNLEVEL_PLATFORM 1
-#define RUNLEVEL_APP 2
+#define RUNLEVEL_DATA 0
+#define RUNLEVEL_ROOT 1
+#define RUNLEVEL_PLATFORM 2
+#define RUNLEVEL_APP 3
 
 // pantavisor.h
 

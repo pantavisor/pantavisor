@@ -52,7 +52,7 @@ int setns(int nsfd, int nstype);
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-const int MAX_RUNLEVEL = 2;
+const int MAX_RUNLEVEL = 3;
 
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
@@ -253,7 +253,7 @@ void pv_platforms_default_runlevel(struct pv_state *s)
 	platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp, platforms,
             struct pv_platform, list) {
-		if (p->runlevel < RUNLEVEL_ROOT)
+		if (p->runlevel < RUNLEVEL_DATA)
 			p->runlevel = RUNLEVEL_PLATFORM;
     }
 }
@@ -525,7 +525,12 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 
 	// Iterate between runlevel plats and lowest priority plats 
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
-		pv_log(DEBUG, "starting platforms with runlevel %d", i);
+		if (i > RUNLEVEL_DATA) {
+			pv_log(DEBUG, "starting platforms with runlevel %d", i);
+		} else {
+			pv_log(DEBUG, "skipping platforms with runlevel data %d", i);
+			continue;
+		}
 		// Iterate over all plats from state
 		platforms = &pv->state->platforms;
 		dl_list_for_each_safe(p, tmp, platforms,
