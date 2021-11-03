@@ -185,8 +185,8 @@ char *pv_objects_get_list_string()
 	dl_list_for_each_safe(curr, tmp, &objects,
 		struct pv_path, list) {
 
-		if (!strncmp(curr->path, "..", strlen("..")) ||
-			!strncmp(curr->path, ".", strlen(".")))
+		// if not sha256 string ... skip
+		if (strlen(curr->path) != 64)
 			continue;
 
 		sprintf(path, "%s/objects/%s", pv_config_get_storage_mntpoint(), curr->path);
