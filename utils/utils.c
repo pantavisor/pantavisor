@@ -53,28 +53,6 @@ bool dir_exist(const char *dir)
 	return exists;
 }
 
-int mkdir_p(char *dir, mode_t mode)
-{
-	const char *tmp = dir;
-	const char *orig = dir;
-	char *makeme;
-
-	do {
-		dir = (char*)tmp + strspn(tmp, "/");
-		tmp = dir + strcspn(dir, "/");
-		makeme = strndup(orig, dir - orig);
-		if (*makeme) {
-			if (mkdir(makeme, mode) && errno != EEXIST) {
-				free(makeme);
-				return -1;
-			}
-		}
-		free(makeme);
-	} while(tmp != dir);
-
-	return 0;
-}
-
 void syncdir(char *file)
 {
 	int fd;

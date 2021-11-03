@@ -38,11 +38,15 @@
 #include <stdbool.h>
 
 #include "utils/utils.h"
-#include "pv_lxc.h"
+#include "lxc.h"
 #include "utils/list.h"
 #include "pvlogger.h"
 #include "state.h"
 #include "platforms.h"
+
+#define MODULE_NAME             "lxc"
+#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#include "log.h"
 
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
 

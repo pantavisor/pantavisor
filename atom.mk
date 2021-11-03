@@ -2,22 +2,8 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-LOCAL_LIBRARIES := lxc libthttp
-LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:libseccomp OPTIONAL:libcap OPTIONAL:apparmor
-LOCAL_DESTDIR := ./lib/
-LOCAL_MODULE := pv_lxc
-
-LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC
-LOCAL_LDFLAGS := -Wl,--no-as-needed -lutil -Wl,--as-needed
-
-LOCAL_SRC_FILES := plugins/pv_lxc.c
-
-include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-
-LOCAL_LIBRARIES := libthttp libpvlogger mbedtls picohttpparser
-LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:e2fsprogs
+LOCAL_LIBRARIES := lxc libthttp libpvlogger mbedtls picohttpparser
+LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:e2fsprogs OPTIONAL:libseccomp OPTIONAL:libcap OPTIONAL:apparmor
 
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
@@ -47,6 +33,7 @@ LOCAL_SRC_FILES := init.c \
 			log.c \
 			config_parser.c \
 			config.c \
+			lxc.c \
 			pantavisor.c \
 			state.c \
 			platforms.c \

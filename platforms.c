@@ -23,7 +23,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dlfcn.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -48,6 +47,7 @@ int setns(int nsfd, int nstype);
 #include "utils.h"
 #include "init.h"
 #include "state.h"
+#include "lxc.h"
 
 #define MODULE_NAME             "platforms"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -79,23 +79,6 @@ static struct pv_logger_config plat_logger_config_syslog = {
 static struct pv_logger_config plat_logger_config_messages = {
 	.static_pair = messages,
 	.pair = NULL,
-};
-
-struct pv_cont_ctrl {
-	char *type;
-	void* (*start)(struct pv_platform *p, const char *rev, char *conf_file, void *data);
-	void* (*stop)(struct pv_platform *p, char *conf_file, void *data);
-};
-
-enum {
-	PV_CONT_LXC,
-//	PV_CONT_DOCKER,
-	PV_CONT_MAX
-};
-
-struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
-	{ "lxc", NULL, NULL },
-//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
@@ -259,70 +242,6 @@ void pv_platforms_default_runlevel(struct pv_state *s)
     }
 }
 
-static struct pv_cont_ctrl* _pv_platforms_get_ctrl(char *type)
-{
-	int i;
-
-	for (i = 0; i < PV_CONT_MAX; i++)
-		if (strcmp(cont_ctrl[i].type, type) == 0)
-			return &cont_ctrl[i];
-
-	return NULL;
-}
-
-static int load_pv_plugin(struct pv_cont_ctrl *c)
-{
-	char lib_path[PATH_MAX];
-	void *lib;
-
-	sprintf(lib_path, "/lib/pv_%s.so", c->type);
-
-	lib = dlopen(lib_path, RTLD_NOW);
-	if (!lib) {
-		pv_log(ERROR, "unable to load %s: %s", lib_path, dlerror());
-		return 0;
-	}
-
-	pv_log(DEBUG, "loaded %s @%p", lib_path, lib);
-
-	// static engines have to define c->start and c->end
-	if (c->start == NULL)
-		c->start = dlsym(lib, "pv_start_container");
-
-	if (c->stop == NULL)
-		c->stop = dlsym(lib, "pv_stop_container");
-
-	if (c->start == NULL || c->stop == NULL)
-		return 0;
-
-	void (*__pv_new_log)(void*) = dlsym(lib, "pv_set_new_log_fn");
-	if (__pv_new_log)
-		__pv_new_log(pv_new_log);
-	else
-		pv_log(ERROR, "Couldn't locate symbol pv_set_new_log_fn");
-
-	void (*__pv_get_instance)(void*) = dlsym(lib, "pv_set_pv_instance_fn");
-	if (__pv_get_instance)
-		__pv_get_instance(pv_get_instance);
-	else
-		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_instance_fn");
-	return 1;
-}
-
-// this should construct the table dynamically
-int pv_platforms_init_ctrl(struct pantavisor *pv)
-{
-	int loaded = 0;
-
-	// try to find plugins for all registered types
-	for (int i = 0; i < PV_CONT_MAX; i++)
-		loaded += load_pv_plugin(&cont_ctrl[i]);
-
-	pv_log(DEBUG, "loaded %d plugins correctly", loaded);
-
-	return loaded;
-}
-
 static int __start_pvlogger_for_platform(struct pv_platform *platform,
 					 struct pv_log_info *log_info)
 {
@@ -479,7 +398,6 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	struct pv_state *s = pv->state;
 	pid_t pid = -1;
 	char conf_path[PATH_MAX];
-	const struct pv_cont_ctrl *ctrl;
 	void *data;
 	char **c = p->configs;
 	char prefix[32] = { 0 };
@@ -492,11 +410,8 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	sprintf(conf_path, "%s/trails/%s/%s%s",
 		pv_config_get_storage_mntpoint(), s->rev, prefix, *c);
 
-	// Get type controller
-	ctrl = _pv_platforms_get_ctrl(p->type);
-
 	// Start the platform
-	data = ctrl->start(p, s->rev, conf_path, (void *) &pid);
+	data = pv_start_container(p, s->rev, conf_path, (void *) &pid);
 
 	if (!data) {
 		pv_log(ERROR, "error starting platform: \"%s\"",
@@ -651,7 +566,6 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 	int num_loggers = 0, num_plats = 0, exited = 0;
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &pv->state->platforms;
-	const struct pv_cont_ctrl *ctrl;
 
 	pv_log(DEBUG, "stopping all platforms pv loggers");
 
@@ -682,8 +596,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 
 			// Stop plats that have been started
 			if ((p->status == PLAT_STARTED) && (p->init_pid > 0)) {
-				ctrl = _pv_platforms_get_ctrl(p->type);
-				ctrl->stop(p, NULL, p->data);
+				pv_stop_container(p, NULL, p->data);
 				p->status = PLAT_STOPPED;
 				p->data = NULL;
 				pv_log(DEBUG, "sent SIGTERM to platform '%s'", p->name);
@@ -745,14 +658,9 @@ int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
 
 static int pv_platforms_early_init(struct pv_init *this)
 {
-	struct pantavisor *pv = NULL;
+	pv_set_new_log_fn(pv_new_log);
+	pv_set_pv_instance_fn(pv_get_instance);
 
-	pv = pv_get_instance();
-	// init platform controllers
-	if (!pv_platforms_init_ctrl(pv)) {
-		pv_log(ERROR, "unable to load any container runtime plugin");
-		return -1;
-	}
 	return 0;
 }
 
