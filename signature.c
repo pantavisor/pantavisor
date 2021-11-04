@@ -26,6 +26,7 @@
 #include <fnmatch.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/md_internal.h>
+#include <mbedtls/x509_crt.h>
 
 #include "signature.h"
 #include "utils/json.h"
@@ -39,14 +40,6 @@
 #define SPEC_PVS2 "pvs@2"
 #define TYP_PVS "PVS"
 
-typedef enum {
-      PVS_KEY_UNSUPPORTED = -1,
-      PVS_KEY_RSA,
-      PVS_KEY_ECDSA,
-      PVS_KEY_ECKEY,
-      PVS_KEY_END
-} pvs_key_e;
-
 struct pv_signature_headers_pvs {
 	char *include;
 	char *exclude;
@@ -54,6 +47,7 @@ struct pv_signature_headers_pvs {
 
 struct pv_signature_headers {
 	char *alg;
+	char *x5c;
 	struct pv_signature_headers_pvs *pvs;
 };
 
@@ -68,6 +62,11 @@ struct pv_signature_pair {
 	bool included;
 	bool covered;
 	struct dl_list list; // pv_signature_pair
+};
+
+struct pv_signature_cert_raw {
+	char *content;
+	struct dl_list list; // pv_signature_cert_raw
 };
 
 static void pv_signature_free_headers_pvs(struct pv_signature_headers_pvs *pvs)
@@ -90,6 +89,8 @@ static void pv_signature_free_headers(struct pv_signature_headers *headers)
 
 	if (headers->alg)
 		free(headers->alg);
+	if (headers->x5c)
+		free(headers->x5c);
 }
 
 static void pv_signature_free(struct pv_signature *signature)
@@ -101,6 +102,25 @@ static void pv_signature_free(struct pv_signature *signature)
 		free(signature->protected);
 	if (signature->signature)
 		free(signature->signature);
+}
+static void pv_signature_free_cert_raw(struct pv_signature_cert_raw *cert_raw)
+{
+	if (!cert_raw)
+		return;
+
+	if (cert_raw->content)
+		free(cert_raw->content);
+}
+
+static void pv_signature_free_certs_raw(struct dl_list *certs_raw)
+{
+	struct pv_signature_cert_raw *c, *tmp;
+
+	dl_list_for_each_safe(c, tmp, certs_raw,
+			struct pv_signature_cert_raw, list) {
+		dl_list_del(&c->list);
+		pv_signature_free_cert_raw(c);
+	}
 }
 
 static struct pv_signature* pv_signature_parse_pvs(const char *json)
@@ -247,6 +267,8 @@ static struct pv_signature_headers* pv_signature_parse_protected(char *protected
 
 	headers->pvs = pv_signature_parse_headers_pvs(pvs);
 
+	headers->x5c = pv_json_get_value(json, "x5c", tokv, tokc);
+
 	headers->alg = pv_json_get_value(json, "alg", tokv, tokc);
 	if (!headers->alg) {
 		pv_log(ERROR, "no alg key found");
@@ -358,6 +380,8 @@ static void pv_signature_include_files(const char *json,
 	}
 
 out:
+	if (str)
+		free(str);
 	if (tokv)
 		free(tokv);
 }
@@ -377,6 +401,51 @@ static void pv_signature_filter_files(struct pv_signature_headers_pvs *pvs,
 {
 	pv_signature_include_files(pvs->include, true, json_pairs);
 	pv_signature_include_files(pvs->exclude, false, json_pairs);
+}
+
+static bool pv_signature_get_certs_raw(const char *x5c, struct dl_list *certs_raw)
+{
+	bool ret = false;
+	char *str = NULL;
+	int tokc, size;
+	jsmntok_t *tokv, *t;
+	struct pv_signature_cert_raw *cert_raw;
+
+	dl_list_init(certs_raw);
+
+	// x5c field is optional
+	if (!x5c)
+		return true;
+
+	if (jsmnutil_parse_json(x5c, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format x5c");
+		goto out;
+	}
+
+	size = jsmnutil_array_count(x5c, tokv);
+	if (size <= 0) {
+		pv_log(ERROR, "empty x5c");
+		goto out;
+	}
+
+	pv_log(DEBUG, "x5c found containing %d certificates", size);
+
+	t = tokv+1;
+	while ((str = pv_json_array_get_one_str(x5c, &size, &t))) {
+		cert_raw = calloc(1, sizeof(struct pv_signature_cert_raw));
+		if (!cert_raw)
+			goto out;
+
+		cert_raw->content = str;
+		dl_list_add_tail(certs_raw, &cert_raw->list);
+	}
+
+	ret = true;
+
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
 }
 
 static char* pv_signature_get_json_files(struct dl_list *json_pairs)
@@ -443,47 +512,161 @@ static char* pv_signature_get_filtered_json(struct pv_signature_headers_pvs *pvs
 	return pv_signature_get_json_files(json_pairs);
 }
 
-static bool pv_signature_verify_sha256(const char *payload, struct pv_signature *signature)
+static int pv_signature_print_cert(void *data,
+									mbedtls_x509_crt *crt,
+									int depth, uint32_t *flags)
 {
-	bool ret = false;
-	int res;
-	char *payload_encoded = NULL, *files_encoded = NULL, *sig_decoded = NULL;
-	unsigned char *hash = NULL;
+	// this callback is intentianally empty
+	// but it could be used to get info about the certs into the logs
+	return 0;
+}
+
+static int pv_signature_parse_certs(struct dl_list *certs_raw,
+									struct mbedtls_x509_crt *certs)
+{
+	int ret = -1, res;
+	unsigned int flags;
+	char *content = NULL;
 	size_t olen;
-	pvs_key_e keytype = PVS_KEY_UNSUPPORTED;
+	struct pv_signature_cert_raw *cert_raw, *tmp;
+	struct mbedtls_x509_crt cacerts;
 
-	pv_log(DEBUG, "using PVS verify with sha256");
+	pv_log(DEBUG, "parsing public key from x5c certificate");
 
-	mbedtls_pk_context pk;
-	mbedtls_pk_init(&pk);
+	mbedtls_x509_crt_init(certs);
+	mbedtls_x509_crt_init(&cacerts);
 
-	if ((res = mbedtls_pk_parse_public_keyfile(&pk, "/etc/pantavisor/pvs/pub.pem"))) {
+	dl_list_for_each_safe(cert_raw, tmp, certs_raw,
+		struct pv_signature_cert_raw, list) {
+		if (pv_base64_decode(cert_raw->content, &content, &olen)) {
+			pv_log(ERROR, "cert could not be decoded");
+			goto out;
+		}
+
+		res = mbedtls_x509_crt_parse_der(certs, (const unsigned char*) content, olen);
+		if (res) {
+			pv_log(ERROR, "cert could not be parsed: %d", res);
+			goto out;
+		}
+
+		if (content) {
+			free(content);
+			content = NULL;
+		}
+	}
+
+	pv_log(DEBUG, "parsing public key from %s", PATH_PVS_CERTS);
+	res = mbedtls_x509_crt_parse_file(&cacerts, PATH_PVS_CERTS);
+	if (res) {
+		pv_log(ERROR, "ca certs could not be parsed: %d", res);
+		goto out;
+	}
+
+	if (mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL)) {
+		pv_log(ERROR, "cert chain could not be verified");
+		goto out;
+	}
+
+	ret = 0;
+out:
+	if (content)
+		free(content);
+	mbedtls_x509_crt_free(&cacerts);
+
+	return ret;
+}
+
+static int pv_signature_load_pk(struct mbedtls_pk_context **pk)
+{
+	int ret = -1, res;
+
+	*pk = calloc(1, sizeof(struct mbedtls_pk_context));
+	if (!*pk)
+		goto out;
+
+	mbedtls_pk_init(*pk);
+
+	pv_log(DEBUG, "parsing public key from %s", PATH_PVS_PK);
+	res = mbedtls_pk_parse_public_keyfile(*pk, PATH_PVS_PK);
+	if (res) {
 		pv_log(ERROR, "cannot read public key %d", res);
 		goto out;
 	}
 
+	ret = 0;
+out:
+	return ret;
+}
+
+static int pv_signature_validate_pk(struct mbedtls_pk_context *pk)
+{
+	int ret = -1;
 	mbedtls_pk_type_t pktype;
-	pktype = mbedtls_pk_get_type(&pk);
+	pktype = mbedtls_pk_get_type(pk);
 
-	if (pktype == MBEDTLS_PK_ECDSA) {
-		keytype = PVS_KEY_ECDSA;
-		pv_log(DEBUG, "key type is MBEDTLS_PK_ECDSA / PVS_KEY_ECDSA");
-	} else if (pktype == MBEDTLS_PK_ECKEY) {
-		keytype = PVS_KEY_ECKEY;
-		pv_log(DEBUG, "key type is MBEDTLS_PK_ECKEY / PVS_KEY_ECKEY");
-	} else if (pktype == MBEDTLS_PK_RSA ) {
-		keytype = PVS_KEY_RSA;
-		pv_log(DEBUG, "key type is MBEDTLS_PK_RSA / PVS_KEY_RSA");
+	switch (pktype) {
+		case MBEDTLS_PK_ECDSA:
+			pv_log(DEBUG, "public key type is MBEDTLS_PK_ECDSA");
+			break;
+		case MBEDTLS_PK_ECKEY:
+			pv_log(DEBUG, "public key type is MBEDTLS_PK_ECKEY");
+			break;
+		case MBEDTLS_PK_RSA:
+			pv_log(DEBUG, "public key type is MBEDTLS_PK_RSA");
+			break;
+		default:
+			pv_log(ERROR, "public key type is not supported: %d", pktype);
+			goto out;
+	}
+
+	if (!mbedtls_pk_can_do(pk, pktype)) {
+		pv_log(ERROR, "pvs public key is not supported");
+		goto out;
+	}
+
+	pv_log(INFO, "pvs public key is supported");
+
+	ret = 0;
+out:
+	return ret;
+}
+
+static bool pv_signature_verify_sha256(const char *payload, struct dl_list *certs_raw, struct pv_signature *signature)
+{
+	bool ret = false;
+	int res;
+	struct mbedtls_x509_crt certs;
+	size_t olen;
+	char *payload_encoded = NULL, *files_encoded = NULL, *sig_decoded = NULL;
+	unsigned char *hash = NULL;
+	struct mbedtls_pk_context *pk = NULL;
+
+	pv_log(DEBUG, "using PVS verify with sha256");
+
+	// if list is not empty, we verify with pub key from first cert
+	if (!dl_list_empty(certs_raw)) {
+		if (pv_signature_parse_certs(certs_raw, &certs)) {
+			pv_log(ERROR, "certs could not be parsed");
+			goto out;
+		}
+		pk = &certs.pk;
+	// if not, we load it from disk
 	} else {
-		pv_log(ERROR, "keytype is not supported %d", pktype);
+		if (pv_signature_load_pk(&pk)) {
+			pv_log(ERROR, "public key could not be loaded");
+			goto out;
+		}
+	}
+
+	if (!pk) {
+		pv_log(ERROR, "public key could not be initialized");
 		goto out;
 	}
 
-	if (!mbedtls_pk_can_do(&pk, pktype)) {
-		pv_log(ERROR, "key is not usable/supported");
+	if (pv_signature_validate_pk(pk)) {
+		pv_log(ERROR, "public key could not be validated");
 		goto out;
 	}
-	pv_log(INFO, "pvs pub key is usable/supported");
 
 	if (pv_base64_url_encode(payload, &files_encoded, &olen)) {
 		pv_log(ERROR, "payload could not be encoded");
@@ -514,7 +697,7 @@ static bool pv_signature_verify_sha256(const char *payload, struct pv_signature 
 
 	pv_log(DEBUG, "signature length is %d", olen);
 
-	res = mbedtls_pk_verify(&pk, MBEDTLS_MD_SHA256, hash, 0, (unsigned char*)sig_decoded, olen);
+	res = mbedtls_pk_verify(pk, MBEDTLS_MD_SHA256, hash, 0, (unsigned char*)sig_decoded, olen);
 	if (res) {
 		pv_log(ERROR, "verification returned error code %d", res);
 		goto out;
@@ -530,7 +713,10 @@ out:
 		free(sig_decoded);
 	if (hash)
 		free(hash);
-	mbedtls_pk_free(&pk);
+	if (!dl_list_empty(certs_raw))
+		mbedtls_x509_crt_free(&certs);
+	else
+		mbedtls_pk_free(pk);
 	return ret;
 }
 
@@ -587,12 +773,19 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 									struct dl_list *json_pairs)
 {
 	bool ret = false;
-	struct pv_signature_headers *headers = NULL;
 	char *payload = NULL;
+	struct pv_signature_headers *headers = NULL;
+	struct dl_list certs_raw; // pv_signature_cert_raw
 
 	headers = pv_signature_parse_protected(signature->protected);
 	if (!headers) {
 		pv_log(ERROR, "could not parse protected JSON");
+		goto out;
+	}
+
+	// parse x5c value into list of base64 encoded certificates
+	if (!pv_signature_get_certs_raw(headers->x5c, &certs_raw)) {
+		pv_log(ERROR, "could not parse certs");
 		goto out;
 	}
 
@@ -606,11 +799,12 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 
 	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256", strlen("RS256")) ||
 	    pv_str_matches(headers->alg, strlen(headers->alg), "ES256", strlen("ES256"))) {
-		ret = pv_signature_verify_sha256(payload, signature);
+		ret = pv_signature_verify_sha256(payload, &certs_raw, signature);
 	} else {
 		pv_log(ERROR, "unknown algorithm in protected JSON %s", headers->alg);
 	}
 out:
+	pv_signature_free_certs_raw(&certs_raw);
 	if (headers)
 		pv_signature_free_headers(headers);
 	if (payload)

@@ -23,7 +23,9 @@
 #ifndef UTILS_BASE64_H_
 #define UTILS_BASE64_H_
 
-int pv_base64_url_decode(const char *scr, char **dst, size_t *olen);
+int pv_base64_decode(const char *src, char **dst, size_t *olen);
+
+int pv_base64_url_decode(const char *src, char **dst, size_t *olen);
 int pv_base64_url_encode(const char *str, char **dst, size_t *olen);
 
 #endif /* UTILS_BASE64_H_ */

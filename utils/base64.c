@@ -70,33 +70,22 @@ static char *pv_base64_remove_padding_multi4(char *str)
 	return str;
 }
 
-int pv_base64_url_decode(const char *scr, char **dst, size_t *olen)
+int pv_base64_decode(const char *src, char **dst, size_t *olen)
 {
 	int res;
 	size_t len, ilen;
-	char *itmp = strdup(scr);
-	*olen = 0;
 
 	if (*dst)
 		goto err;
 
-	itmp = pv_base64_add_padding_multi4(itmp);
-
-	ilen = strlen(itmp);
+	ilen = strlen(src);
 	len = ((4 * ilen / 3) + 3) & ~3;
-
-	for (size_t i = 0; i < ilen; i++) {
-		if (itmp[i] == '_')
-			itmp[i] = '/';
-		if (itmp[i] == '-')
-			itmp[i] = '+';
-	}
 
 	*dst = calloc(1, len);
 	if (!*dst)
 		goto err;
 
-	res = mbedtls_base64_decode((unsigned char*)*dst, len, olen, (unsigned char*)itmp, ilen);
+	res = mbedtls_base64_decode((unsigned char*)*dst, len, olen, (unsigned char*)src, ilen);
 	if (res) {
 		pv_log(ERROR, "cannot decode base64 with code %d", res);
 		goto err;
@@ -111,7 +100,44 @@ err:
 	return -1;
 }
 
-int pv_base64_url_encode(const char *scr, char **dst, size_t *olen)
+int pv_base64_url_decode(const char *src, char **dst, size_t *olen)
+{
+	size_t ilen;
+	char *itmp = strdup(src);
+	*olen = 0;
+
+	if (*dst)
+		goto err;
+
+	itmp = pv_base64_add_padding_multi4(itmp);
+
+	ilen = strlen(itmp);
+
+	for (size_t i = 0; i < ilen; i++) {
+		if (itmp[i] == '_')
+			itmp[i] = '/';
+		if (itmp[i] == '-')
+			itmp[i] = '+';
+	}
+
+	if (pv_base64_decode(itmp, dst, olen))
+		goto err;
+
+	if (itmp)
+		free(itmp);
+
+	return 0;
+err:
+	if (itmp)
+		free(itmp);
+	if (*dst) {
+		free(*dst);
+		*dst = NULL;
+	}
+	return -1;
+}
+
+int pv_base64_url_encode(const char *src, char **dst, size_t *olen)
 {
 	int res;
 	size_t len, ilen;
@@ -120,14 +146,14 @@ int pv_base64_url_encode(const char *scr, char **dst, size_t *olen)
 	if (*dst)
 		goto err;
 
-	ilen = strlen(scr);
+	ilen = strlen(src);
 	len = ilen * 4 / 3 + 4;
 
 	*dst = calloc(1, len);
 	if (!*dst)
 		goto err;
 
-	res = mbedtls_base64_encode((unsigned char*)*dst, len, olen, (unsigned char*)scr, ilen);
+	res = mbedtls_base64_encode((unsigned char*)*dst, len, olen, (unsigned char*)src, ilen);
 	if (res) {
 		pv_log(ERROR, "cannot encode base64 with code %d", res);
 		goto err;
