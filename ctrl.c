@@ -265,7 +265,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 			req_fd, strerror(errno));
 
 	// open will fail if the file exist so we do not overwrite it
-	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY, 0644);
+	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC, 0644);
 	if (obj_fd < 0) {
 		pv_log(ERROR, "%s could not be created: %s", file_path, strerror(errno));
 		pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot create file");
@@ -756,8 +756,10 @@ out:
 		free(file_path_parent);
 	if (file_path)
 		free(file_path);
-	if (file_path_tmp)
+	if (file_path_tmp) {
+		remove(file_path_tmp);
 		free(file_path_tmp);
+	}
 	if (metakey)
 		free(metakey);
 	if (metavalue)
