@@ -216,6 +216,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
+	// set current log and trail links
+	pv_storage_set_active(pv);
+
 	if (!pv_state_validate_checksum(pv->state)) {
 		pv_log(ERROR, "state objects validation went wrong");
 		goto out;
@@ -266,9 +269,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(ERROR, "error starting platforms");
 		goto out;
 	}
-
-	// set active only after plats have been started
-	pv_storage_set_active(pv);
 
 	// set initial wait delay and rollback count values
 	clock_gettime(CLOCK_MONOTONIC, &tp);
