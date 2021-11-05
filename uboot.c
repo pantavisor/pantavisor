@@ -33,7 +33,6 @@
 #include <errno.h>
 #include <mtd/mtd-user.h>
 
-#include "utils.h"
 #include "bootloader.h"
 
 #define MODULE_NAME			"uboot"

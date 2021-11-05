@@ -29,7 +29,6 @@
 
 #include <sys/stat.h>
 
-#include "utils.h"
 #include "bootloader.h"
 
 #define MODULE_NAME			"grub"

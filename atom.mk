@@ -57,12 +57,14 @@ LOCAL_SRC_FILES := init.c \
 			parser/parser_multi1.c \
 			parser/parser_system1.c \
 			objects.c \
-			utils/utils.c \
+			utils/fs.c \
+			utils/system.c \
 			utils/str.c \
 			utils/strrep.c \
 			utils/json.c \
 			utils/fops.c \
 			utils/base64.c \
+			utils/math.c \
 			jsons.c \
 			pantahub.c \
 			updater.c \

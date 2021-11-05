@@ -28,6 +28,8 @@
 #include <mbedtls/md_internal.h>
 #include <mbedtls/x509_crt.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "signature.h"
 #include "utils/json.h"
 #include "utils/str.h"

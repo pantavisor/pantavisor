@@ -35,7 +35,6 @@
 #include "ph_logger/ph_logger.h"
 #include "platforms.h"
 #include "pvctl_utils.h"
-#include "utils.h"
 #include "json.h"
 #include "fops.h"
 

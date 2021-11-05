@@ -28,11 +28,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <jsmn/jsmnutil.h>
+
 #define MODULE_NAME             "parser-multi1"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#include "utils.h"
 #include "addons.h"
 #include "platforms.h"
 #include "volumes.h"

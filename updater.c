@@ -36,9 +36,11 @@
 #include <thttp.h>
 #include <mbedtls/sha256.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "trestclient.h"
 #include "updater.h"
-#include "utils.h"
+#include "utils/fs.h"
 #include "objects.h"
 #include "parser/parser.h"
 #include "bootloader.h"

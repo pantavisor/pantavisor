@@ -31,7 +31,7 @@
 #include "blkid.h"
 #include "tsh.h"
 #include "pantavisor.h"
-#include "utils.h"
+#include "utils/fs.h"
 #include "loop.h"
 #include "blkid.h"
 

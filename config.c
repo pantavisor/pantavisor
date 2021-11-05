@@ -34,7 +34,6 @@
 #include "config.h"
 #include "init.h"
 #include "config_parser.h"
-#include "utils.h"
 #include "bootloader.h"
 #include "state.h"
 #include "storage.h"

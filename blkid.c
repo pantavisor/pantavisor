@@ -37,7 +37,7 @@
 #include <stdint.h>
 
 #include "blkid.h"
-#include "utils.h"
+#include "utils/math.h"
 #include "str.h"
 #include "log.h"
 

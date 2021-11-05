@@ -38,8 +38,11 @@
 
 #include <linux/limits.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "ctrl.h"
-#include "utils.h"
+#include "utils/math.h"
+#include "utils/fs.h"
 #include "json.h"
 #include "str.h"
 #include "pvlogger.h"

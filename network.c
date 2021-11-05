@@ -39,7 +39,6 @@
 #include <linux/if.h>
 #include <linux/sockios.h>
 
-#include "utils.h"
 #include "pantahub.h"
 #include "network.h"
 #include "init.h"

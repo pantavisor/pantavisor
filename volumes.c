@@ -34,7 +34,7 @@
 
 #include "loop.h"
 
-#include "utils.h"
+#include "utils/fs.h"
 #include "pantavisor.h"
 #include "volumes.h"
 #include "parser/parser.h"

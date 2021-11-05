@@ -40,7 +40,6 @@
 #include <linux/limits.h>
 #include <linux/reboot.h>
 
-#include "utils.h"
 #include "pantavisor.h"
 #include "loop.h"
 #include "platforms.h"

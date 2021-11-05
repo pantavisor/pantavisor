@@ -28,7 +28,7 @@
 
 #include <linux/limits.h>
 
-#include "utils.h"
+#include "utils/math.h"
 #include "objects.h"
 #include "state.h"
 #include "storage.h"

@@ -33,7 +33,6 @@
 
 #include "addons.h"
 #include "loop.h"
-#include "utils.h"
 #include "pantavisor.h"
 #include "state.h"
 

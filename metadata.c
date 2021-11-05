@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 
@@ -32,12 +33,15 @@
 
 #include <linux/limits.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "metadata.h"
 #include "version.h"
 #include "state.h"
 #include "pantahub.h"
 #include "init.h"
-#include "utils.h"
+#include "utils/math.h"
+#include "utils/system.h"
 #include "str.h"
 #include "json.h"
 #include "config_parser.h"
