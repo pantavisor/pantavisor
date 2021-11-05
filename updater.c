@@ -1647,27 +1647,20 @@ static int trail_link_objects(struct pantavisor *pv)
 
 static int trail_check_update_size(struct pantavisor *pv)
 {
-	uint64_t update_size, free_size;
+	off_t update_size, free_size;
 	char msg[128];
 
-	update_size = (uint64_t)get_update_size(pv->update);
-	free_size = (uint64_t)pv_storage_get_free(pv);
-
+	update_size = get_update_size(pv->update);
 	pv_log(INFO, "update size: %" PRIu64 " B", update_size);
 
+	free_size = pv_storage_gc_run_needed(update_size);
+
 	if (update_size > free_size) {
-		pv_log(WARN, "not enough space to process update. Freeing up space...");
-		pv_storage_gc_run(pv);
-
-		free_size = (uint64_t)pv_storage_get_free(pv);
-
-		if (update_size > free_size) {
-			pv_log(WARN, "not enough space to process update. Aborting update...");
-			sprintf(msg, "Space required %"PRIu64" B, available %"PRIu64" B",
-				update_size, free_size);
-			pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
-			return -1;
-		}
+		pv_log(ERROR, "cannot process update. Aborting...");
+		sprintf(msg, "Space required %"PRIu64" B, available %"PRIu64" B",
+			update_size, free_size);
+		pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
+		return -1;
 	}
 
 	return 0;

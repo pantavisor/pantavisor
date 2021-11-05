@@ -267,7 +267,6 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 		pv_log(WARN, "HTTP CONTINUE response could not be sent to ctrl socket with fd %d: %s",
 			req_fd, strerror(errno));
 
-	// open will fail if the file exist so we do not overwrite it
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC, 0644);
 	if (obj_fd < 0) {
 		pv_log(ERROR, "%s could not be created: %s", file_path, strerror(errno));
@@ -402,7 +401,6 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 			req_fd, strerror(errno));
 
 	// read and send
-
 	for (size_t to_send = file_size; to_send > 0; ) {
 		sent = sendfile(req_fd, obj_fd, &offset, to_send);
 		if (sent < 0)
@@ -551,6 +549,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
+	struct pantavisor *pv = pv_get_instance();
 	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL, *file_path_tmp = NULL;
 	char *metakey = NULL, *metavalue = NULL;
 
@@ -637,6 +636,9 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 						"Object has bad checksum");
 					goto out;
 				}
+
+				pv_storage_gc_defer_run_threshold();
+				pv->loading_objects = true;
 			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);

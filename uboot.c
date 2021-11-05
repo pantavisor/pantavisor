@@ -122,6 +122,51 @@ static int uboot_init()
 	return 0;
 }
 
+static char* uboot_get_env_key(char *key)
+{
+	int fd, n, len, ret;
+	char *buf, *path, *value = NULL;
+	struct stat st;
+
+	path = uboot_txt;
+	if (single_env) {
+		path = pv_env;
+		len = MTD_ENV_SIZE * sizeof(char);
+	} else {
+		if (stat(path, &st))
+			return value;
+		len = st.st_size * sizeof(char);
+	}
+
+	fd = open(path, O_RDONLY);
+	if (!fd)
+		return value;
+
+	lseek(fd, 0, SEEK_SET);
+	buf = calloc(1, len);
+	ret = read(fd, buf, len);
+	close(fd);
+
+	n = strlen(key);
+
+	int k = 0;
+	for (int i = 0; i < ret; i++) {
+		if (buf[i] != '\0')
+			continue;
+
+		if (!strncmp(buf+k, key, n)) {
+			len = strlen(buf+k+n+1);
+			value = calloc(1, len + 1);
+			strcpy(value, buf+k+n+1);
+			break;
+		}
+		k = i+1;
+	}
+	free(buf);
+
+	return value;
+}
+
 // this always happens in uboot.txt
 static int uboot_unset_env_key(char *key)
 {
@@ -342,5 +387,6 @@ const struct bl_ops uboot_ops = {
 	.init		= uboot_init,
 	.set_env_key	= uboot_set_env_key,
 	.unset_env_key	= uboot_unset_env_key,
+	.get_env_key = uboot_get_env_key,
 	.flush_env	= uboot_flush_env,
 };
