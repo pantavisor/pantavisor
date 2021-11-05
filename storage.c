@@ -55,28 +55,37 @@
 #include "utils/json.h"
 #include "utils/str.h"
 #include "utils/fs.h"
+#include "utils/timer.h"
 
 #define MODULE_NAME             "storage"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+static struct timer threshold_timer;
 
 static int pv_storage_gc_objects(struct pantavisor *pv)
 {
-	int reclaimed = 0;
-	struct stat st;
-	struct pv_state *u;
+	int reclaimed = 0, len;
 	char path[PATH_MAX];
-	char **obj, **obj_i;
+	struct stat st;
+	struct pv_path *o, *tmp;
+	struct dl_list objects;
 
-	if (!pv->update)
+	dl_list_init(&objects);
+
+	len = strlen("%s/objects/") + strlen(pv_config_get_storage_mntpoint()) + 1;
+	snprintf(path, len, "%s/objects/", pv_config_get_storage_mntpoint());
+	if (pv_storage_get_subdir(path, "", &objects))
 		goto out;
 
-	u = pv->update->pending;
+	dl_list_for_each_safe(o, tmp, &objects, struct pv_path, list) {
+		pv_log(DEBUG, "path %s", o->path);
+		if (!strncmp(o->path, "..", len) ||
+			!strncmp(o->path, ".", len))
+			continue;
 
-	obj = pv_objects_get_all_ids(pv);
-	for (obj_i = obj; *obj_i; obj_i++) {
-		sprintf(path, "%s/objects/%s", pv_config_get_storage_mntpoint(), *obj_i);
+		len = strlen("%s/objects") + strlen(pv_config_get_storage_mntpoint()) + strlen(o->path) +1;
+		snprintf(path, len, "%s/objects/%s", pv_config_get_storage_mntpoint(), o->path);
 		memset(&st, 0, sizeof(struct stat));
 		if (stat(path, &st) < 0)
 			continue;
@@ -84,26 +93,21 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 		if (st.st_nlink > 1)
 			continue;
 
-		if (pv_objects_id_in_step(u, *obj_i))
-			continue;
+		// do not remove objects belonging to an ongoing update
+		if (pv->update) {
+			if (pv_objects_id_in_step(pv->update->pending, o->path))
+				continue;
+		}
 
 		// remove,unlink object and sync fs
 		reclaimed += st.st_size;
 		remove(path);
 		sync();
-		pv_log(DEBUG, "removed unused '%s', reclaimed %lu bytes", path, st.st_size);
-	}
-
-	if (obj) {
-		obj_i = obj;
-		while (*obj_i) {
-			free(*obj_i);
-			obj_i++;
-		}
-		free(obj);
+		pv_log(DEBUG, "removed unused object '%s', reclaimed %lu bytes", path, st.st_size);
 	}
 
 out:
+	pv_storage_free_subdir(&objects);
 	return reclaimed;
 }
 
@@ -179,8 +183,8 @@ void pv_storage_free_subdir(struct dl_list *subdirs)
 	struct pv_path *p, *tmp;
 
 	dl_list_for_each_safe(p, tmp, subdirs, struct pv_path, list) {
-		free(p->path);
 		dl_list_del(&p->list);
+		free(p->path);
 		free(p);
 	}
 }
@@ -207,57 +211,6 @@ out:
 	return ret;
 }
 
-int pv_storage_gc_run(struct pantavisor *pv)
-{
-	int reclaimed = 0, len;
-	struct pv_state *s = 0, *u = 0;
-	struct dl_list revisions; // pv_path
-	struct pv_path *r, *tmp;
-
-	if (pv->state)
-		s = pv->state;
-
-	if (pv->update)
-		u = pv->update->pending;
-
-	dl_list_init(&revisions);
-
-	if (pv_storage_get_revisions(&revisions)) {
-		pv_log(ERROR, "error parsings revs on disk for GC");
-		return -1;
-	}
-
-	// check all revisions in list
-	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
-		len = strlen(r->path) + 1;
-		// dont reclaim current, locals, update, last booted up revisions or factory if configured
-		if (!strncmp(r->path, "..", len) ||
-			!strncmp(r->path, ".", len) ||
-			!strncmp(r->path, "current", len) ||
-			!strncmp(r->path, "locals", len) ||
-			!strncmp(r->path, "locals/..", len) ||
-			!strncmp(r->path, "locals/.", len) ||
-			(s && !strncmp(r->path, s->rev, len)) ||
-			(u && !strncmp(r->path, u->rev, len)) ||
-			!strncmp(r->path, pv_bootloader_get_rev(), len) ||
-			(pv_config_get_storage_gc_keep_factory() && !strncmp(r->path, "0", len)))
-			continue;
-
-		// unlink the given revision from local storage
-		pv_storage_rm_rev(pv, r->path);
-	}
-
-	pv_storage_free_subdir(&revisions);
-
-	// get rid of orphaned objects
-	reclaimed = pv_storage_gc_objects(pv);
-
-	if (reclaimed)
-		pv_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
-
-	return reclaimed;
-}
-
 struct pv_storage {
 	off_t total;
 	off_t free;
@@ -269,13 +222,10 @@ struct pv_storage {
 	int threshold;
 };
 
-static struct pv_storage* pv_storage_new(struct pantavisor *pv)
+static struct pv_storage* pv_storage_new()
 {
 	struct statfs buf;
 	struct pv_storage* this;
-
-	if (!pv)
-		return NULL;
 
 	if (statfs("/storage/config/pantahub.config", &buf) < 0)
 		return NULL;
@@ -308,12 +258,12 @@ static void pv_storage_print(struct pv_storage* storage)
 	pv_log(INFO, "real free disk space: %"PRIu64" B (%d%% of total)", storage->real_free, storage->real_free_percentage);
 }
 
-off_t pv_storage_get_free(struct pantavisor *pv)
+static off_t pv_storage_get_free()
 {
 	off_t real_free = 0;
 	struct pv_storage* storage;
 
-	storage = pv_storage_new(pv);
+	storage = pv_storage_new();
 	if (storage) {
 		pv_storage_print(storage);
 		real_free = storage->real_free;
@@ -324,21 +274,113 @@ off_t pv_storage_get_free(struct pantavisor *pv)
 	return real_free;
 }
 
-bool pv_storage_threshold_reached(struct pantavisor *pv)
+int pv_storage_gc_run()
 {
-	bool threshold_reached = false;
-	struct pv_storage* storage;
+	int reclaimed = 0, len;
+	struct pv_state *s = 0, *u = 0;
+	struct dl_list revisions; // pv_path
+	struct pv_path *r, *tmp;
+	struct pantavisor *pv = pv_get_instance();
 
-	storage = pv_storage_new(pv);
+	if (pv->state)
+		s = pv->state;
+
+	if (pv->update)
+		u = pv->update->pending;
+
+	dl_list_init(&revisions);
+
+	if (pv_storage_get_revisions(&revisions)) {
+		pv_log(ERROR, "error parsings revs on disk for GC");
+		return -1;
+	}
+
+	// check all revisions in list
+	dl_list_for_each_safe(r, tmp, &revisions, struct pv_path, list) {
+		len = strlen(r->path) + 1;
+		// dont reclaim current, locals, update, last booted up revisions or factory if configured
+		if (!strncmp(r->path, "..", len) ||
+			!strncmp(r->path, ".", len) ||
+			!strncmp(r->path, "current", len) ||
+			!strncmp(r->path, "locals", len) ||
+			!strncmp(r->path, "locals/..", len) ||
+			!strncmp(r->path, "locals/.", len) ||
+			(s && !strncmp(r->path, s->rev, len)) ||
+			(u && !strncmp(r->path, u->rev, len)) ||
+			!strncmp(r->path, pv_bootloader_get_done(), len) ||
+			(pv_config_get_storage_gc_keep_factory() && !strncmp(r->path, "0", len)))
+			continue;
+
+		// unlink the given revision from local storage
+		pv_storage_rm_rev(pv, r->path);
+	}
+
+	pv_storage_free_subdir(&revisions);
+
+	// get rid of orphaned objects
+	reclaimed = pv_storage_gc_objects(pv);
+
+	if (reclaimed)
+		pv_log(DEBUG, "total reclaimed: %d bytes", reclaimed);
+
+	return reclaimed;
+}
+
+off_t pv_storage_gc_run_needed(off_t needed)
+{
+	off_t available = pv_storage_get_free();
+
+	if (needed > available) {
+		pv_log(WARN, "not enough space for the %"PRIu64" B needed. Freeing up space...",
+			available);
+		pv_storage_gc_run();
+
+		available = pv_storage_get_free();
+
+		if (needed > available)
+			pv_log(ERROR, "not enough space after running garbage collector");
+	}
+
+	return available;
+}
+
+void pv_storage_gc_defer_run_threshold()
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	timer_start(&threshold_timer, pv_config_get_storage_gc_threshold_defertime(), 0, RELATIV_TIMER);
+
+	if (!pv->loading_objects) {
+		pv->loading_objects = true;
+		pv_log(INFO, "disabled garbage collector threshold. Will be available again in %d seconds",
+			 pv_config_get_storage_gc_threshold_defertime());
+	}
+}
+
+void pv_storage_gc_run_threshold()
+{
+	struct pv_storage* storage;
+	struct pantavisor *pv = pv_get_instance();
+	struct timer_state tstate;
+
+	tstate = timer_current_state(&threshold_timer);
+	if (pv->loading_objects && tstate.fin) {
+		pv->loading_objects = false;
+		pv_log(INFO, "garbage collector enabled again");
+	}
+
+	if (!pv_config_get_storage_gc_threshold() ||
+		pv->loading_objects)
+		return;
+
+	storage = pv_storage_new();
 	if (storage &&
 		(storage->real_free_percentage < storage->threshold)) {
-		threshold_reached = true;
 		pv_log(INFO, "free disk space is %d%%, which is under the %d%% threshold. Freeing up space", storage->real_free_percentage, storage->threshold);
+		pv_storage_gc_run();
 	}
 
 	free(storage);
-
-	return threshold_reached;
 }
 
 int pv_storage_validate_file_checksum(char* path, char* checksum)

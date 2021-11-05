@@ -37,40 +37,6 @@
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-char** pv_objects_get_all_ids(struct pantavisor *pv)
-{
-	int i = 0, n, bufsize;
-	struct dirent **dirs;
-	char **ids = 0;
-	char path[PATH_MAX];
-
-	sprintf(path, "%s/objects/", pv_config_get_storage_mntpoint());
-	n = scandir(path, &dirs, NULL, alphasort);
-	if (n < 0)
-		goto out;
-
-	// allocate enough minus '.' and '..' + null term str
-	bufsize = n-1;
-	ids = calloc(1, bufsize * sizeof(char*));
-
-	while (n--) {
-		char *tmp = dirs[n]->d_name;
-		if (!strcmp(tmp, ".") || !strcmp(tmp, ".."))
-			continue;
-		ids[i] = strdup(tmp);
-		i++;
-		free(dirs[n]);
-	}
-
-	// null terminate string array
-	ids[bufsize-1] = 0;
-
-	free(dirs);
-
-out:
-	return ids;
-}
-
 int pv_objects_id_in_step(struct pv_state *s, char *id)
 {
 	struct pv_object *curr, *tmp;

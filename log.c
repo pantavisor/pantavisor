@@ -357,20 +357,21 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "                                                 ");
 	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
 	pv_log(INFO, "                                                 ");
-	pv_log(INFO, "c->storage.path = '%s'", pv_config_get_storage_path());
-	pv_log(INFO, "c->storage.fstype = '%s'", pv_config_get_storage_fstype());
-	pv_log(INFO, "c->storage.opts = '%s'", pv_config_get_storage_opts());
-	pv_log(INFO, "c->storage.mntpoint = '%s'", pv_config_get_storage_mntpoint());
-	pv_log(INFO, "c->storage.mnttype = '%s'", pv_config_get_storage_mnttype());
-	pv_log(INFO, "c->secureboot.mode = '%d'", pv_config_get_secureboot_mode());
-	pv_log(INFO, "c->creds.host = '%s'", pv_config_get_creds_host());
-	pv_log(INFO, "c->creds.port = '%d'", pv_config_get_creds_port());
-	pv_log(INFO, "c->creds.host_proxy = '%s'", pv_config_get_creds_host_proxy());
-	pv_log(INFO, "c->creds.port_proxy = '%d'", pv_config_get_creds_port_proxy());
-	pv_log(INFO, "c->creds.noproxyconnect = '%d'", pv_config_get_creds_noproxyconnect());
-	pv_log(INFO, "c->creds.id = '%s'", pv_config_get_creds_id());
-	pv_log(INFO, "c->creds.prn = '%s'", pv_config_get_creds_prn());
-	pv_log(INFO, "c->creds.secret = '%s'", pv_config_get_creds_secret());
+	pv_log(INFO, "storage.path = '%s'", pv_config_get_storage_path());
+	pv_log(INFO, "storage.fstype = '%s'", pv_config_get_storage_fstype());
+	pv_log(INFO, "storage.opts = '%s'", pv_config_get_storage_opts());
+	pv_log(INFO, "storage.mntpoint = '%s'", pv_config_get_storage_mntpoint());
+	pv_log(INFO, "storage.mnttype = '%s'", pv_config_get_storage_mnttype());
+	pv_log(INFO, "secureboot.mode = '%d'", pv_config_get_secureboot_mode());
+	pv_log(INFO, "creds.host = '%s'", pv_config_get_creds_host());
+	pv_log(INFO, "creds.port = '%d'", pv_config_get_creds_port());
+	pv_log(INFO, "creds.host_proxy = '%s'", pv_config_get_creds_host_proxy());
+	pv_log(INFO, "creds.port_proxy = '%d'", pv_config_get_creds_port_proxy());
+	pv_log(INFO, "creds.noproxyconnect = '%d'", pv_config_get_creds_noproxyconnect());
+	pv_log(INFO, "creds.id = '%s'", pv_config_get_creds_id());
+	pv_log(INFO, "creds.prn = '%s'", pv_config_get_creds_prn());
+	pv_log(INFO, "creds.secret = '%s'", pv_config_get_creds_secret());
+	pv_bootloader_print();
 
 	if (ph_logger_init(LOG_CTRL_PATH)) {
 		pv_log(ERROR, "ph logger initialization failed");

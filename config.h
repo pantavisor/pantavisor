@@ -65,6 +65,7 @@ struct pantavisor_gc {
 	int reserved;
 	bool keep_factory;
 	int threshold;
+	int threshold_defertime;
 };
 
 struct pantavisor_storage {
@@ -190,6 +191,7 @@ int pv_config_get_storage_wait(void);
 int pv_config_get_storage_gc_reserved(void);
 bool pv_config_get_storage_gc_keep_factory(void);
 int pv_config_get_storage_gc_threshold(void);
+int pv_config_get_storage_gc_threshold_defertime(void);
 
 int pv_config_get_updater_interval(void);
 int pv_config_get_updater_network_timeout(void);

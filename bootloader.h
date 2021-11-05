@@ -28,12 +28,16 @@ struct bl_ops {
 	int (*init)(void);
 	int (*set_env_key)(char *key, char *value);
 	int (*unset_env_key)(char *key);
+	char* (*get_env_key)(char *key);
 	int (*flush_env)(void);
 	int (*install_kernel)(char *path);
 };
 
+void pv_bootloader_print(void);
+
 const char* pv_bootloader_get_rev(void);
 const char* pv_bootloader_get_try(void);
+const char* pv_bootloader_get_done(void);
 
 bool pv_bootloader_update_in_progress(void);
 bool pv_bootloader_trying_update(void);

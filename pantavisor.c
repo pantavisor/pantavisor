@@ -226,6 +226,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// reload remote bool after non reboot updates, when we don't load config again
 	pv->remote_mode = pv_config_get_control_remote();
+	pv->loading_objects = false;
 	pv->state->local = !pv_config_get_control_remote();
 
 	// we know if we are in local if the running revision has the local format
@@ -476,9 +477,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	pv_network_update_meta(pv);
 
 	// check if we need to run garbage collector
-	if (pv_config_get_storage_gc_threshold() && pv_storage_threshold_reached(pv)) {
-		pv_storage_gc_run(pv);
-	}
+	pv_storage_gc_run_threshold();
 
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
@@ -566,8 +565,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			next_state = PV_STATE_UPDATE;
 		break;
 	case CMD_RUN_GC:
-		pv_log(DEBUG, "run garbage collector reveived. Running...");
-		pv_storage_gc_run(pv);
+		pv_log(DEBUG, "run garbage collector received. Running...");
+		pv_storage_gc_run();
 		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
@@ -820,6 +819,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->online = false;
 	pv->remote_mode = false;
 	pv->synced = false;
+	pv->loading_objects = false;
 	ret = 0;
 out:
 	return 0;

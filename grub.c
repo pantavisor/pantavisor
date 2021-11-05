@@ -105,6 +105,39 @@ static int read_grubenv(char *path, char *buf, int writable)
 	return fd;
 }
 
+static char* grub_get_env_key(char *key)
+{
+	int fd, len, klen, vlen;
+	char buf[1024];
+	char *next, *value = NULL;
+
+	fd = read_grubenv(grub_env, buf, 0);
+	if (fd < 0)
+		return value;
+
+	klen = strlen(key);
+	next = buf + HDR_SIZE;
+	len = strlen(buf) - HDR_SIZE;
+	for (uint16_t i = HDR_SIZE; i < len; i++) {
+		if (buf[i] != '\n')
+			continue;
+
+		// null terminate key/value pair
+		buf[i] = '\0';
+
+		if (!strncmp(next, key, klen)) {
+			vlen = strlen(next+klen+1);
+			value = calloc(1, vlen + 1);
+			strcpy(value, next+klen+1);
+			break;
+		}
+		next = buf+i+1;
+	}
+	close(fd);
+
+	return value;
+}
+
 static int grub_unset_env_key(char *key)
 {
 	int fd, ret;
@@ -218,5 +251,6 @@ const struct bl_ops grub_ops = {
 	.init		= grub_init,
 	.set_env_key	= grub_set_env_key,
 	.unset_env_key	= grub_unset_env_key,
+    .get_env_key = grub_get_env_key,
 	.flush_env	= grub_flush_env,
 };
