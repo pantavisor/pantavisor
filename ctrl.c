@@ -560,7 +560,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 	// if character is 3 (old code for json command), it is non-HTTP
 	if (buf[0] == 3) {
-		res = pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE, &cmd);
+		res = pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
 		goto out;
 	}
 
