@@ -34,7 +34,6 @@
 #include <sys/wait.h>
 #include <sys/reboot.h>
 #include <sys/prctl.h>
-#include <sys/time.h>
 #include <sys/resource.h>
 
 #include <linux/limits.h>
@@ -60,6 +59,7 @@
 #include "signature.h"
 #include "ph_logger/ph_logger.h"
 #include "parser/parser.h"
+#include "utils/timer.h"
 
 #define MODULE_NAME             "controller"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -76,9 +76,9 @@ struct pantavisor* pv_get_instance()
 	return global_pv;
 }
 
-static int rollback_time;
-static time_t wait_delay;
-static time_t commit_delay;
+static struct timer rollback_timer;
+static struct timer timer_wait_delay;
+static struct timer timer_commit;
 
 extern pid_t shell_pid;
 
@@ -145,15 +145,13 @@ static const char* ph_state_string(ph_state_t st)
 
 static bool pv_wait_delay_timedout(int seconds)
 {
-	struct timespec tp;
-
+	struct timer_state tstate = timer_current_state(&timer_wait_delay);
 	// first, we wait until wait_delay
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	if (wait_delay > tp.tv_sec)
+	if (!tstate.fin)
 		return false;
 
 	// then, we set wait_delay for next call
-	wait_delay = tp.tv_sec + seconds;
+	timer_start(&timer_wait_delay, seconds, 0, RELATIV_TIMER);
 
 	return true;
 }
@@ -182,7 +180,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	pv_state_t next_state = PV_STATE_ROLLBACK;
 	char *json = NULL;
-	struct timespec tp;
 	int runlevel = RUNLEVEL_ROOT;
 
 	// resume update if we have booted to test a new revision
@@ -270,10 +267,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	// set initial wait delay and rollback count values
-	clock_gettime(CLOCK_MONOTONIC, &tp);
-	wait_delay = 0;
-	commit_delay = 0;
-	rollback_time = tp.tv_sec + pv_config_get_updater_network_timeout();
+	timer_start(&timer_wait_delay, 0, 0, RELATIV_TIMER);
+	timer_start(&timer_commit, 0, 0, RELATIV_TIMER);
+	timer_start(&rollback_timer, pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
 
 	next_state = PV_STATE_WAIT;
 out:
@@ -350,23 +346,22 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 static pv_state_t pv_wait_update()
 {
 	struct pantavisor *pv = pv_get_instance();
-	struct timespec tp;
+	struct timer_state tstate;
 
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update) {
 		if (pv_update_is_trying(pv->update)) {
 			// set initial testing time
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			commit_delay = tp.tv_sec + pv_config_get_updater_commit_delay();
+			timer_start(&timer_commit, pv_config_get_updater_commit_delay(), 0, RELATIV_TIMER);
 			// progress update state to testing
 			pv_update_test(pv);
 		}
 		// if the update is being tested, we might have to wait
 		if (pv_update_is_testing(pv->update)) {
 			// progress if possible the state of testing update
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (commit_delay > tp.tv_sec) {
-				pv_log(INFO, "committing new update in %d seconds", commit_delay - tp.tv_sec);
+			tstate = timer_current_state(&timer_commit);
+			if (!tstate.fin) {
+				pv_log(INFO, "committing new update in %d seconds", tstate.sec);
 				return PV_STATE_WAIT;
 			}
 		}
@@ -381,19 +376,19 @@ static pv_state_t pv_wait_update()
 
 static pv_state_t pv_wait_network(struct pantavisor *pv)
 {
-	struct timespec tp;
+	struct timer_state tstate;
 
 	// check if we are online and authenticated
 	if (!pv_ph_is_auth(pv) ||
 		!pv_trail_is_auth(pv)) {
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {
-			clock_gettime(CLOCK_MONOTONIC, &tp);
-			if (rollback_time <= tp.tv_sec) {
+			tstate = timer_current_state(&rollback_timer);
+			if (tstate.fin) {
 				pv_log(ERROR, "timed out before getting any response from cloud. Rolling back...");
 				return PV_STATE_ROLLBACK;
 			}
-			pv_log(WARN, "no connection. Will rollback in %d seconds", rollback_time - tp.tv_sec);
+			pv_log(WARN, "no connection. Will rollback in %d seconds", tstate.sec);
 		// or we directly rollback is connection is not stable during testing
 		} else if (pv_update_is_testing(pv->update)) {
 			pv_log(ERROR, "connection with cloud not stable during testing, Rolling back...");
@@ -432,9 +427,8 @@ out:
 
 static pv_state_t _pv_wait(struct pantavisor *pv)
 {
-	struct timespec tp1;
-	struct timespec tp2;
-	time_t network_time;
+	struct timer t;
+	struct timer_state tstate;
 	pv_state_t next_state = PV_STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
@@ -452,7 +446,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->remote_mode &&
 		(!pv->unclaimed ||
 		(pv->unclaimed && !pv->update))) {
-		clock_gettime(CLOCK_MONOTONIC, &tp1);
+		timer_start(&t, 5, 0, RELATIV_TIMER);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
 		if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
@@ -466,11 +460,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 				next_state = pv_wait_network(pv);
 			}
 		}
-		clock_gettime(CLOCK_MONOTONIC, &tp2);
-		if (tp2.tv_sec > tp1.tv_sec) {
-			network_time = tp2.tv_sec - tp1.tv_sec;
-			if (network_time > 5)
-				pv_log(DEBUG, "network operations are taking %d seconds!", network_time);
+		tstate = timer_current_state(&t);
+		if (tstate.fin) {
+			pv_log(DEBUG, "network operations are taking %d seconds!",  5 + tstate.sec);
 		}
 	} else {
 		// process ongoing updates, if any

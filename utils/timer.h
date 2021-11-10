@@ -20,70 +20,40 @@
  * SOFTWARE.
  */
 
-#include <libgen.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include "str.h"
+#ifndef TIMER_H
+#define TIMER_H
 
-char *pv_str_replace_char(char *str, int len, char which, char what)
-{
-	int char_at = 0;
+#include <time.h>
+#include <stdbool.h>
 
-	if (!str)
-		return NULL;
+typedef enum {
+	RELATIV_TIMER,
+	ABSOLUTE_TIMER
+} timer_type_t;
 
-	for (char_at = 0; char_at < len; char_at++){
-		if (str[char_at] == which)
-			str[char_at] = what;
-	}
-	return str;
-}
+struct timer {
+	timer_type_t type;
+	struct timespec timeout;
+};
 
-char *pv_str_unescape_to_ascii(char *buf, char *code, char c)
-{
-	char *p = 0;
-	char *new = 0;
-	char *old;
-	int pos = 0, replaced = 0;
-	char *tmp;
+/*
+ * time, sec and nsec are always positive. When the timer has finished (fin = true),
+ * time, sec and nsec hold the time passed since the timer has finished. Otherwise,
+ * time, sec and nsce hold the time left on the timer.
+ */
+struct timer_state {
+	bool fin;
+	union {
+		struct timespec time;
+		struct {
+			time_t sec;
+			long nsec;
+		};
+	};
+};
 
-	tmp = malloc(strlen(buf) + strlen(code) + 1);
-	strcpy(tmp, buf);
-	strcat(tmp, code);
-	old = tmp;
+int timer_start(struct timer *t, time_t sec, long nsec, timer_type_t type);
 
-	p = strstr(tmp, code);
-	while (p) {
-		*p = '\0';
-		new = realloc(new, pos + strlen(tmp) + 2);
-		strcpy(new+pos, tmp);
-		pos = pos + strlen(tmp);
-		new[pos] = c;
-		pos += 1;
-		new[pos] = '\0';
-		replaced += 1;
-		tmp = p+strlen(code);
-		p = strstr(tmp, code);
-	}
+struct timer_state timer_current_state(struct timer *t);
 
-	if (new[strlen(new)-1] == c)
-		new[strlen(new)-1] = '\0';
-
-	if (old)
-		free(old);
-
-	return new;
-}
-
-char *pv_str_skip_prefix(char *str, const char *key)
-{
-	if (!str || !key)
-		return str;
-	while (*key) {
-		if (*key != *str)
-			break;
-		key++;
-		str++;
-	}
-	return str;
-}
+#endif // TIMER_H

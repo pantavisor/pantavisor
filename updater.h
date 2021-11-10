@@ -23,6 +23,7 @@
 #define PV_UPDATER_H
 
 #include "pantavisor.h"
+#include "timer.h"
 #include <trest.h>
 
 #define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
@@ -88,7 +89,7 @@ struct pv_update {
 	char *endpoint;
 	int runlevel;
 	int progress_size;
-	time_t retry_at;
+	struct timer retry_timer;
 	struct pv_state *pending;
 	char *progress_objects;
 	int retries;
