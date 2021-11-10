@@ -31,7 +31,6 @@
 struct pv_connection {
 	char *hostorip;
 	int port;
-	time_t since;
 };
 
 int pv_ph_is_available(struct pantavisor *pv);

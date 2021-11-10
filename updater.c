@@ -1090,20 +1090,21 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status)
 static int pv_update_check_download_retry(struct pantavisor *pv)
 {
 	if (pv->update) {
-		int time_left = pv->update->retry_at - time(NULL);
+		struct timer_state timer_state = timer_current_state(&pv->update->retry_timer);
 
-		if (time_left <= 0) {
+		if (timer_state.fin) {
 			pv->update->retries++;
 			if (pv->update->retries > pv_config_get_updater_revision_retries())
 				return -1;
 			pv_log(INFO, "trying revision %s ,retry = %d",
 					pv->update->pending->rev, pv->update->retries);
 			// set timer for next retry
-			pv->update->retry_at = time(NULL) + pv_config_get_storage_wait();
+			timer_start(&pv->update->retry_timer, pv_config_get_storage_wait(),
+					0, RELATIV_TIMER);
 			return 0;
 		}
 
-		pv_log(INFO, "retrying in %d seconds", time_left);
+		pv_log(INFO, "retrying in %d seconds", timer_state.sec);
 		return 1;
 	}
 
@@ -1290,7 +1291,7 @@ static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 }
 
 struct progress_update {
-	time_t next_update_at;
+	struct timer timer_next_update;
 	struct pantavisor *pv;
 	struct object_update *object_update;
 	struct pv_object *pv_object;
@@ -1324,7 +1325,7 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 	if (!obj)
 		return;
 	total_update = progress_update->pv->update->total_update;
-	if (progress_update->next_update_at > time(NULL)) {
+	if (timer_current_state(&progress_update->timer_next_update).fin) {
 		if (chunk_size == written) {
 			progress_update->object_update->total_downloaded += chunk_size;
 			total_update->total_downloaded += chunk_size;
@@ -1353,7 +1354,7 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 		progress_update->object_update->current_time = time(NULL);
 		object_update_json(progress_update->object_update, msg, OBJ_JSON_SIZE);
 	}
-	progress_update->next_update_at = time(NULL) + UPDATE_PROGRESS_FREQ;
+	timer_start(&progress_update->timer_next_update, UPDATE_PROGRESS_FREQ, 0, RELATIV_TIMER);
 	pv_update_set_status_msg(progress_update->pv, UPDATE_DOWNLOAD_PROGRESS, msg);
 out:
 	free(msg);
@@ -1487,8 +1488,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	object_update.total_size = obj->size;
 	object_update.current_time = object_update.start_time;
 	object_update.total_downloaded = 0;
-	progress_update.next_update_at = object_update.start_time + 
-						UPDATE_PROGRESS_FREQ;
+	timer_start(&progress_update.timer_next_update, UPDATE_PROGRESS_FREQ, 0, RELATIV_TIMER);
 	res = thttp_request_do_file_with_cb (req, fd,
 			trail_download_object_progress, &progress_update);
 	if (!res) {
