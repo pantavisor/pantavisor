@@ -539,9 +539,6 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 
 			num_plats++;
 		}
-
-		// FIXME: arbitrary delay between runlevels
-		sleep(5);
 	}
 
 	pv_log(INFO, "started %d platforms", num_plats);
