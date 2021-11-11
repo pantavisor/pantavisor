@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-#include "utils.h"
+#include "utils/list.h"
 #include <string.h>
 
 struct blkid_info {

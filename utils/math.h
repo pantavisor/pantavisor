@@ -19,31 +19,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAHUB_H
-#define PV_PANTAHUB_H
+#ifndef PV_MATH_H
+#define PV_MATH_H
 
-#define DEVICE_TOKEN_FMT	"Pantahub-Devices-Auto-Token-V1: %s"
+int get_digit_count(int number);
 
-#include <time.h>
+#ifndef ARRAY_LEN
+#define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
+#endif /* ARRAY_LEN*/
 
-#include "pantavisor.h"
-
-struct pv_connection {
-	char *hostorip;
-	int port;
-	time_t since;
-};
-
-int pv_ph_is_available(struct pantavisor *pv);
-int pv_ph_device_get_meta(struct pantavisor *pv);
-int pv_ph_device_exists(struct pantavisor *pv);
-int pv_ph_register_self(struct pantavisor *pv);
-bool pv_ph_is_auth(struct pantavisor *pv);
-const char** pv_ph_get_certs(struct pantavisor *pv);
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
-void pv_ph_release_client(struct pantavisor *pv);
-void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
-int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
-struct pv_connection* pv_get_instance_connection(void);
-
-#endif
+#endif // PV_MATH_H

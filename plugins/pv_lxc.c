@@ -37,7 +37,7 @@
 #include <unistd.h>
 #include <stdbool.h>
 
-#include "utils/utils.h"
+#include "utils/fs.h"
 #include "pv_lxc.h"
 #include "utils/list.h"
 #include "pvlogger.h"
@@ -45,14 +45,6 @@
 #include "platforms.h"
 
 #define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
-
-#ifndef free_member
-#define free_member(ptr, member)\
-({\
-	if (ptr->member)\
-		free((void*)ptr->member);\
-})
-#endif
 
 static struct lxc_log pv_lxc_log = {
 	.level = "DEBUG",

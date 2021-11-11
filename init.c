@@ -43,7 +43,7 @@
 #include "tsh.h"
 #include "pantavisor.h"
 #include "version.h"
-#include "utils.h"
+#include "utils/math.h"
 #include "utils/list.h"
 #include "pvlogger.h"
 #include "platforms.h"

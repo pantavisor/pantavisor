@@ -28,12 +28,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <jsmn/jsmnutil.h>
+
 #define MODULE_NAME             "parser"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
 #include "pantavisor.h"
-#include "utils.h"
 #include "json.h"
 #include "parser.h"
 #include "state.h"

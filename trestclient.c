@@ -22,16 +22,18 @@
 
 #include <limits.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
 
 #include <sys/stat.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "trestclient.h"
 #include "pantahub.h"
 #include "tsh.h"
-#include "utils.h"
 
 #define MODULE_NAME             "client"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

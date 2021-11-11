@@ -45,7 +45,6 @@ int setns(int nsfd, int nstype);
 #include "platforms.h"
 #include "pvlogger.h"
 #include "utils/list.h"
-#include "utils.h"
 #include "init.h"
 #include "state.h"
 

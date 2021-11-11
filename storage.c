@@ -40,63 +40,26 @@
 
 #include <mbedtls/sha256.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "updater.h"
 #include "objects.h"
 #include "storage.h"
 #include "state.h"
 #include "bootloader.h"
 #include "init.h"
-#include "utils.h"
 #include "fops.h"
 #include "addons.h"
 #include "state.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME             "storage"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-static int remove_at(char *path, char *filename)
-{
-	char full_path[PATH_MAX];
-
-	sprintf(full_path, "%s/%s", path, filename);
-	return remove(full_path);
-}
-
-static int remove_in(char *path, char *dirname)
-{
-	int n = 0;
-	struct dirent **d;
-	char full_path[512];
-
-	sprintf(full_path, "%s/%s/", path, dirname);
-	n = scandir(full_path, &d, NULL, alphasort);
-
-	if (n < 0) {
-		goto out;
-	}
-
-	while (n--) {
-		// discard . and .. from scandir
-		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
-			continue;
-		// first try to remove it as a file
-		if (remove_at(full_path, d[n]->d_name))
-			// remove it as a dir if not a file
-			remove_in(full_path, d[n]->d_name);
-		free(d[n]);
-	}
-	free(d);
-
-	if (remove(full_path))
-		pv_log(WARN, "attempted to remove %s", full_path);
-
-out:
-	return n;
-}
 
 static int pv_storage_gc_objects(struct pantavisor *pv)
 {

@@ -30,7 +30,6 @@
 #include <sys/stat.h>
 
 #include "config_parser.h"
-#include "utils.h"
 #include "fops.h"
 
 #define MODULE_NAME             "config_parser"

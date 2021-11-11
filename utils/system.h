@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,38 +19,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UTILS_H
-#define PV_UTILS_H
 
-#include <stdbool.h>
-#include <stdlib.h>
-#include <string.h>
+#ifndef UTILS_SYSTEM_H
+#define UTILS_SYSTEM_H
 
-#include <sys/types.h>
-
-#include <jsmn/jsmnutil.h>
-
-bool dir_exist(const char *dir);
-int mkdir_p(char *dir, mode_t mode);
-void syncdir(char *dir);
-int get_digit_count(int number);
-int get_endian(void);
-int get_dt_model(char *buf, int buflen);
-int get_cpu_model(char *buf, int buflen);
-void kill_child_process(pid_t pid);
-
-#ifndef ARRAY_LEN
-#define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
-#endif /* ARRAY_LEN*/
-
-#ifndef free_member
-#define free_member(ptr, member)\
-({\
- if (ptr->member)\
-	free((void*)(ptr->member));\
- ptr->member = NULL;\
-})
-#endif /* free_member */
+#include <stdint.h>
 
 #ifdef __arm__
 #define PV_ARCH		"arm"
@@ -70,6 +43,9 @@ void kill_child_process(pid_t pid);
 #define	PV_BITS		"64"
 #endif
 
-#define PREFIX_MODEL	"model name\t:"
+int get_endian(void);
+int get_dt_model(char *buf, int buflen);
+int get_cpu_model(char *buf, int buflen);
+void kill_child_process(pid_t pid);
 
-#endif // PV_UTILS_H
+#endif // UTILS_SYSTEM_H

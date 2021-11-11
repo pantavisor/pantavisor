@@ -25,7 +25,6 @@
 
 #include "pantavisor.h"
 #include "platforms.h"
-#include "utils.h"
 #include "parser.h"
 
 struct  json_key_action {

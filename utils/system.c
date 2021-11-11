@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,122 +19,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <libgen.h>
-#include <errno.h>
-#include <stdbool.h>
-#include <linux/limits.h>
 #include <sys/types.h>
-#include <sys/stat.h>
-#include <stdbool.h>
-#include <sys/xattr.h>
 #include <signal.h>
-#include <dirent.h>
 
-#include "utils.h"
+#include "system.h"
 #include "fops.h"
-#include "tsh.h"
 
-bool dir_exist(const char *dir)
-{
-	bool exists = false;
-
-	DIR* tmp = opendir(dir);
-	if (tmp) {
-		exists = true;
-		closedir(tmp);
-	}
-
-	return exists;
-}
-
-int mkdir_p(char *dir, mode_t mode)
-{
-	const char *tmp = dir;
-	const char *orig = dir;
-	char *makeme;
-
-	do {
-		dir = (char*)tmp + strspn(tmp, "/");
-		tmp = dir + strcspn(dir, "/");
-		makeme = strndup(orig, dir - orig);
-		if (*makeme) {
-			if (mkdir(makeme, mode) && errno != EEXIST) {
-				free(makeme);
-				return -1;
-			}
-		}
-		free(makeme);
-	} while(tmp != dir);
-
-	return 0;
-}
-
-void syncdir(char *file)
-{
-	int fd;
-	char *dir;
-
-	if (!file)
-		return;
-
-	dir = strdup(file);
-	dirname(dir);
-
-	fd = open(dir, O_RDONLY);
-	if (fd >= 0) {
-		fsync(fd);
-		close(fd);
-	}
-
-	if (dir)
-		free(dir);
-}
-
-int get_digit_count(int number)
-{
-	int c = 0;
-
-	while (number) {
-		number /= 10;
-		c++;
-	}
-	c++;
-
-	return c;
-}
-
-static bool char_is_json_special(char ch)
-{
-	/* From RFC 7159, section 7 Strings
-	 * All Unicode characters may be placed within the
-	 * quotation marks, except for the characters that must be escaped:
-	 * quotation mark, reverse solidus, and the control characters (U+0000
-	 * through U+001F).
-	 */
-
-	switch(ch) {
-		case 0x00 ... 0x1f:
-		case '\\':
-		case '\"':
-			return true;
-		default:
-			return false;
-	}
-}
-
-static char nibble_to_hexchar(char nibble_val) {
-
-	if (nibble_val <= 9)
-		return '0' + nibble_val;
-	nibble_val -= 10;
-	return 'A' + nibble_val;
-}
+#define PREFIX_MODEL	"model name\t:"
 
 int get_endian(void)
 {

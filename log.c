@@ -36,10 +36,9 @@
 #include <linux/limits.h>
 
 #include "config.h"
-#include "utils.h"
 #include "fops.h"
 #include "thttp.h"
-#include "utils.h"
+#include "utils/fs.h"
 #include "loop.h"
 #include "init.h"
 #include "bootloader.h"

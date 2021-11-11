@@ -42,10 +42,11 @@
 
 #include <arpa/inet.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "trestclient.h"
 #include "pantahub.h"
 #include "pantavisor.h"
-#include "utils.h"
 #include "json.h"
 #include "tsh.h"
 #include "metadata.h"

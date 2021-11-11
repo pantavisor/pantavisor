@@ -1,6 +1,7 @@
 /*
  * Doubly-linked list
  * Copyright (c) 2009-2019, Jouni Malinen <j@w1.fi>
+ * Modified by Pantacor Ltd 2021
  *
  * This software may be distributed under the terms of the BSD license.
  * See README.hostapd for more details.
@@ -10,6 +11,7 @@
 #define LIST_H
 
 #include <stddef.h>
+#include <stdlib.h>
 
 /**
  * struct dl_list - Doubly-linked list
@@ -98,4 +100,14 @@ static inline unsigned int dl_list_len(struct dl_list *list)
 
 #define container_of(ptr, type, mem)\
 	(type*)((char*)ptr - offset_of(type, mem))
+
+#ifndef free_member
+#define free_member(ptr, member)\
+({\
+ if (ptr->member)\
+	free((void*)(ptr->member));\
+ ptr->member = NULL;\
+})
+#endif /* free_member */
+
 #endif /* LIST_H */
