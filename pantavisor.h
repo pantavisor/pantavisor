@@ -49,6 +49,7 @@ struct pantavisor {
 	bool online;
 	bool unclaimed;
 	bool synced;
+	bool loading_objects;
 	int ctrl_fd;
 };
 

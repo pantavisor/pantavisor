@@ -41,7 +41,6 @@ struct pv_object {
 	struct dl_list list;
 };
 
-char** pv_objects_get_all_ids(struct pantavisor *pv);
 int pv_objects_id_in_step(struct pv_state *s, char *id);
 struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *mntpoint);
 void pv_objects_remove(struct pv_object *o);

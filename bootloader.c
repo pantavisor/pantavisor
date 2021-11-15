@@ -43,6 +43,7 @@
 struct pv_bootloader {
 	char *pv_rev;
 	char *pv_try;
+	char *pv_done;
 };
 
 static struct pv_bootloader pv_bootloader;
@@ -52,29 +53,12 @@ extern const struct bl_ops grub_ops;
 
 const struct bl_ops *ops = 0;
 
-static int pv_bl_init(struct pantavisor *pv)
+void pv_bootloader_print()
 {
-	int ret;
-
-	switch (pv_config_get_bl_type()) {
-	case BL_UBOOT_PLAIN:
-	case BL_UBOOT_PVK:
-		ops = &uboot_ops;
-		break;
-	case BL_GRUB:
-		ops = &grub_ops;
-		break;
-	default:
-		pv_log(ERROR, "Unknown bootoader type!");
-		return -1;
-		break;
-	}
-
-	ret = ops->init();
-	if (ret)
-		pv_log(ERROR, "Unable to initialize bl controls");
-
-	return ret;
+	pv_log(DEBUG, "rev=%s;try=%s;done=%s",
+		pv_bootloader.pv_rev,
+		pv_bootloader.pv_try,
+		pv_bootloader.pv_done);
 }
 
 const char* pv_bootloader_get_rev()
@@ -87,6 +71,11 @@ const char* pv_bootloader_get_try()
 	return pv_bootloader.pv_try;
 }
 
+const char* pv_bootloader_get_done()
+{
+	return pv_bootloader.pv_done;
+}
+
 static int pv_bootloader_set_rev(char *rev)
 {
 	int len = strlen(rev) + 1;
@@ -96,6 +85,8 @@ static int pv_bootloader_set_rev(char *rev)
 
 	pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, len * sizeof(char*));
 	snprintf(pv_bootloader.pv_rev, len, "%s", rev);
+	pv_bootloader.pv_done = realloc(pv_bootloader.pv_done, len * sizeof(char*));
+	snprintf(pv_bootloader.pv_done, len, "%s", rev);
 	return ops->set_env_key("pv_rev", rev);
 }
 
@@ -164,6 +155,33 @@ void pv_bootloader_remove()
 		free(pv_bootloader.pv_rev);
 	if (pv_bootloader.pv_try)
 		free(pv_bootloader.pv_try);
+	if (pv_bootloader.pv_done)
+		free(pv_bootloader.pv_done);
+}
+
+static int pv_bl_init(struct pantavisor *pv)
+{
+	int ret;
+
+	switch (pv_config_get_bl_type()) {
+	case BL_UBOOT_PLAIN:
+	case BL_UBOOT_PVK:
+		ops = &uboot_ops;
+		break;
+	case BL_GRUB:
+		ops = &grub_ops;
+		break;
+	default:
+		pv_log(ERROR, "Unknown bootoader type!");
+		return -1;
+		break;
+	}
+
+	ret = ops->init();
+	if (ret)
+		pv_log(ERROR, "Unable to initialize bl controls");
+
+	return ret;
 }
 
 static int pv_bl_early_init(struct pv_init *this)
@@ -182,7 +200,7 @@ static int pv_bl_early_init(struct pv_init *this)
 	snprintf(pv_bootloader.pv_rev, len, "%d", 0);
 	pv_bootloader.pv_try = NULL;
 
-	// Get current step bootloader from cmdline
+	// get current step bootloader from cmdline
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd < 0)
 		return -1;
@@ -216,6 +234,15 @@ static int pv_bl_early_init(struct pv_init *this)
 	// init bootloader ops
 	if (pv_bl_init(pv) < 0)
 		return -1;
+
+	// get done revision from cmd line pv_rev
+	pv_bootloader.pv_done = strdup(pv_bootloader.pv_rev);
+	// overwrite done revision from boot env file if available
+	buf = ops->get_env_key("pv_rev");
+	if (buf) {
+		free(pv_bootloader.pv_done);
+		pv_bootloader.pv_done = buf;
+	}
 
 	return 0;
 }

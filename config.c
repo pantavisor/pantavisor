@@ -193,6 +193,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->storage.gc.reserved = config_get_value_int(&config_list, "storage.gc.reserved", 5);
 	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "storage.gc.keep_factory", false);
 	config->storage.gc.threshold = config_get_value_int(&config_list, "storage.gc.threshold", 0);
+	config->storage.gc.threshold_defertime = config_get_value_int(&config_list, "storage.gc.threshold.defertime", 600);
 
 	config->net.brdev = config_get_value_string(&config_list, "net.brdev", "lxcbr0");
 	config->net.braddress4 = config_get_value_string(&config_list, "net.braddress4", "10.0.3.1");
@@ -274,6 +275,7 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_int(&config_list, "storage.gc.reserved", &config->storage.gc.reserved);
 	config_override_value_bool(&config_list, "storage.gc.keep_factory", &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "storage.gc.threshold", &config->storage.gc.threshold);
+	config_override_value_int(&config_list, "storage.gc.threshold.defertime", &config->storage.gc.threshold_defertime);
 
 	config_override_value_bool(&config_list, "updater.use_tmp_objects", &config->updater.use_tmp_objects);
 	config_override_value_int(&config_list, "revision.retries", &config->updater.revision_retries);
@@ -412,6 +414,8 @@ void pv_config_override_value(const char* key, const char* value)
 		pv->config.storage.gc.keep_factory = atoi(value);
 	else if (!strcmp(key, "storage.gc.threshold"))
 		pv->config.storage.gc.threshold = atoi(value);
+	else if (!strcmp(key, "storage.gc.threshold.defertime"))
+		pv->config.storage.gc.threshold_defertime = atoi(value);
 	else if (!strcmp(key, "updater.interval"))
 		pv->config.updater.interval = atoi(value);
 	else if (!strcmp(key, "log.level"))
@@ -512,6 +516,7 @@ int pv_config_get_storage_wait() { return pv_get_instance()->config.storage.wait
 int pv_config_get_storage_gc_reserved() { return pv_get_instance()->config.storage.gc.reserved; }
 bool pv_config_get_storage_gc_keep_factory() { return pv_get_instance()->config.storage.gc.keep_factory; }
 int pv_config_get_storage_gc_threshold() { return pv_get_instance()->config.storage.gc.threshold; }
+int pv_config_get_storage_gc_threshold_defertime() { return pv_get_instance()->config.storage.gc.threshold_defertime; }
 
 int pv_config_get_updater_interval() { return pv_get_instance()->config.updater.interval; }
 int pv_config_get_updater_network_timeout() { return pv_get_instance()->config.updater.network_timeout; }
