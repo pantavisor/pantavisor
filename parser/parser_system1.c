@@ -486,7 +486,9 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 	if (!(*bundle->platform) || !value)
 		return -1;
 
-	if (!strcmp(value, "root"))
+	if (!strcmp(value, "data"))
+		(*bundle->platform)->runlevel = RUNLEVEL_DATA;
+	else if (!strcmp(value, "root"))
 		(*bundle->platform)->runlevel = RUNLEVEL_ROOT;
 	// runlevel PLATFORM is reserved for platforms without explicily configured runlevel
 	else if (!strcmp(value, "app"))
