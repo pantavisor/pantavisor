@@ -22,31 +22,36 @@ In a Pantavisor-enabled device, each application or service is defined as a cont
 * **Apps**: Linux or Docker containers.
 * **Configuration**: system level configurations
 
-In the case of a multi-service system, there can be definitions of these that make up the full running system. This is what we refer to as the Pantavisor State Format. The state is declarative in JSON format. It is managed via the Pantavisor CLI and kept in our SaaS Pantacor Hub or managed locally on your device with the system utilities [Pantabox]. 
+In the case of a multi-service system, there can be definitions of these that make up the full running system. This is what we refer to as the Pantavisor State Format. The state is declarative in JSON format. It is managed via the Pantavisor CLI and kept in our SaaS Pantacor Hub or managed locally on your device with the system utilities [Pantabox](https://docs.pantahub.com/before-you-begin/#pvr-cli-vs-pantabox-utilities). 
 
 ## Pantacor Hub and Pantavisor
 Pantacor Hub is the open source SaaS that manages app and device state in the cloud. You can think of it as a cross between an image sharing repository, a device system revision repository and a deployment platform. The hub allows you to share images and device data between team members or other users. It also manages the atomic revisions of the device state and also deploys them over the air across device fleets. In addition, you can use it to view logs, troubleshoot and configure devices as well as edit application, and user meta-data.
 
 ## How to Get Started
 The quickest way to get to know Pantavisor:
-* Start here --> Working with Pantavisor
+* **Start here** -> [Working with Pantavisor](https://docs.pantahub.com/before-you-begin/)
 
 Or if you have a device like a Raspberry Pi, you can download a pre-built image for Raspberry Pi and other device types that come with Pantavisor:
 
-* [Download a pre-built image with Pantavisor]
+* [Download a pre-built image with Pantavisor](https://pantavisor.io/#download)
+* (Install Pantavisor onto your Embedded Linux Device)[https://pantavisor.io/guides/getting_started/]
 
 After you've downloaded and flashed your device with Pantavisor, try out a tutorial: 
-* 
+* [Install and configure NGINX from Docker Hub](https://pantavisor.io/guides/install-from-docker-hub/)
 
 ## Getting help and support
 We're a friendly and helpful community and welcome questions, and any feedback you may have: 
 
-- Docs
-     - Getting Started
+- [Pantavisor Community Forum](https://community.pantavisor.com)
 
+- Docs
+     - [Pantavisor Architecture](https://docs.pantahub.com/pantavisor-architecture/)
+     - [Getting Started with Pantavisor](https://docs.pantahub.com/before-you-begin/)
+     - [Getting with Pantavisor on Raspberry Pi](https://docs.pantahub.com/get-started/#getting-started-on-a-raspberry-pi)
+     - [Frequently Asked Questions](https://pantavisor.io/guides/faq/)
 
 
 ## License
-Pantavisor uses the [MIT license](LICENSE) with copyright.  
+Pantavisor applies the [MIT license](LICENSE) with copyright.  
 
 
