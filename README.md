@@ -47,7 +47,7 @@ We're a friendly and helpful community and welcome questions, and any feedback y
 - Docs
      - [Pantavisor Architecture](https://docs.pantahub.com/pantavisor-architecture/)
      - [Getting Started with Pantavisor](https://docs.pantahub.com/before-you-begin/)
-     - [Getting with Pantavisor on Raspberry Pi](https://docs.pantahub.com/get-started/#getting-started-on-a-raspberry-pi)
+     - [Getting Started with Pantavisor on Raspberry Pi](https://docs.pantahub.com/get-started/#getting-started-on-a-raspberry-pi)
      - [Frequently Asked Questions](https://pantavisor.io/guides/faq/)
 
 
