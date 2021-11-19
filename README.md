@@ -13,7 +13,7 @@ Pantavisor takes advantage of pure Linux container technology that implements pa
 ### Build your embedded system with containerized building blocks¶
 With a containerized system, you can mix and match components from different distros to build your system and update and maintain customizations without replacing your distro or the entire board.
 
-<img src="pantavisor-containers.png" alt="pantavisor" width="200"/>
+<img src="images/pantavisor-containers.png" alt="pantavisor" width="200"/>
 
 In a Pantavisor-enabled device, each application or service is defined as a container, including all of the associated objects that are needed to start the them. With Pantavisor this includes:
 
