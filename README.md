@@ -10,7 +10,7 @@ To ensure it can cover the low-spec end of the market, Pantavisor brings full co
 
 Pantavisor takes advantage of pure Linux container technology. It implements parts of the LXC suite as a library that wraps around the basic building blocks of containers. Because LXC is a pure C project, the overall footprint of Pantavisor is very small.
 
-### Build your embedded system with containerized building blocks¶
+### Build your embedded system with containerized building blocks
 With a containerized system, you can mix and match components from different distros to build your system and update and maintain customizations without replacing your distro or the entire board.
 
 <img src="https://pantavisor.io/images/pantavisor-linux.svg" width="200"/>
@@ -34,7 +34,7 @@ The quickest way to get to know Pantavisor:
 Or if you have a device like a Raspberry Pi, you can download a pre-built image for Raspberry Pi and other device types that come with Pantavisor:
 
 * [Download a pre-built image with Pantavisor](https://pantavisor.io/#download)
-* (Install Pantavisor onto your Embedded Linux Device)[https://pantavisor.io/guides/getting_started/]
+* [Install Pantavisor onto your Embedded Linux Device](https://pantavisor.io/guides/getting_started/)
 
 After you've downloaded and flashed your device with Pantavisor, try out a tutorial: 
 * [Install and configure NGINX from Docker Hub](https://pantavisor.io/guides/install-from-docker-hub/)
@@ -42,7 +42,8 @@ After you've downloaded and flashed your device with Pantavisor, try out a tutor
 ## Getting help and support
 We're a friendly and helpful community and welcome questions, and any feedback you may have. 
 
-- [Pantavisor Community Forum](https://community.pantavisor.com)
+- Pantavisor Discussion
+     - [Pantavisor Community Forum](https://community.pantavisor.com)
 
 - Docs
      - [Pantavisor Architecture](https://docs.pantahub.com/pantavisor-architecture/)
