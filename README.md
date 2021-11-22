@@ -44,7 +44,7 @@ After you've downloaded and flashed your device with Pantavisor, try out a tutor
 We're a friendly and helpful community and welcome questions, and any feedback you may have. 
 
 - Pantavisor Discussion Forum:
-     - [Pantavisor Community Forum](https://community.pantavisor.com)
+     - [Pantavisor Community Forum](https://community.pantavisor.io)
 
 - Docs:
      - [Pantavisor Architecture](https://docs.pantahub.com/pantavisor-architecture/)
