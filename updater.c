@@ -1880,7 +1880,7 @@ int pv_update_resume(struct pantavisor *pv)
 			pv_update_set_status(pv, UPDATE_FAILED);
 	}
 
-	return RUNLEVEL_ROOT;
+	return RUNLEVEL_DATA;
 }
 
 bool pv_update_requires_reboot(struct pantavisor *pv)

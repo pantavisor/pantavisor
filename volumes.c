@@ -284,8 +284,8 @@ int pv_volumes_mount(struct pantavisor *pv, int runlevel)
 		}
 	}
 
-	// Mount firmware and modules in runlevel 0
-	if (runlevel == RUNLEVEL_ROOT)
+	// Mount firmware and modules in runlevel ROOT
+	if (runlevel <= RUNLEVEL_ROOT)
 		ret = pv_volumes_mount_firmware_modules(pv);
 
 out:

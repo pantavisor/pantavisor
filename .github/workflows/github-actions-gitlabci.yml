@@ -1,0 +1,21 @@
+name: Mirror and run GitLab CI
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Mirror + trigger CI in gitlab
+      uses: pantacor/gitlab-mirror-and-ci-action@master
+      with:
+        args: https://gitlab.com/pantacor/pantavisor
+      env:
+        POLL_TIMEOUT: 60
+        GITLAB_HOSTNAME: "gitlab.com"
+        GITLAB_USERNAME: ${{ secrets.GITLAB_USERNAME }}
+        GITLAB_PASSWORD: ${{ secrets.GITLAB_PASSWORD }}
+        GITLAB_TRIGGER_TOKEN: ${{ secrets.GITLAB_TRIGGER_TOKEN }}
+        GITLAB_PROJECT_ID: ${{ secrets.GITLAB_PROJECT_ID }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
