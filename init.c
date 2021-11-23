@@ -366,7 +366,7 @@ struct pv_init *pv_init_tbl [] = {
 	&ph_init_mount,
 	&pv_init_bl,
 	&pv_init_config_trail,
-	&pv_init_log,
+	&pv_init_llog,
 	&pv_init_storage,
 	&pv_init_metadata,
 	&pv_init_ctrl,
