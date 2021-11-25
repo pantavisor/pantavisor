@@ -607,7 +607,6 @@ bool pv_storage_is_revision_local(const char *rev)
 	char *last = strrchr(rev, '/');
 
 	int pre_len = strlen(PREFIX_LOCAL_REV);
-	int rev_len = strlen(rev) - pre_len;
 	if ((strlen(rev) - pre_len) > SIZE_LOCAL_REV) {
 		pv_log(WARN, "revision name longer than %d", SIZE_LOCAL_REV);
 		goto out;
