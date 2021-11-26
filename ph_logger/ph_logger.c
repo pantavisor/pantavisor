@@ -52,6 +52,7 @@
 #include "str.h"
 #include "json.h"
 #include "fops.h"
+#include "buffer.h"
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
 
@@ -78,14 +79,14 @@ static void __ph_log(int level, const char *msg, va_list args)
 	char *logger_buffer = NULL;
 	int len = 0;
 	int max_size = 0;
-	struct log_buffer *log_buffer = NULL;
-	struct log_buffer *ph_log_buffer = NULL;
+	struct buffer *log_buffer = NULL;
+	struct buffer *ph_log_buffer = NULL;
 
-	log_buffer = pv_log_get_buffer(true);
+	log_buffer = pv_buffer_get(true);
 	if (!log_buffer)
 		goto out_no_buffer;
 
-	ph_log_buffer = pv_log_get_buffer(true);
+	ph_log_buffer = pv_buffer_get(true);
 	if (!ph_log_buffer)
 		goto out_no_buffer;
 
@@ -109,8 +110,8 @@ static void __ph_log(int level, const char *msg, va_list args)
 	pvctl_write_to_path(LOG_CTRL_PATH, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
 
 out_no_buffer:
-	pv_log_put_buffer(log_buffer);
-	pv_log_put_buffer(ph_log_buffer);
+	pv_buffer_drop(log_buffer);
+	pv_buffer_drop(ph_log_buffer);
 }
 
 static void ph_log(int level, const char *msg, ...)
@@ -497,16 +498,16 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	int bytes_read = 0;
 	int nr_frags = 0;
 	int len_frags = 0;
-	struct log_buffer *log_buff = NULL;
-	struct log_buffer *large_buff = NULL;
+	struct buffer *log_buff = NULL;
+	struct buffer *large_buff = NULL;
 
-	large_buff = pv_log_get_buffer(true);
+	large_buff = pv_buffer_get(true);
 	if (!large_buff) {
 		ret = -1;
 		goto out;
 	}
 
-	log_buff = pv_log_get_buffer(false);
+	log_buff = pv_buffer_get(false);
 	if (!log_buff) {
 		ret = -1;
 		goto out;
@@ -737,8 +738,8 @@ close_fd:
 		}
 	}
 out:
-	pv_log_put_buffer(log_buff);
-	pv_log_put_buffer(large_buff);
+	pv_buffer_drop(log_buff);
+	pv_buffer_drop(large_buff);
 	return ret;
 }
 
@@ -806,9 +807,9 @@ accept_again:
 			}
 		} else {
 			/* We've data to read.*/
-			struct log_buffer *log_buffer = NULL;
+			struct buffer *log_buffer = NULL;
 
-			log_buffer = pv_log_get_buffer(true);
+			log_buffer = pv_buffer_get(true);
 			if (log_buffer) {
 				char *buf = log_buffer->buf;
 				int nr_read = 0;
@@ -823,7 +824,7 @@ accept_again:
 			ep_event[ret].events = EPOLLIN;
 			epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_DEL, work_fd,&ep_event[ret]);
 			close(work_fd);
-			pv_log_put_buffer(log_buffer);
+			pv_buffer_drop(log_buffer);
 		}
 	}
 	return nr_logs;

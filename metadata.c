@@ -47,6 +47,7 @@
 #include "config_parser.h"
 #include "storage.h"
 #include "platforms.h"
+#include "buffer.h"
 
 #define MODULE_NAME             "metadata"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -534,22 +535,22 @@ out:
 int pv_metadata_init_devmeta(struct pantavisor *pv)
 {
 	char *buf = NULL;
-	struct log_buffer *log_buffer = NULL;
+	struct buffer *buffer = NULL;
 	int i = 0, bufsize = 0;
 	/*
-	 * we can use one of the large log_buffer. Since
+	 * we can use one of the large buffer. Since
 	 * this information won't be very large, it's safe
 	 * to assume even the complete json would
-	 * be small enough to fit inside this log_buffer.
+	 * be small enough to fit inside this buffer.
 	 */
-	log_buffer = pv_log_get_buffer(true);
-	if (!log_buffer) {
+	buffer = pv_buffer_get(true);
+	if (!buffer) {
 		pv_log(INFO, "couldn't allocate buffer to upload device info");
 		return -1;
 	}
 
-	buf = log_buffer->buf;
-	bufsize = log_buffer->size;
+	buf = buffer->buf;
+	bufsize = buffer->size;
 
 	// add system info to initial device metadata
 	for (i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
@@ -561,7 +562,7 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 		if (!ret)
 			pv_metadata_add_devmeta(pv_devmeta_readkeys[i].key, buf);
 	}
-	pv_log_put_buffer(log_buffer);
+	pv_buffer_drop(buffer);
 	pv->metadata->devmeta_uploaded = false;
 	return 0;
 }
@@ -573,23 +574,23 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	struct pv_meta *info = NULL, *tmp = NULL;
 	struct dl_list *head = NULL;
 	int json_avail = 0, ret = 0;
-	struct log_buffer *log_buffer = NULL;
+	struct buffer *buffer = NULL;
 	/*
-	 * we can use one of the large log_buffer. Since
+	 * we can use one of the large buffer. Since
 	 * this information won't be very large, it's safe
 	 * to assume even the complete json would
-	 * be small enough to fit inside this log_buffer.
+	 * be small enough to fit inside this buffer.
 	 */
-	log_buffer = pv_log_get_buffer(true);
-	if (!log_buffer) {
+	buffer = pv_buffer_get(true);
+	if (!buffer) {
 		pv_log(INFO, "couldn't allocate buffer to upload device info");
 		return -1;
 	}
 
 	if (pv->metadata->devmeta_uploaded)
 		goto out;
-	json = log_buffer->buf;
-	json_avail = log_buffer->size;
+	json = buffer->buf;
+	json_avail = buffer->size;
 	json_avail -= sprintf(json, "{");
 	len += 1;
 	head = &pv->metadata->devmeta;
@@ -652,7 +653,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 		}
 	}
 out:
-	pv_log_put_buffer(log_buffer);
+	pv_buffer_drop(buffer);
 	return 0;
 }
 
@@ -714,7 +715,7 @@ static int __pv_metadata_factory_meta(struct pantavisor *pv, const char *factory
 {
 	int ret = -1;
 	DEFINE_DL_LIST(factory_kv_list);
-	struct log_buffer *log_buffer = NULL;
+	struct buffer *buffer = NULL;
 	char *json_holder = NULL;
 	int json_len = 0;
 	int json_avail = 0;
@@ -725,12 +726,12 @@ static int __pv_metadata_factory_meta(struct pantavisor *pv, const char *factory
 	ret = load_key_value_file(factory_file, &factory_kv_list);
 	if (ret < 0)
 		goto out;
-	log_buffer = pv_log_get_buffer(true);
-	if (!log_buffer)
+	buffer = pv_buffer_get(true);
+	if (!buffer)
 		goto out;
 
-	json_holder = log_buffer->buf;
-	json_avail = log_buffer->size;
+	json_holder = buffer->buf;
+	json_avail = buffer->size;
 	json_avail -= sprintf(json_holder, "{");
 	json_len += 1;
 
@@ -747,7 +748,7 @@ static int __pv_metadata_factory_meta(struct pantavisor *pv, const char *factory
 	json_holder[json_len - 1] = '}';
 
 	ret = pv_ph_upload_metadata(pv, json_holder);
-	pv_log_put_buffer(log_buffer);
+	pv_buffer_drop(buffer);
 	pv_log(INFO, "metadata_json : %s", json_holder);
 	config_clear_items(&factory_kv_list);
 out:
