@@ -210,7 +210,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 
 	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
 
-	config->secureboot.mode = config_get_value_sb_mode_type(&config_list, "secureboot.mode", SB_DISABLED);
+	config->secureboot.mode = config_get_value_sb_mode_type(&config_list, "secureboot.mode", SB_LENIENT);
 
 	config_clear_items(&config_list);
 
