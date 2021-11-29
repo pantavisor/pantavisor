@@ -42,7 +42,6 @@ endif
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/utils/
 
 LOCAL_SRC_FILES := init.c \
-			tsh.c \
 			loop.c \
 			log.c \
 			config_parser.c \
@@ -57,6 +56,7 @@ LOCAL_SRC_FILES := init.c \
 			parser/parser_multi1.c \
 			parser/parser_system1.c \
 			objects.c \
+			utils/tsh.c \
 			utils/fs.c \
 			utils/system.c \
 			utils/str.c \

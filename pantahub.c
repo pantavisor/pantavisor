@@ -48,8 +48,8 @@
 #include "pantahub.h"
 #include "pantavisor.h"
 #include "json.h"
-#include "tsh.h"
 #include "metadata.h"
+#include "utils/tsh.h"
 
 #define MODULE_NAME             "pantahub-api"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

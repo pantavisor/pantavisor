@@ -29,7 +29,7 @@
 
 #include "init.h"
 #include "blkid.h"
-#include "tsh.h"
+#include "utils/tsh.h"
 #include "pantavisor.h"
 #include "utils/fs.h"
 #include "loop.h"
