@@ -44,9 +44,10 @@ static char *uboot_txt = 0;
 static char mtd_env_str[32];
 static int single_env;
 
-#define MTD_MATCH	"dev:    size   erasesize  name\n"
-#define MTD_ENV		"pv-env"
-#define MTD_ENV_SIZE	65536
+#define MTD_MATCH "dev:    size   erasesize  name\n"
+#define MTD_ENV "pv-env"
+#define MTD_ENV_SIZE 65536
+#define UBOOT_ENV_SIZE 1024
 
 static int uboot_init()
 {
@@ -126,16 +127,13 @@ static char* uboot_get_env_key(char *key)
 {
 	int fd, n, len, ret;
 	char *buf, *path, *value = NULL;
-	struct stat st;
 
 	path = uboot_txt;
 	if (single_env) {
 		path = pv_env;
-		len = MTD_ENV_SIZE * sizeof(char);
+		len = MTD_ENV_SIZE;
 	} else {
-		if (stat(path, &st))
-			return value;
-		len = st.st_size * sizeof(char);
+		len = UBOOT_ENV_SIZE;
 	}
 
 	fd = open(path, O_RDONLY);
@@ -171,7 +169,6 @@ static char* uboot_get_env_key(char *key)
 static int uboot_unset_env_key(char *key)
 {
 	int fd, ret, len;
-	struct stat st;
 	unsigned char old[MTD_ENV_SIZE] = { 0 };
 	unsigned char new[MTD_ENV_SIZE] = { 0 };
 	char *s, *d, *path;
@@ -181,13 +178,9 @@ static int uboot_unset_env_key(char *key)
 	path = uboot_txt;
 	if (single_env) {
 		path = pv_env;
-		len = MTD_ENV_SIZE * sizeof(char);
+		len = MTD_ENV_SIZE;
 	} else {
-		if (stat(path, &st)) {
-			pv_log(ERROR, "stat failed for %s: %s", path, strerror(errno));
-			return -1;
-		}
-		len = st.st_size * sizeof(char);
+		len = UBOOT_ENV_SIZE;
 	}
 
 	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
@@ -248,11 +241,8 @@ static int uboot_unset_env_key(char *key)
 // this always happens in uboot.txt
 static int uboot_set_env_key(char *key, char *value)
 {
-	int fd, ret, len;
-	struct stat st;
-	unsigned char old[MTD_ENV_SIZE] = { 0 };
-	unsigned char new[MTD_ENV_SIZE] = { 0 };
-	char *s, *d, *path;
+	int fd, ret = -1, res, len;
+	char *old = NULL, *new = NULL, *s, *d, *path;
 	char v[128];
 
 	pv_log(DEBUG, "setting boot env key %s with value %s", key, value);
@@ -262,27 +252,25 @@ static int uboot_set_env_key(char *key, char *value)
 		path = pv_env;
 		len = MTD_ENV_SIZE * sizeof(char);
 	} else {
-		if (stat(path, &st)) {
-			pv_log(ERROR, "stat failed for %s: %s", path, strerror(errno));
-			return -1;
-		}
-		len = st.st_size * sizeof(char);
+		len = UBOOT_ENV_SIZE;
 	}
 
 	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
 	if (fd < 0) {
 		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
-		return -1;
+		goto out;
 	}
 
 	lseek(fd, 0, SEEK_SET);
-	ret = read(fd, old, len);
+	old = calloc(1, len);
+	new = calloc(1, len);
+	res = read(fd, old, len);
 	close(fd);
 
 	len = 0;
 	d = (char *) new;
 	s = (char *) old;
-	for (uint16_t i = 0; i < ret; i++) {
+	for (uint16_t i = 0; i < res; i++) {
 		if ((old[i] == 0xFF && old[i+1] == 0xFF) ||
 		     (old[i] == '\0' && old[i+1] == '\0'))
 			break;
@@ -308,7 +296,7 @@ static int uboot_set_env_key(char *key, char *value)
 	fd = open(path, O_RDWR);
 	if (fd < 0) {
 		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
-		return -1;
+		goto out;
 	}
 
 	if (single_env) {
@@ -323,11 +311,18 @@ static int uboot_set_env_key(char *key, char *value)
 			pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
 	}
 	lseek(fd, 0, SEEK_SET);
-	ret = write(fd, new, sizeof(new));
+	res = write(fd, new, sizeof(new));
 	fsync(fd);
 	close(fd);
 
-	return 0;
+	ret = 0;
+
+out:
+	if (new)
+		free(new);
+	if (old)
+		free(old);
+	return ret;
 }
 
 static int uboot_flush_env(void)
