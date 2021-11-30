@@ -22,8 +22,11 @@
 #ifndef PV_TSH_H
 #define PV_TSH_H
 
+#include <sys/types.h>
+
 pid_t tsh_run(char *cmd, int wait, int *status);
 pid_t tsh_run_io(char *cmd, int wait, int *status,
 	int stdin_p[], int stdout_p[], int stderr_p[]);
+int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, char *err_buf, int err_size);
 
 #endif

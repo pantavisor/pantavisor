@@ -40,14 +40,14 @@
 #include <linux/reboot.h>
 
 #include "init.h"
-#include "tsh.h"
 #include "pantavisor.h"
 #include "version.h"
-#include "utils/math.h"
-#include "utils/list.h"
 #include "pvlogger.h"
 #include "platforms.h"
 #include "state.h"
+#include "utils/tsh.h"
+#include "utils/math.h"
+#include "utils/list.h"
 
 #define MODULE_NAME			"updater"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
