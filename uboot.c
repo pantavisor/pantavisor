@@ -242,7 +242,9 @@ static int uboot_unset_env_key(char *key)
 static int uboot_set_env_key(char *key, char *value)
 {
 	int fd, ret = -1, res, len;
-	char *old = NULL, *new = NULL, *s, *d, *path;
+	unsigned char old[MTD_ENV_SIZE] = { 0 };
+	unsigned char new[MTD_ENV_SIZE] = { 0 };
+	char *s, *d, *path;
 	char v[128];
 
 	pv_log(DEBUG, "setting boot env key %s with value %s", key, value);
@@ -262,8 +264,6 @@ static int uboot_set_env_key(char *key, char *value)
 	}
 
 	lseek(fd, 0, SEEK_SET);
-	old = calloc(1, len);
-	new = calloc(1, len);
 	res = read(fd, old, len);
 	close(fd);
 
@@ -318,10 +318,6 @@ static int uboot_set_env_key(char *key, char *value)
 	ret = 0;
 
 out:
-	if (new)
-		free(new);
-	if (old)
-		free(old);
 	return ret;
 }
 
