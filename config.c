@@ -38,6 +38,9 @@
 #include "state.h"
 #include "storage.h"
 #include "parser/parser.h"
+#include "utils/fs.h"
+#include "utils/str.h"
+#include "utils/math.h"
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -320,9 +323,9 @@ static int write_config_tuple_string(int fd, char *key, char *value)
 
 static int write_config_tuple_int(int fd, char *key, int value)
 {
-	char buf[128];
+	char buf[MAX_DEC_STRING_SIZE_OF_TYPE(int)];
 
-	sprintf(buf, "%d", value);
+	SNPRINTF_WTRUNC(buf, sizeof (buf), "%d", value);
 
 	return write_config_tuple_string(fd, key, buf);
 }
@@ -332,7 +335,7 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	int fd;
 	char tmp_path[PATH_MAX];
 
-	sprintf(tmp_path, "%s-XXXXXX", path);
+	SNPRINTF_WTRUNC(tmp_path, sizeof (tmp_path), "%s-XXXXXX", path);
 	mkstemp(tmp_path);
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (fd < 0) {
@@ -374,13 +377,16 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 int pv_config_load_creds()
 {
 	struct pantavisor *pv = pv_get_instance();
-	char config_path[256];
+	char config_path[PATH_MAX];
 	struct stat st;
 
-	if (pv->unclaimed)
-		sprintf(config_path, "%s/config/unclaimed.config", pv->config.storage.mntpoint);
-	else
-		sprintf(config_path, "%s/config/pantahub.config", pv->config.storage.mntpoint);
+	if (pv->unclaimed) {
+		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
+				"%s/config/unclaimed.config", pv->config.storage.mntpoint);
+	} else {
+		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
+				"%s/config/pantahub.config", pv->config.storage.mntpoint);
+	}
 
 	if (stat(config_path, &st))
 		return -1;
@@ -391,12 +397,15 @@ int pv_config_load_creds()
 int pv_config_save_creds()
 {
 	struct pantavisor *pv = pv_get_instance();
-	char config_path[256];
+	char config_path[PATH_MAX];
 
-	if (pv->unclaimed)
-		sprintf(config_path, "%s/config/unclaimed.config", pv->config.storage.mntpoint);
-	else
-		sprintf(config_path, "%s/config/pantahub.config", pv->config.storage.mntpoint);
+	if (pv->unclaimed) {
+		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
+				"%s/config/unclaimed.config", pv->config.storage.mntpoint);
+	} else {
+		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
+				"%s/config/pantahub.config", pv->config.storage.mntpoint);
+	}
 
 	return pv_config_save_creds_to_file(&pv->config, config_path);
 }
@@ -563,10 +572,11 @@ static int pv_config_init(struct pv_init *this)
 
 static int pv_config_creds(struct pv_init *this)
 {
-	char config_file[256];
+	char config_file[PATH_MAX];
 	struct pantavisor *pv = pv_get_instance();
 
-	sprintf(config_file, "%s/config/pantahub.config", pv_config_get_storage_mntpoint());
+	SNPRINTF_WTRUNC(config_file, sizeof (config_file),
+			"%s/config/pantahub.config", pv_config_get_storage_mntpoint());
 	if (pv_config_load_creds_from_file(config_file, &pv->config) < 0) {
 		printf("FATAL: unable to parse %s/config/pantahub.config\n", pv_config_get_storage_mntpoint());
 		return -1;
@@ -597,7 +607,8 @@ static int pv_config_trail(struct pv_init *this)
 		goto out;
 	}
 
-	sprintf(path, "%s/trails/%s/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
+	SNPRINTF_WTRUNC(path, sizeof (path),
+			"%s/trails/%s/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
 	free(config_name);
 
 	if (pv_config_override_config_from_file(path, &pv->config)) {

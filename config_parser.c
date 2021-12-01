@@ -31,6 +31,8 @@
 
 #include "config_parser.h"
 #include "file.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 
 #define MODULE_NAME             "config_parser"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -48,7 +50,7 @@ static struct config_item* _config_get_by_key(struct dl_list *list, char *key)
 	struct config_item *curr = NULL, *tmp;
 	if (key == NULL || dl_list_empty(list))
 		return NULL;
-	
+
 	dl_list_for_each_safe(curr, tmp, list,
 			struct config_item, list) {
 		if (strcmp(curr->key, key) == 0)
@@ -182,6 +184,7 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 int load_key_value_file(const char *path, struct dl_list *list)
 {
 	FILE *fp;
+	int size = -1;
 	char *buff = NULL, *__real_key = NULL;
 	struct stat st;
 
@@ -200,9 +203,10 @@ int load_key_value_file(const char *path, struct dl_list *list)
 		char *key = strstr(buff, "=");
 		if (key) {
 			char *value = key + 1;
-			__real_key = (char*) calloc(1, key - buff + 1);
+			size = key - buff + 1;
+			__real_key = (char*) calloc(sizeof (char), size);
 			if (__real_key) {
-				sprintf(__real_key, "%.*s", (int)(key - buff), buff);
+				SNPRINTF_WTRUNC(__real_key, size, "%.*s", (int)(key - buff), buff);
 				_config_add_item(list, __real_key, value);
 				free(__real_key);
 			}
@@ -228,7 +232,7 @@ char* config_get_value(struct dl_list *list, char *key)
 void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque)
 {
 	struct config_item *curr = NULL, *tmp;
-	
+
 	if (dl_list_empty(list))
 		return;
 	if (!action)

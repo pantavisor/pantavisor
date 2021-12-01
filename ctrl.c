@@ -42,8 +42,10 @@
 #include <jsmn/jsmnutil.h>
 
 #include "ctrl.h"
+#include "utils/math.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 #include "json.h"
-#include "str.h"
 #include "pvlogger.h"
 #include "state.h"
 #include "init.h"
@@ -261,7 +263,7 @@ static void pv_ctrl_write_error_response(int req_fd,
 		goto out;
 	}
 
-	snprintf(response, response_len, HTTP_RESPONSE,
+	SNPRINTF_WTRUNC(response, response_len, HTTP_RESPONSE,
 				pv_ctrl_string_http_status_code(code), content_len, message);
 
 	if (write(req_fd, response, response_len) <= 0) {
@@ -471,7 +473,7 @@ static char* pv_ctrl_get_file_path(const char* path, const char* file_name)
 	file_path = calloc(1, len * sizeof(char*));
 	if (!file_path)
 		return NULL;
-	snprintf(file_path, len, path, pv_config_get_storage_mntpoint(), file_name);
+	SNPRINTF_WTRUNC(file_path, len, path, pv_config_get_storage_mntpoint(), file_name);
 
 	return file_path;
 }

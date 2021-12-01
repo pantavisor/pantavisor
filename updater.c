@@ -41,6 +41,7 @@
 #include "trestclient.h"
 #include "updater.h"
 #include "utils/fs.h"
+#include "utils/str.h"
 #include "objects.h"
 #include "parser/parser.h"
 #include "bootloader.h"
@@ -138,6 +139,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_ptr client = 0;
 	char *endpoint_trail = NULL;
+	int size = -1;
 
 	if (pv->remote ||
 		!pv_config_get_creds_id())
@@ -159,35 +161,41 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote = calloc(1, sizeof(struct trail_remote));
 	remote->client = client;
 
-	endpoint_trail = malloc((sizeof(DEVICE_TRAIL_ENDPOINT_FMT)
-		+ strlen(pv_config_get_creds_id())) * sizeof(char));
+	size = sizeof(DEVICE_TRAIL_ENDPOINT_FMT) + strlen(pv_config_get_creds_id());
+	endpoint_trail = malloc(size * sizeof(char));
 	if (!endpoint_trail)
 		goto err;
-	sprintf(endpoint_trail, DEVICE_TRAIL_ENDPOINT_FMT, pv_config_get_creds_id());
+	SNPRINTF_WTRUNC(endpoint_trail, size, DEVICE_TRAIL_ENDPOINT_FMT, pv_config_get_creds_id());
 
-	remote->endpoint_trail_queued = (char*)calloc(1, strlen(endpoint_trail)
-		+ sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED));
+	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED);
+
+	remote->endpoint_trail_queued = (char*) calloc(sizeof (char), size);
 	if (!remote->endpoint_trail_queued)
 		goto err;
-	sprintf(remote->endpoint_trail_queued, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_QUEUED);
+	SNPRINTF_WTRUNC(remote->endpoint_trail_queued,
+			size,
+			"%s%s",
+			endpoint_trail, DEVICE_TRAIL_ENDPOINT_QUEUED);
 
-	remote->endpoint_trail_new = (char*)calloc(1, strlen(endpoint_trail)
-		+ sizeof(DEVICE_TRAIL_ENDPOINT_NEW));
+	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_NEW);
+
+	remote->endpoint_trail_new = (char*) calloc(sizeof (char), size);
 	if (!remote->endpoint_trail_new)
 		goto err;
-	sprintf(remote->endpoint_trail_new, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
+	SNPRINTF_WTRUNC(remote->endpoint_trail_new, size, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
 
-	remote->endpoint_trail_downloading = (char*)calloc(1, strlen(endpoint_trail)
-		+ sizeof(DEVICE_TRAIL_ENDPOINT_DOWNLOADING));
+	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
+	remote->endpoint_trail_downloading = (char*)calloc(1, size);
 	if (!remote->endpoint_trail_downloading)
 		goto err;
-	sprintf(remote->endpoint_trail_downloading, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
+	SNPRINTF_WTRUNC(remote->endpoint_trail_downloading, size, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
 
-	remote->endpoint_trail_inprogress = (char*)calloc(1, strlen(endpoint_trail)
-		+ sizeof(DEVICE_TRAIL_ENDPOINT_INPROGRESS));
+	size = strlen(endpoint_trail) + sizeof (DEVICE_TRAIL_ENDPOINT_INPROGRESS);
+	remote->endpoint_trail_inprogress = (char*)calloc(1, size);
 	if (!remote->endpoint_trail_inprogress)
 		goto err;
-	sprintf(remote->endpoint_trail_inprogress, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_INPROGRESS);
+	SNPRINTF_WTRUNC(remote->endpoint_trail_inprogress, size, "%s%s",
+			endpoint_trail, DEVICE_TRAIL_ENDPOINT_INPROGRESS);
 
 	pv->remote = remote;
 
@@ -231,6 +239,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 	char __json[1024];
+	int json_size = sizeof (__json);
 	char *json = __json;
 	char message[128];
 	char total_progress_json[512];
@@ -247,81 +256,85 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	switch (status) {
 	case UPDATE_QUEUED:
 		// form message
-		sprintf(message, "Retried %d of %d",
-			update->retries,
-			pv_config_get_updater_revision_retries());
+		SNPRINTF_WTRUNC(message, sizeof (message), "Retried %d of %d",
+				update->retries,
+				pv_config_get_updater_revision_retries());
+
 		// form request
-		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
-			"QUEUED", message, 0, update->retries);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT_WITH_DATA,
+				"QUEUED", message, 0, update->retries);
+
 		break;
 	case UPDATE_DOWNLOADED:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Update objects downloaded", 40);
+		SNPRINTF_WTRUNC(json, json_size,  DEVICE_STEP_STATUS_FMT,
+				"INPROGRESS", "Update objects downloaded", 40);
 		break;
 	case UPDATE_INSTALLED:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Update installed", 80);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"INPROGRESS", "Update installed", 80);
 		break;
 	case UPDATE_TRY:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Starting updated version", 95);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"INPROGRESS", "Starting updated version", 95);
 		break;
 	case UPDATE_TRANSITION:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Transitioning to new revision without rebooting", 95);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"INPROGRESS", "Transitioning to new revision without rebooting", 95);
 		break;
 	case UPDATE_REBOOT:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"INPROGRESS", "Rebooting", 95);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"INPROGRESS", "Rebooting", 95);
 		break;
 	case UPDATE_UPDATED:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"UPDATED", "Update finished, revision not set as rollback point", 100);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"UPDATED", "Update finished, revision not set as rollback point", 100);
 		break;
 	case UPDATE_DONE:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"DONE", "Update finished, revision set as rollback point", 100);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"DONE", "Update finished, revision set as rollback point", 100);
 		break;
 	case UPDATE_NO_DOWNLOAD:
 		if (!msg)
 			msg = "Unable to download and/or install update";
-		sprintf(json, DEVICE_STEP_STATUS_FMT, "WONTGO", msg, 0);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"WONTGO", msg, 0);
 		break;
 	case UPDATE_NO_SIGNATURE:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"WONTGO", "State signatures cannot be verified", 0);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"WONTGO", "State signatures cannot be verified", 0);
 		break;
 	case UPDATE_NO_PARSE:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"WONTGO", "State cannot be parsed", 0);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"WONTGO", "State cannot be parsed", 0);
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		pv_log(DEBUG, "download needs to be retried, retry count is %d", update->retries);
 		// form message
-		snprintf(message, sizeof(message),
-			"Network unavailable while downloading, retry %d of %d",
-			update->retries,
-			pv_config_get_updater_revision_retries());
+		SNPRINTF_WTRUNC(message, sizeof (message),
+				"Network unavailable while downloading, retry %d of %d",
+				update->retries,
+				pv_config_get_updater_revision_retries());
 		// form request
-		sprintf(json, DEVICE_STEP_STATUS_FMT_WITH_DATA,
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT_WITH_DATA,
 			"QUEUED", message, 0, update->retries);
 		// Clear what was downloaded.
 		update->total_update->total_downloaded = 0;
 		break;
 	case UPDATE_TESTING_REBOOT:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"TESTING", "Awaiting to set rollback point if update is stable", 95);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"TESTING", "Awaiting to set rollback point if update is stable",
+				95);
 		break;
 	case UPDATE_TESTING_NONREBOOT:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"TESTING", "Awaiting to see if update is stable", 95);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"TESTING", "Awaiting to see if update is stable", 95);
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
 		if (update->progress_objects) {
 			// form message
-			sprintf(message, "Retry %d of %d",
-				update->retries,
-				pv_config_get_updater_revision_retries());
+			SNPRINTF_WTRUNC(message, sizeof (message), "Retry %d of %d",
+					update->retries,
+					pv_config_get_updater_revision_retries());
 			// form retries string
 			if (update->total_update) {
 				object_update_json(update->total_update,
@@ -340,19 +353,22 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			 * we don't need to allocate buffer space.
 			 */
 			if (len) {
-				json = (char*)calloc(1, 
-						PATH_MAX + update->progress_size);
+				json_size = PATH_MAX + update->progress_size;
+				json = (char*)calloc(sizeof (char), json_size);
 			}
 			/*
 			 * we must post the total
 			 */
-			if (!json)
+			if (!json) {
 				json = __json;
+				json_size = sizeof (__json);
+			}
 			/*
 			 * just post the total and bail out.
 			 */
 			if (__json == json) {
-				sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
+				SNPRINTF_WTRUNC(json, json_size,
+						DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
 						"DOWNLOADING", message, 0, update->retries,
 						total_progress_json,
 						"");
@@ -363,11 +379,12 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 					strcat(buff + len, ",");
 					len += 1;
 				}
-				snprintf(buff + len,
+				SNPRINTF_WTRUNC(buff + len,
 						pv->update->progress_size - len, "%s", msg);
 				len = (len > 0 ? len - 1 : len);
 			}
-			sprintf(json, DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
+			SNPRINTF_WTRUNC(json, json_size,
+					DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
 					"DOWNLOADING", message, 0, update->retries,
 					total_progress_json,
 					update->progress_objects);
@@ -375,8 +392,8 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		}
 		break;
 	default:
-		sprintf(json, DEVICE_STEP_STATUS_FMT,
-			"ERROR", "Error during update", 0);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"ERROR", "Error during update", 0);
 		break;
 	}
 
@@ -491,7 +508,8 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 static struct pv_update* pv_update_new(const char *id, const char *rev, bool local)
 {
 	struct pv_update *u;
-	
+	int size;
+
 	if (!rev)
 		return NULL;
 
@@ -509,10 +527,11 @@ static struct pv_update* pv_update_new(const char *id, const char *rev, bool loc
 			goto out;
 		}
 
-		u->endpoint = malloc(sizeof(DEVICE_STEP_ENDPOINT_FMT)
+		size = sizeof (DEVICE_STEP_ENDPOINT_FMT)
 					+ strlen(id)
-					+ strlen(rev));
-		sprintf(u->endpoint, DEVICE_STEP_ENDPOINT_FMT, id, rev);
+					+ strlen(rev);
+		u->endpoint = malloc(sizeof (char) * size);
+		SNPRINTF_WTRUNC(u->endpoint, size, DEVICE_STEP_ENDPOINT_FMT, id, rev);
 	}
 
 out:
@@ -745,7 +764,7 @@ static void __trail_log_resp_err(char *buf, jsmntok_t *tokv, int tokc)
 	}
 
 	if (error && msg) {
-		pv_log(WARN, "Error %s: Message %s, code = %d", 
+		pv_log(WARN, "Error %s: Message %s, code = %d",
 				error, msg, code);
 	}
 	else {
@@ -786,17 +805,19 @@ static void trail_log_trest_err(trest_response_ptr tres)
 		return;
 	if (!tres->json_tokv)
 		return;
-	__trail_log_resp_err(tres->body, tres->json_tokv, 
+	__trail_log_resp_err(tres->body, tres->json_tokv,
 			tres->json_tokc);
 }
+
+#define SHA256_STR_SIZE ((256 / 4) + 1)
 
 static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const char **crtfiles)
 {
 	int ret = -1;
 	int fd, bytes;
-	int size, pos, i;
+	int size, pos, i, str_size;
 	char *signed_puturl = NULL;
-	char sha_str[128];
+	char sha_str[SHA256_STR_SIZE];
 	char body[512];
 	unsigned char buf[4096];
 	unsigned char local_sha[32];
@@ -829,22 +850,23 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 	pos = 0;
 	i = 0;
 	while(i < 32) {
-		pos += sprintf(sha_str+pos, "%02x", local_sha[i]);
+		pos += snprintf(sha_str+pos, 3, "%02x", local_sha[i]);
 		i++;
 	}
 
-	sprintf(body,
-		"{ \"objectname\": \"%s\","
-		" \"size\": \"%d\","
-		" \"sha256sum\": \"%s\""
-		" }",
-		o->name,
-		size,
-		sha_str);
+	SNPRINTF_WTRUNC(body,
+			sizeof (body),
+			"{ \"objectname\": \"%s\","
+			" \"size\": \"%d\","
+			" \"sha256sum\": \"%s\""
+			" }",
+			o->name,
+			size,
+			sha_str);
 
 	pv_log(INFO, "syncing '%s'", o->id);
 
-	if (strcmp(o->id,sha_str)) {
+	if (strncmp(o->id, sha_str, SHA256_STR_SIZE)) {
 		pv_log(INFO, "sha256 mismatch, probably writable image, skipping", o->objpath);
 		goto out;
 	}
@@ -889,12 +911,17 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		req->port_proxy = pv_config_get_creds_port_proxy();
 		req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 		if (req->is_tls) {
-			req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
-			sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
+			str_size = strlen("https://")
+					+ strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+			req->baseurl = calloc(sizeof (char), str_size);
+			SNPRINTF_WTRUNC(req->baseurl, str_size,
+					"https://%s:%d", req->host, req->port);
 		} else {
 			((thttp_request_tls_t*)req)->crtfiles = NULL;
-			req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
-			sprintf(req->baseurl, "http://%s:%d", req->host, req->port);
+			str_size = strlen("https://")
+					+ strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+			req->baseurl = calloc(sizeof (char), str_size);
+			SNPRINTF_WTRUNC(req->baseurl, str_size, "http://%s:%d", req->host, req->port);
 		}
 		if (req->host_proxy)
 			req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
@@ -1050,7 +1077,7 @@ bool pv_trail_is_auth(struct pantavisor *pv)
 	if (pv->remote)
 		return true;
 
-	// authenticate if possible 
+	// authenticate if possible
 	if (pv->online)
 		trail_remote_init(pv);
 
@@ -1196,6 +1223,7 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 {
 	int ret = 0;
 	char *endpoint = 0;
+	int str_size;
 	char *url = 0;
 	char *prn, *size = NULL;
 	trest_request_ptr req = 0;
@@ -1206,8 +1234,9 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 
 	prn = o->id;
 
-	endpoint = malloc((sizeof(TRAIL_OBJECT_DL_FMT) + strlen(prn)) * sizeof(char));
-	sprintf(endpoint, TRAIL_OBJECT_DL_FMT, prn);
+	str_size = sizeof(TRAIL_OBJECT_DL_FMT) + strlen(prn);
+	endpoint = malloc(str_size * sizeof(char));
+	SNPRINTF_WTRUNC(endpoint, str_size, TRAIL_OBJECT_DL_FMT, prn);
 
 	pv_log(DEBUG, "requesting obj='%s'", endpoint);
 
@@ -1353,6 +1382,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	int bytes, n;
 	int is_kernel_pvk;
 	int use_volatile_tmp = 0;
+	int size = -1;
 	char *tmp_sha;
 	char *host = 0;
 	char *start = 0, *port = 0, *end = 0;
@@ -1424,12 +1454,15 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	req->port_proxy = pv_config_get_creds_port_proxy();
 	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 	if (req->is_tls) {
-		req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
-		sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
+		size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+		req->baseurl = calloc(sizeof (char), size);
+		SNPRINTF_WTRUNC(req->baseurl, size, "https://%s:%d", req->host, req->port);
 	} else {
 		((thttp_request_tls_t*)req)->crtfiles = NULL;
-		req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
-		sprintf(req->baseurl, "http://%s:%d", req->host, req->port);
+		size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+		req->baseurl = calloc(sizeof(char), size);
+		SNPRINTF_WTRUNC(req->baseurl, size, "http://%s:%d", req->host, req->port);
+			pv_log(WARN, "req->baseurl truncated to %s", req->baseurl);
 	}
 
 	if (req->host_proxy)
@@ -1443,7 +1476,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		use_volatile_tmp = 1;
 
 	// temporary path where we will store the file until validated
-	sprintf(mmc_tmp_obj_path, MMC_TMP_OBJ_FMT, obj->objpath);
+	SNPRINTF_WTRUNC(mmc_tmp_obj_path, sizeof (mmc_tmp_obj_path), MMC_TMP_OBJ_FMT, obj->objpath);
 	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 	if (obj_fd < 0) {
 		pv_log(ERROR, "open failed for %s: %s", mmc_tmp_obj_path, strerror(errno));
@@ -1556,7 +1589,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 			to_write += 1;
 
 		if (to_write > remaining) {
-			char *__new_progress_objects = 
+			char *__new_progress_objects =
 				(char*)realloc(pv->update->progress_objects,
 						(2 * pv->update->progress_size));
 			if (!__new_progress_objects)
@@ -1571,12 +1604,14 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 				strcat(pv->update->progress_objects, ",");
 				data_len += 1;
 			}
-			sprintf(pv->update->progress_objects + data_len,"%s",
+			SNPRINTF_WTRUNC(pv->update->progress_objects + data_len,
+					pv->update->progress_size - data_len,
+					"%s",
 					this_obj_json);
 		} else {
 			pv_log(ERROR, "Failed to allocate space for progress data");
 		}
-		pv_log(DEBUG, "progress_objects is %s", 
+		pv_log(DEBUG, "progress_objects is %s",
 				pv->update->progress_objects);
 	}
 out:
@@ -1595,15 +1630,11 @@ out:
 static int trail_link_objects(struct pantavisor *pv)
 {
 	struct pv_object *obj = NULL;
-	char *c, *tmp, *ext;
+	char *ext;
 
 	pv_objects_iter_begin(pv->update->pending, obj) {
-		tmp = strdup(obj->relpath);
-		c = strrchr(tmp, '/');
-		*c = '\0';
-		mkdir_p(tmp, 0755);
-		free(tmp);
-	        ext = strrchr(obj->relpath, '.');
+		mkbasedir_p(obj->relpath, 0755);
+		ext = strrchr(obj->relpath, '.');
 		if (ext && (strcmp(ext, ".bind") == 0)) {
 			int s_fd, d_fd;
 			s_fd = open(obj->objpath, O_RDONLY);
@@ -1642,8 +1673,9 @@ static int trail_check_update_size(struct pantavisor *pv)
 
 	if (update_size > free_size) {
 		pv_log(ERROR, "cannot process update. Aborting...");
-		sprintf(msg, "Space required %"PRIu64" B, available %"PRIu64" B",
-			update_size, free_size);
+		SNPRINTF_WTRUNC(msg, sizeof (msg),
+				"Space required %"PRIu64" B, available %"PRIu64" B",
+				update_size, free_size);
 		pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
 		return -1;
 	}
@@ -1736,7 +1768,7 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
-	sprintf(path, "%s/trails/%s/.pv", pv_config_get_storage_mntpoint(), pv->update->pending->rev);
+	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pv", pv_config_get_storage_mntpoint(), pv->update->pending->rev);
 	mkdir_p(path, 0755);
 
 	// do not download if this is a local update
@@ -1781,7 +1813,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv_log(DEBUG, "installing update...");
 
 	// make sure target directories exist
-	sprintf(path, "%s/trails/%s/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
+	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
 	mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
@@ -1792,8 +1824,8 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	sprintf(path_new, "%s/trails/%s/.pvr/json.new", pv_config_get_storage_mntpoint(), pending->rev);
-	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), pending->rev);
+	SNPRINTF_WTRUNC(path_new, sizeof (path_new), "%s/trails/%s/.pvr/json.new", pv_config_get_storage_mntpoint(), pending->rev);
+	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), pending->rev);
 	fd = open(path_new, O_CREAT | O_WRONLY | O_SYNC | O_TRUNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to write state.json file for update: %s", strerror(errno));

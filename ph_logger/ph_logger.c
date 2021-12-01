@@ -49,7 +49,8 @@
 #include "../pvctl_utils.h"
 #include "list.h"
 #include "utils/system.h"
-#include "str.h"
+#include "utils/math.h"
+#include "utils/str.h"
 #include "json.h"
 #include "file.h"
 #include "buffer.h"
@@ -369,7 +370,7 @@ out:
 	return fd;
 }
 static int __ph_logger_init_basic(struct ph_logger *ph_logger) {
-	sprintf(ph_logger->user_agent, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
+	SNPRINTF_WTRUNC(ph_logger->user_agent, USER_AGENT_LEN, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
 	dl_list_init(&ph_logger->skip_list);
 	return 0;
 }
@@ -516,7 +517,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	} else {
 		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
 				PH_LOGGER_POS_XATTR, filename, pos);
-		sprintf(dst, "%"PRIu64"", pos);
+		SNPRINTF_WTRUNC(dst, 32, "%"PRIu64"", pos);
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */
@@ -577,7 +578,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			 * get the source name and platform 
 			 * name.
 			 */
-			sprintf(json_holder, "%.*s", len - 1, src);
+			SNPRINTF_WTRUNC(json_holder, len, "%.*s", len - 1, src);
 			offset += len;
 			bytes_read -= offset;
 			json_holder[len - 1] = '\0';
@@ -590,7 +591,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			 * case we simply bail out.
 			 */
 			if (bytes_read == log_buff->size) {
-				sprintf(json_holder, "%.*s", bytes_read, src);
+				SNPRINTF_WTRUNC(json_holder, bytes_read + 1, "%.*s", bytes_read, src);
 				offset += bytes_read;
 				json_holder[bytes_read] = '\0';
 				bytes_read = 0;
@@ -632,7 +633,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			if (__json_frag) {
 				char *shrinked = NULL;
 
-				snprintf(__json_frag, frag_len, PH_LOGGER_JSON_FORMAT,
+				SNPRINTF_WTRUNC(__json_frag, frag_len, PH_LOGGER_JSON_FORMAT,
 						(uint64_t)0, (uint32_t)0, pv_log_level_name(INFO), source,
 						platform, rev, formatted_json);
 				shrinked = realloc(__json_frag, strlen(__json_frag) + 1);
@@ -668,10 +669,10 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			 * offset above would take place so no need to re-init
 			 * offset after writing it here.
 			 */
-			char value[20];
+			char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)]; // max PRI64
 
 			pos = read_pos + offset;
-			snprintf(value, sizeof(value), "%"PRId64, pos);
+			SNPRINTF_WTRUNC(value, sizeof(value), "%"PRId64, pos);
 			pv_file_set_file_xattr(filename, PH_LOGGER_POS_XATTR, value);
 		}
 	}
@@ -691,9 +692,9 @@ close_fd:
 		 * bytes_reqd = nr_frags - 1 + 2 + len_frags + 1 (for null).
 		 */
 		avail =  nr_frags + len_frags + 2;
-		json_frag_array = (char*) calloc(1, avail);
+		json_frag_array = (char*) calloc(sizeof (char), avail);
 		if (json_frag_array) {
-			off = sprintf(json_frag_array, "[");
+			off = snprintf(json_frag_array, 2, "[");
 			avail -= off;
 		}
 
@@ -719,13 +720,13 @@ close_fd:
 			free(item);
 		}
 		if (json_frag_array) {
-			snprintf(json_frag_array + off, avail, "]");
+			SNPRINTF_WTRUNC(json_frag_array + off, avail, "]");
 			// set ret to 1, something pending to be sent
 			ret = 1;
 			if (!ph_logger_push_logs_endpoint(&ph_logger, json_frag_array)) {
-				char value[20];
+				char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)];
 
-				sprintf(value, "%"PRId64, pos);
+				SNPRINTF_WTRUNC(value, sizeof (value), "%"PRId64, pos);
 				pv_file_set_file_xattr(filename, PH_LOGGER_POS_XATTR, value);
 			}
 			// in case of error while sending, we return -1
@@ -839,12 +840,12 @@ static int ph_logger_push_from_file_parse_info(char *buf, int len, char *revisio
 
 
 	if (!slash_at)
-		sprintf(platform, "pantavisor-UNKNOWN"); 
+		SNPRINTF_WTRUNC(platform, sizeof (platform), "pantavisor-UNKNOWN"); 
 	else {
 		/*
 		 * platform is before the first /.
 		 */
-		snprintf(platform, sizeof(platform), "%.*s",
+		SNPRINTF_WTRUNC(platform, sizeof(platform), "%.*s",
 				(int)(slash_at  - (buf + offset)), buf + offset);
 	}
 	/*
@@ -876,16 +877,16 @@ static int ph_logger_push_revision(char *revision)
 	 * actual file path.
 	 */
 
-	snprintf(find_cmd, sizeof(find_cmd), "%s/%s/", PH_LOGGER_LOGDIR, revision);
+	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/", PH_LOGGER_LOGDIR, revision);
 	offset_bytes = strlen(find_cmd);
 
 	/*
 	 * reuse find_cmd to load all skip_prefixes if any.
 	 */
-	snprintf(find_cmd, sizeof(find_cmd), "%s/%s/%s", PH_LOGGER_LOGDIR, revision, PH_LOGGER_SKIP_FILE);
+	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/%s", PH_LOGGER_LOGDIR, revision, PH_LOGGER_SKIP_FILE);
 	ph_logger_add_skip_prefixes(&ph_logger, find_cmd);
 
-	snprintf(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", PH_LOGGER_LOGDIR, revision);
+	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", PH_LOGGER_LOGDIR, revision);
 	find_fp = popen(find_cmd, "r");
 
 	if (find_fp) {
@@ -1025,7 +1026,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_re
 				current_rev);
 			len = snprintf(NULL, 0, "%d", current_rev) + 1;
 			rev = calloc(1, len * sizeof(char*));
-			snprintf(rev, len, "%d", current_rev);
+			SNPRINTF_WTRUNC(rev, len, "%d", current_rev);
 			result = ph_logger_push_revision(rev);
 			free(rev);
 			// if nothing else to send, go to previous revision

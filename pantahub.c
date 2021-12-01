@@ -50,6 +50,8 @@
 #include "json.h"
 #include "metadata.h"
 #include "utils/tsh.h"
+#include "utils/str.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME             "pantahub-api"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -83,7 +85,7 @@ auth:
 	if (!endpoint && pv_config_get_creds_id()) {
 		size = sizeof(ENDPOINT_FMT) + strlen(pv_config_get_creds_id()) + 1;
 		endpoint = malloc(size * sizeof(char));
-		sprintf(endpoint, ENDPOINT_FMT, pv_config_get_creds_id());
+		SNPRINTF_WTRUNC(endpoint, size, ENDPOINT_FMT, pv_config_get_creds_id());
 	}
 
 	return 1;
@@ -138,11 +140,10 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 {
 	struct dirent **files;
 	char **cafiles;
-	char *dir = "/certs/";
-	char path[512];
+	char path[PATH_MAX];
 	int n = 0, i = 0, size = 0;
 
-	n = scandir(dir, &files, NULL, alphasort);
+	n = scandir("/certs/", &files, NULL, alphasort);
 	if (n < 0)
 		return NULL;
 
@@ -153,7 +154,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 		if (!strncmp(files[n]->d_name, ".", 1))
 			continue;
 
-		sprintf(path, "/certs/%s", files[n]->d_name);
+		SNPRINTF_WTRUNC(path, sizeof (path), "/certs/%s", files[n]->d_name);
 		size = strlen(path);
 		cafiles[i] = malloc((size+1) * sizeof(char));
 		memcpy(cafiles[i], path, size);
@@ -288,6 +289,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 {
 	int ret = 0;
 	int tokc;
+	int baseurl_size, header_size;
 	thttp_request_tls_t* tls_req = 0;
 	thttp_response_t* res = 0;
 	jsmntok_t *tokv;
@@ -309,8 +311,9 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->port_proxy = pv_config_get_creds_port_proxy();
 	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 
-	req->baseurl = calloc(1, sizeof(char)*(strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */));
-	sprintf(req->baseurl, "https://%s:%d", req->host, req->port);
+	baseurl_size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+	req->baseurl = calloc(1, sizeof(char)*baseurl_size);
+	SNPRINTF_WTRUNC(req->baseurl, baseurl_size, "https://%s:%d", req->host, req->port);
 
 	if (req->host_proxy)
                 req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
@@ -320,8 +323,9 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 	if (pv_config_get_factory_autotok() && strcmp(pv_config_get_factory_autotok(), "")) {
 		headers = calloc(1, 2 * sizeof(char *));
-		headers[0] = calloc(1, sizeof(DEVICE_TOKEN_FMT) + 64);
-		sprintf(headers[0], DEVICE_TOKEN_FMT, pv_config_get_factory_autotok());
+		header_size = sizeof(DEVICE_TOKEN_FMT) + 64;
+		headers[0] = calloc(1, header_size);
+		SNPRINTF_WTRUNC(headers[0], header_size, DEVICE_TOKEN_FMT, pv_config_get_factory_autotok());
 		thttp_add_headers(req, headers, 1);
 	}
 
@@ -399,8 +403,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 		int rv;
 
 		// if no executable handler is found; fall back to builtin
-		sprintf(cmd, PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT,
-			pv_config_get_creds_type());
+		SNPRINTF_WTRUNC(cmd, sizeof (cmd), PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT, pv_config_get_creds_type());
 		rv = stat(cmd, &sb);
 		if (rv) {
 			pv_log(ERROR, "unable to stat trest client for cmd %s: %s", cmd, strerror(errno));
@@ -498,7 +501,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 		pv_log(INFO, "unable to open device-id hint file: %s", strerror(errno));
 		return;
 	}
-	sprintf(buf, "%s\n", pv_config_get_creds_id());
+	SNPRINTF_WTRUNC (buf, sizeof (buf), "%s\n", pv_config_get_creds_id());
 	write(fd, buf, strlen(buf));
 	close(fd);
 
@@ -510,7 +513,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 		pv_log(INFO, "unable to open challenge hint file: %s", strerror(errno));
 		return;
 	}
-	sprintf(buf, "%s\n", c);
+	SNPRINTF_WTRUNC(buf, sizeof (buf), "%s\n", c);
 	write(fd, buf, strlen(buf));
 	close(fd);
 }
@@ -525,7 +528,7 @@ int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 	if (!ph_client_init(pv))
 		goto out;
 
-	sprintf(buf, "%s%s", endpoint, "/device-meta");
+	SNPRINTF_WTRUNC(buf, sizeof (buf), "%s%s", endpoint, "/device-meta");
 
 	req = trest_make_request(THTTP_METHOD_PATCH, buf, metadata);
 

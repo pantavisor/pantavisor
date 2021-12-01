@@ -28,6 +28,9 @@
 
 #include <linux/limits.h>
 
+#include "utils/math.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 #include "objects.h"
 #include "state.h"
 #include "storage.h"
@@ -57,37 +60,23 @@ int pv_objects_id_in_step(struct pv_state *s, char *id)
 struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *mntpoint)
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
-	int size;
 
 	if (this) {
 		this->name = strdup(filename);
 		this->id = strdup(id);
 
-		// init relpath
-		size = sizeof(RELPATH_FMT) + strlen(mntpoint) +
-			strlen(filename) + strlen(s->rev);
+		SNPRINTF_WTRUNC(this->relpath, sizeof (this->relpath),
+				RELPATH_FMT, mntpoint, s->rev, filename);
 
-		this->relpath = calloc(1, size * sizeof(char));
-		if (this->relpath)
-			sprintf(this->relpath , RELPATH_FMT, mntpoint, s->rev, filename);
-		else
-			goto free_object;
+		SNPRINTF_WTRUNC(this->objpath, sizeof (this->objpath),
+				OBJPATH_FMT, mntpoint, id);
 
-		// init objpath
-		size = sizeof(OBJPATH_FMT) + strlen(mntpoint) + strlen(id);
-
-		this->objpath = calloc(1, size * sizeof(char));
-		if (this->objpath)
-			sprintf(this->objpath, OBJPATH_FMT, mntpoint, id);
-		else
-			goto free_object;
 
 		dl_list_init(&this->list);
 		dl_list_add(&s->objects, &this->list);
 		return this;
-free_object:
-		pv_object_free(this);
 	}
+	pv_object_free(this);
 	return NULL;
 }
 
@@ -135,7 +124,7 @@ char *pv_objects_get_list_string()
 	char *json = calloc(1, len);
 	unsigned int size_object;
 
-	sprintf(path, "%s/objects/", pv_config_get_storage_mntpoint());
+	SNPRINTF_WTRUNC(path, sizeof (path), "%s/objects/", pv_config_get_storage_mntpoint());
 
 	dl_list_init(&objects);
 	pv_storage_get_subdir(path, "", &objects);
@@ -156,14 +145,14 @@ char *pv_objects_get_list_string()
 		if (strlen(curr->path) != 64)
 			continue;
 
-		sprintf(path, "%s/objects/%s", pv_config_get_storage_mntpoint(), curr->path);
+		SNPRINTF_WTRUNC(path, sizeof (path), "%s/objects/%s", pv_config_get_storage_mntpoint(), curr->path);
 		size_object = pv_file_get_size(path);
 		if (size_object <= 0)
 			continue;
 
 		line_len = strlen(curr->path) + get_digit_count(size_object) + 26;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "{\"sha256\": \"%s\", \"size\": \"%d\"},", curr->path, size_object);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, "{\"sha256\": \"%s\", \"size\": \"%d\"},", curr->path, size_object);
 		len += line_len;
 	}
 

@@ -45,6 +45,8 @@ int setns(int nsfd, int nstype);
 #include "platforms.h"
 #include "pvlogger.h"
 #include "utils/list.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 #include "init.h"
 #include "state.h"
 
@@ -274,7 +276,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	char lib_path[PATH_MAX];
 	void *lib;
 
-	sprintf(lib_path, "/lib/pv_%s.so", c->type);
+	SNPRINTF_WTRUNC(lib_path, sizeof (lib_path), "/lib/pv_%s.so", c->type);
 
 	lib = dlopen(lib_path, RTLD_NOW);
 	if (!lib) {
@@ -346,7 +348,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 		 * into mount namespace of platform.
 		 * */
 		if (!log_info->islxc) {
-			snprintf(namespace,sizeof(namespace), "/proc/%d/ns/mnt",
+			SNPRINTF_WTRUNC(namespace,sizeof(namespace), "/proc/%d/ns/mnt",
 					container_pid);
 			pv_log(DEBUG, "Opening file %s",namespace);
 			ns_fd = open(namespace, 0);
@@ -359,7 +361,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 				_exit(-1);
 			}
 		}
-		start_pvlogger(log_info, (log_info->islxc ? log_info->name 
+		start_pvlogger(log_info, (log_info->islxc ? log_info->name
 				 		: platform->name)
 				);
 		_exit(0);
@@ -430,11 +432,11 @@ void pv_platforms_add_all_loggers(struct pv_state *s)
 			/*
 			 * The name key is at index 3
 			 * */
-			snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
+			SNPRINTF_WTRUNC(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
 					p->name);
 			plat_logger_config_syslog.static_pair[3][1] = logger_name;
 			pv_add_platform_logger(p, &plat_logger_config_syslog);
-			snprintf(logger_name, sizeof(logger_name), "%s-pvlogger-messages",
+			SNPRINTF_WTRUNC(logger_name, sizeof(logger_name), "%s-pvlogger-messages",
 					p->name);
 			plat_logger_config_messages.static_pair[3][1] = logger_name;
 			pv_add_platform_logger(p, &plat_logger_config_messages);
@@ -481,15 +483,17 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 	const struct pv_cont_ctrl *ctrl;
 	void *data;
 	char **c = p->configs;
-	char prefix[32] = { 0 };
+	char prefix[PATH_MAX] = { 0 };
 
 	pv_wdt_kick(pv);
 
-	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
-		sprintf(prefix, "%s/", p->name);
+	if (pv_state_spec(pv->state) == SPEC_SYSTEM1) {
+		SNPRINTF_WTRUNC(prefix, sizeof (prefix), "%s/", p->name);
+	}
 
-	sprintf(conf_path, "%s/trails/%s/%s%s",
-		pv_config_get_storage_mntpoint(), s->rev, prefix, *c);
+	SNPRINTF_WTRUNC(conf_path, sizeof (conf_path),
+			"%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev,
+			prefix, *c);
 
 	// Get type controller
 	ctrl = _pv_platforms_get_ctrl(p->type);
@@ -523,7 +527,7 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = NULL;
 
-	// Iterate between runlevel plats and lowest priority plats 
+	// Iterate between runlevel plats and lowest priority plats
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
 		if (i > RUNLEVEL_DATA) {
 			pv_log(DEBUG, "starting platforms with runlevel %d", i);
@@ -637,7 +641,7 @@ static int pv_platform_stop_loggers(struct pv_platform *p)
 		logger_list = &p->logger_list;
 		dl_list_for_each_safe(l, tmp, logger_list,
 			struct pv_log_info, next) {
-			if (!kill(l->logger_pid, 0)) { 
+			if (!kill(l->logger_pid, 0)) {
 				kill(l->logger_pid, SIGKILL);
 				pv_log(WARN, "sent SIGKILL to logger '%s' with pid %d", l->name, l->logger_pid);
 			}

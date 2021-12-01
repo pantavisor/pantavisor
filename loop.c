@@ -32,6 +32,7 @@
 #include <linux/loop.h>
 
 #include "utils/fs.h"
+#include "utils/str.h"
 #include "init.h"
 #include "loop.h"
 
@@ -70,9 +71,9 @@ static int get_free_loop(char *devname)
 
 	dev = ioctl(lctlfd, LOOP_CTL_GET_FREE);
 	if (dev < 0)
-               goto out;
+		goto out;
 
-	sprintf(devname, "/dev/loop%d", dev);
+	SNPRINTF_WTRUNC(devname, PATH_MAX, "/dev/loop%d", dev);
 	ret = 0;
 
 out:
@@ -118,7 +119,7 @@ int mount_bind(char *src, char *dest)
 int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 {
 	int ret = 0;
-	char devname[128];
+	char devname[PATH_MAX];
 	char *opts = NULL;
 
 	if (get_free_loop(devname) < 0)
