@@ -602,17 +602,30 @@ int pv_storage_make_config(struct pantavisor *pv)
 
 bool pv_storage_is_revision_local(const char *rev)
 {
+	bool ret = false;
 	char *first = strchr(rev, '/');
 	char *last = strrchr(rev, '/');
 
-	if (strncmp(rev, "locals/", strlen("locals/")))
-		return false;
+	int pre_len = strlen(PREFIX_LOCAL_REV);
+	if ((strlen(rev) - pre_len) > SIZE_LOCAL_REV) {
+		pv_log(WARN, "revision name longer than %d", SIZE_LOCAL_REV);
+		goto out;
+	}
 
-	if (first && (first == last))
-		return true;
+	if (strncmp(rev, PREFIX_LOCAL_REV, pre_len)) {
+		pv_log(WARN, "revision name does not start with %s",
+			PREFIX_LOCAL_REV);
+		goto out;
+	}
 
-	pv_log(WARN, "revision name %s not valid", rev);
-	return false;
+	if (!first || (first != last)) {
+		pv_log(WARN, "revision name contains more than one '/'");
+		goto out;
+	}
+
+	ret = true;
+out:
+	return ret;
 }
 
 static char* pv_storage_get_file_date(const char *path)

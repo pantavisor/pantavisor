@@ -33,7 +33,7 @@
 
 #include "trestclient.h"
 #include "pantahub.h"
-#include "tsh.h"
+#include "utils/tsh.h"
 
 #define MODULE_NAME             "client"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)

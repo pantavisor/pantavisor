@@ -24,24 +24,47 @@
 #include <errno.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/wait.h>
 
 #include "tsh.h"
-#include "log.h"
-#include "init.h"
-#include <signal.h>
 
 #define TSH_MAX_LENGTH	32
 #define TSH_DELIM	" \t\r\n\a"
+
+static char **_tsh_split_cmd(char *cmd)
+{
+	int pos = 0;
+	char **ts = malloc(TSH_MAX_LENGTH * sizeof(char*));
+	char *t;
+
+	if (!ts)
+		return NULL;
+
+	t = strtok(cmd, TSH_DELIM);
+	while (t != NULL) {
+		ts[pos] = t;
+		pos++;
+
+
+		if (pos >= TSH_MAX_LENGTH)
+			break;
+
+		t = strtok(NULL, TSH_DELIM);
+	}
+	ts[pos] = NULL;
+
+	return ts;
+}
 
 static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int stdout_p[], int stderr_p[])
 {
 	int pid = -1;
 	sigset_t blocked_sig, old_sigset;
 	int ret = 0;
-	
+
 	if (wait) {
 		sigemptyset(&blocked_sig);
 		sigaddset(&blocked_sig, SIGCHLD);
@@ -105,29 +128,10 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int st
 	return pid;
 }
 
-static char **_tsh_split_cmd(char *cmd)
+// Run command, either built-in or exec
+pid_t tsh_run(char *cmd, int wait, int *status)
 {
-	int pos = 0;
-	char **ts = malloc(TSH_MAX_LENGTH * sizeof(char*));
-	char *t;
-
-	if (!ts)
-		exit_error(ENOMEM, "Unable to allocate cmd memory\n");
-
-	t = strtok(cmd, TSH_DELIM);
-	while (t != NULL) {
-		ts[pos] = t;
-		pos++;
-
-
-		if (pos >= TSH_MAX_LENGTH)
-			break;
-
-		t = strtok(NULL, TSH_DELIM);
-	}
-	ts[pos] = NULL;
-
-	return ts;
+	return tsh_run_io(cmd, wait, status, NULL, NULL, NULL);
 }
 
 // Run command, either built-in or exec
@@ -139,11 +143,14 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[], int stdout_p[]
 
 	vcmd = malloc(strlen(cmd) + 1);
 	if (!vcmd)
-		exit_error(ENOMEM, "Unable to allocate cmd memory\n");
+		return -1;
 
 	strcpy(vcmd, cmd);
 
 	args = _tsh_split_cmd(vcmd);
+	if (!args)
+		return -1;
+
 	pid = _tsh_exec(args, wait, status, stdin_p, stdout_p, stderr_p);
 	free(vcmd);
 
@@ -153,8 +160,76 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[], int stdout_p[]
 	return pid;
 }
 
-// Run command, either built-in or exec
-pid_t tsh_run(char *cmd, int wait, int *status)
+static int safe_fd_set(int fd, fd_set* fds, int* max_fd)
 {
-	return tsh_run_io(cmd, wait, status, NULL, NULL, NULL);
+	FD_SET(fd, fds);
+	if (fd > *max_fd) {
+		*max_fd = fd;
+	}
+	return 0;
+}
+
+int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, char *err_buf, int err_size)
+{
+	int ret = -1, max_fd = -1;
+	pid_t pid = -1;
+	char **args;
+	char *vcmd = NULL;
+	fd_set master;
+	int outfd[2], errfd[2];
+	struct timeval tv;
+
+	memset(outfd, -1, sizeof(outfd));
+	memset(errfd, -1, sizeof(errfd));
+
+	vcmd = malloc(strlen(cmd) + 1);
+	if (!vcmd)
+		goto out;
+
+	strcpy(vcmd, cmd);
+
+	args = _tsh_split_cmd(vcmd);
+	if (!args)
+		goto out;
+
+	if (pipe(outfd) < 0)
+		goto out;
+	if (pipe(errfd) < 0)
+		goto out;
+
+	pid = fork();
+	if (pid < 0)
+		goto out;
+	else if (pid == 0) {
+		dup2 (outfd[1], STDOUT_FILENO);
+		dup2 (errfd[1], STDERR_FILENO);
+		execvp(args[0], args);
+		goto out;
+	} else {
+		FD_ZERO(&master);
+		safe_fd_set(outfd[0], &master, &max_fd);
+		safe_fd_set(errfd[0], &master, &max_fd);
+		tv.tv_sec = timeout_s;
+		if (select(max_fd+1, &master, NULL, NULL, &tv) < 0)
+			goto out;
+
+		if (FD_ISSET(outfd[0], &master))
+			read(outfd[0], out_buf, out_size);
+		if (FD_ISSET(errfd[0], &master))
+			read(errfd[0], err_buf, err_size);
+	}
+
+	ret = 0;
+
+out:
+	close(outfd[0]);
+	close(outfd[1]);
+	close(errfd[0]);
+	close(errfd[1]);
+	if (vcmd)
+		free(vcmd);
+	if (pid == 0)
+		exit(0);
+
+	return ret;
 }

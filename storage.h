@@ -34,6 +34,9 @@
 #define PATH_USERMETA_PLAT "/pv/user-meta.%s"
 #define PATH_USERMETA_PLAT_KEY "/pv/user-meta.%s/%s"
 
+#define PREFIX_LOCAL_REV "locals/"
+#define SIZE_LOCAL_REV 64
+
 struct pv_path {
 	char* path;
 	struct dl_list list;

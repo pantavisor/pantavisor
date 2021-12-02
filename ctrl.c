@@ -343,11 +343,10 @@ static int pv_ctrl_read_parse_request_header(int req_fd,
 											struct phr_header *headers,
 											size_t *num_headers)
 {
-	int minor_version;
+	int minor_version, res = -1;
 
 	// read from socket until end of HTTP header
-	while ((buf_index < HTTP_REQ_BUFFER_SIZE) &&
-			(1 == read(req_fd, &buf[buf_index], 1))) {
+	while (1 == read(req_fd, &buf[buf_index], 1)) {
 		if ((buf_index > 3) &&
 			(buf[buf_index-3] == '\r') &&
 			(buf[buf_index-2] == '\n') &&
@@ -356,10 +355,14 @@ static int pv_ctrl_read_parse_request_header(int req_fd,
 			break;
 		}
 		buf_index++;
+		if (buf_index >= HTTP_REQ_BUFFER_SIZE) {
+			pv_log(WARN, "HTTP request received longer than %d", HTTP_REQ_BUFFER_SIZE);
+			goto out;
+		}
 	}
 
 	// parse HTTP header
-	return phr_parse_request(buf,
+	res = phr_parse_request(buf,
 							buf_index+1,
 							method,
 							method_len,
@@ -369,6 +372,12 @@ static int pv_ctrl_read_parse_request_header(int req_fd,
 							headers,
 							num_headers,
 							0);
+	if (res < 0) {
+		pv_log(WARN, "HTTP request received has bad format");
+	}
+
+out:
+	return res;
 }
 
 static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
@@ -577,7 +586,6 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 												headers,
 												&num_headers);
 	if (buf_index < 0) {
-		pv_log(WARN, "HTTP request recived has bad format");
 		pv_ctrl_write_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad format");
 		goto out;
 	}

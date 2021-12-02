@@ -54,7 +54,6 @@
 #include "state.h"
 #include "updater.h"
 #include "storage.h"
-#include "tsh.h"
 #include "metadata.h"
 #include "signature.h"
 #include "ph_logger/ph_logger.h"
