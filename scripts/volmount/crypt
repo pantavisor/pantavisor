@@ -1,0 +1,206 @@
+#!/bin/sh
+
+#
+# Copyright (c) 2021 Pantacor Ltd.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+set -e
+
+op=$1
+dm_type=$2
+path=$3
+mntpath=$4
+
+CAAM_KEYGEN=/usr/bin/caam-keygen
+
+do_find_free_loop()
+{
+	for j in `ls /dev/loop[0-9]*`
+	do
+		free=0
+		for i in `/sbin/losetup -a | awk '{split($0,a,":"); print a[1]}'`
+		do
+			if [ $j == $i ]
+			then
+				free=1
+				break
+			fi
+		done
+		[ $free -eq 0 ] && break
+	done
+	FREE_LOOP=$j
+}
+
+do_crypt_init()
+{
+	base=`basename $1`
+	dir=`dirname $1`
+
+	mkdir -p $dir
+
+	keyname=`echo $base | awk '{split($0,a,","); print a[3]}'`
+	if [ $dm_type == "caam" ]; then
+		$CAAM_KEYGEN create $keyname ecb -s 16
+		cp /data/caam/$keyname* $dir
+		cat /data/caam/$keyname | /bin/keyctl padd logon logkey: @u
+	elif [ $dm_type == "dcp" ]; then
+		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
+		echo $key_value >$dir/$keyname.txt
+		/lib/pv/volmount/dcp-tool enc $dir/$keyname.txt $dir/$keyname.bb 64
+		rm -rf $dir/$keyname.txt
+	elif [ $dm_type == "versatile" ]; then
+		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
+		echo $key_value >$dir/$keyname.txt
+	fi
+
+	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
+	img_size=`echo $base | awk '{split($0,a,","); print a[2]}'`
+	/bin/dd if=/dev/zero of=$dir/$img_file bs=1M count=$img_size
+	do_find_free_loop
+
+	/sbin/losetup $FREE_LOOP $dir/$img_file
+	[ $? -ne 0 ] && exit 1
+
+	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
+	if [ $dm_type == "caam" ]; then
+		/usr/sbin/dmsetup -v create $device_name --table "0 $(/sbin/blockdev --getsz $FREE_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $FREE_LOOP 0 1 sector_size:512"
+		[ ! -b /dev/mapper/$device_name ] && exit 1
+	elif [ $dm_type == "dcp" ]; then
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
+	elif [ $dm_type == "versatile" ]; then
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
+	fi
+
+	/usr/sbin/mkfs.ext4 /dev/mapper/$device_name
+
+	if [ $dm_type == "caam" ]; then
+		/usr/sbin/dmsetup remove $device_name
+		/bin/keyctl clear @u
+		/bin/keyctl purge @u
+		rm -rf /data
+	elif [ $dm_type == "dcp" ]; then
+		/usr/sbin/cryptsetup close $device_name
+	elif [ $dm_type == "versatile" ]; then
+		/usr/sbin/cryptsetup close $device_name
+	fi
+
+	/sbin/losetup -d $FREE_LOOP
+}
+
+do_dm_sanity()
+{
+	if [ $dm_type == "caam" ]; then
+		[ ! -f $CAAM_KEYGEN ] && exit 1
+		[ ! -f /usr/sbin/dmsetup ] && exit 1
+		[ ! -f /bin/keyctl ] && exit 1
+	elif [ $dm_type == "dcp" ]; then
+		[ ! -f /lib/pv/volmount/dcp-tool ] && exit 1
+		[ ! -f /usr/sbin/cryptsetup ] && exit 1
+	elif [ $dm_type == "versatile" ]; then
+		[ ! -f /usr/sbin/cryptsetup ] && exit 1
+	fi
+
+	[ ! -f /sbin/losetup ] && exit 1
+	[ ! -f /bin/dd ] && exit 1
+	[ ! -f /usr/sbin/mkfs.ext4 ] && exit 1
+
+	export LD_LIBRARY_PATH=/x86_64-linux-gnu
+}
+
+do_mount_disk()
+{
+	do_dm_sanity
+
+	base=`basename $2`
+	dir=`dirname $2`
+
+	keyname=`echo $base | awk '{split($0,a,","); print a[3]}'`
+	[ ! -f $dir/$keyname.bb ] && do_crypt_init $2
+
+	cd $dir
+	if [ $dm_type == "caam" ]; then
+		mkdir -p /data/caam
+		cp $keyname* /data/caam
+		$CAAM_KEYGEN import $keyname.bb $keyname.import
+
+		cat /data/caam/$keyname.import | /bin/keyctl padd logon logkey: @u
+	fi
+
+	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
+	do_find_free_loop
+	if ! /sbin/losetup $FREE_LOOP $dir/$img_file; then
+		echo "ERROR: could not loosetup"
+		return 1;
+	fi
+
+	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
+	if [ $dm_type == "caam" ]; then
+		/usr/sbin/dmsetup create $device_name --table "0 $(/sbin/blockdev --getsz $FREE_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $FREE_LOOP 0 1 sector_size:512"
+	elif [ $dm_type == "dcp" ]; then
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
+	elif [ $dm_type == "versatile" ]; then
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
+	fi
+
+	if [ ! -b /dev/mapper/$device_name ]; then
+		echo "ERROR: could not crypt mapper"
+		return 2;
+	fi
+
+	mkdir -p $3
+	if ! mount /dev/mapper/$device_name $3; then
+		echo "ERROR: could not setup dm-crypt volume"
+		return 3;
+	fi
+}
+
+do_umount_disk()
+{
+	base=`basename $2`
+	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
+
+	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
+	umount $3
+	if [ $dm_type == "caam" ]; then
+		/usr/sbin/dmsetup remove $device_name
+		/bin/keyctl clear @u
+		/bin/keyctl purge @u
+		rm -rf /data
+	elif [ $dm_type == "dcp" ]; then
+		/usr/sbin/cryptsetup close $device_name
+	elif [ $dm_type == "versatile" ]; then
+		/usr/sbin/cryptsetup close $device_name
+	fi
+	loop_dev=`/sbin/losetup -a | grep $img_file | awk '{split($0,a,":"); print a[1]}'`
+	/sbin/losetup -d $loop_dev
+}
+
+case $op in
+	mount)
+		do_mount_disk $dm_type $path $mntpath
+		;;
+	umount)
+		do_umount_disk $dm_type $path $mntpath
+		;;
+	*)
+		echo "WRONG command line"
+		exit 1
+		;;
+esac

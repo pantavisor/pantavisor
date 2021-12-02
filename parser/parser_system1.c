@@ -50,6 +50,89 @@
 #define PV_NS_UTS	0x2
 #define PV_NS_IPC	0x4
 
+static int parse_disks(struct pv_state *s, char *value, int n)
+{
+	int tokc, size, ret = 1;
+	char *str = NULL;
+	jsmntok_t *tokv, *t;
+
+	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format filter");
+		goto out;
+	}
+
+	size = jsmnutil_array_count(value, tokv);
+	if (size <= 0) {
+		pv_log(ERROR, "empty filter");
+		goto out;
+	}
+
+	t = tokv + 1;
+	while ((str = pv_json_array_get_one_str(value, &size, &t))) {
+		struct pv_disk *d;
+		char *tmp;
+		jsmntok_t *diskv;
+		int diskc;
+
+		if (jsmnutil_parse_json(str, &diskv, &diskc) <= 0) {
+			pv_log(ERROR, "Invalid disk entry");
+			continue;
+		}
+
+		d = pv_disk_add(s);
+		if (!d) {
+			free(diskv);
+			goto out;
+		}
+
+		d->name = pv_json_get_value(str, "name", diskv, diskc);
+		d->path = pv_json_get_value(str, "path", diskv, diskc);
+		d->options= pv_json_get_value(str, "options", diskv, diskc);
+		d->uuid= pv_json_get_value(str, "uuid", diskv, diskc);
+
+		tmp = pv_json_get_value(str, "type", diskv, diskc);
+		if (!strcmp(tmp, "directory"))
+			d->type = DISK_DIR;
+		else if(!strcmp(tmp, "dm-crypt-versatile"))
+			d->type = DISK_DM_CRYPT_VERSATILE;
+		else if(!strcmp(tmp, "dm-crypt-caam"))
+			d->type = DISK_DM_CRYPT_CAAM;
+		else if(!strcmp(tmp, "dm-crypt-dcp"))
+			d->type = DISK_DM_CRYPT_DCP;
+		else
+			d->type = DISK_UNKNOWN;
+
+		free(tmp);
+		tmp = NULL;
+
+		tmp = pv_json_get_value(str, "default", diskv, diskc);
+		if (tmp) {
+			d->def = true;
+			free(tmp);
+			tmp = NULL;
+		}
+
+		free(diskv);
+		diskv = NULL;
+
+		free(str);
+		str = NULL;
+
+		t = t + (diskc - 2);
+	}
+
+	ret = 0;
+
+out:
+	if (str)
+		free(str);
+
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
 static int parse_bsp(struct pv_state *s, char *value, int n)
 {
 	int c;
@@ -132,7 +215,7 @@ out:
 static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 {
 	int tokc, n, ret;
-	char *key, *value, *pt;
+	char *key, *value, *pt, *disk;
 	jsmntok_t *tokv;
 	jsmntok_t *tokv_t;
 	jsmntok_t **k, **keys;
@@ -164,9 +247,10 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 
 		ret = jsmnutil_parse_json(value, &tokv_t, &tokc);
 		pt = pv_json_get_value(value, "persistence", tokv_t, tokc);
+		disk = pv_json_get_value(value, "disk", tokv_t, tokc);
 
 		if (pt) {
-			struct pv_volume *v = pv_volume_add(s, key);
+			struct pv_volume *v = pv_volume_add_with_disk(s, key, disk);
 			v->plat = p;
 			if (!strcmp(pt, "permanent"))
 				v->type = VOL_PERMANENT;
@@ -777,6 +861,27 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 	// Parse full state json
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
+	count = pv_json_get_key_count(buf, "disks.json", tokv, tokc);
+	if (count == 1) {
+		value = pv_json_get_value(buf, "disks.json", tokv, tokc);
+		if (!value) {
+			pv_log(WARN, "Unable to get disks.json value from state");
+			this = NULL;
+			goto out;
+		}
+
+		pv_log(DEBUG, "adding json 'disks.json'");
+		pv_jsons_add(this, "disks.json", value);
+
+		if (parse_disks(this, value, strlen(value))) {
+			this = NULL;
+			goto out;
+		}
+
+		free(value);
+		value = NULL;
+	}
+
 	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
 	if (!count || (count > 1)) {
 		pv_log(WARN, "Invalid bsp/run.json count in state");
@@ -815,6 +920,7 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 
 		// avoid pantavisor.json and #spec special keys
 		if (!strncmp("bsp/run.json", buf+(*k)->start, n) ||
+		    !strncmp("disks.json", buf+(*k)->start, n) ||
 		    !strncmp("#spec", buf+(*k)->start, n)) {
 			k++;
 			continue;
