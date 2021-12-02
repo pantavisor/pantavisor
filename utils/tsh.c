@@ -30,6 +30,7 @@
 #include <sys/wait.h>
 
 #include "tsh.h"
+#include "timer.h"
 
 #define TSH_MAX_LENGTH	32
 #define TSH_DELIM	" \t\r\n\a"
@@ -171,13 +172,15 @@ static int safe_fd_set(int fd, fd_set* fds, int* max_fd)
 
 int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, char *err_buf, int err_size)
 {
-	int ret = -1, max_fd = -1;
+	int ret = -1, max_fd = -1, res, out_i = 0, err_i = 0;
 	pid_t pid = -1;
 	char **args;
 	char *vcmd = NULL;
 	fd_set master;
 	int outfd[2], errfd[2];
 	struct timeval tv;
+	struct timer timeout_timer;
+	struct timer_state tstate;
 
 	memset(outfd, -1, sizeof(outfd));
 	memset(errfd, -1, sizeof(errfd));
@@ -192,6 +195,7 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 	if (!args)
 		goto out;
 
+	// pipes for communication between main process and command process
 	if (pipe(outfd) < 0)
 		goto out;
 	if (pipe(errfd) < 0)
@@ -201,25 +205,53 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 	if (pid < 0)
 		goto out;
 	else if (pid == 0) {
+		// redirect out and err of command to pipe
 		dup2 (outfd[1], STDOUT_FILENO);
 		dup2 (errfd[1], STDERR_FILENO);
 		execvp(args[0], args);
 		goto out;
 	} else {
-		FD_ZERO(&master);
-		safe_fd_set(outfd[0], &master, &max_fd);
-		safe_fd_set(errfd[0], &master, &max_fd);
-		tv.tv_sec = timeout_s;
-		if (select(max_fd+1, &master, NULL, NULL, &tv) < 0)
-			goto out;
+		timer_start(&timeout_timer, timeout_s, 0, RELATIV_TIMER);
+		while(1) {
+			FD_ZERO(&master);
+			safe_fd_set(outfd[0], &master, &max_fd);
+			safe_fd_set(errfd[0], &master, &max_fd);
+			tv.tv_sec = 1;
 
-		if (FD_ISSET(outfd[0], &master))
-			read(outfd[0], out_buf, out_size);
-		if (FD_ISSET(errfd[0], &master))
-			read(errfd[0], err_buf, err_size);
+			if (select(max_fd+1, &master, NULL, NULL, &tv) < 0) {
+				ret = -1;
+				break;
+			}
+
+			// read out
+			if (FD_ISSET(outfd[0], &master)) {
+				res = read(outfd[0], &out_buf[out_i], out_size);
+				if (res > 0) {
+					out_size -= res;
+					out_i += res;
+				}
+			}
+			// read err
+			if (FD_ISSET(errfd[0], &master)) {
+				res = read(errfd[0], err_buf, err_size);
+				if (res > 0) {
+					err_size -= res;
+					err_i += res;
+				}
+			}
+			// check timeout
+			tstate = timer_current_state(&timeout_timer);
+			if (tstate.fin) {
+				kill(pid, SIGTERM);
+				ret = -1;
+				errno = ETIME;
+				break;
+			}
+			// check child process end
+			if (waitpid(pid, &ret, WNOHANG))
+				break;
+		}
 	}
-
-	ret = 0;
 
 out:
 	close(outfd[0]);
