@@ -44,6 +44,7 @@
 #include "bootloader.h"
 #include "version.h"
 #include "ph_logger/ph_logger.h"
+#include "buffer.h"
 
 #define MODULE_NAME		"log"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -66,90 +67,10 @@ static struct level_name level_names[] = {
 static char *log_dir = 0;
 static pid_t log_init_pid = -1;
 
-static DEFINE_DL_LIST(log_buffer_list);
-static DEFINE_DL_LIST(log_buffer_list_double);
 static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
 
-static struct log_buffer* __pv_log_get_buffer(struct dl_list *head)
-{
-	struct log_buffer *log_buffer = NULL;
 
-	if (dl_list_empty(head))
-		return NULL;
-	log_buffer = dl_list_first(head, 
-			struct log_buffer, free_list);
-	dl_list_del(&log_buffer->free_list);
-	dl_list_init(&log_buffer->free_list);
-	return log_buffer;
-}
-
-struct log_buffer* pv_log_get_buffer(bool large)
-{
-	if (large)
-		return __pv_log_get_buffer(&log_buffer_list_double);
-	return __pv_log_get_buffer(&log_buffer_list);
-}
-
-void pv_log_put_buffer(struct log_buffer *log_buffer)
-{
-	if (!log_buffer)
-		return;
-	if (!dl_list_empty(&log_buffer->free_list))
-		return;
-	if (pv_config_get_log_logsize() == log_buffer->size)
-		dl_list_add(&log_buffer_list, &log_buffer->free_list);
-	else
-		dl_list_add(&log_buffer_list_double, &log_buffer->free_list);
-
-}
-
-static struct log_buffer* pv_log_alloc_buffer(int buf_size)
-{
-	struct log_buffer *buffer =  NULL;
-
-	if (buf_size <= 0)
-		return NULL;
-	buffer = (struct log_buffer*) calloc(1, sizeof(*buffer));
-	if (buffer) {
-		buffer->buf = (char*)calloc(1, buf_size);
-		if (!buffer->buf) {
-			free(buffer);
-			buffer = NULL;
-		} else {
-			buffer->size = buf_size;
-		}
-	}
-	return buffer;
-}
-
-static int pv_log_init_buf_cache(int items, int size, struct dl_list *head) 
-{
-	int allocated = 0;
-
-	if (!dl_list_empty(head)) {
-		struct log_buffer *item, *tmp;
-		dl_list_for_each_safe(item, tmp, head,
-				struct log_buffer, free_list) {
-			dl_list_del(&item->free_list);
-			free(item->buf);
-			free(item);
-		}
-	}
-	while (items > 0) {
-		struct log_buffer *buffer =  NULL;
-
-		if (allocated >= MAX_BUFFER_COUNT)
-			break;
-		buffer = pv_log_alloc_buffer(size);
-		if (buffer) {
-			dl_list_add(head, &buffer->free_list);
-			allocated++;
-		}
-		items--;
-	}
-	return allocated;
-}
 
 static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
@@ -271,14 +192,6 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 {
 	log_init_pid = getpid();
 	global_pv = pv;
-	int allocated_cache = 0;
-	int allocated_dcache = 0;
-
-	allocated_cache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv_config_get_log_logsize(), &log_buffer_list);
-
-	allocated_dcache = pv_log_init_buf_cache(MAX_BUFFER_COUNT,
-					pv_config_get_log_logsize() * 2, &log_buffer_list_double);
 
 	mkdir_p("/pv/logs", 0755);
 	mount_bind(pv_config_get_log_logdir(), "/pv/logs");
@@ -286,12 +199,10 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 	if (pv_log_start(pv, rev) < 0)
 		return;
 
+	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize());
+
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
-	pv_log(DEBUG, "Allocated %d log buffers of size %d bytes",
-			allocated_cache, pv_config_get_log_logsize());
-	pv_log(DEBUG, "Allocated %d log buffers of size %d bytes",
-			allocated_dcache, pv_config_get_log_logsize() * 2);
 
 	thttp_set_log_func(log_libthttp);
 }

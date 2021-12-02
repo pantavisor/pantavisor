@@ -83,6 +83,7 @@ LOCAL_SRC_FILES := init.c \
 			mount.c \
 			ph_logger/ph_logger.c \
 			ph_logger/ph_logger_v1.c \
+			buffer.c \
 			blkid.c
 
 LOCAL_INSTALL_HEADERS := log.h

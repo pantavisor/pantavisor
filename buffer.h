@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,47 +20,30 @@
  * SOFTWARE.
  */
 
-#ifdef DEBUG
-#undef DEBUG
-#endif
+#ifndef PV_BUF_H
+#define PV_BUF_H
 
-#ifndef PV_LOG_H
-#define PV_LOG_H
+#include "utils/list.h"
+#include <stdbool.h>
 
-#include "pantavisor.h"
-
-void exit_error(int err, char *msg);
-
-enum log_level {
-	FATAL,	// 0
-	ERROR,	// 1
-	WARN,	// 2
-	INFO,	// 3
-	DEBUG,	// 4
-	ALL	// 5
+struct buffer {
+	char *buf;
+	int size;
+	struct dl_list free_list;
 };
 
-#define LOG_NAME		"pantavisor.log"
-#define ERROR_DIR		"error"
+#define __drop_buf__       __cleanup__(__drop_buff)
 
+struct buffer* pv_buffer_get(bool large);
 
-#define JSON_FORMAT	"{ \"tsec\": %"PRId64", \"tnano\": %"PRId32", \"lvl\": \"%s\", \"src\": \"%s\", \"msg\": \"%s\" }"
+void pv_buffer_drop(struct buffer*);
 
-// Example log:		"[pantavisor] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
-#define DATE_FORMAT		"2016-12-01 13:22:26"
+void pv_buffer_init(int items, int size);
 
-#define vlog(module, level, ...)	__log(module, level, ## __VA_ARGS__);
-
-#define LOG_CTRL_FNAME 			"pv-ctrl-log"
-#define LOG_CTRL_PATH 			"/pv/"LOG_CTRL_FNAME
-#define LOG_CTRL_PLATFORM_PATH 		"/pantavisor/"LOG_CTRL_FNAME
-#define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
-
-int pv_log_start(struct pantavisor *pv, const char *rev);
-
-void __log(char *module, int level, const char *fmt, ...);
-/*
- * Don't free the return value!
- */
-const char *pv_log_level_name(int level);
+static void __drop_buff(struct buffer **buf)
+{
+	if (*buf) {
+		pv_buffer_drop(*buf);
+	}
+}
 #endif
