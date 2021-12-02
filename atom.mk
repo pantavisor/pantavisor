@@ -119,3 +119,10 @@ LOCAL_COPY_FILES := scripts/volmount/dm:lib/pv/volmount/dm
 
 include $(BUILD_CUSTOM)
 
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := init-crypt
+LOCAL_LIBRARIES := cryptsetup
+LOCAL_COPY_FILES := scripts/volmount/crypt:lib/pv/volmount/crypt
+
+include $(BUILD_CUSTOM)

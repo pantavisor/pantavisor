@@ -23,6 +23,24 @@
 #define PV_VOLUMES_H
 
 typedef enum {
+	DISK_DIR,
+	DISK_DM_CRYPT_VERSATILE,
+	DISK_DM_CRYPT_CAAM,
+	DISK_DM_CRYPT_DCP,
+	DISK_UNKNOWN
+} pv_disk_t;
+
+struct pv_disk {
+	char *name;
+	pv_disk_t type;
+	char *path;
+	char *uuid;
+	char *options;
+	bool def;
+	struct dl_list list; // pv_disk
+};
+
+typedef enum {
 	VOL_LOOPIMG,
 	VOL_PERMANENT,
 	VOL_REVISION,
@@ -41,10 +59,15 @@ struct pv_volume {
 	char *umount_cmd;
 	struct pv_platform *plat;
 	struct dl_list list; // pv_volume
+	struct pv_disk *disk;
 };
 
 void pv_volume_free(struct pv_volume *v);
 
+struct pv_disk* pv_disk_add(struct pv_state *s);
+void pv_disks_empty(struct pv_state *s);
+
+struct pv_volume* pv_volume_add_with_disk(struct pv_state *s, char *name, char *disk);
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
 
 int pv_volumes_mount(struct pantavisor *pv, int runlevel);
