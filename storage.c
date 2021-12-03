@@ -774,6 +774,8 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 	int fd;
 	char path[256];
 
+	pv_log(DEBUG, "saving progress for rev %s: %s", rev, progress);
+
 	sprintf(path, "%s/trails/%s/.pv/progress", pv_config_get_storage_mntpoint(), rev);
 
 	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC , 0644);
