@@ -202,8 +202,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 			goto out;
 		}
 		pv->state = pv_parser_get_state(json, pv_bootloader_get_rev());
-		if (pv->update)
-			pv->update->pending = pv->state;
+		// if an update is going on, we are going to need the state to report progress, so no need to parse it
+		if (pv->update) {
+			pv->update->pending = pv_state_new(pv_bootloader_get_try(), SPEC_UNKNOWN);
+		}
 	}
 
 	if (!pv->state) {

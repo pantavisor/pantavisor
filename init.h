@@ -47,7 +47,6 @@
 #  define CLONE_NEWNET            0x40000000
 #endif
 
-#include <pthread.h>
 #include <sys/types.h>
 
 #define PV_INIT_FLAG_CANFAIL 	(1<<0)
