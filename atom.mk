@@ -95,3 +95,16 @@ LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 
 include $(BUILD_EXECUTABLE)
 
+include $(CLEAR_VARS)
+
+LOCAL_DESTDIR := ./
+LOCAL_MODULE := tsh_test
+
+LOCAL_C_INCLUDES := $(LOCAL_PATH)
+
+LOCAL_SRC_FILES := utils/tsh.test.c \
+			utils/tsh.c \
+			utils/timer.c
+
+include $(BUILD_EXECUTABLE)
+
