@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,8 +22,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #include <signal.h>
 
 #include <sys/types.h>
@@ -83,7 +88,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int st
 	} else if (pid > 0) {
 		// In parent
 		if (wait) {
-			if (ret == 0) { 
+			if (ret == 0) {
 				/*wait only if we blocked SIGCHLD*/
 				waitpid(pid, status, 0);
 				sigprocmask(SIG_SETMASK, &old_sigset, NULL);
@@ -179,8 +184,7 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 	fd_set master;
 	int outfd[2], errfd[2];
 	struct timeval tv;
-	struct timer timeout_timer;
-	struct timer_state tstate;
+	sighandler_t oldsig;
 
 	memset(outfd, -1, sizeof(outfd));
 	memset(errfd, -1, sizeof(errfd));
@@ -208,60 +212,79 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 		// redirect out and err of command to pipe
 		dup2 (outfd[1], STDOUT_FILENO);
 		dup2 (errfd[1], STDERR_FILENO);
+		close(outfd[0]);
+		close(errfd[0]);
 		execvp(args[0], args);
 		goto out;
 	} else {
-		timer_start(&timeout_timer, timeout_s, 0, RELATIV_TIMER);
+		close(outfd[1]);
+		close(errfd[1]);
+		tv.tv_sec = timeout_s;
+		tv.tv_usec = 0;
+
+		oldsig = signal(SIGCHLD, SIG_DFL);
+
 		while(1) {
 			FD_ZERO(&master);
 			safe_fd_set(outfd[0], &master, &max_fd);
 			safe_fd_set(errfd[0], &master, &max_fd);
-			tv.tv_sec = 1;
-
 			if (select(max_fd+1, &master, NULL, NULL, &tv) < 0) {
-				ret = -1;
-				break;
+			       ret = -1;
+			       break;
 			}
 
-			// read out
 			if (FD_ISSET(outfd[0], &master)) {
 				res = read(outfd[0], &out_buf[out_i], out_size);
 				if (res > 0) {
 					out_size -= res;
 					out_i += res;
+				} else if (res < 0 && errno != EAGAIN) {
+					ret = -1;
+					break;
+				} if (res == 0) {
+					break;
 				}
 			}
-			// read err
+
 			if (FD_ISSET(errfd[0], &master)) {
-				res = read(errfd[0], err_buf, err_size);
+				res = read(errfd[0], &err_buf[err_i], err_size);
 				if (res > 0) {
 					err_size -= res;
 					err_i += res;
+				} else if (res < 0 && errno != EAGAIN) {
+					ret = -1;
+					break;
+				} else if (res == 0) {
+					break;
 				}
 			}
-			// check timeout
-			tstate = timer_current_state(&timeout_timer);
-			if (tstate.fin) {
-				kill(pid, SIGTERM);
-				ret = -1;
-				errno = ETIME;
-				break;
-			}
-			// check child process end
-			if (waitpid(pid, &ret, WNOHANG))
-				break;
+
 		}
+
+		if(waitpid(pid, &ret, WNOHANG)) {
+
+			if (WIFEXITED(ret)) {
+				ret = WEXITSTATUS(ret);
+			}
+		}
+
+		signal(SIGCHLD, oldsig);
 	}
 
 out:
-	close(outfd[0]);
-	close(outfd[1]);
-	close(errfd[0]);
-	close(errfd[1]);
+	printf("SEE 8???\n");
+
+	if (pid == 0) {
+		close(outfd[1]);
+		close(errfd[1]);
+		exit(127);
+	} else {
+		close(outfd[0]);
+		close(errfd[0]);
+	}
+
 	if (vcmd)
 		free(vcmd);
-	if (pid == 0)
-		exit(0);
 
 	return ret;
 }
