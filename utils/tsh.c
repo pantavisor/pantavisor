@@ -272,8 +272,6 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 	}
 
 out:
-	printf("SEE 8???\n");
-
 	if (pid == 0) {
 		close(outfd[1]);
 		close(errfd[1]);
