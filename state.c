@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2020-2021 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,6 +22,8 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
+#include <limits.h>
 
 #include "state.h"
 #include "volumes.h"
@@ -31,6 +33,8 @@
 #include "addons.h"
 #include "pantavisor.h"
 #include "storage.h"
+#include "utils/tsh.h"
+#include "utils/math.h"
 
 #define MODULE_NAME             "state"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -411,20 +415,62 @@ state_spec_t pv_state_spec(struct pv_state *s)
 	return s->spec;
 }
 
+static char* _pv_state_get_novalidate_list(char *rev)
+{
+#define _pv_bufsize_1 (1288 * 1024)
+#define _cmd_fmt "/lib/pv/volmount/dm noverifylist %s"
+	char *path = pv_storage_get_rev_path(rev);
+	char sout[_pv_bufsize_1] = {0}, serr[_pv_bufsize_1] = {0};
+	char *cmd = malloc(sizeof(char) * (strlen(_cmd_fmt) + strlen(path) + 1));
+	int res;
+
+	sprintf(cmd, _cmd_fmt, path);
+	pv_log(DEBUG, "running command: %s", cmd);
+
+	res = tsh_run_output(cmd, 20, sout, _pv_bufsize_1 - 1, serr, _pv_bufsize_1 - 1);
+
+	if (res < 0) {
+		pv_log(WARN, "error running validate_list command: %s", strerror(errno));
+		return NULL;
+	}
+	if (res > 0) {
+		pv_log(WARN, "command exited with error code: %d", res);
+		pv_log(DEBUG, "stdout: %s", sout);
+		pv_log(DEBUG, "stderr: %s", serr);
+		return NULL;
+	}
+
+	if (strlen(serr) > 0)
+		pv_log(WARN, "get_novalidate_list stderr output: %s", serr);
+
+	return strndup(sout, _pv_bufsize_1 - 1);;
+}
+
 bool pv_state_validate_checksum(struct pv_state *s)
 {
 	struct pv_object *o;
 	struct pv_json *j;
 
+	char *validate_list = _pv_state_get_novalidate_list(s->rev);
+	if (validate_list)
+		pv_log(DEBUG, "no validation list is: %s", validate_list);
+
 	pv_objects_iter_begin(s, o) {
 		/* validate instance in $rev/trails/$name to match */
-		if (!pv_storage_validate_trails_object_checksum(s->rev, o->name, o->id)) {
-			pv_log(ERROR, "trails object %s with checksum %s failed", o->name, o->id);
+		char needle[PATH_MAX + 67];
+		if (snprintf(needle, sizeof(char) * ARRAY_LEN(needle), "%s %s", o->name, o->id) > sizeof(char) * ARRAY_LEN(needle)) {
+			pv_log(ERROR, "too long filename: for pv state: %d", strlen(o->name));
 			return false;
 		}
-		/* validate object in pool to match */
-		if (!pv_storage_validate_objects_object_checksum(o->id)) {
-			pv_log(ERROR, "object %s with checksum %s failed", o->name, o->id);
+
+		if (strstr(validate_list, needle)) {
+			pv_log(DEBUG, "skipping validation of object named %s and id=%s", o->name, o->id);
+			continue;
+		}
+
+
+		if (!pv_storage_validate_trails_object_checksum(s->rev, o->name, o->id)) {
+			pv_log(ERROR, "trails object %s with checksum %s failed", o->name, o->id);
 			return false;
 		}
 	}

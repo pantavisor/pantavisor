@@ -214,8 +214,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
 	if (!ret) {
-		if (stat("/volumes/modules.squashfs", &st) == 0) {
-			sprintf(entry, "/volumes/modules.squashfs "
+		if (stat("/volumes/bsp/modules.squashfs", &st) == 0) {
+			sprintf(entry, "/volumes/bsp/modules.squashfs "
 					"lib/modules/%s "
 					"none bind,ro,create=dir 0 0",
 					uts.release

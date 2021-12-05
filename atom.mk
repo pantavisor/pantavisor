@@ -91,7 +91,8 @@ LOCAL_GENERATED_SRC_FILES := version.c
 
 LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
-	scripts/JSON.sh:lib/pv/JSON.sh
+	scripts/JSON.sh:lib/pv/JSON.sh \
+	scripts/volmount/dm:lib/pv/volmount/dm
 
 include $(BUILD_EXECUTABLE)
 
@@ -107,4 +108,14 @@ LOCAL_SRC_FILES := utils/tsh.test.c \
 			utils/timer.c
 
 include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_DESTDIR := ./
+LOCAL_MODULE := init-dm
+LOCAL_LIBRARIES := cryptsetup
+
+LOCAL_COPY_FILES := scripts/volmount/dm:lib/pv/volmount/dm
+
+include $(BUILD_CUSTOM)
 

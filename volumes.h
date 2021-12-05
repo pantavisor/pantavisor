@@ -38,6 +38,7 @@ struct pv_volume {
 	pv_volume_t type;
 	int loop_fd;
 	int file_fd;
+	char *umount_cmd;
 	struct pv_platform *plat;
 	struct dl_list list; // pv_volume
 };

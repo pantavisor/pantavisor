@@ -42,6 +42,8 @@ struct pv_path {
 	struct dl_list list;
 };
 
+char* pv_storage_get_rev_path(const char *rev);
+char* pv_storage_get_state_json_path(const char *rev);
 char* pv_storage_get_state_json(const char *rev);
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);
@@ -56,8 +58,6 @@ int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *
 void pv_storage_free_subdir(struct dl_list *subdirs);
 
 int pv_storage_validate_file_checksum(char* path, char* checksum);
-
-bool pv_storage_validate_objects_object_checksum(char *checksum);
 bool pv_storage_validate_trails_object_checksum(const char *rev, const char *name, char *checksum);
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name, char *val);
 
