@@ -51,11 +51,13 @@
 #include "fops.h"
 #include "addons.h"
 #include "state.h"
+#include "tsh.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
 #include "utils/fs.h"
 #include "utils/timer.h"
+#include "utils/math.h"
 
 #define MODULE_NAME             "storage"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -428,7 +430,7 @@ out:
 }
 
 
-bool pv_storage_validate_objects_object_checksum(char *checksum)
+static bool pv_storage_validate_objects_object_checksum(char *checksum)
 {
 	int len;
 	char path[PATH_MAX];
@@ -450,16 +452,24 @@ bool pv_storage_validate_trails_object_checksum(const char *rev, const char *nam
 	int len;
 	char path[PATH_MAX];
 
+
 	len = strlen("%s/trails/%s/%s") +
 		strlen(pv_config_get_storage_mntpoint()) +
 		strlen(rev) +
 		strlen(name);
+
 	snprintf(path, len, "%s/trails/%s/%s",
 		pv_config_get_storage_mntpoint(),
 		rev,
 		name);
 
-	pv_log(DEBUG, "validating checksum for object %s", path);
+	/* validate object in pool to match */
+	if (!pv_storage_validate_objects_object_checksum(checksum)) {
+		pv_log(ERROR, "object %s with checksum %s failed", name, checksum);
+		return false;
+	}
+
+	pv_log(DEBUG, "validating checksum for object in trail %s", path);
 	return !pv_storage_validate_file_checksum(path, checksum);
 }
 
@@ -1015,15 +1025,36 @@ err:
 	return -1;
 }
 
+char* pv_storage_get_rev_path(const char *rev)
+{
+	char *path;
+	int len = ARRAY_LEN("%s/trails/%s") + strlen(pv_config_get_storage_mntpoint()) + strlen(rev) + 1;
+	path = malloc(sizeof(char) * len);
+	snprintf(path, len, "%s/trails/%s", pv_config_get_storage_mntpoint(), rev);
+	return path;
+}
+
+char* pv_storage_get_state_json_path(const char *rev)
+{
+	char *path;
+	int len = ARRAY_LEN("%s/trails/%s/.pvr/json") + strlen(pv_config_get_storage_mntpoint()) + strlen(rev) + 1;
+	path = malloc(sizeof(char) * len);
+	snprintf(path, len, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
+	return path;
+}
+
 char* pv_storage_get_state_json(const char *rev)
 {
-	char path[256];
+	char *path;
+	char *res;
 
-	sprintf(path, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
-
+	path = pv_storage_get_state_json_path(rev);
 	pv_log(DEBUG, "reading state from: '%s'", path);
 
-	return pv_storage_load_file(path, 0);
+	res = pv_storage_load_file(path, 0);
+
+	free(path);
+	return res;
 }
 
 void pv_storage_init_plat_usermeta(const char *name)

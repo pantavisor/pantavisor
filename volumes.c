@@ -40,6 +40,7 @@
 #include "parser/parser.h"
 #include "platforms.h"
 #include "state.h"
+#include "tsh.h"
 
 #define MODULE_NAME             "volumes"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -70,6 +71,8 @@ void pv_volume_free(struct pv_volume *v)
 		free(v->src);
 	if (v->dest)
 		free(v->dest);
+	if (v->umount_cmd)
+		free(v->umount_cmd);
 
 	free(v);
 }
@@ -112,39 +115,55 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	struct pv_state *s = pv->state;
 	char path[PATH_MAX], base[128], mntpoint[521];
 	char *fstype;
+	char *umount_cmd = NULL;
+	char *handlercut = NULL;
+	char *handler = NULL;
+	char *name = NULL;
+	const char *partname = NULL;
+	struct stat buf;
+	int wstatus;
+	char *command;
 
 	sprintf(base, "%s/disks", pv_config_get_storage_mntpoint());
+
+	handlercut = strchr(v->name, ':');
+	if (handlercut) {
+		*handlercut = 0;
+		handler=strdup(v->name);
+		*handlercut = ':';
+		name=handlercut+1;
+	} else {
+		name=v->name;
+	}
 
 	switch (pv_state_spec(s)) {
 	case SPEC_SYSTEM1:
 		if (v->plat) {
-			sprintf(path, "%s/trails/%s/%s/%s", pv_config_get_storage_mntpoint(),
-				s->rev, v->plat->name, v->name);
-			sprintf(mntpoint, "/volumes/%s/%s", v->plat->name, v->name);
+			partname = v->plat->name;
 		} else {
-			sprintf(path, "%s/trails/%s/bsp/%s", pv_config_get_storage_mntpoint(),
-				s->rev, v->name);
-			sprintf(mntpoint, "/volumes/%s", v->name);
+			partname = "bsp";
 		}
+		sprintf(path, "%s/trails/%s/%s/%s", pv_config_get_storage_mntpoint(),
+			s->rev, partname, name);
+		sprintf(mntpoint, "/volumes/%s/%s", partname, name);
 		break;
 	case SPEC_MULTI1:
 		sprintf(path, "%s/trails/%s/%s", pv_config_get_storage_mntpoint(),
-			s->rev, v->name);
-		sprintf(mntpoint, "/volumes/%s", v->name);
+			s->rev, name);
+		sprintf(mntpoint, "/volumes/%s", name);
 		break;
 	default:
 		pv_log(WARN, "cannot mount volumes for unknown state spec");
 		goto out;
 	}
 
-	pv_log(DEBUG, "mounting '%s' from platform '%s'", v->name, v->plat ? v->plat->name : "NONE");
+	pv_log(DEBUG, "mounting '%s' from platform '%s'", v->name, partname);
 
 	switch (v->type) {
 	case VOL_LOOPIMG:
 		fstype = strrchr(v->name, '.');
 		fstype++;
 		if (strcmp(fstype, "bind") == 0) {
-			struct stat buf;
 			if (stat(mntpoint, &buf) != 0) {
 				int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
 				if (fd >= 0)
@@ -155,6 +174,34 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 			pv_log(INFO, "mounting proper .data dir");
 			mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, NULL, MS_BIND | MS_REC, NULL);
+		} else if (handler) {
+			pv_log(INFO, "with '%s' handler", handler);
+			command = malloc(sizeof(char) *
+				(strlen(handler) +
+				 strlen(partname) +
+				 strlen(path) +
+				 strlen(name) +
+				 strlen("/lib/pv/volmount/%s mount %s %s %s") + 1)
+				);
+			umount_cmd = malloc(sizeof(char) *
+					(strlen(handler) +
+					 strlen(partname) +
+					 strlen(path) +
+					 strlen(name) +
+					 strlen("/lib/pv/volmount/%s umount %s %s %s") + 1)
+					);
+			sprintf(command, "/lib/pv/volmount/%s mount %s %s %s",
+					handler, path, partname, name);
+			sprintf(umount_cmd, "/lib/pv/volmount/%s umount %s %s %s",
+					handler, path, partname, name);
+			tsh_run(command, 1, &wstatus);
+			if (!WIFEXITED(wstatus))
+				ret = -1;
+			else if (WEXITSTATUS(wstatus) != 0)
+				ret = -1 * WEXITSTATUS(wstatus);
+			else
+				ret = 0;
+			free(command);
 		} else {
 			ret = mount_loop(path, mntpoint, fstype, &loop_fd, &file_fd);
 		}
@@ -191,8 +238,10 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	v->dest = strdup(mntpoint);
 	v->loop_fd = loop_fd;
 	v->file_fd = file_fd;
+	v->umount_cmd = umount_cmd;
 
 out:
+	if (handler) free(handler);
 	return ret;
 }
 
@@ -204,16 +253,21 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 	char path_lib[PATH_MAX];
 	struct utsname uts;
 
-	if (!pv->state->bsp.firmware)
+	char *firmware = pv->state->bsp.firmware;
+	char *modules = pv->state->bsp.modules;
+
+	if (!firmware)
 		goto modules;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
 		mkdir_p(FW_PATH, 0755);
 
-	if (strchr(pv->state->bsp.firmware, '/'))
+	if (strchr(firmware, '/'))
 		sprintf(path_volumes, "%s", pv->state->bsp.firmware);
+	else if (strchr(firmware,':'))
+		sprintf(path_volumes, "/volumes/bsp/%s", strchr(firmware,':') + 1);
 	else
-		sprintf(path_volumes, "/volumes/%s", pv->state->bsp.firmware);
+		sprintf(path_volumes, "/volumes/bsp/%s", firmware);
 
 	if (stat(path_volumes, &st))
 		goto modules;
@@ -223,23 +277,25 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 	if (ret < 0)
 		goto out;
 
-	pv_log(DEBUG, "bind mounted firmware to %s", FW_PATH);
+	pv_log(DEBUG, "bind mounted %s firmware to %s", path_volumes, FW_PATH);
 
 modules:
 
-	if (!pv->state->bsp.modules)
+	if (!modules)
 		goto out;
 
-	if (strchr(pv->state->bsp.modules, '/'))
-		sprintf(path_volumes, "%s", pv->state->bsp.modules);
+	if (strchr(modules, '/'))
+		sprintf(path_volumes, "%s", modules);
+	else if (strchr(modules,':'))
+		sprintf(path_volumes, "/volumes/bsp/%s", strchr(modules,':') + 1);
 	else
-		sprintf(path_volumes, "/volumes/%s", pv->state->bsp.modules);
+		sprintf(path_volumes, "/volumes/bsp/%s", modules);
 
 	if (!uname(&uts) && (stat(path_volumes, &st) == 0)) {
 		sprintf(path_lib, "/lib/modules/%s", uts.release);
 		mkdir_p(path_lib, 0755);
 		ret = mount_bind(path_volumes, path_lib);
-		pv_log(DEBUG, "bind mounted modules to %s", path_lib);
+		pv_log(DEBUG, "bind mounted %s modules to %s", path_volumes, path_lib);
 	}
 
 out:
@@ -317,10 +373,20 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 			if (v->plat && (v->plat->status == PLAT_STARTED))
 				continue;
 
-			if (v->loop_fd == -1)
+			if (v->umount_cmd != NULL) {
+				int wstatus;
+				tsh_run(v->umount_cmd, 1, &wstatus);
+				if (!WIFEXITED(wstatus))
+					ret = -1;
+				else if (WEXITSTATUS(wstatus) != 0)
+					ret = -1;
+				else
+					ret = 0;
+			} else if (v->loop_fd == -1) {
 				ret = umount(v->dest);
-			else
+			} else {
 				ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
+			}
 
 			if (ret < 0) {
 				pv_log(ERROR, "error umounting volumes");
