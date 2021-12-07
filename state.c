@@ -463,7 +463,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 			return false;
 		}
 
-		if (strstr(validate_list, needle)) {
+		if (validate_list && strstr(validate_list, needle)) {
 			pv_log(DEBUG, "skipping validation of object named %s and id=%s", o->name, o->id);
 			continue;
 		}
