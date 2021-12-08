@@ -23,7 +23,7 @@ LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
 
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -D_FILE_OFFSET_BITS=64
-LOCAL_LDFLAGS := -Wl,--no-as-needed -ldl -Wl,--as-needed -static-libgcc
+LOCAL_LDFLAGS := -Wl,--no-as-needed -ldl -Wl,--as-needed
 
 PV_BUILD_DIR := $(call local-get-build-dir)
 PV_VERSION_C := $(PV_BUILD_DIR)/version.c
