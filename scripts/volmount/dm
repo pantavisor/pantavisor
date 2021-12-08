@@ -84,7 +84,7 @@ do_umount_squash() {
 #   os/lxc.container.conf 4bd0b8e9569f5e4fa861964d051de0ade9626c6c578748c4608120b0a4afc4c9
 #   os/root.squashfs 01adb13a943f2b5816816921130b2766de7e3ab316a96472e3828c425da0d241
 #   os/root.squashfs.docker-digest d4e408d65d821e43a7dc76755afbd8fa3726cfee9335fb9fe04dec8f83e0cbee
-noverifylist() {
+novalidatelist() {
 	trailstepdir=$1
 	tmpf=`mktemp -t islazyverify.jsonsh.XXXXXXXXXXX`
 	cat $trailstepdir/.pvr/json | $JSON_sh -l > $tmpf
@@ -144,8 +144,8 @@ case $op in
 	umount)
 		do_umount_squash $2 $3
 		;;
-	noverifylist)
-		noverifylist $2
+	novalidatelist)
+		novalidatelist $2
 		;;
 	verifylist)
 		verifylist $2
