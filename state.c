@@ -24,6 +24,12 @@
 #include <stdio.h>
 #include <errno.h>
 #include <limits.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <stdlib.h>
+
 
 #include "state.h"
 #include "volumes.h"
@@ -415,35 +421,91 @@ state_spec_t pv_state_spec(struct pv_state *s)
 	return s->spec;
 }
 
+/*
+ * retrieve a string of all path/objectid pairs that
+ * the handler will validate. This will prevent those
+ * objects to be checked with a full sha256sum check
+ * before starting the platforms.
+ */
 static char* _pv_state_get_novalidate_list(char *rev)
 {
 #define _pv_bufsize_1 (1288 * 1024)
-#define _cmd_fmt "/lib/pv/volmount/dm noverifylist %s"
+#define _path_fmt "/lib/pv/volmount/%s"
+#define _cmd_fmt " novalidatelist %s"
 	char *path = pv_storage_get_rev_path(rev);
 	char sout[_pv_bufsize_1] = {0}, serr[_pv_bufsize_1] = {0};
-	char *cmd = malloc(sizeof(char) * (strlen(_cmd_fmt) + strlen(path) + 1));
+	char *_sout = sout, *_serr = serr;
+	char *result = NULL;
 	int res;
+	char *cmd = NULL;
+	struct dirent *dp;
+	DIR *volmountdir = opendir("/lib/pv/volmount");
 
-	sprintf(cmd, _cmd_fmt, path);
-	pv_log(DEBUG, "running command: %s", cmd);
+        // Unable to open directory stream
+        if (!volmountdir)
+            goto out;
 
-	res = tsh_run_output(cmd, 20, sout, _pv_bufsize_1 - 1, serr, _pv_bufsize_1 - 1);
+        while ((dp = readdir(volmountdir)) != NULL) {
+		struct stat st;
 
-	if (res < 0) {
-		pv_log(WARN, "error running validate_list command: %s", strerror(errno));
-		return NULL;
+                if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
+			continue;
+
+		char _hdl_path [PATH_MAX];
+		snprintf(_hdl_path, ARRAY_LEN(_hdl_path), _path_fmt, dp->d_name);
+		if(stat (_hdl_path, &st)) {
+			pv_log(WARN, "illegal handler file %s, error=%s", _hdl_path, strerror(errno));
+			goto out;
+		}
+
+		// if not executable, we let it pass ...
+		if (!(st.st_mode & S_IXUSR))
+			continue;
+
+		// now we make the cmd for the volmount handler. every handler is expected
+		// to implement a novalidatelist subcommand; if not relevant the handler
+		// shall return an empty result...
+		int len = (ARRAY_LEN(_path_fmt _cmd_fmt) + strlen(dp->d_name) + strlen(path) + 2);
+		cmd = realloc(cmd, len * sizeof(char));
+		int len_o = snprintf(cmd, sizeof(char) * len, _path_fmt _cmd_fmt, dp->d_name, path);
+		if (len_o >= len) {
+			pv_log(WARN, "illegal handler command (cut off): %s - %s", cmd, strerror(errno));
+			goto out;
+		}
+
+		// now we run that handler cmd with 20 seconds timeout ...
+		res = tsh_run_output(cmd, 20, _sout, _pv_bufsize_1 - 1, _serr, _pv_bufsize_1 - 1);
+
+		if (res < 0) {
+			pv_log(WARN, "error running novalidatelist command: %s", strerror(errno));
+			goto out;
+		}
+
+		// if command fails, we dont abort as some handlers might be buggy ...
+		// we just ignore the result of this handler ...
+		if (res > 0) {
+			pv_log(WARN, "command exited with error code: %d", res);
+			pv_log(DEBUG, "stdout: %s", sout);
+			pv_log(DEBUG, "stderr: %s", serr);
+			continue;
+		}
+
+		if (strlen(serr) > 0)
+			pv_log(WARN, "get_novalidatelist stderr output: %s", serr);
+
+		_sout += strlen(_sout);
+		*_sout = ' ';
+		_sout++;
+		*_sout = 0;
 	}
-	if (res > 0) {
-		pv_log(WARN, "command exited with error code: %d", res);
-		pv_log(DEBUG, "stdout: %s", sout);
-		pv_log(DEBUG, "stderr: %s", serr);
-		return NULL;
-	}
 
-	if (strlen(serr) > 0)
-		pv_log(WARN, "get_novalidate_list stderr output: %s", serr);
-
-	return strndup(sout, _pv_bufsize_1 - 1);;
+	result = strndup(sout, _pv_bufsize_1 - 1);;
+ out:
+	if (volmountdir)
+		closedir(volmountdir);
+	if (cmd)
+		free(cmd);
+	return result;
 }
 
 bool pv_state_validate_checksum(struct pv_state *s)
@@ -458,7 +520,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	pv_objects_iter_begin(s, o) {
 		/* validate instance in $rev/trails/$name to match */
 		char needle[PATH_MAX + 67];
-		if (snprintf(needle, sizeof(char) * ARRAY_LEN(needle), "%s %s", o->name, o->id) > sizeof(char) * ARRAY_LEN(needle)) {
+		if (snprintf(needle, sizeof(char) * ARRAY_LEN(needle), "%s %s", o->name, o->id) >= ARRAY_LEN(needle)) {
 			pv_log(ERROR, "too long filename: for pv state: %d", strlen(o->name));
 			return false;
 		}
