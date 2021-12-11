@@ -74,11 +74,11 @@ int mkbasedir_p(char *dir, mode_t mode)
 	int ret = -1;
 	char *c, *tmp;
 	tmp = strdup(dir);
-	c = strchr(tmp, '/');
+	c = strrchr(tmp, '/');
 
 	if (c) {
 		*c = '\0';
-		ret = mkdir_p(dir, mode);
+		ret = mkdir_p(tmp, mode);
 	}
 
 	free(tmp);
