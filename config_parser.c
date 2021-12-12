@@ -132,30 +132,13 @@ static struct config_item* _config_replace_item(struct dl_list *list,
 	return _config_add_item(list, key, value);
 }
 
-int config_parse_cmdline(struct dl_list *list, char *hint)
+int config_parse_cmdline(struct dl_list *list, char *cmdline, char *hint)
 {
-	int fd, bytes;
 	char *buf = NULL, *k = NULL, *nl = NULL;
 	char *ptr_out = NULL, *ptr_in = NULL;
 	char *token = NULL, *key = NULL, *value = NULL;
 
-	// Get current step revision from cmdline
-	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0)
-		return -1;
-
-	buf = calloc(1, sizeof(char) * (1024 + 1));
-	if (!buf) {
-		close(fd);
-		return -1;
-	}
-
-	bytes = pv_file_read_nointr(fd, buf, sizeof(char)*1024);
-	if (!bytes) {
-		close(fd);
-		return -1;
-	}
-	close(fd);
+	buf = strdup(cmdline);
 	token = strtok_r(buf, " ", &ptr_out);
 	while (token) {
 		if (strncmp(hint, token, strlen(hint)) == 0) {

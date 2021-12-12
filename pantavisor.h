@@ -46,6 +46,7 @@ struct pantavisor {
 	struct trail_remote *remote;
 	struct pv_metadata *metadata;
 	struct pv_connection *conn;
+	struct pv_system *sys;
 	bool remote_mode;
 	bool online;
 	bool unclaimed;

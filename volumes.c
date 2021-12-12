@@ -276,13 +276,13 @@ int pv_volume_mount(struct pv_volume *v)
 				"%s/trails/%s/%s/%s", pv_config_get_storage_mntpoint(),
 				s->rev, partname, name);
 		SNPRINTF_WTRUNC(mntpoint, sizeof (mntpoint),
-				"/volumes/%s/%s", partname, name);
+				"%s/%s/%s", pv_mount_get_path_rundir("/volumes"), partname, name);
 		break;
 	case SPEC_MULTI1:
 		SNPRINTF_WTRUNC(path, sizeof (path),
 				"%s/trails/%s/%s", pv_config_get_storage_mntpoint(),
 				s->rev, name);
-		SNPRINTF_WTRUNC(mntpoint, sizeof (mntpoint), "/volumes/%s", name);
+		SNPRINTF_WTRUNC(mntpoint, sizeof (mntpoint), "%s/%s", pv_mount_get_path_rundir("/volumes"), name);
 		break;
 	default:
 		pv_log(WARN, "cannot mount volumes for unknown state spec");
@@ -424,14 +424,16 @@ int pv_volumes_mount_firmware_modules()
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
 		mkdir_p(FW_PATH, 0755);
 
-	if (strchr(firmware, '/')) {
+	if (strchr(pv->state->bsp.firmware, '/')) {
 		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "%s",
 				pv->state->bsp.firmware);
 	} else if (strchr(firmware,':')) {
-		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s",
+		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "%s/bsp/%s",
+				pv_mount_get_path_rundir("/volumes"),
 				strchr(firmware,':') + 1);
 	} else {
-		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s",
+		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "%s/bsp/%s",
+				pv_mount_get_path_rundir("/volumes"),
 				pv->state->bsp.firmware);
 	}
 
@@ -453,12 +455,16 @@ modules:
 		goto out;
 
 	if (strchr(pv->state->bsp.modules, '/')) {
-		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "%s", modules);
+		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "%s",
+				modules);
 	} else if (strchr(modules,':')) {
-		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s",
+		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "%s/bsp/%s",
+				pv_mount_get_path_rundir("/volumes"),
 				strchr(modules,':') + 1);
 	} else {
-		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s", modules);
+		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "%s/bsp/%s",
+				pv_mount_get_path_rundir("/volumes"),
+				modules);
 	}
 
 	if (!uname(&uts) && (stat(path_volumes, &st) == 0)) {
@@ -478,8 +484,10 @@ static int pv_volume_early_init(struct pv_init *this)
 {
 	char base[PATH_MAX];
 
-	mkdir("/volumes", 0755);
-	SNPRINTF_WTRUNC(base, sizeof (base), "%s/disks", pv_config_get_storage_mntpoint());
+	// Create volumes if non-existant
+	mkdir(pv_mount_get_path_rundir("/volumes"), 0755);
+	SNPRINTF_WTRUNC(base, sizeof (base),"%s/disks",
+			pv_config_get_storage_mntpoint());
 	mkdir_p(base, 0755);
 
 	return 0;

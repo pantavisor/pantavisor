@@ -83,6 +83,15 @@ static bool pv_lxc_capture_logs_activated()
 	return true;
 }
 
+static char *pv_mount_get_rundir()
+{
+	if (__pv_get_instance())
+		return __pv_get_instance()->config.storage.mntpoint;
+
+	// default
+	return "";
+}
+
 static void pv_free_lxc_log(struct pv_log_info *pv_log_i)
 {
 	free_member(pv_log_i, name);
@@ -190,44 +199,56 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
 	if (p->mgmt) {
-		snprintf(entry, sizeof (entry),
-				"%s %s none bind,ro,create=dir 0 0",
+		sprintf(entry, sizeof (entry),
+				"%s%s %s none bind,ro,create=dir 0 0",
+				pv_mount_get_rundir(),
 				PV_PATH,
 				PLATFORM_PV_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		snprintf(entry, sizeof (entry),
-				"%s %s none bind,ro,create=dir 0 0",
+		sprintf(entry, sizeof (entry),
+				"%s%s %s none bind,ro,create=dir 0 0",
+				pv_mount_get_rundir(),
 				PV_LOGS_PATH,
 				PLATFORM_LOGS_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		snprintf(entry, sizeof (entry),
-				"%s %s none bind,ro,create=dir 0 0",
+		sprintf(entry, sizeof (entry),
+				"%s%s %s none bind,ro,create=dir 0 0",
+				pv_mount_get_rundir(),
 				PV_USER_META_PATH,
 				PLATFORM_USER_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	} else {
-		snprintf(entry, sizeof (entry),
-				"%s %s none bind,rw,create=dir 0 0",
+		sprintf(entry, sizeof (entry),
+				"%s%s %s none bind,rw,create=dir 0 0",
+				pv_mount_get_rundir(),
 				PV_LOG_CTRL_PATH,
 				PLATFORM_LOG_CTRL_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		snprintf(entry, sizeof (entry),
-				"%s %s none bind,rw,create=dir 0 0",
+		sprintf(entry, sizeof (entry),
+				"%s%s %s none bind,rw,create=dir 0 0",
+				pv_mount_get_rundir(),
 				PV_CTRL_SOCKET_PATH,
 				PLATFORM_CTRL_SOCKET_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		snprintf(entry, sizeof (entry),
-				PV_LOGS_PATH"/%s/%s "PLATFORM_LOGS_PATH" none bind,ro,create=dir 0 0",
-				rev, p->name);
+		sprintf(entry, sizeof (entry),
+				"%s%s/%s/%s %s none bind,ro,create=dir 0 0",
+				pv_mount_get_rundir(),
+				PV_LOGS_PATH,
+				rev,
+				p->name,
+				PLATFORM_LOGS_PATH);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		snprintf(entry, sizeof (entry),
-				PV_USER_META_PATH".%s "PLATFORM_USER_META_PATH" none bind,ro,create=dir 0 0",
-				p->name);
+		sprintf(entry, sizeof (entry),
+				"%s%s.%s %s none bind,ro,create=dir 0 0",
+				pv_mount_get_rundir(),
+				PV_USER_META_PATH,
+				p->name,
+				PLATFORM_USER_META_PATH);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
 	if (stat("/lib/firmware", &st) == 0)
@@ -237,10 +258,12 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
 	if (!ret) {
-		if (stat("/volumes/bsp/modules.squashfs", &st) == 0) {
-			sprintf(entry, "/volumes/bsp/modules.squashfs "
+		sprintf(entry, "%s/volumes/bsp/modules.squashfs", pv_mount_get_rundir());
+		if (stat(entry, &st) == 0) {
+			sprintf(entry, "%s/volumes/bsp/modules.squashfs "
 					"lib/modules/%s "
 					"none bind,ro,create=dir 0 0",
+					pv_mount_get_rundir(),
 					uts.release
 				);
 			c->set_config_item(c, "lxc.mount.entry", entry);
@@ -593,7 +616,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
 		// setup config bindmounts
-		sprintf(configdir, "/configs/%s", p->name);
+		sprintf(configdir, "%s/configs/%s", pv_mount_get_rundir(), p->name);
 		pv_setup_config_bindmounts(c, configdir, configdir);
 
 		err = c->start(c, 0, NULL) ? 0 : 1;

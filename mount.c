@@ -41,6 +41,42 @@
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+static char *_path_tmp = 0;
+
+static char *get_path_rel(char *base, char *target)
+{
+	if (!_path_tmp)
+		_path_tmp = calloc(1, PATH_MAX);
+	sprintf(_path_tmp, "%s%s", base, target);
+
+	return _path_tmp;
+}
+
+char *pv_mount_get_path_rundir(char *target)
+{
+	return get_path_rel(pv_system_get_instance()->rundir, target);
+}
+
+char *pv_mount_get_path_etcdir(char *target)
+{
+	return get_path_rel(pv_system_get_instance()->etcdir, target);
+}
+
+char *pv_mount_get_path_vardir(char *target)
+{
+	return get_path_rel(pv_system_get_instance()->vardir, target);
+}
+
+char *pv_mount_get_path_datadir(char *target)
+{
+	return get_path_rel(pv_system_get_instance()->datadir, target);
+}
+
+char *pv_mount_get_path_storage(char *target)
+{
+	return get_path_rel(pv_config_get_storage_mntpoint(), target);
+}
+
 static int ph_mount_init(struct pv_init *this)
 {
 	struct stat st;
@@ -58,13 +94,16 @@ static int ph_mount_init(struct pv_init *this)
 
 	if (stat(pv_config_get_cache_dropbearcachedir(), &st) != 0)
 		mkdir_p(pv_config_get_cache_dropbearcachedir(), 0500);
-	mkdir_p(PV_USER_META_PATH"/", 0755);
-	if (pv_config_get_cache_metacachedir())
-		mount_bind(pv_config_get_cache_metacachedir(), PV_USER_META_PATH);
 
-	mkdir_p("/etc/dropbear/", 0755);
+	mkdir_p(pv_mount_get_path_rundir(PV_USER_META_PATH"/"), 0755);
+	if (pv_config_get_cache_metacachedir())
+		mount_bind(pv_config_get_cache_metacachedir(),
+			pv_mount_get_path_rundir(PV_USER_META_PATH));
+
+	mkdir_p(pv_mount_get_path_etcdir("/dropbear/"), 0755);
 	if (pv_config_get_cache_dropbearcachedir())
-		mount_bind(pv_config_get_cache_dropbearcachedir(), "/etc/dropbear");
+		mount_bind(pv_config_get_cache_dropbearcachedir(),
+			pv_mount_get_path_etcdir("/dropbear"));
 	ret = 0;
 
 	return ret;

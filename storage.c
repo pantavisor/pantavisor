@@ -227,7 +227,7 @@ static struct pv_storage* pv_storage_new()
 	struct statfs buf;
 	struct pv_storage* this;
 
-	if (statfs("/storage/config/pantahub.config", &buf) < 0)
+	if (statfs(pv_mount_get_path_storage("/config/pantahub.config"), &buf) < 0)
 		return NULL;
 
 
@@ -1179,9 +1179,9 @@ static int pv_storage_init(struct pv_init *this)
 	int fd = -1;
 
 	// create hints
-	fd = open(PV_CHALLENGE_PATH, O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(pv_mount_get_path_rundir(PV_CHALLENGE_PATH), O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
-	fd = open(PV_DEVICE_ID_PATH, O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(pv_mount_get_path_rundir(PV_DEVICE_ID_PATH), O_CREAT | O_SYNC | O_WRONLY, 0444);
 	if (!pv_config_get_creds_prn() ||
 		(!strcmp(pv_config_get_creds_prn(), ""))) {
 		pv->unclaimed = true;
@@ -1191,7 +1191,7 @@ static int pv_storage_init(struct pv_init *this)
 		write(fd, tmp, strlen(tmp));
 	}
 	close(fd);
-	fd = open(PV_PATH"/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(pv_mount_get_path_rundir(PV_PATH"/pantahub-host"), O_CREAT | O_SYNC | O_WRONLY, 0444);
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
 	write(fd, tmp, strlen(tmp));
 	close(fd);

@@ -175,14 +175,14 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 {
 	DEFINE_DL_LIST(config_list);
 
+	char *path;
+	struct pv_system *system = pv_system_get_instance();
+
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
 	// for overrides
-	config_parse_cmdline(&config_list, "pv_");
-
-	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
-	config->cache.metacachedir = config_get_value_string(&config_list, "meta.cache.dir", "/storage/cache/meta");
+	config_parse_cmdline(&config_list, system->cmdline, "pv_");
 
 	config->bl.type = config_get_value_bl_type(&config_list, "bootloader.type", BL_UBOOT_PLAIN);
 	config->bl.mtd_only = config_get_value_bool(&config_list, "bootloader.mtd_only", false);
@@ -191,10 +191,20 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->storage.path = config_get_value_string(&config_list, "storage.device", NULL);
 	config->storage.fstype = config_get_value_string(&config_list, "storage.fstype", NULL);
 	config->storage.opts = config_get_value_string(&config_list, "storage.opts", NULL);
-	config->storage.mntpoint = config_get_value_string(&config_list, "storage.mntpoint", NULL);
+	config->storage.mntpoint = config_get_value_string(&config_list, "storage.mntpoint", system->vardir);
 	config->storage.mnttype = config_get_value_string(&config_list, "storage.mnttype", NULL);
 	config->storage.logtempsize = config_get_value_string(&config_list, "storage.logtempsize", NULL);
 	config->storage.wait = config_get_value_int(&config_list, "storage.wait", 5);
+
+	path = calloc(1, PATH_MAX);
+	if (!path)
+		exit_error("Fatal error: Cannot allocate configuration memory.\n");
+
+	sprintf(path, "%s/cache/dropbear", config->storage.mntpoint);
+	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", path);
+	sprintf(path, "%s/cache/meta", config->storage.mntpoint);
+	config->cache.metacachedir = config_get_value_string(&config_list, "meta.cache.dir", path);
+	free(path);
 
 	config->storage.gc.reserved = config_get_value_int(&config_list, "storage.gc.reserved", 5);
 	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "storage.gc.keep_factory", false);
