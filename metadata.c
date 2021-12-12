@@ -847,10 +847,11 @@ static void pv_metadata_load_usermeta()
 	struct pv_path *curr, *tmp;
 	int len;
 	char path[PATH_MAX];
-	char *value;
+	char *value, *rundir;
 
 	dl_list_init(&files);
-	pv_storage_get_subdir(PV_USER_META_PATH, "", &files);
+	pv_storage_get_subdir(PV_PATH_USER_META, "", &files);
+	rundir = pv_system_get_instance()->rundir;
 
 	dl_list_for_each_safe(curr, tmp, &files,
 		struct pv_path, list) {
@@ -859,8 +860,8 @@ static void pv_metadata_load_usermeta()
 			!strncmp(curr->path, ".", strlen(".")))
 			continue;
 
-		len = strlen(PV_USER_META_KEY_PATHF) + strlen(curr->path) + 1;
-		SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, curr->path);
+		len = strlen(PV_PATH_USERMETA_KEY) + strlen(rundir) + strlen(curr->path) + 1;
+		SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, rundir, curr->path);
 		value = pv_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
 			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));

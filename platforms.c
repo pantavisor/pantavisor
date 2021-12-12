@@ -46,6 +46,7 @@ int setns(int nsfd, int nstype);
 #include "pvlogger.h"
 #include "init.h"
 #include "state.h"
+#include "system.h"
 #include "utils/list.h"
 #include "utils/fs.h"
 #include "utils/str.h"
@@ -330,9 +331,9 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	char lib_path[PATH_MAX];
 	void *lib;
 
-	SNPRINTF_WTRUNC(lib_path, sizeof (lib_path), "/lib/pv_%s.so", c->type);
+	SNPRINTF_WTRUNC(lib_path, sizeof (lib_path), "/pv_%s.so", c->type);
 
-	lib = dlopen(lib_path, RTLD_NOW);
+	lib = dlopen(pv_system_get_path_pluginsdir(lib_path), RTLD_NOW);
 	if (!lib) {
 		pv_log(ERROR, "unable to load %s: %s", lib_path, dlerror());
 		return 0;
@@ -341,8 +342,10 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	pv_log(DEBUG, "loaded %s @%p", lib_path, lib);
 
 	// static engines have to define c->start and c->end
+	printf("%s():%d\n", __func__, __LINE__);
 	if (c->start == NULL)
 		c->start = dlsym(lib, "pv_start_container");
+	printf("%s():%d c->start=%p\n", __func__, __LINE__, c->start);
 
 	if (c->stop == NULL)
 		c->stop = dlsym(lib, "pv_stop_container");
@@ -542,9 +545,9 @@ int pv_platform_start(struct pv_platform *p)
 
 	pv_wdt_kick(pv);
 
-	if (pv_state_spec(pv->state) == SPEC_SYSTEM1) {
+	if (pv_state_spec(pv->state) == SPEC_SYSTEM1 ||
+	    pv_state_spec(pv->state) == SPEC_EMBED1)
 		SNPRINTF_WTRUNC(prefix, sizeof (prefix), "%s/", p->name);
-	}
 
 	SNPRINTF_WTRUNC(conf_path, sizeof (conf_path),
 			"%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev,

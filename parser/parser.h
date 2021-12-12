@@ -26,6 +26,10 @@
 
 #include "pantavisor.h"
 
+//  pantavisor-service-embed@1
+struct pv_state* embed1_parse(struct pv_state *this, const char *buf);
+char* embed1_parse_initrd_config_name(const char *buf);
+
 //  pantavisor-multi-platform@1
 struct pv_state* multi1_parse(struct pv_state *this, const char *buf);
 char* multi1_parse_initrd_config_name(const char *buf);

@@ -37,6 +37,28 @@ extern char pv_user_agent[4096];
 
 #define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
+struct pv_system {
+	/* true if we run inside a main OS; false if we run as PID 1 */
+	bool is_embedded;
+
+	/* true if we want to run in foreground */
+	bool is_standalone;
+
+	/* cmdline from /proc/cmdline or actual argv in embedded case */
+	char *cmdline;
+
+	/* common directories */
+	char *prefix; /* PID1: / | EMBED: /opt/pantavisor */
+	char *bindir; /* PID1: / | EMBED: /opt/pantavisor/bin */
+	char *vardir; /* PID1: /storage | EMBED: $prefix/var/pantavisor */
+	char *logdir; /* PID1: /storage/logs | EMBED: $prefix/var/log/pantavisor */
+	char *etcdir; /* PID1: /etc | EMBED: $prefix/etc/ */
+	char *rundir; /* PID1: / | EMBED: $prefix/run/pantavisor */
+	char *pvdir; /* PID1: /pv | EMBED: $rundir/pv */
+	char *datadir; /* PID1: /pshare | EMBED: /opt/pantavisor/share */;
+	char *pluginsdir /* PID1: /plugins | EMBED: /opt/pantavisor/plugins */;
+};
+
 struct pantavisor {
 	struct pv_device *dev;
 	struct pv_update *update;
@@ -59,6 +81,7 @@ void pv_init(void);
 int pv_start(void);
 void pv_stop(void);
 
+struct pv_system* pv_system_get_instance(void);
 struct pantavisor* pv_get_instance(void);
 
 #endif

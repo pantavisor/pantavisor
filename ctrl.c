@@ -55,6 +55,7 @@
 #include "version.h"
 #include "platforms.h"
 #include "paths.h"
+#include "system.h"
 #include "utils/math.h"
 #include "utils/fs.h"
 #include "utils/file.h"
@@ -1027,7 +1028,7 @@ static int pv_ctrl_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
 
-	pv->ctrl_fd = pv_ctrl_socket_open(PV_CTRL_SOCKET_PATH);
+	pv->ctrl_fd = pv_ctrl_socket_open(pv_system_get_path_rundir(PV_CTRL_SOCKET_PATH));
 	if (pv->ctrl_fd < 0) {
 		pv_log(ERROR, "ctrl socket could not be initialized");
 		return -1;

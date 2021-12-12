@@ -33,6 +33,7 @@
 #include "pantavisor.h"
 #include "utils/fs.h"
 #include "loop.h"
+#include "system.h"
 #include "blkid.h"
 #include "utils/str.h"
 #include "paths.h"
@@ -40,42 +41,6 @@
 #define MODULE_NAME		"mount-init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-static char *_path_tmp = 0;
-
-static char *get_path_rel(char *base, char *target)
-{
-	if (!_path_tmp)
-		_path_tmp = calloc(1, PATH_MAX);
-	sprintf(_path_tmp, "%s%s", base, target);
-
-	return _path_tmp;
-}
-
-char *pv_mount_get_path_rundir(char *target)
-{
-	return get_path_rel(pv_system_get_instance()->rundir, target);
-}
-
-char *pv_mount_get_path_etcdir(char *target)
-{
-	return get_path_rel(pv_system_get_instance()->etcdir, target);
-}
-
-char *pv_mount_get_path_vardir(char *target)
-{
-	return get_path_rel(pv_system_get_instance()->vardir, target);
-}
-
-char *pv_mount_get_path_datadir(char *target)
-{
-	return get_path_rel(pv_system_get_instance()->datadir, target);
-}
-
-char *pv_mount_get_path_storage(char *target)
-{
-	return get_path_rel(pv_config_get_storage_mntpoint(), target);
-}
 
 static int ph_mount_init(struct pv_init *this)
 {
@@ -95,15 +60,16 @@ static int ph_mount_init(struct pv_init *this)
 	if (stat(pv_config_get_cache_dropbearcachedir(), &st) != 0)
 		mkdir_p(pv_config_get_cache_dropbearcachedir(), 0500);
 
-	mkdir_p(pv_mount_get_path_rundir(PV_USER_META_PATH"/"), 0755);
-	if (pv_config_get_cache_metacachedir())
+	mkdir_p(pv_system_get_path_rundir(PV_USER_META_PATH"/"), 0755);
+	if (pv_config_get_cache_metacachedir()) {
 		mount_bind(pv_config_get_cache_metacachedir(),
-			pv_mount_get_path_rundir(PV_USER_META_PATH));
+			pv_system_get_path_rundir(PV_USER_META_PATH));
+	}
 
-	mkdir_p(pv_mount_get_path_etcdir("/dropbear/"), 0755);
+	mkdir_p(pv_system_get_path_etcdir("/dropbear/"), 0755);
 	if (pv_config_get_cache_dropbearcachedir())
 		mount_bind(pv_config_get_cache_dropbearcachedir(),
-			pv_mount_get_path_etcdir("/dropbear"));
+			pv_system_get_path_etcdir("/dropbear"));
 	ret = 0;
 
 	return ret;
@@ -114,6 +80,16 @@ static int pv_mount_init(struct pv_init *this)
 	struct stat st;
 	struct blkid_info dev_info;
 	int ret = -1;
+
+	/*
+	 * When running in embedded mode the mounts are
+	 * managed by the external system, therefore do nothing
+	 */
+	printf("embedded is: %d\n", pv_system_get_instance()->is_embedded);
+	if (pv_system_get_instance()->is_embedded) {
+		ret = 0;
+		goto out;
+	}
 
 	// Create storage mountpoint and mount device
 	mkdir_p(pv_config_get_storage_mntpoint(), 0755);

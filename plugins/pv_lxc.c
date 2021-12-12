@@ -86,7 +86,7 @@ static bool pv_lxc_capture_logs_activated()
 static char *pv_mount_get_rundir()
 {
 	if (__pv_get_instance())
-		return __pv_get_instance()->config.storage.mntpoint;
+		return __pv_get_instance()->sys->rundir;
 
 	// default
 	return "";
@@ -194,10 +194,12 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	c->set_inherit_namespaces(c, 1, share_ns);
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
+	printf("%s():%d\n", __func__, __LINE__);
 	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
 		snprintf(log_level, sizeof(log_level), "%d", pv_lxc_get_lxc_log_level());
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
+	printf("%s():%d\n", __func__, __LINE__);
 	if (p->mgmt) {
 		sprintf(entry, sizeof (entry),
 				"%s%s %s none bind,ro,create=dir 0 0",
@@ -250,11 +252,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 				p->name,
 				PLATFORM_USER_META_PATH);
 		c->set_config_item(c, "lxc.mount.entry", entry);
+	printf("%s():%d\n", __func__, __LINE__);
 	}
 	if (stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
 					" lib/firmware none bind,ro,create=dir"
 					" 0 0");
+	printf("%s():%d\n", __func__, __LINE__);
 	ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
 	if (!ret) {
@@ -269,10 +273,12 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
 	}
+	printf("%s():%d\n", __func__, __LINE__);
 	// Strip consoles from kernel cmdline
 	mkstemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd >= 0) {
+	printf("%s():%d\n", __func__, __LINE__);
 		char *buf = calloc(1024, 1);
 		char *new = calloc(1024, 1);
 		read(fd, buf, 1024);
@@ -293,6 +299,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		close(fd);
 		free(new);
 		free(buf);
+	printf("%s():%d\n", __func__, __LINE__);
 	}
 	// override container=lxc environment of pid 1
 	if (p->group)
@@ -305,6 +312,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	 * Set console filename if not provided.
 	 */
 	if (pv_lxc_capture_logs_activated()) {
+	printf("%s():%d\n", __func__, __LINE__);
 		memset(entry, 0, sizeof(entry));
 		c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 		if (!strlen(entry)) {
@@ -319,6 +327,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	 * Put a hard limit of 2MiB on console file size if one is not defined.
 	 */
 	if (c->get_config_item(c, "lxc.console.size", NULL, 0)) {
+	printf("%s():%d\n", __func__, __LINE__);
 		snprintf(entry, sizeof(entry), "2MB");
 		c->set_config_item(c, "lxc.console.size", entry);
 	}
@@ -331,14 +340,17 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	d = opendir("/lib/pv/hooks_lxc-mount.d");
 	if (!d)
 		return;
+	printf("%s():%d\n", __func__, __LINE__);
 
 	char buf[PATH_MAX];
 	while ((dir = readdir(d)) != NULL) {
+	printf("%s():%d\n", __func__, __LINE__);
 		if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
 			continue;
 		sprintf(buf, "%s/%s", "/lib/pv/hooks_lxc-mount.d", dir->d_name);
 		c->set_config_item(c, "lxc.hook.mount", buf);
 	}
+	printf("%s():%d\n", __func__, __LINE__);
 	closedir(d);
 }
 
@@ -524,20 +536,27 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 	struct pv_log_info *pv_log_i = NULL;
 	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) 
 					| (1 << LXC_NS_IPC);
+	printf("%s():%d\n", __func__, __LINE__);
 	pid_t child_pid = -1;
+	printf("%s():%d\n", __func__, __LINE__);
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
+	printf("%s():%d\n", __func__, __LINE__);
 	dname = dirname(dname);
 	chdir(dname);
 	free(dname);
 	// Make sure lxc state dir is there
 	mkdir_p("/usr/var/lib/lxc", 0755);
 
+	printf("%s():%d\n", __func__, __LINE__);
 	c = lxc_container_new(p->name, NULL);
+	printf("%s():%d\n", __func__, __LINE__);
 	if (!c) {
+	printf("%s():%d\n", __func__, __LINE__);
 		goto out_no_container;
 	}
 	c->clear_config(c);
+	printf("%s():%d\n", __func__, __LINE__);
 	/*
 	 * For returning back the
 	 * container_pid to pv parent
@@ -548,33 +567,43 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 		c = NULL;
 		goto out_no_container;
 	}
+	printf("%s():%d\n", __func__, __LINE__);
 
 	child_pid = fork();
 
+	printf("%s():%d\n", __func__, __LINE__);
 	if (child_pid < 0) {
+	printf("%s():%d\n", __func__, __LINE__);
 		lxc_container_put(c);
+	printf("%s():%d\n", __func__, __LINE__);
 		close(pipefd[0]);
 		close(pipefd[1]);
 		c = NULL;
 		goto out_no_container;
 	}
 	else if (child_pid){ /*Parent*/
+	printf("%s():%d\n", __func__, __LINE__);
 		pid_t container_pid = -1;
 		/*Parent would read*/
+	printf("%s():%d\n", __func__, __LINE__);
 		close(pipefd[1]); 
 		while (read(pipefd[0], &container_pid, 
 					sizeof(container_pid)) < 0 && errno == EINTR)
 			;
 
+	printf("%s():%d\n", __func__, __LINE__);
 		if (container_pid <= 0) {
 			lxc_container_put(c);
 			c = NULL;
+	printf("%s():%d\n", __func__, __LINE__);
 			goto out_no_container;
 		}
+	printf("%s():%d\n", __func__, __LINE__);
 		*((pid_t *) data) = container_pid;
 		close(pipefd[0]);
 	}
 	else { /* Child process */
+	printf("%s():%d\n", __func__, __LINE__);
 		char configdir[PATH_MAX];
 		char log_dir[PATH_MAX];
 
@@ -583,8 +612,10 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 		/*
 		 * We need this for getting the revision..
 		 */
+	printf("%s():%d\n", __func__, __LINE__);
 		if (!__pv_get_instance)
 			goto out_container_init;
+	printf("%s():%d\n", __func__, __LINE__);
 		if (pv_lxc_capture_logs_activated()) {
 			snprintf(log_dir, sizeof(log_dir), 
 					PV_LOGS_PATH"/%s/%s",
@@ -595,11 +626,13 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 				goto out_container_init;
 			lxc_log_init(&pv_lxc_log);
 		}
+	printf("%s():%d\n", __func__, __LINE__);
 		c = lxc_container_new(p->name, NULL);
 
 		if (!c) {
 			goto out_container_init;
 		}
+	printf("%s():%d\n", __func__, __LINE__);
 		c->clear_config(c);
 		/*
 		 * Load config later which allows us to
@@ -610,14 +643,18 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 			*((pid_t *) data) = -1;
 			goto out_container_init;
 		}
+	printf("%s():%d\n", __func__, __LINE__);
 
 		pv_setup_lxc_container(c, share_ns, p, rev);
+	printf("%s():%d\n", __func__, __LINE__);
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
+	printf("%s():%d\n", __func__, __LINE__);
 		// setup config bindmounts
 		sprintf(configdir, "%s/configs/%s", pv_mount_get_rundir(), p->name);
 		pv_setup_config_bindmounts(c, configdir, configdir);
+	printf("%s():%d\n", __func__, __LINE__);
 
 		err = c->start(c, 0, NULL) ? 0 : 1;
 

@@ -1848,7 +1848,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	pv_log(DEBUG, "update successfully installed");
-	if (pv_bootloader_set_installed(pending->rev)) {
+	if (!pv->sys->is_embedded && pv_bootloader_set_installed(pending->rev)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
 		goto out;

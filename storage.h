@@ -29,7 +29,6 @@
 #define PATH_TRAILS "%s/trails/%s/.pvr/json"
 #define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
 #define PATH_TRAILS_COMMITMSG "%s/trails/%s/.pv/commitmsg"
-
 #define PREFIX_LOCAL_REV "locals/"
 #define SIZE_LOCAL_REV 64
 

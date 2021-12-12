@@ -89,15 +89,20 @@ static int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
 	int filefd = *file_fd;
 
 	loopfd = open(devname, O_RDWR);
+	printf("%s():%d\n", __func__, __LINE__);
 	if (loopfd < 0)
 		return -1;
+	printf("%s():%d\n", __func__, __LINE__);
 
 	filefd = open(file, O_RDWR);
+	printf("%s():%d\n", __func__, __LINE__);
 	if (filefd < 0)
 		return -1;
+	printf("%s():%d\n", __func__, __LINE__);
 
 	if (ioctl(loopfd, LOOP_SET_FD, filefd) < 0)
 		return -1;
+	printf("%s():%d\n", __func__, __LINE__);
 
 	*loop_fd = loopfd;
 	*file_fd = filefd;
@@ -122,22 +127,27 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 	char devname[PATH_MAX];
 	char *opts = NULL;
 
+	printf("%s():%d\n", __func__, __LINE__);
 	if (get_free_loop(devname) < 0)
 		return -1;
 
+	printf("%s():%d devname=%s\n", __func__, __LINE__, devname);
 	if (bind_loop_dev(devname, src, loop_fd, file_fd) < 0)
 		return -1;
 
+	printf("%s():%d\n", __func__, __LINE__);
 	// Make dest if it doesn't exist
 	if (mkdir_p(dest, 0755) < 0)
 		return -1;
 
+	printf("%s():%d\n", __func__, __LINE__);
 	// if ext4 make sure we mount journaled
 	if (strcmp(fstype, "ext4") == 0)
 		ret = mount_ext4(devname, dest);
 	else
 		ret = mount(devname, dest, fstype, 0, opts);
 
+	printf("%s():%d\n", __func__, __LINE__);
 	if (ret < 0) {
 		pv_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
 		goto out;

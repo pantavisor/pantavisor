@@ -54,6 +54,7 @@
 #include "tsh.h"
 #include "signature.h"
 #include "paths.h"
+#include "system.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -227,7 +228,7 @@ static struct pv_storage* pv_storage_new()
 	struct statfs buf;
 	struct pv_storage* this;
 
-	if (statfs(pv_mount_get_path_storage("/config/pantahub.config"), &buf) < 0)
+	if (statfs(pv_system_get_path_storage("/config/pantahub.config"), &buf) < 0)
 		return NULL;
 
 
@@ -565,8 +566,8 @@ int pv_storage_make_config(struct pantavisor *pv)
 	char cmd[PATH_MAX];
 	int rv;
 
-	SNPRINTF_WTRUNC(srcpath, sizeof (srcpath), "%s/trails/%s/_config/", pv_config_get_storage_mntpoint(), pv->state->rev);
-	SNPRINTF_WTRUNC(targetpath, sizeof (targetpath), "/configs/");
+	SNPRINTF_WTRUNC(srcpath, sizeof(srcpath), "%s/trails/%s/_config/", pv_config_get_storage_mntpoint(), pv->state->rev);
+	SNPRINTF_WTRUNC(targetpath, sizeof(targetpath), "%s/", pv_system_get_path_rundir("/configs/"));
 
 	if (!stat(targetpath, &st)) {
 		SNPRINTF_WTRUNC(cmd, sizeof (cmd), "/bin/rm -rf %s/*", targetpath);
@@ -947,6 +948,9 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	case SPEC_SYSTEM1:
 		SNPRINTF_WTRUNC(prefix, sizeof (prefix), "bsp/");
 		break;
+	case SPEC_EMBED1:
+		pv_log(DEBUG, "no boot assets when in EMBED mode");
+		return 0;
 	case SPEC_MULTI1:
 	default:
 		prefix[0] = '\0';
@@ -1095,8 +1099,12 @@ out:
 void pv_storage_init_plat_usermeta(const char *name)
 {
 	char path[PATH_MAX];
+	char *rundir;
+	int len;
 
-	SNPRINTF_WTRUNC(path, sizeof (path), PV_USER_META_PLAT_PATHF, name);
+	rundir = pv_system_get_instance()->rundir;
+	len = strlen(PATH_USERMETA_PLAT) + strlen(rundir) + strlen(name) + 1;
+	SNPRINTF_WTRUNC(path, sizeof (path), PV_USER_META_PLAT_PATHF, rundir, name);
 	if (!dir_exist(path))
 		mkdir_p(path, 0755);
 }
@@ -1110,7 +1118,7 @@ static void pv_storage_save_file(const char *path, const char *content)
 
 	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (fd < 0) {
-		pv_log(WARN, "cannot create file: %s", strerror(errno));
+		pv_log(WARN, "cannot create file: %s, %s", path, strerror(errno));
 		goto out;
 	}
 
@@ -1124,11 +1132,12 @@ out:
 void pv_storage_save_usermeta(const char *key, const char *value)
 {
 	char path[PATH_MAX];
-	char *pname, *pkey;
+	char *pname, *pkey, *rundir;
 	int len;
 
-	len = strlen(PV_USER_META_KEY_PATHF) + strlen(key) + 1;
-	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, key);
+	rundir = pv_system_get_instance()->rundir;
+	len = strlen(PV_USER_META_KEY_PATHF) + strlen(rundir) + strlen(key) + 1;
+	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, rundir, key);
 	pv_storage_save_file(path, value);
 	pv_log(DEBUG, "saved usermeta in %s", path);
 
@@ -1138,8 +1147,8 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 		*pkey = '\0';
 		pkey++;
 		pv_storage_init_plat_usermeta(pname);
-		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(pname) + strlen(pkey) + 1;
-		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, pname, pkey);
+		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(rundir) + strlen(pname) + strlen(pkey) + 1;
+		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, rundir, pname, pkey);
 		pv_storage_save_file(path, value);
 		pv_log(DEBUG, "saved usermeta in %s", path);
 	}
@@ -1150,11 +1159,12 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 void pv_storage_rm_usermeta(const char *key)
 {
 	char path[PATH_MAX];
-	char *pname, *pkey;
+	char *pname, *pkey, *rundir;
 	int len;
 
-	len = strlen(PV_USER_META_KEY_PATHF) + strlen(key) + 1;
-	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, key);
+	rundir = pv_system_get_instance()->rundir;
+	len = strlen(PV_USER_META_KEY_PATHF) + strlen(rundir) + strlen(key) + 1;
+	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, rundir, key);
 	remove(path);
 	pv_log(DEBUG, "removed usermeta in %s", path);
 
@@ -1163,8 +1173,9 @@ void pv_storage_rm_usermeta(const char *key)
 	if (pkey) {
 		*pkey = '\0';
 		pkey++;
-		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(pname) + strlen(pkey) + 1;
-		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, pname, pkey);
+		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(rundir) + strlen(pname) + strlen(pkey) + 1;
+		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, rundir, pname, pkey);
+
 		remove(path);
 		pv_log(DEBUG, "removed usermeta in %s", path);
 	}
@@ -1177,11 +1188,13 @@ static int pv_storage_init(struct pv_init *this)
 	struct pantavisor *pv = pv_get_instance();
 	char tmp[256];
 	int fd = -1;
+	printf("%s():%d\n", __func__, __LINE__);
+
 
 	// create hints
-	fd = open(pv_mount_get_path_rundir(PV_CHALLENGE_PATH), O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(pv_system_get_path_rundir(PV_CHALLENGE_PATH), O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
-	fd = open(pv_mount_get_path_rundir(PV_DEVICE_ID_PATH), O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(pv_system_get_path_rundir(PV_CHALLENGE_PATH), O_CREAT | O_SYNC | O_WRONLY, 0444);
 	if (!pv_config_get_creds_prn() ||
 		(!strcmp(pv_config_get_creds_prn(), ""))) {
 		pv->unclaimed = true;
@@ -1191,10 +1204,11 @@ static int pv_storage_init(struct pv_init *this)
 		write(fd, tmp, strlen(tmp));
 	}
 	close(fd);
-	fd = open(pv_mount_get_path_rundir(PV_PATH"/pantahub-host"), O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(pv_system_get_path_rundir(PV_PATH"/pantahub-host"), O_CREAT | O_SYNC | O_WRONLY, 0444);
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
 	write(fd, tmp, strlen(tmp));
 	close(fd);
+	printf("%s():%d\n", __func__, __LINE__);
 
 	return 0;
 }

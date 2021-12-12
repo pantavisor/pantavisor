@@ -175,8 +175,11 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 {
 	DEFINE_DL_LIST(config_list);
 
-	char *path;
+	char *tmp;
 	struct pv_system *system = pv_system_get_instance();
+
+	printf("%s():%d\n", __func__, __LINE__);
+	printf("%s():%d system=%p, vardir=%s\n", __func__, __LINE__, system, system->vardir);
 
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
@@ -191,20 +194,21 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->storage.path = config_get_value_string(&config_list, "storage.device", NULL);
 	config->storage.fstype = config_get_value_string(&config_list, "storage.fstype", NULL);
 	config->storage.opts = config_get_value_string(&config_list, "storage.opts", NULL);
+	printf("%s\n", system->vardir);
 	config->storage.mntpoint = config_get_value_string(&config_list, "storage.mntpoint", system->vardir);
 	config->storage.mnttype = config_get_value_string(&config_list, "storage.mnttype", NULL);
 	config->storage.logtempsize = config_get_value_string(&config_list, "storage.logtempsize", NULL);
 	config->storage.wait = config_get_value_int(&config_list, "storage.wait", 5);
 
-	path = calloc(1, PATH_MAX);
-	if (!path)
-		exit_error("Fatal error: Cannot allocate configuration memory.\n");
+	tmp = calloc(1, PATH_MAX);
+	if (!tmp)
+		exit_error(errno, "Fatal error: Cannot allocate configuration memory.\n");
 
-	sprintf(path, "%s/cache/dropbear", config->storage.mntpoint);
-	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", path);
-	sprintf(path, "%s/cache/meta", config->storage.mntpoint);
-	config->cache.metacachedir = config_get_value_string(&config_list, "meta.cache.dir", path);
-	free(path);
+	sprintf(tmp, "%s/cache/dropbear", config->storage.mntpoint);
+	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", tmp);
+	sprintf(tmp, "%s/cache/meta", config->storage.mntpoint);
+	config->cache.metacachedir = config_get_value_string(&config_list, "meta.cache.dir", tmp);
+	free(tmp);
 
 	config->storage.gc.reserved = config_get_value_int(&config_list, "storage.gc.reserved", 5);
 	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "storage.gc.keep_factory", false);
@@ -238,11 +242,15 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 {
 	DEFINE_DL_LIST(config_list);
 
+	struct pv_system *system;
+
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
+	system = pv_system_get_instance();
+
 	// for overrides
-	config_parse_cmdline(&config_list, "ph_");
+	config_parse_cmdline(&config_list, system->cmdline, "ph_");
 
 	config->creds.type = config_get_value_string(&config_list, "creds.type", "builtin");
 	config->creds.host = config_get_value_string(&config_list, "creds.host", "192.168.53.1");
@@ -702,11 +710,15 @@ char* pv_config_get_json()
 static int pv_config_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
+	char *tmp;
 
-	if (pv_config_load_config_from_file("/etc/pantavisor.config", &pv->config) < 0) {
-		printf("FATAL: unable to parse /etc/pantavisor.config\n");
+	tmp = calloc(1, PATH_MAX);
+	sprintf(tmp, "%s/pantavisor.config", pv->sys->etcdir);
+	if (pv_config_load_config_from_file(tmp, &pv->config) < 0) {
+		printf("FATAL: unable to parse %s\n", tmp);
 		return -1;
 	}
+	free(tmp);
 
 	return 0;
 }
@@ -733,6 +745,9 @@ static int pv_config_trail(struct pv_init *this)
 	struct pantavisor *pv = pv_get_instance();
 	const char *rev = pv_bootloader_get_rev();
 	char *json = NULL, *config_name;
+
+	if (pv->sys->is_embedded)
+		return 0;
 
 	json = pv_storage_get_state_json(rev);
 	if (!json) {

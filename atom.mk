@@ -9,10 +9,11 @@ PV_DATADIR := $(PV_PREFIX)/share
 PV_ETCDIR := $(PV_PREFIX)/etc
 PV_VARDIR := $(PV_PREFIX)/var
 PV_RUNDIR := $(PV_VARDIR)/pv
+PV_PLUGINSDIR := $(PV_PREFIX)/plugins
 
 LOCAL_LIBRARIES := lxc libthttp
 LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:libseccomp OPTIONAL:libcap OPTIONAL:apparmor
-LOCAL_DESTDIR := .$(PV_LIBDIR)/
+LOCAL_DESTDIR := .$(PV_PLUGINSDIR)/
 LOCAL_MODULE := pv_lxc
 
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC -DPREFIX=$(PV_PREFIX)
@@ -63,8 +64,10 @@ LOCAL_SRC_FILES := init.c \
 			volumes.c \
 			signature.c \
 			parser/parser.c \
+			parser/parser_utils.c \
 			parser/parser_multi1.c \
 			parser/parser_system1.c \
+			parser/parser_embed1.c \
 			objects.c \
 			utils/tsh.c \
 			utils/fs.c \
@@ -94,7 +97,9 @@ LOCAL_SRC_FILES := init.c \
 			ph_logger/ph_logger.c \
 			ph_logger/ph_logger_v1.c \
 			buffer.c \
-			blkid.c
+			blkid.c \
+			skel.c \
+			system.c
 
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c

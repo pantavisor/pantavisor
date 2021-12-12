@@ -44,6 +44,8 @@ struct  json_key_action {
 	char *buf;
 };
 
+#include "parser_utils.h"
+
 #define ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save)  \
 {\
 	.key = __key, .type = __type, .opaque = (void*)__opaque,\
@@ -62,9 +64,5 @@ struct platform_bundle {
 	struct pv_state *s;
 	struct pv_platform **platform;
 };
-int start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr,
-					jsmntype_t type);
 
-int __start_json_parsing_with_action(char *buf, struct json_key_action *jka_arr, 
-		jsmntype_t type, jsmntok_t *__tokv, int __tokc);
 #endif /* __PARSER_BUNDLE_H__ */

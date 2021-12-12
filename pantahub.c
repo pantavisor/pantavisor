@@ -49,6 +49,8 @@
 #include "pantavisor.h"
 #include "json.h"
 #include "paths.h"
+#include "tsh.h"
+#include "system.h"
 #include "metadata.h"
 #include "utils/tsh.h"
 #include "utils/str.h"
@@ -143,7 +145,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	char path[PATH_MAX];
 	int n = 0, i = 0, size = 0;
 
-	n = scandir(pv_mount_get_path_datadir("/certs/"), &files, NULL, alphasort);
+	n = scandir(pv_system_get_path_datadir("/certs/"), &files, NULL, alphasort);
 	if (n < 0)
 		return NULL;
 
@@ -154,8 +156,9 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 		if (!strncmp(files[n]->d_name, ".", 1))
 			continue;
 
-		SNPRINTF_WTRUNC(path, sizeof (path), "%s/certs/%s", pv_mount_get_path_datadir(dir),
-			 files[n]->d_name);
+		SNPRINTF_WTRUNC(path, sizeof (path), "%s/%s",
+				pv_system_get_path_datadir("/certs/"),
+				files[n]->d_name);
 		size = strlen(path);
 		cafiles[i] = malloc((size+1) * sizeof(char));
 		memcpy(cafiles[i], path, size);
@@ -497,7 +500,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	int fd;
 	char buf[256];
 
-	fd = open(pv_mount_get_path_rundir(PV_DEVICE_ID_PATH), O_TRUNC | O_SYNC | O_RDWR);
+	fd = open(pv_system_get_path_rundir(PV_DEVICE_ID_PATH), O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
 		pv_log(INFO, "unable to open device-id hint file: %s", strerror(errno));
 		return;
@@ -509,7 +512,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	if (!c)
 		return;
 
-	fd = open(pv_mount_get_path_rundir(PV_CHALLENGE_PATH), O_TRUNC | O_SYNC | O_RDWR);
+	fd = open(pv_system_get_path_rundir(PV_CHALLENGE_PATH), O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
 		pv_log(INFO, "unable to open challenge hint file: %s", strerror(errno));
 		return;

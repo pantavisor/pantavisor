@@ -41,20 +41,23 @@
 #include "file.h"
 #include "thttp.h"
 #include "trest.h"
-#include "utils/fs.h"
-#include "utils/str.h"
-#include "utils/math.h"
-#include "loop.h"
 #include "init.h"
 #include "bootloader.h"
 #include "version.h"
-#include "ph_logger/ph_logger.h"
+#include "loop.h"
 #include "buffer.h"
+#include "system.h"
 #include "paths.h"
+#include "ph_logger/ph_logger.h"
+#include "utils/fs.h"
+#include "utils/str.h"
+#include "utils/math.h"
 
 #define MODULE_NAME		"log"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+
+static bool log_stdout = false;
 
 struct level_name {
 	int log_level;
@@ -89,7 +92,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 	// hold 2MiB max of log entries in open file
 	//Check on disk file size.
 
-	if (!logging_initialized) {
+	if (!logging_initialized || log_stdout) {
 		// construct string because we cannot lock stdout
 		size_t size = snprintf(NULL, 0,
 				"[pantavisor] %s %s\t -- [%s]: ",
@@ -113,8 +116,8 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 			free(buf);
 		}
 
+	if (!log_dir)
 		return;
-	}
 
 	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
 
@@ -206,12 +209,17 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 
 static int pv_log_set_log_dir(const char *rev)
 {
-	if (PATH_MAX <= snprintf(log_dir, PATH_MAX, PV_LOGS_PATH"/%s/pantavisor", rev))
-		printf("WARNING: Path log_dir truncated to %s!\n", log_dir);
+	struct pv_system *system = pv_system_get_instance();
 
-	if (PATH_MAX <= snprintf(log_path, sizeof(log_path), "%s/%s", log_dir, LOG_NAME))
+	if (system->is_embedded)
+		log_stdout = true;
+
+	if (PATH_MAX <= snprintf(log_path, sizeof(log_path), "%s/%s", system->logdir, LOG_NAME))
 		printf("WARNING: Path log_path truncated to %s!\n", log_path);
 
+	snprintf(log_dir, PATH_MAX, "%s/%s/pantavisor", system->logdir, rev);
+	if (PATH_MAX <= snprintf(log_dir, PATH_MAX, "%s/%s/pantavisor", system->logdir, rev))
+		printf("WARNING: Path log_dir truncated to %s!\n", log_dir);
 	if (mkdir_p(log_dir, 0755)) {
 		printf("Couldn't make dir %s,"
 			"pantavisor logs won't be available\n", log_dir);
@@ -291,7 +299,10 @@ static int pv_log_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
 
+	printf("%s():%d\n", __func__, __LINE__);
+
 	pv_log_init(pv, pv_bootloader_get_rev());
+	printf("%s():%d\n", __func__, __LINE__);
 
 	pv_log(INFO, "______           _              _                ");
 	pv_log(INFO, "| ___ \\         | |            (_)               ");
@@ -318,8 +329,9 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "creds.secret = '%s'", pv_config_get_creds_secret());
 	pv_bootloader_print();
 
-	if (ph_logger_init(PV_LOG_CTRL_PATH)) {
-		pv_log(ERROR, "ph logger initialization failed");
+	if (ph_logger_init(pv_system_get_path_rundir(PV_LOG_CTRL_PATH))) {
+		pv_log(ERROR, "ph logger (%s) initialization failed",
+			pv_system_get_path_rundir(PV_LOG_CTRL_PATH));
 		return -1;
 	}
 

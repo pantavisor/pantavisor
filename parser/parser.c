@@ -37,7 +37,9 @@
 #include "pantavisor.h"
 #include "json.h"
 #include "parser.h"
+#include "parser_bundle.h"
 #include "state.h"
+#include "jsons.h"
 
 struct pv_state_parser {
 	char *spec;
@@ -57,7 +59,12 @@ struct pv_state_parser parsers[SPEC_UNKNOWN] = {
 		.spec = "pantavisor-service-system@1",
 		.parse = system1_parse,
 		.parse_initrd_config_name = system1_parse_initrd_config_name,
-	}
+	},
+	{
+		.spec = "pantavisor-service-embed@1",
+		.parse = embed1_parse,
+		.parse_initrd_config_name = embed1_parse_initrd_config_name,
+	},
 };
 
 static struct pv_state_parser* _get_parser(char *spec)

@@ -46,12 +46,14 @@
 #include "platforms.h"
 #include "volumes.h"
 #include "state.h"
+#include "system.h"
 #include "paths.h"
 #include "utils/tsh.h"
 #include "utils/math.h"
 #include "utils/list.h"
 #include "utils/fs.h"
 #include "utils/str.h"
+#include "utils/fops.h"
 
 #define MODULE_NAME		"init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -86,30 +88,9 @@ static int mkcgroup(const char* cgroup) {
 	return 0;
 }
 
-static int early_mounts()
+static void mount_cgroups()
 {
 	int ret;
-	struct stat st;
-
-	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC, NULL);
-	if (ret < 0)
-		exit_error(errno, "Could not mount /proc");
-
-	ret = mount("none", "/dev", "devtmpfs", 0, "size=10240k,mode=0755");
-	if (ret < 0)
-		exit_error(errno, "Could not mount /dev");
-
-	ret = mount("none", "/sys", "sysfs", 0, NULL);
-	if (ret < 0)
-		exit_error(errno, "Could not mount /sys");
-
-	mkdir("/dev/pts", 0755);
-	ret = mount("none", "/dev/pts", "devpts", 0, NULL);
-	if (ret < 0)
-		exit_error(errno, "Could not mount /dev/pts");
-
-	remove("/dev/ptmx");
-	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
 
 	mkdir("/sys/fs/cgroup", 0755);
 	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
@@ -135,6 +116,34 @@ static int early_mounts()
 	mkcgroup("perf_event");
 	mkcgroup("pids");
 	mkcgroup("rdma");
+}
+
+static int early_mounts()
+{
+	int ret;
+	struct stat st;
+
+	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC, NULL);
+	if (ret < 0)
+		exit_error(errno, "Could not mount /proc");
+
+	ret = mount("none", "/dev", "devtmpfs", 0, "size=10240k,mode=0755");
+	if (ret < 0)
+		exit_error(errno, "Could not mount /dev");
+
+	ret = mount("none", "/sys", "sysfs", 0, NULL);
+	if (ret < 0)
+		exit_error(errno, "Could not mount /sys");
+
+	mkdir("/dev/pts", 0755);
+	ret = mount("none", "/dev/pts", "devpts", 0, NULL);
+	if (ret < 0)
+		exit_error(errno, "Could not mount /dev/pts");
+
+	remove("/dev/ptmx");
+	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
+
+	mount_cgroups();
 
 	mkdir("/sys/fs/cgroup/unified", 0555);
 	ret = mount("none", "/sys/fs/cgroup/unified", "cgroup2", 0, NULL);
@@ -155,6 +164,7 @@ static int early_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /run");
 
+	// FIXME: Setup later in the process
 	mkdir("/exports", 0755);
 	ret = mount("none", "/exports", "tmpfs", 0, NULL);
 	if (!ret)
@@ -166,12 +176,12 @@ static int early_mounts()
 }
 
 #ifdef PANTAVISOR_DEBUG
-#define DBCMD "dropbear -p 0.0.0.0:8222 -n %s/pv/user-meta/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd", 0, NULL"
+#define DBCMD "dropbear -p 0.0.0.0:8222 -n %s/pv/user-meta/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd"
 
 static void debug_telnet()
 {
 	char *dbcmd;
-	char *rundir = pv_get_system()->rundir;
+	char *rundir = pv_system_get_instance()->rundir;
 
 	dbcmd = malloc(sizeof(char) * sizeof(DBCMD) + strlen(rundir) + 2);
 	sprintf(dbcmd, DBCMD, rundir);
@@ -243,6 +253,7 @@ static void early_spawns()
 #ifdef PANTAVISOR_DEBUG
 static void debug_shell()
 {
+	char *ttyf;
 	char c[64] = { 0 };
 	int t = 5;
 	int con_fd;
@@ -402,8 +413,8 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 		rundir = strdup(getenv("PV_RUNDIR"));
 	} else {
 		rundir = strdup(prefix);
-		rundir = realloc(rundir, strlen(rundir) + strlen("/run") + 1);
-		rundir = strcat(rundir, "/run");
+		rundir = realloc(rundir, strlen(rundir) + strlen("run") + 1);
+		rundir = strcat(rundir, "run");
 	}
 
 	if ((pos = is_arg(argc, argv, "--pvdir"))) {
@@ -423,13 +434,14 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 		if (pos+1 == argc) {
 			usage(cmd);
 		}
+		printf("etcdir: %s\n", argv[pos]);
 		etcdir = strdup(argv[pos]);
 	} else if (getenv("PV_ETCDIR")) {
 		etcdir = strdup(getenv("PV_ETCDIR"));
 	} else {
 		etcdir = strdup(prefix);
-		etcdir = realloc(etcdir, strlen(etcdir) + strlen("/etc") + 1);
-		etcdir = strcat(etcdir, "/etc");
+		etcdir = realloc(etcdir, strlen(etcdir) + strlen("etc") + 1);
+		etcdir = strcat(etcdir, "etc");
 	}
 
 	if ((pos = is_arg(argc, argv, "--vardir"))) {
@@ -441,8 +453,8 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 		vardir = strdup(getenv("PV_VARDIR"));
 	} else {
 		vardir = strdup(prefix);
-		vardir = realloc(vardir, strlen(vardir) + strlen("/var") + 1);
-		vardir = strcat(vardir, "/var");
+		vardir = realloc(vardir, strlen(vardir) + strlen("var") + 1);
+		vardir = strcat(vardir, "var");
 	}
 
 	if ((pos = is_arg(argc, argv, "--logdir"))) {
@@ -454,8 +466,8 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 		logdir = strdup(getenv("PV_LOGDIR"));
 	} else {
 		logdir = strdup(prefix);
-		logdir = realloc(logdir, (strlen(prefix) + strlen("/var/log/pantavisor") + 1) * sizeof(char));
-		logdir = strcat(logdir, "/var/log/pantavisor");
+		logdir = realloc(logdir, (strlen(prefix) + strlen("var/log/pantavisor") + 1) * sizeof(char));
+		logdir = strcat(logdir, "var/log/pantavisor");
 	}
 
 	if ((pos = is_arg(argc, argv, "--pluginsdir"))) {
@@ -467,8 +479,8 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 		pluginsdir = strdup(getenv("PV_PLUGINSDIR"));
 	} else {
 		pluginsdir = strdup(prefix);
-		pluginsdir = realloc(pluginsdir, strlen(pluginsdir) + strlen("/plugins") + 1);
-		pluginsdir = strcat(pluginsdir, "/plugins");
+		pluginsdir = realloc(pluginsdir, strlen(pluginsdir) + strlen("plugins") + 1);
+		pluginsdir = strcat(pluginsdir, "plugins");
 	}
 
 	if ((pos = is_arg(argc, argv, "--datadir"))) {
@@ -480,8 +492,8 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 		datadir = strdup(getenv("PV_DATADIR"));
 	} else {
 		datadir = strdup(prefix);
-		datadir = realloc(datadir, strlen(datadir) + strlen("/share") + 1);
-		datadir = strcat(datadir, "/share");
+		datadir = realloc(datadir, strlen(datadir) + strlen("share") + 1);
+		datadir = strcat(datadir, "share");
 	}
 
 	/* lets parse/assemble commandline */
@@ -514,7 +526,7 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 			usage(cmd);
 		}
 
-		bytes = read_nointr(fd, buf, sizeof(char)*4095);
+		bytes = pv_fops_read_nointr(fd, buf, sizeof(char)*4095);
 		if (!bytes) {
 			printf("ERROR: error reading bytes from /proc/cmdline %s ...\n", strerror(errno));
 			close(fd);
@@ -531,7 +543,9 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 	pv_system->cmdline = strdup(cmdline);
 	pv_system->prefix = prefix;
 	pv_system->etcdir = etcdir;
+printf("etcidR: %s\n", pv_system->etcdir);
 	pv_system->vardir = vardir;
+printf("vardir: %s\n", pv_system->vardir);
 	pv_system->rundir = rundir;
 	pv_system->pvdir  = pvdir;
 	pv_system->logdir  = logdir;
@@ -567,7 +581,8 @@ int main(int argc, char *argv[])
 		if (is_arg(argc, argv, "--help")) {
 			usage(argv[0]);
 		}
-		if (!is_embedded) { 
+		if (!is_embedded) {
+			printf("%s():%d\n", __func__, __LINE__);
 		// we are going to use this thread for pv
 			pv_pid = getpid();
 			redirect_io();
@@ -576,17 +591,26 @@ int main(int argc, char *argv[])
 		}
 	}
 
+			printf("%s():%d\n", __func__, __LINE__);
 	system = _init_system(is_embedded, argc, argv);
-	if (!is_embedded || (args & PV_EARLYMOUNTS)) 
+	if (!is_embedded || (args & PV_EARLYMOUNTS))
 		early_mounts();
 
 	signal(SIGCHLD, signal_handler);
 
+	printf("%s():%d\n", __func__, __LINE__);
 	if (system->is_embedded) {
+		mount_cgroups();
+		printf("%s():%d\n", __func__, __LINE__);
 		pv_pid = getpid();
-		redirect_io();
+		printf("%s():%d\n", __func__, __LINE__);
+		//redirect_io();
+		printf("%s():%d\n", __func__, __LINE__);
 		early_spawns();
+		debug_telnet();
+		printf("%s():%d\n", __func__, __LINE__);
 		pv_init();
+		printf("%s():%d\n", __func__, __LINE__);
 	} else if (system->is_standalone) {
 		if (args & PV_DEBUG) {
 			if (args & PV_DEBUG_SH)
@@ -596,6 +620,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
+			printf("%s():%d\n", __func__, __LINE__);
 	// create pv thread
 	pv_pid = fork();
 	if (pv_pid > 0)
@@ -620,15 +645,43 @@ loop:
 }
 
 /*
+ * Prepare location for export mounts
+ */
+static int pv_exports_init(struct pv_init *this)
+{
+	int ret;
+	char *dir;
+
+	dir = pv_system_get_path_rundir("/exports");
+	mkdir(dir, 0755);
+	ret = mount("none", dir, "tmpfs", 0, NULL);
+	printf("%s():%d dir=%s ret=%d\n", __func__, __LINE__, dir, ret);
+	if (!ret)
+		ret = mount("none", dir, "tmpfs", MS_REC | MS_SHARED, NULL);
+	printf("%s():%d ret=%d\n", __func__, __LINE__, ret);
+	if (ret < 0)
+		exit_error(errno, "Could not create exports disk");
+
+	return ret;
+}
+
+struct pv_init pv_init_exports = {
+	.init_fn = pv_exports_init,
+	.flags = 0,
+};
+
+/*
  * The order of appearence is important here.
  * Make sure to list the initializer in the correct
  * order.
  */
 struct pv_init *pv_init_tbl [] = {
 	&pv_init_config,
+	&pv_init_skel,
 	&pv_init_mount,
 	&pv_init_creds,
 	&ph_init_mount,
+	&pv_init_exports,
 	&pv_init_bl,
 	&pv_init_config_trail,
 	&pv_init_log,
@@ -645,10 +698,12 @@ int pv_do_execute_init()
 {
 	int i = 0;
 
+	printf("%s():%d\n", __func__, __LINE__);
 	for ( i = 0; i < ARRAY_LEN(pv_init_tbl); i++) {
 		struct pv_init *init = pv_init_tbl[i];
 		int ret = 0;
 
+		printf("%s():%d i=%d\n", __func__, __LINE__, i);
 		ret = init->init_fn(init);
 		if (ret) {
 			if (!(init->flags & PV_INIT_FLAG_CANFAIL))

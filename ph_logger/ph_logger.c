@@ -57,6 +57,7 @@
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
 #include "paths.h"
+#include "system.h"
 
 #define MODULE_NAME             "ph_logger"
 #include "../log.h"
@@ -107,7 +108,9 @@ static void __ph_log(int level, const char *msg, va_list args)
 
 	ph_logger_write_bytes(ph_logger_msg, buffer, level, 
 			MODULE_NAME, PH_LOGGER_LOGFILE, len + 1);
-	pvctl_write_to_path(PV_LOG_CTRL_PATH, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
+	pvctl_write_to_path(pv_system_get_path_rundir(PV_LOG_CTRL_PATH),
+		logger_buffer,
+		ph_logger_msg->len + sizeof(*ph_logger_msg));
 
 out_no_buffer:
 	pv_buffer_drop(log_buffer);
