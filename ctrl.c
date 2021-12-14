@@ -52,12 +52,14 @@
 #include "storage.h"
 #include "metadata.h"
 #include "version.h"
+#include "platforms.h"
 
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#define CTRL_SOCKET_PATH "/pv/pv-ctrl"
+#define CTRL_SOCKET_PATH "/pv/ctrl"
+#define CTRL_PLAT_SOCKET_PATH "/pv/ctrl/pv-ctrl-%s"
 
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
@@ -92,10 +94,14 @@ static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 	return strings[code];
 }
 
-static int pv_ctrl_socket_open(char *path)
+int pv_ctrl_socket_open(const char *name)
 {
-	int fd;
+	char path[PATH_MAX];
+	int len, fd;
 	struct sockaddr_un addr;
+
+	len = strlen(CTRL_PLAT_SOCKET_PATH) + strlen(name) + 1;
+	snprintf(path, len, CTRL_PLAT_SOCKET_PATH, name);
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
@@ -781,44 +787,63 @@ out:
 	return cmd;
 }
 
-struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout)
+static int safe_fd_set(int fd, fd_set* fds, int* max_fd)
 {
-	int req_fd = 0, ret;
+    FD_SET(fd, fds);
+    if (fd > *max_fd) {
+        *max_fd = fd;
+    }
+    return 0;
+}
+
+struct pv_cmd* pv_ctrl_socket_wait(int timeout)
+{
+	int max_fd = -1, req_fd, ret;
 	fd_set fdset;
 	struct timeval tv;
 	struct pv_cmd *cmd = NULL;
 
-	if (ctrl_fd < 0) {
-		pv_log(ERROR, "control socket not setup");
-		goto out;
-	}
+	struct pantavisor *pv = pv_get_instance();
+	struct dl_list *platforms = &pv->state->platforms;
+	struct pv_platform *p, *tmp;
 
 	FD_ZERO(&fdset);
-	FD_SET(ctrl_fd, &fdset);
+	dl_list_for_each_safe(p, tmp, platforms,
+		struct pv_platform, list) {
+		if (p->ctrl_fd < 0)
+			continue;
+		safe_fd_set(p->ctrl_fd, &fdset, &max_fd);
+	}
+
 	tv.tv_sec = timeout;
 	tv.tv_usec = 0;
 
 	// select with blocking time
-	ret = select(ctrl_fd + 1, &fdset, 0, 0, &tv);
+	ret = select(max_fd + 1, &fdset, 0, 0, &tv);
 	if (!ret)
 		goto out;
 	else if (ret < 0) {
 		pv_log(WARN, "could not select ctrl socket with fd %d: %s",
-			ctrl_fd, strerror(errno));
+			max_fd, strerror(errno));
 		goto out;
 	}
 
-	// create dedicated fd
-	req_fd = accept(ctrl_fd, 0, 0);
-	if (req_fd < 0) {
-		pv_log(WARN, "could not accept ctrl socket with fd %d: %s",
-			ctrl_fd, strerror(errno));
-		goto out;
+	dl_list_for_each_safe(p, tmp, platforms,
+		struct pv_platform, list) {
+		if (FD_ISSET(p->ctrl_fd, &fdset)) {
+			// create dedicated fd
+			req_fd = accept(p->ctrl_fd, 0, 0);
+			if (req_fd < 0) {
+				pv_log(WARN, "could not accept ctrl socket with fd %d: %s",
+					p->ctrl_fd, strerror(errno));
+				break;
+			}
+
+			cmd = pv_ctrl_read_parse_request(req_fd);
+			close(req_fd);
+		}
 	}
 
-	cmd = pv_ctrl_read_parse_request(req_fd);
-
-	close(req_fd);
 out:
 	return cmd;
 }
@@ -836,15 +861,7 @@ void pv_ctrl_free_cmd(struct pv_cmd *cmd)
 
 static int pv_ctrl_init(struct pv_init *this)
 {
-	struct pantavisor *pv = pv_get_instance();
-
-	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
-	if (pv->ctrl_fd < 0) {
-		pv_log(ERROR, "ctrl socket could not be initialized");
-		return -1;
-	}
-
-	pv_log(DEBUG, "ctrl socket initialized with fd %d", pv->ctrl_fd);
+	mkdir_p(CTRL_SOCKET_PATH, 0755);
 
 	return 0;
 }

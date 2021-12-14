@@ -193,10 +193,6 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	if (p->mgmt) {
 		c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
 							" none bind,ro,create=dir 0 0");
-		c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
-							" none bind,ro,create=dir 0 0");
-		c->set_config_item(c, "lxc.mount.entry", "/pv/user-meta pantavisor/user-meta"
-							" none bind,ro,create=dir 0 0");
 	} else {
 		c->set_config_item(c, "lxc.mount.entry", "/pv/pv-ctrl-log pantavisor/pv-ctrl-log"
 							" none bind,rw,create=file 0 0");
@@ -207,6 +203,9 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			p->name);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
+	sprintf(entry, "/pv/ctrl/pv-ctrl-%s pantavisor/pv-ctrl none bind,rw,create=file 0 0",
+		p->name);
+	c->set_config_item(c, "lxc.mount.entry", entry);
 	if (stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
 					" lib/firmware none bind,ro,create=dir"

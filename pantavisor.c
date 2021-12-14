@@ -482,7 +482,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
-	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
+	pv->cmd = pv_ctrl_socket_wait(2);
 	if (pv->cmd)
 		next_state = PV_STATE_COMMAND;
 
@@ -765,8 +765,6 @@ void pv_stop()
 	struct pantavisor *pv = pv_get_instance();
 	if (!pv)
 		return;
-
-	pv_ctrl_socket_close(pv->ctrl_fd);
 
 	pv_bootloader_remove();
 	pv_remove(pv);

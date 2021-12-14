@@ -50,6 +50,7 @@ struct pv_platform {
 	int runlevel;
 	bool mgmt;
 	bool updated;
+	int ctrl_fd;
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*

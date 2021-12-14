@@ -47,6 +47,7 @@ int setns(int nsfd, int nstype);
 #include "utils/list.h"
 #include "init.h"
 #include "state.h"
+#include "ctrl.h"
 
 #define MODULE_NAME             "platforms"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -521,7 +522,7 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 {
 	int num_plats = 0;
 	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = NULL;
+	struct dl_list *platforms = &pv->state->platforms;
 
 	// Iterate between runlevel plats and lowest priority plats 
 	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
@@ -532,12 +533,15 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 			continue;
 		}
 		// Iterate over all plats from state
-		platforms = &pv->state->platforms;
 		dl_list_for_each_safe(p, tmp, platforms,
 				struct pv_platform, list) {
 			// Ignore platforms from other runlevels and platforms already started
 			if ((p->runlevel != i) || (p->status == PLAT_STARTED))
 				continue;
+
+			p->ctrl_fd = pv_ctrl_socket_open(p->name);
+			if (p->ctrl_fd < 0)
+				pv_log(WARN, "could not open socket for platform %s", p->name);
 
 			if (pv_platforms_start_platform(pv, p))
 				return -1;
@@ -549,16 +553,13 @@ int pv_platforms_start(struct pantavisor *pv, int runlevel)
 	pv_log(INFO, "started %d platforms", num_plats);
 
 	pv_log(DEBUG, "starting all platforms pv loggers");
-
-	platforms = &pv->state->platforms;
-
 	if (!pv_config_get_log_loggers())
 		goto out;
 
 	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
 		if (start_pvlogger_for_platform(p) < 0)
-			pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
+			pv_log(WARN, "Could not start pv_logger for platform %s",p->name);
 	}
 
 out:
@@ -655,7 +656,6 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 	const struct pv_cont_ctrl *ctrl;
 
 	pv_log(DEBUG, "stopping all platforms pv loggers");
-
 	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
 		num_loggers += pv_platform_stop_loggers(p);
@@ -688,6 +688,7 @@ int pv_platforms_stop(struct pantavisor *pv, int runlevel)
 				p->status = PLAT_STOPPED;
 				p->data = NULL;
 				pv_log(DEBUG, "sent SIGTERM to platform '%s'", p->name);
+				pv_ctrl_socket_close(p->ctrl_fd);
 				num_plats++;
 			}
 		}

@@ -42,10 +42,11 @@ struct pv_cmd {
 	char* payload;
 };
 
-struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout);
-void pv_ctrl_free_cmd(struct pv_cmd *cmd);
-
+int pv_ctrl_socket_open(const char *name);
 void pv_ctrl_socket_close(int ctrl_fd);
+
+struct pv_cmd* pv_ctrl_socket_wait(int timeout);
+void pv_ctrl_free_cmd(struct pv_cmd *cmd);
 
 static inline const char* pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 {

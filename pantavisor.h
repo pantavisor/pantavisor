@@ -51,7 +51,6 @@ struct pantavisor {
 	bool unclaimed;
 	bool synced;
 	bool loading_objects;
-	int ctrl_fd;
 };
 
 void pv_init(void);
