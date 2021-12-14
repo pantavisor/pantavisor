@@ -273,7 +273,7 @@ static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
 		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s",
 				strchr(firmware,':') + 1);
 	} else {
-		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/%s",
+		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s",
 				pv->state->bsp.firmware);
 	}
 
@@ -298,7 +298,7 @@ modules:
 		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s",
 				strchr(modules,':') + 1);
 	} else {
-		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/%s", modules);
+		SNPRINTF_WTRUNC(path_volumes, sizeof (path_volumes), "/volumes/bsp/%s", modules);
 	}
 
 	if (!uname(&uts) && (stat(path_volumes, &st) == 0)) {
