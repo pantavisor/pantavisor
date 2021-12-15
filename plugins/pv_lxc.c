@@ -200,6 +200,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	} else {
 		c->set_config_item(c, "lxc.mount.entry", "/pv/pv-ctrl-log pantavisor/pv-ctrl-log"
 							" none bind,rw,create=file 0 0");
+		c->set_config_item(c, "lxc.mount.entry", "/pv/pv-ctrl pantavisor/pv-ctrl"
+							" none bind,rw,create=file 0 0");
 		sprintf(entry, "/pv/logs/%s/%s pantavisor/logs none bind,ro,create=dir 0 0",
 			rev, p->name);
 		c->set_config_item(c, "lxc.mount.entry", entry);
