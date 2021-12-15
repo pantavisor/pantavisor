@@ -31,6 +31,7 @@
 #include <sys/time.h>
 #include <sys/select.h>
 #include <sys/types.h>
+#define _GNU_SOURCE
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
@@ -52,6 +53,7 @@
 #include "storage.h"
 #include "metadata.h"
 #include "version.h"
+#include "platforms.h"
 
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -78,6 +80,7 @@ static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
 typedef enum {
 	HTTP_STATUS_BAD_REQ,
+	HTTP_STATUS_FORBIDDEN,
 	HTTP_STATUS_NOT_FOUND,
 	HTTP_STATUS_CONFLICT,
 	HTTP_STATUS_ERROR,
@@ -85,7 +88,9 @@ typedef enum {
 
 static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 {
-	static const char *strings[] = {"400 Bad Request",
+	static const char *strings[] = {
+		"400 Bad Request",
+		"403 Forbidden",
 		"404 Not Found",
 		"409 Conflict",
 		"500 Internal Server Error"};
@@ -550,29 +555,104 @@ error:
 	return -1;
 }
 
+static char* pv_ctrl_get_sender_pname(int req_fd)
+{
+	char *freezer, *pname = NULL;
+	struct ucred ucred;
+	socklen_t ucred_len = sizeof(ucred);
+	char path[PATH_MAX], buf[128];
+	FILE *fd;
+	int len;
+
+	// get sender PID
+	if (getsockopt(req_fd, SOCK_STREAM, SO_PEERCRED, &ucred, &ucred_len) < 0) {
+		pv_log(WARN, "could not get pid from sender: %s", strerror(errno));
+		goto out;
+	}
+
+	// get container name from sender PID
+	len = strlen("/proc/%d/cgroup") + get_digit_count(ucred.pid) + 1;
+	snprintf(path, len, "/proc/%d/cgroup", ucred.pid);
+
+	fd = fopen(path,"r");
+	if (!fd) {
+		pv_log(WARN, "could not open %s: %s", path, strerror(errno));
+		goto out;
+	}
+
+	while (fgets(buf, 128, fd)) {
+		freezer = strstr(buf, "freezer:/lxc/");
+		if (freezer) {
+			freezer += strlen("freezer:/lxc/");
+			freezer[strlen(freezer) - 1] = '\0';
+			pname = strdup(freezer);
+			break;
+		}
+	}
+
+	fclose(fd);
+
+out:
+	return pname;
+}
+
+static bool pv_ctrl_check_sender_privileged(int req_fd)
+{
+	bool mgmt = false;
+	char *pname;
+	struct pantavisor *pv = pv_get_instance();
+	struct pv_platform *plat;
+
+	pname = pv_ctrl_get_sender_pname(req_fd);
+	if (!pname) {
+		pv_log(WARN, "could not find a sender platform name");
+		goto out;
+	}
+
+	plat = pv_platform_get_by_name(pv->state, pname);
+	if (!plat) {
+		pv_log(WARN, "could not find platform %s in current state", pname);
+		goto out;
+	}
+
+	mgmt = plat->mgmt;
+
+	if (mgmt)
+		pv_log(DEBUG, "request received from mgmt platform %s", pname)
+	else
+		pv_log(DEBUG, "request received from unprivileged platform %s", pname);
+
+out:
+	return mgmt;
+}
+
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
+	bool mgmt;
 	int buf_index = 0, res = -1;
 	const char *method, *path;
 	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
-	struct pantavisor *pv = pv_get_instance();
 	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL, *file_path_tmp = NULL;
 	char *metakey = NULL, *metavalue = NULL;
 
 	memset(buf, 0, sizeof(buf));
+	mgmt = pv_ctrl_check_sender_privileged(req_fd);
 
-	// read first character to see if the request is a non-HTTP legacy one
-	if (read(req_fd, &buf[0], 1) < 0)
-		goto out;
-	buf_index++;
+	// legacy commands are only for mgmt platforms
+	if (mgmt) {
+		// read first character to see if the request is a non-HTTP legacy one
+		if (read(req_fd, &buf[0], 1) < 0)
+			goto out;
+		buf_index++;
 
-	// if character is 3 (old code for json command), it is non-HTTP
-	if (buf[0] == 3) {
-		res = pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
-		goto out;
+		// if character is 3 (old code for json command), it is non-HTTP
+		if (buf[0] == 3) {
+			res = pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
+			goto out;
+		}
 	}
 
 	// at this point, the request can only be either HTTP or bad formatted
@@ -590,12 +670,20 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		goto out;
 	}
 
-	pv_log(DEBUG, "new request received: %.*s %.*s", method_len, method, path_len, path);
+	pv_log(DEBUG, "HTTP request received: %.*s %.*s", method_len, method, path_len, path);
 
 	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
 	if (content_length <= 0) {
 		pv_log(WARN, "HTTP request received has empty body");
 		pv_ctrl_write_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has empty body");
+		goto out;
+	}
+
+	// all requests are forbidden for non mgmt platforms for now
+	if (!mgmt) {
+		pv_ctrl_write_response(req_fd,
+			HTTP_STATUS_FORBIDDEN,
+			"Request not sent from mgmt platform");
 		goto out;
 	}
 
@@ -646,7 +734,6 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 				}
 
 				pv_storage_gc_defer_run_threshold();
-				pv->loading_objects = true;
 			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
