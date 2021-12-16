@@ -40,14 +40,15 @@
 #include "state.h"
 #include "pantahub.h"
 #include "init.h"
-#include "utils/math.h"
-#include "utils/system.h"
 #include "str.h"
 #include "json.h"
 #include "config_parser.h"
 #include "storage.h"
 #include "platforms.h"
 #include "buffer.h"
+#include "utils/math.h"
+#include "utils/system.h"
+#include "utils/file.h"
 
 #define MODULE_NAME             "metadata"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -856,9 +857,11 @@ static void pv_metadata_load_usermeta()
 
 		len = strlen(PATH_USERMETA_KEY) + strlen(curr->path) + 1;
 		snprintf(path, len, PATH_USERMETA_KEY, curr->path);
-		value = pv_storage_load_file(path, METADATA_MAX_SIZE);
-		if (!value)
+		value = pv_file_load(path, METADATA_MAX_SIZE);
+		if (!value) {
+			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
 			continue;
+		}
 
 		pv_metadata_add_usermeta(curr->path, value);
 		free(value);

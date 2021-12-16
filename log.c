@@ -37,7 +37,7 @@
 #include <linux/limits.h>
 
 #include "config.h"
-#include "fops.h"
+#include "file.h"
 #include "thttp.h"
 #include "utils/fs.h"
 #include "loop.h"
@@ -91,7 +91,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		int ret = 0;
 		int lock_file_errno = 0;
 		do {
-			ret = pv_fops_lock_file(log_fd);
+			ret = pv_file_lock_file(log_fd);
 		} while (ret < 0 && (errno == EAGAIN || errno == EACCES));
 
 		if (ret < 0)
@@ -139,7 +139,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 				snprintf(gzip_path, sizeof(gzip_path),
 						"%s.%d.gzip", log_path, (i+1));
 				if (stat(gzip_path, &stat_gz))
-					pv_fops_gzip_file(log_path, gzip_path);
+					pv_file_gzip_file(log_path, gzip_path);
 			}
 			if (log_fd >= 0) {
 				ftruncate(log_fd, 0);
@@ -152,7 +152,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		dprintf(log_fd, "[%s]: ", module);
 		vdprintf(log_fd, fmt, args);
 		dprintf(log_fd, "\n");
-		pv_fops_unlock_file(log_fd);
+		pv_file_unlock_file(log_fd);
 		close(log_fd);
 	}
 }
