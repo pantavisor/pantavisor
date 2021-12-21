@@ -137,6 +137,11 @@ struct pantavisor_secureboot {
 	secureboot_mode_t mode;
 };
 
+struct pantavisor_vm {
+	int system_swappiness;
+	int cgroup_swappiness;
+};
+
 struct pantavisor_config {
 	struct pantavisor_cache cache;
 	struct pantavisor_bootloader bl;
@@ -151,7 +156,10 @@ struct pantavisor_config {
 	struct pantavisor_control control;
 	struct pantavisor_libthttp libthttp;
 	struct pantavisor_secureboot secureboot;
+	struct pantavisor_vm vm;
 };
+
+
 
 int pv_config_load_creds(void);
 int pv_config_save_creds(void);
@@ -177,6 +185,9 @@ char* pv_config_get_creds_id(void);
 char* pv_config_get_creds_prn(void);
 char* pv_config_get_creds_secret(void);
 char* pv_config_get_creds_token(void);
+
+int pv_config_get_system_swappiness(void);
+int pv_config_get_cgroup_swappiness(void);
 
 char* pv_config_get_factory_autotok(void);
 

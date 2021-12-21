@@ -51,6 +51,7 @@ LOCAL_SRC_FILES := init.c \
 			platforms.c \
 			addons.c \
 			volumes.c \
+			vm.c \
 			signature.c \
 			parser/parser.c \
 			parser/parser_multi1.c \

@@ -190,6 +190,9 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->storage.logtempsize = config_get_value_string(&config_list, "storage.logtempsize", NULL);
 	config->storage.wait = config_get_value_int(&config_list, "storage.wait", 5);
 
+	config->vm.system_swappiness = config_get_value_int(&config_list, "vm.system.swappiness", -1);
+	config->vm.cgroup_swappiness = config_get_value_int(&config_list, "vm.cgroup.swappiness", -1);
+
 	config->storage.gc.reserved = config_get_value_int(&config_list, "storage.gc.reserved", 5);
 	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "storage.gc.keep_factory", false);
 	config->storage.gc.threshold = config_get_value_int(&config_list, "storage.gc.threshold", 0);
@@ -504,6 +507,9 @@ char* pv_config_get_creds_secret() { return pv_get_instance()->config.creds.secr
 char* pv_config_get_creds_token() { return pv_get_instance()->config.creds.token; }
 
 char* pv_config_get_factory_autotok() { return pv_get_instance()->config.factory.autotok; }
+
+int pv_config_get_system_swappiness() { return pv_get_instance()->config.vm.system_swappiness; }
+int pv_config_get_cgroup_swappiness() { return pv_get_instance()->config.vm.cgroup_swappiness; }
 
 char* pv_config_get_storage_path() { return pv_get_instance()->config.storage.path; }
 char* pv_config_get_storage_fstype() { return pv_get_instance()->config.storage.fstype; }
