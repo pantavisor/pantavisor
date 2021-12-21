@@ -241,7 +241,7 @@ static struct pv_signature_headers* pv_signature_parse_protected(char *protected
 	}
 
 	if (pv_base64_url_decode(protected, &json, &olen)) {
-		pv_log(ERROR, "protected value could not be decoded");
+		pv_log(ERROR, "protected value could not be decoded '%s'", protected);
 		goto err;
 	}
 
@@ -693,7 +693,7 @@ static bool pv_signature_verify_sha256(const char *payload, struct dl_list *cert
 	}
 
 	if (pv_base64_url_decode(signature->signature, &sig_decoded, &olen)) {
-		pv_log(ERROR, "signature could not be decoded");
+		pv_log(ERROR, "signature could not be decoded '%s'", signature->signature);
 		goto out;
 	}
 
