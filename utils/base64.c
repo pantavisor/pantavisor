@@ -33,6 +33,7 @@
 static char* pv_base64_add_padding_multi4(char *str)
 {
 	int old_len = strlen(str), padding = 0, new_len;
+	int i;
 	switch (old_len % 4)
 	{
 		case 0:
@@ -49,10 +50,11 @@ static char* pv_base64_add_padding_multi4(char *str)
 	}
 
 	new_len = old_len + padding;
-	str = realloc(str, new_len);
-	for (int i = old_len; i < new_len; i++) {
+	str = realloc(str, new_len + 1);
+	for (i = old_len; i < new_len; i++) {
 		str[i] = '=';
 	}
+	str[i] = 0;
 
 	return str;
 }
@@ -87,7 +89,7 @@ int pv_base64_decode(const char *src, char **dst, size_t *olen)
 
 	res = mbedtls_base64_decode((unsigned char*)*dst, len, olen, (unsigned char*)src, ilen);
 	if (res) {
-		pv_log(ERROR, "cannot decode base64 with code %d", res);
+		pv_log(ERROR, "cannot decode base64 with code %d '%s'", res, src);
 		goto err;
 	}
 
