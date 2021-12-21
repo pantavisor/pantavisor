@@ -436,10 +436,7 @@ auth:
 	if (status != TREST_AUTH_STATUS_OK) {
 		goto out;
 	}
-	req = trest_make_request(TREST_METHOD_POST,
-				 "/logs/",
-				 0, 0,
-				 logs);
+	req = trest_make_request(THTTP_METHOD_POST, "/logs/", logs);
 	if (!req) {
 		goto out;
 	}

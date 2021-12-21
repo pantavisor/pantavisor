@@ -39,6 +39,7 @@
 #include "config.h"
 #include "file.h"
 #include "thttp.h"
+#include "trest.h"
 #include "utils/fs.h"
 #include "loop.h"
 #include "init.h"
