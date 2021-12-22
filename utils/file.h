@@ -20,28 +20,31 @@
  * SOFTWARE.
  */
 
-#ifndef UTILS_PV_FOPS_H_
-#define UTILS_PV_FOPS_H_
+#ifndef UTILS_PV_FILE_H_
+#define UTILS_PV_FILE_H_
 
 #include <sys/types.h>
+
+char* pv_file_load(const char *path, const unsigned int max_size);
+size_t pv_file_get_size(const char *path);
 
 /*
  * Returns 0 on success.
  * For setting, value holds a null terminated string.
  * For get, the value is returned back in dst.
  */
-int pv_fops_set_file_xattr(const char *filename, char *attr, char *value);
-int pv_fops_get_file_xattr(const char *filename, char *attr, char **dst, int (*alloc)(char **, int));
-ssize_t pv_fops_write_nointr(int fd, char *buf, ssize_t len);
-ssize_t pv_fops_read_nointr(int fd, char *buf, ssize_t len);
-int pv_fops_lock_file(int fd);
+int pv_file_set_file_xattr(const char *filename, char *attr, char *value);
+int pv_file_get_file_xattr(const char *filename, char *attr, char **dst, int (*alloc)(char **, int));
+ssize_t pv_file_write_nointr(int fd, char *buf, ssize_t len);
+ssize_t pv_file_read_nointr(int fd, char *buf, ssize_t len);
+int pv_file_lock_file(int fd);
 /*
  * Returns the file descriptor on success.
  */
-int pv_fops_open_and_lock_file(const char *fname, int flags, mode_t mode);
-int pv_fops_unlock_file(int fd);
-int pv_fops_gzip_file(const char *filename, const char *target_name);
-int pv_fops_check_and_open_file(const char *fname, int flags, mode_t mode);
-int pv_fops_copy_and_close(int s_fd, int d_fd);
+int pv_file_open_and_lock_file(const char *fname, int flags, mode_t mode);
+int pv_file_unlock_file(int fd);
+int pv_file_gzip_file(const char *filename, const char *target_name);
+int pv_file_check_and_open_file(const char *fname, int flags, mode_t mode);
+int pv_file_copy_and_close(int s_fd, int d_fd);
 
-#endif /* UTILS_PV_FOPS_H_ */
+#endif /* UTILS_PV_FILE_H_ */

@@ -48,7 +48,7 @@
 #include "state.h"
 #include "bootloader.h"
 #include "init.h"
-#include "fops.h"
+#include "file.h"
 #include "addons.h"
 #include "state.h"
 #include "tsh.h"
@@ -488,9 +488,9 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name, ch
 		rev,
 		name);
 
-	buf = pv_storage_load_file(path, 0);
+	buf = pv_file_load(path, 0);
 	if (!buf) {
-		pv_log(ERROR, "could not find %s", path);
+		pv_log(ERROR, "could not load %s, %s", path, strerror(errno));
 		return false;
 	}
 
@@ -562,7 +562,7 @@ int pv_storage_update_factory(const char* rev)
 		goto out;
 	}
 
-	if (pv_fops_copy_and_close(fd_c, fd_f) < 0) {
+	if (pv_file_copy_and_close(fd_c, fd_f) < 0) {
 		pv_log(ERROR, "cannot copy %s into %s: %s", revision, factory, strerror(errno));
 		goto out;
 	}
@@ -688,7 +688,7 @@ char* pv_storage_get_revisions_string()
 		// get revision progress
 		line_len = strlen(PATH_TRAILS_PROGRESS) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
 		snprintf(path, line_len, PATH_TRAILS_PROGRESS, pv_config_get_storage_mntpoint(), r->path);
-		progress = pv_storage_load_file(path, 512);
+		progress = pv_file_load(path, 512);
 		if (!progress || !strlen(progress)) {
 			progress = calloc(1, 3);
 			sprintf (progress, "{}");
@@ -702,7 +702,7 @@ char* pv_storage_get_revisions_string()
 		// get revision commit message
 		line_len = strlen(PATH_TRAILS_COMMITMSG) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
 		snprintf(path, line_len, PATH_TRAILS_COMMITMSG, pv_config_get_storage_mntpoint(), r->path);
-		commitmsg = pv_storage_load_file(path, 512);
+		commitmsg = pv_file_load(path, 512);
 		if (commitmsg)
 			esc_commitmsg = pv_json_format(commitmsg, strlen(commitmsg));
 
@@ -830,7 +830,7 @@ void pv_storage_meta_set_objdir(struct pantavisor *pv)
 	sprintf(path, "{\"ObjectsDir\": \"%s/objects\"}", pv_config_get_storage_mntpoint());
 	/*
 	 * [PKS]
-	 * Use pv_fops_write_nointr
+	 * Use pv_file_write_nointr
 	 */
 	if (write(fd, path, strlen(path)) < 0)
 		goto err;
@@ -1051,7 +1051,7 @@ char* pv_storage_get_state_json(const char *rev)
 	path = pv_storage_get_state_json_path(rev);
 	pv_log(DEBUG, "reading state from: '%s'", path);
 
-	res = pv_storage_load_file(path, 0);
+	res = pv_file_load(path, 0);
 
 	free(path);
 	return res;
@@ -1137,52 +1137,6 @@ void pv_storage_rm_usermeta(const char *key)
 	}
 
 	free(pname);
-}
-
-char *pv_storage_load_file(const char *path, const unsigned int max_size)
-{
-	struct stat st;
-	unsigned int size;
-	int fd, res;
-	char *content = NULL;
-
-	stat(path, &st);
-	size = st.st_size;
-
-	if (max_size && (size > max_size)) {
-		pv_log(ERROR, "file size is too big %d %d", size, max_size);
-		goto out;
-	}
-
-	content = calloc(1, size+1);
-	if (!content) {
-		pv_log(ERROR, "cannot alloc file buffer");
-		goto out;
-	}
-
-	fd = open(path, O_RDONLY, 0644);
-	if (fd < 0) {
-		pv_log(ERROR, "cannot open file: %s", strerror(errno));
-		goto out;
-	}
-
-	res = read(fd, content, size);
-	if (res < 0) {
-		pv_log(ERROR, "cannot read file: %s", strerror(errno));
-		goto out;
-	}
-
-	close(fd);
-out:
-	return content;
-}
-
-size_t pv_storage_get_file_size(const char *path)
-{
-	struct stat st;
-
-	stat(path, &st);
-	return st.st_size;
 }
 
 static int pv_storage_init(struct pv_init *this)

@@ -28,10 +28,11 @@
 
 #include <linux/limits.h>
 
-#include "utils/math.h"
 #include "objects.h"
 #include "state.h"
 #include "storage.h"
+#include "utils/math.h"
+#include "utils/file.h"
 
 #define MODULE_NAME			"objects"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -156,7 +157,7 @@ char *pv_objects_get_list_string()
 			continue;
 
 		sprintf(path, "%s/objects/%s", pv_config_get_storage_mntpoint(), curr->path);
-		size_object = pv_storage_get_file_size(path);
+		size_object = pv_file_get_size(path);
 		if (size_object <= 0)
 			continue;
 

@@ -30,7 +30,7 @@
 #include <signal.h>
 
 #include "system.h"
-#include "fops.h"
+#include "file.h"
 
 #define PREFIX_MODEL	"model name\t:"
 
@@ -45,9 +45,9 @@ int get_dt_model(char *buf, int buflen)
 	int fd = -1;
 	int ret = -1;
 
-	fd = pv_fops_check_and_open_file("/proc/device-tree/model", O_RDONLY, 0);
+	fd = pv_file_check_and_open_file("/proc/device-tree/model", O_RDONLY, 0);
 	if (fd >= 0) {
-		ret = pv_fops_read_nointr(fd, buf, buflen);
+		ret = pv_file_read_nointr(fd, buf, buflen);
 		close(fd);
 	}
 	return ret >= 0 ? 0 : ret;
@@ -63,9 +63,9 @@ int get_cpu_model(char *buf, int buflen)
 	if (!buf || buflen <= 0)
 		goto out;
 
-	fd = pv_fops_check_and_open_file("/proc/cpuinfo", O_RDONLY, 0);
+	fd = pv_file_check_and_open_file("/proc/cpuinfo", O_RDONLY, 0);
 	if (fd >= 0) {
-		bytes_read = pv_fops_read_nointr(fd, buf, buflen);
+		bytes_read = pv_file_read_nointr(fd, buf, buflen);
 		close(fd);
 	}
 	if (bytes_read > 0)

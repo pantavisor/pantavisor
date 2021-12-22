@@ -30,7 +30,7 @@
 #include <sys/stat.h>
 
 #include "config_parser.h"
-#include "fops.h"
+#include "file.h"
 
 #define MODULE_NAME             "config_parser"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -148,7 +148,7 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 		return -1;
 	}
 
-	bytes = pv_fops_read_nointr(fd, buf, sizeof(char)*1024);
+	bytes = pv_file_read_nointr(fd, buf, sizeof(char)*1024);
 	if (!bytes) {
 		close(fd);
 		return -1;

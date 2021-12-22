@@ -32,10 +32,52 @@
 #include <sys/xattr.h>
 #include <signal.h>
 
-#include "fops.h"
+#include "file.h"
 #include "tsh.h"
 
-int pv_fops_set_file_xattr(const char *filename, char *attr, char *value)
+char* pv_file_load(const char *path, const unsigned int max_size)
+{
+	struct stat st;
+	unsigned int size;
+	int fd, res;
+	char *content = NULL;
+
+	res = stat(path, &st);
+	if (res < 0)
+		goto out;
+	size = st.st_size;
+
+	if (max_size && (size > max_size)) {
+		errno = EFBIG;
+		goto out;
+	}
+
+	content = calloc(1, size+1);
+	if (!content)
+		goto out;
+
+	fd = open(path, O_RDONLY, 0644);
+	if (fd < 0)
+		goto out;
+
+	res = read(fd, content, size);
+	if (res < 0)
+		goto out;
+
+	close(fd);
+out:
+	return content;
+}
+
+size_t pv_file_get_size(const char *path)
+{
+	struct stat st;
+
+	stat(path, &st);
+	return st.st_size;
+}
+
+int pv_file_set_file_xattr(const char *filename, char *attr, char *value)
 {
 	int val_len = getxattr(filename, attr, NULL, 0);
 	int set_flag = XATTR_REPLACE;
@@ -48,7 +90,7 @@ int pv_fops_set_file_xattr(const char *filename, char *attr, char *value)
 }
 
 
-int pv_fops_get_file_xattr(const char *filename, char *attr, char **dst, int(*alloc)(char**, int))
+int pv_file_get_file_xattr(const char *filename, char *attr, char **dst, int(*alloc)(char**, int))
 {
 	int val_len = -1;
 
@@ -64,7 +106,7 @@ int pv_fops_get_file_xattr(const char *filename, char *attr, char **dst, int(*al
 	return val_len < 0 ? -errno : val_len;
 }
 
-ssize_t pv_fops_write_nointr(int fd, char *buf, ssize_t len)
+ssize_t pv_file_write_nointr(int fd, char *buf, ssize_t len)
 {
 	ssize_t written = 0;
 
@@ -81,7 +123,7 @@ ssize_t pv_fops_write_nointr(int fd, char *buf, ssize_t len)
 	return written;
 }
 
-ssize_t pv_fops_read_nointr(int fd, char *buf, ssize_t len)
+ssize_t pv_file_read_nointr(int fd, char *buf, ssize_t len)
 {
 	ssize_t nr_read = 0;
 
@@ -100,7 +142,7 @@ ssize_t pv_fops_read_nointr(int fd, char *buf, ssize_t len)
 	return nr_read;
 }
 
-int pv_fops_lock_file(int fd)
+int pv_file_lock_file(int fd)
 {
 	struct flock flock;
 	int ret = 0;
@@ -119,14 +161,14 @@ int pv_fops_lock_file(int fd)
 /*
  * Returns the open file descriptor, if successful.
  * */
-int pv_fops_open_and_lock_file(const char *fname, int flags, mode_t mode)
+int pv_file_open_and_lock_file(const char *fname, int flags, mode_t mode)
 {
 	int fd = -1;
 	int ret = -1;
 
 	fd = open(fname, flags, mode);
 	if (fd >= 0)
-		ret = pv_fops_lock_file(fd);
+		ret = pv_file_lock_file(fd);
 	if (ret) {
 		close(fd);
 		fd = -1;
@@ -134,7 +176,7 @@ int pv_fops_open_and_lock_file(const char *fname, int flags, mode_t mode)
 	return fd;
 }
 
-int pv_fops_unlock_file(int fd)
+int pv_file_unlock_file(int fd)
 {
 	struct flock flock;
 	int ret = 0;
@@ -150,7 +192,7 @@ int pv_fops_unlock_file(int fd)
 	return ret;
 }
 
-int pv_fops_gzip_file(const char *filename, const char *target_name)
+int pv_file_gzip_file(const char *filename, const char *target_name)
 {
 	int __outfile[] = {-1, -1};
 	char cmd[PATH_MAX + 32];
@@ -165,7 +207,7 @@ int pv_fops_gzip_file(const char *filename, const char *target_name)
 	return -1;
 }
 
-int pv_fops_check_and_open_file(const char *fname, int flags, mode_t mode)
+int pv_file_check_and_open_file(const char *fname, int flags, mode_t mode)
 {
 	struct stat st;
 	int fd = -1;
@@ -179,7 +221,7 @@ out:
 	return fd;
 }
 
-int pv_fops_copy_and_close(int s_fd, int d_fd)
+int pv_file_copy_and_close(int s_fd, int d_fd)
 {
 	int bytes_r = 0, bytes_w = 0;
 	char buf[4096];

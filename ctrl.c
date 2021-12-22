@@ -31,6 +31,7 @@
 #include <sys/time.h>
 #include <sys/select.h>
 #include <sys/types.h>
+#define _GNU_SOURCE
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
@@ -41,8 +42,6 @@
 #include <jsmn/jsmnutil.h>
 
 #include "ctrl.h"
-#include "utils/math.h"
-#include "utils/fs.h"
 #include "json.h"
 #include "str.h"
 #include "pvlogger.h"
@@ -52,6 +51,10 @@
 #include "storage.h"
 #include "metadata.h"
 #include "version.h"
+#include "platforms.h"
+#include "utils/math.h"
+#include "utils/fs.h"
+#include "utils/file.h"
 
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -78,6 +81,7 @@ static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
 typedef enum {
 	HTTP_STATUS_BAD_REQ,
+	HTTP_STATUS_FORBIDDEN,
 	HTTP_STATUS_NOT_FOUND,
 	HTTP_STATUS_CONFLICT,
 	HTTP_STATUS_ERROR,
@@ -85,7 +89,9 @@ typedef enum {
 
 static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 {
-	static const char *strings[] = {"400 Bad Request",
+	static const char *strings[] = {
+		"400 Bad Request",
+		"403 Forbidden",
 		"404 Not Found",
 		"409 Conflict",
 		"500 Internal Server Error"};
@@ -215,7 +221,21 @@ err:
 	return -1;
 }
 
-static void pv_ctrl_write_response(int req_fd,
+static void pv_ctrl_write_cont_response(int req_fd)
+{
+	if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
+		pv_log(WARN, "HTTP CONTINUE response could not be sent to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
+}
+
+static void pv_ctrl_write_ok_response(int req_fd)
+{
+	if (write(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK)) <= 0)
+		pv_log(WARN, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
+			req_fd, strerror(errno));
+}
+
+static void pv_ctrl_write_error_response(int req_fd,
 								pv_http_status_code_t code,
 								const char* message)
 {
@@ -263,14 +283,12 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 
 	pv_log(DEBUG, "reading file from endpoint and putting it in %s...", file_path);
 
-	if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT)-1) <= 0)
-		pv_log(WARN, "HTTP CONTINUE response could not be sent to ctrl socket with fd %d: %s",
-			req_fd, strerror(errno));
+	pv_ctrl_write_cont_response(req_fd);
 
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC, 0644);
 	if (obj_fd < 0) {
 		pv_log(ERROR, "%s could not be created: %s", file_path, strerror(errno));
-		pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot create file");
+		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot create file");
 		// skip clean if the error was about the file already existing
 		if (errno == EEXIST)
 			goto out;
@@ -289,14 +307,14 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 		if (write_length <= 0) {
 			pv_log(WARN, "HTTP PUT content could not be read from ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
-			pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot read from socket");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot read from socket");
 			goto clean;
 		}
 
 		if (write(obj_fd, req, write_length) <= 0) {
 			pv_log(WARN, "HTTP PUT content could not be written from ctrl socket with fd %d: %s",
 				req_fd, strerror(errno));
-			pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Cannot write into file");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot write into file");
 			goto clean;
 		}
 
@@ -394,7 +412,7 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 {
 	int obj_fd;
-	ssize_t sent, file_size = pv_storage_get_file_size(file_path);
+	ssize_t sent, file_size = pv_file_get_size(file_path);
 	off_t offset = 0;
 
 	pv_log(DEBUG, "reading file from %s and sending it to endpoint...", file_path);
@@ -405,9 +423,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 		goto error;
 	}
 
-	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
-		pv_log(WARN, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
-			req_fd, strerror(errno));
+	pv_ctrl_write_ok_response(req_fd);
 
 	// read and send
 	for (size_t to_send = file_size; to_send > 0; ) {
@@ -425,7 +441,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 	goto out;
 
 error:
-	pv_ctrl_write_response(req_fd, HTTP_STATUS_NOT_FOUND, "Resource does not exist");
+	pv_ctrl_write_error_response(req_fd, HTTP_STATUS_NOT_FOUND, "Resource does not exist");
 out:
 	close(obj_fd);
 }
@@ -468,9 +484,7 @@ static void pv_ctrl_process_get_string(int req_fd, char* buf)
 
 	buf_len = strlen(buf);
 
-	if (write(req_fd, HTTP_RES_OK, sizeof(HTTP_RES_OK)-1) <= 0)
-		pv_log(WARN, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
-			req_fd, strerror(errno));
+	pv_ctrl_write_ok_response(req_fd);
 
 	if (write(req_fd, buf, buf_len) != buf_len)
 		pv_log(WARN, "HTTP GET content could not be written to ctrl socket with fd %d: %s",
@@ -517,7 +531,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 
 	if (!pv->remote_mode &&
 		((*cmd)->op == CMD_UPDATE_METADATA)) {
-		pv_ctrl_write_response(req_fd,
+		pv_ctrl_write_error_response(req_fd,
 			HTTP_STATUS_CONFLICT,
 			"Cannot do this operation while on local mode");
 		goto error;
@@ -528,7 +542,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		 ((*cmd)->op == CMD_POWEROFF_DEVICE) ||
 		 ((*cmd)->op == CMD_LOCAL_RUN) ||
 		 ((*cmd)->op == CMD_MAKE_FACTORY))) {
-		pv_ctrl_write_response(req_fd,
+		pv_ctrl_write_error_response(req_fd,
 			HTTP_STATUS_CONFLICT,
 			"Cannot do this operation while update is ongoing");
 		goto error;
@@ -536,7 +550,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 
 	if (!pv->unclaimed &&
 		((*cmd)->op == CMD_MAKE_FACTORY)) {
-		pv_ctrl_write_response(req_fd,
+		pv_ctrl_write_error_response(req_fd,
 			HTTP_STATUS_CONFLICT,
 			"Cannot do this operation if device is already claimed");
 		goto error;
@@ -550,74 +564,111 @@ error:
 	return -1;
 }
 
-static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
+static char* pv_ctrl_get_sender_pname(int req_fd)
 {
-	char buf[HTTP_REQ_BUFFER_SIZE];
-	int buf_index = 0, res = -1;
-	const char *method, *path;
-	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
-	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
-	struct pv_cmd *cmd = NULL;
+	char *freezer, *pname = NULL;
+	struct ucred ucred;
+	socklen_t ucred_len = sizeof(ucred);
+	char path[PATH_MAX], buf[128];
+	FILE *fd;
+	int len;
+
+	// get sender PID
+	if (getsockopt(req_fd, SOCK_STREAM, SO_PEERCRED, &ucred, &ucred_len) < 0) {
+		pv_log(WARN, "could not get pid from sender: %s", strerror(errno));
+		goto out;
+	}
+
+	// get container name from sender PID
+	len = strlen("/proc/%d/cgroup") + get_digit_count(ucred.pid) + 1;
+	snprintf(path, len, "/proc/%d/cgroup", ucred.pid);
+
+	fd = fopen(path,"r");
+	if (!fd) {
+		pv_log(WARN, "could not open %s: %s", path, strerror(errno));
+		goto out;
+	}
+
+	while (fgets(buf, 128, fd)) {
+		freezer = strstr(buf, "freezer:/lxc/");
+		if (freezer) {
+			freezer += strlen("freezer:/lxc/");
+			freezer[strlen(freezer) - 1] = '\0';
+			pname = strdup(freezer);
+			break;
+		}
+	}
+
+	fclose(fd);
+
+out:
+	return pname;
+}
+
+static bool pv_ctrl_check_sender_privileged(int req_fd)
+{
+	bool mgmt = false;
+	char *pname;
 	struct pantavisor *pv = pv_get_instance();
+	struct pv_platform *plat;
+
+	pname = pv_ctrl_get_sender_pname(req_fd);
+	if (!pname) {
+		pv_log(WARN, "could not find a sender platform name");
+		goto out;
+	}
+
+	plat = pv_platform_get_by_name(pv->state, pname);
+	if (!plat) {
+		pv_log(WARN, "could not find platform %s in current state", pname);
+		goto out;
+	}
+
+	mgmt = plat->mgmt;
+
+	if (mgmt)
+		pv_log(DEBUG, "request received from mgmt platform %s", pname)
+	else
+		pv_log(DEBUG, "request received from unprivileged platform %s", pname);
+
+out:
+	return mgmt;
+}
+
+static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
+														const char *method,
+														size_t method_len,
+														const char *path,
+														size_t path_len,
+														size_t content_length,
+														bool mgmt)
+{
+	struct pv_cmd *cmd = NULL;
 	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL, *file_path_tmp = NULL;
 	char *metakey = NULL, *metavalue = NULL;
 
-	memset(buf, 0, sizeof(buf));
-
-	// read first character to see if the request is a non-HTTP legacy one
-	if (read(req_fd, &buf[0], 1) < 0)
-		goto out;
-	buf_index++;
-
-	// if character is 3 (old code for json command), it is non-HTTP
-	if (buf[0] == 3) {
-		res = pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
+	// all requests are forbidden for non mgmt platforms for now
+	if (!mgmt) {
+		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_FORBIDDEN, "Request not sent from mgmt platform");
 		goto out;
 	}
 
-	// at this point, the request can only be either HTTP or bad formatted
-	buf_index = pv_ctrl_read_parse_request_header(req_fd,
-												buf,
-												buf_index,
-												&method,
-												&method_len,
-												&path,
-												&path_len,
-												headers,
-												&num_headers);
-	if (buf_index < 0) {
-		pv_ctrl_write_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad format");
-		goto out;
-	}
-
-	pv_log(DEBUG, "new request received: %.*s %.*s", method_len, method, path_len, path);
-
-	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
-	if (content_length <= 0) {
-		pv_log(WARN, "HTTP request received has empty body");
-		pv_ctrl_write_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has empty body");
-		goto out;
-	}
-
-	// read and parse rest of message
 	if (pv_str_startswith(ENDPOINT_COMMANDS, strlen(ENDPOINT_COMMANDS), path)) {
 		if (!strncmp("POST", method, method_len)) {
-			res = pv_ctrl_process_cmd(req_fd, content_length, &cmd);
-			if (res < 0) {
-				pv_ctrl_write_response(req_fd,
-					HTTP_STATUS_BAD_REQ,
-					"Command has bad format");
+			if (pv_ctrl_process_cmd(req_fd, content_length, &cmd) < 0) {
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Command has bad format");
 				goto out;
 			}
-			res = pv_ctrl_check_command(req_fd, &cmd);
-			if (res < 0)
+			if (pv_ctrl_check_command(req_fd, &cmd) < 0)
 				goto out;
-		}
+			pv_ctrl_write_ok_response(req_fd);
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_matches(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_objects_get_list_string());
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
 		file_path_tmp = pv_ctrl_get_file_path(PATH_OBJECTS_TMP, file_name);
@@ -626,37 +677,31 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 		// sha must have 64 characters
 		if (!file_name || !file_path_tmp || !file_path || (strlen(file_name) != 64)) {
 			pv_log(WARN, "HTTP request has bad object name %s", file_name);
-			pv_ctrl_write_response(req_fd,
-				HTTP_STATUS_BAD_REQ,
-				"Request has bad object name");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad object name");
 			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			res = pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp);
-			if (res < 0) {
+			if (pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp) < 0) {
 				goto out;
 			} else {
-				res = pv_ctrl_validate_object_checksum(file_path_tmp, file_path, file_name);
-				if (res < 0) {
-					pv_ctrl_write_response(req_fd,
-						HTTP_STATUS_BAD_REQ,
-						"Object has bad checksum");
+				if (pv_ctrl_validate_object_checksum(file_path_tmp, file_path, file_name) < 0) {
+					pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Object has bad checksum");
 					goto out;
 				}
 
 				pv_storage_gc_defer_run_threshold();
-				pv->loading_objects = true;
+				pv_ctrl_write_ok_response(req_fd);
 			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_matches(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_storage_get_revisions_string());
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_PROGRESS));
@@ -664,16 +709,14 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 		if (!file_name || !file_path) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
-			pv_ctrl_write_response(req_fd,
-				HTTP_STATUS_BAD_REQ,
-				"Request has bad step name");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad step name");
 			goto out;
 		}
 
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 		goto out;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_COMMITMSG, strlen(ENDPOINT_COMMITMSG), path, path_len)) {
@@ -683,18 +726,17 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 		if (!file_name || !file_path) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
-			pv_ctrl_write_response(req_fd,
-				HTTP_STATUS_BAD_REQ,
-				"Request has bad step name");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad step name");
 			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
 			mkdir_p(file_path_parent, 0755);
-			res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
-			if (res < 0)
+			if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
 				goto out;
-		}
+			pv_ctrl_write_ok_response(req_fd);
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
 		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PVR_PARENT, file_name);
@@ -702,64 +744,59 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 		if (!file_name || !file_path_parent || !file_path) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
-			pv_ctrl_write_response(req_fd,
-				HTTP_STATUS_BAD_REQ,
-				"Request has bad step name");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad step name");
 			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
 			if (pv_storage_is_revision_local(file_name)) {
 				mkdir_p(file_path_parent, 0755);
-				res = pv_ctrl_process_put_file(req_fd, content_length, file_path);
-				if (res < 0)
+				if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
 					goto out;
+				pv_ctrl_write_ok_response(req_fd);
 			}
 		} else if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_file(req_fd, file_path);
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_matches(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_matches(ENDPOINT_BUILDINFO, strlen(ENDPOINT_BUILDINFO), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			pv_ctrl_process_get_string(req_fd, strdup(pv_build_manifest));
-			goto out;
-		}
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
 		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_USER_META), path_len);
 
 		if (!metakey) {
 			pv_log(WARN, "HTTP request has bad meta name %s", file_name);
-			pv_ctrl_write_response(req_fd,
-				HTTP_STATUS_BAD_REQ,
-				"Request has bad metadata key name");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad metadata key name");
 			goto out;
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
 			metavalue = pv_ctrl_get_body(req_fd, content_length);
-			res = pv_metadata_add_usermeta(metakey, metavalue);
+			if (pv_metadata_add_usermeta(metakey, metavalue) < 0)
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot add or update user meta");
+			pv_ctrl_write_ok_response(req_fd);
 		} else if (!strncmp("DELETE", method, method_len)) {
-			res = pv_metadata_rm_usermeta(metakey);
-		}
-	} else
-		pv_log(WARN, "HTTP request received has bad endpoint");
-
-	if (res < 0) {
-		pv_ctrl_write_response(req_fd, HTTP_STATUS_ERROR, "Unknown request");
+			if (pv_metadata_rm_usermeta(metakey) < 0)
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_NOT_FOUND, "User meta does not exist");
+			pv_ctrl_write_ok_response(req_fd);
+		} else
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
 	} else {
-		if (write(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK)) <= 0)
-			pv_log(WARN, "HTTP OK response could not be written to ctrl socket with fd %d: %s",
-				req_fd, strerror(errno));
+		pv_log(WARN, "HTTP request received has unknown endpoint");
+		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Unknown endpoint");
 	}
 
 out:
@@ -778,6 +815,68 @@ out:
 	if (metavalue)
 		free(metavalue);
 
+	return cmd;
+}
+
+static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
+{
+	char buf[HTTP_REQ_BUFFER_SIZE];
+	bool mgmt;
+	int buf_index = 0, res = -1;
+	const char *method, *path;
+	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
+	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
+	struct pv_cmd *cmd = NULL;
+
+	memset(buf, 0, sizeof(buf));
+	mgmt = pv_ctrl_check_sender_privileged(req_fd);
+
+	// legacy commands are only for mgmt platforms
+	if (mgmt) {
+		// read first character to see if the request is a non-HTTP legacy one
+		if (read(req_fd, &buf[0], 1) < 0)
+			goto out;
+		buf_index++;
+
+		// if character is 3 (old code for json command), it is non-HTTP
+		if (buf[0] == 3) {
+			res = pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
+			goto out;
+		}
+	}
+
+	// at this point, the request can only be either HTTP or bad formatted
+	buf_index = pv_ctrl_read_parse_request_header(req_fd,
+												buf,
+												buf_index,
+												&method,
+												&method_len,
+												&path,
+												&path_len,
+												headers,
+												&num_headers);
+	if (buf_index < 0) {
+		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad format");
+		goto out;
+	}
+
+	pv_log(DEBUG, "HTTP request received: %.*s %.*s", method_len, method, path_len, path);
+
+	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
+	if (content_length <= 0) {
+		pv_log(WARN, "HTTP request received has empty body");
+		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has empty body");
+		goto out;
+	}
+
+	cmd = pv_ctrl_process_endpoint_and_reply(req_fd,
+											method,
+											method_len,
+											path,
+											path_len,
+											content_length,
+											mgmt);
+out:
 	return cmd;
 }
 

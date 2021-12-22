@@ -31,7 +31,7 @@
 #include <errno.h>
 #include <mtd/mtd-user.h>
 
-#include "fops.h"
+#include "file.h"
 
 #include "bootloader.h"
 #include "init.h"
@@ -210,7 +210,7 @@ static int pv_bl_early_init(struct pv_init *this)
 	if (fd < 0)
 		return -1;
 
-	bytes = pv_fops_read_nointr(fd, buf, SIZE_CMDLINE_BUF);
+	bytes = pv_file_read_nointr(fd, buf, SIZE_CMDLINE_BUF);
 	if (bytes < 0)
 		return -1;
 

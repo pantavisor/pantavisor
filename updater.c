@@ -52,7 +52,7 @@
 #include "parser/parser_bundle.h"
 #include "state.h"
 #include "json.h"
-#include "fops.h"
+#include "file.h"
 #include "signature.h"
 
 #define MODULE_NAME			"updater"
@@ -1508,7 +1508,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 
 	if (use_volatile_tmp) {
 		pv_log(INFO, "copying %s to tmp path (%s)", volatile_tmp_obj_path, mmc_tmp_obj_path);
-		bytes = pv_fops_copy_and_close(volatile_tmp_fd, obj_fd);
+		bytes = pv_file_copy_and_close(volatile_tmp_fd, obj_fd);
 		fd = obj_fd;
 	}
 	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
@@ -1626,7 +1626,7 @@ static int trail_link_objects(struct pantavisor *pv)
 			if ((s_fd >= 0) &&
 				(d_fd >= 0)) {
 				pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
-				pv_fops_copy_and_close(s_fd, d_fd);
+				pv_file_copy_and_close(s_fd, d_fd);
 			}
 			continue;
 		}
@@ -1828,7 +1828,7 @@ int pv_update_install(struct pantavisor *pv)
 		ret = -1;
 		goto out;
 	}
-	pv_fops_write_nointr(fd, pending->json, strlen(pending->json));
+	pv_file_write_nointr(fd, pending->json, strlen(pending->json));
 	close(fd);
 	rename(path_new, path);
 
