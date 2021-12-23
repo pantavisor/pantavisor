@@ -218,9 +218,7 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 	if (!ph_client_init(pv))
 		return -1;
 
-	req = trest_make_request(TREST_METHOD_GET,
-				 endpoint,
-				 0, 0, 0);
+	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
 
 	res = trest_do_json_request(client, req);
 	if (!res) {
@@ -255,9 +253,7 @@ int pv_ph_device_exists(struct pantavisor *pv)
 		goto out;
 	}
 
-	req = trest_make_request(TREST_METHOD_GET,
-				 endpoint,
-				 0, 0, 0);
+	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
 
 	res = trest_do_json_request(client, req);
 	if (!res) {
@@ -295,6 +291,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	thttp_request_tls_t* tls_req = 0;
 	thttp_response_t* res = 0;
 	jsmntok_t *tokv;
+	char **headers = NULL;
 
 	tls_req = thttp_request_tls_new_0();
 	tls_req->crtfiles = (char **) pv_ph_get_certs(pv);
@@ -322,11 +319,10 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->body = 0;
 
 	if (pv_config_get_factory_autotok() && strcmp(pv_config_get_factory_autotok(), "")) {
-		req->headers = calloc(1, 2 * sizeof(char *));
-		req->headers[0] = calloc(1, sizeof(DEVICE_TOKEN_FMT) + 64);
-		sprintf(req->headers[0], DEVICE_TOKEN_FMT, pv_config_get_factory_autotok());
-	} else {
-		req->headers = 0;
+		headers = calloc(1, 2 * sizeof(char *));
+		headers[0] = calloc(1, sizeof(DEVICE_TOKEN_FMT) + 64);
+		sprintf(headers[0], DEVICE_TOKEN_FMT, pv_config_get_factory_autotok());
+		thttp_add_headers(req, headers, 1);
 	}
 
 	req->body_content_type = "application/json";
@@ -349,9 +345,9 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 			req->path, res->code, res->body);
 	}
 
-	if (req->headers) {
-		free(req->headers[0]);
-		free(req->headers);
+	if (headers) {
+		free(headers[0]);
+		free(headers);
 	}
 	if (req)
 		thttp_request_free(req);
@@ -453,9 +449,7 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 		goto out;
 	}
 
-	req = trest_make_request(TREST_METHOD_GET,
-				 endpoint,
-				 0, 0, 0);
+	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
 
 	res = trest_do_json_request(client, req);
 	if (!res) {
@@ -533,10 +527,7 @@ int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 
 	sprintf(buf, "%s%s", endpoint, "/device-meta");
 
-	req = trest_make_request(TREST_METHOD_PATCH,
-				 buf,
-				 0, 0,
-				 metadata);
+	req = trest_make_request(THTTP_METHOD_PATCH, buf, metadata);
 
 	res = trest_do_json_request(client, req);
 	if (!res) {

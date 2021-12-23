@@ -391,10 +391,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		trail_remote_init(pv))
 		goto out;
 
-	req = trest_make_request(TREST_METHOD_PUT,
-				 update->endpoint,
-				 0, 0,
-				 json);
+	req = trest_make_request(THTTP_METHOD_PUT, update->endpoint, json);
 
 	ret = -1;
 	res = trest_do_json_request(pv->remote->client, req);
@@ -431,9 +428,7 @@ static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest
 	if (!endpoint || !pv)
 		goto out;
 	remote = pv->remote;
-	req = trest_make_request(TREST_METHOD_GET,
-			endpoint,
-			0, 0, 0);
+	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
 
 	res = trest_do_json_request(remote->client, req);
 	if (!res) {
@@ -693,9 +688,7 @@ static int trail_is_available(struct trail_remote *r)
 	if (!r)
 		return size;
 
-	req = trest_make_request(TREST_METHOD_GET,
-				 "/trails/",
-				 0, 0, 0);
+	req = trest_make_request(THTTP_METHOD_GET, "/trails/", 0);
 
 	res = trest_do_json_request(r->client, req);
 	if (!res) {
@@ -856,11 +849,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		goto out;
 	}
 
-	treq = trest_make_request(TREST_METHOD_POST,
-				"/objects/",
-				0,
-				0,
-				body);
+	treq = trest_make_request(THTTP_METHOD_POST, "/objects/", body);
 
 	tres = trest_do_json_request(pv->remote->client, treq);
 	if (!tres) {
@@ -913,7 +902,6 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 
 		req->path = strstr(signed_puturl, "/local-s3");
 
-		req->headers = NULL;
 		req->body_content_type = "application/json";
 		lseek(fd, 0, SEEK_SET);
 		req->fd = fd;
@@ -1007,7 +995,7 @@ static int trail_first_boot(struct pantavisor *pv)
 		return -1;
 	}
 
-	req = trest_make_request(TREST_METHOD_POST, "/trails/", 0, 0, pv->state->json);
+	req = trest_make_request(THTTP_METHOD_POST, "/trails/", pv->state->json);
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
 		pv_log(WARN, "POST /trails/ could not be initialized");
@@ -1223,9 +1211,7 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 
 	pv_log(DEBUG, "requesting obj='%s'", endpoint);
 
-	req = trest_make_request(TREST_METHOD_GET,
-				 endpoint,
-				 0, 0, 0);
+	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
 
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
@@ -1450,7 +1436,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
 
 	req->path = end;
-	req->headers = 0;
 
 	if (pv_config_get_updater_network_use_tmp_objects() &&
 		(!strcmp(pv_config_get_storage_fstype(), "jffs2") ||
