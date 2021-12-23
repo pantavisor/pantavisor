@@ -1668,7 +1668,6 @@ static int trail_check_update_size(struct pantavisor *pv)
 
 static int trail_download_objects(struct pantavisor *pv)
 {
-	struct pv_object *k_new, *k_old;
 	struct pv_update *u = pv->update;
 	struct pv_object *o = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
@@ -1684,18 +1683,6 @@ static int trail_download_objects(struct pantavisor *pv)
 	// check size and collect garbage if needed
 	if (trail_check_update_size(pv))
 		return -1;
-
-	if (pv->state->bsp.img.std.kernel) {
-		k_new = pv_objects_get_by_name(u->pending,
-				u->pending->bsp.img.std.kernel);
-		k_old = pv_objects_get_by_name(pv->state,
-				pv->state->bsp.img.std.kernel);
-	} else {
-		k_new = pv_objects_get_by_name(u->pending,
-				u->pending->bsp.img.ut.fit);
-		k_old = pv_objects_get_by_name(pv->state,
-				pv->state->bsp.img.ut.fit);
-	}
 
 	if (u->total_update) {
 		u->total_update->object_name = "total";
