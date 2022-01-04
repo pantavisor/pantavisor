@@ -24,6 +24,7 @@
 #define PV_STATE_H
 
 #include "pantavisor.h"
+#include "group.h"
 
 typedef enum {
 	SPEC_MULTI1,
@@ -56,6 +57,7 @@ struct pv_state {
 	struct dl_list addons; // pv_addon
 	struct dl_list objects; //pv_object
 	struct dl_list jsons; //pv_json
+	struct dl_list groups; //pv_group
 	char *json;
 	int tryonce;
 	bool local;
@@ -64,8 +66,11 @@ struct pv_state {
 struct pv_state* pv_state_new(const char *rev, state_spec_t spec);
 void pv_state_free(struct pv_state *s);
 
+void pv_state_add_group(struct pv_state *s, struct pv_group *g);
+struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name);
+
 void pv_state_print(struct pv_state *s);
-void pv_state_validate(struct pv_state *s);
+int pv_state_validate(struct pv_state *s);
 
 void pv_state_transfer(struct pv_state *in, struct pv_state *out);
 int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);

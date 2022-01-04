@@ -47,6 +47,40 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+static void pv_state_init_groups(struct pv_state *s)
+{
+	struct pv_group *d = NULL, *r = NULL, *p = NULL, *a = NULL;
+
+	dl_list_init(&s->groups);
+
+	d = pv_group_new("data");
+	r = pv_group_new("root");
+	p = pv_group_new("platform");
+	a = pv_group_new("app");
+
+	if (!d || !r || !p || !a) {
+		pv_log(ERROR, "could not create default groups");
+		goto err;
+	}
+
+	pv_state_add_group(s, d);
+	pv_state_add_group(s, r);
+	pv_state_add_group(s, p);
+	pv_state_add_group(s, a);
+
+	return;
+
+err:
+	if (d)
+		pv_group_free(d);
+	if (r)
+		pv_group_free(r);
+	if (p)
+		pv_group_free(p);
+	if (a)
+		pv_group_free(a);
+}
+
 struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 {
 	int len = strlen(rev) + 1;
@@ -63,10 +97,28 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->addons);
 		dl_list_init(&s->objects);
 		dl_list_init(&s->jsons);
+		pv_state_init_groups(s);
 		s->local = false;
 	}
 
 	return s;
+}
+
+static void pv_state_empty_groups(struct pv_state *s)
+{
+	int num_groups = 0;
+	struct pv_group *g, *tmp;
+	struct dl_list *groups = &s->groups;
+
+	// Iterate over all groups from state
+	dl_list_for_each_safe(g, tmp, groups,
+            struct pv_group, list) {
+		dl_list_del(&g->list);
+		pv_group_free(g);
+		num_groups++;
+	}
+
+	pv_log(INFO, "removed %g groups", num_groups);
 }
 
 void pv_state_free(struct pv_state *s)
@@ -100,11 +152,35 @@ void pv_state_free(struct pv_state *s)
 	pv_addons_empty(s);
 	pv_objects_empty(s);
 	pv_jsons_empty(s);
+	pv_state_empty_groups(s);
 
 	if (s->json)
 		free(s->json);
 
 	free(s);
+}
+
+void pv_state_add_group(struct pv_state *s, struct pv_group *g)
+{
+	pv_log(DEBUG, "adding group %s to state", g->name);
+
+	dl_list_init(&g->list);
+	dl_list_add_tail(&s->groups, &g->list);
+}
+
+struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name)
+{
+	struct pv_group *g, *tmp;
+	struct dl_list *groups = &s->groups;
+
+	// Iterate over all groups from state
+	dl_list_for_each_safe(g, tmp, groups,
+            struct pv_group, list) {
+		if (pv_str_matches(g->name, strlen(g->name), name, strlen(name)))
+			return g;
+	}
+
+	return NULL;
 }
 
 void pv_state_print(struct pv_state *s)
@@ -115,6 +191,12 @@ void pv_state_print(struct pv_state *s)
 	pv_log(DEBUG, "state %s:", s->rev);
 	pv_log(DEBUG, " kernel: '%s'", s->bsp.img.std.kernel);
 	pv_log(DEBUG, " initrd: '%s'", s->bsp.img.std.initrd);
+	struct pv_group *g, *tmp_g;
+    struct dl_list *groups = &s->groups;
+	dl_list_for_each_safe(g, tmp_g, groups,
+			struct pv_group, list) {
+		pv_log(DEBUG, " group: '%s'", g->name);
+	}
 	struct pv_platform *p, *tmp_p;
     struct dl_list *platforms = &s->platforms;
 	dl_list_for_each_safe(p, tmp_p, platforms,
@@ -122,6 +204,8 @@ void pv_state_print(struct pv_state *s)
 		pv_log(DEBUG, " platform: '%s'", p->name);
 		pv_log(DEBUG, "  type: '%s'", p->type);
 		pv_log(DEBUG, "  runlevel: %d", p->runlevel);
+		if (p->group)
+			pv_log(DEBUG, "  group: '%s'", p->group->name);
 		pv_log(DEBUG, "  configs:");
 		char **config = p->configs;
 		while (config && *config) {
@@ -162,17 +246,82 @@ void pv_state_print(struct pv_state *s)
 	}
 }
 
-void pv_state_validate(struct pv_state *s)
+static void pv_state_set_default_groups(struct pv_state *s)
 {
-	if (!s)
+	bool root_configured = false;
+	struct pv_platform *p, *tmp, *first_p = NULL;
+	struct dl_list *platforms = &s->platforms;
+	struct pv_group *r, *d;
+
+	if (dl_list_empty(platforms))
 		return;
 
+	r = pv_state_fetch_group(s, "root");
+	d = pv_state_fetch_group(s, "platform");
+	if (!r || !d) {
+		pv_log(ERROR, "could not find group root or platform");
+		return;
+	}
+
+	dl_list_for_each_safe(p, tmp, platforms,
+			struct pv_platform, list) {
+		// check if any platform has been configured in group root
+		if (p->group == r)
+			root_configured = true;
+		// get first unconfigured platform
+		if (!first_p && (p->group == NULL))
+			first_p = p;
+	}
+
+	// if not, set first platform in group root 
+	if (!root_configured && first_p) {
+		pv_log(WARN, "no platform was found in root group, "
+				"so the first unconfigured one in alphabetical order will be set");
+		first_p->group = r;
+		first_p->runlevel = RUNLEVEL_ROOT;
+	}
+
+	// set rest of the non configured platforms in group platform
+	platforms = &s->platforms;
+	dl_list_for_each_safe(p, tmp, platforms,
+            struct pv_platform, list) {
+		if (p->group == NULL)
+			p->group = d;
+		p->runlevel = RUNLEVEL_PLATFORM;
+    }
+}
+
+static int pv_check_group_conditions(struct pv_state *s)
+{
+	int ret = 0;
+	struct pv_group *g, *tmp_g;
+	struct pv_condition *c, *tmp_c;
+
+	dl_list_for_each_safe(g, tmp_g, &s->groups,
+			struct pv_group, list) {
+		dl_list_for_each_safe(c, tmp_c, &g->conditions,
+				struct pv_condition, list) {
+			if (!pv_platform_get_by_name(s, c->plat)) {
+				pv_log(ERROR, "condition %s from group %s linked to unknown platform %s",
+					c->key, g->name, c->plat);
+				ret = -1;
+			}
+		}
+	}
+
+	return ret;
+}
+
+int pv_state_validate(struct pv_state *s)
+{
 	// remove platforms that have no loaded data
 	pv_platforms_remove_not_installed(s);
-	// set runlevel in all undefined platforms
-	pv_platforms_default_runlevel(s);
 	// add loggers for all platforms
 	pv_platforms_add_all_loggers(s);
+	// set groups for all undefined platforms
+	pv_state_set_default_groups(s);
+	// check all group conditions can be met
+	return pv_check_group_conditions(s);
 }
 
 
@@ -451,7 +600,7 @@ static char* _pv_state_get_novalidate_list(char *rev)
         while ((dp = readdir(volmountdir)) != NULL) {
 		struct stat st;
 
-                if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
+		if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
 			continue;
 
 		char _hdl_path [PATH_MAX];
@@ -486,6 +635,9 @@ static char* _pv_state_get_novalidate_list(char *rev)
 
 		// if command fails, we dont abort as some handlers might be buggy ...
 		// we just ignore the result of this handler ...
+		if (res == 127)
+			continue;
+
 		if (res > 0) {
 			pv_log(WARN, "command exited with error code: %d", res);
 			pv_log(DEBUG, "stdout: %s", sout);
@@ -518,7 +670,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 
 	char *validate_list = _pv_state_get_novalidate_list(s->rev);
 	if (validate_list)
-		pv_log(DEBUG, "no validation list is: %s", validate_list);
+		pv_log(DEBUG, "checksum validation list is: %s", validate_list);
 
 	pv_objects_iter_begin(s, o) {
 		/* validate instance in $rev/trails/$name to match */

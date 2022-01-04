@@ -225,41 +225,6 @@ void pv_platforms_remove_not_installed(struct pv_state *s)
 	}
 }
 
-void pv_platforms_default_runlevel(struct pv_state *s)
-{
-	bool root_configured = false;
-	struct pv_platform *p, *tmp, *first_p = NULL;
-	struct dl_list *platforms = &s->platforms;
-
-	if (dl_list_empty(platforms))
-		return;
-
-	dl_list_for_each_safe(p, tmp, platforms,
-			struct pv_platform, list) {
-		// check if any platform has been configured as ROOT
-		if (p->runlevel == RUNLEVEL_ROOT)
-			root_configured = true;
-		// get first unconfigured platform
-		if (!first_p && (p->runlevel == -1))
-			first_p = p;
-	}
-
-	// if not, set first platform as runlevel ROOT
-	if (!root_configured && first_p) {
-		pv_log(WARN, "no platform was found with root runlevel, "
-				"so the first unconfigured one in alphabetical order will be set");
-		first_p->runlevel = RUNLEVEL_ROOT;
-	}
-
-	// set rest of the non configured platforms with runlevel PLATFORM, reserved for non-explicilty configured ones
-	platforms = &s->platforms;
-	dl_list_for_each_safe(p, tmp, platforms,
-            struct pv_platform, list) {
-		if (p->runlevel < RUNLEVEL_DATA)
-			p->runlevel = RUNLEVEL_PLATFORM;
-    }
-}
-
 static struct pv_cont_ctrl* _pv_platforms_get_ctrl(char *type)
 {
 	int i;

@@ -48,6 +48,8 @@ LOCAL_SRC_FILES := init.c \
 			config.c \
 			pantavisor.c \
 			state.c \
+			group.c \
+			condition.c \
 			platforms.c \
 			addons.c \
 			volumes.c \

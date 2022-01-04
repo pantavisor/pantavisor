@@ -43,6 +43,8 @@
 #include "pantavisor.h"
 #include "parser.h"
 #include "parser_bundle.h"
+#include "group.h"
+#include "condition.h"
 #include "state.h"
 #include "pvlogger.h"
 
@@ -210,6 +212,178 @@ out:
 		free(tokv);
 	if (buf)
 		free(buf);
+
+	return ret;
+}
+
+static int parse_conditions(struct pv_state *s, struct pv_group *g, char *value)
+{
+	char *str = NULL, *plat = NULL, *key = NULL, *val = NULL;
+	int ret = 0, tokc;
+	jsmntok_t *tokv = NULL, **t = NULL, **i = NULL;
+
+	pv_log(DEBUG, "conditions %s", value);
+
+	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format conditions");
+		goto out;
+	}
+
+	t = jsmnutil_get_array_toks(value, tokv);
+	i = t;
+	while (*i) {
+		struct pv_condition *c;
+		jsmntok_t *condv;
+		int condc;
+
+		str = pv_json_get_one_str(value, i);
+		if (!str)
+			break;
+
+		pv_log(DEBUG, "condition %s", str);
+
+		if (jsmnutil_parse_json(str, &condv, &condc) <= 0) {
+			pv_log(ERROR, "wrong format condition");
+			goto out;
+		}
+
+		plat = pv_json_get_value(str, "platform", condv, condc);
+		if (!plat) {
+			pv_log(ERROR, "platform not found in condition");
+			goto out;
+		}
+
+		key = pv_json_get_value(str, "key", condv, condc);
+		if (!key) {
+			pv_log(ERROR, "key not found in condition");
+			goto out;
+		}
+
+		val = pv_json_get_value(str, "value", condv, condc);
+		if (!val) {
+			pv_log(ERROR, "value not found in condition");
+			goto out;
+		}
+
+		c = pv_condition_new(plat, key, val);
+		if (!c) {
+			pv_log(ERROR, "could not create a new condition");
+			goto out;
+		}
+
+		pv_group_add_condition(g, c);
+
+		free(plat);
+		plat = NULL;
+		free(key);
+		key = NULL;
+		free(val);
+		val = NULL;
+		free(str);
+		str = NULL;
+
+		i++;
+	}
+
+	ret = 1;
+
+out:
+	if (plat)
+		free(plat);
+	if (key)
+		free(key);
+	if (val)
+		free(val);
+	if (str)
+		free(str);
+	if (t)
+		jsmnutil_tokv_free(t);
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
+static int parse_groups(struct pv_state *s, char *value)
+{
+	char *str = NULL, *name = NULL, *conditions = NULL;
+	int ret = 0, tokc;
+	jsmntok_t *tokv = NULL, **t = NULL, **i = NULL;
+
+	pv_log(DEBUG, "groups %s", value);
+
+	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format groups");
+		goto out;
+	}
+
+	t = jsmnutil_get_array_toks(value, tokv);
+	i = t;
+	while (*i) {
+		struct pv_group *g;
+		jsmntok_t *groupv;
+		int groupc;
+
+		str = pv_json_get_one_str(value, i);
+		if (!str)
+			break;
+
+		pv_log(DEBUG, "group %s", str);
+
+		if (jsmnutil_parse_json(str, &groupv, &groupc) <= 0) {
+			pv_log(ERROR, "wrong format group");
+			goto out;
+		}
+
+		name = pv_json_get_value(str, "name", groupv, groupc);
+		if (!name) {
+			pv_log(ERROR, "name not found in group");
+			goto out;
+		}
+
+		conditions = pv_json_get_value(str, "conditions", groupv, groupc);
+		if (!conditions) {
+			pv_log(ERROR, "conditions not found in group");
+			goto out;
+		}
+
+		g = pv_group_new(name);
+		if (!g) {
+			pv_log(ERROR, "could not create a new group");
+			goto out;
+		}
+
+		if (!parse_conditions(s, g, conditions)) {
+			pv_log(ERROR, "could not parse conditions");
+			pv_group_free(g);
+			goto out;
+		}
+
+		pv_state_add_group(s, g);
+
+		free(name);
+		name = NULL;
+		free(conditions);
+		conditions = NULL;
+		free(str);
+		str = NULL;
+
+		i++;
+	}
+
+	ret = 1;
+
+out:
+	if (name)
+		free(name);
+	if (conditions)
+		free(conditions);
+	if (str)
+		free(str);
+	if (t)
+		jsmnutil_tokv_free(t);
+	if (tokv)
+		free(tokv);
 
 	return ret;
 }
@@ -567,23 +741,49 @@ static int do_action_for_type(struct json_key_action *jka,
 static int do_action_for_runlevel(struct json_key_action *jka,
 					char *value)
 {
+	struct pv_group *g;
 	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
 
 	if (!(*bundle->platform) || !value)
 		return -1;
 
-	if (!strcmp(value, "data"))
-		(*bundle->platform)->runlevel = RUNLEVEL_DATA;
-	else if (!strcmp(value, "root"))
-		(*bundle->platform)->runlevel = RUNLEVEL_ROOT;
-	// runlevel PLATFORM is reserved for platforms without explicily configured runlevel
-	else if (!strcmp(value, "app"))
-		(*bundle->platform)->runlevel = RUNLEVEL_APP;
-	else if (!strcmp(value, "platform"))
-		(*bundle->platform)->runlevel = RUNLEVEL_PLATFORM;
-	else {
+	(*bundle->platform)->runlevel = RUNLEVEL_ROOT;
+
+	if (!strcmp(value, "data") ||
+		!strcmp(value, "root") ||
+		!strcmp(value, "app") ||
+		!strcmp(value, "platform")) {
+		pv_log(DEBUG, "linking platform %s with group %s", (*bundle->platform)->name, value);
+
+		g = pv_state_fetch_group(bundle->s, value);
+		if (!g) {
+			pv_log(ERROR, "could not find group %s", value);
+			return -1;
+		}
+		(*bundle->platform)->group = g;
+	} else {
 		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'", value, (*bundle->platform)->name);
 	}
+
+	return 0;
+}
+
+static int do_action_for_group(struct json_key_action *jka, char *value)
+{
+	struct pv_group *g;
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	pv_log(DEBUG, "linking platform %s with group %s", (*bundle->platform)->name, value);
+
+	g = pv_state_fetch_group(bundle->s, value);
+	if (!g) {
+		pv_log(ERROR, "could not find group %s", value);
+		return -1;
+	}
+	(*bundle->platform)->group = g;
 
 	return 0;
 }
@@ -775,6 +975,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		ADD_JKA_ENTRY("name", JSMN_STRING, &bundle, do_action_for_name, false),
 		ADD_JKA_ENTRY("type", JSMN_STRING, &bundle, do_action_for_type, false),
 		ADD_JKA_ENTRY("runlevel", JSMN_STRING, &bundle, do_action_for_runlevel, false),
+		ADD_JKA_ENTRY("group", JSMN_STRING, &bundle, do_action_for_group, false),
 		ADD_JKA_ENTRY("roles", JSMN_OBJECT, &bundle, do_action_for_roles_object, false),
 		ADD_JKA_ENTRY("roles", JSMN_ARRAY, &bundle, do_action_for_roles_array, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
@@ -789,7 +990,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	ret = start_json_parsing_with_action(buf, system1_platform_key_action, JSMN_OBJECT);
 	if (!this || ret)
 		goto out;
-	
+
 	// free intermediates
 	if (config) {
 		this->configs = calloc(1, 2 * sizeof(char *));
@@ -886,14 +1087,14 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 
 	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
 	if (!count || (count > 1)) {
-		pv_log(WARN, "Invalid bsp/run.json count in state");
+		pv_log(WARN, "invalid bsp/run.json count in state");
 		this = NULL;
 		goto out;
 	}
 
 	value = pv_json_get_value(buf, "bsp/run.json", tokv, tokc);
 	if (!value) {
-		pv_log(WARN, "Unable to get bsp/run.json value from state");
+		pv_log(WARN, "unable to get bsp/run.json value from state");
 		this = NULL;
 		goto out;
 	}
@@ -908,6 +1109,18 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 	free(value);
 	value = NULL;
 
+	value = pv_json_get_value(buf, "groups.json", tokv, tokc);
+	if (value) {
+		pv_log(DEBUG, "parsing and adding groups.json");
+		pv_jsons_add(this, "groups.json", value);
+		if (!parse_groups(this, value)) {
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
+	}
+
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
 		pv_log(ERROR, "json cannot be parsed");
@@ -920,9 +1133,10 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 	while (*k) {
 		n = (*k)->end - (*k)->start;
 
-		// avoid pantavisor.json and #spec special keys
+		// avoid already parsed keys
 		if (!strncmp("bsp/run.json", buf+(*k)->start, n) ||
 		    !strncmp("disks.json", buf+(*k)->start, n) ||
+			!strncmp("groups.json", buf+(*k)->start, n) ||
 		    !strncmp("#spec", buf+(*k)->start, n)) {
 			k++;
 			continue;
@@ -979,7 +1193,10 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 
 	system1_link_object_json_platforms(this);
 
-	pv_state_validate(this);
+	if (pv_state_validate(this)) {
+		this = NULL;
+		goto out;
+	}
 
 	pv_state_print(this);
 

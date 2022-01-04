@@ -48,6 +48,7 @@ struct pv_platform {
 	pid_t init_pid;
 	plat_status_t status;
 	int runlevel;
+	struct pv_group *group;
 	bool mgmt;
 	bool updated;
 	struct dl_list list; // pv_platform
@@ -66,7 +67,6 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
 struct pv_platform* pv_platform_get_by_name(struct pv_state *s, const char *name);
 
 void pv_platforms_remove_not_installed(struct pv_state *s);
-void pv_platforms_default_runlevel(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);
 
 int pv_platforms_start(struct pantavisor *pv, int runlevel);
