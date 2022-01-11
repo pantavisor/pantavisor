@@ -22,16 +22,24 @@
 #ifndef PV_CONDITION_H
 #define PV_CONDITION_H
 
+#include <stdbool.h>
+
 #include "utils/list.h"
 
 struct pv_condition {
 	char *plat;
 	char *key;
-	char *value;
+	char *eval_value;
+	char *curr_value;
 	struct dl_list list; // pv_condition
 };
 
-struct pv_condition* pv_condition_new(char *plat, char *key, char *value);
-void pv_condition_free(struct pv_condition *g);
+struct pv_condition* pv_condition_new(char *plat, char *key, char *eval_value);
+void pv_condition_free(struct pv_condition *c);
+
+int pv_condition_report(struct pv_condition *c, char *plat, char *key, char *curr_value);
+bool pv_condition_evaluate(struct pv_condition *c);
+
+char *pv_condition_get_json(struct pv_condition *c);
 
 #endif // PV_CONDITION_H

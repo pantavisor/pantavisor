@@ -20,14 +20,16 @@
  * SOFTWARE.
  */
 #include <string.h>
+#include <stdio.h>
 
 #include "condition.h"
+#include "utils/str.h"
 
 #define MODULE_NAME             "condition"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-struct pv_condition* pv_condition_new(char *plat, char *key, char *value)
+struct pv_condition* pv_condition_new(char *plat, char *key, char *eval_value)
 {
 	struct pv_condition *c;
 
@@ -35,7 +37,8 @@ struct pv_condition* pv_condition_new(char *plat, char *key, char *value)
 
 	c->plat = strdup(plat);
 	c->key = strdup(key);
-	c->value = strdup(value);
+	c->eval_value = strdup(eval_value);
+	c->curr_value = strdup("");
 
 	return c;
 }
@@ -48,7 +51,50 @@ void pv_condition_free(struct pv_condition *c)
 		free(c->plat);
 	if (c->key)
 		free(c->key);
-	if (c->value)
-		free(c->value);
+	if (c->eval_value)
+		free(c->eval_value);
+	if (c->curr_value)
+		free(c->curr_value);
 	free(c);
+}
+
+int pv_condition_report(struct pv_condition *c, char *plat, char *key, char *curr_value)
+{
+	if (pv_str_matches(c->plat, strlen(c->plat), plat, strlen(plat)) &&
+		pv_str_matches(c->key, strlen(c->key), key, strlen(key))) {
+		pv_log(DEBUG, "condition value updated");
+
+		if (c->curr_value)
+			free(c->curr_value);
+		c->curr_value = strdup(curr_value);
+
+		return 0;
+	}
+
+	return -1;
+}
+
+bool pv_condition_evaluate(struct pv_condition *c)
+{
+	return pv_str_matches(c->eval_value,
+		strlen(c->eval_value),
+		c->curr_value,
+		strlen(c->curr_value));
+}
+
+char *pv_condition_get_json(struct pv_condition *c)
+{
+	int len;
+	char *json;
+
+	len = strlen(c->plat) +
+		strlen(c->key) +
+		strlen(c->eval_value) +
+		strlen(c->curr_value) +
+		strlen("{\"plat\":\"\",\"key\":\"\",\"eval_value\":\"\",\"curr_value\":\"\"}");
+	json = calloc(1, (len + 1) * sizeof(char*));
+	snprintf(json, len + 1, "{\"plat\":\"%s\",\"key\":\"%s\",\"eval_value\":\"%s\",\"curr_value\":\"%s\"}",
+		c->plat, c->key, c->eval_value, c->curr_value);
+
+	return json;
 }

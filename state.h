@@ -79,4 +79,9 @@ state_spec_t pv_state_spec(struct pv_state *s);
 
 bool pv_state_validate_checksum(struct pv_state *s);
 
+int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value);
+
+char* pv_state_get_containers_json(struct pv_state *s);
+char* pv_state_get_conditions_json(struct pv_state *s);
+
 #endif

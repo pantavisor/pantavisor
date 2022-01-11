@@ -703,3 +703,93 @@ bool pv_state_validate_checksum(struct pv_state *s)
 
 	return true;
 }
+
+int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value)
+{
+	int ret = -1;
+	struct pv_group *g, *tmp;
+
+	pv_log(DEBUG, "condition from platform %s reported with key '%s' and value '%s'",
+		plat, key, value);
+
+	dl_list_for_each_safe(g, tmp, &s->groups,
+			struct pv_group, list) {
+		if (!pv_group_report_condition(g, plat, key, value))
+			ret = 0;
+	}
+
+	if (ret)
+		pv_log(WARN, "condition not found in state");
+
+	return ret;
+}
+
+char* pv_state_get_containers_json(struct pv_state *s)
+{
+	int len = 1, line_len;
+	char *json = calloc(1, len), *line;
+	struct pv_platform *p, *tmp;
+
+	// open json
+	json[0]='[';
+
+	if (dl_list_empty(&s->platforms))
+		goto close;
+
+	dl_list_for_each_safe(p, tmp, &s->platforms,
+			struct pv_platform, list) {
+		line = pv_platform_get_json(p);
+		line_len = strlen(line) + 1;
+		json = realloc(json, len + line_len + 1);
+		snprintf(&json[len], line_len + 1, "%s,", line);
+		len += line_len;
+		free(line);
+	}
+
+	// remove ,
+	len -= 1;
+
+close:
+	// close json
+	len += 2;
+	json = realloc(json, len);
+	json[len-2] = ']';
+	json[len-1] = '\0';
+
+	return json;
+}
+
+char* pv_state_get_conditions_json(struct pv_state *s)
+{
+	int len = 1, line_len;
+	char *json = calloc(1, len), *line;
+	struct pv_group *g, *tmp;
+
+	// open json
+	json[0]='[';
+
+	if (dl_list_empty(&s->groups))
+		goto close;
+
+	dl_list_for_each_safe(g, tmp, &s->groups,
+			struct pv_group, list) {
+		line = pv_group_get_json(g);
+		line_len = strlen(line) + 1;
+		json = realloc(json, len + line_len + 1);
+		snprintf(&json[len], line_len + 1, "%s,", line);
+		len += line_len;
+		free(line);
+	}
+
+	// remove ,
+	len -= 1;
+
+close:
+	// close json
+	len += 2;
+	json = realloc(json, len + 1);
+	json[len-2] = ']';
+	json[len-1] = '\0';
+
+	return json;
+}

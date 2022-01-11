@@ -193,6 +193,39 @@ void pv_platform_free(struct pv_platform *p)
 	free(p);
 }
 
+static const char* pv_platform_status_string(plat_status_t status)
+{
+	switch(status) {
+		case PLAT_NONE: return "NONE";
+		case PLAT_INSTALLED: return "INSTALLED";
+		case PLAT_STARTED: return "STARTED";
+		case PLAT_STOPPED: return "STOPPED";
+		default: return "UNKNOWN";
+	}
+
+	return "UNKNOWN";
+}
+
+char* pv_platform_get_json(struct pv_platform *p)
+{
+	int len;
+	char *json, *group = NULL;
+	const char *status = pv_platform_status_string(p->status);
+
+	if (p->group)
+		group = p->group->name;
+
+	len = strlen(p->name) +
+		strlen(group) +
+		strlen(status) +
+		strlen("{\"name\":\"\",\"group\":\"\",\"status\":\"\"}");
+	json = calloc(1, (len + 1) * sizeof(char*));
+	snprintf(json, len + 1, "{\"name\":\"%s\",\"group\":\"%s\",\"status\":\"%s\"}",
+		p->name, group, status);
+
+	return json;
+}
+
 void pv_platforms_empty(struct pv_state *s)
 {
 	int num_plats = 0;

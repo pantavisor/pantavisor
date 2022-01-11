@@ -64,6 +64,7 @@
 
 #define CTRL_SOCKET_PATH "/pv/pv-ctrl"
 
+#define ENDPOINT_CONTAINERS "/containers"
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
 #define ENDPOINT_STEPS "/steps"
@@ -72,6 +73,7 @@
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 #define ENDPOINT_BUILDINFO "/buildinfo"
+#define ENDPOINT_CONDITIONS "/conditions"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
@@ -607,18 +609,11 @@ out:
 	return pname;
 }
 
-static bool pv_ctrl_check_sender_privileged(int req_fd)
+static bool pv_ctrl_check_sender_privileged(const char *pname)
 {
 	bool mgmt = false;
-	char *pname;
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_platform *plat;
-
-	pname = pv_ctrl_get_sender_pname(req_fd);
-	if (!pname) {
-		pv_log(WARN, "could not find a sender platform name");
-		goto out;
-	}
 
 	plat = pv_platform_get_by_name(pv->state, pname);
 	if (!plat) {
@@ -627,11 +622,6 @@ static bool pv_ctrl_check_sender_privileged(int req_fd)
 	}
 
 	mgmt = plat->mgmt;
-
-	if (mgmt)
-		pv_log(DEBUG, "request received from mgmt platform %s", pname)
-	else
-		pv_log(DEBUG, "request received from unprivileged platform %s", pname);
 
 out:
 	return mgmt;
@@ -643,20 +633,28 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 														const char *path,
 														size_t path_len,
 														size_t content_length,
-														bool mgmt)
+														char *pname)
 {
+	bool mgmt;
 	struct pv_cmd *cmd = NULL;
+	struct pantavisor *pv = pv_get_instance();
 	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL, *file_path_tmp = NULL;
 	char *metakey = NULL, *metavalue = NULL;
+	char *condkey = NULL, *condvalue = NULL;
 
-	// all requests are forbidden for non mgmt platforms for now
-	if (!mgmt) {
-		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_FORBIDDEN, "Request not sent from mgmt platform");
-		goto out;
-	}
+	mgmt = pv_ctrl_check_sender_privileged(pname);
 
-	if (pv_str_startswith(ENDPOINT_COMMANDS, strlen(ENDPOINT_COMMANDS), path)) {
+	if (pv_str_matches(ENDPOINT_CONTAINERS, strlen(ENDPOINT_CONTAINERS), path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			pv_ctrl_process_get_string(req_fd, pv_state_get_containers_json(pv->state));
+		} else
+			goto err_me;
+	} else if (pv_str_startswith(ENDPOINT_COMMANDS, strlen(ENDPOINT_COMMANDS), path)) {
 		if (!strncmp("POST", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			if (pv_ctrl_process_cmd(req_fd, content_length, &cmd) < 0) {
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Command has bad format");
 				goto out;
@@ -665,12 +663,14 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				goto out;
 			pv_ctrl_write_ok_response(req_fd);
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_string(req_fd, pv_objects_get_list_string());
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
 		file_path_tmp = pv_ctrl_get_file_path(PATH_OBJECTS_TMP, file_name);
@@ -684,6 +684,8 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			if (pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp) < 0) {
 				goto out;
 			} else {
@@ -696,14 +698,18 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				pv_ctrl_write_ok_response(req_fd);
 			}
 		} else if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_file(req_fd, file_path);
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_string(req_fd, pv_storage_get_revisions_string());
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_PROGRESS));
@@ -716,10 +722,11 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		}
 
 		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_file(req_fd, file_path);
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
-		goto out;
+			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_COMMITMSG, strlen(ENDPOINT_COMMITMSG), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_COMMITMSG));
@@ -733,12 +740,14 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			mkdir_p(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
 				goto out;
 			pv_ctrl_write_ok_response(req_fd);
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
 		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PVR_PARENT, file_name);
@@ -751,6 +760,8 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			if (pv_storage_is_revision_local(file_name)) {
 				mkdir_p(file_path_parent, 0755);
 				if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
@@ -758,24 +769,32 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				pv_ctrl_write_ok_response(req_fd);
 			}
 		} else if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_file(req_fd, file_path);
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_user_meta_string());
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_string(req_fd, pv_metadata_get_device_meta_string());
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_BUILDINFO, strlen(ENDPOINT_BUILDINFO), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			pv_ctrl_process_get_string(req_fd, strdup(pv_build_manifest));
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_USER_META, strlen(ENDPOINT_USER_META), path)) {
 		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_USER_META), path_len);
 
@@ -786,22 +805,65 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			metavalue = pv_ctrl_get_body(req_fd, content_length);
 			if (pv_metadata_add_usermeta(metakey, metavalue) < 0)
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot add or update user meta");
 			pv_ctrl_write_ok_response(req_fd);
 		} else if (!strncmp("DELETE", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
 			if (pv_metadata_rm_usermeta(metakey) < 0)
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_NOT_FOUND, "User meta does not exist");
 			pv_ctrl_write_ok_response(req_fd);
 		} else
-			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+			goto err_me;
+	} else if (pv_str_matches(ENDPOINT_CONDITIONS, strlen(ENDPOINT_CONDITIONS), path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			pv_ctrl_process_get_string(req_fd, pv_state_get_conditions_json(pv->state));
+		} else
+			goto err_me;
+	} else if (pv_str_startswith(ENDPOINT_CONDITIONS, strlen(ENDPOINT_CONDITIONS), path)) {
+		condkey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_CONDITIONS), path_len);
+
+		if (!condkey) {
+			pv_log(WARN, "HTTP request has bad condition name %s", file_name);
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad condition key name");
+			goto out;
+		}
+
+		if (!strncmp("PUT", method, method_len)) {
+			condvalue = pv_ctrl_get_body(req_fd, content_length);
+			if (pv_state_report_condition(pv->state, pname, condkey, condvalue))
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot report condition");
+			pv_ctrl_write_ok_response(req_fd);
+		} else
+			goto err_me;
 	} else {
-		pv_log(WARN, "HTTP request received has unknown endpoint");
-		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Unknown endpoint");
+		goto err_ep;
 	}
+	goto out;
+
+err_ep:
+	pv_log(WARN, "HTTP request received has unknown endpoint");
+	pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Unknown endpoint");
+	goto out;
+
+err_me:
+	pv_log(WARN, "HTTP method not supported for this endpoint");
+	pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Method not supported for this endpoint");
+	goto out;
+
+err_pr:
+	pv_log(WARN, "request not sent from mgmt platform");
+	pv_ctrl_write_error_response(req_fd, HTTP_STATUS_FORBIDDEN, "Request not sent from mgmt platform");
 
 out:
+	if (pname)
+		free(pname);
 	if (file_name)
 		free(file_name);
 	if (file_path_parent)
@@ -823,7 +885,7 @@ out:
 static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
-	bool mgmt;
+	char *pname;
 	int buf_index = 0, res = -1;
 	const char *method, *path;
 	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS, content_length;
@@ -831,10 +893,17 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 	struct pv_cmd *cmd = NULL;
 
 	memset(buf, 0, sizeof(buf));
-	mgmt = pv_ctrl_check_sender_privileged(req_fd);
+
+	pname = pv_ctrl_get_sender_pname(req_fd);
+	if (!pname) {
+		pv_log(WARN, "could not find a sender platform name");
+		goto out;
+	}
+
+	pv_log(DEBUG, "request received from platform %s", pname)
 
 	// legacy commands are only for mgmt platforms
-	if (mgmt) {
+	if (pv_ctrl_check_sender_privileged(pname)) {
 		// read first character to see if the request is a non-HTTP legacy one
 		if (read(req_fd, &buf[0], 1) < 0)
 			goto out;
@@ -877,7 +946,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 											path,
 											path_len,
 											content_length,
-											mgmt);
+											pname);
 out:
 	return cmd;
 }

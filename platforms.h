@@ -61,6 +61,8 @@ struct pv_platform {
 
 void pv_platform_free(struct pv_platform *p);
 
+char* pv_platform_get_json(struct pv_platform *p);
+
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name);

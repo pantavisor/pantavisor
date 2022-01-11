@@ -35,5 +35,8 @@ struct pv_group* pv_group_new(char *name);
 void pv_group_free(struct pv_group *g);
 
 void pv_group_add_condition(struct pv_group *g, struct pv_condition *c);
+int pv_group_report_condition(struct pv_group *g, char *plat, char *key, char *value);
+
+char* pv_group_get_json(struct pv_group *g);
 
 #endif // PV_GROUP_H

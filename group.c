@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 #include <string.h>
+#include <stdio.h>
 
 #include "group.h"
 
@@ -72,4 +73,56 @@ void pv_group_add_condition(struct pv_group *g, struct pv_condition *c)
 
 	dl_list_init(&c->list);
 	dl_list_add_tail(&g->conditions, &c->list);
+}
+
+int pv_group_report_condition(struct pv_group *g, char *plat, char *key, char *value)
+{
+	int ret = -1;
+	struct pv_condition *c, *tmp;
+
+	dl_list_for_each_safe(c, tmp, &g->conditions,
+			struct pv_condition, list) {
+		if (!pv_condition_report(c, plat, key, value))
+			ret = 0;
+	}
+
+	return ret;
+}
+
+char* pv_group_get_json(struct pv_group *g)
+{
+	int len, line_len;
+	char *json, *line;
+	struct pv_condition *c, *tmp;
+
+	// open json
+	len = strlen(g->name) + strlen("{\"name\":\"\",\"conditions\":[");
+	json = calloc(1, (len + 1) * sizeof(char*));
+	snprintf(json, len + 1, "{\"name\":\"%s\",\"conditions\":[", g->name);
+
+	if (dl_list_empty(&g->conditions))
+		goto close;
+
+	dl_list_for_each_safe(c, tmp, &g->conditions,
+			struct pv_condition, list) {
+		line = pv_condition_get_json(c);
+		line_len = strlen(line) + 1;
+		json = realloc(json, len + line_len + 1);
+		snprintf(&json[len], line_len + 1, "%s,", line);
+		len += line_len;
+		free(line);
+	}
+
+	// remove ,
+	len -= 1;
+
+close:
+	// close json
+	len += 3;
+	json = realloc(json, len);
+	json[len-3] = ']';
+	json[len-2] = '}';
+	json[len-1] = '\0';
+
+	return json;
 }
