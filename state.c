@@ -58,6 +58,7 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 		s->spec = spec;
 		dl_list_init(&s->platforms);
 		dl_list_init(&s->volumes);
+		dl_list_init(&s->disks);
 		dl_list_init(&s->addons);
 		dl_list_init(&s->objects);
 		dl_list_init(&s->jsons);
@@ -94,6 +95,7 @@ void pv_state_free(struct pv_state *s)
 
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
+	pv_disks_empty(s);
 	pv_addons_empty(s);
 	pv_objects_empty(s);
 	pv_jsons_empty(s);

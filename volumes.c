@@ -35,6 +35,7 @@
 #include "loop.h"
 
 #include "utils/fs.h"
+#include "utils/tsh.h"
 #include "pantavisor.h"
 #include "volumes.h"
 #include "parser/parser.h"
@@ -59,6 +60,38 @@ static const char* pv_volume_type_str(pv_volume_t vt)
 	}
 
 	return "UNKNOWN";
+}
+
+static void pv_disk_free(struct pv_disk *d)
+{
+	if (d->name)
+		free(d->name);
+	if (d->path)
+		free(d->path);
+	if (d->uuid)
+		free(d->uuid);
+	if (d->options)
+		free(d->options);
+
+	free(d);
+}
+
+void pv_disks_empty(struct pv_state *s)
+{
+	int num_disk = 0;
+	struct pv_disk *d, *tmp;
+	struct dl_list *disks = &s->disks;
+
+	// Iterate over all disks from state
+	dl_list_for_each_safe(d, tmp, disks,
+			struct pv_disk, list) {
+		pv_log(DEBUG, "removing disk %s", d->name);
+		dl_list_del(&d->list);
+		pv_disk_free(d);
+		num_disk++;
+	}
+
+	pv_log(INFO, "removed %d disks", num_disk);
 }
 
 void pv_volume_free(struct pv_volume *v)
@@ -95,17 +128,106 @@ void pv_volumes_empty(struct pv_state *s)
 	pv_log(INFO, "removed %d volumes", num_vol);
 }
 
-struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
+struct pv_volume* pv_volume_add_with_disk(struct pv_state *s, char *name, char *disk)
 {
 	struct pv_volume *v = calloc(1, sizeof(struct pv_volume));
+	struct pv_disk *d, *tmp;
+	struct dl_list *disks = NULL;
 
 	if (v) {
 		v->name = strdup(name);
 		dl_list_init(&v->list);
 		dl_list_add_tail(&s->volumes, &v->list);
+		disks = &s->disks;
+
+		if (disk) {
+			dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list) {
+				if (!strcmp(d->name, disk)) {
+					v->disk = d;
+					break;
+				}
+			}
+		}
+		else {
+			dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list) {
+				if (d->def) {
+					v->disk = d;
+					break;
+				}
+			}
+		}
 	}
 
 	return v;
+}
+
+struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
+{
+	return pv_volume_add_with_disk(s, name, NULL);
+}
+
+struct pv_disk* pv_disk_add(struct pv_state *s)
+{
+	struct pv_disk *d = calloc(1, sizeof(struct pv_disk));
+
+	if (d) {
+		dl_list_init(&d->list);
+		dl_list_add_tail(&s->disks, &d->list);
+	}
+
+	return d;
+}
+
+static int pv_volumes_mount_handler(struct pantavisor *pv, struct pv_volume *v, char *action)
+{
+	struct pv_disk *d = v->disk;
+	char *command = NULL;
+	char *crypt_type;
+	int ret;
+	int wstatus;
+
+	switch (d->type) {
+	case DISK_DM_CRYPT_CAAM:
+		crypt_type = "caam";
+		break;
+	case DISK_DM_CRYPT_DCP:
+		crypt_type = "dcp";
+		break;
+	case DISK_DM_CRYPT_VERSATILE:
+		crypt_type = "versatile";
+		break;
+	case DISK_DIR:
+	case DISK_UNKNOWN:
+	default:
+		return -ENOTSUP;
+	}
+
+	command = malloc(sizeof(char) *
+		(strlen("/lib/pv/volmount/crypt %s %s %s %s /volumes/%s/%s %s") +
+		strlen(action) +
+		strlen(crypt_type) +
+		strlen(d->path) +
+		strlen(v->plat->name) +
+		strlen(v->name)) + 1);
+	if (!command)
+		return -ENOMEM;
+
+	sprintf(command, "/lib/pv/volmount/crypt %s %s %s /volumes/%s/%s",
+			  action, crypt_type, d->path, v->plat->name, v->name);
+	pv_log(INFO, "command: %s", command);
+
+	tsh_run(command, 1, &wstatus);
+	if (!WIFEXITED(wstatus))
+		ret = -1;
+	else if (WEXITSTATUS(wstatus) != 0)
+		ret = -1 * WEXITSTATUS(wstatus);
+	else
+		ret = 0;
+
+	if (command)
+		free(command);
+
+	return ret;
 }
 
 static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
@@ -125,6 +247,9 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	char *command;
 
 	sprintf(base, "%s/disks", pv_config_get_storage_mntpoint());
+
+	if (v->disk && !v->disk->def)
+		return pv_volumes_mount_handler(pv, v, "mount");
 
 	handlercut = strchr(v->name, ':');
 	if (handlercut) {
@@ -372,6 +497,11 @@ int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
 			// Ignore volumes linked to platforms that are running
 			if (v->plat && (v->plat->status == PLAT_STARTED))
 				continue;
+
+			if (v->disk && !v->disk->def) {
+				pv_volumes_mount_handler(pv, v, "umount");
+				continue;
+			}
 
 			if (v->umount_cmd != NULL) {
 				int wstatus;
