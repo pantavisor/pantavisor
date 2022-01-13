@@ -36,6 +36,7 @@ void pv_group_free(struct pv_group *g);
 
 void pv_group_add_condition(struct pv_group *g, struct pv_condition *c);
 int pv_group_report_condition(struct pv_group *g, char *plat, char *key, char *value);
+bool pv_group_check_conditions(struct pv_group *g);
 
 char* pv_group_get_json(struct pv_group *g);
 

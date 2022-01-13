@@ -74,7 +74,7 @@ int pv_condition_report(struct pv_condition *c, char *plat, char *key, char *cur
 	return -1;
 }
 
-bool pv_condition_evaluate(struct pv_condition *c)
+bool pv_condition_check(struct pv_condition *c)
 {
 	return pv_str_matches(c->eval_value,
 		strlen(c->eval_value),

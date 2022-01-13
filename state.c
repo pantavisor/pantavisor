@@ -439,6 +439,79 @@ static void pv_state_transfer_platforms(struct pv_state *in, struct pv_state *ou
 	}
 }
 
+int pv_state_start(struct pv_state *s)
+{
+	return pv_volumes_mount_firmware_modules();
+}
+
+static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
+{
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes,
+			struct pv_volume, list) {
+		if (v->plat == p)
+			if (pv_volume_mount(v))
+				return -1;
+	}
+
+	if (pv_platform_start(p))
+		return -1;
+
+	return 0;
+}
+
+int pv_state_run(struct pv_state *s)
+{
+	int ret = 0;
+	struct pv_platform *p, *tmp;
+
+	dl_list_for_each_safe(p, tmp, &s->platforms,
+			struct pv_platform, list) {
+		if ((p->status == PLAT_READY) || (p->status == PLAT_BLOCKED)) {
+			if (pv_group_check_conditions(p->group))
+				ret = pv_state_start_platform(s, p);
+			else
+				p->status = PLAT_BLOCKED;
+		} else if ((p->status == PLAT_STARTING) || (p->status == PLAT_STARTED)) {
+			if (pv_platform_check_running(p))
+				p->status = PLAT_STARTED;
+			else {
+				p->status = PLAT_STOPPED;
+				ret = -1;
+			}
+		}
+	}
+
+	// TODO: ret properly
+
+	return ret;
+}
+
+int pv_state_stop(struct pv_state *s)
+{
+	int ret = 0;
+	struct pv_platform *p, *tmp_p;
+	struct pv_volume *v, *tmp_v;
+
+	dl_list_for_each_safe(p, tmp_p, &s->platforms,
+			struct pv_platform, list) {
+		if ((p->status == PLAT_STARTING) || (p->status == PLAT_STARTED)) {
+			ret = pv_platform_stop(p);
+			p->status = PLAT_STOPPED;
+		}
+	}
+
+	dl_list_for_each_safe(v, tmp_v, &s->volumes,
+			struct pv_volume, list) {
+		pv_volume_unmount(v);
+	}
+
+	// TODO: ret properly
+
+	return ret;
+}
+
 void pv_state_transfer(struct pv_state *in, struct pv_state *out)
 {
 	int len = strlen(in->rev) + 1;
@@ -635,9 +708,6 @@ static char* _pv_state_get_novalidate_list(char *rev)
 
 		// if command fails, we dont abort as some handlers might be buggy ...
 		// we just ignore the result of this handler ...
-		if (res == 127)
-			continue;
-
 		if (res > 0) {
 			pv_log(WARN, "command exited with error code: %d", res);
 			pv_log(DEBUG, "stdout: %s", sout);
@@ -670,7 +740,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 
 	char *validate_list = _pv_state_get_novalidate_list(s->rev);
 	if (validate_list)
-		pv_log(DEBUG, "checksum validation list is: %s", validate_list);
+		pv_log(DEBUG, "no validation list is: %s", validate_list);
 
 	pv_objects_iter_begin(s, o) {
 		/* validate instance in $rev/trails/$name to match */

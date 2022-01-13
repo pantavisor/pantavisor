@@ -33,7 +33,10 @@ extern const int MAX_RUNLEVEL;
 
 typedef enum {
 	PLAT_NONE,
-	PLAT_INSTALLED,
+	PLAT_DATA,
+	PLAT_READY,
+	PLAT_BLOCKED,
+	PLAT_STARTING,
 	PLAT_STARTED,
 	PLAT_STOPPED
 } plat_status_t;
@@ -61,6 +64,13 @@ struct pv_platform {
 
 void pv_platform_free(struct pv_platform *p);
 
+void pv_platform_set_ready(struct pv_platform *p);
+
+int pv_platform_start(struct pv_platform *p);
+int pv_platform_stop(struct pv_platform *p);
+
+int pv_platform_check_running(struct pv_platform *p);
+
 char* pv_platform_get_json(struct pv_platform *p);
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);
@@ -71,9 +81,6 @@ struct pv_platform* pv_platform_get_by_name(struct pv_state *s, const char *name
 void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);
 
-int pv_platforms_start(struct pantavisor *pv, int runlevel);
-int pv_platforms_check_exited(struct pantavisor *pv, int runlevel);
-int pv_platforms_stop(struct pantavisor *pv, int runlevel);
 void pv_platforms_empty(struct pv_state *s);
 
 #endif

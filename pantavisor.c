@@ -254,9 +254,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
-	// start up volumes and platforms
-	if (pv_volumes_mount(pv, runlevel) < 0) {
-		pv_log(ERROR, "error mounting volumes");
+	if (pv_state_start(pv->state)) {
+		pv_log(ERROR, "error starting state");
 		goto out;
 	}
 
@@ -265,13 +264,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv_platforms_start(pv, runlevel) < 0) {
-		pv_log(ERROR, "error starting platforms");
-		goto out;
-	}
-
-	// set initial wait delay and rollback count values
-	timer_start(&timer_wait_delay, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_commit, 0, 0, RELATIV_TIMER);
 	timer_start(&rollback_timer, pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
 
@@ -436,7 +428,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	pv_state_t next_state = PV_STATE_WAIT;
 
 	// check if any platform has exited and we need to tear down
-	if (pv_platforms_check_exited(pv, 0)) {
+	if (pv_state_run(pv->state)) {
 		pv_log(ERROR, "one or more platforms exited. Tearing down...");
 		if (pv_update_is_trying(pv->update) || pv_update_is_testing(pv->update))
 			next_state = PV_STATE_ROLLBACK;
@@ -591,18 +583,18 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return PV_STATE_WAIT;
 	}
 
-	// if everything went well, decide whether update requires reboot or not
-	if (pv_update_requires_reboot(pv))
-		return PV_STATE_REBOOT;
+	// TODO: transition update
+	//if (pv_update_requires_reboot(pv))
+	//	return PV_STATE_REBOOT;
 
-	pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
-	if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
-			pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
-		pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
-		return PV_STATE_ROLLBACK;
-	}
+	//pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
+	//if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
+	//		pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
+	//	pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
+	//	return PV_STATE_ROLLBACK;
+	//}
 
-	return PV_STATE_RUN;
+	return PV_STATE_REBOOT;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
@@ -659,14 +651,9 @@ static pv_state_t pv_do_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_log(INFO, "prepare %s...", shutdown_type_string(t));
 	wait_shell();
 
-	if (pv->state) {
-		pv_log(INFO, "stopping pantavisor runlevel 0 and above...");
-		if (pv_platforms_stop(pv, 0) < 0)
+	if (pv->state)
+		if (pv_state_stop(pv->state))
 			pv_log(WARN, "stop error: ignoring due to %s", shutdown_type_string(t));
-
-		if (pv_volumes_unmount(pv, 0) < 0)
-			pv_log(WARN, "unmount error: ignoring due to %s", shutdown_type_string(t));
-	}
 
 	if (REBOOT == t)
 		pv_wdt_start(pv);

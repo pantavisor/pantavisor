@@ -1000,7 +1000,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		config = 0;
 	}
 
-	this->status = PLAT_INSTALLED;
+	pv_platform_set_ready(this);
 out:
 	if (config)
 		free(config);

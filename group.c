@@ -89,6 +89,20 @@ int pv_group_report_condition(struct pv_group *g, char *plat, char *key, char *v
 	return ret;
 }
 
+bool pv_group_check_conditions(struct pv_group *g)
+{
+	bool ret = true;
+	struct pv_condition *c, *tmp;
+
+	dl_list_for_each_safe(c, tmp, &g->conditions,
+			struct pv_condition, list) {
+		if (!pv_condition_check(c))
+			ret = false;
+	}
+
+	return ret;
+}
+
 char* pv_group_get_json(struct pv_group *g)
 {
 	int len, line_len;

@@ -38,7 +38,7 @@ struct pv_condition* pv_condition_new(char *plat, char *key, char *eval_value);
 void pv_condition_free(struct pv_condition *c);
 
 int pv_condition_report(struct pv_condition *c, char *plat, char *key, char *curr_value);
-bool pv_condition_evaluate(struct pv_condition *c);
+bool pv_condition_check(struct pv_condition *c);
 
 char *pv_condition_get_json(struct pv_condition *c);
 

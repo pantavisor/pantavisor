@@ -69,18 +69,22 @@ void pv_state_free(struct pv_state *s);
 void pv_state_add_group(struct pv_state *s, struct pv_group *g);
 struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name);
 
-void pv_state_print(struct pv_state *s);
-int pv_state_validate(struct pv_state *s);
+state_spec_t pv_state_spec(struct pv_state *s);
 
+int pv_state_validate(struct pv_state *s);
+bool pv_state_validate_checksum(struct pv_state *s);
+
+int pv_state_start(struct pv_state *s);
+int pv_state_run(struct pv_state *s);
+int pv_state_stop(struct pv_state *s);
+
+//void pv_state_transition(struct pv_state *in, struct pv_state *out);
 void pv_state_transfer(struct pv_state *in, struct pv_state *out);
 int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);
 
-state_spec_t pv_state_spec(struct pv_state *s);
-
-bool pv_state_validate_checksum(struct pv_state *s);
-
 int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value);
 
+void pv_state_print(struct pv_state *s);
 char* pv_state_get_containers_json(struct pv_state *s);
 char* pv_state_get_conditions_json(struct pv_state *s);
 

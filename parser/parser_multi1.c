@@ -238,8 +238,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
-	this->status = PLAT_INSTALLED;
-
+	pv_platform_set_ready(this);
 out:
 	if (name)
 		free(name);
