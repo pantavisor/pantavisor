@@ -29,8 +29,6 @@
 #include "pantavisor.h"
 #include "utils/list.h"
 
-extern const int MAX_RUNLEVEL;
-
 typedef enum {
 	PLAT_NONE,
 	PLAT_DATA,
@@ -38,6 +36,7 @@ typedef enum {
 	PLAT_BLOCKED,
 	PLAT_STARTING,
 	PLAT_STARTED,
+	PLAT_STOPPING,
 	PLAT_STOPPED
 } plat_status_t;
 
@@ -50,7 +49,6 @@ struct pv_platform {
 	void *data;
 	pid_t init_pid;
 	plat_status_t status;
-	int runlevel;
 	struct pv_group *group;
 	bool mgmt;
 	bool updated;
@@ -64,19 +62,29 @@ struct pv_platform {
 
 void pv_platform_free(struct pv_platform *p);
 
-void pv_platform_set_ready(struct pv_platform *p);
-
 int pv_platform_start(struct pv_platform *p);
 int pv_platform_stop(struct pv_platform *p);
+void pv_platform_force_stop(struct pv_platform *p);
 
 int pv_platform_check_running(struct pv_platform *p);
+
+void pv_platform_set_ready(struct pv_platform *p);
+void pv_platform_set_blocked(struct pv_platform *p);
+void pv_platform_set_updated(struct pv_platform *p);
+
+bool pv_platform_is_ready(struct pv_platform *p);
+bool pv_platform_is_blocked(struct pv_platform *p);
+bool pv_platform_is_starting(struct pv_platform *p);
+bool pv_platform_is_started(struct pv_platform *p);
+bool pv_platform_is_stopping(struct pv_platform *p);
+bool pv_platform_is_stopped(struct pv_platform *p);
+bool pv_platform_is_updated(struct pv_platform *p);
 
 char* pv_platform_get_json(struct pv_platform *p);
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
-struct pv_platform* pv_platform_get_by_name(struct pv_state *s, const char *name);
 
 void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);

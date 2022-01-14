@@ -67,7 +67,11 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec);
 void pv_state_free(struct pv_state *s);
 
 void pv_state_add_group(struct pv_state *s, struct pv_group *g);
+
 struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name);
+struct pv_platform* pv_state_fetch_platform(struct pv_state *s, const char *name);
+struct pv_object* pv_state_fetch_object(struct pv_state *s, const char *name);
+struct pv_json* pv_state_fetch_json(struct pv_state *s, const char *name);
 
 state_spec_t pv_state_spec(struct pv_state *s);
 
@@ -78,9 +82,8 @@ int pv_state_start(struct pv_state *s);
 int pv_state_run(struct pv_state *s);
 int pv_state_stop(struct pv_state *s);
 
-//void pv_state_transition(struct pv_state *in, struct pv_state *out);
-void pv_state_transfer(struct pv_state *in, struct pv_state *out);
-int pv_state_compare_states(struct pv_state *pending, struct pv_state *current);
+int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending);
+void pv_state_transition(struct pv_state *pending, struct pv_state *current);
 
 int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value);
 

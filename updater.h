@@ -87,7 +87,6 @@ struct object_update {
 struct pv_update {
 	enum update_state status;
 	char *endpoint;
-	int runlevel;
 	int progress_size;
 	struct timer retry_timer;
 	struct pv_state *pending;
@@ -119,8 +118,6 @@ int pv_update_install(struct pantavisor *pv);
 int pv_update_resume(struct pantavisor *pv);
 void pv_update_test(struct pantavisor *pv);
 int pv_update_finish(struct pantavisor *pv);
-
-bool pv_update_requires_reboot(struct pantavisor *pv);
 
 bool pv_update_is_transitioning(struct pv_update *u);
 bool pv_update_is_trying(struct pv_update *u);

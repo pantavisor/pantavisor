@@ -615,7 +615,7 @@ static bool pv_ctrl_check_sender_privileged(const char *pname)
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_platform *plat;
 
-	plat = pv_platform_get_by_name(pv->state, pname);
+	plat = pv_state_fetch_platform(pv->state, pname);
 	if (!plat) {
 		pv_log(WARN, "could not find platform %s in current state", pname);
 		goto out;

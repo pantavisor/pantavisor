@@ -747,8 +747,7 @@ static int do_action_for_runlevel(struct json_key_action *jka,
 	if (!(*bundle->platform) || !value)
 		return -1;
 
-	(*bundle->platform)->runlevel = RUNLEVEL_ROOT;
-
+	// runlevel is still valid in the state json to keep backwards compatibility, but internally it is substituted by groups
 	if (!strcmp(value, "data") ||
 		!strcmp(value, "root") ||
 		!strcmp(value, "app") ||
@@ -1024,13 +1023,13 @@ static void system1_link_object_json_platforms(struct pv_state *s)
 		dir = strtok(name, "/");
 		if (!strcmp(dir, "_config")) {
 			dir = strtok(NULL, "/");
-			o->plat = pv_platform_get_by_name(s, dir);
+			o->plat = pv_state_fetch_platform(s, dir);
 			if (!o->plat) {
 				pv_log(WARN, "discarding unassociated object '%s'", o->name);
 				pv_objects_remove(o);
 			}
 		} else
-			o->plat = pv_platform_get_by_name(s, dir);
+			o->plat = pv_state_fetch_platform(s, dir);
 		free(name);
 	}
 
@@ -1043,13 +1042,13 @@ link_jsons:
 		dir = strtok(name, "/");
 		if (!strcmp(dir, "_config")) {
 			dir = strtok(NULL, "/");
-			j->plat = pv_platform_get_by_name(s, dir);
+			j->plat = pv_state_fetch_platform(s, dir);
 			if (!j->plat) {
 				pv_log(WARN, "discarding unassociated json '%s'", j->name);
 				pv_jsons_remove(j);
 			}
 		} else
-			j->plat = pv_platform_get_by_name(s, dir);
+			j->plat = pv_state_fetch_platform(s, dir);
 		free(name);
 	}
 }

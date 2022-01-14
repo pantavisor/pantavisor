@@ -54,8 +54,6 @@ int setns(int nsfd, int nstype);
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-const int MAX_RUNLEVEL = 3;
-
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
 		{"truncate", "true"},
@@ -106,9 +104,8 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 	if (p) {
 		p->name = strdup(name);
 		p->status = PLAT_NONE;
-		p->runlevel = -1;
-		p->updated = false;
 		p->mgmt = true;
+		p->updated = false;
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -116,20 +113,6 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 	}
 
 	return p;
-}
-
-struct pv_platform* pv_platform_get_by_name(struct pv_state *s, const char *name)
-{
-
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = &s->platforms;
-
-	dl_list_for_each_safe(p, tmp, platforms,
-			struct pv_platform, list) {
-		if (!strcmp(p->name, name))
-			return p;
-	}
-	return NULL;
 }
 
 static void pv_platform_empty_logger_list(struct pv_platform *p)
@@ -193,15 +176,6 @@ void pv_platform_free(struct pv_platform *p)
 	free(p);
 }
 
-void pv_platform_set_ready(struct pv_platform *p)
-{
-	p->status = PLAT_READY;
-
-	if (p->group &&
-		pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
-		p->status = PLAT_DATA;
-}
-
 static const char* pv_platform_status_string(plat_status_t status)
 {
 	switch(status) {
@@ -211,6 +185,7 @@ static const char* pv_platform_status_string(plat_status_t status)
 		case PLAT_BLOCKED: return "BLOCKED";
 		case PLAT_STARTING: return "STARTING";
 		case PLAT_STARTED: return "STARTED";
+		case PLAT_STOPPING: return "STOPPING";
 		case PLAT_STOPPED: return "STOPPED";
 		default: return "UNKNOWN";
 	}
@@ -518,57 +493,21 @@ int pv_platform_start(struct pv_platform *p)
 		return -1;
 	}
 
-	pv_log(DEBUG, "started platform: \"%s\" (data=%p), init_pid=%d",
-		p->name, data, pid);
+	pv_log(DEBUG, "starting platform \'%s\' with pid %d", p->name, pid);
 
 	p->data = data;
 	p->init_pid = pid;
 
-	if (pid > 0) {
-		p->status = PLAT_STARTED;
-
-		if (pv_config_get_log_loggers())
-			if (start_pvlogger_for_platform(p))
-				pv_log(ERROR, "Could not start pv_logger for platform %s", p->name);
-	} else
+	if (pid <= 0)
 		return -1;
 
+	p->status = PLAT_STARTING;
+
+	if (pv_config_get_log_loggers())
+		if (start_pvlogger_for_platform(p))
+			pv_log(ERROR, "Could not start pv_logger for platform %s", p->name);
+
 	return 0;
-}
-
-static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
-{
-	int num_plats = 0;
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = NULL;
-
-	// Iterate between lowest priority plats and runlevel plats
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		pv_log(DEBUG, "force killing platforms with runlevel %d", i);
-		// Iterate over all plats from state
-		platforms = &pv->state->platforms;
-		dl_list_for_each_safe(p, tmp, platforms,
-				struct pv_platform, list) {
-			// Ignore platforms from other runlevels
-			if (p->runlevel != i)
-				continue;
-
-			// Ignore non updated apps if update runlevel is app
-			if ((runlevel == RUNLEVEL_APP) &&
-				(p->runlevel == RUNLEVEL_APP) &&
-				!p->updated)
-				continue;
-
-			if (!kill(p->init_pid, 0)) {
-				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
-				kill(p->init_pid, SIGKILL);
-				num_plats++;
-			}
-		}
-	}
-
-	if (num_plats)
-		pv_log(INFO, "force killed %d platforms", num_plats);
 }
 
 static int pv_platform_stop_loggers(struct pv_platform *p)
@@ -624,23 +563,97 @@ int pv_platform_stop(struct pv_platform *p)
 
 	pv_platform_stop_loggers(p);
 
-	if (p->init_pid > 0) {
-		ctrl = _pv_platforms_get_ctrl(p->type);
-		ctrl->stop(p, NULL, p->data);
-		p->status = PLAT_STOPPED;
-		p->data = NULL;
-		pv_log(DEBUG, "sent SIGTERM to platform '%s'", p->name);
-		return 0;
-	}
+	if (p->init_pid <= 0)
+		return -1;
 
-	// TODO: check and kill if still running
+	pv_log(DEBUG, "leniently stopping platform '%s'", p->name);
+	ctrl = _pv_platforms_get_ctrl(p->type);
+	ctrl->stop(p, NULL, p->data);
+	p->data = NULL;
+	p->status = PLAT_STOPPING;
 
-	return -1;
+	return 0;
+}
+
+void pv_platform_force_stop(struct pv_platform *p)
+{
+	pv_log(DEBUG, "force stopping platform '%s'", p->name);
+	kill(p->init_pid, SIGKILL);
+	p->status = PLAT_STOPPED;
 }
 
 int pv_platform_check_running(struct pv_platform *p)
 {
-	return !kill(p->init_pid, 0);
+	bool running;
+
+	running = !kill(p->init_pid, 0);
+	if (running) {
+		if ((p->status != PLAT_STARTED) && (p->status != PLAT_STOPPING)) {
+			pv_log(DEBUG, "platform %s started", p->name);
+			p->status = PLAT_STARTED;
+		}
+	} else {
+		if ((p->status != PLAT_STOPPED) && (p->status != PLAT_STARTING)) {
+			pv_log(DEBUG, "platform %s stopped", p->name);
+			p->status = PLAT_STOPPED;
+		}
+	}
+
+	return running;
+}
+
+void pv_platform_set_ready(struct pv_platform *p)
+{
+	p->status = PLAT_READY;
+
+	if (p->group &&
+		pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
+		p->status = PLAT_DATA;
+}
+
+void pv_platform_set_blocked(struct pv_platform *p)
+{
+	p->status = PLAT_BLOCKED;
+}
+
+void pv_platform_set_updated(struct pv_platform *p)
+{
+	p->updated = true;
+}
+
+bool pv_platform_is_ready(struct pv_platform *p)
+{
+	return (p->status == PLAT_READY);
+}
+
+bool pv_platform_is_blocked(struct pv_platform *p)
+{
+	return (p->status == PLAT_BLOCKED);
+}
+
+bool pv_platform_is_starting(struct pv_platform *p)
+{
+	return (p->status == PLAT_STARTING);
+}
+
+bool pv_platform_is_started(struct pv_platform *p)
+{
+	return (p->status == PLAT_STARTED);
+}
+
+bool pv_platform_is_stopping(struct pv_platform *p)
+{
+	return (p->status == PLAT_STOPPING);
+}
+
+bool pv_platform_is_stopped(struct pv_platform *p)
+{
+	return (p->status == PLAT_STOPPED);
+}
+
+bool pv_platform_is_updated(struct pv_platform *p)
+{
+	return p->updated;
 }
 
 static int pv_platforms_early_init(struct pv_init *this)

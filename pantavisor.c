@@ -181,11 +181,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	pv_state_t next_state = PV_STATE_ROLLBACK;
 	char *json = NULL;
-	int runlevel = RUNLEVEL_DATA;
 
 	// resume update if we have booted to test a new revision
-	runlevel = pv_update_resume(pv);
-	if (runlevel < RUNLEVEL_DATA) {
+	if (pv_update_resume(pv)) {
 		pv_log(ERROR, "update could not be resumed");
 		goto out;
 	}
@@ -195,7 +193,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(INFO, "transitioning...");
 		ph_logger_stop(pv);
 		pv_log_start(pv, pv->update->pending->rev);
-		pv_state_transfer(pv->update->pending, pv->state);
+		pv_state_transition(pv->update->pending, pv->state);
 	} else {
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
@@ -251,8 +249,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_storage_meta_set_objdir(pv);
 	pv_metadata_init_devmeta(pv);
 	pv_metadata_init_usermeta(pv->state);
-
-	pv_log(DEBUG, "running pantavisor with runlevel %d", runlevel);
 
 	if (pv_state_start(pv->state)) {
 		pv_log(ERROR, "error starting state");
@@ -583,18 +579,16 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return PV_STATE_WAIT;
 	}
 
-	// TODO: transition update
-	//if (pv_update_requires_reboot(pv))
-	//	return PV_STATE_REBOOT;
+	// after installing, try to only stop the platforms that we need for the new update
+	if (pv_state_stop_platforms(pv->state, pv->update->pending)) {
+		pv_log(INFO, "update requires reboot");
+		pv_update_set_status(pv, UPDATE_REBOOT);
+		return PV_STATE_REBOOT;
+	}
 
-	//pv_log(INFO, "stopping pantavisor runlevel %d and above...", pv->update->runlevel);
-	//if (pv_platforms_stop(pv, pv->update->runlevel) < 0 ||
-	//		pv_volumes_unmount(pv, pv->update->runlevel) < 0) {
-	//	pv_log(ERROR, "could not stop platforms or unmount volumes, rolling back...");
-	//	return PV_STATE_ROLLBACK;
-	//}
-
-	return PV_STATE_REBOOT;
+	pv_log(INFO, "update does not require reboot");
+	pv_update_set_status(pv, UPDATE_TRANSITION);
+	return PV_STATE_RUN;
 }
 
 static pv_state_t _pv_rollback(struct pantavisor *pv)
@@ -646,7 +640,7 @@ static int shutdown_type_reboot_cmd(shutdown_type_t t) {
 }
 
 
-static pv_state_t pv_do_shutdown(struct pantavisor *pv, shutdown_type_t t)
+static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 {
 	pv_log(INFO, "prepare %s...", shutdown_type_string(t));
 	wait_shell();
@@ -674,14 +668,14 @@ static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	return pv_do_shutdown(pv, REBOOT);
+	return pv_shutdown(pv, REBOOT);
 }
 
 static pv_state_t _pv_poweroff(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	return pv_do_shutdown(pv, POWEROFF);
+	return pv_shutdown(pv, POWEROFF);
 }
 
 static pv_state_t _pv_error(struct pantavisor *pv)

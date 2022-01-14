@@ -53,19 +53,6 @@ void pv_jsons_remove(struct pv_json *j)
 	pv_jsons_free(j);
 }
 
-struct pv_json* pv_jsons_get_by_name(struct pv_state *s, char *name)
-{
-	struct pv_json *curr, *tmp;
-	struct dl_list *head = &s->jsons;
-
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_json, list) {
-		if (!strcmp(curr->name, name))
-			return curr;
-	}
-	return NULL;
-}
-
 void pv_jsons_free(struct pv_json *json)
 {
 	if (json->name)
