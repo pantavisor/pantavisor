@@ -98,6 +98,7 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->objects);
 		dl_list_init(&s->jsons);
 		pv_state_init_groups(s);
+		dl_list_init(&s->conditions);
 		s->local = false;
 	}
 
@@ -119,6 +120,23 @@ static void pv_state_empty_groups(struct pv_state *s)
 	}
 
 	pv_log(INFO, "removed %g groups", num_groups);
+}
+
+static void pv_state_empty_conditions(struct pv_state *s)
+{
+	int num_conditions = 0;
+	struct pv_condition *c, *tmp;
+	struct dl_list *conditions = &s->conditions;
+
+	// Iterate over all conditions from state
+	dl_list_for_each_safe(c, tmp, conditions,
+            struct pv_condition, list) {
+		dl_list_del(&c->list);
+		pv_condition_free(c);
+		num_conditions++;
+	}
+
+	pv_log(INFO, "removed %g conditions", num_conditions);
 }
 
 void pv_state_free(struct pv_state *s)
@@ -153,6 +171,7 @@ void pv_state_free(struct pv_state *s)
 	pv_objects_empty(s);
 	pv_jsons_empty(s);
 	pv_state_empty_groups(s);
+	pv_state_empty_conditions(s);
 
 	if (s->json)
 		free(s->json);
@@ -166,6 +185,14 @@ void pv_state_add_group(struct pv_state *s, struct pv_group *g)
 
 	dl_list_init(&g->list);
 	dl_list_add_tail(&s->groups, &g->list);
+}
+
+void pv_state_add_condition(struct pv_state *s, struct pv_condition *c)
+{
+	pv_log(DEBUG, "adding condition %s to state", c->key);
+
+	dl_list_init(&c->list);
+	dl_list_add_tail(&s->conditions, &c->list);
 }
 
 struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name)
@@ -219,6 +246,35 @@ struct pv_json* pv_state_fetch_json(struct pv_state *s, const char *name)
             struct pv_json, list) {
 		if (pv_str_matches(j->name, strlen(j->name), name, strlen(name)))
 			return j;
+	}
+
+	return NULL;
+}
+
+struct pv_condition* pv_state_fetch_condition(struct pv_state *s, const char *key)
+{
+	struct pv_condition *c, *tmp;
+
+	// Iterate over all conditions from state
+	dl_list_for_each_safe(c, tmp, &s->conditions,
+            struct pv_condition, list) {
+		if (pv_str_matches(c->key, strlen(c->key), key, strlen(key)))
+			return c;
+	}
+
+	return NULL;
+}
+
+struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s, const char *key, const char *eval_value)
+{
+	struct pv_condition *c, *tmp;
+
+	// Iterate over all conditions from state
+	dl_list_for_each_safe(c, tmp, &s->conditions,
+            struct pv_condition, list) {
+		if (pv_str_matches(c->key, strlen(c->key), key, strlen(key)) &&
+			pv_str_matches(c->eval_value, strlen(c->eval_value), eval_value, strlen(eval_value)))
+			return c;
 	}
 
 	return NULL;
@@ -329,28 +385,7 @@ static void pv_state_set_default_groups(struct pv_state *s)
     }
 }
 
-static int pv_check_group_conditions(struct pv_state *s)
-{
-	int ret = 0;
-	struct pv_group *g, *tmp_g;
-	struct pv_condition *c, *tmp_c;
-
-	dl_list_for_each_safe(g, tmp_g, &s->groups,
-			struct pv_group, list) {
-		dl_list_for_each_safe(c, tmp_c, &g->conditions,
-				struct pv_condition, list) {
-			if (!pv_state_fetch_platform(s, c->plat)) {
-				pv_log(ERROR, "condition %s from group %s linked to unknown platform %s",
-					c->key, g->name, c->plat);
-				ret = -1;
-			}
-		}
-	}
-
-	return ret;
-}
-
-int pv_state_validate(struct pv_state *s)
+void pv_state_validate(struct pv_state *s)
 {
 	// remove platforms that have no loaded data
 	pv_platforms_remove_not_installed(s);
@@ -358,10 +393,270 @@ int pv_state_validate(struct pv_state *s)
 	pv_platforms_add_all_loggers(s);
 	// set groups for all undefined platforms
 	pv_state_set_default_groups(s);
-	// check all group conditions can be met
-	return pv_check_group_conditions(s);
 }
 
+static int pv_state_mount_bsp_volumes()
+{
+	return pv_volumes_mount_firmware_modules();
+}
+
+int pv_state_start(struct pv_state *s)
+{
+	return pv_state_mount_bsp_volumes();
+}
+
+static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
+{
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes,
+			struct pv_volume, list) {
+		if (v->plat == p)
+			if (pv_volume_mount(v))
+				return -1;
+	}
+
+	if (pv_platform_start(p))
+		return -1;
+
+	return 0;
+}
+
+int pv_state_run(struct pv_state *s)
+{
+	int ret = 0;
+	struct pv_platform *p, *tmp;
+
+	dl_list_for_each_safe(p, tmp, &s->platforms,
+			struct pv_platform, list) {
+		if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
+			if (pv_platform_check_conditions(p))
+				ret = pv_state_start_platform(s, p);
+			else
+				pv_platform_set_blocked(p);
+		} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
+			if (!pv_platform_check_running(p))
+				ret = -1;
+		}
+
+		if (ret)
+			goto out;
+	}
+
+out:
+	return ret;
+}
+
+static bool pv_state_check_all_stopped(struct pv_state *s)
+{
+	bool try_again = false, ret = true;
+	struct pv_platform *p, *tmp_p;
+
+	for (int i = 0; i < 5; i++) {
+		dl_list_for_each_safe(p, tmp_p, &s->platforms,
+				struct pv_platform, list) {
+			if (pv_platform_is_stopping(p)) {
+				if (pv_platform_check_running(p)) {
+					pv_log(DEBUG, "platform %s still running", p->name);
+					try_again = true;
+					ret = false;
+				}
+			}
+		}
+
+		if (!try_again)
+			break;
+
+		pv_log(DEBUG, "some platforms are still running. Trying again in 1 second...");
+
+		sleep(1);
+		try_again = false;
+	}
+
+	return true;
+}
+
+static void pv_state_lenient_stop(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp_p;
+
+	dl_list_for_each_safe(p, tmp_p, &s->platforms,
+			struct pv_platform, list) {
+		if (pv_platform_is_starting(p) || pv_platform_is_started(p))
+			pv_platform_stop(p);
+	}
+}
+
+static void pv_state_force_stop(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp_p;
+
+	dl_list_for_each_safe(p, tmp_p, &s->platforms,
+			struct pv_platform, list) {
+		if (pv_platform_is_stopping(p))
+			pv_platform_force_stop(p);
+	}
+}
+
+static int pv_state_unmount_platform_volumes(struct pv_state *s, struct pv_platform *p)
+{
+	int ret = 0;
+	struct pv_volume *v, *tmp_v;
+
+	dl_list_for_each_safe(v, tmp_v, &s->volumes,
+			struct pv_volume, list) {
+		if (v->plat == p) {
+			if (pv_volume_unmount(v))
+				ret = -1;
+		}
+	}
+
+	return ret;
+}
+
+static int pv_state_unmount_platforms_volumes(struct pv_state *s)
+{
+	int ret = 0;
+	struct pv_platform *p, *tmp_p;
+
+	// unmount platform volumes
+	dl_list_for_each_safe(p, tmp_p, &s->platforms,
+			struct pv_platform, list) {
+		if (pv_platform_is_stopped(p)) {
+			if (pv_state_unmount_platform_volumes(s, p))
+				ret = -1;
+		}
+	}
+
+	return ret;
+}
+
+int pv_state_stop(struct pv_state *s)
+{
+	int ret = 0;
+
+	pv_state_lenient_stop(s);
+
+	if (!pv_state_check_all_stopped(s)) {
+		pv_state_force_stop(s);
+		ret = -1;
+	}
+
+	if (pv_state_unmount_platforms_volumes(s))
+		ret = -1;
+
+	return ret;
+}
+
+static bool pv_state_group_requires_reboot(struct pv_group *g)
+{
+	int len;
+	char *name;
+
+	if (!g || !g->name)
+		return true;
+
+	name = g->name;
+	len = strlen(name);
+
+	// some groups need reboot to keep backwards compatibility with runlevel behavior
+	if (pv_str_matches(name, len, "data", strlen("data")) ||
+		pv_str_matches(name, len, "root", strlen("root")) ||
+		pv_str_matches(name, len, "platform", strlen("platform"))) {
+		return true;
+	}
+
+	return false;
+}
+
+static bool pv_state_compare_objects(struct pv_state *current, struct pv_state *pending)
+{
+	struct pv_object *o, *tmp, *pend_o;
+
+	if (!current || !pending)
+		return true;
+
+	// search for modified or deleted objects
+	dl_list_for_each_safe(o, tmp, &current->objects,
+			struct pv_object, list) {
+		pend_o = pv_state_fetch_object(pending, o->name);
+		if (!pend_o || strcmp(o->id, pend_o->id)) {
+			pv_log(DEBUG, "object %s has been modified or deleted in the pending update",
+				o->name);
+			// changes in objects belonging to bsp require reboot
+			if (!o->plat) {
+				pv_log(DEBUG, "object belongs to bsp");
+				return true;
+			}
+			// changes in objects belonging to platforms in certain groups require reboot
+			if (o->plat->group && pv_state_group_requires_reboot(o->plat->group)) {
+				pv_log(DEBUG, "object belongs to platform %s in group %s",
+					o->plat->name, o->plat->group->name);
+				return true;
+			}
+			// lenient stop of platform and continue
+			if (pv_platform_is_starting(o->plat) || pv_platform_is_started(o->plat))
+				pv_platform_stop(o->plat);
+			// set to updated so we can remove it later
+			pv_platform_set_updated(o->plat);
+		}
+	}
+
+	return false;
+}
+
+static bool pv_state_compare(struct pv_state *current, struct pv_state *pending)
+{
+	struct pv_json *j, *tmp, *pend_j;
+
+	if (!current || !pending)
+		return true;
+
+	// search for modified or deleted objects
+	dl_list_for_each_safe(j, tmp, &current->jsons,
+			struct pv_json, list) {
+		pend_j = pv_state_fetch_json(pending, j->name);
+		if (!pend_j || strcmp(j->value, pend_j->value)) {
+			pv_log(DEBUG, "json %s has been modified or deleted in the pending update",
+				j->name);
+			// changes in jsons belonging to bsp require reboot
+			if (!j->plat) {
+				pv_log(DEBUG, "json belongs to bsp");
+				return true;
+			}
+			// changes in objects belonging to platforms in certain groups require reboot
+			if (j->plat->group && pv_state_group_requires_reboot(j->plat->group)) {
+				pv_log(DEBUG, "json belongs to platform %s in group %s",
+					j->plat->name, j->plat->group->name);
+				return true;
+			}
+			// lenient stop of platform and continue
+			if (pv_platform_is_starting(j->plat) || pv_platform_is_started(j->plat))
+				pv_platform_stop(j->plat);
+		}
+	}
+
+	return false;
+}
+
+int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
+{
+	if (pv_state_compare(current, pending) ||
+		pv_state_compare_objects(current, pending)) {
+		pv_log(INFO, "could not just stop individual platforms for update");
+		return 1;
+	}
+
+	if (!pv_state_check_all_stopped(current))
+		pv_state_force_stop(current);
+
+	if (pv_state_unmount_platforms_volumes(current)) {
+		pv_log(ERROR, "could not unmount volumes");
+		return -1;
+	}
+
+	return 0;
+}
 
 static void pv_state_remove_updated_platforms(struct pv_state *s)
 {
@@ -479,275 +774,71 @@ static void pv_state_transfer_platforms(struct pv_state *pending, struct pv_stat
 	}
 }
 
-static int pv_state_mount_bsp_volumes()
+static void pv_state_transfer_groups(struct pv_state *pending, struct pv_state *current)
 {
-	return pv_volumes_mount_firmware_modules();
-}
-
-int pv_state_start(struct pv_state *s)
-{
-	return pv_state_mount_bsp_volumes();
-}
-
-static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
-{
-	struct pv_volume *v, *tmp;
-
-	dl_list_for_each_safe(v, tmp, &s->volumes,
-			struct pv_volume, list) {
-		if (v->plat == p)
-			if (pv_volume_mount(v))
-				return -1;
-	}
-
-	if (pv_platform_start(p))
-		return -1;
-
-	return 0;
-}
-
-int pv_state_run(struct pv_state *s)
-{
-	int ret = 0;
 	struct pv_platform *p, *tmp;
+	struct pv_group *g;
 
-	dl_list_for_each_safe(p, tmp, &s->platforms,
+	// relink platform groups to current groups
+	dl_list_for_each_safe(p, tmp, &current->platforms,
 			struct pv_platform, list) {
-		if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
-			if (pv_group_check_conditions(p->group))
-				ret = pv_state_start_platform(s, p);
-			else
-				pv_platform_set_blocked(p);
-		} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
-			if (!pv_platform_check_running(p))
-				ret = -1;
-		}
+		if (!p->group)
+			continue;
 
-		if (ret)
-			goto out;
+		g = pv_state_fetch_group(current, p->group->name);
+		pv_log(DEBUG, "relinking platform %s to group %s", p->name, g->name);
+		p->group = g;
 	}
-
-out:
-	return ret;
 }
 
-static bool pv_state_check_all_stopped(struct pv_state *s)
+static void pv_state_transfer_conditions(struct pv_state *pending, struct pv_state *current)
 {
-	bool try_again = false, ret = true;
+	struct pv_condition *c, *tmp_c, *curr_c;
+	struct pv_condition_ref *cr, *tmp_cr;
 	struct pv_platform *p, *tmp_p;
+	struct pv_group *g, *tmp_g;
 
-	for (int i = 0; i < 5; i++) {
-		dl_list_for_each_safe(p, tmp_p, &s->platforms,
-				struct pv_platform, list) {
-			if (pv_platform_is_stopping(p)) {
-				if (pv_platform_check_running(p)) {
-					pv_log(DEBUG, "platform %s still running", p->name);
-					try_again = true;
-					ret = false;
-				}
-			}
+	// remove removed conditions from current
+	dl_list_for_each_safe(c, tmp_c, &current->conditions,
+			struct pv_condition, list) {
+		if (!pv_state_fetch_condition_value(pending, c->key, c->eval_value)) {
+			pv_log(DEBUG, "removing condition %s unused in pending state", c->key);
+			dl_list_del(&c->list);
+			pv_condition_free(c);
 		}
-
-		if (!try_again)
-			break;
-
-		pv_log(DEBUG, "some platforms are still running. Trying again in 1 second...");
-
-		sleep(1);
-		try_again = false;
 	}
 
-	return true;
-}
+	// move new conditions to current
+	dl_list_for_each_safe(c, tmp_c, &pending->conditions,
+			struct pv_condition, list) {
+		if (!pv_state_fetch_condition_value(current, c->key, c->eval_value)) {
+			pv_log(DEBUG, "adding new condition %s from pending state", c->key);
+			dl_list_del(&c->list);
+			dl_list_add_tail(&current->conditions, &c->list);
+		}
+	}
 
-static void pv_state_lenient_stop(struct pv_state *s)
-{
-	struct pv_platform *p, *tmp_p;
-
-	dl_list_for_each_safe(p, tmp_p, &s->platforms,
+	// relink platform conditions to current groups
+	dl_list_for_each_safe(p, tmp_p, &current->platforms,
 			struct pv_platform, list) {
-		if (pv_platform_is_starting(p) || pv_platform_is_started(p))
-			pv_platform_stop(p);
-	}
-}
-
-static void pv_state_force_stop(struct pv_state *s)
-{
-	struct pv_platform *p, *tmp_p;
-
-	dl_list_for_each_safe(p, tmp_p, &s->platforms,
-			struct pv_platform, list) {
-		if (pv_platform_is_stopping(p))
-			pv_platform_force_stop(p);
-	}
-}
-
-static int pv_state_unmount_platform_volumes(struct pv_state *s, struct pv_platform *p)
-{
-	int ret = 0;
-	struct pv_volume *v, *tmp_v;
-
-	dl_list_for_each_safe(v, tmp_v, &s->volumes,
-			struct pv_volume, list) {
-		if (v->plat == p) {
-			if (pv_volume_unmount(v))
-				ret = -1;
+		dl_list_for_each_safe(cr, tmp_cr, &p->condition_refs,
+				struct pv_condition_ref, list) {
+			curr_c = pv_state_fetch_condition_value(current, cr->ref->key, cr->ref->eval_value);
+			pv_log(DEBUG, "relinking condition %s to platform %s", curr_c->key, p->name);
+			cr->ref = curr_c;
 		}
 	}
 
-	return ret;
-}
-
-static int pv_state_unmount_platforms_volumes(struct pv_state *s)
-{
-	int ret = 0;
-	struct pv_platform *p, *tmp_p;
-
-	// unmount platform volumes
-	dl_list_for_each_safe(p, tmp_p, &s->platforms,
-			struct pv_platform, list) {
-		if (pv_platform_is_stopped(p)) {
-			if (pv_state_unmount_platform_volumes(s, p))
-				ret = -1;
+	// relink group conditions to current groups
+	dl_list_for_each_safe(g, tmp_g, &current->groups,
+			struct pv_group, list) {
+		dl_list_for_each_safe(cr, tmp_cr, &g->condition_refs,
+				struct pv_condition_ref, list) {
+			curr_c = pv_state_fetch_condition_value(current, cr->ref->key, cr->ref->eval_value);
+			pv_log(DEBUG, "relinking condition %s to group %s", curr_c->key, g->name);
+			cr->ref = curr_c;
 		}
 	}
-
-	return ret;
-}
-
-static int pv_state_unmount_bsp_volumes(struct pv_state *s)
-{
-	return pv_state_unmount_platform_volumes(s, NULL);
-}
-
-int pv_state_stop(struct pv_state *s)
-{
-	int ret = 0;
-
-	pv_state_lenient_stop(s);
-
-	if (!pv_state_check_all_stopped(s)) {
-		pv_state_force_stop(s);
-		ret = -1;
-	}
-
-	if (pv_state_unmount_platforms_volumes(s))
-		ret = -1;
-
-	if (pv_state_unmount_bsp_volumes(s))
-		ret = -1;
-
-	return ret;
-}
-
-static bool pv_state_group_requires_reboot(struct pv_group *g)
-{
-	int len;
-	char *name;
-
-	if (!g || !g->name)
-		return true;
-
-	name = g->name;
-	len = strlen(name);
-
-	// some groups need reboot to keep backwards compatibility with runlevel behavior
-	if (pv_str_matches(name, len, "data", strlen("data")) ||
-		pv_str_matches(name, len, "root", strlen("root")) ||
-		pv_str_matches(name, len, "platform", strlen("platform"))) {
-		return true;
-	}
-
-	return false;
-}
-
-static bool pv_state_compare_objects(struct pv_state *current, struct pv_state *pending)
-{
-	struct pv_object *o, *tmp, *pend_o;
-
-	if (!current || !pending)
-		return true;
-
-	// search for modified or deleted objects
-	dl_list_for_each_safe(o, tmp, &current->objects,
-			struct pv_object, list) {
-		pend_o = pv_state_fetch_object(pending, o->name);
-		if (!pend_o || strcmp(o->id, pend_o->id)) {
-			pv_log(DEBUG, "object %s has been modified or deleted in the pending update",
-				o->name);
-			// changes in objects belonging to bsp require reboot
-			if (!o->plat) {
-				pv_log(DEBUG, "object belongs to bsp");
-				return true;
-			}
-			// changes in objects belonging to platforms in certain groups require reboot
-			if (o->plat->group && pv_state_group_requires_reboot(o->plat->group)) {
-				pv_log(DEBUG, "object belongs to platform %s in group %s",
-					o->plat->name, o->plat->group->name);
-				return true;
-			}
-			// lenient stop of platform and continue
-			if (pv_platform_is_starting(o->plat) || pv_platform_is_started(o->plat))
-				pv_platform_stop(o->plat);
-			// set to updated so we can remove it later
-			pv_platform_set_updated(o->plat);
-		}
-	}
-
-	return false;
-}
-
-static bool pv_state_compare_jsons(struct pv_state *current, struct pv_state *pending)
-{
-	struct pv_json *j, *tmp, *pend_j;
-
-	if (!current || !pending)
-		return true;
-
-	// search for modified or deleted objects
-	dl_list_for_each_safe(j, tmp, &current->jsons,
-			struct pv_json, list) {
-		pend_j = pv_state_fetch_json(pending, j->name);
-		if (!pend_j || strcmp(j->value, pend_j->value)) {
-			pv_log(DEBUG, "json %s has been modified or deleted in the pending update",
-				j->name);
-			// changes in jsons belonging to bsp require reboot
-			if (!j->plat) {
-				pv_log(DEBUG, "json belongs to bsp");
-				return true;
-			}
-			// changes in objects belonging to platforms in certain groups require reboot
-			if (j->plat->group && pv_state_group_requires_reboot(j->plat->group)) {
-				pv_log(DEBUG, "json belongs to platform %s in group %s",
-					j->plat->name, j->plat->group->name);
-				return true;
-			}
-			// lenient stop of platform and continue
-			if (pv_platform_is_starting(j->plat) || pv_platform_is_started(j->plat))
-				pv_platform_stop(j->plat);
-		}
-	}
-
-	return false;
-}
-
-int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
-{
-	if (pv_state_compare_jsons(current, pending) ||
-		pv_state_compare_objects(current, pending)) {
-		pv_log(INFO, "could not just stop individual platforms for update");
-		return 1;
-	}
-
-	if (!pv_state_check_all_stopped(current))
-		pv_state_force_stop(current);
-
-	if (pv_state_unmount_platforms_volumes(current)) {
-		pv_log(ERROR, "could not unmount volumes");
-		return -1;
-	}
-
-	return 0;
 }
 
 void pv_state_transition(struct pv_state *pending, struct pv_state *current)
@@ -756,6 +847,8 @@ void pv_state_transition(struct pv_state *pending, struct pv_state *current)
 
 	pv_state_remove_updated_platforms(current);
 	pv_state_transfer_platforms(pending, current);
+	pv_state_transfer_groups(pending, current);
+	pv_state_transfer_conditions(pending, current);
 
 	// copy revision to current now that we have everything we need from pending
 	current->rev = realloc(current->rev, len);
@@ -899,22 +992,21 @@ bool pv_state_validate_checksum(struct pv_state *s)
 
 int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value)
 {
-	int ret = -1;
-	struct pv_group *g, *tmp;
+	struct pv_condition *c;
 
 	pv_log(DEBUG, "condition from platform %s reported with key '%s' and value '%s'",
 		plat, key, value);
 
-	dl_list_for_each_safe(g, tmp, &s->groups,
-			struct pv_group, list) {
-		if (!pv_group_report_condition(g, plat, key, value))
-			ret = 0;
+	c = pv_state_fetch_condition(s, key);
+	if (c) {
+		pv_condition_set_value(c, value);
+		pv_log(DEBUG, "condition modified");
+		return 0;
 	}
 
-	if (ret)
-		pv_log(WARN, "condition not found in state");
+	pv_log(WARN, "condition not found");
 
-	return ret;
+	return 0;
 }
 
 char* pv_state_get_containers_json(struct pv_state *s)
@@ -956,7 +1048,7 @@ char* pv_state_get_conditions_json(struct pv_state *s)
 {
 	int len = 1, line_len;
 	char *json = calloc(1, len), *line;
-	struct pv_group *g, *tmp;
+	struct pv_condition *c, *tmp;
 
 	// open json
 	json[0]='[';
@@ -964,9 +1056,9 @@ char* pv_state_get_conditions_json(struct pv_state *s)
 	if (dl_list_empty(&s->groups))
 		goto close;
 
-	dl_list_for_each_safe(g, tmp, &s->groups,
-			struct pv_group, list) {
-		line = pv_group_get_json(g);
+	dl_list_for_each_safe(c, tmp, &s->conditions,
+			struct pv_condition, list) {
+		line = pv_condition_get_json(c);
 		line_len = strlen(line) + 1;
 		json = realloc(json, len + line_len + 1);
 		snprintf(&json[len], line_len + 1, "%s,", line);

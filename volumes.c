@@ -163,6 +163,74 @@ struct pv_volume* pv_volume_add_with_disk(struct pv_state *s, char *name, char *
 	return v;
 }
 
+struct pv_volume* pv_volume_add(struct pv_state *s, char *name)
+{
+	return pv_volume_add_with_disk(s, name, NULL);
+}
+
+struct pv_disk* pv_disk_add(struct pv_state *s)
+{
+	struct pv_disk *d = calloc(1, sizeof(struct pv_disk));
+
+	if (d) {
+		dl_list_init(&d->list);
+		dl_list_add_tail(&s->disks, &d->list);
+	}
+
+	return d;
+}
+
+static int pv_volume_mount_handler(struct pv_volume *v, char *action)
+{
+	struct pv_disk *d = v->disk;
+	char *command = NULL;
+	char *crypt_type;
+	int ret;
+	int wstatus;
+
+	switch (d->type) {
+	case DISK_DM_CRYPT_CAAM:
+		crypt_type = "caam";
+		break;
+	case DISK_DM_CRYPT_DCP:
+		crypt_type = "dcp";
+		break;
+	case DISK_DM_CRYPT_VERSATILE:
+		crypt_type = "versatile";
+		break;
+	case DISK_DIR:
+	case DISK_UNKNOWN:
+	default:
+		return -ENOTSUP;
+	}
+
+	command = malloc(sizeof(char) *
+		(strlen("/lib/pv/volmount/crypt %s %s %s %s /volumes/%s/%s %s") +
+		strlen(action) +
+		strlen(crypt_type) +
+		strlen(d->path) +
+		strlen(v->plat->name) +
+		strlen(v->name)) + 1);
+	if (!command)
+		return -ENOMEM;
+
+	sprintf(command, "/lib/pv/volmount/crypt %s %s %s /volumes/%s/%s",
+			  action, crypt_type, d->path, v->plat->name, v->name);
+	pv_log(INFO, "command: %s", command);
+
+	tsh_run(command, 1, &wstatus);
+	if (!WIFEXITED(wstatus))
+		ret = -1;
+	else if (WEXITSTATUS(wstatus) != 0)
+		ret = -1 * WEXITSTATUS(wstatus);
+	else
+		ret = 0;
+
+	if (command)
+		free(command);
+
+	return ret;
+}
 int pv_volume_mount(struct pv_volume *v)
 {
 	int ret = -1;
@@ -183,7 +251,7 @@ int pv_volume_mount(struct pv_volume *v)
 	SNPRINTF_WTRUNC(base, sizeof (base), "%s/disks", pv_config_get_storage_mntpoint());
 
 	if (v->disk && !v->disk->def)
-		return pv_volumes_mount_handler(pv, v, "mount");
+		return pv_volume_mount_handler(v, "mount");
 
 	handlercut = strchr(v->name, ':');
 	if (handlercut) {
@@ -311,6 +379,8 @@ int pv_volume_unmount(struct pv_volume *v)
 {
 	int ret = 0;
 
+	pv_log(DEBUG, "unmounting %s", v->dest);
+
 	if (v->umount_cmd != NULL) {
 		int wstatus;
 		tsh_run(v->umount_cmd, 1, &wstatus);
@@ -327,9 +397,9 @@ int pv_volume_unmount(struct pv_volume *v)
 	}
 
 	if (ret < 0)
-		pv_log(ERROR, "error umounting volumes")
+		pv_log(ERROR, "error unmounting volume")
 	else
-		pv_log(DEBUG, "unmounted '%s' successfully", v->dest);
+		pv_log(DEBUG, "unmounted successfully", v->dest);
 
 	return ret;
 }

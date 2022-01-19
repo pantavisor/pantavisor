@@ -171,8 +171,6 @@ int unmount_loop(char *dest, int loop_fd, int file_fd)
 	if (ret < 0)
 		goto out;
 
-	pv_log(DEBUG, "umounted '%s' volume", dest);
-
 out:
 	return ret;
 }

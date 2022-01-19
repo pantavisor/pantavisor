@@ -33,28 +33,29 @@ struct pv_group* pv_group_new(char *name)
 	struct pv_group *g;
 
 	g = calloc(1, sizeof(struct pv_group));
-
-	g->name = strdup(name);
-	dl_list_init(&g->conditions);
+	if (g) {
+		g->name = strdup(name);
+		dl_list_init(&g->condition_refs);
+	}
 
 	return g;
 }
 
-static void pv_group_empty_conditions(struct pv_group *g)
+static void pv_group_empty_condition_refs(struct pv_group *g)
 {
 	int num_conditions = 0;
-	struct pv_condition *c, *tmp;
-	struct dl_list *conditions = &g->conditions;
+	struct pv_condition_ref *cr, *tmp;
+	struct dl_list *condition_refs = &g->condition_refs;
 
-	// Iterate over all conditions from group
-	dl_list_for_each_safe(c, tmp, conditions,
-		struct pv_condition, list) {
-		dl_list_del(&c->list);
-		pv_condition_free(c);
+	// Iterate over all condition references from group
+	dl_list_for_each_safe(cr, tmp, condition_refs,
+			struct pv_condition_ref, list) {
+		dl_list_del(&cr->list);
+		pv_condition_ref_free(cr);
 		num_conditions++;
 	}
 
-	pv_log(INFO, "removed %g conditions", num_conditions);
+	pv_log(INFO, "removed %g condition references", num_conditions);
 }
 
 void pv_group_free(struct pv_group *g)
@@ -63,80 +64,19 @@ void pv_group_free(struct pv_group *g)
 
 	if (g->name)
 		free(g->name);
-	pv_group_empty_conditions(g);
+	pv_group_empty_condition_refs(g);
 	free(g);
 }
 
-void pv_group_add_condition(struct pv_group *g, struct pv_condition *c)
+void pv_group_add_condition_ref(struct pv_group *g, struct pv_condition *c)
 {
-	pv_log(DEBUG, "adding condition %s to group", c->key);
+	struct pv_condition_ref *cr;
 
-	dl_list_init(&c->list);
-	dl_list_add_tail(&g->conditions, &c->list);
-}
+	pv_log(DEBUG, "adding condition reference %s to group", c->key);
 
-int pv_group_report_condition(struct pv_group *g, char *plat, char *key, char *value)
-{
-	int ret = -1;
-	struct pv_condition *c, *tmp;
-
-	dl_list_for_each_safe(c, tmp, &g->conditions,
-			struct pv_condition, list) {
-		if (!pv_condition_report(c, plat, key, value))
-			ret = 0;
+	cr = pv_condition_ref_new(c);
+	if (cr) {
+		dl_list_init(&cr->list);
+		dl_list_add_tail(&g->condition_refs, &cr->list);
 	}
-
-	return ret;
-}
-
-bool pv_group_check_conditions(struct pv_group *g)
-{
-	bool ret = true;
-	struct pv_condition *c, *tmp;
-
-	dl_list_for_each_safe(c, tmp, &g->conditions,
-			struct pv_condition, list) {
-		if (!pv_condition_check(c))
-			ret = false;
-	}
-
-	return ret;
-}
-
-char* pv_group_get_json(struct pv_group *g)
-{
-	int len, line_len;
-	char *json, *line;
-	struct pv_condition *c, *tmp;
-
-	// open json
-	len = strlen(g->name) + strlen("{\"name\":\"\",\"conditions\":[");
-	json = calloc(1, (len + 1) * sizeof(char*));
-	snprintf(json, len + 1, "{\"name\":\"%s\",\"conditions\":[", g->name);
-
-	if (dl_list_empty(&g->conditions))
-		goto close;
-
-	dl_list_for_each_safe(c, tmp, &g->conditions,
-			struct pv_condition, list) {
-		line = pv_condition_get_json(c);
-		line_len = strlen(line) + 1;
-		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
-		len += line_len;
-		free(line);
-	}
-
-	// remove ,
-	len -= 1;
-
-close:
-	// close json
-	len += 3;
-	json = realloc(json, len);
-	json[len-3] = ']';
-	json[len-2] = '}';
-	json[len-1] = '\0';
-
-	return json;
 }

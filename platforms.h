@@ -27,6 +27,7 @@
 #include <sys/types.h>
 
 #include "pantavisor.h"
+#include "condition.h"
 #include "utils/list.h"
 
 typedef enum {
@@ -52,6 +53,7 @@ struct pv_platform {
 	struct pv_group *group;
 	bool mgmt;
 	bool updated;
+	struct dl_list condition_refs; // pv_condition_ref
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*
@@ -62,11 +64,14 @@ struct pv_platform {
 
 void pv_platform_free(struct pv_platform *p);
 
+void pv_platform_add_condition(struct pv_platform *g, struct pv_condition *c);
+
 int pv_platform_start(struct pv_platform *p);
 int pv_platform_stop(struct pv_platform *p);
 void pv_platform_force_stop(struct pv_platform *p);
 
 int pv_platform_check_running(struct pv_platform *p);
+bool pv_platform_check_conditions(struct pv_platform *p);
 
 void pv_platform_set_ready(struct pv_platform *p);
 void pv_platform_set_blocked(struct pv_platform *p);

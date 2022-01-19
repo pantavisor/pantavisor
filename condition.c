@@ -29,16 +29,16 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-struct pv_condition* pv_condition_new(char *plat, char *key, char *eval_value)
+struct pv_condition* pv_condition_new(char *key, char *eval_value)
 {
 	struct pv_condition *c;
 
 	c = calloc(1, sizeof(struct pv_condition));
-
-	c->plat = strdup(plat);
-	c->key = strdup(key);
-	c->eval_value = strdup(eval_value);
-	c->curr_value = strdup("");
+	if (c) {
+		c->key = strdup(key);
+		c->eval_value = strdup(eval_value);
+		c->curr_value = strdup("");
+	}
 
 	return c;
 }
@@ -47,8 +47,6 @@ void pv_condition_free(struct pv_condition *c)
 {
 	pv_log(DEBUG, "removing condition %s", c->key);
 
-	if (c->plat)
-		free(c->plat);
 	if (c->key)
 		free(c->key);
 	if (c->eval_value)
@@ -58,20 +56,11 @@ void pv_condition_free(struct pv_condition *c)
 	free(c);
 }
 
-int pv_condition_report(struct pv_condition *c, char *plat, char *key, char *curr_value)
+void pv_condition_set_value(struct pv_condition *c, char *curr_value)
 {
-	if (pv_str_matches(c->plat, strlen(c->plat), plat, strlen(plat)) &&
-		pv_str_matches(c->key, strlen(c->key), key, strlen(key))) {
-		pv_log(DEBUG, "condition value updated");
-
-		if (c->curr_value)
-			free(c->curr_value);
-		c->curr_value = strdup(curr_value);
-
-		return 0;
-	}
-
-	return -1;
+	if (c->curr_value)
+		free(c->curr_value);
+	c->curr_value = strdup(curr_value);
 }
 
 bool pv_condition_check(struct pv_condition *c)
@@ -87,14 +76,30 @@ char *pv_condition_get_json(struct pv_condition *c)
 	int len;
 	char *json;
 
-	len = strlen(c->plat) +
-		strlen(c->key) +
+	len = strlen(c->key) +
 		strlen(c->eval_value) +
 		strlen(c->curr_value) +
-		strlen("{\"plat\":\"\",\"key\":\"\",\"eval_value\":\"\",\"curr_value\":\"\"}");
+		strlen("{\"key\":\"\",\"eval_value\":\"\",\"curr_value\":\"\"}");
 	json = calloc(1, (len + 1) * sizeof(char*));
-	snprintf(json, len + 1, "{\"plat\":\"%s\",\"key\":\"%s\",\"eval_value\":\"%s\",\"curr_value\":\"%s\"}",
-		c->plat, c->key, c->eval_value, c->curr_value);
+	snprintf(json, len + 1, "{\"key\":\"%s\",\"eval_value\":\"%s\",\"curr_value\":\"%s\"}",
+		c->key, c->eval_value, c->curr_value);
 
 	return json;
+}
+
+struct pv_condition_ref* pv_condition_ref_new(struct pv_condition *c)
+{
+	struct pv_condition_ref *cr;
+
+	cr = calloc(1, sizeof(struct pv_condition_ref));
+	if (cr) {
+		cr->ref = c;
+	}
+
+	return cr;
+}
+
+void pv_condition_ref_free(struct pv_condition_ref *cr)
+{
+	free(cr);
 }

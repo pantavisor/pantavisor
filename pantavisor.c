@@ -173,7 +173,8 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 
 	if (pv_do_execute_init())
 		return PV_STATE_EXIT;
-        return PV_STATE_RUN;
+
+    return PV_STATE_RUN;
 }
 
 static pv_state_t _pv_run(struct pantavisor *pv)
@@ -453,9 +454,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			}
 		}
 		tstate = timer_current_state(&t);
-		if (tstate.fin) {
+		if (tstate.fin)
 			pv_log(DEBUG, "network operations are taking %d seconds!",  5 + tstate.sec);
-		}
 	} else {
 		// process ongoing updates, if any
 		next_state = pv_wait_update();
