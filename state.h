@@ -52,6 +52,7 @@ struct pv_state {
 	struct pv_bsp bsp;
 	struct dl_list platforms; // pv_platform
 	struct dl_list volumes; // pv_volume
+	struct dl_list disks; // pv_disks
 	struct dl_list addons; // pv_addon
 	struct dl_list objects; //pv_object
 	struct dl_list jsons; //pv_json
