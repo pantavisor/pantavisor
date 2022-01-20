@@ -43,6 +43,7 @@
 #include "network.h"
 #include "init.h"
 #include "metadata.h"
+#include "utils/str.h"
 
 #define MODULE_NAME		"network"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -73,6 +74,7 @@ void pv_network_update_meta(struct pantavisor *pv)
 {
 	struct ifaddrs *ifaddr, *ifa;
 	int family, s, n, len, ilen = 0;
+	int size;
 	char host[NI_MAXHOST], ifn[IFNAMSIZ+5], iff[IFNAMSIZ+5];
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
@@ -98,30 +100,33 @@ void pv_network_update_meta(struct pantavisor *pv)
 			host, NI_MAXHOST,
 			NULL, 0, NI_NUMERICHOST);
 
-		sprintf(iff, "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+		SNPRINTF_WTRUNC(iff, sizeof (iff), "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
 		if (!strcmp(ifn, iff)) {
 			ilen += strlen(host) + 4;
 			ifaddrs = realloc(ifaddrs, ilen);
 			t = strdup(ifaddrs);
-			sprintf(ifaddrs, "%s,\"%s\"", t, host);
+			SNPRINTF_WTRUNC(ifaddrs, ilen, "%s,\"%s\"", t, host);
 			free(t);
 		} else {
-			sprintf(ifn, "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+			SNPRINTF_WTRUNC(ifn, sizeof (ifn), "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
 			ilen = 0;
 			ilen += strlen(host) + 4;
 			ifaddrs = realloc(ifaddrs, ilen);
-			sprintf(ifaddrs, "\"%s\"", host);
+			SNPRINTF_WTRUNC(ifaddrs, ilen, "\"%s\"", host);
 		}
 		if (ifa->ifa_next != NULL) {
-			sprintf(iff, "%s.%s", ifa->ifa_next->ifa_name,
-				ifa->ifa_next->ifa_addr->sa_family == AF_INET ? "ipv4" : "ipv6");
-			if (!strcmp(ifn, iff))
+			SNPRINTF_WTRUNC(iff, sizeof (iff),
+					"%s.%s", ifa->ifa_next->ifa_name,
+					ifa->ifa_next->ifa_addr->sa_family == AF_INET ? "ip4" : "ipv6");
+
+			if (!strncmp(ifn, iff, sizeof (ifn)))
 				continue;
 		}
 
-		sprintf(ifn, "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
-		buf = calloc(1, sizeof(IFACE_FMT) + strlen(ifn) + strlen(ifaddrs));
-		len += sprintf(buf, IFACE_FMT, ifn, ifaddrs);
+		SNPRINTF_WTRUNC(ifn, sizeof (ifn), "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+		size = sizeof(IFACE_FMT) + strlen(ifn) + strlen(ifaddrs);
+		buf = calloc(sizeof (char), size);
+		len += snprintf(buf, size, IFACE_FMT, ifn, ifaddrs);
 		len++;
 		ifaces = realloc(ifaces, len);
 		strcat(ifaces, buf);

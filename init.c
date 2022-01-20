@@ -48,8 +48,10 @@
 #include "utils/tsh.h"
 #include "utils/math.h"
 #include "utils/list.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 
-#define MODULE_NAME			"updater"
+#define MODULE_NAME		"init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
@@ -64,13 +66,12 @@ pid_t shell_pid;
 static int mkcgroup(const char* cgroup) {
 	char path[PATH_MAX];
 	int ret;
-	sprintf(path, "/sys/fs/cgroup/%s", cgroup);
+	SNPRINTF_WTRUNC(path, sizeof (path), "/sys/fs/cgroup/%s", cgroup);
+
 	mkdir(path, 0555);
 	ret = mount("cgroup", path, "cgroup", 0, cgroup);
 	if (ret < 0) {
-		char *err = malloc(sizeof(char) * (strlen(path) + strlen("Could not mount cgroup %s") + 2));
-		sprintf(err, "Could not mount cgroup %s", path);
-		printf("ERROR: %s\n", err);
+		printf("ERROR: Could not mount cgroup %s\n", path);
 		return -1;
 	}
 	return 0;
@@ -203,7 +204,7 @@ static void early_spawns()
 			continue;
 
 
-		sprintf(buf, "%s/%s", HOOKS_EARLY_SPAWN, dir->d_name);
+		SNPRINTF_WTRUNC(buf, sizeof (buf), "%s/%s", HOOKS_EARLY_SPAWN, dir->d_name);
 
 		if (!(stat(buf, &sb) == 0 && sb.st_mode & S_IXUSR)) {
 			printf("early_spawns: skipping not executable hook: %s\n", buf);

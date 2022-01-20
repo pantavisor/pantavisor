@@ -24,9 +24,13 @@
 #define UTILS_FS_H
 
 #include <stdbool.h>
+#include <limits.h>
+#include <sys/stat.h>
+#include "utils/str.h"
 
 bool dir_exist(const char *dir);
 int mkdir_p(char *dir, mode_t mode);
+int mkbasedir_p(char *dir, mode_t mode);
 void syncdir(char *dir);
 int remove_in(char *path, char *dirname);
 int remove_at(char *path, char *filename);

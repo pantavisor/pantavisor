@@ -35,6 +35,7 @@
 
 #include "bootloader.h"
 #include "init.h"
+#include "utils/str.h"
 
 #define MODULE_NAME			"bootloader"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -86,9 +87,9 @@ static int pv_bootloader_set_rev(char *rev)
 		return -1;
 
 	pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, len * sizeof(char*));
-	snprintf(pv_bootloader.pv_rev, len, "%s", rev);
+	SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s", rev);
 	pv_bootloader.pv_done = realloc(pv_bootloader.pv_done, len * sizeof(char*));
-	snprintf(pv_bootloader.pv_done, len, "%s", rev);
+	SNPRINTF_WTRUNC(pv_bootloader.pv_done, len, "%s", rev);
 	return ops->set_env_key("pv_rev", rev);
 }
 
@@ -100,7 +101,7 @@ static int pv_bootloader_set_try(char *rev)
 		return -1;
 
 	pv_bootloader.pv_try = realloc(pv_bootloader.pv_try, len * sizeof(char*));
-	snprintf(pv_bootloader.pv_try, len, "%s", rev);
+	SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s", rev);
 	return ops->set_env_key("pv_try", rev);
 }
 
@@ -201,7 +202,7 @@ static int pv_bl_early_init(struct pv_init *this)
 	// initialize to factory revision
 	len = strlen("0") + 1;
 	pv_bootloader.pv_rev = calloc(1, len);
-	snprintf(pv_bootloader.pv_rev, len, "0");
+	SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "0");
 	pv_bootloader.pv_try = NULL;
 	pv_bootloader.pv_done = strdup(pv_bootloader.pv_rev);
 
@@ -225,11 +226,11 @@ static int pv_bl_early_init(struct pv_init *this)
 		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
 			len = strlen(token + CMDLINE_OFFSET) + 1;
 			pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, len * sizeof(char*));
-			snprintf(pv_bootloader.pv_rev, len, "%s", token + CMDLINE_OFFSET);
+			SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s", token + CMDLINE_OFFSET);
 		} else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0) {
 			len = strlen(token + CMDLINE_OFFSET) + 1;
 			pv_bootloader.pv_try = realloc(pv_bootloader.pv_try, len * sizeof(char*));
-			snprintf(pv_bootloader.pv_try, len, "%s", token + CMDLINE_OFFSET);
+			SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s", token + CMDLINE_OFFSET);
 		}
 		token = strtok(NULL, " ");
 	}

@@ -34,6 +34,8 @@
 #include <mtd/mtd-user.h>
 
 #include "bootloader.h"
+#include "utils/str.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME			"uboot"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -53,7 +55,7 @@ static int uboot_init()
 {
 	int fd, ret;
 	struct stat st;
-	char buf[4096];
+	char buf[PATH_MAX];
 	char *next;
 
 	// already init'd?
@@ -61,7 +63,7 @@ static int uboot_init()
 		return 0;
 
 	// setup uboot.txt location
-	sprintf(buf, "%s/boot/uboot.txt", pv_config_get_storage_mntpoint());
+	SNPRINTF_WTRUNC(buf, sizeof (buf), "%s/boot/uboot.txt", pv_config_get_storage_mntpoint());
 	uboot_txt = strdup(buf);
 
 	pv_log(DEBUG, "uboot.txt@%s", uboot_txt);
@@ -111,7 +113,7 @@ static int uboot_init()
 		if (!strcmp(name, mtd_env_str)) {
 			int idx = -1;
 			sscanf(next, "mtd%d:", &idx);
-			sprintf(buf, "/dev/mtd%d", idx);
+			SNPRINTF_WTRUNC(buf, sizeof (buf), "/dev/mtd%d", idx);
 			pv_env = strdup(buf);
 			break;
 		}
@@ -288,7 +290,8 @@ static int uboot_set_env_key(char *key, char *value)
 		len = 0;
 	}
 
-	sprintf(v, "%s=%s\0", key, value);
+	SNPRINTF_WTRUNC(v, sizeof (v), "%s=%s\0", key, value);
+
 	memcpy(d, v, strlen(v)+1);
 	d += strlen(v)+1;
 

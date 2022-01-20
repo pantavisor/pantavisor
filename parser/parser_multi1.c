@@ -42,6 +42,7 @@
 #include "parser.h"
 #include "state.h"
 #include "json.h"
+#include "utils/str.h"
 
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
@@ -293,12 +294,12 @@ struct pv_state* multi1_parse(struct pv_state *this, const char *buf)
 
 		// copy key
 		key = malloc(n+1);
-		snprintf(key, n+1, "%s", buf+(*k)->start);
+		SNPRINTF_WTRUNC(key, n+1, "%s", buf+(*k)->start);
 
 		// copy value
 		n = (*k+1)->end - (*k+1)->start;
 		value = malloc(n+1);
-		snprintf(value, n+1, "%s", buf+(*k+1)->start);
+		SNPRINTF_WTRUNC(value, n+1, "%s", buf+(*k+1)->start);
 
 		// check extension in case of file (json=platform, other=file)
 		ext = strrchr(key, '.');

@@ -59,6 +59,8 @@
 #include "ph_logger/ph_logger.h"
 #include "parser/parser.h"
 #include "utils/timer.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 
 #define MODULE_NAME             "controller"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -778,7 +780,8 @@ void pv_init()
 	struct pantavisor *pv;
 
 	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
-	sprintf(pv_user_agent, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
+	SNPRINTF_WTRUNC(pv_user_agent, sizeof (pv_user_agent), PV_USER_AGENT_FMT,
+			pv_build_arch, pv_build_version, pv_build_date);
 
 	prctl(PR_SET_NAME, "pantavisor");
 	pv = calloc(1, sizeof(struct pantavisor));

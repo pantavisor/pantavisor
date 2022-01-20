@@ -34,6 +34,8 @@
 #include "trestclient.h"
 #include "pantahub.h"
 #include "utils/tsh.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 
 #define MODULE_NAME             "client"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -70,8 +72,9 @@ static struct trest_response* external_login_handler (trest_ptr self, void* data
 
 	pv_log(INFO, "external login handler called for creds type '%s'", pv_config_get_creds_type());
 
-	sprintf(loginhandler_cmd, PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
-		pv_config_get_creds_type());
+	SNPRINTF_WTRUNC(loginhandler_cmd, sizeof (loginhandler_cmd),
+			PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
+			pv_config_get_creds_type());
 
 	rv = pipe(fd_outerr);
 	if (rv < 0) {
@@ -168,8 +171,9 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		int rv;
 
 		// if no executable handler is found; fall back to builtin
-		sprintf(cmd, PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
-			pv_config_get_creds_type());
+		SNPRINTF_WTRUNC(cmd, sizeof (cmd),
+				PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT, pv_config_get_creds_type());
+
 		rv = stat(cmd, &sb);
 		if (rv) {
 			pv_log(ERROR, "unable to stat trest client for cmd %s: %s", cmd, strerror(errno));

@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <string.h>
 #include <time.h>
+#include <stdbool.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -66,26 +67,52 @@ static struct level_name level_names[] = {
 	LEVEL_NAME(DEBUG)
 };
 
-static char *log_dir = 0;
+static char log_dir[PATH_MAX];
+static char log_path[PATH_MAX];
 static pid_t log_init_pid = -1;
 
 static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
 
-
+static int logging_initialized = 0;
 
 static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	struct stat log_stat;
-	char log_path [128];
 	int log_fd = -1;
 	int max_gzip = 3;
 	// hold 2MiB max of log entries in open file
 	//Check on disk file size.
 
-	if (!log_dir)
+	if (!logging_initialized) {
+		// construct string because we cannot lock stdout
+		size_t size = snprintf(NULL, 0,
+				"[pantavisor] %ld %s\t -- [%s]: ",
+				time(NULL), level_names[level].name, module);
+				+ snprintf(NULL, 0, fmt, args);
+		char *buf = calloc(sizeof (char), size);
+		if (!buf) {
+			// Fall back to multiple printfs instead of printing once
+			// Ouptu may get split up by other processes.
+			printf("[pantavisor] %ld %s\t -- [%s]: ",
+					time(NULL), level_names[level].name, module);
+			printf(fmt, args);
+			printf("\n");
+		} else {
+			int offs = 0;
+			snprintf(buf + offs, size - offs,
+				"[pantavisor] %ld %s\t -- [%s]: ",
+				time(NULL), level_names[level].name, module);
+			offs += snprintf(buf + offs, size - offs, fmt, args);
+			offs += snprintf(buf + offs, size - offs, fmt, args);
+			printf("%s\n", buf);
+
+			free(buf);
+		}
+
 		return;
-	snprintf(log_path, sizeof(log_path), "%s/%s",log_dir, LOG_NAME);
+	}
+
 	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
 
 	if (log_fd >= 0) {
@@ -107,12 +134,16 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 			int err_fd = -1;
 
 
-			snprintf(err_file, PATH_MAX, "%s/%s", log_dir, ERROR_DIR);
+			if (PATH_MAX <= snprintf(err_file, sizeof(err_file), "%s/%s",
+									log_dir, ERROR_DIR))
+				printf("WARNING: Path err_file truncated to %s\n", err_file);
+
 			mkdir_p(err_file, 0755);
 			len = strlen(err_file);
-			snprintf(err_file + len, PATH_MAX - len, "/%d.error",getpid());
+			if (PATH_MAX - len <= snprintf(err_file + len, PATH_MAX - len, "/%d.error",getpid()))
+				printf("WARNING: Path err_file truncated to %s\n", err_file);
 
-			err_fd = open(err_file, 
+			err_fd = open(err_file,
 					O_EXCL|O_RDWR|O_CREAT|O_APPEND|O_SYNC, 0644);
 			if (err_fd >= 0) {
 				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
@@ -137,8 +168,9 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 				struct stat stat_gz;
 				char gzip_path[PATH_MAX];
 
-				snprintf(gzip_path, sizeof(gzip_path),
-						"%s.%d.gzip", log_path, (i+1));
+				if (PATH_MAX <= snprintf(gzip_path, sizeof(gzip_path),
+						                 "%s.%d.gzip", log_path, (i+1)))
+					printf("WARNING: Path gzip_path truncated to %s\n", gzip_path);
 				if (stat(gzip_path, &stat_gz))
 					pv_file_gzip_file(log_path, gzip_path);
 			}
@@ -171,16 +203,12 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 
 static int pv_log_set_log_dir(const char *rev)
 {
-	if (!log_dir)
-		log_dir = calloc(1, 128);
+	if (PATH_MAX <= snprintf(log_dir, PATH_MAX, "/pv/logs/%s/pantavisor", rev))
+		printf("WARNING: Path log_dir truncated to %s!\n", log_dir);
 
-	if (!log_dir) {
-		printf("Couldn't reserve space for log directory\n");
-		printf("Pantavisor logs won't be available\n");
-		return -1;
-	}
+	if (PATH_MAX <= snprintf(log_path, sizeof(log_path), "%s/%s", log_dir, LOG_NAME))
+		printf("WARNING: Path log_path truncated to %s!\n", log_path);
 
-	snprintf(log_dir, PATH_MAX, "/pv/logs/%s/pantavisor", rev);
 	if (mkdir_p(log_dir, 0755)) {
 		printf("Couldn't make dir %s,"
 			"pantavisor logs won't be available\n", log_dir);
@@ -202,6 +230,7 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 		return;
 
 	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize());
+	logging_initialized = 1;
 
 	// enable libthttp debug logs
 	pv_log(DEBUG, "Initialized pantavisor logs...");
@@ -245,7 +274,7 @@ void __log(char *module, int level, const char *fmt, ...)
 
 	__vlog(module, level, fmt, args);
 
-	va_end(args); 
+	va_end(args);
 }
 
 const char *pv_log_level_name(int level)

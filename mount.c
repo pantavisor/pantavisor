@@ -34,6 +34,7 @@
 #include "utils/fs.h"
 #include "loop.h"
 #include "blkid.h"
+#include "utils/str.h"
 
 #define MODULE_NAME		"mount-init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -100,8 +101,9 @@ static int pv_mount_init(struct pv_init *this)
 
 	// attempt auto resize only if we have ext4
 	if (!strcmp(pv_config_get_storage_fstype(), "ext4")) {
-		char *run = malloc(sizeof(char) * (strlen("/lib/pv/pv_e2fsgrow") + strlen(dev_info.device) + 3));
-		sprintf(run, "/lib/pv/pv_e2fsgrow %s", dev_info.device);
+		size_t run_size = strlen("/lib/pv/pv_e2fsgrow") + strlen(dev_info.device) + 3;
+		char *run = malloc(sizeof(char) * run_size);
+		SNPRINTF_WTRUNC(run, run_size, "/lib/pv/pv_e2fsgrow %s", dev_info.device);
 		tsh_run(run, 1, NULL);
 		free(run);
 	}
@@ -112,15 +114,16 @@ static int pv_mount_init(struct pv_init *this)
 			goto out;
 	} else {
 		int status;
-		char *mntcmd = calloc(sizeof(char), strlen("/btools/pvmnt.%s %s") +
+		size_t mntcmd_size = strlen("/btools/pvmnt.%s %s") +
 						strlen (pv_config_get_storage_mnttype()) +
-						strlen (pv_config_get_storage_mntpoint()) + 1);
+						strlen (pv_config_get_storage_mntpoint()) + 1;
+		char *mntcmd = calloc(sizeof(char), mntcmd_size);
 
 		if (!mntcmd) {
 			printf("Couldn't allocate mount command \n");
 			goto out;
 		}
-		sprintf(mntcmd, "/btools/pvmnt.%s %s", pv_config_get_storage_mnttype(), pv_config_get_storage_mntpoint());
+		SNPRINTF_WTRUNC(mntcmd, mntcmd_size, "/btools/pvmnt.%s %s", pv_config_get_storage_mnttype(), pv_config_get_storage_mntpoint());
 		printf("Mounting through helper: %s\n", mntcmd);
 		ret = tsh_run(mntcmd, 1, &status);
 		free(mntcmd);
@@ -128,11 +131,12 @@ static int pv_mount_init(struct pv_init *this)
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
 
 	if (pv_config_get_storage_logtempsize()) {
-		char *logmount = malloc(sizeof(char) * (strlen(pv_config_get_storage_mntpoint()) + strlen("/logs  ")));
-		char *opts = NULL;
-		opts = malloc(sizeof(char) * (strlen(pv_config_get_storage_logtempsize()) + strlen("size=%s") + 1));
-		sprintf(opts, "size=%s", pv_config_get_storage_logtempsize());
-		sprintf(logmount, "%s%s", pv_config_get_storage_mntpoint(), "/logs");
+		size_t logmount_size = strlen(pv_config_get_storage_mntpoint()) + strlen("/logs  ");
+		char *logmount = malloc(sizeof(char) * logmount_size);
+		size_t opts_size = strlen(pv_config_get_storage_logtempsize()) + strlen("size=%s") + 1;
+		char *opts = malloc(sizeof(char) * opts_size);
+		SNPRINTF_WTRUNC(opts, opts_size, "size=%s", pv_config_get_storage_logtempsize());
+		SNPRINTF_WTRUNC(logmount, logmount_size, "%s%s", pv_config_get_storage_mntpoint(), "/logs");
 		mkdir_p(logmount, 0755);
 		printf("Mounting tmpfs logmount: %s with opts: %s\n", logmount, opts);
 		ret = mount("none", logmount, "tmpfs", 0, opts);

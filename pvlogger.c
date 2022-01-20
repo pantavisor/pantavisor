@@ -37,6 +37,8 @@
 #include "pvctl_utils.h"
 #include "json.h"
 #include "file.h"
+#include "utils/str.h"
+#include "utils/math.h"
 
 #define MODULE_NAME             "pvlogger"
 #include "log.h"
@@ -85,15 +87,15 @@ static void pv_log(int level, char *msg, ...)
 				pv_logger_get_logfile(pv_log_info), to_write);
 
 		if (!pv_log_info->islxc) {
-			int ret = pvctl_write(__buffer, 
+			int ret = pvctl_write(__buffer,
 					ph_logger_msg->len + sizeof(struct ph_logger_msg));
 			if (ret < 0) {
 				printf("Error in pvctl_write"
 						" %d from pvlogger\n", ret);
-			} 
+			}
 
 		} else {
-			int ret = pvctl_write_to_path(LOG_CTRL_PATH, 
+			int ret = pvctl_write_to_path(LOG_CTRL_PATH,
 					__buffer,
 					ph_logger_msg->len + sizeof(struct ph_logger_msg));
 			if (ret < 0) {
@@ -110,14 +112,14 @@ static void pv_log(int level, char *msg, ...)
 
 static int set_logger_xattr(struct log *log)
 {
-	char place_holder[32];
 	off_t pos = ftello(log->backing_file);
+	char place_holder[MAX_DEC_STRING_SIZE_OF_TYPE(pos)];
 	const char *fname = pv_logger_get_logfile(pv_log_info);
 
 	if (pos < 0)
 		return 0;
-	snprintf(place_holder, sizeof(place_holder), "%" PRId64, pos);
-	
+	SNPRINTF_WTRUNC(place_holder, sizeof(place_holder), "%" PRId64, pos);
+
 	return pv_file_set_file_xattr(fname, PV_LOGGER_POS_XATTR, place_holder);
 }
 
@@ -149,15 +151,15 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 		}
 
 		if (to_write > avail_buflen) {
-			snprintf(logger_cmd + logger_pos, avail_buflen + 1, "%.*s",
+			SNPRINTF_WTRUNC(logger_cmd + logger_pos, avail_buflen + 1, "%.*s",
 							avail_buflen, buf);
 			written = avail_buflen;
 		} else {
-			snprintf(logger_cmd + logger_pos, avail_buflen + 1, "%.*s",
+			SNPRINTF_WTRUNC(logger_cmd + logger_pos, avail_buflen + 1, "%.*s",
 							to_write, buf);
 			written = to_write;
 		}
-		
+
 		buf += written;
 		buflen -= written;
 		logger_pos += written;
@@ -168,7 +170,7 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 			/*move past the new line.*/
 			buflen -= 1;
 			pv_log(INFO, "%s", logger_cmd);
-			memset(logger_cmd + PV_LOG_BUF_START_OFFSET, 0, 
+			memset(logger_cmd + PV_LOG_BUF_START_OFFSET, 0,
 					PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
 			logger_pos = PV_LOG_BUF_START_OFFSET;
 		}
@@ -282,7 +284,7 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	/*Can't log it only thing we can do is print it on console*/
 	if (!logger_cmd)
 		return -1;
-	
+
 	pv_log_info = log_info;
 	module_name = strdup(platform);
 	snprintf(pr_name, sizeof(pr_name), "pvlogger-%s", module_name);

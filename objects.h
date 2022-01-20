@@ -26,6 +26,7 @@
 #define RELPATH_FMT	"%s/trails/%s/%s"
 
 #include <stdlib.h>
+#include <limits.h>
 
 #include "pantavisor.h"
 
@@ -33,8 +34,8 @@ struct pv_object {
 	char *name;
 	char *id;
 	char *geturl;
-	char *objpath;
-	char *relpath;
+	char objpath[PATH_MAX];
+	char relpath[PATH_MAX];
 	off_t size;
 	char *sha256;
 	struct pv_platform *plat;

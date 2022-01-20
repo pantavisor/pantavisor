@@ -69,6 +69,22 @@ int mkdir_p(char *dir, mode_t mode)
 	return 0;
 }
 
+int mkbasedir_p(char *dir, mode_t mode)
+{
+	int ret = -1;
+	char *c, *tmp;
+	tmp = strdup(dir);
+	c = strrchr(tmp, '/');
+
+	if (c) {
+		*c = '\0';
+		ret = mkdir_p(tmp, mode);
+	}
+
+	free(tmp);
+	return ret;
+}
+
 void syncdir(char *file)
 {
 	int fd;
@@ -94,7 +110,7 @@ int remove_at(char *path, char *filename)
 {
 	char full_path[PATH_MAX];
 
-	sprintf(full_path, "%s/%s", path, filename);
+	snprintf(full_path, sizeof (full_path), "%s/%s", path, filename);
 	return remove(full_path);
 }
 
@@ -102,9 +118,9 @@ int remove_in(char *path, char *dirname)
 {
 	int n = 0;
 	struct dirent **d;
-	char full_path[512];
+	char full_path[PATH_MAX];
 
-	sprintf(full_path, "%s/%s/", path, dirname);
+	snprintf(full_path, sizeof (full_path), "%s/%s/", path, dirname);
 	n = scandir(full_path, &d, NULL, alphasort);
 
 	if (n < 0) {

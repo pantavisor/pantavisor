@@ -30,6 +30,7 @@
 #include <sys/stat.h>
 
 #include "bootloader.h"
+#include "utils/str.h"
 
 #define MODULE_NAME			"grub"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -50,7 +51,7 @@ static int grub_init()
 	if (grub_env)
 		return 0;
 
-	sprintf(buf, GRUB_FMT, pv_config_get_storage_mntpoint());
+	SNPRINTF_WTRUNC(buf, sizeof (buf), GRUB_FMT, pv_config_get_storage_mntpoint());
 	grub_env  = strdup(buf);
 
 	if (stat(grub_env, &st))
@@ -225,7 +226,7 @@ static int grub_set_env_key(char *key, char *value)
 
 	// convert value
 	char v[128];
-	sprintf(v, "%s=%s\n", key, value);
+	SNPRINTF_WTRUNC(v, sizeof (v), "%s=%s\n", key, value);
 
 	// write new key/value pair to destination
 	memcpy(d, v, strlen(v));

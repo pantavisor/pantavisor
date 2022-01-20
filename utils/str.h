@@ -26,6 +26,13 @@
 #include <string.h>
 #include <stdbool.h>
 
+// offers no return value, but prints to vlog. Requires pvlog.
+#define SNPRINTF_WTRUNC(buf, size, ...) \
+	do { \
+		if ((int) (size) <= snprintf((buf), (size_t) (size), __VA_ARGS__)) { \
+			pv_log(WARN, "String %s truncated to %s", #buf, (buf)); \
+		} \
+	} while (0)
 
 /*
  * This function returns string s1 if string s2 is an empty string, or
@@ -52,6 +59,7 @@
  * change that breaks an assumption made downstream by the original
  * code.
  */
+
 char *pv_str_replace_str(const char *s1, const char *s2, const char *s3);
 char *pv_str_unescape_to_ascii(char *buf, char *code, char c);
 char *pv_str_replace_char(char *str, int len, char which, char what);

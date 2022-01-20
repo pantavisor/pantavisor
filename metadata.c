@@ -41,6 +41,9 @@
 #include "pantahub.h"
 #include "init.h"
 #include "str.h"
+#include "utils/math.h"
+#include "utils/system.h"
+#include "utils/str.h"
 #include "json.h"
 #include "config_parser.h"
 #include "storage.h"
@@ -89,11 +92,11 @@ static int pv_devmeta_read_version(struct pv_devmeta_read
 
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
-	snprintf(buf, buflen,"%s",(char *) pv_build_version);
+	SNPRINTF_WTRUNC(buf, buflen,"%s",(char *) pv_build_version);
 	return 0;
 }
 
-static int pv_devmeta_read_arch(struct pv_devmeta_read 
+static int pv_devmeta_read_arch(struct pv_devmeta_read
 						*pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
@@ -101,7 +104,7 @@ static int pv_devmeta_read_arch(struct pv_devmeta_read
 
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
-	snprintf(buf, buflen, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
+	SNPRINTF_WTRUNC(buf, buflen, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
 	return 0;
 }
 
@@ -147,7 +150,7 @@ static int pv_devmeta_read_revision(struct pv_devmeta_read
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
-	snprintf(buf, buflen, "%s", pv->state->rev);
+	SNPRINTF_WTRUNC(buf, buflen, "%s", pv->state->rev);
 	return 0;
 }
 
@@ -162,9 +165,9 @@ static int pv_devmeta_read_mode(struct pv_devmeta_read
 		return -1;
 
 	if (pv->remote_mode)
-		snprintf(buf, buflen, "remote");
+		SNPRINTF_WTRUNC(buf, buflen, "remote");
 	else
-		snprintf(buf, buflen, "local");
+		SNPRINTF_WTRUNC(buf, buflen, "local");
 	return 0;
 }
 
@@ -179,9 +182,9 @@ static int pv_devmeta_read_online(struct pv_devmeta_read
 		return -1;
 
 	if (pv->online)
-		snprintf(buf, buflen, "1");
+		SNPRINTF_WTRUNC(buf, buflen, "1");
 	else
-		snprintf(buf, buflen, "0");
+		SNPRINTF_WTRUNC(buf, buflen, "0");
 	return 0;
 }
 
@@ -196,9 +199,9 @@ static int pv_devmeta_read_claimed(struct pv_devmeta_read
 		return -1;
 
 	if (pv->unclaimed)
-		snprintf(buf, buflen, "0");
+		SNPRINTF_WTRUNC(buf, buflen, "0");
 	else
-		snprintf(buf, buflen, "1");
+		SNPRINTF_WTRUNC(buf, buflen, "1");
 	return 0;
 }
 
@@ -410,7 +413,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 			break;
 
 		key[n] = 0;
-		snprintf(key, n, "%s", um+(*key_i)->start);
+		SNPRINTF_WTRUNC(key, n, "%s", um+(*key_i)->start);
 
 		// copy value
 		n = (*key_i+1)->end - (*key_i+1)->start + 1;
@@ -419,7 +422,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 			break;
 
 		value[n] = 0;
-		snprintf(value, n, "%s", um+(*key_i+1)->start);
+		SNPRINTF_WTRUNC(value, n, "%s", um+(*key_i+1)->start);
 
 		// add or update metadata
 		// primitives with value 'null' have value NULL
@@ -509,7 +512,7 @@ void pv_metadata_parse_devmeta(const char *buf)
 	if (!metakey)
 		goto out;
 
-	snprintf(metakey, n+1, "%s", buf+(*key)->start);
+	SNPRINTF_WTRUNC(metakey, n+1, "%s", buf+(*key)->start);
 
 	// parse value
 	n = (*key+1)->end - (*key+1)->start;
@@ -517,7 +520,7 @@ void pv_metadata_parse_devmeta(const char *buf)
 	if (!metavalue)
 		goto out;
 
-	snprintf(metavalue, n+1, "%s", buf+(*key+1)->start);
+	SNPRINTF_WTRUNC(metavalue, n+1, "%s", buf+(*key+1)->start);
 
 	pv_metadata_add_devmeta(metakey, metavalue);
 
@@ -612,7 +615,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 					// 1 colon and a ,
 					1 + 1;
 				if (json_avail > frag_len) {
-					snprintf(json + len, json_avail,
+					SNPRINTF_WTRUNC(json + len, json_avail,
 							"\"%s\":\"%s\",",
 							key, val);
 					len += frag_len;
@@ -626,7 +629,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 					// 1 colon and a ,
 					1 + 1;
 				if (json_avail > frag_len) {
-					snprintf(json + len, json_avail,
+					SNPRINTF_WTRUNC(json + len, json_avail,
 							"\"%s\":%s,",
 							info->key, info->value);
 					len += frag_len;
@@ -684,7 +687,7 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 
 	strcpy(file, json_buf->factory_file);
 	fname = basename(file);
-	snprintf(abs_key, sizeof(abs_key), "factory/%s/%s", fname, key);
+	SNPRINTF_WTRUNC(abs_key, sizeof(abs_key), "factory/%s/%s", fname, key);
 	formatted_key = pv_json_format(abs_key, strlen(abs_key));
 	formatted_val = pv_json_format(value, strlen(value));
 
@@ -695,7 +698,7 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 			/* 1 colon and a ,*/
 			1 + 1;
 		if (json_avail > frag_len) {
-			snprintf(json_buf->buf + len, json_avail,
+			SNPRINTF_WTRUNC(json_buf->buf + len, json_avail,
 					"\"%s\":\"%s\",",
 					formatted_key, formatted_val);
 			len += frag_len;
@@ -764,7 +767,7 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 	char factory_dir[128];
 	bool upload_failed = false;
 
-	snprintf(factory_dir, sizeof(factory_dir), "%s/%s",
+	SNPRINTF_WTRUNC(factory_dir, sizeof(factory_dir), "%s/%s",
 			pv_config_get_storage_mntpoint(), "factory/meta");
 	n = scandir(factory_dir, &dirlist, NULL, alphasort);
 	if (n < 0)
@@ -773,7 +776,7 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		struct stat st;
 		n--;
 		if (!upload_failed) {
-			snprintf(abs_path, sizeof(abs_path),
+			SNPRINTF_WTRUNC(abs_path, sizeof(abs_path),
 				"%s/%s", factory_dir, dirlist[n]->d_name);
 			if (!stat(abs_path, &st)) {
 				if ((st.st_mode & S_IFMT) == S_IFREG) {
@@ -795,7 +798,9 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		/*
 		 * reusing abs_path
 		 */
-		snprintf(abs_path, sizeof(abs_path), "%s/trails/0/.pv/factory-meta.done", pv_config_get_storage_mntpoint());
+		SNPRINTF_WTRUNC(abs_path, sizeof(abs_path),
+				"%s/trails/0/.pv/factory-meta.done",
+				pv_config_get_storage_mntpoint());
 		fd = open(abs_path, O_CREAT | O_SYNC);
 		if (fd < 0)
 			pv_log(ERROR, "Unable to open file %s", abs_path);
@@ -856,7 +861,7 @@ static void pv_metadata_load_usermeta()
 			continue;
 
 		len = strlen(PATH_USERMETA_KEY) + strlen(curr->path) + 1;
-		snprintf(path, len, PATH_USERMETA_KEY, curr->path);
+		SNPRINTF_WTRUNC(path, len, PATH_USERMETA_KEY, curr->path);
 		value = pv_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
 			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
@@ -901,7 +906,8 @@ bool pv_metadata_factory_meta_done(struct pantavisor *pv)
 	 */
 	if (strncmp(pv->state->rev, "0", strlen(pv->state->rev) + 1))
 		return true;
-	snprintf(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done", pv_config_get_storage_mntpoint());
+	SNPRINTF_WTRUNC(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done",
+			pv_config_get_storage_mntpoint());
 
 	if (stat(path, &st))
 		return false;
@@ -935,13 +941,15 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 				continue;
 			line_len = strlen(curr->key) + strlen(escaped) + 6;
 			json = realloc(json, len + line_len + 1);
-			snprintf(&json[len], line_len + 1, "\"%s\":\"%s\",", curr->key, escaped);
+			SNPRINTF_WTRUNC(&json[len], line_len + 1, "\"%s\":\"%s\",",
+					curr->key, escaped);
 			free(escaped);
 		} else {
 			// value is a json
 			line_len = strlen(curr->key) + strlen(curr->value) + 4;
 			json = realloc(json, len + line_len + 1);
-			snprintf(&json[len], line_len + 1, "\"%s\":%s,", curr->key, curr->value);
+			SNPRINTF_WTRUNC(&json[len], line_len + 1, "\"%s\":%s,",
+					curr->key, curr->value);
 		}
 		len += line_len;
 	}

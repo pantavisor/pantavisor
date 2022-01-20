@@ -41,6 +41,7 @@
 #include "storage.h"
 #include "utils/tsh.h"
 #include "utils/math.h"
+#include "utils/str.h"
 
 #define MODULE_NAME             "state"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -54,7 +55,7 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 	s = calloc(1, sizeof(struct pv_state));
 	if (s) {
 		s->rev = calloc(1, len * sizeof(char*));
-		snprintf(s->rev, len, "%s", rev);
+		SNPRINTF_WTRUNC(s->rev, len, "%s", rev);
 		s->spec = spec;
 		dl_list_init(&s->platforms);
 		dl_list_init(&s->volumes);
@@ -299,7 +300,7 @@ void pv_state_transfer(struct pv_state *in, struct pv_state *out)
 	pv_state_transfer_platforms(in, out);
 
 	out->rev = realloc(out->rev, len);
-	snprintf(out->rev, len, "%s", in->rev);
+	SNPRINTF_WTRUNC(out->rev, len, "%s", in->rev);
 
 	pv_state_print(out);
 }
@@ -454,7 +455,7 @@ static char* _pv_state_get_novalidate_list(char *rev)
 			continue;
 
 		char _hdl_path [PATH_MAX];
-		snprintf(_hdl_path, ARRAY_LEN(_hdl_path), _path_fmt, dp->d_name);
+		SNPRINTF_WTRUNC(_hdl_path, ARRAY_LEN(_hdl_path), _path_fmt, dp->d_name);
 		if(stat (_hdl_path, &st)) {
 			pv_log(WARN, "illegal handler file %s, error=%s", _hdl_path, strerror(errno));
 			goto out;
