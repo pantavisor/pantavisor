@@ -46,6 +46,7 @@
 #include "platforms.h"
 #include "volumes.h"
 #include "state.h"
+#include "paths.h"
 #include "utils/tsh.h"
 #include "utils/math.h"
 #include "utils/list.h"
@@ -161,7 +162,7 @@ static int early_mounts()
 static void debug_telnet()
 {
 	tsh_run("ifconfig lo up", 0, NULL);
-	tsh_run("dropbear -p 0.0.0.0:8222 -n /pv/user-meta/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd", 0, NULL);
+	tsh_run("dropbear -p 0.0.0.0:8222 -n "PV_USER_META_PATH"/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd", 0, NULL);
 }
 #else
 static void debug_telnet()

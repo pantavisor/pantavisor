@@ -50,6 +50,7 @@
 #include "version.h"
 #include "ph_logger/ph_logger.h"
 #include "buffer.h"
+#include "paths.h"
 
 #define MODULE_NAME		"log"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -149,7 +150,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 					O_EXCL|O_RDWR|O_CREAT|O_APPEND|O_SYNC, 0644);
 			if (err_fd >= 0) {
 				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
-				dprintf(err_fd, "process %s couldn't acquire pantavisor.log lock\n", proc_name);
+				dprintf(err_fd, "process %s couldn't acquire "LOG_NAME" lock\n", proc_name);
 				dprintf(err_fd, "error code %d: %s\n", errno, strerror(lock_file_errno));
 				dprintf(err_fd, "[pantavisor] %s\t -- ", level_names[level].name);
 				dprintf(err_fd, "[%s]: ", module);
@@ -205,7 +206,7 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 
 static int pv_log_set_log_dir(const char *rev)
 {
-	if (PATH_MAX <= snprintf(log_dir, PATH_MAX, "/pv/logs/%s/pantavisor", rev))
+	if (PATH_MAX <= snprintf(log_dir, PATH_MAX, PV_LOGS_PATH"/%s/pantavisor", rev))
 		printf("WARNING: Path log_dir truncated to %s!\n", log_dir);
 
 	if (PATH_MAX <= snprintf(log_path, sizeof(log_path), "%s/%s", log_dir, LOG_NAME))
@@ -225,8 +226,8 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 	log_init_pid = getpid();
 	global_pv = pv;
 
-	mkdir_p("/pv/logs", 0755);
-	mount_bind(pv_config_get_log_logdir(), "/pv/logs");
+	mkdir_p(PV_LOGS_PATH, 0755);
+	mount_bind(pv_config_get_log_logdir(), PV_LOGS_PATH);
 
 	if (pv_log_start(pv, rev) < 0)
 		return;
@@ -255,7 +256,7 @@ int pv_log_start(struct pantavisor *pv, const char *rev)
 		return 0;
 
 	if (pv_log_set_log_dir(rev) < 0) {
-		printf("Error: unable to start pantavisor.log\n");
+		printf("Error: unable to start "LOG_NAME"\n");
 		return -1;
 	}
 
@@ -317,7 +318,7 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "creds.secret = '%s'", pv_config_get_creds_secret());
 	pv_bootloader_print();
 
-	if (ph_logger_init(LOG_CTRL_PATH)) {
+	if (ph_logger_init(PV_LOG_CTRL_PATH)) {
 		pv_log(ERROR, "ph logger initialization failed");
 		return -1;
 	}

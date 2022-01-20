@@ -35,6 +35,7 @@
 #include "loop.h"
 #include "blkid.h"
 #include "utils/str.h"
+#include "paths.h"
 
 #define MODULE_NAME		"mount-init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -46,8 +47,8 @@ static int ph_mount_init(struct pv_init *this)
 	int ret = -1;
 
 	// Make pantavisor control area
-	if (stat("/pv", &st) != 0)
-		mkdir_p("/pv", 0500);
+	if (stat(PV_PATH, &st) != 0)
+		mkdir_p(PV_PATH, 0500);
 
 	if (stat(pv_config_get_log_logdir(), &st) != 0)
 		mkdir_p(pv_config_get_log_logdir(), 0500);
@@ -57,9 +58,9 @@ static int ph_mount_init(struct pv_init *this)
 
 	if (stat(pv_config_get_cache_dropbearcachedir(), &st) != 0)
 		mkdir_p(pv_config_get_cache_dropbearcachedir(), 0500);
-	mkdir_p("/pv/user-meta/", 0755);
+	mkdir_p(PV_USER_META_PATH"/", 0755);
 	if (pv_config_get_cache_metacachedir())
-		mount_bind(pv_config_get_cache_metacachedir(), "/pv/user-meta");
+		mount_bind(pv_config_get_cache_metacachedir(), PV_USER_META_PATH);
 
 	mkdir_p("/etc/dropbear/", 0755);
 	if (pv_config_get_cache_dropbearcachedir())

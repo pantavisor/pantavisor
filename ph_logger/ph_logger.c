@@ -56,12 +56,12 @@
 #include "buffer.h"
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
+#include "paths.h"
 
 #define MODULE_NAME             "ph_logger"
 #include "../log.h"
 
-#define PH_LOGGER_POS_FILE 	"/pv/.ph_logger"
-#define PH_LOGGER_LOGDIR 	"/pv/logs"
+#define PH_LOGGER_POS_FILE 	PV_PATH"/.ph_logger"
 #define PH_LOGGER_BACKLOG	(20)
 #define PH_LOGGER_LOGFILE 	"/ph_logger.log"
 
@@ -107,7 +107,7 @@ static void __ph_log(int level, const char *msg, va_list args)
 
 	ph_logger_write_bytes(ph_logger_msg, buffer, level, 
 			MODULE_NAME, PH_LOGGER_LOGFILE, len + 1);
-	pvctl_write_to_path(LOG_CTRL_PATH, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
+	pvctl_write_to_path(PV_LOG_CTRL_PATH, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
 
 out_no_buffer:
 	pv_buffer_drop(log_buffer);
@@ -638,7 +638,7 @@ out:
 
 static int ph_logger_write_to_log_file(struct ph_logger_msg  *ph_logger_msg, char *revision)
 {
-	char *log_dir = PH_LOGGER_LOGDIR;
+	char *log_dir = PV_LOGS_PATH;
 	ph_logger_file_rw_handler_t  file_handler = NULL;
 	int ret = 0;
 
@@ -772,10 +772,10 @@ static int ph_logger_push_revision(char *revision)
 	 * actual file path.
 	 */
 
-	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/", PH_LOGGER_LOGDIR, revision);
+	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/", PV_LOGS_PATH, revision);
 	offset_bytes = strlen(find_cmd);
 
-	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", PH_LOGGER_LOGDIR, revision);
+	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", PV_LOGS_PATH, revision);
 	find_fp = popen(find_cmd, "r");
 
 	if (find_fp) {
@@ -853,7 +853,7 @@ static pid_t ph_logger_start_push_service(char *revision)
 
 static int ph_logger_get_max_revision(struct pantavisor *pv)
 {
-	const char *cmd = "find /pv/logs -type d -mindepth 1 -maxdepth 1";
+	const char *cmd = "find "PV_LOGS_PATH" -type d -mindepth 1 -maxdepth 1";
 	FILE *fp = NULL;
 	char *buf = NULL;
 	size_t buf_size = 0;

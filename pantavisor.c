@@ -56,6 +56,7 @@
 #include "storage.h"
 #include "metadata.h"
 #include "signature.h"
+#include "paths.h"
 #include "ph_logger/ph_logger.h"
 #include "parser/parser.h"
 #include "utils/timer.h"
@@ -315,7 +316,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		pv->unclaimed = false;
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
-		open("/pv/challenge", O_TRUNC | O_WRONLY);
+		open(PV_CHALLENGE_PATH, O_TRUNC | O_WRONLY);
 		pv_metadata_add_devmeta("pantahub.claimed", "1");
 	}
 

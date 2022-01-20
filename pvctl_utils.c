@@ -40,6 +40,7 @@
 
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
+#include "paths.h"
 
 
 static int open_socket(const char *path)
@@ -83,7 +84,7 @@ try_again:
 
 int pvctl_write(const char *buf, ssize_t count)
 {
-	return pvctl_write_to_path(LOG_CTRL_PLATFORM_PATH, buf, count);
+	return pvctl_write_to_path(PLATFORM_LOG_CTRL_PATH, buf, count);
 }
 
 int pvctl_write_to_path(const char *path, const char *buf, ssize_t count)

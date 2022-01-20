@@ -39,6 +39,7 @@
 #include "file.h"
 #include "utils/str.h"
 #include "utils/math.h"
+#include "paths.h"
 
 #define MODULE_NAME             "pvlogger"
 #include "log.h"
@@ -95,7 +96,7 @@ static void pv_log(int level, char *msg, ...)
 			}
 
 		} else {
-			int ret = pvctl_write_to_path(LOG_CTRL_PATH,
+			int ret = pvctl_write_to_path(PV_LOG_CTRL_PATH,
 					__buffer,
 					ph_logger_msg->len + sizeof(struct ph_logger_msg));
 			if (ret < 0) {

@@ -41,6 +41,7 @@
 #include "pantahub.h"
 #include "init.h"
 #include "str.h"
+#include "paths.h"
 #include "utils/math.h"
 #include "utils/system.h"
 #include "utils/str.h"
@@ -849,7 +850,7 @@ static void pv_metadata_load_usermeta()
 	char *value;
 
 	dl_list_init(&files);
-	pv_storage_get_subdir(PATH_USER_META, "", &files);
+	pv_storage_get_subdir(PV_USER_META_PATH, "", &files);
 
 	dl_list_for_each_safe(curr, tmp, &files,
 		struct pv_path, list) {
@@ -858,8 +859,8 @@ static void pv_metadata_load_usermeta()
 			!strncmp(curr->path, ".", strlen(".")))
 			continue;
 
-		len = strlen(PATH_USERMETA_KEY) + strlen(curr->path) + 1;
-		SNPRINTF_WTRUNC(path, len, PATH_USERMETA_KEY, curr->path);
+		len = strlen(PV_USER_META_KEY_PATHF) + strlen(curr->path) + 1;
+		SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, curr->path);
 		value = pv_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
 			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
