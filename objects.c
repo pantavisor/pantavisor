@@ -76,7 +76,6 @@ struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, c
 		dl_list_add(&s->objects, &this->list);
 		return this;
 	}
-	pv_object_free(this);
 	return NULL;
 }
 

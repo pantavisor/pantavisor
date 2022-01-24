@@ -58,10 +58,6 @@ static inline void pv_object_free(struct pv_object *obj)
 		free(obj->id);
 	if (obj->geturl)
 		free(obj->geturl);
-	if (obj->objpath)
-		free(obj->objpath);
-	if (obj->relpath)
-		free(obj->relpath);
 	if (obj->sha256)
 		free(obj->sha256);
 
