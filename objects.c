@@ -85,19 +85,6 @@ void pv_objects_remove(struct pv_object *o)
 	pv_object_free(o);
 }
 
-struct pv_object* pv_objects_get_by_name(struct pv_state *s, char *name)
-{
-	struct pv_object *curr, *tmp;
-	struct dl_list *head = &s->objects;
-
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_object, list) {
-		if (!strcmp(curr->name, name))
-			return curr;
-	}
-	return NULL;
-}
-
 void pv_objects_empty(struct pv_state *s)
 {
 	int num_obj = 0;

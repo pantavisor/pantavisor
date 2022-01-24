@@ -43,6 +43,7 @@
 #include "platforms.h"
 #include "state.h"
 #include "tsh.h"
+#include "init.h"
 
 #define MODULE_NAME             "volumes"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -179,7 +180,7 @@ struct pv_disk* pv_disk_add(struct pv_state *s)
 	return d;
 }
 
-static int pv_volumes_mount_handler(struct pantavisor *pv, struct pv_volume *v, char *action)
+static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 {
 	struct pv_disk *d = v->disk;
 	char *command = NULL;
@@ -230,11 +231,11 @@ static int pv_volumes_mount_handler(struct pantavisor *pv, struct pv_volume *v, 
 
 	return ret;
 }
-
-static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
+int pv_volume_mount(struct pv_volume *v)
 {
 	int ret = -1;
 	int loop_fd = -1, file_fd = -1;
+	struct pantavisor *pv = pv_get_instance();
 	struct pv_state *s = pv->state;
 	char path[PATH_MAX], base[PATH_MAX], mntpoint[PATH_MAX];
 	char *fstype;
@@ -250,7 +251,7 @@ static int pv_volumes_mount_volume(struct pantavisor *pv, struct pv_volume *v)
 	SNPRINTF_WTRUNC(base, sizeof (base), "%s/disks", pv_config_get_storage_mntpoint());
 
 	if (v->disk && !v->disk->def)
-		return pv_volumes_mount_handler(pv, v, "mount");
+		return pv_volume_mount_handler(v, "mount");
 
 	handlercut = strchr(v->name, ':');
 	if (handlercut) {
@@ -374,13 +375,43 @@ out:
 	return ret;
 }
 
-static int pv_volumes_mount_firmware_modules(struct pantavisor *pv)
+int pv_volume_unmount(struct pv_volume *v)
+{
+	int ret = 0;
+
+	pv_log(DEBUG, "unmounting %s", v->dest);
+
+	if (v->umount_cmd != NULL) {
+		int wstatus;
+		tsh_run(v->umount_cmd, 1, &wstatus);
+		if (!WIFEXITED(wstatus))
+			ret = -1;
+		else if (WEXITSTATUS(wstatus) != 0)
+			ret = -1;
+		else
+			ret = 0;
+	} else if (v->loop_fd == -1) {
+		ret = umount(v->dest);
+	} else {
+		ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
+	}
+
+	if (ret < 0)
+		pv_log(ERROR, "error unmounting volume")
+	else
+		pv_log(DEBUG, "unmounted successfully", v->dest);
+
+	return ret;
+}
+
+int pv_volumes_mount_firmware_modules()
 {
 	int ret = 0;
 	struct stat st;
 	char path_volumes[PATH_MAX];
 	char path_lib[PATH_MAX];
 	struct utsname uts;
+	struct pantavisor *pv = pv_get_instance();
 
 	char *firmware = pv->state->bsp.firmware;
 	char *modules = pv->state->bsp.modules;
@@ -438,109 +469,18 @@ out:
 	return ret;
 }
 
-int pv_volumes_mount(struct pantavisor *pv, int runlevel)
+static int pv_volume_early_init(struct pv_init *this)
 {
-	int ret = 0;
-	int num_vol = 0;
 	char base[PATH_MAX];
-	struct pv_volume *v, *tmp;
-	struct dl_list *volumes = NULL;
 
-	// Create volumes if non-existant
 	mkdir("/volumes", 0755);
 	SNPRINTF_WTRUNC(base, sizeof (base), "%s/disks", pv_config_get_storage_mntpoint());
 	mkdir_p(base, 0755);
 
-	// Iterate between runlevel vols and lowest priority vols
-	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
-		pv_log(DEBUG, "mounting volumes with runlevel %d", i);
-		// Iterate over all volumes from state
-		volumes = &pv->state->volumes;
-		dl_list_for_each_safe(v, tmp, volumes,
-				struct pv_volume, list) {
-			// Ignore volumes not linked to platforms (firmware and modules) in non root runlevel
-			// Ignore volumes linked to platforms for other runlevels
-			if ((!v->plat && (i != RUNLEVEL_ROOT)) ||
-				(v->plat && (i != v->plat->runlevel)))
-				continue;
-
-			// Ignore volumes linked to platforms that are already running
-			if (v->plat && (v->plat->status == PLAT_STARTED))
-				continue;
-
-			ret = pv_volumes_mount_volume(pv, v);
-			if (ret)
-				goto out;
-
-			num_vol++;
-		}
-	}
-
-	// Mount firmware and modules in runlevel ROOT
-	if (runlevel <= RUNLEVEL_ROOT)
-		ret = pv_volumes_mount_firmware_modules(pv);
-
-out:
-	pv_log(INFO, "mounted %d volumes", num_vol);
-	return ret;
+	return 0;
 }
 
-int pv_volumes_unmount(struct pantavisor *pv, int runlevel)
-{
-	int ret;
-	int num_vol = 0;
-	struct pv_volume *v, *tmp;
-	struct dl_list *volumes = NULL;
-
-	// Iterate between lowest priority vols and runlevel vols
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		pv_log(DEBUG, "unmounting volumes with runlevel %d", i);
-		// Iterate over all volumes from state
-		volumes = &pv->state->volumes;
-		dl_list_for_each_safe(v, tmp, volumes,
-				struct pv_volume, list) {
-			// Ignore volumes not linked to platforms (firmware and modules) in non root runlevel
-			// Ignore volumes linked to platforms for other runlevels
-			if ((!v->plat && (i != RUNLEVEL_ROOT)) ||
-				(v->plat && (i != v->plat->runlevel)))
-				continue;
-
-			// Ignore volumes linked to platforms that are running
-			if (v->plat && (v->plat->status == PLAT_STARTED))
-				continue;
-
-			if (v->disk && !v->disk->def) {
-				pv_volumes_mount_handler(pv, v, "umount");
-				continue;
-			}
-
-			if (v->umount_cmd != NULL) {
-				int wstatus;
-				tsh_run(v->umount_cmd, 1, &wstatus);
-				if (!WIFEXITED(wstatus))
-					ret = -1;
-				else if (WEXITSTATUS(wstatus) != 0)
-					ret = -1;
-				else
-					ret = 0;
-			} else if (v->loop_fd == -1) {
-				ret = umount(v->dest);
-			} else {
-				ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
-			}
-
-			if (ret < 0) {
-				pv_log(ERROR, "error umounting volumes");
-				return -1;
-			} else {
-				pv_log(DEBUG, "unmounted '%s' successfully", v->dest);
-				num_vol++;
-			}
-		}
-	}
-
-	if (num_vol)
-		pv_log(INFO, "unmounted %d volumes", num_vol);
-
-	return num_vol;
-}
+struct pv_init pv_init_volume = {
+	.init_fn = pv_volume_early_init,
+	.flags = 0,
+};

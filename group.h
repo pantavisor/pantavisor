@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,33 +19,21 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_GROUP_H
+#define PV_GROUP_H
 
-#ifndef PV_JSONS_H
-#define PV_JSONS_H
-
+#include "condition.h"
 #include "utils/list.h"
-#include "state.h"
 
-struct pv_json {
+struct pv_group {
 	char *name;
-	char *value;
-	struct pv_platform *plat;
-	struct dl_list list;
+	struct dl_list condition_refs; // pv_condition_ref
+	struct dl_list list; // pv_group
 };
 
-struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value);
-void pv_jsons_remove(struct pv_json *j);
-void pv_jsons_empty(struct pv_state *s);
+struct pv_group* pv_group_new(char *name);
+void pv_group_free(struct pv_group *g);
 
-void pv_jsons_free(struct pv_json *json);
+void pv_group_add_condition_ref(struct pv_group *g, struct pv_condition *c);
 
-#define pv_jsons_iter_begin(state, item)\
-{\
-	struct pv_json *item##__tmp;\
-	struct dl_list *item##__head = &(state)->jsons;\
-	dl_list_for_each_safe(item, item##__tmp, item##__head,\
-			struct pv_json, list)
-
-#define pv_jsons_iter_end }
-
-#endif // PV_JSONS_H
+#endif // PV_GROUP_H

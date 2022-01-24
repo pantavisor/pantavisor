@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,33 +19,36 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_CONDITION_H
+#define PV_CONDITION_H
 
-#ifndef PV_JSONS_H
-#define PV_JSONS_H
+#include <stdbool.h>
 
 #include "utils/list.h"
-#include "state.h"
 
-struct pv_json {
-	char *name;
-	char *value;
-	struct pv_platform *plat;
-	struct dl_list list;
+struct pv_condition {
+	char *key;
+	char *eval_value;
+	char *curr_value;
+	struct dl_list list; // pv_condition
 };
 
-struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value);
-void pv_jsons_remove(struct pv_json *j);
-void pv_jsons_empty(struct pv_state *s);
+struct pv_condition* pv_condition_new(char *key, char *eval_value);
+void pv_condition_free(struct pv_condition *c);
 
-void pv_jsons_free(struct pv_json *json);
+void pv_condition_set_value(struct pv_condition *c, char *curr_value);
+bool pv_condition_check(struct pv_condition *c);
 
-#define pv_jsons_iter_begin(state, item)\
-{\
-	struct pv_json *item##__tmp;\
-	struct dl_list *item##__head = &(state)->jsons;\
-	dl_list_for_each_safe(item, item##__tmp, item##__head,\
-			struct pv_json, list)
+char *pv_condition_get_json(struct pv_condition *c);
 
-#define pv_jsons_iter_end }
+struct pv_condition_ref {
+	struct pv_condition *ref;
+	struct dl_list list; // pv_condition_ref
+};
 
-#endif // PV_JSONS_H
+struct pv_condition_ref* pv_condition_ref_new(struct pv_condition *c);
+void pv_condition_ref_free(struct pv_condition_ref *cr);
+
+struct pv_condition* pv_condition_get_ref(struct pv_condition_ref *cr);
+
+#endif // PV_CONDITION_H

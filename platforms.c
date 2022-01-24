@@ -44,17 +44,15 @@ int setns(int nsfd, int nstype);
 #include "wdt.h"
 #include "platforms.h"
 #include "pvlogger.h"
+#include "init.h"
+#include "state.h"
 #include "utils/list.h"
 #include "utils/fs.h"
 #include "utils/str.h"
-#include "init.h"
-#include "state.h"
 
 #define MODULE_NAME             "platforms"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-const int MAX_RUNLEVEL = 3;
 
 static const char *syslog[][2] = {
 		{"file", "/var/log/syslog"},
@@ -106,9 +104,9 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 	if (p) {
 		p->name = strdup(name);
 		p->status = PLAT_NONE;
-		p->runlevel = -1;
-		p->updated = false;
 		p->mgmt = true;
+		p->updated = false;
+		dl_list_init(&p->condition_refs);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -118,18 +116,21 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 	return p;
 }
 
-struct pv_platform* pv_platform_get_by_name(struct pv_state *s, const char *name)
+static void pv_platform_empty_condition_refs(struct pv_platform *p)
 {
+	int num_conditions = 0;
+	struct pv_condition_ref *cr, *tmp;
+	struct dl_list *condition_refs = &p->condition_refs;
 
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = &s->platforms;
-
-	dl_list_for_each_safe(p, tmp, platforms,
-			struct pv_platform, list) {
-		if (!strcmp(p->name, name))
-			return p;
+	// Iterate over all condition references from platforms
+	dl_list_for_each_safe(cr, tmp, condition_refs,
+			struct pv_condition_ref, list) {
+		dl_list_del(&cr->list);
+		pv_condition_ref_free(cr);
+		num_conditions++;
 	}
-	return NULL;
+
+	pv_log(INFO, "removed %g condition references", num_conditions);
 }
 
 static void pv_platform_empty_logger_list(struct pv_platform *p)
@@ -187,10 +188,112 @@ void pv_platform_free(struct pv_platform *p)
 	if (p->data)
 		free(p->data);
 
+	pv_platform_empty_condition_refs(p);
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
 
 	free(p);
+}
+
+void pv_platform_add_condition(struct pv_platform *p, struct pv_condition *c)
+{
+	struct pv_condition_ref *cr;
+
+	pv_log(DEBUG, "adding condition reference %s to platform", c->key);
+
+	cr = pv_condition_ref_new(c);
+	if (cr) {
+		dl_list_init(&cr->list);
+		dl_list_add_tail(&p->condition_refs, &cr->list);
+	}
+}
+
+static const char* pv_platform_status_string(plat_status_t status)
+{
+	switch(status) {
+		case PLAT_NONE: return "NONE";
+		case PLAT_DATA: return "DATA";
+		case PLAT_READY: return "READY";
+		case PLAT_BLOCKED: return "BLOCKED";
+		case PLAT_STARTING: return "STARTING";
+		case PLAT_STARTED: return "STARTED";
+		case PLAT_STOPPING: return "STOPPING";
+		case PLAT_STOPPED: return "STOPPED";
+		default: return "UNKNOWN";
+	}
+
+	return "UNKNOWN";
+}
+
+char* pv_platform_get_json(struct pv_platform *p)
+{
+	int len, line_len;
+	char *json, *group = NULL, *line;
+	const char *status = pv_platform_status_string(p->status);
+	struct pv_condition_ref *cr, *tmp;
+
+	if (p->group)
+		group = p->group->name;
+
+	len = strlen(p->name) +
+		strlen(group) +
+		strlen(status) +
+		strlen("{\"name\":\"\",\"group\":\"\",\"status\":\"\",\"conditions\":[");
+	json = calloc(1, (len + 1) * sizeof(char*));
+	snprintf(json, len + 1, "{\"name\":\"%s\",\"group\":\"%s\",\"status\":\"%s\",\"conditions\":[",
+		p->name, group, status);
+
+	if (!p->group || dl_list_empty(&p->group->condition_refs))
+		goto plats;
+
+	dl_list_for_each_safe(cr, tmp, &p->group->condition_refs,
+			struct pv_condition_ref, list) {
+		if (!cr->ref)
+			continue;
+
+		line = pv_condition_get_json(cr->ref);
+		line_len = strlen(line) + 1;
+		json = realloc(json, len + line_len + 1);
+		snprintf(&json[len], line_len + 1, "%s,", line);
+		len += line_len;
+		free(line);
+	}
+
+	// remove ,
+	len--;
+
+plats:
+	if (dl_list_empty(&p->condition_refs))
+		goto close;
+
+	// recover ,
+	len++;
+
+	dl_list_for_each_safe(cr, tmp, &p->condition_refs,
+			struct pv_condition_ref, list) {
+		if (!cr->ref)
+			continue;
+
+		line = pv_condition_get_json(cr->ref);
+		line_len = strlen(line) + 1;
+		json = realloc(json, len + line_len + 1);
+		snprintf(&json[len], line_len + 1, "%s,", line);
+		len += line_len;
+		free(line);
+	}
+
+	// remove ,
+	len--;
+
+close:
+	// close json
+	len += 3;
+	json = realloc(json, len);
+	json[len-3] = ']';
+	json[len-2] = '}';
+	json[len-1] = '\0';
+
+	return json;
 }
 
 void pv_platforms_empty(struct pv_state *s)
@@ -217,47 +320,12 @@ void pv_platforms_remove_not_installed(struct pv_state *s)
 
 	dl_list_for_each_safe(p, tmp, platforms,
 		struct pv_platform, list) {
-		if (p->status == PLAT_INSTALLED)
+		if (p->status != PLAT_NONE)
 			continue;
 
 		dl_list_del(&p->list);
 		pv_platform_free(p);
 	}
-}
-
-void pv_platforms_default_runlevel(struct pv_state *s)
-{
-	bool root_configured = false;
-	struct pv_platform *p, *tmp, *first_p = NULL;
-	struct dl_list *platforms = &s->platforms;
-
-	if (dl_list_empty(platforms))
-		return;
-
-	dl_list_for_each_safe(p, tmp, platforms,
-			struct pv_platform, list) {
-		// check if any platform has been configured as ROOT
-		if (p->runlevel == RUNLEVEL_ROOT)
-			root_configured = true;
-		// get first unconfigured platform
-		if (!first_p && (p->runlevel == -1))
-			first_p = p;
-	}
-
-	// if not, set first platform as runlevel ROOT
-	if (!root_configured && first_p) {
-		pv_log(WARN, "no platform was found with root runlevel, "
-				"so the first unconfigured one in alphabetical order will be set");
-		first_p->runlevel = RUNLEVEL_ROOT;
-	}
-
-	// set rest of the non configured platforms with runlevel PLATFORM, reserved for non-explicilty configured ones
-	platforms = &s->platforms;
-	dl_list_for_each_safe(p, tmp, platforms,
-            struct pv_platform, list) {
-		if (p->runlevel < RUNLEVEL_DATA)
-			p->runlevel = RUNLEVEL_PLATFORM;
-    }
 }
 
 static struct pv_cont_ctrl* _pv_platforms_get_ctrl(char *type)
@@ -475,8 +543,9 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	return logger_pid;
 }
 
-static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform *p)
+int pv_platform_start(struct pv_platform *p)
 {
+	struct pantavisor *pv = pv_get_instance();
 	struct pv_state *s = pv->state;
 	pid_t pid = -1;
 	char conf_path[PATH_MAX];
@@ -507,101 +576,21 @@ static int pv_platforms_start_platform(struct pantavisor *pv, struct pv_platform
 		return -1;
 	}
 
-	pv_log(DEBUG, "started platform: \"%s\" (data=%p), init_pid=%d",
-		p->name, data, pid);
+	pv_log(DEBUG, "starting platform \'%s\' with pid %d", p->name, pid);
 
 	p->data = data;
 	p->init_pid = pid;
 
-	if (pid > 0)
-		p->status = PLAT_STARTED;
-	else
+	if (pid <= 0)
 		return -1;
 
-	return 0;
-}
+	p->status = PLAT_STARTING;
 
-int pv_platforms_start(struct pantavisor *pv, int runlevel)
-{
-	int num_plats = 0;
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = NULL;
-
-	// Iterate between runlevel plats and lowest priority plats
-	for (int i = runlevel; i <= MAX_RUNLEVEL; i++) {
-		if (i > RUNLEVEL_DATA) {
-			pv_log(DEBUG, "starting platforms with runlevel %d", i);
-		} else {
-			pv_log(DEBUG, "skipping platforms with runlevel data %d", i);
-			continue;
-		}
-		// Iterate over all plats from state
-		platforms = &pv->state->platforms;
-		dl_list_for_each_safe(p, tmp, platforms,
-				struct pv_platform, list) {
-			// Ignore platforms from other runlevels and platforms already started
-			if ((p->runlevel != i) || (p->status == PLAT_STARTED))
-				continue;
-
-			if (pv_platforms_start_platform(pv, p))
-				return -1;
-
-			num_plats++;
-		}
-	}
-
-	pv_log(INFO, "started %d platforms", num_plats);
-
-	pv_log(DEBUG, "starting all platforms pv loggers");
-
-	platforms = &pv->state->platforms;
-
-	if (!pv_config_get_log_loggers())
-		goto out;
-
-	dl_list_for_each_safe(p, tmp, platforms,
-		struct pv_platform, list) {
+	if (pv_config_get_log_loggers())
 		if (start_pvlogger_for_platform(p) < 0)
-			pv_log(ERROR, "Could not start pv_logger for platform %s",p->name);
-	}
+			pv_log(ERROR, "Could not start pv_logger for platform %s", p->name);
 
-out:
-	return num_plats;
-}
-
-static void pv_platforms_force_kill(struct pantavisor *pv, int runlevel)
-{
-	int num_plats = 0;
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = NULL;
-
-	// Iterate between lowest priority plats and runlevel plats
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		pv_log(DEBUG, "force killing platforms with runlevel %d", i);
-		// Iterate over all plats from state
-		platforms = &pv->state->platforms;
-		dl_list_for_each_safe(p, tmp, platforms,
-				struct pv_platform, list) {
-			// Ignore platforms from other runlevels
-			if (p->runlevel != i)
-				continue;
-
-			// Ignore non updated apps if update runlevel is app
-			if ((runlevel == RUNLEVEL_APP) &&
-				(p->runlevel == RUNLEVEL_APP) &&
-				!p->updated)
-				continue;
-
-			if (!kill(p->init_pid, 0)) {
-				pv_log(INFO, "sending SIGKILL to unresponsive platform '%s'", p->name);
-				kill(p->init_pid, SIGKILL);
-				num_plats++;
-			}
-		}
-	}
-
-	if (num_plats)
-		pv_log(INFO, "force killed %d platforms", num_plats);
+	return 0;
 }
 
 static int pv_platform_stop_loggers(struct pv_platform *p)
@@ -651,101 +640,130 @@ static int pv_platform_stop_loggers(struct pv_platform *p)
 	return num_loggers;
 }
 
-int pv_platforms_stop(struct pantavisor *pv, int runlevel)
+int pv_platform_stop(struct pv_platform *p)
 {
-	int num_loggers = 0, num_plats = 0, exited = 0;
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = &pv->state->platforms;
 	const struct pv_cont_ctrl *ctrl;
 
-	pv_log(DEBUG, "stopping all platforms pv loggers");
+	pv_platform_stop_loggers(p);
 
-	dl_list_for_each_safe(p, tmp, platforms,
-		struct pv_platform, list) {
-		num_loggers += pv_platform_stop_loggers(p);
-	}
+	if (p->init_pid <= 0)
+		return -1;
 
-	if (num_loggers)
-		pv_log(INFO, "stopped %d platform loggers", num_loggers);
+	pv_log(DEBUG, "leniently stopping platform '%s'", p->name);
+	ctrl = _pv_platforms_get_ctrl(p->type);
+	ctrl->stop(p, NULL, p->data);
+	p->data = NULL;
+	p->status = PLAT_STOPPING;
 
-	// Iterate between lowest priority plats and runlevel plats
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		pv_log(DEBUG, "stopping platforms with runlevel %d", i);
-		// Iterate over all plats from state
-		platforms = &pv->state->platforms;
-		dl_list_for_each_safe(p, tmp, platforms,
-			struct pv_platform, list) {
-			// Start platforms in this runlevel only
-			if (p->runlevel != i)
-				continue;
-
-			// Ignore non updated apps if update runlevel is app
-			if ((runlevel == RUNLEVEL_APP) &&
-				(p->runlevel == RUNLEVEL_APP) &&
-				!p->updated)
-				continue;
-
-			// Stop plats that have been started
-			if ((p->status == PLAT_STARTED) && (p->init_pid > 0)) {
-				ctrl = _pv_platforms_get_ctrl(p->type);
-				ctrl->stop(p, NULL, p->data);
-				p->status = PLAT_STOPPED;
-				p->data = NULL;
-				pv_log(DEBUG, "sent SIGTERM to platform '%s'", p->name);
-				num_plats++;
-			}
-		}
-	}
-
-	if (num_plats)
-		pv_log(INFO, "leniently stopped %d platforms", num_plats);
-
-	// Check all plats in runlevel and lower priority have been stopped
-	for (int i = 0; i < 5; i++) {
-		exited = pv_platforms_check_exited(pv, runlevel);
-		if (exited == num_plats)
-			break;
-		pv_log(WARN, "only %d out of %d platforms exited. Sleeping 1 second to check again...", exited, num_plats);
-		sleep(1);
-	}
-
-	// Kill all plats in runlevel and lower priority
-	if (exited != num_plats)
-		pv_platforms_force_kill(pv, runlevel);
-
-	return num_plats;
+	return 0;
 }
 
-int pv_platforms_check_exited(struct pantavisor *pv, int runlevel)
+void pv_platform_force_stop(struct pv_platform *p)
 {
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = NULL;
-	int exited = 0;
+	pv_log(DEBUG, "force stopping platform '%s'", p->name);
+	kill(p->init_pid, SIGKILL);
+	p->status = PLAT_STOPPED;
+}
 
-	// Iterate between lowest priority plats and runlevel plats
-	for (int i = MAX_RUNLEVEL; i >= runlevel; i--) {
-		// Iterate over all plats from state
-		platforms = &pv->state->platforms;
-		dl_list_for_each_safe(p, tmp, platforms,
-	            struct pv_platform, list) {
-			// Check platforms in this runlevel only
-			if (p->runlevel != i)
-				continue;
+void pv_platform_set_ready(struct pv_platform *p)
+{
+	p->status = PLAT_READY;
 
-			// Ignore non updated apps if update runlevel is app
-			if ((runlevel == RUNLEVEL_APP) &&
-				(p->runlevel == RUNLEVEL_APP) &&
-				!p->updated)
-				continue;
+	if (p->group &&
+		pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
+		p->status = PLAT_DATA;
+}
 
-			if (kill(p->init_pid, 0)) {
-				pv_log(DEBUG, "platform exited: %s", p->name);
-				exited++;
-			}
+void pv_platform_set_blocked(struct pv_platform *p)
+{
+	p->status = PLAT_BLOCKED;
+}
+
+void pv_platform_set_updated(struct pv_platform *p)
+{
+	p->updated = true;
+}
+
+int pv_platform_check_running(struct pv_platform *p)
+{
+	bool running;
+
+	running = !kill(p->init_pid, 0);
+	if (running) {
+		if ((p->status != PLAT_STARTED) && (p->status != PLAT_STOPPING)) {
+			pv_log(DEBUG, "platform %s started", p->name);
+			p->status = PLAT_STARTED;
+		}
+	} else {
+		if ((p->status != PLAT_STOPPED) && (p->status != PLAT_STARTING)) {
+			pv_log(DEBUG, "platform %s stopped", p->name);
+			p->status = PLAT_STOPPED;
 		}
 	}
 
-	return exited;
+	return running;
+}
+
+bool pv_platform_check_conditions(struct pv_platform *p)
+{
+	struct pv_condition_ref *cr, *tmp;
+
+	if (p->group || dl_list_empty(&p->group->condition_refs))
+		goto plat;
+
+	dl_list_for_each_safe(cr, tmp, &p->group->condition_refs,
+			struct pv_condition_ref, list) {
+		if (cr->ref && !pv_condition_check(cr->ref))
+			return false;
+	}
+
+plat:
+	if (dl_list_empty(&p->condition_refs))
+		goto out;
+
+	dl_list_for_each_safe(cr, tmp, &p->condition_refs,
+			struct pv_condition_ref, list) {
+		if (cr->ref && !pv_condition_check(cr->ref))
+			return false;
+	}
+
+out:
+	return true;
+}
+
+bool pv_platform_is_ready(struct pv_platform *p)
+{
+	return (p->status == PLAT_READY);
+}
+
+bool pv_platform_is_blocked(struct pv_platform *p)
+{
+	return (p->status == PLAT_BLOCKED);
+}
+
+bool pv_platform_is_starting(struct pv_platform *p)
+{
+	return (p->status == PLAT_STARTING);
+}
+
+bool pv_platform_is_started(struct pv_platform *p)
+{
+	return (p->status == PLAT_STARTED);
+}
+
+bool pv_platform_is_stopping(struct pv_platform *p)
+{
+	return (p->status == PLAT_STOPPING);
+}
+
+bool pv_platform_is_stopped(struct pv_platform *p)
+{
+	return (p->status == PLAT_STOPPED);
+}
+
+bool pv_platform_is_updated(struct pv_platform *p)
+{
+	return p->updated;
 }
 
 static int pv_platforms_early_init(struct pv_init *this)

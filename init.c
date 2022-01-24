@@ -44,6 +44,7 @@
 #include "version.h"
 #include "pvlogger.h"
 #include "platforms.h"
+#include "volumes.h"
 #include "state.h"
 #include "utils/tsh.h"
 #include "utils/math.h"
@@ -372,6 +373,7 @@ struct pv_init *pv_init_tbl [] = {
 	&pv_init_metadata,
 	&pv_init_ctrl,
 	&pv_init_network,
+	&pv_init_volume,
 	&pv_init_platform,
 	&pv_init_pantavisor,
 };

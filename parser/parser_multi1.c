@@ -177,7 +177,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 	name = pv_json_get_value(buf, "name", tokv, tokc);
 
-	this = pv_platform_get_by_name(s, name);
+	this = pv_state_fetch_platform(s, name);
 	if (!this)
 		goto out;
 
@@ -238,8 +238,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
-	this->status = PLAT_INSTALLED;
-
+	pv_platform_set_ready(this);
 out:
 	if (name)
 		free(name);

@@ -81,7 +81,6 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 		goto out;
 
 	dl_list_for_each_safe(o, tmp, &objects, struct pv_path, list) {
-		pv_log(DEBUG, "path %s", o->path);
 		if (!strncmp(o->path, "..", len) ||
 			!strncmp(o->path, ".", len))
 			continue;

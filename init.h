@@ -81,6 +81,7 @@ extern struct pv_init pv_init_mount;
 extern struct pv_init ph_init_mount;
 extern struct pv_init pv_init_network;
 extern struct pv_init pv_init_pantavisor;
+extern struct pv_init pv_init_volume;
 extern struct pv_init pv_init_platform;
 extern struct pv_init pv_init_update;
 

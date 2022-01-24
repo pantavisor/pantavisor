@@ -70,8 +70,11 @@ void pv_disks_empty(struct pv_state *s);
 struct pv_volume* pv_volume_add_with_disk(struct pv_state *s, char *name, char *disk);
 struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
 
-int pv_volumes_mount(struct pantavisor *pv, int runlevel);
-int pv_volumes_unmount(struct pantavisor *pv, int runlevel);
+int pv_volume_mount(struct pv_volume *v);
+int pv_volume_unmount(struct pv_volume *v);
+
 void pv_volumes_empty(struct pv_state *s);
+
+int pv_volumes_mount_firmware_modules(void);
 
 #endif // PV_VOLUMES_H
