@@ -433,8 +433,10 @@ int pv_volumes_mount_firmware_modules()
 				pv->state->bsp.firmware);
 	}
 
-	if (stat(path_volumes, &st))
+	if (stat(path_volumes, &st)) {
+		pv_log(DEBUG, "cannot mount firmware because %s does not exist", path_volumes);
 		goto modules;
+	}
 
 	ret = mount_bind(path_volumes, FW_PATH);
 
@@ -463,7 +465,8 @@ modules:
 		mkdir_p(path_lib, 0755);
 		ret = mount_bind(path_volumes, path_lib);
 		pv_log(DEBUG, "bind mounted %s modules to %s", path_volumes, path_lib);
-	}
+	} else
+		pv_log(DEBUG, "cannot mount modules because %s does not exist", path_volumes);
 
 out:
 	return ret;
