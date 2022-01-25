@@ -395,14 +395,23 @@ void pv_state_validate(struct pv_state *s)
 	pv_state_set_default_groups(s);
 }
 
-static int pv_state_mount_bsp_volumes()
+static int pv_state_mount_bsp_volumes(struct pv_state *s)
 {
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes,
+			struct pv_volume, list) {
+		if (!v->plat)
+			if (pv_volume_mount(v))
+				return -1;
+	}
+
 	return pv_volumes_mount_firmware_modules();
 }
 
 int pv_state_start(struct pv_state *s)
 {
-	return pv_state_mount_bsp_volumes();
+	return pv_state_mount_bsp_volumes(s);
 }
 
 static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
@@ -542,7 +551,12 @@ int pv_state_stop(struct pv_state *s)
 		ret = -1;
 	}
 
+	// unmount all platform related volumes
 	if (pv_state_unmount_platforms_volumes(s))
+		ret = -1;
+
+	// unmount bsp volumes
+	if (pv_state_unmount_platform_volumes(s, NULL))
 		ret = -1;
 
 	return ret;
