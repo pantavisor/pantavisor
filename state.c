@@ -462,6 +462,7 @@ static bool pv_state_check_all_stopped(struct pv_state *s)
 	struct pv_platform *p, *tmp_p;
 
 	for (int i = 0; i < 5; i++) {
+		ret = true;
 		dl_list_for_each_safe(p, tmp_p, &s->platforms,
 				struct pv_platform, list) {
 			if (pv_platform_is_stopping(p)) {
@@ -482,7 +483,7 @@ static bool pv_state_check_all_stopped(struct pv_state *s)
 		try_again = false;
 	}
 
-	return true;
+	return ret;
 }
 
 static void pv_state_lenient_stop(struct pv_state *s)
