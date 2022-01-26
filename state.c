@@ -933,8 +933,8 @@ static char* _pv_state_get_novalidate_list(char *rev)
 		res = tsh_run_output(cmd, 20, _sout, _pv_bufsize_1 - 1, _serr, _pv_bufsize_1 - 1);
 
 		if (res < 0) {
-			pv_log(WARN, "error running novalidatelist command: %s", strerror(errno));
-			goto out;
+			pv_log(WARN, "error running novalidatelist command (%s): %s", cmd, strerror(errno));
+			continue;
 		}
 
 		// if command fails, we dont abort as some handlers might be buggy ...
