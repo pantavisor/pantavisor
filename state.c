@@ -434,22 +434,30 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 int pv_state_run(struct pv_state *s)
 {
 	int ret = 0;
-	struct pv_platform *p, *tmp;
+	struct pv_platform *p, *tmp_p;
+	struct pv_group *g, *tmp_g;
 
-	dl_list_for_each_safe(p, tmp, &s->platforms,
-			struct pv_platform, list) {
-		if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
-			if (pv_platform_check_conditions(p))
-				ret = pv_state_start_platform(s, p);
-			else
-				pv_platform_set_blocked(p);
-		} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
-			if (!pv_platform_check_running(p))
-				ret = -1;
+	// we check the platforms in order so we respect the legacy data -> root -> platform -> app order
+	// TODO: remove the group list iteration after real status conditions between groups have been implemented
+	dl_list_for_each_safe(g, tmp_g, &s->groups,
+			struct pv_group, list) {
+		dl_list_for_each_safe(p, tmp_p, &s->platforms,
+				struct pv_platform, list) {
+			if (g == p->group) {
+				if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
+					if (pv_platform_check_conditions(p))
+						ret = pv_state_start_platform(s, p);
+					else
+						pv_platform_set_blocked(p);
+				} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
+					if (!pv_platform_check_running(p))
+						ret = -1;
+				}
+
+				if (ret)
+					goto out;
+			}
 		}
-
-		if (ret)
-			goto out;
 	}
 
 out:
