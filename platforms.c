@@ -130,7 +130,7 @@ static void pv_platform_empty_condition_refs(struct pv_platform *p)
 		num_conditions++;
 	}
 
-	pv_log(INFO, "removed %g condition references", num_conditions);
+	pv_log(INFO, "removed %d condition references", num_conditions);
 }
 
 static void pv_platform_empty_logger_list(struct pv_platform *p)
@@ -708,7 +708,7 @@ bool pv_platform_check_conditions(struct pv_platform *p)
 {
 	struct pv_condition_ref *cr, *tmp;
 
-	if (p->group || dl_list_empty(&p->group->condition_refs))
+	if (!p->group || dl_list_empty(&p->group->condition_refs))
 		goto plat;
 
 	dl_list_for_each_safe(cr, tmp, &p->group->condition_refs,
