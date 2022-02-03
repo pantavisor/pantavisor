@@ -25,6 +25,7 @@
 
 #include <string.h>
 #include <stdbool.h>
+#include <time.h>
 
 // offers no return value, but prints to vlog. Requires pvlog.
 #define SNPRINTF_WTRUNC(buf, size, ...) \
@@ -65,6 +66,9 @@ char *pv_str_replace_str(const char *s1, const char *s2, const char *s3);
 char *pv_str_unescape_to_ascii(char *buf, char *code, char c);
 char *pv_str_replace_char(char *str, int len, char which, char what);
 char *pv_str_skip_prefix(char *str, const char *key);
+
+/* prints seconds since beginning of epoch in buf */
+size_t epochsecstring(char *buf, size_t len, time_t t);
 
 static inline bool pv_str_startswith(const char* str1, int str1len, const char* str2)
 {
