@@ -128,6 +128,11 @@ static int early_mounts()
 	mkcgroup("pids");
 	mkcgroup("rdma");
 
+	mkdir("/sys/fs/cgroup/unified", 0555);
+	ret = mount("none", "/sys/fs/cgroup/unified", "cgroup2", 0, NULL);
+	if (ret < 0)
+		printf("WARN: Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
+
 	mkdir("/writable", 0755);
 	if (!stat("/etc/fstab", &st))
 		tsh_run("mount -a", 1, NULL);
