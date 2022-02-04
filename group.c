@@ -55,7 +55,7 @@ static void pv_group_empty_condition_refs(struct pv_group *g)
 		num_conditions++;
 	}
 
-	pv_log(INFO, "removed %g condition references", num_conditions);
+	pv_log(INFO, "removed %d condition references", num_conditions);
 }
 
 void pv_group_free(struct pv_group *g)

@@ -119,7 +119,7 @@ static void pv_state_empty_groups(struct pv_state *s)
 		num_groups++;
 	}
 
-	pv_log(INFO, "removed %g groups", num_groups);
+	pv_log(INFO, "removed %d groups", num_groups);
 }
 
 static void pv_state_empty_conditions(struct pv_state *s)
@@ -136,7 +136,7 @@ static void pv_state_empty_conditions(struct pv_state *s)
 		num_conditions++;
 	}
 
-	pv_log(INFO, "removed %g conditions", num_conditions);
+	pv_log(INFO, "removed %d conditions", num_conditions);
 }
 
 void pv_state_free(struct pv_state *s)
