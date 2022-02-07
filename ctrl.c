@@ -88,6 +88,7 @@ typedef enum {
 	HTTP_STATUS_FORBIDDEN,
 	HTTP_STATUS_NOT_FOUND,
 	HTTP_STATUS_CONFLICT,
+	HTTP_STATUS_UNPROCESSABLE_ENTITY,
 	HTTP_STATUS_ERROR,
 } pv_http_status_code_t;
 
@@ -98,6 +99,7 @@ static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 		"403 Forbidden",
 		"404 Not Found",
 		"409 Conflict",
+		"422 Unprocessable Entity",
 		"500 Internal Server Error"};
 	return strings[code];
 }
@@ -690,7 +692,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				goto out;
 			} else {
 				if (pv_ctrl_validate_object_checksum(file_path_tmp, file_path, file_name) < 0) {
-					pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Object has bad checksum");
+					pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "Object has bad checksum");
 					goto out;
 				}
 
@@ -742,7 +744,6 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		if (!strncmp("PUT", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
-			mkdir_p(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
 				goto out;
 			pv_ctrl_write_ok_response(req_fd);
@@ -762,12 +763,20 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		if (!strncmp("PUT", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
-			if (pv_storage_is_revision_local(file_name)) {
-				mkdir_p(file_path_parent, 0755);
-				if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
-					goto out;
-				pv_ctrl_write_ok_response(req_fd);
+			if (!pv_storage_is_revision_local(file_name)) {
+				pv_log(ERROR, "wrong local step name %s", file_name);
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Step name has bad name");
+				goto out;
 			}
+			mkdir_p(file_path_parent, 0755);
+			if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
+				goto out;
+			if (!pv_storage_verify_state_json(file_name)) {
+				pv_log(ERROR, "state verification went wrong");
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "State verification has failed");
+				goto out;
+			}
+			pv_ctrl_write_ok_response(req_fd);
 		} else if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
