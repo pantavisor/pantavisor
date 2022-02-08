@@ -405,22 +405,22 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 
 	key_i = keys;
 	while (*key_i) {
-		n = (*key_i)->end - (*key_i)->start + 1;
+		n = (*key_i)->end - (*key_i)->start;
 
 		// copy key
-		key = calloc(1, n+1);
+		key = calloc(1, (n+1) + sizeof(char*));
 		if (!key)
 			break;
 
-		SNPRINTF_WTRUNC(key, n, "%s", um+(*key_i)->start);
+		strncpy(key, um+(*key_i)->start, n);
 
 		// copy value
-		n = (*key_i+1)->end - (*key_i+1)->start + 1;
-		value = calloc(1, n+1);
+		n = (*key_i+1)->end - (*key_i+1)->start;
+		value = calloc(1, (n+1) + sizeof(char*));
 		if (!value)
 			break;
 
-		SNPRINTF_WTRUNC(value, n, "%s", um+(*key_i+1)->start);
+		strncpy(value, um+(*key_i+1)->start, n);
 
 		// add or update metadata
 		// primitives with value 'null' have value NULL
