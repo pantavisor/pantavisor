@@ -29,8 +29,9 @@
 // offers no return value, but prints to vlog. Requires pvlog.
 #define SNPRINTF_WTRUNC(buf, size, ...) \
 	do { \
-		if ((int) (size) <= snprintf((buf), (size_t) (size), __VA_ARGS__)) { \
-			pv_log(WARN, "String %s truncated to %s", #buf, (buf)); \
+		int out = snprintf((buf), (size_t) (size), __VA_ARGS__); \
+		if ((int) (size) <= out) { \
+			pv_log(WARN, "string %s with size %d truncated to %d", #buf, (int) size, out); \
 		} \
 	} while (0)
 
