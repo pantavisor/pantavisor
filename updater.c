@@ -1852,7 +1852,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv_update_set_status(pv, UPDATE_INSTALLED);
 out:
 	if (pending && (ret < 0))
-		pv_storage_rm_rev(pv, pending->rev);
+		pv_storage_rm_rev(pending->rev);
 
 	return ret;
 }

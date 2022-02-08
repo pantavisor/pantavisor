@@ -42,12 +42,14 @@ struct pv_path {
 	struct dl_list list;
 };
 
-char* pv_storage_get_rev_path(const char *rev);
 char* pv_storage_get_state_json_path(const char *rev);
 char* pv_storage_get_state_json(const char *rev);
+bool pv_storage_verify_state_json(const char *rev);
+
+char* pv_storage_get_rev_path(const char *rev);
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);
-void pv_storage_rm_rev(struct pantavisor *pv, const char *rev);
+void pv_storage_rm_rev(const char *rev);
 void pv_storage_set_active(struct pantavisor *pv);
 int pv_storage_update_factory(const char* rev);
 int pv_storage_make_config(struct pantavisor *pv);

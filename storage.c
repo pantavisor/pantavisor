@@ -52,6 +52,7 @@
 #include "addons.h"
 #include "state.h"
 #include "tsh.h"
+#include "signature.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -112,7 +113,7 @@ out:
 	return reclaimed;
 }
 
-void pv_storage_rm_rev(struct pantavisor *pv, const char *rev)
+void pv_storage_rm_rev(const char *rev)
 {
 	char path[PATH_MAX];
 	char revision[PATH_MAX];
@@ -310,7 +311,7 @@ int pv_storage_gc_run()
 			continue;
 
 		// unlink the given revision from local storage
-		pv_storage_rm_rev(pv, r->path);
+		pv_storage_rm_rev(r->path);
 	}
 
 	pv_storage_free_subdir(&revisions);
@@ -516,7 +517,6 @@ void pv_storage_set_active(struct pantavisor *pv)
 int pv_storage_update_factory(const char* rev)
 {
 	int res = -1, fd_c = -1, fd_f = -1;
-	struct pantavisor *pv = pv_get_instance();
 	char revision[PATH_MAX], factory[PATH_MAX], factory_parent[PATH_MAX];
 
 	// init paths
@@ -525,7 +525,7 @@ int pv_storage_update_factory(const char* rev)
 	SNPRINTF_WTRUNC(revision, sizeof (revision), PATH_TRAILS, pv_config_get_storage_mntpoint(), rev);
 
 	// first, remove revision 0 that is going to be substituted
-	pv_storage_rm_rev(pv, "0");
+	pv_storage_rm_rev("0");
 
 	// now, create revision 0
 	mkdir_p(factory_parent, 0755);
@@ -1055,6 +1055,40 @@ char* pv_storage_get_state_json(const char *rev)
 
 	free(path);
 	return res;
+}
+
+bool pv_storage_verify_state_json(const char *rev)
+{
+	bool ret = false;
+	char *json = NULL;
+	struct pv_state *state = NULL;
+
+	json = pv_storage_get_state_json(rev);
+	if (!json) {
+		pv_log(ERROR, "Could not read state json");
+		goto out;
+	}
+
+	if (!pv_signature_verify(json)) {
+		pv_log(ERROR, "Could not verify state json signatures");
+		goto out;
+	}
+
+	state = pv_parser_get_state(json, rev);
+	if (!state) {
+		pv_log(ERROR, "Could not verify state json format");
+		goto out;
+	}
+
+	ret = true;
+
+out:
+	if (json)
+		free(json);
+	if (state)
+		pv_state_free(state);
+
+	return ret;
 }
 
 void pv_storage_init_plat_usermeta(const char *name)

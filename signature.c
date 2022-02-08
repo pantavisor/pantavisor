@@ -739,7 +739,7 @@ static void pv_signature_parse_json(const char *json, struct dl_list *json_pairs
 	k = keys;
 
 	// platform head is pv->state->platforms
-	while (*k) {
+	while (k && *k) {
 		n = (*k)->end - (*k)->start;
 
 		pair = calloc(1, sizeof(struct pv_signature_pair));
