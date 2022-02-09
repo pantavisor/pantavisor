@@ -30,17 +30,6 @@
 #include "condition.h"
 #include "utils/list.h"
 
-typedef enum {
-	PLAT_NONE,
-	PLAT_DATA,
-	PLAT_READY,
-	PLAT_BLOCKED,
-	PLAT_STARTING,
-	PLAT_STARTED,
-	PLAT_STOPPING,
-	PLAT_STOPPED
-} plat_status_t;
-
 struct pv_platform {
 	char *name;
 	char *type;

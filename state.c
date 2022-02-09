@@ -251,28 +251,18 @@ struct pv_json* pv_state_fetch_json(struct pv_state *s, const char *name)
 	return NULL;
 }
 
-struct pv_condition* pv_state_fetch_condition(struct pv_state *s, const char *key)
+struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s,
+	const char *plat,
+	const char *key,
+	const char *eval_value)
 {
 	struct pv_condition *c, *tmp;
 
 	// Iterate over all conditions from state
 	dl_list_for_each_safe(c, tmp, &s->conditions,
             struct pv_condition, list) {
-		if (pv_str_matches(c->key, strlen(c->key), key, strlen(key)))
-			return c;
-	}
-
-	return NULL;
-}
-
-struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s, const char *key, const char *eval_value)
-{
-	struct pv_condition *c, *tmp;
-
-	// Iterate over all conditions from state
-	dl_list_for_each_safe(c, tmp, &s->conditions,
-            struct pv_condition, list) {
-		if (pv_str_matches(c->key, strlen(c->key), key, strlen(key)) &&
+		if (pv_str_matches(c->plat, strlen(c->plat), plat, strlen(plat)) &&
+			pv_str_matches(c->key, strlen(c->key), key, strlen(key)) &&
 			pv_str_matches(c->eval_value, strlen(c->eval_value), eval_value, strlen(eval_value)))
 			return c;
 	}
@@ -819,12 +809,11 @@ static void pv_state_transfer_conditions(struct pv_state *pending, struct pv_sta
 	struct pv_condition *c, *tmp_c, *curr_c;
 	struct pv_condition_ref *cr, *tmp_cr;
 	struct pv_platform *p, *tmp_p;
-	struct pv_group *g, *tmp_g;
 
 	// remove removed conditions from current
 	dl_list_for_each_safe(c, tmp_c, &current->conditions,
 			struct pv_condition, list) {
-		if (!pv_state_fetch_condition_value(pending, c->key, c->eval_value)) {
+		if (!pv_state_fetch_condition_value(pending, c->plat, c->key, c->eval_value)) {
 			pv_log(DEBUG, "removing condition %s unused in pending state", c->key);
 			dl_list_del(&c->list);
 			pv_condition_free(c);
@@ -834,7 +823,7 @@ static void pv_state_transfer_conditions(struct pv_state *pending, struct pv_sta
 	// move new conditions to current
 	dl_list_for_each_safe(c, tmp_c, &pending->conditions,
 			struct pv_condition, list) {
-		if (!pv_state_fetch_condition_value(current, c->key, c->eval_value)) {
+		if (!pv_state_fetch_condition_value(current, c->plat, c->key, c->eval_value)) {
 			pv_log(DEBUG, "adding new condition %s from pending state", c->key);
 			dl_list_del(&c->list);
 			dl_list_add_tail(&current->conditions, &c->list);
@@ -846,19 +835,11 @@ static void pv_state_transfer_conditions(struct pv_state *pending, struct pv_sta
 			struct pv_platform, list) {
 		dl_list_for_each_safe(cr, tmp_cr, &p->condition_refs,
 				struct pv_condition_ref, list) {
-			curr_c = pv_state_fetch_condition_value(current, cr->ref->key, cr->ref->eval_value);
+			curr_c = pv_state_fetch_condition_value(current,
+				cr->ref->plat,
+				cr->ref->key,
+				cr->ref->eval_value);
 			pv_log(DEBUG, "relinking condition %s to platform %s", curr_c->key, p->name);
-			cr->ref = curr_c;
-		}
-	}
-
-	// relink group conditions to current groups
-	dl_list_for_each_safe(g, tmp_g, &current->groups,
-			struct pv_group, list) {
-		dl_list_for_each_safe(cr, tmp_cr, &g->condition_refs,
-				struct pv_condition_ref, list) {
-			curr_c = pv_state_fetch_condition_value(current, cr->ref->key, cr->ref->eval_value);
-			pv_log(DEBUG, "relinking condition %s to group %s", curr_c->key, g->name);
 			cr->ref = curr_c;
 		}
 	}
@@ -1013,29 +994,36 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	return true;
 }
 
-int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value)
+int pv_state_report_condition(struct pv_state *s,
+	const char *plat,
+	const char *key,
+	const char *value)
 {
-	struct pv_condition *c;
+	struct pv_condition *c, *tmp;
 
-	pv_log(DEBUG, "condition from platform %s reported with key '%s' and value '%s'",
+	pv_log(DEBUG, "condition from platform '%s' reported with key '%s' and value '%s'",
 		plat, key, value);
 
-	c = pv_state_fetch_condition(s, key);
-	if (c) {
-		pv_condition_set_value(c, value);
-		pv_log(DEBUG, "condition modified");
-		return 0;
+	// Iterate over all conditions from state
+	dl_list_for_each_safe(c, tmp, &s->conditions,
+            struct pv_condition, list) {
+		if ((pv_str_matches(c->plat, strlen(c->plat), plat, strlen(plat)) ||
+			pv_str_matches(c->plat, strlen(c->plat), "*", strlen("*"))) &&
+			pv_str_matches(c->key, strlen(c->key), key, strlen(key))) {
+			pv_condition_set_value(c, value);
+			pv_log(DEBUG, "reported condition modified");
+			return 0;
+		}
 	}
 
-	pv_log(WARN, "condition not found");
-
+	pv_log(WARN, "reported condition not found");
 	return 0;
 }
 
 char* pv_state_get_containers_json(struct pv_state *s)
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len), *line;
+	char *json = calloc(1, len + 1), *line;
 	struct pv_platform *p, *tmp;
 
 	// open json
@@ -1049,20 +1037,19 @@ char* pv_state_get_containers_json(struct pv_state *s)
 		line = pv_platform_get_json(p);
 		line_len = strlen(line) + 1;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, "%s,", line);
 		len += line_len;
 		free(line);
 	}
 
 	// remove ,
-	len -= 1;
+	len--;
 
 close:
 	// close json
-	len += 2;
-	json = realloc(json, len);
-	json[len-2] = ']';
-	json[len-1] = '\0';
+	json = realloc(json, len + 2);
+	json[len] = ']';
+	json[len + 1] = '\0';
 
 	return json;
 }
@@ -1070,7 +1057,7 @@ close:
 char* pv_state_get_conditions_json(struct pv_state *s)
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len), *line;
+	char *json = calloc(1, len + 1), *line;
 	struct pv_condition *c, *tmp;
 
 	// open json
@@ -1084,20 +1071,19 @@ char* pv_state_get_conditions_json(struct pv_state *s)
 		line = pv_condition_get_json(c);
 		line_len = strlen(line) + 1;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, "%s,", line);
 		len += line_len;
 		free(line);
 	}
 
 	// remove ,
-	len -= 1;
+	len--;
 
 close:
 	// close json
-	len += 2;
-	json = realloc(json, len + 1);
-	json[len-2] = ']';
-	json[len-1] = '\0';
+	json = realloc(json, len + 2);
+	json[len] = ']';
+	json[len + 1] = '\0';
 
 	return json;
 }

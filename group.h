@@ -27,13 +27,10 @@
 
 struct pv_group {
 	char *name;
-	struct dl_list condition_refs; // pv_condition_ref
 	struct dl_list list; // pv_group
 };
 
 struct pv_group* pv_group_new(char *name);
 void pv_group_free(struct pv_group *g);
-
-void pv_group_add_condition_ref(struct pv_group *g, struct pv_condition *c);
 
 #endif // PV_GROUP_H

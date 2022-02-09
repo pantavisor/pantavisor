@@ -97,6 +97,17 @@ struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 //	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
+typedef enum {
+	PLAT_NONE,
+	PLAT_DATA,
+	PLAT_READY,
+	PLAT_BLOCKED,
+	PLAT_STARTING,
+	PLAT_STARTED,
+	PLAT_STOPPING,
+	PLAT_STOPPED
+} plat_status_t;
+
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 {
 	struct pv_platform *p = calloc(1, sizeof(struct pv_platform));
@@ -243,31 +254,8 @@ char* pv_platform_get_json(struct pv_platform *p)
 	snprintf(json, len + 1, "{\"name\":\"%s\",\"group\":\"%s\",\"status\":\"%s\",\"conditions\":[",
 		p->name, group, status);
 
-	if (!p->group || dl_list_empty(&p->group->condition_refs))
-		goto plats;
-
-	dl_list_for_each_safe(cr, tmp, &p->group->condition_refs,
-			struct pv_condition_ref, list) {
-		if (!cr->ref)
-			continue;
-
-		line = pv_condition_get_json(cr->ref);
-		line_len = strlen(line) + 1;
-		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
-		len += line_len;
-		free(line);
-	}
-
-	// remove ,
-	len--;
-
-plats:
 	if (dl_list_empty(&p->condition_refs))
 		goto close;
-
-	// recover ,
-	len++;
 
 	dl_list_for_each_safe(cr, tmp, &p->condition_refs,
 			struct pv_condition_ref, list) {
@@ -275,9 +263,11 @@ plats:
 			continue;
 
 		line = pv_condition_get_json(cr->ref);
+		pv_log(DEBUG, "line %s", line);
 		line_len = strlen(line) + 1;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, "%s,", line);
+		pv_log(DEBUG, "json %s", json);
 		len += line_len;
 		free(line);
 	}
@@ -287,11 +277,11 @@ plats:
 
 close:
 	// close json
-	len += 3;
-	json = realloc(json, len);
-	json[len-3] = ']';
-	json[len-2] = '}';
-	json[len-1] = '\0';
+	json = realloc(json, len + 3);
+	json[len] = ']';
+	json[len + 1] = '}';
+	json[len + 2] = '\0';
+	pv_log(DEBUG, "json %s", json);
 
 	return json;
 }
@@ -708,16 +698,6 @@ bool pv_platform_check_conditions(struct pv_platform *p)
 {
 	struct pv_condition_ref *cr, *tmp;
 
-	if (!p->group || dl_list_empty(&p->group->condition_refs))
-		goto plat;
-
-	dl_list_for_each_safe(cr, tmp, &p->group->condition_refs,
-			struct pv_condition_ref, list) {
-		if (cr->ref && !pv_condition_check(cr->ref))
-			return false;
-	}
-
-plat:
 	if (dl_list_empty(&p->condition_refs))
 		goto out;
 

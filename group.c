@@ -35,27 +35,9 @@ struct pv_group* pv_group_new(char *name)
 	g = calloc(1, sizeof(struct pv_group));
 	if (g) {
 		g->name = strdup(name);
-		dl_list_init(&g->condition_refs);
 	}
 
 	return g;
-}
-
-static void pv_group_empty_condition_refs(struct pv_group *g)
-{
-	int num_conditions = 0;
-	struct pv_condition_ref *cr, *tmp;
-	struct dl_list *condition_refs = &g->condition_refs;
-
-	// Iterate over all condition references from group
-	dl_list_for_each_safe(cr, tmp, condition_refs,
-			struct pv_condition_ref, list) {
-		dl_list_del(&cr->list);
-		pv_condition_ref_free(cr);
-		num_conditions++;
-	}
-
-	pv_log(INFO, "removed %d condition references", num_conditions);
 }
 
 void pv_group_free(struct pv_group *g)
@@ -64,19 +46,5 @@ void pv_group_free(struct pv_group *g)
 
 	if (g->name)
 		free(g->name);
-	pv_group_empty_condition_refs(g);
 	free(g);
-}
-
-void pv_group_add_condition_ref(struct pv_group *g, struct pv_condition *c)
-{
-	struct pv_condition_ref *cr;
-
-	pv_log(DEBUG, "adding condition reference %s to group", c->key);
-
-	cr = pv_condition_ref_new(c);
-	if (cr) {
-		dl_list_init(&cr->list);
-		dl_list_add_tail(&g->condition_refs, &cr->list);
-	}
 }
