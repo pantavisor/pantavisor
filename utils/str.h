@@ -31,7 +31,7 @@
 	do { \
 		int out = snprintf((buf), (size_t) (size), __VA_ARGS__); \
 		if ((int) (size) <= out) { \
-			pv_log(WARN, "string %s with size %d truncated to %d", #buf, (int) size, out); \
+			pv_log(WARN, "string %s with size %d truncated to %d", #buf, out, (int) size); \
 		} \
 	} while (0)
 

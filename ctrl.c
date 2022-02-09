@@ -252,7 +252,7 @@ static void pv_ctrl_write_error_response(int req_fd,
 	content_len = 12 + // {\"Error\":\"%s\"}
 		strlen(message);
 
-	response_len = 91 + // HTTP/1.1...
+	response_len = 93 + // HTTP/1.1...
 		strlen(pv_ctrl_string_http_status_code(code)) +
 		get_digit_count(content_len) +
 		strlen(message);
@@ -261,7 +261,7 @@ static void pv_ctrl_write_error_response(int req_fd,
 		goto out;
 	}
 
-	response = calloc(1, response_len);
+	response = calloc(1, (response_len + 1) * sizeof(char*));
 	if (!response) {
 		pv_log(ERROR, "HTTP response cannot be allocated");
 		goto out;
@@ -774,6 +774,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			if (!pv_storage_verify_state_json(file_name)) {
 				pv_log(ERROR, "state verification went wrong");
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "State verification has failed");
+				pv_storage_rm_rev(file_name);
 				goto out;
 			}
 			pv_ctrl_write_ok_response(req_fd);
