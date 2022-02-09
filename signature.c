@@ -25,7 +25,6 @@
 #include <libgen.h>
 #include <fnmatch.h>
 #include <mbedtls/pk.h>
-#include <mbedtls/md_internal.h>
 #include <mbedtls/x509_crt.h>
 
 #include <jsmn/jsmnutil.h>
@@ -532,6 +531,8 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 	size_t olen;
 	struct pv_signature_cert_raw *cert_raw, *tmp;
 	struct mbedtls_x509_crt cacerts;
+	struct mbedtls_x509_crt *cacerts_i;
+	int i;
 
 	pv_log(DEBUG, "parsing public key from x5c certificate");
 
@@ -564,8 +565,16 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		goto out;
 	}
 
-	if (mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL)) {
-		pv_log(ERROR, "cert chain could not be verified");
+	cacerts_i = &cacerts;
+	i = 1;
+	while (cacerts_i->next) {
+		i++;
+		cacerts_i = cacerts_i->next;
+	}
+	pv_log(INFO, "loaded %d trusted x509 certificates from %s", i, PATH_PVS_CERTS);
+
+	if (res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL)) {
+		pv_log(ERROR, "cert chain could not be verified %d", res);
 		goto out;
 	}
 
@@ -633,7 +642,7 @@ out:
 	return ret;
 }
 
-static bool pv_signature_verify_sha256(const char *payload, struct dl_list *certs_raw, struct pv_signature *signature)
+static bool pv_signature_verify_sha(const char *payload, struct dl_list *certs_raw, struct pv_signature *signature, mbedtls_md_type_t mdtype)
 {
 	bool ret = false;
 	int res;
@@ -643,7 +652,7 @@ static bool pv_signature_verify_sha256(const char *payload, struct dl_list *cert
 	unsigned char *hash = NULL;
 	struct mbedtls_pk_context *pk = NULL;
 
-	pv_log(DEBUG, "using PVS verify with sha256");
+	pv_log(DEBUG, "using PVS verify with sha");
 
 	// if list is not empty, we verify with pub key from first cert
 	if (!dl_list_empty(certs_raw)) {
@@ -680,15 +689,15 @@ static bool pv_signature_verify_sha256(const char *payload, struct dl_list *cert
 	strcat(payload_encoded, ".");
 	strcat(payload_encoded, files_encoded);
 
-	hash = calloc(1, 32);
+	hash = calloc(1, 128);
 	if (!hash) {
 		pv_log(ERROR, "cannot allocate hash");
 		goto out;
 	}
 
-	res = mbedtls_md(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (unsigned char*)payload_encoded, strlen(payload_encoded), hash);
+	res = mbedtls_md(mbedtls_md_info_from_type(mdtype), (unsigned char*)payload_encoded, strlen(payload_encoded), hash);
 	if (res) {
-		pv_log(ERROR, "cannot create hash with code %d", res);
+		pv_log(ERROR, "cannot create hash with code %d for payload '%s'", res, payload_encoded);
 		goto out;
 	}
 
@@ -699,9 +708,9 @@ static bool pv_signature_verify_sha256(const char *payload, struct dl_list *cert
 
 	pv_log(DEBUG, "signature length is %d", olen);
 
-	res = mbedtls_pk_verify(pk, MBEDTLS_MD_SHA256, hash, 0, (unsigned char*)sig_decoded, olen);
+	res = mbedtls_pk_verify(pk, mdtype, hash, 0, (unsigned char*)sig_decoded, olen);
 	if (res) {
-		pv_log(ERROR, "verification returned error code %d", res);
+		pv_log(ERROR, "verification returned error code %d sig: %s", res, sig_decoded);
 		goto out;
 	}
 
@@ -778,6 +787,7 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 	char *payload = NULL;
 	struct pv_signature_headers *headers = NULL;
 	struct dl_list certs_raw; // pv_signature_cert_raw
+	mbedtls_md_type_t mdtype = MBEDTLS_MD_NONE;
 
 	headers = pv_signature_parse_protected(signature->protected);
 	if (!headers) {
@@ -801,10 +811,17 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 
 	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256", strlen("RS256")) ||
 	    pv_str_matches(headers->alg, strlen(headers->alg), "ES256", strlen("ES256"))) {
-		ret = pv_signature_verify_sha256(payload, &certs_raw, signature);
+		mdtype = MBEDTLS_MD_SHA256;
+	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES384", strlen("ES384"))) {
+		mdtype = MBEDTLS_MD_SHA384;
+	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES512", strlen("ES512"))) {
+		mdtype = MBEDTLS_MD_SHA512;
 	} else {
 		pv_log(ERROR, "unknown algorithm in protected JSON %s", headers->alg);
 	}
+
+	if (mdtype > 0)
+		ret = pv_signature_verify_sha(payload, &certs_raw, signature, mdtype);
 out:
 	pv_signature_free_certs_raw(&certs_raw);
 	if (headers)
