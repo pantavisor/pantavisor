@@ -531,6 +531,8 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 	size_t olen;
 	struct pv_signature_cert_raw *cert_raw, *tmp;
 	struct mbedtls_x509_crt cacerts;
+	struct mbedtls_x509_crt *cacerts_i;
+	int i;
 
 	pv_log(DEBUG, "parsing public key from x5c certificate");
 
@@ -562,6 +564,14 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		pv_log(ERROR, "ca certs could not be parsed: %d", res);
 		goto out;
 	}
+
+	cacerts_i = &cacerts;
+	i = 1;
+	while (cacerts_i->next) {
+		i++;
+		cacerts_i = cacerts_i->next;
+	}
+	pv_log(INFO, "loaded %d trusted x509 certificates from %s", i, PATH_PVS_CERTS);
 
 	if (res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL)) {
 		pv_log(ERROR, "cert chain could not be verified %d", res);
