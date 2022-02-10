@@ -44,6 +44,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/utils/
 LOCAL_SRC_FILES := init.c \
 			loop.c \
 			log.c \
+			logsink.c \
 			config_parser.c \
 			config.c \
 			pantavisor.c \
@@ -83,8 +84,7 @@ LOCAL_SRC_FILES := init.c \
 			pvlogger.c \
 			pvctl_utils.c \
 			mount.c \
-			ph_logger/ph_logger.c \
-			ph_logger/ph_logger_v1.c \
+			ph_logger.c \
 			buffer.c \
 			blkid.c \
 			paths.c

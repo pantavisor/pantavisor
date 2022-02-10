@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,46 +19,24 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef LOGSINK_H
+#define LOGSINK_H
 
-#ifdef DEBUG
-#undef DEBUG
-#endif
-
-#ifndef PV_LOG_H
-#define PV_LOG_H
-
-#include "pantavisor.h"
+#include <sys/types.h>
+#include <unistd.h>
 #include <stdarg.h>
+#include "pantavisor.h"
 
-void exit_error(int err, char *msg);
+#define PV_PLATFORM_STR "pantavisor"
 
-enum log_level {
-	FATAL,	// 0
-	ERROR,	// 1
-	WARN,	// 2
-	INFO,	// 3
-	DEBUG,	// 4
-	ALL	// 5
-};
+void pv_logsink_toggle(struct pantavisor *pv, const char *rev);
 
-#define JSON_FORMAT	"{ \"tsec\": %"PRId64", \"tnano\": %"PRId32", \"lvl\": \"%s\", \"src\": \"%s\", \"msg\": \"%s\" }"
+int pv_logsink_init(void);
 
-// Example log:		"[pantavisor] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
-#define DATE_FORMAT		"2016-12-01 13:22:26"
+int pv_logsink_send_log(bool is_platform, char *platform, char *src, int level, const char *msg, ...);
 
-#define vlog(module, level, ...)	__log(module, level, ## __VA_ARGS__);
+int pv_logsink_send_vlog(bool is_platform, char *platform, char *src, int level, const char *msg, va_list args);
 
-#define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
+void pv_logsink_stop(void);
 
-int pv_log_start(struct pantavisor *pv, const char *rev);
-
-void __log(char *module, int level, const char *fmt, ...);
-
-void __log_to_console(char *module, int level, const char *fmt, ...);
-void __vlog_to_console(char *module, int level, const char *fmt, va_list args);
-
-/*
- * Don't free the return value!
- */
-const char *pv_log_level_name(int level);
-#endif
+#endif /* LOGSINK_H */

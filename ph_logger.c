@@ -3,9 +3,7 @@
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
+ * in the Software without restriction, including without limitation the rights * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
  *
  * The above copyright notice and this permission notice shall be included in all
@@ -55,11 +53,7 @@
 #include "file.h"
 #include "buffer.h"
 #include "ph_logger.h"
-#include "ph_logger_v1.h"
 #include "paths.h"
-
-#define MODULE_NAME             "ph_logger"
-#include "../log.h"
 
 #define PH_LOGGER_POS_FILE 	PV_PATH"/.ph_logger"
 #define PH_LOGGER_BACKLOG	(20)
@@ -71,64 +65,6 @@
 #define MODULE_NAME             "ph_logger"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-static void __ph_log(int level, const char *msg, va_list args)
-{
-	struct ph_logger_msg *ph_logger_msg = NULL;
-	char *buffer = NULL;
-	char *logger_buffer = NULL;
-	char path[PATH_MAX];
-	int len = 0;
-	int max_size = 0;
-	struct buffer *log_buffer = NULL;
-	struct buffer *ph_log_buffer = NULL;
-
-	log_buffer = pv_buffer_get(true);
-	if (!log_buffer)
-		goto out_no_buffer;
-
-	ph_log_buffer = pv_buffer_get(true);
-	if (!ph_log_buffer)
-		goto out_no_buffer;
-
-	buffer = log_buffer->buf;
-	logger_buffer = ph_log_buffer->buf;
-
-	vsnprintf(buffer, log_buffer->size, msg, args);
-	len = strlen(buffer);
-
-	max_size = (len + 1) + strlen(MODULE_NAME) + strlen(PH_LOGGER_LOGFILE) + 
-		6/*6 digits for revision*/ + 4/*null*/;
-	if (max_size > ph_log_buffer->size)
-		goto out_no_buffer;
-
-	ph_logger_msg = (struct ph_logger_msg*)logger_buffer;
-	ph_logger_msg->version = PH_LOGGER_V1;
-	ph_logger_msg->len = sizeof(*ph_logger_msg) + max_size;
-
-	ph_logger_write_bytes(ph_logger_msg, buffer, level,
-			MODULE_NAME, PH_LOGGER_LOGFILE, len + 1);
-	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-	pvctl_write_to_path(path, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
-
-out_no_buffer:
-	pv_buffer_drop(log_buffer);
-	pv_buffer_drop(ph_log_buffer);
-}
-
-static void ph_log(int level, const char *msg, ...)
-{
-	va_list args;
-
-	if (level > pv_config_get_log_loglevel())
-		return;
-
-	va_start(args, msg);
-
-	__ph_log(level, msg, args);
-
-	va_end(args);
-}
 
 /*
  * Include after defining MODULE_NAME.
@@ -166,18 +102,6 @@ static struct ph_logger ph_logger = {
 	.push_service = -1
 };
 
-static ph_logger_handler_t read_handler[] = {
-	[PH_LOGGER_V1] = ph_logger_read_handler_v1
-};
-
-static ph_logger_handler_t write_handler[] = {
-	[PH_LOGGER_V1] = ph_logger_write_handler_v1
-};
-
-static ph_logger_file_rw_handler_t file_rw_handler[] = {
-	[PH_LOGGER_V1] = ph_logger_write_to_file_handler_v1
-};
-
 static struct ph_logger_fragment* __ph_logger_alloc_frag(char *json_frag, bool do_frag_dup) 
 {
 	struct ph_logger_fragment *frag = NULL;
@@ -203,30 +127,6 @@ static struct ph_logger_fragment* ph_logger_alloc_frag(char *json_frag)
 	return __ph_logger_alloc_frag(json_frag, false);
 }
 
-static ph_logger_file_rw_handler_t get_file_rw_handler(int version)
-{
-	if (version < PH_LOGGER_V1 || version >= PH_LOGGER_MAX_HANDLERS)
-		return NULL;
-
-	return file_rw_handler[version];
-}
-
-static ph_logger_handler_t get_read_handler(int version)
-{
-	if (version < PH_LOGGER_V1 || version >= PH_LOGGER_MAX_HANDLERS)
-		return NULL;
-	
-	return read_handler[version];
-}
-
-static ph_logger_handler_t get_write_handler(int version)
-{
-	if (version < PH_LOGGER_V1 || version >= PH_LOGGER_MAX_HANDLERS)
-		return NULL;
-
-	return write_handler[version];
-}
-
 static int ph_logger_get_connection(struct ph_logger *ph_logger)
 {
 	if (ph_logger->pv_conn)
@@ -239,65 +139,6 @@ static int ph_logger_get_connection(struct ph_logger *ph_logger)
 	}
 out:
 	return !!ph_logger->pv_conn;;
-}
-
-static int ph_logger_open_socket(const char *path) 
-{
-	int fd;
-	struct sockaddr_un addr;
-
-	fd = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (fd < 0) {
-		ph_log(ERROR, "unable to open control socket");
-		goto out;
-	}
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path, path);
-
-	if (bind(fd, (const struct sockaddr *) &addr, sizeof(addr)) < 0) {
-		close(fd);
-		fd = -1;
-		goto out;
-	}
-
-	// queue upto PH_LOGGER_BACKLOG commands
-	listen(fd, PH_LOGGER_BACKLOG);
-out:
-	return fd;
-}
-static int __ph_logger_init_basic(struct ph_logger *ph_logger) {
-	SNPRINTF_WTRUNC(ph_logger->user_agent, USER_AGENT_LEN, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
-	return 0;
-}
-
-int ph_logger_init(const char *sock_path)
-{
-	struct epoll_event ep_event;
-
-	ph_logger.sock_fd = ph_logger_open_socket(sock_path);
-	ph_logger.epoll_fd = epoll_create1(0);
-	
-	if (ph_logger.epoll_fd < 0 || ph_logger.sock_fd < 0) {
-#ifdef DEBUG
-		printf("ph_logger epoll_fd = %d\n",ph_logger.epoll_fd);
-		printf("ph_logger sock_fd = %d\n",ph_logger.sock_fd);
-		printf("errno  =%d\n", errno);
-#endif
-		goto out;
-	}
-
-	ep_event.events = EPOLLIN;
-	ep_event.data.fd = ph_logger.sock_fd;
-	__ph_logger_init_basic(&ph_logger);
-	if (epoll_ctl(ph_logger.epoll_fd, EPOLL_CTL_ADD, ep_event.data.fd, &ep_event))
-		goto out;
-	return 0;
-out:
-	close(ph_logger.sock_fd);
-	close(ph_logger.epoll_fd);
-	return -1;
 }
 
 static void sigterm_handler(int signum)
@@ -340,12 +181,12 @@ auth:
 	}
 	res = trest_do_json_request(ph_logger->client, req);
 	if (!res) {
-		ph_log(WARN, "HTTP request POST /logs/ could not be initialized");
+		pv_log(WARN, "HTTP request POST /logs/ could not be initialized");
 	} else if (!res->code &&
 		res->status != TREST_AUTH_STATUS_OK) {
-		ph_log(WARN, "HTTP request POST /logs/ could not auth (status=%d)", res->status);
+		pv_log(WARN, "HTTP request POST /logs/ could not auth (status=%d)", res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
-		ph_log(WARN, "HTTP request POST /logs/ returned HTTP error (code=%d; body='%s')", res->code, res->body);
+		pv_log(WARN, "HTTP request POST /logs/ returned HTTP error (code=%d; body='%s')", res->code, res->body);
 	} else {
 		ret = 0;
 	}
@@ -412,7 +253,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	if (pv_file_get_file_xattr(filename, PH_LOGGER_POS_XATTR, &dst, NULL) > 0) {
 		sscanf(dst, "%" PRId64, &pos);
 	} else {
-		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
+		pv_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
 				PH_LOGGER_POS_XATTR, filename, pos);
 		SNPRINTF_WTRUNC(dst, 32, "%"PRIu64"", pos);
 		/*
@@ -434,7 +275,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	}
 
 	if (lseek(fd, pos, SEEK_SET) == (off_t) -1) {
-		ph_log(ERROR, "Unable to seek to position %lld for %s", pos, filename);
+		pv_log(ERROR, "Unable to seek to position %lld for %s", pos, filename);
 		goto close_fd;
 	}
 
@@ -543,7 +384,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 				pos = read_pos + offset;
 			} else {
 				/*Bail out on the first error*/
-				ph_log(ERROR, "alloc error for filename %s", filename);
+				pv_log(ERROR, "alloc error for filename %s", filename);
 				bytes_read = 0;
 			}
 			free(formatted_json);
@@ -552,7 +393,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 			 * Dont' try for next block if this block
 			 * couldn't be json escaped.
 			 */
-			ph_log(ERROR, "json format error for filename %s", filename);
+			pv_log(ERROR, "json format error for filename %s", filename);
 			bytes_read = 0;
 		} else {
 			/*
@@ -638,95 +479,6 @@ out:
 	return ret;
 }
 
-static int ph_logger_write_to_log_file(struct ph_logger_msg  *ph_logger_msg, char *revision)
-{
-	char path[PATH_MAX];
-	ph_logger_file_rw_handler_t  file_handler = NULL;
-	int ret = 0;
-
-	file_handler = get_file_rw_handler(ph_logger_msg->version);
-	if (file_handler) {
-		pv_paths_pv_log(path, PATH_MAX, "");
-		ret = file_handler(ph_logger_msg, path, revision);
-	}
-	return ret;
-}
-
-static int ph_logger_read_write(struct ph_logger *ph_logger, char *revision)
-{
-	struct epoll_event ep_event[PH_LOGGER_MAX_EPOLL_FD];
-	int ret = 0;
-	int nr_logs = 0;
-again:
-	ret = epoll_wait(ph_logger->epoll_fd, ep_event, PH_LOGGER_MAX_EPOLL_FD, -1);
-	if (ret < 0) {
-		if (errno == EINTR)
-			goto again;
-		else {
-			perror("pantahub logger service error in epoll_wait: ");
-			return -1;
-		}
-	}
-	while(ret > 0) {
-		int work_fd;
-		/* Only one way comm.*/
-		struct sockaddr __unused;
-		/* index into event array*/
-		ret -= 1; 
-		work_fd = ep_event[ret].data.fd;
-
-		if (work_fd == ph_logger->sock_fd) {
-			socklen_t sock_size = sizeof(__unused);
-			int client_fd = -1;
-accept_again:
-			client_fd = accept(ph_logger->sock_fd, &__unused, &sock_size);
-			if (client_fd >= 0) {
-				/* reuse ep_event to add the new client_fd
-				 * to epoll.
-				 */
-				memset(&ep_event[ret], 0, sizeof(ep_event[ret]));
-				ep_event[ret].events = EPOLLIN;
-				ep_event[ret].data.fd = client_fd;
-
-				if (epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_ADD, client_fd, &ep_event[ret])) {
-#ifdef DEBUG
-					printf("Error adding to epoll %s\n",
-							strerror(errno));
-#endif
-					close(client_fd);/*So client would know*/
-				}
-			} else if (client_fd < 0 && errno == EINTR)
-				goto accept_again;
-			else {
-#ifdef DEBUG
-				printf("Error accepting %s\n", strerror(errno));
-#endif
-			}
-		} else {
-			/* We've data to read.*/
-			struct buffer *log_buffer = NULL;
-
-			log_buffer = pv_buffer_get(true);
-			if (log_buffer) {
-				char *buf = log_buffer->buf;
-				int nr_read = 0;
-				struct ph_logger_msg *msg = (struct ph_logger_msg*)buf;
-
-				nr_read = pv_file_read_nointr(work_fd, buf, log_buffer->size);
-				if (nr_read > 0) {
-					ph_logger_write_to_log_file(msg, revision);
-					nr_logs++;
-				}
-			}
-			ep_event[ret].events = EPOLLIN;
-			epoll_ctl(ph_logger->epoll_fd, EPOLL_CTL_DEL, work_fd,&ep_event[ret]);
-			close(work_fd);
-			pv_buffer_drop(log_buffer);
-		}
-	}
-	return nr_logs;
-}
-
 /*
  * For each newline found in buf, construct a filename to read from.
  */
@@ -757,7 +509,7 @@ static int ph_logger_push_from_file_parse_info(char *buf, int len, char *revisio
 
 	if (ph_logger_get_connection(&ph_logger))
 		return ph_logger_push_from_file(filename, platform, source, revision);
-	ph_log(DEBUG, "exits this way");
+	pv_log(DEBUG, "exits this way");
 	return -1;
 }
 
@@ -823,7 +575,7 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 	if (level > pv_config_get_libthttp_loglevel())
 		return;
 
-	__ph_log(DEBUG, fmt, args);
+	vlog(MODULE_NAME, DEBUG, fmt, args);
 }
 
 static pid_t ph_logger_start_push_service(char *revision)
@@ -835,9 +587,9 @@ static pid_t ph_logger_start_push_service(char *revision)
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
 		close(ph_logger.sock_fd);
-		ph_log(INFO, "Initialized push service with pid %d by process with pid %d",
+		pv_log(INFO, "Initialized push service with pid %d by process with pid %d",
 				getpid(), getppid());
-		ph_log(DEBUG, "Push service pushing logs for rev %s", revision);
+		pv_log(DEBUG, "Push service pushing logs for rev %s", revision);
 		thttp_set_log_func(log_libthttp);
 		while (1) {
 			// if nothing to push or error while pushing, sleep
@@ -908,7 +660,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_re
 	if (range_service == 0) {
 		current_rev = ph_logger_get_max_revision(pv);
 
-		ph_log(INFO, "Initialized range service with pid %d by process with pid %d",
+		pv_log(INFO, "Initialized range service with pid %d by process with pid %d",
 			getpid(), getppid());
 		thttp_set_log_func(log_libthttp);
 		while (current_rev >= 0) {
@@ -917,7 +669,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_re
 				current_rev--;
 				continue;
 			}
-			ph_log(DEBUG, "Range service about to push remaining logs for rev %d",
+			pv_log(DEBUG, "Range service about to push remaining logs for rev %d",
 				current_rev);
 			len = snprintf(NULL, 0, "%d", current_rev) + 1;
 			rev = calloc(1, len * sizeof(char*));
@@ -942,39 +694,11 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_re
 				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
 			}
 		}
-		ph_log(INFO, "Range service stopped normally");
+		pv_log(INFO, "Range service stopped normally");
 		_exit(EXIT_SUCCESS);
 	}
 
 	return range_service;
-}
-
-static pid_t ph_logger_start_log_service(struct pantavisor *pv, char *revision)
-{
-	pid_t service_pid = -1;
-
-	pv_global = pv;
-
-	service_pid = fork();
-	if (service_pid == 0) {
-		struct sigaction sa;
-		memset(&sa, 0, sizeof(sa));
-
-		sa.sa_handler = sigterm_handler;
-		sa.sa_flags = SA_RESTART;
-		sigaction(SIGTERM, &sa, NULL);
-
-		sa.sa_handler = sigchld_handler;
-		sigaction(SIGCHLD, &sa, NULL);
-
-		while (!(ph_logger.flags & PH_LOGGER_FLAG_STOP)) {
-			ph_logger_read_write(&ph_logger, revision);
-		}
-		printf("Exiting ph logger service.\n");
-		_exit(EXIT_SUCCESS);
-	}
-
-	return service_pid;
 }
 
 static void ph_logger_start_cloud(struct pantavisor *pv, char *revision)
@@ -1017,41 +741,10 @@ static void ph_logger_stop_cloud(struct pantavisor *pv)
 	ph_logger.range_service = -1;
 }
 
-static void ph_logger_start_local(struct pantavisor *pv, char *revision)
-{
-	if (!pv)
-		return;
-
-	if (ph_logger.log_service == -1) {
-		ph_logger.log_service = ph_logger_start_log_service(pv, revision);
-		if (ph_logger.log_service > 0) {
-			pv_log(DEBUG, "started log service with pid %d", ph_logger.log_service);
-		} else {
-			pv_log(ERROR, "unable to start log service");
-		}
-	}
-}
-
-static void ph_logger_stop_local(struct pantavisor *pv)
-{
-	if (ph_logger.log_service > 0) {
-		kill_child_process(ph_logger.log_service);
-		pv_log(DEBUG, "stopped log service with pid %d", ph_logger.log_service);
-	}
-
-	ph_logger.log_service = -1;
-}
-
 void ph_logger_toggle(struct pantavisor *pv, char *rev)
 {
 	if (!pv)
 		return;
-
-	if (pv_config_get_log_capture() &&
-		pv_config_get_log_loggers())
-		ph_logger_start_local(pv, rev);
-	else
-		ph_logger_stop_local(pv);
 
 	if (pv_config_get_log_push() &&
 		pv_get_instance()->remote_mode)
@@ -1065,39 +758,5 @@ void ph_logger_stop(struct pantavisor *pv)
 	if (!pv)
 		return;
 
-	if (ph_logger.log_service > 0) {
-		kill_child_process(ph_logger.log_service);
-		pv_log(DEBUG, "stopped log service with pid %d", ph_logger.log_service);
-	}
-
-	ph_logger.log_service = -1;
-
 	ph_logger_stop_cloud(pv);
-}
-
-int ph_logger_read_bytes(struct ph_logger_msg *ph_logger_msg, char *buf, ...)
-{
-	va_list args;
-	va_start(args, buf);
-	int ret = 0;
-	ph_logger_handler_t reader = get_read_handler(ph_logger_msg->version);
-
-	if (reader)
-		ret = reader(ph_logger_msg, buf, args);
-	va_end(args);
-	return ret;
-}
-
-int ph_logger_write_bytes(struct ph_logger_msg *ph_logger_msg, const char *buf, ...)
-{
-	va_list args;
-	va_start(args, buf);
-	int written = 0;
-
-	ph_logger_handler_t writer = get_write_handler(ph_logger_msg->version);
-
-	if (writer)
-		written = writer(ph_logger_msg, (char*)buf, args);
-	va_end(args);
-	return written;
 }
