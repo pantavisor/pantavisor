@@ -356,90 +356,6 @@ out:
 	return ret;
 }
 
-static int parse_groups(struct pv_state *s, char *value)
-{
-	char *str = NULL, *name = NULL, *conditions = NULL;
-	int ret = 0, tokc;
-	jsmntok_t *tokv = NULL, **t = NULL, **i = NULL;
-
-	pv_log(DEBUG, "groups %s", value);
-
-	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
-		pv_log(ERROR, "wrong format groups");
-		goto out;
-	}
-
-	t = jsmnutil_get_array_toks(value, tokv);
-	i = t;
-	while (*i) {
-		struct pv_group *g;
-		jsmntok_t *groupv;
-		int groupc;
-
-		str = pv_json_get_one_str(value, i);
-		if (!str)
-			break;
-
-		pv_log(DEBUG, "group %s", str);
-
-		if (jsmnutil_parse_json(str, &groupv, &groupc) <= 0) {
-			pv_log(ERROR, "wrong format group");
-			goto out;
-		}
-
-		name = pv_json_get_value(str, "name", groupv, groupc);
-		if (!name) {
-			pv_log(ERROR, "name not found in group");
-			goto out;
-		}
-
-		conditions = pv_json_get_value(str, "conditions", groupv, groupc);
-		if (!conditions) {
-			pv_log(ERROR, "conditions not found in group");
-			goto out;
-		}
-
-		g = pv_group_new(name);
-		if (!g) {
-			pv_log(ERROR, "could not create a new group");
-			goto out;
-		}
-
-		if (!parse_group_conditions(s, g, conditions)) {
-			pv_log(ERROR, "could not parse group conditions");
-			pv_group_free(g);
-			goto out;
-		}
-
-		pv_state_add_group(s, g);
-
-		free(name);
-		name = NULL;
-		free(conditions);
-		conditions = NULL;
-		free(str);
-		str = NULL;
-
-		i++;
-	}
-
-	ret = 1;
-
-out:
-	if (name)
-		free(name);
-	if (conditions)
-		free(conditions);
-	if (str)
-		free(str);
-	if (t)
-		jsmnutil_tokv_free(t);
-	if (tokv)
-		free(tokv);
-
-	return ret;
-}
-
 static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 {
 	int tokc, n, ret;
@@ -1176,18 +1092,6 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 	free(value);
 	value = NULL;
 
-	value = pv_json_get_value(buf, "groups.json", tokv, tokc);
-	if (value) {
-		pv_log(DEBUG, "parsing and adding groups.json");
-		pv_jsons_add(this, "groups.json", value);
-		if (!parse_groups(this, value)) {
-			this = NULL;
-			goto out;
-		}
-		free(value);
-		value = NULL;
-	}
-
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
 		pv_log(ERROR, "json cannot be parsed");
@@ -1203,7 +1107,6 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 		// avoid already parsed keys
 		if (!strncmp("bsp/run.json", buf+(*k)->start, n) ||
 		    !strncmp("disks.json", buf+(*k)->start, n) ||
-			!strncmp("groups.json", buf+(*k)->start, n) ||
 		    !strncmp("#spec", buf+(*k)->start, n)) {
 			k++;
 			continue;
