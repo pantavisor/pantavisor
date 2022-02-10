@@ -128,6 +128,36 @@ static int config_get_value_bl_type(struct dl_list *config_list, char *key,
 	return value;
 }
 
+static int config_parse_log_server_outputs(char *value)
+{
+	char *token, *tmp;
+	int server_outputs = 0;
+
+	for (token = strtok_r(value, ",", &tmp); token;
+	     token = strtok_r(NULL, ",", &tmp)) {
+		if (!strcmp(token, "singlefile"))
+			server_outputs |= LOG_SERVER_OUTPUT_SINGLE_FILE;
+		else if (!strcmp(token, "filetree"))
+			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
+	}
+
+	return server_outputs;
+}
+
+static int config_get_value_log_server_outputs(struct dl_list *config_list,
+					       char *key, int default_value)
+{
+	char *item = config_get_value(config_list, key);
+	int server_outputs = 0;
+
+	if (!item)
+		return default_value;
+
+	server_outputs = config_parse_log_server_outputs(item);
+
+	return server_outputs;
+}
+
 static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
 					 secureboot_mode_t default_value)
 {
@@ -197,6 +227,16 @@ static void config_override_value_logsize(struct dl_list *config_list,
 
 	if (item)
 		*out = atoi(item) * 1024;
+}
+
+static void
+config_override_value_log_server_outputs(struct dl_list *config_list, char *key,
+					 int *out)
+{
+	char *item = config_get_value(config_list, key);
+
+	if (item)
+		*out = config_parse_log_server_outputs(item);
 }
 
 static int pv_config_load_config_from_file(char *path,
@@ -300,6 +340,9 @@ static int pv_config_load_config_from_file(char *path,
 
 	config->log.logdir = config_get_value_string(&config_list, "log.dir",
 						     "/storage/logs/");
+	config->log.server.outputs = config_get_value_log_server_outputs(
+		&config_list, "log.server.outputs",
+		LOG_SERVER_OUTPUT_FILE_TREE);
 
 	config->lxc.log_level =
 		config_get_value_int(&config_list, "lxc.log.level", 2);
@@ -309,8 +352,10 @@ static int pv_config_load_config_from_file(char *path,
 
 	config->secureboot.mode = config_get_value_sb_mode_type(
 		&config_list, "secureboot.mode", SB_LENIENT);
+
 	config->secureboot.certdir = config_get_value_string(
 		&config_list, "secureboot.certdir", "/certs");
+
 	config->secureboot.checksum = config_get_value_bool(
 		&config_list, "secureboot.checksum", true);
 
@@ -449,13 +494,13 @@ static int pv_config_override_config_from_file(char *path,
 				   &config->log.loggers);
 	config_override_value_bool(&config_list, "log.stdout",
 				   &config->log.std_out);
-
+	config_override_value_log_server_outputs(&config_list,
+						 "log.server.outputs",
+						 &config->log.server.outputs);
 	config_override_value_int(&config_list, "libthttp.log.level",
 				  &config->libthttp.loglevel);
-
 	config_override_value_int(&config_list, "metadata.devmeta.interval",
 				  &config->metadata.devmeta_interval);
-
 	config_override_value_int(&config_list, "lxc.log.level",
 				  &config->lxc.log_level);
 
@@ -956,6 +1001,21 @@ bool pv_config_get_log_stdout()
 {
 	return pv_get_instance()->config.log.std_out;
 }
+int pv_config_get_log_server_outputs()
+{
+	return pv_get_instance()->config.log.server.outputs;
+}
+bool pv_config_get_log_server_output_file_tree()
+{
+	return pv_get_instance()->config.log.server.outputs &
+	       LOG_SERVER_OUTPUT_FILE_TREE;
+}
+bool pv_config_get_log_server_output_single_file()
+{
+	return pv_get_instance()->config.log.server.outputs &
+	       LOG_SERVER_OUTPUT_SINGLE_FILE;
+}
+
 int pv_config_get_libthttp_loglevel()
 {
 	return pv_get_instance()->config.libthttp.loglevel;
@@ -1135,8 +1195,9 @@ char *pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_log_loggers());
 		pv_json_ser_key(&js, "log.stdout");
 		pv_json_ser_bool(&js, pv_config_get_log_stdout());
+		pv_json_ser_key(&js, "log.server.outputs");
+		pv_json_ser_number(&js, pv_config_get_log_server_outputs());
 		pv_json_ser_key(&js, "libthttp.log.level");
-
 		pv_json_ser_number(&js, pv_config_get_libthttp_loglevel());
 
 		pv_json_ser_key(&js, "metadata.devmeta.interval");

@@ -57,7 +57,8 @@
 #include "metadata.h"
 #include "signature.h"
 #include "paths.h"
-#include "ph_logger/ph_logger.h"
+#include "ph_logger.h"
+#include "logserver.h"
 #include "parser/parser.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
@@ -219,8 +220,12 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (pv_update_is_transitioning(pv->update)) {
 		// for non-reboot updates...
 		pv_log(INFO, "transitioning...");
+
+		pv_logserver_stop();
 		ph_logger_stop(pv);
+
 		pv_log_start(pv, pv->update->pending->rev);
+
 		pv_state_transition(pv->update->pending, pv->state);
 	} else {
 		// after a reboot...
@@ -276,6 +281,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		       "running in local mode. Will not consume new updates from Pantahub");
 
 	// only start local ph logger, start cloud services if connected
+	pv_logserver_toggle(pv, pv->state->rev);
 	ph_logger_toggle(pv, pv->state->rev);
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
@@ -458,6 +464,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 
 	// start or stop ph logger depending on network and configuration
+	pv_logserver_toggle(pv, pv->state->rev);
 	ph_logger_toggle(pv, pv->state->rev);
 
 	// update meta info
@@ -800,6 +807,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	sleep(5);
 	pv_log(INFO, "%s...", shutdown_type_string(t));
 	ph_logger_stop(pv);
+	pv_logserver_close();
 	ph_logger_close();
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE) {

@@ -126,6 +126,16 @@ struct pantavisor_network {
 	char *brmask4;
 };
 
+typedef enum {
+	LOG_SERVER_OUTPUT_SINGLE_FILE = 1 << 0,
+	LOG_SERVER_OUTPUT_FILE_TREE = 1 << 1,
+	LOG_SERVER_OUTPUT_SIZE
+} log_server_output_mask_t;
+
+struct pantavisor_log_server {
+	int outputs;
+};
+
 struct pantavisor_log {
 	char *logdir;
 	int logmax;
@@ -135,6 +145,7 @@ struct pantavisor_log {
 	bool capture;
 	bool loggers;
 	bool std_out;
+	struct pantavisor_log_server server;
 };
 
 struct pantavisor_lxc {
@@ -280,6 +291,10 @@ bool pv_config_get_log_capture(void);
 bool pv_config_get_log_loggers(void);
 bool pv_config_get_log_stdout(void);
 int pv_config_get_libthttp_loglevel(void);
+
+int pv_config_get_log_server_outputs(void);
+bool pv_config_get_log_server_output_file_tree(void);
+bool pv_config_get_log_server_output_single_file(void);
 
 int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);

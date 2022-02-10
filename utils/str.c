@@ -71,7 +71,6 @@ void pv_str_unescape_to_ascii(char *buf, int size)
 			++j;
 		}
 	} while (!ok);
-
 	buf[j] = '\0';
 }
 
