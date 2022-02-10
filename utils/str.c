@@ -87,3 +87,28 @@ char *pv_str_skip_prefix(char *str, const char *key)
 	}
 	return str;
 }
+
+size_t epochsecstring(char *buf, size_t len, time_t t)
+{
+	struct tm *tmp;
+	size_t ret;
+	if (!buf)
+		return 0;
+
+	tmp = localtime(&t);
+	if (tmp == NULL)
+		goto exit_error;
+
+	ret = strftime(buf, len, "%s", tmp);
+
+	if (ret == 0 || ret > len)
+		goto exit_error;
+
+	return ret;
+
+exit_error:
+	strncpy(buf, "TIME_ERROR", len);
+	buf[len - 1] = 0;
+
+	return 0;
+}

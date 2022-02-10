@@ -42,6 +42,8 @@
 #include "thttp.h"
 #include "trest.h"
 #include "utils/fs.h"
+#include "utils/str.h"
+#include "utils/math.h"
 #include "loop.h"
 #include "init.h"
 #include "bootloader.h"
@@ -81,30 +83,30 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 	struct stat log_stat;
 	int log_fd = -1;
 	int max_gzip = 3;
+	char time_buf[MAX_DEC_STRING_SIZE_OF_TYPE (unsigned long long)];
+	epochsecstring(time_buf, sizeof (time_buf), time(NULL));
 	// hold 2MiB max of log entries in open file
 	//Check on disk file size.
 
 	if (!logging_initialized) {
 		// construct string because we cannot lock stdout
 		size_t size = snprintf(NULL, 0,
-				"[pantavisor] %ld %s\t -- [%s]: ",
-				time(NULL), level_names[level].name, module);
-				+ snprintf(NULL, 0, fmt, args);
+				"[pantavisor] %s %s\t -- [%s]: ",
+				time_buf, level_names[level].name, module);
+		size += snprintf(NULL, 0, fmt, args);
 		char *buf = calloc(sizeof (char), size);
 		if (!buf) {
 			// Fall back to multiple printfs instead of printing once
 			// Ouptu may get split up by other processes.
-			printf("[pantavisor] %ld %s\t -- [%s]: ",
-					time(NULL), level_names[level].name, module);
-			printf(fmt, args);
+			printf("[pantavisor] %s %s\t -- [%s]: ",
+					time_buf, level_names[level].name, module);
+			vprintf(fmt, args);
 			printf("\n");
 		} else {
-			int offs = 0;
-			snprintf(buf + offs, size - offs,
-				"[pantavisor] %ld %s\t -- [%s]: ",
-				time(NULL), level_names[level].name, module);
-			offs += snprintf(buf + offs, size - offs, fmt, args);
-			offs += snprintf(buf + offs, size - offs, fmt, args);
+			int offs = snprintf(buf, size,
+					"[pantavisor] %s %s\t -- [%s]: ",
+					time_buf, level_names[level].name, module);
+			vsnprintf(buf + offs, size - offs, fmt, args);
 			printf("%s\n", buf);
 
 			free(buf);
@@ -181,7 +183,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		}
 	}
 	if (log_fd >= 0) {
-		dprintf(log_fd, "[pantavisor] %ld %s\t -- ", time(NULL), level_names[level].name);
+		dprintf(log_fd, "[pantavisor] %s %s\t -- ", time_buf, level_names[level].name);
 		dprintf(log_fd, "[%s]: ", module);
 		vdprintf(log_fd, fmt, args);
 		dprintf(log_fd, "\n");
