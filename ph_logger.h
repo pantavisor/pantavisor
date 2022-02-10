@@ -19,28 +19,33 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
+#ifndef __PH_LOGGER_H__
+#define __PH_LOGGER_H__
 #include <stdarg.h>
-#include "ph_logger.h"
-/*
- * v1 has the following message format in buffer
- * level (int),
- * platform (NULL terminated string),
- * source (NULL terminated string),
- *
- * args should contain the valid addresses for the above in the order they appear above.
- */
-int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va_list args);
+#include <stdbool.h>
+#include <inttypes.h>
+#include "../pantavisor.h"
+#define PH_LOGGER_JSON_FORMAT     "{ \"tsec\": %"PRId64", \"tnano\": %"PRId32",\
+\"lvl\": \"%s\", \"src\": \"%s\",\"plat\":\"%s\",\
+\"rev\": \"%s\" , \"msg\": \"%s\" }"
 
-/*
- * v1 has the following message format in buffer
- * level (int),
- * platform (NULL terminated string),
- * source (NULL terminated string),
- * len (length of the data in buf)
- * args should contain the valid addresses for the above in the order they appear above.
- */
-int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va_list args);
+#define PH_LOGGER_POS_XATTR 	"trusted.ph.logger.pos"
 
-int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, const char *log_dir, char *rev);
 
+#ifdef DEBUG
+#define WARN_ONCE(msg, args...) 	\
+do {\
+	static bool __warned = false; 	\
+	if (! __warned) { 		\
+		printf(msg, ##args); 	\
+		__warned = true; 	\
+	}\
+}while(0)
+#else
+#define WARN_ONCE(msg, args...) 	
+#endif
+
+
+void ph_logger_toggle(struct pantavisor *pv, char *rev);
+void ph_logger_stop(struct pantavisor *pv);
+#endif /* __PH_LOGGER_H__ */

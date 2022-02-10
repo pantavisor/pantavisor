@@ -32,7 +32,7 @@
 #include <sys/types.h>
 
 #include "pvlogger.h"
-#include "ph_logger/ph_logger.h"
+#include "ph_logger.h"
 #include "platforms.h"
 #include "pvctl_utils.h"
 #include "json.h"
@@ -40,6 +40,7 @@
 #include "utils/str.h"
 #include "utils/math.h"
 #include "paths.h"
+#include "logsink.h"
 
 #define MODULE_NAME             "pvlogger"
 #include "log.h"
@@ -59,53 +60,32 @@ static const char* pv_logger_get_logfile(struct pv_log_info *log_info)
 {
 	return log_info->logfile ? log_info->logfile : "/var/log/messages";
 }
-/*
- * Make ph_logger_msg.
- * Add 1 to include null in the log message.
- */
 
 static void pv_log(int level, char *msg, ...)
 {
-	char __buffer[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
 	char __formatted[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
-	char path[PATH_MAX];
 	int to_write = 0;
 	int written = 0;
 	int offset = 0;
 	va_list args;
-	struct ph_logger_msg *ph_logger_msg =
-		(struct ph_logger_msg*)__buffer;
-
 	va_start(args, msg);
 	vsnprintf(__formatted, sizeof(__formatted), msg, args);
 	va_end(args);
 	to_write = strlen(__formatted) + 1;
 
 	while(to_write > 0) {
-		ph_logger_msg->version = PH_LOGGER_V1;
-		ph_logger_msg->len = sizeof(__buffer) - sizeof(struct ph_logger_msg);
-		written = ph_logger_write_bytes(ph_logger_msg, __formatted + offset,
-				level, pv_log_info->platform->name,
-				pv_logger_get_logfile(pv_log_info), to_write);
+		written = pv_logsink_send_log(!pv_log_info->islxc,
+				pv_log_info->platform->name,
+				(char *) pv_logger_get_logfile(pv_log_info),
+				level,
+				"%s",
+				__formatted);
 
-		if (!pv_log_info->islxc) {
-			int ret = pvctl_write(__buffer,
-					ph_logger_msg->len + sizeof(struct ph_logger_msg));
-			if (ret < 0) {
-				printf("Error in pvctl_write"
-						" %d from pvlogger\n", ret);
-			}
-
-		} else {
-			pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-			int ret = pvctl_write_to_path(path,
-					__buffer,
-					ph_logger_msg->len + sizeof(struct ph_logger_msg));
-			if (ret < 0) {
-				printf("Error in pvctl_write_to_path "
-						"%d from pvlogger\n", ret);
-			}
+		if (written <= 0) {
+			printf("Error in pv_logsink_send_log "
+					"%d from pvlogger\n", written);
 		}
+
 		offset += written;
 		to_write -= written;
 		if (!written)
