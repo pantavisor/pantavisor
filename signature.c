@@ -573,7 +573,8 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 	}
 	pv_log(INFO, "loaded %d trusted x509 certificates from %s", i, PATH_PVS_CERTS);
 
-	if (res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL)) {
+	res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL);
+	if (res) {
 		pv_log(ERROR, "cert chain could not be verified %d", res);
 		goto out;
 	}
