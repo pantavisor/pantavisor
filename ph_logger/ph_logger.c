@@ -61,7 +61,6 @@
 #include "../log.h"
 
 #define PH_LOGGER_POS_FILE 	"/pv/.ph_logger"
-#define PH_LOGGER_SKIP_FILE	".ph_logger_skip_list"
 #define PH_LOGGER_LOGDIR 	"/pv/logs"
 #define PH_LOGGER_BACKLOG	(20)
 #define PH_LOGGER_LOGFILE 	"/ph_logger.log"
@@ -141,11 +140,6 @@ struct ph_logger_fragment {
 	char *json_frag;
 };
 
-struct ph_logger_skip_prefix {
-	struct dl_list list;
-	char *prefix;
-};
-
 static DEFINE_DL_LIST(frag_list);
 
 struct ph_logger {
@@ -155,7 +149,6 @@ struct ph_logger {
 	trest_ptr *client;
 	struct pv_connection *pv_conn;
 	char user_agent[USER_AGENT_LEN];
-	struct dl_list skip_list;
 	pid_t log_service;
 	pid_t range_service;
 	pid_t push_service;
@@ -182,103 +175,6 @@ static ph_logger_handler_t write_handler[] = {
 static ph_logger_file_rw_handler_t file_rw_handler[] = {
 	[PH_LOGGER_V1] = ph_logger_write_to_file_handler_v1
 };
-
-static struct ph_logger_skip_prefix* ph_logger_skip_prefix(char *prefix)
-{
-	struct ph_logger_skip_prefix *skip_prefix = NULL;
-	
-	if (!prefix || !strlen(prefix))
-		return NULL;
-
-	skip_prefix = (struct ph_logger_skip_prefix*) calloc(1, sizeof(*skip_prefix));
-	if (skip_prefix) {
-		skip_prefix->prefix = strdup(prefix);
-		if (!skip_prefix->prefix) {
-			free(skip_prefix);
-			skip_prefix = NULL;
-		}
-	}
-	return skip_prefix;
-}
-
-static bool ph_logger_add_skip_prefix(struct ph_logger *ph_logger, char *prefix)
-{
-	struct ph_logger_skip_prefix *new_prefix = NULL;
-	bool added = false;
-
-	if (!ph_logger)
-		return added;
-
-	new_prefix = ph_logger_skip_prefix(prefix);
-	if (new_prefix) {
-		dl_list_add(&ph_logger->skip_list, &new_prefix->list);
-		added = true;
-	}
-	return added;
-}
-
-static bool ph_logger_contains_skip_prefix(struct ph_logger *ph_logger, const char *prefix)
-{
-	struct ph_logger_skip_prefix *item, *tmp;
-
-	if (dl_list_empty(&ph_logger->skip_list) || !prefix || !strlen(prefix))
-		return false;
-
-	dl_list_for_each_safe(item, tmp, &ph_logger->skip_list,
-				struct ph_logger_skip_prefix, list) {
-		if (!strcmp(prefix, item->prefix))
-			return true;
-	}
-	return false;
-}
-
-static void ph_logger_clear_skip_prefix(struct ph_logger *ph_logger)
-{
-	struct ph_logger_skip_prefix *item, *tmp;
-
-	if (dl_list_empty(&ph_logger->skip_list))
-		return;
-	dl_list_for_each_safe(item, tmp, &ph_logger->skip_list,
-				struct ph_logger_skip_prefix, list) {
-		dl_list_del(&item->list);
-		free(item->prefix);
-		free(item);
-	}
-}
-
-/*
- * Add skip prefixes from the filename.
- */
-static bool ph_logger_add_skip_prefixes(struct ph_logger *ph_logger, const char *filename)
-{
-	FILE *fp = fopen(filename, "r");
-	char *line = NULL;
-	size_t line_len = 0;
-	bool added = false;
-
-	if (fp) {
-		while (!feof(fp)) {
-			ssize_t ret = 0;
-
-			ret = getline(&line, &line_len, fp);
-			if (ret > 0) {
-				char *new_line_at = strstr(line,"\n");
-
-				if (new_line_at)
-					*new_line_at='\0';
-				if (!ph_logger_contains_skip_prefix(ph_logger, line))
-					added = ph_logger_add_skip_prefix(ph_logger, line) || added;
-			} else {
-				break;
-			}
-		}
-		if (line)
-			free(line);
-		fclose(fp);
-		return added;
-	}
-	return false;
-}
 
 static struct ph_logger_fragment* __ph_logger_alloc_frag(char *json_frag, bool do_frag_dup) 
 {
@@ -371,7 +267,6 @@ out:
 }
 static int __ph_logger_init_basic(struct ph_logger *ph_logger) {
 	SNPRINTF_WTRUNC(ph_logger->user_agent, USER_AGENT_LEN, PV_USER_AGENT_FMT, pv_build_arch, pv_build_version, pv_build_date);
-	dl_list_init(&ph_logger->skip_list);
 	return 0;
 }
 
@@ -880,12 +775,6 @@ static int ph_logger_push_revision(char *revision)
 	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/", PH_LOGGER_LOGDIR, revision);
 	offset_bytes = strlen(find_cmd);
 
-	/*
-	 * reuse find_cmd to load all skip_prefixes if any.
-	 */
-	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/%s", PH_LOGGER_LOGDIR, revision, PH_LOGGER_SKIP_FILE);
-	ph_logger_add_skip_prefixes(&ph_logger, find_cmd);
-
 	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", PH_LOGGER_LOGDIR, revision);
 	find_fp = popen(find_cmd, "r");
 
@@ -902,8 +791,6 @@ static int ph_logger_push_revision(char *revision)
 
 				/*Get rid of '\n'*/
 				buf[nr_read - 1] = '\0';
-				if (ph_logger_contains_skip_prefix(&ph_logger, buf + offset_bytes))
-					continue;
 				ret = ph_logger_push_from_file_parse_info(buf, nr_read,
 						revision, offset_bytes);
 				// if there was something to send for al least one file, return 1
@@ -923,7 +810,6 @@ static int ph_logger_push_revision(char *revision)
 			free(buf);
 		pclose(find_fp);
 	}
-	ph_logger_clear_skip_prefix(&ph_logger);
 	return result;
 }
 
