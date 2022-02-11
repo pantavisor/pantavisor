@@ -242,8 +242,8 @@ static struct pv_condition* parse_condition(struct pv_state *s, char *value)
 		goto out;
 	}
 
-	plat = pv_json_get_value(value, "platform", condv, condc);
-	// accept all platforms by default
+	plat = pv_json_get_value(value, "container", condv, condc);
+	// accept all containers by default
 	if (!plat)
 		plat = strdup("*");
 

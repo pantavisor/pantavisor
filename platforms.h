@@ -30,6 +30,17 @@
 #include "condition.h"
 #include "utils/list.h"
 
+typedef enum {
+	PLAT_NONE,
+	PLAT_MOUNTED,
+	PLAT_READY,
+	PLAT_BLOCKED,
+	PLAT_STARTING,
+	PLAT_STARTED,
+	PLAT_STOPPING,
+	PLAT_STOPPED
+} plat_status_t;
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -40,6 +51,7 @@ struct pv_platform {
 	pid_t init_pid;
 	plat_status_t status;
 	struct pv_group *group;
+	struct pv_state *state;
 	bool mgmt;
 	bool updated;
 	struct dl_list condition_refs; // pv_condition_ref

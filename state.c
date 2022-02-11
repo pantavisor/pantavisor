@@ -359,7 +359,7 @@ static void pv_state_set_default_groups(struct pv_state *s)
 			first_p = p;
 	}
 
-	// if not, set first platform in group root 
+	// if not, set first platform in group root
 	if (!root_configured && first_p) {
 		pv_log(WARN, "no platform was found in root group, "
 				"so the first unconfigured one in alphabetical order will be set");
@@ -375,6 +375,66 @@ static void pv_state_set_default_groups(struct pv_state *s)
     }
 }
 
+static void pv_state_set_default_conditions_group(struct pv_state *s,
+		struct pv_group *dependee,
+		struct pv_group *dependent,
+		const char *status)
+{
+	struct pv_platform *p_de, *p_dt, *tmp_de, *tmp_dt;
+	struct pv_condition *c;
+
+	dl_list_for_each_safe(p_de, tmp_de, &s->platforms,
+            struct pv_platform, list) {
+		if (p_de->group != dependee)
+			continue;
+
+		c = pv_state_fetch_condition_value(s, p_de->name, "status", status);
+		if (!c) {
+			c = pv_condition_new(p_de->name, "status", status);
+			if (!c) {
+				pv_log(ERROR, "could not create a new condition");
+				return;
+			}
+			pv_state_add_condition(s, c);
+		}
+
+		dl_list_for_each_safe(p_dt, tmp_dt, &s->platforms,
+				struct pv_platform, list) {
+			if (p_dt->group != dependent)
+				continue;
+
+			pv_platform_add_condition(p_dt, c);
+		}
+	}
+}
+
+static void pv_state_set_default_conditions(struct pv_state *s)
+{
+	struct pv_group *d = NULL, *r = NULL, *p = NULL, *a = NULL;
+
+	d = pv_state_fetch_group(s, "data");
+	r = pv_state_fetch_group(s, "root");
+	p = pv_state_fetch_group(s, "platform");
+	a = pv_state_fetch_group(s, "app");
+
+	if (!d || !r || !p || !a) {
+		pv_log(ERROR, "could not find group data, root, platform or app");
+		return;
+	}
+
+	// set every one to depend on data
+	pv_state_set_default_conditions_group(s, d, r, "MOUNTED");
+	pv_state_set_default_conditions_group(s, d, p, "MOUNTED");
+	pv_state_set_default_conditions_group(s, d, a, "MOUNTED");
+
+	// set platform and apps to depend on root
+	pv_state_set_default_conditions_group(s, r, p, "STARTED");
+	pv_state_set_default_conditions_group(s, r, a, "STARTED");
+
+	// set app to depend on platform
+	pv_state_set_default_conditions_group(s, p, a, "STARTED");
+}
+
 void pv_state_validate(struct pv_state *s)
 {
 	// remove platforms that have no loaded data
@@ -383,6 +443,8 @@ void pv_state_validate(struct pv_state *s)
 	pv_platforms_add_all_loggers(s);
 	// set groups for all undefined platforms
 	pv_state_set_default_groups(s);
+	// set conditions to honor runlevel order
+	pv_state_set_default_conditions(s);
 }
 
 static int pv_state_mount_bsp_volumes(struct pv_state *s)
@@ -425,29 +487,21 @@ int pv_state_run(struct pv_state *s)
 {
 	int ret = 0;
 	struct pv_platform *p, *tmp_p;
-	struct pv_group *g, *tmp_g;
 
-	// we check the platforms in order so we respect the legacy data -> root -> platform -> app order
-	// TODO: remove the group list iteration after real status conditions between groups have been implemented
-	dl_list_for_each_safe(g, tmp_g, &s->groups,
-			struct pv_group, list) {
-		dl_list_for_each_safe(p, tmp_p, &s->platforms,
-				struct pv_platform, list) {
-			if (g == p->group) {
-				if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
-					if (pv_platform_check_conditions(p))
-						ret = pv_state_start_platform(s, p);
-					else
-						pv_platform_set_blocked(p);
-				} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
-					if (!pv_platform_check_running(p))
-						ret = -1;
-				}
-
-				if (ret)
-					goto out;
-			}
+	dl_list_for_each_safe(p, tmp_p, &s->platforms,
+		struct pv_platform, list) {
+		if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
+			if (pv_platform_check_conditions(p))
+				ret = pv_state_start_platform(s, p);
+			else
+				pv_platform_set_blocked(p);
+		} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
+			if (!pv_platform_check_running(p))
+				ret = -1;
 		}
+
+		if (ret)
+			goto out;
 	}
 
 out:
@@ -782,6 +836,7 @@ static void pv_state_transfer_platforms(struct pv_state *pending, struct pv_stat
 			continue;
 
 		pv_log(DEBUG, "transferring platform %s", p->name);
+		p->state = current;
 		dl_list_del(&p->list);
 		dl_list_add_tail(&current->platforms, &p->list);
 	}
@@ -994,10 +1049,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	return true;
 }
 
-int pv_state_report_condition(struct pv_state *s,
-	const char *plat,
-	const char *key,
-	const char *value)
+int pv_state_report_condition(struct pv_state *s, const char *plat, const char *key, const char *value)
 {
 	struct pv_condition *c, *tmp;
 
@@ -1011,12 +1063,10 @@ int pv_state_report_condition(struct pv_state *s,
 			pv_str_matches(c->plat, strlen(c->plat), "*", strlen("*"))) &&
 			pv_str_matches(c->key, strlen(c->key), key, strlen(key))) {
 			pv_condition_set_value(c, value);
-			pv_log(DEBUG, "reported condition modified");
-			return 0;
+			pv_log(DEBUG, "reported condition updated with new value");
 		}
 	}
 
-	pv_log(WARN, "reported condition not found");
 	return 0;
 }
 
