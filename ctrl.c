@@ -744,6 +744,8 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		if (!strncmp("PUT", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
+
+			mkdir(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
 				goto out;
 			pv_ctrl_write_ok_response(req_fd);
