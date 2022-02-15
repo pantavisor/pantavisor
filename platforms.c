@@ -101,8 +101,8 @@ static const char* pv_platform_status_string(plat_status_t status)
 {
 	switch(status) {
 		case PLAT_NONE: return "NONE";
-		case PLAT_MOUNTED: return "MOUNTED";
 		case PLAT_READY: return "READY";
+		case PLAT_MOUNTED: return "MOUNTED";
 		case PLAT_BLOCKED: return "BLOCKED";
 		case PLAT_STARTING: return "STARTING";
 		case PLAT_STARTED: return "STARTED";
@@ -652,10 +652,11 @@ void pv_platform_force_stop(struct pv_platform *p)
 void pv_platform_set_ready(struct pv_platform *p)
 {
 	pv_platform_set_status(p, PLAT_READY);
+}
 
-	if (p->group &&
-		pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
-		pv_platform_set_status(p, PLAT_MOUNTED);
+void pv_platform_set_mounted(struct pv_platform *p)
+{
+	pv_platform_set_status(p, PLAT_MOUNTED);
 }
 
 void pv_platform_set_blocked(struct pv_platform *p)

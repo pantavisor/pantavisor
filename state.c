@@ -477,6 +477,11 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 				return -1;
 	}
 
+	pv_platform_set_mounted(p);
+
+	if (pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
+		return 0;
+
 	if (pv_platform_start(p))
 		return -1;
 
