@@ -32,8 +32,8 @@
 
 typedef enum {
 	PLAT_NONE,
-	PLAT_MOUNTED,
 	PLAT_READY,
+	PLAT_MOUNTED,
 	PLAT_BLOCKED,
 	PLAT_STARTING,
 	PLAT_STARTED,
@@ -75,6 +75,7 @@ int pv_platform_check_running(struct pv_platform *p);
 bool pv_platform_check_conditions(struct pv_platform *p);
 
 void pv_platform_set_ready(struct pv_platform *p);
+void pv_platform_set_mounted(struct pv_platform *p);
 void pv_platform_set_blocked(struct pv_platform *p);
 void pv_platform_set_updated(struct pv_platform *p);
 
