@@ -29,12 +29,16 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-struct pv_condition* pv_condition_new(char *key, char *eval_value)
+struct pv_condition* pv_condition_new(const char *plat, const char *key, const char *eval_value)
 {
 	struct pv_condition *c;
 
+	if (!key || !eval_value)
+		return NULL;
+
 	c = calloc(1, sizeof(struct pv_condition));
 	if (c) {
+		c->plat = strdup(plat);
 		c->key = strdup(key);
 		c->eval_value = strdup(eval_value);
 		c->curr_value = strdup("");
@@ -47,6 +51,8 @@ void pv_condition_free(struct pv_condition *c)
 {
 	pv_log(DEBUG, "removing condition %s", c->key);
 
+	if (c->plat)
+		free(c->plat);
 	if (c->key)
 		free(c->key);
 	if (c->eval_value)
@@ -56,7 +62,7 @@ void pv_condition_free(struct pv_condition *c)
 	free(c);
 }
 
-void pv_condition_set_value(struct pv_condition *c, char *curr_value)
+void pv_condition_set_value(struct pv_condition *c, const char *curr_value)
 {
 	if (c->curr_value)
 		free(c->curr_value);
@@ -76,13 +82,14 @@ char *pv_condition_get_json(struct pv_condition *c)
 	int len;
 	char *json;
 
-	len = strlen(c->key) +
+	len = strlen(c->plat) +
+		strlen(c->key) +
 		strlen(c->eval_value) +
 		strlen(c->curr_value) +
-		strlen("{\"key\":\"\",\"eval_value\":\"\",\"curr_value\":\"\"}");
+		strlen("{\"container\":\"\",\"key\":\"\",\"eval_value\":\"\",\"curr_value\":\"\"}");
 	json = calloc(1, (len + 1) * sizeof(char*));
-	snprintf(json, len + 1, "{\"key\":\"%s\",\"eval_value\":\"%s\",\"curr_value\":\"%s\"}",
-		c->key, c->eval_value, c->curr_value);
+	SNPRINTF_WTRUNC(json, len + 1, "{\"container\":\"%s\",\"key\":\"%s\",\"eval_value\":\"%s\",\"curr_value\":\"%s\"}",
+		c->plat, c->key, c->eval_value, c->curr_value);
 
 	return json;
 }

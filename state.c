@@ -251,28 +251,18 @@ struct pv_json* pv_state_fetch_json(struct pv_state *s, const char *name)
 	return NULL;
 }
 
-struct pv_condition* pv_state_fetch_condition(struct pv_state *s, const char *key)
+struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s,
+	const char *plat,
+	const char *key,
+	const char *eval_value)
 {
 	struct pv_condition *c, *tmp;
 
 	// Iterate over all conditions from state
 	dl_list_for_each_safe(c, tmp, &s->conditions,
             struct pv_condition, list) {
-		if (pv_str_matches(c->key, strlen(c->key), key, strlen(key)))
-			return c;
-	}
-
-	return NULL;
-}
-
-struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s, const char *key, const char *eval_value)
-{
-	struct pv_condition *c, *tmp;
-
-	// Iterate over all conditions from state
-	dl_list_for_each_safe(c, tmp, &s->conditions,
-            struct pv_condition, list) {
-		if (pv_str_matches(c->key, strlen(c->key), key, strlen(key)) &&
+		if (pv_str_matches(c->plat, strlen(c->plat), plat, strlen(plat)) &&
+			pv_str_matches(c->key, strlen(c->key), key, strlen(key)) &&
 			pv_str_matches(c->eval_value, strlen(c->eval_value), eval_value, strlen(eval_value)))
 			return c;
 	}
@@ -369,7 +359,7 @@ static void pv_state_set_default_groups(struct pv_state *s)
 			first_p = p;
 	}
 
-	// if not, set first platform in group root 
+	// if not, set first platform in group root
 	if (!root_configured && first_p) {
 		pv_log(WARN, "no platform was found in root group, "
 				"so the first unconfigured one in alphabetical order will be set");
@@ -385,6 +375,66 @@ static void pv_state_set_default_groups(struct pv_state *s)
     }
 }
 
+static void pv_state_set_default_conditions_group(struct pv_state *s,
+		struct pv_group *dependee,
+		struct pv_group *dependent,
+		const char *status)
+{
+	struct pv_platform *p_de, *p_dt, *tmp_de, *tmp_dt;
+	struct pv_condition *c;
+
+	dl_list_for_each_safe(p_de, tmp_de, &s->platforms,
+            struct pv_platform, list) {
+		if (p_de->group != dependee)
+			continue;
+
+		c = pv_state_fetch_condition_value(s, p_de->name, "status", status);
+		if (!c) {
+			c = pv_condition_new(p_de->name, "status", status);
+			if (!c) {
+				pv_log(ERROR, "could not create a new condition");
+				return;
+			}
+			pv_state_add_condition(s, c);
+		}
+
+		dl_list_for_each_safe(p_dt, tmp_dt, &s->platforms,
+				struct pv_platform, list) {
+			if (p_dt->group != dependent)
+				continue;
+
+			pv_platform_add_condition(p_dt, c);
+		}
+	}
+}
+
+static void pv_state_set_default_conditions(struct pv_state *s)
+{
+	struct pv_group *d = NULL, *r = NULL, *p = NULL, *a = NULL;
+
+	d = pv_state_fetch_group(s, "data");
+	r = pv_state_fetch_group(s, "root");
+	p = pv_state_fetch_group(s, "platform");
+	a = pv_state_fetch_group(s, "app");
+
+	if (!d || !r || !p || !a) {
+		pv_log(ERROR, "could not find group data, root, platform or app");
+		return;
+	}
+
+	// set every one to depend on data
+	pv_state_set_default_conditions_group(s, d, r, "MOUNTED");
+	pv_state_set_default_conditions_group(s, d, p, "MOUNTED");
+	pv_state_set_default_conditions_group(s, d, a, "MOUNTED");
+
+	// set platform and apps to depend on root
+	pv_state_set_default_conditions_group(s, r, p, "STARTED");
+	pv_state_set_default_conditions_group(s, r, a, "STARTED");
+
+	// set app to depend on platform
+	pv_state_set_default_conditions_group(s, p, a, "STARTED");
+}
+
 void pv_state_validate(struct pv_state *s)
 {
 	// remove platforms that have no loaded data
@@ -393,6 +443,8 @@ void pv_state_validate(struct pv_state *s)
 	pv_platforms_add_all_loggers(s);
 	// set groups for all undefined platforms
 	pv_state_set_default_groups(s);
+	// set conditions to honor runlevel order
+	pv_state_set_default_conditions(s);
 }
 
 static int pv_state_mount_bsp_volumes(struct pv_state *s)
@@ -435,29 +487,21 @@ int pv_state_run(struct pv_state *s)
 {
 	int ret = 0;
 	struct pv_platform *p, *tmp_p;
-	struct pv_group *g, *tmp_g;
 
-	// we check the platforms in order so we respect the legacy data -> root -> platform -> app order
-	// TODO: remove the group list iteration after real status conditions between groups have been implemented
-	dl_list_for_each_safe(g, tmp_g, &s->groups,
-			struct pv_group, list) {
-		dl_list_for_each_safe(p, tmp_p, &s->platforms,
-				struct pv_platform, list) {
-			if (g == p->group) {
-				if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
-					if (pv_platform_check_conditions(p))
-						ret = pv_state_start_platform(s, p);
-					else
-						pv_platform_set_blocked(p);
-				} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
-					if (!pv_platform_check_running(p))
-						ret = -1;
-				}
-
-				if (ret)
-					goto out;
-			}
+	dl_list_for_each_safe(p, tmp_p, &s->platforms,
+		struct pv_platform, list) {
+		if (pv_platform_is_ready(p) || pv_platform_is_blocked(p)) {
+			if (pv_platform_check_conditions(p))
+				ret = pv_state_start_platform(s, p);
+			else
+				pv_platform_set_blocked(p);
+		} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
+			if (!pv_platform_check_running(p))
+				ret = -1;
 		}
+
+		if (ret)
+			goto out;
 	}
 
 out:
@@ -792,6 +836,7 @@ static void pv_state_transfer_platforms(struct pv_state *pending, struct pv_stat
 			continue;
 
 		pv_log(DEBUG, "transferring platform %s", p->name);
+		p->state = current;
 		dl_list_del(&p->list);
 		dl_list_add_tail(&current->platforms, &p->list);
 	}
@@ -819,12 +864,11 @@ static void pv_state_transfer_conditions(struct pv_state *pending, struct pv_sta
 	struct pv_condition *c, *tmp_c, *curr_c;
 	struct pv_condition_ref *cr, *tmp_cr;
 	struct pv_platform *p, *tmp_p;
-	struct pv_group *g, *tmp_g;
 
 	// remove removed conditions from current
 	dl_list_for_each_safe(c, tmp_c, &current->conditions,
 			struct pv_condition, list) {
-		if (!pv_state_fetch_condition_value(pending, c->key, c->eval_value)) {
+		if (!pv_state_fetch_condition_value(pending, c->plat, c->key, c->eval_value)) {
 			pv_log(DEBUG, "removing condition %s unused in pending state", c->key);
 			dl_list_del(&c->list);
 			pv_condition_free(c);
@@ -834,7 +878,7 @@ static void pv_state_transfer_conditions(struct pv_state *pending, struct pv_sta
 	// move new conditions to current
 	dl_list_for_each_safe(c, tmp_c, &pending->conditions,
 			struct pv_condition, list) {
-		if (!pv_state_fetch_condition_value(current, c->key, c->eval_value)) {
+		if (!pv_state_fetch_condition_value(current, c->plat, c->key, c->eval_value)) {
 			pv_log(DEBUG, "adding new condition %s from pending state", c->key);
 			dl_list_del(&c->list);
 			dl_list_add_tail(&current->conditions, &c->list);
@@ -846,19 +890,11 @@ static void pv_state_transfer_conditions(struct pv_state *pending, struct pv_sta
 			struct pv_platform, list) {
 		dl_list_for_each_safe(cr, tmp_cr, &p->condition_refs,
 				struct pv_condition_ref, list) {
-			curr_c = pv_state_fetch_condition_value(current, cr->ref->key, cr->ref->eval_value);
+			curr_c = pv_state_fetch_condition_value(current,
+				cr->ref->plat,
+				cr->ref->key,
+				cr->ref->eval_value);
 			pv_log(DEBUG, "relinking condition %s to platform %s", curr_c->key, p->name);
-			cr->ref = curr_c;
-		}
-	}
-
-	// relink group conditions to current groups
-	dl_list_for_each_safe(g, tmp_g, &current->groups,
-			struct pv_group, list) {
-		dl_list_for_each_safe(cr, tmp_cr, &g->condition_refs,
-				struct pv_condition_ref, list) {
-			curr_c = pv_state_fetch_condition_value(current, cr->ref->key, cr->ref->eval_value);
-			pv_log(DEBUG, "relinking condition %s to group %s", curr_c->key, g->name);
 			cr->ref = curr_c;
 		}
 	}
@@ -1013,21 +1049,23 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	return true;
 }
 
-int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value)
+int pv_state_report_condition(struct pv_state *s, const char *plat, const char *key, const char *value)
 {
-	struct pv_condition *c;
+	struct pv_condition *c, *tmp;
 
-	pv_log(DEBUG, "condition from platform %s reported with key '%s' and value '%s'",
+	pv_log(DEBUG, "condition from platform '%s' reported with key '%s' and value '%s'",
 		plat, key, value);
 
-	c = pv_state_fetch_condition(s, key);
-	if (c) {
-		pv_condition_set_value(c, value);
-		pv_log(DEBUG, "condition modified");
-		return 0;
+	// Iterate over all conditions from state
+	dl_list_for_each_safe(c, tmp, &s->conditions,
+            struct pv_condition, list) {
+		if ((pv_str_matches(c->plat, strlen(c->plat), plat, strlen(plat)) ||
+			pv_str_matches(c->plat, strlen(c->plat), "*", strlen("*"))) &&
+			pv_str_matches(c->key, strlen(c->key), key, strlen(key))) {
+			pv_condition_set_value(c, value);
+			pv_log(DEBUG, "reported condition updated with new value");
+		}
 	}
-
-	pv_log(WARN, "condition not found");
 
 	return 0;
 }
@@ -1035,7 +1073,7 @@ int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *v
 char* pv_state_get_containers_json(struct pv_state *s)
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len), *line;
+	char *json = calloc(1, len + 1), *line;
 	struct pv_platform *p, *tmp;
 
 	// open json
@@ -1049,20 +1087,19 @@ char* pv_state_get_containers_json(struct pv_state *s)
 		line = pv_platform_get_json(p);
 		line_len = strlen(line) + 1;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, "%s,", line);
 		len += line_len;
 		free(line);
 	}
 
 	// remove ,
-	len -= 1;
+	len--;
 
 close:
 	// close json
-	len += 2;
-	json = realloc(json, len);
-	json[len-2] = ']';
-	json[len-1] = '\0';
+	json = realloc(json, len + 2);
+	json[len] = ']';
+	json[len + 1] = '\0';
 
 	return json;
 }
@@ -1070,7 +1107,7 @@ close:
 char* pv_state_get_conditions_json(struct pv_state *s)
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len), *line;
+	char *json = calloc(1, len + 1), *line;
 	struct pv_condition *c, *tmp;
 
 	// open json
@@ -1084,20 +1121,19 @@ char* pv_state_get_conditions_json(struct pv_state *s)
 		line = pv_condition_get_json(c);
 		line_len = strlen(line) + 1;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, "%s,", line);
 		len += line_len;
 		free(line);
 	}
 
 	// remove ,
-	len -= 1;
+	len--;
 
 close:
 	// close json
-	len += 2;
-	json = realloc(json, len + 1);
-	json[len-2] = ']';
-	json[len-1] = '\0';
+	json = realloc(json, len + 2);
+	json[len] = ']';
+	json[len + 1] = '\0';
 
 	return json;
 }

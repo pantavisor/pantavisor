@@ -97,6 +97,29 @@ struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 //	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
+static const char* pv_platform_status_string(plat_status_t status)
+{
+	switch(status) {
+		case PLAT_NONE: return "NONE";
+		case PLAT_MOUNTED: return "MOUNTED";
+		case PLAT_READY: return "READY";
+		case PLAT_BLOCKED: return "BLOCKED";
+		case PLAT_STARTING: return "STARTING";
+		case PLAT_STARTED: return "STARTED";
+		case PLAT_STOPPING: return "STOPPING";
+		case PLAT_STOPPED: return "STOPPED";
+		default: return "UNKNOWN";
+	}
+
+	return "UNKNOWN";
+}
+
+static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
+{
+	p->status = status;
+	pv_state_report_condition(p->state, p->name, "status", pv_platform_status_string(status));
+}
+
 struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 {
 	struct pv_platform *p = calloc(1, sizeof(struct pv_platform));
@@ -106,6 +129,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 		p->status = PLAT_NONE;
 		p->mgmt = true;
 		p->updated = false;
+		p->state = s;
 		dl_list_init(&p->condition_refs);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
@@ -208,23 +232,6 @@ void pv_platform_add_condition(struct pv_platform *p, struct pv_condition *c)
 	}
 }
 
-static const char* pv_platform_status_string(plat_status_t status)
-{
-	switch(status) {
-		case PLAT_NONE: return "NONE";
-		case PLAT_DATA: return "DATA";
-		case PLAT_READY: return "READY";
-		case PLAT_BLOCKED: return "BLOCKED";
-		case PLAT_STARTING: return "STARTING";
-		case PLAT_STARTED: return "STARTED";
-		case PLAT_STOPPING: return "STOPPING";
-		case PLAT_STOPPED: return "STOPPED";
-		default: return "UNKNOWN";
-	}
-
-	return "UNKNOWN";
-}
-
 char* pv_platform_get_json(struct pv_platform *p)
 {
 	int len, line_len;
@@ -243,31 +250,8 @@ char* pv_platform_get_json(struct pv_platform *p)
 	snprintf(json, len + 1, "{\"name\":\"%s\",\"group\":\"%s\",\"status\":\"%s\",\"conditions\":[",
 		p->name, group, status);
 
-	if (!p->group || dl_list_empty(&p->group->condition_refs))
-		goto plats;
-
-	dl_list_for_each_safe(cr, tmp, &p->group->condition_refs,
-			struct pv_condition_ref, list) {
-		if (!cr->ref)
-			continue;
-
-		line = pv_condition_get_json(cr->ref);
-		line_len = strlen(line) + 1;
-		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
-		len += line_len;
-		free(line);
-	}
-
-	// remove ,
-	len--;
-
-plats:
 	if (dl_list_empty(&p->condition_refs))
 		goto close;
-
-	// recover ,
-	len++;
 
 	dl_list_for_each_safe(cr, tmp, &p->condition_refs,
 			struct pv_condition_ref, list) {
@@ -277,7 +261,7 @@ plats:
 		line = pv_condition_get_json(cr->ref);
 		line_len = strlen(line) + 1;
 		json = realloc(json, len + line_len + 1);
-		snprintf(&json[len], line_len + 1, "%s,", line);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, "%s,", line);
 		len += line_len;
 		free(line);
 	}
@@ -287,11 +271,11 @@ plats:
 
 close:
 	// close json
-	len += 3;
-	json = realloc(json, len);
-	json[len-3] = ']';
-	json[len-2] = '}';
-	json[len-1] = '\0';
+	json = realloc(json, len + 3);
+	json[len] = ']';
+	json[len + 1] = '}';
+	json[len + 2] = '\0';
+	pv_log(DEBUG, "json %s", json);
 
 	return json;
 }
@@ -584,7 +568,7 @@ int pv_platform_start(struct pv_platform *p)
 	if (pid <= 0)
 		return -1;
 
-	p->status = PLAT_STARTING;
+	pv_platform_set_status(p, PLAT_STARTING);
 
 	if (pv_config_get_log_loggers())
 		if (start_pvlogger_for_platform(p) < 0)
@@ -653,7 +637,7 @@ int pv_platform_stop(struct pv_platform *p)
 	ctrl = _pv_platforms_get_ctrl(p->type);
 	ctrl->stop(p, NULL, p->data);
 	p->data = NULL;
-	p->status = PLAT_STOPPING;
+	pv_platform_set_status(p, PLAT_STOPPING);
 
 	return 0;
 }
@@ -662,21 +646,21 @@ void pv_platform_force_stop(struct pv_platform *p)
 {
 	pv_log(DEBUG, "force stopping platform '%s'", p->name);
 	kill(p->init_pid, SIGKILL);
-	p->status = PLAT_STOPPED;
+	pv_platform_set_status(p, PLAT_STOPPED);
 }
 
 void pv_platform_set_ready(struct pv_platform *p)
 {
-	p->status = PLAT_READY;
+	pv_platform_set_status(p, PLAT_READY);
 
 	if (p->group &&
 		pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
-		p->status = PLAT_DATA;
+		pv_platform_set_status(p, PLAT_MOUNTED);
 }
 
 void pv_platform_set_blocked(struct pv_platform *p)
 {
-	p->status = PLAT_BLOCKED;
+	pv_platform_set_status(p, PLAT_BLOCKED);
 }
 
 void pv_platform_set_updated(struct pv_platform *p)
@@ -692,12 +676,12 @@ int pv_platform_check_running(struct pv_platform *p)
 	if (running) {
 		if ((p->status != PLAT_STARTED) && (p->status != PLAT_STOPPING)) {
 			pv_log(DEBUG, "platform %s started", p->name);
-			p->status = PLAT_STARTED;
+			pv_platform_set_status(p, PLAT_STARTED);
 		}
 	} else {
 		if ((p->status != PLAT_STOPPED) && (p->status != PLAT_STARTING)) {
 			pv_log(DEBUG, "platform %s stopped", p->name);
-			p->status = PLAT_STOPPED;
+			pv_platform_set_status(p, PLAT_STOPPED);
 		}
 	}
 
@@ -708,16 +692,6 @@ bool pv_platform_check_conditions(struct pv_platform *p)
 {
 	struct pv_condition_ref *cr, *tmp;
 
-	if (!p->group || dl_list_empty(&p->group->condition_refs))
-		goto plat;
-
-	dl_list_for_each_safe(cr, tmp, &p->group->condition_refs,
-			struct pv_condition_ref, list) {
-		if (cr->ref && !pv_condition_check(cr->ref))
-			return false;
-	}
-
-plat:
 	if (dl_list_empty(&p->condition_refs))
 		goto out;
 

@@ -74,8 +74,10 @@ struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name);
 struct pv_platform* pv_state_fetch_platform(struct pv_state *s, const char *name);
 struct pv_object* pv_state_fetch_object(struct pv_state *s, const char *name);
 struct pv_json* pv_state_fetch_json(struct pv_state *s, const char *name);
-struct pv_condition* pv_state_fetch_condition(struct pv_state *s, const char *key);
-struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s, const char *key, const char *eval_value);
+struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s,
+	const char *plat,
+	const char *key,
+	const char *eval_value);
 
 state_spec_t pv_state_spec(struct pv_state *s);
 
@@ -89,8 +91,7 @@ int pv_state_stop(struct pv_state *s);
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending);
 void pv_state_transition(struct pv_state *pending, struct pv_state *current);
 
-int pv_state_report_condition(struct pv_state *s, char *plat, char *key, char *value);
-
+int pv_state_report_condition(struct pv_state *s, const char *plat, const char *key, const char *value); 
 void pv_state_print(struct pv_state *s);
 char* pv_state_get_containers_json(struct pv_state *s);
 char* pv_state_get_conditions_json(struct pv_state *s);

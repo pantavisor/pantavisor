@@ -32,7 +32,7 @@
 
 typedef enum {
 	PLAT_NONE,
-	PLAT_DATA,
+	PLAT_MOUNTED,
 	PLAT_READY,
 	PLAT_BLOCKED,
 	PLAT_STARTING,
@@ -51,6 +51,7 @@ struct pv_platform {
 	pid_t init_pid;
 	plat_status_t status;
 	struct pv_group *group;
+	struct pv_state *state;
 	bool mgmt;
 	bool updated;
 	struct dl_list condition_refs; // pv_condition_ref
