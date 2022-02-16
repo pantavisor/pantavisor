@@ -91,7 +91,9 @@ int pv_state_stop(struct pv_state *s);
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending);
 void pv_state_transition(struct pv_state *pending, struct pv_state *current);
 
-int pv_state_report_condition(struct pv_state *s, const char *plat, const char *key, const char *value); 
+int pv_state_report_condition(struct pv_state *s, const char *plat, const char *key, const char *value);
+bool pv_state_check_conditions(struct pv_state *s);
+
 void pv_state_print(struct pv_state *s);
 char* pv_state_get_containers_json(struct pv_state *s);
 char* pv_state_get_conditions_json(struct pv_state *s);

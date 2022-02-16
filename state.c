@@ -1080,6 +1080,26 @@ int pv_state_report_condition(struct pv_state *s, const char *plat, const char *
 	return 0;
 }
 
+bool pv_state_check_conditions(struct pv_state *s)
+{
+	struct pv_condition *c, *tmp;
+
+	if (!s)
+		return false;
+
+	if (dl_list_empty(&s->conditions))
+		goto out;
+
+	dl_list_for_each_safe(c, tmp, &s->conditions,
+			struct pv_condition, list) {
+		if (!pv_condition_check(c))
+			return false;
+	}
+
+out:
+	return true;
+}
+
 char* pv_state_get_containers_json(struct pv_state *s)
 {
 	int len = 1, line_len;

@@ -344,6 +344,17 @@ static pv_state_t pv_wait_update()
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update) {
 		if (pv_update_is_trying(pv->update)) {
+			// rollback if timed out and any condition has not been met
+			if (!pv_state_check_conditions(pv->state))	{
+				tstate = timer_current_state(&rollback_timer);
+				if (tstate.fin) {
+					pv_log(ERROR, "timed out before all conditions are met. Rolling back...");
+					return PV_STATE_ROLLBACK;
+				}
+				pv_log(WARN, "at least one conditions has not been satisfied yet. Will rollback in %d seconds",
+					tstate.sec);
+				return PV_STATE_WAIT;
+			}
 			// set initial testing time
 			timer_start(&timer_commit, pv_config_get_updater_commit_delay(), 0, RELATIV_TIMER);
 			// progress update state to testing
