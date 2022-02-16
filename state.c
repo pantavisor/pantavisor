@@ -500,9 +500,14 @@ int pv_state_run(struct pv_state *s)
 				ret = pv_state_start_platform(s, p);
 			else
 				pv_platform_set_blocked(p);
-		} else if (pv_platform_is_starting(p) || pv_platform_is_started(p)) {
+		} else if (pv_platform_is_starting(p)) {
 			if (!pv_platform_check_running(p))
+				pv_log(DEBUG, "platform %s still not running", p->name);
+		} else if (pv_platform_is_started(p)) {
+			if (!pv_platform_check_running(p)) {
+				pv_log(DEBUG, "platform %s suddenly stopped", p->name);
 				ret = -1;
+			}
 		}
 
 		if (ret)
