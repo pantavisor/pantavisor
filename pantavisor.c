@@ -77,7 +77,8 @@ struct pantavisor* pv_get_instance()
 	return global_pv;
 }
 
-static struct timer rollback_timer;
+static struct timer timer_rollback_remote;
+static struct timer timer_rollback_conditions;
 static struct timer timer_wait_delay;
 static struct timer timer_commit;
 
@@ -262,7 +263,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 
 	timer_start(&timer_commit, 0, 0, RELATIV_TIMER);
-	timer_start(&rollback_timer, pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
+	timer_start(&timer_rollback_remote, pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
+	timer_start(&timer_rollback_conditions, pv_config_get_updater_conditions_timeout(), 0, RELATIV_TIMER);
 
 	next_state = PV_STATE_WAIT;
 out:
@@ -346,7 +348,7 @@ static pv_state_t pv_wait_update()
 		if (pv_update_is_trying(pv->update)) {
 			// rollback if timed out and any condition has not been met
 			if (!pv_state_check_conditions(pv->state))	{
-				tstate = timer_current_state(&rollback_timer);
+				tstate = timer_current_state(&timer_rollback_conditions);
 				if (tstate.fin) {
 					pv_log(ERROR, "timed out before all conditions are met. Rolling back...");
 					return PV_STATE_ROLLBACK;
@@ -387,7 +389,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		!pv_trail_is_auth(pv)) {
 		// this could mean the trying update cannot connect to ph
 		if (pv_update_is_trying(pv->update)) {
-			tstate = timer_current_state(&rollback_timer);
+			tstate = timer_current_state(&timer_rollback_remote);
 			if (tstate.fin) {
 				pv_log(ERROR, "timed out before getting any response from cloud. Rolling back...");
 				return PV_STATE_ROLLBACK;
