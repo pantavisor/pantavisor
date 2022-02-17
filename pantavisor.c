@@ -439,7 +439,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// check if any platform has exited and we need to tear down
 	if (pv_state_run(pv->state)) {
-		pv_log(ERROR, "one or more platforms exited. Tearing down...");
+		pv_log(ERROR, "a platform did not work as expected. Tearing down...");
 		if (pv_update_is_trying(pv->update) || pv_update_is_testing(pv->update))
 			next_state = PV_STATE_ROLLBACK;
 		else
