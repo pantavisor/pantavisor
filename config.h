@@ -81,6 +81,7 @@ struct pantavisor_storage {
 
 struct pantavisor_updater {
 	int interval;
+	int conditions_timeout;
 	int network_timeout;
 	bool use_tmp_objects;
 	int revision_retries;
@@ -194,6 +195,7 @@ int pv_config_get_storage_gc_threshold(void);
 int pv_config_get_storage_gc_threshold_defertime(void);
 
 int pv_config_get_updater_interval(void);
+int pv_config_get_updater_conditions_timeout(void);
 int pv_config_get_updater_network_timeout(void);
 bool pv_config_get_updater_network_use_tmp_objects(void);
 int pv_config_get_updater_revision_retries(void);

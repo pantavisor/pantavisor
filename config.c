@@ -202,6 +202,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->net.braddress4 = config_get_value_string(&config_list, "net.braddress4", "10.0.3.1");
 	config->net.brmask4 = config_get_value_string(&config_list, "net.brmask4", "255.255.255.0");
 
+	config->updater.conditions_timeout = config_get_value_int(&config_list, "updater.conditions.timeout", 2 * 60);
 	config->updater.use_tmp_objects = config_get_value_bool(&config_list, "updater.use_tmp_objects", false);
 
 	config->updater.revision_retries = config_get_value_int(&config_list, "revision.retries", 10);
@@ -285,6 +286,7 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_int(&config_list, "revision.retries.timeout", &config->updater.revision_retry_timeout);
 	config_override_value_bool(&config_list, "updater.keep_factory", &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "updater.interval", &config->updater.interval);
+	config_override_value_int(&config_list, "updater.conditions.timeout", &config->updater.conditions_timeout);
 	config_override_value_int(&config_list, "updater.network_timeout", &config->updater.network_timeout);
 	config_override_value_int(&config_list, "updater.commit.delay", &config->updater.commit_delay);
 
@@ -528,6 +530,7 @@ int pv_config_get_storage_gc_threshold() { return pv_get_instance()->config.stor
 int pv_config_get_storage_gc_threshold_defertime() { return pv_get_instance()->config.storage.gc.threshold_defertime; }
 
 int pv_config_get_updater_interval() { return pv_get_instance()->config.updater.interval; }
+int pv_config_get_updater_conditions_timeout() { return pv_get_instance()->config.updater.conditions_timeout; }
 int pv_config_get_updater_network_timeout() { return pv_get_instance()->config.updater.network_timeout; }
 bool pv_config_get_updater_network_use_tmp_objects() { return pv_get_instance()->config.updater.use_tmp_objects; }
 int pv_config_get_updater_revision_retries() { return pv_get_instance()->config.updater.revision_retries; }

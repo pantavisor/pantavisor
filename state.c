@@ -473,8 +473,10 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	dl_list_for_each_safe(v, tmp, &s->volumes,
 			struct pv_volume, list) {
 		if (v->plat == p)
-			if (pv_volume_mount(v))
+			if (pv_volume_mount(v)) {
+				pv_log(ERROR, "volume %s could not be mounted", v->name);
 				return -1;
+			}
 	}
 
 	pv_platform_set_mounted(p);
@@ -482,8 +484,10 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	if (pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
 		return 0;
 
-	if (pv_platform_start(p))
+	if (pv_platform_start(p)) {
+		pv_log(ERROR, "platform %s could not be started", p->name);
 		return -1;
+	}
 
 	return 0;
 }
@@ -505,7 +509,7 @@ int pv_state_run(struct pv_state *s)
 				pv_log(DEBUG, "platform %s still not running", p->name);
 		} else if (pv_platform_is_started(p)) {
 			if (!pv_platform_check_running(p)) {
-				pv_log(DEBUG, "platform %s suddenly stopped", p->name);
+				pv_log(ERROR, "platform %s suddenly stopped", p->name);
 				ret = -1;
 			}
 		}
@@ -1078,6 +1082,26 @@ int pv_state_report_condition(struct pv_state *s, const char *plat, const char *
 	}
 
 	return 0;
+}
+
+bool pv_state_check_conditions(struct pv_state *s)
+{
+	struct pv_condition *c, *tmp;
+
+	if (!s)
+		return false;
+
+	if (dl_list_empty(&s->conditions))
+		goto out;
+
+	dl_list_for_each_safe(c, tmp, &s->conditions,
+			struct pv_condition, list) {
+		if (!pv_condition_check(c))
+			return false;
+	}
+
+out:
+	return true;
 }
 
 char* pv_state_get_containers_json(struct pv_state *s)

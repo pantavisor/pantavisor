@@ -116,6 +116,9 @@ static const char* pv_platform_status_string(plat_status_t status)
 
 static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 {
+	if (p->status == status)
+		return;
+
 	p->status = status;
 	pv_state_report_condition(p->state, p->name, "status", pv_platform_status_string(status));
 }
