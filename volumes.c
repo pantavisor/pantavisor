@@ -219,11 +219,13 @@ static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 	pv_log(INFO, "command: %s", command);
 
 	tsh_run(command, 1, &wstatus);
-	if (!WIFEXITED(wstatus))
+	if (!WIFEXITED(wstatus)) {
+		pv_log(ERROR, "command did not terminate normally");
 		ret = -1;
-	else if (WEXITSTATUS(wstatus) != 0)
-		ret = -1 * WEXITSTATUS(wstatus);
-	else
+	} else if (WEXITSTATUS(wstatus) != 0) {
+		pv_log(ERROR, "command returned exit code %d", WEXITSTATUS(wstatus));
+		ret = -1;
+	} else
 		ret = 0;
 
 	if (command)
