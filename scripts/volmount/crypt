@@ -32,20 +32,10 @@ CAAM_KEYGEN=/usr/bin/caam-keygen
 
 do_find_free_loop()
 {
-	for j in `ls /dev/loop[0-9]*`
-	do
-		free=0
-		for i in `/sbin/losetup -a | awk '{split($0,a,":"); print a[1]}'`
-		do
-			if [ $j == $i ]
-			then
-				free=1
-				break
-			fi
-		done
-		[ $free -eq 0 ] && break
-	done
-	FREE_LOOP=$j
+	FREE_LOOP=`/sbin/losetup -f`
+	if [ -n "$FREE_LOOP" ]; then
+		return 0;
+	fi
 }
 
 do_crypt_init()
@@ -78,7 +68,7 @@ do_crypt_init()
 	/bin/dd if=/dev/zero of=$dir/$img_file bs=1M count=$img_size
 	do_find_free_loop
 
-	/sbin/losetup $FREE_LOOP $dir/$img_file
+	/sbin/losetup -f $dir/$img_file
 	[ $? -ne 0 ] && exit 1
 
 	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
@@ -157,7 +147,7 @@ do_mount_disk()
 
 	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
 	do_find_free_loop
-	if ! /sbin/losetup $FREE_LOOP $dir/$img_file; then
+	if ! /sbin/losetup -f $dir/$img_file; then
 		echo "ERROR: could not loosetup"
 		return 1;
 	fi
