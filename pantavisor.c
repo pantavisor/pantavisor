@@ -252,9 +252,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_metadata_init_devmeta(pv);
 	pv_metadata_init_usermeta(pv->state);
 
-	if (pv_state_start(pv->state)) {
-		pv_log(ERROR, "error starting state");
-		goto out;
+	if (!pv_update_is_transitioning(pv->update)) {
+		if (pv_state_start(pv->state)) {
+			pv_log(ERROR, "error starting state");
+			goto out;
+		}
 	}
 
 	if (pv_storage_make_config(pv) < 0) {
