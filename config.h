@@ -180,6 +180,9 @@ char* pv_config_get_creds_prn(void);
 char* pv_config_get_creds_secret(void);
 char* pv_config_get_creds_token(void);
 
+char* pv_config_get_creds_tpm_key(void);
+char* pv_config_get_creds_tpm_cert(void);
+
 char* pv_config_get_factory_autotok(void);
 
 char* pv_config_get_storage_path(void);
@@ -223,7 +226,10 @@ bool pv_config_get_log_capture(void);
 bool pv_config_get_log_loggers(void);
 int pv_config_get_libthttp_loglevel(void);
 
+int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);
 secureboot_mode_t pv_config_get_secureboot_mode(void);
+
+char* pv_config_get_json(void);
 
 #endif

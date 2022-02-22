@@ -41,6 +41,7 @@
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/math.h"
+#include "utils/json.h"
 
 #define MODULE_NAME             "config"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -516,6 +517,9 @@ char* pv_config_get_creds_prn() { return pv_get_instance()->config.creds.prn; }
 char* pv_config_get_creds_secret() { return pv_get_instance()->config.creds.secret; }
 char* pv_config_get_creds_token() { return pv_get_instance()->config.creds.token; }
 
+char* pv_config_get_creds_tpm_key() { return pv_get_instance()->config.creds.tpm.key; }
+char* pv_config_get_creds_tpm_cert() { return pv_get_instance()->config.creds.tpm.cert; }
+
 char* pv_config_get_factory_autotok() { return pv_get_instance()->config.factory.autotok; }
 
 char* pv_config_get_storage_path() { return pv_get_instance()->config.storage.path; }
@@ -559,9 +563,131 @@ bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture;
 bool pv_config_get_log_loggers() { return pv_get_instance()->config.log.loggers; }
 int pv_config_get_libthttp_loglevel() { return pv_get_instance()->config.libthttp.loglevel; }
 
+int pv_config_get_lxc_loglevel()  { return pv_get_instance()->config.lxc.log_level; }
+
 bool pv_config_get_control_remote() { return pv_get_instance()->config.control.remote; }
 
 secureboot_mode_t pv_config_get_secureboot_mode() { return pv_get_instance()->config.secureboot.mode; }
+
+char* pv_config_get_json()
+{
+	struct pv_json_ser js;
+
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "dropbear.cache.dir");
+		pv_json_ser_string(&js, pv_config_get_cache_dropbearcachedir());
+		pv_json_ser_key(&js, "meta.cache.dir");
+		pv_json_ser_string(&js, pv_config_get_cache_metacachedir());
+		pv_json_ser_key(&js, "bootloader.type");
+		pv_json_ser_int(&js, pv_config_get_bl_type());
+		pv_json_ser_key(&js, "bootloader.mtd_only");
+		pv_json_ser_bool(&js, pv_config_get_bl_mtd_only());
+		pv_json_ser_key(&js, "bootloader.mtd_env");
+		pv_json_ser_string(&js, pv_config_get_bl_mtd_path());
+		pv_json_ser_key(&js, "secureboot.mode");
+		pv_json_ser_int(&js, pv_config_get_secureboot_mode());
+		pv_json_ser_key(&js, "storage.device");
+		pv_json_ser_string(&js, pv_config_get_storage_path());
+		pv_json_ser_key(&js, "storage.fstype");
+		pv_json_ser_string(&js, pv_config_get_storage_fstype());
+		pv_json_ser_key(&js, "storage.opts");
+		pv_json_ser_string(&js, pv_config_get_storage_opts());
+		pv_json_ser_key(&js, "storage.mntpoint");
+		pv_json_ser_string(&js, pv_config_get_storage_mntpoint());
+		pv_json_ser_key(&js, "storage.mnttype");
+		pv_json_ser_string(&js, pv_config_get_storage_mnttype());
+		pv_json_ser_key(&js, "storage.logtempsize");
+		pv_json_ser_string(&js, pv_config_get_storage_logtempsize());
+		pv_json_ser_key(&js, "storage.wait");
+		pv_json_ser_int(&js, pv_config_get_storage_wait());
+		pv_json_ser_key(&js, "storage.gc.reserved");
+		pv_json_ser_int(&js, pv_config_get_storage_gc_reserved());
+		pv_json_ser_key(&js, "storage.gc.keep_factory");
+		pv_json_ser_bool(&js, pv_config_get_storage_gc_keep_factory());
+		pv_json_ser_key(&js, "storage.gc.threshold");
+		pv_json_ser_int(&js, pv_config_get_storage_gc_threshold());
+		pv_json_ser_key(&js, "storage.gc.threshold.defertime");
+		pv_json_ser_int(&js, pv_config_get_storage_gc_threshold_defertime());
+		pv_json_ser_key(&js, "updater.use_tmp_objects");
+		pv_json_ser_bool(&js, pv_config_get_updater_network_use_tmp_objects());
+		pv_json_ser_key(&js, "updater.conditions.timeout");
+		pv_json_ser_int(&js, pv_config_get_updater_conditions_timeout());
+		pv_json_ser_key(&js, "revision.retries");
+		pv_json_ser_int(&js, pv_config_get_updater_revision_retries());
+		pv_json_ser_key(&js, "revision.retries.timeout");
+		pv_json_ser_int(&js, pv_config_get_updater_revision_retry_timeout());
+		pv_json_ser_key(&js, "wdt.enabled");
+		pv_json_ser_bool(&js, pv_config_get_watchdog_enabled());
+		pv_json_ser_key(&js, "wdt.timeout");
+		pv_json_ser_int(&js, pv_config_get_watchdog_timeout());
+		pv_json_ser_key(&js, "net.brdev");
+		pv_json_ser_string(&js, pv_config_get_network_brdev());
+		pv_json_ser_key(&js, "net.braddress4");
+		pv_json_ser_string(&js, pv_config_get_network_braddress4());
+		pv_json_ser_key(&js, "net.brmask4");
+		pv_json_ser_string(&js, pv_config_get_network_brmask4());
+		pv_json_ser_key(&js, "lxc.log.level");
+		pv_json_ser_int(&js, pv_config_get_lxc_loglevel());
+		pv_json_ser_key(&js, "control.remote");
+		pv_json_ser_bool(&js, pv_config_get_control_remote());
+
+		pv_json_ser_key(&js, "creds.type");
+		pv_json_ser_string(&js, pv_config_get_creds_type());
+		pv_json_ser_key(&js, "creds.host");
+		pv_json_ser_string(&js, pv_config_get_creds_host());
+		pv_json_ser_key(&js, "creds.port");
+		pv_json_ser_int(&js, pv_config_get_creds_port());
+		pv_json_ser_key(&js, "creds.proxy.host");
+		pv_json_ser_string(&js, pv_config_get_creds_host_proxy());
+		pv_json_ser_key(&js, "creds.proxy.port");
+		pv_json_ser_int(&js, pv_config_get_creds_port_proxy());
+		pv_json_ser_key(&js, "creds.proxy.noproxyconnect");
+		pv_json_ser_int(&js, pv_config_get_creds_noproxyconnect());
+		pv_json_ser_key(&js, "creds.id");
+		pv_json_ser_string(&js, pv_config_get_creds_id());
+		pv_json_ser_key(&js, "creds.prn");
+		pv_json_ser_string(&js, pv_config_get_creds_prn());
+		pv_json_ser_key(&js, "creds.secret");
+		pv_json_ser_string(&js, pv_config_get_creds_secret());
+		pv_json_ser_key(&js, "creds.tpm.key");
+		pv_json_ser_string(&js, pv_config_get_creds_tpm_key());
+		pv_json_ser_key(&js, "creds.tpm.cert");
+		pv_json_ser_string(&js, pv_config_get_creds_tpm_cert());
+		pv_json_ser_key(&js, "factory.autotok");
+		pv_json_ser_string(&js, pv_config_get_factory_autotok());
+		pv_json_ser_key(&js, "updater.keep_factory");
+		pv_json_ser_bool(&js, pv_config_get_storage_gc_keep_factory());
+		pv_json_ser_key(&js, "updater.interval");
+		pv_json_ser_int(&js, pv_config_get_updater_interval());
+		pv_json_ser_key(&js, "updater.network_timeout");
+		pv_json_ser_int(&js, pv_config_get_updater_network_timeout());
+		pv_json_ser_key(&js, "updater.commit.delay");
+		pv_json_ser_int(&js, pv_config_get_updater_commit_delay());
+		pv_json_ser_key(&js, "log.dir");
+		pv_json_ser_string(&js, pv_config_get_log_logdir());
+		pv_json_ser_key(&js, "log.maxsize");
+		pv_json_ser_int(&js, pv_config_get_log_logmax());
+		pv_json_ser_key(&js, "log.level");
+		pv_json_ser_int(&js, pv_config_get_log_loglevel());
+		pv_json_ser_key(&js, "log.buf_nitems");
+		pv_json_ser_int(&js, pv_config_get_log_logsize());
+		pv_json_ser_key(&js, "log.push");
+		pv_json_ser_bool(&js, pv_config_get_log_push());
+		pv_json_ser_key(&js, "log.capture");
+		pv_json_ser_bool(&js, pv_config_get_log_capture());
+		pv_json_ser_key(&js, "log.loggers");
+		pv_json_ser_bool(&js, pv_config_get_log_loggers());
+		pv_json_ser_key(&js, "libthttp.log.level");
+		pv_json_ser_int(&js, pv_config_get_libthttp_loglevel());
+
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
+}
 
 static int pv_config_init(struct pv_init *this)
 {
