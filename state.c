@@ -433,6 +433,9 @@ static void pv_state_set_default_conditions(struct pv_state *s)
 
 	// set app to depend on platform
 	pv_state_set_default_conditions_group(s, p, a, "STARTED");
+
+	// set state depend on app
+	pv_state_set_default_conditions_group(s, a, NULL, "STARTED");
 }
 
 void pv_state_validate(struct pv_state *s)
@@ -652,7 +655,8 @@ static bool pv_state_group_requires_reboot(struct pv_group *g)
 
 static bool pv_state_compare_objects(struct pv_state *current, struct pv_state *pending)
 {
-	struct pv_object *o, *tmp, *pend_o;
+	struct pv_object *o, *tmp, *pend_o, *curr_o;
+	struct pv_platform *p;
 
 	if (!current || !pending)
 		return true;
@@ -683,17 +687,44 @@ static bool pv_state_compare_objects(struct pv_state *current, struct pv_state *
 		}
 	}
 
+	// search for new objects 
+	dl_list_for_each_safe(o, tmp, &pending->objects,
+			struct pv_object, list) {
+		curr_o = pv_state_fetch_object(current, o->name);
+		if (!curr_o) {
+			pv_log(DEBUG, "object %s has been added in the pending update", o->name);
+			// new objects belonging to bsp require reboot
+			if (!o->plat) {
+				pv_log(DEBUG, "object belongs to bsp");
+				return true;
+			}
+			// new objects belonging to platforms in certain groups require reboot
+			if (o->plat->group && pv_state_group_requires_reboot(o->plat->group)) {
+				pv_log(DEBUG, "object belongs to platform %s in group %s",
+					o->plat->name, o->plat->group->name);
+				return true;
+			}
+			// lenient stop of platform and continue
+			p = pv_state_fetch_platform(current, o->plat->name);
+			if (p && (pv_platform_is_starting(p) || pv_platform_is_started(p)))
+				pv_platform_stop(p);
+			// set to updated so we can remove it later
+			pv_platform_set_updated(p);
+		}
+	}
+
 	return false;
 }
 
-static bool pv_state_compare(struct pv_state *current, struct pv_state *pending)
+static bool pv_state_compare_jsons(struct pv_state *current, struct pv_state *pending)
 {
-	struct pv_json *j, *tmp, *pend_j;
+	struct pv_json *j, *tmp, *pend_j, *curr_j;
+	struct pv_platform *p;
 
 	if (!current || !pending)
 		return true;
 
-	// search for modified or deleted objects
+	// search for modified or deleted jsons
 	dl_list_for_each_safe(j, tmp, &current->jsons,
 			struct pv_json, list) {
 		pend_j = pv_state_fetch_json(pending, j->name);
@@ -705,7 +736,7 @@ static bool pv_state_compare(struct pv_state *current, struct pv_state *pending)
 				pv_log(DEBUG, "json belongs to bsp");
 				return true;
 			}
-			// changes in objects belonging to platforms in certain groups require reboot
+			// changes in jsons belonging to platforms in certain groups require reboot
 			if (j->plat->group && pv_state_group_requires_reboot(j->plat->group)) {
 				pv_log(DEBUG, "json belongs to platform %s in group %s",
 					j->plat->name, j->plat->group->name);
@@ -714,6 +745,34 @@ static bool pv_state_compare(struct pv_state *current, struct pv_state *pending)
 			// lenient stop of platform and continue
 			if (pv_platform_is_starting(j->plat) || pv_platform_is_started(j->plat))
 				pv_platform_stop(j->plat);
+			// set to updated so we can remove it later
+			pv_platform_set_updated(j->plat);
+		}
+	}
+
+	// search for new jsons
+	dl_list_for_each_safe(j, tmp, &pending->jsons,
+			struct pv_json, list) {
+		curr_j = pv_state_fetch_json(current, j->name);
+		if (!curr_j) {
+			pv_log(DEBUG, "json %s has been added in the pending update", j->name);
+			// new jsons belonging to bsp require reboot
+			if (!j->plat) {
+				pv_log(DEBUG, "json belongs to bsp");
+				return true;
+			}
+			// new jsons belonging to platforms in certain groups require reboot
+			if (j->plat->group && pv_state_group_requires_reboot(j->plat->group)) {
+				pv_log(DEBUG, "json belongs to platform %s in group %s",
+					j->plat->name, j->plat->group->name);
+				return true;
+			}
+			// lenient stop of platform and continue
+			p = pv_state_fetch_platform(current, j->plat->name);
+			if (p && (pv_platform_is_starting(p) || pv_platform_is_started(p)))
+				pv_platform_stop(p);
+			// set to updated so we can remove it later
+			pv_platform_set_updated(p);
 		}
 	}
 
@@ -722,7 +781,7 @@ static bool pv_state_compare(struct pv_state *current, struct pv_state *pending)
 
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
 {
-	if (pv_state_compare(current, pending) ||
+	if (pv_state_compare_jsons(current, pending) ||
 		pv_state_compare_objects(current, pending)) {
 		pv_log(INFO, "could not just stop individual platforms for update");
 		return 1;
