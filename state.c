@@ -687,7 +687,7 @@ static bool pv_state_compare_objects(struct pv_state *current, struct pv_state *
 		}
 	}
 
-	// search for new objects 
+	// search for new objects
 	dl_list_for_each_safe(o, tmp, &pending->objects,
 			struct pv_object, list) {
 		curr_o = pv_state_fetch_object(current, o->name);
@@ -706,7 +706,9 @@ static bool pv_state_compare_objects(struct pv_state *current, struct pv_state *
 			}
 			// lenient stop of platform and continue
 			p = pv_state_fetch_platform(current, o->plat->name);
-			if (p && (pv_platform_is_starting(p) || pv_platform_is_started(p)))
+			if (!p)
+				continue;
+			if (pv_platform_is_starting(p) || pv_platform_is_started(p))
 				pv_platform_stop(p);
 			// set to updated so we can remove it later
 			pv_platform_set_updated(p);
@@ -769,7 +771,9 @@ static bool pv_state_compare_jsons(struct pv_state *current, struct pv_state *pe
 			}
 			// lenient stop of platform and continue
 			p = pv_state_fetch_platform(current, j->plat->name);
-			if (p && (pv_platform_is_starting(p) || pv_platform_is_started(p)))
+			if (!p)
+				continue;
+			if (pv_platform_is_starting(p) || pv_platform_is_started(p))
 				pv_platform_stop(p);
 			// set to updated so we can remove it later
 			pv_platform_set_updated(p);
