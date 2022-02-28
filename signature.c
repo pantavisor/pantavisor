@@ -711,11 +711,11 @@ static bool pv_signature_verify_sha(const char *payload, struct dl_list *certs_r
 
 	res = mbedtls_pk_verify(pk, mdtype, hash, 0, (unsigned char*)sig_decoded, olen);
 	if (res) {
-		pv_log(ERROR, "verification returned error code %d sig: %s", res, sig_decoded);
+		pv_log(ERROR, "verification returned error code %d", res);
 		goto out;
 	}
 
-	pv_log(ERROR, "signature OK");
+	pv_log(DEBUG, "signature OK");
 	ret = true;
 
 out:
@@ -891,6 +891,9 @@ bool pv_signature_verify(const char *json)
 {
 	bool ret = false;
 	struct dl_list json_pairs; // pv_signature_pair
+
+	if (!json)
+		return false;
 
 	if (pv_config_get_secureboot_mode() == SB_DISABLED)
 		return true;
