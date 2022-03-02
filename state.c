@@ -199,6 +199,9 @@ struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name)
 {
 	struct pv_group *g, *tmp;
 
+	if (!name)
+		return NULL;
+
 	// Iterate over all groups from state
 	dl_list_for_each_safe(g, tmp, &s->groups,
             struct pv_group, list) {
@@ -212,6 +215,9 @@ struct pv_group* pv_state_fetch_group(struct pv_state *s, const char *name)
 struct pv_platform* pv_state_fetch_platform(struct pv_state *s, const char *name)
 {
 	struct pv_platform *p, *tmp;
+
+	if (!name)
+		return NULL;
 
 	// Iterate over all platforms from state
 	dl_list_for_each_safe(p, tmp, &s->platforms,
@@ -227,6 +233,9 @@ struct pv_object* pv_state_fetch_object(struct pv_state *s, const char *name)
 {
 	struct pv_object *o, *tmp;
 
+	if (!name)
+		return NULL;
+
 	// Iterate over all objects from state
 	dl_list_for_each_safe(o, tmp, &s->objects,
             struct pv_object, list) {
@@ -240,6 +249,9 @@ struct pv_object* pv_state_fetch_object(struct pv_state *s, const char *name)
 struct pv_json* pv_state_fetch_json(struct pv_state *s, const char *name)
 {
 	struct pv_json *j, *tmp;
+
+	if (!name)
+		return NULL;
 
 	// Iterate over all groups from state
 	dl_list_for_each_safe(j, tmp, &s->jsons,
@@ -257,6 +269,9 @@ struct pv_condition* pv_state_fetch_condition_value(struct pv_state *s,
 	const char *eval_value)
 {
 	struct pv_condition *c, *tmp;
+
+	if (!plat || !key || !eval_value)
+		return NULL;
 
 	// Iterate over all conditions from state
 	dl_list_for_each_safe(c, tmp, &s->conditions,

@@ -47,6 +47,7 @@
 #include "condition.h"
 #include "state.h"
 #include "pvlogger.h"
+#include "utils/str.h"
 
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
@@ -966,15 +967,9 @@ static void system1_link_object_json_platforms(struct pv_state *s)
 		struct pv_object, list) {
 		name = strdup(o->name);
 		dir = strtok(name, "/");
-		if (!strcmp(dir, "_config")) {
+		if (!strcmp(dir, "_config"))
 			dir = strtok(NULL, "/");
-			o->plat = pv_state_fetch_platform(s, dir);
-			if (!o->plat) {
-				pv_log(WARN, "discarding unassociated object '%s'", o->name);
-				pv_objects_remove(o);
-			}
-		} else
-			o->plat = pv_state_fetch_platform(s, dir);
+		o->plat = pv_state_fetch_platform(s, dir);
 		free(name);
 	}
 
@@ -985,15 +980,9 @@ link_jsons:
 		struct pv_json, list) {
 		name = strdup(j->name);
 		dir = strtok(name, "/");
-		if (!strcmp(dir, "_config")) {
+		if (!strcmp(dir, "_config"))
 			dir = strtok(NULL, "/");
-			j->plat = pv_state_fetch_platform(s, dir);
-			if (!j->plat) {
-				pv_log(WARN, "discarding unassociated json '%s'", j->name);
-				pv_jsons_remove(j);
-			}
-		} else
-			j->plat = pv_state_fetch_platform(s, dir);
+		j->plat = pv_state_fetch_platform(s, dir);
 		free(name);
 	}
 }
@@ -1094,7 +1083,8 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 			pv_jsons_add(this, key, value);
 		// if the extension is either src.json or build.json, we ignore it
 		} else if (ext && (!strcmp(ext, "/src.json") ||
-					!strcmp(ext, "/build.json"))) {
+					!strcmp(ext, "/build.json") ||
+					pv_str_startswith("_sigs/", strlen("_sigs/"), key))) {
 			pv_log(DEBUG, "skipping '%s'", key);
 		// if the extension is other .json, we add it to the list of jsons
 		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {

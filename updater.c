@@ -1733,6 +1733,11 @@ struct pv_update* pv_update_get_step_local(char *rev)
 		goto err;
 
 	json = pv_storage_get_state_json(rev);
+	if (!json) {
+		pv_log(ERROR, "Could not read state json");
+		goto err;
+	}
+
 	if (!pv_signature_verify(json)) {
 		trail_remote_set_status(pv, update, UPDATE_NO_SIGNATURE, NULL);
 		pv_log(WARN, "state signature verification went wrong");
