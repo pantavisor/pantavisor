@@ -278,7 +278,6 @@ close:
 	json[len] = ']';
 	json[len + 1] = '}';
 	json[len + 2] = '\0';
-	pv_log(DEBUG, "json %s", json);
 
 	return json;
 }
