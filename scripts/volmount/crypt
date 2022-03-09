@@ -78,7 +78,7 @@ do_crypt_init()
 	elif [ $dm_type == "dcp" ]; then
 		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
 	elif [ $dm_type == "versatile" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
+		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
 		echo "Unknown device mapper target"
 		exit 1
@@ -158,7 +158,7 @@ do_mount_disk()
 	elif [ $dm_type == "dcp" ]; then
 		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
 	elif [ $dm_type == "versatile" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
+		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
 		echo "Unknown device mapper target"
 		exit 1
