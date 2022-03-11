@@ -130,6 +130,7 @@ struct pantavisor_libthttp {
 
 typedef enum {
 	SB_DISABLED,
+	SB_AUDIT,
 	SB_LENIENT,
 	SB_STRICT,
 } secureboot_mode_t;

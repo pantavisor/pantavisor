@@ -834,7 +834,7 @@ out:
 
 static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 {
-	bool ret = false, found = false;
+	bool ret = true, found = false;
 	struct pv_signature_pair *pair, *tmp;
 	struct pv_signature *signature = NULL;
 
@@ -844,8 +844,9 @@ static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 		if (signature) {
 			found = true;
 			pv_log(DEBUG, "%s found", pair->key);
-			if (!pv_signature_verify_pvs(signature, json_pairs))
-				goto out;
+			if (!pv_signature_verify_pvs(signature, json_pairs)) {
+				ret = false;
+			}
 
 			pv_signature_free(signature);
 			signature = NULL;
@@ -855,11 +856,6 @@ static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 	if (!found)
 		pv_log(DEBUG, "no JSON with %s specification found in revision", SPEC_PVS2);
 
-	ret = true;
-
-out:
-	if (signature)
-		pv_signature_free(signature);
 	return ret;
 }
 
@@ -891,11 +887,12 @@ bool pv_signature_verify(const char *json)
 {
 	bool ret = false;
 	struct dl_list json_pairs; // pv_signature_pair
+	secureboot_mode_t mode = pv_config_get_secureboot_mode();
 
 	if (!json)
 		return false;
 
-	if (pv_config_get_secureboot_mode() == SB_DISABLED)
+	if (mode == SB_DISABLED)
 		return true;
 
 	pv_log(DEBUG, "verifying signatures of state JSON");
@@ -906,10 +903,16 @@ bool pv_signature_verify(const char *json)
 	ret = pv_signature_verify_pairs(&json_pairs);
 
 	if (ret &&
-		(pv_config_get_secureboot_mode() == SB_STRICT) &&
+		(mode == SB_STRICT || mode == SB_AUDIT) &&
 		!pv_signature_all_covered(&json_pairs)) {
-		pv_log(ERROR, "not all state elements were covered in secureboot strict mode");
+		pv_log(ERROR, "not all state elements were covered");
 		ret = false;
+	}
+
+	if (!ret &&
+		(mode == SB_AUDIT)) {
+		ret = true;
+		pv_log(WARN, "in secureboot audit mode, so we will pass the bad signatures as good ones");
 	}
 
 	pv_signature_free_pairs(&json_pairs);

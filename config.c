@@ -113,6 +113,8 @@ static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
 
 	if (!strcmp(item, "disabled"))
 		value = SB_DISABLED;
+	else if (!strcmp(item, "audit"))
+		value = SB_AUDIT;
 	else if (!strcmp(item, "lenient"))
 		value = SB_LENIENT;
 	else if (!strcmp(item, "strict"))
