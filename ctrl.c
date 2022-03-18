@@ -74,6 +74,7 @@
 #define ENDPOINT_DEVICE_META "/device-meta"
 #define ENDPOINT_BUILDINFO "/buildinfo"
 #define ENDPOINT_CONDITIONS "/conditions"
+#define ENDPOINT_CONFIG "/config"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
@@ -852,6 +853,13 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			if (pv_state_report_condition(pv->state, pname, condkey, condvalue))
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot report condition");
 			pv_ctrl_write_ok_response(req_fd);
+		} else
+			goto err_me;
+	} else if (pv_str_matches(ENDPOINT_CONFIG, strlen(ENDPOINT_CONFIG), path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			pv_ctrl_process_get_string(req_fd, pv_config_get_json());
 		} else
 			goto err_me;
 	} else {

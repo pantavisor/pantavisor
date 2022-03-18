@@ -23,7 +23,9 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+
 #include "json.h"
+#include "json-build/json-build.h"
 
 /*
  * private struct.
@@ -214,4 +216,180 @@ out:
 			json_string = shrinked;
 	}
 	return json_string;
+}
+
+void pv_json_ser_init(struct pv_json_ser *js, size_t size)
+{
+	if (!js)
+		return;
+
+	memset(js, 0, sizeof(struct pv_json_ser));
+
+	jsonb_init(&js->b);
+	js->buf = calloc(1, size * sizeof(char*));
+	if (!js->buf)
+		return;
+
+	js->size = size;
+	js->block_size = size;
+}
+
+static void pv_json_ser_resize(struct pv_json_ser *js)
+{
+	js->size += js->block_size;
+	js->buf = realloc(js->buf, js->size * sizeof(char*));
+	if (!js->buf)
+		js->size = 0;
+}
+
+int pv_json_ser_object(struct pv_json_ser *js)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_object(&js->b, js->buf, js->size);
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_object(&js->b, js->buf, js->size);
+	}
+
+	return ret;
+}
+
+int pv_json_ser_object_pop(struct pv_json_ser *js)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_object_pop(&js->b, js->buf, js->size);
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_object_pop(&js->b, js->buf, js->size);
+	}
+
+	return ret;
+}
+
+int pv_json_ser_key(struct pv_json_ser *js, const char *key)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_key(&js->b, js->buf, js->size, key, strlen(key));
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_key(&js->b, js->buf, js->size, key, strlen(key));
+	}
+
+	return ret;
+}
+
+int pv_json_ser_array(struct pv_json_ser *js)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_array(&js->b, js->buf, js->size);
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_array(&js->b, js->buf, js->size);
+	}
+
+	return ret;
+}
+
+int pv_json_ser_array_pop(struct pv_json_ser *js)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_array_pop(&js->b, js->buf, js->size);
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_array_pop(&js->b, js->buf, js->size);
+	}
+
+	return ret;
+}
+
+static int pv_json_ser_null(struct pv_json_ser *js)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_null(&js->b, js->buf, js->size);
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_null(js);
+		ret = jsonb_null(&js->b, js->buf, js->size);
+	}
+
+	return ret;
+}
+
+int pv_json_ser_string(struct pv_json_ser *js, const char *value)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	if (!value)
+		return pv_json_ser_null(js);
+
+	ret = jsonb_string(&js->b, js->buf, js->size, value, strlen(value));
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_string(&js->b, js->buf, js->size, value, strlen(value));
+	}
+
+	return ret;
+}
+
+int pv_json_ser_bool(struct pv_json_ser *js, bool value)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_bool(&js->b, js->buf, js->size, value);
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_bool(&js->b, js->buf, js->size, value);
+	}
+
+	return ret;
+}
+
+int pv_json_ser_int(struct pv_json_ser *js, int value)
+{
+	jsonbcode ret;
+
+	if (!js)
+		return -1;
+
+	ret = jsonb_number(&js->b, js->buf, js->size, value);
+	if (ret == JSONB_ERROR_NOMEM) {
+		pv_json_ser_resize(js);
+		ret = jsonb_number(&js->b, js->buf, js->size, value);
+	}
+
+	return ret;
+}
+
+char* pv_json_ser_str(struct pv_json_ser *js)
+{
+	return js->buf;
 }
