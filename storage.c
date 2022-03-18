@@ -53,6 +53,7 @@
 #include "state.h"
 #include "tsh.h"
 #include "signature.h"
+#include "paths.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -1095,7 +1096,7 @@ void pv_storage_init_plat_usermeta(const char *name)
 {
 	char path[PATH_MAX];
 
-	SNPRINTF_WTRUNC(path, sizeof (path), PATH_USERMETA_PLAT, name);
+	SNPRINTF_WTRUNC(path, sizeof (path), PV_USER_META_PLAT_PATHF, name);
 	if (!dir_exist(path))
 		mkdir_p(path, 0755);
 }
@@ -1126,8 +1127,8 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 	char *pname, *pkey;
 	int len;
 
-	len = strlen(PATH_USERMETA_KEY) + strlen(key) + 1;
-	SNPRINTF_WTRUNC(path, len, PATH_USERMETA_KEY, key);
+	len = strlen(PV_USER_META_KEY_PATHF) + strlen(key) + 1;
+	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, key);
 	pv_storage_save_file(path, value);
 	pv_log(DEBUG, "saved usermeta in %s", path);
 
@@ -1137,8 +1138,8 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 		*pkey = '\0';
 		pkey++;
 		pv_storage_init_plat_usermeta(pname);
-		len = strlen(PATH_USERMETA_PLAT_KEY) + strlen(pname) + strlen(pkey) + 1;
-		SNPRINTF_WTRUNC(path, len, PATH_USERMETA_PLAT_KEY, pname, pkey);
+		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(pname) + strlen(pkey) + 1;
+		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, pname, pkey);
 		pv_storage_save_file(path, value);
 		pv_log(DEBUG, "saved usermeta in %s", path);
 	}
@@ -1152,8 +1153,8 @@ void pv_storage_rm_usermeta(const char *key)
 	char *pname, *pkey;
 	int len;
 
-	len = strlen(PATH_USERMETA_KEY) + strlen(key) + 1;
-	SNPRINTF_WTRUNC(path, len, PATH_USERMETA_KEY, key);
+	len = strlen(PV_USER_META_KEY_PATHF) + strlen(key) + 1;
+	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, key);
 	remove(path);
 	pv_log(DEBUG, "removed usermeta in %s", path);
 
@@ -1162,8 +1163,8 @@ void pv_storage_rm_usermeta(const char *key)
 	if (pkey) {
 		*pkey = '\0';
 		pkey++;
-		len = strlen(PATH_USERMETA_PLAT_KEY) + strlen(pname) + strlen(pkey) + 1;
-		SNPRINTF_WTRUNC(path, len, PATH_USERMETA_PLAT_KEY, pname, pkey);
+		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(pname) + strlen(pkey) + 1;
+		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, pname, pkey);
 		remove(path);
 		pv_log(DEBUG, "removed usermeta in %s", path);
 	}
@@ -1178,9 +1179,9 @@ static int pv_storage_init(struct pv_init *this)
 	int fd = -1;
 
 	// create hints
-	fd = open("/pv/challenge", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(PV_CHALLENGE_PATH, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
-	fd = open("/pv/device-id", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(PV_DEVICE_ID_PATH, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	if (!pv_config_get_creds_prn() ||
 		(!strcmp(pv_config_get_creds_prn(), ""))) {
 		pv->unclaimed = true;
@@ -1190,7 +1191,7 @@ static int pv_storage_init(struct pv_init *this)
 		write(fd, tmp, strlen(tmp));
 	}
 	close(fd);
-	fd = open("/pv/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	fd = open(PV_PATH"/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
 	write(fd, tmp, strlen(tmp));
 	close(fd);

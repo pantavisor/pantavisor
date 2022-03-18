@@ -29,10 +29,6 @@
 #define PATH_TRAILS "%s/trails/%s/.pvr/json"
 #define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
 #define PATH_TRAILS_COMMITMSG "%s/trails/%s/.pv/commitmsg"
-#define PATH_USER_META "/pv/user-meta"
-#define PATH_USERMETA_KEY "/pv/user-meta/%s"
-#define PATH_USERMETA_PLAT "/pv/user-meta.%s"
-#define PATH_USERMETA_PLAT_KEY "/pv/user-meta.%s/%s"
 
 #define PREFIX_LOCAL_REV "locals/"
 #define SIZE_LOCAL_REV 64

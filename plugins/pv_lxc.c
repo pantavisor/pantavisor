@@ -43,8 +43,7 @@
 #include "pvlogger.h"
 #include "state.h"
 #include "platforms.h"
-
-#define LXC_LOG_DEFAULT_PREFIX	"/pv/logs"
+#include "paths.h"
 
 static struct lxc_log pv_lxc_log = {
 	.level = "DEBUG",
@@ -106,7 +105,7 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	 * log files are created in the revision directory.
 	 */
 	snprintf(default_prefix, sizeof(default_prefix), "%s/%s/",
-			LXC_LOG_DEFAULT_PREFIX,
+			PV_LOGS_PATH,
 			__pv_get_instance()->state->rev);
 	/*
 	 * If lxc.log.file or lxc.console.logfile isn't set or
@@ -191,22 +190,44 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
 	if (p->mgmt) {
-		c->set_config_item(c, "lxc.mount.entry", "/pv pantavisor"
-							" none bind,ro,create=dir 0 0");
-		c->set_config_item(c, "lxc.mount.entry", "/pv/logs pantavisor/logs"
-							" none bind,ro,create=dir 0 0");
-		c->set_config_item(c, "lxc.mount.entry", "/pv/user-meta pantavisor/user-meta"
-							" none bind,ro,create=dir 0 0");
-	} else {
-		c->set_config_item(c, "lxc.mount.entry", "/pv/pv-ctrl-log pantavisor/pv-ctrl-log"
-							" none bind,rw,create=file 0 0");
-		c->set_config_item(c, "lxc.mount.entry", "/pv/pv-ctrl pantavisor/pv-ctrl"
-							" none bind,rw,create=file 0 0");
-		sprintf(entry, "/pv/logs/%s/%s pantavisor/logs none bind,ro,create=dir 0 0",
-			rev, p->name);
+		snprintf(entry, sizeof (entry),
+				"%s %s none bind,ro,create=dir 0 0",
+				PV_PATH,
+				PLATFORM_PV_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
-		sprintf(entry, "/pv/user-meta.%s pantavisor/user-meta none bind,ro,create=dir 0 0",
-			p->name);
+
+		snprintf(entry, sizeof (entry),
+				"%s %s none bind,ro,create=dir 0 0",
+				PV_LOGS_PATH,
+				PLATFORM_LOGS_PATH + 1);
+		c->set_config_item(c, "lxc.mount.entry", entry);
+
+		snprintf(entry, sizeof (entry),
+				"%s %s none bind,ro,create=dir 0 0",
+				PV_USER_META_PATH,
+				PLATFORM_USER_META_PATH + 1);
+		c->set_config_item(c, "lxc.mount.entry", entry);
+	} else {
+		snprintf(entry, sizeof (entry),
+				"%s %s none bind,rw,create=dir 0 0",
+				PV_LOG_CTRL_PATH,
+				PLATFORM_LOG_CTRL_PATH + 1);
+		c->set_config_item(c, "lxc.mount.entry", entry);
+
+		snprintf(entry, sizeof (entry),
+				"%s %s none bind,rw,create=dir 0 0",
+				PV_CTRL_SOCKET_PATH,
+				PLATFORM_CTRL_SOCKET_PATH + 1);
+		c->set_config_item(c, "lxc.mount.entry", entry);
+
+		snprintf(entry, sizeof (entry),
+				PV_LOGS_PATH"/%s/%s "PLATFORM_LOGS_PATH" none bind,ro,create=dir 0 0",
+				rev, p->name);
+		c->set_config_item(c, "lxc.mount.entry", entry);
+
+		snprintf(entry, sizeof (entry),
+				PV_USER_META_PATH".%s "PLATFORM_USER_META_PATH" none bind,ro,create=dir 0 0",
+				p->name);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
 	if (stat("/lib/firmware", &st) == 0)
@@ -265,7 +286,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 		if (!strlen(entry)) {
 			snprintf(entry, sizeof(entry),
-				LXC_LOG_DEFAULT_PREFIX"/%s/%s/%s/%s.log",
+				PV_LOGS_PATH"/%s/%s/%s/%s.log",
 				__pv_get_instance()->state->rev, c->name,
 				LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
 			c->set_config_item(c, "lxc.console.logfile", entry);
@@ -401,7 +422,7 @@ static void pv_truncate_lxc_log(struct lxc_container *c,
 		 * the container.
 		 */
 		snprintf(logfile_name, PATH_MAX,
-				LXC_LOG_DEFAULT_PREFIX"/%s/%s.log",
+				PV_LOGS_PATH"/%s/%s.log",
 				__pv_get_instance()->state->rev,
 				LXC_LOG_FNAME);
 	}
@@ -543,7 +564,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 			goto out_container_init;
 		if (pv_lxc_capture_logs_activated()) {
 			snprintf(log_dir, sizeof(log_dir), 
-					LXC_LOG_DEFAULT_PREFIX"/%s/%s",
+					PV_LOGS_PATH"/%s/%s",
 					__pv_get_instance()->state->rev, p->name);
 			pv_lxc_log.name = LXC_LOG_FNAME;
 			pv_lxc_log.lxcpath = strdup(log_dir);

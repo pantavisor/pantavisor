@@ -54,6 +54,7 @@
 #include "metadata.h"
 #include "version.h"
 #include "platforms.h"
+#include "paths.h"
 #include "utils/math.h"
 #include "utils/fs.h"
 #include "utils/file.h"
@@ -61,8 +62,6 @@
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#define CTRL_SOCKET_PATH "/pv/pv-ctrl"
 
 #define ENDPOINT_CONTAINERS "/containers"
 #define ENDPOINT_COMMANDS "/commands"
@@ -1028,7 +1027,7 @@ static int pv_ctrl_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
 
-	pv->ctrl_fd = pv_ctrl_socket_open(CTRL_SOCKET_PATH);
+	pv->ctrl_fd = pv_ctrl_socket_open(PV_CTRL_SOCKET_PATH);
 	if (pv->ctrl_fd < 0) {
 		pv_log(ERROR, "ctrl socket could not be initialized");
 		return -1;

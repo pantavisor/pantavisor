@@ -48,6 +48,7 @@
 #include "pantahub.h"
 #include "pantavisor.h"
 #include "json.h"
+#include "paths.h"
 #include "metadata.h"
 #include "utils/tsh.h"
 #include "utils/str.h"
@@ -94,21 +95,20 @@ auth:
 static void pv_ph_set_online(struct pantavisor *pv, bool online)
 {
 	int fd, hint;
-	char *path = "/pv/online";
 	struct stat st;
 
-	hint = stat(path, &st) ? 0 : 1;
+	hint = stat(PV_ONLINE_PATH, &st) ? 0 : 1;
 
 	if (online) {
 		if (!hint) {
-			fd = open(path, O_CREAT | O_SYNC, 0400);
+			fd = open(PV_ONLINE_PATH, O_CREAT | O_SYNC, 0400);
 			if (fd >= 0)
 				close(fd);
 		}
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "1");
 	} else {
 		if (hint)
-			remove(path);
+			remove(PV_ONLINE_PATH);
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "0");
 	}
 
@@ -496,7 +496,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	int fd;
 	char buf[256];
 
-	fd = open("/pv/device-id", O_TRUNC | O_SYNC | O_RDWR);
+	fd = open(PV_DEVICE_ID_PATH, O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
 		pv_log(INFO, "unable to open device-id hint file: %s", strerror(errno));
 		return;
@@ -508,7 +508,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	if (!c)
 		return;
 
-	fd = open("/pv/challenge", O_TRUNC | O_SYNC | O_RDWR);
+	fd = open(PV_CHALLENGE_PATH, O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
 		pv_log(INFO, "unable to open challenge hint file: %s", strerror(errno));
 		return;
