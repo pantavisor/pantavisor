@@ -28,7 +28,6 @@
 
 #include "init.h"
 #include "pantavisor.h"
-#include "utils.h"
 #include "system.h"
 
 #define MODULE_NAME		"system"

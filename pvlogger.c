@@ -36,10 +36,10 @@
 #include "platforms.h"
 #include "pvctl_utils.h"
 #include "json.h"
-#include "fops.h"
 #include "paths.h"
 #include "system.h"
 #include "file.h"
+#include "utils/file.h"
 #include "utils/str.h"
 #include "utils/math.h"
 

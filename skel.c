@@ -23,14 +23,15 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
 
 #include "init.h"
 #include "pantavisor.h"
-#include "utils.h"
-#include "utils/fops.h"
+#include "utils/file.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME		"skel-init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -51,21 +52,21 @@ static int pv_skel_init(struct pv_init *this)
 	if (!system)
 		goto out;
 
-	snprintf(_dir, PATH_MAX, "%s/trails/0/.pv", system->vardir);
+	SNPRINTF_WTRUNC(_dir, PATH_MAX, "%s/trails/0/.pv", system->vardir);
 	if (stat(_dir, &st) != 0)
 		mkdir_p(_dir, 0500);
 
-	snprintf(_dir, PATH_MAX, "%s/trails/0/.pvr", system->vardir);
+	SNPRINTF_WTRUNC(_dir, PATH_MAX, "%s/trails/0/.pvr", system->vardir);
 	if (stat(_dir, &st) != 0)
 		mkdir_p(_dir, 0500);
 
-	snprintf(_path, PATH_MAX, "%s/json", _dir);
+	SNPRINTF_WTRUNC(_path, PATH_MAX, "%s/json", _dir);
 	if (stat(_path, &st) != 0) {
 		int fd = open(_path, O_CREAT | O_WRONLY, 0644);
 		if (!fd)
 			goto out;
 
-		if (pv_fops_write_nointr(fd, STATE_EMBED_DEFAULT,
+		if (pv_file_write_nointr(fd, STATE_EMBED_DEFAULT,
 		    strlen(STATE_EMBED_DEFAULT)) < 0) {
 			close(fd);
 			goto out;
@@ -74,19 +75,19 @@ static int pv_skel_init(struct pv_init *this)
 		close(fd);
 	}
 
-	snprintf(_dir, PATH_MAX, "%s/config", system->vardir);
+	SNPRINTF_WTRUNC(_dir, PATH_MAX, "%s/config", system->vardir);
 	if (stat(_dir, &st) != 0)
 		mkdir_p(_dir, 0500);
 
-	snprintf(_dir, PATH_MAX, "%s/boot", system->vardir);
+	SNPRINTF_WTRUNC(_dir, PATH_MAX, "%s/boot", system->vardir);
 	if (stat(_dir, &st) != 0)
 		mkdir_p(_dir, 0500);
 
-	snprintf(_dir, PATH_MAX, "%s/vendor", system->vardir);
+	SNPRINTF_WTRUNC(_dir, PATH_MAX, "%s/vendor", system->vardir);
 	if (stat(_dir, &st) != 0)
 		mkdir_p(_dir, 0500);
 
-	snprintf(_dir, PATH_MAX, "%s/objects", system->vardir);
+	SNPRINTF_WTRUNC(_dir, PATH_MAX, "%s/objects", system->vardir);
 	if (stat(_dir, &st) != 0)
 		mkdir_p(_dir, 0500);
 

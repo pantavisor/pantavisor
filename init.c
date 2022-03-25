@@ -53,7 +53,7 @@
 #include "utils/list.h"
 #include "utils/fs.h"
 #include "utils/str.h"
-#include "utils/fops.h"
+#include "utils/file.h"
 
 #define MODULE_NAME		"init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -526,7 +526,7 @@ static struct pv_system* _init_system(bool is_embedded, int argc, char *argv[]) 
 			usage(cmd);
 		}
 
-		bytes = pv_fops_read_nointr(fd, buf, sizeof(char)*4095);
+		bytes = pv_file_read_nointr(fd, buf, sizeof(char)*4095);
 		if (!bytes) {
 			printf("ERROR: error reading bytes from /proc/cmdline %s ...\n", strerror(errno));
 			close(fd);

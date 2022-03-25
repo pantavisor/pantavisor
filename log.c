@@ -115,9 +115,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 
 			free(buf);
 		}
-
-	if (!log_dir)
-		return;
+	}
 
 	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
 

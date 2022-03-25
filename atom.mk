@@ -107,7 +107,7 @@ LOCAL_GENERATED_SRC_FILES := version.c
 LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
 	scripts/JSON.sh:lib/pv/JSON.sh \
-	scripts/volmount/dm:lib/pv/volmount/dm
+	scripts/volmount/dm:lib/pv/volmount/dm \
 	defaults/pantahub.config:opt/pantavisor/share/pantahub.config \
 	defaults/pantavisor.config:opt/pantavisor/share/pantavisor.config \
 	$(NULL)

@@ -201,42 +201,42 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	}
 	printf("%s():%d\n", __func__, __LINE__);
 	if (p->mgmt) {
-		sprintf(entry, sizeof (entry),
+		snprintf(entry, sizeof (entry),
 				"%s%s %s none bind,ro,create=dir 0 0",
 				pv_mount_get_rundir(),
 				PV_PATH,
 				PLATFORM_PV_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		sprintf(entry, sizeof (entry),
+		snprintf(entry, sizeof (entry),
 				"%s%s %s none bind,ro,create=dir 0 0",
 				pv_mount_get_rundir(),
 				PV_LOGS_PATH,
 				PLATFORM_LOGS_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		sprintf(entry, sizeof (entry),
+		snprintf(entry, sizeof (entry),
 				"%s%s %s none bind,ro,create=dir 0 0",
 				pv_mount_get_rundir(),
 				PV_USER_META_PATH,
 				PLATFORM_USER_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	} else {
-		sprintf(entry, sizeof (entry),
+		snprintf(entry, sizeof (entry),
 				"%s%s %s none bind,rw,create=dir 0 0",
 				pv_mount_get_rundir(),
 				PV_LOG_CTRL_PATH,
 				PLATFORM_LOG_CTRL_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		sprintf(entry, sizeof (entry),
+		snprintf(entry, sizeof (entry),
 				"%s%s %s none bind,rw,create=dir 0 0",
 				pv_mount_get_rundir(),
 				PV_CTRL_SOCKET_PATH,
 				PLATFORM_CTRL_SOCKET_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		sprintf(entry, sizeof (entry),
+		snprintf(entry, sizeof (entry),
 				"%s%s/%s/%s %s none bind,ro,create=dir 0 0",
 				pv_mount_get_rundir(),
 				PV_LOGS_PATH,
@@ -245,7 +245,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 				PLATFORM_LOGS_PATH);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
-		sprintf(entry, sizeof (entry),
+		snprintf(entry, sizeof (entry),
 				"%s%s.%s %s none bind,ro,create=dir 0 0",
 				pv_mount_get_rundir(),
 				PV_USER_META_PATH,

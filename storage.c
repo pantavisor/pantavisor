@@ -1103,7 +1103,7 @@ void pv_storage_init_plat_usermeta(const char *name)
 	int len;
 
 	rundir = pv_system_get_instance()->rundir;
-	len = strlen(PATH_USERMETA_PLAT) + strlen(rundir) + strlen(name) + 1;
+	len = strlen(PLATFORM_USER_META_PATH) + strlen(rundir) + strlen(name) + 1;
 	SNPRINTF_WTRUNC(path, sizeof (path), PV_USER_META_PLAT_PATHF, rundir, name);
 	if (!dir_exist(path))
 		mkdir_p(path, 0755);

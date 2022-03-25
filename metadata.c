@@ -50,6 +50,7 @@
 #include "storage.h"
 #include "platforms.h"
 #include "buffer.h"
+#include "system.h"
 #include "utils/math.h"
 #include "utils/system.h"
 #include "utils/file.h"
@@ -850,7 +851,7 @@ static void pv_metadata_load_usermeta()
 	char *value, *rundir;
 
 	dl_list_init(&files);
-	pv_storage_get_subdir(PV_PATH_USER_META, "", &files);
+	pv_storage_get_subdir(pv_system_get_path_rundir(PV_USER_META_PATH"/"), "", &files);
 	rundir = pv_system_get_instance()->rundir;
 
 	dl_list_for_each_safe(curr, tmp, &files,
@@ -860,7 +861,7 @@ static void pv_metadata_load_usermeta()
 			!strncmp(curr->path, ".", strlen(".")))
 			continue;
 
-		len = strlen(PV_PATH_USERMETA_KEY) + strlen(rundir) + strlen(curr->path) + 1;
+		len = strlen(PV_USER_META_KEY_PATHF) + strlen(rundir) + strlen(curr->path) + 1;
 		SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, rundir, curr->path);
 		value = pv_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
