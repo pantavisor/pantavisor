@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -70,7 +70,7 @@ static struct timer threshold_timer;
 
 static int pv_storage_gc_objects(struct pantavisor *pv)
 {
-	int reclaimed = 0, len;
+	int reclaimed = 0;
 	char path[PATH_MAX];
 	struct stat st;
 	struct pv_path *o, *tmp;
@@ -78,18 +78,16 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 
 	dl_list_init(&objects);
 
-	len = strlen("%s/objects/") + strlen(pv_config_get_storage_mntpoint()) + 1;
-	SNPRINTF_WTRUNC(path, len, "%s/objects/", pv_config_get_storage_mntpoint());
+	pv_paths_storage_object(path, PATH_MAX, "");
 	if (pv_storage_get_subdir(path, "", &objects))
 		goto out;
 
 	dl_list_for_each_safe(o, tmp, &objects, struct pv_path, list) {
-		if (!strncmp(o->path, "..", len) ||
-			!strncmp(o->path, ".", len))
+		if (!strncmp(o->path, "..", strlen("..")) ||
+			!strncmp(o->path, ".", strlen(".")))
 			continue;
 
-		len = strlen("%s/objects") + strlen(pv_config_get_storage_mntpoint()) + strlen(o->path) +1;
-		SNPRINTF_WTRUNC(path, len, "%s/objects/%s", pv_config_get_storage_mntpoint(), o->path);
+		pv_paths_storage_object(path, PATH_MAX, o->path);
 		memset(&st, 0, sizeof(struct stat));
 		if (stat(path, &st) < 0)
 			continue;
@@ -118,20 +116,16 @@ out:
 void pv_storage_rm_rev(const char *rev)
 {
 	char path[PATH_MAX];
-	char revision[PATH_MAX];
-
 	pv_log(DEBUG, "removing revision %s from disk", rev);
 
-	SNPRINTF_WTRUNC(revision, sizeof (revision), "%s", rev);
+	pv_paths_storage_trail(path, PATH_MAX, "");
+	remove_in(path, rev);
 
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails", pv_config_get_storage_mntpoint());
-	remove_in(path, revision);
+	pv_paths_pv_log(path, PATH_MAX, "");
+	remove_in(path, rev);
 
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/logs", pv_config_get_storage_mntpoint());
-	remove_in(path, revision);
-
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/disks/rev", pv_config_get_storage_mntpoint());
-	remove_in(path, revision);
+	pv_paths_storage_disks_rev(path, PATH_MAX);
+	remove_in(path, rev);
 
 	sync();
 }
@@ -192,23 +186,18 @@ void pv_storage_free_subdir(struct dl_list *subdirs)
 
 static int pv_storage_get_revisions(struct dl_list *revisions)
 {
-	int ret = -1, len;
-	char *basedir;
+	char path[PATH_MAX];
+	int ret = -1;
 
-	len = strlen("%s/trails/") + strlen(pv_config_get_storage_mntpoint()) + 1;
-	basedir = calloc(1, len);
-	SNPRINTF_WTRUNC(basedir, len, "%s/trails/", pv_config_get_storage_mntpoint());
+	pv_paths_storage_trail(path, PATH_MAX, "");
 
-	if (pv_storage_get_subdir(basedir, "locals/", revisions) ||
-		pv_storage_get_subdir(basedir, "", revisions))
+	if (pv_storage_get_subdir(path, "locals/", revisions) ||
+		pv_storage_get_subdir(path, "", revisions))
 		goto out;
 
 	ret = 0;
 
 out:
-	if (basedir)
-		free(basedir);
-
 	return ret;
 }
 
@@ -462,16 +451,9 @@ out:
 
 static bool pv_storage_validate_objects_object_checksum(char *checksum)
 {
-	int len;
 	char path[PATH_MAX];
 
-	len = strlen("%s/objects/%s") +
-		strlen(pv_config_get_storage_mntpoint()) +
-		strlen(checksum);
-	SNPRINTF_WTRUNC(path, len, "%s/objects/%s",
-		 pv_config_get_storage_mntpoint(),
-		 checksum);
-
+	pv_paths_storage_object(path, PATH_MAX, checksum);
 	pv_log(DEBUG, "validating checksum for object %s", path);
 	return !pv_storage_validate_file_checksum(path, checksum);
 }
@@ -479,44 +461,25 @@ static bool pv_storage_validate_objects_object_checksum(char *checksum)
 
 bool pv_storage_validate_trails_object_checksum(const char *rev, const char *name, char *checksum)
 {
-	int len;
 	char path[PATH_MAX];
 
-
-	len = strlen("%s/trails/%s/%s") +
-		strlen(pv_config_get_storage_mntpoint()) +
-		strlen(rev) +
-		strlen(name);
-	SNPRINTF_WTRUNC(path, len, "%s/trails/%s/%s",
-		pv_config_get_storage_mntpoint(),
-		rev,
-		name);
-
-	/* validate object in pool to match */
+	// validate object in pool to match
 	if (!pv_storage_validate_objects_object_checksum(checksum)) {
 		pv_log(ERROR, "object %s with checksum %s failed", name, checksum);
 		return false;
 	}
 
+	pv_paths_storage_trail_file(path, PATH_MAX, rev, name);
 	pv_log(DEBUG, "validating checksum for object in trail %s", path);
 	return !pv_storage_validate_file_checksum(path, checksum);
 }
 
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name, char *val)
 {
-	int len;
 	char path[PATH_MAX];
 	char *buf;
 
-	len = strlen("%s/trails/%s/%s") +
-		strlen(pv_config_get_storage_mntpoint()) +
-		strlen(rev) +
-		strlen(name);
-	SNPRINTF_WTRUNC(path, len, "%s/trails/%s/%s",
-		pv_config_get_storage_mntpoint(),
-		rev,
-		name);
-
+	pv_paths_storage_trail_file(path, PATH_MAX, rev, name);
 	buf = pv_file_load(path, 0);
 	if (!buf) {
 		pv_log(ERROR, "could not load %s, %s", path, strerror(errno));
@@ -530,54 +493,48 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name, ch
 
 void pv_storage_set_active(struct pantavisor *pv)
 {
-	char path[PATH_MAX], cur[PATH_MAX], pdir[PATH_MAX];
+	char path[PATH_MAX];
 
 	// path to current revision - relative and dir for fd
-	SNPRINTF_WTRUNC(pdir, sizeof (pdir), "%s/trails/", pv_config_get_storage_mntpoint());
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s%s", pdir, pv->state->rev);
-	SNPRINTF_WTRUNC(cur, sizeof (cur), "%s" "current", pdir);
-	unlink(cur);
-	symlink(path + strlen(pdir), cur);
+	pv_paths_storage_trail(path, PATH_MAX, "current");
+	unlink(path);
+	symlink(pv->state->rev, path);
 
 	// path to current logs - relative and fd for dir
-	SNPRINTF_WTRUNC(pdir, sizeof (pdir), "%s/logs/", pv_config_get_storage_mntpoint());
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s%s", pdir, pv->state->rev);
-	SNPRINTF_WTRUNC(cur, sizeof (cur), "%scurrent", pdir);
-	unlink(cur);
-	symlink(path + strlen(pdir), cur);
+	pv_paths_pv_log(path, PATH_MAX, "current");
+	unlink(path);
+	symlink(pv->state->rev, path);
 }
 
 int pv_storage_update_factory(const char* rev)
 {
 	int res = -1, fd_c = -1, fd_f = -1;
-	char revision[PATH_MAX], factory[PATH_MAX], factory_parent[PATH_MAX];
-
-	// init paths
-	SNPRINTF_WTRUNC(factory_parent, sizeof (factory_parent), PATH_TRAILS_PVR_PARENT, pv_config_get_storage_mntpoint(), "0");
-	SNPRINTF_WTRUNC(factory, sizeof (factory), PATH_TRAILS, pv_config_get_storage_mntpoint(), "0");
-	SNPRINTF_WTRUNC(revision, sizeof (revision), PATH_TRAILS, pv_config_get_storage_mntpoint(), rev);
+	char path[PATH_MAX];
 
 	// first, remove revision 0 that is going to be substituted
 	pv_storage_rm_rev("0");
 
 	// now, create revision 0
-	mkdir_p(factory_parent, 0755);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, "0", "");
+	mkdir_p(path, 0755);
 
 	// finally, copy revision json to revision 0
-	fd_f = open(factory, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, "0", JSON_FNAME);
+	fd_f = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (fd_f < 0) {
-		pv_log(ERROR, "cannot open %s revision json: %s", factory, strerror(errno));
+		pv_log(ERROR, "cannot open %s revision json: %s", path, strerror(errno));
 		goto out;
 	}
 
-	fd_c = open(revision, O_RDONLY, 0);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
+	fd_c = open(path, O_RDONLY, 0);
 	if (fd_c < 0) {
-		pv_log(ERROR, "cannot open %s revision json: %s", revision, strerror(errno));
+		pv_log(ERROR, "cannot open %s revision json: %s", path, strerror(errno));
 		goto out;
 	}
 
 	if (pv_file_copy_and_close(fd_c, fd_f) < 0) {
-		pv_log(ERROR, "cannot copy %s into %s: %s", revision, factory, strerror(errno));
+		pv_log(ERROR, "cannot copy factory revision: %s", strerror(errno));
 		goto out;
 	}
 
@@ -592,13 +549,11 @@ out:
 int pv_storage_make_config(struct pantavisor *pv)
 {
 	struct stat st;
-	char targetpath[PATH_MAX];
-	char srcpath[PATH_MAX];
-	char cmd[PATH_MAX];
+	char targetpath[PATH_MAX], srcpath[PATH_MAX], cmd[PATH_MAX];
 	int rv;
 
-	SNPRINTF_WTRUNC(srcpath, sizeof (srcpath), "%s/trails/%s/_config/", pv_config_get_storage_mntpoint(), pv->state->rev);
-	SNPRINTF_WTRUNC(targetpath, sizeof (targetpath), "/configs/");
+	pv_paths_storage_trail_config(srcpath, PATH_MAX, pv->state->rev);
+	pv_paths_configs(targetpath, PATH_MAX);
 
 	if (!stat(targetpath, &st)) {
 		SNPRINTF_WTRUNC(cmd, sizeof (cmd), "/bin/rm -rf %s/*", targetpath);
@@ -701,8 +656,7 @@ char* pv_storage_get_revisions_string()
 			continue;
 
 		// get revision progress
-		line_len = strlen(PATH_TRAILS_PROGRESS) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
-		SNPRINTF_WTRUNC(path, line_len, PATH_TRAILS_PROGRESS, pv_config_get_storage_mntpoint(), r->path);
+		pv_paths_storage_trail_pv_file(path, PATH_MAX, r->path, PROGRESS_FNAME);
 		progress = pv_file_load(path, 512);
 		if (!progress || !strlen(progress)) {
 			progress = calloc(1, 3);
@@ -710,13 +664,11 @@ char* pv_storage_get_revisions_string()
 		}
 
 		// get revision date
-		line_len = strlen(PATH_TRAILS) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
-		SNPRINTF_WTRUNC(path, line_len, PATH_TRAILS, pv_config_get_storage_mntpoint(), r->path);
+		pv_paths_storage_trail(path, PATH_MAX, r->path);
 		date = pv_storage_get_file_date(path);
 
 		// get revision commit message
-		line_len = strlen(PATH_TRAILS_COMMITMSG) + strlen(pv_config_get_storage_mntpoint()) + strlen(r->path) + 1;
-		SNPRINTF_WTRUNC(path, line_len, PATH_TRAILS_COMMITMSG, pv_config_get_storage_mntpoint(), r->path);
+		pv_paths_storage_trail_pv_file(path, PATH_MAX, r->path, COMMITMSG_FNAME);
 		commitmsg = pv_file_load(path, 512);
 		if (commitmsg)
 			esc_commitmsg = pv_json_format(commitmsg, strlen(commitmsg));
@@ -781,7 +733,7 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 	int fd;
 	char path[PATH_MAX];
 
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pv/done", pv_config_get_storage_mntpoint(), rev);
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, DONE_FNAME);
 
 	fd = open(path, O_CREAT | O_WRONLY, 0644);
 	if (fd < 0) {
@@ -801,7 +753,7 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 
 	pv_log(DEBUG, "saving progress for rev %s: %s", rev, progress);
 
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pv/progress", pv_config_get_storage_mntpoint(), rev);
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, PROGRESS_FNAME);
 
 	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC , 0644);
 	if (fd < 0) {
@@ -823,14 +775,13 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 void pv_storage_meta_set_objdir(struct pantavisor *pv)
 {
 	int fd = 0;
-	char path[PATH_MAX];
+	char path[PATH_MAX], content[PATH_MAX];
 	struct stat st;
 
 	if (!pv)
 		return;
 
-	SNPRINTF_WTRUNC(path, sizeof (path),
-		"%s/trails/%s/.pvr/config", pv_config_get_storage_mntpoint(), pv->state->rev);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pv->state->rev, CONFIG_FNAME);
 	if (stat(path, &st) == 0)
 		return;
 
@@ -843,17 +794,18 @@ void pv_storage_meta_set_objdir(struct pantavisor *pv)
 	if (fd < 0)
 		goto err;
 
-	SNPRINTF_WTRUNC(path, sizeof (path),
-			"{\"ObjectsDir\": \"%s/objects\"}", pv_config_get_storage_mntpoint());
+	pv_paths_storage_object(path, PATH_MAX, "");
+	SNPRINTF_WTRUNC(content, sizeof (content),
+			"{\"ObjectsDir\": \"%s\"}", path);
 	/*
 	 * [PKS]
 	 * Use pv_file_write_nointr
 	 */
-	if (write(fd, path, strlen(path)) < 0)
+	if (write(fd, content, strlen(content)) < 0)
 		goto err;
 
 	close(fd);
-	pv_log(DEBUG, "wrote '%s' to .pvr/config @rev=%s", path, pv->state->rev);
+	pv_log(DEBUG, "wrote '%s' to .pvr/config @rev=%s", content, pv->state->rev);
 
 	return;
 err:
@@ -904,10 +856,7 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		value[n] = 0;
 		snprintf(value, n, "%s", buf+(*k+1)->start);
 
-		SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/%s",
-				pv_config_get_storage_mntpoint(), s->rev, key);
-
-
+		pv_paths_storage_trail_file(path, PATH_MAX, s->rev, key);
 		if (stat(path, &st) == 0)
 			goto out;
 
@@ -948,9 +897,7 @@ void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value)
 	int fd;
 	char path[PATH_MAX];
 
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pv/.tryonce",
-			pv_config_get_storage_mntpoint(), pv->state->rev);
-
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->state->rev, TRYONCE_FNAME);
 
 	if (value) {
 		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
@@ -990,39 +937,28 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	addons = &s->addons;
 	dl_list_for_each_safe(a, tmp, addons,
 			struct pv_addon, list) {
-		SNPRINTF_WTRUNC(dst, sizeof (dst),
-				"%s/trails/%s/.pv/", pv_config_get_storage_mntpoint(), s->rev);
-		SNPRINTF_WTRUNC(src, sizeof (src), "%s/trails/%s/%s%s",
-				pv_config_get_storage_mntpoint(),
-				s->rev, prefix, a->name);
 		SNPRINTF_WTRUNC(fname, sizeof (fname), "pv-initrd.img.%d", i++);
-		strcat(dst, fname);
+		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev, fname);
+		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix, a->name);
+
 		remove(dst);
 		if (link(src, dst) < 0)
 			goto err;
 	}
 
-	SNPRINTF_WTRUNC(dst, sizeof (dst),
-			"%s/trails/%s/.pv/", pv_config_get_storage_mntpoint(), s->rev);
 	mkdir_p(dst, 0755);
 	if (s->bsp.img.std.initrd) {
 		// initrd
-		SNPRINTF_WTRUNC(src, sizeof (src),
-			"%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev,
-			prefix, s->bsp.img.std.initrd);
-		strcat(dst, "pv-initrd.img");
+		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev, "pv-initrd.img");
+		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix, s->bsp.img.std.initrd);
 
 		remove(dst);
 		if (link(src, dst) < 0)
 			goto err;
 
 		// kernel
-		SNPRINTF_WTRUNC(dst, sizeof (dst),
-				"%s/trails/%s/.pv/pv-kernel.img",
-				pv_config_get_storage_mntpoint(), s->rev);
-		SNPRINTF_WTRUNC(src, sizeof (src),
-				"%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(),
-				s->rev, prefix, s->bsp.img.std.kernel);
+		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev, "pv-kernel.img");
+		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix, s->bsp.img.std.kernel);
 
 		remove(dst);
 		if (link(src, dst) < 0)
@@ -1030,8 +966,8 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 
 		// fdt
 		if (s->bsp.img.std.fdt) {
-			SNPRINTF_WTRUNC(dst, sizeof (dst), "%s/trails/%s/.pv/pv-fdt.dtb", pv_config_get_storage_mntpoint(), s->rev);
-			SNPRINTF_WTRUNC(src, sizeof (src), "%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev, prefix, s->bsp.img.std.fdt);
+			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev, "pv-fdt.dtb");
+			pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix, s->bsp.img.std.fdt);
 
 			remove(dst);
 			if (link(src, dst) < 0)
@@ -1039,11 +975,8 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		}
 	} else {
 		// pantavisor.fit
-		SNPRINTF_WTRUNC(dst, sizeof (dst), "%s/trails/%s/.pv/pantavisor.fit",
-				pv_config_get_storage_mntpoint(), s->rev);
-		SNPRINTF_WTRUNC(src, sizeof (dst), "%s/trails/%s/%s%s",
-				pv_config_get_storage_mntpoint(), s->rev, prefix,
-				s->bsp.img.ut.fit);
+		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev, "pantavisor.fit");
+		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix, s->bsp.img.ut.fit);
 
 		remove(dst);
 		if (link(src, dst) < 0)
@@ -1058,35 +991,17 @@ err:
 	return -1;
 }
 
-char* pv_storage_get_rev_path(const char *rev)
-{
-	char *path;
-	int len = ARRAY_LEN("%s/trails/%s") + strlen(pv_config_get_storage_mntpoint()) + strlen(rev) + 1;
-	path = malloc(sizeof(char) * len);
-	snprintf(path, len, "%s/trails/%s", pv_config_get_storage_mntpoint(), rev);
-	return path;
-}
-
-char* pv_storage_get_state_json_path(const char *rev)
-{
-	char *path;
-	int len = ARRAY_LEN("%s/trails/%s/.pvr/json") + strlen(pv_config_get_storage_mntpoint()) + strlen(rev) + 1;
-	path = malloc(sizeof(char) * len);
-	snprintf(path, len, "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), rev);
-	return path;
-}
 
 char* pv_storage_get_state_json(const char *rev)
 {
 	char *res;
-	char *path;
+	char path[PATH_MAX];
 
-	path = pv_storage_get_state_json_path(rev);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
 	pv_log(DEBUG, "reading state from: '%s'", path);
 
 	res = pv_file_load(path, 0);
 
-	free(path);
 	return res;
 }
 
@@ -1128,7 +1043,7 @@ void pv_storage_init_plat_usermeta(const char *name)
 {
 	char path[PATH_MAX];
 
-	SNPRINTF_WTRUNC(path, sizeof (path), PV_USER_META_PLAT_PATHF, name);
+	pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, name, "");
 	if (!dir_exist(path))
 		mkdir_p(path, 0755);
 }
@@ -1157,10 +1072,8 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 {
 	char path[PATH_MAX];
 	char *pname, *pkey;
-	int len;
 
-	len = strlen(PV_USER_META_KEY_PATHF) + strlen(key) + 1;
-	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, key);
+	pv_paths_pv_usrmeta_key(path, PATH_MAX, key);
 	pv_storage_save_file(path, value);
 	pv_log(DEBUG, "saved usermeta in %s", path);
 
@@ -1170,8 +1083,7 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 		*pkey = '\0';
 		pkey++;
 		pv_storage_init_plat_usermeta(pname);
-		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(pname) + strlen(pkey) + 1;
-		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, pname, pkey);
+		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, pkey);
 		pv_storage_save_file(path, value);
 		pv_log(DEBUG, "saved usermeta in %s", path);
 	}
@@ -1183,10 +1095,8 @@ void pv_storage_rm_usermeta(const char *key)
 {
 	char path[PATH_MAX];
 	char *pname, *pkey;
-	int len;
 
-	len = strlen(PV_USER_META_KEY_PATHF) + strlen(key) + 1;
-	SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, key);
+	pv_paths_pv_usrmeta_key(path, PATH_MAX, key);
 	remove(path);
 	pv_log(DEBUG, "removed usermeta in %s", path);
 
@@ -1195,8 +1105,7 @@ void pv_storage_rm_usermeta(const char *key)
 	if (pkey) {
 		*pkey = '\0';
 		pkey++;
-		len = strlen(PV_USER_META_PLAT_KEY_PATHF) + strlen(pname) + strlen(pkey) + 1;
-		SNPRINTF_WTRUNC(path, len, PV_USER_META_PLAT_KEY_PATHF, pname, pkey);
+		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, pkey);
 		remove(path);
 		pv_log(DEBUG, "removed usermeta in %s", path);
 	}
@@ -1208,13 +1117,15 @@ static int pv_storage_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_storage* storage;
-	char tmp[256];
+	char tmp[256], path[PATH_MAX];
 	int fd = -1;
 
 	// create hints
-	fd = open(PV_CHALLENGE_PATH, O_CREAT | O_SYNC | O_WRONLY, 0444);
+	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
+	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	close(fd);
-	fd = open(PV_DEVICE_ID_PATH, O_CREAT | O_SYNC | O_WRONLY, 0444);
+	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
+	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	if (!pv_config_get_creds_prn() ||
 		(!strcmp(pv_config_get_creds_prn(), ""))) {
 		pv->unclaimed = true;
@@ -1224,7 +1135,8 @@ static int pv_storage_init(struct pv_init *this)
 		write(fd, tmp, strlen(tmp));
 	}
 	close(fd);
-	fd = open(PV_PATH"/pantahub-host", O_CREAT | O_SYNC | O_WRONLY, 0444);
+	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
+	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
 	write(fd, tmp, strlen(tmp));
 	close(fd);

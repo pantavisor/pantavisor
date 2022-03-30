@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Pantacor Ltd.
+ * Copyright (c) 2021-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,9 +23,6 @@
 #define PV_SIGNATURE_H
 
 #include "state.h"
-
-#define PATH_PVS_CERTS "/etc/pantavisor/pvs/certs/ca.pem"
-#define PATH_PVS_PK "/etc/pantavisor/pvs/pub.pem"
 
 bool pv_signature_verify(const char *json);
 

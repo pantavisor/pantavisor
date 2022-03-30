@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -139,21 +139,17 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 			int len = 0;
 			int err_fd = -1;
 
-
-			if (PATH_MAX <= snprintf(err_file, sizeof(err_file), "%s/%s",
-									log_dir, ERROR_DIR))
-				printf("WARNING: Path err_file truncated to %s\n", err_file);
+			SNPRINTF_WTRUNC(err_file, PATH_MAX, "%s/%s", log_dir, LOGS_ERROR_DNAME);
 
 			mkdir_p(err_file, 0755);
 			len = strlen(err_file);
-			if (PATH_MAX - len <= snprintf(err_file + len, PATH_MAX - len, "/%d.error",getpid()))
-				printf("WARNING: Path err_file truncated to %s\n", err_file);
+			SNPRINTF_WTRUNC(err_file + len, PATH_MAX - len, "/%d.error", getpid());
 
 			err_fd = open(err_file,
 					O_EXCL|O_RDWR|O_CREAT|O_APPEND|O_SYNC, 0644);
 			if (err_fd >= 0) {
 				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
-				dprintf(err_fd, "process %s couldn't acquire "LOG_NAME" lock\n", proc_name);
+				dprintf(err_fd, "process %s couldn't acquire "LOGS_PV_FNAME" lock\n", proc_name);
 				dprintf(err_fd, "error code %d: %s\n", errno, strerror(lock_file_errno));
 				dprintf(err_fd, "[pantavisor] %s\t -- ", level_names[level].name);
 				dprintf(err_fd, "[%s]: ", module);
@@ -174,9 +170,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 				struct stat stat_gz;
 				char gzip_path[PATH_MAX];
 
-				if (PATH_MAX <= snprintf(gzip_path, sizeof(gzip_path),
-						                 "%s.%d.gzip", log_path, (i+1)))
-					printf("WARNING: Path gzip_path truncated to %s\n", gzip_path);
+				SNPRINTF_WTRUNC(gzip_path, PATH_MAX, "%s.%d.gzip", log_path, (i+1));
 				if (stat(gzip_path, &stat_gz))
 					pv_file_gzip_file(log_path, gzip_path);
 			}
@@ -209,11 +203,8 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 
 static int pv_log_set_log_dir(const char *rev)
 {
-	if (PATH_MAX <= snprintf(log_dir, PATH_MAX, PV_LOGS_PATH"/%s/pantavisor", rev))
-		printf("WARNING: Path log_dir truncated to %s!\n", log_dir);
-
-	if (PATH_MAX <= snprintf(log_path, sizeof(log_path), "%s/%s", log_dir, LOG_NAME))
-		printf("WARNING: Path log_path truncated to %s!\n", log_path);
+	pv_paths_pv_log_plat(log_dir, PATH_MAX, rev, LOGS_PV_DNAME);
+	pv_paths_pv_log_file(log_path, PATH_MAX, rev, LOGS_PV_DNAME, LOGS_PV_FNAME);
 
 	if (mkdir_p(log_dir, 0755)) {
 		printf("Couldn't make dir %s,"
@@ -226,11 +217,16 @@ static int pv_log_set_log_dir(const char *rev)
 
 static void pv_log_init(struct pantavisor *pv, const char *rev)
 {
+	char pv_logs_path[PATH_MAX], storage_logs_path[PATH_MAX];
+
 	log_init_pid = getpid();
 	global_pv = pv;
 
-	mkdir_p(PV_LOGS_PATH, 0755);
-	mount_bind(pv_config_get_log_logdir(), PV_LOGS_PATH);
+	pv_paths_pv_log(pv_logs_path, PATH_MAX, "");
+	mkdir_p(pv_logs_path, 0755);
+
+	pv_paths_storage_log(storage_logs_path, PATH_MAX);
+	mount_bind(storage_logs_path, pv_logs_path);
 
 	if (pv_log_start(pv, rev) < 0)
 		return;
@@ -259,7 +255,7 @@ int pv_log_start(struct pantavisor *pv, const char *rev)
 		return 0;
 
 	if (pv_log_set_log_dir(rev) < 0) {
-		printf("Error: unable to start "LOG_NAME"\n");
+		printf("Error: unable to start "LOGS_PV_FNAME"\n");
 		return -1;
 	}
 
@@ -293,6 +289,7 @@ const char *pv_log_level_name(int level)
 static int pv_log_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
+	char path[PATH_MAX];
 
 	pv_log_init(pv, pv_bootloader_get_rev());
 
@@ -333,7 +330,8 @@ static int pv_log_early_init(struct pv_init *this)
 
 	logging_stdout = pv_config_get_log_stdout();
 
-	if (ph_logger_init(PV_LOG_CTRL_PATH)) {
+	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
+	if (ph_logger_init(path)) {
 		pv_log(ERROR, "ph logger initialization failed");
 		return -1;
 	}

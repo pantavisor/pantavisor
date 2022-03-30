@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020-2021 Pantacor Ltd.
+ * Copyright (c) 2020-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,8 +30,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-
 #include "state.h"
+#include "paths.h"
 #include "volumes.h"
 #include "platforms.h"
 #include "objects.h"
@@ -1022,9 +1022,8 @@ state_spec_t pv_state_spec(struct pv_state *s)
 static char* _pv_state_get_novalidate_list(char *rev)
 {
 #define _pv_bufsize_1 (1288 * 1024)
-#define _path_fmt "/lib/pv/volmount/%s"
 #define _cmd_fmt " novalidatelist %s"
-	char *path = pv_storage_get_rev_path(rev);
+	char rev_path[PATH_MAX], hdl_path[PATH_MAX];
 	char sout[_pv_bufsize_1] = {0}, serr[_pv_bufsize_1] = {0};
 	char *_sout = sout, *_serr = serr;
 	char *result = NULL;
@@ -1033,20 +1032,20 @@ static char* _pv_state_get_novalidate_list(char *rev)
 	struct dirent *dp;
 	DIR *volmountdir = opendir("/lib/pv/volmount");
 
-        // Unable to open directory stream
-        if (!volmountdir)
-            goto out;
+	// Unable to open directory stream
+	if (!volmountdir)
+		goto out;
 
-        while ((dp = readdir(volmountdir)) != NULL) {
+	while ((dp = readdir(volmountdir)) != NULL) {
 		struct stat st;
 
 		if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
 			continue;
 
-		char _hdl_path [PATH_MAX];
-		SNPRINTF_WTRUNC(_hdl_path, ARRAY_LEN(_hdl_path), _path_fmt, dp->d_name);
-		if(stat (_hdl_path, &st)) {
-			pv_log(WARN, "illegal handler file %s, error=%s", _hdl_path, strerror(errno));
+		pv_paths_storage_trail(rev_path, PATH_MAX, rev);
+		pv_paths_lib_volmount(hdl_path, PATH_MAX, dp->d_name);
+		if(stat (hdl_path, &st)) {
+			pv_log(WARN, "illegal handler file %s, error=%s", hdl_path, strerror(errno));
 			goto out;
 		}
 
@@ -1057,9 +1056,9 @@ static char* _pv_state_get_novalidate_list(char *rev)
 		// now we make the cmd for the volmount handler. every handler is expected
 		// to implement a novalidatelist subcommand; if not relevant the handler
 		// shall return an empty result...
-		int len = (ARRAY_LEN(_path_fmt _cmd_fmt) + strlen(dp->d_name) + strlen(path) + 2);
+		int len = (ARRAY_LEN(_cmd_fmt) + strlen(hdl_path) + strlen(rev_path) + 2);
 		cmd = realloc(cmd, len * sizeof(char));
-		int len_o = snprintf(cmd, sizeof(char) * len, _path_fmt _cmd_fmt, dp->d_name, path);
+		int len_o = snprintf(cmd, sizeof(char) * len, "%s "_cmd_fmt, hdl_path, rev_path);
 		if (len_o >= len) {
 			pv_log(WARN, "illegal handler command (cut off): %s - %s", cmd, strerror(errno));
 			goto out;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Pantacor Ltd.
+ * Copyright (c) 2021-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -32,7 +32,7 @@ bool dir_exist(const char *dir);
 int mkdir_p(char *dir, mode_t mode);
 int mkbasedir_p(char *dir, mode_t mode);
 void syncdir(char *dir);
-int remove_in(char *path, char *dirname);
-int remove_at(char *path, char *filename);
+int remove_in(char *path, const char *dirname);
+int remove_at(char *path, const char *filename);
 
 #endif // UTILS_FS_H

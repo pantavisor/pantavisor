@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,7 @@
 #include "bootloader.h"
 #include "state.h"
 #include "storage.h"
+#include "paths.h"
 #include "parser/parser.h"
 #include "utils/fs.h"
 #include "utils/str.h"
@@ -384,37 +385,31 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 int pv_config_load_creds()
 {
 	struct pantavisor *pv = pv_get_instance();
-	char config_path[PATH_MAX];
+	char path[PATH_MAX];
 	struct stat st;
 
-	if (pv->unclaimed) {
-		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
-				"%s/config/unclaimed.config", pv->config.storage.mntpoint);
-	} else {
-		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
-				"%s/config/pantahub.config", pv->config.storage.mntpoint);
-	}
+	if (pv->unclaimed)
+		pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
+	else
+		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
 
-	if (stat(config_path, &st))
+	if (stat(path, &st))
 		return -1;
 
-	return pv_config_load_creds_from_file(config_path, &pv->config);
+	return pv_config_load_creds_from_file(path, &pv->config);
 }
 
 int pv_config_save_creds()
 {
 	struct pantavisor *pv = pv_get_instance();
-	char config_path[PATH_MAX];
+	char path[PATH_MAX];
 
-	if (pv->unclaimed) {
-		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
-				"%s/config/unclaimed.config", pv->config.storage.mntpoint);
-	} else {
-		SNPRINTF_WTRUNC(config_path, sizeof (config_path),
-				"%s/config/pantahub.config", pv->config.storage.mntpoint);
-	}
+	if (pv->unclaimed)
+		pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
+	else
+		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
 
-	return pv_config_save_creds_to_file(&pv->config, config_path);
+	return pv_config_save_creds_to_file(&pv->config, path);
 }
 
 void pv_config_override_value(const char* key, const char* value)
@@ -697,9 +692,11 @@ char* pv_config_get_json()
 static int pv_config_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
+	char path[PATH_MAX];
 
-	if (pv_config_load_config_from_file("/etc/pantavisor.config", &pv->config) < 0) {
-		printf("FATAL: unable to parse /etc/pantavisor.config\n");
+	pv_paths_etc_pantavisor(path, PATH_MAX);
+	if (pv_config_load_config_from_file(path, &pv->config) < 0) {
+		printf("FATAL: unable to parse %s\n", path);
 		return -1;
 	}
 
@@ -708,13 +705,16 @@ static int pv_config_init(struct pv_init *this)
 
 static int pv_config_creds(struct pv_init *this)
 {
-	char config_file[PATH_MAX];
 	struct pantavisor *pv = pv_get_instance();
+	char path[PATH_MAX];
 
-	SNPRINTF_WTRUNC(config_file, sizeof (config_file),
-			"%s/config/pantahub.config", pv_config_get_storage_mntpoint());
-	if (pv_config_load_creds_from_file(config_file, &pv->config) < 0) {
-		printf("FATAL: unable to parse %s/config/pantahub.config\n", pv_config_get_storage_mntpoint());
+	if (pv->unclaimed)
+		pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
+	else
+		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
+
+	if (pv_config_load_creds_from_file(path, &pv->config) < 0) {
+		printf("FATAL: unable to parse %s\n", path);
 		return -1;
 	}
 
@@ -743,8 +743,7 @@ static int pv_config_trail(struct pv_init *this)
 		goto out;
 	}
 
-	SNPRINTF_WTRUNC(path, sizeof (path),
-			"%s/trails/%s/bsp/%s", pv_config_get_storage_mntpoint(), rev, config_name);
+	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, "bsp", config_name);
 	free(config_name);
 
 	if (pv_config_override_config_from_file(path, &pv->config)) {

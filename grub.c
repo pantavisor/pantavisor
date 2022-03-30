@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2018-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,9 +26,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-
+#include <linux/limits.h>
 #include <sys/stat.h>
 
+#include "paths.h"
 #include "bootloader.h"
 #include "utils/str.h"
 
@@ -36,7 +37,6 @@
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#define GRUB_FMT		"%s/boot/grubenv"
 #define GRUB_HDR		"# GRUB Environment Block\n"
 #define HDR_SIZE		sizeof(GRUB_HDR)-1
 
@@ -45,13 +45,13 @@ static char *grub_env = 0;
 static int grub_init()
 {
 	int fd, ret;
-	char buf[1024];
+	char buf[PATH_MAX];
 	struct stat st;
 
 	if (grub_env)
 		return 0;
 
-	SNPRINTF_WTRUNC(buf, sizeof (buf), GRUB_FMT, pv_config_get_storage_mntpoint());
+	pv_paths_storage_boot_file(buf, PATH_MAX, GRUBENV_FNAME);
 	grub_env  = strdup(buf);
 
 	if (stat(grub_env, &st))

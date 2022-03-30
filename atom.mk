@@ -86,7 +86,8 @@ LOCAL_SRC_FILES := init.c \
 			ph_logger/ph_logger.c \
 			ph_logger/ph_logger_v1.c \
 			buffer.c \
-			blkid.c
+			blkid.c \
+			paths.c
 
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,14 +22,6 @@
 #ifndef PV_STORAGE_H
 #define PV_STORAGE_H
 
-#define PATH_OBJECTS_TMP "%s/objects/%s.new"
-#define PATH_OBJECTS "%s/objects/%s"
-#define PATH_TRAILS_PVR_PARENT "%s/trails/%s/.pvr"
-#define PATH_TRAILS_PV_PARENT "%s/trails/%s/.pv"
-#define PATH_TRAILS "%s/trails/%s/.pvr/json"
-#define PATH_TRAILS_PROGRESS "%s/trails/%s/.pv/progress"
-#define PATH_TRAILS_COMMITMSG "%s/trails/%s/.pv/commitmsg"
-
 #define PREFIX_LOCAL_REV "locals/"
 #define SIZE_LOCAL_REV 64
 
@@ -38,11 +30,9 @@ struct pv_path {
 	struct dl_list list;
 };
 
-char* pv_storage_get_state_json_path(const char *rev);
 char* pv_storage_get_state_json(const char *rev);
 bool pv_storage_verify_state_json(const char *rev);
 
-char* pv_storage_get_rev_path(const char *rev);
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);
 void pv_storage_rm_rev(const char *rev);

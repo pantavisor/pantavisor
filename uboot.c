@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2018-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,7 @@
 #include <mtd/mtd-user.h>
 
 #include "bootloader.h"
+#include "paths.h"
 #include "utils/str.h"
 #include "utils/fs.h"
 
@@ -63,7 +64,7 @@ static int uboot_init()
 		return 0;
 
 	// setup uboot.txt location
-	SNPRINTF_WTRUNC(buf, sizeof (buf), "%s/boot/uboot.txt", pv_config_get_storage_mntpoint());
+	pv_paths_storage_boot_file(buf, PATH_MAX, UBOOTTXT_FNAME);
 	uboot_txt = strdup(buf);
 
 	pv_log(DEBUG, "uboot.txt@%s", uboot_txt);

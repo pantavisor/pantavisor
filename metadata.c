@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2021 Pantacor Ltd.
+ * Copyright (c) 2018-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -762,27 +762,23 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 {
 	struct dirent **dirlist = NULL;
 	int n = 0;
-	char abs_path[PATH_MAX];
-	char factory_dir[128];
+	char path[PATH_MAX];
 	bool upload_failed = false;
 
-	SNPRINTF_WTRUNC(factory_dir, sizeof(factory_dir), "%s/%s",
-			pv_config_get_storage_mntpoint(), "factory/meta");
-	n = scandir(factory_dir, &dirlist, NULL, alphasort);
+	pv_paths_storage_factory_meta_key(path, PATH_MAX, "");
+	n = scandir(path, &dirlist, NULL, alphasort);
 	if (n < 0)
-		pv_log(WARN, "%s: %s", factory_dir, strerror(errno));
+		pv_log(WARN, "%s: %s", path, strerror(errno));
 	while (n > 0) {
 		struct stat st;
 		n--;
 		if (!upload_failed) {
-			SNPRINTF_WTRUNC(abs_path, sizeof(abs_path),
-				"%s/%s", factory_dir, dirlist[n]->d_name);
-			if (!stat(abs_path, &st)) {
+			pv_paths_storage_factory_meta_key(path, PATH_MAX, dirlist[n]->d_name);
+			if (!stat(path, &st)) {
 				if ((st.st_mode & S_IFMT) == S_IFREG) {
 					int ret = -1;
 
-					ret = __pv_metadata_factory_meta(pv,
-							(const char*)abs_path);
+					ret = __pv_metadata_factory_meta(pv, path);
 					if (ret)
 						upload_failed = true;
 				}
@@ -794,15 +790,10 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		free(dirlist);
 	if (!upload_failed) {
 		int fd;
-		/*
-		 * reusing abs_path
-		 */
-		SNPRINTF_WTRUNC(abs_path, sizeof(abs_path),
-				"%s/trails/0/.pv/factory-meta.done",
-				pv_config_get_storage_mntpoint());
-		fd = open(abs_path, O_CREAT | O_SYNC);
+		pv_paths_storage_trail_pv_file(path, PATH_MAX, "0", METADONE_FNAME);
+		fd = open(path, O_CREAT | O_SYNC);
 		if (fd < 0)
-			pv_log(ERROR, "Unable to open file %s", abs_path);
+			pv_log(ERROR, "Unable to open file %s", path);
 		close(fd);
 	}
 	return upload_failed ? -1 : 0;
@@ -845,12 +836,12 @@ static void pv_metadata_load_usermeta()
 {
 	struct dl_list files; // pv_path
 	struct pv_path *curr, *tmp;
-	int len;
 	char path[PATH_MAX];
 	char *value;
 
 	dl_list_init(&files);
-	pv_storage_get_subdir(PV_USER_META_PATH, "", &files);
+	pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
+	pv_storage_get_subdir(path, "", &files);
 
 	dl_list_for_each_safe(curr, tmp, &files,
 		struct pv_path, list) {
@@ -859,8 +850,7 @@ static void pv_metadata_load_usermeta()
 			!strncmp(curr->path, ".", strlen(".")))
 			continue;
 
-		len = strlen(PV_USER_META_KEY_PATHF) + strlen(curr->path) + 1;
-		SNPRINTF_WTRUNC(path, len, PV_USER_META_KEY_PATHF, curr->path);
+		pv_paths_pv_usrmeta_key(path, PATH_MAX, curr->path);
 		value = pv_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
 			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
@@ -905,9 +895,8 @@ bool pv_metadata_factory_meta_done(struct pantavisor *pv)
 	 */
 	if (strncmp(pv->state->rev, "0", strlen(pv->state->rev) + 1))
 		return true;
-	SNPRINTF_WTRUNC(path, sizeof(path), "%s/trails/0/.pv/factory-meta.done",
-			pv_config_get_storage_mntpoint());
 
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, "0", METADONE_FNAME);
 	if (stat(path, &st))
 		return false;
 	return true;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2020-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -44,40 +44,46 @@
 static int ph_mount_init(struct pv_init *this)
 {
 	struct stat st;
-	int ret = -1;
+	char storage_path[PATH_MAX], pv_path[PATH_MAX];
 
 	// Make pantavisor control area
-	if (stat(PV_PATH, &st) != 0)
-		mkdir_p(PV_PATH, 0500);
+	pv_paths_pv_file(pv_path, PATH_MAX, "");
+	if (stat(pv_path, &st) != 0)
+		mkdir_p(pv_path, 0500);
 
-	if (stat(pv_config_get_log_logdir(), &st) != 0)
-		mkdir_p(pv_config_get_log_logdir(), 0500);
+	pv_paths_storage_log(storage_path, PATH_MAX);
+	if (stat(storage_path, &st) != 0)
+		mkdir_p(storage_path, 0500);
 
-	if (stat(pv_config_get_cache_metacachedir(), &st) != 0)
-		mkdir_p(pv_config_get_cache_metacachedir(), 0500);
+	pv_paths_storage_meta(storage_path, PATH_MAX);
+	if (stat(storage_path, &st) != 0)
+		mkdir_p(storage_path, 0500);
+	pv_paths_pv_usrmeta_key(pv_path, PATH_MAX, "");
+	if (stat(pv_path, &st) != 0)
+		mkdir_p(pv_path, 0755);
+	mount_bind(storage_path, pv_path);
 
-	if (stat(pv_config_get_cache_dropbearcachedir(), &st) != 0)
-		mkdir_p(pv_config_get_cache_dropbearcachedir(), 0500);
-	mkdir_p(PV_USER_META_PATH"/", 0755);
-	if (pv_config_get_cache_metacachedir())
-		mount_bind(pv_config_get_cache_metacachedir(), PV_USER_META_PATH);
+	pv_paths_storage_dropbear(storage_path, PATH_MAX);
+	if (stat(storage_path, &st) != 0)
+		mkdir_p(storage_path, 0500);
+	pv_paths_etc_file(pv_path, PATH_MAX, DROPBEAR_DNAME);
+	if (stat(pv_path, &st) != 0)
+		mkdir_p(pv_path, 0755);
+	mount_bind(storage_path, pv_path);
 
-	mkdir_p("/etc/dropbear/", 0755);
-	if (pv_config_get_cache_dropbearcachedir())
-		mount_bind(pv_config_get_cache_dropbearcachedir(), "/etc/dropbear");
-	ret = 0;
-
-	return ret;
+	return 0;
 }
 
 static int pv_mount_init(struct pv_init *this)
 {
 	struct stat st;
 	struct blkid_info dev_info;
+	char path[PATH_MAX];
 	int ret = -1;
 
 	// Create storage mountpoint and mount device
-	mkdir_p(pv_config_get_storage_mntpoint(), 0755);
+	pv_paths_storage(path, PATH_MAX);
+	mkdir_p(path, 0755);
 	blkid_init(&dev_info);
 	/*
 	 * Check that storage device has been enumerated and wait if not there yet
@@ -110,21 +116,21 @@ static int pv_mount_init(struct pv_init *this)
 	}
 
 	if (!pv_config_get_storage_mnttype()) {
-		ret = mount(dev_info.device, pv_config_get_storage_mntpoint(), pv_config_get_storage_fstype(), 0, NULL);
+		ret = mount(dev_info.device, path, pv_config_get_storage_fstype(), 0, NULL);
 		if (ret < 0)
 			goto out;
 	} else {
 		int status;
 		size_t mntcmd_size = strlen("/btools/pvmnt.%s %s") +
 						strlen (pv_config_get_storage_mnttype()) +
-						strlen (pv_config_get_storage_mntpoint()) + 1;
+						strlen (path) + 1;
 		char *mntcmd = calloc(sizeof(char), mntcmd_size);
 
 		if (!mntcmd) {
 			printf("Couldn't allocate mount command \n");
 			goto out;
 		}
-		SNPRINTF_WTRUNC(mntcmd, mntcmd_size, "/btools/pvmnt.%s %s", pv_config_get_storage_mnttype(), pv_config_get_storage_mntpoint());
+		SNPRINTF_WTRUNC(mntcmd, mntcmd_size, "/btools/pvmnt.%s %s", pv_config_get_storage_mnttype(), path);
 		printf("Mounting through helper: %s\n", mntcmd);
 		ret = tsh_run(mntcmd, 1, &status);
 		free(mntcmd);
@@ -132,12 +138,12 @@ static int pv_mount_init(struct pv_init *this)
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
 
 	if (pv_config_get_storage_logtempsize()) {
-		size_t logmount_size = strlen(pv_config_get_storage_mntpoint()) + strlen("/logs  ");
+		size_t logmount_size = strlen(path) + strlen("/logs  ");
 		char *logmount = malloc(sizeof(char) * logmount_size);
 		size_t opts_size = strlen(pv_config_get_storage_logtempsize()) + strlen("size=%s") + 1;
 		char *opts = malloc(sizeof(char) * opts_size);
 		SNPRINTF_WTRUNC(opts, opts_size, "size=%s", pv_config_get_storage_logtempsize());
-		SNPRINTF_WTRUNC(logmount, logmount_size, "%s%s", pv_config_get_storage_mntpoint(), "/logs");
+		SNPRINTF_WTRUNC(logmount, logmount_size, "%s%s", path, "/logs");
 		mkdir_p(logmount, 0755);
 		printf("Mounting tmpfs logmount: %s with opts: %s\n", logmount, opts);
 		ret = mount("none", logmount, "tmpfs", 0, opts);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2020 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -159,10 +159,21 @@ static int early_mounts()
 }
 
 #ifdef PANTAVISOR_DEBUG
+#define DBCMD "dropbear -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"
+
 static void debug_telnet()
 {
+	char *dbcmd;
+	char path[PATH_MAX];
+
+	pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
+	dbcmd = calloc(1, sizeof(DBCMD) + strlen(path) + 1);
+	sprintf(dbcmd, DBCMD, path);
+
 	tsh_run("ifconfig lo up", 0, NULL);
-	tsh_run("dropbear -p 0.0.0.0:8222 -n "PV_USER_META_PATH"/pvr-sdk.authorized_keys -R -c /usr/bin/fallbear-cmd", 0, NULL);
+	tsh_run(dbcmd, 0, NULL);
+
+	free(dbcmd);
 }
 #else
 static void debug_telnet()

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -40,12 +40,13 @@ int setns(int nsfd, int nstype);
 #include <sched.h>
 #endif
 
-#include "parser/parser.h"
-#include "wdt.h"
 #include "platforms.h"
+#include "paths.h"
+#include "wdt.h"
 #include "pvlogger.h"
 #include "init.h"
 #include "state.h"
+#include "parser/parser.h"
 #include "utils/list.h"
 #include "utils/fs.h"
 #include "utils/str.h"
@@ -327,18 +328,17 @@ static struct pv_cont_ctrl* _pv_platforms_get_ctrl(char *type)
 
 static int load_pv_plugin(struct pv_cont_ctrl *c)
 {
-	char lib_path[PATH_MAX];
+	char path[PATH_MAX];
 	void *lib;
 
-	SNPRINTF_WTRUNC(lib_path, sizeof (lib_path), "/lib/pv_%s.so", c->type);
-
-	lib = dlopen(lib_path, RTLD_NOW);
+	pv_paths_lib_plugin(path, PATH_MAX, c->type);
+	lib = dlopen(path, RTLD_NOW);
 	if (!lib) {
-		pv_log(ERROR, "unable to load %s: %s", lib_path, dlerror());
+		pv_log(ERROR, "unable to load %s: %s", path, dlerror());
 		return 0;
 	}
 
-	pv_log(DEBUG, "loaded %s @%p", lib_path, lib);
+	pv_log(DEBUG, "loaded %s @%p", path, lib);
 
 	// static engines have to define c->start and c->end
 	if (c->start == NULL)
@@ -361,6 +361,18 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 		__pv_get_instance(pv_get_instance);
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_instance_fn");
+
+	void (*__pv_paths)(void*, void*, void*, void*, void*, void*) = dlsym(lib, "pv_set_pv_paths_fn");
+	if (__pv_paths)
+		__pv_paths(pv_paths_pv_file,
+			pv_paths_pv_log,
+			pv_paths_pv_log_plat,
+			pv_paths_pv_log_file,
+			pv_paths_pv_usrmeta_key,
+			pv_paths_lib_hook);
+	else
+		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_paths_fn");
+
 	return 1;
 }
 
@@ -534,27 +546,24 @@ int pv_platform_start(struct pv_platform *p)
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_state *s = pv->state;
 	pid_t pid = -1;
-	char conf_path[PATH_MAX];
+	char path[PATH_MAX], filename[PATH_MAX];
 	const struct pv_cont_ctrl *ctrl;
 	void *data;
 	char **c = p->configs;
-	char prefix[PATH_MAX] = { 0 };
 
 	pv_wdt_kick(pv);
 
-	if (pv_state_spec(pv->state) == SPEC_SYSTEM1) {
-		SNPRINTF_WTRUNC(prefix, sizeof (prefix), "%s/", p->name);
-	}
-
-	SNPRINTF_WTRUNC(conf_path, sizeof (conf_path),
-			"%s/trails/%s/%s%s", pv_config_get_storage_mntpoint(), s->rev,
-			prefix, *c);
+	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
+		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s/%s", p->name, *c);
+	else
+		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s", *c);
 
 	// Get type controller
 	ctrl = _pv_platforms_get_ctrl(p->type);
 
 	// Start the platform
-	data = ctrl->start(p, s->rev, conf_path, (void *) &pid);
+	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
+	data = ctrl->start(p, s->rev, path, (void *) &pid);
 
 	if (!data) {
 		pv_log(ERROR, "error starting platform: \"%s\"",

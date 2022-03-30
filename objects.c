@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,14 +28,15 @@
 
 #include <linux/limits.h>
 
-#include "utils/math.h"
-#include "utils/fs.h"
-#include "utils/str.h"
 #include "objects.h"
 #include "state.h"
 #include "storage.h"
+#include "paths.h"
 #include "utils/math.h"
 #include "utils/file.h"
+#include "utils/math.h"
+#include "utils/fs.h"
+#include "utils/str.h"
 
 #define MODULE_NAME			"objects"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -60,18 +61,15 @@ int pv_objects_id_in_step(struct pv_state *s, char *id)
 struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *mntpoint)
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
+	char path[PATH_MAX];
 
 	if (this) {
 		this->name = strdup(filename);
 		this->id = strdup(id);
-
-		SNPRINTF_WTRUNC(this->relpath, sizeof (this->relpath),
-				RELPATH_FMT, mntpoint, s->rev, filename);
-
-		SNPRINTF_WTRUNC(this->objpath, sizeof (this->objpath),
-				OBJPATH_FMT, mntpoint, id);
-
-
+		pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
+		this->relpath = strdup(path);
+		pv_paths_storage_object(path, PATH_MAX, id);
+		this->objpath = strdup(path);
 		dl_list_init(&this->list);
 		dl_list_add(&s->objects, &this->list);
 		return this;
@@ -110,7 +108,7 @@ char *pv_objects_get_list_string()
 	char *json = calloc(1, len);
 	unsigned int size_object;
 
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/objects/", pv_config_get_storage_mntpoint());
+	pv_paths_storage_object(path, PATH_MAX, "");
 
 	dl_list_init(&objects);
 	pv_storage_get_subdir(path, "", &objects);
@@ -131,7 +129,7 @@ char *pv_objects_get_list_string()
 		if (strlen(curr->path) != 64)
 			continue;
 
-		SNPRINTF_WTRUNC(path, sizeof (path), "%s/objects/%s", pv_config_get_storage_mntpoint(), curr->path);
+		pv_paths_storage_object(path, PATH_MAX, curr->path);
 		size_object = pv_file_get_size(path);
 		if (size_object <= 0)
 			continue;

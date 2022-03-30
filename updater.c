@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -40,6 +40,7 @@
 
 #include "trestclient.h"
 #include "updater.h"
+#include "paths.h"
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "objects.h"
@@ -60,6 +61,8 @@
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
+#define MMC_TMP_OBJ_FMT "%s.tmp"
 
 typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
 
@@ -1773,7 +1776,7 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pv", pv_config_get_storage_mntpoint(), pv->update->pending->rev);
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->update->pending->rev, "");
 	mkdir_p(path, 0755);
 
 	// do not download if this is a local update
@@ -1818,7 +1821,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv_log(DEBUG, "installing update...");
 
 	// make sure target directories exist
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pvr", pv_config_get_storage_mntpoint(), pending->rev);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev, "");
 	mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
@@ -1829,8 +1832,8 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	SNPRINTF_WTRUNC(path_new, sizeof (path_new), "%s/trails/%s/.pvr/json.new", pv_config_get_storage_mntpoint(), pending->rev);
-	SNPRINTF_WTRUNC(path, sizeof (path), "%s/trails/%s/.pvr/json", pv_config_get_storage_mntpoint(), pending->rev);
+	pv_paths_storage_trail_pvr_file(path_new, PATH_MAX, pending->rev, JSON_FNAME".new");
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev, JSON_FNAME);
 	fd = open(path_new, O_CREAT | O_WRONLY | O_SYNC | O_TRUNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to write state.json file for update: %s", strerror(errno));

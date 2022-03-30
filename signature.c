@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Pantacor Ltd.
+ * Copyright (c) 2021-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -30,6 +30,7 @@
 #include <jsmn/jsmnutil.h>
 
 #include "signature.h"
+#include "paths.h"
 #include "utils/json.h"
 #include "utils/str.h"
 #include "utils/base64.h"
@@ -528,6 +529,7 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 	int ret = -1, res;
 	unsigned int flags;
 	char *content = NULL;
+	char path[PATH_MAX];
 	size_t olen;
 	struct pv_signature_cert_raw *cert_raw, *tmp;
 	struct mbedtls_x509_crt cacerts;
@@ -558,8 +560,9 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		}
 	}
 
-	pv_log(DEBUG, "parsing public key from %s", PATH_PVS_CERTS);
-	res = mbedtls_x509_crt_parse_file(&cacerts, PATH_PVS_CERTS);
+	pv_paths_etc_file(path, PATH_MAX, PVS_CERT_FNAME);
+	pv_log(DEBUG, "parsing public key from %s", path);
+	res = mbedtls_x509_crt_parse_file(&cacerts, path);
 	if (res) {
 		pv_log(ERROR, "ca certs could not be parsed: %d", res);
 		goto out;
@@ -571,7 +574,7 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		i++;
 		cacerts_i = cacerts_i->next;
 	}
-	pv_log(INFO, "loaded %d trusted x509 certificates from %s", i, PATH_PVS_CERTS);
+	pv_log(INFO, "loaded %d trusted x509 certificates from %s", i, path);
 
 	res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL);
 	if (res) {
@@ -591,6 +594,7 @@ out:
 static int pv_signature_load_pk(struct mbedtls_pk_context **pk)
 {
 	int ret = -1, res;
+	char path[PATH_MAX];
 
 	*pk = calloc(1, sizeof(struct mbedtls_pk_context));
 	if (!*pk)
@@ -598,8 +602,9 @@ static int pv_signature_load_pk(struct mbedtls_pk_context **pk)
 
 	mbedtls_pk_init(*pk);
 
-	pv_log(DEBUG, "parsing public key from %s", PATH_PVS_PK);
-	res = mbedtls_pk_parse_public_keyfile(*pk, PATH_PVS_PK);
+	pv_paths_etc_file(path, PATH_MAX, PVS_PK_FNAME);
+	pv_log(DEBUG, "parsing public key from %s", path);
+	res = mbedtls_pk_parse_public_keyfile(*pk, path);
 	if (res) {
 		pv_log(ERROR, "cannot read public key %d", res);
 		goto out;
