@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -287,7 +287,9 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 
 	memset(req, 0, sizeof(req));
 
-	pv_log(DEBUG, "reading file from endpoint and putting it in %s...", file_path);
+	pv_log(DEBUG, "reading file with size %zu from endpoint and putting it in %s...",
+		content_length,
+		file_path);
 
 	pv_ctrl_write_cont_response(req_fd);
 
@@ -406,13 +408,16 @@ out:
 
 static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 										size_t num_headers,
-										char* name)
+										const char* name)
 {
 	for (size_t header_index = 0; header_index < num_headers; header_index++)
-		if (!strncmp(headers[header_index].name, name, headers[header_index].name_len))
+		if (pv_str_matches_case(headers[header_index].name,
+				headers[header_index].name_len,
+				name,
+				strlen(name)))
 			return atoi(headers[header_index].value);
 
-	return -1;
+	return 0;
 }
 
 static void pv_ctrl_process_get_file(int req_fd, char *file_path)
@@ -952,12 +957,7 @@ static struct pv_cmd* pv_ctrl_read_parse_request(int req_fd)
 
 	pv_log(DEBUG, "HTTP request received: %.*s %.*s", method_len, method, path_len, path);
 
-	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "Content-Length");
-	if (content_length <= 0) {
-		pv_log(WARN, "HTTP request received has empty body");
-		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has empty body");
-		goto out;
-	}
+	content_length = pv_ctrl_get_value_header_int(headers, num_headers, "content-length");
 
 	cmd = pv_ctrl_process_endpoint_and_reply(req_fd,
 											method,

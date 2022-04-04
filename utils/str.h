@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Pantacor Ltd.
+ * Copyright (c) 2021-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -78,6 +78,11 @@ static inline bool pv_str_startswith(const char* str1, int str1len, const char* 
 static inline bool pv_str_matches(const char* str1, int str1len, const char* str2, int str2len)
 {
 	return ((str1len == str2len) && !strncmp(str1, str2, str1len));
+}
+
+static inline bool pv_str_matches_case(const char* str1, int str1len, const char* str2, int str2len)
+{
+	return ((str1len == str2len) && !strncasecmp(str1, str2, str1len));
 }
 
 static inline bool pv_str_endswith(const char* str1, int str1len, const char* str2, int str2len)
