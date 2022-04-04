@@ -209,13 +209,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	} else {
 		snprintf(entry, sizeof (entry),
-				"%s %s none bind,rw,create=dir 0 0",
+				"%s %s none bind,rw,create=file 0 0",
 				PV_LOG_CTRL_PATH,
 				PLATFORM_LOG_CTRL_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
 		snprintf(entry, sizeof (entry),
-				"%s %s none bind,rw,create=dir 0 0",
+				"%s %s none bind,rw,create=file 0 0",
 				PV_CTRL_SOCKET_PATH,
 				PLATFORM_CTRL_SOCKET_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
