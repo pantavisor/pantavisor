@@ -261,6 +261,7 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	config->log.push = config_get_value_bool(&config_list, "log.push", true);
 	config->log.capture = config_get_value_bool(&config_list, "log.capture", true);
 	config->log.loggers = config_get_value_bool(&config_list, "log.loggers", true);
+	config->log.std_out = config_get_value_bool(&config_list, "log.stdout", false);
 
 	config->libthttp.loglevel = config_get_value_int(&config_list, "libthttp.log.level", 3);
 
@@ -299,6 +300,7 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
 	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
 	config_override_value_bool(&config_list, "log.loggers", &config->log.loggers);
+	config_override_value_bool(&config_list, "log.stdout", &config->log.std_out);
 
 	config_override_value_int(&config_list, "libthttp.log.level", &config->libthttp.loglevel);
 
@@ -561,6 +563,7 @@ int pv_config_get_log_logsize() { return pv_get_instance()->config.log.logsize; 
 bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
 bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
 bool pv_config_get_log_loggers() { return pv_get_instance()->config.log.loggers; }
+bool pv_config_get_log_stdout() { return pv_get_instance()->config.log.std_out; }
 int pv_config_get_libthttp_loglevel() { return pv_get_instance()->config.libthttp.loglevel; }
 
 int pv_config_get_lxc_loglevel()  { return pv_get_instance()->config.lxc.log_level; }
@@ -680,6 +683,8 @@ char* pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_log_capture());
 		pv_json_ser_key(&js, "log.loggers");
 		pv_json_ser_bool(&js, pv_config_get_log_loggers());
+		pv_json_ser_key(&js, "log.stdout");
+		pv_json_ser_bool(&js, pv_config_get_log_stdout());
 		pv_json_ser_key(&js, "libthttp.log.level");
 		pv_json_ser_int(&js, pv_config_get_libthttp_loglevel());
 

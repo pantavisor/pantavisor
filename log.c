@@ -78,6 +78,7 @@ static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
 
 static int logging_initialized = 0;
+static int logging_stdout = 0;
 
 static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
@@ -89,12 +90,14 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 	// hold 2MiB max of log entries in open file
 	//Check on disk file size.
 
-	if (!logging_initialized) {
+	if (!logging_initialized || logging_stdout) {
 		// construct string because we cannot lock stdout
 		size_t size = snprintf(NULL, 0,
 				"[pantavisor] %s %s\t -- [%s]: ",
 				time_buf, level_names[level].name, module);
-		size += snprintf(NULL, 0, fmt, args);
+		size += vsnprintf(NULL, 0, fmt, args);
+		// 1 '\0' char
+		size++;
 		char *buf = calloc(sizeof (char), size);
 		if (!buf) {
 			// Fall back to multiple printfs instead of printing once
@@ -104,16 +107,16 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 			vprintf(fmt, args);
 			printf("\n");
 		} else {
-			int offs = snprintf(buf, size,
+			size_t offs = snprintf(buf, size,
 					"[pantavisor] %s %s\t -- [%s]: ",
 					time_buf, level_names[level].name, module);
-			vsnprintf(buf + offs, size - offs, fmt, args);
-			printf("%s\n", buf);
-
+			offs += vsnprintf(buf + offs, size - offs, fmt, args);
+			printf("%s%s\n", buf, offs >= size ? " [TRUNC]": "");
 			free(buf);
 		}
 
-		return;
+		if (!logging_stdout || !logging_initialized)
+			return;
 	}
 
 	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
@@ -316,7 +319,19 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "creds.id = '%s'", pv_config_get_creds_id());
 	pv_log(INFO, "creds.prn = '%s'", pv_config_get_creds_prn());
 	pv_log(INFO, "creds.secret = '%s'", pv_config_get_creds_secret());
+	pv_log(INFO, "log.loggers = '%d'", pv_config_get_log_loggers());
+	pv_log(INFO, "log.stdout = '%d'", pv_config_get_log_stdout());
+	pv_log(INFO, "log.capture = '%d'", pv_config_get_log_capture());
+	pv_log(INFO, "log.push = '%d'", pv_config_get_log_push());
+	pv_log(INFO, "log.logdir = '%s'", pv_config_get_log_logdir());
+	pv_log(INFO, "log.logmax = '%d'", pv_config_get_log_logmax());
+	pv_log(INFO, "log.loglevel = '%d'", pv_config_get_log_loglevel());
+	pv_log(INFO, "log.logsize = '%d'", pv_config_get_log_logsize());
+	pv_log(INFO, "lxc.log.level = '%d'", pv_config_get_lxc_loglevel());
+	pv_log(INFO, "libthttp.loglevel = '%d'", pv_config_get_libthttp_loglevel());
 	pv_bootloader_print();
+
+	logging_stdout = pv_config_get_log_stdout();
 
 	if (ph_logger_init(PV_LOG_CTRL_PATH)) {
 		pv_log(ERROR, "ph logger initialization failed");
