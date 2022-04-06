@@ -54,6 +54,7 @@
 #include "tsh.h"
 #include "signature.h"
 #include "paths.h"
+#include "metadata.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -357,11 +358,37 @@ void pv_storage_gc_defer_run_threshold()
 	}
 }
 
+static char* pv_storage_get_json(struct pv_storage* storage)
+{
+	struct pv_json_ser js;
+
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "total");
+		pv_json_ser_int(&js, storage->total);
+		pv_json_ser_key(&js, "free");
+		pv_json_ser_int(&js, storage->free);
+
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
+}
+
 void pv_storage_gc_run_threshold()
 {
+	char *json;
 	struct pv_storage* storage;
 	struct pantavisor *pv = pv_get_instance();
 	struct timer_state tstate;
+
+	storage = pv_storage_new();
+
+	json = pv_storage_get_json(storage);
+	pv_metadata_add_devmeta("storage", json);
+	free(json);
 
 	tstate = timer_current_state(&threshold_timer);
 	if (pv->loading_objects && tstate.fin) {
@@ -371,15 +398,15 @@ void pv_storage_gc_run_threshold()
 
 	if (!pv_config_get_storage_gc_threshold() ||
 		pv->loading_objects)
-		return;
+		goto out;
 
-	storage = pv_storage_new();
 	if (storage &&
 		(storage->real_free_percentage < storage->threshold)) {
 		pv_log(INFO, "free disk space is %d%%, which is under the %d%% threshold. Freeing up space", storage->real_free_percentage, storage->threshold);
 		pv_storage_gc_run();
 	}
 
+out:
 	free(storage);
 }
 
