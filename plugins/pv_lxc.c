@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -172,7 +172,6 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir, cha
 }
 
 static void pv_setup_lxc_container(struct lxc_container *c,
-					unsigned int share_ns,
 					struct pv_platform *p,
 					const char *rev)
 {
@@ -182,7 +181,6 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
 	char entry[1024];
 	char log_level[32];
-	c->set_inherit_namespaces(c, 1, share_ns);
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
 	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
@@ -499,8 +497,6 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 	char *dname;
 	int pipefd[2];
 	struct pv_log_info *pv_log_i = NULL;
-	unsigned short share_ns = (1 << LXC_NS_NET) | (1 << LXC_NS_UTS) 
-					| (1 << LXC_NS_IPC);
 	pid_t child_pid = -1;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
@@ -588,7 +584,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 			goto out_container_init;
 		}
 
-		pv_setup_lxc_container(c, share_ns, p, rev);
+		pv_setup_lxc_container(c, p, rev);
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
@@ -625,7 +621,7 @@ out_container_init:
 		c = NULL;
 		goto out_no_container;
 	}
-	pv_setup_lxc_container(c, share_ns, p, rev); /*Do we need this?*/
+	pv_setup_lxc_container(c, p, rev); /*Do we need this?*/
 
 	if (!pv_lxc_capture_logs_activated())
 		goto out_no_container;
