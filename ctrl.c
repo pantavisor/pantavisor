@@ -90,6 +90,7 @@ typedef enum {
 	HTTP_STATUS_CONFLICT,
 	HTTP_STATUS_UNPROCESSABLE_ENTITY,
 	HTTP_STATUS_ERROR,
+	HTTP_STATUS_INSUFF_STORAGE,
 } pv_http_status_code_t;
 
 static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
@@ -100,7 +101,8 @@ static const char* pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 		"404 Not Found",
 		"409 Conflict",
 		"422 Unprocessable Entity",
-		"500 Internal Server Error"};
+		"500 Internal Server Error",
+		"507 Insufficient Storage"};
 	return strings[code];
 }
 
@@ -284,8 +286,15 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 {
 	int obj_fd, read_length, write_length, ret = -1;
 	char req[HTTP_REQ_BUFFER_SIZE];
+	off_t free_space = pv_storage_get_free();
 
-	memset(req, 0, sizeof(req));
+	if (content_length > free_space) {
+		pv_log(WARN, "%"PRIu64" B needed but only %"PRIu64" B available. Cannot create file",
+			content_length,
+			free_space);
+		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_INSUFF_STORAGE, "Not enough disk space available");
+		return ret;
+	}
 
 	pv_log(DEBUG, "reading file with size %zu from endpoint and putting it in %s...",
 		content_length,
@@ -303,6 +312,8 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 		else
 			goto clean;
 	}
+
+	memset(req, 0, sizeof(req));
 
 	// read and save
 	while (content_length > 0) {
@@ -410,14 +421,23 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 										size_t num_headers,
 										const char* name)
 {
-	for (size_t header_index = 0; header_index < num_headers; header_index++)
+	int ret = 0;
+	char *value = NULL;
+
+	for (size_t header_index = 0; header_index < num_headers; header_index++) {
 		if (pv_str_matches_case(headers[header_index].name,
 				headers[header_index].name_len,
 				name,
-				strlen(name)))
-			return atoi(headers[header_index].value);
+				strlen(name))) {
+			value = calloc(1, headers[header_index].value_len);
+			strncpy(value, headers[header_index].value, headers[header_index].value_len);
+			ret = strtol(value, NULL, 10);
+		}
+	}
 
-	return 0;
+	if (value)
+		free(value);
+	return ret;
 }
 
 static void pv_ctrl_process_get_file(int req_fd, char *file_path)

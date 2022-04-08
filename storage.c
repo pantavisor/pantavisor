@@ -259,16 +259,14 @@ static void pv_storage_print(struct pv_storage* storage)
 	pv_log(INFO, "real free disk space: %"PRIu64" B (%d%% of total)", storage->real_free, storage->real_free_percentage);
 }
 
-static off_t pv_storage_get_free()
+off_t pv_storage_get_free()
 {
 	off_t real_free = 0;
 	struct pv_storage* storage;
 
 	storage = pv_storage_new();
-	if (storage) {
-		pv_storage_print(storage);
+	if (storage)
 		real_free = storage->real_free;
-	}
 
 	free(storage);
 
@@ -332,14 +330,17 @@ off_t pv_storage_gc_run_needed(off_t needed)
 	off_t available = pv_storage_get_free();
 
 	if (needed > available) {
-		pv_log(WARN, "not enough space for the %"PRIu64" B needed. Freeing up space...",
+		pv_log(WARN, "%"PRIu64" B needed but only %"PRIu64" B available. Freeing up space...",
+			needed,
 			available);
 		pv_storage_gc_run();
 
 		available = pv_storage_get_free();
 
 		if (needed > available)
-			pv_log(ERROR, "not enough space after running garbage collector");
+			pv_log(ERROR, "still %"PRIu64" B needed but only %"PRIu64" B available",
+				needed,
+				available);
 	}
 
 	return available;
@@ -370,6 +371,10 @@ static char* pv_storage_get_json(struct pv_storage* storage)
 		pv_json_ser_int(&js, storage->total);
 		pv_json_ser_key(&js, "free");
 		pv_json_ser_int(&js, storage->free);
+		pv_json_ser_key(&js, "reserved");
+		pv_json_ser_int(&js, storage->reserved);
+		pv_json_ser_key(&js, "real_free");
+		pv_json_ser_int(&js, storage->real_free);
 
 		pv_json_ser_object_pop(&js);
 	}
@@ -1202,6 +1207,7 @@ void pv_storage_rm_usermeta(const char *key)
 static int pv_storage_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
+	struct pv_storage* storage;
 	char tmp[256];
 	int fd = -1;
 
@@ -1222,6 +1228,10 @@ static int pv_storage_init(struct pv_init *this)
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
 	write(fd, tmp, strlen(tmp));
 	close(fd);
+
+	storage = pv_storage_new();
+	pv_storage_print(storage);
+	free(storage);
 
 	return 0;
 }
