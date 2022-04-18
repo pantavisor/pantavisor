@@ -105,12 +105,12 @@ void pv_paths_storage_object_tmp(char *buf, size_t size, const char *sha)
 	SNPRINTF_WTRUNC(buf, size, PV_OBJECT_TMP_PATHF, pv_config_get_storage_mntpoint(), sha);
 }
 
-#define PV_TRAILS_PATHF           "%s/trails/%s/"
-#define PV_TRAILS_FILE_PATHF      PV_TRAILS_PATHF"%s"
-#define PV_TRAILS_PLAT_FILE_PATHF PV_TRAILS_PATHF"%s/%s"
-#define PV_TRAILS_CONFIG_PATHF    PV_TRAILS_PATHF"_config/"
-#define PV_TRAILS_PV_PATHF        PV_TRAILS_PATHF".pv/%s"
-#define PV_TRAILS_PVR_PATHF       PV_TRAILS_PATHF".pvr/%s"
+#define PV_TRAILS_PATHF           "%s/trails/%s"
+#define PV_TRAILS_FILE_PATHF      PV_TRAILS_PATHF"/%s"
+#define PV_TRAILS_PLAT_FILE_PATHF PV_TRAILS_PATHF"/%s/%s"
+#define PV_TRAILS_CONFIG_PATHF    PV_TRAILS_PATHF"/_config/"
+#define PV_TRAILS_PV_PATHF        PV_TRAILS_PATHF"/.pv/%s"
+#define PV_TRAILS_PVR_PATHF       PV_TRAILS_PATHF"/.pvr/%s"
 
 void pv_paths_storage_trail(char *buf, size_t size, const char *rev)
 {
