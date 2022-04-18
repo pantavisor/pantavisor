@@ -26,6 +26,12 @@
 #include <sys/types.h>
 
 char* pv_file_load(const char *path, const unsigned int max_size);
+int pv_file_rename(const char *src_path, const char *dst_path);
+int pv_file_save(const char *path, const char *content, mode_t mode);
+int pv_file_copy(const char *src_path, const char *dst_path, mode_t mode);
+int pv_file_rename(const char *src_path, const char *dst_path);
+int pv_file_remove(const char *path);
+
 size_t pv_file_get_size(const char *path);
 
 /*

@@ -169,7 +169,7 @@ int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, cons
 	if (log_fd >= 0) {
 		if (!fstat(log_fd, &st)) {
 			/* Do we need to make a zip out of it?*/
-			if (st.st_size >= MAX_SIZE) 
+			if (st.st_size >= MAX_SIZE)
 				ftruncate(log_fd, 0);
 		}
 		dprintf(log_fd, "%s -- %.*s\n", level_names[level].name, ph_logger_msg->len, data);

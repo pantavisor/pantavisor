@@ -43,6 +43,7 @@
 #include "tsh.h"
 #include "init.h"
 #include "utils/fs.h"
+#include "utils/file.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
 
@@ -291,9 +292,8 @@ int pv_volume_mount(struct pv_volume *v)
 		fstype++;
 		if (strcmp(fstype, "bind") == 0) {
 			if (stat(mntpoint, &buf) != 0) {
-				int fd = open(mntpoint, O_CREAT | O_EXCL | O_RDWR | O_SYNC, 0644);
-				if (fd >= 0)
-					close(fd);
+				if (pv_file_save(mntpoint, "", 0644) < 0)
+					pv_log(WARN, "could not save file %s: %s", mntpoint, strerror(errno));
 			}
 			ret = mount(path, mntpoint, NULL, MS_BIND, NULL);
 		} else if (strcmp(fstype, "data") == 0) {

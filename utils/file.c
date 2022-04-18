@@ -33,7 +33,10 @@
 #include <signal.h>
 
 #include "file.h"
+#include "fs.h"
 #include "tsh.h"
+
+#define TMP_PATH "%s.tmp"
 
 char* pv_file_load(const char *path, const unsigned int max_size)
 {
@@ -67,6 +70,123 @@ char* pv_file_load(const char *path, const unsigned int max_size)
 	close(fd);
 out:
 	return content;
+}
+
+int pv_file_save(const char *path, const char *content, mode_t mode)
+{
+	int ret = -1, len, fd;
+	char tmp_path[PATH_MAX];
+
+	len = strlen(path) + strlen(TMP_PATH);
+	if (len > PATH_MAX) {
+		errno = ENOENT;
+		goto out;
+	}
+
+	snprintf(tmp_path, len, TMP_PATH, path);
+	fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC | O_SYNC, mode);
+	if (fd < 0)
+		goto out;
+
+	ret = write(fd, content, strlen(content));
+	if (ret < 0)
+		goto out;
+
+	close(fd);
+
+	ret = rename(tmp_path, path);
+	if (ret < 0)
+		goto out;
+
+	syncdir(path);
+
+	ret = 0;
+
+out:
+	remove(tmp_path);
+	syncdir(tmp_path);
+
+	return ret;
+}
+
+int pv_file_copy(const char *src_path, const char *dst_path, mode_t mode)
+{
+	int ret = -1, len, s_fd, d_fd;
+	int bytes_r = 0, bytes_w = 0;
+	char buf[4096], tmp_path[PATH_MAX];
+
+	s_fd = open(src_path, O_RDONLY, 0);
+	if (s_fd < 0)
+		goto out;
+
+	len = strlen(dst_path) + strlen(TMP_PATH);
+	if (len > PATH_MAX) {
+		errno = ENOENT;
+		goto out;
+	}
+
+	snprintf(tmp_path, len, TMP_PATH, dst_path);
+	d_fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
+	if (d_fd < 0)
+		goto out;
+
+	lseek(s_fd, 0, SEEK_SET);
+	lseek(d_fd, 0, SEEK_SET);
+
+	while (bytes_r = read(s_fd, buf, sizeof(buf)), bytes_r > 0)
+		bytes_w += write(d_fd, buf, bytes_r);
+
+	ret = bytes_r;
+
+	close(d_fd);
+
+	ret = rename(tmp_path, dst_path);
+	if (ret < 0)
+		goto out;
+
+	syncdir(dst_path);
+
+	ret = 0;
+
+out:
+	close(s_fd);
+	remove(tmp_path);
+	syncdir(tmp_path);
+	syncdir(dst_path);
+
+	return ret;
+}
+
+int pv_file_rename(const char *src_path, const char *dst_path)
+{
+	int ret = -1;
+
+	syncdir(src_path);
+
+	ret = rename(src_path, dst_path);
+	if (ret < 0)
+		goto out;
+
+	syncdir(dst_path);
+
+	ret = 0;
+
+out:
+	return ret;
+}
+
+int pv_file_remove(const char *path)
+{
+	int ret = -1;
+
+	ret = remove(path);
+	if (ret < 0)
+		goto out;
+
+	syncdir(path);
+
+out:
+	return ret;
 }
 
 size_t pv_file_get_size(const char *path)

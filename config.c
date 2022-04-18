@@ -40,6 +40,7 @@
 #include "paths.h"
 #include "parser/parser.h"
 #include "utils/fs.h"
+#include "utils/file.h"
 #include "utils/str.h"
 #include "utils/math.h"
 #include "utils/json.h"
@@ -343,8 +344,7 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	int fd;
 	char tmp_path[PATH_MAX];
 
-	SNPRINTF_WTRUNC(tmp_path, sizeof (tmp_path), "%s-XXXXXX", path);
-	mkstemp(tmp_path);
+	pv_paths_tmp(tmp_path, PATH_MAX, path);
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (fd < 0) {
 		pv_log(ERROR, "unable to open temporary credentials config: %s", strerror(errno));
@@ -377,7 +377,10 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	write_config_tuple_int(fd, "libthttp.log.level", config->libthttp.loglevel);
 
 	close(fd);
-	rename(tmp_path, path);
+	if (pv_file_rename(tmp_path, path) < 0) {
+		pv_log(ERROR, "could not rename");
+		return -1;
+	}
 
 	return 0;
 }

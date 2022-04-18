@@ -31,7 +31,7 @@
 bool dir_exist(const char *dir);
 int mkdir_p(char *dir, mode_t mode);
 int mkbasedir_p(char *dir, mode_t mode);
-void syncdir(char *dir);
+void syncdir(const char *dir);
 int remove_in(char *path, const char *dirname);
 int remove_at(char *path, const char *filename);
 
