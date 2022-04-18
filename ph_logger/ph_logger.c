@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2020-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -77,6 +77,7 @@ static void __ph_log(int level, const char *msg, va_list args)
 	struct ph_logger_msg *ph_logger_msg = NULL;
 	char *buffer = NULL;
 	char *logger_buffer = NULL;
+	char path[PATH_MAX];
 	int len = 0;
 	int max_size = 0;
 	struct buffer *log_buffer = NULL;
@@ -105,9 +106,10 @@ static void __ph_log(int level, const char *msg, va_list args)
 	ph_logger_msg->version = PH_LOGGER_V1;
 	ph_logger_msg->len = sizeof(*ph_logger_msg) + max_size;
 
-	ph_logger_write_bytes(ph_logger_msg, buffer, level, 
+	ph_logger_write_bytes(ph_logger_msg, buffer, level,
 			MODULE_NAME, PH_LOGGER_LOGFILE, len + 1);
-	pvctl_write_to_path(PV_LOG_CTRL_PATH, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
+	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
+	pvctl_write_to_path(path, logger_buffer, ph_logger_msg->len + sizeof(*ph_logger_msg));
 
 out_no_buffer:
 	pv_buffer_drop(log_buffer);
@@ -638,13 +640,15 @@ out:
 
 static int ph_logger_write_to_log_file(struct ph_logger_msg  *ph_logger_msg, char *revision)
 {
-	char *log_dir = PV_LOGS_PATH;
+	char path[PATH_MAX];
 	ph_logger_file_rw_handler_t  file_handler = NULL;
 	int ret = 0;
 
 	file_handler = get_file_rw_handler(ph_logger_msg->version);
-	if (file_handler)
-		ret = file_handler(ph_logger_msg, log_dir, revision);
+	if (file_handler) {
+		pv_paths_pv_log(path, PATH_MAX, "");
+		ret = file_handler(ph_logger_msg, path, revision);
+	}
 	return ret;
 }
 
@@ -759,7 +763,7 @@ static int ph_logger_push_from_file_parse_info(char *buf, int len, char *revisio
 
 static int ph_logger_push_revision(char *revision)
 {
-	char find_cmd[1024];
+	char find_cmd[1024], path[PATH_MAX];
 	FILE *find_fp = NULL;
 	int offset_bytes = 0;
 	int result = 0;
@@ -772,10 +776,11 @@ static int ph_logger_push_revision(char *revision)
 	 * actual file path.
 	 */
 
-	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/", PV_LOGS_PATH, revision);
+	pv_paths_pv_log(path, PATH_MAX, "");
+	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/", path, revision);
 	offset_bytes = strlen(find_cmd);
 
-	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", PV_LOGS_PATH, revision);
+	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "find %s/%s -type f ! -name '*.gz*' 2>/dev/null", path, revision);
 	find_fp = popen(find_cmd, "r");
 
 	if (find_fp) {
@@ -853,11 +858,15 @@ static pid_t ph_logger_start_push_service(char *revision)
 
 static int ph_logger_get_max_revision(struct pantavisor *pv)
 {
-	const char *cmd = "find "PV_LOGS_PATH" -type d -mindepth 1 -maxdepth 1";
+	const char *cmd_fmt = "find %s -type d -mindepth 1 -maxdepth 1";
+	char cmd[PATH_MAX], path[PATH_MAX];
 	FILE *fp = NULL;
 	char *buf = NULL;
 	size_t buf_size = 0;
 	int max_revision = 0;
+
+	pv_paths_pv_log(path, PATH_MAX, "");
+	SNPRINTF_WTRUNC(cmd, PATH_MAX, cmd_fmt, path);
 
 	fp = popen(cmd, "r");
 	if (!fp)

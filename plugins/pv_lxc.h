@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,11 +26,15 @@
 #include "../config.h"
 #include "../platforms.h"
 
-#define LXC_LOG_FNAME 		"lxc"
-#define LXC_CONSOLE_LOG_FNAME 	"console"
+void pv_set_new_log_fn(void *fn_pv_new_log);
+void pv_set_pv_instance_fn(void *fn_pv_get_instance);
+void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
+	void *fn_pv_paths_pv_log,
+	void *fn_pv_paths_pv_log_plat,
+	void *fn_pv_paths_pv_log_file,
+	void *fn_pv_paths_pv_usrmeta_key,
+	void *fn_pv_paths_lib_hook);
 
-void pv_set_new_log_fn( void *fn_pv_new_log);
-void pv_set_pv_instance_fn( void *fn_pv_get_instance);
 void* pv_start_container(struct pv_platform *p, const char *rev, char *conf_file, void *data);
 void* pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
 

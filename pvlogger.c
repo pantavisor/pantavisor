@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2021 Pantacor Ltd.
+ * Copyright (c) 2018-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -68,6 +68,7 @@ static void pv_log(int level, char *msg, ...)
 {
 	char __buffer[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
 	char __formatted[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
+	char path[PATH_MAX];
 	int to_write = 0;
 	int written = 0;
 	int offset = 0;
@@ -96,7 +97,8 @@ static void pv_log(int level, char *msg, ...)
 			}
 
 		} else {
-			int ret = pvctl_write_to_path(PV_LOG_CTRL_PATH,
+			pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
+			int ret = pvctl_write_to_path(path,
 					__buffer,
 					ph_logger_msg->len + sizeof(struct ph_logger_msg));
 			if (ret < 0) {

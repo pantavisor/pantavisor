@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -96,19 +96,21 @@ static void pv_ph_set_online(struct pantavisor *pv, bool online)
 {
 	int fd, hint;
 	struct stat st;
+	char path[PATH_MAX];
 
-	hint = stat(PV_ONLINE_PATH, &st) ? 0 : 1;
+	pv_paths_pv_file(path, PATH_MAX, ONLINE_FNAME);
+	hint = stat(path, &st) ? 0 : 1;
 
 	if (online) {
 		if (!hint) {
-			fd = open(PV_ONLINE_PATH, O_CREAT | O_SYNC, 0400);
+			fd = open(path, O_CREAT | O_SYNC, 0400);
 			if (fd >= 0)
 				close(fd);
 		}
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "1");
 	} else {
 		if (hint)
-			remove(PV_ONLINE_PATH);
+			remove(path);
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "0");
 	}
 
@@ -143,7 +145,8 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 	char path[PATH_MAX];
 	int n = 0, i = 0, size = 0;
 
-	n = scandir("/certs/", &files, NULL, alphasort);
+	pv_paths_cert(path, PATH_MAX, "");
+	n = scandir(path, &files, NULL, alphasort);
 	if (n < 0)
 		return NULL;
 
@@ -154,7 +157,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 		if (!strncmp(files[n]->d_name, ".", 1))
 			continue;
 
-		SNPRINTF_WTRUNC(path, sizeof (path), "/certs/%s", files[n]->d_name);
+		pv_paths_cert(path, PATH_MAX, files[n]->d_name);
 		size = strlen(path);
 		cafiles[i] = malloc((size+1) * sizeof(char));
 		memcpy(cafiles[i], path, size);
@@ -494,9 +497,10 @@ out:
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 {
 	int fd;
-	char buf[256];
+	char buf[256], path[PATH_MAX];
 
-	fd = open(PV_DEVICE_ID_PATH, O_TRUNC | O_SYNC | O_RDWR);
+	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
+	fd = open(path, O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
 		pv_log(INFO, "unable to open device-id hint file: %s", strerror(errno));
 		return;
@@ -508,7 +512,8 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	if (!c)
 		return;
 
-	fd = open(PV_CHALLENGE_PATH, O_TRUNC | O_SYNC | O_RDWR);
+	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
+	fd = open(path, O_TRUNC | O_SYNC | O_RDWR);
 	if (fd < 0) {
 		pv_log(INFO, "unable to open challenge hint file: %s", strerror(errno));
 		return;

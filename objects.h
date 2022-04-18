@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -34,8 +34,8 @@ struct pv_object {
 	char *name;
 	char *id;
 	char *geturl;
-	char objpath[PATH_MAX];
-	char relpath[PATH_MAX];
+	char *objpath;
+	char *relpath;
 	off_t size;
 	char *sha256;
 	struct pv_platform *plat;
@@ -57,6 +57,10 @@ static inline void pv_object_free(struct pv_object *obj)
 		free(obj->id);
 	if (obj->geturl)
 		free(obj->geturl);
+	if (obj->objpath)
+		free(obj->objpath);
+	if (obj->relpath)
+		free(obj->relpath);
 	if (obj->sha256)
 		free(obj->sha256);
 

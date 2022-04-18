@@ -50,12 +50,20 @@ static struct lxc_log pv_lxc_log = {
 	.prefix = "init",
 	.quiet = false
 };
- 
+
 struct pv_log_info* (*__pv_new_log)(bool,const void*, const char*) = NULL;
 
 struct pantavisor* (*__pv_get_instance)(void) = NULL;
 
-void pv_set_new_log_fn( void *fn_pv_new_log)
+void (*__pv_paths_pv_file)(char*, size_t, const char*) = NULL;
+void (*__pv_paths_pv_log)(char*, size_t, const char*) = NULL;
+void (*__pv_paths_pv_log_plat)(char*, size_t, const char*, const char*) = NULL;
+void (*__pv_paths_pv_log_file)(char*, size_t, const char*, const char*, const char*) = NULL;
+void (*__pv_paths_pv_usrmeta_key)(char*, size_t, const char*) = NULL;
+void (*__pv_paths_pv_usrmeta_plat_key)(char*, size_t, const char*, const char*) = NULL;
+void (*__pv_paths_lib_hook)(char*, size_t, const char*) = NULL;
+
+void pv_set_new_log_fn(void *fn_pv_new_log)
 {
 	__pv_new_log = fn_pv_new_log;
 }
@@ -63,6 +71,21 @@ void pv_set_new_log_fn( void *fn_pv_new_log)
 void pv_set_pv_instance_fn(void *fn_pv_get_instance)
 {
 	__pv_get_instance = fn_pv_get_instance;
+}
+
+void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
+	void *fn_pv_paths_pv_log,
+	void *fn_pv_paths_pv_log_plat,
+	void *fn_pv_paths_pv_log_file,
+	void *fn_pv_paths_pv_usrmeta_key,
+	void *fn_pv_paths_lib_hook)
+{
+	__pv_paths_pv_file = fn_pv_paths_pv_file;
+	__pv_paths_pv_log = fn_pv_paths_pv_log;
+	__pv_paths_pv_log_plat = fn_pv_paths_pv_log_plat;
+	__pv_paths_pv_log_file = fn_pv_paths_pv_log_file;
+	__pv_paths_pv_usrmeta_key = fn_pv_paths_pv_usrmeta_key;
+	__pv_paths_lib_hook = fn_pv_paths_lib_hook;
 }
 
 static int pv_lxc_get_lxc_log_level()
@@ -104,9 +127,7 @@ static int pv_setup_lxc_log(	struct pv_log_info *pv_log_i,
 	 * So no need to create a pvlogger process if the
 	 * log files are created in the revision directory.
 	 */
-	snprintf(default_prefix, sizeof(default_prefix), "%s/%s/",
-			PV_LOGS_PATH,
-			__pv_get_instance()->state->rev);
+	__pv_paths_pv_log(default_prefix, PATH_MAX, __pv_get_instance()->state->rev);
 	/*
 	 * If lxc.log.file or lxc.console.logfile isn't set or
 	 * it has the same location from where PH helper can post
@@ -179,7 +200,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	struct utsname uts;
 	struct stat st;
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
-	char entry[1024];
+	char path[PATH_MAX], entry[PATH_MAX];
 	char log_level[32];
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
@@ -188,44 +209,53 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
 	if (p->mgmt) {
+		__pv_paths_pv_file(path, PATH_MAX, "");
 		snprintf(entry, sizeof (entry),
 				"%s %s none bind,ro,create=dir 0 0",
-				PV_PATH,
+				path,
 				PLATFORM_PV_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
+		__pv_paths_pv_log(path, PATH_MAX, "");
 		snprintf(entry, sizeof (entry),
 				"%s %s none bind,ro,create=dir 0 0",
-				PV_LOGS_PATH,
+				path,
 				PLATFORM_LOGS_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
+		__pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
 		snprintf(entry, sizeof (entry),
 				"%s %s none bind,ro,create=dir 0 0",
-				PV_USER_META_PATH,
+				path,
 				PLATFORM_USER_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	} else {
+		__pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
 		snprintf(entry, sizeof (entry),
 				"%s %s none bind,rw,create=file 0 0",
-				PV_LOG_CTRL_PATH,
+				path,
 				PLATFORM_LOG_CTRL_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
+		__pv_paths_pv_file(path, PATH_MAX, PVCTRL_FNAME);
 		snprintf(entry, sizeof (entry),
 				"%s %s none bind,rw,create=file 0 0",
-				PV_CTRL_SOCKET_PATH,
-				PLATFORM_CTRL_SOCKET_PATH + 1);
+				path,
+				PLATFORM_PVCTRL_SOCKET_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
+		__pv_paths_pv_log_plat(path, PATH_MAX, rev, p->name);
 		snprintf(entry, sizeof (entry),
-				PV_LOGS_PATH"/%s/%s "PLATFORM_LOGS_PATH" none bind,ro,create=dir 0 0",
-				rev, p->name);
+				"%s %s none bind,ro,create=dir 0 0",
+				path,
+				PLATFORM_LOGS_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
+		__pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, p->name, "");
 		snprintf(entry, sizeof (entry),
-				PV_USER_META_PATH".%s "PLATFORM_USER_META_PATH" none bind,ro,create=dir 0 0",
-				p->name);
+				"%s %s none bind,ro,create=dir 0 0",
+				path,
+				PLATFORM_USER_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
 	if (stat("/lib/firmware", &st) == 0)
@@ -283,11 +313,11 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		memset(entry, 0, sizeof(entry));
 		c->get_config_item(c, "lxc.console.logfile", entry, sizeof(entry));
 		if (!strlen(entry)) {
-			snprintf(entry, sizeof(entry),
-				PV_LOGS_PATH"/%s/%s/%s/%s.log",
-				__pv_get_instance()->state->rev, c->name,
-				LXC_LOG_FNAME, LXC_CONSOLE_LOG_FNAME);
-			c->set_config_item(c, "lxc.console.logfile", entry);
+			__pv_paths_pv_log_file(path, PATH_MAX,
+				__pv_get_instance()->state->rev,
+				c->name,
+				LXC_CONSOLE_LOG_FNAME);
+			c->set_config_item(c, "lxc.console.logfile", path);
 		}
 	}
 	/*
@@ -303,16 +333,16 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	 */
 	DIR *d;
 	struct dirent *dir;
-	d = opendir("/lib/pv/hooks_lxc-mount.d");
+	__pv_paths_lib_hook(path, PATH_MAX, "");
+	d = opendir(path);
 	if (!d)
 		return;
 
-	char buf[PATH_MAX];
 	while ((dir = readdir(d)) != NULL) {
 		if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
 			continue;
-		sprintf(buf, "%s/%s", "/lib/pv/hooks_lxc-mount.d", dir->d_name);
-		c->set_config_item(c, "lxc.hook.mount", buf);
+		__pv_paths_lib_hook(path, PATH_MAX, dir->d_name);
+		c->set_config_item(c, "lxc.hook.mount", path);
 	}
 	closedir(d);
 }
@@ -406,23 +436,19 @@ out_config:
 static void pv_truncate_lxc_log(struct lxc_container *c,
 				const char *platform_name, off_t threshold,
 				const char *key) {
-	char *logfile_name = NULL;
+	char logfile_name[PATH_MAX];
 
-	logfile_name = (char*)calloc(1, PATH_MAX);
-	if (!logfile_name)
-		return;
-
-	c->get_config_item(c, key, logfile_name, PATH_MAX); 
+	c->get_config_item(c, key, logfile_name, PATH_MAX);
 	if (!strlen(logfile_name)) {
 		/*
 		 * /storage/logs is hardcoded in pv_lxc_log->lxcpath
 		 * and used when lxc.log.file isn't set in lxc.conf of
 		 * the container.
 		 */
-		snprintf(logfile_name, PATH_MAX,
-				PV_LOGS_PATH"/%s/%s.log",
-				__pv_get_instance()->state->rev,
-				LXC_LOG_FNAME);
+		__pv_paths_pv_log_file(logfile_name, PATH_MAX,
+			__pv_get_instance()->state->rev,
+			platform_name,
+			LXC_LOG_FNAME);
 	}
 	if (!threshold)
 		truncate(logfile_name, 0);
@@ -433,7 +459,6 @@ static void pv_truncate_lxc_log(struct lxc_container *c,
 				truncate(logfile_name, 0);
 		}
 	}
-	free(logfile_name);
 }
 
 static struct pv_log_info*  pv_create_lxc_log(struct pv_platform *p,
@@ -559,9 +584,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 		if (!__pv_get_instance)
 			goto out_container_init;
 		if (pv_lxc_capture_logs_activated()) {
-			snprintf(log_dir, sizeof(log_dir), 
-					PV_LOGS_PATH"/%s/%s",
-					__pv_get_instance()->state->rev, p->name);
+			__pv_paths_pv_log_plat(log_dir, PATH_MAX,
+				__pv_get_instance()->state->rev,
+				p->name);
 			pv_lxc_log.name = LXC_LOG_FNAME;
 			pv_lxc_log.lxcpath = strdup(log_dir);
 			if (!pv_lxc_log.lxcpath)

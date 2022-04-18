@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -50,7 +50,6 @@
 #define DEVICE_TRAIL_ENDPOINT_DOWNLOADING "?progress.status=DOWNLOADING"
 #define DEVICE_TRAIL_ENDPOINT_INPROGRESS "?progress.status=INPROGRESS"
 
-#define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
 #define UPDATE_PROGRESS_FREQ 	(3) /*3 seconds for update*/

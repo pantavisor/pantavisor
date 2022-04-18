@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Pantacor Ltd.
+ * Copyright (c) 2018-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -39,8 +39,6 @@
 #define MODULE_NAME             "addon"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
-
-#define FW_PATH		"/lib/firmware"
 
 static void pv_addon_free(struct pv_addon *a)
 {

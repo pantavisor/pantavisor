@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -281,6 +281,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 {
 	int need_register = 1;
 	char *c;
+	char path[PATH_MAX];
 
 	c = calloc(1, sizeof(char) * 128);
 
@@ -316,7 +317,8 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		pv->unclaimed = false;
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
-		open(PV_CHALLENGE_PATH, O_TRUNC | O_WRONLY);
+		pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
+		open(path, O_TRUNC | O_WRONLY);
 		pv_metadata_add_devmeta("pantahub.claimed", "1");
 	}
 
@@ -658,6 +660,8 @@ static int shutdown_type_reboot_cmd(shutdown_type_t t) {
 
 static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 {
+	char path[PATH_MAX];
+
 	pv_log(INFO, "prepare %s...", shutdown_type_string(t));
 	wait_shell();
 
@@ -669,7 +673,8 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		pv_wdt_start(pv);
 
 	// unmount storage
-	umount(pv_config_get_storage_mntpoint());
+	pv_paths_storage(path, PATH_MAX);
+	umount(path);
 	sync();
 
 	sleep(5);

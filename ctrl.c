@@ -493,20 +493,6 @@ static char* pv_ctrl_get_file_name(const char* path, int buf_index, size_t path_
 	return file_name;
 }
 
-static char* pv_ctrl_get_file_path(const char* path, const char* file_name)
-{
-	int len;
-	char* file_path;
-
-	len = strlen(path) + strlen(pv_config_get_storage_mntpoint()) + strlen(file_name) + 1;
-	file_path = calloc(1, len * sizeof(char*));
-	if (!file_path)
-		return NULL;
-	SNPRINTF_WTRUNC(file_path, len, path, pv_config_get_storage_mntpoint(), file_name);
-
-	return file_path;
-}
-
 static void pv_ctrl_process_get_string(int req_fd, char* buf)
 {
 	int buf_len;
@@ -665,7 +651,8 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	bool mgmt;
 	struct pv_cmd *cmd = NULL;
 	struct pantavisor *pv = pv_get_instance();
-	char *file_name = NULL, *file_path_parent = NULL, *file_path = NULL, *file_path_tmp = NULL;
+	char *file_name = NULL;
+	char file_path_parent[PATH_MAX], file_path[PATH_MAX], file_path_tmp[PATH_MAX];
 	char *metakey = NULL, *metavalue = NULL;
 	char *condkey = NULL, *condvalue = NULL;
 
@@ -700,11 +687,10 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
-		file_path_tmp = pv_ctrl_get_file_path(PATH_OBJECTS_TMP, file_name);
-		file_path = pv_ctrl_get_file_path(PATH_OBJECTS, file_name);
-
+		pv_paths_storage_object_tmp(file_path_tmp, PATH_MAX, file_name);
+		pv_paths_storage_object(file_path, PATH_MAX, file_name);
 		// sha must have 64 characters
-		if (!file_name || !file_path_tmp || !file_path || (strlen(file_name) != 64)) {
+		if (!file_name || (strlen(file_name) != 64)) {
 			pv_log(WARN, "HTTP request has bad object name %s", file_name);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad object name");
 			goto out;
@@ -740,9 +726,9 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_PROGRESS, strlen(ENDPOINT_PROGRESS), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_PROGRESS));
-		file_path = pv_ctrl_get_file_path(PATH_TRAILS_PROGRESS, file_name);
+		pv_paths_storage_trail_pv_file(file_path, PATH_MAX, file_name, PROGRESS_FNAME);
 
-		if (!file_name || !file_path) {
+		if (!file_name) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad step name");
 			goto out;
@@ -757,10 +743,10 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_COMMITMSG, strlen(ENDPOINT_COMMITMSG), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_COMMITMSG));
-		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PV_PARENT, file_name);
-		file_path = pv_ctrl_get_file_path(PATH_TRAILS_COMMITMSG, file_name);
+		pv_paths_storage_trail_pv_file(file_path_parent, PATH_MAX, file_name, "");
+		pv_paths_storage_trail_pv_file(file_path, PATH_MAX, file_name, COMMITMSG_FNAME);
 
-		if (!file_name || !file_path) {
+		if (!file_name) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad step name");
 			goto out;
@@ -778,10 +764,10 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
-		file_path_parent = pv_ctrl_get_file_path(PATH_TRAILS_PVR_PARENT, file_name);
-		file_path = pv_ctrl_get_file_path(PATH_TRAILS, file_name);
+		pv_paths_storage_trail_pvr_file(file_path_parent, PATH_MAX, file_name, "");
+		pv_paths_storage_trail_pvr_file(file_path, PATH_MAX, file_name, JSON_FNAME);
 
-		if (!file_name || !file_path_parent || !file_path) {
+		if (!file_name) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad step name");
 			goto out;
@@ -910,14 +896,6 @@ out:
 		free(pname);
 	if (file_name)
 		free(file_name);
-	if (file_path_parent)
-		free(file_path_parent);
-	if (file_path)
-		free(file_path);
-	if (file_path_tmp) {
-		remove(file_path_tmp);
-		free(file_path_tmp);
-	}
 	if (metakey)
 		free(metakey);
 	if (metavalue)
@@ -1046,8 +1024,10 @@ void pv_ctrl_free_cmd(struct pv_cmd *cmd)
 static int pv_ctrl_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
+	char path[PATH_MAX];
 
-	pv->ctrl_fd = pv_ctrl_socket_open(PV_CTRL_SOCKET_PATH);
+	pv_paths_pv_file(path, PATH_MAX, PVCTRL_FNAME);
+	pv->ctrl_fd = pv_ctrl_socket_open(path);
 	if (pv->ctrl_fd < 0) {
 		pv_log(ERROR, "ctrl socket could not be initialized");
 		return -1;

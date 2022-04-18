@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Pantacor Ltd.
+ * Copyright (c) 2021-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -106,7 +106,7 @@ void syncdir(char *file)
 		free(dir);
 }
 
-int remove_at(char *path, char *filename)
+int remove_at(char *path, const char *filename)
 {
 	char full_path[PATH_MAX];
 
@@ -114,7 +114,7 @@ int remove_at(char *path, char *filename)
 	return remove(full_path);
 }
 
-int remove_in(char *path, char *dirname)
+int remove_in(char *path, const char *dirname)
 {
 	int n = 0;
 	struct dirent **d;
