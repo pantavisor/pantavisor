@@ -41,6 +41,19 @@ typedef enum {
 	PLAT_STOPPED
 } plat_status_t;
 
+typedef enum {
+	DRIVER_REQUIRED = (1 << 0),
+	DRIVER_OPTIONAL = (1 << 1),
+	DRIVER_MANUAL   = (1 << 2)
+} plat_driver_t;
+
+struct pv_platform_driver {
+	plat_driver_t type;
+	bool loaded;
+	char *match;
+	struct dl_list list;
+};
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -54,6 +67,7 @@ struct pv_platform {
 	struct pv_state *state;
 	bool mgmt;
 	bool updated;
+	struct dl_list drivers;
 	struct dl_list condition_refs; // pv_condition_ref
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
@@ -65,7 +79,11 @@ struct pv_platform {
 
 void pv_platform_free(struct pv_platform *p);
 
+void pv_platform_add_driver(struct pv_platform *g, plat_driver_t type, char *value);
 void pv_platform_add_condition(struct pv_platform *g, struct pv_condition *c);
+
+int pv_platform_load_drivers(struct pv_platform *p, char *namematch, plat_driver_t typematch);
+void pv_platform_unload_drivers(struct pv_platform *p, char *namematch, plat_driver_t typematch);
 
 int pv_platform_start(struct pv_platform *p);
 int pv_platform_stop(struct pv_platform *p);

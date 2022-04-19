@@ -824,18 +824,16 @@ void pv_metadata_parse_usermeta(char *buf)
 	usermeta_clear(pv);
 }
 
-static struct pv_meta* pv_metadata_get_usermeta(struct pantavisor *pv, char *key)
+char *pv_metadata_get_usermeta(char *key)
 {
-	if (!pv || !pv->metadata)
-		return NULL;
-
-	struct pv_meta *curr, *tmp;
+	struct pantavisor *pv = pv_get_instance();
 	struct dl_list *head = &pv->metadata->usermeta;
+	struct pv_meta *curr, *tmp;
 
 	dl_list_for_each_safe(curr, tmp, head,
 			struct pv_meta, list) {
 		if (!strcmp(curr->key, key))
-			return curr;
+			return curr->value;
 	}
 	return NULL;
 }

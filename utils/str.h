@@ -66,6 +66,7 @@ char *pv_str_replace_str(const char *s1, const char *s2, const char *s3);
 char *pv_str_unescape_to_ascii(char *buf, char *code, char c);
 char *pv_str_replace_char(char *str, int len, char which, char what);
 char *pv_str_skip_prefix(char *str, const char *key);
+int pv_str_count_list(char **list);
 
 /* prints seconds since beginning of epoch in buf */
 size_t epochsecstring(char *buf, size_t len, time_t t);

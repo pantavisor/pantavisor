@@ -45,6 +45,7 @@ struct pv_bsp {
 	} img;
 	char *firmware;
 	char *modules;
+	struct dl_list drivers; // pv_driver
 };
 
 struct pv_state {

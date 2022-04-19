@@ -39,6 +39,11 @@
 #define DEVMETA_KEY_PV_VERSION "pantavisor.version"
 #define DEVMETA_KEY_PH_ADDRESS "pantahub.address"
 
+typedef enum {
+	USER_META,
+	DEVICE_META
+} pv_metadata_t;
+
 struct pv_metadata {
 	struct dl_list usermeta; // pv_meta
 	struct dl_list devmeta; // pv_meta
@@ -51,6 +56,7 @@ bool pv_metadata_factory_meta_done(struct pantavisor *pv);
 void pv_metadata_init_usermeta(struct pv_state *s);
 int pv_metadata_add_usermeta(const char *key, const char *value);
 int pv_metadata_rm_usermeta(const char *key);
+char *pv_metadata_get_usermeta(char *key);
 void pv_metadata_parse_usermeta(char *buf);
 
 int pv_metadata_init_devmeta(struct pantavisor *pv);

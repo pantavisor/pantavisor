@@ -54,6 +54,7 @@
 #include "metadata.h"
 #include "version.h"
 #include "platforms.h"
+#include "drivers.h"
 #include "paths.h"
 #include "utils/math.h"
 #include "utils/fs.h"
@@ -74,6 +75,7 @@
 #define ENDPOINT_BUILDINFO "/buildinfo"
 #define ENDPOINT_CONDITIONS "/conditions"
 #define ENDPOINT_CONFIG "/config"
+#define ENDPOINT_DRIVERS "/drivers"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
@@ -611,22 +613,23 @@ out:
 	return pname;
 }
 
-static bool pv_ctrl_check_sender_privileged(const char *pname)
+static struct pv_platform* pv_ctrl_get_sender_plat(const char *pname)
 {
-	bool mgmt = false;
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_platform *plat;
 
 	plat = pv_state_fetch_platform(pv->state, pname);
-	if (!plat) {
+	if (!plat)
 		pv_log(WARN, "could not find platform %s in current state", pname);
-		goto out;
-	}
 
-	mgmt = plat->mgmt;
+	return plat;
+}
 
-out:
-	return mgmt;
+static bool pv_ctrl_check_sender_privileged(const char *pname)
+{
+	struct pv_platform *plat = pv_ctrl_get_sender_plat(pname);
+
+	return plat ? plat->mgmt : false;
 }
 
 static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
@@ -644,6 +647,9 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	char file_path_parent[PATH_MAX] = { 0 }, file_path[PATH_MAX] = { 0 }, file_path_tmp[PATH_MAX] = { 0 };
 	char *metakey = NULL, *metavalue = NULL;
 	char *condkey = NULL, *condvalue = NULL;
+	char *driverkey = NULL, *drivervalue = NULL;
+	char *drivername = NULL; char *driverop = NULL;
+	struct pv_platform *p = pv_ctrl_get_sender_plat(pname);
 	struct stat st;
 
 	mgmt = pv_ctrl_check_sender_privileged(pname);
@@ -843,6 +849,67 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			pv_ctrl_write_ok_response(req_fd);
 		} else
 			goto err_me;
+	} else if (pv_str_matches(ENDPOINT_DRIVERS, strlen(ENDPOINT_DRIVERS), path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			pv_ctrl_process_get_string(req_fd,
+				pv_drivers_state_all(p));
+		} else
+			goto err_me;
+	} else if (pv_str_startswith(ENDPOINT_DRIVERS, strlen(ENDPOINT_DRIVERS), path)) {
+		driverkey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_DRIVERS), path_len);
+
+		if (!driverkey) {
+			pv_log(WARN, "HTTP request has bad driver alias");
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad driver key name");
+			goto out;
+		}
+
+		if (!strncmp("PUT", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			if(!strchr(driverkey, '/')) {
+				if (!p) {
+					pv_log(WARN, "HTTP request has bad sender");
+					pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request comes from wrong sender");
+				}
+				if (!strcmp(driverkey, "load")) {
+					if (pv_platform_load_drivers(p, NULL, DRIVER_MANUAL) >= 0)
+						pv_ctrl_write_ok_response(req_fd);
+					else
+						pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Error loading drivers");
+				} else if (!strcmp(driverkey, "unload")) {
+					pv_platform_unload_drivers(p, NULL, DRIVER_MANUAL);
+					pv_ctrl_write_ok_response(req_fd);
+				} else {
+					pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad driver key name");
+				}
+				goto out;
+			}
+			drivername = strtok(driverkey, "/");
+			driverop = strtok(NULL, "/");
+			if (driverop && !strcmp(driverop, "load"))
+				pv_platform_load_drivers(p, drivername, DRIVER_MANUAL);
+			else if (driverop && !strcmp(driverop, "unload"))
+				pv_platform_unload_drivers(p, drivername, DRIVER_MANUAL);
+			else if (!driverop)
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "no driver name provided in PUT");
+			else {
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "no valid driver operation provided in PUT; should be load or unload");
+				goto out;
+			}
+
+			pv_ctrl_write_ok_response(req_fd);
+		} else if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			if (driverkey) {
+				pv_ctrl_process_get_string(req_fd,
+					strdup(pv_drivers_state_str(driverkey)));
+			}
+		} else
+			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_CONDITIONS, strlen(ENDPOINT_CONDITIONS), path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
@@ -905,6 +972,10 @@ out:
 		free(metakey);
 	if (metavalue)
 		free(metavalue);
+	if (driverkey)
+		free(driverkey);
+	if (drivervalue)
+		free(drivervalue);
 
 	return cmd;
 }

@@ -75,6 +75,18 @@ char *pv_str_unescape_to_ascii(char *buf, char *code, char c)
 	return new;
 }
 
+int pv_str_count_list(char **list)
+{
+	int len = 0;
+
+	while (*list) {
+		len++;
+		list++;
+	}
+
+	return len;
+}
+
 char *pv_str_skip_prefix(char *str, const char *key)
 {
 	if (!str || !key)

@@ -215,6 +215,8 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->bl.type = config_get_value_bl_type(&config_list, "bootloader.type", BL_UBOOT_PLAIN);
 	config->bl.mtd_only = config_get_value_bool(&config_list, "bootloader.mtd_only", false);
 	config->bl.mtd_path = config_get_value_string(&config_list, "bootloader.mtd_env", NULL);
+	config->bl.dtb = config_get_value_string(&config_list, "bootloader.dtb", NULL);
+	config->bl.ovl = config_get_value_string(&config_list, "bootloader.ovl", NULL);
 
 	config->storage.path = config_get_value_string(&config_list, "storage.device", NULL);
 	config->storage.fstype = config_get_value_string(&config_list, "storage.fstype", NULL);
@@ -591,6 +593,8 @@ int pv_config_get_updater_revision_retries() { return pv_get_instance()->config.
 int pv_config_get_updater_revision_retry_timeout() { return pv_get_instance()->config.updater.revision_retry_timeout; }
 int pv_config_get_updater_commit_delay() { return pv_get_instance()->config.updater.commit_delay; }
 
+char* pv_config_get_bl_dtb() { return pv_get_instance()->config.bl.dtb; }
+char* pv_config_get_bl_ovl() { return pv_get_instance()->config.bl.ovl; }
 int pv_config_get_bl_type() { return pv_get_instance()->config.bl.type; }
 bool pv_config_get_bl_mtd_only() { return pv_get_instance()->config.bl.mtd_only; }
 char* pv_config_get_bl_mtd_path() { return pv_get_instance()->config.bl.mtd_path; }
