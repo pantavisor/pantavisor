@@ -1568,7 +1568,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 
 	pv_log(DEBUG, "renaming %s to %s...", mmc_tmp_obj_path, obj->objpath);
 	if (pv_file_rename(mmc_tmp_obj_path, obj->objpath) < 0) {
-		pv_log(ERROR, "could not rename");
+		pv_log(ERROR, "could not rename: %s", strerror(errno));
 	}
 
 	ret = 1;

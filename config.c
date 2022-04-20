@@ -378,7 +378,7 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 
 	close(fd);
 	if (pv_file_rename(tmp_path, path) < 0) {
-		pv_log(ERROR, "could not rename");
+		pv_log(ERROR, "could not rename: %s", strerror(errno));
 		return -1;
 	}
 

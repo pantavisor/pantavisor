@@ -296,7 +296,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 		return ret;
 	}
 
-	pv_log(DEBUG, "reading file with size %zu from endpoint and putting it in %s...",
+	pv_log(DEBUG, "reading file with size %zu from endpoint and putting it in %s",
 		content_length,
 		file_path);
 
@@ -430,7 +430,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 	ssize_t sent, file_size = pv_file_get_size(file_path);
 	off_t offset = 0;
 
-	pv_log(DEBUG, "reading file from %s and sending it to endpoint...", file_path);
+	pv_log(DEBUG, "reading file from %s and sending it to endpoint", file_path);
 
 	obj_fd = open(file_path, O_RDONLY);
 	if (obj_fd < 0) {
@@ -636,7 +636,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	struct pv_cmd *cmd = NULL;
 	struct pantavisor *pv = pv_get_instance();
 	char *file_name = NULL;
-	char file_path_parent[PATH_MAX], file_path[PATH_MAX], file_path_tmp[PATH_MAX];
+	char file_path_parent[PATH_MAX] = { 0 }, file_path[PATH_MAX] = { 0 }, file_path_tmp[PATH_MAX] = { 0 };
 	char *metakey = NULL, *metavalue = NULL;
 	char *condkey = NULL, *condvalue = NULL;
 	struct stat st;
@@ -691,9 +691,9 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "Object has bad checksum");
 				goto out;
 			}
-			pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
+			pv_log(DEBUG, "renaming %s to %s", file_path_tmp, file_path);
 			if (pv_file_rename(file_path_tmp, file_path) < 0) {
-				pv_log(ERROR, "could not rename");
+				pv_log(ERROR, "could not rename: %s", strerror(errno));
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename object");
 				goto out;
 			}
@@ -732,9 +732,9 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_COMMITMSG, strlen(ENDPOINT_COMMITMSG), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_COMMITMSG));
-		pv_paths_tmp(file_path_tmp, PATH_MAX, file_path);
 		pv_paths_storage_trail_pv_file(file_path_parent, PATH_MAX, file_name, "");
 		pv_paths_storage_trail_pv_file(file_path, PATH_MAX, file_name, COMMITMSG_FNAME);
+		pv_paths_tmp(file_path_tmp, PATH_MAX, file_path);
 
 		if (!file_name) {
 			pv_log(WARN, "HTTP request has bad step name %s", file_name);
@@ -749,9 +749,9 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			mkdir(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp) < 0)
 				goto out;
-			pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
+			pv_log(DEBUG, "renaming %s to %s", file_path_tmp, file_path);
 			if (pv_file_rename(file_path_tmp, file_path) < 0) {
-				pv_log(ERROR, "could not rename");
+				pv_log(ERROR, "could not rename: %s", strerror(errno));
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename commitmsg");
 				goto out;
 			}
@@ -760,7 +760,6 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
-		pv_paths_tmp(file_path_tmp, PATH_MAX, file_path);
 		pv_paths_storage_trail_pvr_file(file_path_parent, PATH_MAX, file_name, "");
 		pv_paths_storage_trail_pvr_file(file_path, PATH_MAX, file_name, JSON_FNAME);
 
@@ -785,12 +784,6 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				pv_log(ERROR, "state verification went wrong");
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "State verification has failed");
 				pv_storage_rm_rev(file_name);
-				goto out;
-			}
-			pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
-			if (pv_file_rename(file_path_tmp, file_path) < 0) {
-				pv_log(ERROR, "could not rename");
-				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename step");
 				goto out;
 			}
 			pv_ctrl_write_ok_response(req_fd);
@@ -895,8 +888,8 @@ err_pr:
 	pv_ctrl_write_error_response(req_fd, HTTP_STATUS_FORBIDDEN, "Request not sent from mgmt platform");
 
 out:
-	if (stat(file_path_tmp, &st)) {
-		pv_log(DEBUG, "removing %s...", file_path_tmp);
+	if (!stat(file_path_tmp, &st)) {
+		pv_log(DEBUG, "removing %s", file_path_tmp);
 		pv_file_remove(file_path_tmp);
 	}
 	if (pname)
