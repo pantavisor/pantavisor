@@ -98,7 +98,7 @@ void pv_paths_volumes_file(char *buf, size_t size, const char *name);
 void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat, const char *name);
 
 #define DROPBEAR_DNAME "dropbear"
-#define PVS_DNAME      "pvs"
+#define PVS_DNAME      "pantavisor/pvs"
 #define PVS_PK_FNAME   PVS_DNAME"/pub.pem"
 #define PVS_CERT_FNAME PVS_DNAME"/certs/ca.pem"
 
