@@ -61,6 +61,7 @@
 #include "parser/parser.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
+#include "utils/file.h"
 #include "utils/str.h"
 
 #define MODULE_NAME             "controller"
@@ -249,7 +250,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	ph_logger_toggle(pv, pv->state->rev);
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
-	pv_storage_meta_set_objdir(pv);
 	pv_metadata_init_devmeta(pv);
 	pv_metadata_init_usermeta(pv->state);
 
@@ -318,7 +318,8 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
 		pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-		open(path, O_TRUNC | O_WRONLY);
+		if (pv_file_save(path, "", 0444) < 0)
+			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 		pv_metadata_add_devmeta("pantahub.claimed", "1");
 	}
 

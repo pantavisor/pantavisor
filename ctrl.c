@@ -302,7 +302,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 
 	pv_ctrl_write_cont_response(req_fd);
 
-	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC, 0644);
+	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC | O_SYNC, 0644);
 	if (obj_fd < 0) {
 		pv_log(ERROR, "%s could not be created: %s", file_path, strerror(errno));
 		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot create file");
@@ -352,22 +352,6 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 	close(obj_fd);
 
 	return ret;
-}
-
-static int pv_ctrl_validate_object_checksum(char *file_path_tmp, char *file_path, char *sha)
-{
-	if (!pv_storage_validate_file_checksum(file_path_tmp, sha)) {
-		pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
-		rename(file_path_tmp, file_path);
-		syncdir(file_path);
-		return 0;
-	}
-
-	pv_log(DEBUG, "removing %s...", file_path_tmp);
-	remove(file_path_tmp);
-	syncdir(file_path_tmp);
-
-	return -1;
 }
 
 static int pv_ctrl_read_parse_request_header(int req_fd,
@@ -655,6 +639,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	char file_path_parent[PATH_MAX], file_path[PATH_MAX], file_path_tmp[PATH_MAX];
 	char *metakey = NULL, *metavalue = NULL;
 	char *condkey = NULL, *condvalue = NULL;
+	struct stat st;
 
 	mgmt = pv_ctrl_check_sender_privileged(pname);
 
@@ -687,8 +672,8 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_OBJECTS), path_len);
-		pv_paths_storage_object_tmp(file_path_tmp, PATH_MAX, file_name);
 		pv_paths_storage_object(file_path, PATH_MAX, file_name);
+		pv_paths_tmp(file_path_tmp, PATH_MAX, file_path);
 		// sha must have 64 characters
 		if (!file_name || (strlen(file_name) != 64)) {
 			pv_log(WARN, "HTTP request has bad object name %s", file_name);
@@ -699,17 +684,21 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		if (!strncmp("PUT", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
-			if (pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp) < 0) {
+			if (pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp) < 0)
 				goto out;
-			} else {
-				if (pv_ctrl_validate_object_checksum(file_path_tmp, file_path, file_name) < 0) {
-					pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "Object has bad checksum");
-					goto out;
-				}
-
-				pv_storage_gc_defer_run_threshold();
-				pv_ctrl_write_ok_response(req_fd);
+			if (pv_storage_validate_file_checksum(file_path_tmp, file_name) < 0) {
+				pv_log(WARN, "object %s has bad checksum", file_path_tmp);
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "Object has bad checksum");
+				goto out;
 			}
+			pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
+			if (pv_file_rename(file_path_tmp, file_path) < 0) {
+				pv_log(ERROR, "could not rename");
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename object");
+				goto out;
+			}
+			pv_storage_gc_defer_run_threshold();
+			pv_ctrl_write_ok_response(req_fd);
 		} else if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -743,6 +732,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path) &&
 		pv_str_endswith(ENDPOINT_COMMITMSG, strlen(ENDPOINT_COMMITMSG), path, path_len)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len - strlen(ENDPOINT_COMMITMSG));
+		pv_paths_tmp(file_path_tmp, PATH_MAX, file_path);
 		pv_paths_storage_trail_pv_file(file_path_parent, PATH_MAX, file_name, "");
 		pv_paths_storage_trail_pv_file(file_path, PATH_MAX, file_name, COMMITMSG_FNAME);
 
@@ -757,13 +747,20 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				goto err_pr;
 
 			mkdir(file_path_parent, 0755);
-			if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
+			if (pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp) < 0)
 				goto out;
+			pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
+			if (pv_file_rename(file_path_tmp, file_path) < 0) {
+				pv_log(ERROR, "could not rename");
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename commitmsg");
+				goto out;
+			}
 			pv_ctrl_write_ok_response(req_fd);
 		} else
 			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path)) {
 		file_name = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_STEPS), path_len);
+		pv_paths_tmp(file_path_tmp, PATH_MAX, file_path);
 		pv_paths_storage_trail_pvr_file(file_path_parent, PATH_MAX, file_name, "");
 		pv_paths_storage_trail_pvr_file(file_path, PATH_MAX, file_name, JSON_FNAME);
 
@@ -788,6 +785,12 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				pv_log(ERROR, "state verification went wrong");
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_UNPROCESSABLE_ENTITY, "State verification has failed");
 				pv_storage_rm_rev(file_name);
+				goto out;
+			}
+			pv_log(DEBUG, "renaming %s to %s...", file_path_tmp, file_path);
+			if (pv_file_rename(file_path_tmp, file_path) < 0) {
+				pv_log(ERROR, "could not rename");
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename step");
 				goto out;
 			}
 			pv_ctrl_write_ok_response(req_fd);
@@ -892,6 +895,10 @@ err_pr:
 	pv_ctrl_write_error_response(req_fd, HTTP_STATUS_FORBIDDEN, "Request not sent from mgmt platform");
 
 out:
+	if (stat(file_path_tmp, &st)) {
+		pv_log(DEBUG, "removing %s...", file_path_tmp);
+		pv_file_remove(file_path_tmp);
+	}
 	if (pname)
 		free(pname);
 	if (file_name)

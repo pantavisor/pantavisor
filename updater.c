@@ -1565,10 +1565,11 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 			goto out;
 		}
 	}
-	syncdir(mmc_tmp_obj_path);
 
-	pv_log(DEBUG, "verified object (%s), renaming from (%s)", obj->objpath, mmc_tmp_obj_path);
-	rename(mmc_tmp_obj_path, obj->objpath);
+	pv_log(DEBUG, "renaming %s to %s...", mmc_tmp_obj_path, obj->objpath);
+	if (pv_file_rename(mmc_tmp_obj_path, obj->objpath) < 0) {
+		pv_log(ERROR, "could not rename");
+	}
 
 	ret = 1;
 	if (pv->update && pv->update->progress_objects) {
@@ -1639,14 +1640,9 @@ static int trail_link_objects(struct pantavisor *pv)
 		mkbasedir_p(obj->relpath, 0755);
 		ext = strrchr(obj->relpath, '.');
 		if (ext && (strcmp(ext, ".bind") == 0)) {
-			int s_fd, d_fd;
-			s_fd = open(obj->objpath, O_RDONLY);
-			d_fd = open(obj->relpath, O_CREAT | O_WRONLY | O_SYNC, 0644);
-			if ((s_fd >= 0) &&
-				(d_fd >= 0)) {
-				pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
-				pv_file_copy_and_close(s_fd, d_fd);
-			}
+			pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
+			if (pv_file_copy(obj->objpath, obj->relpath, 0644) < 0)
+				pv_log(ERROR, "could not copy objects");
 			continue;
 		}
 		if (link(obj->objpath, obj->relpath) < 0) {
@@ -1808,10 +1804,9 @@ out:
 
 int pv_update_install(struct pantavisor *pv)
 {
-	int ret = -1, fd;
+	int ret = -1;
 	struct pv_state *pending = pv->update->pending;
 	char path[PATH_MAX];
-	char path_new[PATH_MAX];
 
 	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
 		pv_log(WARN, "uninitialized state or update");
@@ -1832,17 +1827,9 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	pv_paths_storage_trail_pvr_file(path_new, PATH_MAX, pending->rev, JSON_FNAME".new");
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev, JSON_FNAME);
-	fd = open(path_new, O_CREAT | O_WRONLY | O_SYNC | O_TRUNC, 0644);
-	if (fd < 0) {
-		pv_log(ERROR, "unable to write state.json file for update: %s", strerror(errno));
-		ret = -1;
-		goto out;
-	}
-	pv_file_write_nointr(fd, pending->json, strlen(pending->json));
-	close(fd);
-	rename(path_new, path);
+	if (pv_file_save(path, pending->json, 0644) < 0)
+		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
 
 	if (!pv_storage_meta_expand_jsons(pv, pending)) {
 		pv_log(ERROR, "unable to install platform and pantavisor jsons");

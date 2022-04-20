@@ -509,32 +509,21 @@ void pv_storage_set_active(struct pantavisor *pv)
 int pv_storage_update_factory(const char* rev)
 {
 	int res = -1, fd_c = -1, fd_f = -1;
-	char path[PATH_MAX];
+	char dst_path[PATH_MAX], src_path[PATH_MAX];
 
 	// first, remove revision 0 that is going to be substituted
 	pv_storage_rm_rev("0");
 
 	// now, create revision 0
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, "0", "");
-	mkdir_p(path, 0755);
+	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, "0", "");
+	mkdir_p(dst_path, 0755);
 
 	// finally, copy revision json to revision 0
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, "0", JSON_FNAME);
-	fd_f = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-	if (fd_f < 0) {
-		pv_log(ERROR, "cannot open %s revision json: %s", path, strerror(errno));
-		goto out;
-	}
-
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
-	fd_c = open(path, O_RDONLY, 0);
-	if (fd_c < 0) {
-		pv_log(ERROR, "cannot open %s revision json: %s", path, strerror(errno));
-		goto out;
-	}
-
-	if (pv_file_copy_and_close(fd_c, fd_f) < 0) {
-		pv_log(ERROR, "cannot copy factory revision: %s", strerror(errno));
+	pv_paths_storage_trail_pvr_file(src_path, PATH_MAX, rev, JSON_FNAME);
+	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, "0", JSON_FNAME);
+	pv_log(DEBUG, "copying %s to %s", src_path, dst_path);
+	if (pv_file_copy(src_path, dst_path, 0644) < 0) {
+		pv_log(ERROR, "cannot copy %s into %s: %s", src_path, dst_path, strerror(errno));
 		goto out;
 	}
 
@@ -726,97 +715,29 @@ out:
 
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 {
-	// DEPRECATED: this done files are not used anymore for rollback and bootloader env
-	// are used insted. We keep it here to serve old versions in case a device needs to
-	// be downgraded
-
-	int fd;
 	char path[PATH_MAX];
 
+	pv_log(DEBUG, "saving done file for rev %s: %s", rev);
+
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, DONE_FNAME);
-
-	fd = open(path, O_CREAT | O_WRONLY, 0644);
-	if (fd < 0) {
-		pv_log(WARN, "unable to set current(done) flag for revision %s", rev);
-		return;
-	}
-
-	// commit to disk
-	fsync(fd);
-	close(fd);
+	if (pv_file_save(path, "", 0644) < 0)
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }
 
 void pv_storage_set_rev_progress(const char *rev, const char *progress)
 {
-	int fd;
 	char path[PATH_MAX];
 
-	pv_log(DEBUG, "saving progress for rev %s: %s", rev, progress);
+	pv_log(DEBUG, "saving progress file for rev %s: %s", rev, progress);
 
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, PROGRESS_FNAME);
-
-	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC , 0644);
-	if (fd < 0) {
-		pv_log(DEBUG, "unable to open progress file %s for revision %s"
-				" (err=%s)", path, rev, strerror(errno));
-		return;
-	}
-
-	if (write(fd, progress, strlen(progress)) < 0) {
-		pv_log(DEBUG, "unable to write progress  (%s) to file (%s) for revision %s (err=%s)", progress, path, rev, strerror(errno));
-		return;
-	}
-
-	// commit to disk
-	fsync(fd);
-	close(fd);
-}
-
-void pv_storage_meta_set_objdir(struct pantavisor *pv)
-{
-	int fd = 0;
-	char path[PATH_MAX], content[PATH_MAX];
-	struct stat st;
-
-	if (!pv)
-		return;
-
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pv->state->rev, CONFIG_FNAME);
-	if (stat(path, &st) == 0)
-		return;
-
-	fd = open(path, O_CREAT | O_WRONLY, 0644);
-	/*
-	 * [PKS]
-	 * check for
-	 * fd < 0
-	 */
-	if (fd < 0)
-		goto err;
-
-	pv_paths_storage_object(path, PATH_MAX, "");
-	SNPRINTF_WTRUNC(content, sizeof (content),
-			"{\"ObjectsDir\": \"%s\"}", path);
-	/*
-	 * [PKS]
-	 * Use pv_file_write_nointr
-	 */
-	if (write(fd, content, strlen(content)) < 0)
-		goto err;
-
-	close(fd);
-	pv_log(DEBUG, "wrote '%s' to .pvr/config @rev=%s", content, pv->state->rev);
-
-	return;
-err:
-	pv_log(WARN, "unable to set ObjectsDir pvr config key");
-	if (fd)
-		close(fd);
+	if (pv_file_save(path, progress, 0644) < 0)
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }
 
 int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
-	int fd = -1, n, bytes, tokc;
+	int fd = -1, n, tokc;
 	int ret = 0;
 	char *buf = 0, *key = 0, *ext = 0;
 	char *value = 0, *file = 0, *dir = 0;
@@ -866,15 +787,10 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 			mkdir_p(dir, 0755);
 		free(file);
 
-		fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0644);
-		if (fd < 0)
-			goto out;
+		pv_log(DEBUG, "saving json %s", key);
+		if (pv_file_save(path, value, 0644) < 0)
+			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
-		bytes = write(fd, value, strlen(value));
-		if (bytes)
-			pv_log(DEBUG, "%s: written %d bytes", path, bytes);
-
-		close(fd);
 		k++;
 	}
 	jsmnutil_tokv_free(keys);
@@ -890,23 +806,6 @@ out:
 		close(fd);
 
 	return ret;
-}
-
-void pv_storage_meta_set_tryonce(struct pantavisor *pv, int value)
-{
-	int fd;
-	char path[PATH_MAX];
-
-	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->state->rev, TRYONCE_FNAME);
-
-	if (value) {
-		fd = open(path, O_WRONLY | O_CREAT | O_SYNC, 0444);
-		if (fd >= 0)
-			close(fd);
-	} else {
-		remove(path);
-		sync();
-	}
 }
 
 int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
@@ -1048,34 +947,16 @@ void pv_storage_init_plat_usermeta(const char *name)
 		mkdir_p(path, 0755);
 }
 
-static void pv_storage_save_file(const char *path, const char *content)
-{
-	int fd;
-
-	if (!path || !content)
-		return;
-
-	fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-	if (fd < 0) {
-		pv_log(WARN, "cannot create file: %s", strerror(errno));
-		goto out;
-	}
-
-	write(fd, content, strlen(content));
-	close(fd);
-
-out:
-	return;
-}
-
 void pv_storage_save_usermeta(const char *key, const char *value)
 {
 	char path[PATH_MAX];
 	char *pname, *pkey;
 
+	pv_log(DEBUG, "saving usermeta file with key %s and value %s", key, value);
+
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, key);
-	pv_storage_save_file(path, value);
-	pv_log(DEBUG, "saved usermeta in %s", path);
+	if (pv_file_save(path, value, 0644) < 0)
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	pname = strdup(key);
 	pkey = strchr(pname, '.');
@@ -1084,8 +965,8 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 		pkey++;
 		pv_storage_init_plat_usermeta(pname);
 		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, pkey);
-		pv_storage_save_file(path, value);
-		pv_log(DEBUG, "saved usermeta in %s", path);
+		if (pv_file_save(path, value, 0644) < 0)
+			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 	}
 
 	free(pname);
@@ -1118,28 +999,27 @@ static int pv_storage_init(struct pv_init *this)
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_storage* storage;
 	char tmp[256], path[PATH_MAX];
-	int fd = -1;
 
 	// create hints
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0444);
-	close(fd);
+	if (pv_file_save(path, "", 0444) < 0)
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
+
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0444);
-	if (!pv_config_get_creds_prn() ||
-		(!strcmp(pv_config_get_creds_prn(), ""))) {
+	if (!pv_config_get_creds_prn() || !strcmp(pv_config_get_creds_prn(), "")) {
 		pv->unclaimed = true;
+		if (pv_file_save(path, "", 0444) < 0)
+			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 	} else {
 		pv->unclaimed = false;
 		SNPRINTF_WTRUNC(tmp, sizeof (tmp), "%s\n", pv_config_get_creds_id());
-		write(fd, tmp, strlen(tmp));
+		if (pv_file_save(path, tmp, 0444) < 0)
+			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 	}
-	close(fd);
 	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
-	fd = open(path, O_CREAT | O_SYNC | O_WRONLY, 0444);
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
-	write(fd, tmp, strlen(tmp));
-	close(fd);
+	if (pv_file_save(path, tmp, 0444) < 0)
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	storage = pv_storage_new();
 	pv_storage_print(storage);

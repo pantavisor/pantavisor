@@ -55,15 +55,12 @@ void pv_paths_storage_meta(char *buf, size_t size);
 void pv_paths_storage_dropbear(char *buf, size_t size);
 
 void pv_paths_storage_object(char *buf, size_t size, const char *sha);
-void pv_paths_storage_object_tmp(char *buf, size_t size, const char *sha);
 
 #define DONE_FNAME      "done"
-#define TRYONCE_FNAME   ".tryonce"
 #define PROGRESS_FNAME  "progress"
 #define COMMITMSG_FNAME "commitmsg"
 #define METADONE_FNAME  "factory-meta.done"
 #define JSON_FNAME      "json"
-#define CONFIG_FNAME    "config"
 
 void pv_paths_storage_trail(char *buf, size_t size, const char *rev);
 void pv_paths_storage_trail_file(char *buf, size_t size, const char *rev, const char *name);
@@ -110,6 +107,8 @@ void pv_paths_etc_file(char *buf, size_t size, const char *name);
 void pv_paths_configs(char *buf, size_t size);
 
 void pv_paths_cert(char *buf, size_t size, const char* name);
+
+void pv_paths_tmp(char *buf, size_t size, const char *path);
 
 #define PLATFORM_PV_PATH            "/pantavisor"
 #define PLATFORM_LOGS_PATH          PLATFORM_PV_PATH"/"LOGS_DNAME

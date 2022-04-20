@@ -93,16 +93,10 @@ void pv_paths_storage_dropbear(char *buf, size_t size)
 }
 
 #define PV_OBJECT_PATHF     "%s/objects/%s"
-#define PV_OBJECT_TMP_PATHF PV_OBJECT_PATHF".tmp"
 
 void pv_paths_storage_object(char *buf, size_t size, const char *sha)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_OBJECT_PATHF, pv_config_get_storage_mntpoint(), sha);
-}
-
-void pv_paths_storage_object_tmp(char *buf, size_t size, const char *sha)
-{
-	SNPRINTF_WTRUNC(buf, size, PV_OBJECT_TMP_PATHF, pv_config_get_storage_mntpoint(), sha);
 }
 
 #define PV_TRAILS_PATHF           "%s/trails/%s"
@@ -257,4 +251,11 @@ void pv_paths_configs(char *buf, size_t size)
 void pv_paths_cert(char *buf, size_t size, const char* name)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_CERT_PATHF, name);
+}
+
+#define PV_TMP_PATHF "%s.tmp"
+
+void pv_paths_tmp(char *buf, size_t size, const char *path)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_TMP_PATHF, path);
 }

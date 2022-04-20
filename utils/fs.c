@@ -85,7 +85,7 @@ int mkbasedir_p(char *dir, mode_t mode)
 	return ret;
 }
 
-void syncdir(char *file)
+void syncdir(const char *file)
 {
 	int fd;
 	char *dir;

@@ -53,6 +53,7 @@
 #include "utils/tsh.h"
 #include "utils/str.h"
 #include "utils/fs.h"
+#include "utils/file.h"
 
 #define MODULE_NAME             "pantahub-api"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -496,31 +497,20 @@ out:
 
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 {
-	int fd;
 	char buf[256], path[PATH_MAX];
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-	fd = open(path, O_TRUNC | O_SYNC | O_RDWR);
-	if (fd < 0) {
-		pv_log(INFO, "unable to open device-id hint file: %s", strerror(errno));
-		return;
-	}
 	SNPRINTF_WTRUNC (buf, sizeof (buf), "%s\n", pv_config_get_creds_id());
-	write(fd, buf, strlen(buf));
-	close(fd);
+	if (pv_file_save(path, buf, 044))
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	if (!c)
 		return;
 
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-	fd = open(path, O_TRUNC | O_SYNC | O_RDWR);
-	if (fd < 0) {
-		pv_log(INFO, "unable to open challenge hint file: %s", strerror(errno));
-		return;
-	}
 	SNPRINTF_WTRUNC(buf, sizeof (buf), "%s\n", c);
-	write(fd, buf, strlen(buf));
-	close(fd);
+	if (pv_file_save(path, buf, 044))
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }
 
 int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
