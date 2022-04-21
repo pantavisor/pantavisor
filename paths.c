@@ -161,6 +161,10 @@ void pv_paths_storage_factory_meta_key(char *buf, size_t size, const char *key)
 #define PV_STORAGE_DISKS_REV_PATHF       "%s/disks/rev"
 #define PV_STORAGE_DISKS_PERM_FILE_PATHF "%s/disks/perm/%s/%s"
 #define PV_STORAGE_DISKS_REV_FILE_PATHF  "%s/disks/rev/%s/%s/%s"
+#define PV_STORAGE_CRYPT_PATHF           "/media/pv/%s/%s"
+#define PV_CRYPT_DISKS_PERM_FILE_PATHF   PV_STORAGE_CRYPT_PATHF"/perm/%s/%s"
+#define PV_CRYPT_DISKS_REV_FILE_PATHF    PV_STORAGE_CRYPT_PATHF"/rev/%s/%s/%s"
+#define PV_CRYPT_DISKS_BOOT_FILE_PATHF   PV_STORAGE_CRYPT_PATHF"/boot/%s/%s"
 
 void pv_paths_storage_disks(char *buf, size_t size)
 {
@@ -180,6 +184,29 @@ void pv_paths_storage_disks_rev_file(char *buf, size_t size, const char *rev, co
 void pv_paths_storage_disks_perm_file(char *buf, size_t size, const char *plat, const char *name)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_DISKS_PERM_FILE_PATHF, pv_config_get_storage_mntpoint(), plat, name);
+}
+
+void pv_paths_storage_mounted_disk_path(char *buf, size_t size, const char *type, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_CRYPT_PATHF, type, name);
+}
+
+void pv_paths_crypt_disks_rev_file(char *buf, size_t size, const char *type, const char *dname,
+				   const char *rev, const char *plat, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_REV_FILE_PATHF, type, dname ,rev, plat, name);
+}
+
+void pv_paths_crypt_disks_perm_file(char *buf, size_t size, const char *type, const char *dname,
+				    const char *plat, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_PERM_FILE_PATHF, type, dname, plat, name);
+}
+
+void pv_paths_crypt_disks_boot_file(char *buf, size_t size, const char *type, const char *dname,
+				    const char *plat, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_BOOT_FILE_PATHF, type, dname, plat, name);
 }
 
 #define PV_ROOT_PATHF         "%s"

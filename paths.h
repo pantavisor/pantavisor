@@ -85,6 +85,13 @@ void pv_paths_storage_disks(char *buf, size_t size);
 void pv_paths_storage_disks_rev(char *buf, size_t size);
 void pv_paths_storage_disks_rev_file(char *buf, size_t size, const char *rev, const char *plat, const char *name);
 void pv_paths_storage_disks_perm_file(char *buf, size_t size, const char *plat, const char *name);
+void pv_paths_storage_mounted_disk_path(char *buf, size_t size, const char *type, const char *name);
+void pv_paths_crypt_disks_rev_file(char *buf, size_t size, const char *type, const char *dname,
+				   const char *rev, const char *plat, const char *name);
+void pv_paths_crypt_disks_perm_file(char *buf, size_t size, const char *type, const char *dname,
+				    const char *plat, const char *name);
+void pv_paths_crypt_disks_boot_file(char *buf, size_t size, const char *type, const char *dname,
+				    const char *plat, const char *name);
 
 void pv_paths_lib_plugin(char *buf, size_t size, const char *name);
 void pv_paths_lib_modules(char *buf, size_t size, const char *release);
