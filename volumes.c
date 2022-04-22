@@ -215,7 +215,7 @@ static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 	}
 
 	command = malloc(sizeof(char) *
-		(strlen("/lib/pv/volmount/crypt %s %s %s %s /volumes/%s/%s %s") +
+		(strlen("/lib/pv/volmount/crypt/crypt %s %s %s %s") +
 		strlen(action) +
 		strlen(crypt_type) +
 		strlen(d->path) +
@@ -223,7 +223,7 @@ static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 	if (!command)
 		return -ENOMEM;
 
-	sprintf(command, "/lib/pv/volmount/crypt %s %s %s %s",
+	sprintf(command, "/lib/pv/volmount/crypt/crypt %s %s %s %s",
 			  action, crypt_type, d->path, path);
 	pv_log(INFO, "command: %s", command);
 
@@ -321,18 +321,18 @@ int pv_volume_mount(struct pv_volume *v)
 				 strlen(partname) +
 				 strlen(path) +
 				 strlen(name) +
-				 strlen("/lib/pv/volmount/%s mount %s %s %s") + 1)
+				 strlen("/lib/pv/volmount/verity/%s mount %s %s %s") + 1)
 				);
 			umount_cmd = malloc(sizeof(char) *
 					(strlen(handler) +
 					 strlen(partname) +
 					 strlen(path) +
 					 strlen(name) +
-					 strlen("/lib/pv/volmount/%s umount %s %s %s") + 1)
+					 strlen("/lib/pv/volmount/verity/%s umount %s %s %s") + 1)
 					);
-			sprintf(command, "/lib/pv/volmount/%s mount %s %s %s",
+			sprintf(command, "/lib/pv/volmount/verity/%s mount %s %s %s",
 					handler, path, partname, name);
-			sprintf(umount_cmd, "/lib/pv/volmount/%s umount %s %s %s",
+			sprintf(umount_cmd, "/lib/pv/volmount/verity/%s umount %s %s %s",
 					handler, path, partname, name);
 			tsh_run(command, 1, &wstatus);
 			if (!WIFEXITED(wstatus))

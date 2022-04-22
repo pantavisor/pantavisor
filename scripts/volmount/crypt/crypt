@@ -53,7 +53,7 @@ do_crypt_init()
 	elif [ $dm_type == "dcp" ]; then
 		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
 		echo $key_value >$dir/$keyname.txt
-		/lib/pv/volmount/dcp-tool enc $dir/$keyname.txt $dir/$keyname.bb 64
+		/lib/pv/volmount/crypt/dcp-tool enc $dir/$keyname.txt $dir/$keyname.bb 64
 		rm -rf $dir/$keyname.txt
 	elif [ $dm_type == "versatile" ]; then
 		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
@@ -110,7 +110,7 @@ do_dm_sanity()
 		[ ! -f /usr/sbin/dmsetup ] && exit 1
 		[ ! -f /bin/keyctl ] && exit 1
 	elif [ $dm_type == "dcp" ]; then
-		[ ! -f /lib/pv/volmount/dcp-tool ] && exit 1
+		[ ! -f /lib/pv/volmount/crypt/dcp-tool ] && exit 1
 		[ ! -f /usr/sbin/cryptsetup ] && exit 1
 	elif [ $dm_type == "versatile" ]; then
 		[ ! -f /usr/sbin/cryptsetup ] && exit 1

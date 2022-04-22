@@ -229,7 +229,7 @@ void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat, const 
 
 #define PV_LIB_PLUGIN_PATHF   "/lib/pv_%s.so"
 #define PV_LIB_MODULES_PATHF  "/lib/modules/%s"
-#define PV_LIB_VOLMOUNT_PATHF "/lib/pv/volmount/%s"
+#define PV_LIB_VOLMOUNT_PATHF "/lib/pv/volmount/%s/%s"
 #define PV_LIB_HOOK_PATHF     "/lib/pv/hooks_lxc-mount.d/%s"
 
 void pv_paths_lib_plugin(char *buf, size_t size, const char *name)
@@ -242,9 +242,9 @@ void pv_paths_lib_modules(char *buf, size_t size, const char *release)
 	SNPRINTF_WTRUNC(buf, size, PV_LIB_MODULES_PATHF, release);
 }
 
-void pv_paths_lib_volmount(char *buf, size_t size, const char *name)
+void pv_paths_lib_volmount(char *buf, size_t size, const char *type, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LIB_VOLMOUNT_PATHF, name);
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_VOLMOUNT_PATHF, type, name);
 }
 
 void pv_paths_lib_hook(char *buf, size_t size, const char *name)
