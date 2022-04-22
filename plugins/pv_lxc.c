@@ -587,7 +587,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 			__pv_paths_pv_log_plat(log_dir, PATH_MAX,
 				__pv_get_instance()->state->rev,
 				p->name);
-			pv_lxc_log.name = LXC_LOG_FNAME;
+			pv_lxc_log.name = LXC_LOG_SUBDIR;
 			pv_lxc_log.lxcpath = strdup(log_dir);
 			if (!pv_lxc_log.lxcpath)
 				goto out_container_init;
