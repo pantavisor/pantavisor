@@ -30,12 +30,12 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#define PV_PATH  "/pv"
+#define PV_PATH  "%s"
 #define PV_PATHF PV_PATH"/%s"
 
 void pv_paths_pv_file(char *buf, size_t size, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_PATHF, name);
+	SNPRINTF_WTRUNC(buf, size, PV_PATHF, pv_config_get_system_rundir(), name);
 }
 
 #define PV_USRMETA_PATHF      PV_PATH"/"USRMETA_DNAME"/%s"
@@ -43,12 +43,12 @@ void pv_paths_pv_file(char *buf, size_t size, const char *name)
 
 void pv_paths_pv_usrmeta_key(char *buf, size_t size, const char *key)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_USRMETA_PATHF, key);
+	SNPRINTF_WTRUNC(buf, size, PV_USRMETA_PATHF, pv_config_get_system_rundir(), key);
 }
 
 void pv_paths_pv_usrmeta_plat_key(char *buf, size_t size, const char *plat, const char *key)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_USRMETA_PLAT_PATHF, plat, key);
+	SNPRINTF_WTRUNC(buf, size, PV_USRMETA_PLAT_PATHF, pv_config_get_system_rundir(), plat, key);
 }
 
 #define PV_LOGS_PATHF      PV_PATH"/"LOGS_DNAME"/%s"
@@ -57,17 +57,17 @@ void pv_paths_pv_usrmeta_plat_key(char *buf, size_t size, const char *plat, cons
 
 void pv_paths_pv_log(char *buf, size_t size, const char *rev)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LOGS_PATHF, rev);
+	SNPRINTF_WTRUNC(buf, size, PV_LOGS_PATHF, pv_config_get_system_rundir(), rev);
 }
 
 void pv_paths_pv_log_plat(char *buf, size_t size, const char *rev, const char *plat)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LOGS_PLAT_PATHF, rev, plat);
+	SNPRINTF_WTRUNC(buf, size, PV_LOGS_PLAT_PATHF, pv_config_get_system_rundir(), rev, plat);
 }
 
 void pv_paths_pv_log_file(char *buf, size_t size, const char *rev, const char *plat, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LOGS_FILE_PATHF, rev, plat, name);
+	SNPRINTF_WTRUNC(buf, size, PV_LOGS_FILE_PATHF, pv_config_get_system_rundir(), rev, plat, name);
 }
 
 #define PV_STORAGE_PATHF "%s"
@@ -90,6 +90,13 @@ void pv_paths_storage_meta(char *buf, size_t size)
 void pv_paths_storage_dropbear(char *buf, size_t size)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_PATHF, pv_config_get_cache_dropbearcachedir());
+}
+
+#define PV_STORAGE_FILE_PATHF "%s/%s"
+
+void pv_paths_storage_file(char *buf, size_t size, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_FILE_PATHF, pv_config_get_storage_mntpoint(), name);
 }
 
 #define PV_OBJECT_PATHF     "%s/objects/%s"
@@ -161,10 +168,6 @@ void pv_paths_storage_factory_meta_key(char *buf, size_t size, const char *key)
 #define PV_STORAGE_DISKS_REV_PATHF       "%s/disks/rev"
 #define PV_STORAGE_DISKS_PERM_FILE_PATHF "%s/disks/perm/%s/%s"
 #define PV_STORAGE_DISKS_REV_FILE_PATHF  "%s/disks/rev/%s/%s/%s"
-#define PV_STORAGE_CRYPT_PATHF           "/media/pv/%s/%s"
-#define PV_CRYPT_DISKS_PERM_FILE_PATHF   PV_STORAGE_CRYPT_PATHF"/perm/%s/%s"
-#define PV_CRYPT_DISKS_REV_FILE_PATHF    PV_STORAGE_CRYPT_PATHF"/rev/%s/%s/%s"
-#define PV_CRYPT_DISKS_BOOT_FILE_PATHF   PV_STORAGE_CRYPT_PATHF"/boot/%s/%s"
 
 void pv_paths_storage_disks(char *buf, size_t size)
 {
@@ -186,31 +189,36 @@ void pv_paths_storage_disks_perm_file(char *buf, size_t size, const char *plat, 
 	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_DISKS_PERM_FILE_PATHF, pv_config_get_storage_mntpoint(), plat, name);
 }
 
+#define PV_STORAGE_CRYPT_PATHF           "%s/pv/%s/%s"
+#define PV_CRYPT_DISKS_PERM_FILE_PATHF   PV_STORAGE_CRYPT_PATHF"/perm/%s/%s"
+#define PV_CRYPT_DISKS_REV_FILE_PATHF    PV_STORAGE_CRYPT_PATHF"/rev/%s/%s/%s"
+#define PV_CRYPT_DISKS_BOOT_FILE_PATHF   PV_STORAGE_CRYPT_PATHF"/boot/%s/%s"
+
 void pv_paths_storage_mounted_disk_path(char *buf, size_t size, const char *type, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_CRYPT_PATHF, type, name);
+	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_CRYPT_PATHF, pv_config_get_system_mediadir(), type, name);
 }
 
 void pv_paths_crypt_disks_rev_file(char *buf, size_t size, const char *type, const char *dname,
 				   const char *rev, const char *plat, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_REV_FILE_PATHF, type, dname ,rev, plat, name);
+	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_REV_FILE_PATHF, pv_config_get_system_mediadir(), type, dname ,rev, plat, name);
 }
 
 void pv_paths_crypt_disks_perm_file(char *buf, size_t size, const char *type, const char *dname,
 				    const char *plat, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_PERM_FILE_PATHF, type, dname, plat, name);
+	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_PERM_FILE_PATHF, pv_config_get_system_mediadir(), type, dname, plat, name);
 }
 
 void pv_paths_crypt_disks_boot_file(char *buf, size_t size, const char *type, const char *dname,
 				    const char *plat, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_BOOT_FILE_PATHF, type, dname, plat, name);
+	SNPRINTF_WTRUNC(buf, size, PV_CRYPT_DISKS_BOOT_FILE_PATHF, pv_config_get_system_mediadir(), type, dname, plat, name);
 }
 
 #define PV_ROOT_PATHF         "%s"
-#define PV_VOLUMES_PATHF      "/volumes/%s"
+#define PV_VOLUMES_PATHF      "%s/%s"
 #define PV_VOLUMES_PLAT_PATHF PV_VOLUMES_PATHF"/%s"
 
 void pv_paths_root_file(char *buf, size_t size, const char *path)
@@ -220,64 +228,63 @@ void pv_paths_root_file(char *buf, size_t size, const char *path)
 
 void pv_paths_volumes_file(char *buf, size_t size, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_VOLUMES_PATHF, name);
+	SNPRINTF_WTRUNC(buf, size, PV_VOLUMES_PATHF, pv_config_get_disk_voldir(), name);
 }
 
 void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat, const char *name){
-	SNPRINTF_WTRUNC(buf, size, PV_VOLUMES_PLAT_PATHF, plat, name);
+	SNPRINTF_WTRUNC(buf, size, PV_VOLUMES_PLAT_PATHF, pv_config_get_disk_voldir(), plat, name);
 }
 
-#define PV_LIB_PLUGIN_PATHF   "/lib/pv_%s.so"
-#define PV_LIB_MODULES_PATHF  "/lib/modules/%s"
-#define PV_LIB_VOLMOUNT_PATHF "/lib/pv/volmount/%s/%s"
-#define PV_LIB_HOOK_PATHF     "/lib/pv/hooks_lxc-mount.d/%s"
+#define PV_LIB_PLUGIN_PATHF      "%s/pv_%s.so"
+#define PV_LIB_MODULES_PATHF     "%s/modules/%s"
+#define PV_LIB_VOLMOUNT_PATHF    "%s/pv/volmount/%s/%s"
+#define PV_LIB_HOOK_PATHF        "%s/pv/hooks_lxc-mount.d/%s"
+#define PV_LIB_HOOKS_EARLY_SPAWN "%s/pv/hooks_early.spawn/%s"
 
 void pv_paths_lib_plugin(char *buf, size_t size, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LIB_PLUGIN_PATHF, name);
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_PLUGIN_PATHF, pv_config_get_system_libdir(), name);
 }
 
 void pv_paths_lib_modules(char *buf, size_t size, const char *release)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LIB_MODULES_PATHF, release);
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_MODULES_PATHF, pv_config_get_system_libdir(), release);
 }
 
 void pv_paths_lib_volmount(char *buf, size_t size, const char *type, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LIB_VOLMOUNT_PATHF, type, name);
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_VOLMOUNT_PATHF, pv_config_get_system_libdir(), type, name);
 }
 
 void pv_paths_lib_hook(char *buf, size_t size, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_LIB_HOOK_PATHF, name);
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_HOOK_PATHF, pv_config_get_system_libdir(), name);
 }
 
-#define PV_CONFIG_PANTAVISOR_PATHF "/etc/pantavisor.config"
-
-void pv_paths_etc_pantavisor(char *buf, size_t size)
+void pv_paths_lib_hooks_early_spawn(char *buf, size_t size, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_CONFIG_PANTAVISOR_PATHF);
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_HOOKS_EARLY_SPAWN, pv_config_get_system_libdir(), name);
 }
 
-#define PV_ETC_PATHF "/etc/%s"
+#define PV_ETC_PATHF "%s/%s"
 
 void pv_paths_etc_file(char *buf, size_t size, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_ETC_PATHF, name);
+	SNPRINTF_WTRUNC(buf, size, PV_ETC_PATHF, pv_config_get_system_etcdir(), name);
 }
 
-#define PV_CONFIGS_PATHF "/configs/"
+#define PV_CONFIGS_PATHF "%s/"
 
 void pv_paths_configs(char *buf, size_t size)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_CONFIGS_PATHF);
+	SNPRINTF_WTRUNC(buf, size, PV_CONFIGS_PATHF, pv_config_get_system_confdir());
 }
 
-#define PV_CERT_PATHF "/certs/%s"
+#define PV_CERT_PATHF "%s/%s"
 
 void pv_paths_cert(char *buf, size_t size, const char* name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_CERT_PATHF, name);
+	SNPRINTF_WTRUNC(buf, size, PV_CERT_PATHF, pv_config_get_secureboot_certdir(), name);
 }
 
 #define PV_TMP_PATHF "%s.tmp"

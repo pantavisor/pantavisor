@@ -40,6 +40,7 @@
 #include <linux/reboot.h>
 
 #include "init.h"
+#include "config.h"
 #include "pantavisor.h"
 #include "version.h"
 #include "pvlogger.h"
@@ -208,28 +209,27 @@ static void signal_handler(int signal)
 
 static void early_spawns()
 {
-
 	DIR *d;
 	struct dirent *dir;
+	char path[PATH_MAX];
 
-	printf("starting early spawns from: %s\n", HOOKS_EARLY_SPAWN);
-	d = opendir(HOOKS_EARLY_SPAWN);
+	pv_paths_lib_hooks_early_spawn(path, PATH_MAX, "");
+	printf("starting early spawns from: %s\n", path);
+	d = opendir(path);
 	while (d && (dir = readdir(d)) != NULL) {
-		char buf[PATH_MAX];
 		struct stat sb;
 
 		if (!strcmp("..", dir->d_name) || !strcmp(".", dir->d_name))
 			continue;
 
+		pv_paths_lib_hooks_early_spawn(path, PATH_MAX, dir->d_name);
 
-		SNPRINTF_WTRUNC(buf, sizeof (buf), "%s/%s", HOOKS_EARLY_SPAWN, dir->d_name);
-
-		if (!(stat(buf, &sb) == 0 && sb.st_mode & S_IXUSR)) {
-			printf("early_spawns: skipping not executable hook: %s\n", buf);
+		if (!(stat(path, &sb) == 0 && sb.st_mode & S_IXUSR)) {
+			printf("early_spawns: skipping not executable hook: %s\n", path);
 			continue;
 		}
-		printf("early_spawns: starting: %s\n", buf);
-		tsh_run(buf, 0, NULL);
+		printf("early_spawns: starting: %s\n", path);
+		tsh_run(path, 0, NULL);
 	}
 	if (d)
 		closedir(d);
@@ -269,10 +269,6 @@ static void debug_shell()
 
 #endif
 
-#define PV_STANDALONE	(1 << 0)
-#define	PV_DEBUG	(1 << 1)
-#define PV_DEBUG_SH	(1 << 2)
-
 static int is_arg(int argc, char *argv[], char *arg)
 {
 	if (argc < 2)
@@ -286,19 +282,22 @@ static int is_arg(int argc, char *argv[], char *arg)
 	return 0;
 }
 
-static void parse_args(int argc, char *argv[], unsigned short *args)
+static void parse_commands(int argc, char *argv[])
 {
+	if (is_arg(argc, argv, "pv_embedded"))
+		pv_config_set_system_init_mode(IM_EMBEDDED);
+
 	if (is_arg(argc, argv, "pv_standalone"))
-		*args |= PV_STANDALONE;
+		pv_config_set_system_init_mode(IM_STANDALONE);
+
+	if (is_arg(argc, argv, "pv_appengine"))
+		pv_config_set_system_init_mode(IM_APPENGINE);
 
 	if (is_arg(argc, argv, "debug"))
-		*args |= PV_DEBUG;
+		pv_config_set_debug_shell(true);
 
 	if (!is_arg(argc, argv, "splash"))
-		*args |= PV_DEBUG_SH;
-
-	// For now
-	*args |= PV_DEBUG;
+		pv_config_set_debug_ssh(true);
 }
 
 static void redirect_io()
@@ -314,38 +313,102 @@ static void redirect_io()
 	}
 }
 
+static void usage(const char *cmd)
+{
+	printf("%s [options] [commands]\n", cmd);
+	printf("options:\n");
+	printf("    --help          this help\n");
+	printf("    --version       show pantavisor version\n");
+	printf("    --manifest      show pantavisor manifest\n");
+	printf("    --config <path> pantavisor.config path (default: /etc/pantavisor.config)\n");
+	printf("commands:\n");
+	printf("    pv_embedded     run pantavisor starting the main thread (default)\n");
+	printf("    pv_standalone   run pantavisor without starting the main thread\n");
+	printf("    pv_appengine    run pantavisor inside an existing OS\n");
+
+}
+
+static void parse_options(int argc, char *argv[], char **config_path)
+{
+	char *cmd = argv[0];
+	int pos = 1;
+
+	if (getpid() == 1)
+		return;
+
+	// parse options
+
+	if (is_arg(argc, argv, "--help")) {
+		usage(cmd);
+		exit(0);
+	}
+
+	if (is_arg(argc, argv, "--version")) {
+		printf("version: %s\n", pv_build_version);
+		exit(0);
+	}
+
+	if (is_arg(argc, argv, "--manifest")) {
+		printf("manifest: \n%s\n", pv_build_manifest);
+		exit(0);
+	}
+
+	if (is_arg(argc, argv, "--config")) {
+		pos++;
+		if (pos >= argc) {
+			usage(cmd);
+			exit(1);
+		}
+		*config_path = argv[pos];
+		pos++;
+	}
+}
+
 int main(int argc, char *argv[])
 {
+	char *config_path = NULL;
+
 	pv_pid = 0;
 	shell_pid = 0;
 
-	unsigned short args = 0;
-	parse_args(argc, argv, &args);
+	// extecuted as init
+	if (getpid() == 1) {
+		early_mounts();
+		signal(SIGCHLD, signal_handler);
+	}
+
+	// get command argument options
+	parse_options(argc, argv, &config_path);
+
+	// init pv struct
+	pv_init();
+	// init config
+	if (pv_config_init(config_path))
+		exit(1);
+
+	// this might override the configuration
+	parse_commands(argc, argv);
+
+	// in case of appengine configured
+	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
+		printf("App engine init mode not yet implemented\n");
+		exit(1);
+	}
 
 	// executed from shell
 	if (getpid() != 1) {
-		if (is_arg(argc, argv, "--version")) {
-			printf("version: %s\n", pv_build_version);
-			return 0;
-		}
-		if (is_arg(argc, argv, "--manifest")) {
-			printf("manifest: \n%s\n", pv_build_manifest);
-			return 0;
-		}
 		// we are going to use this thread for pv
 		pv_pid = getpid();
 		redirect_io();
-		pv_init();
+		pv_start();
+		pv_stop();
 		return 0;
 	}
 
-	// extecuted as init
-	early_mounts();
-	signal(SIGCHLD, signal_handler);
-
 	// in case of standalone is set, we only start debugging tools up in main thread
-	if ((args & PV_STANDALONE) && (args & PV_DEBUG)) {
-		if (args & PV_DEBUG_SH)
+	if ((pv_config_get_system_init_mode() == IM_STANDALONE) &&
+		pv_config_get_debug_ssh()) {
+		if (pv_config_get_debug_shell())
 			debug_shell();
 		debug_telnet();
 		goto loop;
@@ -357,14 +420,15 @@ int main(int argc, char *argv[])
 		goto loop;
 
 	// these debugging tools will be children of the pv thread, so we can controll them
-	if (args & PV_DEBUG) {
-		if (args & PV_DEBUG_SH)
+	if (pv_config_get_debug_ssh()) {
+		if (pv_config_get_debug_shell())
 			debug_shell();
 		debug_telnet();
 	}
 	redirect_io();
 	early_spawns();
-	pv_init();
+	pv_start();
+	pv_stop();
 
 loop:
 	redirect_io();
@@ -379,7 +443,6 @@ loop:
  * order.
  */
 struct pv_init *pv_init_tbl [] = {
-	&pv_init_config,
 	&pv_init_mount,
 	&pv_init_creds,
 	&ph_init_mount,

@@ -729,9 +729,29 @@ static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 
 int pv_start()
 {
+	char path[PATH_MAX];
 	struct pantavisor *pv = pv_get_instance();
 	if (!pv)
 		return 1;
+
+	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
+	SNPRINTF_WTRUNC(pv_user_agent, sizeof (pv_user_agent), PV_USER_AGENT_FMT,
+			pv_build_arch, pv_build_version, pv_build_date);
+
+	prctl(PR_SET_NAME, "pantavisor");
+
+	struct rlimit core_limit;
+	core_limit.rlim_cur = RLIM_INFINITY;
+	core_limit.rlim_max = RLIM_INFINITY;
+
+	setrlimit(RLIMIT_CORE, &core_limit);
+
+	pv_paths_storage_file(path, PATH_MAX, COREPV_FNAME);
+	int fd = open("/proc/sys/kernel/core_pattern", O_WRONLY | O_SYNC);
+	if (fd < 0)
+		printf("open failed for /proc/sys/kernel/core_pattern: %s", strerror(errno));
+	else
+		write(fd, path, strlen(path));
 
 	pv_state_t state = PV_STATE_INIT;
 
@@ -779,36 +799,11 @@ void pv_stop()
 
 void pv_init()
 {
-	int ret;
 	struct pantavisor *pv;
 
-	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
-	SNPRINTF_WTRUNC(pv_user_agent, sizeof (pv_user_agent), PV_USER_AGENT_FMT,
-			pv_build_arch, pv_build_version, pv_build_date);
-
-	prctl(PR_SET_NAME, "pantavisor");
 	pv = calloc(1, sizeof(struct pantavisor));
 	if (pv)
 		global_pv = pv;
-
-	struct rlimit core_limit;
-	core_limit.rlim_cur = RLIM_INFINITY;
-	core_limit.rlim_max = RLIM_INFINITY;
-
-	setrlimit(RLIMIT_CORE, &core_limit);
-
-	char *core = "/storage/corepv";
-	int fd = open("/proc/sys/kernel/core_pattern", O_WRONLY | O_SYNC);
-	if (fd < 0)
-		printf("open failed for /proc/sys/kernel/core_pattern: %s", strerror(errno));
-	else
-		write(fd, core, strlen(core));
-
-	// Enter state machine
-	ret = pv_start();
-
-	// Clean exit -> reboot
-	exit(ret);
 }
 
 static int pv_pantavisor_init(struct pv_init *this)

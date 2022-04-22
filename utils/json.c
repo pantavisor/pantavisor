@@ -331,7 +331,7 @@ static int pv_json_ser_null(struct pv_json_ser *js)
 
 	ret = jsonb_null(&js->b, js->buf, js->size);
 	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_null(js);
+		pv_json_ser_resize(js);
 		ret = jsonb_null(&js->b, js->buf, js->size);
 	}
 
