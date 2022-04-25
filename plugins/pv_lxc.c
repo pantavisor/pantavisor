@@ -78,6 +78,7 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	void *fn_pv_paths_pv_log_plat,
 	void *fn_pv_paths_pv_log_file,
 	void *fn_pv_paths_pv_usrmeta_key,
+	void *fn_pv_paths_pv_usrmeta_plat_key,
 	void *fn_pv_paths_lib_hook)
 {
 	__pv_paths_pv_file = fn_pv_paths_pv_file;
@@ -85,6 +86,7 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	__pv_paths_pv_log_plat = fn_pv_paths_pv_log_plat;
 	__pv_paths_pv_log_file = fn_pv_paths_pv_log_file;
 	__pv_paths_pv_usrmeta_key = fn_pv_paths_pv_usrmeta_key;
+	__pv_paths_pv_usrmeta_plat_key = fn_pv_paths_pv_usrmeta_plat_key;
 	__pv_paths_lib_hook = fn_pv_paths_lib_hook;
 }
 
