@@ -23,11 +23,11 @@
 #define PV_VOLUMES_H
 
 typedef enum {
+	DISK_UNKNOWN,
 	DISK_DIR,
 	DISK_DM_CRYPT_VERSATILE,
 	DISK_DM_CRYPT_CAAM,
-	DISK_DM_CRYPT_DCP,
-	DISK_UNKNOWN
+	DISK_DM_CRYPT_DCP
 } pv_disk_t;
 
 struct pv_disk {

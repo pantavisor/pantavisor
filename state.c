@@ -1030,7 +1030,7 @@ static char* _pv_state_get_novalidate_list(char *rev)
 	int res;
 	char *cmd = NULL;
 	struct dirent *dp;
-	DIR *volmountdir = opendir("/lib/pv/volmount");
+	DIR *volmountdir = opendir("/lib/pv/volmount/verity");
 
 	// Unable to open directory stream
 	if (!volmountdir)
@@ -1043,7 +1043,7 @@ static char* _pv_state_get_novalidate_list(char *rev)
 			continue;
 
 		pv_paths_storage_trail(rev_path, PATH_MAX, rev);
-		pv_paths_lib_volmount(hdl_path, PATH_MAX, dp->d_name);
+		pv_paths_lib_volmount(hdl_path, PATH_MAX, "verity", dp->d_name);
 		if(stat (hdl_path, &st)) {
 			pv_log(WARN, "illegal handler file %s, error=%s", hdl_path, strerror(errno));
 			goto out;

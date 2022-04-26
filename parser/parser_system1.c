@@ -123,7 +123,7 @@ static int parse_disks(struct pv_state *s, char *value, int n)
 		free(str);
 		str = NULL;
 
-		t = t + (diskc - 2);
+		t = t + (diskc - 4);
 	}
 
 	ret = 0;

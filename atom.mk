@@ -94,8 +94,7 @@ LOCAL_GENERATED_SRC_FILES := version.c
 
 LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
-	scripts/JSON.sh:lib/pv/JSON.sh \
-	scripts/volmount/dm:lib/pv/volmount/dm
+	scripts/JSON.sh:lib/pv/JSON.sh
 
 include $(BUILD_EXECUTABLE)
 
@@ -118,7 +117,7 @@ LOCAL_DESTDIR := ./
 LOCAL_MODULE := init-dm
 LOCAL_LIBRARIES := cryptsetup
 
-LOCAL_COPY_FILES := scripts/volmount/dm:lib/pv/volmount/dm
+LOCAL_COPY_FILES := scripts/volmount/verity/dm:lib/pv/volmount/verity/dm
 
 include $(BUILD_CUSTOM)
 
@@ -126,6 +125,6 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := init-crypt
 LOCAL_LIBRARIES := cryptsetup
-LOCAL_COPY_FILES := scripts/volmount/crypt:lib/pv/volmount/crypt
+LOCAL_COPY_FILES := scripts/volmount/crypt/crypt:lib/pv/volmount/crypt/crypt
 
 include $(BUILD_CUSTOM)

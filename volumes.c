@@ -26,6 +26,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <libgen.h>
 
 #include <sys/utsname.h>
 #include <sys/types.h>
@@ -185,10 +186,17 @@ struct pv_disk* pv_disk_add(struct pv_state *s)
 static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 {
 	struct pv_disk *d = v->disk;
+	char path[PATH_MAX];
 	char *command = NULL;
 	char *crypt_type;
 	int ret;
 	int wstatus;
+
+	pv_paths_storage_mounted_disk_path(path, PATH_MAX, "dmcrypt", d->name);
+	if (!access(path, F_OK)) {
+		pv_log(DEBUG, "disk %s already mounted", path);
+		return 0;
+	}
 
 	switch (d->type) {
 	case DISK_DM_CRYPT_CAAM:
@@ -207,17 +215,16 @@ static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 	}
 
 	command = malloc(sizeof(char) *
-		(strlen("/lib/pv/volmount/crypt %s %s %s %s /volumes/%s/%s %s") +
+		(strlen("/lib/pv/volmount/crypt/crypt %s %s %s %s") +
 		strlen(action) +
 		strlen(crypt_type) +
 		strlen(d->path) +
-		strlen(v->plat->name) +
-		strlen(v->name)) + 1);
+		strlen(path) + 1));
 	if (!command)
 		return -ENOMEM;
 
-	sprintf(command, "/lib/pv/volmount/crypt %s %s %s /volumes/%s/%s",
-			  action, crypt_type, d->path, v->plat->name, v->name);
+	sprintf(command, "/lib/pv/volmount/crypt/crypt %s %s %s %s",
+			  action, crypt_type, d->path, path);
 	pv_log(INFO, "command: %s", command);
 
 	tsh_run(command, 1, &wstatus);
@@ -241,6 +248,7 @@ int pv_volume_mount(struct pv_volume *v)
 	int loop_fd = -1, file_fd = -1;
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_state *s = pv->state;
+	struct pv_disk *d = v->disk;
 	char path[PATH_MAX], mntpoint[PATH_MAX];
 	char *fstype;
 	char *umount_cmd = NULL;
@@ -251,9 +259,15 @@ int pv_volume_mount(struct pv_volume *v)
 	struct stat buf;
 	int wstatus;
 	char *command;
+	char *disk_name = NULL;
 
-	if (v->disk && !v->disk->def)
-		return pv_volume_mount_handler(v, "mount");
+	if (v->disk && !v->disk->def) {
+		ret = pv_volume_mount_handler(v, "mount");
+		if (ret < 0)
+			return ret;
+
+		disk_name = d->name;
+	}
 
 	handlercut = strchr(v->name, ':');
 	if (handlercut) {
@@ -307,18 +321,18 @@ int pv_volume_mount(struct pv_volume *v)
 				 strlen(partname) +
 				 strlen(path) +
 				 strlen(name) +
-				 strlen("/lib/pv/volmount/%s mount %s %s %s") + 1)
+				 strlen("/lib/pv/volmount/verity/%s mount %s %s %s") + 1)
 				);
 			umount_cmd = malloc(sizeof(char) *
 					(strlen(handler) +
 					 strlen(partname) +
 					 strlen(path) +
 					 strlen(name) +
-					 strlen("/lib/pv/volmount/%s umount %s %s %s") + 1)
+					 strlen("/lib/pv/volmount/verity/%s umount %s %s %s") + 1)
 					);
-			sprintf(command, "/lib/pv/volmount/%s mount %s %s %s",
+			sprintf(command, "/lib/pv/volmount/verity/%s mount %s %s %s",
 					handler, path, partname, name);
-			sprintf(umount_cmd, "/lib/pv/volmount/%s umount %s %s %s",
+			sprintf(umount_cmd, "/lib/pv/volmount/verity/%s umount %s %s %s",
 					handler, path, partname, name);
 			tsh_run(command, 1, &wstatus);
 			if (!WIFEXITED(wstatus))
@@ -333,18 +347,38 @@ int pv_volume_mount(struct pv_volume *v)
 		}
 		break;
 	case VOL_PERMANENT:
-		pv_paths_storage_disks_perm_file(path, PATH_MAX, v->plat->name, v->name);
+		if (disk_name)
+			pv_paths_crypt_disks_perm_file(path, PATH_MAX, "dmcrypt", disk_name, v->plat->name, v->name);
+		else
+			pv_paths_storage_disks_perm_file(path, PATH_MAX, v->plat->name, v->name);
 		mkdir_p(path, 0755);
 		mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
 	case VOL_REVISION:
-		pv_paths_storage_disks_rev_file(path, PATH_MAX, s->rev, v->plat->name, v->name);
+		if (disk_name)
+			pv_paths_crypt_disks_rev_file(path, PATH_MAX, "dmcrypt", disk_name, s->rev, v->plat->name, v->name);
+		else
+			pv_paths_storage_disks_rev_file(path, PATH_MAX, s->rev, v->plat->name, v->name);
 		mkdir_p(path, 0755);
 		mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
 	case VOL_BOOT:
+		if (disk_name) {
+			char *base_path = NULL;
+
+			pv_paths_crypt_disks_boot_file(path, PATH_MAX, "dmcrypt", disk_name, v->plat->name, v->name);
+			base_path = strdup(path);
+			remove_in(dirname(base_path), v->name);
+			free(base_path);
+
+			mkdir_p(path, 0755);
+			mkdir_p(mntpoint, 0755);
+			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
+			break;
+		}
+
 		mkdir_p(mntpoint, 0755);
 		ret = mount("none", mntpoint, "tmpfs", 0, NULL);
 		break;
