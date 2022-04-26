@@ -357,6 +357,8 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 
 		if (pt) {
 			struct pv_volume *v = pv_volume_add_with_disk(s, key, disk);
+			v->uid = pv_json_get_value(value, "uid", tokv_t, tokc);
+			v->gid = pv_json_get_value(value, "gid", tokv_t, tokc);
 			v->plat = p;
 			if (!strcmp(pt, "permanent"))
 				v->type = VOL_PERMANENT;

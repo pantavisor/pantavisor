@@ -49,7 +49,7 @@ do_mount_squash() {
 	hdev=`cat $dmmanifest | $JSON_sh -l |  grep hash_device | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
 	rhash=`cat $dmmanifest | $JSON_sh -l | grep root_hash | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
 
-	if ! veritysetup create $dmname $traildir/$ddev $traildir/$hdev $rhash; then
+	if ! veritysetup create --check-at-most-once $dmname $traildir/$ddev $traildir/$hdev $rhash; then
 		echo "ERROR: could not setup dm volume with veritysetup"
 		return 2
 	fi

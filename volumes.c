@@ -260,6 +260,7 @@ int pv_volume_mount(struct pv_volume *v)
 	int wstatus;
 	char *command;
 	char *disk_name = NULL;
+	uid_t uid, gid;
 
 	if (v->disk && !v->disk->def) {
 		ret = pv_volume_mount_handler(v, "mount");
@@ -299,6 +300,13 @@ int pv_volume_mount(struct pv_volume *v)
 	}
 
 	pv_log(DEBUG, "mounting '%s' from platform '%s'", v->name, partname);
+
+	uid = v->uid ? strtol(v->uid, NULL, 10) : 0;
+	gid = v->gid ? strtol(v->gid, NULL, 10) : 0;
+	pv_log(INFO, "mounting storage with uid %d and gid %d", uid, gid);
+	pv_log(INFO, "mounting storage with uid's %s and gid's %s",
+		v->uid ? v->uid : "NULL",
+		v->gid ? v->gid : "NULL");
 
 	switch (v->type) {
 	case VOL_LOOPIMG:
@@ -352,6 +360,21 @@ int pv_volume_mount(struct pv_volume *v)
 		else
 			pv_paths_storage_disks_perm_file(path, PATH_MAX, v->plat->name, v->name);
 		mkdir_p(path, 0755);
+		if((ret = chown(path, uid, gid)))
+			break;
+		if (!strcmp("lxc-overlay", v->name)) {
+			char p[PATH_MAX];
+
+			snprintf(p, PATH_MAX, "%s/%s", path, "olwork");
+			mkdir_p(p, 0755);
+			if((ret = chown(p, uid, gid)))
+				break;
+
+			snprintf(p, PATH_MAX, "%s/%s", path, "upper");
+			mkdir_p(p, 0755);
+			if((ret = chown(p, uid, gid)))
+				break;
+		}
 		mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
@@ -361,6 +384,21 @@ int pv_volume_mount(struct pv_volume *v)
 		else
 			pv_paths_storage_disks_rev_file(path, PATH_MAX, s->rev, v->plat->name, v->name);
 		mkdir_p(path, 0755);
+		if((ret = chown(path, uid, gid)))
+			break;
+		if (!strcmp("lxc-overlay", v->name)) {
+			char p[PATH_MAX];
+
+			snprintf(p, PATH_MAX, "%s/%s", path, "olwork");
+			mkdir_p(p, 0755);
+			if((ret = chown(p, uid, gid)))
+				break;
+
+			snprintf(p, PATH_MAX, "%s/%s", path, "upper");
+			mkdir_p(p, 0755);
+			if((ret = chown(p, uid, gid)))
+				break;
+		}
 		mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
@@ -380,7 +418,22 @@ int pv_volume_mount(struct pv_volume *v)
 		}
 
 		mkdir_p(mntpoint, 0755);
-		ret = mount("none", mntpoint, "tmpfs", 0, NULL);
+		char opt[256];
+		sprintf(opt, "uid=%d,gid=%d", uid, gid);
+		ret = mount("none", mntpoint, "tmpfs", 0, opt);
+		if (!strcmp("lxc-overlay", v->name)) {
+			char p[PATH_MAX];
+
+			snprintf(p, PATH_MAX, "%s/%s", mntpoint, "olwork");
+			mkdir_p(p, 0755);
+			if((ret = chown(p, uid, gid)))
+				break;
+
+			snprintf(p, PATH_MAX, "%s/%s", mntpoint, "upper");
+			mkdir_p(p, 0755);
+			if((ret = chown(p, uid, gid)))
+				break;
+		}
 		break;
 	default:
 		pv_log(WARN, "unknown volume type %d", v->type);

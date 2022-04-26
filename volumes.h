@@ -60,6 +60,7 @@ struct pv_volume {
 	struct pv_platform *plat;
 	struct dl_list list; // pv_volume
 	struct pv_disk *disk;
+	char *uid, *gid;
 };
 
 void pv_volume_free(struct pv_volume *v);
