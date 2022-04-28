@@ -138,10 +138,10 @@ static log_consumer_bm_t config_get_value_log_consumers(struct dl_list *config_l
 	for (token = strtok_r(item, ",", &tmp);
 			token;
 			token = strtok_r(NULL, ",", &tmp)) {
-		printf("token %s\n", token);
-		for (int i = 0; i < LOG_CONSUMER_BITMASK_LOG2_SIZE; ++i) {
+		for (int i = 0; i < LOG_CONSUMER_BITMASK_LOG2_SIZE; i++) {
 			if (!strcmp(pv_config_log_consumer_log2_str(i), token)) {
 				consumers |= (1 << i);
+				break;
 			}
 		}
 	}
@@ -250,8 +250,10 @@ static void config_override_value_log_consumers(struct dl_list *config_list, cha
 
 	if (item) {
 		*out = 0;
-		while ((token = strtok_r(item, ",", &tmp))) {
-			for (int i = 0; i < LOG_CONSUMER_BITMASK_LOG2_SIZE; ++i) {
+		for (token = strtok_r(item, ",", &tmp);
+				token;
+				token = strtok_r(NULL, ",", &tmp)) {
+			for (int i = 0; i < LOG_CONSUMER_BITMASK_LOG2_SIZE; i++) {
 				if (!strcmp(pv_config_log_consumer_log2_str(i), token))
 					*out |= (1 << i);
 			}
