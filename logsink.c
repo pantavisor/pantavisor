@@ -506,7 +506,7 @@ void pv_logsink_toggle(struct pantavisor *pv, const char *rev)
 	if (!pv)
 		return;
 
-	if (pv_config_get_log_capture() && pv_config_get_log_loggers()) {
+	if (pv_config_get_log_capture()) {
 		logsink_start(&logsink_g, rev);
 	} else
 		logsink_stop();
