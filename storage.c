@@ -717,9 +717,9 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 {
 	char path[PATH_MAX];
 
-	pv_log(DEBUG, "saving done file for rev %s: %s", rev);
-
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, DONE_FNAME);
+
+	pv_log(DEBUG, "saving done file for rev %s in %s", rev, path);
 	if (pv_file_save(path, "", 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }
@@ -728,9 +728,9 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 {
 	char path[PATH_MAX];
 
-	pv_log(DEBUG, "saving progress file for rev %s: %s", rev, progress);
-
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, PROGRESS_FNAME);
+
+	pv_log(DEBUG, "saving progress file for rev %s in %s: %s", rev, path, progress);
 	if (pv_file_save(path, progress, 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }

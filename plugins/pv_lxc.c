@@ -202,7 +202,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	struct utsname uts;
 	struct stat st;
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
-	char path[PATH_MAX], entry[PATH_MAX];
+	char path[PATH_MAX], entry[PATH_MAX*2];
 	char log_level[32];
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);

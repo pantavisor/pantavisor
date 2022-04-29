@@ -58,7 +58,7 @@
 #include "signature.h"
 #include "paths.h"
 #include "ph_logger.h"
-#include "logsink.h"
+#include "logserver.h"
 #include "parser/parser.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
@@ -197,7 +197,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// for non-reboot updates...
 		pv_log(INFO, "transitioning...");
 
-		pv_logsink_stop();
+		pv_logserver_stop();
 		ph_logger_stop(pv);
 
 		pv_log_start(pv, pv->update->pending->rev);
@@ -252,9 +252,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(INFO, "running in local mode. Will not consume new updates from Pantahub");
 
 	// only start local ph logger, start cloud services if connected
-	pv_logsink_toggle(pv, pv->state->rev);
-	if (LOG_CONSUMER_FILE_TREE & pv_config_get_log_consumers())
-		ph_logger_toggle(pv, pv->state->rev);
+	pv_logserver_toggle(pv, pv->state->rev);
+	ph_logger_toggle(pv, pv->state->rev);
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_metadata_init_devmeta(pv);
@@ -418,9 +417,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 
 	// start or stop ph logger depending on network and configuration
-	pv_logsink_toggle(pv, pv->state->rev);
-	if (LOG_CONSUMER_FILE_TREE & pv_config_get_log_consumers())
-		ph_logger_toggle(pv, pv->state->rev);
+	pv_logserver_toggle(pv, pv->state->rev);
+	ph_logger_toggle(pv, pv->state->rev);
 
 	// update meta info
 	if (!pv_metadata_factory_meta_done(pv)) {

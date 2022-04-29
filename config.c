@@ -49,27 +49,6 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-const char * const log_consumer_bm_log2_str[LOG_CONSUMER_BITMASK_LOG2_SIZE] = {
-	[LOG_CONSUMER_SINGLE_FILE_LOG2] = "singlefile",
-	[LOG_CONSUMER_FILE_TREE_LOG2] = "filetree",
-};
-
-const char * const log_protocol_str[LOG_PROTOCOL_SIZE] = {
-	[LOG_PROTOCOL_LEGACY] = "legacy"
-};
-
-const char * pv_config_log_consumer_log2_str(log_consumer_bm_log2_t consumer) {
-	if (consumer >= 0 && consumer < (log_consumer_bm_log2_t) LOG_CONSUMER_BITMASK_LOG2_SIZE)
-		return log_consumer_bm_log2_str[consumer];
-	return NULL;
-}
-
-const char *pv_config_log_protocol_str(log_protocol_t protocol) {
-	if (protocol >= 0 && protocol < (log_protocol_t) LOG_PROTOCOL_SIZE)
-		return log_protocol_str[protocol];
-	return NULL;
-}
-
 static char* config_get_value_string(struct dl_list *config_list, char *key, char* default_value)
 {
 	char *item = config_get_value(config_list, key);
@@ -127,43 +106,33 @@ static int config_get_value_bl_type(struct dl_list *config_list, char *key, int 
 	return value;
 }
 
-static log_consumer_bm_t config_get_value_log_consumers(struct dl_list *config_list, char *key, log_consumer_bm_t default_value)
+static int config_parse_log_server_outputs(char *value)
 {
-	char *token, *tmp, *item = config_get_value(config_list, key);
-	log_consumer_bm_t consumers = 0;
+	char *token, *tmp;
+	int server_outputs = 0;
 
-	if (!item)
-		return default_value;
-
-	for (token = strtok_r(item, ",", &tmp);
-			token;
-			token = strtok_r(NULL, ",", &tmp)) {
-		for (int i = 0; i < LOG_CONSUMER_BITMASK_LOG2_SIZE; i++) {
-			if (!strcmp(pv_config_log_consumer_log2_str(i), token)) {
-				consumers |= (1 << i);
-				break;
-			}
-		}
+	for (token = strtok_r(value, ",", &tmp); token; token = strtok_r(NULL, ",", &tmp)) {
+		if (!strcmp(value, "singlefile"))
+			server_outputs |= LOG_SERVER_OUTPUT_SINGLE_FILE;
+		else if (!strcmp(value, "filetree"))
+			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
 	}
 
-	return consumers;
+	return server_outputs;
 }
 
-static log_protocol_t config_get_value_log_protocol(struct dl_list *config_list, char *key, log_protocol_t default_value)
+static int config_get_value_log_server_outputs(struct dl_list *config_list, char *key, int default_value)
 {
 	char *item = config_get_value(config_list, key);
+	int server_outputs = 0;
 
 	if (!item)
 		return default_value;
 
-	for (int i = 0; i < LOG_PROTOCOL_SIZE; ++i) {
-		if (!strcmp(item, pv_config_log_protocol_str(i)))
-			return i;
-	}
+	server_outputs = config_parse_log_server_outputs(item);
 
-	return default_value;
+	return server_outputs;
 }
-
 
 static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key, secureboot_mode_t default_value)
 {
@@ -232,32 +201,13 @@ static void config_override_value_logsize(struct dl_list *config_list, char *key
 		*out = atoi(item) * 1024;
 }
 
-static void config_override_value_log_protocol(struct dl_list *config_list, char *key, log_protocol_t *out)
+static void config_override_value_log_server_outputs(struct dl_list *config_list, char *key, int *out)
 {
 	char *item = config_get_value(config_list, key);
 
 	if (item) {
-		for (int i = 0; i < LOG_PROTOCOL_SIZE; ++i) {
-			if (!strcmp(pv_config_log_protocol_str(i), item))
-				*out = i;
-		}
-	}
-}
-
-static void config_override_value_log_consumers(struct dl_list *config_list, char *key, log_consumer_bm_t *out)
-{
-	char *token, *tmp, *item = config_get_value(config_list, key);
-
-	if (item) {
 		*out = 0;
-		for (token = strtok_r(item, ",", &tmp);
-				token;
-				token = strtok_r(NULL, ",", &tmp)) {
-			for (int i = 0; i < LOG_CONSUMER_BITMASK_LOG2_SIZE; i++) {
-				if (!strcmp(pv_config_log_consumer_log2_str(i), token))
-					*out |= (1 << i);
-			}
-		}
+		*out = config_parse_log_server_outputs(item);
 	}
 }
 
@@ -308,8 +258,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
 
 	config->secureboot.mode = config_get_value_sb_mode_type(&config_list, "secureboot.mode", SB_LENIENT);
-	config->log.consumers = config_get_value_log_consumers(&config_list, "log.consumers", LOG_CONSUMER_FILE_TREE);
-	config->log.useprotocol = config_get_value_log_protocol(&config_list, "log.useprotocol", LOG_PROTOCOL_LEGACY);
+	config->log.server.outputs = config_get_value_log_server_outputs(&config_list, "log.server.outputs", LOG_SERVER_OUTPUT_FILE_TREE);
 
 	config_clear_items(&config_list);
 
@@ -393,8 +342,7 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
 	config_override_value_bool(&config_list, "log.loggers", &config->log.loggers);
 	config_override_value_bool(&config_list, "log.stdout", &config->log.std_out);
-	config_override_value_log_consumers(&config_list, "log.consumers", &config->log.consumers);
-	config_override_value_log_protocol(&config_list, "log.useprotocol", &config->log.useprotocol);
+	config_override_value_log_server_outputs(&config_list, "log.server.outputs", &config->log.server.outputs);
 
 	config_override_value_int(&config_list, "libthttp.log.level", &config->libthttp.loglevel);
 
@@ -654,8 +602,11 @@ bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
 bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
 bool pv_config_get_log_loggers() { return pv_get_instance()->config.log.loggers; }
 bool pv_config_get_log_stdout() { return pv_get_instance()->config.log.std_out; }
-log_consumer_bm_t pv_config_get_log_consumers() { return pv_get_instance()->config.log.consumers; }
-log_protocol_t pv_config_get_log_useprotocol() { return pv_get_instance()->config.log.useprotocol; }
+int pv_config_get_log_server_outputs() { return pv_get_instance()->config.log.server.outputs; }
+bool pv_config_get_log_server_output_file_tree() { return pv_get_instance()->config.log.server.outputs &
+	LOG_SERVER_OUTPUT_FILE_TREE; }
+bool pv_config_get_log_server_output_single_file() { return pv_get_instance()->config.log.server.outputs &
+	LOG_SERVER_OUTPUT_SINGLE_FILE; }
 int pv_config_get_libthttp_loglevel() { return pv_get_instance()->config.libthttp.loglevel; }
 
 int pv_config_get_lxc_loglevel()  { return pv_get_instance()->config.lxc.log_level; }
@@ -777,6 +728,8 @@ char* pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_log_loggers());
 		pv_json_ser_key(&js, "log.stdout");
 		pv_json_ser_bool(&js, pv_config_get_log_stdout());
+		pv_json_ser_key(&js, "log.server.outputs");
+		pv_json_ser_int(&js, pv_config_get_log_server_outputs());
 		pv_json_ser_key(&js, "libthttp.log.level");
 		pv_json_ser_int(&js, pv_config_get_libthttp_loglevel());
 

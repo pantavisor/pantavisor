@@ -107,23 +107,14 @@ struct pantavisor_network {
 };
 
 typedef enum {
-	LOG_CONSUMER_SINGLE_FILE_LOG2 = 0,
-	LOG_CONSUMER_FILE_TREE_LOG2,
-	LOG_CONSUMER_BITMASK_LOG2_SIZE
-} log_consumer_bm_log2_t;
+	LOG_SERVER_OUTPUT_SINGLE_FILE = 1 << 0,
+	LOG_SERVER_OUTPUT_FILE_TREE = 1 << 1,
+	LOG_SERVER_OUTPUT_SIZE
+} log_server_output_mask_t;
 
-typedef enum {
-	LOG_CONSUMER_NONE = 0,
-	LOG_CONSUMER_SINGLE_FILE = 1 << LOG_CONSUMER_FILE_TREE_LOG2,
-	LOG_CONSUMER_FILE_TREE = 1 << LOG_CONSUMER_FILE_TREE_LOG2,
-	LOG_CONSUMER_BITMASK_SIZE = 1 << LOG_CONSUMER_BITMASK_LOG2_SIZE
-} log_consumer_bm_t;
-
-typedef enum {
-	LOG_PROTOCOL_LEGACY,
-	LOG_PROTOCOL_HTTP,
-	LOG_PROTOCOL_SIZE
-} log_protocol_t;
+struct pantavisor_log_server {
+	int outputs;
+};
 
 struct pantavisor_log {
 	char *logdir;
@@ -134,8 +125,7 @@ struct pantavisor_log {
 	bool capture;
 	bool loggers;
 	bool std_out;
-	log_consumer_bm_t consumers;
-	log_protocol_t useprotocol;
+	struct pantavisor_log_server server;
 };
 
 struct pantavisor_lxc {
@@ -247,12 +237,11 @@ bool pv_config_get_log_push(void);
 bool pv_config_get_log_capture(void);
 bool pv_config_get_log_loggers(void);
 bool pv_config_get_log_stdout(void);
-log_consumer_bm_t pv_config_get_log_consumers(void);
-log_protocol_t pv_config_get_log_useprotocol(void);
 int pv_config_get_libthttp_loglevel(void);
 
-const char * pv_config_log_consumer_log2_str(log_consumer_bm_log2_t consumer);
-const char *pv_config_log_protocol_str(log_protocol_t protocol);
+int pv_config_get_log_server_outputs(void);
+bool pv_config_get_log_server_output_file_tree(void);
+bool pv_config_get_log_server_output_single_file(void);
 
 int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);

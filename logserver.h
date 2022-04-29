@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef LOGSINK_H
-#define LOGSINK_H
+#ifndef LOGSERVER_H
+#define LOGSERVER_H
 
 #include <sys/types.h>
 #include <unistd.h>
@@ -29,14 +29,14 @@
 
 #define PV_PLATFORM_STR "pantavisor"
 
-void pv_logsink_toggle(struct pantavisor *pv, const char *rev);
+void pv_logserver_toggle(struct pantavisor *pv, const char *rev);
 
-int pv_logsink_init(void);
+int pv_logserver_init(void);
 
-int pv_logsink_send_log(bool is_platform, char *platform, char *src, int level, const char *msg, ...);
+int pv_logserver_send_log(bool is_platform, char *platform, char *src, int level, const char *msg, ...);
 
-int pv_logsink_send_vlog(bool is_platform, char *platform, char *src, int level, const char *msg, va_list args);
+int pv_logserver_send_vlog(bool is_platform, char *platform, char *src, int level, const char *msg, va_list args);
 
-void pv_logsink_stop(void);
+void pv_logserver_stop(void);
 
-#endif /* LOGSINK_H */
+#endif /* LOGSERVER_H */

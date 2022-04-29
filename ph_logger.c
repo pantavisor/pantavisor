@@ -747,6 +747,7 @@ void ph_logger_toggle(struct pantavisor *pv, char *rev)
 		return;
 
 	if (pv_config_get_log_push() &&
+		pv_config_get_log_server_output_file_tree() &&
 		pv_get_instance()->remote_mode)
 		ph_logger_start_cloud(pv, rev);
 	else

@@ -286,7 +286,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 {
 	int obj_fd, read_length, write_length, ret = -1;
 	char req[HTTP_REQ_BUFFER_SIZE];
-	off_t free_space = pv_storage_get_free();
+	size_t free_space = pv_storage_get_free();
 
 	if (content_length > free_space) {
 		pv_log(WARN, "%"PRIu64" B needed but only %"PRIu64" B available. Cannot create file",
