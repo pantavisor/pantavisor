@@ -55,7 +55,6 @@ int pv_log_start(struct pantavisor *pv, const char *rev);
 void __log(char *module, int level, const char *fmt, ...);
 
 void __log_to_console(char *module, int level, const char *fmt, ...);
-void __vlog_to_console(char *module, int level, const char *fmt, va_list args);
 
 /*
  * Don't free the return value!

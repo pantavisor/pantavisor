@@ -3,7 +3,9 @@
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell * copies of the Software, and to permit persons to whom the Software is
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
  *
  * The above copyright notice and this permission notice shall be included in all
@@ -746,6 +748,7 @@ void ph_logger_toggle(struct pantavisor *pv, char *rev)
 		return;
 
 	if (pv_config_get_log_push() &&
+		pv_config_get_log_server_output_file_tree() &&
 		pv_get_instance()->remote_mode)
 		ph_logger_start_cloud(pv, rev);
 	else
@@ -758,16 +761,4 @@ void ph_logger_stop(struct pantavisor *pv)
 		return;
 
 	ph_logger_stop_cloud(pv);
-}
-
-void ph_logger_close(void)
-{
-	char path[PATH_MAX];
-
-    if (ph_logger.sock_fd >= 0) {
-		pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-		pv_log(DEBUG, "closing %s with fd %d", path, ph_logger.sock_fd);
-		close(ph_logger.sock_fd);
-		unlink(path);
-    }
 }

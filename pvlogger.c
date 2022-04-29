@@ -40,7 +40,7 @@
 #include "utils/str.h"
 #include "utils/math.h"
 #include "paths.h"
-#include "logsink.h"
+#include "logserver.h"
 
 #define MODULE_NAME             "pvlogger"
 #include "log.h"
@@ -74,17 +74,15 @@ static void pv_log(int level, char *msg, ...)
 	to_write = strlen(__formatted) + 1;
 
 	while(to_write > 0) {
-		written = pv_logsink_send_log(!pv_log_info->islxc,
+		written = pv_logserver_send_log(true,
 				pv_log_info->platform->name,
 				(char *) pv_logger_get_logfile(pv_log_info),
 				level,
 				"%s",
 				__formatted);
 
-		if (written <= 0) {
-			printf("Error in pv_logsink_send_log "
-					"%d from pvlogger\n", written);
-		}
+		if (written <= 0)
+			pv_log(ERROR, "error in pv_logserver_send_log %d from pvlogger", written);
 
 		offset += written;
 		to_write -= written;
@@ -287,7 +285,7 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	}
 
 init_again:
-	pv_log(INFO, "pvlogger %s has been setup.", module_name);
+	pv_log(INFO, "pvlogger %s has been setup", module_name);
 	ret = log_init(&default_log, pv_logger_get_logfile(pv_log_info));
 	while (ret != LOG_OK) {
 		ret = wait_for_logfile(pv_logger_get_logfile(pv_log_info));

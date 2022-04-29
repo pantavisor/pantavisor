@@ -51,7 +51,7 @@
 #include "ph_logger.h"
 #include "buffer.h"
 #include "paths.h"
-#include "logsink.h"
+#include "logserver.h"
 
 #define MODULE_NAME		"log"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -76,10 +76,9 @@ static pid_t log_init_pid = -1;
 static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
 
-static int logging_initialized = 0;
 static int logging_stdout = 0;
 
-void __vlog_to_console(char *module, int level, const char *fmt, va_list args)
+static void __vlog_to_console(char *module, int level, const char *fmt, va_list args)
 {
 	char time_buf[MAX_DEC_STRING_SIZE_OF_TYPE (unsigned long long)];
 	epochsecstring(time_buf, sizeof (time_buf), time(NULL));
@@ -115,7 +114,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
 	int ret;
 
-	if (0 > pv_logsink_send_vlog(false, PV_PLATFORM_STR, module, level, fmt, args))
+	if (0 > pv_logserver_send_vlog(false, PV_PLATFORM_STR, module, level, fmt, args))
 		ret = -1;
 	else
 		ret = 0;
@@ -153,13 +152,11 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 
 	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize());
 
-	if (pv_logsink_init()) {
-		pv_log(ERROR, "pv logsink initialization failed!");
+	if (pv_logserver_init()) {
+		pv_log(ERROR, "logserver initialization failed");
 	}
 
-	logging_initialized = 1;
-
-	pv_log(DEBUG, "Initialized pantavisor logs...");
+	pv_log(DEBUG, "initialized pantavisor logs...");
 
 	// enable libthttp debug logs
 	thttp_set_log_func(log_libthttp);
@@ -261,8 +258,7 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "log.loglevel = '%d'", pv_config_get_log_loglevel());
 	pv_log(INFO, "log.logsize = '%d'", pv_config_get_log_logsize());
 	pv_log(INFO, "lxc.log.level = '%d'", pv_config_get_lxc_loglevel());
-	pv_log(INFO, "log.consumers = '%d'", pv_config_get_log_consumers());
-	pv_log(INFO, "log.useprotocol = '%d'", pv_config_get_log_useprotocol());
+	pv_log(INFO, "log.server.outputs = '%d'", pv_config_get_log_server_outputs());
 	pv_log(INFO, "libthttp.loglevel = '%d'", pv_config_get_libthttp_loglevel());
 	pv_bootloader_print();
 

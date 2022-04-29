@@ -48,4 +48,5 @@ do {\
 
 void ph_logger_toggle(struct pantavisor *pv, char *rev);
 void ph_logger_stop(struct pantavisor *pv);
+
 #endif /* __PH_LOGGER_H__ */

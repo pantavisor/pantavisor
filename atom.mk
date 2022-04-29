@@ -44,7 +44,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/utils/
 LOCAL_SRC_FILES := init.c \
 			loop.c \
 			log.c \
-			logsink.c \
+			logserver.c \
 			config_parser.c \
 			config.c \
 			pantavisor.c \
