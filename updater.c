@@ -423,7 +423,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN, "HTTP request PUT %s returned error (code=%d; body='%s')", update->endpoint, res->code, res->body);
 	} else {
-		pv_log(INFO, "remote state updated to %s", res->body);
+		pv_log(DEBUG, "remote state updated to %s", res->body);
 		ret = 0;
 	}
 
