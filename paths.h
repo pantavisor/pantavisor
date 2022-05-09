@@ -54,6 +54,9 @@ void pv_paths_storage_log(char *buf, size_t size);
 void pv_paths_storage_meta(char *buf, size_t size);
 void pv_paths_storage_dropbear(char *buf, size_t size);
 
+#define COREPV_FNAME "corepv"
+
+void pv_paths_storage_file(char *buf, size_t size, const char *name);
 void pv_paths_storage_object(char *buf, size_t size, const char *sha);
 
 #define DONE_FNAME      "done"
@@ -97,12 +100,13 @@ void pv_paths_lib_plugin(char *buf, size_t size, const char *name);
 void pv_paths_lib_modules(char *buf, size_t size, const char *release);
 void pv_paths_lib_volmount(char *buf, size_t size, const char *type, const char *name);
 void pv_paths_lib_hook(char *buf, size_t size, const char *name);
-
-void pv_paths_etc_pantavisor(char *buf, size_t size);
+void pv_paths_lib_hooks_early_spawn(char *buf, size_t size, const char *name);
 
 void pv_paths_root_file(char *buf, size_t size, const char *path);
 void pv_paths_volumes_file(char *buf, size_t size, const char *name);
 void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat, const char *name);
+
+#define PV_PANTAVISOR_CONFIG_PATH "/etc/pantavisor.config"
 
 #define DROPBEAR_DNAME "dropbear"
 #define PVS_DNAME      "pantavisor/pvs"

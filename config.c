@@ -88,6 +88,24 @@ static bool config_get_value_bool(struct dl_list *config_list, char *key, bool d
 	return value;
 }
 
+static int config_get_value_init_mode(struct dl_list *config_list, char *key, init_mode_t default_value)
+{
+	char *item = config_get_value(config_list, key);
+	init_mode_t value = default_value;
+
+	if (!item)
+		return value;
+
+	if (!strcmp(item, "embedded"))
+		value = IM_EMBEDDED;
+	else if (!strcmp(item, "standalone"))
+		value = IM_STANDALONE;
+	else if (!strcmp(item, "appengine"))
+		value = IM_APPENGINE;
+
+	return value;
+}
+
 static int config_get_value_bl_type(struct dl_list *config_list, char *key, int default_value)
 {
 	char *item = config_get_value(config_list, key);
@@ -183,6 +201,16 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	// for overrides
 	config_parse_cmdline(&config_list, "pv_");
 
+	config->sys.init_mode = config_get_value_init_mode(&config_list, "system.init.mode", IM_EMBEDDED);
+	config->sys.libdir = config_get_value_string(&config_list, "system.libdir", "/lib");
+	config->sys.etcdir = config_get_value_string(&config_list, "system.etcdir", "/etc");
+	config->sys.rundir = config_get_value_string(&config_list, "system.rundir", "/pv");
+	config->sys.mediadir = config_get_value_string(&config_list, "system.mediadir", "/media");
+	config->sys.confdir = config_get_value_string(&config_list, "system.confdir", "/configs");
+
+	config->debug.shell = config_get_value_bool(&config_list, "debug.shell", true);
+	config->debug.ssh = config_get_value_bool(&config_list, "debug.ssh", true);
+
 	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
 	config->cache.metacachedir = config_get_value_string(&config_list, "meta.cache.dir", "/storage/cache/meta");
 
@@ -203,6 +231,8 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->storage.gc.threshold = config_get_value_int(&config_list, "storage.gc.threshold", 0);
 	config->storage.gc.threshold_defertime = config_get_value_int(&config_list, "storage.gc.threshold.defertime", 600);
 
+	config->disk.voldir = config_get_value_string(&config_list, "disk.voldir" , "/volumes");
+
 	config->net.brdev = config_get_value_string(&config_list, "net.brdev", "lxcbr0");
 	config->net.braddress4 = config_get_value_string(&config_list, "net.braddress4", "10.0.3.1");
 	config->net.brmask4 = config_get_value_string(&config_list, "net.brmask4", "255.255.255.0");
@@ -220,6 +250,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
 
 	config->secureboot.mode = config_get_value_sb_mode_type(&config_list, "secureboot.mode", SB_LENIENT);
+	config->secureboot.certdir = config_get_value_string(&config_list, "secureboot.certdir", "/certs");
 
 	config_clear_items(&config_list);
 
@@ -499,9 +530,24 @@ void pv_config_free()
 		free(pv->config.factory.autotok);
 }
 
+void pv_config_set_system_init_mode(init_mode_t mode) { pv_get_instance()->config.sys.init_mode = mode; }
+
+void pv_config_set_debug_shell(bool shell) { pv_get_instance()->config.debug.shell = shell; }
+void pv_config_set_debug_ssh(bool ssh) { pv_get_instance()->config.debug.ssh = ssh; }
+
 inline void pv_config_set_creds_id(char *id) { pv_get_instance()->config.creds.id = id; }
 inline void pv_config_set_creds_prn(char *prn) { pv_get_instance()->config.creds.prn = prn; }
 inline void pv_config_set_creds_secret(char *secret) { pv_get_instance()->config.creds.secret = secret; }
+
+init_mode_t pv_config_get_system_init_mode() { return pv_get_instance()->config.sys.init_mode; }
+char* pv_config_get_system_libdir() { return pv_get_instance()->config.sys.libdir; }
+char* pv_config_get_system_etcdir() { return pv_get_instance()->config.sys.etcdir; }
+char* pv_config_get_system_rundir() { return pv_get_instance()->config.sys.rundir; }
+char* pv_config_get_system_mediadir() { return pv_get_instance()->config.sys.mediadir; }
+char* pv_config_get_system_confdir() { return pv_get_instance()->config.sys.confdir; }
+
+bool pv_config_get_debug_shell() { return pv_get_instance()->config.debug.shell; }
+bool pv_config_get_debug_ssh() { return pv_get_instance()->config.debug.ssh; }
 
 char* pv_config_get_cache_metacachedir() { return pv_get_instance()->config.cache.metacachedir; }
 char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.cache.dropbearcachedir; }
@@ -534,6 +580,8 @@ int pv_config_get_storage_gc_reserved() { return pv_get_instance()->config.stora
 bool pv_config_get_storage_gc_keep_factory() { return pv_get_instance()->config.storage.gc.keep_factory; }
 int pv_config_get_storage_gc_threshold() { return pv_get_instance()->config.storage.gc.threshold; }
 int pv_config_get_storage_gc_threshold_defertime() { return pv_get_instance()->config.storage.gc.threshold_defertime; }
+
+char* pv_config_get_disk_voldir() { return pv_get_instance()->config.disk.voldir; }
 
 int pv_config_get_updater_interval() { return pv_get_instance()->config.updater.interval; }
 int pv_config_get_updater_conditions_timeout() { return pv_get_instance()->config.updater.conditions_timeout; }
@@ -569,6 +617,7 @@ int pv_config_get_lxc_loglevel()  { return pv_get_instance()->config.lxc.log_lev
 bool pv_config_get_control_remote() { return pv_get_instance()->config.control.remote; }
 
 secureboot_mode_t pv_config_get_secureboot_mode() { return pv_get_instance()->config.secureboot.mode; }
+char* pv_config_get_secureboot_certdir() { return pv_get_instance()->config.secureboot.certdir; }
 
 char* pv_config_get_json()
 {
@@ -578,6 +627,22 @@ char* pv_config_get_json()
 
 	pv_json_ser_object(&js);
 	{
+		pv_json_ser_key(&js, "system.init.mode");
+		pv_json_ser_int(&js, pv_config_get_system_init_mode());
+		pv_json_ser_key(&js, "system.libdir");
+		pv_json_ser_string(&js, pv_config_get_system_libdir());
+		pv_json_ser_key(&js, "system.etcdir");
+		pv_json_ser_string(&js, pv_config_get_system_etcdir());
+		pv_json_ser_key(&js, "system.rundir");
+		pv_json_ser_string(&js, pv_config_get_system_rundir());
+		pv_json_ser_key(&js, "system.mediadir");
+		pv_json_ser_string(&js, pv_config_get_system_mediadir());
+		pv_json_ser_key(&js, "system.confdir");
+		pv_json_ser_string(&js, pv_config_get_system_confdir());
+		pv_json_ser_key(&js, "debug.shell");
+		pv_json_ser_bool(&js, pv_config_get_debug_shell());
+		pv_json_ser_key(&js, "debug.ssh");
+		pv_json_ser_bool(&js, pv_config_get_debug_ssh());
 		pv_json_ser_key(&js, "dropbear.cache.dir");
 		pv_json_ser_string(&js, pv_config_get_cache_dropbearcachedir());
 		pv_json_ser_key(&js, "meta.cache.dir");
@@ -590,6 +655,8 @@ char* pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_bl_mtd_path());
 		pv_json_ser_key(&js, "secureboot.mode");
 		pv_json_ser_int(&js, pv_config_get_secureboot_mode());
+		pv_json_ser_key(&js, "secureboot.certdir");
+		pv_json_ser_string(&js, pv_config_get_secureboot_certdir());
 		pv_json_ser_key(&js, "storage.device");
 		pv_json_ser_string(&js, pv_config_get_storage_path());
 		pv_json_ser_key(&js, "storage.fstype");
@@ -612,6 +679,8 @@ char* pv_config_get_json()
 		pv_json_ser_int(&js, pv_config_get_storage_gc_threshold());
 		pv_json_ser_key(&js, "storage.gc.threshold.defertime");
 		pv_json_ser_int(&js, pv_config_get_storage_gc_threshold_defertime());
+		pv_json_ser_key(&js, "disk.voldir");
+		pv_json_ser_string(&js, pv_config_get_disk_voldir());
 		pv_json_ser_key(&js, "updater.use_tmp_objects");
 		pv_json_ser_bool(&js, pv_config_get_updater_network_use_tmp_objects());
 		pv_json_ser_key(&js, "updater.conditions.timeout");
@@ -692,12 +761,13 @@ char* pv_config_get_json()
 	return pv_json_ser_str(&js);
 }
 
-static int pv_config_init(struct pv_init *this)
+int pv_config_init(char *path)
 {
 	struct pantavisor *pv = pv_get_instance();
-	char path[PATH_MAX];
 
-	pv_paths_etc_pantavisor(path, PATH_MAX);
+	if (!path)
+		path = PV_PANTAVISOR_CONFIG_PATH;
+
 	if (pv_config_load_config_from_file(path, &pv->config) < 0) {
 		printf("FATAL: unable to parse %s\n", path);
 		return -1;
@@ -760,11 +830,6 @@ out:
 		free(json);
 	return res;
 }
-
-struct pv_init pv_init_config =  {
-	.init_fn = pv_config_init,
-	.flags = 0,
-};
 
 struct pv_init pv_init_creds =  {
 	.init_fn = pv_config_creds,

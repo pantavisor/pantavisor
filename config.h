@@ -27,10 +27,24 @@
 
 #include "utils/list.h"
 
-enum {
-	BL_UBOOT_PLAIN = 0,
-	BL_UBOOT_PVK,
-	BL_GRUB
+typedef enum {
+	IM_EMBEDDED,
+	IM_STANDALONE,
+	IM_APPENGINE
+} init_mode_t;
+
+struct pantavisor_system {
+	init_mode_t init_mode;
+	char *libdir;
+	char *etcdir;
+	char *rundir;
+	char *mediadir;
+	char *confdir;
+};
+
+struct pantavisor_debug {
+	bool shell;
+	bool ssh;
 };
 
 struct pantavisor_cache {
@@ -79,6 +93,10 @@ struct pantavisor_storage {
 	struct pantavisor_gc gc;
 };
 
+struct pantavisor_disk {
+	char *voldir;
+};
+
 struct pantavisor_updater {
 	int interval;
 	int conditions_timeout;
@@ -87,6 +105,12 @@ struct pantavisor_updater {
 	int revision_retries;
 	int revision_retry_timeout;
 	int commit_delay;
+};
+
+enum {
+	BL_UBOOT_PLAIN = 0,
+	BL_UBOOT_PVK,
+	BL_GRUB
 };
 
 struct pantavisor_bootloader {
@@ -138,14 +162,18 @@ typedef enum {
 
 struct pantavisor_secureboot {
 	secureboot_mode_t mode;
+	char *certdir;
 };
 
 struct pantavisor_config {
+	struct pantavisor_system sys;
+	struct pantavisor_debug debug;
 	struct pantavisor_cache cache;
 	struct pantavisor_bootloader bl;
 	struct pantavisor_creds creds;
 	struct pantavisor_factory factory;
 	struct pantavisor_storage storage;
+	struct pantavisor_disk disk;
 	struct pantavisor_updater updater;
 	struct pantavisor_watchdog wdt;
 	struct pantavisor_network net;
@@ -156,6 +184,8 @@ struct pantavisor_config {
 	struct pantavisor_secureboot secureboot;
 };
 
+int pv_config_init(char *path);
+
 int pv_config_load_creds(void);
 int pv_config_save_creds(void);
 
@@ -163,9 +193,24 @@ void pv_config_override_value(const char* key, const char* value);
 
 void pv_config_free(void);
 
+void pv_config_set_system_init_mode(init_mode_t mode);
+
+void pv_config_set_debug_shell(bool shell);
+void pv_config_set_debug_ssh(bool ssh);
+
 void pv_config_set_creds_id(char *id);
 void pv_config_set_creds_prn(char *prn);
 void pv_config_set_creds_secret(char *secret);
+
+init_mode_t pv_config_get_system_init_mode(void);
+char* pv_config_get_system_libdir(void);
+char* pv_config_get_system_etcdir(void);
+char* pv_config_get_system_rundir(void);
+char* pv_config_get_system_mediadir(void);
+char* pv_config_get_system_confdir(void);
+
+bool pv_config_get_debug_shell(void);
+bool pv_config_get_debug_ssh(void);
 
 char* pv_config_get_cache_metacachedir(void);
 char* pv_config_get_cache_dropbearcachedir(void);
@@ -199,6 +244,8 @@ bool pv_config_get_storage_gc_keep_factory(void);
 int pv_config_get_storage_gc_threshold(void);
 int pv_config_get_storage_gc_threshold_defertime(void);
 
+char* pv_config_get_disk_voldir(void);
+
 int pv_config_get_updater_interval(void);
 int pv_config_get_updater_conditions_timeout(void);
 int pv_config_get_updater_network_timeout(void);
@@ -230,7 +277,9 @@ int pv_config_get_libthttp_loglevel(void);
 
 int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);
+
 secureboot_mode_t pv_config_get_secureboot_mode(void);
+char* pv_config_get_secureboot_certdir(void);
 
 char* pv_config_get_json(void);
 
