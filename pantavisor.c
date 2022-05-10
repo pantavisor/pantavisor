@@ -621,8 +621,10 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	}
 
 	// rollback means current update needs to be reported to PH as FAILED
-	if (pv->update)
+	if (pv->update) {
 		pv_update_set_status(pv, UPDATE_FAILED);
+		pv_update_finish(pv);
+	}
 
 	return PV_STATE_REBOOT;
 }
@@ -666,9 +668,8 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_log(INFO, "prepare %s...", shutdown_type_string(t));
 	wait_shell();
 
-	if (pv->state)
-		if (pv_state_stop(pv->state))
-			pv_log(WARN, "stop error: ignoring due to %s", shutdown_type_string(t));
+	if (pv->state && pv_state_stop(pv->state))
+		pv_log(WARN, "stop error: ignoring due to %s", shutdown_type_string(t));
 
 	if (REBOOT == t)
 		pv_wdt_start(pv);
@@ -681,28 +682,30 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	sleep(5);
 	pv_log(INFO, "%s...", shutdown_type_string(t));
 	ph_logger_stop(pv);
+
+	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
+		pv_log(WARN, "closing application because of appengine init mode...");
+		goto out;
+	}
+
 	reboot(shutdown_type_reboot_cmd(t));
 
+out:
 	return PV_STATE_EXIT;
 }
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-
 	return pv_shutdown(pv, REBOOT);
 }
 
 static pv_state_t _pv_poweroff(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
-
 	return pv_shutdown(pv, POWEROFF);
 }
 
 static pv_state_t _pv_error(struct pantavisor *pv)
 {
-	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 	return PV_STATE_REBOOT;
 }
 
@@ -768,6 +771,9 @@ static void pv_remove(struct pantavisor *pv)
 {
 
 	pv_log(DEBUG, "removing pantavisor");
+
+	if (pv->cmdline)
+		free(pv->cmdline);
 
 	if (pv->conn)
 		free(pv->conn);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -34,6 +34,7 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "parser_system1.h"
 #include "addons.h"
 #include "platforms.h"
 #include "volumes.h"
@@ -41,7 +42,6 @@
 #include "jsons.h"
 #include "json.h"
 #include "pantavisor.h"
-#include "parser.h"
 #include "parser_bundle.h"
 #include "group.h"
 #include "condition.h"
@@ -987,15 +987,16 @@ link_jsons:
 	}
 }
 
-struct pv_state* system1_parse(struct pv_state *this, const char *buf)
+static struct pv_state* system1_parse_disks(struct pv_state *this, const char *buf)
 {
-	int tokc, ret, count, n;
-	char *key = 0, *value = 0, *ext = 0;
+	int tokc, count;
 	jsmntok_t *tokv;
-	jsmntok_t **k, **keys;
+	char *value = NULL;
 
-	// Parse full state json
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse");
+		goto out;
+	}
 
 	count = pv_json_get_key_count(buf, "disks.json", tokv, tokc);
 	if (count == 1) {
@@ -1018,9 +1019,36 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 		value = NULL;
 	}
 
+out:
+	if (tokv)
+		free(tokv);
+	if (value)
+		free(value);
+
+	return this;
+}
+
+static struct pv_state* system1_parse_bsp(struct pv_state *this, const char *buf)
+{
+	int tokc, count;
+	jsmntok_t *tokv = NULL;
+	char *value = NULL;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse");
+		goto out;
+	}
+
 	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
-	if (!count || (count > 1)) {
-		pv_log(WARN, "invalid bsp/run.json count in state");
+	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
+		if (count != 0) {
+			pv_log(WARN, "bsp/run.json incompatible with appengine init mode");
+			this = NULL;
+			goto out;
+		}
+		goto out;
+	} else if (count != 1) {
+		pv_log(WARN, "bsp/run.json missing or duplicated");
 		this = NULL;
 		goto out;
 	}
@@ -1041,6 +1069,27 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 	}
 	free(value);
 	value = NULL;
+
+out:
+	if (tokv)
+		free(tokv);
+	if (value)
+		free(value);
+
+	return this;
+}
+
+static struct pv_state* system1_parse_objects(struct pv_state *this, const char *buf)
+{
+	jsmntok_t *tokv;
+	jsmntok_t **k, **keys;
+	char *value = NULL, *key = NULL, *ext = NULL;
+	int tokc, n;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse");
+		goto out;
+	}
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
@@ -1109,6 +1158,19 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 	}
 	jsmnutil_tokv_free(keys);
 
+out:
+	if (tokv)
+		free(tokv);
+	if (value)
+		free(value);
+	if (key)
+		free(key);
+
+	return this;
+}
+
+static struct pv_state* system1_parse_validate(struct pv_state *this, const char *buf)
+{
 	// copy buffer
 	this->json = strdup(buf);
 
@@ -1118,14 +1180,36 @@ struct pv_state* system1_parse(struct pv_state *this, const char *buf)
 
 	pv_state_print(this);
 
-out:
-	if (key)
-		free(key);
-	if (value)
-		free(value);
-	if (tokv)
-		free(tokv);
+	return this;
+}
 
+struct pv_state* system1_parse(struct pv_state *this, const char *buf)
+{
+	if (!system1_parse_disks(this, buf)) {
+		pv_log(ERROR, "cannot parse disks");
+		this = NULL;
+		goto out;
+	}
+
+	if (!system1_parse_bsp(this, buf)) {
+		pv_log(ERROR, "cannot parse bsp");
+		this = NULL;
+		goto out;
+	}
+
+	if (!system1_parse_objects(this, buf)) {
+		pv_log(ERROR, "cannot parse objects");
+		this = NULL;
+		goto out;
+	}
+
+	if (!system1_parse_validate(this, buf)) {
+		pv_log(ERROR, "cannot validate json");
+		this = NULL;
+		goto out;
+	}
+
+out:
 	return this;
 }
 

@@ -362,7 +362,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_instance_fn");
 
-	void (*__pv_paths)(void*, void*, void*, void*, void*, void*, void*) = dlsym(lib, "pv_set_pv_paths_fn");
+	void (*__pv_paths)(void*, void*, void*, void*, void*, void*, void*, void*, void*) = dlsym(lib, "pv_set_pv_paths_fn");
 	if (__pv_paths)
 		__pv_paths(pv_paths_pv_file,
 			pv_paths_pv_log,
@@ -370,7 +370,9 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 			pv_paths_pv_log_file,
 			pv_paths_pv_usrmeta_key,
 			pv_paths_pv_usrmeta_plat_key,
-			pv_paths_lib_hook);
+			pv_paths_lib_hook,
+			pv_paths_volumes_plat_file,
+			pv_paths_configs_file);
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_paths_fn");
 
@@ -567,8 +569,7 @@ int pv_platform_start(struct pv_platform *p)
 	data = ctrl->start(p, s->rev, path, (void *) &pid);
 
 	if (!data) {
-		pv_log(ERROR, "error starting platform: \"%s\"",
-			p->name);
+		pv_log(ERROR, "error starting platform: '%s'", p->name);
 		return -1;
 	}
 

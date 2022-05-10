@@ -616,7 +616,9 @@ static int pv_state_unmount_platforms_volumes(struct pv_state *s)
 	// unmount platform volumes
 	dl_list_for_each_safe(p, tmp_p, &s->platforms,
 			struct pv_platform, list) {
-		if (pv_platform_is_stopped(p)) {
+		if (!(pv_platform_is_stopping(p) ||
+			pv_platform_is_starting(p) ||
+			pv_platform_is_started(p))) {
 			if (pv_state_unmount_platform_volumes(s, p))
 				ret = -1;
 		}
@@ -628,6 +630,11 @@ static int pv_state_unmount_platforms_volumes(struct pv_state *s)
 int pv_state_stop(struct pv_state *s)
 {
 	int ret = 0;
+
+	if (s == NULL)
+		return -1;
+
+	pv_log(DEBUG, "stopping state %s", s->rev);
 
 	pv_state_lenient_stop(s);
 

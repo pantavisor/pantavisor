@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,17 +22,7 @@
 #ifndef PV_PARSER_H
 #define PV_PARSER_H
 
-#include <stdbool.h>
-
-#include "pantavisor.h"
-
-//  pantavisor-multi-platform@1
-struct pv_state* multi1_parse(struct pv_state *this, const char *buf);
-char* multi1_parse_initrd_config_name(const char *buf);
-
-//  pantavisor-service-system@1
-struct pv_state* system1_parse(struct pv_state *this, const char *buf);
-char* system1_parse_initrd_config_name(const char *buf);
+#include "state.h"
 
 struct pv_state* pv_parser_get_state(const char *buf, const char *rev);
 char* pv_parser_get_initrd_config_name(const char *buf);

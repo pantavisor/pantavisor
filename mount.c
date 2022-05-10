@@ -81,6 +81,9 @@ static int pv_mount_init(struct pv_init *this)
 	char path[PATH_MAX];
 	int ret = -1;
 
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		return 0;
+
 	// Create storage mountpoint and mount device
 	pv_paths_storage(path, PATH_MAX);
 	mkdir_p(path, 0755);
@@ -106,8 +109,9 @@ static int pv_mount_init(struct pv_init *this)
 
 	printf("INFO: trail storage found: %s.\n", dev_info.device);
 
-	// attempt auto resize only if we have ext4
-	if (!strcmp(pv_config_get_storage_fstype(), "ext4")) {
+	// attempt auto resize only if we have ext4 and in embedded init mode
+	if ((pv_config_get_system_init_mode() == IM_EMBEDDED) &&
+		!strcmp(pv_config_get_storage_fstype(), "ext4")) {
 		size_t run_size = strlen("/lib/pv/pv_e2fsgrow") + strlen(dev_info.device) + 3;
 		char *run = malloc(sizeof(char) * run_size);
 		SNPRINTF_WTRUNC(run, run_size, "/lib/pv/pv_e2fsgrow %s", dev_info.device);

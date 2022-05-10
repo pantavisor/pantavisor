@@ -38,7 +38,6 @@ extern char pv_user_agent[4096];
 #define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
 struct pantavisor {
-	struct pv_device *dev;
 	struct pv_update *update;
 	struct pv_state *state;
 	struct pv_cmd *cmd;
@@ -46,6 +45,7 @@ struct pantavisor {
 	struct trail_remote *remote;
 	struct pv_metadata *metadata;
 	struct pv_connection *conn;
+	char *cmdline;
 	bool remote_mode;
 	bool online;
 	bool unclaimed;

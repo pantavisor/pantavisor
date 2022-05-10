@@ -158,13 +158,11 @@ static void config_override_value_string(struct dl_list *config_list, char *key,
 {
 	char *item = config_get_value(config_list, key);
 
-	if (*out)
-		free(*out);
-
-	if (item && strlen(item) > 0)
+	if (item && strlen(item) > 0) {
+		if (*out)
+			free(*out);
 		*out = strdup(item);
-	else
-		*out = NULL;
+	}
 }
 
 static void config_override_value_int(struct dl_list *config_list, char *key, int *out)
@@ -245,6 +243,8 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->wdt.enabled = config_get_value_bool(&config_list, "wdt.enabled", true);
 	config->wdt.timeout = config_get_value_int(&config_list, "wdt.timeout", 15);
 
+	config->log.logdir = config_get_value_string(&config_list, "log.dir", "/storage/logs/");
+
 	config->lxc.log_level = config_get_value_int(&config_list, "lxc.log.level", 2);
 
 	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
@@ -282,12 +282,11 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 
 	config->factory.autotok = config_get_value_string(&config_list, "factory.autotok", NULL);
 
-	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "updater.keep_factory", false);
+	config_override_value_bool(&config_list, "updater.keep_factory", &config->storage.gc.keep_factory);
 	config->updater.interval = config_get_value_int(&config_list, "updater.interval", 60);
 	config->updater.network_timeout = config_get_value_int(&config_list, "updater.network_timeout", 2 * 60);
 	config->updater.commit_delay = config_get_value_int(&config_list, "updater.commit.delay", 3 * 60);
 
-	config->log.logdir = config_get_value_string(&config_list, "log.dir", "/storage/logs/");
 	config->log.logmax = config_get_value_int(&config_list, "log.maxsize", (1 << 21)); // 2 MiB
 	config->log.loglevel = config_get_value_int(&config_list, "log.level", 0);
 	config->log.logsize = config_get_value_logsize(&config_list, "log.buf_nitems", 128) * 1024;
@@ -295,6 +294,7 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	config->log.capture = config_get_value_bool(&config_list, "log.capture", true);
 	config->log.loggers = config_get_value_bool(&config_list, "log.loggers", true);
 	config->log.std_out = config_get_value_bool(&config_list, "log.stdout", false);
+	config_override_value_string(&config_list, "log.dir", &config->log.logdir);
 
 	config->libthttp.loglevel = config_get_value_int(&config_list, "libthttp.log.level", 3);
 
@@ -768,6 +768,7 @@ int pv_config_init(char *path)
 	if (!path)
 		path = PV_PANTAVISOR_CONFIG_PATH;
 
+	printf("DEBUG: loading config from %s\n", path);
 	if (pv_config_load_config_from_file(path, &pv->config) < 0) {
 		printf("FATAL: unable to parse %s\n", path);
 		return -1;

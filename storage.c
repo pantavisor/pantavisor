@@ -214,12 +214,13 @@ struct pv_storage {
 
 static struct pv_storage* pv_storage_new()
 {
+	char path[PATH_MAX];
 	struct statfs buf;
 	struct pv_storage* this;
 
-	if (statfs("/storage/config/pantahub.config", &buf) < 0)
+	pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
+	if (statfs(path, &buf) < 0)
 		return NULL;
-
 
 	this = calloc(1, sizeof(struct pv_storage));
 	if (this) {
@@ -542,7 +543,7 @@ int pv_storage_make_config(struct pantavisor *pv)
 	int rv;
 
 	pv_paths_storage_trail_config(srcpath, PATH_MAX, pv->state->rev);
-	pv_paths_configs(targetpath, PATH_MAX);
+	pv_paths_configs_file(targetpath, PATH_MAX, "");
 
 	if (!stat(targetpath, &st)) {
 		SNPRINTF_WTRUNC(cmd, sizeof (cmd), "/bin/rm -rf %s/*", targetpath);
@@ -818,6 +819,9 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 	if (!s)
 		s = pv->state;
 
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		return 0;
+
 	/*
 	 * Toggle directory depth with null prefix
 	 */
@@ -1022,8 +1026,10 @@ static int pv_storage_init(struct pv_init *this)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	storage = pv_storage_new();
-	pv_storage_print(storage);
-	free(storage);
+	if (storage) {
+		pv_storage_print(storage);
+		free(storage);
+	}
 
 	return 0;
 }

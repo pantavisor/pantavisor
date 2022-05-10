@@ -41,8 +41,6 @@
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
-#define SIZE_CMDLINE_BUF 1024
-
 struct pv_bootloader {
 	char *pv_rev;
 	char *pv_try;
@@ -190,14 +188,9 @@ static int pv_bl_init()
 static int pv_bl_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
-	int fd = -1, len;
-	char buf[SIZE_CMDLINE_BUF];
-	char *done = NULL, *token = NULL;
-	ssize_t bytes = 0;
+	int len;
+	char *done = NULL, *token = NULL, *buf = NULL;
 	const int CMDLINE_OFFSET = 7;
-
-	if (!pv)
-		return -1;
 
 	// initialize to factory revision
 	len = strlen("0") + 1;
@@ -206,21 +199,8 @@ static int pv_bl_early_init(struct pv_init *this)
 	pv_bootloader.pv_try = NULL;
 	pv_bootloader.pv_done = strdup(pv_bootloader.pv_rev);
 
-	// overload with values from kernel command line
-	fd = open("/proc/cmdline", O_RDONLY);
-	if (fd < 0)
-		return -1;
-
-	bytes = pv_file_read_nointr(fd, buf, SIZE_CMDLINE_BUF);
-	if (bytes < 0)
-		return -1;
-
-	close(fd);
-
-	// remove trailing \n
-	buf[bytes-1] = '\0';
-
 	// parse command line
+	buf = strdup(pv->cmdline);
 	token = strtok(buf, " ");
 	while (token) {
 		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
@@ -234,6 +214,7 @@ static int pv_bl_early_init(struct pv_init *this)
 		}
 		token = strtok(NULL, " ");
 	}
+	free(buf);
 
 	free(pv_bootloader.pv_done);
 	pv_bootloader.pv_done = strdup(pv_bootloader.pv_rev);

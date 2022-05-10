@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,26 +19,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_LXC_H
-#define PV_LXC_H
+#ifndef PV_PARSER_MULSTI1_H
+#define PV_PARSER_MULSTI1_H
 
-#include "../pantavisor.h"
-#include "../config.h"
-#include "../platforms.h"
+#include "state.h"
 
-void pv_set_new_log_fn(void *fn_pv_new_log);
-void pv_set_pv_instance_fn(void *fn_pv_get_instance);
-void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
-	void *fn_pv_paths_pv_log,
-	void *fn_pv_paths_pv_log_plat,
-	void *fn_pv_paths_pv_log_file,
-	void *fn_pv_paths_pv_usrmeta_key,
-	void *fn_pv_paths_pv_usrmeta_plat_key,
-	void *fn_pv_paths_lib_hook,
-	void *fn_pv_paths_volumes_plat_file,
-	void *fn_pv_paths_configs_file);
-
-void* pv_start_container(struct pv_platform *p, const char *rev, char *conf_file, void *data);
-void* pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
+struct pv_state* multi1_parse(struct pv_state *this, const char *buf);
+char* multi1_parse_initrd_config_name(const char *buf);
 
 #endif

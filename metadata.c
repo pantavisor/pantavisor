@@ -251,6 +251,9 @@ static void pv_usermeta_remove(struct pv_metadata *metadata)
 	struct pv_meta *curr, *tmp;
 	struct dl_list *head = &metadata->usermeta;
 
+	if (dl_list_empty(&metadata->usermeta))
+		return;
+
 	pv_log(DEBUG, "removing user meta list");
 
 	dl_list_for_each_safe(curr, tmp, head,
@@ -264,6 +267,9 @@ static void pv_devmeta_remove(struct pv_metadata *metadata)
 {
 	struct pv_meta *curr, *tmp;
 	struct dl_list *head = &metadata->devmeta;
+
+	if (dl_list_empty(&metadata->devmeta))
+		return;
 
 	pv_log(DEBUG, "removing devmeta list");
 
@@ -967,6 +973,9 @@ char* pv_metadata_get_device_meta_string()
 void pv_metadata_remove()
 {
 	struct pantavisor *pv = pv_get_instance();
+
+	if(!pv->metadata)
+		return;
 
 	pv_log(DEBUG, "removing metadata");
 

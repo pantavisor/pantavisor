@@ -277,22 +277,26 @@ int ph_logger_init(const char *sock_path)
 	struct epoll_event ep_event;
 
 	ph_logger.sock_fd = ph_logger_open_socket(sock_path);
+	if (ph_logger.sock_fd < 0) {
+		pv_log(ERROR, "open socket failed: %s", strerror(errno));
+		goto out;
+	}
+
 	ph_logger.epoll_fd = epoll_create1(0);
-	
-	if (ph_logger.epoll_fd < 0 || ph_logger.sock_fd < 0) {
-#ifdef DEBUG
-		printf("ph_logger epoll_fd = %d\n",ph_logger.epoll_fd);
-		printf("ph_logger sock_fd = %d\n",ph_logger.sock_fd);
-		printf("errno  =%d\n", errno);
-#endif
+	if (ph_logger.epoll_fd < 0) {
+		pv_log(ERROR, "epoll create failed: %s", strerror(errno));
 		goto out;
 	}
 
 	ep_event.events = EPOLLIN;
 	ep_event.data.fd = ph_logger.sock_fd;
 	__ph_logger_init_basic(&ph_logger);
-	if (epoll_ctl(ph_logger.epoll_fd, EPOLL_CTL_ADD, ep_event.data.fd, &ep_event))
+
+	if (epoll_ctl(ph_logger.epoll_fd, EPOLL_CTL_ADD, ep_event.data.fd, &ep_event)) {
+		pv_log(ERROR, "epoll ctl failed: %s", strerror(errno));
 		goto out;
+	}
+
 	return 0;
 out:
 	close(ph_logger.sock_fd);
@@ -1062,6 +1066,8 @@ void ph_logger_toggle(struct pantavisor *pv, char *rev)
 
 void ph_logger_stop(struct pantavisor *pv)
 {
+	char path[PATH_MAX];
+
 	if (!pv)
 		return;
 
@@ -1073,6 +1079,13 @@ void ph_logger_stop(struct pantavisor *pv)
 	ph_logger.log_service = -1;
 
 	ph_logger_stop_cloud(pv);
+
+    if (ph_logger.sock_fd >= 0) {
+		pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
+        pv_log(DEBUG, "closing %s with fd %d", path, ph_logger.sock_fd);
+        close(ph_logger.sock_fd);
+		unlink(path);
+    }
 }
 
 int ph_logger_read_bytes(struct ph_logger_msg *ph_logger_msg, char *buf, ...)
