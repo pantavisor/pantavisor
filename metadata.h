@@ -37,7 +37,7 @@
 #define DEVMETA_KEY_PV_MODE "pantavisor.mode"
 #define DEVMETA_KEY_PV_REVISION "pantavisor.revision"
 #define DEVMETA_KEY_PV_VERSION "pantavisor.version"
-
+#define DEVMETA_KEY_PH_ADDRESS "pantahub.address"
 
 struct pv_metadata {
 	struct dl_list usermeta; // pv_meta

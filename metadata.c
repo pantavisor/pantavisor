@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <trest.h>
 
 #include <sys/stat.h>
 
@@ -42,6 +43,7 @@
 #include "init.h"
 #include "str.h"
 #include "paths.h"
+#include "updater.h"
 #include "utils/math.h"
 #include "utils/system.h"
 #include "utils/str.h"
