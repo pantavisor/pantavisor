@@ -1046,9 +1046,13 @@ static int trail_first_boot(struct pantavisor *pv)
 	return 0;
 }
 
+#include <trest.h>
+#include "metadata.h"
+
 int pv_updater_check_for_updates(struct pantavisor *pv)
 {
 	int ret;
+	char *addr;
 
 	if (trail_remote_init(pv)) {
 		pv_log(WARN, "remote not initialized");
@@ -1058,6 +1062,15 @@ int pv_updater_check_for_updates(struct pantavisor *pv)
 	if (trest_update_auth(pv->remote->client) != TREST_AUTH_STATUS_OK) {
 		pv_log(INFO, "cannot authenticate to cloud");
 		return 0;
+	}
+
+	// report pantahub ip to devmeta
+	if (pv->remote && pv->remote->client) {
+		addr = trest_get_addr(pv->remote->client);
+		if (addr) {
+			pv_metadata_add_devmeta(DEVMETA_KEY_PH_ADDRESS, addr);
+			free(addr);
+		}
 	}
 
 	// if an update is going, we might come from a download retry
