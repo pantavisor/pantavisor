@@ -239,6 +239,7 @@ void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat, const 
 #define PV_LIB_MODULES_PATHF     "%s/modules/%s"
 #define PV_LIB_VOLMOUNT_PATHF    "%s/pv/volmount/%s/%s"
 #define PV_LIB_HOOK_PATHF        "%s/pv/hooks_lxc-mount.d/%s"
+#define PV_LIB_HOOK_START_HOST_PATHF    "%s/pv/hooks_lxc-start-host.d/%s"
 #define PV_LIB_HOOKS_EARLY_SPAWN "%s/pv/hooks_early.spawn/%s"
 
 void pv_paths_lib_plugin(char *buf, size_t size, const char *name)
@@ -259,6 +260,11 @@ void pv_paths_lib_volmount(char *buf, size_t size, const char *type, const char 
 void pv_paths_lib_hook(char *buf, size_t size, const char *name)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_LIB_HOOK_PATHF, pv_config_get_system_libdir(), name);
+}
+
+void pv_paths_lib_hook_start_host(char *buf, size_t size, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_HOOK_START_HOST_PATHF, pv_config_get_system_libdir(), name);
 }
 
 void pv_paths_lib_hooks_early_spawn(char *buf, size_t size, const char *name)

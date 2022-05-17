@@ -100,6 +100,7 @@ void pv_paths_lib_plugin(char *buf, size_t size, const char *name);
 void pv_paths_lib_modules(char *buf, size_t size, const char *release);
 void pv_paths_lib_volmount(char *buf, size_t size, const char *type, const char *name);
 void pv_paths_lib_hook(char *buf, size_t size, const char *name);
+void pv_paths_lib_hook_start_host(char *buf, size_t size, const char *name);
 void pv_paths_lib_hooks_early_spawn(char *buf, size_t size, const char *name);
 
 void pv_paths_root_file(char *buf, size_t size, const char *path);
