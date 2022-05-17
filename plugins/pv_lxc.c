@@ -62,6 +62,7 @@ void (*__pv_paths_pv_log_file)(char*, size_t, const char*, const char*, const ch
 void (*__pv_paths_pv_usrmeta_key)(char*, size_t, const char*) = NULL;
 void (*__pv_paths_pv_usrmeta_plat_key)(char*, size_t, const char*, const char*) = NULL;
 void (*__pv_paths_lib_hook)(char*, size_t, const char*) = NULL;
+void (*__pv_paths_lib_hook_start_host)(char*, size_t, const char*) = NULL;
 
 void pv_set_new_log_fn(void *fn_pv_new_log)
 {
@@ -79,7 +80,8 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	void *fn_pv_paths_pv_log_file,
 	void *fn_pv_paths_pv_usrmeta_key,
 	void *fn_pv_paths_pv_usrmeta_plat_key,
-	void *fn_pv_paths_lib_hook)
+	void *fn_pv_paths_lib_hook,
+	void *fn_pv_paths_lib_hook_start_host)
 {
 	__pv_paths_pv_file = fn_pv_paths_pv_file;
 	__pv_paths_pv_log = fn_pv_paths_pv_log;
@@ -88,6 +90,7 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	__pv_paths_pv_usrmeta_key = fn_pv_paths_pv_usrmeta_key;
 	__pv_paths_pv_usrmeta_plat_key = fn_pv_paths_pv_usrmeta_plat_key;
 	__pv_paths_lib_hook = fn_pv_paths_lib_hook;
+	__pv_paths_lib_hook_start_host = fn_pv_paths_lib_hook_start_host;
 }
 
 static int pv_lxc_get_lxc_log_level()
@@ -331,7 +334,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	}
 
 	/*
-	 * Enable mount hooks
+	 * Enable lxc.hook.mount hooks
 	 */
 	DIR *d;
 	struct dirent *dir;
@@ -340,11 +343,26 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	if (!d)
 		return;
 
-	while ((dir = readdir(d)) != NULL) {
+	while (d && (dir = readdir(d)) != NULL) {
 		if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
 			continue;
 		__pv_paths_lib_hook(path, PATH_MAX, dir->d_name);
 		c->set_config_item(c, "lxc.hook.mount", path);
+	}
+
+	if (d)
+		closedir(d);
+
+	__pv_paths_lib_hook_start_host(path, PATH_MAX, "");
+	d = opendir(path);
+	if (!d)
+		return;
+
+	while ((dir = readdir(d)) != NULL) {
+		if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
+			continue;
+		__pv_paths_lib_hook_start_host(path, PATH_MAX, dir->d_name);
+		c->set_config_item(c, "lxc.hook.start-host", path);
 	}
 	closedir(d);
 }
