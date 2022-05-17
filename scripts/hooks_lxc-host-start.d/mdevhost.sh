@@ -18,5 +18,5 @@ cat $container_mdev \
 	| sed 's/[^[:space:]]*[[:space:]]"//;s/"$//' \
 	> $tmpf
 
-FOLLOW_X_PID=$LXC_PID MDEV_CONF=$tmpf mdev -vvv -S -d >/dev/null 2>&1 </dev/null
+FOLLOW_X_PID=$LXC_PID MDEV_CONF=$tmpf mdev ${MDEV_VERBOSE:+-$MDEV_VERBOSE} -S -d >/dev/null 2>&1 </dev/null
 
