@@ -94,7 +94,7 @@ LOCAL_GENERATED_SRC_FILES := version.c
 
 LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
-	scripts/hooks_lxc-mount.d/mdev.sh:lib/pv/hooks_lxc-mount.d/mdev.sh \
+	scripts/hooks_lxc-host-start.d/mdevhost.sh:lib/pv/hooks_lxc-host-start.d/mdevhost.sh \
 	scripts/JSON.sh:lib/pv/JSON.sh
 
 include $(BUILD_EXECUTABLE)
