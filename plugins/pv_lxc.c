@@ -62,6 +62,8 @@ void (*__pv_paths_pv_log_file)(char*, size_t, const char*, const char*, const ch
 void (*__pv_paths_pv_usrmeta_key)(char*, size_t, const char*) = NULL;
 void (*__pv_paths_pv_usrmeta_plat_key)(char*, size_t, const char*, const char*) = NULL;
 void (*__pv_paths_lib_hook)(char*, size_t, const char*) = NULL;
+void (*__pv_paths_volumes_plat_file)(char*, size_t, const char*, const char*) = NULL;
+void (*__pv_paths_configs_file)(char*, size_t, const char*) = NULL;
 
 void pv_set_new_log_fn(void *fn_pv_new_log)
 {
@@ -79,7 +81,9 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	void *fn_pv_paths_pv_log_file,
 	void *fn_pv_paths_pv_usrmeta_key,
 	void *fn_pv_paths_pv_usrmeta_plat_key,
-	void *fn_pv_paths_lib_hook)
+	void *fn_pv_paths_lib_hook,
+	void *fn_pv_paths_volumes_plat_file,
+	void *fn_pv_paths_configs_file)
 {
 	__pv_paths_pv_file = fn_pv_paths_pv_file;
 	__pv_paths_pv_log = fn_pv_paths_pv_log;
@@ -88,6 +92,8 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	__pv_paths_pv_usrmeta_key = fn_pv_paths_pv_usrmeta_key;
 	__pv_paths_pv_usrmeta_plat_key = fn_pv_paths_pv_usrmeta_plat_key;
 	__pv_paths_lib_hook = fn_pv_paths_lib_hook;
+	__pv_paths_volumes_plat_file = fn_pv_paths_volumes_plat_file;
+	__pv_paths_configs_file = fn_pv_paths_configs_file;
 }
 
 static int pv_lxc_get_lxc_log_level()
@@ -267,12 +273,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
 	if (!ret) {
-		if (stat("/volumes/bsp/modules.squashfs", &st) == 0) {
-			sprintf(entry, "/volumes/bsp/modules.squashfs "
+		__pv_paths_volumes_plat_file(path, PATH_MAX, "bsp", "modules.squashfs");
+		if (stat(path, &st) == 0) {
+			sprintf(entry, "%s "
 					"lib/modules/%s "
 					"none bind,ro,create=dir 0 0",
-					uts.release
-				);
+					path,
+					uts.release);
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
 	}
@@ -534,30 +541,26 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 	mkdir_p("/usr/var/lib/lxc", 0755);
 
 	c = lxc_container_new(p->name, NULL);
-	if (!c) {
-		goto out_no_container;
-	}
+	if (!c)
+		goto out_failure;
+
 	c->clear_config(c);
 	/*
 	 * For returning back the
 	 * container_pid to pv parent
 	 * process.
 	 */
-	if (pipe(pipefd)) {
-		lxc_container_put(c);
-		c = NULL;
-		goto out_no_container;
-	}
+	if (pipe(pipefd))
+		goto out_failure;
 
 	child_pid = fork();
 
 	if (child_pid < 0) {
-		lxc_container_put(c);
 		close(pipefd[0]);
 		close(pipefd[1]);
-		c = NULL;
-		goto out_no_container;
+		goto out_failure;
 	}
+
 	else if (child_pid){ /*Parent*/
 		pid_t container_pid = -1;
 		/*Parent would read*/
@@ -566,11 +569,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 					sizeof(container_pid)) < 0 && errno == EINTR)
 			;
 
-		if (container_pid <= 0) {
-			lxc_container_put(c);
-			c = NULL;
-			goto out_no_container;
-		}
+		if (container_pid <= 0)
+			goto out_failure;
+
 		*((pid_t *) data) = container_pid;
 		close(pipefd[0]);
 	}
@@ -585,6 +586,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 		 */
 		if (!__pv_get_instance)
 			goto out_container_init;
+
 		if (pv_lxc_capture_logs_activated()) {
 			__pv_paths_pv_log_plat(log_dir, PATH_MAX,
 				__pv_get_instance()->state->rev,
@@ -593,6 +595,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 			pv_lxc_log.lxcpath = strdup(log_dir);
 			if (!pv_lxc_log.lxcpath)
 				goto out_container_init;
+
 			lxc_log_init(&pv_lxc_log);
 		}
 		c = lxc_container_new(p->name, NULL);
@@ -616,7 +619,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
 		// setup config bindmounts
-		sprintf(configdir, "/configs/%s", p->name);
+		__pv_paths_configs_file(configdir, PATH_MAX, p->name);
 		pv_setup_config_bindmounts(c, configdir, configdir);
 
 		err = c->start(c, 0, NULL) ? 0 : 1;
@@ -639,19 +642,13 @@ out_container_init:
 	 * This is just required to stop container and get
 	 * any config items required in the parent.
 	 */
-	if (!c->load_config(c, conf_file)) {
-		pid_t *container_pid = (pid_t*)data;
-		lxc_container_put(c);
-		if (*container_pid > 0) {
-			kill(*container_pid, SIGKILL);
-		}
-		c = NULL;
-		goto out_no_container;
-	}
+	if (!c->load_config(c, conf_file))
+		goto out_failure;
+
 	pv_setup_lxc_container(c, p, rev); /*Do we need this?*/
 
 	if (!pv_lxc_capture_logs_activated())
-		goto out_no_container;
+		goto out_success;
 
 	pv_setup_default_log(p, c, "lxc");
 	pv_setup_default_log(p, c, "console");
@@ -702,8 +699,14 @@ out_container_init:
 			}
 		}
 	}
-out_no_container:
-	return (void *) c;
+out_success:
+	return (void*) c;
+out_failure:
+	if (c) {
+		c->shutdown(c, 0);
+		lxc_container_put(c);
+	}
+	return NULL;
 }
 
 // cannot fail if data is valid

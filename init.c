@@ -53,6 +53,7 @@
 #include "utils/list.h"
 #include "utils/fs.h"
 #include "utils/str.h"
+#include "utils/file.h"
 
 #define MODULE_NAME		"init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -83,7 +84,6 @@ static int mkcgroup(const char* cgroup) {
 static int early_mounts()
 {
 	int ret;
-	struct stat st;
 
 	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC, NULL);
 	if (ret < 0)
@@ -104,6 +104,14 @@ static int early_mounts()
 
 	remove("/dev/ptmx");
 	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
+
+	return 0;
+}
+
+static int mount_cgroups()
+{
+	int ret;
+	struct stat st;
 
 	mkdir("/sys/fs/cgroup", 0755);
 	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
@@ -328,7 +336,7 @@ static void usage(const char *cmd)
 
 }
 
-static void parse_options(int argc, char *argv[], char **config_path)
+static void parse_options(int argc, char *argv[], char **config_path, char **cmdline)
 {
 	char *cmd = argv[0];
 	int pos = 1;
@@ -362,11 +370,66 @@ static void parse_options(int argc, char *argv[], char **config_path)
 		*config_path = argv[pos];
 		pos++;
 	}
+
+	if (is_arg(argc, argv, "--cmdline")) {
+		pos++;
+		if (pos >= argc) {
+			usage(cmd);
+			exit(1);
+		}
+		*cmdline = argv[pos];
+		pos++;
+	}
+}
+
+#define SIZE_CMDLINE_BUF 1024
+
+static int read_cmdline(const char *arg_cmdline)
+{
+	struct pantavisor *pv = pv_get_instance();
+	char buf[SIZE_CMDLINE_BUF];
+	int ret = -1, fd, bytes;
+
+	if (arg_cmdline) {
+		pv->cmdline = strdup(arg_cmdline);
+		printf("DEBUG: cmdline loaded from arg: '%s'\n", pv->cmdline);
+		return 0;
+	}
+
+	fd = open("/proc/cmdline", O_RDONLY);
+	if (fd < 0) {
+		printf("ERROR: cannot open /proc/cmdline: %s", strerror(errno));
+		return ret;
+	}
+
+	bytes = pv_file_read_nointr(fd, buf, SIZE_CMDLINE_BUF);
+	if (bytes < 0) {
+		printf("ERROR: cannot read /proc/cmdline: %s", strerror(errno));
+		goto out;
+	}
+
+	// remove trailing \n
+	buf[bytes-1] = '\0';
+
+	pv->cmdline = calloc(1, bytes * sizeof(char*));
+	if (!pv->cmdline) {
+		printf("ERROR: cannot allocate cmdline: %s", strerror(errno));
+		goto out;
+	}
+
+	strncpy(pv->cmdline, buf, bytes);
+	printf("DEBUG: cmdline loaded from /proc/cmdline: '%s'\n", pv->cmdline);
+
+	ret = 0;
+
+out:
+	close(fd);
+	return ret;
 }
 
 int main(int argc, char *argv[])
 {
-	char *config_path = NULL;
+	char *config_path = NULL, *cmdline = NULL;
 
 	pv_pid = 0;
 	shell_pid = 0;
@@ -378,32 +441,21 @@ int main(int argc, char *argv[])
 	}
 
 	// get command argument options
-	parse_options(argc, argv, &config_path);
+	parse_options(argc, argv, &config_path, &cmdline);
 
 	// init pv struct
 	pv_init();
+
+	// read /proc/cmdline if not injected from args
+	if (read_cmdline(cmdline))
+		exit(1);
+
 	// init config
 	if (pv_config_init(config_path))
 		exit(1);
 
 	// this might override the configuration
 	parse_commands(argc, argv);
-
-	// in case of appengine configured
-	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
-		printf("App engine init mode not yet implemented\n");
-		exit(1);
-	}
-
-	// executed from shell
-	if (getpid() != 1) {
-		// we are going to use this thread for pv
-		pv_pid = getpid();
-		redirect_io();
-		pv_start();
-		pv_stop();
-		return 0;
-	}
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if ((pv_config_get_system_init_mode() == IM_STANDALONE) &&
@@ -412,6 +464,17 @@ int main(int argc, char *argv[])
 			debug_shell();
 		debug_telnet();
 		goto loop;
+	}
+
+	mount_cgroups();
+
+	// executed from shell
+	if (getpid() != 1) {
+		// we are going to use this thread for pv
+		pv_pid = getpid();
+		pv_start();
+		pv_stop();
+		return 0;
 	}
 
 	// create pv thread

@@ -115,7 +115,7 @@ void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat, const 
 
 void pv_paths_etc_file(char *buf, size_t size, const char *name);
 
-void pv_paths_configs(char *buf, size_t size);
+void pv_paths_configs_file(char *buf, size_t size, const char *name);
 
 void pv_paths_cert(char *buf, size_t size, const char* name);
 

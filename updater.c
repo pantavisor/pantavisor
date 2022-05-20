@@ -1154,8 +1154,8 @@ static void pv_trail_remote_free(struct trail_remote *trail)
 		free(trail->endpoint_trail_queued);
 	if (trail->endpoint_trail_new)
 		free(trail->endpoint_trail_new);
-	if (trail->endpoint_trail_queued)
-		free(trail->endpoint_trail_queued);
+	if (trail->endpoint_trail_downloading)
+		free(trail->endpoint_trail_downloading);
 	if (trail->endpoint_trail_inprogress)
 		free(trail->endpoint_trail_inprogress);
 

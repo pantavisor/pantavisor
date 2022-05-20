@@ -34,12 +34,12 @@
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
 #include "log.h"
 
+#include "parser_multi1.h"
 #include "addons.h"
 #include "platforms.h"
 #include "volumes.h"
 #include "objects.h"
 #include "pantavisor.h"
-#include "parser.h"
 #include "state.h"
 #include "json.h"
 #include "utils/str.h"

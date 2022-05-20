@@ -140,10 +140,15 @@ out:
 
 void pv_ctrl_socket_close(int ctrl_fd)
 {
+	char path[PATH_MAX];
+
 	if (ctrl_fd >= 0) {
-		pv_log(DEBUG, "closing ctrl socket with fd %d", ctrl_fd);
+		pv_paths_pv_file(path, PATH_MAX, PVCTRL_FNAME);
+		pv_log(DEBUG, "closing %s with fd %d", path, ctrl_fd);
 		close(ctrl_fd);
+		unlink(path);
 	}
+
 }
 
 static struct pv_cmd* pv_ctrl_parse_command(char *buf)

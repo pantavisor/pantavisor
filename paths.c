@@ -273,11 +273,11 @@ void pv_paths_etc_file(char *buf, size_t size, const char *name)
 	SNPRINTF_WTRUNC(buf, size, PV_ETC_PATHF, pv_config_get_system_etcdir(), name);
 }
 
-#define PV_CONFIGS_PATHF "%s/"
+#define PV_CONFIGS_PATHF "%s/%s"
 
-void pv_paths_configs(char *buf, size_t size)
+void pv_paths_configs_file(char *buf, size_t size, const char *name)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_CONFIGS_PATHF, pv_config_get_system_confdir());
+	SNPRINTF_WTRUNC(buf, size, PV_CONFIGS_PATHF, pv_config_get_system_confdir(), name);
 }
 
 #define PV_CERT_PATHF "%s/%s"
