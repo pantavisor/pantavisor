@@ -31,6 +31,7 @@
 #include <stdlib.h>
 
 #include "state.h"
+#include "drivers.h"
 #include "paths.h"
 #include "volumes.h"
 #include "platforms.h"
@@ -99,6 +100,7 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->jsons);
 		pv_state_init_groups(s);
 		dl_list_init(&s->conditions);
+		dl_list_init(&s->bsp.drivers);
 		s->local = false;
 	}
 
@@ -164,6 +166,7 @@ void pv_state_free(struct pv_state *s)
 	if (s->bsp.modules)
 		free(s->bsp.modules);
 
+	pv_drivers_empty(s);
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
 	pv_disks_empty(s);
@@ -501,6 +504,11 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 
 	if (pv_str_matches(p->group->name, strlen(p->group->name), "data", strlen("data")))
 		return 0;
+
+	if (pv_platform_load_drivers(p, NULL, DRIVER_REQUIRED | DRIVER_OPTIONAL) < 0) {
+		pv_log(ERROR, "failed to load drivers");
+		return -1;
+	}
 
 	if (pv_platform_start(p)) {
 		pv_log(ERROR, "platform %s could not be started", p->name);

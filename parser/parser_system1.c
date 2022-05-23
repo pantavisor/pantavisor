@@ -45,6 +45,7 @@
 #include "parser_bundle.h"
 #include "group.h"
 #include "condition.h"
+#include "drivers.h"
 #include "state.h"
 #include "pvlogger.h"
 #include "utils/str.h"
@@ -52,6 +53,175 @@
 #define PV_NS_NETWORK	0x1
 #define PV_NS_UTS	0x2
 #define PV_NS_IPC	0x4
+
+static int parse_one_driver(struct pv_state *s, char *buf)
+{
+	int i = 0, tokc, tokc_t, n, size, ret;
+	char *key, *value, *str;
+	char **modules;
+	jsmntok_t *tokv, *tokv_t, *t;
+	jsmntok_t **k, **keys;
+
+	if (!buf)
+		return 0;
+
+
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	keys = jsmnutil_get_object_keys(buf, tokv);
+	if (!keys) {
+		pv_log(ERROR, "driver entry cannot be parsed");
+		return 0;
+	}
+	k = keys;
+
+	while (*k) {
+		n = (*k)->end - (*k)->start;
+
+		// copy key
+		key = malloc(n+1);
+		snprintf(key, n+1, "%s", buf+(*k)->start);
+
+		// copy modules array
+		n = (*k+1)->end - (*k+1)->start;
+		value = malloc(n+1);
+		snprintf(value, n+1, "%s", buf+(*k+1)->start);
+
+		if (jsmnutil_parse_json(value, &tokv_t, &tokc_t) < 0) {
+			free(value);
+			free(key);
+			pv_log(ERROR, "wrong format filter");
+			ret = 0;
+			goto out;
+		}
+
+		size = jsmnutil_array_count(value, tokv_t);
+		if (size <= 0) {
+			pv_log(WARN, "empty alias, not including");
+			free(value);
+			free(key);
+			k++;
+			continue;
+		}
+
+		modules = calloc(1, sizeof(char *) * size+1);
+		t = tokv_t + 1;
+		i = 0;
+		while ((str = pv_json_array_get_one_str(value, &size, &t))) {
+			pv_log(DEBUG, "%s %d", str, i);
+			modules[i] = strdup(str);
+			free(str);
+			i++;
+		}
+
+		// add drivers rentry
+		pv_drivers_add(s, key, i, modules);
+
+		if (modules) {
+			char **mod_t = modules;
+			while(*mod_t) {
+				free(*mod_t);
+				mod_t++;
+			}
+			free(modules);
+			modules = 0;
+		}
+
+		// free intermediates
+		if (key) {
+			free(key);
+			key = 0;
+		}
+		if (value) {
+			free(value);
+			value = 0;
+		}
+		k++;
+	}
+	ret = 1;
+out:
+	jsmnutil_tokv_free(keys);
+
+	return ret;
+}
+
+static bool driver_should_parse(char *key)
+{
+	char *dtb, *ovl;
+
+	dtb = pv_config_get_bl_dtb();
+	ovl = pv_config_get_bl_ovl();
+
+	pv_log(DEBUG, "dtb=%s, ovl=%s", dtb, ovl);
+	if (!strcmp(key, "all") ||
+		(dtb && !strcmp(key+strlen("dtb:"), dtb)) ||
+		(ovl && !strcmp(key+strlen("overlay:"), ovl)))
+	{
+		pv_log(DEBUG, "parse '%s' YES", key);
+		return true;
+	}
+
+	return false;
+}
+
+static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
+{
+	int tokc, n;
+	char *buf, *key, *value;
+	jsmntok_t *tokv;
+	jsmntok_t **k, **keys;
+
+	// take null terminate copy of item to parse
+	buf = calloc(1, (len+1) * sizeof(char));
+	buf = memcpy(buf, v, len);
+
+	if (!buf)
+		return 0;
+
+	jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	keys = jsmnutil_get_object_keys(buf, tokv);
+	if (!keys) {
+		pv_log(ERROR, "drivers list cannot be parsed");
+		return 0;
+	}
+	k = keys;
+
+	while (*k) {
+		n = (*k)->end - (*k)->start;
+
+		// check key for [all,dtb:*,overlay:*]
+		key = malloc(n+1);
+		snprintf(key, n+1, "%s", buf+(*k)->start);
+
+		if (driver_should_parse(key)) {
+			// copy value
+			n = (*k+1)->end - (*k+1)->start;
+			value = malloc(n+1);
+			snprintf(value, n+1, "%s", buf+(*k+1)->start);
+			if (!parse_one_driver(s, value)) {
+				pv_log(ERROR, "unable to parse drivers");
+				free(key);
+				free(value);
+				return 0;
+			}
+		}
+
+		// free intermediates
+		if (key) {
+			free(key);
+			key = 0;
+		}
+		if (value) {
+			free(value);
+			value = 0;
+		}
+		k++;
+	}
+	jsmnutil_tokv_free(keys);
+
+	return 1;
+}
 
 static int parse_disks(struct pv_state *s, char *value, int n)
 {
@@ -383,6 +553,83 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		k++;
 	}
 	jsmnutil_tokv_free(keys);
+
+	return 1;
+}
+
+static int platform_drivers_add(struct pv_platform *p, plat_driver_t type, char *buf)
+{
+	int tokc, size, ret = 0;
+	char *str;
+	jsmntok_t *tokv, *t;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format driver");
+		goto out;
+	}
+
+	size = jsmnutil_array_count(buf, tokv);
+	if (size <= 0) {
+		pv_log(ERROR, "empty filter");
+		goto out;
+	}
+
+	t = tokv + 1;
+	while ((str = pv_json_array_get_one_str(buf, &size, &t))) {
+		pv_platform_add_driver(p, type, str);
+		free(str);
+	}
+
+	ret = 1;
+
+out:
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
+static int parse_platform_drivers(struct pv_state *s, struct pv_platform *p, char *buf)
+{
+	int tokc, ret;
+	char *value ;
+	jsmntok_t *tokv;
+
+	if (!buf)
+		return 0;
+
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	if (ret < 0) {
+		pv_log(ERROR, "platform drivers list cannot be parsed");
+		return 0;
+	}
+
+	value = pv_json_get_value(buf, "required", tokv, tokc);
+	if (value) {
+		platform_drivers_add(p, DRIVER_REQUIRED, value);
+		free(value);
+		value = 0;
+	}
+
+	value = pv_json_get_value(buf, "optional", tokv, tokc);
+	if (value) {
+		platform_drivers_add(p, DRIVER_OPTIONAL, value);
+		free(value);
+		value = 0;
+	}
+
+	value = pv_json_get_value(buf, "manual", tokv, tokc);
+	if (value) {
+		platform_drivers_add(p, DRIVER_MANUAL, value);
+		free(value);
+		value = 0;
+	}
+
+	if (value)
+		free(value);
+
+	if (tokv)
+		free(tokv);
 
 	return 1;
 }
@@ -890,6 +1137,18 @@ static int do_action_for_storage(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_drivers(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
+	/*
+	 * BUG_ON(value)
+	 * */
+	value = jka->buf;
+	if (value)
+		parse_platform_drivers(bundle->s, *bundle->platform, value);
+	return 0;
+}
+
 static int do_action_for_conditions(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
@@ -915,6 +1174,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		.platform = &this,
 	};
 
+
 	struct json_key_action system1_platform_key_action [] = {
 		ADD_JKA_ENTRY("name", JSMN_STRING, &bundle, do_action_for_name, false),
 		ADD_JKA_ENTRY("type", JSMN_STRING, &bundle, do_action_for_type, false),
@@ -929,6 +1189,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		ADD_JKA_ENTRY("logs", JSMN_ARRAY, &bundle, do_action_for_one_log, false),
 		ADD_JKA_ENTRY("storage", JSMN_OBJECT, &bundle, do_action_for_storage, false),
 		ADD_JKA_ENTRY("conditions", JSMN_STRING, &bundle, do_action_for_conditions, false),
+		ADD_JKA_ENTRY("drivers", JSMN_OBJECT, &bundle, do_action_for_drivers, false),
 		ADD_JKA_NULL_ENTRY()
 	};
 
@@ -1070,7 +1331,28 @@ static struct pv_state* system1_parse_bsp(struct pv_state *this, const char *buf
 	free(value);
 	value = NULL;
 
-out:
+	count = pv_json_get_key_count(buf, "bsp/drivers.json", tokv, tokc);
+	if (count == 1) {
+		value = pv_json_get_value(buf, "bsp/drivers.json", tokv, tokc);
+		if (!value) {
+			pv_log(WARN, "Unable to get drivers.json value from state");
+			this = NULL;
+			goto out;
+		}
+
+		pv_log(DEBUG, "adding json 'bsp/drivers.json'");
+		pv_jsons_add(this, "bsp/drivers.json", value);
+
+		if (!parse_bsp_drivers(this, value, strlen(value))) {
+			this = NULL;
+			goto out;
+		}
+
+		free(value);
+		value = NULL;
+	}
+
+ out:
 	if (tokv)
 		free(tokv);
 	if (value)
@@ -1105,6 +1387,7 @@ static struct pv_state* system1_parse_objects(struct pv_state *this, const char 
 
 		// avoid already parsed keys
 		if (!strncmp("bsp/run.json", buf+(*k)->start, n) ||
+		    !strncmp("bsp/drivers.json", buf+(*k)->start, n) ||
 		    !strncmp("disks.json", buf+(*k)->start, n) ||
 		    !strncmp("#spec", buf+(*k)->start, n)) {
 			k++;

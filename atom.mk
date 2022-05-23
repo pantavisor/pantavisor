@@ -87,13 +87,15 @@ LOCAL_SRC_FILES := init.c \
 			ph_logger/ph_logger_v1.c \
 			buffer.c \
 			blkid.c \
-			paths.c
+			paths.c \
+			drivers.c
 
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
 
 LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
+	scripts/hooks_lxc-mount.d/mdev.sh:lib/pv/hooks_lxc-mount.d/mdev.sh \
 	scripts/JSON.sh:lib/pv/JSON.sh
 
 include $(BUILD_EXECUTABLE)

@@ -43,6 +43,7 @@ int setns(int nsfd, int nstype);
 #include "platforms.h"
 #include "paths.h"
 #include "wdt.h"
+#include "drivers.h"
 #include "pvlogger.h"
 #include "init.h"
 #include "state.h"
@@ -135,6 +136,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 		p->updated = false;
 		p->state = s;
 		dl_list_init(&p->condition_refs);
+		dl_list_init(&p->drivers);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -197,6 +199,7 @@ static void pv_platform_empty_logger_configs(struct pv_platform *p)
 void pv_platform_free(struct pv_platform *p)
 {
 	char **c;
+	struct pv_platform_driver *d, *tmp;
 
 	if (p->name)
 		free(p->name);
@@ -210,6 +213,14 @@ void pv_platform_free(struct pv_platform *p)
 			c++;
 		}
 	}
+
+	dl_list_for_each_safe(d, tmp, &p->drivers,
+			struct pv_platform_driver, list) {
+		free(d->match);
+		free(d);
+	}
+
+	dl_list_empty(&p->drivers);
 
 	if (p->exec)
 		free(p->exec);
@@ -233,6 +244,19 @@ void pv_platform_add_condition(struct pv_platform *p, struct pv_condition *c)
 	if (cr) {
 		dl_list_init(&cr->list);
 		dl_list_add_tail(&p->condition_refs, &cr->list);
+	}
+}
+
+void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type, char *value)
+{
+	struct pv_platform_driver *d = calloc(1, sizeof(struct pv_platform_driver));
+
+	if (d) {
+		d->type = type;
+		d->loaded = false;
+		d->match = strdup(value);
+		dl_list_init(&d->list);
+		dl_list_add_tail(&p->drivers, &d->list);
 	}
 }
 
@@ -542,6 +566,80 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	}
 
 	return logger_pid;
+}
+
+void pv_platform_unload_drivers(struct pv_platform *p,
+				char *namematch, plat_driver_t typematch)
+{
+	struct pv_platform_driver *d, *tmp;
+
+	if (dl_list_empty(&p->drivers)) {
+		pv_log(DEBUG, "no drivers for platform '%s'", p->name);
+		return;
+	}
+
+	dl_list_for_each_safe(d, tmp, &p->drivers,
+			struct pv_platform_driver, list) {
+
+		if (!(d->type & typematch))
+			continue;
+
+		// namematch NULL means: all drivers of platform
+		if (namematch && strcmp(namematch, d->match))
+			continue;
+
+		if (d->loaded) {
+			d->loaded = pv_drivers_unload(d->match);
+			pv_log(DEBUG, "unloaded %d drivers", d->loaded);
+		}
+	}
+}
+
+int pv_platform_load_drivers(struct pv_platform *p,
+				char *namematch, plat_driver_t typematch)
+{
+	struct pv_platform_driver *d, *tmp;
+
+	if (dl_list_empty(&p->drivers)) {
+		pv_log(DEBUG, "no drivers for platform '%s'", p->name);
+		return 0;
+	}
+
+	dl_list_for_each_safe(d, tmp, &p->drivers,
+			struct pv_platform_driver, list) {
+
+		if (!(d->type & typematch))
+			continue;
+
+		// namematch NULL means: all drivers of platform
+		if (namematch && strcmp(namematch, d->match))
+			continue;
+
+		switch (d->type) {
+		case DRIVER_REQUIRED:
+			d->loaded = pv_drivers_load(d->match);
+			if (!d->loaded) {
+				pv_log(ERROR, "unable to load required driver '%s'",
+					 d->match);
+				return -1;
+			}
+			break;
+		case DRIVER_OPTIONAL:
+			d->loaded = pv_drivers_load(d->match);
+			break;
+		case DRIVER_MANUAL:
+			d->loaded = pv_drivers_load(d->match);
+			if (!d->loaded) {
+				pv_log(ERROR, "unable to load manual driver '%s'",
+					 d->match);
+				return -1;
+			}
+			break;
+		}
+		pv_log(DEBUG, "plat=%s type=%d, loaded=%d, match='%s'", p->name, d->type, d->loaded, d->match);
+	}
+
+	return 0;
 }
 
 int pv_platform_start(struct pv_platform *p)
