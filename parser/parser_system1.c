@@ -969,7 +969,7 @@ static int do_action_for_roles_object(struct json_key_action *jka, char *value)
 	struct platform_bundle *bundle = (struct platform_bundle*) jka->opaque;
 
 	if (*bundle->platform)
-		(*bundle->platform)->mgmt = false;
+		pv_platform_unset_role(*bundle->platform, PLAT_ROLE_MGMT);
 
 	return 0;
 }
@@ -991,7 +991,7 @@ static int do_action_for_roles_array(struct json_key_action *jka, char *value)
 
 	pv_log(DEBUG, "setting role %s to platform %s", value, (*bundle->platform)->name);
 	if (!strcmp(value, "mgmt"))
-		(*bundle->platform)->mgmt = true;
+		pv_platform_set_role(*bundle->platform, PLAT_ROLE_MGMT);
 	else
 		pv_log(WARN, "invalid role value '%s'", value);
 

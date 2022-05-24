@@ -54,6 +54,11 @@ struct pv_platform_driver {
 	struct dl_list list;
 };
 
+typedef enum {
+	PLAT_ROLE_MGMT = 1 << 0,
+	PLAT_ROLE_SIZE
+} roles_mask_t;
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -65,7 +70,7 @@ struct pv_platform {
 	plat_status_t status;
 	struct pv_group *group;
 	struct pv_state *state;
-	bool mgmt;
+	int roles;
 	bool updated;
 	struct dl_list drivers;
 	struct dl_list condition_refs; // pv_condition_ref
@@ -104,6 +109,10 @@ bool pv_platform_is_started(struct pv_platform *p);
 bool pv_platform_is_stopping(struct pv_platform *p);
 bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
+
+void pv_platform_set_role(struct pv_platform *p, roles_mask_t role);
+void pv_platform_unset_role(struct pv_platform *p, roles_mask_t role);
+bool pv_platform_has_role(struct pv_platform *p, roles_mask_t role);
 
 char* pv_platform_get_json(struct pv_platform *p);
 

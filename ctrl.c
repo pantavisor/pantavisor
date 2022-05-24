@@ -629,7 +629,7 @@ static bool pv_ctrl_check_sender_privileged(const char *pname)
 {
 	struct pv_platform *plat = pv_ctrl_get_sender_plat(pname);
 
-	return plat ? plat->mgmt : false;
+	return plat ? pv_platform_has_role(plat, PLAT_ROLE_MGMT) : false;
 }
 
 static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
