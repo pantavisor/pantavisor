@@ -24,6 +24,7 @@
 
 #include "condition.h"
 #include "utils/str.h"
+#include "utils/json.h"
 
 #define MODULE_NAME             "condition"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -79,19 +80,25 @@ bool pv_condition_check(struct pv_condition *c)
 
 char *pv_condition_get_json(struct pv_condition *c)
 {
-	int len;
-	char *json;
+	struct pv_json_ser js;
 
-	len = strlen(c->plat) +
-		strlen(c->key) +
-		strlen(c->eval_value) +
-		strlen(c->curr_value) +
-		strlen("{\"container\":\"\",\"key\":\"\",\"eval_value\":\"\",\"curr_value\":\"\"}");
-	json = calloc(1, (len + 1) * sizeof(char*));
-	SNPRINTF_WTRUNC(json, len + 1, "{\"container\":\"%s\",\"key\":\"%s\",\"eval_value\":\"%s\",\"curr_value\":\"%s\"}",
-		c->plat, c->key, c->eval_value, c->curr_value);
+	pv_json_ser_init(&js, 512);
 
-	return json;
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "container");
+		pv_json_ser_string(&js, c->plat);
+		pv_json_ser_key(&js, "key");
+		pv_json_ser_string(&js, c->key);
+		pv_json_ser_key(&js, "eval_value");
+		pv_json_ser_string(&js, c->eval_value);
+		pv_json_ser_key(&js, "curr_value");
+		pv_json_ser_string(&js, c->curr_value);
+
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
 }
 
 struct pv_condition_ref* pv_condition_ref_new(struct pv_condition *c)

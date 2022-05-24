@@ -50,6 +50,7 @@ int setns(int nsfd, int nstype);
 #include "parser/parser.h"
 #include "utils/list.h"
 #include "utils/fs.h"
+#include "utils/json.h"
 #include "utils/str.h"
 
 #define MODULE_NAME             "platforms"
@@ -132,7 +133,7 @@ struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
 	if (p) {
 		p->name = strdup(name);
 		p->status = PLAT_NONE;
-		p->mgmt = true;
+		p->roles = PLAT_ROLE_MGMT;
 		p->updated = false;
 		p->state = s;
 		dl_list_init(&p->condition_refs);
@@ -260,51 +261,87 @@ void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type, char *val
 	}
 }
 
+static const char* pv_platforms_role_str(roles_mask_t role)
+{
+    switch(role) {
+        case PLAT_ROLE_MGMT: return "mgmt";
+        default: return "unknown";
+    }
+
+    return "unknown";
+}
+
 char* pv_platform_get_json(struct pv_platform *p)
 {
-	int len, line_len;
-	char *json, *group = NULL, *line;
-	const char *status = pv_platform_status_string(p->status);
 	struct pv_condition_ref *cr, *tmp;
+	struct pv_json_ser js;
+	char *group = NULL, *line;
+	const char *status = pv_platform_status_string(p->status);
+	int i;
 
 	if (p->group)
 		group = p->group->name;
 
-	len = strlen(p->name) +
-		strlen(group) +
-		strlen(status) +
-		strlen("{\"name\":\"\",\"group\":\"\",\"status\":\"\",\"conditions\":[");
-	json = calloc(1, (len + 1) * sizeof(char*));
-	snprintf(json, len + 1, "{\"name\":\"%s\",\"group\":\"%s\",\"status\":\"%s\",\"conditions\":[",
-		p->name, group, status);
+	pv_json_ser_init(&js, 512);
 
-	if (dl_list_empty(&p->condition_refs))
-		goto close;
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "name");
+		pv_json_ser_string(&js, p->name);
+		pv_json_ser_key(&js, "group");
+		pv_json_ser_string(&js, group);
+		pv_json_ser_key(&js, "status");
+		pv_json_ser_string(&js, status);
+		pv_json_ser_key(&js, "roles");
+		pv_json_ser_array(&js);
+		{
+			if (!p->roles)
+				goto close_roles;
 
-	dl_list_for_each_safe(cr, tmp, &p->condition_refs,
-			struct pv_condition_ref, list) {
-		if (!cr->ref)
-			continue;
+			if (p->roles >= PLAT_ROLE_SIZE) {
+				pv_json_ser_string(&js, "unknown");
+				goto close_roles;
+			}
 
-		line = pv_condition_get_json(cr->ref);
-		line_len = strlen(line) + 1;
-		json = realloc(json, len + line_len + 1);
-		SNPRINTF_WTRUNC(&json[len], line_len + 1, "%s,", line);
-		len += line_len;
-		free(line);
+			for (i = 0; i < PLAT_ROLE_SIZE; i++) {
+				if (pv_platform_has_role(p, i))
+					pv_json_ser_string(&js, pv_platforms_role_str(i));
+			}
+close_roles:
+			pv_json_ser_array_pop(&js);
+		}
+
+		pv_json_ser_key(&js, "conditions");
+		pv_json_ser_array(&js);
+		{
+			if (dl_list_empty(&p->condition_refs))
+				goto close_conds;
+
+			dl_list_for_each_safe(cr, tmp, &p->condition_refs,
+					struct pv_condition_ref, list) {
+				if (!cr->ref)
+					continue;
+
+				pv_json_ser_object(&js);
+				{
+					pv_json_ser_key(&js, "container");
+					pv_json_ser_string(&js, cr->ref->plat);
+					pv_json_ser_key(&js, "key");
+					pv_json_ser_string(&js, cr->ref->key);
+					pv_json_ser_key(&js, "eval_value");
+					pv_json_ser_string(&js, cr->ref->eval_value);
+
+					pv_json_ser_object_pop(&js);
+				}
+			}
+close_conds:
+			pv_json_ser_array_pop(&js);
+		}
+
+		pv_json_ser_object_pop(&js);
 	}
 
-	// remove ,
-	len--;
-
-close:
-	// close json
-	json = realloc(json, len + 3);
-	json[len] = ']';
-	json[len + 1] = '}';
-	json[len + 2] = '\0';
-
-	return json;
+	return pv_json_ser_str(&js);
 }
 
 void pv_platforms_empty(struct pv_state *s)
@@ -850,6 +887,21 @@ bool pv_platform_is_stopped(struct pv_platform *p)
 bool pv_platform_is_updated(struct pv_platform *p)
 {
 	return p->updated;
+}
+
+void pv_platform_set_role(struct pv_platform *p, roles_mask_t role)
+{
+	p->roles |= role;
+}
+
+void pv_platform_unset_role(struct pv_platform *p, roles_mask_t role)
+{
+	p->roles &= ~role;
+}
+
+bool pv_platform_has_role(struct pv_platform *p, roles_mask_t role)
+{
+	return p->roles & role;
 }
 
 static int pv_platforms_early_init(struct pv_init *this)
