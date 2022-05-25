@@ -275,7 +275,7 @@ char* pv_platform_get_json(struct pv_platform *p)
 {
 	struct pv_condition_ref *cr, *tmp;
 	struct pv_json_ser js;
-	char *group = NULL, *line;
+	char *group = NULL;
 	const char *status = pv_platform_status_string(p->status);
 	int i;
 
@@ -423,7 +423,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_instance_fn");
 
-	void (*__pv_paths)(void*, void*, void*, void*, void*, void*, void*, void*, void*) = dlsym(lib, "pv_set_pv_paths_fn");
+	void (*__pv_paths)(void*, void*, void*, void*, void*, void*, void*, void*, void*, void*, void*) = dlsym(lib, "pv_set_pv_paths_fn");
 	if (__pv_paths)
 		__pv_paths(pv_paths_pv_file,
 			pv_paths_pv_log,
@@ -431,6 +431,8 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 			pv_paths_pv_log_file,
 			pv_paths_pv_usrmeta_key,
 			pv_paths_pv_usrmeta_plat_key,
+			pv_paths_pv_devmeta_key,
+			pv_paths_pv_devmeta_plat_key,
 			pv_paths_lib_hook,
 			pv_paths_volumes_plat_file,
 			pv_paths_configs_file);

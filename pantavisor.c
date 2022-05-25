@@ -251,7 +251,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_metadata_init_devmeta(pv);
-	pv_metadata_init_usermeta(pv->state);
 
 	if (!pv_update_is_transitioning(pv->update)) {
 		if (pv_state_start(pv->state)) {

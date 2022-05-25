@@ -37,6 +37,11 @@ void pv_paths_pv_file(char *buf, size_t size, const char *name);
 void pv_paths_pv_usrmeta_key(char *buf, size_t size, const char *key);
 void pv_paths_pv_usrmeta_plat_key(char *buf, size_t size, const char *plat, const char *key);
 
+#define DEVMETA_DNAME "device-meta"
+
+void pv_paths_pv_devmeta_key(char *buf, size_t size, const char *key);
+void pv_paths_pv_devmeta_plat_key(char *buf, size_t size, const char *plat, const char *key);
+
 #define LOGS_DNAME            "logs"
 #define LOGS_ERROR_DNAME      "error"
 #define LXC_LOG_SUBDIR        "lxc"
@@ -51,7 +56,8 @@ void pv_paths_pv_log_file(char *buf, size_t size, const char *rev, const char *p
 
 void pv_paths_storage(char *buf, size_t size);
 void pv_paths_storage_log(char *buf, size_t size);
-void pv_paths_storage_meta(char *buf, size_t size);
+void pv_paths_storage_usrmeta(char *buf, size_t size);
+void pv_paths_storage_devmeta(char *buf, size_t size);
 void pv_paths_storage_dropbear(char *buf, size_t size);
 
 #define COREPV_FNAME "corepv"
@@ -126,5 +132,6 @@ void pv_paths_tmp(char *buf, size_t size, const char *path);
 #define PLATFORM_PVCTRL_SOCKET_PATH PLATFORM_PV_PATH"/"PVCTRL_FNAME
 #define PLATFORM_LOG_CTRL_PATH      PLATFORM_PV_PATH"/"LOGCTRL_FNAME
 #define PLATFORM_USER_META_PATH     PLATFORM_PV_PATH"/"USRMETA_DNAME
+#define PLATFORM_DEVICE_META_PATH   PLATFORM_PV_PATH"/"DEVMETA_DNAME
 
 #endif /* PATHS_H */
