@@ -105,6 +105,12 @@ static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 	module = modules;
 	while (*module) {
 		tmp = _sub_meta_values(*module);
+		if (!tmp) {
+			pv_log(WARN, "illegal module value '%s'", *module);
+			ret++;
+			goto next;
+		}
+
 		if (action == MOD_UNLOAD)
 			mod = strtok(tmp, " ");
 		else
@@ -114,8 +120,11 @@ static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 		tsh_run(cmd, 1, &status);
 		if (WEXITSTATUS(status) == 0)
 			ret++;;
+	next:
 		module++;
-		free(tmp);
+		if (tmp)
+			free(tmp);
+		tmp = NULL;
 	}
 
 	return ret;
