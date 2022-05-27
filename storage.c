@@ -249,7 +249,7 @@ static void pv_storage_print(struct pv_storage* storage)
 	pv_log(INFO, "real free disk space: %"PRIu64" B (%d%% of total)", storage->real_free, storage->real_free_percentage);
 }
 
-off_t pv_storage_get_free()
+unsigned int pv_storage_get_free()
 {
 	unsigned int real_free = 0;
 	struct pv_storage* storage;
@@ -315,9 +315,9 @@ int pv_storage_gc_run()
 	return reclaimed;
 }
 
-off_t pv_storage_gc_run_needed(off_t needed)
+unsigned int pv_storage_gc_run_needed(unsigned int needed)
 {
-	off_t available = pv_storage_get_free();
+	unsigned int available = pv_storage_get_free();
 
 	if (needed > available) {
 		pv_log(WARN, "%"PRIu64" B needed but only %"PRIu64" B available. Freeing up space...",
