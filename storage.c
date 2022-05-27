@@ -358,13 +358,13 @@ static char* pv_storage_get_json(struct pv_storage* storage)
 	pv_json_ser_object(&js);
 	{
 		pv_json_ser_key(&js, "total");
-		pv_json_ser_int(&js, storage->total);
+		pv_json_ser_number(&js, storage->total);
 		pv_json_ser_key(&js, "free");
-		pv_json_ser_int(&js, storage->free);
+		pv_json_ser_number(&js, storage->free);
 		pv_json_ser_key(&js, "reserved");
-		pv_json_ser_int(&js, storage->reserved);
+		pv_json_ser_number(&js, storage->reserved);
 		pv_json_ser_key(&js, "real_free");
-		pv_json_ser_int(&js, storage->real_free);
+		pv_json_ser_number(&js, storage->real_free);
 
 		pv_json_ser_object_pop(&js);
 	}
