@@ -202,12 +202,12 @@ out:
 }
 
 struct pv_storage {
-	off_t total;
-	off_t free;
+	unsigned total;
+	unsigned free;
 	int free_percentage;
-	off_t reserved;
+	unsigned reserved;
 	int reserved_percentage;
-	off_t real_free;
+	unsigned real_free;
 	int real_free_percentage;
 	int threshold;
 };
@@ -224,8 +224,8 @@ static struct pv_storage* pv_storage_new()
 
 	this = calloc(1, sizeof(struct pv_storage));
 	if (this) {
-		this->total = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
-		this->free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
+		this->total = buf.f_bsize * buf.f_blocks;
+		this->free = buf.f_bsize * buf.f_bfree;
 		if (this->total)
 			this->free_percentage = (this->free * 100) / this->total;
 		this->reserved_percentage = pv_config_get_storage_gc_reserved();
@@ -251,7 +251,7 @@ static void pv_storage_print(struct pv_storage* storage)
 
 off_t pv_storage_get_free()
 {
-	off_t real_free = 0;
+	unsigned real_free = 0;
 	struct pv_storage* storage;
 
 	storage = pv_storage_new();
