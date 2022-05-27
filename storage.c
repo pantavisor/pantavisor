@@ -202,12 +202,12 @@ out:
 }
 
 struct pv_storage {
-	unsigned total;
-	unsigned free;
+	unsigned int total;
+	unsigned int free;
 	int free_percentage;
-	unsigned reserved;
+	unsigned int reserved;
 	int reserved_percentage;
-	unsigned real_free;
+	unsigned int real_free;
 	int real_free_percentage;
 	int threshold;
 };
@@ -251,7 +251,7 @@ static void pv_storage_print(struct pv_storage* storage)
 
 off_t pv_storage_get_free()
 {
-	unsigned real_free = 0;
+	unsigned int real_free = 0;
 	struct pv_storage* storage;
 
 	storage = pv_storage_new();
