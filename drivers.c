@@ -264,8 +264,9 @@ struct pv_driver* pv_drivers_add(struct pv_state *s, char *alias,
 
 	if (this) {
 		this->alias = strdup(alias);
-		this->modules = calloc(1, sizeof(char*) * len+1);
+		this->modules = calloc(len + 1, sizeof(char*));
 		while (i < len) {
+			pv_log(DEBUG, "adding module %s", this->modules[i]);
 			this->modules[i] = strdup(modules[i]);
 			i++;
 		}

@@ -104,7 +104,7 @@ static int parse_one_driver(struct pv_state *s, char *buf)
 			continue;
 		}
 
-		modules = calloc(1, sizeof(char *) * size+1);
+		modules = calloc(size + 1, sizeof(char *));
 		t = tokv_t + 1;
 		i = 0;
 		while ((str = pv_json_array_get_one_str(value, &size, &t))) {
