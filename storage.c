@@ -202,12 +202,12 @@ out:
 }
 
 struct pv_storage {
-	off_t total;
-	off_t free;
+	unsigned int total;
+	unsigned int free;
 	int free_percentage;
-	off_t reserved;
+	unsigned int reserved;
 	int reserved_percentage;
-	off_t real_free;
+	unsigned int real_free;
 	int real_free_percentage;
 	int threshold;
 };
@@ -224,8 +224,8 @@ static struct pv_storage* pv_storage_new()
 
 	this = calloc(1, sizeof(struct pv_storage));
 	if (this) {
-		this->total = (off_t) buf.f_bsize * (off_t) buf.f_blocks;
-		this->free = (off_t) buf.f_bsize * (off_t) buf.f_bfree;
+		this->total = buf.f_bsize * buf.f_blocks;
+		this->free = buf.f_bsize * buf.f_bfree;
 		if (this->total)
 			this->free_percentage = (this->free * 100) / this->total;
 		this->reserved_percentage = pv_config_get_storage_gc_reserved();
@@ -243,15 +243,15 @@ static struct pv_storage* pv_storage_new()
 
 static void pv_storage_print(struct pv_storage* storage)
 {
-	pv_log(DEBUG, "total disk space: %"PRIu64" B", storage->total);
-	pv_log(DEBUG, "free disk space: %"PRIu64" B (%d%% of total)", storage->free, storage->free_percentage);
-	pv_log(DEBUG, "reserved disk space: %"PRIu64" B (%d%% of total)", storage->reserved, storage->reserved_percentage);
-	pv_log(INFO, "real free disk space: %"PRIu64" B (%d%% of total)", storage->real_free, storage->real_free_percentage);
+	pv_log(DEBUG, "total disk space: %d B", storage->total);
+	pv_log(DEBUG, "free disk space: %d B (%d%% of total)", storage->free, storage->free_percentage);
+	pv_log(DEBUG, "reserved disk space: %d B (%d%% of total)", storage->reserved, storage->reserved_percentage);
+	pv_log(INFO, "real free disk space: %d B (%d%% of total)", storage->real_free, storage->real_free_percentage);
 }
 
-off_t pv_storage_get_free()
+unsigned int pv_storage_get_free()
 {
-	off_t real_free = 0;
+	unsigned int real_free = 0;
 	struct pv_storage* storage;
 
 	storage = pv_storage_new();
@@ -315,12 +315,12 @@ int pv_storage_gc_run()
 	return reclaimed;
 }
 
-off_t pv_storage_gc_run_needed(off_t needed)
+unsigned int pv_storage_gc_run_needed(unsigned int needed)
 {
-	off_t available = pv_storage_get_free();
+	unsigned int available = pv_storage_get_free();
 
 	if (needed > available) {
-		pv_log(WARN, "%"PRIu64" B needed but only %"PRIu64" B available. Freeing up space...",
+		pv_log(WARN, "%d B needed but only %d B available. Freeing up space...",
 			needed,
 			available);
 		pv_storage_gc_run();
@@ -328,7 +328,7 @@ off_t pv_storage_gc_run_needed(off_t needed)
 		available = pv_storage_get_free();
 
 		if (needed > available)
-			pv_log(ERROR, "still %"PRIu64" B needed but only %"PRIu64" B available",
+			pv_log(ERROR, "still %d B needed but only %d B available",
 				needed,
 				available);
 	}
@@ -358,13 +358,13 @@ static char* pv_storage_get_json(struct pv_storage* storage)
 	pv_json_ser_object(&js);
 	{
 		pv_json_ser_key(&js, "total");
-		pv_json_ser_int(&js, storage->total);
+		pv_json_ser_number(&js, storage->total);
 		pv_json_ser_key(&js, "free");
-		pv_json_ser_int(&js, storage->free);
+		pv_json_ser_number(&js, storage->free);
 		pv_json_ser_key(&js, "reserved");
-		pv_json_ser_int(&js, storage->reserved);
+		pv_json_ser_number(&js, storage->reserved);
 		pv_json_ser_key(&js, "real_free");
-		pv_json_ser_int(&js, storage->real_free);
+		pv_json_ser_number(&js, storage->real_free);
 
 		pv_json_ser_object_pop(&js);
 	}

@@ -51,7 +51,7 @@ int pv_json_ser_array(struct pv_json_ser *js);
 int pv_json_ser_array_pop(struct pv_json_ser *js);
 int pv_json_ser_string(struct pv_json_ser *js, const char *value);
 int pv_json_ser_bool(struct pv_json_ser *js, bool value);
-int pv_json_ser_int(struct pv_json_ser *js, int value);
+int pv_json_ser_number(struct pv_json_ser *js, double value);
 
 char* pv_json_ser_str(struct pv_json_ser *js);
 

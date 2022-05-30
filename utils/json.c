@@ -373,7 +373,7 @@ int pv_json_ser_bool(struct pv_json_ser *js, bool value)
 	return ret;
 }
 
-int pv_json_ser_int(struct pv_json_ser *js, int value)
+int pv_json_ser_number(struct pv_json_ser *js, double value)
 {
 	jsonbcode ret;
 
