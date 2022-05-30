@@ -829,7 +829,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_USER_META), path_len);
 
 		if (!metakey) {
-			pv_log(WARN, "HTTP request has bad meta name %s", file_name);
+			pv_log(WARN, "HTTP request has bad meta name %s", metakey);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad metadata key name");
 			goto out;
 		}
@@ -846,6 +846,30 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				goto err_pr;
 			if (pv_metadata_rm_usermeta(metakey) < 0)
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_NOT_FOUND, "User meta does not exist");
+			pv_ctrl_write_ok_response(req_fd);
+		} else
+			goto err_me;
+	} else if (pv_str_startswith(ENDPOINT_DEVICE_META, strlen(ENDPOINT_DEVICE_META), path)) {
+		metakey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_DEVICE_META), path_len);
+
+		if (!metakey) {
+			pv_log(WARN, "HTTP request has bad meta name %s", metakey);
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad metadata key name");
+			goto out;
+		}
+
+		if (!strncmp("PUT", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			metavalue = pv_ctrl_get_body(req_fd, content_length);
+			if (pv_metadata_add_devmeta(metakey, metavalue) < 0)
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot add or update device meta");
+			pv_ctrl_write_ok_response(req_fd);
+		} else if (!strncmp("DELETE", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			if (pv_metadata_rm_devmeta(metakey) < 0)
+				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_NOT_FOUND, "Device meta does not exist");
 			pv_ctrl_write_ok_response(req_fd);
 		} else
 			goto err_me;
@@ -921,7 +945,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 		condkey = pv_ctrl_get_file_name(path, sizeof(ENDPOINT_CONDITIONS), path_len);
 
 		if (!condkey) {
-			pv_log(WARN, "HTTP request has bad condition name %s", file_name);
+			pv_log(WARN, "HTTP request has bad condition name %s", condkey);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Request has bad condition key name");
 			goto out;
 		}
@@ -972,6 +996,10 @@ out:
 		free(metakey);
 	if (metavalue)
 		free(metavalue);
+	if (condkey)
+		free(condkey);
+	if (condvalue)
+		free(condvalue);
 	if (driverkey)
 		free(driverkey);
 	if (drivervalue)

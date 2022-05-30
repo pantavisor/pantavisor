@@ -51,6 +51,19 @@ void pv_paths_pv_usrmeta_plat_key(char *buf, size_t size, const char *plat, cons
 	SNPRINTF_WTRUNC(buf, size, PV_USRMETA_PLAT_PATHF, pv_config_get_system_rundir(), plat, key);
 }
 
+#define PV_DEVMETA_PATHF      PV_PATH"/"DEVMETA_DNAME"/%s"
+#define PV_DEVMETA_PLAT_PATHF PV_PATH"/device-meta.%s/%s"
+
+void pv_paths_pv_devmeta_key(char *buf, size_t size, const char *key)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_DEVMETA_PATHF, pv_config_get_system_rundir(), key);
+}
+
+void pv_paths_pv_devmeta_plat_key(char *buf, size_t size, const char *plat, const char *key)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_DEVMETA_PLAT_PATHF, pv_config_get_system_rundir(), plat, key);
+}
+
 #define PV_LOGS_PATHF      PV_PATH"/"LOGS_DNAME"/%s"
 #define PV_LOGS_PLAT_PATHF PV_LOGS_PATHF"/%s"
 #define PV_LOGS_FILE_PATHF PV_LOGS_PLAT_PATHF"/%s"
@@ -82,9 +95,14 @@ void pv_paths_storage_log(char *buf, size_t size)
 	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_PATHF, pv_config_get_log_logdir());
 }
 
-void pv_paths_storage_meta(char *buf, size_t size)
+void pv_paths_storage_usrmeta(char *buf, size_t size)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_PATHF, pv_config_get_cache_metacachedir());
+	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_PATHF, pv_config_get_cache_usrmetadir());
+}
+
+void pv_paths_storage_devmeta(char *buf, size_t size)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_PATHF, pv_config_get_cache_devmetadir());
 }
 
 void pv_paths_storage_dropbear(char *buf, size_t size)

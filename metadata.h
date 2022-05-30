@@ -53,7 +53,6 @@ struct pv_metadata {
 int pv_metadata_factory_meta(struct pantavisor *pv);
 bool pv_metadata_factory_meta_done(struct pantavisor *pv);
 
-void pv_metadata_init_usermeta(struct pv_state *s);
 int pv_metadata_add_usermeta(const char *key, const char *value);
 int pv_metadata_rm_usermeta(const char *key);
 char *pv_metadata_get_usermeta(char *key);
@@ -61,7 +60,8 @@ void pv_metadata_parse_usermeta(char *buf);
 
 int pv_metadata_init_devmeta(struct pantavisor *pv);
 int pv_metadata_upload_devmeta(struct pantavisor *pv);
-void pv_metadata_add_devmeta(const char *key, const char *value);
+int pv_metadata_add_devmeta(const char *key, const char *value);
+int pv_metadata_rm_devmeta(const char *key);
 void pv_metadata_parse_devmeta(const char *buf);
 
 void pv_metadata_remove(void);

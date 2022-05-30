@@ -280,17 +280,6 @@ static void pv_devmeta_remove(struct pv_metadata *metadata)
 	}
 }
 
-void pv_metadata_init_usermeta(struct pv_state *s)
-{
-	struct pv_platform *p, *tmp;
-	struct dl_list *platforms = &s->platforms;
-
-	dl_list_for_each_safe(p, tmp, platforms,
-		struct pv_platform, list) {
-		pv_storage_init_plat_usermeta(p->name);
-	}
-}
-
 static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, const char *key)
 {
 	struct pv_meta *curr, *tmp;
@@ -362,9 +351,7 @@ int pv_metadata_add_usermeta(const char *key, const char *value)
 
 	if (ret > 0) {
 		pv_log(DEBUG, "user metadata key %s added or updated", key);
-		// save usermeta in config
 		pv_config_override_value(key, value);
-		// save in usermeta in storage
 		pv_storage_save_usermeta(key, value);
 		return 0;
 	}
@@ -381,7 +368,6 @@ int pv_metadata_rm_usermeta(const char *key)
 
 	if (meta) {
 		dl_list_del(&meta->list);
-		//remove from storage
 		pv_storage_rm_usermeta(meta->key);
 		pv_metadata_free(meta);
 		return 0;
@@ -482,7 +468,7 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-void pv_metadata_add_devmeta(const char *key, const char *value)
+int pv_metadata_add_devmeta(const char *key, const char *value)
 {
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_meta *curr;
@@ -496,7 +482,29 @@ void pv_metadata_add_devmeta(const char *key, const char *value)
 
 		pv_log(DEBUG, "device metadata key %s added or updated", key);
 		pv->metadata->devmeta_uploaded = false;
+		pv_storage_save_devmeta(key, value);
+
+		return 0;
 	}
+
+	return -1;
+}
+
+int pv_metadata_rm_devmeta(const char *key)
+{
+	struct pantavisor *pv = pv_get_instance();
+	struct pv_meta *curr;
+
+	curr = pv_metadata_get_by_key(&pv->metadata->devmeta, key);
+
+	if (curr) {
+		dl_list_del(&curr->list);
+		pv_storage_rm_devmeta(curr->key);
+		pv_metadata_free(curr);
+		return 0;
+	}
+
+	return -1;
 }
 
 void pv_metadata_parse_devmeta(const char *buf)
@@ -849,6 +857,11 @@ static void pv_metadata_load_usermeta()
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
 	pv_storage_get_subdir(path, "", &files);
 
+	if (dl_list_empty(&files))
+		return;
+
+	pv_log(DEBUG, "loading user meta from %s", path);
+
 	dl_list_for_each_safe(curr, tmp, &files,
 		struct pv_path, list) {
 
@@ -870,6 +883,43 @@ static void pv_metadata_load_usermeta()
 	pv_storage_free_subdir(&files);
 }
 
+static void pv_metadata_load_devmeta()
+{
+	struct dl_list files; // pv_path
+	struct pv_path *curr, *tmp;
+	char path[PATH_MAX];
+	char *value;
+
+	dl_list_init(&files);
+	pv_paths_pv_devmeta_key(path, PATH_MAX, "");
+	pv_storage_get_subdir(path, "", &files);
+
+	if (dl_list_empty(&files))
+		return;
+
+	pv_log(DEBUG, "loading device meta from %s", path);
+
+	dl_list_for_each_safe(curr, tmp, &files,
+		struct pv_path, list) {
+
+		if (!strncmp(curr->path, "..", strlen("..")) ||
+			!strncmp(curr->path, ".", strlen(".")))
+			continue;
+
+		pv_paths_pv_devmeta_key(path, PATH_MAX, curr->path);
+		value = pv_file_load(path, METADATA_MAX_SIZE);
+		if (!value) {
+			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
+			continue;
+		}
+
+		pv_metadata_add_devmeta(curr->path, value);
+		free(value);
+	}
+
+	pv_storage_free_subdir(&files);
+}
+
 static int pv_metadata_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -884,6 +934,7 @@ static int pv_metadata_init(struct pv_init *this)
 	pv->metadata->devmeta_uploaded = true;
 
 	pv_metadata_load_usermeta();
+	pv_metadata_load_devmeta();
 
 	return 0;
 }

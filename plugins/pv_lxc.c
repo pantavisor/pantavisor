@@ -61,6 +61,8 @@ void (*__pv_paths_pv_log_plat)(char*, size_t, const char*, const char*) = NULL;
 void (*__pv_paths_pv_log_file)(char*, size_t, const char*, const char*, const char*) = NULL;
 void (*__pv_paths_pv_usrmeta_key)(char*, size_t, const char*) = NULL;
 void (*__pv_paths_pv_usrmeta_plat_key)(char*, size_t, const char*, const char*) = NULL;
+void (*__pv_paths_pv_devmeta_key)(char*, size_t, const char*) = NULL;
+void (*__pv_paths_pv_devmeta_plat_key)(char*, size_t, const char*, const char*) = NULL;
 void (*__pv_paths_lib_hook)(char*, size_t, const char*) = NULL;
 void (*__pv_paths_volumes_plat_file)(char*, size_t, const char*, const char*) = NULL;
 void (*__pv_paths_configs_file)(char*, size_t, const char*) = NULL;
@@ -81,6 +83,8 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	void *fn_pv_paths_pv_log_file,
 	void *fn_pv_paths_pv_usrmeta_key,
 	void *fn_pv_paths_pv_usrmeta_plat_key,
+	void *fn_pv_paths_pv_devmeta_key,
+	void *fn_pv_paths_pv_devmeta_plat_key,
 	void *fn_pv_paths_lib_hook,
 	void *fn_pv_paths_volumes_plat_file,
 	void *fn_pv_paths_configs_file)
@@ -91,6 +95,8 @@ void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
 	__pv_paths_pv_log_file = fn_pv_paths_pv_log_file;
 	__pv_paths_pv_usrmeta_key = fn_pv_paths_pv_usrmeta_key;
 	__pv_paths_pv_usrmeta_plat_key = fn_pv_paths_pv_usrmeta_plat_key;
+	__pv_paths_pv_devmeta_key = fn_pv_paths_pv_devmeta_key;
+	__pv_paths_pv_devmeta_plat_key = fn_pv_paths_pv_devmeta_plat_key;
 	__pv_paths_lib_hook = fn_pv_paths_lib_hook;
 	__pv_paths_volumes_plat_file = fn_pv_paths_volumes_plat_file;
 	__pv_paths_configs_file = fn_pv_paths_configs_file;
@@ -237,6 +243,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 				path,
 				PLATFORM_USER_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
+
+		__pv_paths_pv_devmeta_key(path, PATH_MAX, "");
+		snprintf(entry, sizeof (entry),
+				"%s %s none bind,ro,create=dir 0 0",
+				path,
+				PLATFORM_DEVICE_META_PATH + 1);
+		c->set_config_item(c, "lxc.mount.entry", entry);
 	} else {
 		__pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
 		snprintf(entry, sizeof (entry),
@@ -260,11 +273,22 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
 		__pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, p->name, "");
-		snprintf(entry, sizeof (entry),
-				"%s %s none bind,ro,create=dir 0 0",
-				path,
-				PLATFORM_USER_META_PATH + 1);
-		c->set_config_item(c, "lxc.mount.entry", entry);
+		if (!stat(path, &st)) {
+			snprintf(entry, sizeof (entry),
+					"%s %s none bind,ro,create=dir 0 0",
+					path,
+					PLATFORM_USER_META_PATH + 1);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+		}
+
+		__pv_paths_pv_devmeta_plat_key(path, PATH_MAX, p->name, "");
+		if (!stat(path, &st)) {
+			snprintf(entry, sizeof (entry),
+					"%s %s none bind,ro,create=dir 0 0",
+					path,
+					PLATFORM_DEVICE_META_PATH + 1);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+		}
 	}
 	if (stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry", "/lib/firmware"
