@@ -47,11 +47,13 @@ static char *_sub_meta_values(char *str)
 	char *_tok, *_t, *_at, *new;
 	char *_var, *_param, *_tstr;
 	int _nt = 0;
+	size_t newlen = 0;
 
 	if (!strchr(str, '$'))
 		return strdup(str);
 
-	new = calloc(1, strlen(str));
+	newlen = strlen(str);
+	new = calloc(1, newlen);
 	if (!new)
 		return NULL;
 
@@ -74,7 +76,13 @@ static char *_sub_meta_values(char *str)
 		_tok = strtok(NULL, "{:}");
 		_param = pv_metadata_get_usermeta(_tok);
 		if (_param) {
-			memcpy(new+_nt, _param, strlen(_param));
+			if (_nt + strlen(_param) + 1 > newlen) {
+				newlen*=2;
+				new = realloc(new, newlen);
+				if (!new)
+					return NULL;
+			}
+			memcpy(new+_nt, _param, strlen(_param) + 1);
 			_nt += strlen(_param);
 		}
 		free(_tstr);
