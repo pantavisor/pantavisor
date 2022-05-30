@@ -942,15 +942,6 @@ out:
 	return ret;
 }
 
-void pv_storage_init_plat_usermeta(const char *name)
-{
-	char path[PATH_MAX];
-
-	pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, name, "");
-	if (!dir_exist(path))
-		mkdir_p(path, 0755);
-}
-
 void pv_storage_save_usermeta(const char *key, const char *value)
 {
 	char path[PATH_MAX];
@@ -967,7 +958,9 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 	if (pkey) {
 		*pkey = '\0';
 		pkey++;
-		pv_storage_init_plat_usermeta(pname);
+		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, "");
+		if (!dir_exist(path))
+			mkdir_p(path, 0755);
 		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, pkey);
 		if (pv_file_save(path, value, 0644) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
@@ -993,6 +986,55 @@ void pv_storage_rm_usermeta(const char *key)
 		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, pkey);
 		remove(path);
 		pv_log(DEBUG, "removed usermeta in %s", path);
+	}
+
+	free(pname);
+}
+
+void pv_storage_save_devmeta(const char *key, const char *value)
+{
+	char path[PATH_MAX];
+	char *pname, *pkey;
+
+	pv_log(DEBUG, "saving devmeta file with key %s and value %s", key, value);
+
+	pv_paths_pv_devmeta_key(path, PATH_MAX, key);
+	if (pv_file_save(path, value, 0644) < 0)
+		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
+
+	pname = strdup(key);
+	pkey = strchr(pname, '.');
+	if (pkey) {
+		*pkey = '\0';
+		pkey++;
+		pv_paths_pv_devmeta_plat_key(path, PATH_MAX, pname, "");
+		if (!dir_exist(path))
+			mkdir_p(path, 0755);
+		pv_paths_pv_devmeta_plat_key(path, PATH_MAX, pname, pkey);
+		if (pv_file_save(path, value, 0644) < 0)
+			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
+	}
+
+	free(pname);
+}
+
+void pv_storage_rm_devmeta(const char *key)
+{
+	char path[PATH_MAX];
+	char *pname, *pkey;
+
+	pv_paths_pv_devmeta_key(path, PATH_MAX, key);
+	remove(path);
+	pv_log(DEBUG, "removed devmeta in %s", path);
+
+	pname = strdup(key);
+	pkey = strchr(pname, '.');
+	if (pkey) {
+		*pkey = '\0';
+		pkey++;
+		pv_paths_pv_devmeta_plat_key(path, PATH_MAX, pname, pkey);
+		remove(path);
+		pv_log(DEBUG, "removed devmeta in %s", path);
 	}
 
 	free(pname);

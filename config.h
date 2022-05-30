@@ -48,7 +48,8 @@ struct pantavisor_debug {
 };
 
 struct pantavisor_cache {
-	char *metacachedir;
+	char *usrmetadir;
+	char *devmetadir;
 	char *dropbearcachedir;
 };
 
@@ -214,7 +215,8 @@ char* pv_config_get_system_confdir(void);
 bool pv_config_get_debug_shell(void);
 bool pv_config_get_debug_ssh(void);
 
-char* pv_config_get_cache_metacachedir(void);
+char* pv_config_get_cache_usrmetadir(void);
+char* pv_config_get_cache_devmetadir(void);
 char* pv_config_get_cache_dropbearcachedir(void);
 
 char* pv_config_get_creds_type(void);

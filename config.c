@@ -210,7 +210,9 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->debug.ssh = config_get_value_bool(&config_list, "debug.ssh", true);
 
 	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
-	config->cache.metacachedir = config_get_value_string(&config_list, "meta.cache.dir", "/storage/cache/meta");
+	config->cache.usrmetadir = config_get_value_string(&config_list, "cache.usrmetadir", "/storage/cache/meta");
+	config_override_value_string(&config_list, "meta.cache.dir", &config->cache.usrmetadir);
+	config->cache.devmetadir = config_get_value_string(&config_list, "cache.devmetadir", "/storage/cache/devmeta");
 
 	config->bl.type = config_get_value_bl_type(&config_list, "bootloader.type", BL_UBOOT_PLAIN);
 	config->bl.mtd_only = config_get_value_bool(&config_list, "bootloader.mtd_only", false);
@@ -477,8 +479,10 @@ void pv_config_free()
 {
 	struct pantavisor *pv = pv_get_instance();
 
-	if (pv->config.cache.metacachedir)
-		free(pv->config.cache.metacachedir);
+	if (pv->config.cache.usrmetadir)
+		free(pv->config.cache.usrmetadir);
+	if (pv->config.cache.devmetadir)
+		free(pv->config.cache.devmetadir);
 	if (pv->config.cache.dropbearcachedir)
 		free(pv->config.cache.dropbearcachedir);
 
@@ -551,7 +555,8 @@ char* pv_config_get_system_confdir() { return pv_get_instance()->config.sys.conf
 bool pv_config_get_debug_shell() { return pv_get_instance()->config.debug.shell; }
 bool pv_config_get_debug_ssh() { return pv_get_instance()->config.debug.ssh; }
 
-char* pv_config_get_cache_metacachedir() { return pv_get_instance()->config.cache.metacachedir; }
+char* pv_config_get_cache_usrmetadir() { return pv_get_instance()->config.cache.usrmetadir; }
+char* pv_config_get_cache_devmetadir() { return pv_get_instance()->config.cache.devmetadir; }
 char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.cache.dropbearcachedir; }
 
 char* pv_config_get_creds_type() { return pv_get_instance()->config.creds.type; }
@@ -649,8 +654,10 @@ char* pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_debug_ssh());
 		pv_json_ser_key(&js, "dropbear.cache.dir");
 		pv_json_ser_string(&js, pv_config_get_cache_dropbearcachedir());
-		pv_json_ser_key(&js, "meta.cache.dir");
-		pv_json_ser_string(&js, pv_config_get_cache_metacachedir());
+		pv_json_ser_key(&js, "cache.usrmetadir");
+		pv_json_ser_string(&js, pv_config_get_cache_usrmetadir());
+		pv_json_ser_key(&js, "cache.devmetadir");
+		pv_json_ser_string(&js, pv_config_get_cache_devmetadir());
 		pv_json_ser_key(&js, "bootloader.type");
 		pv_json_ser_number(&js, pv_config_get_bl_type());
 		pv_json_ser_key(&js, "bootloader.mtd_only");

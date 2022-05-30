@@ -51,11 +51,13 @@ static int ph_mount_init(struct pv_init *this)
 	if (stat(pv_path, &st) != 0)
 		mkdir_p(pv_path, 0500);
 
+	// Logs
 	pv_paths_storage_log(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
 		mkdir_p(storage_path, 0500);
 
-	pv_paths_storage_meta(storage_path, PATH_MAX);
+	// User meta
+	pv_paths_storage_usrmeta(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
 		mkdir_p(storage_path, 0500);
 	pv_paths_pv_usrmeta_key(pv_path, PATH_MAX, "");
@@ -63,6 +65,16 @@ static int ph_mount_init(struct pv_init *this)
 		mkdir_p(pv_path, 0755);
 	mount_bind(storage_path, pv_path);
 
+	// Device meta
+	pv_paths_storage_devmeta(storage_path, PATH_MAX);
+	if (stat(storage_path, &st) != 0)
+		mkdir_p(storage_path, 0500);
+	pv_paths_pv_devmeta_key(pv_path, PATH_MAX, "");
+	if (stat(pv_path, &st) != 0)
+		mkdir_p(pv_path, 0755);
+	mount_bind(storage_path, pv_path);
+
+	// Dropbear
 	pv_paths_storage_dropbear(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
 		mkdir_p(storage_path, 0500);
