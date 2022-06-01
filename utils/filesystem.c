@@ -313,3 +313,38 @@ int pv_fs_file_set_xattr(const char *fname, const char *attr, const char *value)
     size = setxattr(fname, attr, value, strlen(value), flag);
     return size > 0 ? 0 : -1;
 }
+ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size)
+{
+    ssize_t written = 0;
+
+    while (written != size) {
+        ssize_t cur_write = write(fd, buf + written, size - written);
+
+        if (cur_write < 0) {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        written += cur_write;
+    }
+    return written;
+}
+
+ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
+{
+    ssize_t total_read = 0;
+
+    while (total_read != size) {
+        int cur_read = read(fd, buf + total_read, size - total_read);
+
+        if (cur_read < 0) {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        if (cur_read == 0)
+            break;
+        total_read += cur_read;
+    }
+    return total_read;
+}
