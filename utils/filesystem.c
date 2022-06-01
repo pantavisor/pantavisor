@@ -8,6 +8,15 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+static void close_fd(int *fd)
+{
+    if (!fd || *fd < 0)
+        return;
+
+    close(*fd);
+    *fd = -1;
+}
+
 bool pv_fs_path_exist(const char *path)
 {
     return access(path, F_OK) == 0;
@@ -169,6 +178,34 @@ int pv_fs_file_tmp(char *tmp, const char *fname)
 
     snprintf(tmp, size, "%s.tmp", fname);
     return 0;
+}
+
+int pv_fs_file_save(const char *fname, const char *data, mode_t mode)
+{
+    char tmp[PATH_MAX] = { 0 };
+    if (pv_fs_file_tmp(tmp, fname) != 0)
+        return -1;
+
+    int ret = -1;
+    int fd = open(tmp, O_CREAT | O_WRONLY | O_TRUNC | O_SYNC, mode);
+    if (fd < 0)
+        goto out;
+
+    if (write(fd, data, strlen(data)) < 0)
+        goto out;
+
+    close_fd(&fd);
+
+    ret = pv_fs_path_rename(tmp, fname);
+
+out:
+    if (fd > 0)
+        close_fd(&fd);
+
+    ret = pv_fs_path_remove(tmp, false);
+    pv_fs_path_sync(tmp);
+
+    return ret;
 }
 size_t pv_fs_path_get_size(const char *path)
 {

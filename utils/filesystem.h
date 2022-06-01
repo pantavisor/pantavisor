@@ -35,4 +35,5 @@ int pv_fs_path_remove(const char *path, bool recursive);
 int pv_fs_path_rename(const char *src_path, const char *dst_path);
 size_t pv_fs_path_get_size(const char *path);
 int pv_fs_file_tmp(char *tmp, const char *fname);
+int pv_fs_file_save(const char *fname, const char *data, mode_t mode);
 #endif
