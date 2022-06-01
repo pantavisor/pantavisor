@@ -1,7 +1,9 @@
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 bool pv_fs_path_exist(const char *path)
 {
@@ -52,6 +54,45 @@ void pv_fs_path_sync(const char *path)
         close(fd);
     }
 }
+
+int pv_fs_mkdir_p(const char *path, mode_t mode)
+{
+    if (!path)
+        return -1;
+
+    if (pv_fs_path_exist(path)) {
+        errno = EEXIST;
+        return -1;
+    }
+
+    if (errno != 0 && errno != ENOENT)
+        return -1;
+
+    char cur_path[PATH_MAX];
+
+    size_t created = 0;
+    unsigned long i = 0;
+    while (path[i]) {
+        if (path[i] == '/') {
+            memcpy(cur_path, path, i + 1);
+            cur_path[i + 2] = '\0';
+            if (mkdir(cur_path, mode) != 0 && errno != EEXIST)
+                return -1;
+            created = i + 1;
+        }
+        ++i;
+    }
+
+    // create the last directory, this happend when the given path
+    // doesn't finish with '/'
+    if (created < strlen(path)) {
+        if (mkdir(path, mode) != 0 && errno != EEXIST)
+            return -1;
+    }
+
+    return 0;
+}
+
 void pv_fs_path_join(char *buf, int size, ...)
 {
     char fmt[PATH_MAX] = { 0 };
