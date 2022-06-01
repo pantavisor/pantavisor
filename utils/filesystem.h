@@ -28,4 +28,5 @@
 bool pv_fs_path_exist(const char *path);
 bool pv_fs_path_is_directory(const char *path);
 void pv_fs_path_sync(const char *path);
+void pv_fs_path_join(char *buf, int size, ...);
 #endif

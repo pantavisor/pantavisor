@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 bool pv_fs_path_exist(const char *path)
@@ -50,4 +51,22 @@ void pv_fs_path_sync(const char *path)
         fsync(fd);
         close(fd);
     }
+}
+void pv_fs_path_join(char *buf, int size, ...)
+{
+    char fmt[PATH_MAX] = { 0 };
+
+    for (int i = 0; i < size; ++i) {
+        fmt[i * 3 + 0] = '%';
+        fmt[i * 3 + 1] = 's';
+        fmt[i * 3 + 2] = '/';
+    }
+
+    va_list list;
+    va_start(list, size);
+
+    vsnprintf(buf, PATH_MAX, fmt, list);
+    buf[strnlen(buf, PATH_MAX) - 1] = '\0';
+
+    va_end(list);
 }
