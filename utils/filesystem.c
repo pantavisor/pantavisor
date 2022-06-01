@@ -207,6 +207,64 @@ out:
 
     return ret;
 }
+ssize_t pv_fs_file_copy_from_fd(int src, int dst, bool close_src)
+{
+    lseek(src, 0, SEEK_SET);
+    lseek(dst, 0, SEEK_SET);
+
+    char buf[4096] = { 0 };
+    ssize_t read_bytes = 0;
+    ssize_t write_bytes = 0;
+
+    while (read_bytes = read(src, buf, 4096), read_bytes > 0)
+        write_bytes += write(dst, buf, read_bytes);
+
+    if (close_src)
+        close_fd(&src);
+
+    return write_bytes;
+}
+
+int pv_fs_file_copy_from_path(const char *src, const char *dst, mode_t mode)
+{
+    if (!pv_fs_path_exist(src))
+        return -1;
+
+    char tmp_path[PATH_MAX] = { 0 };
+    if (pv_fs_file_tmp(tmp_path, src) != 0)
+        return -1;
+
+    int tmp_fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
+    if (tmp_fd < 0)
+        return -1;
+
+    int src_fd = open(src, O_RDONLY, 0);
+    if (src < 0)
+        goto out;
+
+    pv_fs_file_copy_from_fd(src_fd, tmp_fd, true);
+    close_fd(&tmp_fd);
+
+    int ret = pv_fs_path_rename(tmp_path, dst);
+    if (ret < 0)
+        goto out;
+
+out:
+    if (src_fd > -1)
+        close_fd(&src_fd);
+
+    if (tmp_fd > -1)
+        close_fd(&tmp_fd);
+
+    if (pv_fs_path_exist(tmp_path))
+        pv_fs_path_remove(tmp_path, false);
+
+    pv_fs_path_sync(src);
+    pv_fs_path_sync(dst);
+
+    return ret;
+}
+
 size_t pv_fs_path_get_size(const char *path)
 {
     struct stat st;
