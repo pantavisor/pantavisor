@@ -45,4 +45,5 @@ ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size);
 ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size);
 int pv_fs_file_lock(int fd);
 int pv_fs_file_unlock(int fd);
+int pv_fs_file_gzip(const char *fname, const char *target_name);
 #endif

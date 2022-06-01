@@ -1,4 +1,5 @@
 #include "filesystem.h"
+#include "tsh.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -380,4 +381,19 @@ int pv_fs_file_unlock(int fd)
         ret = fcntl(fd, F_SETLK, &flock);
 
     return ret;
+}
+
+int pv_fs_file_gzip(const char *fname, const char *target_name)
+{
+	int outfile[] = { -1, -1 };
+	char cmd[PATH_MAX + 32];
+
+	snprintf(cmd, sizeof(cmd), "gzip %s", fname);
+	outfile[1] = open(target_name, O_RDWR | O_APPEND | O_CREAT);
+	if (outfile[1] >= 0) {
+		tsh_run_io(cmd, 1, NULL, NULL, outfile, NULL);
+		close_fd(&outfile[1]);
+		return 0;
+	}
+	return -1;
 }
