@@ -24,6 +24,7 @@
 #define UTILS_FILESYSTEM_H
 
 #include <stdbool.h>
+#include <sys/types.h>
 
 bool pv_fs_path_exist(const char *path);
 bool pv_fs_path_is_directory(const char *path);
