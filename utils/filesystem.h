@@ -26,4 +26,5 @@
 #include <stdbool.h>
 
 bool pv_fs_path_exist(const char *path);
+bool pv_fs_path_is_directory(const char *path);
 #endif
