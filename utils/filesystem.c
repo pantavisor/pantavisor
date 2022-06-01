@@ -143,3 +143,14 @@ free_dir:
 
     return ret;
 }
+int pv_fs_path_rename(const char *src_path, const char *dst_path)
+{
+    pv_fs_path_sync(src_path);
+
+    int ret = rename(src_path, dst_path);
+    if (ret < 0)
+        return ret;
+
+    pv_fs_path_sync(dst_path);
+    return 0;
+}
