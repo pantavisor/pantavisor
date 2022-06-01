@@ -1,5 +1,6 @@
 #include "filesystem.h"
 #include "tsh.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -12,6 +13,7 @@
 #include <sys/stat.h>
 #include <sys/xattr.h>
 #include <unistd.h>
+
 static void close_fd(int *fd)
 {
     if (!fd || *fd < 0)
@@ -127,6 +129,7 @@ void pv_fs_path_join(char *buf, int size, ...)
 
     va_end(list);
 }
+
 int pv_fs_path_remove(const char *path, bool recursive)
 {
     if (!recursive) {
@@ -157,6 +160,7 @@ free_dir:
 
     return ret;
 }
+
 int pv_fs_path_rename(const char *src_path, const char *dst_path)
 {
     pv_fs_path_sync(src_path);
@@ -168,6 +172,7 @@ int pv_fs_path_rename(const char *src_path, const char *dst_path)
     pv_fs_path_sync(dst_path);
     return 0;
 }
+
 int pv_fs_file_tmp(char *tmp, const char *fname)
 {
     if (!fname)
@@ -211,6 +216,7 @@ out:
 
     return ret;
 }
+
 ssize_t pv_fs_file_copy_from_fd(int src, int dst, bool close_src)
 {
     lseek(src, 0, SEEK_SET);
@@ -314,6 +320,7 @@ int pv_fs_file_set_xattr(const char *fname, const char *attr, const char *value)
     size = setxattr(fname, attr, value, strlen(value), flag);
     return size > 0 ? 0 : -1;
 }
+
 ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size)
 {
     ssize_t written = 0;
@@ -349,6 +356,7 @@ ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
     }
     return total_read;
 }
+
 int pv_fs_file_lock(int fd)
 {
     struct flock flock;
