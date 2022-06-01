@@ -397,3 +397,10 @@ int pv_fs_file_gzip(const char *fname, const char *target_name)
 	}
 	return -1;
 }
+
+int pv_file_check_and_open_file(const char *fname, int flags, mode_t mode)
+{
+    if (!pv_fs_path_exist(fname))
+        return -1;
+    return open(fname, flags, mode);
+}
