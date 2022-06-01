@@ -5,8 +5,10 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 static void close_fd(int *fd)
 {
@@ -273,3 +275,28 @@ size_t pv_fs_path_get_size(const char *path)
     return st.st_size;
 }
 
+int pv_fs_file_get_xattr(char *value, size_t size, const char *fname, const char *attr)
+{
+    ssize_t cur_size = getxattr(fname, attr, value, size);
+    return cur_size == size ? 0 : -1;
+}
+
+char *pv_fs_file_get_xattr_dup(const char *fname, const char *attr)
+{
+    ssize_t size = getxattr(fname, attr, NULL, 0);
+    if (size < 1)
+        return NULL;
+
+    char *val = malloc(size);
+    if (!val)
+        return NULL;
+
+    ssize_t cur_size = getxattr(fname, attr, val, size);
+
+    if (cur_size != size) {
+        free(val);
+        return NULL;
+    }
+
+    return val;
+}

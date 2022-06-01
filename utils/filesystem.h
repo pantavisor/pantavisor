@@ -38,4 +38,6 @@ int pv_fs_file_tmp(char *tmp, const char *fname);
 int pv_fs_file_save(const char *fname, const char *data, mode_t mode);
 int pv_fs_file_copy_from_path(const char *src, const char *dst, mode_t mode);
 ssize_t pv_fs_file_copy_from_fd(int src, int dst, bool close_src);
+char *pv_fs_file_get_xattr_dup(const char *fname, const char *attr);
+int pv_fs_file_get_xattr(char *value, size_t size, const char *fname, const char *attr);
 #endif
