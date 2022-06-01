@@ -23,4 +23,7 @@
 #ifndef UTILS_FILESYSTEM_H
 #define UTILS_FILESYSTEM_H
 
+#include <stdbool.h>
+
+bool pv_fs_path_exist(const char *path);
 #endif
