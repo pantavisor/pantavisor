@@ -301,3 +301,15 @@ char *pv_fs_file_get_xattr_dup(const char *fname, const char *attr)
 
     return val;
 }
+
+int pv_fs_file_set_xattr(const char *fname, const char *attr, const char *value)
+{
+    ssize_t size = getxattr(fname, attr, NULL, 0);
+
+    int flag = XATTR_REPLACE;
+    if (size < 0 && errno == ENODATA)
+        flag = XATTR_CREATE;
+
+    size = setxattr(fname, attr, value, strlen(value), flag);
+    return size > 0 ? 0 : -1;
+}
