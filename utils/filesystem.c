@@ -348,3 +348,36 @@ ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
     }
     return total_read;
 }
+int pv_fs_file_lock(int fd)
+{
+    struct flock flock;
+
+    flock.l_whence = SEEK_SET;
+    /*Lock the whole file*/
+    flock.l_len = 0;
+    flock.l_start = 0;
+    flock.l_type = F_WRLCK;
+
+    int ret = -1;
+    while (ret < 0 && errno == EINTR)
+        ret = fcntl(fd, F_SETLK, &flock);
+
+    return ret;
+}
+
+int pv_fs_file_unlock(int fd)
+{
+    struct flock flock;
+
+    flock.l_whence = SEEK_SET;
+    /*Lock the whole file*/
+    flock.l_len = 0;
+    flock.l_start = 0;
+    flock.l_type = F_UNLCK;
+
+    int ret = -1;
+    while (ret < 0 && errno == EINTR)
+        ret = fcntl(fd, F_SETLK, &flock);
+
+    return ret;
+}

@@ -43,4 +43,6 @@ int pv_fs_file_get_xattr(char *value, size_t size, const char *fname, const char
 int pv_fs_file_set_xattr(const char *fname, const char *attr, const char *value);
 ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size);
 ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size);
+int pv_fs_file_lock(int fd);
+int pv_fs_file_unlock(int fd);
 #endif
