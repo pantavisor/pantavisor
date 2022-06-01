@@ -33,4 +33,5 @@ void pv_fs_path_join(char *buf, int size, ...);
 int pv_fs_mkdir_p(const char *path, mode_t mode);
 int pv_fs_path_remove(const char *path, bool recursive);
 int pv_fs_path_rename(const char *src_path, const char *dst_path);
+size_t pv_fs_path_get_size(const char *path);
 #endif

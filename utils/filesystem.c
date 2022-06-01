@@ -154,3 +154,11 @@ int pv_fs_path_rename(const char *src_path, const char *dst_path)
     pv_fs_path_sync(dst_path);
     return 0;
 }
+size_t pv_fs_path_get_size(const char *path)
+{
+    struct stat st;
+
+    stat(path, &st);
+    return st.st_size;
+}
+
