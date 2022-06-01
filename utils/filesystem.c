@@ -1,7 +1,9 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -110,4 +112,34 @@ void pv_fs_path_join(char *buf, int size, ...)
     buf[strnlen(buf, PATH_MAX) - 1] = '\0';
 
     va_end(list);
+}
+int pv_fs_path_remove(const char *path, bool recursive)
+{
+    if (!recursive) {
+        return remove(path);
+    }
+
+    struct dirent **arr = NULL;
+    int n = scandir(path, &arr, NULL, alphasort);
+
+    for (int i = 0; i < n; ++i) {
+        // discard . and .. from scandir
+        if (!strcmp(arr[i]->d_name, ".") || !strcmp(arr[i]->d_name, ".."))
+            goto free_dir;
+
+        char new_path[PATH_MAX] = { 0 };
+        pv_fs_path_join(new_path, 2, path, arr[i]->d_name);
+
+        if (arr[i]->d_type == DT_DIR)
+            pv_fs_path_remove(new_path, true);
+        else
+            pv_fs_path_remove(new_path, false);
+
+free_dir:
+        free(arr[i]);
+    }
+    int ret = remove(path);
+    free(arr);
+
+    return ret;
 }

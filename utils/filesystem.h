@@ -30,4 +30,5 @@ bool pv_fs_path_is_directory(const char *path);
 void pv_fs_path_sync(const char *path);
 void pv_fs_path_join(char *buf, int size, ...);
 int pv_fs_mkdir_p(const char *path, mode_t mode);
+int pv_fs_path_remove(const char *path, bool recursive);
 #endif
