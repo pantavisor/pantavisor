@@ -83,27 +83,18 @@ int pv_filesystem_mkdir_p(const char *path, mode_t mode)
         return -1;
     }
 
-    char cur_path[PATH_MAX];
+    char cur_path[PATH_MAX] = {0};
 
-    size_t created = 0;
-    unsigned long i = 0;
-    while (path[i]) {
-        if (path[i] == '/') {
-            memcpy(cur_path, path, i + 1);
-            cur_path[i + 2] = '\0';
+    int i = -1;
+    do {
+        ++i;
+        if (path[i] == '/' || path[i] == '\0') {
+            memcpy(cur_path, path, i);
+            cur_path[i] = '\0';
             if (mkdir(cur_path, mode) != 0 && errno != EEXIST)
                 return -1;
-            created = i + 1;
         }
-        ++i;
-    }
-
-    // create the last directory, this happend when the given path
-    // doesn't finish with '/'
-    if (created < strlen(path)) {
-        if (mkdir(path, mode) != 0 && errno != EEXIST)
-            return -1;
-    }
+    } while (path[i]);
 
     return 0;
 }
