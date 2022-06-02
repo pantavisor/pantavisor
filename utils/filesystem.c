@@ -83,9 +83,6 @@ int pv_filesystem_mkdir_p(const char *path, mode_t mode)
         return -1;
     }
 
-    if (errno != 0 && errno != ENOENT)
-        return -1;
-
     char cur_path[PATH_MAX];
 
     size_t created = 0;
