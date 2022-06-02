@@ -121,7 +121,9 @@ void pv_filesystem_path_join(char *buf, int size, ...)
 int pv_filesystem_path_remove(const char *path, bool recursive)
 {
     if (!recursive) {
-        return remove(path);
+        int ret = remove(path);
+        pv_filesystem_path_sync(path);
+        return ret;
     }
 
     struct dirent **arr = NULL;
@@ -145,6 +147,7 @@ free_dir:
     }
     int ret = remove(path);
     free(arr);
+    pv_filesystem_path_sync(path);
 
     return ret;
 }
