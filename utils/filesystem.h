@@ -78,7 +78,7 @@ int pv_filesystem_file_copy_from_path(const char *src, const char *dst, mode_t m
  * Copy the contents of the src file descriptor to dst. If close_src is true
  * the file pointed by src will be closed.
  * */
-ssize_t pv_filesystem_file_copy_from_fd(int src, int dst, bool close_src);
+ssize_t pv_filesystem_file_copy_fd(int src, int dst, bool close_src);
 /*
  * Get an extended attribute from the given file.
  * NOTE: This function allocate a new buffer and it can be freed with free()

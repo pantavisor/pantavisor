@@ -208,7 +208,7 @@ out:
     return ret;
 }
 
-ssize_t pv_filesystem_file_copy_from_fd(int src, int dst, bool close_src)
+ssize_t pv_filesystem_file_copy_fd(int src, int dst, bool close_src)
 {
     lseek(src, 0, SEEK_SET);
     lseek(dst, 0, SEEK_SET);
@@ -243,7 +243,7 @@ int pv_filesystem_file_copy_from_path(const char *src, const char *dst, mode_t m
     if (src < 0)
         goto out;
 
-    pv_filesystem_file_copy_from_fd(src_fd, tmp_fd, true);
+    pv_filesystem_file_copy_fd(src_fd, tmp_fd, true);
     close_fd(&tmp_fd);
 
     int ret = pv_filesystem_path_rename(tmp_path, dst);
