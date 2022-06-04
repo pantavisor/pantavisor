@@ -62,11 +62,13 @@ static int get_directory(char *dir, const char *path)
 void pv_filesystem_path_sync(const char *path)
 {
     char dir[PATH_MAX] = { 0 };
-
-    if (get_directory(dir, path) != 0)
+    if (!path)
         return;
 
-    int fd = open(dir, O_RDONLY);
+    strncpy(dir, path, strnlen(path, PATH_MAX));
+    char *sync_dir = dirname(dir);
+
+    int fd = open(sync_dir, O_RDONLY);
     if (fd > -1) {
         fsync(fd);
         close(fd);
