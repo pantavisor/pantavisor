@@ -335,7 +335,7 @@ int pv_filesystem_file_lock(int fd)
     struct flock flock;
 
     flock.l_whence = SEEK_SET;
-    /*Lock the whole file*/
+    // Lock the whole file
     flock.l_len = 0;
     flock.l_start = 0;
     flock.l_type = F_WRLCK;
@@ -352,7 +352,7 @@ int pv_filesystem_file_unlock(int fd)
     struct flock flock;
 
     flock.l_whence = SEEK_SET;
-    /*Lock the whole file*/
+    // Lock the whole file
     flock.l_len = 0;
     flock.l_start = 0;
     flock.l_type = F_UNLCK;
