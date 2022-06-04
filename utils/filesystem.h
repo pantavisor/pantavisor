@@ -42,7 +42,7 @@ void pv_filesystem_path_sync(const char *path);
 /*
  * Path concatenation, the value is returned on the given buffer
  * */
-void pv_filesystem_path_join(char *buf, int size, ...);
+void pv_filesystem_path_concat(char *buf, int size, ...);
 /*
  * Creates a directory with the given path and mode
  * All subdirectories will be created.

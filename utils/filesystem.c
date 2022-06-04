@@ -81,7 +81,7 @@ int pv_filesystem_mkdir_p(const char *path, mode_t mode)
     return 0;
 }
 
-void pv_filesystem_path_join(char *buf, int size, ...)
+void pv_filesystem_path_concat(char *buf, int size, ...)
 {
     char fmt[PATH_MAX] = { 0 };
 
@@ -117,7 +117,7 @@ int pv_filesystem_path_remove(const char *path, bool recursive)
             goto free_dir;
 
         char new_path[PATH_MAX] = { 0 };
-        pv_filesystem_path_join(new_path, 2, path, arr[i]->d_name);
+        pv_filesystem_path_concat(new_path, 2, path, arr[i]->d_name);
 
         if (arr[i]->d_type == DT_DIR)
             pv_filesystem_path_remove(new_path, true);
