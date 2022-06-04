@@ -262,26 +262,6 @@ int pv_filesystem_file_get_xattr(char *value, size_t size, const char *fname, co
     return cur_size == size ? 0 : -1;
 }
 
-char *pv_filesystem_file_get_xattr_dup(const char *fname, const char *attr)
-{
-    ssize_t size = getxattr(fname, attr, NULL, 0);
-    if (size < 1)
-        return NULL;
-
-    char *val = malloc(size);
-    if (!val)
-        return NULL;
-
-    ssize_t cur_size = getxattr(fname, attr, val, size);
-
-    if (cur_size != size) {
-        free(val);
-        return NULL;
-    }
-
-    return val;
-}
-
 int pv_filesystem_file_set_xattr(const char *fname, const char *attr, const char *value)
 {
     ssize_t size = getxattr(fname, attr, NULL, 0);

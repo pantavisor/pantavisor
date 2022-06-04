@@ -81,11 +81,6 @@ int pv_filesystem_file_copy_from_path(const char *src, const char *dst, mode_t m
 ssize_t pv_filesystem_file_copy_fd(int src, int dst, bool close_src);
 /*
  * Get an extended attribute from the given file.
- * NOTE: This function allocate a new buffer and it can be freed with free()
- * */
-char *pv_filesystem_file_get_xattr_dup(const char *fname, const char *attr);
-/*
- * Get an extended attribute from the given file.
  * NOTE: This function recives a buffer (value) where the attribute
  * will be write, so is important to provide a buffer with the right size.
  * */
