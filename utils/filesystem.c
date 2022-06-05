@@ -354,6 +354,7 @@ int pv_filesystem_file_gzip(const char *fname, const char *target_name)
 	if (outfile[1] >= 0) {
 		tsh_run_io(cmd, 1, NULL, NULL, outfile, NULL);
 		close_fd(&outfile[1]);
+    pv_filesystem_path_sync(target_name);
 		return 0;
 	}
 	return -1;
