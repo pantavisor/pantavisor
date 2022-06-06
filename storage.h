@@ -49,9 +49,9 @@ int pv_storage_validate_file_checksum(char* path, char* checksum);
 bool pv_storage_validate_trails_object_checksum(const char *rev, const char *name, char *checksum);
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name, char *val);
 
-unsigned int pv_storage_get_free(void);
+off_t pv_storage_get_free(void);
 int pv_storage_gc_run(void);
-unsigned int pv_storage_gc_run_needed(unsigned int needed);
+off_t pv_storage_gc_run_needed(off_t needed);
 void pv_storage_gc_defer_run_threshold(void);
 void pv_storage_gc_run_threshold(void);
 

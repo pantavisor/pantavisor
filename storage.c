@@ -202,12 +202,12 @@ out:
 }
 
 struct pv_storage {
-	unsigned int total;
-	unsigned int free;
+	off_t total;
+	off_t free;
 	int free_percentage;
-	unsigned int reserved;
+	off_t reserved;
 	int reserved_percentage;
-	unsigned int real_free;
+	off_t real_free;
 	int real_free_percentage;
 	int threshold;
 };
@@ -249,9 +249,9 @@ static void pv_storage_print(struct pv_storage* storage)
 	pv_log(INFO, "real free disk space: %d B (%d%% of total)", storage->real_free, storage->real_free_percentage);
 }
 
-unsigned int pv_storage_get_free()
+off_t pv_storage_get_free()
 {
-	unsigned int real_free = 0;
+	off_t real_free = 0;
 	struct pv_storage* storage;
 
 	storage = pv_storage_new();
@@ -315,9 +315,9 @@ int pv_storage_gc_run()
 	return reclaimed;
 }
 
-unsigned int pv_storage_gc_run_needed(unsigned int needed)
+off_t pv_storage_gc_run_needed(off_t needed)
 {
-	unsigned int available = pv_storage_get_free();
+	off_t available = pv_storage_get_free();
 
 	if (needed > available) {
 		pv_log(WARN, "%d B needed but only %d B available. Freeing up space...",
