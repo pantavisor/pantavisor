@@ -77,7 +77,7 @@ static char *_sub_meta_values(char *str)
 		_param = pv_metadata_get_usermeta(_tok);
 		if (_param) {
 			if (_nt + strlen(_param) + 1 > newlen) {
-				newlen*=2;
+				newlen += strlen(_param) + 1;
 				new = realloc(new, newlen);
 				if (!new)
 					return NULL;
