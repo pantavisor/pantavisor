@@ -457,7 +457,7 @@ static char* pv_signature_get_json_files(struct dl_list *json_pairs)
 	struct pv_signature_pair *pair, *tmp;
 
 	len = 2;
-	out = calloc(1, len);
+	out = calloc(len, sizeof(char));
 	if (!out)
 		return out;
 
@@ -690,12 +690,12 @@ static bool pv_signature_verify_sha(const char *payload, struct dl_list *certs_r
 		goto out;
 	}
 
-	payload_encoded = calloc(1, strlen(files_encoded)+strlen(signature->protected)+2);
+	payload_encoded = calloc(strlen(files_encoded)+strlen(signature->protected)+2, sizeof(char));
 	strcpy(payload_encoded, signature->protected);
 	strcat(payload_encoded, ".");
 	strcat(payload_encoded, files_encoded);
 
-	hash = calloc(1, 128);
+	hash = calloc(128, sizeof(char));
 	if (!hash) {
 		pv_log(ERROR, "cannot allocate hash");
 		goto out;
@@ -762,14 +762,14 @@ static void pv_signature_parse_json(const char *json, struct dl_list *json_pairs
 			goto out;
 
 		// copy key
-		pair->key = calloc(1, n+1);
+		pair->key = calloc(n+1, sizeof(char));
 		if (!pair->key)
 			goto out;
 		snprintf(pair->key, n+1, "%s", json+(*k)->start);
 
 		// copy value
 		n = (*k+1)->end - (*k+1)->start;
-		pair->value = calloc(1, n+1);
+		pair->value = calloc(n+1, sizeof(char));
 		if (!pair->value)
 			goto out;
 		snprintf(pair->value, n+1, "%s", json+(*k+1)->start);
