@@ -194,7 +194,7 @@ static int pv_bl_early_init(struct pv_init *this)
 
 	// initialize to factory revision
 	len = strlen("0") + 1;
-	pv_bootloader.pv_rev = calloc(1, len);
+	pv_bootloader.pv_rev = calloc(len, sizeof(char));
 	SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "0");
 	pv_bootloader.pv_try = NULL;
 	pv_bootloader.pv_done = strdup(pv_bootloader.pv_rev);
