@@ -530,7 +530,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 				 * sizeof accomodates for null
 				 */
 				10;
-			__json_frag = (char*)calloc(1, frag_len);
+			__json_frag = calloc(frag_len, sizeof(char));
 			if (__json_frag) {
 				char *shrinked = NULL;
 
@@ -593,7 +593,7 @@ close_fd:
 		 * bytes_reqd = nr_frags - 1 + 2 + len_frags + 1 (for null).
 		 */
 		avail =  nr_frags + len_frags + 2;
-		json_frag_array = (char*) calloc(sizeof (char), avail);
+		json_frag_array = calloc(avail, sizeof(char));
 		if (json_frag_array) {
 			off = snprintf(json_frag_array, 2, "[");
 			avail -= off;
@@ -924,7 +924,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv, char *avoid_re
 			ph_log(DEBUG, "Range service about to push remaining logs for rev %d",
 				current_rev);
 			len = snprintf(NULL, 0, "%d", current_rev) + 1;
-			rev = calloc(1, len * sizeof(char*));
+			rev = calloc(len, sizeof(char));
 			SNPRINTF_WTRUNC(rev, len, "%d", current_rev);
 			result = ph_logger_push_revision(rev);
 			free(rev);
