@@ -177,7 +177,7 @@ int load_key_value_file(const char *path, struct dl_list *list)
 		return -1;
 
 	stat(path, &st);
-	buff = calloc(1, st.st_size);
+	buff = calloc(st.st_size, sizeof(char));
 	if (!buff)
 		goto out;
 
@@ -188,7 +188,7 @@ int load_key_value_file(const char *path, struct dl_list *list)
 		if (key) {
 			char *value = key + 1;
 			size = key - buff + 1;
-			__real_key = (char*) calloc(sizeof (char), size);
+			__real_key = calloc(size, sizeof(char));
 			if (__real_key) {
 				SNPRINTF_WTRUNC(__real_key, size, "%.*s", (int)(key - buff), buff);
 				_config_add_item(list, __real_key, value);
