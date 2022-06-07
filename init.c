@@ -176,7 +176,7 @@ static void debug_telnet()
 	char path[PATH_MAX];
 
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
-	dbcmd = calloc(1, sizeof(DBCMD) + strlen(path) + 1);
+  dbcmd = calloc(sizeof(DBCMD) + strlen(path) + 1, sizeof(char));
 	sprintf(dbcmd, DBCMD, path);
 
 	tsh_run("ifconfig lo up", 0, NULL);
@@ -411,7 +411,7 @@ static int read_cmdline(const char *arg_cmdline)
 	// remove trailing \n
 	buf[bytes-1] = '\0';
 
-	pv->cmdline = calloc(1, bytes * sizeof(char*));
+	pv->cmdline = calloc(bytes, sizeof(char));
 	if (!pv->cmdline) {
 		printf("ERROR: cannot allocate cmdline: %s", strerror(errno));
 		goto out;
