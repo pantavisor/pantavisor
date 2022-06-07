@@ -83,7 +83,7 @@ int pv_base64_decode(const char *src, char **dst, size_t *olen)
 	ilen = strlen(src);
 	len = ((4 * ilen / 3) + 3) & ~3;
 
-	*dst = calloc(1, len);
+	*dst = calloc(len, sizeof(char));
 	if (!*dst)
 		goto err;
 
@@ -151,7 +151,7 @@ int pv_base64_url_encode(const char *src, char **dst, size_t *olen)
 	ilen = strlen(src);
 	len = ilen * 4 / 3 + 4;
 
-	*dst = calloc(1, len);
+	*dst = calloc(len, sizeof(char));
 	if (!*dst)
 		goto err;
 
