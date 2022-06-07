@@ -84,7 +84,7 @@ static struct buffer* pv_buffer_alloc(int buf_size)
 		return NULL;
 	buffer = (struct buffer*) calloc(1, sizeof(*buffer));
 	if (buffer) {
-		buffer->buf = (char*)calloc(1, buf_size);
+		buffer->buf = calloc(buf_size, sizeof(char));
 		if (!buffer->buf) {
 			free(buffer);
 			buffer = NULL;
