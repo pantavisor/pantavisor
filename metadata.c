@@ -403,7 +403,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		n = (*key_i)->end - (*key_i)->start;
 
 		// copy key
-		key = calloc(1, (n+1) + sizeof(char*));
+    key = calloc(n + 1 + 1, sizeof(char));
 		if (!key)
 			break;
 
@@ -411,7 +411,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 
 		// copy value
 		n = (*key_i+1)->end - (*key_i+1)->start;
-		value = calloc(1, (n+1) + sizeof(char*));
+		value = calloc(n + 1 + 1, sizeof(char));
 		if (!value)
 			break;
 
@@ -963,7 +963,7 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 {
 	struct pv_meta *curr, *tmp;
 	int len = 1, line_len;
-	char *json = calloc(1, len);
+	char *json = calloc(len, sizeof(char));
 
 	// open json
 	json[0]='{';
