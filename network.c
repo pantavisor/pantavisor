@@ -125,7 +125,7 @@ void pv_network_update_meta(struct pantavisor *pv)
 
 		SNPRINTF_WTRUNC(ifn, sizeof (ifn), "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
 		size = sizeof(IFACE_FMT) + strlen(ifn) + strlen(ifaddrs);
-		buf = calloc(sizeof (char), size);
+		buf = calloc(size, sizeof(char));
 		len += snprintf(buf, size, IFACE_FMT, ifn, ifaddrs);
 		len++;
 		ifaces = realloc(ifaces, len);
