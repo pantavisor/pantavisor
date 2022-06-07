@@ -270,7 +270,7 @@ static void pv_ctrl_write_error_response(int req_fd,
 		goto out;
 	}
 
-	response = calloc(1, (response_len + 1) * sizeof(char*));
+	response = calloc(response_len + 1, sizeof(char));
 	if (!response) {
 		pv_log(ERROR, "HTTP response cannot be allocated");
 		goto out;
@@ -420,7 +420,7 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 				headers[header_index].name_len,
 				name,
 				strlen(name))) {
-			value = calloc(1, headers[header_index].value_len);
+			value = calloc(headers[header_index].value_len, sizeof(char));
 			strncpy(value, headers[header_index].value, headers[header_index].value_len);
 			ret = strtol(value, NULL, 10);
 		}
@@ -475,7 +475,7 @@ static char* pv_ctrl_get_file_name(const char* path, int buf_index, size_t path_
 
 	len = path_len - buf_index;
 
-	file_name = calloc(1, (len + 1) * sizeof(char));
+	file_name = calloc(len + 1, sizeof(char));
 	if (!file_name)
 		return NULL;
 
@@ -511,7 +511,7 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 		goto err;
 	}
 
-	req = calloc(1, content_length + 1);
+	req = calloc(content_length + 1, sizeof(char));
 
 	// read request
 	if (read(req_fd, req, content_length) <= 0) {
