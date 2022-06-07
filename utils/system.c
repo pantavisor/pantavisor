@@ -89,7 +89,7 @@ int get_cpu_model(char *buf, int buflen)
 			 * don't copy the newline
 			 */
 			len = cur - value;
-			__value = (char*)calloc(1, len + 1);
+			__value = calloc(len + 1, sizeof(char));
 			if (__value) {
 				memcpy(__value, value, len);
 				snprintf(buf, buflen, "%s", __value);
