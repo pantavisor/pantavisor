@@ -105,7 +105,7 @@ char *pv_objects_get_list_string()
 	char path[PATH_MAX];
 	struct pv_path *curr, *tmp;
 	int len = 1, line_len;
-	char *json = calloc(1, len);
+	char *json = calloc(len, sizeof(char));
 	unsigned int size_object;
 
 	pv_paths_storage_object(path, PATH_MAX, "");
