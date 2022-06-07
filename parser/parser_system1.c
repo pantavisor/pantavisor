@@ -172,7 +172,7 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 	jsmntok_t **k, **keys;
 
 	// take null terminate copy of item to parse
-	buf = calloc(1, (len+1) * sizeof(char));
+	buf = calloc(len + 1, sizeof(char));
 	buf = memcpy(buf, v, len);
 
 	if (!buf)
@@ -318,7 +318,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	jsmntok_t **key, **key_i;
 
 	// take null terminate copy of item to parse
-	buf = calloc(1, (n+1) * sizeof(char));
+	buf = calloc(n + 1, sizeof(char));
 	buf = memcpy(buf, value, n);
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
@@ -725,7 +725,7 @@ static int do_one_jka_action(struct json_key_action *jka)
 		case JSMN_OBJECT:
 			//create a new buffer.
 			length = (jka->tokv + 1)->end - (jka->tokv + 1)->start;
-			value = (char*) calloc(1, sizeof(char) * (length + 1));
+			value = calloc(length + 1, sizeof(char));
 			if (value) {
 				char *orig_buf = NULL;
 				snprintf(value, length + 1, "%s",
@@ -762,7 +762,7 @@ static jsmntok_t* do_lookup_json_key(jsmntok_t **keys, char *json_buf, char *key
 
 		length = (*keys_walker)->end - (*keys_walker)->start;
 
-		curr_key = (char*) calloc(1, sizeof(char) * (length + 1));
+		curr_key = calloc(length + 1, sizeof(char));
 		if (!curr_key) {
 			keys_walker++;
 			continue;
@@ -1199,7 +1199,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 
 	// free intermediates
 	if (config) {
-		this->configs = calloc(1, 2 * sizeof(char *));
+		this->configs = calloc(2, sizeof(char *));
 		this->configs[1] = NULL;
 		this->configs[0] = strdup(config);
 		free(config);
@@ -1504,7 +1504,7 @@ static char* parse_config_name(char *value, int n)
 	char* config_name = NULL;
 
 	// take null terminate copy of item to parse
-	buf = calloc(1, (n+1) * sizeof(char));
+	buf = calloc(n + 1, sizeof(char));
 	buf = memcpy(buf, value, n);
 
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
