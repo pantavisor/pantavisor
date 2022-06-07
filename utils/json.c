@@ -112,7 +112,7 @@ char* pv_json_get_one_str(const char *buf, jsmntok_t **tok)
 	int c;
 	char *value = NULL;
 	c = (*tok)->end - (*tok)->start;
-	value = calloc(1, (c+1) * sizeof(char));
+	value = calloc(c+1, sizeof(char));
 	if (value)
 		strncpy(value, buf+(*tok)->start, c);
 	return value;
@@ -190,7 +190,7 @@ char* pv_json_format(const char *buf, int len)
 	int json_str_idx = 0;
 
 	if (len > 0) //We make enough room for worst case.
-		json_string = (char*) calloc(1, (len * 6) + 1); //Add 1 for '\0'.
+		json_string = calloc((len * 6) + 1, sizeof(char)); //Add 1 for '\0'.
 
 	if (!json_string)
 		goto out;
@@ -226,7 +226,7 @@ void pv_json_ser_init(struct pv_json_ser *js, size_t size)
 	memset(js, 0, sizeof(struct pv_json_ser));
 
 	jsonb_init(&js->b);
-	js->buf = calloc(1, size * sizeof(char*));
+	js->buf = calloc(size, sizeof(char));
 	if (!js->buf)
 		return;
 
