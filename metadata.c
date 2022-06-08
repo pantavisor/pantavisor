@@ -403,7 +403,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		n = (*key_i)->end - (*key_i)->start;
 
 		// copy key
-    key = calloc(n + 1 + 1, sizeof(char));
+		key = calloc(n + 1, sizeof(char));
 		if (!key)
 			break;
 
@@ -411,7 +411,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 
 		// copy value
 		n = (*key_i+1)->end - (*key_i+1)->start;
-		value = calloc(n + 1 + 1, sizeof(char));
+		value = calloc(n + 1, sizeof(char));
 		if (!value)
 			break;
 
