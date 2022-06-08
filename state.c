@@ -89,7 +89,7 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 
 	s = calloc(1, sizeof(struct pv_state));
 	if (s) {
-    s->rev = calloc(len, sizeof(char));
+		s->rev = calloc(len, sizeof(char));
 		SNPRINTF_WTRUNC(s->rev, len, "%s", rev);
 		s->spec = spec;
 		dl_list_init(&s->platforms);
