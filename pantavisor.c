@@ -282,7 +282,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 	char *c;
 	char path[PATH_MAX];
 
-	c = calloc(1, sizeof(char) * 128);
+	c = calloc(128, sizeof(char));
 
 	pv_config_load_creds();
 

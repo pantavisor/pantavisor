@@ -152,7 +152,7 @@ const char** pv_ph_get_certs(struct pantavisor *__unused)
 		return NULL;
 
 	// Always n-1 due to . and .., and need one extra
-	cafiles = calloc(1, (sizeof(char*) * (n-1)));
+	cafiles = calloc(n - 1, sizeof(char*));
 
 	while (n--) {
 		if (!strncmp(files[n]->d_name, ".", 1))
@@ -316,7 +316,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 
 	baseurl_size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
-	req->baseurl = calloc(1, sizeof(char)*baseurl_size);
+	req->baseurl = calloc(baseurl_size, sizeof(char));
 	SNPRINTF_WTRUNC(req->baseurl, baseurl_size, "https://%s:%d", req->host, req->port);
 
 	if (req->host_proxy)
@@ -326,9 +326,9 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->body = 0;
 
 	if (pv_config_get_factory_autotok() && strcmp(pv_config_get_factory_autotok(), "")) {
-		headers = calloc(1, 2 * sizeof(char *));
+		headers = calloc(2, sizeof(char *));
 		header_size = sizeof(DEVICE_TOKEN_FMT) + 64;
-		headers[0] = calloc(1, header_size);
+		headers[0] = calloc(header_size, sizeof(char));
 		SNPRINTF_WTRUNC(headers[0], header_size, DEVICE_TOKEN_FMT, pv_config_get_factory_autotok());
 		thttp_add_headers(req, headers, 1);
 	}

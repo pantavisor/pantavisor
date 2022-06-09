@@ -144,7 +144,7 @@ static char* uboot_get_env_key(char *key)
 		return value;
 
 	lseek(fd, 0, SEEK_SET);
-	buf = calloc(1, len);
+	buf = calloc(len, sizeof(char));
 	ret = read(fd, buf, len);
 	close(fd);
 
@@ -157,7 +157,7 @@ static char* uboot_get_env_key(char *key)
 
 		if (!strncmp(buf+k, key, n)) {
 			len = strlen(buf+k+n+1);
-			value = calloc(1, len + 1);
+			value = calloc(len + 1, sizeof(char));
 			strcpy(value, buf+k+n+1);
 			break;
 		}

@@ -172,7 +172,7 @@ static int trail_remote_init(struct pantavisor *pv)
 
 	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED);
 
-	remote->endpoint_trail_queued = (char*) calloc(sizeof (char), size);
+	remote->endpoint_trail_queued = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_queued)
 		goto err;
 	SNPRINTF_WTRUNC(remote->endpoint_trail_queued,
@@ -182,19 +182,19 @@ static int trail_remote_init(struct pantavisor *pv)
 
 	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_NEW);
 
-	remote->endpoint_trail_new = (char*) calloc(sizeof (char), size);
+	remote->endpoint_trail_new = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_new)
 		goto err;
 	SNPRINTF_WTRUNC(remote->endpoint_trail_new, size, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
 
 	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
-	remote->endpoint_trail_downloading = (char*)calloc(1, size);
+	remote->endpoint_trail_downloading = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_downloading)
 		goto err;
 	SNPRINTF_WTRUNC(remote->endpoint_trail_downloading, size, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
 
 	size = strlen(endpoint_trail) + sizeof (DEVICE_TRAIL_ENDPOINT_INPROGRESS);
-	remote->endpoint_trail_inprogress = (char*)calloc(1, size);
+	remote->endpoint_trail_inprogress = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_inprogress)
 		goto err;
 	SNPRINTF_WTRUNC(remote->endpoint_trail_inprogress, size, "%s%s",
@@ -357,7 +357,7 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			 */
 			if (len) {
 				json_size = PATH_MAX + update->progress_size;
-				json = (char*)calloc(sizeof (char), json_size);
+				json = calloc(json_size, sizeof(char));
 			}
 			/*
 			 * we must post the total
@@ -520,7 +520,7 @@ static struct pv_update* pv_update_new(const char *id, const char *rev, bool loc
 	if (u) {
 		u->total_update = (struct object_update*) calloc(1, sizeof(struct object_update));
 		u->progress_size = PATH_MAX;
-		u->progress_objects = (char*)calloc(1, u->progress_size);
+		u->progress_objects = calloc(u->progress_size, sizeof(char));
 		u->status = UPDATE_INIT;
 		u->retries = 0;
 		u->local = local;
@@ -916,14 +916,14 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		if (req->is_tls) {
 			str_size = strlen("https://")
 					+ strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
-			req->baseurl = calloc(sizeof (char), str_size);
+			req->baseurl = calloc(str_size, sizeof(char));
 			SNPRINTF_WTRUNC(req->baseurl, str_size,
 					"https://%s:%d", req->host, req->port);
 		} else {
 			((thttp_request_tls_t*)req)->crtfiles = NULL;
 			str_size = strlen("https://")
 					+ strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
-			req->baseurl = calloc(sizeof (char), str_size);
+			req->baseurl = calloc(str_size, sizeof(char));
 			SNPRINTF_WTRUNC(req->baseurl, str_size, "http://%s:%d", req->host, req->port);
 		}
 		if (req->host_proxy)
@@ -1371,7 +1371,7 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 	if (!pv_object)
 		return;
 
-	msg = (char*)calloc(1, OBJ_JSON_SIZE);
+	msg = calloc(OBJ_JSON_SIZE, sizeof(char));
 	if (!msg)
 		return;
 
@@ -1471,12 +1471,12 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 	if (req->is_tls) {
 		size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
-		req->baseurl = calloc(sizeof (char), size);
+		req->baseurl = calloc(size, sizeof(char));
 		SNPRINTF_WTRUNC(req->baseurl, size, "https://%s:%d", req->host, req->port);
 	} else {
 		((thttp_request_tls_t*)req)->crtfiles = NULL;
 		size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
-		req->baseurl = calloc(sizeof(char), size);
+		req->baseurl = calloc(size, sizeof(char));
 		SNPRINTF_WTRUNC(req->baseurl, size, "http://%s:%d", req->host, req->port);
 			pv_log(WARN, "req->baseurl truncated to %s", req->baseurl);
 	}

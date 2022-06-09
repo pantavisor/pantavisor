@@ -53,7 +53,7 @@ static char *_sub_meta_values(char *str)
 		return strdup(str);
 
 	newlen = strlen(str);
-	new = calloc(1, newlen);
+	new = calloc(newlen, sizeof(char));
 	if (!new)
 		return NULL;
 

@@ -160,7 +160,7 @@ int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *
 		}
 
 		len = strlen(prefix) + strlen(dirs[n]->d_name) + 1;
-		subdir->path = calloc(1, len );
+		subdir->path = calloc(len, sizeof(char));
 		SNPRINTF_WTRUNC(subdir->path, len, "%s%s", prefix, dirs[n]->d_name);
 		dl_list_init(&subdir->list);
 		dl_list_add(subdirs, &subdir->list);
@@ -602,7 +602,7 @@ static char* pv_storage_get_file_date(const char *path)
 {
 	struct stat st;
 	struct tm *nowtm;
-	char *date = calloc(1, 32);
+	char *date = calloc(32, sizeof(char));
 
 	stat(path, &st);
 
@@ -616,7 +616,7 @@ char* pv_storage_get_revisions_string()
 {
 	int len = 1, line_len;
 	char path[PATH_MAX];
-	char *json = calloc(1, len), *progress = NULL, *date = NULL, *commitmsg = NULL, *esc_commitmsg = NULL;
+	char *json = calloc(len, sizeof(char)), *progress = NULL, *date = NULL, *commitmsg = NULL, *esc_commitmsg = NULL;
 	struct dl_list revisions; // pv_path
 	struct pv_path *r, *tmp;
 
@@ -649,7 +649,7 @@ char* pv_storage_get_revisions_string()
 		pv_paths_storage_trail_pv_file(path, PATH_MAX, r->path, PROGRESS_FNAME);
 		progress = pv_file_load(path, 512);
 		if (!progress || !strlen(progress)) {
-			progress = calloc(1, 3);
+			progress = calloc(3, sizeof(char));
 			sprintf (progress, "{}");
 		}
 
@@ -664,7 +664,7 @@ char* pv_storage_get_revisions_string()
 			esc_commitmsg = pv_json_format(commitmsg, strlen(commitmsg));
 
 		if (!commitmsg || !esc_commitmsg) {
-			esc_commitmsg = calloc(1, 1);
+			esc_commitmsg = calloc(1, sizeof(char));
 			esc_commitmsg[0] = '\0';
 		}
 		if (commitmsg) {

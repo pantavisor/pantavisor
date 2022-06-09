@@ -282,7 +282,7 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	char pr_name[16] = {0};
 	const char *logfile = NULL;
 
-	logger_cmd = (char*)calloc(1, PV_LOG_BUF_SIZE);
+	logger_cmd = calloc(PV_LOG_BUF_SIZE, sizeof(char));
 
 	/*Can't log it only thing we can do is print it on console*/
 	if (!logger_cmd)

@@ -140,7 +140,7 @@ static int pv_mount_init(struct pv_init *this)
 		size_t mntcmd_size = strlen("/btools/pvmnt.%s %s") +
 						strlen (pv_config_get_storage_mnttype()) +
 						strlen (path) + 1;
-		char *mntcmd = calloc(sizeof(char), mntcmd_size);
+		char *mntcmd = calloc(mntcmd_size, sizeof(char));
 
 		if (!mntcmd) {
 			printf("Couldn't allocate mount command \n");

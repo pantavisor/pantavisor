@@ -128,7 +128,7 @@ static char* grub_get_env_key(char *key)
 
 		if (!strncmp(next, key, klen)) {
 			vlen = strlen(next+klen+1);
-			value = calloc(1, vlen + 1);
+			value = calloc(vlen + 1, sizeof(char));
 			strcpy(value, next+klen+1);
 			break;
 		}

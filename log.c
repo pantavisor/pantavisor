@@ -98,7 +98,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		size += vsnprintf(NULL, 0, fmt, args);
 		// 1 '\0' char
 		size++;
-		char *buf = calloc(sizeof (char), size);
+		char *buf = calloc(size, sizeof(char));
 		if (!buf) {
 			// Fall back to multiple printfs instead of printing once
 			// Ouptu may get split up by other processes.

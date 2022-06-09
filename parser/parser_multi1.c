@@ -75,7 +75,7 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	jsmntok_t **key, **key_i;
 
 	// take null terminate copy of item to parse
-	buf = calloc(1, (n+1) * sizeof(char));
+	buf = calloc(n+1, sizeof(char));
 	buf = memcpy(buf, value, n);
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
@@ -200,7 +200,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 	ret = jsmnutil_parse_json(configs, &tokv, &tokc);
 	size = jsmnutil_array_count(buf, tokv);
 	t = tokv+1;
-	this->configs = calloc(1, (size + 1) * sizeof(char *));
+	this->configs = calloc(size + 1, sizeof(char *));
 	this->configs[size] = NULL;
 	i = 0;
 	while ((str = pv_json_array_get_one_str(configs, &size, &t))) {

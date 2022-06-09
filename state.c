@@ -89,7 +89,7 @@ struct pv_state* pv_state_new(const char *rev, state_spec_t spec)
 
 	s = calloc(1, sizeof(struct pv_state));
 	if (s) {
-		s->rev = calloc(1, len * sizeof(char*));
+		s->rev = calloc(len, sizeof(char));
 		SNPRINTF_WTRUNC(s->rev, len, "%s", rev);
 		s->spec = spec;
 		dl_list_init(&s->platforms);
@@ -1199,7 +1199,7 @@ out:
 char* pv_state_get_containers_json(struct pv_state *s)
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len + 1), *line;
+	char *json = calloc(len + 1, sizeof(char)), *line;
 	struct pv_platform *p, *tmp;
 
 	// open json
@@ -1233,7 +1233,7 @@ close:
 char* pv_state_get_conditions_json(struct pv_state *s)
 {
 	int len = 1, line_len;
-	char *json = calloc(1, len + 1), *line;
+	char *json = calloc(len + 1, sizeof(char)), *line;
 	struct pv_condition *c, *tmp;
 
 	// open json

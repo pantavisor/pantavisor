@@ -311,8 +311,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	mkstemp(tmp_cmd);
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd >= 0) {
-		char *buf = calloc(1024, 1);
-		char *new = calloc(1024, 1);
+		char *buf = calloc(1024, sizeof(char));
+		char *new = calloc(1024, sizeof(char));
 		read(fd, buf, 1024);
 		char *tok = strtok(buf, " ");
 		while (tok) {
@@ -396,7 +396,7 @@ static void pv_setup_default_log(struct pv_platform *p,
 	 * in unnecessary logger messages.
 	 */
 	if (strncmp("console", logger_key, strlen("console")) == 0) {
-		char *console_path = (char*) calloc(1, PATH_MAX);
+		char *console_path = calloc(PATH_MAX, sizeof(char));
 		bool do_nothing = false;
 
 		if (console_path) {
