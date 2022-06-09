@@ -67,6 +67,7 @@ int pv_filesystem_mkdir_p(const char *path, mode_t mode)
 
 	char cur_path[PATH_MAX] = { 0 };
 
+	errno = 0;
 	int i = -1;
 	do {
 		++i;
