@@ -34,7 +34,6 @@
 #include "trestclient.h"
 #include "pantahub.h"
 #include "utils/tsh.h"
-#include "utils/fs.h"
 #include "utils/str.h"
 
 #define MODULE_NAME             "client"

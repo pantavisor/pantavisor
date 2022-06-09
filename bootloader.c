@@ -31,8 +31,6 @@
 #include <errno.h>
 #include <mtd/mtd-user.h>
 
-#include "file.h"
-
 #include "bootloader.h"
 #include "init.h"
 #include "utils/str.h"

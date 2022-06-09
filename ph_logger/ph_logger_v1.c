@@ -163,7 +163,7 @@ int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, cons
 	/*
 	 * Create directory for logged item according to platform and source.
 	 */
-	if (mkdir_p(fname, 0755))
+	if (pv_fs_mkdir_p(fname, 0775))
 		goto error;
 	log_fd = open(pathname, O_CREAT | O_SYNC | O_RDWR | O_APPEND, 0644);
 	if (log_fd >= 0) {

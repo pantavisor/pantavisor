@@ -53,7 +53,6 @@
 #include "utils/tsh.h"
 #include "utils/str.h"
 #include "utils/fs.h"
-#include "utils/file.h"
 
 #define MODULE_NAME             "pantahub-api"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -111,7 +110,8 @@ static void pv_ph_set_online(struct pantavisor *pv, bool online)
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "1");
 	} else {
 		if (hint)
-			remove(path);
+			pv_fs_path_remove(path, false);
+
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "0");
 	}
 
@@ -501,7 +501,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
 	SNPRINTF_WTRUNC (buf, sizeof (buf), "%s\n", pv_config_get_creds_id());
-	if (pv_file_save(path, buf, 044))
+	if (pv_fs_file_save(path, buf, 044))
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	if (!c)
@@ -509,7 +509,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
 	SNPRINTF_WTRUNC(buf, sizeof (buf), "%s\n", c);
-	if (pv_file_save(path, buf, 044))
+	if (pv_fs_file_save(path, buf, 044))
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }
 

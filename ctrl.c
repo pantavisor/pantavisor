@@ -43,7 +43,6 @@
 
 #include "ctrl.h"
 #include "utils/math.h"
-#include "utils/fs.h"
 #include "utils/str.h"
 #include "json.h"
 #include "pvlogger.h"
@@ -58,7 +57,6 @@
 #include "paths.h"
 #include "utils/math.h"
 #include "utils/fs.h"
-#include "utils/file.h"
 
 #define MODULE_NAME             "ctrl"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -352,7 +350,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length, char* fil
 
  clean:
 	remove(file_path);
-	syncdir(file_path);
+	pv_fs_path_sync(file_path);
 
  out:
 	fsync(obj_fd);
@@ -434,7 +432,7 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 {
 	int obj_fd;
-	ssize_t sent, file_size = pv_file_get_size(file_path);
+	ssize_t sent, file_size = pv_fs_path_get_size(file_path);
 	off_t offset = 0;
 
 	pv_log(DEBUG, "reading file from %s and sending it to endpoint", file_path);
@@ -703,7 +701,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				goto out;
 			}
 			pv_log(DEBUG, "renaming %s to %s", file_path_tmp, file_path);
-			if (pv_file_rename(file_path_tmp, file_path) < 0) {
+			if (pv_fs_path_rename(file_path_tmp, file_path) < 0) {
 				pv_log(ERROR, "could not rename: %s", strerror(errno));
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename object");
 				goto out;
@@ -761,7 +759,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 			if (pv_ctrl_process_put_file(req_fd, content_length, file_path_tmp) < 0)
 				goto out;
 			pv_log(DEBUG, "renaming %s to %s", file_path_tmp, file_path);
-			if (pv_file_rename(file_path_tmp, file_path) < 0) {
+			if (pv_fs_path_rename(file_path_tmp, file_path) < 0) {
 				pv_log(ERROR, "could not rename: %s", strerror(errno));
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR, "Cannot rename commitmsg");
 				goto out;
@@ -788,7 +786,7 @@ static struct pv_cmd* pv_ctrl_process_endpoint_and_reply(int req_fd,
 				pv_ctrl_write_error_response(req_fd, HTTP_STATUS_BAD_REQ, "Step name has bad name");
 				goto out;
 			}
-			mkdir_p(file_path_parent, 0755);
+			pv_fs_mkdir_p(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length, file_path) < 0)
 				goto out;
 			if (!pv_storage_verify_state_json(file_name)) {
@@ -986,7 +984,7 @@ err_pr:
 out:
 	if (!stat(file_path_tmp, &st)) {
 		pv_log(DEBUG, "removing %s", file_path_tmp);
-		pv_file_remove(file_path_tmp);
+		pv_fs_path_remove(file_path_tmp, false);
 	}
 	if (pname)
 		free(pname);
