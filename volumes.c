@@ -43,8 +43,7 @@
 #include "state.h"
 #include "tsh.h"
 #include "init.h"
-#include "utils/fs.h"
-#include "utils/file.h"
+#include "utils/filesystem.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
 
@@ -306,13 +305,14 @@ int pv_volume_mount(struct pv_volume *v)
 		fstype++;
 		if (strcmp(fstype, "bind") == 0) {
 			if (stat(mntpoint, &buf) != 0) {
-				if (pv_file_save(mntpoint, "", 0644) < 0)
+				if (pv_filesystem_file_save(mntpoint, "", 0644) < 0)
 					pv_log(WARN, "could not save file %s: %s", mntpoint, strerror(errno));
 			}
 			ret = mount(path, mntpoint, NULL, MS_BIND, NULL);
 		} else if (strcmp(fstype, "data") == 0) {
 			pv_log(INFO, "mounting proper .data dir");
-			mkdir_p(mntpoint, 0755);
+
+			pv_filesystem_mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, NULL, MS_BIND | MS_REC, NULL);
 		} else if (handler) {
 			pv_log(INFO, "with '%s' handler", handler);
@@ -351,8 +351,9 @@ int pv_volume_mount(struct pv_volume *v)
 			pv_paths_crypt_disks_perm_file(path, PATH_MAX, "dmcrypt", disk_name, v->plat->name, v->name);
 		else
 			pv_paths_storage_disks_perm_file(path, PATH_MAX, v->plat->name, v->name);
-		mkdir_p(path, 0755);
-		mkdir_p(mntpoint, 0755);
+
+		pv_filesystem_mkdir_p(path, 0755);
+		pv_filesystem_mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
 	case VOL_REVISION:
@@ -360,8 +361,9 @@ int pv_volume_mount(struct pv_volume *v)
 			pv_paths_crypt_disks_rev_file(path, PATH_MAX, "dmcrypt", disk_name, s->rev, v->plat->name, v->name);
 		else
 			pv_paths_storage_disks_rev_file(path, PATH_MAX, s->rev, v->plat->name, v->name);
-		mkdir_p(path, 0755);
-		mkdir_p(mntpoint, 0755);
+
+		pv_filesystem_mkdir_p(path, 0755);
+		pv_filesystem_mkdir_p(mntpoint, 0755);
 		ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 		break;
 	case VOL_BOOT:
@@ -370,16 +372,20 @@ int pv_volume_mount(struct pv_volume *v)
 
 			pv_paths_crypt_disks_boot_file(path, PATH_MAX, "dmcrypt", disk_name, v->plat->name, v->name);
 			base_path = strdup(path);
-			remove_in(dirname(base_path), v->name);
+
+			char full_path[PATH_MAX];
+			pv_filesystem_path_concat(full_path, 2, dirname(base_path), v->name);
+			pv_filesystem_path_remove(full_path, true);
+
 			free(base_path);
 
-			mkdir_p(path, 0755);
-			mkdir_p(mntpoint, 0755);
+			pv_filesystem_mkdir_p(path, 0755);
+			pv_filesystem_mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, "none", MS_BIND, "rw");
 			break;
 		}
 
-		mkdir_p(mntpoint, 0755);
+		pv_filesystem_mkdir_p(mntpoint, 0755);
 		ret = mount("none", mntpoint, "tmpfs", 0, NULL);
 		break;
 	default:
@@ -450,7 +456,7 @@ int pv_volumes_mount_firmware_modules()
 		goto modules;
 
 	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
-		mkdir_p(FW_PATH, 0755);
+		pv_filesystem_mkdir_p(FW_PATH, 0755);
 
 	if (strchr(firmware, '/')) {
 		pv_paths_root_file(path_volumes, PATH_MAX, pv->state->bsp.firmware);
@@ -488,7 +494,7 @@ modules:
 
 	if (!uname(&uts) && (stat(path_volumes, &st) == 0)) {
 		pv_paths_lib_modules(path_lib, PATH_MAX, uts.release);
-		mkdir_p(path_lib, 0755);
+		pv_filesystem_mkdir_p(path_lib, 0755);
 		ret = mount_bind(path_volumes, path_lib);
 		pv_log(DEBUG, "bind mounted %s modules to %s", path_volumes, path_lib);
 	} else
@@ -506,7 +512,7 @@ static int pv_volume_early_init(struct pv_init *this)
 	mkdir(path, 0755);
 
 	pv_paths_storage_disks(path, PATH_MAX);
-	mkdir_p(path, 0755);
+	pv_filesystem_mkdir_p(path, 0755);
 
 	return 0;
 }
