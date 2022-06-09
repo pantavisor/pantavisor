@@ -41,7 +41,6 @@
 #include "trestclient.h"
 #include "updater.h"
 #include "paths.h"
-#include "utils/fs.h"
 #include "utils/str.h"
 #include "objects.h"
 #include "parser/parser.h"
@@ -54,7 +53,6 @@
 #include "parser/parser_bundle.h"
 #include "state.h"
 #include "json.h"
-#include "file.h"
 #include "signature.h"
 
 #define MODULE_NAME			"updater"
