@@ -69,9 +69,10 @@ int pv_filesystem_mkdir_p(const char *path, mode_t mode)
 
 	errno = 0;
 	int i = -1;
+
 	do {
 		++i;
-		if (path[i] == '/' || path[i] == '\0') {
+		if (i > 0 && (path[i] == '/' || path[i] == '\0')) {
 			memcpy(cur_path, path, i);
 			cur_path[i] = '\0';
 			if (mkdir(cur_path, mode) != 0 && errno != EEXIST)
