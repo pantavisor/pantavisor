@@ -68,6 +68,7 @@ LOCAL_SRC_FILES := init.c \
 			utils/base64.c \
 			utils/math.c \
 			utils/timer.c \
+			utils/filesystem.c \
 			jsons.c \
 			pantahub.c \
 			updater.c \
