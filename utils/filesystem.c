@@ -252,11 +252,13 @@ out:
 	return ret;
 }
 
-size_t pv_filesystem_path_get_size(const char *path)
+off_t pv_filesystem_path_get_size(const char *path)
 {
 	struct stat st;
 
-	stat(path, &st);
+	if (stat(path, &st) < 0)
+		return -1;
+
 	return st.st_size;
 }
 
