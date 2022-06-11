@@ -35,6 +35,7 @@ int pv_filesystem_path_remove(const char *path, bool recursive);
 int pv_filesystem_path_rename(const char *src_path, const char *dst_path);
 off_t pv_filesystem_path_get_size(const char *path);
 int pv_filesystem_file_tmp(char *tmp, const char *fname);
+char *pv_filesystem_file_load(const char *path, off_t max);
 int pv_filesystem_file_save(const char *fname, const char *data, mode_t mode);
 int pv_filesystem_file_copy_from_path(const char *src, const char *dst, mode_t mode);
 

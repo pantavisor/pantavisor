@@ -165,6 +165,34 @@ int pv_filesystem_file_tmp(char *tmp, const char *fname)
 	return 0;
 }
 
+char *pv_filesystem_file_load(const char *path, off_t max)
+{
+	off_t size = pv_filesystem_path_get_size(path);
+	if (size < 0)
+		return NULL;
+
+	if (max && (size > max)) {
+		errno = EFBIG;
+		return NULL;
+	}
+
+	char *buf = calloc(size + 1, sizeof(char));
+	if (!buf)
+		return NULL;
+
+	int fd = open(path, O_RDONLY, 0664);
+	if (fd < 0)
+		goto out;
+
+	ssize_t r = read(fd, buf, size);
+	if (r < 0)
+		goto out;
+
+out:
+	close_fd(&fd);
+	return buf;
+}
+
 int pv_filesystem_file_save(const char *fname, const char *data, mode_t mode)
 {
 	char tmp[PATH_MAX] = { 0 };
