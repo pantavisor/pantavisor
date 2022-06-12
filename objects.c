@@ -33,9 +33,8 @@
 #include "storage.h"
 #include "paths.h"
 #include "utils/math.h"
-#include "utils/file.h"
+#include "utils/filesystem.h"
 #include "utils/math.h"
-#include "utils/fs.h"
 #include "utils/str.h"
 
 #define MODULE_NAME			"objects"
@@ -130,7 +129,7 @@ char *pv_objects_get_list_string()
 			continue;
 
 		pv_paths_storage_object(path, PATH_MAX, curr->path);
-		size_object = pv_file_get_size(path);
+		size_object = pv_filesystem_path_get_size(path);
 		if (size_object <= 0)
 			continue;
 
