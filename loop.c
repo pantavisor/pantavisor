@@ -30,8 +30,9 @@
 #include <sys/mount.h>
 
 #include <linux/loop.h>
+#include <linux/limits.h>
 
-#include "utils/fs.h"
+#include "utils/filesystem.h"
 #include "utils/str.h"
 #include "init.h"
 #include "loop.h"
@@ -129,7 +130,7 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 		return -1;
 
 	// Make dest if it doesn't exist
-	if (mkdir_p(dest, 0755) < 0)
+	if (pv_filesystem_mkdir_p(dest, 0755) < 0)
 		return -1;
 
 	// if ext4 make sure we mount journaled
