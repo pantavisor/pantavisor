@@ -54,7 +54,7 @@
 #include "buffer.h"
 #include "utils/math.h"
 #include "utils/system.h"
-#include "utils/file.h"
+#include "utils/filesystem.h"
 
 #define MODULE_NAME             "metadata"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -870,7 +870,7 @@ static void pv_metadata_load_usermeta()
 			continue;
 
 		pv_paths_pv_usrmeta_key(path, PATH_MAX, curr->path);
-		value = pv_file_load(path, METADATA_MAX_SIZE);
+		value = pv_filesystem_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
 			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
 			continue;
@@ -907,7 +907,7 @@ static void pv_metadata_load_devmeta()
 			continue;
 
 		pv_paths_pv_devmeta_key(path, PATH_MAX, curr->path);
-		value = pv_file_load(path, METADATA_MAX_SIZE);
+		value = pv_filesystem_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
 			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
 			continue;
