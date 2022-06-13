@@ -25,7 +25,6 @@
 
 #include <linux/limits.h>
 
-#include "utils/fs.h"
 #include "utils/tsh.h"
 #include "utils/str.h"
 #include "drivers.h"

@@ -43,7 +43,6 @@
 
 #include "ctrl.h"
 #include "utils/math.h"
-#include "utils/fs.h"
 #include "utils/str.h"
 #include "json.h"
 #include "pvlogger.h"
