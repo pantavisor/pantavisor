@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <mtd/mtd-user.h>
+#include <linux/limits.h>
 
 #include "bootloader.h"
 #include "paths.h"
