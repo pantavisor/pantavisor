@@ -32,7 +32,7 @@
 
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
-#include "utils/fs.h"
+#include "utils/filesystem.h"
 #include "log.h"
 
 struct level_name {
@@ -163,7 +163,8 @@ int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, cons
 	/*
 	 * Create directory for logged item according to platform and source.
 	 */
-	if (mkdir_p(fname, 0755))
+	// if (mkdir_p(fname, 0755))
+	if (pv_filesystem_mkdir_p(fname, 0775))
 		goto error;
 	log_fd = open(pathname, O_CREAT | O_SYNC | O_RDWR | O_APPEND, 0644);
 	if (log_fd >= 0) {
