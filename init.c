@@ -51,9 +51,8 @@
 #include "utils/tsh.h"
 #include "utils/math.h"
 #include "utils/list.h"
-#include "utils/fs.h"
 #include "utils/str.h"
-#include "utils/file.h"
+#include "utils/filesystem.h"
 
 #define MODULE_NAME		"init"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -402,7 +401,7 @@ static int read_cmdline(const char *arg_cmdline)
 		return ret;
 	}
 
-	bytes = pv_file_read_nointr(fd, buf, SIZE_CMDLINE_BUF);
+	bytes = pv_filesystem_file_read_nointr(fd, buf, SIZE_CMDLINE_BUF);
 	if (bytes < 0) {
 		printf("ERROR: cannot read /proc/cmdline: %s", strerror(errno));
 		goto out;
