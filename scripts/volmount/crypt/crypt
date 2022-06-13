@@ -50,10 +50,12 @@ do_crypt_init()
 		$CAAM_KEYGEN create $keyname ecb -s 16
 		cp /data/caam/$keyname* $dir
 		cat /data/caam/$keyname | /bin/keyctl padd logon logkey: @u
+		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to load key" && exit 1
 	elif [ $dm_type == "dcp" ]; then
 		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
 		echo $key_value >$dir/$keyname.txt
 		/lib/pv/volmount/crypt/dcp-tool enc $dir/$keyname.txt $dir/$keyname.bb 64
+		[ $? -ne 0 ] && echo "ERROR: DCP: Unable to create black blob" && exit 1
 		rm -rf $dir/$keyname.txt
 	elif [ $dm_type == "versatile" ]; then
 		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
@@ -69,12 +71,11 @@ do_crypt_init()
 	do_find_free_loop
 
 	/sbin/losetup -f $dir/$img_file
-	[ $? -ne 0 ] && exit 1
+	[ $? -ne 0 ] && echo "ERROR: Unable to loop setup" && exit 1
 
 	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
 	if [ $dm_type == "caam" ]; then
 		/usr/sbin/dmsetup -v create $device_name --table "0 $(/sbin/blockdev --getsz $FREE_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $FREE_LOOP 0 1 sector_size:512"
-		[ ! -b /dev/mapper/$device_name ] && exit 1
 	elif [ $dm_type == "dcp" ]; then
 		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
 	elif [ $dm_type == "versatile" ]; then
@@ -83,8 +84,10 @@ do_crypt_init()
 		echo "Unknown device mapper target"
 		exit 1
 	fi
+	[ $? -ne 0 ] && echo "ERROR: $dm_type: Unable to create/open crypt device" && exit 1
 
 	/usr/sbin/mkfs.ext4 /dev/mapper/$device_name
+	[ $? -ne 0 ] && echo "ERROR: Unable to format to ext4" && exit 1
 
 	if [ $dm_type == "caam" ]; then
 		/usr/sbin/dmsetup remove $device_name
@@ -141,8 +144,10 @@ do_mount_disk()
 		mkdir -p /data/caam
 		cp $keyname* /data/caam
 		$CAAM_KEYGEN import $keyname.bb $keyname.import
+		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to import black blob" && exit 1
 
 		cat /data/caam/$keyname.import | /bin/keyctl padd logon logkey: @u
+		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to load key" && exit 1
 	fi
 
 	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
@@ -163,6 +168,7 @@ do_mount_disk()
 		echo "Unknown device mapper target"
 		exit 1
 	fi
+	[ $? -ne 0 ] && echo "ERROR: $dm_type: Unable to create/open crypt device" && exit 1
 
 	if [ ! -b /dev/mapper/$device_name ]; then
 		echo "ERROR: could not crypt mapper"
