@@ -52,7 +52,7 @@
 #include "utils/math.h"
 #include "utils/str.h"
 #include "json.h"
-#include "file.h"
+#include "filesystem.h"
 #include "buffer.h"
 #include "ph_logger.h"
 #include "ph_logger_v1.h"
@@ -386,8 +386,7 @@ static char *strnchr(char *src, char ch, int len)
 static int ph_logger_push_from_file(const char *filename, char *platform, char *source, char *rev)
 {
 	int ret = 0;
-	char buff[32] = {0};
-	char *dst = buff;
+	char dst[32] = {0};
 	off_t pos = 0;
 	int offset = 0;
 	off_t read_pos = 0;
@@ -413,7 +412,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 	}
 	buf = log_buff->buf;
 
-	if (pv_file_get_file_xattr(filename, PH_LOGGER_POS_XATTR, &dst, NULL) > 0) {
+	if (pv_filesystem_file_get_xattr(dst, 32, filename, PH_LOGGER_POS_XATTR) > 0) {
 		sscanf(dst, "%" PRId64, &pos);
 	} else {
 		ph_log(DEBUG, "XATTR %s not found in %s. Position set to pos %lld",
@@ -422,7 +421,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */
-		pv_file_set_file_xattr(filename, PH_LOGGER_POS_XATTR, dst);
+		pv_filesystem_file_set_xattr(filename, PH_LOGGER_POS_XATTR, dst);
 	}
 #ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
@@ -457,7 +456,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 		}
 	}
 
-	bytes_read = pv_file_read_nointr(fd, buf, log_buff->size);
+	bytes_read = pv_filesystem_file_read_nointr(fd, buf, log_buff->size);
 	/*
 	 * we've to get rid of all NULL bytes in buf
 	 * otherwise the pv_json_format won't really work as it'll
@@ -574,7 +573,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform, char *
 
 			pos = read_pos + offset;
 			SNPRINTF_WTRUNC(value, sizeof(value), "%"PRId64, pos);
-			pv_file_set_file_xattr(filename, PH_LOGGER_POS_XATTR, value);
+			pv_filesystem_file_set_xattr(filename, PH_LOGGER_POS_XATTR, value);
 		}
 	}
 close_fd:
@@ -628,7 +627,7 @@ close_fd:
 				char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)];
 
 				SNPRINTF_WTRUNC(value, sizeof (value), "%"PRId64, pos);
-				pv_file_set_file_xattr(filename, PH_LOGGER_POS_XATTR, value);
+				pv_filesystem_file_set_xattr(filename, PH_LOGGER_POS_XATTR, value);
 			}
 			// in case of error while sending, we return -1
 			else
@@ -716,7 +715,7 @@ accept_again:
 				int nr_read = 0;
 				struct ph_logger_msg *msg = (struct ph_logger_msg*)buf;
 
-				nr_read = pv_file_read_nointr(work_fd, buf, log_buffer->size);
+				nr_read = pv_filesystem_file_read_nointr(work_fd, buf, log_buffer->size);
 				if (nr_read > 0) {
 					ph_logger_write_to_log_file(msg, revision);
 					nr_logs++;
