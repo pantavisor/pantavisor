@@ -574,7 +574,7 @@ error:
 
 static char* pv_ctrl_get_sender_pname(int req_fd)
 {
-	char *freezer, *pname = NULL;
+	char *pvcg, *pname = NULL;
 	struct ucred ucred;
 	socklen_t ucred_len = sizeof(ucred);
 	char path[PATH_MAX], buf[128];
@@ -598,11 +598,11 @@ static char* pv_ctrl_get_sender_pname(int req_fd)
 	}
 
 	while (fgets(buf, 128, fd)) {
-		freezer = strstr(buf, "freezer:/lxc/");
-		if (freezer) {
-			freezer += strlen("freezer:/lxc/");
-			freezer[strlen(freezer) - 1] = '\0';
-			pname = strdup(freezer);
+		pvcg = strstr(buf, ":name=pantavisor:/lxc/");
+		if (pvcg) {
+			pvcg += strlen(":name=pantavisor:/lxc/");
+			pvcg[strlen(pvcg) - 1] = '\0';
+			pname = strdup(pvcg);
 			break;
 		}
 	}

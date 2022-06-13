@@ -75,7 +75,7 @@ static int mkcgroup(const char* cgroup) {
 	mkdir(path, 0555);
 	ret = mount("cgroup", path, "cgroup", 0, cgroup);
 	if (ret < 0) {
-		printf("ERROR: Could not mount cgroup %s\n", path);
+		pv_log(DEBUG, "Could not mount cgroup %s\n", path);
 		return -1;
 	}
 	return 0;
@@ -123,6 +123,11 @@ static int mount_cgroups()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
 
+	mkdir("/sys/fs/cgroup/pantavisor", 0555);
+	ret = mount("cgroup", "/sys/fs/cgroup/pantavisor", "cgroup", 0, "none,name=pantavisor");
+	if (ret < 0)
+		exit_error(errno, "Could not mount /sys/fs/cgroup/pantavisor");
+
 	mkcgroup("blkio");
 	mkcgroup("cpu,cpuacct");
 	mkcgroup("cpu");
@@ -141,7 +146,7 @@ static int mount_cgroups()
 	mkdir("/sys/fs/cgroup/unified", 0555);
 	ret = mount("none", "/sys/fs/cgroup/unified", "cgroup2", 0, NULL);
 	if (ret < 0)
-		printf("WARN: Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
+		pv_log(WARN, "Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
 
 	mkdir("/writable", 0755);
 	if (!stat("/etc/fstab", &st))
