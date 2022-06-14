@@ -10,7 +10,7 @@ LOCAL_MODULE := pv_lxc
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC
 LOCAL_LDFLAGS := -Wl,--no-as-needed -lutil -Wl,--as-needed
 
-LOCAL_SRC_FILES := plugins/pv_lxc.c
+LOCAL_SRC_FILES := plugins/pv_lxc.c utils/filesystem.c utils/tsh.c
 
 include $(BUILD_SHARED_LIBRARY)
 
