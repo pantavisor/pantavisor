@@ -187,7 +187,7 @@ out:
 	if (fd > 0)
 		close_fd(&fd);
 
-	ret = pv_filesystem_path_remove(tmp, false);
+	pv_filesystem_path_remove(tmp, false);
 	pv_filesystem_path_sync(tmp);
 
 	return ret;
