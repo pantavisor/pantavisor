@@ -329,8 +329,9 @@ int pv_filesystem_file_lock(int fd)
 	flock.l_type = F_WRLCK;
 
 	int ret = -1;
-	while (ret < 0 && errno == EINTR)
+	do {
 		ret = fcntl(fd, F_SETLK, &flock);
+	} while (ret < 0 && errno == EINTR);
 
 	return ret;
 }
@@ -346,8 +347,9 @@ int pv_filesystem_file_unlock(int fd)
 	flock.l_type = F_UNLCK;
 
 	int ret = -1;
-	while (ret < 0 && errno == EINTR)
+	do {
 		ret = fcntl(fd, F_SETLK, &flock);
+	} while (ret < 0 && errno == EINTR);
 
 	return ret;
 }
