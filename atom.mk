@@ -59,12 +59,10 @@ LOCAL_SRC_FILES := init.c \
 			parser/parser_system1.c \
 			objects.c \
 			utils/tsh.c \
-			utils/fs.c \
 			utils/system.c \
 			utils/str.c \
 			utils/strrep.c \
 			utils/json.c \
-			utils/file.c \
 			utils/base64.c \
 			utils/math.c \
 			utils/timer.c \
