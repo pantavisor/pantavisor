@@ -270,6 +270,7 @@ int pv_filesystem_file_copy_from_path(const char *src, const char *dst,
 	if (tmp_fd < 0)
 		return -1;
 
+	int ret = -1;
 	int src_fd = open(src, O_RDONLY, 0);
 	if (src_fd < 0)
 		goto out;
@@ -277,7 +278,7 @@ int pv_filesystem_file_copy_from_path(const char *src, const char *dst,
 	pv_filesystem_file_copy_fd(src_fd, tmp_fd, true);
 	close_fd(&tmp_fd);
 
-	int ret = pv_filesystem_path_rename(tmp_path, dst);
+	ret = pv_filesystem_path_rename(tmp_path, dst);
 	if (ret < 0)
 		goto out;
 
