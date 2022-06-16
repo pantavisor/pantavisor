@@ -1356,7 +1356,7 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 	if (!obj)
 		return;
 	total_update = progress_update->pv->update->total_update;
-	if (timer_current_state(&progress_update->timer_next_update).fin) {
+	if (!timer_current_state(&progress_update->timer_next_update).fin) {
 		if (chunk_size == written) {
 			progress_update->object_update->total_downloaded += chunk_size;
 			total_update->total_downloaded += chunk_size;
