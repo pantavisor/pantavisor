@@ -42,6 +42,7 @@
 #include "updater.h"
 #include "paths.h"
 #include "utils/str.h"
+#include "utils/filesystem.h"
 #include "objects.h"
 #include "parser/parser.h"
 #include "bootloader.h"
@@ -1540,7 +1541,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 
 	if (use_volatile_tmp) {
 		pv_log(INFO, "copying %s to tmp path (%s)", volatile_tmp_obj_path, mmc_tmp_obj_path);
-		bytes = pv_file_copy_and_close(volatile_tmp_fd, obj_fd);
+		bytes = pv_filesystem_file_copy_fd(volatile_tmp_fd, obj_fd, true);
 		fd = obj_fd;
 	}
 	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
@@ -1578,7 +1579,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	}
 
 	pv_log(DEBUG, "renaming %s to %s...", mmc_tmp_obj_path, obj->objpath);
-	if (pv_file_rename(mmc_tmp_obj_path, obj->objpath) < 0) {
+	if (pv_filesystem_path_rename(mmc_tmp_obj_path, obj->objpath) < 0) {
 		pv_log(ERROR, "could not rename: %s", strerror(errno));
 	}
 
@@ -1648,11 +1649,11 @@ static int trail_link_objects(struct pantavisor *pv)
 	char *ext;
 
 	pv_objects_iter_begin(pv->update->pending, obj) {
-		mkbasedir_p(obj->relpath, 0755);
+		pv_filesystem_mkbasedir_p(obj->relpath, 0775);
 		ext = strrchr(obj->relpath, '.');
 		if (ext && (strcmp(ext, ".bind") == 0)) {
 			pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
-			if (pv_file_copy(obj->objpath, obj->relpath, 0644) < 0)
+			if (pv_filesystem_file_copy_from_path(obj->objpath, obj->relpath, 0644) < 0)
 				pv_log(ERROR, "could not copy objects");
 			continue;
 		}
@@ -1662,7 +1663,7 @@ static int trail_link_objects(struct pantavisor *pv)
 				return -1;
 			}
 		} else {
-			syncdir(obj->objpath);
+			pv_filesystem_path_sync(obj->objpath);
 			pv_log(DEBUG, "linked %s to %s", obj->relpath, obj->objpath);
 		}
 	}
@@ -1784,7 +1785,7 @@ int pv_update_download(struct pantavisor *pv)
 	}
 
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->update->pending->rev, "");
-	mkdir_p(path, 0755);
+	pv_filesystem_mkdir_p(path, 0755);
 
 	// do not download if this is a local update
 	if (pv->update->local)
@@ -1828,7 +1829,7 @@ int pv_update_install(struct pantavisor *pv)
 
 	// make sure target directories exist
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev, "");
-	mkdir_p(path, 0755);
+	pv_filesystem_mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
@@ -1839,7 +1840,7 @@ int pv_update_install(struct pantavisor *pv)
 
 	// install state.json for new rev
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev, JSON_FNAME);
-	if (pv_file_save(path, pending->json, 0644) < 0)
+	if (pv_filesystem_file_save(path, pending->json, 0644) < 0)
 		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
 
 	if (!pv_storage_meta_expand_jsons(pv, pending)) {
