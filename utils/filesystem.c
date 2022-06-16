@@ -253,7 +253,7 @@ ssize_t pv_filesystem_file_copy_fd(int src, int dst, bool close_src)
 	if (close_src)
 		close_fd(&src);
 
-	return write_bytes;
+	return read_bytes;
 }
 
 int pv_filesystem_file_copy_from_path(const char *src, const char *dst,
