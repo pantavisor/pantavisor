@@ -83,6 +83,23 @@ int pv_filesystem_mkdir_p(const char *path, mode_t mode)
 	return 0;
 }
 
+int pv_filesystem_mkbasedir_p(const char *path, mode_t mode)
+{
+	int ret = -1;
+	char *c, *tmp;
+	tmp = strdup(path);
+	c = strrchr(tmp, '/');
+
+	if (c) {
+		*c = '\0';
+		ret = pv_filesystem_mkdir_p(tmp, mode);
+	}
+
+	free(tmp);
+	return ret;
+}
+
+
 void pv_filesystem_path_concat(char *buf, int size, ...)
 {
 	char fmt[PATH_MAX] = { 0 };

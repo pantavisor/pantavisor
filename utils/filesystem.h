@@ -31,6 +31,7 @@ bool pv_filesystem_path_is_directory(const char *path);
 void pv_filesystem_path_sync(const char *path);
 void pv_filesystem_path_concat(char *buf, int size, ...);
 int pv_filesystem_mkdir_p(const char *path, mode_t mode);
+int pv_filesystem_mkbasedir_p(const char *path, mode_t mode);
 int pv_filesystem_path_remove(const char *path, bool recursive);
 int pv_filesystem_path_rename(const char *src_path, const char *dst_path);
 off_t pv_filesystem_path_get_size(const char *path);
