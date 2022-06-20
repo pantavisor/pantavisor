@@ -55,6 +55,7 @@
 #include "utils/math.h"
 #include "utils/system.h"
 #include "utils/file.h"
+#include "utils/tsh.h"
 
 #define MODULE_NAME             "metadata"
 #define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
@@ -140,6 +141,28 @@ static int pv_devmeta_read_cpumodel(struct pv_devmeta_read
 	ret = get_cpu_model(buf, buflen);
 	if (ret < 0)
 		memset(buf, 0, buflen);
+	return 0;
+}
+
+static int pv_devmeta_uname(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	char err[2048] = {0};
+	tsh_run_output("uname -a", 2, buf, buflen, err, 2048);
+
+	if (strnlen(buf, buflen) == buflen) {
+		memset(buf, 0, buflen);
+		return -1;
+	}
+
+	buflen = strlen(buf);
+	buf[buflen - 1] = '\0';
+
 	return 0;
 }
 
@@ -233,6 +256,9 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	},
 	{	.key = DEVMETA_KEY_PH_CLAIMED,
 		.reader = pv_devmeta_read_claimed
+	},
+	{ .key = DEVMETA_KEY_PV_UNAME,
+		.reader = pv_devmeta_uname
 	}
 };
 
