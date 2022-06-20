@@ -155,7 +155,7 @@ static int pv_devmeta_uname(struct pv_devmeta_read *pv_devmeta_read)
 	char err[2048] = {0};
 	tsh_run_output("uname -a", 2, buf, buflen, err, 2048);
 
-	if (strnlen(buf, buflen) == buflen) {
+	if (strnlen(buf, buflen) == (size_t)buflen) {
 		memset(buf, 0, buflen);
 		return -1;
 	}
