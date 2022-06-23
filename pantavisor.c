@@ -195,7 +195,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (pv_update_is_transitioning(pv->update)) {
 		// for non-reboot updates...
 		pv_log(INFO, "transitioning...");
-		ph_logger_stop(pv);
 		pv_log_start(pv, pv->update->pending->rev);
 		pv_state_transition(pv->update->pending, pv->state);
 	} else {
