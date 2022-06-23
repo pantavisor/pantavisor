@@ -1066,8 +1066,6 @@ void ph_logger_toggle(struct pantavisor *pv, char *rev)
 
 void ph_logger_stop(struct pantavisor *pv)
 {
-	char path[PATH_MAX];
-
 	if (!pv)
 		return;
 
@@ -1079,11 +1077,16 @@ void ph_logger_stop(struct pantavisor *pv)
 	ph_logger.log_service = -1;
 
 	ph_logger_stop_cloud(pv);
+}
+
+void ph_logger_close(void)
+{
+	char path[PATH_MAX];
 
     if (ph_logger.sock_fd >= 0) {
 		pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-        pv_log(DEBUG, "closing %s with fd %d", path, ph_logger.sock_fd);
-        close(ph_logger.sock_fd);
+		pv_log(DEBUG, "closing %s with fd %d", path, ph_logger.sock_fd);
+		close(ph_logger.sock_fd);
 		unlink(path);
     }
 }
