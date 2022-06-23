@@ -681,6 +681,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	sleep(5);
 	pv_log(INFO, "%s...", shutdown_type_string(t));
 	ph_logger_stop(pv);
+	ph_logger_close();
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
 		pv_log(WARN, "closing application because of appengine init mode...");
