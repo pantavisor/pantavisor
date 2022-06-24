@@ -605,21 +605,21 @@ static int parse_platform_drivers(struct pv_state *s, struct pv_platform *p, cha
 	}
 
 	value = pv_json_get_value(buf, "required", tokv, tokc);
-	if (value) {
+	if (!pv_json_array_empty(value)) {
 		platform_drivers_add(p, DRIVER_REQUIRED, value);
 		free(value);
 		value = 0;
 	}
 
 	value = pv_json_get_value(buf, "optional", tokv, tokc);
-	if (value) {
+	if (!pv_json_array_empty(value)) {
 		platform_drivers_add(p, DRIVER_OPTIONAL, value);
 		free(value);
 		value = 0;
 	}
 
 	value = pv_json_get_value(buf, "manual", tokv, tokc);
-	if (value) {
+	if (!pv_json_array_empty(value)) {
 		platform_drivers_add(p, DRIVER_MANUAL, value);
 		free(value);
 		value = 0;
