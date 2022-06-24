@@ -25,6 +25,8 @@
 
 #include <jsmn/jsmnutil.h>
 
+#include <stdbool.h>
+
 #define JSONB_STATIC
 #include "json-build/json-build.h"
 
@@ -34,6 +36,7 @@ char* pv_json_format(const char *buf, int len);
 int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t* tok, int tokc);
 char* pv_json_get_value(const char *buf, const char *key, jsmntok_t* tok, int tokc);
 char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
+bool pv_json_array_empty(const char *buf);
 
 struct pv_json_ser {
 	jsonb b;
