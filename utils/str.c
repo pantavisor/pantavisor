@@ -39,40 +39,41 @@ char *pv_str_replace_char(char *str, int len, char which, char what)
 	return str;
 }
 
-char *pv_str_unescape_to_ascii(char *buf, char *code, char c)
+void pv_str_unescape_to_ascii(char *buf, int size)
 {
-	char *p = 0;
-	char *new = 0;
-	char *old;
-	int pos = 0, replaced = 0;
-	char *tmp;
+	const char unescaped[] = { '"', '\\', 'b', 'f', 'n', 'r', 't' };
+	const char replacement[] = { '"', '\\', '\b', '\f', '\n', '\r', '\t' };
 
-	tmp = malloc(strlen(buf) + strlen(code) + 1);
-	strcpy(tmp, buf);
-	strcat(tmp, code);
-	old = tmp;
+	int i = -1;
+	int j = 0;
 
-	p = strstr(tmp, code);
-	while (p) {
-		*p = '\0';
-		new = realloc(new, pos + strlen(tmp) + 2);
-		strcpy(new+pos, tmp);
-		pos = pos + strlen(tmp);
-		new[pos] = c;
-		pos += 1;
-		new[pos] = '\0';
-		replaced += 1;
-		tmp = p+strlen(code);
-		p = strstr(tmp, code);
-	}
+	bool ok = true;
+	do {
 
-	if (new[strlen(new)-1] == c)
-		new[strlen(new)-1] = '\0';
+		ok = true;
+		i = -1;
+		j = 0;
+		while (i < size) {
+next:
+			++i;
+			if (buf[i] == '\\') {
+				for (size_t k = 0; k < sizeof(unescaped); ++k) {
+					if (buf[i + 1] == unescaped[k]) {
+						buf[j] = replacement[k];
+						++i;
+						++j;
+						ok = false;
+						goto next;
+					}
+				}
+			}
 
-	if (old)
-		free(old);
+			buf[j] = buf[i];
+			++j;
+		}
+	} while (!ok);
 
-	return new;
+	buf[j] = '\0';
 }
 
 int pv_str_count_list(char **list)

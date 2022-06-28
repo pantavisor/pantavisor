@@ -462,6 +462,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 			break;
 
 		strncpy(value, um+(*key_i+1)->start, n);
+		pv_str_unescape_to_ascii(value, n);
 
 		// add or update metadata
 		// primitives with value 'null' have value NULL
@@ -864,17 +865,13 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 void pv_metadata_parse_usermeta(char *buf)
 {
 	struct pantavisor *pv = pv_get_instance();
-	char *body, *esc;
+	char *body = strdup(buf);
 
-	body = strdup(buf);
-	esc = pv_str_unescape_to_ascii(body, "\\n", '\n');
-	pv_usermeta_parse(pv, esc);
+	pv_usermeta_parse(pv, body);
 
 	if (body)
 		free(body);
-	if (esc)
-		free(esc);
-	// clear old
+
 	usermeta_clear(pv);
 }
 
