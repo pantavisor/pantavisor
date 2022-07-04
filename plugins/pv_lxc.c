@@ -562,7 +562,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev, char *conf_file
 	chdir(dname);
 	free(dname);
 	// Make sure lxc state dir is there
-	mkdir_p("/usr/var/lib/lxc", 0755);
+	pv_fs_mkdir_p("/usr/var/lib/lxc", 0755);
 
 	c = lxc_container_new(p->name, NULL);
 	if (!c)

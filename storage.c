@@ -48,7 +48,6 @@
 #include "state.h"
 #include "bootloader.h"
 #include "init.h"
-#include "file.h"
 #include "addons.h"
 #include "state.h"
 #include "tsh.h"
@@ -101,10 +100,8 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 				continue;
 		}
 
-		// remove,unlink object and sync fs
 		reclaimed += st.st_size;
-		remove(path);
-		sync();
+		pv_fs_path_remove(path, false);
 		pv_log(DEBUG, "removed unused object '%s', reclaimed %lu bytes", path, st.st_size);
 	}
 
@@ -118,16 +115,18 @@ void pv_storage_rm_rev(const char *rev)
 	char path[PATH_MAX];
 	pv_log(DEBUG, "removing revision %s from disk", rev);
 
+
+	char full_path[PATH_MAX] = {0};
+	pv_fs_path_concat(full_path, 2, path, rev);
+
 	pv_paths_storage_trail(path, PATH_MAX, "");
-	remove_in(path, rev);
+	pv_fs_path_remove(full_path, true);
 
 	pv_paths_pv_log(path, PATH_MAX, "");
-	remove_in(path, rev);
+	pv_fs_path_remove(full_path, true);
 
 	pv_paths_storage_disks_rev(path, PATH_MAX);
-	remove_in(path, rev);
-
-	sync();
+	pv_fs_path_remove(full_path, true);
 }
 
 int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs)
@@ -481,7 +480,8 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name, ch
 	char *buf;
 
 	pv_paths_storage_trail_file(path, PATH_MAX, rev, name);
-	buf = pv_file_load(path, 0);
+	buf = pv_fs_file_load(path, 0);
+
 	if (!buf) {
 		pv_log(ERROR, "could not load %s, %s", path, strerror(errno));
 		return false;
@@ -517,13 +517,13 @@ int pv_storage_update_factory(const char* rev)
 
 	// now, create revision 0
 	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, "0", "");
-	mkdir_p(dst_path, 0755);
+	pv_fs_mkdir_p(dst_path, 0755);
 
 	// finally, copy revision json to revision 0
 	pv_paths_storage_trail_pvr_file(src_path, PATH_MAX, rev, JSON_FNAME);
 	pv_paths_storage_trail_pvr_file(dst_path, PATH_MAX, "0", JSON_FNAME);
 	pv_log(DEBUG, "copying %s to %s", src_path, dst_path);
-	if (pv_file_copy(src_path, dst_path, 0644) < 0) {
+	if (pv_fs_file_copy(src_path, dst_path, 0644) < 0) {
 		pv_log(ERROR, "cannot copy %s into %s: %s", src_path, dst_path, strerror(errno));
 		goto out;
 	}
@@ -548,7 +548,7 @@ int pv_storage_make_config(struct pantavisor *pv)
 	if (!stat(targetpath, &st)) {
 		SNPRINTF_WTRUNC(cmd, sizeof (cmd), "/bin/rm -rf %s/*", targetpath);
 	}
-	mkdir_p(targetpath, 0755);
+	pv_fs_mkdir_p(targetpath, 0755);
 
 	memset(&st, '\0', sizeof(st));
 
@@ -647,7 +647,7 @@ char* pv_storage_get_revisions_string()
 
 		// get revision progress
 		pv_paths_storage_trail_pv_file(path, PATH_MAX, r->path, PROGRESS_FNAME);
-		progress = pv_file_load(path, 512);
+		progress = pv_fs_file_load(path, 512);
 		if (!progress || !strlen(progress)) {
 			progress = calloc(3, sizeof(char));
 			sprintf (progress, "{}");
@@ -659,7 +659,7 @@ char* pv_storage_get_revisions_string()
 
 		// get revision commit message
 		pv_paths_storage_trail_pv_file(path, PATH_MAX, r->path, COMMITMSG_FNAME);
-		commitmsg = pv_file_load(path, 512);
+		commitmsg = pv_fs_file_load(path, 512);
 		if (commitmsg)
 			esc_commitmsg = pv_json_format(commitmsg, strlen(commitmsg));
 
@@ -721,7 +721,7 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, DONE_FNAME);
 
 	pv_log(DEBUG, "saving done file for rev %s in %s", rev, path);
-	if (pv_file_save(path, "", 0644) < 0)
+	if (pv_fs_file_save(path, "", 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }
 
@@ -732,7 +732,7 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, PROGRESS_FNAME);
 
 	pv_log(DEBUG, "saving progress file for rev %s in %s: %s", rev, path, progress);
-	if (pv_file_save(path, progress, 0644) < 0)
+	if (pv_fs_file_save(path, progress, 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 }
 
@@ -785,11 +785,11 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		file = strdup(path);
 		dir = dirname(file);
 		if (stat(dir, &st))
-			mkdir_p(dir, 0755);
+			pv_fs_mkdir_p(dir, 0755);
 		free(file);
 
 		pv_log(DEBUG, "saving json %s", key);
-		if (pv_file_save(path, value, 0644) < 0)
+		if (pv_fs_file_save(path, value, 0644) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 		k++;
@@ -849,7 +849,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 			goto err;
 	}
 
-	mkdir_p(dst, 0755);
+	pv_fs_mkdir_p(dst, 0755);
 	if (s->bsp.img.std.initrd) {
 		// initrd
 		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev, "pv-initrd.img");
@@ -903,7 +903,7 @@ char* pv_storage_get_state_json(const char *rev)
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
 	pv_log(DEBUG, "reading state from: '%s'", path);
 
-	res = pv_file_load(path, 0);
+	res = pv_fs_file_load(path, 0);
 
 	return res;
 }
@@ -950,7 +950,7 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 	pv_log(DEBUG, "saving usermeta file with key %s and value %s", key, value);
 
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, key);
-	if (pv_file_save(path, value, 0644) < 0)
+	if (pv_fs_file_save(path, value, 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	pname = strdup(key);
@@ -959,10 +959,10 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 		*pkey = '\0';
 		pkey++;
 		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, "");
-		if (!dir_exist(path))
-			mkdir_p(path, 0755);
+		if (!pv_fs_path_exist(path))
+			pv_fs_mkdir_p(path, 0755);
 		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, pkey);
-		if (pv_file_save(path, value, 0644) < 0)
+		if (pv_fs_file_save(path, value, 0644) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 	}
 
@@ -999,7 +999,7 @@ void pv_storage_save_devmeta(const char *key, const char *value)
 	pv_log(DEBUG, "saving devmeta file with key %s and value %s", key, value);
 
 	pv_paths_pv_devmeta_key(path, PATH_MAX, key);
-	if (pv_file_save(path, value, 0644) < 0)
+	if (pv_fs_file_save(path, value, 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	pname = strdup(key);
@@ -1008,10 +1008,10 @@ void pv_storage_save_devmeta(const char *key, const char *value)
 		*pkey = '\0';
 		pkey++;
 		pv_paths_pv_devmeta_plat_key(path, PATH_MAX, pname, "");
-		if (!dir_exist(path))
-			mkdir_p(path, 0755);
+		if (!pv_fs_path_exist(path))
+			pv_fs_mkdir_p(path, 0755);
 		pv_paths_pv_devmeta_plat_key(path, PATH_MAX, pname, pkey);
-		if (pv_file_save(path, value, 0644) < 0)
+		if (pv_fs_file_save(path, value, 0644) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 	}
 
@@ -1048,23 +1048,23 @@ static int pv_storage_init(struct pv_init *this)
 
 	// create hints
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-	if (pv_file_save(path, "", 0444) < 0)
+	if (pv_fs_file_save(path, "", 0444) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
 	if (!pv_config_get_creds_prn() || !strcmp(pv_config_get_creds_prn(), "")) {
 		pv->unclaimed = true;
-		if (pv_file_save(path, "", 0444) < 0)
+		if (pv_fs_file_save(path, "", 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 	} else {
 		pv->unclaimed = false;
 		SNPRINTF_WTRUNC(tmp, sizeof (tmp), "%s\n", pv_config_get_creds_id());
-		if (pv_file_save(path, tmp, 0444) < 0)
+		if (pv_fs_file_save(path, tmp, 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 	}
 	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
-	if (pv_file_save(path, tmp, 0444) < 0)
+	if (pv_fs_file_save(path, tmp, 0444) < 0)
 		pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 
 	storage = pv_storage_new();

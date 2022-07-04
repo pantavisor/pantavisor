@@ -40,7 +40,6 @@
 #include "paths.h"
 #include "parser/parser.h"
 #include "utils/fs.h"
-#include "utils/file.h"
 #include "utils/str.h"
 #include "utils/math.h"
 #include "utils/json.h"
@@ -412,7 +411,7 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	write_config_tuple_int(fd, "libthttp.log.level", config->libthttp.loglevel);
 
 	close(fd);
-	if (pv_file_rename(tmp_path, path) < 0) {
+	if (pv_fs_path_rename(tmp_path, path) < 0) {
 		pv_log(ERROR, "could not rename: %s", strerror(errno));
 		return -1;
 	}

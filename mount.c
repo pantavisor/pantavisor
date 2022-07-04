@@ -26,6 +26,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <linux/limits.h>
 
 #include "init.h"
 #include "blkid.h"
@@ -49,38 +50,38 @@ static int ph_mount_init(struct pv_init *this)
 	// Make pantavisor control area
 	pv_paths_pv_file(pv_path, PATH_MAX, "");
 	if (stat(pv_path, &st) != 0)
-		mkdir_p(pv_path, 0500);
+		pv_fs_mkdir_p(pv_path, 0500);
 
 	// Logs
 	pv_paths_storage_log(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
-		mkdir_p(storage_path, 0500);
+		pv_fs_mkdir_p(storage_path, 0500);
 
 	// User meta
 	pv_paths_storage_usrmeta(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
-		mkdir_p(storage_path, 0500);
+		pv_fs_mkdir_p(storage_path, 0500);
 	pv_paths_pv_usrmeta_key(pv_path, PATH_MAX, "");
 	if (stat(pv_path, &st) != 0)
-		mkdir_p(pv_path, 0755);
+		pv_fs_mkdir_p(pv_path, 0755);
 	mount_bind(storage_path, pv_path);
 
 	// Device meta
 	pv_paths_storage_devmeta(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
-		mkdir_p(storage_path, 0500);
+		pv_fs_mkdir_p(storage_path, 0500);
 	pv_paths_pv_devmeta_key(pv_path, PATH_MAX, "");
 	if (stat(pv_path, &st) != 0)
-		mkdir_p(pv_path, 0755);
+		pv_fs_mkdir_p(pv_path, 0755);
 	mount_bind(storage_path, pv_path);
 
 	// Dropbear
 	pv_paths_storage_dropbear(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
-		mkdir_p(storage_path, 0500);
+		pv_fs_mkdir_p(storage_path, 0500);
 	pv_paths_etc_file(pv_path, PATH_MAX, DROPBEAR_DNAME);
 	if (stat(pv_path, &st) != 0)
-		mkdir_p(pv_path, 0755);
+		pv_fs_mkdir_p(pv_path, 0755);
 	mount_bind(storage_path, pv_path);
 
 	return 0;
@@ -98,7 +99,7 @@ static int pv_mount_init(struct pv_init *this)
 
 	// Create storage mountpoint and mount device
 	pv_paths_storage(path, PATH_MAX);
-	mkdir_p(path, 0755);
+	pv_fs_mkdir_p(path, 0755);
 	blkid_init(&dev_info);
 	/*
 	 * Check that storage device has been enumerated and wait if not there yet
@@ -160,7 +161,7 @@ static int pv_mount_init(struct pv_init *this)
 		char *opts = malloc(sizeof(char) * opts_size);
 		SNPRINTF_WTRUNC(opts, opts_size, "size=%s", pv_config_get_storage_logtempsize());
 		SNPRINTF_WTRUNC(logmount, logmount_size, "%s%s", path, "/logs");
-		mkdir_p(logmount, 0755);
+		pv_fs_mkdir_p(logmount, 0755);
 		printf("Mounting tmpfs logmount: %s with opts: %s\n", logmount, opts);
 		ret = mount("none", logmount, "tmpfs", 0, opts);
 		free (logmount);
