@@ -1058,11 +1058,13 @@ static int pv_storage_init(struct pv_init *this)
 		pv->unclaimed = true;
 		if (pv_fs_file_save(path, "", 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
+		sethostname("UNNAMED", strlen("UNNAMED"));
 	} else {
 		pv->unclaimed = false;
 		SNPRINTF_WTRUNC(tmp, sizeof (tmp), "%s\n", pv_config_get_creds_id());
 		if (pv_fs_file_save(path, tmp, 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
+		sethostname(tmp, strlen(tmp);
 	}
 	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
 	SNPRINTF_WTRUNC(tmp, sizeof (tmp), "https://%s:%d\n", pv_config_get_creds_host(), pv_config_get_creds_port());
