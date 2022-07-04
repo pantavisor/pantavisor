@@ -1,146 +1,423 @@
-/*
- * Copyright (c) 2021-2022 Pantacor Ltd.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
+#include "fs.h"
+#include "tsh.h"
 
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <libgen.h>
+#include <limits.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <dirent.h>
-#include <libgen.h>
 #include <sys/stat.h>
-#include <sys/types.h>
-#include <linux/limits.h>
+#include <sys/xattr.h>
+#include <unistd.h>
 
-#include "fs.h"
-
-bool dir_exist(const char *dir)
+static void close_fd(int *fd)
 {
-	bool exists = false;
+	if (!fd || *fd < 0)
+		return;
 
-	DIR* tmp = opendir(dir);
-	if (tmp) {
-		exists = true;
-		closedir(tmp);
-	}
-
-	return exists;
+	close(*fd);
+	*fd = -1;
 }
 
-int mkdir_p(char *dir, mode_t mode)
+bool pv_fs_path_exist(const char *path)
 {
-	const char *tmp = dir;
-	const char *orig = dir;
-	char *makeme;
+	return access(path, F_OK) == 0;
+}
+
+bool pv_fs_path_is_directory(const char *path)
+{
+	DIR *tmp = opendir(path);
+	if (tmp) {
+		closedir(tmp);
+		return true;
+	}
+
+	return false;
+}
+
+void pv_fs_path_sync(const char *path)
+{
+	char dir[PATH_MAX] = { 0 };
+	if (!path)
+		return;
+
+	strncpy(dir, path, strnlen(path, PATH_MAX));
+	char *sync_dir = dirname(dir);
+
+	int fd = open(sync_dir, O_RDONLY);
+	if (fd > -1) {
+		fsync(fd);
+		close(fd);
+	}
+}
+
+int pv_fs_mkdir_p(const char *path, mode_t mode)
+{
+	if (!path)
+		return -1;
+
+	if (pv_fs_path_exist(path)) {
+		errno = EEXIST;
+		return -1;
+	}
+
+	char cur_path[PATH_MAX] = { 0 };
+
+	errno = 0;
+	int i = -1;
 
 	do {
-		dir = (char*)tmp + strspn(tmp, "/");
-		tmp = dir + strcspn(dir, "/");
-		makeme = strndup(orig, dir - orig);
-		if (*makeme) {
-			if (mkdir(makeme, mode) && errno != EEXIST) {
-				free(makeme);
+		++i;
+		if (i > 0 && (path[i] == '/' || path[i] == '\0')) {
+			memcpy(cur_path, path, i);
+			cur_path[i] = '\0';
+			if (mkdir(cur_path, mode) != 0 && errno != EEXIST)
 				return -1;
-			}
 		}
-		free(makeme);
-	} while(tmp != dir);
+	} while (path[i]);
 
 	return 0;
 }
 
-int mkbasedir_p(char *dir, mode_t mode)
+int pv_fs_mkbasedir_p(const char *path, mode_t mode)
 {
 	int ret = -1;
 	char *c, *tmp;
-	tmp = strdup(dir);
+	tmp = strdup(path);
 	c = strrchr(tmp, '/');
 
 	if (c) {
 		*c = '\0';
-		ret = mkdir_p(tmp, mode);
+		ret = pv_fs_mkdir_p(tmp, mode);
 	}
 
 	free(tmp);
 	return ret;
 }
 
-void syncdir(const char *file)
+
+void pv_fs_path_concat(char *buf, int size, ...)
 {
-	int fd;
-	char *dir;
+	char fmt[PATH_MAX] = { 0 };
 
-	if (!file)
-		return;
-
-	dir = strdup(file);
-	dirname(dir);
-
-	fd = open(dir, O_RDONLY);
-	if (fd >= 0) {
-		fsync(fd);
-		close(fd);
+	for (int i = 0; i < size; ++i) {
+		fmt[i * 3 + 0] = '%';
+		fmt[i * 3 + 1] = 's';
+		fmt[i * 3 + 2] = '/';
 	}
 
-	if (dir)
-		free(dir);
+	va_list list;
+	va_start(list, size);
+
+	vsnprintf(buf, PATH_MAX, fmt, list);
+	buf[strnlen(buf, PATH_MAX) - 1] = '\0';
+
+	va_end(list);
 }
 
-int remove_at(char *path, const char *filename)
+int pv_fs_path_remove(const char *path, bool recursive)
 {
-	char full_path[PATH_MAX];
-
-	snprintf(full_path, sizeof (full_path), "%s/%s", path, filename);
-	return remove(full_path);
-}
-
-int remove_in(char *path, const char *dirname)
-{
-	int n = 0;
-	struct dirent **d;
-	char full_path[PATH_MAX];
-
-	snprintf(full_path, sizeof (full_path), "%s/%s/", path, dirname);
-	n = scandir(full_path, &d, NULL, alphasort);
-
-	if (n < 0) {
-		goto out;
+	if (!recursive) {
+		int ret = remove(path);
+		pv_fs_path_sync(path);
+		return ret;
 	}
 
-	while (n--) {
+	struct dirent **arr = NULL;
+	int n = scandir(path, &arr, NULL, alphasort);
+
+	for (int i = 0; i < n; ++i) {
 		// discard . and .. from scandir
-		if (!strcmp(d[n]->d_name, ".") || !strcmp(d[n]->d_name, ".."))
-			continue;
-		// first try to remove it as a file
-		if (remove_at(full_path, d[n]->d_name))
-			// remove it as a dir if not a file
-			remove_in(full_path, d[n]->d_name);
-		free(d[n]);
-	}
-	free(d);
+		if (!strcmp(arr[i]->d_name, ".") ||
+		    !strcmp(arr[i]->d_name, ".."))
+			goto free_dir;
 
-	remove(full_path);
+		char new_path[PATH_MAX] = { 0 };
+		pv_fs_path_concat(new_path, 2, path, arr[i]->d_name);
+
+		if (arr[i]->d_type == DT_DIR)
+			pv_fs_path_remove(new_path, true);
+		else
+			pv_fs_path_remove(new_path, false);
+
+	free_dir:
+		free(arr[i]);
+	}
+	int ret = remove(path);
+	free(arr);
+	pv_fs_path_sync(path);
+
+	return ret;
+}
+
+int pv_fs_path_rename(const char *src_path, const char *dst_path)
+{
+	pv_fs_path_sync(src_path);
+
+	int ret = rename(src_path, dst_path);
+	if (ret < 0)
+		return ret;
+
+	pv_fs_path_sync(dst_path);
+	return 0;
+}
+
+int pv_fs_file_tmp(char *tmp, const char *fname)
+{
+	if (!fname)
+		return -1;
+
+	size_t size = strnlen(fname, PATH_MAX) + 5;
+
+	if (size > PATH_MAX) {
+		errno = ENAMETOOLONG;
+		return -1;
+	}
+
+	snprintf(tmp, size, "%s.tmp", fname);
+	return 0;
+}
+
+char *pv_fs_file_load(const char *path, off_t max)
+{
+	off_t size = pv_fs_path_get_size(path);
+	if (size < 0)
+		return NULL;
+
+	if (max && (size > max)) {
+		errno = EFBIG;
+		return NULL;
+	}
+
+	char *buf = calloc(size + 1, sizeof(char));
+	if (!buf)
+		return NULL;
+
+	int fd = open(path, O_RDONLY, 0664);
+	if (fd < 0)
+		goto out;
+
+	ssize_t r = read(fd, buf, size);
+	if (r < 0)
+		goto out;
 
 out:
-	return n;
+	close_fd(&fd);
+	return buf;
+}
+
+int pv_fs_file_save(const char *fname, const char *data, mode_t mode)
+{
+	char tmp[PATH_MAX] = { 0 };
+	if (pv_fs_file_tmp(tmp, fname) != 0)
+		return -1;
+
+	int ret = -1;
+	int fd = open(tmp, O_CREAT | O_WRONLY | O_TRUNC | O_SYNC, mode);
+	if (fd < 0)
+		goto out;
+
+	if (write(fd, data, strlen(data)) < 0)
+		goto out;
+
+	close_fd(&fd);
+
+	ret = pv_fs_path_rename(tmp, fname);
+
+out:
+	if (fd > 0)
+		close_fd(&fd);
+
+	pv_fs_path_remove(tmp, false);
+	pv_fs_path_sync(tmp);
+
+	return ret;
+}
+
+ssize_t pv_fs_file_copy_fd(int src, int dst, bool close_src)
+{
+	lseek(src, 0, SEEK_SET);
+	lseek(dst, 0, SEEK_SET);
+
+	char buf[4096] = { 0 };
+	ssize_t read_bytes = 0;
+	ssize_t write_bytes = 0;
+
+	while (read_bytes = read(src, buf, 4096), read_bytes > 0)
+		write_bytes += write(dst, buf, read_bytes);
+
+	if (close_src)
+		close_fd(&src);
+
+	return write_bytes;
+}
+
+int pv_fs_file_copy(const char *src, const char *dst, mode_t mode)
+{
+	if (!pv_fs_path_exist(src))
+		return -1;
+
+	char tmp_path[PATH_MAX] = { 0 };
+	if (pv_fs_file_tmp(tmp_path, src) != 0)
+		return -1;
+
+	int tmp_fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
+	if (tmp_fd < 0)
+		return -1;
+
+	int ret = -1;
+	int src_fd = open(src, O_RDONLY, 0);
+	if (src_fd < 0)
+		goto out;
+
+	pv_fs_file_copy_fd(src_fd, tmp_fd, true);
+	close_fd(&tmp_fd);
+
+	ret = pv_fs_path_rename(tmp_path, dst);
+	if (ret < 0)
+		goto out;
+
+out:
+	if (src_fd > -1)
+		close_fd(&src_fd);
+
+	if (tmp_fd > -1)
+		close_fd(&tmp_fd);
+
+	if (pv_fs_path_exist(tmp_path))
+		pv_fs_path_remove(tmp_path, false);
+
+	pv_fs_path_sync(src);
+	pv_fs_path_sync(dst);
+
+	return ret;
+}
+
+off_t pv_fs_path_get_size(const char *path)
+{
+	struct stat st;
+
+	if (stat(path, &st) < 0)
+		return -1;
+
+	return st.st_size;
+}
+
+int pv_fs_file_get_xattr(char *value, size_t size, const char *fname,
+				 const char *attr)
+{
+	ssize_t cur_size = getxattr(fname, attr, value, size);
+	return cur_size == size ? 0 : -1;
+}
+
+int pv_fs_file_set_xattr(const char *fname, const char *attr,
+				 const char *value)
+{
+	ssize_t size = getxattr(fname, attr, NULL, 0);
+
+	int flag = XATTR_REPLACE;
+	if (size < 0 && errno == ENODATA)
+		flag = XATTR_CREATE;
+
+	size = setxattr(fname, attr, value, strlen(value), flag);
+	return size > 0 ? 0 : -1;
+}
+
+ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size)
+{
+	ssize_t written = 0;
+
+	while (written != size) {
+		ssize_t cur_write = write(fd, buf + written, size - written);
+
+		if (cur_write < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		written += cur_write;
+	}
+	return written;
+}
+
+ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
+{
+	ssize_t total_read = 0;
+
+	while (total_read != size) {
+		int cur_read = read(fd, buf + total_read, size - total_read);
+
+		if (cur_read < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		if (cur_read == 0)
+			break;
+		total_read += cur_read;
+	}
+	return total_read;
+}
+
+int pv_fs_file_lock(int fd)
+{
+	struct flock flock;
+
+	flock.l_whence = SEEK_SET;
+	// Lock the whole file
+	flock.l_len = 0;
+	flock.l_start = 0;
+	flock.l_type = F_WRLCK;
+
+	int ret = -1;
+	do {
+		ret = fcntl(fd, F_SETLK, &flock);
+	} while (ret < 0 && errno == EINTR);
+
+	return ret;
+}
+
+int pv_fs_file_unlock(int fd)
+{
+	struct flock flock;
+
+	flock.l_whence = SEEK_SET;
+	// Lock the whole file
+	flock.l_len = 0;
+	flock.l_start = 0;
+	flock.l_type = F_UNLCK;
+
+	int ret = -1;
+	do {
+		ret = fcntl(fd, F_SETLK, &flock);
+	} while (ret < 0 && errno == EINTR);
+
+	return ret;
+}
+
+int pv_fs_file_gzip(const char *fname, const char *target_name)
+{
+	int outfile[] = { -1, -1 };
+	char cmd[PATH_MAX + 32];
+
+	snprintf(cmd, sizeof(cmd), "gzip %s", fname);
+	outfile[1] = open(target_name, O_RDWR | O_APPEND | O_CREAT);
+	if (outfile[1] >= 0) {
+		tsh_run_io(cmd, 1, NULL, NULL, outfile, NULL);
+		close_fd(&outfile[1]);
+		pv_fs_path_sync(target_name);
+		return 0;
+	}
+	return -1;
+}
+
+int pv_fs_file_check_and_open(const char *fname, int flags, mode_t mode)
+{
+	if (!pv_fs_path_exist(fname))
+		return -1;
+	return open(fname, flags, mode);
 }

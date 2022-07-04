@@ -49,7 +49,6 @@ int setns(int nsfd, int nstype);
 #include "state.h"
 #include "parser/parser.h"
 #include "utils/list.h"
-#include "utils/fs.h"
 #include "utils/json.h"
 #include "utils/str.h"
 

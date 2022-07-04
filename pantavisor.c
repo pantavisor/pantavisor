@@ -61,7 +61,6 @@
 #include "parser/parser.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
-#include "utils/file.h"
 #include "utils/str.h"
 
 #define MODULE_NAME             "controller"
@@ -317,7 +316,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
 		pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-		if (pv_file_save(path, "", 0444) < 0)
+		if (pv_fs_file_save(path, "", 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path, strerror(errno));
 		pv_metadata_add_devmeta("pantahub.claimed", "1");
 	}
@@ -676,7 +675,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	// unmount storage
 	pv_paths_storage(path, PATH_MAX);
 	umount(path);
-	sync();
+	pv_fs_path_sync(path);
 
 	sleep(5);
 	pv_log(INFO, "%s...", shutdown_type_string(t));

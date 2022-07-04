@@ -36,7 +36,7 @@
 #include "platforms.h"
 #include "pvctl_utils.h"
 #include "json.h"
-#include "file.h"
+#include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/math.h"
 #include "paths.h"
@@ -123,7 +123,7 @@ static int set_logger_xattr(struct log *log)
 		return 0;
 	SNPRINTF_WTRUNC(place_holder, sizeof(place_holder), "%" PRId64, pos);
 
-	return pv_file_set_file_xattr(fname, PV_LOGGER_POS_XATTR, place_holder);
+	return pv_fs_file_set_xattr(fname, PV_LOGGER_POS_XATTR, place_holder);
 }
 
 static int pvlogger_flush(struct log *log, char *buf, int buflen)
@@ -193,7 +193,7 @@ static int get_logger_xattr(struct log *log)
 	char *dst = buf;
 	const char *fname = pv_logger_get_logfile(pv_log_info);
 
-	if (pv_file_get_file_xattr(fname, PV_LOGGER_POS_XATTR, &dst, NULL) < 0) {
+	if (pv_fs_file_get_xattr(buf, 32, fname, PV_LOGGER_POS_XATTR) < 0) {
 		pv_log(DEBUG, "Attribute %s not present", PV_LOGGER_POS_XATTR);
 	}
 	else {

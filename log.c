@@ -38,10 +38,9 @@
 #include <linux/limits.h>
 
 #include "config.h"
-#include "file.h"
+#include "utils/fs.h"
 #include "thttp.h"
 #include "trest.h"
-#include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/math.h"
 #include "loop.h"
@@ -125,7 +124,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		int ret = 0;
 		int lock_file_errno = 0;
 		do {
-			ret = pv_file_lock_file(log_fd);
+			ret = pv_fs_file_lock(log_fd);
 		} while (ret < 0 && (errno == EAGAIN || errno == EACCES));
 
 		if (ret < 0)
@@ -141,7 +140,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 
 			SNPRINTF_WTRUNC(err_file, PATH_MAX, "%s/%s", log_dir, LOGS_ERROR_DNAME);
 
-			mkdir_p(err_file, 0755);
+			pv_fs_mkdir_p(err_file, 0755);
 			len = strlen(err_file);
 			SNPRINTF_WTRUNC(err_file + len, PATH_MAX - len, "/%d.error", getpid());
 
@@ -172,7 +171,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 
 				SNPRINTF_WTRUNC(gzip_path, PATH_MAX, "%s.%d.gzip", log_path, (i+1));
 				if (stat(gzip_path, &stat_gz))
-					pv_file_gzip_file(log_path, gzip_path);
+					pv_fs_file_gzip(log_path, gzip_path);
 			}
 			if (log_fd >= 0) {
 				ftruncate(log_fd, 0);
@@ -185,7 +184,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		dprintf(log_fd, "[%s]: ", module);
 		vdprintf(log_fd, fmt, args);
 		dprintf(log_fd, "\n");
-		pv_file_unlock_file(log_fd);
+		pv_fs_file_unlock(log_fd);
 		close(log_fd);
 	}
 }
@@ -206,8 +205,9 @@ static int pv_log_set_log_dir(const char *rev)
 	pv_paths_pv_log_plat(log_dir, PATH_MAX, rev, LOGS_PV_DNAME);
 	pv_paths_pv_log_file(log_path, PATH_MAX, rev, LOGS_PV_DNAME, LOGS_PV_FNAME);
 
-	if (mkdir_p(log_dir, 0755)) {
-		printf("Couldn't make dir %s," "pantavisor logs won't be available\n", log_dir);
+	if (pv_fs_mkdir_p(log_dir, 0755) != 0 && errno != EEXIST) {
+		printf("Couldn't make dir %s,"
+			"pantavisor logs won't be available\n", log_dir);
 		return -1;
 	}
 
@@ -222,7 +222,7 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 	global_pv = pv;
 
 	pv_paths_pv_log(pv_logs_path, PATH_MAX, "");
-	mkdir_p(pv_logs_path, 0755);
+	pv_fs_mkdir_p(pv_logs_path, 0755);
 
 	pv_paths_storage_log(storage_logs_path, PATH_MAX);
 	mount_bind(storage_logs_path, pv_logs_path);

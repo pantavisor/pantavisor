@@ -32,11 +32,11 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <mtd/mtd-user.h>
+#include <linux/limits.h>
 
 #include "bootloader.h"
 #include "paths.h"
 #include "utils/str.h"
-#include "utils/fs.h"
 
 #define MODULE_NAME			"uboot"
 #define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
