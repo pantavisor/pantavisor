@@ -341,7 +341,7 @@ static void pv_signature_include_files(const char *json,
 
 	size = jsmnutil_array_count(json, tokv);
 	if (size <= 0) {
-		pv_log(ERROR, "empty filter");
+		pv_log(ERROR, "empty signature array");
 		goto out;
 	}
 

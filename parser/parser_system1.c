@@ -236,7 +236,7 @@ static int parse_disks(struct pv_state *s, char *value, int n)
 
 	size = jsmnutil_array_count(value, tokv);
 	if (size <= 0) {
-		pv_log(ERROR, "empty filter");
+		pv_log(ERROR, "empty disks array");
 		goto out;
 	}
 
@@ -570,7 +570,7 @@ static int platform_drivers_add(struct pv_platform *p, plat_driver_t type, char 
 
 	size = jsmnutil_array_count(buf, tokv);
 	if (size <= 0) {
-		pv_log(ERROR, "empty filter");
+		pv_log(ERROR, "empty drivers filter");
 		goto out;
 	}
 
