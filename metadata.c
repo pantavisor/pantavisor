@@ -180,7 +180,7 @@ static int pv_devmeta_uname(struct pv_devmeta_read *pv_devmeta_read)
 	}
 
 	char *js_str = pv_json_ser_str(&js);
-	strncpy(buf, js_str, strlen(js_str) + 1);
+	strncpy(buf, js_str, buflen);
 	free(js_str);
 
 	return 0;

@@ -190,7 +190,6 @@ static int get_logger_xattr(struct log *log)
 {
 	off_t stored_pos = 0;
 	char buf[32];
-	char *dst = buf;
 	const char *fname = pv_logger_get_logfile(pv_log_info);
 
 	if (pv_fs_file_get_xattr(buf, 32, fname, PV_LOGGER_POS_XATTR) < 0) {
