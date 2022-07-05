@@ -91,7 +91,7 @@ void pv_paths_storage_boot_file(char *buf, size_t size, const char *name);
 void pv_paths_storage_factory_meta_key(char *buf, size_t size, const char *key);
 
 void pv_paths_storage_disks(char *buf, size_t size);
-void pv_paths_storage_disks_rev(char *buf, size_t size);
+void pv_paths_storage_disks_rev(char *buf, size_t size, const char *rev);
 void pv_paths_storage_disks_rev_file(char *buf, size_t size, const char *rev, const char *plat, const char *name);
 void pv_paths_storage_disks_perm_file(char *buf, size_t size, const char *plat, const char *name);
 void pv_paths_storage_mounted_disk_path(char *buf, size_t size, const char *type, const char *name);

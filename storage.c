@@ -112,21 +112,18 @@ out:
 
 void pv_storage_rm_rev(const char *rev)
 {
-	char path[PATH_MAX];
+	char path[PATH_MAX] = {0};
+
 	pv_log(DEBUG, "removing revision %s from disk", rev);
 
+	pv_paths_storage_trail(path, PATH_MAX, rev);
+	pv_fs_path_remove(path, true);
 
-	char full_path[PATH_MAX] = {0};
-	pv_fs_path_concat(full_path, 2, path, rev);
+	pv_paths_pv_log(path, PATH_MAX, rev);
+	pv_fs_path_remove(path, true);
 
-	pv_paths_storage_trail(path, PATH_MAX, "");
-	pv_fs_path_remove(full_path, true);
-
-	pv_paths_pv_log(path, PATH_MAX, "");
-	pv_fs_path_remove(full_path, true);
-
-	pv_paths_storage_disks_rev(path, PATH_MAX);
-	pv_fs_path_remove(full_path, true);
+	pv_paths_storage_disks_rev(path, PATH_MAX, rev);
+	pv_fs_path_remove(path, true);
 }
 
 int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs)

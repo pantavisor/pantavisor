@@ -183,7 +183,7 @@ void pv_paths_storage_factory_meta_key(char *buf, size_t size, const char *key)
 }
 
 #define PV_STORAGE_DISKS_PATHF           "%s/disks/"
-#define PV_STORAGE_DISKS_REV_PATHF       "%s/disks/rev"
+#define PV_STORAGE_DISKS_REV_PATHF       "%s/disks/rev/%s"
 #define PV_STORAGE_DISKS_PERM_FILE_PATHF "%s/disks/perm/%s/%s"
 #define PV_STORAGE_DISKS_REV_FILE_PATHF  "%s/disks/rev/%s/%s/%s"
 
@@ -192,9 +192,9 @@ void pv_paths_storage_disks(char *buf, size_t size)
 	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_DISKS_PATHF, pv_config_get_storage_mntpoint());
 }
 
-void pv_paths_storage_disks_rev(char *buf, size_t size)
+void pv_paths_storage_disks_rev(char *buf, size_t size, const char *rev)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_DISKS_REV_PATHF, pv_config_get_storage_mntpoint());
+	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_DISKS_REV_PATHF, pv_config_get_storage_mntpoint(), rev);
 }
 
 void pv_paths_storage_disks_rev_file(char *buf, size_t size, const char *rev, const char *plat, const char *name)
