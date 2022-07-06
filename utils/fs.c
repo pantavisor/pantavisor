@@ -129,12 +129,11 @@ int pv_fs_path_remove(const char *path, bool recursive)
 	int n = scandir(path, &arr, NULL, alphasort);
 
 	for (int i = 0; i < n; ++i) {
+		char new_path[PATH_MAX] = { 0 };
 		// discard . and .. from scandir
-		if (!strcmp(arr[i]->d_name, ".") ||
-		    !strcmp(arr[i]->d_name, ".."))
+		if (!strcmp(arr[i]->d_name, ".") || !strcmp(arr[i]->d_name, ".."))
 			goto free_dir;
 
-		char new_path[PATH_MAX] = { 0 };
 		pv_fs_path_concat(new_path, 2, path, arr[i]->d_name);
 
 		if (arr[i]->d_type == DT_DIR)
@@ -142,7 +141,7 @@ int pv_fs_path_remove(const char *path, bool recursive)
 		else
 			pv_fs_path_remove(new_path, false);
 
-	free_dir:
+free_dir:
 		free(arr[i]);
 	}
 	int ret = remove(path);
@@ -199,8 +198,7 @@ char *pv_fs_file_load(const char *path, off_t max)
 	if (fd < 0)
 		goto out;
 
-	ssize_t r = read(fd, buf, size);
-	if (r < 0)
+	if (read(fd, buf, size) < 0)
 		goto out;
 
 out:
@@ -305,7 +303,7 @@ off_t pv_fs_path_get_size(const char *path)
 	return st.st_size;
 }
 
-int pv_fs_file_get_xattr(char *value, size_t size, const char *fname,
+int pv_fs_file_get_xattr(char *value, ssize_t size, const char *fname,
 				 const char *attr)
 {
 	ssize_t cur_size = getxattr(fname, attr, value, size);
