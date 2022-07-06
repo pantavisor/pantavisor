@@ -205,9 +205,8 @@ static int pv_log_set_log_dir(const char *rev)
 	pv_paths_pv_log_plat(log_dir, PATH_MAX, rev, LOGS_PV_DNAME);
 	pv_paths_pv_log_file(log_path, PATH_MAX, rev, LOGS_PV_DNAME, LOGS_PV_FNAME);
 
-	if (pv_fs_mkdir_p(log_dir, 0755) != 0 && errno != EEXIST) {
-		printf("Couldn't make dir %s,"
-			"pantavisor logs won't be available\n", log_dir);
+	if (pv_fs_mkdir_p(log_dir, 0755)) {
+		printf("ERROR: could not make %s\n", log_dir);
 		return -1;
 	}
 
