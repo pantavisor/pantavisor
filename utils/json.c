@@ -132,6 +132,11 @@ char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok)
 	return value;
 }
 
+bool pv_json_array_empty(const char *buf)
+{
+	return !buf || strncmp(buf, "[]", 2) == 0;
+}
+
 int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t* tok, int tokc)
 {
 	int i;
