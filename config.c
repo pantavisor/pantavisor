@@ -123,6 +123,34 @@ static int config_get_value_bl_type(struct dl_list *config_list, char *key, int 
 	return value;
 }
 
+static int config_parse_log_server_outputs(char *value)
+{
+	char *token, *tmp;
+	int server_outputs = 0;
+
+	for (token = strtok_r(value, ",", &tmp); token; token = strtok_r(NULL, ",", &tmp)) {
+		if (!strcmp(value, "singlefile"))
+			server_outputs |= LOG_SERVER_OUTPUT_SINGLE_FILE;
+		else if (!strcmp(value, "filetree"))
+			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
+	}
+
+	return server_outputs;
+}
+
+static int config_get_value_log_server_outputs(struct dl_list *config_list, char *key, int default_value)
+{
+	char *item = config_get_value(config_list, key);
+	int server_outputs = 0;
+
+	if (!item)
+		return default_value;
+
+	server_outputs = config_parse_log_server_outputs(item);
+
+	return server_outputs;
+}
+
 static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key, secureboot_mode_t default_value)
 {
 	char *item = config_get_value(config_list, key);
@@ -188,6 +216,16 @@ static void config_override_value_logsize(struct dl_list *config_list, char *key
 		*out = atoi(item) * 1024;
 }
 
+static void config_override_value_log_server_outputs(struct dl_list *config_list, char *key, int *out)
+{
+	char *item = config_get_value(config_list, key);
+
+	if (item) {
+		*out = 0;
+		*out = config_parse_log_server_outputs(item);
+	}
+}
+
 static int pv_config_load_config_from_file(char *path, struct pantavisor_config *config)
 {
 	DEFINE_DL_LIST(config_list);
@@ -247,6 +285,7 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	config->wdt.timeout = config_get_value_int(&config_list, "wdt.timeout", 15);
 
 	config->log.logdir = config_get_value_string(&config_list, "log.dir", "/storage/logs/");
+	config->log.server.outputs = config_get_value_log_server_outputs(&config_list, "log.server.outputs", LOG_SERVER_OUTPUT_FILE_TREE);
 
 	config->lxc.log_level = config_get_value_int(&config_list, "lxc.log.level", 2);
 
@@ -337,6 +376,7 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
 	config_override_value_bool(&config_list, "log.loggers", &config->log.loggers);
 	config_override_value_bool(&config_list, "log.stdout", &config->log.std_out);
+	config_override_value_log_server_outputs(&config_list, "log.server.outputs", &config->log.server.outputs);
 
 	config_override_value_int(&config_list, "libthttp.log.level", &config->libthttp.loglevel);
 
@@ -618,6 +658,9 @@ bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
 bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
 bool pv_config_get_log_loggers() { return pv_get_instance()->config.log.loggers; }
 bool pv_config_get_log_stdout() { return pv_get_instance()->config.log.std_out; }
+int pv_config_get_log_server_outputs() { return pv_get_instance()->config.log.server.outputs; }
+bool pv_config_get_log_server_output_file_tree() { return pv_get_instance()->config.log.server.outputs & LOG_SERVER_OUTPUT_FILE_TREE; }
+bool pv_config_get_log_server_output_single_file() { return pv_get_instance()->config.log.server.outputs & LOG_SERVER_OUTPUT_SINGLE_FILE; }
 int pv_config_get_libthttp_loglevel() { return pv_get_instance()->config.libthttp.loglevel; }
 
 int pv_config_get_lxc_loglevel()  { return pv_get_instance()->config.lxc.log_level; }
@@ -762,6 +805,8 @@ char* pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_log_loggers());
 		pv_json_ser_key(&js, "log.stdout");
 		pv_json_ser_bool(&js, pv_config_get_log_stdout());
+		pv_json_ser_key(&js, "log.server.outputs");
+		pv_json_ser_number(&js, pv_config_get_log_server_outputs());
 		pv_json_ser_key(&js, "libthttp.log.level");
 		pv_json_ser_number(&js, pv_config_get_libthttp_loglevel());
 
