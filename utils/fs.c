@@ -60,10 +60,8 @@ int pv_fs_mkdir_p(const char *path, mode_t mode)
 	if (!path)
 		return -1;
 
-	if (pv_fs_path_exist(path)) {
-		errno = EEXIST;
-		return -1;
-	}
+	if (pv_fs_path_exist(path))
+		return 0;
 
 	char cur_path[PATH_MAX] = { 0 };
 
