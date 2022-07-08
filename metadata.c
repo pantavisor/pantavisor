@@ -49,6 +49,7 @@
 #include "utils/system.h"
 #include "utils/str.h"
 #include "json.h"
+#include "config.h"
 #include "config_parser.h"
 #include "storage.h"
 #include "platforms.h"
@@ -630,6 +631,11 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 	}
 	pv_buffer_drop(buffer);
 	pv->metadata->devmeta_uploaded = false;
+	timer_start(&pv->metadata->devmeta_tm,
+		pv_config_get_metadata_devmeta_interval(),
+		0,
+		RELATIV_TIMER);
+
 	return 0;
 }
 
@@ -641,6 +647,16 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	struct dl_list *head = NULL;
 	int json_avail = 0, ret = 0;
 	struct buffer *buffer = NULL;
+
+	struct timer_state st = timer_current_state(&pv->metadata->devmeta_tm);
+	if (!st.fin)
+		return 0;
+
+	timer_start(&pv->metadata->devmeta_tm,
+		pv_config_get_metadata_devmeta_interval(),
+		0,
+		RELATIV_TIMER);
+
 	/*
 	 * we can use one of the large buffer. Since
 	 * this information won't be very large, it's safe
@@ -655,6 +671,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 
 	if (pv->metadata->devmeta_uploaded)
 		goto out;
+
 	json = buffer->buf;
 	json_avail = buffer->size;
 	json_avail -= sprintf(json, "{");

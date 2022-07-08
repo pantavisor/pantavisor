@@ -168,6 +168,10 @@ struct pantavisor_secureboot {
 	char *certdir;
 };
 
+struct pantavisor_metadata {
+	int devmeta_interval;
+};
+
 struct pantavisor_config {
 	struct pantavisor_system sys;
 	struct pantavisor_debug debug;
@@ -185,6 +189,7 @@ struct pantavisor_config {
 	struct pantavisor_control control;
 	struct pantavisor_libthttp libthttp;
 	struct pantavisor_secureboot secureboot;
+	struct pantavisor_metadata metadata;
 };
 
 int pv_config_init(char *path);
@@ -286,6 +291,8 @@ bool pv_config_get_control_remote(void);
 
 secureboot_mode_t pv_config_get_secureboot_mode(void);
 char* pv_config_get_secureboot_certdir(void);
+
+int pv_config_get_metadata_devmeta_interval(void);
 
 char* pv_config_get_json(void);
 
