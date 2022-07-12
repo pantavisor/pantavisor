@@ -571,7 +571,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		return 0;
 
 	// if update is going on, just check for NEW updates so test json can be parsed
-	if (pv->update)
+	if (pv->update && pv->update->status != UPDATE_APPLIED)
 		goto new_update;
 
 	// check for INPROGRESS updates
@@ -688,6 +688,10 @@ send_feedback:
 		pv_update_free(update);
 		goto out;
 	}
+
+	// if an applied update is staged, reset it
+	if (pv->update && pv->update->status == UPDATE_APPLIED)
+		pv_update_finish(pv);
 
 	// set newly processed update if no update is going on
 	if (!pv->update) {
