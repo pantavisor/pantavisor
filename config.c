@@ -301,6 +301,8 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 
 	config->libthttp.loglevel = config_get_value_int(&config_list, "libthttp.log.level", 3);
 
+	config->metadata.devmeta_interval = config_get_value_int(&config_list, "metadata.devmeta.interval", 10);
+
 	config_clear_items(&config_list);
 
 	return 0;
@@ -339,6 +341,8 @@ static int pv_config_override_config_from_file(char *path, struct pantavisor_con
 	config_override_value_bool(&config_list, "log.stdout", &config->log.std_out);
 
 	config_override_value_int(&config_list, "libthttp.log.level", &config->libthttp.loglevel);
+
+	config_override_value_int(&config_list, "metadata.devmeta.interval", &config->metadata.devmeta_interval);
 
 	config_override_value_int(&config_list, "lxc.log.level", &config->lxc.log_level);
 
@@ -410,6 +414,8 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 
 	write_config_tuple_int(fd, "libthttp.log.level", config->libthttp.loglevel);
 
+	write_config_tuple_int(fd, "metadata.devmeta.interval", config->metadata.devmeta_interval);
+
 	close(fd);
 	if (pv_fs_path_rename(tmp_path, path) < 0) {
 		pv_log(ERROR, "could not rename: %s", strerror(errno));
@@ -472,6 +478,8 @@ void pv_config_override_value(const char* key, const char* value)
 		pv->config.log.push = atoi(value);
 	else if (!strcmp(key, "libthttp.log.level"))
 		pv->config.libthttp.loglevel = atoi(value);
+	else if (!strcmp(key, "metadata.devmeta.interval"))
+		pv->config.metadata.devmeta_interval = atoi(value);
 }
 
 void pv_config_free()
@@ -627,6 +635,9 @@ bool pv_config_get_control_remote() { return pv_get_instance()->config.control.r
 secureboot_mode_t pv_config_get_secureboot_mode() { return pv_get_instance()->config.secureboot.mode; }
 char* pv_config_get_secureboot_certdir() { return pv_get_instance()->config.secureboot.certdir; }
 
+int pv_config_get_metadata_devmeta_interval() { return pv_get_instance()->config.metadata.devmeta_interval; }
+
+
 char* pv_config_get_json()
 {
 	struct pv_json_ser js;
@@ -763,7 +774,11 @@ char* pv_config_get_json()
 		pv_json_ser_key(&js, "log.stdout");
 		pv_json_ser_bool(&js, pv_config_get_log_stdout());
 		pv_json_ser_key(&js, "libthttp.log.level");
+
 		pv_json_ser_number(&js, pv_config_get_libthttp_loglevel());
+
+		pv_json_ser_key(&js, "metadata.devmeta.interval");
+		pv_json_ser_number(&js, pv_config_get_metadata_devmeta_interval());
 
 		pv_json_ser_object_pop(&js);
 	}

@@ -25,6 +25,7 @@
 #include <stdbool.h>
 
 #include "pantavisor.h"
+#include "utils/timer.h"
 
 #define DEVMETA_KEY_INTERFACES "interfaces"
 #define DEVMETA_KEY_PH_CLAIMED "pantahub.claimed"
@@ -49,6 +50,7 @@ struct pv_metadata {
 	struct dl_list usermeta; // pv_meta
 	struct dl_list devmeta; // pv_meta
 	bool devmeta_uploaded;
+	struct timer devmeta_tm;
 };
 
 int pv_metadata_factory_meta(struct pantavisor *pv);
