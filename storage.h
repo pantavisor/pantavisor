@@ -26,28 +26,32 @@
 #define SIZE_LOCAL_REV 64
 
 struct pv_path {
-	char* path;
+	char *path;
 	struct dl_list list;
 };
 
-char* pv_storage_get_state_json(const char *rev);
+char *pv_storage_get_state_json(const char *rev);
 bool pv_storage_verify_state_json(const char *rev);
 
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);
 void pv_storage_rm_rev(const char *rev);
 void pv_storage_set_active(struct pantavisor *pv);
-int pv_storage_update_factory(const char* rev);
+int pv_storage_update_factory(const char *rev);
 int pv_storage_make_config(struct pantavisor *pv);
-bool pv_storage_is_revision_local(const char* rev);
-char* pv_storage_get_revisions_string(void);
+bool pv_storage_is_revision_local(const char *rev);
+char *pv_storage_get_revisions_string(void);
 
-int pv_storage_get_subdir(const char* path, const char* prefix, struct dl_list *subdirs);
+int pv_storage_get_subdir(const char *path, const char *prefix,
+			  struct dl_list *subdirs);
 void pv_storage_free_subdir(struct dl_list *subdirs);
 
-int pv_storage_validate_file_checksum(char* path, char* checksum);
-bool pv_storage_validate_trails_object_checksum(const char *rev, const char *name, char *checksum);
-bool pv_storage_validate_trails_json_value(const char *rev, const char *name, char *val);
+int pv_storage_validate_file_checksum(char *path, char *checksum);
+bool pv_storage_validate_trails_object_checksum(const char *rev,
+						const char *name,
+						char *checksum);
+bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
+					   char *val);
 
 off_t pv_storage_get_free(void);
 int pv_storage_gc_run(void);

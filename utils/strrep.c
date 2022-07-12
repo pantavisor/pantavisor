@@ -26,7 +26,7 @@
  * your own project, make sure you cut or comment out the main()
  * function below.
  */
- 
+
 /*
  * This function returns string s1 if string s2 is an empty string, or
  * if s2 is not found in s1. If s2 is found in s1, the function
@@ -53,7 +53,7 @@
  * code.
  */
 
-char * pv_str_replace_str(const char *s1, const char *s2, const char *s3)
+char *pv_str_replace_str(const char *s1, const char *s2, const char *s3)
 {
 	if (!s1 || !s2 || !s3)
 		return 0;
@@ -92,16 +92,17 @@ char * pv_str_replace_str(const char *s1, const char *s2, const char *s3)
 	size_t s1_without_s2_len = s1_len - count * s2_len;
 	size_t s3_len = strlen(s3);
 	size_t s1_with_s3_len = s1_without_s2_len + count * s3_len;
-	if (s3_len &&
-	    ((s1_with_s3_len <= s1_without_s2_len) || (s1_with_s3_len + 1 == 0)))
+	if (s3_len && ((s1_with_s3_len <= s1_without_s2_len) ||
+		       (s1_with_s3_len + 1 == 0)))
 		/* Overflow. */
 		return 0;
-    
-	char *s1_with_s3 = (char *)malloc(s1_with_s3_len + 1); /* w/ terminator */
+
+	char *s1_with_s3 =
+		(char *)malloc(s1_with_s3_len + 1); /* w/ terminator */
 	if (!s1_with_s3)
 		/* ENOMEM, but no good way to signal it. */
 		return 0;
-    
+
 	char *dst = s1_with_s3;
 	const char *start_substr = s1;
 	size_t i;

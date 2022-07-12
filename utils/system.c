@@ -32,12 +32,12 @@
 #include "system.h"
 #include "fs.h"
 
-#define PREFIX_MODEL	"model name\t:"
+#define PREFIX_MODEL "model name\t:"
 
 int get_endian(void)
 {
 	unsigned long t = 0x00102040;
-	return ((((char*)(&t))[0]) == 0x40);
+	return ((((char *)(&t))[0]) == 0x40);
 }
 
 int get_dt_model(char *buf, int buflen)

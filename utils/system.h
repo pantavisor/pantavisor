@@ -26,21 +26,21 @@
 #include <stdint.h>
 
 #ifdef __arm__
-#define PV_ARCH		"arm"
+#define PV_ARCH "arm"
 #elif __aarch64__
-#define PV_ARCH		"aarch64"
+#define PV_ARCH "aarch64"
 #elif __x86_64__
-#define PV_ARCH		"x86_64"
+#define PV_ARCH "x86_64"
 #elif __mips__
-#define	PV_ARCH		"mips"
+#define PV_ARCH "mips"
 #else
-#define PV_ARCH		"unknown"
+#define PV_ARCH "unknown"
 #endif
 
 #if UINTPTR_MAX == 0xffffffff
-#define	PV_BITS		"32"
+#define PV_BITS "32"
 #else
-#define	PV_BITS		"64"
+#define PV_BITS "64"
 #endif
 
 int get_endian(void);

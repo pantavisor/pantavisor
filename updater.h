@@ -28,23 +28,23 @@
 
 #define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
 #define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%s/progress"
-#define DEVICE_STEP_STATUS_FMT "{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
-#define DEVICE_STEP_STATUS_FMT_WITH_DATA  	\
+#define DEVICE_STEP_STATUS_FMT                                                 \
+	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
+#define DEVICE_STEP_STATUS_FMT_WITH_DATA                                       \
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%d\"}"
-#define DEVICE_STEP_STATUS_FMT_PROGRESS_DATA  	\
+#define DEVICE_STEP_STATUS_FMT_PROGRESS_DATA                                   \
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%d\",\
 	\"downloads\": {\"total\":%s, \"objects\":[%s]}}"
-#define DEVICE_STEP_FACTORY_PROGRESS_UNREGISTERED \
+#define DEVICE_STEP_FACTORY_PROGRESS_UNREGISTERED                              \
 	"{ \"status\" : \"UNREGISTERED\", \"status-msg\" : \"Registering\", \"progress\" : 0 }"
-#define DEVICE_STEP_FACTORY_PROGRESS_UNCLAIMED \
+#define DEVICE_STEP_FACTORY_PROGRESS_UNCLAIMED                                 \
 	"{ \"status\" : \"UNCLAIMED\", \"status-msg\" : \"Waiting for claim\", \"progress\" : 0 }"
-#define DEVICE_STEP_FACTORY_PROGRESS_SYNCING \
+#define DEVICE_STEP_FACTORY_PROGRESS_SYNCING                                   \
 	"{ \"status\" : \"SYNCING\", \"status-msg\" : \"Uploading initial data\", \"progress\" : 20 }"
-#define DEVICE_STEP_FACTORY_PROGRESS_DONE \
+#define DEVICE_STEP_FACTORY_PROGRESS_DONE                                      \
 	"{ \"status\" : \"DONE\", \"status-msg\" : \"Factory revision\", \"progress\" : 100 }"
 
-
-#define TRAIL_OBJECT_DL_FMT	"/objects/%s"
+#define TRAIL_OBJECT_DL_FMT "/objects/%s"
 #define DEVICE_TRAIL_ENDPOINT_QUEUED "?progress.status=QUEUED"
 #define DEVICE_TRAIL_ENDPOINT_NEW "?progress.status=NEW"
 #define DEVICE_TRAIL_ENDPOINT_DOWNLOADING "?progress.status=DOWNLOADING"
@@ -52,7 +52,7 @@
 
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
-#define UPDATE_PROGRESS_FREQ 	(3) /*3 seconds for update*/
+#define UPDATE_PROGRESS_FREQ (3) /*3 seconds for update*/
 
 enum update_state {
 	UPDATE_INIT,
@@ -112,7 +112,7 @@ int pv_updater_check_for_updates(struct pantavisor *pv);
 bool pv_trail_is_auth(struct pantavisor *pv);
 void pv_trail_remote_remove(struct pantavisor *pv);
 
-struct pv_update* pv_update_get_step_local(char *rev);
+struct pv_update *pv_update_get_step_local(char *rev);
 
 int pv_update_download(struct pantavisor *pv);
 int pv_update_install(struct pantavisor *pv);

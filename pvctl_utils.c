@@ -35,13 +35,12 @@
 #include <errno.h>
 
 #ifndef MODULE_NAME
-#define MODULE_NAME             "pvctl-utils"
+#define MODULE_NAME "pvctl-utils"
 #endif
 
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 #include "paths.h"
-
 
 static int open_socket(const char *path)
 {
@@ -63,7 +62,7 @@ try_again:
 
 	strcpy(addr.sun_path, path);
 
-	ret = connect(fd, (struct sockaddr*)&addr, sizeof(addr));
+	ret = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0) {
 		close(fd);
 		if (retries > 0) {
@@ -74,7 +73,7 @@ try_again:
 			strerror_r(errno, str_err, sizeof(str_err));
 #ifdef DEBUG
 			printf("Connect error on path %s, errno = %d (%s)\n",
-					path, errno, str_err);
+			       path, errno, str_err);
 #endif
 			return -errno;
 		}
@@ -96,15 +95,14 @@ int pvctl_write_to_path(const char *path, const char *buf, ssize_t count)
 	}
 	while (count) {
 		written = write(fd, buf, count);
-		if (written < 0 ) {
+		if (written < 0) {
 			if (errno == EINTR)
 				continue;
 			break;
 		}
-		count -=written;
+		count -= written;
 		buf += written;
 	}
 	close(fd);
 	return count;
-
 }

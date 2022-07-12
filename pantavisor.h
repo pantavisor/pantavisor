@@ -58,6 +58,6 @@ void pv_init(void);
 int pv_start(void);
 void pv_stop(void);
 
-struct pantavisor* pv_get_instance(void);
+struct pantavisor *pv_get_instance(void);
 
 #endif

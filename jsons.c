@@ -26,11 +26,11 @@
 #include "jsons.h"
 #include "state.h"
 
-#define MODULE_NAME			"jsons"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "jsons"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-struct pv_json* pv_jsons_add(struct pv_state *s, char *name, char *value)
+struct pv_json *pv_jsons_add(struct pv_state *s, char *name, char *value)
 {
 	struct pv_json *this = calloc(1, sizeof(struct pv_json));
 
@@ -69,8 +69,8 @@ void pv_jsons_empty(struct pv_state *s)
 	struct pv_json *curr, *tmp;
 	struct dl_list *head = &s->jsons;
 
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_json, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_json, list)
+	{
 		dl_list_del(&curr->list);
 		pv_jsons_free(curr);
 		num_obj++;

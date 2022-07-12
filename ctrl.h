@@ -40,28 +40,40 @@ typedef enum {
 
 struct pv_cmd {
 	pv_cmd_operation_t op;
-	char* payload;
+	char *payload;
 };
 
-struct pv_cmd* pv_ctrl_socket_wait(int ctrl_fd, int timeout);
+struct pv_cmd *pv_ctrl_socket_wait(int ctrl_fd, int timeout);
 void pv_ctrl_free_cmd(struct pv_cmd *cmd);
 
 void pv_ctrl_socket_close(int ctrl_fd);
 
-static inline const char* pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
+static inline const char *
+pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 {
-	static const char *strings[] = {NULL, "UPDATE_METADATA","REBOOT_DEVICE","POWEROFF_DEVICE","TRY_ONCE","LOCAL_RUN","LOCAL_APPLY","MAKE_FACTORY","RUN_GC"};
+	static const char *strings[] = { NULL,
+					 "UPDATE_METADATA",
+					 "REBOOT_DEVICE",
+					 "POWEROFF_DEVICE",
+					 "TRY_ONCE",
+					 "LOCAL_RUN",
+					 "LOCAL_APPLY",
+					 "MAKE_FACTORY",
+					 "RUN_GC" };
 	return strings[op];
 }
 
-static inline pv_cmd_operation_t pv_ctrl_int_cmd_operation(const char *op_string, const int op_string_size)
+static inline pv_cmd_operation_t
+pv_ctrl_int_cmd_operation(const char *op_string, const int op_string_size)
 {
-	for (pv_cmd_operation_t op_index = 1; op_index < MAX_CMD_OP; ++op_index) {
-		if (!strncmp(op_string, pv_ctrl_string_cmd_operation(op_index), op_string_size))
+	for (pv_cmd_operation_t op_index = 1; op_index < MAX_CMD_OP;
+	     ++op_index) {
+		if (!strncmp(op_string, pv_ctrl_string_cmd_operation(op_index),
+			     op_string_size))
 			return op_index;
-    }
+	}
 
-    return 0;
+	return 0;
 }
 
 #endif // PV_CTRL_H

@@ -22,13 +22,12 @@
 #ifndef PV_MATH_H
 #define PV_MATH_H
 
-#define MAX_DEC_STRING_SIZE_OF_TYPE(type) \
-	(3 * sizeof (type) + 2)
+#define MAX_DEC_STRING_SIZE_OF_TYPE(type) (3 * sizeof(type) + 2)
 
 int get_digit_count(int number);
 
 #ifndef ARRAY_LEN
-#define ARRAY_LEN(X) 	(ssize_t)(sizeof(X)/sizeof(X[0]))
+#define ARRAY_LEN(X) (ssize_t)(sizeof(X) / sizeof(X[0]))
 #endif /* ARRAY_LEN*/
 
 #endif // PV_MATH_H

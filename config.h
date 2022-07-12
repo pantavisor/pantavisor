@@ -27,11 +27,7 @@
 
 #include "utils/list.h"
 
-typedef enum {
-	IM_EMBEDDED,
-	IM_STANDALONE,
-	IM_APPENGINE
-} init_mode_t;
+typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
 
 struct pantavisor_system {
 	init_mode_t init_mode;
@@ -108,11 +104,7 @@ struct pantavisor_updater {
 	int commit_delay;
 };
 
-enum {
-	BL_UBOOT_PLAIN = 0,
-	BL_UBOOT_PVK,
-	BL_GRUB
-};
+enum { BL_UBOOT_PLAIN = 0, BL_UBOOT_PVK, BL_GRUB };
 
 struct pantavisor_bootloader {
 	int type;
@@ -197,7 +189,7 @@ int pv_config_init(char *path);
 int pv_config_load_creds(void);
 int pv_config_save_creds(void);
 
-void pv_config_override_value(const char* key, const char* value);
+void pv_config_override_value(const char *key, const char *value);
 
 void pv_config_free(void);
 
@@ -211,41 +203,41 @@ void pv_config_set_creds_prn(char *prn);
 void pv_config_set_creds_secret(char *secret);
 
 init_mode_t pv_config_get_system_init_mode(void);
-char* pv_config_get_system_libdir(void);
-char* pv_config_get_system_etcdir(void);
-char* pv_config_get_system_rundir(void);
-char* pv_config_get_system_mediadir(void);
-char* pv_config_get_system_confdir(void);
+char *pv_config_get_system_libdir(void);
+char *pv_config_get_system_etcdir(void);
+char *pv_config_get_system_rundir(void);
+char *pv_config_get_system_mediadir(void);
+char *pv_config_get_system_confdir(void);
 
 bool pv_config_get_debug_shell(void);
 bool pv_config_get_debug_ssh(void);
 
-char* pv_config_get_cache_usrmetadir(void);
-char* pv_config_get_cache_devmetadir(void);
-char* pv_config_get_cache_dropbearcachedir(void);
+char *pv_config_get_cache_usrmetadir(void);
+char *pv_config_get_cache_devmetadir(void);
+char *pv_config_get_cache_dropbearcachedir(void);
 
-char* pv_config_get_creds_type(void);
-char* pv_config_get_creds_host(void);
+char *pv_config_get_creds_type(void);
+char *pv_config_get_creds_host(void);
 int pv_config_get_creds_port(void);
-char* pv_config_get_creds_host_proxy(void);
+char *pv_config_get_creds_host_proxy(void);
 int pv_config_get_creds_port_proxy(void);
 int pv_config_get_creds_noproxyconnect(void);
-char* pv_config_get_creds_id(void);
-char* pv_config_get_creds_prn(void);
-char* pv_config_get_creds_secret(void);
-char* pv_config_get_creds_token(void);
+char *pv_config_get_creds_id(void);
+char *pv_config_get_creds_prn(void);
+char *pv_config_get_creds_secret(void);
+char *pv_config_get_creds_token(void);
 
-char* pv_config_get_creds_tpm_key(void);
-char* pv_config_get_creds_tpm_cert(void);
+char *pv_config_get_creds_tpm_key(void);
+char *pv_config_get_creds_tpm_cert(void);
 
-char* pv_config_get_factory_autotok(void);
+char *pv_config_get_factory_autotok(void);
 
-char* pv_config_get_storage_path(void);
-char* pv_config_get_storage_fstype(void);
-char* pv_config_get_storage_opts(void);
-char* pv_config_get_storage_mntpoint(void);
-char* pv_config_get_storage_mnttype(void);
-char* pv_config_get_storage_logtempsize(void);
+char *pv_config_get_storage_path(void);
+char *pv_config_get_storage_fstype(void);
+char *pv_config_get_storage_opts(void);
+char *pv_config_get_storage_mntpoint(void);
+char *pv_config_get_storage_mnttype(void);
+char *pv_config_get_storage_logtempsize(void);
 int pv_config_get_storage_wait(void);
 
 int pv_config_get_storage_gc_reserved(void);
@@ -253,7 +245,7 @@ bool pv_config_get_storage_gc_keep_factory(void);
 int pv_config_get_storage_gc_threshold(void);
 int pv_config_get_storage_gc_threshold_defertime(void);
 
-char* pv_config_get_disk_voldir(void);
+char *pv_config_get_disk_voldir(void);
 
 int pv_config_get_updater_interval(void);
 int pv_config_get_updater_conditions_timeout(void);
@@ -263,20 +255,20 @@ int pv_config_get_updater_revision_retries(void);
 int pv_config_get_updater_revision_retry_timeout(void);
 int pv_config_get_updater_commit_delay(void);
 
-char* pv_config_get_bl_dtb(void);
-char* pv_config_get_bl_ovl(void);
+char *pv_config_get_bl_dtb(void);
+char *pv_config_get_bl_ovl(void);
 int pv_config_get_bl_type(void);
 bool pv_config_get_bl_mtd_only(void);
-char* pv_config_get_bl_mtd_path(void);
+char *pv_config_get_bl_mtd_path(void);
 
 bool pv_config_get_watchdog_enabled(void);
 int pv_config_get_watchdog_timeout(void);
 
-char* pv_config_get_network_brdev(void);
-char* pv_config_get_network_braddress4(void);
-char* pv_config_get_network_brmask4(void);
+char *pv_config_get_network_brdev(void);
+char *pv_config_get_network_braddress4(void);
+char *pv_config_get_network_brmask4(void);
 
-char* pv_config_get_log_logdir(void);
+char *pv_config_get_log_logdir(void);
 int pv_config_get_log_logmax(void);
 int pv_config_get_log_loglevel(void);
 int pv_config_get_log_logsize(void);
@@ -290,10 +282,10 @@ int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);
 
 secureboot_mode_t pv_config_get_secureboot_mode(void);
-char* pv_config_get_secureboot_certdir(void);
+char *pv_config_get_secureboot_certdir(void);
 
 int pv_config_get_metadata_devmeta_interval(void);
 
-char* pv_config_get_json(void);
+char *pv_config_get_json(void);
 
 #endif

@@ -56,14 +56,15 @@
 #include "json.h"
 #include "signature.h"
 
-#define MODULE_NAME			"updater"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "updater"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 #define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
-typedef int (*token_iter_f) (void *d1, void *d2, char *buf, jsmntok_t* tok, int c);
+typedef int (*token_iter_f)(void *d1, void *d2, char *buf, jsmntok_t *tok,
+			    int c);
 
 void pv_update_free(struct pv_update *update)
 {
@@ -114,18 +115,18 @@ static char *unescape_utf8_to_apvii(char *buf, char *code, char c)
 	while (p) {
 		*p = '\0';
 		new = realloc(new, pos + strlen(tmp) + 2);
-		strcpy(new+pos, tmp);
+		strcpy(new + pos, tmp);
 		pos = pos + strlen(tmp);
 		new[pos] = c;
 		pos += 1;
 		new[pos] = '\0';
 		replaced += 1;
-		tmp = p+strlen(code);
+		tmp = p + strlen(code);
 		p = strstr(tmp, code);
 	}
 
-	if (new[strlen(new)-1] == c)
-		new[strlen(new)-1] = '\0';
+	if (new[strlen(new) - 1] == c)
+		new[strlen(new) - 1] = '\0';
 
 	if (old)
 		free(old);
@@ -143,8 +144,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	char *endpoint_trail = NULL;
 	int size = -1;
 
-	if (pv->remote ||
-		!pv_config_get_creds_id())
+	if (pv->remote || !pv_config_get_creds_id())
 		return 0;
 
 	client = pv_get_trest_client(pv, NULL);
@@ -163,20 +163,20 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote = calloc(1, sizeof(struct trail_remote));
 	remote->client = client;
 
-	size = sizeof(DEVICE_TRAIL_ENDPOINT_FMT) + strlen(pv_config_get_creds_id());
+	size = sizeof(DEVICE_TRAIL_ENDPOINT_FMT) +
+	       strlen(pv_config_get_creds_id());
 	endpoint_trail = malloc(size * sizeof(char));
 	if (!endpoint_trail)
 		goto err;
-	SNPRINTF_WTRUNC(endpoint_trail, size, DEVICE_TRAIL_ENDPOINT_FMT, pv_config_get_creds_id());
+	SNPRINTF_WTRUNC(endpoint_trail, size, DEVICE_TRAIL_ENDPOINT_FMT,
+			pv_config_get_creds_id());
 
 	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED);
 
 	remote->endpoint_trail_queued = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_queued)
 		goto err;
-	SNPRINTF_WTRUNC(remote->endpoint_trail_queued,
-			size,
-			"%s%s",
+	SNPRINTF_WTRUNC(remote->endpoint_trail_queued, size, "%s%s",
 			endpoint_trail, DEVICE_TRAIL_ENDPOINT_QUEUED);
 
 	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_NEW);
@@ -184,15 +184,19 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote->endpoint_trail_new = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_new)
 		goto err;
-	SNPRINTF_WTRUNC(remote->endpoint_trail_new, size, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
+	SNPRINTF_WTRUNC(remote->endpoint_trail_new, size, "%s%s",
+			endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
 
-	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
+	size = strlen(endpoint_trail) +
+	       sizeof(DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
 	remote->endpoint_trail_downloading = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_downloading)
 		goto err;
-	SNPRINTF_WTRUNC(remote->endpoint_trail_downloading, size, "%s%s", endpoint_trail, DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
+	SNPRINTF_WTRUNC(remote->endpoint_trail_downloading, size, "%s%s",
+			endpoint_trail, DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
 
-	size = strlen(endpoint_trail) + sizeof (DEVICE_TRAIL_ENDPOINT_INPROGRESS);
+	size = strlen(endpoint_trail) +
+	       sizeof(DEVICE_TRAIL_ENDPOINT_INPROGRESS);
 	remote->endpoint_trail_inprogress = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_inprogress)
 		goto err;
@@ -215,33 +219,29 @@ err:
 }
 
 static void object_update_json(struct object_update *object_update,
-		char *buffer, ssize_t buflen)
+			       char *buffer, ssize_t buflen)
 {
 	buflen -= snprintf(buffer, buflen,
-			"{\"object_name\":\"%s\""
-			",\"object_id\":\"%s\""
-			",\"total_size\":%"PRIu64
-			",\"start_time\":%"PRIu64
-			",\"current_time\":%"PRIu64
-			",\"total_downloaded\":%"PRIu64
-			"}"
-			,
-			object_update->object_name,
-			object_update->object_id,
-			object_update->total_size,
-			object_update->start_time,
-			object_update->current_time,
-			object_update->total_downloaded
-			);
+			   "{\"object_name\":\"%s\""
+			   ",\"object_id\":\"%s\""
+			   ",\"total_size\":%" PRIu64 ",\"start_time\":%" PRIu64
+			   ",\"current_time\":%" PRIu64
+			   ",\"total_downloaded\":%" PRIu64 "}",
+			   object_update->object_name, object_update->object_id,
+			   object_update->total_size, object_update->start_time,
+			   object_update->current_time,
+			   object_update->total_downloaded);
 }
 
-static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *update, enum update_state status, const char *msg)
+static int trail_remote_set_status(struct pantavisor *pv,
+				   struct pv_update *update,
+				   enum update_state status, const char *msg)
 {
 	int ret = 0;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 	char __json[1024];
-	int json_size = sizeof (__json);
+	int json_size = sizeof(__json);
 	char *json = __json;
 	char message[128];
 	char total_progress_json[512];
@@ -258,17 +258,18 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	switch (status) {
 	case UPDATE_QUEUED:
 		// form message
-		SNPRINTF_WTRUNC(message, sizeof (message), "Retried %d of %d",
+		SNPRINTF_WTRUNC(message, sizeof(message), "Retried %d of %d",
 				update->retries,
 				pv_config_get_updater_revision_retries());
 
 		// form request
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT_WITH_DATA,
-				"QUEUED", message, 0, update->retries);
+		SNPRINTF_WTRUNC(json, json_size,
+				DEVICE_STEP_STATUS_FMT_WITH_DATA, "QUEUED",
+				message, 0, update->retries);
 
 		break;
 	case UPDATE_DOWNLOADED:
-		SNPRINTF_WTRUNC(json, json_size,  DEVICE_STEP_STATUS_FMT,
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
 				"INPROGRESS", "Update objects downloaded", 40);
 		break;
 	case UPDATE_APPLIED:
@@ -284,20 +285,24 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 				"INPROGRESS", "Starting updated version", 95);
 		break;
 	case UPDATE_TRANSITION:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"INPROGRESS", "Transitioning to new revision without rebooting", 95);
+		SNPRINTF_WTRUNC(
+			json, json_size, DEVICE_STEP_STATUS_FMT, "INPROGRESS",
+			"Transitioning to new revision without rebooting", 95);
 		break;
 	case UPDATE_REBOOT:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
 				"INPROGRESS", "Rebooting", 95);
 		break;
 	case UPDATE_UPDATED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"UPDATED", "Update finished, revision not set as rollback point", 100);
+		SNPRINTF_WTRUNC(
+			json, json_size, DEVICE_STEP_STATUS_FMT, "UPDATED",
+			"Update finished, revision not set as rollback point",
+			100);
 		break;
 	case UPDATE_DONE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"DONE", "Update finished, revision set as rollback point", 100);
+		SNPRINTF_WTRUNC(
+			json, json_size, DEVICE_STEP_STATUS_FMT, "DONE",
+			"Update finished, revision set as rollback point", 100);
 		break;
 	case UPDATE_ABORTED:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
@@ -311,44 +316,52 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		break;
 	case UPDATE_NO_SIGNATURE:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"WONTGO", "State signatures cannot be verified", 0);
+				"WONTGO", "State signatures cannot be verified",
+				0);
 		break;
 	case UPDATE_NO_PARSE:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
 				"WONTGO", "State cannot be parsed", 0);
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		pv_log(DEBUG, "download needs to be retried, retry count is %d", update->retries);
+		pv_log(DEBUG, "download needs to be retried, retry count is %d",
+		       update->retries);
 		// form message
-		SNPRINTF_WTRUNC(message, sizeof (message),
-				"Network unavailable while downloading, retry %d of %d",
-				update->retries,
-				pv_config_get_updater_revision_retries());
+		SNPRINTF_WTRUNC(
+			message, sizeof(message),
+			"Network unavailable while downloading, retry %d of %d",
+			update->retries,
+			pv_config_get_updater_revision_retries());
 		// form request
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT_WITH_DATA,
-			"QUEUED", message, 0, update->retries);
+		SNPRINTF_WTRUNC(json, json_size,
+				DEVICE_STEP_STATUS_FMT_WITH_DATA, "QUEUED",
+				message, 0, update->retries);
 		// Clear what was downloaded.
 		update->total_update->total_downloaded = 0;
 		break;
 	case UPDATE_TESTING_REBOOT:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"TESTING", "Awaiting to set rollback point if update is stable",
-				95);
+		SNPRINTF_WTRUNC(
+			json, json_size, DEVICE_STEP_STATUS_FMT, "TESTING",
+			"Awaiting to set rollback point if update is stable",
+			95);
 		break;
 	case UPDATE_TESTING_NONREBOOT:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"TESTING", "Awaiting to see if update is stable", 95);
+				"TESTING",
+				"Awaiting to see if update is stable", 95);
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
 		if (update->progress_objects) {
 			// form message
-			SNPRINTF_WTRUNC(message, sizeof (message), "Retry %d of %d",
-					update->retries,
-					pv_config_get_updater_revision_retries());
+			SNPRINTF_WTRUNC(
+				message, sizeof(message), "Retry %d of %d",
+				update->retries,
+				pv_config_get_updater_revision_retries());
 			// form retries string
 			if (update->total_update) {
 				object_update_json(update->total_update,
-						total_progress_json, sizeof(total_progress_json));
+						   total_progress_json,
+						   sizeof(total_progress_json));
 			}
 			char *buff = update->progress_objects;
 			/*
@@ -371,17 +384,18 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 			 */
 			if (!json) {
 				json = __json;
-				json_size = sizeof (__json);
+				json_size = sizeof(__json);
 			}
 			/*
 			 * just post the total and bail out.
 			 */
 			if (__json == json) {
-				SNPRINTF_WTRUNC(json, json_size,
-						DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-						"DOWNLOADING", message, 0, update->retries,
-						total_progress_json,
-						"");
+				SNPRINTF_WTRUNC(
+					json, json_size,
+					DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
+					"DOWNLOADING", message, 0,
+					update->retries, total_progress_json,
+					"");
 				break;
 			}
 			if (msg) {
@@ -390,13 +404,14 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 					len += 1;
 				}
 				SNPRINTF_WTRUNC(buff + len,
-						pv->update->progress_size - len, "%s", msg);
+						pv->update->progress_size - len,
+						"%s", msg);
 				len = (len > 0 ? len - 1 : len);
 			}
 			SNPRINTF_WTRUNC(json, json_size,
 					DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-					"DOWNLOADING", message, 0, update->retries,
-					total_progress_json,
+					"DOWNLOADING", message, 0,
+					update->retries, total_progress_json,
 					update->progress_objects);
 			update->progress_objects[len] = '\0';
 		}
@@ -413,9 +428,8 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 
 	// do not report to cloud if that is not possible
 	if ((update->pending && update->pending->local) ||
-		!pv_get_instance()->remote_mode ||
-		!pv->online ||
-		trail_remote_init(pv))
+	    !pv_get_instance()->remote_mode || !pv->online ||
+	    trail_remote_init(pv))
 		goto out;
 
 	req = trest_make_request(THTTP_METHOD_PUT, update->endpoint, json);
@@ -423,12 +437,15 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	ret = -1;
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
-		pv_log(WARN, "HTTP request PUT %s could not be initialized", update->endpoint);
-	} else if (!res->code &&
-		res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "HTTP request PUT %s could not auth (status=%d)", update->endpoint, res->status);
+		pv_log(WARN, "HTTP request PUT %s could not be initialized",
+		       update->endpoint);
+	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request PUT %s could not auth (status=%d)",
+		       update->endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "HTTP request PUT %s returned error (code=%d; body='%s')", update->endpoint, res->code, res->body);
+		pv_log(WARN,
+		       "HTTP request PUT %s returned error (code=%d; body='%s')",
+		       update->endpoint, res->code, res->body);
 	} else {
 		pv_log(DEBUG, "remote state updated to %s", res->body);
 		ret = 0;
@@ -445,7 +462,8 @@ out:
 	return ret;
 }
 
-static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest_response_ptr *response)
+static int trail_get_steps_response(struct pantavisor *pv, char *endpoint,
+				    trest_response_ptr *response)
 {
 	trest_request_ptr req = NULL;
 	trest_response_ptr res = NULL;
@@ -459,12 +477,15 @@ static int trail_get_steps_response(struct pantavisor *pv, char *endpoint, trest
 
 	res = trest_do_json_request(remote->client, req);
 	if (!res) {
-		pv_log(WARN, "HTTP request GET %s could not be initialized", endpoint);
-	} else if (!res->code &&
-		res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)", endpoint, res->status);
+		pv_log(WARN, "HTTP request GET %s could not be initialized",
+		       endpoint);
+	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
+		       endpoint, res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "HTTP request GET %s returned error (code=%d; body='%s')", endpoint, res->code, res->body);
+		pv_log(WARN,
+		       "HTTP request GET %s returned error (code=%d; body='%s')",
+		       endpoint, res->code, res->body);
 	} else {
 		size = jsmnutil_array_count(res->body, res->json_tokv);
 		if (!size) {
@@ -498,13 +519,14 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 {
 	char *retry_count = NULL;
 	int ret = 0;
-	struct jka_update_ctx *ctx = (struct jka_update_ctx*) jka->opaque;
+	struct jka_update_ctx *ctx = (struct jka_update_ctx *)jka->opaque;
 	struct json_key_action jka_arr[] = {
 		ADD_JKA_ENTRY("data", JSMN_STRING, &retry_count, NULL, true),
 		ADD_JKA_NULL_ENTRY()
 	};
 
-	ret = __start_json_parsing_with_action(jka->buf, jka_arr, JSMN_OBJECT, jka->tokv, jka->tokc);
+	ret = __start_json_parsing_with_action(jka->buf, jka_arr, JSMN_OBJECT,
+					       jka->tokv, jka->tokc);
 	if (!ret) {
 		if (retry_count) {
 			pv_log(DEBUG, "retry_count = %s", retry_count);
@@ -515,7 +537,8 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	return ret;
 }
 
-static struct pv_update* pv_update_new(const char *id, const char *rev, bool local)
+static struct pv_update *pv_update_new(const char *id, const char *rev,
+				       bool local)
 {
 	struct pv_update *u;
 	int size;
@@ -525,7 +548,8 @@ static struct pv_update* pv_update_new(const char *id, const char *rev, bool loc
 
 	u = calloc(1, sizeof(struct pv_update));
 	if (u) {
-		u->total_update = (struct object_update*) calloc(1, sizeof(struct object_update));
+		u->total_update = (struct object_update *)calloc(
+			1, sizeof(struct object_update));
 		u->progress_size = PATH_MAX;
 		u->progress_objects = calloc(u->progress_size, sizeof(char));
 		u->status = UPDATE_INIT;
@@ -537,11 +561,11 @@ static struct pv_update* pv_update_new(const char *id, const char *rev, bool loc
 			goto out;
 		}
 
-		size = sizeof (DEVICE_STEP_ENDPOINT_FMT)
-					+ strlen(id)
-					+ strlen(rev);
-		u->endpoint = malloc(sizeof (char) * size);
-		SNPRINTF_WTRUNC(u->endpoint, size, DEVICE_STEP_ENDPOINT_FMT, id, rev);
+		size = sizeof(DEVICE_STEP_ENDPOINT_FMT) + strlen(id) +
+		       strlen(rev);
+		u->endpoint = malloc(sizeof(char) * size);
+		SNPRINTF_WTRUNC(u->endpoint, size, DEVICE_STEP_ENDPOINT_FMT, id,
+				rev);
 	}
 
 out:
@@ -557,12 +581,10 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	trest_response_ptr res = NULL;
 	jsmntok_t *tokv = 0;
 	int retries = 0;
-	struct jka_update_ctx update_ctx = {
-		.retries = &retries
-	};
+	struct jka_update_ctx update_ctx = { .retries = &retries };
 	struct json_key_action jka[] = {
 		ADD_JKA_ENTRY("progress", JSMN_OBJECT, &update_ctx,
-				do_progress_action, false),
+			      do_progress_action, false),
 		ADD_JKA_NULL_ENTRY()
 	};
 	struct pv_update *update;
@@ -575,7 +597,8 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		goto new_update;
 
 	// check for INPROGRESS updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_inprogress, &res);
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_inprogress,
+				       &res);
 	if (ret > 0) {
 		pv_log(DEBUG, "found INPROGRESS revision");
 		wrong_revision = true;
@@ -585,7 +608,8 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	}
 
 	// check for DOWNLOADING updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_downloading, &res);
+	ret = trail_get_steps_response(pv, remote->endpoint_trail_downloading,
+				       &res);
 	if (ret > 0) {
 		pv_log(DEBUG, "found DOWNLOADING revision");
 		goto process_response;
@@ -619,12 +643,13 @@ process_response:
 		goto out;
 
 	// parse revision id
-	rev = pv_json_get_value(res->body, "rev",
-			res->json_tokv, res->json_tokc);
+	rev = pv_json_get_value(res->body, "rev", res->json_tokv,
+				res->json_tokc);
 
 	// this could mean either the server is returning a malformed response or json parser is not working properly
 	if (!rev) {
-		pv_log(ERROR, "rev not found in endpoint response, ignoring...");
+		pv_log(ERROR,
+		       "rev not found in endpoint response, ignoring...");
 		goto out;
 	}
 
@@ -642,10 +667,10 @@ process_response:
 	}
 
 	// get raw revision state and parse retry
-	state = pv_json_get_value(res->body, "state",
-			res->json_tokv, res->json_tokc);
+	state = pv_json_get_value(res->body, "state", res->json_tokv,
+				  res->json_tokc);
 	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
-		!state) {
+	    !state) {
 		pv_log(WARN, "failed to parse the rest of the response");
 		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
@@ -726,14 +751,15 @@ static int trail_is_available(struct trail_remote *r)
 	res = trest_do_json_request(r->client, req);
 	if (!res) {
 		pv_log(WARN, "GET /trails/ could not be initialized");
-	} else if (!res->code &&
-		res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "GET /trails/ could not auth (status=%d)", res->status);
+	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "GET /trails/ could not auth (status=%d)",
+		       res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "GET /trails/ returned error (code=%d; body='%s')", res->code, res->body);
+		pv_log(WARN, "GET /trails/ returned error (code=%d; body='%s')",
+		       res->code, res->body);
 	} else {
-	    size = jsmnutil_array_count(res->body, res->json_tokv);
-	    if (size)
+		size = jsmnutil_array_count(res->body, res->json_tokv);
+		if (size)
 			pv_log(DEBUG, "trail found, using remote");
 	}
 
@@ -757,20 +783,11 @@ static void __trail_log_resp_err(char *buf, jsmntok_t *tokv, int tokc)
 	 *  "code": <int> <Maybe empty>
 	 * }
 	 */
-	error = pv_json_get_value(buf,
-			"error",
-			tokv,
-			tokc);
+	error = pv_json_get_value(buf, "error", tokv, tokc);
 
-	msg = pv_json_get_value(buf,
-			"msg",
-			tokv,
-			tokc);
+	msg = pv_json_get_value(buf, "msg", tokv, tokc);
 
-	__code = pv_json_get_value(buf,
-			"code",
-			tokv,
-			tokc);
+	__code = pv_json_get_value(buf, "code", tokv, tokc);
 	if (__code) {
 		sscanf(__code, "%d", &code);
 		free(__code);
@@ -778,15 +795,13 @@ static void __trail_log_resp_err(char *buf, jsmntok_t *tokv, int tokc)
 	}
 
 	if (error && msg) {
-		pv_log(WARN, "Error %s: Message %s, code = %d",
-				error, msg, code);
-	}
-	else {
-		pv_log(WARN, "Malformed Error JSON from API,"
-				" error:%s,msg:%s, code=%d",
-				(error ? error : "nil"),
-				(msg ? msg : "nil"),
-				code);
+		pv_log(WARN, "Error %s: Message %s, code = %d", error, msg,
+		       code);
+	} else {
+		pv_log(WARN,
+		       "Malformed Error JSON from API,"
+		       " error:%s,msg:%s, code=%d",
+		       (error ? error : "nil"), (msg ? msg : "nil"), code);
 	}
 	if (error)
 		free(error);
@@ -805,7 +820,7 @@ static void trail_log_thttp_err(thttp_response_t *thttp_res)
 	buf = thttp_res->body;
 	if (!buf)
 		return;
-	if (jsmnutil_parse_json(buf, &tokv, &tokc) >=0 ) {
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) >= 0) {
 		__trail_log_resp_err(buf, tokv, tokc);
 	}
 	if (tokv)
@@ -814,18 +829,17 @@ static void trail_log_thttp_err(thttp_response_t *thttp_res)
 
 static void trail_log_trest_err(trest_response_ptr tres)
 {
-
 	if (!tres || tres->code == THTTP_STATUS_OK)
 		return;
 	if (!tres->json_tokv)
 		return;
-	__trail_log_resp_err(tres->body, tres->json_tokv,
-			tres->json_tokc);
+	__trail_log_resp_err(tres->body, tres->json_tokv, tres->json_tokc);
 }
 
 #define SHA256_STR_SIZE ((256 / 4) + 1)
 
-static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const char **crtfiles)
+static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
+			    const char **crtfiles)
 {
 	int ret = -1;
 	int fd, bytes;
@@ -863,25 +877,24 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 
 	pos = 0;
 	i = 0;
-	while(i < 32) {
-		pos += snprintf(sha_str+pos, 3, "%02x", local_sha[i]);
+	while (i < 32) {
+		pos += snprintf(sha_str + pos, 3, "%02x", local_sha[i]);
 		i++;
 	}
 
-	SNPRINTF_WTRUNC(body,
-			sizeof (body),
+	SNPRINTF_WTRUNC(body, sizeof(body),
 			"{ \"objectname\": \"%s\","
 			" \"size\": \"%d\","
 			" \"sha256sum\": \"%s\""
 			" }",
-			o->name,
-			size,
-			sha_str);
+			o->name, size, sha_str);
 
 	pv_log(INFO, "syncing '%s'", o->id);
 
 	if (strncmp(o->id, sha_str, SHA256_STR_SIZE)) {
-		pv_log(INFO, "sha256 mismatch, probably writable image, skipping", o->objpath);
+		pv_log(INFO,
+		       "sha256 mismatch, probably writable image, skipping",
+		       o->objpath);
 		goto out;
 	}
 
@@ -892,28 +905,29 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		pv_log(WARN, "POST /objects/ could not be initialized");
 		goto out;
 	} else if (tres->code == THTTP_STATUS_CONFLICT) {
-		pv_log(INFO, "object '%s' already owned by user, skipping", o->id);
+		pv_log(INFO, "object '%s' already owned by user, skipping",
+		       o->id);
 		ret = 0;
 		goto out;
-	} else if (!tres->code &&
-		tres->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "POST /objects/ could not auth (status=%d)", tres->status);
+	} else if (!tres->code && tres->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "POST /objects/ could not auth (status=%d)",
+		       tres->status);
 		goto out;
 	} else if (tres->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "POST /objects/ returned error (code=%d; body='%s')", tres->code, tres->body);
+		pv_log(WARN,
+		       "POST /objects/ returned error (code=%d; body='%s')",
+		       tres->code, tres->body);
 		goto out;
 	}
 
-	signed_puturl = pv_json_get_value(tres->body,
-				"signed-puturl",
-				tres->json_tokv,
-				tres->json_tokc);
+	signed_puturl = pv_json_get_value(tres->body, "signed-puturl",
+					  tres->json_tokv, tres->json_tokc);
 
-	tls_req = (thttp_request_tls_t*) thttp_request_tls_new_0 ();
+	tls_req = (thttp_request_tls_t *)thttp_request_tls_new_0();
 
 	if (signed_puturl && tls_req) {
-		tls_req->crtfiles = (char ** )crtfiles;
-		req = (thttp_request_t*) tls_req;
+		tls_req->crtfiles = (char **)crtfiles;
+		req = (thttp_request_t *)tls_req;
 		req->is_tls = 1;
 
 		req->method = THTTP_METHOD_PUT;
@@ -925,20 +939,22 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		req->port_proxy = pv_config_get_creds_port_proxy();
 		req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 		if (req->is_tls) {
-			str_size = strlen("https://")
-					+ strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+			str_size = strlen("https://") + strlen(req->host) +
+				   1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
 			req->baseurl = calloc(str_size, sizeof(char));
-			SNPRINTF_WTRUNC(req->baseurl, str_size,
-					"https://%s:%d", req->host, req->port);
+			SNPRINTF_WTRUNC(req->baseurl, str_size, "https://%s:%d",
+					req->host, req->port);
 		} else {
-			((thttp_request_tls_t*)req)->crtfiles = NULL;
-			str_size = strlen("https://")
-					+ strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+			((thttp_request_tls_t *)req)->crtfiles = NULL;
+			str_size = strlen("https://") + strlen(req->host) +
+				   1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
 			req->baseurl = calloc(str_size, sizeof(char));
-			SNPRINTF_WTRUNC(req->baseurl, str_size, "http://%s:%d", req->host, req->port);
+			SNPRINTF_WTRUNC(req->baseurl, str_size, "http://%s:%d",
+					req->host, req->port);
 		}
 		if (req->host_proxy)
-			req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
+			req->is_tls =
+				false; /* XXX: global config if proxy is tls is TBD */
 		req->user_agent = pv_user_agent;
 
 		req->path = strstr(signed_puturl, "/local-s3");
@@ -953,19 +969,27 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o, const ch
 		res = thttp_request_do(req);
 
 		if (!res) {
-			pv_log(WARN, "'%s' could not be uploaded: could not be initialized", o->id);
+			pv_log(WARN,
+			       "'%s' could not be uploaded: could not be initialized",
+			       o->id);
 		} else if (!res->code) {
-			pv_log(WARN, "'%s' could not be uploaded: got no response", o->id);
+			pv_log(WARN,
+			       "'%s' could not be uploaded: got no response",
+			       o->id);
 		} else if (res->code != THTTP_STATUS_OK) {
-			pv_log(WARN, "'%s' could not be uploaded: returned HTTP error (code=%d; body='%s')",
-				o->id, res->code, res->body);
+			pv_log(WARN,
+			       "'%s' could not be uploaded: returned HTTP error (code=%d; body='%s')",
+			       o->id, res->code, res->body);
 		} else {
-			pv_log(INFO, "'%s' uploaded correctly, size=%d, code=%d", o->id, size, res->code);
+			pv_log(INFO,
+			       "'%s' uploaded correctly, size=%d, code=%d",
+			       o->id, size, res->code);
 			ret = 0;
 		}
-	}
-	else {
-		pv_log(ERROR, "'%s' could not be registered, signed_puturl not retrieved", o->id);
+	} else {
+		pv_log(ERROR,
+		       "'%s' could not be registered, signed_puturl not retrieved",
+		       o->id);
 	}
 
 out:
@@ -1000,7 +1024,8 @@ static int trail_put_objects(struct pantavisor *pv)
 	struct pv_object *curr = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
 
-	pv_objects_iter_begin(pv->state, curr) {
+	pv_objects_iter_begin(pv->state, curr)
+	{
 		ret++;
 	}
 	pv_objects_iter_end;
@@ -1008,7 +1033,8 @@ static int trail_put_objects(struct pantavisor *pv)
 	pv_log(DEBUG, "first boot: %d objects found, syncing", ret);
 
 	// push all
-	pv_objects_iter_begin(pv->state, curr) {
+	pv_objects_iter_begin(pv->state, curr)
+	{
 		if (trail_put_object(pv, curr, crtfiles) < 0)
 			break;
 		ret--;
@@ -1036,17 +1062,21 @@ static int trail_first_boot(struct pantavisor *pv)
 		return -1;
 	}
 
-	req = trest_make_request(THTTP_METHOD_POST, "/trails/", pv->state->json);
+	req = trest_make_request(THTTP_METHOD_POST, "/trails/",
+				 pv->state->json);
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
 		pv_log(WARN, "POST /trails/ could not be initialized");
-	} else if (!res->code &&
-		res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "POST /trails/ could not auth (status=%d)", res->status);
+	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "POST /trails/ could not auth (status=%d)",
+		       res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "POST /trails/ returned error (code=%d; body='%s')", res->code, res->body);
+		pv_log(WARN,
+		       "POST /trails/ returned error (code=%d; body='%s')",
+		       res->code, res->body);
 	} else {
-		pv_log(INFO, "factory revision (base trail) pushed to remote correctly");
+		pv_log(INFO,
+		       "factory revision (base trail) pushed to remote correctly");
 	}
 
 	if (req)
@@ -1114,7 +1144,8 @@ bool pv_trail_is_auth(struct pantavisor *pv)
 	return false;
 }
 
-static int pv_update_set_status_msg(struct pantavisor *pv, enum update_state status, char *msg)
+static int pv_update_set_status_msg(struct pantavisor *pv,
+				    enum update_state status, char *msg)
 {
 	if (!pv || !pv->update) {
 		pv_log(WARN, "uninitialized update");
@@ -1132,17 +1163,20 @@ int pv_update_set_status(struct pantavisor *pv, enum update_state status)
 static int pv_update_check_download_retry(struct pantavisor *pv)
 {
 	if (pv->update) {
-		struct timer_state timer_state = timer_current_state(&pv->update->retry_timer);
+		struct timer_state timer_state =
+			timer_current_state(&pv->update->retry_timer);
 
 		if (timer_state.fin) {
 			pv->update->retries++;
-			if (pv->update->retries > pv_config_get_updater_revision_retries())
+			if (pv->update->retries >
+			    pv_config_get_updater_revision_retries())
 				return -1;
 			pv_log(INFO, "trying revision %s ,retry = %d",
-					pv->update->pending->rev, pv->update->retries);
+			       pv->update->pending->rev, pv->update->retries);
 			// set timer for next retry
-			timer_start(&pv->update->retry_timer, pv_config_get_storage_wait(),
-					0, RELATIV_TIMER);
+			timer_start(&pv->update->retry_timer,
+				    pv_config_get_storage_wait(), 0,
+				    RELATIV_TIMER);
 			return 0;
 		}
 
@@ -1209,7 +1243,8 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		if (pv->update->retries > pv_config_get_updater_revision_retries()) {
+		if (pv->update->retries >
+		    pv_config_get_updater_revision_retries()) {
 			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
 			pv_update_remove(pv);
 			pv_log(INFO, "update finished");
@@ -1222,7 +1257,8 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	case UPDATE_TESTING_REBOOT:
 		if (pv_bootloader_set_commited(pv->state->rev)) {
-			pv_log(ERROR, "revision for next boot could not be set");
+			pv_log(ERROR,
+			       "revision for next boot could not be set");
 			return -1;
 		}
 		pv_update_set_status(pv, UPDATE_DONE);
@@ -1244,7 +1280,8 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	default:
 		pv_update_set_status(pv, pv->update->status);
-		pv_log(WARN, "update finished during wrong state %d", pv->update->status);
+		pv_log(WARN, "update finished during wrong state %d",
+		       pv->update->status);
 		pv_update_remove(pv);
 		break;
 	}
@@ -1279,25 +1316,26 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 	if (!res) {
 		pv_log(WARN, "GET %s could not be initialized", endpoint);
 		goto out;
-	} else if (!res->code &&
-		res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "GET %s could not auth (status=%d)", endpoint, res->status);
+	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "GET %s could not auth (status=%d)", endpoint,
+		       res->status);
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "GET %s returned error (code=%d; body='%s')", endpoint, res->code, res->body);
+		pv_log(WARN, "GET %s returned error (code=%d; body='%s')",
+		       endpoint, res->code, res->body);
 		goto out;
 	}
 
-	size = pv_json_get_value(res->body, "size",
-			res->json_tokv, res->json_tokc);
+	size = pv_json_get_value(res->body, "size", res->json_tokv,
+				 res->json_tokc);
 	if (size)
 		o->size = atoll(size);
 
-	o->sha256 = pv_json_get_value(res->body, "sha256sum",
-				 res->json_tokv, res->json_tokc);
+	o->sha256 = pv_json_get_value(res->body, "sha256sum", res->json_tokv,
+				      res->json_tokc);
 
-	url = pv_json_get_value(res->body, "signed-geturl",
-				 res->json_tokv, res->json_tokc);
+	url = pv_json_get_value(res->body, "signed-geturl", res->json_tokv,
+				res->json_tokc);
 	if (!url) {
 		pv_log(ERROR, "unable to get download url for object");
 		goto out;
@@ -1351,7 +1389,8 @@ static uint64_t get_update_size(struct pv_update *u)
 	struct stat st;
 	struct pv_object *curr = NULL;
 
-	pv_objects_iter_begin(u->pending, curr) {
+	pv_objects_iter_begin(u->pending, curr)
+	{
 		if (stat(curr->objpath, &st) < 0)
 			size += curr->size;
 	}
@@ -1362,9 +1401,10 @@ static uint64_t get_update_size(struct pv_update *u)
 /*
  * see object_update
  */
-static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, void *obj)
+static void trail_download_object_progress(ssize_t written, ssize_t chunk_size,
+					   void *obj)
 {
-	struct progress_update *progress_update = (struct progress_update*)obj;
+	struct progress_update *progress_update = (struct progress_update *)obj;
 	struct pv_object *pv_object = NULL;
 	char *msg = NULL;
 	const int OBJ_JSON_SIZE = 1024;
@@ -1375,7 +1415,8 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 	total_update = progress_update->pv->update->total_update;
 	if (!timer_current_state(&progress_update->timer_next_update).fin) {
 		if (chunk_size == written) {
-			progress_update->object_update->total_downloaded += chunk_size;
+			progress_update->object_update->total_downloaded +=
+				chunk_size;
 			total_update->total_downloaded += chunk_size;
 			return;
 		}
@@ -1395,20 +1436,23 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size, 
 	if (written != chunk_size) {
 		pv_log(ERROR, "Error downloading object %s", pv_object->name);
 		goto out;
-	}
-	else {
+	} else {
 		progress_update->object_update->total_downloaded += chunk_size;
 		total_update->total_downloaded += chunk_size;
 		progress_update->object_update->current_time = time(NULL);
-		object_update_json(progress_update->object_update, msg, OBJ_JSON_SIZE);
+		object_update_json(progress_update->object_update, msg,
+				   OBJ_JSON_SIZE);
 	}
-	timer_start(&progress_update->timer_next_update, UPDATE_PROGRESS_FREQ, 0, RELATIV_TIMER);
-	pv_update_set_status_msg(progress_update->pv, UPDATE_DOWNLOAD_PROGRESS, msg);
+	timer_start(&progress_update->timer_next_update, UPDATE_PROGRESS_FREQ,
+		    0, RELATIV_TIMER);
+	pv_update_set_status_msg(progress_update->pv, UPDATE_DOWNLOAD_PROGRESS,
+				 msg);
 out:
 	free(msg);
 }
 
-static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, const char **crtfiles)
+static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
+				 const char **crtfiles)
 {
 	int ret = 0;
 	int volatile_tmp_fd = -1, fd = -1, obj_fd = -1;
@@ -1419,16 +1463,16 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	char *tmp_sha;
 	char *host = 0;
 	char *start = 0, *port = 0, *end = 0;
-	char mmc_tmp_obj_path [PATH_MAX];
+	char mmc_tmp_obj_path[PATH_MAX];
 	char volatile_tmp_obj_path[] = VOLATILE_TMP_OBJ_PATH;
 	unsigned char buf[4096];
 	unsigned char cloud_sha[32];
 	unsigned char local_sha[32];
 	struct stat st;
 	mbedtls_sha256_context sha256_ctx;
-	thttp_response_t* res = 0;
-	thttp_request_tls_t* tls_req = 0;
-	thttp_request_t* req = 0;
+	thttp_response_t *res = 0;
+	thttp_request_tls_t *tls_req = 0;
+	thttp_request_t *req = 0;
 	struct object_update object_update;
 	struct progress_update progress_update = {
 		.pv = pv,
@@ -1438,10 +1482,10 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	if (!obj)
 		goto out;
 
-	tls_req = thttp_request_tls_new_0 ();
-	tls_req->crtfiles = (char ** )crtfiles;
+	tls_req = thttp_request_tls_new_0();
+	tls_req->crtfiles = (char **)crtfiles;
 
-	req = (thttp_request_t*) tls_req;
+	req = (thttp_request_t *)tls_req;
 
 	req->user_agent = pv_user_agent;
 	req->method = THTTP_METHOD_GET;
@@ -1470,15 +1514,15 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	start = obj->geturl + 8;
 	port = strchr(start, ':');
 	if (port) {
-		int p = strtol (++port, &end, 0);
+		int p = strtol(++port, &end, 0);
 		if (p > 0)
-		req->port = p;
+			req->port = p;
 	} else {
 		end = strchr(start, '/');
 	}
 
-	n = (unsigned long) end - (unsigned long) start;
-	host = malloc((n+1) * sizeof(char));
+	n = (unsigned long)end - (unsigned long)start;
+	host = malloc((n + 1) * sizeof(char));
 	strncpy(host, start, n);
 	host[n] = '\0';
 
@@ -1487,38 +1531,46 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	req->port_proxy = pv_config_get_creds_port_proxy();
 	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
 	if (req->is_tls) {
-		size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+		size = strlen("https://") + strlen(req->host) + 1 /* : */ +
+		       5 /* port */ + 2 /* 0-delim */;
 		req->baseurl = calloc(size, sizeof(char));
-		SNPRINTF_WTRUNC(req->baseurl, size, "https://%s:%d", req->host, req->port);
+		SNPRINTF_WTRUNC(req->baseurl, size, "https://%s:%d", req->host,
+				req->port);
 	} else {
-		((thttp_request_tls_t*)req)->crtfiles = NULL;
-		size = strlen("https://") + strlen(req->host) + 1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
+		((thttp_request_tls_t *)req)->crtfiles = NULL;
+		size = strlen("https://") + strlen(req->host) + 1 /* : */ +
+		       5 /* port */ + 2 /* 0-delim */;
 		req->baseurl = calloc(size, sizeof(char));
-		SNPRINTF_WTRUNC(req->baseurl, size, "http://%s:%d", req->host, req->port);
-			pv_log(WARN, "req->baseurl truncated to %s", req->baseurl);
+		SNPRINTF_WTRUNC(req->baseurl, size, "http://%s:%d", req->host,
+				req->port);
+		pv_log(WARN, "req->baseurl truncated to %s", req->baseurl);
 	}
 
 	if (req->host_proxy)
-		req->is_tls = false; /* XXX: global config if proxy is tls is TBD */
+		req->is_tls =
+			false; /* XXX: global config if proxy is tls is TBD */
 
 	req->path = end;
 
 	if (pv_config_get_updater_network_use_tmp_objects() &&
-		(!strcmp(pv_config_get_storage_fstype(), "jffs2") ||
-	    !strcmp(pv_config_get_storage_fstype(), "ubifs")))
+	    (!strcmp(pv_config_get_storage_fstype(), "jffs2") ||
+	     !strcmp(pv_config_get_storage_fstype(), "ubifs")))
 		use_volatile_tmp = 1;
 
 	// temporary path where we will store the file until validated
-	SNPRINTF_WTRUNC(mmc_tmp_obj_path, sizeof (mmc_tmp_obj_path), MMC_TMP_OBJ_FMT, obj->objpath);
+	SNPRINTF_WTRUNC(mmc_tmp_obj_path, sizeof(mmc_tmp_obj_path),
+			MMC_TMP_OBJ_FMT, obj->objpath);
 	obj_fd = open(mmc_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 	if (obj_fd < 0) {
-		pv_log(ERROR, "open failed for %s: %s", mmc_tmp_obj_path, strerror(errno));
+		pv_log(ERROR, "open failed for %s: %s", mmc_tmp_obj_path,
+		       strerror(errno));
 		goto out;
 	}
 
 	if (use_volatile_tmp) {
 		mkstemp(volatile_tmp_obj_path);
-		volatile_tmp_fd = open(volatile_tmp_obj_path, O_CREAT | O_RDWR, 0644);
+		volatile_tmp_fd =
+			open(volatile_tmp_obj_path, O_CREAT | O_RDWR, 0644);
 		fd = volatile_tmp_fd;
 	} else {
 		fd = obj_fd;
@@ -1539,33 +1591,38 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	object_update.total_size = obj->size;
 	object_update.current_time = object_update.start_time;
 	object_update.total_downloaded = 0;
-	timer_start(&progress_update.timer_next_update, UPDATE_PROGRESS_FREQ, 0, RELATIV_TIMER);
-	res = thttp_request_do_file_with_cb (req, fd,
-			trail_download_object_progress, &progress_update);
+	timer_start(&progress_update.timer_next_update, UPDATE_PROGRESS_FREQ, 0,
+		    RELATIV_TIMER);
+	res = thttp_request_do_file_with_cb(
+		req, fd, trail_download_object_progress, &progress_update);
 	if (!res) {
-		pv_log(WARN, "'%s' could not be downloaded: could not be initialized", obj->id);
+		pv_log(WARN,
+		       "'%s' could not be downloaded: could not be initialized",
+		       obj->id);
 		remove(mmc_tmp_obj_path);
 		goto out;
 	} else if (!res->code) {
-		pv_log(WARN, "'%s' could not be downloaded: got no response", obj->id);
+		pv_log(WARN, "'%s' could not be downloaded: got no response",
+		       obj->id);
 		remove(mmc_tmp_obj_path);
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN, "'%s' could not be downloaded: returned HTTP error (code=%d; body='%s')",
-			obj->id, res->code, res->body);
+		pv_log(WARN,
+		       "'%s' could not be downloaded: returned HTTP error (code=%d; body='%s')",
+		       obj->id, res->code, res->body);
 		remove(mmc_tmp_obj_path);
 		goto out;
 	}
 
 	if (use_volatile_tmp) {
-		pv_log(INFO, "copying %s to tmp path (%s)", volatile_tmp_obj_path, mmc_tmp_obj_path);
+		pv_log(INFO, "copying %s to tmp path (%s)",
+		       volatile_tmp_obj_path, mmc_tmp_obj_path);
 		bytes = pv_fs_file_copy_fd(volatile_tmp_fd, obj_fd, true);
 		fd = obj_fd;
 	}
 	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
 	fsync(fd);
 	object_update.current_time = time(NULL);
-
 
 	// verify file downloaded correctly before syncing to disk
 	lseek(fd, 0, SEEK_SET);
@@ -1580,9 +1637,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 	mbedtls_sha256_free(&sha256_ctx);
 
 	tmp_sha = obj->sha256;
-	for (int i = 0, j = 0; i < (int) strlen(tmp_sha); i=i+2, j++) {
+	for (int i = 0, j = 0; i < (int)strlen(tmp_sha); i = i + 2, j++) {
 		char byte[3];
-		strncpy(byte, tmp_sha+i, 2);
+		strncpy(byte, tmp_sha + i, 2);
 		byte[2] = 0;
 		cloud_sha[j] = strtoul(byte, NULL, 16);
 	}
@@ -1613,7 +1670,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 		 * Use a placeholder for this object's json.
 		 */
 		object_update_json(&object_update, this_obj_json,
-					sizeof(this_obj_json));
+				   sizeof(this_obj_json));
 		to_write += strlen(this_obj_json);
 		/*
 		 * if there already were other objects we would
@@ -1623,14 +1680,15 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 			to_write += 1;
 
 		if (to_write > remaining) {
-			char *__new_progress_objects =
-				(char*)realloc(pv->update->progress_objects,
-						(2 * pv->update->progress_size));
+			char *__new_progress_objects = (char *)realloc(
+				pv->update->progress_objects,
+				(2 * pv->update->progress_size));
 			if (!__new_progress_objects)
 				can_write = false;
 			else {
 				pv->update->progress_size *= 2;
-				pv->update->progress_objects = __new_progress_objects;
+				pv->update->progress_objects =
+					__new_progress_objects;
 			}
 		}
 		if (can_write) {
@@ -1640,13 +1698,13 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj, c
 			}
 			SNPRINTF_WTRUNC(pv->update->progress_objects + data_len,
 					pv->update->progress_size - data_len,
-					"%s",
-					this_obj_json);
+					"%s", this_obj_json);
 		} else {
-			pv_log(ERROR, "Failed to allocate space for progress data");
+			pv_log(ERROR,
+			       "Failed to allocate space for progress data");
 		}
 		pv_log(DEBUG, "progress_objects is %s",
-				pv->update->progress_objects);
+		       pv->update->progress_objects);
 	}
 out:
 	if (fd)
@@ -1666,23 +1724,28 @@ static int trail_link_objects(struct pantavisor *pv)
 	struct pv_object *obj = NULL;
 	char *ext;
 
-	pv_objects_iter_begin(pv->update->pending, obj) {
+	pv_objects_iter_begin(pv->update->pending, obj)
+	{
 		pv_fs_mkbasedir_p(obj->relpath, 0775);
 		ext = strrchr(obj->relpath, '.');
 		if (ext && (strcmp(ext, ".bind") == 0)) {
-			pv_log(INFO, "copying bind volume '%s' from '%s'", obj->relpath, obj->objpath);
-			if (pv_fs_file_copy(obj->objpath, obj->relpath, 0644) < 0)
+			pv_log(INFO, "copying bind volume '%s' from '%s'",
+			       obj->relpath, obj->objpath);
+			if (pv_fs_file_copy(obj->objpath, obj->relpath, 0644) <
+			    0)
 				pv_log(ERROR, "could not copy objects");
 			continue;
 		}
 		if (link(obj->objpath, obj->relpath) < 0) {
 			if (errno != EEXIST) {
-				pv_log(ERROR, "unable to link %s, errno=%d", obj->relpath, errno);
+				pv_log(ERROR, "unable to link %s, errno=%d",
+				       obj->relpath, errno);
 				return -1;
 			}
 		} else {
 			pv_fs_path_sync(obj->objpath);
-			pv_log(DEBUG, "linked %s to %s", obj->relpath, obj->objpath);
+			pv_log(DEBUG, "linked %s to %s", obj->relpath,
+			       obj->objpath);
 		}
 	}
 	pv_objects_iter_end;
@@ -1702,8 +1765,9 @@ static int trail_check_update_size(struct pantavisor *pv)
 
 	if (update_size > free_size) {
 		pv_log(ERROR, "cannot process update. Aborting...");
-		SNPRINTF_WTRUNC(msg, sizeof (msg),
-				"Space required %"PRIu64" B, available %"PRIu64" B",
+		SNPRINTF_WTRUNC(msg, sizeof(msg),
+				"Space required %" PRIu64
+				" B, available %" PRIu64 " B",
 				update_size, free_size);
 		pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
 		return -1;
@@ -1718,7 +1782,8 @@ static int trail_download_objects(struct pantavisor *pv)
 	struct pv_object *o = NULL;
 	const char **crtfiles = pv_ph_get_certs(pv);
 
-	pv_objects_iter_begin(u->pending, o) {
+	pv_objects_iter_begin(u->pending, o)
+	{
 		if (!trail_download_get_meta(pv, o)) {
 			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
 			return -1;
@@ -1739,7 +1804,8 @@ static int trail_download_objects(struct pantavisor *pv)
 		u->total_update->current_time = time(NULL);
 		pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
 	}
-	pv_objects_iter_begin(u->pending, o) {
+	pv_objects_iter_begin(u->pending, o)
+	{
 		if (!trail_download_object(pv, o, crtfiles)) {
 			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
 			return -1;
@@ -1751,7 +1817,7 @@ static int trail_download_objects(struct pantavisor *pv)
 	return 0;
 }
 
-struct pv_update* pv_update_get_step_local(char *rev)
+struct pv_update *pv_update_get_step_local(char *rev)
 {
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_update *update = NULL;
@@ -1802,7 +1868,8 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->update->pending->rev, "");
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->update->pending->rev,
+				       "");
 	pv_fs_mkdir_p(path, 0755);
 
 	// do not download if this is a local update
@@ -1857,12 +1924,14 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev, JSON_FNAME);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev,
+					JSON_FNAME);
 	if (pv_fs_file_save(path, pending->json, 0644) < 0)
 		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
 
 	if (!pv_storage_meta_expand_jsons(pv, pending)) {
-		pv_log(ERROR, "unable to install platform and pantavisor jsons");
+		pv_log(ERROR,
+		       "unable to install platform and pantavisor jsons");
 		ret = -1;
 		goto out;
 	}
@@ -1896,8 +1965,10 @@ int pv_update_resume(struct pantavisor *pv)
 		if (!rev)
 			return -1;
 
-		pv_log(INFO, "loading update data from rev %s after reboot...", rev);
-		pv->update = pv_update_new(pv_config_get_creds_id(), rev, false);
+		pv_log(INFO, "loading update data from rev %s after reboot...",
+		       rev);
+		pv->update =
+			pv_update_new(pv_config_get_creds_id(), rev, false);
 		if (!pv->update)
 			return -1;
 
@@ -1917,14 +1988,12 @@ bool pv_update_is_transitioning(struct pv_update *u)
 
 bool pv_update_is_trying(struct pv_update *u)
 {
-	return (u &&
-		((u->status == UPDATE_TRANSITION) ||
-		(u->status == UPDATE_TRY)));
+	return (u && ((u->status == UPDATE_TRANSITION) ||
+		      (u->status == UPDATE_TRY)));
 }
 
 bool pv_update_is_testing(struct pv_update *u)
 {
-	return (u &&
-		((u->status == UPDATE_TESTING_REBOOT) ||
-		(u->status == UPDATE_TESTING_NONREBOOT)));
+	return (u && ((u->status == UPDATE_TESTING_REBOOT) ||
+		      (u->status == UPDATE_TESTING_NONREBOOT)));
 }

@@ -30,7 +30,7 @@ struct pv_addon {
 	struct dl_list list; // pv_addon
 };
 
-struct pv_addon* pv_addon_add(struct pv_state *s, char *name);
+struct pv_addon *pv_addon_add(struct pv_state *s, char *name);
 
 void pv_addons_empty(struct pv_state *s);
 

@@ -45,11 +45,11 @@
 #include "metadata.h"
 #include "utils/str.h"
 
-#define MODULE_NAME		"network"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "network"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-#define ifreq_offsetof(x)  offsetof(struct ifreq, x)
+#define ifreq_offsetof(x) offsetof(struct ifreq, x)
 
 #define IFACES_FMT "{"
 #define IFACE_FMT "\"%s\":[%s]"
@@ -57,14 +57,14 @@
 static int _set_netmask(int skfd, char *intf, char *newmask)
 {
 	struct ifreq ifr;
-	struct sockaddr_in *sin = (struct sockaddr_in *) &ifr.ifr_addr;
+	struct sockaddr_in *sin = (struct sockaddr_in *)&ifr.ifr_addr;
 	memset(&ifr, 0, sizeof(ifr));
 	sin->sin_family = AF_INET;
 	if (!inet_pton(AF_INET, newmask, &sin->sin_addr)) {
 		return -1;
 	}
-	strncpy(ifr.ifr_name, intf, IFNAMSIZ-1);
-	if (ioctl(skfd,SIOCSIFNETMASK,&ifr) == -1) {
+	strncpy(ifr.ifr_name, intf, IFNAMSIZ - 1);
+	if (ioctl(skfd, SIOCSIFNETMASK, &ifr) == -1) {
 		return -1;
 	}
 	return 0;
@@ -75,7 +75,7 @@ void pv_network_update_meta(struct pantavisor *pv)
 	struct ifaddrs *ifaddr, *ifa;
 	int family, s, n, len, ilen = 0;
 	int size;
-	char host[NI_MAXHOST], ifn[IFNAMSIZ+5], iff[IFNAMSIZ+5];
+	char host[NI_MAXHOST], ifn[IFNAMSIZ + 5], iff[IFNAMSIZ + 5];
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
 
 	if (getifaddrs(&ifaddr) < 0) {
@@ -95,12 +95,13 @@ void pv_network_update_meta(struct pantavisor *pv)
 			continue;
 
 		s = getnameinfo(ifa->ifa_addr,
-			(family == AF_INET) ? sizeof(struct sockaddr_in) :
+				(family == AF_INET) ?
+					sizeof(struct sockaddr_in) :
 					      sizeof(struct sockaddr_in6),
-			host, NI_MAXHOST,
-			NULL, 0, NI_NUMERICHOST);
+				host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 
-		SNPRINTF_WTRUNC(iff, sizeof (iff), "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+		SNPRINTF_WTRUNC(iff, sizeof(iff), "%s.%s", ifa->ifa_name,
+				family == AF_INET ? "ipv4" : "ipv6");
 		if (!strcmp(ifn, iff)) {
 			ilen += strlen(host) + 4;
 			ifaddrs = realloc(ifaddrs, ilen);
@@ -108,22 +109,28 @@ void pv_network_update_meta(struct pantavisor *pv)
 			SNPRINTF_WTRUNC(ifaddrs, ilen, "%s,\"%s\"", t, host);
 			free(t);
 		} else {
-			SNPRINTF_WTRUNC(ifn, sizeof (ifn), "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+			SNPRINTF_WTRUNC(ifn, sizeof(ifn), "%s.%s",
+					ifa->ifa_name,
+					family == AF_INET ? "ipv4" : "ipv6");
 			ilen = 0;
 			ilen += strlen(host) + 4;
 			ifaddrs = realloc(ifaddrs, ilen);
 			SNPRINTF_WTRUNC(ifaddrs, ilen, "\"%s\"", host);
 		}
 		if (ifa->ifa_next != NULL) {
-			SNPRINTF_WTRUNC(iff, sizeof (iff),
-					"%s.%s", ifa->ifa_next->ifa_name,
-					ifa->ifa_next->ifa_addr->sa_family == AF_INET ? "ip4" : "ipv6");
+			SNPRINTF_WTRUNC(iff, sizeof(iff), "%s.%s",
+					ifa->ifa_next->ifa_name,
+					ifa->ifa_next->ifa_addr->sa_family ==
+							AF_INET ?
+						"ip4" :
+						      "ipv6");
 
-			if (!strncmp(ifn, iff, sizeof (ifn)))
+			if (!strncmp(ifn, iff, sizeof(ifn)))
 				continue;
 		}
 
-		SNPRINTF_WTRUNC(ifn, sizeof (ifn), "%s.%s", ifa->ifa_name, family == AF_INET ? "ipv4" : "ipv6");
+		SNPRINTF_WTRUNC(ifn, sizeof(ifn), "%s.%s", ifa->ifa_name,
+				family == AF_INET ? "ipv4" : "ipv6");
 		size = sizeof(IFACE_FMT) + strlen(ifn) + strlen(ifaddrs);
 		buf = calloc(size, sizeof(char));
 		len += snprintf(buf, size, IFACE_FMT, ifn, ifaddrs);
@@ -150,7 +157,7 @@ static int pv_network_early_init(struct pv_init *this)
 	int fd, ret;
 	struct ifreq ifr;
 	struct sockaddr_in sai;
-	int sockfd;                     /* socket fd we use to manipulate stuff with */
+	int sockfd; /* socket fd we use to manipulate stuff with */
 	char *p;
 
 	memset(&ifr, 0, sizeof(ifr));
@@ -170,7 +177,6 @@ static int pv_network_early_init(struct pv_init *this)
 		       pv_config_get_network_brdev(), strerror(errno));
 	}
 
-
 	/* Create a channel to the NET kernel. */
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -186,39 +192,41 @@ static int pv_network_early_init(struct pv_init *this)
 
 	ifr.ifr_flags |= IFF_UP;
 	ifr.ifr_flags |= IFF_RUNNING;
-        ret = ioctl(sockfd, SIOCSIFFLAGS, &ifr);
+	ret = ioctl(sockfd, SIOCSIFFLAGS, &ifr);
 	if (ret < 0) {
 		pv_log(WARN, "unable to update flags for bridge dev %s: %s",
 		       pv_config_get_network_brdev(), strerror(errno));
 		goto out;
 	}
 
-        memset(&sai, 0, sizeof(struct sockaddr));
-        sai.sin_family = AF_INET;
-        sai.sin_port = 0;
+	memset(&sai, 0, sizeof(struct sockaddr));
+	sai.sin_family = AF_INET;
+	sai.sin_port = 0;
 
-        sai.sin_addr.s_addr = inet_addr(pv_config_get_network_braddress4());
+	sai.sin_addr.s_addr = inet_addr(pv_config_get_network_braddress4());
 
-        p = (char *) &sai;
-        memcpy( (((char *)&ifr + ifreq_offsetof(ifr_addr) )),
-		p, sizeof(struct sockaddr));
+	p = (char *)&sai;
+	memcpy((((char *)&ifr + ifreq_offsetof(ifr_addr))), p,
+	       sizeof(struct sockaddr));
 
-        ret = ioctl(sockfd, SIOCSIFADDR, &ifr);
+	ret = ioctl(sockfd, SIOCSIFADDR, &ifr);
 	if (ret < 0) {
 		pv_log(WARN, "unable to set IPv4 of bridge dev %s to %s: %s",
-		       pv_config_get_network_brdev(), pv_config_get_network_braddress4(), strerror(errno));
+		       pv_config_get_network_brdev(),
+		       pv_config_get_network_braddress4(), strerror(errno));
 		goto out;
 	}
 
-	ret = _set_netmask(sockfd, pv_config_get_network_brdev(), pv_config_get_network_brmask4());
+	ret = _set_netmask(sockfd, pv_config_get_network_brdev(),
+			   pv_config_get_network_brmask4());
 	if (ret < 0) {
 		pv_log(WARN, "unable to set netmask %s: %s",
 		       pv_config_get_network_brdev(), strerror(errno));
 		goto out;
 	}
 
- out:
-        close(sockfd);
+out:
+	close(sockfd);
 
 	return ret;
 }

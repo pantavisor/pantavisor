@@ -31,17 +31,16 @@
  * private struct.
  */
 struct json_format {
-       char ch;
-       int *off_dst;
-       int *off_src;
-       const char *src;
-       char *dst;
-       int (*format)(struct json_format *);
+	char ch;
+	int *off_dst;
+	int *off_src;
+	const char *src;
+	char *dst;
+	int (*format)(struct json_format *);
 };
 
-
-static char nibble_to_hexchar(char nibble_val) {
-
+static char nibble_to_hexchar(char nibble_val)
+{
 	if (nibble_val <= 9)
 		return '0' + nibble_val;
 	nibble_val -= 10;
@@ -79,27 +78,27 @@ static bool char_is_json_special(char ch)
 	 * through U+001F).
 	 */
 
-	switch(ch) {
-		case 0x00 ... 0x1f:
-		case '\\':
-		case '\"':
-			return true;
-		default:
-			return false;
+	switch (ch) {
+	case 0x00 ... 0x1f:
+	case '\\':
+	case '\"':
+		return true;
+	default:
+		return false;
 	}
 }
 
-int pv_json_get_key_count(const char *buf, const char *key, jsmntok_t *tok, int tokc)
+int pv_json_get_key_count(const char *buf, const char *key, jsmntok_t *tok,
+			  int tokc)
 {
 	int count = 0;
 
-	for (int i=0; i<tokc; i++) {
+	for (int i = 0; i < tokc; i++) {
 		int n = tok[i].end - tok[i].start;
 		int m = strlen(key);
 
-		if (n == m &&
-		    tok[i].type == JSMN_STRING
-		    && !strncmp(buf + tok[i].start, key, n)) {
+		if (n == m && tok[i].type == JSMN_STRING &&
+		    !strncmp(buf + tok[i].start, key, n)) {
 			count += 1;
 		}
 	}
@@ -107,18 +106,18 @@ int pv_json_get_key_count(const char *buf, const char *key, jsmntok_t *tok, int 
 	return count;
 }
 
-char* pv_json_get_one_str(const char *buf, jsmntok_t **tok)
+char *pv_json_get_one_str(const char *buf, jsmntok_t **tok)
 {
 	int c;
 	char *value = NULL;
 	c = (*tok)->end - (*tok)->start;
-	value = calloc(c+1, sizeof(char));
+	value = calloc(c + 1, sizeof(char));
 	if (value)
-		strncpy(value, buf+(*tok)->start, c);
+		strncpy(value, buf + (*tok)->start, c);
 	return value;
 }
 
-char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok)
+char *pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok)
 {
 	char *value = NULL;
 
@@ -132,65 +131,66 @@ char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok)
 	return value;
 }
 
-int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t* tok, int tokc)
+int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t *tok,
+			  int tokc)
 {
 	int i;
 	int val = 0;
-	int t=-1;
+	int t = -1;
 
-	for(i=0; i<tokc; i++) {
+	for (i = 0; i < tokc; i++) {
 		int n = tok[i].end - tok[i].start;
-		int m = strlen (key);
-		if (tok[i].type == JSMN_PRIMITIVE
-		    && n == m
-		    && !strncmp(buf + tok[i].start, key, n)) {
-			t=1;
-		} else if (t==1) {
-			char *idval = malloc(n+1);
+		int m = strlen(key);
+		if (tok[i].type == JSMN_PRIMITIVE && n == m &&
+		    !strncmp(buf + tok[i].start, key, n)) {
+			t = 1;
+		} else if (t == 1) {
+			char *idval = malloc(n + 1);
 			idval[n] = 0;
 			strncpy(idval, buf + tok[i].start, n);
 			val = atoi(idval);
 			free(idval);
 			return val;
-		} else if (t==1) {
+		} else if (t == 1) {
 			return val;
 		}
 	}
 	return val;
 }
 
-char* pv_json_get_value(const char *buf, const char *key, jsmntok_t* tok, int tokc)
+char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
+			int tokc)
 {
 	int i;
-	int t=-1;
+	int t = -1;
 
-	for(i=0; i<tokc; i++) {
+	for (i = 0; i < tokc; i++) {
 		int n = tok[i].end - tok[i].start;
-		int m = strlen (key);
-		if (n == m
-		    && tok[i].type == JSMN_STRING
-		    && !strncmp(buf + tok[i].start, key, n)) {
-			t=1;
-		} else if (t==1) {
-			char *idval = malloc(n+1);
+		int m = strlen(key);
+		if (n == m && tok[i].type == JSMN_STRING &&
+		    !strncmp(buf + tok[i].start, key, n)) {
+			t = 1;
+		} else if (t == 1) {
+			char *idval = malloc(n + 1);
 			idval[n] = 0;
 			strncpy(idval, buf + tok[i].start, n);
 			return idval;
-		} else if (t==1) {
+		} else if (t == 1) {
 			return NULL;
 		}
 	}
 	return NULL;
 }
 
-char* pv_json_format(const char *buf, int len)
+char *pv_json_format(const char *buf, int len)
 {
 	char *json_string = NULL;
 	int idx = 0;
 	int json_str_idx = 0;
 
 	if (len > 0) //We make enough room for worst case.
-		json_string = calloc((len * 6) + 1, sizeof(char)); //Add 1 for '\0'.
+		json_string =
+			calloc((len * 6) + 1, sizeof(char)); //Add 1 for '\0'.
 
 	if (!json_string)
 		goto out;
@@ -237,7 +237,7 @@ void pv_json_ser_init(struct pv_json_ser *js, size_t size)
 static void pv_json_ser_resize(struct pv_json_ser *js)
 {
 	js->size += js->block_size;
-	js->buf = realloc(js->buf, js->size * sizeof(char*));
+	js->buf = realloc(js->buf, js->size * sizeof(char *));
 	if (!js->buf)
 		js->size = 0;
 }
@@ -351,7 +351,8 @@ int pv_json_ser_string(struct pv_json_ser *js, const char *value)
 	ret = jsonb_string(&js->b, js->buf, js->size, value, strlen(value));
 	if (ret == JSONB_ERROR_NOMEM) {
 		pv_json_ser_resize(js);
-		ret = jsonb_string(&js->b, js->buf, js->size, value, strlen(value));
+		ret = jsonb_string(&js->b, js->buf, js->size, value,
+				   strlen(value));
 	}
 
 	return ret;
@@ -389,7 +390,7 @@ int pv_json_ser_number(struct pv_json_ser *js, double value)
 	return ret;
 }
 
-char* pv_json_ser_str(struct pv_json_ser *js)
+char *pv_json_ser_str(struct pv_json_ser *js)
 {
 	return js->buf;
 }

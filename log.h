@@ -32,22 +32,24 @@
 void exit_error(int err, char *msg);
 
 enum log_level {
-	FATAL,	// 0
-	ERROR,	// 1
-	WARN,	// 2
-	INFO,	// 3
-	DEBUG,	// 4
-	ALL	// 5
+	FATAL, // 0
+	ERROR, // 1
+	WARN, // 2
+	INFO, // 3
+	DEBUG, // 4
+	ALL // 5
 };
 
-#define JSON_FORMAT	"{ \"tsec\": %"PRId64", \"tnano\": %"PRId32", \"lvl\": \"%s\", \"src\": \"%s\", \"msg\": \"%s\" }"
+#define JSON_FORMAT                                                            \
+	"{ \"tsec\": %" PRId64 ", \"tnano\": %" PRId32                         \
+	", \"lvl\": \"%s\", \"src\": \"%s\", \"msg\": \"%s\" }"
 
 // Example log:		"[pantavisor] WARN [2016-12-01 13:22:26] -- [updater]: Cannot poke cloud"
-#define DATE_FORMAT		"2016-12-01 13:22:26"
+#define DATE_FORMAT "2016-12-01 13:22:26"
 
-#define vlog(module, level, ...)	__log(module, level, ## __VA_ARGS__);
+#define vlog(module, level, ...) __log(module, level, ##__VA_ARGS__);
 
-#define LOG_MAX_FILE_SIZE 		(2 * 1024 * 1024)
+#define LOG_MAX_FILE_SIZE (2 * 1024 * 1024)
 
 int pv_log_start(struct pantavisor *pv, const char *rev);
 

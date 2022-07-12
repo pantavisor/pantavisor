@@ -36,18 +36,17 @@
 #include "log.h"
 
 struct level_name {
-    int log_level;
-    char *name;
+	int log_level;
+	char *name;
 };
 
-#define LEVEL_NAME(LEVEL)   { LEVEL, #LEVEL }
-static struct level_name level_names[] = { 
-    LEVEL_NAME(FATAL),
-    LEVEL_NAME(ERROR),
-    LEVEL_NAME(WARN),
-    LEVEL_NAME(INFO),
-    LEVEL_NAME(DEBUG)
-};
+#define LEVEL_NAME(LEVEL)                                                      \
+	{                                                                      \
+		LEVEL, #LEVEL                                                  \
+	}
+static struct level_name level_names[] = { LEVEL_NAME(FATAL), LEVEL_NAME(ERROR),
+					   LEVEL_NAME(WARN), LEVEL_NAME(INFO),
+					   LEVEL_NAME(DEBUG) };
 
 /*
  * v1 has the following message format in buffer
@@ -57,7 +56,8 @@ static struct level_name level_names[] = {
  *
  * args should contain the valid addresses for the above in the order they appear above.
  */
-int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va_list args)
+int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf,
+			      va_list args)
 {
 	int level = 0;
 	char *platform = NULL;
@@ -72,16 +72,16 @@ int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va
 	//+ 1 to Skip over the NULL byte post level
 	platform = ph_logger_msg->buffer + strlen(ph_logger_msg->buffer) + 1;
 	bytes_read += strlen(platform) + 1;
-	source =  platform + strlen(platform) + 1;
+	source = platform + strlen(platform) + 1;
 	bytes_read += strlen(source) + 1;
 
-	data =  source + strlen(source) + 1;
+	data = source + strlen(source) + 1;
 	//Copy level.
-	dst_level = va_arg(args, int*);
+	dst_level = va_arg(args, int *);
 	*dst_level = level;
 
 	//Copy platform.
-	dst_platform = va_arg(args, char**);
+	dst_platform = va_arg(args, char **);
 	*dst_platform = platform;
 
 	//Copy source.
@@ -103,7 +103,8 @@ int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va
  * len (length of the data in buf)
  * args should contain the valid addresses for the above in the order they appear above.
  */
-int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, va_list args)
+int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf,
+			       va_list args)
 {
 	int level = 0;
 	char *platform = NULL;
@@ -116,20 +117,23 @@ int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, v
 
 	//Copy level.
 	level = va_arg(args, int);
-	written += snprintf(ph_logger_msg->buffer + written, avail_len, "%d%c", level,'\0');
+	written += snprintf(ph_logger_msg->buffer + written, avail_len, "%d%c",
+			    level, '\0');
 	avail_len -= written;
 
 	//Copy platform.
-	platform = va_arg(args, char*);
-	written += snprintf(ph_logger_msg->buffer + written, avail_len, "%s%c", platform,'\0');
+	platform = va_arg(args, char *);
+	written += snprintf(ph_logger_msg->buffer + written, avail_len, "%s%c",
+			    platform, '\0');
 	avail_len -= written;
 
 	//Copy source.
-	source = va_arg(args, char*);
-	written += snprintf(ph_logger_msg->buffer + written, avail_len, "%s%c", source,'\0');
+	source = va_arg(args, char *);
+	written += snprintf(ph_logger_msg->buffer + written, avail_len, "%s%c",
+			    source, '\0');
 	avail_len -= written;
 
-	data_len = va_arg(args, int); 
+	data_len = va_arg(args, int);
 	to_copy = (data_len <= avail_len) ? data_len : avail_len;
 	if (buf)
 		memcpy(ph_logger_msg->buffer + written, buf, to_copy);
@@ -139,7 +143,8 @@ int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf, v
 	return to_copy;
 }
 
-int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, const char *log_dir, char *rev)
+int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg,
+				       const char *log_dir, char *rev)
 {
 	char pathname[PATH_MAX];
 	int written = 0;
@@ -157,7 +162,8 @@ int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, cons
 	ph_logger_read_bytes(ph_logger_msg, NULL, &level, &platform, &source);
 	/*Data is after source*/
 	data = source + strlen(source) + 1;
-	written = snprintf(pathname, sizeof(pathname), "%s/%s/%s/%s", log_dir, rev, platform, source);
+	written = snprintf(pathname, sizeof(pathname), "%s/%s/%s/%s", log_dir,
+			   rev, platform, source);
 	dup_pathname = strdup(pathname);
 	fname = dirname(dup_pathname);
 	/*
@@ -172,12 +178,14 @@ int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg, cons
 			if (st.st_size >= MAX_SIZE)
 				ftruncate(log_fd, 0);
 		}
-		dprintf(log_fd, "%s -- %.*s\n", level_names[level].name, ph_logger_msg->len, data);
+		dprintf(log_fd, "%s -- %.*s\n", level_names[level].name,
+			ph_logger_msg->len, data);
 		close(log_fd);
 		ret = 0;
 	} else {
 		WARN_ONCE("Error opening file %s/%s, "
-				"errno = %d\n", platform, source, errno);
+			  "errno = %d\n",
+			  platform, source, errno);
 	}
 error:
 	free(dup_pathname);

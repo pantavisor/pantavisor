@@ -24,7 +24,7 @@
 
 #include "state.h"
 
-struct pv_state* pv_parser_get_state(const char *buf, const char *rev);
-char* pv_parser_get_initrd_config_name(const char *buf);
+struct pv_state *pv_parser_get_state(const char *buf, const char *rev);
+char *pv_parser_get_initrd_config_name(const char *buf);
 
 #endif

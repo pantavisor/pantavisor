@@ -35,8 +35,8 @@
 #include "init.h"
 #include "utils/str.h"
 
-#define MODULE_NAME			"bootloader"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "bootloader"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 struct pv_bootloader {
@@ -54,23 +54,21 @@ const struct bl_ops *ops = 0;
 
 void pv_bootloader_print()
 {
-	pv_log(DEBUG, "rev=%s;try=%s;done=%s",
-		pv_bootloader.pv_rev,
-		pv_bootloader.pv_try,
-		pv_bootloader.pv_done);
+	pv_log(DEBUG, "rev=%s;try=%s;done=%s", pv_bootloader.pv_rev,
+	       pv_bootloader.pv_try, pv_bootloader.pv_done);
 }
 
-const char* pv_bootloader_get_rev()
+const char *pv_bootloader_get_rev()
 {
 	return pv_bootloader.pv_rev;
 }
 
-const char* pv_bootloader_get_try()
+const char *pv_bootloader_get_try()
 {
 	return pv_bootloader.pv_try;
 }
 
-const char* pv_bootloader_get_done()
+const char *pv_bootloader_get_done()
 {
 	return pv_bootloader.pv_done;
 }
@@ -82,9 +80,11 @@ static int pv_bootloader_set_rev(char *rev)
 	if (!ops)
 		return -1;
 
-	pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, len * sizeof(char*));
+	pv_bootloader.pv_rev =
+		realloc(pv_bootloader.pv_rev, len * sizeof(char *));
 	SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s", rev);
-	pv_bootloader.pv_done = realloc(pv_bootloader.pv_done, len * sizeof(char*));
+	pv_bootloader.pv_done =
+		realloc(pv_bootloader.pv_done, len * sizeof(char *));
 	SNPRINTF_WTRUNC(pv_bootloader.pv_done, len, "%s", rev);
 	return ops->set_env_key("pv_rev", rev);
 }
@@ -96,7 +96,8 @@ static int pv_bootloader_set_try(char *rev)
 	if (!ops)
 		return -1;
 
-	pv_bootloader.pv_try = realloc(pv_bootloader.pv_try, len * sizeof(char*));
+	pv_bootloader.pv_try =
+		realloc(pv_bootloader.pv_try, len * sizeof(char *));
 	SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s", rev);
 	return ops->set_env_key("pv_try", rev);
 }
@@ -106,9 +107,9 @@ static int pv_bootloader_unset_try()
 	if (!ops)
 		return -1;
 
-	if(pv_bootloader.pv_try)
+	if (pv_bootloader.pv_try)
 		free(pv_bootloader.pv_try);
-	pv_bootloader.pv_try= NULL;
+	pv_bootloader.pv_try = NULL;
 	return ops->unset_env_key("pv_try");
 }
 
@@ -124,12 +125,15 @@ bool pv_bootloader_trying_update()
 		return false;
 
 	return (pv_bootloader_update_in_progress() &&
-			!strncmp(pv_bootloader_get_rev(), pv_try, strlen(pv_bootloader_get_rev()) + 1));
+		!strncmp(pv_bootloader_get_rev(), pv_try,
+			 strlen(pv_bootloader_get_rev()) + 1));
 }
 
 int pv_bootloader_set_installed(char *rev)
 {
-	pv_log(INFO, "setting installed revision %s to be started after next reboot", rev);
+	pv_log(INFO,
+	       "setting installed revision %s to be started after next reboot",
+	       rev);
 	return pv_bootloader_set_try(rev);
 }
 
@@ -138,13 +142,17 @@ int pv_bootloader_set_commited(char *rev)
 	if (!ops)
 		return -1;
 
-	pv_log(INFO, "setting done revision %s to be started after next reboot", rev);
-	return (pv_bootloader_set_rev(rev) || pv_bootloader_unset_try() || ops->flush_env());
+	pv_log(INFO, "setting done revision %s to be started after next reboot",
+	       rev);
+	return (pv_bootloader_set_rev(rev) || pv_bootloader_unset_try() ||
+		ops->flush_env());
 }
 
 int pv_bootloader_set_failed()
 {
-	pv_log(INFO, "setting failed revision %s not to be started after next reboot", pv_bootloader_get_try());
+	pv_log(INFO,
+	       "setting failed revision %s not to be started after next reboot",
+	       pv_bootloader_get_try());
 	return pv_bootloader_unset_try();
 }
 
@@ -163,17 +171,17 @@ static int pv_bl_init()
 	int ret;
 
 	switch (pv_config_get_bl_type()) {
-		case BL_UBOOT_PLAIN:
-		case BL_UBOOT_PVK:
-			ops = &uboot_ops;
-			break;
-		case BL_GRUB:
-			ops = &grub_ops;
-			break;
-		default:
-			pv_log(ERROR, "unknown bootoader type!");
-			return -1;
-			break;
+	case BL_UBOOT_PLAIN:
+	case BL_UBOOT_PVK:
+		ops = &uboot_ops;
+		break;
+	case BL_GRUB:
+		ops = &grub_ops;
+		break;
+	default:
+		pv_log(ERROR, "unknown bootoader type!");
+		return -1;
+		break;
 	}
 
 	ret = ops->init();
@@ -203,12 +211,16 @@ static int pv_bl_early_init(struct pv_init *this)
 	while (token) {
 		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
 			len = strlen(token + CMDLINE_OFFSET) + 1;
-			pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev, len * sizeof(char*));
-			SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s", token + CMDLINE_OFFSET);
+			pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev,
+						       len * sizeof(char *));
+			SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s",
+					token + CMDLINE_OFFSET);
 		} else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0) {
 			len = strlen(token + CMDLINE_OFFSET) + 1;
-			pv_bootloader.pv_try = realloc(pv_bootloader.pv_try, len * sizeof(char*));
-			SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s", token + CMDLINE_OFFSET);
+			pv_bootloader.pv_try = realloc(pv_bootloader.pv_try,
+						       len * sizeof(char *));
+			SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s",
+					token + CMDLINE_OFFSET);
 		}
 		token = strtok(NULL, " ");
 	}

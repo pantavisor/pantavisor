@@ -30,7 +30,7 @@ struct pv_group {
 	struct dl_list list; // pv_group
 };
 
-struct pv_group* pv_group_new(char *name);
+struct pv_group *pv_group_new(char *name);
 void pv_group_free(struct pv_group *g);
 
 #endif // PV_GROUP_H

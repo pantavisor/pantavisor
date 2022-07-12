@@ -20,7 +20,6 @@
  * SOFTWARE.
  */
 
-
 #include <stdlib.h>
 #include <stdarg.h>
 #include <unistd.h>
@@ -51,8 +50,8 @@
 #include "buffer.h"
 #include "paths.h"
 
-#define MODULE_NAME		"log"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "log"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 struct level_name {
@@ -60,14 +59,13 @@ struct level_name {
 	char *name;
 };
 
-#define LEVEL_NAME(LEVEL)	{ LEVEL, #LEVEL }
-static struct level_name level_names[] = {
-	LEVEL_NAME(FATAL),
-	LEVEL_NAME(ERROR),
-	LEVEL_NAME(WARN),
-	LEVEL_NAME(INFO),
-	LEVEL_NAME(DEBUG)
-};
+#define LEVEL_NAME(LEVEL)                                                      \
+	{                                                                      \
+		LEVEL, #LEVEL                                                  \
+	}
+static struct level_name level_names[] = { LEVEL_NAME(FATAL), LEVEL_NAME(ERROR),
+					   LEVEL_NAME(WARN), LEVEL_NAME(INFO),
+					   LEVEL_NAME(DEBUG) };
 
 static char log_dir[PATH_MAX];
 static char log_path[PATH_MAX];
@@ -84,16 +82,17 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 	struct stat log_stat;
 	int log_fd = -1;
 	int max_gzip = 3;
-	char time_buf[MAX_DEC_STRING_SIZE_OF_TYPE (unsigned long long)];
-	epochsecstring(time_buf, sizeof (time_buf), time(NULL));
+	char time_buf[MAX_DEC_STRING_SIZE_OF_TYPE(unsigned long long)];
+	epochsecstring(time_buf, sizeof(time_buf), time(NULL));
 	// hold 2MiB max of log entries in open file
 	//Check on disk file size.
 
 	if (!logging_initialized || logging_stdout) {
 		// construct string because we cannot lock stdout
-		size_t size = snprintf(NULL, 0,
-				"[pantavisor] %s %s\t -- [%s]: ",
-				time_buf, level_names[level].name, module);
+		size_t size =
+			snprintf(NULL, 0,
+				 "[pantavisor] %s %s\t -- [%s]: ", time_buf,
+				 level_names[level].name, module);
 		size += vsnprintf(NULL, 0, fmt, args);
 		// 1 '\0' char
 		size++;
@@ -101,16 +100,17 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		if (!buf) {
 			// Fall back to multiple printfs instead of printing once
 			// Ouptu may get split up by other processes.
-			printf("[pantavisor] %s %s\t -- [%s]: ",
-					time_buf, level_names[level].name, module);
+			printf("[pantavisor] %s %s\t -- [%s]: ", time_buf,
+			       level_names[level].name, module);
 			vprintf(fmt, args);
 			printf("\n");
 		} else {
-			size_t offs = snprintf(buf, size,
-					"[pantavisor] %s %s\t -- [%s]: ",
-					time_buf, level_names[level].name, module);
+			size_t offs = snprintf(
+				buf, size,
+				"[pantavisor] %s %s\t -- [%s]: ", time_buf,
+				level_names[level].name, module);
 			offs += vsnprintf(buf + offs, size - offs, fmt, args);
-			printf("%s%s\n", buf, offs >= size ? " [TRUNC]": "");
+			printf("%s%s\n", buf, offs >= size ? " [TRUNC]" : "");
 			free(buf);
 		}
 
@@ -134,23 +134,33 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		 */
 		if (ret) {
 			char err_file[PATH_MAX];
-			char proc_name[17] = {0};
+			char proc_name[17] = { 0 };
 			int len = 0;
 			int err_fd = -1;
 
-			SNPRINTF_WTRUNC(err_file, PATH_MAX, "%s/%s", log_dir, LOGS_ERROR_DNAME);
+			SNPRINTF_WTRUNC(err_file, PATH_MAX, "%s/%s", log_dir,
+					LOGS_ERROR_DNAME);
 
 			pv_fs_mkdir_p(err_file, 0755);
 			len = strlen(err_file);
-			SNPRINTF_WTRUNC(err_file + len, PATH_MAX - len, "/%d.error", getpid());
+			SNPRINTF_WTRUNC(err_file + len, PATH_MAX - len,
+					"/%d.error", getpid());
 
 			err_fd = open(err_file,
-					O_EXCL|O_RDWR|O_CREAT|O_APPEND|O_SYNC, 0644);
+				      O_EXCL | O_RDWR | O_CREAT | O_APPEND |
+					      O_SYNC,
+				      0644);
 			if (err_fd >= 0) {
-				prctl(PR_GET_NAME, (unsigned long)proc_name, 0, 0, 0, 0);
-				dprintf(err_fd, "process %s couldn't acquire "LOGS_PV_FNAME" lock\n", proc_name);
-				dprintf(err_fd, "error code %d: %s\n", errno, strerror(lock_file_errno));
-				dprintf(err_fd, "[pantavisor] %s\t -- ", level_names[level].name);
+				prctl(PR_GET_NAME, (unsigned long)proc_name, 0,
+				      0, 0, 0);
+				dprintf(err_fd,
+					"process %s couldn't acquire " LOGS_PV_FNAME
+					" lock\n",
+					proc_name);
+				dprintf(err_fd, "error code %d: %s\n", errno,
+					strerror(lock_file_errno));
+				dprintf(err_fd, "[pantavisor] %s\t -- ",
+					level_names[level].name);
 				dprintf(err_fd, "[%s]: ", module);
 				vdprintf(err_fd, fmt, args);
 				dprintf(err_fd, "\n");
@@ -165,11 +175,13 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		if (log_stat.st_size >= LOG_MAX_FILE_SIZE) {
 			int i = 0;
 
-			for( i = 0; i < max_gzip; i++) {
+			for (i = 0; i < max_gzip; i++) {
 				struct stat stat_gz;
 				char gzip_path[PATH_MAX];
 
-				SNPRINTF_WTRUNC(gzip_path, PATH_MAX, "%s.%d.gzip", log_path, (i+1));
+				SNPRINTF_WTRUNC(gzip_path, PATH_MAX,
+						"%s.%d.gzip", log_path,
+						(i + 1));
 				if (stat(gzip_path, &stat_gz))
 					pv_fs_file_gzip(log_path, gzip_path);
 			}
@@ -180,7 +192,8 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 		}
 	}
 	if (log_fd >= 0) {
-		dprintf(log_fd, "[pantavisor] %s %s\t -- ", time_buf, level_names[level].name);
+		dprintf(log_fd, "[pantavisor] %s %s\t -- ", time_buf,
+			level_names[level].name);
 		dprintf(log_fd, "[%s]: ", module);
 		vdprintf(log_fd, fmt, args);
 		dprintf(log_fd, "\n");
@@ -203,7 +216,8 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 static int pv_log_set_log_dir(const char *rev)
 {
 	pv_paths_pv_log_plat(log_dir, PATH_MAX, rev, LOGS_PV_DNAME);
-	pv_paths_pv_log_file(log_path, PATH_MAX, rev, LOGS_PV_DNAME, LOGS_PV_FNAME);
+	pv_paths_pv_log_file(log_path, PATH_MAX, rev, LOGS_PV_DNAME,
+			     LOGS_PV_FNAME);
 
 	if (pv_fs_mkdir_p(log_dir, 0755)) {
 		printf("ERROR: could not make %s\n", log_dir);
@@ -253,7 +267,7 @@ int pv_log_start(struct pantavisor *pv, const char *rev)
 		return 0;
 
 	if (pv_log_set_log_dir(rev) < 0) {
-		printf("Error: unable to start "LOGS_PV_FNAME"\n");
+		printf("Error: unable to start " LOGS_PV_FNAME "\n");
 		return -1;
 	}
 
@@ -298,19 +312,24 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "| | | (_| | | | | || (_| |\\ V /| \\__ \\ (_) | |   ");
 	pv_log(INFO, "\\_|  \\__,_|_| |_|\\__\\__,_| \\_/ |_|___/\\___/|_|   ");
 	pv_log(INFO, "                                                 ");
-	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com", pv_build_version);
+	pv_log(INFO, "Pantavisor (TM) (%s) - www.pantahub.com",
+	       pv_build_version);
 	pv_log(INFO, "                                                 ");
 	pv_log(INFO, "storage.path = '%s'", pv_config_get_storage_path());
 	pv_log(INFO, "storage.fstype = '%s'", pv_config_get_storage_fstype());
 	pv_log(INFO, "storage.opts = '%s'", pv_config_get_storage_opts());
-	pv_log(INFO, "storage.mntpoint = '%s'", pv_config_get_storage_mntpoint());
+	pv_log(INFO, "storage.mntpoint = '%s'",
+	       pv_config_get_storage_mntpoint());
 	pv_log(INFO, "storage.mnttype = '%s'", pv_config_get_storage_mnttype());
 	pv_log(INFO, "secureboot.mode = '%d'", pv_config_get_secureboot_mode());
 	pv_log(INFO, "creds.host = '%s'", pv_config_get_creds_host());
 	pv_log(INFO, "creds.port = '%d'", pv_config_get_creds_port());
-	pv_log(INFO, "creds.host_proxy = '%s'", pv_config_get_creds_host_proxy());
-	pv_log(INFO, "creds.port_proxy = '%d'", pv_config_get_creds_port_proxy());
-	pv_log(INFO, "creds.noproxyconnect = '%d'", pv_config_get_creds_noproxyconnect());
+	pv_log(INFO, "creds.host_proxy = '%s'",
+	       pv_config_get_creds_host_proxy());
+	pv_log(INFO, "creds.port_proxy = '%d'",
+	       pv_config_get_creds_port_proxy());
+	pv_log(INFO, "creds.noproxyconnect = '%d'",
+	       pv_config_get_creds_noproxyconnect());
 	pv_log(INFO, "creds.id = '%s'", pv_config_get_creds_id());
 	pv_log(INFO, "creds.prn = '%s'", pv_config_get_creds_prn());
 	pv_log(INFO, "creds.secret = '%s'", pv_config_get_creds_secret());
@@ -323,7 +342,8 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "log.loglevel = '%d'", pv_config_get_log_loglevel());
 	pv_log(INFO, "log.logsize = '%d'", pv_config_get_log_logsize());
 	pv_log(INFO, "lxc.log.level = '%d'", pv_config_get_lxc_loglevel());
-	pv_log(INFO, "libthttp.loglevel = '%d'", pv_config_get_libthttp_loglevel());
+	pv_log(INFO, "libthttp.loglevel = '%d'",
+	       pv_config_get_libthttp_loglevel());
 	pv_bootloader_print();
 
 	logging_stdout = pv_config_get_log_stdout();

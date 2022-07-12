@@ -37,8 +37,8 @@
 #include "utils/math.h"
 #include "utils/str.h"
 
-#define MODULE_NAME			"objects"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "objects"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 int pv_objects_id_in_step(struct pv_state *s, char *id)
@@ -49,15 +49,16 @@ int pv_objects_id_in_step(struct pv_state *s, char *id)
 	if (!s)
 		return 0;
 	head = &s->objects;
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_object, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_object, list)
+	{
 		if (!strcmp(curr->id, id))
 			return 1;
 	}
 	return 0;
 }
 
-struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *mntpoint)
+struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
+				 char *mntpoint)
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
 	char path[PATH_MAX];
@@ -88,8 +89,8 @@ void pv_objects_empty(struct pv_state *s)
 	struct pv_object *curr, *tmp;
 	struct dl_list *head = &s->objects;
 
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_object, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_object, list)
+	{
 		dl_list_del(&curr->list);
 		pv_object_free(curr);
 		num_obj++;
@@ -113,7 +114,7 @@ char *pv_objects_get_list_string()
 	pv_storage_get_subdir(path, "", &objects);
 
 	// open json
-	json[0]='[';
+	json[0] = '[';
 
 	if (dl_list_empty(&objects)) {
 		len++;
@@ -121,9 +122,8 @@ char *pv_objects_get_list_string()
 	}
 
 	// add object info to json
-	dl_list_for_each_safe(curr, tmp, &objects,
-		struct pv_path, list) {
-
+	dl_list_for_each_safe(curr, tmp, &objects, struct pv_path, list)
+	{
 		// if not sha256 string ... skip
 		if (strlen(curr->path) != 64)
 			continue;
@@ -133,9 +133,12 @@ char *pv_objects_get_list_string()
 		if (size_object <= 0)
 			continue;
 
-		line_len = strlen(curr->path) + get_digit_count(size_object) + 26;
+		line_len =
+			strlen(curr->path) + get_digit_count(size_object) + 26;
 		json = realloc(json, len + line_len + 1);
-		SNPRINTF_WTRUNC(&json[len], line_len + 1, "{\"sha256\": \"%s\", \"size\": \"%d\"},", curr->path, size_object);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1,
+				"{\"sha256\": \"%s\", \"size\": \"%d\"},",
+				curr->path, size_object);
 		len += line_len;
 	}
 
@@ -144,8 +147,8 @@ out:
 	len += 1;
 	json = realloc(json, len);
 	// close json
-	json[len-2] = ']';
-	json[len-1] = '\0';
+	json[len - 2] = ']';
+	json[len - 1] = '\0';
 
 	return json;
 }

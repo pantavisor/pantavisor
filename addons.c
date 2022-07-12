@@ -36,8 +36,8 @@
 #include "pantavisor.h"
 #include "state.h"
 
-#define MODULE_NAME             "addon"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "addon"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 static void pv_addon_free(struct pv_addon *a)
@@ -58,8 +58,8 @@ void pv_addons_empty(struct pv_state *s)
 	struct dl_list *addons = &s->addons;
 
 	// Iterate over all plats from state
-	dl_list_for_each_safe(a, tmp, addons,
-            struct pv_addon, list) {
+	dl_list_for_each_safe(a, tmp, addons, struct pv_addon, list)
+	{
 		pv_log(DEBUG, "removing addon %s", a->name);
 		dl_list_del(&a->list);
 		pv_addon_free(a);
@@ -69,7 +69,7 @@ void pv_addons_empty(struct pv_state *s)
 	pv_log(INFO, "removed %d addons", num_addons);
 }
 
-struct pv_addon* pv_addon_add(struct pv_state *s, char *name)
+struct pv_addon *pv_addon_add(struct pv_state *s, char *name)
 {
 	struct pv_addon *a = calloc(1, sizeof(struct pv_addon));
 

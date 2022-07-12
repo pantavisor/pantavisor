@@ -44,7 +44,7 @@ typedef enum {
 typedef enum {
 	DRIVER_REQUIRED = (1 << 0),
 	DRIVER_OPTIONAL = (1 << 1),
-	DRIVER_MANUAL   = (1 << 2)
+	DRIVER_MANUAL = (1 << 2)
 } plat_driver_t;
 
 struct pv_platform_driver {
@@ -54,10 +54,7 @@ struct pv_platform_driver {
 	struct dl_list list;
 };
 
-typedef enum {
-	PLAT_ROLE_MGMT = 1 << 0,
-	PLAT_ROLE_SIZE
-} roles_mask_t;
+typedef enum { PLAT_ROLE_MGMT = 1 << 0, PLAT_ROLE_SIZE } roles_mask_t;
 
 struct pv_platform {
 	char *name;
@@ -84,11 +81,14 @@ struct pv_platform {
 
 void pv_platform_free(struct pv_platform *p);
 
-void pv_platform_add_driver(struct pv_platform *g, plat_driver_t type, char *value);
+void pv_platform_add_driver(struct pv_platform *g, plat_driver_t type,
+			    char *value);
 void pv_platform_add_condition(struct pv_platform *g, struct pv_condition *c);
 
-int pv_platform_load_drivers(struct pv_platform *p, char *namematch, plat_driver_t typematch);
-void pv_platform_unload_drivers(struct pv_platform *p, char *namematch, plat_driver_t typematch);
+int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
+			     plat_driver_t typematch);
+void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
+				plat_driver_t typematch);
 
 int pv_platform_start(struct pv_platform *p);
 int pv_platform_stop(struct pv_platform *p);
@@ -114,11 +114,11 @@ void pv_platform_set_role(struct pv_platform *p, roles_mask_t role);
 void pv_platform_unset_role(struct pv_platform *p, roles_mask_t role);
 bool pv_platform_has_role(struct pv_platform *p, roles_mask_t role);
 
-char* pv_platform_get_json(struct pv_platform *p);
+char *pv_platform_get_json(struct pv_platform *p);
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
-struct pv_platform* pv_platform_add(struct pv_state *s, char *name);
+struct pv_platform *pv_platform_add(struct pv_state *s, char *name);
 
 void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);

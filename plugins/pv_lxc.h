@@ -28,19 +28,16 @@
 
 void pv_set_new_log_fn(void *fn_pv_new_log);
 void pv_set_pv_instance_fn(void *fn_pv_get_instance);
-void pv_set_pv_paths_fn(void *fn_pv_paths_pv_file,
-	void *fn_pv_paths_pv_log,
-	void *fn_pv_paths_pv_log_plat,
-	void *fn_pv_paths_pv_log_file,
-	void *fn_pv_paths_pv_usrmeta_key,
-	void *fn_pv_paths_pv_usrmeta_plat_key,
-	void *fn_pv_paths_pv_devmeta_key,
-	void *fn_pv_paths_pv_devmeta_plat_key,
-	void *fn_pv_paths_lib_hook,
-	void *fn_pv_paths_volumes_plat_file,
+void pv_set_pv_paths_fn(
+	void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
+	void *fn_pv_paths_pv_log_plat, void *fn_pv_paths_pv_log_file,
+	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
+	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
+	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
 	void *fn_pv_paths_configs_file);
 
-void* pv_start_container(struct pv_platform *p, const char *rev, char *conf_file, void *data);
-void* pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
+void *pv_start_container(struct pv_platform *p, const char *rev,
+			 char *conf_file, void *data);
+void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
 
 #endif

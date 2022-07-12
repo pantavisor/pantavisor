@@ -41,10 +41,7 @@
 #define DEVMETA_KEY_PH_ADDRESS "pantahub.address"
 #define DEVMETA_KEY_PV_UNAME "pantavisor.uname"
 
-typedef enum {
-	USER_META,
-	DEVICE_META
-} pv_metadata_t;
+typedef enum { USER_META, DEVICE_META } pv_metadata_t;
 
 struct pv_metadata {
 	struct dl_list usermeta; // pv_meta
@@ -69,7 +66,7 @@ void pv_metadata_parse_devmeta(const char *buf);
 
 void pv_metadata_remove(void);
 
-char* pv_metadata_get_user_meta_string(void);
-char* pv_metadata_get_device_meta_string(void);
+char *pv_metadata_get_user_meta_string(void);
+char *pv_metadata_get_device_meta_string(void);
 
 #endif

@@ -26,10 +26,7 @@
 #include <time.h>
 #include <stdbool.h>
 
-typedef enum {
-	RELATIV_TIMER,
-	ABSOLUTE_TIMER
-} timer_type_t;
+typedef enum { RELATIV_TIMER, ABSOLUTE_TIMER } timer_type_t;
 
 struct timer {
 	timer_type_t type;

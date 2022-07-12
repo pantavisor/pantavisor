@@ -22,8 +22,8 @@
 #ifndef PV_OBJECTS_H
 #define PV_OBJECTS_H
 
-#define OBJPATH_FMT	"%s/objects/%s"
-#define RELPATH_FMT	"%s/trails/%s/%s"
+#define OBJPATH_FMT "%s/objects/%s"
+#define RELPATH_FMT "%s/trails/%s/%s"
 
 #include <stdlib.h>
 #include <limits.h>
@@ -43,7 +43,8 @@ struct pv_object {
 };
 
 int pv_objects_id_in_step(struct pv_state *s, char *id);
-struct pv_object* pv_objects_add(struct pv_state *s, char *filename, char *id, char *mntpoint);
+struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
+				 char *mntpoint);
 void pv_objects_remove(struct pv_object *o);
 void pv_objects_empty(struct pv_state *s);
 
@@ -67,12 +68,12 @@ static inline void pv_object_free(struct pv_object *obj)
 	free(obj);
 }
 
-#define pv_objects_iter_begin(state, item) 	\
-{\
-	struct pv_object *item##__tmp;\
-	struct dl_list *item##__head = &(state)->objects;\
-	dl_list_for_each_safe(item, item##__tmp, item##__head,\
-			struct pv_object, list)
+#define pv_objects_iter_begin(state, item)                                     \
+	{                                                                      \
+		struct pv_object *item##__tmp;                                 \
+		struct dl_list *item##__head = &(state)->objects;              \
+		dl_list_for_each_safe(item, item##__tmp, item##__head,         \
+				      struct pv_object, list)
 
-#define pv_objects_iter_end	}
+#define pv_objects_iter_end }
 #endif // PV_OBJECTS_H

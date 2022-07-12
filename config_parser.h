@@ -27,8 +27,10 @@
 
 int config_parse_cmdline(struct dl_list *list, char *hint);
 int load_key_value_file(const char *path, struct dl_list *list);
-char* config_get_value(struct dl_list *list, char *key);
-void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque);
+char *config_get_value(struct dl_list *list, char *key);
+void config_iterate_items(struct dl_list *list,
+			  int (*action)(char *key, char *value, void *opaque),
+			  void *opaque);
 void config_clear_items(struct dl_list *list);
 
 #endif
