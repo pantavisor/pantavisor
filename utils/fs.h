@@ -45,9 +45,9 @@ ssize_t pv_fs_file_copy_fd(int src, int dst, bool close_src);
 
 // Returns 0 on success -1 on error. Check errno for details
 int pv_fs_file_get_xattr(char *value, ssize_t size, const char *fname,
-				 const char *attr);
+			 const char *attr);
 int pv_fs_file_set_xattr(const char *fname, const char *attr,
-				 const char *value);
+			 const char *value);
 
 // This function doesn't perform sync
 ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size);
@@ -55,7 +55,6 @@ ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size);
 int pv_fs_file_lock(int fd);
 int pv_fs_file_unlock(int fd);
 int pv_fs_file_gzip(const char *fname, const char *target_name);
-int pv_fs_file_check_and_open(const char *fname, int flags,
-				      mode_t mode);
+int pv_fs_file_check_and_open(const char *fname, int flags, mode_t mode);
 
 #endif

@@ -30,8 +30,8 @@
 
 #include <jsmn/jsmnutil.h>
 
-#define MODULE_NAME             "parser-multi1"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "parser-multi1"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 #include "parser_multi1.h"
@@ -44,17 +44,18 @@
 #include "json.h"
 #include "utils/str.h"
 
-#define PV_NS_NETWORK	0x1
-#define PV_NS_UTS	0x2
-#define PV_NS_IPC	0x4
+#define PV_NS_NETWORK 0x1
+#define PV_NS_UTS 0x2
+#define PV_NS_IPC 0x4
 
-typedef struct ns_share_t { char *name; unsigned long val; } ns_share_t;
-ns_share_t ns_share[] = {
-	{ "NETWORK", PV_NS_NETWORK },
-	{ "UTS", PV_NS_UTS },
-	{ "IPC", PV_NS_IPC },
-	{ NULL, 0xff }
-};
+typedef struct ns_share_t {
+	char *name;
+	unsigned long val;
+} ns_share_t;
+ns_share_t ns_share[] = { { "NETWORK", PV_NS_NETWORK },
+			  { "UTS", PV_NS_UTS },
+			  { "IPC", PV_NS_IPC },
+			  { NULL, 0xff } };
 
 static unsigned long ns_share_flag(char *key)
 {
@@ -75,20 +76,23 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	jsmntok_t **key, **key_i;
 
 	// take null terminate copy of item to parse
-	buf = calloc(n+1, sizeof(char));
+	buf = calloc(n + 1, sizeof(char));
 	buf = memcpy(buf, value, n);
 
 	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->bsp.img.ut.fit = pv_json_get_value(buf, "fit", tokv, tokc);
 	if (!s->bsp.img.ut.fit) {
-		s->bsp.img.std.kernel = pv_json_get_value(buf, "linux", tokv, tokc);
+		s->bsp.img.std.kernel =
+			pv_json_get_value(buf, "linux", tokv, tokc);
 		s->bsp.img.std.fdt = pv_json_get_value(buf, "fdt", tokv, tokc);
-		s->bsp.img.std.initrd = pv_json_get_value(buf, "initrd", tokv, tokc);
+		s->bsp.img.std.initrd =
+			pv_json_get_value(buf, "initrd", tokv, tokc);
 	}
 	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
 
-	if ((!s->bsp.img.std.kernel || !s->bsp.img.std.initrd) && !s->bsp.img.ut.fit)
+	if ((!s->bsp.img.std.kernel || !s->bsp.img.std.initrd) &&
+	    !s->bsp.img.ut.fit)
 		goto out;
 
 	// get addons and create empty items
@@ -96,14 +100,15 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	key_i = key;
 	while (*key_i) {
 		c = (*key_i)->end - (*key_i)->start;
-		if (strncmp("addons", buf+(*key_i)->start, strlen("addons"))) {
+		if (strncmp("addons", buf + (*key_i)->start,
+			    strlen("addons"))) {
 			key_i++;
 			continue;
 		}
 
 		// parse array data
-		jsmntok_t *k = (*key_i+2);
-		size = (*key_i+1)->size;
+		jsmntok_t *k = (*key_i + 2);
+		size = (*key_i + 1)->size;
 		while ((str = pv_json_array_get_one_str(buf, &size, &k)))
 			pv_addon_add(s, str);
 
@@ -116,14 +121,15 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	key_i = key;
 	while (*key_i) {
 		c = (*key_i)->end - (*key_i)->start;
-		if (strncmp("platforms", buf+(*key_i)->start, strlen("platforms"))) {
+		if (strncmp("platforms", buf + (*key_i)->start,
+			    strlen("platforms"))) {
 			key_i++;
 			continue;
 		}
 
 		// parse array data
-		jsmntok_t *k = (*key_i+2);
-		size = (*key_i+1)->size;
+		jsmntok_t *k = (*key_i + 2);
+		size = (*key_i + 1)->size;
 		while ((str = pv_json_array_get_one_str(buf, &size, &k)))
 			pv_platform_add(s, str);
 
@@ -136,14 +142,15 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	key_i = key;
 	while (*key_i) {
 		c = (*key_i)->end - (*key_i)->start;
-		if (strncmp("volumes", buf+(*key_i)->start, strlen("volumes"))) {
+		if (strncmp("volumes", buf + (*key_i)->start,
+			    strlen("volumes"))) {
 			key_i++;
 			continue;
 		}
 
 		// parse array data
-		jsmntok_t *k = (*key_i+2);
-		size = (*key_i+1)->size;
+		jsmntok_t *k = (*key_i + 2);
+		size = (*key_i + 1)->size;
 		while ((str = pv_json_array_get_one_str(buf, &size, &k))) {
 			struct pv_volume *v = pv_volume_add(s, str);
 			v->type = VOL_LOOPIMG;
@@ -199,7 +206,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 
 	ret = jsmnutil_parse_json(configs, &tokv, &tokc);
 	size = jsmnutil_array_count(buf, tokv);
-	t = tokv+1;
+	t = tokv + 1;
 	this->configs = calloc(size + 1, sizeof(char *));
 	this->configs[size] = NULL;
 	i = 0;
@@ -220,7 +227,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 
 	ret = jsmnutil_parse_json(shares, &tokv, &tokc);
 	size = jsmnutil_array_count(shares, tokv);
-	t = tokv+1;
+	t = tokv + 1;
 	this->ns_share = 0;
 	while ((str = pv_json_array_get_one_str(shares, &size, &t))) {
 		this->ns_share |= ns_share_flag(str);
@@ -248,7 +255,7 @@ out:
 	return 0;
 }
 
-struct pv_state* multi1_parse(struct pv_state *this, const char *buf)
+struct pv_state *multi1_parse(struct pv_state *this, const char *buf)
 {
 	int tokc, ret, count, n;
 	char *key = 0, *value = 0, *ext = 0;
@@ -260,7 +267,8 @@ struct pv_state* multi1_parse(struct pv_state *this, const char *buf)
 
 	count = pv_json_get_key_count(buf, "pantavisor.json", tokv, tokc);
 	if (!count || (count > 1)) {
-		pv_log(WARN, "Invalid pantavisor.json count in state (%d)", count);
+		pv_log(WARN, "Invalid pantavisor.json count in state (%d)",
+		       count);
 		goto out;
 	}
 
@@ -285,27 +293,28 @@ struct pv_state* multi1_parse(struct pv_state *this, const char *buf)
 		n = (*k)->end - (*k)->start;
 
 		// avoid pantavisor.json and #spec special keys
-		if (!strncmp("pantavisor.json", buf+(*k)->start, n) ||
-		    !strncmp("#spec", buf+(*k)->start, n)) {
+		if (!strncmp("pantavisor.json", buf + (*k)->start, n) ||
+		    !strncmp("#spec", buf + (*k)->start, n)) {
 			k++;
 			continue;
 		}
 
 		// copy key
-		key = malloc(n+1);
-		SNPRINTF_WTRUNC(key, n+1, "%s", buf+(*k)->start);
+		key = malloc(n + 1);
+		SNPRINTF_WTRUNC(key, n + 1, "%s", buf + (*k)->start);
 
 		// copy value
-		n = (*k+1)->end - (*k+1)->start;
-		value = malloc(n+1);
-		SNPRINTF_WTRUNC(value, n+1, "%s", buf+(*k+1)->start);
+		n = (*k + 1)->end - (*k + 1)->start;
+		value = malloc(n + 1);
+		SNPRINTF_WTRUNC(value, n + 1, "%s", buf + (*k + 1)->start);
 
 		// check extension in case of file (json=platform, other=file)
 		ext = strrchr(key, '.');
 		if (ext && !strcmp(ext, ".json"))
 			parse_platform(this, value, strlen(value));
 		else
-			pv_objects_add(this, key, value, pv_config_get_storage_mntpoint());
+			pv_objects_add(this, key, value,
+				       pv_config_get_storage_mntpoint());
 
 		// free intermediates
 		if (key) {
@@ -339,7 +348,7 @@ out:
 	return this;
 }
 
-char* multi1_parse_initrd_config_name(const char *buf)
+char *multi1_parse_initrd_config_name(const char *buf)
 {
 	return NULL;
 }

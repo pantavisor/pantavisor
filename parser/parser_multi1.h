@@ -24,7 +24,7 @@
 
 #include "state.h"
 
-struct pv_state* multi1_parse(struct pv_state *this, const char *buf);
-char* multi1_parse_initrd_config_name(const char *buf);
+struct pv_state *multi1_parse(struct pv_state *this, const char *buf);
+char *multi1_parse_initrd_config_name(const char *buf);
 
 #endif

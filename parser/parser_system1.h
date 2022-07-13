@@ -24,7 +24,7 @@
 
 #include "state.h"
 
-struct pv_state* system1_parse(struct pv_state *this, const char *buf);
-char* system1_parse_initrd_config_name(const char *buf);
+struct pv_state *system1_parse(struct pv_state *this, const char *buf);
+char *system1_parse_initrd_config_name(const char *buf);
 
 #endif

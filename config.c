@@ -44,11 +44,12 @@
 #include "utils/math.h"
 #include "utils/json.h"
 
-#define MODULE_NAME             "config"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "config"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-static char* config_get_value_string(struct dl_list *config_list, char *key, char* default_value)
+static char *config_get_value_string(struct dl_list *config_list, char *key,
+				     char *default_value)
 {
 	char *item = config_get_value(config_list, key);
 
@@ -61,7 +62,8 @@ static char* config_get_value_string(struct dl_list *config_list, char *key, cha
 	return strdup(item);
 }
 
-static int config_get_value_int(struct dl_list *config_list, char *key, int default_value)
+static int config_get_value_int(struct dl_list *config_list, char *key,
+				int default_value)
 {
 	char *item = config_get_value(config_list, key);
 	int value = default_value;
@@ -74,7 +76,8 @@ static int config_get_value_int(struct dl_list *config_list, char *key, int defa
 	return value;
 }
 
-static bool config_get_value_bool(struct dl_list *config_list, char *key, bool default_value)
+static bool config_get_value_bool(struct dl_list *config_list, char *key,
+				  bool default_value)
 {
 	char *item = config_get_value(config_list, key);
 	bool value = default_value;
@@ -87,7 +90,8 @@ static bool config_get_value_bool(struct dl_list *config_list, char *key, bool d
 	return value;
 }
 
-static int config_get_value_init_mode(struct dl_list *config_list, char *key, init_mode_t default_value)
+static int config_get_value_init_mode(struct dl_list *config_list, char *key,
+				      init_mode_t default_value)
 {
 	char *item = config_get_value(config_list, key);
 	init_mode_t value = default_value;
@@ -105,7 +109,8 @@ static int config_get_value_init_mode(struct dl_list *config_list, char *key, in
 	return value;
 }
 
-static int config_get_value_bl_type(struct dl_list *config_list, char *key, int default_value)
+static int config_get_value_bl_type(struct dl_list *config_list, char *key,
+				    int default_value)
 {
 	char *item = config_get_value(config_list, key);
 	int value = default_value;
@@ -123,7 +128,8 @@ static int config_get_value_bl_type(struct dl_list *config_list, char *key, int 
 	return value;
 }
 
-static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key, secureboot_mode_t default_value)
+static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
+					 secureboot_mode_t default_value)
 {
 	char *item = config_get_value(config_list, key);
 	secureboot_mode_t value = default_value;
@@ -143,7 +149,8 @@ static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
 	return value;
 }
 
-static int config_get_value_logsize(struct dl_list *config_list, char *key, int default_value)
+static int config_get_value_logsize(struct dl_list *config_list, char *key,
+				    int default_value)
 {
 	int value = config_get_value_int(config_list, key, default_value);
 
@@ -153,7 +160,8 @@ static int config_get_value_logsize(struct dl_list *config_list, char *key, int 
 	return value;
 }
 
-static void config_override_value_string(struct dl_list *config_list, char *key, char **out)
+static void config_override_value_string(struct dl_list *config_list, char *key,
+					 char **out)
 {
 	char *item = config_get_value(config_list, key);
 
@@ -164,7 +172,8 @@ static void config_override_value_string(struct dl_list *config_list, char *key,
 	}
 }
 
-static void config_override_value_int(struct dl_list *config_list, char *key, int *out)
+static void config_override_value_int(struct dl_list *config_list, char *key,
+				      int *out)
 {
 	char *item = config_get_value(config_list, key);
 
@@ -172,7 +181,8 @@ static void config_override_value_int(struct dl_list *config_list, char *key, in
 		*out = atoi(item);
 }
 
-static void config_override_value_bool(struct dl_list *config_list, char *key, bool *out)
+static void config_override_value_bool(struct dl_list *config_list, char *key,
+				       bool *out)
 {
 	char *item = config_get_value(config_list, key);
 
@@ -180,7 +190,8 @@ static void config_override_value_bool(struct dl_list *config_list, char *key, b
 		*out = atoi(item);
 }
 
-static void config_override_value_logsize(struct dl_list *config_list, char *key, int *out)
+static void config_override_value_logsize(struct dl_list *config_list,
+					  char *key, int *out)
 {
 	char *item = config_get_value(config_list, key);
 
@@ -188,7 +199,8 @@ static void config_override_value_logsize(struct dl_list *config_list, char *key
 		*out = atoi(item) * 1024;
 }
 
-static int pv_config_load_config_from_file(char *path, struct pantavisor_config *config)
+static int pv_config_load_config_from_file(char *path,
+					   struct pantavisor_config *config)
 {
 	DEFINE_DL_LIST(config_list);
 
@@ -198,69 +210,113 @@ static int pv_config_load_config_from_file(char *path, struct pantavisor_config 
 	// for overrides
 	config_parse_cmdline(&config_list, "pv_");
 
-	config->sys.init_mode = config_get_value_init_mode(&config_list, "system.init.mode", IM_EMBEDDED);
-	config->sys.libdir = config_get_value_string(&config_list, "system.libdir", "/lib");
-	config->sys.etcdir = config_get_value_string(&config_list, "system.etcdir", "/etc");
-	config->sys.rundir = config_get_value_string(&config_list, "system.rundir", "/pv");
-	config->sys.mediadir = config_get_value_string(&config_list, "system.mediadir", "/media");
-	config->sys.confdir = config_get_value_string(&config_list, "system.confdir", "/configs");
+	config->sys.init_mode = config_get_value_init_mode(
+		&config_list, "system.init.mode", IM_EMBEDDED);
+	config->sys.libdir =
+		config_get_value_string(&config_list, "system.libdir", "/lib");
+	config->sys.etcdir =
+		config_get_value_string(&config_list, "system.etcdir", "/etc");
+	config->sys.rundir =
+		config_get_value_string(&config_list, "system.rundir", "/pv");
+	config->sys.mediadir = config_get_value_string(
+		&config_list, "system.mediadir", "/media");
+	config->sys.confdir = config_get_value_string(
+		&config_list, "system.confdir", "/configs");
 
-	config->debug.shell = config_get_value_bool(&config_list, "debug.shell", true);
-	config->debug.ssh = config_get_value_bool(&config_list, "debug.ssh", true);
+	config->debug.shell =
+		config_get_value_bool(&config_list, "debug.shell", true);
+	config->debug.ssh =
+		config_get_value_bool(&config_list, "debug.ssh", true);
 
-	config->cache.dropbearcachedir = config_get_value_string(&config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
-	config->cache.usrmetadir = config_get_value_string(&config_list, "cache.usrmetadir", "/storage/cache/meta");
-	config_override_value_string(&config_list, "meta.cache.dir", &config->cache.usrmetadir);
-	config->cache.devmetadir = config_get_value_string(&config_list, "cache.devmetadir", "/storage/cache/devmeta");
+	config->cache.dropbearcachedir = config_get_value_string(
+		&config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
+	config->cache.usrmetadir = config_get_value_string(
+		&config_list, "cache.usrmetadir", "/storage/cache/meta");
+	config_override_value_string(&config_list, "meta.cache.dir",
+				     &config->cache.usrmetadir);
+	config->cache.devmetadir = config_get_value_string(
+		&config_list, "cache.devmetadir", "/storage/cache/devmeta");
 
-	config->bl.type = config_get_value_bl_type(&config_list, "bootloader.type", BL_UBOOT_PLAIN);
-	config->bl.mtd_only = config_get_value_bool(&config_list, "bootloader.mtd_only", false);
-	config->bl.mtd_path = config_get_value_string(&config_list, "bootloader.mtd_env", NULL);
-	config->bl.dtb = config_get_value_string(&config_list, "bootloader.dtb", NULL);
-	config->bl.ovl = config_get_value_string(&config_list, "bootloader.ovl", NULL);
+	config->bl.type = config_get_value_bl_type(
+		&config_list, "bootloader.type", BL_UBOOT_PLAIN);
+	config->bl.mtd_only = config_get_value_bool(
+		&config_list, "bootloader.mtd_only", false);
+	config->bl.mtd_path = config_get_value_string(
+		&config_list, "bootloader.mtd_env", NULL);
+	config->bl.dtb =
+		config_get_value_string(&config_list, "bootloader.dtb", NULL);
+	config->bl.ovl =
+		config_get_value_string(&config_list, "bootloader.ovl", NULL);
 
-	config->storage.path = config_get_value_string(&config_list, "storage.device", NULL);
-	config->storage.fstype = config_get_value_string(&config_list, "storage.fstype", NULL);
-	config->storage.opts = config_get_value_string(&config_list, "storage.opts", NULL);
-	config->storage.mntpoint = config_get_value_string(&config_list, "storage.mntpoint", NULL);
-	config->storage.mnttype = config_get_value_string(&config_list, "storage.mnttype", NULL);
-	config->storage.logtempsize = config_get_value_string(&config_list, "storage.logtempsize", NULL);
-	config->storage.wait = config_get_value_int(&config_list, "storage.wait", 5);
+	config->storage.path =
+		config_get_value_string(&config_list, "storage.device", NULL);
+	config->storage.fstype =
+		config_get_value_string(&config_list, "storage.fstype", NULL);
+	config->storage.opts =
+		config_get_value_string(&config_list, "storage.opts", NULL);
+	config->storage.mntpoint =
+		config_get_value_string(&config_list, "storage.mntpoint", NULL);
+	config->storage.mnttype =
+		config_get_value_string(&config_list, "storage.mnttype", NULL);
+	config->storage.logtempsize = config_get_value_string(
+		&config_list, "storage.logtempsize", NULL);
+	config->storage.wait =
+		config_get_value_int(&config_list, "storage.wait", 5);
 
-	config->storage.gc.reserved = config_get_value_int(&config_list, "storage.gc.reserved", 5);
-	config->storage.gc.keep_factory = config_get_value_bool(&config_list, "storage.gc.keep_factory", false);
-	config->storage.gc.threshold = config_get_value_int(&config_list, "storage.gc.threshold", 0);
-	config->storage.gc.threshold_defertime = config_get_value_int(&config_list, "storage.gc.threshold.defertime", 600);
+	config->storage.gc.reserved =
+		config_get_value_int(&config_list, "storage.gc.reserved", 5);
+	config->storage.gc.keep_factory = config_get_value_bool(
+		&config_list, "storage.gc.keep_factory", false);
+	config->storage.gc.threshold =
+		config_get_value_int(&config_list, "storage.gc.threshold", 0);
+	config->storage.gc.threshold_defertime = config_get_value_int(
+		&config_list, "storage.gc.threshold.defertime", 600);
 
-	config->disk.voldir = config_get_value_string(&config_list, "disk.voldir" , "/volumes");
+	config->disk.voldir = config_get_value_string(
+		&config_list, "disk.voldir", "/volumes");
 
-	config->net.brdev = config_get_value_string(&config_list, "net.brdev", "lxcbr0");
-	config->net.braddress4 = config_get_value_string(&config_list, "net.braddress4", "10.0.3.1");
-	config->net.brmask4 = config_get_value_string(&config_list, "net.brmask4", "255.255.255.0");
+	config->net.brdev =
+		config_get_value_string(&config_list, "net.brdev", "lxcbr0");
+	config->net.braddress4 = config_get_value_string(
+		&config_list, "net.braddress4", "10.0.3.1");
+	config->net.brmask4 = config_get_value_string(
+		&config_list, "net.brmask4", "255.255.255.0");
 
-	config->updater.conditions_timeout = config_get_value_int(&config_list, "updater.conditions.timeout", 2 * 60);
-	config->updater.use_tmp_objects = config_get_value_bool(&config_list, "updater.use_tmp_objects", false);
+	config->updater.conditions_timeout = config_get_value_int(
+		&config_list, "updater.conditions.timeout", 2 * 60);
+	config->updater.use_tmp_objects = config_get_value_bool(
+		&config_list, "updater.use_tmp_objects", false);
 
-	config->updater.revision_retries = config_get_value_int(&config_list, "revision.retries", 10);
-	config->updater.revision_retry_timeout = config_get_value_int(&config_list, "revision.retries.timeout", 2 * 60);
-	config->wdt.enabled = config_get_value_bool(&config_list, "wdt.enabled", true);
-	config->wdt.timeout = config_get_value_int(&config_list, "wdt.timeout", 15);
+	config->updater.revision_retries =
+		config_get_value_int(&config_list, "revision.retries", 10);
+	config->updater.revision_retry_timeout = config_get_value_int(
+		&config_list, "revision.retries.timeout", 2 * 60);
+	config->wdt.enabled =
+		config_get_value_bool(&config_list, "wdt.enabled", true);
+	config->wdt.timeout =
+		config_get_value_int(&config_list, "wdt.timeout", 15);
 
-	config->log.logdir = config_get_value_string(&config_list, "log.dir", "/storage/logs/");
+	config->log.logdir = config_get_value_string(&config_list, "log.dir",
+						     "/storage/logs/");
 
-	config->lxc.log_level = config_get_value_int(&config_list, "lxc.log.level", 2);
+	config->lxc.log_level =
+		config_get_value_int(&config_list, "lxc.log.level", 2);
 
-	config->control.remote = config_get_value_bool(&config_list, "control.remote", true);
+	config->control.remote =
+		config_get_value_bool(&config_list, "control.remote", true);
 
-	config->secureboot.mode = config_get_value_sb_mode_type(&config_list, "secureboot.mode", SB_LENIENT);
-	config->secureboot.certdir = config_get_value_string(&config_list, "secureboot.certdir", "/certs");
+	config->secureboot.mode = config_get_value_sb_mode_type(
+		&config_list, "secureboot.mode", SB_LENIENT);
+	config->secureboot.certdir = config_get_value_string(
+		&config_list, "secureboot.certdir", "/certs");
 
 	config_clear_items(&config_list);
 
 	return 0;
 }
 
-static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *config)
+static int pv_config_load_creds_from_file(char *path,
+					  struct pantavisor_config *config)
 {
 	DEFINE_DL_LIST(config_list);
 
@@ -270,81 +326,134 @@ static int pv_config_load_creds_from_file(char *path, struct pantavisor_config *
 	// for overrides
 	config_parse_cmdline(&config_list, "ph_");
 
-	config->creds.type = config_get_value_string(&config_list, "creds.type", "builtin");
-	config->creds.host = config_get_value_string(&config_list, "creds.host", "192.168.53.1");
-	config->creds.port = config_get_value_int(&config_list, "creds.port", 12365);
-	config->creds.host_proxy = config_get_value_string(&config_list, "creds.proxy.host", NULL);
-	config->creds.port_proxy = config_get_value_int(&config_list, "creds.proxy.port", 3218);
-	config->creds.noproxyconnect = config_get_value_int(&config_list, "creds.proxy.noproxyconnect", 0);
-	config->creds.id = config_get_value_string(&config_list, "creds.id", NULL);
-	config->creds.prn = config_get_value_string(&config_list, "creds.prn", NULL);
-	config->creds.secret = config_get_value_string(&config_list, "creds.secret", NULL);
+	config->creds.type =
+		config_get_value_string(&config_list, "creds.type", "builtin");
+	config->creds.host = config_get_value_string(&config_list, "creds.host",
+						     "192.168.53.1");
+	config->creds.port =
+		config_get_value_int(&config_list, "creds.port", 12365);
+	config->creds.host_proxy =
+		config_get_value_string(&config_list, "creds.proxy.host", NULL);
+	config->creds.port_proxy =
+		config_get_value_int(&config_list, "creds.proxy.port", 3218);
+	config->creds.noproxyconnect = config_get_value_int(
+		&config_list, "creds.proxy.noproxyconnect", 0);
+	config->creds.id =
+		config_get_value_string(&config_list, "creds.id", NULL);
+	config->creds.prn =
+		config_get_value_string(&config_list, "creds.prn", NULL);
+	config->creds.secret =
+		config_get_value_string(&config_list, "creds.secret", NULL);
 
-	config->creds.tpm.key = config_get_value_string(&config_list, "creds.tpm.key", NULL);
-	config->creds.tpm.cert = config_get_value_string(&config_list, "creds.tpm.cert", NULL);
+	config->creds.tpm.key =
+		config_get_value_string(&config_list, "creds.tpm.key", NULL);
+	config->creds.tpm.cert =
+		config_get_value_string(&config_list, "creds.tpm.cert", NULL);
 
-	config->factory.autotok = config_get_value_string(&config_list, "factory.autotok", NULL);
+	config->factory.autotok =
+		config_get_value_string(&config_list, "factory.autotok", NULL);
 
-	config_override_value_bool(&config_list, "updater.keep_factory", &config->storage.gc.keep_factory);
-	config->updater.interval = config_get_value_int(&config_list, "updater.interval", 60);
-	config->updater.network_timeout = config_get_value_int(&config_list, "updater.network_timeout", 2 * 60);
-	config->updater.commit_delay = config_get_value_int(&config_list, "updater.commit.delay", 3 * 60);
+	config_override_value_bool(&config_list, "updater.keep_factory",
+				   &config->storage.gc.keep_factory);
+	config->updater.interval =
+		config_get_value_int(&config_list, "updater.interval", 60);
+	config->updater.network_timeout = config_get_value_int(
+		&config_list, "updater.network_timeout", 2 * 60);
+	config->updater.commit_delay = config_get_value_int(
+		&config_list, "updater.commit.delay", 3 * 60);
 
-	config->log.logmax = config_get_value_int(&config_list, "log.maxsize", (1 << 21)); // 2 MiB
-	config->log.loglevel = config_get_value_int(&config_list, "log.level", 0);
-	config->log.logsize = config_get_value_logsize(&config_list, "log.buf_nitems", 128) * 1024;
-	config->log.push = config_get_value_bool(&config_list, "log.push", true);
-	config->log.capture = config_get_value_bool(&config_list, "log.capture", true);
-	config->log.loggers = config_get_value_bool(&config_list, "log.loggers", true);
-	config->log.std_out = config_get_value_bool(&config_list, "log.stdout", false);
-	config_override_value_string(&config_list, "log.dir", &config->log.logdir);
+	config->log.logmax = config_get_value_int(&config_list, "log.maxsize",
+						  (1 << 21)); // 2 MiB
+	config->log.loglevel =
+		config_get_value_int(&config_list, "log.level", 0);
+	config->log.logsize =
+		config_get_value_logsize(&config_list, "log.buf_nitems", 128) *
+		1024;
+	config->log.push =
+		config_get_value_bool(&config_list, "log.push", true);
+	config->log.capture =
+		config_get_value_bool(&config_list, "log.capture", true);
+	config->log.loggers =
+		config_get_value_bool(&config_list, "log.loggers", true);
+	config->log.std_out =
+		config_get_value_bool(&config_list, "log.stdout", false);
+	config_override_value_string(&config_list, "log.dir",
+				     &config->log.logdir);
 
-	config->libthttp.loglevel = config_get_value_int(&config_list, "libthttp.log.level", 3);
+	config->libthttp.loglevel =
+		config_get_value_int(&config_list, "libthttp.log.level", 3);
 
-	config->metadata.devmeta_interval = config_get_value_int(&config_list, "metadata.devmeta.interval", 10);
+	config->metadata.devmeta_interval = config_get_value_int(
+		&config_list, "metadata.devmeta.interval", 10);
 
 	config_clear_items(&config_list);
 
 	return 0;
 }
 
-static int pv_config_override_config_from_file(char *path, struct pantavisor_config *config)
+static int pv_config_override_config_from_file(char *path,
+					       struct pantavisor_config *config)
 {
 	DEFINE_DL_LIST(config_list);
 
 	if (load_key_value_file(path, &config_list) < 0)
 		return -1;
 
-	config_override_value_string(&config_list, "creds.proxy.host", &config->creds.host_proxy);
-	config_override_value_int(&config_list, "creds.proxy.port", &config->creds.port_proxy);
-	config_override_value_int(&config_list, "creds.proxy.noproxyconnect", &config->creds.noproxyconnect);
-	config_override_value_int(&config_list, "storage.gc.reserved", &config->storage.gc.reserved);
-	config_override_value_bool(&config_list, "storage.gc.keep_factory", &config->storage.gc.keep_factory);
-	config_override_value_int(&config_list, "storage.gc.threshold", &config->storage.gc.threshold);
-	config_override_value_int(&config_list, "storage.gc.threshold.defertime", &config->storage.gc.threshold_defertime);
+	config_override_value_string(&config_list, "creds.proxy.host",
+				     &config->creds.host_proxy);
+	config_override_value_int(&config_list, "creds.proxy.port",
+				  &config->creds.port_proxy);
+	config_override_value_int(&config_list, "creds.proxy.noproxyconnect",
+				  &config->creds.noproxyconnect);
+	config_override_value_int(&config_list, "storage.gc.reserved",
+				  &config->storage.gc.reserved);
+	config_override_value_bool(&config_list, "storage.gc.keep_factory",
+				   &config->storage.gc.keep_factory);
+	config_override_value_int(&config_list, "storage.gc.threshold",
+				  &config->storage.gc.threshold);
+	config_override_value_int(&config_list,
+				  "storage.gc.threshold.defertime",
+				  &config->storage.gc.threshold_defertime);
 
-	config_override_value_bool(&config_list, "updater.use_tmp_objects", &config->updater.use_tmp_objects);
-	config_override_value_int(&config_list, "revision.retries", &config->updater.revision_retries);
-	config_override_value_int(&config_list, "revision.retries.timeout", &config->updater.revision_retry_timeout);
-	config_override_value_bool(&config_list, "updater.keep_factory", &config->storage.gc.keep_factory);
-	config_override_value_int(&config_list, "updater.interval", &config->updater.interval);
-	config_override_value_int(&config_list, "updater.conditions.timeout", &config->updater.conditions_timeout);
-	config_override_value_int(&config_list, "updater.network_timeout", &config->updater.network_timeout);
-	config_override_value_int(&config_list, "updater.commit.delay", &config->updater.commit_delay);
+	config_override_value_bool(&config_list, "updater.use_tmp_objects",
+				   &config->updater.use_tmp_objects);
+	config_override_value_int(&config_list, "revision.retries",
+				  &config->updater.revision_retries);
+	config_override_value_int(&config_list, "revision.retries.timeout",
+				  &config->updater.revision_retry_timeout);
+	config_override_value_bool(&config_list, "updater.keep_factory",
+				   &config->storage.gc.keep_factory);
+	config_override_value_int(&config_list, "updater.interval",
+				  &config->updater.interval);
+	config_override_value_int(&config_list, "updater.conditions.timeout",
+				  &config->updater.conditions_timeout);
+	config_override_value_int(&config_list, "updater.network_timeout",
+				  &config->updater.network_timeout);
+	config_override_value_int(&config_list, "updater.commit.delay",
+				  &config->updater.commit_delay);
 
-	config_override_value_int(&config_list, "log.maxsize", &config->log.logmax);
-	config_override_value_int(&config_list, "log.level", &config->log.loglevel);
-	config_override_value_logsize(&config_list, "log.buf_nitems", &config->log.logsize);
+	config_override_value_int(&config_list, "log.maxsize",
+				  &config->log.logmax);
+	config_override_value_int(&config_list, "log.level",
+				  &config->log.loglevel);
+	config_override_value_logsize(&config_list, "log.buf_nitems",
+				      &config->log.logsize);
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
-	config_override_value_bool(&config_list, "log.capture", &config->log.capture);
-	config_override_value_bool(&config_list, "log.loggers", &config->log.loggers);
-	config_override_value_bool(&config_list, "log.stdout", &config->log.std_out);
+	config_override_value_bool(&config_list, "log.capture",
+				   &config->log.capture);
+	config_override_value_bool(&config_list, "log.loggers",
+				   &config->log.loggers);
+	config_override_value_bool(&config_list, "log.stdout",
+				   &config->log.std_out);
 
-	config_override_value_int(&config_list, "libthttp.log.level", &config->libthttp.loglevel);
+	config_override_value_int(&config_list, "libthttp.log.level",
+				  &config->libthttp.loglevel);
 
-	config_override_value_int(&config_list, "metadata.devmeta.interval", &config->metadata.devmeta_interval);
+	config_override_value_int(&config_list, "metadata.devmeta.interval",
+				  &config->metadata.devmeta_interval);
 
-	config_override_value_int(&config_list, "lxc.log.level", &config->lxc.log_level);
+	config_override_value_int(&config_list, "lxc.log.level",
+				  &config->lxc.log_level);
 
 	config_clear_items(&config_list);
 
@@ -372,12 +481,13 @@ static int write_config_tuple_int(int fd, char *key, int value)
 {
 	char buf[MAX_DEC_STRING_SIZE_OF_TYPE(int)];
 
-	SNPRINTF_WTRUNC(buf, sizeof (buf), "%d", value);
+	SNPRINTF_WTRUNC(buf, sizeof(buf), "%d", value);
 
 	return write_config_tuple_string(fd, key, buf);
 }
 
-static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *path)
+static int pv_config_save_creds_to_file(struct pantavisor_config *config,
+					char *path)
 {
 	int fd;
 	char tmp_path[PATH_MAX];
@@ -385,7 +495,8 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	pv_paths_tmp(tmp_path, PATH_MAX, path);
 	fd = open(tmp_path, O_RDWR | O_SYNC | O_CREAT | O_TRUNC, 644);
 	if (fd < 0) {
-		pv_log(ERROR, "unable to open temporary credentials config: %s", strerror(errno));
+		pv_log(ERROR, "unable to open temporary credentials config: %s",
+		       strerror(errno));
 		return -1;
 	}
 
@@ -393,9 +504,12 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	write_config_tuple_string(fd, "creds.host", config->creds.host);
 	write_config_tuple_int(fd, "creds.port", config->creds.port);
 	if (config->creds.host_proxy) {
-		write_config_tuple_string(fd, "creds.proxy.host", config->creds.host_proxy);
-		write_config_tuple_int(fd, "creds.proxy.port", config->creds.port_proxy);
-		write_config_tuple_int(fd, "creds.proxy.noproxyconnect", config->creds.noproxyconnect);
+		write_config_tuple_string(fd, "creds.proxy.host",
+					  config->creds.host_proxy);
+		write_config_tuple_int(fd, "creds.proxy.port",
+				       config->creds.port_proxy);
+		write_config_tuple_int(fd, "creds.proxy.noproxyconnect",
+				       config->creds.noproxyconnect);
 	}
 	write_config_tuple_string(fd, "creds.id", config->creds.id);
 	write_config_tuple_string(fd, "creds.prn", config->creds.prn);
@@ -404,17 +518,24 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config, char *
 	write_config_tuple_string(fd, "creds.tpm.key", config->creds.tpm.key);
 	write_config_tuple_string(fd, "creds.tpm.cert", config->creds.tpm.cert);
 
-	write_config_tuple_int(fd, "updater.interval", config->updater.interval);
-	write_config_tuple_int(fd, "updater.network_timeout", config->updater.network_timeout);
-	write_config_tuple_int(fd, "updater.commit.delay", config->updater.commit_delay);
-	write_config_tuple_int(fd, "updater.keep_factory", config->storage.gc.keep_factory); // deprecated
+	write_config_tuple_int(fd, "updater.interval",
+			       config->updater.interval);
+	write_config_tuple_int(fd, "updater.network_timeout",
+			       config->updater.network_timeout);
+	write_config_tuple_int(fd, "updater.commit.delay",
+			       config->updater.commit_delay);
+	write_config_tuple_int(fd, "updater.keep_factory",
+			       config->storage.gc.keep_factory); // deprecated
 
 	write_config_tuple_int(fd, "log.level", config->log.loglevel);
-	write_config_tuple_int(fd, "log.buf_nitems", config->log.logsize / 1024);
+	write_config_tuple_int(fd, "log.buf_nitems",
+			       config->log.logsize / 1024);
 
-	write_config_tuple_int(fd, "libthttp.log.level", config->libthttp.loglevel);
+	write_config_tuple_int(fd, "libthttp.log.level",
+			       config->libthttp.loglevel);
 
-	write_config_tuple_int(fd, "metadata.devmeta.interval", config->metadata.devmeta_interval);
+	write_config_tuple_int(fd, "metadata.devmeta.interval",
+			       config->metadata.devmeta_interval);
 
 	close(fd);
 	if (pv_fs_path_rename(tmp_path, path) < 0) {
@@ -455,7 +576,7 @@ int pv_config_save_creds()
 	return pv_config_save_creds_to_file(&pv->config, path);
 }
 
-void pv_config_override_value(const char* key, const char* value)
+void pv_config_override_value(const char *key, const char *value)
 {
 	struct pantavisor *pv = pv_get_instance();
 
@@ -543,102 +664,320 @@ void pv_config_free()
 		free(pv->config.factory.autotok);
 }
 
-void pv_config_set_system_init_mode(init_mode_t mode) { pv_get_instance()->config.sys.init_mode = mode; }
+void pv_config_set_system_init_mode(init_mode_t mode)
+{
+	pv_get_instance()->config.sys.init_mode = mode;
+}
 
-void pv_config_set_debug_shell(bool shell) { pv_get_instance()->config.debug.shell = shell; }
-void pv_config_set_debug_ssh(bool ssh) { pv_get_instance()->config.debug.ssh = ssh; }
+void pv_config_set_debug_shell(bool shell)
+{
+	pv_get_instance()->config.debug.shell = shell;
+}
+void pv_config_set_debug_ssh(bool ssh)
+{
+	pv_get_instance()->config.debug.ssh = ssh;
+}
 
-inline void pv_config_set_creds_id(char *id) { pv_get_instance()->config.creds.id = id; }
-inline void pv_config_set_creds_prn(char *prn) { pv_get_instance()->config.creds.prn = prn; }
-inline void pv_config_set_creds_secret(char *secret) { pv_get_instance()->config.creds.secret = secret; }
+inline void pv_config_set_creds_id(char *id)
+{
+	pv_get_instance()->config.creds.id = id;
+}
+inline void pv_config_set_creds_prn(char *prn)
+{
+	pv_get_instance()->config.creds.prn = prn;
+}
+inline void pv_config_set_creds_secret(char *secret)
+{
+	pv_get_instance()->config.creds.secret = secret;
+}
 
-init_mode_t pv_config_get_system_init_mode() { return pv_get_instance()->config.sys.init_mode; }
-char* pv_config_get_system_libdir() { return pv_get_instance()->config.sys.libdir; }
-char* pv_config_get_system_etcdir() { return pv_get_instance()->config.sys.etcdir; }
-char* pv_config_get_system_rundir() { return pv_get_instance()->config.sys.rundir; }
-char* pv_config_get_system_mediadir() { return pv_get_instance()->config.sys.mediadir; }
-char* pv_config_get_system_confdir() { return pv_get_instance()->config.sys.confdir; }
+init_mode_t pv_config_get_system_init_mode()
+{
+	return pv_get_instance()->config.sys.init_mode;
+}
+char *pv_config_get_system_libdir()
+{
+	return pv_get_instance()->config.sys.libdir;
+}
+char *pv_config_get_system_etcdir()
+{
+	return pv_get_instance()->config.sys.etcdir;
+}
+char *pv_config_get_system_rundir()
+{
+	return pv_get_instance()->config.sys.rundir;
+}
+char *pv_config_get_system_mediadir()
+{
+	return pv_get_instance()->config.sys.mediadir;
+}
+char *pv_config_get_system_confdir()
+{
+	return pv_get_instance()->config.sys.confdir;
+}
 
-bool pv_config_get_debug_shell() { return pv_get_instance()->config.debug.shell; }
-bool pv_config_get_debug_ssh() { return pv_get_instance()->config.debug.ssh; }
+bool pv_config_get_debug_shell()
+{
+	return pv_get_instance()->config.debug.shell;
+}
+bool pv_config_get_debug_ssh()
+{
+	return pv_get_instance()->config.debug.ssh;
+}
 
-char* pv_config_get_cache_usrmetadir() { return pv_get_instance()->config.cache.usrmetadir; }
-char* pv_config_get_cache_devmetadir() { return pv_get_instance()->config.cache.devmetadir; }
-char* pv_config_get_cache_dropbearcachedir() { return pv_get_instance()->config.cache.dropbearcachedir; }
+char *pv_config_get_cache_usrmetadir()
+{
+	return pv_get_instance()->config.cache.usrmetadir;
+}
+char *pv_config_get_cache_devmetadir()
+{
+	return pv_get_instance()->config.cache.devmetadir;
+}
+char *pv_config_get_cache_dropbearcachedir()
+{
+	return pv_get_instance()->config.cache.dropbearcachedir;
+}
 
-char* pv_config_get_creds_type() { return pv_get_instance()->config.creds.type; }
-char* pv_config_get_creds_host() { return pv_get_instance()->config.creds.host; }
-int pv_config_get_creds_port() { return pv_get_instance()->config.creds.port; }
-char* pv_config_get_creds_host_proxy() { return pv_get_instance()->config.creds.host_proxy; }
-int pv_config_get_creds_port_proxy() { return pv_get_instance()->config.creds.port_proxy; }
-int pv_config_get_creds_noproxyconnect() { return pv_get_instance()->config.creds.noproxyconnect; }
-char* pv_config_get_creds_id() { return pv_get_instance()->config.creds.id; }
-char* pv_config_get_creds_prn() { return pv_get_instance()->config.creds.prn; }
-char* pv_config_get_creds_secret() { return pv_get_instance()->config.creds.secret; }
-char* pv_config_get_creds_token() { return pv_get_instance()->config.creds.token; }
+char *pv_config_get_creds_type()
+{
+	return pv_get_instance()->config.creds.type;
+}
+char *pv_config_get_creds_host()
+{
+	return pv_get_instance()->config.creds.host;
+}
+int pv_config_get_creds_port()
+{
+	return pv_get_instance()->config.creds.port;
+}
+char *pv_config_get_creds_host_proxy()
+{
+	return pv_get_instance()->config.creds.host_proxy;
+}
+int pv_config_get_creds_port_proxy()
+{
+	return pv_get_instance()->config.creds.port_proxy;
+}
+int pv_config_get_creds_noproxyconnect()
+{
+	return pv_get_instance()->config.creds.noproxyconnect;
+}
+char *pv_config_get_creds_id()
+{
+	return pv_get_instance()->config.creds.id;
+}
+char *pv_config_get_creds_prn()
+{
+	return pv_get_instance()->config.creds.prn;
+}
+char *pv_config_get_creds_secret()
+{
+	return pv_get_instance()->config.creds.secret;
+}
+char *pv_config_get_creds_token()
+{
+	return pv_get_instance()->config.creds.token;
+}
 
-char* pv_config_get_creds_tpm_key() { return pv_get_instance()->config.creds.tpm.key; }
-char* pv_config_get_creds_tpm_cert() { return pv_get_instance()->config.creds.tpm.cert; }
+char *pv_config_get_creds_tpm_key()
+{
+	return pv_get_instance()->config.creds.tpm.key;
+}
+char *pv_config_get_creds_tpm_cert()
+{
+	return pv_get_instance()->config.creds.tpm.cert;
+}
 
-char* pv_config_get_factory_autotok() { return pv_get_instance()->config.factory.autotok; }
+char *pv_config_get_factory_autotok()
+{
+	return pv_get_instance()->config.factory.autotok;
+}
 
-char* pv_config_get_storage_path() { return pv_get_instance()->config.storage.path; }
-char* pv_config_get_storage_fstype() { return pv_get_instance()->config.storage.fstype; }
-char* pv_config_get_storage_opts() { return pv_get_instance()->config.storage.opts; }
-char* pv_config_get_storage_mntpoint() { return pv_get_instance()->config.storage.mntpoint; }
-char* pv_config_get_storage_mnttype() { return pv_get_instance()->config.storage.mnttype; }
-char* pv_config_get_storage_logtempsize() { return pv_get_instance()->config.storage.logtempsize; }
-int pv_config_get_storage_wait() { return pv_get_instance()->config.storage.wait; }
+char *pv_config_get_storage_path()
+{
+	return pv_get_instance()->config.storage.path;
+}
+char *pv_config_get_storage_fstype()
+{
+	return pv_get_instance()->config.storage.fstype;
+}
+char *pv_config_get_storage_opts()
+{
+	return pv_get_instance()->config.storage.opts;
+}
+char *pv_config_get_storage_mntpoint()
+{
+	return pv_get_instance()->config.storage.mntpoint;
+}
+char *pv_config_get_storage_mnttype()
+{
+	return pv_get_instance()->config.storage.mnttype;
+}
+char *pv_config_get_storage_logtempsize()
+{
+	return pv_get_instance()->config.storage.logtempsize;
+}
+int pv_config_get_storage_wait()
+{
+	return pv_get_instance()->config.storage.wait;
+}
 
-int pv_config_get_storage_gc_reserved() { return pv_get_instance()->config.storage.gc.reserved; }
-bool pv_config_get_storage_gc_keep_factory() { return pv_get_instance()->config.storage.gc.keep_factory; }
-int pv_config_get_storage_gc_threshold() { return pv_get_instance()->config.storage.gc.threshold; }
-int pv_config_get_storage_gc_threshold_defertime() { return pv_get_instance()->config.storage.gc.threshold_defertime; }
+int pv_config_get_storage_gc_reserved()
+{
+	return pv_get_instance()->config.storage.gc.reserved;
+}
+bool pv_config_get_storage_gc_keep_factory()
+{
+	return pv_get_instance()->config.storage.gc.keep_factory;
+}
+int pv_config_get_storage_gc_threshold()
+{
+	return pv_get_instance()->config.storage.gc.threshold;
+}
+int pv_config_get_storage_gc_threshold_defertime()
+{
+	return pv_get_instance()->config.storage.gc.threshold_defertime;
+}
 
-char* pv_config_get_disk_voldir() { return pv_get_instance()->config.disk.voldir; }
+char *pv_config_get_disk_voldir()
+{
+	return pv_get_instance()->config.disk.voldir;
+}
 
-int pv_config_get_updater_interval() { return pv_get_instance()->config.updater.interval; }
-int pv_config_get_updater_conditions_timeout() { return pv_get_instance()->config.updater.conditions_timeout; }
-int pv_config_get_updater_network_timeout() { return pv_get_instance()->config.updater.network_timeout; }
-bool pv_config_get_updater_network_use_tmp_objects() { return pv_get_instance()->config.updater.use_tmp_objects; }
-int pv_config_get_updater_revision_retries() { return pv_get_instance()->config.updater.revision_retries; }
-int pv_config_get_updater_revision_retry_timeout() { return pv_get_instance()->config.updater.revision_retry_timeout; }
-int pv_config_get_updater_commit_delay() { return pv_get_instance()->config.updater.commit_delay; }
+int pv_config_get_updater_interval()
+{
+	return pv_get_instance()->config.updater.interval;
+}
+int pv_config_get_updater_conditions_timeout()
+{
+	return pv_get_instance()->config.updater.conditions_timeout;
+}
+int pv_config_get_updater_network_timeout()
+{
+	return pv_get_instance()->config.updater.network_timeout;
+}
+bool pv_config_get_updater_network_use_tmp_objects()
+{
+	return pv_get_instance()->config.updater.use_tmp_objects;
+}
+int pv_config_get_updater_revision_retries()
+{
+	return pv_get_instance()->config.updater.revision_retries;
+}
+int pv_config_get_updater_revision_retry_timeout()
+{
+	return pv_get_instance()->config.updater.revision_retry_timeout;
+}
+int pv_config_get_updater_commit_delay()
+{
+	return pv_get_instance()->config.updater.commit_delay;
+}
 
-char* pv_config_get_bl_dtb() { return pv_get_instance()->config.bl.dtb; }
-char* pv_config_get_bl_ovl() { return pv_get_instance()->config.bl.ovl; }
-int pv_config_get_bl_type() { return pv_get_instance()->config.bl.type; }
-bool pv_config_get_bl_mtd_only() { return pv_get_instance()->config.bl.mtd_only; }
-char* pv_config_get_bl_mtd_path() { return pv_get_instance()->config.bl.mtd_path; }
+char *pv_config_get_bl_dtb()
+{
+	return pv_get_instance()->config.bl.dtb;
+}
+char *pv_config_get_bl_ovl()
+{
+	return pv_get_instance()->config.bl.ovl;
+}
+int pv_config_get_bl_type()
+{
+	return pv_get_instance()->config.bl.type;
+}
+bool pv_config_get_bl_mtd_only()
+{
+	return pv_get_instance()->config.bl.mtd_only;
+}
+char *pv_config_get_bl_mtd_path()
+{
+	return pv_get_instance()->config.bl.mtd_path;
+}
 
-bool pv_config_get_watchdog_enabled() { return pv_get_instance()->config.wdt.enabled; }
-int pv_config_get_watchdog_timeout() { return pv_get_instance()->config.wdt.timeout; }
+bool pv_config_get_watchdog_enabled()
+{
+	return pv_get_instance()->config.wdt.enabled;
+}
+int pv_config_get_watchdog_timeout()
+{
+	return pv_get_instance()->config.wdt.timeout;
+}
 
-char* pv_config_get_network_brdev() { return pv_get_instance()->config.net.brdev; }
-char* pv_config_get_network_braddress4() { return pv_get_instance()->config.net.braddress4; }
-char* pv_config_get_network_brmask4() { return pv_get_instance()->config.net.brmask4; }
+char *pv_config_get_network_brdev()
+{
+	return pv_get_instance()->config.net.brdev;
+}
+char *pv_config_get_network_braddress4()
+{
+	return pv_get_instance()->config.net.braddress4;
+}
+char *pv_config_get_network_brmask4()
+{
+	return pv_get_instance()->config.net.brmask4;
+}
 
-char* pv_config_get_log_logdir() { return pv_get_instance()->config.log.logdir; }
-int pv_config_get_log_logmax() { return pv_get_instance()->config.log.logmax; }
-int pv_config_get_log_loglevel() { return pv_get_instance()->config.log.loglevel; }
-int pv_config_get_log_logsize() { return pv_get_instance()->config.log.logsize; }
-bool pv_config_get_log_push() { return pv_get_instance()->config.log.push; }
-bool pv_config_get_log_capture() { return pv_get_instance()->config.log.capture; }
-bool pv_config_get_log_loggers() { return pv_get_instance()->config.log.loggers; }
-bool pv_config_get_log_stdout() { return pv_get_instance()->config.log.std_out; }
-int pv_config_get_libthttp_loglevel() { return pv_get_instance()->config.libthttp.loglevel; }
+char *pv_config_get_log_logdir()
+{
+	return pv_get_instance()->config.log.logdir;
+}
+int pv_config_get_log_logmax()
+{
+	return pv_get_instance()->config.log.logmax;
+}
+int pv_config_get_log_loglevel()
+{
+	return pv_get_instance()->config.log.loglevel;
+}
+int pv_config_get_log_logsize()
+{
+	return pv_get_instance()->config.log.logsize;
+}
+bool pv_config_get_log_push()
+{
+	return pv_get_instance()->config.log.push;
+}
+bool pv_config_get_log_capture()
+{
+	return pv_get_instance()->config.log.capture;
+}
+bool pv_config_get_log_loggers()
+{
+	return pv_get_instance()->config.log.loggers;
+}
+bool pv_config_get_log_stdout()
+{
+	return pv_get_instance()->config.log.std_out;
+}
+int pv_config_get_libthttp_loglevel()
+{
+	return pv_get_instance()->config.libthttp.loglevel;
+}
 
-int pv_config_get_lxc_loglevel()  { return pv_get_instance()->config.lxc.log_level; }
+int pv_config_get_lxc_loglevel()
+{
+	return pv_get_instance()->config.lxc.log_level;
+}
 
-bool pv_config_get_control_remote() { return pv_get_instance()->config.control.remote; }
+bool pv_config_get_control_remote()
+{
+	return pv_get_instance()->config.control.remote;
+}
 
-secureboot_mode_t pv_config_get_secureboot_mode() { return pv_get_instance()->config.secureboot.mode; }
-char* pv_config_get_secureboot_certdir() { return pv_get_instance()->config.secureboot.certdir; }
+secureboot_mode_t pv_config_get_secureboot_mode()
+{
+	return pv_get_instance()->config.secureboot.mode;
+}
+char *pv_config_get_secureboot_certdir()
+{
+	return pv_get_instance()->config.secureboot.certdir;
+}
 
-int pv_config_get_metadata_devmeta_interval() { return pv_get_instance()->config.metadata.devmeta_interval; }
+int pv_config_get_metadata_devmeta_interval()
+{
+	return pv_get_instance()->config.metadata.devmeta_interval;
+}
 
-
-char* pv_config_get_json()
+char *pv_config_get_json()
 {
 	struct pv_json_ser js;
 
@@ -699,17 +1038,22 @@ char* pv_config_get_json()
 		pv_json_ser_key(&js, "storage.gc.threshold");
 		pv_json_ser_number(&js, pv_config_get_storage_gc_threshold());
 		pv_json_ser_key(&js, "storage.gc.threshold.defertime");
-		pv_json_ser_number(&js, pv_config_get_storage_gc_threshold_defertime());
+		pv_json_ser_number(
+			&js, pv_config_get_storage_gc_threshold_defertime());
 		pv_json_ser_key(&js, "disk.voldir");
 		pv_json_ser_string(&js, pv_config_get_disk_voldir());
 		pv_json_ser_key(&js, "updater.use_tmp_objects");
-		pv_json_ser_bool(&js, pv_config_get_updater_network_use_tmp_objects());
+		pv_json_ser_bool(
+			&js, pv_config_get_updater_network_use_tmp_objects());
 		pv_json_ser_key(&js, "updater.conditions.timeout");
-		pv_json_ser_number(&js, pv_config_get_updater_conditions_timeout());
+		pv_json_ser_number(&js,
+				   pv_config_get_updater_conditions_timeout());
 		pv_json_ser_key(&js, "revision.retries");
-		pv_json_ser_number(&js, pv_config_get_updater_revision_retries());
+		pv_json_ser_number(&js,
+				   pv_config_get_updater_revision_retries());
 		pv_json_ser_key(&js, "revision.retries.timeout");
-		pv_json_ser_number(&js, pv_config_get_updater_revision_retry_timeout());
+		pv_json_ser_number(
+			&js, pv_config_get_updater_revision_retry_timeout());
 		pv_json_ser_key(&js, "wdt.enabled");
 		pv_json_ser_bool(&js, pv_config_get_watchdog_enabled());
 		pv_json_ser_key(&js, "wdt.timeout");
@@ -754,7 +1098,8 @@ char* pv_config_get_json()
 		pv_json_ser_key(&js, "updater.interval");
 		pv_json_ser_number(&js, pv_config_get_updater_interval());
 		pv_json_ser_key(&js, "updater.network_timeout");
-		pv_json_ser_number(&js, pv_config_get_updater_network_timeout());
+		pv_json_ser_number(&js,
+				   pv_config_get_updater_network_timeout());
 		pv_json_ser_key(&js, "updater.commit.delay");
 		pv_json_ser_number(&js, pv_config_get_updater_commit_delay());
 		pv_json_ser_key(&js, "log.dir");
@@ -778,7 +1123,8 @@ char* pv_config_get_json()
 		pv_json_ser_number(&js, pv_config_get_libthttp_loglevel());
 
 		pv_json_ser_key(&js, "metadata.devmeta.interval");
-		pv_json_ser_number(&js, pv_config_get_metadata_devmeta_interval());
+		pv_json_ser_number(&js,
+				   pv_config_get_metadata_devmeta_interval());
 
 		pv_json_ser_object_pop(&js);
 	}
@@ -842,7 +1188,8 @@ static int pv_config_trail(struct pv_init *this)
 		goto out;
 	}
 
-	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, "bsp", config_name);
+	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, "bsp",
+					 config_name);
 	free(config_name);
 
 	if (pv_config_override_config_from_file(path, &pv->config)) {
@@ -857,12 +1204,12 @@ out:
 	return res;
 }
 
-struct pv_init pv_init_creds =  {
+struct pv_init pv_init_creds = {
 	.init_fn = pv_config_creds,
 	.flags = 0,
 };
 
-struct pv_init pv_init_config_trail =  {
+struct pv_init pv_init_config_trail = {
 	.init_fn = pv_config_trail,
 	.flags = 0,
 };

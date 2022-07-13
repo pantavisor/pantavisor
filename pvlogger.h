@@ -39,7 +39,7 @@ struct pv_logger_config {
 	 * Only when logger config is statically allocated.
 	 * Do not use both pair and static_pair.
 	 * */
-	const char* (*static_pair)[2];
+	const char *(*static_pair)[2];
 };
 
 struct pv_log_info {
@@ -49,16 +49,17 @@ struct pv_log_info {
 	off_t truncate_size;
 	bool islxc;
 	pid_t logger_pid;
-	const char*(*pv_log_get_config_item)
-		(struct pv_logger_config *config, const char *key);
+	const char *(*pv_log_get_config_item)(struct pv_logger_config *config,
+					      const char *key);
 	struct pv_platform *platform;
 };
 
 int start_pvlogger(struct pv_log_info *log_info, const char *platform);
 
-void pv_log_info_free(struct pv_log_info * l);
+void pv_log_info_free(struct pv_log_info *l);
 
-const char* pv_log_get_config_item(struct pv_logger_config *config, const char *key);
+const char *pv_log_get_config_item(struct pv_logger_config *config,
+				   const char *key);
 static void pv_logger_config_free(struct pv_logger_config *item_config)
 {
 	int i = 0;
@@ -68,25 +69,26 @@ static void pv_logger_config_free(struct pv_logger_config *item_config)
 
 	while (item_config->pair[i][0]) {
 		if (item_config->pair[i][1])
-			free((void*)item_config->pair[i][1]);
-		free((void*)item_config->pair[i][0]);
-		free((void*)item_config->pair[i]);
+			free((void *)item_config->pair[i][1]);
+		free((void *)item_config->pair[i][0]);
+		free((void *)item_config->pair[i]);
 		i++;
 	}
 	/*
 	 * We've a NULL terminated pair..
 	 * */
-	free((void*)item_config->pair[i]);
+	free((void *)item_config->pair[i]);
 	free(item_config);
 }
 
-struct pv_log_info* pv_new_log(bool islxc, struct pv_logger_config *,const char *name);
+struct pv_log_info *pv_new_log(bool islxc, struct pv_logger_config *,
+			       const char *name);
 
 /*
  * user.* attributes are available usually for most file systems.
  * user. prefix is hence necessary! Otherwise filesystem(s) complaint
  * of ENOTSUP.
  * */
-#define PV_LOGGER_POS_XATTR 	"trusted.pv.logger.pos"
-#define PV_LOGGER_FILE_WAIT_TIMEOUT 	(1)
-#endif  /*__PV_LOGGER_H_*/
+#define PV_LOGGER_POS_XATTR "trusted.pv.logger.pos"
+#define PV_LOGGER_FILE_WAIT_TIMEOUT (1)
+#endif /*__PV_LOGGER_H_*/

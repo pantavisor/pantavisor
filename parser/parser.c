@@ -30,8 +30,8 @@
 
 #include <jsmn/jsmnutil.h>
 
-#define MODULE_NAME             "parser"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "parser"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 #include "parser.h"
@@ -43,8 +43,8 @@
 
 struct pv_state_parser {
 	char *spec;
-	struct pv_state* (*parse)(struct pv_state *this, const char *buf);
-	char* (*parse_initrd_config_name)(const char *buf);
+	struct pv_state *(*parse)(struct pv_state *this, const char *buf);
+	char *(*parse_initrd_config_name)(const char *buf);
 	void (*free)(struct pv_state *s);
 	void (*print)(struct pv_state *s);
 };
@@ -62,7 +62,7 @@ struct pv_state_parser parsers[SPEC_UNKNOWN] = {
 	}
 };
 
-static struct pv_state_parser* _get_parser(state_spec_t spec)
+static struct pv_state_parser *_get_parser(state_spec_t spec)
 {
 	return &parsers[spec];
 }
@@ -83,12 +83,12 @@ static bool pv_parser_is_compatible(state_spec_t spec)
 	// embedded and standalone init modes are compatible with multi1 and system1
 	// appengine init mode is only compatible with system1
 	return ((pv_config_get_system_init_mode() == IM_EMBEDDED) ||
-			(pv_config_get_system_init_mode() == IM_STANDALONE) ||
-			((pv_config_get_system_init_mode() == IM_APPENGINE) &&
-			(spec == SPEC_SYSTEM1)));
+		(pv_config_get_system_init_mode() == IM_STANDALONE) ||
+		((pv_config_get_system_init_mode() == IM_APPENGINE) &&
+		 (spec == SPEC_SYSTEM1)));
 }
 
-struct pv_state* pv_parser_get_state(const char *buf, const char *rev)
+struct pv_state *pv_parser_get_state(const char *buf, const char *rev)
 {
 	int tokc, ret;
 	char *value = 0;
@@ -113,8 +113,7 @@ struct pv_state* pv_parser_get_state(const char *buf, const char *rev)
 	spec = pv_parser_convert_spec(value);
 	if (!pv_parser_is_compatible(spec)) {
 		pv_log(WARN, "spec '%s' not compatible with init mode %d",
-			value,
-			pv_config_get_system_init_mode());
+		       value, pv_config_get_system_init_mode());
 		goto out;
 	}
 
@@ -140,14 +139,14 @@ out:
 	return state;
 }
 
-char* pv_parser_get_initrd_config_name(const char *buf)
+char *pv_parser_get_initrd_config_name(const char *buf)
 {
 	int tokc;
 	char *value = 0;
 	state_spec_t spec;
 	struct pv_state_parser *p;
 	jsmntok_t *tokv;
-	char* config_name = NULL;
+	char *config_name = NULL;
 
 	// Parse full state json
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
@@ -164,8 +163,7 @@ char* pv_parser_get_initrd_config_name(const char *buf)
 	spec = pv_parser_convert_spec(value);
 	if (!pv_parser_is_compatible(spec)) {
 		pv_log(WARN, "spec '%s' not compatible with init mode %d",
-			value,
-			pv_config_get_system_init_mode());
+		       value, pv_config_get_system_init_mode());
 		goto out;
 	}
 

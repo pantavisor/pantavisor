@@ -37,13 +37,13 @@
 #include "tsh.h"
 #include "timer.h"
 
-#define TSH_MAX_LENGTH	32
-#define TSH_DELIM	" \t\r\n\a"
+#define TSH_MAX_LENGTH 32
+#define TSH_DELIM " \t\r\n\a"
 
 static char **_tsh_split_cmd(char *cmd)
 {
 	int pos = 0;
-	char **ts = malloc(TSH_MAX_LENGTH * sizeof(char*));
+	char **ts = malloc(TSH_MAX_LENGTH * sizeof(char *));
 	char *t;
 
 	if (!ts)
@@ -53,7 +53,6 @@ static char **_tsh_split_cmd(char *cmd)
 	while (t != NULL) {
 		ts[pos] = t;
 		pos++;
-
 
 		if (pos >= TSH_MAX_LENGTH)
 			break;
@@ -65,7 +64,8 @@ static char **_tsh_split_cmd(char *cmd)
 	return ts;
 }
 
-static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int stdout_p[], int stderr_p[])
+static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
+		       int stdout_p[], int stderr_p[])
 {
 	int pid = -1;
 	sigset_t blocked_sig, old_sigset;
@@ -82,7 +82,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int st
 	pid = fork();
 
 	if (pid == -1) {
-		if ( (ret == 0) && wait)
+		if ((ret == 0) && wait)
 			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		return -1;
 	} else if (pid > 0) {
@@ -98,30 +98,39 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[], int st
 	} else {
 		ret = 0;
 		// closed all unused fds right away ..
-		if(stdin_p) // close writing end for stdin dup
+		if (stdin_p) // close writing end for stdin dup
 			close(stdin_p[1]);
-		if(stdout_p) // close reading ends for out and err dup
+		if (stdout_p) // close reading ends for out and err dup
 			close(stdout_p[0]);
-		if(stderr_p)
+		if (stderr_p)
 			close(stderr_p[0]);
 
 		// dup2 things
-		while (stdin_p && ((ret = dup2(stdin_p[0], STDIN_FILENO)) == -1) && (errno == EINTR)) {}
+		while (stdin_p &&
+		       ((ret = dup2(stdin_p[0], STDIN_FILENO)) == -1) &&
+		       (errno == EINTR)) {
+		}
 		if (ret == -1)
 			goto exit_failure;
-		while (stdout_p && ((ret = dup2(stdout_p[1], STDOUT_FILENO)) == -1) && (errno == EINTR)) {}
+		while (stdout_p &&
+		       ((ret = dup2(stdout_p[1], STDOUT_FILENO)) == -1) &&
+		       (errno == EINTR)) {
+		}
 		if (ret == -1)
 			goto exit_failure;
-		while (stderr_p && ((ret = dup2(stderr_p[1], STDERR_FILENO)) == -1) && (errno == EINTR)) {}
+		while (stderr_p &&
+		       ((ret = dup2(stderr_p[1], STDERR_FILENO)) == -1) &&
+		       (errno == EINTR)) {
+		}
 		if (ret == -1)
 			goto exit_failure;
 
 		// close all the duped ones now too
-		if(stdin_p) // close reading end for stdin dup
+		if (stdin_p) // close reading end for stdin dup
 			close(stdin_p[0]);
-		if(stdout_p) // close writing ends for out and err dup
+		if (stdout_p) // close writing ends for out and err dup
 			close(stdout_p[1]);
-		if(stderr_p)
+		if (stderr_p)
 			close(stderr_p[1]);
 
 		// now we let it flow ...
@@ -141,7 +150,8 @@ pid_t tsh_run(char *cmd, int wait, int *status)
 }
 
 // Run command, either built-in or exec
-pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[], int stdout_p[], int stderr_p[])
+pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
+		 int stdout_p[], int stderr_p[])
 {
 	pid_t pid;
 	char **args;
@@ -166,7 +176,7 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[], int stdout_p[]
 	return pid;
 }
 
-static int safe_fd_set(int fd, fd_set* fds, int* max_fd)
+static int safe_fd_set(int fd, fd_set *fds, int *max_fd)
 {
 	FD_SET(fd, fds);
 	if (fd > *max_fd) {
@@ -175,7 +185,8 @@ static int safe_fd_set(int fd, fd_set* fds, int* max_fd)
 	return 0;
 }
 
-int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, char *err_buf, int err_size)
+int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
+		   char *err_buf, int err_size)
 {
 	int ret = -1, max_fd = -1, res, out_i = 0, err_i = 0;
 	pid_t pid = -1;
@@ -210,8 +221,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 		goto out;
 	else if (pid == 0) {
 		// redirect out and err of command to pipe
-		dup2 (outfd[1], STDOUT_FILENO);
-		dup2 (errfd[1], STDERR_FILENO);
+		dup2(outfd[1], STDOUT_FILENO);
+		dup2(errfd[1], STDERR_FILENO);
 		close(outfd[0]);
 		close(errfd[0]);
 		execvp(args[0], args);
@@ -224,13 +235,13 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 
 		oldsig = signal(SIGCHLD, SIG_DFL);
 
-		while(1) {
+		while (1) {
 			FD_ZERO(&master);
 			safe_fd_set(outfd[0], &master, &max_fd);
 			safe_fd_set(errfd[0], &master, &max_fd);
-			if (select(max_fd+1, &master, NULL, NULL, &tv) < 0) {
-			       ret = -1;
-			       break;
+			if (select(max_fd + 1, &master, NULL, NULL, &tv) < 0) {
+				ret = -1;
+				break;
 			}
 
 			if (FD_ISSET(outfd[0], &master)) {
@@ -241,7 +252,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 				} else if (res < 0 && errno != EAGAIN) {
 					ret = -1;
 					break;
-				} if (res == 0) {
+				}
+				if (res == 0) {
 					break;
 				}
 			}
@@ -258,11 +270,9 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size, 
 					break;
 				}
 			}
-
 		}
 
-		if(waitpid(pid, &ret, WNOHANG)) {
-
+		if (waitpid(pid, &ret, WNOHANG)) {
 			if (WIFEXITED(ret)) {
 				ret = WEXITSTATUS(ret);
 			}

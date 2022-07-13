@@ -32,7 +32,7 @@ char *pv_str_replace_char(char *str, int len, char which, char what)
 	if (!str)
 		return NULL;
 
-	for (char_at = 0; char_at < len; char_at++){
+	for (char_at = 0; char_at < len; char_at++) {
 		if (str[char_at] == which)
 			str[char_at] = what;
 	}
@@ -49,12 +49,11 @@ void pv_str_unescape_to_ascii(char *buf, int size)
 
 	bool ok = true;
 	do {
-
 		ok = true;
 		i = -1;
 		j = 0;
 		while (i < size) {
-next:
+		next:
 			++i;
 			if (buf[i] == '\\') {
 				for (size_t k = 0; k < sizeof(unescaped); ++k) {

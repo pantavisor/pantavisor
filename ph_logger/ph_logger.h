@@ -25,31 +25,31 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include "../pantavisor.h"
-#define PH_LOGGER_JSON_FORMAT     "{ \"tsec\": %"PRId64", \"tnano\": %"PRId32",\
+#define PH_LOGGER_JSON_FORMAT                                                  \
+	"{ \"tsec\": %" PRId64 ", \"tnano\": %" PRId32 ",\
 \"lvl\": \"%s\", \"src\": \"%s\",\"plat\":\"%s\",\
 \"rev\": \"%s\" , \"msg\": \"%s\" }"
 
-#define PH_LOGGER_POS_XATTR 	"trusted.ph.logger.pos"
+#define PH_LOGGER_POS_XATTR "trusted.ph.logger.pos"
 enum {
 	PH_LOGGER_V1,
 	/*Add new versions before this*/
 	PH_LOGGER_MAX_HANDLERS
 };
 #ifdef DEBUG
-#define WARN_ONCE(msg, args...) 	\
-do {\
-	static bool __warned = false; 	\
-	if (! __warned) { 		\
-		printf(msg, ##args); 	\
-		__warned = true; 	\
-	}\
-}while(0)
+#define WARN_ONCE(msg, args...)                                                \
+	do {                                                                   \
+		static bool __warned = false;                                  \
+		if (!__warned) {                                               \
+			printf(msg, ##args);                                   \
+			__warned = true;                                       \
+		}                                                              \
+	} while (0)
 #else
-#define WARN_ONCE(msg, args...) 	
+#define WARN_ONCE(msg, args...)
 #endif
 
-
-#define PH_LOGGER_WRITE_TIMEOUT 	(5)
+#define PH_LOGGER_WRITE_TIMEOUT (5)
 /*
  * Write Semantics for Version 1
  * v1 has the following message format in buffer
@@ -75,10 +75,11 @@ struct ph_logger_msg {
 	char buffer[0];
 };
 
-typedef int (*ph_logger_handler_t)(struct ph_logger_msg*, char *buf, va_list args);
+typedef int (*ph_logger_handler_t)(struct ph_logger_msg *, char *buf,
+				   va_list args);
 
-typedef int (*ph_logger_file_rw_handler_t)(struct ph_logger_msg*, const char *log_dir, char *rev);
-
+typedef int (*ph_logger_file_rw_handler_t)(struct ph_logger_msg *,
+					   const char *log_dir, char *rev);
 
 /*
  * Make ph_logger_msg->buffer from buf by placing correct values in ph_logger

@@ -28,12 +28,13 @@
 #include <time.h>
 
 // offers no return value, but prints to vlog. Requires pvlog.
-#define SNPRINTF_WTRUNC(buf, size, ...) \
-	do { \
-		int out = snprintf((buf), (size_t) (size), __VA_ARGS__); \
-		if ((int) (size) <= out) { \
-			pv_log(WARN, "string %s with size %d truncated to %d", #buf, out, (int) size); \
-		} \
+#define SNPRINTF_WTRUNC(buf, size, ...)                                        \
+	do {                                                                   \
+		int out = snprintf((buf), (size_t)(size), __VA_ARGS__);        \
+		if ((int)(size) <= out) {                                      \
+			pv_log(WARN, "string %s with size %d truncated to %d", \
+			       #buf, out, (int)size);                          \
+		}                                                              \
 	} while (0)
 
 /*
@@ -71,24 +72,29 @@ int pv_str_count_list(char **list);
 /* prints seconds since beginning of epoch in buf */
 size_t epochsecstring(char *buf, size_t len, time_t t);
 
-static inline bool pv_str_startswith(const char* str1, int str1len, const char* str2)
+static inline bool pv_str_startswith(const char *str1, int str1len,
+				     const char *str2)
 {
 	return !strncmp(str1, str2, str1len);
 }
 
-static inline bool pv_str_matches(const char* str1, int str1len, const char* str2, int str2len)
+static inline bool pv_str_matches(const char *str1, int str1len,
+				  const char *str2, int str2len)
 {
 	return ((str1len == str2len) && !strncmp(str1, str2, str1len));
 }
 
-static inline bool pv_str_matches_case(const char* str1, int str1len, const char* str2, int str2len)
+static inline bool pv_str_matches_case(const char *str1, int str1len,
+				       const char *str2, int str2len)
 {
 	return ((str1len == str2len) && !strncasecmp(str1, str2, str1len));
 }
 
-static inline bool pv_str_endswith(const char* str1, int str1len, const char* str2, int str2len)
+static inline bool pv_str_endswith(const char *str1, int str1len,
+				   const char *str2, int str2len)
 {
-	return ((str2len > str1len) && !strncmp(str1, &str2[str2len - str1len], str1len));
+	return ((str2len > str1len) &&
+		!strncmp(str1, &str2[str2len - str1len], str1len));
 }
 
 #endif /* UTILS_PV_STRING_H_ */

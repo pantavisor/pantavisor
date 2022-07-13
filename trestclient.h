@@ -25,6 +25,7 @@
 #include <trest.h>
 #include "pantavisor.h"
 
-trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn);
+trest_ptr pv_get_trest_client(struct pantavisor *pv,
+			      struct pv_connection *conn);
 
 #endif /* PV_TRESTCLIENT_H */

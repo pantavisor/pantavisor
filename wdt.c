@@ -29,8 +29,8 @@
 
 #include "wdt.h"
 
-#define MODULE_NAME             "wdt"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "wdt"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 int fd = -1;

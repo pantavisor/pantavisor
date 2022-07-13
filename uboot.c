@@ -38,8 +38,8 @@
 #include "paths.h"
 #include "utils/str.h"
 
-#define MODULE_NAME			"uboot"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "uboot"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 static char *pv_env = 0;
@@ -72,7 +72,8 @@ static int uboot_init()
 	// get mtd_path from config or else use default
 	single_env = pv_config_get_bl_mtd_only();
 	if (pv_config_get_bl_mtd_path())
-		memcpy(mtd_env_str, pv_config_get_bl_mtd_path(), strlen(pv_config_get_bl_mtd_path()));
+		memcpy(mtd_env_str, pv_config_get_bl_mtd_path(),
+		       strlen(pv_config_get_bl_mtd_path()));
 	else
 		memcpy(mtd_env_str, MTD_ENV, sizeof(MTD_ENV));
 
@@ -88,19 +89,22 @@ static int uboot_init()
 
 	ret = read(fd, buf, sizeof(MTD_MATCH));
 	if (ret < 0) {
-		pv_log(ERROR, "Failed to read from %d bytes from /proc/mtd", sizeof(MTD_MATCH));
+		pv_log(ERROR, "Failed to read from %d bytes from /proc/mtd",
+		       sizeof(MTD_MATCH));
 		return -2;
 	}
 
 	if (strncmp(buf, MTD_MATCH, strlen(MTD_MATCH))) {
-		pv_log(ERROR, "First line of /proc/mtd does not match '%s' instead we have '%s'", MTD_MATCH, buf);
+		pv_log(ERROR,
+		       "First line of /proc/mtd does not match '%s' instead we have '%s'",
+		       MTD_MATCH, buf);
 		return -3;
 	}
 
 	char *ns, *ne;
 	ret = read(fd, buf, sizeof(buf));
 	next = buf;
-	while (next && ((next-buf) < ret)) {
+	while (next && ((next - buf) < ret)) {
 		char name[64];
 		ns = strchr(next, '\"');
 		if (!ns)
@@ -110,11 +114,11 @@ static int uboot_init()
 		if (!ne)
 			break;
 		strncpy(name, ns, ne - ns);
-		name[ne-ns] = '\0';
+		name[ne - ns] = '\0';
 		if (!strcmp(name, mtd_env_str)) {
 			int idx = -1;
 			sscanf(next, "mtd%d:", &idx);
-			SNPRINTF_WTRUNC(buf, sizeof (buf), "/dev/mtd%d", idx);
+			SNPRINTF_WTRUNC(buf, sizeof(buf), "/dev/mtd%d", idx);
 			pv_env = strdup(buf);
 			break;
 		}
@@ -126,7 +130,7 @@ static int uboot_init()
 	return 0;
 }
 
-static char* uboot_get_env_key(char *key)
+static char *uboot_get_env_key(char *key)
 {
 	int fd, n, len, ret;
 	char *buf, *path, *value = NULL;
@@ -155,13 +159,13 @@ static char* uboot_get_env_key(char *key)
 		if (buf[i] != '\0')
 			continue;
 
-		if (!strncmp(buf+k, key, n)) {
-			len = strlen(buf+k+n+1);
+		if (!strncmp(buf + k, key, n)) {
+			len = strlen(buf + k + n + 1);
 			value = calloc(len + 1, sizeof(char));
-			strcpy(value, buf+k+n+1);
+			strcpy(value, buf + k + n + 1);
 			break;
 		}
-		k = i+1;
+		k = i + 1;
 	}
 	free(buf);
 
@@ -197,21 +201,21 @@ static int uboot_unset_env_key(char *key)
 	close(fd);
 
 	len = 0;
-	d = (char *) new;
-	s = (char *) old;
+	d = (char *)new;
+	s = (char *)old;
 	for (uint16_t i = 0; i < ret; i++) {
-		if ((old[i] == 0xFF && old[i+1] == 0xFF) ||
-		     (old[i] == '\0' && old[i+1] == '\0'))
+		if ((old[i] == 0xFF && old[i + 1] == 0xFF) ||
+		    (old[i] == '\0' && old[i + 1] == '\0'))
 			break;
 
 		if (old[i] == '\0')
 			continue;
 
-		s = (char *) old+i;
+		s = (char *)old + i;
 		len = strlen(s);
 		if (memcmp(s, key, strlen(key))) {
-			memcpy(d, s, len+1);
-			d += len+1;
+			memcpy(d, s, len + 1);
+			d += len + 1;
 		}
 		i += len;
 		len = 0;
@@ -230,9 +234,11 @@ static int uboot_unset_env_key(char *key)
 		ei.start = 0;
 		ei.length = mi.erasesize;
 		if (ioctl(fd, MEMUNLOCK, &ei))
-			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s",
+			       strerror(errno));
 		if (ioctl(fd, MEMERASE, &ei))
-			pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMERASE errno=%s",
+			       strerror(errno));
 	}
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));
@@ -271,31 +277,30 @@ static int uboot_set_env_key(char *key, char *value)
 	close(fd);
 
 	len = 0;
-	d = (char *) new;
-	s = (char *) old;
+	d = (char *)new;
+	s = (char *)old;
 	for (uint16_t i = 0; i < res; i++) {
-		if ((old[i] == 0xFF && old[i+1] == 0xFF) ||
-		     (old[i] == '\0' && old[i+1] == '\0'))
+		if ((old[i] == 0xFF && old[i + 1] == 0xFF) ||
+		    (old[i] == '\0' && old[i + 1] == '\0'))
 			break;
 
 		if (old[i] == '\0')
 			continue;
 
-		s = (char *) old+i;
+		s = (char *)old + i;
 		len = strlen(s);
 		if (memcmp(s, key, strlen(key))) {
-			memcpy(d, s, len+1);
-			d += len+1;
+			memcpy(d, s, len + 1);
+			d += len + 1;
 		}
 		i += len;
 		len = 0;
 	}
 
-	SNPRINTF_WTRUNC(v, sizeof (v), "%s=%s\0", key, value);
+	SNPRINTF_WTRUNC(v, sizeof(v), "%s=%s\0", key, value);
 
-	memcpy(d, v, strlen(v)+1);
-	d += strlen(v)+1;
-
+	memcpy(d, v, strlen(v) + 1);
+	d += strlen(v) + 1;
 
 	fd = open(path, O_RDWR);
 	if (fd < 0) {
@@ -310,9 +315,11 @@ static int uboot_set_env_key(char *key, char *value)
 		ei.start = 0;
 		ei.length = mi.erasesize;
 		if (ioctl(fd, MEMUNLOCK, &ei))
-			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s",
+			       strerror(errno));
 		if (ioctl(fd, MEMERASE, &ei))
-			pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
+			pv_log(DEBUG, "ioctl: MEMERASE errno=%s",
+			       strerror(errno));
 	}
 	lseek(fd, 0, SEEK_SET);
 	res = write(fd, new, sizeof(new));
@@ -363,7 +370,8 @@ static int uboot_flush_env(void)
 
 	fd = open(pv_env, O_RDONLY);
 	if (fd < 0) {
-		pv_log(ERROR, "open failed for %s: %s", pv_env, strerror(errno));
+		pv_log(ERROR, "open failed for %s: %s", pv_env,
+		       strerror(errno));
 		return 0;
 	}
 
@@ -379,9 +387,9 @@ static int uboot_flush_env(void)
 }
 
 const struct bl_ops uboot_ops = {
-	.init		= uboot_init,
-	.set_env_key	= uboot_set_env_key,
-	.unset_env_key	= uboot_unset_env_key,
+	.init = uboot_init,
+	.set_env_key = uboot_set_env_key,
+	.unset_env_key = uboot_unset_env_key,
 	.get_env_key = uboot_get_env_key,
-	.flush_env	= uboot_flush_env,
+	.flush_env = uboot_flush_env,
 };

@@ -26,27 +26,26 @@
 
 #include "base64.h"
 
-#define MODULE_NAME             "base64"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "base64"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-static char* pv_base64_add_padding_multi4(char *str)
+static char *pv_base64_add_padding_multi4(char *str)
 {
 	int old_len = strlen(str), padding = 0, new_len;
 	int i;
-	switch (old_len % 4)
-	{
-		case 0:
-			return str;
-		case 2:
-			padding = 2;
-			break;
-		case 3:
-			padding = 1;
-			break;
-		default:
-			pv_log(WARN, "wrong base64 encoded input");
-			return str;
+	switch (old_len % 4) {
+	case 0:
+		return str;
+	case 2:
+		padding = 2;
+		break;
+	case 3:
+		padding = 1;
+		break;
+	default:
+		pv_log(WARN, "wrong base64 encoded input");
+		return str;
 	}
 
 	new_len = old_len + padding;
@@ -87,9 +86,11 @@ int pv_base64_decode(const char *src, char **dst, size_t *olen)
 	if (!*dst)
 		goto err;
 
-	res = mbedtls_base64_decode((unsigned char*)*dst, len, olen, (unsigned char*)src, ilen);
+	res = mbedtls_base64_decode((unsigned char *)*dst, len, olen,
+				    (unsigned char *)src, ilen);
 	if (res) {
-		pv_log(ERROR, "cannot decode base64 with code %d '%s'", res, src);
+		pv_log(ERROR, "cannot decode base64 with code %d '%s'", res,
+		       src);
 		goto err;
 	}
 
@@ -155,7 +156,8 @@ int pv_base64_url_encode(const char *src, char **dst, size_t *olen)
 	if (!*dst)
 		goto err;
 
-	res = mbedtls_base64_encode((unsigned char*)*dst, len, olen, (unsigned char*)src, ilen);
+	res = mbedtls_base64_encode((unsigned char *)*dst, len, olen,
+				    (unsigned char *)src, ilen);
 	if (res) {
 		pv_log(ERROR, "cannot encode base64 with code %d", res);
 		goto err;
@@ -172,7 +174,7 @@ int pv_base64_url_encode(const char *src, char **dst, size_t *olen)
 
 	return 0;
 err:
-	if(*dst) {
+	if (*dst) {
 		free(*dst);
 		*dst = NULL;
 	}

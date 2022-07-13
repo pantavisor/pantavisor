@@ -21,7 +21,10 @@ struct dl_list {
 	struct dl_list *prev;
 };
 
-#define DL_LIST_HEAD_INIT(l) { &(l), &(l) }
+#define DL_LIST_HEAD_INIT(l)                                                   \
+	{                                                                      \
+		&(l), &(l)                                                     \
+	}
 
 static inline void dl_list_init(struct dl_list *list)
 {
@@ -65,49 +68,48 @@ static inline unsigned int dl_list_len(struct dl_list *list)
 }
 
 #ifndef offsetof
-#define offsetof(type, member) ((long) &((type *) 0)->member)
+#define offsetof(type, member) ((long)&((type *)0)->member)
 #endif
 
-#define dl_list_entry(item, type, member) \
-	((type *) ((char *) item - offsetof(type, member)))
+#define dl_list_entry(item, type, member)                                      \
+	((type *)((char *)item - offsetof(type, member)))
 
-#define dl_list_first(list, type, member) \
-	(dl_list_empty((list)) ? NULL : \
-	 dl_list_entry((list)->next, type, member))
+#define dl_list_first(list, type, member)                                      \
+	(dl_list_empty((list)) ? NULL :                                        \
+				       dl_list_entry((list)->next, type, member))
 
-#define dl_list_last(list, type, member) \
-	(dl_list_empty((list)) ? NULL : \
-	 dl_list_entry((list)->prev, type, member))
+#define dl_list_last(list, type, member)                                       \
+	(dl_list_empty((list)) ? NULL :                                        \
+				       dl_list_entry((list)->prev, type, member))
 
-#define dl_list_for_each(item, list, type, member) \
-	for (item = dl_list_first((list), type, member); \
-	     item && item != dl_list_entry((list), type, member); \
+#define dl_list_for_each(item, list, type, member)                             \
+	for (item = dl_list_first((list), type, member);                       \
+	     item && item != dl_list_entry((list), type, member);              \
 	     item = dl_list_entry(item->member.next, type, member))
 
-#define dl_list_for_each_safe(item, n, list, type, member) \
-	for (item = dl_list_entry((list)->next, type, member), \
-		     n = dl_list_entry(item->member.next, type, member); \
-	     &item->member != (list); \
+#define dl_list_for_each_safe(item, n, list, type, member)                     \
+	for (item = dl_list_entry((list)->next, type, member),                 \
+	    n = dl_list_entry(item->member.next, type, member);                \
+	     &item->member != (list);                                          \
 	     item = n, n = dl_list_entry(n->member.next, type, member))
 
-#define dl_list_for_each_reverse(item, list, type, member) \
-	for (item = dl_list_entry((list)->prev, type, member); \
-	     &item->member != (list); \
+#define dl_list_for_each_reverse(item, list, type, member)                     \
+	for (item = dl_list_entry((list)->prev, type, member);                 \
+	     &item->member != (list);                                          \
 	     item = dl_list_entry(item->member.prev, type, member))
 
-#define DEFINE_DL_LIST(name) \
-	struct dl_list name = { &(name), &(name) }
+#define DEFINE_DL_LIST(name) struct dl_list name = { &(name), &(name) }
 
-#define container_of(ptr, type, mem)\
-	(type*)((char*)ptr - offset_of(type, mem))
+#define container_of(ptr, type, mem)                                           \
+	(type *)((char *)ptr - offset_of(type, mem))
 
 #ifndef free_member
-#define free_member(ptr, member)\
-({\
- if (ptr->member)\
-	free((void*)(ptr->member));\
- ptr->member = NULL;\
-})
+#define free_member(ptr, member)                                               \
+	({                                                                     \
+		if (ptr->member)                                               \
+			free((void *)(ptr->member));                           \
+		ptr->member = NULL;                                            \
+	})
 #endif /* free_member */
 
 #endif /* LIST_H */

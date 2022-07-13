@@ -37,8 +37,8 @@
 #include "init.h"
 #include "loop.h"
 
-#define MODULE_NAME             "loop"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "loop"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 static int mount_ext4(char *dev, char *dest)

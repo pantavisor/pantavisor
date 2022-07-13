@@ -52,26 +52,23 @@ int setns(int nsfd, int nstype);
 #include "utils/json.h"
 #include "utils/str.h"
 
-#define MODULE_NAME             "platforms"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "platforms"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-static const char *syslog[][2] = {
-		{"file", "/var/log/syslog"},
-		{"truncate", "true"},
-		{"maxsize", "2097152"},
-		{"name", NULL},
-		{NULL, NULL}
+static const char *syslog[][2] = { { "file", "/var/log/syslog" },
+				   { "truncate", "true" },
+				   { "maxsize", "2097152" },
+				   { "name", NULL },
+				   { NULL, NULL }
 
 };
 
-static const char *messages[][2] = {
-		{"file", "/var/log/messages"},
-		{"truncate", "true"},
-		{"maxsize", "2097152"},
-		{"name", NULL},
-		{NULL, NULL}
-};
+static const char *messages[][2] = { { "file", "/var/log/messages" },
+				     { "truncate", "true" },
+				     { "maxsize", "2097152" },
+				     { "name", NULL },
+				     { NULL, NULL } };
 static struct pv_logger_config plat_logger_config_syslog = {
 	.static_pair = syslog,
 	.pair = NULL,
@@ -84,33 +81,43 @@ static struct pv_logger_config plat_logger_config_messages = {
 
 struct pv_cont_ctrl {
 	char *type;
-	void* (*start)(struct pv_platform *p, const char *rev, char *conf_file, void *data);
-	void* (*stop)(struct pv_platform *p, char *conf_file, void *data);
+	void *(*start)(struct pv_platform *p, const char *rev, char *conf_file,
+		       void *data);
+	void *(*stop)(struct pv_platform *p, char *conf_file, void *data);
 };
 
 enum {
 	PV_CONT_LXC,
-//	PV_CONT_DOCKER,
+	//	PV_CONT_DOCKER,
 	PV_CONT_MAX
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 	{ "lxc", NULL, NULL },
-//	{ "docker", start_docker_platform, stop_docker_platform }
+	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
-static const char* pv_platform_status_string(plat_status_t status)
+static const char *pv_platform_status_string(plat_status_t status)
 {
-	switch(status) {
-		case PLAT_NONE: return "NONE";
-		case PLAT_READY: return "READY";
-		case PLAT_MOUNTED: return "MOUNTED";
-		case PLAT_BLOCKED: return "BLOCKED";
-		case PLAT_STARTING: return "STARTING";
-		case PLAT_STARTED: return "STARTED";
-		case PLAT_STOPPING: return "STOPPING";
-		case PLAT_STOPPED: return "STOPPED";
-		default: return "UNKNOWN";
+	switch (status) {
+	case PLAT_NONE:
+		return "NONE";
+	case PLAT_READY:
+		return "READY";
+	case PLAT_MOUNTED:
+		return "MOUNTED";
+	case PLAT_BLOCKED:
+		return "BLOCKED";
+	case PLAT_STARTING:
+		return "STARTING";
+	case PLAT_STARTED:
+		return "STARTED";
+	case PLAT_STOPPING:
+		return "STOPPING";
+	case PLAT_STOPPED:
+		return "STOPPED";
+	default:
+		return "UNKNOWN";
 	}
 
 	return "UNKNOWN";
@@ -122,10 +129,11 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 		return;
 
 	p->status = status;
-	pv_state_report_condition(p->state, p->name, "status", pv_platform_status_string(status));
+	pv_state_report_condition(p->state, p->name, "status",
+				  pv_platform_status_string(status));
 }
 
-struct pv_platform* pv_platform_add(struct pv_state *s, char *name)
+struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 {
 	struct pv_platform *p = calloc(1, sizeof(struct pv_platform));
 
@@ -153,8 +161,9 @@ static void pv_platform_empty_condition_refs(struct pv_platform *p)
 	struct dl_list *condition_refs = &p->condition_refs;
 
 	// Iterate over all condition references from platforms
-	dl_list_for_each_safe(cr, tmp, condition_refs,
-			struct pv_condition_ref, list) {
+	dl_list_for_each_safe(cr, tmp, condition_refs, struct pv_condition_ref,
+			      list)
+	{
 		dl_list_del(&cr->list);
 		pv_condition_ref_free(cr);
 		num_conditions++;
@@ -169,8 +178,8 @@ static void pv_platform_empty_logger_list(struct pv_platform *p)
 	struct pv_log_info *l, *tmp;
 	struct dl_list *logger_list = &p->logger_list;
 
-	dl_list_for_each_safe(l, tmp, logger_list,
-		struct pv_log_info, next) {
+	dl_list_for_each_safe(l, tmp, logger_list, struct pv_log_info, next)
+	{
 		pv_log(DEBUG, "removing logger %s", l->name);
 		dl_list_del(&l->next);
 		pv_log_info_free(l);
@@ -186,8 +195,9 @@ static void pv_platform_empty_logger_configs(struct pv_platform *p)
 	struct pv_logger_config *l, *tmp;
 	struct dl_list *logger_configs = &p->logger_configs;
 
-	dl_list_for_each_safe(l, tmp, logger_configs,
-		struct pv_logger_config, item_list) {
+	dl_list_for_each_safe(l, tmp, logger_configs, struct pv_logger_config,
+			      item_list)
+	{
 		dl_list_del(&l->item_list);
 		pv_logger_config_free(l);
 		num_logger_configs++;
@@ -214,8 +224,9 @@ void pv_platform_free(struct pv_platform *p)
 		}
 	}
 
-	dl_list_for_each_safe(d, tmp, &p->drivers,
-			struct pv_platform_driver, list) {
+	dl_list_for_each_safe(d, tmp, &p->drivers, struct pv_platform_driver,
+			      list)
+	{
 		free(d->match);
 		free(d);
 	}
@@ -247,9 +258,11 @@ void pv_platform_add_condition(struct pv_platform *p, struct pv_condition *c)
 	}
 }
 
-void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type, char *value)
+void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
+			    char *value)
 {
-	struct pv_platform_driver *d = calloc(1, sizeof(struct pv_platform_driver));
+	struct pv_platform_driver *d =
+		calloc(1, sizeof(struct pv_platform_driver));
 
 	if (d) {
 		d->type = type;
@@ -260,17 +273,19 @@ void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type, char *val
 	}
 }
 
-static const char* pv_platforms_role_str(roles_mask_t role)
+static const char *pv_platforms_role_str(roles_mask_t role)
 {
-    switch(role) {
-        case PLAT_ROLE_MGMT: return "mgmt";
-        default: return "unknown";
-    }
+	switch (role) {
+	case PLAT_ROLE_MGMT:
+		return "mgmt";
+	default:
+		return "unknown";
+	}
 
-    return "unknown";
+	return "unknown";
 }
 
-char* pv_platform_get_json(struct pv_platform *p)
+char *pv_platform_get_json(struct pv_platform *p)
 {
 	struct pv_condition_ref *cr, *tmp;
 	struct pv_json_ser js;
@@ -304,9 +319,10 @@ char* pv_platform_get_json(struct pv_platform *p)
 
 			for (i = 0; i < PLAT_ROLE_SIZE; i++) {
 				if (pv_platform_has_role(p, i))
-					pv_json_ser_string(&js, pv_platforms_role_str(i));
+					pv_json_ser_string(
+						&js, pv_platforms_role_str(i));
 			}
-close_roles:
+		close_roles:
 			pv_json_ser_array_pop(&js);
 		}
 
@@ -317,7 +333,8 @@ close_roles:
 				goto close_conds;
 
 			dl_list_for_each_safe(cr, tmp, &p->condition_refs,
-					struct pv_condition_ref, list) {
+					      struct pv_condition_ref, list)
+			{
 				if (!cr->ref)
 					continue;
 
@@ -328,12 +345,13 @@ close_roles:
 					pv_json_ser_key(&js, "key");
 					pv_json_ser_string(&js, cr->ref->key);
 					pv_json_ser_key(&js, "eval_value");
-					pv_json_ser_string(&js, cr->ref->eval_value);
+					pv_json_ser_string(&js,
+							   cr->ref->eval_value);
 
 					pv_json_ser_object_pop(&js);
 				}
 			}
-close_conds:
+		close_conds:
 			pv_json_ser_array_pop(&js);
 		}
 
@@ -349,8 +367,8 @@ void pv_platforms_empty(struct pv_state *s)
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &s->platforms;
 
-	dl_list_for_each_safe(p, tmp, platforms,
-		struct pv_platform, list) {
+	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
+	{
 		pv_log(DEBUG, "removing platform %s", p->name);
 		dl_list_del(&p->list);
 		pv_platform_free(p);
@@ -365,8 +383,8 @@ void pv_platforms_remove_not_installed(struct pv_state *s)
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &s->platforms;
 
-	dl_list_for_each_safe(p, tmp, platforms,
-		struct pv_platform, list) {
+	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
+	{
 		if (p->status != PLAT_NONE)
 			continue;
 
@@ -375,7 +393,7 @@ void pv_platforms_remove_not_installed(struct pv_state *s)
 	}
 }
 
-static struct pv_cont_ctrl* _pv_platforms_get_ctrl(char *type)
+static struct pv_cont_ctrl *_pv_platforms_get_ctrl(char *type)
 {
 	int i;
 
@@ -410,31 +428,29 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	if (c->start == NULL || c->stop == NULL)
 		return 0;
 
-	void (*__pv_new_log)(void*) = dlsym(lib, "pv_set_new_log_fn");
+	void (*__pv_new_log)(void *) = dlsym(lib, "pv_set_new_log_fn");
 	if (__pv_new_log)
 		__pv_new_log(pv_new_log);
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_new_log_fn");
 
-	void (*__pv_get_instance)(void*) = dlsym(lib, "pv_set_pv_instance_fn");
+	void (*__pv_get_instance)(void *) = dlsym(lib, "pv_set_pv_instance_fn");
 	if (__pv_get_instance)
 		__pv_get_instance(pv_get_instance);
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_instance_fn");
 
-	void (*__pv_paths)(void*, void*, void*, void*, void*, void*, void*, void*, void*, void*, void*) = dlsym(lib, "pv_set_pv_paths_fn");
+	void (*__pv_paths)(void *, void *, void *, void *, void *, void *,
+			   void *, void *, void *, void *, void *) =
+		dlsym(lib, "pv_set_pv_paths_fn");
 	if (__pv_paths)
-		__pv_paths(pv_paths_pv_file,
-			pv_paths_pv_log,
-			pv_paths_pv_log_plat,
-			pv_paths_pv_log_file,
-			pv_paths_pv_usrmeta_key,
-			pv_paths_pv_usrmeta_plat_key,
-			pv_paths_pv_devmeta_key,
-			pv_paths_pv_devmeta_plat_key,
-			pv_paths_lib_hook,
-			pv_paths_volumes_plat_file,
-			pv_paths_configs_file);
+		__pv_paths(pv_paths_pv_file, pv_paths_pv_log,
+			   pv_paths_pv_log_plat, pv_paths_pv_log_file,
+			   pv_paths_pv_usrmeta_key,
+			   pv_paths_pv_usrmeta_plat_key,
+			   pv_paths_pv_devmeta_key,
+			   pv_paths_pv_devmeta_plat_key, pv_paths_lib_hook,
+			   pv_paths_volumes_plat_file, pv_paths_configs_file);
 	else
 		pv_log(ERROR, "Couldn't locate symbol pv_set_pv_paths_fn");
 
@@ -472,19 +488,21 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 		return -1;
 	}
 	if (!pid) {
-		char namespace [64];
+		char namespace[64];
 		int ns_fd = -1;
 		/*
 		 * lxc_logger will not move
 		 * into mount namespace of platform.
 		 * */
 		if (!log_info->islxc) {
-			SNPRINTF_WTRUNC(namespace,sizeof(namespace), "/proc/%d/ns/mnt",
-					container_pid);
-			pv_log(DEBUG, "Opening file %s",namespace);
+			SNPRINTF_WTRUNC(namespace, sizeof(namespace),
+					"/proc/%d/ns/mnt", container_pid);
+			pv_log(DEBUG, "Opening file %s", namespace);
 			ns_fd = open(namespace, 0);
 			if (ns_fd < 0) {
-				pv_log(ERROR, "Unable to open namespace file: %s", strerror(errno));
+				pv_log(ERROR,
+				       "Unable to open namespace file: %s",
+				       strerror(errno));
 				_exit(-1);
 			}
 			if (setns(ns_fd, 0)) {
@@ -492,9 +510,8 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 				_exit(-1);
 			}
 		}
-		start_pvlogger(log_info, (log_info->islxc ? log_info->name
-				 		: platform->name)
-				);
+		start_pvlogger(log_info, (log_info->islxc ? log_info->name :
+								  platform->name));
 		_exit(0);
 	}
 	log_info->logger_pid = pid;
@@ -512,12 +529,15 @@ static void pv_setup_platform_log(struct pv_log_info *info,
 	 * We would read the config data from platform,
 	 * and set this up.
 	 * */
-	logfile = pv_log_get_config_item(logger_config, "file"); /*Defaults to /var/log/messages in pvlogger*/
+	logfile = pv_log_get_config_item(
+		logger_config,
+		"file"); /*Defaults to /var/log/messages in pvlogger*/
 	info->logfile = (logfile ? strdup(logfile) : NULL);
 }
 
-static struct pv_log_info* pv_add_platform_logger(struct pv_platform *platform,
-			struct pv_logger_config *logger_config)
+static struct pv_log_info *
+pv_add_platform_logger(struct pv_platform *platform,
+		       struct pv_logger_config *logger_config)
 {
 	struct pv_log_info *log_info = NULL;
 
@@ -538,8 +558,8 @@ void pv_platforms_add_all_loggers(struct pv_state *s)
 	bool plat_needs_default_logger;
 
 	platforms = &s->platforms;
-	dl_list_for_each_safe(p, tmp, platforms,
-		struct pv_platform, list) {
+	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
+	{
 		configs = &p->logger_configs;
 		plat_needs_default_logger = true;
 		/*
@@ -548,7 +568,8 @@ void pv_platforms_add_all_loggers(struct pv_state *s)
 		 * config data.
 		 * */
 		dl_list_for_each_safe(item_config, tmp_config, configs,
-				struct pv_logger_config, item_list) {
+				      struct pv_logger_config, item_list)
+		{
 			if (pv_add_platform_logger(p, item_config))
 				plat_needs_default_logger = false;
 			/*
@@ -559,17 +580,19 @@ void pv_platforms_add_all_loggers(struct pv_state *s)
 		}
 
 		if (plat_needs_default_logger) {
-			char logger_name[32] = {0};
+			char logger_name[32] = { 0 };
 			/*
 			 * The name key is at index 3
 			 * */
-			SNPRINTF_WTRUNC(logger_name, sizeof(logger_name), "%s-pvlogger-syslog",
-					p->name);
-			plat_logger_config_syslog.static_pair[3][1] = logger_name;
+			SNPRINTF_WTRUNC(logger_name, sizeof(logger_name),
+					"%s-pvlogger-syslog", p->name);
+			plat_logger_config_syslog.static_pair[3][1] =
+				logger_name;
 			pv_add_platform_logger(p, &plat_logger_config_syslog);
-			SNPRINTF_WTRUNC(logger_name, sizeof(logger_name), "%s-pvlogger-messages",
-					p->name);
-			plat_logger_config_messages.static_pair[3][1] = logger_name;
+			SNPRINTF_WTRUNC(logger_name, sizeof(logger_name),
+					"%s-pvlogger-messages", p->name);
+			plat_logger_config_messages.static_pair[3][1] =
+				logger_name;
 			pv_add_platform_logger(p, &plat_logger_config_messages);
 		}
 	}
@@ -584,30 +607,29 @@ static int start_pvlogger_for_platform(struct pv_platform *platform)
 	/*
 	 * This includes the ones for lxc.
 	 * */
-	dl_list_for_each_safe(log_info, tmp, loggers,
-				struct pv_log_info, next) {
+	dl_list_for_each_safe(log_info, tmp, loggers, struct pv_log_info, next)
+	{
 		log_info->platform = platform;
-		logger_pid =
-			__start_pvlogger_for_platform(platform, log_info);
+		logger_pid = __start_pvlogger_for_platform(platform, log_info);
 		/*
 		 * So this logger didn't succeeded,
 		 * */
 		if (logger_pid < 0) {
 			pv_log(WARN, "Logger %s was not started",
-				(log_info->name ? log_info->name : "pvlogger")
-				);
+			       (log_info->name ? log_info->name : "pvlogger"));
 		} else {
-			pv_log(DEBUG, "started pv_logger for platform %s"
-				"(name=%s) with pid = %d", platform->name,
-				log_info->name, logger_pid);
+			pv_log(DEBUG,
+			       "started pv_logger for platform %s"
+			       "(name=%s) with pid = %d",
+			       platform->name, log_info->name, logger_pid);
 		}
 	}
 
 	return logger_pid;
 }
 
-void pv_platform_unload_drivers(struct pv_platform *p,
-				char *namematch, plat_driver_t typematch)
+void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
+				plat_driver_t typematch)
 {
 	struct pv_platform_driver *d, *tmp;
 
@@ -616,9 +638,9 @@ void pv_platform_unload_drivers(struct pv_platform *p,
 		return;
 	}
 
-	dl_list_for_each_safe(d, tmp, &p->drivers,
-			struct pv_platform_driver, list) {
-
+	dl_list_for_each_safe(d, tmp, &p->drivers, struct pv_platform_driver,
+			      list)
+	{
 		if (!(d->type & typematch))
 			continue;
 
@@ -633,8 +655,8 @@ void pv_platform_unload_drivers(struct pv_platform *p,
 	}
 }
 
-int pv_platform_load_drivers(struct pv_platform *p,
-				char *namematch, plat_driver_t typematch)
+int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
+			     plat_driver_t typematch)
 {
 	struct pv_platform_driver *d, *tmp;
 
@@ -643,9 +665,9 @@ int pv_platform_load_drivers(struct pv_platform *p,
 		return 0;
 	}
 
-	dl_list_for_each_safe(d, tmp, &p->drivers,
-			struct pv_platform_driver, list) {
-
+	dl_list_for_each_safe(d, tmp, &p->drivers, struct pv_platform_driver,
+			      list)
+	{
 		if (!(d->type & typematch))
 			continue;
 
@@ -657,8 +679,9 @@ int pv_platform_load_drivers(struct pv_platform *p,
 		case DRIVER_REQUIRED:
 			d->loaded = pv_drivers_load(d->match);
 			if (!d->loaded) {
-				pv_log(ERROR, "unable to load required driver '%s'",
-					 d->match);
+				pv_log(ERROR,
+				       "unable to load required driver '%s'",
+				       d->match);
 				return -1;
 			}
 			break;
@@ -668,13 +691,15 @@ int pv_platform_load_drivers(struct pv_platform *p,
 		case DRIVER_MANUAL:
 			d->loaded = pv_drivers_load(d->match);
 			if (!d->loaded) {
-				pv_log(ERROR, "unable to load manual driver '%s'",
-					 d->match);
+				pv_log(ERROR,
+				       "unable to load manual driver '%s'",
+				       d->match);
 				return -1;
 			}
 			break;
 		}
-		pv_log(DEBUG, "plat=%s type=%d, loaded=%d, match='%s'", p->name, d->type, d->loaded, d->match);
+		pv_log(DEBUG, "plat=%s type=%d, loaded=%d, match='%s'", p->name,
+		       d->type, d->loaded, d->match);
 	}
 
 	return 0;
@@ -702,7 +727,7 @@ int pv_platform_start(struct pv_platform *p)
 
 	// Start the platform
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
-	data = ctrl->start(p, s->rev, path, (void *) &pid);
+	data = ctrl->start(p, s->rev, path, (void *)&pid);
 
 	if (!data) {
 		pv_log(ERROR, "error starting platform: '%s'", p->name);
@@ -721,7 +746,9 @@ int pv_platform_start(struct pv_platform *p)
 
 	if (pv_config_get_log_loggers())
 		if (start_pvlogger_for_platform(p) < 0)
-			pv_log(ERROR, "Could not start pv_logger for platform %s", p->name);
+			pv_log(ERROR,
+			       "Could not start pv_logger for platform %s",
+			       p->name);
 
 	return 0;
 }
@@ -735,11 +762,12 @@ static int pv_platform_stop_loggers(struct pv_platform *p)
 	pv_log(DEBUG, "stopping loggers attached to platform %s", p->name);
 
 	// send SIGTERM to logger attached to platform
-	dl_list_for_each_safe(l, tmp, logger_list,
-		struct pv_log_info, next) {
+	dl_list_for_each_safe(l, tmp, logger_list, struct pv_log_info, next)
+	{
 		if (l->logger_pid > 0) {
 			kill(l->logger_pid, SIGTERM);
-			pv_log(DEBUG, "sent SIGTERM to logger '%s' with pid %d", l->name, l->logger_pid);
+			pv_log(DEBUG, "sent SIGTERM to logger '%s' with pid %d",
+			       l->name, l->logger_pid);
 			num_loggers++;
 		}
 	}
@@ -748,8 +776,9 @@ static int pv_platform_stop_loggers(struct pv_platform *p)
 	for (int i = 0; i < 5; i++) {
 		exited = 0;
 		logger_list = &p->logger_list;
-		dl_list_for_each_safe(l, tmp, logger_list,
-			struct pv_log_info, next) {
+		dl_list_for_each_safe(l, tmp, logger_list, struct pv_log_info,
+				      next)
+		{
 			if (kill(l->logger_pid, 0))
 				exited++;
 		}
@@ -761,11 +790,14 @@ static int pv_platform_stop_loggers(struct pv_platform *p)
 	// force kill logger processes
 	if (exited != num_loggers) {
 		logger_list = &p->logger_list;
-		dl_list_for_each_safe(l, tmp, logger_list,
-			struct pv_log_info, next) {
+		dl_list_for_each_safe(l, tmp, logger_list, struct pv_log_info,
+				      next)
+		{
 			if (!kill(l->logger_pid, 0)) {
 				kill(l->logger_pid, SIGKILL);
-				pv_log(WARN, "sent SIGKILL to logger '%s' with pid %d", l->name, l->logger_pid);
+				pv_log(WARN,
+				       "sent SIGKILL to logger '%s' with pid %d",
+				       l->name, l->logger_pid);
 			}
 		}
 	}
@@ -824,12 +856,14 @@ int pv_platform_check_running(struct pv_platform *p)
 
 	running = !kill(p->init_pid, 0);
 	if (running) {
-		if ((p->status != PLAT_STARTED) && (p->status != PLAT_STOPPING)) {
+		if ((p->status != PLAT_STARTED) &&
+		    (p->status != PLAT_STOPPING)) {
 			pv_log(DEBUG, "platform %s started", p->name);
 			pv_platform_set_status(p, PLAT_STARTED);
 		}
 	} else {
-		if ((p->status != PLAT_STOPPED) && (p->status != PLAT_STARTING)) {
+		if ((p->status != PLAT_STOPPED) &&
+		    (p->status != PLAT_STARTING)) {
 			pv_log(DEBUG, "platform %s stopped", p->name);
 			pv_platform_set_status(p, PLAT_STOPPED);
 		}
@@ -846,7 +880,8 @@ bool pv_platform_check_conditions(struct pv_platform *p)
 		goto out;
 
 	dl_list_for_each_safe(cr, tmp, &p->condition_refs,
-			struct pv_condition_ref, list) {
+			      struct pv_condition_ref, list)
+	{
 		if (cr->ref && !pv_condition_check(cr->ref))
 			return false;
 	}

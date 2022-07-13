@@ -28,16 +28,9 @@
 #include "platforms.h"
 #include "pantavisor.h"
 
-typedef enum {
-	MOD_LOAD = 0,
-	MOD_UNLOAD
-} mod_action_t;
+typedef enum { MOD_LOAD = 0, MOD_UNLOAD } mod_action_t;
 
-typedef enum {
-	MOD_UNKNOWN = -1,
-	MOD_UNLOADED,
-	MOD_LOADED
-} mod_state_t;
+typedef enum { MOD_UNKNOWN = -1, MOD_UNLOADED, MOD_LOADED } mod_state_t;
 
 struct pv_driver {
 	char *alias;
@@ -53,7 +46,8 @@ char *pv_drivers_state_all(struct pv_platform *p);
 int pv_drivers_load(char *match);
 int pv_drivers_unload(char *match);
 
-struct pv_driver* pv_drivers_add(struct pv_state *s, char *alias, int len, char **modules);
+struct pv_driver *pv_drivers_add(struct pv_state *s, char *alias, int len,
+				 char **modules);
 void pv_drivers_empty(struct pv_state *s);
 
 static inline void pv_driver_free(struct pv_driver *driver)
@@ -72,12 +66,12 @@ static inline void pv_driver_free(struct pv_driver *driver)
 	free(driver);
 }
 
-#define pv_drivers_iter_begin(state, item) 	\
-{\
-	struct pv_driver *item##__tmp;\
-	struct dl_list *item##__head = &(state)->bsp.drivers;\
-	dl_list_for_each_safe(item, item##__tmp, item##__head,\
-			struct pv_driver, list)
+#define pv_drivers_iter_begin(state, item)                                     \
+	{                                                                      \
+		struct pv_driver *item##__tmp;                                 \
+		struct dl_list *item##__head = &(state)->bsp.drivers;          \
+		dl_list_for_each_safe(item, item##__tmp, item##__head,         \
+				      struct pv_driver, list)
 
-#define pv_drivers_iter_end	}
+#define pv_drivers_iter_end }
 #endif // PV_DRIVERS_H

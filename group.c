@@ -24,11 +24,11 @@
 
 #include "group.h"
 
-#define MODULE_NAME             "group"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "group"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-struct pv_group* pv_group_new(char *name)
+struct pv_group *pv_group_new(char *name)
 {
 	struct pv_group *g;
 

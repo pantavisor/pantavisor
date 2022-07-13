@@ -33,12 +33,12 @@
 #include "bootloader.h"
 #include "utils/str.h"
 
-#define MODULE_NAME			"grub"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "grub"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-#define GRUB_HDR		"# GRUB Environment Block\n"
-#define HDR_SIZE		sizeof(GRUB_HDR)-1
+#define GRUB_HDR "# GRUB Environment Block\n"
+#define HDR_SIZE sizeof(GRUB_HDR) - 1
 
 static char *grub_env = 0;
 
@@ -52,7 +52,7 @@ static int grub_init()
 		return 0;
 
 	pv_paths_storage_boot_file(buf, PATH_MAX, GRUBENV_FNAME);
-	grub_env  = strdup(buf);
+	grub_env = strdup(buf);
 
 	if (stat(grub_env, &st))
 		pv_log(ERROR, "unable to find grubenv");
@@ -106,7 +106,7 @@ static int read_grubenv(char *path, char *buf, int writable)
 	return fd;
 }
 
-static char* grub_get_env_key(char *key)
+static char *grub_get_env_key(char *key)
 {
 	int fd, len, klen, vlen;
 	char buf[1024];
@@ -127,12 +127,12 @@ static char* grub_get_env_key(char *key)
 		buf[i] = '\0';
 
 		if (!strncmp(next, key, klen)) {
-			vlen = strlen(next+klen+1);
+			vlen = strlen(next + klen + 1);
 			value = calloc(vlen + 1, sizeof(char));
-			strcpy(value, next+klen+1);
+			strcpy(value, next + klen + 1);
 			break;
 		}
-		next = buf+i+1;
+		next = buf + i + 1;
 	}
 	close(fd);
 
@@ -160,7 +160,7 @@ static int grub_unset_env_key(char *key)
 	// read all non-hit values into dest buf
 	int len = 0;
 	s = old + HDR_SIZE;
-	for (uint16_t i = HDR_SIZE; i < (sizeof(old)-HDR_SIZE); i++) {
+	for (uint16_t i = HDR_SIZE; i < (sizeof(old) - HDR_SIZE); i++) {
 		if (old[i] != '\n') {
 			len++;
 			continue;
@@ -168,12 +168,12 @@ static int grub_unset_env_key(char *key)
 
 		// copy each non-hit value
 		if (memcmp(s, key, strlen(key))) {
-			memcpy(d, s, len+1);
-			d += len+1;
+			memcpy(d, s, len + 1);
+			d += len + 1;
 		}
 
 		len = 0;
-		s = old+i+1;
+		s = old + i + 1;
 	}
 
 	lseek(fd, 0, SEEK_SET);
@@ -208,7 +208,7 @@ static int grub_set_env_key(char *key, char *value)
 	// read all non-hit values into dest buf
 	int len = 0;
 	s = old + HDR_SIZE;
-	for (uint16_t i = HDR_SIZE; i < (sizeof(old)-HDR_SIZE); i++) {
+	for (uint16_t i = HDR_SIZE; i < (sizeof(old) - HDR_SIZE); i++) {
 		if (old[i] != '\n') {
 			len++;
 			continue;
@@ -216,17 +216,17 @@ static int grub_set_env_key(char *key, char *value)
 
 		// copy each non-hit value
 		if (memcmp(s, key, strlen(key))) {
-			memcpy(d, s, len+1);
-			d += len+1;
+			memcpy(d, s, len + 1);
+			d += len + 1;
 		}
 
 		len = 0;
-		s = old+i+1;
+		s = old + i + 1;
 	}
 
 	// convert value
 	char v[128];
-	SNPRINTF_WTRUNC(v, sizeof (v), "%s=%s\n", key, value);
+	SNPRINTF_WTRUNC(v, sizeof(v), "%s=%s\n", key, value);
 
 	// write new key/value pair to destination
 	memcpy(d, v, strlen(v));
@@ -249,9 +249,9 @@ static int grub_flush_env(void)
 }
 
 const struct bl_ops grub_ops = {
-	.init		= grub_init,
-	.set_env_key	= grub_set_env_key,
-	.unset_env_key	= grub_unset_env_key,
-    .get_env_key = grub_get_env_key,
-	.flush_env	= grub_flush_env,
+	.init = grub_init,
+	.set_env_key = grub_set_env_key,
+	.unset_env_key = grub_unset_env_key,
+	.get_env_key = grub_get_env_key,
+	.flush_env = grub_flush_env,
 };

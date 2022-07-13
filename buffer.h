@@ -32,11 +32,11 @@ struct buffer {
 	struct dl_list free_list;
 };
 
-#define __drop_buf__       __cleanup__(__drop_buff)
+#define __drop_buf__ __cleanup__(__drop_buff)
 
-struct buffer* pv_buffer_get(bool large);
+struct buffer *pv_buffer_get(bool large);
 
-void pv_buffer_drop(struct buffer*);
+void pv_buffer_drop(struct buffer *);
 
 void pv_buffer_init(int items, int size);
 

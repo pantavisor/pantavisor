@@ -34,7 +34,8 @@ struct pv_condition {
 	struct dl_list list; // pv_condition
 };
 
-struct pv_condition* pv_condition_new(const char *plat, const char *key, const char *eval_value);
+struct pv_condition *pv_condition_new(const char *plat, const char *key,
+				      const char *eval_value);
 void pv_condition_free(struct pv_condition *c);
 
 void pv_condition_set_value(struct pv_condition *c, const char *curr_value);
@@ -47,9 +48,9 @@ struct pv_condition_ref {
 	struct dl_list list; // pv_condition_ref
 };
 
-struct pv_condition_ref* pv_condition_ref_new(struct pv_condition *c);
+struct pv_condition_ref *pv_condition_ref_new(struct pv_condition *c);
 void pv_condition_ref_free(struct pv_condition_ref *cr);
 
-struct pv_condition* pv_condition_get_ref(struct pv_condition_ref *cr);
+struct pv_condition *pv_condition_get_ref(struct pv_condition_ref *cr);
 
 #endif // PV_CONDITION_H

@@ -58,13 +58,13 @@
 #include "utils/system.h"
 #include "utils/fs.h"
 
-#define MODULE_NAME             "metadata"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "metadata"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 static const unsigned int METADATA_MAX_SIZE = 4096;
 
-#define PV_USERMETA_ADD     (1<<0)
+#define PV_USERMETA_ADD (1 << 0)
 struct pv_meta {
 	char *key;
 	char *value;
@@ -72,11 +72,11 @@ struct pv_meta {
 	struct dl_list list; // pv_meta
 };
 
-struct pv_devmeta_read{
+struct pv_devmeta_read {
 	char *key;
 	char *buf;
 	int buflen;
-	int (*reader)(struct pv_devmeta_read*);
+	int (*reader)(struct pv_devmeta_read *);
 };
 
 static int pv_devmeta_buf_check(struct pv_devmeta_read *pv_devmeta_read)
@@ -89,32 +89,30 @@ static int pv_devmeta_buf_check(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
-static int pv_devmeta_read_version(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_version(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
 
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
-	SNPRINTF_WTRUNC(buf, buflen,"%s",(char *) pv_build_version);
+	SNPRINTF_WTRUNC(buf, buflen, "%s", (char *)pv_build_version);
 	return 0;
 }
 
-static int pv_devmeta_read_arch(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_arch(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
 
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
-	SNPRINTF_WTRUNC(buf, buflen, "%s/%s/%s", PV_ARCH, PV_BITS, get_endian() ? "EL" : "EB");
+	SNPRINTF_WTRUNC(buf, buflen, "%s/%s/%s", PV_ARCH, PV_BITS,
+			get_endian() ? "EL" : "EB");
 	return 0;
 }
 
-static int pv_devmeta_read_dtmodel(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_dtmodel(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
@@ -129,8 +127,7 @@ static int pv_devmeta_read_dtmodel(struct pv_devmeta_read
 	return 0;
 }
 
-static int pv_devmeta_read_cpumodel(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_cpumodel(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
@@ -153,11 +150,12 @@ static int pv_devmeta_uname(struct pv_devmeta_read *pv_devmeta_read)
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
-	struct utsname data = {0};
+	struct utsname data = { 0 };
 	int err = uname(&data);
 
 	if (err) {
-		pv_log(WARN, "Couldn't add uname data: %s (%d)", strerror(errno), errno);
+		pv_log(WARN, "Couldn't add uname data: %s (%d)",
+		       strerror(errno), errno);
 		memset(buf, 0, buflen);
 		return -1;
 	}
@@ -187,8 +185,7 @@ static int pv_devmeta_uname(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
-static int pv_devmeta_read_revision(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_revision(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
@@ -201,8 +198,7 @@ static int pv_devmeta_read_revision(struct pv_devmeta_read
 	return 0;
 }
 
-static int pv_devmeta_read_mode(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_mode(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
@@ -218,8 +214,7 @@ static int pv_devmeta_read_mode(struct pv_devmeta_read
 	return 0;
 }
 
-static int pv_devmeta_read_online(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_online(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
@@ -235,8 +230,7 @@ static int pv_devmeta_read_online(struct pv_devmeta_read
 	return 0;
 }
 
-static int pv_devmeta_read_claimed(struct pv_devmeta_read
-						*pv_devmeta_read)
+static int pv_devmeta_read_claimed(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
 	int buflen = pv_devmeta_read->buflen;
@@ -253,34 +247,15 @@ static int pv_devmeta_read_claimed(struct pv_devmeta_read
 }
 
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
-	{
-		.key = DEVMETA_KEY_PV_ARCH,
-		.reader = pv_devmeta_read_arch
-	},
-	{	.key = DEVMETA_KEY_PV_VERSION,
-		.reader = pv_devmeta_read_version
-	},
-	{	.key = DEVMETA_KEY_PV_DTMODEL,
-		.reader = pv_devmeta_read_dtmodel
-	},
-	{	.key = DEVMETA_KEY_PV_CPUMODEL,
-		.reader = pv_devmeta_read_cpumodel
-	},
-	{	.key = DEVMETA_KEY_PV_REVISION,
-		.reader = pv_devmeta_read_revision
-	},
-	{	.key = DEVMETA_KEY_PV_MODE,
-		.reader = pv_devmeta_read_mode
-	},
-	{	.key = DEVMETA_KEY_PH_ONLINE,
-		.reader = pv_devmeta_read_online
-	},
-	{	.key = DEVMETA_KEY_PH_CLAIMED,
-		.reader = pv_devmeta_read_claimed
-	},
-	{ .key = DEVMETA_KEY_PV_UNAME,
-		.reader = pv_devmeta_uname
-	}
+	{ .key = DEVMETA_KEY_PV_ARCH, .reader = pv_devmeta_read_arch },
+	{ .key = DEVMETA_KEY_PV_VERSION, .reader = pv_devmeta_read_version },
+	{ .key = DEVMETA_KEY_PV_DTMODEL, .reader = pv_devmeta_read_dtmodel },
+	{ .key = DEVMETA_KEY_PV_CPUMODEL, .reader = pv_devmeta_read_cpumodel },
+	{ .key = DEVMETA_KEY_PV_REVISION, .reader = pv_devmeta_read_revision },
+	{ .key = DEVMETA_KEY_PV_MODE, .reader = pv_devmeta_read_mode },
+	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
+	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
+	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname }
 };
 
 static void pv_metadata_free(struct pv_meta *usermeta)
@@ -303,8 +278,8 @@ static void pv_usermeta_remove(struct pv_metadata *metadata)
 
 	pv_log(DEBUG, "removing user meta list");
 
-	dl_list_for_each_safe(curr, tmp, head,
-		struct pv_meta, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_meta, list)
+	{
 		dl_list_del(&curr->list);
 		pv_metadata_free(curr);
 	}
@@ -320,19 +295,20 @@ static void pv_devmeta_remove(struct pv_metadata *metadata)
 
 	pv_log(DEBUG, "removing devmeta list");
 
-	dl_list_for_each_safe(curr, tmp, head,
-		struct pv_meta, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_meta, list)
+	{
 		dl_list_del(&curr->list);
 		pv_metadata_free(curr);
 	}
 }
 
-static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, const char *key)
+static struct pv_meta *pv_metadata_get_by_key(struct dl_list *head,
+					      const char *key)
 {
 	struct pv_meta *curr, *tmp;
 
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_meta, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_meta, list)
+	{
 		if (!strcmp(key, curr->key))
 			return curr;
 	}
@@ -340,7 +316,8 @@ static struct pv_meta* pv_metadata_get_by_key(struct dl_list *head, const char *
 	return NULL;
 }
 
-static int pv_metadata_add(struct dl_list *head, const char *key, const char *value)
+static int pv_metadata_add(struct dl_list *head, const char *key,
+			   const char *value)
 {
 	int ret = -1;
 	struct pv_meta *curr;
@@ -454,20 +431,21 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		if (!key)
 			break;
 
-		strncpy(key, um+(*key_i)->start, n);
+		strncpy(key, um + (*key_i)->start, n);
 
 		// copy value
-		n = (*key_i+1)->end - (*key_i+1)->start;
+		n = (*key_i + 1)->end - (*key_i + 1)->start;
 		value = calloc(n + 1, sizeof(char));
 		if (!value)
 			break;
 
-		strncpy(value, um+(*key_i+1)->start, n);
+		strncpy(value, um + (*key_i + 1)->start, n);
 		pv_str_unescape_to_ascii(value, n);
 
 		// add or update metadata
 		// primitives with value 'null' have value NULL
-		if ((*key_i+1)->type != JSMN_PRIMITIVE || strcmp("null", value))
+		if ((*key_i + 1)->type != JSMN_PRIMITIVE ||
+		    strcmp("null", value))
 			pv_metadata_add_usermeta(key, value);
 
 		// free intermediates
@@ -505,8 +483,8 @@ static void usermeta_clear(struct pantavisor *pv)
 		return;
 
 	head = &pv->metadata->usermeta;
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_meta, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_meta, list)
+	{
 		// clear the flag updated for next iteration
 		if (curr->updated)
 			curr->updated = false;
@@ -571,19 +549,19 @@ void pv_metadata_parse_devmeta(const char *buf)
 
 	// parse key
 	n = (*key)->end - (*key)->start;
-	metakey = malloc(n+1);
+	metakey = malloc(n + 1);
 	if (!metakey)
 		goto out;
 
-	SNPRINTF_WTRUNC(metakey, n+1, "%s", buf+(*key)->start);
+	SNPRINTF_WTRUNC(metakey, n + 1, "%s", buf + (*key)->start);
 
 	// parse value
-	n = (*key+1)->end - (*key+1)->start;
-	metavalue = malloc(n+1);
+	n = (*key + 1)->end - (*key + 1)->start;
+	metavalue = malloc(n + 1);
 	if (!metavalue)
 		goto out;
 
-	SNPRINTF_WTRUNC(metavalue, n+1, "%s", buf+(*key+1)->start);
+	SNPRINTF_WTRUNC(metavalue, n + 1, "%s", buf + (*key + 1)->start);
 
 	pv_metadata_add_devmeta(metakey, metavalue);
 
@@ -627,14 +605,14 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 		pv_devmeta_readkeys[i].buflen = bufsize;
 		ret = pv_devmeta_readkeys[i].reader(&pv_devmeta_readkeys[i]);
 		if (!ret)
-			pv_metadata_add_devmeta(pv_devmeta_readkeys[i].key, buf);
+			pv_metadata_add_devmeta(pv_devmeta_readkeys[i].key,
+						buf);
 	}
 	pv_buffer_drop(buffer);
 	pv->metadata->devmeta_uploaded = false;
 	timer_start(&pv->metadata->devmeta_tm,
-		pv_config_get_metadata_devmeta_interval(),
-		0,
-		RELATIV_TIMER);
+		    pv_config_get_metadata_devmeta_interval(), 0,
+		    RELATIV_TIMER);
 
 	return 0;
 }
@@ -653,9 +631,8 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 		return 0;
 
 	timer_start(&pv->metadata->devmeta_tm,
-		pv_config_get_metadata_devmeta_interval(),
-		0,
-		RELATIV_TIMER);
+		    pv_config_get_metadata_devmeta_interval(), 0,
+		    RELATIV_TIMER);
 
 	/*
 	 * we can use one of the large buffer. Since
@@ -677,8 +654,8 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	json_avail -= sprintf(json, "{");
 	len += 1;
 	head = &pv->metadata->devmeta;
-	dl_list_for_each_safe(info, tmp, head,
-			struct pv_meta, list) {
+	dl_list_for_each_safe(info, tmp, head, struct pv_meta, list)
+	{
 		if (!info->updated)
 			continue;
 
@@ -689,28 +666,29 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 			// if value is a regular string
 			if (info->value[0] != '{') {
 				int frag_len = strlen(key) + strlen(val) +
-					// 2 pairs of quotes
-					2 * 2 +
-					// 1 colon and a ,
-					1 + 1;
+					       // 2 pairs of quotes
+					       2 * 2 +
+					       // 1 colon and a ,
+					       1 + 1;
 				if (json_avail > frag_len) {
 					SNPRINTF_WTRUNC(json + len, json_avail,
-							"\"%s\":\"%s\",",
-							key, val);
+							"\"%s\":\"%s\",", key,
+							val);
 					len += frag_len;
 					json_avail -= frag_len;
 				}
-			// if value is a json
+				// if value is a json
 			} else {
-				int frag_len = strlen(info->key) + strlen(info->value) +
-					// 1 pair of quotes
-					1 * 2 +
-					// 1 colon and a ,
-					1 + 1;
+				int frag_len = strlen(info->key) +
+					       strlen(info->value) +
+					       // 1 pair of quotes
+					       1 * 2 +
+					       // 1 colon and a ,
+					       1 + 1;
 				if (json_avail > frag_len) {
 					SNPRINTF_WTRUNC(json + len, json_avail,
-							"\"%s\":%s,",
-							info->key, info->value);
+							"\"%s\":%s,", info->key,
+							info->value);
 					len += frag_len;
 					json_avail -= frag_len;
 				}
@@ -727,11 +705,11 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	json[len - 1] = '}';
 	pv_log(INFO, "uploading devmeta json '%s'", json);
 	ret = pv_ph_upload_metadata(pv, json);
-	if(!ret) {
+	if (!ret) {
 		pv->metadata->devmeta_uploaded = true;
 
-		dl_list_for_each_safe(info, tmp, head,
-			struct pv_meta, list) {
+		dl_list_for_each_safe(info, tmp, head, struct pv_meta, list)
+		{
 			info->updated = false;
 		}
 	}
@@ -754,7 +732,7 @@ struct json_buf {
  */
 static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 {
-	struct json_buf *json_buf = (struct json_buf*) opaque;
+	struct json_buf *json_buf = (struct json_buf *)opaque;
 	char abs_key[PATH_MAX + (PATH_MAX / 2)];
 	char *formatted_key = NULL;
 	char *formatted_val = NULL;
@@ -772,14 +750,14 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 
 	if (formatted_key && formatted_val) {
 		int frag_len = strlen(formatted_key) + strlen(formatted_val) +
-			/* 2 pairs of quotes*/
-			2 * 2 +
-			/* 1 colon and a ,*/
-			1 + 1;
+			       /* 2 pairs of quotes*/
+			       2 * 2 +
+			       /* 1 colon and a ,*/
+			       1 + 1;
 		if (json_avail > frag_len) {
 			SNPRINTF_WTRUNC(json_buf->buf + len, json_avail,
-					"\"%s\":\"%s\",",
-					formatted_key, formatted_val);
+					"\"%s\":\"%s\",", formatted_key,
+					formatted_val);
 			len += frag_len;
 			json_avail -= frag_len;
 			json_buf->len = len;
@@ -794,7 +772,8 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 	return written ? 0 : -1;
 }
 
-static int __pv_metadata_factory_meta(struct pantavisor *pv, const char *factory_file)
+static int __pv_metadata_factory_meta(struct pantavisor *pv,
+				      const char *factory_file)
 {
 	int ret = -1;
 	DEFINE_DL_LIST(factory_kv_list);
@@ -822,8 +801,8 @@ static int __pv_metadata_factory_meta(struct pantavisor *pv, const char *factory
 	json_buf.len = json_len;
 	json_buf.avail = json_avail;
 	json_buf.factory_file = factory_file;
-	config_iterate_items(&factory_kv_list,
-			on_factory_meta_iterate, &json_buf);
+	config_iterate_items(&factory_kv_list, on_factory_meta_iterate,
+			     &json_buf);
 	json_len = json_buf.len;
 	/*
 	 * replace last ,.
@@ -853,12 +832,14 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		struct stat st;
 		n--;
 		if (!upload_failed) {
-			pv_paths_storage_factory_meta_key(path, PATH_MAX, dirlist[n]->d_name);
+			pv_paths_storage_factory_meta_key(path, PATH_MAX,
+							  dirlist[n]->d_name);
 			if (!stat(path, &st)) {
 				if ((st.st_mode & S_IFMT) == S_IFREG) {
 					int ret = -1;
 
-					ret = __pv_metadata_factory_meta(pv, path);
+					ret = __pv_metadata_factory_meta(pv,
+									 path);
 					if (ret)
 						upload_failed = true;
 				}
@@ -870,7 +851,8 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		free(dirlist);
 	if (!upload_failed) {
 		int fd;
-		pv_paths_storage_trail_pv_file(path, PATH_MAX, "0", METADONE_FNAME);
+		pv_paths_storage_trail_pv_file(path, PATH_MAX, "0",
+					       METADONE_FNAME);
 		fd = open(path, O_CREAT | O_SYNC);
 		if (fd < 0)
 			pv_log(ERROR, "Unable to open file %s", path);
@@ -898,8 +880,8 @@ char *pv_metadata_get_usermeta(char *key)
 	struct dl_list *head = &pv->metadata->usermeta;
 	struct pv_meta *curr, *tmp;
 
-	dl_list_for_each_safe(curr, tmp, head,
-			struct pv_meta, list) {
+	dl_list_for_each_safe(curr, tmp, head, struct pv_meta, list)
+	{
 		if (!strcmp(curr->key, key))
 			return curr->value;
 	}
@@ -922,17 +904,17 @@ static void pv_metadata_load_usermeta()
 
 	pv_log(DEBUG, "loading user meta from %s", path);
 
-	dl_list_for_each_safe(curr, tmp, &files,
-		struct pv_path, list) {
-
+	dl_list_for_each_safe(curr, tmp, &files, struct pv_path, list)
+	{
 		if (!strncmp(curr->path, "..", strlen("..")) ||
-			!strncmp(curr->path, ".", strlen(".")))
+		    !strncmp(curr->path, ".", strlen(".")))
 			continue;
 
 		pv_paths_pv_usrmeta_key(path, PATH_MAX, curr->path);
 		value = pv_fs_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
-			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
+			pv_log(ERROR, "could not load %s: %s", path,
+			       strerror(errno));
 			continue;
 		}
 
@@ -959,17 +941,17 @@ static void pv_metadata_load_devmeta()
 
 	pv_log(DEBUG, "loading device meta from %s", path);
 
-	dl_list_for_each_safe(curr, tmp, &files,
-		struct pv_path, list) {
-
+	dl_list_for_each_safe(curr, tmp, &files, struct pv_path, list)
+	{
 		if (!strncmp(curr->path, "..", strlen("..")) ||
-			!strncmp(curr->path, ".", strlen(".")))
+		    !strncmp(curr->path, ".", strlen(".")))
 			continue;
 
 		pv_paths_pv_devmeta_key(path, PATH_MAX, curr->path);
 		value = pv_fs_file_load(path, METADATA_MAX_SIZE);
 		if (!value) {
-			pv_log(ERROR, "could not load %s: %s", path, strerror(errno));
+			pv_log(ERROR, "could not load %s: %s", path,
+			       strerror(errno));
 			continue;
 		}
 
@@ -1019,14 +1001,14 @@ bool pv_metadata_factory_meta_done(struct pantavisor *pv)
 	return true;
 }
 
-static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
+static char *pv_metadata_get_meta_string(struct dl_list *meta_list)
 {
 	struct pv_meta *curr, *tmp;
 	int len = 1, line_len;
 	char *json = calloc(len, sizeof(char));
 
 	// open json
-	json[0]='{';
+	json[0] = '{';
 
 	if (dl_list_empty(meta_list)) {
 		len++;
@@ -1034,20 +1016,21 @@ static char* pv_metadata_get_meta_string(struct dl_list *meta_list)
 	}
 
 	// add value,key pair to json
-	dl_list_for_each_safe(curr, tmp, meta_list,
-		struct pv_meta, list) {
+	dl_list_for_each_safe(curr, tmp, meta_list, struct pv_meta, list)
+	{
 		if (!curr->value)
 			continue;
 
 		if (curr->value[0] != '{') {
 			// value is a plain string
-			char *escaped = pv_json_format(curr->value, strlen(curr->value));
+			char *escaped = pv_json_format(curr->value,
+						       strlen(curr->value));
 			if (!escaped)
 				continue;
 			line_len = strlen(curr->key) + strlen(escaped) + 6;
 			json = realloc(json, len + line_len + 1);
-			SNPRINTF_WTRUNC(&json[len], line_len + 1, "\"%s\":\"%s\",",
-					curr->key, escaped);
+			SNPRINTF_WTRUNC(&json[len], line_len + 1,
+					"\"%s\":\"%s\",", curr->key, escaped);
 			free(escaped);
 		} else {
 			// value is a json
@@ -1063,27 +1046,29 @@ out:
 	len += 1;
 	json = realloc(json, len);
 	// close json
-	json[len-2] = '}';
-	json[len-1] = '\0';
+	json[len - 2] = '}';
+	json[len - 1] = '\0';
 
 	return json;
 }
 
-char* pv_metadata_get_user_meta_string()
+char *pv_metadata_get_user_meta_string()
 {
-	return pv_metadata_get_meta_string(&pv_get_instance()->metadata->usermeta);
+	return pv_metadata_get_meta_string(
+		&pv_get_instance()->metadata->usermeta);
 }
 
-char* pv_metadata_get_device_meta_string()
+char *pv_metadata_get_device_meta_string()
 {
-	return pv_metadata_get_meta_string(&pv_get_instance()->metadata->devmeta);
+	return pv_metadata_get_meta_string(
+		&pv_get_instance()->metadata->devmeta);
 }
 
 void pv_metadata_remove()
 {
 	struct pantavisor *pv = pv_get_instance();
 
-	if(!pv->metadata)
+	if (!pv->metadata)
 		return;
 
 	pv_log(DEBUG, "removing metadata");

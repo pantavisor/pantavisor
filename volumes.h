@@ -64,11 +64,12 @@ struct pv_volume {
 
 void pv_volume_free(struct pv_volume *v);
 
-struct pv_disk* pv_disk_add(struct pv_state *s);
+struct pv_disk *pv_disk_add(struct pv_state *s);
 void pv_disks_empty(struct pv_state *s);
 
-struct pv_volume* pv_volume_add_with_disk(struct pv_state *s, char *name, char *disk);
-struct pv_volume* pv_volume_add(struct pv_state *s, char *name);
+struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
+					  char *disk);
+struct pv_volume *pv_volume_add(struct pv_state *s, char *name);
 
 int pv_volume_mount(struct pv_volume *v);
 int pv_volume_unmount(struct pv_volume *v);

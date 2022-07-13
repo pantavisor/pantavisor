@@ -28,12 +28,15 @@
 #define JSONB_STATIC
 #include "json-build/json-build.h"
 
-int pv_json_get_key_count(const char *buf, const char *key, jsmntok_t *tok, int tokc);
-char* pv_json_get_one_str(const char *buf, jsmntok_t **tok);
-char* pv_json_format(const char *buf, int len);
-int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t* tok, int tokc);
-char* pv_json_get_value(const char *buf, const char *key, jsmntok_t* tok, int tokc);
-char* pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
+int pv_json_get_key_count(const char *buf, const char *key, jsmntok_t *tok,
+			  int tokc);
+char *pv_json_get_one_str(const char *buf, jsmntok_t **tok);
+char *pv_json_format(const char *buf, int len);
+int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t *tok,
+			  int tokc);
+char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
+			int tokc);
+char *pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
 
 struct pv_json_ser {
 	jsonb b;
@@ -53,6 +56,6 @@ int pv_json_ser_string(struct pv_json_ser *js, const char *value);
 int pv_json_ser_bool(struct pv_json_ser *js, bool value);
 int pv_json_ser_number(struct pv_json_ser *js, double value);
 
-char* pv_json_ser_str(struct pv_json_ser *js);
+char *pv_json_ser_str(struct pv_json_ser *js);
 
 #endif /* UTILS_PV_JSON_H_ */

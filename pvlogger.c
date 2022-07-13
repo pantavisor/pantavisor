@@ -41,7 +41,7 @@
 #include "utils/math.h"
 #include "paths.h"
 
-#define MODULE_NAME             "pvlogger"
+#define MODULE_NAME "pvlogger"
 #include "log.h"
 
 static const char *module_name = MODULE_NAME;
@@ -50,12 +50,12 @@ static char *logger_cmd; //Leave some room to create json
 static struct log default_log;
 struct pv_log_info *pv_log_info = NULL;
 
-#define PV_LOG_BUF_START_OFFSET 	(0)
-#define PV_LOG_BUF_SIZE 		(4096)
+#define PV_LOG_BUF_START_OFFSET (0)
+#define PV_LOG_BUF_SIZE (4096)
 
 static int logger_pos = PV_LOG_BUF_START_OFFSET;
 
-static const char* pv_logger_get_logfile(struct pv_log_info *log_info)
+static const char *pv_logger_get_logfile(struct pv_log_info *log_info)
 {
 	return log_info->logfile ? log_info->logfile : "/var/log/messages";
 }
@@ -66,44 +66,49 @@ static const char* pv_logger_get_logfile(struct pv_log_info *log_info)
 
 static void pv_log(int level, char *msg, ...)
 {
-	char __buffer[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
-	char __formatted[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2 )];
+	char __buffer[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2)];
+	char __formatted[PV_LOG_BUF_SIZE + (PV_LOG_BUF_SIZE / 2)];
 	char path[PATH_MAX];
 	int to_write = 0;
 	int written = 0;
 	int offset = 0;
 	va_list args;
-	struct ph_logger_msg *ph_logger_msg =
-		(struct ph_logger_msg*)__buffer;
+	struct ph_logger_msg *ph_logger_msg = (struct ph_logger_msg *)__buffer;
 
 	va_start(args, msg);
 	vsnprintf(__formatted, sizeof(__formatted), msg, args);
 	va_end(args);
 	to_write = strlen(__formatted) + 1;
 
-	while(to_write > 0) {
+	while (to_write > 0) {
 		ph_logger_msg->version = PH_LOGGER_V1;
-		ph_logger_msg->len = sizeof(__buffer) - sizeof(struct ph_logger_msg);
-		written = ph_logger_write_bytes(ph_logger_msg, __formatted + offset,
-				level, pv_log_info->platform->name,
-				pv_logger_get_logfile(pv_log_info), to_write);
+		ph_logger_msg->len =
+			sizeof(__buffer) - sizeof(struct ph_logger_msg);
+		written = ph_logger_write_bytes(
+			ph_logger_msg, __formatted + offset, level,
+			pv_log_info->platform->name,
+			pv_logger_get_logfile(pv_log_info), to_write);
 
 		if (!pv_log_info->islxc) {
-			int ret = pvctl_write(__buffer,
-					ph_logger_msg->len + sizeof(struct ph_logger_msg));
+			int ret = pvctl_write(
+				__buffer, ph_logger_msg->len +
+						  sizeof(struct ph_logger_msg));
 			if (ret < 0) {
 				printf("Error in pvctl_write"
-						" %d from pvlogger\n", ret);
+				       " %d from pvlogger\n",
+				       ret);
 			}
 
 		} else {
 			pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-			int ret = pvctl_write_to_path(path,
-					__buffer,
-					ph_logger_msg->len + sizeof(struct ph_logger_msg));
+			int ret = pvctl_write_to_path(
+				path, __buffer,
+				ph_logger_msg->len +
+					sizeof(struct ph_logger_msg));
 			if (ret < 0) {
 				printf("Error in pvctl_write_to_path "
-						"%d from pvlogger\n", ret);
+				       "%d from pvlogger\n",
+				       ret);
 			}
 		}
 		offset += written;
@@ -140,8 +145,8 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 			pv_log(INFO, "%.*s", PV_LOG_BUF_SIZE - 1, logger_cmd);
 			logger_pos = PV_LOG_BUF_START_OFFSET;
 			avail_buflen = PV_LOG_BUF_SIZE - 1;
-			memset(logger_cmd + PV_LOG_BUF_START_OFFSET,
-					0, PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
+			memset(logger_cmd + PV_LOG_BUF_START_OFFSET, 0,
+			       PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
 		}
 
 		new_line_at = strchr(buf, '\n');
@@ -154,12 +159,14 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 		}
 
 		if (to_write > avail_buflen) {
-			SNPRINTF_WTRUNC(logger_cmd + logger_pos, avail_buflen + 1, "%.*s",
-							avail_buflen, buf);
+			SNPRINTF_WTRUNC(logger_cmd + logger_pos,
+					avail_buflen + 1, "%.*s", avail_buflen,
+					buf);
 			written = avail_buflen;
 		} else {
-			SNPRINTF_WTRUNC(logger_cmd + logger_pos, avail_buflen + 1, "%.*s",
-							to_write, buf);
+			SNPRINTF_WTRUNC(logger_cmd + logger_pos,
+					avail_buflen + 1, "%.*s", to_write,
+					buf);
 			written = to_write;
 		}
 
@@ -174,7 +181,7 @@ static int pvlogger_flush(struct log *log, char *buf, int buflen)
 			buflen -= 1;
 			pv_log(INFO, "%s", logger_cmd);
 			memset(logger_cmd + PV_LOG_BUF_START_OFFSET, 0,
-					PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
+			       PV_LOG_BUF_SIZE - PV_LOG_BUF_START_OFFSET);
 			logger_pos = PV_LOG_BUF_START_OFFSET;
 		}
 	}
@@ -194,9 +201,8 @@ static int get_logger_xattr(struct log *log)
 
 	if (pv_fs_file_get_xattr(buf, 32, fname, PV_LOGGER_POS_XATTR) < 0) {
 		pv_log(DEBUG, "Attribute %s not present", PV_LOGGER_POS_XATTR);
-	}
-	else {
-		sscanf(buf, "%" PRId64,&stored_pos);
+	} else {
+		sscanf(buf, "%" PRId64, &stored_pos);
 	}
 	return stored_pos;
 }
@@ -219,7 +225,7 @@ static int pvlogger_start(struct log *log, int was_init_ok)
 			stored_pos = 0;
 	}
 	pv_log(DEBUG, "pvlogger %s seeking to position %" PRId64 "\n",
-			module_name, stored_pos);
+	       module_name, stored_pos);
 	fseek(log->backing_file, stored_pos, SEEK_SET);
 out:
 	return was_init_ok;
@@ -245,15 +251,18 @@ static int wait_for_logfile(const char *logfile)
 	file_dup = strdup(logfile);
 
 	if (!file_dup) {
-		pv_log(WARN, "Memory allocation failed for logfile duplication");
+		pv_log(WARN,
+		       "Memory allocation failed for logfile duplication");
 		ret = LOG_NOK;
 		goto out;
 	}
 	filename = basename(file_dup);
 
-	if ( (!strlen(filename)) || *filename == '/' || *filename == '.') {
-		pv_log(WARN, "Configured log file name %s is not correct"
-				".\n", logfile);
+	if ((!strlen(filename)) || *filename == '/' || *filename == '.') {
+		pv_log(WARN,
+		       "Configured log file name %s is not correct"
+		       ".\n",
+		       logfile);
 		ret = LOG_NOK;
 		goto out;
 	}
@@ -274,11 +283,8 @@ out:
 int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 {
 	int ret = -1;
-	struct timeval tv = {
-		.tv_sec = 2,
-		.tv_usec = 0
-	};
-	char pr_name[16] = {0};
+	struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
+	char pr_name[16] = { 0 };
 	const char *logfile = NULL;
 
 	logger_cmd = calloc(PV_LOG_BUF_SIZE, sizeof(char));
@@ -290,7 +296,7 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	pv_log_info = log_info;
 	module_name = strdup(platform);
 	snprintf(pr_name, sizeof(pr_name), "pvlogger-%s", module_name);
-	prctl(PR_SET_NAME, (unsigned long)pr_name,0,0,0);
+	prctl(PR_SET_NAME, (unsigned long)pr_name, 0, 0, 0);
 
 	if (!pv_log_info) /*We can't even try and log cuz it maybe for lxc.*/
 		return 0;
@@ -301,8 +307,10 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 	default_log.do_start_log = pvlogger_start;
 
 	if (logfile && logfile[0] != '/') {
-		pv_log(WARN, "Logfile must be an absolute pathname"
-				" %s\n", logfile);
+		pv_log(WARN,
+		       "Logfile must be an absolute pathname"
+		       " %s\n",
+		       logfile);
 		return -1;
 	}
 
@@ -338,7 +346,7 @@ init_again:
 	return 0;
 }
 
-void pv_log_info_free(struct pv_log_info * l)
+void pv_log_info_free(struct pv_log_info *l)
 {
 	if (l->logfile)
 		free(l->logfile);
@@ -351,18 +359,20 @@ void pv_log_info_free(struct pv_log_info * l)
 /*
  * Don't free the returned value.
  * */
-const char* pv_log_get_config_item(struct pv_logger_config *config,
-		const char *key) {
+const char *pv_log_get_config_item(struct pv_logger_config *config,
+				   const char *key)
+{
 	int i = 0;
 	if (config->static_pair) {
 		while (config->static_pair[i][0]) {
-			if (!strncmp(config->static_pair[i][0], key, strlen(key)))
+			if (!strncmp(config->static_pair[i][0], key,
+				     strlen(key)))
 				return config->static_pair[i][1];
 			i++;
 		}
 	} else if (config->pair) {
 		while (config->pair[i][0]) {
-			if (!strncmp(config->pair[i][0], key,strlen(key)))
+			if (!strncmp(config->pair[i][0], key, strlen(key)))
 				return config->pair[i][1];
 			i++;
 		}
@@ -370,12 +380,11 @@ const char* pv_log_get_config_item(struct pv_logger_config *config,
 	return NULL;
 }
 
-struct pv_log_info* pv_new_log(bool islxc,
-				struct pv_logger_config *logger_config,
-				const char *name)
+struct pv_log_info *
+pv_new_log(bool islxc, struct pv_logger_config *logger_config, const char *name)
 {
 	struct pv_log_info *log_info = NULL;
-	const char *const logger_name_plat= "pvlogger";
+	const char *const logger_name_plat = "pvlogger";
 	const char *const logger_name_lxc = "pvlogger-lxc";
 	const char *logger_name = NULL;
 	const char *trunc_val = NULL;
@@ -391,7 +400,7 @@ struct pv_log_info* pv_new_log(bool islxc,
 		enabled = pv_log_get_config_item(logger_config, "lxc");
 		if (!enabled)
 			enabled = pv_log_get_config_item(logger_config,
-								"console");
+							 "console");
 		if (!enabled)
 			goto out;
 		else if (strncmp(enabled, "enable", strlen("enable")))
@@ -430,20 +439,19 @@ struct pv_log_info* pv_new_log(bool islxc,
 	trunc_val = pv_log_get_config_item(logger_config, "truncate");
 	if (trunc_val) {
 		if (!strncmp(trunc_val, "true", strlen("true"))) {
-			trunc_val = pv_log_get_config_item(logger_config, "maxsize");
+			trunc_val = pv_log_get_config_item(logger_config,
+							   "maxsize");
 			if (trunc_val)
-				sscanf(trunc_val,"%" PRId64,&log_info->truncate_size);
+				sscanf(trunc_val, "%" PRId64,
+				       &log_info->truncate_size);
 		}
 	}
 	dl_list_init(&log_info->next);
 	/*
 	 * Used from the pv_lxc plugin
 	 * */
-	log_info->pv_log_get_config_item =
-				pv_log_get_config_item;
+	log_info->pv_log_get_config_item = pv_log_get_config_item;
 	return log_info;
 out:
 	return NULL;
 }
-
-

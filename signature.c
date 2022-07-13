@@ -35,8 +35,8 @@
 #include "utils/str.h"
 #include "utils/base64.h"
 
-#define MODULE_NAME             "signature"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "signature"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 #define SPEC_PVS2 "pvs@2"
@@ -118,16 +118,17 @@ static void pv_signature_free_certs_raw(struct dl_list *certs_raw)
 {
 	struct pv_signature_cert_raw *c, *tmp;
 
-	dl_list_for_each_safe(c, tmp, certs_raw,
-			struct pv_signature_cert_raw, list) {
+	dl_list_for_each_safe(c, tmp, certs_raw, struct pv_signature_cert_raw,
+			      list)
+	{
 		dl_list_del(&c->list);
 		pv_signature_free_cert_raw(c);
 	}
 }
 
-static struct pv_signature* pv_signature_parse_pvs(const char *json)
+static struct pv_signature *pv_signature_parse_pvs(const char *json)
 {
-	struct pv_signature* signature = NULL;
+	struct pv_signature *signature = NULL;
 	int tokc;
 	jsmntok_t *tokv = NULL;
 	char *spec = NULL, *protected = NULL;
@@ -182,7 +183,8 @@ out:
 	return signature;
 }
 
-static struct pv_signature_headers_pvs* pv_signature_parse_headers_pvs(const char *json)
+static struct pv_signature_headers_pvs *
+pv_signature_parse_headers_pvs(const char *json)
 {
 	struct pv_signature_headers_pvs *headers_pvs = NULL;
 	int tokc;
@@ -226,7 +228,8 @@ out:
 	return headers_pvs;
 }
 
-static struct pv_signature_headers* pv_signature_parse_protected(char *protected)
+static struct pv_signature_headers *
+pv_signature_parse_protected(char *protected)
 {
 	struct pv_signature_headers *headers = NULL;
 	char *json = NULL, *typ = NULL, *pvs = NULL;
@@ -241,7 +244,8 @@ static struct pv_signature_headers* pv_signature_parse_protected(char *protected
 	}
 
 	if (pv_base64_url_decode(protected, &json, &olen)) {
-		pv_log(ERROR, "protected value could not be decoded '%s'", protected);
+		pv_log(ERROR, "protected value could not be decoded '%s'",
+		       protected);
 		goto err;
 	}
 
@@ -311,16 +315,16 @@ static void pv_signature_free_pairs(struct dl_list *json_pairs)
 {
 	struct pv_signature_pair *f, *tmp;
 
-	dl_list_for_each_safe(f, tmp, json_pairs,
-			struct pv_signature_pair, list) {
+	dl_list_for_each_safe(f, tmp, json_pairs, struct pv_signature_pair,
+			      list)
+	{
 		dl_list_del(&f->list);
 		pv_signature_free_pair(f);
 	}
 }
 
-static void pv_signature_include_files(const char *json,
-									bool include,
-									struct dl_list *json_pairs)
+static void pv_signature_include_files(const char *json, bool include,
+				       struct dl_list *json_pairs)
 {
 	char *str = NULL, *path = NULL;
 	int tokc, size;
@@ -345,14 +349,15 @@ static void pv_signature_include_files(const char *json,
 		goto out;
 	}
 
-	t = tokv+1;
+	t = tokv + 1;
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
 		fnflags = FNM_PATHNAME;
 
 		if (pv_str_matches("**", 2, str, strlen(str))) {
 			path = strdup("");
 			fnflags |= FNM_LEADING_DIR;
-		} else if (pv_str_endswith("/**", strlen("/**"), str, strlen(str))) {
+		} else if (pv_str_endswith("/**", strlen("/**"), str,
+					   strlen(str))) {
 			// if ** is in include, set path for fnmatch w/ FNM_LEADING_DIR
 			path = strdup(str);
 			path = dirname(path);
@@ -364,7 +369,8 @@ static void pv_signature_include_files(const char *json,
 
 		// if none of the above, include the pair that matches
 		dl_list_for_each_safe(pair, tmp, json_pairs,
-				struct pv_signature_pair, list) {
+				      struct pv_signature_pair, list)
+		{
 			if (!fnmatch(path, pair->key, fnflags)) {
 				pair->included = include;
 				pair->covered = true;
@@ -392,20 +398,22 @@ static void pv_signature_reset_included(struct dl_list *json_pairs)
 {
 	struct pv_signature_pair *pair, *tmp;
 
-	dl_list_for_each_safe(pair, tmp, json_pairs,
-			struct pv_signature_pair, list) {
+	dl_list_for_each_safe(pair, tmp, json_pairs, struct pv_signature_pair,
+			      list)
+	{
 		pair->included = false;
 	}
 }
 
 static void pv_signature_filter_files(struct pv_signature_headers_pvs *pvs,
-									struct dl_list *json_pairs)
+				      struct dl_list *json_pairs)
 {
 	pv_signature_include_files(pvs->include, true, json_pairs);
 	pv_signature_include_files(pvs->exclude, false, json_pairs);
 }
 
-static bool pv_signature_get_certs_raw(const char *x5c, struct dl_list *certs_raw)
+static bool pv_signature_get_certs_raw(const char *x5c,
+				       struct dl_list *certs_raw)
 {
 	bool ret = false;
 	char *str = NULL;
@@ -432,7 +440,7 @@ static bool pv_signature_get_certs_raw(const char *x5c, struct dl_list *certs_ra
 
 	pv_log(DEBUG, "x5c found containing %d certificates", size);
 
-	t = tokv+1;
+	t = tokv + 1;
 	while ((str = pv_json_array_get_one_str(x5c, &size, &t))) {
 		cert_raw = calloc(1, sizeof(struct pv_signature_cert_raw));
 		if (!cert_raw)
@@ -450,7 +458,7 @@ out:
 	return ret;
 }
 
-static char* pv_signature_get_json_files(struct dl_list *json_pairs)
+static char *pv_signature_get_json_files(struct dl_list *json_pairs)
 {
 	char *out;
 	int len, num_pairs, i = 0;
@@ -464,8 +472,9 @@ static char* pv_signature_get_json_files(struct dl_list *json_pairs)
 	strcpy(out, "{");
 
 	num_pairs = dl_list_len(json_pairs);
-	dl_list_for_each_safe(pair, tmp, json_pairs,
-			struct pv_signature_pair, list) {
+	dl_list_for_each_safe(pair, tmp, json_pairs, struct pv_signature_pair,
+			      list)
+	{
 		if (!pair->included)
 			continue;
 
@@ -506,17 +515,17 @@ static char* pv_signature_get_json_files(struct dl_list *json_pairs)
 	return out;
 }
 
-static char* pv_signature_get_filtered_json(struct pv_signature_headers_pvs *pvs,
-											struct dl_list *json_pairs)
+static char *
+pv_signature_get_filtered_json(struct pv_signature_headers_pvs *pvs,
+			       struct dl_list *json_pairs)
 {
 	pv_signature_reset_included(json_pairs);
 	pv_signature_filter_files(pvs, json_pairs);
 	return pv_signature_get_json_files(json_pairs);
 }
 
-static int pv_signature_print_cert(void *data,
-									mbedtls_x509_crt *crt,
-									int depth, uint32_t *flags)
+static int pv_signature_print_cert(void *data, mbedtls_x509_crt *crt, int depth,
+				   uint32_t *flags)
 {
 	// this callback is intentianally empty
 	// but it could be used to get info about the certs into the logs
@@ -524,7 +533,7 @@ static int pv_signature_print_cert(void *data,
 }
 
 static int pv_signature_parse_certs(struct dl_list *certs_raw,
-									struct mbedtls_x509_crt *certs)
+				    struct mbedtls_x509_crt *certs)
 {
 	int ret = -1, res;
 	unsigned int flags;
@@ -542,13 +551,15 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 	mbedtls_x509_crt_init(&cacerts);
 
 	dl_list_for_each_safe(cert_raw, tmp, certs_raw,
-		struct pv_signature_cert_raw, list) {
+			      struct pv_signature_cert_raw, list)
+	{
 		if (pv_base64_decode(cert_raw->content, &content, &olen)) {
 			pv_log(ERROR, "cert could not be decoded");
 			goto out;
 		}
 
-		res = mbedtls_x509_crt_parse_der(certs, (const unsigned char*) content, olen);
+		res = mbedtls_x509_crt_parse_der(
+			certs, (const unsigned char *)content, olen);
 		if (res) {
 			pv_log(ERROR, "cert could not be parsed: %d", res);
 			goto out;
@@ -576,7 +587,8 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 	}
 	pv_log(INFO, "loaded %d trusted x509 certificates from %s", i, path);
 
-	res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags, pv_signature_print_cert, NULL);
+	res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags,
+				      pv_signature_print_cert, NULL);
 	if (res) {
 		pv_log(ERROR, "cert chain could not be verified %d", res);
 		goto out;
@@ -622,18 +634,18 @@ static int pv_signature_validate_pk(struct mbedtls_pk_context *pk)
 	pktype = mbedtls_pk_get_type(pk);
 
 	switch (pktype) {
-		case MBEDTLS_PK_ECDSA:
-			pv_log(DEBUG, "public key type is MBEDTLS_PK_ECDSA");
-			break;
-		case MBEDTLS_PK_ECKEY:
-			pv_log(DEBUG, "public key type is MBEDTLS_PK_ECKEY");
-			break;
-		case MBEDTLS_PK_RSA:
-			pv_log(DEBUG, "public key type is MBEDTLS_PK_RSA");
-			break;
-		default:
-			pv_log(ERROR, "public key type is not supported: %d", pktype);
-			goto out;
+	case MBEDTLS_PK_ECDSA:
+		pv_log(DEBUG, "public key type is MBEDTLS_PK_ECDSA");
+		break;
+	case MBEDTLS_PK_ECKEY:
+		pv_log(DEBUG, "public key type is MBEDTLS_PK_ECKEY");
+		break;
+	case MBEDTLS_PK_RSA:
+		pv_log(DEBUG, "public key type is MBEDTLS_PK_RSA");
+		break;
+	default:
+		pv_log(ERROR, "public key type is not supported: %d", pktype);
+		goto out;
 	}
 
 	if (!mbedtls_pk_can_do(pk, pktype)) {
@@ -648,13 +660,17 @@ out:
 	return ret;
 }
 
-static bool pv_signature_verify_sha(const char *payload, struct dl_list *certs_raw, struct pv_signature *signature, mbedtls_md_type_t mdtype)
+static bool pv_signature_verify_sha(const char *payload,
+				    struct dl_list *certs_raw,
+				    struct pv_signature *signature,
+				    mbedtls_md_type_t mdtype)
 {
 	bool ret = false;
 	int res;
 	struct mbedtls_x509_crt certs;
 	size_t olen;
-	char *payload_encoded = NULL, *files_encoded = NULL, *sig_decoded = NULL;
+	char *payload_encoded = NULL, *files_encoded = NULL,
+	     *sig_decoded = NULL;
 	unsigned char *hash = NULL;
 	struct mbedtls_pk_context *pk = NULL;
 
@@ -667,7 +683,7 @@ static bool pv_signature_verify_sha(const char *payload, struct dl_list *certs_r
 			goto out;
 		}
 		pk = &certs.pk;
-	// if not, we load it from disk
+		// if not, we load it from disk
 	} else {
 		if (pv_signature_load_pk(&pk)) {
 			pv_log(ERROR, "public key could not be loaded");
@@ -690,7 +706,9 @@ static bool pv_signature_verify_sha(const char *payload, struct dl_list *certs_r
 		goto out;
 	}
 
-	payload_encoded = calloc(strlen(files_encoded)+strlen(signature->protected)+2, sizeof(char));
+	payload_encoded =
+		calloc(strlen(files_encoded) + strlen(signature->protected) + 2,
+		       sizeof(char));
 	strcpy(payload_encoded, signature->protected);
 	strcat(payload_encoded, ".");
 	strcat(payload_encoded, files_encoded);
@@ -701,20 +719,26 @@ static bool pv_signature_verify_sha(const char *payload, struct dl_list *certs_r
 		goto out;
 	}
 
-	res = mbedtls_md(mbedtls_md_info_from_type(mdtype), (unsigned char*)payload_encoded, strlen(payload_encoded), hash);
+	res = mbedtls_md(mbedtls_md_info_from_type(mdtype),
+			 (unsigned char *)payload_encoded,
+			 strlen(payload_encoded), hash);
 	if (res) {
-		pv_log(ERROR, "cannot create hash with code %d for payload '%s'", res, payload_encoded);
+		pv_log(ERROR,
+		       "cannot create hash with code %d for payload '%s'", res,
+		       payload_encoded);
 		goto out;
 	}
 
 	if (pv_base64_url_decode(signature->signature, &sig_decoded, &olen)) {
-		pv_log(ERROR, "signature could not be decoded '%s'", signature->signature);
+		pv_log(ERROR, "signature could not be decoded '%s'",
+		       signature->signature);
 		goto out;
 	}
 
 	pv_log(DEBUG, "signature length is %d", olen);
 
-	res = mbedtls_pk_verify(pk, mdtype, hash, 0, (unsigned char*)sig_decoded, olen);
+	res = mbedtls_pk_verify(pk, mdtype, hash, 0,
+				(unsigned char *)sig_decoded, olen);
 	if (res) {
 		pv_log(ERROR, "verification returned error code %d", res);
 		goto out;
@@ -737,7 +761,8 @@ out:
 	return ret;
 }
 
-static void pv_signature_parse_json(const char *json, struct dl_list *json_pairs)
+static void pv_signature_parse_json(const char *json,
+				    struct dl_list *json_pairs)
 {
 	int ret, tokc, n;
 	jsmntok_t *tokv;
@@ -762,17 +787,17 @@ static void pv_signature_parse_json(const char *json, struct dl_list *json_pairs
 			goto out;
 
 		// copy key
-		pair->key = calloc(n+1, sizeof(char));
+		pair->key = calloc(n + 1, sizeof(char));
 		if (!pair->key)
 			goto out;
-		snprintf(pair->key, n+1, "%s", json+(*k)->start);
+		snprintf(pair->key, n + 1, "%s", json + (*k)->start);
 
 		// copy value
-		n = (*k+1)->end - (*k+1)->start;
-		pair->value = calloc(n+1, sizeof(char));
+		n = (*k + 1)->end - (*k + 1)->start;
+		pair->value = calloc(n + 1, sizeof(char));
 		if (!pair->value)
 			goto out;
-		snprintf(pair->value, n+1, "%s", json+(*k+1)->start);
+		snprintf(pair->value, n + 1, "%s", json + (*k + 1)->start);
 
 		dl_list_add_tail(json_pairs, &pair->list);
 
@@ -787,7 +812,7 @@ out:
 }
 
 static bool pv_signature_verify_pvs(struct pv_signature *signature,
-									struct dl_list *json_pairs)
+				    struct dl_list *json_pairs)
 {
 	bool ret = false;
 	char *payload = NULL;
@@ -815,19 +840,25 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 
 	pv_log(DEBUG, "filtered json '%s'", payload);
 
-	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256", strlen("RS256")) ||
-	    pv_str_matches(headers->alg, strlen(headers->alg), "ES256", strlen("ES256"))) {
+	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256",
+			   strlen("RS256")) ||
+	    pv_str_matches(headers->alg, strlen(headers->alg), "ES256",
+			   strlen("ES256"))) {
 		mdtype = MBEDTLS_MD_SHA256;
-	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES384", strlen("ES384"))) {
+	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES384",
+				  strlen("ES384"))) {
 		mdtype = MBEDTLS_MD_SHA384;
-	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES512", strlen("ES512"))) {
+	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES512",
+				  strlen("ES512"))) {
 		mdtype = MBEDTLS_MD_SHA512;
 	} else {
-		pv_log(ERROR, "unknown algorithm in protected JSON %s", headers->alg);
+		pv_log(ERROR, "unknown algorithm in protected JSON %s",
+		       headers->alg);
 	}
 
 	if (mdtype > 0)
-		ret = pv_signature_verify_sha(payload, &certs_raw, signature, mdtype);
+		ret = pv_signature_verify_sha(payload, &certs_raw, signature,
+					      mdtype);
 out:
 	pv_signature_free_certs_raw(&certs_raw);
 	if (headers)
@@ -843,8 +874,9 @@ static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 	struct pv_signature_pair *pair, *tmp;
 	struct pv_signature *signature = NULL;
 
-	dl_list_for_each_safe(pair, tmp, json_pairs,
-		struct pv_signature_pair, list) {
+	dl_list_for_each_safe(pair, tmp, json_pairs, struct pv_signature_pair,
+			      list)
+	{
 		signature = pv_signature_parse_pvs(pair->value);
 		if (signature) {
 			found = true;
@@ -859,7 +891,8 @@ static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 	}
 
 	if (!found)
-		pv_log(DEBUG, "no JSON with %s specification found in revision", SPEC_PVS2);
+		pv_log(DEBUG, "no JSON with %s specification found in revision",
+		       SPEC_PVS2);
 
 	return ret;
 }
@@ -869,15 +902,18 @@ static bool pv_signature_all_covered(struct dl_list *json_pairs)
 	bool ret = true;
 	struct pv_signature_pair *pair, *tmp;
 
-	pv_log(DEBUG, "checking all state JSON items are covered by signatures");
+	pv_log(DEBUG,
+	       "checking all state JSON items are covered by signatures");
 
-	dl_list_for_each_safe(pair, tmp, json_pairs,
-		struct pv_signature_pair, list) {
+	dl_list_for_each_safe(pair, tmp, json_pairs, struct pv_signature_pair,
+			      list)
+	{
 		// skip everything in the _sigs folder
 		if (pv_str_startswith("_sigs/", strlen("_sigs/"), pair->key))
 			continue;
-		if(!pair->covered) {
-			pv_log(ERROR, "%s is not covered by any signature", pair->key);
+		if (!pair->covered) {
+			pv_log(ERROR, "%s is not covered by any signature",
+			       pair->key);
 			ret = false;
 		}
 	}
@@ -907,17 +943,16 @@ bool pv_signature_verify(const char *json)
 	pv_signature_parse_json(json, &json_pairs);
 	ret = pv_signature_verify_pairs(&json_pairs);
 
-	if (ret &&
-		(mode == SB_STRICT || mode == SB_AUDIT) &&
-		!pv_signature_all_covered(&json_pairs)) {
+	if (ret && (mode == SB_STRICT || mode == SB_AUDIT) &&
+	    !pv_signature_all_covered(&json_pairs)) {
 		pv_log(ERROR, "not all state elements were covered");
 		ret = false;
 	}
 
-	if (!ret &&
-		(mode == SB_AUDIT)) {
+	if (!ret && (mode == SB_AUDIT)) {
 		ret = true;
-		pv_log(WARN, "in secureboot audit mode, so we will pass the bad signatures as good ones");
+		pv_log(WARN,
+		       "in secureboot audit mode, so we will pass the bad signatures as good ones");
 	}
 
 	pv_signature_free_pairs(&json_pairs);

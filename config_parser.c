@@ -32,8 +32,8 @@
 #include "config_parser.h"
 #include "utils/str.h"
 
-#define MODULE_NAME             "config_parser"
-#define pv_log(level, msg, ...)         vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "config_parser"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 struct config_item {
@@ -43,14 +43,14 @@ struct config_item {
 	struct dl_list list;
 };
 
-static struct config_item* _config_get_by_key(struct dl_list *list, char *key)
+static struct config_item *_config_get_by_key(struct dl_list *list, char *key)
 {
 	struct config_item *curr = NULL, *tmp;
 	if (key == NULL || dl_list_empty(list))
 		return NULL;
 
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
+	dl_list_for_each_safe(curr, tmp, list, struct config_item, list)
+	{
 		if (strcmp(curr->key, key) == 0)
 			return curr;
 	}
@@ -58,8 +58,8 @@ static struct config_item* _config_get_by_key(struct dl_list *list, char *key)
 	return NULL;
 }
 
-static struct config_item* _config_add_item(struct dl_list *list,
-						char *key, char *value)
+static struct config_item *_config_add_item(struct dl_list *list, char *key,
+					    char *value)
 {
 	struct config_item *this;
 
@@ -74,7 +74,7 @@ static struct config_item* _config_add_item(struct dl_list *list,
 	}
 
 	// New item
-	this = (struct config_item *) malloc(sizeof(struct config_item));
+	this = (struct config_item *)malloc(sizeof(struct config_item));
 
 	if (!this) {
 		pv_log(ERROR, "unable to allocate config item");
@@ -108,8 +108,8 @@ out:
 	return NULL;
 }
 
-static struct config_item* _config_replace_item(struct dl_list *list,
-						char *key, char *value)
+static struct config_item *_config_replace_item(struct dl_list *list, char *key,
+						char *value)
 {
 	struct config_item *curr = NULL;
 
@@ -179,16 +179,17 @@ int load_key_value_file(const char *path, struct dl_list *list)
 	if (!buff)
 		goto out;
 
-	while (fgets(buff, st.st_size+1, fp)) {
+	while (fgets(buff, st.st_size + 1, fp)) {
 		// Remove newline from value (hacky)
-		buff[strlen(buff)-1] = '\0';
+		buff[strlen(buff) - 1] = '\0';
 		char *key = strstr(buff, "=");
 		if (key) {
 			char *value = key + 1;
 			size = key - buff + 1;
 			__real_key = calloc(size, sizeof(char));
 			if (__real_key) {
-				SNPRINTF_WTRUNC(__real_key, size, "%.*s", (int)(key - buff), buff);
+				SNPRINTF_WTRUNC(__real_key, size, "%.*s",
+						(int)(key - buff), buff);
 				_config_add_item(list, __real_key, value);
 				free(__real_key);
 			}
@@ -201,7 +202,7 @@ out:
 	return 0;
 }
 
-char* config_get_value(struct dl_list *list, char *key)
+char *config_get_value(struct dl_list *list, char *key)
 {
 	struct config_item *curr = _config_get_by_key(list, key);
 
@@ -211,7 +212,9 @@ char* config_get_value(struct dl_list *list, char *key)
 	return NULL;
 }
 
-void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *value, void *opaque), void *opaque)
+void config_iterate_items(struct dl_list *list,
+			  int (*action)(char *key, char *value, void *opaque),
+			  void *opaque)
 {
 	struct config_item *curr = NULL, *tmp;
 
@@ -219,8 +222,8 @@ void config_iterate_items(struct dl_list *list, int (*action)(char *key, char *v
 		return;
 	if (!action)
 		return;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
+	dl_list_for_each_safe(curr, tmp, list, struct config_item, list)
+	{
 		if (action(curr->key, curr->value, opaque))
 			break;
 	}
@@ -232,8 +235,8 @@ void config_clear_items(struct dl_list *list)
 
 	if (dl_list_empty(list))
 		return;
-	dl_list_for_each_safe(curr, tmp, list,
-			struct config_item, list) {
+	dl_list_for_each_safe(curr, tmp, list, struct config_item, list)
+	{
 		dl_list_del(&curr->list);
 		free(curr->key);
 		free(curr->value);

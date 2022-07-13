@@ -27,8 +27,10 @@
 static clockid_t timer_type_clockid(timer_type_t type)
 {
 	switch (type) {
-		case RELATIV_TIMER: return CLOCK_MONOTONIC;
-		case ABSOLUTE_TIMER: return CLOCK_REALTIME;
+	case RELATIV_TIMER:
+		return CLOCK_MONOTONIC;
+	case ABSOLUTE_TIMER:
+		return CLOCK_REALTIME;
 	}
 
 	return 0;
@@ -39,7 +41,6 @@ static int get_current_time(struct timer *t, struct timespec *current_time)
 	return clock_gettime(timer_type_clockid(t->type), current_time);
 }
 
-
 struct timer_state timer_current_state(struct timer *t)
 {
 	struct timespec now;
@@ -47,8 +48,9 @@ struct timer_state timer_current_state(struct timer *t)
 
 	get_current_time(t, &now);
 
-	tstate.fin = (now.tv_sec > t->timeout.tv_sec)
-		|| (now.tv_sec == t->timeout.tv_sec && now.tv_nsec >= t->timeout.tv_nsec);
+	tstate.fin = (now.tv_sec > t->timeout.tv_sec) ||
+		     (now.tv_sec == t->timeout.tv_sec &&
+		      now.tv_nsec >= t->timeout.tv_nsec);
 
 	// time_t's signess is implementation dependent. So we handle it tv_sec and tv_nsec as unsigned
 	if (tstate.fin) {

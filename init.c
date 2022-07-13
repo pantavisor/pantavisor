@@ -54,8 +54,8 @@
 #include "utils/str.h"
 #include "utils/fs.h"
 
-#define MODULE_NAME		"init"
-#define pv_log(level, msg, ...)		vlog(MODULE_NAME, level, msg, ## __VA_ARGS__)
+#define MODULE_NAME "init"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 #ifndef O_LARGEFILE
@@ -66,10 +66,11 @@
 pid_t pv_pid;
 pid_t shell_pid;
 
-static int mkcgroup(const char* cgroup) {
+static int mkcgroup(const char *cgroup)
+{
 	char path[PATH_MAX];
 	int ret;
-	SNPRINTF_WTRUNC(path, sizeof (path), "/sys/fs/cgroup/%s", cgroup);
+	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s", cgroup);
 
 	mkdir(path, 0555);
 	ret = mount("cgroup", path, "cgroup", 0, cgroup);
@@ -84,7 +85,8 @@ static int early_mounts()
 {
 	int ret;
 
-	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC, NULL);
+	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC,
+		    NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /proc");
 
@@ -118,12 +120,14 @@ static int mount_cgroups()
 		exit_error(errno, "Could not mount /sys/fs/cgroup");
 
 	mkdir("/sys/fs/cgroup/systemd", 0555);
-	ret = mount("cgroup", "/sys/fs/cgroup/systemd", "cgroup", 0, "none,name=systemd");
+	ret = mount("cgroup", "/sys/fs/cgroup/systemd", "cgroup", 0,
+		    "none,name=systemd");
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
 
 	mkdir("/sys/fs/cgroup/pantavisor", 0555);
-	ret = mount("cgroup", "/sys/fs/cgroup/pantavisor", "cgroup", 0, "none,name=pantavisor");
+	ret = mount("cgroup", "/sys/fs/cgroup/pantavisor", "cgroup", 0,
+		    "none,name=pantavisor");
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys/fs/cgroup/pantavisor");
 
@@ -145,7 +149,8 @@ static int mount_cgroups()
 	mkdir("/sys/fs/cgroup/unified", 0555);
 	ret = mount("none", "/sys/fs/cgroup/unified", "cgroup2", 0, NULL);
 	if (ret < 0)
-		pv_log(WARN, "Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
+		pv_log(WARN,
+		       "Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
 
 	mkdir("/writable", 0755);
 	if (!stat("/etc/fstab", &st))
@@ -164,7 +169,8 @@ static int mount_cgroups()
 	mkdir("/exports", 0755);
 	ret = mount("none", "/exports", "tmpfs", 0, NULL);
 	if (!ret)
-		ret = mount("none", "/exports", "tmpfs", MS_REC | MS_SHARED, NULL);
+		ret = mount("none", "/exports", "tmpfs", MS_REC | MS_SHARED,
+			    NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not create /exports disk");
 
@@ -180,7 +186,7 @@ static void debug_telnet()
 	char path[PATH_MAX];
 
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
-  dbcmd = calloc(sizeof(DBCMD) + strlen(path) + 1, sizeof(char));
+	dbcmd = calloc(sizeof(DBCMD) + strlen(path) + 1, sizeof(char));
 	sprintf(dbcmd, DBCMD, path);
 
 	tsh_run("ifconfig lo up", 0, NULL);
@@ -203,7 +209,7 @@ static void signal_handler(int signal)
 	if (signal != SIGCHLD)
 		return;
 
-	while (	(pid = waitpid(pv_pid, &wstatus, WNOHANG)) > 0) {
+	while ((pid = waitpid(pv_pid, &wstatus, WNOHANG)) > 0) {
 		if (pv_pid == 0)
 			continue;
 
@@ -237,7 +243,8 @@ static void early_spawns()
 		pv_paths_lib_hooks_early_spawn(path, PATH_MAX, dir->d_name);
 
 		if (!(stat(path, &sb) == 0 && sb.st_mode & S_IXUSR)) {
-			printf("early_spawns: skipping not executable hook: %s\n", path);
+			printf("early_spawns: skipping not executable hook: %s\n",
+			       path);
 			continue;
 		}
 		printf("early_spawns: starting: %s\n", path);
@@ -271,7 +278,8 @@ static void debug_shell()
 	dprintf(con_fd, "\n");
 
 	if (c[0] == 'd')
-		shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+		shell_pid =
+			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
 }
 #else
 static void debug_shell()
@@ -317,8 +325,7 @@ static void redirect_io()
 	int nullfd, outfd;
 	outfd = open("/dev/kmsg", O_RDWR | O_LARGEFILE);
 	nullfd = open("/dev/null", O_RDWR | O_LARGEFILE);
-	if ((outfd >= 0) &&
-		(nullfd >= 0)) {
+	if ((outfd >= 0) && (nullfd >= 0)) {
 		dup2(outfd, fileno(stdout));
 		dup2(outfd, fileno(stderr));
 		dup2(nullfd, fileno(stdin));
@@ -337,10 +344,10 @@ static void usage(const char *cmd)
 	printf("    pv_embedded     run pantavisor starting the main thread (default)\n");
 	printf("    pv_standalone   run pantavisor without starting the main thread\n");
 	printf("    pv_appengine    run pantavisor inside an existing OS\n");
-
 }
 
-static void parse_options(int argc, char *argv[], char **config_path, char **cmdline)
+static void parse_options(int argc, char *argv[], char **config_path,
+			  char **cmdline)
 {
 	char *cmd = argv[0];
 	int pos = 1;
@@ -413,7 +420,7 @@ static int read_cmdline(const char *arg_cmdline)
 	}
 
 	// remove trailing \n
-	buf[bytes-1] = '\0';
+	buf[bytes - 1] = '\0';
 
 	pv->cmdline = calloc(bytes, sizeof(char));
 	if (!pv->cmdline) {
@@ -463,7 +470,7 @@ int main(int argc, char *argv[])
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if ((pv_config_get_system_init_mode() == IM_STANDALONE) &&
-		pv_config_get_debug_ssh()) {
+	    pv_config_get_debug_ssh()) {
 		if (pv_config_get_debug_shell())
 			debug_shell();
 		debug_telnet();
@@ -509,19 +516,11 @@ loop:
  * Make sure to list the initializer in the correct
  * order.
  */
-struct pv_init *pv_init_tbl [] = {
-	&pv_init_mount,
-	&pv_init_creds,
-	&ph_init_mount,
-	&pv_init_bl,
-	&pv_init_config_trail,
-	&pv_init_log,
-	&pv_init_storage,
-	&pv_init_metadata,
-	&pv_init_ctrl,
-	&pv_init_network,
-	&pv_init_volume,
-	&pv_init_platform,
+struct pv_init *pv_init_tbl[] = {
+	&pv_init_mount,	     &pv_init_creds,	    &ph_init_mount,
+	&pv_init_bl,	     &pv_init_config_trail, &pv_init_log,
+	&pv_init_storage,    &pv_init_metadata,	    &pv_init_ctrl,
+	&pv_init_network,    &pv_init_volume,	    &pv_init_platform,
 	&pv_init_pantavisor,
 };
 
@@ -529,7 +528,7 @@ int pv_do_execute_init()
 {
 	int i = 0;
 
-	for ( i = 0; i < ARRAY_LEN(pv_init_tbl); i++) {
+	for (i = 0; i < ARRAY_LEN(pv_init_tbl); i++) {
 		struct pv_init *init = pv_init_tbl[i];
 		int ret = 0;
 
