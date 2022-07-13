@@ -271,6 +271,10 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 		SNPRINTF_WTRUNC(json, json_size,  DEVICE_STEP_STATUS_FMT,
 				"INPROGRESS", "Update objects downloaded", 40);
 		break;
+	case UPDATE_APPLIED:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"INPROGRESS", "Update applied", 85);
+		break;
 	case UPDATE_INSTALLED:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
 				"INPROGRESS", "Update installed", 80);
@@ -294,6 +298,10 @@ static int trail_remote_set_status(struct pantavisor *pv, struct pv_update *upda
 	case UPDATE_DONE:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
 				"DONE", "Update finished, revision set as rollback point", 100);
+		break;
+	case UPDATE_ABORTED:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
+				"WONTGO", "Update aborted", 85);
 		break;
 	case UPDATE_NO_DOWNLOAD:
 		if (!msg)
@@ -563,7 +571,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		return 0;
 
 	// if update is going on, just check for NEW updates so test json can be parsed
-	if (pv->update)
+	if (pv->update && pv->update->status != UPDATE_APPLIED)
 		goto new_update;
 
 	// check for INPROGRESS updates
@@ -680,6 +688,10 @@ send_feedback:
 		pv_update_free(update);
 		goto out;
 	}
+
+	// if an applied update is staged, reset it
+	if (pv->update && pv->update->status == UPDATE_APPLIED)
+		pv_update_finish(pv);
 
 	// set newly processed update if no update is going on
 	if (!pv->update) {
@@ -1218,6 +1230,12 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_storage_set_rev_done(pv, pv->state->rev);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
+		break;
+	case UPDATE_APPLIED:
+		pv_update_set_status(pv, UPDATE_ABORTED);
+		pv_bootloader_set_failed();
+		pv_update_remove(pv);
+		pv_log(INFO, "update aborted");
 		break;
 	case UPDATE_TESTING_NONREBOOT:
 		pv_update_set_status(pv, UPDATE_UPDATED);

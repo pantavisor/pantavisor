@@ -91,6 +91,7 @@ typedef enum {
 	PV_STATE_WAIT,
 	PV_STATE_COMMAND,
 	PV_STATE_UPDATE,
+	PV_STATE_UPDATE_APPLY,
 	PV_STATE_ROLLBACK,
 	PV_STATE_REBOOT,
 	PV_STATE_POWEROFF,
@@ -108,6 +109,7 @@ static const char* pv_state_string(pv_state_t st)
 		case PV_STATE_WAIT: return "STATE_WAIT";
 		case PV_STATE_COMMAND: return "STATE_COMMAND";
 		case PV_STATE_UPDATE: return "STATE_UPDATE";
+		case PV_STATE_UPDATE_APPLY: return "STATE_UPDATE_APPLY";
 		case PV_STATE_ROLLBACK: return "STATE_ROLLBACK";
 		case PV_STATE_REBOOT: return "STATE_REBOOT";
 		case PV_STATE_POWEROFF: return "STATE_POWEROFF";
@@ -129,6 +131,7 @@ typedef enum {
     PH_STATE_SYNC,
     PH_STATE_IDLE,
     PH_STATE_UPDATE,
+    PH_STATE_UPDATE_APPLY,
 } ph_state_t;
 
 static const char* ph_state_string(ph_state_t st)
@@ -140,6 +143,7 @@ static const char* ph_state_string(ph_state_t st)
 		case PH_STATE_SYNC: return "sync";
 		case PH_STATE_IDLE: return "idle";
 		case PH_STATE_UPDATE: return "update";
+		case PH_STATE_UPDATE_APPLY: return "updateapply";
 		default: return "STATE_UNKNOWN";
 	}
 
@@ -348,7 +352,7 @@ static pv_state_t pv_wait_update()
 	struct timer_state tstate;
 
 	// if an update is going on at this point, it means we still have to finish it
-	if (pv->update) {
+	if (pv->update && pv->update->status != UPDATE_APPLIED) {
 		if (pv_update_is_trying(pv->update)) {
 			// rollback if timed out and any condition has not been met
 			if (!pv_state_check_conditions(pv->state))	{
@@ -455,7 +459,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// also, in case device is unclaimed, the current update must finish first (this is specially done for rev 0 that comes from command make-factory)
 	if (pv->remote_mode &&
 		(!pv->unclaimed ||
-		(pv->unclaimed && !pv->update))) {
+		(pv->unclaimed && !(pv->update && pv->update != UPDATE_APPLIED)))) {
 		timer_start(&t, 5, 0, RELATIV_TIMER);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
@@ -515,9 +519,12 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		break;
 	case CMD_REBOOT_DEVICE:
-		if (pv->update) {
+		if (pv->update && pv->update->status != UPDATE_APPLIED) {
 			pv_log(WARN, "ignoring reboot command because an update is in progress");
 			goto out;
+		} else if (pv->update && pv->update->status == UPDATE_APPLIED) {
+			pv_log(INFO, "aborting current applied update to allow new reboot request to proceed");
+			pv_update_finish(pv);
 		}
 
 		pv_log(DEBUG, "reboot command with message '%s' received. Rebooting...",
@@ -535,9 +542,12 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		next_state = PV_STATE_POWEROFF;
 		break;
 	case CMD_LOCAL_RUN:
-		if (pv->update) {
+		if (pv->update && pv->update->status != UPDATE_APPLIED) {
 			pv_log(WARN, "ignoring install local command because an update is in progress");
 			goto out;
+		} else if (pv->update && pv->update->status == UPDATE_APPLIED) {
+			pv_log(INFO, "aborting current applied update to allow new update request to proceed");
+			pv_update_finish(pv);
 		}
 
 		pv_log(DEBUG, "install local received. Processing %s json...", cmd->payload);
@@ -545,15 +555,33 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update)
 			next_state = PV_STATE_UPDATE;
 		break;
-	case CMD_MAKE_FACTORY:
-		if (pv->update) {
-			pv_log(WARN, "ignoring make factory command because an update is in progress");
+	case CMD_LOCAL_APPLY:
+		if (pv->update && pv->update->status != UPDATE_APPLIED) {
+			pv_log(WARN, "ignoring applying local command because an update is in progress");
 			goto out;
+		} else if (pv->update && pv->update->status == UPDATE_APPLIED) {
+			pv_log(INFO, "aborting current applied update to allow new apply request to proceed");
+			pv_update_finish(pv);
 		}
+
+		pv_log(DEBUG, "apply local received. Processing %s json...", cmd->payload);
+		pv->update = pv_update_get_step_local(cmd->payload);
+		if (pv->update)
+			next_state = PV_STATE_UPDATE_APPLY;
+		break;
+	case CMD_MAKE_FACTORY:
 
 		if (!pv->unclaimed) {
 			pv_log(WARN, "ignoring make factory command because device is already claimed");
 			goto out;
+		}
+
+		if (pv->update && pv->update->status != UPDATE_APPLIED) {
+			pv_log(WARN, "ignoring make factory command because an update is in progress");
+			goto out;
+		} else if (pv->update && pv->update->status == UPDATE_APPLIED) {
+			pv_log(INFO, "aborting current applied update to allow new make factory request to proceed");
+			pv_update_finish(pv);
 		}
 
 		if (strlen(cmd->payload) > 0)
@@ -583,6 +611,20 @@ out:
 	pv_ctrl_free_cmd(pv->cmd);
 	pv->cmd = NULL;
 	return next_state;
+}
+
+static pv_state_t _pv_update_apply(struct pantavisor *pv)
+{
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, ph_state_string(PH_STATE_UPDATE_APPLY));
+
+	// download and install pending step
+	if (pv_update_download(pv) || pv_update_install(pv)) {
+		pv_log(ERROR, "update has failed, continue...");
+		pv_update_finish(pv);
+		return PV_STATE_WAIT;
+	}
+	pv_update_set_status(pv, UPDATE_APPLIED);
+	return PV_STATE_WAIT;
 }
 
 static pv_state_t _pv_update(struct pantavisor *pv)
@@ -714,6 +756,7 @@ pv_state_func_t* const state_table[MAX_STATES] = {
 	_pv_wait,
 	_pv_command,
 	_pv_update,
+	_pv_update_apply,
 	_pv_rollback,
 	_pv_reboot,
 	_pv_poweroff,
