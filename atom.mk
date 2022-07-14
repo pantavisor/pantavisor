@@ -22,7 +22,7 @@ LOCAL_CONDITIONAL_LIBRARIES := OPTIONAL:e2fsprogs
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init
 
-LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -D_FILE_OFFSET_BITS=64
+LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -D_FILE_OFFSET_BITS=64 -Werror
 LOCAL_LDFLAGS := -Wl,--no-as-needed -ldl -Wl,--as-needed
 
 PV_BUILD_DIR := $(call local-get-build-dir)
