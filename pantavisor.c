@@ -509,7 +509,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// also, in case device is unclaimed, the current update must finish first (this is specially done for rev 0 that comes from command make-factory)
 	if (pv->remote_mode &&
 	    (!pv->unclaimed ||
-	     (pv->unclaimed && !(pv->update && pv->update != UPDATE_APPLIED)))) {
+	     (pv->unclaimed && !(pv->update && pv->update->status != UPDATE_APPLIED)))) {
 		timer_start(&t, 5, 0, RELATIV_TIMER);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval

@@ -318,15 +318,19 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC | O_SYNC,
 		      0644);
 	if (obj_fd < 0) {
-		pv_log(ERROR, "%s could not be created: %s", file_path,
-		       strerror(errno));
-		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
-					     "Cannot create file");
 		// skip clean if the error was about the file already existing
-		if (errno == EEXIST)
+		if (errno == EEXIST) {
+			pv_log(ERROR, "'%s' already exists", file_path);
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
+			                             "File already exists");
 			goto out;
-		else
+		} else {
+			pv_log(ERROR, "'%s' could not be created: %s", file_path,
+			       strerror(errno));
+			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
+		                                 "Cannot create file");
 			goto clean;
+		}
 	}
 
 	memset(req, 0, sizeof(req));
@@ -364,6 +368,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 	goto out;
 
 clean:
+	pv_log(DEBUG, "removing '%s'...", file_path);
 	remove(file_path);
 	pv_fs_path_sync(file_path);
 
