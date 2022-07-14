@@ -193,12 +193,14 @@ struct pv_disk *pv_disk_add(struct pv_state *s)
 
 static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 {
+#define DM_CRYPT_BUFSIZE	(2 * 1024)
 	struct pv_disk *d = v->disk;
 	char path[PATH_MAX];
+	char out_log[DM_CRYPT_BUFSIZE] = {0};
+	char err_log[DM_CRYPT_BUFSIZE] = {0};
 	char *command = NULL;
 	char *crypt_type;
 	int ret;
-	int wstatus;
 
 	pv_paths_storage_mounted_disk_path(path, PATH_MAX, "dmcrypt", d->name);
 	if (!access(path, F_OK)) {
@@ -233,16 +235,11 @@ static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 		crypt_type, d->path, path);
 	pv_log(INFO, "command: %s", command);
 
-	tsh_run(command, 1, &wstatus);
-	if (!WIFEXITED(wstatus)) {
-		pv_log(ERROR, "command did not terminate normally");
-		ret = -1;
-	} else if (WEXITSTATUS(wstatus) != 0) {
-		pv_log(ERROR, "command returned exit code %d",
-		       WEXITSTATUS(wstatus));
-		ret = -1;
-	} else
-		ret = 0;
+	ret = tsh_run_output(command, 5, out_log, sizeof(out_log), err_log, sizeof(err_log));
+	if (ret < 0)
+		pv_log(ERROR, "command: %s error: %s", command, err_log);
+
+	pv_log(DEBUG, "command: %s output: %s", command, out_log);
 
 	if (command)
 		free(command);
