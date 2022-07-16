@@ -147,7 +147,7 @@ static int mount_cgroups()
 	mkcgroup("rdma");
 
 	mkdir("/sys/fs/cgroup/unified", 0555);
-	ret = mount("none", "/sys/fs/cgroup/unified", "cgroup2", 0, NULL);
+	ret = mount("cgroup2", "/sys/fs/cgroup/unified", "cgroup2", MS_NOSUID|MS_NOEXEC|MS_NODEV, "nsdelegate");
 	if (ret < 0)
 		pv_log(WARN,
 		       "Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
