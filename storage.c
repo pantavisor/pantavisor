@@ -427,9 +427,6 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 	char *tmp_sha;
 	char byte[3];
 
-	if (getenv("pv_quickboot"))
-		return 0;
-
 	fd = open(path, O_RDONLY);
 	if (fd < 0)
 		goto out;
@@ -496,9 +493,6 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 {
 	char path[PATH_MAX];
 	char *buf;
-
-	if (getenv("pv_quickboot"))
-		return true;
 
 	pv_paths_storage_trail_file(path, PATH_MAX, rev, name);
 	buf = pv_fs_file_load(path, 0);

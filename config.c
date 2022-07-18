@@ -309,6 +309,8 @@ static int pv_config_load_config_from_file(char *path,
 		&config_list, "secureboot.mode", SB_LENIENT);
 	config->secureboot.certdir = config_get_value_string(
 		&config_list, "secureboot.certdir", "/certs");
+	config->secureboot.checksum = config_get_value_bool(
+		&config_list, "secureboot.checksum", true);
 
 	config_clear_items(&config_list);
 
@@ -972,6 +974,11 @@ char *pv_config_get_secureboot_certdir()
 	return pv_get_instance()->config.secureboot.certdir;
 }
 
+bool pv_config_get_secureboot_checksum()
+{
+	return pv_get_instance()->config.secureboot.checksum;
+}
+
 int pv_config_get_metadata_devmeta_interval()
 {
 	return pv_get_instance()->config.metadata.devmeta_interval;
@@ -1017,6 +1024,8 @@ char *pv_config_get_json()
 		pv_json_ser_number(&js, pv_config_get_secureboot_mode());
 		pv_json_ser_key(&js, "secureboot.certdir");
 		pv_json_ser_string(&js, pv_config_get_secureboot_certdir());
+		pv_json_ser_key(&js, "secureboot.checksum");
+		pv_json_ser_bool(&js, pv_config_get_secureboot_checksum());
 		pv_json_ser_key(&js, "storage.device");
 		pv_json_ser_string(&js, pv_config_get_storage_path());
 		pv_json_ser_key(&js, "storage.fstype");

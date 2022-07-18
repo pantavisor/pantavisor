@@ -1197,6 +1197,11 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	struct pv_object *o;
 	struct pv_json *j;
 
+	if (getenv("pv_quickboot") || !pv_config_get_secureboot_checksum()) {
+		pv_log(DEBUG, "state objects and JSONs checksum disabled");
+		return true;
+	}
+
 	char *validate_list = _pv_state_get_novalidate_list(s->rev);
 	if (validate_list)
 		pv_log(DEBUG, "no validation list is: %s", validate_list);
