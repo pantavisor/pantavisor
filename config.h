@@ -158,6 +158,7 @@ typedef enum {
 struct pantavisor_secureboot {
 	secureboot_mode_t mode;
 	char *certdir;
+	bool checksum;
 };
 
 struct pantavisor_metadata {
@@ -283,6 +284,7 @@ bool pv_config_get_control_remote(void);
 
 secureboot_mode_t pv_config_get_secureboot_mode(void);
 char *pv_config_get_secureboot_certdir(void);
+bool pv_config_get_secureboot_checksum(void);
 
 int pv_config_get_metadata_devmeta_interval(void);
 
