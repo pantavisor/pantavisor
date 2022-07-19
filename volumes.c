@@ -193,11 +193,11 @@ struct pv_disk *pv_disk_add(struct pv_state *s)
 
 static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 {
-#define DM_CRYPT_BUFSIZE	(2 * 1024)
+#define DM_CRYPT_BUFSIZE (2 * 1024)
 	struct pv_disk *d = v->disk;
 	char path[PATH_MAX];
-	char out_log[DM_CRYPT_BUFSIZE] = {0};
-	char err_log[DM_CRYPT_BUFSIZE] = {0};
+	char out_log[DM_CRYPT_BUFSIZE] = { 0 };
+	char err_log[DM_CRYPT_BUFSIZE] = { 0 };
 	char *command = NULL;
 	char *crypt_type;
 	int ret;
@@ -235,7 +235,8 @@ static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 		crypt_type, d->path, path);
 	pv_log(INFO, "command: %s", command);
 
-	ret = tsh_run_output(command, 5, out_log, sizeof(out_log), err_log, sizeof(err_log));
+	ret = tsh_run_output(command, 5, out_log, sizeof(out_log), err_log,
+			     sizeof(err_log));
 	if (ret < 0)
 		pv_log(ERROR, "command: %s error: %s", command, err_log);
 
