@@ -322,13 +322,13 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 		if (errno == EEXIST) {
 			pv_log(ERROR, "'%s' already exists", file_path);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
-			                             "File already exists");
+						     "File already exists");
 			goto out;
 		} else {
-			pv_log(ERROR, "'%s' could not be created: %s", file_path,
-			       strerror(errno));
+			pv_log(ERROR, "'%s' could not be created: %s",
+			       file_path, strerror(errno));
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
-		                                 "Cannot create file");
+						     "Cannot create file");
 			goto clean;
 		}
 	}

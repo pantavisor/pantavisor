@@ -96,7 +96,7 @@ void pv_network_update_meta(struct pantavisor *pv)
 
 		s = getnameinfo(ifa->ifa_addr,
 				(family == AF_INET) ?
-					sizeof(struct sockaddr_in) :
+					      sizeof(struct sockaddr_in) :
 					      sizeof(struct sockaddr_in6),
 				host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 
@@ -122,7 +122,7 @@ void pv_network_update_meta(struct pantavisor *pv)
 					ifa->ifa_next->ifa_name,
 					ifa->ifa_next->ifa_addr->sa_family ==
 							AF_INET ?
-						"ip4" :
+						      "ip4" :
 						      "ipv6");
 
 			if (!strncmp(ifn, iff, sizeof(ifn)))
