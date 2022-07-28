@@ -40,6 +40,7 @@
 #define DEVMETA_KEY_PV_VERSION "pantavisor.version"
 #define DEVMETA_KEY_PH_ADDRESS "pantahub.address"
 #define DEVMETA_KEY_PV_UNAME "pantavisor.uname"
+#define DEVMETA_KEY_PV_SYSINFO "sysinfo"
 
 typedef enum { USER_META, DEVICE_META } pv_metadata_t;
 
