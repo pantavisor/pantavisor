@@ -219,6 +219,9 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	char log_level[32];
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
+	if (!c->get_config_item(c, "lxc.uts.name", NULL, 0)) {
+		c->set_config_item(c, "lxc.uts.name", p->name);
+	}
 	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
 		snprintf(log_level, sizeof(log_level), "%d",
 			 pv_lxc_get_lxc_log_level());
