@@ -315,8 +315,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 
 	pv_ctrl_write_cont_response(req_fd);
 
-	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC | O_SYNC,
-		      0644);
+	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC, 0644);
 	if (obj_fd < 0) {
 		// skip clean if the error was about the file already existing
 		if (errno == EEXIST) {
