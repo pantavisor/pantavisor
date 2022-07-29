@@ -32,6 +32,7 @@
 
 #include <sys/stat.h>
 #include <sys/utsname.h>
+#include <sys/time.h>
 
 #include <linux/limits.h>
 
@@ -185,6 +186,58 @@ static int pv_devmeta_uname(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+static int pv_devmeta_time(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	struct timeval tm = { 0 };
+	struct timezone tz = { 0 };
+	int err = gettimeofday(&tm, &tz);
+
+	if (err != 0) {
+		pv_log(WARN, "Couldn't add time data: %s (%d)", strerror(errno),
+		       errno);
+		memset(buf, 0, buflen);
+		return -1;
+	}
+
+	struct pv_json_ser js;
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "timeval");
+		pv_json_ser_object(&js);
+		{
+			pv_json_ser_key(&js, "tv_sec");
+			pv_json_ser_number(&js, tm.tv_sec);
+			pv_json_ser_key(&js, "tv_usec");
+			pv_json_ser_number(&js, tm.tv_usec);
+			pv_json_ser_object_pop(&js);
+		}
+		pv_json_ser_key(&js, "timezone");
+		pv_json_ser_object(&js);
+		{
+			pv_json_ser_key(&js, "tz_minuteswest");
+			pv_json_ser_number(&js, tz.tz_minuteswest);
+			pv_json_ser_key(&js, "tz_dsttime");
+			pv_json_ser_number(&js, tz.tz_dsttime);
+			pv_json_ser_object_pop(&js);
+		}
+		pv_json_ser_object_pop(&js);
+	}
+
+	char *js_str = pv_json_ser_str(&js);
+	strncpy(buf, js_str, buflen);
+	free(js_str);
+
+	return 0;
+}
+
 static int pv_devmeta_read_revision(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
@@ -255,7 +308,8 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_MODE, .reader = pv_devmeta_read_mode },
 	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
 	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
-	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname }
+	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname },
+	{ .key = DEVMETA_KEY_PV_TIME, .reader = pv_devmeta_time }
 };
 
 static void pv_metadata_free(struct pv_meta *usermeta)
