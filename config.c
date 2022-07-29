@@ -216,6 +216,8 @@ static int pv_config_load_config_from_file(char *path,
 		config_get_value_string(&config_list, "system.libdir", "/lib");
 	config->sys.etcdir =
 		config_get_value_string(&config_list, "system.etcdir", "/etc");
+	config->sys.usrdir =
+		config_get_value_string(&config_list, "system.usrdir", "/usr");
 	config->sys.rundir =
 		config_get_value_string(&config_list, "system.rundir", "/pv");
 	config->sys.mediadir = config_get_value_string(
@@ -705,6 +707,10 @@ char *pv_config_get_system_etcdir()
 {
 	return pv_get_instance()->config.sys.etcdir;
 }
+char *pv_config_get_system_usrdir()
+{
+	return pv_get_instance()->config.sys.usrdir;
+}
 char *pv_config_get_system_rundir()
 {
 	return pv_get_instance()->config.sys.rundir;
@@ -1000,6 +1006,8 @@ char *pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_system_etcdir());
 		pv_json_ser_key(&js, "system.rundir");
 		pv_json_ser_string(&js, pv_config_get_system_rundir());
+		pv_json_ser_key(&js, "system.usrdir");
+		pv_json_ser_string(&js, pv_config_get_system_usrdir());
 		pv_json_ser_key(&js, "system.mediadir");
 		pv_json_ser_string(&js, pv_config_get_system_mediadir());
 		pv_json_ser_key(&js, "system.confdir");

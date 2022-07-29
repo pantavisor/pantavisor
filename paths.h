@@ -122,6 +122,8 @@ void pv_paths_lib_volmount(char *buf, size_t size, const char *type,
 			   const char *name);
 void pv_paths_lib_hook(char *buf, size_t size, const char *name);
 void pv_paths_lib_hooks_early_spawn(char *buf, size_t size, const char *name);
+void pv_paths_lib_lxc_rootfs_mount(char *buf, size_t size);
+void pv_paths_lib_lxc_lxcpath(char *buf, size_t size);
 
 void pv_paths_root_file(char *buf, size_t size, const char *path);
 void pv_paths_volumes_file(char *buf, size_t size, const char *name);

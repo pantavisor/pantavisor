@@ -69,6 +69,8 @@ void (*__pv_paths_lib_hook)(char *, size_t, const char *) = NULL;
 void (*__pv_paths_volumes_plat_file)(char *, size_t, const char *,
 				     const char *) = NULL;
 void (*__pv_paths_configs_file)(char *, size_t, const char *) = NULL;
+void (*__pv_paths_lib_lxc_rootfs_mount)(char *, size_t) = NULL;
+void (*__pv_paths_lib_lxc_lxcpath)(char *, size_t) = NULL;
 
 void pv_set_new_log_fn(void *fn_pv_new_log)
 {
@@ -86,7 +88,8 @@ void pv_set_pv_paths_fn(
 	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
 	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
 	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
-	void *fn_pv_paths_configs_file)
+	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
+	void *fn_pv_paths_lib_lxc_lxcpath)
 {
 	__pv_paths_pv_file = fn_pv_paths_pv_file;
 	__pv_paths_pv_log = fn_pv_paths_pv_log;
@@ -99,6 +102,8 @@ void pv_set_pv_paths_fn(
 	__pv_paths_lib_hook = fn_pv_paths_lib_hook;
 	__pv_paths_volumes_plat_file = fn_pv_paths_volumes_plat_file;
 	__pv_paths_configs_file = fn_pv_paths_configs_file;
+	__pv_paths_lib_lxc_rootfs_mount = fn_pv_paths_lib_lxc_rootfs_mount;
+	__pv_paths_lib_lxc_lxcpath = fn_pv_paths_lib_lxc_lxcpath;
 }
 
 static int pv_lxc_get_lxc_log_level()
@@ -219,6 +224,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	char log_level[32];
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
+	__pv_paths_lib_lxc_rootfs_mount(path, PATH_MAX);
+	c->set_config_item(c, "lxc.rootfs.mount", path);
 	if (!c->get_config_item(c, "lxc.uts.name", NULL, 0)) {
 		c->set_config_item(c, "lxc.uts.name", p->name);
 	}
@@ -551,6 +558,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	int err;
 	struct lxc_container *c;
 	char *dname;
+	char path[PATH_MAX];
 	int pipefd[2];
 	struct pv_log_info *pv_log_i = NULL;
 	pid_t child_pid = -1;
@@ -559,10 +567,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	dname = dirname(dname);
 	chdir(dname);
 	free(dname);
-	// Make sure lxc state dir is there
-	pv_fs_mkdir_p("/usr/var/lib/lxc", 0755);
 
-	c = lxc_container_new(p->name, NULL);
+	__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
+	c = lxc_container_new(p->name, path);
 	if (!c)
 		goto out_failure;
 
@@ -620,7 +627,8 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 			lxc_log_init(&pv_lxc_log);
 		}
-		c = lxc_container_new(p->name, NULL);
+		__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
+		c = lxc_container_new(p->name, path);
 
 		if (!c) {
 			goto out_container_init;
