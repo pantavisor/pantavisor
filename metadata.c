@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 #include <sys/utsname.h>
 #include <sys/time.h>
+#include <sys/sysinfo.h>
 
 #include <linux/limits.h>
 
@@ -237,6 +238,65 @@ static int pv_devmeta_time(struct pv_devmeta_read *pv_devmeta_read)
 
 	return 0;
 }
+static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	struct sysinfo info = { 0 };
+	int err = sysinfo(&info);
+	if (err) {
+		pv_log(WARN, "Couldn't get sysinfo %s (%d)", strerror(errno),
+		       errno);
+		memset(buf, 0, buflen);
+		return -1;
+	}
+
+	struct pv_json_ser js;
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "uptime");
+		pv_json_ser_number(&js, info.uptime);
+		pv_json_ser_key(&js, "loads.0");
+		pv_json_ser_number(&js, info.loads[0]);
+		pv_json_ser_key(&js, "loads.1");
+		pv_json_ser_number(&js, info.loads[1]);
+		pv_json_ser_key(&js, "loads.2");
+		pv_json_ser_number(&js, info.loads[2]);
+		pv_json_ser_key(&js, "totalram");
+		pv_json_ser_number(&js, info.totalram);
+		pv_json_ser_key(&js, "freeram");
+		pv_json_ser_number(&js, info.freeram);
+		pv_json_ser_key(&js, "sharedram");
+		pv_json_ser_number(&js, info.sharedram);
+		pv_json_ser_key(&js, "bufferram");
+		pv_json_ser_number(&js, info.bufferram);
+		pv_json_ser_key(&js, "totalswap");
+		pv_json_ser_number(&js, info.totalswap);
+		pv_json_ser_key(&js, "freeswap");
+		pv_json_ser_number(&js, info.freeswap);
+		pv_json_ser_key(&js, "procs");
+		pv_json_ser_number(&js, info.procs);
+		pv_json_ser_key(&js, "totalhigh");
+		pv_json_ser_number(&js, info.totalhigh);
+		pv_json_ser_key(&js, "freehigh");
+		pv_json_ser_number(&js, info.freehigh);
+		pv_json_ser_key(&js, "mem_unit");
+		pv_json_ser_number(&js, info.mem_unit);
+		pv_json_ser_object_pop(&js);
+	}
+
+	char *js_str = pv_json_ser_str(&js);
+	strncpy(buf, js_str, buflen);
+	free(js_str);
+
+	return 0;
+}
 
 static int pv_devmeta_read_revision(struct pv_devmeta_read *pv_devmeta_read)
 {
@@ -309,7 +369,8 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
 	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
 	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname },
-	{ .key = DEVMETA_KEY_PV_TIME, .reader = pv_devmeta_time }
+	{ .key = DEVMETA_KEY_PV_TIME, .reader = pv_devmeta_time },
+	{ .key = DEVMETA_KEY_PV_SYSINFO, .reader = pv_devmeta_sysinfo }
 };
 
 static void pv_metadata_free(struct pv_meta *usermeta)
