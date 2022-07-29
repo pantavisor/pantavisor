@@ -1446,7 +1446,8 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 						     key))) {
 			pv_log(DEBUG, "skipping '%s'", key);
 			// if the extension is other .json, we add it to the list of jsons
-		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json")) {
+		} else if ((ext = strrchr(key, '.')) && !strcmp(ext, ".json") &&
+			   !pv_is_sha256_hex_string(value)) {
 			pv_log(DEBUG, "adding json '%s'", key);
 			pv_jsons_add(this, key, value);
 			// everything else is added to the list of objects

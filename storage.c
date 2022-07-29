@@ -812,6 +812,15 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		value[n] = 0;
 		snprintf(value, n, "%s", buf + (*k + 1)->start);
 
+		// also skip unpacking this if json is a sha256 hex encoded string
+		if ((*k + 1)->type == JSMN_STRING &&
+		    pv_is_sha256_hex_string(value)) {
+			free(key);
+			free(value);
+			k++;
+			continue;
+		}
+
 		pv_paths_storage_trail_file(path, PATH_MAX, s->rev, key);
 		if (stat(path, &st) == 0)
 			goto out;

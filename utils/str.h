@@ -97,4 +97,28 @@ static inline bool pv_str_endswith(const char *str1, int str1len,
 		!strncmp(str1, &str2[str2len - str1len], str1len));
 }
 
+static inline bool pv_is_sha256_hex_string(const char *value)
+{
+	bool issha = false;
+	if (!value)
+		return false;
+
+	if (strlen(value) == 64) {
+		const char *v = NULL;
+		for (v = value; *v; v++) {
+			if ((*v >= '0' && *v <= '9') ||
+			    (*v >= 'a' && *v <= 'f') ||
+			    (*v >= 'A' && *v <= 'F')) {
+				continue;
+			}
+			break;
+		}
+		// if we reached end of string, we are a valid sha
+		if (!*v) {
+			issha = true;
+		}
+	}
+	return issha;
+}
+
 #endif /* UTILS_PV_STRING_H_ */
