@@ -33,6 +33,7 @@ struct pantavisor_system {
 	init_mode_t init_mode;
 	char *libdir;
 	char *etcdir;
+	char *usrdir;
 	char *rundir;
 	char *mediadir;
 	char *confdir;
@@ -206,6 +207,7 @@ void pv_config_set_creds_secret(char *secret);
 init_mode_t pv_config_get_system_init_mode(void);
 char *pv_config_get_system_libdir(void);
 char *pv_config_get_system_etcdir(void);
+char *pv_config_get_system_usrdir(void);
 char *pv_config_get_system_rundir(void);
 char *pv_config_get_system_mediadir(void);
 char *pv_config_get_system_confdir(void);

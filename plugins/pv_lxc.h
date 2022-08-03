@@ -34,7 +34,8 @@ void pv_set_pv_paths_fn(
 	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
 	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
 	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
-	void *fn_pv_paths_configs_file);
+	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
+	void *fn_pv_paths_lib_lxc_lxcpath);
 
 void *pv_start_container(struct pv_platform *p, const char *rev,
 			 char *conf_file, void *data);
