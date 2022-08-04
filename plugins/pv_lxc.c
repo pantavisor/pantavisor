@@ -567,8 +567,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	dname = dirname(dname);
 	chdir(dname);
 	free(dname);
-
 	__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
+	pv_fs_mkdir_p(path, 0755);
+
 	c = lxc_container_new(p->name, path);
 	if (!c)
 		goto out_failure;
