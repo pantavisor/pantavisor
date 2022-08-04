@@ -312,7 +312,7 @@ void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat,
 #define PV_LIB_HOOK_PATHF "%s/pv/hooks_lxc-mount.d/%s"
 #define PV_LIB_HOOKS_EARLY_SPAWN_PATHF "%s/pv/hooks_early.spawn/%s"
 #define PV_LIB_LXC_ROOTFS_MOUNT_PATHF "%s/lib/lxc/rootfs"
-#define PV_LIB_LXC_LXCPATH_PATHF "%s/var"
+#define PV_LIB_LXC_LXCPATH_PATHF "%s/var/lib/lxc"
 
 void pv_paths_lib_plugin(char *buf, size_t size, const char *name)
 {
