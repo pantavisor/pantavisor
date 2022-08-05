@@ -856,6 +856,11 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 	thttp_request_tls_t *tls_req = 0;
 	thttp_response_t *res = 0;
 
+	if (o->uploaded) {
+		pv_log(INFO, "object '%s' already uploaded, skipping", o->id);
+		return 0;
+	}
+
 	fd = open(o->objpath, O_RDONLY);
 	if (fd < 0)
 		return -1;
@@ -907,6 +912,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 	} else if (tres->code == THTTP_STATUS_CONFLICT) {
 		pv_log(INFO, "object '%s' already owned by user, skipping",
 		       o->id);
+		o->uploaded = true;
 		ret = 0;
 		goto out;
 	} else if (!tres->code && tres->status != TREST_AUTH_STATUS_OK) {
@@ -984,6 +990,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 			pv_log(INFO,
 			       "'%s' uploaded correctly, size=%d, code=%d",
 			       o->id, size, res->code);
+			o->uploaded = true;
 			ret = 0;
 		}
 	} else {
