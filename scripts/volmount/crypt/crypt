@@ -60,6 +60,7 @@ do_crypt_init()
 	elif [ $dm_type == "versatile" ]; then
 		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
 		echo $key_value >$dir/$keyname.txt
+		echo $key_value >$dir/$keyname.bb
 	else
 		echo "Unknown device mapper target"
 		exit 1
