@@ -975,6 +975,27 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_restart_policy(struct json_key_action *jka,
+					char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	if (pv_str_matches(value, strlen(value), "system", strlen("system")))
+		pv_platform_set_restart_policy(*bundle->platform,
+					       RESTART_SYSTEM);
+	if (pv_str_matches(value, strlen(value), "container",
+			   strlen("container")))
+		pv_platform_set_restart_policy(*bundle->platform,
+					       RESTART_CONTAINER);
+	else
+		pv_log(WARN, "invalid restart policy '%s'", value);
+
+	return 0;
+}
+
 static int do_action_for_roles_object(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
@@ -1191,6 +1212,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_runlevel, false),
 		ADD_JKA_ENTRY("group", JSMN_STRING, &bundle,
 			      do_action_for_group, false),
+		ADD_JKA_ENTRY("restart_policy", JSMN_STRING, &bundle,
+			      do_action_for_restart_policy, false),
 		ADD_JKA_ENTRY("roles", JSMN_OBJECT, &bundle,
 			      do_action_for_roles_object, false),
 		ADD_JKA_ENTRY("roles", JSMN_ARRAY, &bundle,
