@@ -470,6 +470,51 @@ static void pv_state_set_default_conditions(struct pv_state *s)
 	pv_state_set_default_conditions_group(s, a, NULL, "STARTED");
 }
 
+static bool pv_state_group_requires_reboot(struct pv_group *g)
+{
+	int len;
+	char *name;
+
+	if (!g || !g->name)
+		return true;
+
+	name = g->name;
+	len = strlen(name);
+
+	if (pv_str_matches(name, len, "data", strlen("data")) ||
+	    pv_str_matches(name, len, "root", strlen("root")) ||
+	    pv_str_matches(name, len, "platform", strlen("platform"))) {
+		return true;
+	}
+
+	return false;
+}
+
+static void pv_state_set_default_restart_policies(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+	struct dl_list *platforms = &s->platforms;
+	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
+	{
+		if (p->restart_policy != RESTART_NONE)
+			continue;
+
+		if (p->group && pv_state_group_requires_reboot(p->group)) {
+			pv_log(WARN,
+			       "platform '%s' in group '%s' has no explicit restart_policy. "
+			       "It will be set by default to 'system'",
+			       p->name, p->group->name);
+			pv_platform_set_restart_policy(p, RESTART_SYSTEM);
+		} else {
+			pv_log(WARN,
+			       "platform '%s' in group '%s' has no explicit restart_policy. "
+			       "It will be set by default to 'container'",
+			       p->name, p->group->name);
+			pv_platform_set_restart_policy(p, RESTART_CONTAINER);
+		}
+	}
+}
+
 void pv_state_validate(struct pv_state *s)
 {
 	// remove platforms that have no loaded data
@@ -480,6 +525,8 @@ void pv_state_validate(struct pv_state *s)
 	pv_state_set_default_groups(s);
 	// set conditions to honor runlevel order
 	pv_state_set_default_conditions(s);
+	// set unset restart policies
+	pv_state_set_default_restart_policies(s);
 }
 
 static int pv_state_mount_bsp_volumes(struct pv_state *s)
@@ -686,21 +733,23 @@ int pv_state_stop(struct pv_state *s)
 	return ret;
 }
 
-static bool pv_state_group_requires_reboot(struct pv_group *g)
+static bool pv_state_platform_requires_reboot(struct pv_platform *p)
 {
-	int len;
-	char *name;
-
-	if (!g || !g->name)
+	if (p->restart_policy == RESTART_SYSTEM) {
+		pv_log(DEBUG,
+		       "it belongs to platform '%s', which has a 'system' restart policy. "
+		       "Rebooting...",
+		       p->name);
 		return true;
-
-	name = g->name;
-	len = strlen(name);
-
-	// some groups need reboot to keep backwards compatibility with runlevel behavior
-	if (pv_str_matches(name, len, "data", strlen("data")) ||
-	    pv_str_matches(name, len, "root", strlen("root")) ||
-	    pv_str_matches(name, len, "platform", strlen("platform"))) {
+	} else if (p->restart_policy == RESTART_CONTAINER) {
+		pv_log(DEBUG,
+		       "it belongs to platform '%s', which has a 'container' restart policy. "
+		       "Reseting container only...",
+		       p->name);
+	} else {
+		pv_log(WARN,
+		       "it belongs to platform '%s', which has a an unknown restart policy. "
+		       "Rebooting...");
 		return true;
 	}
 
@@ -730,13 +779,8 @@ static bool pv_state_compare_objects(struct pv_state *current,
 				return true;
 			}
 			// changes in objects belonging to platforms in certain groups require reboot
-			if (o->plat->group &&
-			    pv_state_group_requires_reboot(o->plat->group)) {
-				pv_log(DEBUG,
-				       "object belongs to platform %s in group %s",
-				       o->plat->name, o->plat->group->name);
+			if (pv_state_platform_requires_reboot(o->plat))
 				return true;
-			}
 			// lenient stop of platform and continue
 			if (pv_platform_is_starting(o->plat) ||
 			    pv_platform_is_started(o->plat))
@@ -760,13 +804,8 @@ static bool pv_state_compare_objects(struct pv_state *current,
 				return true;
 			}
 			// new objects belonging to platforms in certain groups require reboot
-			if (o->plat->group &&
-			    pv_state_group_requires_reboot(o->plat->group)) {
-				pv_log(DEBUG,
-				       "object belongs to platform %s in group %s",
-				       o->plat->name, o->plat->group->name);
+			if (pv_state_platform_requires_reboot(o->plat))
 				return true;
-			}
 			// lenient stop of platform and continue
 			p = pv_state_fetch_platform(current, o->plat->name);
 			if (!p)
@@ -805,13 +844,8 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 				return true;
 			}
 			// changes in jsons belonging to platforms in certain groups require reboot
-			if (j->plat->group &&
-			    pv_state_group_requires_reboot(j->plat->group)) {
-				pv_log(DEBUG,
-				       "json belongs to platform %s in group %s",
-				       j->plat->name, j->plat->group->name);
+			if (pv_state_platform_requires_reboot(j->plat))
 				return true;
-			}
 			// lenient stop of platform and continue
 			if (pv_platform_is_starting(j->plat) ||
 			    pv_platform_is_started(j->plat))
@@ -835,13 +869,8 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 				return true;
 			}
 			// new jsons belonging to platforms in certain groups require reboot
-			if (j->plat->group &&
-			    pv_state_group_requires_reboot(j->plat->group)) {
-				pv_log(DEBUG,
-				       "json belongs to platform %s in group %s",
-				       j->plat->name, j->plat->group->name);
+			if (pv_state_platform_requires_reboot(j->plat))
 				return true;
-			}
 			// lenient stop of platform and continue
 			p = pv_state_fetch_platform(current, j->plat->name);
 			if (!p)

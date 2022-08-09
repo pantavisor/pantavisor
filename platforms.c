@@ -141,6 +141,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		p->name = strdup(name);
 		p->status = PLAT_NONE;
 		p->roles = PLAT_ROLE_MGMT;
+		p->restart_policy = RESTART_NONE;
 		p->updated = false;
 		p->state = s;
 		dl_list_init(&p->condition_refs);
@@ -285,6 +286,20 @@ static const char *pv_platforms_role_str(roles_mask_t role)
 	return "unknown";
 }
 
+static const char *pv_platforms_restart_policy_str(restart_policy_t policy)
+{
+	switch (policy) {
+	case RESTART_SYSTEM:
+		return "system";
+	case RESTART_CONTAINER:
+		return "container";
+	default:
+		return "unknown";
+	}
+
+	return "unknown";
+}
+
 char *pv_platform_get_json(struct pv_platform *p)
 {
 	struct pv_condition_ref *cr, *tmp;
@@ -325,7 +340,9 @@ char *pv_platform_get_json(struct pv_platform *p)
 		close_roles:
 			pv_json_ser_array_pop(&js);
 		}
-
+		pv_json_ser_key(&js, "restart_policy");
+		pv_json_ser_string(&js, pv_platforms_restart_policy_str(
+						p->restart_policy));
 		pv_json_ser_key(&js, "conditions");
 		pv_json_ser_array(&js);
 		{
@@ -925,6 +942,12 @@ bool pv_platform_is_stopped(struct pv_platform *p)
 bool pv_platform_is_updated(struct pv_platform *p)
 {
 	return p->updated;
+}
+
+void pv_platform_set_restart_policy(struct pv_platform *p,
+				    restart_policy_t policy)
+{
+	p->restart_policy = policy;
 }
 
 void pv_platform_set_role(struct pv_platform *p, roles_mask_t role)

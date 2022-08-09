@@ -47,6 +47,12 @@ typedef enum {
 	DRIVER_MANUAL = (1 << 2)
 } plat_driver_t;
 
+typedef enum {
+	RESTART_NONE,
+	RESTART_SYSTEM,
+	RESTART_CONTAINER
+} restart_policy_t;
+
 struct pv_platform_driver {
 	plat_driver_t type;
 	bool loaded;
@@ -68,6 +74,7 @@ struct pv_platform {
 	struct pv_group *group;
 	struct pv_state *state;
 	int roles;
+	restart_policy_t restart_policy;
 	bool updated;
 	struct dl_list drivers;
 	struct dl_list condition_refs; // pv_condition_ref
@@ -109,6 +116,9 @@ bool pv_platform_is_started(struct pv_platform *p);
 bool pv_platform_is_stopping(struct pv_platform *p);
 bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
+
+void pv_platform_set_restart_policy(struct pv_platform *p,
+				    restart_policy_t policy);
 
 void pv_platform_set_role(struct pv_platform *p, roles_mask_t role);
 void pv_platform_unset_role(struct pv_platform *p, roles_mask_t role);
