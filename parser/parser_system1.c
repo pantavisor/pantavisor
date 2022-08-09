@@ -578,10 +578,8 @@ static int platform_drivers_add(struct pv_platform *p, plat_driver_t type,
 	}
 
 	size = jsmnutil_array_count(buf, tokv);
-	if (size <= 0) {
-		pv_log(ERROR, "empty drivers filter");
+	if (size <= 0)
 		goto out;
-	}
 
 	t = tokv + 1;
 	while ((str = pv_json_array_get_one_str(buf, &size, &t))) {
