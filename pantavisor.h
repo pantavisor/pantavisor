@@ -51,6 +51,7 @@ struct pantavisor {
 	bool unclaimed;
 	bool synced;
 	bool loading_objects;
+	bool hard_poweroff;
 	int ctrl_fd;
 };
 

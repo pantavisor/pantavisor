@@ -224,6 +224,18 @@ static void signal_handler(int signal)
 	}
 }
 
+static void shell_handler(int signal)
+{
+	if (signal != SIGINT)
+		return;
+
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
+	pv->hard_poweroff = true;
+}
+
 #define HOOKS_EARLY_SPAWN "/lib/pv/hooks_early.spawn"
 
 static void early_spawns()
@@ -484,6 +496,7 @@ int main(int argc, char *argv[])
 	if (getpid() != 1) {
 		// we are going to use this thread for pv
 		pv_pid = getpid();
+		signal(SIGINT, shell_handler);
 		pv_start();
 		pv_stop();
 		return 0;
