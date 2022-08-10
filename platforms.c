@@ -102,8 +102,8 @@ static const char *pv_platform_status_string(plat_status_t status)
 	switch (status) {
 	case PLAT_NONE:
 		return "NONE";
-	case PLAT_READY:
-		return "READY";
+	case PLAT_INSTALLED:
+		return "INSTALLED";
 	case PLAT_MOUNTED:
 		return "MOUNTED";
 	case PLAT_BLOCKED:
@@ -112,6 +112,8 @@ static const char *pv_platform_status_string(plat_status_t status)
 		return "STARTING";
 	case PLAT_STARTED:
 		return "STARTED";
+	case PLAT_READY:
+		return "READY";
 	case PLAT_STOPPING:
 		return "STOPPING";
 	case PLAT_STOPPED:
@@ -125,12 +127,10 @@ static const char *pv_platform_status_string(plat_status_t status)
 
 static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 {
-	if (p->status == status)
+	if (p->status.current == status)
 		return;
 
-	p->status = status;
-	pv_state_report_condition(p->state, p->name, "status",
-				  pv_platform_status_string(status));
+	p->status.current = status;
 }
 
 struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
@@ -139,12 +139,12 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 
 	if (p) {
 		p->name = strdup(name);
-		p->status = PLAT_NONE;
+		p->status.current = PLAT_NONE;
+		p->status.goal = PLAT_NONE;
 		p->roles = PLAT_ROLE_MGMT;
 		p->restart_policy = RESTART_NONE;
 		p->updated = false;
 		p->state = s;
-		dl_list_init(&p->condition_refs);
 		dl_list_init(&p->drivers);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
@@ -153,24 +153,6 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 	}
 
 	return p;
-}
-
-static void pv_platform_empty_condition_refs(struct pv_platform *p)
-{
-	int num_conditions = 0;
-	struct pv_condition_ref *cr, *tmp;
-	struct dl_list *condition_refs = &p->condition_refs;
-
-	// Iterate over all condition references from platforms
-	dl_list_for_each_safe(cr, tmp, condition_refs, struct pv_condition_ref,
-			      list)
-	{
-		dl_list_del(&cr->list);
-		pv_condition_ref_free(cr);
-		num_conditions++;
-	}
-
-	pv_log(INFO, "removed %d condition references", num_conditions);
 }
 
 static void pv_platform_empty_logger_list(struct pv_platform *p)
@@ -239,24 +221,10 @@ void pv_platform_free(struct pv_platform *p)
 	if (p->data)
 		free(p->data);
 
-	pv_platform_empty_condition_refs(p);
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
 
 	free(p);
-}
-
-void pv_platform_add_condition(struct pv_platform *p, struct pv_condition *c)
-{
-	struct pv_condition_ref *cr;
-
-	pv_log(DEBUG, "adding condition reference %s to platform", c->key);
-
-	cr = pv_condition_ref_new(c);
-	if (cr) {
-		dl_list_init(&cr->list);
-		dl_list_add_tail(&p->condition_refs, &cr->list);
-	}
 }
 
 void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
@@ -300,82 +268,69 @@ static const char *pv_platforms_restart_policy_str(restart_policy_t policy)
 	return "unknown";
 }
 
-char *pv_platform_get_json(struct pv_platform *p)
+void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 {
-	struct pv_condition_ref *cr, *tmp;
-	struct pv_json_ser js;
 	char *group = NULL;
-	const char *status = pv_platform_status_string(p->status);
+	const char *status = pv_platform_status_string(p->status.current);
+	const char *status_goal = pv_platform_status_string(p->status.goal);
 	int i;
 
 	if (p->group)
 		group = p->group->name;
 
-	pv_json_ser_init(&js, 512);
-
-	pv_json_ser_object(&js);
+	pv_json_ser_object(js);
 	{
-		pv_json_ser_key(&js, "name");
-		pv_json_ser_string(&js, p->name);
-		pv_json_ser_key(&js, "group");
-		pv_json_ser_string(&js, group);
-		pv_json_ser_key(&js, "status");
-		pv_json_ser_string(&js, status);
-		pv_json_ser_key(&js, "roles");
-		pv_json_ser_array(&js);
+		pv_json_ser_key(js, "name");
+		pv_json_ser_string(js, p->name);
+		pv_json_ser_key(js, "group");
+		pv_json_ser_string(js, group);
+		pv_json_ser_key(js, "status");
+		pv_json_ser_string(js, status);
+		pv_json_ser_key(js, "status_goal");
+		pv_json_ser_string(js, status_goal);
+		pv_json_ser_key(js, "restart_policy");
+		pv_json_ser_string(
+			js, pv_platforms_restart_policy_str(p->restart_policy));
+		pv_json_ser_key(js, "roles");
+		pv_json_ser_array(js);
 		{
 			if (!p->roles)
 				goto close_roles;
 
 			if (p->roles >= PLAT_ROLE_SIZE) {
-				pv_json_ser_string(&js, "unknown");
+				pv_json_ser_string(js, "unknown");
 				goto close_roles;
 			}
 
 			for (i = 0; i < PLAT_ROLE_SIZE; i++) {
 				if (pv_platform_has_role(p, i))
 					pv_json_ser_string(
-						&js, pv_platforms_role_str(i));
+						js, pv_platforms_role_str(i));
 			}
 		close_roles:
-			pv_json_ser_array_pop(&js);
-		}
-		pv_json_ser_key(&js, "restart_policy");
-		pv_json_ser_string(&js, pv_platforms_restart_policy_str(
-						p->restart_policy));
-		pv_json_ser_key(&js, "conditions");
-		pv_json_ser_array(&js);
-		{
-			if (dl_list_empty(&p->condition_refs))
-				goto close_conds;
-
-			dl_list_for_each_safe(cr, tmp, &p->condition_refs,
-					      struct pv_condition_ref, list)
-			{
-				if (!cr->ref)
-					continue;
-
-				pv_json_ser_object(&js);
-				{
-					pv_json_ser_key(&js, "container");
-					pv_json_ser_string(&js, cr->ref->plat);
-					pv_json_ser_key(&js, "key");
-					pv_json_ser_string(&js, cr->ref->key);
-					pv_json_ser_key(&js, "eval_value");
-					pv_json_ser_string(&js,
-							   cr->ref->eval_value);
-
-					pv_json_ser_object_pop(&js);
-				}
-			}
-		close_conds:
-			pv_json_ser_array_pop(&js);
+			pv_json_ser_array_pop(js);
 		}
 
-		pv_json_ser_object_pop(&js);
+		pv_json_ser_object_pop(js);
 	}
+}
 
-	return pv_json_ser_str(&js);
+void pv_platform_add_goal_json(struct pv_json_ser *js, struct pv_platform *p)
+{
+	const char *status = pv_platform_status_string(p->status.current);
+	const char *status_goal = pv_platform_status_string(p->status.goal);
+
+	pv_json_ser_object(js);
+	{
+		pv_json_ser_key(js, "name");
+		pv_json_ser_string(js, p->name);
+		pv_json_ser_key(js, "current");
+		pv_json_ser_string(js, status);
+		pv_json_ser_key(js, "goal");
+		pv_json_ser_string(js, status_goal);
+
+		pv_json_ser_object_pop(js);
+	}
 }
 
 void pv_platforms_empty(struct pv_state *s)
@@ -402,7 +357,7 @@ void pv_platforms_remove_not_installed(struct pv_state *s)
 
 	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
 	{
-		if (p->status != PLAT_NONE)
+		if (p->status.current != PLAT_NONE)
 			continue;
 
 		dl_list_del(&p->list);
@@ -849,9 +804,9 @@ void pv_platform_force_stop(struct pv_platform *p)
 	pv_platform_set_status(p, PLAT_STOPPED);
 }
 
-void pv_platform_set_ready(struct pv_platform *p)
+void pv_platform_set_installed(struct pv_platform *p)
 {
-	pv_platform_set_status(p, PLAT_READY);
+	pv_platform_set_status(p, PLAT_INSTALLED);
 }
 
 void pv_platform_set_mounted(struct pv_platform *p)
@@ -862,6 +817,15 @@ void pv_platform_set_mounted(struct pv_platform *p)
 void pv_platform_set_blocked(struct pv_platform *p)
 {
 	pv_platform_set_status(p, PLAT_BLOCKED);
+}
+
+int pv_platform_set_ready(struct pv_platform *p)
+{
+	if (p->status.goal != PLAT_READY)
+		return -1;
+
+	pv_platform_set_status(p, PLAT_READY);
+	return 0;
 }
 
 void pv_platform_set_updated(struct pv_platform *p)
@@ -875,14 +839,15 @@ int pv_platform_check_running(struct pv_platform *p)
 
 	running = !kill(p->init_pid, 0);
 	if (running) {
-		if ((p->status != PLAT_STARTED) &&
-		    (p->status != PLAT_STOPPING)) {
+		if ((p->status.current != PLAT_STARTED) &&
+		    (p->status.current != PLAT_READY) &&
+		    (p->status.current != PLAT_STOPPING)) {
 			pv_log(DEBUG, "platform %s started", p->name);
 			pv_platform_set_status(p, PLAT_STARTED);
 		}
 	} else {
-		if ((p->status != PLAT_STOPPED) &&
-		    (p->status != PLAT_STARTING)) {
+		if ((p->status.current != PLAT_STOPPED) &&
+		    (p->status.current != PLAT_STARTING)) {
 			pv_log(DEBUG, "platform %s stopped", p->name);
 			pv_platform_set_status(p, PLAT_STOPPED);
 		}
@@ -891,57 +856,54 @@ int pv_platform_check_running(struct pv_platform *p)
 	return running;
 }
 
-bool pv_platform_check_conditions(struct pv_platform *p)
+bool pv_platform_is_installed(struct pv_platform *p)
 {
-	struct pv_condition_ref *cr, *tmp;
-
-	if (dl_list_empty(&p->condition_refs))
-		goto out;
-
-	dl_list_for_each_safe(cr, tmp, &p->condition_refs,
-			      struct pv_condition_ref, list)
-	{
-		if (cr->ref && !pv_condition_check(cr->ref))
-			return false;
-	}
-
-out:
-	return true;
-}
-
-bool pv_platform_is_ready(struct pv_platform *p)
-{
-	return (p->status == PLAT_READY);
+	return (p->status.current == PLAT_INSTALLED);
 }
 
 bool pv_platform_is_blocked(struct pv_platform *p)
 {
-	return (p->status == PLAT_BLOCKED);
+	return (p->status.current == PLAT_BLOCKED);
 }
 
 bool pv_platform_is_starting(struct pv_platform *p)
 {
-	return (p->status == PLAT_STARTING);
+	return (p->status.current == PLAT_STARTING);
 }
 
 bool pv_platform_is_started(struct pv_platform *p)
 {
-	return (p->status == PLAT_STARTED);
+	return (p->status.current == PLAT_STARTED);
+}
+
+bool pv_platform_is_ready(struct pv_platform *p)
+{
+	return (p->status.current == PLAT_READY);
 }
 
 bool pv_platform_is_stopping(struct pv_platform *p)
 {
-	return (p->status == PLAT_STOPPING);
+	return (p->status.current == PLAT_STOPPING);
 }
 
 bool pv_platform_is_stopped(struct pv_platform *p)
 {
-	return (p->status == PLAT_STOPPED);
+	return (p->status.current == PLAT_STOPPED);
 }
 
 bool pv_platform_is_updated(struct pv_platform *p)
 {
 	return p->updated;
+}
+
+void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal)
+{
+	p->status.goal = goal;
+}
+
+bool pv_platform_check_goal(struct pv_platform *p)
+{
+	return p->status.current == p->status.goal;
 }
 
 void pv_platform_set_restart_policy(struct pv_platform *p,
@@ -982,3 +944,20 @@ struct pv_init pv_init_platform = {
 	.init_fn = pv_platforms_early_init,
 	.flags = 0,
 };
+
+struct pv_platform_ref *pv_platform_ref_new(struct pv_platform *p)
+{
+	struct pv_platform_ref *pr;
+
+	pr = calloc(1, sizeof(struct pv_platform_ref));
+	if (pr) {
+		pr->ref = p;
+	}
+
+	return pr;
+}
+
+void pv_platform_ref_free(struct pv_platform_ref *pr)
+{
+	free(pr);
+}

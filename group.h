@@ -22,15 +22,24 @@
 #ifndef PV_GROUP_H
 #define PV_GROUP_H
 
-#include "condition.h"
+#include "platforms.h"
+
 #include "utils/list.h"
+#include "utils/json.h"
 
 struct pv_group {
 	char *name;
+	struct dl_list platform_refs; // pv_platform_ref
 	struct dl_list list; // pv_group
 };
 
 struct pv_group *pv_group_new(char *name);
 void pv_group_free(struct pv_group *g);
+
+void pv_group_add_platform(struct pv_group *g, struct pv_platform *p);
+
+bool pv_group_check_goals(struct pv_group *g, bool log_warn);
+
+void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g);
 
 #endif // PV_GROUP_H

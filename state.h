@@ -55,7 +55,6 @@ struct pv_state {
 	struct dl_list objects; //pv_object
 	struct dl_list jsons; //pv_json
 	struct dl_list groups; //pv_group
-	struct dl_list conditions; // pv_condition
 	char *json;
 	int tryonce;
 	bool local;
@@ -65,17 +64,12 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec);
 void pv_state_free(struct pv_state *s);
 
 void pv_state_add_group(struct pv_state *s, struct pv_group *g);
-void pv_state_add_condition(struct pv_state *s, struct pv_condition *c);
 
 struct pv_group *pv_state_fetch_group(struct pv_state *s, const char *name);
 struct pv_platform *pv_state_fetch_platform(struct pv_state *s,
 					    const char *name);
 struct pv_object *pv_state_fetch_object(struct pv_state *s, const char *name);
 struct pv_json *pv_state_fetch_json(struct pv_state *s, const char *name);
-struct pv_condition *pv_state_fetch_condition_value(struct pv_state *s,
-						    const char *plat,
-						    const char *key,
-						    const char *eval_value);
 
 state_spec_t pv_state_spec(struct pv_state *s);
 
@@ -90,12 +84,13 @@ int pv_state_stop_force(struct pv_state *s);
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending);
 void pv_state_transition(struct pv_state *pending, struct pv_state *current);
 
-int pv_state_report_condition(struct pv_state *s, const char *plat,
-			      const char *key, const char *value);
-bool pv_state_check_conditions(struct pv_state *s);
+bool pv_state_check_goals(struct pv_state *s);
+
+int pv_state_interpret_signal(struct pv_state *s, const char *name,
+			      const char *signal, const char *payload);
 
 void pv_state_print(struct pv_state *s);
 char *pv_state_get_containers_json(struct pv_state *s);
-char *pv_state_get_conditions_json(struct pv_state *s);
+char *pv_state_get_groups_json(struct pv_state *s);
 
 #endif

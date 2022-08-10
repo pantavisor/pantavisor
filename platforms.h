@@ -27,16 +27,18 @@
 #include <sys/types.h>
 
 #include "pantavisor.h"
-#include "condition.h"
+
 #include "utils/list.h"
+#include "utils/json.h"
 
 typedef enum {
 	PLAT_NONE,
-	PLAT_READY,
+	PLAT_INSTALLED,
 	PLAT_MOUNTED,
 	PLAT_BLOCKED,
 	PLAT_STARTING,
 	PLAT_STARTED,
+	PLAT_READY,
 	PLAT_STOPPING,
 	PLAT_STOPPED
 } plat_status_t;
@@ -62,6 +64,11 @@ struct pv_platform_driver {
 
 typedef enum { PLAT_ROLE_MGMT = 1 << 0, PLAT_ROLE_SIZE } roles_mask_t;
 
+struct pv_status {
+	plat_status_t current;
+	plat_status_t goal;
+};
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -70,14 +77,13 @@ struct pv_platform {
 	unsigned long ns_share;
 	void *data;
 	pid_t init_pid;
-	plat_status_t status;
+	struct pv_status status;
 	struct pv_group *group;
 	struct pv_state *state;
 	int roles;
 	restart_policy_t restart_policy;
 	bool updated;
 	struct dl_list drivers;
-	struct dl_list condition_refs; // pv_condition_ref
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*
@@ -90,7 +96,6 @@ void pv_platform_free(struct pv_platform *p);
 
 void pv_platform_add_driver(struct pv_platform *g, plat_driver_t type,
 			    char *value);
-void pv_platform_add_condition(struct pv_platform *g, struct pv_condition *c);
 
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
@@ -102,20 +107,25 @@ int pv_platform_stop(struct pv_platform *p);
 void pv_platform_force_stop(struct pv_platform *p);
 
 int pv_platform_check_running(struct pv_platform *p);
-bool pv_platform_check_conditions(struct pv_platform *p);
 
-void pv_platform_set_ready(struct pv_platform *p);
+void pv_platform_set_installed(struct pv_platform *p);
 void pv_platform_set_mounted(struct pv_platform *p);
 void pv_platform_set_blocked(struct pv_platform *p);
 void pv_platform_set_updated(struct pv_platform *p);
 
-bool pv_platform_is_ready(struct pv_platform *p);
+int pv_platform_set_ready(struct pv_platform *p);
+
+bool pv_platform_is_installed(struct pv_platform *p);
 bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
 bool pv_platform_is_started(struct pv_platform *p);
+bool pv_platform_is_ready(struct pv_platform *p);
 bool pv_platform_is_stopping(struct pv_platform *p);
 bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
+
+void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal);
+bool pv_platform_check_goal(struct pv_platform *p);
 
 void pv_platform_set_restart_policy(struct pv_platform *p,
 				    restart_policy_t policy);
@@ -124,7 +134,8 @@ void pv_platform_set_role(struct pv_platform *p, roles_mask_t role);
 void pv_platform_unset_role(struct pv_platform *p, roles_mask_t role);
 bool pv_platform_has_role(struct pv_platform *p, roles_mask_t role);
 
-char *pv_platform_get_json(struct pv_platform *p);
+void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p);
+void pv_platform_add_goal_json(struct pv_json_ser *js, struct pv_platform *p);
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
@@ -134,5 +145,13 @@ void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);
 
 void pv_platforms_empty(struct pv_state *s);
+
+struct pv_platform_ref {
+	struct pv_platform *ref;
+	struct dl_list list; // pv_platform_ref
+};
+
+struct pv_platform_ref *pv_platform_ref_new(struct pv_platform *p);
+void pv_platform_ref_free(struct pv_platform_ref *pr);
 
 #endif

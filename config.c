@@ -308,8 +308,8 @@ static int pv_config_load_config_from_file(char *path,
 	config->net.brmask4 = config_get_value_string(
 		&config_list, "net.brmask4", "255.255.255.0");
 
-	config->updater.conditions_timeout = config_get_value_int(
-		&config_list, "updater.conditions.timeout", 2 * 60);
+	config->updater.goals_timeout = config_get_value_int(
+		&config_list, "updater.goals.timeout", 2 * 60);
 	config->updater.use_tmp_objects = config_get_value_bool(
 		&config_list, "updater.use_tmp_objects", false);
 
@@ -474,8 +474,8 @@ static int pv_config_override_config_from_file(char *path,
 				   &config->storage.gc.keep_factory);
 	config_override_value_int(&config_list, "updater.interval",
 				  &config->updater.interval);
-	config_override_value_int(&config_list, "updater.conditions.timeout",
-				  &config->updater.conditions_timeout);
+	config_override_value_int(&config_list, "updater.goals.timeout",
+				  &config->updater.goals_timeout);
 	config_override_value_int(&config_list, "updater.network_timeout",
 				  &config->updater.network_timeout);
 	config_override_value_int(&config_list, "updater.commit.delay",
@@ -929,9 +929,9 @@ int pv_config_get_updater_interval()
 {
 	return pv_get_instance()->config.updater.interval;
 }
-int pv_config_get_updater_conditions_timeout()
+int pv_config_get_updater_goals_timeout()
 {
-	return pv_get_instance()->config.updater.conditions_timeout;
+	return pv_get_instance()->config.updater.goals_timeout;
 }
 int pv_config_get_updater_network_timeout()
 {
@@ -1154,9 +1154,8 @@ char *pv_config_get_json()
 		pv_json_ser_key(&js, "updater.use_tmp_objects");
 		pv_json_ser_bool(
 			&js, pv_config_get_updater_network_use_tmp_objects());
-		pv_json_ser_key(&js, "updater.conditions.timeout");
-		pv_json_ser_number(&js,
-				   pv_config_get_updater_conditions_timeout());
+		pv_json_ser_key(&js, "updater.goals.timeout");
+		pv_json_ser_number(&js, pv_config_get_updater_goals_timeout());
 		pv_json_ser_key(&js, "revision.retries");
 		pv_json_ser_number(&js,
 				   pv_config_get_updater_revision_retries());

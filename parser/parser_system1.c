@@ -44,7 +44,6 @@
 #include "pantavisor.h"
 #include "parser_bundle.h"
 #include "group.h"
-#include "condition.h"
 #include "drivers.h"
 #include "state.h"
 #include "pvlogger.h"
@@ -387,108 +386,6 @@ out:
 		free(tokv);
 	if (buf)
 		free(buf);
-
-	return ret;
-}
-
-static struct pv_condition *parse_condition(struct pv_state *s, char *value)
-{
-	char *key = NULL, *val = NULL, *plat = NULL;
-	struct pv_condition *c = NULL;
-	jsmntok_t *condv;
-	int condc;
-
-	pv_log(DEBUG, "condition %s", value);
-
-	if (jsmnutil_parse_json(value, &condv, &condc) <= 0) {
-		pv_log(ERROR, "wrong format condition");
-		goto out;
-	}
-
-	key = pv_json_get_value(value, "key", condv, condc);
-	if (!key) {
-		pv_log(ERROR, "key not found in condition");
-		goto out;
-	}
-
-	val = pv_json_get_value(value, "value", condv, condc);
-	if (!val) {
-		pv_log(ERROR, "value not found in condition");
-		goto out;
-	}
-
-	plat = pv_json_get_value(value, "container", condv, condc);
-	// accept all containers by default
-	if (!plat)
-		plat = strdup("*");
-
-	c = pv_state_fetch_condition_value(s, plat, key, value);
-	if (c) {
-		pv_log(DEBUG, "condition found in state");
-		goto out;
-	}
-
-	c = pv_condition_new(plat, key, val);
-	if (!c) {
-		pv_log(ERROR, "could not create a new condition");
-		goto out;
-	}
-
-	pv_state_add_condition(s, c);
-
-out:
-	if (plat)
-		free(plat);
-	if (key)
-		free(key);
-	if (val)
-		free(val);
-	return c;
-}
-
-static int parse_platform_conditions(struct pv_state *s, struct pv_platform *p,
-				     char *value)
-{
-	struct pv_condition *c;
-	char *str = NULL;
-	int ret = 0, tokc;
-	jsmntok_t *tokv = NULL, **t = NULL, **i = NULL;
-
-	pv_log(DEBUG, "platform conditions %s", value);
-
-	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
-		pv_log(ERROR, "wrong format platform conditions");
-		goto out;
-	}
-
-	t = jsmnutil_get_array_toks(value, tokv);
-	i = t;
-	while (*i) {
-		str = pv_json_get_one_str(value, i);
-		if (!str)
-			break;
-
-		c = parse_condition(s, str);
-		if (!c)
-			goto out;
-
-		pv_platform_add_condition(p, c);
-
-		free(str);
-		str = NULL;
-
-		i++;
-	}
-
-	ret = 1;
-
-out:
-	if (str)
-		free(str);
-	if (t)
-		jsmnutil_tokv_free(t);
-	if (tokv)
-		free(tokv);
 
 	return ret;
 }
@@ -944,6 +841,7 @@ static int do_action_for_runlevel(struct json_key_action *jka, char *value)
 			return -1;
 		}
 		(*bundle->platform)->group = g;
+		pv_group_add_platform(g, (*bundle->platform));
 	} else {
 		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'",
 		       value, (*bundle->platform)->name);
@@ -969,6 +867,7 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 		return -1;
 	}
 	(*bundle->platform)->group = g;
+	pv_group_add_platform(g, (*bundle->platform));
 
 	return 0;
 }
@@ -990,6 +889,26 @@ static int do_action_for_restart_policy(struct json_key_action *jka,
 					       RESTART_CONTAINER);
 	else
 		pv_log(WARN, "invalid restart policy '%s'", value);
+
+	return 0;
+}
+
+static int do_action_for_status_goal(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	if (pv_str_matches(value, strlen(value), "MOUNTED", strlen("MOUNTED")))
+		pv_platform_set_status_goal(*bundle->platform, PLAT_MOUNTED);
+	else if (pv_str_matches(value, strlen(value), "STARTED",
+				strlen("STARTED")))
+		pv_platform_set_status_goal(*bundle->platform, PLAT_STARTED);
+	else if (pv_str_matches(value, strlen(value), "READY", strlen("READY")))
+		pv_platform_set_status_goal(*bundle->platform, PLAT_READY);
+	else
+		pv_log(WARN, "invalid status goal '%s'", value);
 
 	return 0;
 }
@@ -1176,21 +1095,6 @@ static int do_action_for_drivers(struct json_key_action *jka, char *value)
 	return 0;
 }
 
-static int do_action_for_conditions(struct json_key_action *jka, char *value)
-{
-	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
-
-	if (!(*bundle->platform) || !value)
-		return -1;
-
-	if (!parse_platform_conditions(bundle->s, *bundle->platform, value)) {
-		pv_log(ERROR, "could not parse platform conditions");
-		return -1;
-	}
-
-	return 0;
-}
-
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	char *config = NULL, *shares = NULL;
@@ -1212,6 +1116,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_group, false),
 		ADD_JKA_ENTRY("restart_policy", JSMN_STRING, &bundle,
 			      do_action_for_restart_policy, false),
+		ADD_JKA_ENTRY("status_goal", JSMN_STRING, &bundle,
+			      do_action_for_status_goal, false),
 		ADD_JKA_ENTRY("roles", JSMN_OBJECT, &bundle,
 			      do_action_for_roles_object, false),
 		ADD_JKA_ENTRY("roles", JSMN_ARRAY, &bundle,
@@ -1226,8 +1132,6 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_one_log, false),
 		ADD_JKA_ENTRY("storage", JSMN_OBJECT, &bundle,
 			      do_action_for_storage, false),
-		ADD_JKA_ENTRY("conditions", JSMN_STRING, &bundle,
-			      do_action_for_conditions, false),
 		ADD_JKA_ENTRY("drivers", JSMN_OBJECT, &bundle,
 			      do_action_for_drivers, false),
 		ADD_JKA_NULL_ENTRY()
@@ -1247,7 +1151,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		config = 0;
 	}
 
-	pv_platform_set_ready(this);
+	pv_platform_set_installed(this);
 out:
 	if (config)
 		free(config);
