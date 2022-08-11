@@ -28,6 +28,7 @@
 #define PV_LOG_H
 
 #include "pantavisor.h"
+#include <stdarg.h>
 
 void exit_error(int err, char *msg);
 
@@ -54,6 +55,9 @@ enum log_level {
 int pv_log_start(struct pantavisor *pv, const char *rev);
 
 void __log(char *module, int level, const char *fmt, ...);
+
+void __log_to_console(char *module, int level, const char *fmt, ...);
+
 /*
  * Don't free the return value!
  */

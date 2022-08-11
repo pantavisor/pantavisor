@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,30 +19,26 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
+#ifndef LOGSERVER_H
+#define LOGSERVER_H
+
+#include <sys/types.h>
+#include <unistd.h>
 #include <stdarg.h>
-#include "ph_logger.h"
-/*
- * v1 has the following message format in buffer
- * level (int),
- * platform (NULL terminated string),
- * source (NULL terminated string),
- *
- * args should contain the valid addresses for the above in the order they appear above.
- */
-int ph_logger_read_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf,
-			      va_list args);
+#include "pantavisor.h"
 
-/*
- * v1 has the following message format in buffer
- * level (int),
- * platform (NULL terminated string),
- * source (NULL terminated string),
- * len (length of the data in buf)
- * args should contain the valid addresses for the above in the order they appear above.
- */
-int ph_logger_write_handler_v1(struct ph_logger_msg *ph_logger_msg, char *buf,
-			       va_list args);
+#define PV_PLATFORM_STR "pantavisor"
 
-int ph_logger_write_to_file_handler_v1(struct ph_logger_msg *ph_logger_msg,
-				       const char *log_dir, char *rev);
+void pv_logserver_toggle(struct pantavisor *pv, const char *rev);
+
+int pv_logserver_init(void);
+
+int pv_logserver_send_log(bool is_platform, char *platform, char *src,
+			  int level, const char *msg, ...);
+int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
+			   int level, const char *msg, va_list args);
+
+void pv_logserver_stop(void);
+void pv_logserver_close(void);
+
+#endif /* LOGSERVER_H */

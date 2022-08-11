@@ -40,15 +40,17 @@
 #include "utils/fs.h"
 #include "thttp.h"
 #include "trest.h"
+#include "paths.h"
 #include "utils/str.h"
 #include "utils/math.h"
 #include "loop.h"
 #include "init.h"
 #include "bootloader.h"
 #include "version.h"
-#include "ph_logger/ph_logger.h"
+#include "ph_logger.h"
 #include "buffer.h"
 #include "paths.h"
+#include "logserver.h"
 
 #define MODULE_NAME "log"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -67,139 +69,56 @@ static struct level_name level_names[] = { LEVEL_NAME(FATAL), LEVEL_NAME(ERROR),
 					   LEVEL_NAME(WARN), LEVEL_NAME(INFO),
 					   LEVEL_NAME(DEBUG) };
 
-static char log_dir[PATH_MAX];
-static char log_path[PATH_MAX];
 static pid_t log_init_pid = -1;
 
 static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
 
-static int logging_initialized = 0;
 static int logging_stdout = 0;
+
+static void __vlog_to_console(char *module, int level, const char *fmt,
+			      va_list args)
+{
+	char time_buf[MAX_DEC_STRING_SIZE_OF_TYPE(unsigned long long)];
+	epochsecstring(time_buf, sizeof(time_buf), time(NULL));
+
+	// construct string because we cannot lock stdout
+	size_t size =
+		snprintf(NULL, 0, "[pantavisor] %s %s\t -- [%s]: ", time_buf,
+			 level_names[level].name, module);
+	size += vsnprintf(NULL, 0, fmt, args) + 1; // NULL byte
+	char *buf = calloc(sizeof(char), size);
+	if (!buf) {
+		// Fall back to multiple printfs instead of printing once
+		// Ouptu may get split up by other processes.
+		printf("[pantavisor] %s %s\t -- [%s]: ", time_buf,
+		       level_names[level].name, module);
+		vprintf(fmt, args);
+		printf("\n");
+	} else {
+		int offs = snprintf(buf, size,
+				    "[pantavisor] %s %s\t -- [%s]: ", time_buf,
+				    level_names[level].name, module);
+		vsnprintf(buf + offs, size - offs, fmt, args);
+		printf("%s\n", buf);
+
+		free(buf);
+	}
+	return;
+}
 
 static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
-	struct stat log_stat;
-	int log_fd = -1;
-	int max_gzip = 3;
-	char time_buf[MAX_DEC_STRING_SIZE_OF_TYPE(unsigned long long)];
-	epochsecstring(time_buf, sizeof(time_buf), time(NULL));
-	// hold 2MiB max of log entries in open file
-	//Check on disk file size.
+	int ret;
 
-	if (!logging_initialized || logging_stdout) {
-		// construct string because we cannot lock stdout
-		size_t size =
-			snprintf(NULL, 0,
-				 "[pantavisor] %s %s\t -- [%s]: ", time_buf,
-				 level_names[level].name, module);
-		size += vsnprintf(NULL, 0, fmt, args);
-		// 1 '\0' char
-		size++;
-		char *buf = calloc(size, sizeof(char));
-		if (!buf) {
-			// Fall back to multiple printfs instead of printing once
-			// Ouptu may get split up by other processes.
-			printf("[pantavisor] %s %s\t -- [%s]: ", time_buf,
-			       level_names[level].name, module);
-			vprintf(fmt, args);
-			printf("\n");
-		} else {
-			size_t offs = snprintf(
-				buf, size,
-				"[pantavisor] %s %s\t -- [%s]: ", time_buf,
-				level_names[level].name, module);
-			offs += vsnprintf(buf + offs, size - offs, fmt, args);
-			printf("%s%s\n", buf, offs >= size ? " [TRUNC]" : "");
-			free(buf);
-		}
+	if (0 > pv_logserver_send_vlog(false, PV_PLATFORM_STR, module, level,
+				       fmt, args))
+		ret = -1;
+	else
+		ret = 0;
 
-		if (!logging_stdout || !logging_initialized)
-			return;
-	}
-
-	log_fd = open(log_path, O_RDWR | O_APPEND | O_CREAT | O_SYNC, 0644);
-
-	if (log_fd >= 0) {
-		int ret = 0;
-		int lock_file_errno = 0;
-		do {
-			ret = pv_fs_file_lock(log_fd);
-		} while (ret < 0 && (errno == EAGAIN || errno == EACCES));
-
-		if (ret < 0)
-			lock_file_errno = errno;
-		/*
-		 * We weren't able to take the lock.
-		 */
-		if (ret) {
-			char err_file[PATH_MAX];
-			char proc_name[17] = { 0 };
-			int len = 0;
-			int err_fd = -1;
-
-			SNPRINTF_WTRUNC(err_file, PATH_MAX, "%s/%s", log_dir,
-					LOGS_ERROR_DNAME);
-
-			pv_fs_mkdir_p(err_file, 0755);
-			len = strlen(err_file);
-			SNPRINTF_WTRUNC(err_file + len, PATH_MAX - len,
-					"/%d.error", getpid());
-
-			err_fd = open(err_file,
-				      O_EXCL | O_RDWR | O_CREAT | O_APPEND |
-					      O_SYNC,
-				      0644);
-			if (err_fd >= 0) {
-				prctl(PR_GET_NAME, (unsigned long)proc_name, 0,
-				      0, 0, 0);
-				dprintf(err_fd,
-					"process %s couldn't acquire " LOGS_PV_FNAME
-					" lock\n",
-					proc_name);
-				dprintf(err_fd, "error code %d: %s\n", errno,
-					strerror(lock_file_errno));
-				dprintf(err_fd, "[pantavisor] %s\t -- ",
-					level_names[level].name);
-				dprintf(err_fd, "[%s]: ", module);
-				vdprintf(err_fd, fmt, args);
-				dprintf(err_fd, "\n");
-				close(err_fd);
-			}
-			close(log_fd);
-			return;
-		}
-	}
-
-	if (!stat(log_path, &log_stat)) {
-		if (log_stat.st_size >= LOG_MAX_FILE_SIZE) {
-			int i = 0;
-
-			for (i = 0; i < max_gzip; i++) {
-				struct stat stat_gz;
-				char gzip_path[PATH_MAX];
-
-				SNPRINTF_WTRUNC(gzip_path, PATH_MAX,
-						"%s.%d.gzip", log_path,
-						(i + 1));
-				if (stat(gzip_path, &stat_gz))
-					pv_fs_file_gzip(log_path, gzip_path);
-			}
-			if (log_fd >= 0) {
-				ftruncate(log_fd, 0);
-				lseek(log_fd, 0, SEEK_SET);
-			}
-		}
-	}
-	if (log_fd >= 0) {
-		dprintf(log_fd, "[pantavisor] %s %s\t -- ", time_buf,
-			level_names[level].name);
-		dprintf(log_fd, "[%s]: ", module);
-		vdprintf(log_fd, fmt, args);
-		dprintf(log_fd, "\n");
-		pv_fs_file_unlock(log_fd);
-		close(log_fd);
-	}
+	if (ret != 0 || logging_stdout)
+		__vlog_to_console(module, level, fmt, args);
 }
 
 static void log_libthttp(int level, const char *fmt, va_list args)
@@ -211,20 +130,6 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 		return;
 
 	__vlog("libthttp", DEBUG, fmt, args);
-}
-
-static int pv_log_set_log_dir(const char *rev)
-{
-	pv_paths_pv_log_plat(log_dir, PATH_MAX, rev, LOGS_PV_DNAME);
-	pv_paths_pv_log_file(log_path, PATH_MAX, rev, LOGS_PV_DNAME,
-			     LOGS_PV_FNAME);
-
-	if (pv_fs_mkdir_p(log_dir, 0755)) {
-		printf("ERROR: could not make %s\n", log_dir);
-		return -1;
-	}
-
-	return 0;
 }
 
 static void pv_log_init(struct pantavisor *pv, const char *rev)
@@ -244,11 +149,14 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 		return;
 
 	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize());
-	logging_initialized = 1;
+
+	if (pv_logserver_init()) {
+		pv_log(ERROR, "logserver initialization failed");
+	}
+
+	pv_log(DEBUG, "initialized pantavisor logs...");
 
 	// enable libthttp debug logs
-	pv_log(DEBUG, "Initialized pantavisor logs...");
-
 	thttp_set_log_func(log_libthttp);
 }
 
@@ -265,13 +173,24 @@ int pv_log_start(struct pantavisor *pv, const char *rev)
 {
 	if (!pv_config_get_log_capture())
 		return 0;
-
-	if (pv_log_set_log_dir(rev) < 0) {
-		printf("Error: unable to start " LOGS_PV_FNAME "\n");
-		return -1;
-	}
-
 	return 0;
+}
+
+void __log_to_console(char *module, int level, const char *fmt, ...)
+{
+	va_list args;
+
+	if (level > pv_config_get_log_loglevel())
+		return;
+
+	if (log_init_pid != getpid())
+		return;
+
+	va_start(args, fmt);
+
+	__vlog_to_console(module, level, fmt, args);
+
+	va_end(args);
 }
 
 void __log(char *module, int level, const char *fmt, ...)
@@ -301,7 +220,6 @@ const char *pv_log_level_name(int level)
 static int pv_log_early_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
-	char path[PATH_MAX];
 
 	pv_log_init(pv, pv_bootloader_get_rev());
 
@@ -342,17 +260,13 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "log.loglevel = '%d'", pv_config_get_log_loglevel());
 	pv_log(INFO, "log.logsize = '%d'", pv_config_get_log_logsize());
 	pv_log(INFO, "lxc.log.level = '%d'", pv_config_get_lxc_loglevel());
+	pv_log(INFO, "log.server.outputs = '%d'",
+	       pv_config_get_log_server_outputs());
 	pv_log(INFO, "libthttp.loglevel = '%d'",
 	       pv_config_get_libthttp_loglevel());
 	pv_bootloader_print();
 
 	logging_stdout = pv_config_get_log_stdout();
-
-	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-	if (ph_logger_init(path)) {
-		pv_log(ERROR, "ph logger initialization failed");
-		return -1;
-	}
 
 	return 0;
 }
