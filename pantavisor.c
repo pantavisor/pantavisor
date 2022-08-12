@@ -785,9 +785,38 @@ static int shutdown_type_reboot_cmd(shutdown_type_t t)
 	}
 }
 
+static void pv_remove(struct pantavisor *pv)
+{
+	pv_log(DEBUG, "removing pantavisor");
+
+	if (!pv)
+		return;
+
+	if (pv->cmdline)
+		free(pv->cmdline);
+
+	if (pv->conn)
+		free(pv->conn);
+
+	pv_update_free(pv->update);
+	pv->update = NULL;
+	pv_state_free(pv->state);
+	pv->state = NULL;
+	pv_ctrl_free_cmd(pv->cmd);
+	pv_trail_remote_remove(pv);
+	pv_config_free();
+	pv_metadata_remove();
+
+	free(pv);
+	global_pv = NULL;
+}
+
 static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 {
 	char path[PATH_MAX];
+
+	if (!pv)
+		return PV_STATE_EXIT;
 
 	pv_log(INFO, "prepare %s...", shutdown_type_string(t));
 	wait_shell();
@@ -809,10 +838,13 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	ph_logger_stop(pv);
 	pv_logserver_close();
 	ph_logger_close();
+	pv_ctrl_socket_close(pv->ctrl_fd);
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
 		pv_log(WARN,
 		       "closing application because of appengine init mode...");
+		pv_bootloader_remove();
+		pv_remove(pv);
 		goto out;
 	}
 
@@ -884,30 +916,10 @@ int pv_start()
 
 		if (state == PV_STATE_EXIT)
 			return 1;
+
+		if (pv->hard_poweroff)
+			state = PV_STATE_POWEROFF;
 	}
-}
-
-static void pv_remove(struct pantavisor *pv)
-{
-	pv_log(DEBUG, "removing pantavisor");
-
-	if (pv->cmdline)
-		free(pv->cmdline);
-
-	if (pv->conn)
-		free(pv->conn);
-
-	pv_update_free(pv->update);
-	pv->update = NULL;
-	pv_state_free(pv->state);
-	pv->state = NULL;
-	pv_ctrl_free_cmd(pv->cmd);
-	pv_trail_remote_remove(pv);
-	pv_config_free();
-	pv_metadata_remove();
-
-	free(pv);
-	pv = NULL;
 }
 
 void pv_stop()
@@ -916,10 +928,7 @@ void pv_stop()
 	if (!pv)
 		return;
 
-	pv_ctrl_socket_close(pv->ctrl_fd);
-
-	pv_bootloader_remove();
-	pv_remove(pv);
+	pv_shutdown(pv, REBOOT);
 }
 
 void pv_init()
@@ -947,6 +956,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->remote_mode = false;
 	pv->synced = false;
 	pv->loading_objects = false;
+	pv->hard_poweroff = false;
 	ret = 0;
 out:
 	return 0;
