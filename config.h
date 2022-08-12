@@ -93,6 +93,8 @@ struct pantavisor_storage {
 
 struct pantavisor_disk {
 	char *voldir;
+	char *exportsdir;
+	char *writabledir;
 };
 
 struct pantavisor_updater {
@@ -260,6 +262,8 @@ int pv_config_get_storage_gc_threshold(void);
 int pv_config_get_storage_gc_threshold_defertime(void);
 
 char *pv_config_get_disk_voldir(void);
+char *pv_config_get_disk_exportsdir(void);
+char *pv_config_get_disk_writabledir(void);
 
 int pv_config_get_updater_interval(void);
 int pv_config_get_updater_conditions_timeout(void);

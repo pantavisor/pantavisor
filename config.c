@@ -316,6 +316,10 @@ static int pv_config_load_config_from_file(char *path,
 
 	config->disk.voldir = config_get_value_string(
 		&config_list, "disk.voldir", "/volumes");
+	config->disk.exportsdir = config_get_value_string(
+		&config_list, "disk.exportsdir", "/exports");
+	config->disk.writabledir = config_get_value_string(
+		&config_list, "disk.writabledir", "/writable");
 
 	config->net.brdev =
 		config_get_value_string(&config_list, "net.brdev", "lxcbr0");
@@ -656,6 +660,19 @@ void pv_config_free()
 {
 	struct pantavisor *pv = pv_get_instance();
 
+	if (pv->config.sys.libdir)
+		free(pv->config.sys.libdir);
+	if (pv->config.sys.etcdir)
+		free(pv->config.sys.etcdir);
+	if (pv->config.sys.usrdir)
+		free(pv->config.sys.usrdir);
+	if (pv->config.sys.rundir)
+		free(pv->config.sys.rundir);
+	if (pv->config.sys.mediadir)
+		free(pv->config.sys.mediadir);
+	if (pv->config.sys.confdir)
+		free(pv->config.sys.confdir);
+
 	if (pv->config.cache.usrmetadir)
 		free(pv->config.cache.usrmetadir);
 	if (pv->config.cache.devmetadir)
@@ -688,6 +705,13 @@ void pv_config_free()
 		free(pv->config.storage.mnttype);
 	if (pv->config.storage.logtempsize)
 		free(pv->config.storage.logtempsize);
+
+	if (pv->config.disk.voldir)
+		free(pv->config.disk.voldir);
+	if (pv->config.disk.exportsdir)
+		free(pv->config.disk.exportsdir);
+	if (pv->config.disk.writabledir)
+		free(pv->config.disk.writabledir);
 
 	if (pv->config.creds.type)
 		free(pv->config.creds.type);
@@ -895,6 +919,14 @@ int pv_config_get_storage_gc_threshold_defertime()
 char *pv_config_get_disk_voldir()
 {
 	return pv_get_instance()->config.disk.voldir;
+}
+char *pv_config_get_disk_exportsdir()
+{
+	return pv_get_instance()->config.disk.exportsdir;
+}
+char *pv_config_get_disk_writabledir()
+{
+	return pv_get_instance()->config.disk.writabledir;
 }
 
 int pv_config_get_updater_interval()
@@ -1119,6 +1151,10 @@ char *pv_config_get_json()
 			&js, pv_config_get_storage_gc_threshold_defertime());
 		pv_json_ser_key(&js, "disk.voldir");
 		pv_json_ser_string(&js, pv_config_get_disk_voldir());
+		pv_json_ser_key(&js, "disk.exportsdir");
+		pv_json_ser_string(&js, pv_config_get_disk_exportsdir());
+		pv_json_ser_key(&js, "disk.writabledir");
+		pv_json_ser_string(&js, pv_config_get_disk_writabledir());
 		pv_json_ser_key(&js, "updater.use_tmp_objects");
 		pv_json_ser_bool(
 			&js, pv_config_get_updater_network_use_tmp_objects());

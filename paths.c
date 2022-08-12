@@ -306,6 +306,18 @@ void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat,
 			pv_config_get_disk_voldir(), plat, name);
 }
 
+void pv_paths_exports(char *buf, size_t size)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_ROOT_PATHF,
+			pv_config_get_disk_exportsdir());
+}
+
+void pv_paths_writable(char *buf, size_t size)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_ROOT_PATHF,
+			pv_config_get_disk_writabledir());
+}
+
 #define PV_LIB_PLUGIN_PATHF "%s/pv_%s.so"
 #define PV_LIB_MODULES_PATHF "%s/modules/%s"
 #define PV_LIB_VOLMOUNT_PATHF "%s/pv/volmount/%s/%s"
