@@ -42,6 +42,7 @@
 #include "utils/fs.h"
 #include "utils/fs.h"
 #include "utils/json.h"
+#include "utils/system.h"
 #include "pvctl_utils.h"
 #include "bootloader.h"
 
@@ -510,10 +511,13 @@ static void logserver_start(struct logserver *logserver, const char *revision)
 
 static void logserver_stop()
 {
+	pv_log(DEBUG, "stopping logserver service...");
+
 	if (logserver_g.service_pid > 0) {
-		pv_log(DEBUG, "stopping logserver service pid with pid %d",
+		pv_system_kill_lenient(logserver_g.service_pid);
+		pv_system_kill_force(logserver_g.service_pid);
+		pv_log(DEBUG, "stopped logserver service with pid %d",
 		       logserver_g.service_pid);
-		kill(logserver_g.service_pid, SIGKILL);
 	}
 
 	logserver_g.service_pid = -1;

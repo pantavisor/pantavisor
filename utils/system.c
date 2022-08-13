@@ -102,15 +102,20 @@ out:
 	return ret;
 }
 
-void kill_child_process(pid_t pid)
+void pv_system_kill_lenient(pid_t pid)
+{
+	if (pid <= 0)
+		return;
+
+	kill(pid, SIGTERM);
+}
+
+void pv_system_kill_force(pid_t pid)
 {
 	bool exited = false;
 
 	if (pid <= 0)
 		return;
-
-	// first, try to kill gracefully
-	kill(pid, SIGTERM);
 
 	// check process has end
 	for (int i = 0; i < 5; i++) {

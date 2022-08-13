@@ -86,7 +86,6 @@ struct ph_logger_fragment {
 static DEFINE_DL_LIST(frag_list);
 
 struct ph_logger {
-	int sock_fd;
 	int flags;
 	int epoll_fd;
 	trest_ptr *client;
@@ -98,7 +97,6 @@ struct ph_logger {
 };
 
 static struct ph_logger ph_logger = { .epoll_fd = -1,
-				      .sock_fd = -1,
 				      .pv_conn = NULL,
 				      .client = NULL,
 				      .log_service = -1,
@@ -612,7 +610,6 @@ static pid_t ph_logger_start_push_service(char *revision)
 	helper_pid = fork();
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
-		close(ph_logger.sock_fd);
 		pv_log(INFO,
 		       "Initialized push service with pid %d by process with pid %d",
 		       getpid(), getppid());
@@ -760,53 +757,44 @@ static void ph_logger_start_cloud(struct pantavisor *pv, char *revision)
 	}
 }
 
-static void ph_logger_stop_cloud(struct pantavisor *pv)
+void ph_logger_toggle(char *rev)
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
+	if (pv_config_get_log_push() &&
+	    pv_config_get_log_server_output_file_tree() && pv->remote_mode) {
+		ph_logger_start_cloud(pv, rev);
+	} else {
+		ph_logger_stop_lenient();
+		ph_logger_stop_force();
+	}
+}
+
+void ph_logger_stop_lenient()
+{
+	pv_log(DEBUG, "stopping ph logger services...");
+
+	if (ph_logger.push_service > 0)
+		pv_system_kill_lenient(ph_logger.push_service);
+	if (ph_logger.range_service > 0)
+		pv_system_kill_lenient(ph_logger.range_service);
+}
+
+void ph_logger_stop_force()
 {
 	if (ph_logger.push_service > 0) {
-		kill_child_process(ph_logger.push_service);
+		pv_system_kill_force(ph_logger.push_service);
 		pv_log(DEBUG, "stopped push service with pid %d",
 		       ph_logger.push_service);
 	}
-
 	if (ph_logger.range_service > 0) {
-		kill_child_process(ph_logger.range_service);
+		pv_system_kill_force(ph_logger.range_service);
 		pv_log(DEBUG, "stopped range service with pid %d",
 		       ph_logger.range_service);
 	}
 
 	ph_logger.push_service = -1;
 	ph_logger.range_service = -1;
-}
-
-void ph_logger_toggle(struct pantavisor *pv, char *rev)
-{
-	if (!pv)
-		return;
-
-	if (pv_config_get_log_push() &&
-	    pv_config_get_log_server_output_file_tree() &&
-	    pv_get_instance()->remote_mode)
-		ph_logger_start_cloud(pv, rev);
-	else
-		ph_logger_stop_cloud(pv);
-}
-
-void ph_logger_stop(struct pantavisor *pv)
-{
-	if (!pv)
-		return;
-
-	ph_logger_stop_cloud(pv);
-}
-
-void ph_logger_close(void)
-{
-	char path[PATH_MAX];
-
-	if (ph_logger.sock_fd >= 0) {
-		pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-		pv_log(DEBUG, "closing %s with fd %d", path, ph_logger.sock_fd);
-		close(ph_logger.sock_fd);
-		unlink(path);
-	}
 }

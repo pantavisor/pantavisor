@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021 Pantacor Ltd.
+ * Copyright (c) 2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,34 +19,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_MOUNT_H
+#define PV_MOUNT_H
 
-#ifndef UTILS_SYSTEM_H
-#define UTILS_SYSTEM_H
+void pv_mount_umount(void);
 
-#include <stdint.h>
-
-#ifdef __arm__
-#define PV_ARCH "arm"
-#elif __aarch64__
-#define PV_ARCH "aarch64"
-#elif __x86_64__
-#define PV_ARCH "x86_64"
-#elif __mips__
-#define PV_ARCH "mips"
-#else
-#define PV_ARCH "unknown"
-#endif
-
-#if UINTPTR_MAX == 0xffffffff
-#define PV_BITS "32"
-#else
-#define PV_BITS "64"
-#endif
-
-int get_endian(void);
-int get_dt_model(char *buf, int buflen);
-int get_cpu_model(char *buf, int buflen);
-void pv_system_kill_lenient(pid_t pid);
-void pv_system_kill_force(pid_t pid);
-
-#endif // UTILS_SYSTEM_H
+#endif // PV_MOUNT_H

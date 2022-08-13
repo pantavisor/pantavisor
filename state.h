@@ -84,7 +84,8 @@ bool pv_state_validate_checksum(struct pv_state *s);
 
 int pv_state_start(struct pv_state *s);
 int pv_state_run(struct pv_state *s);
-int pv_state_stop(struct pv_state *s);
+void pv_state_stop_lenient(struct pv_state *s);
+int pv_state_stop_force(struct pv_state *s);
 
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending);
 void pv_state_transition(struct pv_state *pending, struct pv_state *current);

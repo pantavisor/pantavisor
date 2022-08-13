@@ -52,8 +52,6 @@ enum log_level {
 
 #define LOG_MAX_FILE_SIZE (2 * 1024 * 1024)
 
-int pv_log_start(struct pantavisor *pv, const char *rev);
-
 void __log(char *module, int level, const char *fmt, ...);
 
 void __log_to_console(char *module, int level, const char *fmt, ...);
@@ -62,4 +60,7 @@ void __log_to_console(char *module, int level, const char *fmt, ...);
  * Don't free the return value!
  */
 const char *pv_log_level_name(int level);
+
+void pv_log_umount(void);
+
 #endif
