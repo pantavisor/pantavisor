@@ -112,7 +112,6 @@ static int early_mounts()
 static int mount_cgroups()
 {
 	int ret;
-	struct stat st;
 
 	mkdir("/sys/fs/cgroup", 0755);
 	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
@@ -153,9 +152,30 @@ static int mount_cgroups()
 		pv_log(WARN,
 		       "Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
 
-	mkdir("/writable", 0755);
+	return 0;
+}
+
+static int other_mounts()
+{
+	int ret;
+	char path[PATH_MAX];
+	struct stat st;
+
+	pv_paths_writable(path, PATH_MAX);
+	mkdir(path, 0755);
 	if (!stat("/etc/fstab", &st))
 		tsh_run("mount -a", 1, NULL);
+
+	pv_paths_exports(path, PATH_MAX);
+	mkdir(path, 0755);
+	ret = mount("none", path, "tmpfs", 0, NULL);
+	if (!ret)
+		ret = mount("none", path, "tmpfs", MS_REC | MS_SHARED, NULL);
+	if (ret < 0)
+		exit_error(errno, "Could not create exports disk");
+
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		return 0;
 
 	mkdir("/root", 0700);
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
@@ -166,14 +186,6 @@ static int mount_cgroups()
 	ret = mount("none", "/run", "tmpfs", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /run");
-
-	mkdir("/exports", 0755);
-	ret = mount("none", "/exports", "tmpfs", 0, NULL);
-	if (!ret)
-		ret = mount("none", "/exports", "tmpfs", MS_REC | MS_SHARED,
-			    NULL);
-	if (ret < 0)
-		exit_error(errno, "Could not create /exports disk");
 
 	return 0;
 }
@@ -333,6 +345,7 @@ static void parse_commands(int argc, char *argv[])
 		pv_config_set_debug_ssh(true);
 }
 
+// appengine should not do this, but continue put to stdout
 static void redirect_io()
 {
 	int nullfd, outfd;
@@ -349,14 +362,15 @@ static void usage(const char *cmd)
 {
 	printf("%s [options] [commands]\n", cmd);
 	printf("options:\n");
-	printf("    --help          this help\n");
-	printf("    --version       show pantavisor version\n");
-	printf("    --manifest      show pantavisor manifest\n");
-	printf("    --config <path> pantavisor.config path (default: /etc/pantavisor.config)\n");
+	printf("    --help              this help\n");
+	printf("    --version           show pantavisor version\n");
+	printf("    --manifest          show pantavisor manifest\n");
+	printf("    --config <path>     pantavisor.config path (default: /etc/pantavisor.config)\n");
+	printf("    --cmdline <cmdline> cmdline arguments to substitute /proc/cmdline\n");
 	printf("commands:\n");
-	printf("    pv_embedded     run pantavisor starting the main thread (default)\n");
-	printf("    pv_standalone   run pantavisor without starting the main thread\n");
-	printf("    pv_appengine    run pantavisor inside an existing OS\n");
+	printf("    pv_embedded         run pantavisor starting the main thread (default)\n");
+	printf("    pv_standalone       run pantavisor without starting the main thread\n");
+	printf("    pv_appengine        run pantavisor inside an existing OS\n");
 }
 
 static void parse_options(int argc, char *argv[], char **config_path,
@@ -408,6 +422,10 @@ static void parse_options(int argc, char *argv[], char **config_path,
 
 #define SIZE_CMDLINE_BUF 1024
 
+// somehow this should for appengine really take the
+// argv of the process instead of the /proc/cmdline
+// in turn appengine should make a file cmdline and mount
+// it into the containers as containers use that often
 static int read_cmdline(const char *arg_cmdline)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -461,6 +479,7 @@ int main(int argc, char *argv[])
 	// extecuted as init
 	if (getpid() == 1) {
 		early_mounts();
+		mount_cgroups();
 		signal(SIGCHLD, signal_handler);
 	}
 
@@ -490,7 +509,7 @@ int main(int argc, char *argv[])
 		goto loop;
 	}
 
-	mount_cgroups();
+	other_mounts();
 
 	// executed from shell
 	if (getpid() != 1) {

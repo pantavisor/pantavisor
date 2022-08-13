@@ -129,6 +129,8 @@ void pv_paths_root_file(char *buf, size_t size, const char *path);
 void pv_paths_volumes_file(char *buf, size_t size, const char *name);
 void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat,
 				const char *name);
+void pv_paths_exports(char *buf, size_t size);
+void pv_paths_writable(char *buf, size_t size);
 
 #define PV_PANTAVISOR_CONFIG_PATH "/etc/pantavisor.config"
 
