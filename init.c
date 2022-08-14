@@ -113,6 +113,9 @@ static int mount_cgroups()
 {
 	int ret;
 
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		return 0;
+
 	mkdir("/sys/fs/cgroup", 0755);
 	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
 	if (ret < 0)
@@ -479,7 +482,6 @@ int main(int argc, char *argv[])
 	// extecuted as init
 	if (getpid() == 1) {
 		early_mounts();
-		mount_cgroups();
 		signal(SIGCHLD, signal_handler);
 	}
 
@@ -509,6 +511,7 @@ int main(int argc, char *argv[])
 		goto loop;
 	}
 
+	mount_cgroups();
 	other_mounts();
 
 	// executed from shell
