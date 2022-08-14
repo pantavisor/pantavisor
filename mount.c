@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 
+#include "mount.h"
 #include "init.h"
 #include "blkid.h"
 #include "utils/tsh.h"
@@ -85,6 +86,20 @@ static int ph_mount_init(struct pv_init *this)
 	mount_bind(storage_path, pv_path);
 
 	return 0;
+}
+
+void pv_mount_umount(void)
+{
+	char path[PATH_MAX];
+
+	pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
+	umount(path);
+
+	pv_paths_pv_devmeta_key(path, PATH_MAX, "");
+	umount(path);
+
+	pv_paths_etc_file(path, PATH_MAX, DROPBEAR_DNAME);
+	umount(path);
 }
 
 static int pv_mount_init(struct pv_init *this)

@@ -706,16 +706,22 @@ static int pv_state_unmount_platforms_volumes(struct pv_state *s)
 	return ret;
 }
 
-int pv_state_stop(struct pv_state *s)
+void pv_state_stop_lenient(struct pv_state *s)
+{
+	if (!s)
+		return;
+
+	pv_log(DEBUG, "leniently stopping state %s", s->rev);
+
+	pv_state_lenient_stop(s);
+}
+
+int pv_state_stop_force(struct pv_state *s)
 {
 	int ret = 0;
 
-	if (s == NULL)
+	if (!s)
 		return -1;
-
-	pv_log(DEBUG, "stopping state %s", s->rev);
-
-	pv_state_lenient_stop(s);
 
 	if (!pv_state_check_all_stopped(s)) {
 		pv_state_force_stop(s);

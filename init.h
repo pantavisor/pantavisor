@@ -85,4 +85,6 @@ extern struct pv_init pv_init_platform;
 extern struct pv_init pv_init_update;
 
 int pv_do_execute_init(void);
+void pv_init_umount(void);
+
 #endif

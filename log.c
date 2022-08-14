@@ -145,9 +145,6 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 	pv_paths_storage_log(storage_logs_path, PATH_MAX);
 	mount_bind(storage_logs_path, pv_logs_path);
 
-	if (pv_log_start(pv, rev) < 0)
-		return;
-
 	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize());
 
 	if (pv_logserver_init()) {
@@ -167,13 +164,6 @@ void exit_error(int err, char *msg)
 
 	sleep(20);
 	exit(0);
-}
-
-int pv_log_start(struct pantavisor *pv, const char *rev)
-{
-	if (!pv_config_get_log_capture())
-		return 0;
-	return 0;
 }
 
 void __log_to_console(char *module, int level, const char *fmt, ...)
@@ -215,6 +205,14 @@ const char *pv_log_level_name(int level)
 	if (level < FATAL || level >= ALL)
 		return "UNDEFINED";
 	return level_names[level].name;
+}
+
+void pv_log_umount(void)
+{
+	char path[PATH_MAX];
+
+	pv_paths_pv_log(path, PATH_MAX, "");
+	umount(path);
 }
 
 static int pv_log_early_init(struct pv_init *this)

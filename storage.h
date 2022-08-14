@@ -67,4 +67,6 @@ void pv_storage_rm_usermeta(const char *key);
 void pv_storage_save_devmeta(const char *key, const char *value);
 void pv_storage_rm_devmeta(const char *key);
 
+void pv_storage_umount(void);
+
 #endif // PV_STORAGE_H

@@ -576,3 +576,14 @@ int pv_do_execute_init()
 	}
 	return 0;
 }
+
+void pv_init_umount()
+{
+	char path[PATH_MAX];
+
+	pv_paths_writable(path, PATH_MAX);
+	umount(path);
+
+	pv_paths_exports(path, PATH_MAX);
+	umount(path);
+}

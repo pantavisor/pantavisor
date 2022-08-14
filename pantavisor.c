@@ -59,6 +59,7 @@
 #include "paths.h"
 #include "ph_logger.h"
 #include "logserver.h"
+#include "mount.h"
 #include "parser/parser.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
@@ -222,9 +223,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(INFO, "transitioning...");
 
 		pv_logserver_stop();
-		ph_logger_stop(pv);
-
-		pv_log_start(pv, pv->update->pending->rev);
+		ph_logger_stop_lenient();
+		ph_logger_stop_force();
 
 		pv_state_transition(pv->update->pending, pv->state);
 	} else {
@@ -282,7 +282,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// only start local ph logger, start cloud services if connected
 	pv_logserver_toggle(pv, pv->state->rev);
-	ph_logger_toggle(pv, pv->state->rev);
+	ph_logger_toggle(pv->state->rev);
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_metadata_init_devmeta(pv);
@@ -465,7 +465,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 
 	// start or stop ph logger depending on network and configuration
 	pv_logserver_toggle(pv, pv->state->rev);
-	ph_logger_toggle(pv, pv->state->rev);
+	ph_logger_toggle(pv->state->rev);
 
 	// update meta info
 	if (!pv_metadata_factory_meta_done(pv)) {
@@ -765,11 +765,11 @@ static char *shutdown_type_string(shutdown_type_t t)
 {
 	switch (t) {
 	case POWEROFF:
-		return "powering off";
+		return "power off";
 	case REBOOT:
-		return "rebooting";
+		return "reboot";
 	default:
-		return "error: invalid shutdown type";
+		return "invalid shutdown type";
 	}
 }
 
@@ -813,44 +813,47 @@ static void pv_remove(struct pantavisor *pv)
 
 static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 {
-	char path[PATH_MAX];
-
 	if (!pv)
 		return PV_STATE_EXIT;
 
-	pv_log(INFO, "prepare %s...", shutdown_type_string(t));
-	wait_shell();
-
-	if (pv->state && pv_state_stop(pv->state))
-		pv_log(WARN, "stop error: ignoring due to %s",
+	pv_log(INFO, "preparing '%s'...", shutdown_type_string(t));
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		pv_log(INFO,
+		       "will not actually perform '%s' as we are in appengine mode",
 		       shutdown_type_string(t));
+
+	wait_shell();
 
 	if (REBOOT == t)
 		pv_wdt_start(pv);
 
-	// unmount storage
-	pv_paths_storage(path, PATH_MAX);
-	umount(path);
-	pv_fs_path_sync(path);
+	// stop childs leniently
+	pv_state_stop_lenient(pv->state);
+	ph_logger_stop_lenient();
 
-	sleep(5);
-	pv_log(INFO, "%s...", shutdown_type_string(t));
-	ph_logger_stop(pv);
-	pv_logserver_close();
-	ph_logger_close();
+	// force stop childs
+	pv_state_stop_force(pv->state);
+	ph_logger_stop_force();
+
+	// at this point, we can shutdown if not in appengine
+	if (pv_config_get_system_init_mode() != IM_APPENGINE)
+		reboot(shutdown_type_reboot_cmd(t));
+
+	// unmount everything
+	pv_storage_umount();
+	pv_mount_umount();
+	pv_init_umount();
+	pv_log_umount();
+
+	// stop logs now
+	pv_logserver_stop();
+
 	pv_ctrl_socket_close(pv->ctrl_fd);
+	pv_logserver_close();
 
-	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
-		pv_log(WARN,
-		       "closing application because of appengine init mode...");
-		pv_bootloader_remove();
-		pv_remove(pv);
-		goto out;
-	}
+	pv_bootloader_remove();
+	pv_remove(pv);
 
-	reboot(shutdown_type_reboot_cmd(t));
-
-out:
 	return PV_STATE_EXIT;
 }
 

@@ -33,6 +33,7 @@
 
 #include <linux/limits.h>
 
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/prctl.h>
@@ -1097,6 +1098,15 @@ void pv_storage_rm_devmeta(const char *key)
 	}
 
 	free(pname);
+}
+
+void pv_storage_umount()
+{
+	char path[PATH_MAX];
+
+	pv_paths_storage(path, PATH_MAX);
+	umount(path);
+	pv_fs_path_sync(path);
 }
 
 static int pv_storage_init(struct pv_init *this)

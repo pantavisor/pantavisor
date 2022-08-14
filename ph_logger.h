@@ -45,8 +45,8 @@
 #define WARN_ONCE(msg, args...)
 #endif
 
-void ph_logger_toggle(struct pantavisor *pv, char *rev);
-void ph_logger_stop(struct pantavisor *pv);
-void ph_logger_close(void);
+void ph_logger_toggle(char *rev);
+void ph_logger_stop_lenient(void);
+void ph_logger_stop_force(void);
 
 #endif /* __PH_LOGGER_H__ */
