@@ -824,7 +824,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	wait_shell();
 
-	if (REBOOT == t)
+	if ((REBOOT == t) && (pv_config_get_system_init_mode() != IM_APPENGINE))
 		pv_wdt_start(pv);
 
 	// stop childs leniently

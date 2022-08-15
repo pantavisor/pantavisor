@@ -425,10 +425,6 @@ static void parse_options(int argc, char *argv[], char **config_path,
 
 #define SIZE_CMDLINE_BUF 1024
 
-// somehow this should for appengine really take the
-// argv of the process instead of the /proc/cmdline
-// in turn appengine should make a file cmdline and mount
-// it into the containers as containers use that often
 static int read_cmdline(const char *arg_cmdline)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -514,7 +510,7 @@ int main(int argc, char *argv[])
 	mount_cgroups();
 	other_mounts();
 
-	// executed from shell
+	// executed from shell and/or appengine mode
 	if (getpid() != 1) {
 		// we are going to use this thread for pv
 		pv_pid = getpid();
