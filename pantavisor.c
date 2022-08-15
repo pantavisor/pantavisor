@@ -843,13 +843,13 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_storage_umount();
 	pv_mount_umount();
 	pv_init_umount();
-	pv_log_umount();
 
 	// stop logs now
 	pv_logserver_stop();
 
 	pv_ctrl_socket_close(pv->ctrl_fd);
 	pv_logserver_close();
+	pv_log_umount();
 
 	pv_bootloader_remove();
 	pv_remove(pv);
