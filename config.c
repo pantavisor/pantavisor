@@ -179,17 +179,6 @@ static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
 	return value;
 }
 
-static int config_get_value_logsize(struct dl_list *config_list, char *key,
-				    int default_value)
-{
-	int value = config_get_value_int(config_list, key, default_value);
-
-	if (value >= 1024)
-		value = default_value;
-
-	return value;
-}
-
 static void config_override_value_string(struct dl_list *config_list, char *key,
 					 char **out)
 {
@@ -218,15 +207,6 @@ static void config_override_value_bool(struct dl_list *config_list, char *key,
 
 	if (item)
 		*out = atoi(item);
-}
-
-static void config_override_value_logsize(struct dl_list *config_list,
-					  char *key, int *out)
-{
-	char *item = config_get_value(config_list, key);
-
-	if (item)
-		*out = atoi(item) * 1024;
 }
 
 static void
@@ -347,6 +327,23 @@ static int pv_config_load_config_from_file(char *path,
 	config->log.server.outputs = config_get_value_log_server_outputs(
 		&config_list, "log.server.outputs",
 		LOG_SERVER_OUTPUT_FILE_TREE);
+	config->log.logmax = config_get_value_int(&config_list, "log.maxsize",
+						  (1 << 21)); // 2 MiB
+	config->log.loglevel =
+		config_get_value_int(&config_list, "log.level", 0);
+	config->log.logsize =
+		config_get_value_int(&config_list, "log.buf_nitems", 128);
+	config->log.capture =
+		config_get_value_bool(&config_list, "log.capture", true);
+	config->log.loggers =
+		config_get_value_bool(&config_list, "log.loggers", true);
+	config->log.std_out =
+		config_get_value_bool(&config_list, "log.stdout", false);
+	config_override_value_string(&config_list, "log.dir",
+				     &config->log.logdir);
+
+	config->libthttp.loglevel =
+		config_get_value_int(&config_list, "libthttp.log.level", 3);
 
 	config->lxc.log_level =
 		config_get_value_int(&config_list, "lxc.log.level", 2);
@@ -415,26 +412,25 @@ static int pv_config_load_creds_from_file(char *path,
 	config->updater.commit_delay = config_get_value_int(
 		&config_list, "updater.commit.delay", 3 * 60);
 
-	config->log.logmax = config_get_value_int(&config_list, "log.maxsize",
-						  (1 << 21)); // 2 MiB
-	config->log.loglevel =
-		config_get_value_int(&config_list, "log.level", 0);
-	config->log.logsize =
-		config_get_value_logsize(&config_list, "log.buf_nitems", 128) *
-		1024;
+	config_override_value_int(&config_list, "log.maxsize",
+				  &config->log.logmax);
+	config_override_value_int(&config_list, "log.level",
+				  &config->log.loglevel);
+	config_override_value_int(&config_list, "log.buf_nitems",
+				  &config->log.logsize);
 	config->log.push =
 		config_get_value_bool(&config_list, "log.push", true);
-	config->log.capture =
-		config_get_value_bool(&config_list, "log.capture", true);
-	config->log.loggers =
-		config_get_value_bool(&config_list, "log.loggers", true);
-	config->log.std_out =
-		config_get_value_bool(&config_list, "log.stdout", false);
+	config_override_value_bool(&config_list, "log.capture",
+				   &config->log.capture);
+	config_override_value_bool(&config_list, "log.loggers",
+				   &config->log.loggers);
+	config_override_value_bool(&config_list, "log.stdout",
+				   &config->log.std_out);
 	config_override_value_string(&config_list, "log.dir",
 				     &config->log.logdir);
 
-	config->libthttp.loglevel =
-		config_get_value_int(&config_list, "libthttp.log.level", 3);
+	config_override_value_int(&config_list, "libthttp.log.level",
+				  &config->libthttp.loglevel);
 
 	config->metadata.devmeta_interval = config_get_value_int(
 		&config_list, "metadata.devmeta.interval", 10);
@@ -489,8 +485,8 @@ static int pv_config_override_config_from_file(char *path,
 				  &config->log.logmax);
 	config_override_value_int(&config_list, "log.level",
 				  &config->log.loglevel);
-	config_override_value_logsize(&config_list, "log.buf_nitems",
-				      &config->log.logsize);
+	config_override_value_int(&config_list, "log.buf_nitems",
+				  &config->log.logsize);
 	config_override_value_bool(&config_list, "log.push", &config->log.push);
 	config_override_value_bool(&config_list, "log.capture",
 				   &config->log.capture);
@@ -581,8 +577,8 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config,
 			       config->storage.gc.keep_factory); // deprecated
 
 	write_config_tuple_int(fd, "log.level", config->log.loglevel);
-	write_config_tuple_int(fd, "log.buf_nitems",
-			       config->log.logsize / 1024);
+	write_config_tuple_int(fd, "log.buf_nitems", config->log.logsize);
+	write_config_tuple_int(fd, "log.push", config->log.push);
 
 	write_config_tuple_int(fd, "libthttp.log.level",
 			       config->libthttp.loglevel);

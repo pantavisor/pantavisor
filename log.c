@@ -145,7 +145,7 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 	pv_paths_storage_log(storage_logs_path, PATH_MAX);
 	mount_bind(storage_logs_path, pv_logs_path);
 
-	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize());
+	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize() * 1024);
 
 	if (pv_logserver_init()) {
 		pv_log(ERROR, "logserver initialization failed");
