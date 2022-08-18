@@ -99,7 +99,7 @@ struct pantavisor_disk {
 
 struct pantavisor_updater {
 	int interval;
-	int conditions_timeout;
+	int goals_timeout;
 	int network_timeout;
 	bool use_tmp_objects;
 	int revision_retries;
@@ -266,7 +266,7 @@ char *pv_config_get_disk_exportsdir(void);
 char *pv_config_get_disk_writabledir(void);
 
 int pv_config_get_updater_interval(void);
-int pv_config_get_updater_conditions_timeout(void);
+int pv_config_get_updater_goals_timeout(void);
 int pv_config_get_updater_network_timeout(void);
 bool pv_config_get_updater_network_use_tmp_objects(void);
 int pv_config_get_updater_revision_retries(void);

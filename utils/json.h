@@ -24,6 +24,7 @@
 #define UTILS_PV_JSON_H_
 
 #include <jsmn/jsmnutil.h>
+#include <stdbool.h>
 
 #define JSONB_STATIC
 #include "json-build/json-build.h"

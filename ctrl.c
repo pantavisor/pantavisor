@@ -64,6 +64,8 @@
 #include "log.h"
 
 #define ENDPOINT_CONTAINERS "/containers"
+#define ENDPOINT_GROUPS "/groups"
+#define ENDPOINT_SIGNAL "/signal"
 #define ENDPOINT_COMMANDS "/commands"
 #define ENDPOINT_OBJECTS "/objects"
 #define ENDPOINT_STEPS "/steps"
@@ -72,7 +74,6 @@
 #define ENDPOINT_USER_META "/user-meta"
 #define ENDPOINT_DEVICE_META "/device-meta"
 #define ENDPOINT_BUILDINFO "/buildinfo"
-#define ENDPOINT_CONDITIONS "/conditions"
 #define ENDPOINT_CONFIG "/config"
 #define ENDPOINT_DRIVERS "/drivers"
 
@@ -151,6 +152,61 @@ void pv_ctrl_socket_close(int ctrl_fd)
 		close(ctrl_fd);
 		unlink(path);
 	}
+}
+
+static void pv_ctrl_parse_signal(char *buf, char **signal, char **payload)
+{
+	int tokc;
+	jsmntok_t *tokv;
+
+	jsmnutil_parse_json(buf, &tokv, &tokc);
+
+	*signal = pv_json_get_value(buf, "type", tokv, tokc);
+	if (!signal) {
+		pv_log(WARN, "unable to get type value from signal");
+	}
+
+	*payload = pv_json_get_value(buf, "payload", tokv, tokc);
+	if (!payload) {
+		pv_log(WARN, "unable to get payload value from signal");
+	}
+
+	if (tokv)
+		free(tokv);
+}
+
+static int pv_ctrl_process_signal(int req_fd, size_t content_length,
+				  char **signal, char **payload)
+{
+	char req[HTTP_REQ_BUFFER_SIZE];
+
+	memset(req, 0, sizeof(req));
+
+	pv_log(DEBUG, "reading and parsing signal...");
+
+	if (content_length >= HTTP_REQ_BUFFER_SIZE) {
+		pv_log(WARN, "signal request too long");
+		goto err;
+	}
+
+	// read request
+	if (read(req_fd, req, content_length) <= 0) {
+		pv_log(WARN,
+		       "signal request could not be read from ctrl socket with fd %d: %s",
+		       req_fd, strerror(errno));
+		goto err;
+	}
+
+	req[content_length] = 0;
+
+	pv_ctrl_parse_signal(req, signal, payload);
+	if (!signal || !payload)
+		goto err;
+
+	return 0;
+
+err:
+	return -1;
 }
 
 static struct pv_cmd *pv_ctrl_parse_command(char *buf)
@@ -655,8 +711,8 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 	char *file_name = NULL;
 	char file_path_parent[PATH_MAX] = { 0 }, file_path[PATH_MAX] = { 0 },
 	     file_path_tmp[PATH_MAX] = { 0 };
+	char *signal = NULL, *payload = NULL;
 	char *metakey = NULL, *metavalue = NULL;
-	char *condkey = NULL, *condvalue = NULL;
 	char *driverkey = NULL, *drivervalue = NULL;
 	char *drivername = NULL;
 	char *driverop = NULL;
@@ -673,6 +729,31 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 			pv_ctrl_process_get_string(
 				req_fd,
 				pv_state_get_containers_json(pv->state));
+		} else
+			goto err_me;
+	} else if (pv_str_matches(ENDPOINT_GROUPS, strlen(ENDPOINT_GROUPS),
+				  path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			pv_ctrl_process_get_string(
+				req_fd, pv_state_get_groups_json(pv->state));
+		} else
+			goto err_me;
+	} else if (pv_str_matches(ENDPOINT_SIGNAL, strlen(ENDPOINT_SIGNAL),
+				  path, path_len)) {
+		if (!strncmp("POST", method, method_len)) {
+			if (pv_ctrl_process_signal(req_fd, content_length,
+						   &signal, &payload))
+				pv_ctrl_write_error_response(
+					req_fd, HTTP_STATUS_BAD_REQ,
+					"Signal has bad format");
+			if (pv_state_interpret_signal(pv->state, pname, signal,
+						      payload))
+				pv_ctrl_write_error_response(
+					req_fd, HTTP_STATUS_ERROR,
+					"Cannot send signal");
+			pv_ctrl_write_ok_response(req_fd);
 		} else
 			goto err_me;
 	} else if (pv_str_startswith(ENDPOINT_COMMANDS,
@@ -1057,41 +1138,6 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 			}
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_CONDITIONS,
-				  strlen(ENDPOINT_CONDITIONS), path,
-				  path_len)) {
-		if (!strncmp("GET", method, method_len)) {
-			if (!mgmt)
-				goto err_pr;
-			pv_ctrl_process_get_string(
-				req_fd,
-				pv_state_get_conditions_json(pv->state));
-		} else
-			goto err_me;
-	} else if (pv_str_startswith(ENDPOINT_CONDITIONS,
-				     strlen(ENDPOINT_CONDITIONS), path)) {
-		condkey = pv_ctrl_get_file_name(
-			path, sizeof(ENDPOINT_CONDITIONS), path_len);
-
-		if (!condkey) {
-			pv_log(WARN, "HTTP request has bad condition name %s",
-			       condkey);
-			pv_ctrl_write_error_response(
-				req_fd, HTTP_STATUS_BAD_REQ,
-				"Request has bad condition key name");
-			goto out;
-		}
-
-		if (!strncmp("PUT", method, method_len)) {
-			condvalue = pv_ctrl_get_body(req_fd, content_length);
-			if (pv_state_report_condition(pv->state, pname, condkey,
-						      condvalue))
-				pv_ctrl_write_error_response(
-					req_fd, HTTP_STATUS_ERROR,
-					"Cannot report condition");
-			pv_ctrl_write_ok_response(req_fd);
-		} else
-			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_CONFIG, strlen(ENDPOINT_CONFIG),
 				  path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
@@ -1132,14 +1178,14 @@ out:
 		free(pname);
 	if (file_name)
 		free(file_name);
+	if (signal)
+		free(signal);
+	if (payload)
+		free(payload);
 	if (metakey)
 		free(metakey);
 	if (metavalue)
 		free(metavalue);
-	if (condkey)
-		free(condkey);
-	if (condvalue)
-		free(condvalue);
 	if (driverkey)
 		free(driverkey);
 	if (drivervalue)

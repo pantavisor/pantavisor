@@ -245,7 +245,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
-	pv_platform_set_ready(this);
+	pv_platform_set_installed(this);
 out:
 	if (name)
 		free(name);

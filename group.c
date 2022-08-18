@@ -24,6 +24,8 @@
 
 #include "group.h"
 
+#include "utils/json.h"
+
 #define MODULE_NAME "group"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
@@ -35,9 +37,28 @@ struct pv_group *pv_group_new(char *name)
 	g = calloc(1, sizeof(struct pv_group));
 	if (g) {
 		g->name = strdup(name);
+		dl_list_init(&g->platform_refs);
 	}
 
 	return g;
+}
+
+static void pv_group_empty_platform_refs(struct pv_group *g)
+{
+	int num_platforms = 0;
+	struct pv_platform_ref *pr, *tmp;
+	struct dl_list *platform_refs = &g->platform_refs;
+
+	// Iterate over all platform references from group
+	dl_list_for_each_safe(pr, tmp, platform_refs, struct pv_platform_ref,
+			      list)
+	{
+		dl_list_del(&pr->list);
+		pv_platform_ref_free(pr);
+		num_platforms++;
+	}
+
+	pv_log(INFO, "removed %d platform references", num_platforms);
 }
 
 void pv_group_free(struct pv_group *g)
@@ -46,5 +67,63 @@ void pv_group_free(struct pv_group *g)
 
 	if (g->name)
 		free(g->name);
+	pv_group_empty_platform_refs(g);
 	free(g);
+}
+
+bool pv_group_check_goals(struct pv_group *g, bool log_warn)
+{
+	struct pv_platform_ref *pr, *tmp;
+
+	dl_list_for_each_safe(pr, tmp, &g->platform_refs,
+			      struct pv_platform_ref, list)
+	{
+		if (!pv_platform_check_goal(pr->ref)) {
+			if (log_warn)
+				pv_log(WARN,
+				       "platform '%s' from group '%s' goal not achieved",
+				       pr->ref->name, g->name);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void pv_group_add_platform(struct pv_group *g, struct pv_platform *p)
+{
+	struct pv_platform_ref *pr;
+
+	pv_log(DEBUG, "adding platform '%s' reference to group '%s'", p->name,
+	       g->name);
+
+	pr = pv_platform_ref_new(p);
+	if (pr) {
+		dl_list_init(&pr->list);
+		dl_list_add_tail(&g->platform_refs, &pr->list);
+	}
+}
+
+void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g)
+{
+	struct pv_platform_ref *pr, *tmp;
+
+	pv_json_ser_object(js);
+	{
+		pv_json_ser_key(js, "name");
+		pv_json_ser_string(js, g->name);
+		pv_json_ser_key(js, "status");
+		pv_json_ser_array(js);
+		{
+			dl_list_for_each_safe(pr, tmp, &g->platform_refs,
+					      struct pv_platform_ref, list)
+			{
+				pv_platform_add_goal_json(js, pr->ref);
+			}
+
+			pv_json_ser_array_pop(js);
+		}
+
+		pv_json_ser_object_pop(js);
+	}
 }

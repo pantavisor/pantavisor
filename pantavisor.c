@@ -81,7 +81,7 @@ struct pantavisor *pv_get_instance()
 }
 
 static struct timer timer_rollback_remote;
-static struct timer timer_rollback_conditions;
+static struct timer timer_rollback_goals;
 static struct timer timer_wait_delay;
 static struct timer timer_commit;
 
@@ -302,9 +302,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	timer_start(&timer_commit, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_rollback_remote,
 		    pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
-	timer_start(&timer_rollback_conditions,
-		    pv_config_get_updater_conditions_timeout(), 0,
-		    RELATIV_TIMER);
+	timer_start(&timer_rollback_goals,
+		    pv_config_get_updater_goals_timeout(), 0, RELATIV_TIMER);
 
 	next_state = PV_STATE_WAIT;
 out:
@@ -394,17 +393,17 @@ static pv_state_t pv_wait_update()
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update && pv->update->status != UPDATE_APPLIED) {
 		if (pv_update_is_trying(pv->update)) {
-			// rollback if timed out and any condition has not been met
-			if (!pv_state_check_conditions(pv->state)) {
+			// rollback if timed out and any goal has not been met
+			if (!pv_state_check_goals(pv->state)) {
 				tstate = timer_current_state(
-					&timer_rollback_conditions);
+					&timer_rollback_goals);
 				if (tstate.fin) {
 					pv_log(ERROR,
-					       "timed out before all conditions are met. Rolling back...");
+					       "timed out before all goals are met. Rolling back...");
 					return PV_STATE_ROLLBACK;
 				}
 				pv_log(WARN,
-				       "at least one conditions has not been satisfied yet. Will rollback in %d seconds",
+				       "at least one goal has not been satisfied yet. Will rollback in %d seconds",
 				       tstate.sec);
 				return PV_STATE_WAIT;
 			}
