@@ -83,6 +83,9 @@
 #define HTTP_RESPONSE                                                          \
 	"HTTP/1.1 %s \r\nContent-Length: %d\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"Error\":\"%s\"}\r\n"
 
+#define UNSUPPORTED_LOG_COMMAND_FMT                                            \
+	"ERROR: unsupported legacy 'log command' command; use new REST API instead\n"
+
 static const unsigned int HTTP_REQ_BUFFER_SIZE = 4096;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
@@ -1213,11 +1216,10 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 		goto out;
 	}
 
-	pv_log(DEBUG, "request received from platform %s", pname)
+	pv_log(DEBUG, "request received from platform %s", pname);
 
-		// legacy commands are only for mgmt platforms
-		if (pv_ctrl_check_sender_privileged(pname))
-	{
+	// legacy commands are only for mgmt platforms
+	if (pv_ctrl_check_sender_privileged(pname)) {
 		// read first character to see if the request is a non-HTTP legacy one
 		if (read(req_fd, &buf[0], 1) < 0)
 			goto out;
@@ -1227,6 +1229,11 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 		if (buf[0] == 3) {
 			res = pv_ctrl_process_cmd(
 				req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
+			goto out;
+		} else if (buf[0] == 2) {
+			write(req_fd, UNSUPPORTED_LOG_COMMAND_FMT,
+			      sizeof(UNSUPPORTED_LOG_COMMAND_FMT));
+			// not supported log command ... just return.
 			goto out;
 		}
 	}
