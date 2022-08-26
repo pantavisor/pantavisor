@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "json.h"
 #include "json-build/json-build.h"
@@ -234,24 +235,30 @@ void pv_json_ser_init(struct pv_json_ser *js, size_t size)
 	js->block_size = size;
 }
 
-static void pv_json_ser_resize(struct pv_json_ser *js)
+static int pv_json_ser_resize(struct pv_json_ser *js)
 {
 	js->size += js->block_size;
-	js->buf = realloc(js->buf, js->size * sizeof(char *));
-	if (!js->buf)
+	js->buf = realloc(js->buf, js->size * sizeof(char));
+	if (!js->buf) {
 		js->size = 0;
+		return -1;
+	}
+	return 0;
 }
 
 int pv_json_ser_object(struct pv_json_ser *js)
 {
 	jsonbcode ret;
+	int err;
 
 	if (!js)
 		return -1;
 
 	ret = jsonb_object(&js->b, js->buf, js->size);
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		err = pv_json_ser_resize(js);
+		if (err)
+			return err;
 		ret = jsonb_object(&js->b, js->buf, js->size);
 	}
 
