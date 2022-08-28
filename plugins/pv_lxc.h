@@ -40,5 +40,6 @@ void pv_set_pv_paths_fn(
 void *pv_start_container(struct pv_platform *p, const char *rev,
 			 char *conf_file, void *data);
 void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
+int pv_console_log_getfd(struct pv_platform *p, void *data);
 
 #endif

@@ -74,6 +74,7 @@ struct pv_platform {
 	char *type;
 	char **configs;
 	char *exec;
+	int console_log_fd;
 	unsigned long ns_share;
 	void *data;
 	pid_t init_pid;

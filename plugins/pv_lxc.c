@@ -758,3 +758,16 @@ void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data)
 
 	return NULL;
 }
+
+int pv_console_log_getfd(struct pv_platform *p, void *data)
+{
+	if (!data)
+		return -1;
+
+	struct lxc_container *c = (struct lxc_container *)data;
+
+	int masterfd = -1;
+	int tty = 0;
+	p->console_log_fd = c->console_getfd(c, &tty, &masterfd);
+	return masterfd;
+}

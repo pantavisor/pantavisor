@@ -48,6 +48,7 @@ int setns(int nsfd, int nstype);
 #include "init.h"
 #include "state.h"
 #include "parser/parser.h"
+#include "logserver.h"
 #include "utils/list.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -84,6 +85,7 @@ struct pv_cont_ctrl {
 	void *(*start)(struct pv_platform *p, const char *rev, char *conf_file,
 		       void *data);
 	void *(*stop)(struct pv_platform *p, char *conf_file, void *data);
+	int (*getfd)(struct pv_platform *p, void *data);
 };
 
 enum {
@@ -93,7 +95,7 @@ enum {
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
-	{ "lxc", NULL, NULL },
+	{ "lxc", NULL, NULL, NULL },
 	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
@@ -399,6 +401,8 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 
 	if (c->start == NULL || c->stop == NULL)
 		return 0;
+
+	c->getfd = dlsym(lib, "pv_console_log_getfd");
 
 	void (*__pv_new_log)(void *) = dlsym(lib, "pv_set_new_log_fn");
 	if (__pv_new_log)
@@ -724,6 +728,15 @@ int pv_platform_start(struct pv_platform *p)
 			       "Could not start pv_logger for platform %s",
 			       p->name);
 
+
+	int fd = ctrl->getfd(p, p->data);
+
+	if (fd < 0) {
+		pv_log(ERROR, "Could not get console log fd for %s", p->name);
+		return 0;
+	}
+
+	pv_logserver_send_fd(fd);
 	return 0;
 }
 
@@ -791,6 +804,7 @@ int pv_platform_stop(struct pv_platform *p)
 	pv_log(DEBUG, "leniently stopping platform '%s'", p->name);
 	ctrl = _pv_platforms_get_ctrl(p->type);
 	ctrl->stop(p, NULL, p->data);
+	close(p->console_log_fd);
 	p->data = NULL;
 	pv_platform_set_status(p, PLAT_STOPPING);
 
