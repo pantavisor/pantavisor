@@ -341,8 +341,7 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 	return ret;
 }
 
-static int logserver_handle_msg(struct logserver *logserver,
-				struct logserver_msg *msg)
+static int logserver_handle_msg(struct logserver_msg *msg)
 {
 	struct logserver_msg_data msg_data;
 	int ret;
@@ -390,8 +389,7 @@ static int logserver_accept_connection(struct epoll_event *ev, int socket,
 	return fd;
 }
 
-static void logserver_read_data(struct logserver *logserver,
-				struct epoll_event *ev, int fd)
+static void logserver_read_data(struct epoll_event *ev, int fd)
 {
 	struct buffer *buffer = pv_buffer_get(true);
 	if (buffer) {
@@ -400,21 +398,21 @@ static void logserver_read_data(struct logserver *logserver,
 			pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
 
 		if (read > 0)
-			logserver_handle_msg(logserver, msg);
+			logserver_handle_msg(msg);
 	}
 	ev->events = EPOLLIN;
-	epoll_ctl(logserver->epoll_fd, EPOLL_CTL_DEL, fd, ev);
+	epoll_ctl(logserver_g.epoll_fd, EPOLL_CTL_DEL, fd, ev);
 	close(fd);
 	pv_buffer_drop(buffer);
 }
 
-static void logserver_loop(struct logserver *logserver)
+static void logserver_loop()
 {
 	struct epoll_event ev[LOGSERVER_MAX_EV];
 	int ready = 0;
 	errno = 0;
 	do {
-		ready = epoll_wait(logserver->epoll_fd, ev, LOGSERVER_MAX_EV,
+		ready = epoll_wait(logserver_g.epoll_fd, ev, LOGSERVER_MAX_EV,
 				   -1);
 
 		if (errno != 0 && errno != EINTR) {
@@ -427,16 +425,16 @@ static void logserver_loop(struct logserver *logserver)
 	int cur_fd = -1;
 	for (int i = 0; i < ready; ++i) {
 		cur_fd = ev[i].data.fd;
-		if (cur_fd == logserver->log_sock) {
+		if (cur_fd == logserver_g.log_sock) {
 			int fd = logserver_accept_connection(
-				&ev[i], logserver->log_sock,
-				logserver->epoll_fd);
+				&ev[i], logserver_g.log_sock,
+				logserver_g.epoll_fd);
 
 			memset(ev, 0, sizeof(struct epoll_event));
 			logserver_epoll_add(&ev[i], fd);
 
 		} else {
-			logserver_read_data(logserver, &ev[i], cur_fd);
+			logserver_read_data(&ev[i], cur_fd);
 		}
 	}
 }
@@ -478,11 +476,10 @@ out:
 	return fd;
 }
 
-static pid_t logserver_start_service(struct logserver *logserver,
-				     const char *revision)
+static pid_t logserver_start_service(const char *revision)
 {
-	logserver->service_pid = fork();
-	if (logserver->service_pid == 0) {
+	logserver_g.service_pid = fork();
+	if (logserver_g.service_pid == 0) {
 		if (logserver_g.revision)
 			free(logserver_g.revision);
 		logserver_g.revision = strdup(revision);
@@ -499,25 +496,25 @@ static pid_t logserver_start_service(struct logserver *logserver,
 
 		pv_log(DEBUG, "starting logserver loop");
 
-		while (!(logserver->flags & LOGSERVER_FLAG_STOP)) {
-			logserver_loop(logserver);
+		while (!(logserver_g.flags & LOGSERVER_FLAG_STOP)) {
+			logserver_loop();
 		}
 		_exit(EXIT_SUCCESS);
 	}
 
-	return logserver->service_pid;
+	return logserver_g.service_pid;
 }
 
-static void logserver_start(struct logserver *logserver, const char *revision)
+static void logserver_start(const char *revision)
 {
-	if (logserver->service_pid == -1) {
-		logserver_start_service(logserver, revision);
+	if (logserver_g.service_pid == -1) {
+		logserver_start_service(revision);
 		pv_log(DEBUG, "starting log service with pid %d",
-		       (int)logserver->service_pid);
+		       (int)logserver_g.service_pid);
 
-		if (logserver->service_pid > 0) {
+		if (logserver_g.service_pid > 0) {
 			pv_log(DEBUG, "started log service with pid %d",
-			       (int)logserver->service_pid);
+			       (int)logserver_g.service_pid);
 		} else {
 			pv_log(ERROR, "unable to start log service");
 		}
@@ -544,7 +541,7 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *rev)
 		return;
 
 	if (pv_config_get_log_capture()) {
-		logserver_start(&logserver_g, rev);
+		logserver_start(rev);
 	} else
 		logserver_stop();
 }
@@ -571,7 +568,7 @@ int pv_logserver_init()
 	if (logserver_epoll_add(&ev[1], logserver_g.fd_sock) == -1)
 		goto out;
 
-	logserver_start_service(&logserver_g, pv_bootloader_get_rev());
+	logserver_start_service(pv_bootloader_get_rev());
 	pv_log(DEBUG, "started log service with pid %d",
 	       (int)logserver_g.service_pid);
 
