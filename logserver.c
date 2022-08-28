@@ -70,6 +70,7 @@
 #define PH_LOGGER_MAX_EPOLL_FD (50)
 #define LOGSERVER_FLAG_STOP (1 << 0)
 #define LOGSERVER_BACKLOG (20)
+#define LOGSERVER_MAX_EV (5)
 
 #define LOG_PROTOCOL_LEGACY 0
 
@@ -347,85 +348,78 @@ static int logserver_handle_msg(struct logserver *logserver,
 	return ret;
 }
 
-static int logserver_read_write(struct logserver *logserver)
+static int logserver_accept_connection(struct epoll_event *ev, int socket,
+				       int epoll)
 {
-	struct epoll_event ep_event[LOGSERVER_FLAG_STOP];
-	int ret = 0;
-	int nr_logs = 0;
-again:
-	ret = epoll_wait(logserver->epoll_fd, ep_event, LOGSERVER_FLAG_STOP,
-			 -1);
-	if (ret < 0) {
-		if (errno == EINTR)
-			goto again;
-		else {
-			pv_log(ERROR, "could not epoll_wait: %s",
-			       strerror(errno));
+	struct sockaddr none;
+	socklen_t size = sizeof(none);
+	int fd = -1;
+	errno = 0;
+
+	do {
+		fd = accept(socket, &none, &size);
+		if (errno != 0 && errno != EINTR) {
+			pv_log(ERROR, "could not accept: %s", strerror(errno));
 			return -1;
 		}
+	} while (fd < 0);
+
+	memset(ev, 0, sizeof(struct epoll_event));
+	ev->events = EPOLLIN;
+	ev->data.fd = fd;
+
+	errno = 0;
+	if (epoll_ctl(epoll, EPOLL_CTL_ADD, fd, ev)) {
+		pv_log(ERROR, "could not epoll_ctl: %s", strerror(errno));
+		close(fd);
 	}
-	while (ret > 0) {
-		int work_fd;
-		/* Only one way comm.*/
-		struct sockaddr __unused;
-		/* index into event array*/
-		ret -= 1;
-		work_fd = ep_event[ret].data.fd;
 
-		if (work_fd == logserver->sock_fd) {
-			socklen_t sock_size = sizeof(__unused);
-			int client_fd = -1;
-		accept_again:
-			client_fd = accept(logserver->sock_fd, &__unused,
-					   &sock_size);
-			if (client_fd >= 0) {
-				/* reuse ep_event to add the new client_fd
-				 * to epoll.
-				 */
-				memset(&ep_event[ret], 0,
-				       sizeof(ep_event[ret]));
-				ep_event[ret].events = EPOLLIN;
-				ep_event[ret].data.fd = client_fd;
+	return 0;
+}
 
-				if (epoll_ctl(logserver->epoll_fd,
-					      EPOLL_CTL_ADD, client_fd,
-					      &ep_event[ret])) {
-					pv_log(ERROR, "could not epoll_ctl: %s",
-					       strerror(errno));
-					close(client_fd); /*So client would know*/
-				}
-			} else if (client_fd < 0 && errno == EINTR)
-				goto accept_again;
-			else {
-				pv_log(ERROR, "could not accept: %s",
-				       strerror(errno));
-			}
-		} else {
-			/* We've data to read.*/
-			struct buffer *log_buffer = NULL;
+static void logserver_read_data(struct logserver *logserver,
+				struct epoll_event *ev, int fd)
+{
+	struct buffer *buffer = pv_buffer_get(true);
+	if (buffer) {
+		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
+		ssize_t read =
+			pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
 
-			log_buffer = pv_buffer_get(true);
-			if (log_buffer) {
-				int nr_read = 0;
-				struct logserver_msg *msg =
-					(struct logserver_msg *)log_buffer->buf;
+		if (read > 0)
+			logserver_handle_msg(logserver, msg);
+	}
+	ev->events = EPOLLIN;
+	epoll_ctl(logserver->epoll_fd, EPOLL_CTL_DEL, fd, ev);
+	close(fd);
+	pv_buffer_drop(buffer);
+}
 
-				nr_read = pv_fs_file_read_nointr(
-					work_fd, log_buffer->buf,
-					log_buffer->size);
-				if (nr_read > 0) {
-					logserver_handle_msg(logserver, msg);
-					nr_logs++;
-				}
-			}
-			ep_event[ret].events = EPOLLIN;
-			epoll_ctl(logserver->epoll_fd, EPOLL_CTL_DEL, work_fd,
-				  &ep_event[ret]);
-			close(work_fd);
-			pv_buffer_drop(log_buffer);
+static void logserver_loop(struct logserver *logserver)
+{
+	struct epoll_event ev[LOGSERVER_MAX_EV];
+	int ready = 0;
+	errno = 0;
+	do {
+		ready = epoll_wait(logserver->epoll_fd, ev, LOGSERVER_MAX_EV,
+				   -1);
+
+		if (errno != 0 && errno != EINTR) {
+			pv_log(ERROR, "error calling epoll_wait: %s",
+			       strerror(errno));
+			return;
 		}
+	} while (ready < 0);
+
+	int cur_fd = -1;
+	for (int i = 0; i < ready; ++i) {
+		cur_fd = ev[i].data.fd;
+		if (cur_fd == logserver->sock_fd)
+			logserver_accept_connection(&ev[i], logserver->sock_fd,
+						    logserver->epoll_fd);
+		else
+			logserver_read_data(logserver, &ev[i], cur_fd);
 	}
-	return nr_logs;
 }
 
 static int logserver_open_socket(const char *path)
@@ -485,7 +479,7 @@ static pid_t logserver_start_service(struct logserver *logserver,
 		pv_log(DEBUG, "starting logserver loop");
 
 		while (!(logserver->flags & LOGSERVER_FLAG_STOP)) {
-			logserver_read_write(logserver);
+			logserver_loop(logserver);
 		}
 		_exit(EXIT_SUCCESS);
 	}
@@ -689,4 +683,9 @@ void pv_logserver_close()
 		close(logserver_g.sock_fd);
 		unlink(path);
 	}
+}
+
+void pv_logserver_send_fd(int fd)
+{
+	return;
 }

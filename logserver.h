@@ -40,5 +40,6 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 
 void pv_logserver_stop(void);
 void pv_logserver_close(void);
+void pv_logserver_send_fd(int fd);
 
 #endif /* LOGSERVER_H */
