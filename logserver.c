@@ -87,12 +87,20 @@ struct logserver_msg {
 	char buffer[0];
 };
 
+struct logserver_console_log {
+	char *name;
+	int ttyfd;
+	int masterfd;
+};
+
 struct logserver {
 	pid_t service_pid;
 	int flags;
 	int epoll_fd;
-	int sock_fd;
+	int log_sock;
+	int fd_sock;
 	char *revision;
+	struct dl_list console_fd;
 };
 
 struct logserver_msg_data {
@@ -110,7 +118,8 @@ struct logserver_msg_data {
 static struct logserver logserver_g = { .service_pid = -1,
 					.flags = 0,
 					.epoll_fd = -1,
-					.sock_fd = -1,
+					.log_sock = -1,
+					.fd_sock = -1,
 					.revision = NULL };
 
 static int
@@ -348,6 +357,20 @@ static int logserver_handle_msg(struct logserver *logserver,
 	return ret;
 }
 
+static int logserver_epoll_add(struct epoll_event *ev, int fd)
+{
+	ev->events = EPOLLIN;
+	ev->data.fd = fd;
+	errno = 0;
+	if (epoll_ctl(logserver_g.epoll_fd, EPOLL_CTL_ADD, fd, ev)) {
+		pv_log(ERROR, "could not epoll_ctl: %s", strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int logserver_accept_connection(struct epoll_event *ev, int socket,
 				       int epoll)
 {
@@ -364,17 +387,7 @@ static int logserver_accept_connection(struct epoll_event *ev, int socket,
 		}
 	} while (fd < 0);
 
-	memset(ev, 0, sizeof(struct epoll_event));
-	ev->events = EPOLLIN;
-	ev->data.fd = fd;
-
-	errno = 0;
-	if (epoll_ctl(epoll, EPOLL_CTL_ADD, fd, ev)) {
-		pv_log(ERROR, "could not epoll_ctl: %s", strerror(errno));
-		close(fd);
-	}
-
-	return 0;
+	return fd;
 }
 
 static void logserver_read_data(struct logserver *logserver,
@@ -414,18 +427,26 @@ static void logserver_loop(struct logserver *logserver)
 	int cur_fd = -1;
 	for (int i = 0; i < ready; ++i) {
 		cur_fd = ev[i].data.fd;
-		if (cur_fd == logserver->sock_fd)
-			logserver_accept_connection(&ev[i], logserver->sock_fd,
-						    logserver->epoll_fd);
-		else
+		if (cur_fd == logserver->log_sock) {
+			int fd = logserver_accept_connection(
+				&ev[i], logserver->log_sock,
+				logserver->epoll_fd);
+
+			memset(ev, 0, sizeof(struct epoll_event));
+			logserver_epoll_add(&ev[i], fd);
+
+		} else {
 			logserver_read_data(logserver, &ev[i], cur_fd);
+		}
 	}
 }
 
-static int logserver_open_socket(const char *path)
+static int logserver_open_socket(const char *fname)
 {
 	int fd;
 	struct sockaddr_un addr;
+	char path[108]; // size of sockaddr_un sun_path
+	pv_paths_pv_file(path, PATH_MAX, fname);
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd == -1) {
@@ -530,34 +551,35 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *rev)
 
 int pv_logserver_init()
 {
-	struct epoll_event ep_event;
-	char path[108]; // size of sockaddr_un sun_path
-
-	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-	logserver_g.sock_fd = logserver_open_socket(path);
+	struct epoll_event ev[2];
+	logserver_g.log_sock = logserver_open_socket(LOGCTRL_FNAME);
+	logserver_g.fd_sock = logserver_open_socket(LOGFD_FNAME);
 	logserver_g.epoll_fd = epoll_create1(0);
 
-	if (logserver_g.epoll_fd < 0 || logserver_g.sock_fd < 0) {
+	if (logserver_g.epoll_fd < 0 || logserver_g.log_sock < 0) {
 		pv_log(DEBUG, "logserver_g epoll_fd = %d",
 		       logserver_g.epoll_fd);
-		pv_log(DEBUG, "logserver_g sock_fd = %d", logserver_g.sock_fd);
+		pv_log(DEBUG, "logserver_g log sock = %d",
+		       logserver_g.log_sock);
+		pv_log(DEBUG, "logserver_g fd sock = %d", logserver_g.fd_sock);
 		pv_log(DEBUG, "errno  =%d", errno);
 		goto out;
 	}
 
-	ep_event.events = EPOLLIN;
-	ep_event.data.fd = logserver_g.sock_fd;
-	if (epoll_ctl(logserver_g.epoll_fd, EPOLL_CTL_ADD, ep_event.data.fd,
-		      &ep_event))
+	if (logserver_epoll_add(&ev[0], logserver_g.log_sock) == -1)
+		goto out;
+	if (logserver_epoll_add(&ev[1], logserver_g.fd_sock) == -1)
 		goto out;
 
 	logserver_start_service(&logserver_g, pv_bootloader_get_rev());
 	pv_log(DEBUG, "started log service with pid %d",
 	       (int)logserver_g.service_pid);
 
+	dl_list_init(&logserver_g.console_fd);
+
 	return 0;
 out:
-	close(logserver_g.sock_fd);
+	close(logserver_g.log_sock);
 	close(logserver_g.epoll_fd);
 
 	return -1;
@@ -676,11 +698,11 @@ void pv_logserver_close()
 {
 	char path[PATH_MAX];
 
-	if (logserver_g.sock_fd >= 0) {
+	if (logserver_g.log_sock >= 0) {
 		pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
 		pv_log(DEBUG, "closing %s with fd %d", path,
-		       logserver_g.sock_fd);
-		close(logserver_g.sock_fd);
+		       logserver_g.log_sock);
+		close(logserver_g.log_sock);
 		unlink(path);
 	}
 }
