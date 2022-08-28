@@ -26,7 +26,6 @@
 #include "../config.h"
 #include "../platforms.h"
 
-void pv_set_new_log_fn(void *fn_pv_new_log);
 void pv_set_pv_instance_fn(void *fn_pv_get_instance);
 void pv_set_pv_paths_fn(
 	void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
@@ -38,7 +37,8 @@ void pv_set_pv_paths_fn(
 	void *fn_pv_paths_lib_lxc_lxcpath);
 
 void *pv_start_container(struct pv_platform *p, const char *rev,
-			 char *conf_file, void *data);
+			 char *conf_file, int logfd, void *data);
 void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
+int pv_console_log_getfd(struct pv_platform_log *log, void *data);
 
 #endif

@@ -48,6 +48,7 @@ int setns(int nsfd, int nstype);
 #include "init.h"
 #include "state.h"
 #include "parser/parser.h"
+#include "logserver.h"
 #include "utils/list.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -55,6 +56,9 @@ int setns(int nsfd, int nstype);
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
+
+#define PV_PLATFORM_LXC_LOG "lxc/lxc.log"
+#define PV_PLATFORM_LXC_CONSOLE_LOG "lxc/console.log"
 
 static const char *syslog[][2] = { { "file", "/var/log/syslog" },
 				   { "truncate", "true" },
@@ -82,8 +86,9 @@ static struct pv_logger_config plat_logger_config_messages = {
 struct pv_cont_ctrl {
 	char *type;
 	void *(*start)(struct pv_platform *p, const char *rev, char *conf_file,
-		       void *data);
+		       int logfd, void *data);
 	void *(*stop)(struct pv_platform *p, char *conf_file, void *data);
+	int (*get_console_fd)(struct pv_platform_log *log, void *data);
 };
 
 enum {
@@ -93,7 +98,7 @@ enum {
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
-	{ "lxc", NULL, NULL },
+	{ "lxc", NULL, NULL, NULL },
 	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
@@ -139,6 +144,10 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 
 	if (p) {
 		p->name = strdup(name);
+		p->log.console_tty = -1;
+		p->log.console_pt = -1;
+		p->log.lxc_pipe[0] = -1;
+		p->log.lxc_pipe[1] = -1;
 		p->status.current = PLAT_NONE;
 		p->status.goal = PLAT_NONE;
 		p->roles = PLAT_ROLE_MGMT;
@@ -400,11 +409,12 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 	if (c->start == NULL || c->stop == NULL)
 		return 0;
 
-	void (*__pv_new_log)(void *) = dlsym(lib, "pv_set_new_log_fn");
-	if (__pv_new_log)
-		__pv_new_log(pv_new_log);
-	else
-		pv_log(ERROR, "Couldn't locate symbol pv_set_new_log_fn");
+	if (c->get_console_fd == NULL) {
+		c->get_console_fd = dlsym(lib, "pv_console_log_getfd");
+		if (c->get_console_fd == NULL)
+			pv_log(WARN,
+			       "could not locate symbol 'pv_console_log_getfd'");
+	}
 
 	void (*__pv_get_instance)(void *) = dlsym(lib, "pv_set_pv_instance_fn");
 	if (__pv_get_instance)
@@ -679,6 +689,20 @@ int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 	return 0;
 }
 
+static void pv_platform_subscribe_fd(int fd, const char *plat, const char *src)
+{
+	if (fd < 0) {
+		pv_log(WARN, "could not subscribe %s:%s (fd = %d)", plat, src,
+		       fd);
+		return;
+	}
+	if (pv_logserver_subscribe_fd(fd, plat, src) < 0)
+		pv_log(WARN,
+		       "could not subscribe %s:%s (fd = %d) logserver return < 0",
+		       plat, src, fd);
+	pv_log(DEBUG, "platform subscribed %s:%s (fd = %d)", plat, src, fd);
+}
+
 int pv_platform_start(struct pv_platform *p)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -696,12 +720,20 @@ int pv_platform_start(struct pv_platform *p)
 	else
 		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s", *c);
 
+	if (pipe2(p->log.lxc_pipe, O_NONBLOCK | O_CLOEXEC) != 0) {
+		pv_log(WARN, "could not create the log pipe: %s(%d)",
+		       strerror(errno), errno);
+	} else {
+		pv_platform_subscribe_fd(p->log.lxc_pipe[0], p->name,
+					 PV_PLATFORM_LXC_LOG);
+	}
+
 	// Get type controller
 	ctrl = _pv_platforms_get_ctrl(p->type);
 
 	// Start the platform
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
-	data = ctrl->start(p, s->rev, path, (void *)&pid);
+	data = ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], (void *)&pid);
 
 	if (!data) {
 		pv_log(ERROR, "error starting platform: '%s'", p->name);
@@ -723,6 +755,14 @@ int pv_platform_start(struct pv_platform *p)
 			pv_log(ERROR,
 			       "Could not start pv_logger for platform %s",
 			       p->name);
+
+	if (ctrl->get_console_fd(&p->log, p->data) == -1) {
+		pv_log(WARN, "could not get a valid console log fd for %s",
+		       p->name);
+	} else {
+		pv_platform_subscribe_fd(p->log.console_pt, p->name,
+					 PV_PLATFORM_LXC_CONSOLE_LOG);
+	}
 
 	return 0;
 }
@@ -779,11 +819,38 @@ static int pv_platform_stop_loggers(struct pv_platform *p)
 	return num_loggers;
 }
 
+static void pv_platform_close_logs_fd(struct pv_platform *p)
+{
+	pv_logserver_unsubscribe_fd(p->name, PV_PLATFORM_LXC_CONSOLE_LOG);
+	pv_logserver_unsubscribe_fd(p->name, PV_PLATFORM_LXC_LOG);
+
+	if (p->log.console_tty > -1) {
+		close(p->log.console_tty);
+		p->log.console_tty = -1;
+	}
+
+	if (p->log.console_pt > -1) {
+		close(p->log.console_pt);
+		p->log.console_pt = -1;
+	}
+
+	if (p->log.lxc_pipe[0] > -1) {
+		close(p->log.lxc_pipe[0]);
+		p->log.lxc_pipe[0] = -1;
+	}
+
+	if (p->log.lxc_pipe[1] > -1) {
+		close(p->log.lxc_pipe[1]);
+		p->log.lxc_pipe[1] = -1;
+	}
+}
+
 int pv_platform_stop(struct pv_platform *p)
 {
 	const struct pv_cont_ctrl *ctrl;
 
 	pv_platform_stop_loggers(p);
+	pv_platform_close_logs_fd(p);
 
 	if (p->init_pid <= 0)
 		return -1;

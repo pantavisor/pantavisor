@@ -396,18 +396,15 @@ int pv_fs_file_unlock(int fd)
 
 int pv_fs_file_gzip(const char *fname, const char *target_name)
 {
-	int outfile[] = { -1, -1 };
 	char cmd[PATH_MAX + 32];
 
-	snprintf(cmd, sizeof(cmd), "gzip %s", fname);
-	outfile[1] = open(target_name, O_RDWR | O_APPEND | O_CREAT);
-	if (outfile[1] >= 0) {
-		tsh_run_io(cmd, 1, NULL, NULL, outfile, NULL);
-		close_fd(&outfile[1]);
-		pv_fs_path_sync(target_name);
-		return 0;
-	}
-	return -1;
+	if (pv_fs_file_copy(fname, target_name, 0644) != 0)
+		return -1;
+
+	snprintf(cmd, sizeof(cmd), "gzip %s", target_name);
+	tsh_run_io(cmd, 1, NULL, NULL, NULL, NULL);
+	pv_fs_path_sync(target_name);
+	return 0;
 }
 
 int pv_fs_file_check_and_open(const char *fname, int flags, mode_t mode)
