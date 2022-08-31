@@ -55,6 +55,7 @@ struct pv_state {
 	struct dl_list objects; //pv_object
 	struct dl_list jsons; //pv_json
 	struct dl_list groups; //pv_group
+	bool default_groups;
 	char *json;
 	int tryonce;
 	bool local;
@@ -73,7 +74,7 @@ struct pv_json *pv_state_fetch_json(struct pv_state *s, const char *name);
 
 state_spec_t pv_state_spec(struct pv_state *s);
 
-void pv_state_validate(struct pv_state *s);
+int pv_state_validate(struct pv_state *s);
 bool pv_state_validate_checksum(struct pv_state *s);
 
 int pv_state_start(struct pv_state *s);

@@ -135,6 +135,8 @@ void pv_paths_writable(char *buf, size_t size);
 #define PV_PANTAVISOR_CONFIG_PATH "/etc/pantavisor.config"
 
 #define DROPBEAR_DNAME "dropbear"
+#define PV_DNAME "pantavisor"
+#define PV_DEFAULTS_GROUPS PV_DNAME "/defaults/groups.json"
 #define PVS_DNAME "pantavisor/pvs"
 #define PVS_PK_FNAME PVS_DNAME "/pub.pem"
 #define PVS_CERT_FNAME PVS_DNAME "/certs/ca.pem"

@@ -97,7 +97,7 @@ struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
-static const char *pv_platform_status_string(plat_status_t status)
+const char *pv_platform_status_string(plat_status_t status)
 {
 	switch (status) {
 	case PLAT_NONE:
@@ -254,7 +254,7 @@ static const char *pv_platforms_role_str(roles_mask_t role)
 	return "unknown";
 }
 
-static const char *pv_platforms_restart_policy_str(restart_policy_t policy)
+const char *pv_platforms_restart_policy_str(restart_policy_t policy)
 {
 	switch (policy) {
 	case RESTART_SYSTEM:

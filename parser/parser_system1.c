@@ -47,7 +47,10 @@
 #include "drivers.h"
 #include "state.h"
 #include "pvlogger.h"
+#include "paths.h"
+
 #include "utils/str.h"
+#include "utils/fs.h"
 
 #define PV_NS_NETWORK 0x1
 #define PV_NS_UTS 0x2
@@ -220,7 +223,7 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 	return 1;
 }
 
-static int parse_disks(struct pv_state *s, char *value, int n)
+static int parse_disks(struct pv_state *s, char *value)
 {
 	int tokc, size, ret = 1;
 	char *str = NULL;
@@ -832,7 +835,7 @@ static int do_action_for_runlevel(struct json_key_action *jka, char *value)
 	// runlevel is still valid in the state json to keep backwards compatibility, but internally it is substituted by groups
 	if (!strcmp(value, "data") || !strcmp(value, "root") ||
 	    !strcmp(value, "app") || !strcmp(value, "platform")) {
-		pv_log(DEBUG, "linking platform %s with group %s",
+		pv_log(DEBUG, "linking platform '%s' with group '%s'",
 		       (*bundle->platform)->name, value);
 
 		g = pv_state_fetch_group(bundle->s, value);
@@ -870,43 +873,61 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static restart_policy_t parse_restart_policy(char *value, size_t len)
+{
+	if (pv_str_matches(value, len, "system", strlen("system")))
+		return RESTART_SYSTEM;
+	else if (pv_str_matches(value, len, "container", strlen("container")))
+		return RESTART_CONTAINER;
+
+	pv_log(ERROR, "invalid restart policy '%s'", value);
+	return RESTART_NONE;
+}
+
 static int do_action_for_restart_policy(struct json_key_action *jka,
 					char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	restart_policy_t restart;
 
 	if (!(*bundle->platform) || !value)
 		return -1;
 
-	if (pv_str_matches(value, strlen(value), "system", strlen("system")))
-		pv_platform_set_restart_policy(*bundle->platform,
-					       RESTART_SYSTEM);
-	if (pv_str_matches(value, strlen(value), "container",
-			   strlen("container")))
-		pv_platform_set_restart_policy(*bundle->platform,
-					       RESTART_CONTAINER);
-	else
-		pv_log(WARN, "invalid restart policy '%s'", value);
+	restart = parse_restart_policy(value, strlen(value));
+	if (restart == RESTART_NONE)
+		return -1;
+
+	pv_platform_set_restart_policy(*bundle->platform, restart);
 
 	return 0;
+}
+
+static plat_status_t parse_status_goal(char *value, size_t len)
+{
+	if (pv_str_matches(value, len, "MOUNTED", strlen("MOUNTED")))
+		return PLAT_MOUNTED;
+	else if (pv_str_matches(value, len, "STARTED", strlen("STARTED")))
+		return PLAT_STARTED;
+	else if (pv_str_matches(value, len, "READY", strlen("READY")))
+		return PLAT_READY;
+
+	pv_log(ERROR, "invalid status goal '%s'", value);
+	return PLAT_NONE;
 }
 
 static int do_action_for_status_goal(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	plat_status_t status;
 
 	if (!(*bundle->platform) || !value)
 		return -1;
 
-	if (pv_str_matches(value, strlen(value), "MOUNTED", strlen("MOUNTED")))
-		pv_platform_set_status_goal(*bundle->platform, PLAT_MOUNTED);
-	else if (pv_str_matches(value, strlen(value), "STARTED",
-				strlen("STARTED")))
-		pv_platform_set_status_goal(*bundle->platform, PLAT_STARTED);
-	else if (pv_str_matches(value, strlen(value), "READY", strlen("READY")))
-		pv_platform_set_status_goal(*bundle->platform, PLAT_READY);
-	else
-		pv_log(WARN, "invalid status goal '%s'", value);
+	status = parse_status_goal(value, strlen(value));
+	if (status == PLAT_NONE)
+		return -1;
+
+	pv_platform_set_status_goal(*bundle->platform, status);
 
 	return 0;
 }
@@ -1216,10 +1237,165 @@ static struct pv_state *system1_parse_disks(struct pv_state *this,
 		pv_log(DEBUG, "adding json 'disks.json'");
 		pv_jsons_add(this, "disks.json", value);
 
-		if (parse_disks(this, value, strlen(value))) {
+		if (parse_disks(this, value)) {
 			this = NULL;
 			goto out;
 		}
+
+		free(value);
+		value = NULL;
+	}
+
+out:
+	if (tokv)
+		free(tokv);
+	if (value)
+		free(value);
+
+	return this;
+}
+
+static int parse_groups(struct pv_state *s, char *value)
+{
+	int tokc, size, ret = 1;
+	char *str = NULL;
+	jsmntok_t *tokv, *t;
+
+	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format groups");
+		goto out;
+	}
+
+	size = jsmnutil_array_count(value, tokv);
+	if (size <= 0) {
+		pv_log(ERROR, "empty groups array");
+		goto out;
+	}
+
+	t = tokv + 1;
+	while ((str = pv_json_array_get_one_str(value, &size, &t))) {
+		struct pv_group *g;
+		char *tmp = NULL;
+		plat_status_t status = PLAT_STARTED;
+		restart_policy_t restart = RESTART_CONTAINER;
+		jsmntok_t *groupv;
+		int groupc, sizec;
+
+		if (jsmnutil_parse_json(str, &groupv, &groupc) <= 0) {
+			pv_log(ERROR, "invalid group entry");
+			goto out;
+		}
+
+		sizec = jsmnutil_object_key_count(str, groupv);
+		if (sizec <= 0) {
+			pv_log(ERROR, "empty group entry");
+			goto out;
+		}
+
+		tmp = pv_json_get_value(str, "status_goal", groupv, groupc);
+		if (tmp) {
+			status = parse_status_goal(tmp, strlen(tmp));
+			if (status == PLAT_NONE)
+				goto out;
+			free(tmp);
+			tmp = NULL;
+		}
+
+		tmp = pv_json_get_value(str, "restart_policy", groupv, groupc);
+		if (tmp) {
+			restart = parse_restart_policy(tmp, strlen(tmp));
+			if (restart == RESTART_NONE)
+				goto out;
+			free(tmp);
+			tmp = NULL;
+		}
+
+		tmp = pv_json_get_value(str, "name", groupv, groupc);
+		if (!tmp) {
+			pv_log(ERROR, "group does not have a name", str);
+			goto out;
+		}
+		g = pv_group_new(tmp, status, restart);
+		pv_state_add_group(s, g);
+		free(tmp);
+		tmp = NULL;
+
+		free(groupv);
+		groupv = NULL;
+
+		free(str);
+		str = NULL;
+
+		// skip number of keys in group object plus their values
+		t += (sizec * 2);
+	}
+
+	ret = 0;
+
+out:
+	if (str)
+		free(str);
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
+static struct pv_state *system1_parse_groups(struct pv_state *this,
+					     const char *buf)
+{
+	int tokc, count;
+	jsmntok_t *tokv;
+	char *value = NULL;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse");
+		this = NULL;
+		goto out;
+	}
+
+	count = pv_json_get_key_count(buf, "groups.json", tokv, tokc);
+	if (count == 1) {
+		value = pv_json_get_value(buf, "groups.json", tokv, tokc);
+		if (!value) {
+			pv_log(ERROR,
+			       "unable to get groups.json value from state");
+			this = NULL;
+			goto out;
+		}
+
+		pv_log(DEBUG, "adding json 'groups.json'");
+		pv_jsons_add(this, "groups.json", value);
+
+		if (parse_groups(this, value)) {
+			this = NULL;
+			goto out;
+		}
+
+		free(value);
+		value = NULL;
+	} else if (!count) {
+		char path[PATH_MAX];
+
+		pv_paths_etc_file(path, PATH_MAX, PV_DEFAULTS_GROUPS);
+		pv_log(INFO,
+		       "groups.json not found in state. Loading default groups.json from '%s'...",
+		       path);
+
+		value = pv_fs_file_load(path, 0);
+		if (!value) {
+			pv_log(ERROR,
+			       "default groups.json could not be loaded");
+			this = NULL;
+			goto out;
+		}
+
+		if (parse_groups(this, value)) {
+			this = NULL;
+			goto out;
+		}
+
+		this->default_groups = true;
 
 		free(value);
 		value = NULL;
@@ -1413,7 +1589,8 @@ static struct pv_state *system1_parse_validate(struct pv_state *this,
 
 	system1_link_object_json_platforms(this);
 
-	pv_state_validate(this);
+	if (pv_state_validate(this))
+		return NULL;
 
 	pv_state_print(this);
 
@@ -1424,6 +1601,12 @@ struct pv_state *system1_parse(struct pv_state *this, const char *buf)
 {
 	if (!system1_parse_disks(this, buf)) {
 		pv_log(ERROR, "cannot parse disks");
+		this = NULL;
+		goto out;
+	}
+
+	if (!system1_parse_groups(this, buf)) {
+		pv_log(ERROR, "cannot parse groups");
 		this = NULL;
 		goto out;
 	}
