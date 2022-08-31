@@ -769,5 +769,7 @@ int pv_console_log_getfd(struct pv_platform *p, void *data)
 	int masterfd = -1;
 	int tty = 0;
 	p->console_log_fd = c->console_getfd(c, &tty, &masterfd);
+	int flags = fcntl(masterfd, F_GETFL, 0);
+	fcntl(masterfd, F_SETFL, flags | O_NONBLOCK);
 	return masterfd;
 }
