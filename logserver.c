@@ -704,7 +704,7 @@ void pv_logserver_close()
 	}
 }
 
-void pv_logserver_send_fd(int fd)
+int pv_logserver_send_fd(int fd, const char *name)
 {
 	return;
 }

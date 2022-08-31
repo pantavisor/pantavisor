@@ -736,7 +736,7 @@ int pv_platform_start(struct pv_platform *p)
 		return 0;
 	}
 
-	pv_logserver_send_fd(fd);
+	pv_logserver_send_fd(fd, p->name);
 	return 0;
 }
 
