@@ -237,28 +237,28 @@ void pv_json_ser_init(struct pv_json_ser *js, size_t size)
 
 static int pv_json_ser_resize(struct pv_json_ser *js)
 {
-	js->size += js->block_size;
-	js->buf = realloc(js->buf, js->size * sizeof(char));
-	if (!js->buf) {
-		js->size = 0;
+	char *new = NULL;
+
+	new = realloc(js->buf, (js->size + js->block_size) * sizeof(char));
+	if (!new)
 		return -1;
-	}
+
+	js->buf = new;
+	js->size += js->block_size;
 	return 0;
 }
 
 int pv_json_ser_object(struct pv_json_ser *js)
 {
 	jsonbcode ret;
-	int err;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_object(&js->b, js->buf, js->size);
 	while (ret == JSONB_ERROR_NOMEM) {
-		err = pv_json_ser_resize(js);
-		if (err)
-			return err;
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_object(&js->b, js->buf, js->size);
 	}
 
@@ -269,12 +269,13 @@ int pv_json_ser_object_pop(struct pv_json_ser *js)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_object_pop(&js->b, js->buf, js->size);
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_object_pop(&js->b, js->buf, js->size);
 	}
 
@@ -285,12 +286,13 @@ int pv_json_ser_key(struct pv_json_ser *js, const char *key)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_key(&js->b, js->buf, js->size, key, strlen(key));
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_key(&js->b, js->buf, js->size, key, strlen(key));
 	}
 
@@ -301,12 +303,13 @@ int pv_json_ser_array(struct pv_json_ser *js)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_array(&js->b, js->buf, js->size);
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_array(&js->b, js->buf, js->size);
 	}
 
@@ -317,12 +320,13 @@ int pv_json_ser_array_pop(struct pv_json_ser *js)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_array_pop(&js->b, js->buf, js->size);
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_array_pop(&js->b, js->buf, js->size);
 	}
 
@@ -333,12 +337,13 @@ static int pv_json_ser_null(struct pv_json_ser *js)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_null(&js->b, js->buf, js->size);
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_null(&js->b, js->buf, js->size);
 	}
 
@@ -349,15 +354,16 @@ int pv_json_ser_string(struct pv_json_ser *js, const char *value)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	if (!value)
 		return pv_json_ser_null(js);
 
 	ret = jsonb_string(&js->b, js->buf, js->size, value, strlen(value));
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_string(&js->b, js->buf, js->size, value,
 				   strlen(value));
 	}
@@ -369,12 +375,13 @@ int pv_json_ser_bool(struct pv_json_ser *js, bool value)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_bool(&js->b, js->buf, js->size, value);
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_bool(&js->b, js->buf, js->size, value);
 	}
 
@@ -385,12 +392,13 @@ int pv_json_ser_number(struct pv_json_ser *js, double value)
 {
 	jsonbcode ret;
 
-	if (!js)
+	if (!js || !js->size)
 		return -1;
 
 	ret = jsonb_number(&js->b, js->buf, js->size, value);
-	if (ret == JSONB_ERROR_NOMEM) {
-		pv_json_ser_resize(js);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
 		ret = jsonb_number(&js->b, js->buf, js->size, value);
 	}
 

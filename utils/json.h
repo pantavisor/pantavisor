@@ -41,9 +41,9 @@ char *pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
 
 struct pv_json_ser {
 	jsonb b;
-	int block_size;
+	size_t block_size;
 	char *buf;
-	int size;
+	size_t size;
 };
 
 void pv_json_ser_init(struct pv_json_ser *js, size_t size);

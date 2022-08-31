@@ -116,6 +116,20 @@ include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
 
+LOCAL_LIBRARIES := libthttp
+
+LOCAL_DESTDIR := ./
+LOCAL_MODULE := json_test
+
+LOCAL_C_INCLUDES := $(LOCAL_PATH)
+
+LOCAL_SRC_FILES := utils/json.test.c \
+			utils/json.c
+
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
 LOCAL_DESTDIR := ./
 LOCAL_MODULE := init-dm
 LOCAL_LIBRARIES := cryptsetup

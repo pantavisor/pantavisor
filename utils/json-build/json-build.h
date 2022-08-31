@@ -19,10 +19,16 @@ extern "C" {
 #define JSONB_API extern
 #endif
 
-/* if necessary should be increased to avoid segfault */
 #ifndef JSONB_MAX_DEPTH
-#define JSONB_MAX_DEPTH 512
-#endif
+/** 
+ * Maximum JSON nesting depth, if default value is unwanted then it should be
+ *      defined before json-build.h is included:
+ *
+ * #define JSONB_MAX_DEPTH 256
+ * #include "json-build.h"
+ */ 
+#define JSONB_MAX_DEPTH 128
+#endif /* JSONB_MAX_DEPTH */
 
 /** @brief json-builder return codes */
 typedef enum jsonbcode {
@@ -53,13 +59,22 @@ enum jsonbstate {
 
 /** @brief Handle for building a JSON string */
 typedef struct jsonb {
-    /** expected next input */
+    /** state stack to keep track and enforce next inputs */
     enum jsonbstate stack[JSONB_MAX_DEPTH + 1];
     /** pointer to stack top */
     enum jsonbstate *top;
     /** offset in the JSON buffer (current length) */
     size_t pos;
 } jsonb;
+
+/**
+ * @brief Reset a jsonb handle buffer's position tracker (for streaming purposes)
+ * @note Should be used in conjunction with @ref JSONB_ERROR_NOMEM if the
+ *      buffer is meant to be used as a stream
+ *
+ * @param builder pointer to the @ref jsonb handle
+ */
+#define jsonb_reset(builder) ((builder)->pos = 0)
 
 /**
  * @brief Initialize a jsonb handle
@@ -229,6 +244,7 @@ _jsonb_eval_state(enum jsonbstate state)
 #define BUFFER_COPY_CHAR(b, c, _pos, buf, bufsize)                            \
     do {                                                                      \
         if ((b)->pos + (_pos) + 1 + 1 > (bufsize)) {                          \
+            (buf)[(b)->pos] = '\0';                                           \
             return JSONB_ERROR_NOMEM;                                         \
         }                                                                     \
         (buf)[(b)->pos + (_pos)++] = (c);                                     \
@@ -238,6 +254,7 @@ _jsonb_eval_state(enum jsonbstate state)
     do {                                                                      \
         size_t i;                                                             \
         if ((b)->pos + (_pos) + (len) + 1 > (bufsize)) {                      \
+            (buf)[(b)->pos] = '\0';                                           \
             return JSONB_ERROR_NOMEM;                                         \
         }                                                                     \
         for (i = 0; i < (len); ++i)                                           \
@@ -246,7 +263,7 @@ _jsonb_eval_state(enum jsonbstate state)
         (buf)[(b)->pos + (_pos)] = '\0';                                      \
     } while (0)
 
-void
+JSONB_API void
 jsonb_init(jsonb *b)
 {
     static jsonb empty_builder;
@@ -254,9 +271,8 @@ jsonb_init(jsonb *b)
     b->top = b->stack;
 }
 
-jsonbcode
-jsonb_object(jsonb *b, char buf[], size_t bufsize)
-{
+JSONB_API jsonbcode
+jsonb_object(jsonb *b, char buf[], size_t bufsize) {
     enum jsonbstate new_state;
     size_t pos = 0;
     if (b->top - b->stack >= JSONB_MAX_DEPTH) return JSONB_ERROR_STACK;
@@ -287,7 +303,7 @@ jsonb_object(jsonb *b, char buf[], size_t bufsize)
     return JSONB_OK;
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_object_pop(jsonb *b, char buf[], size_t bufsize)
 {
     enum jsonbcode code;
@@ -372,7 +388,7 @@ second_iter:
     goto second_iter;
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_key(jsonb *b, char buf[], size_t bufsize, const char key[], size_t len)
 {
     size_t pos = 0;
@@ -383,7 +399,7 @@ jsonb_key(jsonb *b, char buf[], size_t bufsize, const char key[], size_t len)
     case JSONB_OBJECT_KEY_OR_CLOSE: {
         enum jsonbcode ret;
         BUFFER_COPY_CHAR(b, '"', pos, buf, bufsize);
-        ret = _jsonb_escape(&pos, buf + b->pos, bufsize, key, len);
+        ret = _jsonb_escape(&pos, buf + b->pos, bufsize - b->pos, key, len);
         if (ret != JSONB_OK) return ret;
         BUFFER_COPY(b, "\":", 2, pos, buf, bufsize);
         STACK_HEAD(b, JSONB_OBJECT_VALUE);
@@ -398,7 +414,7 @@ jsonb_key(jsonb *b, char buf[], size_t bufsize, const char key[], size_t len)
     return JSONB_OK;
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_array(jsonb *b, char buf[], size_t bufsize)
 {
     enum jsonbstate new_state;
@@ -431,7 +447,7 @@ jsonb_array(jsonb *b, char buf[], size_t bufsize)
     return JSONB_OK;
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_array_pop(jsonb *b, char buf[], size_t bufsize)
 {
     enum jsonbcode code;
@@ -454,7 +470,7 @@ jsonb_array_pop(jsonb *b, char buf[], size_t bufsize)
     return code;
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_token(
     jsonb *b, char buf[], size_t bufsize, const char token[], size_t len)
 {
@@ -490,20 +506,20 @@ jsonb_token(
     return code;
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_bool(jsonb *b, char buf[], size_t bufsize, int boolean)
 {
     if (boolean) return jsonb_token(b, buf, bufsize, "true", 4);
     return jsonb_token(b, buf, bufsize, "false", 5);
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_null(jsonb *b, char buf[], size_t bufsize)
 {
     return jsonb_token(b, buf, bufsize, "null", 4);
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_string(
     jsonb *b, char buf[], size_t bufsize, const char str[], size_t len)
 {
@@ -534,7 +550,7 @@ jsonb_string(
         return JSONB_ERROR_INPUT;
     }
     BUFFER_COPY_CHAR(b, '"', pos, buf, bufsize);
-    ret = _jsonb_escape(&pos, buf + b->pos, bufsize, str, len);
+    ret = _jsonb_escape(&pos, buf + b->pos, bufsize - b->pos, str, len);
     if (ret != JSONB_OK) return ret;
     BUFFER_COPY_CHAR(b, '"', pos, buf, bufsize);
     STACK_HEAD(b, next_state);
@@ -542,7 +558,7 @@ jsonb_string(
     return code;
 }
 
-jsonbcode
+JSONB_API jsonbcode
 jsonb_number(jsonb *b, char buf[], size_t bufsize, double number)
 {
     char token[32];
