@@ -87,10 +87,10 @@ struct logserver_msg {
 	char buffer[0];
 };
 
-struct logserver_console_log {
+struct logserver_fd {
 	char *name;
-	int ttyfd;
-	int masterfd;
+	int fd;
+	struct dl_list list;
 };
 
 struct logserver {
@@ -100,7 +100,11 @@ struct logserver {
 	int log_sock;
 	int fd_sock;
 	char *revision;
-	struct dl_list console_fd;
+	// logserver_fd
+	struct dl_list fds;
+	// tmp store for fd returned by connect
+	// only if was sent to the fd_sock
+	struct dl_list tmp_fd;
 };
 
 struct logserver_msg_data {
@@ -389,21 +393,107 @@ static int logserver_accept_connection(struct epoll_event *ev, int socket,
 	return fd;
 }
 
-static void logserver_read_data(struct epoll_event *ev, int fd)
+static void logserver_read_data(struct epoll_event *ev, int fd, char *name)
 {
 	struct buffer *buffer = pv_buffer_get(true);
 	if (buffer) {
-		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
 		ssize_t read =
 			pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
 
-		if (read > 0)
-			logserver_handle_msg(msg);
+		if (read < 0)
+			goto out;
 	}
-	ev->events = EPOLLIN;
-	epoll_ctl(logserver_g.epoll_fd, EPOLL_CTL_DEL, fd, ev);
-	close(fd);
+
+	// if fd has name, so is a subcribed fd
+	if (name) {
+		pv_logserver_send_log(true, "console_log", name, INFO,
+				      buffer->buf);
+
+	} else {
+		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
+		logserver_handle_msg(msg);
+
+		ev->events = EPOLLIN;
+		epoll_ctl(logserver_g.epoll_fd, EPOLL_CTL_DEL, fd, ev);
+		close(fd);
+	}
+out:
 	pv_buffer_drop(buffer);
+}
+
+static bool logserver_is_from_fd_sock(int fd)
+{
+	struct logserver_fd *it, *tmp;
+
+	struct dl_list *descriptors = &logserver_g.tmp_fd;
+
+	dl_list_for_each_safe(it, tmp, descriptors, struct logserver_fd, list)
+	{
+		if (fd == it->fd) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static void logserver_remove_fd(struct dl_list *l, struct logserver_fd lfd)
+{
+	struct logserver_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, l, struct logserver_fd, list)
+	{
+		if (lfd.name) {
+			if (!strcmp(it->name, lfd.name)) {
+				dl_list_del(&it->list);
+				return;
+			}
+		} else {
+			if (it->fd == lfd.fd) {
+				dl_list_del(&it->list);
+				return;
+			}
+		}
+	}
+}
+
+static char *logserver_fd_name(struct dl_list *l, int fd)
+{
+	struct logserver_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, l, struct logserver_fd, list)
+	{
+		if (it->fd == fd) {
+			return it->name;
+		}
+	}
+	return NULL;
+}
+
+static int logserver_get_fd(int fd, struct logserver_fd *lfd)
+{
+	char fd_buf[CMSG_SPACE(sizeof(int))];
+	memset(fd_buf, 0, sizeof(fd_buf));
+
+	char name_buf[30] = { 0 };
+	struct iovec iov = { .iov_base = name_buf, .iov_len = 30 };
+
+	struct msghdr msg = { .msg_name = NULL,
+			      .msg_namelen = 0,
+			      .msg_iov = &iov,
+			      .msg_iovlen = 1,
+			      .msg_control = fd_buf,
+			      .msg_controllen = sizeof(fd_buf) };
+
+	if (recvmsg(fd, &msg, 0) < 0)
+		return -1;
+
+	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+	int recv_fd = -1;
+	memcpy(&recv_fd, (int *)CMSG_DATA(cmsg), sizeof(int));
+
+	lfd->fd = recv_fd;
+	lfd->name = strdup(iov.iov_base);
+
+	return 0;
 }
 
 static void logserver_loop()
@@ -425,7 +515,9 @@ static void logserver_loop()
 	int cur_fd = -1;
 	for (int i = 0; i < ready; ++i) {
 		cur_fd = ev[i].data.fd;
-		if (cur_fd == logserver_g.log_sock) {
+
+		if (cur_fd == logserver_g.log_sock ||
+		    cur_fd == logserver_g.fd_sock) {
 			int fd = logserver_accept_connection(
 				&ev[i], logserver_g.log_sock,
 				logserver_g.epoll_fd);
@@ -433,46 +525,77 @@ static void logserver_loop()
 			memset(ev, 0, sizeof(struct epoll_event));
 			logserver_epoll_add(&ev[i], fd);
 
+			if (cur_fd == logserver_g.fd_sock) {
+				struct logserver_fd lfd = { .name = NULL,
+							    .fd = fd };
+				dl_list_init(&lfd.list);
+				dl_list_add(&logserver_g.tmp_fd, &lfd.list);
+			}
+		} else if (logserver_is_from_fd_sock(cur_fd)) {
+			struct logserver_fd ldf = { .name = NULL,
+						    .fd = cur_fd };
+
+			logserver_remove_fd(&logserver_g.tmp_fd, ldf);
+			struct logserver_fd lfd;
+			int r = logserver_get_fd(cur_fd, &lfd);
+			if (r == 0) {
+				if (lfd.fd >= 0) {
+					dl_list_add(&logserver_g.fds,
+						    &lfd.list);
+					logserver_epoll_add(&ev[i], lfd.fd);
+				} else {
+					logserver_remove_fd(&logserver_g.fds,
+							    lfd);
+				}
+			}
 		} else {
-			logserver_read_data(&ev[i], cur_fd);
+			char *name =
+				logserver_fd_name(&logserver_g.fds, cur_fd);
+
+			logserver_read_data(&ev[i], cur_fd, name);
 		}
 	}
 }
 
-static int logserver_open_socket(const char *fname)
+static int logserver_open_socket(const char *fname, bool server)
 {
-	int fd;
 	struct sockaddr_un addr;
-	char path[108]; // size of sockaddr_un sun_path
-	pv_paths_pv_file(path, PATH_MAX, fname);
-
-	fd = socket(AF_UNIX, SOCK_STREAM, 0);
+	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd == -1) {
 		pv_log(ERROR, "unable to open control socket: %d", errno);
-		goto out;
+		return -1;
 	}
 
-	unlink(path); // sometimes, the socket file still exists after reboot
-
-	memset(&addr, 0, sizeof(addr));
+	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, path, sizeof(addr.sun_path));
+	// size of sockaddr_un sun_path
+	char path[107];
+	pv_paths_pv_file(path, PATH_MAX, fname);
+	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
 
-	if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr.sun_path)) ==
-	    -1) {
-		pv_log(ERROR, "unable to bind control socket: %s",
-		       strerror(errno));
-		close(fd);
-		fd = -1;
-		goto out;
-	}
+	if (server) {
+		// sometimes, the socket file still exists after reboot
+		unlink(path);
+		if (bind(fd, (const struct sockaddr *)&addr,
+			 sizeof(addr.sun_path)) == -1) {
+			pv_log(ERROR, "unable to bind control socket: %s",
+			       strerror(errno));
+			close(fd);
+			return -1;
+		}
 
-	// queue upto LOGSERVER_BACKLOG commands
-	if (listen(fd, LOGSERVER_BACKLOG) == -1) {
-		pv_log(ERROR, "unable to listen to control socket: %d\n",
-		       strerror(errno));
+		// queue upto LOGSERVER_BACKLOG commands
+		if (listen(fd, LOGSERVER_BACKLOG) == -1) {
+			pv_log(ERROR,
+			       "unable to listen to control socket: %d\n",
+			       strerror(errno));
+		}
+	} else {
+		if (connect(fd, (struct sockaddr *)&addr,
+			    sizeof(struct sockaddr_un)) == -1) {
+			return -1;
+		}
 	}
-out:
 	return fd;
 }
 
@@ -548,12 +671,17 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *rev)
 
 int pv_logserver_init()
 {
+	dl_list_init(&logserver_g.fds);
+	dl_list_init(&logserver_g.tmp_fd);
+
 	struct epoll_event ev[2];
-	logserver_g.log_sock = logserver_open_socket(LOGCTRL_FNAME);
-	logserver_g.fd_sock = logserver_open_socket(LOGFD_FNAME);
+	errno = 0;
+	logserver_g.log_sock = logserver_open_socket(LOGCTRL_FNAME, true);
+	logserver_g.fd_sock = logserver_open_socket(LOGFD_FNAME, true);
 	logserver_g.epoll_fd = epoll_create1(0);
 
-	if (logserver_g.epoll_fd < 0 || logserver_g.log_sock < 0) {
+	if (logserver_g.epoll_fd < 0 || logserver_g.log_sock < 0 ||
+	    logserver_g.fd_sock < 0) {
 		pv_log(DEBUG, "logserver_g epoll_fd = %d",
 		       logserver_g.epoll_fd);
 		pv_log(DEBUG, "logserver_g log sock = %d",
@@ -572,11 +700,10 @@ int pv_logserver_init()
 	pv_log(DEBUG, "started log service with pid %d",
 	       (int)logserver_g.service_pid);
 
-	dl_list_init(&logserver_g.console_fd);
-
 	return 0;
 out:
 	close(logserver_g.log_sock);
+	close(logserver_g.fd_sock);
 	close(logserver_g.epoll_fd);
 
 	return -1;
@@ -706,5 +833,30 @@ void pv_logserver_close()
 
 int pv_logserver_send_fd(int fd, const char *name)
 {
-	return;
+	char fd_buf[CMSG_SPACE(sizeof(int))];
+	memset(fd_buf, 0, sizeof(fd_buf));
+
+	char name_buf[30] = { 0 };
+	strncpy(name_buf, name, 29);
+	struct iovec iov = { .iov_base = name_buf, .iov_len = 30 };
+
+	struct msghdr msg = { .msg_name = NULL,
+			      .msg_namelen = 0,
+			      .msg_iov = &iov,
+			      .msg_iovlen = 1,
+			      .msg_control = fd_buf,
+			      .msg_controllen = sizeof(fd_buf) };
+
+	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+	cmsg->cmsg_level = SOL_SOCKET;
+	cmsg->cmsg_type = SCM_RIGHTS;
+	cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+
+	memcpy((int *)CMSG_DATA(cmsg), &fd, sizeof(int));
+	errno = 0;
+	int sock = logserver_open_socket(LOGFD_FNAME, false);
+
+	sendmsg(sock, &msg, 0);
+
+	return -errno;
 }
