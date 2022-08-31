@@ -1082,7 +1082,7 @@ char *pv_config_get_json()
 {
 	struct pv_json_ser js;
 
-	pv_json_ser_init(&js, 2048);
+	pv_json_ser_init(&js, 512);
 
 	pv_json_ser_object(&js);
 	{
