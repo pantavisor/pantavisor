@@ -324,7 +324,7 @@ int pv_volume_mount(struct pv_volume *v)
 			pv_fs_mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, NULL, MS_BIND | MS_REC,
 				    NULL);
-		} else if (handler) {
+		} else if (handler && !getenv("pv_verityoff")) {
 			pv_log(INFO, "with '%s' handler", handler);
 			command = malloc(
 				sizeof(char) *

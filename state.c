@@ -1023,7 +1023,12 @@ static char *_pv_state_get_novalidate_list(char *rev)
 	int res;
 	char *cmd = NULL;
 	struct dirent *dp;
-	DIR *volmountdir = opendir("/lib/pv/volmount/verity");
+	DIR *volmountdir;
+
+	if (getenv("pv_verityoff"))
+		return NULL;
+
+	volmountdir = opendir("/lib/pv/volmount/verity");
 
 	// Unable to open directory stream
 	if (!volmountdir)
