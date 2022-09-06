@@ -272,7 +272,8 @@ jsonb_init(jsonb *b)
 }
 
 JSONB_API jsonbcode
-jsonb_object(jsonb *b, char buf[], size_t bufsize) {
+jsonb_object(jsonb *b, char buf[], size_t bufsize)
+{
     enum jsonbstate new_state;
     size_t pos = 0;
     if (b->top - b->stack >= JSONB_MAX_DEPTH) return JSONB_ERROR_STACK;
@@ -370,7 +371,10 @@ second_iter:
         }
     }
 
-    if (*pos + len + extra_bytes > bufsize) return JSONB_ERROR_NOMEM;
+    if (*pos + len + extra_bytes > bufsize) {
+        *buf = '\0';
+        return JSONB_ERROR_NOMEM;
+    }
 
     if (esc_buf) {
         *pos += len + extra_bytes;
