@@ -25,6 +25,8 @@
 
 #include <stdint.h>
 
+#include <sys/types.h>
+
 #ifdef __arm__
 #define PV_ARCH "arm"
 #elif __aarch64__
@@ -43,9 +45,23 @@
 #define PV_BITS "64"
 #endif
 
+#ifndef CGROUP2_SUPER_MAGIC
+#define CGROUP2_SUPER_MAGIC 0x63677270
+#endif
+
+typedef enum {
+	CGROUP_UNKNOWN,
+	CGROUP_V1,
+	CGROUP_UNIFIED,
+	CGROUP_V2
+} cgroup_version_t;
+
 int get_endian(void);
 int get_dt_model(char *buf, int buflen);
 int get_cpu_model(char *buf, int buflen);
+cgroup_version_t pv_system_get_cgroup_version(void);
+const char *pv_system_cgroupv_string(cgroup_version_t cgroupv);
+
 void pv_system_kill_lenient(pid_t pid);
 void pv_system_kill_force(pid_t pid);
 

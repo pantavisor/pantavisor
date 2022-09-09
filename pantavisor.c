@@ -997,6 +997,11 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->synced = false;
 	pv->loading_objects = false;
 	pv->hard_poweroff = false;
+
+	// detect cgroup version
+	pv->cgroupv = pv_system_get_cgroup_version();
+	pv_log(DEBUG, "cgroup version detected '%s'",
+	       pv_system_cgroupv_string(pv->cgroupv));
 out:
 	return 0;
 }

@@ -230,6 +230,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			 pv_lxc_get_lxc_log_level());
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
+	// cgroup version lxc config
+	c->get_config_item(c, "lxc.cgroup.devices.allow", path, PATH_MAX);
+	if ((__pv_get_instance()->cgroupv == CGROUP_V2) && strlen(path)) {
+		c->set_config_item(c, "lxc.cgroup.devices.allow", NULL);
+		c->set_config_item(c, "lxc.cgroup2.devices.allow", path);
+	}
+	// role specific lxc config
 	if (p->roles & PLAT_ROLE_MGMT) {
 		__pv_paths_pv_file(path, PATH_MAX, "");
 		snprintf(entry, sizeof(entry),

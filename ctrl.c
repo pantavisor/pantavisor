@@ -646,12 +646,50 @@ error:
 	return -1;
 }
 
-static char *pv_ctrl_get_sender_pname(int req_fd)
+static char *pv_ctrl_get_sender_pname_cgroup(FILE *fd)
 {
 	char *pvcg, *pname = NULL;
+	char buf[128];
+
+	while (fgets(buf, 128, fd)) {
+		pvcg = strstr(buf, ":name=pantavisor:/lxc/");
+		if (pvcg) {
+			pvcg += strlen(":name=pantavisor:/lxc/");
+			pvcg[strlen(pvcg) - 1] = '\0';
+			pname = strdup(pvcg);
+			break;
+		}
+	}
+
+	return pname;
+}
+
+static char *pv_ctrl_get_sender_pname_cgroup2(FILE *fd)
+{
+	char *pvcg, *pname = NULL;
+	char buf[128];
+
+	// get container name
+	while (fgets(buf, 128, fd)) {
+		pvcg = strstr(buf, "::/lxc/");
+		if (pvcg) {
+			pvcg += strlen("::/lxc/");
+			pvcg[strlen(pvcg) - 1] = '\0';
+			pname = strdup(pvcg);
+			break;
+		}
+	}
+
+	return pname;
+}
+
+static char *pv_ctrl_get_sender_pname(int req_fd)
+{
+	struct pantavisor *pv = pv_get_instance();
+	char *pname = NULL;
 	struct ucred ucred;
 	socklen_t ucred_len = sizeof(ucred);
-	char path[PATH_MAX], buf[128];
+	char path[PATH_MAX];
 	FILE *fd;
 	int len;
 
@@ -673,15 +711,13 @@ static char *pv_ctrl_get_sender_pname(int req_fd)
 		goto out;
 	}
 
-	while (fgets(buf, 128, fd)) {
-		pvcg = strstr(buf, ":name=pantavisor:/lxc/");
-		if (pvcg) {
-			pvcg += strlen(":name=pantavisor:/lxc/");
-			pvcg[strlen(pvcg) - 1] = '\0';
-			pname = strdup(pvcg);
-			break;
-		}
-	}
+	if ((pv->cgroupv == CGROUP_V1) || (pv->cgroupv == CGROUP_UNIFIED))
+		pname = pv_ctrl_get_sender_pname_cgroup(fd);
+	else if (pv->cgroupv == CGROUP_V2)
+		pname = pv_ctrl_get_sender_pname_cgroup2(fd);
+	else
+		pv_log(WARN, "unknown cgroup version '%s'",
+		       pv_system_cgroupv_string(pv->cgroupv));
 
 	fclose(fd);
 
