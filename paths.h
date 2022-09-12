@@ -125,6 +125,11 @@ void pv_paths_lib_hooks_early_spawn(char *buf, size_t size, const char *name);
 void pv_paths_lib_lxc_rootfs_mount(char *buf, size_t size);
 void pv_paths_lib_lxc_lxcpath(char *buf, size_t size);
 
+#define DROPBEAR_BIN_FNAME "sbin/dropbear"
+#define FALLBEAR_CMD_FNAME "bin/fallbear-cmd"
+
+void pv_paths_usr_file(char *buf, size_t size, const char *path);
+
 void pv_paths_root_file(char *buf, size_t size, const char *path);
 void pv_paths_volumes_file(char *buf, size_t size, const char *name);
 void pv_paths_volumes_plat_file(char *buf, size_t size, const char *plat,
