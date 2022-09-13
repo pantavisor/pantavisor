@@ -111,7 +111,7 @@ static const char *pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 	return strings[code];
 }
 
-static int pv_ctrl_socket_open(char *path)
+static int pv_ctrl_socket_open()
 {
 	int fd;
 	struct sockaddr_un addr;
@@ -124,7 +124,8 @@ static int pv_ctrl_socket_open(char *path)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
-	strcpy(addr.sun_path, path);
+	pv_paths_pv_file(addr.sun_path, sizeof(addr.sun_path) - 1,
+			 PVCTRL_FNAME);
 
 	if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		pv_log(ERROR, "ctrl socket with fd %d open error: %s", fd,
@@ -138,7 +139,8 @@ static int pv_ctrl_socket_open(char *path)
 	if (listen(fd, 15)) {
 		pv_log(ERROR, "ctrl socket with fd %d listen error: %s", fd,
 		       strerror(errno));
-		return -1;
+		close(fd);
+		fd = -1;
 	}
 
 out:
@@ -1318,10 +1320,8 @@ void pv_ctrl_free_cmd(struct pv_cmd *cmd)
 static int pv_ctrl_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
-	char path[PATH_MAX];
 
-	pv_paths_pv_file(path, PATH_MAX, PVCTRL_FNAME);
-	pv->ctrl_fd = pv_ctrl_socket_open(path);
+	pv->ctrl_fd = pv_ctrl_socket_open();
 	if (pv->ctrl_fd < 0) {
 		pv_log(ERROR, "ctrl socket could not be initialized");
 		return -1;
