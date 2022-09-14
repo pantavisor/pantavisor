@@ -338,9 +338,8 @@ static void pv_state_set_default_groups(struct pv_state *s)
 	// if not, set first platform in group root
 	if (!root_configured && first_p) {
 		pv_log(WARN,
-		       "no platform was found in root group, "
+		       "no platform was found in 'root' group, "
 		       "so the first unconfigured one in alphabetical order will be set");
-		first_p->group = r;
 		pv_group_add_platform(r, first_p);
 	}
 
@@ -349,7 +348,6 @@ static void pv_state_set_default_groups(struct pv_state *s)
 	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
 	{
 		if (p->group == NULL) {
-			p->group = d;
 			pv_group_add_platform(d, p);
 		}
 	}
@@ -982,7 +980,7 @@ static void pv_state_transfer_groups(struct pv_state *pending,
 		g = pv_state_fetch_group(current, p->group->name);
 		pv_log(DEBUG, "relinking platform %s to group %s", p->name,
 		       g->name);
-		p->group = g;
+		pv_group_add_platform(g, p);
 	}
 }
 
