@@ -222,7 +222,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// for non-reboot updates...
 		pv_log(INFO, "transitioning...");
 
-		pv_logserver_stop();
+		pv_logserver_reload();
+
 		ph_logger_stop_lenient();
 		ph_logger_stop_force();
 
@@ -463,7 +464,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 
 	// start or stop ph logger depending on network and configuration
-	pv_logserver_toggle(pv, pv->state->rev);
 	ph_logger_toggle(pv->state->rev);
 
 	// update meta info
