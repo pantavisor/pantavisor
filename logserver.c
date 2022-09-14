@@ -455,7 +455,7 @@ again:
 	return nr_logs;
 }
 
-static int logserver_open_socket(const char *path)
+static int logserver_open_socket()
 {
 	int fd;
 	struct sockaddr_un addr;
@@ -466,14 +466,12 @@ static int logserver_open_socket(const char *path)
 		goto out;
 	}
 
-	unlink(path); // sometimes, the socket file still exists after reboot
-
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, path, sizeof(addr.sun_path));
+	pv_paths_pv_file(addr.sun_path, sizeof(addr.sun_path) - 1,
+			 LOGCTRL_FNAME);
 
-	if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr.sun_path)) ==
-	    -1) {
+	if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		pv_log(ERROR, "unable to bind control socket: %s",
 		       strerror(errno));
 		close(fd);
@@ -485,6 +483,8 @@ static int logserver_open_socket(const char *path)
 	if (listen(fd, LOGSERVER_BACKLOG) == -1) {
 		pv_log(ERROR, "unable to listen to control socket: %d\n",
 		       strerror(errno));
+		close(fd);
+		fd = -1;
 	}
 out:
 	return fd;
@@ -571,10 +571,8 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *rev)
 int pv_logserver_init()
 {
 	struct epoll_event ep_event;
-	char path[108]; // size of sockaddr_un sun_path
 
-	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-	logserver_g.sock_fd = logserver_open_socket(path);
+	logserver_g.sock_fd = logserver_open_socket();
 	logserver_g.epoll_fd = epoll_create1(0);
 
 	if (logserver_g.epoll_fd < 0 || logserver_g.sock_fd < 0) {
