@@ -964,14 +964,19 @@ static void pv_state_transfer_platforms(struct pv_state *pending,
 	}
 }
 
-static void pv_state_transfer_groups(struct pv_state *pending,
-				     struct pv_state *current)
+static void pv_state_transfer_groups(struct pv_state *current)
 {
-	struct pv_platform *p, *tmp;
-	struct pv_group *g;
+	struct pv_group *g, *g_tmp;
+	struct pv_platform *p, *p_tmp;
+
+	// empty current group revision list
+	dl_list_for_each_safe(g, g_tmp, &current->groups, struct pv_group, list)
+	{
+		pv_group_empty_platform_refs(g);
+	}
 
 	// relink platform groups to current groups
-	dl_list_for_each_safe(p, tmp, &current->platforms, struct pv_platform,
+	dl_list_for_each_safe(p, p_tmp, &current->platforms, struct pv_platform,
 			      list)
 	{
 		if (!p->group)
@@ -990,7 +995,7 @@ void pv_state_transition(struct pv_state *pending, struct pv_state *current)
 
 	pv_state_remove_updated_platforms(current);
 	pv_state_transfer_platforms(pending, current);
-	pv_state_transfer_groups(pending, current);
+	pv_state_transfer_groups(current);
 
 	// copy revision to current now that we have everything we need from pending
 	current->rev = realloc(current->rev, len);
