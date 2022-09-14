@@ -73,6 +73,20 @@ const char *pv_bootloader_get_done()
 	return pv_bootloader.pv_done;
 }
 
+int pv_bootloader_reload_pv_try()
+{
+	char *new1;
+	new1 = ops->get_env_key("pv_try");
+	if (pv_bootloader.pv_try && new1) {
+		char *old;
+		old = pv_bootloader.pv_try;
+		pv_bootloader.pv_try = new1;
+		free(old);
+		return 0;
+	}
+	return -1;
+}
+
 static int pv_bootloader_set_rev(char *rev)
 {
 	int len = strlen(rev) + 1;

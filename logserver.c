@@ -113,6 +113,12 @@ static struct logserver logserver_g = { .service_pid = -1,
 					.revision = NULL };
 
 static int
+logserver_log_msg_data_null(const struct logserver_msg_data *msg_data)
+{
+	return 0;
+}
+
+static int
 logserver_log_msg_data_file_tree(const struct logserver_msg_data *msg_data)
 {
 	char pathname[PATH_MAX];
@@ -295,6 +301,27 @@ static void sigchld_handler(int signum)
 	 */
 	while (waitpid(-1, NULL, WNOHANG) > 0)
 		;
+}
+
+static void sigusr1_handler(int signum)
+{
+	pv_log(DEBUG, "signal handler to reload revision before %s",
+	       logserver_g.revision ? logserver_g.revision : "NULL");
+
+	if (pv_bootloader_reload_pv_try()) {
+		pv_log(ERROR,
+		       "failed to reread revision after no reboot transition; continuing to log to previous revision");
+		return;
+	}
+
+	char *sav = logserver_g.revision;
+	if (pv_bootloader_get_try())
+		logserver_g.revision = strdup(pv_bootloader_get_try());
+	if (sav)
+		free(sav);
+
+	pv_log(DEBUG, "signal handler to reload revision after %s",
+	       logserver_g.revision);
 }
 
 static int logserver_msg_parse_data(struct logserver_msg *msg,
@@ -482,6 +509,9 @@ static pid_t logserver_start_service(struct logserver *logserver,
 		sa.sa_handler = sigchld_handler;
 		sigaction(SIGCHLD, &sa, NULL);
 
+		sa.sa_handler = sigusr1_handler;
+		sigaction(SIGUSR1, &sa, NULL);
+
 		pv_log(DEBUG, "starting logserver loop");
 
 		while (!(logserver->flags & LOGSERVER_FLAG_STOP)) {
@@ -523,15 +553,18 @@ static void logserver_stop()
 	logserver_g.service_pid = -1;
 }
 
+// XXX: this is bad code now. we dont run stop anymore; in theory
+// logservers hould reload config and find that a null sink was
+// put in place.
 void pv_logserver_toggle(struct pantavisor *pv, const char *rev)
 {
 	if (!pv)
 		return;
 
+	// only start if we have log_capture configured
 	if (pv_config_get_log_capture()) {
 		logserver_start(&logserver_g, rev);
-	} else
-		logserver_stop();
+	}
 }
 
 int pv_logserver_init()
@@ -671,6 +704,12 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 
 	va_end(args);
 	return ret;
+}
+
+void pv_logserver_reload(void)
+{
+	if (logserver_g.service_pid >= 0)
+		kill(logserver_g.service_pid, SIGUSR1);
 }
 
 void pv_logserver_stop(void)
