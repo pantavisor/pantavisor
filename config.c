@@ -139,6 +139,8 @@ static int config_parse_log_server_outputs(char *value)
 			server_outputs |= LOG_SERVER_OUTPUT_SINGLE_FILE;
 		else if (!strcmp(token, "filetree"))
 			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
+		else if (!strcmp(token, "nullsink"))
+			server_outputs |= LOG_SERVER_OUTPUT_NULL_SINK;
 	}
 
 	return server_outputs;
