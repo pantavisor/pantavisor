@@ -34,6 +34,7 @@ struct pv_group {
 };
 
 struct pv_group *pv_group_new(char *name);
+void pv_group_empty_platform_refs(struct pv_group *g);
 void pv_group_free(struct pv_group *g);
 
 void pv_group_add_platform(struct pv_group *g, struct pv_platform *p);

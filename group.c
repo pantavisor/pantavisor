@@ -44,7 +44,7 @@ struct pv_group *pv_group_new(char *name)
 	return g;
 }
 
-static void pv_group_empty_platform_refs(struct pv_group *g)
+void pv_group_empty_platform_refs(struct pv_group *g)
 {
 	int num_platforms = 0;
 	struct pv_platform_ref *pr, *tmp;
@@ -115,6 +115,8 @@ static void pv_group_rm_platform(struct pv_group *g, struct pv_platform *p)
 		return;
 
 	pr = pv_group_fetch_platform_ref(g, p);
+	if (!pr)
+		return;
 
 	pv_log(DEBUG, "removing platform '%s' reference from group '%s'",
 	       p->name, g->name);
