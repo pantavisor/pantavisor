@@ -25,6 +25,7 @@
 #include "group.h"
 
 #include "utils/json.h"
+#include "utils/str.h"
 
 #define MODULE_NAME "group"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -90,12 +91,48 @@ bool pv_group_check_goals(struct pv_group *g, bool log_warn)
 	return true;
 }
 
+static struct pv_platform_ref *
+pv_group_fetch_platform_ref(struct pv_group *g, struct pv_platform *p)
+{
+	struct pv_platform_ref *pr, *tmp;
+
+	dl_list_for_each_safe(pr, tmp, &g->platform_refs,
+			      struct pv_platform_ref, list)
+	{
+		if (pv_str_matches(p->name, strlen(p->name), pr->ref->name,
+				   strlen(pr->ref->name)))
+			return pr;
+	}
+
+	return NULL;
+}
+
+static void pv_group_rm_platform(struct pv_group *g, struct pv_platform *p)
+{
+	struct pv_platform_ref *pr;
+
+	if (!p->group)
+		return;
+
+	pr = pv_group_fetch_platform_ref(g, p);
+
+	pv_log(DEBUG, "removing platform '%s' reference from group '%s'",
+	       p->name, g->name);
+
+	dl_list_del(&pr->list);
+	pv_platform_ref_free(pr);
+}
+
 void pv_group_add_platform(struct pv_group *g, struct pv_platform *p)
 {
 	struct pv_platform_ref *pr;
 
+	pv_group_rm_platform(g, p);
+
 	pv_log(DEBUG, "adding platform '%s' reference to group '%s'", p->name,
 	       g->name);
+
+	p->group = g;
 
 	pr = pv_platform_ref_new(p);
 	if (pr) {

@@ -837,10 +837,9 @@ static int do_action_for_runlevel(struct json_key_action *jka, char *value)
 
 		g = pv_state_fetch_group(bundle->s, value);
 		if (!g) {
-			pv_log(ERROR, "could not find group %s", value);
+			pv_log(ERROR, "could not find group '%s'", value);
 			return -1;
 		}
-		(*bundle->platform)->group = g;
 		pv_group_add_platform(g, (*bundle->platform));
 	} else {
 		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'",
@@ -863,10 +862,9 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 
 	g = pv_state_fetch_group(bundle->s, value);
 	if (!g) {
-		pv_log(ERROR, "could not find group %s", value);
+		pv_log(ERROR, "could not find group '%s'", value);
 		return -1;
 	}
-	(*bundle->platform)->group = g;
 	pv_group_add_platform(g, (*bundle->platform));
 
 	return 0;
@@ -1340,6 +1338,7 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 		if (!strncmp("bsp/run.json", buf + (*k)->start, n) ||
 		    !strncmp("bsp/drivers.json", buf + (*k)->start, n) ||
 		    !strncmp("disks.json", buf + (*k)->start, n) ||
+		    !strncmp("groups.json", buf + (*k)->start, n) ||
 		    !strncmp("#spec", buf + (*k)->start, n)) {
 			k++;
 			continue;
