@@ -1164,6 +1164,8 @@ static void system1_link_object_json_platforms(struct pv_state *s)
 	struct dl_list *new_objects = &s->objects;
 	char *name, *dir;
 
+	pv_log(DEBUG, "linking objects to platforms...");
+
 	// link objects
 	if (!new_objects)
 		goto link_jsons;
@@ -1171,22 +1173,37 @@ static void system1_link_object_json_platforms(struct pv_state *s)
 	{
 		name = strdup(o->name);
 		dir = strtok(name, "/");
-		if (!strcmp(dir, "_config"))
+		if (!strcmp(dir, "_config")) {
 			dir = strtok(NULL, "/");
+			pv_log(DEBUG, "_config object found in subdir '%s'",
+			       dir);
+		}
 		o->plat = pv_state_fetch_platform(s, dir);
+		if (o->plat)
+			pv_log(DEBUG, "object linked to platform '%s'",
+			       o->plat->name) else pv_log(DEBUG,
+							  "object linked to bsp");
 		free(name);
 	}
 
 link_jsons:
+	pv_log(DEBUG, "linking JSONs to platforms...");
+
 	if (!new_jsons)
 		return;
 	dl_list_for_each_safe(j, tmp_j, new_jsons, struct pv_json, list)
 	{
 		name = strdup(j->name);
 		dir = strtok(name, "/");
-		if (!strcmp(dir, "_config"))
+		if (!strcmp(dir, "_config")) {
 			dir = strtok(NULL, "/");
+			pv_log(DEBUG, "_config JSON found in subdir '%s'", dir);
+		}
 		j->plat = pv_state_fetch_platform(s, dir);
+		if (j->plat)
+			pv_log(DEBUG, "object linked to platform '%s'",
+			       j->plat->name) else pv_log(DEBUG,
+							  "object linked to bsp");
 		free(name);
 	}
 }
