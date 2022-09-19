@@ -29,11 +29,14 @@
 
 struct pv_group {
 	char *name;
+	plat_status_t default_status_goal;
+	restart_policy_t default_restart_policy;
 	struct dl_list platform_refs; // pv_platform_ref
 	struct dl_list list; // pv_group
 };
 
-struct pv_group *pv_group_new(char *name);
+struct pv_group *pv_group_new(char *name, plat_status_t status,
+			      restart_policy_t restart);
 void pv_group_empty_platform_refs(struct pv_group *g);
 void pv_group_free(struct pv_group *g);
 

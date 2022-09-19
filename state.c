@@ -49,40 +49,6 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-static void pv_state_init_groups(struct pv_state *s)
-{
-	struct pv_group *d = NULL, *r = NULL, *p = NULL, *a = NULL;
-
-	dl_list_init(&s->groups);
-
-	d = pv_group_new("data");
-	r = pv_group_new("root");
-	p = pv_group_new("platform");
-	a = pv_group_new("app");
-
-	if (!d || !r || !p || !a) {
-		pv_log(ERROR, "could not create default groups");
-		goto err;
-	}
-
-	pv_state_add_group(s, d);
-	pv_state_add_group(s, r);
-	pv_state_add_group(s, p);
-	pv_state_add_group(s, a);
-
-	return;
-
-err:
-	if (d)
-		pv_group_free(d);
-	if (r)
-		pv_group_free(r);
-	if (p)
-		pv_group_free(p);
-	if (a)
-		pv_group_free(a);
-}
-
 struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 {
 	int len = strlen(rev) + 1;
@@ -99,8 +65,9 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->addons);
 		dl_list_init(&s->objects);
 		dl_list_init(&s->jsons);
-		pv_state_init_groups(s);
+		dl_list_init(&s->groups);
 		dl_list_init(&s->bsp.drivers);
+		s->default_groups = false;
 		s->local = false;
 	}
 
@@ -166,7 +133,10 @@ void pv_state_free(struct pv_state *s)
 
 void pv_state_add_group(struct pv_state *s, struct pv_group *g)
 {
-	pv_log(DEBUG, "adding group %s to state", g->name);
+	pv_log(DEBUG,
+	       "adding group '%s' with status goal '%s' and restart policy '%s' to state",
+	       g->name, pv_platform_status_string(g->default_status_goal),
+	       pv_platforms_restart_policy_str(g->default_restart_policy));
 
 	dl_list_init(&g->list);
 	dl_list_add_tail(&s->groups, &g->list);
@@ -308,7 +278,25 @@ void pv_state_print(struct pv_state *s)
 	}
 }
 
-static void pv_state_set_default_groups(struct pv_state *s)
+static int pv_state_check_platform_group(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+	struct dl_list *platforms = &s->platforms;
+
+	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
+	{
+		if (!p->group) {
+			pv_log(ERROR,
+			       "platform '%s' does not belong to any group",
+			       p->name);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int pv_state_set_default_groups(struct pv_state *s)
 {
 	bool root_configured = false;
 	struct pv_platform *p, *tmp, *first_p = NULL;
@@ -316,13 +304,19 @@ static void pv_state_set_default_groups(struct pv_state *s)
 	struct pv_group *r, *d;
 
 	if (dl_list_empty(platforms))
-		return;
+		return 0;
+
+	if (!s->default_groups) {
+		pv_log(INFO,
+		       "not using default groups. Checking if all platforms are linked to a group...");
+		return pv_state_check_platform_group(s);
+	}
 
 	r = pv_state_fetch_group(s, "root");
 	d = pv_state_fetch_group(s, "platform");
 	if (!r || !d) {
 		pv_log(ERROR, "could not find group root or platform");
-		return;
+		return -1;
 	}
 
 	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
@@ -351,9 +345,11 @@ static void pv_state_set_default_groups(struct pv_state *s)
 			pv_group_add_platform(d, p);
 		}
 	}
+
+	return 0;
 }
 
-static void pv_state_set_default_status_goal(struct pv_state *s)
+static void pv_state_set_default_status_goals(struct pv_state *s)
 {
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &s->platforms;
@@ -362,33 +358,14 @@ static void pv_state_set_default_status_goal(struct pv_state *s)
 		if (p->status.goal != PLAT_NONE)
 			continue;
 
-		if (p->group &&
-		    pv_str_matches(p->group->name, strlen(p->group->name),
-				   "data", strlen("data")))
-			pv_platform_set_status_goal(p, PLAT_MOUNTED);
-		else
-			pv_platform_set_status_goal(p, PLAT_STARTED);
+		pv_log(INFO,
+		       "platform '%s' in group '%s' has no explicit status goal. "
+		       "It will be set by default to the group's '%s'",
+		       p->name, p->group->name,
+		       pv_platform_status_string(
+			       p->group->default_status_goal));
+		pv_platform_set_status_goal(p, p->group->default_status_goal);
 	}
-}
-
-static bool pv_state_group_default_reboot(struct pv_group *g)
-{
-	int len;
-	char *name;
-
-	if (!g || !g->name)
-		return true;
-
-	name = g->name;
-	len = strlen(name);
-
-	if (pv_str_matches(name, len, "data", strlen("data")) ||
-	    pv_str_matches(name, len, "root", strlen("root")) ||
-	    pv_str_matches(name, len, "platform", strlen("platform"))) {
-		return true;
-	}
-
-	return false;
 }
 
 static void pv_state_set_default_restart_policies(struct pv_state *s)
@@ -400,34 +377,32 @@ static void pv_state_set_default_restart_policies(struct pv_state *s)
 		if (p->restart_policy != RESTART_NONE)
 			continue;
 
-		if (p->group && pv_state_group_default_reboot(p->group)) {
-			pv_log(WARN,
-			       "platform '%s' in group '%s' has no explicit restart_policy. "
-			       "It will be set by default to 'system'",
-			       p->name, p->group->name);
-			pv_platform_set_restart_policy(p, RESTART_SYSTEM);
-		} else {
-			pv_log(WARN,
-			       "platform '%s' in group '%s' has no explicit restart_policy. "
-			       "It will be set by default to 'container'",
-			       p->name, p->group->name);
-			pv_platform_set_restart_policy(p, RESTART_CONTAINER);
-		}
+		pv_log(INFO,
+		       "platform '%s' in group '%s' has no explicit restart_policy. "
+		       "It will be set by default to the group's '%s'",
+		       p->name, p->group->name,
+		       pv_platforms_restart_policy_str(
+			       p->group->default_restart_policy));
+		pv_platform_set_restart_policy(
+			p, p->group->default_restart_policy);
 	}
 }
 
-void pv_state_validate(struct pv_state *s)
+int pv_state_validate(struct pv_state *s)
 {
 	// remove platforms that have no loaded data
 	pv_platforms_remove_not_installed(s);
 	// add loggers for all platforms
 	pv_platforms_add_all_loggers(s);
 	// set groups for all undefined platforms
-	pv_state_set_default_groups(s);
+	if (pv_state_set_default_groups(s))
+		return -1;
 	// set default status goal
-	pv_state_set_default_status_goal(s);
+	pv_state_set_default_status_goals(s);
 	// set default restart policies
 	pv_state_set_default_restart_policies(s);
+
+	return 0;
 }
 
 static int pv_state_mount_bsp_volumes(struct pv_state *s)

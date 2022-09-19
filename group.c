@@ -31,13 +31,16 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-struct pv_group *pv_group_new(char *name)
+struct pv_group *pv_group_new(char *name, plat_status_t status,
+			      restart_policy_t restart)
 {
 	struct pv_group *g;
 
 	g = calloc(1, sizeof(struct pv_group));
 	if (g) {
 		g->name = strdup(name);
+		g->default_status_goal = status;
+		g->default_restart_policy = restart;
 		dl_list_init(&g->platform_refs);
 	}
 
@@ -151,6 +154,12 @@ void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g)
 	{
 		pv_json_ser_key(js, "name");
 		pv_json_ser_string(js, g->name);
+		pv_json_ser_key(js, "status_goal");
+		pv_json_ser_string(
+			js, pv_platform_status_string(g->default_status_goal));
+		pv_json_ser_key(js, "restart_policy");
+		pv_json_ser_string(js, pv_platforms_restart_policy_str(
+					       g->default_restart_policy));
 		pv_json_ser_key(js, "status");
 		pv_json_ser_array(js);
 		{
