@@ -824,34 +824,6 @@ static int do_action_for_type(struct json_key_action *jka, char *value)
 	return 0;
 }
 
-static int do_action_for_runlevel(struct json_key_action *jka, char *value)
-{
-	struct pv_group *g;
-	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
-
-	if (!(*bundle->platform) || !value)
-		return -1;
-
-	// runlevel is still valid in the state json to keep backwards compatibility, but internally it is substituted by groups
-	if (!strcmp(value, "data") || !strcmp(value, "root") ||
-	    !strcmp(value, "app") || !strcmp(value, "platform")) {
-		pv_log(DEBUG, "linking platform '%s' with group '%s'",
-		       (*bundle->platform)->name, value);
-
-		g = pv_state_fetch_group(bundle->s, value);
-		if (!g) {
-			pv_log(ERROR, "could not find group '%s'", value);
-			return -1;
-		}
-		pv_group_add_platform(g, (*bundle->platform));
-	} else {
-		pv_log(WARN, "invalid runlevel value '%s' for platform '%s'",
-		       value, (*bundle->platform)->name);
-	}
-
-	return 0;
-}
-
 static int do_action_for_group(struct json_key_action *jka, char *value)
 {
 	struct pv_group *g;
@@ -868,9 +840,21 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 		pv_log(ERROR, "could not find group '%s'", value);
 		return -1;
 	}
+
+	if (g != (*bundle->platform)->group) {
+		pv_log(ERROR, "conflicting runlevel and group values");
+		return -1;
+	}
+
 	pv_group_add_platform(g, (*bundle->platform));
 
 	return 0;
+}
+
+static int do_action_for_runlevel(struct json_key_action *jka, char *value)
+{
+	// runlevel is still valid in the state json to keep backwards compatibility, but internally it is substituted by groups
+	return do_action_for_group(jka, value);
 }
 
 static restart_policy_t parse_restart_policy(char *value, size_t len)
