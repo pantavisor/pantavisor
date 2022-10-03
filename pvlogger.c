@@ -30,9 +30,9 @@
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <inttypes.h>
 
 #include "pvlogger.h"
-#include "ph_logger.h"
 #include "platforms.h"
 #include "pvctl_utils.h"
 #include "json.h"

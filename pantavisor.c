@@ -57,7 +57,6 @@
 #include "metadata.h"
 #include "signature.h"
 #include "paths.h"
-#include "ph_logger.h"
 #include "logserver.h"
 #include "mount.h"
 #include "parser/parser.h"
@@ -224,9 +223,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 		pv_logserver_reload();
 
-		ph_logger_stop_lenient();
-		ph_logger_stop_force();
-
 		pv_state_transition(pv->update->pending, pv->state);
 	} else {
 		// after a reboot...
@@ -283,7 +279,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// only start local ph logger, start cloud services if connected
 	pv_logserver_toggle(pv, pv->state->rev);
-	ph_logger_toggle(pv->state->rev);
 
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_metadata_init_devmeta(pv);
@@ -462,10 +457,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		// if there is no connection and no rollback yet, we avoid the rest of network operations
 		return PV_STATE_WAIT;
 	}
-
-	// start or stop ph logger depending on network and configuration
-	ph_logger_toggle(pv->state->rev);
-
 	// update meta info
 	if (!pv_metadata_factory_meta_done(pv)) {
 		return PV_STATE_FACTORY_UPLOAD;
@@ -828,11 +819,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// stop childs leniently
 	pv_state_stop_lenient(pv->state);
-	ph_logger_stop_lenient();
 
 	// force stop childs
 	pv_state_stop_force(pv->state);
-	ph_logger_stop_force();
 
 	// at this point, we can shutdown if not in appengine
 	if (pv_config_get_system_init_mode() != IM_APPENGINE)
