@@ -98,11 +98,6 @@ struct logserver_fd {
 	struct dl_list list;
 };
 
-struct logserver_output {
-	bool sfile;
-	bool ftree;
-};
-
 struct logserver_log {
 	int maxsize;
 	int maxfile;
@@ -114,9 +109,9 @@ struct logserver {
 	int epfd;
 	int logsock;
 	int fdsock;
+	int output;
 	char *revision;
 	struct logserver_log log;
-	struct logserver_output out;
 	// logserver_fd
 	struct dl_list fdlst;
 	// tmp store for fd returned by connect
@@ -141,9 +136,8 @@ static struct logserver logserver_g = { .pid = -1,
 					.epfd = -1,
 					.logsock = -1,
 					.fdsock = -1,
+					.output = 1,
 					.log = { .maxsize = -1, .maxfile = 3 },
-					.out = { .sfile = false,
-						 .ftree = true },
 					.revision = NULL };
 
 static int
@@ -320,10 +314,10 @@ out:
 
 static int logserver_log_msg_data(const struct logserver_msg_data *msg_data)
 {
-	if (logserver_g.out.ftree)
+	if (logserver_g.output & LOG_SERVER_OUTPUT_FILE_TREE)
 		logserver_log_msg_data_file_tree(msg_data);
 
-	if (logserver_g.out.sfile)
+	if (logserver_g.output & LOG_SERVER_OUTPUT_SINGLE_FILE)
 		logserver_log_msg_data_single_file(msg_data);
 
 	return 0;
@@ -907,15 +901,10 @@ int pv_logserver_init()
 {
 	logserver_g.log.maxsize = pv_config_get_log_logmax();
 
-	if (pv_config_get_log_capture()) {
-		logserver_g.out.sfile =
-			pv_config_get_log_server_output_single_file();
-		logserver_g.out.ftree =
-			pv_config_get_log_server_output_file_tree();
-	} else {
-		logserver_g.out.sfile = false;
-		logserver_g.out.ftree = false;
-	}
+	if (pv_config_get_log_capture())
+		logserver_g.output = pv_config_get_log_server_outputs();
+	else
+		logserver_g.output = LOG_SERVER_OUTPUT_NULL_SINK;
 
 	errno = 0;
 	logserver_g.epfd = epoll_create1(0);
