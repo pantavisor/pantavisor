@@ -132,6 +132,7 @@ typedef enum {
 	LOG_SERVER_OUTPUT_NULL_SINK = 1 << 0,
 	LOG_SERVER_OUTPUT_SINGLE_FILE = 1 << 1,
 	LOG_SERVER_OUTPUT_FILE_TREE = 1 << 2,
+	LOG_SERVER_OUTPUT_PANTAHUB = 1 << 3,
 	LOG_SERVER_OUTPUT_SIZE
 } log_server_output_mask_t;
 
@@ -300,6 +301,7 @@ int pv_config_get_libthttp_loglevel(void);
 int pv_config_get_log_server_outputs(void);
 bool pv_config_get_log_server_output_file_tree(void);
 bool pv_config_get_log_server_output_single_file(void);
+bool pv_config_get_log_server_output_pantahub(void);
 
 int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);

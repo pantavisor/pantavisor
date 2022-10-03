@@ -141,6 +141,8 @@ static int config_parse_log_server_outputs(char *value)
 			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
 		else if (!strcmp(token, "nullsink"))
 			server_outputs |= LOG_SERVER_OUTPUT_NULL_SINK;
+		else if (!strcmp(token, "pantahub"))
+			server_outputs |= LOG_SERVER_OUTPUT_PANTAHUB;
 	}
 
 	return server_outputs;
@@ -328,7 +330,8 @@ static int pv_config_load_config_from_file(char *path,
 						     "/storage/logs/");
 	config->log.server.outputs = config_get_value_log_server_outputs(
 		&config_list, "log.server.outputs",
-		LOG_SERVER_OUTPUT_FILE_TREE);
+		LOG_SERVER_OUTPUT_FILE_TREE | LOG_SERVER_OUTPUT_PANTAHUB);
+
 	config->log.logmax = config_get_value_int(&config_list, "log.maxsize",
 						  (1 << 21)); // 2 MiB
 	config->log.loglevel =
@@ -1044,6 +1047,12 @@ bool pv_config_get_log_server_output_single_file()
 {
 	return pv_get_instance()->config.log.server.outputs &
 	       LOG_SERVER_OUTPUT_SINGLE_FILE;
+}
+
+bool pv_config_get_log_server_output_pantahub()
+{
+	return pv_get_instance()->config.log.server.outputs &
+	       LOG_SERVER_OUTPUT_PANTAHUB;
 }
 
 int pv_config_get_libthttp_loglevel()
