@@ -83,7 +83,7 @@
 #define LOGSERVER_JSON_FORMAT                                                  \
 	",\n{\"tsec\":%" PRId64 ", \"tnano\":%" PRId32 ", "                    \
 	"\"plat\":\"%s\", \"lvl\":\"%s\", \"src\":\"%s\", "                    \
-	"\"msg\": \"%.*s\"}"
+	"\"msg\": \"%.*s\", \"rev\": \"%s\"}"
 
 struct logserver_msg {
 	int version;
