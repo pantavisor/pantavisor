@@ -198,6 +198,32 @@ static int logserver_openlog(const char *path)
 	return fd;
 }
 
+static char *logserver_json_fmt(const struct logserver_msg_data *msg)
+{
+	char *plat = pv_json_format(msg->platform, strlen(msg->platform));
+	char *src = pv_json_format(msg->source, strlen(msg->source));
+	char *data = pv_json_format(msg->data, msg->data_len);
+
+	size_t size =
+		snprintf(NULL, 0, LOGSERVER_JSON_FORMAT, msg->tsec, msg->tnano,
+			 plat, pv_log_level_name(msg->level), src,
+			 (int)strlen(data), data, logserver_g.revision);
+
+	char *json = calloc(size + 1, sizeof(char));
+	if (!json)
+		return NULL;
+
+	snprintf(json, size + 1, LOGSERVER_JSON_FORMAT, msg->tsec, msg->tnano,
+		 plat, pv_log_level_name(msg->level), src, (int)strlen(data),
+		 data, logserver_g.revision);
+
+	free(plat);
+	free(src);
+	free(data);
+
+	return json;
+}
+
 static int
 logserver_log_msg_data_file_tree(const struct logserver_msg_data *msg_data)
 {
@@ -249,67 +275,31 @@ error:
 static int
 logserver_log_msg_data_single_file(const struct logserver_msg_data *msg_data)
 {
+	char *json = logserver_json_fmt(msg_data);
+	if (!json)
+		return -1;
+
 	char pathname[PATH_MAX];
-	int ret = -1;
-	size_t json_len;
-	int log_fd;
-	char *json = NULL;
-	struct logserver_msg_data msg_data_json_escaped = {
-		.version = msg_data->version,
-		.level = msg_data->level,
-		.tsec = msg_data->tsec,
-		.platform = pv_json_format(msg_data->platform,
-					   strlen(msg_data->platform)),
-		.source = pv_json_format(msg_data->source,
-					 strlen(msg_data->source)),
-		.data = pv_json_format(msg_data->data, msg_data->data_len)
-	};
-
-	json_len = snprintf(NULL, 0, LOGSERVER_JSON_FORMAT,
-			    msg_data_json_escaped.tsec,
-			    msg_data_json_escaped.tnano,
-			    msg_data_json_escaped.platform,
-			    pv_log_level_name(msg_data_json_escaped.level),
-			    msg_data_json_escaped.source,
-			    (int)strlen(msg_data_json_escaped.data),
-			    msg_data_json_escaped.data) +
-		   1; // 0 byte
-
-	json = calloc(1, json_len); // 0 byte
-
-	snprintf(json, json_len, LOGSERVER_JSON_FORMAT,
-		 msg_data_json_escaped.tsec, msg_data_json_escaped.tnano,
-		 msg_data_json_escaped.platform,
-		 pv_log_level_name(msg_data_json_escaped.level),
-		 msg_data_json_escaped.source,
-		 (int)strlen(msg_data_json_escaped.data),
-		 msg_data_json_escaped.data);
-
-	free(msg_data_json_escaped.platform);
-	free(msg_data_json_escaped.source);
-	free(msg_data_json_escaped.data);
-
 	pv_paths_pv_log(pathname, sizeof(pathname), logserver_g.revision);
-	if (pv_fs_mkdir_p(pathname, 0755))
-		goto out;
+	if (pv_fs_mkdir_p(pathname, 0755)) {
+		free(json);
+		return -1;
+	}
+
 	pv_paths_pv_log_plat(pathname, sizeof(pathname), logserver_g.revision,
 			     "pv.log");
 
-	log_fd = logserver_openlog(pathname);
+	int log_fd = logserver_openlog(pathname);
 	if (log_fd >= 0) {
 		dprintf(log_fd, "%s", json);
 		close(log_fd);
-		ret = 0;
 	} else {
 		WARN_ONCE("Error opening file %s/%s/pv.log, "
 			  "errno = %d\n",
 			  logdri, logserver_g.revision, errno);
 	}
-
-out:
-	if (json)
-		free(json);
-	return ret;
+	free(json);
+	return 0;
 }
 
 static int logserver_log_msg_data(const struct logserver_msg_data *msg_data)
