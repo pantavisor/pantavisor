@@ -69,6 +69,12 @@ struct pv_status {
 	plat_status_t goal;
 };
 
+struct pv_platform_log {
+	int console_tty;
+	int console_pt;
+	int lxc_pipe[2];
+};
+
 struct pv_platform {
 	char *name;
 	char *type;
@@ -77,6 +83,7 @@ struct pv_platform {
 	unsigned long ns_share;
 	void *data;
 	pid_t init_pid;
+	struct pv_platform_log log;
 	struct pv_status status;
 	struct pv_group *group;
 	struct pv_state *state;

@@ -28,6 +28,7 @@
 #define PHHOST_FNAME "pantahub-host"
 #define PVCTRL_FNAME "pv-ctrl"
 #define LOGCTRL_FNAME "pv-ctrl-log"
+#define LOGFD_FNAME "pv-fd-log"
 
 void pv_paths_pv_file(char *buf, size_t size, const char *name);
 
@@ -49,8 +50,6 @@ void pv_paths_pv_devmeta_plat_key(char *buf, size_t size, const char *plat,
 #define LXC_LOG_SUBDIR "lxc"
 #define LOGS_PV_DNAME "pantavisor"
 #define LOGS_PV_FNAME "pantavisor.log"
-#define LXC_LOG_FNAME LXC_LOG_SUBDIR "/lxc.log"
-#define LXC_CONSOLE_LOG_FNAME LXC_LOG_SUBDIR "/console.log"
 
 void pv_paths_pv_log(char *buf, size_t size, const char *rev);
 void pv_paths_pv_log_plat(char *buf, size_t size, const char *rev,

@@ -47,9 +47,10 @@
 
 static struct lxc_log pv_lxc_log = { .level = "DEBUG",
 				     .prefix = "init",
+				     .name = NULL,
+				     .lxcpath = NULL,
+				     .file = NULL,
 				     .quiet = false };
-
-struct pv_log_info *(*__pv_new_log)(bool, const void *, const char *) = NULL;
 
 struct pantavisor *(*__pv_get_instance)(void) = NULL;
 
@@ -71,11 +72,6 @@ void (*__pv_paths_volumes_plat_file)(char *, size_t, const char *,
 void (*__pv_paths_configs_file)(char *, size_t, const char *) = NULL;
 void (*__pv_paths_lib_lxc_rootfs_mount)(char *, size_t) = NULL;
 void (*__pv_paths_lib_lxc_lxcpath)(char *, size_t) = NULL;
-
-void pv_set_new_log_fn(void *fn_pv_new_log)
-{
-	__pv_new_log = fn_pv_new_log;
-}
 
 void pv_set_pv_instance_fn(void *fn_pv_get_instance)
 {
@@ -345,28 +341,6 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	c->set_container_type(c, entry);
 
 	/*
-	 * Set console filename if not provided.
-	 */
-	if (pv_lxc_capture_logs_activated()) {
-		memset(entry, 0, sizeof(entry));
-		c->get_config_item(c, "lxc.console.logfile", entry,
-				   sizeof(entry));
-		if (!strlen(entry)) {
-			__pv_paths_pv_log_file(path, PATH_MAX,
-					       __pv_get_instance()->state->rev,
-					       c->name, LXC_CONSOLE_LOG_FNAME);
-			c->set_config_item(c, "lxc.console.logfile", path);
-		}
-	}
-	/*
-	 * Put a hard limit of 2MiB on console file size if one is not defined.
-	 */
-	if (c->get_config_item(c, "lxc.console.size", NULL, 0)) {
-		snprintf(entry, sizeof(entry), "2MB");
-		c->set_config_item(c, "lxc.console.size", entry);
-	}
-
-	/*
 	 * Enable mount hooks
 	 */
 	DIR *d;
@@ -468,99 +442,14 @@ static void pv_setup_default_log(struct pv_platform *p, struct lxc_container *c,
 	}
 }
 
-/*
- * Use only after loading config.
- * Use threshold as 0 to always truncate.
- */
-static void pv_truncate_lxc_log(struct lxc_container *c,
-				const char *platform_name, off_t threshold,
-				const char *key)
-{
-	char logfile_name[PATH_MAX];
-
-	c->get_config_item(c, key, logfile_name, PATH_MAX);
-	if (!strlen(logfile_name)) {
-		/*
-		 * /storage/logs is hardcoded in pv_lxc_log->lxcpath
-		 * and used when lxc.log.file isn't set in lxc.conf of
-		 * the container.
-		 */
-		__pv_paths_pv_log_file(logfile_name, PATH_MAX,
-				       __pv_get_instance()->state->rev,
-				       platform_name, LXC_LOG_FNAME);
-	}
-	if (!threshold)
-		truncate(logfile_name, 0);
-	else {
-		struct stat st;
-		if (!stat(logfile_name, &st)) {
-			if (st.st_size >= threshold)
-				truncate(logfile_name, 0);
-		}
-	}
-}
-
-static struct pv_log_info *
-pv_create_lxc_log(struct pv_platform *p, struct lxc_container *c,
-		  struct pv_logger_config *item_config)
-{
-	struct pv_log_info *pv_log_i = NULL;
-	const char *log_key = NULL;
-	char logger_name[128] = { 0 };
-	const char *lxc_log_key[][2] = { { "lxc", "lxc.log.file" },
-					 { "console", "lxc.console.logfile" },
-					 { NULL, NULL } };
-	int i = 0, j = 0;
-	while (lxc_log_key[j][0]) {
-		bool found = false;
-		const char *key = lxc_log_key[j][0];
-		i = 0;
-		while (item_config->pair[i][0]) {
-			if (!strncmp(item_config->pair[i][0], key,
-				     strlen(key))) {
-				log_key = lxc_log_key[j][1];
-				found = true;
-				break;
-			}
-			i++;
-		}
-		if (found)
-			break;
-		j++;
-	}
-
-	if (!log_key) {
-		printf("Configuration not for lxc/console log"
-		       " Skipping for %s.\n",
-		       __func__);
-		goto out;
-	}
-	snprintf(logger_name, sizeof(logger_name), "%s-%s", p->name,
-		 (strstr(log_key, "lxc.console") ? "console" : "lxc"));
-
-	pv_log_i = __pv_new_log(true, item_config, logger_name);
-
-	if (pv_log_i) {
-		int ret = pv_setup_lxc_log(pv_log_i, p->name, c, log_key);
-		if (ret) {
-			pv_free_lxc_log(pv_log_i);
-			free(pv_log_i);
-			pv_log_i = NULL;
-		}
-	}
-out:
-	return pv_log_i;
-}
-
 void *pv_start_container(struct pv_platform *p, const char *rev,
-			 char *conf_file, void *data)
+			 char *conf_file, int logfd, void *data)
 {
 	int err;
 	struct lxc_container *c;
 	char *dname;
 	char path[PATH_MAX];
 	int pipefd[2];
-	struct pv_log_info *pv_log_i = NULL;
 	pid_t child_pid = -1;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
@@ -607,7 +496,6 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		close(pipefd[0]);
 	} else { /* Child process */
 		char configdir[PATH_MAX];
-		char log_dir[PATH_MAX];
 
 		close(pipefd[0]);
 		*((pid_t *)data) = -1;
@@ -618,15 +506,8 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 			goto out_container_init;
 
 		if (pv_lxc_capture_logs_activated()) {
-			__pv_paths_pv_log_plat(log_dir, PATH_MAX,
-					       __pv_get_instance()->state->rev,
-					       p->name);
-			pv_lxc_log.name = LXC_LOG_SUBDIR;
-			pv_lxc_log.lxcpath = strdup(log_dir);
-			if (!pv_lxc_log.lxcpath)
-				goto out_container_init;
-
 			lxc_log_init(&pv_lxc_log);
+			lxc_log_set_alternative_output(logfd);
 		}
 		__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
 		c = lxc_container_new(p->name, path);
@@ -681,57 +562,6 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	if (!pv_lxc_capture_logs_activated())
 		goto out_success;
 
-	pv_setup_default_log(p, c, "lxc");
-	pv_setup_default_log(p, c, "console");
-
-	if (__pv_new_log) {
-		struct pv_logger_config *item_config, *tmp_config;
-		struct dl_list *config_head = &p->logger_configs;
-
-		dl_list_for_each_safe(item_config, tmp_config, config_head,
-				      struct pv_logger_config, item_list)
-		{
-			/*
-			 * Change pv_log_i->truncate_size here
-			 * if required.
-			 */
-			pv_log_i = pv_create_lxc_log(p, c, item_config);
-			if (pv_log_i) {
-				const char *truncate_item =
-					pv_log_i->pv_log_get_config_item(
-						item_config, "maxsize");
-				if (truncate_item) {
-					sscanf(truncate_item, "%" PRId64,
-					       &pv_log_i->truncate_size);
-				}
-				/*
-				 * Truncate the logs for now.
-				 * platform will have information on when
-				 * to truncate the logs.
-				 */
-
-				if (pv_log_i->pv_log_get_config_item(
-					    item_config, "lxc"))
-					pv_truncate_lxc_log(
-						c, p->name,
-						pv_log_i->truncate_size,
-						"lxc.log.file");
-				else if (pv_log_i->pv_log_get_config_item(
-						 item_config, "console"))
-					pv_truncate_lxc_log(
-						c, p->name,
-						pv_log_i->truncate_size,
-						"lxc.console.logfile");
-				dl_list_init(&pv_log_i->next);
-				dl_list_add(&p->logger_list, &pv_log_i->next);
-				/*
-				 * Free config items.
-				 * */
-				dl_list_del(&item_config->item_list);
-				pv_logger_config_free(item_config);
-			}
-		}
-	}
 out_success:
 	return (void *)c;
 out_failure:
@@ -757,4 +587,19 @@ void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data)
 	lxc_container_put(c);
 
 	return NULL;
+}
+
+int pv_console_log_getfd(struct pv_platform_log *log, void *data)
+{
+	if (!data)
+		return -1;
+
+	struct lxc_container *c = (struct lxc_container *)data;
+
+	int tty = 0;
+	log->console_tty = c->console_getfd(c, &tty, &log->console_pt);
+	int flags = fcntl(log->console_pt, F_GETFL, 0);
+	fcntl(log->console_pt, F_SETFL, flags | O_NONBLOCK);
+
+	return (log->console_pt < 0 || log->console_tty < 0) ? -1 : 0;
 }
