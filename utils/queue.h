@@ -30,10 +30,11 @@ struct pv_queue;
 struct pv_queue *pv_queue_new_from_mem(int capacity);
 struct pv_queue *pv_queue_new_from_disk(int capacity, const char *fname);
 void pv_queue_free(struct pv_queue *q);
-int pv_queue_size(const struct pv_queue *q);
-int pv_queue_capacity(const struct pv_queue *q);
 void pv_queue_push(struct pv_queue *q, char *data, int size);
 char *pv_queue_pop(struct pv_queue *q, int *size);
-bool pv_queue_has_space(struct pv_queue *q, int size);
-
+void pv_queue_clear(struct pv_queue *q);
+char *pv_queue_dump_mem(struct pv_queue *q);
+bool pv_queue_has_space(const struct pv_queue *q, int size);
+int pv_queue_size(const struct pv_queue *q);
+int pv_queue_capacity(const struct pv_queue *q);
 #endif

@@ -174,7 +174,22 @@ char *pv_queue_pop(struct pv_queue *q, int *size)
 	return data;
 }
 
-bool pv_queue_has_space(struct pv_queue *q, int size)
+bool pv_queue_has_space(const struct pv_queue *q, int size)
 {
 	return (q->cap - q->size) >= size;
+}
+
+char *pv_queue_dump_mem(struct pv_queue *q)
+{
+	return q->mem;
+}
+
+void pv_queue_clear(struct pv_queue *q)
+{
+	struct pv_queue_entry *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &q->entries, struct pv_queue_entry, list)
+	{
+		dl_list_del(&it->list);
+		free(it);
+	}
 }
