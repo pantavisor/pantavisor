@@ -725,9 +725,6 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 	}
 	pv_buffer_drop(buffer);
 	pv->metadata->devmeta_uploaded = false;
-	timer_start(&pv->metadata->devmeta_tm,
-		    pv_config_get_metadata_devmeta_interval(), 0,
-		    RELATIV_TIMER);
 
 	return 0;
 }
@@ -740,14 +737,6 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 	struct dl_list *head = NULL;
 	int json_avail = 0, ret = 0;
 	struct buffer *buffer = NULL;
-
-	struct timer_state st = timer_current_state(&pv->metadata->devmeta_tm);
-	if (!st.fin)
-		return 0;
-
-	timer_start(&pv->metadata->devmeta_tm,
-		    pv_config_get_metadata_devmeta_interval(), 0,
-		    RELATIV_TIMER);
 
 	/*
 	 * we can use one of the large buffer. Since
