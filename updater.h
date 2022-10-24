@@ -36,10 +36,9 @@
 #define UPDATE_PROGRESS_JSON_SIZE 4096
 
 #define TRAIL_OBJECT_DL_FMT "/objects/%s"
-#define DEVICE_TRAIL_ENDPOINT_QUEUED "?progress.status=QUEUED"
+#define DEVICE_TRAIL_ENDPOINT_PENDING                                          \
+	"?progress.status=%7B%22$in%22:%5B%22NEW%22,%22DOWNLOADING%22,%22INPROGRESS%22,%22QUEUED%22%5D%7D"
 #define DEVICE_TRAIL_ENDPOINT_NEW "?progress.status=NEW"
-#define DEVICE_TRAIL_ENDPOINT_DOWNLOADING "?progress.status=DOWNLOADING"
-#define DEVICE_TRAIL_ENDPOINT_INPROGRESS "?progress.status=INPROGRESS"
 
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
@@ -100,10 +99,8 @@ struct pv_update {
 
 struct trail_remote {
 	trest_ptr client;
-	char *endpoint_trail_queued;
+	char *endpoint_trail_pending;
 	char *endpoint_trail_new;
-	char *endpoint_trail_downloading;
-	char *endpoint_trail_inprogress;
 	struct pv_state *pending;
 };
 

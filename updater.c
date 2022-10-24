@@ -170,37 +170,19 @@ static int trail_remote_init(struct pantavisor *pv)
 		goto err;
 	SNPRINTF_WTRUNC(endpoint_trail, size, DEVICE_TRAIL_ENDPOINT_FMT, id);
 
-	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED);
-
-	remote->endpoint_trail_queued = calloc(size, sizeof(char));
-	if (!remote->endpoint_trail_queued)
+	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_PENDING);
+	remote->endpoint_trail_pending = calloc(size, sizeof(char));
+	if (!remote->endpoint_trail_pending)
 		goto err;
-	SNPRINTF_WTRUNC(remote->endpoint_trail_queued, size, "%s%s",
-			endpoint_trail, DEVICE_TRAIL_ENDPOINT_QUEUED);
+	SNPRINTF_WTRUNC(remote->endpoint_trail_pending, size, "%s%s",
+			endpoint_trail, DEVICE_TRAIL_ENDPOINT_PENDING);
 
 	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_NEW);
-
 	remote->endpoint_trail_new = calloc(size, sizeof(char));
 	if (!remote->endpoint_trail_new)
 		goto err;
 	SNPRINTF_WTRUNC(remote->endpoint_trail_new, size, "%s%s",
 			endpoint_trail, DEVICE_TRAIL_ENDPOINT_NEW);
-
-	size = strlen(endpoint_trail) +
-	       sizeof(DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
-	remote->endpoint_trail_downloading = calloc(size, sizeof(char));
-	if (!remote->endpoint_trail_downloading)
-		goto err;
-	SNPRINTF_WTRUNC(remote->endpoint_trail_downloading, size, "%s%s",
-			endpoint_trail, DEVICE_TRAIL_ENDPOINT_DOWNLOADING);
-
-	size = strlen(endpoint_trail) +
-	       sizeof(DEVICE_TRAIL_ENDPOINT_INPROGRESS);
-	remote->endpoint_trail_inprogress = calloc(size, sizeof(char));
-	if (!remote->endpoint_trail_inprogress)
-		goto err;
-	SNPRINTF_WTRUNC(remote->endpoint_trail_inprogress, size, "%s%s",
-			endpoint_trail, DEVICE_TRAIL_ENDPOINT_INPROGRESS);
 
 	pv->remote = remote;
 
@@ -750,49 +732,20 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		return 0;
 
 	// if update is going on, just check for NEW updates so test json can be parsed
-	if (pv->update && pv->update->status != UPDATE_APPLIED)
-		goto new_update;
-
-	// check for INPROGRESS updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_inprogress,
-				       &res);
-	if (ret > 0) {
-		pv_log(DEBUG, "found INPROGRESS revision");
-		goto process_response;
-	} else if (ret < 0) {
-		goto out;
+	if (pv->update && pv->update->status != UPDATE_APPLIED) {
+		// check for NEW updates
+		ret = trail_get_steps_response(pv, remote->endpoint_trail_new,
+					       &res);
+	} else {
+		// check for NEW, DOWNLOAD INPROGRESS or QUEUED updates
+		ret = trail_get_steps_response(
+			pv, remote->endpoint_trail_pending, &res);
 	}
 
-	// check for DOWNLOADING updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_downloading,
-				       &res);
-	if (ret > 0) {
-		pv_log(DEBUG, "found DOWNLOADING revision");
-		goto process_response;
-	} else if (ret < 0) {
-		goto out;
-	}
+	if (ret > 0)
+		pv_log(DEBUG,
+		       "found pending revision") else if (ret < 0) goto out;
 
-	// check for QUEUED updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_queued, &res);
-	if (ret > 0) {
-		pv_log(DEBUG, "found QUEUED revision");
-		goto process_response;
-	} else if (ret < 0) {
-		goto out;
-	}
-
-new_update:
-	// check for NEW updates
-	ret = trail_get_steps_response(pv, remote->endpoint_trail_new, &res);
-	if (ret > 0) {
-		pv_log(DEBUG, "found NEW revision");
-		goto process_response;
-	} else if (ret < 0) {
-		goto out;
-	}
-
-process_response:
 	ret = 0;
 	// if we have no response, we go out normally
 	if (!res)
@@ -1303,6 +1256,11 @@ int pv_updater_check_for_updates(struct pantavisor *pv)
 	if (pv->update && pv->update->status == UPDATE_RETRY_DOWNLOAD)
 		return 1;
 
+	// if claimed and synced, go check for new updates directly
+	if (!pv->unclaimed && pv->synced)
+		return trail_get_new_steps(pv);
+
+	// if not claimed or synced, check first if device is in hub
 	ret = trail_is_available(pv->remote);
 	if (ret == 0)
 		return trail_first_boot(pv);
@@ -1365,14 +1323,10 @@ static void pv_trail_remote_free(struct trail_remote *trail)
 
 	pv_log(DEBUG, "removing trail");
 
-	if (trail->endpoint_trail_queued)
-		free(trail->endpoint_trail_queued);
+	if (trail->endpoint_trail_pending)
+		free(trail->endpoint_trail_pending);
 	if (trail->endpoint_trail_new)
 		free(trail->endpoint_trail_new);
-	if (trail->endpoint_trail_downloading)
-		free(trail->endpoint_trail_downloading);
-	if (trail->endpoint_trail_inprogress)
-		free(trail->endpoint_trail_inprogress);
 
 	free(trail);
 }
