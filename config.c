@@ -436,6 +436,8 @@ static int pv_config_load_creds_from_file(char *path,
 
 	config->metadata.devmeta_interval = config_get_value_int(
 		&config_list, "metadata.devmeta.interval", 10);
+	config->metadata.usrmeta_interval = config_get_value_int(
+		&config_list, "metadata.usrmeta.interval", 5);
 
 	config_clear_items(&config_list);
 
@@ -503,6 +505,8 @@ static int pv_config_override_config_from_file(char *path,
 				  &config->libthttp.loglevel);
 	config_override_value_int(&config_list, "metadata.devmeta.interval",
 				  &config->metadata.devmeta_interval);
+	config_override_value_int(&config_list, "metadata.usrmeta.interval",
+				  &config->metadata.usrmeta_interval);
 	config_override_value_int(&config_list, "lxc.log.level",
 				  &config->lxc.log_level);
 
@@ -587,6 +591,8 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config,
 
 	write_config_tuple_int(fd, "metadata.devmeta.interval",
 			       config->metadata.devmeta_interval);
+	write_config_tuple_int(fd, "metadata.usrmeta.interval",
+			       config->metadata.usrmeta_interval);
 
 	close(fd);
 	if (pv_fs_path_rename(tmp_path, path) < 0) {
@@ -652,6 +658,8 @@ void pv_config_override_value(const char *key, const char *value)
 		pv->config.libthttp.loglevel = atoi(value);
 	else if (!strcmp(key, "metadata.devmeta.interval"))
 		pv->config.metadata.devmeta_interval = atoi(value);
+	else if (!strcmp(key, "metadata.usrmeta.interval"))
+		pv->config.metadata.usrmeta_interval = atoi(value);
 }
 
 void pv_config_free()
@@ -1080,6 +1088,11 @@ int pv_config_get_metadata_devmeta_interval()
 	return pv_get_instance()->config.metadata.devmeta_interval;
 }
 
+int pv_config_get_metadata_usrmeta_interval()
+{
+	return pv_get_instance()->config.metadata.usrmeta_interval;
+}
+
 char *pv_config_get_json()
 {
 	struct pv_json_ser js;
@@ -1236,6 +1249,9 @@ char *pv_config_get_json()
 		pv_json_ser_key(&js, "metadata.devmeta.interval");
 		pv_json_ser_number(&js,
 				   pv_config_get_metadata_devmeta_interval());
+		pv_json_ser_key(&js, "metadata.usrmeta.interval");
+		pv_json_ser_number(&js,
+				   pv_config_get_metadata_usrmeta_interval());
 
 		pv_json_ser_object_pop(&js);
 	}

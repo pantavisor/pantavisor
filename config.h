@@ -178,6 +178,7 @@ struct pantavisor_secureboot {
 
 struct pantavisor_metadata {
 	int devmeta_interval;
+	int usrmeta_interval;
 };
 
 struct pantavisor_config {
@@ -309,6 +310,7 @@ char *pv_config_get_secureboot_certdir(void);
 bool pv_config_get_secureboot_checksum(void);
 
 int pv_config_get_metadata_devmeta_interval(void);
+int pv_config_get_metadata_usrmeta_interval(void);
 
 char *pv_config_get_json(void);
 

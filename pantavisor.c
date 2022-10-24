@@ -83,7 +83,12 @@ struct pantavisor *pv_get_instance()
 static struct timer timer_rollback_remote;
 static struct timer timer_rollback_goals;
 static struct timer timer_wait_delay;
+static struct timer timer_usrmeta_interval;
+static struct timer timer_devmeta_interval;
+static struct timer timer_updater_interval;
 static struct timer timer_commit;
+
+static const int PV_WAIT_PERIOD = 1;
 
 extern pid_t shell_pid;
 
@@ -173,15 +178,15 @@ static const char *ph_state_string(ph_state_t st)
 	return "STATE_UNKNOWN";
 }
 
-static bool pv_wait_delay_timedout(int seconds)
+static bool pv_wait_delay_timedout()
 {
 	struct timer_state tstate = timer_current_state(&timer_wait_delay);
-	// first, we wait until wait_delay
+	// first, we check if timed out
 	if (!tstate.fin)
 		return false;
 
-	// then, we set wait_delay for next call
-	timer_start(&timer_wait_delay, seconds, 0, RELATIV_TIMER);
+	// then, we set 1 sec for next wait cycle
+	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
 
 	return true;
 }
@@ -305,6 +310,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		    pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
 	timer_start(&timer_rollback_goals,
 		    pv_config_get_updater_goals_timeout(), 0, RELATIV_TIMER);
+	timer_start(&timer_wait_delay, 0, 0, RELATIV_TIMER);
+	timer_start(&timer_usrmeta_interval, 0, 0, RELATIV_TIMER);
+	timer_start(&timer_devmeta_interval, 0, 0, RELATIV_TIMER);
+	timer_start(&timer_updater_interval, 0, 0, RELATIV_TIMER);
 
 	next_state = PV_STATE_WAIT;
 out:
@@ -319,6 +328,14 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 	int need_register = 1;
 	char *c;
 	char path[PATH_MAX];
+
+	struct timer_state tstate =
+		timer_current_state(&timer_updater_interval);
+	if (!tstate.fin)
+		return PV_STATE_WAIT;
+
+	timer_start(&timer_updater_interval, pv_config_get_updater_interval(),
+		    0, RELATIV_TIMER);
 
 	c = calloc(128, sizeof(char));
 
@@ -375,13 +392,28 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 
 static int pv_meta_update_to_ph(struct pantavisor *pv)
 {
+	struct timer_state tstate;
+
 	if (!pv)
 		return -1;
 
-	if (pv_ph_device_get_meta(pv))
-		return -1;
-	if (pv_metadata_upload_devmeta(pv))
-		return -1;
+	tstate = timer_current_state(&timer_usrmeta_interval);
+	if (tstate.fin) {
+		if (pv_ph_device_get_meta(pv))
+			return -1;
+		timer_start(&timer_usrmeta_interval,
+			    pv_config_get_metadata_usrmeta_interval(), 0,
+			    RELATIV_TIMER);
+	}
+
+	tstate = timer_current_state(&timer_devmeta_interval);
+	if (tstate.fin) {
+		if (pv_metadata_upload_devmeta(pv))
+			return -1;
+		timer_start(&timer_devmeta_interval,
+			    pv_config_get_metadata_devmeta_interval(), 0,
+			    RELATIV_TIMER);
+	}
 
 	return 0;
 }
@@ -474,10 +506,16 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		goto out;
 
 	// check for new remote update
-	if (pv_updater_check_for_updates(pv) > 0) {
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_UPDATE));
-		return PV_STATE_UPDATE;
+	tstate = timer_current_state(&timer_updater_interval);
+	if (tstate.fin) {
+		if (pv_updater_check_for_updates(pv) > 0) {
+			pv_metadata_add_devmeta(
+				DEVMETA_KEY_PH_STATE,
+				ph_state_string(PH_STATE_UPDATE));
+			return PV_STATE_UPDATE;
+		}
+		timer_start(&timer_updater_interval,
+			    pv_config_get_updater_interval(), 0, RELATIV_TIMER);
 	}
 
 	if (pv->synced) {
@@ -520,7 +558,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		timer_start(&t, 5, 0, RELATIV_TIMER);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
-		if (pv_wait_delay_timedout(pv_config_get_updater_interval())) {
+		if (pv_wait_delay_timedout()) {
 			// check if device is unclaimed
 			if (pv->unclaimed) {
 				// unclaimed wait operations
@@ -945,7 +983,6 @@ void pv_init()
 static int pv_pantavisor_init(struct pv_init *this)
 {
 	struct pantavisor *pv = NULL;
-	int ret = -1;
 
 	pv = pv_get_instance();
 	if (!pv)
@@ -959,7 +996,6 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->synced = false;
 	pv->loading_objects = false;
 	pv->hard_poweroff = false;
-	ret = 0;
 out:
 	return 0;
 }
