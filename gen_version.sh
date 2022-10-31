@@ -4,7 +4,7 @@ buildir=$2
 
 IFS=
 manifest=$(.repo/repo/repo manifest -r)
-gitdescribe=$(cd .repo/manifests; git describe --tags --always)
+gitdescribe=$(cd .repo/manifests; git describe --always)
 sha256=$(echo $manifest | sha256sum | awk '{print $1}')
 manifest=$(echo $manifest | sed 's/"/\\"/g' | sed -e '$ ! s/$/ \\n \\/')
 
