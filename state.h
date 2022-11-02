@@ -55,7 +55,7 @@ struct pv_state {
 	struct dl_list objects; //pv_object
 	struct dl_list jsons; //pv_json
 	struct dl_list groups; //pv_group
-	bool default_groups;
+	bool using_runlevels;
 	char *json;
 	int tryonce;
 	bool local;
