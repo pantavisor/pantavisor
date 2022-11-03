@@ -237,8 +237,12 @@ logserver_log_msg_data_file_tree(const struct logserver_msg_data *msg_data)
 				msg_data->source, msg_data->data_len,
 				msg_data->data);
 		} else {
-			dprintf(log_fd, "%.*s", msg_data->data_len,
-				msg_data->data);
+			if (msg_data->data[msg_data->data_len - 1] == '\n')
+				dprintf(log_fd, "%.*s", msg_data->data_len,
+					msg_data->data);
+			else
+				dprintf(log_fd, "%.*s\n", msg_data->data_len,
+					msg_data->data);
 		}
 		close(log_fd);
 		ret = 0;
