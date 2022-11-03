@@ -534,6 +534,8 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		__pv_paths_configs_file(configdir, PATH_MAX, p->name);
 		pv_setup_config_bindmounts(c, configdir, configdir);
 
+		c->save_config(c, NULL);
+
 		err = c->start(c, 0, NULL) ? 0 : 1;
 
 		if (err && (c->error_num != 1)) {
