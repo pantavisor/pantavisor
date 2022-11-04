@@ -67,7 +67,7 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->jsons);
 		dl_list_init(&s->groups);
 		dl_list_init(&s->bsp.drivers);
-		s->default_groups = false;
+		s->using_runlevels = false;
 		s->local = false;
 	}
 
@@ -278,39 +278,33 @@ void pv_state_print(struct pv_state *s)
 	}
 }
 
-static int pv_state_check_platform_group(struct pv_state *s)
+static int pv_state_set_default_groups(struct pv_state *s)
 {
 	struct pv_platform *p, *tmp;
 	struct dl_list *platforms = &s->platforms;
+	struct pv_group *d;
 
+	// default group is the last group added from groups.json
+	d = dl_list_last(&s->groups, struct pv_group, list);
 	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
 	{
 		if (!p->group) {
-			pv_log(ERROR,
-			       "platform '%s' does not belong to any group",
+			pv_log(WARN,
+			       "platform '%s' does not belong to any group. Setting default...",
 			       p->name);
-			return -1;
+			pv_group_add_platform(d, p);
 		}
 	}
 
 	return 0;
 }
 
-static int pv_state_set_default_groups(struct pv_state *s)
+static int pv_state_set_default_runlevels(struct pv_state *s)
 {
 	bool root_configured = false;
 	struct pv_platform *p, *tmp, *first_p = NULL;
 	struct dl_list *platforms = &s->platforms;
 	struct pv_group *r, *d;
-
-	if (dl_list_empty(platforms))
-		return 0;
-
-	if (!s->default_groups) {
-		pv_log(INFO,
-		       "not using default groups. Checking if all platforms are linked to a group...");
-		return pv_state_check_platform_group(s);
-	}
 
 	r = pv_state_fetch_group(s, "root");
 	d = pv_state_fetch_group(s, "platform");
@@ -347,6 +341,17 @@ static int pv_state_set_default_groups(struct pv_state *s)
 	}
 
 	return 0;
+}
+
+static int pv_state_set_runlevel_groups(struct pv_state *s)
+{
+	if (dl_list_empty(&s->platforms))
+		return 0;
+
+	if (s->using_runlevels)
+		return pv_state_set_default_runlevels(s);
+
+	return pv_state_set_default_groups(s);
 }
 
 static void pv_state_set_default_status_goals(struct pv_state *s)
@@ -395,7 +400,7 @@ int pv_state_validate(struct pv_state *s)
 	// add loggers for all platforms
 	pv_platforms_add_all_loggers(s);
 	// set groups for all undefined platforms
-	if (pv_state_set_default_groups(s))
+	if (pv_state_set_runlevel_groups(s))
 		return -1;
 	// set default status goal
 	pv_state_set_default_status_goals(s);

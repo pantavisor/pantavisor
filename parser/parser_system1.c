@@ -832,6 +832,9 @@ static int do_action_for_runlevel(struct json_key_action *jka, char *value)
 	if (!(*bundle->platform) || !value)
 		return -1;
 
+	pv_log(WARN, "using deprecated runlevel for platform '%s' as group",
+	       (*bundle->platform)->name);
+
 	// runlevel is still valid in the state json to keep backwards compatibility, but internally it is substituted by groups
 	if (!strcmp(value, "data") || !strcmp(value, "root") ||
 	    !strcmp(value, "app") || !strcmp(value, "platform")) {
@@ -1395,7 +1398,7 @@ static struct pv_state *system1_parse_groups(struct pv_state *this,
 			goto out;
 		}
 
-		this->default_groups = true;
+		this->using_runlevels = true;
 
 		free(value);
 		value = NULL;
