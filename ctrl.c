@@ -127,6 +127,9 @@ static int pv_ctrl_socket_open()
 	pv_paths_pv_file(addr.sun_path, sizeof(addr.sun_path) - 1,
 			 PVCTRL_FNAME);
 
+	// sometimes, the socket file still exists after reboot
+	unlink(addr.sun_path);
+
 	if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		pv_log(ERROR, "ctrl socket with fd %d open error: %s", fd,
 		       strerror(errno));

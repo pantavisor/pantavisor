@@ -774,12 +774,14 @@ void ph_logger_toggle(char *rev)
 
 void ph_logger_stop_lenient()
 {
-	pv_log(DEBUG, "stopping ph logger services...");
-
-	if (ph_logger.push_service > 0)
+	if (ph_logger.push_service > 0) {
+		pv_log(DEBUG, "stopping ph logger push service...");
 		pv_system_kill_lenient(ph_logger.push_service);
-	if (ph_logger.range_service > 0)
+	}
+	if (ph_logger.range_service > 0) {
+		pv_log(DEBUG, "stopping ph logger range service...");
 		pv_system_kill_lenient(ph_logger.range_service);
+	}
 }
 
 void ph_logger_stop_force()
