@@ -874,20 +874,6 @@ static void logserver_start(const char *revision)
 	}
 }
 
-static void logserver_stop()
-{
-	pv_log(DEBUG, "stopping logserver service...");
-
-	if (logserver_g.pid > 0) {
-		pv_system_kill_lenient(logserver_g.pid);
-		pv_system_kill_force(logserver_g.pid);
-		pv_log(DEBUG, "stopped logserver service with pid %d",
-		       logserver_g.pid);
-	}
-
-	logserver_g.pid = -1;
-}
-
 // XXX: this is bad code now. stop must never happen here; we
 // should kill this function and do the starting directly in the main
 // lifecycle code that currently calls this; disabling log capture
@@ -931,7 +917,7 @@ int pv_logserver_init()
 		       "could not initialize log socket, logs will not be captured");
 
 	logserver_g.fdsock = logserver_open_server_socket(LOGFD_FNAME);
-	if (logserver_g.fdsock)
+	if (logserver_g.fdsock < 0)
 		pv_log(WARN,
 		       "could not open fd socket, some containers logs will be lost");
 
@@ -1073,29 +1059,46 @@ void pv_logserver_reload(void)
 		kill(logserver_g.pid, SIGUSR1);
 }
 
-void pv_logserver_stop(void)
-{
-	return logserver_stop();
-}
-
-static void logserver_close(int sockd, const char *name)
+static void logserver_close_socket(int sockd, const char *name)
 {
 	if (sockd < 0)
 		return;
 
 	char path[PATH_MAX];
 	pv_paths_pv_file(path, PATH_MAX, name);
-	pv_log(DEBUG, "closing %s with fd %d\n", path, sockd);
 	close(sockd);
 	unlink(path);
+
+	pv_log(DEBUG, "closed '%s' with fd %d", path, sockd);
 }
 
-void pv_logserver_close()
+static void pv_logserver_close(void)
 {
-	if (logserver_g.logsock >= 0)
-		logserver_close(logserver_g.logsock, LOGCTRL_FNAME);
-	if (logserver_g.fdsock >= 0)
-		logserver_close(logserver_g.fdsock, LOGFD_FNAME);
+	if (logserver_g.logsock >= 0) {
+		pv_log(DEBUG, "closing logsock...");
+		logserver_close_socket(logserver_g.logsock, LOGCTRL_FNAME);
+		logserver_g.logsock = -1;
+	}
+	if (logserver_g.fdsock >= 0) {
+		pv_log(DEBUG, "closing fdsock...");
+		logserver_close_socket(logserver_g.fdsock, LOGFD_FNAME);
+		logserver_g.fdsock = -1;
+	}
+}
+
+void pv_logserver_stop(void)
+{
+	pv_logserver_close();
+
+	// kill pid
+	if (logserver_g.pid > 0) {
+		pv_log(DEBUG, "stopping logserver service...");
+		pv_system_kill_lenient(logserver_g.pid);
+		pv_system_kill_force(logserver_g.pid);
+		pv_log(DEBUG, "stopped logserver service with pid %d",
+		       logserver_g.pid);
+		logserver_g.pid = -1;
+	}
 }
 
 int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src)

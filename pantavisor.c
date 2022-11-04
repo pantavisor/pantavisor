@@ -876,18 +876,19 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	if (pv_config_get_system_init_mode() != IM_APPENGINE)
 		reboot(shutdown_type_reboot_cmd(t));
 
+	// close pvctrl
+	pv_ctrl_socket_close(pv->ctrl_fd);
+
+	// stop logs now
+	pv_logserver_stop();
+	pv_log_umount();
+
 	// unmount everything
 	pv_storage_umount();
 	pv_mount_umount();
 	pv_init_umount();
 
-	// stop logs now
-	pv_logserver_stop();
-
-	pv_ctrl_socket_close(pv->ctrl_fd);
-	pv_logserver_close();
-	pv_log_umount();
-
+	// free up memory
 	pv_bootloader_remove();
 	pv_remove(pv);
 
