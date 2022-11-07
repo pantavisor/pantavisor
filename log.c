@@ -74,51 +74,10 @@ static pid_t log_init_pid = -1;
 static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
 
-static int logging_stdout = 0;
-
-static void __vlog_to_console(char *module, int level, const char *fmt,
-			      va_list args)
-{
-	char time_buf[MAX_DEC_STRING_SIZE_OF_TYPE(unsigned long long)];
-	epochsecstring(time_buf, sizeof(time_buf), time(NULL));
-
-	// construct string because we cannot lock stdout
-	size_t size =
-		snprintf(NULL, 0, "[pantavisor] %s %s\t -- [%s]: ", time_buf,
-			 level_names[level].name, module);
-	size += vsnprintf(NULL, 0, fmt, args) + 1; // NULL byte
-	char *buf = calloc(sizeof(char), size);
-	if (!buf) {
-		// Fall back to multiple printfs instead of printing once
-		// Ouptu may get split up by other processes.
-		printf("[pantavisor] %s %s\t -- [%s]: ", time_buf,
-		       level_names[level].name, module);
-		vprintf(fmt, args);
-		printf("\n");
-	} else {
-		int offs = snprintf(buf, size,
-				    "[pantavisor] %s %s\t -- [%s]: ", time_buf,
-				    level_names[level].name, module);
-		vsnprintf(buf + offs, size - offs, fmt, args);
-		printf("%s\n", buf);
-
-		free(buf);
-	}
-	return;
-}
-
 static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
-	int ret;
-
-	if (0 > pv_logserver_send_vlog(false, PV_PLATFORM_STR, module, level,
-				       fmt, args))
-		ret = -1;
-	else
-		ret = 0;
-
-	if (ret != 0 || logging_stdout)
-		__vlog_to_console(module, level, fmt, args);
+	pv_logserver_send_vlog(false, PV_PLATFORM_STR, module, level, fmt,
+			       args);
 }
 
 static void log_libthttp(int level, const char *fmt, va_list args)
@@ -164,23 +123,6 @@ void exit_error(int err, char *msg)
 
 	sleep(20);
 	exit(0);
-}
-
-void __log_to_console(char *module, int level, const char *fmt, ...)
-{
-	va_list args;
-
-	if (level > pv_config_get_log_loglevel())
-		return;
-
-	if (log_init_pid != getpid())
-		return;
-
-	va_start(args, fmt);
-
-	__vlog_to_console(module, level, fmt, args);
-
-	va_end(args);
 }
 
 void __log(char *module, int level, const char *fmt, ...)
@@ -263,8 +205,6 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "libthttp.loglevel = '%d'",
 	       pv_config_get_libthttp_loglevel());
 	pv_bootloader_print();
-
-	logging_stdout = pv_config_get_log_stdout();
 
 	return 0;
 }

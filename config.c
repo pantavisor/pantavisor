@@ -141,6 +141,8 @@ static int config_parse_log_server_outputs(char *value)
 			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
 		else if (!strcmp(token, "nullsink"))
 			server_outputs |= LOG_SERVER_OUTPUT_NULL_SINK;
+		else if (!strcmp(token, "stdout"))
+			server_outputs |= LOG_SERVER_OUTPUT_STDOUT;
 	}
 
 	return server_outputs;
@@ -1052,6 +1054,12 @@ bool pv_config_get_log_server_output_single_file()
 {
 	return pv_get_instance()->config.log.server.outputs &
 	       LOG_SERVER_OUTPUT_SINGLE_FILE;
+}
+
+bool pv_config_get_log_server_output_stdout()
+{
+	return pv_get_instance()->config.log.server.outputs &
+	       LOG_SERVER_OUTPUT_STDOUT;
 }
 
 int pv_config_get_libthttp_loglevel()

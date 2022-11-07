@@ -54,8 +54,6 @@ enum log_level {
 
 void __log(char *module, int level, const char *fmt, ...);
 
-void __log_to_console(char *module, int level, const char *fmt, ...);
-
 /*
  * Don't free the return value!
  */
