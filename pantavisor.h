@@ -26,6 +26,8 @@
 
 #include "config.h"
 
+#include "utils/system.h"
+
 #define RUNLEVEL_DATA 0
 #define RUNLEVEL_ROOT 1
 #define RUNLEVEL_PLATFORM 2
@@ -52,6 +54,7 @@ struct pantavisor {
 	bool synced;
 	bool loading_objects;
 	bool hard_poweroff;
+	cgroup_version_t cgroupv;
 	int ctrl_fd;
 };
 

@@ -26,8 +26,12 @@
 #include <stdbool.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/types.h>
 #include <signal.h>
+
+#include <sys/types.h>
+#include <sys/vfs.h>
+
+#include <linux/magic.h>
 
 #include "system.h"
 #include "fs.h"
@@ -100,6 +104,39 @@ int get_cpu_model(char *buf, int buflen)
 	}
 out:
 	return ret;
+}
+
+cgroup_version_t pv_system_get_cgroup_version(void)
+{
+	struct statfs fs;
+
+	if (!statfs("/sys/fs/cgroup/", &fs)) {
+		if (fs.f_type == CGROUP2_SUPER_MAGIC) {
+			return CGROUP_V2;
+		} else {
+			if (!statfs("/sys/fs/cgroup/unified/", &fs))
+				return CGROUP_UNIFIED;
+			else
+				return CGROUP_V1;
+		}
+	}
+
+	return CGROUP_UNKNOWN;
+}
+
+const char *pv_system_cgroupv_string(cgroup_version_t cgroupv)
+{
+	switch (cgroupv) {
+	case CGROUP_V1:
+		return "CGROUP_V1";
+	case CGROUP_UNIFIED:
+		return "CGROUP_UNIFIED";
+	case CGROUP_V2:
+		return "CGROUP_V2";
+	default:
+		return "CGROUP_UNKNOWN";
+	}
+	return "CGROUP_UNKNOWN";
 }
 
 void pv_system_kill_lenient(pid_t pid)
