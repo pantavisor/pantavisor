@@ -101,6 +101,7 @@ struct logserver_fd {
 struct logserver_output {
 	bool sfile;
 	bool ftree;
+	bool std;
 };
 
 struct logserver_log {
@@ -136,15 +137,16 @@ struct logserver_msg_data {
 	char *data;
 };
 
-static struct logserver logserver_g = { .pid = -1,
-					.flags = 0,
-					.epfd = -1,
-					.logsock = -1,
-					.fdsock = -1,
-					.log = { .maxsize = -1, .maxfile = 3 },
-					.out = { .sfile = false,
-						 .ftree = true },
-					.revision = NULL };
+static struct logserver logserver_g = {
+	.pid = -1,
+	.flags = 0,
+	.epfd = -1,
+	.logsock = -1,
+	.fdsock = -1,
+	.log = { .maxsize = -1, .maxfile = 3 },
+	.out = { .sfile = false, .ftree = true, .std = false },
+	.revision = NULL
+};
 
 static int
 logserver_log_msg_data_null(const struct logserver_msg_data *msg_data)
@@ -256,6 +258,19 @@ error:
 	return ret;
 }
 
+static void logserver_log_msg_data_stdout(const struct logserver_msg_data *msg)
+{
+	char *src = basename(msg->source);
+	if (msg->data[msg->data_len - 1] == '\n')
+		printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s", msg->platform,
+		       msg->tsec, pv_log_level_name(msg->level), src,
+		       msg->data_len, msg->data);
+	else
+		printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s\n", msg->platform,
+		       msg->tsec, pv_log_level_name(msg->level), src,
+		       msg->data_len, msg->data);
+}
+
 static int
 logserver_log_msg_data_single_file(const struct logserver_msg_data *msg_data)
 {
@@ -324,6 +339,9 @@ out:
 
 static int logserver_log_msg_data(const struct logserver_msg_data *msg_data)
 {
+	if (logserver_g.out.std)
+		logserver_log_msg_data_stdout(msg_data);
+
 	if (logserver_g.out.ftree)
 		logserver_log_msg_data_file_tree(msg_data);
 
@@ -338,7 +356,23 @@ static int pv_log(int level, char *msg, ...)
 	va_list args;
 	va_start(args, msg);
 	if (logserver_g.pid < 0) {
-		__log_to_console(MODULE_NAME, level, msg, args);
+		struct logserver_msg_data msg_data = { .version = 0,
+						       .level = level,
+						       .tsec = (uint64_t)time(
+							       NULL),
+						       .tnano = 0,
+						       .platform = MODULE_NAME,
+						       .source = "logserver",
+						       .data = NULL,
+						       .data_len = 0 };
+
+		msg_data.data_len = vsnprintf(NULL, 0, msg, args) + 1;
+		msg_data.data = calloc(msg_data.data_len, sizeof(char));
+		if (!msg_data.data)
+			return 1;
+		vsnprintf(msg_data.data, msg_data.data_len, msg, args);
+		logserver_log_msg_data_stdout(&msg_data);
+
 	} else if (logserver_g.pid == 0) {
 		struct buffer *pv_buffer = pv_buffer_get(true);
 		char *buf = pv_buffer->buf;
@@ -902,9 +936,13 @@ int pv_logserver_init()
 			pv_config_get_log_server_output_single_file();
 		logserver_g.out.ftree =
 			pv_config_get_log_server_output_file_tree();
+		logserver_g.out.std =
+			pv_config_get_log_server_output_stdout() ||
+			pv_config_get_log_stdout();
 	} else {
 		logserver_g.out.sfile = false;
 		logserver_g.out.ftree = false;
+		logserver_g.out.std = false;
 	}
 
 	errno = 0;
