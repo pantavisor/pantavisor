@@ -81,9 +81,9 @@
 #define MODULE_NAME "logserver"
 
 #define LOGSERVER_JSON_FORMAT                                                  \
-	",\n{\"tsec\":%" PRId64 ", \"tnano\":%" PRId32 ", "                    \
+	"{\"tsec\":%" PRId64 ", \"tnano\":%" PRId32 ", "                       \
 	"\"plat\":\"%s\", \"lvl\":\"%s\", \"src\":\"%s\", "                    \
-	"\"msg\": \"%.*s\"}"
+	"\"msg\": \"%.*s\"}\n"
 
 struct logserver_msg {
 	int version;
