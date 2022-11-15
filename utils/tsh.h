@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,12 +22,17 @@
 #ifndef PV_TSH_H
 #define PV_TSH_H
 
-#include <sys/types.h>
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 
-pid_t tsh_run(char *cmd, int wait, int *status);
-pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
-		 int stdout_p[], int stderr_p[]);
-int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
-		   char *err_buf, int err_size);
+#include <sys/types.h>
+#include <stdbool.h>
+
+pid_t tsh_run(char *cmd_str, int wait, int *status);
+pid_t tsh_run_io(char *cmd_str, bool wait, int *status, int *in, int *out,
+		 int *err);
+int tsh_run_output(const char *cmd_str, int timeout, char *out_buf,
+		   int out_size, char *err_buf, int err_size);
 
 #endif
