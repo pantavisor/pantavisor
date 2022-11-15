@@ -929,7 +929,7 @@ int pv_start()
 	if (!pv)
 		return 1;
 
-	printf("Pantavisor (TM) (%s) - www.pantahub.com\n", pv_build_version);
+	printf("Pantavisor (TM) (%s) - pantavisor.io\n", pv_build_version);
 	SNPRINTF_WTRUNC(pv_user_agent, sizeof(pv_user_agent), PV_USER_AGENT_FMT,
 			pv_build_arch, pv_build_version, pv_build_date);
 
