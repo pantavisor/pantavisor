@@ -40,7 +40,8 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 
 void pv_logserver_reload(void);
 void pv_logserver_stop(void);
-int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src);
+int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
+			      int loglevel);
 int pv_logserver_unsubscribe_fd(const char *platform, const char *src);
 
 #endif /* LOGSERVER_H */

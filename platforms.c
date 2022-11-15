@@ -696,7 +696,7 @@ static void pv_platform_subscribe_fd(int fd, const char *plat, const char *src)
 		       fd);
 		return;
 	}
-	if (pv_logserver_subscribe_fd(fd, plat, src) < 0)
+	if (pv_logserver_subscribe_fd(fd, plat, src, INFO) < 0)
 		pv_log(WARN,
 		       "could not subscribe %s:%s (fd = %d) logserver return < 0",
 		       plat, src, fd);
