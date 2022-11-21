@@ -232,7 +232,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	}
 	// cgroup version lxc config
 	c->get_config_item(c, "lxc.cgroup.devices.allow", path, PATH_MAX);
-	if ((__pv_get_instance()->cgroupv == CGROUP_V2) && strlen(path)) {
+	if ((__pv_get_instance()->cgroupv == CGROUP_UNIFIED) && strlen(path)) {
 		c->set_config_item(c, "lxc.cgroup.devices.allow", NULL);
 		c->set_config_item(c, "lxc.cgroup2.devices.allow", path);
 	}
