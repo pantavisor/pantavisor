@@ -946,8 +946,19 @@ int pv_start()
 	if (fd < 0)
 		printf("open failed for /proc/sys/kernel/core_pattern: %s",
 		       strerror(errno));
-	else
+	else {
 		write(fd, path, strlen(path));
+		close(fd);
+	}
+
+	fd = open("/proc/sys/vm/watermark_boost_factor", O_WRONLY | O_SYNC);
+	if (fd < 0)
+		printf("open failed for /proc/sys/kernel/core_pattern: %s",
+		       strerror(errno));
+	else {
+		write(fd, "0", strlen("0"));
+		close(fd);
+	}
 
 	pv_state_t state = PV_STATE_INIT;
 
