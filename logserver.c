@@ -94,6 +94,7 @@ struct logserver_msg {
 struct logserver_fd {
 	char *platform;
 	char *src;
+	int level;
 	int fd;
 	struct dl_list list;
 };
@@ -209,6 +210,9 @@ static int logserver_openlog(const char *path)
 static int
 logserver_log_msg_data_file_tree(const struct logserver_msg_data *msg_data)
 {
+	if (msg_data->level > pv_config_get_log_loglevel())
+		return 0;
+
 	char pathname[PATH_MAX];
 	int log_fd = -1;
 	int ret = -1;
@@ -260,6 +264,9 @@ error:
 
 static void logserver_log_msg_data_stdout(const struct logserver_msg_data *msg)
 {
+	if (msg->level > pv_config_get_log_loglevel())
+		return;
+
 	char *src = basename(msg->source);
 	if (msg->data[msg->data_len - 1] == '\n')
 		printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s", msg->platform,
@@ -274,6 +281,9 @@ static void logserver_log_msg_data_stdout(const struct logserver_msg_data *msg)
 static int
 logserver_log_msg_data_single_file(const struct logserver_msg_data *msg_data)
 {
+	if (msg_data->level > pv_config_get_log_loglevel())
+		return 0;
+
 	char pathname[PATH_MAX];
 	int ret = -1;
 	size_t json_len;
@@ -520,7 +530,8 @@ static int logserver_accept_connection(int sockd)
 	return fd;
 }
 
-static struct logserver_fd *logserver_fd_new(char *platform, char *src, int fd)
+static struct logserver_fd *logserver_fd_new(char *platform, char *src, int fd,
+					     int level)
 {
 	struct logserver_fd *lfd = calloc(1, sizeof(struct logserver_fd));
 	if (!lfd)
@@ -531,6 +542,8 @@ static struct logserver_fd *logserver_fd_new(char *platform, char *src, int fd)
 	if (src)
 		lfd->src = strdup(src);
 	lfd->fd = fd;
+	lfd->level = level;
+
 	dl_list_init(&lfd->list);
 
 	return lfd;
@@ -613,17 +626,20 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 
 	char platform[LOGSERVER_MAX_HEADER_LEN] = { 0 };
 	char src[LOGSERVER_MAX_HEADER_LEN] = { 0 };
+	int loglevel = -1;
 
-	struct iovec iov[2];
+	struct iovec iov[3];
 	iov[0] = (struct iovec){ .iov_base = platform,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
 	iov[1] = (struct iovec){ .iov_base = src,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
+	iov[2] =
+		(struct iovec){ .iov_base = &loglevel, .iov_len = sizeof(int) };
 
 	struct msghdr msg = { .msg_name = NULL,
 			      .msg_namelen = 0,
 			      .msg_iov = iov,
-			      .msg_iovlen = 2,
+			      .msg_iovlen = 3,
 			      .msg_control = ctrl.buf,
 			      .msg_controllen = sizeof(ctrl.buf) };
 
@@ -642,7 +658,7 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 	int fd;
 	memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
 
-	return logserver_fd_new(platform, src, fd);
+	return logserver_fd_new(platform, src, fd, loglevel);
 }
 
 static int logserver_epoll_wait(struct epoll_event *ev)
@@ -690,7 +706,7 @@ static void logserver_consume_fd(int fd)
 			logserver_fetch_fd_from_list(&logserver_g.fdlst, fd);
 
 		struct logserver_msg_data d = { .version = LOG_PROTOCOL_LEGACY,
-						.level = DEBUG,
+						.level = lfd->level,
 						.tsec = (uint64_t)time(NULL),
 						.platform = lfd->platform,
 						.source = lfd->src,
@@ -781,7 +797,7 @@ static void logserver_loop()
 
 			if (curfd == fdsock) {
 				struct logserver_fd *lfd =
-					logserver_fd_new(NULL, NULL, fd);
+					logserver_fd_new(NULL, NULL, fd, ALL);
 
 				if (logserver_list_add(tmplst, lfd) != 0) {
 					logserver_fd_free(lfd);
@@ -1143,7 +1159,8 @@ void pv_logserver_stop(void)
 	}
 }
 
-int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src)
+int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
+			      int loglevel)
 {
 	char plat_buf[LOGSERVER_MAX_HEADER_LEN] = { 0 };
 	char src_buf[LOGSERVER_MAX_HEADER_LEN] = { 0 };
@@ -1151,11 +1168,13 @@ int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src)
 	strncpy(plat_buf, platform, LOGSERVER_MAX_HEADER_LEN - 1);
 	strncpy(src_buf, src, LOGSERVER_MAX_HEADER_LEN - 1);
 
-	struct iovec iov[2];
+	struct iovec iov[3];
 	iov[0] = (struct iovec){ .iov_base = plat_buf,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
 	iov[1] = (struct iovec){ .iov_base = src_buf,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
+	iov[2] =
+		(struct iovec){ .iov_base = &loglevel, .iov_len = sizeof(int) };
 
 	union {
 		char buf[CMSG_SPACE(sizeof(int))];
@@ -1165,7 +1184,7 @@ int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src)
 	struct msghdr msg = { .msg_name = NULL,
 			      .msg_namelen = 0,
 			      .msg_iov = iov,
-			      .msg_iovlen = 2,
+			      .msg_iovlen = 3,
 			      .msg_control = ctrl.buf,
 			      .msg_controllen = sizeof(ctrl.buf) };
 
@@ -1184,5 +1203,5 @@ int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src)
 
 int pv_logserver_unsubscribe_fd(const char *platform, const char *src)
 {
-	return pv_logserver_subscribe_fd(-1, platform, src);
+	return pv_logserver_subscribe_fd(-1, platform, src, 0);
 }
