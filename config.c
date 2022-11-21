@@ -223,6 +223,33 @@ config_override_value_log_server_outputs(struct dl_list *config_list, char *key,
 		*out = config_parse_log_server_outputs(item);
 }
 
+static int config_sysctl_apply(char *key, char *value, void *opaque)
+{
+	char *start = key + strlen("sysctl");
+	char *path =
+		calloc(strlen("/proc/sys") + strlen(start) + 1, sizeof(char));
+	sprintf(path, "%s", "/proc/sys");
+
+	char *next = start;
+	char *p = path + strlen("/proc/sys");
+
+	for (int i = 0; i < (int)strlen(start); ++i)
+		p[i] = next[i] == '.' ? '/' : next[i];
+
+	errno = 0;
+	int fd = open(path, O_WRONLY | O_SYNC);
+	if (fd < 0) {
+		pv_log(ERROR, "open failed for sysctl node %s with '%s'", path,
+		       strerror(errno));
+		return -1;
+	}
+
+	write(fd, value, strlen(value));
+	close(fd);
+
+	return 0;
+}
+
 static int pv_config_load_config_from_file(char *path,
 					   struct pantavisor_config *config)
 {
@@ -363,6 +390,9 @@ static int pv_config_load_config_from_file(char *path,
 
 	config->secureboot.checksum = config_get_value_bool(
 		&config_list, "secureboot.checksum", true);
+
+	config_iterate_items_prefix(&config_list, config_sysctl_apply,
+				    "sysctl.", NULL);
 
 	config_clear_items(&config_list);
 
