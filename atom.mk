@@ -111,7 +111,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)
 
 LOCAL_SRC_FILES := utils/tsh.test.c \
 			utils/tsh.c \
-			utils/timer.c
+			utils/fs.c
 
 include $(BUILD_EXECUTABLE)
 

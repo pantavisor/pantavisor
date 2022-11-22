@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,280 +19,202 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
-
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-#include <signal.h>
-
-#include <sys/types.h>
-#include <sys/wait.h>
 
 #include "tsh.h"
-#include "timer.h"
+#include "fs.h"
 
-#define TSH_MAX_LENGTH 32
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <sys/epoll.h>
+
+#define TSH_MAX_LEN 32
 #define TSH_DELIM " \t\r\n\a"
+#define TSH_MAX_EVENTS 2
 
-static char **_tsh_split_cmd(char *cmd)
+static char **split_cmd(char *cmd_str)
 {
-	int pos = 0;
-	char **ts = malloc(TSH_MAX_LENGTH * sizeof(char *));
-	char *t;
-
-	if (!ts)
+	if (!cmd_str)
 		return NULL;
 
-	t = strtok(cmd, TSH_DELIM);
-	while (t != NULL) {
-		ts[pos] = t;
-		pos++;
+	char *str = strdup(cmd_str);
+	char **cmd = calloc(TSH_MAX_LEN, sizeof(char *));
+	if (!cmd)
+		return NULL;
 
-		if (pos >= TSH_MAX_LENGTH)
+	char *tkn = strtok(str, TSH_DELIM);
+	int pos = 0;
+	while (tkn != NULL) {
+		cmd[pos] = tkn;
+		++pos;
+
+		if (pos == TSH_MAX_LEN)
 			break;
 
-		t = strtok(NULL, TSH_DELIM);
+		tkn = strtok(NULL, TSH_DELIM);
 	}
-	ts[pos] = NULL;
-
-	return ts;
+	cmd[pos] = NULL;
+	return cmd;
 }
 
-static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
-		       int stdout_p[], int stderr_p[])
+static void close_pipe(int *pipe)
 {
-	int pid = -1;
-	sigset_t blocked_sig, old_sigset;
-	int ret = 0;
-
-	if (wait) {
-		sigemptyset(&blocked_sig);
-		sigaddset(&blocked_sig, SIGCHLD);
-		/*
-		 * Block SIGCHLD while we want to wait on this child.
-		 * */
-		ret = sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
+	if (pipe) {
+		if (pipe[0] > -1)
+			close(pipe[0]);
+		if (pipe[1] > -1)
+			close(pipe[1]);
 	}
-	pid = fork();
-
-	if (pid == -1) {
-		if ((ret == 0) && wait)
-			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
-		return -1;
-	} else if (pid > 0) {
-		// In parent
-		if (wait) {
-			if (ret == 0) {
-				/*wait only if we blocked SIGCHLD*/
-				waitpid(pid, status, 0);
-				sigprocmask(SIG_SETMASK, &old_sigset, NULL);
-			}
-		}
-		free(argv);
-	} else {
-		ret = 0;
-		// closed all unused fds right away ..
-		if (stdin_p) // close writing end for stdin dup
-			close(stdin_p[1]);
-		if (stdout_p) // close reading ends for out and err dup
-			close(stdout_p[0]);
-		if (stderr_p)
-			close(stderr_p[0]);
-
-		// dup2 things
-		while (stdin_p &&
-		       ((ret = dup2(stdin_p[0], STDIN_FILENO)) == -1) &&
-		       (errno == EINTR)) {
-		}
-		if (ret == -1)
-			goto exit_failure;
-		while (stdout_p &&
-		       ((ret = dup2(stdout_p[1], STDOUT_FILENO)) == -1) &&
-		       (errno == EINTR)) {
-		}
-		if (ret == -1)
-			goto exit_failure;
-		while (stderr_p &&
-		       ((ret = dup2(stderr_p[1], STDERR_FILENO)) == -1) &&
-		       (errno == EINTR)) {
-		}
-		if (ret == -1)
-			goto exit_failure;
-
-		// close all the duped ones now too
-		if (stdin_p) // close reading end for stdin dup
-			close(stdin_p[0]);
-		if (stdout_p) // close writing ends for out and err dup
-			close(stdout_p[1]);
-		if (stderr_p)
-			close(stderr_p[1]);
-
-		// now we let it flow ...
-		setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin", 1);
-		execvp(argv[0], argv);
-	exit_failure:
-		exit(EXIT_FAILURE);
-	}
-
-	return pid;
 }
 
-// Run command, either built-in or exec
-pid_t tsh_run(char *cmd, int wait, int *status)
+static int dup_io(int *pipe, int dup_idx, int io)
 {
-	return tsh_run_io(cmd, wait, status, NULL, NULL, NULL);
-}
+	if (!pipe)
+		return 0;
 
-// Run command, either built-in or exec
-pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
-		 int stdout_p[], int stderr_p[])
-{
-	pid_t pid;
-	char **args;
-	char *vcmd;
-
-	vcmd = malloc(strlen(cmd) + 1);
-	if (!vcmd)
+	if (pipe[0] < 0 || pipe[1] < 0)
 		return -1;
 
-	strcpy(vcmd, cmd);
+	errno = 0;
+	while (dup2(pipe[dup_idx], io) == -1 && errno == EINTR)
+		;
 
-	args = _tsh_split_cmd(vcmd);
-	if (!args)
-		return -1;
+	close_pipe(pipe);
 
-	pid = _tsh_exec(args, wait, status, stdin_p, stdout_p, stderr_p);
-	free(vcmd);
-
-	if (pid < 0)
-		printf("Cannot run \"%s\"\n", cmd);
-
-	return pid;
-}
-
-static int safe_fd_set(int fd, fd_set *fds, int *max_fd)
-{
-	FD_SET(fd, fds);
-	if (fd > *max_fd) {
-		*max_fd = fd;
-	}
 	return 0;
 }
 
-int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
-		   char *err_buf, int err_size)
+static void exec_cmd(char **cmd, int *in, int *out, int *err)
 {
-	int ret = -1, max_fd = -1, res, out_i = 0, err_i = 0;
+	if (dup_io(in, 0, STDIN_FILENO) != 0)
+		exit(EXIT_FAILURE);
+
+	if (dup_io(out, 1, STDOUT_FILENO) != 0)
+		exit(EXIT_FAILURE);
+
+	if (dup_io(err, 1, STDERR_FILENO) != 0)
+		exit(EXIT_FAILURE);
+
+	setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin", 1);
+	execvp(cmd[0], cmd);
+	exit(EXIT_FAILURE);
+}
+
+static pid_t exec_cmd_forked(char **cmd, bool wait, int *status, int *in,
+			     int *out, int *err)
+{
+	sigset_t old_set;
+	// block SIGCHLD while finish the child process
+	if (wait) {
+		sigset_t block;
+		sigemptyset(&block);
+		sigaddset(&block, SIGCHLD);
+		sigprocmask(SIG_BLOCK, &block, &old_set);
+	}
+
+	pid_t pid = fork();
+
+	if (pid > 0) {
+		if (wait) {
+			waitpid(pid, status, 0);
+			sigprocmask(SIG_SETMASK, &old_set, NULL);
+		}
+	} else if (pid == 0) {
+		exec_cmd(cmd, in, out, err);
+	} else if (pid == -1) {
+		if (wait)
+			sigprocmask(SIG_SETMASK, &old_set, NULL);
+		return -1;
+	}
+
+	return pid;
+}
+
+static int io_add(int epfd, int fd)
+{
+	struct epoll_event ev = { .events = EPOLLIN | EPOLLONESHOT,
+				  .data.fd = fd };
+	return epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+}
+
+pid_t tsh_run(char *cmd_str, int wait, int *status)
+{
+	return tsh_run_io(cmd_str, wait, status, NULL, NULL, NULL);
+}
+
+pid_t tsh_run_io(char *cmd_str, bool wait, int *status, int *in, int *out,
+		 int *err)
+{
+	char **cmd = split_cmd(cmd_str);
+	if (!cmd)
+		return -1;
+
+	pid_t p = exec_cmd_forked(cmd, wait, status, in, out, err);
+
+	free(cmd[0]);
+	free(cmd);
+	return p;
+}
+
+int tsh_run_output(const char *cmd_str, int timeout, char *out_buf,
+		   int out_size, char *err_buf, int err_size)
+{
+	int out[] = { -1, -1 };
+	int err[] = { -1, -1 };
+	int epfd = -1;
+	int status = -1;
+	int ready = -1;
+	char *cmd_copy = NULL;
 	pid_t pid = -1;
-	char **args;
-	char *vcmd = NULL;
-	fd_set master;
-	int outfd[2], errfd[2];
-	struct timeval tv;
-	sighandler_t oldsig;
+	struct epoll_event ev[TSH_MAX_EVENTS] = { 0 };
 
-	memset(outfd, -1, sizeof(outfd));
-	memset(errfd, -1, sizeof(errfd));
-
-	vcmd = malloc(strlen(cmd) + 1);
-	if (!vcmd)
+	if (pipe2(out, O_CLOEXEC | O_NONBLOCK) != 0)
 		goto out;
 
-	strcpy(vcmd, cmd);
-
-	args = _tsh_split_cmd(vcmd);
-	if (!args)
+	if (pipe2(err, O_CLOEXEC | O_NONBLOCK) != 0)
 		goto out;
 
-	// pipes for communication between main process and command process
-	if (pipe(outfd) < 0)
-		goto out;
-	if (pipe(errfd) < 0)
+	cmd_copy = strdup(cmd_str);
+	if (!cmd_copy)
 		goto out;
 
-	pid = fork();
-	if (pid < 0)
+	pid = tsh_run_io(cmd_copy, false, NULL, NULL, out, err);
+
+	epfd = epoll_create1(0);
+	if (epfd < 0)
 		goto out;
-	else if (pid == 0) {
-		// redirect out and err of command to pipe
-		dup2(outfd[1], STDOUT_FILENO);
-		dup2(errfd[1], STDERR_FILENO);
-		close(outfd[0]);
-		close(errfd[0]);
-		execvp(args[0], args);
+
+	io_add(epfd, out[0]);
+	io_add(epfd, err[0]);
+
+	ready = epoll_wait(epfd, &ev[0], TSH_MAX_EVENTS, timeout * 1000);
+
+	if (ready < 1)
 		goto out;
-	} else {
-		close(outfd[1]);
-		close(errfd[1]);
-		tv.tv_sec = timeout_s;
-		tv.tv_usec = 0;
 
-		oldsig = signal(SIGCHLD, SIG_DFL);
+	for (int i = 0; i < ready; ++i) {
+		if (ev[i].data.fd == out[0])
+			pv_fs_file_read_nointr(out[0], out_buf, out_size);
 
-		while (1) {
-			FD_ZERO(&master);
-			safe_fd_set(outfd[0], &master, &max_fd);
-			safe_fd_set(errfd[0], &master, &max_fd);
-			if (select(max_fd + 1, &master, NULL, NULL, &tv) < 0) {
-				ret = -1;
-				break;
-			}
-
-			if (FD_ISSET(outfd[0], &master)) {
-				res = read(outfd[0], &out_buf[out_i], out_size);
-				if (res > 0) {
-					out_size -= res;
-					out_i += res;
-				} else if (res < 0 && errno != EAGAIN) {
-					ret = -1;
-					break;
-				}
-				if (res == 0) {
-					break;
-				}
-			}
-
-			if (FD_ISSET(errfd[0], &master)) {
-				res = read(errfd[0], &err_buf[err_i], err_size);
-				if (res > 0) {
-					err_size -= res;
-					err_i += res;
-				} else if (res < 0 && errno != EAGAIN) {
-					ret = -1;
-					break;
-				} else if (res == 0) {
-					break;
-				}
-			}
-		}
-
-		if (waitpid(pid, &ret, WNOHANG)) {
-			if (WIFEXITED(ret)) {
-				ret = WEXITSTATUS(ret);
-			}
-		}
-
-		signal(SIGCHLD, oldsig);
+		if (ev[i].data.fd == err[0])
+			pv_fs_file_read_nointr(err[0], err_buf, err_size);
 	}
 
+	usleep(100000);
+	waitpid(pid, &status, WNOHANG);
+
+	if (WIFEXITED(status))
+		status = WEXITSTATUS(status);
 out:
-	if (pid == 0) {
-		close(outfd[1]);
-		close(errfd[1]);
-		exit(127);
-	} else {
-		close(outfd[0]);
-		close(errfd[0]);
-	}
-
-	if (vcmd)
-		free(vcmd);
-
-	return ret;
+	close_pipe(out);
+	close_pipe(err);
+	if (epfd > 0)
+		close(epfd);
+	if (cmd_copy)
+		free(cmd_copy);
+	return status;
 }
