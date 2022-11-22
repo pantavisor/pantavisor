@@ -159,6 +159,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
 		dl_list_add_tail(&s->platforms, &p->list);
+		pv_platform_set_qos_policy(p, QOS_UNKNOWN);
 	}
 
 	return p;
@@ -474,6 +475,16 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 	if (!pid) {
 		char namespace[64];
 		int ns_fd = -1;
+
+		if (getuid() == 0) {
+			if (pv_system_oom_adjust(
+				    pv_config_get_vm_oom_qos_guaranteed() /
+				    3)) {
+				printf("ERROR: oom adjust failed: '%s'\n",
+				       strerror(errno));
+				return -1;
+			}
+		}
 		/*
 		 * lxc_logger will not move
 		 * into mount namespace of platform.
@@ -995,6 +1006,34 @@ plat_goal_state_t pv_platform_check_goal(struct pv_platform *p)
 	}
 
 	return PLAT_GOAL_UNACHIEVED;
+}
+
+void pv_platform_set_qos_policy(struct pv_platform *p, qos_policy_t qos)
+{
+	p->qos_policy = qos;
+	char score[32];
+	switch (qos) {
+	case QOS_GUARANTEED:
+		snprintf(score, 32, "%d",
+			 pv_config_get_vm_oom_qos_guaranteed());
+		break;
+	case QOS_BESTEFFORT:
+		snprintf(score, 32, "%d",
+			 pv_config_get_vm_oom_qos_besteffort());
+		break;
+	case QOS_BURSTABLE:
+		snprintf(score, 32, "%d",
+			 pv_config_get_vm_oom_qos_besteffort() / 3);
+		break;
+	default:
+		snprintf(score, 32, "%d", 0);
+		break;
+	}
+
+	if (p->qos_policy_oom_score_adj)
+		free(p->qos_policy_oom_score_adj);
+
+	p->qos_policy_oom_score_adj = strdup(score);
 }
 
 void pv_platform_set_restart_policy(struct pv_platform *p,

@@ -445,6 +445,11 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 	config_iterate_items_prefix(&config_list, config_sysctl_apply,
 				    "sysctl.", NULL);
 
+	config->vm.oom_qos_besteffort = config_get_value_int(
+		&config_list, "vm.oom_qos_besteffort", 1000);
+	config->vm.oom_qos_guaranteed = config_get_value_int(
+		&config_list, "vm.oom_qos_guaranteed", -997);
+
 	config_clear_items(&config_list);
 
 	return 0;
@@ -724,6 +729,10 @@ void pv_config_override_value(const char *key, const char *value)
 		pv->config.metadata.devmeta_interval = atoi(value);
 	else if (!strcmp(key, "metadata.usrmeta.interval"))
 		pv->config.metadata.usrmeta_interval = atoi(value);
+	else if (!strcmp(key, "vm.oom_qos_besteffort"))
+		pv->config.vm.oom_qos_besteffort = atoi(value);
+	else if (!strcmp(key, "vm.oom_qos_guaranteed"))
+		pv->config.vm.oom_qos_guaranteed = atoi(value);
 	else if (!strcmp(key, "debug.ssh"))
 		pv->config.debug.ssh = atoi(value);
 }
@@ -1201,6 +1210,16 @@ int pv_config_get_metadata_devmeta_interval()
 int pv_config_get_metadata_usrmeta_interval()
 {
 	return pv_get_instance()->config.metadata.usrmeta_interval;
+}
+
+int pv_config_get_vm_oom_qos_besteffort()
+{
+	return pv_get_instance()->config.vm.oom_qos_besteffort;
+}
+
+int pv_config_get_vm_oom_qos_guaranteed()
+{
+	return pv_get_instance()->config.vm.oom_qos_guaranteed;
 }
 
 char *pv_config_get_json()

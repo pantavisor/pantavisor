@@ -63,6 +63,14 @@ typedef enum {
 	RESTART_CONTAINER
 } restart_policy_t;
 
+typedef enum {
+	QOS_NONE,
+	QOS_GUARANTEED,
+	QOS_BESTEFFORT,
+	QOS_BURSTABLE,
+	QOS_UNKNOWN
+} qos_policy_t;
+
 struct pv_platform_driver {
 	plat_driver_t type;
 	bool loaded;
@@ -96,6 +104,8 @@ struct pv_platform {
 	struct pv_group *group;
 	struct pv_state *state;
 	int roles;
+	qos_policy_t qos_policy;
+	char *qos_policy_oom_score_adj;
 	restart_policy_t restart_policy;
 	bool updated;
 	struct timer timer_status_goal;
@@ -142,6 +152,8 @@ bool pv_platform_is_updated(struct pv_platform *p);
 
 void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal);
 plat_goal_state_t pv_platform_check_goal(struct pv_platform *p);
+
+void pv_platform_set_qos_policy(struct pv_platform *p, qos_policy_t policy);
 
 void pv_platform_set_restart_policy(struct pv_platform *p,
 				    restart_policy_t policy);

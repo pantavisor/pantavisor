@@ -466,6 +466,21 @@ int main(int argc, char *argv[])
 
 	// create pv thread
 	pv_pid = fork();
+	if (pv_pid > 0 && getuid() == 0) {
+		if (pv_system_oom_adjust(
+			    pv_config_get_vm_oom_qos_guaranteed())) {
+			printf("ERROR: oom adjust failed: '%s'\n",
+			       strerror(errno));
+			return -1;
+		}
+	} else if (!pv_pid && getuid() == 0) {
+		if (pv_system_oom_adjust(
+			    pv_config_get_vm_oom_qos_guaranteed())) {
+			printf("ERROR: oom adjust failed: '%s'\n",
+			       strerror(errno));
+			return -1;
+		}
+	}
 	if (pv_pid > 0)
 		goto loop;
 
