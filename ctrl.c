@@ -183,6 +183,35 @@ static void pv_ctrl_parse_signal(char *buf, char **signal, char **payload)
 		free(tokv);
 }
 
+static int pv_ctrl_wait_recv(int req_fd, char *buf, size_t length)
+{
+	int res;
+	fd_set fdset;
+	struct timeval tv;
+
+	FD_ZERO(&fdset);
+	FD_SET(req_fd, &fdset);
+
+	// for now, we wait for 1s max
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+
+	res = select(req_fd + 1, &fdset, 0, 0, &tv);
+	if (res == 0) {
+		pv_log(WARN, "request timed out");
+		goto out;
+	} else if (res < 0) {
+		pv_log(WARN, "could not select socket with fd %d: %s", req_fd,
+		       strerror(errno));
+		goto out;
+	}
+
+	res = recv(req_fd, buf, length, MSG_DONTWAIT);
+
+out:
+	return res;
+}
+
 static int pv_ctrl_process_signal(int req_fd, size_t content_length,
 				  char **signal, char **payload)
 {
@@ -199,7 +228,7 @@ static int pv_ctrl_process_signal(int req_fd, size_t content_length,
 	}
 
 	// read request
-	res = recv(req_fd, req, content_length, 0);
+	res = pv_ctrl_wait_recv(req_fd, req, content_length);
 	if (res == 0) {
 		pv_log(WARN, "nothing to read from signal request");
 		goto err;
@@ -289,7 +318,7 @@ static int pv_ctrl_process_cmd(int req_fd, size_t content_length,
 	}
 
 	// read request
-	res = recv(req_fd, req, content_length, 0);
+	res = pv_ctrl_wait_recv(req_fd, req, content_length);
 	if (res == 0) {
 		pv_log(WARN, "nothing to read from cmd request");
 		goto err;
@@ -432,7 +461,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 		else
 			read_length = content_length;
 
-		write_length = recv(req_fd, req, read_length, 0);
+		write_length = pv_ctrl_wait_recv(req_fd, req, read_length);
 		if (write_length <= 0) {
 			pv_log(WARN,
 			       "HTTP PUT content could not be read from ctrl socket with fd %d: %s",
@@ -478,7 +507,7 @@ static int pv_ctrl_read_parse_request_header(
 
 	// read from socket until end of HTTP header
 	do {
-		res = recv(req_fd, &buf[buf_index], 1, 0);
+		res = pv_ctrl_wait_recv(req_fd, &buf[buf_index], 1);
 		if (res < 0) {
 			pv_log(ERROR,
 			       "HTTP request header could not read from fd %d: %s",
@@ -628,7 +657,7 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 	req = calloc(content_length + 1, sizeof(char));
 
 	// read request
-	res = recv(req_fd, req, content_length, 0);
+	res = pv_ctrl_wait_recv(req_fd, req, content_length);
 	if (res == 0) {
 		pv_log(WARN, "nothing to read from HTTP GET body");
 		goto err;
@@ -1305,7 +1334,7 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 	// legacy commands are only for mgmt platforms
 	if (pv_ctrl_check_sender_privileged(pname)) {
 		// read first character to see if the request is a non-HTTP legacy one
-		if (recv(req_fd, &buf[0], 1, 0) < 0) {
+		if (pv_ctrl_wait_recv(req_fd, &buf[0], 1) < 0) {
 			pv_log(WARN,
 			       "could not read first character from socket with fd %d: %s",
 			       req_fd, strerror(errno));
