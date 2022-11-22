@@ -78,7 +78,7 @@ do_crypt_init()
 	if [ $dm_type == "caam" ]; then
 		/usr/sbin/dmsetup -v create $device_name --table "0 $(/sbin/blockdev --getsz $FREE_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $FREE_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	elif [ $dm_type == "versatile" ]; then
 		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
@@ -105,6 +105,7 @@ do_crypt_init()
 	fi
 
 	/sbin/losetup -d $FREE_LOOP
+	rm -rf $dir/$keyname.txt
 }
 
 do_dm_sanity()
@@ -162,7 +163,8 @@ do_mount_disk()
 	if [ $dm_type == "caam" ]; then
 		/usr/sbin/dmsetup create $device_name --table "0 $(/sbin/blockdev --getsz $FREE_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $FREE_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
+		/lib/pv/volmount/crypt/dcp-tool dec $dir/$keyname.bb $dir/$keyname.txt 64
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	elif [ $dm_type == "versatile" ]; then
 		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
@@ -170,6 +172,7 @@ do_mount_disk()
 		exit 1
 	fi
 	[ $? -ne 0 ] && echo "ERROR: $dm_type: Unable to create/open crypt device" && exit 1
+	rm -rf $dir/$keyname.txt
 
 	if [ ! -b /dev/mapper/$device_name ]; then
 		echo "ERROR: could not crypt mapper"
