@@ -31,6 +31,12 @@ char *config_get_value(struct dl_list *list, char *key);
 void config_iterate_items(struct dl_list *list,
 			  int (*action)(char *key, char *value, void *opaque),
 			  void *opaque);
+
+void config_iterate_items_prefix(struct dl_list *list,
+				 int (*action)(char *key, char *value,
+					       void *opaque),
+				 char *prefix, void *opaque);
+
 void config_clear_items(struct dl_list *list);
 
 #endif

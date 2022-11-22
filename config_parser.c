@@ -139,6 +139,7 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 
 	buf = strdup(pv->cmdline);
 	token = strtok_r(buf, " ", &ptr_out);
+
 	while (token) {
 		if (strncmp(hint, token, strlen(hint)) == 0) {
 			k = token + strlen(hint);
@@ -226,6 +227,31 @@ void config_iterate_items(struct dl_list *list,
 	{
 		if (action(curr->key, curr->value, opaque))
 			break;
+	}
+}
+
+void config_iterate_items_prefix(struct dl_list *list,
+				 int (*action)(char *key, char *value,
+					       void *opaque),
+				 char *prefix, void *opaque)
+{
+	struct config_item *curr = NULL, *tmp;
+
+	if (dl_list_empty(list))
+		return;
+	if (!action)
+		return;
+
+	int prefix_size = -1;
+	if (prefix)
+		prefix_size = strlen(prefix);
+
+	dl_list_for_each_safe(curr, tmp, list, struct config_item, list)
+	{
+		if (prefix_size == -1 ||
+		    !strncmp(curr->key, prefix, prefix_size))
+			if (action(curr->key, curr->value, opaque))
+				break;
 	}
 }
 
