@@ -186,6 +186,7 @@ static void pv_ctrl_parse_signal(char *buf, char **signal, char **payload)
 static int pv_ctrl_process_signal(int req_fd, size_t content_length,
 				  char **signal, char **payload)
 {
+	int res;
 	char req[HTTP_REQ_BUFFER_SIZE];
 
 	memset(req, 0, sizeof(req));
@@ -198,7 +199,11 @@ static int pv_ctrl_process_signal(int req_fd, size_t content_length,
 	}
 
 	// read request
-	if (read(req_fd, req, content_length) <= 0) {
+	res = recv(req_fd, req, content_length, 0);
+	if (res == 0) {
+		pv_log(WARN, "nothing to read from signal request");
+		goto err;
+	} else if (res < 0) {
 		pv_log(WARN,
 		       "signal request could not be read from ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
@@ -271,6 +276,7 @@ out:
 static int pv_ctrl_process_cmd(int req_fd, size_t content_length,
 			       struct pv_cmd **cmd)
 {
+	int res;
 	char req[HTTP_REQ_BUFFER_SIZE];
 
 	memset(req, 0, sizeof(req));
@@ -283,7 +289,11 @@ static int pv_ctrl_process_cmd(int req_fd, size_t content_length,
 	}
 
 	// read request
-	if (read(req_fd, req, content_length) <= 0) {
+	res = recv(req_fd, req, content_length, 0);
+	if (res == 0) {
+		pv_log(WARN, "nothing to read from cmd request");
+		goto err;
+	} else if (res < 0) {
 		pv_log(WARN,
 		       "cmd request could not be read from ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
@@ -304,23 +314,37 @@ err:
 
 static void pv_ctrl_write_cont_response(int req_fd)
 {
-	if (write(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT) - 1) <= 0)
+	int res;
+
+	res = send(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT) - 1,
+		   MSG_NOSIGNAL);
+	if (res == 0) {
+		pv_log(WARN, "HTTP CONTINUE response could be sent");
+	} else if (res < 0) {
 		pv_log(WARN,
 		       "HTTP CONTINUE response could not be sent to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
+	}
 }
 
 static void pv_ctrl_write_ok_response(int req_fd)
 {
-	if (write(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK)) <= 0)
+	int res;
+
+	res = send(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK), MSG_NOSIGNAL);
+	if (res == 0) {
+		pv_log(WARN, "HTTP OK respnse could be sent");
+	} else if (res < 0) {
 		pv_log(WARN,
 		       "HTTP OK response could not be written to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
+	}
 }
 
 static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
 					 const char *message)
 {
+	int res;
 	unsigned int content_len, response_len;
 	char *response = NULL;
 
@@ -345,7 +369,10 @@ static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
 			pv_ctrl_string_http_status_code(code), content_len,
 			message);
 
-	if (write(req_fd, response, response_len) <= 0) {
+	res = send(req_fd, response, response_len, MSG_NOSIGNAL);
+	if (res == 0) {
+		pv_log(WARN, "HTTP error respnse could be sent");
+	} else if (res < 0) {
 		pv_log(ERROR,
 		       "HTTP response could not be written to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
@@ -405,7 +432,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 		else
 			read_length = content_length;
 
-		write_length = read(req_fd, req, read_length);
+		write_length = recv(req_fd, req, read_length, 0);
 		if (write_length <= 0) {
 			pv_log(WARN,
 			       "HTTP PUT content could not be read from ctrl socket with fd %d: %s",
@@ -450,7 +477,14 @@ static int pv_ctrl_read_parse_request_header(
 	int minor_version, res = -1;
 
 	// read from socket until end of HTTP header
-	while (1 == read(req_fd, &buf[buf_index], 1)) {
+	do {
+		res = recv(req_fd, &buf[buf_index], 1, 0);
+		if (res < 0) {
+			pv_log(ERROR,
+			       "HTTP request header could not read from fd %d: %s",
+			       req_fd, strerror(errno));
+			goto out;
+		}
 		if ((buf_index > 3) && (buf[buf_index - 3] == '\r') &&
 		    (buf[buf_index - 2] == '\n') &&
 		    (buf[buf_index - 1] == '\r') && (buf[buf_index] == '\n')) {
@@ -462,7 +496,7 @@ static int pv_ctrl_read_parse_request_header(
 			       HTTP_REQ_BUFFER_SIZE);
 			goto out;
 		}
-	}
+	} while (res == 1);
 
 	// parse HTTP header
 	res = phr_parse_request(buf, buf_index + 1, method, method_len, path,
@@ -559,7 +593,7 @@ static char *pv_ctrl_get_file_name(const char *path, int buf_index,
 
 static void pv_ctrl_process_get_string(int req_fd, char *buf)
 {
-	int buf_len;
+	int res, buf_len;
 
 	pv_log(DEBUG,
 	       "converting data to string and sending it to endpoint...");
@@ -568,10 +602,14 @@ static void pv_ctrl_process_get_string(int req_fd, char *buf)
 
 	pv_ctrl_write_ok_response(req_fd);
 
-	if (write(req_fd, buf, buf_len) != buf_len)
+	res = send(req_fd, buf, buf_len, MSG_NOSIGNAL);
+	if (res < 0) {
 		pv_log(WARN,
 		       "HTTP GET content could not be written to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
+	} else if (res != buf_len) {
+		pv_log(WARN, "HTTP GET content could not be written");
+	}
 
 	if (buf)
 		free(buf);
@@ -579,6 +617,7 @@ static void pv_ctrl_process_get_string(int req_fd, char *buf)
 
 static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 {
+	int res;
 	char *req = NULL;
 
 	if (content_length >= HTTP_REQ_BUFFER_SIZE) {
@@ -589,7 +628,11 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 	req = calloc(content_length + 1, sizeof(char));
 
 	// read request
-	if (read(req_fd, req, content_length) <= 0) {
+	res = recv(req_fd, req, content_length, 0);
+	if (res == 0) {
+		pv_log(WARN, "nothing to read from HTTP GET body");
+		goto err;
+	} else if (res < 0) {
 		pv_log(WARN,
 		       "HTTP GET body could not be read to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
@@ -1262,8 +1305,12 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 	// legacy commands are only for mgmt platforms
 	if (pv_ctrl_check_sender_privileged(pname)) {
 		// read first character to see if the request is a non-HTTP legacy one
-		if (read(req_fd, &buf[0], 1) < 0)
+		if (recv(req_fd, &buf[0], 1, 0) < 0) {
+			pv_log(WARN,
+			       "could not read first character from socket with fd %d: %s",
+			       req_fd, strerror(errno));
 			goto out;
+		}
 		buf_index++;
 
 		// if character is 3 (old code for json command), it is non-HTTP
