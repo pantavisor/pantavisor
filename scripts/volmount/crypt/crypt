@@ -62,16 +62,13 @@ do_crypt_init()
 		cat /data/caam/$keyname | /bin/keyctl padd logon logkey: @u
 		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to load key" && exit 1
 	elif [ $dm_type == "dcp" ]; then
-		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
-		keyfile=`/bin/mktemp`
-		echo $key_value > $keyfile
-		/lib/pv/volmount/crypt/dcp-tool enc $keyfile $dir/$keyname.bb 64
-		[ $? -ne 0 ] && echo "ERROR: DCP: Unable to create black blob" && exit 1
-		rm -f $keyfile
+		dd if=/dev/random bs=32 count=1 | /lib/pv/volmount/crypt/x--pv-dcp-tool \
+			encrypt $dir/$keyname.new
+		sync
+		mv $dir/$keyname.new $dir/$keyname
+		[ $? -ne 0 ] && echo "ERROR: DCP: Unable to create grey blob" && exit 1
 	elif [ $dm_type == "versatile" ]; then
-		key_value=`head /dev/urandom | tr -dc A-Za-z0-9 | head -c 32`
-		echo $key_value >$dir/$keyname.txt
-		echo $key_value >$dir/$keyname.bb
+		dd if=/dev/random of=$dir/keyname.txt bs=32 count=1
 	else
 		echo "Unknown device mapper target"
 		exit 1
@@ -95,7 +92,10 @@ do_crypt_init()
 	if [ $dm_type == "caam" ]; then
 		/usr/sbin/dmsetup -v create $device_name --table "0 $(/sbin/blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
+		keyfile=`mktemp`
+		/lib/pv/volmount/crypt/x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
+		rm -f $keyfile
 	elif [ $dm_type == "versatile" ]; then
 		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
@@ -134,7 +134,7 @@ do_dm_sanity()
 		[ ! -f /usr/sbin/dmsetup ] && exit 111
 		[ ! -f /bin/keyctl ] && exit 111
 	elif [ $dm_type == "dcp" ]; then
-		[ ! -f /lib/pv/volmount/crypt/dcp-tool ] && exit 111
+		[ ! -f /lib/pv/volmount/crypt/x--pv-dcp-tool ] && exit 111
 		[ ! -f /usr/sbin/cryptsetup ] && exit 111
 	elif [ $dm_type == "versatile" ]; then
 		[ ! -f /usr/sbin/cryptsetup ] && exit 111
@@ -163,7 +163,7 @@ do_mount_disk()
 	dir=`dirname $2`
 
 	keyname=`echo $base | awk '{split($0,a,","); print a[3]}'`
-	[ ! -f $dir/$keyname.init_done ] && do_crypt_init $2
+	[ ! -f $dir/$keyname.init_done ] && [ ! -f $dir/$keyname ] && do_crypt_init $2
 
 	cd $dir
 	if [ $dm_type == "caam" ]; then
@@ -187,7 +187,10 @@ do_mount_disk()
 	if [ $dm_type == "caam" ]; then
 		/usr/sbin/dmsetup create $device_name --table "0 $(/sbin/blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$dir/$keyname.bb $dir/$img_file $device_name
+		keyfile=`mktemp`
+		/lib/pv/volmount/crypt/x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
+		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
+		rm -f $keyfile
 	elif [ $dm_type == "versatile" ]; then
 		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
