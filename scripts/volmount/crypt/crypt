@@ -216,7 +216,7 @@ do_mount_disk()
 	mkdir -p $3
 	if mount /dev/mapper/$device_name $3; then
 		# only backup if a clean run success
-		[ -z "$specialrun" ] && cp -f $dir/$img_file.prebak $dir/$img_file.goodbak
+		[ -z "$specialrun" ] && [ ! -f $dir/$img_file.goodbak ] && cp -f $dir/$img_file.prebak $dir/$img_file.goodbak
 		sync
 		return 0
 	fi
