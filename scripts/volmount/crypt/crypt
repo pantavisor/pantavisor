@@ -31,6 +31,7 @@ mntpath=$4
 CAAM_KEYGEN=/usr/bin/caam-keygen
 
 MKFS_OPTS_EXT4=${MKFS_OPTS_EXT4:-"-O ^has_journal"}
+MNT_OPTS_EXT4=${MNT_OPTS_EXT4:-"-o noatime"}
 
 # do the same as losetup -f but also return the path of loop device on stdout
 # if successful.
@@ -214,7 +215,7 @@ do_mount_disk()
 	fi
 
 	mkdir -p $3
-	if mount /dev/mapper/$device_name $3; then
+	if mount $MNT_OPTS_EXT4 /dev/mapper/$device_name $3; then
 		# only backup if a clean run success
 		[ -z "$specialrun" ] && [ ! -f $dir/$img_file.goodbak ] && cp -f $dir/$img_file.prebak $dir/$img_file.goodbak
 		sync
