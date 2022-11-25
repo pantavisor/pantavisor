@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -144,30 +144,20 @@ struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
 	struct pv_disk *d, *tmp;
 	struct dl_list *disks = NULL;
 
-	if (v) {
-		v->name = strdup(name);
-		dl_list_init(&v->list);
-		dl_list_add_tail(&s->volumes, &v->list);
-		disks = &s->disks;
+	if (!v)
+		return NULL;
 
-		if (disk) {
-			dl_list_for_each_safe(d, tmp, disks, struct pv_disk,
-					      list)
-			{
-				if (!strcmp(d->name, disk)) {
-					v->disk = d;
-					break;
-				}
-			}
-		} else {
-			dl_list_for_each_safe(d, tmp, disks, struct pv_disk,
-					      list)
-			{
-				if (d->def) {
-					v->disk = d;
-					break;
-				}
-			}
+	v->name = strdup(name);
+	dl_list_init(&v->list);
+	dl_list_add_tail(&s->volumes, &v->list);
+	disks = &s->disks;
+
+	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
+	{
+		// if no disk name requested: use the default
+		if ((!disk && d->def) || (disk && !strcmp(d->name, disk))) {
+			v->disk = d;
+			break;
 		}
 	}
 
