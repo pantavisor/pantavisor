@@ -349,7 +349,7 @@ ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
 		if (cur_read < 0) {
 			if (errno == EINTR)
 				continue;
-			break;
+			return total_read == 0 ? cur_read : total_read;
 		}
 		if (cur_read == 0)
 			break;

@@ -498,7 +498,7 @@ static int logserver_handle_msg(struct logserver_msg *msg)
 static int logserver_epoll_command(int fd, int cmd)
 {
 	struct epoll_event ev;
-	ev.events = EPOLLIN;
+	ev.events = EPOLLIN | EPOLLRDHUP;
 	ev.data.fd = fd;
 	errno = 0;
 	return epoll_ctl(logserver_g.epfd, cmd, fd, &ev);
@@ -627,19 +627,21 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 	char platform[LOGSERVER_MAX_HEADER_LEN] = { 0 };
 	char src[LOGSERVER_MAX_HEADER_LEN] = { 0 };
 	int loglevel = -1;
+	int add = 0;
 
-	struct iovec iov[3];
+	struct iovec iov[4];
 	iov[0] = (struct iovec){ .iov_base = platform,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
 	iov[1] = (struct iovec){ .iov_base = src,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
 	iov[2] =
 		(struct iovec){ .iov_base = &loglevel, .iov_len = sizeof(int) };
+	iov[3] = (struct iovec){ .iov_base = &add, .iov_len = sizeof(int) };
 
 	struct msghdr msg = { .msg_name = NULL,
 			      .msg_namelen = 0,
 			      .msg_iov = iov,
-			      .msg_iovlen = 3,
+			      .msg_iovlen = 4,
 			      .msg_control = ctrl.buf,
 			      .msg_controllen = sizeof(ctrl.buf) };
 
@@ -655,8 +657,10 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 		return NULL;
 	}
 
-	int fd;
-	memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
+	int fd = -1;
+
+	if (add)
+		memcpy(&fd, CMSG_DATA(cmsg), sizeof(int));
 
 	return logserver_fd_new(platform, src, fd, loglevel);
 }
@@ -678,6 +682,28 @@ static int logserver_epoll_wait(struct epoll_event *ev)
 	return ready;
 }
 
+static void logserver_remove_fd(int fd)
+{
+	if (fd < 0)
+		return;
+
+	if (logserver_list_exists(&logserver_g.fdlst, fd)) {
+		struct logserver_fd *lfd =
+			logserver_fetch_fd_from_list(&logserver_g.fdlst, fd);
+
+		pv_log(WARN, "fd (%d) for platform %s:%s unsubscribed", lfd->fd,
+		       lfd->platform, lfd->src);
+
+		logserver_list_del(&logserver_g.fdlst, fd, NULL);
+
+	} else if (logserver_list_exists(&logserver_g.tmplst, fd))
+		logserver_list_del(&logserver_g.tmplst, fd, NULL);
+
+	logserver_epoll_del(fd);
+	close(fd);
+	fd = -1;
+}
+
 static void logserver_consume_log_data(int fd)
 {
 	struct buffer *buffer = pv_buffer_get(true);
@@ -685,9 +711,14 @@ static void logserver_consume_log_data(int fd)
 	if (!buffer)
 		return;
 
+	errno = 0;
 	if (pv_fs_file_read_nointr(fd, buffer->buf, buffer->size) > 0) {
 		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
 		logserver_handle_msg(msg);
+	} else if (errno != EAGAIN) {
+		pv_log(WARN, "bad fd (%d) found trying to read: %s", errno,
+		       strerror(errno));
+		logserver_remove_fd(fd);
 	}
 
 	pv_buffer_drop(buffer);
@@ -700,6 +731,7 @@ static void logserver_consume_fd(int fd)
 	if (!buffer)
 		return;
 
+	errno = 0;
 	size = pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
 	if (size > 0) {
 		struct logserver_fd *lfd =
@@ -713,6 +745,10 @@ static void logserver_consume_fd(int fd)
 						.data = buffer->buf,
 						.data_len = size };
 		logserver_log_msg_data(&d);
+	} else if (errno != EAGAIN) {
+		pv_log(WARN, "bad fd subscribed found (%d) trying to read: %s",
+		       errno, strerror(errno));
+		logserver_remove_fd(fd);
 	}
 	pv_buffer_drop(buffer);
 }
@@ -721,9 +757,6 @@ static int logserver_process_fd(int curfd)
 {
 	int ret = 0;
 	struct logserver_fd *lfd = NULL;
-
-	logserver_list_del(&logserver_g.tmplst, curfd, NULL);
-	logserver_epoll_del(curfd);
 
 	lfd = logserver_get_fd(curfd);
 
@@ -734,10 +767,7 @@ static int logserver_process_fd(int curfd)
 
 	// unsubscribe the platform
 	if (lfd->fd < 0) {
-		logserver_list_del(&logserver_g.fdlst, 0, lfd->platform);
-		pv_log(INFO, "fd (%d) for platform %s:%s unsubscribed", lfd->fd,
-		       lfd->platform, lfd->src);
-		ret = 0;
+		logserver_remove_fd(curfd);
 		goto clean_all;
 	}
 
@@ -782,8 +812,19 @@ static void logserver_loop()
 	struct dl_list *fdlst = &logserver_g.fdlst;
 
 	int curfd = -1;
+	int curev = 0;
 	for (int i = 0; i < n_events; ++i) {
 		curfd = ev[i].data.fd;
+		curev = ev[i].events;
+		if (!(curev & EPOLLIN)) {
+			if (curev & EPOLLRDHUP || curev & EPOLLHUP ||
+			    curev & EPOLLERR) {
+				pv_log(WARN, "bad fd found (fd = %d)", curfd);
+				logserver_remove_fd(curfd);
+				continue;
+			}
+		}
+
 		if (curfd == logsock || curfd == fdsock) {
 			int fd = logserver_accept_connection(curfd);
 			if (fd < 0) {
@@ -791,7 +832,7 @@ static void logserver_loop()
 			}
 
 			if (logserver_epoll_add(fd) != 0) {
-				close(fd);
+				logserver_remove_fd(fd);
 				continue;
 			}
 
@@ -801,20 +842,18 @@ static void logserver_loop()
 
 				if (logserver_list_add(tmplst, lfd) != 0) {
 					logserver_fd_free(lfd);
-					logserver_epoll_del(fd);
-					close(fd);
+					logserver_remove_fd(fd);
 				}
 			}
 		} else if (logserver_list_exists(tmplst, curfd)) {
 			logserver_process_fd(curfd);
-			close(curfd);
+			logserver_remove_fd(curfd);
 		} else {
 			bool sub = logserver_list_exists(fdlst, curfd);
 
 			if (!sub) {
 				logserver_consume_log_data(curfd);
-				logserver_epoll_del(curfd);
-				close(curfd);
+				logserver_remove_fd(curfd);
 			} else {
 				logserver_consume_fd(curfd);
 			}
@@ -1159,8 +1198,8 @@ void pv_logserver_stop(void)
 	}
 }
 
-int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
-			      int loglevel)
+static int logserver_send_subs_msg(int type, int fd, const char *platform,
+				   const char *src, int loglevel)
 {
 	char plat_buf[LOGSERVER_MAX_HEADER_LEN] = { 0 };
 	char src_buf[LOGSERVER_MAX_HEADER_LEN] = { 0 };
@@ -1168,13 +1207,14 @@ int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
 	strncpy(plat_buf, platform, LOGSERVER_MAX_HEADER_LEN - 1);
 	strncpy(src_buf, src, LOGSERVER_MAX_HEADER_LEN - 1);
 
-	struct iovec iov[3];
+	struct iovec iov[4];
 	iov[0] = (struct iovec){ .iov_base = plat_buf,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
 	iov[1] = (struct iovec){ .iov_base = src_buf,
 				 .iov_len = LOGSERVER_MAX_HEADER_LEN };
 	iov[2] =
 		(struct iovec){ .iov_base = &loglevel, .iov_len = sizeof(int) };
+	iov[3] = (struct iovec){ .iov_base = &type, .iov_len = sizeof(int) };
 
 	union {
 		char buf[CMSG_SPACE(sizeof(int))];
@@ -1184,7 +1224,7 @@ int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
 	struct msghdr msg = { .msg_name = NULL,
 			      .msg_namelen = 0,
 			      .msg_iov = iov,
-			      .msg_iovlen = 3,
+			      .msg_iovlen = 4,
 			      .msg_control = ctrl.buf,
 			      .msg_controllen = sizeof(ctrl.buf) };
 
@@ -1201,7 +1241,13 @@ int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
 	return r;
 }
 
+int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
+			      int loglevel)
+{
+	return logserver_send_subs_msg(1, fd, platform, src, loglevel);
+}
+
 int pv_logserver_unsubscribe_fd(const char *platform, const char *src)
 {
-	return pv_logserver_subscribe_fd(-1, platform, src, 0);
+	return logserver_send_subs_msg(0, -1, platform, src, 0);
 }
