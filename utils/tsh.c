@@ -89,7 +89,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		// In parent
 		if (wait) {
 			if (ret == 0) {
-				/*wait only if we blocked SIGCHLD*/
+				/* wait only if we blocked SIGCHLD */
 				waitpid(pid, status, 0);
 				sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 			}
@@ -194,8 +194,10 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 	char *vcmd = NULL;
 	fd_set master;
 	int outfd[2], errfd[2];
-	struct timeval tv;
+	struct timespec ts;
 	sighandler_t oldsig;
+	sigset_t mask;
+	sigset_t orig_mask;
 
 	memset(outfd, -1, sizeof(outfd));
 	memset(errfd, -1, sizeof(errfd));
@@ -216,6 +218,11 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 	if (pipe(errfd) < 0)
 		goto out;
 
+	// set SIGCHLD mask for timeout on waitpid()
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGCHLD);
+	sigprocmask(SIG_BLOCK, &mask, &orig_mask);
+
 	pid = fork();
 	if (pid < 0)
 		goto out;
@@ -225,22 +232,33 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		dup2(errfd[1], STDERR_FILENO);
 		close(outfd[0]);
 		close(errfd[0]);
+		// uncomment below to try how child that ignores SIGTERM
+		// also gets reaped
+		// signal(SIGTERM, SIG_IGN);
 		execvp(args[0], args);
 		goto out;
 	} else {
 		close(outfd[1]);
 		close(errfd[1]);
-		tv.tv_sec = timeout_s;
-		tv.tv_usec = 0;
+		ts.tv_sec = timeout_s;
+		ts.tv_nsec = 0;
 
 		oldsig = signal(SIGCHLD, SIG_DFL);
-
 		while (1) {
+			int ret;
+
 			FD_ZERO(&master);
 			safe_fd_set(outfd[0], &master, &max_fd);
 			safe_fd_set(errfd[0], &master, &max_fd);
-			if (select(max_fd + 1, &master, NULL, NULL, &tv) < 0) {
+			if ((ret = pselect(max_fd + 1, &master, NULL, NULL, &ts,
+					   &orig_mask)) < 0) {
 				ret = -1;
+				break;
+			}
+			if (!ret) {
+				// if we timed out, we send a nice SIGTERM
+				// and break ....
+				kill(pid, SIGTERM);
 				break;
 			}
 
@@ -271,13 +289,6 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 				}
 			}
 		}
-
-		if (waitpid(pid, &ret, WNOHANG)) {
-			if (WIFEXITED(ret)) {
-				ret = WEXITSTATUS(ret);
-			}
-		}
-
 		signal(SIGCHLD, oldsig);
 	}
 
@@ -287,6 +298,34 @@ out:
 		close(errfd[1]);
 		exit(127);
 	} else {
+	waitpidagain:
+		if (waitpid(pid, &ret, WNOHANG)) {
+			if (WIFEXITED(ret)) {
+				ret = WEXITSTATUS(ret);
+			} else if (WIFSIGNALED(ret)) {
+				ret = WTERMSIG(ret);
+			} else {
+				printf("WARNING: waitpid returned unexpected state %d\n",
+				       ret);
+			}
+		} else {
+			if ((ret = sigtimedwait(&mask, NULL, &ts)) < 0) {
+				if (errno == EINTR) {
+					goto waitpidagain;
+				} else if (errno == EAGAIN) {
+					kill(pid, SIGKILL);
+					goto waitpidagain;
+				}
+			} else if (ret > 0) {
+				goto waitpidagain;
+			}
+			// usually this goto loop will leave through waitpid branch above.
+			printf("ERROR on sigtimedwait wait %s",
+			       strerror(errno));
+			ret = -1;
+		}
+
+		sigprocmask(SIG_SETMASK, &orig_mask, NULL);
 		close(outfd[0]);
 		close(errfd[0]);
 	}
