@@ -194,8 +194,11 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 	char *vcmd = NULL;
 	fd_set master;
 	int outfd[2], errfd[2];
+	struct timespec ts;
 	struct timeval tv;
 	sighandler_t oldsig;
+	sigset_t mask;
+	sigset_t orig_mask;
 
 	memset(outfd, -1, sizeof(outfd));
 	memset(errfd, -1, sizeof(errfd));
@@ -216,6 +219,11 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 	if (pipe(errfd) < 0)
 		goto out;
 
+	// set SIGCHLD mask for timeout on waitpid()
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGCHLD);
+	sigprocmask(SIG_BLOCK, &mask, &orig_mask);
+
 	pid = fork();
 	if (pid < 0)
 		goto out;
@@ -230,6 +238,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 	} else {
 		close(outfd[1]);
 		close(errfd[1]);
+		ts.tv_sec = timeout_s;
+		ts.tv_nsec = 0;
 		tv.tv_sec = timeout_s;
 		tv.tv_usec = 0;
 
@@ -271,13 +281,6 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 				}
 			}
 		}
-
-		if (waitpid(pid, &ret, WNOHANG)) {
-			if (WIFEXITED(ret)) {
-				ret = WEXITSTATUS(ret);
-			}
-		}
-
 		signal(SIGCHLD, oldsig);
 	}
 
@@ -287,6 +290,24 @@ out:
 		close(errfd[1]);
 		exit(127);
 	} else {
+		while (1) {
+			if (sigtimedwait(&mask, NULL, &ts) < 0) {
+				if (errno == EINTR) {
+					continue;
+				} else if (errno == EAGAIN) {
+					kill(pid, SIGKILL);
+				} else {
+					break;
+				}
+			}
+			break;
+		}
+		if (waitpid(pid, &ret, WNOHANG)) {
+			if (WIFEXITED(ret)) {
+				ret = WEXITSTATUS(ret);
+			}
+		}
+		sigprocmask(SIG_BLOCK, &orig_mask, NULL);
 		close(outfd[0]);
 		close(errfd[0]);
 	}
