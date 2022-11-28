@@ -482,7 +482,7 @@ static char *pv_signature_get_json_files(struct dl_list *json_pairs)
 		out = realloc(out, len);
 		strcat(out, "\"");
 		strcat(out, pair->key);
-		if (pair->value[0] != '{') {
+		if (pair->value[0] != '{' && pair->value[0] != '[') {
 			len += 4 + strlen(pair->value);
 			out = realloc(out, len);
 			strcat(out, "\":\"");
