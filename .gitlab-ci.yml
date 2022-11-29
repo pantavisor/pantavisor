@@ -1,6 +1,6 @@
 include:
   project: 'pantacor/ci/device-ci'
-  ref: c9078a7b2073f44164bdfdb60f8782a7aca341ae
+  ref: 1e048b7ebfdd9341db4b720454f1400bb447a7f6
   file: '/yml/pvdeps-ci.yml'
 
 variables:
