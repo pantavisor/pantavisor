@@ -691,8 +691,8 @@ static void logserver_remove_fd(int fd)
 		struct logserver_fd *lfd =
 			logserver_fetch_fd_from_list(&logserver_g.fdlst, fd);
 
-		pv_log(WARN, "fd (%d) for platform %s:%s unsubscribed", lfd->fd,
-		       lfd->platform, lfd->src);
+		pv_log(DEBUG, "fd (%d) for platform %s:%s unsubscribed",
+		       lfd->fd, lfd->platform, lfd->src);
 
 		logserver_list_del(&logserver_g.fdlst, fd, NULL);
 
@@ -716,7 +716,7 @@ static void logserver_consume_log_data(int fd)
 		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
 		logserver_handle_msg(msg);
 	} else if (errno != EAGAIN) {
-		pv_log(WARN, "bad fd (%d) found trying to read: %s", errno,
+		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
 		       strerror(errno));
 		logserver_remove_fd(fd);
 	}
@@ -746,7 +746,8 @@ static void logserver_consume_fd(int fd)
 						.data_len = size };
 		logserver_log_msg_data(&d);
 	} else if (errno != EAGAIN) {
-		pv_log(WARN, "bad fd subscribed found (%d) trying to read: %s",
+		pv_log(DEBUG,
+		       "dead fd subscribed found (%d) trying to read: %s",
 		       errno, strerror(errno));
 		logserver_remove_fd(fd);
 	}
@@ -819,7 +820,7 @@ static void logserver_loop()
 		if (!(curev & EPOLLIN)) {
 			if (curev & EPOLLRDHUP || curev & EPOLLHUP ||
 			    curev & EPOLLERR) {
-				pv_log(WARN, "bad fd found (fd = %d)", curfd);
+				pv_log(DEBUG, "dead fd found (fd = %d)", curfd);
 				logserver_remove_fd(curfd);
 				continue;
 			}
