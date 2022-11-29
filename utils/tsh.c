@@ -233,9 +233,13 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		dup2(errfd[1], STDERR_FILENO);
 		close(outfd[0]);
 		close(errfd[0]);
+		// uncomment below to try how child that ignores SIGTERM
+		// also gets reaped
+		// signal(SIGTERM, SIG_IGN);
 		execvp(args[0], args);
 		goto out;
 	} else {
+		int killed = 0;
 		close(outfd[1]);
 		close(errfd[1]);
 		ts.tv_sec = timeout_s;
@@ -244,16 +248,37 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		tv.tv_usec = 0;
 
 		oldsig = signal(SIGCHLD, SIG_DFL);
-
-		while (1) {
+		while (errfd[0] != -1 || outfd[0] != -1) {
+			int ret;
+			max_fd = -1;
 			FD_ZERO(&master);
-			safe_fd_set(outfd[0], &master, &max_fd);
-			safe_fd_set(errfd[0], &master, &max_fd);
-			if (select(max_fd + 1, &master, NULL, NULL, &tv) < 0) {
+			if (outfd[0] != -1)
+				safe_fd_set(outfd[0], &master, &max_fd);
+			if (errfd[0] != -1)
+				safe_fd_set(errfd[0], &master, &max_fd);
+
+			if ((ret = pselect(max_fd + 1, &master, NULL, NULL, &ts,
+					   &orig_mask)) < 0) {
 				ret = -1;
+				printf("signal exit\n");
 				break;
 			}
-
+			if (!ret) {
+				// if we timed out, we send a nice SIGTERM
+				// and break ....
+				if (!killed) {
+					kill(pid, SIGTERM);
+					killed = 1;
+					printf("killing TERM\n");
+					continue;
+				} else if (killed == 1) {
+					kill(pid, SIGKILL);
+					killed++;
+					printf("killing KILL\n");
+					continue;
+				}
+				break;
+			}
 			if (FD_ISSET(outfd[0], &master)) {
 				res = read(outfd[0], &out_buf[out_i], out_size);
 				if (res > 0) {
@@ -264,7 +289,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 					break;
 				}
 				if (res == 0) {
-					break;
+					close(outfd[0]);
+					outfd[0] = -1;
 				}
 			}
 
@@ -277,7 +303,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 					ret = -1;
 					break;
 				} else if (res == 0) {
-					break;
+					close(errfd[0]);
+					errfd[0] = -1;
 				}
 			}
 		}
@@ -290,26 +317,28 @@ out:
 		close(errfd[1]);
 		exit(127);
 	} else {
-		while (1) {
-			if (sigtimedwait(&mask, NULL, &ts) < 0) {
-				if (errno == EINTR) {
-					continue;
-				} else if (errno == EAGAIN) {
-					kill(pid, SIGKILL);
-				} else {
-					break;
-				}
-			}
-			break;
-		}
-		if (waitpid(pid, &ret, WNOHANG)) {
+		int rv;
+		if ((rv = waitpid(pid, &ret, 0)) > 0) {
 			if (WIFEXITED(ret)) {
 				ret = WEXITSTATUS(ret);
+			} else if (WIFSIGNALED(ret)) {
+				ret = WTERMSIG(ret);
+				errno = EINTR;
+			} else {
+				printf("unexpected waitpid code path... treating it as exited ... %d\n",
+				       ret);
 			}
+		} else if (!rv) {
+			printf("WARNING: pid was not yet reapable: pid=%d",
+			       pid);
+			kill(pid, SIGKILL);
+			errno = EINTR;
+		} else {
+			printf("ERROR: pid was not yet reapable: rv=%d,pid=%d error=%s",
+			       rv, pid, strerror(errno));
 		}
-		sigprocmask(SIG_BLOCK, &orig_mask, NULL);
-		close(outfd[0]);
-		close(errfd[0]);
+
+		sigprocmask(SIG_SETMASK, &orig_mask, NULL);
 	}
 
 	if (vcmd)
