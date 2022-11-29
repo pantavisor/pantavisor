@@ -43,6 +43,7 @@
 #include "state.h"
 #include "tsh.h"
 #include "init.h"
+#include "logserver.h"
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
@@ -183,11 +184,8 @@ struct pv_disk *pv_disk_add(struct pv_state *s)
 
 static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 {
-#define DM_CRYPT_BUFSIZE (128 * 1024)
 	struct pv_disk *d = v->disk;
 	char path[PATH_MAX];
-	char out_log[DM_CRYPT_BUFSIZE] = { 0 };
-	char err_log[DM_CRYPT_BUFSIZE] = { 0 };
 	char *command = NULL;
 	char *crypt_type;
 	int ret;
@@ -225,18 +223,51 @@ static int pv_volume_mount_handler(struct pv_volume *v, char *action)
 		crypt_type, d->path, path);
 	pv_log(INFO, "command: %s", command);
 
-	ret = tsh_run_output(command, 5, out_log, sizeof(out_log), err_log,
-			     sizeof(err_log));
-	if (ret != 0)
-		pv_log(ERROR, "command: %s error: %s", command, err_log);
+	int wstatus;
+	int outpipe[2];
+	if ((ret = pipe(outpipe))) {
+		pv_log(ERROR, "cannot create pipe %s", strerror(errno));
+		return ret;
+	}
 
-	pv_log(DEBUG, "command: %s output: %s", command, out_log);
+	int errpipe[2];
+	if ((ret = pipe(errpipe))) {
+		pv_log(ERROR, "cannot create errpipe %s", strerror(errno));
+		return ret;
+	}
+
+	pv_logserver_subscribe_fd(outpipe[0], "pantavisor", "crypt-mount-info",
+				  INFO);
+	pv_logserver_subscribe_fd(errpipe[0], "pantavisor", "crypt-mount-err",
+				  WARN);
+
+	ret = tsh_run_io(command, 1, &wstatus, NULL, outpipe, errpipe);
+	close(outpipe[1]);
+	close(errpipe[1]);
+	if (ret < 0) {
+		pv_log(ERROR, "command: %s error: %s", command);
+	} else if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus)) {
+		pv_log(ERROR, "command failed with status: %s=%d", command,
+		       WEXITSTATUS(wstatus));
+		ret = -1;
+	} else if (WIFEXITED(wstatus)) {
+		pv_log(ERROR, "command succeeded: %s", command);
+		ret = 0;
+	} else if (WIFSIGNALED(wstatus)) {
+		pv_log(ERROR, "command signalled: %s %d", command,
+		       WTERMSIG(wstatus));
+		ret = -2;
+	} else {
+		pv_log(ERROR, "command failed with wstatus: %d", wstatus);
+		ret = -3;
+	}
 
 	if (command)
 		free(command);
 
 	return ret;
 }
+
 int pv_volume_mount(struct pv_volume *v)
 {
 	int ret = -1;
