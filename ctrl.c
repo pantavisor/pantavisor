@@ -860,15 +860,19 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 				  path, path_len)) {
 		if (!strncmp("POST", method, method_len)) {
 			if (pv_ctrl_process_signal(req_fd, content_length,
-						   &signal, &payload))
+						   &signal, &payload)) {
 				pv_ctrl_write_error_response(
 					req_fd, HTTP_STATUS_BAD_REQ,
 					"Signal has bad format");
+				goto out;
+			}
 			if (pv_state_interpret_signal(pv->state, pname, signal,
-						      payload))
+						      payload)) {
 				pv_ctrl_write_error_response(
 					req_fd, HTTP_STATUS_ERROR,
-					"Cannot send signal");
+					"Signal not expected from this platform");
+				goto out;
+			}
 			pv_ctrl_write_ok_response(req_fd);
 		} else
 			goto err_me;
