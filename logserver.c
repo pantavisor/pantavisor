@@ -929,6 +929,16 @@ static int logserver_open_server_socket(const char *fname)
 	return fd;
 }
 
+static void logserver_drop_fds(struct dl_list *lst)
+{
+	struct logserver_fd *it, *tmp;
+	dl_list_for_each_safe(it, tmp, lst, struct logserver_fd, list)
+	{
+		logserver_remove_fd(it->fd);
+		logserver_fd_free(it);
+	}
+}
+
 static pid_t logserver_start_service(const char *revision)
 {
 	logserver_g.pid = fork();
@@ -958,6 +968,10 @@ static pid_t logserver_start_service(const char *revision)
 		while (!(logserver_g.flags & LOGSERVER_FLAG_STOP)) {
 			logserver_loop();
 		}
+
+		logserver_drop_fds(&logserver_g.fdlst);
+		logserver_drop_fds(&logserver_g.tmplst);
+
 		_exit(EXIT_SUCCESS);
 	}
 
@@ -993,6 +1007,20 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *rev)
 	if (pv_config_get_log_capture()) {
 		logserver_start(rev);
 	}
+}
+
+static void logserver_capture_dmesg()
+{
+	errno = 0;
+	int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
+	if (fd < 0) {
+		pv_log(WARN, "could not susbcribe dmesg to logserver %s",
+		       strerror(errno));
+		return;
+	}
+
+	pv_logserver_subscribe_fd(fd, "pantavisor", "dmesg", INFO);
+	pv_log(DEBUG, "subscribing dmesg to logserver");
 }
 
 int pv_logserver_init()
@@ -1047,6 +1075,9 @@ int pv_logserver_init()
 	dl_list_init(&logserver_g.tmplst);
 	logserver_start_service(pv_bootloader_get_rev());
 	pv_log(DEBUG, "started log service with pid %d", (int)logserver_g.pid);
+
+	if (pv_config_get_log_capture_dmesg())
+		logserver_capture_dmesg();
 
 	return 0;
 out:
@@ -1199,6 +1230,11 @@ static void pv_logserver_close(void)
 		pv_log(DEBUG, "closing fdsock...");
 		logserver_close_socket(logserver_g.fdsock, LOGFD_FNAME);
 		logserver_g.fdsock = -1;
+	}
+
+	if (logserver_g.epfd >= 0) {
+		close(logserver_g.epfd);
+		logserver_g.epfd = -1;
 	}
 }
 
