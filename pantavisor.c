@@ -853,6 +853,8 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	if (!pv)
 		return PV_STATE_EXIT;
 
+	init_mode_t initmode = pv_config_get_system_init_mode();
+
 	pv_log(INFO, "preparing '%s'...", shutdown_type_string(t));
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		pv_log(INFO,
@@ -861,7 +863,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	wait_shell();
 
-	if ((REBOOT == t) && (pv_config_get_system_init_mode() != IM_APPENGINE))
+	if ((REBOOT == t) && (initmode != IM_APPENGINE))
 		pv_wdt_start(pv);
 
 	// stop childs leniently
@@ -872,25 +874,34 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_state_stop_force(pv->state);
 	ph_logger_stop_force();
 
-	// at this point, we can shutdown if not in appengine
-	if (pv_config_get_system_init_mode() != IM_APPENGINE)
-		reboot(shutdown_type_reboot_cmd(t));
+	// unmount disks
+	pv_disks_umount_all(pv->state);
 
 	// close pvctrl
 	pv_ctrl_socket_close(pv->ctrl_fd);
 
-	// stop logs now
-	pv_logserver_stop();
+	// stop all logs but stdout
+	pv_logserver_degrade();
 	pv_log_umount();
 
-	// unmount everything
 	pv_storage_umount();
 	pv_mount_umount();
 	pv_init_umount();
 
 	// free up memory
 	pv_bootloader_remove();
-	pv_remove(pv);
+
+	// at this point, we can shutdown if not in appengine
+	if (initmode != IM_APPENGINE) {
+		pv_log(INFO, "shutdown complete, rebooting in 2 second ...");
+		sleep(2);
+		pv_remove(pv);
+		reboot(shutdown_type_reboot_cmd(t));
+	} else {
+		pv_log(INFO, "shutdown complete ...");
+		pv_logserver_stop();
+		pv_remove(pv);
+	}
 
 	return PV_STATE_EXIT;
 }

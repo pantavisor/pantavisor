@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,8 @@ struct pv_disk {
 	char *uuid;
 	char *options;
 	bool def;
+	bool mounted;
+
 	struct dl_list list; // pv_disk
 };
 
@@ -58,13 +60,14 @@ struct pv_volume {
 	int file_fd;
 	char *umount_cmd;
 	struct pv_platform *plat;
-	struct dl_list list; // pv_volume
 	struct pv_disk *disk;
+	struct dl_list list; // pv_volume
 };
 
 void pv_volume_free(struct pv_volume *v);
 
 struct pv_disk *pv_disk_add(struct pv_state *s);
+int pv_disks_umount_all(struct pv_state *s);
 void pv_disks_empty(struct pv_state *s);
 
 struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Pantacor Ltd.
+ * Copyright (c) 2019-2022 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -57,6 +57,8 @@ int pv_wdt_start(struct pantavisor *pv)
 
 	if (!timeout)
 		pv_log(DEBUG, "error setting up watchdog device");
+
+	pv_wdt_kick(pv);
 
 	pv_log(DEBUG, "watchdog opened with %ds timeout", timeout);
 	interval = timeout / 2;
