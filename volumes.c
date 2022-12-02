@@ -104,6 +104,30 @@ void pv_disks_empty(struct pv_state *s)
 	pv_log(INFO, "removed %d disks", num_disk);
 }
 
+static int pv_disks_mount_handler(struct pv_disk *d, char *action);
+
+int pv_disks_umount_all(struct pv_state *s)
+{
+	int ret = 0;
+	struct pv_disk *d, *tmp;
+	struct dl_list *disks = &s->disks;
+
+	pv_log(INFO, "Unmounting all disks...");
+	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
+	{
+		int r;
+		if ((r = pv_disks_mount_handler(d, "unmount"))) {
+			pv_log(ERROR, "Error unmounting disk (%d), %s", r,
+			       d->name);
+			ret |= r;
+		} else {
+			pv_log(DEBUG, "Successfully unmounted disk %s",
+			       d->name);
+		}
+	}
+	return ret;
+}
+
 void pv_volume_free(struct pv_volume *v)
 {
 	if (v->name)
@@ -182,9 +206,8 @@ struct pv_disk *pv_disk_add(struct pv_state *s)
 	return d;
 }
 
-static int pv_volume_mount_handler(struct pv_volume *v, char *action)
+static int pv_disks_mount_handler(struct pv_disk *d, char *action)
 {
-	struct pv_disk *d = v->disk;
 	char path[PATH_MAX];
 	char *command = NULL;
 	char *crypt_type;
@@ -287,12 +310,13 @@ int pv_volume_mount(struct pv_volume *v)
 	char *command;
 	char *disk_name = NULL;
 
-	if (v->disk && !v->disk->def) {
-		ret = pv_volume_mount_handler(v, "mount");
+	if (v->disk && !v->disk->def && !v->disk->mounted) {
+		ret = pv_disks_mount_handler(v->disk, "mount");
 		if (ret != 0)
 			return ret;
 
 		disk_name = d->name;
+		v->disk->mounted = 1;
 	}
 
 	handlercut = strchr(v->name, ':');

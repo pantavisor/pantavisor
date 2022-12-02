@@ -627,16 +627,16 @@ int pv_state_stop_force(struct pv_state *s)
 
 	if (!pv_state_check_all_stopped(s)) {
 		pv_state_force_stop(s);
-		ret = -1;
+		ret |= -2;
 	}
 
 	// unmount all platform related volumes
 	if (pv_state_unmount_platforms_volumes(s))
-		ret = -1;
+		ret |= -4;
 
 	// unmount bsp volumes
 	if (pv_state_unmount_platform_volumes(s, NULL))
-		ret = -1;
+		ret |= -8;
 
 	return ret;
 }
@@ -798,6 +798,9 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 	return false;
 }
 
+// returns: 1 in case a reboot is required because something outside of plat changed
+// returns: 0 if all good and no reboot is required
+// returns: -1 if there was an error and reboot is mandatory
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
 {
 	if (pv_state_compare_jsons(current, pending) ||

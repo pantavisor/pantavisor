@@ -446,6 +446,15 @@ static void sigusr1_handler(int signum)
 	       logserver_g.revision);
 }
 
+static void sigusr2_handler(int signum)
+{
+	pv_log(DEBUG, "degrading logs outputs to just stdout");
+
+	logserver_g.out.std = true;
+	logserver_g.out.sfile = false;
+	logserver_g.out.ftree = false;
+}
+
 static int logserver_msg_parse_data(struct logserver_msg *msg,
 				    struct logserver_msg_data *msg_data)
 {
@@ -941,6 +950,9 @@ static pid_t logserver_start_service(const char *revision)
 		sa.sa_handler = sigusr1_handler;
 		sigaction(SIGUSR1, &sa, NULL);
 
+		sa.sa_handler = sigusr2_handler;
+		sigaction(SIGUSR2, &sa, NULL);
+
 		pv_log(DEBUG, "starting logserver loop");
 
 		while (!(logserver_g.flags & LOGSERVER_FLAG_STOP)) {
@@ -1149,6 +1161,12 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 
 	va_end(args);
 	return ret;
+}
+
+void pv_logserver_degrade(void)
+{
+	if (logserver_g.pid >= 0)
+		kill(logserver_g.pid, SIGUSR2);
 }
 
 void pv_logserver_reload(void)
