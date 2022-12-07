@@ -1539,16 +1539,15 @@ static struct pv_state *system1_parse_device(struct pv_state *this,
 			this = NULL;
 			goto out;
 		}
-
-		free(disksvalue);
-		free(groupsvalue);
-		free(value);
-		value = NULL;
 	}
 
 out:
 	if (tokv)
 		free(tokv);
+	if (groupsvalue)
+		free(groupsvalue);
+	if (disksvalue)
+		free(disksvalue);
 	if (value)
 		free(value);
 
