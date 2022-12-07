@@ -147,6 +147,7 @@ struct pantavisor_log {
 	int logsize;
 	bool push;
 	bool capture;
+	bool dmesg;
 	bool loggers;
 	bool std_out;
 	struct pantavisor_log_server server;
@@ -303,6 +304,7 @@ int pv_config_get_log_server_outputs(void);
 bool pv_config_get_log_server_output_file_tree(void);
 bool pv_config_get_log_server_output_single_file(void);
 bool pv_config_get_log_server_output_stdout(void);
+bool pv_config_get_log_capture_dmesg(void);
 
 int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);

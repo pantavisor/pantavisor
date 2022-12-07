@@ -372,6 +372,8 @@ static int pv_config_load_config_from_file(char *path,
 		config_get_value_bool(&config_list, "log.stdout", false);
 	config_override_value_string(&config_list, "log.dir",
 				     &config->log.logdir);
+	config->log.dmesg =
+		config_get_value_bool(&config_list, "log.capture.dmesg", false);
 
 	config->libthttp.loglevel =
 		config_get_value_int(&config_list, "libthttp.log.level", 3);
@@ -533,6 +535,8 @@ static int pv_config_override_config_from_file(char *path,
 	config_override_value_log_server_outputs(&config_list,
 						 "log.server.outputs",
 						 &config->log.server.outputs);
+	config_override_value_bool(&config_list, "log.capture.dmesg",
+				   &config->log.dmesg);
 	config_override_value_int(&config_list, "libthttp.log.level",
 				  &config->libthttp.loglevel);
 	config_override_value_int(&config_list, "metadata.devmeta.interval",
@@ -1092,6 +1096,11 @@ bool pv_config_get_log_server_output_stdout()
 	       LOG_SERVER_OUTPUT_STDOUT;
 }
 
+bool pv_config_get_log_capture_dmesg()
+{
+	return pv_get_instance()->config.log.dmesg;
+}
+
 int pv_config_get_libthttp_loglevel()
 {
 	return pv_get_instance()->config.libthttp.loglevel;
@@ -1275,6 +1284,8 @@ char *pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_log_push());
 		pv_json_ser_key(&js, "log.capture");
 		pv_json_ser_bool(&js, pv_config_get_log_capture());
+		pv_json_ser_key(&js, "log.capture.dmesg");
+		pv_json_ser_bool(&js, pv_config_get_log_capture_dmesg());
 		pv_json_ser_key(&js, "log.loggers");
 		pv_json_ser_bool(&js, pv_config_get_log_loggers());
 		pv_json_ser_key(&js, "log.stdout");
