@@ -284,6 +284,14 @@ void pv_paths_crypt_disks_boot_file(char *buf, size_t size, const char *type,
 			name);
 }
 
+#define PV_USR_PATHF "%s/%s"
+
+void pv_paths_usr_file(char *buf, size_t size, const char *path)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_USR_PATHF, pv_config_get_system_usrdir(),
+			path);
+}
+
 #define PV_ROOT_PATHF "%s"
 #define PV_VOLUMES_PATHF "%s/%s"
 #define PV_VOLUMES_PLAT_PATHF PV_VOLUMES_PATHF "/%s"

@@ -194,16 +194,21 @@ static int other_mounts()
 }
 
 #ifdef PANTAVISOR_DEBUG
-#define DBCMD "dropbear -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"
+#define DBCMD "%s -p 0.0.0.0:8222 -n %s -R -c %s"
 
 static void debug_telnet()
 {
 	char *dbcmd;
-	char path[PATH_MAX];
+	char bpath[PATH_MAX], kpath[PATH_MAX], fpath[PATH_MAX];
 
-	pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
-	dbcmd = calloc(sizeof(DBCMD) + strlen(path) + 1, sizeof(char));
-	sprintf(dbcmd, DBCMD, path);
+	pv_paths_usr_file(bpath, PATH_MAX, DROPBEAR_BIN_FNAME);
+	pv_paths_pv_usrmeta_key(kpath, PATH_MAX, SSH_KEY_FNAME);
+	pv_paths_usr_file(fpath, PATH_MAX, FALLBEAR_CMD_FNAME);
+
+	dbcmd = calloc(sizeof(DBCMD) + strlen(bpath) + strlen(kpath) +
+			       strlen(fpath) + 1,
+		       sizeof(char));
+	sprintf(dbcmd, DBCMD, bpath, kpath, fpath);
 
 	tsh_run("ifconfig lo up", 0, NULL);
 	tsh_run(dbcmd, 0, NULL);
@@ -498,14 +503,17 @@ int main(int argc, char *argv[])
 	// this might override the configuration
 	parse_commands(argc, argv);
 
-	// in case of standalone is set, we only start debugging tools up in main thread
-	if ((pv_config_get_system_init_mode() == IM_STANDALONE) &&
+	// in case of standalone or appengine are set, we start debugging tools up in main thread
+	if ((pv_config_get_system_init_mode() != IM_EMBEDDED) &&
 	    pv_config_get_debug_ssh()) {
-		if (pv_config_get_debug_shell())
+		if (pv_config_get_system_init_mode() == IM_STANDALONE &&
+		    pv_config_get_debug_shell())
 			debug_shell();
 		debug_telnet();
-		goto loop;
 	}
+
+	if (pv_config_get_system_init_mode() == IM_STANDALONE)
+		goto loop;
 
 	mount_cgroups();
 	other_mounts();
