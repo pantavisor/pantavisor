@@ -24,6 +24,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -1268,6 +1269,7 @@ static int parse_groups(struct pv_state *s, char *value)
 {
 	int tokc, size, ret = 1;
 	char *str = NULL;
+	char *tmp = NULL;
 	jsmntok_t *tokv, *t;
 
 	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
@@ -1284,11 +1286,10 @@ static int parse_groups(struct pv_state *s, char *value)
 	t = tokv + 1;
 	while ((str = pv_json_array_get_one_str(value, &size, &t))) {
 		struct pv_group *g;
-		char *tmp = NULL;
 		plat_status_t status = PLAT_STARTED;
 		restart_policy_t restart = RESTART_CONTAINER;
 		jsmntok_t *groupv;
-		int groupc, sizec;
+		int groupc, sizec, timeout;
 
 		if (jsmnutil_parse_json(str, &groupv, &groupc) <= 0) {
 			pv_log(ERROR, "invalid group entry");
@@ -1310,6 +1311,22 @@ static int parse_groups(struct pv_state *s, char *value)
 			tmp = NULL;
 		}
 
+		tmp = pv_json_get_value(str, "timeout", groupv, groupc);
+		if (tmp) {
+			errno = 0;
+			timeout = strtol(tmp, NULL, 10);
+			if (errno != 0 || timeout < 0) {
+				pv_log(ERROR,
+				       "group timeout malformed or beyond to the limits");
+				goto out;
+			}
+			free(tmp);
+			tmp = NULL;
+		} else {
+			pv_log(DEBUG, "No timeout, using default value");
+			timeout = pv_config_get_updater_goals_timeout();
+		}
+
 		tmp = pv_json_get_value(str, "restart_policy", groupv, groupc);
 		if (tmp) {
 			restart = parse_restart_policy(tmp, strlen(tmp));
@@ -1324,7 +1341,7 @@ static int parse_groups(struct pv_state *s, char *value)
 			pv_log(ERROR, "group does not have a name", str);
 			goto out;
 		}
-		g = pv_group_new(tmp, status, restart);
+		g = pv_group_new(tmp, timeout, status, restart);
 		pv_state_add_group(s, g);
 		free(tmp);
 		tmp = NULL;
@@ -1346,6 +1363,8 @@ out:
 		free(str);
 	if (tokv)
 		free(tokv);
+	if (tmp)
+		free(tmp);
 
 	return ret;
 }

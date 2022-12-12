@@ -82,7 +82,6 @@ struct pantavisor *pv_get_instance()
 }
 
 static struct timer timer_rollback_remote;
-static struct timer timer_rollback_goals;
 static struct timer timer_wait_delay;
 static struct timer timer_usrmeta_interval;
 static struct timer timer_devmeta_interval;
@@ -309,8 +308,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	timer_start(&timer_commit, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_rollback_remote,
 		    pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
-	timer_start(&timer_rollback_goals,
-		    pv_config_get_updater_goals_timeout(), 0, RELATIV_TIMER);
+	pv_state_start_groups_timer(pv->state);
 	timer_start(&timer_wait_delay, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_usrmeta_interval, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_devmeta_interval, 0, 0, RELATIV_TIMER);
@@ -422,36 +420,36 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 static pv_state_t pv_wait_update()
 {
 	struct pantavisor *pv = pv_get_instance();
-	struct timer_state tstate;
 
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update && pv->update->status != UPDATE_APPLIED) {
 		if (pv_update_is_trying(pv->update)) {
-			// rollback if timed out and any goal has not been met
-			if (!pv_state_check_goals(pv->state)) {
-				tstate = timer_current_state(
-					&timer_rollback_goals);
-				if (tstate.fin) {
-					pv_log(ERROR,
-					       "timed out before all goals are met. Rolling back...");
-					return PV_STATE_ROLLBACK;
-				}
-				pv_log(WARN,
-				       "at least one goal has not been satisfied yet. Will rollback in %d seconds",
-				       tstate.sec);
+			groups_goals_state_t status_goal =
+				pv_state_check_goals(pv->state, NULL);
+
+			switch (status_goal) {
+			case STATUS_GOAL_FAILED:
+				return PV_STATE_ROLLBACK;
+			case STATUS_GOAL_WAITING:
 				return PV_STATE_WAIT;
+			case STATUS_GOAL_UNKNOWN:
+				pv_log(ERROR,
+				       "could not check groups goals, could not complete the update");
+				return PV_STATE_ERROR;
+			case STATUS_GOAL_REACHED:
+				timer_start(
+					&timer_commit,
+					pv_config_get_updater_commit_delay(), 0,
+					RELATIV_TIMER);
+				// progress update state to testing
+				pv_update_test(pv);
 			}
-			// set initial testing time
-			timer_start(&timer_commit,
-				    pv_config_get_updater_commit_delay(), 0,
-				    RELATIV_TIMER);
-			// progress update state to testing
-			pv_update_test(pv);
 		}
 		// if the update is being tested, we might have to wait
 		if (pv_update_is_testing(pv->update)) {
 			// progress if possible the state of testing update
-			tstate = timer_current_state(&timer_commit);
+			struct timer_state tstate =
+				timer_current_state(&timer_commit);
 			if (!tstate.fin) {
 				pv_log(INFO,
 				       "committing new update in %d seconds",

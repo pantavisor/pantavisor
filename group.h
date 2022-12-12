@@ -26,24 +26,34 @@
 
 #include "utils/list.h"
 #include "utils/json.h"
+#include "utils/timer.h"
+
+typedef enum {
+	STATUS_GOAL_UNKNOWN,
+	STATUS_GOAL_REACHED,
+	STATUS_GOAL_WAITING,
+	STATUS_GOAL_FAILED
+} groups_goals_state_t;
 
 struct pv_group {
 	char *name;
+	int timeout;
 	plat_status_t default_status_goal;
 	restart_policy_t default_restart_policy;
+	struct timer timer_goal;
 	struct dl_list platform_refs; // pv_platform_ref
 	struct dl_list list; // pv_group
 };
 
-struct pv_group *pv_group_new(char *name, plat_status_t status,
+struct pv_group *pv_group_new(char *name, int timeout, plat_status_t status,
 			      restart_policy_t restart);
 void pv_group_empty_platform_refs(struct pv_group *g);
 void pv_group_free(struct pv_group *g);
 
 void pv_group_add_platform(struct pv_group *g, struct pv_platform *p);
 
-bool pv_group_check_goals(struct pv_group *g, bool log_warn);
-
+groups_goals_state_t pv_group_check_goals(struct pv_group *g);
 void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g);
+void pv_group_start_timer(struct pv_group *g);
 
 #endif // PV_GROUP_H
