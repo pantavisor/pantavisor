@@ -236,7 +236,7 @@ static int parse_disks(struct pv_state *s, char *value)
 
 	size = jsmnutil_array_count(value, tokv);
 	if (size <= 0) {
-		pv_log(ERROR, "empty disks array");
+		pv_log(ERROR, "empty disks array %s %d", value, size);
 		goto out;
 	}
 
@@ -1525,7 +1525,7 @@ static struct pv_state *system1_parse_device(struct pv_state *this,
 
 		disksvalue = pv_json_get_value(value, "disks", tokv, tokc);
 
-		if (disksvalue && parse_disks(this, value)) {
+		if (disksvalue && parse_disks(this, disksvalue)) {
 			pv_log(WARN,
 			       "Incompatible 'disks' value in device.json state");
 			this = NULL;
