@@ -1105,7 +1105,9 @@ void pv_storage_umount()
 	char path[PATH_MAX];
 
 	pv_paths_storage(path, PATH_MAX);
-	umount(path);
+	if (umount(path))
+		pv_log(ERROR, "Error unmounting pv_storage %s",
+		       strerror(errno));
 	pv_fs_path_sync(path);
 }
 
