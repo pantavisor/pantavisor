@@ -37,6 +37,7 @@
 #include "bootloader.h"
 #include "paths.h"
 #include "utils/str.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME "uboot"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -244,6 +245,7 @@ static int uboot_unset_env_key(char *key)
 	ret = write(fd, new, sizeof(new));
 	fsync(fd);
 	close(fd);
+	pv_fs_path_sync(path);
 
 	return 0;
 }
@@ -325,6 +327,7 @@ static int uboot_set_env_key(char *key, char *value)
 	res = write(fd, new, sizeof(new));
 	fsync(fd);
 	close(fd);
+	pv_fs_path_sync(path);
 
 	ret = 0;
 

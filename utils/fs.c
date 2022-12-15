@@ -45,10 +45,16 @@ void pv_fs_path_sync(const char *path)
 	if (!path)
 		return;
 
+	int fd = open(path, O_RDONLY);
+	if (fd > -1) {
+		fsync(fd);
+		close(fd);
+	}
+
 	strncpy(dir, path, strnlen(path, PATH_MAX));
 	char *sync_dir = dirname(dir);
 
-	int fd = open(sync_dir, O_RDONLY);
+	fd = open(sync_dir, O_RDONLY);
 	if (fd > -1) {
 		fsync(fd);
 		close(fd);
@@ -220,7 +226,9 @@ int pv_fs_file_save(const char *fname, const char *data, mode_t mode)
 	if (write(fd, data, strlen(data)) < 0)
 		goto out;
 
+	fsync(fd);
 	close_fd(&fd);
+	pv_fs_path_sync(tmp);
 
 	ret = pv_fs_path_rename(tmp, fname);
 
@@ -281,8 +289,10 @@ out:
 	if (src_fd > -1)
 		close_fd(&src_fd);
 
-	if (tmp_fd > -1)
+	if (tmp_fd > -1) {
+		fsync(tmp_fd);
 		close_fd(&tmp_fd);
+	}
 
 	if (pv_fs_path_exist(tmp_path))
 		pv_fs_path_remove(tmp_path, false);

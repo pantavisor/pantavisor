@@ -1586,6 +1586,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	if (is_kernel_pvk) {
 		fsync(obj_fd);
 		close(obj_fd);
+		pv_fs_path_sync(mmc_tmp_obj_path);
 		fd = volatile_tmp_fd;
 	}
 
@@ -1629,6 +1630,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	}
 	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
 	fsync(fd);
+	pv_fs_path_sync(mmc_tmp_obj_path);
 	object_update.current_time = time(NULL);
 
 	// verify file downloaded correctly before syncing to disk
@@ -1750,7 +1752,7 @@ static int trail_link_objects(struct pantavisor *pv)
 				return -1;
 			}
 		} else {
-			pv_fs_path_sync(obj->objpath);
+			pv_fs_path_sync(obj->relpath);
 			pv_log(DEBUG, "linked %s to %s", obj->relpath,
 			       obj->objpath);
 		}
