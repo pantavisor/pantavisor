@@ -866,6 +866,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	if ((REBOOT == t) && (initmode != IM_APPENGINE))
 		pv_wdt_start(pv);
 
+	// give it a final sync here...
+	sync();
+
 	// stop childs leniently
 	pv_state_stop_lenient(pv->state);
 	ph_logger_stop_lenient();
@@ -902,6 +905,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		pv_logserver_stop();
 		pv_remove(pv);
 	}
+
+	// give it a final sync here...
+	sync();
 
 	return PV_STATE_EXIT;
 }

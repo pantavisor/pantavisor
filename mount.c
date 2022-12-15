@@ -93,13 +93,18 @@ void pv_mount_umount(void)
 	char path[PATH_MAX];
 
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
-	umount(path);
+	if (umount(path))
+		pv_log(ERROR, "Error unmounting pv_usrmeta %s",
+		       strerror(errno));
 
 	pv_paths_pv_devmeta_key(path, PATH_MAX, "");
-	umount(path);
+	if (umount(path))
+		pv_log(ERROR, "Error unmounting pv_devmeta %s",
+		       strerror(errno));
 
 	pv_paths_etc_file(path, PATH_MAX, DROPBEAR_DNAME);
-	umount(path);
+	if (umount(path))
+		pv_log(ERROR, "Error unmounting etc_file %s", strerror(errno));
 }
 
 static int pv_mount_init(struct pv_init *this)

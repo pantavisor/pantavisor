@@ -154,7 +154,8 @@ void pv_log_umount(void)
 	char path[PATH_MAX];
 
 	pv_paths_pv_log(path, PATH_MAX, "");
-	umount(path);
+	if (umount(path))
+		pv_log(ERROR, "Error unmounting pv_log %s", strerror(errno));
 }
 
 static int pv_log_early_init(struct pv_init *this)
