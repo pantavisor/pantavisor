@@ -1229,6 +1229,12 @@ static struct pv_state *system1_parse_disks(struct pv_state *this,
 
 	count = pv_json_get_key_count(buf, "disks.json", tokv, tokc);
 	if (count == 1) {
+		if (pv_json_get_key_count(buf, "device.json", tokv, tokc)) {
+			pv_log(WARN,
+			       "disks.json found but device.json was already parsed. Ignorning disks.json...");
+			goto out;
+		}
+
 		value = pv_json_get_value(buf, "disks.json", tokv, tokc);
 		if (!value) {
 			pv_log(WARN,
@@ -1359,6 +1365,12 @@ static struct pv_state *system1_parse_groups(struct pv_state *this,
 
 	count = pv_json_get_key_count(buf, "groups.json", tokv, tokc);
 	if (count == 1) {
+		if (pv_json_get_key_count(buf, "device.json", tokv, tokc)) {
+			pv_log(WARN,
+			       "groups.json found but device.json was already parsed. Ignorning groups.json...");
+			goto out;
+		}
+
 		value = pv_json_get_value(buf, "groups.json", tokv, tokc);
 		if (!value) {
 			pv_log(ERROR,
@@ -1504,19 +1516,6 @@ static struct pv_state *system1_parse_device(struct pv_state *this,
 
 	count = pv_json_get_key_count(buf, "device.json", tokv, tokc);
 	if (count == 1) {
-		if (pv_json_get_key_count(buf, "disks.json", tokv, tokc)) {
-			pv_log(ERROR,
-			       "disks.json and device.json defined at the same time");
-			this = NULL;
-			goto out;
-		}
-		if (pv_json_get_key_count(buf, "groups.json", tokv, tokc)) {
-			pv_log(ERROR,
-			       "groups.json and device.json defined at the same time");
-			this = NULL;
-			goto out;
-		}
-
 		value = pv_json_get_value(buf, "device.json", tokv, tokc);
 		if (!value) {
 			pv_log(WARN,
