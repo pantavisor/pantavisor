@@ -64,6 +64,7 @@
 #include "utils/timer.h"
 #include "utils/fs.h"
 #include "utils/str.h"
+#include "utils/tsh.h"
 
 #define MODULE_NAME "controller"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -869,6 +870,8 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	// give it a final sync here...
 	sync();
 
+	pv_volumes_umount_firmware_modules();
+
 	// stop childs leniently
 	pv_state_stop_lenient(pv->state);
 	ph_logger_stop_lenient();
@@ -887,9 +890,15 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_logserver_degrade();
 	pv_log_umount();
 
-	pv_storage_umount();
+	// kill dropbear if running ...
+	if (db_pid > -1)
+		kill(db_pid, SIGKILL);
+
 	pv_mount_umount();
+
 	pv_init_umount();
+
+	pv_storage_umount();
 
 	// free up memory
 	pv_bootloader_remove();

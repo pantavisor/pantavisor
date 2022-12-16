@@ -339,6 +339,8 @@ static int pv_config_load_config_from_file(char *path,
 	config->net.brmask4 = config_get_value_string(
 		&config_list, "net.brmask4", "255.255.255.0");
 
+	config->updater.commit_delay = config_get_value_int(
+		&config_list, "updater.commit.delay", 3 * 60);
 	config->updater.goals_timeout = config_get_value_int(
 		&config_list, "updater.goals.timeout", 2 * 60);
 	config->updater.use_tmp_objects = config_get_value_bool(
@@ -445,8 +447,6 @@ static int pv_config_load_creds_from_file(char *path,
 		config_get_value_int(&config_list, "updater.interval", 60);
 	config->updater.network_timeout = config_get_value_int(
 		&config_list, "updater.network_timeout", 2 * 60);
-	config->updater.commit_delay = config_get_value_int(
-		&config_list, "updater.commit.delay", 3 * 60);
 
 	config_override_value_int(&config_list, "log.maxsize",
 				  &config->log.logmax);
