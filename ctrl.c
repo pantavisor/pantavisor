@@ -489,11 +489,11 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 clean:
 	pv_log(DEBUG, "removing '%s'...", file_path);
 	remove(file_path);
-	pv_fs_path_sync(file_path);
-
 out:
 	fsync(obj_fd);
 	close(obj_fd);
+
+	pv_fs_path_sync(file_path);
 
 	return ret;
 }
