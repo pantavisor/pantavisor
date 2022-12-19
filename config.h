@@ -325,5 +325,6 @@ int pv_config_get_metadata_devmeta_interval(void);
 int pv_config_get_metadata_usrmeta_interval(void);
 
 char *pv_config_get_json(void);
+void pv_config_print(void);
 
 #endif

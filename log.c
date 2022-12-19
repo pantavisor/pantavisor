@@ -173,39 +173,9 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "                                                 ");
 	pv_log(INFO, "Pantavisor (TM) (%s) - pantavisor.io", pv_build_version);
 	pv_log(INFO, "                                                 ");
-	pv_log(INFO, "policy = '%s'", pv_config_get_policy());
-	pv_log(INFO, "storage.path = '%s'", pv_config_get_storage_path());
-	pv_log(INFO, "storage.fstype = '%s'", pv_config_get_storage_fstype());
-	pv_log(INFO, "storage.opts = '%s'", pv_config_get_storage_opts());
-	pv_log(INFO, "storage.mntpoint = '%s'",
-	       pv_config_get_storage_mntpoint());
-	pv_log(INFO, "storage.mnttype = '%s'", pv_config_get_storage_mnttype());
-	pv_log(INFO, "secureboot.mode = '%d'", pv_config_get_secureboot_mode());
-	pv_log(INFO, "creds.host = '%s'", pv_config_get_creds_host());
-	pv_log(INFO, "creds.port = '%d'", pv_config_get_creds_port());
-	pv_log(INFO, "creds.host_proxy = '%s'",
-	       pv_config_get_creds_host_proxy());
-	pv_log(INFO, "creds.port_proxy = '%d'",
-	       pv_config_get_creds_port_proxy());
-	pv_log(INFO, "creds.noproxyconnect = '%d'",
-	       pv_config_get_creds_noproxyconnect());
-	pv_log(INFO, "creds.id = '%s'", pv_config_get_creds_id());
-	pv_log(INFO, "creds.prn = '%s'", pv_config_get_creds_prn());
-	pv_log(INFO, "creds.secret = '%s'", pv_config_get_creds_secret());
-	pv_log(INFO, "log.loggers = '%d'", pv_config_get_log_loggers());
-	pv_log(INFO, "log.stdout = '%d'", pv_config_get_log_stdout());
-	pv_log(INFO, "log.capture = '%d'", pv_config_get_log_capture());
-	pv_log(INFO, "log.push = '%d'", pv_config_get_log_push());
-	pv_log(INFO, "log.logdir = '%s'", pv_config_get_log_logdir());
-	pv_log(INFO, "log.logmax = '%d'", pv_config_get_log_logmax());
-	pv_log(INFO, "log.loglevel = '%d'", pv_config_get_log_loglevel());
-	pv_log(INFO, "log.logsize = '%d'", pv_config_get_log_logsize());
-	pv_log(INFO, "lxc.log.level = '%d'", pv_config_get_lxc_loglevel());
-	pv_log(INFO, "log.server.outputs = '%d'",
-	       pv_config_get_log_server_outputs());
-	pv_log(INFO, "libthttp.loglevel = '%d'",
-	       pv_config_get_libthttp_loglevel());
+	// we print stuff here that was initialized before logs
 	pv_bootloader_print();
+	pv_config_print();
 
 	return 0;
 }
