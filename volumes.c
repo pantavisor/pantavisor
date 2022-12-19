@@ -116,7 +116,7 @@ int pv_disks_umount_all(struct pv_state *s)
 	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
 	{
 		int r;
-		if ((r = pv_disks_mount_handler(d, "unmount"))) {
+		if ((r = pv_disks_mount_handler(d, "umount"))) {
 			pv_log(ERROR, "Error unmounting disk (%d), %s", r,
 			       d->name);
 			ret |= r;
@@ -214,7 +214,7 @@ static int pv_disks_mount_handler(struct pv_disk *d, char *action)
 	int ret;
 
 	pv_paths_storage_mounted_disk_path(path, PATH_MAX, "dmcrypt", d->name);
-	if (!access(path, F_OK)) {
+	if (!strcmp("mount", action) && !access(path, F_OK)) {
 		pv_log(DEBUG, "disk %s already mounted", path);
 		return 0;
 	}
@@ -580,6 +580,30 @@ modules:
 		       path_volumes);
 
 out:
+	return ret;
+}
+
+int pv_volumes_umount_firmware_modules()
+{
+	int ret = 0;
+	struct utsname uts;
+	char path_lib[PATH_MAX];
+
+	ret = umount(FW_PATH);
+
+	if (ret < 0)
+		pv_log(WARN, "cannot umount firmware path %s", FW_PATH);
+
+	if (!uname(&uts)) {
+		pv_paths_lib_modules(path_lib, PATH_MAX, uts.release);
+		ret = umount(path_lib);
+		if (ret < 0)
+			pv_log(WARN, "cannot umount modules %s: %s", path_lib,
+			       strerror(errno));
+	} else {
+		pv_log(WARN, "cannot get utsinfo %s", strerror(errno));
+	}
+
 	return ret;
 }
 

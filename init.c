@@ -65,6 +65,7 @@
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
 pid_t shell_pid;
+pid_t db_pid;
 
 static int mkcgroup(const char *cgroup)
 {
@@ -194,7 +195,7 @@ static int other_mounts()
 }
 
 #ifdef PANTAVISOR_DEBUG
-#define DBCMD "dropbear -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"
+#define DBCMD "dropbear -F -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"
 
 static void debug_telnet()
 {
@@ -206,7 +207,7 @@ static void debug_telnet()
 	sprintf(dbcmd, DBCMD, path);
 
 	tsh_run("ifconfig lo up", 0, NULL);
-	tsh_run(dbcmd, 0, NULL);
+	db_pid = tsh_run(dbcmd, 0, NULL);
 
 	free(dbcmd);
 }
@@ -214,6 +215,7 @@ static void debug_telnet()
 static void debug_telnet()
 {
 	printf("Pantavisor debug telnet disabled in production builds.\n");
+	db_pid = -1;
 }
 #endif
 
@@ -226,7 +228,8 @@ static void signal_handler(int signal)
 		return;
 
 	while ((pid = waitpid(pv_pid, &wstatus, WNOHANG)) > 0) {
-		if (pv_pid == 0)
+		// ignore signals of 0 and db_pid
+		if (pv_pid == 0 || pid == db_pid)
 			continue;
 
 		pv_stop();

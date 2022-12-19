@@ -37,6 +37,8 @@
 
 extern char pv_user_agent[4096];
 
+extern pid_t db_pid;
+
 #define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
 struct pantavisor {

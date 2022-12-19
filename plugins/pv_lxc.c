@@ -545,6 +545,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 		err = c->start(c, 0, NULL) ? 0 : 1;
 
+		chdir("/");
 		if (err && (c->error_num != 1)) {
 			lxc_container_put(c);
 			c = NULL;
@@ -572,8 +573,10 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		goto out_success;
 
 out_success:
+	chdir("/");
 	return (void *)c;
 out_failure:
+	chdir("/");
 	if (c) {
 		c->shutdown(c, 0);
 		lxc_container_put(c);

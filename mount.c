@@ -105,6 +105,17 @@ void pv_mount_umount(void)
 	pv_paths_etc_file(path, PATH_MAX, DROPBEAR_DNAME);
 	if (umount(path))
 		pv_log(ERROR, "Error unmounting etc_file %s", strerror(errno));
+
+	if (pv_config_get_storage_logtempsize()) {
+		pv_paths_storage(path, PATH_MAX);
+		size_t logmount_size = strlen(path) + strlen("/logs  ");
+		char *logmount = malloc(sizeof(char) * logmount_size);
+		SNPRINTF_WTRUNC(logmount, logmount_size, "%s%s", path, "/logs");
+		if (umount(logmount))
+			pv_log(ERROR, "Error unmounting logmount: %s / %s",
+			       logmount, strerror(errno));
+		free(logmount);
+	}
 }
 
 static int pv_mount_init(struct pv_init *this)
