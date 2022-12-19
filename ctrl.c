@@ -924,8 +924,16 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 			if (pv_ctrl_process_put_file(req_fd, content_length,
 						     file_path_tmp) < 0)
 				goto out;
-			if (pv_storage_validate_file_checksum(file_path_tmp,
-							      file_name) < 0) {
+			if (pv_fs_path_exist(file_path) &&
+			    !pv_storage_validate_file_checksum(file_path,
+							       file_name)) {
+				pv_log(WARN,
+				       "object %s already exists and is valid; discarding new object upload",
+				       file_path_tmp);
+				pv_fs_path_remove(file_path_tmp, false);
+
+			} else if (pv_storage_validate_file_checksum(
+					   file_path_tmp, file_name) < 0) {
 				pv_log(WARN, "object %s has bad checksum",
 				       file_path_tmp);
 				pv_ctrl_write_error_response(
@@ -933,16 +941,18 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 					HTTP_STATUS_UNPROCESSABLE_ENTITY,
 					"Object has bad checksum");
 				goto out;
-			}
-			pv_log(DEBUG, "renaming %s to %s", file_path_tmp,
-			       file_path);
-			if (pv_fs_path_rename(file_path_tmp, file_path) < 0) {
-				pv_log(ERROR, "could not rename: %s",
-				       strerror(errno));
-				pv_ctrl_write_error_response(
-					req_fd, HTTP_STATUS_ERROR,
-					"Cannot rename object");
-				goto out;
+			} else {
+				pv_log(DEBUG, "renaming %s to %s",
+				       file_path_tmp, file_path);
+				if (pv_fs_path_rename(file_path_tmp,
+						      file_path) < 0) {
+					pv_log(ERROR, "could not rename: %s",
+					       strerror(errno));
+					pv_ctrl_write_error_response(
+						req_fd, HTTP_STATUS_ERROR,
+						"Cannot rename object");
+					goto out;
+				}
 			}
 			pv_storage_gc_defer_run_threshold();
 			pv_ctrl_write_ok_response(req_fd);
