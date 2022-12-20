@@ -200,6 +200,7 @@ static int uboot_unset_env_key(char *key)
 	lseek(fd, 0, SEEK_SET);
 	ret = read(fd, old, len);
 	close(fd);
+	pv_fs_path_sync(path);
 
 	len = 0;
 	d = (char *)new;
@@ -277,6 +278,7 @@ static int uboot_set_env_key(char *key, char *value)
 	lseek(fd, 0, SEEK_SET);
 	res = read(fd, old, len);
 	close(fd);
+	pv_fs_path_sync(path);
 
 	len = 0;
 	d = (char *)new;
@@ -370,6 +372,7 @@ static int uboot_flush_env(void)
 		pv_log(DEBUG, "ioctl: MEMERASE errno=%s", strerror(errno));
 
 	close(fd);
+	pv_fs_path_sync(pv_env);
 
 	fd = open(pv_env, O_RDONLY);
 	if (fd < 0) {

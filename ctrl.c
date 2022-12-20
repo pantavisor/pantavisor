@@ -415,7 +415,7 @@ out:
 static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 				    char *file_path)
 {
-	int obj_fd, read_length, write_length, ret = -1;
+	int obj_fd = -1, read_length, write_length, ret = -1;
 	char req[HTTP_REQ_BUFFER_SIZE];
 	size_t free_space = pv_storage_get_free();
 
@@ -488,10 +488,12 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 
 clean:
 	pv_log(DEBUG, "removing '%s'...", file_path);
-	remove(file_path);
+	pv_fs_path_remove(file_path, false);
 out:
-	fsync(obj_fd);
-	close(obj_fd);
+	if (obj_fd >= 0) {
+		fsync(obj_fd);
+		close(obj_fd);
+	}
 
 	pv_fs_path_sync(file_path);
 
@@ -565,7 +567,7 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 
 static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 {
-	int obj_fd;
+	int obj_fd = -1;
 	ssize_t sent, file_size = pv_fs_path_get_size(file_path);
 	off_t offset = 0;
 
@@ -600,7 +602,8 @@ error:
 	pv_ctrl_write_error_response(req_fd, HTTP_STATUS_NOT_FOUND,
 				     "Resource does not exist");
 out:
-	close(obj_fd);
+	if (obj_fd >= 0)
+		close(obj_fd);
 }
 
 static char *pv_ctrl_get_file_name(const char *path, int buf_index,

@@ -104,7 +104,7 @@ static int early_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /dev/pts");
 
-	remove("/dev/ptmx");
+	pv_fs_path_remove("/dev/ptmx", false);
 	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
 
 	return 0;

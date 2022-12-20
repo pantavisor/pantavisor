@@ -430,7 +430,7 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0)
-		goto out;
+		return ret;
 
 	mbedtls_sha256_init(&sha256_ctx);
 	mbedtls_sha256_starts(&sha256_ctx, 0);
@@ -890,7 +890,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
 						 a->name);
 
-		remove(dst);
+		pv_fs_path_remove(dst, false);
 		if (link(src, dst) < 0)
 			goto err;
 	}
@@ -903,7 +903,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
 						 s->bsp.img.std.initrd);
 
-		remove(dst);
+		pv_fs_path_remove(dst, false);
 		if (link(src, dst) < 0)
 			goto err;
 
@@ -913,7 +913,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
 						 s->bsp.img.std.kernel);
 
-		remove(dst);
+		pv_fs_path_remove(dst, false);
 		if (link(src, dst) < 0)
 			goto err;
 
@@ -925,7 +925,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 							 prefix,
 							 s->bsp.img.std.fdt);
 
-			remove(dst);
+			pv_fs_path_remove(dst, false);
 			if (link(src, dst) < 0)
 				goto err;
 		}
@@ -936,7 +936,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
 						 s->bsp.img.ut.fit);
 
-		remove(dst);
+		pv_fs_path_remove(dst, false);
 		if (link(src, dst) < 0)
 			goto err;
 	}
@@ -1032,7 +1032,7 @@ void pv_storage_rm_usermeta(const char *key)
 	char *pname, *pkey;
 
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, key);
-	remove(path);
+	pv_fs_path_remove(path, false);
 	pv_log(DEBUG, "removed usermeta in %s", path);
 
 	pname = strdup(key);
@@ -1041,7 +1041,7 @@ void pv_storage_rm_usermeta(const char *key)
 		*pkey = '\0';
 		pkey++;
 		pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, pname, pkey);
-		remove(path);
+		pv_fs_path_remove(path, false);
 		pv_log(DEBUG, "removed usermeta in %s", path);
 	}
 
@@ -1084,7 +1084,7 @@ void pv_storage_rm_devmeta(const char *key)
 	char *pname, *pkey;
 
 	pv_paths_pv_devmeta_key(path, PATH_MAX, key);
-	remove(path);
+	pv_fs_path_remove(path, false);
 	pv_log(DEBUG, "removed devmeta in %s", path);
 
 	pname = strdup(key);
@@ -1093,7 +1093,7 @@ void pv_storage_rm_devmeta(const char *key)
 		*pkey = '\0';
 		pkey++;
 		pv_paths_pv_devmeta_plat_key(path, PATH_MAX, pname, pkey);
-		remove(path);
+		pv_fs_path_remove(path, false);
 		pv_log(DEBUG, "removed devmeta in %s", path);
 	}
 

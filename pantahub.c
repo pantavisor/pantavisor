@@ -106,8 +106,10 @@ static void pv_ph_set_online(struct pantavisor *pv, bool online)
 	if (online) {
 		if (!hint) {
 			fd = open(path, O_CREAT | O_SYNC, 0400);
-			if (fd >= 0)
+			if (fd >= 0) {
 				close(fd);
+				pv_fs_path_sync(path);
+			}
 		}
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "1");
 	} else {

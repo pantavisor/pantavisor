@@ -1607,18 +1607,18 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 		pv_log(WARN,
 		       "'%s' could not be downloaded: could not be initialized",
 		       obj->id);
-		remove(mmc_tmp_obj_path);
+		pv_fs_path_remove(mmc_tmp_obj_path, false);
 		goto out;
 	} else if (!res->code) {
 		pv_log(WARN, "'%s' could not be downloaded: got no response",
 		       obj->id);
-		remove(mmc_tmp_obj_path);
+		pv_fs_path_remove(mmc_tmp_obj_path, false);
 		goto out;
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
 		       "'%s' could not be downloaded: returned HTTP error (code=%d; body='%s')",
 		       obj->id, res->code, res->body);
-		remove(mmc_tmp_obj_path);
+		pv_fs_path_remove(mmc_tmp_obj_path, false);
 		goto out;
 	}
 
