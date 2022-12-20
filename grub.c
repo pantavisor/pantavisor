@@ -31,7 +31,9 @@
 
 #include "paths.h"
 #include "bootloader.h"
+
 #include "utils/str.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME "grub"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -78,6 +80,7 @@ static int grub_init()
 
 	pv_log(INFO, "initialized grub environment block");
 	close(fd);
+	pv_fs_path_sync(grub_env);
 
 	return 0;
 }
@@ -179,6 +182,7 @@ static int grub_unset_env_key(char *key)
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));
 	close(fd);
+	pv_fs_path_sync(grub_env);
 	if (ret != 1024) {
 		pv_log(ERROR, "error writing grubenv");
 		return -1;
@@ -235,6 +239,7 @@ static int grub_set_env_key(char *key, char *value)
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));
 	close(fd);
+	pv_fs_path_sync(grub_env);
 	if (ret != 1024) {
 		pv_log(ERROR, "error writing grubenv");
 		return -1;

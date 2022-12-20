@@ -961,6 +961,7 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		if (fd < 0)
 			pv_log(ERROR, "Unable to open file %s", path);
 		close(fd);
+		pv_fs_path_sync(path);
 	}
 	return upload_failed ? -1 : 0;
 }
