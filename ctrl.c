@@ -933,8 +933,6 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 				pv_log(WARN,
 				       "object %s already exists and is valid; discarding new object upload",
 				       file_path_tmp);
-				pv_fs_path_remove(file_path_tmp, false);
-
 			} else if (pv_storage_validate_file_checksum(
 					   file_path_tmp, file_name) < 0) {
 				pv_log(WARN, "object %s has bad checksum",
