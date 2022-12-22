@@ -185,6 +185,7 @@ struct pantavisor_metadata {
 };
 
 struct pantavisor_config {
+	char *policy;
 	struct pantavisor_system sys;
 	struct pantavisor_debug debug;
 	struct pantavisor_cache cache;
@@ -223,6 +224,7 @@ void pv_config_set_creds_id(char *id);
 void pv_config_set_creds_prn(char *prn);
 void pv_config_set_creds_secret(char *secret);
 
+char *pv_config_get_policy(void);
 init_mode_t pv_config_get_system_init_mode(void);
 char *pv_config_get_system_libdir(void);
 char *pv_config_get_system_etcdir(void);

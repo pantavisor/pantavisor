@@ -173,6 +173,7 @@ static int pv_log_early_init(struct pv_init *this)
 	pv_log(INFO, "                                                 ");
 	pv_log(INFO, "Pantavisor (TM) (%s) - pantavisor.io", pv_build_version);
 	pv_log(INFO, "                                                 ");
+	pv_log(INFO, "policy = '%s'", pv_config_get_policy());
 	pv_log(INFO, "storage.path = '%s'", pv_config_get_storage_path());
 	pv_log(INFO, "storage.fstype = '%s'", pv_config_get_storage_fstype());
 	pv_log(INFO, "storage.opts = '%s'", pv_config_get_storage_opts());

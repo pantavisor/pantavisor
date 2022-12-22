@@ -90,6 +90,24 @@ static bool config_get_value_bool(struct dl_list *config_list, char *key,
 	return value;
 }
 
+static char *config_get_value_policy(struct dl_list *config_list, char *key,
+				     char *default_value)
+{
+	char *item = config_get_value(config_list, key);
+
+	if (!item)
+		item = default_value;
+
+	if (!item || !strlen(item))
+		return NULL;
+
+	// policy does not allow paths
+	if (strchr(item, '/'))
+		return NULL;
+
+	return strdup(item);
+}
+
 static int config_get_value_init_mode(struct dl_list *config_list, char *key,
 				      init_mode_t default_value)
 {
@@ -250,8 +268,24 @@ static int config_sysctl_apply(char *key, char *value, void *opaque)
 	return 0;
 }
 
-static int pv_config_load_config_from_file(char *path,
-					   struct pantavisor_config *config)
+static int pv_config_load_policy(const char *policy,
+				 struct dl_list *config_list)
+{
+	char path[PATH_MAX];
+
+	if (!policy)
+		return 0;
+
+	pv_paths_etc_policy_file(path, PATH_MAX, policy);
+	if (load_key_value_file(path, config_list) < 0) {
+		printf("FATAL: unable to parse %s\n", path);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int pv_config_load_file(char *path, struct pantavisor_config *config)
 {
 	DEFINE_DL_LIST(config_list);
 
@@ -275,6 +309,10 @@ static int pv_config_load_config_from_file(char *path,
 		&config_list, "system.mediadir", "/media");
 	config->sys.confdir = config_get_value_string(
 		&config_list, "system.confdir", "/configs");
+
+	config->policy = config_get_value_policy(&config_list, "policy", NULL);
+	if (pv_config_load_policy(config->policy, &config_list))
+		return -1;
 
 	config->debug.shell =
 		config_get_value_bool(&config_list, "debug.shell", true);
@@ -704,6 +742,9 @@ void pv_config_free()
 {
 	struct pantavisor *pv = pv_get_instance();
 
+	if (pv->config.policy)
+		free(pv->config.policy);
+
 	if (pv->config.sys.libdir)
 		free(pv->config.sys.libdir);
 	if (pv->config.sys.etcdir)
@@ -810,6 +851,11 @@ inline void pv_config_set_creds_prn(char *prn)
 inline void pv_config_set_creds_secret(char *secret)
 {
 	pv_get_instance()->config.creds.secret = secret;
+}
+
+char *pv_config_get_policy()
+{
+	return pv_get_instance()->config.policy;
 }
 
 init_mode_t pv_config_get_system_init_mode()
@@ -1157,6 +1203,8 @@ char *pv_config_get_json()
 
 	pv_json_ser_object(&js);
 	{
+		pv_json_ser_key(&js, "policy");
+		pv_json_ser_string(&js, pv_config_get_policy());
 		pv_json_ser_key(&js, "system.init.mode");
 		pv_json_ser_number(&js, pv_config_get_system_init_mode());
 		pv_json_ser_key(&js, "system.libdir");
@@ -1327,7 +1375,7 @@ int pv_config_init(char *path)
 		path = PV_PANTAVISOR_CONFIG_PATH;
 
 	printf("DEBUG: loading config from %s\n", path);
-	if (pv_config_load_config_from_file(path, &pv->config) < 0) {
+	if (pv_config_load_file(path, &pv->config) < 0) {
 		printf("FATAL: unable to parse %s\n", path);
 		return -1;
 	}
