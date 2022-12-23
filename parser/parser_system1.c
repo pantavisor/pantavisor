@@ -1323,8 +1323,10 @@ static int parse_groups(struct pv_state *s, char *value)
 			free(tmp);
 			tmp = NULL;
 		} else {
-			pv_log(DEBUG, "No timeout, using default value");
 			timeout = pv_config_get_updater_goals_timeout();
+			pv_log(DEBUG,
+			       "timeout not configured. Using default value %d",
+			       timeout);
 		}
 
 		tmp = pv_json_get_value(str, "restart_policy", groupv, groupc);

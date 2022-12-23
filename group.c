@@ -89,20 +89,15 @@ groups_goals_state_t pv_group_check_goals(struct pv_group *g)
 	{
 		if (!pv_platform_check_goal(pr->ref)) {
 			if (tstate.fin) {
-				pv_log(WARN,
-				       "platform '%s' from group '%s' goal not achieved",
-				       pr->ref->name, g->name);
 				return STATUS_GOAL_FAILED;
 			} else {
 				pv_log(DEBUG,
-				       "platform '%s' from group '%s' still not ready. %d seconds until timeout",
+				       "platform '%s' from group '%s' status goal not achieved. %d seconds until timeout",
 				       pr->ref->name, g->name, tstate.sec);
 				return STATUS_GOAL_WAITING;
 			}
 		}
 	}
-
-	pv_log(DEBUG, "group '%s' has its status goals achieved", g->name);
 
 	return STATUS_GOAL_REACHED;
 }

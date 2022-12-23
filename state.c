@@ -508,8 +508,8 @@ int pv_state_run(struct pv_state *s)
 				break;
 			case STATUS_GOAL_FAILED:
 				pv_log(WARN,
-				       "timeout reached, unblocking boot for platform %s",
-				       p->name);
+				       "timeout reached. Unblocking boot for platform '%s' from group '%s'...",
+				       p->name, p->group->name);
 				ret = pv_state_start_platform(s, p);
 			}
 		} else if (pv_platform_is_starting(p)) {

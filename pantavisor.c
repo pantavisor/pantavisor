@@ -429,13 +429,15 @@ static pv_state_t pv_wait_update()
 
 			switch (status_goal) {
 			case STATUS_GOAL_FAILED:
+				pv_log(ERROR,
+				       "timed out before all goals are met. Rolling back...");
 				return PV_STATE_ROLLBACK;
 			case STATUS_GOAL_WAITING:
 				return PV_STATE_WAIT;
 			case STATUS_GOAL_UNKNOWN:
 				pv_log(ERROR,
-				       "could not check groups goals, could not complete the update");
-				return PV_STATE_ERROR;
+				       "could not check groups goals. Rolling back...");
+				return PV_STATE_ROLLBACK;
 			case STATUS_GOAL_REACHED:
 				timer_start(
 					&timer_commit,
