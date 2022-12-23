@@ -44,6 +44,7 @@
 #include "utils/math.h"
 #include "utils/str.h"
 #include "utils/json.h"
+#include "utils/timer.h"
 
 #define MODULE_NAME "state"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -429,24 +430,22 @@ int pv_state_start(struct pv_state *s)
 	return pv_state_mount_bsp_volumes(s);
 }
 
-static bool pv_state_can_start_platform(struct pv_state *s,
-					struct pv_platform *p)
+groups_goals_state_t pv_state_check_goals(struct pv_state *s,
+					  struct pv_platform *p)
 {
+	groups_goals_state_t status_goal = STATUS_GOAL_UNKNOWN;
 	struct pv_group *g, *tmp;
-
 	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
 	{
-		if (p->group == g)
+		if (p && p->group == g)
 			break;
 
-		if (!pv_group_check_goals(g, false))
-			return false;
+		groups_goals_state_t cur_state = pv_group_check_goals(g);
+		if (status_goal < cur_state)
+			status_goal = cur_state;
 	}
 
-	pv_log(DEBUG, "platform '%s' from group '%s' can be started now",
-	       p->name, p->group->name);
-
-	return true;
+	return status_goal;
 }
 
 static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
@@ -490,13 +489,33 @@ int pv_state_run(struct pv_state *s)
 	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
 	{
 		if (pv_platform_is_installed(p) || pv_platform_is_blocked(p)) {
-			if (pv_state_can_start_platform(s, p))
+			groups_goals_state_t status_goal =
+				pv_state_check_goals(s, p);
+
+			switch (status_goal) {
+			case STATUS_GOAL_UNKNOWN:
 				ret = pv_state_start_platform(s, p);
-			else
+				break;
+			case STATUS_GOAL_REACHED:
+				pv_log(DEBUG,
+				       "platform '%s' from group '%s' can be started now",
+				       p->name, p->group->name);
+
+				ret = pv_state_start_platform(s, p);
+				break;
+			case STATUS_GOAL_WAITING:
 				pv_platform_set_blocked(p);
+				break;
+			case STATUS_GOAL_FAILED:
+				pv_log(WARN,
+				       "timeout reached. Unblocking boot for platform '%s' from group '%s'...",
+				       p->name, p->group->name);
+				ret = pv_state_start_platform(s, p);
+			}
 		} else if (pv_platform_is_starting(p)) {
 			if (!pv_platform_check_running(p))
-				pv_log(DEBUG, "platform %s still not running",
+				pv_log(DEBUG,
+				       "platform %s still not running   ",
 				       p->name);
 		} else if (pv_platform_is_started(p) ||
 			   pv_platform_is_ready(p)) {
@@ -1149,21 +1168,6 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	return true;
 }
 
-bool pv_state_check_goals(struct pv_state *s)
-{
-	struct pv_group *g, *tmp;
-
-	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
-	{
-		if (!pv_group_check_goals(g, true))
-			return false;
-	}
-
-	pv_log(DEBUG, "state with revision '%s' goals achieved", s->rev);
-
-	return true;
-}
-
 int pv_state_interpret_signal(struct pv_state *s, const char *name,
 			      const char *signal, const char *payload)
 {
@@ -1233,4 +1237,13 @@ char *pv_state_get_groups_json(struct pv_state *s)
 	}
 
 	return pv_json_ser_str(&js);
+}
+
+void pv_state_start_groups_timer(struct pv_state *s)
+{
+	struct pv_group *g, *tmp;
+	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
+	{
+		pv_group_start_timer(g);
+	}
 }
