@@ -278,6 +278,8 @@ static int pv_config_load_config_from_file(char *path,
 
 	config->debug.shell =
 		config_get_value_bool(&config_list, "debug.shell", true);
+	config->debug.shell_autologin = config_get_value_bool(
+		&config_list, "debug.shell.autologin", false);
 	config->debug.ssh =
 		config_get_value_bool(&config_list, "debug.ssh", true);
 
@@ -788,6 +790,10 @@ void pv_config_set_debug_shell(bool shell)
 {
 	pv_get_instance()->config.debug.shell = shell;
 }
+void pv_config_set_debug_shell_autologin(bool shell)
+{
+	pv_get_instance()->config.debug.shell_autologin = shell;
+}
 void pv_config_set_debug_ssh(bool ssh)
 {
 	pv_get_instance()->config.debug.ssh = ssh;
@@ -838,6 +844,10 @@ char *pv_config_get_system_confdir()
 bool pv_config_get_debug_shell()
 {
 	return pv_get_instance()->config.debug.shell;
+}
+bool pv_config_get_debug_shell_autologin()
+{
+	return pv_get_instance()->config.debug.shell_autologin;
 }
 bool pv_config_get_debug_ssh()
 {
@@ -1042,7 +1052,6 @@ char *pv_config_get_network_brmask4()
 {
 	return pv_get_instance()->config.net.brmask4;
 }
-
 char *pv_config_get_log_logdir()
 {
 	return pv_get_instance()->config.log.logdir;
@@ -1164,6 +1173,8 @@ char *pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_system_confdir());
 		pv_json_ser_key(&js, "debug.shell");
 		pv_json_ser_bool(&js, pv_config_get_debug_shell());
+		pv_json_ser_key(&js, "debug.shell.autologin");
+		pv_json_ser_bool(&js, pv_config_get_debug_shell_autologin());
 		pv_json_ser_key(&js, "debug.ssh");
 		pv_json_ser_bool(&js, pv_config_get_debug_ssh());
 		pv_json_ser_key(&js, "dropbear.cache.dir");
