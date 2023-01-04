@@ -41,6 +41,7 @@ struct pantavisor_system {
 
 struct pantavisor_debug {
 	bool shell;
+	bool shell_autologin;
 	bool ssh;
 };
 
@@ -215,6 +216,7 @@ void pv_config_free(void);
 void pv_config_set_system_init_mode(init_mode_t mode);
 
 void pv_config_set_debug_shell(bool shell);
+void pv_config_set_debug_shell_autologin(bool autologin);
 void pv_config_set_debug_ssh(bool ssh);
 
 void pv_config_set_creds_id(char *id);
@@ -230,6 +232,7 @@ char *pv_config_get_system_mediadir(void);
 char *pv_config_get_system_confdir(void);
 
 bool pv_config_get_debug_shell(void);
+bool pv_config_get_debug_shell_autologin(void);
 bool pv_config_get_debug_ssh(void);
 
 char *pv_config_get_cache_usrmetadir(void);

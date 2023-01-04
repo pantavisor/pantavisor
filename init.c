@@ -308,7 +308,7 @@ static void debug_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd')
+	if (c[0] == 'd' || pv_config_get_debug_shell_autologin())
 		shell_pid =
 			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
 }
@@ -344,8 +344,8 @@ static void parse_commands(int argc, char *argv[])
 	if (is_arg(argc, argv, "pv_appengine"))
 		pv_config_set_system_init_mode(IM_APPENGINE);
 
-	if (is_arg(argc, argv, "debug"))
-		pv_config_set_debug_shell(true);
+	if (is_arg(argc, argv, "pv_debug"))
+		pv_config_set_debug_shell_autologin(true);
 
 	if (!is_arg(argc, argv, "splash"))
 		pv_config_set_debug_ssh(true);
