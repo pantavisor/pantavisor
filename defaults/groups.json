@@ -3,24 +3,28 @@
     "name":"data",
     "description":"Containers which volumes we want to mount but not to be started",
     "restart_policy": "system",
+    "timeout": 30,
     "status_goal": "MOUNTED"
   },
   {
     "name":"root",
     "description":"Container or containers that are in charge of setting network connectivity up for the board",
     "restart_policy": "system",
+    "timeout": 30,
     "status_goal": "STARTED"
   },
   {
     "name":"platform",
     "description": "Middleware and utility containers",
     "restart_policy": "system",
+    "timeout": 30,
     "status_goal": "STARTED"
   },
   {
     "name":"app",
     "description": "Application level containers",
     "restart_policy": "container",
+    "timeout": 30,
     "status_goal": "STARTED"
   }
 ]
