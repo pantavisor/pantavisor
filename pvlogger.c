@@ -23,6 +23,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <string.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <logger.h>
 #include <libgen.h>
@@ -30,9 +31,9 @@
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/xattr.h>
 
 #include "pvlogger.h"
-#include "ph_logger.h"
 #include "platforms.h"
 #include "pvctl_utils.h"
 #include "json.h"
@@ -101,7 +102,8 @@ static int set_logger_xattr(struct log *log)
 		return 0;
 	SNPRINTF_WTRUNC(place_holder, sizeof(place_holder), "%" PRId64, pos);
 
-	return pv_fs_file_set_xattr(fname, PV_LOGGER_POS_XATTR, place_holder);
+	return setxattr(fname, PV_LOGGER_POS_XATTR, place_holder,
+			strlen(place_holder), 0);
 }
 
 static int pvlogger_flush(struct log *log, char *buf, int buflen)
@@ -172,7 +174,7 @@ static int get_logger_xattr(struct log *log)
 	char buf[32];
 	const char *fname = pv_logger_get_logfile(pv_log_info);
 
-	if (pv_fs_file_get_xattr(buf, 32, fname, PV_LOGGER_POS_XATTR) < 0) {
+	if (getxattr(fname, PV_LOGGER_POS_XATTR, buf, 32) < 0) {
 		pv_log(DEBUG, "Attribute %s not present", PV_LOGGER_POS_XATTR);
 	} else {
 		sscanf(buf, "%" PRId64, &stored_pos);

@@ -24,6 +24,7 @@
 #include <sys/select.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/xattr.h>
 #include <sys/un.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -256,7 +257,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 	}
 	buf = log_buff->buf;
 
-	if (pv_fs_file_get_xattr(dst, 32, filename, PH_LOGGER_POS_XATTR) > 0) {
+	if (getxattr(filename, PH_LOGGER_POS_XATTR, dst, 32) > 0) {
 		sscanf(dst, "%" PRId64, &pos);
 	} else {
 		pv_log(DEBUG,
@@ -266,7 +267,10 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 		/*
 		 * set xattr to quiet the verbose-ness otherwise.
 		 */
-		pv_fs_file_set_xattr(filename, PH_LOGGER_POS_XATTR, dst);
+		int err = setxattr(filename, PH_LOGGER_POS_XATTR, dst,
+				   strlen(dst), 0);
+		if (err != 0)
+			pv_log(ERROR, "couldn't set XATTR for %s", filename);
 	}
 #ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
@@ -426,8 +430,13 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 
 			pos = read_pos + offset;
 			SNPRINTF_WTRUNC(value, sizeof(value), "%" PRId64, pos);
-			pv_fs_file_set_xattr(filename, PH_LOGGER_POS_XATTR,
-					     value);
+
+			int err = setxattr(filename, PH_LOGGER_POS_XATTR, value,
+					   strlen(value), 0);
+			if (err != 0)
+				pv_log(ERROR,
+				       "couldn't set XATTR for new line in %s",
+				       filename);
 		}
 	}
 close_fd:
@@ -485,8 +494,14 @@ close_fd:
 
 				SNPRINTF_WTRUNC(value, sizeof(value),
 						"%" PRId64, pos);
-				pv_fs_file_set_xattr(
-					filename, PH_LOGGER_POS_XATTR, value);
+				int err =
+					setxattr(filename, PH_LOGGER_POS_XATTR,
+						 value, strlen(value), 0);
+
+				if (err != 0)
+					pv_log(ERROR,
+					       "couldn't set XATTR for %s after push",
+					       filename);
 			}
 			// in case of error while sending, we return -1
 			else

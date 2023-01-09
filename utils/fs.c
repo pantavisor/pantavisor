@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/xattr.h>
 #include <unistd.h>
 
 static void close_fd(int *fd)
@@ -311,25 +310,6 @@ off_t pv_fs_path_get_size(const char *path)
 		return -1;
 
 	return st.st_size;
-}
-
-int pv_fs_file_get_xattr(char *value, ssize_t size, const char *fname,
-			 const char *attr)
-{
-	ssize_t cur_size = getxattr(fname, attr, value, size);
-	return cur_size == size ? 0 : -1;
-}
-
-int pv_fs_file_set_xattr(const char *fname, const char *attr, const char *value)
-{
-	ssize_t size = getxattr(fname, attr, NULL, 0);
-
-	int flag = XATTR_REPLACE;
-	if (size < 0 && errno == ENODATA)
-		flag = XATTR_CREATE;
-
-	size = setxattr(fname, attr, value, strlen(value), flag);
-	return size > 0 ? 0 : -1;
 }
 
 ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size)

@@ -47,7 +47,6 @@
 #include "init.h"
 #include "bootloader.h"
 #include "version.h"
-#include "ph_logger.h"
 #include "buffer.h"
 #include "paths.h"
 #include "logserver.h"
