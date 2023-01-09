@@ -174,83 +174,6 @@ static char *uboot_get_env_key(char *key)
 }
 
 // this always happens in uboot.txt
-static int uboot_unset_env_key(char *key)
-{
-	int fd, ret, len;
-	unsigned char old[MTD_ENV_SIZE] = { 0 };
-	unsigned char new[MTD_ENV_SIZE] = { 0 };
-	char *s, *d, *path;
-
-	pv_log(DEBUG, "unsetting boot env key %s", key);
-
-	path = uboot_txt;
-	if (single_env) {
-		path = pv_env;
-		len = MTD_ENV_SIZE;
-	} else {
-		len = UBOOT_ENV_SIZE;
-	}
-
-	fd = open(path, O_RDWR | O_CREAT | O_SYNC, 0600);
-	if (fd < 0) {
-		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
-		return -1;
-	}
-
-	lseek(fd, 0, SEEK_SET);
-	ret = read(fd, old, len);
-	close(fd);
-	pv_fs_path_sync(path);
-
-	len = 0;
-	d = (char *)new;
-	s = (char *)old;
-	for (uint16_t i = 0; i < ret; i++) {
-		if ((old[i] == 0xFF && old[i + 1] == 0xFF) ||
-		    (old[i] == '\0' && old[i + 1] == '\0'))
-			break;
-
-		if (old[i] == '\0')
-			continue;
-
-		s = (char *)old + i;
-		len = strlen(s);
-		if (memcmp(s, key, strlen(key))) {
-			memcpy(d, s, len + 1);
-			d += len + 1;
-		}
-		i += len;
-		len = 0;
-	}
-
-	fd = open(path, O_RDWR);
-	if (fd < 0) {
-		pv_log(ERROR, "open failed for %s: %s", path, strerror(errno));
-		return -1;
-	}
-
-	if (single_env) {
-		erase_info_t ei;
-		mtd_info_t mi;
-		ioctl(fd, MEMGETINFO, &mi);
-		ei.start = 0;
-		ei.length = mi.erasesize;
-		if (ioctl(fd, MEMUNLOCK, &ei))
-			pv_log(DEBUG, "ioctl: MEMUNLOCK errno=%s",
-			       strerror(errno));
-		if (ioctl(fd, MEMERASE, &ei))
-			pv_log(DEBUG, "ioctl: MEMERASE errno=%s",
-			       strerror(errno));
-	}
-	lseek(fd, 0, SEEK_SET);
-	ret = write(fd, new, sizeof(new));
-	fsync(fd);
-	close(fd);
-	pv_fs_path_sync(path);
-
-	return 0;
-}
-// this always happens in uboot.txt
 static int uboot_set_env_key(char *key, char *value)
 {
 	int fd, ret = -1, res, len;
@@ -335,6 +258,12 @@ static int uboot_set_env_key(char *key, char *value)
 
 out:
 	return ret;
+}
+
+// this always happens in uboot.txt
+static int uboot_unset_env_key(char *key)
+{
+	return uboot_set_env_key(key, "\0");
 }
 
 static int uboot_flush_env(void)
