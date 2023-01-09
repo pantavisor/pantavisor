@@ -571,8 +571,9 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		}
 	}
 
-	pv_paths_etc_file(path, PATH_MAX, PVS_CERT_FNAME);
-	pv_log(DEBUG, "parsing public key from %s", path);
+	pv_paths_secureboot_trust_crts(path, PATH_MAX,
+				       pv_config_get_secureboot_truststore());
+	pv_log(DEBUG, "parsing secureboot.truststore certs from %s", path);
 	res = mbedtls_x509_crt_parse_file(&cacerts, path);
 	if (res) {
 		pv_log(ERROR, "ca certs could not be parsed: %d", res);
@@ -585,7 +586,9 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		i++;
 		cacerts_i = cacerts_i->next;
 	}
-	pv_log(INFO, "loaded %d trusted x509 certificates from %s", i, path);
+	pv_log(INFO,
+	       "loaded %d secureboot.truststore x509 certificates from %s", i,
+	       path);
 
 	res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags,
 				      pv_signature_print_cert, NULL);
