@@ -484,32 +484,13 @@ static int pv_config_load_creds_from_file(char *path,
 	config->factory.autotok =
 		config_get_value_string(&config_list, "factory.autotok", NULL);
 
-	config_override_value_bool(&config_list, "updater.keep_factory",
-				   &config->storage.gc.keep_factory);
 	config->updater.interval =
 		config_get_value_int(&config_list, "updater.interval", 60);
 	config->updater.network_timeout = config_get_value_int(
 		&config_list, "updater.network_timeout", 2 * 60);
 
-	config_override_value_int(&config_list, "log.maxsize",
-				  &config->log.logmax);
-	config_override_value_int(&config_list, "log.level",
-				  &config->log.loglevel);
-	config_override_value_int(&config_list, "log.buf_nitems",
-				  &config->log.logsize);
 	config->log.push =
 		config_get_value_bool(&config_list, "log.push", true);
-	config_override_value_bool(&config_list, "log.capture",
-				   &config->log.capture);
-	config_override_value_bool(&config_list, "log.loggers",
-				   &config->log.loggers);
-	config_override_value_bool(&config_list, "log.stdout",
-				   &config->log.std_out);
-	config_override_value_string(&config_list, "log.dir",
-				     &config->log.logdir);
-
-	config_override_value_int(&config_list, "libthttp.log.level",
-				  &config->libthttp.loglevel);
 
 	config->metadata.devmeta_interval = config_get_value_int(
 		&config_list, "metadata.devmeta.interval", 10);
@@ -656,17 +637,8 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config,
 			       config->updater.interval);
 	write_config_tuple_int(fd, "updater.network_timeout",
 			       config->updater.network_timeout);
-	write_config_tuple_int(fd, "updater.commit.delay",
-			       config->updater.commit_delay);
-	write_config_tuple_int(fd, "updater.keep_factory",
-			       config->storage.gc.keep_factory); // deprecated
 
-	write_config_tuple_int(fd, "log.level", config->log.loglevel);
-	write_config_tuple_int(fd, "log.buf_nitems", config->log.logsize);
 	write_config_tuple_int(fd, "log.push", config->log.push);
-
-	write_config_tuple_int(fd, "libthttp.log.level",
-			       config->libthttp.loglevel);
 
 	write_config_tuple_int(fd, "metadata.devmeta.interval",
 			       config->metadata.devmeta_interval);
@@ -693,10 +665,17 @@ int pv_config_load_creds()
 	else
 		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
 
-	if (stat(path, &st))
+	if (stat(path, &st)) {
+		pv_log(ERROR, "cannot find creds in %s", path);
 		return -1;
+	}
 
-	return pv_config_load_creds_from_file(path, &pv->config);
+	if (pv_config_load_creds_from_file(path, &pv->config)) {
+		pv_log(ERROR, "cannot load creds from %s", path);
+		return -1;
+	}
+
+	return 0;
 }
 
 int pv_config_save_creds()
@@ -709,7 +688,12 @@ int pv_config_save_creds()
 	else
 		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
 
-	return pv_config_save_creds_to_file(&pv->config, path);
+	if (pv_config_save_creds_to_file(&pv->config, path)) {
+		pv_log(ERROR, "cannot save creds in %s", path);
+		return -1;
+	}
+
+	return 0;
 }
 
 void pv_config_override_value(const char *key, const char *value)
@@ -1384,6 +1368,113 @@ char *pv_config_get_json()
 	return pv_json_ser_str(&js);
 }
 
+void pv_config_print()
+{
+	pv_log(INFO, "policy = '%s'", pv_config_get_policy());
+	pv_log(INFO, "system.init.mode = %d", pv_config_get_system_init_mode());
+	pv_log(INFO, "system.libdir = '%s'", pv_config_get_system_libdir());
+	pv_log(INFO, "system.etcdir = '%s'", pv_config_get_system_etcdir());
+	pv_log(INFO, "system.rundir = '%s'", pv_config_get_system_rundir());
+	pv_log(INFO, "system.usrdir = '%s'", pv_config_get_system_usrdir());
+	pv_log(INFO, "system.mediadir = '%s'", pv_config_get_system_mediadir());
+	pv_log(INFO, "system.configdir = '%s'", pv_config_get_system_confdir());
+	pv_log(INFO, "debug.shell = %d", pv_config_get_debug_shell());
+	pv_log(INFO, "debug.shell.autologin = %d",
+	       pv_config_get_debug_shell_autologin());
+	pv_log(INFO, "debug.ssh = %d", pv_config_get_debug_ssh());
+	pv_log(INFO, "dropbear.cache.dir = '%s'",
+	       pv_config_get_cache_dropbearcachedir());
+	pv_log(INFO, "cache.usrmetadir = '%s'",
+	       pv_config_get_cache_usrmetadir());
+	pv_log(INFO, "cache.devmetadir = '%s'",
+	       pv_config_get_cache_devmetadir());
+	pv_log(INFO, "bootloader.type = %d", pv_config_get_bl_type());
+	pv_log(INFO, "bootloader.mtd_only = %d", pv_config_get_bl_mtd_only());
+	pv_log(INFO, "bootloader.mtd_env = '%s'", pv_config_get_bl_mtd_path());
+	pv_log(INFO, "secureboot.mode = %d", pv_config_get_secureboot_mode());
+	pv_log(INFO, "secureboot.truststore = '%s'",
+	       pv_config_get_secureboot_truststore());
+	pv_log(INFO, "secureboot.checksum = %d",
+	       pv_config_get_secureboot_checksum());
+	pv_log(INFO, "storage.device = '%s'", pv_config_get_storage_path());
+	pv_log(INFO, "storage.fstype = '%s'", pv_config_get_storage_fstype());
+	pv_log(INFO, "storage.opts = '%s'", pv_config_get_storage_opts());
+	pv_log(INFO, "storage.mntpoint = '%s'",
+	       pv_config_get_storage_mntpoint());
+	pv_log(INFO, "storage.mnttype = '%s'", pv_config_get_storage_mnttype());
+	pv_log(INFO, "storage.logtempsize = '%s'",
+	       pv_config_get_storage_logtempsize());
+	pv_log(INFO, "storage.wait = %d", pv_config_get_storage_wait());
+	pv_log(INFO, "storage.gc.reserved = %d",
+	       pv_config_get_storage_gc_reserved());
+	pv_log(INFO, "storage.gc.keep_factory = %d",
+	       pv_config_get_storage_gc_keep_factory());
+	pv_log(INFO, "storage.gc.threshold = %d",
+	       pv_config_get_storage_gc_threshold());
+	pv_log(INFO, "storage.gc.threshold.defertime = %d",
+	       pv_config_get_storage_gc_threshold_defertime());
+	pv_log(INFO, "disk.voldir = '%s'", pv_config_get_disk_voldir());
+	pv_log(INFO, "disk.exportsdir = '%s'", pv_config_get_disk_exportsdir());
+	pv_log(INFO, "disk.writabledir = '%s'",
+	       pv_config_get_disk_writabledir());
+	pv_log(INFO, "updater.use_tmp_objects = %d",
+	       pv_config_get_updater_network_use_tmp_objects());
+	pv_log(INFO, "updater.goals.timeout = %d",
+	       pv_config_get_updater_goals_timeout());
+	pv_log(INFO, "revision.retries = %d",
+	       pv_config_get_updater_revision_retries());
+	pv_log(INFO, "revision.retries.timeout = %d",
+	       pv_config_get_updater_revision_retry_timeout());
+	pv_log(INFO, "wdt.enabled = %d", pv_config_get_watchdog_enabled());
+	pv_log(INFO, "wdt.timeout = %d", pv_config_get_watchdog_timeout());
+	pv_log(INFO, "net.brdev = %d", pv_config_get_network_brdev());
+	pv_log(INFO, "net.braddress4 = '%s'",
+	       pv_config_get_network_braddress4());
+	pv_log(INFO, "net.brmask4 = '%s'", pv_config_get_network_brmask4());
+	pv_log(INFO, "lxc.log.level = %d", pv_config_get_lxc_loglevel());
+	pv_log(INFO, "control.remote = %d", pv_config_get_control_remote());
+	pv_log(INFO, "creds.type= '%s'", pv_config_get_creds_type());
+	pv_log(INFO, "creds.host = '%s'", pv_config_get_creds_host());
+	pv_log(INFO, "creds.port = %d", pv_config_get_creds_port());
+	pv_log(INFO, "creds.host_proxy = '%s'",
+	       pv_config_get_creds_host_proxy());
+	pv_log(INFO, "creds.port_proxy = %d", pv_config_get_creds_port_proxy());
+	pv_log(INFO, "creds.noproxyconnect = %d",
+	       pv_config_get_creds_noproxyconnect());
+	pv_log(INFO, "creds.id = '%s'", pv_config_get_creds_id());
+	pv_log(INFO, "creds.prn = '%s'", pv_config_get_creds_prn());
+	pv_log(INFO, "creds.secret = '%s'", pv_config_get_creds_secret());
+	pv_log(INFO, "creds.tpm.key = '%s'", pv_config_get_creds_tpm_key());
+	pv_log(INFO, "creds.tpm.cert = '%s'", pv_config_get_creds_tpm_cert());
+	pv_log(INFO, "factory.autotok = '%s'", pv_config_get_factory_autotok());
+	pv_log(INFO, "updater.keep_factory = %d",
+	       pv_config_get_storage_gc_keep_factory());
+	pv_log(INFO, "updater.interval = %d", pv_config_get_updater_interval());
+	pv_log(INFO, "updater.network_timeout = %d",
+	       pv_config_get_updater_network_timeout());
+	pv_log(INFO, "updater.commit.delay = %d",
+	       pv_config_get_updater_commit_delay());
+	pv_log(INFO, "log.dir = '%s'", pv_config_get_log_logdir());
+	pv_log(INFO, "log.maxsize = %d", pv_config_get_log_logmax());
+	pv_log(INFO, "log.level = %d", pv_config_get_log_loglevel());
+	pv_log(INFO, "log.buf_nitems = %d", pv_config_get_log_logsize());
+	pv_log(INFO, "log.push = %d", pv_config_get_log_push());
+	pv_log(INFO, "log.capture = %d", pv_config_get_log_capture());
+	pv_log(INFO, "log.capture.dmesg = %d",
+	       pv_config_get_log_capture_dmesg());
+	pv_log(INFO, "log.loggers = %d", pv_config_get_log_loggers());
+	pv_log(INFO, "log.stdout = %d", pv_config_get_log_stdout());
+	pv_log(INFO, "log.server.outputs = %d",
+	       pv_config_get_log_server_outputs());
+	pv_log(INFO, "libthttp.loglevel = %d",
+	       pv_config_get_libthttp_loglevel());
+	pv_log(INFO, "libthttp.certdir = %d", pv_config_get_libthttp_certdir());
+	pv_log(INFO, "metadata.devmeta.interval = %d",
+	       pv_config_get_metadata_devmeta_interval());
+	pv_log(INFO, "metadata.usrmeta.interval = %d",
+	       pv_config_get_metadata_usrmeta_interval());
+}
+
 int pv_config_init(char *path)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -1402,20 +1493,10 @@ int pv_config_init(char *path)
 
 static int pv_config_creds(struct pv_init *this)
 {
-	struct pantavisor *pv = pv_get_instance();
-	char path[PATH_MAX];
+	if (!pv_config_get_control_remote())
+		return 0;
 
-	if (pv->unclaimed)
-		pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
-	else
-		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
-
-	if (pv_config_load_creds_from_file(path, &pv->config) < 0) {
-		printf("FATAL: unable to parse %s\n", path);
-		return -1;
-	}
-
-	return 0;
+	return pv_config_load_creds();
 }
 
 static int pv_config_trail(struct pv_init *this)
