@@ -136,9 +136,9 @@ void pv_paths_writable(char *buf, size_t size);
 #define DROPBEAR_DNAME "dropbear"
 #define PV_DNAME "pantavisor"
 #define PV_DEFAULTS_GROUPS PV_DNAME "/defaults/groups.json"
-#define PVS_DNAME "pantavisor/pvs"
-#define PVS_PK_FNAME PVS_DNAME "/pub.pem"
-#define PVS_CERT_FNAME PVS_DNAME "/certs/ca.pem"
+#define PVS_TRUST_DNAME PV_DNAME "/pvs/trust"
+#define PVS_PK_FNAME PVS_TRUST_DNAME "/pub.pem"
+#define PVS_CERT_DEFAULT_STORE "ca-certificates"
 
 void pv_paths_etc_file(char *buf, size_t size, const char *name);
 void pv_paths_etc_policy_file(char *buf, size_t size, const char *name);
@@ -146,6 +146,8 @@ void pv_paths_etc_policy_file(char *buf, size_t size, const char *name);
 void pv_paths_configs_file(char *buf, size_t size, const char *name);
 
 void pv_paths_cert(char *buf, size_t size, const char *name);
+
+void pv_paths_secureboot_trust_crts(char *buf, size_t size, const char *name);
 
 void pv_paths_tmp(char *buf, size_t size, const char *path);
 

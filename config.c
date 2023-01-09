@@ -420,6 +420,9 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 	config->libthttp.loglevel =
 		config_get_value_int(&config_list, "libthttp.log.level", 3);
 
+	config->libthttp.certdir = config_get_value_string(
+		&config_list, "libthttp.certsdir", "/certs");
+
 	config->lxc.log_level =
 		config_get_value_int(&config_list, "lxc.log.level", 2);
 
@@ -429,8 +432,8 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 	config->secureboot.mode = config_get_value_sb_mode_type(
 		&config_list, "secureboot.mode", SB_LENIENT);
 
-	config->secureboot.certdir = config_get_value_string(
-		&config_list, "secureboot.certdir", "/certs");
+	config->secureboot.truststore = config_get_value_string(
+		&config_list, "secureboot.truststore", PVS_CERT_DEFAULT_STORE);
 
 	config->secureboot.checksum = config_get_value_bool(
 		&config_list, "secureboot.checksum", true);
@@ -765,6 +768,9 @@ void pv_config_free()
 	if (pv->config.cache.dropbearcachedir)
 		free(pv->config.cache.dropbearcachedir);
 
+	if (pv->config.libthttp.certdir)
+		free(pv->config.libthttp.certdir);
+
 	if (pv->config.log.logdir)
 		free(pv->config.log.logdir);
 
@@ -817,6 +823,9 @@ void pv_config_free()
 		free(pv->config.creds.tpm.key);
 	if (pv->config.creds.tpm.cert)
 		free(pv->config.creds.tpm.cert);
+
+	if (pv->config.secureboot.truststore)
+		free(pv->config.secureboot.truststore);
 
 	if (pv->config.factory.autotok)
 		free(pv->config.factory.autotok);
@@ -1161,6 +1170,11 @@ int pv_config_get_libthttp_loglevel()
 	return pv_get_instance()->config.libthttp.loglevel;
 }
 
+char *pv_config_get_libthttp_certdir()
+{
+	return pv_get_instance()->config.libthttp.certdir;
+}
+
 int pv_config_get_lxc_loglevel()
 {
 	return pv_get_instance()->config.lxc.log_level;
@@ -1175,14 +1189,15 @@ secureboot_mode_t pv_config_get_secureboot_mode()
 {
 	return pv_get_instance()->config.secureboot.mode;
 }
-char *pv_config_get_secureboot_certdir()
-{
-	return pv_get_instance()->config.secureboot.certdir;
-}
 
 bool pv_config_get_secureboot_checksum()
 {
 	return pv_get_instance()->config.secureboot.checksum;
+}
+
+char *pv_config_get_secureboot_truststore()
+{
+	return pv_get_instance()->config.secureboot.truststore;
 }
 
 int pv_config_get_metadata_devmeta_interval()
@@ -1239,8 +1254,8 @@ char *pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_bl_mtd_path());
 		pv_json_ser_key(&js, "secureboot.mode");
 		pv_json_ser_number(&js, pv_config_get_secureboot_mode());
-		pv_json_ser_key(&js, "secureboot.certdir");
-		pv_json_ser_string(&js, pv_config_get_secureboot_certdir());
+		pv_json_ser_key(&js, "secureboot.truststore");
+		pv_json_ser_string(&js, pv_config_get_secureboot_truststore());
 		pv_json_ser_key(&js, "secureboot.checksum");
 		pv_json_ser_bool(&js, pv_config_get_secureboot_checksum());
 		pv_json_ser_key(&js, "storage.device");
@@ -1353,6 +1368,8 @@ char *pv_config_get_json()
 		pv_json_ser_number(&js, pv_config_get_log_server_outputs());
 		pv_json_ser_key(&js, "libthttp.log.level");
 		pv_json_ser_number(&js, pv_config_get_libthttp_loglevel());
+		pv_json_ser_key(&js, "libthttp.certdir");
+		pv_json_ser_string(&js, pv_config_get_libthttp_certdir());
 
 		pv_json_ser_key(&js, "metadata.devmeta.interval");
 		pv_json_ser_number(&js,

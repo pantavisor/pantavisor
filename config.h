@@ -164,6 +164,7 @@ struct pantavisor_control {
 
 struct pantavisor_libthttp {
 	int loglevel;
+	char *certdir;
 };
 
 typedef enum {
@@ -175,7 +176,7 @@ typedef enum {
 
 struct pantavisor_secureboot {
 	secureboot_mode_t mode;
-	char *certdir;
+	char *truststore;
 	bool checksum;
 };
 
@@ -303,6 +304,8 @@ bool pv_config_get_log_push(void);
 bool pv_config_get_log_capture(void);
 bool pv_config_get_log_loggers(void);
 bool pv_config_get_log_stdout(void);
+
+char *pv_config_get_libthttp_certdir(void);
 int pv_config_get_libthttp_loglevel(void);
 
 int pv_config_get_log_server_outputs(void);
@@ -315,7 +318,7 @@ int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);
 
 secureboot_mode_t pv_config_get_secureboot_mode(void);
-char *pv_config_get_secureboot_certdir(void);
+char *pv_config_get_secureboot_truststore(void);
 bool pv_config_get_secureboot_checksum(void);
 
 int pv_config_get_metadata_devmeta_interval(void);

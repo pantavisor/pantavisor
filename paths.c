@@ -397,7 +397,15 @@ void pv_paths_configs_file(char *buf, size_t size, const char *name)
 void pv_paths_cert(char *buf, size_t size, const char *name)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_CERT_PATHF,
-			pv_config_get_secureboot_certdir(), name);
+			pv_config_get_libthttp_certdir(), name);
+}
+
+#define PV_TRUST_CERTS_PATHF "%s/%s/%s.crt"
+
+void pv_paths_secureboot_trust_crts(char *buf, size_t size, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_TRUST_CERTS_PATHF,
+			pv_config_get_system_etcdir(), PVS_TRUST_DNAME, name);
 }
 
 #define PV_TMP_PATHF "%s.tmp"
