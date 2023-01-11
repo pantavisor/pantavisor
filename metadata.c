@@ -47,15 +47,17 @@
 #include "str.h"
 #include "paths.h"
 #include "updater.h"
-#include "utils/math.h"
-#include "utils/system.h"
-#include "utils/str.h"
 #include "json.h"
 #include "config.h"
 #include "config_parser.h"
 #include "storage.h"
 #include "platforms.h"
 #include "buffer.h"
+#include "loop.h"
+
+#include "utils/math.h"
+#include "utils/system.h"
+#include "utils/str.h"
 #include "utils/math.h"
 #include "utils/system.h"
 #include "utils/fs.h"
@@ -80,6 +82,53 @@ struct pv_devmeta_read {
 	int buflen;
 	int (*reader)(struct pv_devmeta_read *);
 };
+
+int pv_metadata_mount()
+{
+	struct stat st;
+	char storage_path[PATH_MAX], pv_path[PATH_MAX];
+
+	// User meta
+	pv_paths_storage_usrmeta(storage_path, PATH_MAX);
+	if (stat(storage_path, &st) != 0)
+		pv_fs_mkdir_p(storage_path, 0500);
+	pv_paths_pv_usrmeta_key(pv_path, PATH_MAX, "");
+	if (stat(pv_path, &st) != 0)
+		pv_fs_mkdir_p(pv_path, 0755);
+	if (mount_bind(storage_path, pv_path)) {
+		pv_log(ERROR, "user metadata mount failed");
+		return -1;
+	}
+
+	// Device meta
+	pv_paths_storage_devmeta(storage_path, PATH_MAX);
+	if (stat(storage_path, &st) != 0)
+		pv_fs_mkdir_p(storage_path, 0500);
+	pv_paths_pv_devmeta_key(pv_path, PATH_MAX, "");
+	if (stat(pv_path, &st) != 0)
+		pv_fs_mkdir_p(pv_path, 0755);
+	if (mount_bind(storage_path, pv_path)) {
+		pv_log(ERROR, "device metadata mount failed");
+		return -1;
+	}
+
+	return 0;
+}
+
+void pv_metadata_umount()
+{
+	char path[PATH_MAX];
+
+	pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
+	if (umount(path))
+		pv_log(ERROR, "Error unmounting pv_usrmeta %s",
+		       strerror(errno));
+
+	pv_paths_pv_devmeta_key(path, PATH_MAX, "");
+	if (umount(path))
+		pv_log(ERROR, "Error unmounting pv_devmeta %s",
+		       strerror(errno));
+}
 
 static int pv_devmeta_buf_check(struct pv_devmeta_read *pv_devmeta_read)
 {

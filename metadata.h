@@ -51,6 +51,9 @@ struct pv_metadata {
 	bool devmeta_uploaded;
 };
 
+int pv_metadata_mount(void);
+void pv_metadata_umount(void);
+
 int pv_metadata_factory_meta(struct pantavisor *pv);
 bool pv_metadata_factory_meta_done(struct pantavisor *pv);
 

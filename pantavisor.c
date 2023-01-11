@@ -242,15 +242,25 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 			goto out;
 		}
 		pv->state = pv_parser_get_state(json, pv_bootloader_get_rev());
+		if (!pv->state) {
+			pv_log(ERROR, "state could not be loaded");
+			goto out;
+		}
+
 		// if an update is going on, we are going to need the state to report progress, so no need to parse it
 		if (pv->update) {
 			pv->update->pending = pv_state_new(
 				pv_bootloader_get_try(), SPEC_UNKNOWN);
 		}
+
+		if (pv_metadata_mount()) {
+			pv_log(ERROR, "metadata mount failed");
+			goto out;
+		}
 	}
 
 	if (!pv->state) {
-		pv_log(ERROR, "state could not be loaded");
+		pv_log(ERROR, "current state not loaded");
 		goto out;
 	}
 
@@ -895,6 +905,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		kill(db_pid, SIGKILL);
 
 	pv_mount_umount();
+	pv_metadata_umount();
 
 	pv_init_umount();
 

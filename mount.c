@@ -58,24 +58,6 @@ static int ph_mount_init(struct pv_init *this)
 	if (stat(storage_path, &st) != 0)
 		pv_fs_mkdir_p(storage_path, 0500);
 
-	// User meta
-	pv_paths_storage_usrmeta(storage_path, PATH_MAX);
-	if (stat(storage_path, &st) != 0)
-		pv_fs_mkdir_p(storage_path, 0500);
-	pv_paths_pv_usrmeta_key(pv_path, PATH_MAX, "");
-	if (stat(pv_path, &st) != 0)
-		pv_fs_mkdir_p(pv_path, 0755);
-	mount_bind(storage_path, pv_path);
-
-	// Device meta
-	pv_paths_storage_devmeta(storage_path, PATH_MAX);
-	if (stat(storage_path, &st) != 0)
-		pv_fs_mkdir_p(storage_path, 0500);
-	pv_paths_pv_devmeta_key(pv_path, PATH_MAX, "");
-	if (stat(pv_path, &st) != 0)
-		pv_fs_mkdir_p(pv_path, 0755);
-	mount_bind(storage_path, pv_path);
-
 	// Dropbear
 	pv_paths_storage_dropbear(storage_path, PATH_MAX);
 	if (stat(storage_path, &st) != 0)
@@ -91,16 +73,6 @@ static int ph_mount_init(struct pv_init *this)
 void pv_mount_umount(void)
 {
 	char path[PATH_MAX];
-
-	pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
-	if (umount(path))
-		pv_log(ERROR, "Error unmounting pv_usrmeta %s",
-		       strerror(errno));
-
-	pv_paths_pv_devmeta_key(path, PATH_MAX, "");
-	if (umount(path))
-		pv_log(ERROR, "Error unmounting pv_devmeta %s",
-		       strerror(errno));
 
 	pv_paths_etc_file(path, PATH_MAX, DROPBEAR_DNAME);
 	if (umount(path))
