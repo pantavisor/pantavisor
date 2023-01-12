@@ -69,7 +69,12 @@ do_crypt_init()
 		mv $dir/$keyname.new $dir/$keyname
 		[ $? -ne 0 ] && echo "ERROR: DCP: Unable to create grey blob" && exit 1
 	elif [ $dm_type == "versatile" ]; then
-		dd if=/dev/random of=$dir/keyname.txt bs=32 count=1
+		if test -c /dev/hwrng; then
+			dd if=/dev/hwrng of=$dir/$keyname.txt bs=32 count=1
+		else
+			echo "WARNING: /dev/hwrng not available; using urandom for versatile crypt key"
+			dd if=/dev/urandom of=$dir/$keyname.txt bs=32 count=1
+		fi
 	else
 		echo "Unknown device mapper target"
 		exit 1
