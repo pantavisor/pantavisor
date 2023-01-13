@@ -51,7 +51,6 @@ struct pv_metadata {
 	bool devmeta_uploaded;
 };
 
-int pv_metadata_mount(void);
 void pv_metadata_umount(void);
 
 int pv_metadata_factory_meta(struct pantavisor *pv);
@@ -68,6 +67,7 @@ int pv_metadata_add_devmeta(const char *key, const char *value);
 int pv_metadata_rm_devmeta(const char *key);
 void pv_metadata_parse_devmeta(const char *buf);
 
+int pv_metadata_init(void);
 void pv_metadata_remove(void);
 
 char *pv_metadata_get_user_meta_string(void);

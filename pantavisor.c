@@ -252,11 +252,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 			pv->update->pending = pv_state_new(
 				pv_bootloader_get_try(), SPEC_UNKNOWN);
 		}
-
-		if (pv_metadata_mount()) {
-			pv_log(ERROR, "metadata mount failed");
-			goto out;
-		}
 	}
 
 	if (!pv->state) {
@@ -289,10 +284,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv->remote_mode = false;
 	}
 
-	if (pv->remote_mode)
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_INIT));
-	else
+	if (!pv->remote_mode)
 		pv_log(INFO,
 		       "running in local mode. Will not consume new updates from Pantahub");
 
@@ -300,15 +292,20 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_logserver_toggle(pv, pv->state->rev);
 	ph_logger_toggle(pv->state->rev);
 
-	// meta data initialization, also to be uploaded as soon as possible when connected
-	pv_metadata_init_devmeta(pv);
-
 	if (!pv_update_is_transitioning(pv->update)) {
 		if (pv_state_start(pv->state)) {
 			pv_log(ERROR, "error starting state");
 			goto out;
 		}
+
+		if (pv_metadata_init()) {
+			pv_log(ERROR, "metadata mount failed");
+			goto out;
+		}
 	}
+
+	// meta data initialization, also to be uploaded as soon as possible when connected
+	pv_metadata_init_devmeta(pv);
 
 	if (pv_storage_make_config(pv) < 0) {
 		pv_log(ERROR, "error making config");
