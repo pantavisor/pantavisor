@@ -35,12 +35,17 @@ typedef enum {
 	STATUS_GOAL_FAILED
 } groups_goals_state_t;
 
+struct timeout {
+	int limit;
+	bool started;
+	struct timer timer_goal;
+};
+
 struct pv_group {
 	char *name;
-	int timeout;
 	plat_status_t default_status_goal;
 	restart_policy_t default_restart_policy;
-	struct timer timer_goal;
+	struct timeout timeout;
 	struct dl_list platform_refs; // pv_platform_ref
 	struct dl_list list; // pv_group
 };

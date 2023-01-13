@@ -21,6 +21,7 @@
  */
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #include "group.h"
 
@@ -39,7 +40,8 @@ struct pv_group *pv_group_new(char *name, int timeout, plat_status_t status,
 	g = calloc(1, sizeof(struct pv_group));
 	if (g) {
 		g->name = strdup(name);
-		g->timeout = timeout;
+		g->timeout.limit = timeout;
+		g->timeout.started = false;
 		g->default_status_goal = status;
 		g->default_restart_policy = restart;
 		dl_list_init(&g->platform_refs);
@@ -78,7 +80,13 @@ void pv_group_free(struct pv_group *g)
 
 groups_goals_state_t pv_group_check_goals(struct pv_group *g)
 {
-	struct timer_state tstate = timer_current_state(&g->timer_goal);
+	if (dl_list_empty(&g->platform_refs))
+		return STATUS_GOAL_REACHED;
+
+	if (!g->timeout.started)
+		return STATUS_GOAL_WAITING;
+
+	struct timer_state tstate = timer_current_state(&g->timeout.timer_goal);
 
 	if (dl_list_empty(&g->platform_refs))
 		return STATUS_GOAL_UNKNOWN;
@@ -186,5 +194,8 @@ void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g)
 
 void pv_group_start_timer(struct pv_group *g)
 {
-	timer_start(&g->timer_goal, g->timeout, 0, RELATIV_TIMER);
+	pv_log(DEBUG, "starting timer for group %s (%d seconds)", g->name,
+	       g->timeout.limit);
+	timer_start(&g->timeout.timer_goal, g->timeout.limit, 0, RELATIV_TIMER);
+	g->timeout.started = true;
 }
