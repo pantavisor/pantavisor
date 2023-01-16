@@ -315,7 +315,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	timer_start(&timer_commit, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_rollback_remote,
 		    pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
-	pv_state_start_groups_timer(pv->state);
 	timer_start(&timer_wait_delay, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_usrmeta_interval, 0, 0, RELATIV_TIMER);
 	timer_start(&timer_devmeta_interval, 0, 0, RELATIV_TIMER);

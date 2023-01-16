@@ -60,6 +60,7 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		s->rev = calloc(len, sizeof(char));
 		SNPRINTF_WTRUNC(s->rev, len, "%s", rev);
 		s->spec = spec;
+		s->cur_group = NULL;
 		dl_list_init(&s->platforms);
 		dl_list_init(&s->volumes);
 		dl_list_init(&s->disks);
@@ -141,6 +142,9 @@ void pv_state_add_group(struct pv_state *s, struct pv_group *g)
 
 	dl_list_init(&g->list);
 	dl_list_add_tail(&s->groups, &g->list);
+
+	if (!s->cur_group)
+		s->cur_group = g;
 }
 
 struct pv_group *pv_state_fetch_group(struct pv_state *s, const char *name)
@@ -454,8 +458,9 @@ groups_goals_state_t pv_state_check_goals(struct pv_state *s,
 			break;
 
 		groups_goals_state_t cur_state = pv_group_check_goals(g);
-		if (status_goal < cur_state)
-			status_goal = cur_state;
+		if (!p)
+			if (status_goal < cur_state)
+				status_goal = cur_state;
 	}
 
 	return status_goal;
@@ -494,36 +499,56 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	return 0;
 }
 
+static struct pv_group *pv_state_next_group(struct pv_state *s)
+{
+	struct pv_group *g =
+		dl_list_entry(s->cur_group->list.next, struct pv_group, list);
+
+	if (&g->list == &s->groups)
+		return NULL;
+
+	s->cur_group = g;
+	return g;
+}
+
 int pv_state_run(struct pv_state *s)
 {
-	int ret = 0;
-	struct pv_platform *p, *tmp_p;
+	if (!s->cur_group)
+		return 0;
 
-	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
+	if (dl_list_empty(&s->cur_group->platform_refs)) {
+		s->cur_group = pv_state_next_group(s);
+		return 0;
+	}
+
+	if (!s->cur_group->timeout.started)
+		pv_group_start_timer(s->cur_group);
+
+	struct pv_platform_ref *pr, *tmp;
+	dl_list_for_each_safe(pr, tmp, &s->cur_group->platform_refs,
+			      struct pv_platform_ref, list)
 	{
+		struct pv_platform *p = pr->ref;
+
 		if (pv_platform_is_installed(p) || pv_platform_is_blocked(p)) {
 			groups_goals_state_t status_goal =
 				pv_state_check_goals(s, p);
-
+			int err = 0;
 			switch (status_goal) {
+			case STATUS_GOAL_FAILED:
 			case STATUS_GOAL_UNKNOWN:
-				ret = pv_state_start_platform(s, p);
-				break;
 			case STATUS_GOAL_REACHED:
-				pv_log(DEBUG,
-				       "platform '%s' from group '%s' can be started now",
-				       p->name, p->group->name);
-
-				ret = pv_state_start_platform(s, p);
+				if (status_goal == STATUS_GOAL_FAILED)
+					pv_log(WARN,
+					       "timeout reached. Unblocking boot for platform '%s' from group '%s'...",
+					       p->name, s->cur_group->name);
+				err = pv_state_start_platform(s, p);
+				if (err)
+					return err;
 				break;
 			case STATUS_GOAL_WAITING:
 				pv_platform_set_blocked(p);
 				break;
-			case STATUS_GOAL_FAILED:
-				pv_log(WARN,
-				       "timeout reached. Unblocking boot for platform '%s' from group '%s'...",
-				       p->name, p->group->name);
-				ret = pv_state_start_platform(s, p);
 			}
 		} else if (pv_platform_is_starting(p)) {
 			if (!pv_platform_check_running(p))
@@ -535,16 +560,28 @@ int pv_state_run(struct pv_state *s)
 			if (!pv_platform_check_running(p)) {
 				pv_log(ERROR, "platform %s suddenly stopped",
 				       p->name);
-				ret = -1;
+				return -1;
 			}
 		}
-
-		if (ret)
-			goto out;
 	}
 
-out:
-	return ret;
+	groups_goals_state_t cur_goal = pv_group_check_goals(s->cur_group);
+	if (cur_goal == STATUS_GOAL_REACHED || cur_goal == STATUS_GOAL_FAILED) {
+		if (cur_goal == STATUS_GOAL_REACHED)
+			pv_log(DEBUG,
+			       "group '%s' status goal reached, moving to the next group",
+			       s->cur_group->name);
+		if (cur_goal == STATUS_GOAL_FAILED)
+			pv_log(DEBUG,
+			       "group '%s' failed, trying to unblock boot",
+			       s->cur_group->name);
+
+		s->cur_group = pv_state_next_group(s);
+		if (!s->cur_group)
+			pv_log(DEBUG, "all groups are set!");
+	}
+
+	return 0;
 }
 
 static bool pv_state_check_all_stopped(struct pv_state *s)
@@ -1250,13 +1287,4 @@ char *pv_state_get_groups_json(struct pv_state *s)
 	}
 
 	return pv_json_ser_str(&js);
-}
-
-void pv_state_start_groups_timer(struct pv_state *s)
-{
-	struct pv_group *g, *tmp;
-	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
-	{
-		pv_group_start_timer(g);
-	}
 }

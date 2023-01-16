@@ -48,6 +48,7 @@ struct pv_state {
 	char *rev;
 	state_spec_t spec;
 	struct pv_bsp bsp;
+	struct pv_group *cur_group;
 	struct dl_list platforms; // pv_platform
 	struct dl_list volumes; // pv_volume
 	struct dl_list disks; // pv_disks
@@ -94,6 +95,5 @@ int pv_state_interpret_signal(struct pv_state *s, const char *name,
 void pv_state_print(struct pv_state *s);
 char *pv_state_get_containers_json(struct pv_state *s);
 char *pv_state_get_groups_json(struct pv_state *s);
-void pv_state_start_groups_timer(struct pv_state *s);
 
 #endif
