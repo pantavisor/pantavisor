@@ -253,6 +253,16 @@ void pv_state_print(struct pv_state *s)
 		pv_log(DEBUG, "  type: %d", v->type);
 		if (v->plat)
 			pv_log(DEBUG, "  platform: '%s'", v->plat->name);
+		if (v->disk)
+			pv_log(DEBUG, "  disk: '%s'", v->disk->name);
+	}
+	struct pv_disk *d, *tmp_d;
+	struct dl_list *disks = &s->disks;
+	dl_list_for_each_safe(d, tmp_d, disks, struct pv_disk, list)
+	{
+		pv_log(DEBUG, " disk: '%s'", d->name);
+		pv_log(DEBUG, "  default: %d", d->def);
+		pv_log(DEBUG, "  type: %d", d->type);
 	}
 	struct pv_addon *a, *tmp_a;
 	struct dl_list *addons = &s->addons;
@@ -418,8 +428,11 @@ static int pv_state_mount_bsp_volumes(struct pv_state *s)
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
 	{
 		if (!v->plat)
-			if (pv_volume_mount(v))
+			if (pv_volume_mount(v)) {
+				pv_log(ERROR, "bsp volume %s mount failed",
+				       v->name);
 				return -1;
+			}
 	}
 
 	return pv_volumes_mount_firmware_modules();

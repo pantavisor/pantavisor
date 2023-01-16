@@ -112,16 +112,16 @@ int pv_disks_umount_all(struct pv_state *s)
 	struct pv_disk *d, *tmp;
 	struct dl_list *disks = &s->disks;
 
-	pv_log(INFO, "Unmounting all disks...");
+	pv_log(INFO, "unmounting all disks...");
 	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
 	{
 		int r;
 		if ((r = pv_disks_mount_handler(d, "umount"))) {
-			pv_log(ERROR, "Error unmounting disk (%d), %s", r,
+			pv_log(ERROR, "error unmounting disk (%d), %s", r,
 			       d->name);
 			ret |= r;
 		} else {
-			pv_log(DEBUG, "Successfully unmounted disk %s",
+			pv_log(DEBUG, "successfully unmounted disk %s",
 			       d->name);
 		}
 	}
@@ -232,15 +232,18 @@ static int pv_disks_mount_handler(struct pv_disk *d, char *action)
 	case DISK_DIR:
 	case DISK_UNKNOWN:
 	default:
-		return -ENOTSUP;
+		pv_log(ERROR, "unknown disk type %d", d->type);
+		return -4;
 	}
 
 	command = malloc(sizeof(char) *
 			 (strlen("/lib/pv/volmount/crypt/crypt %s %s %s %s") +
 			  strlen(action) + strlen(crypt_type) +
 			  strlen(d->path) + strlen(path) + 1));
-	if (!command)
-		return -ENOMEM;
+	if (!command) {
+		pv_log(ERROR, "cannot alloc disk action command");
+		return -5;
+	}
 
 	sprintf(command, "/lib/pv/volmount/crypt/crypt %s %s %s %s", action,
 		crypt_type, d->path, path);
@@ -274,7 +277,7 @@ static int pv_disks_mount_handler(struct pv_disk *d, char *action)
 		       WEXITSTATUS(wstatus));
 		ret = -1;
 	} else if (WIFEXITED(wstatus)) {
-		pv_log(ERROR, "command succeeded: %s", command);
+		pv_log(DEBUG, "command succeeded: %s", command);
 		ret = 0;
 	} else if (WIFSIGNALED(wstatus)) {
 		pv_log(ERROR, "command signalled: %s %d", command,
@@ -312,8 +315,10 @@ int pv_volume_mount(struct pv_volume *v)
 
 	if (v->disk && !v->disk->def && !v->disk->mounted) {
 		ret = pv_disks_mount_handler(v->disk, "mount");
-		if (ret != 0)
+		if (ret != 0) {
+			pv_log(ERROR, "disk %s mount failed", v->disk->name);
 			return ret;
+		}
 
 		disk_name = d->name;
 		v->disk->mounted = 1;
@@ -406,10 +411,10 @@ int pv_volume_mount(struct pv_volume *v)
 		if (disk_name)
 			pv_paths_crypt_disks_perm_file(path, PATH_MAX,
 						       "dmcrypt", disk_name,
-						       v->plat->name, v->name);
+						       partname, v->name);
 		else
-			pv_paths_storage_disks_perm_file(
-				path, PATH_MAX, v->plat->name, v->name);
+			pv_paths_storage_disks_perm_file(path, PATH_MAX,
+							 partname, v->name);
 
 		pv_fs_mkdir_p(path, 0755);
 		pv_fs_mkdir_p(mntpoint, 0755);
@@ -419,10 +424,10 @@ int pv_volume_mount(struct pv_volume *v)
 		if (disk_name)
 			pv_paths_crypt_disks_rev_file(path, PATH_MAX, "dmcrypt",
 						      disk_name, s->rev,
-						      v->plat->name, v->name);
+						      partname, v->name);
 		else
 			pv_paths_storage_disks_rev_file(path, PATH_MAX, s->rev,
-							v->plat->name, v->name);
+							partname, v->name);
 
 		pv_fs_mkdir_p(path, 0755);
 		pv_fs_mkdir_p(mntpoint, 0755);
@@ -434,7 +439,7 @@ int pv_volume_mount(struct pv_volume *v)
 
 			pv_paths_crypt_disks_boot_file(path, PATH_MAX,
 						       "dmcrypt", disk_name,
-						       v->plat->name, v->name);
+						       partname, v->name);
 			base_path = strdup(path);
 
 			char full_path[PATH_MAX];

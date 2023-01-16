@@ -1413,6 +1413,9 @@ static struct pv_state *system1_parse_groups(struct pv_state *this,
 	} else if (!count) {
 		char path[PATH_MAX];
 
+		if (pv_json_get_key_count(buf, "device.json", tokv, tokc))
+			goto out;
+
 		pv_paths_etc_file(path, PATH_MAX, PV_DEFAULTS_GROUPS);
 		pv_log(INFO,
 		       "groups.json not found in state. Loading default groups.json from '%s'...",
@@ -1521,14 +1524,67 @@ out:
 	return this;
 }
 
+static struct pv_state *parse_device(struct pv_state *this, char *buf)
+{
+	int tokc;
+	jsmntok_t *tokv;
+	char *value = NULL;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse");
+		goto out;
+	}
+
+	value = pv_json_get_value(buf, "groups", tokv, tokc);
+	if (!value) {
+		pv_log(WARN, "groups not defined in device.json");
+		goto out;
+	}
+	if (parse_groups(this, value)) {
+		pv_log(ERROR, "cannot parse groups in device.json");
+		this = NULL;
+		goto out;
+	}
+	free(value);
+
+	value = pv_json_get_value(buf, "disks", tokv, tokc);
+	if (!value) {
+		pv_log(WARN, "disks not defined in device.json");
+		goto out;
+	}
+	if (parse_disks(this, value)) {
+		pv_log(ERROR, "cannot parse disks in device.json");
+		this = NULL;
+		goto out;
+	}
+	free(value);
+
+	value = pv_json_get_value(buf, "volumes", tokv, tokc);
+	if (!value) {
+		pv_log(WARN, "volumes not defined in device.json");
+		goto out;
+	}
+	if (!parse_storage(this, NULL, value)) {
+		pv_log(ERROR, "cannot parse storage in device.json");
+		this = NULL;
+		goto out;
+	}
+
+out:
+	if (tokv)
+		free(tokv);
+	if (value)
+		free(value);
+
+	return this;
+}
+
 static struct pv_state *system1_parse_device(struct pv_state *this,
 					     const char *buf)
 {
 	int tokc, count;
 	jsmntok_t *tokv;
 	char *value = NULL;
-	char *disksvalue = NULL;
-	char *groupsvalue = NULL;
 
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
 		pv_log(ERROR, "cannot parse");
@@ -1548,39 +1604,18 @@ static struct pv_state *system1_parse_device(struct pv_state *this,
 		pv_log(DEBUG, "adding json 'device.json': %s", value);
 		pv_jsons_add(this, "device.json", value);
 
-		free(tokv);
-		tokv = 0;
-
-		if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
-			pv_log(ERROR, "cannot parse");
-			goto out;
-		}
-
-		disksvalue = pv_json_get_value(value, "disks", tokv, tokc);
-
-		if (disksvalue && parse_disks(this, disksvalue)) {
-			pv_log(WARN,
-			       "Incompatible 'disks' value in device.json state");
+		if (!parse_device(this, value)) {
 			this = NULL;
 			goto out;
 		}
 
-		groupsvalue = pv_json_get_value(value, "groups", tokv, tokc);
-		if (groupsvalue && parse_groups(this, groupsvalue)) {
-			pv_log(WARN,
-			       "Incompatible 'groups' value in device.json state");
-			this = NULL;
-			goto out;
-		}
+		free(value);
+		value = NULL;
 	}
 
 out:
 	if (tokv)
 		free(tokv);
-	if (groupsvalue)
-		free(groupsvalue);
-	if (disksvalue)
-		free(disksvalue);
 	if (value)
 		free(value);
 

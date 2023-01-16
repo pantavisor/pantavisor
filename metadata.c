@@ -83,33 +83,126 @@ struct pv_devmeta_read {
 	int (*reader)(struct pv_devmeta_read *);
 };
 
-int pv_metadata_mount()
+static int pv_metadata_mount_usrmeta_vol()
 {
 	struct stat st;
-	char storage_path[PATH_MAX], pv_path[PATH_MAX];
+	char src_path[PATH_MAX], dst_path[PATH_MAX];
 
-	// User meta
-	pv_paths_storage_usrmeta(storage_path, PATH_MAX);
-	if (stat(storage_path, &st) != 0)
-		pv_fs_mkdir_p(storage_path, 0500);
-	pv_paths_pv_usrmeta_key(pv_path, PATH_MAX, "");
-	if (stat(pv_path, &st) != 0)
-		pv_fs_mkdir_p(pv_path, 0755);
-	if (mount_bind(storage_path, pv_path)) {
-		pv_log(ERROR, "user metadata mount failed");
+	pv_paths_volumes_plat_file(src_path, PATH_MAX, BSP_DNAME,
+				   USRMETAVOL_DNAME);
+	if (stat(src_path, &st)) {
+		pv_log(INFO, "%s does not exist. Mounting storage...",
+		       src_path);
+		return 0;
+	}
+
+	pv_paths_pv_usrmeta_key(dst_path, PATH_MAX, "");
+	if (stat(dst_path, &st) != 0)
+		pv_fs_mkdir_p(dst_path, 0755);
+	if (mount_bind(src_path, dst_path)) {
+		pv_log(ERROR, "user meta vol to pv mount failed");
 		return -1;
 	}
 
-	// Device meta
-	pv_paths_storage_devmeta(storage_path, PATH_MAX);
-	if (stat(storage_path, &st) != 0)
-		pv_fs_mkdir_p(storage_path, 0500);
-	pv_paths_pv_devmeta_key(pv_path, PATH_MAX, "");
-	if (stat(pv_path, &st) != 0)
-		pv_fs_mkdir_p(pv_path, 0755);
-	if (mount_bind(storage_path, pv_path)) {
-		pv_log(ERROR, "device metadata mount failed");
+	pv_log(DEBUG, "mounted '%s' at '%s'", src_path, dst_path);
+
+	return 1;
+}
+
+static int pv_metadata_mount_usrmeta_storage()
+{
+	struct stat st;
+	char src_path[PATH_MAX], dst_path[PATH_MAX];
+
+	pv_paths_storage_usrmeta(src_path, PATH_MAX);
+	if (stat(src_path, &st) != 0)
+		pv_fs_mkdir_p(src_path, 0500);
+
+	pv_paths_pv_usrmeta_key(dst_path, PATH_MAX, "");
+	if (stat(dst_path, &st) != 0)
+		pv_fs_mkdir_p(dst_path, 0755);
+	if (mount_bind(src_path, dst_path)) {
+		pv_log(ERROR, "user meta storage to pv mount failed");
 		return -1;
+	}
+
+	pv_log(DEBUG, "mounted '%s' at '%s'", src_path, dst_path);
+
+	return 0;
+}
+
+static int pv_metadata_mount_devmeta_vol()
+{
+	struct stat st;
+	char src_path[PATH_MAX], dst_path[PATH_MAX];
+
+	pv_paths_volumes_plat_file(src_path, PATH_MAX, BSP_DNAME,
+				   DEVMETAVOL_DNAME);
+	if (stat(src_path, &st)) {
+		pv_log(INFO, "%s does not exist. Mounting storage...",
+		       src_path);
+		return 0;
+	}
+
+	pv_paths_pv_devmeta_key(dst_path, PATH_MAX, "");
+	if (stat(dst_path, &st) != 0)
+		pv_fs_mkdir_p(dst_path, 0755);
+	if (mount_bind(src_path, dst_path)) {
+		pv_log(ERROR, "dev meta vol to pv mount failed");
+		return -1;
+	}
+
+	pv_log(DEBUG, "mounted '%s' at '%s'", src_path, dst_path);
+
+	return 1;
+}
+
+static int pv_metadata_mount_devmeta_storage()
+{
+	struct stat st;
+	char src_path[PATH_MAX], dst_path[PATH_MAX];
+
+	pv_paths_storage_devmeta(src_path, PATH_MAX);
+	if (stat(src_path, &st) != 0)
+		pv_fs_mkdir_p(src_path, 0500);
+
+	pv_paths_pv_devmeta_key(dst_path, PATH_MAX, "");
+	if (stat(dst_path, &st) != 0)
+		pv_fs_mkdir_p(dst_path, 0755);
+	if (mount_bind(src_path, dst_path)) {
+		pv_log(ERROR, "dev meta storage to pv mount failed");
+		return -1;
+	}
+
+	pv_log(DEBUG, "mounted '%s' at '%s'", src_path, dst_path);
+
+	return 0;
+}
+
+static int pv_metadata_mount()
+{
+	int res;
+
+	res = pv_metadata_mount_usrmeta_vol();
+	if (res < 0) {
+		pv_log(ERROR, "cannot mount user meta vol");
+		return -1;
+	} else if (!res) {
+		if (pv_metadata_mount_usrmeta_storage()) {
+			pv_log(ERROR, "cannot mount user meta storage");
+			return -1;
+		}
+	}
+
+	res = pv_metadata_mount_devmeta_vol();
+	if (res < 0) {
+		pv_log(ERROR, "cannot mount dev meta vol");
+		return -1;
+	} else if (!res) {
+		if (pv_metadata_mount_devmeta_storage()) {
+			pv_log(ERROR, "cannot mount dev meta storage");
+			return -1;
+		}
 	}
 
 	return 0;
@@ -120,14 +213,18 @@ void pv_metadata_umount()
 	char path[PATH_MAX];
 
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, "");
+	pv_log(DEBUG, "unmounting '%s'...", path);
 	if (umount(path))
-		pv_log(ERROR, "Error unmounting pv_usrmeta %s",
-		       strerror(errno));
+		pv_log(ERROR, "error unmounting '%s': %s", path,
+		       strerror(errno)) else pv_log(DEBUG,
+						    "unmounted successfully");
 
 	pv_paths_pv_devmeta_key(path, PATH_MAX, "");
+	pv_log(DEBUG, "unmounting '%s'...", path);
 	if (umount(path))
-		pv_log(ERROR, "Error unmounting pv_devmeta %s",
-		       strerror(errno));
+		pv_log(ERROR, "error unmounting '%s': %s", path,
+		       strerror(errno)) else pv_log(DEBUG,
+						    "unmounted successfully");
 }
 
 static int pv_devmeta_buf_check(struct pv_devmeta_read *pv_devmeta_read)
@@ -408,6 +505,22 @@ static int pv_devmeta_read_claimed(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+static int pv_devmeta_read_remote(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+	struct pantavisor *pv = pv_get_instance();
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	if (pv->remote_mode)
+		SNPRINTF_WTRUNC(buf, buflen, "0");
+	else
+		SNPRINTF_WTRUNC(buf, buflen, "1");
+	return 0;
+}
+
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_ARCH, .reader = pv_devmeta_read_arch },
 	{ .key = DEVMETA_KEY_PV_VERSION, .reader = pv_devmeta_read_version },
@@ -419,7 +532,8 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
 	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname },
 	{ .key = DEVMETA_KEY_PV_TIME, .reader = pv_devmeta_time },
-	{ .key = DEVMETA_KEY_PV_SYSINFO, .reader = pv_devmeta_sysinfo }
+	{ .key = DEVMETA_KEY_PV_SYSINFO, .reader = pv_devmeta_sysinfo },
+	{ .key = DEVMETA_KEY_PH_STATE, .reader = pv_devmeta_read_remote }
 };
 
 static void pv_metadata_free(struct pv_meta *usermeta)
@@ -1116,8 +1230,11 @@ static void pv_metadata_load_devmeta()
 	pv_storage_free_subdir(&files);
 }
 
-static int pv_metadata_init(struct pv_init *this)
+int pv_metadata_init()
 {
+	if (pv_metadata_mount())
+		return -1;
+
 	struct pantavisor *pv = pv_get_instance();
 
 	pv->metadata = calloc(1, sizeof(struct pv_metadata));
@@ -1233,8 +1350,3 @@ void pv_metadata_remove()
 	free(pv->metadata);
 	pv->metadata = NULL;
 }
-
-struct pv_init pv_init_metadata = {
-	.init_fn = pv_metadata_init,
-	.flags = 0,
-};
