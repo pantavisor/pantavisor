@@ -243,12 +243,8 @@ logserver_log_msg_data_file_tree(const struct logserver_msg_data *msg_data)
 				msg_data->source, msg_data->data_len,
 				msg_data->data);
 		} else {
-			if (msg_data->data[msg_data->data_len - 1] == '\n')
-				dprintf(log_fd, "%.*s", msg_data->data_len,
-					msg_data->data);
-			else
-				dprintf(log_fd, "%.*s\n", msg_data->data_len,
-					msg_data->data);
+			dprintf(log_fd, "%.*s", msg_data->data_len,
+				msg_data->data);
 		}
 		close(log_fd);
 		ret = 0;
@@ -268,14 +264,8 @@ static void logserver_log_msg_data_stdout(const struct logserver_msg_data *msg)
 		return;
 
 	char *src = basename(msg->source);
-	if (msg->data[msg->data_len - 1] == '\n')
-		printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s", msg->platform,
-		       msg->tsec, pv_log_level_name(msg->level), src,
-		       msg->data_len, msg->data);
-	else
-		printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s\n", msg->platform,
-		       msg->tsec, pv_log_level_name(msg->level), src,
-		       msg->data_len, msg->data);
+	printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s", msg->platform, msg->tsec,
+	       pv_log_level_name(msg->level), src, msg->data_len, msg->data);
 }
 
 static int
@@ -742,6 +732,7 @@ static void logserver_consume_fd(int fd)
 
 	errno = 0;
 	size = pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
+
 	if (size > 0) {
 		struct logserver_fd *lfd =
 			logserver_fetch_fd_from_list(&logserver_g.fdlst, fd);
@@ -831,8 +822,9 @@ static void logserver_loop()
 			    curev & EPOLLERR) {
 				pv_log(DEBUG, "dead fd found (fd = %d)", curfd);
 				logserver_remove_fd(curfd);
-				continue;
 			}
+
+			continue;
 		}
 
 		if (curfd == logsock || curfd == fdsock) {
