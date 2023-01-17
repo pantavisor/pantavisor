@@ -713,6 +713,12 @@ int pv_platform_start(struct pv_platform *p)
 	void *data;
 	char **c = p->configs;
 
+	if (!p->group) {
+		pv_log(ERROR, "platform '%s' does not belong to any group",
+		       p->name);
+		return -1;
+	}
+
 	pv_wdt_kick(pv);
 
 	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
@@ -753,7 +759,7 @@ int pv_platform_start(struct pv_platform *p)
 	if (pv_config_get_log_loggers())
 		if (start_pvlogger_for_platform(p) < 0)
 			pv_log(ERROR,
-			       "Could not start pv_logger for platform %s",
+			       "could not start pv_logger for platform %s",
 			       p->name);
 
 	if (ctrl->get_console_fd(&p->log, p->data) == -1) {
@@ -763,6 +769,11 @@ int pv_platform_start(struct pv_platform *p)
 		pv_platform_subscribe_fd(p->log.console_pt, p->name,
 					 PV_PLATFORM_LXC_CONSOLE_LOG);
 	}
+
+	pv_log(DEBUG, "setting status goal timer of %d secs for platform '%s'",
+	       p->group->default_status_goal_timeout, p->name);
+	timer_start(&p->timer_status_goal,
+		    p->group->default_status_goal_timeout, 0, RELATIV_TIMER);
 
 	return 0;
 }
@@ -900,7 +911,7 @@ void pv_platform_set_updated(struct pv_platform *p)
 	p->updated = true;
 }
 
-int pv_platform_check_running(struct pv_platform *p)
+bool pv_platform_check_running(struct pv_platform *p)
 {
 	bool running;
 
@@ -968,9 +979,18 @@ void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal)
 	p->status.goal = goal;
 }
 
-bool pv_platform_check_goal(struct pv_platform *p)
+plat_goal_state_t pv_platform_check_goal(struct pv_platform *p)
 {
-	return p->status.current == p->status.goal;
+	if (p->status.current == p->status.goal)
+		return PLAT_GOAL_ACHIEVED;
+
+	struct timer_state tstate = timer_current_state(&p->timer_status_goal);
+	if (tstate.fin) {
+		pv_log(WARN, "platform '%s' status goal timed out", p->name);
+		return PLAT_GOAL_TIMEDOUT;
+	}
+
+	return PLAT_GOAL_UNACHIEVED;
 }
 
 void pv_platform_set_restart_policy(struct pv_platform *p,

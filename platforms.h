@@ -30,6 +30,7 @@
 
 #include "utils/list.h"
 #include "utils/json.h"
+#include "utils/timer.h"
 
 typedef enum {
 	PLAT_NONE,
@@ -42,6 +43,13 @@ typedef enum {
 	PLAT_STOPPING,
 	PLAT_STOPPED
 } plat_status_t;
+
+typedef enum {
+	PLAT_GOAL_NONE,
+	PLAT_GOAL_ACHIEVED,
+	PLAT_GOAL_UNACHIEVED,
+	PLAT_GOAL_TIMEDOUT,
+} plat_goal_state_t;
 
 typedef enum {
 	DRIVER_REQUIRED = (1 << 0),
@@ -90,6 +98,7 @@ struct pv_platform {
 	int roles;
 	restart_policy_t restart_policy;
 	bool updated;
+	struct timer timer_status_goal;
 	struct dl_list drivers;
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
@@ -113,7 +122,7 @@ int pv_platform_start(struct pv_platform *p);
 int pv_platform_stop(struct pv_platform *p);
 void pv_platform_force_stop(struct pv_platform *p);
 
-int pv_platform_check_running(struct pv_platform *p);
+bool pv_platform_check_running(struct pv_platform *p);
 
 void pv_platform_set_installed(struct pv_platform *p);
 void pv_platform_set_mounted(struct pv_platform *p);
@@ -132,7 +141,7 @@ bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
 
 void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal);
-bool pv_platform_check_goal(struct pv_platform *p);
+plat_goal_state_t pv_platform_check_goal(struct pv_platform *p);
 
 void pv_platform_set_restart_policy(struct pv_platform *p,
 				    restart_policy_t policy);
