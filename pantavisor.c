@@ -426,31 +426,32 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 static pv_state_t pv_wait_update()
 {
 	struct pantavisor *pv = pv_get_instance();
+	plat_goal_state_t goal_state;
 
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update && pv->update->status != UPDATE_APPLIED) {
 		if (pv_update_is_trying(pv->update)) {
-			groups_goals_state_t status_goal =
-				pv_state_check_goals(pv->state, NULL);
+			goal_state = pv_state_check_goals(pv->state, NULL);
 
-			switch (status_goal) {
-			case STATUS_GOAL_FAILED:
-				pv_log(ERROR,
-				       "timed out before all goals are met. Rolling back...");
-				return PV_STATE_ROLLBACK;
-			case STATUS_GOAL_WAITING:
+			switch (goal_state) {
+			case PLAT_GOAL_UNACHIEVED:
 				return PV_STATE_WAIT;
-			case STATUS_GOAL_UNKNOWN:
-				pv_log(ERROR,
-				       "could not check groups goals. Rolling back...");
-				return PV_STATE_ROLLBACK;
-			case STATUS_GOAL_REACHED:
+			case PLAT_GOAL_ACHIEVED:
 				timer_start(
 					&timer_commit,
 					pv_config_get_updater_commit_delay(), 0,
 					RELATIV_TIMER);
 				// progress update state to testing
 				pv_update_test(pv);
+				break;
+			case PLAT_GOAL_TIMEDOUT:
+				pv_log(ERROR,
+				       "timed out before all goals were met. Rolling back...");
+				return PV_STATE_ROLLBACK;
+			default:
+				pv_log(ERROR,
+				       "could not check groups goals. Rolling back...");
+				return PV_STATE_ROLLBACK;
 			}
 		}
 		// if the update is being tested, we might have to wait

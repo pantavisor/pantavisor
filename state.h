@@ -48,7 +48,6 @@ struct pv_state {
 	char *rev;
 	state_spec_t spec;
 	struct pv_bsp bsp;
-	struct pv_group *cur_group;
 	struct dl_list platforms; // pv_platform
 	struct dl_list volumes; // pv_volume
 	struct dl_list disks; // pv_disks
@@ -86,8 +85,8 @@ int pv_state_stop_force(struct pv_state *s);
 int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending);
 void pv_state_transition(struct pv_state *pending, struct pv_state *current);
 
-groups_goals_state_t pv_state_check_goals(struct pv_state *s,
-					  struct pv_platform *p);
+plat_goal_state_t pv_state_check_goals(struct pv_state *s,
+				       struct pv_platform *p);
 
 int pv_state_interpret_signal(struct pv_state *s, const char *name,
 			      const char *signal, const char *payload);

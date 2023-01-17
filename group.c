@@ -40,10 +40,9 @@ struct pv_group *pv_group_new(char *name, int timeout, plat_status_t status,
 	g = calloc(1, sizeof(struct pv_group));
 	if (g) {
 		g->name = strdup(name);
-		g->timeout.limit = timeout;
-		g->timeout.started = false;
 		g->default_status_goal = status;
 		g->default_restart_policy = restart;
+		g->default_status_goal_timeout = timeout;
 		dl_list_init(&g->platform_refs);
 	}
 
@@ -78,36 +77,21 @@ void pv_group_free(struct pv_group *g)
 	free(g);
 }
 
-groups_goals_state_t pv_group_check_goals(struct pv_group *g)
+plat_goal_state_t pv_group_check_goals(struct pv_group *g)
 {
-	if (dl_list_empty(&g->platform_refs))
-		return STATUS_GOAL_REACHED;
-
-	if (!g->timeout.started)
-		return STATUS_GOAL_WAITING;
-
-	struct timer_state tstate = timer_current_state(&g->timeout.timer_goal);
-
-	if (dl_list_empty(&g->platform_refs))
-		return STATUS_GOAL_UNKNOWN;
+	plat_goal_state_t g_goal_state = PLAT_GOAL_ACHIEVED;
+	plat_goal_state_t p_goal_state;
 
 	struct pv_platform_ref *pr, *tmp;
 	dl_list_for_each_safe(pr, tmp, &g->platform_refs,
 			      struct pv_platform_ref, list)
 	{
-		if (!pv_platform_check_goal(pr->ref)) {
-			if (tstate.fin) {
-				return STATUS_GOAL_FAILED;
-			} else {
-				pv_log(DEBUG,
-				       "platform '%s' from group '%s' status goal not achieved. %d seconds until timeout",
-				       pr->ref->name, g->name, tstate.sec);
-				return STATUS_GOAL_WAITING;
-			}
-		}
+		p_goal_state = pv_platform_check_goal(pr->ref);
+		if (p_goal_state > g_goal_state)
+			g_goal_state = p_goal_state;
 	}
 
-	return STATUS_GOAL_REACHED;
+	return g_goal_state;
 }
 
 static struct pv_platform_ref *
@@ -190,12 +174,4 @@ void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g)
 
 		pv_json_ser_object_pop(js);
 	}
-}
-
-void pv_group_start_timer(struct pv_group *g)
-{
-	pv_log(DEBUG, "starting timer for group %s (%d seconds)", g->name,
-	       g->timeout.limit);
-	timer_start(&g->timeout.timer_goal, g->timeout.limit, 0, RELATIV_TIMER);
-	g->timeout.started = true;
 }
