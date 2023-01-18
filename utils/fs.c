@@ -332,6 +332,7 @@ ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size)
 ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
 {
 	ssize_t total_read = 0;
+	errno = 0;
 
 	while (total_read != size) {
 		int cur_read = read(fd, buf + total_read, size - total_read);
