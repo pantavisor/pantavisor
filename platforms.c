@@ -981,6 +981,10 @@ void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal)
 
 plat_goal_state_t pv_platform_check_goal(struct pv_platform *p)
 {
+	if ((p->status.current == PLAT_INSTALLED) ||
+	    (p->status.current == PLAT_BLOCKED))
+		return PLAT_GOAL_UNACHIEVED;
+
 	if (p->status.current == p->status.goal)
 		return PLAT_GOAL_ACHIEVED;
 
