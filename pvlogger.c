@@ -41,7 +41,7 @@
 #include "utils/str.h"
 #include "utils/math.h"
 #include "paths.h"
-#include "logserver.h"
+#include "logserver/logserver.h"
 
 #define MODULE_NAME "pvlogger"
 #include "log.h"

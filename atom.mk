@@ -48,7 +48,13 @@ LOCAL_SRC_FILES := debug.c \
 			loop.c \
 			logger.c \
 			log.c \
-			logserver.c \
+			logserver/logserver_utils.c \
+			logserver/logserver_out.c \
+			logserver/logserver_singlefile.c \
+			logserver/logserver_filetree.c \
+			logserver/logserver_stdout.c \
+			logserver/logserver_null.c \
+			logserver/logserver.c \
 			config_parser.c \
 			config.c \
 			pantavisor.c \
