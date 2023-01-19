@@ -300,7 +300,6 @@ int pv_volume_mount(struct pv_volume *v)
 	int loop_fd = -1, file_fd = -1;
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_state *s = pv->state;
-	struct pv_disk *d = v->disk;
 	char path[PATH_MAX], mntpoint[PATH_MAX];
 	char *fstype;
 	char *umount_cmd = NULL;
@@ -313,14 +312,17 @@ int pv_volume_mount(struct pv_volume *v)
 	char *command;
 	char *disk_name = NULL;
 
+	if (v->disk) {
+		disk_name = v->disk->name;
+	}
+
 	if (v->disk && !v->disk->def && !v->disk->mounted) {
 		ret = pv_disks_mount_handler(v->disk, "mount");
 		if (ret != 0) {
-			pv_log(ERROR, "disk %s mount failed", v->disk->name);
+			pv_log(ERROR, "disk %s mount failed", disk_name);
 			return ret;
 		}
 
-		disk_name = d->name;
 		v->disk->mounted = 1;
 	}
 
