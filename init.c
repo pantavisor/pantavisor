@@ -48,6 +48,8 @@
 #include "volumes.h"
 #include "state.h"
 #include "paths.h"
+#include "debug.h"
+
 #include "utils/tsh.h"
 #include "utils/math.h"
 #include "utils/list.h"
@@ -64,8 +66,6 @@
 
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
-pid_t shell_pid;
-pid_t db_pid;
 
 static int mkcgroup(const char *cgroup)
 {
@@ -194,31 +194,6 @@ static int other_mounts()
 	return 0;
 }
 
-#ifdef PANTAVISOR_DEBUG
-#define DBCMD "dropbear -F -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"
-
-static void debug_telnet()
-{
-	char *dbcmd;
-	char path[PATH_MAX];
-
-	pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
-	dbcmd = calloc(sizeof(DBCMD) + strlen(path) + 1, sizeof(char));
-	sprintf(dbcmd, DBCMD, path);
-
-	tsh_run("ifconfig lo up", 0, NULL);
-	db_pid = tsh_run(dbcmd, 0, NULL);
-
-	free(dbcmd);
-}
-#else
-static void debug_telnet()
-{
-	printf("Pantavisor debug telnet disabled in production builds.\n");
-	db_pid = -1;
-}
-#endif
-
 static void signal_handler(int signal)
 {
 	pid_t pid = 0;
@@ -229,7 +204,7 @@ static void signal_handler(int signal)
 
 	while ((pid = waitpid(pv_pid, &wstatus, WNOHANG)) > 0) {
 		// ignore signals of 0 and db_pid
-		if (pv_pid == 0 || pid == db_pid)
+		if (pv_pid == 0 || (pv_debug_is_ssh_pid(pid)))
 			continue;
 
 		pv_stop();
@@ -284,41 +259,6 @@ static void early_spawns()
 	if (d)
 		closedir(d);
 }
-
-#ifdef PANTAVISOR_DEBUG
-static void debug_shell()
-{
-	char c[64] = { 0 };
-	int t = 5;
-	int con_fd;
-
-	con_fd = open("/dev/console", O_RDWR);
-	if (con_fd < 0) {
-		printf("Unable to open /dev/console\n");
-		return;
-	}
-
-	dprintf(con_fd, "Press [d] for debug ash shell... ");
-	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
-	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
-		dprintf(con_fd, "%d ", t);
-		fflush(NULL);
-		sleep(1);
-		t--;
-	}
-	dprintf(con_fd, "\n");
-
-	if (c[0] == 'd' || pv_config_get_debug_shell_autologin())
-		shell_pid =
-			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
-}
-#else
-static void debug_shell()
-{
-	printf("Pantavisor debug shell disabled in production builds\n");
-}
-
-#endif
 
 static int is_arg(int argc, char *argv[], char *arg)
 {
@@ -476,8 +416,6 @@ int main(int argc, char *argv[])
 	char *config_path = NULL, *cmdline = NULL;
 
 	pv_pid = 0;
-	shell_pid = 0;
-	db_pid = -1;
 
 	// extecuted as init
 	if (getpid() == 1) {
@@ -504,12 +442,12 @@ int main(int argc, char *argv[])
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if (pv_config_get_system_init_mode() == IM_STANDALONE) {
+		if (pv_config_get_debug_shell())
+			pv_debug_start_shell();
 		if (pv_config_get_debug_ssh())
-			debug_telnet();
+			pv_debug_start_ssh();
 		else
 			tsh_run("ifconfig lo up", 0, NULL);
-		if (pv_config_get_debug_shell())
-			debug_shell();
 		goto loop;
 	}
 
@@ -531,13 +469,12 @@ int main(int argc, char *argv[])
 	if (pv_pid > 0)
 		goto loop;
 
-	// these debugging tools will be children of the pv thread, so we can controll them
+	if (pv_config_get_debug_shell())
+		pv_debug_start_shell();
 	if (pv_config_get_debug_ssh())
-		debug_telnet();
+		pv_debug_start_ssh();
 	else
 		tsh_run("ifconfig lo up", 0, NULL);
-	if (pv_config_get_debug_shell())
-		debug_shell();
 
 	redirect_io();
 	early_spawns();

@@ -43,7 +43,8 @@ LOCAL_CODECHECK_C := clang
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/utils/
 
-LOCAL_SRC_FILES := init.c \
+LOCAL_SRC_FILES := debug.c \
+			init.c \
 			loop.c \
 			log.c \
 			logserver.c \
