@@ -314,6 +314,8 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 	if (pv_config_load_policy(config->policy, &config_list))
 		return -1;
 
+	config_parse_cmdline(&config_list, "pv_");
+
 	config->debug.shell =
 		config_get_value_bool(&config_list, "debug.shell", true);
 	config->debug.shell_autologin = config_get_value_bool(
