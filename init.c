@@ -502,14 +502,14 @@ int main(int argc, char *argv[])
 	parse_commands(argc, argv);
 
 	// in case of standalone is set, we only start debugging tools up in main thread
-	if ((pv_config_get_system_init_mode() == IM_STANDALONE) &&
-	    pv_config_get_debug_ssh()) {
+	if (pv_config_get_system_init_mode() == IM_STANDALONE) {
+		if (pv_config_get_debug_ssh())
+			debug_telnet();
+		else
+			tsh_run("ifconfig lo up", 0, NULL);
 		if (pv_config_get_debug_shell())
 			debug_shell();
-		debug_telnet();
 		goto loop;
-	} else {
-		tsh_run("ifconfig lo up", 0, NULL);
 	}
 
 	mount_cgroups();
@@ -531,13 +531,13 @@ int main(int argc, char *argv[])
 		goto loop;
 
 	// these debugging tools will be children of the pv thread, so we can controll them
-	if (pv_config_get_debug_ssh()) {
-		if (pv_config_get_debug_shell())
-			debug_shell();
+	if (pv_config_get_debug_ssh())
 		debug_telnet();
-	} else {
+	else
 		tsh_run("ifconfig lo up", 0, NULL);
-	}
+	if (pv_config_get_debug_shell())
+		debug_shell();
+
 	redirect_io();
 	early_spawns();
 	pv_start();
