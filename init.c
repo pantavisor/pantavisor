@@ -508,6 +508,8 @@ int main(int argc, char *argv[])
 			debug_shell();
 		debug_telnet();
 		goto loop;
+	} else {
+		tsh_run("ifconfig lo up", 0, NULL);
 	}
 
 	mount_cgroups();
@@ -533,6 +535,8 @@ int main(int argc, char *argv[])
 		if (pv_config_get_debug_shell())
 			debug_shell();
 		debug_telnet();
+	} else {
+		tsh_run("ifconfig lo up", 0, NULL);
 	}
 	redirect_io();
 	early_spawns();
