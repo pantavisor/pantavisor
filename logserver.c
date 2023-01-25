@@ -264,8 +264,9 @@ static void logserver_log_msg_data_stdout(const struct logserver_msg_data *msg)
 		return;
 
 	char *src = basename(msg->source);
-	printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s", msg->platform, msg->tsec,
-	       pv_log_level_name(msg->level), src, msg->data_len, msg->data);
+	printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s\n", msg->platform,
+	       msg->tsec, pv_log_level_name(msg->level), src, msg->data_len,
+	       msg->data);
 }
 
 static int
