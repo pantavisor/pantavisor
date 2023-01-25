@@ -216,6 +216,24 @@ struct pv_json *pv_state_fetch_json(struct pv_state *s, const char *name)
 	return NULL;
 }
 
+static struct pv_disk *pv_state_fetch_disk(struct pv_state *s, const char *name)
+{
+	struct pv_disk *d, *tmp;
+
+	if (!name)
+		return NULL;
+
+	// Iterate over all disks from state
+	dl_list_for_each_safe(d, tmp, &s->disks, struct pv_disk, list)
+	{
+		if (pv_str_matches(d->name, strlen(d->name), name,
+				   strlen(name)))
+			return d;
+	}
+
+	return NULL;
+}
+
 void pv_state_print(struct pv_state *s)
 {
 	if (!s)
@@ -916,6 +934,7 @@ static void pv_state_transfer_platforms(struct pv_state *pending,
 	struct pv_json *j, *j_tmp;
 	struct pv_object *o, *o_tmp;
 	struct pv_volume *v, *v_tmp;
+	struct pv_disk *d;
 	struct pv_platform *p, *p_tmp;
 
 	pv_log(DEBUG,
@@ -961,6 +980,13 @@ static void pv_state_transfer_platforms(struct pv_state *pending,
 		       v->name, v->plat->name);
 		dl_list_del(&v->list);
 		dl_list_add_tail(&current->volumes, &v->list);
+
+		if (v->disk) {
+			d = pv_state_fetch_disk(current, v->disk->name);
+			pv_log(DEBUG, "relinking volume %s to disk %s", v->name,
+			       d->name);
+			v->disk = d;
+		}
 	}
 
 	// transfer platforms belonging to platforms from pending that do not exist in current
