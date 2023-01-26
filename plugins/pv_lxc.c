@@ -276,25 +276,21 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 
 		__pv_paths_pv_log_plat(path, PATH_MAX, rev, p->name);
 		snprintf(entry, sizeof(entry),
-			 "%s %s none bind,ro,create=dir 0 0", path,
+			 "%s %s none bind,ro,origin=mkdir,create=dir 0 0", path,
 			 PLATFORM_LOGS_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 
 		__pv_paths_pv_usrmeta_plat_key(path, PATH_MAX, p->name, "");
-		if (!stat(path, &st)) {
-			snprintf(entry, sizeof(entry),
-				 "%s %s none bind,ro,create=dir 0 0", path,
-				 PLATFORM_USER_META_PATH + 1);
-			c->set_config_item(c, "lxc.mount.entry", entry);
-		}
+		snprintf(entry, sizeof(entry),
+			 "%s %s none bind,ro,origin=mkdir,create=dir 0 0", path,
+			 PLATFORM_USER_META_PATH + 1);
+		c->set_config_item(c, "lxc.mount.entry", entry);
 
 		__pv_paths_pv_devmeta_plat_key(path, PATH_MAX, p->name, "");
-		if (!stat(path, &st)) {
-			snprintf(entry, sizeof(entry),
-				 "%s %s none bind,ro,create=dir 0 0", path,
-				 PLATFORM_DEVICE_META_PATH + 1);
-			c->set_config_item(c, "lxc.mount.entry", entry);
-		}
+		snprintf(entry, sizeof(entry),
+			 "%s %s none bind,ro,origin=mkdir,create=dir 0 0", path,
+			 PLATFORM_DEVICE_META_PATH + 1);
+		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
 	if (stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry",
