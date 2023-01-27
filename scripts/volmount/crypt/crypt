@@ -259,6 +259,8 @@ do_mount_disk()
 
 do_umount_disk()
 {
+	export LD_LIBRARY_PATH=/x86_64-linux-gnu
+
 	base=`basename $2`
 	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
 
