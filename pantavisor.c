@@ -887,9 +887,6 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_state_stop_force(pv->state);
 	ph_logger_stop_force();
 
-	// unmount disks
-	pv_disks_umount_all(pv->state);
-
 	// close pvctrl
 	pv_ctrl_socket_close(pv->ctrl_fd);
 
@@ -905,6 +902,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_metadata_umount();
 
 	pv_init_umount();
+
+	// unmount disks
+	pv_disks_umount_all(pv->state);
 
 	pv_storage_umount();
 
