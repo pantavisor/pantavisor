@@ -64,6 +64,7 @@ void pv_paths_storage_devmeta(char *buf, size_t size);
 void pv_paths_storage_dropbear(char *buf, size_t size);
 
 #define COREPV_FNAME "corepv"
+#define PVMOUNTED_FNAME ".pvmounted"
 
 void pv_paths_storage_file(char *buf, size_t size, const char *name);
 void pv_paths_storage_object(char *buf, size_t size, const char *sha);
