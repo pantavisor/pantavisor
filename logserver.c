@@ -269,73 +269,74 @@ static void logserver_log_msg_data_stdout(const struct logserver_msg_data *msg)
 	       msg->data);
 }
 
+static char *jsonify_log(const struct logserver_msg_data *msg, int beg, int len)
+{
+	char *plat = pv_json_format(msg->platform, strlen(msg->platform));
+	char *src = pv_json_format(msg->source, strlen(msg->source));
+	char *log = pv_json_format(msg->data + beg, len);
+	const char *lvl = pv_log_level_name(msg->level);
+
+	int json_len =
+		snprintf(NULL, 0, LOGSERVER_JSON_FORMAT, msg->tsec, msg->tnano,
+			 plat, lvl, src, (int)strlen(log), log) +
+		1;
+
+	char *json = calloc(json_len, sizeof(char));
+	if (!json)
+		return NULL;
+
+	snprintf(json, json_len, LOGSERVER_JSON_FORMAT, msg->tsec, msg->tnano,
+		 plat, lvl, src, (int)strlen(log), log);
+
+	free(plat);
+	free(src);
+	free(log);
+
+	return json;
+}
+
 static int
 logserver_log_msg_data_single_file(const struct logserver_msg_data *msg_data)
 {
 	if (msg_data->level > pv_config_get_log_loglevel())
 		return 0;
 
-	char pathname[PATH_MAX];
-	int ret = -1;
-	size_t json_len;
-	int log_fd;
-	char *json = NULL;
-	struct logserver_msg_data msg_data_json_escaped = {
-		.version = msg_data->version,
-		.level = msg_data->level,
-		.tsec = msg_data->tsec,
-		.platform = pv_json_format(msg_data->platform,
-					   strlen(msg_data->platform)),
-		.source = pv_json_format(msg_data->source,
-					 strlen(msg_data->source)),
-		.data = pv_json_format(msg_data->data, msg_data->data_len)
-	};
-
-	json_len = snprintf(NULL, 0, LOGSERVER_JSON_FORMAT,
-			    msg_data_json_escaped.tsec,
-			    msg_data_json_escaped.tnano,
-			    msg_data_json_escaped.platform,
-			    pv_log_level_name(msg_data_json_escaped.level),
-			    msg_data_json_escaped.source,
-			    (int)strlen(msg_data_json_escaped.data),
-			    msg_data_json_escaped.data) +
-		   1; // 0 byte
-
-	json = calloc(1, json_len); // 0 byte
-
-	snprintf(json, json_len, LOGSERVER_JSON_FORMAT,
-		 msg_data_json_escaped.tsec, msg_data_json_escaped.tnano,
-		 msg_data_json_escaped.platform,
-		 pv_log_level_name(msg_data_json_escaped.level),
-		 msg_data_json_escaped.source,
-		 (int)strlen(msg_data_json_escaped.data),
-		 msg_data_json_escaped.data);
-
-	free(msg_data_json_escaped.platform);
-	free(msg_data_json_escaped.source);
-	free(msg_data_json_escaped.data);
+	char pathname[PATH_MAX] = { 0 };
 
 	pv_paths_pv_log(pathname, sizeof(pathname), logserver_g.revision);
 	if (pv_fs_mkdir_p(pathname, 0755))
-		goto out;
+		return -1;
+
 	pv_paths_pv_log_plat(pathname, sizeof(pathname), logserver_g.revision,
 			     "pv.log");
 
-	log_fd = logserver_openlog(pathname);
-	if (log_fd >= 0) {
-		dprintf(log_fd, "%s", json);
-		close(log_fd);
-		ret = 0;
-	} else {
+	int log_fd = logserver_openlog(pathname);
+
+	if (log_fd < 0) {
 		WARN_ONCE("Error opening file %s/%s/pv.log, "
 			  "errno = %d\n",
 			  logdri, logserver_g.revision, errno);
+		return -1;
 	}
 
-out:
-	if (json)
-		free(json);
-	return ret;
+	int beg = 0;
+	for (int i = 0; i < msg_data->data_len; ++i) {
+		// each time when we found a LF or if it's our last iteration
+		// and no data was written
+		if (msg_data->data[i] == '\n' ||
+		    (i == msg_data->data_len - 1 && beg == 0)) {
+			char *json = jsonify_log(msg_data, beg, i - beg);
+			beg = i + 1;
+			if (!json)
+				continue;
+
+			dprintf(log_fd, "%s", json);
+			free(json);
+		}
+	}
+	close(log_fd);
+
+	return 0;
 }
 
 static int logserver_log_msg_data(const struct logserver_msg_data *msg_data)
