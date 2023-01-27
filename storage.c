@@ -220,7 +220,7 @@ static struct pv_storage *pv_storage_new()
 	struct statfs buf;
 	struct pv_storage *this;
 
-	pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
+	pv_paths_storage_file(path, PATH_MAX, PVMOUNTED_FNAME);
 	if (statfs(path, &buf) < 0)
 		return NULL;
 
@@ -263,10 +263,10 @@ off_t pv_storage_get_free()
 	struct pv_storage *storage;
 
 	storage = pv_storage_new();
-	if (storage)
+	if (storage) {
 		real_free = storage->real_free;
-
-	free(storage);
+		free(storage);
+	}
 
 	return real_free;
 }
@@ -393,6 +393,8 @@ void pv_storage_gc_run_threshold()
 	struct timer_state tstate;
 
 	storage = pv_storage_new();
+	if (!storage)
+		return;
 
 	json = pv_storage_get_json(storage);
 	pv_metadata_add_devmeta("storage", json);
@@ -1114,7 +1116,6 @@ void pv_storage_umount()
 static int pv_storage_init(struct pv_init *this)
 {
 	struct pantavisor *pv = pv_get_instance();
-	struct pv_storage *storage;
 	char tmp[256], path[PATH_MAX];
 
 	// create hints
@@ -1145,11 +1146,9 @@ static int pv_storage_init(struct pv_init *this)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 
-	storage = pv_storage_new();
-	if (storage) {
-		pv_storage_print(storage);
-		free(storage);
-	}
+	pv_paths_storage_file(path, PATH_MAX, PVMOUNTED_FNAME);
+	if (pv_fs_file_save(path, "", 0444) < 0)
+		pv_log(WARN, "could not save %s: %s", path, strerror(errno));
 
 	return 0;
 }
