@@ -477,6 +477,7 @@ int main(int argc, char *argv[])
 
 	pv_pid = 0;
 	shell_pid = 0;
+	db_pid = -1;
 
 	// extecuted as init
 	if (getpid() == 1) {
