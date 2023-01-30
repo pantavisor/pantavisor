@@ -77,8 +77,8 @@ static void pv_log(int level, char *msg, ...)
 	while (to_write > 0) {
 		written = pv_logserver_send_log(
 			true, pv_log_info->platform->name,
-			(char *)pv_logger_get_logfile(pv_log_info), level, "%s",
-			__formatted);
+			(char *)pv_logger_get_logfile(pv_log_info), level,
+			"%s\n", __formatted);
 
 		if (written <= 0)
 			pv_log(ERROR,
