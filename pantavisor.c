@@ -312,13 +312,19 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
-	timer_start(&timer_commit, 0, 0, RELATIV_TIMER);
+	timer_start(&timer_commit, pv_config_get_updater_commit_delay(), 0,
+		    RELATIV_TIMER);
 	timer_start(&timer_rollback_remote,
 		    pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
-	timer_start(&timer_wait_delay, 0, 0, RELATIV_TIMER);
-	timer_start(&timer_usrmeta_interval, 0, 0, RELATIV_TIMER);
-	timer_start(&timer_devmeta_interval, 0, 0, RELATIV_TIMER);
-	timer_start(&timer_updater_interval, 0, 0, RELATIV_TIMER);
+	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
+	timer_start(&timer_usrmeta_interval,
+		    pv_config_get_metadata_usrmeta_interval(), 0,
+		    RELATIV_TIMER);
+	timer_start(&timer_devmeta_interval,
+		    pv_config_get_metadata_devmeta_interval(), 0,
+		    RELATIV_TIMER);
+	timer_start(&timer_updater_interval, pv_config_get_updater_interval(),
+		    0, RELATIV_TIMER);
 
 	next_state = PV_STATE_WAIT;
 out:
