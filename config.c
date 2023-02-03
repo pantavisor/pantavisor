@@ -656,25 +656,20 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config,
 	return 0;
 }
 
-int pv_config_load_creds()
+int pv_config_load_unclaimed_creds()
 {
 	struct pantavisor *pv = pv_get_instance();
 	char path[PATH_MAX];
 	struct stat st;
 
-	if (pv->unclaimed)
-		pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
-	else
-		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
+	pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
 
-	if (stat(path, &st)) {
-		pv_log(ERROR, "cannot find creds in %s", path);
-		return -1;
-	}
+	if (stat(path, &st))
+		return 0;
 
 	if (pv_config_load_creds_from_file(path, &pv->config)) {
-		pv_log(ERROR, "cannot load creds from %s", path);
-		return -1;
+		pv_log(WARN, "cannot load creds from %s", path);
+		return 0;
 	}
 
 	return 0;
@@ -1493,12 +1488,28 @@ int pv_config_init(char *path)
 	return 0;
 }
 
-static int pv_config_creds(struct pv_init *this)
+static int pv_config_load_creds(struct pv_init *this)
 {
+	struct pantavisor *pv = pv_get_instance();
+	char path[PATH_MAX];
+	struct stat st;
+
 	if (!pv_config_get_control_remote())
 		return 0;
 
-	return pv_config_load_creds();
+	pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
+
+	if (stat(path, &st)) {
+		pv_log(ERROR, "cannot find creds in %s", path);
+		return -1;
+	}
+
+	if (pv_config_load_creds_from_file(path, &pv->config)) {
+		pv_log(ERROR, "cannot load creds from %s", path);
+		return -1;
+	}
+
+	return 0;
 }
 
 static int pv_config_trail(struct pv_init *this)
@@ -1540,7 +1551,7 @@ out:
 }
 
 struct pv_init pv_init_creds = {
-	.init_fn = pv_config_creds,
+	.init_fn = pv_config_load_creds,
 	.flags = 0,
 };
 

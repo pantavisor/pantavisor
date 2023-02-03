@@ -386,23 +386,14 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 static int pv_ph_register_self_ext(struct pantavisor *pv, char *cmd)
 {
-	int ret = 0;
 	int status = -1;
 
 	if (tsh_run(cmd, 1, &status) < 0) {
 		pv_log(ERROR, "registration attempt with cmd: %s", cmd);
-		goto exit;
+		return 0;
 	}
 
-	// If registered, override in-memory PantaHub credentials
-	if (pv_config_load_creds()) {
-		pv_log(ERROR, "error loading updated config file");
-		goto exit;
-	}
-
-	ret = 1;
-exit:
-	return ret;
+	return 1;
 }
 
 #define PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT "/btools/%s.register"

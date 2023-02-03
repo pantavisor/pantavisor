@@ -344,7 +344,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 
 	c = calloc(128, sizeof(char));
 
-	pv_config_load_creds();
+	pv_config_load_unclaimed_creds();
 
 	if (pv_config_get_creds_id() && strcmp(pv_config_get_creds_id(), "") &&
 	    pv_ph_device_exists(pv))
