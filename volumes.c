@@ -88,9 +88,15 @@ static void pv_disk_free(struct pv_disk *d)
 
 void pv_disks_empty(struct pv_state *s)
 {
+	if (!s)
+		return;
+
 	int num_disk = 0;
 	struct pv_disk *d, *tmp;
 	struct dl_list *disks = &s->disks;
+
+	if (!disks)
+		return;
 
 	// Iterate over all disks from state
 	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
@@ -109,8 +115,15 @@ static int pv_disks_mount_handler(struct pv_disk *d, char *action);
 int pv_disks_umount_all(struct pv_state *s)
 {
 	int ret = 0;
+
+	if (!s)
+		return ret;
+
 	struct pv_disk *d, *tmp;
 	struct dl_list *disks = &s->disks;
+
+	if (!disks)
+		return ret;
 
 	pv_log(INFO, "unmounting all disks...");
 	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
