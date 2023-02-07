@@ -1349,7 +1349,7 @@ char *pv_config_get_json()
 		pv_json_ser_number(&js, pv_config_get_log_server_outputs());
 		pv_json_ser_key(&js, "libthttp.log.level");
 		pv_json_ser_number(&js, pv_config_get_libthttp_loglevel());
-		pv_json_ser_key(&js, "libthttp.certdir");
+		pv_json_ser_key(&js, "libthttp.certsdir");
 		pv_json_ser_string(&js, pv_config_get_libthttp_certdir());
 
 		pv_json_ser_key(&js, "metadata.devmeta.interval");
@@ -1465,7 +1465,8 @@ void pv_config_print()
 	       pv_config_get_log_server_outputs());
 	pv_log(INFO, "libthttp.loglevel = %d",
 	       pv_config_get_libthttp_loglevel());
-	pv_log(INFO, "libthttp.certdir = %d", pv_config_get_libthttp_certdir());
+	pv_log(INFO, "libthttp.certsdir = %s",
+	       pv_config_get_libthttp_certdir());
 	pv_log(INFO, "metadata.devmeta.interval = %d",
 	       pv_config_get_metadata_devmeta_interval());
 	pv_log(INFO, "metadata.usrmeta.interval = %d",
