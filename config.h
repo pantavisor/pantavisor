@@ -43,6 +43,7 @@ struct pantavisor_debug {
 	bool shell;
 	bool shell_autologin;
 	bool ssh;
+	char *ssh_authorized_keys;
 };
 
 struct pantavisor_cache {
@@ -237,6 +238,7 @@ char *pv_config_get_system_confdir(void);
 bool pv_config_get_debug_shell(void);
 bool pv_config_get_debug_shell_autologin(void);
 bool pv_config_get_debug_ssh(void);
+char *pv_config_get_debug_ssh_authorized_keys(void);
 
 char *pv_config_get_cache_usrmetadir(void);
 char *pv_config_get_cache_devmetadir(void);

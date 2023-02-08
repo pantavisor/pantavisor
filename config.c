@@ -322,6 +322,8 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 		&config_list, "debug.shell.autologin", false);
 	config->debug.ssh =
 		config_get_value_bool(&config_list, "debug.ssh", true);
+	config->debug.ssh_authorized_keys = config_get_value_string(
+		&config_list, "debug.ssh_authorized_keys", NULL);
 
 	config->cache.dropbearcachedir = config_get_value_string(
 		&config_list, "dropbear.cache.dir", "/storage/cache/dropbear");
@@ -753,6 +755,9 @@ void pv_config_free()
 	if (pv->config.cache.dropbearcachedir)
 		free(pv->config.cache.dropbearcachedir);
 
+	if (pv->config.debug.ssh_authorized_keys)
+		free(pv->config.debug.ssh_authorized_keys);
+
 	if (pv->config.libthttp.certdir)
 		free(pv->config.libthttp.certdir);
 
@@ -893,7 +898,10 @@ bool pv_config_get_debug_ssh()
 {
 	return pv_get_instance()->config.debug.ssh;
 }
-
+char *pv_config_get_debug_ssh_authorized_keys()
+{
+	return pv_get_instance()->config.debug.ssh_authorized_keys;
+}
 char *pv_config_get_cache_usrmetadir()
 {
 	return pv_get_instance()->config.cache.usrmetadir;
@@ -1225,6 +1233,9 @@ char *pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_debug_shell_autologin());
 		pv_json_ser_key(&js, "debug.ssh");
 		pv_json_ser_bool(&js, pv_config_get_debug_ssh());
+		pv_json_ser_key(&js, "debug.ssh_authorized_keys");
+		pv_json_ser_string(&js,
+				   pv_config_get_debug_ssh_authorized_keys());
 		pv_json_ser_key(&js, "dropbear.cache.dir");
 		pv_json_ser_string(&js, pv_config_get_cache_dropbearcachedir());
 		pv_json_ser_key(&js, "cache.usrmetadir");
@@ -1383,6 +1394,9 @@ void pv_config_print()
 	pv_log(INFO, "debug.shell.autologin = %d",
 	       pv_config_get_debug_shell_autologin());
 	pv_log(INFO, "debug.ssh = %d", pv_config_get_debug_ssh());
+	if (pv_config_get_debug_ssh_authorized_keys())
+		pv_log(INFO, "debug.ssh_authorized_keys = %s",
+		       pv_config_get_debug_ssh_authorized_keys());
 	pv_log(INFO, "dropbear.cache.dir = '%s'",
 	       pv_config_get_cache_dropbearcachedir());
 	pv_log(INFO, "cache.usrmetadir = '%s'",
