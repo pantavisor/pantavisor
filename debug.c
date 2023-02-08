@@ -107,7 +107,17 @@ void pv_debug_start_ssh()
 void pv_debug_stop_ssh()
 {
 	if (db_pid > -1) {
-		kill(db_pid, SIGKILL);
+		sigset_t blocked_sig, old_sigset;
+		int status = 0;
+		sigemptyset(&blocked_sig);
+		sigaddset(&blocked_sig, SIGCHLD);
+		/*
+		 * Block SIGCHLD while we want to wait on this child.
+		 * */
+		sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
+		if (!kill(db_pid, SIGKILL))
+			waitpid(db_pid, &status, 0);
+		sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		db_pid = -1;
 	}
 }
