@@ -1226,6 +1226,7 @@ static void pv_logserver_close(void)
 	}
 
 	if (logserver_g.epfd >= 0) {
+		pv_log(DEBUG, "closing epfd...");
 		close(logserver_g.epfd);
 		logserver_g.epfd = -1;
 	}
@@ -1233,17 +1234,17 @@ static void pv_logserver_close(void)
 
 void pv_logserver_stop(void)
 {
-	pv_logserver_close();
-
 	// kill pid
 	if (logserver_g.pid > 0) {
-		pv_log(DEBUG, "stopping logserver service...");
+		pv_log(DEBUG, "stopping logserver service with pid %d...",
+		       logserver_g.pid);
 		pv_system_kill_lenient(logserver_g.pid);
 		pv_system_kill_force(logserver_g.pid);
-		pv_log(DEBUG, "stopped logserver service with pid %d",
-		       logserver_g.pid);
 		logserver_g.pid = -1;
+		pv_log(DEBUG, "stopped logserver service");
 	}
+
+	pv_logserver_close();
 }
 
 static int logserver_send_subs_msg(int type, int fd, const char *platform,

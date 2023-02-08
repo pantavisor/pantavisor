@@ -876,8 +876,6 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	// give it a final sync here...
 	sync();
 
-	pv_volumes_umount_firmware_modules();
-
 	// stop childs leniently
 	pv_state_stop_lenient(pv->state);
 	ph_logger_stop_lenient();
@@ -891,10 +889,12 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// stop all logs but stdout
 	pv_logserver_degrade();
-	pv_log_umount();
 
 	pv_debug_stop_ssh();
+	pv_logserver_stop();
 
+	pv_volumes_umount_firmware_modules();
+	pv_log_umount();
 	pv_mount_umount();
 	pv_metadata_umount();
 
@@ -910,13 +910,12 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// at this point, we can shutdown if not in appengine
 	if (initmode != IM_APPENGINE) {
-		pv_log(INFO, "shutdown complete, rebooting in 2 second ...");
+		pv_log(INFO, "shutdown complete, rebooting in 2 second...");
 		sleep(2);
 		pv_remove(pv);
 		reboot(shutdown_type_reboot_cmd(t));
 	} else {
-		pv_log(INFO, "shutdown complete ...");
-		pv_logserver_stop();
+		pv_log(INFO, "shutdown complete...");
 		pv_remove(pv);
 	}
 

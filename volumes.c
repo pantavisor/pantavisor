@@ -608,11 +608,21 @@ int pv_volumes_umount_firmware_modules()
 	int ret = 0;
 	struct utsname uts;
 	char path_lib[PATH_MAX];
+	struct pantavisor *pv = pv_get_instance();
+
+	if (!pv || !pv->state)
+		return ret;
+
+	if (!pv->state->bsp.firmware)
+		goto modules;
 
 	ret = umount(FW_PATH);
-
 	if (ret < 0)
 		pv_log(WARN, "cannot umount firmware path %s", FW_PATH);
+
+modules:
+	if (!pv->state->bsp.modules)
+		goto out;
 
 	if (!uname(&uts)) {
 		pv_paths_lib_modules(path_lib, PATH_MAX, uts.release);
@@ -624,6 +634,7 @@ int pv_volumes_umount_firmware_modules()
 		pv_log(WARN, "cannot get utsinfo %s", strerror(errno));
 	}
 
+out:
 	return ret;
 }
 
