@@ -94,7 +94,8 @@ void pv_debug_start_ssh()
 	if (db_pid > -1)
 		return;
 
-	if (!pv_config_get_debug_ssh_authorized_keys())
+	if (!pv_config_get_debug_ssh_authorized_keys() ||
+	    !strcmp(pv_config_get_debug_ssh_authorized_keys(), "__default__"))
 		pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
 	else
 		snprintf(path, PATH_MAX, "%s",
