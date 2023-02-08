@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2017-2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -60,7 +60,10 @@
 #include "ph_logger.h"
 #include "logserver.h"
 #include "mount.h"
+#include "debug.h"
+
 #include "parser/parser.h"
+
 #include "utils/timer.h"
 #include "utils/fs.h"
 #include "utils/str.h"
@@ -89,8 +92,6 @@ static struct timer timer_updater_interval;
 static struct timer timer_commit;
 
 static const int PV_WAIT_PERIOD = 1;
-
-extern pid_t shell_pid;
 
 typedef enum {
 	PV_STATE_INIT,
@@ -602,6 +603,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if we need to run garbage collector
 	pv_storage_gc_run_threshold();
 
+	// check state of debug tools
+	pv_debug_check_ssh_running();
+
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
 	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
@@ -799,17 +803,6 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	return PV_STATE_REBOOT;
 }
 
-static void wait_shell()
-{
-#ifdef PANTAVISOR_DEBUG
-	if (shell_pid) {
-		pv_log(WARN, "waiting for debug shell with pid %d to exit",
-		       shell_pid);
-		waitpid(shell_pid, NULL, 0);
-	}
-#endif
-}
-
 typedef enum { POWEROFF, REBOOT } shutdown_type_t;
 
 static char *shutdown_type_string(shutdown_type_t t)
@@ -875,7 +868,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		       "will not actually perform '%s' as we are in appengine mode",
 		       shutdown_type_string(t));
 
-	wait_shell();
+	pv_debug_wait_shell();
 
 	if ((REBOOT == t) && (initmode != IM_APPENGINE))
 		pv_wdt_start(pv);
@@ -900,9 +893,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_logserver_degrade();
 	pv_log_umount();
 
-	// kill dropbear if running ...
-	if (db_pid > -1)
-		kill(db_pid, SIGKILL);
+	pv_debug_stop_ssh();
 
 	pv_mount_umount();
 	pv_metadata_umount();

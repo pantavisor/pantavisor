@@ -635,6 +635,8 @@ static int pv_config_save_creds_to_file(struct pantavisor_config *config,
 	write_config_tuple_string(fd, "creds.tpm.key", config->creds.tpm.key);
 	write_config_tuple_string(fd, "creds.tpm.cert", config->creds.tpm.cert);
 
+	write_config_tuple_int(fd, "debug.ssh", config->debug.ssh);
+
 	write_config_tuple_int(fd, "updater.interval",
 			       config->updater.interval);
 	write_config_tuple_int(fd, "updater.network_timeout",
@@ -720,6 +722,8 @@ void pv_config_override_value(const char *key, const char *value)
 		pv->config.metadata.devmeta_interval = atoi(value);
 	else if (!strcmp(key, "metadata.usrmeta.interval"))
 		pv->config.metadata.usrmeta_interval = atoi(value);
+	else if (!strcmp(key, "debug.ssh"))
+		pv->config.debug.ssh = atoi(value);
 }
 
 void pv_config_free()
