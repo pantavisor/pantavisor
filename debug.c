@@ -98,8 +98,9 @@ void pv_debug_start_ssh()
 	    !strcmp(pv_config_get_debug_ssh_authorized_keys(), "__default__"))
 		pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
 	else
-		snprintf(path, PATH_MAX, "%s",
-			 pv_config_get_debug_ssh_authorized_keys());
+		pv_paths_etc_ssh_file(
+			path, PATH_MAX,
+			pv_config_get_debug_ssh_authorized_keys());
 
 	dbcmd = calloc(sizeof(DBCMD) + strlen(path) + 1, sizeof(char));
 	sprintf(dbcmd, DBCMD, path);

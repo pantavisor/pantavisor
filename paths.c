@@ -371,6 +371,7 @@ void pv_paths_lib_lxc_lxcpath(char *buf, size_t size)
 
 #define PV_ETC_PATHF "%s/%s"
 #define PV_ETC_POLICY_PATHF "%s/pantavisor/policies/%s.config"
+#define PV_ETC_SSH_PATHF "%s/pantavisor/ssh/%s"
 
 void pv_paths_etc_file(char *buf, size_t size, const char *name)
 {
@@ -381,6 +382,12 @@ void pv_paths_etc_file(char *buf, size_t size, const char *name)
 void pv_paths_etc_policy_file(char *buf, size_t size, const char *name)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_ETC_POLICY_PATHF,
+			pv_config_get_system_etcdir(), name);
+}
+
+void pv_paths_etc_ssh_file(char *buf, size_t size, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_ETC_SSH_PATHF,
 			pv_config_get_system_etcdir(), name);
 }
 

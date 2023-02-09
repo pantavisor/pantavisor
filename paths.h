@@ -147,6 +147,7 @@ void pv_paths_writable(char *buf, size_t size);
 
 void pv_paths_etc_file(char *buf, size_t size, const char *name);
 void pv_paths_etc_policy_file(char *buf, size_t size, const char *name);
+void pv_paths_etc_ssh_file(char *buf, size_t size, const char *name);
 
 void pv_paths_configs_file(char *buf, size_t size, const char *name);
 
