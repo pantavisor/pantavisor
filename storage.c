@@ -773,6 +773,31 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 		       strerror(errno));
 }
 
+#define PVR_CONFIGF "{\"ObjectsDir\": \"%s/objects\"}"
+
+void pv_storage_init_trail_pvr()
+{
+	struct pantavisor *pv = pv_get_instance();
+	char path[PATH_MAX], config[PATH_MAX];
+	struct stat st;
+
+	if (!pv || !pv->state)
+		return;
+
+	// check .pvr/config exists
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pv->state->rev,
+					CONFIG_FNAME);
+	if (!stat(path, &st))
+		return;
+
+	// save .pvr/config with that links trail contents and system paths
+	SNPRINTF_WTRUNC(config, PATH_MAX, PVR_CONFIGF,
+			pv_config_get_storage_mntpoint());
+	if (pv_fs_file_save(path, config, 0644) < 0)
+		pv_log(WARN, "could not save file %s: %s", path,
+		       strerror(errno));
+}
+
 int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
 	int fd = -1, n, tokc;

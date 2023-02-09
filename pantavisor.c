@@ -305,6 +305,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		}
 	}
 
+	// trail .pvr/ initialization
+	pv_storage_init_trail_pvr();
+
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_metadata_init_devmeta(pv);
 
