@@ -41,10 +41,11 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
+#ifdef PANTAVISOR_DEBUG
+
 static pid_t db_pid = -1;
 static pid_t shell_pid = -1;
 
-#ifdef PANTAVISOR_DEBUG
 void pv_debug_start_shell()
 {
 	char c[64] = { 0 };
