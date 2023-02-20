@@ -186,6 +186,11 @@ struct pantavisor_metadata {
 	int usrmeta_interval;
 };
 
+struct pantavisor_vm {
+	int oom_qos_besteffort;
+	int oom_qos_guaranteed;
+};
+
 struct pantavisor_config {
 	char *policy;
 	struct pantavisor_system sys;
@@ -195,6 +200,7 @@ struct pantavisor_config {
 	struct pantavisor_creds creds;
 	struct pantavisor_factory factory;
 	struct pantavisor_storage storage;
+	struct pantavisor_vm vm;
 	struct pantavisor_disk disk;
 	struct pantavisor_updater updater;
 	struct pantavisor_watchdog wdt;
@@ -325,6 +331,9 @@ bool pv_config_get_secureboot_checksum(void);
 
 int pv_config_get_metadata_devmeta_interval(void);
 int pv_config_get_metadata_usrmeta_interval(void);
+
+int pv_config_get_vm_oom_qos_besteffort(void);
+int pv_config_get_vm_oom_qos_guaranteed(void);
 
 char *pv_config_get_json(void);
 void pv_config_print(void);

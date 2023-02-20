@@ -61,7 +61,8 @@ int get_dt_model(char *buf, int buflen);
 int get_cpu_model(char *buf, int buflen);
 cgroup_version_t pv_system_get_cgroup_version(void);
 const char *pv_system_cgroupv_string(cgroup_version_t cgroupv);
-
+int pv_system_oom_adjust(int score);
+int pv_system_oom_adjust_pid(pid_t pid, int score);
 void pv_system_kill_lenient(pid_t pid);
 void pv_system_kill_force(pid_t pid);
 

@@ -979,8 +979,10 @@ int pv_start()
 	if (fd < 0)
 		printf("open failed for /proc/sys/kernel/core_pattern: %s",
 		       strerror(errno));
-	else
+	else {
 		write(fd, path, strlen(path));
+		close(fd);
+	}
 
 	pv_state_t state = PV_STATE_INIT;
 

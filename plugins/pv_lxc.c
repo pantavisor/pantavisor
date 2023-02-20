@@ -292,6 +292,13 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			 PLATFORM_DEVICE_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
+
+	// from https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
+	if (p->qos_policy_oom_score_adj) {
+		c->set_config_item(c, "lxc.proc.oom_score_adj",
+				   p->qos_policy_oom_score_adj);
+	}
+
 	if (stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry",
 				   "/lib/firmware"
@@ -485,6 +492,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 	else if (child_pid) { /*Parent*/
 		pid_t container_pid = -1;
+
 		/*Parent would read*/
 		close(pipefd[1]);
 		while (read(pipefd[0], &container_pid, sizeof(container_pid)) <

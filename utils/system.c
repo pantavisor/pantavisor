@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -104,6 +105,29 @@ int get_cpu_model(char *buf, int buflen)
 	}
 out:
 	return ret;
+}
+
+int pv_system_oom_adjust(int score)
+{
+	return pv_system_oom_adjust_pid(getpid(), score);
+}
+
+int pv_system_oom_adjust_pid(pid_t pid, int score)
+{
+	char buf[128];
+	sprintf(buf, "/proc/%d/oom_score_adj", pid);
+	int fd = open(buf, O_WRONLY | O_SYNC);
+	if (fd < 0) {
+		printf("open failed for %s: %s", buf, strerror(errno));
+		return -2;
+	}
+
+	sprintf(buf, "%d", score);
+	int ret = write(fd, buf, strlen(buf) + 1);
+	close(fd);
+	if (ret > 0)
+		return 0;
+	return -3;
 }
 
 cgroup_version_t pv_system_get_cgroup_version(void)

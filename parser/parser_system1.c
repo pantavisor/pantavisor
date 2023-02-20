@@ -1118,6 +1118,34 @@ static int do_action_for_drivers(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static qos_policy_t parse_qos_policy(char *value, size_t len)
+{
+	if (pv_str_matches(value, len, "guaranteed", strlen("guaranteed")))
+		return QOS_GUARANTEED;
+	else if (pv_str_matches(value, len, "besteffort", strlen("besteffort")))
+		return QOS_BESTEFFORT;
+	else if (pv_str_matches(value, len, "burstable", strlen("burstable")))
+		return QOS_BURSTABLE;
+
+	pv_log(ERROR, "invalid qos policy '%s'", value);
+	return QOS_NONE;
+}
+
+static int do_action_for_qos_policy(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	qos_policy_t qos;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	qos = parse_qos_policy(value, strlen(value));
+
+	pv_platform_set_qos_policy(*bundle->platform, qos);
+
+	return 0;
+}
+
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	char *config = NULL, *shares = NULL;
@@ -1157,6 +1185,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_storage, false),
 		ADD_JKA_ENTRY("drivers", JSMN_OBJECT, &bundle,
 			      do_action_for_drivers, false),
+		ADD_JKA_ENTRY("qos_policy", JSMN_STRING, &bundle,
+			      do_action_for_qos_policy, false),
 		ADD_JKA_NULL_ENTRY()
 	};
 

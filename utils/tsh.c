@@ -36,6 +36,7 @@
 
 #include "tsh.h"
 #include "timer.h"
+#include "system.h"
 
 #define TSH_MAX_LENGTH 32
 #define TSH_DELIM " \t\r\n\a"
