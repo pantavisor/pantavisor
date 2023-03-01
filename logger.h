@@ -20,14 +20,13 @@
  * SOFTWARE.
  */
 
-
 #ifndef __PV_LOGGER_H__
 #define __PV_LOGGER_H__
 
-#define LOG_ENTRY_SIZE 		512/*(4096 - 48)*/
+#define LOG_ENTRY_SIZE 512 /*(4096 - 48)*/
 
-#define LOG_NOK 		(-1)
-#define LOG_OK			(0)
+#define LOG_NOK (-1)
+#define LOG_OK (0)
 
 #include <unistd.h>
 #include <sys/inotify.h>
@@ -41,19 +40,18 @@
 #include <sys/select.h>
 #include <errno.h>
 
-
 #ifndef DEBUG
 #define DEBUG 0
 #else
-#undef  DEBUG
+#undef DEBUG
 #define DEBUG 1
 #endif
 
-#define LOG_DEFAULT_LIMIT 	(2 * 1024 * 1024) /*2MiB*/
+#define LOG_DEFAULT_LIMIT (2 * 1024 * 1024) /*2MiB*/
 
 struct log {
-	int (*do_start_log)(struct log*, int init_ret);
-	int (*do_stop_log)(struct log*);
+	int (*do_start_log)(struct log *, int init_ret);
+	int (*do_stop_log)(struct log *);
 	int (*do_flush_log)(struct log *log, char *buf, int buflen);
 	off_t log_limit;
 	long truncate;

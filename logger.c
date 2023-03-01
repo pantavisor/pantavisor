@@ -31,11 +31,12 @@
 
 #define INOTIFY_SIZE (sizeof(struct inotify_event) + NAME_MAX + 1)
 
-static int log_direct_to_file(struct log *log, int show_perror) {
+static int log_direct_to_file(struct log *log, int show_perror)
+{
 	int fd = -1;
 	if (strstr("XXXXXX", log->path_backing_file))
 		fd = mkstemp(log->path_backing_file);
-	else 
+	else
 		fd = open(log->path_backing_file, O_RDONLY);
 	if (fd < 0 && show_perror) {
 		perror("get_tmp_file failed:");
@@ -43,7 +44,8 @@ static int log_direct_to_file(struct log *log, int show_perror) {
 	return fd;
 }
 
-static int log_set_backing_file(struct log *log, const char *path) {
+static int log_set_backing_file(struct log *log, const char *path)
+{
 	int path_len = 0;
 	/*
 	 * There's no backing store specified for log
@@ -52,26 +54,29 @@ static int log_set_backing_file(struct log *log, const char *path) {
 	 * file path.
 	 * */
 	if (!path && !isatty(1)) {
-		char __temp_path [64];
+		char __temp_path[64];
 		sprintf(__temp_path, "/proc/%d/fd/1", getpid());
-		if (readlink(__temp_path, log->path_backing_file, PATH_MAX) >= 0) {
+		if (readlink(__temp_path, log->path_backing_file, PATH_MAX) >=
+		    0) {
 			goto shrink_path;
 		} else
 			return LOG_NOK;
 	}
 	if (!path) {
 		snprintf(log->path_backing_file, PATH_MAX,
-				"/tmp/pvlogger_%d_XXXXXX",getpid());
+			 "/tmp/pvlogger_%d_XXXXXX", getpid());
 	} else
 		snprintf(log->path_backing_file, PATH_MAX, "%s", path);
 shrink_path:
 	path_len = strlen(log->path_backing_file);
-	log->path_backing_file = (char*) realloc(log->path_backing_file, path_len + 1);
+	log->path_backing_file =
+		(char *)realloc(log->path_backing_file, path_len + 1);
 	return LOG_OK;
 }
 
-static int setup_inotify(struct log *log, uint32_t ev_mask) {
-	char tmpname[PATH_MAX] = {0};
+static int setup_inotify(struct log *log, uint32_t ev_mask)
+{
+	char tmpname[PATH_MAX] = { 0 };
 	const char *dir = NULL;
 	snprintf(tmpname, sizeof(tmpname), "%s", log->path_backing_file);
 	dir = dirname(tmpname);
@@ -87,7 +92,7 @@ static int setup_inotify(struct log *log, uint32_t ev_mask) {
 	 * Add the watch on directory containing the file.
 	 * */
 	ev_mask = ev_mask ? ev_mask : IN_ALL_EVENTS;
-	if ( inotify_add_watch(log->notify_fd, dir, ev_mask) < 0) {
+	if (inotify_add_watch(log->notify_fd, dir, ev_mask) < 0) {
 		perror("inotify_add_watch failed:");
 		close(log->notify_fd);
 		log->notify_fd = -1;
@@ -105,9 +110,9 @@ int log_init(struct log *log, const char *backing_file)
 		goto out;
 	}
 	log->truncate = 0;
-	log->path_backing_file = (char*) calloc(1, PATH_MAX);
+	log->path_backing_file = (char *)calloc(1, PATH_MAX);
 	if (!log->path_backing_file) {
-		ret  = LOG_NOK;
+		ret = LOG_NOK;
 		goto out;
 	}
 	log->tv_notify = NULL; /*Application should reset this after init*/
@@ -140,7 +145,8 @@ int log_init(struct log *log, const char *backing_file)
 		ret = LOG_NOK;
 		goto out;
 	}
-	if (setup_inotify(log, IN_DELETE | IN_MOVED_TO | IN_MOVED_FROM) != LOG_OK) {
+	if (setup_inotify(log, IN_DELETE | IN_MOVED_TO | IN_MOVED_FROM) !=
+	    LOG_OK) {
 		ret = LOG_NOK;
 		goto out;
 	}
@@ -162,14 +168,14 @@ static int log_read_inotify(struct log *log)
 	int ret = 0;
 	struct inotify_event *inotify_ev = NULL;
 	struct timeval tv;
-	char tmpname[PATH_MAX] = {0};
+	char tmpname[PATH_MAX] = { 0 };
 	const char *filename = NULL;
 
-	inotify_ev = (struct inotify_event*)calloc(1, INOTIFY_SIZE);
+	inotify_ev = (struct inotify_event *)calloc(1, INOTIFY_SIZE);
 	FD_ZERO(&fdset);
 	if (!inotify_ev)
 		return LOG_NOK;
-	
+
 	if (log->notify_fd < 0) {
 		ret = LOG_NOK;
 		goto out;
@@ -179,20 +185,19 @@ static int log_read_inotify(struct log *log)
 		memcpy(&tv, log->tv_notify, sizeof(tv));
 check_again:
 	ret = select(log->notify_fd + 1, &fdset, NULL, NULL,
-			(log->tv_notify ? &tv : NULL));
+		     (log->tv_notify ? &tv : NULL));
 	if (ret < 0) {
 		if (errno == EINTR)
 			goto check_again;
 		ret = LOG_NOK;
 		goto out;
-	}
-	else if (ret == 0) {
+	} else if (ret == 0) {
 		ret = LOG_OK;
 		goto out;
 	}
-	while (read(log->notify_fd, (char*)inotify_ev, INOTIFY_SIZE) < 0 &&
-				errno == EINTR)
-			;
+	while (read(log->notify_fd, (char *)inotify_ev, INOTIFY_SIZE) < 0 &&
+	       errno == EINTR)
+		;
 	ret = LOG_OK;
 	snprintf(tmpname, sizeof(tmpname), "%s", log->path_backing_file);
 	filename = basename(tmpname);
@@ -207,10 +212,11 @@ out:
 	return ret;
 }
 
-int log_flush_pv(struct log *log) {
+int log_flush_pv(struct log *log)
+{
 	int ret = 0;
 	struct stat st;
-	static char buf[sizeof(log->buff)] = {0};
+	static char buf[sizeof(log->buff)] = { 0 };
 	bool file_deleted = false;
 
 	do {
@@ -222,13 +228,12 @@ int log_flush_pv(struct log *log) {
 			off_t current_pos = ftello(log->backing_file);
 			if (st.st_size < ftello(log->backing_file)) {
 				fseek(log->backing_file, 0, SEEK_SET);
-			}
-			else
+			} else
 				fseek(log->backing_file, current_pos, SEEK_SET);
 		}
 
 		ret = fread(buf, 1, sizeof(log->buff), log->backing_file);
-		
+
 		if (ret && log->do_flush_log)
 			log->do_flush_log(log, buf, ret);
 		/*
@@ -239,13 +244,13 @@ int log_flush_pv(struct log *log) {
 				truncate(log->path_backing_file, 0);
 			}
 		}
-	}while (ret > 0);
+	} while (ret > 0);
 
-	file_deleted = log_read_inotify(log) == LOG_OK ?
-	       false : true;	; /*Nothing to read from backing store*/
+	file_deleted = log_read_inotify(log) == LOG_OK ? false : true;
+	; /*Nothing to read from backing store*/
 	if (file_deleted)
 		return LOG_NOK;
-	
+
 	return ret < 0 ? LOG_NOK : LOG_OK;
 }
 
@@ -254,7 +259,7 @@ int log_stop(struct log *log)
 	int ret = LOG_OK;
 	if (!log)
 		return LOG_NOK;
-	
+
 	fflush(log->backing_file);
 	if (log->do_stop_log) {
 		ret = log->do_stop_log(log);
@@ -262,10 +267,9 @@ int log_stop(struct log *log)
 	fclose(log->backing_file);
 	if (log->has_tmp_backing_file)
 		unlink(log->path_backing_file);
-	
+
 	free(log->path_backing_file);
 	close(log->notify_fd);
 	log->has_tmp_backing_file = 0;
 	return ret;
 }
-
