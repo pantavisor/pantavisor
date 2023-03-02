@@ -55,6 +55,7 @@
 #include "utils/list.h"
 #include "utils/str.h"
 #include "utils/fs.h"
+#include "utils/system.h"
 
 #define MODULE_NAME "init"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -114,8 +115,29 @@ static int mount_cgroups()
 {
 	int ret;
 
-	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+	// on appengine we ensure we have cgroup setup
+	// for cgroup v1 we setup name=pantavisor hierachy
+	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
+		if (pv_system_get_cgroup_version() == CGROUP_UNKNOWN)
+			exit_error(
+				EAGAIN,
+				"Appengine must run on host with cgroup setup; mount cgroup v2, unified or v2 in sysfs and try again.");
+
+		// cgroup v2 we dont need to do anything as we use the main hierachy
+		// to determine container name for access control
+		if (pv_system_get_cgroup_version() == CGROUP_V2)
+			return 0;
+
+		// if cgroup v1 is on host we setup name=pantavisor hierarchy for access control
+		mkdir("/sys/fs/cgroup/pantavisor", 0555);
+		ret = mount("cgroup", "/sys/fs/cgroup/pantavisor", "cgroup", 0,
+			    "none,name=pantavisor");
+		if (ret < 0)
+			exit_error(errno,
+				   "Could not mount /sys/fs/cgroup/pantavisor");
+
 		return 0;
+	}
 
 	mkdir("/sys/fs/cgroup", 0755);
 	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
