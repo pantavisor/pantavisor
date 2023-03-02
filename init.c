@@ -229,8 +229,6 @@ static void shell_handler(int signal)
 	pv->hard_poweroff = true;
 }
 
-#define HOOKS_EARLY_SPAWN "/lib/pv/hooks_early.spawn"
-
 static void early_spawns()
 {
 	DIR *d;

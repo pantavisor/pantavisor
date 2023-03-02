@@ -179,6 +179,7 @@ struct pantavisor_secureboot {
 	secureboot_mode_t mode;
 	char *truststore;
 	bool checksum;
+	bool handlers;
 };
 
 struct pantavisor_metadata {
@@ -322,6 +323,7 @@ bool pv_config_get_control_remote(void);
 secureboot_mode_t pv_config_get_secureboot_mode(void);
 char *pv_config_get_secureboot_truststore(void);
 bool pv_config_get_secureboot_checksum(void);
+bool pv_config_get_secureboot_handlers(void);
 
 int pv_config_get_metadata_devmeta_interval(void);
 int pv_config_get_metadata_usrmeta_interval(void);

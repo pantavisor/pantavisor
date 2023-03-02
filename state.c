@@ -1067,10 +1067,11 @@ static char *_pv_state_get_novalidate_list(char *rev)
 	struct dirent *dp;
 	DIR *volmountdir;
 
-	if (getenv("pv_verityoff"))
+	if (getenv("pv_verityoff") || !pv_config_get_secureboot_handlers())
 		return NULL;
 
-	volmountdir = opendir("/lib/pv/volmount/verity");
+	pv_paths_lib_volmount(hdl_path, PATH_MAX, "verity", "");
+	volmountdir = opendir(hdl_path);
 
 	// Unable to open directory stream
 	if (!volmountdir)

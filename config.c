@@ -435,12 +435,12 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 
 	config->secureboot.mode = config_get_value_sb_mode_type(
 		&config_list, "secureboot.mode", SB_LENIENT);
-
 	config->secureboot.truststore = config_get_value_string(
 		&config_list, "secureboot.truststore", PVS_CERT_DEFAULT_STORE);
-
 	config->secureboot.checksum = config_get_value_bool(
 		&config_list, "secureboot.checksum", true);
+	config->secureboot.handlers = config_get_value_bool(
+		&config_list, "secureboot.handlers", true);
 
 	config_iterate_items_prefix(&config_list, config_sysctl_apply,
 				    "sysctl.", NULL);
@@ -1188,6 +1188,11 @@ bool pv_config_get_secureboot_checksum()
 	return pv_get_instance()->config.secureboot.checksum;
 }
 
+bool pv_config_get_secureboot_handlers()
+{
+	return pv_get_instance()->config.secureboot.handlers;
+}
+
 char *pv_config_get_secureboot_truststore()
 {
 	return pv_get_instance()->config.secureboot.truststore;
@@ -1254,6 +1259,8 @@ char *pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_secureboot_truststore());
 		pv_json_ser_key(&js, "secureboot.checksum");
 		pv_json_ser_bool(&js, pv_config_get_secureboot_checksum());
+		pv_json_ser_key(&js, "secureboot.handlers");
+		pv_json_ser_bool(&js, pv_config_get_secureboot_handlers());
 		pv_json_ser_key(&js, "storage.device");
 		pv_json_ser_string(&js, pv_config_get_storage_path());
 		pv_json_ser_key(&js, "storage.fstype");
@@ -1411,6 +1418,8 @@ void pv_config_print()
 	       pv_config_get_secureboot_truststore());
 	pv_log(INFO, "secureboot.checksum = %d",
 	       pv_config_get_secureboot_checksum());
+	pv_log(INFO, "secureboot.handlers = %d",
+	       pv_config_get_secureboot_handlers());
 	pv_log(INFO, "storage.device = '%s'", pv_config_get_storage_path());
 	pv_log(INFO, "storage.fstype = '%s'", pv_config_get_storage_fstype());
 	pv_log(INFO, "storage.opts = '%s'", pv_config_get_storage_opts());

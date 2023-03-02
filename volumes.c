@@ -221,7 +221,7 @@ struct pv_disk *pv_disk_add(struct pv_state *s)
 
 static int pv_disks_mount_handler(struct pv_disk *d, char *action)
 {
-	char path[PATH_MAX];
+	char path[PATH_MAX], script[PATH_MAX];
 	char *command = NULL;
 	char *crypt_type;
 	int ret;
@@ -249,8 +249,9 @@ static int pv_disks_mount_handler(struct pv_disk *d, char *action)
 		return -4;
 	}
 
+	pv_paths_lib_crypt(script, PATH_MAX, "crypt");
 	command = malloc(sizeof(char) *
-			 (strlen("/lib/pv/volmount/crypt/crypt %s %s %s %s") +
+			 (strlen("%s %s %s %s %s") + strlen(script) +
 			  strlen(action) + strlen(crypt_type) +
 			  strlen(d->path) + strlen(path) + 1));
 	if (!command) {
@@ -258,8 +259,8 @@ static int pv_disks_mount_handler(struct pv_disk *d, char *action)
 		return -5;
 	}
 
-	sprintf(command, "/lib/pv/volmount/crypt/crypt %s %s %s %s", action,
-		crypt_type, d->path, path);
+	sprintf(command, "%s %s %s %s %s", script, action, crypt_type, d->path,
+		path);
 	pv_log(INFO, "command: %s", command);
 
 	int wstatus;
@@ -313,7 +314,7 @@ int pv_volume_mount(struct pv_volume *v)
 	int loop_fd = -1, file_fd = -1;
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_state *s = pv->state;
-	char path[PATH_MAX], mntpoint[PATH_MAX];
+	char path[PATH_MAX], mntpoint[PATH_MAX], script[PATH_MAX];
 	char *fstype;
 	char *umount_cmd = NULL;
 	char *handlercut = NULL;
@@ -389,26 +390,24 @@ int pv_volume_mount(struct pv_volume *v)
 			pv_fs_mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, NULL, MS_BIND | MS_REC,
 				    NULL);
-		} else if (handler && !getenv("pv_verityoff")) {
+		} else if (handler && (!getenv("pv_verityoff") &&
+				       pv_config_get_secureboot_handlers())) {
 			pv_log(INFO, "with '%s' handler", handler);
-			command = malloc(
-				sizeof(char) *
-				(strlen(handler) + strlen(partname) +
-				 strlen(path) + strlen(name) +
-				 strlen("/lib/pv/volmount/verity/%s mount %s %s %s") +
-				 1));
-			umount_cmd = malloc(
-				sizeof(char) *
-				(strlen(handler) + strlen(partname) +
-				 strlen(path) + strlen(name) +
-				 strlen("/lib/pv/volmount/verity/%s umount %s %s %s") +
-				 1));
-			sprintf(command,
-				"/lib/pv/volmount/verity/%s mount %s %s %s",
-				handler, path, partname, name);
-			sprintf(umount_cmd,
-				"/lib/pv/volmount/verity/%s umount %s %s %s",
-				handler, path, partname, name);
+			pv_paths_lib_volmount(script, PATH_MAX, "verity",
+					      handler);
+			command = malloc(sizeof(char) *
+					 (strlen(script) + strlen(partname) +
+					  strlen(path) + strlen(name) +
+					  strlen("%s mount %s %s %s") + 1));
+			umount_cmd = malloc(sizeof(char) *
+					    (strlen(script) + strlen(partname) +
+					     strlen(path) + strlen(name) +
+					     strlen("%s umount %s %s %s") + 1));
+			sprintf(command, "%s mount %s %s %s", script, path,
+				partname, name);
+			sprintf(umount_cmd, "%s umount %s %s %s", script, path,
+				partname, name);
+			pv_log(INFO, "command: %s", command);
 			tsh_run(command, 1, &wstatus);
 			if (!WIFEXITED(wstatus))
 				ret = -1;
