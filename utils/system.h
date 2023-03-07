@@ -51,9 +51,9 @@
 
 typedef enum {
 	CGROUP_UNKNOWN,
-	CGROUP_V1,
-	CGROUP_UNIFIED,
-	CGROUP_V2
+	CGROUP_LEGACY,
+	CGROUP_HYBRID,
+	CGROUP_UNIFIED
 } cgroup_version_t;
 
 int get_endian(void);

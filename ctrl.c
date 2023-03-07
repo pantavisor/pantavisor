@@ -786,9 +786,9 @@ static char *pv_ctrl_get_sender_pname(int req_fd)
 		goto out;
 	}
 
-	if ((pv->cgroupv == CGROUP_V1) || (pv->cgroupv == CGROUP_UNIFIED))
+	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID))
 		pname = pv_ctrl_get_sender_pname_cgroup(fd);
-	else if (pv->cgroupv == CGROUP_V2)
+	else if (pv->cgroupv == CGROUP_UNIFIED)
 		pname = pv_ctrl_get_sender_pname_cgroup2(fd);
 	else
 		pv_log(WARN, "unknown cgroup version '%s'",

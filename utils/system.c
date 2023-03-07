@@ -112,12 +112,12 @@ cgroup_version_t pv_system_get_cgroup_version(void)
 
 	if (!statfs("/sys/fs/cgroup/", &fs)) {
 		if (fs.f_type == CGROUP2_SUPER_MAGIC) {
-			return CGROUP_V2;
-		} else {
+			return CGROUP_UNIFIED;
+		} else if (fs.f_type == TMPFS_MAGIC) {
 			if (!statfs("/sys/fs/cgroup/unified/", &fs))
-				return CGROUP_UNIFIED;
+				return CGROUP_HYBRID;
 			else
-				return CGROUP_V1;
+				return CGROUP_LEGACY;
 		}
 	}
 
@@ -127,12 +127,12 @@ cgroup_version_t pv_system_get_cgroup_version(void)
 const char *pv_system_cgroupv_string(cgroup_version_t cgroupv)
 {
 	switch (cgroupv) {
-	case CGROUP_V1:
-		return "CGROUP_V1";
+	case CGROUP_LEGACY:
+		return "CGROUP_LEGACY";
+	case CGROUP_HYBRID:
+		return "CGROUP_HYBRID";
 	case CGROUP_UNIFIED:
 		return "CGROUP_UNIFIED";
-	case CGROUP_V2:
-		return "CGROUP_V2";
 	default:
 		return "CGROUP_UNKNOWN";
 	}
