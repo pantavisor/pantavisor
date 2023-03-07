@@ -27,11 +27,6 @@ volumesrc=$2
 container=$3
 volume=$4
 
-JSON_sh=/lib/pv/JSON.sh
-if ! [ -x $JSON_sh ]; then
-	JSON_sh=JSON.sh
-fi
-
 do_mount_squash() {
 	traildir=`dirname $1`
 	squashname=`basename $1`
@@ -45,9 +40,9 @@ do_mount_squash() {
 		return 1
 	fi
 
-	ddev=`cat $dmmanifest | $JSON_sh -l | grep data_device | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
-	hdev=`cat $dmmanifest | $JSON_sh -l |  grep hash_device | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
-	rhash=`cat $dmmanifest | $JSON_sh -l | grep root_hash | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
+	ddev=`cat $dmmanifest | JSON.sh -l | grep data_device | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
+	hdev=`cat $dmmanifest | JSON.sh -l |  grep hash_device | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
+	rhash=`cat $dmmanifest | JSON.sh -l | grep root_hash | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
 
 	if ! veritysetup create $dmname $traildir/$ddev $traildir/$hdev $rhash; then
 		echo "ERROR: could not setup dm volume with veritysetup"
@@ -87,7 +82,7 @@ do_umount_squash() {
 novalidatelist() {
 	trailstepdir=$1
 	tmpf=`mktemp -t islazyverify.jsonsh.XXXXXXXXXXX`
-	cat $trailstepdir/.pvr/json | $JSON_sh -l > $tmpf
+	cat $trailstepdir/.pvr/json | JSON.sh -l > $tmpf
 	cat $tmpf \
 		| grep -v \[[^[:space:]]*,[^[:space:]]*] \
 		| grep -v '\[\"#spec\"][[:space:]]' \
@@ -117,7 +112,7 @@ novalidatelist() {
 verifylist() {
 	trailstepdir=$1
 	tmpf=`mktemp -t islazyverify.jsonsh.XXXXXXXXXXX`
-	cat $trailstepdir/.pvr/json | $JSON_sh -l > $tmpf
+	cat $trailstepdir/.pvr/json | JSON.sh -l > $tmpf
 	cat $tmpf \
 		| grep -v \[[^[:space:]]*,[^[:space:]]*] \
 		| grep -v '\[\"#spec\"][[:space:]]' \

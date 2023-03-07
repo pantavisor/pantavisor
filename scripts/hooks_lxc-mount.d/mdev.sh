@@ -13,7 +13,7 @@ tmpf=`mktemp -t mdev.conf.XXXXXXX`
 echo "CONTAINER_DEV: $container_mdev"
 
 cat $container_mdev \
-	| /lib/pv/JSON.sh -l \
+	| JSON.sh -l \
 	| grep '\["rules",' \
 	| sed 's/[^[:space:]]*[[:space:]]"//;s/"$//' \
 	> $tmpf

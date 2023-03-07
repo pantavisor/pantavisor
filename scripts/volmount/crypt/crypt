@@ -63,7 +63,7 @@ do_crypt_init()
 		cat /data/caam/$keyname | /bin/keyctl padd logon logkey: @u
 		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to load key" && exit 1
 	elif [ $dm_type == "dcp" ]; then
-		dd if=/dev/random bs=32 count=1 | /lib/pv/volmount/crypt/x--pv-dcp-tool \
+		dd if=/dev/random bs=32 count=1 | x--pv-dcp-tool \
 			encrypt $dir/$keyname.new
 		sync
 		mv $dir/$keyname.new $dir/$keyname
@@ -99,7 +99,7 @@ do_crypt_init()
 		/usr/sbin/dmsetup -v create $device_name --table "0 $(/sbin/blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
 		keyfile=`mktemp`
-		/lib/pv/volmount/crypt/x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
+		x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
 		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
 		rm -f $keyfile
 	elif [ $dm_type == "versatile" ]; then
@@ -140,7 +140,7 @@ do_dm_sanity()
 		[ ! -f /usr/sbin/dmsetup ] && exit 111
 		[ ! -f /bin/keyctl ] && exit 111
 	elif [ $dm_type == "dcp" ]; then
-		[ ! -f /lib/pv/volmount/crypt/x--pv-dcp-tool ] && exit 111
+		[ ! -f x--pv-dcp-tool ] && exit 111
 		[ ! -f /usr/sbin/cryptsetup ] && exit 111
 	elif [ $dm_type == "versatile" ]; then
 		[ ! -f /usr/sbin/cryptsetup ] && exit 111
@@ -194,7 +194,7 @@ do_mount_disk()
 		/usr/sbin/dmsetup create $device_name --table "0 $(/sbin/blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
 		keyfile=`mktemp`
-		/lib/pv/volmount/crypt/x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
+		x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
 		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
 		rm -f $keyfile
 	elif [ $dm_type == "versatile" ]; then

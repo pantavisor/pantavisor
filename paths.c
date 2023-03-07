@@ -320,6 +320,7 @@ void pv_paths_writable(char *buf, size_t size)
 
 #define PV_LIB_PLUGIN_PATHF "%s/pv_%s.so"
 #define PV_LIB_MODULES_PATHF "%s/modules/%s"
+#define PV_LIB_CRYPT_PATHF "%s/pv/volmount/crypt/%s"
 #define PV_LIB_VOLMOUNT_PATHF "%s/pv/volmount/%s/%s"
 #define PV_LIB_HOOK_PATHF "%s/pv/hooks_lxc-mount.d/%s"
 #define PV_LIB_HOOKS_EARLY_SPAWN_PATHF "%s/pv/hooks_early.spawn/%s"
@@ -336,6 +337,12 @@ void pv_paths_lib_modules(char *buf, size_t size, const char *release)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_LIB_MODULES_PATHF,
 			pv_config_get_system_libdir(), release);
+}
+
+void pv_paths_lib_crypt(char *buf, size_t size, const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_LIB_CRYPT_PATHF,
+			pv_config_get_system_libdir(), name);
 }
 
 void pv_paths_lib_volmount(char *buf, size_t size, const char *type,
