@@ -140,7 +140,6 @@ do_dm_sanity()
 		[ ! -f /usr/sbin/dmsetup ] && exit 111
 		[ ! -f /bin/keyctl ] && exit 111
 	elif [ $dm_type == "dcp" ]; then
-		[ ! -f x--pv-dcp-tool ] && exit 111
 		[ ! -f /usr/sbin/cryptsetup ] && exit 111
 	elif [ $dm_type == "versatile" ]; then
 		[ ! -f /usr/sbin/cryptsetup ] && exit 111
