@@ -144,6 +144,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 
 	if (p) {
 		p->name = strdup(name);
+		p->automodfw = true;
 		p->log.console_tty = -1;
 		p->log.console_pt = -1;
 		p->log.lxc_pipe[0] = -1;
