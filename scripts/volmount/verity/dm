@@ -131,6 +131,9 @@ verifylist() {
 	rm -f $tmpf $tmpf.*
 }
 
+PATH=$PATH:/lib/pv/
+export PATH
+
 set -e
 case $op in
 	mount)
