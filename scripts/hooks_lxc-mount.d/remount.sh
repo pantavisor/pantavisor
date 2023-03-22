@@ -1,6 +1,6 @@
 #!/bin/sh
  
-set -x
+set -e
 
 PATH=$PATH:/lib/pv
 
@@ -31,13 +31,13 @@ cat /proc/self/mountinfo
 cat $tmpf | while read -r line; do
 	opt=`echo "$line" | awk '{ print $1 }'`
 	exp=`echo "$line" | awk '{ print $2 }'`
-	echo "Remounting $exp with $opt"
 	if [ -z "$opt" ] || [ -z "$exp" ]; then
 		continue
 	fi
 	if [ "$exp" = "/" ]; then
 		exp=
 	fi
+	echo "Remounting $exp with $opt"
 	cat /proc/mounts | grep "[[:space:]]${LXC_ROOTFS_MOUNT}${exp}[[:space:]]" | while read -r line2; do
 		path=`echo $line2 | awk '{ print $2 }'`
 		echo "Doing remount of $path with opt $opt"
@@ -47,4 +47,3 @@ cat $tmpf | while read -r line; do
 done
 
 rm -f $tmpf
-
