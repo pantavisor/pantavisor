@@ -98,6 +98,7 @@ struct pv_platform {
 	int roles;
 	restart_policy_t restart_policy;
 	bool updated;
+	bool automodfw; // auto mount modfw
 	struct timer timer_status_goal;
 	struct dl_list drivers;
 	struct dl_list list; // pv_platform

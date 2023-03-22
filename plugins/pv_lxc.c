@@ -292,14 +292,14 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			 PLATFORM_DEVICE_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
 	}
-	if (stat("/lib/firmware", &st) == 0)
+	if (p->automodfw && stat("/lib/firmware", &st) == 0)
 		c->set_config_item(c, "lxc.mount.entry",
 				   "/lib/firmware"
 				   " lib/firmware none bind,ro,create=dir"
 				   " 0 0");
 	ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
-	if (!ret) {
+	if (p->automodfw && !ret) {
 		__pv_paths_volumes_plat_file(path, PATH_MAX, "bsp",
 					     "modules.squashfs");
 		if (stat(path, &st) == 0) {

@@ -825,6 +825,21 @@ static int do_action_for_type(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_automodfw(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+
+	if (!(*bundle->platform) || !value)
+		return -1;
+
+	if (!strcmp("no", value))
+		(*bundle->platform)->automodfw = false;
+	else
+		(*bundle->platform)->automodfw = true;
+
+	return 0;
+}
+
 static int do_action_for_runlevel(struct json_key_action *jka, char *value)
 {
 	struct pv_group *g;
@@ -1135,6 +1150,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      false),
 		ADD_JKA_ENTRY("runlevel", JSMN_STRING, &bundle,
 			      do_action_for_runlevel, false),
+		ADD_JKA_ENTRY("automodfw", JSMN_STRING, &bundle,
+			      do_action_for_automodfw, false),
 		ADD_JKA_ENTRY("group", JSMN_STRING, &bundle,
 			      do_action_for_group, false),
 		ADD_JKA_ENTRY("restart_policy", JSMN_STRING, &bundle,
