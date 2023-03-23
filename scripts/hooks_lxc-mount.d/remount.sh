@@ -19,7 +19,7 @@ tmpf=`mktemp -t remounts.XXXXXXXX`
 cat $container_runjson \
 	| JSON.sh -l \
 	| grep '\["remount",' \
-	| sed 's/\["remount","\(.*\)"\][^[:space:]]*[[:space:]]"\(.*\)"/bind,remount,\2 \1/' \
+	| sed 's/\["remount",[0-9]*,"\(.*\)"\][^[:space:]]*[[:space:]]"\(.*\)"/bind,remount,\2 \1/' \
 	> $tmpf
 
 echo "remounting these:"
