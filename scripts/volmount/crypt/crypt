@@ -28,21 +28,25 @@ dm_type=$2
 path=$3
 mntpath=$4
 
-CAAM_KEYGEN=/usr/bin/caam-keygen
+CAAM_KEYGEN=caam-keygen
 
 MKFS_OPTS_EXT4=${MKFS_OPTS_EXT4:-"-b 1024"}
 MNT_OPTS_EXT4=${MNT_OPTS_EXT4:-"-o noatime"}
+
+
+PATH=$PATH:/lib/pv/:/lib/pv/volmount/crypt/
+export PATH
 
 # do the same as losetup -f but also return the path of loop device on stdout
 # if successful.
 atomic_losetup()
 {
 	_imgfile=$1
-	if ! /sbin/losetup -f $dir/$img_file; then
+	if ! losetup -f $dir/$img_file; then
 		echo "ERROR: unable to setup loop device for $_imgfile"
 		return 122
 	fi
-	if ! _l=`/sbin/losetup -a | grep ${imgfile}$ | tail -n 1`; then
+	if ! _l=`losetup -a | grep ${imgfile}$ | tail -n 1`; then
 		echo "ERROR: unable to setup loop device for $_imgfile"
 		return 122
 	fi
@@ -60,7 +64,7 @@ do_crypt_init()
 	if [ $dm_type == "caam" ]; then
 		$CAAM_KEYGEN create $keyname ecb -s 16
 		cp /data/caam/$keyname* $dir
-		cat /data/caam/$keyname | /bin/keyctl padd logon logkey: @u
+		cat /data/caam/$keyname | keyctl padd logon logkey: @u
 		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to load key" && exit 1
 	elif [ $dm_type == "dcp" ]; then
 		dd if=/dev/random bs=32 count=1 | x--pv-dcp-tool \
@@ -85,7 +89,7 @@ do_crypt_init()
 
 	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
 	img_size=`echo $base | awk '{split($0,a,","); print a[2]}'`
-	/bin/dd if=/dev/zero of=$dir/$img_file bs=1M count=$img_size
+	dd if=/dev/zero of=$dir/$img_file bs=1M count=$img_size
 
 	if [ $dm_type == "caam" ]; then
 		if ! CAAM_LOOP=`atomic_losetup $dir/$img_file`; then
@@ -96,34 +100,34 @@ do_crypt_init()
 
 	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
 	if [ $dm_type == "caam" ]; then
-		/usr/sbin/dmsetup -v create $device_name --table "0 $(/sbin/blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
+		dmsetup -v create $device_name --table "0 $(blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
 		keyfile=`mktemp`
 		x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
+		cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
 		rm -f $keyfile
 	elif [ $dm_type == "versatile" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
+		cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
 		echo "Unknown device mapper target"
 		exit 1
 	fi
 	[ $? -ne 0 ] && echo "ERROR: $dm_type: Unable to create/open crypt device" && exit 1
 
-	/usr/sbin/mkfs.ext4 $MKFS_OPTS_EXT4 /dev/mapper/$device_name
+	mkfs.ext4 $MKFS_OPTS_EXT4 /dev/mapper/$device_name
 	[ $? -ne 0 ] && echo "ERROR: Unable to format to ext4" && exit 1
 
 	sync
 	if [ $dm_type == "caam" ]; then
-		/usr/sbin/dmsetup remove $device_name
-		/bin/keyctl clear @u
-		/bin/keyctl purge @u
+		dmsetup remove $device_name
+		keyctl clear @u
+		keyctl purge @u
 		rm -rf /data
-		/sbin/losetup -d $CAAM_LOOP
+		losetup -d $CAAM_LOOP
 	elif [ $dm_type == "dcp" ]; then
-		/usr/sbin/cryptsetup close $device_name
+		cryptsetup close $device_name
 	elif [ $dm_type == "versatile" ]; then
-		/usr/sbin/cryptsetup close $device_name
+		cryptsetup close $device_name
 	else
 		echo "Unknown device mapper target"
 		exit 1
@@ -133,32 +137,8 @@ do_crypt_init()
 	touch $dir/$keyname.init_done
 }
 
-do_dm_sanity()
-{
-	if [ $dm_type == "caam" ]; then
-		[ ! -f $CAAM_KEYGEN ] && exit 111
-		[ ! -f /usr/sbin/dmsetup ] && exit 111
-		[ ! -f /bin/keyctl ] && exit 111
-	elif [ $dm_type == "dcp" ]; then
-		[ ! -f /usr/sbin/cryptsetup ] && exit 111
-	elif [ $dm_type == "versatile" ]; then
-		[ ! -f /usr/sbin/cryptsetup ] && exit 111
-	else
-		echo "Unknown device mapper target"
-		exit 111
-	fi
-
-	[ ! -f /sbin/losetup ] && exit 111
-	[ ! -f /bin/dd ] && exit 111
-	[ ! -f /usr/sbin/mkfs.ext4 ] && exit 111
-
-	export LD_LIBRARY_PATH=/x86_64-linux-gnu
-}
-
 do_mount_disk()
 {
-	do_dm_sanity
-
 	dm_type=$1
 	path=$2
 	mntpath=$3
@@ -177,7 +157,7 @@ do_mount_disk()
 		$CAAM_KEYGEN import $keyname.bb $keyname.import
 		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to import black blob" && exit 2
 
-		cat /data/caam/$keyname.import | /bin/keyctl padd logon logkey: @u
+		cat /data/caam/$keyname.import | keyctl padd logon logkey: @u
 		[ $? -ne 0 ] && echo "ERROR: CAAM: Unable to load key" && exit 2
 	fi
 
@@ -190,14 +170,14 @@ do_mount_disk()
 
 	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
 	if [ $dm_type == "caam" ]; then
-		/usr/sbin/dmsetup create $device_name --table "0 $(/sbin/blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
+		dmsetup create $device_name --table "0 $(blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
 		keyfile=`mktemp`
 		x--pv-dcp-tool decrypt $dir/$keyname > $keyfile
-		/usr/sbin/cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
+		cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file=$keyfile $dir/$img_file $device_name
 		rm -f $keyfile
 	elif [ $dm_type == "versatile" ]; then
-		/usr/sbin/cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
+		cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file=$dir/$keyname.txt $dir/$img_file $device_name
 	else
 		echo "Unknown device mapper target"
 		exit 2
@@ -230,7 +210,7 @@ do_mount_disk()
 	if [ "$specialrun" == "fsck" ] && [ -f $dir/$img_file.goodbak ]; then
 		echo "Specialrun $specialrun did not succeed ... trying from goodbackup"
 		cp -f $dir/$img_file.goodbak $dir/$img_file
-		/usr/sbin/cryptsetup close $device_name || true
+		cryptsetup close $device_name || true
 		if ! do_mount_disk "$dm_type" "$path" "$mntpath" bak; then
 			return $?;
 		fi
@@ -247,8 +227,8 @@ do_mount_disk()
 	fi
 
 	echo "Trying fsck ...."
-	/usr/sbin/fsck.ext4 -y /dev/mapper/$device_name || true
-	/usr/sbin/cryptsetup close $device_name || true
+	fsck.ext4 -y /dev/mapper/$device_name || true
+	cryptsetup close $device_name || true
 	sync
 	if ! do_mount_disk "$dm_type" "$path" "$mntpath" fsck; then
 		return $?
@@ -266,20 +246,20 @@ do_umount_disk()
 	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
 	umount $3
 	if [ $dm_type == "caam" ]; then
-		/usr/sbin/dmsetup remove $device_name
-		/bin/keyctl clear @u
-		/bin/keyctl purge @u
+		dmsetup remove $device_name
+		keyctl clear @u
+		keyctl purge @u
 		rm -rf /data
 	elif [ $dm_type == "dcp" ]; then
-		/usr/sbin/cryptsetup close $device_name
+		cryptsetup close $device_name
 	elif [ $dm_type == "versatile" ]; then
-		/usr/sbin/cryptsetup close $device_name
+		cryptsetup close $device_name
 	else
 		echo "Unknown device mapper target"
 		exit 4
 	fi
-	loop_dev=`/sbin/losetup -a | grep $img_file | awk '{split($0,a,":"); print a[1]}'`
-	/sbin/losetup -d $loop_dev
+	loop_dev=`losetup -a | grep $img_file | awk '{split($0,a,":"); print a[1]}'`
+	losetup -d $loop_dev
 }
 
 case $op in
