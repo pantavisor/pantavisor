@@ -101,6 +101,7 @@ LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/mdev.sh:lib/pv/hooks_lxc-mount.d/mdev.sh \
 	scripts/hooks_lxc-mount.d/remount.sh:lib/pv/hooks_lxc-mount.d/remount.sh \
 	scripts/JSON.sh:lib/pv/JSON.sh \
+	scripts/pvcrash:lib/pv/pvcrash \
 	defaults/groups.json:etc/pantavisor/defaults/groups.json
 
 include $(BUILD_EXECUTABLE)
