@@ -724,11 +724,18 @@ static char *pv_ctrl_get_sender_pname_cgroup(FILE *fd)
 	char buf[128];
 
 	while (fgets(buf, 128, fd)) {
-		pvcg = strstr(buf, ":name=pantavisor:/lxc/");
+		int l = strlen(buf) - 1;
+		if (buf[l] == '\n')
+			buf[l] = 0;
+		pvcg = strstr(buf, ":name=pantavisor:/");
 		if (pvcg) {
-			pvcg += strlen(":name=pantavisor:/lxc/");
-			pvcg[strlen(pvcg) - 1] = '\0';
-			pname = strdup(pvcg);
+			pvcg += strlen(":name=pantavisor:/");
+			if (!strncmp(pvcg, "lxc/", 4))
+				pvcg += 4;
+			if (!strlen(pvcg))
+				pname = strdup("_pv_");
+			else
+				pname = strdup(pvcg);
 			break;
 		}
 	}
@@ -812,6 +819,10 @@ static struct pv_platform *pv_ctrl_get_sender_plat(const char *pname)
 
 static bool pv_ctrl_check_sender_privileged(const char *pname)
 {
+	// if this is from root context we are privileged
+	if (!strcmp(pname, "_pv_"))
+		return true;
+
 	struct pv_platform *plat = pv_ctrl_get_sender_plat(pname);
 
 	return plat ? pv_platform_has_role(plat, PLAT_ROLE_MGMT) : false;
