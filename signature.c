@@ -581,14 +581,15 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 	}
 
 	cacerts_i = &cacerts;
-	i = 1;
-	while (cacerts_i->next) {
+	i = 0;
+	do {
+		char serial[256];
 		i++;
-		cacerts_i = cacerts_i->next;
-	}
-	pv_log(INFO,
-	       "loaded %d secureboot.truststore x509 certificates from %s", i,
-	       path);
+		mbedtls_x509_serial_gets(serial, 255, &cacerts_i->serial);
+		pv_log(INFO,
+		       "loaded truststore x509 certificate no. %d:  serial=%s",
+		       i, serial);
+	} while ((cacerts_i = cacerts_i->next) != 0);
 
 	res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags,
 				      pv_signature_print_cert, NULL);
