@@ -48,6 +48,16 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
+static bool config_has_value(struct dl_list *config_list, char *key)
+{
+	char *item = config_get_value(config_list, key);
+
+	if (!item || !strlen(item))
+		return false;
+
+	return true;
+}
+
 static char *config_get_value_string(struct dl_list *config_list, char *key,
 				     char *default_value)
 {
@@ -444,6 +454,11 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 
 	config_iterate_items_prefix(&config_list, config_sysctl_apply,
 				    "sysctl.", NULL);
+
+	if (!config_has_value(&config_list, "sysctl.kernel.core_pattern")) {
+		config_sysctl_apply("sysctl.kernel.core_pattern",
+				    "|/lib/pv/pvcrash --skip", NULL);
+	}
 
 	config_clear_items(&config_list);
 
