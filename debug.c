@@ -61,7 +61,7 @@ void pv_debug_start_shell()
 		return;
 	}
 
-	dprintf(con_fd, "Press [d] for debug ash shell... ");
+	dprintf(con_fd, "Press [d] and [ENTER] for debug ash shell... ");
 	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
 	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
 		dprintf(con_fd, "%d ", t);
