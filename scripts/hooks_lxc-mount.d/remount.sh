@@ -6,21 +6,39 @@ PATH=$PATH:/lib/pv
 
 /bin/cat /proc/self/environ | tr '\0' '\n'
 
-container_runjson=/storage/trails/current/$LXC_NAME/run.json
+statejson=/storage/trails/current/.pvr/json
+runjson=$LXC_NAME/run.json
+devicejson=device.json
+pv_policy=${pv_policy:-default}
+pv_policy=${pv_remount_policy:-$pv_policy}
 
 if ! [ -f $container_runjson ]; then
 	echo "ERROR: container $LXC_NAME must have a run.json"
 	exit 2
 fi
 
-echo "RUNJSON: $container_runjson"
+echo "RUNJSON: $statejson"
+
 tmpf=`mktemp -t remounts.XXXXXXXX`
 
-cat $container_runjson \
-	| JSON.sh -l \
-	| grep '\["remount",' \
-	| sed 's/\["remount",[0-9]*,"\(.*\)"\][^[:space:]]*[[:space:]]"\(.*\)"/bind,remount,\2 \1/' \
-	> $tmpf
+# unix_proxy="local:/pv/pv-ctrl" wget -O- http://localhost/config
+
+set -x
+
+catstatejson() {
+	_json="$1"
+	_pol="$2"
+	#if ! cat $statejson | JSON.sh -l | grep -E -q '\["'${_json}'","remount","'${_pol}'",[0-9]*,'; then
+	#	return 1
+	#fi
+
+	cat $statejson \
+		| JSON.sh -l \
+		| grep -E '\["'"(${_json})"'","remount","'"(${_pol})"'",[0-9]*,' \
+		| sed -E 's#\["'"(${_json})"'","remount","'"(${_pol})"'",[0-9]*,"(.*)"\][^[:space:]]*[[:space:]]"(.*)"#bind,remount,\4 \3#'
+}
+
+catstatejson "${devicejson}|${runjson}" "${pv_policy}|default" >> $tmpf
 
 echo "remounting these:"
 cat $tmpf
@@ -37,10 +55,9 @@ cat $tmpf | while read -r line; do
 	if [ "$exp" = "/" ]; then
 		exp=
 	fi
-	echo "Remounting $exp with $opt"
 	cat /proc/mounts | grep "[[:space:]]${LXC_ROOTFS_MOUNT}${exp}[[:space:]]" | while read -r line2; do
 		path=`echo $line2 | awk '{ print $2 }'`
-		echo "Doing remount of $path with opt $opt"
+		echo "remounting with new mount options: $path + $opt"
 		mount -o $opt $path
 		cat /proc/self/mountinfo
 	done
