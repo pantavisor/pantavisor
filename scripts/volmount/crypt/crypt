@@ -137,8 +137,30 @@ do_crypt_init()
 	touch $dir/$keyname.init_done
 }
 
+do_dm_sanity()
+{
+	if [ $dm_type == "caam" ]; then
+		which $CAAM_KEYGEN &> /dev/null || exit 111
+		which dmsetup &> /dev/null || exit 111
+		which keyctl &> /dev/null || exit 111
+	elif [ $dm_type == "dcp" ]; then
+		which cryptsetup &> /dev/null || exit 111
+	elif [ $dm_type == "versatile" ]; then
+		which cryptsetup &> /dev/null || exit 111
+	else
+		echo "Unknown device mapper target"
+		exit 111
+	fi
+
+	which losetup &> /dev/null || exit 111
+	which dd &> /dev/null || exit 111
+	which mkfs.ext4 &> /dev/null || exit 111
+}
+
 do_mount_disk()
 {
+	do_dm_sanity
+
 	dm_type=$1
 	path=$2
 	mntpath=$3
