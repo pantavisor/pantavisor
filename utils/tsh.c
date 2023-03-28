@@ -134,6 +134,9 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 			close(stderr_p[1]);
 
 		// now we let it flow ...
+		setenv("PATH",
+		       "/bin:/sbin:/usr/bin:/usr/sbin:/lib/pv:/lib/pv/volmount/crypt",
+		       0);
 		execvp(argv[0], argv);
 	exit_failure:
 		exit(EXIT_FAILURE);
