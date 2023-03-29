@@ -130,12 +130,41 @@ const char *pv_platform_status_string(plat_status_t status)
 	return "UNKNOWN";
 }
 
+static void pv_platform_log_timer_status(struct pv_platform *p)
+{
+	struct timer_state tstate = timer_current_state(&p->timer_status_goal);
+	if (pv_platform_check_goal(p) == PLAT_GOAL_ACHIEVED) {
+		if (!tstate.fin) {
+			pv_log(INFO,
+			       "platform '%s' reached its status goal; took %d secs; %d secs till timeout (of %d)",
+			       p->name,
+			       p->group->default_status_goal_timeout -
+				       tstate.sec,
+			       tstate.sec,
+			       p->group->default_status_goal_timeout)
+		} else {
+			pv_log(INFO,
+			       "platform '%s' reached its status goal; took %d secs; %d secs over timeout (of %d)",
+			       p->name,
+			       p->group->default_status_goal_timeout +
+				       tstate.sec,
+			       tstate.sec,
+			       p->group->default_status_goal_timeout);
+		}
+	}
+}
+
 static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 {
 	if (p->status.current == status)
 		return;
 
 	p->status.current = status;
+	pv_log(INFO, "platform '%s' status is now %s", p->name,
+	       pv_platform_status_string(status));
+	pv_platform_log_timer_status(p);
+
+	pv_group_eval_status(p->group);
 }
 
 struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
@@ -320,24 +349,6 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 		close_roles:
 			pv_json_ser_array_pop(js);
 		}
-
-		pv_json_ser_object_pop(js);
-	}
-}
-
-void pv_platform_add_goal_json(struct pv_json_ser *js, struct pv_platform *p)
-{
-	const char *status = pv_platform_status_string(p->status.current);
-	const char *status_goal = pv_platform_status_string(p->status.goal);
-
-	pv_json_ser_object(js);
-	{
-		pv_json_ser_key(js, "name");
-		pv_json_ser_string(js, p->name);
-		pv_json_ser_key(js, "current");
-		pv_json_ser_string(js, status);
-		pv_json_ser_key(js, "goal");
-		pv_json_ser_string(js, status_goal);
 
 		pv_json_ser_object_pop(js);
 	}
@@ -755,8 +766,6 @@ int pv_platform_start(struct pv_platform *p)
 	if (pid <= 0)
 		return -1;
 
-	pv_platform_set_status(p, PLAT_STARTING);
-
 	if (pv_config_get_log_loggers())
 		if (start_pvlogger_for_platform(p) < 0)
 			pv_log(ERROR,
@@ -775,6 +784,8 @@ int pv_platform_start(struct pv_platform *p)
 	       p->group->default_status_goal_timeout, p->name);
 	timer_start(&p->timer_status_goal,
 		    p->group->default_status_goal_timeout, 0, RELATIV_TIMER);
+
+	pv_platform_set_status(p, PLAT_STARTING);
 
 	return 0;
 }
@@ -921,13 +932,11 @@ bool pv_platform_check_running(struct pv_platform *p)
 		if ((p->status.current != PLAT_STARTED) &&
 		    (p->status.current != PLAT_READY) &&
 		    (p->status.current != PLAT_STOPPING)) {
-			pv_log(DEBUG, "platform %s started", p->name);
 			pv_platform_set_status(p, PLAT_STARTED);
 		}
 	} else {
 		if ((p->status.current != PLAT_STOPPED) &&
 		    (p->status.current != PLAT_STARTING)) {
-			pv_log(DEBUG, "platform %s stopped", p->name);
 			pv_platform_set_status(p, PLAT_STOPPED);
 		}
 	}
@@ -982,16 +991,17 @@ void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal)
 
 plat_goal_state_t pv_platform_check_goal(struct pv_platform *p)
 {
-	if ((p->status.current == PLAT_INSTALLED) ||
-	    (p->status.current == PLAT_BLOCKED))
-		return PLAT_GOAL_UNACHIEVED;
-
 	if (p->status.current == p->status.goal)
 		return PLAT_GOAL_ACHIEVED;
 
+	if (p->status.current < PLAT_STARTING)
+		return PLAT_GOAL_UNACHIEVED;
+
 	struct timer_state tstate = timer_current_state(&p->timer_status_goal);
 	if (tstate.fin) {
-		pv_log(WARN, "platform '%s' status goal timed out", p->name);
+		pv_log(WARN,
+		       "platform '%s' status goal timed out after waiting for more than %d secs",
+		       p->name, p->group->default_status_goal_timeout);
 		return PLAT_GOAL_TIMEDOUT;
 	}
 

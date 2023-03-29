@@ -28,6 +28,8 @@
 
 typedef enum { RELATIV_TIMER, ABSOLUTE_TIMER } timer_type_t;
 
+uint64_t timer_get_current_time_sec(timer_type_t type);
+
 struct timer {
 	timer_type_t type;
 	struct timespec timeout;
@@ -50,7 +52,6 @@ struct timer_state {
 };
 
 int timer_start(struct timer *t, time_t sec, long nsec, timer_type_t type);
-
 struct timer_state timer_current_state(struct timer *t);
 
 #endif // TIMER_H

@@ -26,10 +26,10 @@
 
 #include "utils/list.h"
 #include "utils/json.h"
-#include "utils/timer.h"
 
 struct pv_group {
 	char *name;
+	plat_status_t status;
 	plat_status_t default_status_goal;
 	restart_policy_t default_restart_policy;
 	int default_status_goal_timeout;
@@ -44,7 +44,9 @@ void pv_group_free(struct pv_group *g);
 
 void pv_group_add_platform(struct pv_group *g, struct pv_platform *p);
 
+void pv_group_eval_status(struct pv_group *g);
 plat_goal_state_t pv_group_check_goals(struct pv_group *g);
+
 void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g);
 
 #endif // PV_GROUP_H

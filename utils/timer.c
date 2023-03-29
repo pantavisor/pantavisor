@@ -36,9 +36,16 @@ static clockid_t timer_type_clockid(timer_type_t type)
 	return 0;
 }
 
-static int get_current_time(struct timer *t, struct timespec *current_time)
+static int get_current_time(timer_type_t type, struct timespec *current_time)
 {
-	return clock_gettime(timer_type_clockid(t->type), current_time);
+	return clock_gettime(timer_type_clockid(type), current_time);
+}
+
+uint64_t timer_get_current_time_sec(timer_type_t type)
+{
+	struct timespec now;
+	get_current_time(type, &now);
+	return now.tv_sec;
 }
 
 struct timer_state timer_current_state(struct timer *t)
@@ -46,7 +53,7 @@ struct timer_state timer_current_state(struct timer *t)
 	struct timespec now;
 	struct timer_state tstate;
 
-	get_current_time(t, &now);
+	get_current_time(t->type, &now);
 
 	tstate.fin = (now.tv_sec > t->timeout.tv_sec) ||
 		     (now.tv_sec == t->timeout.tv_sec &&
@@ -79,7 +86,7 @@ int timer_start(struct timer *t, time_t sec, long nsec, timer_type_t type)
 	struct timespec now;
 
 	if (type == RELATIV_TIMER) {
-		get_current_time(t, &now);
+		get_current_time(t->type, &now);
 
 		t->timeout.tv_sec = now.tv_sec + sec;
 		t->timeout.tv_nsec = now.tv_nsec + nsec;

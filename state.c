@@ -40,6 +40,7 @@
 #include "addons.h"
 #include "pantavisor.h"
 #include "storage.h"
+#include "metadata.h"
 #include "utils/tsh.h"
 #include "utils/math.h"
 #include "utils/str.h"
@@ -59,6 +60,7 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 	if (s) {
 		s->rev = calloc(len, sizeof(char));
 		SNPRINTF_WTRUNC(s->rev, len, "%s", rev);
+		s->status = PLAT_NONE;
 		s->spec = spec;
 		dl_list_init(&s->platforms);
 		dl_list_init(&s->volumes);
@@ -459,6 +461,36 @@ static int pv_state_mount_bsp_volumes(struct pv_state *s)
 int pv_state_start(struct pv_state *s)
 {
 	return pv_state_mount_bsp_volumes(s);
+}
+
+static void pv_state_set_status(struct pv_state *s, plat_status_t status)
+{
+	if (s->status == status)
+		return;
+
+	s->status = status;
+	pv_log(INFO, "state revision '%s' status is now %s", s->rev,
+	       pv_platform_status_string(status));
+
+	pv_metadata_add_devmeta("pantavisor.status",
+				pv_platform_status_string(status));
+}
+
+void pv_state_eval_status(struct pv_state *s)
+{
+	if (!s)
+		return;
+
+	plat_status_t state_status = PLAT_READY;
+
+	struct pv_group *g, *tmp;
+	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
+	{
+		if (g->status < state_status)
+			state_status = g->status;
+	}
+
+	pv_state_set_status(s, state_status);
 }
 
 // returns the general goal state if p is NULL. If not null,

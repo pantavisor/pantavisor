@@ -25,6 +25,8 @@
 
 #include "group.h"
 
+#include "state.h"
+#include "platforms.h"
 #include "utils/json.h"
 #include "utils/str.h"
 
@@ -40,6 +42,7 @@ struct pv_group *pv_group_new(char *name, int timeout, plat_status_t status,
 	g = calloc(1, sizeof(struct pv_group));
 	if (g) {
 		g->name = strdup(name);
+		g->status = PLAT_READY;
 		g->default_status_goal = status;
 		g->default_restart_policy = restart;
 		g->default_status_goal_timeout = timeout;
@@ -75,6 +78,38 @@ void pv_group_free(struct pv_group *g)
 		free(g->name);
 	pv_group_empty_platform_refs(g);
 	free(g);
+}
+
+static void pv_group_set_status(struct pv_group *g, plat_status_t status)
+{
+	if (g->status == status)
+		return;
+
+	g->status = status;
+	pv_log(INFO, "group '%s' status is now %s", g->name,
+	       pv_platform_status_string(status));
+
+	struct pantavisor *pv = pv_get_instance();
+	pv_state_eval_status(pv->state);
+}
+
+void pv_group_eval_status(struct pv_group *g)
+{
+	if (!g)
+		return;
+
+	plat_status_t group_status = PLAT_READY;
+
+	struct pv_platform_ref *pr, *tmp;
+	dl_list_for_each_safe(pr, tmp, &g->platform_refs,
+			      struct pv_platform_ref, list)
+	{
+		if ((pv_platform_check_goal(pr->ref) != PLAT_GOAL_ACHIEVED) &&
+		    ((pr->ref)->status.current < group_status))
+			group_status = (pr->ref)->status.current;
+	}
+
+	pv_group_set_status(g, group_status);
 }
 
 plat_goal_state_t pv_group_check_goals(struct pv_group *g)
@@ -148,8 +183,6 @@ void pv_group_add_platform(struct pv_group *g, struct pv_platform *p)
 
 void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g)
 {
-	struct pv_platform_ref *pr, *tmp;
-
 	pv_json_ser_object(js);
 	{
 		pv_json_ser_key(js, "name");
@@ -161,16 +194,7 @@ void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g)
 		pv_json_ser_string(js, pv_platforms_restart_policy_str(
 					       g->default_restart_policy));
 		pv_json_ser_key(js, "status");
-		pv_json_ser_array(js);
-		{
-			dl_list_for_each_safe(pr, tmp, &g->platform_refs,
-					      struct pv_platform_ref, list)
-			{
-				pv_platform_add_goal_json(js, pr->ref);
-			}
-
-			pv_json_ser_array_pop(js);
-		}
+		pv_json_ser_string(js, pv_platform_status_string(g->status));
 
 		pv_json_ser_object_pop(js);
 	}

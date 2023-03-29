@@ -37,10 +37,10 @@
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
-#include <time.h>
 #include <inttypes.h>
 #include <glob.h>
 
+#include "utils/timer.h"
 #include "utils/fs.h"
 #include "utils/fs.h"
 #include "utils/json.h"
@@ -357,15 +357,16 @@ static int pv_log(int level, char *msg, ...)
 	va_list args;
 	va_start(args, msg);
 	if (logserver_g.pid < 0) {
-		struct logserver_msg_data msg_data = { .version = 0,
-						       .level = level,
-						       .tsec = (uint64_t)time(
-							       NULL),
-						       .tnano = 0,
-						       .platform = MODULE_NAME,
-						       .source = "logserver",
-						       .data = NULL,
-						       .data_len = 0 };
+		struct logserver_msg_data msg_data = {
+			.version = 0,
+			.level = level,
+			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
+			.tnano = 0,
+			.platform = MODULE_NAME,
+			.source = "logserver",
+			.data = NULL,
+			.data_len = 0
+		};
 
 		msg_data.data_len = vsnprintf(NULL, 0, msg, args) + 1;
 		msg_data.data = calloc(msg_data.data_len, sizeof(char));
@@ -381,14 +382,15 @@ static int pv_log(int level, char *msg, ...)
 
 		buf_len = vsnprintf(buf, pv_buffer->size, msg, args);
 
-		struct logserver_msg_data data = { .version =
-							   LOG_PROTOCOL_LEGACY,
-						   .level = level,
-						   .tsec = (uint64_t)time(NULL),
-						   .platform = PV_PLATFORM_STR,
-						   .source = "logserver",
-						   .data = buf,
-						   .data_len = buf_len };
+		struct logserver_msg_data data = {
+			.version = LOG_PROTOCOL_LEGACY,
+			.level = level,
+			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
+			.platform = PV_PLATFORM_STR,
+			.source = "logserver",
+			.data = buf,
+			.data_len = buf_len
+		};
 
 		logserver_log_msg_data(&data);
 
@@ -467,7 +469,7 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 			msg_data->source + strlen(msg_data->source) + 1;
 		msg_data->data_len = msg->len - bytes_read;
 
-		msg_data->tsec = (uint64_t)time(NULL);
+		msg_data->tsec = timer_get_current_time_sec(RELATIV_TIMER);
 		msg_data->tnano = 0;
 		ret = 0;
 		break;
@@ -738,13 +740,15 @@ static void logserver_consume_fd(int fd)
 		struct logserver_fd *lfd =
 			logserver_fetch_fd_from_list(&logserver_g.fdlst, fd);
 
-		struct logserver_msg_data d = { .version = LOG_PROTOCOL_LEGACY,
-						.level = lfd->level,
-						.tsec = (uint64_t)time(NULL),
-						.platform = lfd->platform,
-						.source = lfd->src,
-						.data = buffer->buf,
-						.data_len = size };
+		struct logserver_msg_data d = {
+			.version = LOG_PROTOCOL_LEGACY,
+			.level = lfd->level,
+			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
+			.platform = lfd->platform,
+			.source = lfd->src,
+			.data = buffer->buf,
+			.data_len = size
+		};
 		logserver_log_msg_data(&d);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG,
@@ -1130,7 +1134,7 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	struct logserver_msg_data msg_data = {
 		.version = LOG_PROTOCOL_LEGACY,
 		.level = level,
-		.tsec = time(NULL),
+		.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 		.tnano = 0,
 		.platform = platform,
 		.source = src,
