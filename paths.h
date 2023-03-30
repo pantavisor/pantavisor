@@ -22,6 +22,8 @@
 #ifndef PV_PATHS_H
 #define PV_PATHS_H
 
+#include <stddef.h>
+
 #define ONLINE_FNAME "online"
 #define DEVICE_ID_FNAME "device-id"
 #define CHALLENGE_FNAME "challenge"
