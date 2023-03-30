@@ -95,10 +95,10 @@ static int pv_bootloader_set_rev(char *rev)
 		return -1;
 
 	pv_bootloader.pv_rev =
-		realloc(pv_bootloader.pv_rev, len * sizeof(char *));
+		realloc(pv_bootloader.pv_rev, len * sizeof(char));
 	SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s", rev);
 	pv_bootloader.pv_done =
-		realloc(pv_bootloader.pv_done, len * sizeof(char *));
+		realloc(pv_bootloader.pv_done, len * sizeof(char));
 	SNPRINTF_WTRUNC(pv_bootloader.pv_done, len, "%s", rev);
 	return ops->set_env_key("pv_rev", rev);
 }
@@ -111,7 +111,7 @@ static int pv_bootloader_set_try(char *rev)
 		return -1;
 
 	pv_bootloader.pv_try =
-		realloc(pv_bootloader.pv_try, len * sizeof(char *));
+		realloc(pv_bootloader.pv_try, len * sizeof(char));
 	SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s", rev);
 	return ops->set_env_key("pv_try", rev);
 }
@@ -226,13 +226,13 @@ static int pv_bl_early_init(struct pv_init *this)
 		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
 			len = strlen(token + CMDLINE_OFFSET) + 1;
 			pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev,
-						       len * sizeof(char *));
+						       len * sizeof(char));
 			SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s",
 					token + CMDLINE_OFFSET);
 		} else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0) {
 			len = strlen(token + CMDLINE_OFFSET) + 1;
 			pv_bootloader.pv_try = realloc(pv_bootloader.pv_try,
-						       len * sizeof(char *));
+						       len * sizeof(char));
 			SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s",
 					token + CMDLINE_OFFSET);
 		}
