@@ -23,8 +23,6 @@ tmpf=`mktemp -t remounts.XXXXXXXX`
 
 # unix_proxy="local:/pv/pv-ctrl" wget -O- http://localhost/config
 
-set -x
-
 catstatejson() {
 	_json="$1"
 	_pol="$2"
@@ -58,9 +56,12 @@ cat $tmpf | while read -r line; do
 	cat /proc/mounts | grep "[[:space:]]${LXC_ROOTFS_MOUNT}${exp}[[:space:]]" | while read -r line2; do
 		path=`echo $line2 | awk '{ print $2 }'`
 		echo "remounting with new mount options: $path + $opt"
+		set -x
 		mount -o $opt $path
-		cat /proc/self/mountinfo
+		set +x
 	done
 done
+
+echo "Success."
 
 rm -f $tmpf
