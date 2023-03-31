@@ -105,10 +105,9 @@ int log_init(struct log *log, const char *backing_file)
 {
 	int ret = LOG_OK;
 	int tmp_fd = -1;
-	if (!log) {
-		ret = LOG_NOK;
-		goto out;
-	}
+	if (!log)
+		return LOG_NOK;
+
 	log->truncate = 0;
 	log->path_backing_file = (char *)calloc(1, PATH_MAX);
 	if (!log->path_backing_file) {
