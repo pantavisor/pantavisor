@@ -254,18 +254,21 @@ static int config_sysctl_apply(char *key, char *value, void *opaque)
 	for (int i = 0; i < (int)strlen(start); ++i)
 		p[i] = next[i] == '.' ? '/' : next[i];
 
+	int ret = 0;
 	errno = 0;
 	int fd = open(path, O_WRONLY | O_SYNC);
+
 	if (fd < 0) {
+		ret = -1;
 		pv_log(ERROR, "open failed for sysctl node %s with '%s'", path,
 		       strerror(errno));
-		return -1;
+	} else {
+		write(fd, value, strlen(value));
+		close(fd);
 	}
 
-	write(fd, value, strlen(value));
-	close(fd);
-
-	return 0;
+	free(path);
+	return ret;
 }
 
 static int pv_config_load_policy(const char *policy,
