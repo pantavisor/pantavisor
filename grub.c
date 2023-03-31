@@ -111,7 +111,7 @@ static int read_grubenv(char *path, char *buf, int writable)
 
 static char *grub_get_env_key(char *key)
 {
-	int fd, len, klen, vlen;
+	int fd, len, klen;
 	char buf[1024];
 	char *next, *value = NULL;
 
@@ -130,9 +130,7 @@ static char *grub_get_env_key(char *key)
 		buf[i] = '\0';
 
 		if (!strncmp(next, key, klen)) {
-			vlen = strlen(next + klen + 1);
-			value = calloc(vlen + 1, sizeof(char));
-			strcpy(value, next + klen + 1);
+			value = strdup(next + klen + 1);
 			break;
 		}
 		next = buf + i + 1;
@@ -234,7 +232,6 @@ static int grub_set_env_key(char *key, char *value)
 
 	// write new key/value pair to destination
 	memcpy(d, v, strlen(v));
-	d += strlen(v);
 
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));
