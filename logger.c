@@ -152,9 +152,10 @@ int log_init(struct log *log, const char *backing_file)
 out:
 	if (ret == LOG_NOK) {
 		close(tmp_fd);
-		if (log->has_tmp_backing_file)
+		if (log->has_tmp_backing_file && log->path_backing_file)
 			unlink(log->path_backing_file);
 	}
+
 	if (log->do_start_log) {
 		ret = log->do_start_log(log, ret);
 	}
