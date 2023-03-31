@@ -42,7 +42,7 @@
 static char *_sub_meta_values(char *str)
 {
 	// find key for meta from ${user-meta:KEY} component of string
-	int _start = 0, _end = 0, type;
+	int _start = 0, _end = 0;
 	char *_tok, *_t, *_at, *new;
 	char *_var, *_param, *_tstr;
 	int _nt = 0;
@@ -58,28 +58,30 @@ static char *_sub_meta_values(char *str)
 
 	while ((_at = strchr(str + _start, '$')) != NULL) {
 		_t = strchr(_at, '{');
-		if (!_t || ((_t - _at) != 1))
+		if (!_t || ((_t - _at) != 1)) {
+			free(new);
 			return NULL;
+		}
 		_t++;
 		memcpy(new + _nt, str + _start, (_at - (str + _end)));
 		_nt = _nt + (_at - (str + _end));
 		_var = strchr(_t, '}');
 		_end = _var - (str);
-		_start = _at - (str + _start);
 		_tstr = strdup(_t);
-		_tok = strtok(_tstr, "{:}");
-		if (!strcmp(_tok, USER_META_KEY))
-			type = USER_META;
-		else if (!strcmp(_tok, DEV_META_KEY))
-			type = DEVICE_META;
+		strtok(_tstr, "{:}");
 		_tok = strtok(NULL, "{:}");
 		_param = pv_metadata_get_usermeta(_tok);
 		if (_param) {
 			if (_nt + strlen(_param) + 1 > newlen) {
 				newlen += strlen(_param) + 1;
-				new = realloc(new, newlen);
-				if (!new)
+				char *tmp = realloc(new, newlen);
+				if (!tmp) {
+					free(new);
+					free(_tstr);
 					return NULL;
+				} else {
+					new = tmp;
+				}
 			}
 			memcpy(new + _nt, _param, strlen(_param) + 1);
 			_nt += strlen(_param);
