@@ -61,10 +61,8 @@ static struct config_item *_config_get_by_key(struct dl_list *list, char *key)
 static struct config_item *_config_add_item(struct dl_list *list, char *key,
 					    char *value)
 {
-	struct config_item *this;
-
 	// Check if it already exists in config and change value instead
-	this = _config_get_by_key(list, key);
+	struct config_item *this = _config_get_by_key(list, key);
 	if (this) {
 		if (this->value)
 			free(this->value);
@@ -75,10 +73,12 @@ static struct config_item *_config_add_item(struct dl_list *list, char *key,
 
 	// New item
 	this = (struct config_item *)malloc(sizeof(struct config_item));
+	this->value = NULL;
+	this->key = NULL;
 
 	if (!this) {
 		pv_log(ERROR, "unable to allocate config item");
-		goto out;
+		return NULL;
 	}
 
 	// Check empty key
@@ -100,9 +100,9 @@ static struct config_item *_config_add_item(struct dl_list *list, char *key,
 	}
 	return this;
 out:
-	if (this && this->key)
+	if (this->key)
 		free(this->key);
-	if (this && this->value)
+	if (this->value)
 		free(this->value);
 	free(this);
 	return NULL;
