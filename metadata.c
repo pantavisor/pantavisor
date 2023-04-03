@@ -686,7 +686,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 	char *um, *key, *value;
 
 	// parse user metadata json
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 	um = pv_json_get_value(buf, "user-meta", tokv, tokc);
 
 	if (!um) {
@@ -714,8 +714,10 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		// copy value
 		n = (*key_i + 1)->end - (*key_i + 1)->start;
 		value = calloc(n + 1, sizeof(char));
-		if (!value)
+		if (!value) {
+			free(key);
 			break;
+		}
 
 		strncpy(value, um + (*key_i + 1)->start, n);
 		pv_str_unescape_to_ascii(value, n);
@@ -813,13 +815,13 @@ int pv_metadata_rm_devmeta(const char *key)
 
 void pv_metadata_parse_devmeta(const char *buf)
 {
-	int ret = 0, tokc, n;
+	int tokc, n;
 	jsmntok_t *tokv = NULL;
 	jsmntok_t **key = NULL;
 	char *metakey = NULL, *metavalue = NULL;
 
 	// parse device metadata json
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 	key = jsmnutil_get_object_keys(buf, tokv);
 
 	if (!key)
@@ -1009,7 +1011,7 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 	char file[PATH_MAX];
 	char *fname = NULL;
 
-	strcpy(file, json_buf->factory_file);
+	strncpy(file, json_buf->factory_file, PATH_MAX - 1);
 	fname = basename(file);
 	SNPRINTF_WTRUNC(abs_key, sizeof(abs_key), "factory/%s/%s", fname, key);
 	formatted_key = pv_json_format(abs_key, strlen(abs_key));
