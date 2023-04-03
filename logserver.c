@@ -178,7 +178,7 @@ static int logserver_openlog(const char *path)
 	size_t max = 0;
 	for (size_t i = 0; i < glist.gl_pathc; ++i) {
 		char str[PATH_MAX] = { 0 };
-		strcpy(str, glist.gl_pathv[i]);
+		strncpy(str, glist.gl_pathv[i], PATH_MAX - 1);
 		str[strlen(str) - 3] = '\0';
 		size_t n = strtoumax(strrchr(str, '.') + 1, NULL, 10);
 		if (n > max)
