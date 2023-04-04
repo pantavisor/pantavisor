@@ -68,7 +68,7 @@ static int parse_one_driver(struct pv_state *s, char *buf)
 	if (!buf)
 		return 0;
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
@@ -168,7 +168,9 @@ static bool driver_should_parse(char *key)
 static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 {
 	int tokc, n;
-	char *buf, *key, *value;
+	char *buf = NULL;
+	char *key = NULL;
+	char *value = NULL;
 	jsmntok_t *tokv;
 	jsmntok_t **k, **keys;
 
@@ -184,6 +186,7 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
 		pv_log(ERROR, "drivers list cannot be parsed");
+		free(buf);
 		return 0;
 	}
 	k = keys;
@@ -219,7 +222,11 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 		}
 		k++;
 	}
+
 	jsmnutil_tokv_free(keys);
+
+	if (buf)
+		free(buf);
 
 	return 1;
 }
@@ -311,7 +318,6 @@ out:
 
 static int parse_bsp(struct pv_state *s, char *value, int n)
 {
-	int c;
 	int ret = 0, tokc, size;
 	char *str, *buf;
 	struct pv_volume *v;
@@ -322,7 +328,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	buf = calloc(n + 1, sizeof(char));
 	buf = memcpy(buf, value, n);
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->bsp.img.ut.fit = pv_json_get_value(buf, "fit", tokv, tokc);
 	if (!s->bsp.img.ut.fit) {
@@ -366,7 +372,6 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	key_i = key;
 	while (*key_i) {
-		c = (*key_i)->end - (*key_i)->start;
 		if (strncmp("addons", buf + (*key_i)->start,
 			    strlen("addons"))) {
 			key_i++;
@@ -396,7 +401,7 @@ out:
 
 static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 {
-	int tokc, n, ret;
+	int tokc, n;
 	char *key, *value, *pt, *disk;
 	jsmntok_t *tokv;
 	jsmntok_t *tokv_t;
@@ -405,7 +410,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 	if (!buf)
 		return 0;
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
@@ -427,7 +432,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		value = malloc(n + 1);
 		snprintf(value, n + 1, "%s", buf + (*k + 1)->start);
 
-		ret = jsmnutil_parse_json(value, &tokv_t, &tokc);
+		jsmnutil_parse_json(value, &tokv_t, &tokc);
 		pt = pv_json_get_value(value, "persistence", tokv_t, tokc);
 		disk = pv_json_get_value(value, "disk", tokv_t, tokc);
 
@@ -444,7 +449,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 			else {
 				pv_log(WARN,
 				       "invalid persistence value '%s' for platform '%s', default to BOOT",
-				       pt, p->name);
+				       pt, p ? p->name : "(NULL)");
 				v->type = VOL_BOOT;
 			}
 			free(pt);
@@ -1052,7 +1057,7 @@ static int do_action_for_one_log(struct json_key_action *jka, char *value)
 		goto free_config;
 	}
 
-	config->pair = (const char ***)calloc(key_count + 1, sizeof(char *));
+	config->pair = calloc(key_count + 1, sizeof(char **));
 	if (!config->pair) {
 		ret = -1;
 		goto free_config;
@@ -1136,7 +1141,7 @@ static int do_action_for_drivers(struct json_key_action *jka, char *value)
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	char *config = NULL, *shares = NULL;
-	struct pv_platform *this;
+	struct pv_platform *this = NULL;
 	int ret = 0;
 	struct platform_bundle bundle = {
 		.s = s,
@@ -1804,8 +1809,10 @@ static char *parse_config_name(char *value, int n)
 	buf = calloc(n + 1, sizeof(char));
 	buf = memcpy(buf, value, n);
 
-	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		free(buf);
 		return NULL;
+	}
 
 	config_name = pv_json_get_value(buf, "initrd_config", tokv, tokc);
 
