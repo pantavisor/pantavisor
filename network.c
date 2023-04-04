@@ -73,7 +73,7 @@ static int _set_netmask(int skfd, char *intf, char *newmask)
 void pv_network_update_meta(struct pantavisor *pv)
 {
 	struct ifaddrs *ifaddr, *ifa;
-	int family, s, n, len, ilen = 0;
+	int family, n, len, ilen = 0;
 	int size;
 	char host[NI_MAXHOST], ifn[IFNAMSIZ + 5], iff[IFNAMSIZ + 5];
 	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
@@ -94,11 +94,10 @@ void pv_network_update_meta(struct pantavisor *pv)
 		if (family == AF_PACKET)
 			continue;
 
-		s = getnameinfo(ifa->ifa_addr,
-				(family == AF_INET) ?
-					      sizeof(struct sockaddr_in) :
-					      sizeof(struct sockaddr_in6),
-				host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+		getnameinfo(ifa->ifa_addr,
+			    (family == AF_INET) ? sizeof(struct sockaddr_in) :
+							sizeof(struct sockaddr_in6),
+			    host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
 
 		SNPRINTF_WTRUNC(iff, sizeof(iff), "%s.%s", ifa->ifa_name,
 				family == AF_INET ? "ipv4" : "ipv6");
@@ -136,15 +135,15 @@ void pv_network_update_meta(struct pantavisor *pv)
 		len += snprintf(buf, size, IFACE_FMT, ifn, ifaddrs);
 		len++;
 		ifaces = realloc(ifaces, len);
-		strcat(ifaces, buf);
+		strncat(ifaces, buf, len - 1);
 		free(buf);
 		if (ifa->ifa_next != NULL)
-			strcat(ifaces, ",");
+			strncat(ifaces, ",", len - 1);
 	}
 	free(ifaddrs);
 
 	ifaces = realloc(ifaces, len + 1);
-	strcat(ifaces, "}");
+	strncat(ifaces, "}", len);
 
 	pv_metadata_add_devmeta(DEVMETA_KEY_INTERFACES, ifaces);
 
