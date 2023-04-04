@@ -155,7 +155,6 @@ const char *pv_platform_status_string(plat_status_t status);
 const char *pv_platforms_restart_policy_str(restart_policy_t policy);
 
 void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p);
-void pv_platform_add_goal_json(struct pv_json_ser *js, struct pv_platform *p);
 
 int pv_platforms_init_ctrl(struct pantavisor *pv);
 
