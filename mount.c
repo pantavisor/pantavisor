@@ -38,6 +38,7 @@
 #include "blkid.h"
 #include "utils/str.h"
 #include "paths.h"
+#include "log.h"
 
 #define MODULE_NAME "mount-init"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -121,9 +122,11 @@ static int pv_mount_init(struct pv_init *this)
 		continue;
 	}
 
-	if (!dev_info.device)
+	if (!dev_info.device) {
 		exit_error(errno,
 			   "Could not mount trails storage. No device found.");
+		return -1;
+	}
 
 	printf("INFO: trail storage found: %s.\n", dev_info.device);
 
