@@ -37,6 +37,8 @@ MNT_OPTS_EXT4=${MNT_OPTS_EXT4:-"-o noatime"}
 PATH=$PATH:/lib/pv/:/lib/pv/volmount/crypt/
 export PATH
 
+export LD_LIBRARY_PATH=/x86_64-linux-gnu
+
 # do the same as losetup -f but also return the path of loop device on stdout
 # if successful.
 atomic_losetup()
@@ -55,6 +57,7 @@ atomic_losetup()
 
 do_crypt_init()
 {
+
 	base=`basename $1`
 	dir=`dirname $1`
 
@@ -260,8 +263,6 @@ do_mount_disk()
 
 do_umount_disk()
 {
-	export LD_LIBRARY_PATH=/x86_64-linux-gnu
-
 	base=`basename $2`
 	img_file=`echo $base | awk '{split($0,a,","); print a[1]}'`
 
