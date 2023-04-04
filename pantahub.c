@@ -460,7 +460,7 @@ err:
 	return ret;
 }
 
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
+int pv_ph_device_is_owned(struct pantavisor *pv, char **c, int size)
 {
 	int ret = 0;
 	char *owner = 0, *challenge = 0;
@@ -498,7 +498,7 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 		challenge = pv_json_get_value(res->body, "challenge",
 					      res->json_tokv, res->json_tokc);
 
-		strcpy(*c, challenge);
+		strncpy(*c, challenge, size - 1);
 	}
 
 out:

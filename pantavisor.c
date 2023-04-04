@@ -373,7 +373,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		pv_ph_release_client(pv);
 	}
 
-	if (!pv_ph_device_is_owned(pv, &c)) {
+	if (!pv_ph_device_is_owned(pv, &c, 128)) {
 		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
 					ph_state_string(PH_STATE_CLAIM));
 		pv_storage_set_rev_progress(
