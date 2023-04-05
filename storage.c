@@ -137,7 +137,6 @@ int pv_storage_get_subdir(const char *path, const char *prefix,
 	struct dirent **dirs = NULL;
 	struct pv_path *subdir;
 
-	len = strlen(path) + strlen(prefix) + 1;
 	SNPRINTF_WTRUNC(basedir, sizeof(basedir), "%s%s", path, prefix);
 
 	n = scandir(basedir, &dirs, NULL, alphasort);
@@ -824,19 +823,35 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		n = (*k)->end - (*k)->start + 1;
 
 		// copy key
-		key = malloc(n + 1);
+		char *tmp_key = realloc(key, n + 1);
+		if (tmp_key) {
+			key = tmp_key;
+		} else {
+			ret = -1;
+			goto out;
+		}
+
 		key[n] = 0;
 		snprintf(key, n, "%s", buf + (*k)->start);
 		ext = strrchr(key, '.');
 		if (!ext || strcmp(ext, ".json")) {
 			free(key);
+			key = NULL;
 			k++;
 			continue;
 		}
 
 		// copy value
 		n = (*k + 1)->end - (*k + 1)->start + 1;
-		value = malloc(n + 1);
+
+		char *tmp_val = realloc(value, n + 1);
+		if (tmp_val) {
+			value = tmp_val;
+		} else {
+			ret = -1;
+			goto out;
+		}
+
 		value[n] = 0;
 		snprintf(value, n, "%s", buf + (*k + 1)->start);
 
@@ -844,7 +859,9 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		if ((*k + 1)->type == JSMN_STRING &&
 		    pv_is_sha256_hex_string(value)) {
 			free(key);
+			key = NULL;
 			free(value);
+			value = NULL;
 			k++;
 			continue;
 		}
@@ -871,6 +888,10 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 	ret = 1;
 
 out:
+	if (value)
+		free(value);
+	if (key)
+		free(key);
 	if (buf)
 		free(buf);
 	if (tokv)
