@@ -1100,7 +1100,17 @@ static char *_pv_state_get_novalidate_list(char *rev)
 		// shall return an empty result...
 		int len = (ARRAY_LEN(_cmd_fmt) + strlen(hdl_path) +
 			   strlen(rev_path) + 2);
-		cmd = realloc(cmd, len * sizeof(char));
+
+		errno = 0;
+		char *tmp = realloc(cmd, len * sizeof(char));
+		if (!tmp) {
+			pv_log(WARN, "cannot allocate command. %s: %d ",
+			       strerror(errno), errno);
+			goto out;
+		} else {
+			cmd = tmp;
+		}
+
 		int len_o = snprintf(cmd, sizeof(char) * len, "%s " _cmd_fmt,
 				     hdl_path, rev_path);
 		if (len_o >= len) {
