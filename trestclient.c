@@ -132,7 +132,6 @@ static struct trest_response *external_login_handler(trest_ptr self, void *data)
 		// XXX: update auth status of response?
 		pv_log(ERROR, "error parsing login handler response %s",
 		       response->body);
-		rv = 0;
 		goto err;
 	}
 
