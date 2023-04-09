@@ -22,6 +22,10 @@
 #ifndef PV_VOLUMES_H
 #define PV_VOLUMES_H
 
+#include "utils/list.h"
+
+#include <stdbool.h>
+
 typedef enum {
 	DISK_UNKNOWN,
 	DISK_DIR,
