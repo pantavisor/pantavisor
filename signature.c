@@ -461,7 +461,7 @@ out:
 static char *pv_signature_get_json_files(struct dl_list *json_pairs)
 {
 	char *out;
-	int len, num_pairs, i = 0;
+	int len, i = 0;
 	struct pv_signature_pair *pair, *tmp;
 
 	len = 2;
@@ -471,7 +471,6 @@ static char *pv_signature_get_json_files(struct dl_list *json_pairs)
 
 	strcpy(out, "{");
 
-	num_pairs = dl_list_len(json_pairs);
 	dl_list_for_each_safe(pair, tmp, json_pairs, struct pv_signature_pair,
 			      list)
 	{

@@ -47,7 +47,6 @@ static struct trest_response *external_login_handler(trest_ptr self, void *data)
 {
 	char loginhandler_cmd[PATH_MAX];
 	int fd_outerr[2];
-	int rv;
 	struct trest_response *response;
 	struct pantavisor *pv;
 	char buf[PV_TRESTCLIENT_MAX_READ];
@@ -77,8 +76,7 @@ static struct trest_response *external_login_handler(trest_ptr self, void *data)
 			PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
 			pv_config_get_creds_type());
 
-	rv = pipe(fd_outerr);
-	if (rv < 0) {
+	if (pipe(fd_outerr) < 0) {
 		pv_log(ERROR,
 		       "unable to setup pipe for reading login handler output: %s",
 		       strerror(errno));
@@ -132,7 +130,6 @@ static struct trest_response *external_login_handler(trest_ptr self, void *data)
 		// XXX: update auth status of response?
 		pv_log(ERROR, "error parsing login handler response %s",
 		       response->body);
-		rv = 0;
 		goto err;
 	}
 

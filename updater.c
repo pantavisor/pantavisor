@@ -221,16 +221,15 @@ err:
 static void object_update_json(struct object_update *object_update,
 			       char *buffer, ssize_t buflen)
 {
-	buflen -= snprintf(buffer, buflen,
-			   "{\"object_name\":\"%s\""
-			   ",\"object_id\":\"%s\""
-			   ",\"total_size\":%" PRIu64 ",\"start_time\":%" PRIu64
-			   ",\"current_time\":%" PRIu64
-			   ",\"total_downloaded\":%" PRIu64 "}",
-			   object_update->object_name, object_update->object_id,
-			   object_update->total_size, object_update->start_time,
-			   object_update->current_time,
-			   object_update->total_downloaded);
+	snprintf(buffer, buflen,
+		 "{\"object_name\":\"%s\""
+		 ",\"object_id\":\"%s\""
+		 ",\"total_size\":%" PRIu64 ",\"start_time\":%" PRIu64
+		 ",\"current_time\":%" PRIu64 ",\"total_downloaded\":%" PRIu64
+		 "}",
+		 object_update->object_name, object_update->object_id,
+		 object_update->total_size, object_update->start_time,
+		 object_update->current_time, object_update->total_downloaded);
 }
 
 static int trail_remote_set_status(struct pantavisor *pv,
@@ -1625,7 +1624,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	if (use_volatile_tmp) {
 		pv_log(INFO, "copying %s to tmp path (%s)",
 		       volatile_tmp_obj_path, mmc_tmp_obj_path);
-		bytes = pv_fs_file_copy_fd(volatile_tmp_fd, obj_fd, true);
+		pv_fs_file_copy_fd(volatile_tmp_fd, obj_fd, true);
 		fd = obj_fd;
 	}
 	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);

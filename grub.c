@@ -234,7 +234,6 @@ static int grub_set_env_key(char *key, char *value)
 
 	// write new key/value pair to destination
 	memcpy(d, v, strlen(v));
-	d += strlen(v);
 
 	lseek(fd, 0, SEEK_SET);
 	ret = write(fd, new, sizeof(new));

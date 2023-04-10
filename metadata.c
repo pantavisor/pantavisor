@@ -686,7 +686,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 	char *um, *key, *value;
 
 	// parse user metadata json
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 	um = pv_json_get_value(buf, "user-meta", tokv, tokc);
 
 	if (!um) {
@@ -813,13 +813,13 @@ int pv_metadata_rm_devmeta(const char *key)
 
 void pv_metadata_parse_devmeta(const char *buf)
 {
-	int ret = 0, tokc, n;
+	int tokc, n;
 	jsmntok_t *tokv = NULL;
 	jsmntok_t **key = NULL;
 	char *metakey = NULL, *metavalue = NULL;
 
 	// parse device metadata json
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 	key = jsmnutil_get_object_keys(buf, tokv);
 
 	if (!key)

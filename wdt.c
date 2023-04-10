@@ -37,9 +37,6 @@ int fd = -1;
 
 int pv_wdt_start(struct pantavisor *pv)
 {
-	int timeout = pv_config_get_watchdog_timeout();
-	int interval = pv_config_get_updater_interval();
-
 	if (!pv_config_get_watchdog_enabled())
 		return 0;
 
@@ -52,6 +49,7 @@ int pv_wdt_start(struct pantavisor *pv)
 		return -1;
 	}
 
+	int timeout = pv_config_get_watchdog_timeout();
 	ioctl(fd, WDIOC_SETTIMEOUT, &timeout);
 	ioctl(fd, WDIOC_GETTIMEOUT, &timeout);
 
@@ -61,8 +59,6 @@ int pv_wdt_start(struct pantavisor *pv)
 	pv_wdt_kick(pv);
 
 	pv_log(DEBUG, "watchdog opened with %ds timeout", timeout);
-	interval = timeout / 2;
-	pv_log(INFO, "clamping PH update interval to wdt/2 (%ds)", interval);
 
 	return 0;
 }

@@ -203,9 +203,7 @@ static int uboot_set_env_key(char *key, char *value)
 	close(fd);
 	pv_fs_path_sync(path);
 
-	len = 0;
 	d = (char *)new;
-	s = (char *)old;
 	for (uint16_t i = 0; i < res; i++) {
 		if ((old[i] == 0xFF && old[i + 1] == 0xFF) ||
 		    (old[i] == '\0' && old[i + 1] == '\0'))
@@ -221,13 +219,11 @@ static int uboot_set_env_key(char *key, char *value)
 			d += len + 1;
 		}
 		i += len;
-		len = 0;
 	}
 
 	SNPRINTF_WTRUNC(v, sizeof(v), "%s=%s\0", key, value);
 
 	memcpy(d, v, strlen(v) + 1);
-	d += strlen(v) + 1;
 
 	fd = open(path, O_RDWR);
 	if (fd < 0) {
@@ -249,7 +245,7 @@ static int uboot_set_env_key(char *key, char *value)
 			       strerror(errno));
 	}
 	lseek(fd, 0, SEEK_SET);
-	res = write(fd, new, sizeof(new));
+	write(fd, new, sizeof(new));
 	fsync(fd);
 	close(fd);
 	pv_fs_path_sync(path);

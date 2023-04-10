@@ -254,7 +254,6 @@ err:
 static struct pv_cmd *pv_ctrl_parse_command(char *buf)
 {
 	int tokc;
-	uint8_t ret = -1;
 	jsmntok_t *tokv;
 	char *op_string = NULL;
 	struct pv_cmd *cmd = NULL;
@@ -284,8 +283,6 @@ static struct pv_cmd *pv_ctrl_parse_command(char *buf)
 		pv_log(WARN, "unable to get payload value from command");
 		goto err;
 	}
-
-	ret = 0;
 
 	goto out;
 
@@ -1331,7 +1328,7 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 {
 	char buf[HTTP_REQ_BUFFER_SIZE];
 	char *pname;
-	int buf_index = 0, res = -1;
+	int buf_index = 0;
 	const char *method, *path;
 	size_t method_len, path_len, num_headers = HTTP_REQ_NUM_HEADERS,
 				     content_length;
@@ -1361,7 +1358,7 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 
 		// if character is 3 (old code for json command), it is non-HTTP
 		if (buf[0] == 3) {
-			res = pv_ctrl_process_cmd(
+			pv_ctrl_process_cmd(
 				req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
 			goto out;
 		} else if (buf[0] == 2) {

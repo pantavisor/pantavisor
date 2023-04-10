@@ -254,7 +254,6 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 			safe_fd_set(errfd[0], &master, &max_fd);
 			if ((ret = pselect(max_fd + 1, &master, NULL, NULL, &ts,
 					   &orig_mask)) < 0) {
-				ret = -1;
 				break;
 			}
 			if (!ret) {
@@ -270,7 +269,6 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 					out_size -= res;
 					out_i += res;
 				} else if (res < 0 && errno != EAGAIN) {
-					ret = -1;
 					break;
 				}
 				if (res == 0) {
@@ -284,7 +282,6 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 					err_size -= res;
 					err_i += res;
 				} else if (res < 0 && errno != EAGAIN) {
-					ret = -1;
 					break;
 				} else if (res == 0) {
 					break;
