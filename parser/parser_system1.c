@@ -68,7 +68,7 @@ static int parse_one_driver(struct pv_state *s, char *buf)
 	if (!buf)
 		return 0;
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
@@ -311,7 +311,6 @@ out:
 
 static int parse_bsp(struct pv_state *s, char *value, int n)
 {
-	int c;
 	int ret = 0, tokc, size;
 	char *str, *buf;
 	struct pv_volume *v;
@@ -322,7 +321,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	buf = calloc(n + 1, sizeof(char));
 	buf = memcpy(buf, value, n);
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	s->bsp.img.ut.fit = pv_json_get_value(buf, "fit", tokv, tokc);
 	if (!s->bsp.img.ut.fit) {
@@ -366,7 +365,6 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	key_i = key;
 	while (*key_i) {
-		c = (*key_i)->end - (*key_i)->start;
 		if (strncmp("addons", buf + (*key_i)->start,
 			    strlen("addons"))) {
 			key_i++;
@@ -396,7 +394,7 @@ out:
 
 static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 {
-	int tokc, n, ret;
+	int tokc, n;
 	char *key, *value, *pt, *disk;
 	jsmntok_t *tokv;
 	jsmntok_t *tokv_t;
@@ -405,7 +403,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 	if (!buf)
 		return 0;
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
@@ -427,7 +425,7 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		value = malloc(n + 1);
 		snprintf(value, n + 1, "%s", buf + (*k + 1)->start);
 
-		ret = jsmnutil_parse_json(value, &tokv_t, &tokc);
+		jsmnutil_parse_json(value, &tokv_t, &tokc);
 		pt = pv_json_get_value(value, "persistence", tokv_t, tokc);
 		disk = pv_json_get_value(value, "disk", tokv_t, tokc);
 

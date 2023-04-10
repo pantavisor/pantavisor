@@ -703,7 +703,6 @@ static void logserver_remove_fd(int fd)
 
 	logserver_epoll_del(fd);
 	close(fd);
-	fd = -1;
 }
 
 static void logserver_consume_log_data(int fd)

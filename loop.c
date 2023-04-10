@@ -86,14 +86,11 @@ out:
 
 static int bind_loop_dev(char *devname, char *file, int *loop_fd, int *file_fd)
 {
-	int loopfd = *loop_fd;
-	int filefd = *file_fd;
-
-	loopfd = open(devname, O_RDWR);
+	int loopfd = open(devname, O_RDWR);
 	if (loopfd < 0)
 		return -1;
 
-	filefd = open(file, O_RDWR);
+	int filefd = open(file, O_RDWR);
 	if (filefd < 0)
 		return -1;
 

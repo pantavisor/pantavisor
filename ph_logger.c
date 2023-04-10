@@ -356,7 +356,6 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 				 * The reason being we can't differentiate between a slow
 				 * growing file and a file that doesn't grow at all.
 				 */
-				bytes_read = 0;
 				break;
 			}
 		}

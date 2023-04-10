@@ -137,7 +137,6 @@ int pv_storage_get_subdir(const char *path, const char *prefix,
 	struct dirent **dirs = NULL;
 	struct pv_path *subdir;
 
-	len = strlen(path) + strlen(prefix) + 1;
 	SNPRINTF_WTRUNC(basedir, sizeof(basedir), "%s%s", path, prefix);
 
 	n = scandir(basedir, &dirs, NULL, alphasort);

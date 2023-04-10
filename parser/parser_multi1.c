@@ -69,7 +69,6 @@ static unsigned long ns_share_flag(char *key)
 
 static int parse_pantavisor(struct pv_state *s, char *value, int n)
 {
-	int c;
 	int ret = 0, tokc, size;
 	char *str, *buf;
 	jsmntok_t *tokv;
@@ -99,7 +98,6 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	key = jsmnutil_get_object_keys(buf, tokv);
 	key_i = key;
 	while (*key_i) {
-		c = (*key_i)->end - (*key_i)->start;
 		if (strncmp("addons", buf + (*key_i)->start,
 			    strlen("addons"))) {
 			key_i++;
@@ -120,7 +118,6 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	key = jsmnutil_get_object_keys(buf, tokv);
 	key_i = key;
 	while (*key_i) {
-		c = (*key_i)->end - (*key_i)->start;
 		if (strncmp("platforms", buf + (*key_i)->start,
 			    strlen("platforms"))) {
 			key_i++;
@@ -141,7 +138,6 @@ static int parse_pantavisor(struct pv_state *s, char *value, int n)
 	key = jsmnutil_get_object_keys(buf, tokv);
 	key_i = key;
 	while (*key_i) {
-		c = (*key_i)->end - (*key_i)->start;
 		if (strncmp("volumes", buf + (*key_i)->start,
 			    strlen("volumes"))) {
 			key_i++;
@@ -175,13 +171,13 @@ out:
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	int i;
-	int tokc, ret, size;
+	int tokc, size;
 	jsmntok_t *tokv, *t;
 	char *name, *str;
 	char *configs, *shares;
 	struct pv_platform *this;
 
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 	name = pv_json_get_value(buf, "name", tokv, tokc);
 
 	this = pv_state_fetch_platform(s, name);
@@ -204,7 +200,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
-	ret = jsmnutil_parse_json(configs, &tokv, &tokc);
+	jsmnutil_parse_json(configs, &tokv, &tokc);
 	size = jsmnutil_array_count(buf, tokv);
 	t = tokv + 1;
 	this->configs = calloc(size + 1, sizeof(char *));
@@ -225,7 +221,7 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		tokv = 0;
 	}
 
-	ret = jsmnutil_parse_json(shares, &tokv, &tokc);
+	jsmnutil_parse_json(shares, &tokv, &tokc);
 	size = jsmnutil_array_count(shares, tokv);
 	t = tokv + 1;
 	this->ns_share = 0;
@@ -257,13 +253,13 @@ out:
 
 struct pv_state *multi1_parse(struct pv_state *this, const char *buf)
 {
-	int tokc, ret, count, n;
+	int tokc, count, n;
 	char *key = 0, *value = 0, *ext = 0;
 	jsmntok_t *tokv;
 	jsmntok_t **k, **keys;
 
 	// Parse full state json
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	count = pv_json_get_key_count(buf, "pantavisor.json", tokv, tokc);
 	if (!count || (count > 1)) {
