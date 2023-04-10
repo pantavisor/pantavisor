@@ -161,9 +161,7 @@ static char *uboot_get_env_key(char *key)
 			continue;
 
 		if (!strncmp(buf + k, key, n)) {
-			len = strlen(buf + k + n + 1);
-			value = calloc(len + 1, sizeof(char));
-			strcpy(value, buf + k + n + 1);
+			value = strdup(buf + k + n + 1);
 			break;
 		}
 		k = i + 1;
