@@ -25,6 +25,7 @@
 
 #include <time.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum { RELATIV_TIMER, ABSOLUTE_TIMER } timer_type_t;
 

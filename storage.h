@@ -22,6 +22,11 @@
 #ifndef PV_STORAGE_H
 #define PV_STORAGE_H
 
+#include "utils/list.h"
+
+#include <stdbool.h>
+#include <sys/types.h>
+
 #define PREFIX_LOCAL_REV "locals/"
 #define SIZE_LOCAL_REV 64
 
