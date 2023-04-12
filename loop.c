@@ -81,10 +81,7 @@ static int get_free_loop(char *devname)
 
 	// in case we are inside container where loop devices are not
 	// auto created we try out best to set this up ourselves
-	if (mknod(devname, S_IFBLK | 0600, makedev (7, dev))) {
-		pv_log(ERROR, "unable to make loop file %s: %s", devname, strerror(errno));
-		goto out;
-	}
+	mknod(devname, S_IFBLK | 0600, makedev (7, dev));
 
 out:
 	if (lctlfd > 0)
