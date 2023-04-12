@@ -19,6 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -28,6 +29,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/sysmacros.h>
 
 #include <linux/loop.h>
 #include <linux/limits.h>
@@ -76,6 +78,13 @@ static int get_free_loop(char *devname)
 
 	SNPRINTF_WTRUNC(devname, PATH_MAX, "/dev/loop%d", dev);
 	ret = 0;
+
+	// in case we are inside container where loop devices are not
+	// auto created we try out best to set this up ourselves
+	if (mknod(devname, S_IFBLK | 0600, makedev (7, dev))) {
+		pv_log(ERROR, "unable to make loop file %s: %s", devname, strerror(errno));
+		goto out;
+	}
 
 out:
 	if (lctlfd > 0)
