@@ -159,11 +159,9 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
 	char **args;
 	char *vcmd;
 
-	vcmd = malloc(strlen(cmd) + 1);
+	vcmd = strdup(cmd);
 	if (!vcmd)
 		return -1;
-
-	strcpy(vcmd, cmd);
 
 	args = _tsh_split_cmd(vcmd);
 	if (!args)
@@ -204,11 +202,9 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 	memset(outfd, -1, sizeof(outfd));
 	memset(errfd, -1, sizeof(errfd));
 
-	vcmd = malloc(strlen(cmd) + 1);
+	vcmd = strdup(cmd);
 	if (!vcmd)
 		goto out;
-
-	strcpy(vcmd, cmd);
 
 	args = _tsh_split_cmd(vcmd);
 	if (!args)
