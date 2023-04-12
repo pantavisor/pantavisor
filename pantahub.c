@@ -463,7 +463,7 @@ err:
 int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 {
 	int ret = 0;
-	char *owner = 0;
+	char *owner = 0, *challenge = 0;
 	trest_request_ptr req = 0;
 	trest_response_ptr res = 0;
 
@@ -495,13 +495,17 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 			goto out;
 		}
 
-		*c = pv_json_get_value(res->body, "challenge", res->json_tokv,
-				       res->json_tokc);
+		challenge = pv_json_get_value(res->body, "challenge",
+					      res->json_tokv, res->json_tokc);
+
+		strcpy(*c, challenge);
 	}
 
 out:
 	if (owner)
 		free(owner);
+	if (challenge)
+		free(challenge);
 	if (req)
 		trest_request_free(req);
 	if (res)
