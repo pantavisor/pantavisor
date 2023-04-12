@@ -132,24 +132,18 @@ void pv_network_update_meta(struct pantavisor *pv)
 				family == AF_INET ? "ipv4" : "ipv6");
 		size = sizeof(IFACE_FMT) + strlen(ifn) + strlen(ifaddrs);
 		buf = calloc(size, sizeof(char));
-
-		size_t prev_len = len;
-
 		len += snprintf(buf, size, IFACE_FMT, ifn, ifaddrs);
 		len++;
 		ifaces = realloc(ifaces, len);
-
-		if (ifa->ifa_next)
-			snprintf(ifaces + prev_len, size + 1, "%s,", buf);
-		else
-			snprintf(ifaces + prev_len, size + 1, "%s,", buf);
-
+		strcat(ifaces, buf);
 		free(buf);
+		if (ifa->ifa_next != NULL)
+			strcat(ifaces, ",");
 	}
 	free(ifaddrs);
 
 	ifaces = realloc(ifaces, len + 1);
-	ifaces[len] = '}';
+	strcat(ifaces, "}");
 
 	pv_metadata_add_devmeta(DEVMETA_KEY_INTERFACES, ifaces);
 

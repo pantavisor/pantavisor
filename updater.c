@@ -106,17 +106,16 @@ static char *unescape_utf8_to_apvii(char *buf, char *code, char c)
 	int pos = 0, replaced = 0;
 	char *tmp;
 
-	size_t tmp_sz = strlen(buf) + strlen(code) + 1;
-	tmp = calloc(tmp_sz, sizeof(char));
-	snprintf(tmp, tmp_sz, "%s%s", buf, code);
-
+	tmp = malloc(strlen(buf) + strlen(code) + 1);
+	strcpy(tmp, buf);
+	strcat(tmp, code);
 	old = tmp;
 
 	p = strstr(tmp, code);
 	while (p) {
 		*p = '\0';
 		new = realloc(new, pos + strlen(tmp) + 2);
-		snprintf(new + pos, strlen(tmp) + 1, "%s", tmp);
+		strcpy(new + pos, tmp);
 		pos = pos + strlen(tmp);
 		new[pos] = c;
 		pos += 1;

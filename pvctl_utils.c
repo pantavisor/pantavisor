@@ -60,7 +60,7 @@ try_again:
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
 
-	strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+	strcpy(addr.sun_path, path);
 
 	ret = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0) {

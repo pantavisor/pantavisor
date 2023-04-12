@@ -111,7 +111,7 @@ static int read_grubenv(char *path, char *buf, int writable)
 
 static char *grub_get_env_key(char *key)
 {
-	int fd, len, klen;
+	int fd, len, klen, vlen;
 	char buf[1024];
 	char *next, *value = NULL;
 
@@ -130,7 +130,9 @@ static char *grub_get_env_key(char *key)
 		buf[i] = '\0';
 
 		if (!strncmp(next, key, klen)) {
-			value = strdup(next + klen + 1);
+			vlen = strlen(next + klen + 1);
+			value = calloc(vlen + 1, sizeof(char));
+			strcpy(value, next + klen + 1);
 			break;
 		}
 		next = buf + i + 1;
