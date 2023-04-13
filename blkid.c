@@ -113,10 +113,8 @@ static void store_tag(char *tag, char *buf, struct blkid_info *info)
 
 static void do_blkid(int fd, char *name, struct blkid_info *info)
 {
-	int off, i, j, len;
+	int off = 0, i, j, len;
 	char buf[128], *type, *s;
-
-	off = i = 0;
 
 	for (;;) {
 		int pass = 0;

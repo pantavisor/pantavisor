@@ -341,7 +341,7 @@ out:
 static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 {
 	int need_register = 1;
-	char *c;
+	char *c = NULL;
 	char path[PATH_MAX];
 
 	struct timer_state tstate =
@@ -351,8 +351,6 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 
 	timer_start(&timer_updater_interval, pv_config_get_updater_interval(),
 		    0, RELATIV_TIMER);
-
-	c = calloc(128, sizeof(char));
 
 	pv_config_load_unclaimed_creds();
 
@@ -365,8 +363,6 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 					ph_state_string(PH_STATE_REGISTER));
 		if (!pv_ph_register_self(pv)) {
 			pv_ph_release_client(pv);
-			if (c)
-				free(c);
 			return PV_STATE_WAIT;
 		}
 		pv_config_save_creds();
