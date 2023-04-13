@@ -1009,7 +1009,7 @@ static int on_factory_meta_iterate(char *key, char *value, void *opaque)
 	char file[PATH_MAX];
 	char *fname = NULL;
 
-	strcpy(file, json_buf->factory_file);
+	strncpy(file, json_buf->factory_file, PATH_MAX - 1);
 	fname = basename(file);
 	SNPRINTF_WTRUNC(abs_key, sizeof(abs_key), "factory/%s/%s", fname, key);
 	formatted_key = pv_json_format(abs_key, strlen(abs_key));
