@@ -205,6 +205,8 @@ static int trail_remote_init(struct pantavisor *pv)
 
 	pv->remote = remote;
 
+	free(endpoint_trail);
+
 	return 0;
 
 err:

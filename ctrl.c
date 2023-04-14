@@ -554,11 +554,10 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 			strncpy(value, headers[header_index].value,
 				headers[header_index].value_len);
 			ret = strtol(value, NULL, 10);
+			free(value);
 		}
 	}
 
-	if (value)
-		free(value);
 	return ret;
 }
 

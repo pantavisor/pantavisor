@@ -683,7 +683,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 	int ret = 0, tokc, n;
 	jsmntok_t *tokv;
 	jsmntok_t **keys, **key_i;
-	char *um, *key, *value;
+	char *um, *key = NULL, *value;
 
 	// parse user metadata json
 	jsmnutil_parse_json(buf, &tokv, &tokc);
@@ -746,6 +746,8 @@ out:
 		free(um);
 	if (tokv)
 		free(tokv);
+	if (key)
+		free(key);
 
 	return ret;
 }

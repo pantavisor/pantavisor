@@ -190,7 +190,7 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 {
 	int ret = -1, max_fd = -1, res, out_i = 0, err_i = 0;
 	pid_t pid = -1;
-	char **args;
+	char **args = NULL;
 	char *vcmd = NULL;
 	fd_set master;
 	int outfd[2], errfd[2];
@@ -291,6 +291,7 @@ out:
 	if (pid == 0) {
 		close(outfd[1]);
 		close(errfd[1]);
+		free(args);
 		exit(127);
 	} else {
 	waitpidagain:
@@ -327,6 +328,9 @@ out:
 
 	if (vcmd)
 		free(vcmd);
+
+	if (args)
+		free(args);
 
 	return ret;
 }
