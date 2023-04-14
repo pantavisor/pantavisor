@@ -493,6 +493,9 @@ int pv_volume_mount(struct pv_volume *v)
 	v->umount_cmd = umount_cmd;
 
 out:
+	if(umount_cmd)
+		free(umount_cmd);
+
 	if (handler)
 		free(handler);
 	return ret;

@@ -801,8 +801,8 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
 	int fd = -1, n, tokc;
 	int ret = 0;
-	char *buf = 0, *key = 0, *ext = 0;
-	char *value = 0, *file = 0, *dir = 0;
+	char *buf = 0, *key = 0, *tmp_k = 0, *ext = 0;
+	char *value = 0, *tmp_val = 0, *file = 0, *dir = 0;
 	char path[PATH_MAX];
 	struct stat st;
 	jsmntok_t *tokv = 0;
@@ -823,27 +823,39 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 		n = (*k)->end - (*k)->start + 1;
 
 		// copy key
-		key = malloc(n + 1);
+		tmp_k = realloc(key, n + 1);
+		if (tmp_k) {
+			key = tmp_k;
+		} else {
+			ret = 0;
+			goto out;
+		}
+
 		key[n] = 0;
 		snprintf(key, n, "%s", buf + (*k)->start);
 		ext = strrchr(key, '.');
 		if (!ext || strcmp(ext, ".json")) {
-			free(key);
 			k++;
 			continue;
 		}
 
 		// copy value
 		n = (*k + 1)->end - (*k + 1)->start + 1;
-		value = malloc(n + 1);
+		tmp_val = realloc(value, n + 1);
+
+		if (tmp_val) {
+			value = tmp_val;
+		} else {
+			ret = 0;
+			goto out;
+		}
+
 		value[n] = 0;
 		snprintf(value, n, "%s", buf + (*k + 1)->start);
 
 		// also skip unpacking this if json is a sha256 hex encoded string
 		if ((*k + 1)->type == JSMN_STRING &&
 		    pv_is_sha256_hex_string(value)) {
-			free(key);
-			free(value);
 			k++;
 			continue;
 		}
@@ -876,6 +888,10 @@ out:
 		free(tokv);
 	if (fd > 0)
 		close(fd);
+	if (key)
+		free(key);
+	if (value)
+		free(value);
 
 	return ret;
 }

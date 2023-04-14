@@ -58,8 +58,10 @@ static char *_sub_meta_values(char *str)
 
 	while ((_at = strchr(str + _start, '$')) != NULL) {
 		_t = strchr(_at, '{');
-		if (!_t || ((_t - _at) != 1))
+		if (!_t || ((_t - _at) != 1)) {
+			free(new);
 			return NULL;
+		}
 		_t++;
 		memcpy(new + _nt, str + _start, (_at - (str + _end)));
 		_nt = _nt + (_at - (str + _end));
@@ -72,9 +74,15 @@ static char *_sub_meta_values(char *str)
 		if (_param) {
 			if (_nt + strlen(_param) + 1 > newlen) {
 				newlen += strlen(_param) + 1;
-				new = realloc(new, newlen);
-				if (!new)
+				char *p = realloc(new, newlen);
+				if (!p) {
+					if (_tstr)
+						free(_tstr);
+					free(new);
 					return NULL;
+				} else {
+					new = p;
+				}
 			}
 			memcpy(new + _nt, _param, strlen(_param) + 1);
 			_nt += strlen(_param);

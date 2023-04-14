@@ -174,16 +174,18 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 
 	// take null terminate copy of item to parse
 	buf = calloc(len + 1, sizeof(char));
-	buf = memcpy(buf, v, len);
 
 	if (!buf)
 		return 0;
+
+	buf = memcpy(buf, v, len);
 
 	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	if (!keys) {
 		pv_log(ERROR, "drivers list cannot be parsed");
+		free(buf);
 		return 0;
 	}
 	k = keys;
@@ -220,6 +222,9 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 		k++;
 	}
 	jsmnutil_tokv_free(keys);
+
+	if (buf)
+		free(buf);
 
 	return 1;
 }
@@ -1800,10 +1805,14 @@ static char *parse_config_name(char *value, int n)
 
 	// take null terminate copy of item to parse
 	buf = calloc(n + 1, sizeof(char));
+	if (!buf)
+		return NULL;
 	buf = memcpy(buf, value, n);
 
-	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		free(buf);
 		return NULL;
+	}
 
 	config_name = pv_json_get_value(buf, "initrd_config", tokv, tokc);
 

@@ -256,6 +256,10 @@ static int config_sysctl_apply(char *key, char *value, void *opaque)
 	char *start = key + strlen("sysctl");
 	char *path =
 		calloc(strlen("/proc/sys") + strlen(start) + 1, sizeof(char));
+
+	if (!path)
+		return -1;
+
 	sprintf(path, "%s", "/proc/sys");
 
 	char *next = start;
@@ -269,11 +273,14 @@ static int config_sysctl_apply(char *key, char *value, void *opaque)
 	if (fd < 0) {
 		pv_log(ERROR, "open failed for sysctl node %s with '%s'", path,
 		       strerror(errno));
+
+		free(path);
 		return -1;
 	}
 
 	write(fd, value, strlen(value));
 	close(fd);
+	free(path);
 
 	return 0;
 }

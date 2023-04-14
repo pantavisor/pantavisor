@@ -80,6 +80,8 @@ static void pv_signature_free_headers_pvs(struct pv_signature_headers_pvs *pvs)
 		free(pvs->include);
 	if (pvs->exclude)
 		free(pvs->exclude);
+
+	free(pvs);
 }
 
 static void pv_signature_free_headers(struct pv_signature_headers *headers)
@@ -93,6 +95,8 @@ static void pv_signature_free_headers(struct pv_signature_headers *headers)
 		free(headers->alg);
 	if (headers->x5c)
 		free(headers->x5c);
+
+	free(headers);
 }
 
 static void pv_signature_free(struct pv_signature *signature)
@@ -104,6 +108,7 @@ static void pv_signature_free(struct pv_signature *signature)
 		free(signature->protected);
 	if (signature->signature)
 		free(signature->signature);
+	free(signature);
 }
 static void pv_signature_free_cert_raw(struct pv_signature_cert_raw *cert_raw)
 {
@@ -309,6 +314,8 @@ static void pv_signature_free_pair(struct pv_signature_pair *file)
 		free(file->key);
 	if (file->value)
 		free(file->value);
+
+	free(file);
 }
 
 static void pv_signature_free_pairs(struct dl_list *json_pairs)
@@ -326,7 +333,7 @@ static void pv_signature_free_pairs(struct dl_list *json_pairs)
 static void pv_signature_include_files(const char *json, bool include,
 				       struct dl_list *json_pairs)
 {
-	char *str = NULL, *path = NULL;
+	char *str = NULL, *path = NULL, *path_buf = NULL;
 	int tokc, size;
 	jsmntok_t *tokv, *t;
 	int fnflags;
@@ -354,17 +361,19 @@ static void pv_signature_include_files(const char *json, bool include,
 		fnflags = FNM_PATHNAME;
 
 		if (pv_str_matches("**", 2, str, strlen(str))) {
-			path = strdup("");
+			path_buf = strdup("");
+			path = path_buf;
 			fnflags |= FNM_LEADING_DIR;
 		} else if (pv_str_endswith("/**", strlen("/**"), str,
 					   strlen(str))) {
 			// if ** is in include, set path for fnmatch w/ FNM_LEADING_DIR
-			path = strdup(str);
-			path = dirname(path);
+			path_buf = strdup(str);
+			path = dirname(path_buf);
 			fnflags |= FNM_LEADING_DIR;
 		} else {
 			// boaring dup
-			path = strdup(str);
+			path_buf = strdup(str);
+			path = path_buf;
 		}
 
 		// if none of the above, include the pair that matches
@@ -381,8 +390,8 @@ static void pv_signature_include_files(const char *json, bool include,
 			free(str);
 			str = NULL;
 		}
-		if (path) {
-			free(path);
+		if (path_buf) {
+			free(path_buf);
 			path = NULL;
 		}
 	}
@@ -751,6 +760,8 @@ static bool pv_signature_verify_sha(const char *payload,
 	ret = true;
 
 out:
+	if (payload_encoded)
+		free(payload_encoded);
 	if (files_encoded)
 		free(files_encoded);
 	if (sig_decoded)
@@ -791,15 +802,20 @@ static void pv_signature_parse_json(const char *json,
 
 		// copy key
 		pair->key = calloc(n + 1, sizeof(char));
-		if (!pair->key)
+		if (!pair->key) {
+			pv_signature_free_pair(pair);
 			goto out;
+		}
 		snprintf(pair->key, n + 1, "%s", json + (*k)->start);
 
 		// copy value
 		n = (*k + 1)->end - (*k + 1)->start;
 		pair->value = calloc(n + 1, sizeof(char));
-		if (!pair->value)
+		if (!pair->value) {
+			pv_signature_free_pair(pair);
 			goto out;
+		}
+
 		snprintf(pair->value, n + 1, "%s", json + (*k + 1)->start);
 
 		dl_list_add_tail(json_pairs, &pair->list);

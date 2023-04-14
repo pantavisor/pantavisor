@@ -1095,7 +1095,7 @@ static char *_pv_state_get_novalidate_list(char *rev)
 	char *_sout = sout, *_serr = serr;
 	char *result = NULL;
 	int res;
-	char *cmd = NULL;
+	char *cmd = NULL, *tmp_cmd = NULL;
 	struct dirent *dp;
 	DIR *volmountdir;
 
@@ -1132,7 +1132,14 @@ static char *_pv_state_get_novalidate_list(char *rev)
 		// shall return an empty result...
 		int len = (ARRAY_LEN(_cmd_fmt) + strlen(hdl_path) +
 			   strlen(rev_path) + 2);
-		cmd = realloc(cmd, len * sizeof(char));
+		tmp_cmd = realloc(cmd, len * sizeof(char));
+
+		if (tmp_cmd) {
+			cmd = tmp_cmd;
+		} else {
+			goto out;
+		}
+
 		int len_o = snprintf(cmd, sizeof(char) * len, "%s " _cmd_fmt,
 				     hdl_path, rev_path);
 		if (len_o >= len) {
