@@ -725,7 +725,7 @@ static bool pv_signature_verify_sha(const char *payload,
 	strcat(payload_encoded, ".");
 	strcat(payload_encoded, files_encoded);
 
-	hash = calloc(128, sizeof(char));
+	hash = calloc(128, sizeof(unsigned char));
 	if (!hash) {
 		pv_log(ERROR, "cannot allocate hash");
 		goto out;
