@@ -254,7 +254,7 @@ err:
 static struct pv_cmd *pv_ctrl_parse_command(char *buf)
 {
 	int tokc;
-	jsmntok_t *tokv;
+	jsmntok_t *tokv = NULL;
 	char *op_string = NULL;
 	struct pv_cmd *cmd = NULL;
 

@@ -74,7 +74,7 @@ static struct config_item *_config_add_item(struct dl_list *list, char *key,
 	}
 
 	// New item
-	this = (struct config_item *)malloc(sizeof(struct config_item));
+	this = calloc(1, sizeof(struct config_item));
 
 	if (!this) {
 		pv_log(ERROR, "unable to allocate config item");
