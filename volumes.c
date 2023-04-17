@@ -393,6 +393,12 @@ int pv_volume_mount(struct pv_volume *v)
 		} else if (handler && (!getenv("pv_verityoff") &&
 				       pv_config_get_secureboot_handlers())) {
 			pv_log(INFO, "with '%s' handler", handler);
+
+			if (!partname) {
+				pv_log(DEBUG, "No partname == null, aborting");
+				goto out;
+			}
+
 			pv_paths_lib_volmount(script, PATH_MAX, "verity",
 					      handler);
 			command = malloc(sizeof(char) *

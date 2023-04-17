@@ -125,7 +125,7 @@ static char *unescape_utf8_to_apvii(char *buf, char *code, char c)
 		p = strstr(tmp, code);
 	}
 
-	if (new[strlen(new) - 1] == c)
+	if (new && new[strlen(new) - 1] == c)
 		new[strlen(new) - 1] = '\0';
 
 	if (old)
@@ -1821,7 +1821,9 @@ static int trail_download_objects(struct pantavisor *pv)
 			return -1;
 		}
 	}
-	u->total_update->current_time = time(NULL);
+	if (u->total_update)
+		u->total_update->current_time = time(NULL);
+
 	pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
 	pv_objects_iter_end;
 	return 0;

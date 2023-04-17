@@ -792,12 +792,16 @@ static int logserver_process_fd(int curfd)
 	return ret;
 
 clean_all:
+	if (ret != 0) {
+		if (lfd)
+			pv_log(DEBUG, "couldn't subscribe fd (%d) for %s:%s",
+			       lfd->fd, lfd->platform, lfd->src);
+		else
+			pv_log(DEBUG, "couldn't subcribe fd (lfd == NULL)");
+	}
+
 	if (lfd)
 		logserver_fd_free(lfd);
-
-	if (ret != 0)
-		pv_log(DEBUG, "couldn't subscribe fd (%d) for %s:%s", lfd->fd,
-		       lfd->platform, lfd->src);
 
 	return ret;
 }
