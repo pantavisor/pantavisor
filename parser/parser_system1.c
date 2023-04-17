@@ -206,6 +206,8 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 				pv_log(ERROR, "unable to parse drivers");
 				free(key);
 				free(value);
+				free(buf);
+				jsmnutil_tokv_free(keys);
 				return 0;
 			}
 		}
