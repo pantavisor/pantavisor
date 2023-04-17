@@ -168,7 +168,7 @@ static bool driver_should_parse(char *key)
 static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 {
 	int tokc, n;
-	char *buf, *key, *value;
+	char *buf, *key, *value = NULL;
 	jsmntok_t *tokv;
 	jsmntok_t **k, **keys;
 
@@ -1141,7 +1141,7 @@ static int do_action_for_drivers(struct json_key_action *jka, char *value)
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	char *config = NULL, *shares = NULL;
-	struct pv_platform *this;
+	struct pv_platform *this = NULL;
 	int ret = 0;
 	struct platform_bundle bundle = {
 		.s = s,

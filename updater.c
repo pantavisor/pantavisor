@@ -1474,7 +1474,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	char mmc_tmp_obj_path[PATH_MAX];
 	char volatile_tmp_obj_path[] = VOLATILE_TMP_OBJ_PATH;
 	unsigned char buf[4096];
-	unsigned char cloud_sha[32];
+	unsigned char cloud_sha[32] = { 0 };
 	unsigned char local_sha[32];
 	struct stat st;
 	mbedtls_sha256_context sha256_ctx;
