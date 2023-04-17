@@ -1057,7 +1057,7 @@ static int do_action_for_one_log(struct json_key_action *jka, char *value)
 		goto free_config;
 	}
 
-	config->pair = (const char ***)calloc(key_count + 1, sizeof(char *));
+	config->pair = calloc(key_count + 1, sizeof(char **));
 	if (!config->pair) {
 		ret = -1;
 		goto free_config;
