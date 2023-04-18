@@ -602,11 +602,14 @@ out:
 		close(obj_fd);
 }
 
-static char *pv_ctrl_get_file_name(const char *path, int buf_index,
+static char *pv_ctrl_get_file_name(const char *path, size_t buf_index,
 				   size_t path_len)
 {
 	int len;
 	char *file_name;
+
+	if (buf_index > path_len)
+		return NULL;
 
 	len = path_len - buf_index;
 
@@ -1368,8 +1371,8 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 
 		// if character is 3 (old code for json command), it is non-HTTP
 		if (buf[0] == 3) {
-			pv_ctrl_process_cmd(
-				req_fd, HTTP_REQ_BUFFER_SIZE - 1, &cmd);
+			pv_ctrl_process_cmd(req_fd, HTTP_REQ_BUFFER_SIZE - 1,
+					    &cmd);
 			goto out;
 		} else if (buf[0] == 2) {
 			write(req_fd, UNSUPPORTED_LOG_COMMAND_FMT,

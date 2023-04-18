@@ -117,6 +117,7 @@ static void pv_signature_free_cert_raw(struct pv_signature_cert_raw *cert_raw)
 
 	if (cert_raw->content)
 		free(cert_raw->content);
+	free(cert_raw);
 }
 
 static void pv_signature_free_certs_raw(struct dl_list *certs_raw)
@@ -429,8 +430,6 @@ static bool pv_signature_get_certs_raw(const char *x5c,
 	int tokc, size;
 	jsmntok_t *tokv, *t;
 	struct pv_signature_cert_raw *cert_raw;
-
-	dl_list_init(certs_raw);
 
 	// x5c field is optional
 	if (!x5c)
@@ -841,6 +840,8 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 	struct pv_signature_headers *headers = NULL;
 	struct dl_list certs_raw; // pv_signature_cert_raw
 	mbedtls_md_type_t mdtype = MBEDTLS_MD_NONE;
+
+	dl_list_init(&certs_raw);
 
 	headers = pv_signature_parse_protected(signature->protected);
 	if (!headers) {

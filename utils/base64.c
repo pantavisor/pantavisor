@@ -82,6 +82,9 @@ int pv_base64_decode(const char *src, char **dst, size_t *olen)
 	ilen = strlen(src);
 	len = ((4 * ilen / 3) + 3) & ~3;
 
+	if (len < 1)
+		goto err;
+
 	*dst = calloc(len, sizeof(char));
 	if (!*dst)
 		goto err;
