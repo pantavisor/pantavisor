@@ -718,6 +718,9 @@ static bool pv_signature_verify_sha(const char *payload,
 		goto out;
 	}
 
+	if (!signature->protected)
+		goto out;
+
 	payload_encoded =
 		calloc(strlen(files_encoded) + strlen(signature->protected) + 2,
 		       sizeof(char));

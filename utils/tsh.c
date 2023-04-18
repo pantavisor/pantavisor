@@ -233,7 +233,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		// uncomment below to try how child that ignores SIGTERM
 		// also gets reaped
 		// signal(SIGTERM, SIG_IGN);
-		execvp(args[0], args);
+		if (args && args[0])
+			execvp(args[0], args);
 		goto out;
 	} else {
 		close(outfd[1]);
