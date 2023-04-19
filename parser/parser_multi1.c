@@ -280,6 +280,7 @@ struct pv_state *multi1_parse(struct pv_state *this, const char *buf)
 		goto out;
 	}
 	free(value);
+	value = NULL;
 
 	keys = jsmnutil_get_object_keys(buf, tokv);
 	k = keys;

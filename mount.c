@@ -93,7 +93,7 @@ void pv_mount_umount(void)
 static int pv_mount_init(struct pv_init *this)
 {
 	struct stat st;
-	struct blkid_info dev_info;
+	struct blkid_info dev_info = { 0 };
 	char path[PATH_MAX];
 	int ret = -1;
 

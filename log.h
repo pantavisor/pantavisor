@@ -30,7 +30,7 @@
 #include "pantavisor.h"
 #include <stdarg.h>
 
-void exit_error(int err, char *msg);
+void exit_error(int err, char *msg) __attribute__((__noreturn__));
 
 enum log_level {
 	FATAL, // 0

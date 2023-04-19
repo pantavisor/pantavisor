@@ -105,6 +105,8 @@ static int pv_buffer_init_cache(int items, int size, struct dl_list *head)
 			free(item);
 		}
 	}
+
+	dl_list_init(head);
 	while (items > 0) {
 		struct buffer *buffer = NULL;
 

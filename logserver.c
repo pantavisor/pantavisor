@@ -374,6 +374,7 @@ static int pv_log(int level, char *msg, ...)
 			return 1;
 		vsnprintf(msg_data.data, msg_data.data_len, msg, args);
 		logserver_log_msg_data_stdout(&msg_data);
+		free(msg_data.data);
 
 	} else if (logserver_g.pid == 0) {
 		struct buffer *pv_buffer = pv_buffer_get(true);
@@ -565,7 +566,7 @@ static void logserver_fd_free(struct logserver_fd *lfd)
 
 static bool logserver_list_exists(struct dl_list *lst, int fd)
 {
-	struct logserver_fd *it, *tmp;
+	struct logserver_fd *it = NULL, *tmp = NULL;
 
 	dl_list_for_each_safe(it, tmp, lst, struct logserver_fd, list)
 	{
@@ -934,7 +935,8 @@ static void logserver_drop_fds(struct dl_list *lst)
 	struct logserver_fd *it, *tmp;
 	dl_list_for_each_safe(it, tmp, lst, struct logserver_fd, list)
 	{
-		logserver_remove_fd(it->fd);
+		logserver_epoll_del(it->fd);
+		dl_list_del(&it->list);
 		logserver_fd_free(it);
 	}
 }
