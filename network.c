@@ -39,11 +39,15 @@
 #include <linux/if.h>
 #include <linux/sockios.h>
 
+#include <jsmn/jsmnutil.h>
+
 #include "pantahub.h"
 #include "network.h"
 #include "init.h"
 #include "metadata.h"
 #include "utils/str.h"
+#include "utils/json.h"
+#include "utils/list.h"
 
 #define MODULE_NAME "network"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -51,8 +55,8 @@
 
 #define ifreq_offsetof(x) offsetof(struct ifreq, x)
 
-#define IFACES_FMT "{"
-#define IFACE_FMT "\"%s\":[%s]"
+// max len of iface + .ipvN + '\0'
+#define IFACE_KEY_SIZE IFNAMSIZ + 5 + 1
 
 static int _set_netmask(int skfd, char *intf, char *newmask)
 {
@@ -70,85 +74,94 @@ static int _set_netmask(int skfd, char *intf, char *newmask)
 	return 0;
 }
 
+static struct ifaddrs *_get_sort_ifaces(void)
+{
+	struct ifaddrs *iface = NULL;
+
+	if (getifaddrs(&iface) < 0) {
+		pv_log(DEBUG, "error calling getifaddrs()");
+		return NULL;
+	}
+
+	struct ifaddrs *com = iface;
+	struct ifaddrs *cur = iface;
+
+	while (com) {
+		if (!cur->ifa_next ||
+		    strcmp(com->ifa_name, cur->ifa_next->ifa_name)) {
+			cur = cur->ifa_next;
+			if (!cur) {
+				com = com->ifa_next;
+				cur = com;
+			}
+		} else if (!strcmp(com->ifa_name, cur->ifa_next->ifa_name)) {
+			if (com == cur) {
+				com = com->ifa_next;
+				cur = cur->ifa_next;
+			} else {
+				struct ifaddrs *tmp = com->ifa_next;
+				com->ifa_next = cur->ifa_next;
+				cur->ifa_next = cur->ifa_next->ifa_next;
+				com = com->ifa_next;
+				com->ifa_next = tmp;
+				cur = com;
+			}
+		}
+	}
+
+	return iface;
+}
+
 void pv_network_update_meta(struct pantavisor *pv)
 {
-	struct ifaddrs *ifaddr, *ifa;
-	int family, n, len, ilen = 0;
-	int size;
-	char host[NI_MAXHOST], ifn[IFNAMSIZ + 5], iff[IFNAMSIZ + 5];
-	char *t, *buf, *ifaces = 0, *ifaddrs = 0;
+	struct ifaddrs *ifaddr = _get_sort_ifaces();
 
-	if (getifaddrs(&ifaddr) < 0) {
-		pv_log(DEBUG, "error calling getifaddrs()");
-		return;
-	}
+	struct pv_json_ser js;
+	pv_json_ser_init(&js, 512);
+	pv_json_ser_object(&js);
 
-	len = sizeof(IFACES_FMT);
-	ifaces = strdup(IFACES_FMT);
+	char last[IFACE_KEY_SIZE] = { 0 };
+	char cur[IFACE_KEY_SIZE] = { 0 };
+	char host[NI_MAXHOST] = { 0 };
 
-	for (ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
-		if (ifa->ifa_addr == NULL)
+	for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+		if (!ifa->ifa_addr)
 			continue;
 
-		family = ifa->ifa_addr->sa_family;
-		if (family == AF_PACKET)
+		char *family = NULL;
+		size_t size = 0;
+		if (ifa->ifa_addr->sa_family == AF_PACKET) {
 			continue;
-
-		getnameinfo(ifa->ifa_addr,
-			    (family == AF_INET) ? sizeof(struct sockaddr_in) :
-							sizeof(struct sockaddr_in6),
-			    host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
-
-		SNPRINTF_WTRUNC(iff, sizeof(iff), "%s.%s", ifa->ifa_name,
-				family == AF_INET ? "ipv4" : "ipv6");
-		if (!strcmp(ifn, iff)) {
-			ilen += strlen(host) + 4;
-			ifaddrs = realloc(ifaddrs, ilen);
-			t = strdup(ifaddrs);
-			SNPRINTF_WTRUNC(ifaddrs, ilen, "%s,\"%s\"", t, host);
-			free(t);
+		} else if (ifa->ifa_addr->sa_family == AF_INET) {
+			family = "ipv4";
+			size = sizeof(struct sockaddr_in);
 		} else {
-			SNPRINTF_WTRUNC(ifn, sizeof(ifn), "%s.%s",
-					ifa->ifa_name,
-					family == AF_INET ? "ipv4" : "ipv6");
-			ilen = 0;
-			ilen += strlen(host) + 4;
-			ifaddrs = realloc(ifaddrs, ilen);
-			SNPRINTF_WTRUNC(ifaddrs, ilen, "\"%s\"", host);
-		}
-		if (ifa->ifa_next != NULL) {
-			SNPRINTF_WTRUNC(iff, sizeof(iff), "%s.%s",
-					ifa->ifa_next->ifa_name,
-					ifa->ifa_next->ifa_addr->sa_family ==
-							AF_INET ?
-						      "ip4" :
-						      "ipv6");
-
-			if (!strncmp(ifn, iff, sizeof(ifn)))
-				continue;
+			family = "ipv6";
+			size = sizeof(struct sockaddr_in6);
 		}
 
-		SNPRINTF_WTRUNC(ifn, sizeof(ifn), "%s.%s", ifa->ifa_name,
-				family == AF_INET ? "ipv4" : "ipv6");
-		size = sizeof(IFACE_FMT) + strlen(ifn) + strlen(ifaddrs);
-		buf = calloc(size, sizeof(char));
-		len += snprintf(buf, size, IFACE_FMT, ifn, ifaddrs);
-		len++;
-		ifaces = realloc(ifaces, len);
-		strcat(ifaces, buf);
-		free(buf);
-		if (ifa->ifa_next != NULL)
-			strcat(ifaces, ",");
+		getnameinfo(ifa->ifa_addr, size, host, NI_MAXHOST, NULL, 0,
+			    NI_NUMERICHOST);
+
+		snprintf(cur, IFACE_KEY_SIZE, "%s.%s", ifa->ifa_name, family);
+		if (strncmp(cur, last, IFACE_KEY_SIZE)) {
+			if (strlen(last) > 0)
+				pv_json_ser_array_pop(&js);
+
+			strncpy(last, cur, IFACE_KEY_SIZE);
+			pv_json_ser_key(&js, last);
+			pv_json_ser_array(&js);
+		}
+		pv_json_ser_string(&js, host);
 	}
-	free(ifaddrs);
+	pv_json_ser_array_pop(&js);
+	pv_json_ser_object_pop(&js);
 
-	ifaces = realloc(ifaces, len + 1);
-	strcat(ifaces, "}");
-
-	pv_metadata_add_devmeta(DEVMETA_KEY_INTERFACES, ifaces);
+	char *str = pv_json_ser_str(&js);
+	pv_metadata_add_devmeta(DEVMETA_KEY_INTERFACES, str);
 
 	freeifaddrs(ifaddr);
-	free(ifaces);
+	free(str);
 }
 
 static int pv_network_early_init(struct pv_init *this)
