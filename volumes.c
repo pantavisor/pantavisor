@@ -496,7 +496,8 @@ int pv_volume_mount(struct pv_volume *v)
 	v->dest = strdup(mntpoint);
 	v->loop_fd = loop_fd;
 	v->file_fd = file_fd;
-	v->umount_cmd = umount_cmd;
+	if (umount_cmd)
+		v->umount_cmd = strdup(umount_cmd);
 
 out:
 	if(umount_cmd)
@@ -516,6 +517,7 @@ int pv_volume_unmount(struct pv_volume *v)
 	if (v->umount_cmd != NULL) {
 		pv_log(DEBUG, "using handler...");
 		int wstatus;
+		pv_log(INFO, "umount_cmd: %s", v->umount_cmd);
 		tsh_run(v->umount_cmd, 1, &wstatus);
 		if (!WIFEXITED(wstatus))
 			ret = -1;
