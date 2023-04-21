@@ -81,7 +81,7 @@ static int get_free_loop(char *devname)
 
 	// in case we are inside container where loop devices are not
 	// auto created we try out best to set this up ourselves
-	mknod(devname, S_IFBLK | 0600, makedev (7, dev));
+	mknod(devname, S_IFBLK | 0600, makedev(7, dev));
 
 out:
 	if (lctlfd > 0)

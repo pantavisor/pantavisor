@@ -500,7 +500,7 @@ int pv_volume_mount(struct pv_volume *v)
 		v->umount_cmd = strdup(umount_cmd);
 
 out:
-	if(umount_cmd)
+	if (umount_cmd)
 		free(umount_cmd);
 
 	if (handler)

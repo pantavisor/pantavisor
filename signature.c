@@ -466,60 +466,60 @@ out:
 	return ret;
 }
 
-static char *pv_signature_get_json_files(struct dl_list *json_pairs)
+static char **pv_signature_concatenate_json_pairs(struct dl_list *pairs,
+						  int *len, int *n_pairs)
 {
-	char *out;
-	int len, i = 0;
-	struct pv_signature_pair *pair, *tmp;
+	*len = 0;
+	int n = 0;
+	char *tmpl = NULL;
+	char **kv = calloc(dl_list_len(pairs), sizeof(char *));
 
-	len = 2;
-	out = calloc(len, sizeof(char));
-	if (!out)
-		return out;
-
-	strcpy(out, "{");
-
-	dl_list_for_each_safe(pair, tmp, json_pairs, struct pv_signature_pair,
-			      list)
+	struct pv_signature_pair *it, *tmp;
+	dl_list_for_each_safe(it, tmp, pairs, struct pv_signature_pair, list)
 	{
-		if (!pair->included)
+		if (!it->included)
 			continue;
 
-		len += 1 + strlen(pair->key);
-		out = realloc(out, len);
-		strcat(out, "\"");
-		strcat(out, pair->key);
-		if (pair->value[0] != '{' && pair->value[0] != '[') {
-			len += 4 + strlen(pair->value);
-			out = realloc(out, len);
-			strcat(out, "\":\"");
-			strcat(out, pair->value);
-			strcat(out, "\"");
-		} else {
-			len += 2 + strlen(pair->value);
-			out = realloc(out, len);
-			strcat(out, "\":");
-			strcat(out, pair->value);
-		}
+		if (it->value[0] == '{' || it->value[0] == '[')
+			tmpl = "\"%s\":%s";
+		else
+			tmpl = "\"%s\":\"%s\"";
 
-		len += 1;
-		out = realloc(out, len);
-		strcat(out, ",");
-
-		i++;
+		int l = snprintf(NULL, 0, tmpl, it->key, it->value);
+		kv[n] = calloc(l + 1, sizeof(char));
+		snprintf(kv[n], l + 1, tmpl, it->key, it->value);
+		*len += l;
+		++n;
 	}
 
-	if (len > 2) {
-		out[len - 2] = '}';
-		out[len - 1] = '\0';
-	} else {
-		out = realloc(out, 3);
-		out[0] = '{';
-		out[1] = '}';
-		out[2] = '\0';
-	}
+	*n_pairs = n;
 
-	return out;
+	return kv;
+}
+
+static char *pv_signature_get_json_files(struct dl_list *json_pairs)
+{
+	int len = 0;
+	int n_pairs = 0;
+	char **kv =
+		pv_signature_concatenate_json_pairs(json_pairs, &len, &n_pairs);
+
+	// len + {} + commas + trailing 0
+	char *js = calloc(len + 2 + n_pairs - 1 + 1, sizeof(char));
+	if (!js)
+		return NULL;
+
+	size_t count = 1;
+	strncpy(js, "{", count + 1);
+	for (int i = 0; i < n_pairs; ++i) {
+		snprintf(js + count, strlen(kv[i]) + 2, "%s,", kv[i]);
+		count += strlen(kv[i]) + 1;
+		free(kv[i]);
+	}
+	strncpy(js + count - 1, "}", 2);
+	free(kv);
+
+	return js;
 }
 
 static char *
@@ -679,7 +679,7 @@ static bool pv_signature_verify_sha(const char *payload,
 	bool ret = false;
 	int res;
 	struct mbedtls_x509_crt certs;
-	size_t olen;
+	size_t olen, plen, elen, payload_len;
 	char *payload_encoded = NULL, *files_encoded = NULL,
 	     *sig_decoded = NULL;
 	unsigned char *hash = NULL;
@@ -720,12 +720,15 @@ static bool pv_signature_verify_sha(const char *payload,
 	if (!signature->protected)
 		goto out;
 
-	payload_encoded =
-		calloc(strlen(files_encoded) + strlen(signature->protected) + 2,
-		       sizeof(char));
-	strcpy(payload_encoded, signature->protected);
-	strcat(payload_encoded, ".");
-	strcat(payload_encoded, files_encoded);
+	elen = strlen(files_encoded);
+	plen = strlen(signature->protected);
+	payload_len = elen + plen + 2;
+
+	payload_encoded = calloc(payload_len, sizeof(char));
+
+	strncpy(payload_encoded, signature->protected, payload_len);
+	strncat(payload_encoded, ".", 2);
+	strncat(payload_encoded, files_encoded, payload_len - plen + 2);
 
 	hash = calloc(128, sizeof(unsigned char));
 	if (!hash) {
