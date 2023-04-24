@@ -5,7 +5,7 @@
 # readability-* (?)
 #
 Checks:          'clang-diagnostic-*,clang-analyzer-*,-*,clang-diagnostic-*,bugprone-*,clang-analyzer-*,-*,clang-analyzer-*,-clang-analyzer.cplusplus,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-analyzer-valist.Uninitialized'
-WarningsAsErrors: 'true'
+WarningsAsErrors: 'clang-diagnostic-*,clang-analyzer-*,-*,clang-diagnostic-*,bugprone-*,clang-analyzer-*,-*,clang-analyzer-*,-clang-analyzer.cplusplus,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-analyzer-valist.Uninitialized'
 HeaderFilterRegex: './*.h'
 AnalyzeTemporaryDtors: false
 FormatStyle:     none
