@@ -101,39 +101,41 @@ static void pv_update_remove(struct pantavisor *pv)
 static char *unescape_utf8_to_apvii(char *buf, char *code, char c)
 {
 	char *p = 0;
-	char *new = 0;
+	char *new_str = 0;
 	char *old;
 	int pos = 0, replaced = 0;
 	char *tmp;
 
+	size_t len = strlen(buf) + strlen(code) + 1;
 	tmp = malloc(strlen(buf) + strlen(code) + 1);
-	strcpy(tmp, buf);
-	strcat(tmp, code);
+
+	snprintf(tmp, len, "%s%s", buf, code);
+
 	old = tmp;
 
 	p = strstr(tmp, code);
 	while (p) {
 		*p = '\0';
-		new = realloc(new, pos + strlen(tmp) + 2);
-		strcpy(new + pos, tmp);
+		new_str = realloc(new_str, pos + strlen(tmp) + 2);
+		snprintf(new_str + pos, strlen(tmp) + 2, "%s", tmp);
 		pos = pos + strlen(tmp);
-		new[pos] = c;
+		new_str[pos] = c;
 		pos += 1;
-		new[pos] = '\0';
+		new_str[pos] = '\0';
 		replaced += 1;
 		tmp = p + strlen(code);
 		p = strstr(tmp, code);
 	}
 
-	if (new && new[strlen(new) - 1] == c)
-		new[strlen(new) - 1] = '\0';
+	if (new_str && new_str[strlen(new_str) - 1] == c)
+		new_str[strlen(new_str) - 1] = '\0';
 
 	if (old)
 		free(old);
 	if (buf)
 		free(buf);
 
-	return new;
+	return new_str;
 }
 
 static int trail_remote_init(struct pantavisor *pv)
@@ -401,7 +403,7 @@ static int trail_remote_set_status(struct pantavisor *pv,
 			}
 			if (msg) {
 				if (len) {
-					strcat(buff + len, ",");
+					strncat(buff + len, ",", 2);
 					len += 1;
 				}
 				SNPRINTF_WTRUNC(buff + len,
@@ -1703,7 +1705,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 		}
 		if (can_write) {
 			if (data_len) {
-				strcat(pv->update->progress_objects, ",");
+				strncat(pv->update->progress_objects, ",", 2);
 				data_len += 1;
 			}
 			SNPRINTF_WTRUNC(pv->update->progress_objects + data_len,
