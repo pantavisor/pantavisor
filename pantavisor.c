@@ -437,7 +437,7 @@ static pv_state_t pv_wait_update()
 	// if an update is going on at this point, it means we still have to finish it
 	if (pv->update && pv->update->status != UPDATE_APPLIED) {
 		if (pv_update_is_trying(pv->update)) {
-			goal_state = pv_state_check_goals(pv->state, NULL);
+			goal_state = pv_state_check_goals(pv->state);
 
 			switch (goal_state) {
 			case PLAT_GOAL_UNACHIEVED:
