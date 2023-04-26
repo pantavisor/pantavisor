@@ -493,26 +493,54 @@ void pv_state_eval_status(struct pv_state *s)
 	pv_state_set_status(s, state_status);
 }
 
-// returns the general goal state if p is NULL. If not null,
-// returns the goal state of the previous groups
-plat_goal_state_t pv_state_check_goals(struct pv_state *s,
-				       struct pv_platform *p)
+plat_goal_state_t pv_state_check_goals(struct pv_state *s)
 {
+	if (!s)
+		return PLAT_GOAL_NONE;
+
 	plat_goal_state_t s_goal_state = PLAT_GOAL_ACHIEVED;
 	plat_goal_state_t g_goal_state;
 
 	struct pv_group *g, *tmp;
 	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
 	{
-		if (p && p->group == g)
-			break;
-
+		// we are only interested in the highest goal state here. This will be
+		// ACHIEVED unless there is any group that is still UNACHIEVED, which
+		// will be also overwriten by any group that has TIMEDOUT
 		g_goal_state = pv_group_check_goals(g);
 		if (g_goal_state > s_goal_state)
 			s_goal_state = g_goal_state;
 	}
 
 	return s_goal_state;
+}
+
+static plat_goal_state_t pv_state_check_goal_prev_group(struct pv_state *s,
+							struct pv_group *group)
+{
+	if (!s || !group)
+		return PLAT_GOAL_NONE;
+
+	plat_goal_state_t g_goal_state = PLAT_GOAL_ACHIEVED;
+
+	struct pv_group *g, *tmp;
+	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
+	{
+		// we iterate over all previous groups to the one we are checking
+		if (group == g)
+			break;
+
+		// each group that we iterate over will overwrite the return state,
+		// so we will always get the one inmediately previous to the one we
+		// are checking, unsless we find any group with UNACHIEVED state. In
+		// that case, we return UNACHIEVED, as further ACHIEVED groups means
+		// they have no platforms
+		g_goal_state = pv_group_check_goals(g);
+		if (g_goal_state == PLAT_GOAL_UNACHIEVED)
+			break;
+	}
+
+	return g_goal_state;
 }
 
 static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
@@ -557,7 +585,7 @@ int pv_state_run(struct pv_state *s)
 	{
 		if (pv_platform_is_installed(p) || pv_platform_is_blocked(p)) {
 			plat_goal_state_t status_goal =
-				pv_state_check_goals(s, p);
+				pv_state_check_goal_prev_group(s, p->group);
 
 			switch (status_goal) {
 			case PLAT_GOAL_UNACHIEVED:
