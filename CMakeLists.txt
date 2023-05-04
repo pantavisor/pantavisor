@@ -115,6 +115,8 @@ set(SOURCES  debug.c
 			parser/parser_system1.h
 )
 
+add_compile_definitions(PANTAVISOR_DEBUG=yes)
+
 add_custom_command(
     OUTPUT  version.c
     COMMAND sh
@@ -130,3 +132,6 @@ add_executable(pantavisor ${SOURCES})
 target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES} ${LXC})
 
 install(TARGETS pantavisor DESTINATION bin)
+install(DIRECTORY defaults DESTINATION /etc/pantavisor)
+install(FILES configs/resolv.conf DESTINATION /etc/resolv.conf)
+
