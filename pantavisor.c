@@ -61,6 +61,7 @@
 #include "logserver.h"
 #include "mount.h"
 #include "debug.h"
+#include "cgroup.h"
 
 #include "parser/parser.h"
 
@@ -1018,10 +1019,8 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->loading_objects = false;
 	pv->hard_poweroff = false;
 
-	// detect cgroup version
-	pv->cgroupv = pv_system_get_cgroup_version();
-	pv_log(DEBUG, "cgroup version detected '%s'",
-	       pv_system_cgroupv_string(pv->cgroupv));
+	pv_cgroup_print();
+
 out:
 	return 0;
 }

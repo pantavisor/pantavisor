@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2017-2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -49,6 +49,7 @@
 #include "state.h"
 #include "paths.h"
 #include "debug.h"
+#include "cgroup.h"
 
 #include "utils/tsh.h"
 #include "utils/math.h"
@@ -66,21 +67,6 @@
 
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
-
-static int mkcgroup(const char *cgroup)
-{
-	char path[PATH_MAX];
-	int ret;
-	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s", cgroup);
-
-	mkdir(path, 0555);
-	ret = mount("cgroup", path, "cgroup", 0, cgroup);
-	if (ret < 0) {
-		pv_log(DEBUG, "Could not mount cgroup %s\n", path);
-		return -1;
-	}
-	return 0;
-}
 
 static int early_mounts()
 {
@@ -106,55 +92,6 @@ static int early_mounts()
 
 	pv_fs_path_remove("/dev/ptmx", false);
 	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
-
-	return 0;
-}
-
-static int mount_cgroups()
-{
-	int ret;
-
-	if (pv_config_get_system_init_mode() == IM_APPENGINE)
-		return 0;
-
-	mkdir("/sys/fs/cgroup", 0755);
-	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
-	if (ret < 0)
-		exit_error(errno, "Could not mount /sys/fs/cgroup");
-
-	mkdir("/sys/fs/cgroup/systemd", 0555);
-	ret = mount("cgroup", "/sys/fs/cgroup/systemd", "cgroup", 0,
-		    "none,name=systemd");
-	if (ret < 0)
-		exit_error(errno, "Could not mount /sys/fs/cgroup/systemd");
-
-	mkdir("/sys/fs/cgroup/pantavisor", 0555);
-	ret = mount("cgroup", "/sys/fs/cgroup/pantavisor", "cgroup", 0,
-		    "none,name=pantavisor");
-	if (ret < 0)
-		exit_error(errno, "Could not mount /sys/fs/cgroup/pantavisor");
-
-	mkcgroup("blkio");
-	mkcgroup("cpu,cpuacct");
-	mkcgroup("cpu");
-	mkcgroup("cpuset");
-	mkcgroup("devices");
-	mkcgroup("freezer");
-	mkcgroup("hugetlb");
-	mkcgroup("memory");
-	mkcgroup("net_cls,net_prio");
-	mkcgroup("net_cls");
-	mkcgroup("net_prio");
-	mkcgroup("perf_event");
-	mkcgroup("pids");
-	mkcgroup("rdma");
-
-	mkdir("/sys/fs/cgroup/unified", 0555);
-	ret = mount("cgroup2", "/sys/fs/cgroup/unified", "cgroup2",
-		    MS_NOSUID | MS_NOEXEC | MS_NODEV, "nsdelegate");
-	if (ret < 0)
-		pv_log(WARN,
-		       "Could not mount cgroup2 to /sys/fs/cgroup/unified\n");
 
 	return 0;
 }
@@ -449,7 +386,8 @@ int main(int argc, char *argv[])
 		goto loop;
 	}
 
-	mount_cgroups();
+	if (pv_cgroup_init())
+		exit_error(errno, "Could not init cgroup");
 	other_mounts();
 
 	// executed from shell and/or appengine mode
