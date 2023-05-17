@@ -720,90 +720,20 @@ error:
 	return -1;
 }
 
-static char *pv_ctrl_get_sender_pname_cgroup(FILE *fd)
-{
-	char *pvcg, *pname = NULL;
-	char buf[128];
-
-	while (fgets(buf, 128, fd)) {
-		int l = strlen(buf) - 1;
-		if (buf[l] == '\n')
-			buf[l] = 0;
-		pvcg = strstr(buf, ":name=pantavisor:/");
-		if (pvcg) {
-			pvcg += strlen(":name=pantavisor:/");
-			if (!strncmp(pvcg, "lxc/", 4))
-				pvcg += 4;
-			if (!strlen(pvcg))
-				pname = strdup("_pv_");
-			else
-				pname = strdup(pvcg);
-			break;
-		}
-	}
-
-	return pname;
-}
-
-static char *pv_ctrl_get_sender_pname_cgroup2(FILE *fd)
-{
-	char *pvcg, *pname = NULL;
-	char buf[128];
-
-	// get container name
-	while (fgets(buf, 128, fd)) {
-		pvcg = strstr(buf, "::/lxc/");
-		if (pvcg) {
-			pvcg += strlen("::/lxc/");
-			pvcg[strlen(pvcg) - 1] = '\0';
-			pname = strdup(pvcg);
-			break;
-		}
-	}
-
-	return pname;
-}
-
 static char *pv_ctrl_get_sender_pname(int req_fd)
 {
-	struct pantavisor *pv = pv_get_instance();
-	char *pname = NULL;
 	struct ucred ucred;
 	socklen_t ucred_len = sizeof(ucred);
-	char path[PATH_MAX];
-	FILE *fd;
-	int len;
 
 	// get sender PID
 	if (getsockopt(req_fd, SOCK_STREAM, SO_PEERCRED, &ucred, &ucred_len) <
 	    0) {
 		pv_log(WARN, "could not get pid from sender: %s",
 		       strerror(errno));
-		goto out;
+		return NULL;
 	}
 
-	// get container name from sender PID
-	len = strlen("/proc/%d/cgroup") + get_digit_count(ucred.pid) + 1;
-	snprintf(path, len, "/proc/%d/cgroup", ucred.pid);
-
-	fd = fopen(path, "r");
-	if (!fd) {
-		pv_log(WARN, "could not open %s: %s", path, strerror(errno));
-		goto out;
-	}
-
-	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID))
-		pname = pv_ctrl_get_sender_pname_cgroup(fd);
-	else if (pv->cgroupv == CGROUP_UNIFIED)
-		pname = pv_ctrl_get_sender_pname_cgroup2(fd);
-	else
-		pv_log(WARN, "unknown cgroup version '%s'",
-		       pv_system_cgroupv_string(pv->cgroupv));
-
-	fclose(fd);
-
-out:
-	return pname;
+	return pv_cgroup_get_process_name(ucred.pid);
 }
 
 static struct pv_platform *pv_ctrl_get_sender_plat(const char *pname)
