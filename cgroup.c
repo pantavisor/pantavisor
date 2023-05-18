@@ -22,6 +22,8 @@
 
 #include <stdio.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mount.h>
@@ -32,6 +34,7 @@
 #include "cgroup.h"
 #include "utils/str.h"
 #include "utils/math.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME "cgroup"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -84,9 +87,10 @@ static int pv_cgroup_mkcgroup_root()
 
 	mkdir("/sys/fs/cgroup", 0755);
 	ret = mount("none", "/sys/fs/cgroup", "tmpfs", 0, NULL);
-	if (ret < 0)
+	if (ret < 0) {
 		pv_log(ERROR, "Could not mount main cgroup: %s",
 		       strerror(errno));
+	}
 
 	return ret;
 }
@@ -140,13 +144,29 @@ static int pv_cgroup_mkcgroup_unified()
 	return ret;
 }
 
-int pv_cgroup_init(void)
+static int pv_cgroup_init_appengine()
 {
+	struct pantavisor *pv = pv_get_instance();
+	pv->cgroupv = pv_cgroup_get_version();
+
+	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID))
+		pv_cgroup_mkcgroup_init("pantavisor");
+
+	return 0;
+}
+
+int pv_cgroup_init()
+{
+	// IM_APPENGINE supports all cgroup versions
+	// IM_EMBEDDED and IM_STANDALONE supports HYBRID cgroup only
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
-		return 0;
+		return pv_cgroup_init_appengine();
 
 	if (pv_cgroup_mkcgroup_root())
 		return -1;
+
+	struct pantavisor *pv = pv_get_instance();
+	pv->cgroupv = pv_cgroup_get_version();
 
 	if (pv_cgroup_mkcgroup_init("systemd"))
 		return -1;
@@ -170,13 +190,15 @@ int pv_cgroup_init(void)
 
 	pv_cgroup_mkcgroup_unified();
 
-	struct pantavisor *pv = pv_get_instance();
-	pv->cgroupv = pv_cgroup_get_version();
-
 	return 0;
 }
 
-static char *pv_cgroup_parse_proc_cgroup(FILE *fd)
+void pv_cgroup_umount(void)
+{
+	pv_fs_path_remove("/sys/fs/cgroup/pantavisor", false);
+}
+
+static char *pv_cgroup_parse_proc_legacy(FILE *fd)
 {
 	char *pvcg, *pname = NULL;
 	char buf[128];
@@ -200,14 +222,14 @@ static char *pv_cgroup_parse_proc_cgroup(FILE *fd)
 	return pname;
 }
 
-static char *pv_cgroup_parse_proc_cgroup2(FILE *fd)
+static char *pv_cgroup_parse_proc_unified(FILE *fd)
 {
 	char *pvcg, *pname = NULL;
 	char buf[128];
 	while (fgets(buf, 128, fd)) {
-		pvcg = strstr(buf, "::/lxc/");
+		pvcg = strstr(buf, "/lxc/");
 		if (pvcg) {
-			pvcg += strlen("::/lxc/");
+			pvcg += strlen("/lxc/");
 			pvcg[strlen(pvcg) - 1] = '\0';
 			pname = strdup(pvcg);
 			break;
@@ -234,9 +256,9 @@ char *pv_cgroup_get_process_name(pid_t pid)
 	struct pantavisor *pv = pv_get_instance();
 	char *pname = NULL;
 	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID))
-		pname = pv_cgroup_parse_proc_cgroup(fd);
+		pname = pv_cgroup_parse_proc_legacy(fd);
 	else if (pv->cgroupv == CGROUP_UNIFIED)
-		pname = pv_cgroup_parse_proc_cgroup2(fd);
+		pname = pv_cgroup_parse_proc_unified(fd);
 	else
 		pv_log(WARN, "unknown cgroup version");
 

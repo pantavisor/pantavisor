@@ -39,6 +39,8 @@ typedef enum {
 void pv_cgroup_print(void);
 
 int pv_cgroup_init(void);
+void pv_cgroup_umount(void);
+
 char *pv_cgroup_get_process_name(pid_t pid);
 
 #endif /* UTILS_CGROUP_H_ */

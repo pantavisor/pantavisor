@@ -462,4 +462,6 @@ void pv_init_umount()
 
 	pv_paths_exports(path, PATH_MAX);
 	umount(path);
+
+	pv_cgroup_umount();
 }
