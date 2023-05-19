@@ -156,7 +156,7 @@ static void signal_handler(int signal)
 
 static void shell_handler(int signal)
 {
-	if (signal != SIGINT)
+	if ((signal != SIGINT) && (signal != SIGTERM))
 		return;
 
 	struct pantavisor *pv = pv_get_instance();
@@ -395,6 +395,7 @@ int main(int argc, char *argv[])
 		// we are going to use this thread for pv
 		pv_pid = getpid();
 		signal(SIGINT, shell_handler);
+		signal(SIGTERM, shell_handler);
 		pv_start();
 		pv_stop();
 		return 0;
