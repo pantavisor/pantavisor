@@ -48,7 +48,7 @@ int setns(int nsfd, int nstype);
 #include "init.h"
 #include "state.h"
 #include "parser/parser.h"
-#include "logserver.h"
+#include "logserver/logserver.h"
 #include "utils/list.h"
 #include "utils/json.h"
 #include "utils/str.h"

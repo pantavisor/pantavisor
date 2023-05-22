@@ -49,7 +49,7 @@
 #include "version.h"
 #include "buffer.h"
 #include "paths.h"
-#include "logserver.h"
+#include "logserver/logserver.h"
 
 #define MODULE_NAME "log"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)

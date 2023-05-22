@@ -20,8 +20,6 @@
  * SOFTWARE.
  */
 
-#include "logserver.h"
-
 #include <linux/limits.h>
 #include <sys/epoll.h>
 #include <sys/types.h>
@@ -38,30 +36,22 @@
 #include <stdarg.h>
 #include <fcntl.h>
 #include <inttypes.h>
-#include <glob.h>
 
+#include "logserver_out.h"
+#include "logserver_utils.h"
+#include "logserver_null.h"
+#include "logserver_stdout.h"
+#include "logserver_filetree.h"
+#include "logserver_singlefile.h"
+#include "logserver.h"
 #include "utils/timer.h"
-#include "utils/fs.h"
 #include "utils/fs.h"
 #include "utils/json.h"
 #include "utils/system.h"
+#include "utils/list.h"
 #include "pvctl_utils.h"
 #include "bootloader.h"
 #include "config.h"
-
-#ifdef DEBUG
-#define WARN_ONCE(msg, args...)                                                \
-	do {                                                                   \
-		static bool __warned = false;                                  \
-		if (!__warned) {                                               \
-			printf(msg, ##args);                                   \
-			__warned = true;                                       \
-		}                                                              \
-	} while (0)
-#else
-#define WARN_ONCE(msg, args...)
-
-#endif
 
 #include "pantavisor.h"
 #include "buffer.h"
@@ -80,34 +70,18 @@
 
 #define MODULE_NAME "logserver"
 
-#define LOGSERVER_JSON_FORMAT                                                  \
-	"{\"tsec\":%" PRId64 ", \"tnano\":%" PRId32 ", "                       \
-	"\"plat\":\"%s\", \"lvl\":\"%s\", \"src\":\"%s\", "                    \
-	"\"msg\": \"%.*s\"}\n"
-
 struct logserver_msg {
-	int version;
+	int ver;
 	int len;
-	char buffer[0];
+	char buf[0];
 };
 
 struct logserver_fd {
 	char *platform;
 	char *src;
-	int level;
+	int lvl;
 	int fd;
 	struct dl_list list;
-};
-
-struct logserver_output {
-	bool sfile;
-	bool ftree;
-	bool std;
-};
-
-struct logserver_log {
-	int maxsize;
-	int maxfile;
 };
 
 struct logserver {
@@ -116,238 +90,54 @@ struct logserver {
 	int epfd;
 	int logsock;
 	int fdsock;
-	char *revision;
-	struct logserver_log log;
-	struct logserver_output out;
+	int active_out;
+	char *rev;
 	// logserver_fd
 	struct dl_list fdlst;
 	// tmp store for fd returned by connect
 	// only if was sent to the fd_sock
 	struct dl_list tmplst;
+	struct dl_list outputs;
 };
 
-struct logserver_msg_data {
-	int version;
-	int level;
-	/* char pointers point to start address in logserver_msg */
-	uint64_t tsec;
-	uint32_t tnano;
-	char *platform;
-	char *source;
-	int data_len;
-	char *data;
-};
-
-static struct logserver logserver_g = {
+static struct logserver logserver = {
 	.pid = -1,
 	.flags = 0,
 	.epfd = -1,
 	.logsock = -1,
 	.fdsock = -1,
-	.log = { .maxsize = -1, .maxfile = 3 },
-	.out = { .sfile = false, .ftree = true, .std = false },
-	.revision = NULL
+	.active_out = LOG_SERVER_OUTPUT_NULL_SINK,
+	.rev = NULL,
 };
 
-static int
-logserver_log_msg_data_null(const struct logserver_msg_data *msg_data)
-{
-	return 0;
-}
+typedef struct logserver_out *(*logserver_outputs_builder_t)(void);
 
-static int logserver_openlog(const char *path)
-{
-	int fd = open(path, O_CREAT | O_SYNC | O_RDWR | O_APPEND, 0644);
+#define LOGSERVER_MAX_OUTPUTS (4)
 
-	struct stat st;
-	if (fstat(fd, &st) != 0)
-		return fd;
-
-	if (st.st_size < logserver_g.log.maxsize)
-		return fd;
-
-	char pattern[PATH_MAX] = { 0 };
-	snprintf(pattern, PATH_MAX, "%s.*.gz", path);
-
-	glob_t glist;
-	int r = glob(pattern, 0, NULL, &glist);
-	if (r != 0 && r != GLOB_NOMATCH)
-		return fd;
-
-	// looking for the newest file
-	size_t max = 0;
-	for (size_t i = 0; i < glist.gl_pathc; ++i) {
-		char str[PATH_MAX] = { 0 };
-		strncpy(str, glist.gl_pathv[i], PATH_MAX - 1);
-		str[strlen(str) - 3] = '\0';
-		size_t n = strtoumax(strrchr(str, '.') + 1, NULL, 10);
-		if (n > max)
-			max = n;
-	}
-	// next file
-	++max;
-
-	// only keep maxfile files
-	if ((int)glist.gl_pathc >= logserver_g.log.maxfile) {
-		char delete_path[PATH_MAX] = { 0 };
-		snprintf(delete_path, PATH_MAX, "%s.%zd.gz", path,
-			 max - logserver_g.log.maxfile);
-		pv_fs_path_remove(delete_path, false);
-	}
-
-	globfree(&glist);
-
-	char path_gz[PATH_MAX] = { 0 };
-	snprintf(path_gz, PATH_MAX, "%s.%zd", path, max);
-	pv_fs_file_gzip(path, path_gz);
-
-	ftruncate(fd, 0);
-	lseek(fd, 0, SEEK_SET);
-
-	return fd;
-}
-
-static int
-logserver_log_msg_data_file_tree(const struct logserver_msg_data *msg_data)
-{
-	if (msg_data->level > pv_config_get_log_loglevel())
-		return 0;
-
-	char pathname[PATH_MAX];
-	int log_fd = -1;
-	int ret = -1;
-	char *dup_pathname = NULL;
-	char *fname = NULL;
-	bool source_is_pv = !strncmp(msg_data->platform, PV_PLATFORM_STR,
-				     strlen(PV_PLATFORM_STR));
-
-	pv_paths_pv_log_file(pathname, sizeof(pathname), logserver_g.revision,
-			     msg_data->platform,
-			     source_is_pv ? "pantavisor.log" :
-						  msg_data->source);
-	dup_pathname = strdup(pathname);
-	fname = dirname(dup_pathname);
-	/*
-	 * Create directory for logged item according to platform and source.
-	 */
-	if (pv_fs_mkdir_p(fname, 0755))
-		goto error;
-
-	log_fd = logserver_openlog(pathname);
-	if (log_fd >= 0) {
-		if (source_is_pv) {
-			dprintf(log_fd,
-				"[pantavisor] %" PRIu64 " %s\t -- [%s]: %.*s\n",
-				msg_data->tsec,
-				pv_log_level_name(msg_data->level),
-				msg_data->source, msg_data->data_len,
-				msg_data->data);
-		} else {
-			dprintf(log_fd, "%.*s", msg_data->data_len,
-				msg_data->data);
-		}
-		close(log_fd);
-		ret = 0;
-	} else {
-		WARN_ONCE("Error opening file %s/%s, "
-			  "errno = %d\n",
-			  platform, source, errno);
-	}
-error:
-	free(dup_pathname);
-	return ret;
-}
-
-static void logserver_log_msg_data_stdout(const struct logserver_msg_data *msg)
-{
-	if (msg->level > pv_config_get_log_loglevel())
-		return;
-
-	char *src = basename(msg->source);
-	printf("[%s] %" PRId64 " %s\t -- [%s]: %.*s\n", msg->platform,
-	       msg->tsec, pv_log_level_name(msg->level), src, msg->data_len,
-	       msg->data);
-}
-
-static int
-logserver_log_msg_data_single_file(const struct logserver_msg_data *msg_data)
-{
-	if (msg_data->level > pv_config_get_log_loglevel())
-		return 0;
-
-	char pathname[PATH_MAX];
-	int ret = -1;
-	size_t json_len;
-	int log_fd;
-	char *json = NULL;
-	struct logserver_msg_data msg_data_json_escaped = {
-		.version = msg_data->version,
-		.level = msg_data->level,
-		.tsec = msg_data->tsec,
-		.platform = pv_json_format(msg_data->platform,
-					   strlen(msg_data->platform)),
-		.source = pv_json_format(msg_data->source,
-					 strlen(msg_data->source)),
-		.data = pv_json_format(msg_data->data, msg_data->data_len)
+static logserver_outputs_builder_t
+	logserver_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
+		logserver_null_new, logserver_singlefile_new,
+		logserver_filetree_new, logserver_stdout_new
 	};
 
-	json_len = snprintf(NULL, 0, LOGSERVER_JSON_FORMAT,
-			    msg_data_json_escaped.tsec,
-			    msg_data_json_escaped.tnano,
-			    msg_data_json_escaped.platform,
-			    pv_log_level_name(msg_data_json_escaped.level),
-			    msg_data_json_escaped.source,
-			    (int)strlen(msg_data_json_escaped.data),
-			    msg_data_json_escaped.data) +
-		   1; // 0 byte
-
-	json = calloc(1, json_len); // 0 byte
-
-	snprintf(json, json_len, LOGSERVER_JSON_FORMAT,
-		 msg_data_json_escaped.tsec, msg_data_json_escaped.tnano,
-		 msg_data_json_escaped.platform,
-		 pv_log_level_name(msg_data_json_escaped.level),
-		 msg_data_json_escaped.source,
-		 (int)strlen(msg_data_json_escaped.data),
-		 msg_data_json_escaped.data);
-
-	free(msg_data_json_escaped.platform);
-	free(msg_data_json_escaped.source);
-	free(msg_data_json_escaped.data);
-
-	pv_paths_pv_log(pathname, sizeof(pathname), logserver_g.revision);
-	if (pv_fs_mkdir_p(pathname, 0755))
-		goto out;
-	pv_paths_pv_log_plat(pathname, sizeof(pathname), logserver_g.revision,
-			     "pv.log");
-
-	log_fd = logserver_openlog(pathname);
-	if (log_fd >= 0) {
-		dprintf(log_fd, "%s", json);
-		close(log_fd);
-		ret = 0;
-	} else {
-		WARN_ONCE("Error opening file %s/%s/pv.log, "
-			  "errno = %d\n",
-			  logdri, logserver_g.revision, errno);
-	}
-
-out:
-	if (json)
-		free(json);
-	return ret;
-}
-
-static int logserver_log_msg_data(const struct logserver_msg_data *msg_data)
+static int logserver_log_msg_data(const struct logserver_log *log, int output)
 {
-	if (logserver_g.out.std)
-		logserver_log_msg_data_stdout(msg_data);
+	if ((output > 0 && !(logserver.active_out & output)) || output < 0)
+		return -1;
 
-	if (logserver_g.out.ftree)
-		logserver_log_msg_data_file_tree(msg_data);
-
-	if (logserver_g.out.sfile)
-		logserver_log_msg_data_single_file(msg_data);
+	struct logserver_out *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct logserver_out,
+			      list)
+	{
+		if (output == 0) {
+			if (logserver.active_out & it->id)
+				it->add(it, log);
+		} else {
+			if (!(it->id & output))
+				continue;
+			it->add(it, log);
+		}
+	}
 
 	return 0;
 }
@@ -356,44 +146,46 @@ static int pv_log(int level, char *msg, ...)
 {
 	va_list args;
 	va_start(args, msg);
-	if (logserver_g.pid < 0) {
-		struct logserver_msg_data msg_data = {
-			.version = 0,
-			.level = level,
+
+	if (logserver.pid < 0) {
+		struct logserver_log log = {
+			.ver = 0,
+			.lvl = level,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 			.tnano = 0,
-			.platform = MODULE_NAME,
-			.source = "logserver",
-			.data = NULL,
-			.data_len = 0
+			.plat = MODULE_NAME,
+			.src = "logserver",
+			.data.buf = NULL,
+			.data.len = 0,
 		};
 
-		msg_data.data_len = vsnprintf(NULL, 0, msg, args) + 1;
-		msg_data.data = calloc(msg_data.data_len, sizeof(char));
-		if (!msg_data.data)
+		log.data.len = vsnprintf(NULL, 0, msg, args) + 1;
+		log.data.buf = calloc(log.data.len, sizeof(char));
+		if (!log.data.buf)
 			return 1;
-		vsnprintf(msg_data.data, msg_data.data_len, msg, args);
-		logserver_log_msg_data_stdout(&msg_data);
-		free(msg_data.data);
 
-	} else if (logserver_g.pid == 0) {
+		vsnprintf(log.data.buf, log.data.len, msg, args);
+		logserver_log_msg_data(&log, LOG_SERVER_OUTPUT_STDOUT);
+		free(log.data.buf);
+
+	} else if (logserver.pid == 0) {
 		struct buffer *pv_buffer = pv_buffer_get(true);
 		char *buf = pv_buffer->buf;
 		int buf_len;
 
 		buf_len = vsnprintf(buf, pv_buffer->size, msg, args);
 
-		struct logserver_msg_data data = {
-			.version = LOG_PROTOCOL_LEGACY,
-			.level = level,
+		struct logserver_log data = {
+			.ver = LOG_PROTOCOL_LEGACY,
+			.lvl = level,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
-			.platform = PV_PLATFORM_STR,
-			.source = "logserver",
-			.data = buf,
-			.data_len = buf_len
+			.plat = PV_PLATFORM_STR,
+			.src = "logserver",
+			.data.buf = buf,
+			.data.len = buf_len
 		};
 
-		logserver_log_msg_data(&data);
+		logserver_log_msg_data(&data, 0);
 
 		pv_buffer_drop(pv_buffer);
 	} else {
@@ -407,7 +199,7 @@ static int pv_log(int level, char *msg, ...)
 
 static void sigterm_handler(int signum)
 {
-	logserver_g.flags = LOGSERVER_FLAG_STOP;
+	logserver.flags = LOGSERVER_FLAG_STOP;
 }
 
 static void sigchld_handler(int signum)
@@ -422,7 +214,7 @@ static void sigchld_handler(int signum)
 static void sigusr1_handler(int signum)
 {
 	pv_log(DEBUG, "signal handler to reload revision before %s",
-	       logserver_g.revision ? logserver_g.revision : "NULL");
+	       logserver.rev ? logserver.rev : "NULL");
 
 	if (pv_bootloader_reload_pv_try()) {
 		pv_log(ERROR,
@@ -430,53 +222,47 @@ static void sigusr1_handler(int signum)
 		return;
 	}
 
-	char *sav = logserver_g.revision;
+	char *sav = logserver.rev;
 	if (pv_bootloader_get_try())
-		logserver_g.revision = strdup(pv_bootloader_get_try());
+		logserver.rev = strdup(pv_bootloader_get_try());
 	if (sav)
 		free(sav);
 
 	pv_log(DEBUG, "signal handler to reload revision after %s",
-	       logserver_g.revision);
+	       logserver.rev);
 }
 
 static void sigusr2_handler(int signum)
 {
 	pv_log(DEBUG, "degrading logs outputs to just stdout");
-
-	logserver_g.out.std = true;
-	logserver_g.out.sfile = false;
-	logserver_g.out.ftree = false;
+	logserver.active_out = LOG_SERVER_OUTPUT_STDOUT;
 }
 
 static int logserver_msg_parse_data(struct logserver_msg *msg,
-				    struct logserver_msg_data *msg_data)
+				    struct logserver_log *log)
 {
 	int bytes_read = 0;
 	int ret;
-	msg_data->version = msg->version;
-	switch (msg_data->version) {
+	log->ver = msg->ver;
+	switch (log->ver) {
 	case LOG_PROTOCOL_LEGACY:
-		sscanf(msg->buffer, "%d", &msg_data->level);
-		bytes_read += strlen(msg->buffer) + 1;
+		sscanf(msg->buf, "%d", &log->lvl);
+		bytes_read += strlen(msg->buf) + 1;
 		//+ 1 to Skip over the NULL byte post level
-		msg_data->platform = msg->buffer + strlen(msg->buffer) + 1;
-		bytes_read += strlen(msg_data->platform) + 1;
-		msg_data->source =
-			msg_data->platform + strlen(msg_data->platform) + 1;
-		bytes_read += strlen(msg_data->source) + 1;
+		log->plat = msg->buf + strlen(msg->buf) + 1;
+		bytes_read += strlen(log->plat) + 1;
+		log->src = log->plat + strlen(log->plat) + 1;
+		bytes_read += strlen(log->src) + 1;
 
-		msg_data->data =
-			msg_data->source + strlen(msg_data->source) + 1;
-		msg_data->data_len = msg->len - bytes_read;
-
-		msg_data->tsec = timer_get_current_time_sec(RELATIV_TIMER);
-		msg_data->tnano = 0;
+		log->data.buf = log->src + strlen(log->src) + 1;
+		log->data.len = msg->len - bytes_read;
+		log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
+		log->tnano = 0;
 		ret = 0;
 		break;
 	default:
 		pv_log(WARN, "got unkown logserver message version %d",
-		       msg_data->version);
+		       log->ver);
 		ret = -1;
 		break;
 	}
@@ -485,16 +271,16 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 
 static int logserver_handle_msg(struct logserver_msg *msg)
 {
-	struct logserver_msg_data msg_data;
+	struct logserver_log log;
 	int ret;
 
-	ret = logserver_msg_parse_data(msg, &msg_data);
+	ret = logserver_msg_parse_data(msg, &log);
 	if (ret != 0) {
 		pv_log(WARN, "logserver message could not be handled");
 		return ret;
 	}
 
-	ret = logserver_log_msg_data(&msg_data);
+	ret = logserver_log_msg_data(&log, 0);
 	return ret;
 }
 
@@ -504,7 +290,7 @@ static int logserver_epoll_command(int fd, int cmd)
 	ev.events = EPOLLIN | EPOLLRDHUP;
 	ev.data.fd = fd;
 	errno = 0;
-	return epoll_ctl(logserver_g.epfd, cmd, fd, &ev);
+	return epoll_ctl(logserver.epfd, cmd, fd, &ev);
 }
 
 static int logserver_epoll_add(int fd)
@@ -545,7 +331,7 @@ static struct logserver_fd *logserver_fd_new(char *platform, char *src, int fd,
 	if (src)
 		lfd->src = strdup(src);
 	lfd->fd = fd;
-	lfd->level = level;
+	lfd->lvl = level;
 
 	dl_list_init(&lfd->list);
 
@@ -641,12 +427,14 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 		(struct iovec){ .iov_base = &loglevel, .iov_len = sizeof(int) };
 	iov[3] = (struct iovec){ .iov_base = &add, .iov_len = sizeof(int) };
 
-	struct msghdr msg = { .msg_name = NULL,
-			      .msg_namelen = 0,
-			      .msg_iov = iov,
-			      .msg_iovlen = 4,
-			      .msg_control = ctrl.buf,
-			      .msg_controllen = sizeof(ctrl.buf) };
+	struct msghdr msg = {
+		.msg_name = NULL,
+		.msg_namelen = 0,
+		.msg_iov = iov,
+		.msg_iovlen = 4,
+		.msg_control = ctrl.buf,
+		.msg_controllen = sizeof(ctrl.buf),
+	};
 
 	errno = 0;
 	if (recvmsg(sockfd, &msg, 0) < 0) {
@@ -673,7 +461,7 @@ static int logserver_epoll_wait(struct epoll_event *ev)
 	int ready = 0;
 	errno = 0;
 	do {
-		ready = epoll_wait(logserver_g.epfd, ev, LOGSERVER_MAX_EV, -1);
+		ready = epoll_wait(logserver.epfd, ev, LOGSERVER_MAX_EV, -1);
 
 		if (errno != 0 && errno != EINTR) {
 			pv_log(ERROR, "error calling epoll_wait: %s",
@@ -690,17 +478,17 @@ static void logserver_remove_fd(int fd)
 	if (fd < 0)
 		return;
 
-	if (logserver_list_exists(&logserver_g.fdlst, fd)) {
+	if (logserver_list_exists(&logserver.fdlst, fd)) {
 		struct logserver_fd *lfd =
-			logserver_fetch_fd_from_list(&logserver_g.fdlst, fd);
+			logserver_fetch_fd_from_list(&logserver.fdlst, fd);
 
 		pv_log(DEBUG, "fd (%d) for platform %s:%s unsubscribed",
 		       lfd->fd, lfd->platform, lfd->src);
 
-		logserver_list_del(&logserver_g.fdlst, fd, NULL);
+		logserver_list_del(&logserver.fdlst, fd, NULL);
 
-	} else if (logserver_list_exists(&logserver_g.tmplst, fd))
-		logserver_list_del(&logserver_g.tmplst, fd, NULL);
+	} else if (logserver_list_exists(&logserver.tmplst, fd))
+		logserver_list_del(&logserver.tmplst, fd, NULL);
 
 	logserver_epoll_del(fd);
 	close(fd);
@@ -738,18 +526,19 @@ static void logserver_consume_fd(int fd)
 
 	if (size > 0) {
 		struct logserver_fd *lfd =
-			logserver_fetch_fd_from_list(&logserver_g.fdlst, fd);
+			logserver_fetch_fd_from_list(&logserver.fdlst, fd);
 
-		struct logserver_msg_data d = {
-			.version = LOG_PROTOCOL_LEGACY,
-			.level = lfd->level,
+		struct logserver_log d = {
+			.ver = LOG_PROTOCOL_LEGACY,
+			.lvl = lfd->lvl,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
-			.platform = lfd->platform,
-			.source = lfd->src,
-			.data = buffer->buf,
-			.data_len = size
+			.plat = lfd->platform,
+			.src = lfd->src,
+			.data.buf = buffer->buf,
+			.data.len = size,
 		};
-		logserver_log_msg_data(&d);
+
+		logserver_log_msg_data(&d, 0);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG,
 		       "dead fd subscribed found (%d) trying to read: %s",
@@ -778,7 +567,7 @@ static int logserver_process_fd(int curfd)
 	}
 
 	// subcribe new fd
-	if (logserver_list_add(&logserver_g.fdlst, lfd) != 0) {
+	if (logserver_list_add(&logserver.fdlst, lfd) != 0) {
 		ret = -1;
 		goto clean_all;
 	}
@@ -816,10 +605,10 @@ static void logserver_loop()
 		return;
 	}
 
-	int logsock = logserver_g.logsock;
-	int fdsock = logserver_g.fdsock;
-	struct dl_list *tmplst = &logserver_g.tmplst;
-	struct dl_list *fdlst = &logserver_g.fdlst;
+	int logsock = logserver.logsock;
+	int fdsock = logserver.fdsock;
+	struct dl_list *tmplst = &logserver.tmplst;
+	struct dl_list *fdlst = &logserver.fdlst;
 
 	int curfd = -1;
 	int curev = 0;
@@ -943,11 +732,11 @@ static void logserver_drop_fds(struct dl_list *lst)
 
 static pid_t logserver_start_service(const char *revision)
 {
-	logserver_g.pid = fork();
-	if (logserver_g.pid == 0) {
-		if (logserver_g.revision)
-			free(logserver_g.revision);
-		logserver_g.revision = strdup(revision);
+	logserver.pid = fork();
+	if (logserver.pid == 0) {
+		if (logserver.rev)
+			free(logserver.rev);
+		logserver.rev = strdup(revision);
 
 		struct sigaction sa;
 		memset(&sa, 0, sizeof(sa));
@@ -967,29 +756,29 @@ static pid_t logserver_start_service(const char *revision)
 
 		pv_log(DEBUG, "starting logserver loop");
 
-		while (!(logserver_g.flags & LOGSERVER_FLAG_STOP)) {
+		while (!(logserver.flags & LOGSERVER_FLAG_STOP)) {
 			logserver_loop();
 		}
 
-		logserver_drop_fds(&logserver_g.fdlst);
-		logserver_drop_fds(&logserver_g.tmplst);
+		logserver_drop_fds(&logserver.fdlst);
+		logserver_drop_fds(&logserver.tmplst);
 
 		_exit(EXIT_SUCCESS);
 	}
 
-	return logserver_g.pid;
+	return logserver.pid;
 }
 
 static void logserver_start(const char *revision)
 {
-	if (logserver_g.pid == -1) {
+	if (logserver.pid == -1) {
 		logserver_start_service(revision);
 		pv_log(DEBUG, "starting log service with pid %d",
-		       (int)logserver_g.pid);
+		       (int)logserver.pid);
 
-		if (logserver_g.pid > 0) {
+		if (logserver.pid > 0) {
 			pv_log(DEBUG, "started log service with pid %d",
-			       (int)logserver_g.pid);
+			       (int)logserver.pid);
 		} else {
 			pv_log(ERROR, "unable to start log service");
 		}
@@ -1025,101 +814,113 @@ static void logserver_capture_dmesg()
 	pv_log(DEBUG, "subscribing dmesg to logserver");
 }
 
+static void pv_logserver_delete_outputs()
+{
+	struct logserver_out *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct logserver_out,
+			      list)
+	{
+		it->free(it);
+	}
+}
+
+static void logserver_load_outputs()
+{
+	dl_list_init(&logserver.outputs);
+	for (int i = 0; i < LOGSERVER_MAX_OUTPUTS; i++) {
+		struct logserver_out *out = logserver_outputs_new[i]();
+		if (!out) {
+			pv_log(WARN, "cannot create output %s",
+			       logserver_utils_output_to_str(1 << i));
+			continue;
+		}
+		dl_list_add(&logserver.outputs, &out->list);
+	}
+}
+
 int pv_logserver_init()
 {
-	logserver_g.log.maxsize = pv_config_get_log_logmax();
-
 	if (pv_config_get_log_capture()) {
-		logserver_g.out.sfile =
-			pv_config_get_log_server_output_single_file();
-		logserver_g.out.ftree =
-			pv_config_get_log_server_output_file_tree();
-		logserver_g.out.std =
-			pv_config_get_log_server_output_stdout() ||
-			pv_config_get_log_stdout();
-	} else {
-		logserver_g.out.sfile = false;
-		logserver_g.out.ftree = false;
-		logserver_g.out.std = false;
+		logserver.active_out = pv_config_get_log_server_outputs();
+		logserver_load_outputs();
 	}
 
 	errno = 0;
-	logserver_g.epfd = epoll_create1(0);
+	logserver.epfd = epoll_create1(0);
 
-	if (logserver_g.epfd < 0) {
-		pv_log(ERROR, "could not create logserver_g epoll fd");
+	if (logserver.epfd < 0) {
+		pv_log(ERROR, "could not create logserver epoll fd");
 		return -1;
 	}
 
-	logserver_g.logsock = logserver_open_server_socket(LOGCTRL_FNAME);
-	if (logserver_g.logsock < 0)
+	logserver.logsock = logserver_open_server_socket(LOGCTRL_FNAME);
+	if (logserver.logsock < 0)
 		pv_log(WARN,
 		       "could not initialize log socket, logs will not be captured");
 
-	logserver_g.fdsock = logserver_open_server_socket(LOGFD_FNAME);
-	if (logserver_g.fdsock < 0)
+	logserver.fdsock = logserver_open_server_socket(LOGFD_FNAME);
+	if (logserver.fdsock < 0)
 		pv_log(WARN,
 		       "could not open fd socket, some containers logs will be lost");
 
-	if (logserver_epoll_add(logserver_g.logsock) == -1) {
+	if (logserver_epoll_add(logserver.logsock) == -1) {
 		pv_log(WARN,
 		       "could not init log socket, logs will not be captured");
 		goto out;
 	}
 
-	if (logserver_epoll_add(logserver_g.fdsock) == -1) {
+	if (logserver_epoll_add(logserver.fdsock) == -1) {
 		pv_log(WARN,
 		       "could not init fd socket, some containers logs will be lost");
 		goto out;
 	}
 
-	dl_list_init(&logserver_g.fdlst);
-	dl_list_init(&logserver_g.tmplst);
+	dl_list_init(&logserver.fdlst);
+	dl_list_init(&logserver.tmplst);
 	logserver_start_service(pv_bootloader_get_rev());
-	pv_log(DEBUG, "started log service with pid %d", (int)logserver_g.pid);
+	pv_log(DEBUG, "started log service with pid %d", (int)logserver.pid);
 
 	if (pv_config_get_log_capture_dmesg())
 		logserver_capture_dmesg();
 
 	return 0;
 out:
-	if (logserver_g.logsock >= 0)
-		close(logserver_g.logsock);
-	if (logserver_g.fdsock >= 0)
-		close(logserver_g.fdsock);
-	if (logserver_g.epfd >= 0)
-		close(logserver_g.epfd);
+	if (logserver.logsock >= 0)
+		close(logserver.logsock);
+	if (logserver.fdsock >= 0)
+		close(logserver.fdsock);
+	if (logserver.epfd >= 0)
+		close(logserver.epfd);
 
 	return -1;
 }
 
-static int logserver_msg_fill(struct logserver_msg_data *msg_data,
+static int logserver_msg_fill(struct logserver_log *log,
 			      struct logserver_msg *msg)
 {
 	int avail_len = msg->len;
 	ssize_t written = 0;
 	int to_copy = 0;
-	msg->version = msg_data->version;
-	switch (msg->version) {
+	msg->ver = log->ver;
+	switch (msg->ver) {
 	case LOG_PROTOCOL_LEGACY:
 		//Copy level.
-		written += snprintf(msg->buffer + written, avail_len, "%d%c",
-				    msg_data->level, '\0');
+		written += snprintf(msg->buf + written, avail_len, "%d%c",
+				    log->lvl, '\0');
 		avail_len = msg->len - written;
 
-		written += snprintf(msg->buffer + written, avail_len, "%s%c",
-				    msg_data->platform, '\0');
+		written += snprintf(msg->buf + written, avail_len, "%s%c",
+				    log->plat, '\0');
 		avail_len = msg->len - written;
 
-		written += snprintf(msg->buffer + written, avail_len, "%s%c",
-				    msg_data->source, '\0');
+		written += snprintf(msg->buf + written, avail_len, "%s%c",
+				    log->src, '\0');
 		avail_len = msg->len - written;
 
-		to_copy = (msg_data->data_len <= avail_len) ?
-					msg_data->data_len :
-					avail_len;
-		if (msg->buffer)
-			memcpy(msg->buffer + written, msg_data->data, to_copy);
+		to_copy = (log->data.len <= avail_len) ? log->data.len :
+							       avail_len;
+		if (msg->buf)
+			memcpy(msg->buf + written, log->data.buf, to_copy);
 		msg->len = written + to_copy;
 
 		return to_copy;
@@ -1136,16 +937,16 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	struct buffer *vmsg_buffer = NULL;
 	struct buffer *logserver_msg_buffer = NULL;
 
-	struct logserver_msg_data msg_data = {
-		.version = LOG_PROTOCOL_LEGACY,
-		.level = level,
+	struct logserver_log log = {
+		.ver = LOG_PROTOCOL_LEGACY,
+		.lvl = level,
 		.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 		.tnano = 0,
-		.platform = platform,
-		.source = src,
+		.plat = platform,
+		.src = src,
 	};
 
-	if (logserver_g.pid <= 0 || level > pv_config_get_log_loglevel())
+	if (logserver.pid <= 0 || level > pv_config_get_log_loglevel())
 		return -1;
 
 	vmsg_buffer = pv_buffer_get(true);
@@ -1164,13 +965,12 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	logserver_msg->len =
 		logserver_msg_buffer->size - sizeof(*logserver_msg);
 
-	msg_data.data = (char *)vmsg_buffer->buf;
-	msg_data.data_len = vmsg_buffer->size;
+	log.data.buf = (char *)vmsg_buffer->buf;
+	log.data.len = vmsg_buffer->size;
 
-	msg_data.data_len =
-		vsnprintf(msg_data.data, msg_data.data_len, msg, args);
+	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
 
-	ret = logserver_msg_fill(&msg_data, logserver_msg);
+	ret = logserver_msg_fill(&log, logserver_msg);
 	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
 	pvctl_write_to_path(is_platform ? PLATFORM_LOG_CTRL_PATH : path,
 			    (char *)logserver_msg,
@@ -1198,14 +998,14 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 
 void pv_logserver_degrade(void)
 {
-	if (logserver_g.pid >= 0)
-		kill(logserver_g.pid, SIGUSR2);
+	if (logserver.pid >= 0)
+		kill(logserver.pid, SIGUSR2);
 }
 
 void pv_logserver_reload(void)
 {
-	if (logserver_g.pid >= 0)
-		kill(logserver_g.pid, SIGUSR1);
+	if (logserver.pid >= 0)
+		kill(logserver.pid, SIGUSR1);
 }
 
 static void logserver_close_socket(int sockd, const char *name)
@@ -1223,37 +1023,38 @@ static void logserver_close_socket(int sockd, const char *name)
 
 static void pv_logserver_close(void)
 {
-	if (logserver_g.logsock >= 0) {
+	if (logserver.logsock >= 0) {
 		pv_log(DEBUG, "closing logsock...");
-		logserver_close_socket(logserver_g.logsock, LOGCTRL_FNAME);
-		logserver_g.logsock = -1;
+		logserver_close_socket(logserver.logsock, LOGCTRL_FNAME);
+		logserver.logsock = -1;
 	}
-	if (logserver_g.fdsock >= 0) {
+	if (logserver.fdsock >= 0) {
 		pv_log(DEBUG, "closing fdsock...");
-		logserver_close_socket(logserver_g.fdsock, LOGFD_FNAME);
-		logserver_g.fdsock = -1;
+		logserver_close_socket(logserver.fdsock, LOGFD_FNAME);
+		logserver.fdsock = -1;
 	}
 
-	if (logserver_g.epfd >= 0) {
+	if (logserver.epfd >= 0) {
 		pv_log(DEBUG, "closing epfd...");
-		close(logserver_g.epfd);
-		logserver_g.epfd = -1;
+		close(logserver.epfd);
+		logserver.epfd = -1;
 	}
 }
 
 void pv_logserver_stop(void)
 {
-	// kill pid
-	if (logserver_g.pid > 0) {
-		pv_log(DEBUG, "stopping logserver service with pid %d...",
-		       logserver_g.pid);
-		pv_system_kill_lenient(logserver_g.pid);
-		pv_system_kill_force(logserver_g.pid);
-		logserver_g.pid = -1;
-		pv_log(DEBUG, "stopped logserver service");
-	}
-
 	pv_logserver_close();
+	pv_logserver_delete_outputs();
+
+	// kill pid
+	if (logserver.pid > 0) {
+		pv_log(DEBUG, "stopping logserver service...");
+		pv_system_kill_lenient(logserver.pid);
+		pv_system_kill_force(logserver.pid);
+		pv_log(DEBUG, "stopped logserver service with pid %d",
+		       logserver.pid);
+		logserver.pid = -1;
+	}
 }
 
 static int logserver_send_subs_msg(int type, int fd, const char *platform,
@@ -1279,12 +1080,14 @@ static int logserver_send_subs_msg(int type, int fd, const char *platform,
 		struct cmsghdr align;
 	} ctrl;
 
-	struct msghdr msg = { .msg_name = NULL,
-			      .msg_namelen = 0,
-			      .msg_iov = iov,
-			      .msg_iovlen = 4,
-			      .msg_control = ctrl.buf,
-			      .msg_controllen = sizeof(ctrl.buf) };
+	struct msghdr msg = {
+		.msg_name = NULL,
+		.msg_namelen = 0,
+		.msg_iov = iov,
+		.msg_iovlen = 4,
+		.msg_control = ctrl.buf,
+		.msg_controllen = sizeof(ctrl.buf),
+	};
 
 	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
 	cmsg->cmsg_level = SOL_SOCKET;

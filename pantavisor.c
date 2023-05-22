@@ -58,7 +58,7 @@
 #include "signature.h"
 #include "paths.h"
 #include "ph_logger.h"
-#include "logserver.h"
+#include "logserver/logserver.h"
 #include "mount.h"
 #include "debug.h"
 #include "cgroup.h"

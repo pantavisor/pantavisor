@@ -43,7 +43,7 @@
 #include "state.h"
 #include "tsh.h"
 #include "init.h"
-#include "logserver.h"
+#include "logserver/logserver.h"
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
