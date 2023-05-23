@@ -312,11 +312,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_metadata_init_devmeta(pv);
 
-	if (pv_storage_make_config(pv) < 0) {
-		pv_log(ERROR, "error making config");
-		goto out;
-	}
-
 	timer_start(&timer_commit, pv_config_get_updater_commit_delay(), 0,
 		    RELATIV_TIMER);
 	timer_start(&timer_rollback_remote,

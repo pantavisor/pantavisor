@@ -83,7 +83,8 @@ void pv_paths_storage_trail_file(char *buf, size_t size, const char *rev,
 				 const char *name);
 void pv_paths_storage_trail_plat_file(char *buf, size_t size, const char *rev,
 				      const char *plat, const char *name);
-void pv_paths_storage_trail_config(char *buf, size_t size, const char *rev);
+void pv_paths_storage_trail_config_file(char *buf, size_t size, const char *rev,
+					const char *name);
 void pv_paths_storage_trail_pv_file(char *buf, size_t size, const char *rev,
 				    const char *name);
 void pv_paths_storage_trail_pvr_file(char *buf, size_t size, const char *rev,

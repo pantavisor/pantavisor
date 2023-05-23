@@ -553,44 +553,6 @@ out:
 	return res;
 }
 
-int pv_storage_make_config(struct pantavisor *pv)
-{
-	struct stat st;
-	char targetpath[PATH_MAX], srcpath[PATH_MAX], cmd[PATH_MAX];
-	int rv;
-
-	pv_paths_storage_trail_config(srcpath, PATH_MAX, pv->state->rev);
-	pv_paths_configs_file(targetpath, PATH_MAX, "");
-
-	if (!stat(targetpath, &st)) {
-		SNPRINTF_WTRUNC(cmd, sizeof(cmd), "/bin/rm -rf %s/*",
-				targetpath);
-	}
-	pv_fs_mkdir_p(targetpath, 0755);
-
-	memset(&st, '\0', sizeof(st));
-
-	// we allow overloading behaviour via plugin from initrd addon
-	if (!stat("/usr/local/bin/pvext_sysconfig", &st) &&
-	    st.st_mode & S_IXUSR) {
-		SNPRINTF_WTRUNC(cmd, sizeof(cmd),
-				"/usr/local/bin/pvext_sysconfig %s %s", srcpath,
-				targetpath);
-	} else {
-		SNPRINTF_WTRUNC(cmd, sizeof(cmd), "/bin/cp -aL %s/* %s/",
-				srcpath, targetpath);
-	}
-	pv_log(INFO, "processing trail _config: %s", cmd);
-
-	/*
-	 * [PKS]
-	 * Should we do a tsh_run and wait
-	 * for command to finish?
-	 */
-	rv = system(cmd);
-	return rv;
-}
-
 bool pv_storage_is_revision_local(const char *rev)
 {
 	bool ret = false;
