@@ -25,7 +25,6 @@
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
-#include "bootloader.h"
 
 #include <string.h>
 #include <linux/limits.h>
@@ -35,14 +34,20 @@
 
 static char *create_dir(const struct logserver_log *log)
 {
+	if (!log->rev) {
+		WARN_ONCE(
+			"Log with no revision (null) arrives to singlefile output: %s",
+			log->data.buf);
+		return NULL;
+	}
+
 	char path[PATH_MAX];
-	pv_paths_pv_log(path, sizeof(path), pv_bootloader_get_rev());
+	pv_paths_pv_log(path, sizeof(path), log->rev);
 
 	if (pv_fs_mkdir_p(path, 0755))
 		return NULL;
 
-	pv_paths_pv_log_plat(path, sizeof(path), pv_bootloader_get_rev(),
-			     "pv.log");
+	pv_paths_pv_log_plat(path, sizeof(path), log->rev, "pv.log");
 
 	return strdup(path);
 }
