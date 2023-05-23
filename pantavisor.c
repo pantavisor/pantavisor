@@ -910,7 +910,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// at this point, we can shutdown if not in appengine
 	if (initmode != IM_APPENGINE) {
-		pv_log(INFO, "shutdown complete, performing '%s' in 2 second...", shutdown_type_string(t));
+		pv_log(INFO,
+		       "shutdown complete, performing '%s' in 2 second...",
+		       shutdown_type_string(t));
 		sleep(2);
 		pv_remove(pv);
 		sync();
