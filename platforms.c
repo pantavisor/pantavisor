@@ -52,6 +52,8 @@ int setns(int nsfd, int nstype);
 #include "utils/list.h"
 #include "utils/json.h"
 #include "utils/str.h"
+#include "utils/fs.h"
+#include "utils/tsh.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -701,6 +703,37 @@ int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 	return 0;
 }
 
+static void pv_platform_remove_config_overlay(const char *plat)
+{
+	char path[PATH_MAX];
+	pv_paths_configs_file(path, PATH_MAX, plat);
+	pv_fs_path_remove(path, true);
+}
+
+static int pv_platform_setup_config_overlay(const char *plat)
+{
+	struct pantavisor *pv = pv_get_instance();
+	char srcpath[PATH_MAX];
+	pv_paths_storage_trail_config_file(srcpath, PATH_MAX, pv->state->rev,
+					   plat);
+	if (!pv_fs_path_exist(srcpath))
+		return 0;
+
+	char dstpath[PATH_MAX];
+	pv_paths_configs_file(dstpath, PATH_MAX, plat);
+	pv_fs_path_remove(dstpath, true);
+	pv_fs_mkdir_p(dstpath, 0755);
+
+	char cmd[PATH_MAX];
+	SNPRINTF_WTRUNC(cmd, sizeof(cmd), "/bin/cp -aL %s/* %s/", srcpath,
+			dstpath);
+	pv_log(INFO, "setting up '%s' config overlay: %s", plat, cmd);
+
+	system(cmd);
+
+	return 0;
+}
+
 static void pv_platform_subscribe_fd(int fd, const char *plat, const char *src)
 {
 	if (fd < 0) {
@@ -733,6 +766,11 @@ int pv_platform_start(struct pv_platform *p)
 
 	pv_wdt_kick(pv);
 
+	if (pv_platform_setup_config_overlay(p->name)) {
+		pv_log(ERROR, "platform '%s' config overlay failed", p->name);
+		return -1;
+	}
+
 	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
 		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s/%s", p->name, *c);
 	else
@@ -746,23 +784,17 @@ int pv_platform_start(struct pv_platform *p)
 					 PV_PLATFORM_LXC_LOG);
 	}
 
-	// Get type controller
 	ctrl = _pv_platforms_get_ctrl(p->type);
-
-	// Start the platform
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
 	data = ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], (void *)&pid);
-
 	if (!data) {
 		pv_log(ERROR, "error starting platform: '%s'", p->name);
 		return -1;
 	}
-
 	pv_log(DEBUG, "starting platform \'%s\' with pid %d", p->name, pid);
 
 	p->data = data;
 	p->init_pid = pid;
-
 	if (pid <= 0)
 		return -1;
 
@@ -883,6 +915,8 @@ int pv_platform_stop(struct pv_platform *p)
 	ctrl->stop(p, NULL, p->data);
 	p->data = NULL;
 	pv_platform_set_status(p, PLAT_STOPPING);
+
+	pv_platform_remove_config_overlay(p->name);
 
 	return 0;
 }

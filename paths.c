@@ -146,7 +146,7 @@ void pv_paths_storage_object(char *buf, size_t size, const char *sha)
 #define PV_TRAILS_PATHF "%s/trails/%s"
 #define PV_TRAILS_FILE_PATHF PV_TRAILS_PATHF "/%s"
 #define PV_TRAILS_PLAT_FILE_PATHF PV_TRAILS_PATHF "/%s/%s"
-#define PV_TRAILS_CONFIG_PATHF PV_TRAILS_PATHF "/_config/"
+#define PV_TRAILS_CONFIG_PATHF PV_TRAILS_PATHF "/_config/%s"
 #define PV_TRAILS_PV_PATHF PV_TRAILS_PATHF "/.pv/%s"
 #define PV_TRAILS_PVR_PATHF PV_TRAILS_PATHF "/.pvr/%s"
 
@@ -170,10 +170,11 @@ void pv_paths_storage_trail_plat_file(char *buf, size_t size, const char *rev,
 			pv_config_get_storage_mntpoint(), rev, plat, name);
 }
 
-void pv_paths_storage_trail_config(char *buf, size_t size, const char *rev)
+void pv_paths_storage_trail_config_file(char *buf, size_t size, const char *rev,
+					const char *name)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_TRAILS_CONFIG_PATHF,
-			pv_config_get_storage_mntpoint(), rev);
+			pv_config_get_storage_mntpoint(), rev, name);
 }
 
 void pv_paths_storage_trail_pv_file(char *buf, size_t size, const char *rev,
