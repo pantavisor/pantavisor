@@ -19,6 +19,11 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -31,7 +36,6 @@
 #include <sys/time.h>
 #include <sys/select.h>
 #include <sys/types.h>
-#define _GNU_SOURCE
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/stat.h>
