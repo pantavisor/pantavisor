@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,11 +38,7 @@
 
 #include <linux/limits.h>
 
-#ifndef _GNU_SOURCE
-int setns(int nsfd, int nstype);
-#else
 #include <sched.h>
-#endif
 
 #include "platforms.h"
 #include "paths.h"
