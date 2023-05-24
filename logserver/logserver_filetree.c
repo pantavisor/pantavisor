@@ -25,7 +25,6 @@
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
-#include "bootloader.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -37,9 +36,16 @@
 
 static char *create_dir(const struct logserver_log *log, bool is_pv)
 {
+	if (!log->rev) {
+		WARN_ONCE(
+			"Log with no revision (null) arrives to filetree output: %s",
+			log->data.buf);
+		return NULL;
+	}
+
 	char path[PATH_MAX];
-	pv_paths_pv_log_file(path, sizeof(path), pv_bootloader_get_rev(),
-			     log->plat, is_pv ? "pantavisor.log" : log->src);
+	pv_paths_pv_log_file(path, sizeof(path), log->rev, log->plat,
+			     is_pv ? "pantavisor.log" : log->src);
 
 	char *dup_path = strdup(path);
 	char *fname = dirname(path);

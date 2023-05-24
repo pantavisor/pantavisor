@@ -55,6 +55,7 @@ struct logserver_log {
 	uint32_t tnano;
 	char *plat;
 	char *src;
+	char *rev;
 	struct logserver_data data;
 };
 

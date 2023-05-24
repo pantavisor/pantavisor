@@ -155,6 +155,7 @@ static int pv_log(int level, char *msg, ...)
 			.tnano = 0,
 			.plat = MODULE_NAME,
 			.src = "logserver",
+			.rev = NULL,
 			.data.buf = NULL,
 			.data.len = 0,
 		};
@@ -181,6 +182,7 @@ static int pv_log(int level, char *msg, ...)
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 			.plat = PV_PLATFORM_STR,
 			.src = "logserver",
+			.rev = logserver.rev,
 			.data.buf = buf,
 			.data.len = buf_len
 		};
@@ -252,6 +254,7 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 		log->plat = msg->buf + strlen(msg->buf) + 1;
 		bytes_read += strlen(log->plat) + 1;
 		log->src = log->plat + strlen(log->plat) + 1;
+		log->rev = logserver.rev;
 		bytes_read += strlen(log->src) + 1;
 
 		log->data.buf = log->src + strlen(log->src) + 1;
@@ -534,6 +537,7 @@ static void logserver_consume_fd(int fd)
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 			.plat = lfd->platform,
 			.src = lfd->src,
+			.rev = logserver.rev,
 			.data.buf = buffer->buf,
 			.data.len = size,
 		};
