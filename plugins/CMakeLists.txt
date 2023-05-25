@@ -21,5 +21,5 @@ SET_TARGET_PROPERTIES(pv_lxc PROPERTIES PREFIX "")
 target_link_libraries(pv_lxc ${LXC_LIB})
 
 install(TARGETS pv_lxc
-	DESTINATION lib/pv/
+	DESTINATION /lib/
 )
