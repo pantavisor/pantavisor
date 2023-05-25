@@ -391,7 +391,8 @@ int main(int argc, char *argv[])
 	other_mounts();
 
 	// executed from shell and/or appengine mode
-	if (getpid() != 1) {
+	if (pv_config_get_system_init_mode() == IM_STANDALONE ||
+	    pv_config_get_system_init_mode() == IM_APPENGINE) {
 		// we are going to use this thread for pv
 		pv_pid = getpid();
 		signal(SIGINT, shell_handler);
