@@ -25,10 +25,17 @@ mark_as_advanced(MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPT
 # Set the source files for the binary
 set(SOURCES  debug.c
 			init.c
+			cgroup.c
 			loop.c
 			logger.c
 			log.c
-			logserver.c
+			logserver/logserver_utils.c
+			logserver/logserver_out.c
+			logserver/logserver_singlefile.c
+			logserver/logserver_filetree.c
+			logserver/logserver_stdout.c
+			logserver/logserver_null.c
+			logserver/logserver.c
 			config_parser.c
 			config.c
 			pantavisor.c
@@ -77,7 +84,13 @@ set(SOURCES  debug.c
 			config_parser.h
 			drivers.h
 			jsons.h
-			logserver.h
+			logserver/logserver_utils.h
+			logserver/logserver_stdout.h
+			logserver/logserver_out.h
+			logserver/logserver_singlefile.h
+			logserver/logserver_null.h
+			logserver/logserver.h
+			logserver/logserver_filetree.h
 			mount.h
 			pantahub.h
 			ph_logger.h
@@ -87,6 +100,7 @@ set(SOURCES  debug.c
 			blkid.h
 			condition.h
 			ctrl.h
+			cgroup.h
 			group.h
 			logger.h
 			loop.h
@@ -120,7 +134,7 @@ add_compile_definitions(PANTAVISOR_DEBUG=yes)
 add_custom_command(
     OUTPUT  version.c
     COMMAND sh
-        -c
+	-c
 	\"cd ${CMAKE_CURRENT_SOURCE_DIR}\; ./gen_version.sh CMAKE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SYSTEM_PROCESSOR}\"
 )
 
@@ -134,4 +148,3 @@ target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES}
 install(TARGETS pantavisor DESTINATION bin)
 install(DIRECTORY defaults DESTINATION /etc/pantavisor)
 install(FILES configs/resolv.conf DESTINATION /etc/resolv.conf)
-
