@@ -110,7 +110,7 @@ int logserver_utils_open_logfile(const char *path)
 int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 				const char *src, bool lf)
 {
-	const char *util_src = src ? src : log->src;
+	const char *util_src = log->src ? log->src : src;
 
 	char *fmt = NULL;
 	if (lf)
