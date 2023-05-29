@@ -166,7 +166,7 @@ static int pv_log(int level, char *msg, ...)
 			return 1;
 
 		vsnprintf(log.data.buf, log.data.len, msg, args);
-		logserver_log_msg_data(&log, LOG_SERVER_OUTPUT_STDOUT);
+		logserver_utils_stdout(&log);
 		free(log.data.buf);
 
 	} else if (logserver.pid == 0) {
@@ -935,12 +935,6 @@ static int logserver_msg_fill(struct logserver_log *log,
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args)
 {
-	struct logserver_msg *logserver_msg = NULL;
-	int ret;
-	char path[PATH_MAX];
-	struct buffer *vmsg_buffer = NULL;
-	struct buffer *logserver_msg_buffer = NULL;
-
 	struct logserver_log log = {
 		.ver = LOG_PROTOCOL_LEGACY,
 		.lvl = level,
@@ -950,40 +944,44 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 		.src = src,
 	};
 
-	if (logserver.pid <= 0 || level > pv_config_get_log_loglevel())
+	if (level > pv_config_get_log_loglevel())
+		return 0;
+
+	struct buffer *log_buf = pv_buffer_get(true);
+	if (!log_buf)
 		return -1;
 
-	vmsg_buffer = pv_buffer_get(true);
-	if (!vmsg_buffer) {
-		ret = -1;
-		goto out_no_buffer;
-	}
-
-	logserver_msg_buffer = pv_buffer_get(true);
-	if (!logserver_msg_buffer) {
-		ret = -1;
-		goto out_no_buffer;
-	}
-
-	logserver_msg = (struct logserver_msg *)logserver_msg_buffer->buf;
-	logserver_msg->len =
-		logserver_msg_buffer->size - sizeof(*logserver_msg);
-
-	log.data.buf = (char *)vmsg_buffer->buf;
-	log.data.len = vmsg_buffer->size;
+	log.data.buf = (char *)log_buf->buf;
+	log.data.len = log_buf->size;
 
 	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
 
-	ret = logserver_msg_fill(&log, logserver_msg);
-	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-	pvctl_write_to_path(is_platform ? PLATFORM_LOG_CTRL_PATH : path,
-			    (char *)logserver_msg,
-			    logserver_msg->len + sizeof(*logserver_msg));
+	if (logserver.pid < 1) {
+		int len = logserver_utils_stdout(&log);
+		pv_buffer_drop(log_buf);
+		return len;
+	}
 
-out_no_buffer:
-	pv_buffer_drop(vmsg_buffer);
-	pv_buffer_drop(logserver_msg_buffer);
-	return ret;
+	struct buffer *msg_buf = pv_buffer_get(true);
+	if (!msg_buf) {
+		pv_buffer_drop(log_buf);
+		return -1;
+	}
+
+	struct logserver_msg *lsmsg = (struct logserver_msg *)msg_buf->buf;
+	lsmsg->len = msg_buf->size - sizeof(*lsmsg);
+
+	int len = logserver_msg_fill(&log, lsmsg);
+
+	char path[PATH_MAX] = { 0 };
+	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
+
+	pvctl_write_to_path(is_platform ? PLATFORM_LOG_CTRL_PATH : path,
+			    (char *)lsmsg, lsmsg->len + sizeof(*lsmsg));
+
+	pv_buffer_drop(log_buf);
+	pv_buffer_drop(msg_buf);
+	return len;
 }
 
 int pv_logserver_send_log(bool is_platform, char *platform, char *src,
