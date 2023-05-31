@@ -1,0 +1,31 @@
+#!/bin/sh
+
+
+usage() {
+	echo "USAGE: pventer -c <container> [CMD ...]"
+	echo "executes CMD in "container" namespace. If CMD is empty enters container and runs default shell"
+}
+
+while [ "$1" ]; do
+	case "$1" in
+	   --container|-c)
+		shift
+		container=$1
+		shift
+		;;
+	   --help)
+		usage
+		exit 0
+		;;
+	   *)
+		# the rest ist the CMD so we break here
+		break
+		;;
+	esac
+done
+
+if ! [ $container ]; then
+	echo "ERROR: see --help"
+fi
+
+SSH_ORIGINAL_COMMAND=$@ USER=$container fallbear-cmd

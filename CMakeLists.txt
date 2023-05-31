@@ -147,4 +147,7 @@ target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES}
 
 install(TARGETS pantavisor DESTINATION bin)
 install(DIRECTORY defaults DESTINATION /etc/pantavisor)
-install(FILES configs/resolv.conf DESTINATION /etc/resolv.conf)
+install(PROGRAMS tools/pventer
+		tools/fallbear-cmd
+	DESTINATION /usr/bin)
+install(FILES configs/resolv.conf DESTINATION /etc)
