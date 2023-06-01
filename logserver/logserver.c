@@ -923,8 +923,7 @@ static int logserver_msg_fill(struct logserver_log *log,
 
 		to_copy = (log->data.len <= avail_len) ? log->data.len :
 							       avail_len;
-		if (msg->buf)
-			memcpy(msg->buf + written, log->data.buf, to_copy);
+		memcpy(msg->buf + written, log->data.buf, to_copy);
 		msg->len = written + to_copy;
 
 		return to_copy;
