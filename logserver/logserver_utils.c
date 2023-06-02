@@ -109,8 +109,7 @@ int logserver_utils_open_logfile(const char *path)
 
 int logserver_utils_stdout(const struct logserver_log *log)
 {
-	return logserver_utils_print_pvfmt(STDOUT_FILENO, log, "unknown",
-					   false);
+	return logserver_utils_print_pvfmt(STDOUT_FILENO, log, "unknown", true);
 }
 
 int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,

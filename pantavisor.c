@@ -882,9 +882,6 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	// close pvctrl
 	pv_ctrl_socket_close(pv->ctrl_fd);
 
-	// stop all logs but stdout
-	pv_logserver_degrade();
-
 	pv_debug_stop_ssh();
 	pv_logserver_stop();
 
