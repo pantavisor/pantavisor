@@ -1037,11 +1037,10 @@ void pv_logserver_stop(void)
 
 	pv_system_kill_lenient(logserver.pid);
 
-	pv_logserver_close();
-
 	pv_system_kill_force(logserver.pid);
 	logserver.pid = -1;
 
+	pv_logserver_close();
 	pv_logserver_delete_outputs();
 
 	pv_log(DEBUG, "stopped logserver service");
