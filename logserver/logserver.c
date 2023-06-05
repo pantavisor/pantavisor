@@ -815,7 +815,8 @@ static void pv_logserver_delete_outputs()
 	dl_list_for_each_safe(it, tmp, &logserver.outputs, struct logserver_out,
 			      list)
 	{
-		it->free(it);
+		dl_list_del(&it->list);
+		logserver_out_free(it);
 	}
 }
 
