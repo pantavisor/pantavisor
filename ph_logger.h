@@ -32,19 +32,6 @@
 
 #define PH_LOGGER_POS_XATTR "trusted.ph.logger.pos"
 
-#ifdef DEBUG
-#define WARN_ONCE(msg, args...)                                                \
-	do {                                                                   \
-		static bool __warned = false;                                  \
-		if (!__warned) {                                               \
-			printf(msg, ##args);                                   \
-			__warned = true;                                       \
-		}                                                              \
-	} while (0)
-#else
-#define WARN_ONCE(msg, args...)
-#endif
-
 void ph_logger_toggle(char *rev);
 void ph_logger_stop_lenient(void);
 void ph_logger_stop_force(void);

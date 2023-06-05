@@ -57,7 +57,7 @@ void pv_debug_start_shell()
 
 	con_fd = open("/dev/console", O_RDWR);
 	if (con_fd < 0) {
-		printf("Unable to open /dev/console\n");
+		pv_log(WARN, "Unable to open /dev/console");
 		return;
 	}
 

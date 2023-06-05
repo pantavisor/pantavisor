@@ -378,7 +378,6 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		pv_storage_set_rev_progress(
 			"0", DEVICE_STEP_FACTORY_PROGRESS_SYNCING);
 		pv_log(INFO, "device has been claimed, proceeding normally");
-		printf("INFO: pantavisor device has been claimed, proceeding normally\n");
 		pv->unclaimed = false;
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
@@ -953,7 +952,6 @@ int pv_start()
 	if (!pv)
 		return 1;
 
-	printf("Pantavisor (TM) (%s) - pantavisor.io\n", pv_build_version);
 	SNPRINTF_WTRUNC(pv_user_agent, sizeof(pv_user_agent), PV_USER_AGENT_FMT,
 			pv_build_arch, pv_build_version, pv_build_date);
 

@@ -947,7 +947,8 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 
 	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
 
-	if (pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT)
+	if ((pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) ||
+	    (level <= FATAL))
 		logserver_utils_stdout(&log);
 
 	if (logserver.pid < 1) {

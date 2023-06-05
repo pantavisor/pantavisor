@@ -173,7 +173,7 @@ static void early_spawns()
 	char path[PATH_MAX];
 
 	pv_paths_lib_hooks_early_spawn(path, PATH_MAX, "");
-	printf("starting early spawns from: %s\n", path);
+	pv_log(DEBUG, "starting early spawns from: %s", path);
 	d = opendir(path);
 	while (d && (dir = readdir(d)) != NULL) {
 		struct stat sb;
@@ -184,11 +184,12 @@ static void early_spawns()
 		pv_paths_lib_hooks_early_spawn(path, PATH_MAX, dir->d_name);
 
 		if (!(stat(path, &sb) == 0 && sb.st_mode & S_IXUSR)) {
-			printf("early_spawns: skipping not executable hook: %s\n",
+			pv_log(DEBUG,
+			       "early_spawns: skipping not executable hook: %s",
 			       path);
 			continue;
 		}
-		printf("early_spawns: starting: %s\n", path);
+		pv_log(DEBUG, "early_spawns: starting: %s", path);
 		tsh_run(path, 0, NULL);
 	}
 	if (d)
@@ -311,19 +312,19 @@ static int read_cmdline(const char *arg_cmdline)
 
 	if (arg_cmdline) {
 		pv->cmdline = strdup(arg_cmdline);
-		printf("DEBUG: cmdline loaded from arg: '%s'\n", pv->cmdline);
+		pv_log(DEBUG, "cmdline loaded from arg: '%s'", pv->cmdline);
 		return 0;
 	}
 
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd < 0) {
-		printf("ERROR: cannot open /proc/cmdline: %s", strerror(errno));
+		pv_log(FATAL, "cannot open /proc/cmdline: %s", strerror(errno));
 		return ret;
 	}
 
 	bytes = pv_fs_file_read_nointr(fd, buf, SIZE_CMDLINE_BUF);
 	if (bytes < 0) {
-		printf("ERROR: cannot read /proc/cmdline: %s", strerror(errno));
+		pv_log(FATAL, "cannot read /proc/cmdline: %s", strerror(errno));
 		goto out;
 	}
 
@@ -332,12 +333,12 @@ static int read_cmdline(const char *arg_cmdline)
 
 	pv->cmdline = calloc(bytes, sizeof(char));
 	if (!pv->cmdline) {
-		printf("ERROR: cannot allocate cmdline: %s", strerror(errno));
+		pv_log(FATAL, "cannot allocate cmdline: %s", strerror(errno));
 		goto out;
 	}
 
 	strncpy(pv->cmdline, buf, bytes);
-	printf("DEBUG: cmdline loaded from /proc/cmdline: '%s'\n", pv->cmdline);
+	pv_log(DEBUG, "cmdline loaded from /proc/cmdline: '%s'", pv->cmdline);
 
 	ret = 0;
 

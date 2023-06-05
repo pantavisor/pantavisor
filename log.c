@@ -117,8 +117,8 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 
 void exit_error(int err, char *msg)
 {
-	printf("ERROR: %s (err=%d)\n", msg, err);
-	printf("ERROR: rebooting system in 30 seconds\n");
+	pv_log(FATAL, "%s (err=%d)", msg, err);
+	pv_log(FATAL, "rebooting system in 30 seconds");
 
 	sleep(20);
 	exit(0);
@@ -164,6 +164,9 @@ static int pv_log_early_init(struct pv_init *this)
 	struct pantavisor *pv = pv_get_instance();
 
 	pv_log_init(pv, pv_bootloader_get_rev());
+
+	// this should be the only message we directly printf
+	printf("Pantavisor (TM) (%s) - pantavisor.io\n", pv_build_version);
 
 	pv_log(INFO, "______           _              _                ");
 	pv_log(INFO, "| ___ \\         | |            (_)               ");

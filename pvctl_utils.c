@@ -71,10 +71,9 @@ try_again:
 			goto try_again;
 		} else {
 			strerror_r(errno, str_err, sizeof(str_err));
-#ifdef DEBUG
-			printf("Connect error on path %s, errno = %d (%s)\n",
+			pv_log(FATAL,
+			       "connect error on path %s, errno = %d (%s)",
 			       path, errno, str_err);
-#endif
 			return -errno;
 		}
 	}

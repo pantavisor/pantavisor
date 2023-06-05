@@ -35,7 +35,7 @@
 	do {                                                                   \
 		static bool __warned = false;                                  \
 		if (!__warned) {                                               \
-			printf(msg, ##args);                                   \
+			pv_log(WARN, msg, ##args);                             \
 			__warned = true;                                       \
 		}                                                              \
 	} while (0)

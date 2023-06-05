@@ -295,7 +295,7 @@ static int pv_config_load_policy(const char *policy,
 
 	pv_paths_etc_policy_file(path, PATH_MAX, policy);
 	if (load_key_value_file(path, config_list) < 0) {
-		printf("FATAL: unable to parse %s\n", path);
+		pv_log(FATAL, "unable to parse %s\n", path);
 		return -1;
 	}
 
@@ -1529,9 +1529,9 @@ int pv_config_init(char *path)
 	if (!path)
 		path = PV_PANTAVISOR_CONFIG_PATH;
 
-	printf("DEBUG: loading config from %s\n", path);
+	pv_log(DEBUG, "loading config from %s\n", path);
 	if (pv_config_load_file(path, &pv->config) < 0) {
-		printf("FATAL: unable to parse %s\n", path);
+		pv_log(FATAL, "unable to parse %s\n", path);
 		return -1;
 	}
 
@@ -1572,14 +1572,14 @@ static int pv_config_trail(struct pv_init *this)
 
 	json = pv_storage_get_state_json(rev);
 	if (!json) {
-		printf("INFO: json state not found\n");
+		pv_log(INFO, "json state not found");
 		res = 0;
 		goto out;
 	}
 
 	config_name = pv_parser_get_initrd_config_name(json);
 	if (!config_name) {
-		printf("INFO: initrd config not found\n");
+		pv_log(INFO, "initrd config not found");
 		res = 0;
 		goto out;
 	}
@@ -1589,7 +1589,7 @@ static int pv_config_trail(struct pv_init *this)
 	free(config_name);
 
 	if (pv_config_override_config_from_file(path, &pv->config)) {
-		printf("FATAL: initrd config %s not found\n", path);
+		pv_log(FATAL, "initrd config %s not found", path);
 		goto out;
 	}
 
