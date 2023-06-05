@@ -115,7 +115,8 @@ static int pv_mount_init(struct pv_init *this)
 		get_blkid(&dev_info, pv_config_get_storage_path());
 		if (dev_info.device && stat(dev_info.device, &st) == 0)
 			break;
-		printf("INFO: trail storage not yet available, waiting %d seconds...\n",
+		pv_log(INFO,
+		       "trail storage not yet available, waiting %d seconds...",
 		       wait);
 		sleep(1);
 		continue;
@@ -125,7 +126,7 @@ static int pv_mount_init(struct pv_init *this)
 		exit_error(errno,
 			   "Could not mount trails storage. No device found.");
 
-	printf("INFO: trail storage found: %s.\n", dev_info.device);
+	pv_log(INFO, "trail storage found: %s.", dev_info.device);
 
 	// attempt auto resize only if we have ext4 and in embedded init mode
 	if ((pv_config_get_system_init_mode() == IM_EMBEDDED) &&
@@ -152,12 +153,12 @@ static int pv_mount_init(struct pv_init *this)
 		char *mntcmd = calloc(mntcmd_size, sizeof(char));
 
 		if (!mntcmd) {
-			printf("Couldn't allocate mount command \n");
+			pv_log(FATAL, "couldn't allocate mount command");
 			goto out;
 		}
 		SNPRINTF_WTRUNC(mntcmd, mntcmd_size, "/btools/pvmnt.%s %s",
 				pv_config_get_storage_mnttype(), path);
-		printf("Mounting through helper: %s\n", mntcmd);
+		pv_log(DEBUG, "mounting through helper: %s\n", mntcmd);
 		ret = tsh_run(mntcmd, 1, &status);
 		free(mntcmd);
 	}
@@ -173,8 +174,8 @@ static int pv_mount_init(struct pv_init *this)
 				pv_config_get_storage_logtempsize());
 		SNPRINTF_WTRUNC(logmount, logmount_size, "%s%s", path, "/logs");
 		pv_fs_mkdir_p(logmount, 0755);
-		printf("Mounting tmpfs logmount: %s with opts: %s\n", logmount,
-		       opts);
+		pv_log(DEBUG, "mounting tmpfs logmount: %s with opts: %s",
+		       logmount, opts);
 		ret = mount("none", logmount, "tmpfs", 0, opts);
 		free(logmount);
 		if (opts)

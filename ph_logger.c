@@ -274,7 +274,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 	}
 #ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
-		printf("BUG!! .Frag list must be empty\n");
+		pv_log(WARN, "frag list must be empty");
 	}
 #endif
 	dl_list_init(&frag_list);
