@@ -39,7 +39,6 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args);
 
-void pv_logserver_degrade(void);
 void pv_logserver_reload(void);
 void pv_logserver_stop(void);
 int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,

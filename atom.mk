@@ -52,7 +52,6 @@ LOCAL_SRC_FILES := debug.c \
 			logserver/logserver_out.c \
 			logserver/logserver_singlefile.c \
 			logserver/logserver_filetree.c \
-			logserver/logserver_stdout.c \
 			logserver/logserver_null.c \
 			logserver/logserver.c \
 			config_parser.c \

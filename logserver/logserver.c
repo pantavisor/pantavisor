@@ -40,7 +40,6 @@
 #include "logserver_out.h"
 #include "logserver_utils.h"
 #include "logserver_null.h"
-#include "logserver_stdout.h"
 #include "logserver_filetree.h"
 #include "logserver_singlefile.h"
 #include "logserver.h"
@@ -117,7 +116,7 @@ typedef struct logserver_out *(*logserver_outputs_builder_t)(void);
 static logserver_outputs_builder_t
 	logserver_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
 		logserver_null_new, logserver_singlefile_new,
-		logserver_filetree_new, logserver_stdout_new
+		logserver_filetree_new, logserver_null_new
 	};
 
 static int logserver_log_msg_data(const struct logserver_log *log, int output)
@@ -147,11 +146,7 @@ static int pv_log(int level, char *msg, ...)
 	va_list args;
 	va_start(args, msg);
 
-	if (logserver.pid < 0) {
-		if (!(pv_config_get_log_server_outputs() &
-		      LOG_SERVER_OUTPUT_STDOUT))
-			return 0;
-
+	if (pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) {
 		struct logserver_log log = {
 			.ver = 0,
 			.lvl = level,
@@ -172,8 +167,9 @@ static int pv_log(int level, char *msg, ...)
 		vsnprintf(log.data.buf, log.data.len, msg, args);
 		logserver_utils_stdout(&log);
 		free(log.data.buf);
+	}
 
-	} else if (logserver.pid == 0) {
+	if (logserver.pid == 0) {
 		struct buffer *pv_buffer = pv_buffer_get(true);
 		char *buf = pv_buffer->buf;
 		int buf_len;
@@ -236,12 +232,6 @@ static void sigusr1_handler(int signum)
 
 	pv_log(DEBUG, "signal handler to reload revision after %s",
 	       logserver.rev);
-}
-
-static void sigusr2_handler(int signum)
-{
-	pv_log(DEBUG, "degrading logs outputs to just stdout");
-	logserver.active_out = LOG_SERVER_OUTPUT_STDOUT;
 }
 
 static int logserver_msg_parse_data(struct logserver_msg *msg,
@@ -451,7 +441,7 @@ static struct logserver_fd *logserver_get_fd(int sockfd)
 
 	struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
 	if (!cmsg) {
-		pv_log(ERROR, "error receiving fd, NULL structure\n");
+		pv_log(ERROR, "error receiving fd, NULL structure");
 		return NULL;
 	}
 
@@ -718,7 +708,7 @@ static int logserver_open_server_socket(const char *fname)
 
 	// queue upto LOGSERVER_BACKLOG commands
 	if (listen(fd, LOGSERVER_BACKLOG) == -1) {
-		pv_log(ERROR, "unable to listen to control socket: %d\n",
+		pv_log(ERROR, "unable to listen to control socket: %d",
 		       strerror(errno));
 		close(fd);
 		return -1;
@@ -758,9 +748,6 @@ static pid_t logserver_start_service(const char *revision)
 
 		sa.sa_handler = sigusr1_handler;
 		sigaction(SIGUSR1, &sa, NULL);
-
-		sa.sa_handler = sigusr2_handler;
-		sigaction(SIGUSR2, &sa, NULL);
 
 		pv_log(DEBUG, "starting logserver loop");
 
@@ -959,14 +946,12 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 
 	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
 
-	if (logserver.pid < 1) {
-		if (!(pv_config_get_log_server_outputs() &
-		      LOG_SERVER_OUTPUT_STDOUT))
-			return 0;
+	if (pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT)
+		logserver_utils_stdout(&log);
 
-		int len = logserver_utils_stdout(&log);
+	if (logserver.pid < 1) {
 		pv_buffer_drop(log_buf);
-		return len;
+		return 0;
 	}
 
 	struct buffer *msg_buf = pv_buffer_get(true);
@@ -1003,12 +988,6 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 
 	va_end(args);
 	return ret;
-}
-
-void pv_logserver_degrade(void)
-{
-	if (logserver.pid >= 0)
-		kill(logserver.pid, SIGUSR2);
 }
 
 void pv_logserver_reload(void)
@@ -1052,18 +1031,19 @@ static void pv_logserver_close(void)
 
 void pv_logserver_stop(void)
 {
+	pv_log(DEBUG, "stopping logserver service with PID %d...",
+	       logserver.pid);
+
+	pv_system_kill_lenient(logserver.pid);
+
 	pv_logserver_close();
+
+	pv_system_kill_force(logserver.pid);
+	logserver.pid = -1;
+
 	pv_logserver_delete_outputs();
 
-	// kill pid
-	if (logserver.pid > 0) {
-		pv_log(DEBUG, "stopping logserver service...");
-		pv_system_kill_lenient(logserver.pid);
-		pv_system_kill_force(logserver.pid);
-		pv_log(DEBUG, "stopped logserver service with pid %d",
-		       logserver.pid);
-		logserver.pid = -1;
-	}
+	pv_log(DEBUG, "stopped logserver service");
 }
 
 static int logserver_send_subs_msg(int type, int fd, const char *platform,
