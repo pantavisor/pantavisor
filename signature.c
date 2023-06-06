@@ -583,6 +583,18 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		}
 	}
 
+	cacerts_i = certs;
+
+	i = 0;
+	do {
+		char serial[256];
+		i++;
+		mbedtls_x509_serial_gets(serial, 255, &cacerts_i->serial);
+		pv_log(INFO,
+		       "x5c cert for validation no. %d:  serial=%s",
+		       i, serial);
+	} while ((cacerts_i = cacerts_i->next) != 0);
+
 	pv_paths_secureboot_trust_crts(path, PATH_MAX,
 				       pv_config_get_secureboot_truststore());
 	pv_log(DEBUG, "parsing secureboot.truststore certs from %s", path);
