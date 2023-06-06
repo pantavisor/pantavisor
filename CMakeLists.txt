@@ -147,6 +147,12 @@ target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES}
 
 install(TARGETS pantavisor DESTINATION bin)
 install(DIRECTORY defaults DESTINATION /etc/pantavisor)
+IF(DEFINED ENV{PANTAVISOR_PVS_DIR})
+install(DIRECTORY $ENV{PANTAVISOR_PVS_DIR}/ DESTINATION /etc/pantavisor/pvs)
+ELSE()
+install(DIRECTORY pvs/ DESTINATION /etc/pantavisor/pvs)
+ENDIF()
+
 install(PROGRAMS tools/pventer
 		tools/fallbear-cmd
 	DESTINATION /usr/bin)
