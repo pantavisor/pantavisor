@@ -85,12 +85,12 @@
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 
 #define HTTP_RESPONSE                                                          \
-	"HTTP/1.1 %s \r\nContent-Length: %d\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"Error\":\"%s\"}\r\n"
+	"HTTP/1.1 %s \r\nContent-Length: %zd\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"Error\":\"%s\"}\r\n"
 
 #define UNSUPPORTED_LOG_COMMAND_FMT                                            \
 	"ERROR: unsupported legacy 'log command' command; use new REST API instead\n"
 
-static const unsigned int HTTP_REQ_BUFFER_SIZE = 4096;
+static const size_t HTTP_REQ_BUFFER_SIZE = 4096;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
 typedef enum {
@@ -342,14 +342,29 @@ err:
 	return -1;
 }
 
+static int pv_ctrl_send_all(int req_fd, const char *message, ssize_t size)
+{
+	ssize_t total_sent = 0;
+	ssize_t size_sent;
+
+	while (total_sent < size) {
+		size_sent = send(req_fd, message + total_sent,
+				 size - total_sent, MSG_NOSIGNAL);
+		if (size_sent < 0)
+			return size_sent;
+		total_sent += size_sent;
+	}
+
+	return total_sent;
+}
+
 static void pv_ctrl_write_cont_response(int req_fd)
 {
 	int res;
 
-	res = send(req_fd, HTTP_RES_CONT, sizeof(HTTP_RES_CONT) - 1,
-		   MSG_NOSIGNAL);
-	if (res == 0) {
-		pv_log(WARN, "HTTP CONTINUE response could be sent");
+	res = pv_ctrl_send_all(req_fd, HTTP_RES_CONT, strlen(HTTP_RES_CONT));
+	if (res != sizeof(HTTP_RES_CONT)) {
+		pv_log(WARN, "HTTP CONTINUE response was not sent");
 	} else if (res < 0) {
 		pv_log(WARN,
 		       "HTTP CONTINUE response could not be sent to ctrl socket with fd %d: %s",
@@ -361,9 +376,9 @@ static void pv_ctrl_write_ok_response(int req_fd)
 {
 	int res;
 
-	res = send(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK), MSG_NOSIGNAL);
-	if (res == 0) {
-		pv_log(WARN, "HTTP OK respnse could be sent");
+	res = pv_ctrl_send_all(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK));
+	if (res != strlen(HTTP_RES_OK)) {
+		pv_log(WARN, "HTTP OK response was not sent");
 	} else if (res < 0) {
 		pv_log(WARN,
 		       "HTTP OK response could not be written to ctrl socket with fd %d: %s",
@@ -374,8 +389,8 @@ static void pv_ctrl_write_ok_response(int req_fd)
 static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
 					 const char *message)
 {
-	int res;
-	unsigned int content_len, response_len;
+	ssize_t res;
+	size_t content_len, response_len;
 	char *response = NULL;
 
 	content_len = 15 + // {\"Error\":\"%s\"}\r\n\0
@@ -399,13 +414,13 @@ static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
 			pv_ctrl_string_http_status_code(code), content_len,
 			message);
 
-	res = send(req_fd, response, response_len, MSG_NOSIGNAL);
-	if (res == 0) {
-		pv_log(WARN, "HTTP error respnse could be sent");
-	} else if (res < 0) {
+	res = pv_ctrl_send_all(req_fd, response, response_len);
+	if (res < 0) {
 		pv_log(ERROR,
 		       "HTTP response could not be written to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
+	} else if ((size_t)res != response_len) {
+		pv_log(WARN, "HTTP error response was not sent");
 	}
 
 out:
@@ -637,13 +652,13 @@ static void pv_ctrl_process_get_string(int req_fd, char *buf)
 
 	pv_ctrl_write_ok_response(req_fd);
 
-	res = send(req_fd, buf, buf_len, MSG_NOSIGNAL);
+	res = pv_ctrl_send_all(req_fd, buf, buf_len);
 	if (res < 0) {
 		pv_log(WARN,
 		       "HTTP GET content could not be written to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
 	} else if (res != buf_len) {
-		pv_log(WARN, "HTTP GET content could not be written");
+		pv_log(WARN, "HTTP GET response was not sent");
 	}
 
 	if (buf)
