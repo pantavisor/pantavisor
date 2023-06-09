@@ -102,7 +102,8 @@ LOCAL_SRC_FILES := debug.c \
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
 
-LOCAL_COPY_FILES := scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
+LOCAL_COPY_FILES := $(foreach a,$(shell cd $(LOCAL_PATH)/skel; find . -type f), skel/$(a):$(a)) \
+	scripts/pv_e2fsgrow:lib/pv/pv_e2fsgrow \
 	scripts/hooks_lxc-mount.d/export.sh:lib/pv/hooks_lxc-mount.d/export.sh \
 	scripts/hooks_lxc-mount.d/mdev.sh:lib/pv/hooks_lxc-mount.d/mdev.sh \
 	scripts/hooks_lxc-mount.d/remount.sh:lib/pv/hooks_lxc-mount.d/remount.sh \
