@@ -1,0 +1,142 @@
+#!/bin/sh
+
+echo_debug() {
+	if [ -n "$PVDEBUG" ]; then
+		echo "$@" >&2
+	fi
+}
+
+lxc_pid() {
+	target=$1
+	nsenter --target 1 --mount -- lxc-info $lxc_path_opt --no-humanize --pid "$target"
+}
+
+target=$USER
+p=1
+plat=${USER##*@}
+plat_tty=${USER%@$plat}
+lxc_path_opt=
+[ -n "$LXC_PATH" ] && lxc_path_opt="-P $LXC_PATH"
+
+if [ "$plat" = "$plat_tty" ]; then
+	plat_tty=
+fi
+
+case "$plat" in
+	"/"|"_pv_")
+		# always unset plat_tty for pv env
+		plat_tty=
+		;;
+	*)
+		p="$(lxc_pid "$plat")"
+
+		if [ -z "$p" ]; then
+			echo "no container found: $plat" >&2
+			exit 1
+		fi
+		;;
+esac
+
+# if we try to go for a tty, we use lxc-console ...
+if [ -n "$plat_tty" ]; then
+	exec lxc-console $lxc_path_opt --name "$plat" -t "$plat_tty"
+fi
+
+PVUSER=${PVUSER:-root}
+echo_debug "PVUSER: $PVUSER"
+
+# get home directory and login shell from passwd entry, format is:
+# name:password:UID:GID:GECOS:directory:shell
+IFS=":" read -r _ _ _ _ _ home shell 2>/dev/null << EOF
+$(nsenter --target "$p" --mount -- grep "^$PVUSER:" /etc/passwd)
+EOF
+
+# set default values if no passwd entry was found
+shell="${shell:-/bin/sh}"
+home="${home:-/tmp1}"
+
+echo_debug "shell: $shell"
+echo_debug "home: $home"
+
+# Mimic the behavior of the OpenSSH daemon:
+# https://github.com/openssh/openssh-portable/blob/31d8d231eb9377df474746a822d380c5d68d7ad6/session.c#L1679-L1714
+if [ -z "$SSH_ORIGINAL_COMMAND" ]; then
+	# OpenSSH prepends "-" to argv0 to spawn a login shell. This is not
+	# possible in a shell script, so use the -l option, which most shells
+	# support.
+	set -- "$shell" -l
+else
+	# Use the user's login shell to run the original command.
+	set -- "$shell" -c "$SSH_ORIGINAL_COMMAND"
+fi
+
+echo_debug running command: "$@"
+
+# Use shell quoting magic to preserve arguments with whitespace, while changing
+# to the home directory first: Arguments are only passed correctly with $@ in
+# double quotes. To pass arguments to sh, the following form is used:
+#
+#    sh -c command_string [argv0 [argument...]]
+#
+# where argv0 is set to its default value "sh". The arguments to exec are in
+# single quotes, so that the called sh process expands those arguments instead
+# of the calling (i.e. this) process.
+set -- sh -c "[ -x '$home' ] && cd '$home'; "'exec "$@"' sh "$@"
+
+# check if nsenter supports --caps
+caps=
+if nsenter --caps /bin/true &>/dev/null; then
+       caps=--caps
+fi
+
+# check if nsenter supports -C 
+cgroups=
+if nsenter -t $$ -C /bin/true &>/dev/null; then
+       cgroups=-C
+fi
+
+# check cgroup version
+cgroupv="UNKNOWN"
+cgroup_mounts=$(mount | grep "cgroup")
+if echo "$cgroup_mounts" | grep -q " cgroup2 "; then
+	if echo "$cgroup_mounts" | grep -q " cgroup "; then
+		cgroupv="HYBRID"
+	else
+		cgroupv="UNIFIED"
+	fi
+elif echo "$cgroup_mounts" | grep -q " cgroup "; then
+	cgroupv="LEGACY"
+fi
+
+# attach current PID to the platform cgroup if nsenter supports -C
+pidi=$$
+[ -z "$cgroups" ] || cat /proc/$p/cgroup | while read -r line; do
+	echo $line | awk -F : '{ print $1 " " $2 " " $3 }' | while read -r cgroup_id cgroup_group cgroup_path; do
+		if [ "$cgroup_id" -eq "0" ] && [ "$cgroupv" = "HYBRID" ]; then
+			cgroup_procs_path=/sys/fs/cgroup/unified$cgroup_path/cgroup.procs
+		else
+			cgroup_group=`echo $cgroup_group | sed -e 's/.*=//'`
+			cgroup_procs_path=/sys/fs/cgroup/$cgroup_group$cgroup_path/cgroup.procs
+		fi
+		echo $pidi > $cgroup_procs_path
+	done
+done
+
+# store PATH and LD_LIBRARY_PATH so we can call the right nsenter command
+HOST_PATH=$PATH
+HOST_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
+
+# get all env variables from container
+cat /proc/$p/environ  | tr '\0' '\n' | sed 's/\\/\\\\/g;s/"/\\"/g;s/=\(.*\)/="\1"/' > /env-$p
+set -a
+. /env-$p
+rm -f /env-$p
+
+# restore PATH and LD_LIBRARY_PATH
+PATH=$HOST_PATH
+LD_LIBRARY_PATH=$HOST_LD_LIBRARY_PATH
+
+# Set environment variables, that are normally set by login(1)
+USER="$PVUSER" LOGNAME="$PVUSER" HOME="$home" SHELL="$shell" SHLVL="" \
+	exec nsenter --target "$p" $cgroups --mount --net --pid --uts --ipc $caps -- "$@"
+
