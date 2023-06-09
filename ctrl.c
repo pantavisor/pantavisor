@@ -1377,6 +1377,8 @@ struct pv_cmd *pv_ctrl_socket_wait(int ctrl_fd, int timeout)
 
 	cmd = pv_ctrl_read_parse_request(req_fd);
 
+	// sleep to give time to client to process reply
+	usleep(500);
 	close(req_fd);
 out:
 	return cmd;
