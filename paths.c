@@ -337,7 +337,7 @@ void pv_paths_lib_plugin(char *buf, size_t size, const char *name)
 void pv_paths_lib_modules(char *buf, size_t size, const char *release)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_LIB_MODULES_PATHF,
-			"/lib", release);
+			pv_config_get_system_libdir(), release);
 }
 
 void pv_paths_lib_crypt(char *buf, size_t size, const char *name)
