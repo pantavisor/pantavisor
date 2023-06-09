@@ -4,6 +4,8 @@ set -e
 
 exec >/dev/kmsg 2>&1
 
+export PATH=$PATH:/sbin:/usr/sbin
+
 echo_err() {
 	echo "pv_e2fsgrow|ERROR: $1"
 }
@@ -17,8 +19,8 @@ if ! test -x /sbin/fdisk; then
 	exit 0
 fi
 
-if ! test -x /usr/sbin/resize2fs; then
-	echo_info "/usr/sbin/resize2fs not installed; skipping..."
+if ! test -x /usr/sbin/resize2fs && ! test -x /sbin/resize2fs; then
+	echo_info "resize2fs not installed; skipping..."
 	exit 0
 fi
 
@@ -80,15 +82,15 @@ fi
 
 echo "running fsck.ext4 $rootpart"
 
-/usr/sbin/fsck.ext4 -p -f $rootpart || true
+fsck.ext4 -p -f $rootpart || true
 partno=`echo $rootpart | sed -e 's/.*\([0-9][0-9]*\)$/\1/'`
 
 echo_info "Repartition rootdisk ext4 part $partno of $rootpart"
 echo -e "p\nd\n${partno}\nn\np\n${partno}\n${partstart}\n\np\nw\n" | /sbin/fdisk $rootdisk
 echo_info "Resizing rootdisk ext4 $rootpart"
 
-/usr/sbin/fsck.ext4 -p -f $rootpart || true
+fsck.ext4 -p -f $rootpart || true
 
-/usr/sbin/resize2fs $rootpart || true
+resize2fs $rootpart || true
 sync
 echo_info "Successfully repartitioned ..."  
