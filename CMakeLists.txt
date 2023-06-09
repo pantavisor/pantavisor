@@ -145,6 +145,7 @@ add_executable(pantavisor ${SOURCES})
 
 target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES} ${LXC})
 
+install(DIRECTORY skel/ DESTINATION /)
 install(TARGETS pantavisor DESTINATION bin)
 install(DIRECTORY defaults DESTINATION /etc/pantavisor)
 IF(DEFINED ENV{PANTAVISOR_PVS_DIR})
@@ -156,4 +157,4 @@ ENDIF()
 install(PROGRAMS tools/pventer
 		tools/fallbear-cmd
 	DESTINATION /usr/bin)
-install(FILES configs/resolv.conf DESTINATION /etc)
+
