@@ -111,6 +111,8 @@ LOCAL_COPY_FILES := $(foreach a,$(shell cd $(LOCAL_PATH)/skel; find . -type f), 
 	scripts/pvcrash:lib/pv/pvcrash \
 	tools/pventer:usr/bin/pventer \
 	tools/fallbear-cmd:usr/bin/fallbear-cmd \
+	pvs/trust/ca-certificates.crt:etc/pantavisor/pvs/trust/ca-certificates.crt \
+	pvs/trust/cacerts.default.pem:etc/pantavisor/pvs/trust/cacerts.default.pem \
 	defaults/groups.json:etc/pantavisor/defaults/groups.json
 
 include $(BUILD_EXECUTABLE)
