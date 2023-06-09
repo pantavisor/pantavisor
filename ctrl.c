@@ -378,7 +378,7 @@ static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
 	unsigned int content_len, response_len;
 	char *response = NULL;
 
-	content_len = 12 + // {\"Error\":\"%s\"}
+	content_len = 15 + // {\"Error\":\"%s\"}\r\n\0
 		      strlen(message);
 
 	response_len = 93 + // HTTP/1.1...
