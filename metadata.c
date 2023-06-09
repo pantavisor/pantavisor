@@ -1122,7 +1122,7 @@ int pv_metadata_factory_meta(struct pantavisor *pv)
 		int fd;
 		pv_paths_storage_trail_pv_file(path, PATH_MAX, "0",
 					       METADONE_FNAME);
-		fd = open(path, O_CREAT | O_SYNC);
+		fd = open(path, O_CREAT | O_SYNC, 0600);
 		if (fd < 0)
 			pv_log(ERROR, "Unable to open file %s", path);
 		close(fd);
