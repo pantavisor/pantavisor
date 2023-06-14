@@ -556,8 +556,10 @@ int pv_volumes_mount_firmware_modules()
 	if (!firmware)
 		goto modules;
 
-	if ((stat(FW_PATH, &st) < 0) && errno == ENOENT)
-		pv_fs_mkdir_p(FW_PATH, 0755);
+	if (pv_fs_path_remove(FW_PATH, true) != 0)
+		pv_log(WARN, "couldn't remove initial firmware");
+
+	pv_fs_mkdir_p(FW_PATH, 0755);
 
 	if (strchr(firmware, '/')) {
 		pv_paths_root_file(path_volumes, PATH_MAX,
@@ -602,6 +604,9 @@ modules:
 
 	if (!uname(&uts) && (stat(path_volumes, &st) == 0)) {
 		pv_paths_lib_modules(path_lib, PATH_MAX, uts.release);
+		if (pv_fs_path_remove(path_lib, true) != 0)
+			pv_log(WARN, "couldn't remove initial modules");
+
 		pv_fs_mkdir_p(path_lib, 0755);
 		ret = mount_bind(path_volumes, path_lib);
 		pv_log(DEBUG, "bind mounted %s modules to %s", path_volumes,

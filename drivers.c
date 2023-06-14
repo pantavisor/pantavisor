@@ -31,6 +31,7 @@
 #include "metadata.h"
 #include "state.h"
 #include "json.h"
+#include "config.h"
 
 #define MODULE_NAME "drivers"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -38,6 +39,9 @@
 
 #define USER_META_KEY "user-meta"
 #define DEV_META_KEY "device-meta"
+
+// modprobe + remove option + module name + module options
+#define DRIVER_MGMT_COMMAND "/sbin/modprobe %s %s %s"
 
 static char *_sub_meta_values(char *str)
 {
@@ -95,6 +99,44 @@ static char *_sub_meta_values(char *str)
 	return new;
 }
 
+static int driver_single_op(char *name, bool load, char *options)
+{
+	if (!name || !strlen(name)) {
+		pv_log(WARN, "no module name provided, nothing to load");
+		return -1;
+	}
+
+	char *ld = load ? "" : "-r";
+	char *op = options ? options : "";
+
+	int len = snprintf(NULL, 0, DRIVER_MGMT_COMMAND, name, ld, op) + 1;
+	char *cmd = calloc(len, sizeof(char));
+	if (!cmd)
+		return -1;
+
+	snprintf(cmd, len, DRIVER_MGMT_COMMAND, name, ld, op);
+	int status = 0;
+	tsh_run(cmd, 0, &status);
+	status = WEXITSTATUS(status);
+	if (status != 0) {
+		pv_log(WARN, "cannot %s module %s with options: %s",
+		       load ? "load" : "unload", name, options);
+	}
+
+	free(cmd);
+	return status;
+}
+
+static int pv_drivers_load_single(char *name, char *options)
+{
+	return driver_single_op(name, true, options);
+}
+
+static int pv_drivers_unload_single(char *name)
+{
+	return driver_single_op(name, false, NULL);
+}
+
 static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 {
 	int ret = 0, status;
@@ -133,6 +175,25 @@ static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 	}
 
 	return ret;
+}
+
+void pv_drivers_load_early()
+{
+	if (!pv_config_get_system_early_driver_load())
+		return;
+
+	// load fs module from pantavisor.conf
+	char *fstype = pv_config_get_storage_fstype();
+	if (pv_drivers_load_single(fstype, NULL) != 0)
+		pv_log(WARN, "cannot load filesystem module");
+
+	// some driver will fail (not found), but that's ok
+	// because at this point we have only a few drivers,
+	// so we send the output to /dev/null
+	int r = -1;
+	tsh_run("/sbin/mdev -s > /dev/null 2>&1", 0, &r);
+	if (r != 0)
+		pv_log(WARN, "Cannot load drivers using mdev error: %d", r);
 }
 
 const char *pv_drivers_state_str(char *match)

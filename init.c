@@ -51,6 +51,7 @@
 #include "debug.h"
 #include "cgroup.h"
 #include "wdt.h"
+#include "drivers.h"
 
 #include "utils/tsh.h"
 #include "utils/math.h"
@@ -376,6 +377,12 @@ int main(int argc, char *argv[])
 
 	// this might override the configuration
 	parse_commands(argc, argv);
+
+	// loading drivers for both modes
+	if (pv_config_get_system_init_mode() == IM_EMBEDDED ||
+	    pv_config_get_system_init_mode() == IM_STANDALONE) {
+		pv_drivers_load_early();
+	}
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if (pv_config_get_system_init_mode() == IM_STANDALONE) {

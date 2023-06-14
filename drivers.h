@@ -45,6 +45,7 @@ int pv_drivers_state(char *match);
 char *pv_drivers_state_all(struct pv_platform *p);
 int pv_drivers_load(char *match);
 int pv_drivers_unload(char *match);
+void pv_drivers_load_early(void);
 
 struct pv_driver *pv_drivers_add(struct pv_state *s, char *alias, int len,
 				 char **modules);
