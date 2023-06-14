@@ -414,7 +414,7 @@ out:
 }
 
 static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
-				    char *file_path)
+				    bool expect_continue, char *file_path)
 {
 	int obj_fd = -1, read_length, write_length, ret = -1;
 	char req[HTTP_REQ_BUFFER_SIZE];
@@ -434,7 +434,8 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 	       "reading file with size %zu from endpoint and putting it in %s",
 	       content_length, file_path);
 
-	pv_ctrl_write_cont_response(req_fd);
+	if (expect_continue)
+		pv_ctrl_write_cont_response(req_fd);
 
 	obj_fd = open(file_path, O_CREAT | O_EXCL | O_WRONLY | O_TRUNC, 0644);
 	if (obj_fd < 0) {
@@ -560,6 +561,26 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 			ret = strtol(value, NULL, 10);
 			free(value);
 		}
+	}
+
+	return ret;
+}
+
+static bool pv_ctrl_check_header_value(struct phr_header *headers,
+				       size_t num_headers, const char *header,
+				       const char *value)
+{
+	bool ret = false;
+
+	for (size_t header_index = 0; header_index < num_headers;
+	     header_index++) {
+		if (pv_str_matches_case(headers[header_index].name,
+					headers[header_index].name_len, header,
+					strlen(header)) &&
+		    pv_str_matches_case(headers[header_index].value,
+					headers[header_index].value_len, value,
+					strlen(value)))
+			ret = true;
 	}
 
 	return ret;
@@ -764,9 +785,11 @@ static bool pv_ctrl_check_sender_privileged(const char *pname)
 	return plat ? pv_platform_has_role(plat, PLAT_ROLE_MGMT) : false;
 }
 
-static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
-	int req_fd, const char *method, size_t method_len, const char *path,
-	size_t path_len, size_t content_length, char *pname)
+static struct pv_cmd *
+pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
+				   size_t method_len, const char *path,
+				   size_t path_len, size_t content_length,
+				   bool expect_continue, char *pname)
 {
 	bool mgmt;
 	struct pv_cmd *cmd = NULL;
@@ -869,6 +892,7 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 			if (!mgmt)
 				goto err_pr;
 			if (pv_ctrl_process_put_file(req_fd, content_length,
+						     expect_continue,
 						     file_path_tmp) < 0)
 				goto out;
 			if (pv_fs_path_exist(file_path) &&
@@ -972,6 +996,7 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 
 			mkdir(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length,
+						     expect_continue,
 						     file_path_tmp) < 0)
 				goto out;
 			pv_log(DEBUG, "renaming %s to %s", file_path_tmp,
@@ -1018,6 +1043,7 @@ static struct pv_cmd *pv_ctrl_process_endpoint_and_reply(
 			}
 			pv_fs_mkdir_p(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length,
+						     expect_continue,
 						     file_path) < 0)
 				goto out;
 			if (!pv_storage_verify_state_json(file_name)) {
@@ -1281,6 +1307,7 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 				     content_length;
 	struct phr_header headers[HTTP_REQ_NUM_HEADERS];
 	struct pv_cmd *cmd = NULL;
+	bool expect_continue = false;
 
 	memset(buf, 0, sizeof(buf));
 
@@ -1332,10 +1359,12 @@ static struct pv_cmd *pv_ctrl_read_parse_request(int req_fd)
 
 	content_length = pv_ctrl_get_value_header_int(headers, num_headers,
 						      "content-length");
+	expect_continue = pv_ctrl_check_header_value(headers, num_headers,
+						     "expect", "100-continue");
 
 	cmd = pv_ctrl_process_endpoint_and_reply(req_fd, method, method_len,
 						 path, path_len, content_length,
-						 pname);
+						 expect_continue, pname);
 out:
 	return cmd;
 }
