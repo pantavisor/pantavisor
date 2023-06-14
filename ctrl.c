@@ -216,6 +216,20 @@ out:
 	return res;
 }
 
+static void pv_ctrl_flush_req(int req_fd, size_t content_length)
+{
+	char buf[HTTP_REQ_BUFFER_SIZE];
+	size_t total_rec = 0;
+	ssize_t rec;
+
+	while ((rec = read(req_fd, buf, content_length - total_rec)) > 0) {
+		if (rec < 0)
+			return;
+
+		total_rec += rec;
+	}
+}
+
 static int pv_ctrl_process_signal(int req_fd, size_t content_length,
 				  char **signal, char **payload)
 {
@@ -227,6 +241,7 @@ static int pv_ctrl_process_signal(int req_fd, size_t content_length,
 	pv_log(DEBUG, "reading and parsing signal...");
 
 	if (content_length >= HTTP_REQ_BUFFER_SIZE) {
+		pv_ctrl_flush_req(req_fd, content_length);
 		pv_log(WARN, "signal request too long");
 		goto err;
 	}
@@ -314,6 +329,7 @@ static int pv_ctrl_process_cmd(int req_fd, size_t content_length,
 	pv_log(DEBUG, "reading and parsing command...");
 
 	if (content_length >= HTTP_REQ_BUFFER_SIZE) {
+		pv_ctrl_flush_req(req_fd, content_length);
 		pv_log(WARN, "cmd request too long");
 		goto err;
 	}
@@ -436,6 +452,7 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 	size_t free_space = pv_storage_get_free();
 
 	if (content_length > free_space) {
+		pv_ctrl_flush_req(req_fd, content_length);
 		pv_log(WARN,
 		       "%" PRIu64 " B needed but only %" PRIu64
 		       " B available. Cannot create file",
@@ -456,11 +473,13 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 	if (obj_fd < 0) {
 		// skip clean if the error was about the file already existing
 		if (errno == EEXIST) {
+			pv_ctrl_flush_req(req_fd, content_length);
 			pv_log(ERROR, "'%s' already exists", file_path);
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
 						     "File already exists");
 			goto out;
 		} else {
+			pv_ctrl_flush_req(req_fd, content_length);
 			pv_log(ERROR, "'%s' could not be created: %s",
 			       file_path, strerror(errno));
 			pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
@@ -692,6 +711,7 @@ static char *pv_ctrl_get_body(int req_fd, size_t content_length)
 	char *req = NULL;
 
 	if (content_length >= HTTP_REQ_BUFFER_SIZE) {
+		pv_ctrl_flush_req(req_fd, content_length);
 		pv_log(WARN, "body too long");
 		goto err;
 	}
@@ -904,8 +924,10 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			if (!mgmt)
+			if (!mgmt) {
+				pv_ctrl_flush_req(req_fd, content_length);
 				goto err_pr;
+			}
 			if (pv_ctrl_process_put_file(req_fd, content_length,
 						     expect_continue,
 						     file_path_tmp) < 0)
@@ -1006,8 +1028,10 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			if (!mgmt)
+			if (!mgmt) {
+				pv_ctrl_flush_req(req_fd, content_length);
 				goto err_pr;
+			}
 
 			mkdir(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length,
@@ -1046,9 +1070,12 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			if (!mgmt)
+			if (!mgmt) {
+				pv_ctrl_flush_req(req_fd, content_length);
 				goto err_pr;
+			}
 			if (!pv_storage_is_revision_local(file_name)) {
+				pv_ctrl_flush_req(req_fd, content_length);
 				pv_log(ERROR, "wrong local step name %s",
 				       file_name);
 				pv_ctrl_write_error_response(
@@ -1120,8 +1147,10 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			if (!mgmt)
+			if (!mgmt) {
+				pv_ctrl_flush_req(req_fd, content_length);
 				goto err_pr;
+			}
 			metavalue = pv_ctrl_get_body(req_fd, content_length);
 			if (pv_metadata_add_usermeta(metakey, metavalue) < 0)
 				pv_ctrl_write_error_response(
@@ -1153,8 +1182,10 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 		}
 
 		if (!strncmp("PUT", method, method_len)) {
-			if (!mgmt)
+			if (!mgmt) {
+				pv_ctrl_flush_req(req_fd, content_length);
 				goto err_pr;
+			}
 			metavalue = pv_ctrl_get_body(req_fd, content_length);
 			if (pv_metadata_add_devmeta(metakey, metavalue) < 0)
 				pv_ctrl_write_error_response(
