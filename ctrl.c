@@ -85,7 +85,7 @@
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 
 #define HTTP_RESPONSE                                                          \
-	"HTTP/1.1 %s \r\nContent-Length: %zd\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"Error\":\"%s\"}\r\n"
+	"HTTP/1.1 %s \r\nContent-Length: %zd\r\nContent-Type: application/json; charset=utf-8\r\n\r\n{\"Error\":\"%s\"}"
 
 #define UNSUPPORTED_LOG_COMMAND_FMT                                            \
 	"ERROR: unsupported legacy 'log command' command; use new REST API instead\n"
@@ -409,7 +409,7 @@ static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
 	size_t content_len, response_len;
 	char *response = NULL;
 
-	content_len = 15 + // {\"Error\":\"%s\"}\r\n\0
+	content_len = 15 + // {\"Error\":\"%s\"}\0
 		      strlen(message);
 
 	response_len = 93 + // HTTP/1.1...
