@@ -578,7 +578,7 @@ void pv_platforms_add_all_loggers(struct pv_state *s)
 		}
 
 		if (plat_needs_default_logger) {
-			char logger_name[32] = { 0 };
+			char logger_name[64] = { 0 };
 			/*
 			 * The name key is at index 3
 			 * */
@@ -1027,9 +1027,10 @@ plat_goal_state_t pv_platform_check_goal(struct pv_platform *p)
 {
 	if (p->status.current == p->status.goal)
 		return PLAT_GOAL_ACHIEVED;
-
-	if (p->status.current < PLAT_STARTING)
+	else if (p->status.current < PLAT_STARTING)
 		return PLAT_GOAL_UNACHIEVED;
+	else if (p->status.current >= p->status.goal)
+		return PLAT_GOAL_NONE;
 
 	struct timer_state tstate = timer_current_state(&p->timer_status_goal);
 	if (tstate.fin) {

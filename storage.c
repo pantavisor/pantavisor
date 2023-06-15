@@ -568,7 +568,7 @@ bool pv_storage_is_revision_local(const char *rev)
 	}
 
 	if (strncmp(rev, PREFIX_LOCAL_REV, pre_len)) {
-		pv_log(WARN, "revision name does not start with %s",
+		pv_log(INFO, "revision name does not start with %s",
 		       PREFIX_LOCAL_REV);
 		goto out;
 	}
