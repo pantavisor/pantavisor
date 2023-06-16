@@ -984,7 +984,8 @@ static int do_action_for_roles_array(struct json_key_action *jka, char *value)
 	       (*bundle->platform)->name);
 	if (!strcmp(value, "mgmt"))
 		pv_platform_set_role(*bundle->platform, PLAT_ROLE_MGMT);
-	else
+	// we allow "nobody" as a role, does not need further action
+	else if (strcmp(value, "nobody"))
 		pv_log(WARN, "invalid role value '%s'", value);
 
 	ret = 0;
