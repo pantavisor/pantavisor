@@ -926,6 +926,7 @@ void pv_platform_force_stop(struct pv_platform *p)
 	pv_log(DEBUG, "force stopping platform '%s'", p->name);
 	kill(p->init_pid, SIGKILL);
 	pv_platform_set_status(p, PLAT_STOPPED);
+	pv_cgroup_destroy(p->name);
 }
 
 void pv_platform_set_installed(struct pv_platform *p)
