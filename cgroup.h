@@ -43,4 +43,6 @@ void pv_cgroup_umount(void);
 
 char *pv_cgroup_get_process_name(pid_t pid);
 
+void pv_cgroup_destroy(const char *name);
+
 #endif /* UTILS_CGROUP_H_ */

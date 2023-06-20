@@ -266,3 +266,34 @@ char *pv_cgroup_get_process_name(pid_t pid)
 
 	return pname;
 }
+
+#define CGROUP_PATH "/sys/fs/cgroup/lxc/%s/"
+
+void pv_cgroup_destroy(const char *name)
+{
+	// keep this only for appengine for now
+	if (pv_config_get_system_init_mode() != IM_APPENGINE)
+		return;
+
+	// hanging cgroup has not been seen out of cgroup v2
+	struct pantavisor *pv = pv_get_instance();
+	if (pv->cgroupv != CGROUP_UNIFIED)
+		return;
+
+	int i;
+	struct stat st;
+	char path[PATH_MAX];
+	snprintf(path, strlen(name) + strlen(CGROUP_PATH), CGROUP_PATH, name);
+
+	for (i = 0; i < 5; i++) {
+		if (stat(path, &st))
+			return;
+
+		pv_log(WARN, "/sys/fs/cgroup/lxc/%s/ still exists. Removing...",
+		       name);
+		pv_fs_path_remove(path, false);
+		sleep(1);
+	}
+
+	pv_log(ERROR, "/sys/fs/cgroup/lxc/%s/ still exists", name);
+}
