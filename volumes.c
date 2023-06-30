@@ -512,12 +512,13 @@ int pv_volume_unmount(struct pv_volume *v)
 {
 	int ret = 0;
 
-	pv_log(DEBUG, "unmounting '%s'...", v->dest);
+	if (!v->dest)
+		return ret;
 
 	if (v->umount_cmd != NULL) {
-		pv_log(DEBUG, "using handler...");
-		int wstatus;
+		pv_log(DEBUG, "umounting with handler...");
 		pv_log(INFO, "umount_cmd: %s", v->umount_cmd);
+		int wstatus;
 		tsh_run(v->umount_cmd, 1, &wstatus);
 		if (!WIFEXITED(wstatus))
 			ret = -1;
@@ -526,10 +527,10 @@ int pv_volume_unmount(struct pv_volume *v)
 		else
 			ret = 0;
 	} else if (v->loop_fd == -1) {
-		pv_log(DEBUG, "using umount...");
+		pv_log(DEBUG, "umounting '%s'...", v->dest);
 		ret = umount(v->dest);
 	} else {
-		pv_log(DEBUG, "using umount loop...");
+		pv_log(DEBUG, "loop umounting '%s'...", v->dest);
 		ret = unmount_loop(v->dest, v->loop_fd, v->file_fd);
 	}
 
