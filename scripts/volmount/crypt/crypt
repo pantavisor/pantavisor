@@ -37,7 +37,7 @@ MNT_OPTS_EXT4=${MNT_OPTS_EXT4:-"-o noatime"}
 PATH=$PATH:/lib/pv/:/lib/pv/volmount/crypt/
 export PATH
 
-export LD_LIBRARY_PATH=/x86_64-linux-gnu
+export LD_LIBRARY_PATH="/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 
 # do the same as losetup -f but also return the path of loop device on stdout
 # if successful.
