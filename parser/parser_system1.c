@@ -98,8 +98,8 @@ static int parse_one_driver(struct pv_state *s, char *buf)
 		}
 
 		size = jsmnutil_array_count(value, tokv_t);
-		if (size <= 0) {
-			pv_log(WARN, "empty alias, not including");
+		if (size < 0) {
+			pv_log(WARN, "wrong alias count, not including");
 			free(value);
 			free(key);
 			k++;
@@ -158,7 +158,7 @@ static bool driver_should_parse(char *key)
 	if (!strcmp(key, "all") ||
 	    (dtb && !strcmp(key + strlen("dtb:"), dtb)) ||
 	    (ovl && !strcmp(key + strlen("overlay:"), ovl))) {
-		pv_log(DEBUG, "parse '%s' YES", key);
+		pv_log(DEBUG, "parsing '%s'...", key);
 		return true;
 	}
 
@@ -323,6 +323,9 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	struct pv_volume *v;
 	jsmntok_t *tokv;
 	jsmntok_t **key, **key_i;
+
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		return 1;
 
 	// take null terminate copy of item to parse
 	buf = calloc(n + 1, sizeof(char));
@@ -1485,15 +1488,7 @@ static struct pv_state *system1_parse_bsp(struct pv_state *this,
 	}
 
 	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
-	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
-		if (count != 0) {
-			pv_log(WARN,
-			       "bsp/run.json incompatible with appengine init mode");
-			this = NULL;
-			goto out;
-		}
-		goto out;
-	} else if (count != 1) {
+	if (count != 1) {
 		pv_log(WARN, "bsp/run.json missing or duplicated");
 		this = NULL;
 		goto out;
