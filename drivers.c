@@ -247,17 +247,18 @@ static int _pv_drivers_set(char *match, mod_action_t action)
 		if (changed != len) {
 			pv_log(WARN,
 			       "not all modules were loaded/unloaded correctly");
-			changed = false;
+			return -1;
 		}
 		if (!changed)
-			continue;
+			return 0;
 		if (action == MOD_LOAD)
 			d->loaded = true;
 		else
 			d->loaded = false;
+		return changed;
 	}
 
-	return changed;
+	return 0;
 }
 
 int pv_drivers_load(char *match)

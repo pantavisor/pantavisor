@@ -675,8 +675,7 @@ int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 
 		switch (d->type) {
 		case DRIVER_REQUIRED:
-			d->loaded = pv_drivers_load(d->match);
-			if (!d->loaded) {
+			if (pv_drivers_load(d->match) < 0) {
 				pv_log(ERROR,
 				       "unable to load required driver '%s'",
 				       d->match);
@@ -684,11 +683,10 @@ int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			}
 			break;
 		case DRIVER_OPTIONAL:
-			d->loaded = pv_drivers_load(d->match);
+			pv_drivers_load(d->match);
 			break;
 		case DRIVER_MANUAL:
-			d->loaded = pv_drivers_load(d->match);
-			if (!d->loaded) {
+			if (pv_drivers_load(d->match) < 0) {
 				pv_log(ERROR,
 				       "unable to load manual driver '%s'",
 				       d->match);
