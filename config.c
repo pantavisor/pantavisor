@@ -211,6 +211,22 @@ static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
 	return value;
 }
 
+static drivers_mode_t config_get_value_d_mode_type(struct dl_list *config_list, char *key, drivers_mode_t default_value)
+{
+	char *item = config_get_value(config_list, key);
+	drivers_mode_t value = default_value;
+
+	if (!item)
+		return value;
+
+	if (!strcmp(item, "audit"))
+		value = D_AUDIT;
+	else if (!strcmp(item, "strict"))
+		value = D_STRICT;
+
+	return value;
+}
+
 static void config_override_value_string(struct dl_list *config_list, char *key,
 					 char **out)
 {
@@ -458,6 +474,9 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 		&config_list, "secureboot.checksum", true);
 	config->secureboot.handlers = config_get_value_bool(
 		&config_list, "secureboot.handlers", true);
+
+	config->drivers.mode = config_get_value_d_mode_type(
+		&config_list, "drivers.mode", D_STRICT);
 
 	config_iterate_items_prefix(&config_list, config_sysctl_apply,
 				    "sysctl.", NULL);
@@ -1228,6 +1247,11 @@ int pv_config_get_metadata_devmeta_interval()
 int pv_config_get_metadata_usrmeta_interval()
 {
 	return pv_get_instance()->config.metadata.usrmeta_interval;
+}
+
+drivers_mode_t pv_config_get_drivers_mode()
+{
+	return pv_get_instance()->config.drivers.mode;
 }
 
 char *pv_config_get_json()

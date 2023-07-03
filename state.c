@@ -565,7 +565,8 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	if (pv_platform_load_drivers(p, NULL,
 				     DRIVER_REQUIRED | DRIVER_OPTIONAL) < 0) {
 		pv_log(ERROR, "failed to load drivers");
-		return -1;
+		if (pv_config_get_drivers_mode() == D_STRICT)
+			return -1;
 	}
 
 	if (pv_platform_start(p)) {

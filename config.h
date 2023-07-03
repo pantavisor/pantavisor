@@ -186,6 +186,15 @@ struct pantavisor_metadata {
 	int usrmeta_interval;
 };
 
+typedef enum {
+	D_AUDIT,
+	D_STRICT
+} drivers_mode_t;
+
+struct pantavisor_drivers {
+	drivers_mode_t mode;
+};
+
 struct pantavisor_config {
 	char *policy;
 	struct pantavisor_system sys;
@@ -205,6 +214,7 @@ struct pantavisor_config {
 	struct pantavisor_libthttp libthttp;
 	struct pantavisor_secureboot secureboot;
 	struct pantavisor_metadata metadata;
+	struct pantavisor_drivers drivers;
 };
 
 int pv_config_init(char *path);
@@ -326,6 +336,8 @@ bool pv_config_get_secureboot_handlers(void);
 
 int pv_config_get_metadata_devmeta_interval(void);
 int pv_config_get_metadata_usrmeta_interval(void);
+
+drivers_mode_t pv_config_get_drivers_mode(void);
 
 char *pv_config_get_json(void);
 void pv_config_print(void);
