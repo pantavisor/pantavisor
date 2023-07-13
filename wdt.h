@@ -25,6 +25,8 @@
 #include "pantavisor.h"
 
 int pv_wdt_start(struct pantavisor *pv);
+void pv_wdt_stop(struct pantavisor *pv);
+
 void pv_wdt_kick(struct pantavisor *pv);
 
 #endif // PV_WDT_H
