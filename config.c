@@ -211,6 +211,30 @@ static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
 	return value;
 }
 
+static int config_get_value_wdt_mode_type(struct dl_list *config_list,
+					  char *key, wdt_mode_t default_value)
+{
+	char *item = config_get_value(config_list, key);
+	wdt_mode_t value = default_value;
+
+	if (!item)
+		return value;
+
+	if (!strcmp(item, "disabled"))
+		value = WDT_DISABLED;
+	else if (!strcmp(item, "shutdown"))
+		value = WDT_SHUTDOWN;
+	else if (!strcmp(item, "startup"))
+		value = WDT_STARTUP;
+	else if (!strcmp(item, "always")) {
+		pv_log(WARN,
+		       "wdt always is experimental. Do not use in production");
+		value = WDT_ALWAYS;
+	}
+
+	return value;
+}
+
 static void config_override_value_string(struct dl_list *config_list, char *key,
 					 char **out)
 {
@@ -411,8 +435,11 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 		config_get_value_int(&config_list, "revision.retries", 10);
 	config->updater.revision_retry_timeout = config_get_value_int(
 		&config_list, "revision.retries.timeout", 2 * 60);
+
 	config->wdt.enabled =
 		config_get_value_bool(&config_list, "wdt.enabled", true);
+	config->wdt.mode = config_get_value_wdt_mode_type(
+		&config_list, "wdt.mode", WDT_SHUTDOWN);
 	config->wdt.timeout =
 		config_get_value_int(&config_list, "wdt.timeout", 15);
 
@@ -1105,6 +1132,10 @@ bool pv_config_get_watchdog_enabled()
 {
 	return pv_get_instance()->config.wdt.enabled;
 }
+wdt_mode_t pv_config_get_watchdog_mode()
+{
+	return pv_get_instance()->config.wdt.mode;
+}
 int pv_config_get_watchdog_timeout()
 {
 	return pv_get_instance()->config.wdt.timeout;
@@ -1325,6 +1356,8 @@ char *pv_config_get_json()
 			&js, pv_config_get_updater_revision_retry_timeout());
 		pv_json_ser_key(&js, "wdt.enabled");
 		pv_json_ser_bool(&js, pv_config_get_watchdog_enabled());
+		pv_json_ser_key(&js, "wdt.mode");
+		pv_json_ser_number(&js, pv_config_get_watchdog_mode());
 		pv_json_ser_key(&js, "wdt.timeout");
 		pv_json_ser_number(&js, pv_config_get_watchdog_timeout());
 		pv_json_ser_key(&js, "net.brdev");
@@ -1472,6 +1505,7 @@ void pv_config_print()
 	pv_log(INFO, "revision.retries.timeout = %d",
 	       pv_config_get_updater_revision_retry_timeout());
 	pv_log(INFO, "wdt.enabled = %d", pv_config_get_watchdog_enabled());
+	pv_log(INFO, "wdt.mode = %d", pv_config_get_watchdog_mode());
 	pv_log(INFO, "wdt.timeout = %d", pv_config_get_watchdog_timeout());
 	pv_log(INFO, "net.brdev = %d", pv_config_get_network_brdev());
 	pv_log(INFO, "net.braddress4 = '%s'",

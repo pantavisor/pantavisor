@@ -33,40 +33,50 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-int fd = -1;
+static int pv_wdt_fd = -1;
 
 int pv_wdt_start(struct pantavisor *pv)
 {
-	if (!pv_config_get_watchdog_enabled())
+	if (!pv_config_get_watchdog_enabled() ||
+	    (pv_config_get_watchdog_mode() == WDT_DISABLED))
 		return 0;
 
-	if (fd > 0)
+	if (pv_wdt_fd >= 0)
 		return 0;
 
-	fd = open("/dev/watchdog", O_RDWR | O_NOCTTY);
-	if (fd < 0) {
+	pv_wdt_fd = open("/dev/watchdog", O_RDWR | O_NOCTTY);
+	if (pv_wdt_fd < 0) {
 		pv_log(DEBUG, "No watchdog timer device found");
 		return -1;
 	}
 
 	int timeout = pv_config_get_watchdog_timeout();
-	ioctl(fd, WDIOC_SETTIMEOUT, &timeout);
-	ioctl(fd, WDIOC_GETTIMEOUT, &timeout);
+	ioctl(pv_wdt_fd, WDIOC_SETTIMEOUT, &timeout);
+	ioctl(pv_wdt_fd, WDIOC_GETTIMEOUT, &timeout);
 
 	if (!timeout)
 		pv_log(DEBUG, "error setting up watchdog device");
 
 	pv_wdt_kick(pv);
 
-	pv_log(DEBUG, "watchdog opened with %ds timeout", timeout);
+	pv_log(DEBUG, "watchdog started with %ds timeout", timeout);
 
 	return 0;
 }
 
-void pv_wdt_kick(struct pantavisor *pv)
+void pv_wdt_stop(struct pantavisor *pv)
 {
-	if (!fd)
+	if (pv_wdt_fd < 0)
 		return;
 
-	ioctl(fd, WDIOC_KEEPALIVE, 0);
+	close(pv_wdt_fd);
+	pv_wdt_fd = -1;
+}
+
+void pv_wdt_kick(struct pantavisor *pv)
+{
+	if (pv_wdt_fd < 0)
+		return;
+
+	ioctl(pv_wdt_fd, WDIOC_KEEPALIVE, 0);
 }

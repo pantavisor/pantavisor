@@ -119,8 +119,16 @@ struct pantavisor_bootloader {
 	char *ovl;
 };
 
+typedef enum {
+	WDT_DISABLED,
+	WDT_SHUTDOWN,
+	WDT_STARTUP,
+	WDT_ALWAYS,
+} wdt_mode_t;
+
 struct pantavisor_watchdog {
 	bool enabled;
+	wdt_mode_t mode;
 	int timeout;
 };
 
@@ -292,6 +300,7 @@ bool pv_config_get_bl_mtd_only(void);
 char *pv_config_get_bl_mtd_path(void);
 
 bool pv_config_get_watchdog_enabled(void);
+wdt_mode_t pv_config_get_watchdog_mode(void);
 int pv_config_get_watchdog_timeout(void);
 
 char *pv_config_get_network_brdev(void);
