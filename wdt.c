@@ -71,6 +71,8 @@ void pv_wdt_stop(struct pantavisor *pv)
 
 	close(pv_wdt_fd);
 	pv_wdt_fd = -1;
+
+	pv_log(DEBUG, "watchdog stopped");
 }
 
 void pv_wdt_kick(struct pantavisor *pv)
@@ -79,4 +81,6 @@ void pv_wdt_kick(struct pantavisor *pv)
 		return;
 
 	ioctl(pv_wdt_fd, WDIOC_KEEPALIVE, 0);
+
+	pv_log(DEBUG, "watchdog kicked");
 }
