@@ -50,6 +50,7 @@
 #include "paths.h"
 #include "debug.h"
 #include "cgroup.h"
+#include "wdt.h"
 
 #include "utils/tsh.h"
 #include "utils/math.h"
@@ -407,6 +408,9 @@ int main(int argc, char *argv[])
 	pv_pid = fork();
 	if (pv_pid > 0)
 		goto loop;
+
+	if (pv_config_get_watchdog_mode() >= WDT_STARTUP)
+		pv_wdt_start();
 
 	if (pv_config_get_debug_shell())
 		pv_debug_start_shell();

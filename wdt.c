@@ -23,6 +23,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <string.h>
 
 #include <sys/ioctl.h>
 #include <linux/watchdog.h>
@@ -35,7 +37,7 @@
 
 static int pv_wdt_fd = -1;
 
-int pv_wdt_start(struct pantavisor *pv)
+int pv_wdt_start()
 {
 	if (!pv_config_get_watchdog_enabled() ||
 	    (pv_config_get_watchdog_mode() == WDT_DISABLED))
@@ -57,25 +59,43 @@ int pv_wdt_start(struct pantavisor *pv)
 	if (!timeout)
 		pv_log(DEBUG, "error setting up watchdog device");
 
-	pv_wdt_kick(pv);
+	pv_wdt_kick();
 
 	pv_log(DEBUG, "watchdog started with %ds timeout", timeout);
 
 	return 0;
 }
 
-void pv_wdt_stop(struct pantavisor *pv)
+void pv_wdt_stop()
 {
 	if (pv_wdt_fd < 0)
 		return;
 
-	close(pv_wdt_fd);
+	struct watchdog_info info;
+
+	if (ioctl(pv_wdt_fd, WDIOC_GETSUPPORT, &info)) {
+		pv_log(WARN, "could not ioctl");
+	}
+
+	if (WDIOF_MAGICCLOSE & info.options) {
+		pv_log(INFO, "magic char supported. Sending V...");
+		if (write(pv_wdt_fd, "V", 1) < 0) {
+			pv_log(WARN, "wdt could not be released: %s",
+			       strerror(errno));
+		}
+	}
+
+	if (close(pv_wdt_fd) < 0) {
+		pv_log(WARN, "wdt with could not be closed: %s",
+		       strerror(errno));
+	}
+
 	pv_wdt_fd = -1;
 
 	pv_log(DEBUG, "watchdog stopped");
 }
 
-void pv_wdt_kick(struct pantavisor *pv)
+void pv_wdt_kick()
 {
 	if (pv_wdt_fd < 0)
 		return;
