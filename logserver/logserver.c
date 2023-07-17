@@ -56,6 +56,7 @@
 #include "buffer.h"
 #include "paths.h"
 #include "config.h"
+#include "wdt.h"
 
 #include "log.h"
 
@@ -732,6 +733,8 @@ static pid_t logserver_start_service(const char *revision)
 {
 	logserver.pid = fork();
 	if (logserver.pid == 0) {
+		pv_wdt_stop();
+
 		if (logserver.rev)
 			free(logserver.rev);
 		logserver.rev = strdup(revision);

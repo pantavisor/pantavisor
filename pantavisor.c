@@ -207,9 +207,6 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	if (pv_config_get_watchdog_mode() >= WDT_STARTUP)
-		pv_wdt_start(pv);
-
 	if (pv_do_execute_init())
 		return PV_STATE_EXIT;
 
@@ -330,7 +327,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		    0, RELATIV_TIMER);
 
 	if (pv_config_get_watchdog_mode() <= WDT_STARTUP)
-		pv_wdt_stop(pv);
+		pv_wdt_stop();
 
 	next_state = PV_STATE_WAIT;
 out:
@@ -871,7 +868,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_debug_wait_shell();
 
 	if ((REBOOT == t) && (pv_config_get_watchdog_mode() >= WDT_SHUTDOWN))
-		pv_wdt_start(pv);
+		pv_wdt_start();
 
 	// give it a final sync here...
 	sync();
@@ -948,7 +945,7 @@ pv_state_func_t *const state_table[MAX_STATES] = {
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
 {
-	pv_wdt_kick(pv);
+	pv_wdt_kick();
 	return state_table[state](pv);
 }
 

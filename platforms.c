@@ -762,7 +762,7 @@ int pv_platform_start(struct pv_platform *p)
 		return -1;
 	}
 
-	pv_wdt_kick(pv);
+	pv_wdt_kick();
 
 	if (pv_platform_setup_config_overlay(p->name)) {
 		pv_log(ERROR, "platform '%s' config overlay failed", p->name);
