@@ -151,8 +151,9 @@ install(TARGETS pantavisor DESTINATION bin)
 
 # put defaults/ in place
 install(DIRECTORY defaults DESTINATION /etc/pantavisor)
-IF(DEFINED ENV{PANTAVISOR_PVS_DIR})
-install(DIRECTORY $ENV{PANTAVISOR_PVS_DIR}/ DESTINATION /etc/pantavisor/pvs)
+
+IF(DEFINED PANTAVISOR_PVS_DIR)
+install(DIRECTORY ${PANTAVISOR_PVS_DIR}/ DESTINATION /etc/pantavisor/pvs/trust FILES_MATCHING PATTERN "*.crt")
 ELSE()
 install(DIRECTORY pvs/ DESTINATION /etc/pantavisor/pvs)
 ENDIF()
