@@ -46,7 +46,7 @@ int pv_wdt_start()
 	if (pv_wdt_fd >= 0)
 		return 0;
 
-	pv_wdt_fd = open("/dev/watchdog", O_RDWR | O_NOCTTY);
+	pv_wdt_fd = open("/dev/watchdog", O_RDWR | O_NOCTTY | O_CLOEXEC);
 	if (pv_wdt_fd < 0) {
 		pv_log(DEBUG, "No watchdog timer device found");
 		return -1;
