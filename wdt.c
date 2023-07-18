@@ -78,11 +78,8 @@ void pv_wdt_stop()
 	}
 
 	if (WDIOF_MAGICCLOSE & info.options) {
-		pv_log(INFO, "magic char supported. Sending V...");
-		if (write(pv_wdt_fd, "V", 1) < 0) {
-			pv_log(WARN, "wdt could not be released: %s",
-			       strerror(errno));
-		}
+		pv_log(INFO,
+		       "magic char supported. WDT will not stop ... you must reset timeout yourself now or reboot.");
 	}
 
 	if (close(pv_wdt_fd) < 0) {
