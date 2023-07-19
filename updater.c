@@ -663,7 +663,7 @@ process_response:
 	if (!update)
 		goto out;
 
-	if (atoi(rev) < atoi(pv->state->rev)) {
+	if (atoi(rev) <= atoi(pv->state->rev)) {
 		pv_log(WARN, "stale rev %s found on remote", rev);
 		wrong_revision = true;
 		goto send_feedback;
