@@ -115,8 +115,7 @@ struct pantavisor_bootloader {
 	int type;
 	bool mtd_only;
 	char *mtd_path;
-	char *dtb;
-	char *ovl;
+	char *fitconfig;
 };
 
 typedef enum {
@@ -293,8 +292,7 @@ int pv_config_get_updater_revision_retries(void);
 int pv_config_get_updater_revision_retry_timeout(void);
 int pv_config_get_updater_commit_delay(void);
 
-char *pv_config_get_bl_dtb(void);
-char *pv_config_get_bl_ovl(void);
+char *pv_config_get_bl_fitconfig(void);
 int pv_config_get_bl_type(void);
 bool pv_config_get_bl_mtd_only(void);
 char *pv_config_get_bl_mtd_path(void);
