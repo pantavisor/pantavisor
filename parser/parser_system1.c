@@ -149,15 +149,13 @@ out:
 
 static bool driver_should_parse(char *key)
 {
-	char *dtb, *ovl;
+	char *fitconfig;
 
-	dtb = pv_config_get_bl_dtb();
-	ovl = pv_config_get_bl_ovl();
+	fitconfig = pv_config_get_bl_fitconfig();
 
-	pv_log(DEBUG, "dtb=%s, ovl=%s", dtb, ovl);
+	pv_log(DEBUG, "fitconfig=%s", fitconfig);
 	if (!strcmp(key, "all") ||
-	    (dtb && !strcmp(key + strlen("dtb:"), dtb)) ||
-	    (ovl && !strcmp(key + strlen("overlay:"), ovl))) {
+	    (fitconfig && !strcmp(key + strlen("fitconfig:"), fitconfig))) {
 		pv_log(DEBUG, "parsing '%s'...", key);
 		return true;
 	}

@@ -381,10 +381,8 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 		&config_list, "bootloader.mtd_only", false);
 	config->bl.mtd_path = config_get_value_string(
 		&config_list, "bootloader.mtd_env", NULL);
-	config->bl.dtb =
-		config_get_value_string(&config_list, "bootloader.dtb", NULL);
-	config->bl.ovl =
-		config_get_value_string(&config_list, "bootloader.ovl", NULL);
+	config->bl.fitconfig = config_get_value_string(
+		&config_list, "bootloader.fitconfig", NULL);
 
 	config->storage.path =
 		config_get_value_string(&config_list, "storage.device", NULL);
@@ -1107,13 +1105,9 @@ int pv_config_get_updater_commit_delay()
 	return pv_get_instance()->config.updater.commit_delay;
 }
 
-char *pv_config_get_bl_dtb()
+char *pv_config_get_bl_fitconfig()
 {
-	return pv_get_instance()->config.bl.dtb;
-}
-char *pv_config_get_bl_ovl()
-{
-	return pv_get_instance()->config.bl.ovl;
+	return pv_get_instance()->config.bl.fitconfig;
 }
 int pv_config_get_bl_type()
 {
