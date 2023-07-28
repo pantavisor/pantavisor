@@ -158,6 +158,9 @@ ELSE()
 install(DIRECTORY pvs/ DESTINATION /etc/pantavisor/pvs)
 ENDIF()
 
+install(DIRECTORY scripts/
+	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
+	DESTINATION /lib/pv)
 
 install(PROGRAMS tools/pventer
 		tools/fallbear-cmd
