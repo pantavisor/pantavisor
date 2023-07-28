@@ -133,6 +133,8 @@ static int config_get_value_init_mode(struct dl_list *config_list, char *key,
 		value = IM_STANDALONE;
 	else if (!strcmp(item, "appengine"))
 		value = IM_APPENGINE;
+	else if (!strcmp(item, "installer"))
+		value = IM_INSTALLER;
 
 	return value;
 }
