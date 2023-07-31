@@ -78,6 +78,8 @@ static int early_mounts()
 	int ret = 0;
 	errno = 0;
 
+	mkdir("/tmp", 0755);
+
 	mkdir("/proc", 0755);
 	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC,
 		    NULL);
