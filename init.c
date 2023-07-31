@@ -78,15 +78,18 @@ static int early_mounts()
 	int ret = 0;
 	errno = 0;
 
+	mkdir("/proc", 0755);
 	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC,
 		    NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /proc");
 
+	mkdir("/dev", 0755);
 	ret = mount("none", "/dev", "devtmpfs", 0, "size=10240k,mode=0755");
 	if (ret < 0)
 		exit_error(errno, "Could not mount /dev");
 
+	mkdir("/sys", 0755);
 	ret = mount("none", "/sys", "sysfs", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys");
