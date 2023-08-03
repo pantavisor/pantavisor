@@ -1303,6 +1303,8 @@ char *pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_cache_usrmetadir());
 		pv_json_ser_key(&js, "cache.devmetadir");
 		pv_json_ser_string(&js, pv_config_get_cache_devmetadir());
+		pv_json_ser_key(&js, "bootloader.fitconfig");
+		pv_json_ser_string(&js, pv_config_get_bl_fitconfig());
 		pv_json_ser_key(&js, "bootloader.type");
 		pv_json_ser_number(&js, pv_config_get_bl_type());
 		pv_json_ser_key(&js, "bootloader.mtd_only");
@@ -1470,6 +1472,7 @@ void pv_config_print()
 	       pv_config_get_cache_usrmetadir());
 	pv_log(INFO, "cache.devmetadir = '%s'",
 	       pv_config_get_cache_devmetadir());
+	pv_log(INFO, "bootloader.fitconfig = %s", pv_config_get_bl_fitconfig());
 	pv_log(INFO, "bootloader.type = %d", pv_config_get_bl_type());
 	pv_log(INFO, "bootloader.mtd_only = %d", pv_config_get_bl_mtd_only());
 	pv_log(INFO, "bootloader.mtd_env = '%s'", pv_config_get_bl_mtd_path());
