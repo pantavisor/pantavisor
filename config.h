@@ -38,6 +38,7 @@ struct pantavisor_system {
 	char *mediadir;
 	char *confdir;
 	bool auto_load_drivers;
+	bool mount_securityfs;
 };
 
 struct pantavisor_debug {
@@ -243,6 +244,7 @@ char *pv_config_get_system_rundir(void);
 char *pv_config_get_system_mediadir(void);
 char *pv_config_get_system_confdir(void);
 bool pv_config_get_system_early_driver_load(void);
+bool pv_config_get_system_mount_securityfs(void);
 
 bool pv_config_get_debug_shell(void);
 bool pv_config_get_debug_shell_autologin(void);
