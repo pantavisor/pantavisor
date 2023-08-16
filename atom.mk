@@ -97,7 +97,8 @@ LOCAL_SRC_FILES := debug.c \
 			blkid.c \
 			paths.c \
 			drivers.c \
-			cgroup.c
+			cgroup.c \
+			apparmor.c
 
 LOCAL_INSTALL_HEADERS := log.h
 LOCAL_GENERATED_SRC_FILES := version.c
