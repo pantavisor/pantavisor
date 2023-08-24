@@ -72,7 +72,8 @@ pid_t pv_pid;
 
 static int early_mounts()
 {
-	int ret;
+	int ret = 0;
+	errno = 0;
 
 	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC,
 		    NULL);
@@ -129,6 +130,14 @@ static int other_mounts()
 	ret = mount("none", "/run", "tmpfs", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /run");
+
+	if (pv_config_get_system_mount_securityfs()) {
+		ret = mount("none", "/sys/kernel/security", "securityfs", 0,
+			    NULL);
+		if (ret < 0)
+			exit_error(errno,
+				   "Could not mount /sys/kernel/security");
+	}
 
 	return 0;
 }
