@@ -152,8 +152,14 @@ const char **pv_ph_get_certs(struct pantavisor *__unused)
 
 	pv_paths_cert(path, PATH_MAX, "");
 	n = scandir(path, &files, NULL, alphasort);
-	if (n < 0)
+	if (n < 0) {
+		pv_log(WARN, "%s could not be scanned", path);
 		return NULL;
+	} else if (n == 0) {
+		pv_log(WARN, "%s is empty", path);
+		free(files);
+		return NULL;
+	}
 
 	// Always n-1 due to . and .., and need one extra
 	cafiles = calloc(n - 1, sizeof(char *));
@@ -184,7 +190,7 @@ struct pv_connection *pv_get_instance_connection()
 
 	conn = (struct pv_connection *)calloc(1, sizeof(struct pv_connection));
 	if (!conn) {
-		pv_log(DEBUG, "Unable to allocate memory for connection\n");
+		pv_log(DEBUG, "Unable to allocate memory for connection");
 		return NULL;
 	}
 	// default to global PH instance
