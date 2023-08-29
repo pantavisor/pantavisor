@@ -911,9 +911,10 @@ out:
 	return ret;
 }
 
-static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
+static sign_state_res_t pv_signature_verify_pairs(struct dl_list *json_pairs)
 {
-	bool ret = true, found = false;
+	bool found = false;
+	sign_state_res_t ret = SIGN_STATE_OK;
 	struct pv_signature_pair *pair, *tmp;
 	struct pv_signature *signature = NULL;
 
@@ -925,7 +926,7 @@ static bool pv_signature_verify_pairs(struct dl_list *json_pairs)
 			found = true;
 			pv_log(DEBUG, "%s found", pair->key);
 			if (!pv_signature_verify_pvs(signature, json_pairs)) {
-				ret = false;
+				ret = SIGN_STATE_NOK_VALIDATION;
 			}
 
 			pv_signature_free(signature);
@@ -967,37 +968,54 @@ static bool pv_signature_all_covered(struct dl_list *json_pairs)
 	return ret;
 }
 
-bool pv_signature_verify(const char *json)
+sign_state_res_t pv_signature_verify(const char *json)
 {
-	bool ret = false;
 	struct dl_list json_pairs; // pv_signature_pair
 	secureboot_mode_t mode = pv_config_get_secureboot_mode();
 
 	if (!json)
-		return false;
+		return SIGN_STATE_NOK_INTERNAL;
 
 	if (mode == SB_DISABLED)
-		return true;
+		return SIGN_STATE_OK;
 
 	pv_log(DEBUG, "verifying signatures of state JSON");
 
 	dl_list_init(&json_pairs);
 
 	pv_signature_parse_json(json, &json_pairs);
+
+	sign_state_res_t ret;
 	ret = pv_signature_verify_pairs(&json_pairs);
 
-	if (ret && (mode == SB_STRICT || mode == SB_AUDIT) &&
+	if ((ret == SIGN_STATE_OK) && (mode == SB_STRICT || mode == SB_AUDIT) &&
 	    !pv_signature_all_covered(&json_pairs)) {
 		pv_log(ERROR, "not all state elements were covered");
-		ret = false;
+		ret = SIGN_STATE_NOK_UNCOVERED;
 	}
 
-	if (!ret && (mode == SB_AUDIT)) {
-		ret = true;
+	if ((ret == SIGN_STATE_NOK_UNCOVERED) && (mode == SB_AUDIT)) {
+		ret = SIGN_STATE_OK;
 		pv_log(WARN,
 		       "in secureboot audit mode, so we will pass the bad signatures as good ones");
 	}
 
 	pv_signature_free_pairs(&json_pairs);
 	return ret;
+}
+
+const char *pv_signature_sign_state_str(sign_state_res_t sres)
+{
+	switch (sres) {
+	case SIGN_STATE_NOK_INTERNAL:
+		return "Internal error";
+	case SIGN_STATE_NOK_UNCOVERED:
+		return "State not fully covered by signatures";
+	case SIGN_STATE_NOK_VALIDATION:
+		return "Signature validation failed";
+	default:
+		return "Unknown error";
+	}
+
+	return "Unknown error";
 }

@@ -36,7 +36,8 @@ struct pv_path {
 };
 
 char *pv_storage_get_state_json(const char *rev);
-bool pv_storage_verify_state_json(const char *rev);
+bool pv_storage_verify_state_json(const char *rev, char *msg,
+				  unsigned int msg_len);
 
 void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);

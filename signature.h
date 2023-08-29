@@ -24,6 +24,15 @@
 
 #include "state.h"
 
-bool pv_signature_verify(const char *json);
+typedef enum {
+	SIGN_STATE_OK = 0,
+	SIGN_STATE_NOK_INTERNAL,
+	SIGN_STATE_NOK_UNCOVERED,
+	SIGN_STATE_NOK_VALIDATION
+} sign_state_res_t;
+
+const char *pv_signature_sign_state_str(sign_state_res_t sres);
+
+sign_state_res_t pv_signature_verify(const char *json);
 
 #endif // PV_SIGNATURE_H
