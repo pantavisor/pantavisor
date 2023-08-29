@@ -1302,7 +1302,7 @@ char *pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_system_confdir());
 		pv_json_ser_key(&js, "system.drivers.load_early.auto");
 		pv_json_ser_bool(&js, pv_config_get_system_early_driver_load());
-		pv_json_ser_key(&js, "system.mount_securityfs");
+		pv_json_ser_key(&js, "system.mount.securityfs");
 		pv_json_ser_bool(&js, pv_config_get_system_mount_securityfs());
 		pv_json_ser_key(&js, "system.apparmor.profiles");
 		pv_json_ser_bool(&js, pv_config_get_system_apparmor_profiles());
@@ -1477,7 +1477,7 @@ void pv_config_print()
 	pv_log(INFO, "system.configdir = '%s'", pv_config_get_system_confdir());
 	pv_log(INFO, "system.drivers.load_early.auto = %d",
 	       pv_config_get_system_early_driver_load());
-	pv_log(INFO, "system.mount_securityfs = %d",
+	pv_log(INFO, "system.mount.securityfs = %d",
 	       pv_config_get_system_mount_securityfs());
 	pv_log(INFO, "system.apparmor.profiles = %s",
 	       pv_config_get_system_apparmor_profiles());
