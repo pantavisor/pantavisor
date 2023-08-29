@@ -355,6 +355,8 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 	config->sys.mount_securityfs = config_get_value_bool(
 		&config_list, "system.mount.securityfs", false);
 
+	config->sys.apparmor_profiles = config_get_value_string(
+		&config_list, "system.apparmor.profiles", NULL);
 	config->policy = config_get_value_policy(&config_list, "policy", NULL);
 	if (pv_config_load_policy(config->policy, &config_list))
 		return -1;
@@ -798,6 +800,8 @@ void pv_config_free()
 		free(pv->config.sys.mediadir);
 	if (pv->config.sys.confdir)
 		free(pv->config.sys.confdir);
+	if (pv->config.sys.apparmor_profiles)
+		free(pv->config.sys.apparmor_profiles);
 
 	if (pv->config.cache.usrmetadir)
 		free(pv->config.cache.usrmetadir);
@@ -946,7 +950,10 @@ bool pv_config_get_system_mount_securityfs()
 {
 	return pv_get_instance()->config.sys.mount_securityfs;
 }
-
+char *pv_config_get_system_apparmor_profiles()
+{
+	return pv_get_instance()->config.sys.apparmor_profiles;
+}
 bool pv_config_get_debug_shell()
 {
 	return pv_get_instance()->config.debug.shell;
@@ -1297,6 +1304,8 @@ char *pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_system_early_driver_load());
 		pv_json_ser_key(&js, "system.mount_securityfs");
 		pv_json_ser_bool(&js, pv_config_get_system_mount_securityfs());
+		pv_json_ser_key(&js, "system.apparmor.profiles");
+		pv_json_ser_bool(&js, pv_config_get_system_apparmor_profiles());
 		pv_json_ser_key(&js, "debug.shell");
 		pv_json_ser_bool(&js, pv_config_get_debug_shell());
 		pv_json_ser_key(&js, "debug.shell.autologin");
@@ -1470,6 +1479,8 @@ void pv_config_print()
 	       pv_config_get_system_early_driver_load());
 	pv_log(INFO, "system.mount_securityfs = %d",
 	       pv_config_get_system_mount_securityfs());
+	pv_log(INFO, "system.apparmor.profiles = %s",
+	       pv_config_get_system_apparmor_profiles());
 	pv_log(INFO, "debug.shell = %d", pv_config_get_debug_shell());
 	pv_log(INFO, "debug.shell.autologin = %d",
 	       pv_config_get_debug_shell_autologin());
