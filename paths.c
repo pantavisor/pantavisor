@@ -207,14 +207,6 @@ void pv_paths_storage_boot_file(char *buf, size_t size, const char *name)
 			pv_config_get_storage_mntpoint(), name);
 }
 
-#define PV_STORAGE_FACTORY_META_PATHF "%s/factory/meta/%s"
-
-void pv_paths_storage_factory_meta_key(char *buf, size_t size, const char *key)
-{
-	SNPRINTF_WTRUNC(buf, size, PV_STORAGE_FACTORY_META_PATHF,
-			pv_config_get_storage_mntpoint(), key);
-}
-
 #define PV_STORAGE_DISKS_PATHF "%s/disks/"
 #define PV_STORAGE_DISKS_REV_PATHF "%s/disks/rev/%s"
 #define PV_STORAGE_DISKS_PERM_FILE_PATHF "%s/disks/perm/%s/%s"

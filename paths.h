@@ -74,7 +74,6 @@ void pv_paths_storage_object(char *buf, size_t size, const char *sha);
 #define DONE_FNAME "done"
 #define PROGRESS_FNAME "progress"
 #define COMMITMSG_FNAME "commitmsg"
-#define METADONE_FNAME "factory-meta.done"
 #define JSON_FNAME "json"
 #define CONFIG_FNAME "config"
 

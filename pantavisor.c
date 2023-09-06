@@ -106,7 +106,6 @@ typedef enum {
 	PV_STATE_POWEROFF,
 	PV_STATE_ERROR,
 	PV_STATE_EXIT,
-	PV_STATE_FACTORY_UPLOAD,
 	MAX_STATES
 } pv_state_t;
 
@@ -135,8 +134,6 @@ static const char *pv_state_string(pv_state_t st)
 		return "STATE_ERROR";
 	case PV_STATE_EXIT:
 		return "STATE_EXIT";
-	case PV_STATE_FACTORY_UPLOAD:
-		return "STATE_FACTORY_UPLOAD";
 	default:
 		return "STATE_UNKNOWN";
 	}
@@ -191,16 +188,6 @@ static bool pv_wait_delay_timedout()
 	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
 
 	return true;
-}
-
-static pv_state_t _pv_factory_upload(struct pantavisor *pv)
-{
-	int ret = -1;
-
-	ret = pv_metadata_factory_meta(pv);
-	if (ret)
-		return PV_STATE_FACTORY_UPLOAD;
-	return PV_STATE_WAIT;
 }
 
 static pv_state_t _pv_init(struct pantavisor *pv)
@@ -396,7 +383,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 	if (c)
 		free(c);
 
-	return PV_STATE_FACTORY_UPLOAD;
+	return PV_STATE_WAIT;
 }
 
 static int pv_meta_update_to_ph(struct pantavisor *pv)
@@ -510,10 +497,6 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	// start or stop ph logger depending on network and configuration
 	ph_logger_toggle(pv->state->rev);
 
-	// update meta info
-	if (!pv_metadata_factory_meta_done(pv)) {
-		return PV_STATE_FACTORY_UPLOAD;
-	}
 	if (pv_meta_update_to_ph(pv))
 		goto out;
 
@@ -940,7 +923,7 @@ static pv_state_t _pv_error(struct pantavisor *pv)
 pv_state_func_t *const state_table[MAX_STATES] = {
 	_pv_init,     _pv_run,		_pv_wait,     _pv_command,
 	_pv_update,   _pv_update_apply, _pv_rollback, _pv_reboot,
-	_pv_poweroff, _pv_error,	NULL,	      _pv_factory_upload,
+	_pv_poweroff, _pv_error,	NULL,
 };
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
