@@ -161,6 +161,9 @@ struct pantavisor_log {
 	bool dmesg;
 	bool loggers;
 	bool std_out;
+	char *ts_filetree_fmt;
+	char *ts_singlefile_fmt;
+	char *ts_stdout_fmt;
 	struct pantavisor_log_server server;
 };
 
@@ -319,6 +322,9 @@ bool pv_config_get_log_push(void);
 bool pv_config_get_log_capture(void);
 bool pv_config_get_log_loggers(void);
 bool pv_config_get_log_stdout(void);
+char *pv_config_get_log_filetree_timestamp_format(void);
+char *pv_config_get_log_singlefile_timestamp_format(void);
+char *pv_config_get_log_stdout_timestamp_format(void);
 
 char *pv_config_get_libthttp_certdir(void);
 int pv_config_get_libthttp_loglevel(void);

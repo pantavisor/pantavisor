@@ -21,6 +21,7 @@
  */
 
 #include "logserver_utils.h"
+#include "logserver_timestamp.h"
 #include "config.h"
 #include "utils/fs.h"
 #include "log.h"
@@ -36,11 +37,6 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <libgen.h>
-
-#define LOGSERVER_JSON_FORMAT                                                  \
-	"{\"tsec\":%" PRId64 ", \"tnano\":%" PRId32 ", "                       \
-	"\"plat\":\"%s\", \"lvl\":\"%s\", \"src\":\"%s\", "                    \
-	"\"msg\": \"%.*s\"}\n"
 
 static int compress_log(const char *path)
 {
@@ -107,57 +103,97 @@ int logserver_utils_open_logfile(const char *path)
 	return fd;
 }
 
+static int print_pvfmt_log(int fd, const struct logserver_log *log,
+			   const char *src, const char *ts_fmt, bool lf)
+{
+	const char *util_src = log->src ? log->src : src;
+	char *fmt = NULL;
+	int len = 0;
+
+	if (ts_fmt) {
+		if (lf)
+			fmt = "[%s] %" PRId64 " %s [%s]\t -- [%s]: %.*s\n";
+		else
+			fmt = "[%s] %" PRId64 " %s [%s]\t -- [%s]: %.*s";
+
+		char ts[256] = { 0 };
+		if (logserver_timestamp_get_formated(ts, 256, &log->time,
+						     ts_fmt) != 0)
+			strncpy(ts, "--", 3);
+
+		len = dprintf(fd, fmt, log->plat, log->tsec,
+			      pv_log_level_name(log->lvl), ts, util_src,
+			      log->data.len, log->data.buf);
+	} else {
+		if (lf)
+			fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s\n";
+		else
+			fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s";
+
+		len = dprintf(fd, fmt, log->plat, log->tsec,
+			      pv_log_level_name(log->lvl), util_src,
+			      log->data.len, log->data.buf);
+	}
+
+	return len;
+}
+
 int logserver_utils_stdout(const struct logserver_log *log)
 {
-	return logserver_utils_print_pvfmt(STDOUT_FILENO, log, "unknown", true);
+	return print_pvfmt_log(STDOUT_FILENO, log, "unknown",
+			       pv_config_get_log_stdout_timestamp_format(),
+			       true);
 }
 
 int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 				const char *src, bool lf)
 {
-	const char *util_src = log->src ? log->src : src;
-
-	char *fmt = NULL;
-	if (lf)
-		fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s\n";
-	else
-		fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s";
-
-	return dprintf(fd, fmt, log->plat, log->tsec,
-		       pv_log_level_name(log->lvl), util_src, log->data.len,
-		       log->data.buf);
+	return print_pvfmt_log(fd, log, src,
+			       pv_config_get_log_filetree_timestamp_format(),
+			       lf);
 }
 
 char *logserver_utils_jsonify_log(const struct logserver_log *log)
 {
-	struct logserver_log js = {
-		.code = log->code,
-		.lvl = log->lvl,
-		.tsec = log->tsec,
-		.plat = pv_json_format(log->plat, strlen(log->plat)),
-		.src = pv_json_format(log->src, strlen(log->src)),
-		.data.buf = pv_json_format(log->data.buf, log->data.len)
-	};
+	struct pv_json_ser js;
+	pv_json_ser_init(&js, 512);
 
-	size_t len = snprintf(NULL, 0, LOGSERVER_JSON_FORMAT, js.tsec, js.tnano,
-			      js.plat, pv_log_level_name(js.lvl), js.src,
-			      (int)strlen(js.data.buf),
-			      js.data.buf) +
-		     1; // 0 byte
+	log->data.buf[log->data.len] = '\0';
 
-	char *json = calloc(1, len);
-	if (!json)
-		return NULL;
+	char ts[256] = { 0 };
 
-	snprintf(json, len, LOGSERVER_JSON_FORMAT, js.tsec, js.tnano, js.plat,
-		 pv_log_level_name(js.lvl), js.src, (int)strlen(js.data.buf),
-		 js.data.buf);
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "tsec");
+		pv_json_ser_number(&js, log->tsec);
 
-	free(js.plat);
-	free(js.src);
-	free(js.data.buf);
+		pv_json_ser_key(&js, "tnano");
+		pv_json_ser_number(&js, 0);
 
-	return json;
+		if (logserver_timestamp_get_formated(
+			    ts, 256, &log->time,
+			    pv_config_get_log_singlefile_timestamp_format()) ==
+		    0) {
+			pv_json_ser_key(&js, "ts");
+			pv_json_ser_string(&js, ts);
+		}
+
+		pv_json_ser_key(&js, "platform");
+		pv_json_ser_string(&js, log->plat);
+
+		pv_json_ser_key(&js, "lvl");
+		pv_json_ser_string(&js, pv_log_level_name(log->lvl));
+
+		pv_json_ser_key(&js, "src");
+		pv_json_ser_string(&js, log->src);
+
+		pv_json_ser_key(&js, "msg");
+		pv_json_ser_string(&js, log->data.buf);
+
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
 }
 
 char *logserver_utils_output_to_str(int out_type)

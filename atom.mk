@@ -48,6 +48,7 @@ LOCAL_SRC_FILES := debug.c \
 			loop.c \
 			logger.c \
 			log.c \
+			logserver/logserver_timestamp.c \
 			logserver/logserver_utils.c \
 			logserver/logserver_out.c \
 			logserver/logserver_singlefile.c \

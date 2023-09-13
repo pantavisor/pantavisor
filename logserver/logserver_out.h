@@ -27,6 +27,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 
 #define LOGSERVER_LOG_PROTOCOL_V1 0
 
@@ -58,6 +59,7 @@ struct logserver_log {
 	int lvl;
 	uint64_t tsec;
 	uint32_t tnano;
+	time_t time;
 	char *plat;
 	char *src;
 	char *rev;

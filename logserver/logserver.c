@@ -153,6 +153,7 @@ static int pv_log(int level, char *msg, ...)
 			.lvl = level,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 			.tnano = 0,
+			.time = time(NULL),
 			.plat = MODULE_NAME,
 			.src = "logserver",
 			.rev = NULL,
@@ -181,6 +182,7 @@ static int pv_log(int level, char *msg, ...)
 			.code = LOG_PROTOCOL_LEGACY,
 			.lvl = level,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
+			.time = time(NULL),
 			.plat = PV_PLATFORM_STR,
 			.src = "logserver",
 			.rev = logserver.rev,
@@ -251,7 +253,7 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 		log->data.len = msg->len - bytes_read;
 		log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
 		log->tnano = 0;
-		ret = 0;
+		log->time = time(NULL), ret = 0;
 		break;
 	default:
 		pv_log(WARN, "got unkown logserver message version %d",
@@ -558,6 +560,7 @@ static void logserver_consume_fd(int fd)
 			.code = LOG_PROTOCOL_LEGACY,
 			.lvl = lfd->lvl,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
+			.time = time(NULL),
 			.plat = lfd->platform,
 			.src = lfd->src,
 			.rev = logserver.rev,
@@ -960,6 +963,7 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 		.lvl = level,
 		.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 		.tnano = 0,
+		.time = time(NULL),
 		.plat = platform,
 		.src = src,
 	};

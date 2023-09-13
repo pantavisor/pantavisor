@@ -468,6 +468,12 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 				     &config->log.logdir);
 	config->log.dmesg =
 		config_get_value_bool(&config_list, "log.capture.dmesg", false);
+	config->log.ts_filetree_fmt = config_get_value_string(
+		&config_list, "log.filetree.timestamp.format", NULL);
+	config->log.ts_singlefile_fmt = config_get_value_string(
+		&config_list, "log.singlefile.timestamp.format", NULL);
+	config->log.ts_stdout_fmt = config_get_value_string(
+		&config_list, "log.stdout.timestamp.format", NULL);
 
 	config->libthttp.loglevel =
 		config_get_value_int(&config_list, "libthttp.log.level", 3);
@@ -818,6 +824,13 @@ void pv_config_free()
 
 	if (pv->config.log.logdir)
 		free(pv->config.log.logdir);
+
+	if (pv->config.log.ts_filetree_fmt)
+		free(pv->config.log.ts_filetree_fmt);
+	if (pv->config.log.ts_singlefile_fmt)
+		free(pv->config.log.ts_singlefile_fmt);
+	if (pv->config.log.ts_stdout_fmt)
+		free(pv->config.log.ts_stdout_fmt);
 
 	if (pv->config.net.brdev)
 		free(pv->config.net.brdev);
@@ -1200,6 +1213,18 @@ bool pv_config_get_log_stdout()
 {
 	return pv_get_instance()->config.log.std_out;
 }
+char *pv_config_get_log_filetree_timestamp_format()
+{
+	return pv_get_instance()->config.log.ts_filetree_fmt;
+}
+char *pv_config_get_log_singlefile_timestamp_format()
+{
+	return pv_get_instance()->config.log.ts_singlefile_fmt;
+}
+char *pv_config_get_log_stdout_timestamp_format()
+{
+	return pv_get_instance()->config.log.ts_stdout_fmt;
+}
 int pv_config_get_log_server_outputs()
 {
 	return pv_get_instance()->config.log.server.outputs;
@@ -1445,6 +1470,15 @@ char *pv_config_get_json()
 		pv_json_ser_bool(&js, pv_config_get_log_loggers());
 		pv_json_ser_key(&js, "log.stdout");
 		pv_json_ser_bool(&js, pv_config_get_log_stdout());
+		pv_json_ser_key(&js, "log.filetree.timestamp.format");
+		pv_json_ser_string(
+			&js, pv_config_get_log_filetree_timestamp_format());
+		pv_json_ser_key(&js, "log.singlefile.timestamp.format");
+		pv_json_ser_string(
+			&js, pv_config_get_log_singlefile_timestamp_format());
+		pv_json_ser_key(&js, "log.stdout.timestamp.format");
+		pv_json_ser_string(&js,
+				   pv_config_get_log_stdout_timestamp_format());
 		pv_json_ser_key(&js, "log.server.outputs");
 		pv_json_ser_number(&js, pv_config_get_log_server_outputs());
 		pv_json_ser_key(&js, "libthttp.log.level");
@@ -1574,6 +1608,13 @@ void pv_config_print()
 	       pv_config_get_log_capture_dmesg());
 	pv_log(INFO, "log.loggers = %d", pv_config_get_log_loggers());
 	pv_log(INFO, "log.stdout = %d", pv_config_get_log_stdout());
+
+	pv_log(INFO, "log.filetree.timestamp.format = %s",
+	       pv_config_get_log_filetree_timestamp_format());
+	pv_log(INFO, "log.singlefile.timestamp.format = %s",
+	       pv_config_get_log_singlefile_timestamp_format());
+	pv_log(INFO, "log.stdout.timestamp.format = %s",
+	       pv_config_get_log_stdout_timestamp_format());
 	pv_log(INFO, "log.server.outputs = %d",
 	       pv_config_get_log_server_outputs());
 	pv_log(INFO, "libthttp.loglevel = %d",
