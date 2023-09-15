@@ -131,7 +131,7 @@ int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 char *logserver_utils_jsonify_log(const struct logserver_log *log)
 {
 	struct logserver_log js = {
-		.ver = log->ver,
+		.code = log->code,
 		.lvl = log->lvl,
 		.tsec = log->tsec,
 		.plat = pv_json_format(log->plat, strlen(log->plat)),
