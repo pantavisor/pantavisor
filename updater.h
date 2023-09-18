@@ -31,7 +31,9 @@
 #define DEVICE_STEP_STATUS_FMT                                                 \
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
 #define DEVICE_STEP_STATUS_WONTGO_FMT                                          \
-	"{ \"status\" : \"WONTGO\", \"status-msg\" : \"%s: %s\", \"progress\" : %d }"
+	"{ \"status\" : \"WONTGO\", \"status-msg\" : \"%s: %s\", \"progress\" : 0 }"
+#define DEVICE_STEP_STATUS_ERROR_FMT                                           \
+	"{ \"status\" : \"ERROR\", \"status-msg\" : \"%s: %s\", \"progress\" : 0 }"
 #define DEVICE_STEP_STATUS_FMT_WITH_DATA                                       \
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%d\"}"
 #define DEVICE_STEP_STATUS_FMT_PROGRESS_DATA                                   \
@@ -68,7 +70,15 @@ enum update_status {
 	UPDATE_REBOOT,
 	UPDATE_UPDATED,
 	UPDATE_DONE,
-	UPDATE_FAILED,
+	UPDATE_SIGNATURE_FAILED,
+	UPDATE_BAD_CHECKSUM,
+	UPDATE_HUB_NOT_REACHABLE,
+	UPDATE_HUB_NOT_STABLE,
+	UPDATE_STALE_REVISION,
+	UPDATE_STATUS_GOAL_FAILED,
+	UPDATE_CONTAINER_STOPPED,
+	UPDATE_CONTAINER_FAILED,
+	UPDATE_INTERNAL_ERROR,
 	UPDATE_NO_DOWNLOAD,
 	UPDATE_NO_SPACE,
 	UPDATE_BAD_SIGNATURE,
@@ -127,6 +137,8 @@ bool pv_update_is_transitioning(struct pv_update *u);
 bool pv_update_is_trying(struct pv_update *u);
 bool pv_update_is_testing(struct pv_update *u);
 
-int pv_update_set_status(struct pantavisor *pv, enum update_status status);
+void pv_update_set_status_msg(struct pv_update *update,
+			      enum update_status status, const char *msg);
+void pv_update_set_status(struct pv_update *update, enum update_status status);
 
 #endif
