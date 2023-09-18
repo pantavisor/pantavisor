@@ -966,7 +966,8 @@ char *pv_storage_get_state_json(const char *rev)
 	return res;
 }
 
-bool pv_storage_verify_state_json(const char *rev)
+bool pv_storage_verify_state_json(const char *rev, char *msg,
+				  unsigned int msg_len)
 {
 	bool ret = false;
 	char *json = NULL;
@@ -974,17 +975,25 @@ bool pv_storage_verify_state_json(const char *rev)
 
 	json = pv_storage_get_state_json(rev);
 	if (!json) {
+		SNPRINTF_WTRUNC(msg, msg_len,
+				"Storage: Cannot read state JSON");
 		pv_log(ERROR, "Could not read state json");
 		goto out;
 	}
 
-	if (!pv_signature_verify(json)) {
+	sign_state_res_t sres;
+	sres = pv_signature_verify(json);
+	if (sres != SIGN_STATE_OK) {
+		SNPRINTF_WTRUNC(msg, msg_len, "Secureboot: %s",
+				pv_signature_sign_state_str(sres));
 		pv_log(ERROR, "Could not verify state json signatures");
 		goto out;
 	}
 
 	state = pv_parser_get_state(json, rev);
 	if (!state) {
+		SNPRINTF_WTRUNC(msg, msg_len,
+				"Parser: State JSON has bad format");
 		pv_log(ERROR, "Could not verify state json format");
 		goto out;
 	}

@@ -225,7 +225,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	} else {
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
-		if (!pv_signature_verify(json)) {
+		if (pv_signature_verify(json) != SIGN_STATE_OK) {
 			pv_log(ERROR,
 			       "state signature verification went wrong");
 			goto out;

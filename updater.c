@@ -63,6 +63,8 @@
 #define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
+static const unsigned int PROGRESS_STATUS_MSG_SIZE = 256;
+
 typedef int (*token_iter_f)(void *d1, void *d2, char *buf, jsmntok_t *tok,
 			    int c);
 
@@ -236,9 +238,8 @@ static void object_update_json(struct object_update *object_update,
 		 object_update->current_time, object_update->total_downloaded);
 }
 
-static int trail_remote_set_status(struct pantavisor *pv,
-				   struct pv_update *update,
-				   enum update_state status, const char *msg)
+static int trail_remote_set_status(struct pv_update *update,
+				   enum update_status status, const char *msg)
 {
 	int ret = 0;
 	trest_request_ptr req = 0;
@@ -246,8 +247,9 @@ static int trail_remote_set_status(struct pantavisor *pv,
 	char __json[1024];
 	int json_size = sizeof(__json);
 	char *json = __json;
-	char message[128];
+	char message[PROGRESS_STATUS_MSG_SIZE];
 	char total_progress_json[512];
+	struct pantavisor *pv = pv_get_instance();
 
 	if (!pv || !update) {
 		pv_log(WARN, "uninitialized update");
@@ -308,23 +310,24 @@ static int trail_remote_set_status(struct pantavisor *pv,
 			"Update finished, revision set as rollback point", 100);
 		break;
 	case UPDATE_ABORTED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"WONTGO", "Update aborted", 85);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
+				"PH Client", "Update aborted", 85);
 		break;
 	case UPDATE_NO_DOWNLOAD:
-		if (!msg)
-			msg = "Unable to download and/or install update";
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"WONTGO", msg, 0);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
+				"PH Client", "Max download retries reached", 0);
 		break;
-	case UPDATE_NO_SIGNATURE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"WONTGO", "State signatures cannot be verified",
-				0);
+	case UPDATE_NO_SPACE:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
+				"PH Client", msg, 0);
+		break;
+	case UPDATE_BAD_SIGNATURE:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
+				"Secureboot", msg, 0);
 		break;
 	case UPDATE_NO_PARSE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"WONTGO", "State cannot be parsed", 0);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
+				"Parser", "State JSON has bad format", 0);
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		pv_log(DEBUG, "download needs to be retried, retry count is %d",
@@ -521,15 +524,14 @@ struct jka_update_ctx {
 static int do_progress_action(struct json_key_action *jka, char *value)
 {
 	char *retry_count = NULL;
-	int ret = 0;
 	struct jka_update_ctx *ctx = (struct jka_update_ctx *)jka->opaque;
 	struct json_key_action jka_arr[] = {
 		ADD_JKA_ENTRY("data", JSMN_STRING, &retry_count, NULL, true),
 		ADD_JKA_NULL_ENTRY()
 	};
 
-	ret = __start_json_parsing_with_action(jka->buf, jka_arr, JSMN_OBJECT,
-					       jka->tokv, jka->tokc);
+	int ret = __start_json_parsing_with_action(
+		jka->buf, jka_arr, JSMN_OBJECT, jka->tokv, jka->tokc);
 	if (!ret) {
 		if (retry_count) {
 			pv_log(DEBUG, "retry_count = %s", retry_count);
@@ -573,6 +575,27 @@ static struct pv_update *pv_update_new(const char *id, const char *rev,
 
 out:
 	return u;
+}
+
+static int pv_update_signature_verify(struct pv_update *update,
+				      const char *state)
+{
+	int ret = -1;
+
+	sign_state_res_t sres;
+	sres = pv_signature_verify(state);
+	if (sres != SIGN_STATE_OK) {
+		pv_log(WARN, "invalid state signature with result %d", sres);
+
+		trail_remote_set_status(update, UPDATE_BAD_SIGNATURE,
+					pv_signature_sign_state_str(sres));
+		goto out;
+	}
+
+	ret = 0;
+
+out:
+	return ret;
 }
 
 static int trail_get_new_steps(struct pantavisor *pv)
@@ -675,7 +698,7 @@ process_response:
 	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
 	    !state) {
 		pv_log(WARN, "failed to parse the rest of the response");
-		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		trail_remote_set_status(update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -684,7 +707,7 @@ send_feedback:
 
 	// report stale revision
 	if (wrong_revision) {
-		trail_remote_set_status(pv, update, UPDATE_FAILED, NULL);
+		trail_remote_set_status(update, UPDATE_FAILED, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -692,7 +715,7 @@ send_feedback:
 	// increment and report revision retry max reached
 	if (retries > pv_config_get_updater_revision_retries()) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
-		trail_remote_set_status(pv, update, UPDATE_NO_DOWNLOAD, NULL);
+		trail_remote_set_status(update, UPDATE_NO_DOWNLOAD, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -700,19 +723,17 @@ send_feedback:
 	// retry number recovered from endpoint response
 	update->retries = retries;
 	// if everything went well until this point, put revision to queue
-	trail_remote_set_status(pv, update, UPDATE_QUEUED, NULL);
+	trail_remote_set_status(update, UPDATE_QUEUED, NULL);
 
 	// parse state
-	if (!pv_signature_verify(state)) {
-		pv_log(WARN, "invalid state signature");
-		trail_remote_set_status(pv, update, UPDATE_NO_SIGNATURE, NULL);
+	if (pv_update_signature_verify(update, state)) {
 		pv_update_free(update);
 		goto out;
 	}
 	update->pending = pv_parser_get_state(state, rev);
 	if (!update->pending) {
 		pv_log(WARN, "invalid state from rev %s", rev);
-		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		trail_remote_set_status(update, UPDATE_NO_PARSE, NULL);
 		pv_update_free(update);
 		goto out;
 	}
@@ -1155,17 +1176,17 @@ bool pv_trail_is_auth(struct pantavisor *pv)
 }
 
 static int pv_update_set_status_msg(struct pantavisor *pv,
-				    enum update_state status, char *msg)
+				    enum update_status status, char *msg)
 {
 	if (!pv || !pv->update) {
 		pv_log(WARN, "uninitialized update");
 		return -1;
 	}
 
-	return trail_remote_set_status(pv, pv->update, status, msg);
+	return trail_remote_set_status(pv->update, status, msg);
 }
 
-int pv_update_set_status(struct pantavisor *pv, enum update_state status)
+int pv_update_set_status(struct pantavisor *pv, enum update_status status)
 {
 	return pv_update_set_status_msg(pv, status, NULL);
 }
@@ -1262,6 +1283,7 @@ int pv_update_finish(struct pantavisor *pv)
 		}
 		break;
 	case UPDATE_NO_DOWNLOAD:
+	case UPDATE_NO_SPACE:
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
 		break;
@@ -1768,7 +1790,7 @@ static int trail_link_objects(struct pantavisor *pv)
 static int trail_check_update_size(struct pantavisor *pv)
 {
 	off_t update_size, free_size;
-	char msg[128];
+	char msg[PROGRESS_STATUS_MSG_SIZE];
 
 	update_size = get_update_size(pv->update);
 	pv_log(INFO, "update size: %" PRIu64 " B", update_size);
@@ -1781,7 +1803,7 @@ static int trail_check_update_size(struct pantavisor *pv)
 				"Space required %" PRIu64
 				" B, available %" PRIu64 " B",
 				update_size, free_size);
-		pv_update_set_status_msg(pv, UPDATE_NO_DOWNLOAD, msg);
+		pv_update_set_status_msg(pv, UPDATE_NO_SPACE, msg);
 		return -1;
 	}
 
@@ -1833,7 +1855,6 @@ static int trail_download_objects(struct pantavisor *pv)
 
 struct pv_update *pv_update_get_step_local(char *rev)
 {
-	struct pantavisor *pv = pv_get_instance();
 	struct pv_update *update = NULL;
 	char *json = NULL;
 
@@ -1847,14 +1868,11 @@ struct pv_update *pv_update_get_step_local(char *rev)
 		goto err;
 	}
 
-	if (!pv_signature_verify(json)) {
-		trail_remote_set_status(pv, update, UPDATE_NO_SIGNATURE, NULL);
-		pv_log(WARN, "state signature verification went wrong");
+	if (pv_update_signature_verify(update, json))
 		goto err;
-	}
 	update->pending = pv_parser_get_state(json, rev);
 	if (!update->pending) {
-		trail_remote_set_status(pv, update, UPDATE_NO_PARSE, NULL);
+		trail_remote_set_status(update, UPDATE_NO_PARSE, NULL);
 		pv_log(WARN, "state parse went wrong");
 		goto err;
 	}

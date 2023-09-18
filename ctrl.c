@@ -93,6 +93,8 @@
 static const size_t HTTP_REQ_BUFFER_SIZE = 4096;
 static const unsigned int HTTP_REQ_NUM_HEADERS = 8;
 
+static const unsigned int HTTP_ERROR_RESPONSE_MSG_SIZE = 256;
+
 typedef enum {
 	HTTP_STATUS_BAD_REQ,
 	HTTP_STATUS_FORBIDDEN,
@@ -837,6 +839,7 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 	char *driverkey = NULL, *drivervalue = NULL;
 	char *drivername = NULL;
 	char *driverop = NULL;
+	char msg[HTTP_ERROR_RESPONSE_MSG_SIZE];
 	struct pv_platform *p = pv_ctrl_get_sender_plat(pname);
 	struct stat st;
 
@@ -1088,12 +1091,13 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 						     expect_continue,
 						     file_path) < 0)
 				goto out;
-			if (!pv_storage_verify_state_json(file_name)) {
+			if (!pv_storage_verify_state_json(
+				    file_name, msg,
+				    HTTP_ERROR_RESPONSE_MSG_SIZE)) {
 				pv_log(ERROR, "state verification went wrong");
 				pv_ctrl_write_error_response(
 					req_fd,
-					HTTP_STATUS_UNPROCESSABLE_ENTITY,
-					"State verification has failed");
+					HTTP_STATUS_UNPROCESSABLE_ENTITY, msg);
 				pv_storage_rm_rev(file_name);
 				goto out;
 			}

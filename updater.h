@@ -30,6 +30,8 @@
 #define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%s/progress"
 #define DEVICE_STEP_STATUS_FMT                                                 \
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
+#define DEVICE_STEP_STATUS_WONTGO_FMT                                          \
+	"{ \"status\" : \"WONTGO\", \"status-msg\" : \"%s: %s\", \"progress\" : %d }"
 #define DEVICE_STEP_STATUS_FMT_WITH_DATA                                       \
 	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%d\"}"
 #define DEVICE_STEP_STATUS_FMT_PROGRESS_DATA                                   \
@@ -54,7 +56,7 @@
 
 #define UPDATE_PROGRESS_FREQ (3) /*3 seconds for update*/
 
-enum update_state {
+enum update_status {
 	UPDATE_INIT,
 	UPDATE_ABORTED,
 	UPDATE_QUEUED,
@@ -68,7 +70,8 @@ enum update_state {
 	UPDATE_DONE,
 	UPDATE_FAILED,
 	UPDATE_NO_DOWNLOAD,
-	UPDATE_NO_SIGNATURE,
+	UPDATE_NO_SPACE,
+	UPDATE_BAD_SIGNATURE,
 	UPDATE_NO_PARSE,
 	UPDATE_RETRY_DOWNLOAD,
 	UPDATE_TESTING_REBOOT,
@@ -86,7 +89,7 @@ struct object_update {
 };
 
 struct pv_update {
-	enum update_state status;
+	enum update_status status;
 	char *endpoint;
 	int progress_size;
 	struct timer retry_timer;
@@ -124,6 +127,6 @@ bool pv_update_is_transitioning(struct pv_update *u);
 bool pv_update_is_trying(struct pv_update *u);
 bool pv_update_is_testing(struct pv_update *u);
 
-int pv_update_set_status(struct pantavisor *pv, enum update_state status);
+int pv_update_set_status(struct pantavisor *pv, enum update_status status);
 
 #endif
