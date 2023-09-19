@@ -311,23 +311,52 @@ static int trail_remote_set_status(struct pv_update *update,
 		break;
 	case UPDATE_ABORTED:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"PH Client", "Update aborted", 85);
+				"PH Client", "Update aborted");
 		break;
 	case UPDATE_NO_DOWNLOAD:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"PH Client", "Max download retries reached", 0);
+				"PH Client", "Max download retries reached");
 		break;
 	case UPDATE_NO_SPACE:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"PH Client", msg, 0);
+				"PH Client", msg);
 		break;
 	case UPDATE_BAD_SIGNATURE:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"Secureboot", msg, 0);
+				"Secureboot", msg);
 		break;
 	case UPDATE_NO_PARSE:
 		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"Parser", "State JSON has bad format", 0);
+				"Parser", "State JSON has bad format");
+		break;
+	case UPDATE_SIGNATURE_FAILED:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"Secureboot", msg);
+		break;
+	case UPDATE_BAD_CHECKSUM:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"Checksum", "Object validation went wrong");
+		break;
+	case UPDATE_HUB_NOT_REACHABLE:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"PH Client", "Hub not reachable");
+		break;
+	case UPDATE_HUB_NOT_STABLE:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"PH Client", "Hub communication not stable");
+		break;
+	case UPDATE_STALE_REVISION:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"PH Client", "Stale revision");
+		break;
+	case UPDATE_STATUS_GOAL_FAILED:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"Container", "Status goal not reached");
+		break;
+	case UPDATE_CONTAINER_FAILED:
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"Container",
+				"A container could not be started");
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		pv_log(DEBUG, "download needs to be retried, retry count is %d",
@@ -423,8 +452,8 @@ static int trail_remote_set_status(struct pv_update *update,
 		}
 		break;
 	default:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"ERROR", "Error during update", 0);
+		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
+				"Pantavisor", "Internal error");
 		break;
 	}
 
@@ -586,9 +615,8 @@ static int pv_update_signature_verify(struct pv_update *update,
 	sres = pv_signature_verify(state);
 	if (sres != SIGN_STATE_OK) {
 		pv_log(WARN, "invalid state signature with result %d", sres);
-
-		trail_remote_set_status(update, UPDATE_BAD_SIGNATURE,
-					pv_signature_sign_state_str(sres));
+		pv_update_set_status_msg(update, UPDATE_BAD_SIGNATURE,
+					 pv_signature_sign_state_str(sres));
 		goto out;
 	}
 
@@ -596,6 +624,23 @@ static int pv_update_signature_verify(struct pv_update *update,
 
 out:
 	return ret;
+}
+
+void pv_update_set_status_msg(struct pv_update *update,
+			      enum update_status status, const char *msg)
+{
+	if (!update)
+		return;
+
+	trail_remote_set_status(update, status, msg);
+}
+
+void pv_update_set_status(struct pv_update *update, enum update_status status)
+{
+	if (!update)
+		return;
+
+	pv_update_set_status_msg(update, status, NULL);
 }
 
 static int trail_get_new_steps(struct pantavisor *pv)
@@ -698,7 +743,7 @@ process_response:
 	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
 	    !state) {
 		pv_log(WARN, "failed to parse the rest of the response");
-		trail_remote_set_status(update, UPDATE_NO_PARSE, NULL);
+		pv_update_set_status(update, UPDATE_NO_PARSE);
 		pv_update_free(update);
 		goto out;
 	}
@@ -707,7 +752,7 @@ send_feedback:
 
 	// report stale revision
 	if (wrong_revision) {
-		trail_remote_set_status(update, UPDATE_FAILED, NULL);
+		pv_update_set_status(update, UPDATE_STALE_REVISION);
 		pv_update_free(update);
 		goto out;
 	}
@@ -715,7 +760,7 @@ send_feedback:
 	// increment and report revision retry max reached
 	if (retries > pv_config_get_updater_revision_retries()) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
-		trail_remote_set_status(update, UPDATE_NO_DOWNLOAD, NULL);
+		pv_update_set_status(update, UPDATE_NO_DOWNLOAD);
 		pv_update_free(update);
 		goto out;
 	}
@@ -723,7 +768,7 @@ send_feedback:
 	// retry number recovered from endpoint response
 	update->retries = retries;
 	// if everything went well until this point, put revision to queue
-	trail_remote_set_status(update, UPDATE_QUEUED, NULL);
+	pv_update_set_status(update, UPDATE_QUEUED);
 
 	// parse state
 	if (pv_update_signature_verify(update, state)) {
@@ -733,7 +778,7 @@ send_feedback:
 	update->pending = pv_parser_get_state(state, rev);
 	if (!update->pending) {
 		pv_log(WARN, "invalid state from rev %s", rev);
-		trail_remote_set_status(update, UPDATE_NO_PARSE, NULL);
+		pv_update_set_status(update, UPDATE_NO_PARSE);
 		pv_update_free(update);
 		goto out;
 	}
@@ -1175,48 +1220,28 @@ bool pv_trail_is_auth(struct pantavisor *pv)
 	return false;
 }
 
-static int pv_update_set_status_msg(struct pantavisor *pv,
-				    enum update_status status, char *msg)
+static int pv_update_check_download_retry(struct pv_update *update)
 {
-	if (!pv || !pv->update) {
-		pv_log(WARN, "uninitialized update");
+	if (!update)
 		return -1;
+
+	struct timer_state timer_state =
+		timer_current_state(&update->retry_timer);
+
+	if (timer_state.fin) {
+		update->retries++;
+		if (update->retries > pv_config_get_updater_revision_retries())
+			return -1;
+		pv_log(INFO, "trying revision %s ,retry = %d",
+		       update->pending->rev, update->retries);
+		// set timer for next retry
+		timer_start(&update->retry_timer, pv_config_get_storage_wait(),
+			    0, RELATIV_TIMER);
+		return 0;
 	}
 
-	return trail_remote_set_status(pv->update, status, msg);
-}
-
-int pv_update_set_status(struct pantavisor *pv, enum update_status status)
-{
-	return pv_update_set_status_msg(pv, status, NULL);
-}
-
-static int pv_update_check_download_retry(struct pantavisor *pv)
-{
-	if (pv->update) {
-		struct timer_state timer_state =
-			timer_current_state(&pv->update->retry_timer);
-
-		if (timer_state.fin) {
-			pv->update->retries++;
-			if (pv->update->retries >
-			    pv_config_get_updater_revision_retries())
-				return -1;
-			pv_log(INFO, "trying revision %s ,retry = %d",
-			       pv->update->pending->rev, pv->update->retries);
-			// set timer for next retry
-			timer_start(&pv->update->retry_timer,
-				    pv_config_get_storage_wait(), 0,
-				    RELATIV_TIMER);
-			return 0;
-		}
-
-		pv_log(INFO, "retrying in %d seconds", timer_state.sec);
-		return 1;
-	}
-
-	pv_update_set_status(pv, UPDATE_FAILED);
-	return -1;
+	pv_log(INFO, "retrying in %d seconds", timer_state.sec);
+	return 1;
 }
 
 static void pv_trail_remote_free(struct trail_remote *trail)
@@ -1251,10 +1276,10 @@ void pv_update_test(struct pantavisor *pv)
 
 	switch (pv->update->status) {
 	case UPDATE_TRY:
-		pv_update_set_status(pv, UPDATE_TESTING_REBOOT);
+		pv_update_set_status(pv->update, UPDATE_TESTING_REBOOT);
 		break;
 	case UPDATE_TRANSITION:
-		pv_update_set_status(pv, UPDATE_TESTING_NONREBOOT);
+		pv_update_set_status(pv->update, UPDATE_TESTING_NONREBOOT);
 		break;
 	default:
 		break;
@@ -1267,16 +1292,10 @@ int pv_update_finish(struct pantavisor *pv)
 		return 0;
 
 	switch (pv->update->status) {
-	case UPDATE_FAILED:
-		pv_bootloader_set_failed();
-		pv_update_set_status(pv, UPDATE_FAILED);
-		pv_update_remove(pv);
-		pv_log(INFO, "update finished");
-		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		if (pv->update->retries >
 		    pv_config_get_updater_revision_retries()) {
-			pv_update_set_status(pv, UPDATE_NO_DOWNLOAD);
+			pv_update_set_status(pv->update, UPDATE_NO_DOWNLOAD);
 			pv_update_remove(pv);
 			pv_log(INFO, "update finished");
 			return 0;
@@ -1293,26 +1312,27 @@ int pv_update_finish(struct pantavisor *pv)
 			       "revision for next boot could not be set");
 			return -1;
 		}
-		pv_update_set_status(pv, UPDATE_DONE);
+		pv_update_set_status(pv->update, UPDATE_DONE);
 		// we keep this here so we can rollback to new DONE revisions from old pantavisor versio
 		pv_storage_set_rev_done(pv, pv->state->rev);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
 		break;
 	case UPDATE_APPLIED:
-		pv_update_set_status(pv, UPDATE_ABORTED);
+		pv_update_set_status(pv->update, UPDATE_ABORTED);
 		pv_bootloader_set_failed();
 		pv_update_remove(pv);
 		pv_log(INFO, "update aborted");
 		break;
 	case UPDATE_TESTING_NONREBOOT:
-		pv_update_set_status(pv, UPDATE_UPDATED);
+		pv_update_set_status(pv->update, UPDATE_UPDATED);
 		pv_update_remove(pv);
 		pv_log(INFO, "update finished");
 		break;
 	default:
-		pv_update_set_status(pv, pv->update->status);
-		pv_log(WARN, "update finished during wrong state %d",
+		pv_bootloader_set_failed();
+		pv_update_set_status(pv->update, pv->update->status);
+		pv_log(INFO, "update finished with status %d",
 		       pv->update->status);
 		pv_update_remove(pv);
 		break;
@@ -1477,8 +1497,8 @@ static void trail_download_object_progress(ssize_t written, ssize_t chunk_size,
 	}
 	timer_start(&progress_update->timer_next_update, UPDATE_PROGRESS_FREQ,
 		    0, RELATIV_TIMER);
-	pv_update_set_status_msg(progress_update->pv, UPDATE_DOWNLOAD_PROGRESS,
-				 msg);
+	pv_update_set_status_msg(progress_update->pv->update,
+				 UPDATE_DOWNLOAD_PROGRESS, msg);
 out:
 	free(msg);
 }
@@ -1803,7 +1823,7 @@ static int trail_check_update_size(struct pantavisor *pv)
 				"Space required %" PRIu64
 				" B, available %" PRIu64 " B",
 				update_size, free_size);
-		pv_update_set_status_msg(pv, UPDATE_NO_SPACE, msg);
+		pv_update_set_status_msg(pv->update, UPDATE_NO_SPACE, msg);
 		return -1;
 	}
 
@@ -1819,7 +1839,7 @@ static int trail_download_objects(struct pantavisor *pv)
 	pv_objects_iter_begin(u->pending, o)
 	{
 		if (!trail_download_get_meta(pv, o)) {
-			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
+			pv_update_set_status(pv->update, UPDATE_RETRY_DOWNLOAD);
 			return -1;
 		}
 	}
@@ -1836,19 +1856,19 @@ static int trail_download_objects(struct pantavisor *pv)
 		u->total_update->start_time = time(NULL);
 		u->total_update->total_downloaded = 0;
 		u->total_update->current_time = time(NULL);
-		pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
+		pv_update_set_status(pv->update, UPDATE_DOWNLOAD_PROGRESS);
 	}
 	pv_objects_iter_begin(u->pending, o)
 	{
 		if (!trail_download_object(pv, o, crtfiles)) {
-			pv_update_set_status(pv, UPDATE_RETRY_DOWNLOAD);
+			pv_update_set_status(pv->update, UPDATE_RETRY_DOWNLOAD);
 			return -1;
 		}
 	}
 	if (u->total_update)
 		u->total_update->current_time = time(NULL);
 
-	pv_update_set_status(pv, UPDATE_DOWNLOAD_PROGRESS);
+	pv_update_set_status(pv->update, UPDATE_DOWNLOAD_PROGRESS);
 	pv_objects_iter_end;
 	return 0;
 }
@@ -1872,7 +1892,7 @@ struct pv_update *pv_update_get_step_local(char *rev)
 		goto err;
 	update->pending = pv_parser_get_state(json, rev);
 	if (!update->pending) {
-		trail_remote_set_status(update, UPDATE_NO_PARSE, NULL);
+		pv_update_set_status(update, UPDATE_NO_PARSE);
 		pv_log(WARN, "state parse went wrong");
 		goto err;
 	}
@@ -1915,7 +1935,7 @@ int pv_update_download(struct pantavisor *pv)
 
 	pv_log(DEBUG, "downloading update...");
 
-	if (pv_update_check_download_retry(pv))
+	if (pv_update_check_download_retry(pv->update))
 		goto out;
 
 	ret = trail_download_objects(pv);
@@ -1924,7 +1944,7 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_update_set_status(pv, UPDATE_DOWNLOADED);
+	pv_update_set_status(pv->update, UPDATE_DOWNLOADED);
 
 	ret = 0;
 out:
@@ -1951,7 +1971,7 @@ int pv_update_install(struct pantavisor *pv)
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
 		pv_log(ERROR, "unable to link objects to relative path");
-		pv_update_set_status(pv, UPDATE_FAILED);
+		pv_update_set_status(pv->update, UPDATE_INTERNAL_ERROR);
 		goto out;
 	}
 
@@ -1975,7 +1995,7 @@ int pv_update_install(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_update_set_status(pv, UPDATE_INSTALLED);
+	pv_update_set_status(pv->update, UPDATE_INSTALLED);
 out:
 	if (pending && (ret < 0))
 		pv_storage_rm_rev(pending->rev);
@@ -2005,9 +2025,9 @@ int pv_update_resume(struct pantavisor *pv)
 			return -1;
 
 		if (pv_bootloader_trying_update())
-			pv_update_set_status(pv, UPDATE_TRY);
+			pv_update_set_status(pv->update, UPDATE_TRY);
 		else
-			pv_update_set_status(pv, UPDATE_FAILED);
+			pv_update_set_status(pv->update, UPDATE_INTERNAL_ERROR);
 	}
 
 	return 0;

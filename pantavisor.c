@@ -225,9 +225,14 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	} else {
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
-		if (pv_signature_verify(json) != SIGN_STATE_OK) {
+		sign_state_res_t sres;
+		sres = pv_signature_verify(json);
+		if (sres != SIGN_STATE_OK) {
 			pv_log(ERROR,
 			       "state signature verification went wrong");
+			pv_update_set_status_msg(
+				pv->update, UPDATE_SIGNATURE_FAILED,
+				pv_signature_sign_state_str(sres));
 			goto out;
 		}
 		pv->state = pv_parser_get_state(json, pv_bootloader_get_rev());
@@ -253,6 +258,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	if (!pv_state_validate_checksum(pv->state)) {
 		pv_log(ERROR, "state objects validation went wrong");
+		pv_update_set_status(pv->update, UPDATE_BAD_CHECKSUM);
 		goto out;
 	}
 
@@ -438,6 +444,8 @@ static pv_state_t pv_wait_update()
 			case PLAT_GOAL_TIMEDOUT:
 				pv_log(ERROR,
 				       "timed out before all goals were met. Rolling back...");
+				pv_update_set_status(pv->update,
+						     UPDATE_STATUS_GOAL_FAILED);
 				return PV_STATE_ROLLBACK;
 			default:
 				pv_log(ERROR,
@@ -479,6 +487,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 			if (tstate.fin) {
 				pv_log(ERROR,
 				       "timed out before getting any response from cloud. Rolling back...");
+				pv_update_set_status(pv->update,
+						     UPDATE_HUB_NOT_REACHABLE);
 				return PV_STATE_ROLLBACK;
 			}
 			pv_log(WARN,
@@ -488,6 +498,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		} else if (pv_update_is_testing(pv->update)) {
 			pv_log(ERROR,
 			       "connection with cloud not stable during testing, Rolling back...");
+			pv_update_set_status(pv->update, UPDATE_HUB_NOT_STABLE);
 			return PV_STATE_ROLLBACK;
 		}
 		// if there is no connection and no rollback yet, we avoid the rest of network operations
@@ -537,9 +548,11 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		pv_log(ERROR,
 		       "a platform did not work as expected. Tearing down...");
 		if (pv_update_is_trying(pv->update) ||
-		    pv_update_is_testing(pv->update))
+		    pv_update_is_testing(pv->update)) {
+			pv_update_set_status(pv->update,
+					     UPDATE_CONTAINER_FAILED);
 			next_state = PV_STATE_ROLLBACK;
-		else
+		} else
 			next_state = PV_STATE_REBOOT;
 		goto out;
 	}
@@ -736,7 +749,7 @@ static pv_state_t _pv_update_apply(struct pantavisor *pv)
 		pv_update_finish(pv);
 		return PV_STATE_WAIT;
 	}
-	pv_update_set_status(pv, UPDATE_APPLIED);
+	pv_update_set_status(pv->update, UPDATE_APPLIED);
 	return PV_STATE_WAIT;
 }
 
@@ -755,12 +768,12 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 	// after installing, try to only stop the platforms that we need for the new update
 	if (pv_state_stop_platforms(pv->state, pv->update->pending)) {
 		pv_log(INFO, "update requires reboot");
-		pv_update_set_status(pv, UPDATE_REBOOT);
+		pv_update_set_status(pv->update, UPDATE_REBOOT);
 		return PV_STATE_REBOOT;
 	}
 
 	pv_log(INFO, "update does not require reboot");
-	pv_update_set_status(pv, UPDATE_TRANSITION);
+	pv_update_set_status(pv->update, UPDATE_TRANSITION);
 	return PV_STATE_RUN;
 }
 
@@ -775,10 +788,8 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 	}
 
 	// rollback means current update needs to be reported to PH as FAILED
-	if (pv->update) {
-		pv_update_set_status(pv, UPDATE_FAILED);
+	if (pv->update)
 		pv_update_finish(pv);
-	}
 
 	return PV_STATE_REBOOT;
 }
