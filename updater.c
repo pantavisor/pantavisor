@@ -77,6 +77,8 @@ void pv_update_free(struct pv_update *update)
 
 	if (update->endpoint)
 		free(update->endpoint);
+	if (update->rev)
+		free(update->rev);
 	if (update->pending) {
 		pv_state_free(update->pending);
 		update->pending = NULL;
@@ -238,12 +240,43 @@ static void object_update_json(struct object_update *object_update,
 		 object_update->current_time, object_update->total_downloaded);
 }
 
+static int pv_update_send_progress(struct pv_update *update, char *json)
+{
+	struct pantavisor *pv = pv_get_instance();
+	trest_request_ptr req = NULL;
+	trest_response_ptr res = NULL;
+	int ret = -1;
+
+	req = trest_make_request(THTTP_METHOD_PUT, update->endpoint, json);
+
+	res = trest_do_json_request(pv->remote->client, req);
+	if (!res) {
+		pv_log(WARN, "HTTP request PUT %s could not be initialized",
+		       update->endpoint);
+	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
+		pv_log(WARN, "HTTP request PUT %s could not auth (status=%d)",
+		       update->endpoint, res->status);
+	} else if (res->code != THTTP_STATUS_OK) {
+		pv_log(WARN,
+		       "HTTP request PUT %s returned error (code=%d; body='%s')",
+		       update->endpoint, res->code, res->body);
+	} else {
+		pv_log(DEBUG, "remote state updated to %s", res->body);
+		ret = 0;
+	}
+
+	if (req)
+		trest_request_free(req);
+	if (res)
+		trest_response_free(res);
+
+	return ret;
+}
+
 static int trail_remote_set_status(struct pv_update *update,
 				   enum update_status status, const char *msg)
 {
 	int ret = 0;
-	trest_request_ptr req = 0;
-	trest_response_ptr res = 0;
 	char __json[1024];
 	int json_size = sizeof(__json);
 	char *json = __json;
@@ -255,6 +288,10 @@ static int trail_remote_set_status(struct pv_update *update,
 		pv_log(WARN, "uninitialized update");
 		return -1;
 	}
+
+	// in case we do not have new information, we get out
+	if ((update->status == status) && !msg)
+		return 0;
 
 	// update the update state machine
 	update->status = status;
@@ -458,8 +495,7 @@ static int trail_remote_set_status(struct pv_update *update,
 	}
 
 	// store progress in trails
-	if (update->pending && update->pending->rev)
-		pv_storage_set_rev_progress(update->pending->rev, json);
+	pv_storage_set_rev_progress(update->rev, json);
 
 	// do not report to cloud if that is not possible
 	if ((update->pending && update->pending->local) ||
@@ -467,30 +503,9 @@ static int trail_remote_set_status(struct pv_update *update,
 	    trail_remote_init(pv))
 		goto out;
 
-	req = trest_make_request(THTTP_METHOD_PUT, update->endpoint, json);
-
-	ret = -1;
-	res = trest_do_json_request(pv->remote->client, req);
-	if (!res) {
-		pv_log(WARN, "HTTP request PUT %s could not be initialized",
-		       update->endpoint);
-	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "HTTP request PUT %s could not auth (status=%d)",
-		       update->endpoint, res->status);
-	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN,
-		       "HTTP request PUT %s returned error (code=%d; body='%s')",
-		       update->endpoint, res->code, res->body);
-	} else {
-		pv_log(DEBUG, "remote state updated to %s", res->body);
-		ret = 0;
-	}
+	ret = pv_update_send_progress(update, json);
 
 out:
-	if (req)
-		trest_request_free(req);
-	if (res)
-		trest_response_free(res);
 	if (json != __json)
 		free(json);
 
@@ -587,6 +602,7 @@ static struct pv_update *pv_update_new(const char *id, const char *rev,
 		u->progress_size = PATH_MAX;
 		u->progress_objects = calloc(u->progress_size, sizeof(char));
 		u->status = UPDATE_INIT;
+		u->rev = strdup(rev);
 		u->retries = 0;
 		u->local = local;
 
@@ -641,6 +657,28 @@ void pv_update_set_status(struct pv_update *update, enum update_status status)
 		return;
 
 	pv_update_set_status_msg(update, status, NULL);
+}
+
+static int pv_update_load_progress(struct pv_update *update)
+{
+	int ret = -1;
+
+	if (!update)
+		return ret;
+
+	char *json;
+	json = pv_storage_get_rev_progress(update->rev);
+	if (!json)
+		return ret;
+
+	pv_log(DEBUG,
+	       "rev '%s' already existed in this device with progress '%s'",
+	       update->rev, json);
+
+	ret = pv_update_send_progress(update, json);
+
+	free(json);
+	return ret;
 }
 
 static int trail_get_new_steps(struct pantavisor *pv)
@@ -733,6 +771,7 @@ process_response:
 
 	if (atoi(rev) <= atoi(pv->state->rev)) {
 		pv_log(WARN, "stale rev %s found on remote", rev);
+		pv_update_set_status(update, UPDATE_STALE_REVISION);
 		wrong_revision = true;
 		goto send_feedback;
 	}
@@ -749,10 +788,11 @@ process_response:
 	}
 
 send_feedback:
+	if (pv_update_load_progress(update))
+		pv_log(DEBUG, "could not load progres from rev %s", rev);
 
-	// report stale revision
+	// exit stale revision
 	if (wrong_revision) {
-		pv_update_set_status(update, UPDATE_STALE_REVISION);
 		pv_update_free(update);
 		goto out;
 	}
@@ -1232,8 +1272,8 @@ static int pv_update_check_download_retry(struct pv_update *update)
 		update->retries++;
 		if (update->retries > pv_config_get_updater_revision_retries())
 			return -1;
-		pv_log(INFO, "trying revision %s ,retry = %d",
-		       update->pending->rev, update->retries);
+		pv_log(INFO, "trying revision %s ,retry = %d", update->rev,
+		       update->retries);
 		// set timer for next retry
 		timer_start(&update->retry_timer, pv_config_get_storage_wait(),
 			    0, RELATIV_TIMER);
@@ -1920,8 +1960,7 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
-	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->update->pending->rev,
-				       "");
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->update->rev, "");
 	pv_fs_mkdir_p(path, 0755);
 
 	// do not download if this is a local update
@@ -1954,6 +1993,7 @@ out:
 int pv_update_install(struct pantavisor *pv)
 {
 	int ret = -1;
+	struct pv_update *update = pv->update;
 	struct pv_state *pending = pv->update->pending;
 	char path[PATH_MAX];
 
@@ -1965,7 +2005,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv_log(DEBUG, "installing update...");
 
 	// make sure target directories exist
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev, "");
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, update->rev, "");
 	pv_fs_mkdir_p(path, 0755);
 
 	ret = trail_link_objects(pv);
@@ -1976,7 +2016,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	// install state.json for new rev
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, pending->rev,
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, update->rev,
 					JSON_FNAME);
 	if (pv_fs_file_save(path, pending->json, 0644) < 0)
 		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
@@ -1989,7 +2029,7 @@ int pv_update_install(struct pantavisor *pv)
 	}
 
 	pv_log(DEBUG, "update successfully installed");
-	if (pv_bootloader_set_installed(pending->rev)) {
+	if (pv_bootloader_set_installed(update->rev)) {
 		pv_log(ERROR, "unable to write pv_try to boot cmd env");
 		ret = -1;
 		goto out;
@@ -1998,7 +2038,7 @@ int pv_update_install(struct pantavisor *pv)
 	pv_update_set_status(pv->update, UPDATE_INSTALLED);
 out:
 	if (pending && (ret < 0))
-		pv_storage_rm_rev(pending->rev);
+		pv_storage_rm_rev(update->rev);
 
 	return ret;
 }

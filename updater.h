@@ -103,6 +103,7 @@ struct pv_update {
 	char *endpoint;
 	int progress_size;
 	struct timer retry_timer;
+	char *rev;
 	struct pv_state *pending;
 	char *progress_objects;
 	int retries;
