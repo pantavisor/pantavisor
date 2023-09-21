@@ -207,26 +207,26 @@ static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir,
 	return 1;
 }
 
-static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
+static void pv_setup_lxc_filter_cgroup(struct lxc_container *c)
 {
-	// only for cgroup unified
-	if (__pv_get_instance()->cgroupv != CGROUP_UNIFIED)
-		return;
-
-	// XXX: this might change with LXC 5.0, as we might be able to support the original lxc.conf
-
 	char value[PATH_MAX];
 
-	// remove all ilegacy cgroup allow and deny config
-	while (c->get_config_item(c, "lxc.cgroup.devices.allow", value, PATH_MAX) > 0) {
-		c->set_config_item(c, "lxc.cgroup.devices.allow", NULL);
+	// filter all v2 config items while in v1 and viceversa
+	if (__pv_get_instance()->cgroupv == CGROUP_LEGACY) {
+		while (c->get_config_item(c, "lxc.cgroup2.devices.allow", value, PATH_MAX) > 0) {
+			c->set_config_item(c, "lxc.cgroup2.devices.allow", NULL);
+		}
+		while (c->get_config_item(c, "lxc.cgroup2.devices.deny", value, PATH_MAX) > 0) {
+			c->set_config_item(c, "lxc.cgroup2.devices.deny", NULL);
+		}
+	} else if (__pv_get_instance()->cgroupv == CGROUP_UNIFIED) {
+		while (c->get_config_item(c, "lxc.cgroup.devices.allow", value, PATH_MAX) > 0) {
+			c->set_config_item(c, "lxc.cgroup.devices.allow", NULL);
+		}
+		while (c->get_config_item(c, "lxc.cgroup.devices.deny", value, PATH_MAX) > 0) {
+			c->set_config_item(c, "lxc.cgroup.devices.deny", NULL);
+		}
 	}
-	while (c->get_config_item(c, "lxc.cgroup.devices.deny", value, PATH_MAX) > 0) {
-		c->set_config_item(c, "lxc.cgroup.devices.deny", NULL);
-	}
-
-	// substitute it with cgroup2 allow a
-	c->set_config_item(c, "lxc.cgroup2.devices.allow", "a");
 }
 
 static void pv_setup_lxc_container(struct lxc_container *c,
@@ -250,7 +250,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			 pv_lxc_get_lxc_log_level());
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
-	pv_setup_lxc_container_cgroup(c);
+	pv_setup_lxc_filter_cgroup(c);
 	// role specific lxc config
 	if (p->roles & PLAT_ROLE_MGMT) {
 		__pv_paths_pv_file(path, PATH_MAX, "");
