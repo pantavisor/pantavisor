@@ -52,6 +52,7 @@ LOCAL_SRC_FILES := debug.c \
 			logserver/logserver_timestamp.c \
 			logserver/logserver_utils.c \
 			logserver/logserver_out.c \
+			logserver/logserver_update.c \
 			logserver/logserver_singlefile.c \
 			logserver/logserver_filetree.c \
 			logserver/logserver_null.c \
@@ -80,6 +81,7 @@ LOCAL_SRC_FILES := debug.c \
 			utils/math.c \
 			utils/timer.c \
 			utils/fs.c \
+			utils/socket.c \
 			jsons.c \
 			pantahub.c \
 			updater.c \

@@ -76,6 +76,8 @@ void pv_paths_storage_object(char *buf, size_t size, const char *sha);
 #define COMMITMSG_FNAME "commitmsg"
 #define JSON_FNAME "json"
 #define CONFIG_FNAME "config"
+#define LOGS_FNAME "logs"
+#define LOGS_TMP_FNAME "logs.tmp"
 
 void pv_paths_storage_trail(char *buf, size_t size, const char *rev);
 void pv_paths_storage_trail_file(char *buf, size_t size, const char *rev,

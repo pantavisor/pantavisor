@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Pantacor Ltd.
+ * Copyright (c) 2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,33 +20,24 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_H
-#define LOGSERVER_H
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <sys/types.h>
-#include <unistd.h>
-#include <stdarg.h>
-#include "pantavisor.h"
+#include <sys/socket.h>
+#include <sys/un.h>
 
-#define PV_PLATFORM_STR "pantavisor"
+#include "socket.h"
 
-void pv_logserver_toggle(struct pantavisor *pv, const char *rev);
+pid_t pv_socket_get_sender_pid(int fd)
+{
+	struct ucred ucred;
+	socklen_t ucred_len = sizeof(ucred);
 
-int pv_logserver_init(void);
+	// get sender PID
+	if (getsockopt(fd, SOCK_STREAM, SO_PEERCRED, &ucred, &ucred_len) < 0)
+		return -1;
 
-int pv_logserver_send_log(bool is_platform, char *platform, char *src,
-			  int level, const char *msg, ...);
-int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
-			   int level, const char *msg, va_list args);
-
-void pv_logserver_reload(void);
-void pv_logserver_stop(void);
-
-void pv_logserver_start_update(const char *rev);
-void pv_logserver_stop_update(const char *rev);
-
-int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
-			      int loglevel);
-int pv_logserver_unsubscribe_fd(const char *platform, const char *src);
-
-#endif /* LOGSERVER_H */
+	return ucred.pid;
+}

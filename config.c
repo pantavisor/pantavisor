@@ -173,6 +173,8 @@ static int config_parse_log_server_outputs(char *value)
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT;
 	}
 
+	server_outputs |= LOG_SERVER_OUTPUT_UPDATE;
+
 	return server_outputs;
 }
 

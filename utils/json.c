@@ -142,17 +142,15 @@ int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t *tok,
 	for (i = 0; i < tokc; i++) {
 		int n = tok[i].end - tok[i].start;
 		int m = strlen(key);
-		if (tok[i].type == JSMN_PRIMITIVE && n == m &&
+		if ((n == m) && (tok[i].type == JSMN_STRING) &&
 		    !strncmp(buf + tok[i].start, key, n)) {
 			t = 1;
-		} else if (t == 1) {
+		} else if ((t == 1) && (tok[i].type == JSMN_PRIMITIVE)) {
 			char *idval = malloc(n + 1);
 			idval[n] = 0;
 			strncpy(idval, buf + tok[i].start, n);
 			val = atoi(idval);
 			free(idval);
-			return val;
-		} else if (t == 1) {
 			return val;
 		}
 	}

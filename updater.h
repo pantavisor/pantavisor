@@ -29,6 +29,10 @@
 #define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
 #define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%s/progress"
 
+#define UPDATE_PROGRESS_STATUS_SIZE 16
+#define UPDATE_PROGRESS_STATUS_MSG_SIZE 256
+#define UPDATE_PROGRESS_DATA_SIZE 16
+#define UPDATE_PROGRESS_LOGS_SIZE 4092
 #define UPDATE_PROGRESS_JSON_SIZE 4096
 
 #define TRAIL_OBJECT_DL_FMT "/objects/%s"
@@ -82,6 +86,7 @@ struct download_info {
 
 struct pv_update {
 	enum update_status status;
+	char msg[UPDATE_PROGRESS_STATUS_MSG_SIZE];
 	char *endpoint;
 	int progress_size;
 	struct timer retry_timer;
@@ -107,7 +112,7 @@ int pv_updater_check_for_updates(struct pantavisor *pv);
 bool pv_trail_is_auth(struct pantavisor *pv);
 void pv_trail_remote_remove(struct pantavisor *pv);
 
-struct pv_update *pv_update_get_step_local(char *rev);
+struct pv_update *pv_update_get_step_local(const char *rev);
 
 int pv_update_download(struct pantavisor *pv);
 int pv_update_install(struct pantavisor *pv);

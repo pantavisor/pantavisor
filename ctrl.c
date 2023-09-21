@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2017-2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,10 +19,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +58,7 @@
 #include "paths.h"
 #include "utils/math.h"
 #include "utils/fs.h"
+#include "utils/socket.h"
 
 #define MODULE_NAME "ctrl"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -783,18 +780,16 @@ error:
 
 static char *pv_ctrl_get_sender_pname(int req_fd)
 {
-	struct ucred ucred;
-	socklen_t ucred_len = sizeof(ucred);
+	pid_t sender_pid;
+	sender_pid = pv_socket_get_sender_pid(req_fd);
 
-	// get sender PID
-	if (getsockopt(req_fd, SOCK_STREAM, SO_PEERCRED, &ucred, &ucred_len) <
-	    0) {
+	if (sender_pid < 0) {
 		pv_log(WARN, "could not get pid from sender: %s",
 		       strerror(errno));
 		return NULL;
 	}
 
-	return pv_cgroup_get_process_name(ucred.pid);
+	return pv_cgroup_get_process_name(sender_pid);
 }
 
 static struct pv_platform *pv_ctrl_get_sender_plat(const char *pname)

@@ -34,7 +34,7 @@
 
 static char *create_dir(const struct logserver_log *log)
 {
-	if (!log->rev) {
+	if (!log->running_rev) {
 		WARN_ONCE(
 			"Log with no revision (null) arrives to singlefile output: %s",
 			log->data.buf);
@@ -42,12 +42,12 @@ static char *create_dir(const struct logserver_log *log)
 	}
 
 	char path[PATH_MAX];
-	pv_paths_pv_log(path, sizeof(path), log->rev);
+	pv_paths_pv_log(path, sizeof(path), log->running_rev);
 
 	if (pv_fs_mkdir_p(path, 0755))
 		return NULL;
 
-	pv_paths_pv_log_plat(path, sizeof(path), log->rev, "pv.log");
+	pv_paths_pv_log_plat(path, sizeof(path), log->running_rev, "pv.log");
 
 	return strdup(path);
 }

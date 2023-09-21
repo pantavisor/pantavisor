@@ -20,81 +20,65 @@
  * SOFTWARE.
  */
 
-#include "logserver_filetree.h"
+#include "logserver_update.h"
 #include "logserver_utils.h"
+#include "log.h"
 #include "config.h"
 #include "paths.h"
 #include "utils/fs.h"
 
-#include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 #include <linux/limits.h>
+#include <unistd.h>
 #include <libgen.h>
+#include <stdio.h>
 
-#define MAIN_PLATFORM "pantavisor"
-
-static char *create_dir(const struct logserver_log *log, bool is_pv)
+static char *create_dir(const struct logserver_log *log)
 {
-	if (!log->running_rev) {
-		WARN_ONCE(
-			"Log with no revision (null) arrives to filetree output: %s",
-			log->data.buf);
+	if (!log->updated_rev)
 		return NULL;
-	}
 
 	char path[PATH_MAX];
-	pv_paths_pv_log_file(path, sizeof(path), log->running_rev, log->plat,
-			     is_pv ? "pantavisor.log" : log->src);
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, log->updated_rev, "");
 
-	char *dup_path = strdup(path);
-	char *fname = dirname(path);
-
-	// Create directory for logged item according to platform and source.
-	if (pv_fs_mkdir_p(fname, 0755) != 0) {
-		free(dup_path);
+	if (pv_fs_mkdir_p(path, 0755))
 		return NULL;
-	}
 
-	return dup_path;
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, log->updated_rev,
+				       LOGS_TMP_FNAME);
+
+	return strdup(path);
 }
 
 static int add_log(struct logserver_out *out, const struct logserver_log *log)
 {
-	if (log->lvl > pv_config_get_log_loglevel())
+	if (log->lvl > ERROR)
 		return 0;
 
-	bool is_pv = !strncmp(log->plat, MAIN_PLATFORM, strlen(MAIN_PLATFORM));
-
-	char *path = create_dir(log, is_pv);
+	char *path = create_dir(log);
 	if (!path)
 		return -1;
 
 	int fd = logserver_utils_open_logfile(path);
-
 	if (fd < 0) {
-		WARN_ONCE("Error opening file %s/%s, errno = %d\n", platform,
-			  source, errno);
-
+		WARN_ONCE("Error opening file %s, errno = %d\n", path, errno);
 		free(path);
+
 		return -1;
 	}
 
-	int len = 0;
-
-	if (is_pv)
-		len = logserver_utils_print_pvfmt(fd, log, "pantavisor", true);
-	else
-		len = dprintf(fd, "%.*s", log->data.len, log->data.buf);
+	char *json = logserver_utils_jsonify_log(log);
+	int len = dprintf(fd, "%s\n", json);
 
 	close(fd);
+	free(json);
 	free(path);
 
 	return len;
 }
 
-struct logserver_out *logserver_filetree_new()
+struct logserver_out *logserver_update_new()
 {
-	return logserver_out_new(LOG_SERVER_OUTPUT_FILE_TREE, "filetree",
-				 add_log, NULL, NULL);
+	return logserver_out_new(LOG_SERVER_OUTPUT_UPDATE, "update", add_log,
+				 NULL, NULL);
 }
