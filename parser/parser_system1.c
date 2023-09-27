@@ -39,6 +39,7 @@
 #include "addons.h"
 #include "platforms.h"
 #include "volumes.h"
+#include "disks.h"
 #include "objects.h"
 #include "jsons.h"
 #include "json.h"

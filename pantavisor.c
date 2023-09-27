@@ -43,6 +43,7 @@
 #include "loop.h"
 #include "platforms.h"
 #include "volumes.h"
+#include "disks.h"
 #include "pantahub.h"
 #include "bootloader.h"
 #include "ctrl.h"

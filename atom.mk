@@ -64,6 +64,7 @@ LOCAL_SRC_FILES := debug.c \
 			platforms.c \
 			addons.c \
 			volumes.c \
+			disks.c \
 			signature.c \
 			parser/parser.c \
 			parser/parser_multi1.c \
