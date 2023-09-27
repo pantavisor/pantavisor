@@ -34,6 +34,7 @@
 #include "drivers.h"
 #include "paths.h"
 #include "volumes.h"
+#include "disks.h"
 #include "platforms.h"
 #include "objects.h"
 #include "jsons.h"
