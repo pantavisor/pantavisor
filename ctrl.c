@@ -451,13 +451,12 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 {
 	int obj_fd = -1, read_length, write_length, ret = -1;
 	char req[HTTP_REQ_BUFFER_SIZE];
-	size_t free_space = pv_storage_get_free();
+	size_t free_space = (size_t)pv_storage_get_free();
 
 	if (content_length > free_space) {
 		pv_ctrl_consume_req(req_fd, content_length);
 		pv_log(WARN,
-		       "%" PRIu64 " B needed but only %" PRIu64
-		       " B available. Cannot create file",
+		       "%zu B needed but only %zu B available. Cannot create file",
 		       content_length, free_space);
 		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_INSUFF_STORAGE,
 					     "Not enough disk space available");
@@ -582,7 +581,7 @@ out:
 static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 					   size_t num_headers, const char *name)
 {
-	int ret = 0;
+	size_t ret = 0;
 	char *value = NULL;
 
 	for (size_t header_index = 0; header_index < num_headers;
@@ -594,7 +593,7 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 				       sizeof(char));
 			strncpy(value, headers[header_index].value,
 				headers[header_index].value_len);
-			ret = strtol(value, NULL, 10);
+			ret = strtoul(value, NULL, 10);
 			free(value);
 		}
 	}
