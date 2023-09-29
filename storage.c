@@ -721,8 +721,6 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 		       strerror(errno));
 }
 
-#define MAX_PROGRES_SIZE 4096
-
 void pv_storage_set_rev_progress(const char *rev, const char *progress)
 {
 	if (!rev)
@@ -748,7 +746,7 @@ char *pv_storage_get_rev_progress(const char *rev)
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, PROGRESS_FNAME);
 
 	pv_log(DEBUG, "loading progress file for rev %s from %s", rev, path);
-	return pv_fs_file_load(path, MAX_PROGRES_SIZE);
+	return pv_fs_file_load(path, UPDATE_PROGRESS_JSON_SIZE);
 }
 
 #define PVR_CONFIGF "{\"ObjectsDir\": \"%s/objects\"}"

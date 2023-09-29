@@ -28,25 +28,8 @@
 
 #define DEVICE_TRAIL_ENDPOINT_FMT "/trails/%s/steps"
 #define DEVICE_STEP_ENDPOINT_FMT "/trails/%s/steps/%s/progress"
-#define DEVICE_STEP_STATUS_FMT                                                 \
-	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d }"
-#define DEVICE_STEP_STATUS_WONTGO_FMT                                          \
-	"{ \"status\" : \"WONTGO\", \"status-msg\" : \"%s: %s\", \"progress\" : 0 }"
-#define DEVICE_STEP_STATUS_ERROR_FMT                                           \
-	"{ \"status\" : \"ERROR\", \"status-msg\" : \"%s: %s\", \"progress\" : 0 }"
-#define DEVICE_STEP_STATUS_FMT_WITH_DATA                                       \
-	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%d\"}"
-#define DEVICE_STEP_STATUS_FMT_PROGRESS_DATA                                   \
-	"{ \"status\" : \"%s\", \"status-msg\" : \"%s\", \"progress\" : %d ,\"data\":\"%d\",\
-	\"downloads\": {\"total\":%s, \"objects\":[%s]}}"
-#define DEVICE_STEP_FACTORY_PROGRESS_UNREGISTERED                              \
-	"{ \"status\" : \"UNREGISTERED\", \"status-msg\" : \"Registering\", \"progress\" : 0 }"
-#define DEVICE_STEP_FACTORY_PROGRESS_UNCLAIMED                                 \
-	"{ \"status\" : \"UNCLAIMED\", \"status-msg\" : \"Waiting for claim\", \"progress\" : 0 }"
-#define DEVICE_STEP_FACTORY_PROGRESS_SYNCING                                   \
-	"{ \"status\" : \"SYNCING\", \"status-msg\" : \"Uploading initial data\", \"progress\" : 20 }"
-#define DEVICE_STEP_FACTORY_PROGRESS_DONE                                      \
-	"{ \"status\" : \"DONE\", \"status-msg\" : \"Factory revision\", \"progress\" : 100 }"
+
+#define UPDATE_PROGRESS_JSON_SIZE 4096
 
 #define TRAIL_OBJECT_DL_FMT "/objects/%s"
 #define DEVICE_TRAIL_ENDPOINT_QUEUED "?progress.status=QUEUED"
@@ -60,6 +43,7 @@
 
 enum update_status {
 	UPDATE_INIT,
+	UPDATE_FACTORY,
 	UPDATE_ABORTED,
 	UPDATE_QUEUED,
 	UPDATE_DOWNLOADED,
@@ -89,9 +73,7 @@ enum update_status {
 	UPDATE_DOWNLOAD_PROGRESS
 };
 
-struct object_update {
-	char *object_name;
-	char *object_id;
+struct download_info {
 	uint64_t total_size;
 	uint64_t start_time;
 	uint64_t current_time;
@@ -105,9 +87,8 @@ struct pv_update {
 	struct timer retry_timer;
 	char *rev;
 	struct pv_state *pending;
-	char *progress_objects;
 	int retries;
-	struct object_update *total_update;
+	struct download_info total;
 	bool local;
 };
 
@@ -141,5 +122,6 @@ bool pv_update_is_testing(struct pv_update *u);
 void pv_update_set_status_msg(struct pv_update *update,
 			      enum update_status status, const char *msg);
 void pv_update_set_status(struct pv_update *update, enum update_status status);
+void pv_update_set_factory_status(void);
 
 #endif
