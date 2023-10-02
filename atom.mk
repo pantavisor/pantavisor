@@ -44,6 +44,7 @@ LOCAL_CODECHECK_C := clang
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/utils/
 
 LOCAL_SRC_FILES := debug.c \
+			daemons.c \
 			init.c \
 			loop.c \
 			logger.c \
