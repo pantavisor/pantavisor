@@ -40,6 +40,7 @@
 #include <linux/reboot.h>
 
 #include "init.h"
+#include "daemons.h"
 #include "config.h"
 #include "pantavisor.h"
 #include "version.h"
@@ -143,6 +144,30 @@ static int other_mounts()
 	return 0;
 }
 
+static pid_t waitpids(int *wstatus)
+{
+	pid_t pid;
+	int i = 0;
+	struct pv_init_daemon *daemons = NULL;
+
+	if ((pid = waitpid(0, wstatus, WNOHANG)) > 0) {
+		return pid;
+	}
+
+	daemons = pv_init_get_daemons();
+	if (!daemons)
+		return 0;
+
+	while (daemons[i].name) {
+		if ((pid = waitpid(daemons[i].pid, wstatus, WNOHANG)) > 0)
+			return daemons[i].pid;
+		if (pid < 0)
+			return pid;
+		i++;
+	}
+	return 0;
+}
+
 static void signal_handler(int signal)
 {
 	pid_t pid = 0;
@@ -151,11 +176,20 @@ static void signal_handler(int signal)
 	if (signal != SIGCHLD)
 		return;
 
-	while ((pid = waitpid(pv_pid, &wstatus, WNOHANG)) > 0) {
+	while ((pid = waitpids(&wstatus)) > 0) {
 		// ignore signals of 0 and db_pid
+		if (pv_init_is_daemon(pid)) {
+			pv_log(WARN, "Daemon exited.");
+			pv_init_daemon_exited(pid);
+			if (!pv_init_spawn_daemons())
+				continue;
+			sleep(1);
+			pv_log(WARN,
+			       "Respawn of critical service failed %d: %s", pid,
+			       strerror(errno));
+		}
 		if (pv_pid == 0 || (pv_debug_is_ssh_pid(pid)))
 			continue;
-
 		pv_stop();
 
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
@@ -392,6 +426,7 @@ int main(int argc, char *argv[])
 	if (pv_config_get_system_init_mode() == IM_EMBEDDED ||
 	    pv_config_get_system_init_mode() == IM_STANDALONE) {
 		pv_drivers_load_early();
+		pv_init_spawn_daemons();
 	}
 
 	// in case of standalone is set, we only start debugging tools up in main thread
