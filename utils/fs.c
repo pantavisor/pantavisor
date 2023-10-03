@@ -213,6 +213,11 @@ out:
 
 int pv_fs_file_save(const char *fname, const char *data, mode_t mode)
 {
+	if (!data) {
+		errno = ENODATA;
+		return -1;
+	}
+
 	char tmp[PATH_MAX] = { 0 };
 	if (pv_fs_file_tmp(tmp, fname) != 0)
 		return -1;

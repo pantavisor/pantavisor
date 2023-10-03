@@ -63,8 +63,6 @@
 #define VOLATILE_TMP_OBJ_PATH "/tmp/object-XXXXXX"
 #define MMC_TMP_OBJ_FMT "%s.tmp"
 
-static const unsigned int PROGRESS_STATUS_MSG_SIZE = 256;
-
 typedef int (*token_iter_f)(void *d1, void *d2, char *buf, jsmntok_t *tok,
 			    int c);
 
@@ -83,11 +81,6 @@ void pv_update_free(struct pv_update *update)
 		pv_state_free(update->pending);
 		update->pending = NULL;
 	}
-	if (update->progress_objects)
-		free(update->progress_objects);
-
-	if (update->total_update)
-		free(update->total_update);
 
 	free(update);
 }
@@ -226,23 +219,14 @@ err:
 	return -1;
 }
 
-static void object_update_json(struct object_update *object_update,
-			       char *buffer, ssize_t buflen)
-{
-	snprintf(buffer, buflen,
-		 "{\"object_name\":\"%s\""
-		 ",\"object_id\":\"%s\""
-		 ",\"total_size\":%" PRIu64 ",\"start_time\":%" PRIu64
-		 ",\"current_time\":%" PRIu64 ",\"total_downloaded\":%" PRIu64
-		 "}",
-		 object_update->object_name, object_update->object_id,
-		 object_update->total_size, object_update->start_time,
-		 object_update->current_time, object_update->total_downloaded);
-}
-
 static int pv_update_send_progress(struct pv_update *update, char *json)
 {
 	struct pantavisor *pv = pv_get_instance();
+	if ((update->pending && update->pending->local) ||
+	    !pv_get_instance()->remote_mode || !pv->online ||
+	    trail_remote_init(pv))
+		return 0;
+
 	trest_request_ptr req = NULL;
 	trest_response_ptr res = NULL;
 	int ret = -1;
@@ -273,242 +257,272 @@ static int pv_update_send_progress(struct pv_update *update, char *json)
 	return ret;
 }
 
-static int trail_remote_set_status(struct pv_update *update,
-				   enum update_status status, const char *msg)
+#define UPDATE_PROGRESS_STATUS_SIZE 16
+#define UPDATE_PROGRESS_STATUS_MSG_SIZE 256
+#define UPDATE_PROGRESS_DATA_SIZE 16
+#define UPDATE_PROGRESS_DOWN_TOTAL_SIZE 512
+
+struct pv_update_progress {
+	char status[UPDATE_PROGRESS_STATUS_SIZE];
+	char msg[UPDATE_PROGRESS_STATUS_MSG_SIZE];
+	char data[UPDATE_PROGRESS_DATA_SIZE];
+	struct download_info *total;
+	unsigned int progress;
+};
+
+static void pv_update_fill_progress(struct pv_update_progress *progress,
+				    struct pv_update *update, const char *msg)
 {
-	int ret = 0;
-	char __json[1024];
-	int json_size = sizeof(__json);
-	char *json = __json;
-	char message[PROGRESS_STATUS_MSG_SIZE];
-	char total_progress_json[512];
-	struct pantavisor *pv = pv_get_instance();
+	struct pv_update_progress *p = progress;
+	struct pv_update *u = update;
 
-	if (!pv || !update) {
-		pv_log(WARN, "uninitialized update");
-		return -1;
-	}
-
-	// in case we do not have new information, we get out
-	if ((update->status == status) && !msg)
-		return 0;
-
-	// update the update state machine
-	update->status = status;
-
-	// create json according to status
-	switch (status) {
+	switch (update->status) {
 	case UPDATE_QUEUED:
-		// form message
-		SNPRINTF_WTRUNC(message, sizeof(message), "Retried %d of %d",
-				update->retries,
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "QUEUED");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Retried %d of %d",
+				u->retries,
 				pv_config_get_updater_revision_retries());
-
-		// form request
-		SNPRINTF_WTRUNC(json, json_size,
-				DEVICE_STEP_STATUS_FMT_WITH_DATA, "QUEUED",
-				message, 0, update->retries);
-
+		SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d",
+				update->retries);
+		p->progress = 0;
 		break;
 	case UPDATE_DOWNLOADED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"INPROGRESS", "Update objects downloaded", 40);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Update objects downloaded");
+		p->progress = 40;
 		break;
 	case UPDATE_APPLIED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"INPROGRESS", "Update applied", 85);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Update applied");
+		p->progress = 85;
 		break;
 	case UPDATE_INSTALLED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"INPROGRESS", "Update installed", 80);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Update installed");
+		p->progress = 80;
 		break;
 	case UPDATE_TRY:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"INPROGRESS", "Starting updated version", 95);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Starting updated version");
+		p->progress = 95;
 		break;
 	case UPDATE_TRANSITION:
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
 		SNPRINTF_WTRUNC(
-			json, json_size, DEVICE_STEP_STATUS_FMT, "INPROGRESS",
-			"Transitioning to new revision without rebooting", 95);
+			p->msg, sizeof(p->msg),
+			"Transitioning to new revision without rebooting");
+		p->progress = 95;
 		break;
 	case UPDATE_REBOOT:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"INPROGRESS", "Rebooting", 95);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Rebooting");
+		p->progress = 95;
 		break;
 	case UPDATE_UPDATED:
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "UPDATED");
 		SNPRINTF_WTRUNC(
-			json, json_size, DEVICE_STEP_STATUS_FMT, "UPDATED",
-			"Update finished, revision not set as rollback point",
-			100);
+			p->msg, sizeof(p->msg),
+			"Update finished, revision not set as rollback point");
+		p->progress = 100;
 		break;
 	case UPDATE_DONE:
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "DONE");
 		SNPRINTF_WTRUNC(
-			json, json_size, DEVICE_STEP_STATUS_FMT, "DONE",
-			"Update finished, revision set as rollback point", 100);
+			p->msg, sizeof(p->msg),
+			"Update finished, revision set as rollback point");
+		p->progress = 100;
 		break;
 	case UPDATE_ABORTED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"PH Client", "Update aborted");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Update aborted");
+		p->progress = 100;
 		break;
 	case UPDATE_NO_DOWNLOAD:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"PH Client", "Max download retries reached");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Max download retries reached");
+		p->progress = 0;
 		break;
 	case UPDATE_NO_SPACE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"PH Client", msg);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", msg);
+		p->progress = 0;
 		break;
 	case UPDATE_BAD_SIGNATURE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"Secureboot", msg);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", msg);
+		p->progress = 0;
 		break;
 	case UPDATE_NO_PARSE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_WONTGO_FMT,
-				"Parser", "State JSON has bad format");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"State JSON has bad format");
+		p->progress = 0;
 		break;
 	case UPDATE_SIGNATURE_FAILED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"Secureboot", msg);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", msg);
+		p->progress = 0;
 		break;
 	case UPDATE_BAD_CHECKSUM:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"Checksum", "Object validation went wrong");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Object validation went wrong");
+		p->progress = 0;
 		break;
 	case UPDATE_HUB_NOT_REACHABLE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"PH Client", "Hub not reachable");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Hub not reachable");
+		p->progress = 0;
 		break;
 	case UPDATE_HUB_NOT_STABLE:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"PH Client", "Hub communication not stable");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Hub communication not stable");
+		p->progress = 0;
 		break;
 	case UPDATE_STALE_REVISION:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"PH Client", "Stale revision");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Stale revision");
+		p->progress = 0;
 		break;
 	case UPDATE_STATUS_GOAL_FAILED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"Container", "Status goal not reached");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Status goal not reached");
+		p->progress = 0;
 		break;
 	case UPDATE_CONTAINER_FAILED:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"Container",
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"A container could not be started");
+		p->progress = 0;
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
-		pv_log(DEBUG, "download needs to be retried, retry count is %d",
-		       update->retries);
-		// form message
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "QUEUED");
 		SNPRINTF_WTRUNC(
-			message, sizeof(message),
+			p->msg, sizeof(p->msg),
 			"Network unavailable while downloading, retry %d of %d",
 			update->retries,
 			pv_config_get_updater_revision_retries());
-		// form request
-		SNPRINTF_WTRUNC(json, json_size,
-				DEVICE_STEP_STATUS_FMT_WITH_DATA, "QUEUED",
-				message, 0, update->retries);
-		// Clear what was downloaded.
-		update->total_update->total_downloaded = 0;
+		SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d",
+				update->retries);
+		p->progress = 0;
 		break;
 	case UPDATE_TESTING_REBOOT:
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "TESTING");
 		SNPRINTF_WTRUNC(
-			json, json_size, DEVICE_STEP_STATUS_FMT, "TESTING",
-			"Awaiting to set rollback point if update is stable",
-			95);
+			p->msg, sizeof(p->msg),
+			"Awaiting to set rollback point if update is stable");
+		p->progress = 95;
 		break;
 	case UPDATE_TESTING_NONREBOOT:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_FMT,
-				"TESTING",
-				"Awaiting to see if update is stable", 95);
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "TESTING");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Awaiting to see if update is stable");
+		p->progress = 95;
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
-		if (update->progress_objects) {
-			// form message
-			SNPRINTF_WTRUNC(
-				message, sizeof(message), "Retry %d of %d",
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "DOWNLOADING");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Retry %d of %d",
 				update->retries,
 				pv_config_get_updater_revision_retries());
-			// form retries string
-			if (update->total_update) {
-				object_update_json(update->total_update,
-						   total_progress_json,
-						   sizeof(total_progress_json));
-			}
-			char *buff = update->progress_objects;
-			/*
-			 * append the message to the end of
-			 * progress_objects. Avoid another allocation,
-			 * and cleanup progress_objects from the msg location.
-			 */
-			int len = strlen(buff);
-
-			/*
-			 * if there are no previous objects,
-			 * we don't need to allocate buffer space.
-			 */
-			if (len) {
-				json_size = PATH_MAX + update->progress_size;
-				json = calloc(json_size, sizeof(char));
-			}
-			/*
-			 * we must post the total
-			 */
-			if (!json) {
-				json = __json;
-				json_size = sizeof(__json);
-			}
-			/*
-			 * just post the total and bail out.
-			 */
-			if (__json == json) {
-				SNPRINTF_WTRUNC(
-					json, json_size,
-					DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-					"DOWNLOADING", message, 0,
-					update->retries, total_progress_json,
-					"");
-				break;
-			}
-			if (msg) {
-				if (len) {
-					strncat(buff + len, ",", 2);
-					len += 1;
-				}
-				SNPRINTF_WTRUNC(buff + len,
-						pv->update->progress_size - len,
-						"%s", msg);
-				len = (len > 0 ? len - 1 : len);
-			}
-			SNPRINTF_WTRUNC(json, json_size,
-					DEVICE_STEP_STATUS_FMT_PROGRESS_DATA,
-					"DOWNLOADING", message, 0,
-					update->retries, total_progress_json,
-					update->progress_objects);
-			update->progress_objects[len] = '\0';
-		}
+		SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d",
+				update->retries);
+		p->progress = 0;
+		p->total = &update->total;
 		break;
 	default:
-		SNPRINTF_WTRUNC(json, json_size, DEVICE_STEP_STATUS_ERROR_FMT,
-				"Pantavisor", "Internal error");
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Internal error");
+		p->progress = 0;
 		break;
 	}
+}
+
+static char *pv_update_get_progress_json(struct pv_update_progress *progress)
+{
+	struct pv_json_ser js;
+
+	pv_json_ser_init(&js, UPDATE_PROGRESS_JSON_SIZE);
+
+	pv_json_ser_object(&js);
+	{
+		pv_json_ser_key(&js, "status");
+		pv_json_ser_string(&js, progress->status);
+		pv_json_ser_key(&js, "status-msg");
+		pv_json_ser_string(&js, progress->msg);
+		pv_json_ser_key(&js, "progress");
+		pv_json_ser_number(&js, progress->progress);
+		pv_json_ser_key(&js, "data");
+		pv_json_ser_string(&js, progress->data);
+		if (progress->total) {
+			pv_json_ser_key(&js, "downloads");
+			pv_json_ser_object(&js);
+
+			pv_json_ser_key(&js, "total");
+			pv_json_ser_object(&js);
+			{
+				pv_json_ser_key(&js, "object_name");
+				pv_json_ser_string(&js, "total");
+				pv_json_ser_key(&js, "object_id");
+				pv_json_ser_string(&js, "none");
+				pv_json_ser_key(&js, "total_size");
+				pv_json_ser_number(&js,
+						   progress->total->total_size);
+				pv_json_ser_key(&js, "start_time");
+				pv_json_ser_number(&js,
+						   progress->total->start_time);
+				pv_json_ser_key(&js, "current_time");
+				pv_json_ser_number(
+					&js, progress->total->current_time);
+				pv_json_ser_key(&js, "total_downloaded");
+				pv_json_ser_number(
+					&js, progress->total->total_downloaded);
+				pv_json_ser_object_pop(&js);
+			}
+			pv_json_ser_key(&js, "objects");
+			pv_json_ser_array(&js);
+			{
+				pv_json_ser_array_pop(&js);
+			}
+			pv_json_ser_object_pop(&js);
+		}
+
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
+}
+
+static int pv_update_report_progress(struct pv_update *update,
+				     enum update_status status, const char *msg)
+{
+	// in case we do not have new information, we get out
+	if ((update->status == status) && !msg)
+		return 0;
+	update->status = status;
+
+	// prepare update progress struct
+	struct pv_update_progress progress;
+	memset(&progress, 0, sizeof(progress));
+	pv_update_fill_progress(&progress, update, msg);
+
+	// serialize update progress json
+	char *json = NULL;
+	json = pv_update_get_progress_json(&progress);
 
 	// store progress in trails
 	pv_storage_set_rev_progress(update->rev, json);
 
-	// do not report to cloud if that is not possible
-	if ((update->pending && update->pending->local) ||
-	    !pv_get_instance()->remote_mode || !pv->online ||
-	    trail_remote_init(pv))
-		goto out;
-
+	// send progress to hub
+	int ret = 0;
 	ret = pv_update_send_progress(update, json);
 
-out:
-	if (json != __json)
+	if (json)
 		free(json);
-
 	return ret;
 }
 
@@ -597,10 +611,7 @@ static struct pv_update *pv_update_new(const char *id, const char *rev,
 
 	u = calloc(1, sizeof(struct pv_update));
 	if (u) {
-		u->total_update = (struct object_update *)calloc(
-			1, sizeof(struct object_update));
 		u->progress_size = PATH_MAX;
-		u->progress_objects = calloc(u->progress_size, sizeof(char));
 		u->status = UPDATE_INIT;
 		u->rev = strdup(rev);
 		u->retries = 0;
@@ -645,18 +656,42 @@ out:
 void pv_update_set_status_msg(struct pv_update *update,
 			      enum update_status status, const char *msg)
 {
-	if (!update)
+	if (!update) {
+		pv_log(WARN, "uninitialized update");
 		return;
+	}
 
-	trail_remote_set_status(update, status, msg);
+	pv_update_report_progress(update, status, msg);
 }
 
 void pv_update_set_status(struct pv_update *update, enum update_status status)
 {
-	if (!update)
+	pv_update_set_status_msg(update, status, NULL);
+}
+
+void pv_update_set_factory_status()
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	if (strncmp(pv->state->rev, "0", sizeof("0")))
 		return;
 
-	pv_update_set_status_msg(update, status, NULL);
+	struct pv_update_progress p;
+	memset(&p, 0, sizeof(p));
+
+	SNPRINTF_WTRUNC(p.status, sizeof(p.status), "DONE");
+	SNPRINTF_WTRUNC(p.msg, sizeof(p.msg), "Factory revision");
+	p.progress = 100;
+
+	// serialize update progress json
+	char *json = NULL;
+	json = pv_update_get_progress_json(&p);
+
+	// store progress in trails
+	pv_storage_set_rev_progress("0", json);
+
+	if (json)
+		free(json);
 }
 
 static int pv_update_load_progress(struct pv_update *update)
@@ -1469,10 +1504,8 @@ static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 }
 
 struct progress_update {
-	struct timer timer_next_update;
-	struct pantavisor *pv;
-	struct object_update *object_update;
-	struct pv_object *pv_object;
+	struct pv_update *u;
+	struct pv_object *o;
 };
 
 static uint64_t get_update_size(struct pv_update *u)
@@ -1490,57 +1523,24 @@ static uint64_t get_update_size(struct pv_update *u)
 
 	return size;
 }
-/*
- * see object_update
- */
+
 static void trail_download_object_progress(ssize_t written, ssize_t chunk_size,
 					   void *obj)
 {
-	struct progress_update *progress_update = (struct progress_update *)obj;
-	struct pv_object *pv_object = NULL;
-	char *msg = NULL;
-	const int OBJ_JSON_SIZE = 1024;
-	struct object_update *total_update = NULL;
-
 	if (!obj)
 		return;
-	total_update = progress_update->pv->update->total_update;
-	if (!timer_current_state(&progress_update->timer_next_update).fin) {
-		if (chunk_size == written) {
-			progress_update->object_update->total_downloaded +=
-				chunk_size;
-			total_update->total_downloaded += chunk_size;
-			return;
-		}
-		/*
-		 * written != chunk_size then allow for
-		 * error message to be posted.
-		 */
-	}
-	pv_object = progress_update->pv_object;
-	if (!pv_object)
-		return;
 
-	msg = calloc(OBJ_JSON_SIZE, sizeof(char));
-	if (!msg)
-		return;
+	struct progress_update *pu = (struct progress_update *)obj;
+	struct pv_update *u = pu->u;
+	struct pv_object *o = pu->o;
 
 	if (written != chunk_size) {
-		pv_log(ERROR, "Error downloading object %s", pv_object->name);
-		goto out;
-	} else {
-		progress_update->object_update->total_downloaded += chunk_size;
-		total_update->total_downloaded += chunk_size;
-		progress_update->object_update->current_time = time(NULL);
-		object_update_json(progress_update->object_update, msg,
-				   OBJ_JSON_SIZE);
+		pv_log(ERROR, "Error downloading object %s", o->name);
+		return;
 	}
-	timer_start(&progress_update->timer_next_update, UPDATE_PROGRESS_FREQ,
-		    0, RELATIV_TIMER);
-	pv_update_set_status_msg(progress_update->pv->update,
-				 UPDATE_DOWNLOAD_PROGRESS, msg);
-out:
-	free(msg);
+
+	u->total.total_downloaded += chunk_size;
+	pv_update_set_status(u, UPDATE_DOWNLOAD_PROGRESS);
 }
 
 static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
@@ -1565,11 +1565,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	thttp_response_t *res = 0;
 	thttp_request_tls_t *tls_req = 0;
 	thttp_request_t *req = 0;
-	struct object_update object_update;
 	struct progress_update progress_update = {
-		.pv = pv,
-		.pv_object = obj,
-		.object_update = &object_update,
+		.u = pv->update,
+		.o = obj,
 	};
 	if (!obj)
 		goto out;
@@ -1678,14 +1676,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	// download to tmp
 	lseek(fd, 0, SEEK_SET);
 	pv_log(INFO, "downloading object to tmp path (%s)", mmc_tmp_obj_path);
-	object_update.start_time = time(NULL);
-	object_update.object_name = obj->name;
-	object_update.object_id = obj->id;
-	object_update.total_size = obj->size;
-	object_update.current_time = object_update.start_time;
-	object_update.total_downloaded = 0;
-	timer_start(&progress_update.timer_next_update, UPDATE_PROGRESS_FREQ, 0,
-		    RELATIV_TIMER);
 	res = thttp_request_do_file_with_cb(
 		req, fd, trail_download_object_progress, &progress_update);
 	if (!res) {
@@ -1716,7 +1706,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	pv_log(DEBUG, "downloaded object to tmp path (%s)", mmc_tmp_obj_path);
 	fsync(fd);
 	pv_fs_path_sync(mmc_tmp_obj_path);
-	object_update.current_time = time(NULL);
 
 	// verify file downloaded correctly before syncing to disk
 	lseek(fd, 0, SEEK_SET);
@@ -1753,53 +1742,6 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	}
 
 	ret = 1;
-	if (pv->update && pv->update->progress_objects) {
-		int data_len = strlen(pv->update->progress_objects);
-		char this_obj_json[512];
-		int to_write = 0;
-		int remaining = pv->update->progress_size - data_len - 1;
-		bool can_write = true;
-
-		/*
-		 * Use a placeholder for this object's json.
-		 */
-		object_update_json(&object_update, this_obj_json,
-				   sizeof(this_obj_json));
-		to_write += strlen(this_obj_json);
-		/*
-		 * if there already were other objects we would
-		 * need to add a ,
-		 */
-		if (data_len)
-			to_write += 1;
-
-		if (to_write > remaining) {
-			char *__new_progress_objects = (char *)realloc(
-				pv->update->progress_objects,
-				(2 * pv->update->progress_size));
-			if (!__new_progress_objects)
-				can_write = false;
-			else {
-				pv->update->progress_size *= 2;
-				pv->update->progress_objects =
-					__new_progress_objects;
-			}
-		}
-		if (can_write) {
-			if (data_len) {
-				strncat(pv->update->progress_objects, ",", 2);
-				data_len += 1;
-			}
-			SNPRINTF_WTRUNC(pv->update->progress_objects + data_len,
-					pv->update->progress_size - data_len,
-					"%s", this_obj_json);
-		} else {
-			pv_log(ERROR,
-			       "Failed to allocate space for progress data");
-		}
-		pv_log(DEBUG, "progress_objects is %s",
-		       pv->update->progress_objects);
-	}
 out:
 	if (fd)
 		close(fd);
@@ -1850,7 +1792,7 @@ static int trail_link_objects(struct pantavisor *pv)
 static int trail_check_update_size(struct pantavisor *pv)
 {
 	off_t update_size, free_size;
-	char msg[PROGRESS_STATUS_MSG_SIZE];
+	char msg[UPDATE_PROGRESS_STATUS_MSG_SIZE];
 
 	update_size = get_update_size(pv->update);
 	pv_log(INFO, "update size: %" PRIu64 " B", update_size);
@@ -1880,6 +1822,7 @@ static int trail_download_objects(struct pantavisor *pv)
 	{
 		if (!trail_download_get_meta(pv, o)) {
 			pv_update_set_status(pv->update, UPDATE_RETRY_DOWNLOAD);
+			u->total.total_downloaded = 0;
 			return -1;
 		}
 	}
@@ -1889,25 +1832,22 @@ static int trail_download_objects(struct pantavisor *pv)
 	if (trail_check_update_size(pv))
 		return -1;
 
-	if (u->total_update) {
-		u->total_update->object_name = "total";
-		u->total_update->object_id = "none";
-		u->total_update->total_size = get_update_size(u);
-		u->total_update->start_time = time(NULL);
-		u->total_update->total_downloaded = 0;
-		u->total_update->current_time = time(NULL);
-		pv_update_set_status(pv->update, UPDATE_DOWNLOAD_PROGRESS);
-	}
+	u->total.total_size = get_update_size(u);
+	u->total.start_time = time(NULL);
+	u->total.total_downloaded = 0;
+	u->total.current_time = time(NULL);
+	pv_update_set_status(pv->update, UPDATE_DOWNLOAD_PROGRESS);
+
 	pv_objects_iter_begin(u->pending, o)
 	{
 		if (!trail_download_object(pv, o, crtfiles)) {
 			pv_update_set_status(pv->update, UPDATE_RETRY_DOWNLOAD);
+			u->total.total_downloaded = 0;
 			return -1;
 		}
 	}
-	if (u->total_update)
-		u->total_update->current_time = time(NULL);
 
+	u->total.current_time = time(NULL);
 	pv_update_set_status(pv->update, UPDATE_DOWNLOAD_PROGRESS);
 	pv_objects_iter_end;
 	return 0;
