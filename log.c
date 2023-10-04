@@ -68,9 +68,6 @@ static struct level_name level_names[] = { LEVEL_NAME(FATAL), LEVEL_NAME(ERROR),
 					   LEVEL_NAME(WARN), LEVEL_NAME(INFO),
 					   LEVEL_NAME(DEBUG) };
 
-static pid_t log_init_pid = -1;
-
-static const int MAX_BUFFER_COUNT = 10;
 static struct pantavisor *global_pv = NULL;
 
 static void __vlog(char *module, int level, const char *fmt, va_list args)
@@ -84,9 +81,6 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 	if (level > pv_config_get_libthttp_loglevel())
 		return;
 
-	if (log_init_pid != getpid())
-		return;
-
 	__vlog("libthttp", DEBUG, fmt, args);
 }
 
@@ -94,7 +88,6 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 {
 	char pv_logs_path[PATH_MAX], storage_logs_path[PATH_MAX];
 
-	log_init_pid = getpid();
 	global_pv = pv;
 
 	pv_paths_pv_log(pv_logs_path, PATH_MAX, "");
@@ -102,8 +95,6 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 
 	pv_paths_storage_log(storage_logs_path, PATH_MAX);
 	mount_bind(storage_logs_path, pv_logs_path);
-
-	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize() * 1024);
 
 	if (pv_logserver_init()) {
 		pv_log(ERROR, "logserver initialization failed");
@@ -129,9 +120,6 @@ void __log(char *module, int level, const char *fmt, ...)
 	va_list args;
 
 	if (level > pv_config_get_log_loglevel())
-		return;
-
-	if (log_init_pid != getpid())
 		return;
 
 	va_start(args, fmt);

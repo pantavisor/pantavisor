@@ -40,6 +40,7 @@
 #include <linux/reboot.h>
 
 #include "pantavisor.h"
+#include "buffer.h"
 #include "loop.h"
 #include "platforms.h"
 #include "volumes.h"
@@ -984,6 +985,8 @@ void pv_stop()
 	pv_shutdown(pv, REBOOT);
 }
 
+static const int MAX_BUFFER_COUNT = 10;
+
 void pv_init()
 {
 	struct pantavisor *pv;
@@ -991,6 +994,8 @@ void pv_init()
 	pv = calloc(1, sizeof(struct pantavisor));
 	if (pv)
 		global_pv = pv;
+
+	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize() * 1024);
 }
 
 static int pv_pantavisor_init(struct pv_init *this)
