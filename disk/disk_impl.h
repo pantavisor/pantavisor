@@ -20,34 +20,17 @@
  * SOFTWARE.
  */
 
-#ifndef PV_DISKS_H
-#define PV_DISKS_H
+#ifndef PV_DISK_IMPL_H
+#define PV_DISK_IMPL_H
 
-#include "utils/list.h"
-#include "state.h"
+#include "disk.h"
 
-typedef enum {
-	DISK_UNKNOWN,
-	DISK_DIR,
-	DISK_DM_CRYPT_VERSATILE,
-	DISK_DM_CRYPT_CAAM,
-	DISK_DM_CRYPT_DCP
-} pv_disk_t;
-
-struct pv_disk {
-	char *name;
-	pv_disk_t type;
-	char *path;
-	char *uuid;
-	char *options;
-	bool def;
-	bool mounted;
-	// pv_disk
-	struct dl_list list;
+struct pv_disk_impl {
+	int (*init)(struct pv_disk *disk);
+	pv_disk_status_t (*status)(struct pv_disk *disk);
+	int (*format)(struct pv_disk *disk);
+	int (*mount)(struct pv_disk *disk);
+	int (*umount)(struct pv_disk *disk);
 };
-
-struct pv_disk *pv_disk_add(struct pv_state *s);
-int pv_disks_umount_all(struct pv_state *s);
-void pv_disks_empty(struct pv_state *s);
 
 #endif

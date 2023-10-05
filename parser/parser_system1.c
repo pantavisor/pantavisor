@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <stdbool.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -39,7 +40,7 @@
 #include "addons.h"
 #include "platforms.h"
 #include "volumes.h"
-#include "disks.h"
+#include "disk/disk.h"
 #include "objects.h"
 #include "jsons.h"
 #include "json.h"
@@ -230,6 +231,35 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 	return 1;
 }
 
+static pv_disk_format_t get_format(const char *str, jsmntok_t *diskv, int diskc)
+{
+	char *format_str = pv_json_get_value(str, "format", diskv, diskc);
+	pv_disk_format_t format = pv_disk_str_to_format(format_str);
+	free(format_str);
+	return format;
+}
+
+static pv_disk_t get_type(const char *str, jsmntok_t *diskv, int diskc)
+{
+	char *type_str = pv_json_get_value(str, "type", diskv, diskc);
+	pv_disk_t type = pv_disk_str_to_type(type_str);
+	free(type_str);
+	return type;
+}
+
+static bool get_default(const char *str, jsmntok_t *diskv, int diskc)
+{
+	bool ret = false;
+	char *default_str = pv_json_get_value(str, "default", diskv, diskc);
+
+	if (default_str && !strcmp(default_str, "yes"))
+		ret = true;
+
+	free(default_str);
+
+	return ret;
+}
+
 static int parse_disks(struct pv_state *s, char *value)
 {
 	int tokc, size, ret = 1;
@@ -250,57 +280,54 @@ static int parse_disks(struct pv_state *s, char *value)
 	t = tokv + 1;
 	while ((str = pv_json_array_get_one_str(value, &size, &t))) {
 		struct pv_disk *d;
-		char *tmp;
 		jsmntok_t *diskv;
 		int diskc;
 
 		if (jsmnutil_parse_json(str, &diskv, &diskc) <= 0) {
 			pv_log(ERROR, "Invalid disk entry");
-			continue;
+			goto out;
 		}
 
 		d = pv_disk_add(s);
 		if (!d) {
+			pv_log(ERROR, "cannot add new disk");
 			free(diskv);
 			goto out;
 		}
 
 		d->name = pv_json_get_value(str, "name", diskv, diskc);
 		d->path = pv_json_get_value(str, "path", diskv, diskc);
-		d->options = pv_json_get_value(str, "options", diskv, diskc);
+		d->mount_target =
+			pv_json_get_value(str, "mount_target", diskv, diskc);
+		d->mount_ops =
+			pv_json_get_value(str, "mount_options", diskv, diskc);
+		d->format_ops =
+			pv_json_get_value(str, "format_options", diskv, diskc);
+		d->provision =
+			pv_json_get_value(str, "provision", diskv, diskc);
+		d->provision_ops = pv_json_get_value(str, "provision_options",
+						     diskv, diskc);
 		d->uuid = pv_json_get_value(str, "uuid", diskv, diskc);
+		d->type = get_type(str, diskv, diskc);
 
-		tmp = pv_json_get_value(str, "type", diskv, diskc);
-		if (!strcmp(tmp, "directory"))
-			d->type = DISK_DIR;
-		else if (!strcmp(tmp, "dm-crypt-versatile"))
-			d->type = DISK_DM_CRYPT_VERSATILE;
-		else if (!strcmp(tmp, "dm-crypt-caam"))
-			d->type = DISK_DM_CRYPT_CAAM;
-		else if (!strcmp(tmp, "dm-crypt-dcp"))
-			d->type = DISK_DM_CRYPT_DCP;
-		else {
-			d->type = DISK_UNKNOWN;
+		if (d->type == DISK_UNKNOWN) {
+			pv_log(ERROR, "cannot add new disk, type = UNKNOWN");
 			goto out;
 		}
 
-		free(tmp);
-		tmp = NULL;
+		d->format = get_format(str, diskv, diskc);
+		d->def = get_default(str, diskv, diskc);
+		d->mounted = false;
 
-		tmp = pv_json_get_value(str, "default", diskv, diskc);
-		if (tmp) {
-			d->def = true;
-			free(tmp);
-			tmp = NULL;
-		}
+		// you need to jump (in tokens) to the next array, so
+		// this is the number of keys + values
+		t = t + (jsmnutil_object_key_count(str, diskv) * 2);
 
 		free(diskv);
 		diskv = NULL;
 
 		free(str);
 		str = NULL;
-
-		t = t + (diskc - 4);
 	}
 
 	ret = 0;

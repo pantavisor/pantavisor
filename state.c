@@ -34,7 +34,7 @@
 #include "drivers.h"
 #include "paths.h"
 #include "volumes.h"
-#include "disks.h"
+#include "disk/disk.h"
 #include "platforms.h"
 #include "objects.h"
 #include "jsons.h"
@@ -123,7 +123,7 @@ void pv_state_free(struct pv_state *s)
 	pv_drivers_empty(s);
 	pv_platforms_empty(s);
 	pv_volumes_empty(s);
-	pv_disks_empty(s);
+	pv_disk_empty(s);
 	pv_addons_empty(s);
 	pv_objects_empty(s);
 	pv_jsons_empty(s);
@@ -444,6 +444,8 @@ int pv_state_validate(struct pv_state *s)
 
 static int pv_state_mount_bsp_volumes(struct pv_state *s)
 {
+	pv_disk_mount_swap(s);
+
 	struct pv_volume *v, *tmp;
 
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
