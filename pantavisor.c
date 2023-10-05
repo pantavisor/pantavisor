@@ -43,7 +43,7 @@
 #include "loop.h"
 #include "platforms.h"
 #include "volumes.h"
-#include "disks.h"
+#include "disk/disk.h"
 #include "pantahub.h"
 #include "bootloader.h"
 #include "ctrl.h"
@@ -879,7 +879,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_init_umount();
 
 	// unmount disks
-	pv_disks_umount_all(pv->state);
+	pv_disk_umount_all(pv->state);
 
 	pv_storage_umount();
 
