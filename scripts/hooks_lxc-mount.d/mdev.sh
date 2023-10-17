@@ -1,5 +1,8 @@
 #!/bin/sh
 
+PATH=$LIBPVPATH:$PATH
+export PATH
+
 /bin/cat /proc/self/environ | tr '\0' '\n'
 
 container_mdev=/storage/trails/current/$LXC_NAME/mdev.json

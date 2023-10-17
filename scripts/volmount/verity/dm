@@ -131,7 +131,7 @@ verifylist() {
 	rm -f $tmpf $tmpf.*
 }
 
-PATH=$PATH:/lib/pv/
+PATH=$LIBPVPATH:$LIBPVPATH/volmount/verity:$PATH
 export PATH
 
 set -e
