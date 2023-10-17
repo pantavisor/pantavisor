@@ -399,6 +399,8 @@ int main(int argc, char *argv[])
 
 	pv_pid = 0;
 
+	setenv("LIBPVPATH", "/lib/pv", 0);
+
 	// extecuted as init
 	if (getpid() == 1) {
 		early_mounts();

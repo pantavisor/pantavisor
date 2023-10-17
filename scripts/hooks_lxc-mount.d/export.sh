@@ -2,6 +2,9 @@
 
 set -e
 
+PATH=$LIBPVPATH:$PATH
+export PATH
+
 dirname_r() {
 	echo $1 | sed 's/\(.*\)\/.*/\1/'
 }

@@ -2,7 +2,8 @@
  
 set -e
 
-PATH=$PATH:/lib/pv
+PATH=$LIBPVPATH:$PATH
+export PATH
 
 /bin/cat /proc/self/environ | tr '\0' '\n'
 

@@ -34,7 +34,7 @@ MKFS_OPTS_EXT4=${MKFS_OPTS_EXT4:-"-b 1024"}
 MNT_OPTS_EXT4=${MNT_OPTS_EXT4:-"-o noatime"}
 
 
-PATH=$PATH:/lib/pv/:/lib/pv/volmount/crypt/
+PATH=$LIBPVPATH:$LIBPVPATH/volmount/crypt:$PATH
 export PATH
 
 export LD_LIBRARY_PATH="/x86_64-linux-gnu:$LD_LIBRARY_PATH"
