@@ -62,7 +62,8 @@ struct logserver_log {
 	time_t time;
 	char *plat;
 	char *src;
-	char *rev;
+	char *running_rev;
+	char *updated_rev;
 	struct logserver_data data;
 };
 

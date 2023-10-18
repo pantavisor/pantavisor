@@ -55,6 +55,7 @@
 #include "state.h"
 #include "json.h"
 #include "signature.h"
+#include "logserver/logserver.h"
 
 #define MODULE_NAME "updater"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -87,9 +88,9 @@ void pv_update_free(struct pv_update *update)
 
 static void pv_update_remove(struct pantavisor *pv)
 {
-	// do not remove state if the one update is the same currently running
-	if (pv->update->pending == pv->state)
-		pv->update->pending = NULL;
+	if (!pv->update)
+		return;
+
 	pv_update_free(pv->update);
 	pv->update = NULL;
 }
@@ -257,21 +258,23 @@ static int pv_update_send_progress(struct pv_update *update, char *json)
 	return ret;
 }
 
-#define UPDATE_PROGRESS_STATUS_SIZE 16
-#define UPDATE_PROGRESS_STATUS_MSG_SIZE 256
-#define UPDATE_PROGRESS_DATA_SIZE 16
-#define UPDATE_PROGRESS_DOWN_TOTAL_SIZE 512
-
 struct pv_update_progress {
 	char status[UPDATE_PROGRESS_STATUS_SIZE];
 	char msg[UPDATE_PROGRESS_STATUS_MSG_SIZE];
 	char data[UPDATE_PROGRESS_DATA_SIZE];
+	char *logs;
 	struct download_info *total;
 	unsigned int progress;
 };
 
+static void pv_update_free_progress(struct pv_update_progress *progress)
+{
+	if (progress->logs)
+		free(progress->logs);
+}
+
 static void pv_update_fill_progress(struct pv_update_progress *progress,
-				    struct pv_update *update, const char *msg)
+				    struct pv_update *update)
 {
 	struct pv_update_progress *p = progress;
 	struct pv_update *u = update;
@@ -290,35 +293,35 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"Update objects downloaded");
-		p->progress = 40;
+		p->progress = 25;
 		break;
 	case UPDATE_APPLIED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Update applied");
-		p->progress = 85;
+		p->progress = 50;
 		break;
 	case UPDATE_INSTALLED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Update installed");
-		p->progress = 80;
+		p->progress = 50;
 		break;
 	case UPDATE_TRY:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"Starting updated version");
-		p->progress = 95;
+		p->progress = 75;
 		break;
 	case UPDATE_TRANSITION:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
 		SNPRINTF_WTRUNC(
 			p->msg, sizeof(p->msg),
 			"Transitioning to new revision without rebooting");
-		p->progress = 95;
+		p->progress = 50;
 		break;
 	case UPDATE_REBOOT:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "INPROGRESS");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Rebooting");
-		p->progress = 95;
+		p->progress = 50;
 		break;
 	case UPDATE_UPDATED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "UPDATED");
@@ -343,62 +346,62 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"Max download retries reached");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_NO_SPACE:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
-		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", msg);
-		p->progress = 0;
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", u->msg);
+		p->progress = 100;
 		break;
 	case UPDATE_BAD_SIGNATURE:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
-		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", msg);
-		p->progress = 0;
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", u->msg);
+		p->progress = 100;
 		break;
 	case UPDATE_NO_PARSE:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"State JSON has bad format");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_SIGNATURE_FAILED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
-		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", msg);
-		p->progress = 0;
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "%s", u->msg);
+		p->progress = 100;
 		break;
 	case UPDATE_BAD_CHECKSUM:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"Object validation went wrong");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_HUB_NOT_REACHABLE:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Hub not reachable");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_HUB_NOT_STABLE:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"Hub communication not stable");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_STALE_REVISION:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Stale revision");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_STATUS_GOAL_FAILED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"Status goal not reached");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_CONTAINER_FAILED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"A container could not be started");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	case UPDATE_RETRY_DOWNLOAD:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "QUEUED");
@@ -416,13 +419,13 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 		SNPRINTF_WTRUNC(
 			p->msg, sizeof(p->msg),
 			"Awaiting to set rollback point if update is stable");
-		p->progress = 95;
+		p->progress = 75;
 		break;
 	case UPDATE_TESTING_NONREBOOT:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "TESTING");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
 				"Awaiting to see if update is stable");
-		p->progress = 95;
+		p->progress = 75;
 		break;
 	case UPDATE_DOWNLOAD_PROGRESS:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "DOWNLOADING");
@@ -437,9 +440,13 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 	default:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Internal error");
-		p->progress = 0;
+		p->progress = 100;
 		break;
 	}
+
+	char path[PATH_MAX];
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, u->rev, LOGS_FNAME);
+	p->logs = pv_fs_file_load(path, UPDATE_PROGRESS_LOGS_SIZE);
 }
 
 static char *pv_update_get_progress_json(struct pv_update_progress *progress)
@@ -456,8 +463,10 @@ static char *pv_update_get_progress_json(struct pv_update_progress *progress)
 		pv_json_ser_string(&js, progress->msg);
 		pv_json_ser_key(&js, "progress");
 		pv_json_ser_number(&js, progress->progress);
-		pv_json_ser_key(&js, "data");
-		pv_json_ser_string(&js, progress->data);
+		if (progress->data && (strlen(progress->data) > 0)) {
+			pv_json_ser_key(&js, "data");
+			pv_json_ser_string(&js, progress->data);
+		}
 		if (progress->total) {
 			pv_json_ser_key(&js, "downloads");
 			pv_json_ser_object(&js);
@@ -490,6 +499,10 @@ static char *pv_update_get_progress_json(struct pv_update_progress *progress)
 			}
 			pv_json_ser_object_pop(&js);
 		}
+		if (progress->logs) {
+			pv_json_ser_key(&js, "logs");
+			pv_json_ser_string(&js, progress->logs);
+		}
 
 		pv_json_ser_object_pop(&js);
 	}
@@ -497,22 +510,17 @@ static char *pv_update_get_progress_json(struct pv_update_progress *progress)
 	return pv_json_ser_str(&js);
 }
 
-static int pv_update_report_progress(struct pv_update *update,
-				     enum update_status status, const char *msg)
+static int pv_update_report_progress(struct pv_update *update)
 {
-	// in case we do not have new information, we get out
-	if ((update->status == status) && !msg)
-		return 0;
-	update->status = status;
-
 	// prepare update progress struct
 	struct pv_update_progress progress;
 	memset(&progress, 0, sizeof(progress));
-	pv_update_fill_progress(&progress, update, msg);
+	pv_update_fill_progress(&progress, update);
 
 	// serialize update progress json
 	char *json = NULL;
 	json = pv_update_get_progress_json(&progress);
+	pv_update_free_progress(&progress);
 
 	// store progress in trails
 	pv_storage_set_rev_progress(update->rev, json);
@@ -661,7 +669,13 @@ void pv_update_set_status_msg(struct pv_update *update,
 		return;
 	}
 
-	pv_update_report_progress(update, status, msg);
+	// in case we do not have new information, we get out
+	if ((update->status == status) && !msg)
+		return;
+	update->status = status;
+	SNPRINTF_WTRUNC(update->msg, sizeof(update->msg), "%s", msg);
+
+	pv_update_report_progress(update);
 }
 
 void pv_update_set_status(struct pv_update *update, enum update_status status)
@@ -796,6 +810,8 @@ process_response:
 		       "rev not found in endpoint response, ignoring...");
 		goto out;
 	}
+
+	pv_logserver_start_update(rev);
 
 	pv_log(DEBUG, "parse rev %s...", rev);
 
@@ -1361,59 +1377,61 @@ void pv_update_test(struct pantavisor *pv)
 	}
 }
 
+static bool pv_update_can_rollback(struct pv_update *u)
+{
+	struct pantavisor *pv = pv_get_instance();
+	return pv_str_matches(pv->state->rev, strlen(pv->state->rev), u->rev,
+			      strlen(u->rev));
+}
+
 int pv_update_finish(struct pantavisor *pv)
 {
-	if (!pv->update)
-		return 0;
+	int ret = 0;
 
-	switch (pv->update->status) {
-	case UPDATE_RETRY_DOWNLOAD:
-		if (pv->update->retries >
-		    pv_config_get_updater_revision_retries()) {
-			pv_update_set_status(pv->update, UPDATE_NO_DOWNLOAD);
-			pv_update_remove(pv);
-			pv_log(INFO, "update finished");
-			return 0;
-		}
-		break;
-	case UPDATE_NO_DOWNLOAD:
-	case UPDATE_NO_SPACE:
-		pv_update_remove(pv);
-		pv_log(INFO, "update finished");
-		break;
+	struct pv_update *u = pv->update;
+	if (!u)
+		return ret;
+
+	switch (u->status) {
+	// DONE TRANSITIONS
 	case UPDATE_TESTING_REBOOT:
 		if (pv_bootloader_set_commited(pv->state->rev)) {
 			pv_log(ERROR,
 			       "revision for next boot could not be set");
-			return -1;
+			ret = -1;
+			goto out;
 		}
-		pv_update_set_status(pv->update, UPDATE_DONE);
-		// we keep this here so we can rollback to new DONE revisions from old pantavisor versio
+		pv_update_set_status(u, UPDATE_DONE);
 		pv_storage_set_rev_done(pv, pv->state->rev);
-		pv_update_remove(pv);
-		pv_log(INFO, "update finished");
 		break;
-	case UPDATE_APPLIED:
-		pv_update_set_status(pv->update, UPDATE_ABORTED);
-		pv_bootloader_set_failed();
-		pv_update_remove(pv);
-		pv_log(INFO, "update aborted");
-		break;
+	// UPDATED TRANSITIONS
 	case UPDATE_TESTING_NONREBOOT:
-		pv_update_set_status(pv->update, UPDATE_UPDATED);
-		pv_update_remove(pv);
-		pv_log(INFO, "update finished");
+		pv_update_set_status(u, UPDATE_UPDATED);
+		break;
+	// WONTGO ERRORS
+	case UPDATE_RETRY_DOWNLOAD:
+		if (u->retries <= pv_config_get_updater_revision_retries())
+			return ret;
+
+		pv_update_set_status(u, UPDATE_NO_DOWNLOAD);
+		break;
+	// WONTGO AND TRANSITION ERRORS
+	case UPDATE_APPLIED:
+		pv_update_set_status(u, UPDATE_ABORTED);
 		break;
 	default:
-		pv_bootloader_set_failed();
-		pv_update_set_status(pv->update, pv->update->status);
-		pv_log(INFO, "update finished with status %d",
-		       pv->update->status);
-		pv_update_remove(pv);
+		if (pv_update_can_rollback(u))
+			pv_bootloader_set_failed();
 		break;
 	}
 
-	return 0;
+out:
+	pv_log(INFO, "update finished with status %d", u->status);
+	pv_logserver_stop_update(u->rev);
+	pv_update_report_progress(u);
+	pv_update_remove(pv);
+
+	return ret;
 }
 
 static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
@@ -1527,15 +1545,17 @@ static uint64_t get_update_size(struct pv_update *u)
 static void trail_download_object_progress(ssize_t written, ssize_t chunk_size,
 					   void *obj)
 {
-	if (!obj)
+	if (!obj) {
+		pv_log(ERROR, "object does not exist");
 		return;
+	}
 
 	struct progress_update *pu = (struct progress_update *)obj;
 	struct pv_update *u = pu->u;
 	struct pv_object *o = pu->o;
 
 	if (written != chunk_size) {
-		pv_log(ERROR, "Error downloading object %s", o->name);
+		pv_log(ERROR, "error downloading object %s", o->name);
 		return;
 	}
 
@@ -1853,10 +1873,12 @@ static int trail_download_objects(struct pantavisor *pv)
 	return 0;
 }
 
-struct pv_update *pv_update_get_step_local(char *rev)
+struct pv_update *pv_update_get_step_local(const char *rev)
 {
 	struct pv_update *update = NULL;
 	char *json = NULL;
+
+	pv_logserver_start_update(rev);
 
 	update = pv_update_new(pv_config_get_creds_id(), rev, true);
 	if (!update)
@@ -1996,6 +2018,8 @@ int pv_update_resume(struct pantavisor *pv)
 		rev = pv_bootloader_get_try();
 		if (!rev)
 			return -1;
+
+		pv_logserver_start_update(rev);
 
 		pv_log(INFO, "loading update data from rev %s after reboot...",
 		       rev);

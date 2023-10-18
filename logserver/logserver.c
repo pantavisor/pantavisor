@@ -42,12 +42,14 @@
 #include "logserver_null.h"
 #include "logserver_filetree.h"
 #include "logserver_singlefile.h"
+#include "logserver_update.h"
 #include "logserver.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
 #include "utils/json.h"
 #include "utils/system.h"
 #include "utils/list.h"
+#include "utils/socket.h"
 #include "pvctl_utils.h"
 #include "bootloader.h"
 #include "config.h"
@@ -68,7 +70,12 @@
 
 #define MODULE_NAME "logserver"
 
-typedef enum { LOG_CMD_EXIT } log_cmd_code_t;
+typedef enum {
+	LOG_CMD_NULL = 0,
+	LOG_CMD_EXIT,
+	LOG_CMD_START_UPDATE,
+	LOG_CMD_STOP_UPDATE,
+} log_cmd_code_t;
 
 struct logserver_msg {
 	log_protocol_code_t code;
@@ -86,12 +93,14 @@ struct logserver_fd {
 
 struct logserver {
 	pid_t pid;
+	pid_t cmd_pid;
 	int flags;
 	int epfd;
 	int logsock;
 	int fdsock;
 	int active_out;
-	char *rev;
+	char *running_rev;
+	char *updated_rev;
 	// logserver_fd
 	struct dl_list fdlst;
 	// tmp store for fd returned by connect
@@ -107,17 +116,18 @@ static struct logserver logserver = {
 	.logsock = -1,
 	.fdsock = -1,
 	.active_out = LOG_SERVER_OUTPUT_NULL_SINK,
-	.rev = NULL,
+	.running_rev = NULL,
+	.updated_rev = NULL,
 };
 
 typedef struct logserver_out *(*logserver_outputs_builder_t)(void);
 
-#define LOGSERVER_MAX_OUTPUTS (4)
+#define LOGSERVER_MAX_OUTPUTS (5)
 
 static logserver_outputs_builder_t
 	logserver_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
 		logserver_null_new, logserver_singlefile_new,
-		logserver_filetree_new, logserver_null_new
+		logserver_filetree_new, logserver_null_new, logserver_update_new
 	};
 
 static int logserver_log_msg_data(const struct logserver_log *log, int output)
@@ -156,7 +166,8 @@ static int pv_log(int level, char *msg, ...)
 			.time = time(NULL),
 			.plat = MODULE_NAME,
 			.src = "logserver",
-			.rev = NULL,
+			.running_rev = NULL,
+			.updated_rev = NULL,
 			.data.buf = NULL,
 			.data.len = 0,
 		};
@@ -185,7 +196,8 @@ static int pv_log(int level, char *msg, ...)
 			.time = time(NULL),
 			.plat = PV_PLATFORM_STR,
 			.src = "logserver",
-			.rev = logserver.rev,
+			.running_rev = logserver.running_rev,
+			.updated_rev = logserver.updated_rev,
 			.data.buf = buf,
 			.data.len = buf_len
 		};
@@ -213,8 +225,8 @@ static void sigchld_handler(int signum)
 
 static void sigusr1_handler(int signum)
 {
-	pv_log(DEBUG, "signal handler to reload revision before %s",
-	       logserver.rev ? logserver.rev : "NULL");
+	pv_log(DEBUG, "signal handler to reload running revision before %s",
+	       logserver.running_rev ? logserver.running_rev : "NULL");
 
 	if (pv_bootloader_reload_pv_try()) {
 		pv_log(ERROR,
@@ -222,14 +234,14 @@ static void sigusr1_handler(int signum)
 		return;
 	}
 
-	char *sav = logserver.rev;
+	char *sav = logserver.running_rev;
 	if (pv_bootloader_get_try())
-		logserver.rev = strdup(pv_bootloader_get_try());
+		logserver.running_rev = strdup(pv_bootloader_get_try());
 	if (sav)
 		free(sav);
 
-	pv_log(DEBUG, "signal handler to reload revision after %s",
-	       logserver.rev);
+	pv_log(DEBUG, "signal handler to reload running revision after %s",
+	       logserver.running_rev);
 }
 
 static int logserver_msg_parse_data(struct logserver_msg *msg,
@@ -246,7 +258,8 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 		log->plat = msg->buf + strlen(msg->buf) + 1;
 		bytes_read += strlen(log->plat) + 1;
 		log->src = log->plat + strlen(log->plat) + 1;
-		log->rev = logserver.rev;
+		log->running_rev = logserver.running_rev;
+		log->updated_rev = logserver.updated_rev;
 		bytes_read += strlen(log->src) + 1;
 
 		log->data.buf = log->src + strlen(log->src) + 1;
@@ -254,6 +267,11 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 		log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
 		log->tnano = 0;
 		log->time = time(NULL), ret = 0;
+		break;
+	case LOG_PROTOCOL_CMD:
+		log->data.buf = msg->buf;
+		log->data.len = msg->len;
+		ret = 0;
 		break;
 	default:
 		pv_log(WARN, "got unkown logserver message version %d",
@@ -264,21 +282,62 @@ static int logserver_msg_parse_data(struct logserver_msg *msg,
 	return ret;
 }
 
-static void logserver_process_cmd(struct logserver_msg *msg)
+static void logserver_rename_update(const char *rev)
 {
+	char path_tmp[PATH_MAX];
+	pv_paths_storage_trail_pv_file(path_tmp, PATH_MAX, rev, LOGS_TMP_FNAME);
+
+	char path_perm[PATH_MAX];
+	pv_paths_storage_trail_pv_file(path_perm, PATH_MAX, rev, LOGS_FNAME);
+
+	if (pv_fs_path_rename(path_tmp, path_perm) < 0) {
+		pv_log(WARN, "could not rename '%s' to '%s': %s", path_tmp,
+		       path_perm, strerror(errno));
+	}
+}
+
+static int logserver_process_cmd(const struct logserver_log *log,
+				 pid_t sender_pid)
+{
+	if (sender_pid != logserver.cmd_pid) {
+		pv_log(WARN,
+		       "logserver command received from pid %d while authorized pid is %d only",
+		       sender_pid, logserver.cmd_pid);
+		return -1;
+	}
+
 	int tokc;
 	jsmntok_t *tokv = NULL;
-	jsmnutil_parse_json(msg->buf, &tokv, &tokc);
+	jsmnutil_parse_json(log->data.buf, &tokv, &tokc);
 
 	log_cmd_code_t cmd_code;
-	cmd_code = pv_json_get_value_int(msg->buf, "code", tokv, tokc);
+	cmd_code = pv_json_get_value_int(log->data.buf, "code", tokv, tokc);
 
 	char *data;
-	data = pv_json_get_value(msg->buf, "data", tokv, tokc);
+	data = pv_json_get_value(log->data.buf, "data", tokv, tokc);
 
 	switch (cmd_code) {
 	case LOG_CMD_EXIT:
+		pv_log(DEBUG, "exit command received");
 		logserver.flags = LOGSERVER_FLAG_STOP;
+		break;
+	case LOG_CMD_START_UPDATE:
+		pv_log(DEBUG,
+		       "start update command received with revision '%s'",
+		       data);
+		if (logserver.updated_rev)
+			free(logserver.updated_rev);
+		logserver.updated_rev = strdup(data);
+		break;
+	case LOG_CMD_STOP_UPDATE:
+		pv_log(DEBUG, "stop update command received");
+		logserver_rename_update(logserver.updated_rev);
+		if (logserver.updated_rev)
+			free(logserver.updated_rev);
+		logserver.updated_rev = NULL;
+		break;
+	case LOG_CMD_NULL:
+		pv_log(WARN, "unknown command received");
 		break;
 	}
 
@@ -286,26 +345,27 @@ static void logserver_process_cmd(struct logserver_msg *msg)
 		free(tokv);
 	if (data)
 		free(data);
+
+	return 0;
 }
 
-static int logserver_handle_msg(struct logserver_msg *msg)
+static int logserver_handle_msg(struct logserver_msg *msg, pid_t sender_pid)
 {
 	struct logserver_log log;
 	int ret;
 
+	ret = logserver_msg_parse_data(msg, &log);
+	if (ret != 0) {
+		pv_log(WARN, "logserver message could not be handled");
+		return ret;
+	}
+
 	switch (msg->code) {
 	case LOG_PROTOCOL_LEGACY:
-		ret = logserver_msg_parse_data(msg, &log);
-		if (ret != 0) {
-			pv_log(WARN, "logserver message could not be handled");
-			return ret;
-		}
-
 		ret = logserver_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:
-		logserver_process_cmd(msg);
-		ret = 0;
+		ret = logserver_process_cmd(&log, sender_pid);
 		break;
 	}
 
@@ -531,8 +591,9 @@ static void logserver_consume_log_data(int fd)
 
 	errno = 0;
 	if (pv_fs_file_read_nointr(fd, buffer->buf, buffer->size) > 0) {
+		pid_t sender_pid = pv_socket_get_sender_pid(fd);
 		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
-		logserver_handle_msg(msg);
+		logserver_handle_msg(msg, sender_pid);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
 		       strerror(errno));
@@ -563,7 +624,8 @@ static void logserver_consume_fd(int fd)
 			.time = time(NULL),
 			.plat = lfd->platform,
 			.src = lfd->src,
-			.rev = logserver.rev,
+			.running_rev = logserver.running_rev,
+			.updated_rev = logserver.updated_rev,
 			.data.buf = buffer->buf,
 			.data.len = size,
 		};
@@ -760,15 +822,16 @@ static void logserver_drop_fds(struct dl_list *lst)
 	}
 }
 
-static pid_t logserver_start_service(const char *revision)
+static pid_t logserver_start_service(const char *running_revision)
 {
+	logserver.cmd_pid = getpid();
 	logserver.pid = fork();
 	if (logserver.pid == 0) {
 		pv_wdt_stop();
 
-		if (logserver.rev)
-			free(logserver.rev);
-		logserver.rev = strdup(revision);
+		if (logserver.running_rev)
+			free(logserver.running_rev);
+		logserver.running_rev = strdup(running_revision);
 
 		struct sigaction sa;
 		memset(&sa, 0, sizeof(sa));
@@ -794,10 +857,10 @@ static pid_t logserver_start_service(const char *revision)
 	return logserver.pid;
 }
 
-static void logserver_start(const char *revision)
+static void logserver_start(const char *running_revision)
 {
 	if (logserver.pid == -1) {
-		logserver_start_service(revision);
+		logserver_start_service(running_revision);
 		pv_log(DEBUG, "starting log service with pid %d",
 		       (int)logserver.pid);
 
@@ -814,14 +877,14 @@ static void logserver_start(const char *revision)
 // should kill this function and do the starting directly in the main
 // lifecycle code that currently calls this; disabling log capture
 // should happen through a "nullsink".
-void pv_logserver_toggle(struct pantavisor *pv, const char *rev)
+void pv_logserver_toggle(struct pantavisor *pv, const char *running_rev)
 {
 	if (!pv)
 		return;
 
 	// only start if we have log_capture configured
 	if (pv_config_get_log_capture()) {
-		logserver_start(rev);
+		logserver_start(running_rev);
 	}
 }
 
@@ -949,12 +1012,16 @@ static int logserver_msg_fill(struct logserver_log *log,
 		msg->len = written + to_copy;
 
 		return to_copy;
+	case LOG_PROTOCOL_CMD:
+		to_copy = log->data.len;
+		memcpy(msg->buf + written, log->data.buf, to_copy);
+		msg->len = written + to_copy;
+		break;
 	default:
 		return 0;
 	}
 	return 0;
 }
-
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args)
 {
@@ -1070,24 +1137,21 @@ static void pv_logserver_send_cmd(log_cmd_code_t code, const char *data)
 		.code = LOG_PROTOCOL_CMD,
 	};
 
-	struct buffer *log_buf = pv_buffer_get(true);
-	if (!log_buf)
-		return;
+	static const unsigned int CMD_BUF_SIZE = 256;
+	char log_buf[CMD_BUF_SIZE];
+	memset(log_buf, 0, CMD_BUF_SIZE);
 
-	log.data.buf = (char *)log_buf->buf;
-	log.data.len = log_buf->size;
+	log.data.buf = (char *)log_buf;
+	log.data.len = CMD_BUF_SIZE;
 
 	log.data.len = snprintf(log.data.buf, log.data.len,
 				"{\"code\":%d,\"data\":\"%s\"}", code, data);
 
-	struct buffer *msg_buf = pv_buffer_get(true);
-	if (!msg_buf) {
-		pv_buffer_drop(log_buf);
-		return;
-	}
+	char msg_buf[CMD_BUF_SIZE];
+	memset(msg_buf, 0, CMD_BUF_SIZE);
 
-	struct logserver_msg *lsmsg = (struct logserver_msg *)msg_buf->buf;
-	lsmsg->len = msg_buf->size - sizeof(*lsmsg);
+	struct logserver_msg *lsmsg = (struct logserver_msg *)msg_buf;
+	lsmsg->len = CMD_BUF_SIZE - sizeof(*lsmsg);
 
 	logserver_msg_fill(&log, lsmsg);
 
@@ -1095,9 +1159,14 @@ static void pv_logserver_send_cmd(log_cmd_code_t code, const char *data)
 	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
 
 	pvctl_write_to_path(path, (char *)lsmsg, lsmsg->len + sizeof(*lsmsg));
+}
 
-	pv_buffer_drop(log_buf);
-	pv_buffer_drop(msg_buf);
+static void pv_logserver_free()
+{
+	if (logserver.running_rev)
+		free(logserver.running_rev);
+	if (logserver.updated_rev)
+		free(logserver.updated_rev);
 }
 
 void pv_logserver_stop(void)
@@ -1112,8 +1181,30 @@ void pv_logserver_stop(void)
 
 	pv_logserver_close();
 	pv_logserver_delete_outputs();
+	pv_logserver_free();
 
 	pv_log(DEBUG, "stopped logserver service");
+}
+
+void pv_logserver_start_update(const char *rev)
+{
+	if (!rev)
+		return;
+
+	pv_log(DEBUG, "starting logserver update with rev '%s'", rev);
+	pv_logserver_send_cmd(LOG_CMD_START_UPDATE, rev);
+}
+
+void pv_logserver_stop_update(const char *rev)
+{
+	pv_log(DEBUG, "stopping logserver update with rev '%s'", rev);
+	pv_logserver_send_cmd(LOG_CMD_STOP_UPDATE, NULL);
+
+	// we wait 5 seconds max to make sure we collect update logs
+	char path[PATH_MAX];
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, LOGS_FNAME);
+	if (!pv_fs_path_exist_timeout(path, 5))
+		pv_log(DEBUG, "update logs in path '%s' does not exist", path);
 }
 
 static int logserver_send_subs_msg(int type, int fd, const char *platform,

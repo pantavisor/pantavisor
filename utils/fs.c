@@ -27,6 +27,17 @@ bool pv_fs_path_exist(const char *path)
 	return access(path, F_OK) == 0;
 }
 
+bool pv_fs_path_exist_timeout(const char *path, unsigned int timeout)
+{
+	unsigned int i;
+	for (i = 0; i < timeout; i++) {
+		if (pv_fs_path_exist(path))
+			return true;
+		sleep(1);
+	}
+	return false;
+}
+
 bool pv_fs_path_is_directory(const char *path)
 {
 	DIR *tmp = opendir(path);

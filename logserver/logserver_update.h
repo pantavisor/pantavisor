@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Pantacor Ltd.
+ * Copyright (c) 2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,33 +20,11 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_H
-#define LOGSERVER_H
+#ifndef LOGSERVER_UPDATE_H
+#define LOGSERVER_UPDATE_H
 
-#include <sys/types.h>
-#include <unistd.h>
-#include <stdarg.h>
-#include "pantavisor.h"
+#include "logserver_out.h"
 
-#define PV_PLATFORM_STR "pantavisor"
+struct logserver_out *logserver_update_new(void);
 
-void pv_logserver_toggle(struct pantavisor *pv, const char *rev);
-
-int pv_logserver_init(void);
-
-int pv_logserver_send_log(bool is_platform, char *platform, char *src,
-			  int level, const char *msg, ...);
-int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
-			   int level, const char *msg, va_list args);
-
-void pv_logserver_reload(void);
-void pv_logserver_stop(void);
-
-void pv_logserver_start_update(const char *rev);
-void pv_logserver_stop_update(const char *rev);
-
-int pv_logserver_subscribe_fd(int fd, const char *platform, const char *src,
-			      int loglevel);
-int pv_logserver_unsubscribe_fd(const char *platform, const char *src);
-
-#endif /* LOGSERVER_H */
+#endif

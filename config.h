@@ -144,7 +144,8 @@ typedef enum {
 	LOG_SERVER_OUTPUT_NULL_SINK = 1 << 0,
 	LOG_SERVER_OUTPUT_SINGLE_FILE = 1 << 1,
 	LOG_SERVER_OUTPUT_FILE_TREE = 1 << 2,
-	LOG_SERVER_OUTPUT_STDOUT = 1 << 3
+	LOG_SERVER_OUTPUT_STDOUT = 1 << 3,
+	LOG_SERVER_OUTPUT_UPDATE = 1 << 4,
 } log_server_output_mask_t;
 
 struct pantavisor_log_server {

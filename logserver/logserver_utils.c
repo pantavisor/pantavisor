@@ -207,6 +207,8 @@ char *logserver_utils_output_to_str(int out_type)
 		return "filetree";
 	case LOG_SERVER_OUTPUT_SINGLE_FILE:
 		return "singlefile";
+	case LOG_SERVER_OUTPUT_UPDATE:
+		return "update";
 	}
 
 	return "unknown";
