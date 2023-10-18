@@ -1033,7 +1033,7 @@ plat_goal_state_t pv_platform_check_goal(struct pv_platform *p)
 
 	struct timer_state tstate = timer_current_state(&p->timer_status_goal);
 	if (tstate.fin) {
-		pv_log(WARN,
+		pv_log(ERROR,
 		       "platform '%s' status goal timed out after waiting for more than %d secs",
 		       p->name, p->group->default_status_goal_timeout);
 		return PLAT_GOAL_TIMEDOUT;
