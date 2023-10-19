@@ -66,7 +66,13 @@ LOCAL_SRC_FILES := debug.c \
 			platforms.c \
 			addons.c \
 			volumes.c \
-			disks.c \
+			disk/disk.c \
+			disk/disk_crypt.c \
+			disk/disk_swap.c \
+			disk/disk_volume.c \
+			disk/disk_zram.c \
+			disk/disk_utils.c \
+			disk/disk_zram_utils.c \
 			signature.c \
 			parser/parser.c \
 			parser/parser_multi1.c \
@@ -167,3 +173,15 @@ LOCAL_LIBRARIES := cryptsetup
 LOCAL_COPY_FILES := scripts/volmount/crypt/crypt:lib/pv/volmount/crypt/crypt
 
 include $(BUILD_CUSTOM)
+
+include $(CLEAR_VARS)
+
+LOCAL_DESTDIR := ./
+LOCAL_MODULE := pvzram
+
+LOCAL_C_INCLUDES := $(LOCAL_PATH)
+
+LOCAL_SRC_FILES := disk/disk_zram_utils.c \
+		   utils/pv_zram.c
+
+include $(BUILD_EXECUTABLE)

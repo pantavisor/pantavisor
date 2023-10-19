@@ -54,8 +54,6 @@
 
 #define FW_PATH "/lib/firmware"
 
-extern int pv_disks_mount_handler(struct pv_disk *d, char *action);
-
 static const char *pv_volume_type_str(pv_volume_t vt)
 {
 	switch (vt) {
@@ -163,7 +161,7 @@ int pv_volume_mount(struct pv_volume *v)
 	}
 
 	if (v->disk && !v->disk->def && !v->disk->mounted) {
-		ret = pv_disks_mount_handler(v->disk, "mount");
+		ret = pv_disk_mount_handler(v->disk, "mount");
 		if (ret != 0) {
 			pv_log(ERROR, "disk %s mount failed", disk_name);
 			return ret;
