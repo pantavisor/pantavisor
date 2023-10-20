@@ -102,15 +102,11 @@ static int mount_disk(struct pv_disk *disk, struct pv_disk_impl *impl)
 		return -1;
 	}
 
-	pv_log(DEBUG, "disk %s not mounted", disk->name);
-
 	if (impl->format(disk) != 0) {
 		pv_log(WARN, "cannot format %s, the disk will not be used",
 		       disk->path);
 		return -1;
 	}
-
-	pv_log(DEBUG, "disk %s formated", disk->name);
 
 	if (impl->mount(disk) != 0) {
 		pv_log(WARN, "cannot mount %s, the disk will not be used",
