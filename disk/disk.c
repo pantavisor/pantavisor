@@ -165,7 +165,6 @@ int pv_disk_mount_handler(struct pv_disk *disk, const char *action)
 			pv_log(ERROR,
 			       "cannot use disk, must define a provision");
 			return -1;
-#define PV_DISK_
 		}
 
 		if (!strcmp(disk->provision, "zram"))
