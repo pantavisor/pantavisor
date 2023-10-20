@@ -1602,6 +1602,13 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 		goto out;
 	}
 	free(value);
+	value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
+	if (value && parse_disks(this, value)) {
+		pv_log(ERROR, "cannot parse disks_v2 in device.json");
+		this = NULL;
+		goto out;
+	}
+	free(value);
 
 	value = pv_json_get_value(buf, "volumes", tokv, tokc);
 	if (!value) {
