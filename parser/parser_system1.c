@@ -231,7 +231,8 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 	return 1;
 }
 
-static pv_disk_format_t get_format(const char *str, jsmntok_t *diskv, int diskc)
+static pv_disk_format_t parse_disks_get_format(const char *str,
+					       jsmntok_t *diskv, int diskc)
 {
 	char *format_str = pv_json_get_value(str, "format", diskv, diskc);
 	pv_disk_format_t format = pv_disk_str_to_format(format_str);
@@ -239,7 +240,8 @@ static pv_disk_format_t get_format(const char *str, jsmntok_t *diskv, int diskc)
 	return format;
 }
 
-static pv_disk_t get_type(const char *str, jsmntok_t *diskv, int diskc)
+static pv_disk_t parse_disks_get_type(const char *str, jsmntok_t *diskv,
+				      int diskc)
 {
 	char *type_str = pv_json_get_value(str, "type", diskv, diskc);
 	pv_disk_t type = pv_disk_str_to_type(type_str);
@@ -247,7 +249,8 @@ static pv_disk_t get_type(const char *str, jsmntok_t *diskv, int diskc)
 	return type;
 }
 
-static bool get_default(const char *str, jsmntok_t *diskv, int diskc)
+static bool parse_disks_get_default(const char *str, jsmntok_t *diskv,
+				    int diskc)
 {
 	bool ret = false;
 	char *default_str = pv_json_get_value(str, "default", diskv, diskc);
@@ -288,7 +291,7 @@ static int parse_disks(struct pv_state *s, char *value)
 			goto out;
 		}
 
-		d = pv_disk_add(s);
+		d = pv_disk_add(&s->disks);
 		if (!d) {
 			pv_log(ERROR, "cannot add new disk");
 			free(diskv);
@@ -308,15 +311,21 @@ static int parse_disks(struct pv_state *s, char *value)
 		d->provision_ops = pv_json_get_value(str, "provision_options",
 						     diskv, diskc);
 		d->uuid = pv_json_get_value(str, "uuid", diskv, diskc);
-		d->type = get_type(str, diskv, diskc);
+		d->type = parse_disks_get_type(str, diskv, diskc);
 
 		if (d->type == DISK_UNKNOWN) {
 			pv_log(ERROR, "cannot add new disk, type = UNKNOWN");
 			goto out;
 		}
 
-		d->format = get_format(str, diskv, diskc);
-		d->def = get_default(str, diskv, diskc);
+		d->format = parse_disks_get_format(str, diskv, diskc);
+		if ((d->type == DISK_SWAP || d->type == DISK_VOLUME) &&
+		    d->format == DISK_FORMAT_UNKNOWN) {
+			pv_log(ERROR, "cannot add new disk, format = UNKNOWN");
+			goto out;
+		}
+
+		d->def = parse_disks_get_default(str, diskv, diskc);
 		d->mounted = false;
 
 		// you need to jump (in tokens) to the next array, so
