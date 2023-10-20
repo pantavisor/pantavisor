@@ -161,7 +161,7 @@ int pv_volume_mount(struct pv_volume *v)
 	}
 
 	if (v->disk && !v->disk->def && !v->disk->mounted) {
-		ret = pv_disk_mount_handler(v->disk, "mount");
+		ret = pv_disk_mount(v->disk);
 		if (ret != 0) {
 			pv_log(ERROR, "disk %s mount failed", disk_name);
 			return ret;

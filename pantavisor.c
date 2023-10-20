@@ -879,7 +879,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_init_umount();
 
 	// unmount disks
-	pv_disk_umount_all(pv->state);
+	pv_disk_umount_all(&pv->state->disks);
 
 	pv_storage_umount();
 
