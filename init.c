@@ -159,7 +159,9 @@ static pid_t waitpids(int *wstatus)
 		return 0;
 
 	while (daemons[i].name) {
-		if ((pid = waitpid(daemons[i].pid, wstatus, WNOHANG)) > 0)
+		pid = 0;
+		if (daemons[i].pid > 0 &&
+		    (pid = waitpid(daemons[i].pid, wstatus, WNOHANG)) > 0)
 			return daemons[i].pid;
 		if (pid < 0)
 			return pid;
