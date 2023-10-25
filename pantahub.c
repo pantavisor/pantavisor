@@ -63,6 +63,15 @@
 trest_ptr *client = 0;
 char *endpoint = 0;
 
+static void ph_client_free()
+{
+	if (!client)
+		return;
+
+	trest_free(client);
+	client = NULL;
+}
+
 static int ph_client_init(struct pantavisor *pv)
 {
 	int size;
@@ -79,7 +88,7 @@ static int ph_client_init(struct pantavisor *pv)
 auth:
 	status = trest_update_auth(client);
 	if (status != TREST_AUTH_STATUS_OK) {
-		client = NULL; // XXX: free here
+		ph_client_free();
 		return 0;
 	}
 
@@ -211,10 +220,7 @@ struct pv_connection *pv_get_instance_connection()
 
 void pv_ph_release_client(struct pantavisor *pv)
 {
-	if (client) {
-		trest_free(client);
-		client = 0;
-	}
+	ph_client_free();
 
 	if (endpoint) {
 		free(endpoint);
@@ -230,7 +236,7 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 	trest_response_ptr res = 0;
 
 	if (!ph_client_init(pv))
-		return -1;
+		goto out;
 
 	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
 
@@ -241,6 +247,7 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
 		       endpoint, res->status);
+		ph_client_free();
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
 		       "request GET %s returned HTTP error (code=%d; body='%s')",
@@ -250,6 +257,7 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 		ret = 0;
 	}
 
+out:
 	if (req)
 		trest_request_free(req);
 	if (res)
@@ -279,6 +287,7 @@ int pv_ph_device_exists(struct pantavisor *pv)
 	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
 		       endpoint, res->status);
+		ph_client_free();
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
 		       "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
@@ -487,6 +496,7 @@ int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
 	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
 		       endpoint, res->status);
+		ph_client_free();
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
 		       "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
@@ -556,6 +566,7 @@ int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
 	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request PATCH %s could not auth (status=%d)",
 		       endpoint, res->status);
+		ph_client_free();
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
 		       "HTTP request PATCH %s returned HTTP error (code=%d; body='%s')",
