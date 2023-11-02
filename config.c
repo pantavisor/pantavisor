@@ -453,7 +453,7 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 						     "/storage/logs/");
 	config->log.server.outputs = config_get_value_log_server_outputs(
 		&config_list, "log.server.outputs",
-		LOG_SERVER_OUTPUT_FILE_TREE);
+		LOG_SERVER_OUTPUT_FILE_TREE | LOG_SERVER_OUTPUT_UPDATE);
 	config->log.logmax = config_get_value_int(&config_list, "log.maxsize",
 						  (1 << 21)); // 2 MiB
 	config->log.loglevel =
