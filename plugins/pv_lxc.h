@@ -28,7 +28,7 @@
 
 void pv_set_pv_instance_fn(void *fn_pv_get_instance);
 void pv_set_pv_paths_fn(
-	void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
+	void *fn_vlog, void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
 	void *fn_pv_paths_pv_log_plat, void *fn_pv_paths_pv_log_file,
 	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
 	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
