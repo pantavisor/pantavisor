@@ -438,9 +438,9 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 
 	void (*__pv_paths)(void *, void *, void *, void *, void *, void *,
 			   void *, void *, void *, void *, void *, void *,
-			   void *) = dlsym(lib, "pv_set_pv_paths_fn");
+			   void *, void *) = dlsym(lib, "pv_set_pv_paths_fn");
 	if (__pv_paths)
-		__pv_paths(pv_paths_pv_file, pv_paths_pv_log,
+		__pv_paths(__log, pv_paths_pv_file, pv_paths_pv_log,
 			   pv_paths_pv_log_plat, pv_paths_pv_log_file,
 			   pv_paths_pv_usrmeta_key,
 			   pv_paths_pv_usrmeta_plat_key,

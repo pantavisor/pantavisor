@@ -45,6 +45,10 @@
 #include "platforms.h"
 #include "paths.h"
 
+#define MODULE_NAME "pv_lxc"
+#define pv_log(level, msg, ...) __vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
+
 static struct lxc_log pv_lxc_log = { .level = "DEBUG",
 				     .prefix = "init",
 				     .name = NULL,
@@ -54,6 +58,7 @@ static struct lxc_log pv_lxc_log = { .level = "DEBUG",
 
 struct pantavisor *(*__pv_get_instance)(void) = NULL;
 
+void (*__vlog)(char *module, int level, const char *fmt, ...) = NULL;
 void (*__pv_paths_pv_file)(char *, size_t, const char *) = NULL;
 void (*__pv_paths_pv_log)(char *, size_t, const char *) = NULL;
 void (*__pv_paths_pv_log_plat)(char *, size_t, const char *,
@@ -79,7 +84,7 @@ void pv_set_pv_instance_fn(void *fn_pv_get_instance)
 }
 
 void pv_set_pv_paths_fn(
-	void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
+	void *fn_vlog, void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
 	void *fn_pv_paths_pv_log_plat, void *fn_pv_paths_pv_log_file,
 	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
 	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
@@ -87,6 +92,7 @@ void pv_set_pv_paths_fn(
 	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
 	void *fn_pv_paths_lib_lxc_lxcpath)
 {
+	__vlog = fn_vlog;
 	__pv_paths_pv_file = fn_pv_paths_pv_file;
 	__pv_paths_pv_log = fn_pv_paths_pv_log;
 	__pv_paths_pv_log_plat = fn_pv_paths_pv_log_plat;
@@ -218,10 +224,12 @@ static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 	char value[PATH_MAX];
 
 	// remove all ilegacy cgroup allow and deny config
-	while (c->get_config_item(c, "lxc.cgroup.devices.allow", value, PATH_MAX) > 0) {
+	while (c->get_config_item(c, "lxc.cgroup.devices.allow", value,
+				  PATH_MAX) > 0) {
 		c->set_config_item(c, "lxc.cgroup.devices.allow", NULL);
 	}
-	while (c->get_config_item(c, "lxc.cgroup.devices.deny", value, PATH_MAX) > 0) {
+	while (c->get_config_item(c, "lxc.cgroup.devices.deny", value,
+				  PATH_MAX) > 0) {
 		c->set_config_item(c, "lxc.cgroup.devices.deny", NULL);
 	}
 
@@ -477,6 +485,8 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
 	pv_fs_mkdir_p(path, 0755);
 
+	pv_log(DEBUG, "starting LXC container '%s'", p->name);
+
 	c = lxc_container_new(p->name, path);
 	if (!c)
 		goto out_failure;
@@ -600,6 +610,8 @@ void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data)
 {
 	bool s;
 	struct lxc_container *c = (struct lxc_container *)data;
+
+	pv_log(DEBUG, "stopping LXC container '%s'", p->name);
 
 	if (!data)
 		return NULL;
