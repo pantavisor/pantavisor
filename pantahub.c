@@ -165,8 +165,10 @@ const char **pv_ph_get_certs(struct pantavisor *__unused)
 	cafiles = calloc(n - 1, sizeof(char *));
 
 	while (n--) {
-		if (!strncmp(files[n]->d_name, ".", 1))
+		if (!strncmp(files[n]->d_name, ".", 1)) {
+			free(files[n]);
 			continue;
+		}
 
 		pv_paths_cert(path, PATH_MAX, files[n]->d_name);
 		size = strlen(path);
