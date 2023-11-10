@@ -155,6 +155,7 @@ int pv_storage_get_subdir(const char *path, const char *prefix,
 		subdir = calloc(1, sizeof(struct pv_path));
 		if (!subdir) {
 			ret = -1;
+			free(dirs[n]);
 			goto out;
 		}
 
@@ -162,6 +163,7 @@ int pv_storage_get_subdir(const char *path, const char *prefix,
 		subdir->path = calloc(len, sizeof(char));
 		SNPRINTF_WTRUNC(subdir->path, len, "%s%s", prefix,
 				dirs[n]->d_name);
+		free(dirs[n]);
 		dl_list_init(&subdir->list);
 		dl_list_add(subdirs, &subdir->list);
 	}
