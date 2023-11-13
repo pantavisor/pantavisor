@@ -140,7 +140,8 @@ void pv_debug_check_ssh_running()
 
 bool pv_debug_is_ssh_pid(pid_t pid)
 {
-	return (pid != -1) && (pid == db_pid);
+	// return true if pid belongs to the SSH server
+	return (pid != -1) && ((pid == db_pid) || (getpgid(pid) == db_pid));
 }
 #else
 void pv_debug_start_shell()

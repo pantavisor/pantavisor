@@ -179,9 +179,8 @@ static void signal_handler(int signal)
 		return;
 
 	while ((pid = waitpids(&wstatus)) > 0) {
-		// ignore signals of 0 and db_pid
 		if (pv_init_is_daemon(pid)) {
-			pv_log(WARN, "Daemon exited.");
+			pv_log(WARN, "Daemon exited");
 			pv_init_daemon_exited(pid);
 			if (!pv_init_spawn_daemons())
 				continue;
@@ -190,8 +189,13 @@ static void signal_handler(int signal)
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
 		}
-		if (pv_pid == 0 || (pv_debug_is_ssh_pid(pid)))
+		// ignore signals from pid 0 and SSH
+		if (pv_pid == 0 || (pv_debug_is_ssh_pid(pid))) {
+			pv_log(DEBUG,
+			       "Ignoring SIGCHLD signal coming from pid %d",
+			       pid);
 			continue;
+		}
 		pv_stop();
 
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
