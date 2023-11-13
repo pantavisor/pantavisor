@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -65,6 +65,40 @@ static char **_tsh_split_cmd(char *cmd)
 	return ts;
 }
 
+pid_t bgpids[128];
+int bgid_init = 0;
+
+int tsh_bgid_push(pid_t pid)
+{
+	int i = 0;
+	if (!bgid_init) {
+		memset(bgpids, '\0', sizeof(bgpids));
+		bgid_init = 1;
+	}
+	while (bgpids[i]) {
+		i++;
+	}
+	if (i > 127)
+		return -1;
+	bgpids[i] = pid;
+	return 0;
+}
+
+int tsh_bgid_pop(pid_t pid)
+{
+	if (!bgid_init) {
+		memset(bgpids, '\0', sizeof(bgpids));
+		bgid_init = 1;
+	}
+	for (int i = 0; i < 128; i++) {
+		if (bgpids[i] == pid) {
+			bgpids[i] = 0;
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		       int stdout_p[], int stderr_p[])
 {
@@ -87,7 +121,8 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		return -1;
 	} else if (pid > 0) {
-		// In parent
+		// In parent add to background pool for reaper
+		tsh_bgid_push(pid);
 		if (wait) {
 			if (ret == 0) {
 				/* wait only if we blocked SIGCHLD */
@@ -105,6 +140,8 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 			close(stdout_p[0]);
 		if (stderr_p)
 			close(stderr_p[0]);
+
+		sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 
 		// dup2 things
 		while (stdin_p &&

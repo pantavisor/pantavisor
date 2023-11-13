@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2017-2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -44,6 +44,7 @@
 #include "state.h"
 #include "platforms.h"
 #include "paths.h"
+#include "utils/tsh.h"
 
 static struct lxc_log pv_lxc_log = { .level = "DEBUG",
 				     .prefix = "init",
@@ -499,6 +500,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	}
 
 	else if (child_pid) { /*Parent*/
+		tsh_bgid_push(child_pid);
 		pid_t container_pid = -1;
 		/*Parent would read*/
 		close(pipefd[1]);

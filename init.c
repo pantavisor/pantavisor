@@ -147,24 +147,11 @@ static int other_mounts()
 static pid_t waitpids(int *wstatus)
 {
 	pid_t pid;
-	int i = 0;
-	struct pv_init_daemon *daemons = NULL;
 
-	if ((pid = waitpid(0, wstatus, WNOHANG)) > 0) {
+	if ((pid = waitpid(-1, wstatus, WNOHANG)) > 0) {
 		return pid;
 	}
 
-	daemons = pv_init_get_daemons();
-	if (!daemons)
-		return 0;
-
-	while (daemons[i].name) {
-		if ((pid = waitpid(daemons[i].pid, wstatus, WNOHANG)) > 0)
-			return daemons[i].pid;
-		if (pid < 0)
-			return pid;
-		i++;
-	}
 	return 0;
 }
 
@@ -188,8 +175,10 @@ static void signal_handler(int signal)
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
 		}
-		if (pv_pid == 0 || (pv_debug_is_ssh_pid(pid)))
+		if (getpid() == 1 || pv_debug_is_ssh_pid(pid) || tsh_bgid_pop(pid))
 			continue;
+
+		pv_log(ERROR, "we dont know about reaped PID and will stop pantavisor ... %d", pid);
 		pv_stop();
 
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
