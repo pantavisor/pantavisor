@@ -68,11 +68,12 @@ struct pv_disk {
 	struct dl_list list;
 };
 
-struct pv_disk *pv_disk_add(struct pv_state *s);
-int pv_disk_mount_swap(struct pv_state *s);
-int pv_disk_umount_all(struct pv_state *s);
-void pv_disk_empty(struct pv_state *s);
-int pv_disk_mount_handler(struct pv_disk *disk, const char *action);
+struct pv_disk *pv_disk_add(struct dl_list *disks);
+int pv_disk_mount_swap(struct dl_list *disks);
+int pv_disk_umount_all(struct dl_list *disks);
+void pv_disk_empty(struct dl_list *disks);
+int pv_disk_mount(struct pv_disk *disk);
+int pv_disk_umount(struct pv_disk *disk);
 
 inline const char *pv_disk_format_to_str(pv_disk_format_t type)
 {
