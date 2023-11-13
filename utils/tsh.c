@@ -65,6 +65,46 @@ static char **_tsh_split_cmd(char *cmd)
 	return ts;
 }
 
+static pid_t bgpids[128];
+static int bgid_init = 0;
+
+int tsh_bgid_push(pid_t pid)
+{
+	if (!bgid_init) {
+		memset(bgpids, '\0', sizeof(bgpids));
+		bgid_init = 1;
+	}
+	int i = 0;
+	fprintf(stderr, "tracking bg pid  1 %d\n", pid);
+	while (bgpids[i]) {
+		i++;
+	}
+	fprintf(stderr, "tracking bg pid  2 %d\n", pid);
+	if (i > 127)
+		return -1;
+
+	bgpids[i] = pid;
+	fprintf(stderr, "tracking bg pid %d\n", pid);
+
+	return 0;
+}
+
+int tsh_bgid_pop(pid_t pid)
+{
+	if (!bgid_init) {
+		memset(bgpids, '\0', sizeof(bgpids));
+		bgid_init = 1;
+	}
+	for (int i = 0; i < 128; i++) {
+		if (bgpids[i] == pid) {
+			bgpids[i] = 0;
+			fprintf(stderr, "popping bg pid %d\n", pid);
+			return 1;
+		}
+	}
+	return 0;
+}
+
 static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		       int stdout_p[], int stderr_p[])
 {
@@ -88,6 +128,9 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		return -1;
 	} else if (pid > 0) {
 		// In parent
+		fprintf(stderr, "tsh_run created async '%s' pid: %d\n", argv[0],
+			pid);
+
 		if (wait) {
 			if (ret == 0) {
 				/* wait only if we blocked SIGCHLD */
@@ -105,6 +148,8 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 			close(stdout_p[0]);
 		if (stderr_p)
 			close(stderr_p[0]);
+
+		sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 
 		// dup2 things
 		while (stdin_p &&
@@ -242,6 +287,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		close(errfd[1]);
 		ts.tv_sec = timeout_s;
 		ts.tv_nsec = 0;
+
+		fprintf(stderr, "tsh_run created '%s' pid: %d\n", cmd, pid);
 
 		oldsig = signal(SIGCHLD, SIG_DFL);
 		while (1) {

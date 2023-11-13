@@ -147,24 +147,12 @@ static int other_mounts()
 static pid_t waitpids(int *wstatus)
 {
 	pid_t pid;
-	int i = 0;
-	struct pv_init_daemon *daemons = NULL;
 
-	if ((pid = waitpid(0, wstatus, WNOHANG)) > 0) {
+	if ((pid = waitpid(-1, wstatus, WNOHANG)) > 0) {
+		fprintf(stderr, "the reap %d\n", pid);
 		return pid;
 	}
 
-	daemons = pv_init_get_daemons();
-	if (!daemons)
-		return 0;
-
-	while (daemons[i].name) {
-		if ((pid = waitpid(daemons[i].pid, wstatus, WNOHANG)) > 0)
-			return daemons[i].pid;
-		if (pid < 0)
-			return pid;
-		i++;
-	}
 	return 0;
 }
 
@@ -177,6 +165,8 @@ static void signal_handler(int signal)
 		return;
 
 	while ((pid = waitpids(&wstatus)) > 0) {
+		fprintf(stderr, "something did reap %d\n", pid);
+		fflush(NULL);
 		// ignore signals of 0 and db_pid
 		if (pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
@@ -188,15 +178,21 @@ static void signal_handler(int signal)
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
 		}
-		if (pv_pid == 0 || (pv_debug_is_ssh_pid(pid)))
+		/*	if (getpid() == 1 || pv_debug_is_ssh_pid(pid) || tsh_bgid_pop(pid))
 			continue;
-		pv_stop();
+
+			*/
+		fprintf(stderr,
+			"we dont know about reaped PID and will die... %d\n",
+			pid);
+		/*pv_stop();
 
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
 			sync();
 			sleep(10);
 			reboot(LINUX_REBOOT_CMD_RESTART);
 		}
+		*/
 	}
 }
 

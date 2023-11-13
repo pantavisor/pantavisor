@@ -30,4 +30,7 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
 int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		   char *err_buf, int err_size);
 
+int tsh_bgid_pop(pid_t pid);
+int tsh_bgid_push(pid_t pid);
+
 #endif
