@@ -65,7 +65,7 @@ static char **_tsh_split_cmd(char *cmd)
 	return ts;
 }
 
-static pid_t bgpids[128];
+pid_t bgpids[128];
 static int bgid_init = 0;
 
 int tsh_bgid_push(pid_t pid)
@@ -75,16 +75,16 @@ int tsh_bgid_push(pid_t pid)
 		bgid_init = 1;
 	}
 	int i = 0;
-	fprintf(stderr, "tracking bg pid  1 %d\n", pid);
+	fprintf(stderr, "tracking bg pid  %d %d\n", getpid(), pid);
 	while (bgpids[i]) {
 		i++;
 	}
-	fprintf(stderr, "tracking bg pid  2 %d\n", pid);
+	fprintf(stderr, "tracking bg pid  %d %d\n",getpid(),  pid);
 	if (i > 127)
 		return -1;
 
 	bgpids[i] = pid;
-	fprintf(stderr, "tracking bg pid %d\n", pid);
+	fprintf(stderr, "tracking bg pid %d %d\n", getpid(), pid);
 
 	return 0;
 }
@@ -95,7 +95,7 @@ int tsh_bgid_pop(pid_t pid)
 		memset(bgpids, '\0', sizeof(bgpids));
 		bgid_init = 1;
 	}
-	fprintf(stderr, "try popping bg pid %d\n", pid);
+	fprintf(stderr, "try popping bg pid in %d %d\n", getpid(), pid);
 	for (int i = 0; i < 128; i++) {
 		if (bgpids[i] == pid) {
 			bgpids[i] = 0;
