@@ -144,17 +144,6 @@ static int other_mounts()
 	return 0;
 }
 
-static pid_t waitpids(int *wstatus)
-{
-	pid_t pid;
-
-	if ((pid = waitpid(-1, wstatus, WNOHANG)) > 0) {
-		return pid;
-	}
-
-	return 0;
-}
-
 static void signal_handler(int signal)
 {
 	pid_t pid = 0;
@@ -163,8 +152,7 @@ static void signal_handler(int signal)
 	if (signal != SIGCHLD)
 		return;
 
-	while ((pid = waitpids(&wstatus)) > 0) {
-		// ignore signals of 0 and db_pid
+	while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0) {
 		if (pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
 			pv_init_daemon_exited(pid);
@@ -175,10 +163,15 @@ static void signal_handler(int signal)
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
 		}
-		if (getpid() == 1 || pv_debug_is_ssh_pid(pid) || tsh_bgid_pop(pid))
+		// ignore signals if not in init pid
+		// ignore signals from ssh and tsh childs
+		if (getpid() == 1 || pv_debug_is_ssh_pid(pid) ||
+		    tsh_bgid_pop(pid))
 			continue;
 
-		pv_log(ERROR, "we dont know about reaped PID and will stop pantavisor ... %d", pid);
+		pv_log(ERROR,
+		       "we dont know about reaped PID and will stop pantavisor ... %d",
+		       pid);
 		pv_stop();
 
 		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {

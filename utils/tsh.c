@@ -65,7 +65,9 @@ static char **_tsh_split_cmd(char *cmd)
 	return ts;
 }
 
-pid_t bgpids[128];
+#define TSH_BGPIDS_SIZE 128
+
+pid_t bgpids[TSH_BGPIDS_SIZE];
 int bgid_init = 0;
 
 int tsh_bgid_push(pid_t pid)
@@ -78,7 +80,7 @@ int tsh_bgid_push(pid_t pid)
 	while (bgpids[i]) {
 		i++;
 	}
-	if (i > 127)
+	if (i >= TSH_BGPIDS_SIZE)
 		return -1;
 	bgpids[i] = pid;
 	return 0;
@@ -90,7 +92,7 @@ int tsh_bgid_pop(pid_t pid)
 		memset(bgpids, '\0', sizeof(bgpids));
 		bgid_init = 1;
 	}
-	for (int i = 0; i < 128; i++) {
+	for (int i = 0; i < TSH_BGPIDS_SIZE; i++) {
 		if (bgpids[i] == pid) {
 			bgpids[i] = 0;
 			return 1;
