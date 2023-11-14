@@ -150,9 +150,17 @@ static pid_t waitpids(int *wstatus)
 	int i = 0;
 	struct pv_init_daemon *daemons = NULL;
 
-	if ((pid = waitpid(0, wstatus, WNOHANG)) > 0) {
+	if ((pid = waitpid(0, wstatus, WNOHANG)) > 0 ||
+	    (pv_debug_get_ssh_pid() > 0 &&
+	     (pid = waitpid(pv_debug_get_ssh_pid(), wstatus, WNOHANG)))) {
 		return pid;
 	}
+
+	while (waitpid(-1, NULL, WNOHANG) > 0)
+		;
+
+	if (getpid() != 1)
+		return 0;
 
 	daemons = pv_init_get_daemons();
 	if (!daemons)
@@ -464,6 +472,8 @@ int main(int argc, char *argv[])
 	pv_pid = fork();
 	if (pv_pid > 0)
 		goto loop;
+
+	setpgid(0, 0);
 
 	if (pv_config_get_watchdog_mode() >= WDT_STARTUP)
 		pv_wdt_start();

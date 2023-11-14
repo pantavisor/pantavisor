@@ -21,6 +21,7 @@
  */
 
 #include <fcntl.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <signal.h>
@@ -108,6 +109,7 @@ void pv_debug_start_ssh()
 
 	tsh_run("ifconfig lo up", 0, NULL);
 	db_pid = tsh_run(dbcmd, 0, NULL);
+	setpgid(db_pid, 0);
 
 	free(dbcmd);
 }
@@ -142,6 +144,12 @@ bool pv_debug_is_ssh_pid(pid_t pid)
 {
 	return (pid != -1) && (pid == db_pid);
 }
+
+pid_t pv_debug_get_ssh_pid()
+{
+	return db_pid;
+}
+
 #else
 void pv_debug_start_shell()
 {
