@@ -95,6 +95,7 @@ int tsh_bgid_pop(pid_t pid)
 		memset(bgpids, '\0', sizeof(bgpids));
 		bgid_init = 1;
 	}
+	fprintf(stderr, "try popping bg pid %d\n", pid);
 	for (int i = 0; i < 128; i++) {
 		if (bgpids[i] == pid) {
 			bgpids[i] = 0;
@@ -130,6 +131,8 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		// In parent
 		fprintf(stderr, "tsh_run created async '%s' pid: %d\n", argv[0],
 			pid);
+
+		tsh_bgid_push(pid);
 
 		if (wait) {
 			if (ret == 0) {

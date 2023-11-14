@@ -178,21 +178,19 @@ static void signal_handler(int signal)
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
 		}
-		/*	if (getpid() == 1 || pv_debug_is_ssh_pid(pid) || tsh_bgid_pop(pid))
+		if (getpid() == 1 || pv_debug_is_ssh_pid(pid) || tsh_bgid_pop(pid))
 			continue;
 
-			*/
 		fprintf(stderr,
 			"we dont know about reaped PID and will die... %d\n",
 			pid);
-		/*pv_stop();
+	//	pv_stop();
 
-		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
-			sync();
-			sleep(10);
-			reboot(LINUX_REBOOT_CMD_RESTART);
-		}
-		*/
+	//	if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
+	//		sync();
+	//		sleep(10);
+	//		reboot(LINUX_REBOOT_CMD_RESTART);
+	//	}
 	}
 }
 
