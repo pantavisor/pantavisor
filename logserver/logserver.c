@@ -1171,6 +1171,9 @@ static void pv_logserver_free()
 
 void pv_logserver_stop(void)
 {
+	if (logserver.pid < 0)
+		return;
+
 	pv_log(DEBUG, "stopping logserver service with PID %d...",
 	       logserver.pid);
 
