@@ -10,7 +10,7 @@ LOCAL_MODULE := pv_lxc
 LOCAL_CFLAGS := -g -Wno-format-nonliteral -Wno-format-contains-nul -fPIC
 LOCAL_LDFLAGS := -Wl,--no-as-needed -lutil -Wl,--as-needed
 
-LOCAL_SRC_FILES := plugins/pv_lxc.c utils/fs.c utils/tsh.c
+LOCAL_SRC_FILES := plugins/pv_lxc.c utils/fs.c utils/tsh.c utils/pvsignals.c
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -87,6 +87,7 @@ LOCAL_SRC_FILES := debug.c \
 			utils/math.c \
 			utils/timer.c \
 			utils/fs.c \
+			utils/pvsignals.c \
 			utils/socket.c \
 			jsons.c \
 			pantahub.c \

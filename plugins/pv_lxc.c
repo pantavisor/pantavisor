@@ -44,6 +44,9 @@
 #include "state.h"
 #include "platforms.h"
 #include "paths.h"
+#include "utils/pvsignals.h"
+
+#define PV_VLOG __vlog
 #include "utils/tsh.h"
 
 #define MODULE_NAME "pv_lxc"
@@ -478,6 +481,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	char path[PATH_MAX];
 	int pipefd[2];
 	pid_t child_pid = -1;
+	sigset_t oldmask;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
 	dname = dirname(dname);
@@ -501,16 +505,35 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	if (pipe(pipefd))
 		goto out_failure;
 
+	if (pvsignals_block_chld(&oldmask)) {
+		pv_log(ERROR,
+		       "failed to block SIGCHLD for starting pantavisor: ",
+		       strerror(errno));
+		goto out_failure;
+	}
+
 	child_pid = fork();
 
 	if (child_pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask of pantavisor fork in failed fork: %s",
+			       strerror(errno));
+		}
 		goto out_failure;
 	}
 
 	else if (child_pid) { /*Parent*/
 		tsh_bgid_push(child_pid);
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask of pantavisor fork in parent: %s",
+			       strerror(errno));
+			goto out_failure;
+		}
+
 		pid_t container_pid = -1;
 		/*Parent would read*/
 		close(pipefd[1]);
@@ -529,6 +552,15 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 		close(pipefd[0]);
 		*((pid_t *)data) = -1;
+
+		signal(SIGCHLD, SIG_DFL);
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask of pantavisor fork in child %s",
+			       strerror(errno));
+			goto out_container_init;
+		}
+
 		/*
 		 * We need this for getting the revision..
 		 */
