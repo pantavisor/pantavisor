@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2023 Pantacor Ltd.
+ * Copyright (c) 2017 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,8 +29,5 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
 		 int stdout_p[], int stderr_p[]);
 int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		   char *err_buf, int err_size);
-
-int tsh_bgid_pop(pid_t pid);
-int tsh_bgid_push(pid_t pid);
 
 #endif
