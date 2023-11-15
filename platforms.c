@@ -53,6 +53,7 @@
 #include "utils/json.h"
 #include "utils/str.h"
 #include "utils/fs.h"
+#include "utils/pvsignals.h"
 #include "utils/tsh.h"
 
 #define MODULE_NAME "platforms"
@@ -477,9 +478,16 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 	 * pv_logger.
 	 * */
 	int container_pid = platform->init_pid;
+	sigset_t oldmask;
 
 	if (!log_info)
 		return -1;
+
+	if (pvsignals_block_chld(&oldmask)) {
+		pv_log(ERROR, "failed to block SIGCHLD for starting pvlogger: ",
+		       strerror(errno));
+		return -1;
+	}
 
 	pid_t pid = fork();
 	if (pid < 0) {
@@ -488,6 +496,13 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 	if (!pid) {
 		char namespace[64];
 		int ns_fd = -1;
+
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask in pvloggger child: %s",
+			       strerror(errno));
+			_exit(-1);
+		}
 		/*
 		 * lxc_logger will not move
 		 * into mount namespace of platform.
@@ -514,6 +529,11 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 	}
 	tsh_bgid_push(pid);
 	log_info->logger_pid = pid;
+	if (pvsignals_setmask(&oldmask)) {
+		pv_log(ERROR, "Unable to reset sigmask in pvloggger parent %s",
+		       strerror(errno));
+		return -1;
+	}
 	return pid;
 }
 

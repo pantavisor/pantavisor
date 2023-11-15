@@ -48,6 +48,7 @@
 #include "utils/json.h"
 #include "utils/system.h"
 #include "utils/list.h"
+#include "utils/pvsignals.h"
 #include "utils/tsh.h"
 #include "pvctl_utils.h"
 #include "bootloader.h"
@@ -763,8 +764,22 @@ static void logserver_drop_fds(struct dl_list *lst)
 
 static pid_t logserver_start_service(const char *revision)
 {
+	sigset_t oldmask;
+	if (pvsignals_block_chld(&oldmask)) {
+		pv_log(ERROR,
+		       "failed to block SIGCHLD for starting logserver: ",
+		       strerror(errno));
+		return -1;
+	}
 	logserver.pid = fork();
 	if (logserver.pid == 0) {
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask of logserver child: %s",
+			       strerror(errno));
+			_exit(-1);
+		}
+
 		pv_wdt_stop();
 
 		if (logserver.rev)
@@ -790,6 +805,11 @@ static pid_t logserver_start_service(const char *revision)
 		logserver_drop_fds(&logserver.tmplst);
 
 		_exit(EXIT_SUCCESS);
+	}
+
+	if (pvsignals_setmask(&oldmask)) {
+		pv_log(ERROR, "Unable to reset sigmask in logserver parent: %s",
+		       strerror(errno));
 	}
 
 	return logserver.pid;
