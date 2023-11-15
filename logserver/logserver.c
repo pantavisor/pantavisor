@@ -48,6 +48,7 @@
 #include "utils/json.h"
 #include "utils/system.h"
 #include "utils/list.h"
+#include "utils/tsh.h"
 #include "pvctl_utils.h"
 #include "bootloader.h"
 #include "config.h"
@@ -804,6 +805,7 @@ static void logserver_start(const char *revision)
 		if (logserver.pid > 0) {
 			pv_log(DEBUG, "started log service with pid %d",
 			       (int)logserver.pid);
+			tsh_bgid_push(logserver.pid);
 		} else {
 			pv_log(ERROR, "unable to start log service");
 		}
