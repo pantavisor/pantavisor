@@ -800,12 +800,6 @@ static pid_t logserver_start_service(const char *revision)
 		_exit(EXIT_SUCCESS);
 	}
 
-	tsh_bgid_push(logserver.pid);
-	if (pvsignals_setmask(&oldmask)) {
-		pv_log(ERROR, "Unable to reset sigmask in logserver parent: %s",
-		       strerror(errno));
-	}
-
 	if (pvsignals_setmask(&oldmask)) {
 		pv_log(ERROR, "Unable to reset sigmask in logserver parent: %s",
 		       strerror(errno));
