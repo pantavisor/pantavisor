@@ -528,7 +528,6 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 								  platform->name));
 		_exit(0);
 	}
-	tsh_bgid_push(pid);
 	log_info->logger_pid = pid;
 	if (pvsignals_setmask(&oldmask)) {
 		pv_log(ERROR, "Unable to reset sigmask in pvloggger parent %s",

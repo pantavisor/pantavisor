@@ -153,7 +153,7 @@ static void signal_handler(int signal)
 		return;
 
 	while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0) {
-		if (pv_init_is_daemon(pid)) {
+		if (getpid() == 1 && pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
 			pv_init_daemon_exited(pid);
 			if (!pv_init_spawn_daemons())
@@ -162,22 +162,6 @@ static void signal_handler(int signal)
 			pv_log(WARN,
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
-		}
-		// ignore signals if not in init pid
-		// ignore signals from ssh and tsh childs
-		if (getpid() == 1 || pv_debug_is_ssh_pid(pid) ||
-		    tsh_bgid_pop(pid))
-			continue;
-
-		pv_log(ERROR,
-		       "we dont know about reaped PID and will stop pantavisor ... %d",
-		       pid);
-		pv_stop();
-
-		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
-			sync();
-			sleep(10);
-			reboot(LINUX_REBOOT_CMD_RESTART);
 		}
 	}
 }
@@ -444,6 +428,8 @@ int main(int argc, char *argv[])
 	pv_pid = fork();
 	if (pv_pid > 0)
 		goto loop;
+
+	pv_pid = getpid();
 
 	if (pv_config_get_watchdog_mode() >= WDT_STARTUP)
 		pv_wdt_start();

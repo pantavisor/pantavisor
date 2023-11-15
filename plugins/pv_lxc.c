@@ -526,7 +526,6 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	}
 
 	else if (child_pid) { /*Parent*/
-		tsh_bgid_push(child_pid);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
 			       "Unable to reset sigmask of pantavisor fork in parent: %s",
