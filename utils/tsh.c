@@ -151,6 +151,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		if (stderr_p)
 			close(stderr_p[0]);
 
+		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
 			goto exit_failure;
 		}

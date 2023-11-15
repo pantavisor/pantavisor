@@ -535,6 +535,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		close(pipefd[0]);
 		*((pid_t *)data) = -1;
 
+		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
 			goto out_container_init;
 		}

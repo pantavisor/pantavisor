@@ -773,6 +773,8 @@ static pid_t logserver_start_service(const char *revision)
 	}
 	logserver.pid = fork();
 	if (logserver.pid == 0) {
+		signal(SIGCHLD, sigchld_handler);
+		signal(SIGUSR1, sigusr1_handler);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
 			       "Unable to reset sigmask of logserver child: %s",
@@ -785,15 +787,6 @@ static pid_t logserver_start_service(const char *revision)
 		if (logserver.rev)
 			free(logserver.rev);
 		logserver.rev = strdup(revision);
-
-		struct sigaction sa;
-		memset(&sa, 0, sizeof(sa));
-
-		sa.sa_handler = sigchld_handler;
-		sigaction(SIGCHLD, &sa, NULL);
-
-		sa.sa_handler = sigusr1_handler;
-		sigaction(SIGUSR1, &sa, NULL);
 
 		pv_log(DEBUG, "starting logserver loop");
 
@@ -808,6 +801,11 @@ static pid_t logserver_start_service(const char *revision)
 	}
 
 	tsh_bgid_push(logserver.pid);
+	if (pvsignals_setmask(&oldmask)) {
+		pv_log(ERROR, "Unable to reset sigmask in logserver parent: %s",
+		       strerror(errno));
+	}
+
 	if (pvsignals_setmask(&oldmask)) {
 		pv_log(ERROR, "Unable to reset sigmask in logserver parent: %s",
 		       strerror(errno));

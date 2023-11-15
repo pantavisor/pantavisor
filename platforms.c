@@ -497,6 +497,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 		char namespace[64];
 		int ns_fd = -1;
 
+		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
 			       "Unable to reset sigmask in pvloggger child: %s",
