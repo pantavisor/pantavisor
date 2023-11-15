@@ -52,6 +52,8 @@
 #include "utils/system.h"
 #include "utils/math.h"
 #include "utils/str.h"
+#include "utils/tsh.h"
+#include "utils/pvsignals.h"
 #include "json.h"
 #include "fs.h"
 #include "buffer.h"
@@ -620,10 +622,25 @@ static pid_t ph_logger_start_push_service(char *revision)
 {
 	pid_t helper_pid = -1;
 	int sleep_secs = 0;
+	sigset_t oldmask;
+
+	if (pvsignals_block_chld(&oldmask)) {
+		pv_log(ERROR, "failed to block SIGCHLD for ph_logger helper: ",
+		       strerror(errno));
+		return -1;
+	}
 
 	helper_pid = fork();
 	if (helper_pid == 0) {
 		close(ph_logger.epoll_fd);
+		signal(SIGCHLD, SIG_DFL);
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask in ph_logger helper child: %s",
+			       strerror(errno));
+			_exit(-1);
+		}
+
 		pv_log(INFO,
 		       "Initialized push service with pid %d by process with pid %d",
 		       getpid(), getppid());
@@ -643,7 +660,16 @@ static pid_t ph_logger_start_push_service(char *revision)
 				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
 			}
 		}
+		_exit(0);
 	}
+
+	if (pvsignals_setmask(&oldmask)) {
+		pv_log(ERROR,
+		       "Unable to reset sigmask in ph_logger helper parent %s",
+		       strerror(errno));
+		return -1;
+	}
+
 	return helper_pid;
 }
 
@@ -695,9 +721,25 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 	int sleep_secs = 0;
 	int result, len;
 	char *rev;
+	sigset_t oldmask;
+
+	if (pvsignals_block_chld(&oldmask)) {
+		pv_log(ERROR,
+		       "failed to block SIGCHLD for ph_logger range service: ",
+		       strerror(errno));
+		return -1;
+	}
 
 	range_service = fork();
 	if (range_service == 0) {
+		signal(SIGCHLD, SIG_DFL);
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask in ph_logger range service child: %s",
+			       strerror(errno));
+			_exit(-1);
+		}
+
 		current_rev = ph_logger_get_max_revision(pv);
 
 		pv_log(INFO,
@@ -739,6 +781,13 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 		}
 		pv_log(INFO, "Range service stopped normally");
 		_exit(EXIT_SUCCESS);
+	}
+
+	if (pvsignals_setmask(&oldmask)) {
+		pv_log(ERROR,
+		       "Unable to reset sigmask in ph_logger range service parent %s",
+		       strerror(errno));
+		return -1;
 	}
 
 	return range_service;
