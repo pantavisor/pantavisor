@@ -117,6 +117,7 @@ static int driver_single_op(char *name, bool load, char *options)
 	snprintf(cmd, len, DRIVER_MGMT_COMMAND, name, ld, op);
 	int status = 0;
 	tsh_run(cmd, 0, &status);
+	// XXX: fix me ... waitpid in a loop for timeout to avoid dead hang in modprobe
 	status = WEXITSTATUS(status);
 	if (status != 0) {
 		pv_log(WARN, "cannot %s module %s with options: %s",

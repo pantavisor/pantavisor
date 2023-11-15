@@ -19,15 +19,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_TSH_H
-#define PV_TSH_H
 
-#include <sys/types.h>
-
-pid_t tsh_run(char *cmd, int wait, int *status);
-pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
-		 int stdout_p[], int stderr_p[]);
-int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
-		   char *err_buf, int err_size);
-
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
 #endif
+
+#include <signal.h>
+
+#include "pvsignals.h"
+
+int pvsignals_block_chld(sigset_t *oldset)
+{
+	int s;
+	sigset_t set;
+	sigemptyset(&set);
+	sigaddset(&set, SIGCHLD);
+	s = pthread_sigmask(SIG_BLOCK, &set, oldset);
+	return s;
+}
+
+int pvsignals_setmask(sigset_t *oldset)
+{
+	int s;
+	s = pthread_sigmask(SIG_SETMASK, oldset, 0);
+	return s;
+}
