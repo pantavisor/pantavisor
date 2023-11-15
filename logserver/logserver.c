@@ -807,6 +807,7 @@ static pid_t logserver_start_service(const char *revision)
 		_exit(EXIT_SUCCESS);
 	}
 
+	tsh_bgid_push(logserver.pid);
 	if (pvsignals_setmask(&oldmask)) {
 		pv_log(ERROR, "Unable to reset sigmask in logserver parent: %s",
 		       strerror(errno));
@@ -825,7 +826,6 @@ static void logserver_start(const char *revision)
 		if (logserver.pid > 0) {
 			pv_log(DEBUG, "started log service with pid %d",
 			       (int)logserver.pid);
-			tsh_bgid_push(logserver.pid);
 		} else {
 			pv_log(ERROR, "unable to start log service");
 		}
