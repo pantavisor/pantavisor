@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -37,6 +37,7 @@
 
 #include "tsh.h"
 #include "timer.h"
+#include "utils/pvsignals.h"
 
 #define TSH_MAX_LENGTH 32
 #define TSH_DELIM " \t\r\n\a"
@@ -70,6 +71,7 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 {
 	int pid = -1;
 	sigset_t blocked_sig, old_sigset;
+	sigset_t oldmask;
 	int ret = 0;
 
 	if (wait) {
@@ -79,21 +81,27 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		 * Block SIGCHLD while we want to wait on this child.
 		 * */
 		ret = sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
+	} else if (pvsignals_block_chld(&oldmask)) {
+		return -1;
 	}
+
 	pid = fork();
 
 	if (pid == -1) {
+		pvsignals_setmask(&oldmask);
+
 		if ((ret == 0) && wait)
 			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		return -1;
 	} else if (pid > 0) {
-		// In parent
 		if (wait) {
 			if (ret == 0) {
 				/* wait only if we blocked SIGCHLD */
 				waitpid(pid, status, 0);
 				sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 			}
+		} else {
+			pvsignals_setmask(&oldmask);
 		}
 		free(argv);
 	} else {
@@ -105,6 +113,14 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 			close(stdout_p[0]);
 		if (stderr_p)
 			close(stderr_p[0]);
+
+		signal(SIGCHLD, SIG_DFL);
+
+		if (wait)
+			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
+		else if (pvsignals_setmask(&oldmask)) {
+			goto exit_failure;
+		}
 
 		// dup2 things
 		while (stdin_p &&

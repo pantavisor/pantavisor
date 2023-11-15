@@ -147,24 +147,11 @@ static int other_mounts()
 static pid_t waitpids(int *wstatus)
 {
 	pid_t pid;
-	int i = 0;
-	struct pv_init_daemon *daemons = NULL;
 
-	if ((pid = waitpid(0, wstatus, WNOHANG)) > 0) {
+	if ((pid = waitpid(-1, wstatus, WNOHANG)) > 0) {
 		return pid;
 	}
 
-	daemons = pv_init_get_daemons();
-	if (!daemons)
-		return 0;
-
-	while (daemons[i].name) {
-		if ((pid = waitpid(daemons[i].pid, wstatus, WNOHANG)) > 0)
-			return daemons[i].pid;
-		if (pid < 0)
-			return pid;
-		i++;
-	}
 	return 0;
 }
 
@@ -178,7 +165,7 @@ static void signal_handler(int signal)
 
 	while ((pid = waitpids(&wstatus)) > 0) {
 		// ignore signals of 0 and db_pid
-		if (pv_init_is_daemon(pid)) {
+		if (getpid() == 1 && pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
 			pv_init_daemon_exited(pid);
 			if (!pv_init_spawn_daemons())
@@ -187,15 +174,6 @@ static void signal_handler(int signal)
 			pv_log(WARN,
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
-		}
-		if (pv_pid == 0 || (pv_debug_is_ssh_pid(pid)))
-			continue;
-		pv_stop();
-
-		if (WIFSIGNALED(wstatus) || WIFEXITED(wstatus)) {
-			sync();
-			sleep(10);
-			reboot(LINUX_REBOOT_CMD_RESTART);
 		}
 	}
 }
@@ -460,6 +438,8 @@ int main(int argc, char *argv[])
 	pv_pid = fork();
 	if (pv_pid > 0)
 		goto loop;
+
+	pv_pid = getpid();
 
 	if (pv_config_get_watchdog_mode() >= WDT_STARTUP)
 		pv_wdt_start();

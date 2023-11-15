@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2017-2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -44,6 +44,10 @@
 #include "state.h"
 #include "platforms.h"
 #include "paths.h"
+#include "utils/pvsignals.h"
+
+#define PV_VLOG __vlog
+#include "utils/tsh.h"
 
 static struct lxc_log pv_lxc_log = { .level = "DEBUG",
 				     .prefix = "init",
@@ -218,10 +222,12 @@ static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 	char value[PATH_MAX];
 
 	// remove all ilegacy cgroup allow and deny config
-	while (c->get_config_item(c, "lxc.cgroup.devices.allow", value, PATH_MAX) > 0) {
+	while (c->get_config_item(c, "lxc.cgroup.devices.allow", value,
+				  PATH_MAX) > 0) {
 		c->set_config_item(c, "lxc.cgroup.devices.allow", NULL);
 	}
-	while (c->get_config_item(c, "lxc.cgroup.devices.deny", value, PATH_MAX) > 0) {
+	while (c->get_config_item(c, "lxc.cgroup.devices.deny", value,
+				  PATH_MAX) > 0) {
 		c->set_config_item(c, "lxc.cgroup.devices.deny", NULL);
 	}
 
@@ -469,6 +475,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	char path[PATH_MAX];
 	int pipefd[2];
 	pid_t child_pid = -1;
+	sigset_t oldmask;
 	// Go to LXC config dir for platform
 	dname = strdup(conf_file);
 	dname = dirname(dname);
@@ -490,15 +497,24 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	if (pipe(pipefd))
 		goto out_failure;
 
+	if (pvsignals_block_chld(&oldmask)) {
+		goto out_failure;
+	}
+
 	child_pid = fork();
 
 	if (child_pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
+		pvsignals_setmask(&oldmask);
 		goto out_failure;
 	}
 
 	else if (child_pid) { /*Parent*/
+		if (pvsignals_setmask(&oldmask)) {
+			goto out_failure;
+		}
+
 		pid_t container_pid = -1;
 		/*Parent would read*/
 		close(pipefd[1]);
@@ -517,6 +533,12 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 		close(pipefd[0]);
 		*((pid_t *)data) = -1;
+
+		signal(SIGCHLD, SIG_DFL);
+		if (pvsignals_setmask(&oldmask)) {
+			goto out_container_init;
+		}
+
 		/*
 		 * We need this for getting the revision..
 		 */
