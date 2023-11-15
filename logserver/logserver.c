@@ -870,6 +870,7 @@ static void logserver_start(const char *running_revision)
 		if (logserver.pid > 0) {
 			pv_log(DEBUG, "started log service with pid %d",
 			       (int)logserver.pid);
+			tsh_bgid_push(logserver.pid);
 		} else {
 			pv_log(ERROR, "unable to start log service");
 		}
