@@ -50,6 +50,7 @@
 #include "utils/system.h"
 #include "utils/list.h"
 #include "utils/socket.h"
+#include "utils/tsh.h"
 #include "pvctl_utils.h"
 #include "bootloader.h"
 #include "config.h"
@@ -853,6 +854,8 @@ static pid_t logserver_start_service(const char *running_revision)
 
 		_exit(EXIT_SUCCESS);
 	}
+
+	tsh_bgid_push(logserver.pid);
 
 	return logserver.pid;
 }
