@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2023 Pantacor Ltd.
+ * Copyright (c) 2023 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,15 +19,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_TSH_H
-#define PV_TSH_H
+#ifndef PV_SIGNALS_H
+#define PV_SIGNALS_H
 
 #include <sys/types.h>
 
-pid_t tsh_run(char *cmd, int wait, int *status);
-pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
-		 int stdout_p[], int stderr_p[]);
-int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
-		   char *err_buf, int err_size);
+int pvsignals_block_chld(sigset_t *oldset);
+int pvsignals_setmask(sigset_t *oldset);
 
 #endif

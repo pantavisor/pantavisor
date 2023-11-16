@@ -37,6 +37,7 @@
 
 #include "tsh.h"
 #include "timer.h"
+#include "utils/pvsignals.h"
 
 #define TSH_MAX_LENGTH 32
 #define TSH_DELIM " \t\r\n\a"
@@ -65,47 +66,12 @@ static char **_tsh_split_cmd(char *cmd)
 	return ts;
 }
 
-#define TSH_BGPIDS_SIZE 128
-
-pid_t bgpids[TSH_BGPIDS_SIZE];
-int bgid_init = 0;
-
-int tsh_bgid_push(pid_t pid)
-{
-	int i = 0;
-	if (!bgid_init) {
-		memset(bgpids, '\0', sizeof(bgpids));
-		bgid_init = 1;
-	}
-	while (bgpids[i]) {
-		i++;
-	}
-	if (i >= TSH_BGPIDS_SIZE)
-		return -1;
-	bgpids[i] = pid;
-	return 0;
-}
-
-int tsh_bgid_pop(pid_t pid)
-{
-	if (!bgid_init) {
-		memset(bgpids, '\0', sizeof(bgpids));
-		bgid_init = 1;
-	}
-	for (int i = 0; i < TSH_BGPIDS_SIZE; i++) {
-		if (bgpids[i] == pid) {
-			bgpids[i] = 0;
-			return 1;
-		}
-	}
-	return 0;
-}
-
 static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		       int stdout_p[], int stderr_p[])
 {
 	int pid = -1;
 	sigset_t blocked_sig, old_sigset;
+	sigset_t oldmask;
 	int ret = 0;
 
 	if (wait) {
@@ -115,22 +81,27 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		 * Block SIGCHLD while we want to wait on this child.
 		 * */
 		ret = sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
+	} else if (pvsignals_block_chld(&oldmask)) {
+		return -1;
 	}
+
 	pid = fork();
 
 	if (pid == -1) {
+		pvsignals_setmask(&oldmask);
+
 		if ((ret == 0) && wait)
 			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		return -1;
 	} else if (pid > 0) {
-		// In parent add to background pool for reaper
-		tsh_bgid_push(pid);
 		if (wait) {
 			if (ret == 0) {
 				/* wait only if we blocked SIGCHLD */
 				waitpid(pid, status, 0);
 				sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 			}
+		} else {
+			pvsignals_setmask(&oldmask);
 		}
 		free(argv);
 	} else {
@@ -143,7 +114,13 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 		if (stderr_p)
 			close(stderr_p[0]);
 
-		sigprocmask(SIG_SETMASK, &old_sigset, NULL);
+		signal(SIGCHLD, SIG_DFL);
+
+		if (wait)
+			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
+		else if (pvsignals_setmask(&oldmask)) {
+			goto exit_failure;
+		}
 
 		// dup2 things
 		while (stdin_p &&
