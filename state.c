@@ -1225,13 +1225,16 @@ bool pv_state_validate_checksum(struct pv_state *s)
 {
 	struct pv_object *o;
 	struct pv_json *j;
+	char *validate_list = NULL;
+	bool ret = false;
 
 	if (getenv("pv_quickboot") || !pv_config_get_secureboot_checksum()) {
 		pv_log(DEBUG, "state objects and JSONs checksum disabled");
-		return true;
+		ret = true;
+		goto out;
 	}
 
-	char *validate_list = _pv_state_get_novalidate_list(s->rev);
+	validate_list = _pv_state_get_novalidate_list(s->rev);
 	if (validate_list)
 		pv_log(DEBUG, "no validation list is: %s", validate_list);
 
@@ -1243,7 +1246,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 			     o->name, o->id) >= ARRAY_LEN(needle)) {
 			pv_log(ERROR, "too long filename: for pv state: %d",
 			       strlen(o->name));
-			return false;
+			goto out;
 		}
 
 		if (validate_list && strstr(validate_list, needle)) {
@@ -1258,7 +1261,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 			pv_log(ERROR,
 			       "trails object %s with checksum %s failed",
 			       o->name, o->id);
-			return false;
+			goto out;
 		}
 	}
 	pv_objects_iter_end;
@@ -1269,12 +1272,16 @@ bool pv_state_validate_checksum(struct pv_state *s)
 							   j->value)) {
 			pv_log(ERROR, "json %s with value %s failed", j->name,
 			       j->value);
-			return false;
+			goto out;
 		}
 	}
 	pv_objects_iter_end;
 
-	return true;
+	ret = true;
+out:
+	if (validate_list)
+		free(validate_list);
+	return ret;
 }
 
 int pv_state_interpret_signal(struct pv_state *s, const char *name,
