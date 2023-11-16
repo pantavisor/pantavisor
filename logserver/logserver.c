@@ -291,10 +291,8 @@ static void logserver_rename_update(const char *rev)
 	char path_perm[PATH_MAX];
 	pv_paths_storage_trail_pv_file(path_perm, PATH_MAX, rev, LOGS_FNAME);
 
-	if (pv_fs_path_rename(path_tmp, path_perm) < 0) {
-		pv_log(WARN, "could not rename '%s' to '%s': %s", path_tmp,
-		       path_perm, strerror(errno));
-	}
+	// we rename the log.tmp file into the definitive one if it exists
+	pv_fs_path_rename(path_tmp, path_perm);
 }
 
 static int logserver_process_cmd(const struct logserver_log *log,
