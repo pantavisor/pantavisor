@@ -500,14 +500,15 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 
 	pv_paths_storage_trail_file(path, PATH_MAX, rev, name);
 	buf = pv_fs_file_load(path, 0);
-
 	if (!buf) {
 		pv_log(ERROR, "could not load %s, %s", path, strerror(errno));
 		return false;
 	}
 
 	pv_log(DEBUG, "validating value for json %s", path);
-	return pv_str_matches(val, strlen(val), buf, strlen(buf));
+	bool ret = pv_str_matches(val, strlen(val), buf, strlen(buf));
+	free(buf);
+	return ret;
 }
 
 void pv_storage_set_active(struct pantavisor *pv)
@@ -972,15 +973,12 @@ err:
 
 char *pv_storage_get_state_json(const char *rev)
 {
-	char *res;
 	char path[PATH_MAX];
 
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
 	pv_log(DEBUG, "reading state from: '%s'", path);
 
-	res = pv_fs_file_load(path, 0);
-
-	return res;
+	return pv_fs_file_load(path, 0);
 }
 
 bool pv_storage_verify_state_json(const char *rev, char *msg,

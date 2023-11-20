@@ -301,6 +301,8 @@ err:
 	}
 
 out:
+	if (pvs)
+		free(pvs);
 	if (json)
 		free(json);
 	if (typ)
