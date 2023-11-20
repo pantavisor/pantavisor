@@ -35,6 +35,7 @@ typedef enum {
 	CMD_LOCAL_APPLY = 6,
 	CMD_MAKE_FACTORY = 7,
 	CMD_RUN_GC = 8,
+	CMD_ENABLE_SSH = 9,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 
@@ -59,7 +60,8 @@ pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 					 "LOCAL_RUN",
 					 "LOCAL_APPLY",
 					 "MAKE_FACTORY",
-					 "RUN_GC" };
+					 "RUN_GC",
+					 "ENABLE_SSH" };
 	return strings[op];
 }
 
