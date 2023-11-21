@@ -502,6 +502,10 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 			free(value);
 			value = 0;
 		}
+		if (disk) {
+			free(disk);
+			disk = NULL;
+		}
 		k++;
 	}
 	jsmnutil_tokv_free(keys);
@@ -1712,6 +1716,7 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 		    !strncmp("bsp/drivers.json", buf + (*k)->start, n) ||
 		    !strncmp("disks.json", buf + (*k)->start, n) ||
 		    !strncmp("groups.json", buf + (*k)->start, n) ||
+		    !strncmp("device.json", buf + (*k)->start, n) ||
 		    !strncmp("#spec", buf + (*k)->start, n)) {
 			k++;
 			continue;

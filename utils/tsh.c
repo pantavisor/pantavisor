@@ -94,7 +94,6 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 			sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		return -1;
 	} else if (pid > 0) {
-		// In parent add to background pool for reaper
 		if (wait) {
 			if (ret == 0) {
 				/* wait only if we blocked SIGCHLD */

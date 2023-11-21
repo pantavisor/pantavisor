@@ -144,6 +144,17 @@ static int other_mounts()
 	return 0;
 }
 
+static pid_t waitpids(int *wstatus)
+{
+	pid_t pid;
+
+	if ((pid = waitpid(-1, wstatus, WNOHANG)) > 0) {
+		return pid;
+	}
+
+	return 0;
+}
+
 static void signal_handler(int signal)
 {
 	pid_t pid = 0;
@@ -152,7 +163,7 @@ static void signal_handler(int signal)
 	if (signal != SIGCHLD)
 		return;
 
-	while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0) {
+	while ((pid = waitpids(&wstatus)) > 0) {
 		if (getpid() == 1 && pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
 			pv_init_daemon_exited(pid);

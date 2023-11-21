@@ -100,7 +100,7 @@ struct pv_platform {
 	bool updated;
 	bool automodfw; // auto mount modfw
 	struct timer timer_status_goal;
-	struct dl_list drivers;
+	struct dl_list drivers; // pv_platform_driver
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*
