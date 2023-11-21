@@ -1786,9 +1786,6 @@ out:
 static struct pv_state *system1_parse_validate(struct pv_state *this,
 					       const char *buf)
 {
-	// copy buffer
-	this->json = strdup(buf);
-
 	system1_link_object_json_platforms(this);
 
 	if (pv_state_validate(this))

@@ -129,9 +129,6 @@ void pv_state_free(struct pv_state *s)
 	pv_jsons_empty(s);
 	pv_state_empty_groups(s);
 
-	if (s->json)
-		free(s->json);
-
 	free(s);
 }
 

@@ -326,9 +326,6 @@ struct pv_state *multi1_parse(struct pv_state *this, const char *buf)
 	}
 	jsmnutil_tokv_free(keys);
 
-	// copy buffer
-	this->json = strdup(buf);
-
 	pv_state_print(this);
 
 	// remove platforms that have no loaded data
