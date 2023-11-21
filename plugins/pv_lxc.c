@@ -169,54 +169,6 @@ static int pv_setup_lxc_log(struct pv_log_info *pv_log_i, const char *plat_name,
 	return 0;
 }
 
-static int pv_setup_config_bindmounts(struct lxc_container *c, char *srcdir,
-				      char *basedir)
-{
-	char path[512];
-	struct dirent *dp;
-	struct stat st;
-
-	if (!basedir)
-		basedir = srcdir;
-
-	DIR *dir = opendir(srcdir);
-
-	// Unable to open directory stream
-	if (!dir)
-		return 0;
-
-	while ((dp = readdir(dir)) != NULL) {
-		if (strcmp(dp->d_name, ".") != 0 &&
-		    strcmp(dp->d_name, "..") != 0) {
-			// Construct new path from our base path
-			strcpy(path, srcdir);
-			strcat(path, "/");
-			strcat(path, dp->d_name);
-
-			if (!stat(path, &st) &&
-			    (!pv_setup_config_bindmounts(c, path, basedir))) {
-				// add the lxc config
-				char *inpath;
-				char mountstr[PATH_MAX];
-
-				inpath = path + strlen(basedir);
-
-				while (inpath[0] == '/')
-					inpath++;
-
-				sprintf(mountstr,
-					"%s %s none bind,rw,create=file 0 0",
-					path, inpath);
-				c->set_config_item(c, "lxc.mount.entry",
-						   mountstr);
-			}
-		}
-	}
-
-	closedir(dir);
-	return 1;
-}
-
 static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 {
 	// only for cgroup unified
@@ -241,6 +193,35 @@ static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 	c->set_config_item(c, "lxc.cgroup2.devices.allow", "a");
 }
 
+static char *insrchr(char *path, int n, char chr, char *seed)
+{
+	char *i = strrchr(path, chr);
+	if (!i)
+		return NULL;
+
+	int sl = strlen(seed);
+	int pl = strlen(path);
+
+	*i = 0;
+	int tn = strlen(i + 1);
+	*i = chr;
+
+	// does not fit in?
+	if (pl + sl + 2 >= n)
+		return NULL;
+
+	// move last part to the new place
+	memcpy(i + sl + 1, i, tn + 1);
+
+	// insert seed
+	memcpy(i + 1, seed, sl);
+
+	// mark the end
+	*(path + pl + sl + 1) = 0;
+
+	return path;
+}
+
 static void pv_setup_lxc_container(struct lxc_container *c,
 				   struct pv_platform *p, const char *rev)
 {
@@ -248,7 +229,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	struct utsname uts;
 	struct stat st;
 	char tmp_cmd[] = "/tmp/cmdline-XXXXXX";
-	char path[PATH_MAX], entry[PATH_MAX * 2];
+	char path[PATH_MAX], entry[PATH_MAX * 2], seed[PATH_MAX];
 	char log_level[32];
 	c->want_daemonize(c, true);
 	c->want_close_all_fds(c, true);
@@ -257,6 +238,35 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	if (!c->get_config_item(c, "lxc.uts.name", NULL, 0)) {
 		c->set_config_item(c, "lxc.uts.name", p->name);
 	}
+	pv_log(DEBUG, "checking lxc.rootfs.mount for auto creation 1 %s",
+	       p->name);
+
+	__pv_paths_configs_file(seed, PATH_MAX, p->name);
+
+	// setting lxc.rootfs.path strips the bdev_type from the value
+	// so we have to add it here first
+	c->get_config_item(c, "lxc.rootfs.bdev_type", path, PATH_MAX);
+	ret = strlen(path);
+	path[ret] = ':';
+	path[ret + 1] = 0;
+	c->get_config_item(c, "lxc.rootfs.path", path + strlen(path), PATH_MAX - strlen(path) - 1);
+
+	ret = stat(seed, &st);
+	if (!ret && !insrchr(path, PATH_MAX, ':', seed)) {
+		pv_log(WARN,
+		       "Failed to setup configoverlay in lxc.rootfs.path %s + %s",
+		       path, seed);
+	} else if (!ret) {
+		pv_log(WARN,
+		       "Setup config overlay in lzx.rootfs.path %s + %s",
+		       path, seed);
+		c->set_config_item(c, "lxc.rootfs.path", path);
+	} else {
+		pv_log(DEBUG,
+		       "Config overlay does not exist; not changing rootfs.path %s",
+		       path);
+	}
+
 	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
 		snprintf(log_level, sizeof(log_level), "%d",
 			 pv_lxc_get_lxc_log_level());
@@ -493,9 +503,10 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	pv_log(DEBUG, "starting LXC container '%s'", p->name);
 
 	c = lxc_container_new(p->name, path);
-	if (!c)
+	if (!c) {
+		pv_log(DEBUG, "starting LXC container failed '%s'", p->name);
 		goto out_failure;
-
+	}
 	c->clear_config(c);
 	/*
 	 * For returning back the
@@ -537,19 +548,20 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		*((pid_t *)data) = container_pid;
 		close(pipefd[0]);
 	} else { /* Child process */
-		char configdir[PATH_MAX];
 
 		close(pipefd[0]);
 		*((pid_t *)data) = -1;
 
 		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
+			*((pid_t *)data) = -2;
 			goto out_container_init;
 		}
 
 		/*
 		 * We need this for getting the revision..
 		 */
+		*((pid_t *)data) = -3;
 		if (!__pv_get_instance)
 			goto out_container_init;
 
@@ -558,9 +570,12 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 			lxc_log_set_alternative_output(logfd);
 		}
 		__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
+
 		c = lxc_container_new(p->name, path);
 
+		*((pid_t *)data) = -4;
 		if (!c) {
+			pv_log(ERROR, "failed to create container struct");
 			goto out_container_init;
 		}
 		c->clear_config(c);
@@ -568,19 +583,16 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		 * Load config later which allows us to
 		 * override the log file configured by default.
 		 */
+		*((pid_t *)data) = -5;
 		if (!c->load_config(c, conf_file)) {
 			lxc_container_put(c);
-			*((pid_t *)data) = -1;
+			pv_log(DEBUG, "load config failed %s", c->name);
 			goto out_container_init;
 		}
 
 		pv_setup_lxc_container(c, p, rev);
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
-
-		// setup config bindmounts
-		__pv_paths_configs_file(configdir, PATH_MAX, p->name);
-		pv_setup_config_bindmounts(c, configdir, configdir);
 
 		c->save_config(c, NULL);
 
@@ -592,6 +604,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 			c = NULL;
 		}
 
+		*((pid_t *)data) = -6;
 		if (c)
 			*((pid_t *)data) = c->init_pid(c);
 	out_container_init:
