@@ -719,6 +719,10 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG, "run garbage collector received. Running...");
 		pv_storage_gc_run();
 		break;
+	case CMD_ENABLE_SSH:
+		pv_log(DEBUG, "enable SSH command received");
+		pv_config_override_value("debug.ssh", "1");
+		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}

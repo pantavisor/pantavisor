@@ -96,6 +96,8 @@ void pv_debug_start_ssh()
 	if (db_pid > -1)
 		return;
 
+	pv_log(DEBUG, "starting SSH server...");
+
 	if (!pv_config_get_debug_ssh_authorized_keys() ||
 	    !strcmp(pv_config_get_debug_ssh_authorized_keys(), "__default__"))
 		pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
@@ -110,12 +112,16 @@ void pv_debug_start_ssh()
 	tsh_run("ifconfig lo up", 0, NULL);
 	db_pid = tsh_run(dbcmd, 0, NULL);
 
+	pv_log(DEBUG, "SSH server started with pid %d", db_pid);
+
 	free(dbcmd);
 }
 
 void pv_debug_stop_ssh()
 {
 	if (db_pid > -1) {
+		pv_log(DEBUG, "stopping SSH server with pid %d...", db_pid);
+
 		sigset_t blocked_sig, old_sigset;
 		int status = 0;
 		sigemptyset(&blocked_sig);
@@ -128,6 +134,8 @@ void pv_debug_stop_ssh()
 			waitpid(db_pid, &status, 0);
 		sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 		db_pid = -1;
+
+		pv_log(DEBUG, "SSH server stopped");
 	}
 }
 
