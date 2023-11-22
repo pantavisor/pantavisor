@@ -89,7 +89,6 @@ LOCAL_SRC_FILES := debug.c \
 			utils/fs.c \
 			utils/pvsignals.c \
 			utils/socket.c \
-			utils/pvsignals.c \
 			jsons.c \
 			pantahub.c \
 			updater.c \
