@@ -51,6 +51,7 @@
 #include "init.h"
 #include "addons.h"
 #include "state.h"
+#include "jsons.h"
 #include "tsh.h"
 #include "signature.h"
 #include "paths.h"
@@ -779,68 +780,18 @@ void pv_storage_init_trail_pvr()
 
 int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 {
-	int fd = -1, n, tokc;
 	int ret = 0;
-	char *buf = 0, *key = 0, *tmp_k = 0, *ext = 0;
-	char *value = 0, *tmp_val = 0, *file = 0, *dir = 0;
-	char path[PATH_MAX];
 	struct stat st;
-	jsmntok_t *tokv = 0;
-	jsmntok_t **k, **keys;
+	char path[PATH_MAX];
+	char *file = 0, *dir = 0;
 
 	if (!pv || !s)
 		goto out;
 
-	buf = strdup(s->json);
-	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
-	if (ret < 0)
-		goto out;
-
-	keys = jsmnutil_get_object_keys(buf, tokv);
-	k = keys;
-
-	while (*k) {
-		n = (*k)->end - (*k)->start + 1;
-
-		// copy key
-		tmp_k = realloc(key, n + 1);
-		if (tmp_k) {
-			key = tmp_k;
-		} else {
-			ret = 0;
-			goto out;
-		}
-
-		key[n] = 0;
-		snprintf(key, n, "%s", buf + (*k)->start);
-		ext = strrchr(key, '.');
-		if (!ext || strcmp(ext, ".json")) {
-			k++;
-			continue;
-		}
-
-		// copy value
-		n = (*k + 1)->end - (*k + 1)->start + 1;
-		tmp_val = realloc(value, n + 1);
-
-		if (tmp_val) {
-			value = tmp_val;
-		} else {
-			ret = 0;
-			goto out;
-		}
-
-		value[n] = 0;
-		snprintf(value, n, "%s", buf + (*k + 1)->start);
-
-		// also skip unpacking this if json is a sha256 hex encoded string
-		if ((*k + 1)->type == JSMN_STRING &&
-		    pv_is_sha256_hex_string(value)) {
-			k++;
-			continue;
-		}
-
-		pv_paths_storage_trail_file(path, PATH_MAX, s->rev, key);
+	struct pv_json *j, *j_tmp;
+	dl_list_for_each_safe(j, j_tmp, &s->jsons, struct pv_json, list)
+	{
+		pv_paths_storage_trail_file(path, PATH_MAX, s->rev, j->name);
 		if (stat(path, &st) == 0)
 			goto out;
 
@@ -850,29 +801,14 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 			pv_fs_mkdir_p(dir, 0755);
 		free(file);
 
-		pv_log(DEBUG, "saving json %s", key);
-		if (pv_fs_file_save(path, value, 0644) < 0)
+		pv_log(DEBUG, "saving json %s", j->name);
+		if (pv_fs_file_save(path, j->value, 0644) < 0)
 			pv_log(WARN, "could not save file %s: %s", path,
 			       strerror(errno));
-
-		k++;
 	}
-	jsmnutil_tokv_free(keys);
 
 	ret = 1;
-
 out:
-	if (buf)
-		free(buf);
-	if (tokv)
-		free(tokv);
-	if (fd > 0)
-		close(fd);
-	if (key)
-		free(key);
-	if (value)
-		free(value);
-
 	return ret;
 }
 

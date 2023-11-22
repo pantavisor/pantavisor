@@ -874,6 +874,16 @@ send_feedback:
 		goto out;
 	}
 
+	// make sure target directories exist
+	char path[PATH_MAX];
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, update->rev, "");
+	pv_fs_mkdir_p(path, 0755);
+
+	// install state.json for new rev
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
+	if (pv_fs_file_save(path, state, 0644) < 0)
+		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
+
 	// if an applied update is staged, reset it
 	if (pv->update && pv->update->status == UPDATE_APPLIED)
 		pv_update_finish(pv);
@@ -1213,6 +1223,12 @@ static int trail_put_objects(struct pantavisor *pv)
 
 static int trail_first_boot(struct pantavisor *pv)
 {
+	char *json = pv_storage_get_state_json(pv->state->rev);
+	if (!json) {
+		pv_log(ERROR, "Could not read state json");
+		return -1;
+	}
+
 	trest_request_ptr req;
 	trest_response_ptr res;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
@@ -1220,17 +1236,19 @@ static int trail_first_boot(struct pantavisor *pv)
 	status = trest_update_auth(pv->remote->client);
 	if (status != TREST_AUTH_STATUS_OK) {
 		pv_log(INFO, "cannot update auth token");
+		free(json);
 		return -1;
 	}
 
 	// first upload all objects
 	if (trail_put_objects(pv) > 0) {
 		pv_log(DEBUG, "error syncing objects on first boot");
+		free(json);
 		return -1;
 	}
 
-	req = trest_make_request(THTTP_METHOD_POST, "/trails/",
-				 pv->state->json);
+	req = trest_make_request(THTTP_METHOD_POST, "/trails/", json);
+
 	res = trest_do_json_request(pv->remote->client, req);
 	if (!res) {
 		pv_log(WARN, "POST /trails/ could not be initialized");
@@ -1250,6 +1268,7 @@ static int trail_first_boot(struct pantavisor *pv)
 		trest_request_free(req);
 	if (res)
 		trest_response_free(res);
+	free(json);
 
 	return 0;
 }
@@ -1957,7 +1976,6 @@ int pv_update_install(struct pantavisor *pv)
 	int ret = -1;
 	struct pv_update *update = pv->update;
 	struct pv_state *pending = pv->update->pending;
-	char path[PATH_MAX];
 
 	if (!pv || !pv->state || !pv->update || !pv->update->pending) {
 		pv_log(WARN, "uninitialized state or update");
@@ -1966,22 +1984,12 @@ int pv_update_install(struct pantavisor *pv)
 
 	pv_log(DEBUG, "installing update...");
 
-	// make sure target directories exist
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, update->rev, "");
-	pv_fs_mkdir_p(path, 0755);
-
 	ret = trail_link_objects(pv);
 	if (ret < 0) {
 		pv_log(ERROR, "unable to link objects to relative path");
 		pv_update_set_status(pv->update, UPDATE_INTERNAL_ERROR);
 		goto out;
 	}
-
-	// install state.json for new rev
-	pv_paths_storage_trail_pvr_file(path, PATH_MAX, update->rev,
-					JSON_FNAME);
-	if (pv_fs_file_save(path, pending->json, 0644) < 0)
-		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
 
 	if (!pv_storage_meta_expand_jsons(pv, pending)) {
 		pv_log(ERROR,
