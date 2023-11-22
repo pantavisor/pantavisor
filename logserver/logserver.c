@@ -826,7 +826,6 @@ static pid_t logserver_start_service(const char *running_revision)
 {
 	sigset_t oldmask;
 	logserver.cmd_pid = getpid();
-	sigset_t oldmask;
 	if (pvsignals_block_chld(&oldmask)) {
 		pv_log(ERROR,
 		       "failed to block SIGCHLD for starting logserver: ",
