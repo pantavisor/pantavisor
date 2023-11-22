@@ -104,6 +104,7 @@ static int parse_one_driver(struct pv_state *s, char *buf)
 			pv_log(WARN, "wrong alias count, not including");
 			free(value);
 			free(key);
+			free(tokv_t);
 			k++;
 			continue;
 		}
@@ -140,10 +141,16 @@ static int parse_one_driver(struct pv_state *s, char *buf)
 			free(value);
 			value = 0;
 		}
+		if (tokv_t) {
+			free(tokv_t);
+			tokv_t = NULL;
+		}
 		k++;
 	}
 	ret = 1;
 out:
+	if (tokv)
+		free(tokv);
 	jsmnutil_tokv_free(keys);
 
 	return ret;
@@ -207,6 +214,7 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 				free(key);
 				free(value);
 				free(buf);
+				free(tokv);
 				jsmnutil_tokv_free(keys);
 				return 0;
 			}
@@ -227,6 +235,8 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 
 	if (buf)
 		free(buf);
+	if (tokv)
+		free(tokv);
 
 	return 1;
 }
@@ -267,7 +277,7 @@ static int parse_disks(struct pv_state *s, char *value)
 {
 	int tokc, size, ret = 1;
 	char *str = NULL;
-	jsmntok_t *tokv, *t;
+	jsmntok_t *tokv, *t, *diskv = NULL;
 
 	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
 		pv_log(ERROR, "wrong format filter");
@@ -283,7 +293,6 @@ static int parse_disks(struct pv_state *s, char *value)
 	t = tokv + 1;
 	while ((str = pv_json_array_get_one_str(value, &size, &t))) {
 		struct pv_disk *d;
-		jsmntok_t *diskv;
 		int diskc;
 
 		if (jsmnutil_parse_json(str, &diskv, &diskc) <= 0) {
@@ -294,7 +303,6 @@ static int parse_disks(struct pv_state *s, char *value)
 		d = pv_disk_add(&s->disks);
 		if (!d) {
 			pv_log(ERROR, "cannot add new disk");
-			free(diskv);
 			goto out;
 		}
 
@@ -332,11 +340,15 @@ static int parse_disks(struct pv_state *s, char *value)
 		// this is the number of keys + values
 		t = t + (jsmnutil_object_key_count(str, diskv) * 2);
 
-		free(diskv);
-		diskv = NULL;
+		if (diskv) {
+			free(diskv);
+			diskv = NULL;
+		}
 
-		free(str);
-		str = NULL;
+		if (diskv) {
+			free(str);
+			str = NULL;
+		}
 	}
 
 	ret = 0;
@@ -344,7 +356,8 @@ static int parse_disks(struct pv_state *s, char *value)
 out:
 	if (str)
 		free(str);
-
+	if (diskv)
+		free(diskv);
 	if (tokv)
 		free(tokv);
 
@@ -502,6 +515,10 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 			free(value);
 			value = 0;
 		}
+		if (tokv_t) {
+			free(tokv_t);
+			tokv_t = NULL;
+		}
 		if (disk) {
 			free(disk);
 			disk = NULL;
@@ -509,6 +526,9 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		k++;
 	}
 	jsmnutil_tokv_free(keys);
+
+	if (tokv)
+		free(tokv);
 
 	return 1;
 }
