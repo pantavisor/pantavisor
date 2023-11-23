@@ -164,7 +164,6 @@ static void signal_handler(int signal)
 		return;
 
 	while ((pid = waitpids(&wstatus)) > 0) {
-		// ignore signals of 0 and db_pid
 		if (getpid() == 1 && pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
 			pv_init_daemon_exited(pid);

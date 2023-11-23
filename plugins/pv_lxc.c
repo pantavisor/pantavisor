@@ -517,6 +517,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		goto out_failure;
 
 	if (pvsignals_block_chld(&oldmask)) {
+		pv_log(ERROR,
+		       "failed to block SIGCHLD for starting pantavisor: ",
+		       strerror(errno));
 		goto out_failure;
 	}
 
@@ -525,12 +528,19 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	if (child_pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
-		pvsignals_setmask(&oldmask);
+		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask of pantavisor fork in failed fork: %s",
+			       strerror(errno));
+		}
 		goto out_failure;
 	}
 
 	else if (child_pid) { /*Parent*/
 		if (pvsignals_setmask(&oldmask)) {
+			pv_log(ERROR,
+			       "Unable to reset sigmask of pantavisor fork in parent: %s",
+			       strerror(errno));
 			goto out_failure;
 		}
 
@@ -555,6 +565,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
 			*((pid_t *)data) = -2;
+			pv_log(ERROR,
+			       "Unable to reset sigmask of pantavisor fork in child %s",
+			       strerror(errno));
 			goto out_container_init;
 		}
 
