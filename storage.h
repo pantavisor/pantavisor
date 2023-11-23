@@ -44,7 +44,7 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress);
 char *pv_storage_get_rev_progress(const char *rev);
 void pv_storage_init_trail_pvr(void);
 void pv_storage_rm_rev(const char *rev);
-void pv_storage_set_active(struct pantavisor *pv);
+void pv_storage_set_active_rev(void);
 int pv_storage_update_factory(const char *rev);
 int pv_storage_make_config(struct pantavisor *pv);
 bool pv_storage_is_revision_local(const char *rev);
