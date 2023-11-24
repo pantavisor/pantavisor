@@ -713,7 +713,7 @@ out:
 	return json;
 }
 
-void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
+void pv_storage_set_rev_done(const char *rev)
 {
 	char path[PATH_MAX];
 
@@ -723,6 +723,15 @@ void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev)
 	if (pv_fs_file_save(path, "", 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
+}
+
+bool pv_storage_is_rev_done(const char *rev)
+{
+	char path[PATH_MAX];
+
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, DONE_FNAME);
+
+	return pv_fs_path_exist(path);
 }
 
 void pv_storage_set_rev_progress(const char *rev, const char *progress)

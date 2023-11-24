@@ -59,6 +59,7 @@ struct pv_state {
 	bool using_runlevels;
 	int tryonce;
 	bool local;
+	bool done;
 };
 
 struct pv_state *pv_state_new(const char *rev, state_spec_t spec);

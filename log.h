@@ -30,6 +30,19 @@
 #include "pantavisor.h"
 #include <stdarg.h>
 
+#ifdef DEBUG
+#define WARN_ONCE(msg, args...)                                                \
+	do {                                                                   \
+		static bool __warned = false;                                  \
+		if (!__warned) {                                               \
+			pv_log(WARN, msg, ##args);                             \
+			__warned = true;                                       \
+		}                                                              \
+	} while (0)
+#else
+#define WARN_ONCE(msg, args...)
+#endif
+
 void exit_error(int err, char *msg) __attribute__((__noreturn__));
 
 enum log_level {

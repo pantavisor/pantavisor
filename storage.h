@@ -39,7 +39,8 @@ char *pv_storage_get_state_json(const char *rev);
 bool pv_storage_verify_state_json(const char *rev, char *msg,
 				  unsigned int msg_len);
 
-void pv_storage_set_rev_done(struct pantavisor *pv, const char *rev);
+void pv_storage_set_rev_done(const char *rev);
+bool pv_storage_is_rev_done(const char *rev);
 void pv_storage_set_rev_progress(const char *rev, const char *progress);
 char *pv_storage_get_rev_progress(const char *rev);
 void pv_storage_init_trail_pvr(void);

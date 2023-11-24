@@ -73,6 +73,7 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->bsp.drivers);
 		s->using_runlevels = false;
 		s->local = false;
+		s->done = false;
 	}
 
 	return s;
@@ -305,6 +306,7 @@ void pv_state_print(struct pv_state *s)
 		if (j->plat)
 			pv_log(DEBUG, "  platform: '%s'", j->plat->name);
 	}
+	pv_log(DEBUG, "done=%d", s->done);
 }
 
 static int pv_state_set_default_groups(struct pv_state *s)

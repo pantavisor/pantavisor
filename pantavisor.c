@@ -265,6 +265,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	pv_update_set_factory_status();
 
+	// this might be a enum in the future, for now, we only need to know if DONE
+	pv->state->done = pv_storage_is_rev_done(pv->state->rev);
+
 	// reload remote bool after non reboot updates, when we don't load config again
 	pv->remote_mode = pv_config_get_control_remote();
 	pv->loading_objects = false;
@@ -338,6 +341,12 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		timer_current_state(&timer_updater_interval);
 	if (!tstate.fin)
 		return PV_STATE_WAIT;
+
+	if (!pv->state->done) {
+		WARN_ONCE(
+			"will not allow claiming if not running a DONE revision");
+		return PV_STATE_WAIT;
+	}
 
 	timer_start(&timer_updater_interval, pv_config_get_updater_interval(),
 		    0, RELATIV_TIMER);
@@ -722,6 +731,14 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	case CMD_ENABLE_SSH:
 		pv_log(DEBUG, "enable SSH command received");
 		pv_config_override_value("debug.ssh", "1");
+		break;
+	case CMD_GO_REMOTE:
+		pv_log(DEBUG, "go remote command received");
+		if (!pv_config_get_control_remote()) {
+			pv_log(WARN, "remote mode is disabled by config");
+			goto out;
+		}
+		pv->remote_mode = true;
 		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
