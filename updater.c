@@ -706,6 +706,8 @@ void pv_update_set_factory_status()
 
 	if (json)
 		free(json);
+
+	pv_storage_set_rev_done("0");
 }
 
 static int pv_update_load_progress(struct pv_update *update)
@@ -1421,7 +1423,8 @@ int pv_update_finish(struct pantavisor *pv)
 			goto out;
 		}
 		pv_update_set_status(u, UPDATE_DONE);
-		pv_storage_set_rev_done(pv, pv->state->rev);
+		pv_storage_set_rev_done(pv->state->rev);
+		pv->state->done = true;
 		break;
 	// UPDATED TRANSITIONS
 	case UPDATE_TESTING_NONREBOOT:

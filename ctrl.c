@@ -770,6 +770,19 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		goto error;
 	}
 
+	if (!pv_config_get_control_remote() && ((*cmd)->op == CMD_GO_REMOTE)) {
+		pv_ctrl_write_error_response(
+			req_fd, HTTP_STATUS_CONFLICT,
+			"Cannot do this operation when remote mode is disabled by config");
+		goto error;
+	}
+
+	if (pv->remote_mode && ((*cmd)->op == CMD_GO_REMOTE)) {
+		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_CONFLICT,
+					     "Already in remote mode");
+		goto error;
+	}
+
 	return 0;
 
 error:
