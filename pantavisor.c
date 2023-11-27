@@ -732,6 +732,10 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(DEBUG, "enable SSH command received");
 		pv_config_override_value("debug.ssh", "1");
 		break;
+	case CMD_DISABLE_SSH:
+		pv_log(DEBUG, "disable SSH command received");
+		pv_config_override_value("debug.ssh", "0");
+		break;
 	case CMD_GO_REMOTE:
 		pv_log(DEBUG, "go remote command received");
 		if (!pv_config_get_control_remote()) {
