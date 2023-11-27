@@ -36,7 +36,8 @@ typedef enum {
 	CMD_MAKE_FACTORY = 7,
 	CMD_RUN_GC = 8,
 	CMD_ENABLE_SSH = 9,
-	CMD_GO_REMOTE = 10,
+	CMD_DISABLE_SSH = 10,
+	CMD_GO_REMOTE = 11,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 
@@ -63,6 +64,7 @@ pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 					 "MAKE_FACTORY",
 					 "RUN_GC",
 					 "ENABLE_SSH",
+					 "DISABLE_SSH",
 					 "GO_REMOTE" };
 	return strings[op];
 }
