@@ -195,29 +195,28 @@ static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 
 static char *insrchr(char *path, int n, char chr, char *seed)
 {
-	char *i = strrchr(path, chr);
-	if (!i)
-		return NULL;
-
 	int sl = strlen(seed);
 	int pl = strlen(path);
-
-	*i = 0;
-	int tn = strlen(i + 1);
-	*i = chr;
-
 	// does not fit in?
 	if (pl + sl + 2 >= n)
 		return NULL;
 
+	char *i = strrchr(path, chr);
+	if (!i)
+		return NULL;
+	char *tn = strdup(i);
+	// we count the new : here
+	int tnl = strlen(tn);
+
 	// move last part to the new place
-	memcpy(i + sl + 1, i, tn + 1);
+	memcpy(i + sl + 1, tn, tnl);
+	free(tn);
 
 	// insert seed
 	memcpy(i + 1, seed, sl);
 
-	// mark the end
-	*(path + pl + sl + 1) = 0;
+	// mark the end, after length of original+seed+':'
+	*(path + pl + sl + 2) = 0;
 
 	return path;
 }
@@ -254,16 +253,16 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	ret = stat(seed, &st);
 	if (!ret && !insrchr(path, PATH_MAX, ':', seed)) {
 		pv_log(WARN,
-		       "Failed to setup configoverlay in lxc.rootfs.path %s + %s",
+		       "failed to setup configoverlay in lxc.rootfs.path %s + %s",
 		       path, seed);
 	} else if (!ret) {
 		pv_log(WARN,
-		       "Setup config overlay in lzx.rootfs.path %s + %s",
+		       "setup config overlay in lxc.rootfs.path %s + %s",
 		       path, seed);
 		c->set_config_item(c, "lxc.rootfs.path", path);
 	} else {
 		pv_log(DEBUG,
-		       "Config overlay does not exist; not changing rootfs.path %s",
+		       "config overlay does not exist; not changing rootfs.path %s",
 		       path);
 	}
 
