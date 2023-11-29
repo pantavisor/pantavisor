@@ -43,6 +43,7 @@
 #include "logserver_filetree.h"
 #include "logserver_singlefile.h"
 #include "logserver_update.h"
+#include "logserver_stdout.h"
 #include "logserver.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
@@ -123,12 +124,18 @@ static struct logserver logserver = {
 
 typedef struct logserver_out *(*logserver_outputs_builder_t)(void);
 
-#define LOGSERVER_MAX_OUTPUTS (5)
+#define LOGSERVER_MAX_OUTPUTS (8)
 
 static logserver_outputs_builder_t
 	logserver_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
-		logserver_null_new, logserver_singlefile_new,
-		logserver_filetree_new, logserver_null_new, logserver_update_new
+		logserver_null_new,
+		logserver_singlefile_new,
+		logserver_filetree_new,
+		logserver_null_new,
+		logserver_update_new,
+		logserver_stdout_new,
+		logserver_stdout_containers_new,
+		logserver_stdout_pantavisor_new
 	};
 
 static int logserver_log_msg_data(const struct logserver_log *log, int output)
@@ -157,31 +164,6 @@ static int pv_log(int level, char *msg, ...)
 {
 	va_list args;
 	va_start(args, msg);
-
-	if (pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) {
-		struct logserver_log log = {
-			.code = LOG_PROTOCOL_LEGACY,
-			.lvl = level,
-			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
-			.tnano = 0,
-			.time = time(NULL),
-			.plat = MODULE_NAME,
-			.src = "logserver",
-			.running_rev = NULL,
-			.updated_rev = NULL,
-			.data.buf = NULL,
-			.data.len = 0,
-		};
-
-		log.data.len = vsnprintf(NULL, 0, msg, args) + 1;
-		log.data.buf = calloc(log.data.len, sizeof(char));
-		if (!log.data.buf)
-			return 1;
-
-		vsnprintf(log.data.buf, log.data.len, msg, args);
-		logserver_utils_stdout(&log);
-		free(log.data.buf);
-	}
 
 	if (logserver.pid == 0) {
 		struct buffer *pv_buffer = pv_buffer_get(true);
@@ -1057,10 +1039,6 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	log.data.len = log_buf->size;
 
 	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
-
-	if ((pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) ||
-	    (level <= FATAL))
-		logserver_utils_stdout(&log);
 
 	if (logserver.pid < 1) {
 		pv_buffer_drop(log_buf);

@@ -156,24 +156,34 @@ static int config_get_value_bl_type(struct dl_list *config_list, char *key,
 	return value;
 }
 
-static int config_parse_log_server_outputs(char *value)
+static int config_parse_log_server_outputs(const char *value)
 {
 	char *token, *tmp;
 	int server_outputs = 0;
 
-	for (token = strtok_r(value, ",", &tmp); token;
+	char *val = strdup(value);
+
+	for (token = strtok_r(val, ",", &tmp); token;
 	     token = strtok_r(NULL, ",", &tmp)) {
-		if (!strcmp(token, "singlefile"))
+		if (!strncmp(token, "singlefile", strlen("singlefile")))
 			server_outputs |= LOG_SERVER_OUTPUT_SINGLE_FILE;
-		else if (!strcmp(token, "filetree"))
+		else if (!strncmp(token, "filetree", strlen("filetree")))
 			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
-		else if (!strcmp(token, "nullsink"))
+		else if (!strncmp(token, "nullsink", strlen("nullsink")))
 			server_outputs |= LOG_SERVER_OUTPUT_NULL_SINK;
-		else if (!strcmp(token, "stdout"))
+		else if (!strncmp(token, "stdout.containers",
+				  strlen("stdout.containers")))
+			server_outputs |= LOG_SERVER_OUTPUT_STDOUT_CONTAINERS;
+		else if (!strncmp(token, "stdout.pantavisor",
+				  strlen("stdout.pantavisor")))
+			server_outputs |= LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR;
+		else if (!strncmp(token, "stdout", strlen("stdout")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT;
 	}
 
 	server_outputs |= LOG_SERVER_OUTPUT_UPDATE;
+
+	free(val);
 
 	return server_outputs;
 }
