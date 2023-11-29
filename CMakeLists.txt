@@ -34,9 +34,15 @@ set(SOURCES  debug.c
 			logserver/logserver_singlefile.c
 			logserver/logserver_filetree.c
 			logserver/logserver_null.c
+			logserver/logserver_timestamp.c
+			logserver/logserver_timestamp.h
+			logserver/logserver_update.h
+			logserver/logserver_update.c
 			logserver/logserver.c
 			config_parser.c
 			config.c
+			daemons.c
+			daemons.h
 			pantavisor.c
 			state.c
 			group.c
@@ -44,6 +50,8 @@ set(SOURCES  debug.c
 			platforms.c
 			addons.c
 			volumes.c
+			apparmor.c
+			apparmor.h
 			signature.c
 			parser/parser.c
 			parser/parser_multi1.c
@@ -58,6 +66,22 @@ set(SOURCES  debug.c
 			utils/math.c
 			utils/timer.c
 			utils/fs.c
+			utils/pvsignals.c
+			utils/pvsignals.h
+			utils/socket.c
+			utils/socket.h
+			disk/disk.c
+			disk/disk.h
+			disk/disk_crypt.c
+			disk/disk_impl.h
+			disk/disk_swap.c
+			disk/disk_utils.c
+			disk/disk_utils.h
+			disk/disk_volume.c
+			disk/disk_volume.h
+			disk/disk_zram.c
+			disk/disk_zram_utils.c
+			disk/disk_zram_utils.h
 			jsons.c
 			pantahub.c
 			updater.c
