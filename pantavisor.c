@@ -278,6 +278,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
 		pv->state->local = true;
 		pv->remote_mode = false;
+		if (pv_config_get_control_remote_always()) {
+			pv_log(DEBUG,
+			       "remote mode forced on local revision by configuration");
+			pv->remote_mode = true;
+		}
 	}
 
 	if (!pv->remote_mode)
