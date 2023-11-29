@@ -133,20 +133,21 @@ void pv_storage_rm_rev(const char *rev)
 int pv_storage_get_subdir(const char *path, const char *prefix,
 			  struct dl_list *subdirs)
 {
-	int n, len, ret = 0;
+	int len, ret = 0;
 	char basedir[PATH_MAX];
-	struct dirent **dirs = NULL;
+	struct dirent *d = NULL;
 	struct pv_path *subdir;
+	struct pv_fs_dir *dirs = NULL;
 
 	SNPRINTF_WTRUNC(basedir, sizeof(basedir), "%s%s", path, prefix);
 
-	n = scandir(basedir, &dirs, NULL, alphasort);
-	if (n < 0)
+	dirs = pv_fs_dir_scan(basedir, NULL, NULL);
+	if (!dirs)
 		goto out;
 
-	while (n--) {
-		char *tmp = dirs[n]->d_name;
-
+	for (int i = pv_fs_dir_len(dirs) - 1; i >= 0; i--) {
+		d = pv_fs_dir_get(dirs, i);
+		char *tmp = d->d_name;
 		while (*tmp)
 			tmp++;
 
@@ -156,22 +157,20 @@ int pv_storage_get_subdir(const char *path, const char *prefix,
 		subdir = calloc(1, sizeof(struct pv_path));
 		if (!subdir) {
 			ret = -1;
-			free(dirs[n]);
 			goto out;
 		}
-
-		len = strlen(prefix) + strlen(dirs[n]->d_name) + 1;
+		len = strlen(prefix) + strlen(d->d_name) + 1;
 		subdir->path = calloc(len, sizeof(char));
-		SNPRINTF_WTRUNC(subdir->path, len, "%s%s", prefix,
-				dirs[n]->d_name);
-		free(dirs[n]);
+
+		SNPRINTF_WTRUNC(subdir->path, len, "%s%s", prefix, d->d_name);
+
 		dl_list_init(&subdir->list);
 		dl_list_add(subdirs, &subdir->list);
 	}
 
 out:
 	if (dirs)
-		free(dirs);
+		pv_fs_dir_free(dirs);
 
 	return ret;
 }

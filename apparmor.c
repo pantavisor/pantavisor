@@ -32,6 +32,7 @@
 
 #include "apparmor.h"
 #include "utils/tsh.h"
+#include "utils/fs.h"
 #include "config.h"
 #include "paths.h"
 #include "init.h"
@@ -74,18 +75,18 @@ static void run_apparmor_parser(const char *prof)
 
 static void load_all_profiles()
 {
-	struct dirent **dir = NULL;
 	char profiles_path[PATH_MAX] = { 0 };
 
 	pv_paths_etc_file(profiles_path, PATH_MAX, PV_APPARMOR_PROFILES);
-	int n = scandir(profiles_path, &dir, NULL, alphasort);
 
-	for (int i = 0; i < n; ++i) {
-		if (dir[i]->d_type == DT_REG || dir[i]->d_type == DT_LNK)
-			run_apparmor_parser(dir[i]->d_name);
-		free(dir[i]);
+	struct pv_fs_dir *dirs = pv_fs_dir_scan(profiles_path, NULL, NULL);
+	struct dirent *d = NULL;
+	while ((d = pv_fs_dir_next(dirs))) {
+		if (d->d_type == DT_REG || d->d_type == DT_LNK)
+			run_apparmor_parser(d->d_name);
 	}
-	free(dir);
+
+	pv_fs_dir_free(dirs);
 }
 
 static void load_from_list(const char *prof)

@@ -26,6 +26,19 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
+struct dirent;
+struct pv_fs_dir;
+
+struct pv_fs_dir *
+pv_fs_dir_scan(const char *path, int (*filter)(const struct dirent *),
+	       int (*compar)(const struct dirent **, const struct dirent **));
+
+int pv_fs_dir_len(struct pv_fs_dir *dirs);
+struct dirent *pv_fs_dir_get(struct pv_fs_dir *dirs, int index);
+struct dirent *pv_fs_dir_next(struct pv_fs_dir *dirs);
+void pv_fs_dir_reset_index(struct pv_fs_dir *dirs);
+void pv_fs_dir_free(struct pv_fs_dir *dirs);
+
 bool pv_fs_path_exist(const char *path);
 bool pv_fs_path_exist_timeout(const char *path, unsigned int timeout);
 bool pv_fs_path_is_directory(const char *path);
