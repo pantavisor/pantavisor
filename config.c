@@ -501,6 +501,8 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 
 	config->control.remote =
 		config_get_value_bool(&config_list, "control.remote", true);
+	config->control.remote_always = config_get_value_bool(
+		&config_list, "control.remote.always", true);
 
 	config->secureboot.mode = config_get_value_sb_mode_type(
 		&config_list, "secureboot.mode", SB_LENIENT);
@@ -1294,6 +1296,11 @@ bool pv_config_get_control_remote()
 	return pv_get_instance()->config.control.remote;
 }
 
+bool pv_config_get_control_remote_always()
+{
+	return pv_get_instance()->config.control.remote_always;
+}
+
 secureboot_mode_t pv_config_get_secureboot_mode()
 {
 	return pv_get_instance()->config.secureboot.mode;
@@ -1441,6 +1448,8 @@ char *pv_config_get_json()
 		pv_json_ser_number(&js, pv_config_get_lxc_loglevel());
 		pv_json_ser_key(&js, "control.remote");
 		pv_json_ser_bool(&js, pv_config_get_control_remote());
+		pv_json_ser_key(&js, "control.remote.always");
+		pv_json_ser_bool(&js, pv_config_get_control_remote_always());
 
 		pv_json_ser_key(&js, "creds.type");
 		pv_json_ser_string(&js, pv_config_get_creds_type());
@@ -1602,6 +1611,8 @@ void pv_config_print()
 	pv_log(INFO, "net.brmask4 = '%s'", pv_config_get_network_brmask4());
 	pv_log(INFO, "lxc.log.level = %d", pv_config_get_lxc_loglevel());
 	pv_log(INFO, "control.remote = %d", pv_config_get_control_remote());
+	pv_log(INFO, "control.remote.always = %d",
+	       pv_config_get_control_remote_always());
 	pv_log(INFO, "creds.type= '%s'", pv_config_get_creds_type());
 	pv_log(INFO, "creds.host = '%s'", pv_config_get_creds_host());
 	pv_log(INFO, "creds.port = %d", pv_config_get_creds_port());

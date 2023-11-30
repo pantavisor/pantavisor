@@ -177,6 +177,7 @@ struct pantavisor_lxc {
 
 struct pantavisor_control {
 	bool remote;
+	bool remote_always;
 };
 
 struct pantavisor_libthttp {
@@ -342,6 +343,7 @@ bool pv_config_get_log_capture_dmesg(void);
 
 int pv_config_get_lxc_loglevel(void);
 bool pv_config_get_control_remote(void);
+bool pv_config_get_control_remote_always(void);
 
 secureboot_mode_t pv_config_get_secureboot_mode(void);
 char *pv_config_get_secureboot_truststore(void);
