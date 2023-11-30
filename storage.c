@@ -259,6 +259,18 @@ static void pv_storage_print(struct pv_storage *storage)
 	       storage->real_free, storage->real_free_percentage);
 }
 
+int pv_storage_get_free_percentage(void)
+{
+	int real_free_percentage = 0;
+	struct pv_storage *storage = pv_storage_new();
+	if (storage) {
+		real_free_percentage = storage->real_free_percentage;
+		free(storage);
+	}
+
+	return real_free_percentage;
+}
+
 off_t pv_storage_get_free()
 {
 	off_t real_free = 0;

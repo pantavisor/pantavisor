@@ -466,6 +466,9 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 		LOG_SERVER_OUTPUT_FILE_TREE | LOG_SERVER_OUTPUT_UPDATE);
 	config->log.logmax = config_get_value_int(&config_list, "log.maxsize",
 						  (1 << 21)); // 2 MiB
+
+	config->log.logmax_storage =
+		config_get_value_int(&config_list, "log.maxsize.threshold", 80);
 	config->log.loglevel =
 		config_get_value_int(&config_list, "log.level", 0);
 	config->log.logsize =
@@ -620,6 +623,8 @@ static int pv_config_override_config_from_file(char *path,
 
 	config_override_value_int(&config_list, "log.maxsize",
 				  &config->log.logmax);
+	config_override_value_int(&config_list, "log.maxsize.threshold",
+				  &config->log.logmax_storage);
 	config_override_value_int(&config_list, "log.level",
 				  &config->log.loglevel);
 	config_override_value_int(&config_list, "log.buf_nitems",
@@ -1201,6 +1206,12 @@ int pv_config_get_log_logmax()
 {
 	return pv_get_instance()->config.log.logmax;
 }
+
+int pv_config_get_log_logmax_storage()
+{
+	return pv_get_instance()->config.log.logmax_storage;
+}
+
 int pv_config_get_log_loglevel()
 {
 	return pv_get_instance()->config.log.loglevel;
@@ -1468,6 +1479,8 @@ char *pv_config_get_json()
 		pv_json_ser_string(&js, pv_config_get_log_logdir());
 		pv_json_ser_key(&js, "log.maxsize");
 		pv_json_ser_number(&js, pv_config_get_log_logmax());
+		pv_json_ser_key(&js, "log.maxsize.threshold");
+		pv_json_ser_number(&js, pv_config_get_log_logmax_storage());
 		pv_json_ser_key(&js, "log.level");
 		pv_json_ser_number(&js, pv_config_get_log_loglevel());
 		pv_json_ser_key(&js, "log.buf_nitems");
@@ -1612,6 +1625,8 @@ void pv_config_print()
 	       pv_config_get_updater_commit_delay());
 	pv_log(INFO, "log.dir = '%s'", pv_config_get_log_logdir());
 	pv_log(INFO, "log.maxsize = %d", pv_config_get_log_logmax());
+	pv_log(INFO, "log.maxsize.threshold = %d",
+	       pv_config_get_log_logmax_storage());
 	pv_log(INFO, "log.level = %d", pv_config_get_log_loglevel());
 	pv_log(INFO, "log.buf_nitems = %d", pv_config_get_log_logsize());
 	pv_log(INFO, "log.push = %d", pv_config_get_log_push());
