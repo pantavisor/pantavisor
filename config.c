@@ -468,7 +468,7 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 						  (1 << 21)); // 2 MiB
 
 	config->log.logmax_storage =
-		config_get_value_int(&config_list, "log.maxsize.threshold", 80);
+		config_get_value_int(&config_list, "log.maxsize.threshold", 0);
 	config->log.loglevel =
 		config_get_value_int(&config_list, "log.level", 0);
 	config->log.logsize =
