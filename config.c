@@ -499,7 +499,7 @@ static int pv_config_load_file(char *path, struct pantavisor_config *config)
 	config->control.remote =
 		config_get_value_bool(&config_list, "control.remote", true);
 	config->control.remote_always = config_get_value_bool(
-		&config_list, "control.remote.always", true);
+		&config_list, "control.remote.always", false);
 
 	config->secureboot.mode = config_get_value_sb_mode_type(
 		&config_list, "secureboot.mode", SB_LENIENT);
