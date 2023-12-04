@@ -26,7 +26,6 @@
 #include "utils/fs.h"
 #include "log.h"
 #include "utils/json.h"
-#include "storage.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -93,9 +92,7 @@ int logserver_utils_open_logfile(const char *path)
 	if (fstat(fd, &st) != 0)
 		return fd;
 
-	if (st.st_size < pv_config_get_log_logmax() &&
-	    100 - pv_storage_get_free_percentage() <
-		    pv_config_get_log_logmax_storage())
+	if (st.st_size < pv_config_get_log_logmax())
 		return fd;
 
 	if (compress_log(path) == 0) {
