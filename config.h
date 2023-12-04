@@ -157,7 +157,6 @@ struct pantavisor_log_server {
 struct pantavisor_log {
 	char *logdir;
 	int logmax;
-	int logmax_storage;
 	int loglevel;
 	int logsize;
 	bool push;
@@ -321,7 +320,6 @@ char *pv_config_get_network_brmask4(void);
 
 char *pv_config_get_log_logdir(void);
 int pv_config_get_log_logmax(void);
-int pv_config_get_log_logmax_storage(void);
 int pv_config_get_log_loglevel(void);
 int pv_config_get_log_logsize(void);
 bool pv_config_get_log_push(void);

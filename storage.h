@@ -62,7 +62,6 @@ bool pv_storage_validate_trails_object_checksum(const char *rev,
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 					   char *val);
 
-int pv_storage_get_free_percentage(void);
 off_t pv_storage_get_free(void);
 int pv_storage_gc_run(void);
 off_t pv_storage_gc_run_needed(off_t needed);
