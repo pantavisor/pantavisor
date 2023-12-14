@@ -216,7 +216,7 @@ static char *insrchr(char *path, int n, char chr, char *seed)
 	memcpy(i + 1, seed, sl);
 
 	// mark the end, after length of original+seed+':'
-	*(path + pl + sl + 2) = 0;
+	*(path + pl + sl + 1) = 0;
 
 	return path;
 }
