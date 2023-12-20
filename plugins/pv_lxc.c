@@ -193,7 +193,7 @@ static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 	c->set_config_item(c, "lxc.cgroup2.devices.allow", "a");
 }
 
-static char *insrchr(char *path, int n, char chr, char *seed)
+static char *inschr(char *path, int n, char chr, char *seed)
 {
 	int sl = strlen(seed);
 	int pl = strlen(path);
@@ -201,7 +201,7 @@ static char *insrchr(char *path, int n, char chr, char *seed)
 	if (pl + sl + 2 >= n)
 		return NULL;
 
-	char *i = strrchr(path, chr);
+	char *i = strchr(path, chr);
 	if (!i)
 		return NULL;
 	char *tn = strdup(i);
@@ -251,7 +251,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	c->get_config_item(c, "lxc.rootfs.path", path + strlen(path), PATH_MAX - strlen(path) - 1);
 
 	ret = stat(seed, &st);
-	if (!ret && !insrchr(path, PATH_MAX, ':', seed)) {
+	if (!ret && !inschr(path, PATH_MAX, ':', seed)) {
 		pv_log(WARN,
 		       "failed to setup configoverlay in lxc.rootfs.path %s + %s",
 		       path, seed);
