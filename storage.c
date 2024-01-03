@@ -801,8 +801,9 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 	dl_list_for_each_safe(j, j_tmp, &s->jsons, struct pv_json, list)
 	{
 		pv_paths_storage_trail_file(path, PATH_MAX, s->rev, j->name);
+		// we skip saving the file if it already exists
 		if (stat(path, &st) == 0)
-			goto out;
+			continue;
 
 		file = strdup(path);
 		dir = dirname(file);
@@ -812,7 +813,7 @@ int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
 
 		pv_log(DEBUG, "saving json %s", j->name);
 		if (pv_fs_file_save(path, j->value, 0644) < 0)
-			pv_log(WARN, "could not save file %s: %s", path,
+			pv_log(ERROR, "could not save file %s: %s", path,
 			       strerror(errno));
 	}
 
