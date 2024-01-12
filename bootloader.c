@@ -83,7 +83,11 @@ int pv_bootloader_reload_pv_try()
 		pv_bootloader.pv_try = new1;
 		free(old);
 		return 0;
+	} else if (new1) {
+		pv_bootloader.pv_try = new1;
+		return 0;
 	}
+
 	return -1;
 }
 
@@ -166,7 +170,7 @@ int pv_bootloader_set_failed()
 {
 	pv_log(INFO,
 	       "setting failed revision %s not to be started after next reboot",
-	       pv_bootloader_get_try());
+	       pv_bootloader_get_try() ?  pv_bootloader_get_try() : "<NA>");
 	return pv_bootloader_unset_try();
 }
 
@@ -199,8 +203,11 @@ static int pv_bl_init()
 	}
 
 	ret = ops->init();
-	if (ret)
+	if (ret) {
 		pv_log(ERROR, "unable to initialize bl controls");
+	} else {
+		pv_log(INFO, "bootloader init done");
+	}
 
 	return ret;
 }
@@ -229,12 +236,6 @@ static int pv_bl_early_init(struct pv_init *this)
 						       len * sizeof(char));
 			SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s",
 					token + CMDLINE_OFFSET);
-		} else if (strncmp("pv_try=", token, CMDLINE_OFFSET) == 0) {
-			len = strlen(token + CMDLINE_OFFSET) + 1;
-			pv_bootloader.pv_try = realloc(pv_bootloader.pv_try,
-						       len * sizeof(char));
-			SNPRINTF_WTRUNC(pv_bootloader.pv_try, len, "%s",
-					token + CMDLINE_OFFSET);
 		}
 		token = strtok(NULL, " ");
 	}
@@ -246,6 +247,9 @@ static int pv_bl_early_init(struct pv_init *this)
 	// init boot env file
 	if (pv_bl_init() < 0)
 		return -1;
+
+	// get latest pv_try from /storage place
+	pv_bootloader_reload_pv_try();
 
 	// overload pv_done with value from boot env file
 	done = ops->get_env_key("pv_rev");

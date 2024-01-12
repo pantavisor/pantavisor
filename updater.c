@@ -1442,7 +1442,7 @@ int pv_update_finish(struct pantavisor *pv)
 		pv_update_set_status(u, UPDATE_ABORTED);
 		break;
 	default:
-		if (pv_update_can_rollback(u))
+		if (!pv_update_can_rollback(u))
 			pv_bootloader_set_failed();
 		break;
 	}
