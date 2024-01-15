@@ -178,7 +178,7 @@ static int uboot_set_env_key(char *key, char *value)
 	unsigned char old[MTD_ENV_SIZE] = { 0 };
 	unsigned char new[MTD_ENV_SIZE] = { 0 };
 	char *s, *d, *path;
-	char v[128];
+	char v[128] = { 0 };
 
 	pv_log(DEBUG, "setting boot env key %s with value %s", key, value);
 
@@ -321,4 +321,7 @@ const struct bl_ops uboot_ops = {
 	.unset_env_key = uboot_unset_env_key,
 	.get_env_key = uboot_get_env_key,
 	.flush_env = uboot_flush_env,
+	.install_update = NULL,
+	.commit_update = NULL,
+	.fail_update = NULL,
 };

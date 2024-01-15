@@ -383,11 +383,17 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	s->bsp.img.ut.fit = pv_json_get_value(buf, "fit", tokv, tokc);
 	if (!s->bsp.img.ut.fit) {
-		s->bsp.img.std.kernel =
-			pv_json_get_value(buf, "linux", tokv, tokc);
-		s->bsp.img.std.fdt = pv_json_get_value(buf, "fdt", tokv, tokc);
-		s->bsp.img.std.initrd =
-			pv_json_get_value(buf, "initrd", tokv, tokc);
+		s->bsp.img.rpiab.bootimg =
+			pv_json_get_value(buf, "rpiab", tokv, tokc);
+
+		if (!s->bsp.img.rpiab.bootimg) {
+			s->bsp.img.std.kernel =
+				pv_json_get_value(buf, "linux", tokv, tokc);
+			s->bsp.img.std.fdt =
+				pv_json_get_value(buf, "fdt", tokv, tokc);
+			s->bsp.img.std.initrd =
+				pv_json_get_value(buf, "initrd", tokv, tokc);
+		}
 	}
 	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
 	s->bsp.modules = pv_json_get_value(buf, "modules", tokv, tokc);
@@ -405,7 +411,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	}
 
 	if ((!s->bsp.img.std.kernel || !s->bsp.img.std.initrd) &&
-	    !s->bsp.img.ut.fit) {
+	    !s->bsp.img.ut.fit && !s->bsp.img.rpiab.bootimg) {
 		pv_log(ERROR,
 		       "kernel or initrd not configured in bsp/run.json. Cannot continue.",
 		       strlen(buf), buf);

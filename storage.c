@@ -897,7 +897,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 			if (link(src, dst) < 0)
 				goto err;
 		}
-	} else {
+	} else if (s->bsp.img.ut.fit) {
 		// pantavisor.fit
 		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
 					       "pantavisor.fit");
@@ -907,6 +907,30 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		pv_fs_path_remove(dst, false);
 		if (link(src, dst) < 0)
 			goto err;
+	} else if (s->bsp.img.rpiab.bootimg) {
+		// rpiboot.img[.gz]
+		if (!strcmp(s->bsp.img.rpiab.bootimg +
+				    (strlen(s->bsp.img.rpiab.bootimg) - 3),
+			    ".gz")) {
+			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
+						       "rpiboot.img.gz");
+		} else {
+			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
+						       "rpiboot.img");
+		}
+		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
+						 s->bsp.img.rpiab.bootimg);
+		pv_log(DEBUG, "installing hardlink of platform file %s to %s",
+		       src, dst);
+
+		pv_fs_path_remove(dst, false);
+		if (link(src, dst) < 0)
+			goto err;
+	} else {
+		pv_log(ERROR,
+		       "bsp type not supported. no std,fit or rpiab boot assets found for rev=%s",
+		       s->rev);
+		return -2;
 	}
 
 	pv_log(DEBUG, "linked boot assets for rev=%s", s->rev);
