@@ -1428,6 +1428,7 @@ int pv_update_finish(struct pantavisor *pv)
 		}
 		pv_update_set_status(u, UPDATE_DONE);
 		pv_storage_set_rev_done(pv->state->rev);
+		pv_bootloader_commit_update();
 		pv->state->done = true;
 		break;
 	// UPDATED TRANSITIONS
@@ -2021,6 +2022,12 @@ int pv_update_install(struct pantavisor *pv)
 	if (!pv_storage_meta_expand_jsons(pv, pending)) {
 		pv_log(ERROR,
 		       "unable to install platform and pantavisor jsons");
+		ret = -1;
+		goto out;
+	}
+
+	if (pv_bootloader_install_update(update)) {
+		pv_log(ERROR, "unable to install bootloader");
 		ret = -1;
 		goto out;
 	}

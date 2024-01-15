@@ -38,6 +38,10 @@ struct pv_bsp {
 		struct {
 			char *fit;
 		} ut;
+		struct {
+			void *padding;
+			char *bootimg;
+		} rpiab;
 	} img;
 	char *firmware;
 	char *modules;

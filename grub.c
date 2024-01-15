@@ -256,4 +256,7 @@ const struct bl_ops grub_ops = {
 	.unset_env_key = grub_unset_env_key,
 	.get_env_key = grub_get_env_key,
 	.flush_env = grub_flush_env,
+	.install_update = NULL,
+	.commit_update = NULL,
+	.fail_update = NULL,
 };

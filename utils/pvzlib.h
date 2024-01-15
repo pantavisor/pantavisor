@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2024 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,44 +19,12 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_BOOTLOADER_H
-#define PV_BOOTLOADER_H
+#ifndef PVZLIB_H
+#define PVZLIB_H
+#include <stdio.h>
 
-#include <stdbool.h>
-#include "updater.h"
-
-struct bl_ops {
-	int (*init)(void);
-
-	/* old primitive semantic */
-	int (*set_env_key)(char *key, char *value);
-	int (*unset_env_key)(char *key);
-	char *(*get_env_key)(char *key);
-	int (*flush_env)(void);
-
-	/* new semantic */
-	int (*install_update)(struct pv_update *update);
-	int (*commit_update)();
-	int (*fail_update)(struct pv_update *update);
-};
-
-void pv_bootloader_print(void);
-
-const char *pv_bootloader_get_rev(void);
-const char *pv_bootloader_get_try(void);
-const char *pv_bootloader_get_done(void);
-
-bool pv_bootloader_update_in_progress(void);
-bool pv_bootloader_trying_update(void);
-
-int pv_bootloader_set_installed(char *rev);
-int pv_bootloader_set_commited(char *rev);
-int pv_bootloader_set_failed(void);
-
-int pv_bootloader_install_update(struct pv_update *update);
-int pv_bootloader_commit_update(void);
-int pv_bootloader_fail_update(struct pv_update *update);
-
-void pv_bootloader_remove(void);
+int pv_zlib_compress(FILE *source, FILE *dest, int level);
+int pv_zlib_uncompress(FILE *source, FILE *dest);
+void pv_zlib_report_error(int ret, FILE *src, FILE *dst);
 
 #endif

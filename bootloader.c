@@ -49,6 +49,7 @@ static struct pv_bootloader pv_bootloader;
 
 extern const struct bl_ops uboot_ops;
 extern const struct bl_ops grub_ops;
+extern const struct bl_ops rpiab_ops;
 
 const struct bl_ops *ops = 0;
 
@@ -166,6 +167,30 @@ void pv_bootloader_remove()
 		free(pv_bootloader.pv_done);
 }
 
+int pv_bootloader_install_update(struct pv_update *update)
+{
+	if (ops->install_update)
+		return ops->install_update(update);
+
+	return -2;
+}
+
+int pv_bootloader_commit_update()
+{
+	if (ops->commit_update)
+		return ops->commit_update();
+
+	return -2;
+}
+
+int pv_bootloader_fail_update(struct pv_update *update)
+{
+	if (ops->fail_update)
+		return ops->fail_update(update);
+
+	return -2;
+}
+
 static int pv_bl_init()
 {
 	int ret;
@@ -174,6 +199,9 @@ static int pv_bl_init()
 	case BL_UBOOT_PLAIN:
 	case BL_UBOOT_PVK:
 		ops = &uboot_ops;
+		break;
+	case BL_RPIAB:
+		ops = &rpiab_ops;
 		break;
 	case BL_GRUB:
 		ops = &grub_ops;
