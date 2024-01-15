@@ -96,6 +96,7 @@ LOCAL_SRC_FILES := debug.c \
 			bootloader.c \
 			trestclient.c \
 			uboot.c \
+			rpiab.c \
 			grub.c \
 			storage.c \
 			metadata.c \
@@ -128,6 +129,24 @@ LOCAL_COPY_FILES := $(foreach a,$(shell cd $(LOCAL_PATH)/skel; find . -type f), 
 	pvs/trust/ca-certificates.crt:etc/pantavisor/pvs/trust/ca-certificates.crt \
 	pvs/trust/cacerts.default.pem:etc/pantavisor/pvs/trust/cacerts.default.pem \
 	defaults/groups.json:etc/pantavisor/defaults/groups.json
+
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_DESTDIR := ./
+LOCAL_MODULE := rpiab_test
+
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/utils/
+
+LOCAL_LDFLAGS := -static
+
+LOCAL_SRC_FILES := rpiab.test.c \
+			utils/timer.c \
+			utils/pvsignals.c \
+			utils/tsh.c \
+			$(NULL)
+
 
 include $(BUILD_EXECUTABLE)
 

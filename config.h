@@ -112,7 +112,7 @@ struct pantavisor_updater {
 	int commit_delay;
 };
 
-enum { BL_UBOOT_PLAIN = 0, BL_UBOOT_PVK, BL_GRUB };
+enum { BL_UBOOT_PLAIN = 0, BL_UBOOT_PVK, BL_GRUB, BL_RPIAB };
 
 struct pantavisor_bootloader {
 	int type;

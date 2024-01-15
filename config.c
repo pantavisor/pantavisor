@@ -148,6 +148,8 @@ static int config_get_value_bl_type(struct dl_list *config_list, char *key,
 
 	if (!strcmp(item, "uboot"))
 		value = BL_UBOOT_PLAIN;
+	else if (!strcmp(item, "rpiab"))
+		value = BL_RPIAB;
 	else if (!strcmp(item, "uboot-pvk"))
 		value = BL_UBOOT_PVK;
 	else if (!strcmp(item, "grub"))

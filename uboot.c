@@ -321,4 +321,7 @@ const struct bl_ops uboot_ops = {
 	.unset_env_key = uboot_unset_env_key,
 	.get_env_key = uboot_get_env_key,
 	.flush_env = uboot_flush_env,
+	.install_update = NULL,
+	.commit_update = NULL,
+	.fail_update = NULL,
 };
