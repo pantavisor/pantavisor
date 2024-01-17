@@ -217,7 +217,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// for non-reboot updates...
 		pv_log(INFO, "transitioning...");
 
-		pv_logserver_reload();
+		pv_logserver_transition(pv->update->pending->rev);
 
 		ph_logger_stop_lenient();
 		ph_logger_stop_force();
