@@ -73,24 +73,6 @@ const char *pv_bootloader_get_done()
 	return pv_bootloader.pv_done;
 }
 
-int pv_bootloader_reload_pv_try()
-{
-	char *new1;
-	new1 = ops->get_env_key("pv_try");
-	if (pv_bootloader.pv_try && new1) {
-		char *old;
-		old = pv_bootloader.pv_try;
-		pv_bootloader.pv_try = new1;
-		free(old);
-		return 0;
-	} else if (new1) {
-		pv_bootloader.pv_try = new1;
-		return 0;
-	}
-
-	return -1;
-}
-
 static int pv_bootloader_set_rev(char *rev)
 {
 	int len = strlen(rev) + 1;
@@ -170,7 +152,7 @@ int pv_bootloader_set_failed()
 {
 	pv_log(INFO,
 	       "setting failed revision %s not to be started after next reboot",
-	       pv_bootloader_get_try() ?  pv_bootloader_get_try() : "<NA>");
+	       pv_bootloader_get_try() ? pv_bootloader_get_try() : "<NA>");
 	return pv_bootloader_unset_try();
 }
 
@@ -203,11 +185,8 @@ static int pv_bl_init()
 	}
 
 	ret = ops->init();
-	if (ret) {
+	if (ret)
 		pv_log(ERROR, "unable to initialize bl controls");
-	} else {
-		pv_log(INFO, "bootloader init done");
-	}
 
 	return ret;
 }
@@ -249,7 +228,7 @@ static int pv_bl_early_init(struct pv_init *this)
 		return -1;
 
 	// get latest pv_try from /storage place
-	pv_bootloader_reload_pv_try();
+	pv_bootloader.pv_try = ops->get_env_key("pv_try");
 
 	// overload pv_done with value from boot env file
 	done = ops->get_env_key("pv_rev");
