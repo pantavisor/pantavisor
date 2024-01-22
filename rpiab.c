@@ -95,20 +95,34 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	// device tree
 
 	int wstatus;
-	size_t s;
+	size_t s, s1;
 	sigset_t oldset;
 	char autoboot_txt[513];
-	char *cmdbuf = malloc(1);
+	char *cmdbuf = NULL;
 
 	s = snprintf(cmdbuf, 0, "mcopy -n -i %s ::autoboot.txt %s",
-		     paths->bootimg[0], paths->autoboot_tmp) +
-	    1;
-	cmdbuf = realloc(cmdbuf, s * sizeof(char));
-	snprintf(cmdbuf, s, "mcopy -n -i %s ::autoboot.txt %s",
-		 paths->bootimg[0], paths->autoboot_tmp);
+		     paths->bootimg[0], paths->autoboot_tmp);
+
+	cmdbuf = realloc(cmdbuf, (s + 1) * sizeof(char));
+
+	if (!cmdbuf) {
+		pv_log(ERROR, "Out of Memory (OOM) trying to allocate cmdbuf");
+		return -1;
+	}
+
+	s1 = snprintf(cmdbuf, (s + 1), "mcopy -n -i %s ::autoboot.txt %s",
+		      paths->bootimg[0], paths->autoboot_tmp);
 
 	if (pvsignals_block_chld(&oldset)) {
 		pv_log(ERROR, "Cannot block sigchld: %s", strerror(errno));
+		free(cmdbuf);
+		return -2;
+	}
+
+	if (s1 != s) {
+		pv_log(ERROR,
+		       "Error producing cmdbuf. size does not match expected size( %d != %d)",
+		       s, s1);
 		free(cmdbuf);
 		return -2;
 	}
@@ -753,8 +767,7 @@ static int rpiab_commit_update()
 	// now we copy the file to autoboot partition
 	//
 	s = snprintf(cmdbuf, 0, "mcopy -o -i %s %s ::autoboot.txt",
-		     paths.bootimg[0],
-		     paths.autoboot_tmp) +
+		     paths.bootimg[0], paths.autoboot_tmp) +
 	    1;
 	cmdbuf = realloc(cmdbuf, s * sizeof(char));
 	snprintf(cmdbuf, s, "mcopy -o -i %s %s ::autoboot.txt",
