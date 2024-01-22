@@ -27,6 +27,14 @@ volumesrc=$2
 container=$3
 volume=$4
 
+clean_dm() {
+	local name="$1"
+	if dmsetup info -c "$name" >/dev/null 2>&1; then
+		echo "WARN: dm $name still exists"
+		dmsetup remove "$name" > /dev/null 2>&1 || true
+	fi
+}
+
 do_mount_squash() {
 	traildir=`dirname $1`
 	squashname=`basename $1`
@@ -44,6 +52,7 @@ do_mount_squash() {
 	hdev=`cat $dmmanifest | JSON.sh -l |  grep hash_device | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
 	rhash=`cat $dmmanifest | JSON.sh -l | grep root_hash | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
 
+	clean_dm "$dmname"
 	if ! veritysetup create $dmname $traildir/$ddev $traildir/$hdev $rhash; then
 		echo "ERROR: could not setup dm volume with veritysetup"
 		return 2
