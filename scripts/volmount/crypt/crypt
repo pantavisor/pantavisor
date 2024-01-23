@@ -160,6 +160,24 @@ do_dm_sanity()
 	which mkfs.ext4 &> /dev/null || exit 111
 }
 
+clean_disk()
+{
+	local type="$1"
+	local name="$2"
+
+	if [ "$type" = "caam" ]; then
+		if dmsetup info -c "$name" >/dev/null 2>&1; then
+			echo "WARN: dm $name still exists"
+			dmsetup remove "$name" > /dev/null 2>&1 || true
+		fi
+	elif [ "$type" = "dcp" ] || [ "$type" = "versatile" ]; then
+		if cryptsetup status "$name" > /dev/null 2>&1; then
+			echo "WARN: cryptdisk $1 still exists"
+			cryptsetup close "$name" > /dev/null 2>&1 || true
+		fi
+	fi
+}
+
 do_mount_disk()
 {
 	do_dm_sanity
@@ -194,6 +212,7 @@ do_mount_disk()
 	fi
 
 	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
+	clean_disk "$dm_type" "$device_name"
 	if [ $dm_type == "caam" ]; then
 		dmsetup create $device_name --table "0 $(blockdev --getsz $CAAM_LOOP) crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"
 	elif [ $dm_type == "dcp" ]; then
