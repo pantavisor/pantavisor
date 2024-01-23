@@ -41,6 +41,7 @@
 #include "state.h"
 #include "utils/fs.h"
 #include "utils/pvsignals.h"
+#include "utils/pvzlib.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
 
@@ -140,6 +141,13 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 			return -1;
 		}
 		if (wp > 0) {
+			if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus)) {
+				pv_log(DEBUG,
+				       "autoboot.txt extraxt from img failed with status %d",
+				       WEXITSTATUS(wstatus));
+				return -1;
+			}
+
 			break;
 		}
 		sleep(1);
@@ -147,7 +155,6 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	pvsignals_setmask(&oldset);
 
 	FILE *f = fopen(paths->autoboot_tmp, "r");
-
 	if (!f) {
 		pv_log(INFO,
 		       "Cannot open tryboot state on RPI: %s; falling back to uboot",
@@ -161,8 +168,11 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	if (r <= 0) {
 		pv_log(ERROR, "Cannot read %s: %s; falling back to uboot",
 		       paths->autoboot_tmp, strerror(errno));
+		fclose(f);
 		return -1;
 	}
+	fclose(f);
+
 	autoboot_txt[r] = 0;
 
 	char *peek = strstr(autoboot_txt, "[all]");
@@ -170,15 +180,16 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	peek = peek + strlen("boot_partition=");
 	char *end = peek;
 	while (*end >= '0' && *end <= '9') {
-		pv_log(DEBUG, "Autoboot.txt: D4");
 		end++;
 	}
 	char b = *end;
 	*end = 0;
 	autoboot_boot_partition = atoi(peek);
 	*end = b;
+
 	pv_log(DEBUG, "Autoboot.txt: boot partition %d",
 	       autoboot_boot_partition);
+
 	peek = strstr(autoboot_txt, "[tryboot]");
 	if (peek) {
 		peek = strstr(peek, "boot_partition=");
@@ -193,8 +204,13 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 		*end = b;
 		pv_log(DEBUG, "Autoboot.txt: try partition %d",
 		       autoboot_try_partition);
+	} else {
+		// if we have no try_partition; guess one ...
+		if (autoboot_boot_partition == 3)
+			autoboot_try_partition = 2;
+		else
+			autoboot_try_partition = 3;
 	}
-	fclose(f);
 
 	f = fopen(paths->dtb_tryboot, "r");
 
@@ -519,32 +535,49 @@ static int _rpiab_install_trybootimg(struct pv_state *pending)
 		return -5;
 	}
 
-	char *b = malloc(1024 * 1024);
+	// gzip install
+	if (!strcmp(imgpath + strlen(imgpath) - 3, ".gz")) {
+		pv_log(DEBUG, "Installing bootimg with .gz compression %s",
+		       trypath);
+		if (pv_zlib_uncompress(tryf, tryp)) {
+			pv_log(ERROR, "Unable install gzipped bootimg %s - %s",
+			       trypath, strerror(errno));
 
-	for (si = 0; si < st.st_size; si = si + (1024 * 1024)) {
-		int rc, wc;
-		rc = fread(b, 1, (1024 * 1024), tryf);
-		if (rc < 0) {
-			pv_log(ERROR,
-			       "unable to finish write; too large boot.img for partition");
-			goto close_err;
+			fclose(tryf);
+			fclose(tryp);
+			return -1;
 		}
-		if (!rc)
-			break;
-		wc = fwrite(b, 1, rc, tryp);
-		if (wc != rc) {
-			pv_log(ERROR,
-			       "unable to finish write; too large boot.img for partition");
-			goto close_err;
+	} else {
+		pv_log(DEBUG, "Installing bootimg with no compression %s",
+		       trypath);
+
+		char *b = malloc(1024 * 1024);
+
+		for (si = 0; si < st.st_size; si = si + (1024 * 1024)) {
+			int rc, wc;
+			rc = fread(b, 1, (1024 * 1024), tryf);
+			if (rc < 0) {
+				pv_log(ERROR,
+				       "unable to finish write; too large boot.img for partition");
+				goto close_err;
+			}
+			if (!rc)
+				break;
+			wc = fwrite(b, 1, rc, tryp);
+			if (wc != rc) {
+				pv_log(ERROR,
+				       "unable to finish write; too large boot.img for partition");
+				goto close_err;
+			}
+			continue;
+		close_err:
+			fclose(tryf);
+			fclose(tryp);
+			return -4;
 		}
-		continue;
-	close_err:
-		fclose(tryf);
-		fclose(tryp);
-		return -4;
+		free(b);
+		b = NULL;
 	}
-	free(b);
-	b = 0;
 	fflush(tryp);
 	fsync(fileno(tryp));
 	fclose(tryf);
@@ -578,7 +611,8 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 	sigset_t oldset;
 	char cmdline_buf[32257];
 	char *cmdline_ptr;
-	char *cmdbuf = malloc(1);
+	char *cmdbuf = NULL, *cmdbuf2 = NULL;
+	;
 
 	pv_log(INFO, "setrev on trybootimg");
 
@@ -586,7 +620,17 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 		     paths.bootimg[autoboot_try_partition - 1],
 		     paths.cmdline_tmp) +
 	    1;
-	cmdbuf = realloc(cmdbuf, s * sizeof(char));
+
+	cmdbuf2 = realloc(cmdbuf, s * sizeof(char));
+	if (!cmdbuf2) {
+		if (cmdbuf)
+			free(cmdbuf);
+		pv_log(ERROR, "Cannot allocate memory for cmdbuf");
+		return -1;
+	}
+	cmdbuf = cmdbuf2;
+	cmdbuf2 = NULL;
+
 	snprintf(cmdbuf, s, "mcopy -n -i %s ::cmdline.txt %s",
 		 paths.bootimg[autoboot_try_partition - 1], paths.cmdline_tmp);
 
@@ -609,15 +653,17 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 	for (int i = 0; i < 10; i++) {
 		pid_t wp = waitpid(p, &wstatus, WNOHANG);
 		if (wp < 0) {
-			pv_log(INFO, "error running mcopy for autoboot.txt: %s",
+			pv_log(INFO,
+			       "error running mcopy for autoboot.txt extract: %s",
 			       strerror(errno));
 			pvsignals_setmask(&oldset);
 			return -1;
 		}
 		if (wp > 0) {
-			if (wstatus) {
-				pv_log(ERROR, "failed to run command: %s",
-				       cmdbuf);
+			if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus)) {
+				pv_log(DEBUG,
+				       "cmdline.txt extract from image failed with status %d",
+				       WEXITSTATUS(wstatus));
 				return -1;
 			}
 			break;
@@ -639,6 +685,12 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 
 	s = fread(cmdline_buf, 1, sizeof(cmdline_buf), f);
 	fclose(f);
+
+	if (!s) {
+		pv_log(ERROR, "Cannot proceed with empty cmdline.txt");
+		return -1;
+	}
+
 	cmdline_buf[sizeof(cmdline_buf) - 1] = 0;
 
 	// support 128 chars long pv_rev=... string
@@ -657,7 +709,6 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 	if (peek)
 		*peek = 0;
 
-	pv_log(DEBUG, "13a rev=%s: %s", pending->rev, cmdline_ptr);
 	// append pv_rev=REVISION to finish the patch...
 	s = snprintf(cmdline_ptr + strlen(cmdline_ptr), 0, " pv_rev=%s",
 		     pending->rev);
@@ -678,7 +729,16 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 		     paths.bootimg[autoboot_try_partition - 1],
 		     paths.cmdline_tmp) +
 	    1;
-	cmdbuf = realloc(cmdbuf, s * sizeof(char));
+	cmdbuf2 = realloc(cmdbuf, s * sizeof(char));
+	if (!cmdbuf2) {
+		if (cmdbuf)
+			free(cmdbuf);
+		pv_log(ERROR, "Cannot allocate memory for cmdbuf");
+		return -1;
+	}
+	cmdbuf = cmdbuf2;
+	cmdbuf2 = NULL;
+
 	snprintf(cmdbuf, s, "mcopy -o -i %s %s ::cmdline.txt",
 		 paths.bootimg[autoboot_try_partition - 1], paths.cmdline_tmp);
 
@@ -701,6 +761,12 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 			return -1;
 		}
 		if (wp > 0) {
+			if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus)) {
+				pv_log(DEBUG,
+				       "cmdline.txt copy to image failed with status %d",
+				       WEXITSTATUS(wstatus));
+				return -1;
+			}
 			break;
 		}
 		sleep(1);
@@ -742,7 +808,7 @@ static int rpiab_install_update(struct pv_update *update)
 static int rpiab_commit_update()
 {
 	size_t s;
-	char *cmdbuf = NULL;
+	char *cmdbuf = NULL, *cmdbuf2 = NULL;
 	sigset_t oldset;
 	pid_t p;
 	int wstatus;
@@ -760,7 +826,16 @@ static int rpiab_commit_update()
 	pv_log(DEBUG, "Creating autoboot.txt: %s", autoconf_buf);
 
 	FILE *f = fopen(paths.autoboot_tmp, "w");
-	fwrite(autoconf_buf, 1, 512, f);
+	if (!f) {
+		pv_log(ERROR, "Cannot open autoboot.txt tmp for write %s: %s",
+		       paths.autoboot_tmp, strerror(errno));
+		return -1;
+	}
+	if (!fwrite(autoconf_buf, 1, 512, f)) {
+		pv_log(ERROR, "Cannot write to autoboot.txt %s: %s",
+		       paths.autoboot_tmp, strerror(errno));
+		return -1;
+	}
 	fclose(f);
 
 	//
@@ -769,7 +844,16 @@ static int rpiab_commit_update()
 	s = snprintf(cmdbuf, 0, "mcopy -o -i %s %s ::autoboot.txt",
 		     paths.bootimg[0], paths.autoboot_tmp) +
 	    1;
-	cmdbuf = realloc(cmdbuf, s * sizeof(char));
+	cmdbuf2 = realloc(cmdbuf, s * sizeof(char));
+	if (!cmdbuf2) {
+		if (cmdbuf)
+			free(cmdbuf);
+		pv_log(ERROR, "Cannot allocate memory for cmdbuf");
+		return -1;
+	}
+	cmdbuf = cmdbuf2;
+	cmdbuf2 = NULL;
+
 	snprintf(cmdbuf, s, "mcopy -o -i %s %s ::autoboot.txt",
 		 paths.bootimg[0], paths.autoboot_tmp);
 

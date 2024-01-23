@@ -908,9 +908,16 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		if (link(src, dst) < 0)
 			goto err;
 	} else if (s->bsp.img.rpiab.bootimg) {
-		// rpiboot.img
-		pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
-					       "rpiboot.img");
+		// rpiboot.img[.gz]
+		if (!strstr(s->bsp.img.rpiab.bootimg +
+				    (strlen(s->bsp.img.rpiab.bootimg) - 3),
+			    ".gz")) {
+			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
+						       "rpiboot.img.gz");
+		} else {
+			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
+						       "rpiboot.img");
+		}
 		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
 						 s->bsp.img.rpiab.bootimg);
 
@@ -918,7 +925,9 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		if (link(src, dst) < 0)
 			goto err;
 	} else {
-		pv_log(ERROR, "bsp type not supported. no std,fit or rpiab boot assets found for rev=%s", s->rev);
+		pv_log(ERROR,
+		       "bsp type not supported. no std,fit or rpiab boot assets found for rev=%s",
+		       s->rev);
 		return -2;
 	}
 
