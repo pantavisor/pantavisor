@@ -675,6 +675,10 @@ void pv_update_set_status_msg(struct pv_update *update,
 	update->status = status;
 	SNPRINTF_WTRUNC(update->msg, sizeof(update->msg), "%s", msg);
 
+	// in this case, we don't want to overwrite the ERROR progress information
+	if (status == UPDATE_ROLLEDBACK)
+		return;
+
 	pv_update_report_progress(update);
 }
 
@@ -710,7 +714,7 @@ void pv_update_set_factory_status()
 	pv_storage_set_rev_done("0");
 }
 
-static int pv_update_load_progress(struct pv_update *update)
+static int pv_update_refresh_progress(struct pv_update *update)
 {
 	int ret = -1;
 
@@ -841,8 +845,8 @@ process_response:
 	}
 
 send_feedback:
-	if (pv_update_load_progress(update))
-		pv_log(DEBUG, "could not load progres from rev %s", rev);
+	if (pv_update_refresh_progress(update))
+		pv_log(DEBUG, "could not refresh progres from rev %s", rev);
 
 	// exit stale revision
 	if (wrong_revision) {
@@ -1430,27 +1434,47 @@ int pv_update_finish(struct pantavisor *pv)
 	case UPDATE_TESTING_NONREBOOT:
 		pv_update_set_status(u, UPDATE_UPDATED);
 		break;
-	// WONTGO ERRORS
+	// WONTGO
 	case UPDATE_RETRY_DOWNLOAD:
 		if (u->retries <= pv_config_get_updater_revision_retries())
 			return ret;
 
 		pv_update_set_status(u, UPDATE_NO_DOWNLOAD);
 		break;
-	// WONTGO AND TRANSITION ERRORS
 	case UPDATE_APPLIED:
 		pv_update_set_status(u, UPDATE_ABORTED);
 		break;
-	default:
-		if (pv_update_can_rollback(u))
+	// ERROR
+	case UPDATE_ROLLEDBACK:
+		pv_update_refresh_progress(u);
+		if (!pv_update_can_rollback(u))
 			pv_bootloader_set_failed();
+		break;
+	case UPDATE_SIGNATURE_FAILED:
+	case UPDATE_BAD_CHECKSUM:
+	case UPDATE_HUB_NOT_REACHABLE:
+	case UPDATE_HUB_NOT_STABLE:
+	case UPDATE_STALE_REVISION:
+	case UPDATE_STATUS_GOAL_FAILED:
+	case UPDATE_CONTAINER_STOPPED:
+	case UPDATE_CONTAINER_FAILED:
+	case UPDATE_INTERNAL_ERROR:
+	case UPDATE_NO_DOWNLOAD:
+	case UPDATE_NO_SPACE:
+	case UPDATE_BAD_SIGNATURE:
+	case UPDATE_NO_PARSE:
+		break;
+	default:
+		pv_log(WARN, "finishing update in an unexpected state");
+		pv_update_set_status(u, UPDATE_INTERNAL_ERROR);
 		break;
 	}
 
 out:
-	pv_log(INFO, "update finished with status %d", u->status);
 	pv_logserver_stop_update(u->rev);
-	pv_update_report_progress(u);
+	if (u->status != UPDATE_ROLLEDBACK)
+		pv_update_report_progress(u);
+	pv_log(INFO, "update finished with status %d", u->status);
 	pv_update_remove(pv);
 
 	return ret;
@@ -2042,7 +2066,7 @@ int pv_update_resume(struct pantavisor *pv)
 		if (pv_bootloader_trying_update())
 			pv_update_set_status(pv->update, UPDATE_TRY);
 		else
-			pv_update_set_status(pv->update, UPDATE_INTERNAL_ERROR);
+			pv_update_set_status(pv->update, UPDATE_ROLLEDBACK);
 	}
 
 	return 0;

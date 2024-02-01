@@ -53,7 +53,6 @@
 #include "utils/socket.h"
 #include "utils/pvsignals.h"
 #include "pvctl_utils.h"
-#include "bootloader.h"
 #include "config.h"
 
 #include "pantavisor.h"
@@ -77,6 +76,7 @@ typedef enum {
 	LOG_CMD_EXIT,
 	LOG_CMD_START_UPDATE,
 	LOG_CMD_STOP_UPDATE,
+	LOG_CMD_TRANSITION,
 } log_cmd_code_t;
 
 struct logserver_msg {
@@ -206,27 +206,6 @@ static void sigchld_handler(int signum)
 		;
 }
 
-static void sigusr1_handler(int signum)
-{
-	pv_log(DEBUG, "signal handler to reload running revision before %s",
-	       logserver.running_rev ? logserver.running_rev : "NULL");
-
-	if (pv_bootloader_reload_pv_try()) {
-		pv_log(ERROR,
-		       "failed to reread revision after no reboot transition; continuing to log to previous revision");
-		return;
-	}
-
-	char *sav = logserver.running_rev;
-	if (pv_bootloader_get_try())
-		logserver.running_rev = strdup(pv_bootloader_get_try());
-	if (sav)
-		free(sav);
-
-	pv_log(DEBUG, "signal handler to reload running revision after %s",
-	       logserver.running_rev);
-}
-
 static int logserver_msg_parse_data(struct logserver_msg *msg,
 				    struct logserver_log *log)
 {
@@ -316,6 +295,13 @@ static int logserver_process_cmd(const struct logserver_log *log,
 		if (logserver.updated_rev)
 			free(logserver.updated_rev);
 		logserver.updated_rev = NULL;
+		break;
+	case LOG_CMD_TRANSITION:
+		pv_log(DEBUG, "transition command received with revision '%s'",
+		       data);
+		if (logserver.running_rev)
+			free(logserver.running_rev);
+		logserver.running_rev = strdup(data);
 		break;
 	case LOG_CMD_NULL:
 		pv_log(WARN, "unknown command received");
@@ -816,7 +802,6 @@ static pid_t logserver_start_service(const char *running_revision)
 	logserver.pid = fork();
 	if (logserver.pid == 0) {
 		signal(SIGCHLD, sigchld_handler);
-		signal(SIGUSR1, sigusr1_handler);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
 			       "Unable to reset sigmask of logserver child: %s",
@@ -920,8 +905,11 @@ static void logserver_load_outputs()
 	}
 }
 
-int pv_logserver_init()
+int pv_logserver_init(const char *rev)
 {
+	if (!rev)
+		return -1;
+
 	if (pv_config_get_log_capture()) {
 		logserver.active_out = pv_config_get_log_server_outputs();
 		logserver_load_outputs();
@@ -959,7 +947,7 @@ int pv_logserver_init()
 
 	dl_list_init(&logserver.fdlst);
 	dl_list_init(&logserver.tmplst);
-	logserver_start_service(pv_bootloader_get_rev());
+	logserver_start_service(rev);
 	pv_log(DEBUG, "started log service with pid %d", (int)logserver.pid);
 
 	if (pv_config_get_log_capture_dmesg())
@@ -1081,12 +1069,6 @@ int pv_logserver_send_log(bool is_platform, char *platform, char *src,
 	return ret;
 }
 
-void pv_logserver_reload(void)
-{
-	if (logserver.pid >= 0)
-		kill(logserver.pid, SIGUSR1);
-}
-
 static void logserver_close_socket(int sockd, const char *name)
 {
 	if (sockd < 0)
@@ -1148,6 +1130,15 @@ static void pv_logserver_send_cmd(log_cmd_code_t code, const char *data)
 	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
 
 	pvctl_write_to_path(path, (char *)lsmsg, lsmsg->len + sizeof(*lsmsg));
+}
+
+void pv_logserver_transition(const char *rev)
+{
+	if (!rev)
+		return;
+
+	pv_log(DEBUG, "transitioning logserver to rev '%s'", rev);
+	pv_logserver_send_cmd(LOG_CMD_TRANSITION, rev);
 }
 
 static void pv_logserver_free()
