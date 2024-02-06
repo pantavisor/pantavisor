@@ -279,14 +279,14 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 	struct pv_update_progress *p = progress;
 	struct pv_update *u = update;
 
+	SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d", u->retries);
+
 	switch (update->status) {
 	case UPDATE_QUEUED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "QUEUED");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Retried %d of %d",
 				u->retries,
 				pv_config_get_updater_revision_retries());
-		SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d",
-				update->retries);
 		p->progress = 0;
 		break;
 	case UPDATE_DOWNLOADED:
@@ -410,8 +410,6 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 			"Network unavailable while downloading, retry %d of %d",
 			update->retries,
 			pv_config_get_updater_revision_retries());
-		SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d",
-				update->retries);
 		p->progress = 0;
 		break;
 	case UPDATE_TESTING_REBOOT:
@@ -432,8 +430,6 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Retry %d of %d",
 				update->retries,
 				pv_config_get_updater_revision_retries());
-		SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d",
-				update->retries);
 		p->progress = 0;
 		p->total = &update->total;
 		break;
@@ -765,7 +761,6 @@ static int trail_get_new_steps(struct pantavisor *pv)
 				       &res);
 	if (ret > 0) {
 		pv_log(DEBUG, "found INPROGRESS revision");
-		wrong_revision = true;
 		goto process_response;
 	} else if (ret < 0) {
 		goto out;
@@ -846,15 +841,15 @@ process_response:
 
 send_feedback:
 	if (pv_update_refresh_progress(update))
-		pv_log(DEBUG, "could not refresh progres from rev %s", rev);
+		pv_log(DEBUG, "could not refresh progress from rev %s", rev);
 
-	// exit stale revision
 	if (wrong_revision) {
+		pv_log(WARN, "stale revision found. Aborting update...");
 		pv_update_free(update);
 		goto out;
 	}
 
-	// increment and report revision retry max reached
+	// report revision retry max reached
 	if (retries > pv_config_get_updater_revision_retries()) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
 		pv_update_set_status(update, UPDATE_NO_DOWNLOAD);
@@ -1346,8 +1341,13 @@ static int pv_update_check_download_retry(struct pv_update *update)
 
 	if (timer_state.fin) {
 		update->retries++;
-		if (update->retries > pv_config_get_updater_revision_retries())
+		if (update->retries >
+		    pv_config_get_updater_revision_retries()) {
+			pv_log(WARN, "max retries reached in rev %s",
+			       update->rev);
+			pv_update_set_status(update, UPDATE_NO_DOWNLOAD);
 			return -1;
+		}
 		pv_log(INFO, "trying revision %s ,retry = %d", update->rev,
 		       update->retries);
 		// set timer for next retry
