@@ -131,9 +131,6 @@ void __log(char *module, int level, const char *fmt, ...)
 	if (level > pv_config_get_log_loglevel())
 		return;
 
-	if (log_init_pid != getpid())
-		return;
-
 	va_start(args, fmt);
 
 	__vlog(module, level, fmt, args);
