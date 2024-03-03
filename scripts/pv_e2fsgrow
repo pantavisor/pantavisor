@@ -63,10 +63,45 @@ fi
 /sbin/fdisk -l $rootdisk
 
 if /sbin/fdisk -l $rootdisk | grep GPT; then
-	echo_info "GPT table not supported; skipping grow partition ..."
+	if ! sgdisk -P &> /dev/null; then
+		echo_info "GPT table not supported; sgdisk not installed; skipping grow partition ..."
+		exit 0
+	fi
+	if ! hdparm -g $rootdisk &> /dev/null; then
+		echo_info "GPT table not supported; hdparm not installed; skipping grow partition ..."
+		exit 0
+	fi
+	# first fsck to start clean
+	fsck.ext4 -p -f $rootpart || true
+
+	# now grow ...
+	rootno=`echo $rootpart | sed 's/.*[^0-9][^0-9]*//g'`
+	name=`sgdisk -P -i $rootno $rootdisk | grep Partition.name | sed 's/.*: .//;s/.$//'`
+	guid=`sgdisk -P -i $rootno $rootdisk | grep "Partition unique GUID" | sed 's/.*: .//'`
+	sgdisk -P -p $rootdisk
+	sgdisk -P -p $rootdisk > /tmp/sgdisk1
+	STARTSECTOR=`sgdisk -P -i $rootno $rootdisk | grep "First sector:" | sed 's/.*: //;s/ .*$//'`
+
+	# hack: filter 'Setting name' and 'partNum is' lines from output so we can compare with diff
+	sgdisk -P -d $rootno -e -n $rootno:$STARTSECTOR: -c $rootno:$name -u $rootno:$guid -p $rootdisk \
+		| grep -v "Setting name" \
+		| grep -v "partNum is" > /tmp/sgdisk2
+	if diff /tmp/sgdisk1 /tmp/sgdisk2 &> /dev/null; then
+		echo_info "GPT table already captures max disk size; skipping grow partition"
+		exit 0
+	fi
+	if ! sgdisk -d $rootno -e -n $rootno:$STARTSECTOR: -c $rootno:$name -u $rootno:$guid -p $rootdisk; then
+		echo_err "failed to grow GPT table"
+		exit 0
+	fi
+	hdparm -z $rootdisk
+	fsck.ext4 -p -f $rootpart || true
+	resize2fs $rootpart || true
+	echo_info "GPT partition maximized"
 	exit 0
 fi
 
+# here the fdisk for MBR code...
 sectors=`/sbin/fdisk -l $rootdisk | grep Disk.*$rootdisk | sed -e 's/^.* \([0-9]*\) sectors$/\1/'`
 partstart=`/sbin/fdisk -l $rootdisk | grep $rootbase | awk '{ print $4 }'`
 partend=`/sbin/fdisk -l $rootdisk |  grep $rootbase | awk '{ print $5 }'`
