@@ -80,20 +80,20 @@ static int early_mounts()
 	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC,
 		    NULL);
 	if (ret < 0)
-		exit_error(errno, "Could not mount /proc");
+		exit_error("could not mount /proc: %s", strerror(errno));
 
 	ret = mount("none", "/dev", "devtmpfs", 0, "size=10240k,mode=0755");
 	if (ret < 0)
-		exit_error(errno, "Could not mount /dev");
+		exit_error("could not mount /dev: %s", strerror(errno));
 
 	ret = mount("none", "/sys", "sysfs", 0, NULL);
 	if (ret < 0)
-		exit_error(errno, "Could not mount /sys");
+		exit_error("could not mount /sys: %s", strerror(errno));
 
 	mkdir("/dev/pts", 0755);
 	ret = mount("none", "/dev/pts", "devpts", 0, NULL);
 	if (ret < 0)
-		exit_error(errno, "Could not mount /dev/pts");
+		exit_error("could not mount /dev/pts: %s", strerror(errno));
 
 	pv_fs_path_remove("/dev/ptmx", false);
 	mknod("/dev/ptmx", S_IFCHR | 0666, makedev(5, 2));
@@ -118,7 +118,7 @@ static int other_mounts()
 	if (!ret)
 		ret = mount("none", path, "tmpfs", MS_REC | MS_SHARED, NULL);
 	if (ret < 0)
-		exit_error(errno, "Could not create exports disk");
+		exit_error("could not mount '%s': %s", path, strerror(errno));
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		return 0;
@@ -126,19 +126,18 @@ static int other_mounts()
 	mkdir("/root", 0700);
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
 	if (ret < 0)
-		exit_error(errno, "Could not mount /root");
+		exit_error("could not mount /root: %s", strerror(errno));
 
 	mkdir("/run", 0755);
 	ret = mount("none", "/run", "tmpfs", 0, NULL);
 	if (ret < 0)
-		exit_error(errno, "Could not mount /run");
+		exit_error("could not mount /run: %s", strerror(errno));
 
 	if (pv_config_get_system_mount_securityfs()) {
 		ret = mount("none", "/sys/kernel/security", "securityfs", 0,
 			    NULL);
 		if (ret < 0)
-			exit_error(errno,
-				   "Could not mount /sys/kernel/security");
+			exit_error("could not mount /sys/kernel/security: %s", strerror(errno));
 	}
 
 	return 0;
@@ -370,6 +369,23 @@ out:
 	return ret;
 }
 
+void exit_error(const char *fmt, ...)
+{
+	char str[512];
+	va_list args;
+
+	va_start(args, fmt);
+	vsnprintf(str, 512, fmt, args);
+	va_end(args);
+
+	pv_log(FATAL, str);
+
+	pv_log(FATAL, "rebooting system in 20 seconds");
+
+	sleep(20);
+	exit(0);
+}
+
 int main(int argc, char *argv[])
 {
 	char *config_path = NULL, *cmdline = NULL;
@@ -420,7 +436,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (pv_cgroup_init())
-		exit_error(errno, "Could not init cgroup");
+		exit_error("could not init cgroup: %s", strerror(errno));
 	other_mounts();
 
 	// executed from shell and/or appengine mode

@@ -85,6 +85,8 @@ extern struct pv_init pv_init_platform;
 extern struct pv_init pv_init_update;
 extern struct pv_init pv_init_apparmor;
 
+void exit_error(const char *fmt, ...);
+
 int pv_do_execute_init(void);
 void pv_init_umount(void);
 

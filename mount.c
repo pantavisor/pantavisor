@@ -123,8 +123,7 @@ static int pv_mount_init(struct pv_init *this)
 	}
 
 	if (!dev_info.device)
-		exit_error(errno,
-			   "Could not mount trails storage. No device found.");
+		exit_error("could not mount trails storage: %s", strerror(errno));
 
 	pv_log(INFO, "trail storage found: %s.", dev_info.device);
 
@@ -183,7 +182,7 @@ static int pv_mount_init(struct pv_init *this)
 	}
 out:
 	if (ret < 0)
-		exit_error(errno, "Could not mount trails storage");
+		exit_error("could not mount trails storage: %s", strerror(errno));
 	return 0;
 }
 

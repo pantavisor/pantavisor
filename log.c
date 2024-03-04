@@ -115,15 +115,6 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 	thttp_set_log_func(log_libthttp);
 }
 
-void exit_error(int err, char *msg)
-{
-	pv_log(FATAL, "%s (err=%d)", msg, err);
-	pv_log(FATAL, "rebooting system in 30 seconds");
-
-	sleep(20);
-	exit(0);
-}
-
 void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;

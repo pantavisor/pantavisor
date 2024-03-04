@@ -307,7 +307,7 @@ static int config_sysctl_apply(char *key, char *value, void *opaque)
 	errno = 0;
 	int fd = open(path, O_WRONLY | O_SYNC);
 	if (fd < 0) {
-		pv_log(ERROR, "open failed for sysctl node %s with '%s'", path,
+		pv_log(WARN, "open failed for sysctl node %s with '%s'", path,
 		       strerror(errno));
 
 		free(path);
