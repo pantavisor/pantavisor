@@ -1016,7 +1016,7 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 		.src = src,
 	};
 
-	if (level > pv_config_get_log_loglevel())
+	if ((level != FATAL) && (level > pv_config_get_log_loglevel()))
 		return 0;
 
 	struct buffer *log_buf = pv_buffer_get(true);
@@ -1027,6 +1027,13 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 	log.data.len = log_buf->size;
 
 	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
+
+	if (((pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) &&
+	     (logserver.pid < 0)) ||
+	    (pv_config_get_log_server_outputs() &
+	     LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
+	    (level == FATAL))
+		logserver_utils_stdout(&log);
 
 	if (logserver.pid < 1) {
 		pv_buffer_drop(log_buf);
