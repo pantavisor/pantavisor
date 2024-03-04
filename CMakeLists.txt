@@ -36,8 +36,10 @@ set(SOURCES  debug.c
 			logserver/logserver_null.c
 			logserver/logserver_timestamp.c
 			logserver/logserver_timestamp.h
-			logserver/logserver_update.h
+			logserver/logserver_stdout.c
+			logserver/logserver_stdout.h
 			logserver/logserver_update.c
+			logserver/logserver_update.h
 			logserver/logserver.c
 			config_parser.c
 			config.c
