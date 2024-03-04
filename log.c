@@ -128,7 +128,7 @@ void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;
 
-	if (level > pv_config_get_log_loglevel())
+	if ((level != FATAL) && (level > pv_config_get_log_loglevel()))
 		return;
 
 	va_start(args, fmt);

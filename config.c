@@ -171,6 +171,9 @@ static int config_parse_log_server_outputs(const char *value)
 			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
 		else if (!strncmp(token, "nullsink", strlen("nullsink")))
 			server_outputs |= LOG_SERVER_OUTPUT_NULL_SINK;
+		else if (!strncmp(token, "stdout_direct",
+				  strlen("stdout_direct")))
+			server_outputs |= LOG_SERVER_OUTPUT_STDOUT_DIRECT;
 		else if (!strncmp(token, "stdout.containers",
 				  strlen("stdout.containers")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT_CONTAINERS;

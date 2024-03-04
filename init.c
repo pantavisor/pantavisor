@@ -54,6 +54,7 @@
 #include "wdt.h"
 #include "drivers.h"
 #include "apparmor.h"
+#include "buffer.h"
 
 #include "utils/tsh.h"
 #include "utils/math.h"
@@ -374,6 +375,10 @@ int main(int argc, char *argv[])
 {
 	char *config_path = NULL, *cmdline = NULL;
 
+	pv_init();
+	// init buffer with 128Kb to allow logging. Will later be resized according to config
+	pv_buffer_init(10, 128);
+
 	pv_pid = 0;
 
 	setenv("LIBPVPATH", "/lib/pv", 0);
@@ -386,9 +391,6 @@ int main(int argc, char *argv[])
 
 	// get command argument options
 	parse_options(argc, argv, &config_path, &cmdline);
-
-	// init pv struct
-	pv_init();
 
 	// read /proc/cmdline if not injected from args
 	if (read_cmdline(cmdline))
