@@ -85,7 +85,7 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 	if (is_pv)
 		len = logserver_utils_print_pvfmt(fd, log, "pantavisor", true);
 	else
-		len = dprintf(fd, "%.*s", log->data.len, log->data.buf);
+		len = logserver_utils_print_raw(fd, log);
 
 	close(fd);
 	free(path);
