@@ -138,6 +138,19 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 	return len;
 }
 
+int logserver_utils_print_raw(int fd, const struct logserver_log *log)
+{
+	char *ts_fmt = pv_config_get_log_filetree_timestamp_format();
+	if (!ts_fmt)
+		return dprintf(fd, "%.*s", log->data.len, log->data.buf);
+
+	char ts[256] = { 0 };
+	if (logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt) != 0)
+		strncpy(ts, "--", 3);
+
+	return dprintf(fd, "[%s] %.*s", ts, log->data.len, log->data.buf);
+}
+
 int logserver_utils_stdout(const struct logserver_log *log)
 {
 	return print_pvfmt_log(STDOUT_FILENO, log, "unknown",
