@@ -105,9 +105,10 @@ void pv_state_free(struct pv_state *s)
 
 	if (s->rev)
 		free(s->rev);
-	if (!s->bsp.img.std.initrd) {
-		if (s->bsp.img.ut.fit)
-			free(s->bsp.img.ut.fit);
+	if (s->bsp.img.ut.fit) {
+		free(s->bsp.img.ut.fit);
+	} else if (s->bsp.img.rpiab.bootimg) {
+		free(s->bsp.img.rpiab.bootimg);
 	} else {
 		if (s->bsp.img.std.kernel)
 			free(s->bsp.img.std.kernel);

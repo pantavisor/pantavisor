@@ -413,8 +413,14 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	if ((!s->bsp.img.std.kernel || !s->bsp.img.std.initrd) &&
 	    !s->bsp.img.ut.fit && !s->bsp.img.rpiab.bootimg) {
 		pv_log(ERROR,
-		       "kernel or initrd not configured in bsp/run.json. Cannot continue.",
-		       strlen(buf), buf);
+		       "kernel or initrd not configured in bsp/run.json");
+		ret = 0;
+		goto out;
+	}
+
+	if ((pv_config_get_bl_type() == BL_RPIAB) &&
+	    !s->bsp.img.rpiab.bootimg) {
+		pv_log(ERROR, "bootimg not configured but required by config");
 		ret = 0;
 		goto out;
 	}

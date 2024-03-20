@@ -930,7 +930,7 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 		pv_log(ERROR,
 		       "bsp type not supported. no std,fit or rpiab boot assets found for rev=%s",
 		       s->rev);
-		return -2;
+		return -1;
 	}
 
 	pv_log(DEBUG, "linked boot assets for rev=%s", s->rev);
