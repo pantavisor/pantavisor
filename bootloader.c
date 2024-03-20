@@ -130,30 +130,42 @@ bool pv_bootloader_trying_update()
 			 strlen(pv_bootloader_get_rev()) + 1));
 }
 
-int pv_bootloader_set_installed(char *rev)
+int pv_bootloader_install_update(char *rev)
 {
 	pv_log(INFO,
 	       "setting installed revision %s to be started after next reboot",
 	       rev);
+
+	if (ops->install_update)
+		return ops->install_update(rev);
+
 	return pv_bootloader_set_try(rev);
 }
 
-int pv_bootloader_set_commited(char *rev)
+int pv_bootloader_commit_update(char *rev)
 {
 	if (!ops)
 		return -1;
 
 	pv_log(INFO, "setting done revision %s to be started after next reboot",
 	       rev);
+
+	if (ops->commit_update)
+		return ops->commit_update();
+
 	return (pv_bootloader_set_rev(rev) || pv_bootloader_unset_try() ||
 		ops->flush_env());
 }
 
-int pv_bootloader_set_failed()
+int pv_bootloader_fail_update()
 {
 	pv_log(INFO,
 	       "setting failed revision %s not to be started after next reboot",
 	       pv_bootloader_get_try() ? pv_bootloader_get_try() : "<NA>");
+
+	if (ops->fail_update)
+		return ops->fail_update();
+
 	return pv_bootloader_unset_try();
 }
 
@@ -165,30 +177,6 @@ void pv_bootloader_remove()
 		free(pv_bootloader.pv_try);
 	if (pv_bootloader.pv_done)
 		free(pv_bootloader.pv_done);
-}
-
-int pv_bootloader_install_update(struct pv_update *update)
-{
-	if (ops->install_update)
-		return ops->install_update(update);
-
-	return -2;
-}
-
-int pv_bootloader_commit_update()
-{
-	if (ops->commit_update)
-		return ops->commit_update();
-
-	return -2;
-}
-
-int pv_bootloader_fail_update(struct pv_update *update)
-{
-	if (ops->fail_update)
-		return ops->fail_update(update);
-
-	return -2;
 }
 
 static int pv_bl_init()

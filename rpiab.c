@@ -573,7 +573,7 @@ static int _rpiab_mark_tryboot()
 	return 0;
 }
 
-static int _rpiab_install_trybootimg(struct pv_state *pending)
+static int _rpiab_install_trybootimg(char *rev)
 {
 	char imgpath[PATH_MAX];
 	char trypath[PATH_MAX];
@@ -581,16 +581,10 @@ static int _rpiab_install_trybootimg(struct pv_state *pending)
 	int rv;
 	off_t si;
 
-	// if no bootimg, we can't install things.
-	if (!pending->bsp.img.rpiab.bootimg) {
-		return -1;
-	}
-
 #ifndef PVTEST
-	pv_paths_storage_trail_pv_file(imgpath, PATH_MAX, pending->rev,
-				       "rpiboot.img");
+	pv_paths_storage_trail_pv_file(imgpath, PATH_MAX, rev, "rpiboot.img");
 	if (stat(imgpath, &st)) {
-		pv_paths_storage_trail_pv_file(imgpath, PATH_MAX, pending->rev,
+		pv_paths_storage_trail_pv_file(imgpath, PATH_MAX, rev,
 					       "rpiboot.img.gz");
 	}
 
@@ -700,7 +694,7 @@ static char *trim_space(char *str)
 	return str;
 }
 
-static int _rpiab_setrev_trybootimg(struct pv_state *pending)
+static int _rpiab_setrev_trybootimg(char *rev)
 {
 	int wstatus;
 	size_t s;
@@ -806,11 +800,9 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 		*peek = 0;
 
 	// append pv_rev=REVISION to finish the patch...
-	s = snprintf(cmdline_ptr + strlen(cmdline_ptr), 0, " pv_rev=%s",
-		     pending->rev);
+	s = snprintf(cmdline_ptr + strlen(cmdline_ptr), 0, " pv_rev=%s", rev);
 
-	snprintf(cmdline_ptr + strlen(cmdline_ptr), s + 1, " pv_rev=%s",
-		 pending->rev);
+	snprintf(cmdline_ptr + strlen(cmdline_ptr), s + 1, " pv_rev=%s", rev);
 
 	f = fopen(paths.cmdline_tmp, "w");
 	fwrite(cmdline_ptr, 1, strlen(cmdline_ptr), f);
@@ -874,16 +866,14 @@ static int _rpiab_setrev_trybootimg(struct pv_state *pending)
 	return 0;
 }
 
-static int rpiab_install_update(struct pv_update *update)
+static int rpiab_install_update(char *rev)
 {
-	struct pv_state *pending = update->pending;
-
-	if (_rpiab_install_trybootimg(pending)) {
+	if (_rpiab_install_trybootimg(rev)) {
 		pv_log(ERROR, "Error installing tryboot image.");
 		return -1;
 	}
 
-	if (_rpiab_setrev_trybootimg(pending)) {
+	if (_rpiab_setrev_trybootimg(rev)) {
 		pv_log(ERROR, "Error setting pv_rev in tryboot");
 		return -1;
 	}
@@ -985,7 +975,7 @@ static int rpiab_commit_update()
 	return -1;
 }
 
-static int rpiab_fail_update(struct pv_update *update)
+static int rpiab_fail_update()
 {
 	return -1;
 }

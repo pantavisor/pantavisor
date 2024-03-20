@@ -23,7 +23,6 @@
 #define PV_BOOTLOADER_H
 
 #include <stdbool.h>
-#include "updater.h"
 
 struct bl_ops {
 	int (*init)(void);
@@ -35,9 +34,9 @@ struct bl_ops {
 	int (*flush_env)(void);
 
 	/* new semantic */
-	int (*install_update)(struct pv_update *update);
+	int (*install_update)(char *rev);
 	int (*commit_update)();
-	int (*fail_update)(struct pv_update *update);
+	int (*fail_update)();
 };
 
 void pv_bootloader_print(void);
@@ -49,13 +48,9 @@ const char *pv_bootloader_get_done(void);
 bool pv_bootloader_update_in_progress(void);
 bool pv_bootloader_trying_update(void);
 
-int pv_bootloader_set_installed(char *rev);
-int pv_bootloader_set_commited(char *rev);
-int pv_bootloader_set_failed(void);
-
-int pv_bootloader_install_update(struct pv_update *update);
-int pv_bootloader_commit_update(void);
-int pv_bootloader_fail_update(struct pv_update *update);
+int pv_bootloader_install_update(char *rev);
+int pv_bootloader_commit_update(char *rev);
+int pv_bootloader_fail_update(void);
 
 void pv_bootloader_remove(void);
 

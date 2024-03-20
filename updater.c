@@ -1420,15 +1420,14 @@ int pv_update_finish(struct pantavisor *pv)
 	switch (u->status) {
 	// DONE TRANSITIONS
 	case UPDATE_TESTING_REBOOT:
-		if (pv_bootloader_set_commited(pv->state->rev)) {
+		if (pv_bootloader_commit_update(pv->state->rev)) {
 			pv_log(ERROR,
-			       "revision for next boot could not be set");
+			       "revision could not be committed to bootloader");
 			ret = -1;
 			goto out;
 		}
 		pv_update_set_status(u, UPDATE_DONE);
 		pv_storage_set_rev_done(pv->state->rev);
-		pv_bootloader_commit_update();
 		pv->state->done = true;
 		break;
 	// UPDATED TRANSITIONS
@@ -1449,7 +1448,7 @@ int pv_update_finish(struct pantavisor *pv)
 	case UPDATE_ROLLEDBACK:
 		pv_update_refresh_progress(u);
 		if (!pv_update_can_rollback(u))
-			pv_bootloader_set_failed();
+			pv_bootloader_fail_update();
 		break;
 	case UPDATE_SIGNATURE_FAILED:
 	case UPDATE_BAD_CHECKSUM:
@@ -2026,15 +2025,10 @@ int pv_update_install(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (pv_bootloader_install_update(update)) {
-		pv_log(ERROR, "unable to install bootloader");
-		ret = -1;
-		goto out;
-	}
-
 	pv_log(DEBUG, "update successfully installed");
-	if (pv_bootloader_set_installed(update->rev)) {
-		pv_log(ERROR, "unable to write pv_try to boot cmd env");
+	if (pv_bootloader_install_update(update->rev)) {
+		pv_log(ERROR,
+		       "revision could not be set as installed to bootloader");
 		ret = -1;
 		goto out;
 	}
