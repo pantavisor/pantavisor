@@ -972,7 +972,7 @@ static int rpiab_commit_update()
 
 	pvsignals_setmask(&oldset);
 
-	return -1;
+	return 0;
 }
 
 static int rpiab_fail_update()
