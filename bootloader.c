@@ -136,10 +136,19 @@ int pv_bootloader_install_update(char *rev)
 	       "setting installed revision %s to be started after next reboot",
 	       rev);
 
-	if (ops->install_update)
-		return ops->install_update(rev);
+	if (ops->install_update) {
+		if (ops->install_update(rev)) {
+			pv_log(ERROR, "could not install update");
+			return -1;
+		}
+	}
 
-	return pv_bootloader_set_try(rev);
+	if (pv_bootloader_set_try(rev)) {
+		pv_log(ERROR, "could not set pv_try");
+		return -1;
+	}
+
+	return 0;
 }
 
 int pv_bootloader_commit_update(char *rev)
@@ -150,11 +159,20 @@ int pv_bootloader_commit_update(char *rev)
 	pv_log(INFO, "setting done revision %s to be started after next reboot",
 	       rev);
 
-	if (ops->commit_update)
-		return ops->commit_update();
+	if (pv_bootloader_set_rev(rev) || pv_bootloader_unset_try() ||
+	    ops->flush_env()) {
+		pv_log(ERROR, "could not set pv_rev or unset pvtry");
+		return -1;
+	}
 
-	return (pv_bootloader_set_rev(rev) || pv_bootloader_unset_try() ||
-		ops->flush_env());
+	if (ops->commit_update) {
+		if (ops->commit_update()) {
+			pv_log(ERROR, "could not commit update");
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 int pv_bootloader_fail_update()
@@ -162,9 +180,6 @@ int pv_bootloader_fail_update()
 	pv_log(INFO,
 	       "setting failed revision %s not to be started after next reboot",
 	       pv_bootloader_get_try() ? pv_bootloader_get_try() : "<NA>");
-
-	if (ops->fail_update)
-		return ops->fail_update();
 
 	return pv_bootloader_unset_try();
 }
