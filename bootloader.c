@@ -151,13 +151,12 @@ int pv_bootloader_install_update(char *rev)
 	return 0;
 }
 
-int pv_bootloader_commit_update(char *rev)
+int pv_bootloader_pre_commit_update(char *rev)
 {
 	if (!ops)
 		return -1;
 
-	pv_log(INFO, "setting done revision %s to be started after next reboot",
-	       rev);
+	pv_log(INFO, "preparing revision %s to be commited...", rev);
 
 	if (pv_bootloader_set_rev(rev) || pv_bootloader_unset_try() ||
 	    ops->flush_env()) {
@@ -165,12 +164,22 @@ int pv_bootloader_commit_update(char *rev)
 		return -1;
 	}
 
+	return 0;
+}
+
+int pv_bootloader_post_commit_update()
+{
+	if (!ops)
+		return -1;
+
 	if (ops->commit_update) {
 		if (ops->commit_update()) {
-			pv_log(ERROR, "could not commit update");
+			pv_log(ERROR, "could not finish commiting update");
 			return -1;
 		}
 	}
+
+	pv_log(INFO, "revision %s commited");
 
 	return 0;
 }
