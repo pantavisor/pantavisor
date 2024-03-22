@@ -1421,7 +1421,7 @@ int pv_update_finish(struct pantavisor *pv)
 	// DONE TRANSITIONS
 	case UPDATE_TESTING_REBOOT:
 		pv_update_set_status(u, UPDATE_DONE);
-		if (pv_bootloader_commit_update(pv->state->rev)) {
+		if (pv_bootloader_pre_commit_update(pv->state->rev)) {
 			pv_update_set_status(u, UPDATE_INTERNAL_ERROR);
 			pv_log(ERROR,
 			       "revision could not be committed to bootloader");
@@ -1430,6 +1430,7 @@ int pv_update_finish(struct pantavisor *pv)
 		}
 		pv_storage_set_rev_done(pv->state->rev);
 		pv->state->done = true;
+		pv_bootloader_post_commit_update();
 		break;
 	// UPDATED TRANSITIONS
 	case UPDATE_TESTING_NONREBOOT:
