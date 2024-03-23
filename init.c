@@ -78,15 +78,20 @@ static int early_mounts()
 	int ret = 0;
 	errno = 0;
 
+	mkdir("/tmp", 0755);
+
+	mkdir("/proc", 0755);
 	ret = mount("none", "/proc", "proc", MS_NODEV | MS_NOSUID | MS_NOEXEC,
 		    NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /proc");
 
+	mkdir("/dev", 0755);
 	ret = mount("none", "/dev", "devtmpfs", 0, "size=10240k,mode=0755");
 	if (ret < 0)
 		exit_error(errno, "Could not mount /dev");
 
+	mkdir("/sys", 0755);
 	ret = mount("none", "/sys", "sysfs", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /sys");
@@ -240,6 +245,9 @@ static void parse_commands(int argc, char *argv[])
 
 	if (is_arg(argc, argv, "pv_standalone"))
 		pv_config_set_system_init_mode(IM_STANDALONE);
+
+	if (is_arg(argc, argv, "pv_installer"))
+		pv_config_set_system_init_mode(IM_INSTALLER);
 
 	if (is_arg(argc, argv, "pv_appengine"))
 		pv_config_set_system_init_mode(IM_APPENGINE);

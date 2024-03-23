@@ -27,7 +27,12 @@
 
 #include "utils/list.h"
 
-typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
+typedef enum {
+	IM_EMBEDDED,
+	IM_STANDALONE,
+	IM_APPENGINE,
+	IM_INSTALLER
+} init_mode_t;
 
 struct pantavisor_system {
 	init_mode_t init_mode;
