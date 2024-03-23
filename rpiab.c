@@ -200,6 +200,13 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	}
 
 	pid_t p = tsh_run(cmdbuf, 0, NULL);
+	if (p < 0) {
+		pv_log(ERROR, "tsh_run '%s' failed with error: %s\n", cmdbuf,
+		       strerror(errno));
+		pvsignals_setmask(&oldset);
+		free(cmdbuf);
+		return -1;
+	}
 
 	free(cmdbuf);
 
@@ -736,6 +743,8 @@ static int _rpiab_setrev_trybootimg(char *rev)
 	if (p < 0) {
 		pv_log(ERROR, "tsh_run '%s' failed with error: %s\n", cmdbuf,
 		       strerror(errno));
+		pvsignals_setmask(&oldset);
+		free(cmdbuf);
 		return -1;
 	}
 
@@ -838,6 +847,13 @@ static int _rpiab_setrev_trybootimg(char *rev)
 
 	pv_log(DEBUG, "copying patched cmdline.txt to bootimg: %s", cmdbuf);
 	p = tsh_run(cmdbuf, 0, NULL);
+	if (p < 0) {
+		pv_log(ERROR, "tsh_run '%s' failed with error: %s\n", cmdbuf,
+		       strerror(errno));
+		pvsignals_setmask(&oldset);
+		free(cmdbuf);
+		return -1;
+	}
 
 	free(cmdbuf);
 	for (int i = 0; i < 10; i++) {
@@ -853,6 +869,7 @@ static int _rpiab_setrev_trybootimg(char *rev)
 				pv_log(DEBUG,
 				       "cmdline.txt copy to image failed with status %d",
 				       WEXITSTATUS(wstatus));
+				pvsignals_setmask(&oldset);
 				return -1;
 			}
 			break;
@@ -947,6 +964,13 @@ static int rpiab_commit_update()
 
 	pv_log(DEBUG, "copying patched autoboot.txt to bootimg: %s", cmdbuf);
 	p = tsh_run(cmdbuf, 0, NULL);
+	if (p < 0) {
+		pv_log(ERROR, "tsh_run '%s' failed with error: %s\n", cmdbuf,
+		       strerror(errno));
+		pvsignals_setmask(&oldset);
+		free(cmdbuf);
+		return -1;
+	}
 
 	free(cmdbuf);
 	for (int i = 0; i < 10; i++) {
@@ -959,9 +983,10 @@ static int rpiab_commit_update()
 		}
 		if (wp > 0) {
 			if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus)) {
-				pv_log(DEBUG,
+				pv_log(INFO,
 				       "autoboot copy failed with status %d",
 				       WEXITSTATUS(wstatus));
+				pvsignals_setmask(&oldset);
 				return -1;
 			}
 
@@ -971,6 +996,8 @@ static int rpiab_commit_update()
 	}
 
 	pvsignals_setmask(&oldset);
+
+	pv_log(INFO, "committing tryboot to autoboot.txt done.");
 
 	return 0;
 }
