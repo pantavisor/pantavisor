@@ -27,6 +27,8 @@ LOCAL_CFLAGS += -DPANTAVISOR_DEBUG
 LOCAL_DEPENDS_MODULES += dropbear-pv
 endif
 
+LOCAL_CODECHECK_C := clang
+
 include $(BUILD_CMAKE)
 
 
