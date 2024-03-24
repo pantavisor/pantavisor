@@ -29,6 +29,7 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 
 #include <jsmn/jsmnutil.h>
 
@@ -371,6 +372,8 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 	struct pv_volume *v;
 	jsmntok_t *tokv;
 	jsmntok_t **key, **key_i;
+	char modules_uts[PATH_MAX];
+	struct utsname uts;
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		return 1;
@@ -396,7 +399,13 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 		}
 	}
 	s->bsp.firmware = pv_json_get_value(buf, "firmware", tokv, tokc);
-	s->bsp.modules = pv_json_get_value(buf, "modules", tokv, tokc);
+
+	uname(&uts);
+	sprintf(modules_uts, "modules_%s", uts.release);
+
+	s->bsp.modules = pv_json_get_value(buf, modules_uts, tokv, tokc);
+	if (!s->bsp.modules)
+		s->bsp.modules = pv_json_get_value(buf, "modules", tokv, tokc);
 
 	if (s->bsp.firmware) {
 		v = pv_volume_add(s, s->bsp.firmware);
