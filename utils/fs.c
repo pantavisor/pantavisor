@@ -365,6 +365,18 @@ ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
 	return total_read;
 }
 
+ssize_t pv_fs_file_read_to_buf(const char *path, char *buf, ssize_t size)
+{
+	int fd = pv_fs_file_check_and_open(path, O_RDONLY, 0);
+	if (fd < 0)
+		return -1;
+
+	ssize_t read = pv_fs_file_read_nointr(fd, buf, size);
+	close(fd);
+
+	return read;
+}
+
 int pv_fs_file_lock(int fd)
 {
 	struct flock flock;
