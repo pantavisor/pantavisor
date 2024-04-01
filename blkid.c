@@ -35,11 +35,14 @@
 #include <errno.h>
 #include <string.h>
 #include <stdint.h>
+#include <linux/limits.h>
 
 #include "blkid.h"
 #include "utils/math.h"
 #include "str.h"
 #include "log.h"
+#include "utils/fs.h"
+#include "config.h"
 
 #define MODULE_NAME "blkid"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -223,6 +226,84 @@ static void do_blkid(int fd, char *name, struct blkid_info *info)
 	store_tag("TYPE", type, info);
 }
 
+static int get_ubifs_vol_count(const char *path)
+{
+	char volume_path[PATH_MAX] = { 0 };
+	pv_fs_path_concat(volume_path, 2, path, "volumes_count");
+
+	// maximum number of volumes allowed is 128 (UBI_MAX_VOLUMES)
+	// drivers/mtd/ubi/ubi-media.h on the kernel repo
+	char buf[4] = { 0 };
+	ssize_t read = pv_fs_file_read_to_buf(volume_path, buf, 8);
+
+	if (read < 1)
+		return read;
+
+	return strtol(buf, NULL, 10);
+}
+
+static char *get_ubifs_dev_path(const char *dev, const char *vol,
+				const char *ubi_sys_path, int vol_count)
+{
+	char ubi_sys_attr[PATH_MAX] = { 0 };
+
+	// maximum length of ubifs volume name is
+	// 127 + 1 (UBI_VOL_NAME_MAX + '\0')
+	// drivers/mtd/ubi/ubi-media.h on the kernel repo
+	char vol_name[128] = { 0 };
+	char ubi_dev[NAME_MAX] = { 0 };
+
+	ssize_t read = 0;
+
+	for (int i = 0; i < vol_count; ++i) {
+		snprintf(ubi_dev, NAME_MAX, "%s_%d", dev, i);
+		pv_fs_path_concat(ubi_sys_attr, 3, ubi_sys_path, ubi_dev,
+				  "name");
+
+		read = pv_fs_file_read_to_buf(ubi_sys_attr, vol_name, 128);
+
+		if (read < 1)
+			continue;
+
+		if (!strncmp(vol, vol_name, strlen(vol))) {
+			char buf[PATH_MAX] = { 0 };
+			pv_fs_path_concat(buf, 2, "/dev", ubi_dev);
+			return strdup(buf);
+		}
+		memset(ubi_sys_attr, 0, PATH_MAX);
+	}
+
+	return NULL;
+}
+
+static int get_blkid_ubifs(struct blkid_info *info, const char *key)
+{
+	int ret = 0;
+	char *sep = strchr(key, ':');
+	if (!sep)
+		return -1;
+
+	char dev[NAME_MAX] = { 0 };
+	char vol[NAME_MAX] = { 0 };
+	int dev_sz = sep - key;
+
+	memcpy(dev, key, dev_sz);
+	memcpy(vol, key + dev_sz + 1, strlen(key) - dev_sz);
+
+	char path[PATH_MAX] = { 0 };
+	pv_fs_path_concat(path, 2, "/sys/devices/virtual/ubi", dev);
+
+	int vol_count = get_ubifs_vol_count(path);
+	if (vol_count < 1)
+		return -2;
+
+	info->device = get_ubifs_dev_path(dev, vol, path, vol_count);
+	info->fstype = strdup("ubifs");
+	info->label = strdup(vol);
+
+	return ret;
+}
+
 /*
  * Get block device from UUID or LABEL.
  * The key should be of the form UUID=XXXX... or
@@ -230,6 +311,9 @@ static void do_blkid(int fd, char *name, struct blkid_info *info)
  * */
 int get_blkid(struct blkid_info *info, const char *key)
 {
+	if (!strncmp(pv_config_get_storage_fstype(), "ubifs", strlen("ubifs")))
+		return get_blkid_ubifs(info, key);
+
 	unsigned int ma, mi, sz;
 	int fd;
 	char *name = toybuf, *buffer = toybuf + 1024, device[32];
