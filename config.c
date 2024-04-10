@@ -228,6 +228,26 @@ static int config_get_value_sb_mode_type(struct dl_list *config_list, char *key,
 	return value;
 }
 
+static wdt_mode_t config_parse_wdt_mode_type(const char *value)
+{
+	int type = WDT_DISABLED;
+
+	if (!strcmp(value, "disabled"))
+		type = WDT_DISABLED;
+	else if (!strcmp(value, "shutdown"))
+		type = WDT_SHUTDOWN;
+	else if (!strcmp(value, "startup"))
+		type = WDT_STARTUP;
+	else if (!strcmp(value, "always")) {
+		pv_log(WARN,
+		       "wdt always is experimental. Do not use in production");
+		type = WDT_ALWAYS;
+	} else
+		pv_log(WARN, "unknown '%s' wdt mode type. Using 'disabled'");
+
+	return type;
+}
+
 static int config_get_value_wdt_mode_type(struct dl_list *config_list,
 					  char *key, wdt_mode_t default_value)
 {
@@ -237,17 +257,7 @@ static int config_get_value_wdt_mode_type(struct dl_list *config_list,
 	if (!item)
 		return value;
 
-	if (!strcmp(item, "disabled"))
-		value = WDT_DISABLED;
-	else if (!strcmp(item, "shutdown"))
-		value = WDT_SHUTDOWN;
-	else if (!strcmp(item, "startup"))
-		value = WDT_STARTUP;
-	else if (!strcmp(item, "always")) {
-		pv_log(WARN,
-		       "wdt always is experimental. Do not use in production");
-		value = WDT_ALWAYS;
-	}
+	value = config_parse_wdt_mode_type(item);
 
 	return value;
 }
@@ -290,6 +300,15 @@ config_override_value_log_server_outputs(struct dl_list *config_list, char *key,
 
 	if (item)
 		*out = config_parse_log_server_outputs(item);
+}
+
+static void config_override_value_wdt_mode_type(struct dl_list *config_list,
+						char *key, wdt_mode_t *out)
+{
+	char *item = config_get_value(config_list, key);
+
+	if (item)
+		*out = config_parse_wdt_mode_type(item);
 }
 
 static int config_sysctl_apply(char *key, char *value, void *opaque)
@@ -643,6 +662,15 @@ static int pv_config_override_config_from_file(char *path,
 						 &config->log.server.outputs);
 	config_override_value_bool(&config_list, "log.capture.dmesg",
 				   &config->log.dmesg);
+	config_override_value_string(&config_list,
+				     "log.filetree.timestamp.format",
+				     &config->log.ts_filetree_fmt);
+	config_override_value_string(&config_list,
+				     "log.singlefile.timestamp.format",
+				     &config->log.ts_singlefile_fmt);
+	config_override_value_string(&config_list,
+				     "log.stdout.timestamp.format",
+				     &config->log.ts_stdout_fmt);
 	config_override_value_int(&config_list, "libthttp.log.level",
 				  &config->libthttp.loglevel);
 	config_override_value_int(&config_list, "metadata.devmeta.interval",
@@ -651,6 +679,13 @@ static int pv_config_override_config_from_file(char *path,
 				  &config->metadata.usrmeta_interval);
 	config_override_value_int(&config_list, "lxc.log.level",
 				  &config->lxc.log_level);
+
+	config_override_value_bool(&config_list, "wdt.enabled",
+				   &config->wdt.enabled);
+	config_override_value_wdt_mode_type(&config_list, "wdt.mode",
+					    &config->wdt.mode);
+	config_override_value_int(&config_list, "wdt.timeout",
+				  &config->wdt.timeout);
 
 	config_clear_items(&config_list);
 
