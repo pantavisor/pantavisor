@@ -159,9 +159,7 @@ out:
 
 static bool driver_should_parse(char *key)
 {
-	char *fitconfig;
-
-	fitconfig = pv_config_get_bl_fitconfig();
+	const char *fitconfig = pv_config_get_str(CI_BOOTLOADER_FITCONFIG);
 
 	pv_log(DEBUG, "fitconfig=%s", fitconfig);
 	if (!strcmp(key, "all") ||
@@ -427,7 +425,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 		goto out;
 	}
 
-	if ((pv_config_get_bl_type() == BL_RPIAB) &&
+	if ((pv_config_get_bootloader_type() == BL_RPIAB) &&
 	    !s->bsp.img.rpiab.bootimg) {
 		pv_log(ERROR, "bootimg not configured but required by config");
 		ret = 0;
@@ -1429,7 +1427,7 @@ static int parse_groups(struct pv_state *s, char *value)
 			free(tmp);
 			tmp = NULL;
 		} else {
-			timeout = pv_config_get_updater_goals_timeout();
+			timeout = pv_config_get_int(CI_UPDATER_GOALS_TIMEOUT);
 			pv_log(DEBUG,
 			       "timeout not configured. Using default value %d",
 			       timeout);
@@ -1797,7 +1795,7 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 		} else {
 			pv_log(DEBUG, "adding object '%s'", key);
 			pv_objects_add(this, key, value,
-				       pv_config_get_storage_mntpoint());
+				       pv_config_get_str(CI_STORAGE_MNTTYPE));
 		}
 
 		// free intermediates

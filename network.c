@@ -58,7 +58,7 @@
 // max len of iface + .ipvN + '\0'
 #define IFACE_KEY_SIZE IFNAMSIZ + 5 + 1
 
-static int _set_netmask(int skfd, char *intf, char *newmask)
+static int _set_netmask(int skfd, const char *intf, char *newmask)
 {
 	struct ifreq ifr;
 	struct sockaddr_in *sin = (struct sockaddr_in *)&ifr.ifr_addr;
@@ -174,8 +174,11 @@ static int pv_network_early_init(struct pv_init *this)
 
 	memset(&ifr, 0, sizeof(ifr));
 
-	if (!pv_config_get_network_brdev())
+	const char *brdev = pv_config_get_str(CI_NET_BRDEV);
+	if (!brdev)
 		return -1;
+
+	const char *braddress4 = pv_config_get_str(CI_NET_BRADDRESS4);
 
 	fd = socket(AF_LOCAL, SOCK_STREAM, 0);
 	if (fd < 0) {
@@ -183,22 +186,22 @@ static int pv_network_early_init(struct pv_init *this)
 		return -1;
 	}
 
-	ret = ioctl(fd, SIOCBRADDBR, pv_config_get_network_brdev());
+	ret = ioctl(fd, SIOCBRADDBR, brdev);
 	if (ret < 0) {
-		pv_log(WARN, "unable to create bridge dev %s: %s",
-		       pv_config_get_network_brdev(), strerror(errno));
+		pv_log(WARN, "unable to create bridge dev %s: %s", brdev,
+		       strerror(errno));
 	}
 
 	/* Create a channel to the NET kernel. */
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
 	/* get interface name */
-	memcpy(ifr.ifr_name, pv_config_get_network_brdev(), IFNAMSIZ);
+	memcpy(ifr.ifr_name, brdev, IFNAMSIZ);
 
 	ret = ioctl(sockfd, SIOCGIFFLAGS, &ifr);
 	if (ret < 0) {
-		pv_log(WARN, "unable to get flags for bridge dev %s: %s",
-		       pv_config_get_network_brdev(), strerror(errno));
+		pv_log(WARN, "unable to get flags for bridge dev %s: %s", brdev,
+		       strerror(errno));
 		goto out;
 	}
 
@@ -207,7 +210,7 @@ static int pv_network_early_init(struct pv_init *this)
 	ret = ioctl(sockfd, SIOCSIFFLAGS, &ifr);
 	if (ret < 0) {
 		pv_log(WARN, "unable to update flags for bridge dev %s: %s",
-		       pv_config_get_network_brdev(), strerror(errno));
+		       brdev, strerror(errno));
 		goto out;
 	}
 
@@ -215,7 +218,7 @@ static int pv_network_early_init(struct pv_init *this)
 	sai.sin_family = AF_INET;
 	sai.sin_port = 0;
 
-	sai.sin_addr.s_addr = inet_addr(pv_config_get_network_braddress4());
+	sai.sin_addr.s_addr = inet_addr(braddress4);
 
 	p = (char *)&sai;
 	memcpy((((char *)&ifr + ifreq_offsetof(ifr_addr))), p,
@@ -224,16 +227,14 @@ static int pv_network_early_init(struct pv_init *this)
 	ret = ioctl(sockfd, SIOCSIFADDR, &ifr);
 	if (ret < 0) {
 		pv_log(WARN, "unable to set IPv4 of bridge dev %s to %s: %s",
-		       pv_config_get_network_brdev(),
-		       pv_config_get_network_braddress4(), strerror(errno));
+		       brdev, braddress4, strerror(errno));
 		goto out;
 	}
 
-	ret = _set_netmask(sockfd, pv_config_get_network_brdev(),
-			   pv_config_get_network_brmask4());
+	ret = _set_netmask(sockfd, brdev, pv_config_get_str(CI_NET_BRMASK4));
 	if (ret < 0) {
-		pv_log(WARN, "unable to set netmask %s: %s",
-		       pv_config_get_network_brdev(), strerror(errno));
+		pv_log(WARN, "unable to set netmask %s: %s", brdev,
+		       strerror(errno));
 		goto out;
 	}
 

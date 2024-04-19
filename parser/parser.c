@@ -82,10 +82,9 @@ static bool pv_parser_is_compatible(state_spec_t spec)
 {
 	// embedded and standalone init modes are compatible with multi1 and system1
 	// appengine init mode is only compatible with system1
-	return ((pv_config_get_system_init_mode() == IM_EMBEDDED) ||
-		(pv_config_get_system_init_mode() == IM_STANDALONE) ||
-		((pv_config_get_system_init_mode() == IM_APPENGINE) &&
-		 (spec == SPEC_SYSTEM1)));
+	init_mode_t init_mode = pv_config_get_system_init_mode();
+	return ((init_mode == IM_EMBEDDED) || (init_mode == IM_STANDALONE) ||
+		((init_mode == IM_APPENGINE) && (spec == SPEC_SYSTEM1)));
 }
 
 struct pv_state *pv_parser_get_state(const char *buf, const char *rev)
@@ -112,8 +111,8 @@ struct pv_state *pv_parser_get_state(const char *buf, const char *rev)
 
 	spec = pv_parser_convert_spec(value);
 	if (!pv_parser_is_compatible(spec)) {
-		pv_log(WARN, "spec '%s' not compatible with init mode %d",
-		       value, pv_config_get_system_init_mode());
+		pv_log(WARN, "spec '%s' not compatible with init mode %s",
+		       value, pv_config_get_system_init_mode_str());
 		goto out;
 	}
 
@@ -162,8 +161,8 @@ char *pv_parser_get_initrd_config_name(const char *buf)
 
 	spec = pv_parser_convert_spec(value);
 	if (!pv_parser_is_compatible(spec)) {
-		pv_log(WARN, "spec '%s' not compatible with init mode %d",
-		       value, pv_config_get_system_init_mode());
+		pv_log(WARN, "spec '%s' not compatible with init mode %s",
+		       value, pv_config_get_system_init_mode_str());
 		goto out;
 	}
 

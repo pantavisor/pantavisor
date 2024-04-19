@@ -144,7 +144,8 @@ static int trail_remote_init(struct pantavisor *pv)
 	char *endpoint_trail = NULL;
 	int size = -1;
 
-	if (pv->remote || !pv_config_get_creds_id())
+	const char *id = pv_config_get_str(CI_CREDS_ID);
+	if (pv->remote || !id)
 		return 0;
 
 	client = pv_get_trest_client(pv, NULL);
@@ -163,13 +164,11 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote = calloc(1, sizeof(struct trail_remote));
 	remote->client = client;
 
-	size = sizeof(DEVICE_TRAIL_ENDPOINT_FMT) +
-	       strlen(pv_config_get_creds_id());
+	size = sizeof(DEVICE_TRAIL_ENDPOINT_FMT) + strlen(id);
 	endpoint_trail = malloc(size * sizeof(char));
 	if (!endpoint_trail)
 		goto err;
-	SNPRINTF_WTRUNC(endpoint_trail, size, DEVICE_TRAIL_ENDPOINT_FMT,
-			pv_config_get_creds_id());
+	SNPRINTF_WTRUNC(endpoint_trail, size, DEVICE_TRAIL_ENDPOINT_FMT, id);
 
 	size = strlen(endpoint_trail) + sizeof(DEVICE_TRAIL_ENDPOINT_QUEUED);
 
@@ -281,12 +280,12 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 
 	SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d", u->retries);
 
+	int revision_retries = pv_config_get_int(CI_REVISION_RETRIES);
 	switch (update->status) {
 	case UPDATE_QUEUED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "QUEUED");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Retried %d of %d",
-				u->retries,
-				pv_config_get_updater_revision_retries());
+				u->retries, revision_retries);
 		p->progress = 0;
 		break;
 	case UPDATE_DOWNLOADED:
@@ -408,8 +407,7 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 		SNPRINTF_WTRUNC(
 			p->msg, sizeof(p->msg),
 			"Network unavailable while downloading, retry %d of %d",
-			update->retries,
-			pv_config_get_updater_revision_retries());
+			update->retries, revision_retries);
 		p->progress = 0;
 		break;
 	case UPDATE_TESTING_REBOOT:
@@ -428,8 +426,7 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 	case UPDATE_DOWNLOAD_PROGRESS:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "DOWNLOADING");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Retry %d of %d",
-				update->retries,
-				pv_config_get_updater_revision_retries());
+				update->retries, revision_retries);
 		p->progress = 0;
 		p->total = &update->total;
 		break;
@@ -817,7 +814,7 @@ process_response:
 	pv_log(DEBUG, "parse rev %s...", rev);
 
 	// create temp update to be able to report the revision state
-	update = pv_update_new(pv_config_get_creds_id(), rev, false);
+	update = pv_update_new(pv_config_get_str(CI_CREDS_ID), rev, false);
 	if (!update)
 		goto out;
 
@@ -850,7 +847,7 @@ send_feedback:
 	}
 
 	// report revision retry max reached
-	if (retries > pv_config_get_updater_revision_retries()) {
+	if (retries > pv_config_get_int(CI_REVISION_RETRIES)) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
 		pv_update_set_status(update, UPDATE_NO_DOWNLOAD);
 		pv_update_free(update);
@@ -1110,11 +1107,12 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 		req->method = THTTP_METHOD_PUT;
 		req->proto = THTTP_PROTO_HTTP;
 		req->proto_version = THTTP_PROTO_VERSION_10;
-		req->host = pv_config_get_creds_host();
-		req->port = pv_config_get_creds_port();
-		req->host_proxy = pv_config_get_creds_host_proxy();
-		req->port_proxy = pv_config_get_creds_port_proxy();
-		req->proxyconnect = !pv_config_get_creds_noproxyconnect();
+		req->host = pv_config_get_str(CI_CREDS_HOST);
+		req->port = pv_config_get_int(CI_CREDS_PORT);
+		req->host_proxy = pv_config_get_str(CI_CREDS_PROXY_HOST);
+		req->port_proxy = pv_config_get_int(CI_CREDS_PROXY_PORT);
+		req->proxyconnect =
+			!pv_config_get_int(CI_CREDS_PROXY_NOPROXYCONNECT);
 		if (req->is_tls) {
 			str_size = strlen("https://") + strlen(req->host) +
 				   1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
@@ -1341,8 +1339,7 @@ static int pv_update_check_download_retry(struct pv_update *update)
 
 	if (timer_state.fin) {
 		update->retries++;
-		if (update->retries >
-		    pv_config_get_updater_revision_retries()) {
+		if (update->retries > pv_config_get_int(CI_REVISION_RETRIES)) {
 			pv_log(WARN, "max retries reached in rev %s",
 			       update->rev);
 			pv_update_set_status(update, UPDATE_NO_DOWNLOAD);
@@ -1351,8 +1348,9 @@ static int pv_update_check_download_retry(struct pv_update *update)
 		pv_log(INFO, "trying revision %s ,retry = %d", update->rev,
 		       update->retries);
 		// set timer for next retry
-		timer_start(&update->retry_timer, pv_config_get_storage_wait(),
-			    0, RELATIV_TIMER);
+		timer_start(&update->retry_timer,
+			    pv_config_get_int(CI_STORAGE_WAIT), 0,
+			    RELATIV_TIMER);
 		return 0;
 	}
 
@@ -1438,7 +1436,7 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	// WONTGO
 	case UPDATE_RETRY_DOWNLOAD:
-		if (u->retries <= pv_config_get_updater_revision_retries())
+		if (u->retries <= pv_config_get_int(CI_REVISION_RETRIES))
 			return ret;
 
 		pv_update_set_status(u, UPDATE_NO_DOWNLOAD);
@@ -1563,7 +1561,7 @@ static int obj_is_kernel_pvk(struct pantavisor *pv, struct pv_object *obj)
 			return 0;
 	}
 
-	if (pv_config_get_bl_type() == BL_UBOOT_PVK)
+	if (pv_config_get_bootloader_type() == BL_UBOOT_PVK)
 		return 1;
 
 	return 0;
@@ -1685,9 +1683,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	host[n] = '\0';
 
 	req->host = host;
-	req->host_proxy = pv_config_get_creds_host_proxy();
-	req->port_proxy = pv_config_get_creds_port_proxy();
-	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
+	req->host_proxy = pv_config_get_str(CI_CREDS_PROXY_HOST);
+	req->port_proxy = pv_config_get_int(CI_CREDS_PROXY_PORT);
+	req->proxyconnect = !pv_config_get_int(CI_CREDS_PROXY_NOPROXYCONNECT);
 	if (req->is_tls) {
 		size = strlen("https://") + strlen(req->host) + 1 /* : */ +
 		       5 /* port */ + 2 /* 0-delim */;
@@ -1710,9 +1708,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 
 	req->path = end;
 
-	if (pv_config_get_updater_network_use_tmp_objects() &&
-	    (!strcmp(pv_config_get_storage_fstype(), "jffs2") ||
-	     !strcmp(pv_config_get_storage_fstype(), "ubifs")))
+	if (pv_config_get_bool(CI_UPDATER_USE_TMP_OBJECTS) &&
+	    (!strcmp(pv_config_get_str(CI_STORAGE_FSTYPE), "jffs2") ||
+	     !strcmp(pv_config_get_str(CI_STORAGE_FSTYPE), "ubifs")))
 		use_volatile_tmp = 1;
 
 	// temporary path where we will store the file until validated
@@ -1928,7 +1926,7 @@ struct pv_update *pv_update_get_step_local(const char *rev)
 
 	pv_logserver_start_update(rev);
 
-	update = pv_update_new(pv_config_get_creds_id(), rev, true);
+	update = pv_update_new(pv_config_get_str(CI_CREDS_ID), rev, true);
 	if (!update)
 		goto err;
 
@@ -2061,8 +2059,8 @@ int pv_update_resume(struct pantavisor *pv)
 
 		pv_log(INFO, "loading update data from rev %s after reboot...",
 		       rev);
-		pv->update =
-			pv_update_new(pv_config_get_creds_id(), rev, false);
+		pv->update = pv_update_new(pv_config_get_str(CI_CREDS_ID), rev,
+					   false);
 		if (!pv->update)
 			return -1;
 

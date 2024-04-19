@@ -88,6 +88,8 @@ static struct pv_logger_config plat_logger_config_messages = {
 
 struct pv_cont_ctrl {
 	char *type;
+	void *(*set_loglevel)(int loglevel);
+	void *(*set_capture)(bool capture);
 	void *(*start)(struct pv_platform *p, const char *rev, char *conf_file,
 		       int logfd, void *data);
 	void *(*stop)(struct pv_platform *p, char *conf_file, void *data);
@@ -101,7 +103,7 @@ enum {
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
-	{ "lxc", NULL, NULL, NULL },
+	{ "lxc", NULL, NULL, NULL, NULL, NULL },
 	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
@@ -422,6 +424,20 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 
 	if (c->start == NULL || c->stop == NULL)
 		return 0;
+
+	if (!c->set_loglevel) {
+		c->set_loglevel = dlsym(lib, "pv_set_pv_conf_loglevel_fn");
+		if (!c->set_loglevel)
+			pv_log(WARN,
+			       "could not locate symbol 'pv_set_pv_conf_loglevel_fn");
+	}
+
+	if (!c->set_capture) {
+		c->set_capture = dlsym(lib, "pv_set_pv_conf_capture_fn");
+		if (!c->set_capture)
+			pv_log(WARN,
+			       "could not locate symbol 'pv_set_pv_conf_capture_fn'");
+	}
 
 	if (c->get_console_fd == NULL) {
 		c->get_console_fd = dlsym(lib, "pv_console_log_getfd");
@@ -803,6 +819,11 @@ int pv_platform_start(struct pv_platform *p)
 	}
 
 	ctrl = _pv_platforms_get_ctrl(p->type);
+
+	// update plugin with current config
+	ctrl->set_loglevel(pv_config_get_int(CI_LXC_LOG_LEVEL));
+	ctrl->set_capture(pv_config_get_bool(CI_LOG_CAPTURE));
+
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
 	data = ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], (void *)&pid);
 	if (!data) {
@@ -816,7 +837,7 @@ int pv_platform_start(struct pv_platform *p)
 	if (pid <= 0)
 		return -1;
 
-	if (pv_config_get_log_loggers())
+	if (pv_config_get_bool(CI_LOG_LOGGERS))
 		if (start_pvlogger_for_platform(p) < 0)
 			pv_log(ERROR,
 			       "could not start pv_logger for platform %s",

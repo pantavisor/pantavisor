@@ -108,28 +108,6 @@ out:
 	return NULL;
 }
 
-static struct config_item *_config_replace_item(struct dl_list *list, char *key,
-						char *value)
-{
-	struct config_item *curr = NULL;
-
-	if (key == NULL || dl_list_empty(list))
-		return NULL;
-
-	curr = _config_get_by_key(list, key);
-	if (curr) {
-		char *tmp_val = strdup(value);
-
-		if (tmp_val) {
-			free(curr->value);
-			curr->value = tmp_val;
-		}
-		return curr;
-	}
-	// not found? add it
-	return _config_add_item(list, key, value);
-}
-
 int config_parse_cmdline(struct dl_list *list, char *hint)
 {
 	struct pantavisor *pv = pv_get_instance();
@@ -155,7 +133,7 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 			nl = strchr(value, '\n');
 			if (nl) /* get rid of newline at end */
 				*nl = '\0';
-			_config_replace_item(list, key, value);
+			_config_add_item(list, key, value);
 		}
 		token = strtok_r(NULL, " ", &ptr_out);
 	}
@@ -214,7 +192,8 @@ char *config_get_value(struct dl_list *list, char *key)
 }
 
 void config_iterate_items(struct dl_list *list,
-			  int (*action)(char *key, char *value, void *opaque),
+			  int (*action)(const char *key, const char *value,
+					void *opaque),
 			  void *opaque)
 {
 	struct config_item *curr = NULL, *tmp;
@@ -231,8 +210,8 @@ void config_iterate_items(struct dl_list *list,
 }
 
 void config_iterate_items_prefix(struct dl_list *list,
-				 int (*action)(char *key, char *value,
-					       void *opaque),
+				 int (*action)(const char *key,
+					       const char *value, void *opaque),
 				 char *prefix, void *opaque)
 {
 	struct config_item *curr = NULL, *tmp;

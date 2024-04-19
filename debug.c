@@ -72,7 +72,7 @@ void pv_debug_start_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd' || pv_config_get_debug_shell_autologin())
+	if (c[0] == 'd' || pv_config_get_bool(CI_DEBUG_SHELL_AUTOLOGIN))
 		shell_pid =
 			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
 }
@@ -98,13 +98,12 @@ void pv_debug_start_ssh()
 
 	pv_log(DEBUG, "starting SSH server...");
 
-	if (!pv_config_get_debug_ssh_authorized_keys() ||
-	    !strcmp(pv_config_get_debug_ssh_authorized_keys(), "__default__"))
+	const char *keys = pv_config_get_str(CI_DEBUG_SSH_AUTHORIZED_KEYS);
+
+	if (!keys || !strcmp(keys, "__default__"))
 		pv_paths_pv_usrmeta_key(path, PATH_MAX, SSH_KEY_FNAME);
 	else
-		pv_paths_etc_ssh_file(
-			path, PATH_MAX,
-			pv_config_get_debug_ssh_authorized_keys());
+		pv_paths_etc_ssh_file(path, PATH_MAX, keys);
 
 	dbcmd = calloc(sizeof(DBCMD) + strlen(path) + 1, sizeof(char));
 	sprintf(dbcmd, DBCMD, path);
@@ -141,7 +140,7 @@ void pv_debug_stop_ssh()
 
 void pv_debug_check_ssh_running()
 {
-	if (pv_config_get_debug_ssh())
+	if (pv_config_get_bool(CI_DEBUG_SSH))
 		pv_debug_start_ssh();
 	else
 		pv_debug_stop_ssh();

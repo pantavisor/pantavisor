@@ -54,7 +54,7 @@ static char *create_dir(const struct logserver_log *log)
 
 static int add_log(struct logserver_out *out, const struct logserver_log *log)
 {
-	if (log->lvl > pv_config_get_log_loglevel())
+	if (log->lvl > pv_config_get_int(CI_LOG_LEVEL))
 		return 0;
 
 	char *path = create_dir(log);

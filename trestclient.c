@@ -52,6 +52,8 @@ static struct trest_response *external_login_handler(trest_ptr self, void *data)
 	char buf[PV_TRESTCLIENT_MAX_READ];
 	int read_c, body_s, s;
 
+	const char *type = pv_config_get_str(CI_CREDS_TYPE);
+
 	pv = NULL;
 	response = NULL;
 
@@ -69,12 +71,10 @@ static struct trest_response *external_login_handler(trest_ptr self, void *data)
 		goto err;
 	}
 
-	pv_log(INFO, "external login handler called for creds type '%s'",
-	       pv_config_get_creds_type());
+	pv_log(INFO, "external login handler called for creds type '%s'", type);
 
 	SNPRINTF_WTRUNC(loginhandler_cmd, sizeof(loginhandler_cmd),
-			PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
-			pv_config_get_creds_type());
+			PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT, type);
 
 	if (pipe(fd_outerr) < 0) {
 		pv_log(ERROR,
@@ -162,22 +162,28 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	} creds_type;
 
 	// Make sure values are reasonable
-	if (!pv_config_get_creds_host() ||
-	    (strcmp(pv_config_get_creds_host(), "") == 0))
+	const char *host = pv_config_get_str(CI_CREDS_HOST);
+	int port = pv_config_get_int(CI_CREDS_PORT);
+	if (!host || (strcmp(host, "") == 0))
 		return NULL;
 
-	if (!strcmp(pv_config_get_creds_type(), "builtin")) {
+	const char *type = pv_config_get_str(CI_CREDS_TYPE);
+	const char *prn = pv_config_get_str(CI_CREDS_PRN);
+	const char *secret = pv_config_get_str(CI_CREDS_SECRET);
+	char *proxy_host = pv_config_get_str(CI_CREDS_PROXY_HOST);
+	int proxy_port = pv_config_get_int(CI_CREDS_PROXY_PORT);
+	int noproxyconnect = pv_config_get_int(CI_CREDS_PROXY_NOPROXYCONNECT);
+
+	if (!strcmp(type, "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
-	} else if (strlen(pv_config_get_creds_type()) >= 4 &&
-		   !strncmp(pv_config_get_creds_type(), "ext-", 4)) {
+	} else if (strlen(type) >= 4 && !strncmp(type, "ext-", 4)) {
 		char cmd[PATH_MAX];
 		struct stat sb;
 		int rv;
 
 		// if no executable handler is found; fall back to builtin
 		SNPRINTF_WTRUNC(cmd, sizeof(cmd),
-				PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT,
-				pv_config_get_creds_type());
+				PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT, type);
 
 		rv = stat(cmd, &sb);
 		if (rv) {
@@ -196,7 +202,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		creds_type = HUB_CREDS_TYPE_EXTERNAL;
 	} else {
 		pv_log(ERROR, "unable to get trest client for creds_type %s.",
-		       pv_config_get_creds_type());
+		       type);
 		goto err;
 	}
 
@@ -210,18 +216,15 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	case HUB_CREDS_TYPE_BUILTIN:
 		// Create client
 
-		if (!pv_config_get_creds_prn() ||
-		    (strcmp(pv_config_get_creds_prn(), "") == 0) ||
-		    !pv_config_get_creds_secret() ||
-		    (strcmp(pv_config_get_creds_secret(), "") == 0)) {
+		if (!prn || (strcmp(prn, "") == 0) || !secret ||
+		    (strcmp(secret, "") == 0)) {
 			goto err;
 		}
 
-		client = trest_new_tls_from_userpass(
-			pv_config_get_creds_host(), pv_config_get_creds_port(),
-			pv_config_get_creds_prn(), pv_config_get_creds_secret(),
-			(const char **)cafiles, pv_user_agent,
-			(conn ? NULL : NULL));
+		client = trest_new_tls_from_userpass(host, port, prn, secret,
+						     (const char **)cafiles,
+						     pv_user_agent,
+						     (conn ? NULL : NULL));
 
 		if (!client) {
 			pv_log(INFO, "unable to create device client");
@@ -230,9 +233,9 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		break;
 	case HUB_CREDS_TYPE_EXTERNAL:
 		client = trest_new_tls_with_login_handler(
-			pv_config_get_creds_host(), pv_config_get_creds_port(),
-			external_login_handler, pv, (const char **)cafiles,
-			pv_user_agent, (conn ? NULL : NULL));
+			host, port, external_login_handler, pv,
+			(const char **)cafiles, pv_user_agent,
+			(conn ? NULL : NULL));
 
 		if (!client) {
 			pv_log(INFO, "unable to create device client");
@@ -243,16 +246,14 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		pv_log(ERROR,
 		       "unable to get trest client for creds_type %s. "
 		       "Currently supported: builtin and ext-* handlers",
-		       pv_config_get_creds_type());
+		       type);
 		goto err;
 	}
 
 	// a proxy -> dont use tls unless proxyconnect configured
-	if (pv_config_get_creds_host_proxy()) {
-		trest_set_proxy_connect(client,
-					pv_config_get_creds_host_proxy(),
-					pv_config_get_creds_port_proxy(), false,
-					!pv_config_get_creds_noproxyconnect());
+	if (proxy_host) {
+		trest_set_proxy_connect(client, proxy_host, proxy_port, false,
+					!noproxyconnect);
 	}
 
 	return client;

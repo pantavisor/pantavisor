@@ -71,7 +71,6 @@ static struct level_name level_names[] = { LEVEL_NAME(FATAL), LEVEL_NAME(ERROR),
 static pid_t log_init_pid = -1;
 
 static const int MAX_BUFFER_COUNT = 10;
-static struct pantavisor *global_pv = NULL;
 
 static void __vlog(char *module, int level, const char *fmt, va_list args)
 {
@@ -81,7 +80,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 
 static void log_libthttp(int level, const char *fmt, va_list args)
 {
-	if (level > pv_config_get_libthttp_loglevel())
+	if (level > pv_config_get_int(CI_LIBTHTTP_LOG_LEVEL))
 		return;
 
 	if (log_init_pid != getpid())
@@ -90,12 +89,11 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 	__vlog("libthttp", DEBUG, fmt, args);
 }
 
-static void pv_log_init(struct pantavisor *pv, const char *rev)
+static void pv_log_init(const char *rev)
 {
 	char pv_logs_path[PATH_MAX], storage_logs_path[PATH_MAX];
 
 	log_init_pid = getpid();
-	global_pv = pv;
 
 	pv_paths_pv_log(pv_logs_path, PATH_MAX, "");
 	pv_fs_mkdir_p(pv_logs_path, 0755);
@@ -103,11 +101,11 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 	pv_paths_storage_log(storage_logs_path, PATH_MAX);
 	mount_bind(storage_logs_path, pv_logs_path);
 
-	pv_buffer_init(MAX_BUFFER_COUNT, pv_config_get_log_logsize() * 1024);
+	pv_buffer_init(MAX_BUFFER_COUNT,
+		       pv_config_get_int(CI_LOG_BUF_NITEMS) * 1024);
 
-	if (pv_logserver_init(rev)) {
+	if (pv_logserver_init(rev))
 		pv_log(ERROR, "logserver initialization failed");
-	}
 
 	pv_log(DEBUG, "initialized pantavisor logs...");
 
@@ -129,7 +127,7 @@ void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;
 
-	if ((level != FATAL) && (level > pv_config_get_log_loglevel()))
+	if ((level != FATAL) && (level > pv_config_get_int(CI_LOG_LEVEL)))
 		return;
 
 	va_start(args, fmt);
@@ -159,9 +157,7 @@ void pv_log_umount(void)
 
 static int pv_log_early_init(struct pv_init *this)
 {
-	struct pantavisor *pv = pv_get_instance();
-
-	pv_log_init(pv, pv_bootloader_get_rev());
+	pv_log_init(pv_bootloader_get_rev());
 
 	// this should be the only message we directly printf
 	printf("Pantavisor (TM) (%s) - pantavisor.io\n", pv_build_version);
@@ -178,6 +174,7 @@ static int pv_log_early_init(struct pv_init *this)
 	// we print stuff here that was initialized before logs
 	pv_bootloader_print();
 	pv_config_print();
+	pv_init_print_cmdline();
 
 	return 0;
 }

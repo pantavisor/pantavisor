@@ -597,8 +597,8 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		       serial);
 	} while ((cacerts_i = cacerts_i->next) != 0);
 
-	pv_paths_secureboot_trust_crts(path, PATH_MAX,
-				       pv_config_get_secureboot_truststore());
+	pv_paths_secureboot_trust_crts(
+		path, PATH_MAX, pv_config_get_str(CI_SECUREBOOT_TRUSTSTORE));
 	pv_log(DEBUG, "parsing secureboot.truststore certs from %s", path);
 	res = mbedtls_x509_crt_parse_file(&cacerts, path);
 	if (res) {

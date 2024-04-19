@@ -53,6 +53,13 @@
 #define pv_log(level, msg, ...) __vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
+struct pv_lxc_conf {
+	int loglevel;
+	bool capture;
+};
+
+static struct pv_lxc_conf pv_conf = { .loglevel = 2, .capture = true };
+
 static struct lxc_log pv_lxc_log = { .level = "DEBUG",
 				     .prefix = "init",
 				     .name = NULL,
@@ -112,22 +119,14 @@ void pv_set_pv_paths_fn(
 	__pv_paths_lib_lxc_lxcpath = fn_pv_paths_lib_lxc_lxcpath;
 }
 
-static int pv_lxc_get_lxc_log_level()
+void pv_set_pv_conf_loglevel_fn(int loglevel)
 {
-	if (__pv_get_instance())
-		return __pv_get_instance()->config.lxc.log_level;
-
-	// default
-	return 2;
+	pv_conf.loglevel = loglevel;
 }
 
-static bool pv_lxc_capture_logs_activated()
+void pv_set_pv_conf_capture_fn(bool capture)
 {
-	if (__pv_get_instance())
-		return __pv_get_instance()->config.log.capture;
-
-	// default
-	return true;
+	pv_conf.capture = capture;
 }
 
 static void pv_free_lxc_log(struct pv_log_info *pv_log_i)
@@ -248,7 +247,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	ret = strlen(path);
 	path[ret] = ':';
 	path[ret + 1] = 0;
-	c->get_config_item(c, "lxc.rootfs.path", path + strlen(path), PATH_MAX - strlen(path) - 1);
+	c->get_config_item(c, "lxc.rootfs.path", path + strlen(path),
+			   PATH_MAX - strlen(path) - 1);
 
 	ret = stat(seed, &st);
 	if (!ret && !inschr(path, PATH_MAX, ':', seed)) {
@@ -256,8 +256,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		       "failed to setup configoverlay in lxc.rootfs.path %s + %s",
 		       path, seed);
 	} else if (!ret) {
-		pv_log(WARN,
-		       "setup config overlay in lxc.rootfs.path %s + %s",
+		pv_log(WARN, "setup config overlay in lxc.rootfs.path %s + %s",
 		       path, seed);
 		c->set_config_item(c, "lxc.rootfs.path", path);
 	} else {
@@ -267,8 +266,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	}
 
 	if (c->get_config_item(c, "lxc.log.level", NULL, 0)) {
-		snprintf(log_level, sizeof(log_level), "%d",
-			 pv_lxc_get_lxc_log_level());
+		snprintf(log_level, sizeof(log_level), "%d", pv_conf.loglevel);
 		c->set_config_item(c, "lxc.log.level", log_level);
 	}
 	pv_setup_lxc_container_cgroup(c);
@@ -577,7 +575,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		if (!__pv_get_instance)
 			goto out_container_init;
 
-		if (pv_lxc_capture_logs_activated()) {
+		if (pv_conf.capture) {
 			lxc_log_init(&pv_lxc_log);
 			lxc_log_set_alternative_output(logfd);
 		}
@@ -635,7 +633,7 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 	pv_setup_lxc_container(c, p, rev); /*Do we need this?*/
 
-	if (!pv_lxc_capture_logs_activated())
+	if (!pv_conf.capture)
 		goto out_success;
 
 out_success:
