@@ -71,10 +71,10 @@ static int uboot_init()
 	pv_log(DEBUG, "uboot.txt@%s", uboot_txt);
 
 	// get mtd_path from config or else use default
-	single_env = pv_config_get_bl_mtd_only();
-	if (pv_config_get_bl_mtd_path())
-		memcpy(mtd_env_str, pv_config_get_bl_mtd_path(),
-		       strlen(pv_config_get_bl_mtd_path()));
+	single_env = pv_config_get_bool(CI_BOOTLOADER_MTD_ONLY);
+	const char *mtd_path = pv_config_get_str(CI_BOOTLOADER_MTD_ENV);
+	if (mtd_path)
+		memcpy(mtd_env_str, mtd_path, strlen(mtd_path));
 	else
 		memcpy(mtd_env_str, MTD_ENV, sizeof(MTD_ENV));
 

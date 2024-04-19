@@ -220,8 +220,9 @@ int pv_volume_mount(struct pv_volume *v)
 			pv_fs_mkdir_p(mntpoint, 0755);
 			ret = mount(path, mntpoint, NULL, MS_BIND | MS_REC,
 				    NULL);
-		} else if (handler && (!getenv("pv_verityoff") &&
-				       pv_config_get_secureboot_handlers())) {
+		} else if (handler &&
+			   (!getenv("pv_verityoff") &&
+			    pv_config_get_bool(CI_SECUREBOOT_HANDLERS))) {
 			pv_log(INFO, "with '%s' handler", handler);
 
 			if (!partname) {

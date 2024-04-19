@@ -1131,7 +1131,8 @@ static char *_pv_state_get_novalidate_list(char *rev)
 	struct dirent *dp;
 	DIR *volmountdir;
 
-	if (getenv("pv_verityoff") || !pv_config_get_secureboot_handlers())
+	if (getenv("pv_verityoff") ||
+	    !pv_config_get_bool(CI_SECUREBOOT_HANDLERS))
 		return NULL;
 
 	pv_paths_lib_volmount(hdl_path, PATH_MAX, "verity", "");
@@ -1228,7 +1229,8 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	char *validate_list = NULL;
 	bool ret = false;
 
-	if (getenv("pv_quickboot") || !pv_config_get_secureboot_checksum()) {
+	if (getenv("pv_quickboot") ||
+	    !pv_config_get_bool(CI_SECUREBOOT_CHECKSUM)) {
 		pv_log(DEBUG, "state objects and JSONs checksum disabled");
 		ret = true;
 		goto out;

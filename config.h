@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2021 Pantacor Ltd.
+ * Copyright (c) 2017-2024 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,118 +27,126 @@
 
 #include "utils/list.h"
 
-typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
-
-struct pantavisor_system {
-	init_mode_t init_mode;
-	char *libdir;
-	char *etcdir;
-	char *usrdir;
-	char *rundir;
-	char *mediadir;
-	char *confdir;
-	char *apparmor_profiles;
-	bool auto_load_drivers;
-	bool mount_securityfs;
-};
-
-struct pantavisor_debug {
-	bool shell;
-	bool shell_autologin;
-	bool ssh;
-	char *ssh_authorized_keys;
-};
-
-struct pantavisor_cache {
-	char *usrmetadir;
-	char *devmetadir;
-	char *dropbearcachedir;
-};
-
-struct pantavisor_factory {
-	char *autotok;
-};
-
-struct pantavisor_tpm {
-	char *key;
-	char *cert;
-};
-
-struct pantavisor_creds {
-	char *type;
-	char *host;
-	int port;
-	char *host_proxy;
-	int port_proxy;
-	int noproxyconnect;
-	char *id;
-	char *prn;
-	char *secret;
-	char *token;
-	struct pantavisor_tpm tpm;
-};
-
-struct pantavisor_gc {
-	int reserved;
-	bool keep_factory;
-	int threshold;
-	int threshold_defertime;
-};
-
-struct pantavisor_storage {
-	char *path;
-	char *fstype;
-	char *opts;
-	char *mntpoint;
-	char *mnttype;
-	char *logtempsize;
-	int wait;
-	struct pantavisor_gc gc;
-};
-
-struct pantavisor_disk {
-	char *voldir;
-	char *exportsdir;
-	char *writabledir;
-};
-
-struct pantavisor_updater {
-	int interval;
-	int goals_timeout;
-	int network_timeout;
-	bool use_tmp_objects;
-	int revision_retries;
-	int revision_retry_timeout;
-	int commit_delay;
-};
-
-enum { BL_UBOOT_PLAIN = 0, BL_UBOOT_PVK, BL_GRUB, BL_RPIAB };
-
-struct pantavisor_bootloader {
-	int type;
-	bool mtd_only;
-	char *mtd_path;
-	char *fitconfig;
-};
+// GENERIC
 
 typedef enum {
-	WDT_DISABLED,
-	WDT_SHUTDOWN,
-	WDT_STARTUP,
-	WDT_ALWAYS,
-} wdt_mode_t;
+	CI_BOOTLOADER_FITCONFIG,
+	CI_BOOTLOADER_MTD_ENV,
+	CI_BOOTLOADER_MTD_ONLY,
+	CI_BOOTLOADER_TYPE,
+	CI_CACHE_DEVMETADIR,
+	CI_CACHE_USRMETADIR,
+	CI_CONTROL_REMOTE,
+	CI_CONTROL_REMOTE_ALWAYS,
+	CI_CREDS_HOST,
+	CI_CREDS_ID,
+	CI_CREDS_PORT,
+	CI_CREDS_PROXY_HOST,
+	CI_CREDS_PROXY_NOPROXYCONNECT,
+	CI_CREDS_PROXY_PORT,
+	CI_CREDS_PRN,
+	CI_CREDS_SECRET,
+	CI_CREDS_TPM_CERT,
+	CI_CREDS_TPM_KEY,
+	CI_CREDS_TYPE,
+	CI_DEBUG_SHELL,
+	CI_DEBUG_SHELL_AUTOLOGIN,
+	CI_DEBUG_SSH,
+	CI_DEBUG_SSH_AUTHORIZED_KEYS,
+	CI_DISK_EXPORTSDIR,
+	CI_DISK_VOLDIR,
+	CI_DISK_WRITABLEDIR,
+	CI_DROPBEAR_CACHE_DIR,
+	CI_FACTORY_AUTOTOK,
+	CI_LIBTHTTP_CERTDIR,
+	CI_LIBTHTTP_LOG_LEVEL,
+	CI_LOG_CAPTURE,
+	CI_LOG_CAPTURE_DMESG,
+	CI_LOG_BUF_NITEMS,
+	CI_LOG_DIR,
+	CI_LOG_FILETREE_TS_FMT,
+	CI_LOG_LEVEL,
+	CI_LOG_LOGGERS,
+	CI_LOG_MAXSIZE,
+	CI_LOG_PUSH,
+	CI_LOG_SERVER_OUTPUTS,
+	CI_LOG_SINGLEFILE_TS_FMT,
+	CI_LOG_STDOUT,
+	CI_LOG_STDOUT_TS_FMT,
+	CI_LXC_LOG_LEVEL,
+	CI_METADATA_DEVMETA_INTERVAL,
+	CI_METADATA_USRMETA_INTERVAL,
+	CI_NET_BRADDRESS4,
+	CI_NET_BRDEV,
+	CI_NET_BRMASK4,
+	CI_POLICY,
+	CI_REVISION_RETRIES,
+	CI_REVISION_RETRIES_TIMEOUT,
+	CI_SECUREBOOT_CHECKSUM,
+	CI_SECUREBOOT_HANDLERS,
+	CI_SECUREBOOT_MODE,
+	CI_SECUREBOOT_TRUSTSTORE,
+	CI_STORAGE_DEVICE,
+	CI_STORAGE_FSTYPE,
+	CI_STORAGE_GC_KEEP_FACTORY,
+	CI_STORAGE_GC_RESERVED,
+	CI_STORAGE_GC_THRESHOLD_DEFERTIME,
+	CI_STORAGE_GC_THRESHOLD,
+	CI_STORAGE_LOGTEMPSIZE,
+	CI_STORAGE_MNTPOINT,
+	CI_STORAGE_MNTTYPE,
+	CI_STORAGE_OPTS,
+	CI_STORAGE_WAIT,
+	CI_SYSTEM_APPARMOR_PROFILES,
+	CI_SYSTEM_CONFDIR,
+	CI_SYSTEM_DRIVERS_LOAD_EARLY_AUTO,
+	CI_SYSTEM_ETCDIR,
+	CI_SYSTEM_INIT_MODE,
+	CI_SYSTEM_LIBDIR,
+	CI_SYSTEM_MEDIADIR,
+	CI_SYSTEM_MOUNT_SECURITYFS,
+	CI_SYSTEM_RUNDIR,
+	CI_SYSTEM_USRDIR,
+	CI_UPDATER_COMMIT_DELAY,
+	CI_UPDATER_GOALS_TIMEOUT,
+	CI_UPDATER_INTERVAL,
+	CI_UPDATER_NETWORK_TIMEOUT,
+	CI_UPDATER_USE_TMP_OBJECTS,
+	CI_WDT_ENABLED,
+	CI_WDT_MODE,
+	CI_WDT_TIMEOUT,
+	CI_MAX
+} config_index_t;
 
-struct pantavisor_watchdog {
-	bool enabled;
-	wdt_mode_t mode;
-	int timeout;
-};
+bool pv_config_get_bool(config_index_t ci);
+int pv_config_get_int(config_index_t ci);
+char *pv_config_get_str(config_index_t ci);
 
-struct pantavisor_network {
-	char *brdev;
-	char *braddress4;
-	char *brmask4;
-};
+// BOOTLOADER TYPE
+
+typedef enum {
+	BL_UBOOT_PLAIN = 0,
+	BL_UBOOT_PVK,
+	BL_GRUB,
+	BL_RPIAB
+} bootloader_t;
+
+bootloader_t pv_config_get_bootloader_type(void);
+char *pv_config_get_bootloader_type_str(void);
+
+// CREDS
+
+void pv_config_set_creds_id(char *id);
+void pv_config_set_creds_prn(char *prn);
+void pv_config_set_creds_secret(char *secret);
+
+// DEBUG
+
+void pv_config_set_debug_shell(bool shell);
+void pv_config_set_debug_shell_autologin(bool autologin);
+void pv_config_set_debug_ssh(bool ssh);
+
+// LOG SERVER OUTPUTS
 
 typedef enum {
 	LOG_SERVER_OUTPUT_NULL_SINK = 1 << 0,
@@ -151,39 +159,9 @@ typedef enum {
 	LOG_SERVER_OUTPUT_UPDATE = 1 << 7,
 } log_server_output_mask_t;
 
-struct pantavisor_log_server {
-	int outputs;
-};
+log_server_output_mask_t pv_config_get_log_server_outputs(void);
 
-struct pantavisor_log {
-	char *logdir;
-	int logmax;
-	int loglevel;
-	int logsize;
-	bool push;
-	bool capture;
-	bool dmesg;
-	bool loggers;
-	bool std_out;
-	char *ts_filetree_fmt;
-	char *ts_singlefile_fmt;
-	char *ts_stdout_fmt;
-	struct pantavisor_log_server server;
-};
-
-struct pantavisor_lxc {
-	int log_level;
-};
-
-struct pantavisor_control {
-	bool remote;
-	bool remote_always;
-};
-
-struct pantavisor_libthttp {
-	int loglevel;
-	char *certdir;
-};
+// SECUREBOOT MODE
 
 typedef enum {
 	SB_DISABLED,
@@ -192,38 +170,30 @@ typedef enum {
 	SB_STRICT,
 } secureboot_mode_t;
 
-struct pantavisor_secureboot {
-	secureboot_mode_t mode;
-	char *truststore;
-	bool checksum;
-	bool handlers;
-};
+secureboot_mode_t pv_config_get_secureboot_mode(void);
+char *pv_config_get_secureboot_mode_str(void);
 
-struct pantavisor_metadata {
-	int devmeta_interval;
-	int usrmeta_interval;
-};
+// SYSTEM INIT MODE
 
-struct pantavisor_config {
-	char *policy;
-	struct pantavisor_system sys;
-	struct pantavisor_debug debug;
-	struct pantavisor_cache cache;
-	struct pantavisor_bootloader bl;
-	struct pantavisor_creds creds;
-	struct pantavisor_factory factory;
-	struct pantavisor_storage storage;
-	struct pantavisor_disk disk;
-	struct pantavisor_updater updater;
-	struct pantavisor_watchdog wdt;
-	struct pantavisor_network net;
-	struct pantavisor_log log;
-	struct pantavisor_lxc lxc;
-	struct pantavisor_control control;
-	struct pantavisor_libthttp libthttp;
-	struct pantavisor_secureboot secureboot;
-	struct pantavisor_metadata metadata;
-};
+typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
+
+init_mode_t pv_config_get_system_init_mode(void);
+char *pv_config_get_system_init_mode_str(void);
+void pv_config_set_system_init_mode(init_mode_t mode);
+
+// WATCHDOG MODE
+
+typedef enum {
+	WDT_DISABLED,
+	WDT_SHUTDOWN,
+	WDT_STARTUP,
+	WDT_ALWAYS,
+} wdt_mode_t;
+
+wdt_mode_t pv_config_get_wdt_mode(void);
+char *pv_config_get_wdt_mode_str(void);
+
+// MAIN FUNCTIONS
 
 int pv_config_init(char *path);
 
@@ -233,124 +203,6 @@ int pv_config_save_creds(void);
 void pv_config_override_value(const char *key, const char *value);
 
 void pv_config_free(void);
-
-void pv_config_set_system_init_mode(init_mode_t mode);
-
-void pv_config_set_debug_shell(bool shell);
-void pv_config_set_debug_shell_autologin(bool autologin);
-void pv_config_set_debug_ssh(bool ssh);
-
-void pv_config_set_creds_id(char *id);
-void pv_config_set_creds_prn(char *prn);
-void pv_config_set_creds_secret(char *secret);
-
-char *pv_config_get_policy(void);
-init_mode_t pv_config_get_system_init_mode(void);
-char *pv_config_get_system_libdir(void);
-char *pv_config_get_system_etcdir(void);
-char *pv_config_get_system_usrdir(void);
-char *pv_config_get_system_rundir(void);
-char *pv_config_get_system_mediadir(void);
-char *pv_config_get_system_confdir(void);
-bool pv_config_get_system_early_driver_load(void);
-bool pv_config_get_system_mount_securityfs(void);
-char *pv_config_get_system_apparmor_profiles(void);
-
-bool pv_config_get_debug_shell(void);
-bool pv_config_get_debug_shell_autologin(void);
-bool pv_config_get_debug_ssh(void);
-char *pv_config_get_debug_ssh_authorized_keys(void);
-
-char *pv_config_get_cache_usrmetadir(void);
-char *pv_config_get_cache_devmetadir(void);
-char *pv_config_get_cache_dropbearcachedir(void);
-
-char *pv_config_get_creds_type(void);
-char *pv_config_get_creds_host(void);
-int pv_config_get_creds_port(void);
-char *pv_config_get_creds_host_proxy(void);
-int pv_config_get_creds_port_proxy(void);
-int pv_config_get_creds_noproxyconnect(void);
-char *pv_config_get_creds_id(void);
-char *pv_config_get_creds_prn(void);
-char *pv_config_get_creds_secret(void);
-char *pv_config_get_creds_token(void);
-
-char *pv_config_get_creds_tpm_key(void);
-char *pv_config_get_creds_tpm_cert(void);
-
-char *pv_config_get_factory_autotok(void);
-
-char *pv_config_get_storage_path(void);
-char *pv_config_get_storage_fstype(void);
-char *pv_config_get_storage_opts(void);
-char *pv_config_get_storage_mntpoint(void);
-char *pv_config_get_storage_mnttype(void);
-char *pv_config_get_storage_logtempsize(void);
-int pv_config_get_storage_wait(void);
-
-int pv_config_get_storage_gc_reserved(void);
-bool pv_config_get_storage_gc_keep_factory(void);
-int pv_config_get_storage_gc_threshold(void);
-int pv_config_get_storage_gc_threshold_defertime(void);
-
-char *pv_config_get_disk_voldir(void);
-char *pv_config_get_disk_exportsdir(void);
-char *pv_config_get_disk_writabledir(void);
-
-int pv_config_get_updater_interval(void);
-int pv_config_get_updater_goals_timeout(void);
-int pv_config_get_updater_network_timeout(void);
-bool pv_config_get_updater_network_use_tmp_objects(void);
-int pv_config_get_updater_revision_retries(void);
-int pv_config_get_updater_revision_retry_timeout(void);
-int pv_config_get_updater_commit_delay(void);
-
-char *pv_config_get_bl_fitconfig(void);
-int pv_config_get_bl_type(void);
-bool pv_config_get_bl_mtd_only(void);
-char *pv_config_get_bl_mtd_path(void);
-
-bool pv_config_get_watchdog_enabled(void);
-wdt_mode_t pv_config_get_watchdog_mode(void);
-int pv_config_get_watchdog_timeout(void);
-
-char *pv_config_get_network_brdev(void);
-char *pv_config_get_network_braddress4(void);
-char *pv_config_get_network_brmask4(void);
-
-char *pv_config_get_log_logdir(void);
-int pv_config_get_log_logmax(void);
-int pv_config_get_log_loglevel(void);
-int pv_config_get_log_logsize(void);
-bool pv_config_get_log_push(void);
-bool pv_config_get_log_capture(void);
-bool pv_config_get_log_loggers(void);
-bool pv_config_get_log_stdout(void);
-char *pv_config_get_log_filetree_timestamp_format(void);
-char *pv_config_get_log_singlefile_timestamp_format(void);
-char *pv_config_get_log_stdout_timestamp_format(void);
-
-char *pv_config_get_libthttp_certdir(void);
-int pv_config_get_libthttp_loglevel(void);
-
-int pv_config_get_log_server_outputs(void);
-bool pv_config_get_log_server_output_file_tree(void);
-bool pv_config_get_log_server_output_single_file(void);
-bool pv_config_get_log_server_output_stdout(void);
-bool pv_config_get_log_capture_dmesg(void);
-
-int pv_config_get_lxc_loglevel(void);
-bool pv_config_get_control_remote(void);
-bool pv_config_get_control_remote_always(void);
-
-secureboot_mode_t pv_config_get_secureboot_mode(void);
-char *pv_config_get_secureboot_truststore(void);
-bool pv_config_get_secureboot_checksum(void);
-bool pv_config_get_secureboot_handlers(void);
-
-int pv_config_get_metadata_devmeta_interval(void);
-int pv_config_get_metadata_usrmeta_interval(void);
 
 char *pv_config_get_json(void);
 void pv_config_print(void);

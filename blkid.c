@@ -341,7 +341,8 @@ static int get_blkid_ubifs(struct blkid_info *info, const char *key)
  * */
 int get_blkid(struct blkid_info *info, const char *key)
 {
-	if (!strncmp(pv_config_get_storage_fstype(), "ubifs", strlen("ubifs")))
+	if (!strncmp(pv_config_get_str(CI_STORAGE_FSTYPE), "ubifs",
+		     strlen("ubifs")))
 		return get_blkid_ubifs(info, key);
 
 	unsigned int ma, mi, sz;

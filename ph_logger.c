@@ -612,7 +612,7 @@ static int ph_logger_push_revision(char *revision)
 
 static void log_libthttp(int level, const char *fmt, va_list args)
 {
-	if (level > pv_config_get_libthttp_loglevel())
+	if (level > pv_config_get_int(CI_LIBTHTTP_LOG_LEVEL))
 		return;
 
 	vlog(MODULE_NAME, DEBUG, fmt, args);
@@ -826,8 +826,10 @@ void ph_logger_toggle(char *rev)
 	if (!pv)
 		return;
 
-	if (pv_config_get_log_push() &&
-	    pv_config_get_log_server_output_file_tree() && pv->remote_mode) {
+	if (pv_config_get_bool(CI_LOG_PUSH) &&
+	    (pv_config_get_log_server_outputs() &
+	     LOG_SERVER_OUTPUT_FILE_TREE) &&
+	    pv->remote_mode) {
 		ph_logger_start_cloud(pv, rev);
 	} else {
 		ph_logger_stop_lenient();

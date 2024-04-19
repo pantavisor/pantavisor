@@ -269,16 +269,17 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv->state->done = pv_storage_is_rev_done(pv->state->rev);
 
 	// reload remote bool after non reboot updates, when we don't load config again
-	pv->remote_mode = pv_config_get_control_remote();
+	pv->remote_mode = pv_config_get_bool(CI_CONTROL_REMOTE);
 	pv->loading_objects = false;
-	pv->state->local = !pv_config_get_control_remote();
+	pv->state->local = !pv_config_get_bool(CI_CONTROL_REMOTE);
+	;
 
 	// we know if we are in local if the running revision has the local format
 	if (pv_storage_is_revision_local(pv->state->rev)) {
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
 		pv->state->local = true;
 		pv->remote_mode = false;
-		if (pv_config_get_control_remote_always()) {
+		if (pv_config_get_bool(CI_CONTROL_REMOTE_ALWAYS)) {
 			pv_log(DEBUG,
 			       "remote mode forced on local revision by configuration");
 			pv->remote_mode = true;
@@ -311,21 +312,22 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// meta data initialization, also to be uploaded as soon as possible when connected
 	pv_metadata_init_devmeta(pv);
 
-	timer_start(&timer_commit, pv_config_get_updater_commit_delay(), 0,
-		    RELATIV_TIMER);
+	timer_start(&timer_commit, pv_config_get_int(CI_UPDATER_COMMIT_DELAY),
+		    0, RELATIV_TIMER);
 	timer_start(&timer_rollback_remote,
-		    pv_config_get_updater_network_timeout(), 0, RELATIV_TIMER);
+		    pv_config_get_int(CI_UPDATER_NETWORK_TIMEOUT), 0,
+		    RELATIV_TIMER);
 	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
 	timer_start(&timer_usrmeta_interval,
-		    pv_config_get_metadata_usrmeta_interval(), 0,
+		    pv_config_get_int(CI_METADATA_USRMETA_INTERVAL), 0,
 		    RELATIV_TIMER);
 	timer_start(&timer_devmeta_interval,
-		    pv_config_get_metadata_devmeta_interval(), 0,
+		    pv_config_get_int(CI_METADATA_DEVMETA_INTERVAL), 0,
 		    RELATIV_TIMER);
-	timer_start(&timer_updater_interval, pv_config_get_updater_interval(),
-		    0, RELATIV_TIMER);
+	timer_start(&timer_updater_interval,
+		    pv_config_get_int(CI_UPDATER_INTERVAL), 0, RELATIV_TIMER);
 
-	if (pv_config_get_watchdog_mode() <= WDT_STARTUP)
+	if (pv_config_get_wdt_mode() <= WDT_STARTUP)
 		pv_wdt_stop();
 
 	next_state = PV_STATE_WAIT;
@@ -353,13 +355,13 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		return PV_STATE_WAIT;
 	}
 
-	timer_start(&timer_updater_interval, pv_config_get_updater_interval(),
-		    0, RELATIV_TIMER);
+	timer_start(&timer_updater_interval,
+		    pv_config_get_int(CI_UPDATER_INTERVAL), 0, RELATIV_TIMER);
 
 	pv_config_load_unclaimed_creds();
 
-	if (pv_config_get_creds_id() && strcmp(pv_config_get_creds_id(), "") &&
-	    pv_ph_device_exists(pv))
+	const char *id = pv_config_get_str(CI_CREDS_ID);
+	if (id && strcmp(id, "") && pv_ph_device_exists(pv))
 		need_register = 0;
 
 	if (need_register) {
@@ -412,7 +414,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 		if (pv_ph_device_get_meta(pv))
 			return -1;
 		timer_start(&timer_usrmeta_interval,
-			    pv_config_get_metadata_usrmeta_interval(), 0,
+			    pv_config_get_int(CI_METADATA_USRMETA_INTERVAL), 0,
 			    RELATIV_TIMER);
 	}
 
@@ -421,7 +423,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 		if (pv_metadata_upload_devmeta(pv))
 			return -1;
 		timer_start(&timer_devmeta_interval,
-			    pv_config_get_metadata_devmeta_interval(), 0,
+			    pv_config_get_int(CI_METADATA_DEVMETA_INTERVAL), 0,
 			    RELATIV_TIMER);
 	}
 
@@ -442,10 +444,10 @@ static pv_state_t pv_wait_update()
 			case PLAT_GOAL_UNACHIEVED:
 				return PV_STATE_WAIT;
 			case PLAT_GOAL_ACHIEVED:
-				timer_start(
-					&timer_commit,
-					pv_config_get_updater_commit_delay(), 0,
-					RELATIV_TIMER);
+				timer_start(&timer_commit,
+					    pv_config_get_int(
+						    CI_UPDATER_COMMIT_DELAY),
+					    0, RELATIV_TIMER);
 				// progress update state to testing
 				pv_update_test(pv);
 				break;
@@ -529,7 +531,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 			return PV_STATE_UPDATE;
 		}
 		timer_start(&timer_updater_interval,
-			    pv_config_get_updater_interval(), 0, RELATIV_TIMER);
+			    pv_config_get_int(CI_UPDATER_INTERVAL), 0,
+			    RELATIV_TIMER);
 	}
 
 	if (pv->synced)
@@ -743,7 +746,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		break;
 	case CMD_GO_REMOTE:
 		pv_log(DEBUG, "go remote command received");
-		if (!pv_config_get_control_remote()) {
+		if (!pv_config_get_bool(CI_CONTROL_REMOTE)) {
 			pv_log(WARN, "remote mode is disabled by config");
 			goto out;
 		}
@@ -871,17 +874,17 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	if (!pv)
 		return PV_STATE_EXIT;
 
-	init_mode_t initmode = pv_config_get_system_init_mode();
+	init_mode_t init_mode = pv_config_get_system_init_mode();
 
 	pv_log(INFO, "preparing '%s'...", shutdown_type_string(t));
-	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+	if (init_mode == IM_APPENGINE)
 		pv_log(INFO,
 		       "will not actually perform '%s' as we are in appengine mode",
 		       shutdown_type_string(t));
 
 	pv_debug_wait_shell();
 
-	if ((REBOOT == t) && (pv_config_get_watchdog_mode() >= WDT_SHUTDOWN))
+	if ((REBOOT == t) && (pv_config_get_wdt_mode() >= WDT_SHUTDOWN))
 		pv_wdt_start();
 
 	// give it a final sync here...
@@ -917,7 +920,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_bootloader_remove();
 
 	// at this point, we can shutdown if not in appengine
-	if (initmode != IM_APPENGINE) {
+	if (init_mode != IM_APPENGINE) {
 		pv_log(INFO,
 		       "shutdown complete, performing '%s' in 2 second...",
 		       shutdown_type_string(t));

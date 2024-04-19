@@ -207,7 +207,7 @@ static int pv_bl_init()
 {
 	int ret;
 
-	switch (pv_config_get_bl_type()) {
+	switch (pv_config_get_bootloader_type()) {
 	case BL_UBOOT_PLAIN:
 	case BL_UBOOT_PVK:
 		ops = &uboot_ops;

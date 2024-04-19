@@ -92,12 +92,11 @@ auth:
 		return 0;
 	}
 
-	if (!endpoint && pv_config_get_creds_id()) {
-		size = sizeof(ENDPOINT_FMT) + strlen(pv_config_get_creds_id()) +
-		       1;
+	const char *id = pv_config_get_str(CI_CREDS_ID);
+	if (!endpoint && id) {
+		size = sizeof(ENDPOINT_FMT) + strlen(id) + 1;
 		endpoint = malloc(size * sizeof(char));
-		SNPRINTF_WTRUNC(endpoint, size, ENDPOINT_FMT,
-				pv_config_get_creds_id());
+		SNPRINTF_WTRUNC(endpoint, size, ENDPOINT_FMT, id);
 	}
 
 	return 1;
@@ -205,12 +204,11 @@ struct pv_connection *pv_get_instance_connection()
 		return NULL;
 	}
 	// default to global PH instance
-	if (strcmp(pv_config_get_creds_host(), "") == 0)
+	host = pv_config_get_str(CI_CREDS_HOST);
+	if (strcmp(host, "") == 0)
 		host = "api.pantahub.com";
-	else
-		host = pv_config_get_creds_host();
 
-	port = pv_config_get_creds_port();
+	port = pv_config_get_int(CI_CREDS_PORT);
 	if (!port)
 		port = 443;
 
@@ -335,11 +333,11 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->proto_version = THTTP_PROTO_VERSION_10;
 	req->user_agent = pv_user_agent;
 
-	req->host = pv_config_get_creds_host();
-	req->port = pv_config_get_creds_port();
-	req->host_proxy = pv_config_get_creds_host_proxy();
-	req->port_proxy = pv_config_get_creds_port_proxy();
-	req->proxyconnect = !pv_config_get_creds_noproxyconnect();
+	req->host = pv_config_get_str(CI_CREDS_HOST);
+	req->port = pv_config_get_int(CI_CREDS_PORT);
+	req->host_proxy = pv_config_get_str(CI_CREDS_PROXY_HOST);
+	req->port_proxy = pv_config_get_int(CI_CREDS_PROXY_PORT);
+	req->proxyconnect = !pv_config_get_int(CI_CREDS_PROXY_NOPROXYCONNECT);
 
 	baseurl_size = strlen("https://") + strlen(req->host) + 1 /* : */ +
 		       5 /* port */ + 2 /* 0-delim */;
@@ -354,13 +352,13 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->path = "/devices/";
 	req->body = 0;
 
-	if (pv_config_get_factory_autotok() &&
-	    strcmp(pv_config_get_factory_autotok(), "")) {
+	const char *autotok = pv_config_get_str(CI_FACTORY_AUTOTOK);
+	if (autotok && strcmp(autotok, "")) {
 		headers = calloc(2, sizeof(char *));
 		header_size = sizeof(DEVICE_TOKEN_FMT) + 64;
 		headers[0] = calloc(header_size, sizeof(char));
 		SNPRINTF_WTRUNC(headers[0], header_size, DEVICE_TOKEN_FMT,
-				pv_config_get_factory_autotok());
+				autotok);
 		thttp_add_headers(req, headers, 1);
 	}
 
@@ -425,17 +423,16 @@ int pv_ph_register_self(struct pantavisor *pv)
 		HUB_CREDS_TYPE_ERROR
 	} creds_type;
 
-	if (!strcmp(pv_config_get_creds_type(), "builtin")) {
+	const char *type = pv_config_get_str(CI_CREDS_TYPE);
+	if (!strcmp(type, "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
-	} else if (strlen(pv_config_get_creds_type()) >= 4 &&
-		   !strncmp(pv_config_get_creds_type(), "ext-", 4)) {
+	} else if (strlen(type) >= 4 && !strncmp(type, "ext-", 4)) {
 		struct stat sb;
 		int rv;
 
 		// if no executable handler is found; fall back to builtin
 		SNPRINTF_WTRUNC(cmd, sizeof(cmd),
-				PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT,
-				pv_config_get_creds_type());
+				PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT, type);
 		rv = stat(cmd, &sb);
 		if (rv) {
 			pv_log(ERROR,
@@ -453,7 +450,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 		creds_type = HUB_CREDS_TYPE_EXTERNAL;
 	} else {
 		pv_log(ERROR, "unable to get trest client for creds_type %s.",
-		       pv_config_get_creds_type());
+		       type);
 		goto err;
 	}
 
@@ -468,7 +465,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 		pv_log(ERROR,
 		       "unable to register for creds_type %s. "
 		       "Currently supported: builtin and ext-* handlers",
-		       pv_config_get_creds_type());
+		       type);
 		ret = 0;
 		goto err;
 	}
@@ -533,7 +530,8 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	char buf[256], path[PATH_MAX];
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", pv_config_get_creds_id());
+	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n",
+			pv_config_get_str(CI_CREDS_ID));
 	if (pv_fs_file_save(path, buf, 044))
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));

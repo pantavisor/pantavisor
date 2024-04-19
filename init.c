@@ -134,7 +134,7 @@ static int other_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /run");
 
-	if (pv_config_get_system_mount_securityfs()) {
+	if (pv_config_get_bool(CI_SYSTEM_MOUNT_SECURITYFS)) {
 		ret = mount("none", "/sys/kernel/security", "securityfs", 0,
 			    NULL);
 		if (ret < 0)
@@ -403,18 +403,18 @@ int main(int argc, char *argv[])
 	// this might override the configuration
 	parse_commands(argc, argv);
 
-	// loading drivers for both modes
-	if (pv_config_get_system_init_mode() == IM_EMBEDDED ||
-	    pv_config_get_system_init_mode() == IM_STANDALONE) {
+	// loading drivers for both device modes
+	init_mode_t init_mode = pv_config_get_system_init_mode();
+	if ((init_mode == IM_EMBEDDED) || (init_mode == IM_STANDALONE)) {
 		pv_drivers_load_early();
 		pv_init_spawn_daemons();
 	}
 
 	// in case of standalone is set, we only start debugging tools up in main thread
-	if (pv_config_get_system_init_mode() == IM_STANDALONE) {
-		if (pv_config_get_debug_shell())
+	if (init_mode == IM_STANDALONE) {
+		if (pv_config_get_bool(CI_DEBUG_SHELL))
 			pv_debug_start_shell();
-		if (pv_config_get_debug_ssh())
+		if (pv_config_get_bool(CI_DEBUG_SSH))
 			pv_debug_start_ssh();
 		else
 			tsh_run("ifconfig lo up", 0, NULL);
@@ -426,8 +426,7 @@ int main(int argc, char *argv[])
 	other_mounts();
 
 	// executed from shell and/or appengine mode
-	if (pv_config_get_system_init_mode() == IM_STANDALONE ||
-	    pv_config_get_system_init_mode() == IM_APPENGINE) {
+	if ((init_mode == IM_STANDALONE) || (init_mode == IM_APPENGINE)) {
 		// we are going to use this thread for pv
 		pv_pid = getpid();
 		signal(SIGINT, shell_handler);
@@ -444,12 +443,12 @@ int main(int argc, char *argv[])
 
 	pv_pid = getpid();
 
-	if (pv_config_get_watchdog_mode() >= WDT_STARTUP)
+	if (pv_config_get_wdt_mode() >= WDT_STARTUP)
 		pv_wdt_start();
 
-	if (pv_config_get_debug_shell())
+	if (pv_config_get_bool(CI_DEBUG_SHELL))
 		pv_debug_start_shell();
-	if (pv_config_get_debug_ssh())
+	if (pv_config_get_bool(CI_DEBUG_SSH))
 		pv_debug_start_ssh();
 	else
 		tsh_run("ifconfig lo up", 0, NULL);
@@ -507,4 +506,13 @@ void pv_init_umount()
 	umount(path);
 
 	pv_cgroup_umount();
+}
+
+void pv_init_print_cmdline(void)
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
+	pv_log(INFO, "cmdline: '%s'", pv->cmdline);
 }

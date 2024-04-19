@@ -39,8 +39,8 @@ static int pv_wdt_fd = -1;
 
 int pv_wdt_start()
 {
-	if (!pv_config_get_watchdog_enabled() ||
-	    (pv_config_get_watchdog_mode() == WDT_DISABLED))
+	if (!pv_config_get_bool(CI_WDT_ENABLED) ||
+	    (pv_config_get_wdt_mode() == WDT_DISABLED))
 		return 0;
 
 	if (pv_wdt_fd >= 0)
@@ -52,7 +52,7 @@ int pv_wdt_start()
 		return -1;
 	}
 
-	int timeout = pv_config_get_watchdog_timeout();
+	int timeout = pv_config_get_int(CI_WDT_TIMEOUT);
 	ioctl(pv_wdt_fd, WDIOC_SETTIMEOUT, &timeout);
 	ioctl(pv_wdt_fd, WDIOC_GETTIMEOUT, &timeout);
 
