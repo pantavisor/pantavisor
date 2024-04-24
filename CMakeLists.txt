@@ -12,11 +12,15 @@ find_library(LXC lxc)
 add_subdirectory(plugins)
 
 include(FindPackageHandleStandardArgs)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules (ZLIB REQUIRED zlib)
 
 find_path(MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
 find_library(MBEDTLS_LIBRARY mbedtls)
 find_library(MBEDX509_LIBRARY mbedx509)
 find_library(MBEDCRYPTO_LIBRARY mbedcrypto)
+
+
 set(MBEDTLS_LIBRARIES "${MBEDTLS_LIBRARY}" "${MBEDX509_LIBRARY}" "${MBEDCRYPTO_LIBRARY}")
 find_package_handle_standard_args(MBEDTLS DEFAULT_MSG
     MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
@@ -70,6 +74,8 @@ set(SOURCES  debug.c
 			utils/fs.c
 			utils/pvsignals.c
 			utils/pvsignals.h
+			utils/pvzlib.c
+			utils/pvzlib.h
 			utils/socket.c
 			utils/socket.h
 			disk/disk.c
@@ -90,6 +96,7 @@ set(SOURCES  debug.c
 			bootloader.c
 			trestclient.c
 			uboot.c
+			rpiab.c
 			grub.c
 			storage.c
 			metadata.c
@@ -162,12 +169,12 @@ add_custom_command(
 	\"cd ${CMAKE_CURRENT_SOURCE_DIR}\; ./gen_version.sh CMAKE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SYSTEM_PROCESSOR}\"
 )
 
-include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils ${MBEDTLS_INCLUDE_DIR})
+include_directories(${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils ${MBEDTLS_INCLUDE_DIR} ${ZLIB_INCLUDE_DIRS})
 
 # Create the executable and link against the shared library
 add_executable(pantavisor ${SOURCES})
 
-target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES} ${LXC})
+target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES} ${LXC} ${ZLIB_LIBRARIES})
 
 # install skel/ directory
 install(DIRECTORY skel/ DESTINATION /)
