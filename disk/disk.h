@@ -75,7 +75,7 @@ void pv_disk_empty(struct dl_list *disks);
 int pv_disk_mount(struct pv_disk *disk);
 int pv_disk_umount(struct pv_disk *disk);
 
-inline const char *pv_disk_format_to_str(pv_disk_format_t type)
+static inline const char *pv_disk_format_to_str(pv_disk_format_t type)
 {
 	switch (type) {
 	case DISK_FORMAT_UNKNOWN:
@@ -90,7 +90,7 @@ inline const char *pv_disk_format_to_str(pv_disk_format_t type)
 	return "unknown";
 }
 
-inline pv_disk_format_t pv_disk_str_to_format(const char *format_str)
+static inline pv_disk_format_t pv_disk_str_to_format(const char *format_str)
 {
 	if (format_str) {
 		if (!strcmp(format_str, "swap"))
@@ -103,7 +103,7 @@ inline pv_disk_format_t pv_disk_str_to_format(const char *format_str)
 	return DISK_FORMAT_UNKNOWN;
 }
 
-inline const char *pv_disk_type_to_str(pv_disk_t type)
+static inline const char *pv_disk_type_to_str(pv_disk_t type)
 {
 	switch (type) {
 	case DISK_UNKNOWN:
@@ -124,7 +124,7 @@ inline const char *pv_disk_type_to_str(pv_disk_t type)
 	return "unknown";
 }
 
-inline pv_disk_t pv_disk_str_to_type(const char *type_str)
+static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 {
 	if (type_str) {
 		if (!strcmp(type_str, "directory"))
