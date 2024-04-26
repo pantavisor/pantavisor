@@ -28,6 +28,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -36,6 +40,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <linux/limits.h>
+#include <glob.h>
 
 #include "blkid.h"
 #include "utils/math.h"
@@ -246,24 +251,30 @@ static int get_ubifs_vol_count(const char *path)
 }
 
 static char *get_ubifs_dev_path(const char *dev, const char *vol,
-				const char *ubi_sys_path, int vol_count)
+				const char *ubi_sys_path)
 {
-	char ubi_sys_attr[PATH_MAX] = { 0 };
+	glob_t files = { 0 };
+	char glob_exp[PATH_MAX] = { 0 };
+	snprintf(glob_exp, PATH_MAX, "%s/%s_*", ubi_sys_path, dev);
+
+	int err = glob(glob_exp, 0, NULL, &files);
+	if (err != 0 && err != GLOB_NOMATCH) {
+		pv_log(ERROR, "cannot find ubifs devices: glob error");
+		return NULL;
+	}
+
+	pv_log(DEBUG, "%zd ubifs volumes found", files.gl_pathc);
 
 	// maximum length of ubifs volume name is
 	// 127 + 1 (UBI_VOL_NAME_MAX + '\0')
 	// drivers/mtd/ubi/ubi-media.h on the kernel repo
 	char vol_name[128] = { 0 };
-	char ubi_dev[NAME_MAX] = { 0 };
-
-	ssize_t read = 0;
-
-	for (int i = 0; i < vol_count; ++i) {
-		snprintf(ubi_dev, NAME_MAX, "%s_%d", dev, i);
-		pv_fs_path_concat(ubi_sys_attr, 3, ubi_sys_path, ubi_dev,
-				  "name");
-
-		read = pv_fs_file_read_to_buf(ubi_sys_attr, vol_name, 128);
+	char device_path[PATH_MAX] = { 0 };
+	char ubi_sys_attr[PATH_MAX] = { 0 };
+	for (size_t i = 0; i < files.gl_pathc; ++i) {
+		pv_fs_path_concat(ubi_sys_attr, 2, files.gl_pathv[i], "name");
+		ssize_t read =
+			pv_fs_file_read_to_buf(ubi_sys_attr, vol_name, 128);
 
 		if (read < 1) {
 			pv_log(ERROR, "could not read '%s': %s", ubi_sys_attr,
@@ -272,12 +283,20 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 		}
 
 		if (!strncmp(vol, vol_name, strlen(vol))) {
-			char buf[PATH_MAX] = { 0 };
-			pv_fs_path_concat(buf, 2, "/dev", ubi_dev);
-			return strdup(buf);
+			pv_fs_path_concat(device_path, 2, "/dev",
+					  basename(files.gl_pathv[i]));
+			pv_log(DEBUG, "volume found: %s device: %s",
+			       files.gl_pathv[i], device_path);
+			break;
 		}
+
 		memset(ubi_sys_attr, 0, PATH_MAX);
 	}
+
+	globfree(&files);
+
+	if (strlen(device_path))
+		return strdup(device_path);
 
 	pv_log(ERROR, "cannot find ubifs dev path");
 	return NULL;
@@ -308,7 +327,7 @@ static int get_blkid_ubifs(struct blkid_info *info, const char *key)
 		return -2;
 	}
 
-	info->device = get_ubifs_dev_path(dev, vol, path, vol_count);
+	info->device = get_ubifs_dev_path(dev, vol, path);
 	info->fstype = strdup("ubifs");
 	info->label = strdup(vol);
 
