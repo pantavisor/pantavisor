@@ -112,21 +112,26 @@ static int pv_mount_init(struct pv_init *this)
 		/*
 		 * storage.path will contain UUID=XXXX or LABEL=XXXX
 		 * */
-		get_blkid(&dev_info, pv_config_get_storage_path());
+		const char *storage_path = pv_config_get_storage_path();
+		if (get_blkid(&dev_info, storage_path))
+			pv_log(ERROR, "cannot get block device from '%s'",
+			       storage_path);
 		if (dev_info.device && stat(dev_info.device, &st) == 0)
 			break;
 		pv_log(INFO,
-		       "trail storage not yet available, waiting %d seconds...",
+		       "trail storage not yet available. Waiting %d seconds...",
 		       wait);
 		sleep(1);
 		continue;
 	}
 
-	if (!dev_info.device)
-		exit_error(errno,
-			   "Could not mount trails storage. No device found.");
+	if (!dev_info.device) {
+		pv_log(FATAL, "could not mount '%s': %s", dev_info.device,
+		       strerror(errno));
+		exit_error(errno, NULL);
+	}
 
-	pv_log(INFO, "trail storage found: %s.", dev_info.device);
+	pv_log(INFO, "trail storage found: '%s'", dev_info.device);
 
 	// attempt auto resize only if we have ext4 and in embedded init mode
 	if ((pv_config_get_system_init_mode() == IM_EMBEDDED) &&

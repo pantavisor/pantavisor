@@ -236,8 +236,11 @@ static int get_ubifs_vol_count(const char *path)
 	char buf[4] = { 0 };
 	ssize_t read = pv_fs_file_read_to_buf(volume_path, buf, 8);
 
-	if (read < 1)
+	if (read < 1) {
+		pv_log(ERROR, "could not read '%s': %s", volume_path,
+		       strerror(errno));
 		return read;
+	}
 
 	return strtol(buf, NULL, 10);
 }
@@ -262,8 +265,11 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 
 		read = pv_fs_file_read_to_buf(ubi_sys_attr, vol_name, 128);
 
-		if (read < 1)
+		if (read < 1) {
+			pv_log(ERROR, "could not read '%s': %s", ubi_sys_attr,
+			       strerror(errno));
 			continue;
+		}
 
 		if (!strncmp(vol, vol_name, strlen(vol))) {
 			char buf[PATH_MAX] = { 0 };
@@ -273,6 +279,7 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 		memset(ubi_sys_attr, 0, PATH_MAX);
 	}
 
+	pv_log(ERROR, "cannot find ubifs dev path");
 	return NULL;
 }
 
@@ -280,8 +287,10 @@ static int get_blkid_ubifs(struct blkid_info *info, const char *key)
 {
 	int ret = 0;
 	char *sep = strchr(key, ':');
-	if (!sep)
+	if (!sep) {
+		pv_log(ERROR, "no separator ':' found in '%s'", key);
 		return -1;
+	}
 
 	char dev[NAME_MAX] = { 0 };
 	char vol[NAME_MAX] = { 0 };
@@ -294,8 +303,10 @@ static int get_blkid_ubifs(struct blkid_info *info, const char *key)
 	pv_fs_path_concat(path, 2, "/sys/devices/virtual/ubi", dev);
 
 	int vol_count = get_ubifs_vol_count(path);
-	if (vol_count < 1)
+	if (vol_count < 1) {
+		pv_log(ERROR, "ubfs volume count returned %d", vol_count);
 		return -2;
+	}
 
 	info->device = get_ubifs_dev_path(dev, vol, path, vol_count);
 	info->fstype = strdup("ubifs");

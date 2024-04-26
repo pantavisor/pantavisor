@@ -117,8 +117,9 @@ static void pv_log_init(struct pantavisor *pv, const char *rev)
 
 void exit_error(int err, char *msg)
 {
-	pv_log(FATAL, "%s (err=%d)", msg, err);
-	pv_log(FATAL, "rebooting system in 30 seconds");
+	if (msg)
+		pv_log(FATAL, "%s: %s", msg, strerror(err));
+	pv_log(FATAL, "rebooting system in 20 seconds");
 
 	sleep(20);
 	exit(0);
