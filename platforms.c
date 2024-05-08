@@ -277,7 +277,6 @@ void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
 
 	if (d) {
 		d->type = type;
-		d->loaded = false;
 		d->match = strdup(value);
 		dl_list_init(&d->list);
 		dl_list_add_tail(&p->drivers, &d->list);
@@ -667,9 +666,9 @@ void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
 		if (namematch && strcmp(namematch, d->match))
 			continue;
 
-		if (d->loaded) {
-			d->loaded = pv_drivers_unload(d->match);
-			pv_log(DEBUG, "unloaded %d drivers", d->loaded);
+		if (pv_drivers_state(d->match) == MOD_LOADED) {
+			int n = pv_drivers_unload(d->match);
+			pv_log(DEBUG, "unloaded %d drivers", n);
 		}
 	}
 }
@@ -715,8 +714,8 @@ int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			}
 			break;
 		}
-		pv_log(DEBUG, "plat=%s type=%d, loaded=%d, match='%s'", p->name,
-		       d->type, d->loaded, d->match);
+		pv_log(DEBUG, "plat=%s type=%d, loaded=%s, match='%s'", p->name,
+		       d->type, pv_drivers_state_str(d->match), d->match);
 	}
 
 	return 0;
