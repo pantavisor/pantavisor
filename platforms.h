@@ -65,7 +65,6 @@ typedef enum {
 
 struct pv_platform_driver {
 	plat_driver_t type;
-	bool loaded;
 	char *match;
 	struct dl_list list;
 };
