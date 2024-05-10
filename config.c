@@ -631,7 +631,7 @@ static int _apply_config_sysctl(const char *key, const char *value,
 		return -1;
 	}
 
-	write(fd, value, strlen(value));
+	write(fd, value, strlen(value) + 1);
 	close(fd);
 	free(path);
 
