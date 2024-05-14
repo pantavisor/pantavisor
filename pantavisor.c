@@ -470,8 +470,8 @@ static pv_state_t pv_wait_update()
 				timer_current_state(&timer_commit);
 			if (!tstate.fin) {
 				pv_log(INFO,
-				       "committing new update in %d seconds",
-				       tstate.sec);
+				       "committing new update in %lld seconds",
+				       (long long)tstate.sec);
 				return PV_STATE_WAIT;
 			}
 		}

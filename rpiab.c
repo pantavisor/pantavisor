@@ -236,7 +236,6 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	if (!f) {
 		pv_log(INFO, "Cannot open tryboot state on RPI: %s",
 		       strerror(errno));
-		fclose(f);
 		return -1;
 	}
 

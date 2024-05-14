@@ -456,7 +456,7 @@ static char *pv_update_get_progress_json(struct pv_update_progress *progress)
 		pv_json_ser_string(&js, progress->msg);
 		pv_json_ser_key(&js, "progress");
 		pv_json_ser_number(&js, progress->progress);
-		if (progress->data && (strlen(progress->data) > 0)) {
+		if (strlen(progress->data) > 0) {
 			pv_json_ser_key(&js, "data");
 			pv_json_ser_string(&js, progress->data);
 		}
