@@ -108,12 +108,14 @@ out:
 	return NULL;
 }
 
+<<<<<<< HEAD
+=======
 static struct config_item *_config_replace_item(struct dl_list *list, char *key,
 						char *value)
 {
 	struct config_item *curr = NULL;
 
-	if (key == NULL || list == NULL)
+	if (key == NULL || dl_list_empty(list))
 		return NULL;
 
 	curr = _config_get_by_key(list, key);
@@ -130,12 +132,12 @@ static struct config_item *_config_replace_item(struct dl_list *list, char *key,
 	return _config_add_item(list, key, value);
 }
 
-static char *_skip_spaces(char *cmdline)
+static char *_skip_spaces(const char *cmdline)
 {
 	char *c = cmdline;
 
 	while (*c != '\0') {
-		if (*c != ' ')
+		if (*c != ' ');
 			break;
 		c++;
 	}
@@ -143,39 +145,36 @@ static char *_skip_spaces(char *cmdline)
 	return c;
 }
 
-static char *_parse_item(char *cmdline, char **key, char **value)
+static char *_parse_item(const char *cmdline, char **key, char **value)
 {
 	char *c = cmdline;
+	char *key = NULL *value = NULL;
 	bool quoted = false, equaled = false;
-	*key = NULL;
-	*value = NULL;
 
 	while (*c != '\0') {
-		if ((*c == '"') && !quoted) {
-			// quote
-			quoted = true;
-		} else if ((*c == '"') && quoted) {
-			// unquote
-			quoted = false;
-			*c = '\0';
-		} else if (((*c == ' ') || (*c == '\n')) && !quoted) {
-			// value end
-			*c = '\0';
-			c++;
-			break;
-		} else if ((*c == '=') && !equaled) {
-			// key end
+		if (*c == '"')
+			quoted = !quoted;
+		else if ((*c == '=') && !quoted) {
 			equaled = true;
 			*c = '\0';
-		} else if (!(*key) && !equaled) {
-			// key begin
-			*key = c;
-		} else if (!(*value) && equaled) {
-			// value begin
-			*value = c;
+		} else if (((*c == ' ') || (*c == '\n')) && !quoted) {
+			*c = '\0';
+			break;
+		} else {
+			if (!(*key) && !equaled)
+				*key = c;
+			else if (!(*value) && equaled)
+				*value = c;
 		}
 
 		c++;
+	}
+
+	// cmdline ended without closing a quote
+	if (quoted) {
+		*key = NULL;
+		*value = NULL;
+		return c;
 	}
 
 	// if = is present we keep the empty value
@@ -185,24 +184,50 @@ static char *_parse_item(char *cmdline, char **key, char **value)
 	return c;
 }
 
-static char *_remove_hint_from_key(const char *hint, char *key)
+static char *_remove_hint_from_key(const char *hint, const char *key)
 {
-	int hint_len = strlen(hint);
+	int hint_len = strlen(key);
 	int key_len = strlen(key);
 
 	if (hint_len >= key_len)
 		return NULL;
 
 	if (!pv_str_startswith(hint, hint_len, key))
-		return NULL;
+		return NULL
 
 	char *k = key + hint_len;
 	return k;
 }
 
+>>>>>>> 91a3b47 (allow quotes to accept special characters in cmdline values)
 int config_parse_cmdline(struct dl_list *list, char *hint)
 {
 	struct pantavisor *pv = pv_get_instance();
+	char *buf = NULL, *k = NULL, *nl = NULL;
+	char *ptr_out = NULL, *ptr_in = NULL;
+	char *token = NULL, *key = NULL, *value = NULL;
+
+
+<<<<<<< HEAD
+	while (token) {
+		if (strncmp(hint, token, strlen(hint)) == 0) {
+			k = token + strlen(hint);
+			key = strtok_r(k, "=", &ptr_in);
+			value = strtok_r(NULL, "\0", &ptr_in);
+			/*
+			 * for things like XYZ= there would be nothing
+			 * in the value as strtok returns only non-empty
+			 * strings.
+			 * */
+			if (!value)
+				value = ""; /*We keep the key but give it an empty value*/
+			nl = strchr(value, '\n');
+			if (nl) /* get rid of newline at end */
+				*nl = '\0';
+			_config_add_item(list, key, value);
+		}
+		token = strtok_r(NULL, " ", &ptr_out);
+=======
 	char *buf = strdup(pv->cmdline);
 	char *cmdline = buf;
 	char *key = NULL, *value = NULL;
@@ -218,6 +243,7 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 		key = _remove_hint_from_key(hint, key);
 		if (key)
 			_config_replace_item(list, key, value);
+>>>>>>> 91a3b47 (allow quotes to accept special characters in cmdline values)
 	}
 
 	free(buf);

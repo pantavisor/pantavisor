@@ -262,20 +262,19 @@ bool pv_config_get_bool(config_index_t ci)
 	return entries[ci].value.b;
 }
 
-static void _set_config_by_entry_bool(struct pv_config_entry *entry, bool value,
-				      level_t modified)
+static void _set_config_by_entry_bool(struct pv_config_entry *entry, bool value)
 {
 	if (!entry)
 		return;
 
 	entry->value.b = value;
-	entry->modified = modified;
 }
 
 static void _set_config_by_index_bool(config_index_t ci, bool value,
 				      level_t modified)
 {
-	_set_config_by_entry_bool(&entries[ci], value, modified);
+	entries[ci].modified = modified;
+	_set_config_by_entry_bool(&entries[ci], value);
 }
 
 int pv_config_get_int(config_index_t ci)
@@ -283,14 +282,12 @@ int pv_config_get_int(config_index_t ci)
 	return entries[ci].value.i;
 }
 
-static void _set_config_by_entry_int(struct pv_config_entry *entry, int value,
-				     level_t modified)
+static void _set_config_by_entry_int(struct pv_config_entry *entry, int value)
 {
 	if (!entry)
 		return;
 
 	entry->value.i = value;
-	entry->modified = modified;
 }
 
 char *pv_config_get_str(config_index_t ci)
@@ -299,7 +296,7 @@ char *pv_config_get_str(config_index_t ci)
 }
 
 static void _set_config_by_entry_str(struct pv_config_entry *entry,
-				     const char *value, level_t modified)
+				     const char *value)
 {
 	if (!entry)
 		return;
@@ -307,13 +304,13 @@ static void _set_config_by_entry_str(struct pv_config_entry *entry,
 	if (entry->value.s)
 		free(entry->value.s);
 	entry->value.s = strdup(value);
-	entry->modified = modified;
 }
 
 static void _set_config_by_index_str(config_index_t ci, const char *value,
 				     level_t modified)
 {
-	_set_config_by_entry_str(&entries[ci], value, modified);
+	entries[ci].modified = modified;
+	_set_config_by_entry_str(&entries[ci], value);
 }
 
 bootloader_t pv_config_get_bootloader_type()
@@ -343,8 +340,7 @@ char *pv_config_get_bootloader_type_str(void)
 }
 
 static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
-						 const char *value,
-						 level_t modified)
+						 const char *value)
 {
 	if (!entry)
 		return;
@@ -395,7 +391,7 @@ log_server_output_mask_t pv_config_get_log_server_outputs()
 
 static void
 _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
-					const char *value, level_t modified)
+					const char *value)
 {
 	if (!entry)
 		return;
@@ -467,8 +463,7 @@ char *pv_config_get_secureboot_mode_str(void)
 }
 
 static void _set_config_by_entry_secureboot_mode(struct pv_config_entry *entry,
-						 const char *value,
-						 level_t modified)
+						 const char *value)
 {
 	if (!entry)
 		return;
@@ -513,7 +508,7 @@ char *pv_config_get_system_init_mode_str(void)
 }
 
 static void _set_config_by_entry_init_mode(struct pv_config_entry *entry,
-					   const char *value, level_t modified)
+					   const char *value)
 {
 	if (!entry)
 		return;
@@ -564,7 +559,7 @@ char *pv_config_get_wdt_mode_str(void)
 }
 
 static void _set_config_by_entry_wdt_mode(struct pv_config_entry *entry,
-					  const char *value, level_t modified)
+					  const char *value)
 {
 	if (!entry)
 		return;
@@ -725,30 +720,32 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		}
 	}
 
+	entry->modified = modified;
+
 	switch (entry->type) {
 	case BOOL:
-		_set_config_by_entry_bool(entry, value_int, modified);
+		_set_config_by_entry_bool(entry, value_int);
 		break;
 	case BOOTLOADER:
-		_set_config_by_entry_bootloader_type(entry, value, modified);
+		_set_config_by_entry_bootloader_type(entry, value);
 		break;
 	case INIT_MODE:
-		_set_config_by_entry_init_mode(entry, value, modified);
+		_set_config_by_entry_init_mode(entry, value);
 		break;
 	case INT:
-		_set_config_by_entry_int(entry, value_int, modified);
+		_set_config_by_entry_int(entry, value_int);
 		break;
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
-		_set_config_by_entry_log_server_outputs(entry, value, modified);
+		_set_config_by_entry_log_server_outputs(entry, value);
 		break;
 	case SB_MODE:
-		_set_config_by_entry_secureboot_mode(entry, value, modified);
+		_set_config_by_entry_secureboot_mode(entry, value);
 		break;
 	case STR:
-		_set_config_by_entry_str(entry, value, modified);
+		_set_config_by_entry_str(entry, value);
 		break;
 	case WDT_MODE:
-		_set_config_by_entry_wdt_mode(entry, value, modified);
+		_set_config_by_entry_wdt_mode(entry, value);
 		break;
 	default:
 		pv_log(WARN, "unknown config type %d for key '%s'", entry->type,
