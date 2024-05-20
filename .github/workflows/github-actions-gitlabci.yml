@@ -9,7 +9,7 @@ jobs:
     - name: Mirror + trigger CI in gitlab
       uses: pantacor/gitlab-mirror-and-ci-action@master
       with:
-        args: https://gitlab.com/pantacor/pantavisor
+        args: https://gitlab.com/pantacor/pantavisor.git
       env:
         POLL_TIMEOUT: 60
         GITLAB_HOSTNAME: "gitlab.com"
