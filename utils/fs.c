@@ -71,6 +71,12 @@ void pv_fs_path_sync(const char *path)
 	}
 }
 
+const char *pv_fs_path_basename(const char *path)
+{
+	char *p = strrchr(path, '/');
+	return p ? p + 1 : path;
+}
+
 int pv_fs_mkdir_p(const char *path, mode_t mode)
 {
 	if (!path)

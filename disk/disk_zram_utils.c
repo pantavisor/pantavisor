@@ -3,6 +3,7 @@
 #endif
 
 #include "disk_zram_utils.h"
+#include "utils/fs.h"
 
 #include <stdbool.h>
 #include <stdlib.h>
@@ -207,7 +208,7 @@ char *pv_disk_zram_utils_get_path(int devno)
 
 int pv_disk_zram_utils_get_devno(const char *path)
 {
-	char *dev_name = basename(path);
+	const char *dev_name = pv_fs_path_basename(path);
 
 	errno = 0;
 	int devno = strtol(dev_name + strlen("zram"), NULL, 10);

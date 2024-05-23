@@ -31,6 +31,7 @@ bool pv_fs_path_exist_timeout(const char *path, unsigned int timeout);
 bool pv_fs_path_is_directory(const char *path);
 void pv_fs_path_sync(const char *path);
 void pv_fs_path_concat(char *buf, int size, ...);
+const char *pv_fs_path_basename(const char *path);
 int pv_fs_mkdir_p(const char *path, mode_t mode);
 int pv_fs_mkbasedir_p(const char *path, mode_t mode);
 int pv_fs_path_remove(const char *path, bool recursive);
