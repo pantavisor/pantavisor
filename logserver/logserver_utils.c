@@ -22,6 +22,7 @@
 
 #include "logserver_utils.h"
 #include "logserver_timestamp.h"
+#include "logserver_compress.h"
 #include "config.h"
 #include "utils/fs.h"
 #include "log.h"
@@ -38,48 +39,85 @@
 #include <linux/limits.h>
 #include <libgen.h>
 
-static int compress_log(const char *path)
-{
-	// TODO: this maybe could be configurable
-	const int LOGSERVER_MAXFILES = 3;
+// struct cfiles {
+// 	char *path[PATH_MAX];
+// 	off_t *file_size;
+// 	int *pos;
+// 	size_t size;
+// 	off_t max_size;
+// };
 
-	char pattern[PATH_MAX] = { 0 };
-	snprintf(pattern, PATH_MAX, "%s.*.gz", path);
+// static int get_compressed_files(const char *path,
+// 				struct cfiles *files)
+// {
+// 	char pattern[PATH_MAX] = { 0 };
+// 	snprintf(pattern, PATH_MAX, "%s.*.gz", path);
 
-	glob_t glist;
-	int r = glob(pattern, 0, NULL, &glist);
-	if (r != 0 && r != GLOB_NOMATCH)
-		return -1;
+// 	int err = glob(pattern, 0, NULL, list);
+// 	if (err != 0 && err != GLOB_NOMATCH)
+// 		return err;
 
-	// looking for the newest file
-	size_t max = 0;
-	for (size_t i = 0; i < glist.gl_pathc; ++i) {
-		char str[PATH_MAX] = { 0 };
-		strncpy(str, glist.gl_pathv[i], PATH_MAX - 1);
-		str[strlen(str) - 3] = '\0';
-		size_t n = strtoumax(strrchr(str, '.') + 1, NULL, 10);
-		if (n > max)
-			max = n;
-	}
-	// next file
-	++max;
+// 	return 0;
+// }
 
-	// only keep maxfile files
-	if ((int)glist.gl_pathc >= LOGSERVER_MAXFILES) {
-		char delete_path[PATH_MAX] = { 0 };
-		snprintf(delete_path, PATH_MAX, "%s.%zd.gz", path,
-			 max - LOGSERVER_MAXFILES);
-		pv_fs_path_remove(delete_path, false);
-	}
+// static off_t get_compressed_size(const glob_t *list)
+// {
+// 	off_t size = 0;
+// 	for (size_t i = 0; i < glist.gl_pathc; ++i) {
+// 		struct stat st;
+// 		if (stat(glist.gl_pathv[i], &st) != 0)
+// 			continue;
 
-	globfree(&glist);
+// 		if (st.st_size)
+// 			size += st.st_size;
+// 	}
 
-	char path_gz[PATH_MAX] = { 0 };
-	snprintf(path_gz, PATH_MAX, "%s.%zd", path, max);
-	pv_fs_file_gzip(path, path_gz);
+// 	return size;
+// }
 
-	return 0;
-}
+// static const char *get_older_file(const glob_t *list)
+// {
+// }
+
+// static int compress_log(const char *path)
+// {
+// 	int max_comp = pv_config_get_log_logmax_compressed();
+
+// 	char pattern[PATH_MAX] = { 0 };
+// 	snprintf(pattern, PATH_MAX, "%s.*.gz", path);
+
+// 	glob_t glist = { 0 };
+// 	int r = glob(pattern, 0, NULL, &glist);
+// 	if (r != 0 && r != GLOB_NOMATCH)
+// 		return -1;
+
+// 	off_t total_size = 0;
+// 	for (size_t i = 0; i < glist.gl_pathc; ++i) {
+// 		char str[PATH_MAX] = { 0 };
+// 		strncpy(str, glist.gl_pathv[i], PATH_MAX - 1);
+// 		str[strlen(str) - 3] = '\0';
+// 		size_t n = strtoumax(strrchr(str, '.') + 1, NULL, 10);
+// 		if (n > max)
+// 			max = n;
+// 	}
+// 	// next file
+// 	++max;
+
+// 	if ((int)glist.gl_pathc >= max_comp) {
+// 		char delete_path[PATH_MAX] = { 0 };
+// 		snprintf(delete_path, PATH_MAX, "%s.%zd.gz", path,
+// 			 max - max_comp);
+// 		pv_fs_path_remove(delete_path, false);
+// 	}
+
+// 	globfree(&glist);
+
+// 	char path_gz[PATH_MAX] = { 0 };
+// 	snprintf(path_gz, PATH_MAX, "%s.%zd", path, max);
+// 	pv_fs_file_gzip(path, path_gz);
+
+// 	return 0;
+// }
 
 int logserver_utils_open_logfile(const char *path)
 {
@@ -95,7 +133,8 @@ int logserver_utils_open_logfile(const char *path)
 	if (st.st_size < pv_config_get_log_logmax())
 		return fd;
 
-	if (compress_log(path) == 0) {
+	// if (compress_log(path) == 0) {
+	if (logserver_compress_log(path) == 0) {
 		ftruncate(fd, 0);
 		lseek(fd, 0, SEEK_SET);
 	}
