@@ -90,6 +90,22 @@ void pv_mount_umount(void)
 	}
 }
 
+static int pv_mount_install(struct pv_init *this)
+{
+	char path[PATH_MAX];
+	struct stat st;
+	sprintf(path, "/lib/pv/pantavisor-installer");
+
+	if (stat(path, &st)) {
+		pv_log(ERROR, "Installer not available/exectuable: %s (%s)",
+		       path, strerror(errno));
+	}
+
+	tsh_run(path, 1, NULL);
+
+	return 0;
+}
+
 static int pv_mount_init(struct pv_init *this)
 {
 	struct stat st;
@@ -99,6 +115,9 @@ static int pv_mount_init(struct pv_init *this)
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		return 0;
+
+	if (pv_config_get_system_init_mode() == IM_INSTALLER)
+		return pv_mount_install(this);
 
 	// Create storage mountpoint and mount device
 	pv_paths_storage(path, PATH_MAX);
