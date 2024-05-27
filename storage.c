@@ -234,7 +234,7 @@ static struct pv_storage *pv_storage_new()
 			this->free_percentage =
 				(this->free * 100) / this->total;
 		this->reserved_percentage =
-			pv_config_get_int(CI_STORAGE_GC_RESERVED);
+			pv_config_get_int(PV_STORAGE_GC_RESERVED);
 		this->reserved =
 			(this->total * this->reserved_percentage) / 100;
 		if (this->free > this->reserved)
@@ -242,7 +242,7 @@ static struct pv_storage *pv_storage_new()
 		if (this->total)
 			this->real_free_percentage =
 				(this->real_free * 100) / this->total;
-		this->threshold = pv_config_get_int(CI_STORAGE_GC_THRESHOLD);
+		this->threshold = pv_config_get_int(PV_STORAGE_GC_THRESHOLD);
 		return this;
 	}
 
@@ -309,7 +309,7 @@ int pv_storage_gc_run()
 		    (s && !strncmp(r->path, s->rev, len)) ||
 		    (u && !strncmp(r->path, u->rev, len)) ||
 		    !strncmp(r->path, pv_bootloader_get_done(), len) ||
-		    (pv_config_get_bool(CI_STORAGE_GC_KEEP_FACTORY) &&
+		    (pv_config_get_bool(PV_STORAGE_GC_KEEP_FACTORY) &&
 		     !strncmp(r->path, "0", len)))
 			continue;
 
@@ -353,7 +353,7 @@ void pv_storage_gc_defer_run_threshold()
 {
 	struct pantavisor *pv = pv_get_instance();
 
-	int defertime = pv_config_get_int(CI_STORAGE_GC_THRESHOLD_DEFERTIME);
+	int defertime = pv_config_get_int(PV_STORAGE_GC_THRESHOLD_DEFERTIME);
 	timer_start(&threshold_timer, defertime, 0, RELATIV_TIMER);
 
 	if (!pv->loading_objects) {
@@ -408,7 +408,7 @@ void pv_storage_gc_run_threshold()
 		pv_log(INFO, "garbage collector enabled again");
 	}
 
-	if (!pv_config_get_int(CI_STORAGE_GC_THRESHOLD) || pv->loading_objects)
+	if (!pv_config_get_int(PV_STORAGE_GC_THRESHOLD) || pv->loading_objects)
 		goto out;
 
 	if (storage && (storage->real_free_percentage < storage->threshold)) {
@@ -781,7 +781,7 @@ void pv_storage_init_trail_pvr()
 
 	// save .pvr/config with that links trail contents and system paths
 	SNPRINTF_WTRUNC(config, PATH_MAX, PVR_CONFIGF,
-			pv_config_get_str(CI_STORAGE_MNTPOINT));
+			pv_config_get_str(PV_STORAGE_MNTPOINT));
 	if (pv_fs_file_save(path, config, 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
@@ -1121,7 +1121,7 @@ static int pv_storage_init(struct pv_init *this)
 		       strerror(errno));
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-	const char *prn = pv_config_get_str(CI_CREDS_PRN);
+	const char *prn = pv_config_get_str(PV_CREDS_PRN);
 	if (!prn || !strcmp(prn, "")) {
 		pv->unclaimed = true;
 		if (pv_fs_file_save(path, "", 0444) < 0)
@@ -1130,15 +1130,15 @@ static int pv_storage_init(struct pv_init *this)
 	} else {
 		pv->unclaimed = false;
 		SNPRINTF_WTRUNC(tmp, sizeof(tmp), "%s\n",
-				pv_config_get_str(CI_CREDS_ID));
+				pv_config_get_str(PV_CREDS_ID));
 		if (pv_fs_file_save(path, tmp, 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path,
 			       strerror(errno));
 	}
 	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
 	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d\n",
-			pv_config_get_str(CI_CREDS_HOST),
-			pv_config_get_int(CI_CREDS_PORT));
+			pv_config_get_str(PV_CREDS_HOST),
+			pv_config_get_int(PV_CREDS_PORT));
 	if (pv_fs_file_save(path, tmp, 0444) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));

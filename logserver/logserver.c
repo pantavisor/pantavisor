@@ -861,7 +861,7 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *running_rev)
 		return;
 
 	// only start if we have log_capture configured
-	if (pv_config_get_bool(CI_LOG_CAPTURE)) {
+	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
 		logserver_start(running_rev);
 	}
 }
@@ -910,7 +910,7 @@ int pv_logserver_init(const char *rev)
 	if (!rev)
 		return -1;
 
-	if (pv_config_get_bool(CI_LOG_CAPTURE)) {
+	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
 		logserver.active_out = pv_config_get_log_server_outputs();
 		logserver_load_outputs();
 	}
@@ -950,7 +950,7 @@ int pv_logserver_init(const char *rev)
 	logserver_start_service(rev);
 	pv_log(DEBUG, "started log service with pid %d", (int)logserver.pid);
 
-	if (pv_config_get_bool(CI_LOG_CAPTURE_DMESG))
+	if (pv_config_get_bool(PV_LOG_CAPTURE_DMESG))
 		logserver_capture_dmesg();
 
 	return 0;
@@ -1016,7 +1016,7 @@ int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 		.src = src,
 	};
 
-	if ((level != FATAL) && (level > pv_config_get_int(CI_LOG_LEVEL)))
+	if ((level != FATAL) && (level > pv_config_get_int(PV_LOG_LEVEL)))
 		return 0;
 
 	struct buffer *log_buf = pv_buffer_get(true);

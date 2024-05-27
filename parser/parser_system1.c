@@ -159,7 +159,7 @@ out:
 
 static bool driver_should_parse(char *key)
 {
-	const char *fitconfig = pv_config_get_str(CI_BOOTLOADER_FITCONFIG);
+	const char *fitconfig = pv_config_get_str(PV_BOOTLOADER_FITCONFIG);
 
 	pv_log(DEBUG, "fitconfig=%s", fitconfig);
 	if (!strcmp(key, "all") ||
@@ -1427,7 +1427,7 @@ static int parse_groups(struct pv_state *s, char *value)
 			free(tmp);
 			tmp = NULL;
 		} else {
-			timeout = pv_config_get_int(CI_UPDATER_GOALS_TIMEOUT);
+			timeout = pv_config_get_int(PV_UPDATER_GOALS_TIMEOUT);
 			pv_log(DEBUG,
 			       "timeout not configured. Using default value %d",
 			       timeout);
@@ -1795,7 +1795,7 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 		} else {
 			pv_log(DEBUG, "adding object '%s'", key);
 			pv_objects_add(this, key, value,
-				       pv_config_get_str(CI_STORAGE_MNTTYPE));
+				       pv_config_get_str(PV_STORAGE_MNTTYPE));
 		}
 
 		// free intermediates

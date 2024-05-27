@@ -68,13 +68,14 @@ typedef enum {
 	POLICY = 1 << 4,
 	PV_CMDLINE = 1 << 5,
 	PH_CMDLINE = 1 << 6,
-	TRAIL = 1 << 7,
-	META = 1 << 8,
-	CMD = 1 << 9
+	ENV = 1 << 7,
+	TRAIL = 1 << 8,
+	META = 1 << 9,
+	CMD = 1 << 10
 } level_t;
 
-#define PV_ENTRY PV_CONF | PV_CMDLINE
-#define PH_ENTRY PH_CONF | PH_CMDLINE
+#define PV_ENTRY PV_CONF | PV_CMDLINE | ENV
+#define PH_ENTRY PH_CONF | PH_CMDLINE | ENV
 #define UPDATE_TIME POLICY | TRAIL
 #define RUN_TIME UPDATE_TIME | META | CMD
 
@@ -116,134 +117,143 @@ struct pv_config_entry {
 
 // configuration lookup table
 static struct pv_config_entry entries[] = {
-	{ STR, "bootloader.fitconfig", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "bootloader.mtd_env", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ BOOL, "bootloader.mtd_only", PV_ENTRY | POLICY, 0, .value.b = false },
-	{ BOOTLOADER, "bootloader.type", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_BOOTLOADER_FITCONFIG", PV_ENTRY | POLICY, 0,
+	  .value.s = NULL },
+	{ STR, "PV_BOOTLOADER_MTD_ENV", PV_ENTRY | POLICY, 0, .value.s = NULL },
+	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV_ENTRY | POLICY, 0,
+	  .value.b = false },
+	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV_ENTRY | POLICY, 0,
 	  .value.i = BL_UBOOT_PLAIN },
-	{ STR, "cache.devmetadir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_CACHE_DEVMETADIR", PV_ENTRY | POLICY, 0,
 	  .value.s = CACHE_DEVMETADIR_DEF },
-	{ STR, "cache.usrmetadir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_CACHE_USRMETADIR", PV_ENTRY | POLICY, 0,
 	  .value.s = CACHE_USRMETADIR_DEF },
-	{ BOOL, "control.remote", PV_ENTRY | POLICY, 0, .value.b = true },
-	{ BOOL, "control.remote.always", PV_ENTRY | POLICY, 0,
+	{ BOOL, "PV_CONTROL_REMOTE", PV_ENTRY | POLICY, 0, .value.b = true },
+	{ BOOL, "PV_CONTROL_REMOTE_ALWAYS", PV_ENTRY | POLICY, 0,
 	  .value.b = false },
-	{ STR, "creds.host", PH_ENTRY, 0, .value.s = CREDS_HOST_DEF },
-	{ STR, "creds.id", PH_ENTRY, 0, .value.s = NULL },
-	{ INT, "creds.port", PH_ENTRY, 0, .value.i = 12365 },
-	{ STR, "creds.proxy.host", PH_ENTRY | UPDATE_TIME, 0, .value.s = NULL },
-	{ INT, "creds.proxy.noproxyconnect", PH_ENTRY | UPDATE_TIME, 0,
+	{ STR, "PV_CREDS_HOST", PH_ENTRY, 0, .value.s = CREDS_HOST_DEF },
+	{ STR, "PV_CREDS_ID", PH_ENTRY, 0, .value.s = NULL },
+	{ INT, "PV_CREDS_PORT", PH_ENTRY, 0, .value.i = 12365 },
+	{ STR, "PV_CREDS_PROXY_HOST", PH_ENTRY | UPDATE_TIME, 0,
+	  .value.s = NULL },
+	{ INT, "PV_CREDS_PROXY_NOPROXYCONNECT", PH_ENTRY | UPDATE_TIME, 0,
 	  .value.i = 0 },
-	{ INT, "creds.proxy.port", PH_ENTRY | UPDATE_TIME, 0, .value.i = 3218 },
-	{ STR, "creds.prn", PH_ENTRY, 0, .value.s = NULL },
-	{ STR, "creds.secret", PH_ENTRY, 0, .value.s = NULL },
-	{ STR, "creds.tpm.cert", PH_ENTRY, 0, .value.s = NULL },
-	{ STR, "creds.tpm.key", PH_ENTRY, 0, .value.s = NULL },
-	{ STR, "creds.type", PH_ENTRY, 0, .value.s = CREDS_TYPE_DEF },
-	{ BOOL, "debug.shell", PV_ENTRY | POLICY, 0, .value.b = true },
-	{ BOOL, "debug.shell.autologin", PV_ENTRY | POLICY, 0,
+	{ INT, "PV_CREDS_PROXY_PORT", PH_ENTRY | UPDATE_TIME, 0,
+	  .value.i = 3218 },
+	{ STR, "PV_CREDS_PRN", PH_ENTRY, 0, .value.s = NULL },
+	{ STR, "PV_CREDS_SECRET", PH_ENTRY, 0, .value.s = NULL },
+	{ STR, "PV_CREDS_TPM_CERT", PH_ENTRY, 0, .value.s = NULL },
+	{ STR, "PV_CREDS_TPM_KEY", PH_ENTRY, 0, .value.s = NULL },
+	{ STR, "PV_CREDS_TYPE", PH_ENTRY, 0, .value.s = CREDS_TYPE_DEF },
+	{ BOOL, "PV_DEBUG_SHELL", PV_ENTRY | POLICY, 0, .value.b = true },
+	{ BOOL, "PV_DEBUG_SHELL_AUTOLOGIN", PV_ENTRY | POLICY, 0,
 	  .value.b = false },
-	{ BOOL, "debug.ssh", PV_ENTRY | RUN_TIME, 0, .value.b = true },
-	{ STR, "debug.ssh_authorized_keys", PV_ENTRY | RUN_TIME, 0,
+	{ BOOL, "PV_DEBUG_SSH", PV_ENTRY | RUN_TIME, 0, .value.b = true },
+	{ STR, "PV_DEBUG_SSH_AUTHORIZED_KEYS", PV_ENTRY | RUN_TIME, 0,
 	  .value.s = NULL },
-	{ STR, "disk.exportsdir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_DISK_EXPORTSDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = DISK_EXPORTSDIR_DEF },
-	{ STR, "disk.voldir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_DISK_VOLDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = DISK_VOLDIR_DEF },
-	{ STR, "disk.writabledir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_DISK_WRITABLEDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = DISK_WRITABLEDIR_DEF },
-	{ STR, "dropbear.cache.dir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_DROPBEAR_CACHE_DIR", PV_ENTRY | POLICY, 0,
 	  .value.s = DROPBEAR_CACHE_DIR_DEF },
-	{ STR, "factory.autotok", PH_ENTRY, 0, .value.s = NULL },
-	{ STR, "libthttp.certsdir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_FACTORY_AUTOTOK", PH_ENTRY, 0, .value.s = NULL },
+	{ STR, "PV_LIBTHTTP_CERTSDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = LIBTHTTP_CERTSDIR_DEF },
-	{ INT, "libthttp.log.level", PV_ENTRY | RUN_TIME, 0, .value.i = 3 },
-	{ BOOL, "log.capture", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
-	{ BOOL, "log.capture.dmesg", PV_ENTRY | UPDATE_TIME, 0,
+	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV_ENTRY | RUN_TIME, 0, .value.i = 3 },
+	{ BOOL, "PV_LOG_CAPTURE", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
+	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV_ENTRY | UPDATE_TIME, 0,
 	  .value.b = false },
-	{ INT, "log.buf_nitems", PV_ENTRY | UPDATE_TIME, 0, .value.i = 128 },
-	{ STR, "log.dir", PV_ENTRY | POLICY, 0, .value.s = LOG_DIR_DEF },
-	{ STR, "log.filetree.timestamp.format", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_LOG_BUF_NITEMS", PV_ENTRY | UPDATE_TIME, 0, .value.i = 128 },
+	{ STR, "PV_LOG_DIR", PV_ENTRY | POLICY, 0, .value.s = LOG_DIR_DEF },
+	{ STR, "PV_LOG_FILETREE_TIMESTAMP_FORMAT", PV_ENTRY | RUN_TIME, 0,
 	  .value.s = NULL },
-	{ INT, "log.level", PV_ENTRY | RUN_TIME, 0, .value.i = 0 },
-	{ BOOL, "log.loggers", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
-	{ INT, "log.maxsize", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_LOG_LEVEL", PV_ENTRY | RUN_TIME, 0, .value.i = 0 },
+	{ BOOL, "PV_LOG_LOGGERS", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
+	{ INT, "PV_LOG_MAXSIZE", PV_ENTRY | RUN_TIME, 0,
 	  .value.i = LOG_MAXSIZE_DEF },
-	{ BOOL, "log.push", PV_ENTRY | RUN_TIME, 0, .value.b = true },
-	{ LOG_SERVER_OUTPUT_UPDATE_MASK, "log.server.outputs",
+	{ BOOL, "PV_LOG_PUSH", PV_ENTRY | RUN_TIME, 0, .value.b = true },
+	{ LOG_SERVER_OUTPUT_UPDATE_MASK, "PV_LOG_SERVER_OUTPUTS",
 	  PV_ENTRY | RUN_TIME, 0,
 	  .value.i = LOG_SERVER_OUTPUT_FILE_TREE | LOG_SERVER_OUTPUT_UPDATE },
-	{ STR, "log.singlefile.timestamp.format", PV_ENTRY | RUN_TIME, 0,
+	{ STR, "PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT", PV_ENTRY | RUN_TIME, 0,
 	  .value.s = NULL },
-	{ BOOL, "log.stdout", PV_ENTRY | RUN_TIME, 0, .value.b = false },
-	{ STR, "log.stdout.timestamp.format", PV_ENTRY | RUN_TIME, 0,
+	{ BOOL, "PV_LOG_STDOUT", PV_ENTRY | RUN_TIME, 0, .value.b = false },
+	{ STR, "PV_LOG_STDOUT_TIMESTAMP_FORMAT", PV_ENTRY | RUN_TIME, 0,
 	  .value.s = NULL },
-	{ INT, "lxc.log.level", PV_ENTRY | UPDATE_TIME, 0, .value.i = 2 },
-	{ INT, "metadata.devmeta.interval", PH_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_LXC_LOG_LEVEL", PV_ENTRY | UPDATE_TIME, 0, .value.i = 2 },
+	{ INT, "PV_METADATA_DEVMETA_INTERVAL", PH_ENTRY | RUN_TIME, 0,
 	  .value.i = 10 },
-	{ INT, "metadata.usrmeta.interval", PH_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_METADATA_USRMETA_INTERVAL", PH_ENTRY | RUN_TIME, 0,
 	  .value.i = 5 },
-	{ STR, "net.braddress4", PV_ENTRY | UPDATE_TIME, 0,
+	{ STR, "PV_NET_BRADDRESS4", PV_ENTRY | UPDATE_TIME, 0,
 	  .value.s = NET_BRADDRESS4_DEF },
-	{ STR, "net.brdev", PV_ENTRY | UPDATE_TIME, 0,
+	{ STR, "PV_NET_BRDEV", PV_ENTRY | UPDATE_TIME, 0,
 	  .value.s = NET_BRDEV_DEF },
-	{ STR, "net.brmask4", PV_ENTRY | UPDATE_TIME, 0,
+	{ STR, "PV_NET_BRMASK4", PV_ENTRY | UPDATE_TIME, 0,
 	  .value.s = NET_BRMASK4_DEF },
-	{ STR, "policy", PV_ENTRY, 0, .value.s = NULL },
-	{ INT, "revision.retries", PV_ENTRY | RUN_TIME, 0, .value.i = 10 },
-	{ INT, "revision.retries.timeout", PV_ENTRY | RUN_TIME, 0,
+	{ STR, "PV_POLICY", PV_ENTRY, 0, .value.s = NULL },
+	{ INT, "PV_REVISION_RETRIES", PV_ENTRY | RUN_TIME, 0, .value.i = 10 },
+	{ INT, "PV_REVISION_RETRIES_TIMEOUT", PV_ENTRY | RUN_TIME, 0,
 	  .value.i = 120 },
-	{ BOOL, "secureboot.checksum", PV_ENTRY | POLICY, 0, .value.b = true },
-	{ BOOL, "secureboot.handlers", PV_ENTRY | POLICY, 0, .value.b = true },
-	{ SB_MODE, "secureboot.mode", PV_ENTRY | POLICY, 0,
+	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV_ENTRY | POLICY, 0,
+	  .value.b = true },
+	{ BOOL, "PV_SECUREBOOT_HANDLERS", PV_ENTRY | POLICY, 0,
+	  .value.b = true },
+	{ SB_MODE, "PV_SECUREBOOT_MODE", PV_ENTRY | POLICY, 0,
 	  .value.i = SB_LENIENT },
-	{ STR, "secureboot.truststore", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_SECUREBOOT_TRUSTSTORE", PV_ENTRY | POLICY, 0,
 	  .value.s = SECUREBOOT_TRUSTSTORE_DEF },
-	{ STR, "storage.device", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "storage.fstype", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ BOOL, "storage.gc.keep_factory", PV_ENTRY | RUN_TIME, 0,
+	{ STR, "PV_STORAGE_DEVICE", PV_ENTRY | POLICY, 0, .value.s = NULL },
+	{ STR, "PV_STORAGE_FSTYPE", PV_ENTRY | POLICY, 0, .value.s = NULL },
+	{ BOOL, "PV_STORAGE_GC_KEEP_FACTORY", PV_ENTRY | RUN_TIME, 0,
 	  .value.b = false },
-	{ INT, "storage.gc.reserved", PV_ENTRY | RUN_TIME, 0, .value.i = 5 },
-	{ INT, "storage.gc.threshold.defertime", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_STORAGE_GC_RESERVED", PV_ENTRY | RUN_TIME, 0, .value.i = 5 },
+	{ INT, "PV_STORAGE_GC_THRESHOLD_DEFERTIME", PV_ENTRY | RUN_TIME, 0,
 	  .value.i = 600 },
-	{ INT, "storage.gc.threshold", PV_ENTRY | RUN_TIME, 0, .value.i = 0 },
-	{ STR, "storage.logtempsize", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "storage.mntpoint", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "storage.mnttype", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "storage.opts", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ INT, "storage.wait", PV_ENTRY | POLICY, 0, .value.i = 5 },
-	{ STR, "system.apparmor.profiles", PV_ENTRY | POLICY, 0,
+	{ INT, "PV_STORAGE_GC_THRESHOLD", PV_ENTRY | RUN_TIME, 0,
+	  .value.i = 0 },
+	{ STR, "PV_STORAGE_LOGTEMPSIZE", PV_ENTRY | POLICY, 0,
 	  .value.s = NULL },
-	{ STR, "system.confdir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_STORAGE_MNTPOINT", PV_ENTRY | POLICY, 0, .value.s = NULL },
+	{ STR, "PV_STORAGE_MNTTYPE", PV_ENTRY | POLICY, 0, .value.s = NULL },
+	{ STR, "PV_STORAGE_OPTS", PV_ENTRY | POLICY, 0, .value.s = NULL },
+	{ INT, "PV_STORAGE_WAIT", PV_ENTRY | POLICY, 0, .value.i = 5 },
+	{ STR, "PV_SYSTEM_APPARMOR_PROFILES", PV_ENTRY | POLICY, 0,
+	  .value.s = NULL },
+	{ STR, "PV_SYSTEM_CONFDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = SYSTEM_CONFDIR_DEF },
-	{ BOOL, "system.drivers.load_early.auto", PV_ENTRY | POLICY, 0,
+	{ BOOL, "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO", PV_ENTRY | POLICY, 0,
 	  .value.b = false },
-	{ STR, "system.etcdir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_SYSTEM_ETCDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = SYSTEM_ETCDIR_DEF },
-	{ INIT_MODE, "system.init.mode", PV_ENTRY | POLICY, 0,
+	{ INIT_MODE, "PV_SYSTEM_INIT_MODE", PV_ENTRY | POLICY, 0,
 	  .value.i = IM_EMBEDDED },
-	{ STR, "system.libdir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_SYSTEM_LIBDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = SYSTEM_LIBDIR_DEF },
-	{ STR, "system.mediadir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_SYSTEM_MEDIADIR", PV_ENTRY | POLICY, 0,
 	  .value.s = SYSTEM_MEDIADIR_DEF },
-	{ BOOL, "system.mount.securityfs", PV_ENTRY | POLICY, 0,
+	{ BOOL, "PV_SYSTEM_MOUNT_SECURITYFS", PV_ENTRY | POLICY, 0,
 	  .value.b = false },
-	{ STR, "system.rundir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_SYSTEM_RUNDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = SYSTEM_RUNDIR_DEF },
-	{ STR, "system.usrdir", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_SYSTEM_USRDIR", PV_ENTRY | POLICY, 0,
 	  .value.s = SYSTEM_USRDIR_DEF },
-	{ INT, "updater.commit.delay", PV_ENTRY | RUN_TIME, 0, .value.i = 25 },
-	{ INT, "updater.goals.timeout", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_UPDATER_COMMIT_DELAY", PV_ENTRY | RUN_TIME, 0,
+	  .value.i = 25 },
+	{ INT, "PV_UPDATER_GOALS_TIMEOUT", PV_ENTRY | RUN_TIME, 0,
 	  .value.i = 120 },
-	{ INT, "updater.interval", PH_ENTRY | RUN_TIME, 0, .value.i = 60 },
-	{ INT, "updater.network_timeout", PH_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_UPDATER_INTERVAL", PH_ENTRY | RUN_TIME, 0, .value.i = 60 },
+	{ INT, "PV_UPDATER_NETWORK_TIMEOUT", PH_ENTRY | RUN_TIME, 0,
 	  .value.i = 120 },
-	{ BOOL, "updater.use_tmp_objects", PV_ENTRY | RUN_TIME, 0,
+	{ BOOL, "PV_UPDATER_USE_TMP_OBJECTS", PV_ENTRY | RUN_TIME, 0,
 	  .value.b = false },
-	{ BOOL, "wdt.enabled", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
-	{ WDT_MODE, "wdt.mode", PV_ENTRY | UPDATE_TIME, 0,
+	{ BOOL, "PV_WDT_ENABLED", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
+	{ WDT_MODE, "PV_WDT_MODE", PV_ENTRY | UPDATE_TIME, 0,
 	  .value.i = WDT_SHUTDOWN },
-	{ INT, "wdt.timeout", PV_ENTRY | UPDATE_TIME, 0, .value.i = 15 }
+	{ INT, "PV_WDT_TIMEOUT", PV_ENTRY | UPDATE_TIME, 0, .value.i = 15 }
 };
 
 struct pv_config_alias {
@@ -252,9 +262,99 @@ struct pv_config_alias {
 };
 
 static struct pv_config_alias aliases[] = {
-	{ "meta.cache.dir", "cache.usrmetadir" },
-	{ "pantahub.log.push", "log.push" },
-	{ "updater.keep_factory", "storage.gc.keep_factory" }
+	// LEGACY CONFIG KEY
+	{ "bootloader.fitconfig", "PV_BOOTLOADER_FITCONFIG" },
+	{ "bootloader.mtd_env", "PV_BOOTLOADER_MTD_ENV" },
+	{ "bootloader.mtd_only", "PV_BOOTLOADER_MTD_ONLY" },
+	{ "bootloader.type", "PV_BOOTLOADER_TYPE" },
+	{ "cache.devmetadir", "PV_CACHE_DEVMETADIR" },
+	{ "cache.usrmetadir", "PV_CACHE_USRMETADIR" },
+	{ "control.remote", "PV_CONTROL_REMOTE" },
+	{ "control.remote.always", "PV_CONTROL_REMOTE_ALWAYS" },
+	{ "creds.host", "PV_CREDS_HOST" },
+	{ "creds.id", "PV_CREDS_ID" },
+	{ "creds.port", "PV_CREDS_PORT" },
+	{ "creds.proxy.host", "PV_CREDS_PROXY_HOST" },
+	{ "creds.proxy.noproxyconnect", "PV_CREDS_PROXY_NOPROXYCONNECT" },
+	{ "creds.proxy.port", "PV_CREDS_PROXY_PORT" },
+	{ "creds.prn", "PV_CREDS_PRN" },
+	{ "creds.secret", "PV_CREDS_SECRET" },
+	{ "creds.tpm.cert", "PV_CREDS_TPM_CERT" },
+	{ "creds.tpm.key", "PV_CREDS_TPM_KEY" },
+	{ "creds.type", "PV_CREDS_TYPE" },
+	{ "debug.shell", "PV_DEBUG_SHELL" },
+	{ "debug.shell.autologin", "PV_DEBUG_SHELL_AUTOLOGIN" },
+	{ "debug.ssh", "PV_DEBUG_SSH" },
+	{ "debug.ssh_authorized_keys", "PV_DEBUG_SSH_AUTHORIZED_KEYS" },
+	{ "disk.exportsdir", "PV_DISK_EXPORTSDIR" },
+	{ "disk.voldir", "PV_DISK_VOLDIR" },
+	{ "disk.writabledir", "PV_DISK_WRITABLEDIR" },
+	{ "dropbear.cache.dir", "PV_DROPBEAR_CACHE_DIR" },
+	{ "factory.autotok", "PV_FACTORY_AUTOTOK" },
+	{ "libthttp.certdir", "PV_LIBTHTTP_CERTSDIR" },
+	{ "libthttp.log.level", "PV_LIBTHTTP_LOG_LEVEL" },
+	{ "log.capture", "PV_LOG_CAPTURE" },
+	{ "log.capture.dmesg", "PV_LOG_CAPTURE_DMESG" },
+	{ "log.buf_nitems", "PV_LOG_BUF_NITEMS" },
+	{ "log.dir", "PV_LOG_DIR" },
+	{ "log.filetree.timestamp.format", "PV_LOG_FILETREE_TIMESTAMP_FORMAT" },
+	{ "log.level", "PV_LOG_LEVEL" },
+	{ "log.loggers", "PV_LOG_LOGGERS" },
+	{ "log.maxsize", "PV_LOG_MAXSIZE" },
+	{ "log.push", "PV_LOG_PUSH" },
+	{ "log.server.outputs", "PV_LOG_SERVER_OUTPUTS" },
+	{ "log.singlefile.timestamp.format",
+	  "PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT" },
+	{ "log.stdout", "PV_LOG_STDOUT" },
+	{ "log.stdout.timestamp.format", "PV_LOG_STDOUT_TIMESTAMP_FORMAT" },
+	{ "lxc.log.level", "PV_LXC_LOG_LEVEL" },
+	{ "metadata.devmeta.interval", "PV_METADATA_DEVMETA_INTERVAL" },
+	{ "metadata.usrmeta.interval", "PV_METADATA_USRMETA_INTERVAL" },
+	{ "net.braddress4", "PV_NET_BRADDRESS4" },
+	{ "net.brdev", "PV_NET_BRDEV" },
+	{ "net.brmask4", "PV_NET_BRMASK4" },
+	{ "policy", "PV_POLICY" },
+	{ "revision.retries", "PV_REVISION_RETRIES" },
+	{ "revision.retries.timeout", "PV_REVISION_RETRIES_TIMEOUT" },
+	{ "secureboot.checksum", "PV_SECUREBOOT_CHECKSUM" },
+	{ "secureboot.handlers", "PV_SECUREBOOT_HANDLERS" },
+	{ "secureboot.mode", "PV_SECUREBOOT_MODE" },
+	{ "secureboot.truststore", "PV_SECUREBOOT_TRUSTSTORE" },
+	{ "storage.device", "PV_STORAGE_DEVICE" },
+	{ "storage.fstype", "PV_STORAGE_FSTYPE" },
+	{ "storage.gc.keep_factory", "PV_STORAGE_GC_KEEP_FACTORY" },
+	{ "storage.gc.reserved", "PV_STORAGE_GC_RESERVED" },
+	{ "storage.gc.threshold.defertime",
+	  "PV_STORAGE_GC_THRESHOLD_DEFERTIME" },
+	{ "storage.gc.threshold", "PV_STORAGE_GC_THRESHOLD" },
+	{ "storage.logtempsize", "PV_STORAGE_LOGTEMPSIZE" },
+	{ "storage.mntpoint", "PV_STORAGE_MNTPOINT" },
+	{ "storage.mnttype", "PV_STORAGE_MNTTYPE" },
+	{ "storage.opts", "PV_STORAGE_OPTS" },
+	{ "storage.wait", "PV_STORAGE_WAIT" },
+	{ "system.apparmor.profiles", "PV_SYSTEM_APPARMOR_PROFILES" },
+	{ "system.confdir", "PV_SYSTEM_CONFDIR" },
+	{ "system.drivers.load_early.auto",
+	  "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO" },
+	{ "system.etcdir", "PV_SYSTEM_ETCDIR" },
+	{ "system.init.mode", "PV_SYSTEM_INIT_MODE" },
+	{ "system.libdir", "PV_SYSTEM_LIBDIR" },
+	{ "system.mediadir", "PV_SYSTEM_MEDIADIR" },
+	{ "system.mount.securityfs", "PV_SYSTEM_MOUNT_SECURITYFS" },
+	{ "system.rundir", "PV_SYSTEM_RUNDIR" },
+	{ "system.usrdir", "PV_SYSTEM_USRDIR" },
+	{ "updater.commit.delay", "PV_UPDATER_COMMIT_DELAY" },
+	{ "updater.goals.timeout", "PV_UPDATER_GOALS_TIMEOUT" },
+	{ "updater.interval", "PV_UPDATER_INTERVAL" },
+	{ "updater.network_timeout", "PV_UPDATER_NETWORK_TIMEOUT" },
+	{ "updater.use_tmp_objects", "PV_UPDATER_USE_TMP_OBJECTS" },
+	{ "wdt.enabled", "PV_WDT_ENABLED" },
+	{ "wdt.mode", "PV_WDT_MODE" },
+	{ "wdt.timeout", "PV_WDT_TIMEOUT" },
+	// OTHER COMPATIBLE KEYS
+	{ "meta.cache.dir", "PV_CACHE_USRMETADIR" },
+	{ "pantahub.log.push", "PV_LOG_PUSH" },
+	{ "updater.keep_factory", "PV_STORAGE_GC_KEEP_FACTORY" }
 };
 
 bool pv_config_get_bool(config_index_t ci)
@@ -262,20 +362,19 @@ bool pv_config_get_bool(config_index_t ci)
 	return entries[ci].value.b;
 }
 
-static void _set_config_by_entry_bool(struct pv_config_entry *entry, bool value,
-				      level_t modified)
+static void _set_config_by_entry_bool(struct pv_config_entry *entry, bool value)
 {
 	if (!entry)
 		return;
 
 	entry->value.b = value;
-	entry->modified = modified;
 }
 
 static void _set_config_by_index_bool(config_index_t ci, bool value,
 				      level_t modified)
 {
-	_set_config_by_entry_bool(&entries[ci], value, modified);
+	entries[ci].modified = modified;
+	_set_config_by_entry_bool(&entries[ci], value);
 }
 
 int pv_config_get_int(config_index_t ci)
@@ -283,14 +382,12 @@ int pv_config_get_int(config_index_t ci)
 	return entries[ci].value.i;
 }
 
-static void _set_config_by_entry_int(struct pv_config_entry *entry, int value,
-				     level_t modified)
+static void _set_config_by_entry_int(struct pv_config_entry *entry, int value)
 {
 	if (!entry)
 		return;
 
 	entry->value.i = value;
-	entry->modified = modified;
 }
 
 char *pv_config_get_str(config_index_t ci)
@@ -299,7 +396,7 @@ char *pv_config_get_str(config_index_t ci)
 }
 
 static void _set_config_by_entry_str(struct pv_config_entry *entry,
-				     const char *value, level_t modified)
+				     const char *value)
 {
 	if (!entry)
 		return;
@@ -307,18 +404,18 @@ static void _set_config_by_entry_str(struct pv_config_entry *entry,
 	if (entry->value.s)
 		free(entry->value.s);
 	entry->value.s = strdup(value);
-	entry->modified = modified;
 }
 
 static void _set_config_by_index_str(config_index_t ci, const char *value,
 				     level_t modified)
 {
-	_set_config_by_entry_str(&entries[ci], value, modified);
+	entries[ci].modified = modified;
+	_set_config_by_entry_str(&entries[ci], value);
 }
 
 bootloader_t pv_config_get_bootloader_type()
 {
-	return pv_config_get_int(CI_BOOTLOADER_TYPE);
+	return pv_config_get_int(PV_BOOTLOADER_TYPE);
 }
 
 static char *_get_bootloader_type_str(bootloader_t type)
@@ -343,8 +440,7 @@ char *pv_config_get_bootloader_type_str(void)
 }
 
 static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
-						 const char *value,
-						 level_t modified)
+						 const char *value)
 {
 	if (!entry)
 		return;
@@ -364,38 +460,38 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 
 void pv_config_set_creds_id(char *id)
 {
-	_set_config_by_index_str(CI_CREDS_ID, id, PH_CLIENT);
+	_set_config_by_index_str(PV_CREDS_ID, id, PH_CLIENT);
 }
 void pv_config_set_creds_prn(char *prn)
 {
-	_set_config_by_index_str(CI_CREDS_PRN, prn, PH_CLIENT);
+	_set_config_by_index_str(PV_CREDS_PRN, prn, PH_CLIENT);
 }
 void pv_config_set_creds_secret(char *secret)
 {
-	_set_config_by_index_str(CI_CREDS_SECRET, secret, PH_CLIENT);
+	_set_config_by_index_str(PV_CREDS_SECRET, secret, PH_CLIENT);
 }
 
 void pv_config_set_debug_shell(bool shell)
 {
-	_set_config_by_index_bool(CI_DEBUG_SHELL, shell, ARGS);
+	_set_config_by_index_bool(PV_DEBUG_SHELL, shell, ARGS);
 }
 void pv_config_set_debug_shell_autologin(bool shell)
 {
-	_set_config_by_index_bool(CI_DEBUG_SHELL_AUTOLOGIN, shell, ARGS);
+	_set_config_by_index_bool(PV_DEBUG_SHELL_AUTOLOGIN, shell, ARGS);
 }
 void pv_config_set_debug_ssh(bool ssh)
 {
-	_set_config_by_index_bool(CI_DEBUG_SSH, ssh, ARGS);
+	_set_config_by_index_bool(PV_DEBUG_SSH, ssh, ARGS);
 }
 
 log_server_output_mask_t pv_config_get_log_server_outputs()
 {
-	return pv_config_get_int(CI_LOG_SERVER_OUTPUTS);
+	return pv_config_get_int(PV_LOG_SERVER_OUTPUTS);
 }
 
 static void
 _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
-					const char *value, level_t modified)
+					const char *value)
 {
 	if (!entry)
 		return;
@@ -442,7 +538,7 @@ _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
 
 secureboot_mode_t pv_config_get_secureboot_mode()
 {
-	return pv_config_get_int(CI_SECUREBOOT_MODE);
+	return pv_config_get_int(PV_SECUREBOOT_MODE);
 }
 
 static char *_get_secureboot_mode_str(secureboot_mode_t mode)
@@ -467,8 +563,7 @@ char *pv_config_get_secureboot_mode_str(void)
 }
 
 static void _set_config_by_entry_secureboot_mode(struct pv_config_entry *entry,
-						 const char *value,
-						 level_t modified)
+						 const char *value)
 {
 	if (!entry)
 		return;
@@ -490,7 +585,7 @@ static void _set_config_by_entry_secureboot_mode(struct pv_config_entry *entry,
 
 init_mode_t pv_config_get_system_init_mode()
 {
-	return pv_config_get_int(CI_SYSTEM_INIT_MODE);
+	return pv_config_get_int(PV_SYSTEM_INIT_MODE);
 }
 
 static char *_get_system_init_mode_str(init_mode_t mode)
@@ -513,7 +608,7 @@ char *pv_config_get_system_init_mode_str(void)
 }
 
 static void _set_config_by_entry_init_mode(struct pv_config_entry *entry,
-					   const char *value, level_t modified)
+					   const char *value)
 {
 	if (!entry)
 		return;
@@ -533,13 +628,13 @@ static void _set_config_by_entry_init_mode(struct pv_config_entry *entry,
 
 void pv_config_set_system_init_mode(init_mode_t mode)
 {
-	entries[CI_SYSTEM_INIT_MODE].value.i = mode;
-	entries[CI_SYSTEM_INIT_MODE].modified = ARGS;
+	entries[PV_SYSTEM_INIT_MODE].value.i = mode;
+	entries[PV_SYSTEM_INIT_MODE].modified = ARGS;
 }
 
 wdt_mode_t pv_config_get_wdt_mode()
 {
-	return pv_config_get_int(CI_WDT_MODE);
+	return pv_config_get_int(PV_WDT_MODE);
 }
 
 static char *_get_wdt_mode_str(wdt_mode_t mode)
@@ -564,7 +659,7 @@ char *pv_config_get_wdt_mode_str(void)
 }
 
 static void _set_config_by_entry_wdt_mode(struct pv_config_entry *entry,
-					  const char *value, level_t modified)
+					  const char *value)
 {
 	if (!entry)
 		return;
@@ -585,13 +680,11 @@ static void _set_config_by_entry_wdt_mode(struct pv_config_entry *entry,
 		pv_log(WARN, "unknown wdt mode '%s'", value);
 }
 
-static char *config_get_value_policy(struct dl_list *config_list, char *key,
-				     char *default_value)
+static char *_get_value_policy(struct dl_list *config_list)
 {
-	char *item = config_get_value(config_list, key);
-
+	char *item = config_get_value(config_list, "PV_POLICY");
 	if (!item)
-		item = default_value;
+		item = config_get_value(config_list, "policy");
 
 	if (!item || !strlen(item))
 		return NULL;
@@ -662,9 +755,9 @@ static struct pv_config_entry *_search_config_entry_by_key(const char *key)
 	struct pv_config_entry *entry = NULL;
 	const char *k;
 
-	for (config_index_t ci = 0; ci < CI_MAX; ci++) {
+	for (config_index_t ci = 0; ci < PV_MAX; ci++) {
 		k = entries[ci].key;
-		if (pv_str_matches(k, strlen(k), key, strlen(key))) {
+		if (pv_str_matches_case(k, strlen(k), key, strlen(key))) {
 			entry = &entries[ci];
 			break;
 		}
@@ -690,6 +783,8 @@ static char *_get_mod_level_str(level_t ml)
 		return "pv cmdline";
 	case PH_CMDLINE:
 		return "ph cmdline";
+	case ENV:
+		return "env";
 	case TRAIL:
 		return "trail config";
 	case META:
@@ -725,30 +820,32 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		}
 	}
 
+	entry->modified = modified;
+
 	switch (entry->type) {
 	case BOOL:
-		_set_config_by_entry_bool(entry, value_int, modified);
+		_set_config_by_entry_bool(entry, value_int);
 		break;
 	case BOOTLOADER:
-		_set_config_by_entry_bootloader_type(entry, value, modified);
+		_set_config_by_entry_bootloader_type(entry, value);
 		break;
 	case INIT_MODE:
-		_set_config_by_entry_init_mode(entry, value, modified);
+		_set_config_by_entry_init_mode(entry, value);
 		break;
 	case INT:
-		_set_config_by_entry_int(entry, value_int, modified);
+		_set_config_by_entry_int(entry, value_int);
 		break;
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
-		_set_config_by_entry_log_server_outputs(entry, value, modified);
+		_set_config_by_entry_log_server_outputs(entry, value);
 		break;
 	case SB_MODE:
-		_set_config_by_entry_secureboot_mode(entry, value, modified);
+		_set_config_by_entry_secureboot_mode(entry, value);
 		break;
 	case STR:
-		_set_config_by_entry_str(entry, value, modified);
+		_set_config_by_entry_str(entry, value);
 		break;
 	case WDT_MODE:
-		_set_config_by_entry_wdt_mode(entry, value, modified);
+		_set_config_by_entry_wdt_mode(entry, value);
 		break;
 	default:
 		pv_log(WARN, "unknown config type %d for key '%s'", entry->type,
@@ -763,17 +860,14 @@ static struct pv_config_entry *_search_config_entry_by_alias(const char *alias)
 {
 	size_t alias_number = sizeof(aliases) / sizeof(struct pv_config_alias);
 	char *a;
-	struct pv_config_entry *entry = NULL;
 
 	for (size_t ai = 0; ai < alias_number; ai++) {
 		a = aliases[ai].alias;
-		if (pv_str_matches(a, strlen(a), alias, strlen(alias))) {
-			entry = _search_config_entry_by_key(aliases[ai].key);
-			break;
-		}
+		if (pv_str_matches(a, strlen(a), alias, strlen(alias)))
+			return _search_config_entry_by_key(aliases[ai].key);
 	}
 
-	return entry;
+	return NULL;
 }
 
 static int _set_config_by_key(const char *key, const char *value, void *opaque)
@@ -781,8 +875,13 @@ static int _set_config_by_key(const char *key, const char *value, void *opaque)
 	struct pv_config_entry *entry;
 
 	entry = _search_config_entry_by_key(key);
-	if (!entry)
+	if (!entry) {
 		entry = _search_config_entry_by_alias(key);
+		if (entry) {
+			pv_log(WARN, "translating legacy key '%s' as '%s'", key,
+			       entry->key);
+		}
+	}
 	if (!entry)
 		return 0;
 
@@ -809,19 +908,24 @@ static int pv_config_load_file(char *path)
 	char *policy = NULL;
 
 	DEFINE_DL_LIST(cmdline_list);
+	DEFINE_DL_LIST(env_list);
 	DEFINE_DL_LIST(pv_conf_list);
 	DEFINE_DL_LIST(policy_list);
 
 	config_parse_cmdline(&cmdline_list, "pv_");
+
+	config_parse_env(&env_list);
 
 	if (load_key_value_file(path, &pv_conf_list) < 0) {
 		pv_log(ERROR, "cannot load config from '%s'", path);
 		goto out;
 	}
 
-	policy = config_get_value_policy(&cmdline_list, "policy", NULL);
+	policy = _get_value_policy(&cmdline_list);
 	if (!policy)
-		policy = config_get_value_policy(&pv_conf_list, "policy", NULL);
+		policy = _get_value_policy(&env_list);
+	if (!policy)
+		policy = _get_value_policy(&pv_conf_list);
 
 	_iterate_config_items(&pv_conf_list, PV_CONF);
 
@@ -833,6 +937,7 @@ static int pv_config_load_file(char *path)
 
 	_iterate_config_items(&policy_list, POLICY);
 	_iterate_config_items(&cmdline_list, PV_CMDLINE);
+	_iterate_config_items(&env_list, ENV);
 
 	ret = 0;
 
@@ -842,6 +947,7 @@ out:
 
 	config_clear_items(&policy_list);
 	config_clear_items(&pv_conf_list);
+	config_clear_items(&env_list);
 	config_clear_items(&cmdline_list);
 
 	return ret;
@@ -922,7 +1028,7 @@ static int pv_config_save_creds_to_file(char *path)
 		return -1;
 	}
 
-	for (config_index_t ci = 0; ci < CI_MAX; ci++) {
+	for (config_index_t ci = 0; ci < PV_MAX; ci++) {
 		struct pv_config_entry *entry = &entries[ci];
 		if (!(entry->allowed & PH_CONF))
 			continue;
@@ -997,18 +1103,33 @@ void pv_config_override_value(const char *key, const char *value)
 
 void pv_config_free()
 {
-	for (config_index_t ci = 0; ci < CI_MAX; ci++) {
+	for (config_index_t ci = 0; ci < PV_MAX; ci++) {
 		if (entries[ci].type == STR)
 			free(entries[ci].value.s);
 	}
 }
 
+static char *_search_config_alias_by_key(const char *key)
+{
+	size_t alias_number = sizeof(aliases) / sizeof(struct pv_config_alias);
+	char *k = NULL;
+
+	for (size_t ai = 0; ai < alias_number; ai++) {
+		k = aliases[ai].key;
+		if (pv_str_matches_case(k, strlen(k), key, strlen(key)))
+			return aliases[ai].alias;
+	}
+
+	return NULL;
+}
+
 static void _add_config_entry_json(config_index_t ci, struct pv_json_ser *js)
 {
-	if (ci >= CI_MAX)
+	if (ci >= PV_MAX)
 		return;
 
-	pv_json_ser_key(js, entries[ci].key);
+	char *key = _search_config_alias_by_key(entries[ci].key);
+	pv_json_ser_key(js, key);
 
 	switch (entries[ci].type) {
 	case BOOL:
@@ -1040,7 +1161,7 @@ char *pv_config_get_json()
 
 	pv_json_ser_object(&js);
 	{
-		for (config_index_t ci = 0; ci < CI_MAX; ci++) {
+		for (config_index_t ci = 0; ci < PV_MAX; ci++) {
 			_add_config_entry_json(ci, &js);
 		}
 
@@ -1052,7 +1173,7 @@ char *pv_config_get_json()
 
 static void _print_config_entry(config_index_t ci)
 {
-	if (ci >= CI_MAX)
+	if (ci >= PV_MAX)
 		return;
 
 	const char *key = entries[ci].key;
@@ -1102,7 +1223,7 @@ static void _print_config_entry(config_index_t ci)
 
 void pv_config_print()
 {
-	for (config_index_t ci = 0; ci < CI_MAX; ci++) {
+	for (config_index_t ci = 0; ci < PV_MAX; ci++) {
 		_print_config_entry(ci);
 	}
 }
@@ -1110,7 +1231,7 @@ void pv_config_print()
 int pv_config_init(char *path)
 {
 	size_t entry_number = sizeof(entries) / sizeof(struct pv_config_entry);
-	if (CI_MAX != entry_number) {
+	if (PV_MAX != entry_number) {
 		pv_log(FATAL, "number of config_index_t is not %zu",
 		       entry_number);
 		return -1;
@@ -1119,7 +1240,7 @@ int pv_config_init(char *path)
 	// we alloc all strings, incluiding default ones
 	// this way, we can free both default and non-default the same way
 	char *tmp;
-	for (config_index_t ci = 0; ci < CI_MAX; ci++) {
+	for (config_index_t ci = 0; ci < PV_MAX; ci++) {
 		if ((entries[ci].type == STR) && entries[ci].value.s) {
 			tmp = strdup(entries[ci].value.s);
 			entries[ci].value.s = tmp;
@@ -1146,7 +1267,7 @@ static int pv_config_load_creds(struct pv_init *this)
 	char path[PATH_MAX];
 	struct stat st;
 
-	if (!pv_config_get_bool(CI_CONTROL_REMOTE))
+	if (!pv_config_get_bool(PV_CONTROL_REMOTE))
 		return 0;
 
 	pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);

@@ -770,7 +770,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		goto error;
 	}
 
-	if (!pv_config_get_bool(CI_CONTROL_REMOTE) &&
+	if (!pv_config_get_bool(PV_CONTROL_REMOTE) &&
 	    ((*cmd)->op == CMD_GO_REMOTE)) {
 		pv_ctrl_write_error_response(
 			req_fd, HTTP_STATUS_CONFLICT,

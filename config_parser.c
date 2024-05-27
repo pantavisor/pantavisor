@@ -51,7 +51,8 @@ static struct config_item *_config_get_by_key(struct dl_list *list, char *key)
 
 	dl_list_for_each_safe(curr, tmp, list, struct config_item, list)
 	{
-		if (strcmp(curr->key, key) == 0)
+		if (pv_str_matches_case(curr->key, strlen(curr->key), key,
+					strlen(key)))
 			return curr;
 	}
 	// Value not found
@@ -138,6 +139,40 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 		token = strtok_r(NULL, " ", &ptr_out);
 	}
 	free(buf);
+
+	return 0;
+}
+
+extern char **environ;
+
+int config_parse_env(struct dl_list *list)
+{
+	char **envs = environ;
+	char *env, *ctx, *key, *value, *prefix = "PV_";
+	size_t envlen, prefixlen = strlen(prefix);
+
+	while (*envs) {
+		env = strdup(*envs);
+		envlen = strlen(env);
+
+		if (envlen <= prefixlen)
+			goto next;
+
+		if (!pv_str_startswith_case(prefix, prefixlen, env))
+			goto next;
+
+		key = strtok_r(env, "=", &ctx);
+		value = strtok_r(NULL, "\0", &ctx);
+
+		// set empty string if no value
+		if (!value)
+			value = "";
+
+		_config_add_item(list, key, value);
+	next:
+		free(env);
+		envs++;
+	}
 
 	return 0;
 }

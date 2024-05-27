@@ -78,7 +78,7 @@ void pv_mount_umount(void)
 	if (umount(path))
 		pv_log(ERROR, "Error unmounting etc_file %s", strerror(errno));
 
-	if (pv_config_get_str(CI_STORAGE_LOGTEMPSIZE)) {
+	if (pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
 		pv_paths_storage(path, PATH_MAX);
 		size_t logmount_size = strlen(path) + strlen("/logs  ");
 		char *logmount = malloc(sizeof(char) * logmount_size);
@@ -108,11 +108,11 @@ static int pv_mount_init(struct pv_init *this)
 	 * Check that storage device has been enumerated and wait if not there yet
 	 * (RPi2 for example is too slow to pvan the MMC devices in time)
 	 */
-	for (int wait = pv_config_get_int(CI_STORAGE_WAIT); wait > 0; wait--) {
+	for (int wait = pv_config_get_int(PV_STORAGE_WAIT); wait > 0; wait--) {
 		/*
 		 * storage.path will contain UUID=XXXX or LABEL=XXXX
 		 * */
-		const char *storage_path = pv_config_get_str(CI_STORAGE_DEVICE);
+		const char *storage_path = pv_config_get_str(PV_STORAGE_DEVICE);
 		if (get_blkid(&dev_info, storage_path))
 			pv_log(ERROR, "cannot get block device from '%s'",
 			       storage_path);
@@ -135,7 +135,7 @@ static int pv_mount_init(struct pv_init *this)
 
 	// attempt auto resize only if we have ext4 and in embedded init mode
 	if ((pv_config_get_system_init_mode() == IM_EMBEDDED) &&
-	    !strcmp(pv_config_get_str(CI_STORAGE_FSTYPE), "ext4")) {
+	    !strcmp(pv_config_get_str(PV_STORAGE_FSTYPE), "ext4")) {
 		size_t run_size = strlen("/lib/pv/pv_e2fsgrow") +
 				  strlen(dev_info.device) + 3;
 		char *run = malloc(sizeof(char) * run_size);
@@ -145,12 +145,12 @@ static int pv_mount_init(struct pv_init *this)
 		free(run);
 	}
 
-	const char *mnttype = pv_config_get_str(CI_STORAGE_MNTTYPE);
-	const char *logtempsize = pv_config_get_str(CI_STORAGE_LOGTEMPSIZE);
+	const char *mnttype = pv_config_get_str(PV_STORAGE_MNTTYPE);
+	const char *logtempsize = pv_config_get_str(PV_STORAGE_LOGTEMPSIZE);
 
 	if (!mnttype) {
 		ret = mount(dev_info.device, path,
-			    pv_config_get_str(CI_STORAGE_FSTYPE), 0, NULL);
+			    pv_config_get_str(PV_STORAGE_FSTYPE), 0, NULL);
 		if (ret < 0)
 			goto out;
 	} else {

@@ -92,7 +92,7 @@ int logserver_utils_open_logfile(const char *path)
 	if (fstat(fd, &st) != 0)
 		return fd;
 
-	if (st.st_size < pv_config_get_int(CI_LOG_MAXSIZE))
+	if (st.st_size < pv_config_get_int(PV_LOG_MAXSIZE))
 		return fd;
 
 	if (compress_log(path) == 0) {
@@ -140,7 +140,7 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 
 int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 {
-	char *ts_fmt = pv_config_get_str(CI_LOG_FILETREE_TS_FMT);
+	char *ts_fmt = pv_config_get_str(PV_LOG_FILETREE_TS_FMT);
 	if (!ts_fmt)
 		return dprintf(fd, "%.*s", log->data.len, log->data.buf);
 
@@ -154,14 +154,14 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 int logserver_utils_stdout(const struct logserver_log *log)
 {
 	return print_pvfmt_log(STDOUT_FILENO, log, "unknown",
-			       pv_config_get_str(CI_LOG_STDOUT_TS_FMT), true);
+			       pv_config_get_str(PV_LOG_STDOUT_TS_FMT), true);
 }
 
 int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 				const char *src, bool lf)
 {
 	return print_pvfmt_log(fd, log, src,
-			       pv_config_get_str(CI_LOG_FILETREE_TS_FMT), lf);
+			       pv_config_get_str(PV_LOG_FILETREE_TS_FMT), lf);
 }
 
 char *logserver_utils_jsonify_log(const struct logserver_log *log)
@@ -183,7 +183,7 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 
 		if (logserver_timestamp_get_formated(
 			    ts, 256, &log->time,
-			    pv_config_get_str(CI_LOG_SINGLEFILE_TS_FMT)) == 0) {
+			    pv_config_get_str(PV_LOG_SINGLEFILE_TS_FMT)) == 0) {
 			pv_json_ser_key(&js, "ts");
 			pv_json_ser_string(&js, ts);
 		}

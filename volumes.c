@@ -222,7 +222,7 @@ int pv_volume_mount(struct pv_volume *v)
 				    NULL);
 		} else if (handler &&
 			   (!getenv("pv_verityoff") &&
-			    pv_config_get_bool(CI_SECUREBOOT_HANDLERS))) {
+			    pv_config_get_bool(PV_SECUREBOOT_HANDLERS))) {
 			pv_log(INFO, "with '%s' handler", handler);
 
 			if (!partname) {

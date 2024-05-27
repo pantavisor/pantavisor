@@ -821,8 +821,8 @@ int pv_platform_start(struct pv_platform *p)
 	ctrl = _pv_platforms_get_ctrl(p->type);
 
 	// update plugin with current config
-	ctrl->set_loglevel(pv_config_get_int(CI_LXC_LOG_LEVEL));
-	ctrl->set_capture(pv_config_get_bool(CI_LOG_CAPTURE));
+	ctrl->set_loglevel(pv_config_get_int(PV_LXC_LOG_LEVEL));
+	ctrl->set_capture(pv_config_get_bool(PV_LOG_CAPTURE));
 
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
 	data = ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], (void *)&pid);
@@ -837,7 +837,7 @@ int pv_platform_start(struct pv_platform *p)
 	if (pid <= 0)
 		return -1;
 
-	if (pv_config_get_bool(CI_LOG_LOGGERS))
+	if (pv_config_get_bool(PV_LOG_LOGGERS))
 		if (start_pvlogger_for_platform(p) < 0)
 			pv_log(ERROR,
 			       "could not start pv_logger for platform %s",

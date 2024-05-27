@@ -107,7 +107,7 @@ static void load_from_list(const char *prof)
 
 void pv_apparmor_load_profiles()
 {
-	char *profiles = pv_config_get_str(CI_SYSTEM_APPARMOR_PROFILES);
+	char *profiles = pv_config_get_str(PV_SYSTEM_APPARMOR_PROFILES);
 	if (!profiles)
 		return;
 
