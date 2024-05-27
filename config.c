@@ -101,7 +101,11 @@ typedef enum {
 #define SECUREBOOT_TRUSTSTORE_DEF PVS_CERT_DEFAULT_STORE
 #define SYSTEM_CONFDIR_DEF "/configs"
 #define SYSTEM_ETCDIR_DEF "/etc"
+#ifdef PANTAVISOR_USRMERGE
+#define SYSTEM_LIBDIR_DEF "/usr/lib"
+#else
 #define SYSTEM_LIBDIR_DEF "/lib"
+#endif
 #define SYSTEM_MEDIADIR_DEF "/media"
 #define SYSTEM_RUNDIR_DEF "/pv"
 #define SYSTEM_USRDIR_DEF "/usr"
