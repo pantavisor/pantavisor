@@ -174,11 +174,11 @@ static int pv_network_early_init(struct pv_init *this)
 
 	memset(&ifr, 0, sizeof(ifr));
 
-	const char *brdev = pv_config_get_str(CI_NET_BRDEV);
+	const char *brdev = pv_config_get_str(PV_NET_BRDEV);
 	if (!brdev)
 		return -1;
 
-	const char *braddress4 = pv_config_get_str(CI_NET_BRADDRESS4);
+	const char *braddress4 = pv_config_get_str(PV_NET_BRADDRESS4);
 
 	fd = socket(AF_LOCAL, SOCK_STREAM, 0);
 	if (fd < 0) {
@@ -231,7 +231,7 @@ static int pv_network_early_init(struct pv_init *this)
 		goto out;
 	}
 
-	ret = _set_netmask(sockfd, brdev, pv_config_get_str(CI_NET_BRMASK4));
+	ret = _set_netmask(sockfd, brdev, pv_config_get_str(PV_NET_BRMASK4));
 	if (ret < 0) {
 		pv_log(WARN, "unable to set netmask %s: %s", brdev,
 		       strerror(errno));

@@ -80,7 +80,7 @@ static void __vlog(char *module, int level, const char *fmt, va_list args)
 
 static void log_libthttp(int level, const char *fmt, va_list args)
 {
-	if (level > pv_config_get_int(CI_LIBTHTTP_LOG_LEVEL))
+	if (level > pv_config_get_int(PV_LIBTHTTP_LOG_LEVEL))
 		return;
 
 	if (log_init_pid != getpid())
@@ -102,7 +102,7 @@ static void pv_log_init(const char *rev)
 	mount_bind(storage_logs_path, pv_logs_path);
 
 	pv_buffer_init(MAX_BUFFER_COUNT,
-		       pv_config_get_int(CI_LOG_BUF_NITEMS) * 1024);
+		       pv_config_get_int(PV_LOG_BUF_NITEMS) * 1024);
 
 	if (pv_logserver_init(rev))
 		pv_log(ERROR, "logserver initialization failed");
@@ -127,7 +127,7 @@ void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;
 
-	if ((level != FATAL) && (level > pv_config_get_int(CI_LOG_LEVEL)))
+	if ((level != FATAL) && (level > pv_config_get_int(PV_LOG_LEVEL)))
 		return;
 
 	va_start(args, fmt);

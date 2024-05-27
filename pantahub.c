@@ -92,7 +92,7 @@ auth:
 		return 0;
 	}
 
-	const char *id = pv_config_get_str(CI_CREDS_ID);
+	const char *id = pv_config_get_str(PV_CREDS_ID);
 	if (!endpoint && id) {
 		size = sizeof(ENDPOINT_FMT) + strlen(id) + 1;
 		endpoint = malloc(size * sizeof(char));
@@ -204,11 +204,11 @@ struct pv_connection *pv_get_instance_connection()
 		return NULL;
 	}
 	// default to global PH instance
-	host = pv_config_get_str(CI_CREDS_HOST);
+	host = pv_config_get_str(PV_CREDS_HOST);
 	if (strcmp(host, "") == 0)
 		host = "api.pantahub.com";
 
-	port = pv_config_get_int(CI_CREDS_PORT);
+	port = pv_config_get_int(PV_CREDS_PORT);
 	if (!port)
 		port = 443;
 
@@ -333,11 +333,11 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->proto_version = THTTP_PROTO_VERSION_10;
 	req->user_agent = pv_user_agent;
 
-	req->host = pv_config_get_str(CI_CREDS_HOST);
-	req->port = pv_config_get_int(CI_CREDS_PORT);
-	req->host_proxy = pv_config_get_str(CI_CREDS_PROXY_HOST);
-	req->port_proxy = pv_config_get_int(CI_CREDS_PROXY_PORT);
-	req->proxyconnect = !pv_config_get_int(CI_CREDS_PROXY_NOPROXYCONNECT);
+	req->host = pv_config_get_str(PV_CREDS_HOST);
+	req->port = pv_config_get_int(PV_CREDS_PORT);
+	req->host_proxy = pv_config_get_str(PV_CREDS_PROXY_HOST);
+	req->port_proxy = pv_config_get_int(PV_CREDS_PROXY_PORT);
+	req->proxyconnect = !pv_config_get_int(PV_CREDS_PROXY_NOPROXYCONNECT);
 
 	baseurl_size = strlen("https://") + strlen(req->host) + 1 /* : */ +
 		       5 /* port */ + 2 /* 0-delim */;
@@ -352,7 +352,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	req->path = "/devices/";
 	req->body = 0;
 
-	const char *autotok = pv_config_get_str(CI_FACTORY_AUTOTOK);
+	const char *autotok = pv_config_get_str(PV_FACTORY_AUTOTOK);
 	if (autotok && strcmp(autotok, "")) {
 		headers = calloc(2, sizeof(char *));
 		header_size = sizeof(DEVICE_TOKEN_FMT) + 64;
@@ -423,7 +423,7 @@ int pv_ph_register_self(struct pantavisor *pv)
 		HUB_CREDS_TYPE_ERROR
 	} creds_type;
 
-	const char *type = pv_config_get_str(CI_CREDS_TYPE);
+	const char *type = pv_config_get_str(PV_CREDS_TYPE);
 	if (!strcmp(type, "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;
 	} else if (strlen(type) >= 4 && !strncmp(type, "ext-", 4)) {
@@ -531,7 +531,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
 	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n",
-			pv_config_get_str(CI_CREDS_ID));
+			pv_config_get_str(PV_CREDS_ID));
 	if (pv_fs_file_save(path, buf, 044))
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));

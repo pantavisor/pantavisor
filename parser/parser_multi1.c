@@ -311,7 +311,7 @@ struct pv_state *multi1_parse(struct pv_state *this, const char *buf)
 			parse_platform(this, value, strlen(value));
 		else
 			pv_objects_add(this, key, value,
-				       pv_config_get_str(CI_STORAGE_MNTPOINT));
+				       pv_config_get_str(PV_STORAGE_MNTPOINT));
 
 		// free intermediates
 		if (key) {

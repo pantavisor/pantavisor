@@ -139,7 +139,7 @@ static int other_mounts()
 	if (ret < 0)
 		exit_error(errno, "Could not mount /run");
 
-	if (pv_config_get_bool(CI_SYSTEM_MOUNT_SECURITYFS)) {
+	if (pv_config_get_bool(PV_SYSTEM_MOUNT_SECURITYFS)) {
 		ret = mount("none", "/sys/kernel/security", "securityfs", 0,
 			    NULL);
 		if (ret < 0)
@@ -417,9 +417,9 @@ int main(int argc, char *argv[])
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if (init_mode == IM_STANDALONE) {
-		if (pv_config_get_bool(CI_DEBUG_SHELL))
+		if (pv_config_get_bool(PV_DEBUG_SHELL))
 			pv_debug_start_shell();
-		if (pv_config_get_bool(CI_DEBUG_SSH))
+		if (pv_config_get_bool(PV_DEBUG_SSH))
 			pv_debug_start_ssh();
 		else
 			tsh_run("ifconfig lo up", 0, NULL);
@@ -451,9 +451,9 @@ int main(int argc, char *argv[])
 	if (pv_config_get_wdt_mode() >= WDT_STARTUP)
 		pv_wdt_start();
 
-	if (pv_config_get_bool(CI_DEBUG_SHELL))
+	if (pv_config_get_bool(PV_DEBUG_SHELL))
 		pv_debug_start_shell();
-	if (pv_config_get_bool(CI_DEBUG_SSH))
+	if (pv_config_get_bool(PV_DEBUG_SSH))
 		pv_debug_start_ssh();
 	else
 		tsh_run("ifconfig lo up", 0, NULL);

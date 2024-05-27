@@ -180,11 +180,11 @@ static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 
 void pv_drivers_load_early()
 {
-	if (!pv_config_get_bool(CI_SYSTEM_DRIVERS_LOAD_EARLY_AUTO))
+	if (!pv_config_get_bool(PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO))
 		return;
 
 	// load fs module from pantavisor.conf
-	char *fstype = pv_config_get_str(CI_STORAGE_FSTYPE);
+	char *fstype = pv_config_get_str(PV_STORAGE_FSTYPE);
 	if (pv_drivers_load_single(fstype, NULL) != 0)
 		pv_log(WARN, "cannot load filesystem module");
 
