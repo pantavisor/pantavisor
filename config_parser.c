@@ -25,12 +25,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
 
 #include "config_parser.h"
 #include "utils/str.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME "config_parser"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -282,4 +284,71 @@ void config_clear_items(struct dl_list *list)
 		free(curr->value);
 		free(curr);
 	}
+}
+
+static char *_parse_legacy_sysctl_key(const char *key)
+{
+	const char *start = key + strlen("sysctl");
+	char *path =
+		calloc(strlen("/proc/sys") + strlen(start) + 1, sizeof(char));
+	if (!path)
+		return NULL;
+
+	sprintf(path, "%s", "/proc/sys");
+
+	char *p = path + strlen("/proc/sys");
+
+	for (int i = 0; i < (int)strlen(start); ++i)
+		p[i] = start[i] == '.' ? '/' : start[i];
+
+	return path;
+}
+
+static char *_parse_sysctl_key(const char *key)
+{
+	const char *base = "/proc/sys/";
+	size_t baselen = strlen(base);
+
+	const char *k = key + strlen("PV_SYSCTL_");
+
+	char *path = calloc(baselen + strlen(k) + 1, sizeof(char));
+	if (!path)
+		return NULL;
+
+	sprintf(path, "%s%s", base, k);
+
+	char *p = path + baselen;
+	while (*p) {
+		if (*p == '_') {
+			// temporary \0 to evaluate if it is a dir
+			*p = '\0';
+			if (pv_fs_path_is_directory(path))
+				*p = '/';
+			else
+				*p = '_';
+		} else
+			*p = tolower(*p);
+		p++;
+	}
+
+	return path;
+}
+
+char *pv_config_parser_sysctl_key(const char *key)
+{
+	size_t keylen = strlen(key);
+
+	const char *lprefix = "sysctl";
+	size_t lprefixlen = strlen(lprefix);
+	if ((keylen > lprefixlen) &&
+	    pv_str_startswith(lprefix, lprefixlen, key))
+		return _parse_legacy_sysctl_key(key);
+
+	const char *prefix = "PV_SYSCTL_";
+	size_t prefixlen = strlen(prefix);
+	if ((keylen > prefixlen) &&
+	    pv_str_startswith_case(prefix, prefixlen, key))
+		return _parse_sysctl_key(key);
+
+	return NULL;
 }

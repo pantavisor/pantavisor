@@ -79,6 +79,8 @@ typedef enum {
 #define UPDATE_TIME POLICY | TRAIL
 #define RUN_TIME UPDATE_TIME | META | CMD
 
+#define LEVEL_SYSCTL PV_ENTRY | UPDATE_TIME
+
 // default list
 #define CACHE_DEVMETADIR_DEF "/storage/cache/devmeta"
 #define CACHE_USRMETADIR_DEF "/storage/cache/meta"
@@ -696,30 +698,15 @@ static char *_get_value_policy(struct dl_list *config_list)
 	return strdup(item);
 }
 
-static int _apply_config_sysctl(const char *key, const char *value,
-				void *opaque)
+static int _set_config_sysctl_by_key(const char *key, const char *value)
 {
-	const char *start = key + strlen("sysctl");
-	char *path =
-		calloc(strlen("/proc/sys") + strlen(start) + 1, sizeof(char));
-
+	char *path = pv_config_parser_sysctl_key(key);
 	if (!path)
-		return -1;
+		return 0;
 
-	sprintf(path, "%s", "/proc/sys");
-
-	const char *next = start;
-	char *p = path + strlen("/proc/sys");
-
-	for (int i = 0; i < (int)strlen(start); ++i)
-		p[i] = next[i] == '.' ? '/' : next[i];
-
-	errno = 0;
 	int fd = open(path, O_WRONLY | O_SYNC);
 	if (fd < 0) {
-		pv_log(ERROR, "open failed for sysctl node %s with '%s'", path,
-		       strerror(errno));
-
+		pv_log(WARN, "cannot open '%s': %s", path, strerror(errno));
 		free(path);
 		return -1;
 	}
@@ -728,7 +715,7 @@ static int _apply_config_sysctl(const char *key, const char *value,
 	close(fd);
 	free(path);
 
-	return 0;
+	return 1;
 }
 
 static int pv_config_load_policy(const char *policy,
@@ -872,8 +859,13 @@ static struct pv_config_entry *_search_config_entry_by_alias(const char *alias)
 
 static int _set_config_by_key(const char *key, const char *value, void *opaque)
 {
-	struct pv_config_entry *entry;
+	level_t *level = (level_t *)opaque;
+	if (*level & LEVEL_SYSCTL) {
+		if (_set_config_sysctl_by_key(key, value))
+			return 0;
+	}
 
+	struct pv_config_entry *entry;
 	entry = _search_config_entry_by_key(key);
 	if (!entry) {
 		entry = _search_config_entry_by_alias(key);
@@ -885,7 +877,6 @@ static int _set_config_by_key(const char *key, const char *value, void *opaque)
 	if (!entry)
 		return 0;
 
-	level_t *level = (level_t *)opaque;
 	if (_set_config_by_entry(entry, value, *level)) {
 		pv_log(WARN, "cannot set key '%s' in config", key);
 		return 0;
@@ -898,8 +889,6 @@ static void _iterate_config_items(struct dl_list *items, level_t level)
 {
 	level_t l = level;
 	config_iterate_items(items, _set_config_by_key, (void *)&l);
-	config_iterate_items_prefix(items, _apply_config_sysctl, "sysctl.",
-				    NULL);
 }
 
 static int pv_config_load_file(char *path)
@@ -1248,8 +1237,8 @@ int pv_config_init(char *path)
 	}
 
 	// default core_pattern, overridable by config
-	_apply_config_sysctl("sysctl.kernel.core_pattern",
-			     "|/lib/pv/pvcrash --skip", NULL);
+	_set_config_sysctl_by_key("PV_SYSCTL_KERNEL_CORE_PATTERN",
+				  "|/lib/pv/pvcrash --skip");
 
 	if (!path)
 		path = PV_PANTAVISOR_CONFIG_PATH;
