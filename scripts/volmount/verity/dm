@@ -27,7 +27,7 @@ volumesrc=$2
 container=$3
 volume=$4
 
-# ensure that devicemapper builds with uboot support
+# ensure that devicemapper builds with dev support
 # don't believe that udev will create the /dev/mapper/* nodes
 DM_DISABLE_UDEV=1
 export DM_DISABLE_UDEV
