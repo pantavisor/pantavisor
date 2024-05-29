@@ -33,6 +33,10 @@ CAAM_KEYGEN=caam-keygen
 MKFS_OPTS_EXT4=${MKFS_OPTS_EXT4:-"-b 1024"}
 MNT_OPTS_EXT4=${MNT_OPTS_EXT4:-"-o noatime"}
 
+# ensure that devicemapper builds with uboot support
+# don't believe that udev will create the /dev/mapper/* nodes
+DM_DISABLE_UDEV=1
+export DM_DISABLE_UDEV
 
 PATH=$LIBPVPATH:$LIBPVPATH/volmount/crypt:$PATH
 export PATH
