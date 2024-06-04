@@ -39,8 +39,7 @@ static int pv_wdt_fd = -1;
 
 int pv_wdt_start()
 {
-	if (!pv_config_get_bool(PV_WDT_ENABLED) ||
-	    (pv_config_get_wdt_mode() == WDT_DISABLED))
+	if (pv_config_get_wdt_mode() == WDT_DISABLED)
 		return 0;
 
 	if (pv_wdt_fd >= 0)

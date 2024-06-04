@@ -1121,7 +1121,7 @@ static int pv_storage_init(struct pv_init *this)
 		       strerror(errno));
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-	const char *prn = pv_config_get_str(PV_CREDS_PRN);
+	const char *prn = pv_config_get_str(PH_CREDS_PRN);
 	if (!prn || !strcmp(prn, "")) {
 		pv->unclaimed = true;
 		if (pv_fs_file_save(path, "", 0444) < 0)
@@ -1130,15 +1130,15 @@ static int pv_storage_init(struct pv_init *this)
 	} else {
 		pv->unclaimed = false;
 		SNPRINTF_WTRUNC(tmp, sizeof(tmp), "%s\n",
-				pv_config_get_str(PV_CREDS_ID));
+				pv_config_get_str(PH_CREDS_ID));
 		if (pv_fs_file_save(path, tmp, 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path,
 			       strerror(errno));
 	}
 	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
 	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d\n",
-			pv_config_get_str(PV_CREDS_HOST),
-			pv_config_get_int(PV_CREDS_PORT));
+			pv_config_get_str(PH_CREDS_HOST),
+			pv_config_get_int(PH_CREDS_PORT));
 	if (pv_fs_file_save(path, tmp, 0444) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));

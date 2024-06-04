@@ -449,15 +449,15 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 
 void pv_config_set_creds_id(char *id)
 {
-	_set_config_by_index_str(PV_CREDS_ID, id, PH_CLIENT);
+	_set_config_by_index_str(PH_CREDS_ID, id, PH_CLIENT);
 }
 void pv_config_set_creds_prn(char *prn)
 {
-	_set_config_by_index_str(PV_CREDS_PRN, prn, PH_CLIENT);
+	_set_config_by_index_str(PH_CREDS_PRN, prn, PH_CLIENT);
 }
 void pv_config_set_creds_secret(char *secret)
 {
-	_set_config_by_index_str(PV_CREDS_SECRET, secret, PH_CLIENT);
+	_set_config_by_index_str(PH_CREDS_SECRET, secret, PH_CLIENT);
 }
 
 void pv_config_set_debug_shell(bool shell)

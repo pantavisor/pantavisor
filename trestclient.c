@@ -52,7 +52,7 @@ static struct trest_response *external_login_handler(trest_ptr self, void *data)
 	char buf[PV_TRESTCLIENT_MAX_READ];
 	int read_c, body_s, s;
 
-	const char *type = pv_config_get_str(PV_CREDS_TYPE);
+	const char *type = pv_config_get_str(PH_CREDS_TYPE);
 
 	pv = NULL;
 	response = NULL;
@@ -162,17 +162,17 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	} creds_type;
 
 	// Make sure values are reasonable
-	const char *host = pv_config_get_str(PV_CREDS_HOST);
-	int port = pv_config_get_int(PV_CREDS_PORT);
+	const char *host = pv_config_get_str(PH_CREDS_HOST);
+	int port = pv_config_get_int(PH_CREDS_PORT);
 	if (!host || (strcmp(host, "") == 0))
 		return NULL;
 
-	const char *type = pv_config_get_str(PV_CREDS_TYPE);
-	const char *prn = pv_config_get_str(PV_CREDS_PRN);
-	const char *secret = pv_config_get_str(PV_CREDS_SECRET);
-	char *proxy_host = pv_config_get_str(PV_CREDS_PROXY_HOST);
-	int proxy_port = pv_config_get_int(PV_CREDS_PROXY_PORT);
-	int noproxyconnect = pv_config_get_int(PV_CREDS_PROXY_NOPROXYCONNECT);
+	const char *type = pv_config_get_str(PH_CREDS_TYPE);
+	const char *prn = pv_config_get_str(PH_CREDS_PRN);
+	const char *secret = pv_config_get_str(PH_CREDS_SECRET);
+	char *proxy_host = pv_config_get_str(PH_CREDS_PROXY_HOST);
+	int proxy_port = pv_config_get_int(PH_CREDS_PROXY_PORT);
+	int noproxyconnect = pv_config_get_int(PH_CREDS_PROXY_NOPROXYCONNECT);
 
 	if (!strcmp(type, "builtin")) {
 		creds_type = HUB_CREDS_TYPE_BUILTIN;

@@ -315,17 +315,17 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	timer_start(&timer_commit, pv_config_get_int(PV_UPDATER_COMMIT_DELAY),
 		    0, RELATIV_TIMER);
 	timer_start(&timer_rollback_remote,
-		    pv_config_get_int(PV_UPDATER_NETWORK_TIMEOUT), 0,
+		    pv_config_get_int(PH_UPDATER_NETWORK_TIMEOUT), 0,
 		    RELATIV_TIMER);
 	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
 	timer_start(&timer_usrmeta_interval,
-		    pv_config_get_int(PV_METADATA_USRMETA_INTERVAL), 0,
+		    pv_config_get_int(PH_METADATA_USRMETA_INTERVAL), 0,
 		    RELATIV_TIMER);
 	timer_start(&timer_devmeta_interval,
-		    pv_config_get_int(PV_METADATA_DEVMETA_INTERVAL), 0,
+		    pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL), 0,
 		    RELATIV_TIMER);
 	timer_start(&timer_updater_interval,
-		    pv_config_get_int(PV_UPDATER_INTERVAL), 0, RELATIV_TIMER);
+		    pv_config_get_int(PH_UPDATER_INTERVAL), 0, RELATIV_TIMER);
 
 	if (pv_config_get_wdt_mode() <= WDT_STARTUP)
 		pv_wdt_stop();
@@ -356,11 +356,11 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 	}
 
 	timer_start(&timer_updater_interval,
-		    pv_config_get_int(PV_UPDATER_INTERVAL), 0, RELATIV_TIMER);
+		    pv_config_get_int(PH_UPDATER_INTERVAL), 0, RELATIV_TIMER);
 
 	pv_config_load_unclaimed_creds();
 
-	const char *id = pv_config_get_str(PV_CREDS_ID);
+	const char *id = pv_config_get_str(PH_CREDS_ID);
 	if (id && strcmp(id, "") && pv_ph_device_exists(pv))
 		need_register = 0;
 
@@ -414,7 +414,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 		if (pv_ph_device_get_meta(pv))
 			return -1;
 		timer_start(&timer_usrmeta_interval,
-			    pv_config_get_int(PV_METADATA_USRMETA_INTERVAL), 0,
+			    pv_config_get_int(PH_METADATA_USRMETA_INTERVAL), 0,
 			    RELATIV_TIMER);
 	}
 
@@ -423,7 +423,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 		if (pv_metadata_upload_devmeta(pv))
 			return -1;
 		timer_start(&timer_devmeta_interval,
-			    pv_config_get_int(PV_METADATA_DEVMETA_INTERVAL), 0,
+			    pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL), 0,
 			    RELATIV_TIMER);
 	}
 
@@ -531,7 +531,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 			return PV_STATE_UPDATE;
 		}
 		timer_start(&timer_updater_interval,
-			    pv_config_get_int(PV_UPDATER_INTERVAL), 0,
+			    pv_config_get_int(PH_UPDATER_INTERVAL), 0,
 			    RELATIV_TIMER);
 	}
 

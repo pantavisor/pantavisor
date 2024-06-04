@@ -144,7 +144,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	char *endpoint_trail = NULL;
 	int size = -1;
 
-	const char *id = pv_config_get_str(PV_CREDS_ID);
+	const char *id = pv_config_get_str(PH_CREDS_ID);
 	if (pv->remote || !id)
 		return 0;
 
@@ -814,7 +814,7 @@ process_response:
 	pv_log(DEBUG, "parse rev %s...", rev);
 
 	// create temp update to be able to report the revision state
-	update = pv_update_new(pv_config_get_str(PV_CREDS_ID), rev, false);
+	update = pv_update_new(pv_config_get_str(PH_CREDS_ID), rev, false);
 	if (!update)
 		goto out;
 
@@ -1107,12 +1107,12 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 		req->method = THTTP_METHOD_PUT;
 		req->proto = THTTP_PROTO_HTTP;
 		req->proto_version = THTTP_PROTO_VERSION_10;
-		req->host = pv_config_get_str(PV_CREDS_HOST);
-		req->port = pv_config_get_int(PV_CREDS_PORT);
-		req->host_proxy = pv_config_get_str(PV_CREDS_PROXY_HOST);
-		req->port_proxy = pv_config_get_int(PV_CREDS_PROXY_PORT);
+		req->host = pv_config_get_str(PH_CREDS_HOST);
+		req->port = pv_config_get_int(PH_CREDS_PORT);
+		req->host_proxy = pv_config_get_str(PH_CREDS_PROXY_HOST);
+		req->port_proxy = pv_config_get_int(PH_CREDS_PROXY_PORT);
 		req->proxyconnect =
-			!pv_config_get_int(PV_CREDS_PROXY_NOPROXYCONNECT);
+			!pv_config_get_int(PH_CREDS_PROXY_NOPROXYCONNECT);
 		if (req->is_tls) {
 			str_size = strlen("https://") + strlen(req->host) +
 				   1 /* : */ + 5 /* port */ + 2 /* 0-delim */;
@@ -1683,9 +1683,9 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	host[n] = '\0';
 
 	req->host = host;
-	req->host_proxy = pv_config_get_str(PV_CREDS_PROXY_HOST);
-	req->port_proxy = pv_config_get_int(PV_CREDS_PROXY_PORT);
-	req->proxyconnect = !pv_config_get_int(PV_CREDS_PROXY_NOPROXYCONNECT);
+	req->host_proxy = pv_config_get_str(PH_CREDS_PROXY_HOST);
+	req->port_proxy = pv_config_get_int(PH_CREDS_PROXY_PORT);
+	req->proxyconnect = !pv_config_get_int(PH_CREDS_PROXY_NOPROXYCONNECT);
 	if (req->is_tls) {
 		size = strlen("https://") + strlen(req->host) + 1 /* : */ +
 		       5 /* port */ + 2 /* 0-delim */;
@@ -1926,7 +1926,7 @@ struct pv_update *pv_update_get_step_local(const char *rev)
 
 	pv_logserver_start_update(rev);
 
-	update = pv_update_new(pv_config_get_str(PV_CREDS_ID), rev, true);
+	update = pv_update_new(pv_config_get_str(PH_CREDS_ID), rev, true);
 	if (!update)
 		goto err;
 
@@ -2059,7 +2059,7 @@ int pv_update_resume(struct pantavisor *pv)
 
 		pv_log(INFO, "loading update data from rev %s after reboot...",
 		       rev);
-		pv->update = pv_update_new(pv_config_get_str(PV_CREDS_ID), rev,
+		pv->update = pv_update_new(pv_config_get_str(PH_CREDS_ID), rev,
 					   false);
 		if (!pv->update)
 			return -1;
