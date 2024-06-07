@@ -140,7 +140,7 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 
 int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 {
-	char *ts_fmt = pv_config_get_str(PV_LOG_FILETREE_TS_FMT);
+	char *ts_fmt = pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT);
 	if (!ts_fmt)
 		return dprintf(fd, "%.*s", log->data.len, log->data.buf);
 
@@ -153,15 +153,13 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 
 int logserver_utils_stdout(const struct logserver_log *log)
 {
-	return print_pvfmt_log(STDOUT_FILENO, log, "unknown",
-			       pv_config_get_str(PV_LOG_STDOUT_TS_FMT), true);
+	return print_pvfmt_log(STDOUT_FILENO, log, "unknown", pv_config_get_str(PV_LOG_STDOUT_TIMESTAMP_FORMAT), true);
 }
 
 int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 				const char *src, bool lf)
 {
-	return print_pvfmt_log(fd, log, src,
-			       pv_config_get_str(PV_LOG_FILETREE_TS_FMT), lf);
+	return print_pvfmt_log(fd, log, src, pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT), lf);
 }
 
 char *logserver_utils_jsonify_log(const struct logserver_log *log)
@@ -183,7 +181,7 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 
 		if (logserver_timestamp_get_formated(
 			    ts, 256, &log->time,
-			    pv_config_get_str(PV_LOG_SINGLEFILE_TS_FMT)) == 0) {
+			    pv_config_get_str(PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT)) == 0) {
 			pv_json_ser_key(&js, "ts");
 			pv_json_ser_string(&js, ts);
 		}
