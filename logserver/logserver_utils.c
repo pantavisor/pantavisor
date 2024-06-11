@@ -140,6 +140,10 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 
 int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 {
+	// this is a continuation of the previous message
+	if (log->data.len == 2 && !strncmp(log->data.buf, "\r\n", 2))
+		return dprintf(fd, "%.*s", log->data.len, log->data.buf);
+
 	char *ts_fmt = pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT);
 	if (!ts_fmt)
 		return dprintf(fd, "%.*s", log->data.len, log->data.buf);
