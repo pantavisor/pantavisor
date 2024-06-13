@@ -13,6 +13,75 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+struct pv_fs_dir {
+	struct dirent **directories;
+	int len;
+	int index;
+};
+
+struct pv_fs_dir *
+pv_fs_dir_scan(const char *path, int (*filter)(const struct dirent *),
+	       int (*compar)(const struct dirent **, const struct dirent **))
+{
+	if (!pv_fs_path_exist(path))
+		return NULL;
+
+	if (!compar)
+		compar = alphasort;
+
+	struct pv_fs_dir *dirs = calloc(1, sizeof(struct pv_fs_dir));
+
+	if (!dirs)
+		return NULL;
+
+	dirs->len = scandir(path, &dirs->directories, filter, compar);
+
+	if (dirs->len < 0) {
+		free(dirs);
+		return NULL;
+	}
+
+	return dirs;
+}
+
+int pv_fs_dir_len(struct pv_fs_dir *dirs)
+{
+	if (!dirs)
+		return -1;
+
+	return dirs->len;
+}
+
+struct dirent *pv_fs_dir_get(struct pv_fs_dir *dirs, int index)
+{
+	if (dirs && index < dirs->len)
+		return dirs->directories[index];
+
+	return NULL;
+}
+
+struct dirent *pv_fs_dir_next(struct pv_fs_dir *dirs)
+{
+	return pv_fs_dir_get(dirs, dirs->index++);
+}
+
+void pv_fs_dir_reset_index(struct pv_fs_dir *dirs)
+{
+	dirs->index = 0;
+}
+
+void pv_fs_dir_free(struct pv_fs_dir *dirs)
+{
+	if (!dirs)
+		return;
+
+	for (int i = 0; i < dirs->len; ++i)
+		free(dirs->directories[i]);
+
+	free(dirs->directories);
+	free(dirs);
+}
+
 static void close_fd(int *fd)
 {
 	if (!fd || *fd < 0)
@@ -140,28 +209,26 @@ int pv_fs_path_remove(const char *path, bool recursive)
 		return ret;
 	}
 
-	struct dirent **arr = NULL;
-	int n = scandir(path, &arr, NULL, alphasort);
+	struct pv_fs_dir *dirs = pv_fs_dir_scan(path, NULL, NULL);
+	struct dirent *d = NULL;
 
-	for (int i = 0; i < n; ++i) {
+	while ((d = pv_fs_dir_next(dirs))) {
 		char new_path[PATH_MAX] = { 0 };
-		// discard . and .. from scandir
-		if (!strcmp(arr[i]->d_name, ".") ||
-		    !strcmp(arr[i]->d_name, ".."))
-			goto free_dir;
 
-		pv_fs_path_concat(new_path, 2, path, arr[i]->d_name);
+		// discard . and ..
+		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
+			continue;
 
-		if (arr[i]->d_type == DT_DIR)
+		pv_fs_path_concat(new_path, 2, path, d->d_name);
+
+		if (d->d_type == DT_DIR)
 			pv_fs_path_remove(new_path, true);
 		else
 			pv_fs_path_remove(new_path, false);
-
-	free_dir:
-		free(arr[i]);
 	}
+
 	int ret = remove(path);
-	free(arr);
+	pv_fs_dir_free(dirs);
 	pv_fs_path_sync(path);
 
 	return ret;
