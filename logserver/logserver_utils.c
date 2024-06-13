@@ -112,17 +112,17 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 
 	if (ts_fmt) {
 		if (lf)
-			fmt = "[%s] %" PRId64 " %s [%s]\t -- [%s]: %.*s\n";
+			fmt = "[%s] [%s] %" PRId64 " %s\t -- [%s]: %.*s\n";
 		else
-			fmt = "[%s] %" PRId64 " %s [%s]\t -- [%s]: %.*s";
+			fmt = "[%s] [%s] %" PRId64 " %s\t -- [%s]: %.*s";
 
 		char ts[256] = { 0 };
 		if (logserver_timestamp_get_formated(ts, 256, &log->time,
 						     ts_fmt) != 0)
 			strncpy(ts, "--", 3);
 
-		len = dprintf(fd, fmt, log->plat, log->tsec,
-			      pv_log_level_name(log->lvl), ts, util_src,
+		len = dprintf(fd, fmt, ts, log->plat, log->tsec,
+			      pv_log_level_name(log->lvl), util_src,
 			      log->data.len, log->data.buf);
 	} else {
 		if (lf)
