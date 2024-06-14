@@ -1127,6 +1127,8 @@ static int pv_storage_init(struct pv_init *this)
 		if (pv_fs_file_save(path, "", 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path,
 			       strerror(errno));
+
+		sethostname("pantavisor-host", strlen("pantavisor-host"));
 	} else {
 		pv->unclaimed = false;
 		SNPRINTF_WTRUNC(tmp, sizeof(tmp), "%s\n",
@@ -1134,6 +1136,8 @@ static int pv_storage_init(struct pv_init *this)
 		if (pv_fs_file_save(path, tmp, 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path,
 			       strerror(errno));
+
+		sethostname(tmp, strlen(tmp));
 	}
 	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
 	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d\n",
