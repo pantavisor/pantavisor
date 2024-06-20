@@ -546,23 +546,29 @@ static int pv_signature_print_cert(void *data, mbedtls_x509_crt *crt, int depth,
 	return 0;
 }
 
-static int pv_signature_parse_certs(struct dl_list *certs_raw,
-				    struct mbedtls_x509_crt *certs)
+static void pv_signature_print_certs(struct mbedtls_x509_crt *certs)
 {
-	int ret = -1, res;
-	unsigned int flags;
-	char *content = NULL;
-	char path[PATH_MAX];
-	size_t olen;
-	struct pv_signature_cert_raw *cert_raw, *tmp;
-	struct mbedtls_x509_crt cacerts;
-	struct mbedtls_x509_crt *cacerts_i;
-	int i;
+	struct mbedtls_x509_crt *certs_i = certs;
+	int i = 0;
+	char serial[256];
 
-	pv_log(DEBUG, "parsing public key from x5c certificate");
+	do {
+		i++;
+		mbedtls_x509_serial_gets(serial, 255, &certs_i->serial);
+		pv_log(INFO, "  %d: serial=%s", i, serial);
+	} while ((certs_i = certs_i->next) != 0);
+}
+
+static int pv_signature_parse_certs(struct dl_list *certs_raw, struct mbedtls_x509_crt *certs)
+{
+	struct pv_signature_cert_raw *cert_raw, *tmp;
+	char *content = NULL;
+	size_t olen;
+	int res, ret = -1;
+
+	pv_log(DEBUG, "parsing x509 certificates from x5c raw data");
 
 	mbedtls_x509_crt_init(certs);
-	mbedtls_x509_crt_init(&cacerts);
 
 	dl_list_for_each_safe(cert_raw, tmp, certs_raw,
 			      struct pv_signature_cert_raw, list)
@@ -585,38 +591,63 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 		}
 	}
 
-	cacerts_i = certs;
+	pv_log(INFO, "signature certificate validation chain:");
+	pv_signature_print_certs(certs);
 
-	i = 0;
-	do {
-		char serial[256];
-		i++;
-		mbedtls_x509_serial_gets(serial, 255, &cacerts_i->serial);
-		pv_log(INFO,
-		       "signature cert validation chain no. %d:  serial=%s", i,
-		       serial);
-	} while ((cacerts_i = cacerts_i->next) != 0);
+	ret = 0;
 
-	pv_paths_secureboot_trust_crts(
-		path, PATH_MAX, pv_config_get_str(PV_SECUREBOOT_TRUSTSTORE));
-	pv_log(DEBUG, "parsing secureboot.truststore certs from %s", path);
-	res = mbedtls_x509_crt_parse_file(&cacerts, path);
+out:
+	if (content)
+		free(content);
+
+	return ret;
+}
+
+static int pv_signature_load_trust_certs(const char *path, struct mbedtls_x509_crt *cacerts)
+{
+	int res, ret = -1;
+
+	pv_log(DEBUG, "parsing x509 certificates from %s", path);
+
+	mbedtls_x509_crt_init(cacerts);
+
+	res = mbedtls_x509_crt_parse_file(cacerts, path);
 	if (res) {
 		pv_log(ERROR, "ca certs could not be parsed: %d", res);
+		mbedtls_x509_crt_free(cacerts);
+		return NULL;
+	}
+
+	pv_log(INFO, "loaded truststore x509 certificate chain:");
+	pv_signature_print_certs(cacerts);
+
+	ret = 0;
+
+	return ret;
+}
+
+static int pv_signature_parse_validate_certs(struct dl_list *certs_raw,
+				    struct mbedtls_x509_crt *certs)
+{
+	int ret = -1;
+
+	if (pv_signature_parse_certs(certs_raw, certs)) {
+		pv_log(ERROR, "could not parse raw certs");
 		goto out;
 	}
 
-	cacerts_i = &cacerts;
-	i = 0;
-	do {
-		char serial[256];
-		i++;
-		mbedtls_x509_serial_gets(serial, 255, &cacerts_i->serial);
-		pv_log(INFO,
-		       "loaded truststore x509 certificate no. %d:  serial=%s",
-		       i, serial);
-	} while ((cacerts_i = cacerts_i->next) != 0);
+	char path[PATH_MAX];
+	pv_paths_secureboot_trust_crts(
+		path, PATH_MAX, pv_config_get_str(PV_SECUREBOOT_TRUSTSTORE));
 
+	struct mbedtls_x509_crt cacerts;
+	if (pv_signature_load_trust_certs(path, &cacerts)) {
+		pv_log(ERROR, "could not load trust certs");
+		goto out;
+	}
+
+	unsigned int flags;
+	int res;
 	res = mbedtls_x509_crt_verify(certs, &cacerts, NULL, NULL, &flags,
 				      pv_signature_print_cert, NULL);
 	if (res) {
@@ -626,8 +657,6 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw,
 
 	ret = 0;
 out:
-	if (content)
-		free(content);
 	mbedtls_x509_crt_free(&cacerts);
 
 	return ret;
@@ -706,15 +735,15 @@ static bool pv_signature_verify_sha(const char *payload,
 
 	pv_log(DEBUG, "using PVS verify with sha");
 
-	// if list is not empty, we verify with pub key from first cert
 	if (!dl_list_empty(certs_raw)) {
-		if (pv_signature_parse_certs(certs_raw, &certs)) {
+		// if list is not empty, we verify with pub key from first cert
+		if (pv_signature_parse_validate_certs(certs_raw, &certs)) {
 			pv_log(ERROR, "certs could not be parsed");
 			goto out;
 		}
 		pk = &certs.pk;
-		// if not, we load it from disk
 	} else {
+		// if not, we load it from disk
 		if (pv_signature_load_pk(&pk)) {
 			pv_log(ERROR, "public key could not be loaded");
 			goto out;
