@@ -97,6 +97,7 @@ typedef enum {
 #define NET_BRADDRESS4_DEF "10.0.3.1"
 #define NET_BRDEV_DEF "lxcbr0"
 #define NET_BRMASK4_DEF "255.255.255.0"
+#define SECUREBOOT_OEM_TRUSTSTORE_DEF PVS_CERT_DEFAULT_OEM_STORE
 #define SECUREBOOT_TRUSTSTORE_DEF PVS_CERT_DEFAULT_STORE
 #define SYSTEM_CONFDIR_DEF "/configs"
 #define SYSTEM_ETCDIR_DEF "/etc"
@@ -204,6 +205,10 @@ static struct pv_config_entry entries[] = {
 	  .value.b = true },
 	{ SB_MODE, "PV_SECUREBOOT_MODE", PV_ENTRY | POLICY, 0,
 	  .value.i = SB_LENIENT },
+	{ STR, "PV_SECUREBOOT_OEM_CN_NAME", PV_ENTRY | POLICY, 0,
+	  .value.s = NULL },
+	{ STR, "PV_SECUREBOOT_OEM_TRUSTORE", PV_ENTRY | POLICY, 0,
+	  .value.s = SECUREBOOT_OEM_TRUSTSTORE_DEF },
 	{ STR, "PV_SECUREBOOT_TRUSTSTORE", PV_ENTRY | POLICY, 0,
 	  .value.s = SECUREBOOT_TRUSTSTORE_DEF },
 	{ STR, "PV_STORAGE_DEVICE", PV_ENTRY | POLICY, 0, .value.s = NULL },
@@ -1105,6 +1110,8 @@ static void _add_config_entry_json(config_index_t ci, struct pv_json_ser *js)
 		return;
 
 	char *key = _search_config_alias_by_key(entries[ci].key);
+	if (!key)
+		return;
 	pv_json_ser_key(js, key);
 
 	switch (entries[ci].type) {

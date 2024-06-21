@@ -31,6 +31,7 @@
 #include <fnmatch.h>
 #include <mbedtls/pk.h>
 #include <mbedtls/x509_crt.h>
+#include <mbedtls/oid.h>
 
 #include <jsmn/jsmnutil.h>
 
@@ -546,20 +547,24 @@ static int pv_signature_print_cert(void *data, mbedtls_x509_crt *crt, int depth,
 	return 0;
 }
 
-static void pv_signature_print_certs(struct mbedtls_x509_crt *certs)
+static void _print_certs(struct mbedtls_x509_crt *certs)
 {
 	struct mbedtls_x509_crt *certs_i = certs;
 	int i = 0;
-	char serial[256];
+	char serial[256], subject[256];
 
 	do {
 		i++;
+		pv_log(INFO, "  %d:", i);
 		mbedtls_x509_serial_gets(serial, 255, &certs_i->serial);
-		pv_log(INFO, "  %d: serial=%s", i, serial);
+		pv_log(INFO, "    serial='%s'", serial);
+		mbedtls_x509_dn_gets(subject, 255, &certs_i->subject);
+		pv_log(INFO, "    subject='%s'", subject);
 	} while ((certs_i = certs_i->next) != 0);
 }
 
-static int pv_signature_parse_certs(struct dl_list *certs_raw, struct mbedtls_x509_crt *certs)
+static int _parse_certs(struct dl_list *certs_raw,
+			struct mbedtls_x509_crt *certs)
 {
 	struct pv_signature_cert_raw *cert_raw, *tmp;
 	char *content = NULL;
@@ -591,8 +596,8 @@ static int pv_signature_parse_certs(struct dl_list *certs_raw, struct mbedtls_x5
 		}
 	}
 
-	pv_log(INFO, "signature certificate validation chain:");
-	pv_signature_print_certs(certs);
+	pv_log(INFO, "validation signature certificate chain:");
+	_print_certs(certs);
 
 	ret = 0;
 
@@ -603,7 +608,39 @@ out:
 	return ret;
 }
 
-static int pv_signature_load_trust_certs(const char *path, struct mbedtls_x509_crt *cacerts)
+static int _get_cn(struct mbedtls_x509_crt *cert, char *cn, int len)
+{
+	mbedtls_x509_name *name = &cert->subject;
+
+	do {
+		const char *oid_name;
+		if ((!mbedtls_oid_get_attr_short_name(&name->oid, &oid_name)) &&
+		    (pv_str_matches("CN", strlen("CN"), oid_name,
+				    strlen(oid_name)))) {
+			SNPRINTF_WTRUNC(cn, len, "%.*s", name->val.len,
+					name->val.p);
+		}
+	} while ((name = name->next) != 0);
+}
+
+static int _set_path_trust_crts(struct mbedtls_x509_crt *certs, char *path)
+{
+	config_index_t name = PV_SECUREBOOT_TRUSTSTORE;
+
+	char *oem_cn = pv_config_get_str(PV_SECUREBOOT_OEM_CN_NAME);
+	if (oem_cn) {
+		char cert_cn[256];
+		_get_cn(certs, cert_cn, 256);
+
+		if (pv_str_matches(oem_cn, strlen(oem_cn), cert_cn,
+				   strlen(cert_cn)))
+			name = PV_SECUREBOOT_OEM_TRUSTORE;
+	}
+
+	pv_paths_secureboot_trust_crts(path, PATH_MAX, pv_config_get_str(name));
+}
+
+static int _load_trust_certs(const char *path, struct mbedtls_x509_crt *cacerts)
 {
 	int res, ret = -1;
 
@@ -615,33 +652,32 @@ static int pv_signature_load_trust_certs(const char *path, struct mbedtls_x509_c
 	if (res) {
 		pv_log(ERROR, "ca certs could not be parsed: %d", res);
 		mbedtls_x509_crt_free(cacerts);
-		return NULL;
+		return ret;
 	}
 
 	pv_log(INFO, "loaded truststore x509 certificate chain:");
-	pv_signature_print_certs(cacerts);
+	_print_certs(cacerts);
 
 	ret = 0;
 
 	return ret;
 }
 
-static int pv_signature_parse_validate_certs(struct dl_list *certs_raw,
-				    struct mbedtls_x509_crt *certs)
+static int _parse_validate_certs(struct dl_list *certs_raw,
+				 struct mbedtls_x509_crt *certs)
 {
 	int ret = -1;
 
-	if (pv_signature_parse_certs(certs_raw, certs)) {
+	if (_parse_certs(certs_raw, certs)) {
 		pv_log(ERROR, "could not parse raw certs");
 		goto out;
 	}
 
 	char path[PATH_MAX];
-	pv_paths_secureboot_trust_crts(
-		path, PATH_MAX, pv_config_get_str(PV_SECUREBOOT_TRUSTSTORE));
+	_set_path_trust_crts(certs, path);
 
 	struct mbedtls_x509_crt cacerts;
-	if (pv_signature_load_trust_certs(path, &cacerts)) {
+	if (_load_trust_certs(path, &cacerts)) {
 		pv_log(ERROR, "could not load trust certs");
 		goto out;
 	}
@@ -737,7 +773,7 @@ static bool pv_signature_verify_sha(const char *payload,
 
 	if (!dl_list_empty(certs_raw)) {
 		// if list is not empty, we verify with pub key from first cert
-		if (pv_signature_parse_validate_certs(certs_raw, &certs)) {
+		if (_parse_validate_certs(certs_raw, &certs)) {
 			pv_log(ERROR, "certs could not be parsed");
 			goto out;
 		}

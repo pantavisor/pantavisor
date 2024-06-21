@@ -150,6 +150,7 @@ void pv_paths_writable(char *buf, size_t size);
 #define PV_DEFAULTS_GROUPS PV_DNAME "/defaults/groups.json"
 #define PVS_TRUST_DNAME PV_DNAME "/pvs/trust"
 #define PVS_PK_FNAME PVS_TRUST_DNAME "/pub.pem"
+#define PVS_CERT_DEFAULT_OEM_STORE "ca-oem-certificates"
 #define PVS_CERT_DEFAULT_STORE "ca-certificates"
 
 void pv_paths_etc_file(char *buf, size_t size, const char *name);
