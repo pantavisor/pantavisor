@@ -78,12 +78,12 @@ typedef enum {
 	PV_NET_BRADDRESS4,
 	PV_NET_BRDEV,
 	PV_NET_BRMASK4,
+	PV_OEM_NAME,
 	PV_POLICY,
 	PV_REVISION_RETRIES,
 	PV_SECUREBOOT_CHECKSUM,
 	PV_SECUREBOOT_HANDLERS,
 	PV_SECUREBOOT_MODE,
-	PV_SECUREBOOT_OEM_CN_NAME,
 	PV_SECUREBOOT_OEM_TRUSTORE,
 	PV_SECUREBOOT_TRUSTSTORE,
 	PV_STORAGE_DEVICE,
@@ -192,6 +192,8 @@ char *pv_config_get_wdt_mode_str(void);
 // MAIN FUNCTIONS
 
 int pv_config_init(char *path);
+
+int pv_config_load_oem(const char *rev);
 
 int pv_config_load_unclaimed_creds(void);
 int pv_config_save_creds(void);

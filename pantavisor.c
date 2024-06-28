@@ -268,6 +268,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// this might be a enum in the future, for now, we only need to know if DONE
 	pv->state->done = pv_storage_is_rev_done(pv->state->rev);
 
+	// once we have verified the state, we can load OEM configuration
+	pv_config_load_oem(pv->state->rev);
+
 	// reload remote bool after non reboot updates, when we don't load config again
 	pv->remote_mode = pv_config_get_bool(PV_CONTROL_REMOTE);
 	pv->loading_objects = false;

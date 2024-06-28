@@ -69,14 +69,14 @@ typedef enum {
 	PV_CMDLINE = 1 << 5,
 	PH_CMDLINE = 1 << 6,
 	ENV = 1 << 7,
-	TRAIL = 1 << 8,
+	OEM = 1 << 8,
 	META = 1 << 9,
 	CMD = 1 << 10
 } level_t;
 
 #define PV_ENTRY PV_CONF | PV_CMDLINE | ENV
 #define PH_ENTRY PH_CONF | PH_CMDLINE | ENV
-#define UPDATE_TIME POLICY | TRAIL
+#define UPDATE_TIME POLICY | OEM
 #define RUN_TIME UPDATE_TIME | META | CMD
 
 #define LEVEL_SYSCTL PV_ENTRY | UPDATE_TIME
@@ -197,6 +197,7 @@ static struct pv_config_entry entries[] = {
 	  .value.s = NET_BRDEV_DEF },
 	{ STR, "PV_NET_BRMASK4", PV_ENTRY | UPDATE_TIME, 0,
 	  .value.s = NET_BRMASK4_DEF },
+	{ STR, "PV_OEM_NAME", PV_ENTRY | POLICY, 0, .value.s = NULL },
 	{ STR, "PV_POLICY", PV_ENTRY, 0, .value.s = NULL },
 	{ INT, "PV_REVISION_RETRIES", PV_ENTRY | RUN_TIME, 0, .value.i = 10 },
 	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV_ENTRY | POLICY, 0,
@@ -205,8 +206,6 @@ static struct pv_config_entry entries[] = {
 	  .value.b = true },
 	{ SB_MODE, "PV_SECUREBOOT_MODE", PV_ENTRY | POLICY, 0,
 	  .value.i = SB_LENIENT },
-	{ STR, "PV_SECUREBOOT_OEM_CN_NAME", PV_ENTRY | POLICY, 0,
-	  .value.s = NULL },
 	{ STR, "PV_SECUREBOOT_OEM_TRUSTORE", PV_ENTRY | POLICY, 0,
 	  .value.s = SECUREBOOT_OEM_TRUSTSTORE_DEF },
 	{ STR, "PV_SECUREBOOT_TRUSTSTORE", PV_ENTRY | POLICY, 0,
@@ -764,8 +763,8 @@ static char *_get_mod_level_str(level_t ml)
 		return "ph cmdline";
 	case ENV:
 		return "env";
-	case TRAIL:
-		return "trail config";
+	case OEM:
+		return "oem config";
 	case META:
 		return "metadata";
 	case CMD:
@@ -956,16 +955,42 @@ static int pv_config_load_creds_from_file(char *path)
 
 static int pv_config_override_config_from_file(char *path)
 {
-	DEFINE_DL_LIST(trail_config_list);
+	DEFINE_DL_LIST(oem_config_list);
 
-	if (load_key_value_file(path, &trail_config_list) < 0)
+	if (load_key_value_file(path, &oem_config_list) < 0) {
+		pv_log(WARN, "could not load config file from '%s'", path);
 		return -1;
+	}
 
-	level_t level = TRAIL;
-	config_iterate_items(&trail_config_list, _set_config_by_key,
+	level_t level = OEM;
+	config_iterate_items(&oem_config_list, _set_config_by_key,
 			     (void *)&level);
 
-	config_clear_items(&trail_config_list);
+	config_clear_items(&oem_config_list);
+
+	return 0;
+}
+
+int pv_config_load_oem(const char *rev)
+{
+	const char *oem_name = pv_config_get_str(PV_OEM_NAME);
+	if (!oem_name)
+		return 0;
+
+	char *policy = "default";
+	if (pv_config_get_str(PV_POLICY))
+		policy = pv_config_get_str(PV_POLICY);
+
+	char file_name[256];
+	snprintf(file_name, 256, "%s.config", policy);
+
+	char path[PATH_MAX];
+	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, oem_name,
+					 file_name);
+	if (pv_config_override_config_from_file(path)) {
+		pv_log(WARN, "could not load OEM config");
+		return 0;
+	}
 
 	return 0;
 }
