@@ -69,17 +69,18 @@ typedef enum {
 	PV_CMDLINE = 1 << 5,
 	PH_CMDLINE = 1 << 6,
 	ENV = 1 << 7,
-	OEM = 1 << 8,
-	META = 1 << 9,
-	CMD = 1 << 10
+	BSP = 1 << 8,
+	OEM = 1 << 9,
+	META = 1 << 10,
+	CMD = 1 << 11
 } level_t;
 
-#define PV_ENTRY PV_CONF | PV_CMDLINE | ENV
-#define PH_ENTRY PH_CONF | PH_CMDLINE | ENV
-#define UPDATE_TIME POLICY | OEM
-#define RUN_TIME UPDATE_TIME | META | CMD
+#define PV PV_CONF | POLICY | PV_CMDLINE | ENV
+#define PH PH_CONF | POLICY | PH_CMDLINE | ENV
+#define UPDATE BSP | OEM
+#define RUN META | CMD
 
-#define LEVEL_SYSCTL PV_ENTRY | UPDATE_TIME
+#define LEVEL_SYSCTL PV | UPDATE
 
 // default list
 #define CACHE_DEVMETADIR_DEF "/storage/cache/devmeta"
@@ -120,139 +121,106 @@ struct pv_config_entry {
 
 // configuration lookup table
 static struct pv_config_entry entries[] = {
-	{ STR, "PH_CREDS_HOST", PH_ENTRY, 0, .value.s = CREDS_HOST_DEF },
-	{ STR, "PH_CREDS_ID", PH_ENTRY, 0, .value.s = NULL },
-	{ INT, "PH_CREDS_PORT", PH_ENTRY, 0, .value.i = 12365 },
-	{ STR, "PH_CREDS_PROXY_HOST", PH_ENTRY | UPDATE_TIME, 0,
-	  .value.s = NULL },
-	{ INT, "PH_CREDS_PROXY_NOPROXYCONNECT", PH_ENTRY | UPDATE_TIME, 0,
-	  .value.i = 0 },
-	{ INT, "PH_CREDS_PROXY_PORT", PH_ENTRY | UPDATE_TIME, 0,
-	  .value.i = 3218 },
-	{ STR, "PH_CREDS_PRN", PH_ENTRY, 0, .value.s = NULL },
-	{ STR, "PH_CREDS_SECRET", PH_ENTRY, 0, .value.s = NULL },
-	{ STR, "PH_CREDS_TYPE", PH_ENTRY, 0, .value.s = CREDS_TYPE_DEF },
-	{ STR, "PH_FACTORY_AUTOTOK", PH_ENTRY, 0, .value.s = NULL },
-	{ INT, "PH_METADATA_DEVMETA_INTERVAL", PH_ENTRY | RUN_TIME, 0,
+	{ STR, "PH_CREDS_HOST", PH | UPDATE, 0, .value.s = CREDS_HOST_DEF },
+	{ STR, "PH_CREDS_ID", PH | UPDATE, 0, .value.s = NULL },
+	{ INT, "PH_CREDS_PORT", PH | UPDATE, 0, .value.i = 12365 },
+	{ STR, "PH_CREDS_PROXY_HOST", PH | UPDATE, 0, .value.s = NULL },
+	{ INT, "PH_CREDS_PROXY_NOPROXYCONNECT", PH | UPDATE, 0, .value.i = 0 },
+	{ INT, "PH_CREDS_PROXY_PORT", PH | UPDATE, 0, .value.i = 3218 },
+	{ STR, "PH_CREDS_PRN", PH | UPDATE, 0, .value.s = NULL },
+	{ STR, "PH_CREDS_SECRET", PH | UPDATE, 0, .value.s = NULL },
+	{ STR, "PH_CREDS_TYPE", PH | UPDATE, 0, .value.s = CREDS_TYPE_DEF },
+	{ STR, "PH_FACTORY_AUTOTOK", PH | UPDATE, 0, .value.s = NULL },
+	{ INT, "PH_METADATA_DEVMETA_INTERVAL", PH | UPDATE | RUN, 0,
 	  .value.i = 10 },
-	{ INT, "PH_METADATA_USRMETA_INTERVAL", PH_ENTRY | RUN_TIME, 0,
+	{ INT, "PH_METADATA_USRMETA_INTERVAL", PH | UPDATE | RUN, 0,
 	  .value.i = 5 },
-	{ INT, "PH_UPDATER_INTERVAL", PH_ENTRY | RUN_TIME, 0, .value.i = 60 },
-	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH_ENTRY | RUN_TIME, 0,
+	{ INT, "PH_UPDATER_INTERVAL", PH | UPDATE | RUN, 0, .value.i = 60 },
+	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH | UPDATE | RUN, 0,
 	  .value.i = 120 },
-	{ STR, "PV_BOOTLOADER_FITCONFIG", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_BOOTLOADER_FITCONFIG", PV, 0, .value.s = NULL },
+	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, .value.s = NULL },
+	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, .value.b = false },
+	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV, 0, .value.i = BL_UBOOT_PLAIN },
+	{ STR, "PV_CACHE_DEVMETADIR", PV, 0, .value.s = CACHE_DEVMETADIR_DEF },
+	{ STR, "PV_CACHE_USRMETADIR", PV, 0, .value.s = CACHE_USRMETADIR_DEF },
+	{ BOOL, "PV_CONTROL_REMOTE", PV | UPDATE, 0, .value.b = true },
+	{ BOOL, "PV_CONTROL_REMOTE_ALWAYS", PV | UPDATE, 0, .value.b = false },
+	{ BOOL, "PV_DEBUG_SHELL", PV, 0, .value.b = true },
+	{ BOOL, "PV_DEBUG_SHELL_AUTOLOGIN", PV, 0, .value.b = false },
+	{ BOOL, "PV_DEBUG_SSH", PV | UPDATE | RUN, 0, .value.b = true },
+	{ STR, "PV_DEBUG_SSH_AUTHORIZED_KEYS", PV | UPDATE | RUN, 0,
 	  .value.s = NULL },
-	{ STR, "PV_BOOTLOADER_MTD_ENV", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV_ENTRY | POLICY, 0,
-	  .value.b = false },
-	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV_ENTRY | POLICY, 0,
-	  .value.i = BL_UBOOT_PLAIN },
-	{ STR, "PV_CACHE_DEVMETADIR", PV_ENTRY | POLICY, 0,
-	  .value.s = CACHE_DEVMETADIR_DEF },
-	{ STR, "PV_CACHE_USRMETADIR", PV_ENTRY | POLICY, 0,
-	  .value.s = CACHE_USRMETADIR_DEF },
-	{ BOOL, "PV_CONTROL_REMOTE", PV_ENTRY | POLICY, 0, .value.b = true },
-	{ BOOL, "PV_CONTROL_REMOTE_ALWAYS", PV_ENTRY | POLICY, 0,
-	  .value.b = false },
-	{ BOOL, "PV_DEBUG_SHELL", PV_ENTRY | POLICY, 0, .value.b = true },
-	{ BOOL, "PV_DEBUG_SHELL_AUTOLOGIN", PV_ENTRY | POLICY, 0,
-	  .value.b = false },
-	{ BOOL, "PV_DEBUG_SSH", PV_ENTRY | RUN_TIME, 0, .value.b = true },
-	{ STR, "PV_DEBUG_SSH_AUTHORIZED_KEYS", PV_ENTRY | RUN_TIME, 0,
-	  .value.s = NULL },
-	{ STR, "PV_DISK_EXPORTSDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = DISK_EXPORTSDIR_DEF },
-	{ STR, "PV_DISK_VOLDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = DISK_VOLDIR_DEF },
-	{ STR, "PV_DISK_WRITABLEDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = DISK_WRITABLEDIR_DEF },
-	{ STR, "PV_DROPBEAR_CACHE_DIR", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_DISK_EXPORTSDIR", PV, 0, .value.s = DISK_EXPORTSDIR_DEF },
+	{ STR, "PV_DISK_VOLDIR", PV, 0, .value.s = DISK_VOLDIR_DEF },
+	{ STR, "PV_DISK_WRITABLEDIR", PV, 0, .value.s = DISK_WRITABLEDIR_DEF },
+	{ STR, "PV_DROPBEAR_CACHE_DIR", PV, 0,
 	  .value.s = DROPBEAR_CACHE_DIR_DEF },
-	{ STR, "PV_LIBTHTTP_CERTSDIR", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_LIBTHTTP_CERTSDIR", PV, 0,
 	  .value.s = LIBTHTTP_CERTSDIR_DEF },
-	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV_ENTRY | RUN_TIME, 0, .value.i = 3 },
-	{ BOOL, "PV_LOG_CAPTURE", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
-	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV_ENTRY | UPDATE_TIME, 0,
-	  .value.b = false },
-	{ INT, "PV_LOG_BUF_NITEMS", PV_ENTRY | UPDATE_TIME, 0, .value.i = 128 },
-	{ STR, "PV_LOG_DIR", PV_ENTRY | POLICY, 0, .value.s = LOG_DIR_DEF },
-	{ STR, "PV_LOG_FILETREE_TIMESTAMP_FORMAT", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV | UPDATE | RUN, 0, .value.i = 3 },
+	{ BOOL, "PV_LOG_CAPTURE", PV | UPDATE, 0, .value.b = true },
+	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | UPDATE, 0, .value.b = false },
+	{ INT, "PV_LOG_BUF_NITEMS", PV | UPDATE, 0, .value.i = 128 },
+	{ STR, "PV_LOG_DIR", PV, 0, .value.s = LOG_DIR_DEF },
+	{ STR, "PV_LOG_FILETREE_TIMESTAMP_FORMAT", PV | UPDATE | RUN, 0,
 	  .value.s = NULL },
-	{ INT, "PV_LOG_LEVEL", PV_ENTRY | RUN_TIME, 0, .value.i = 0 },
-	{ BOOL, "PV_LOG_LOGGERS", PV_ENTRY | UPDATE_TIME, 0, .value.b = true },
-	{ INT, "PV_LOG_MAXSIZE", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_LOG_LEVEL", PV | UPDATE | RUN, 0, .value.i = 0 },
+	{ BOOL, "PV_LOG_LOGGERS", PV | UPDATE, 0, .value.b = true },
+	{ INT, "PV_LOG_MAXSIZE", PV | UPDATE | RUN, 0,
 	  .value.i = LOG_MAXSIZE_DEF },
-	{ BOOL, "PV_LOG_PUSH", PV_ENTRY | RUN_TIME, 0, .value.b = true },
+	{ BOOL, "PV_LOG_PUSH", PV | UPDATE | RUN, 0, .value.b = true },
 	{ LOG_SERVER_OUTPUT_UPDATE_MASK, "PV_LOG_SERVER_OUTPUTS",
-	  PV_ENTRY | RUN_TIME, 0,
+	  PV | UPDATE | RUN, 0,
 	  .value.i = LOG_SERVER_OUTPUT_FILE_TREE | LOG_SERVER_OUTPUT_UPDATE },
-	{ STR, "PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT", PV_ENTRY | RUN_TIME, 0,
+	{ STR, "PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT", PV | UPDATE | RUN, 0,
 	  .value.s = NULL },
-	{ STR, "PV_LOG_STDOUT_TIMESTAMP_FORMAT", PV_ENTRY | RUN_TIME, 0,
+	{ STR, "PV_LOG_STDOUT_TIMESTAMP_FORMAT", PV | UPDATE | RUN, 0,
 	  .value.s = NULL },
-	{ INT, "PV_LXC_LOG_LEVEL", PV_ENTRY | UPDATE_TIME, 0, .value.i = 2 },
-	{ STR, "PV_NET_BRADDRESS4", PV_ENTRY | UPDATE_TIME, 0,
+	{ INT, "PV_LXC_LOG_LEVEL", PV | UPDATE, 0, .value.i = 2 },
+	{ STR, "PV_NET_BRADDRESS4", PV | UPDATE, 0,
 	  .value.s = NET_BRADDRESS4_DEF },
-	{ STR, "PV_NET_BRDEV", PV_ENTRY | UPDATE_TIME, 0,
-	  .value.s = NET_BRDEV_DEF },
-	{ STR, "PV_NET_BRMASK4", PV_ENTRY | UPDATE_TIME, 0,
-	  .value.s = NET_BRMASK4_DEF },
-	{ STR, "PV_OEM_NAME", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "PV_POLICY", PV_ENTRY, 0, .value.s = NULL },
-	{ INT, "PV_REVISION_RETRIES", PV_ENTRY | RUN_TIME, 0, .value.i = 10 },
-	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV_ENTRY | POLICY, 0,
-	  .value.b = true },
-	{ BOOL, "PV_SECUREBOOT_HANDLERS", PV_ENTRY | POLICY, 0,
-	  .value.b = true },
-	{ SB_MODE, "PV_SECUREBOOT_MODE", PV_ENTRY | POLICY, 0,
-	  .value.i = SB_LENIENT },
-	{ STR, "PV_SECUREBOOT_OEM_TRUSTORE", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_NET_BRDEV", PV | UPDATE, 0, .value.s = NET_BRDEV_DEF },
+	{ STR, "PV_NET_BRMASK4", PV | UPDATE, 0, .value.s = NET_BRMASK4_DEF },
+	{ STR, "PV_OEM_NAME", PV, 0, .value.s = NULL },
+	{ STR, "PV_POLICY", PV, 0, .value.s = NULL },
+	{ INT, "PV_REVISION_RETRIES", PV | UPDATE | RUN, 0, .value.i = 10 },
+	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV, 0, .value.b = true },
+	{ BOOL, "PV_SECUREBOOT_HANDLERS", PV, 0, .value.b = true },
+	{ SB_MODE, "PV_SECUREBOOT_MODE", PV, 0, .value.i = SB_LENIENT },
+	{ STR, "PV_SECUREBOOT_OEM_TRUSTORE", PV, 0,
 	  .value.s = SECUREBOOT_OEM_TRUSTSTORE_DEF },
-	{ STR, "PV_SECUREBOOT_TRUSTSTORE", PV_ENTRY | POLICY, 0,
+	{ STR, "PV_SECUREBOOT_TRUSTSTORE", PV, 0,
 	  .value.s = SECUREBOOT_TRUSTSTORE_DEF },
-	{ STR, "PV_STORAGE_DEVICE", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "PV_STORAGE_FSTYPE", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ BOOL, "PV_STORAGE_GC_KEEP_FACTORY", PV_ENTRY | RUN_TIME, 0,
+	{ STR, "PV_STORAGE_DEVICE", PV, 0, .value.s = NULL },
+	{ STR, "PV_STORAGE_FSTYPE", PV, 0, .value.s = NULL },
+	{ BOOL, "PV_STORAGE_GC_KEEP_FACTORY", PV | UPDATE | RUN, 0,
 	  .value.b = false },
-	{ INT, "PV_STORAGE_GC_RESERVED", PV_ENTRY | RUN_TIME, 0, .value.i = 5 },
-	{ INT, "PV_STORAGE_GC_THRESHOLD_DEFERTIME", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_STORAGE_GC_RESERVED", PV | UPDATE | RUN, 0, .value.i = 5 },
+	{ INT, "PV_STORAGE_GC_THRESHOLD_DEFERTIME", PV | UPDATE | RUN, 0,
 	  .value.i = 600 },
-	{ INT, "PV_STORAGE_GC_THRESHOLD", PV_ENTRY | RUN_TIME, 0,
-	  .value.i = 0 },
-	{ STR, "PV_STORAGE_LOGTEMPSIZE", PV_ENTRY | POLICY, 0,
-	  .value.s = NULL },
-	{ STR, "PV_STORAGE_MNTPOINT", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ STR, "PV_STORAGE_MNTTYPE", PV_ENTRY | POLICY, 0, .value.s = NULL },
-	{ INT, "PV_STORAGE_WAIT", PV_ENTRY | POLICY, 0, .value.i = 5 },
-	{ STR, "PV_SYSTEM_APPARMOR_PROFILES", PV_ENTRY | POLICY, 0,
-	  .value.s = NULL },
-	{ STR, "PV_SYSTEM_CONFDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = SYSTEM_CONFDIR_DEF },
-	{ BOOL, "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO", PV_ENTRY | POLICY, 0,
-	  .value.b = false },
-	{ STR, "PV_SYSTEM_ETCDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = SYSTEM_ETCDIR_DEF },
-	{ INIT_MODE, "PV_SYSTEM_INIT_MODE", PV_ENTRY | POLICY, 0,
-	  .value.i = IM_EMBEDDED },
-	{ STR, "PV_SYSTEM_LIBDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = SYSTEM_LIBDIR_DEF },
-	{ STR, "PV_SYSTEM_MEDIADIR", PV_ENTRY | POLICY, 0,
-	  .value.s = SYSTEM_MEDIADIR_DEF },
-	{ BOOL, "PV_SYSTEM_MOUNT_SECURITYFS", PV_ENTRY | POLICY, 0,
-	  .value.b = false },
-	{ STR, "PV_SYSTEM_RUNDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = SYSTEM_RUNDIR_DEF },
-	{ STR, "PV_SYSTEM_USRDIR", PV_ENTRY | POLICY, 0,
-	  .value.s = SYSTEM_USRDIR_DEF },
-	{ INT, "PV_UPDATER_COMMIT_DELAY", PV_ENTRY | RUN_TIME, 0,
-	  .value.i = 25 },
-	{ INT, "PV_UPDATER_GOALS_TIMEOUT", PV_ENTRY | RUN_TIME, 0,
+	{ INT, "PV_STORAGE_GC_THRESHOLD", PV | UPDATE | RUN, 0, .value.i = 0 },
+	{ STR, "PV_STORAGE_LOGTEMPSIZE", PV, 0, .value.s = NULL },
+	{ STR, "PV_STORAGE_MNTPOINT", PV, 0, .value.s = NULL },
+	{ STR, "PV_STORAGE_MNTTYPE", PV, 0, .value.s = NULL },
+	{ INT, "PV_STORAGE_WAIT", PV, 0, .value.i = 5 },
+	{ STR, "PV_SYSTEM_APPARMOR_PROFILES", PV, 0, .value.s = NULL },
+	{ STR, "PV_SYSTEM_CONFDIR", PV, 0, .value.s = SYSTEM_CONFDIR_DEF },
+	{ BOOL, "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO", PV, 0, .value.b = false },
+	{ STR, "PV_SYSTEM_ETCDIR", PV, 0, .value.s = SYSTEM_ETCDIR_DEF },
+	{ INIT_MODE, "PV_SYSTEM_INIT_MODE", PV, 0, .value.i = IM_EMBEDDED },
+	{ STR, "PV_SYSTEM_LIBDIR", PV, 0, .value.s = SYSTEM_LIBDIR_DEF },
+	{ STR, "PV_SYSTEM_MEDIADIR", PV, 0, .value.s = SYSTEM_MEDIADIR_DEF },
+	{ BOOL, "PV_SYSTEM_MOUNT_SECURITYFS", PV, 0, .value.b = false },
+	{ STR, "PV_SYSTEM_RUNDIR", PV, 0, .value.s = SYSTEM_RUNDIR_DEF },
+	{ STR, "PV_SYSTEM_USRDIR", PV, 0, .value.s = SYSTEM_USRDIR_DEF },
+	{ INT, "PV_UPDATER_COMMIT_DELAY", PV | UPDATE | RUN, 0, .value.i = 25 },
+	{ INT, "PV_UPDATER_GOALS_TIMEOUT", PV | UPDATE | RUN, 0,
 	  .value.i = 120 },
-	{ BOOL, "PV_UPDATER_USE_TMP_OBJECTS", PV_ENTRY | RUN_TIME, 0,
+	{ BOOL, "PV_UPDATER_USE_TMP_OBJECTS", PV | UPDATE | RUN, 0,
 	  .value.b = false },
-	{ WDT_MODE, "PV_WDT_MODE", PV_ENTRY | UPDATE_TIME, 0,
-	  .value.i = WDT_SHUTDOWN },
-	{ INT, "PV_WDT_TIMEOUT", PV_ENTRY | UPDATE_TIME, 0, .value.i = 15 }
+	{ WDT_MODE, "PV_WDT_MODE", PV, 0, .value.i = WDT_SHUTDOWN },
+	{ INT, "PV_WDT_TIMEOUT", PV, 0, .value.i = 15 }
 };
 
 struct pv_config_alias {
@@ -763,6 +731,8 @@ static char *_get_mod_level_str(level_t ml)
 		return "ph cmdline";
 	case ENV:
 		return "env";
+	case BSP:
+		return "bsp config";
 	case OEM:
 		return "oem config";
 	case META:
@@ -953,7 +923,7 @@ static int pv_config_load_creds_from_file(char *path)
 	return 0;
 }
 
-static int pv_config_override_config_from_file(char *path)
+static int pv_config_override_config_from_file(char *path, level_t level)
 {
 	DEFINE_DL_LIST(oem_config_list);
 
@@ -962,7 +932,6 @@ static int pv_config_override_config_from_file(char *path)
 		return -1;
 	}
 
-	level_t level = OEM;
 	config_iterate_items(&oem_config_list, _set_config_by_key,
 			     (void *)&level);
 
@@ -987,7 +956,7 @@ int pv_config_load_oem(const char *rev)
 	char path[PATH_MAX];
 	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, oem_name,
 					 file_name);
-	if (pv_config_override_config_from_file(path)) {
+	if (pv_config_override_config_from_file(path, OEM)) {
 		pv_log(WARN, "could not load OEM config");
 		return 0;
 	}
@@ -1318,7 +1287,7 @@ static int pv_config_trail(struct pv_init *this)
 					 config_name);
 	free(config_name);
 
-	if (pv_config_override_config_from_file(path)) {
+	if (pv_config_override_config_from_file(path, BSP)) {
 		pv_log(FATAL, "initrd config %s not found", path);
 		goto out;
 	}
