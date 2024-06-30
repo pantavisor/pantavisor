@@ -44,7 +44,6 @@
 struct pv_state_parser {
 	char *spec;
 	struct pv_state *(*parse)(struct pv_state *this, const char *buf);
-	char *(*parse_initrd_config_name)(const char *buf);
 	void (*free)(struct pv_state *s);
 	void (*print)(struct pv_state *s);
 };
@@ -53,12 +52,10 @@ struct pv_state_parser parsers[SPEC_UNKNOWN] = {
 	{
 		.spec = "pantavisor-multi-platform@1",
 		.parse = multi1_parse,
-		.parse_initrd_config_name = multi1_parse_initrd_config_name,
 	},
 	{
 		.spec = "pantavisor-service-system@1",
 		.parse = system1_parse,
-		.parse_initrd_config_name = system1_parse_initrd_config_name,
 	}
 };
 
@@ -136,49 +133,4 @@ out:
 		free(value);
 
 	return state;
-}
-
-char *pv_parser_get_initrd_config_name(const char *buf)
-{
-	int tokc;
-	char *value = 0;
-	state_spec_t spec;
-	struct pv_state_parser *p;
-	jsmntok_t *tokv;
-	char *config_name = NULL;
-
-	// Parse full state json
-	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
-		pv_log(WARN, "unable to parse state JSON");
-		goto out;
-	}
-
-	value = pv_json_get_value(buf, "#spec", tokv, tokc);
-	if (!value) {
-		pv_log(WARN, "step JSON has no valid #spec key");
-		goto out;
-	}
-
-	spec = pv_parser_convert_spec(value);
-	if (!pv_parser_is_compatible(spec)) {
-		pv_log(WARN, "spec '%s' not compatible with init mode %s",
-		       value, pv_config_get_system_init_mode_str());
-		goto out;
-	}
-
-	p = _get_parser(spec);
-	if (!p) {
-		pv_log(WARN, "no parser plugin available for '%s' spec", value);
-		goto out;
-	}
-
-	config_name = p->parse_initrd_config_name(buf);
-
-out:
-	if (tokv)
-		free(tokv);
-	if (value)
-		free(value);
-
-	return config_name;
 }

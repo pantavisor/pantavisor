@@ -193,7 +193,7 @@ char *pv_config_get_wdt_mode_str(void);
 
 int pv_config_init(char *path);
 
-int pv_config_load_oem(const char *rev);
+int pv_config_load_update(const char *rev, const char *trail_config);
 
 int pv_config_load_unclaimed_creds(void);
 int pv_config_save_creds(void);

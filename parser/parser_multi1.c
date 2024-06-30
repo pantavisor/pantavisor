@@ -341,8 +341,3 @@ out:
 
 	return this;
 }
-
-char *multi1_parse_initrd_config_name(const char *buf)
-{
-	return NULL;
-}

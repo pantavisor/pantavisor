@@ -29,6 +29,7 @@
 typedef enum { SPEC_MULTI1, SPEC_SYSTEM1, SPEC_UNKNOWN } state_spec_t;
 
 struct pv_bsp {
+	char *config;
 	union {
 		struct {
 			char *kernel;
