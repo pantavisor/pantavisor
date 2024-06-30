@@ -144,8 +144,8 @@ static struct pv_config_entry entries[] = {
 	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV, 0, .value.i = BL_UBOOT_PLAIN },
 	{ STR, "PV_CACHE_DEVMETADIR", PV, 0, .value.s = CACHE_DEVMETADIR_DEF },
 	{ STR, "PV_CACHE_USRMETADIR", PV, 0, .value.s = CACHE_USRMETADIR_DEF },
-	{ BOOL, "PV_CONTROL_REMOTE", PV | UPDATE, 0, .value.b = true },
-	{ BOOL, "PV_CONTROL_REMOTE_ALWAYS", PV | UPDATE, 0, .value.b = false },
+	{ BOOL, "PV_CONTROL_REMOTE", PV, 0, .value.b = true },
+	{ BOOL, "PV_CONTROL_REMOTE_ALWAYS", PV, 0, .value.b = false },
 	{ BOOL, "PV_DEBUG_SHELL", PV, 0, .value.b = true },
 	{ BOOL, "PV_DEBUG_SHELL_AUTOLOGIN", PV, 0, .value.b = false },
 	{ BOOL, "PV_DEBUG_SSH", PV | UPDATE | RUN, 0, .value.b = true },
@@ -940,7 +940,23 @@ static int pv_config_override_config_from_file(char *path, level_t level)
 	return 0;
 }
 
-int pv_config_load_oem(const char *rev)
+static int pv_config_load_bsp(const char *rev, const char *trail_config)
+{
+	if (!trail_config)
+		return 0;
+
+	char path[PATH_MAX];
+	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, "bsp",
+					 trail_config);
+	if (pv_config_override_config_from_file(path, BSP)) {
+		pv_log(WARN, "could not load BSP config file");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int pv_config_load_oem(const char *rev)
 {
 	const char *oem_name = pv_config_get_str(PV_OEM_NAME);
 	if (!oem_name)
@@ -957,8 +973,23 @@ int pv_config_load_oem(const char *rev)
 	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, oem_name,
 					 file_name);
 	if (pv_config_override_config_from_file(path, OEM)) {
+		pv_log(WARN, "could not load OEM config file");
+		return -1;
+	}
+
+	return 0;
+}
+
+int pv_config_load_update(const char *rev, const char *trail_config)
+{
+	if (pv_config_load_bsp(rev, trail_config)) {
+		pv_log(WARN, "could not load BSP config");
+		return -1;
+	}
+
+	if (pv_config_load_oem(rev)) {
 		pv_log(WARN, "could not load OEM config");
-		return 0;
+		return -1;
 	}
 
 	return 0;
@@ -1262,49 +1293,7 @@ static int pv_config_load_creds(struct pv_init *this)
 	return 0;
 }
 
-static int pv_config_trail(struct pv_init *this)
-{
-	int res = -1;
-	char path[PATH_MAX];
-	const char *rev = pv_bootloader_get_rev();
-	char *json = NULL, *config_name;
-
-	json = pv_storage_get_state_json(rev);
-	if (!json) {
-		pv_log(INFO, "json state not found");
-		res = 0;
-		goto out;
-	}
-
-	config_name = pv_parser_get_initrd_config_name(json);
-	if (!config_name) {
-		pv_log(INFO, "initrd config not found");
-		res = 0;
-		goto out;
-	}
-
-	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, "bsp",
-					 config_name);
-	free(config_name);
-
-	if (pv_config_override_config_from_file(path, BSP)) {
-		pv_log(FATAL, "initrd config %s not found", path);
-		goto out;
-	}
-
-	res = 0;
-out:
-	if (json)
-		free(json);
-	return res;
-}
-
 struct pv_init pv_init_creds = {
 	.init_fn = pv_config_load_creds,
-	.flags = 0,
-};
-
-struct pv_init pv_init_config_trail = {
-	.init_fn = pv_config_trail,
 	.flags = 0,
 };

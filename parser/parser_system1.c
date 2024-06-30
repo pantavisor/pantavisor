@@ -382,6 +382,7 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	jsmnutil_parse_json(buf, &tokv, &tokc);
 
+	s->bsp.config = pv_json_get_value(buf, "initrd_config", tokv, tokc);
 	s->bsp.img.ut.fit = pv_json_get_value(buf, "fit", tokv, tokc);
 	if (!s->bsp.img.ut.fit) {
 		s->bsp.img.rpiab.bootimg =
@@ -1875,60 +1876,4 @@ struct pv_state *system1_parse(struct pv_state *this, const char *buf)
 
 out:
 	return this;
-}
-
-static char *parse_config_name(char *value, int n)
-{
-	int tokc;
-	char *buf;
-	jsmntok_t *tokv;
-	char *config_name = NULL;
-
-	// take null terminate copy of item to parse
-	buf = calloc(n + 1, sizeof(char));
-	if (!buf)
-		return NULL;
-	buf = memcpy(buf, value, n);
-
-	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
-		free(buf);
-		return NULL;
-	}
-
-	config_name = pv_json_get_value(buf, "initrd_config", tokv, tokc);
-
-	if (tokv)
-		free(tokv);
-	if (buf)
-		free(buf);
-
-	return config_name;
-}
-
-char *system1_parse_initrd_config_name(const char *buf)
-{
-	int tokc, count;
-	jsmntok_t *tokv;
-	char *value, *config_name = NULL;
-
-	// Parse full state json
-	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
-		return NULL;
-
-	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
-	if (!count || (count > 1))
-		return NULL;
-
-	value = pv_json_get_value(buf, "bsp/run.json", tokv, tokc);
-	if (!value)
-		return NULL;
-
-	config_name = parse_config_name(value, strlen(value));
-
-	if (value)
-		free(value);
-	if (tokv)
-		free(tokv);
-
-	return config_name;
 }

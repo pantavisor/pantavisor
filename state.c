@@ -105,6 +105,8 @@ void pv_state_free(struct pv_state *s)
 
 	if (s->rev)
 		free(s->rev);
+	if (s->bsp.config)
+		free(s->bsp.config);
 	if (s->bsp.img.ut.fit) {
 		free(s->bsp.img.ut.fit);
 	} else if (s->bsp.img.rpiab.bootimg) {
