@@ -821,6 +821,9 @@ static struct pv_config_entry *_search_config_entry_by_alias(const char *alias)
 static int _set_config_by_key(const char *key, const char *value, void *opaque)
 {
 	level_t *level = (level_t *)opaque;
+	pv_log(DEBUG, "setting '%s' with value '%s' on level '%s'", key,
+	       value, _get_mod_level_str(*level));
+
 	if (*level & LEVEL_SYSCTL) {
 		if (_set_config_sysctl_by_key(key, value))
 			return 0;
@@ -835,8 +838,10 @@ static int _set_config_by_key(const char *key, const char *value, void *opaque)
 			       entry->key);
 		}
 	}
-	if (!entry)
+	if (!entry) {
+		pv_log(WARN, "key '%s' unknown", key);
 		return 0;
+	}
 
 	if (_set_config_by_entry(entry, value, *level)) {
 		pv_log(WARN, "cannot set key '%s' in config", key);
