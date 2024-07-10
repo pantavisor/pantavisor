@@ -821,8 +821,8 @@ static struct pv_config_entry *_search_config_entry_by_alias(const char *alias)
 static int _set_config_by_key(const char *key, const char *value, void *opaque)
 {
 	level_t *level = (level_t *)opaque;
-	pv_log(DEBUG, "setting '%s' with value '%s' on level '%s'", key,
-	       value, _get_mod_level_str(*level));
+	pv_log(DEBUG, "setting '%s' with value '%s' on level '%s'", key, value,
+	       _get_mod_level_str(*level));
 
 	if (*level & LEVEL_SYSCTL) {
 		if (_set_config_sysctl_by_key(key, value))
@@ -1280,14 +1280,11 @@ static int pv_config_load_creds(struct pv_init *this)
 	char path[PATH_MAX];
 	struct stat st;
 
-	if (!pv_config_get_bool(PV_CONTROL_REMOTE))
-		return 0;
-
 	pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
 
 	if (stat(path, &st)) {
-		pv_log(ERROR, "cannot find creds in %s", path);
-		return -1;
+		pv_log(WARN, "cannot find creds in %s", path);
+		return 0;
 	}
 
 	if (pv_config_load_creds_from_file(path)) {
