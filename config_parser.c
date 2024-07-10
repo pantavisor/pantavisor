@@ -150,17 +150,20 @@ extern char **environ;
 int config_parse_env(struct dl_list *list)
 {
 	char **envs = environ;
-	char *env, *ctx, *key, *value, *prefix = "PV_";
-	size_t envlen, prefixlen = strlen(prefix);
+	char *env, *ctx, *key, *value, *pv_prefix = "PV_", *ph_prefix = "PH_";
+	size_t envlen, pv_prefixlen = strlen(pv_prefix),
+		       ph_prefixlen = strlen(ph_prefix);
+	;
 
 	while (*envs) {
 		env = strdup(*envs);
 		envlen = strlen(env);
 
-		if (envlen <= prefixlen)
+		if (envlen <= pv_prefixlen)
 			goto next;
 
-		if (!pv_str_startswith_case(prefix, prefixlen, env))
+		if (!pv_str_startswith_case(pv_prefix, pv_prefixlen, env) &&
+		    !pv_str_startswith_case(ph_prefix, ph_prefixlen, env))
 			goto next;
 
 		key = strtok_r(env, "=", &ctx);
