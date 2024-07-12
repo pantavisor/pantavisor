@@ -202,6 +202,7 @@ void pv_config_override_value(const char *key, const char *value);
 
 void pv_config_free(void);
 
+char *pv_config_get_alias_json(void);
 char *pv_config_get_json(void);
 void pv_config_print(void);
 
