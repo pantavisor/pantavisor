@@ -1134,7 +1134,8 @@ static char *_search_config_alias_by_key(const char *key)
 	return NULL;
 }
 
-static void _add_config_entry_json(config_index_t ci, struct pv_json_ser *js)
+static void _add_config_entry_alias_json(config_index_t ci,
+					 struct pv_json_ser *js)
 {
 	if (ci >= PV_MAX)
 		return;
@@ -1166,7 +1167,7 @@ static void _add_config_entry_json(config_index_t ci, struct pv_json_ser *js)
 	}
 }
 
-char *pv_config_get_json()
+char *pv_config_get_alias_json()
 {
 	struct pv_json_ser js;
 
@@ -1175,10 +1176,93 @@ char *pv_config_get_json()
 	pv_json_ser_object(&js);
 	{
 		for (config_index_t ci = 0; ci < PV_MAX; ci++) {
-			_add_config_entry_json(ci, &js);
+			_add_config_entry_alias_json(ci, &js);
 		}
 
 		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
+}
+
+static void _format_value_str(char *out, size_t len, config_index_t ci)
+{
+	if (ci >= PV_MAX)
+		return;
+
+	switch (entries[ci].type) {
+	case BOOL:
+		snprintf(out, len, "%d", entries[ci].value.b);
+		break;
+	case BOOTLOADER:
+		snprintf(out, len, "%s",
+			 _get_bootloader_type_str(entries[ci].value.i));
+		break;
+	case INIT_MODE:
+		snprintf(out, len, "%s",
+			 _get_system_init_mode_str(entries[ci].value.i));
+		break;
+	case INT:
+		snprintf(out, len, "%d", entries[ci].value.i);
+		break;
+	case LOG_SERVER_OUTPUT_UPDATE_MASK:
+		snprintf(out, len, "%d", entries[ci].value.i);
+		break;
+	case SB_MODE:
+		snprintf(out, len, "%s",
+			 _get_secureboot_mode_str(entries[ci].value.i));
+		break;
+	case STR:
+		snprintf(out, len, "%s", entries[ci].value.s);
+		break;
+	case WDT_MODE:
+		snprintf(out, len, "%s",
+			 _get_wdt_mode_str(entries[ci].value.i));
+		break;
+	default:
+		pv_log(WARN, "unknown type for config entry %s",
+		       entries[ci].key);
+	}
+}
+
+static void _add_config_entry_json(config_index_t ci, struct pv_json_ser *js)
+{
+	if (ci >= PV_MAX)
+		return;
+
+	char value[256];
+
+	pv_json_ser_object(js);
+	{
+		pv_json_ser_key(js, "key");
+		pv_json_ser_string(js, entries[ci].key);
+
+		pv_json_ser_key(js, "value");
+
+		_format_value_str(value, 256, ci);
+		pv_json_ser_string(js, value);
+
+		pv_json_ser_key(js, "modified");
+		pv_json_ser_string(js,
+				   _get_mod_level_str(entries[ci].modified));
+
+		pv_json_ser_object_pop(js);
+	}
+}
+
+char *pv_config_get_json()
+{
+	struct pv_json_ser js;
+
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_array(&js);
+	{
+		for (config_index_t ci = 0; ci < PV_MAX; ci++) {
+			_add_config_entry_json(ci, &js);
+		}
+
+		pv_json_ser_array_pop(&js);
 	}
 
 	return pv_json_ser_str(&js);

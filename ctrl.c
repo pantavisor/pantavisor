@@ -76,6 +76,7 @@
 #define ENDPOINT_DEVICE_META "/device-meta"
 #define ENDPOINT_BUILDINFO "/buildinfo"
 #define ENDPOINT_CONFIG "/config"
+#define ENDPOINT_CONFIG2 "/config2"
 #define ENDPOINT_DRIVERS "/drivers"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
@@ -1300,6 +1301,15 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 		} else
 			goto err_me;
 	} else if (pv_str_matches(ENDPOINT_CONFIG, strlen(ENDPOINT_CONFIG),
+				  path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			if (!mgmt)
+				goto err_pr;
+			pv_ctrl_process_get_string(req_fd,
+						   pv_config_get_alias_json());
+		} else
+			goto err_me;
+	} else if (pv_str_matches(ENDPOINT_CONFIG2, strlen(ENDPOINT_CONFIG2),
 				  path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
