@@ -169,6 +169,7 @@ add_executable(pantavisor
 			utils/system.c
 			utils/timer.c
 			utils/tsh.c
+			utils/pvnanoid.c
 			version.c version.h
 			version.h
 			volumes.c
