@@ -556,12 +556,6 @@ void phlogger_toggle(const char *rev)
 	if (!pv)
 		return;
 
-	// if (phlogger.srv.pid > 0) {
-	// 	pv_log(INFO,
-	// 	       "phlogger push service is already running with pid %ld",
-	// 	       (long)phlogger.srv.pid);
-	// }
-
 	if (pv_config_get_bool(PV_LOG_PUSH) && pv->remote_mode) {
 		if (phlogger_service_start(&phlogger.srv, rev) != 0) {
 			if (!pv_config_get_bool(PV_LOG_PUSH))
