@@ -23,6 +23,7 @@
 #ifndef PHLOGGER_H
 #define PHLOGGER_H
 
+void phlogger_storage_path(char *fname);
 void phlogger_toggle(const char *rev);
 void phlogger_stop_lenient();
 void phlogger_stop_force();
