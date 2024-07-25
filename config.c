@@ -488,6 +488,8 @@ _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
 		else if (pv_str_matches(token, strlen(token), "stdout",
 					strlen("stdout")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT;
+		else if (pv_str_matches(token, strlen(token), "phlogger", strlen("phlogger")))
+			server_outputs |= LOG_SERVER_OUTPUT_PHLOGGER;
 		else
 			pv_log(WARN, "unknown log server output '%s'", token);
 	}
