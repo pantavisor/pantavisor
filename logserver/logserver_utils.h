@@ -32,7 +32,8 @@ int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 				const char *src, bool lf);
 int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log);
 int logserver_utils_print_raw(int fd, const struct logserver_log *log);
-char *logserver_utils_jsonify_log(const struct logserver_log *log);
+char *logserver_utils_jsonify_log(const struct logserver_log *log,
+				  const char *id);
 char *logserver_utils_output_to_str(int out_type);
 int logserver_utils_stdout(const struct logserver_log *log);
 

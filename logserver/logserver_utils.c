@@ -283,7 +283,7 @@ int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)
 	return total_len;
 }
 
-char *logserver_utils_jsonify_log(const struct logserver_log *log)
+char *logserver_utils_jsonify_log(const struct logserver_log *log, const char *id)
 {
 	struct pv_json_ser js;
 	pv_json_ser_init(&js, 512);
@@ -294,6 +294,11 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 
 	pv_json_ser_object(&js);
 	{
+		if (id) {
+			pv_json_ser_key(&js, "id");
+			pv_json_ser_string(&js, id);
+		}
+
 		pv_json_ser_key(&js, "tsec");
 		pv_json_ser_number(&js, log->tsec);
 
@@ -308,7 +313,7 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 			pv_json_ser_string(&js, ts);
 		}
 
-		pv_json_ser_key(&js, "platform");
+		pv_json_ser_key(&js, "plat");
 		pv_json_ser_string(&js, log->plat);
 
 		pv_json_ser_key(&js, "lvl");
