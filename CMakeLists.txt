@@ -134,8 +134,10 @@ add_executable(pantavisor
 			parser/parser_system1.h
 			paths.c
 			paths.h
-			ph_logger.c
-			ph_logger.h
+			phlogger/phlogger_service.c
+			phlogger/phlogger_service.h
+			phlogger/phlogger.c
+			phlogger/phlogger.h
 			platforms.c
 			platforms.h
 			pvctl_utils.c
