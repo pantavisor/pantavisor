@@ -230,12 +230,6 @@ static off_t phlogger_get_storage_size()
 	return s.st_size;
 }
 
-static void phlogger_storage_path(char *fname)
-{
-	char *folder = pv_config_get_str(PH_CACHE_QUEUE_PATH);
-	pv_fs_path_concat(fname, 2, folder, "phlogger.cache");
-}
-
 static int phlogger_init_storage()
 {
 	char fname[PATH_MAX] = { 0 };
@@ -546,6 +540,12 @@ static int phlogger_init()
 		return -1;
 
 	return 0;
+}
+
+void phlogger_storage_path(char *fname)
+{
+	char *folder = pv_config_get_str(PH_CACHE_QUEUE_PATH);
+	pv_fs_path_concat(fname, 2, folder, "phlogger.cache");
 }
 
 void phlogger_stop_lenient()
