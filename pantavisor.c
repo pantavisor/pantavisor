@@ -58,7 +58,7 @@
 #include "metadata.h"
 #include "signature.h"
 #include "paths.h"
-#include "ph_logger.h"
+#include "phlogger/phlogger.h"
 #include "logserver/logserver.h"
 #include "mount.h"
 #include "debug.h"
@@ -219,8 +219,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 		pv_logserver_transition(pv->update->pending->rev);
 
-		ph_logger_stop_lenient();
-		ph_logger_stop_force();
+		phlogger_stop_lenient();
+		phlogger_stop_force();
 
 		pv_state_transition(pv->update->pending, pv->state);
 	} else {
@@ -295,7 +295,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// only start local ph logger, start cloud services if connected
 	pv_logserver_toggle(pv, pv->state->rev);
-	ph_logger_toggle(pv->state->rev);
+	phlogger_toggle(pv->state->rev);
 
 	if (!pv_update_is_transitioning(pv->update)) {
 		if (pv_state_start(pv->state)) {
@@ -519,7 +519,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 
 	// start or stop ph logger depending on network and configuration
-	ph_logger_toggle(pv->state->rev);
+	phlogger_toggle(pv->state->rev);
 
 	if (pv_meta_update_to_ph(pv))
 		goto out;
@@ -895,11 +895,11 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// stop childs leniently
 	pv_state_stop_lenient(pv->state);
-	ph_logger_stop_lenient();
+	phlogger_stop_lenient();
 
 	// force stop childs
 	pv_state_stop_force(pv->state);
-	ph_logger_stop_force();
+	phlogger_stop_force();
 
 	// close pvctrl
 	pv_ctrl_socket_close(pv->ctrl_fd);
