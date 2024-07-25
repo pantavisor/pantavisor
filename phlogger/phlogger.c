@@ -313,12 +313,20 @@ static void phlogger_data_save(int fd)
 		return;
 	}
 
-	off_t max_size = pv_config_get_int(PH_CACHE_QUEUE_MAX_SIZE);
-	off_t file_size = phlogger_get_storage_size();
-
+	// sanitize the string, remove any PHLOGGER_LOG_DELIM present
 	for (ssize_t i = 0; i < size; ++i) {
 		if (logbuf->buf[i] == PHLOGGER_LOG_DELIM)
 			logbuf->buf[i] = ' ';
+	}
+
+	// check the file size to avoid to write more than the size set
+	off_t max_size = pv_config_get_int(PH_CACHE_QUEUE_MAX_SIZE);
+	off_t file_size = phlogger_get_storage_size();
+
+	if (file_size + size > max_size) {
+		if (phlogger.delete_data < size)
+			phlogger.delete_data = size;
+		phlogger_clean_queue();
 	}
 
 	lseek(phlogger.storage_fd, 0, SEEK_END);
