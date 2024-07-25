@@ -48,13 +48,13 @@ int phlogger_service_start(struct phlogger_service *srv, const char *rev)
 	return 0;
 }
 
-void phlogger_stop_lenient(struct phlogger_service *srv)
+void phlogger_service_stop_lenient(struct phlogger_service *srv)
 {
 	if (srv->pid > 0)
 		pv_system_kill_force(srv->pid);
 }
 
-void phlogger_stop_force(struct phlogger_service *srv)
+void phlogger_service_stop_force(struct phlogger_service *srv)
 {
 	if (srv->pid > 0)
 		pv_system_kill_force(srv->pid);
