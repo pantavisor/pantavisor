@@ -295,14 +295,10 @@ static void phlogger_receive_data()
 	}
 }
 
-static void phlogger_storage_path(char *buf)
+static void phlogger_storage_path(char *fname)
 {
-	// ----------------------------------------
-	// TODO: fixed path!!! should be added to
-	// config or paths.h
-	// ----------------------------------------
-	char *path = "/fixed/path";
-	snprintf(buf, PATH_MAX, "%s/%s.tmp", path, phlogger.srv.rev);
+	char *folder = pv_config_get_str(PH_CACHE_QUEUE_PATH);
+	pv_fs_path_concat(fname, 2, folder, "phlogger.cache");
 }
 
 static int phlogger_init_storage()
