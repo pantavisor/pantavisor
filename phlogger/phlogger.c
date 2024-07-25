@@ -230,6 +230,70 @@ static off_t phlogger_get_storage_size()
 	return s.st_size;
 }
 
+static void phlogger_storage_path(char *fname)
+{
+	char *folder = pv_config_get_str(PH_CACHE_QUEUE_PATH);
+	pv_fs_path_concat(fname, 2, folder, "phlogger.cache");
+}
+
+static int phlogger_init_storage()
+{
+	char fname[PATH_MAX] = { 0 };
+
+	phlogger_storage_path(fname);
+
+	int fd = open(fname, O_RDWR | O_CLOEXEC | O_CREAT, 0600);
+	if (fd < 0) {
+		pv_log(ERROR, "couldn't open log temporal storage %s: %s",
+		       fname, strerror(errno));
+		return -1;
+	}
+
+	phlogger.storage_fd = fd;
+	return 0;
+}
+
+static void phlogger_clean_queue()
+{
+	if (!phlogger.delete_data)
+		return;
+
+	off_t size = phlogger_get_storage_size();
+	if (size < 0) {
+		pv_log(WARN, "couldn't determine the storage size");
+		return;
+	}
+
+	char tmp_tmpl[] = "/tmp/pv-phlog-XXXXXX";
+
+	int tmpfd = mkstemp(tmp_tmpl);
+	if (tmpfd < 0)
+		return;
+
+	FILE *phfd = fdopen(phlogger.storage_fd, "r");
+
+	size_t len = 0;
+	ssize_t nread = 0;
+	ssize_t total = 0;
+	char *log = NULL;
+
+	while ((nread = getdelim(&log, &len, PHLOGGER_LOG_DELIM, phfd)) != -1) {
+		if (total < phlogger.delete_data) {
+			total += nread;
+			continue;
+		}
+
+		pv_fs_file_write_nointr(tmpfd, log, nread);
+	}
+	close(tmpfd);
+
+	char phlogger_storage[PATH_MAX] = { 0 };
+	phlogger_storage_path(phlogger_storage);
+	rename(tmp_tmpl, phlogger_storage);
+
+	phlogger_init_storage();
+}
+
 static void phlogger_data_save(int fd)
 {
 	struct buffer *logbuf = pv_buffer_get(true);
@@ -293,29 +357,6 @@ static void phlogger_receive_data()
 			phlogger_data_save(cur_fd);
 		}
 	}
-}
-
-static void phlogger_storage_path(char *fname)
-{
-	char *folder = pv_config_get_str(PH_CACHE_QUEUE_PATH);
-	pv_fs_path_concat(fname, 2, folder, "phlogger.cache");
-}
-
-static int phlogger_init_storage()
-{
-	char fname[PATH_MAX] = { 0 };
-
-	phlogger_storage_path(fname);
-
-	int fd = open(fname, O_RDWR | O_CLOEXEC | O_CREAT, 0600);
-	if (fd < 0) {
-		pv_log(ERROR, "couldn't open log temporal storage %s: %s",
-		       fname, strerror(errno));
-		return -1;
-	}
-
-	phlogger.storage_fd = fd;
-	return 0;
 }
 
 static char *phlogger_logs_from_file()
@@ -412,47 +453,6 @@ out:
 		trest_request_free(req);
 	if (rsp)
 		trest_response_free(rsp);
-}
-
-static void phlogger_clean_queue()
-{
-	if (!phlogger.delete_data)
-		return;
-
-	off_t size = phlogger_get_storage_size();
-	if (size < 0) {
-		pv_log(WARN, "couldn't determine the storage size");
-		return;
-	}
-
-	char tmp_tmpl[] = "/tmp/pv-phlog-XXXXXX";
-
-	int tmpfd = mkstemp(tmp_tmpl);
-	if (tmpfd < 0)
-		return;
-
-	FILE *phfd = fdopen(phlogger.storage_fd, "r");
-
-	size_t len = 0;
-	ssize_t nread = 0;
-	ssize_t total = 0;
-	char *log = NULL;
-
-	while ((nread = getdelim(&log, &len, PHLOGGER_LOG_DELIM, phfd)) != -1) {
-		if (total < phlogger.delete_data) {
-			total += nread;
-			continue;
-		}
-
-		pv_fs_file_write_nointr(tmpfd, log, nread);
-	}
-	close(tmpfd);
-
-	char phlogger_storage[PATH_MAX] = { 0 };
-	phlogger_storage_path(phlogger_storage);
-	rename(tmp_tmpl, phlogger_storage);
-
-	phlogger_init_storage();
 }
 
 static void phlogger_loop()
