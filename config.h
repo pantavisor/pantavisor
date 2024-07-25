@@ -155,6 +155,7 @@ typedef enum {
 	LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR = 1 << 5,
 	LOG_SERVER_OUTPUT_STDOUT_DIRECT = 1 << 6,
 	LOG_SERVER_OUTPUT_UPDATE = 1 << 7,
+	LOG_SERVER_OUTPUT_PHLOGGER = 1 << 8,
 } log_server_output_mask_t;
 
 log_server_output_mask_t pv_config_get_log_server_outputs(void);
