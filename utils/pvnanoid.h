@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2024 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,21 +19,24 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef __PH_LOGGER_H__
-#define __PH_LOGGER_H__
-#include <stdarg.h>
+
+#ifndef UTILS_NANOID_H
+#define UTILS_NANOID_H
+
 #include <stdbool.h>
-#include <inttypes.h>
-#include "../pantavisor.h"
-#define PH_LOGGER_JSON_FORMAT                                                  \
-	"{ \"tsec\": %" PRId64 ", \"tnano\": %" PRId32 ",\
-\"lvl\": \"%s\", \"src\": \"%s\",\"plat\":\"%s\",\
-\"rev\": \"%s\" , \"msg\": \"%s\" }"
 
-#define PH_LOGGER_POS_XATTR "trusted.ph.logger.pos"
+#define PV_NANOID_RNG_BUF_SIZE 100
+#define PV_NANOID_LEN 21
 
-void ph_logger_toggle(char *rev);
-void ph_logger_stop_lenient(void);
-void ph_logger_stop_force(void);
+// do not forget to init with { 0 } as follow
+// struct pv_nanoid my_nanoid = { 0 };
 
-#endif /* __PH_LOGGER_H__ */
+struct pv_nanoid {
+	char buf[PV_NANOID_RNG_BUF_SIZE];
+	int cur;
+	bool ok;
+};
+
+char *pv_nanoid_id(struct pv_nanoid *nid);
+
+#endif

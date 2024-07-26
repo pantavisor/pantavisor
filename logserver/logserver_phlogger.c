@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Pantacor Ltd.
+ * Copyright (c) 2024 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,64 +23,50 @@
 #include "logserver_singlefile.h"
 #include "logserver_utils.h"
 #include "config.h"
-#include "paths.h"
-#include "utils/fs.h"
+#include "phlogger/phlogger.h"
+#include "pvctl_utils.h"
+#include "utils/pvnanoid.h"
 
-#include <string.h>
 #include <linux/limits.h>
-#include <unistd.h>
-#include <libgen.h>
-#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 
-static char *create_dir(const struct logserver_log *log)
-{
-	if (!log->running_rev) {
-		WARN_ONCE(
-			"Log with no revision (null) arrives to singlefile output: %s",
-			log->data.buf);
-		return NULL;
-	}
-
-	char path[PATH_MAX];
-	pv_paths_pv_log(path, sizeof(path), log->running_rev);
-
-	if (pv_fs_mkdir_p(path, 0755))
-		return NULL;
-
-	pv_paths_pv_log_plat(path, sizeof(path), log->running_rev, "pv.log");
-
-	return strdup(path);
-}
+struct phlogger_out {
+	char sock[PATH_MAX];
+	struct pv_nanoid nanoid;
+};
 
 static int add_log(struct logserver_out *out, const struct logserver_log *log)
 {
 	if (log->lvl > pv_config_get_int(PV_LOG_LEVEL))
 		return 0;
 
-	char *path = create_dir(log);
-	if (!path)
-		return -1;
+	struct phlogger_out *phout = (struct phlogger_out *)out->opaque;
+	char *id = pv_nanoid_id(&phout->nanoid);
+	char *json = logserver_utils_jsonify_log(log, id);
 
-	int fd = logserver_utils_open_logfile(path);
-	if (fd < 0) {
-		WARN_ONCE("Error opening file %s, errno = %d\n", path, errno);
-		free(path);
+	int written = pvctl_write_to_path(phout->sock, json, strlen(json));
 
-		return -1;
-	}
-
-	char *json = logserver_utils_jsonify_log(log, NULL);
-	int len = dprintf(fd, "%s\n", json);
-
-	close(fd);
+	free(id);
 	free(json);
-	free(path);
 
-	return len;
+	return written;
+}
+
+static void free_output(struct logserver_out *out)
+{
+	free((struct phlogger_out *)out->opaque);
 }
 
 struct logserver_out *logserver_singlefile_new()
 {
-	return logserver_out_new(LOG_SERVER_OUTPUT_SINGLE_FILE, "singlefile",
-				 add_log, NULL, NULL);
+	struct phlogger_out *phout = calloc(1, sizeof(struct phlogger_out));
+
+	if (!phout)
+		return NULL;
+
+	phlogger_storage_path(phout->sock);
+
+	return logserver_out_new(LOG_SERVER_OUTPUT_PHLOGGER, "phlogger",
+				 add_log, free_output, phout);
 }
