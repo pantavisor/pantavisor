@@ -44,6 +44,7 @@ static int get_random(struct pv_nanoid *nid)
 
 	if (nbytes < 0) {
 		nid->ok = false;
+		close(fd);
 		return -1;
 	}
 
