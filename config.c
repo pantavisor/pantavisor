@@ -160,7 +160,7 @@ static struct pv_config_entry entries[] = {
 	  .value.s = LIBTHTTP_CERTSDIR_DEF },
 	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV | UPDATE | RUN, 0, .value.i = 3 },
 	{ BOOL, "PV_LOG_CAPTURE", PV | UPDATE, 0, .value.b = true },
-	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | UPDATE, 0, .value.b = false },
+	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | UPDATE, 0, .value.b = true },
 	{ INT, "PV_LOG_BUF_NITEMS", PV | UPDATE, 0, .value.i = 128 },
 	{ STR, "PV_LOG_DIR", PV, 0, .value.s = LOG_DIR_DEF },
 	{ STR, "PV_LOG_FILETREE_TIMESTAMP_FORMAT", PV | UPDATE | RUN, 0,
