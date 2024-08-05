@@ -69,11 +69,9 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 		return -1;
 	}
 
-	char *json = logserver_utils_jsonify_log(log);
-	int len = dprintf(fd, "%s\n", json);
+	int len = logserver_utils_print_json_fmt(fd, log);
 
 	close(fd);
-	free(json);
 	free(path);
 
 	return len;
