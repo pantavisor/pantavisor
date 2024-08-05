@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "logserver_utils.h"
 #include "logserver_timestamp.h"
 #include "config.h"
@@ -37,6 +41,72 @@
 #include <sys/stat.h>
 #include <linux/limits.h>
 #include <libgen.h>
+
+static int get_data_line(const struct logserver_data *data,
+			 struct logserver_data *line, int sep)
+{
+	char *end = data->buf + data->len;
+	char *buf = !line->buf ? data->buf : line->buf + line->len;
+	char *ptr = *buf == sep && buf != end ? buf + 1 : buf;
+
+	while (ptr != end && *ptr != sep)
+		++ptr;
+
+	int count = ptr - buf;
+
+	line->len = ptr == end && count == 0 ? 0 : count;
+	line->buf = buf;
+
+	return line->len;
+}
+
+static void remove_line_feed(char *str)
+{
+	char *p = NULL;
+	while ((p = strchr(str, '\n')) != NULL)
+		*p = '\0';
+}
+
+static char *format_dmesg_log(const char *str, int len)
+{
+	const char *buf = str;
+	while (*buf == '\n' || *buf == ' ')
+		++buf;
+
+	const char *end = str + len;
+	const char *txt = buf;
+
+	while (*txt != ';' && txt != end)
+		++txt;
+
+	char *formatted = NULL;
+	if (txt == end) {
+		int log_len = end - buf + 1;
+		formatted = calloc(log_len + 1, sizeof(char));
+		if (!formatted)
+			return NULL;
+
+		memcpy(formatted, buf, log_len);
+		formatted[log_len] = '\0';
+
+		remove_line_feed(formatted);
+		return formatted;
+	}
+
+	txt++;
+
+	int facility;
+	int seq;
+	int time;
+
+	sscanf(str, "%d,%d,%d,", &facility, &seq, &time);
+
+	int n = asprintf(&formatted, "[%12f] %.*s", time / 1000000.0,
+			 (int)(end - txt), txt);
+
+	remove_line_feed(formatted);
+	return formatted;
+}
 
 static int compress_log(const char *path)
 {
@@ -107,35 +177,50 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 			   const char *src, const char *ts_fmt, bool lf)
 {
 	const char *util_src = log->src ? log->src : src;
+
+	char ts[256] = { 0 };
+	strncpy(ts, "--", 3);
+
 	char *fmt = NULL;
-	int len = 0;
-
 	if (ts_fmt) {
-		if (lf)
-			fmt = "[%s] [%s] %" PRId64 " %s\t -- [%s]: %.*s\n";
-		else
-			fmt = "[%s] [%s] %" PRId64 " %s\t -- [%s]: %.*s";
-
-		char ts[256] = { 0 };
-		if (logserver_timestamp_get_formated(ts, 256, &log->time,
-						     ts_fmt) != 0)
-			strncpy(ts, "--", 3);
-
-		len = dprintf(fd, fmt, ts, log->plat, log->tsec,
-			      pv_log_level_name(log->lvl), util_src,
-			      log->data.len, log->data.buf);
+		logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt);
+		fmt = "[%s] [%s] %" PRId64 " %s\t -- [%s]: %.*s%c";
 	} else {
-		if (lf)
-			fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s\n";
-		else
-			fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s";
-
-		len = dprintf(fd, fmt, log->plat, log->tsec,
-			      pv_log_level_name(log->lvl), util_src,
-			      log->data.len, log->data.buf);
+		fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s%c";
 	}
 
-	return len;
+	bool is_dmesg = !strncmp(util_src, "dmesg", strlen("dmesg"));
+
+	char *txt = NULL;
+	size_t txt_len = 0;
+	int total_len = 0;
+	struct logserver_data line = { 0 };
+
+	while (get_data_line(&log->data, &line, '\n') > 0) {
+		if (is_dmesg) {
+			txt = format_dmesg_log(line.buf, line.len);
+			txt_len = strlen(txt);
+		} else {
+			txt = line.buf;
+			txt_len = line.len;
+		}
+
+		if (ts_fmt) {
+			total_len +=
+				dprintf(fd, fmt, ts, log->plat, log->tsec,
+					pv_log_level_name(log->lvl), util_src,
+					txt_len, txt, lf ? '\n' : '\0');
+		} else {
+			total_len +=
+				dprintf(fd, fmt, log->plat, log->tsec,
+					pv_log_level_name(log->lvl), util_src,
+					txt_len, txt, lf ? '\n' : '\0');
+		}
+		if (is_dmesg && txt)
+			free(txt);
+	}
+
+	return total_len;
 }
 
 int logserver_utils_print_raw(int fd, const struct logserver_log *log)
@@ -157,13 +242,45 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 
 int logserver_utils_stdout(const struct logserver_log *log)
 {
-	return print_pvfmt_log(STDOUT_FILENO, log, "unknown", pv_config_get_str(PV_LOG_STDOUT_TIMESTAMP_FORMAT), true);
+	return print_pvfmt_log(
+		STDOUT_FILENO, log, "unknown",
+		pv_config_get_str(PV_LOG_STDOUT_TIMESTAMP_FORMAT), true);
 }
 
 int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 				const char *src, bool lf)
 {
-	return print_pvfmt_log(fd, log, src, pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT), lf);
+	return print_pvfmt_log(
+		fd, log, src,
+		pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT), lf);
+}
+
+int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)
+{
+	struct logserver_log tmp = *log;
+	struct logserver_data line = { 0 };
+
+	bool is_dmesg = !strncmp(log->src, "dmesg", strlen("dmesg"));
+	int total_len = 0;
+
+	while (get_data_line(&log->data, &line, '\n') > 0) {
+		if (is_dmesg) {
+			tmp.data.buf = format_dmesg_log(line.buf, line.len);
+			tmp.data.len = strlen(tmp.data.buf);
+		} else {
+			tmp.data.buf = line.buf;
+			tmp.data.len = line.len;
+		}
+
+		char *json = logserver_utils_jsonify_log(&tmp);
+		total_len += dprintf(fd, "%s\n", json);
+		free(json);
+
+		if (is_dmesg && tmp.data.buf)
+			free(tmp.data.buf);
+	}
+
+	return total_len;
 }
 
 char *logserver_utils_jsonify_log(const struct logserver_log *log)
@@ -185,7 +302,8 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 
 		if (logserver_timestamp_get_formated(
 			    ts, 256, &log->time,
-			    pv_config_get_str(PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT)) == 0) {
+			    pv_config_get_str(
+				    PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT)) == 0) {
 			pv_json_ser_key(&js, "ts");
 			pv_json_ser_string(&js, ts);
 		}
