@@ -69,6 +69,7 @@ struct pv_signature_pair {
 	char *value;
 	bool included;
 	bool covered;
+	bool oem_signable;
 	struct dl_list list; // pv_signature_pair
 };
 
@@ -339,20 +340,21 @@ static void pv_signature_free_pairs(struct dl_list *json_pairs)
 	}
 }
 
-static void pv_signature_include_files(const char *json, bool include,
-				       struct dl_list *json_pairs)
+static void _include_json_pair(bool include, struct pv_signature_pair *pair)
+{
+	pair->included = include;
+	pair->covered = true;
+}
+
+static void _filter_json(
+	const char *json, bool include, struct dl_list *json_pairs,
+	void (*action_json_pair)(bool include, struct pv_signature_pair *pair))
 {
 	char *str = NULL, *path = NULL, *path_buf = NULL;
 	int tokc, size;
 	jsmntok_t *tokv, *t;
 	int fnflags;
 	struct pv_signature_pair *pair, *tmp;
-
-	if (include) {
-		pv_log(DEBUG, "including %s", json);
-	} else {
-		pv_log(DEBUG, "excluding %s", json);
-	}
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
 		pv_log(ERROR, "wrong format filter");
@@ -390,8 +392,7 @@ static void pv_signature_include_files(const char *json, bool include,
 				      struct pv_signature_pair, list)
 		{
 			if (!fnmatch(path, pair->key, fnflags)) {
-				pair->included = include;
-				pair->covered = true;
+				action_json_pair(include, pair);
 			}
 		}
 
@@ -412,7 +413,19 @@ out:
 		free(tokv);
 }
 
-static void pv_signature_reset_included(struct dl_list *json_pairs)
+static void pv_signature_include_files(const char *json, bool include,
+				       struct dl_list *json_pairs)
+{
+	if (include) {
+		pv_log(DEBUG, "including '%s'", json);
+	} else {
+		pv_log(DEBUG, "excluding '%s'", json);
+	}
+
+	_filter_json(json, include, json_pairs, _include_json_pair);
+}
+
+static void _init_json_pairs(struct dl_list *json_pairs)
 {
 	struct pv_signature_pair *pair, *tmp;
 
@@ -420,6 +433,7 @@ static void pv_signature_reset_included(struct dl_list *json_pairs)
 			      list)
 	{
 		pair->included = false;
+		pair->oem_signable = true;
 	}
 }
 
@@ -534,7 +548,7 @@ static char *
 pv_signature_get_filtered_json(struct pv_signature_headers_pvs *pvs,
 			       struct dl_list *json_pairs)
 {
-	pv_signature_reset_included(json_pairs);
+	_init_json_pairs(json_pairs);
 	pv_signature_filter_files(pvs, json_pairs);
 	return pv_signature_get_json_files(json_pairs);
 }
@@ -623,12 +637,13 @@ static int _get_cn(struct mbedtls_x509_crt *cert, char *cn, int len)
 	} while ((name = name->next) != 0);
 }
 
-static int _set_path_trust_crts(struct mbedtls_x509_crt *certs, char *path)
+static int _set_path_trust_crts(struct mbedtls_x509_crt *certs,
+				bool oem_signable, char *path)
 {
 	config_index_t name = PV_SECUREBOOT_TRUSTSTORE;
 
 	char *oem_name = pv_config_get_str(PV_OEM_NAME);
-	if (oem_name) {
+	if (oem_signable && oem_name) {
 		char cert_cn[256];
 		_get_cn(certs, cert_cn, 256);
 
@@ -663,7 +678,7 @@ static int _load_trust_certs(const char *path, struct mbedtls_x509_crt *cacerts)
 	return ret;
 }
 
-static int _parse_validate_certs(struct dl_list *certs_raw,
+static int _parse_validate_certs(struct dl_list *certs_raw, bool oem_signable,
 				 struct mbedtls_x509_crt *certs)
 {
 	int ret = -1;
@@ -674,7 +689,7 @@ static int _parse_validate_certs(struct dl_list *certs_raw,
 	}
 
 	char path[PATH_MAX];
-	_set_path_trust_crts(certs, path);
+	_set_path_trust_crts(certs, oem_signable, path);
 
 	struct mbedtls_x509_crt cacerts;
 	if (_load_trust_certs(path, &cacerts)) {
@@ -758,7 +773,7 @@ out:
 static bool pv_signature_verify_sha(const char *payload,
 				    struct dl_list *certs_raw,
 				    struct pv_signature *signature,
-				    mbedtls_md_type_t mdtype)
+				    mbedtls_md_type_t mdtype, bool oem_signable)
 {
 	bool ret = false;
 	int res;
@@ -773,7 +788,7 @@ static bool pv_signature_verify_sha(const char *payload,
 
 	if (!dl_list_empty(certs_raw)) {
 		// if list is not empty, we verify with pub key from first cert
-		if (_parse_validate_certs(certs_raw, &certs)) {
+		if (_parse_validate_certs(certs_raw, oem_signable, &certs)) {
 			pv_log(ERROR, "certs could not be parsed");
 			goto out;
 		}
@@ -919,6 +934,41 @@ out:
 		free(tokv);
 }
 
+void _unset_oem_signable_json_pair(bool include, struct pv_signature_pair *pair)
+{
+	pair->oem_signable = false;
+}
+
+#define OEM_NON_SIGNABLE_FMT "[\"bsp/**\",\"%s/**\"]"
+#define OEM_NON_SIGNABLE_BSP "[\"bsp/**\"]"
+
+static bool _is_oem_signable(struct dl_list *json_pairs)
+{
+	char json[256];
+	char *oem_name = pv_config_get_str(PV_OEM_NAME);
+	if (oem_name)
+		SNPRINTF_WTRUNC(json, 256, OEM_NON_SIGNABLE_FMT, oem_name);
+	else
+		SNPRINTF_WTRUNC(json, 256, OEM_NON_SIGNABLE_BSP);
+	pv_log(DEBUG, "filtering OEM-signable '%s'", json);
+
+	_filter_json(json, false, json_pairs, _unset_oem_signable_json_pair);
+
+	bool oem_signable = true;
+	struct pv_signature_pair *pair, *tmp;
+	dl_list_for_each_safe(pair, tmp, json_pairs, struct pv_signature_pair,
+			      list)
+	{
+		if ((pair->included) && !(pair->oem_signable)) {
+			oem_signable = false;
+			pv_log(DEBUG, "detected '%s' as non OEM-signable",
+			       pair->key);
+		}
+	}
+
+	return oem_signable;
+}
+
 static bool pv_signature_verify_pvs(struct pv_signature *signature,
 				    struct dl_list *json_pairs)
 {
@@ -966,9 +1016,11 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 		       headers->alg);
 	}
 
+	bool signable_oem = _is_oem_signable(json_pairs);
+
 	if (mdtype > 0)
 		ret = pv_signature_verify_sha(payload, &certs_raw, signature,
-					      mdtype);
+					      mdtype, signable_oem);
 out:
 	pv_signature_free_certs_raw(&certs_raw);
 	if (headers)
