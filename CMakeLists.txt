@@ -4,21 +4,28 @@ cmake_minimum_required(VERSION 3.0)
 # Set the project name and version
 project(pantavisor VERSION 019)
 
-# subdirectories
-add_subdirectory(plugins)
-
-# include cmake packages
-include(FindPackageHandleStandardArgs)
-
 # feature flags
 set(PANTAVISOR_DM_VERITY OFF CACHE BOOL "Enable support for dm verity mounted squash volumes")
 set(PANTAVISOR_DM_CRYPT OFF CACHE BOOL "Enable support for dm crypt mounted disks")
 set(PANTAVISOR_PVZRAM_TEST OFF CACHE BOOL "Build pvzram-test binary")
 set(PANTAVISOR_DEBUG OFF CACHE BOOL "Enable debug features for Pantavisor")
 set(PANTAVISOR_APPENGINE OFF CACHE BOOL "Build Pantavisor as appengine")
+set(PANTAVISOR_USRMERGE OFF CACHE BOOL "Build Pantavisor with usrmerge feature")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
+
+set(BASELIBDIR "/")
+IF(PANTAVISOR_USRMERGE)
+add_compile_definitions(PANTAVISOR_USRMERGE)
+set(BASELIBDIR "/usr/")
+ENDIF()
+
+# subdirectories
+add_subdirectory(plugins)
+
+# include cmake packages
+include(FindPackageHandleStandardArgs)
 
 # Find the shared library
 find_library(THTTP thttp)
@@ -204,10 +211,10 @@ ENDIF()
 ### install scripts
 install(FILES scripts/JSON.sh scripts/pv_e2fsgrow scripts/pvcrash
 	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv/)
+	DESTINATION ${BASELIBDIR}lib/pv/)
 install(DIRECTORY scripts/hooks_lxc-mount.d
 	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv)
+	DESTINATION ${BASELIBDIR}lib/pv)
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
 	DESTINATION /usr/bin)
@@ -216,14 +223,14 @@ install(PROGRAMS tools/pventer
 IF(PANTAVISOR_DM_CRYPT)
 install(DIRECTORY scripts/volmount/crypt
 	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv/volmount)
+	DESTINATION ${BASELIBDIR}lib/pv/volmount)
 ENDIF()
 
 ### install dm verity feature
 IF(PANTAVISOR_DM_VERITY)
 install(DIRECTORY scripts/volmount/verity
 	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv/volmount)
+	DESTINATION ${BASELIBDIR}lib/pv/volmount)
 ENDIF()
 
 

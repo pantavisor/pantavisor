@@ -313,7 +313,7 @@ void pv_paths_writable(char *buf, size_t size)
 			pv_config_get_str(PV_DISK_WRITABLEDIR));
 }
 
-#define PV_LIB_PLUGIN_PATHF "%s/pv_%s.so"
+#define PV_LIB_PLUGIN_PATHF "%s/pv/plugins/pv_%s.so"
 #define PV_LIB_MODULES_PATHF "%s/modules/%s"
 #define PV_LIB_CRYPT_PATHF "%s/pv/volmount/crypt/%s"
 #define PV_LIB_VOLMOUNT_PATHF "%s/pv/volmount/%s/%s"
