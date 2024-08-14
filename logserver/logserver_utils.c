@@ -343,3 +343,25 @@ char *logserver_utils_output_to_str(int out_type)
 
 	return "unknown";
 }
+
+static int write_option(const char *path, const char *op)
+{
+	int fd = open(path, O_WRONLY);
+	if (fd < 0)
+		return -2;
+	int len = write(fd, op, strlen(op));
+	close(fd);
+
+	return len < 0 ? len : 0;
+}
+
+int logserver_utils_printk_devmsg_on()
+{
+	return write_option("/proc/sys/kernel/printk_devkmsg", "on\n");
+}
+
+int logserver_utils_ignore_loglevel()
+{
+	return write_option("/sys/module/printk/parameters/ignore_loglevel",
+			    "Y");
+}
