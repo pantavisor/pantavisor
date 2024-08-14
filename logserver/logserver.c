@@ -868,7 +868,14 @@ void pv_logserver_toggle(struct pantavisor *pv, const char *running_rev)
 
 static void logserver_capture_dmesg()
 {
-	errno = 0;
+	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR))
+		return;
+
+	if (logserver_utils_printk_devmsg_on() == 0)
+		pv_log(DEBUG,
+		       "setting printk_devmsg=on, all message will be captured");
+
 	int fd = open("/dev/kmsg", O_RDONLY | O_NONBLOCK);
 	if (fd < 0) {
 		pv_log(WARN, "could not susbcribe dmesg to logserver %s",
@@ -913,6 +920,15 @@ int pv_logserver_init(const char *rev)
 	if (pv_config_get_bool(PV_LOG_CAPTURE)) {
 		logserver.active_out = pv_config_get_log_server_outputs();
 		logserver_load_outputs();
+	}
+
+	if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_CONTAINERS) ||
+	    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR)) {
+		if (logserver_utils_ignore_loglevel() == 0)
+			pv_log(DEBUG,
+			       "stdout: ignoring kernel log level, all messages will be shown");
 	}
 
 	errno = 0;
@@ -988,7 +1004,7 @@ static int logserver_msg_fill(struct logserver_log *log,
 		avail_len = msg->len - written;
 
 		to_copy = (log->data.len <= avail_len) ? log->data.len :
-							       avail_len;
+							 avail_len;
 		memcpy(msg->buf + written, log->data.buf, to_copy);
 		msg->len = written + to_copy;
 
