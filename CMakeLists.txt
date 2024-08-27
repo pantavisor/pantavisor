@@ -137,8 +137,14 @@ add_executable(pantavisor
 			paths.h
 			phlogger/phlogger_service.c
 			phlogger/phlogger_service.h
+			phlogger/phlogger_json_buffer.c
+			phlogger/phlogger_json_buffer.h
+			phlogger/phlogger_client.c
+			phlogger/phlogger_client.h
 			phlogger/phlogger.c
 			phlogger/phlogger.h
+			phlogger/phlogger_range.h
+			phlogger/phlogger_range.c
 			platforms.c
 			platforms.h
 			pvctl_utils.c
