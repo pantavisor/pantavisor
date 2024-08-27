@@ -25,15 +25,21 @@
 
 #include <sys/types.h>
 
-#define PHLOGGER_FLAG_SERVICE_STOP (1 << 0)
+#define PHLOGGER_SERVICE_FLAG_STOP (1 << 0)
+
+typedef enum {
+	PHLOGGER_SERVICE_DAEMON,
+	PHLOGGER_SERVICE_ONE_SHOT
+} phlogger_service_type_t;
 
 struct phlogger_service {
 	const char *name;
+	phlogger_service_type_t type;
 	pid_t pid;
 	int flags;
 	char *rev;
 	int (*init)(void);
-	void (*loop)(void);
+	void (*proc)(void);
 };
 
 int phlogger_service_start(struct phlogger_service *srv, const char *rev);

@@ -25,73 +25,68 @@
 #endif
 
 #include "phlogger.h"
-#include "trestclient.h"
-#include "pantahub.h"
-#include "pantavisor.h"
 #include "phlogger_service.h"
+#include "phlogger_json_buffer.h"
+#include "phlogger_client.h"
+#include "phlogger_range.h"
 #include "paths.h"
-#include "buffer.h"
 #include "config.h"
+#include "buffer.h"
 #include "utils/fs.h"
-
-#include <trest.h>
+#include "utils/json.h"
+#include "pvctl_utils.h"
+#include <jsmn/jsmnutil.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <linux/limits.h>
 #include <string.h>
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <sys/stat.h>
 #include <sys/epoll.h>
-#include <sys/sendfile.h>
+#include <sys/socket.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
 
 #define MODULE_NAME "phlogger"
-#include "log.h"
-
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 #define PHLOGGER_PUSH_MAX_EV (5)
 #define PHLOGGER_PUSH_BACKLOG (20)
-#define PHLOGGER_MAX_ID_SIZE (21)
-#define PHLOGGER_LOG_DELIM (0x1E)
-#define PHLOGGER_MAX_LOG_SENT (5)
+
+typedef enum {
+	PHLOGER_CMD_NULL = 0,
+	PHLOGER_CMD_EXIT,
+} phlogger_cmd_t;
 
 struct phlogger {
 	int epfd;
 	int sock;
-	int storage_fd;
-	size_t delete_data;
-	struct {
-		trest_ptr *client;
-		struct pv_connection *endpoint;
-	} conn;
+	char *buf;
+	struct phlogger_client *client;
 	struct phlogger_service srv;
 };
 
 static int phlogger_init(void);
-static void phlogger_loop(void);
+static void phlogger_receive_data(void);
 
 // global instance
 static struct phlogger phlogger = {
 	.epfd = -1,
 	.sock = -1,
-	.storage_fd = -1,
-	.delete_data = 0,
-	.conn = {
-		.client = NULL,
-		.endpoint = NULL,
-	},
+	.buf = NULL,
+	.client = NULL,
 	.srv = {
 		.name = MODULE_NAME,
+		.type = PHLOGGER_SERVICE_DAEMON,
 		.pid = -1,
 		.flags = 0,
 		.rev = NULL,
 		.init = phlogger_init,
-		.loop = phlogger_loop,
+		.proc = phlogger_receive_data,
 	},
 };
 
@@ -126,50 +121,6 @@ static int phlogger_epoll_cmd(int fd, int cmd)
 // 	if (phlogger.srv.rev)
 // 		free(phlogger.srv.rev);
 // }
-
-static int phlogger_init_endpoint()
-{
-	if (phlogger.conn.endpoint)
-		return 0;
-
-	phlogger.conn.endpoint = pv_get_instance_connection();
-	if (!phlogger.conn.endpoint) {
-		pv_log(ERROR, "couldn't allocate endpoint");
-		return -1;
-	}
-
-	return 0;
-}
-
-static int phlogger_rest_client_new()
-{
-	if (phlogger.conn.client) {
-		trest_free(phlogger.conn.client);
-		phlogger.conn.client = NULL;
-	}
-
-	phlogger.conn.client =
-		pv_get_trest_client(pv_get_instance(), phlogger.conn.endpoint);
-
-	if (!phlogger.conn.client) {
-		pv_log(ERROR, "couldn't allocate rest client");
-		free(phlogger.conn.endpoint);
-		return -1;
-	}
-	return 0;
-}
-
-static int phlogger_init_hub_connection()
-
-{
-	if (phlogger_init_endpoint() != 0)
-		return -1;
-
-	if (phlogger_rest_client_new() != 0)
-		return -1;
-
-	return 0;
-}
 
 static int phlogger_event_wait(struct epoll_event *ev)
 {
@@ -221,131 +172,102 @@ static void phlogger_remove_fd(int fd)
 	close(fd);
 }
 
-static off_t phlogger_get_storage_size()
+static ssize_t phlogger_get_data(int fd, struct buffer **buf)
 {
-	struct stat s = { 0 };
-	if (fstat(phlogger.storage_fd, &s) != 0)
+	*buf = pv_buffer_get(true);
+	if (!(*buf))
 		return -1;
 
-	return s.st_size;
-}
-
-static int phlogger_init_storage()
-{
-	char fname[PATH_MAX] = { 0 };
-
-	phlogger_storage_path(fname);
-
-	int fd = open(fname, O_RDWR | O_CLOEXEC | O_CREAT, 0600);
-	if (fd < 0) {
-		pv_log(ERROR, "couldn't open log temporal storage %s: %s",
-		       fname, strerror(errno));
+	ssize_t len = pv_fs_file_read_nointr(fd, (*buf)->buf, (*buf)->size);
+	if (len < 0) {
+		pv_buffer_drop(*buf);
 		return -1;
 	}
 
-	phlogger.storage_fd = fd;
-	return 0;
+	return len;
 }
 
-static void phlogger_clean_queue()
+static void phlogger_process_command(int cmd)
 {
-	if (!phlogger.delete_data)
-		return;
-
-	off_t size = phlogger_get_storage_size();
-	if (size < 0) {
-		pv_log(WARN, "couldn't determine the storage size");
-		return;
+	switch (cmd) {
+	case PHLOGER_CMD_NULL:
+		pv_log(WARN, "unknown command received");
+		break;
+	case PHLOGER_CMD_EXIT:
+		pv_log(DEBUG, "exit command received");
+		phlogger.srv.flags = PHLOGGER_SERVICE_FLAG_STOP;
+		break;
 	}
-
-	char tmp_tmpl[] = "/tmp/pv-phlog-XXXXXX";
-
-	int tmpfd = mkstemp(tmp_tmpl);
-	if (tmpfd < 0)
-		return;
-
-	FILE *phfd = fdopen(phlogger.storage_fd, "r");
-
-	size_t len = 0;
-	ssize_t nread = 0;
-	ssize_t total = 0;
-	char *log = NULL;
-
-	while ((nread = getdelim(&log, &len, PHLOGGER_LOG_DELIM, phfd)) != -1) {
-		if (total < phlogger.delete_data) {
-			total += nread;
-			continue;
-		}
-
-		pv_fs_file_write_nointr(tmpfd, log, nread);
-	}
-	close(tmpfd);
-
-	char phlogger_storage[PATH_MAX] = { 0 };
-	phlogger_storage_path(phlogger_storage);
-	rename(tmp_tmpl, phlogger_storage);
-
-	phlogger_init_storage();
 }
 
-static void phlogger_data_save(int fd)
+static void phlogger_process_log(const char *log, size_t len)
 {
-	struct buffer *logbuf = pv_buffer_get(true);
+	if (pv_phlogger_json_buffer_need_flush(phlogger.buf, len))
+		if (pv_phlogger_client_send_logs(phlogger.client, phlogger.buf))
+			pv_phlogger_json_buffer_init(&phlogger.buf);
 
-	if (!logbuf)
+	if (pv_phlogger_json_buffer_add(&phlogger.buf, log) != 0)
+		pv_log(WARN, "couldn't add logs, some logs could be lost");
+}
+
+static void phlogger_process_data(int fd)
+{
+	struct buffer *buf;
+
+	int tokc;
+	jsmntok_t *tokv = NULL;
+
+	ssize_t len = phlogger_get_data(fd, &buf);
+	if (len < 0) {
+		pv_log(WARN, "couldn't retrieve data, some logs could be lost");
 		return;
+	}
 
-	char delim = PHLOGGER_LOG_DELIM;
-
-	ssize_t size = pv_fs_file_read_nointr(fd, logbuf->buf, logbuf->size);
-
-	if (size < 1) {
-		pv_log(INFO, "couldn't write data (size = %zd): %s", size,
-		       strerror(errno));
-
-		pv_buffer_drop(logbuf);
+	char *json = calloc(len + 1, sizeof(char));
+	if (!json) {
+		pv_buffer_drop(buf);
 		return;
 	}
 
-	// sanitize the string, remove any PHLOGGER_LOG_DELIM present
-	for (ssize_t i = 0; i < size; ++i) {
-		if (logbuf->buf[i] == PHLOGGER_LOG_DELIM)
-			logbuf->buf[i] = ' ';
+	memcpy(json, buf->buf, len);
+	pv_buffer_drop(buf);
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		free(json);
+		return;
 	}
 
-	// check the file size to avoid to write more than the size set
-	off_t max_size = pv_config_get_int(PH_CACHE_QUEUE_MAX_SIZE);
-	off_t file_size = phlogger_get_storage_size();
-
-	if (file_size + size > max_size) {
-		if (phlogger.delete_data < size)
-			phlogger.delete_data = size;
-		phlogger_clean_queue();
+	char *type = pv_json_get_value(json, "type", tokv, tokc);
+	if (type && strncmp(type, "cmd", 3)) {
+		int cmd = pv_json_get_value_int(json, "cmd", tokv, tokc);
+		phlogger_process_command(cmd);
+	} else {
+		phlogger_process_log(json, len);
 	}
 
-	lseek(phlogger.storage_fd, 0, SEEK_END);
-	pv_fs_file_write_nointr(phlogger.storage_fd, logbuf->buf, size);
-	pv_fs_file_write_nointr(phlogger.storage_fd, &delim, sizeof(char));
-
-	pv_buffer_drop(logbuf);
+	if (type)
+		free(type);
+	free(json);
+	free(tokv);
 }
 
 static void phlogger_receive_data()
 {
 	struct epoll_event ev[PHLOGGER_PUSH_MAX_EV] = { 0 };
 	int n_events = phlogger_event_wait(ev);
-
 	if (n_events < 1)
 		return;
 
 	for (int i = 0; i < n_events; ++i) {
 		int cur_fd = ev[i].data.fd;
 
+		// check events
 		if (!phlogger_events_ok(ev[i].events)) {
 			phlogger_remove_fd(cur_fd);
 			continue;
 		}
 
+		// add the fd to the epoll list if the connection is accepted
 		if (cur_fd == phlogger.sock) {
 			int fd = phlogger_accept_connection(cur_fd);
 			if (fd < 0)
@@ -356,112 +278,10 @@ static void phlogger_receive_data()
 				continue;
 			}
 		} else {
-			phlogger_data_save(cur_fd);
+			phlogger_process_data(cur_fd);
+			phlogger_remove_fd(cur_fd);
 		}
 	}
-}
-
-static char *phlogger_logs_from_file()
-{
-	int fd = dup(phlogger.storage_fd);
-	if (fd < 0) {
-		pv_log(INFO, "couldn't read the log file");
-		return NULL;
-	}
-
-	FILE *f = fdopen(fd, "r");
-
-	size_t len = 0;
-	ssize_t nread = 0;
-	char *line = NULL;
-	char *logs = strdup("[");
-	size_t total_size = 1;
-	int i = 0;
-
-	rewind(f);
-
-	while ((nread = getdelim(&line, &len, PHLOGGER_LOG_DELIM, f)) != -1 &&
-	       i < PHLOGGER_MAX_LOG_SENT) {
-		char *tmp = realloc(logs, nread + total_size + 1);
-		if (!tmp)
-			break;
-
-		logs = tmp;
-		memcpy(logs + total_size, line, nread);
-		total_size += nread + 1;
-		logs[total_size - 2] = ',';
-		logs[total_size - 1] = ' ';
-		++i;
-	}
-
-	logs[total_size - 2] = ']';
-	logs[total_size - 1] = '\0';
-
-	free(line);
-	fclose(f);
-
-	return logs;
-}
-
-static void phlogger_push_logs()
-{
-	if (!phlogger.conn.client) {
-		if (phlogger_rest_client_new() != 0) {
-			pv_log(INFO,
-			       "couldn't connect with the hub, trying again in next iteration");
-			return;
-		}
-	}
-
-	char *logs = phlogger_logs_from_file();
-	if (!logs)
-		return;
-
-	trest_request_ptr req = NULL;
-	trest_response_ptr rsp = NULL;
-	trest_auth_status_enum status = trest_update_auth(phlogger.conn.client);
-
-	if (status != TREST_AUTH_STATUS_OK) {
-		pv_log(DEBUG, "couldn't authenticate with the hub");
-		goto out;
-	}
-
-	req = trest_make_request(THTTP_METHOD_POST, "/logs/", logs);
-	if (!req) {
-		pv_log(DEBUG, "couldn't create the request");
-		goto out;
-	}
-
-	rsp = trest_do_json_request(phlogger.conn.client, req);
-	if (!rsp) {
-		pv_log(WARN,
-		       "HTTP request POST /logs/ could not be initialized");
-		goto out;
-	} else if (!rsp->code && rsp->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN,
-		       "HTTP request POST /logs/ could not auth (status = %d)",
-		       rsp->status);
-	} else if (rsp->code != THTTP_STATUS_OK) {
-		pv_log(WARN,
-		       "HTTP request POST /logs/ returned HTTP error (code = %d; body = '%s')",
-		       rsp->code, rsp->body);
-	} else {
-		phlogger.delete_data = strlen(logs);
-	}
-out:
-	if (logs)
-		free(logs);
-	if (req)
-		trest_request_free(req);
-	if (rsp)
-		trest_response_free(rsp);
-}
-
-static void phlogger_loop()
-{
-	phlogger_receive_data();
-	phlogger_push_logs();
-	phlogger_clean_queue();
 }
 
 static int phlogger_open_socket(const char *name)
@@ -500,8 +320,7 @@ static int phlogger_init_socket()
 {
 	phlogger.epfd = epoll_create1(0);
 	if (phlogger.epfd < 0) {
-		pv_log(ERROR, "could not create %s epoll fd",
-		       phlogger.srv.name);
+		pv_log(ERROR, "could not create phlogger epoll fd");
 		goto err;
 	}
 
@@ -514,10 +333,10 @@ static int phlogger_init_socket()
 		goto err;
 	}
 
+	pv_log(DEBUG, "socket initialized");
 	return 0;
 err:
-	pv_log(ERROR, "unable to start service %s: %s", phlogger.srv.name,
-	       strerror(errno));
+	pv_log(ERROR, "unable to start phlogger service: %s", strerror(errno));
 
 	if (phlogger.sock >= 0)
 		close(phlogger.sock);
@@ -530,26 +349,40 @@ err:
 
 static int phlogger_init()
 {
+	phlogger.client = pv_phlogger_client_new();
+	if (!phlogger.client)
+		return -1;
+
 	if (phlogger_init_socket() != 0)
 		return -1;
 
-	if (phlogger_init_storage() != 0)
-		return -1;
+	int err = pv_phlogger_json_buffer_init(&phlogger.buf);
 
-	if (phlogger_init_hub_connection() != 0)
-		return -1;
+	pv_phlogger_range_start(phlogger.srv.rev);
 
-	return 0;
+	return err;
 }
 
-void phlogger_storage_path(char *fname)
+static void phlogger_send_cmd(phlogger_cmd_t code)
 {
-	char *folder = pv_config_get_str(PH_CACHE_QUEUE_PATH);
-	pv_fs_path_concat(fname, 2, folder, "phlogger.cache");
+	const char *tmp = "{\"type\": \"cmd\", \"cmd\": %d}";
+	char *cmd = NULL;
+	if (asprintf(&cmd, tmp, code) == -1)
+	{
+		pv_log(DEBUG, "couldn't send stop command");
+		return;
+	}
+
+	char path[PATH_MAX] = { 0 };
+	pv_paths_pv_file(path, PATH_MAX, LOGPUSH_FNAME);
+
+	pvctl_write_to_path(path, cmd, strlen(cmd));
+	free(cmd);
 }
 
 void phlogger_stop_lenient()
 {
+	phlogger_send_cmd(PHLOGER_CMD_EXIT);
 	phlogger_service_stop_lenient(&phlogger.srv);
 }
 
@@ -565,14 +398,9 @@ void phlogger_toggle(const char *rev)
 		return;
 
 	if (pv_config_get_bool(PV_LOG_PUSH) && pv->remote_mode) {
-		if (phlogger_service_start(&phlogger.srv, rev) != 0) {
-			if (!pv_config_get_bool(PV_LOG_PUSH))
-				pv_log(DEBUG,
-				       "PV_LOG_PUSH is set to false, service will not be started");
-			if (pv->remote_mode)
-				pv_log(DEBUG,
-				       "remote mode is not activated, service will not be started");
-		}
+		if (phlogger_service_start(&phlogger.srv, rev) == 0)
+			pv_log(DEBUG, "service started");
+
 	} else {
 		phlogger_stop_lenient();
 		phlogger_stop_force();
