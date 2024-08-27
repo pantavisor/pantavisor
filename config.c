@@ -93,6 +93,7 @@ typedef enum {
 #define LOG_DIR_DEF "/storage/logs/"
 #define LOG_MAXSIZE_DEF (1 << 21) // 2MiB
 #define LOG_SERVER_OUTPUTS_DEF "filetree"
+#define LOG_TMP_FILE_DEF ".ph.log"
 #define NET_BRADDRESS4_DEF "10.0.3.1"
 #define NET_BRDEV_DEF "lxcbr0"
 #define NET_BRMASK4_DEF "255.255.255.0"
@@ -136,8 +137,8 @@ static struct pv_config_entry entries[] = {
 	{ INT, "PH_UPDATER_INTERVAL", PH | OEM | RUN, 0, .value.i = 60 },
 	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH | OEM | RUN, 0,
 	  .value.i = 120 },
-	{ INT, "PH_CACHE_QUEUE_MAX_SIZE", PH | UPDATE, 0, .value.i = 400000 },
-	{ STR, "PH_CACHE_QUEUE_PATH", PH | UPDATE, 0, .value.s = LOG_DIR_DEF },
+	{ STR, "PH_LOG_TMP_FILE", PH | OEM, 0,
+	  .value.s = LOG_TMP_FILE_DEF },
 	{ STR, "PV_BOOTLOADER_FITCONFIG", PV, 0, .value.s = NULL },
 	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, .value.s = NULL },
 	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, .value.b = false },
@@ -488,7 +489,8 @@ _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
 		else if (pv_str_matches(token, strlen(token), "stdout",
 					strlen("stdout")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT;
-		else if (pv_str_matches(token, strlen(token), "phlogger", strlen("phlogger")))
+		else if (pv_str_matches(token, strlen(token), "phlogger",
+					strlen("phlogger")))
 			server_outputs |= LOG_SERVER_OUTPUT_PHLOGGER;
 		else
 			pv_log(WARN, "unknown log server output '%s'", token);

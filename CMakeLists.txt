@@ -111,6 +111,7 @@ add_executable(pantavisor
 			logserver/logserver_update.h
 			logserver/logserver_utils.c
 			logserver/logserver_utils.h
+			logserver/logserver_phlogger.c
 			loop.c
 			loop.h
 			metadata.c

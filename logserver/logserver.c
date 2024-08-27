@@ -44,6 +44,7 @@
 #include "logserver_singlefile.h"
 #include "logserver_update.h"
 #include "logserver_stdout.h"
+#include "logserver_phlogger.h"
 #include "logserver.h"
 #include "utils/timer.h"
 #include "utils/fs.h"
@@ -124,7 +125,7 @@ static struct logserver logserver = {
 
 typedef struct logserver_out *(*logserver_outputs_builder_t)(void);
 
-#define LOGSERVER_MAX_OUTPUTS (8)
+#define LOGSERVER_MAX_OUTPUTS (9)
 
 static logserver_outputs_builder_t
 	logserver_outputs_new[LOGSERVER_MAX_OUTPUTS] = {
@@ -135,7 +136,8 @@ static logserver_outputs_builder_t
 		logserver_update_new,
 		logserver_stdout_new,
 		logserver_stdout_containers_new,
-		logserver_stdout_pantavisor_new
+		logserver_stdout_pantavisor_new,
+		logserver_phlogger_new
 	};
 
 static int logserver_log_msg_data(const struct logserver_log *log, int output)
