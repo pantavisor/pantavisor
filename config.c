@@ -137,6 +137,7 @@ static struct pv_config_entry entries[] = {
 	{ INT, "PH_UPDATER_INTERVAL", PH | OEM | RUN, 0, .value.i = 60 },
 	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH | OEM | RUN, 0,
 	  .value.i = 120 },
+	{ INT, "PH_INTERNAL_BUFFER_SIZE", PH | OEM, 0, .value.i = 1024 },
 	{ STR, "PH_LOG_TMP_FILE", PH | OEM, 0,
 	  .value.s = LOG_TMP_FILE_DEF },
 	{ STR, "PV_BOOTLOADER_FITCONFIG", PV, 0, .value.s = NULL },
