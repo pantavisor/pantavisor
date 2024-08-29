@@ -202,9 +202,17 @@ static void phlogger_process_command(int cmd)
 
 static void phlogger_process_log(const char *log, size_t len)
 {
-	if (pv_phlogger_json_buffer_need_flush(phlogger.buf, len))
+	if (pv_phlogger_json_buffer_need_flush(phlogger.buf, len)) {
+		if (!phlogger.client) {
+			phlogger.client = pv_phlogger_client_new();
+
+			if (!phlogger.client)
+				return;
+		}
+
 		if (pv_phlogger_client_send_logs(phlogger.client, phlogger.buf))
 			pv_phlogger_json_buffer_init(&phlogger.buf);
+	}
 
 	if (pv_phlogger_json_buffer_add(&phlogger.buf, log) != 0)
 		pv_log(WARN, "couldn't add logs, some logs could be lost");
@@ -349,10 +357,6 @@ err:
 
 static int phlogger_init()
 {
-	phlogger.client = pv_phlogger_client_new();
-	if (!phlogger.client)
-		return -1;
-
 	if (phlogger_init_socket() != 0)
 		return -1;
 
@@ -367,8 +371,7 @@ static void phlogger_send_cmd(phlogger_cmd_t code)
 {
 	const char *tmp = "{\"type\": \"cmd\", \"cmd\": %d}";
 	char *cmd = NULL;
-	if (asprintf(&cmd, tmp, code) == -1)
-	{
+	if (asprintf(&cmd, tmp, code) == -1) {
 		pv_log(DEBUG, "couldn't send stop command");
 		return;
 	}
