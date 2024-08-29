@@ -37,6 +37,8 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
+const char *eol = NULL;
+
 static int create_dir(const struct logserver_log *log, char *path)
 {
 	if (!log->running_rev) {
@@ -46,10 +48,10 @@ static int create_dir(const struct logserver_log *log, char *path)
 		return -1;
 	}
 
-	pv_paths_pv_log(path, sizeof(path), log->running_rev);
+	pv_paths_pv_log(path, PATH_MAX, log->running_rev);
 	pv_fs_mkdir_p(path, 0755);
 
-	pv_paths_pv_log_plat(path, sizeof(path), log->running_rev,
+	pv_paths_pv_log_plat(path, PATH_MAX, log->running_rev,
 			     pv_config_get_str(PH_LOG_TMP_FILE));
 	return 0;
 }
@@ -78,28 +80,39 @@ static int get_fd(struct logserver_out *out, const struct logserver_log *log)
 
 	if (pv_fs_path_exist(path)) {
 		int fd = open_socket(path);
-		if (fd > 0)
+		if (fd > 0) {
+			eol = NULL;
 			return fd;
-		WARN_ONCE("cannot open socket, trying to open cache file...");
+		}
+		close(fd);
 	}
 
 	memset(path, 0, PATH_MAX);
+
 	if (create_dir(log, path) != 0) {
 		WARN_ONCE("error cannot get a valid path");
 		return -1;
 	}
 
-	return logserver_utils_open_logfile(path);
+	eol = "\n";
+	int fd = logserver_utils_open_logfile(path);
+	if (fd < 0) {
+		return -1;
+	}
+
+	return fd;
 }
 
 static int add_log(struct logserver_out *out, const struct logserver_log *log)
 {
+	errno = 0;
 	int fd = get_fd(out, log);
-
-	if (fd < 0)
+	if (fd < 0) {
 		return 0;
+	}
 
-	int written = logserver_utils_print_json_fmt(fd, log, NULL);
+	struct pv_nanoid *nid = (struct pv_nanoid *)out->opaque;
+	int written = logserver_utils_print_json_fmt(fd, log, nid, eol);
 	close(fd);
 
 	return written;
