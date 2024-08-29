@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Pantacor Ltd.
+ * Copyright (c) 2024 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,26 +20,23 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_UTILS_H
-#define LOGSERVER_UTILS_H
-
-#include "logserver_out.h"
+#ifndef UTILS_NANOID_H
+#define UTILS_NANOID_H
 
 #include <stdbool.h>
 
-struct pv_nanoid;
+#define PV_NANOID_RNG_BUF_SIZE 100
+#define PV_NANOID_LEN 21
 
-int logserver_utils_open_logfile(const char *path);
-int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
-				const char *src, bool lf);
-int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log,
-				   struct pv_nanoid *nanoid, const char *eol);
-int logserver_utils_print_raw(int fd, const struct logserver_log *log);
-char *logserver_utils_jsonify_log(const struct logserver_log *log,
-				  struct pv_nanoid *nanoid);
-char *logserver_utils_output_to_str(int out_type);
-int logserver_utils_stdout(const struct logserver_log *log);
-int logserver_utils_printk_devmsg_on(void);
-int logserver_utils_ignore_loglevel(void);
+// do not forget to init with { 0 } as follow
+// struct pv_nanoid my_nanoid = { 0 };
+
+struct pv_nanoid {
+	char buf[PV_NANOID_RNG_BUF_SIZE];
+	int cur;
+	bool ok;
+};
+
+char *pv_nanoid_id(struct pv_nanoid *nid);
 
 #endif

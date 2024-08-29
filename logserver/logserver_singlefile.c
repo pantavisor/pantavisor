@@ -69,7 +69,7 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 		return -1;
 	}
 
-	int len = logserver_utils_print_json_fmt(fd, log);
+	int len = logserver_utils_print_json_fmt(fd, log, NULL, "\n");
 
 	close(fd);
 	free(path);

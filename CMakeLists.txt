@@ -111,6 +111,7 @@ add_executable(pantavisor
 			logserver/logserver_update.h
 			logserver/logserver_utils.c
 			logserver/logserver_utils.h
+			logserver/logserver_phlogger.c
 			loop.c
 			loop.h
 			metadata.c
@@ -134,8 +135,16 @@ add_executable(pantavisor
 			parser/parser_system1.h
 			paths.c
 			paths.h
-			ph_logger.c
-			ph_logger.h
+			phlogger/phlogger_service.c
+			phlogger/phlogger_service.h
+			phlogger/phlogger_json_buffer.c
+			phlogger/phlogger_json_buffer.h
+			phlogger/phlogger_client.c
+			phlogger/phlogger_client.h
+			phlogger/phlogger.c
+			phlogger/phlogger.h
+			phlogger/phlogger_range.h
+			phlogger/phlogger_range.c
 			platforms.c
 			platforms.h
 			pvctl_utils.c
@@ -169,6 +178,7 @@ add_executable(pantavisor
 			utils/system.c
 			utils/timer.c
 			utils/tsh.c
+			utils/pvnanoid.c
 			version.c version.h
 			version.h
 			volumes.c

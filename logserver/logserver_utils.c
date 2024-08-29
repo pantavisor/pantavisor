@@ -28,6 +28,7 @@
 #include "logserver_timestamp.h"
 #include "config.h"
 #include "utils/fs.h"
+#include "utils/pvnanoid.h"
 #include "log.h"
 #include "utils/json.h"
 
@@ -255,7 +256,8 @@ int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 		pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT), lf);
 }
 
-int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)
+int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log,
+				   struct pv_nanoid *nanoid, const char *eol)
 {
 	struct logserver_log tmp = *log;
 	struct logserver_data line = { 0 };
@@ -272,8 +274,12 @@ int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)
 			tmp.data.len = line.len;
 		}
 
-		char *json = logserver_utils_jsonify_log(&tmp);
-		total_len += dprintf(fd, "%s\n", json);
+		char *json = logserver_utils_jsonify_log(&tmp, nanoid);
+
+		total_len += pv_fs_file_write_nointr(fd, json, strlen(json));
+		if (eol)
+			total_len += pv_fs_file_write_nointr(fd, eol, 1);
+
 		free(json);
 
 		if (is_dmesg && tmp.data.buf)
@@ -283,7 +289,8 @@ int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log)
 	return total_len;
 }
 
-char *logserver_utils_jsonify_log(const struct logserver_log *log)
+char *logserver_utils_jsonify_log(const struct logserver_log *log,
+				  struct pv_nanoid *nanoid)
 {
 	struct pv_json_ser js;
 	pv_json_ser_init(&js, 512);
@@ -294,6 +301,13 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 
 	pv_json_ser_object(&js);
 	{
+		if (nanoid) {
+			char *id = pv_nanoid_id(nanoid);
+			pv_json_ser_key(&js, "nanoid");
+			pv_json_ser_string(&js, id);
+			free(id);
+		}
+
 		pv_json_ser_key(&js, "tsec");
 		pv_json_ser_number(&js, log->tsec);
 
@@ -308,7 +322,7 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 			pv_json_ser_string(&js, ts);
 		}
 
-		pv_json_ser_key(&js, "platform");
+		pv_json_ser_key(&js, "plat");
 		pv_json_ser_string(&js, log->plat);
 
 		pv_json_ser_key(&js, "lvl");
@@ -322,7 +336,6 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log)
 
 		pv_json_ser_object_pop(&js);
 	}
-
 	return pv_json_ser_str(&js);
 }
 

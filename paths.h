@@ -31,6 +31,7 @@
 #define PVCTRL_FNAME "pv-ctrl"
 #define LOGCTRL_FNAME "pv-ctrl-log"
 #define LOGFD_FNAME "pv-fd-log"
+#define LOGPUSH_FNAME "pv-push-log"
 
 void pv_paths_pv_file(char *buf, size_t size, const char *name);
 
