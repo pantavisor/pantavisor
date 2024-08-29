@@ -257,7 +257,7 @@ int logserver_utils_print_pvfmt(int fd, const struct logserver_log *log,
 }
 
 int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log,
-				   struct pv_nanoid *nanoid)
+				   struct pv_nanoid *nanoid, const char *eol)
 {
 	struct logserver_log tmp = *log;
 	struct logserver_data line = { 0 };
@@ -277,7 +277,8 @@ int logserver_utils_print_json_fmt(int fd, const struct logserver_log *log,
 		char *json = logserver_utils_jsonify_log(&tmp, nanoid);
 
 		total_len += pv_fs_file_write_nointr(fd, json, strlen(json));
-		total_len += pv_fs_file_write_nointr(fd, "\n", 1);
+		if (eol)
+			total_len += pv_fs_file_write_nointr(fd, eol, 1);
 
 		free(json);
 
@@ -302,7 +303,7 @@ char *logserver_utils_jsonify_log(const struct logserver_log *log,
 	{
 		if (nanoid) {
 			char *id = pv_nanoid_id(nanoid);
-			pv_json_ser_key(&js, "id");
+			pv_json_ser_key(&js, "nanoid");
 			pv_json_ser_string(&js, id);
 			free(id);
 		}
