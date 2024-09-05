@@ -1919,7 +1919,7 @@ static int trail_download_objects(struct pantavisor *pv)
 	return 0;
 }
 
-struct pv_update *pv_update_get_step_local(const char *rev)
+struct pv_update *pv_update_get_step_local(const char *rev, bool verify)
 {
 	struct pv_update *update = NULL;
 	char *json = NULL;
@@ -1936,8 +1936,11 @@ struct pv_update *pv_update_get_step_local(const char *rev)
 		goto err;
 	}
 
-	if (pv_update_signature_verify(update, json))
-		goto err;
+	if (verify) {
+		if (pv_update_signature_verify(update, json))
+			goto err;
+	}
+
 	update->pending = pv_parser_get_state(json, rev);
 	if (!update->pending) {
 		pv_update_set_status(update, UPDATE_NO_PARSE);

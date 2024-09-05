@@ -52,6 +52,7 @@ struct pantavisor {
 	bool synced;
 	bool loading_objects;
 	bool hard_poweroff;
+	bool first_boot_reboot;
 	cgroup_version_t cgroupv;
 	int ctrl_fd;
 };

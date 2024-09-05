@@ -39,6 +39,8 @@
 #include <linux/limits.h>
 #include <linux/reboot.h>
 
+#include <mbedtls/sha256.h>
+
 #include "pantavisor.h"
 #include "loop.h"
 #include "platforms.h"
@@ -63,6 +65,7 @@
 #include "mount.h"
 #include "debug.h"
 #include "cgroup.h"
+#include "math.h"
 
 #include "parser/parser.h"
 
@@ -97,6 +100,7 @@ static const int PV_WAIT_PERIOD = 1;
 
 typedef enum {
 	PV_STATE_INIT,
+	PV_STATE_FIRST_BOOT,
 	PV_STATE_RUN,
 	PV_STATE_WAIT,
 	PV_STATE_COMMAND,
@@ -115,6 +119,8 @@ static const char *pv_state_string(pv_state_t st)
 	switch (st) {
 	case PV_STATE_INIT:
 		return "STATE_INIT";
+	case PV_STATE_FIRST_BOOT:
+		return "STATE_FIRST_BOOT";
 	case PV_STATE_RUN:
 		return "STATE_RUN";
 	case PV_STATE_WAIT:
@@ -191,12 +197,162 @@ static bool pv_wait_delay_timedout()
 	return true;
 }
 
-static pv_state_t _pv_init(struct pantavisor *pv)
+static int pv_get_sha256(const char *path, unsigned char *hash)
+{
+	int ret = -1;
+	unsigned char *buf = NULL;
+	int fd = open(path, O_RDONLY);
+	if (!fd)
+		return -1;
+
+	struct stat st = { 0 };
+	if (fstat(fd, &st) != 0)
+		goto out;
+
+	buf = calloc(st.st_size, sizeof(unsigned char));
+	if (!buf)
+		goto out;
+
+	ssize_t size = pv_fs_file_read_nointr(fd, (char *)buf, st.st_size);
+
+	mbedtls_sha256_context ctx;
+	if (mbedtls_sha256_starts_ret(&ctx, 0) != 0)
+		goto out;
+
+	if (mbedtls_sha256_update_ret(&ctx, buf, size) != 0)
+		goto out;
+
+	if (mbedtls_sha256_finish_ret(&ctx, hash) != 0)
+		goto out;
+
+	ret = 1;
+out:
+	if (fd >= 0)
+		close(fd);
+	if (buf)
+		free(buf);
+
+	return ret;
+}
+
+static unsigned char *pv_get_bsp_sha256(const char *rev, int *hash_size)
+{
+	char path[PATH_MAX] = { 0 };
+	pv_paths_storage_trail_file(path, PATH_MAX, rev, "bsp");
+
+	struct dirent **arr = NULL;
+	int n = scandir(path, &arr, NULL, alphasort);
+
+	// n - 2: bc of . and ..
+	*hash_size = (n - 2) * 32;
+	unsigned char *all_sha = calloc(*hash_size, sizeof(unsigned char));
+	int files = 0;
+	const char *tmpl = "%s/%s";
+
+	for (int i = 0; i < n; ++i) {
+		if (!strcmp(arr[i]->d_name, ".") ||
+		    !strcmp(arr[i]->d_name, ".."))
+			goto free_dir;
+
+		char fullpath[PATH_MAX] = { 0 };
+		snprintf(fullpath, PATH_MAX, tmpl, path, arr[i]->d_name);
+
+		pv_get_sha256(fullpath, all_sha + 32 * files);
+
+		files++;
+
+	free_dir:
+		free(arr[i]);
+	}
+
+	free(arr);
+	return all_sha;
+}
+
+static bool pv_bsp_has_change()
+{
+	bool ret = true;
+	int rev0_size = 0;
+	unsigned char *rev0_sha = pv_get_bsp_sha256("0", &rev0_size);
+
+	int pvtx_size = 0;
+	unsigned char *pvtx_sha =
+		pv_get_bsp_sha256("locals/pvtx-firstboot", &pvtx_size);
+
+	if (rev0_size != pvtx_size)
+		goto out;
+
+	for (int i = 0; i < rev0_size; ++i) {
+		if (rev0_sha[i] != pvtx_sha[i])
+			goto out;
+	}
+
+	ret = false;
+
+out:
+	if (rev0_sha)
+		free(rev0_sha);
+
+	if (pvtx_sha)
+		free(pvtx_sha);
+
+	if (ret) {
+		pv_log(DEBUG, "bsp has change pv_first_boot needs reboot");
+	} else {
+		pv_log(DEBUG, "bsp remains the same, continue without reboot");
+	}
+
+	return ret;
+}
+
+static pv_state_t _pv_first_boot(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
+	pv_state_t next_state = PV_STATE_RUN;
+
+	// TODO: since this is a good condition to finish the function
+	// we need a better way to run the first boot only the first time
+	if (!pv_fs_path_exist("/storage/queue"))
+		goto clean;
+
+	const char *tmp = "/tmp/pvtx";
+	pv_fs_mkbasedir_p(tmp, 0744);
+	setenv("PVTXDIR", tmp, 0);
+
+	int err = 0;
+	char *pvtx_cmd[] = {
+		"pvtx queue process /storage/trails/0 /storage/queue /storage/objects",
+		"pvtx deploy /storage/trails/locals/pvtx-firstboot",
+	};
+
+	for (int i = 0; i < ARRAY_LEN(pvtx_cmd); ++i) {
+		pv_log(DEBUG, "runing %s", pvtx_cmd[i]);
+		tsh_run(pvtx_cmd[i], 1, &err);
+		if (err != 0)
+			goto clean;
+	}
+	pv->first_boot_reboot = pv_bsp_has_change();
+clean:
+	pv_fs_path_remove("/storage/queue", true);
+	// pv_fs_path_remove("/storage/trails/locals", true);
+	pv_fs_path_remove(tmp, true);
+
+	return next_state;
+}
+
+static pv_state_t _pv_init(struct pantavisor *pv)
+{
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+	pv_log(DEBUG, "current rev: %s", pv_bootloader_get_rev());
+
 	if (pv_do_execute_init())
 		return PV_STATE_EXIT;
+
+	// only runs for the first rev
+	if (pv_config_get_bool(PV_FIRST_BOOT) &&
+	    !strncmp(pv_bootloader_get_rev(), "0", 1))
+		return PV_STATE_FIRST_BOOT;
 
 	return PV_STATE_RUN;
 }
@@ -611,10 +767,18 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
-	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
+
+	if (pv_config_get_bool(PV_FIRST_BOOT) && !pv->update &&
+	    !strncmp(pv->state->rev, "0", 1)) {
+		pv->cmd = calloc(1, sizeof(struct pv_cmd));
+		pv->cmd->op = CMD_LOCAL_RUN;
+		pv->cmd->payload = strdup("locals/pvtx-firstboot");
+	} else {
+		pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
+	}
+
 	if (pv->cmd)
 		next_state = PV_STATE_COMMAND;
-
 out:
 	return next_state;
 }
@@ -627,6 +791,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 	if (!cmd)
 		return PV_STATE_WAIT;
+
+	bool verify_signature = true;
 
 	switch (cmd->op) {
 	case CMD_UPDATE_METADATA:
@@ -678,7 +844,14 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG, "install local received. Processing %s json...",
 		       cmd->payload);
-		pv->update = pv_update_get_step_local(cmd->payload);
+
+		verify_signature = true;
+		if (pv_config_get_bool(PV_FIRST_BOOT) &&
+		    !strncmp(pv->state->rev, "0", 1) && !pv->first_boot_reboot)
+			verify_signature = false;
+
+		pv->update = pv_update_get_step_local(cmd->payload,
+						      verify_signature);
 		if (pv->update)
 			next_state = PV_STATE_UPDATE;
 		break;
@@ -695,7 +868,14 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG, "apply local received. Processing %s json...",
 		       cmd->payload);
-		pv->update = pv_update_get_step_local(cmd->payload);
+
+		verify_signature = true;
+		if (pv_config_get_bool(PV_FIRST_BOOT) &&
+		    !strncmp(pv->state->rev, "0", 1) && !pv->first_boot_reboot)
+			verify_signature = false;
+
+		pv->update = pv_update_get_step_local(cmd->payload,
+						      verify_signature);
 		if (pv->update)
 			next_state = PV_STATE_UPDATE_APPLY;
 		break;
@@ -731,7 +911,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 
 		pv_log(INFO, "revision 0 updated. Progressing to revision 0");
-		pv->update = pv_update_get_step_local("0");
+		pv->update = pv_update_get_step_local("0", true);
 		if (pv->update)
 			next_state = PV_STATE_UPDATE;
 		break;
@@ -791,6 +971,11 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return PV_STATE_WAIT;
 	}
 
+	if (pv_config_get_bool(PV_FIRST_BOOT) &&
+	    !strncmp(pv_bootloader_get_rev(), "0", 1) &&
+	    !pv->first_boot_reboot) {
+		goto no_reboot;
+	}
 	// after installing, try to only stop the platforms that we need for the new update
 	if (pv_state_stop_platforms(pv->state, pv->update->pending)) {
 		pv_log(INFO, "update requires reboot");
@@ -798,6 +983,7 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return PV_STATE_REBOOT;
 	}
 
+no_reboot:
 	pv_log(INFO, "update does not require reboot");
 	pv_update_set_status(pv->update, UPDATE_TRANSITION);
 	return PV_STATE_RUN;
@@ -958,9 +1144,9 @@ static pv_state_t _pv_error(struct pantavisor *pv)
 }
 
 pv_state_func_t *const state_table[MAX_STATES] = {
-	_pv_init,     _pv_run,		_pv_wait,     _pv_command,
-	_pv_update,   _pv_update_apply, _pv_rollback, _pv_reboot,
-	_pv_poweroff, _pv_error,	NULL,
+	_pv_init,    _pv_first_boot, _pv_run,	       _pv_wait,
+	_pv_command, _pv_update,     _pv_update_apply, _pv_rollback,
+	_pv_reboot,  _pv_poweroff,   _pv_error,	       NULL,
 };
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
