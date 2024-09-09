@@ -683,22 +683,10 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 	int ret = 0, tokc, n;
 	jsmntok_t *tokv;
 	jsmntok_t **keys, **key_i;
-	char *um, *key = NULL, *value;
+	char *key = NULL, *value;
 
-	// parse user metadata json
-	jsmnutil_parse_json(buf, &tokv, &tokc);
-	um = pv_json_get_value(buf, "user-meta", tokv, tokc);
-
-	if (!um) {
-		ret = -1;
-		goto out;
-	}
-
-	if (tokv)
-		free(tokv);
-
-	ret = jsmnutil_parse_json(um, &tokv, &tokc);
-	keys = jsmnutil_get_object_keys(um, tokv);
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	keys = jsmnutil_get_object_keys(buf, tokv);
 
 	key_i = keys;
 	while (*key_i) {
@@ -709,7 +697,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		if (!key)
 			break;
 
-		strncpy(key, um + (*key_i)->start, n);
+		strncpy(key, buf + (*key_i)->start, n);
 
 		// copy value
 		n = (*key_i + 1)->end - (*key_i + 1)->start;
@@ -717,7 +705,7 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		if (!value)
 			break;
 
-		strncpy(value, um + (*key_i + 1)->start, n);
+		strncpy(value, buf + (*key_i + 1)->start, n);
 		pv_str_unescape_to_ascii(value, n);
 
 		// add or update metadata
@@ -742,8 +730,6 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 	jsmnutil_tokv_free(keys);
 
 out:
-	if (um)
-		free(um);
 	if (tokv)
 		free(tokv);
 	if (key)
