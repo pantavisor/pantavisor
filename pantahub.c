@@ -238,20 +238,23 @@ int pv_ph_device_get_meta(struct pantavisor *pv)
 	if (!ph_client_init(pv))
 		goto out;
 
-	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
+	char buf[256];
+	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s%s", endpoint, "/user-meta");
+
+	req = trest_make_request(THTTP_METHOD_GET, buf, 0);
 
 	res = trest_do_json_request(client, req);
 	if (!res) {
 		pv_log(WARN, "HTTP request GET %s could not be initialized",
-		       endpoint);
+		       buf);
 	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
 		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
-		       endpoint, res->status);
+		       buf, res->status);
 		ph_client_free();
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
 		       "request GET %s returned HTTP error (code=%d; body='%s')",
-		       endpoint, res->code, res->body);
+		       buf, res->code, res->body);
 	} else {
 		pv_metadata_parse_usermeta(res->body);
 		ret = 0;
