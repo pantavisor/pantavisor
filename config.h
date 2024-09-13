@@ -111,6 +111,7 @@ typedef enum {
 	PV_UPDATER_USE_TMP_OBJECTS,
 	PV_WDT_MODE,
 	PV_WDT_TIMEOUT,
+	PV_FIRST_BOOT,
 	PV_MAX
 } config_index_t;
 
