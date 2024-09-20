@@ -16,6 +16,7 @@ set(PANTAVISOR_DM_CRYPT OFF CACHE BOOL "Enable support for dm crypt mounted disk
 set(PANTAVISOR_PVZRAM_TEST OFF CACHE BOOL "Build pvzram-test binary")
 set(PANTAVISOR_DEBUG OFF CACHE BOOL "Enable debug features for Pantavisor")
 set(PANTAVISOR_APPENGINE OFF CACHE BOOL "Build Pantavisor as appengine")
+set(PANTAVISOR_DEFAULTS_SKIP_INSTALL OFF CACHE BOOL "Skip installing defaults/ to etc/pantavisor")
 set(PANTAVISOR_PVS_SKIP_INSTALL OFF CACHE BOOL "Skip installing developer trust store")
 
 # set cmake defintions
@@ -186,6 +187,12 @@ ENDIF()
 
 ## install basic filesystem skeleton
 install(DIRECTORY skel/ DESTINATION /)
+
+
+IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
+### ... insert defaults/
+install(DIRECTORY defaults DESTINATION /etc/pantavisor)
+ENDIF()
 
 ### install PVS secureboot files
 IF(NOT PANTAVISOR_PVS_SKIP_INSTALL)
