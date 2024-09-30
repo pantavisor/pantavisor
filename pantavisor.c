@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -77,6 +81,8 @@
 
 #define CMDLINE_OFFSET 7
 
+#define PVTX_REV_NAME "locals/pvtx-firstboot"
+
 char pv_user_agent[4096];
 
 static struct pantavisor *global_pv;
@@ -98,6 +104,7 @@ static const int PV_WAIT_PERIOD = 1;
 typedef enum {
 	PV_STATE_INIT,
 	PV_STATE_RUN,
+	PV_STATE_FIRST_BOOT,
 	PV_STATE_WAIT,
 	PV_STATE_COMMAND,
 	PV_STATE_UPDATE,
@@ -115,6 +122,8 @@ static const char *pv_state_string(pv_state_t st)
 	switch (st) {
 	case PV_STATE_INIT:
 		return "STATE_INIT";
+	case PV_STATE_FIRST_BOOT:
+		return "STATE_FIRST_BOOT";
 	case PV_STATE_RUN:
 		return "STATE_RUN";
 	case PV_STATE_WAIT:
@@ -189,6 +198,67 @@ static bool pv_wait_delay_timedout()
 	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
 
 	return true;
+}
+
+static int _pv_run_cmd(const char *cmd_tmpl, const char *arg)
+{
+	char *cmd = NULL;
+	int len = asprintf(&cmd, cmd_tmpl, arg);
+
+	if (len == -1) {
+		pv_log(WARN, "command %s with args %s could not be created",
+		       cmd_tmpl, arg);
+		return -1;
+	}
+
+	int err = 0;
+	pv_log(DEBUG, "running %s", cmd);
+	tsh_run(cmd, 1, &err);
+	pv_log(DEBUG, "finish with status code %d", err);
+	free(cmd);
+
+	return err;
+}
+
+static pv_state_t _pv_first_boot(struct pantavisor *pv)
+{
+	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
+
+	pv_state_t next_state = PV_STATE_RUN;
+
+	const char *queue =
+		"/storage/disks/rev/0/bshpvfirstboot/docker--pvup-queue/";
+
+	// TODO: since this is a good condition to finish the function
+	// we need a better way to run the first boot only the first time
+	if (!pv_fs_path_exist(queue))
+		goto out;
+
+	const char *tmp = "/tmp/pvtx";
+	pv_fs_mkbasedir_p(tmp, 0744);
+	setenv("PVTXDIR", tmp, 0);
+
+	const char *c1 =
+		"time pvtx queue process /storage/trails/0 %s /storage/objects";
+	const char *c2 = "time pvtx deploy /storage/trails/%s";
+
+	int err = _pv_run_cmd(c1, queue);
+	if (err != 0)
+		goto out;
+
+	err = _pv_run_cmd(c2, PVTX_REV_NAME);
+	if (err != 0)
+		goto out;
+
+	pv->update = pv_update_get_step_local(PVTX_REV_NAME, false);
+	if (pv->update)
+		next_state = PV_STATE_UPDATE;
+
+out:
+	pv_fs_path_remove(queue, true);
+	pv_fs_path_remove(tmp, true);
+
+	return next_state;
 }
 
 static pv_state_t _pv_init(struct pantavisor *pv)
@@ -333,7 +403,12 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (pv_config_get_wdt_mode() <= WDT_STARTUP)
 		pv_wdt_stop();
 
-	next_state = PV_STATE_WAIT;
+	if (pv_config_get_bool(PV_FIRST_BOOT) &&
+	    !strncmp(pv->state->rev, "0", 1))
+		next_state = PV_STATE_FIRST_BOOT;
+	else
+
+		next_state = PV_STATE_WAIT;
 out:
 	if (json)
 		free(json);
@@ -958,9 +1033,9 @@ static pv_state_t _pv_error(struct pantavisor *pv)
 }
 
 pv_state_func_t *const state_table[MAX_STATES] = {
-	_pv_init,     _pv_run,		_pv_wait,     _pv_command,
-	_pv_update,   _pv_update_apply, _pv_rollback, _pv_reboot,
-	_pv_poweroff, _pv_error,	NULL,
+	_pv_init,    _pv_run,	   _pv_first_boot,   _pv_wait,
+	_pv_command, _pv_update,   _pv_update_apply, _pv_rollback,
+	_pv_reboot,  _pv_poweroff, _pv_error,	     NULL,
 };
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
