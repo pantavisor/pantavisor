@@ -277,6 +277,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_state_t next_state = PV_STATE_ROLLBACK;
 	char *json = NULL;
 
+	bool verify_checksum = true;
+
 	// resume update if we have booted to test a new revision
 	if (pv_update_resume(pv)) {
 		pv_log(ERROR, "update could not be resumed");
@@ -288,6 +290,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		pv_log(INFO, "transitioning...");
 
 		pv_logserver_transition(pv->update->pending->rev);
+		if (!strncmp(pv->update->pending->rev, PVTX_REV_NAME,
+			     strlen(PVTX_REV_NAME)))
+			verify_checksum = false;
 
 		ph_logger_stop_lenient();
 		ph_logger_stop_force();
@@ -296,8 +301,12 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	} else {
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
-		sign_state_res_t sres;
-		sres = pv_signature_verify(json);
+		sign_state_res_t sres = SIGN_STATE_OK;
+
+		if (!pv_config_get_bool(PV_FIRST_BOOT) &&
+		    strncmp(pv->state->rev, "0", strlen("0")))
+			sres = pv_signature_verify(json);
+
 		if (sres != SIGN_STATE_OK) {
 			pv_log(ERROR,
 			       "state signature verification went wrong");
@@ -327,10 +336,14 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// set current log and trail links
 	pv_storage_set_active(pv);
 
-	if (!pv_state_validate_checksum(pv->state)) {
-		pv_log(ERROR, "state objects validation went wrong");
-		pv_update_set_status(pv->update, UPDATE_BAD_CHECKSUM);
-		goto out;
+	if (verify_checksum) {
+		if (!pv_state_validate_checksum(pv->state)) {
+			pv_log(ERROR, "state objects validation went wrong");
+			pv_update_set_status(pv->update, UPDATE_BAD_CHECKSUM);
+			goto out;
+		}
+	} else {
+		verify_checksum = true;
 	}
 
 	pv_update_set_factory_status();
@@ -753,7 +766,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG, "install local received. Processing %s json...",
 		       cmd->payload);
-		pv->update = pv_update_get_step_local(cmd->payload);
+		pv->update = pv_update_get_step_local(cmd->payload, true);
 		if (pv->update)
 			next_state = PV_STATE_UPDATE;
 		break;
@@ -770,7 +783,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 
 		pv_log(DEBUG, "apply local received. Processing %s json...",
 		       cmd->payload);
-		pv->update = pv_update_get_step_local(cmd->payload);
+		pv->update = pv_update_get_step_local(cmd->payload, true);
 		if (pv->update)
 			next_state = PV_STATE_UPDATE_APPLY;
 		break;
@@ -806,7 +819,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 
 		pv_log(INFO, "revision 0 updated. Progressing to revision 0");
-		pv->update = pv_update_get_step_local("0");
+		pv->update = pv_update_get_step_local("0", true);
 		if (pv->update)
 			next_state = PV_STATE_UPDATE;
 		break;

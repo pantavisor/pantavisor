@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#include "config.h"
 #include "state.h"
 #include "drivers.h"
 #include "paths.h"
@@ -43,6 +44,7 @@
 #include "storage.h"
 #include "metadata.h"
 #include "utils/tsh.h"
+#include "bootloader.h"
 #include "utils/math.h"
 #include "utils/str.h"
 #include "utils/json.h"
@@ -757,6 +759,12 @@ int pv_state_stop_force(struct pv_state *s)
 
 static bool pv_state_platform_requires_reboot(struct pv_platform *p)
 {
+	struct pantavisor *pv = pv_get_instance();
+
+	if (pv_config_get_bool(PV_FIRST_BOOT) && pv &&
+	    !strncmp(pv->state->rev, "0", 1))
+		return false;
+
 	if (p->restart_policy == RESTART_SYSTEM) {
 		pv_log(DEBUG,
 		       "it belongs to platform '%s', which has a 'system' restart policy. "
