@@ -209,7 +209,7 @@ install(CODE "file(CREATE_LINK usr/bin/pantavisor ${CODE_INSTALL_BASE}/init SYMB
 ENDIF()
 
 ### install scripts
-install(FILES scripts/JSON.sh scripts/pv_e2fsgrow scripts/pvcrash
+install(FILES scripts/JSON.sh scripts/JSON1.sh scripts/pv_e2fsgrow scripts/pvcrash scripts/pvtx
 	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
 	DESTINATION /lib/pv/)
 install(DIRECTORY scripts/hooks_lxc-mount.d
