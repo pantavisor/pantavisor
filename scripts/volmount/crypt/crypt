@@ -48,7 +48,7 @@ export LD_LIBRARY_PATH="/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 atomic_losetup()
 {
 	_imgfile=$1
-	if ! losetup -f $dir/$img_file; then
+	if ! losetup -f --direct-io=on --sector-size 4096 $dir/$img_file; then
 		echo "ERROR: unable to setup loop device for $_imgfile"
 		return 122
 	fi
