@@ -43,7 +43,7 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-static int ph_mount_init(struct pv_init *this)
+static int _mount_pv_dir_interfaces()
 {
 	struct stat st;
 	char storage_path[PATH_MAX], pv_path[PATH_MAX];
@@ -97,8 +97,10 @@ static int pv_mount_init(struct pv_init *this)
 	char path[PATH_MAX];
 	int ret = -1;
 
-	if (pv_config_get_system_init_mode() == IM_APPENGINE)
-		return 0;
+	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
+		ret = 0;
+		goto out;
+	}
 
 	// Create storage mountpoint and mount device
 	pv_paths_storage(path, PATH_MAX);
@@ -189,15 +191,11 @@ static int pv_mount_init(struct pv_init *this)
 out:
 	if (ret < 0)
 		exit_error(errno, "Could not mount trails storage");
+	_mount_pv_dir_interfaces();
 	return 0;
 }
 
 struct pv_init pv_init_mount = {
 	.init_fn = pv_mount_init,
-	.flags = 0,
-};
-
-struct pv_init ph_init_mount = {
-	.init_fn = ph_mount_init,
 	.flags = 0,
 };

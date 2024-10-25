@@ -268,7 +268,22 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// this might be a enum in the future, for now, we only need to know if DONE
 	pv->state->done = pv_storage_is_rev_done(pv->state->rev);
 
-	// once we have verified the state, we can load update time configuration
+	// once state is verified, we can load credentials, in case they are stored in a volume
+	if (!pv_update_is_transitioning(pv->update)) {
+		// mount bsp volumes
+		if (pv_state_start(pv->state)) {
+			pv_log(ERROR, "error starting state");
+			goto out;
+		}
+
+		// load pantahub.config from vol or storage
+		if (pv_config_load_creds()) {
+			pv_log(ERROR, "creds load failed");
+			goto out;
+		}
+	}
+
+	// load configuration that lives in revision
 	pv_config_load_update(pv->state->rev, pv->state->bsp.config);
 
 	// reload remote bool after non reboot updates, when we don't load config again
@@ -298,11 +313,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	ph_logger_toggle(pv->state->rev);
 
 	if (!pv_update_is_transitioning(pv->update)) {
-		if (pv_state_start(pv->state)) {
-			pv_log(ERROR, "error starting state");
-			goto out;
-		}
-
 		if (pv_metadata_init()) {
 			pv_log(ERROR, "metadata mount failed");
 			goto out;
