@@ -31,6 +31,9 @@
 #define PVCTRL_FNAME "pv-ctrl"
 #define LOGCTRL_FNAME "pv-ctrl-log"
 #define LOGFD_FNAME "pv-fd-log"
+#define PHCONFIG_DNAME "phconfig"
+#define UNCLAIMED_FNAME "phconfig/unclaimed.config"
+#define PANTAHUB_FNAME "phconfig/pantahub.config"
 
 void pv_paths_pv_file(char *buf, size_t size, const char *name);
 
@@ -91,9 +94,6 @@ void pv_paths_storage_trail_pv_file(char *buf, size_t size, const char *rev,
 void pv_paths_storage_trail_pvr_file(char *buf, size_t size, const char *rev,
 				     const char *name);
 
-#define UNCLAIMED_FNAME "unclaimed.config"
-#define PANTAHUB_FNAME "pantahub.config"
-
 void pv_paths_storage_config_file(char *buf, size_t size, const char *name);
 
 #define GRUBENV_FNAME "grubenv"
@@ -135,6 +135,7 @@ void pv_paths_lib_lxc_lxcpath(char *buf, size_t size);
 #define BSP_DNAME "bsp"
 #define USRMETAVOL_DNAME "pv--usrmeta"
 #define DEVMETAVOL_DNAME "pv--devmeta"
+#define PHCONFIGVOL_DNAME "pv--phconfig"
 
 void pv_paths_root_file(char *buf, size_t size, const char *path);
 void pv_paths_volumes_file(char *buf, size_t size, const char *name);
