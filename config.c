@@ -1345,27 +1345,19 @@ int pv_config_init(char *path)
 
 int pv_config_load_creds()
 {
-	// first we check pv--phconfig vol exists
-	struct pantavisor *pv = pv_get_instance();
+	// select storage path depending on configuration
 	char src_path[PATH_MAX];
-	struct stat st;
-	pv_paths_volumes_plat_file(src_path, PATH_MAX, BSP_DNAME,
-				   PHCONFIGVOL_DNAME);
-	if (!pv_state_search_volume(pv->state, PHCONFIGVOL_DNAME) ||
-	    stat(src_path, &st)) {
-		// if pv--phconfig vol does not exist and plain text storage is forbidden by config,
-		// we are going to make the bootup fail
-		if (pv_config_get_bool(PV_STORAGE_PHCONFIG_VOL)) {
-			pv_log(ERROR,
-			       "'%s' does not exist but required by config",
-			       src_path);
-			return -1;
-		}
-
-		// if allowed by config, we keep going with /storage
-		pv_log(INFO, "'%s' does not exist. Mounting storage...",
-		       src_path);
+	if (pv_config_get_bool(PV_STORAGE_PHCONFIG_VOL))
+		pv_paths_volumes_plat_file(src_path, PATH_MAX, BSP_DNAME,
+					   PHCONFIGVOL_DNAME);
+	else
 		pv_paths_storage_config_file(src_path, PATH_MAX, "");
+
+	struct stat st;
+	if (stat(src_path, &st)) {
+		pv_log(ERROR, "'%s' does not exist but required by config",
+		       src_path);
+		return -1;
 	}
 
 	// the creds work dir will be always mounted to /pv/phconfig
