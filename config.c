@@ -217,7 +217,9 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_UPDATER_USE_TMP_OBJECTS", PV | OEM | RUN, 0,
 	  .value.b = false },
 	{ WDT_MODE, "PV_WDT_MODE", PV, 0, .value.i = WDT_SHUTDOWN },
-	{ INT, "PV_WDT_TIMEOUT", PV, 0, .value.i = 15 }
+	{ INT, "PV_WDT_TIMEOUT", PV, 0, .value.i = 15 },
+	{ STR, "PV_SECUREBOOT_A_NAME", PV, 0, .value.s = NULL },
+	{ STR, "PV_SECUREBOOT_B_NAME", PV, 0, .value.s = NULL }
 };
 
 struct pv_config_alias {

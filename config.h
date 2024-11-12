@@ -111,6 +111,8 @@ typedef enum {
 	PV_UPDATER_USE_TMP_OBJECTS,
 	PV_WDT_MODE,
 	PV_WDT_TIMEOUT,
+	PV_UBOOTAB_A_NAME,
+	PV_UBOOTAB_B_NAME,
 	PV_MAX
 } config_index_t;
 
@@ -124,7 +126,8 @@ typedef enum {
 	BL_UBOOT_PLAIN = 0,
 	BL_UBOOT_PVK,
 	BL_GRUB,
-	BL_RPIAB
+	BL_RPIAB,
+	BL_UBOOT_AB
 } bootloader_t;
 
 bootloader_t pv_config_get_bootloader_type(void);
