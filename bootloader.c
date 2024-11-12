@@ -50,6 +50,7 @@ static struct pv_bootloader pv_bootloader;
 extern const struct bl_ops uboot_ops;
 extern const struct bl_ops grub_ops;
 extern const struct bl_ops rpiab_ops;
+extern const struct bl_ops ubootab_ops;
 
 const struct bl_ops *ops = 0;
 
@@ -190,7 +191,12 @@ int pv_bootloader_fail_update()
 	       "setting failed revision %s not to be started after next reboot",
 	       pv_bootloader_get_try() ? pv_bootloader_get_try() : "<NA>");
 
-	return pv_bootloader_unset_try();
+	int err = pv_bootloader_unset_try();
+
+	if (ops->fail_update)
+		ops->fail_update();
+
+	return err;
 }
 
 void pv_bootloader_remove()
@@ -217,6 +223,9 @@ static int pv_bl_init()
 		break;
 	case BL_GRUB:
 		ops = &grub_ops;
+		break;
+	case BL_UBOOT_AB:
+		ops = &ubootab_ops;
 		break;
 	default:
 		pv_log(ERROR, "unknown bootoader type!");

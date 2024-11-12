@@ -154,6 +154,7 @@ add_executable(pantavisor
 			trestclient.c
 			trestclient.h
 			uboot.c
+			ubootab.c
 			updater.c
 			updater.h
 			utils/base64.c

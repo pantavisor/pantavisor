@@ -218,8 +218,8 @@ static struct pv_config_entry entries[] = {
 	  .value.b = false },
 	{ WDT_MODE, "PV_WDT_MODE", PV, 0, .value.i = WDT_SHUTDOWN },
 	{ INT, "PV_WDT_TIMEOUT", PV, 0, .value.i = 15 },
-	{ STR, "PV_SECUREBOOT_A_NAME", PV, 0, .value.s = NULL },
-	{ STR, "PV_SECUREBOOT_B_NAME", PV, 0, .value.s = NULL }
+	{ STR, "PV_UBOOTAB_A_NAME", PV, 0, .value.s = NULL },
+	{ STR, "PV_UBOOTAB_B_NAME", PV, 0, .value.s = NULL }
 };
 
 struct pv_config_alias {
@@ -389,6 +389,8 @@ static char *_get_bootloader_type_str(bootloader_t type)
 		return "grub";
 	case BL_RPIAB:
 		return "rpiab";
+	case BL_UBOOT_AB:
+		return "uboot-ab";
 	default:
 		return "unknown";
 	}
@@ -414,6 +416,9 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 		entry->value.i = BL_GRUB;
 	else if (pv_str_matches(value, strlen(value), "rpiab", strlen("rpiab")))
 		entry->value.i = BL_RPIAB;
+	else if (pv_str_matches(value, strlen(value), "uboot-ab",
+				strlen("uboot-ab")))
+		entry->value.i = BL_UBOOT_AB;
 	else
 		pv_log(WARN, "unknown bootloader type '%s'", value);
 }
