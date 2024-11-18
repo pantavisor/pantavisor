@@ -32,6 +32,9 @@
 
 #define PH_LOGGER_POS_XATTR "trusted.ph.logger.pos"
 
+void ph_logger_init(void);
+void ph_logger_close(void);
+
 void ph_logger_toggle(char *rev);
 void ph_logger_stop_lenient(void);
 void ph_logger_stop_force(void);

@@ -88,6 +88,12 @@ struct ph_logger_fragment {
 
 static DEFINE_DL_LIST(frag_list);
 
+struct ph_logger_file {
+	char *path;
+	off_t pos;
+	struct dl_list list; // ph_logger_file
+};
+
 struct ph_logger {
 	int flags;
 	int epoll_fd;
@@ -97,6 +103,7 @@ struct ph_logger {
 	pid_t log_service;
 	pid_t range_service;
 	pid_t push_service;
+	struct dl_list files; // ph_logger_file
 };
 
 static struct ph_logger ph_logger = { .epoll_fd = -1,
@@ -222,6 +229,80 @@ static char *strnchr(char *src, char ch, int len)
 	return NULL;
 }
 
+struct ph_logger_file *_search_log_file(const char *path)
+{
+	struct ph_logger_file *f, *tmp;
+	dl_list_for_each_safe(f, tmp, &ph_logger.files, struct ph_logger_file, list)
+	{
+		if (pv_str_matches(path, strlen(path), f->path, strlen(f->path)))
+			return f;
+	}
+
+	return NULL;
+}
+
+static void _save_log_file_pos(off_t pos, const char *path)
+{
+	// try to get file info from memory
+	struct ph_logger_file *f;
+	f = _search_log_file(path);
+	// if not, we create a new entry
+	if (!f) {
+		pv_log(DEBUG, "log file '%s' not yet stored in memory. Saving new file...", path);
+		f = calloc(1, sizeof(struct ph_logger_file));
+		if (f) {
+			f->path = strdup(path);
+			dl_list_add(&ph_logger.files, &f->list);
+		}
+	}
+	if (!f) {
+		pv_log(ERROR, "could not initialize log file: %s", strerror(errno));
+		return;
+	}
+
+	// update pos value in memory
+	f->pos = pos;
+
+	// save pos in xattr if possible by config
+	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
+		char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)]; // max PRI64
+		SNPRINTF_WTRUNC(value, sizeof(value), "%" PRId64, pos);
+		if (setxattr(path, PH_LOGGER_POS_XATTR, value, strlen(value), 0))
+			pv_log(WARN, "xattr could not be saved in '%s': %s", path, strerror(errno));
+	}
+}
+
+#define MAX_XATTR_SIZE 32
+
+static off_t _load_log_file_pos(const char *path)
+{
+	// first, try to get pos from memory
+	struct ph_logger_file *f;
+	f = _search_log_file(path);
+	if (f)
+		return f->pos;
+
+	pv_log(DEBUG, "unknown file found in '%s'", path);
+
+	// if not in memory, try to get it from xattr if possible
+	char dst[MAX_XATTR_SIZE] = { 0 };
+	off_t pos = 0;
+	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
+		pv_log(DEBUG, "log file is persistent. Trying to get xattr...", path);
+		if (getxattr(path, PH_LOGGER_POS_XATTR, dst, MAX_XATTR_SIZE) > 0)
+			sscanf(dst, "%" PRId64, &pos);
+		else {
+			if (errno == ENODATA)
+				// if xattr does not yet exist for that path, we save it with pos 0
+				_save_log_file_pos(pos, path);
+			else
+				pv_log(WARN, "xattr could not be loaded: %s", strerror(errno));
+		}
+	}
+
+	return 0;
+}
+
 /*
  * The log files contains each line ending in a '\n'
  * Read 4K block of filename, seek to the last saved position in
@@ -233,7 +314,6 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 				    char *source, char *rev)
 {
 	int ret = 0;
-	char dst[32] = { 0 };
 	off_t pos = 0;
 	int offset = 0;
 	off_t read_pos = 0;
@@ -259,21 +339,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 	}
 	buf = log_buff->buf;
 
-	if (getxattr(filename, PH_LOGGER_POS_XATTR, dst, 32) > 0) {
-		sscanf(dst, "%" PRId64, &pos);
-	} else {
-		pv_log(DEBUG,
-		       "XATTR %s not found in %s. Position set to pos %lld",
-		       PH_LOGGER_POS_XATTR, filename, pos);
-		SNPRINTF_WTRUNC(dst, 32, "%" PRIu64 "", pos);
-		/*
-		 * set xattr to quiet the verbose-ness otherwise.
-		 */
-		int err = setxattr(filename, PH_LOGGER_POS_XATTR, dst,
-				   strlen(dst), 0);
-		if (err != 0)
-			pv_log(ERROR, "couldn't set XATTR for %s", filename);
-	}
+	pos = _load_log_file_pos(filename);
 #ifdef DEBUG
 	if (!dl_list_empty(&frag_list)) {
 		pv_log(WARN, "frag list must be empty");
@@ -416,28 +482,8 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 			       filename);
 			bytes_read = 0;
 		} else {
-			/*
-			 * We got a new line at the beginning of our
-			 * data buffer. Make sure we store the position
-			 * in xattr otherwise we'll just keep looping in
-			 * this block without reading the file further if
-			 * this block contains only new lines.
-			 *
-			 * If we got some text after this newline, then the
-			 * offset above would take place so no need to re-init
-			 * offset after writing it here.
-			 */
-			char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)]; // max PRI64
-
 			pos = read_pos + offset;
-			SNPRINTF_WTRUNC(value, sizeof(value), "%" PRId64, pos);
-
-			int err = setxattr(filename, PH_LOGGER_POS_XATTR, value,
-					   strlen(value), 0);
-			if (err != 0)
-				pv_log(ERROR,
-				       "couldn't set XATTR for new line in %s",
-				       filename);
+			_save_log_file_pos(pos, filename);
 		}
 	}
 close_fd:
@@ -489,21 +535,8 @@ close_fd:
 			SNPRINTF_WTRUNC(json_frag_array + off, avail, "]");
 			// set ret to 1, something pending to be sent
 			ret = 1;
-			if (!ph_logger_push_logs_endpoint(&ph_logger,
-							  json_frag_array)) {
-				char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)];
-
-				SNPRINTF_WTRUNC(value, sizeof(value),
-						"%" PRId64, pos);
-				int err =
-					setxattr(filename, PH_LOGGER_POS_XATTR,
-						 value, strlen(value), 0);
-
-				if (err != 0)
-					pv_log(ERROR,
-					       "couldn't set XATTR for %s after push",
-					       filename);
-			}
+			if (!ph_logger_push_logs_endpoint(&ph_logger, json_frag_array))
+				_save_log_file_pos(pos, filename);
 			// in case of error while sending, we return -1
 			else
 				ret = -1;
@@ -864,4 +897,26 @@ void ph_logger_stop_force()
 
 	ph_logger.push_service = -1;
 	ph_logger.range_service = -1;
+}
+
+void ph_logger_init()
+{
+	dl_list_init(&ph_logger.files);
+}
+
+static void _ph_logger_free_file(struct ph_logger_file *f)
+{
+	if (f->path)
+		free(f->path);
+}
+
+void ph_logger_close()
+{
+	struct ph_logger_file *f, *tmp;
+	dl_list_for_each_safe(f, tmp, &ph_logger.files, struct ph_logger_file, list)
+	{
+		pv_log(DEBUG, "removing file '%s'", f->path);
+		dl_list_del(&f->list);
+		_ph_logger_free_file(f);
+	}
 }
