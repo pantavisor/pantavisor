@@ -910,6 +910,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	// force stop childs
 	pv_state_stop_force(pv->state);
 	ph_logger_stop_force();
+	ph_logger_close();
 
 	// close pvctrl
 	pv_ctrl_socket_close(pv->ctrl_fd);
@@ -1046,6 +1047,8 @@ static int pv_pantavisor_init(struct pv_init *this)
 	pv->hard_poweroff = false;
 
 	pv_cgroup_print();
+
+	ph_logger_init();
 
 out:
 	return 0;
