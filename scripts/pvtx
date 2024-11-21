@@ -1,0 +1,953 @@
+#!/bin/sh
+
+set -e
+
+VERSION="1.4.0"
+
+cmd=$0
+dir=$(sh -c "cd $(dirname $cmd); pwd")
+cmd=$(basename $0)
+
+pvtx_dir=${PVTXDIR:-$PREFIX/var/pvr-sdk/pvtx}
+PVCONTROL=${PVCONTROL:-$dir/pvcontrol}
+validate_signatures=${PV_SIG_VALIDATION:-true}
+
+signature_map_file=$pvtx_dir/signatures_map
+is_signedby=$pvtx_dir/key.signed
+queue_conf_dir="$pvtx_dir"
+jsonsh="$dir/JSON1.sh"
+
+empty_state='{"#spec": "pantavisor-service-system@1"}'
+
+usage() {
+	echo "USAGE: $cmd begin|add|remove|abort|commit|queue new|queue remove|queue unpack|queue process|deploy <positional arguments>"
+	echo "   Transactional updates with pvrexport ingest - good for small disks with no object duplication"
+	echo "   - begin: start a tx with fresh copy of current working state"
+	echo "   - add: ingest a pvrexport tarball adding or replacing existing elements"
+	echo "   - remove: remove all elements of a part of the state json"
+	echo "   - abort: abort and trigger run of GC to clear unused objects"
+	echo "   - commit: apply working draft"
+	echo "   - show: display current working draft json"
+	echo "   - deploy: deploy working draft into the live state"
+	echo "   - queue new: create a queue folder"
+	echo "   - queue remove: add a .remove file inside the queue folder"
+	echo "   - queue unpack: unpack a pvrexport tarball from the queue and write the objects to the objects folder"
+	echo "   - queue process: process the queue folder"
+	exit 0
+}
+
+echo_e() {
+	echo $@ 1>&2
+}
+
+echo_debug() {
+	if [ "$DEBUG" == "true" ]; then
+		echo $@ 1>&2
+	fi
+}
+
+get_relative_path() {
+	dir1=$(cd "$1"; pwd)
+	dir2=$(cd "$2"; pwd)
+
+	common_part=$dir1
+	back_part=''
+
+	while [ "${dir2#$common_part}" == "${dir2}" ]; do
+		common_part=$(dirname "$common_part")
+		if [ -z $back_part ]; then
+			back_part='../'
+		else
+			back_part="../$back_part"
+		fi
+	done
+
+	# Construct the relative path
+	relative_path="$back_part${dir2#$common_part/}"
+
+	echo $relative_path
+}
+
+
+touchit() {
+	: >>$1
+}
+
+base64_padding() {
+  local len=$(( ${#1} % 4 ))
+  local padded_b64=''
+  if [ ${len} = 2 ]; then
+    padded_b64="${1}=="
+  elif [ ${len} = 3 ]; then
+    padded_b64="${1}="
+  else
+    padded_b64="${1}"
+  fi
+  printf "%s" "$padded_b64"
+}
+
+
+url_encode() {
+  echo "$1" | sed -e 's#/#%2F#g'
+}
+
+url_decode() {
+  echo "$1" | sed -e 's#%2F#/#g'
+}
+
+
+base64url_decode() {
+  base64_padding "$1" | tr -- '-_' '+/' | base64 -d
+}
+
+_check_ingest_spec() {
+	# we only succeed of spec matches ...
+	cat $pvtx_dir/ingest.JSON.sh.1 | grep -s ^\\[\"\\#spec\"\] | grep -s -q \""$1"\"
+}
+
+# Ingests signatures from a file and updates the signature map file.
+
+# This function ingests signatures from a file and updates the signature map file.
+# It first checks if the signature map file exists, and if not, creates it.
+# Then, it creates a draft of the signature map file by copying the existing file.
+# It reads each line of the input file and filters out lines containing "[\"_sigs/".
+# For each filtered line, it extracts the name and decodes the signature includes.
+# It then processes each path included in the signature and generates a path regex.
+# The path regex is then appended to the draft signature map file.
+# Finally, the draft signature map file is renamed to the actual signature map file.
+
+# Parameters:
+#   - $1: The path to the file containing the signatures.
+
+# Return:
+#   None
+_ingest_signatures() {
+	if [ "$validate_signatures" == "false" ]; then
+    	return 0
+  	fi
+	if ! [ -f $signature_map_file ]; then
+		touchit $signature_map_file
+	fi
+	
+	echo_e "ingesting signatures from $1"
+
+	cp $signature_map_file ${signature_map_file}.draft
+	grep -s "\[\"_sigs/" $1 | while read -r line; do
+		name=$(echo $line | sed -e 's/\["\([^[:space:]]*\)"\][[:space:]].*$/\1/')
+		_decode_signature_includes $line | while read -r path; do
+			path_regex=$(echo "$path" | sed -e 's/\["*[^"]*"\]*\///g' -e 's/\*\*/\.\//' -e 's/\*$/\\[\\^\/\\]/' -e 's/"//g')
+			echo "[\"$path\"] [\"$name\"] $path_regex" >>${signature_map_file}.draft
+		done
+	done
+
+	mv ${signature_map_file}.draft $signature_map_file
+}
+
+_decode_signature_includes() {
+	if [ "$2" == "" ]; then
+		echo_e "signature line can't be empty"
+		# echo_debug "_decode_signature_includes"
+		return 0
+	fi
+
+	value=$(echo $2 | $jsonsh 1 | grep -s "\[\"protected\"\]" | awk '{print $2}')
+
+	# Decode the protected part of the jws in order to read the pvs include and exclude
+	pvs=$(base64url_decode "${value:1:${#value}-2}")
+	if [ $(echo $files | wc -m) -eq 0 ]; then
+		# echo_debug "protected parts is empty"
+		return 0
+	fi
+
+	echo $pvs | $jsonsh 2 | grep -s "\[\"pvs\",\"include\"" | awk '{print $2}' | tr ',' '\n' | tr -d '"[]' | while read -r file; do
+		echo "$file"
+	done
+}
+
+_merge_JSON_sh() {
+	# first lets strip all keys that $2 has so we dont get dupes
+	cat $1 >$pvtx_dir/merge.origin
+	cat $2 >$pvtx_dir/merge.patch # patch
+
+	# Search for all signatures in patch state
+	echo_e "Search for all signatures in patch state and cleaning those from origin"
+
+	cat $pvtx_dir/merge.patch | grep -s "\[\"_sigs/" | while read -r line; do
+		key=$(echo $line | sed -e 's/\["\([^[:space:]]*\)"\][[:space:]].*$/\1/')
+		originline="$(grep -s "\[\"$key\"\]" $pvtx_dir/merge.origin)"
+		if [ -n "$originline" ] && ! grep -s -q -F "$line" $pvtx_dir/merge.origin; then
+			# Clean signatures of the origin with the same key
+			# _clean_signature_files receive the file and the JSON.sh line to be decoded
+			_clean_signature_files $pvtx_dir/merge.origin $originline
+		fi
+	done
+
+	cat $pvtx_dir/merge.origin | while read -r line; do
+		key=$(echo $line | sed -e 's/\["\([^[:space:]]*\)"\][[:space:]].*$/\1/')
+		if ! grep -q "\[\"$key\"\]" $pvtx_dir/merge.patch; then
+			echo $line
+		fi
+	done >$pvtx_dir/merge.draft
+
+	# now we merge through concat and sort
+	cat $pvtx_dir/merge.draft $pvtx_dir/merge.patch | busybox sort -s | busybox uniq
+}
+
+_decode_signature_protected() {
+	# echo_debug "_decode_signature_protected: $2"
+	if [ "$2" == "" ]; then
+		echo_e "signature line can't be empty"
+		# echo_debug "_decode_signature_protected"
+		return 0
+	fi
+
+
+	value=$(echo $2 | $jsonsh 1 | grep -s "\[\"protected\"\]" | awk '{print $2}')
+
+	# Decode the protected part of the jws in order to read the pvs include and exclude
+	pvs=$(base64url_decode "${value:1:${#value}-2}")
+	if [ $(echo $files | wc -m) -eq 0 ]; then
+		echo_e "protected parts is empty"
+		return 0
+	fi
+
+	echo $pvs | $jsonsh 2 | grep -s "\[\"pvs\"," | awk '{print $2}' | tr ',' '\n' | tr -d '"[]' | while read -r file; do
+		echo "$file"
+	done
+}
+
+_clean_signature_files() {
+	if [ "$validate_signatures" == "false" ]; then
+		return 0
+	fi
+
+	# if the line is empty just finish without error
+	if [ "$2" == "" ]; then
+		echo_e "signature line can't be empty"
+		return 0
+	fi
+
+	# Decode the protected part of the jws in order to read the pvs include and exclude
+	signed_paths=$(_decode_signature_protected $2 $3)
+
+	echo "$signed_paths" | while read -r glob; do
+		key=$(echo $2 | sed -e 's/\["\([^[:space:]]*\)"\][[:space:]].*$/\1/')
+		# Convert the file matching from pvs to regular expresion
+		value=$(echo $glob | sed -e 's#\/\*\*$#\/\.\*#;s#\/\*$#\/\[\^\/\]\*#;s#\/#\\\/#g')
+		regex='^\[\"'$value'\"\]'
+
+		# echo_debug ""
+		# echo_debug "searching signature for path: [\"$glob\"] [\"$key\"]"
+		if cat $signature_map_file | grep -s -v "$key" | grep -s -q -E "$regex" 2>/dev/null; then
+			# echo_debug "path already signed: $(cat $signature_map_file | grep -s -v "$key" | grep -s -E "$regex" 2>/dev/null)"
+			continue
+		fi
+
+		# echo_debug "searching path inside already signed"
+		rm $is_signedby 2>/dev/null || true
+		grep -s -v "$key" $signature_map_file | while read -r path; do
+			path_regex=$(echo $path | awk '{print $3}')
+			# echo_debug "verifying if $glob already signed by $path_regex"
+			if echo $glob | grep -s -q -E "$path_regex" 2>/dev/null; then
+				echo $path > $is_signedby
+				break
+			fi
+		done
+
+		if [ -f $is_signedby ]; then
+			# echo_debug "path already signed by: $(cat $is_signedby)"
+			continue
+		fi
+
+		# echo_debug "cleaning signed part: $regex"
+		cat $1 | grep -s -v -E "$regex" 2>/dev/null >$pvtx_dir/state.JSON.sh.1.filtered
+		mv $pvtx_dir/state.JSON.sh.1.filtered $1
+	done
+}
+
+_clean_signature_removals() {
+	if [ "$validate_signatures" == "false" ]; then 
+		cat $2 | busybox sort -s | busybox uniq
+		return 0
+	fi
+	
+	cat $2 > $pvtx_dir/merge.patch
+
+	# check the keys that were removed between source and patch
+	# and clean signatures if they where deleted
+	cat $1 | while read -r line; do
+		key=$(echo $line | sed -e 's/\["\([^[:space:]]*\)"\][[:space:]].*$/\1/')
+		if echo "$key" | grep -s -q "^_sigs/" && ! grep -s -q "\[\"$key\"\]" $pvtx_dir/merge.patch; then
+			_clean_signature_files $pvtx_dir/merge.patch "$line"
+		fi
+	done >$pvtx_dir/merge.draft
+
+	cat $pvtx_dir/merge.patch | busybox sort -s | busybox uniq
+}
+
+cmd_abort() {
+	rm -rf $pvtx_dir/*
+	# pvcontrol commands rungc
+}
+
+_make_json_draft() {
+	_make_json_from_JSONSH $pvtx_dir/state.JSON.sh.1.draft
+	# echo -n '{'$(cat $1 | sed 's/^\[\([^[:space:]]*\)\][[:space:]]\(.*\)/\1:\2/g' | tr '\n' ',')'' | sed -e 's/,$/}/'
+}
+
+_make_json_from_JSONSH() {
+	printf "%s" "{$(sed -E 's/^\[([^]]+)\][[:space:]]+(.*)$/\1:\2/g' "$1" | tr '\n' ',' | sed 's/,$//')}"
+	# printf "%s" "{$(cat $1 | sed 's/^\[\([^[:space:]]*\)\][[:space:]]\(.*\)/\1:\2/g' | tr '\n' ',')" | sed -e 's/,$/}/'
+	# echo -n '{'$(cat $1 | sed 's/^\[\([^[:space:]]*\)\][[:space:]]\(.*\)/\1:\2/g' | tr '\n' ',')'' | sed -e 's/,$/}/'
+}
+
+cmd_version() {
+	echo "$VERSION"
+}
+
+# cmd_add - add a pvrexport to state json (and replace existing)
+#           This operation requires an active transcation (see begin command)
+#           1. json will be inspected; if not a valid format
+#              the add will be aborted
+#           2. objects will get uploaded to PV
+#           3. json will be patched into state.json
+cmd_add() {
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 1
+	fi
+
+	if [ "$1" = "-" ] && [ -p /dev/stdin ]; then
+		echo_e "adding pvexport from pipe"
+
+		cat /dev/stdin | tar -xz --to-command "$dir/pvtx ingest" 2>&1
+	else
+		echo_e "adding pvexport from $1"
+
+		if [ "$(dd if="$1" bs=1 count=2 2>/dev/null | hexdump -v -e '/1 "%02x"')" = "1f8b" ]; then
+			cat "$1" | tar -xz --to-command "$dir/pvtx ingest" 2>&1
+		elif [ "$(dd if="$1" bs=1 count=5 2>/dev/null | hexdump -v -e '/1 "%02x"')" = "425a683931" ]; then
+			cat "$1" | tar -xz --to-command "$dir/pvtx ingest" 2>&1
+		elif [ "$(dd if="$1" bs=1 skip=257 count=5 2>/dev/null | hexdump -v -e '/1 "%02x"')" = "7573746172" ]; then
+			cat "$1" | tar -x --to-command "$dir/pvtx ingest" 2>&1
+		else
+			cat "$1" | TAR_FILENAME="json" $dir/pvtx ingest 2>&1
+		fi
+	fi
+}
+
+cmd_remove() {
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 3
+	fi
+
+	part=$1
+	if [ -z "$part" ]; then
+		echo_e "ERROR: must remove a part (missing paramter)"
+		return 4
+	fi
+
+	echo_e "removing $part and cleaning signed files if part has been signed"
+
+	# filter part ... simple
+	cat $pvtx_dir/state.JSON.sh.1.draft | while read -r line; do
+		if ! echo $line | grep -s -q "^\[\"$part\"" && ! echo $line | grep -s -q "^\[\"$part/" && ! echo $line | grep -s -q "^\[\"_sigs/$part\.json"; then
+			echo $line
+		fi
+	done >$pvtx_dir/state.JSON.sh.1._draft
+
+	# grep -s -v "^\[\"$part\/" $pvtx_dir/state.JSON.sh.1.draft > $pvtx_dir/state.JSON.sh.1.draft.tmp
+	# grep -s -v "^\[\"_sigs/$part\.json" $pvtx_dir/state.JSON.sh.1.draft.tmp > $pvtx_dir/state.JSON.sh.1._draft
+
+	_clean_signature_removals $pvtx_dir/state.JSON.sh.1.draft $pvtx_dir/state.JSON.sh.1._draft > $pvtx_dir/state.JSON.sh.1.draft.tmp
+	mv $pvtx_dir/state.JSON.sh.1.draft.tmp $pvtx_dir/state.JSON.sh.1.draft
+}
+
+# ingest a pvr export tarball elements; invoked through tar --to-command
+cmd_ingest() {
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 5
+	fi
+
+	if [ -f $pvtx_dir/ingest_failed ]; then
+		cat $pvtx_dir/ingest_failed 1>&2
+		return 6
+	fi
+
+	case "$TAR_FILENAME" in
+	json)
+		cat | $jsonsh 1 >$pvtx_dir/ingest.JSON.sh.1
+		if ! _check_ingest_spec "pantavisor-service-system@1"; then
+			echo "Not supported spec:" > $pvtx_dir/ingest_failed
+			return 7
+		fi
+
+		if ! _ingest_signatures $pvtx_dir/ingest.JSON.sh.1 ; then
+			echo "ERROR: ingesting signatures failed" > $pvtx_dir/ingest_failed
+			return 7
+		fi
+
+		# merge JSON.sh
+		if ! _merge_JSON_sh $pvtx_dir/state.JSON.sh.1.draft $pvtx_dir/ingest.JSON.sh.1 >$pvtx_dir/state.JSON.sh.1._draft; then
+			echo "ERROR: merging JSON.sh failed" > $pvtx_dir/ingest_failed
+			return 7
+		fi
+		mv $pvtx_dir/state.JSON.sh.1._draft $pvtx_dir/state.JSON.sh.1.draft
+		;;
+	objects/*)
+		sha=${TAR_FILENAME#objects/}
+		if [ -f "$pvtx_dir/objects" ]; then
+			object_folder=$(cat $pvtx_dir/objects 2>/dev/null || "")
+		else
+			object_folder=""
+		fi
+		if [ "$object_folder" != "" ] && [ -d "$object_folder" ]; then
+			cat >$object_folder/$sha
+		else
+			message=$($PVCONTROL objects put -${TAR_SIZE} $sha 2>&1)
+			result=$?
+			if ! [ $result = 0 ]; then
+				echo_e "ERROR: putting object with sha \"$sha\" -- Reason: $result"
+				touchit $pvtx_dir/ingest_failed
+				return 8
+			fi
+		fi
+		;;
+	*)
+		touchit $pvtx_dir/ingest_failed
+		echo_e "Illegal file in tarball: $TAR_FILENAME"
+		return 9
+		;;
+	esac
+}
+
+cmd_show() {
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 10
+	fi
+	_make_json_draft
+}
+
+# Commit the changes in the active transaction to the PV.
+#
+# This function checks if there is an active transaction by
+# verifying the existence of the file $pvtx_dir/state.JSON.sh.1.draft.
+# If the file does not exist, it prints an error message and returns 11.
+#
+# If the file exists, it creates a draft JSON file by calling the
+# _make_json_draft function and saves it to $pvtx_dir/draft.json.
+# It then calculates a hash value of the draft JSON file using the
+# sha256sum command and extracts the first 8 characters of the hash.
+# The hash value is used to generate a version string in the format
+# "locals/pvtx-<timestamp>-<hash>-<random_number>".
+# The version string is then used to upload the draft JSON file to
+# the PV using the $PVCONTROL steps put command.
+# The version string is printed to the standard output.
+#
+# If the DEBUG environment variable is not set, it removes all files
+# in the $pvtx_dir directory.
+cmd_commit() {
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 11
+	fi
+	if [ -f $pvtx_dir/objects ]; then
+		echo_e "ERROR: this is a local transaction, only can be deployed with pvtx deploy"
+		return 12
+	fi
+	_make_json_draft >$pvtx_dir/draft.json
+	vers=$(_get_version $pvtx_dir/draft.json)
+	$PVCONTROL steps put $pvtx_dir/draft.json $vers
+	echo "$vers"
+	if [ "$DEBUG" == "" ]; then
+		rm -rf $pvtx_dir/*
+	fi
+}
+
+_get_version() {
+	if ! [ -f $1 ]; then
+		echo_e "ERROR: draft file does not exist: $1"
+		return 12
+	fi
+
+	hashv=$(cat $1 | sha256sum | sed 's/[[:space:]].*$//')
+	vers="locals/pvtx-$(date +%s)-$(echo $hashv | head -c 8)-$(($RANDOM % 1000))"
+	echo "$vers"
+}
+
+#
+# Start a new transaction
+#
+# If there is an active transaction, finish it with "commit" or "abort" first.
+#
+# This function:
+# - cleans the transaction directory
+# - either reads the state.json from the argument or from the current state from PVCONTROL
+# - runs JSON.sh to generate the internal representation of the state
+# - copies that to the draft file
+# - runs the signature ingestion
+#
+cmd_begin() {
+	if ! [ -d $pvtx_dir ]; then
+		mkdir -p $pvtx_dir
+	fi
+
+	if [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: active transaction; finish your work with 'deploy', 'commit' or 'abort' first ..."
+		return 12
+	fi
+
+	if [ -n "$1" ]; then
+		echo_e "getting state.json from $1"
+
+		# read the state.json from the argument
+		#  - then check if it has a json file in its top directory
+		#  - then check if it has a json file in its .pvr directory
+		#  - otherwise just copy the argument to the state.json
+		if [ "$1" == "empty" ]; then
+			echo $empty_state >$pvtx_dir/state.json
+		elif [ -f "$1/json" ]; then
+			cat $1/json >$pvtx_dir/state.json
+		elif [ -f "$1/.pvr/json" ]; then
+			cat $1/.pvr/json >$pvtx_dir/state.json
+		elif [ -f "$1" ]; then
+			cat $1 >$pvtx_dir/state.json
+		fi
+
+		if [ -n "$2" ]; then
+			echo "$2" >$pvtx_dir/objects
+		fi
+	else
+		echo_e "getting state.json from PVCONTROL current state"
+
+		$PVCONTROL steps get current >$pvtx_dir/state.json
+	fi
+
+	if [ ! -f $pvtx_dir/state.json ]; then
+		echo_e "ERROR: no state.json found"
+		return 13
+	fi
+
+	cat $pvtx_dir/state.json | $jsonsh 1 >$pvtx_dir/state.JSON.sh.1
+	cp $pvtx_dir/state.JSON.sh.1 $pvtx_dir/state.JSON.sh.1.draft
+
+	_ingest_signatures $pvtx_dir/state.JSON.sh.1.draft
+}
+
+# Deploys the current draft into the specified REVISION_PATH.
+#
+# Args:
+#   - deploy_folder (str): Path where a revision will be updated.
+#
+# Returns:
+#   None
+cmd_deploy() {
+	deploy_folder=$1
+	object_folder="$(cat $pvtx_dir/objects)"
+
+	if ! [ -d "$object_folder" ]; then
+		echo_e "ERROR: no object folder $object_folder"
+		return 1
+	fi
+
+	if [ -z "$deploy_folder" ]; then
+		echo_e "ERROR: no argument 1; see --help"
+		return 1
+	fi
+
+	if [ "$1" = "--help" ]; then
+		echo "Usage: $0 deploy <REVISION_PATH>"
+		echo "  deploy patches the current draft into the REVISION_PATH"
+		echo "    REVISION_PATH: path where a revision will be updated"
+		echo ""
+		return 0
+	fi
+
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 11
+	fi
+
+	if [ ! -f $deploy_folder/.pvr/json ] || [ ! -f $deploy_folder/.pvr/config ]; then
+		mkdir -p $deploy_folder/.pvr || true
+
+		spec=$(cat $pvtx_dir/state.JSON.sh.1.draft | grep -s ^\\[\"\\#spec\"\] 2>/dev/null | sed 's/.*"\(.*\)".*/\1/')
+		relative_objects=$(get_relative_path $deploy_folder $object_folder)
+		echo "{\"ObjectsDir\": \"$relative_objects\"}" > $deploy_folder/.pvr/config
+		echo "{ \"#spec\": \"$spec\" }" > $deploy_folder/.pvr/json
+	fi
+
+	_state_to_filesystem $@
+	_create_pv_links $@
+
+	if [ "$DEBUG" == "" ]; then
+		rm -rf $pvtx_dir/*
+	fi
+}
+
+_state_to_filesystem() {
+	deploy_folder=$1
+	object_folder="$(cat $pvtx_dir/objects)"
+	relative_objects=$(get_relative_path $deploy_folder $object_folder)
+
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 11
+	fi
+
+	# clean the deploy folder before regenerating
+	rm -rf $deploy_folder/* >/dev/null 2>&1 || true
+
+	# generate the json
+	_make_json_draft >$deploy_folder/.pvr/json
+	cd $deploy_folder
+
+	cat $pvtx_dir/state.JSON.sh.1.draft | while read -r line; do
+		file_path=$(echo $line | sed -e 's/\["\([^[:space:]]*\)"\][[:space:]].*$/\1/')
+		file_content=$(echo $line | sed -e 's/^\[\".*\"\]\t\+//g' -e 's/^\[\".*\"\]\s\+//g')
+		file_dir=$(dirname $file_path)
+
+
+		if [ "$file_path" = "#spec" ]; then
+			continue
+		fi
+
+		if ! [ -d $deploy_folder/$file_dir ]; then
+			mkdir -p $deploy_folder/$file_dir
+		fi
+
+		if echo "$file_content" | grep -s -qE '^"[0-9a-f]{64}"$' 2>/dev/null; then
+			object_id=$(echo "$file_content" | sed -e 's/^"\(.*\)"$/\1/')
+
+			ln $relative_objects/$object_id $file_path
+		else
+			printf "%s" "$file_content" > $deploy_folder/$file_path
+		fi
+	done
+}
+
+_create_pv_links() {
+	deploy_folder=$1
+	object_folder="$(cat $pvtx_dir/objects)"
+
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 11
+	fi
+
+	if [ -d $deploy_folder/.pv ]; then
+		rm -rf $deploy_folder/.pv/*
+	else
+		mkdir -p $deploy_folder/.pv
+	fi
+
+	if ! [ -f $deploy_folder/bsp/run.json ]; then
+		echo_e "ERROR: no bsp run.json"
+		return 11
+	fi
+
+	cd $deploy_folder
+
+	cat $deploy_folder/bsp/run.json | $jsonsh 1 | while read -r runLine; do
+		key=$(echo $runLine | sed -e 's/\["\([^[:space:]]*\)"\][[:space:]].*$/\1/')
+		value=$(echo $runLine | awk '{print $2}' | sed -e 's/^"\(.*\)"$/\1/')
+
+		if [ "$key" == "fit" ]; then
+			if [ -h $deploy_folder/.pv/pantavisor.fit ]; then
+				rm -f $deploy_folder/.pv/pantavisor.fit
+			fi
+			ln ./bsp/$value ./.pv/pantavisor.fit
+		fi
+
+		if [ "$key" == "kernel" ] || [ "$key" == "linux" ]; then
+			if [ -h $deploy_folder/.pv/pv-kernel.img ]; then
+				rm -f $deploy_folder/.pv/pv-kernel.img
+			fi
+			ln ./bsp/$value ./.pv/pv-kernel.img
+		fi
+
+		if [ "$key" == "pantavisor" ] || [ "$key" == "initrd" ]; then
+			if [ -h $deploy_folder/.pv/pv-initrd.img ]; then
+				rm -f $deploy_folder/.pv/pv-initrd.img
+			fi
+
+			ln ./bsp/$value ./.pv/pv-initrd.img
+		fi
+
+		if [ "$key" == "fdt" ]; then
+			if [ -h $deploy_folder/.pv/pv-fdt.dtb ]; then
+				rm -f $deploy_folder/.pv/pv-fdt.dtb
+			fi
+
+			ln ./bsp/$value ./.pv/pv-fdt.dtb
+		fi
+	done
+
+}
+
+cmd_queue_new() {
+	if [ -z "$1" ]; then
+		echo_e "ERROR: queue arguments is required"
+		return 1
+	fi
+	if [ -z "$2" ]; then
+		echo_e "ERROR: objects arguments is required"
+		return 1
+	fi
+
+	if ! [ -d $queue_conf_dir ]; then
+		mkdir -p $queue_conf_dir
+	fi
+
+	echo_e "creating queue in $1 with objects in $2"
+
+	mkdir -p $1 >/dev/null 2>&1
+
+	echo "$1" >$queue_conf_dir/queue
+	echo "$2" >$queue_conf_dir/objects
+}
+
+cmd_queue_remove() {
+	queue_folder=$(cat $queue_conf_dir/queue)
+	if ! [ -d "$queue_folder" ]; then
+		echo_e "ERROR queue_remove: queue $queue_folder does not exist"
+		return 1
+	fi
+
+	echo_e "adding remove operation for $1 to queue $queue_folder"
+
+	count=$(find "$queue_folder" -type f | wc -l)
+	count=$((count + 1))
+	formatted_count=$(printf "%03d" $count)
+	encoded_name=$(url_encode $1)
+
+	touchit "$queue_folder/${formatted_count}__${encoded_name}.remove"
+}
+
+cmd_queue_unpack() {
+	queue_folder=$(cat $queue_conf_dir/queue)
+	object_folder=$(cat $queue_conf_dir/objects)
+	if ! [ -d "$queue_folder" ]; then
+		echo_e "ERROR queue_unpack: queue $queue_folder does not exist"
+		return 1
+	fi
+	if ! [ -d "$object_folder" ]; then
+		mkdir -p $object_folder
+	fi
+
+	if [ -p /dev/stdin ] && [ "$1" = "-" ]; then
+		echo_e "unpacking package from stdin"
+
+		echo "package" >$queue_conf_dir/queue.ingesting
+		cat /dev/stdin | tar -xz --to-command "$dir/pvtx queue ingest" 2>&1
+	else
+		filename=$(basename -- "$1")
+		extension="${filename##*.}"
+		filename="${filename%.*}"
+		echo "$filename" >$queue_conf_dir/queue.ingesting
+
+		echo_e "unpacking package from ${filename}.${extension}"
+
+		if [ "$(dd if="$1" bs=1 count=2 2>/dev/null | hexdump -v -e '/1 "%02x"')" = "1f8b" ]; then
+			cat "$1" | tar -xz --to-command "$dir/pvtx queue ingest" 2>&1
+		elif [ "$(dd if="$1" bs=1 count=5 2>/dev/null | hexdump -v -e '/1 "%02x"')" = "425a683931" ]; then
+			cat "$1" | tar -xz --to-command "$dir/pvtx queue ingest" 2>&1
+		elif [ "$(dd if="$1" bs=1 skip=257 count=5 2>/dev/null | hexdump -v -e '/1 "%02x"')" = "7573746172" ]; then
+			cat "$1" | tar -x --to-command "$dir/pvtx queue ingest" 2>&1
+		else
+			cat "$1" | TAR_FILENAME="json" $dir/pvtx queue ingest 2>&1
+		fi
+	fi
+
+	rm -rf $queue_conf_dir/queue.ingesting >/dev/null 2>&1
+	rm -rf $queue_conf_dir/queue_unpack.failed >/dev/null 2>&1
+}
+
+cmd_queue_ingest() {
+	queue_folder=$(cat $queue_conf_dir/queue)
+	object_folder=$(cat $queue_conf_dir/objects)
+	if ! [ -d "$queue_folder" ]; then
+		echo_e "ERROR cmd_queue_ingest: queue $queue_folder does not exist"
+		return 1
+	fi
+	if ! [ -d "$object_folder" ]; then
+		echo_e "ERROR cmd_queue_ingest: objects $object_folder does not exist"
+		return 1
+	fi
+
+	if [ -f "$queue_conf_dir/queue_unpack.failed" ]; then
+		echo_e "ERROR: cmd_queue_ingest already failed"
+		return 1
+	fi
+
+	case "$TAR_FILENAME" in
+	json)
+		count=$(find "$queue_folder" -type f | wc -l)
+		count=$((count + 1))
+		formatted_count=$(printf "%03d" $count)
+		filepath="$queue_folder/${formatted_count}__$(cat $queue_conf_dir/queue.ingesting)"
+		mkdir -p $filepath
+		cat > $filepath/json
+		;;
+	objects/*)
+		sha=${TAR_FILENAME#objects/}
+		cat >$object_folder/$sha
+		;;
+	*)
+		touchit $queue_conf_dir/queue_unpack.failed
+		echo_e "Illegal file in tarball: $TAR_FILENAME"
+		return 9
+		;;
+	esac
+}
+
+cmd_queue_process() {
+	if [ -n "$2" ] && [ -n "$3" ]; then
+		cmd_queue_new $2 $3
+	fi
+
+	queue_folder=$(cat $queue_conf_dir/queue)
+	object_folder=$(cat $queue_conf_dir/objects)
+
+	if ! [ -d "$queue_folder" ]; then
+		echo_e "ERROR queue_process: queue $queue_folder does not exist"
+		return 1
+	fi
+
+	if [ -n "$1" ]; then
+		cmd_begin $1 $object_folder
+	fi
+
+	if ! [ -f $pvtx_dir/state.JSON.sh.1.draft ]; then
+		echo_e "ERROR: no active transaction"
+		return 3
+	fi
+
+	echo_e "Processing queue on $queue_folder"
+
+	for file in $(find $queue_folder -type f | busybox sort -s); do
+		filename=$(basename -- "$file")
+		extension="${filename##*.}"
+		filename="${filename%.*}"
+		app=$(echo $filename | sed 's/...__//')
+		app=$(url_decode $app)
+		if [ "$extension" == "remove" ]; then
+			$dir/pvtx remove $app
+		else
+			$dir/pvtx add $file
+		fi
+	done
+}
+
+cmd_queue_status() {
+	queue_folder=$(cat $queue_conf_dir/queue)
+	object_folder=$(cat $queue_conf_dir/objects)
+	if ! [ -d "$queue_folder" ]; then
+		echo_e "ERROR queue_status: queue $queue_folder does not exist"
+		return 1
+	fi
+
+	echo "queue folder: ${queue_folder}"
+	echo "objects folder: ${object_folder}"
+	echo ""
+	echo "queue:"
+	find $queue_folder -type f | sed "s|^$queue_folder/||" | busybox sort -s
+	echo ""
+	echo "objects:"
+	if [ -d "$object_folder" ]; then
+		find $object_folder -type f | sed "s|^$object_folder/||" | busybox sort -s
+	fi
+}
+
+one=$1
+
+if [ -z "$one" ]; then
+	echo_e "ERROR: no argument 1; see --help"
+	exit 1
+fi
+
+shift 1
+
+if [ "$one" = "--help" ]; then
+	usage
+	exit 0
+fi
+
+case "$one" in
+abort)
+	cmd_abort $@
+	;;
+add)
+	cmd_add $@
+	;;
+begin)
+	cmd_begin $@
+	;;
+commit)
+	cmd_commit $@
+	;;
+ingest)
+	cmd_ingest $@
+	;;
+remove)
+	cmd_remove $@
+	;;
+show)
+	cmd_show $@
+	;;
+merge)
+	_merge_JSON_sh $@
+	;;
+queue)
+	subcmd=$1
+	shift 1
+	case $subcmd in
+	ingest)
+		cmd_queue_ingest $@
+		;;
+	status)
+		cmd_queue_status $@
+		;;
+	new)
+		cmd_queue_new $@
+		;;
+	remove)
+		cmd_queue_remove $@
+		;;
+	unpack)
+		cmd_queue_unpack $@
+		;;
+	process)
+		cmd_queue_process $@
+		;;
+	*)
+		echo_e "Unknown command: $subcmd"
+		usage
+		exit 1
+		;;
+	esac
+	;;
+deploy)
+	cmd_deploy $@
+	;;
+getrev)
+	_get_version $@
+	;;
+csc)
+	_clean_signature_removals $@
+	;;
+version)
+	cmd_version $@
+	;;
+--help)
+	usage
+	;;
+*)
+	echo_e "ERROR: unknown first argument $one; see --help"
+	exit 100
+	;;
+esac
+
