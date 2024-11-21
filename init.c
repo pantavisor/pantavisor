@@ -246,6 +246,9 @@ static void parse_commands(int argc, char *argv[])
 	if (is_arg(argc, argv, "pv_standalone"))
 		pv_config_set_system_init_mode(IM_STANDALONE);
 
+	if (is_arg(argc, argv, "pv_installer"))
+		pv_config_set_system_init_mode(IM_INSTALLER);
+
 	if (is_arg(argc, argv, "pv_appengine"))
 		pv_config_set_system_init_mode(IM_APPENGINE);
 
