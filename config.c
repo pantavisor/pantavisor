@@ -35,6 +35,7 @@
 #include "init.h"
 #include "config_parser.h"
 #include "bootloader.h"
+#include "loop.h"
 #include "state.h"
 #include "storage.h"
 #include "paths.h"

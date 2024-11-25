@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <libgen.h>
 #include <string.h>
 #include <stdint.h>
 #include <linux/limits.h>
@@ -283,8 +284,9 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 		}
 
 		if (!strncmp(vol, vol_name, strlen(vol))) {
-			pv_fs_path_concat(device_path, 2, "/dev",
-					  basename(files.gl_pathv[i]));
+			char *tmp = basename(files.gl_pathv[i]);
+			pv_fs_path_concat(device_path, 2, "/dev", tmp);
+			free(tmp);
 			pv_log(DEBUG, "volume found: %s device: %s",
 			       files.gl_pathv[i], device_path);
 			break;
