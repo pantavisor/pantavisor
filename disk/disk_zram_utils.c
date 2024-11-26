@@ -210,10 +210,10 @@ int pv_disk_zram_utils_get_devno(const char *path)
 {
 	char *tmp = strdup(path);
 	char *dev_name = basename(tmp);
-	free(tmp);
 
 	errno = 0;
 	int devno = strtol(dev_name + strlen("zram"), NULL, 10);
+	free(tmp);
 	if (devno < 0 || errno != 0)
 		return -1;
 	return devno;
