@@ -45,7 +45,7 @@
 
 #include "blkid.h"
 #include "utils/math.h"
-#include "str.h"
+#include "utils/str.h"
 #include "log.h"
 #include "utils/fs.h"
 #include "config.h"
@@ -256,7 +256,7 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 {
 	glob_t files = { 0 };
 	char glob_exp[PATH_MAX] = { 0 };
-	snprintf(glob_exp, PATH_MAX, "%s/%s_*", ubi_sys_path, dev);
+	SNPRINTF_WTRUNC(glob_exp, PATH_MAX, "%s/%s_*", ubi_sys_path, dev);
 
 	int err = glob(glob_exp, 0, NULL, &files);
 	if (err != 0 && err != GLOB_NOMATCH) {
