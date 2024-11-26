@@ -219,7 +219,7 @@ static int uboot_set_env_key(char *key, char *value)
 		i += len;
 	}
 
-	SNPRINTF_WTRUNC(v, sizeof(v), "%s=%s\0", key, value);
+	SNPRINTF_WTRUNC(v, sizeof(v), "%s=%s", key, value);
 
 	memcpy(d, v, strlen(v) + 1);
 
