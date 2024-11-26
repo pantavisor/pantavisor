@@ -284,10 +284,11 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 		}
 
 		if (!strncmp(vol, vol_name, strlen(vol))) {
+			char *tmp = strdup(files.gl_pathv[i]);
 			pv_fs_path_concat(device_path, 2, "/dev",
-					  basename(files.gl_pathv[i]));
-			pv_log(DEBUG, "volume found: %s device: %s",
-			       files.gl_pathv[i], device_path);
+					  basename(tmp));
+			pv_log(DEBUG, "device '%s' found", device_path);
+			free(tmp);
 			break;
 		}
 
