@@ -91,10 +91,7 @@ static int run_command(const char *fmt, char *output, int size, ...)
 		goto out;
 	}
 
-	if (tsh_run_io(cmd, 1, &wstatus, NULL, out, NULL) != 0) {
-		pv_log(DEBUG, "tsh call fail");
-		goto out;
-	}
+	tsh_run_io(cmd, 1, &wstatus, NULL, out, NULL);
 
 	if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus)) {
 		pv_log(DEBUG, "command failed %s status: %d", cmd,
@@ -111,8 +108,10 @@ static int run_command(const char *fmt, char *output, int size, ...)
 		goto out;
 	}
 
-	if (output)
+	if (output) {
 		pv_fs_file_read_nointr(out[1], output, size);
+		pv_log(DEBUG, "result: %s -> %s", cmd, output);
+	}
 out:
 	if (cmd)
 		free(cmd);
@@ -248,6 +247,7 @@ static void set_available_part()
 
 static int ubootab_init()
 {
+	pv_log(DEBUG, "initializing uboot-ab");
 	if (ubootab.init)
 		return 0;
 
@@ -257,9 +257,17 @@ static int ubootab_init()
 	ubootab.pv_rev = ubootab_get_env_key("pv_rev");
 	ubootab.pv_try = ubootab_get_env_key("pv_try");
 
+	pv_log(DEBUG, "pv_rev = %s", ubootab.pv_rev);
+	pv_log(DEBUG, "pv_try = %s", ubootab.pv_try);
+
 	set_available_part();
 
 	ubootab.init = true;
+	pv_log(DEBUG, "part A:");
+	pv_log(DEBUG, "\t%s %s", ubootab.a.dev, ubootab.a.name);
+	pv_log(DEBUG, "part B:");
+	pv_log(DEBUG, "\t%s %s", ubootab.b.dev, ubootab.b.name);
+	pv_log(DEBUG, "available part: %s", ubootab.available->name);
 
 	return 0;
 }

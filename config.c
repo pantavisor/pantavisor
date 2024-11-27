@@ -104,6 +104,8 @@ typedef enum {
 #define SYSTEM_MEDIADIR_DEF "/media"
 #define SYSTEM_RUNDIR_DEF "/pv"
 #define SYSTEM_USRDIR_DEF "/usr"
+#define SYSTEM_A_PART "fitA"
+#define SYSTEM_B_PART "fitB"
 
 struct pv_config_entry {
 	type_t type;
@@ -218,8 +220,8 @@ static struct pv_config_entry entries[] = {
 	  .value.b = false },
 	{ WDT_MODE, "PV_WDT_MODE", PV, 0, .value.i = WDT_SHUTDOWN },
 	{ INT, "PV_WDT_TIMEOUT", PV, 0, .value.i = 15 },
-	{ STR, "PV_UBOOTAB_A_NAME", PV, 0, .value.s = NULL },
-	{ STR, "PV_UBOOTAB_B_NAME", PV, 0, .value.s = NULL }
+	{ STR, "PV_UBOOTAB_A_NAME", PV, 0, .value.s = SYSTEM_A_PART },
+	{ STR, "PV_UBOOTAB_B_NAME", PV, 0, .value.s = SYSTEM_B_PART }
 };
 
 struct pv_config_alias {
