@@ -35,6 +35,7 @@
 #include <mtd/mtd-user.h>
 #include <sys/ioctl.h>
 #include <linux/limits.h>
+#include <errno.h>
 
 #include "utils/fs.h"
 #include "utils/tsh.h"
@@ -46,7 +47,7 @@
 #include "log.h"
 
 #define UBOOTAB_DEV_TMPL "/sys/block/mtdblock%d/device/%s"
-#define UBOOTAB_KERNEL_PATH_TMPL "/storage/trails/%s/bsp/pantavisor.fit"
+#define UBOOTAB_KERNEL_PATH_TMPL "/storage/trails/%s/.pv/pantavisor.fit"
 #define UBOOTAB_SYS_MAX_DEV (10)
 // 2048 to rev
 // 2048 to hash
@@ -72,8 +73,8 @@ static struct ubootab ubootab = { 0 };
 static int run_command(const char *fmt, char *output, int size, ...)
 {
 	char *cmd = NULL;
-	int out[2] = { -1, -1 };
-	int wstatus = 0;
+	char err[1024] = { 0 };
+	int ret = -1;
 
 	va_list args;
 	va_start(args, size);
@@ -81,46 +82,23 @@ static int run_command(const char *fmt, char *output, int size, ...)
 	int len = vasprintf(&cmd, fmt, args);
 	if (len < 0) {
 		pv_log(DEBUG, "couldn't build command. fmt: %s", fmt);
-		wstatus = -1;
 		goto out;
 	}
 
-	if (pipe2(out, O_CLOEXEC) != 0) {
-		pv_log(DEBUG, "couldn't not open pipe");
-		wstatus = -1;
+	if (tsh_run_output(cmd, 2, output, size, err, 1024) == -1) {
+		pv_log(DEBUG, "command failed %s", err);
 		goto out;
 	}
 
-	tsh_run_io(cmd, 1, &wstatus, NULL, out, NULL);
+	ret = 0;
 
-	if (WIFEXITED(wstatus) && WEXITSTATUS(wstatus)) {
-		pv_log(DEBUG, "command failed %s status: %d", cmd,
-		       WEXITSTATUS(wstatus));
-		goto out;
-	} else if (WIFEXITED(wstatus)) {
-		pv_log(DEBUG, "command succeeded: %s", cmd);
-	} else if (WIFSIGNALED(wstatus)) {
-		pv_log(DEBUG, "command signalled %s: %d", cmd,
-		       WTERMSIG(wstatus));
-		goto out;
-	} else {
-		pv_log(DEBUG, "command failed with wstatus: %d", wstatus);
-		goto out;
-	}
-
-	if (output) {
-		pv_fs_file_read_nointr(out[1], output, size);
-		pv_log(DEBUG, "result: %s -> %s", cmd, output);
-	}
 out:
 	if (cmd)
 		free(cmd);
 
-	close(out[0]);
-	close(out[1]);
 	va_end(args);
 
-	return wstatus;
+	return ret;
 }
 
 static int get_device_attr(int index, const char *attr, char *buf, int size)
@@ -191,7 +169,13 @@ static char *ubootab_get_env_key(char *key)
 	char buf[4096] = { 0 };
 	int ret = run_command("fw_printenv -n %s", buf, 4096, key);
 
-	if (ret != 0)
+	size_t n = strlen(buf) - 1;
+	while ((buf[n] == '\n' || buf[n] == '\r') && n >= 0) {
+		buf[n] = '\0';
+		--n;
+	}
+
+	if (ret != 0 || strlen(buf) == 0)
 		return NULL;
 
 	return strdup(buf);
@@ -199,7 +183,8 @@ static char *ubootab_get_env_key(char *key)
 
 static int ubootab_set_env_key(char *key, char *value)
 {
-	return run_command("fw_setenv %s %s", NULL, 0, key, value);
+	int r = run_command("fw_setenv %s %s", NULL, 0, key, value);
+	return r;
 }
 
 static int ubootab_unset_env_key(char *key)
@@ -229,18 +214,19 @@ static bool header_has_rev(const char *dev, const char *rev)
 	if (header_read(dev, buf) != 0)
 		return false;
 
-	return !strncpy(buf, rev, strlen(rev));
-}
+	char *header = buf + strlen("fit_rev=");
 
+	return !strncmp(header, rev, strlen(rev));
+}
 
 static void set_available_part()
 {
 	char *rev = ubootab.pv_try ? ubootab.pv_try : ubootab.pv_rev;
 
 	if (header_has_rev(ubootab.a.dev, rev))
-		ubootab.available = &ubootab.a;
-	else if (header_has_rev(ubootab.b.dev, rev))
 		ubootab.available = &ubootab.b;
+	else if (header_has_rev(ubootab.b.dev, rev))
+		ubootab.available = &ubootab.a;
 	else
 		pv_log(DEBUG, "couldn't find the current active part");
 }
@@ -257,23 +243,13 @@ static int ubootab_init()
 	ubootab.pv_rev = ubootab_get_env_key("pv_rev");
 	ubootab.pv_try = ubootab_get_env_key("pv_try");
 
-	pv_log(DEBUG, "pv_rev = %s", ubootab.pv_rev);
-	pv_log(DEBUG, "pv_try = %s", ubootab.pv_try);
-
 	set_available_part();
 
+	pv_log(DEBUG, "*** avalilable %s %s", ubootab.available->name,
+	       ubootab.available->dev);
+
 	ubootab.init = true;
-	pv_log(DEBUG, "part A:");
-	pv_log(DEBUG, "\t%s %s", ubootab.a.dev, ubootab.a.name);
-	pv_log(DEBUG, "part B:");
-	pv_log(DEBUG, "\t%s %s", ubootab.b.dev, ubootab.b.name);
-	pv_log(DEBUG, "available part: %s", ubootab.available->name);
 
-	return 0;
-}
-
-static int ubootab_flush_env()
-{
 	return 0;
 }
 
@@ -287,15 +263,20 @@ static int erase_part(int fd)
 	}
 
 	erase_info_t ei = { 0 };
+	errno = 0;
 	ei.length = info.erasesize;
 	for (ei.start = 0; ei.start < info.size; ei.start += ei.length) {
 		if (ioctl(fd, MEMUNLOCK, &ei) == -1) {
-			pv_log(DEBUG, "couldn't unlock");
-			return -1;
+			if (errno != 524) {
+				pv_log(DEBUG, "couldn't unlock %s (%d)",
+				       strerror(errno), errno);
+				return -1;
+			}
 		}
 
 		if (ioctl(fd, MEMERASE, &ei) == -1) {
-			pv_log(DEBUG, "couldn't erase");
+			pv_log(DEBUG, "couldn't erase %s (%d)", strerror(errno),
+			       errno);
 			return -1;
 		}
 	}
@@ -317,8 +298,22 @@ static int get_kernel_fd(const char *rev)
 	return fd;
 }
 
+static int write_kernel_header(int fd, const char *rev)
+{
+	char buf[UBOOTAB_PART_HEADER_SIZE] = { 0 };
+	if (snprintf(buf, UBOOTAB_PART_HEADER_SIZE, "fit_rev=%s", rev) < 0)
+		return -1;
+
+	lseek(fd, 0, SEEK_SET);
+	return write(fd, buf, UBOOTAB_PART_HEADER_SIZE) == -1 ? -1 : 0;
+}
+
+#include <sys/stat.h>
+
 static int write_kernel(const char *rev)
 {
+	pv_log(DEBUG, "*** call write_kernel rev = %s", rev);
+
 	int ret = -1;
 	int mtd_fd = open(ubootab.available->dev, O_RDWR);
 	if (mtd_fd < 0) {
@@ -335,16 +330,44 @@ static int write_kernel(const char *rev)
 	if (erase_part(mtd_fd) != 0)
 		goto out;
 
-	lseek(mtd_fd, 0, SEEK_SET);
-	lseek(kernel_fd, 0, SEEK_SET);
-	write(mtd_fd, rev, UBOOTAB_PART_HEADER_SIZE);
+	write_kernel_header(mtd_fd, rev);
 
-	char buf[4096] = { 0 };
+	lseek(kernel_fd, 0, SEEK_SET);
+	lseek(mtd_fd, UBOOTAB_PART_HEADER_SIZE, SEEK_SET);
+
+	struct stat st = { 0 };
+	fstat(kernel_fd, &st);
+
+	char buf[2048] = { 0 };
 	ssize_t read_bytes = 0;
 	ssize_t write_bytes = 0;
 
-	while (read_bytes = read(kernel_fd, buf, 4096), read_bytes > 0)
-		write_bytes += write(mtd_fd, buf, read_bytes);
+	while (write_bytes < st.st_size) {
+		ssize_t cur_rd = read(kernel_fd, buf, 2048);
+		if (cur_rd < 0) {
+			if (errno == EINTR)
+				continue;
+			break;
+		}
+		ssize_t cur_wr = 0;
+		do {
+			cur_wr += write(mtd_fd, buf + cur_wr, 2048);
+			if (cur_wr < 0) {
+				if (errno == EINTR)
+					continue;
+
+				break;
+			}
+		} while (cur_wr < cur_rd);
+
+		write_bytes += cur_wr;
+	}
+
+	fsync(mtd_fd);
+
+	pv_log(DEBUG, "file size: %zd", (size_t)st.st_size);
+	pv_log(DEBUG, "writen bytes: %zd", write_bytes);
+
 
 	ret = 0;
 out:
@@ -386,6 +409,11 @@ static int ubootab_fail_update()
 }
 
 static int ubootab_commit_update()
+{
+	return 0;
+}
+
+static int ubootab_flush_env()
 {
 	return 0;
 }
