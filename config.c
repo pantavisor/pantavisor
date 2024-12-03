@@ -99,6 +99,8 @@ typedef enum {
 #define NET_BRMASK4_DEF "255.255.255.0"
 #define SECUREBOOT_OEM_TRUSTSTORE_DEF PVS_CERT_DEFAULT_OEM_STORE
 #define SECUREBOOT_TRUSTSTORE_DEF PVS_CERT_DEFAULT_STORE
+#define SYSTEM_A_PART_DEF "fitA"
+#define SYSTEM_B_PART_DEF "fitB"
 #define SYSTEM_CONFDIR_DEF "/configs"
 #define SYSTEM_ETCDIR_DEF "/etc"
 #define SYSTEM_LIBDIR_DEF "/lib"
@@ -141,6 +143,8 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, .value.s = NULL },
 	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, .value.b = false },
 	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV, 0, .value.i = BL_UBOOT_PLAIN },
+	{ STR, "PV_UBOOTAB_A_NAME", PV, 0, .value.s = SYSTEM_A_PART_DEF },
+	{ STR, "PV_UBOOTAB_B_NAME", PV, 0, .value.s = SYSTEM_B_PART_DEF },
 	{ STR, "PV_CACHE_DEVMETADIR", PV, 0, .value.s = CACHE_DEVMETADIR_DEF },
 	{ STR, "PV_CACHE_USRMETADIR", PV, 0, .value.s = CACHE_USRMETADIR_DEF },
 	{ BOOL, "PV_CONTROL_REMOTE", PV | OEM, 0, .value.b = true },
@@ -389,6 +393,8 @@ static char *_get_bootloader_type_str(bootloader_t type)
 		return "grub";
 	case BL_RPIAB:
 		return "rpiab";
+	case BL_UBOOT_AB:
+		return "uboot-ab";
 	default:
 		return "unknown";
 	}
@@ -414,6 +420,9 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 		entry->value.i = BL_GRUB;
 	else if (pv_str_matches(value, strlen(value), "rpiab", strlen("rpiab")))
 		entry->value.i = BL_RPIAB;
+	else if (pv_str_matches(value, strlen(value), "uboot-ab",
+				strlen("uboot-ab")))
+		entry->value.i = BL_UBOOT_AB;
 	else
 		pv_log(WARN, "unknown bootloader type '%s'", value);
 }
