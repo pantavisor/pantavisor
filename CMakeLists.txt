@@ -157,12 +157,15 @@ add_executable(pantavisor
 			trestclient.c
 			trestclient.h
 			uboot.c
+			ubootab.c
 			updater.c
 			updater.h
 			utils/base64.c
+			utils/fitimg.c
 			utils/fs.c
 			utils/json.c
 			utils/math.c
+			utils/mtd.c
 			utils/pvsignals.c
 			utils/pvsignals.h
 			utils/pvzlib.c

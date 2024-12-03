@@ -82,6 +82,8 @@ typedef enum {
 #define LEVEL_SYSCTL PV | OEM
 
 // default list
+#define BOOTLOADER_A_PART_DEF "fitA"
+#define BOOTLOADER_B_PART_DEF "fitB"
 #define CACHE_DEVMETADIR_DEF "/storage/cache/devmeta"
 #define CACHE_USRMETADIR_DEF "/storage/cache/meta"
 #define CREDS_HOST_DEF "api.pantahub.com"
@@ -141,6 +143,14 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, .value.s = NULL },
 	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, .value.b = false },
 	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV, 0, .value.i = BL_UBOOT_PLAIN },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_A_NAME", PV, 0,
+	  .value.s = BOOTLOADER_A_PART_DEF },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_B_NAME", PV, 0,
+	  .value.s = BOOTLOADER_B_PART_DEF },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_ENV_NAME", PV, 0, .value.s = NULL },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME", PV, 0, .value.s = NULL },
+	{ INT, "PV_BOOTLOADER_UBOOTAB_ENV_OFFSET", PV, 0, .value.i = 0 },
+	{ INT, "PV_BOOTLOADER_UBOOTAB_ENV_SIZE", PV, 0, .value.i = 0 },
 	{ STR, "PV_CACHE_DEVMETADIR", PV, 0, .value.s = CACHE_DEVMETADIR_DEF },
 	{ STR, "PV_CACHE_USRMETADIR", PV, 0, .value.s = CACHE_USRMETADIR_DEF },
 	{ BOOL, "PV_CONTROL_REMOTE", PV | OEM, 0, .value.b = true },
@@ -389,6 +399,8 @@ static char *_get_bootloader_type_str(bootloader_t type)
 		return "grub";
 	case BL_RPIAB:
 		return "rpiab";
+	case BL_UBOOT_AB:
+		return "uboot-ab";
 	default:
 		return "unknown";
 	}
@@ -414,6 +426,9 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 		entry->value.i = BL_GRUB;
 	else if (pv_str_matches(value, strlen(value), "rpiab", strlen("rpiab")))
 		entry->value.i = BL_RPIAB;
+	else if (pv_str_matches(value, strlen(value), "uboot-ab",
+				strlen("uboot-ab")))
+		entry->value.i = BL_UBOOT_AB;
 	else
 		pv_log(WARN, "unknown bootloader type '%s'", value);
 }
