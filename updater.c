@@ -648,9 +648,7 @@ void pv_update_set_status_msg(struct pv_update *update,
 	if ((update->status == status) && !msg)
 		return;
 	update->status = status;
-
-	if (msg)
-		SNPRINTF_WTRUNC(update->msg, sizeof(update->msg), "%s", msg);
+	SNPRINTF_WTRUNC(update->msg, sizeof(update->msg), "%s", msg ? msg : "");
 
 	// in this case, we don't want to overwrite the ERROR progress information
 	if (status == UPDATE_ROLLEDBACK)
