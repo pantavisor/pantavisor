@@ -648,7 +648,7 @@ void pv_update_set_status_msg(struct pv_update *update,
 	if ((update->status == status) && !msg)
 		return;
 	update->status = status;
-	SNPRINTF_WTRUNC(update->msg, sizeof(update->msg), "%s", msg);
+	SNPRINTF_WTRUNC(update->msg, sizeof(update->msg), "%s", msg ? msg : "");
 
 	// in this case, we don't want to overwrite the ERROR progress information
 	if (status == UPDATE_ROLLEDBACK)
@@ -771,9 +771,25 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	if (!update)
 		goto out;
 
-	if (atoi(rev) <= atoi(pv->state->rev)) {
-		pv_log(WARN, "stale rev %s found on remote", rev);
-		pv_update_set_status(update, UPDATE_STALE_REVISION);
+	errno = 0;
+	long new_rev = strtol(rev, NULL, 10);
+	// if it has a bad revision name, we report that the state where it comes from cannot be parsed
+	if (errno) {
+		pv_log(WARN, "revision name '%s' could not be parsed", rev);
+		pv_update_set_status(update, UPDATE_NO_PARSE);
+		goto send_feedback;
+	}
+
+	// in this case, we continue normally, as running rev might contain a local rev name
+	long current_rev = strtol(pv->state->rev, NULL, 10);
+
+	if (!errno && (new_rev <= current_rev)) {
+		pv_log(WARN, "running revision %d but trying to update to %d",
+		       current_rev, new_rev);
+		if (new_rev < current_rev) {
+			pv_log(WARN, "setting revision %d as stale", new_rev);
+			pv_update_set_status(update, UPDATE_STALE_REVISION);
+		}
 		wrong_revision = true;
 		goto send_feedback;
 	}
@@ -794,7 +810,7 @@ send_feedback:
 		pv_log(DEBUG, "could not refresh progress from rev %s", rev);
 
 	if (wrong_revision) {
-		pv_log(WARN, "stale revision found. Aborting update...");
+		pv_log(WARN, "wrong revision number found. Aborting update...");
 		pv_update_free(update);
 		goto out;
 	}

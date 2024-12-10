@@ -360,11 +360,11 @@ static int rpiab_init()
 
 	hay = getenv("PVTEST_PATH_TMP");
 	if (hay) {
-		size_t s = snprintf(b, 1, "%s/autoboot.txt", hay) + 1;
+		size_t s = snprintf(NULL, 0, "%s/autoboot.txt", hay) + 1;
 		b = realloc(b, s);
 		snprintf(b, s, "%s/autoboot.txt", hay);
 		paths.autoboot_tmp = strdup(b);
-		s = snprintf(b, 1, "%s/cmdline.txt", hay) + 1;
+		s = snprintf(NULL, 0, "%s/cmdline.txt", hay) + 1;
 		b = realloc(b, s);
 		snprintf(b, s, "%s/cmdline.txt", hay);
 		paths.cmdline_tmp = strdup(b);
@@ -374,11 +374,11 @@ static int rpiab_init()
 
 	hay = getenv("PVTEST_PATH_DEVICE_TREE_BOOTLOADER");
 	if (hay) {
-		size_t s = snprintf(b, 1, "%s/partition", hay) + 1;
+		size_t s = snprintf(NULL, 0, "%s/partition", hay) + 1;
 		b = realloc(b, s);
 		snprintf(b, s, "%s/partition", hay);
 		paths.dtb_partition = strdup(b);
-		s = snprintf(b, 1, "%s/tryboot", hay) + 1;
+		s = snprintf(NULL, 0, "%s/tryboot", hay) + 1;
 		b = realloc(b, s);
 		snprintf(b, s, "%s/tryboot", hay);
 		paths.dtb_tryboot = strdup(b);
@@ -389,7 +389,7 @@ static int rpiab_init()
 
 	hay = getenv("PVTEST_PATH_STORAGE_BOOT");
 	if (hay) {
-		size_t s = snprintf(b, 1, "%s/rpiab.txt", hay) + 1;
+		size_t s = snprintf(NULL, 0, "%s/rpiab.txt", hay) + 1;
 		b = realloc(b, s);
 		snprintf(b, s, "%s/rpiab.txt", hay);
 		paths.rpiab_txt = strdup(b);

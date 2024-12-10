@@ -97,6 +97,8 @@ plat_goal_state_t pv_state_check_goals(struct pv_state *s);
 int pv_state_interpret_signal(struct pv_state *s, const char *name,
 			      const char *signal, const char *payload);
 
+struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name);
+
 void pv_state_print(struct pv_state *s);
 char *pv_state_get_containers_json(struct pv_state *s);
 char *pv_state_get_groups_json(struct pv_state *s);

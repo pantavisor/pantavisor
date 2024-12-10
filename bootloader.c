@@ -217,25 +217,25 @@ static int pv_bl_init()
 {
 	int ret;
 
-	// switch (pv_config_get_bootloader_type()) {
-	// case BL_UBOOT_PLAIN:
-	// case BL_UBOOT_PVK:
-	// 	ops = &uboot_ops;
-	// 	break;
-	// case BL_RPIAB:
-	// 	ops = &rpiab_ops;
-	// 	break;
-	// case BL_GRUB:
-	// 	ops = &grub_ops;
-	// 	break;
-	// case BL_UBOOT_AB:
-	// 	ops = &ubootab_ops;
-	// 	break;
-	// default:
-	// 	pv_log(ERROR, "unknown bootoader type!");
-	// 	return -1;
-	// 	break;
-	// }
+	switch (pv_config_get_bootloader_type()) {
+	case BL_UBOOT_PLAIN:
+	case BL_UBOOT_PVK:
+		ops = &uboot_ops;
+		break;
+	case BL_RPIAB:
+		ops = &rpiab_ops;
+		break;
+	case BL_GRUB:
+		ops = &grub_ops;
+		break;
+	case BL_UBOOT_AB:
+		ops = &ubootab_ops;
+		break;
+	default:
+		pv_log(ERROR, "unknown bootoader type!");
+		return -1;
+		break;
+	}
 
 	ops = &ubootab_ops;
 	ret = ops->init();

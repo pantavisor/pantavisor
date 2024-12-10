@@ -1315,6 +1315,23 @@ int pv_state_interpret_signal(struct pv_state *s, const char *name,
 	return 0;
 }
 
+struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name)
+{
+	if (!s)
+		return NULL;
+
+	struct pv_volume *v, *tmp;
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		if (pv_str_matches(name, strlen(name), v->name,
+				   strlen(v->name)))
+			return v;
+	}
+
+	return NULL;
+}
+
 char *pv_state_get_containers_json(struct pv_state *s)
 {
 	struct pv_json_ser js;

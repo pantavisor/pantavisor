@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <libgen.h>
 #include <string.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -207,10 +208,12 @@ char *pv_disk_zram_utils_get_path(int devno)
 
 int pv_disk_zram_utils_get_devno(const char *path)
 {
-	char *dev_name = basename(path);
+	char *tmp = strdup(path);
+	char *dev_name = basename(tmp);
 
 	errno = 0;
 	int devno = strtol(dev_name + strlen("zram"), NULL, 10);
+	free(tmp);
 	if (devno < 0 || errno != 0)
 		return -1;
 	return devno;

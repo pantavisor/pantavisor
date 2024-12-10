@@ -631,7 +631,7 @@ static int _get_cn(struct mbedtls_x509_crt *cert, char *cn, int len)
 		if ((!mbedtls_oid_get_attr_short_name(&name->oid, &oid_name)) &&
 		    (pv_str_matches("CN", strlen("CN"), oid_name,
 				    strlen(oid_name)))) {
-			SNPRINTF_WTRUNC(cn, len, "%.*s", name->val.len,
+			SNPRINTF_WTRUNC(cn, len, "%.*s", (int)name->val.len,
 					name->val.p);
 		}
 	} while ((name = name->next) != 0);

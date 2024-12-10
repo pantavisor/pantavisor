@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Pantacor Ltd.
+ * Copyright (c) 2024 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,24 +19,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef __PH_LOGGER_H__
-#define __PH_LOGGER_H__
-#include <stdarg.h>
-#include <stdbool.h>
-#include <inttypes.h>
-#include "../pantavisor.h"
-#define PH_LOGGER_JSON_FORMAT                                                  \
-	"{ \"tsec\": %" PRId64 ", \"tnano\": %" PRId32 ",\
-\"lvl\": \"%s\", \"src\": \"%s\",\"plat\":\"%s\",\
-\"rev\": \"%s\" , \"msg\": \"%s\" }"
 
-#define PH_LOGGER_POS_XATTR "trusted.ph.logger.pos"
+#ifndef PV_MTD_H
+#define PV_MTD_H
 
-void ph_logger_init(void);
-void ph_logger_close(void);
+#include <linux/limits.h>
+#include <sys/types.h>
+#include <stdint.h>
 
-void ph_logger_toggle(char *rev);
-void ph_logger_stop_lenient(void);
-void ph_logger_stop_force(void);
+struct pv_mtd {
+	char name[NAME_MAX];
+	char dev[PATH_MAX];
+	off_t erasesize;
+	off_t writesize;
+	off_t size;
+};
 
-#endif /* __PH_LOGGER_H__ */
+struct pv_mtd *pv_mtd_from_name(const char *name);
+int pv_mtd_erase(struct pv_mtd *mtd);
+ssize_t pv_mtd_read(struct pv_mtd *mtd, char *buf, size_t size,
+		    off_t offset);
+ssize_t pv_mtd_write(struct pv_mtd *mtd, const char *buf, size_t buf_sz,
+		     off_t offset);
+ssize_t pv_mtd_copy_fd(struct pv_mtd *mtd, int fd, off_t offset);
+
+#endif

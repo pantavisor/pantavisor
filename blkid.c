@@ -37,6 +37,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <libgen.h>
 #include <string.h>
 #include <stdint.h>
 #include <linux/limits.h>
@@ -44,7 +45,7 @@
 
 #include "blkid.h"
 #include "utils/math.h"
-#include "str.h"
+#include "utils/str.h"
 #include "log.h"
 #include "utils/fs.h"
 #include "config.h"
@@ -255,7 +256,7 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 {
 	glob_t files = { 0 };
 	char glob_exp[PATH_MAX] = { 0 };
-	snprintf(glob_exp, PATH_MAX, "%s/%s_*", ubi_sys_path, dev);
+	SNPRINTF_WTRUNC(glob_exp, PATH_MAX, "%s/%s_*", ubi_sys_path, dev);
 
 	int err = glob(glob_exp, 0, NULL, &files);
 	if (err != 0 && err != GLOB_NOMATCH) {
@@ -283,10 +284,11 @@ static char *get_ubifs_dev_path(const char *dev, const char *vol,
 		}
 
 		if (!strncmp(vol, vol_name, strlen(vol))) {
+			char *tmp = strdup(files.gl_pathv[i]);
 			pv_fs_path_concat(device_path, 2, "/dev",
-					  basename(files.gl_pathv[i]));
-			pv_log(DEBUG, "volume found: %s device: %s",
-			       files.gl_pathv[i], device_path);
+					  basename(tmp));
+			pv_log(DEBUG, "device '%s' found", device_path);
+			free(tmp);
 			break;
 		}
 

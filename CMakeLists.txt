@@ -36,6 +36,9 @@ find_package_handle_standard_args(MBEDTLS DEFAULT_MSG
     MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
 mark_as_advanced(MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
 
+# Compiler options
+add_compile_options(-Werror)
+
 # Generate version.c
 add_custom_command(
     OUTPUT  version.c
@@ -161,6 +164,7 @@ add_executable(pantavisor
 			utils/fs.c
 			utils/json.c
 			utils/math.c
+			utils/mtd.c
 			utils/pvsignals.c
 			utils/pvsignals.h
 			utils/pvzlib.c

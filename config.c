@@ -35,6 +35,7 @@
 #include "init.h"
 #include "config_parser.h"
 #include "bootloader.h"
+#include "loop.h"
 #include "state.h"
 #include "storage.h"
 #include "paths.h"
@@ -83,7 +84,7 @@ typedef enum {
 // default list
 #define CACHE_DEVMETADIR_DEF "/storage/cache/devmeta"
 #define CACHE_USRMETADIR_DEF "/storage/cache/meta"
-#define CREDS_HOST_DEF "192.168.53.1"
+#define CREDS_HOST_DEF "api.pantahub.com"
 #define CREDS_TYPE_DEF "builtin"
 #define DISK_EXPORTSDIR_DEF "/exports"
 #define DISK_VOLDIR_DEF "/volumes"
@@ -98,6 +99,8 @@ typedef enum {
 #define NET_BRMASK4_DEF "255.255.255.0"
 #define SECUREBOOT_OEM_TRUSTSTORE_DEF PVS_CERT_DEFAULT_OEM_STORE
 #define SECUREBOOT_TRUSTSTORE_DEF PVS_CERT_DEFAULT_STORE
+#define SYSTEM_A_PART_DEF "fitA"
+#define SYSTEM_B_PART_DEF "fitB"
 #define SYSTEM_CONFDIR_DEF "/configs"
 #define SYSTEM_ETCDIR_DEF "/etc"
 #define SYSTEM_LIBDIR_DEF "/lib"
@@ -123,7 +126,7 @@ struct pv_config_entry {
 static struct pv_config_entry entries[] = {
 	{ STR, "PH_CREDS_HOST", PH | OEM, 0, .value.s = CREDS_HOST_DEF },
 	{ STR, "PH_CREDS_ID", PH | OEM, 0, .value.s = NULL },
-	{ INT, "PH_CREDS_PORT", PH | OEM, 0, .value.i = 12365 },
+	{ INT, "PH_CREDS_PORT", PH | OEM, 0, .value.i = 443 },
 	{ STR, "PH_CREDS_PROXY_HOST", PH | OEM, 0, .value.s = NULL },
 	{ INT, "PH_CREDS_PROXY_NOPROXYCONNECT", PH | OEM, 0, .value.i = 0 },
 	{ INT, "PH_CREDS_PROXY_PORT", PH | OEM, 0, .value.i = 3218 },
@@ -142,6 +145,14 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, .value.s = NULL },
 	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, .value.b = false },
 	{ BOOTLOADER, "PV_BOOTLOADER_TYPE", PV, 0, .value.i = BL_UBOOT_PLAIN },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_A_NAME", PV, 0,
+	  .value.s = SYSTEM_A_PART_DEF },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_B_NAME", PV, 0,
+	  .value.s = SYSTEM_B_PART_DEF },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_ENV_DEV", PV, 0, .value.s = NULL },
+	{ STR, "PV_BOOTLOADER_UBOOTAB_ENV_BAK_DEV", PV, 0, .value.s = NULL },
+	{ INT, "PV_BOOTLOADER_UBOOTAB_ENV_OFFSET", PV, 0, .value.i = 0 },
+	{ INT, "PV_BOOTLOADER_UBOOTAB_ENV_SIZE", PV, 0, .value.i = 0 },
 	{ STR, "PV_CACHE_DEVMETADIR", PV, 0, .value.s = CACHE_DEVMETADIR_DEF },
 	{ STR, "PV_CACHE_USRMETADIR", PV, 0, .value.s = CACHE_USRMETADIR_DEF },
 	{ BOOL, "PV_CONTROL_REMOTE", PV | OEM, 0, .value.b = true },
@@ -203,6 +214,7 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_STORAGE_LOGTEMPSIZE", PV, 0, .value.s = NULL },
 	{ STR, "PV_STORAGE_MNTPOINT", PV, 0, .value.s = NULL },
 	{ STR, "PV_STORAGE_MNTTYPE", PV, 0, .value.s = NULL },
+	{ BOOL, "PV_STORAGE_PHCONFIG_VOL", PV, 0, .value.b = false },
 	{ INT, "PV_STORAGE_WAIT", PV, 0, .value.i = 5 },
 	{ STR, "PV_SYSTEM_APPARMOR_PROFILES", PV, 0, .value.s = NULL },
 	{ STR, "PV_SYSTEM_CONFDIR", PV, 0, .value.s = SYSTEM_CONFDIR_DEF },
@@ -1067,7 +1079,7 @@ int pv_config_load_unclaimed_creds()
 	char path[PATH_MAX];
 	struct stat st;
 
-	pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
+	pv_paths_pv_file(path, PATH_MAX, UNCLAIMED_FNAME);
 
 	if (stat(path, &st))
 		return 0;
@@ -1086,9 +1098,9 @@ int pv_config_save_creds()
 	char path[PATH_MAX];
 
 	if (pv->unclaimed)
-		pv_paths_storage_config_file(path, PATH_MAX, UNCLAIMED_FNAME);
+		pv_paths_pv_file(path, PATH_MAX, UNCLAIMED_FNAME);
 	else
-		pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
+		pv_paths_pv_file(path, PATH_MAX, PANTAHUB_FNAME);
 
 	if (pv_config_save_creds_to_file(path)) {
 		pv_log(ERROR, "cannot save creds in %s", path);
@@ -1351,27 +1363,47 @@ int pv_config_init(char *path)
 	return 0;
 }
 
-static int pv_config_load_creds(struct pv_init *this)
+int pv_config_load_creds()
 {
-	char path[PATH_MAX];
+	// select storage path depending on configuration
+	char src_path[PATH_MAX];
+	if (pv_config_get_bool(PV_STORAGE_PHCONFIG_VOL))
+		pv_paths_volumes_plat_file(src_path, PATH_MAX, BSP_DNAME,
+					   PHCONFIGVOL_DNAME);
+	else
+		pv_paths_storage_config_file(src_path, PATH_MAX, "");
+
 	struct stat st;
-
-	pv_paths_storage_config_file(path, PATH_MAX, PANTAHUB_FNAME);
-
-	if (stat(path, &st)) {
-		pv_log(WARN, "cannot find creds in %s", path);
-		return 0;
+	if (stat(src_path, &st)) {
+		pv_log(ERROR, "'%s' does not exist but required by config",
+		       src_path);
+		return -1;
 	}
 
-	if (pv_config_load_creds_from_file(path)) {
-		pv_log(ERROR, "cannot load creds from %s", path);
+	// the creds work dir will be always mounted to /pv/phconfig
+	char dst_path[PATH_MAX];
+	pv_paths_pv_file(dst_path, PATH_MAX, PHCONFIG_DNAME);
+	if (stat(dst_path, &st) != 0)
+		pv_fs_mkdir_p(dst_path, 0755);
+	if (mount_bind(src_path, dst_path)) {
+		pv_log(ERROR, "creds vol to pv mount failed");
+		return -1;
+	}
+
+	// in case the file does not exist in the assigned path, we keep going with default config
+	pv_paths_pv_file(dst_path, PATH_MAX, PANTAHUB_FNAME);
+	if (stat(dst_path, &st)) {
+		pv_log(INFO,
+		       "cannot find '%s'. Saving new file with default values...",
+		       dst_path);
+		pv_config_save_creds_to_file(dst_path);
+	}
+
+	// we parse the file and fail if format is wrong
+	if (pv_config_load_creds_from_file(dst_path)) {
+		pv_log(ERROR, "cannot load creds from '%s'", dst_path);
 		return -1;
 	}
 
 	return 0;
 }
-
-struct pv_init pv_init_creds = {
-	.init_fn = pv_config_load_creds,
-	.flags = 0,
-};

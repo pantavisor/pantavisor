@@ -48,6 +48,12 @@ typedef enum {
 	PV_BOOTLOADER_MTD_ENV,
 	PV_BOOTLOADER_MTD_ONLY,
 	PV_BOOTLOADER_TYPE,
+	PV_BOOTLOADER_UBOOTAB_A_NAME,
+	PV_BOOTLOADER_UBOOTAB_B_NAME,
+	PV_BOOTLOADER_UBOOTAB_ENV_NAME,
+	PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME,
+	PV_BOOTLOADER_UBOOTAB_ENV_OFFSET,
+	PV_BOOTLOADER_UBOOTAB_ENV_SIZE,
 	PV_CACHE_DEVMETADIR,
 	PV_CACHE_USRMETADIR,
 	PV_CONTROL_REMOTE,
@@ -95,6 +101,7 @@ typedef enum {
 	PV_STORAGE_LOGTEMPSIZE,
 	PV_STORAGE_MNTPOINT,
 	PV_STORAGE_MNTTYPE,
+	PV_STORAGE_PHCONFIG_VOL,
 	PV_STORAGE_WAIT,
 	PV_SYSTEM_APPARMOR_PROFILES,
 	PV_SYSTEM_CONFDIR,
@@ -198,6 +205,7 @@ int pv_config_init(char *path);
 
 int pv_config_load_update(const char *rev, const char *trail_config);
 
+int pv_config_load_creds(void);
 int pv_config_load_unclaimed_creds(void);
 int pv_config_save_creds(void);
 
