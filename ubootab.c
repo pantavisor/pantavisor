@@ -38,9 +38,8 @@
 #include <linux/limits.h>
 #include <errno.h>
 
-#include "utils/fs.h"
 #include "utils/tsh.h"
-#include "utils/str.h"
+#include "utils/mtd.h"
 #include "config.h"
 #include "bootloader.h"
 #include "paths.h"
@@ -49,20 +48,12 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-#define UBOOTAB_SYS_PATH "/sys/block/mtdblock%d/device/%s"
-#define UBOOTAB_SYS_MAX_DEV (10)
 #define UBOOTAB_PART_HEADER_SIZE (4096)
 
-struct mtdpart {
-	char *name;
-	char *dev;
-	off_t wr_size;
-};
-
 struct ubootab {
-	struct mtdpart a;
-	struct mtdpart b;
-	struct mtdpart *free;
+	struct pv_mtd *a;
+	struct pv_mtd *b;
+	struct pv_mtd *free;
 	char *pv_rev;
 	char *pv_try;
 	bool init;
@@ -101,73 +92,6 @@ out:
 	return ret;
 }
 
-static int get_device_attr(int index, char *buf, int size, const char *attr)
-{
-	char path[PATH_MAX] = { 0 };
-
-	SNPRINTF_WTRUNC(path, PATH_MAX, UBOOTAB_SYS_PATH, index, attr);
-
-	int fd = open(path, O_RDONLY);
-	if (fd < 0) {
-		pv_log(DEBUG, "couldn't open file %s", path);
-		return -1;
-	}
-
-	memset(buf, 0, size);
-	int len = pv_fs_file_read_nointr(fd, buf, size);
-	close(fd);
-
-	if (len < 1) {
-		pv_log(DEBUG, "couldn't read from %s with fd = %d", path, fd);
-		return -1;
-	}
-	return 0;
-}
-
-static struct mtdpart mtdpart_from_name(const char *name)
-{
-	// always use NAME_MAX
-	char curname[NAME_MAX] = { 0 };
-	int index = 0;
-	for (; index < UBOOTAB_SYS_MAX_DEV; ++index) {
-		if (get_device_attr(index, curname, NAME_MAX, "name") != 0)
-			continue;
-
-		if (!strncmp(curname, name, strlen(name)))
-			break;
-	}
-
-	if (index >= UBOOTAB_SYS_MAX_DEV) {
-		pv_log(ERROR, "couldn't find any device named %s", name);
-		return (struct mtdpart){ 0 };
-	}
-
-	char dev[PATH_MAX] = { 0 };
-	snprintf(dev, PATH_MAX, "/dev/mtd%d", index);
-
-	char wr_size_str[32] = { 0 };
-	if (get_device_attr(index, wr_size_str, 32, "writesize") != 0) {
-		pv_log(DEBUG, "couldn't get writesize");
-		return (struct mtdpart){ 0 };
-	}
-
-	errno = 0;
-	int wr_size = strtol(wr_size_str, NULL, 10);
-	if (errno == ERANGE) {
-		pv_log(DEBUG, "couldn't get writesize, bas format. src = %s",
-		       wr_size_str);
-		return (struct mtdpart){ 0 };
-	}
-
-	struct mtdpart mtdpart = {
-		.name = strdup(curname),
-		.dev = strdup(dev),
-		.wr_size = wr_size,
-	};
-
-	return mtdpart;
-}
-
 static char *ubootab_get_env_key(char *key)
 {
 	char buf[4096] = { 0 };
@@ -195,26 +119,10 @@ static int ubootab_unset_env_key(char *key)
 	return run_command("fw_setenv %s", NULL, 0, key);
 }
 
-static int header_read(const char *dev, char *buf)
+static bool header_has_rev(struct pv_mtd *mtd, const char *rev)
 {
-	int fd = open(dev, O_RDONLY);
-	if (fd < 0) {
-		pv_log(DEBUG,
-		       "couldn't open device, cannot get the part header");
-		return -1;
-	}
-
-	memset(buf, 0, UBOOTAB_PART_HEADER_SIZE);
-	read(fd, buf, UBOOTAB_PART_HEADER_SIZE);
-	close(fd);
-
-	return 0;
-}
-
-static bool header_has_rev(const char *dev, const char *rev)
-{
-	char buf[UBOOTAB_PART_HEADER_SIZE] = { 0 };
-	if (header_read(dev, buf) != 0)
+	char buf[UBOOTAB_HEADER_SIZE] = { 0 };
+	if (pv_mtd_read(mtd, buf, UBOOTAB_HEADER_SIZE, 0) < 0)
 		return false;
 
 	char *header = buf + strlen("fit_rev=");
@@ -226,10 +134,10 @@ static int set_free_part()
 {
 	char *rev = ubootab.pv_try ? ubootab.pv_try : ubootab.pv_rev;
 
-	if (header_has_rev(ubootab.a.dev, rev))
-		ubootab.free = &ubootab.b;
-	else if (header_has_rev(ubootab.b.dev, rev))
-		ubootab.free = &ubootab.a;
+	if (header_has_rev(ubootab.a, rev))
+		ubootab.free = ubootab.b;
+	else if (header_has_rev(ubootab.b, rev))
+		ubootab.free = ubootab.a;
 	else {
 		pv_log(DEBUG, "couldn't find the current active part");
 		return -1;
@@ -243,12 +151,13 @@ static int ubootab_init()
 	if (ubootab.init)
 		return 0;
 
-	ubootab.a = mtdpart_from_name(
+
+	ubootab.a = pv_mtd_from_name(
 		pv_config_get_str(PV_BOOTLOADER_UBOOTAB_A_NAME));
-	ubootab.b = mtdpart_from_name(
+	ubootab.b = pv_mtd_from_name(
 		pv_config_get_str(PV_BOOTLOADER_UBOOTAB_B_NAME));
 
-	if (ubootab.a.name == NULL || ubootab.b.name == NULL) {
+	if (!ubootab.a || !ubootab.b) {
 		pv_log(WARN, "couldn't initialize bootloader");
 		return -1;
 	}
@@ -260,40 +169,6 @@ static int ubootab_init()
 		return -1;
 
 	ubootab.init = true;
-
-	return 0;
-}
-
-static int erase_part(int fd)
-{
-	mtd_info_t info;
-	if (ioctl(fd, MEMGETINFO, &info) == -1) {
-		pv_log(DEBUG, "couldn't get device info from %s",
-		       ubootab.free->dev);
-		return -1;
-	}
-
-	erase_info_t ei = { 0 };
-	errno = 0;
-	ei.length = info.erasesize;
-	for (ei.start = 0; ei.start < info.size; ei.start += ei.length) {
-		if (ioctl(fd, MEMUNLOCK, &ei) == -1) {
-			// errno 524 is ENOTSUPP in the linux driver
-			// implementation, sadly seems no to be visible from
-			// here using that name.
-			if (errno != 524) {
-				pv_log(DEBUG, "couldn't unlock %s (%d)",
-				       strerror(errno), errno);
-				return -1;
-			}
-		}
-
-		if (ioctl(fd, MEMERASE, &ei) == -1) {
-			pv_log(DEBUG, "couldn't erase %s (%d)", strerror(errno),
-			       errno);
-			return -1;
-		}
-	}
 
 	return 0;
 }
@@ -312,65 +187,22 @@ static int get_kernel_fd(const char *rev)
 	return fd;
 }
 
-static int write_kernel_header(int fd, const char *rev)
+static int write_kernel_header(const char *rev)
 {
-	char buf[UBOOTAB_PART_HEADER_SIZE] = { 0 };
-	if (snprintf(buf, UBOOTAB_PART_HEADER_SIZE, "fit_rev=%s", rev) < 0)
+	char buf[UBOOTAB_HEADER_SIZE] = { 0 };
+	if (snprintf(buf, UBOOTAB_HEADER_SIZE, "fit_rev=%s", rev) < 0)
 		return -1;
 
-	lseek(fd, 0, SEEK_SET);
-	return write(fd, buf, UBOOTAB_PART_HEADER_SIZE) == -1 ? -1 : 0;
+	if (pv_mtd_write(ubootab.free, buf, UBOOTAB_HEADER_SIZE, 0) < 0)
+		return -1;
+
+	return 0;
 }
 
-static int copy_kernel_image(int kernel_fd, int part_fd)
+static int copy_kernel_image(int kernel_fd)
 {
-	lseek(kernel_fd, 0, SEEK_SET);
-	lseek(part_fd, UBOOTAB_PART_HEADER_SIZE, SEEK_SET);
-
-	struct stat st = { 0 };
-	if (fstat(kernel_fd, &st) != 0) {
-		pv_log(DEBUG, "couldn't get kernel size");
+	if (pv_mtd_copy_fd(ubootab.free, kernel_fd, UBOOTAB_HEADER_SIZE) < 0)
 		return -1;
-	}
-
-	char *buf = calloc(ubootab.free->wr_size, sizeof(char));
-	if (!buf) {
-		pv_log(WARN,
-		       "couldn't allocate buffer, kernel image will not be written");
-		return -1;
-	}
-
-	ssize_t read_bytes = 0;
-	ssize_t write_bytes = 0;
-
-	while (write_bytes < st.st_size) {
-		ssize_t cur_rd = read(kernel_fd, buf, ubootab.free->wr_size);
-		if (cur_rd < 0) {
-			if (errno == EINTR)
-				continue;
-			break;
-		}
-		ssize_t cur_wr = 0;
-		do {
-			cur_wr += write(part_fd, buf + cur_wr,
-					ubootab.free->wr_size);
-			if (cur_wr < 0) {
-				if (errno == EINTR)
-					continue;
-
-				break;
-			}
-		} while (cur_wr < cur_rd);
-
-		write_bytes += cur_wr;
-	}
-
-	fsync(part_fd);
-	pv_log(DEBUG, "file size: %zd, written bytes: %zd", (size_t)st.st_size,
-	       write_bytes);
-
-	free(buf);
-
 	return 0;
 }
 
@@ -379,46 +211,27 @@ static int write_kernel(const char *rev)
 	pv_log(DEBUG, "writting kernel for rev = %s at part %s", rev,
 	       ubootab.free->name);
 
-	int ret = -1;
-	int part_fd = open(ubootab.free->dev, O_RDWR);
-	if (part_fd < 0) {
-		pv_log(DEBUG, "couldn't open device %s to write the kernel",
-		       ubootab.free->dev);
+	pv_mtd_erase(ubootab.free);
+	if (write_kernel_header(rev) != 0) {
+		pv_log(WARN,
+		       "couldn't write kernel header, new image will not be written");
 		return -1;
 	}
 
-	int kernel_fd = get_kernel_fd(rev);
-
-	if (part_fd < 0 || kernel_fd < 0)
-		goto out;
-
-	if (erase_part(part_fd) != 0)
-		goto out;
-
-	if (write_kernel_header(part_fd, rev) != 0) {
-		pv_log(WARN,
-		       "couldn't write kernel header, new image will not be written");
-		goto out;
+	int kfd = get_kernel_fd(rev);
+	if (kfd < 0) {
+		pv_log(DEBUG, "couldn't open kernel image");
+		return -1;
 	}
 
-	if (copy_kernel_image(kernel_fd, part_fd) != 0) {
+	if (pv_mtd_copy_fd(ubootab.free, kfd, UBOOTAB_HEADER_SIZE) < 0) {
 		pv_log(DEBUG, "couldn't write kernel");
-		goto out;
+		close(kfd);
+		return -1;
 	}
 
-	ret = 0;
-out:
-	if (part_fd >= 0)
-		close(part_fd);
-	if (kernel_fd >= 0)
-		close(kernel_fd);
-
-	if (ret != 0)
-		pv_log(WARN,
-		       "couldn't write the kernel in the proper part (%s)",
-		       ubootab.free->name);
-
-	return ret;
+	close(kfd);
+	return 0;
 }
 
 static int ubootab_install_update(char *rev)

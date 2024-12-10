@@ -164,6 +164,7 @@ add_executable(pantavisor
 			utils/fs.c
 			utils/json.c
 			utils/math.c
+			utils/mtd.c
 			utils/pvsignals.c
 			utils/pvsignals.h
 			utils/pvzlib.c
