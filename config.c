@@ -434,7 +434,7 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 				strlen("uboot-ab")))
 		entry->value.i = BL_UBOOT_AB;
 	else
-		pv_log(WARN, "unknown bootloader type '%s'", value);
+		pv_log(WARN, "*** unknown bootloader type '%s'", value);
 }
 
 void pv_config_set_creds_id(char *id)
