@@ -48,7 +48,8 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-#define UBOOTAB_PART_HEADER_SIZE (4096)
+#define UBOOTAB_HEADER_SIZE (4096)
+#define UBOOTAB_FW_CONFIG "/etc/fw_env.config"
 
 struct ubootab {
 	struct pv_mtd *a;
@@ -145,12 +146,67 @@ static int set_free_part()
 	return 0;
 }
 
+static int write_fw_env_file_entry(int fd, const char *name)
+{
+	struct pv_mtd *mtd = pv_mtd_from_name(name);
+
+	int offset = pv_config_get_int(PV_BOOTLOADER_UBOOTAB_ENV_OFFSET);
+	int size = pv_config_get_int(PV_BOOTLOADER_UBOOTAB_ENV_SIZE);
+
+	int n = dprintf(fd, "%s\t%d\t%d\t%lld\t%lld\n", mtd->dev, offset, size,
+			(long long)mtd->erasesize,
+			(long long)mtd->size / mtd->erasesize);
+
+	free(mtd);
+
+	return n < 0 ? -1 : 0;
+}
+
+static int setup_fw_utils()
+{
+	unlink(UBOOTAB_FW_CONFIG);
+
+	int ret = -1;
+	int fd = open(UBOOTAB_FW_CONFIG, O_WRONLY, O_CREAT | O_CLOEXEC, 0664);
+
+	if (fd < 0) {
+		pv_log(DEBUG,
+		       "couldn't write config file, cannot be opened: %s (%d)",
+		       strerror(errno), errno);
+		return -1;
+	}
+
+	// header
+	dprintf(fd,
+		"# Device name\tDevice offset\tEnv. size\tFlash sector size\tNumber of sectors\n");
+
+	char *env = pv_config_get_str(PV_BOOTLOADER_UBOOTAB_ENV_NAME);
+	if (!env) {
+		pv_log(DEBUG, "env partition name is NULL!");
+		goto out;
+	}
+
+	write_fw_env_file_entry(fd, env);
+
+	char *bak = pv_config_get_str(PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME);
+	if (!bak)
+		goto out;
+
+	write_fw_env_file_entry(fd, bak);
+
+out:
+	close(fd);
+
+	return ret;
+}
+
 static int ubootab_init()
 {
 	pv_log(DEBUG, "initializing uboot-ab");
 	if (ubootab.init)
 		return 0;
 
+	setup_fw_utils();
 
 	ubootab.a = pv_mtd_from_name(
 		pv_config_get_str(PV_BOOTLOADER_UBOOTAB_A_NAME));
