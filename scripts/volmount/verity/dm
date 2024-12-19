@@ -63,6 +63,7 @@ do_mount_squash() {
 		return 2
 	fi
 
+	losetup -a
 
 	mkdir -p $volpath
 	if ! mount -oloop /dev/mapper/$dmname $volpath; then
@@ -70,6 +71,18 @@ do_mount_squash() {
 		return 3
 	fi
 
+	echo "searching loopback device from $container/$squashname"
+
+	if ! _l=`losetup -a | grep "$container/$squashname)"$ | tail -n 1 | sed -e 's/:.*//'`; then
+		echo "ERROR: unable to setup loop device for $container/$squashname"
+		return 10
+	fi
+	if ! losetup --direct-io=on $_l; then
+		echo "ERROR: unable to setup direct-io flag for $_l"
+		return 11
+	fi
+
+	losetup -a
 }
 
 do_umount_squash() {
