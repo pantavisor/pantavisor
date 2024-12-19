@@ -52,11 +52,16 @@ atomic_losetup()
 		echo "ERROR: unable to setup loop device for $_imgfile"
 		return 122
 	fi
-	if ! _l=`losetup -a | grep ${imgfile}$ | tail -n 1`; then
+	if ! _l=`losetup -a | grep ${imgfile}$ | tail -n 1 | sed -e 's/:.*//'`; then
 		echo "ERROR: unable to setup loop device for $_imgfile"
 		return 122
 	fi
-	echo $_l | sed -e 's/:.*//'
+	if ! losetup --direct-io=on $_l; then
+		echo "ERROR: unable to setup direct-io flag for $_l"
+		return 122
+	fi
+
+	echo $_l
 }
 
 do_crypt_init()

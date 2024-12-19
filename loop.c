@@ -120,6 +120,9 @@ int mount_bind(char *src, char *dest)
 	return ret;
 }
 
+#include "utils/tsh.h"
+#define CMD_LOSETUP_FMT "losetup --direct-io=on %s"
+
 int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 {
 	int ret = 0;
@@ -146,6 +149,13 @@ int mount_loop(char *src, char *dest, char *fstype, int *loop_fd, int *file_fd)
 		pv_log(ERROR, "could not mount \"%s\" (\"%s\")", src, fstype);
 		goto out;
 	}
+
+	char cmd_losetup[PATH_MAX];
+	SNPRINTF_WTRUNC(cmd_losetup, PATH_MAX, CMD_LOSETUP_FMT, devname);
+	pv_log(DEBUG, "executing '%s'", cmd_losetup);
+
+	int status = 0;
+	tsh_run(cmd_losetup, 0, &status);
 
 out:
 	if (opts)
