@@ -225,6 +225,18 @@ install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
 	DESTINATION /usr/bin)
 
+add_executable(remount
+			remount/remount.c
+			utils/pvsignals.h utils/pvsignals.c
+			utils/tsh.c utils/tsh.h
+			utils/fs.c
+			utils/json.c
+			utils/str.c
+)
+target_include_directories(remount PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
+target_link_libraries(remount  ${THTTP})
+install(TARGETS remount DESTINATION /lib/pv/hooks_lxc-mount.d)
+
 ### install dm crypt feature
 IF(PANTAVISOR_DM_CRYPT)
 install(DIRECTORY scripts/volmount/crypt
