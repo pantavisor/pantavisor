@@ -130,7 +130,7 @@ char *pv_objects_get_list_string()
 
 		pv_paths_storage_object(path, PATH_MAX, curr->path);
 		size_object = pv_fs_path_get_size(path);
-		if (size_object <= 0)
+		if (size_object < 0)
 			continue;
 
 		line_len =
