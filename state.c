@@ -29,6 +29,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include "state.h"
 #include "drivers.h"
@@ -1113,114 +1114,177 @@ state_spec_t pv_state_spec(struct pv_state *s)
 	return s->spec;
 }
 
+static bool pv_state_json_is_dm(struct pv_json *js, jsmntok_t *tokv, int tokc)
+{
+	char *type = pv_json_get_value(js->value, "type", tokv, tokc);
+	if (!type)
+		return false;
+
+	bool ret = !strncmp(type, "dm-verity", strlen(type));
+	free(type);
+	return ret;
+}
+
+static char *pv_state_get_object_id(struct dl_list *objects, const char *name)
+{
+	struct pv_object *obj, *tmp;
+	dl_list_for_each_safe(obj, tmp, objects, struct pv_object, list)
+	{
+		if (!strncmp(obj->name, name, strlen(obj->name)))
+			return obj->id;
+	}
+	return NULL;
+}
+
+static char *pv_state_get_formatted_nv_entry(struct dl_list *objects,
+					     const char *pname,
+					     const char *data_dev,
+					     size_t *entry_size)
+{
+	char *entry = NULL;
+	char *obj_name = NULL;
+	if (pv_str_fmt_build(&obj_name, "%s/%s", pname, data_dev) < 0)
+		return NULL;
+
+	char *id = pv_state_get_object_id(objects, obj_name);
+	if (!id)
+		goto out;
+
+	int e_size = pv_str_fmt_build(&entry, "%s %s\n", obj_name, id);
+	if (e_size < 0)
+		goto out;
+
+	*entry_size = e_size;
+
+out:
+	if (obj_name)
+		free(obj_name);
+
+	return entry;
+}
+
+static char *pv_state_add_novalidate_obj(char *nv_list, size_t nv_size,
+					 char *entry, size_t entry_size)
+{
+	char *tmp = realloc(nv_list, entry_size + 1 + nv_size);
+	if (!tmp) {
+		pv_log(DEBUG, "couldn't allocate nv_list memory");
+		return NULL;
+	}
+
+	nv_list = tmp;
+	memcpy(nv_list + nv_size, entry, entry_size);
+
+	return nv_list;
+}
+
+static char *pv_state_get_novalidate_known_obj(struct dl_list *objects,
+					       size_t *nv_size)
+{
+	const char *obj_exp[] = {
+		"bsp/pantavisor",
+		"bsp/kernel.img",
+		"bsp/fit-image.its",
+	};
+
+	char *nv_list = NULL;
+
+	struct pv_object *obj, *obj_tmp;
+	dl_list_for_each_safe(obj, obj_tmp, objects, struct pv_object, list)
+	{
+		char *p = NULL;
+		for (int i = 0; i < ARRAY_LEN(obj_exp); ++i) {
+			p = strstr(obj->name, obj_exp[i]);
+			if (!p)
+				continue;
+
+			// to be sure that the found str is at the beginning
+			if (p == obj->name)
+				break;
+		}
+
+		if (!p)
+			continue;
+
+		char *entry = NULL;
+		int len = pv_str_fmt_build(&entry, "%s %s\n", obj->name,
+					    obj->id);
+
+		char *nv_tmp = pv_state_add_novalidate_obj(nv_list, *nv_size,
+							   entry, len);
+		if (nv_tmp) {
+			nv_list = nv_tmp;
+			*nv_size += len;
+		}
+
+		free(entry);
+	}
+
+	return nv_list;
+}
+
 /*
  * retrieve a string of all path/objectid pairs that
  * the handler will validate. This will prevent those
  * objects to be checked with a full sha256sum check
  * before starting the platforms.
  */
-static char *_pv_state_get_novalidate_list(char *rev)
+static char *pv_state_get_novalidate_list(struct pv_state *state)
 {
-#define _pv_bufsize_1 (1288 * 1024)
-#define _cmd_fmt " novalidatelist %s"
-	char rev_path[PATH_MAX], hdl_path[PATH_MAX];
-	char sout[_pv_bufsize_1] = { 0 }, serr[_pv_bufsize_1] = { 0 };
-	char *_sout = sout, *_serr = serr;
-	char *result = NULL;
-	int res;
-	char *cmd = NULL, *tmp_cmd = NULL;
-	struct dirent *dp;
-	DIR *volmountdir;
+	jsmntok_t *tokv = NULL;
+	int tokc = 0;
+	char *data_dev = NULL;
+	char *entry = NULL;
+	size_t nv_size = 0;
+	char *nv_list =
+		pv_state_get_novalidate_known_obj(&state->objects, &nv_size);
 
-	if (getenv("pv_verityoff") ||
-	    !pv_config_get_bool(PV_SECUREBOOT_HANDLERS))
-		return NULL;
+	struct pv_json *js, *js_tmp;
+	dl_list_for_each_safe(js, js_tmp, &state->jsons, struct pv_json, list)
+	{
+		jsmnutil_parse_json(js->value, &tokv, &tokc);
 
-	pv_paths_lib_volmount(hdl_path, PATH_MAX, "verity", "");
-	volmountdir = opendir(hdl_path);
+		if (!pv_state_json_is_dm(js, tokv, tokc))
+			goto next;
 
-	// Unable to open directory stream
-	if (!volmountdir)
-		goto out;
+		data_dev =
+			pv_json_get_value(js->value, "data_device", tokv, tokc);
 
-	while ((dp = readdir(volmountdir)) != NULL) {
-		struct stat st;
+		if (!data_dev)
+			goto next;
 
-		if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, ".."))
-			continue;
+		size_t entry_size = 0;
+		entry = pv_state_get_formatted_nv_entry(
+			&state->objects, js->plat->name, data_dev, &entry_size);
 
-		pv_paths_storage_trail(rev_path, PATH_MAX, rev);
-		pv_paths_lib_volmount(hdl_path, PATH_MAX, "verity", dp->d_name);
-		if (stat(hdl_path, &st)) {
-			pv_log(WARN, "illegal handler file %s, error=%s",
-			       hdl_path, strerror(errno));
-			goto out;
+		if (!entry)
+			goto next;
+
+		char *nv_tmp = pv_state_add_novalidate_obj(nv_list, nv_size,
+							   entry, entry_size);
+		if (nv_tmp) {
+			nv_list = nv_tmp;
+			nv_size += entry_size;
 		}
 
-		// if not executable, we let it pass ...
-		if (!(st.st_mode & S_IXUSR))
-			continue;
-
-		// now we make the cmd for the volmount handler. every handler is expected
-		// to implement a novalidatelist subcommand; if not relevant the handler
-		// shall return an empty result...
-		int len = (ARRAY_LEN(_cmd_fmt) + strlen(hdl_path) +
-			   strlen(rev_path) + 2);
-		tmp_cmd = realloc(cmd, len * sizeof(char));
-
-		if (tmp_cmd) {
-			cmd = tmp_cmd;
-		} else {
-			goto out;
+	next:
+		if (tokv) {
+			free(tokv);
+			tokv = NULL;
+			tokc = 0;
 		}
 
-		int len_o = snprintf(cmd, sizeof(char) * len, "%s " _cmd_fmt,
-				     hdl_path, rev_path);
-		if (len_o >= len) {
-			pv_log(WARN,
-			       "illegal handler command (cut off): %s - %s",
-			       cmd, strerror(errno));
-			goto out;
+		if (data_dev) {
+			free(data_dev);
+			data_dev = NULL;
 		}
 
-		// now we run that handler cmd with 20 seconds timeout ...
-		res = tsh_run_output(cmd, 20, _sout, _pv_bufsize_1 - 1, _serr,
-				     _pv_bufsize_1 - 1);
-
-		if (res < 0) {
-			pv_log(WARN,
-			       "error running novalidatelist command (%s): %s",
-			       cmd, strerror(errno));
-			continue;
+		if (entry) {
+			free(entry);
+			entry = NULL;
 		}
-
-		// if command fails, we dont abort as some handlers might be buggy ...
-		// we just ignore the result of this handler ...
-		if (res > 0) {
-			pv_log(WARN, "command exited with error code: %d", res);
-			pv_log(DEBUG, "stdout: %s", sout);
-			pv_log(DEBUG, "stderr: %s", serr);
-			continue;
-		}
-
-		if (strlen(serr) > 0)
-			pv_log(WARN, "get_novalidatelist stderr output: %s",
-			       serr);
-
-		_sout += strlen(_sout);
-		*_sout = ' ';
-		_sout++;
-		*_sout = 0;
 	}
-
-	result = strndup(sout, _pv_bufsize_1 - 1);
-	;
-out:
-	if (volmountdir)
-		closedir(volmountdir);
-	if (cmd)
-		free(cmd);
-	return result;
+	return nv_list;
 }
 
 bool pv_state_validate_checksum(struct pv_state *s)
@@ -1237,9 +1301,10 @@ bool pv_state_validate_checksum(struct pv_state *s)
 		goto out;
 	}
 
-	validate_list = _pv_state_get_novalidate_list(s->rev);
+	validate_list = pv_state_get_novalidate_list(s);
+
 	if (validate_list)
-		pv_log(DEBUG, "no validation list is: %s", validate_list);
+		pv_log(DEBUG, "no validation list: %s", validate_list);
 
 	pv_objects_iter_begin(s, o)
 	{

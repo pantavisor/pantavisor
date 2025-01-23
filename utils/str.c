@@ -23,6 +23,7 @@
 #include <libgen.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include "str.h"
 
 char *pv_str_replace_char(char *str, int len, char which, char what)
@@ -83,6 +84,33 @@ int pv_str_count_list(char **list)
 		list++;
 	}
 
+	return len;
+}
+
+int pv_str_fmt_build(char **str, const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+
+	int len = vsnprintf(NULL, 0, fmt, args) + 1;
+	if (len < 0)
+		goto out;
+
+	*str = calloc(len, sizeof(char));
+	if (!*str)
+		goto out;
+
+	va_end(args);
+	va_start(args, fmt);
+
+	len = vsnprintf(*str, len, fmt, args);
+	if (len < 0) {
+		free(*str);
+		*str = NULL;
+		goto out;
+	}
+out:
+	va_end(args);
 	return len;
 }
 
