@@ -72,7 +72,6 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->groups);
 		dl_list_init(&s->bsp.drivers);
 		s->using_runlevels = false;
-		s->local = false;
 		s->done = false;
 	}
 

@@ -63,7 +63,6 @@ struct pv_state {
 	struct dl_list groups; //pv_group
 	bool using_runlevels;
 	int tryonce;
-	bool local;
 	bool done;
 };
 
