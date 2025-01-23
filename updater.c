@@ -201,12 +201,33 @@ err:
 	return -1;
 }
 
+static int update_endpoint_init(struct pv_update *u)
+{
+	if (!u)
+		return -1;
+
+	const char *id = pv_config_get_str(PH_CREDS_ID);
+	if (!id)
+		return -1;
+
+	const char *rev = u->rev;
+	if (!rev)
+		return -1;
+
+	int size = sizeof(DEVICE_STEP_ENDPOINT_FMT) + strlen(id) + strlen(rev);
+
+	u->endpoint = malloc(sizeof(char) * size);
+	SNPRINTF_WTRUNC(u->endpoint, size, DEVICE_STEP_ENDPOINT_FMT, id, rev);
+
+	return 0;
+}
+
 static int pv_update_send_progress(struct pv_update *update, char *json)
 {
 	struct pantavisor *pv = pv_get_instance();
-	if ((update->pending && update->pending->local) ||
+	if ((update->pending && update->local) ||
 	    !pv_get_instance()->remote_mode || !pv->online ||
-	    trail_remote_init(pv))
+	    trail_remote_init(pv) || update_endpoint_init(update))
 		return 0;
 
 	trest_request_ptr req = NULL;
@@ -583,11 +604,9 @@ static int do_progress_action(struct json_key_action *jka, char *value)
 	return ret;
 }
 
-static struct pv_update *pv_update_new(const char *id, const char *rev,
-				       bool local)
+static struct pv_update *pv_update_new(const char *rev, bool local)
 {
 	struct pv_update *u;
-	int size;
 
 	if (!rev)
 		return NULL;
@@ -600,16 +619,10 @@ static struct pv_update *pv_update_new(const char *id, const char *rev,
 		u->retries = 0;
 		u->local = local;
 
-		if (!id) {
+		if (pv_storage_is_revision_local(rev)) {
 			u->local = true;
 			goto out;
 		}
-
-		size = sizeof(DEVICE_STEP_ENDPOINT_FMT) + strlen(id) +
-		       strlen(rev);
-		u->endpoint = malloc(sizeof(char) * size);
-		SNPRINTF_WTRUNC(u->endpoint, size, DEVICE_STEP_ENDPOINT_FMT, id,
-				rev);
 	}
 
 out:
@@ -767,7 +780,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	pv_log(DEBUG, "parse rev %s...", rev);
 
 	// create temp update to be able to report the revision state
-	update = pv_update_new(pv_config_get_str(PH_CREDS_ID), rev, false);
+	update = pv_update_new(rev, false);
 	if (!update)
 		goto out;
 
@@ -1896,7 +1909,7 @@ struct pv_update *pv_update_get_step_local(const char *rev)
 
 	pv_logserver_start_update(rev);
 
-	update = pv_update_new(pv_config_get_str(PH_CREDS_ID), rev, true);
+	update = pv_update_new(rev, true);
 	if (!update)
 		goto err;
 
@@ -1915,7 +1928,7 @@ struct pv_update *pv_update_get_step_local(const char *rev)
 		goto err;
 	}
 
-	update->pending->local = true;
+	update->local = true;
 
 	if (json)
 		free(json);
@@ -2029,8 +2042,7 @@ int pv_update_resume(struct pantavisor *pv)
 
 		pv_log(INFO, "loading update data from rev %s after reboot...",
 		       rev);
-		pv->update = pv_update_new(pv_config_get_str(PH_CREDS_ID), rev,
-					   false);
+		pv->update = pv_update_new(rev, false);
 		if (!pv->update)
 			return -1;
 

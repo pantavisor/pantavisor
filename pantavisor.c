@@ -281,6 +281,12 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 			pv_log(ERROR, "creds load failed");
 			goto out;
 		}
+
+		if (pv_pantahub_init()) {
+			pv_log(ERROR,
+			       "pantahub client could not be initialized");
+			goto out;
+		}
 	}
 
 	// load configuration that lives in revision
@@ -289,13 +295,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// reload remote bool after non reboot updates, when we don't load config again
 	pv->remote_mode = pv_config_get_bool(PV_CONTROL_REMOTE);
 	pv->loading_objects = false;
-	pv->state->local = !pv_config_get_bool(PV_CONTROL_REMOTE);
-	;
 
 	// we know if we are in local if the running revision has the local format
 	if (pv_storage_is_revision_local(pv->state->rev)) {
 		pv_log(DEBUG, "running local revision %s", pv->state->rev);
-		pv->state->local = true;
 		pv->remote_mode = false;
 		if (pv_config_get_bool(PV_CONTROL_REMOTE_ALWAYS)) {
 			pv_log(DEBUG,

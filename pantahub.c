@@ -93,7 +93,12 @@ auth:
 	}
 
 	const char *id = pv_config_get_str(PH_CREDS_ID);
-	if (!endpoint && id) {
+	if (!id) {
+		ph_client_free();
+		return 0;
+	}
+
+	if (!endpoint) {
 		size = sizeof(ENDPOINT_FMT) + strlen(id) + 1;
 		endpoint = malloc(size * sizeof(char));
 		SNPRINTF_WTRUNC(endpoint, size, ENDPOINT_FMT, id);
@@ -138,7 +143,9 @@ bool pv_ph_is_auth(struct pantavisor *pv)
 	if (client && endpoint)
 		goto success;
 
-	ph_client_init(pv);
+	if (!ph_client_init(pv)) {
+		return false;
+	}
 
 	if (client && endpoint)
 		goto success;
@@ -205,7 +212,7 @@ struct pv_connection *pv_get_instance_connection()
 	}
 	// default to global PH instance
 	host = pv_config_get_str(PH_CREDS_HOST);
-	if (strcmp(host, "") == 0)
+	if (!host || (strcmp(host, "") == 0))
 		host = "api.pantahub.com";
 
 	port = pv_config_get_int(PH_CREDS_PORT);
@@ -585,4 +592,37 @@ out:
 		trest_response_free(res);
 
 	return ret;
+}
+
+int pv_pantahub_init()
+{
+	struct pantavisor *pv = pv_get_instance();
+	char tmp[256], path[PATH_MAX];
+
+	pv_log(DEBUG, "initializing PantacorHub client...");
+
+	const char *prn = pv_config_get_str(PH_CREDS_PRN);
+	if (!prn || !strcmp(prn, "")) {
+		pv_log(DEBUG, "device is not claimed yet");
+		pv->unclaimed = true;
+	} else {
+		pv_log(DEBUG, "device is already claimed");
+		pv->unclaimed = false;
+		pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
+		SNPRINTF_WTRUNC(tmp, sizeof(tmp), "%s\n",
+				pv_config_get_str(PH_CREDS_ID));
+		if (pv_fs_file_save(path, tmp, 0444) < 0)
+			pv_log(WARN, "could not save file %s: %s", path,
+			       strerror(errno));
+	}
+
+	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
+	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d\n",
+			pv_config_get_str(PH_CREDS_HOST),
+			pv_config_get_int(PH_CREDS_PORT));
+	if (pv_fs_file_save(path, tmp, 0444) < 0)
+		pv_log(WARN, "could not save file %s: %s", path,
+		       strerror(errno));
+
+	return 0;
 }

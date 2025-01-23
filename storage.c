@@ -1111,8 +1111,7 @@ void pv_storage_umount()
 
 static int pv_storage_init(struct pv_init *this)
 {
-	struct pantavisor *pv = pv_get_instance();
-	char tmp[256], path[PATH_MAX];
+	char path[PATH_MAX];
 
 	// create hints
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
@@ -1121,25 +1120,12 @@ static int pv_storage_init(struct pv_init *this)
 		       strerror(errno));
 
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-	const char *prn = pv_config_get_str(PH_CREDS_PRN);
-	if (!prn || !strcmp(prn, "")) {
-		pv->unclaimed = true;
-		if (pv_fs_file_save(path, "", 0444) < 0)
-			pv_log(WARN, "could not save file %s: %s", path,
-			       strerror(errno));
-	} else {
-		pv->unclaimed = false;
-		SNPRINTF_WTRUNC(tmp, sizeof(tmp), "%s\n",
-				pv_config_get_str(PH_CREDS_ID));
-		if (pv_fs_file_save(path, tmp, 0444) < 0)
-			pv_log(WARN, "could not save file %s: %s", path,
-			       strerror(errno));
-	}
+	if (pv_fs_file_save(path, "", 0444) < 0)
+		pv_log(WARN, "could not save file %s: %s", path,
+		       strerror(errno));
+
 	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
-	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d\n",
-			pv_config_get_str(PH_CREDS_HOST),
-			pv_config_get_int(PH_CREDS_PORT));
-	if (pv_fs_file_save(path, tmp, 0444) < 0)
+	if (pv_fs_file_save(path, "", 0444) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 
