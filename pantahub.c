@@ -542,7 +542,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
 	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n",
 			pv_config_get_str(PH_CREDS_ID));
-	if (pv_fs_file_save(path, buf, 044))
+	if (pv_fs_file_save(path, buf, 0444))
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 
@@ -551,7 +551,7 @@ void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
 
 	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
 	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", c);
-	if (pv_fs_file_save(path, buf, 044))
+	if (pv_fs_file_save(path, buf, 0444))
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 }
