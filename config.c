@@ -557,6 +557,8 @@ static char *_get_system_init_mode_str(init_mode_t mode)
 		return "standalone";
 	case IM_APPENGINE:
 		return "appengine";
+	case IM_INSTALLER:
+		return "installer";
 	default:
 		return "unknown";
 	}
@@ -582,6 +584,9 @@ static void _set_config_by_entry_init_mode(struct pv_config_entry *entry,
 	else if (pv_str_matches(value, strlen(value), "appengine",
 				strlen("appengine")))
 		entry->value.i = IM_APPENGINE;
+	else if (pv_str_matches(value, strlen(value), "installer",
+				strlen("installer")))
+		entry->value.i = IM_INSTALLER;
 	else
 		pv_log(WARN, "unknown system init mode '%s'", value);
 }

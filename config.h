@@ -172,7 +172,12 @@ char *pv_config_get_secureboot_mode_str(void);
 
 // SYSTEM INIT MODE
 
-typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
+typedef enum {
+	IM_EMBEDDED,
+	IM_STANDALONE,
+	IM_APPENGINE,
+	IM_INSTALLER
+} init_mode_t;
 
 init_mode_t pv_config_get_system_init_mode(void);
 char *pv_config_get_system_init_mode_str(void);
