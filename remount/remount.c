@@ -46,7 +46,7 @@ struct remount_entry {
 	struct dl_list list; // remount_entry
 };
 
-static void free_remount_entry(struct remount_entry* entry)
+static void free_remount_entry(struct remount_entry *entry)
 {
 	if (!entry)
 		return;
@@ -116,15 +116,16 @@ static void parse_remount_entry(char *json, struct dl_list *remount_entries)
 		goto out;
 	snprintf(p->opts, n + 1, "%s", json + (*k + 1)->start);
 
-	printf("DEBUG: parsed remount regex '%s' with opts '%s'...\n\r",
-	       p->exp, p->opts);
+	printf("DEBUG: parsed remount regex '%s' with opts '%s'...\n\r", p->exp,
+	       p->opts);
 
 	dl_list_add_tail(remount_entries, &p->list);
 
 	ret = 0;
 
 out:
-	free_remount_entry(p);
+	if (ret)
+		free_remount_entry(p);
 
 	jsmnutil_tokv_free(k);
 
@@ -237,8 +238,8 @@ static char *get_run_json_rel_path(void)
 	printf("DEBUG: container name '%s' to be used\n\r", pname);
 
 	char *path_fmt = "%s/run.json";
-	size_t len = snprintf(NULL, 0, path_fmt, pname) + 1;
-	char *path = calloc(len, sizeof(char));
+	size_t len = snprintf(NULL, 0, path_fmt, pname);
+	char *path = calloc(len + 1, sizeof(char));
 	snprintf(path, len, path_fmt, pname);
 	return path;
 }
@@ -384,7 +385,7 @@ static const struct mount_option mount_options[] = {
 };
 
 static unsigned long parse_mount_options(const char *options,
-				  unsigned long existing_flags)
+					 unsigned long existing_flags)
 {
 	char *opts, *o;
 	opts = strdup(options);
@@ -471,7 +472,7 @@ static int load_mounted_paths(struct dl_list *mounted_paths)
 		p = calloc(1, sizeof(struct mounted_path));
 		if (!p)
 			break;
-		p->path = calloc(1, len + 1);
+		p->path = calloc(len + 1, sizeof(char));
 		strncpy(p->path, begin, len);
 		begin = end + 1;
 
@@ -488,7 +489,7 @@ static int load_mounted_paths(struct dl_list *mounted_paths)
 		len = end - begin;
 		if (!len)
 			continue;
-		tmp = calloc(1, len + 1);
+		tmp = calloc(len + 1, sizeof(char));
 		if (!tmp)
 			continue;
 		strncpy(tmp, begin, len);
@@ -521,7 +522,7 @@ static void free_mounted_paths(struct dl_list *mounted_paths)
 }
 
 static int remount_exp(const char *exp, const char *opts,
-		struct dl_list *mounted_paths)
+		       struct dl_list *mounted_paths)
 {
 	printf("DEBUG: remounting regexp '%s' with opts '%s'\n\r", exp, opts);
 
@@ -560,7 +561,8 @@ out:
 	return ret;
 }
 
-static int remount_all(struct dl_list *remount_entries, struct dl_list *mounted_paths)
+static int remount_all(struct dl_list *remount_entries,
+		       struct dl_list *mounted_paths)
 {
 	printf("DEBUG: executing %d remount entries...\n\r",
 	       dl_list_len(remount_entries));
