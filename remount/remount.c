@@ -25,6 +25,7 @@
 #include <string.h>
 #include <errno.h>
 #include <regex.h>
+#include <stdarg.h>
 #include <sys/mount.h>
 
 #include <jsmn/jsmnutil.h>
@@ -46,7 +47,35 @@ struct remount_entry {
 	struct dl_list list; // remount_entry
 };
 
-static void free_remount_entry(struct remount_entry* entry)
+#define log_dbg(fmt, ...) _log(0, __func__, __LINE__, fmt, ##__VA_ARGS__)
+#define log_warn(fmt, ...) _log(1, __func__, __LINE__, fmt, ##__VA_ARGS__)
+#define log_err(fmt, ...) _log(2, __func__, __LINE__, fmt, ##__VA_ARGS__)
+
+static void _log(int level, const char *fn, int line, const char *fmt, ...)
+{
+	char *lvl = "";
+	switch (level) {
+	case 0:
+		lvl = "[DEBUG] ";
+		break;
+	case 2:
+		lvl = "[WARN] ";
+		break;
+	case 3:
+		lvl = "[ERROR] ";
+		break;
+	}
+
+	va_list args;
+	va_start(args, fmt);
+
+	char final_fmt[1024] = { 0 };
+	snprintf(final_fmt, 1024, "%s(%s:%d): %s\n", lvl, fn, line, fmt);
+	vprintf(final_fmt, args);
+	va_end(args);
+}
+
+static void free_remount_entry(struct remount_entry *entry)
 {
 	if (!entry)
 		return;
@@ -60,24 +89,24 @@ static void free_remount_entry(struct remount_entry* entry)
 
 static void parse_remount_entry(char *json, struct dl_list *remount_entries)
 {
-	printf("DEBUG: parsing remount entry '%s'...\n\r", json);
+	log_dbg("parsing remount entry '%s'...\n\r", json);
 
 	int tokc, n, ret = -1;
 	jsmntok_t *tokv;
 	jsmntok_t **k;
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		printf("WARN: JSON could not be parsed\n\r");
+		log_warn("JSON could not be parsed\n\r");
 		goto out;
 	}
 
 	k = jsmnutil_get_object_keys(json, tokv);
 	if (!k) {
-		printf("WARN: key not found\n\r");
+		log_warn("key not found\n\r");
 		goto out;
 	}
 	if (!(k + 1)) {
-		printf("WARN: value not found\n\r");
+		log_warn("value not found\n\r");
 		goto out;
 	}
 
@@ -116,8 +145,8 @@ static void parse_remount_entry(char *json, struct dl_list *remount_entries)
 		goto out;
 	snprintf(p->opts, n + 1, "%s", json + (*k + 1)->start);
 
-	printf("DEBUG: parsed remount regex '%s' with opts '%s'...\n\r",
-	       p->exp, p->opts);
+	log_dbg("parsed remount regex '%s' with opts '%s'...\n\r", p->exp,
+	       p->opts);
 
 	dl_list_add_tail(remount_entries, &p->list);
 
@@ -134,7 +163,7 @@ out:
 
 static void parse_remount_array(char *json, struct dl_list *remount_entries)
 {
-	printf("DEBUG: parsing remount array...\n\r");
+	log_dbg("parsing remount array...\n\r");
 
 	char *str = NULL;
 	int tokc, size;
@@ -149,7 +178,7 @@ static void parse_remount_array(char *json, struct dl_list *remount_entries)
 
 	t = tokv + 1;
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
-		printf("DEBUG: remount entry object '%s' found\n\r", str);
+		log_dbg("remount entry object '%s' found\n\r", str);
 
 		parse_remount_entry(str, remount_entries);
 		free(str);
@@ -166,13 +195,13 @@ out:
 
 static void parse_remount_object(char *json, struct dl_list *remount_entries)
 {
-	printf("DEBUG: parsing remount object...\n\r");
+	log_dbg("parsing remount object...\n\r");
 
 	int tokc;
 	jsmntok_t *tokv = NULL;
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		printf("WARN: JSON could not be parsed\n\r");
+		log_warn("JSON could not be parsed\n\r");
 		goto out;
 	}
 
@@ -182,12 +211,12 @@ static void parse_remount_object(char *json, struct dl_list *remount_entries)
 		policy = getenv("pv_remount_policy");
 	if (!policy)
 		policy = "default";
-	printf("DEBUG: remount policy '%s' to be used\n\r", policy);
+	log_dbg("remount policy '%s' to be used\n\r", policy);
 
 	char *remount_array = NULL;
 	remount_array = pv_json_get_value(json, policy, tokv, tokc);
 	if (!remount_array) {
-		printf("WARN: '%s' key not found\n\r", policy);
+		log_warn("'%s' key not found\n\r", policy);
 		goto out;
 	}
 
@@ -201,20 +230,20 @@ out:
 
 static void parse_device_run_object(char *json, struct dl_list *remount_entries)
 {
-	printf("DEBUG: parsing component JSON...\n\r");
+	log_dbg("parsing component JSON...\n\r");
 
 	int tokc;
 	jsmntok_t *tokv = NULL;
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		printf("WARN: JSON could not be parsed\n\r");
+		log_warn("JSON could not be parsed\n\r");
 		goto out;
 	}
 
 	char *remount_object = NULL;
 	remount_object = pv_json_get_value(json, "remount", tokv, tokc);
 	if (!remount_object) {
-		printf("WARN: remount key not found\n\r");
+		log_warn("remount key not found\n\r");
 		goto out;
 	}
 
@@ -231,10 +260,10 @@ static char *get_run_json_rel_path(void)
 	char *pname = NULL;
 	pname = getenv("LXC_NAME");
 	if (!pname) {
-		printf("ERROR: LXC_NAME env not set\n\r");
+		log_err("LXC_NAME env not set\n\r");
 		return NULL;
 	}
-	printf("DEBUG: container name '%s' to be used\n\r", pname);
+	log_dbg("container name '%s' to be used\n\r", pname);
 
 	char *path_fmt = "%s/run.json";
 	size_t len = snprintf(NULL, 0, path_fmt, pname) + 1;
@@ -245,17 +274,17 @@ static char *get_run_json_rel_path(void)
 
 static int parse_state_json(char *json, struct dl_list *remount_entries)
 {
-	printf("DEBUG: parsing state JSON...\n\r");
+	log_dbg("parsing state JSON...\n\r");
 
 	int tokc, ret = -1;
 	jsmntok_t *tokv = NULL;
 
 	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		printf("WARN: JSON could not be parsed\n\r");
+		log_warn("JSON could not be parsed\n\r");
 		goto out;
 	}
 
-	printf("DEBUG: searching for device.json...\n\r");
+	log_dbg("searching for device.json...\n\r");
 
 	char *device_json = NULL;
 	device_json = pv_json_get_value(json, "device.json", tokv, tokc);
@@ -263,16 +292,16 @@ static int parse_state_json(char *json, struct dl_list *remount_entries)
 		parse_device_run_object(device_json, remount_entries);
 		free(device_json);
 	} else
-		printf("WARN: device.json not found\n\r");
+		log_warn("device.json not found\n\r");
 
 	char *rel_path = NULL;
 	rel_path = get_run_json_rel_path();
 	if (!rel_path) {
-		printf("ERROR: could not form run.json relative path\n\r");
+		log_err("could not form run.json relative path\n\r");
 		goto out;
 	}
 
-	printf("DEBUG: searching for '%s'...\n\r", rel_path);
+	log_dbg("searching for '%s'...\n\r", rel_path);
 
 	char *run_json = NULL;
 	run_json = pv_json_get_value(json, rel_path, tokv, tokc);
@@ -280,7 +309,7 @@ static int parse_state_json(char *json, struct dl_list *remount_entries)
 		parse_device_run_object(run_json, remount_entries);
 		free(run_json);
 	} else
-		printf("WARN: '%s' not found\n\r", rel_path);
+		log_warn("'%s' not found\n\r", rel_path);
 
 	ret = 0;
 
@@ -298,11 +327,11 @@ static char *load_state_json(void)
 	char *json = NULL;
 	char *path = STORAGE_TRAILS_CURRENT_PVR_JSON_PATH;
 
-	printf("DEBUG: loading state JSON from '%s'...\n\r", path);
+	log_dbg("loading state JSON from '%s'...\n\r", path);
 
 	json = pv_fs_file_load(path, 0);
 	if (!json) {
-		printf("ERROR: could not load '%s': '%s'\n\r", path,
+		log_err("could not load '%s': '%s'\n\r", path,
 		       strerror(errno));
 		return NULL;
 	}
@@ -312,19 +341,19 @@ static char *load_state_json(void)
 
 static int load_remount_entries(struct dl_list *remount_entries)
 {
-	printf("DEBUG: loading remount settings from state JSON...\n\r");
+	log_dbg("loading remount settings from state JSON...\n\r");
 
 	int ret = -1;
 
 	char *json = NULL;
 	json = load_state_json();
 	if (!json) {
-		printf("ERROR: could not load state JSON\n\r");
+		log_err("could not load state JSON\n\r");
 		goto out;
 	}
 
 	if (parse_state_json(json, remount_entries)) {
-		printf("ERROR: could not parse state JSON\n\r");
+		log_err("could not parse state JSON\n\r");
 		goto out;
 	}
 
@@ -384,7 +413,7 @@ static const struct mount_option mount_options[] = {
 };
 
 static unsigned long parse_mount_options(const char *options,
-				  unsigned long existing_flags)
+					 unsigned long existing_flags)
 {
 	char *opts, *o;
 	opts = strdup(options);
@@ -401,7 +430,7 @@ static unsigned long parse_mount_options(const char *options,
 		if (len <= 0)
 			break;
 
-		printf("DEBUG: new mount option '%s' found\n\r", o);
+		log_dbg("new mount option '%s' found\n\r", o);
 
 		for (const struct mount_option *mo = mount_options;
 		     mo->option != NULL; mo++) {
@@ -437,13 +466,13 @@ struct mounted_path {
 
 static int load_mounted_paths(struct dl_list *mounted_paths)
 {
-	printf("DEBUG: loading mounted paths...\n\r");
+	log_dbg("loading mounted paths...\n\r");
 
 	FILE *fd;
 	char *path = PROC_MOUNTS_PATH;
 	fd = fopen(path, "r");
 	if (!fd) {
-		printf("ERROR: could not open '%s': %s\n\r", path,
+		log_err("could not open '%s': %s\n\r", path,
 		       strerror(errno));
 		return -1;
 	}
@@ -453,7 +482,7 @@ static int load_mounted_paths(struct dl_list *mounted_paths)
 	size_t len;
 	struct mounted_path *p;
 	while (fgets(buf, sizeof(buf), fd)) {
-		printf("DEBUG: parsing mount row '%s'...\n\r", buf);
+		log_dbg("parsing mount row '%s'...\n\r", buf);
 
 		// skip source
 		begin = strchr(buf, ' ');
@@ -496,7 +525,7 @@ static int load_mounted_paths(struct dl_list *mounted_paths)
 		free(tmp);
 
 		dl_list_add_tail(mounted_paths, &p->list);
-		printf("DEBUG: new path '%s' with flags %lu\n\r", p->path,
+		log_dbg("new path '%s' with flags %lu\n\r", p->path,
 		       p->flags);
 	}
 
@@ -507,7 +536,7 @@ static int load_mounted_paths(struct dl_list *mounted_paths)
 
 static void free_mounted_paths(struct dl_list *mounted_paths)
 {
-	printf("DEBUG: freeing %d mounted paths...\n\r",
+	log_dbg("freeing %d mounted paths...\n\r",
 	       dl_list_len(mounted_paths));
 
 	struct mounted_path *p, *tmp;
@@ -521,13 +550,13 @@ static void free_mounted_paths(struct dl_list *mounted_paths)
 }
 
 static int remount_exp(const char *exp, const char *opts,
-		struct dl_list *mounted_paths)
+		       struct dl_list *mounted_paths)
 {
-	printf("DEBUG: remounting regexp '%s' with opts '%s'\n\r", exp, opts);
+	log_dbg("remounting regexp '%s' with opts '%s'\n\r", exp, opts);
 
 	regex_t re;
 	if (regcomp(&re, exp, REG_EXTENDED | REG_NOSUB)) {
-		printf("ERROR: regular expression '%s' not valid\n\r", exp);
+		log_err("regular expression '%s' not valid\n\r", exp);
 		return -1;
 	}
 
@@ -536,15 +565,15 @@ static int remount_exp(const char *exp, const char *opts,
 	dl_list_for_each_safe(p, tmp, mounted_paths, struct mounted_path, list)
 	{
 		if (!regexec(&re, p->path, 0, NULL, 0)) {
-			printf("DEBUG: remounting %s + bind,remount,%s\n\r",
+			log_dbg("remounting %s + bind,remount,%s\n\r",
 			       p->path, opts);
 			unsigned long flags =
 				parse_mount_options(opts, p->flags);
-			printf("DEBUG: opts '%s' translated into '%lu'\n\r",
+			log_dbg("opts '%s' translated into '%lu'\n\r",
 			       opts, flags);
 			if (mount(NULL, p->path, NULL,
 				  MS_REMOUNT | MS_BIND | flags, NULL)) {
-				printf("ERROR: could not remount '%s': %s\n\r",
+				log_err("could not remount '%s': %s\n\r",
 				       p->path, strerror(errno));
 				goto out;
 			}
@@ -560,9 +589,10 @@ out:
 	return ret;
 }
 
-static int remount_all(struct dl_list *remount_entries, struct dl_list *mounted_paths)
+static int remount_all(struct dl_list *remount_entries,
+		       struct dl_list *mounted_paths)
 {
-	printf("DEBUG: executing %d remount entries...\n\r",
+	log_dbg("executing %d remount entries...\n\r",
 	       dl_list_len(remount_entries));
 
 	struct remount_entry *p, *tmp;
@@ -577,7 +607,7 @@ static int remount_all(struct dl_list *remount_entries, struct dl_list *mounted_
 
 static void free_remount_entries(struct dl_list *remount_entries)
 {
-	printf("DEBUG: freeing %d remount entries...\n\r",
+	log_dbg("freeing %d remount entries...\n\r",
 	       dl_list_len(remount_entries));
 
 	struct remount_entry *p, *tmp;
@@ -595,7 +625,7 @@ int main()
 	dl_list_init(&remount_entries);
 
 	if (load_remount_entries(&remount_entries)) {
-		printf("ERROR: could not load remount entries\n\r");
+		log_err("could not load remount entries\n\r");
 		return -1;
 	}
 
@@ -603,12 +633,12 @@ int main()
 	dl_list_init(&mounted_paths);
 
 	if (load_mounted_paths(&mounted_paths)) {
-		printf("ERROR: could not load \n\r");
+		log_err("could not load \n\r");
 		return -1;
 	}
 
 	if (remount_all(&remount_entries, &mounted_paths)) {
-		printf("ERROR: could not remount paths\n\r");
+		log_err("could not remount paths\n\r");
 		return -1;
 	}
 
