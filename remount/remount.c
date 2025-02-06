@@ -37,6 +37,10 @@
 #define STORAGE_TRAILS_CURRENT_PVR_JSON_PATH "/storage/trails/current/.pvr/json"
 #define PROC_MOUNTS_PATH "/proc/mounts"
 
+// Not defined until Linux 5.10
+#ifndef MS_NOSYMFOLLOW
+# define MS_NOSYMFOLLOW (1 << 8)
+#endif
 // ~ bit
 #define MS_INVERTED_VALUE (1u << 31)
 
