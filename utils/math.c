@@ -26,6 +26,9 @@ int get_digit_count(int number)
 {
 	int c = 0;
 
+	if (number == 0)
+		return 1;
+
 	if (number < 0) {
 		number = -number;
 	}
