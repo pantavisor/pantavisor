@@ -135,7 +135,6 @@ char *pv_objects_get_list_string()
 
 		const char *obj_fmt = "{\"sha256\": \"%s\", \"size\": \"%u\"},";
 		line_len = snprintf(NULL, 0, obj_fmt, curr->path, size_object);
-		pv_log(DEBUG, "new line_len %d to be added to current len %d", line_len, len);
 		json = realloc(json, len + line_len);
 		SNPRINTF_WTRUNC(&json[len], line_len + 1, obj_fmt, curr->path, size_object);
 		len += line_len;
