@@ -31,13 +31,13 @@ int get_digit_count(int number)
 
 	if (number < 0) {
 		number = -number;
+		c++;
 	}
 
 	while (number) {
 		number /= 10;
 		c++;
 	}
-	c++;
 
 	return c;
 }
