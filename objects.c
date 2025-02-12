@@ -105,7 +105,7 @@ char *pv_objects_get_list_string()
 	char path[PATH_MAX];
 	struct pv_path *curr, *tmp;
 	int len = 1, line_len;
-	char *json = calloc(len, sizeof(char));
+	char *json = calloc(len + 1, sizeof(char));
 	unsigned int size_object;
 
 	pv_paths_storage_object(path, PATH_MAX, "");
@@ -133,12 +133,11 @@ char *pv_objects_get_list_string()
 		if (size_object < 0)
 			continue;
 
-		line_len =
-			strlen(curr->path) + get_digit_count(size_object) + 26;
-		json = realloc(json, len + line_len + 1);
-		SNPRINTF_WTRUNC(&json[len], line_len + 1,
-				"{\"sha256\": \"%s\", \"size\": \"%d\"},",
-				curr->path, size_object);
+		const char *obj_fmt = "{\"sha256\": \"%s\", \"size\": \"%u\"},";
+		line_len = snprintf(NULL, 0, obj_fmt, curr->path, size_object);
+		pv_log(DEBUG, "new line_len %d to be added to current len %d", line_len, len);
+		json = realloc(json, len + line_len);
+		SNPRINTF_WTRUNC(&json[len], line_len + 1, obj_fmt, curr->path, size_object);
 		len += line_len;
 	}
 
