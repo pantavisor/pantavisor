@@ -46,5 +46,6 @@ int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
 struct pv_connection *pv_get_instance_connection(void);
 
 int pv_pantahub_init(void);
+int pv_pantahub_close(void);
 
 #endif

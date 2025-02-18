@@ -199,6 +199,7 @@ int pv_config_load_update(const char *rev, const char *trail_config);
 int pv_config_load_creds(void);
 int pv_config_load_unclaimed_creds(void);
 int pv_config_save_creds(void);
+int pv_config_unload_creds(void);
 
 void pv_config_override_value(const char *key, const char *value);
 

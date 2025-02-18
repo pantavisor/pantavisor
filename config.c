@@ -1388,3 +1388,16 @@ int pv_config_load_creds()
 
 	return 0;
 }
+
+int pv_config_unload_creds()
+{
+	char dst_path[PATH_MAX];
+	pv_paths_pv_file(dst_path, PATH_MAX, PHCONFIG_DNAME);
+	if (umount(dst_path)) {
+		pv_log(ERROR, "could not umount '%s': %s", dst_path,
+		       strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
