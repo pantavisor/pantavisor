@@ -915,6 +915,8 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	ph_logger_stop_force();
 	ph_logger_close();
 
+	pv_pantahub_close();
+
 	// close pvctrl
 	pv_ctrl_socket_close(pv->ctrl_fd);
 
