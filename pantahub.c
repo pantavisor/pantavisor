@@ -626,3 +626,8 @@ int pv_pantahub_init()
 
 	return 0;
 }
+
+int pv_pantahub_close()
+{
+	return pv_config_unload_creds();
+}
