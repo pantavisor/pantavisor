@@ -923,17 +923,17 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 	pv_debug_stop_ssh();
 	pv_logserver_stop();
 
+	// unmounting
 	pv_volumes_umount_firmware_modules();
 	pv_log_umount();
 	pv_mount_umount();
 	pv_metadata_umount();
 
 	pv_init_umount();
-
-	// unmount disks
 	pv_disk_umount_all(&pv->state->disks);
-
 	pv_storage_umount();
+
+	pv_mount_print();
 
 	// free up memory
 	pv_bootloader_remove();
