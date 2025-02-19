@@ -78,7 +78,7 @@ static pv_disk_status_t pv_disk_crypt_status(struct pv_disk *disk)
 					   disk->name);
 
 	if (!access(path, F_OK)) {
-		pv_log(DEBUG, "disk %s alredy mounted", disk->path);
+		pv_log(DEBUG, "disk %s already mounted", disk->path);
 		return DISK_STATUS_MOUNTED;
 	}
 

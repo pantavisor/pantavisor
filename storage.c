@@ -1102,9 +1102,12 @@ void pv_storage_umount()
 {
 	char path[PATH_MAX];
 
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		return;
+
 	pv_paths_storage(path, PATH_MAX);
 	if (umount(path))
-		pv_log(ERROR, "Error unmounting pv_storage %s",
+		pv_log(ERROR, "could not umount '%s': %s", path,
 		       strerror(errno));
 	pv_fs_path_sync(path);
 }
