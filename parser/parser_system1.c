@@ -1221,6 +1221,14 @@ static int do_action_for_drivers(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_export(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	struct pv_platform *platform = *bundle->platform;
+	platform->export = true;
+	return 0;
+}
+
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	char *config = NULL, *shares = NULL;
@@ -1262,6 +1270,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_storage, false),
 		ADD_JKA_ENTRY("drivers", JSMN_OBJECT, &bundle,
 			      do_action_for_drivers, false),
+		ADD_JKA_ENTRY("exports", JSMN_ARRAY, &bundle,
+			      do_action_for_export, false),
 		ADD_JKA_NULL_ENTRY()
 	};
 

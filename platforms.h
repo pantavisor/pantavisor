@@ -98,6 +98,7 @@ struct pv_platform {
 	restart_policy_t restart_policy;
 	bool updated;
 	bool automodfw; // auto mount modfw
+	bool export;
 	struct timer timer_status_goal;
 	struct dl_list drivers; // pv_platform_driver
 	struct dl_list list; // pv_platform
