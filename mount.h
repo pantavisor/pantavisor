@@ -23,5 +23,6 @@
 #define PV_MOUNT_H
 
 void pv_mount_umount(void);
+void pv_mount_print(void);
 
 #endif // PV_MOUNT_H

@@ -90,6 +90,24 @@ void pv_mount_umount(void)
 	}
 }
 
+void pv_mount_print()
+{
+	pv_log(DEBUG, "Displaying current mounts...");
+
+    FILE *fp;
+    fp = fopen("/proc/self/mounts", "r");
+    if (fp == NULL) {
+		pv_log(DEBUG, "could not open '/proc/self/mounts': %s", strerror(errno));
+        return;
+    }
+
+    char buf[1024];
+    while (fgets(buf, sizeof(buf), fp) != NULL)
+		pv_log(DEBUG, "%s", buf);
+
+    fclose(fp);
+}
+
 static int pv_mount_init(struct pv_init *this)
 {
 	struct stat st;
