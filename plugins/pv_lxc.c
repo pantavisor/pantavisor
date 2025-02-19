@@ -387,9 +387,16 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	if (!d)
 		return;
 
+	const char *export_hook = "export.sh";
+
 	while ((dir = readdir(d)) != NULL) {
 		if (!strcmp(dir->d_name, ".") || !strcmp(dir->d_name, ".."))
 			continue;
+
+		if (!p->export &&
+		    !strncmp(export_hook, dir->d_name, strlen(export_hook)))
+			continue;
+
 		__pv_paths_lib_hook(path, PATH_MAX, dir->d_name);
 		c->set_config_item(c, "lxc.hook.mount", path);
 	}

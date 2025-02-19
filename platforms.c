@@ -189,6 +189,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		p->restart_policy = RESTART_NONE;
 		p->updated = false;
 		p->state = s;
+		p->export = false;
 		dl_list_init(&p->drivers);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
