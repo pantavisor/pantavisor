@@ -223,12 +223,12 @@ static int update_endpoint_init(struct pv_update *u)
 	return 0;
 }
 
-static int pv_update_send_progress(struct pv_update *update, char *json)
+static int pv_update_send_progress_json(struct pv_update *update, char *json)
 {
 	struct pantavisor *pv = pv_get_instance();
 	if ((update->pending && update->local) ||
 	    !pv_get_instance()->remote_mode || !pv->online ||
-	    trail_remote_init(pv) || update_endpoint_init(update))
+	    trail_remote_init(pv) || update_endpoint_init(update) || !json)
 		return 0;
 
 	trest_request_ptr req = NULL;
@@ -264,10 +264,10 @@ static int pv_update_send_progress(struct pv_update *update, char *json)
 struct pv_update_progress {
 	char status[UPDATE_PROGRESS_STATUS_SIZE];
 	char msg[UPDATE_PROGRESS_STATUS_MSG_SIZE];
-	char data[UPDATE_PROGRESS_DATA_SIZE];
 	char *logs;
 	struct download_info *total;
 	unsigned int progress;
+	unsigned int retries;
 };
 
 static void pv_update_free_progress(struct pv_update_progress *progress)
@@ -276,13 +276,98 @@ static void pv_update_free_progress(struct pv_update_progress *progress)
 		free(progress->logs);
 }
 
+static int pv_update_parse_progress(const char *json,
+				    struct pv_update_progress *progress)
+{
+	int ret = -1, tokc;
+	jsmntok_t *tokv = NULL;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		goto out;
+	}
+
+	char *status = pv_json_get_value(json, "status", tokv, tokc);
+	if (!status) {
+		pv_log(WARN, "status could not be parsed from progress JSON");
+		goto out;
+	}
+	memcpy(progress->status, status, strlen(status));
+	free(status);
+
+	char *msg = pv_json_get_value(json, "status-msg", tokv, tokc);
+	if (!msg) {
+		pv_log(WARN, "status could not be parsed from progress JSON");
+		goto out;
+	}
+	memcpy(progress->msg, msg, strlen(msg));
+	free(msg);
+
+	progress->logs = pv_json_get_value(json, "logs", tokv, tokc);
+
+	progress->progress =
+		pv_json_get_value_int(json, "progress", tokv, tokc);
+	progress->retries = pv_json_get_value_int(json, "retries", tokv, tokc);
+
+	ret = 0;
+
+out:
+	return ret;
+}
+
+static int pv_update_load_progress(struct pv_update *update,
+				   struct pv_update_progress *progress)
+{
+	int ret = -1;
+
+	if (!update || !progress)
+		return ret;
+
+	char *json = pv_storage_get_rev_progress(update->rev);
+	if (!json)
+		goto out;
+
+	if (pv_update_parse_progress(json, progress)) {
+		pv_log(WARN, "could not parse progress JSON");
+		goto out;
+	}
+
+	update->retries = progress->retries;
+
+	pv_log(DEBUG,
+	       "loaded progress file from disk for rev '%s' with status '%s'",
+	       update->rev, progress->status);
+
+	ret = 0;
+
+out:
+	if (json)
+		free(json);
+	return ret;
+}
+
+static bool pv_update_is_progress_final(struct pv_update_progress *progress)
+{
+	if (!progress || !progress->status)
+		return false;
+
+	const char *status = progress->status;
+	size_t len = strlen(status);
+	if (pv_str_matches(status, len, "DONE", strlen("DONE")) ||
+	    pv_str_matches(status, len, "UPDATED", strlen("UPDATED")) ||
+	    pv_str_matches(status, len, "WONTGO", strlen("WONTGO")) ||
+	    pv_str_matches(status, len, "ERROR", strlen("ERROR")))
+		return true;
+
+	return false;
+}
+
 static void pv_update_fill_progress(struct pv_update_progress *progress,
 				    struct pv_update *update)
 {
 	struct pv_update_progress *p = progress;
 	struct pv_update *u = update;
 
-	SNPRINTF_WTRUNC(p->data, sizeof(p->data), "%d", u->retries);
+	p->retries = u->retries;
 
 	int revision_retries = pv_config_get_int(PV_REVISION_RETRIES);
 	switch (update->status) {
@@ -343,6 +428,12 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 	case UPDATE_ABORTED:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Update aborted");
+		p->progress = 100;
+		break;
+	case UPDATE_NO_PROCESSING:
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "WONTGO");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg),
+				"Max update processing retries reached");
 		p->progress = 100;
 		break;
 	case UPDATE_NO_DOWNLOAD:
@@ -434,6 +525,14 @@ static void pv_update_fill_progress(struct pv_update_progress *progress,
 		p->progress = 0;
 		p->total = &update->total;
 		break;
+	case UPDATE_ROLLEDBACK:
+		pv_update_load_progress(update, p);
+		if (pv_update_is_progress_final(p))
+			break;
+		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
+		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Unexpected rollback");
+		p->progress = 100;
+		break;
 	default:
 		SNPRINTF_WTRUNC(p->status, sizeof(p->status), "ERROR");
 		SNPRINTF_WTRUNC(p->msg, sizeof(p->msg), "Internal error");
@@ -460,10 +559,8 @@ static char *pv_update_get_progress_json(struct pv_update_progress *progress)
 		pv_json_ser_string(&js, progress->msg);
 		pv_json_ser_key(&js, "progress");
 		pv_json_ser_number(&js, progress->progress);
-		if (strlen(progress->data) > 0) {
-			pv_json_ser_key(&js, "data");
-			pv_json_ser_string(&js, progress->data);
-		}
+		pv_json_ser_key(&js, "retries");
+		pv_json_ser_number(&js, progress->retries);
 		if (progress->total) {
 			pv_json_ser_key(&js, "downloads");
 			pv_json_ser_object(&js);
@@ -507,28 +604,65 @@ static char *pv_update_get_progress_json(struct pv_update_progress *progress)
 	return pv_json_ser_str(&js);
 }
 
-static int pv_update_report_progress(struct pv_update *update)
+static int pv_update_save_send_progress(struct pv_update *update,
+					struct pv_update_progress *progress)
 {
-	// prepare update progress struct
-	struct pv_update_progress progress;
-	memset(&progress, 0, sizeof(progress));
-	pv_update_fill_progress(&progress, update);
-
-	// serialize update progress json
+	int ret = -1;
 	char *json = NULL;
-	json = pv_update_get_progress_json(&progress);
-	pv_update_free_progress(&progress);
+	json = pv_update_get_progress_json(progress);
+	if (!json)
+		goto out;
 
 	// store progress in trails
 	pv_storage_set_rev_progress(update->rev, json);
 
 	// send progress to hub
-	int ret = 0;
-	ret = pv_update_send_progress(update, json);
+	ret = pv_update_send_progress_json(update, json);
 
-	if (json)
+out:
+	if (!json)
 		free(json);
 	return ret;
+}
+
+static int pv_update_save_send_update_progress(struct pv_update *update)
+{
+	struct pv_update_progress progress;
+	memset(&progress, 0, sizeof(progress));
+
+	pv_update_fill_progress(&progress, update);
+
+	int ret = pv_update_save_send_progress(update, &progress);
+	pv_update_free_progress(&progress);
+
+	return ret;
+}
+
+static int pv_update_send_progress(struct pv_update *update,
+				   struct pv_update_progress *progress)
+{
+	int ret = -1;
+	char *json = NULL;
+	json = pv_update_get_progress_json(progress);
+	if (!json)
+		goto out;
+
+	// send progress to hub
+	ret = pv_update_send_progress_json(update, json);
+
+out:
+	if (!json)
+		free(json);
+	return ret;
+}
+
+static int pv_update_refresh_progress(struct pv_update *update)
+{
+	struct pv_update_progress progress;
+	memset(&progress, 0, sizeof(progress));
+	pv_update_load_progress(update, &progress);
+	pv_update_send_progress(update, &progress);
+	pv_update_free_progress(&progress);
 }
 
 static int trail_get_steps_response(struct pantavisor *pv, char *endpoint,
@@ -572,36 +706,6 @@ out:
 		trest_request_free(req);
 	if (res)
 		trest_response_free(res);
-	return ret;
-}
-
-/*
- * the "data" field is structured as,
- * "data" : "value"
- * }
- */
-struct jka_update_ctx {
-	int *retries;
-};
-
-static int do_progress_action(struct json_key_action *jka, char *value)
-{
-	char *retry_count = NULL;
-	struct jka_update_ctx *ctx = (struct jka_update_ctx *)jka->opaque;
-	struct json_key_action jka_arr[] = {
-		ADD_JKA_ENTRY("data", JSMN_STRING, &retry_count, NULL, true),
-		ADD_JKA_NULL_ENTRY()
-	};
-
-	int ret = __start_json_parsing_with_action(
-		jka->buf, jka_arr, JSMN_OBJECT, jka->tokv, jka->tokc);
-	if (!ret) {
-		if (retry_count) {
-			pv_log(DEBUG, "retry_count = %s", retry_count);
-			sscanf(retry_count, "%d", ctx->retries);
-			free(retry_count);
-		}
-	}
 	return ret;
 }
 
@@ -664,11 +768,8 @@ void pv_update_set_status_msg(struct pv_update *update,
 	update->status = status;
 	SNPRINTF_WTRUNC(update->msg, sizeof(update->msg), "%s", msg ? msg : "");
 
-	// in this case, we don't want to overwrite the ERROR progress information
-	if (status == UPDATE_ROLLEDBACK)
-		return;
-
-	pv_update_report_progress(update);
+	// store in disk and report to hub
+	pv_update_save_send_update_progress(update);
 }
 
 void pv_update_set_status(struct pv_update *update, enum update_status status)
@@ -703,43 +804,13 @@ void pv_update_set_factory_status()
 	pv_storage_set_rev_done("0");
 }
 
-static int pv_update_refresh_progress(struct pv_update *update)
-{
-	int ret = -1;
-
-	if (!update)
-		return ret;
-
-	char *json;
-	json = pv_storage_get_rev_progress(update->rev);
-	if (!json)
-		return ret;
-
-	pv_log(DEBUG,
-	       "rev '%s' already existed in this device with progress '%s'",
-	       update->rev, json);
-
-	ret = pv_update_send_progress(update, json);
-
-	free(json);
-	return ret;
-}
-
 static int trail_get_new_steps(struct pantavisor *pv)
 {
-	bool wrong_revision = false;
 	int ret = 0;
 	char *state = 0, *rev = 0;
 	struct trail_remote *remote = pv->remote;
 	trest_response_ptr res = NULL;
 	jsmntok_t *tokv = 0;
-	int retries = 0;
-	struct jka_update_ctx update_ctx = { .retries = &retries };
-	struct json_key_action jka[] = {
-		ADD_JKA_ENTRY("progress", JSMN_OBJECT, &update_ctx,
-			      do_progress_action, false),
-		ADD_JKA_NULL_ENTRY()
-	};
 	struct pv_update *update;
 
 	if (!remote)
@@ -751,7 +822,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 		ret = trail_get_steps_response(pv, remote->endpoint_trail_new,
 					       &res);
 	} else {
-		// check for NEW, DOWNLOAD INPROGRESS or QUEUED updates
+		// check for NEW, DOWNLOAD, INPROGRESS, TESTING or QUEUED updates
 		ret = trail_get_steps_response(
 			pv, remote->endpoint_trail_pending, &res);
 	}
@@ -804,43 +875,48 @@ static int trail_get_new_steps(struct pantavisor *pv)
 			pv_log(WARN, "setting revision %ld as stale", new_rev);
 			pv_update_set_status(update, UPDATE_STALE_REVISION);
 		}
-		wrong_revision = true;
-		goto send_feedback;
-	}
-
-	// get raw revision state and parse retry
-	state = pv_json_get_value(res->body, "state", res->json_tokv,
-				  res->json_tokc);
-	if (start_json_parsing_with_action(res->body, jka, JSMN_ARRAY) ||
-	    !state) {
-		pv_log(WARN, "failed to parse the rest of the response");
-		pv_update_set_status(update, UPDATE_NO_PARSE);
 		pv_update_free(update);
 		goto out;
 	}
 
 send_feedback:
-	if (pv_update_refresh_progress(update))
-		pv_log(DEBUG, "could not refresh progress from rev %s", rev);
+	// first, get on disk progress
+	struct pv_update_progress progress;
+	memset(&progress, 0, sizeof(progress));
+	pv_update_load_progress(update, &progress);
 
-	if (wrong_revision) {
-		pv_log(WARN, "wrong revision number found. Aborting update...");
-		pv_update_free(update);
-		goto out;
-	}
+	// every time we process a revision from hub queue counts as a retry
+	const int max_retries = pv_config_get_int(PV_REVISION_RETRIES);
+	update->retries++;
+	pv_log(DEBUG, "processing rev '%s'. Retry %d of %d", rev,
+	       update->retries, max_retries);
 
-	// report revision retry max reached
-	if (retries > pv_config_get_int(PV_REVISION_RETRIES)) {
+	// check revision retry max reached
+	if (update->retries > max_retries) {
 		pv_log(WARN, "max retries reached in rev %s", rev);
-		pv_update_set_status(update, UPDATE_NO_DOWNLOAD);
+		pv_update_set_status(update, UPDATE_NO_PROCESSING);
 		pv_update_free(update);
 		goto out;
 	}
 
-	// retry number recovered from endpoint response
-	update->retries = retries;
+	// report on disk status and finish if final
+	if (pv_update_is_progress_final(&progress)) {
+		pv_log(WARN, "rev '%s' already in final status '%s' in disk",
+		       rev, progress.status);
+		pv_update_send_progress(update, &progress);
+		pv_update_free(update);
+		goto out;
+	}
+
+	// we no longer need on disk progress and can continue processing normally
+	pv_update_free_progress(&progress);
+
 	// if everything went well until this point, put revision to queue
 	pv_update_set_status(update, UPDATE_QUEUED);
+
+	// get JSON state
+	state = pv_json_get_value(res->body, "state", res->json_tokv,
+				  res->json_tokc);
 
 	// parse state
 	if (pv_update_signature_verify(update, state)) {
@@ -1326,7 +1402,6 @@ static int pv_update_check_download_retry(struct pv_update *update)
 		timer_current_state(&update->retry_timer);
 
 	if (timer_state.fin) {
-		update->retries++;
 		if (update->retries > pv_config_get_int(PV_REVISION_RETRIES)) {
 			pv_log(WARN, "max retries reached in rev %s",
 			       update->rev);
@@ -1430,7 +1505,6 @@ int pv_update_finish(struct pantavisor *pv)
 		break;
 	// ERROR
 	case UPDATE_ROLLEDBACK:
-		pv_update_refresh_progress(u);
 		if (!pv_update_can_rollback(u))
 			pv_bootloader_fail_update();
 		break;
@@ -1443,6 +1517,7 @@ int pv_update_finish(struct pantavisor *pv)
 	case UPDATE_CONTAINER_STOPPED:
 	case UPDATE_CONTAINER_FAILED:
 	case UPDATE_INTERNAL_ERROR:
+	case UPDATE_NO_PROCESSING:
 	case UPDATE_NO_DOWNLOAD:
 	case UPDATE_NO_SPACE:
 	case UPDATE_BAD_SIGNATURE:
@@ -1455,9 +1530,8 @@ int pv_update_finish(struct pantavisor *pv)
 	}
 
 out:
+	pv_update_refresh_progress(u);
 	pv_logserver_stop_update(u->rev);
-	if (u->status != UPDATE_ROLLEDBACK)
-		pv_update_report_progress(u);
 	pv_log(INFO, "update finished with status %d", u->status);
 	pv_update_remove(pv);
 
@@ -1951,6 +2025,10 @@ int pv_update_download(struct pantavisor *pv)
 		goto out;
 	}
 
+	// if we come from this state, it means we are retrying a download
+	if (pv->update->status == UPDATE_RETRY_DOWNLOAD)
+		pv->update->retries++;
+
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, pv->update->rev, "");
 	pv_fs_mkdir_p(path, 0755);
 
@@ -2046,10 +2124,13 @@ int pv_update_resume(struct pantavisor *pv)
 		if (!pv->update)
 			return -1;
 
-		if (pv_bootloader_trying_update())
+		if (pv_bootloader_trying_update()) {
+			pv_log(DEBUG, "booting up after an update");
 			pv_update_set_status(pv->update, UPDATE_TRY);
-		else
+		} else {
+			pv_log(DEBUG, "booting up after a roll back");
 			pv_update_set_status(pv->update, UPDATE_ROLLEDBACK);
+		}
 	}
 
 	return 0;
