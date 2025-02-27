@@ -394,7 +394,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 			int len = newline_at - src + 1;
 			/*
 			 * Use json_holder temporarily to
-			 * get the source name and platform 
+			 * get the source name and platform
 			 * name.
 			 */
 			SNPRINTF_WTRUNC(json_holder, len, "%.*s", len - 1, src);
@@ -643,14 +643,6 @@ static int ph_logger_push_revision(char *revision)
 	return result;
 }
 
-static void log_libthttp(int level, const char *fmt, va_list args)
-{
-	if (level > pv_config_get_int(PV_LIBTHTTP_LOG_LEVEL))
-		return;
-
-	vlog(MODULE_NAME, DEBUG, fmt, args);
-}
-
 static pid_t ph_logger_start_push_service(char *revision)
 {
 	pid_t helper_pid = -1;
@@ -678,7 +670,6 @@ static pid_t ph_logger_start_push_service(char *revision)
 		       "Initialized push service with pid %d by process with pid %d",
 		       getpid(), getppid());
 		pv_log(DEBUG, "Push service pushing logs for rev %s", revision);
-		thttp_set_log_func(log_libthttp);
 		while (1) {
 			// if nothing to push or error while pushing, sleep
 			if (ph_logger_push_revision(revision) <= 0) {
@@ -778,7 +769,6 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 		pv_log(INFO,
 		       "Initialized range service with pid %d by process with pid %d",
 		       getpid(), getppid());
-		thttp_set_log_func(log_libthttp);
 		while (current_rev >= 0) {
 			// skip current revision.
 			if (atoi(avoid_rev) == current_rev) {
