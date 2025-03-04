@@ -232,9 +232,11 @@ static char *strnchr(char *src, char ch, int len)
 struct ph_logger_file *_search_log_file(const char *path)
 {
 	struct ph_logger_file *f, *tmp;
-	dl_list_for_each_safe(f, tmp, &ph_logger.files, struct ph_logger_file, list)
+	dl_list_for_each_safe(f, tmp, &ph_logger.files, struct ph_logger_file,
+			      list)
 	{
-		if (pv_str_matches(path, strlen(path), f->path, strlen(f->path)))
+		if (pv_str_matches(path, strlen(path), f->path,
+				   strlen(f->path)))
 			return f;
 	}
 
@@ -248,7 +250,9 @@ static void _save_log_file_pos(off_t pos, const char *path)
 	f = _search_log_file(path);
 	// if not, we create a new entry
 	if (!f) {
-		pv_log(DEBUG, "log file '%s' not yet stored in memory. Saving new file...", path);
+		pv_log(DEBUG,
+		       "log file '%s' not yet stored in memory. Saving new file...",
+		       path);
 		f = calloc(1, sizeof(struct ph_logger_file));
 		if (f) {
 			f->path = strdup(path);
@@ -256,7 +260,8 @@ static void _save_log_file_pos(off_t pos, const char *path)
 		}
 	}
 	if (!f) {
-		pv_log(ERROR, "could not initialize log file: %s", strerror(errno));
+		pv_log(ERROR, "could not initialize log file: %s",
+		       strerror(errno));
 		return;
 	}
 
@@ -265,10 +270,12 @@ static void _save_log_file_pos(off_t pos, const char *path)
 
 	// save pos in xattr if possible by config
 	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
-		char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)]; // max PRI64
-		SNPRINTF_WTRUNC(value, sizeof(value), "%" PRId64, pos);
-		if (setxattr(path, PH_LOGGER_POS_XATTR, value, strlen(value), 0))
-			pv_log(WARN, "xattr could not be saved in '%s': %s", path, strerror(errno));
+		char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)];
+		SNPRINTF_WTRUNC(value, sizeof(value), "%jd", (intmax_t)pos);
+		if (setxattr(path, PH_LOGGER_POS_XATTR, value, strlen(value),
+			     0))
+			pv_log(WARN, "xattr could not be saved in '%s': %s",
+			       path, strerror(errno));
 	}
 }
 
@@ -288,15 +295,18 @@ static off_t _load_log_file_pos(const char *path)
 	char dst[MAX_XATTR_SIZE] = { 0 };
 	off_t pos = 0;
 	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
-		pv_log(DEBUG, "log file is persistent. Trying to get xattr...", path);
-		if (getxattr(path, PH_LOGGER_POS_XATTR, dst, MAX_XATTR_SIZE) > 0)
-			sscanf(dst, "%" PRId64, &pos);
+		pv_log(DEBUG, "log file is persistent. Trying to get xattr...",
+		       path);
+		if (getxattr(path, PH_LOGGER_POS_XATTR, dst, MAX_XATTR_SIZE) >
+		    0)
+			sscanf(dst, "%jd", &pos);
 		else {
 			if (errno == ENODATA)
 				// if xattr does not yet exist for that path, we save it with pos 0
 				_save_log_file_pos(pos, path);
 			else
-				pv_log(WARN, "xattr could not be loaded: %s", strerror(errno));
+				pv_log(WARN, "xattr could not be loaded: %s",
+				       strerror(errno));
 		}
 	}
 
@@ -355,8 +365,8 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 	}
 
 	if (lseek(fd, pos, SEEK_SET) == (off_t)-1) {
-		pv_log(ERROR, "Unable to seek to position %lld for %s", pos,
-		       filename);
+		pv_log(ERROR, "Unable to seek to position %jd for %s",
+		       (intmax_t)pos, filename);
 		goto close_fd;
 	}
 
@@ -394,7 +404,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 			int len = newline_at - src + 1;
 			/*
 			 * Use json_holder temporarily to
-			 * get the source name and platform 
+			 * get the source name and platform
 			 * name.
 			 */
 			SNPRINTF_WTRUNC(json_holder, len, "%.*s", len - 1, src);
@@ -428,7 +438,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 			}
 		}
 #ifdef DEBUG
-		pv_log(DEBUG, "buf strlen = %d for file %s\n",
+		pv_log(DEBUG, "buf strlen = %zd for file %s\n",
 		       strlen(json_holder), filename);
 #endif
 		formatted_json =
@@ -535,7 +545,8 @@ close_fd:
 			SNPRINTF_WTRUNC(json_frag_array + off, avail, "]");
 			// set ret to 1, something pending to be sent
 			ret = 1;
-			if (!ph_logger_push_logs_endpoint(&ph_logger, json_frag_array))
+			if (!ph_logger_push_logs_endpoint(&ph_logger,
+							  json_frag_array))
 				_save_log_file_pos(pos, filename);
 			// in case of error while sending, we return -1
 			else
@@ -913,7 +924,8 @@ static void _ph_logger_free_file(struct ph_logger_file *f)
 void ph_logger_close()
 {
 	struct ph_logger_file *f, *tmp;
-	dl_list_for_each_safe(f, tmp, &ph_logger.files, struct ph_logger_file, list)
+	dl_list_for_each_safe(f, tmp, &ph_logger.files, struct ph_logger_file,
+			      list)
 	{
 		pv_log(DEBUG, "removing file '%s'", f->path);
 		dl_list_del(&f->list);

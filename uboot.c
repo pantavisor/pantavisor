@@ -90,7 +90,7 @@ static int uboot_init()
 
 	ret = read(fd, buf, sizeof(MTD_MATCH));
 	if (ret < 0) {
-		pv_log(ERROR, "Failed to read from %d bytes from /proc/mtd",
+		pv_log(ERROR, "Failed to read from %zd bytes from /proc/mtd",
 		       sizeof(MTD_MATCH));
 		return -2;
 	}
