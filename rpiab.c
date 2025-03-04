@@ -52,7 +52,7 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #else
 #define pv_log(level, msg, ...)                                                \
-	printf("%s[%d]: ", MODULE_NAME, level);                                \
+	printf("%s[%d]: ", MODULE_NAME, level);                     \
 	printf(msg "\n", ##__VA_ARGS__)
 #endif
 #include "log.h"
@@ -123,7 +123,7 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	}
 	fclose(f);
 	is_tryboot = bswap_32(is_tryboot);
-	pv_log(DEBUG, "RPI Tryboot state: %d", is_tryboot);
+	pv_log(DEBUG, "RPI Tryboot state: %ju", is_tryboot);
 
 	f = fopen(paths->boot_mode, "r");
 	if (!f) {
@@ -141,7 +141,7 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	}
 	fclose(f);
 	boot_mode = bswap_32(boot_mode);
-	pv_log(DEBUG, "RPI Boot Mode: %d", boot_mode);
+	pv_log(DEBUG, "RPI Boot Mode: %ju", boot_mode);
 
 	// for now we only support boot mode sd card (1) and usb disk (4)
 	if (boot_mode & 4) {
@@ -149,7 +149,7 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 		paths->bootimg[1] = strdup("/dev/sda2");
 		paths->bootimg[2] = strdup("/dev/sda3");
 	} else if (!(boot_mode & 1)) {
-		pv_log(ERROR, "Boot mode not supported: %d", boot_mode);
+		pv_log(ERROR, "Boot mode not supported: %ju", boot_mode);
 		return -1;
 	}
 
@@ -169,7 +169,7 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	}
 	fclose(f);
 	partition = bswap_32(partition);
-	pv_log(DEBUG, "RPI Partition booted: %d", partition);
+	pv_log(DEBUG, "RPI Partition booted: %ju", partition);
 
 	// now we extract autoboot.txt from partition 0 with mcopy
 	s = snprintf(cmdbuf, 0, "mcopy -n -i %s ::autoboot.txt %s",
@@ -193,7 +193,7 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 
 	if (s1 != s) {
 		pv_log(ERROR,
-		       "Error producing cmdbuf. size does not match expected size( %d != %d)",
+		       "Error producing cmdbuf. size does not match expected size (%zd != %zd)",
 		       s, s1);
 		free(cmdbuf);
 		return -2;
@@ -794,7 +794,7 @@ static int _rpiab_setrev_trybootimg(char *rev)
 	// support 128 chars long pv_rev=... string
 	if (s > sizeof(cmdline_buf) - 129) {
 		pv_log(ERROR,
-		       "cmdline.txt too large. we only support up to %llu bytes",
+		       "cmdline.txt too large. we only support up to %zu bytes",
 		       sizeof(cmdline_buf) - 129);
 		return -1;
 	}

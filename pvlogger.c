@@ -100,7 +100,8 @@ static int set_logger_xattr(struct log *log)
 
 	if (pos < 0)
 		return 0;
-	SNPRINTF_WTRUNC(place_holder, sizeof(place_holder), "%" PRId64, pos);
+	SNPRINTF_WTRUNC(place_holder, sizeof(place_holder), "%jd",
+			(intmax_t)pos);
 
 	return setxattr(fname, PV_LOGGER_POS_XATTR, place_holder,
 			strlen(place_holder), 0);
@@ -177,7 +178,7 @@ static int get_logger_xattr(struct log *log)
 	if (getxattr(fname, PV_LOGGER_POS_XATTR, buf, 32) < 0) {
 		pv_log(DEBUG, "Attribute %s not present", PV_LOGGER_POS_XATTR);
 	} else {
-		sscanf(buf, "%" PRId64, &stored_pos);
+		sscanf(buf, "%jd", &stored_pos);
 	}
 	return stored_pos;
 }
@@ -199,8 +200,8 @@ static int pvlogger_start(struct log *log, int was_init_ok)
 		if (st.st_size < stored_pos)
 			stored_pos = 0;
 	}
-	pv_log(DEBUG, "pvlogger %s seeking to position %" PRId64 "\n",
-	       module_name, stored_pos);
+	pv_log(DEBUG, "pvlogger %s seeking to position %jd\n", module_name,
+	       (intmax_t)stored_pos);
 	fseek(log->backing_file, stored_pos, SEEK_SET);
 out:
 	return was_init_ok;
@@ -417,7 +418,7 @@ pv_new_log(bool islxc, struct pv_logger_config *logger_config, const char *name)
 			trunc_val = pv_log_get_config_item(logger_config,
 							   "maxsize");
 			if (trunc_val)
-				sscanf(trunc_val, "%" PRId64,
+				sscanf(trunc_val, "%jd",
 				       &log_info->truncate_size);
 		}
 	}

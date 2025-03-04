@@ -105,8 +105,8 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 
 		reclaimed += st.st_size;
 		pv_fs_path_remove(path, false);
-		pv_log(DEBUG, "removed unused object '%s', reclaimed %lu bytes",
-		       path, st.st_size);
+		pv_log(DEBUG, "removed unused object '%s', reclaimed %jd bytes",
+		       path, (intmax_t)st.st_size);
 	}
 
 out:
@@ -251,13 +251,13 @@ static struct pv_storage *pv_storage_new()
 
 static void pv_storage_print(struct pv_storage *storage)
 {
-	pv_log(DEBUG, "total disk space: %d B", storage->total);
-	pv_log(DEBUG, "free disk space: %d B (%d%% of total)", storage->free,
-	       storage->free_percentage);
-	pv_log(DEBUG, "reserved disk space: %d B (%d%% of total)",
-	       storage->reserved, storage->reserved_percentage);
-	pv_log(INFO, "real free disk space: %d B (%d%% of total)",
-	       storage->real_free, storage->real_free_percentage);
+	pv_log(DEBUG, "total disk space: %jd B", (intmax_t)storage->total);
+	pv_log(DEBUG, "free disk space: %jd B (%d%% of total)",
+	       (intmax_t)storage->free, storage->free_percentage);
+	pv_log(DEBUG, "reserved disk space: %jd B (%d%% of total)",
+	       (intmax_t)storage->reserved, storage->reserved_percentage);
+	pv_log(INFO, "real free disk space: %jd B (%d%% of total)",
+	       (intmax_t)storage->real_free, storage->real_free_percentage);
 }
 
 off_t pv_storage_get_free()
@@ -334,16 +334,16 @@ off_t pv_storage_gc_run_needed(off_t needed)
 
 	if (needed > available) {
 		pv_log(WARN,
-		       "%d B needed but only %d B available. Freeing up space...",
-		       needed, available);
+		       "%jd B needed but only %jd B available. Freeing up space...",
+		       (intmax_t)needed, (intmax_t)available);
 		pv_storage_gc_run();
 
 		available = pv_storage_get_free();
 
 		if (needed > available)
 			pv_log(ERROR,
-			       "still %d B needed but only %d B available",
-			       needed, available);
+			       "still %jd B needed but only %jd B available",
+			       (intmax_t)needed, (intmax_t)available);
 	}
 
 	return available;

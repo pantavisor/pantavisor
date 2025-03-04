@@ -1312,7 +1312,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 		char needle[PATH_MAX + 67];
 		if (snprintf(needle, sizeof(char) * ARRAY_LEN(needle), "%s %s",
 			     o->name, o->id) >= ARRAY_LEN(needle)) {
-			pv_log(ERROR, "too long filename: for pv state: %d",
+			pv_log(ERROR, "too long filename: for pv state: %zd",
 			       strlen(o->name));
 			goto out;
 		}

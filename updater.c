@@ -797,10 +797,10 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	long current_rev = strtol(pv->state->rev, NULL, 10);
 
 	if (!errno && (new_rev <= current_rev)) {
-		pv_log(WARN, "running revision %d but trying to update to %d",
+		pv_log(WARN, "running revision %ld but trying to update to %ld",
 		       current_rev, new_rev);
 		if (new_rev < current_rev) {
-			pv_log(WARN, "setting revision %d as stale", new_rev);
+			pv_log(WARN, "setting revision %ld as stale", new_rev);
 			pv_update_set_status(update, UPDATE_STALE_REVISION);
 		}
 		wrong_revision = true;
@@ -1341,7 +1341,7 @@ static int pv_update_check_download_retry(struct pv_update *update)
 		return 0;
 	}
 
-	pv_log(INFO, "retrying in %d seconds", timer_state.sec);
+	pv_log(INFO, "retrying in %jd seconds", (intmax_t)timer_state.sec);
 	return 1;
 }
 
@@ -1844,16 +1844,15 @@ static int trail_check_update_size(struct pantavisor *pv)
 	char msg[UPDATE_PROGRESS_STATUS_MSG_SIZE];
 
 	update_size = get_update_size(pv->update);
-	pv_log(INFO, "update size: %" PRIu64 " B", update_size);
+	pv_log(INFO, "update size: %jd B", (intmax_t)update_size);
 
 	free_size = pv_storage_gc_run_needed(update_size);
 
 	if (update_size > free_size) {
 		pv_log(ERROR, "cannot process update. Aborting...");
 		SNPRINTF_WTRUNC(msg, sizeof(msg),
-				"Space required %" PRIu64
-				" B, available %" PRIu64 " B",
-				update_size, free_size);
+				"Space required %jd B, available %jd B",
+				(intmax_t)update_size, (intmax_t)free_size);
 		pv_update_set_status_msg(pv->update, UPDATE_NO_SPACE, msg);
 		return -1;
 	}
