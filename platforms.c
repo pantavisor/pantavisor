@@ -541,7 +541,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 			}
 		}
 		start_pvlogger(log_info, (log_info->islxc ? log_info->name :
-								  platform->name));
+							    platform->name));
 		_exit(0);
 	}
 	log_info->logger_pid = pid;

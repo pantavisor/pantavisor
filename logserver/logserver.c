@@ -840,11 +840,11 @@ static void logserver_start(const char *running_revision)
 	if (logserver.pid == -1) {
 		logserver_start_service(running_revision);
 		pv_log(DEBUG, "starting log service with pid %d",
-		       (int)logserver.pid);
+		       logserver.pid);
 
 		if (logserver.pid > 0) {
 			pv_log(DEBUG, "started log service with pid %d",
-			       (int)logserver.pid);
+			       logserver.pid);
 		} else {
 			pv_log(ERROR, "unable to start log service");
 		}
@@ -964,7 +964,7 @@ int pv_logserver_init(const char *rev)
 	dl_list_init(&logserver.fdlst);
 	dl_list_init(&logserver.tmplst);
 	logserver_start_service(rev);
-	pv_log(DEBUG, "started log service with pid %d", (int)logserver.pid);
+	pv_log(DEBUG, "started log service with pid %d", logserver.pid);
 
 	if (pv_config_get_bool(PV_LOG_CAPTURE_DMESG))
 		logserver_capture_dmesg();

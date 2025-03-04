@@ -851,7 +851,7 @@ static bool pv_signature_verify_sha(const char *payload,
 		goto out;
 	}
 
-	pv_log(DEBUG, "signature length is %d", olen);
+	pv_log(DEBUG, "signature length is %zd", olen);
 
 	res = mbedtls_pk_verify(pk, mdtype, hash, 0,
 				(unsigned char *)sig_decoded, olen);

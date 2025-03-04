@@ -486,8 +486,8 @@ static pv_state_t pv_wait_update()
 				timer_current_state(&timer_commit);
 			if (!tstate.fin) {
 				pv_log(INFO,
-				       "committing new update in %lld seconds",
-				       (long long)tstate.sec);
+				       "committing new update in %jd seconds",
+				       (intmax_t)tstate.sec);
 				return PV_STATE_WAIT;
 			}
 		}
@@ -518,8 +518,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 				return PV_STATE_ROLLBACK;
 			}
 			pv_log(WARN,
-			       "no connection. Will rollback in %d seconds",
-			       tstate.sec);
+			       "no connection. Will rollback in %jd seconds",
+			       (intmax_t)tstate.sec);
 			// or we directly rollback is connection is not stable during testing
 		} else if (pv_update_is_testing(pv->update)) {
 			pv_log(ERROR,
@@ -603,8 +603,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		tstate = timer_current_state(&t);
 		if (tstate.fin)
 			pv_log(DEBUG,
-			       "network operations are taking %d seconds!",
-			       5 + tstate.sec);
+			       "network operations are taking %jd seconds!",
+			       (intmax_t)(5 + tstate.sec));
 	} else {
 		// process ongoing updates, if any
 		next_state = pv_wait_update();
