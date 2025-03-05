@@ -59,6 +59,7 @@
 #include "buffer.h"
 #include "ph_logger.h"
 #include "paths.h"
+#include "logserver/logserver.h"
 
 #define MODULE_NAME "ph_logger"
 #include "../log.h"
@@ -112,6 +113,8 @@ static struct ph_logger ph_logger = { .epoll_fd = -1,
 				      .log_service = -1,
 				      .range_service = -1,
 				      .push_service = -1 };
+
+static char *current_process = MODULE_NAME;
 
 static struct ph_logger_fragment *__ph_logger_alloc_frag(char *json_frag,
 							 bool do_frag_dup)
@@ -659,7 +662,8 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 	if (level > pv_config_get_int(PV_LIBTHTTP_LOG_LEVEL))
 		return;
 
-	vlog(MODULE_NAME, DEBUG, fmt, args);
+	pv_logserver_send_vlog(false, PV_PLATFORM_STR, current_process, DEBUG,
+			       fmt, args);
 }
 
 static pid_t ph_logger_start_push_service(char *revision)
@@ -689,6 +693,8 @@ static pid_t ph_logger_start_push_service(char *revision)
 		       "Initialized push service with pid %d by process with pid %d",
 		       getpid(), getppid());
 		pv_log(DEBUG, "Push service pushing logs for rev %s", revision);
+
+		current_process = "push_service_libthttp";
 		thttp_set_log_func(log_libthttp);
 		while (1) {
 			// if nothing to push or error while pushing, sleep
@@ -789,6 +795,8 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 		pv_log(INFO,
 		       "Initialized range service with pid %d by process with pid %d",
 		       getpid(), getppid());
+
+		current_process = "range_service_libthttp";
 		thttp_set_log_func(log_libthttp);
 		while (current_rev >= 0) {
 			// skip current revision.
