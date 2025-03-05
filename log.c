@@ -86,7 +86,7 @@ static void log_libthttp(int level, const char *fmt, va_list args)
 	if (log_init_pid != getpid())
 		return;
 
-	__vlog("libthttp", DEBUG, fmt, args);
+	__vlog("ph_client_libthttp", DEBUG, fmt, args);
 }
 
 static void pv_log_init(const char *rev)
