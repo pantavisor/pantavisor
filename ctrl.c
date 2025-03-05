@@ -388,18 +388,21 @@ static void pv_ctrl_write_cont_response(int req_fd)
 	}
 }
 
-static void pv_ctrl_write_ok_response(int req_fd)
+static int pv_ctrl_write_ok_response(int req_fd)
 {
-	int res;
+	int ret = -1;
 
-	res = pv_ctrl_send_all(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK));
+	int res = pv_ctrl_send_all(req_fd, HTTP_RES_OK, strlen(HTTP_RES_OK));
 	if (res < 0) {
 		pv_log(WARN,
 		       "HTTP OK response could not be written to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
 	} else if (res != strlen(HTTP_RES_OK)) {
 		pv_log(WARN, "HTTP OK response was not sent");
-	}
+	} else
+		ret = 0;
+
+	return ret;
 }
 
 static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
@@ -625,7 +628,8 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 		goto error;
 	}
 
-	pv_ctrl_write_ok_response(req_fd);
+	if (pv_ctrl_write_ok_response(req_fd))
+		goto out;
 
 	// read and send
 	for (size_t to_send = file_size; to_send > 0;) {
@@ -680,7 +684,8 @@ static void pv_ctrl_process_get_string(int req_fd, char *buf)
 
 	buf_len = strlen(buf);
 
-	pv_ctrl_write_ok_response(req_fd);
+	if (pv_ctrl_write_ok_response(req_fd))
+		goto out;
 
 	res = pv_ctrl_send_all(req_fd, buf, buf_len);
 	if (res < 0) {
@@ -691,6 +696,7 @@ static void pv_ctrl_process_get_string(int req_fd, char *buf)
 		pv_log(WARN, "HTTP GET response was not sent");
 	}
 
+out:
 	if (buf)
 		free(buf);
 }
@@ -840,7 +846,7 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 	char *drivername = NULL;
 	char *driverop = NULL;
 	char msg[HTTP_ERROR_RESPONSE_MSG_SIZE];
-	struct pv_platform *p = pv_ctrl_get_sender_plat(pname);
+	struct pv_platform *p = pv_state_fetch_platform(pv->state, pname);
 	struct stat st;
 
 	mgmt = pv_ctrl_check_sender_privileged(pname);
