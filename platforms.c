@@ -493,7 +493,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 	 * fork, and set the mount namespace for
 	 * pv_logger.
 	 * */
-	int container_pid = platform->init_pid;
+	pid_t container_pid = platform->init_pid;
 	sigset_t oldmask;
 
 	if (!log_info)

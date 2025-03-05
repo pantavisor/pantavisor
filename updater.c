@@ -142,7 +142,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_ptr client = 0;
 	char *endpoint_trail = NULL;
-	int size = -1;
+	size_t size = -1;
 
 	const char *id = pv_config_get_str(PH_CREDS_ID);
 	if (pv->remote || !id)
@@ -165,7 +165,7 @@ static int trail_remote_init(struct pantavisor *pv)
 	remote->client = client;
 
 	size = sizeof(DEVICE_TRAIL_ENDPOINT_FMT) + strlen(id);
-	endpoint_trail = malloc(size * sizeof(char));
+	endpoint_trail = calloc(size, sizeof(char));
 	if (!endpoint_trail)
 		goto err;
 	SNPRINTF_WTRUNC(endpoint_trail, size, DEVICE_TRAIL_ENDPOINT_FMT, id);
@@ -214,9 +214,9 @@ static int update_endpoint_init(struct pv_update *u)
 	if (!rev)
 		return -1;
 
-	int size = sizeof(DEVICE_STEP_ENDPOINT_FMT) + strlen(id) + strlen(rev);
+	size_t size = sizeof(DEVICE_STEP_ENDPOINT_FMT) + strlen(id) + strlen(rev);
 
-	u->endpoint = malloc(sizeof(char) * size);
+	u->endpoint = calloc(size, sizeof(char));
 	SNPRINTF_WTRUNC(u->endpoint, size, DEVICE_STEP_ENDPOINT_FMT, id, rev);
 
 	return 0;
@@ -993,7 +993,7 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 {
 	int ret = -1;
 	int fd, bytes;
-	int size, pos, i, str_size;
+	off_t size, pos, i, str_size;
 	char *signed_puturl = NULL;
 	char sha_str[SHA256_STR_SIZE];
 	char body[512];
@@ -1039,10 +1039,10 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 
 	SNPRINTF_WTRUNC(body, sizeof(body),
 			"{ \"objectname\": \"%s\","
-			" \"size\": \"%d\","
+			" \"size\": \"%jd\","
 			" \"sha256sum\": \"%s\""
 			" }",
-			o->name, size, sha_str);
+			o->name, (intmax_t)size, sha_str);
 
 	pv_log(INFO, "syncing '%s'", o->id);
 
@@ -1139,8 +1139,8 @@ static int trail_put_object(struct pantavisor *pv, struct pv_object *o,
 			       o->id, res->code, res->body);
 		} else {
 			pv_log(INFO,
-			       "'%s' uploaded correctly, size=%d, code=%d",
-			       o->id, size, res->code);
+			       "'%s' uploaded correctly, size=%jd, code=%d",
+			       o->id, (intmax_t)size, res->code);
 			o->uploaded = true;
 			ret = 0;
 		}
@@ -1479,7 +1479,7 @@ static int trail_download_get_meta(struct pantavisor *pv, struct pv_object *o)
 	prn = o->id;
 
 	str_size = sizeof(TRAIL_OBJECT_DL_FMT) + strlen(prn);
-	endpoint = malloc(str_size * sizeof(char));
+	endpoint = calloc(str_size, sizeof(char));
 	SNPRINTF_WTRUNC(endpoint, str_size, TRAIL_OBJECT_DL_FMT, prn);
 
 	pv_log(DEBUG, "requesting obj='%s'", endpoint);
@@ -1600,7 +1600,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	int bytes, n;
 	int is_kernel_pvk;
 	int use_volatile_tmp = 0;
-	int size = -1;
+	size_t size = 0;
 	char *tmp_sha;
 	char *host = 0;
 	char *start = 0, *port = 0, *end = 0;
@@ -1661,7 +1661,7 @@ static int trail_download_object(struct pantavisor *pv, struct pv_object *obj,
 	}
 
 	n = (unsigned long)end - (unsigned long)start;
-	host = malloc((n + 1) * sizeof(char));
+	host = calloc((n + 1), sizeof(char));
 	strncpy(host, start, n);
 	host[n] = '\0';
 
