@@ -40,6 +40,7 @@
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/math.h"
+#include "utils/system.h"
 #include "paths.h"
 #include "logserver/logserver.h"
 
@@ -260,7 +261,6 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 {
 	int ret = -1;
 	struct timeval tv = { .tv_sec = 2, .tv_usec = 0 };
-	char pr_name[16] = { 0 };
 	const char *logfile = NULL;
 
 	logger_cmd = calloc(PV_LOG_BUF_SIZE, sizeof(char));
@@ -271,8 +271,6 @@ int start_pvlogger(struct pv_log_info *log_info, const char *platform)
 
 	pv_log_info = log_info;
 	module_name = strdup(platform);
-	snprintf(pr_name, sizeof(pr_name), "pvlogger-%s", module_name);
-	prctl(PR_SET_NAME, (unsigned long)pr_name, 0, 0, 0);
 
 	if (!pv_log_info) /*We can't even try and log cuz it maybe for lxc.*/
 		return 0;

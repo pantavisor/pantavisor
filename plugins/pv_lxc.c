@@ -561,7 +561,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 		*((pid_t *)data) = container_pid;
 		close(pipefd[0]);
-	} else { /* Child process */
+	} else {
+		// child process
+		pv_system_set_process_name("pv-platform-%s", p->name);
 
 		close(pipefd[0]);
 		*((pid_t *)data) = -1;

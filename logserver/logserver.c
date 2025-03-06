@@ -801,6 +801,7 @@ static pid_t logserver_start_service(const char *running_revision)
 	}
 	logserver.pid = fork();
 	if (logserver.pid == 0) {
+		pv_system_set_process_name("pv-log-server");
 		signal(SIGCHLD, sigchld_handler);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
