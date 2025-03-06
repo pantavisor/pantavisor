@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2023 Pantacor Ltd.
+ * Copyright (c) 2017-2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -72,6 +72,8 @@
 
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
+
+static int reboot_requested = 0;
 
 static int early_mounts()
 {
@@ -177,8 +179,10 @@ static void signal_handler(int signal)
 				continue;
 			sleep(1);
 			pv_log(WARN,
-			       "Respawn of critical service failed %d: %s", pid,
-			       strerror(errno));
+			       "Respawn of critical service failed %d: %s",
+			       pid, strerror(errno));
+		} else if (pid == pv_pid) {
+			reboot_requested = 1;
 		}
 	}
 }
@@ -465,9 +469,13 @@ int main(int argc, char *argv[])
 
 loop:
 	redirect_io();
-	for (;;)
+	while (!reboot_requested)
 		pause();
 
+	if (reboot(RB_AUTOBOOT) != 0) {
+		perror("Reboot failed");
+		exit(EXIT_FAILURE);
+	}
 	return 0;
 }
 /*
