@@ -101,52 +101,46 @@ void pv_objects_empty(struct pv_state *s)
 
 char *pv_objects_get_list_string()
 {
-	struct dl_list objects; // pv_path
 	char path[PATH_MAX];
+	struct dl_list objects; // pv_path
 	struct pv_path *curr, *tmp;
-	int len = 1, line_len;
-	char *json = calloc(len + 1, sizeof(char));
-	unsigned int size_object;
+	off_t size;
+	char size_str[64];
 
 	pv_paths_storage_object(path, PATH_MAX, "");
 
 	dl_list_init(&objects);
 	pv_storage_get_subdir(path, "", &objects);
 
-	// open json
-	json[0] = '[';
+	struct pv_json_ser js;
+	pv_json_ser_init(&js, 4096);
 
-	if (dl_list_empty(&objects)) {
-		len++;
-		goto out;
-	}
-
-	// add object info to json
-	dl_list_for_each_safe(curr, tmp, &objects, struct pv_path, list)
+	pv_json_ser_array(&js);
 	{
-		// if not sha256 string ... skip
-		if (strlen(curr->path) != 64)
-			continue;
+		dl_list_for_each_safe(curr, tmp, &objects, struct pv_path, list)
+		{
+			// if not sha256 string... skip
+			if (strlen(curr->path) != 64)
+				continue;
 
-		pv_paths_storage_object(path, PATH_MAX, curr->path);
-		size_object = pv_fs_path_get_size(path);
-		if (size_object < 0)
-			continue;
+			pv_paths_storage_object(path, PATH_MAX, curr->path);
+			size = pv_fs_path_get_size(path);
+			if (size < 0)
+				continue;
+			SNPRINTF_WTRUNC(size_str, 64, "%jd", (intmax_t)size);
 
-		const char *obj_fmt = "{\"sha256\": \"%s\", \"size\": \"%u\"},";
-		line_len = snprintf(NULL, 0, obj_fmt, curr->path, size_object);
-		json = realloc(json, len + line_len);
-		SNPRINTF_WTRUNC(&json[len], line_len + 1, obj_fmt, curr->path, size_object);
-		len += line_len;
+			pv_json_ser_object(&js);
+			{
+				pv_json_ser_key(&js, "sha256");
+				pv_json_ser_string(&js, curr->path);
+				pv_json_ser_key(&js, "size");
+				pv_json_ser_string(&js, size_str);
+				pv_json_ser_object_pop(&js);
+			}
+		}
+		pv_json_ser_array_pop(&js);
 	}
 
 	pv_storage_free_subdir(&objects);
-out:
-	len += 1;
-	json = realloc(json, len);
-	// close json
-	json[len - 2] = ']';
-	json[len - 1] = '\0';
-
-	return json;
+	return pv_json_ser_str(&js);
 }
