@@ -680,6 +680,7 @@ static pid_t ph_logger_start_push_service(char *revision)
 
 	helper_pid = fork();
 	if (helper_pid == 0) {
+		pv_system_set_process_name("pv-phlogger-push");
 		close(ph_logger.epoll_fd);
 		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
@@ -782,6 +783,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 
 	range_service = fork();
 	if (range_service == 0) {
+		pv_system_set_process_name("pv-phlogger-range");
 		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,

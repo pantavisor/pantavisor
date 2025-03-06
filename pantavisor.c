@@ -33,7 +33,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/reboot.h>
-#include <sys/prctl.h>
 #include <sys/resource.h>
 
 #include <linux/limits.h>
@@ -993,8 +992,6 @@ int pv_start()
 
 	SNPRINTF_WTRUNC(pv_user_agent, sizeof(pv_user_agent), PV_USER_AGENT_FMT,
 			pv_build_arch, pv_build_version, pv_build_date);
-
-	prctl(PR_SET_NAME, "pantavisor");
 
 	struct rlimit core_limit;
 	core_limit.rlim_cur = RLIM_INFINITY;

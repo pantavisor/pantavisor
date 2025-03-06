@@ -55,6 +55,7 @@
 #include "utils/fs.h"
 #include "utils/pvsignals.h"
 #include "utils/tsh.h"
+#include "utils/system.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -510,6 +511,7 @@ static int __start_pvlogger_for_platform(struct pv_platform *platform,
 		return -1;
 	}
 	if (!pid) {
+		pv_system_set_process_name("pv-logger-%s", platform->name);
 		char namespace[64];
 		int ns_fd = -1;
 

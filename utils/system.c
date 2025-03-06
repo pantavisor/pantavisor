@@ -27,8 +27,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdarg.h>
 
 #include <sys/types.h>
+#include <sys/prctl.h>
 
 #include "system.h"
 #include "fs.h"
@@ -130,4 +132,20 @@ void pv_system_kill_force(pid_t pid)
 	// force kill if process could not finish
 	if (!exited)
 		kill(pid, SIGKILL);
+}
+
+void pv_system_set_process_name(const char *fmt, ...)
+{
+	va_list args;
+	va_start(args, fmt);
+
+	// prctl truncates everything bigger than 16 anyway
+	char name[16] = { 0 };
+	if (vsnprintf(name, 16, fmt, args) < 0)
+		goto out;
+
+	prctl(PR_SET_NAME, (unsigned long)name, 0, 0, 0);
+
+out:
+	va_end(args);
 }

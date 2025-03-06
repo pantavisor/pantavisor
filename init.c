@@ -61,6 +61,7 @@
 #include "utils/list.h"
 #include "utils/str.h"
 #include "utils/fs.h"
+#include "utils/system.h"
 
 #define MODULE_NAME "init"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -386,6 +387,8 @@ int main(int argc, char *argv[])
 
 	signal(SIGPIPE, SIG_IGN);
 
+	pv_system_set_process_name("pantavisor");
+
 	pv_init();
 	// init buffer with 128Kb to allow logging. Will later be resized according to config
 	pv_buffer_init(10, 128);
@@ -451,6 +454,8 @@ int main(int argc, char *argv[])
 	pv_pid = fork();
 	if (pv_pid > 0)
 		goto loop;
+
+	pv_system_set_process_name("pv-main-loop");
 
 	pv_pid = getpid();
 
