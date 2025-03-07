@@ -384,6 +384,8 @@ int main(int argc, char *argv[])
 {
 	char *config_path = NULL, *cmdline = NULL;
 
+	signal(SIGPIPE, SIG_IGN);
+
 	pv_init();
 	// init buffer with 128Kb to allow logging. Will later be resized according to config
 	pv_buffer_init(10, 128);
