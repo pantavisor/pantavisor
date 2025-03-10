@@ -168,7 +168,7 @@ int pv_bootloader_pre_commit_update(char *rev)
 	return 0;
 }
 
-int pv_bootloader_post_commit_update()
+int pv_bootloader_post_commit_update(const char *rev)
 {
 	if (!ops)
 		return -1;
@@ -180,7 +180,7 @@ int pv_bootloader_post_commit_update()
 		}
 	}
 
-	pv_log(INFO, "revision %s commited");
+	pv_log(INFO, "revision %s commited", rev);
 
 	return 0;
 }

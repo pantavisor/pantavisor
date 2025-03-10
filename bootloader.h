@@ -50,7 +50,7 @@ bool pv_bootloader_trying_update(void);
 
 int pv_bootloader_install_update(char *rev);
 int pv_bootloader_pre_commit_update(char *rev);
-int pv_bootloader_post_commit_update(void);
+int pv_bootloader_post_commit_update(const char *rev);
 int pv_bootloader_fail_update(void);
 
 void pv_bootloader_remove(void);
