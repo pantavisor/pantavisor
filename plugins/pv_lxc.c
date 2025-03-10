@@ -45,6 +45,7 @@
 #include "platforms.h"
 #include "paths.h"
 #include "utils/pvsignals.h"
+#include "utils/system.h"
 
 #define PV_VLOG __vlog
 #include "utils/tsh.h"
