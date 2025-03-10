@@ -214,7 +214,8 @@ static int update_endpoint_init(struct pv_update *u)
 	if (!rev)
 		return -1;
 
-	size_t size = sizeof(DEVICE_STEP_ENDPOINT_FMT) + strlen(id) + strlen(rev);
+	size_t size =
+		sizeof(DEVICE_STEP_ENDPOINT_FMT) + strlen(id) + strlen(rev);
 
 	u->endpoint = calloc(size, sizeof(char));
 	SNPRINTF_WTRUNC(u->endpoint, size, DEVICE_STEP_ENDPOINT_FMT, id, rev);
@@ -1411,7 +1412,7 @@ int pv_update_finish(struct pantavisor *pv)
 		}
 		pv_storage_set_rev_done(pv->state->rev);
 		pv->state->done = true;
-		pv_bootloader_post_commit_update();
+		pv_bootloader_post_commit_update(pv->state->rev);
 		break;
 	// UPDATED TRANSITIONS
 	case UPDATE_TESTING_NONREBOOT:
