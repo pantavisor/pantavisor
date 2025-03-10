@@ -69,6 +69,67 @@
 
 static struct timer threshold_timer;
 
+struct pv_storage_checksum_array {
+	size_t cap;
+	size_t size;
+	ino_t *inodes;
+};
+
+struct pv_storage_checksum_array chk_array = { 0 };
+
+int pv_storage_checksum_add(const char *path)
+{
+	if (chk_array.cap == 0) {
+		size_t new_cap = (chk_array.size + 1) * 1.5;
+		ino_t *tmp = realloc(chk_array.inodes, new_cap * sizeof(ino_t));
+		if (tmp)
+			chk_array.inodes = tmp;
+		else {
+			pv_log(DEBUG,
+			       "memory error, couldn't add file to chk_array");
+			return -1;
+		}
+		chk_array.cap = new_cap - chk_array.size;
+	}
+
+	struct stat st = { 0 };
+	if (stat(path, &st) != 0) {
+		pv_log(DEBUG, "stat error, couldn't not add file to chk_array");
+		return -1;
+	}
+
+	chk_array.inodes[chk_array.size] = st.st_ino;
+	chk_array.size++;
+	chk_array.cap--;
+}
+
+static bool pv_storage_is_checksum_done(const char *path)
+{
+	struct stat st = { 0 };
+	if (stat(path, &st) != 0) {
+		pv_log(DEBUG,
+		       "stat error, couldn't not check if checksum is done");
+		return false;
+	}
+
+	for (size_t i = 0; i < chk_array.size; ++i) {
+		if (chk_array.inodes[i] == st.st_ino)
+			return true;
+	}
+
+	return false;
+}
+
+static void pv_storage_checksum_array_free()
+{
+	if (chk_array.inodes)
+		free(chk_array.inodes);
+
+	chk_array.inodes = NULL;
+	chk_array.cap = 0;
+	chk_array.size = 0;
+}
+
 static int pv_storage_gc_objects(struct pantavisor *pv)
 {
 	int reclaimed = 0;
@@ -432,6 +493,12 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 	char *tmp_sha;
 	char byte[3];
 
+	if (pv_storage_is_checksum_done(path)) {
+		pv_log(DEBUG, "validation for %s is alredy done, skipping file",
+		       path);
+		return 0;
+	}
+
 	fd = open(path, O_RDONLY);
 	if (fd < 0)
 		return ret;
@@ -459,6 +526,7 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 	}
 
 	ret = 0;
+	pv_storage_checksum_add(path);
 
 out:
 	close(fd);
@@ -723,6 +791,8 @@ void pv_storage_set_rev_done(const char *rev)
 	if (pv_fs_file_save(path, "", 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
+
+	pv_storage_checksum_array_free();
 }
 
 bool pv_storage_is_rev_done(const char *rev)
