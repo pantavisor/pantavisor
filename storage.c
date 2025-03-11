@@ -466,31 +466,58 @@ out:
 	return ret;
 }
 
-static bool pv_storage_validate_objects_object_checksum(char *checksum)
+static int pv_storage_get_inode(const char *path, ino_t *inode)
 {
-	char path[PATH_MAX];
+	struct stat st = { 0 };
 
-	pv_paths_storage_object(path, PATH_MAX, checksum);
-	pv_log(DEBUG, "validating checksum for object %s", path);
-	return !pv_storage_validate_file_checksum(path, checksum);
+	if (stat(path, &st) != 0) {
+		pv_log(DEBUG, "couldn't access to file %s, checksum failed",
+		       path);
+		return -1;
+	}
+
+	*inode = st.st_ino;
+	return 0;
 }
+
+static bool pv_storage_compare_files(const char *object, const char *file)
+{
+	ino_t obj_ino = 0;
+	ino_t file_ino = 0;
+
+	pv_log(DEBUG, "validating inodes for %s and %s", object, file);
+
+	if (pv_storage_get_inode(object, &obj_ino) != 0)
+		return false;
+	if (pv_storage_get_inode(file, &file_ino) != 0)
+		return false;
+
+	if (obj_ino != file_ino) {
+		pv_log(DEBUG,
+		       "inode mismatch! can not validate checksum (obj: %s file: %s)",
+		       object, file);
+		return false;
+	}
+
+	return true;
+}
+
 
 bool pv_storage_validate_trails_object_checksum(const char *rev,
 						const char *name,
 						char *checksum)
 {
-	char path[PATH_MAX];
+	char file[PATH_MAX] = { 0 };
+	char object[PATH_MAX] = { 0 };
 
-	// validate object in pool to match
-	if (!pv_storage_validate_objects_object_checksum(checksum)) {
-		pv_log(ERROR, "object %s with checksum %s failed", name,
-		       checksum);
+	pv_paths_storage_trail_file(file, PATH_MAX, rev, name);
+	pv_paths_storage_object(object, PATH_MAX, checksum);
+
+	if (!pv_storage_compare_files(object, file))
 		return false;
-	}
 
-	pv_paths_storage_trail_file(path, PATH_MAX, rev, name);
-	pv_log(DEBUG, "validating checksum for object in trail %s", path);
-	return !pv_storage_validate_file_checksum(path, checksum);
+	pv_log(DEBUG, "validating checksum for %s and %s", object, file);
+	return !pv_storage_validate_file_checksum(file, checksum);
 }
 
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
