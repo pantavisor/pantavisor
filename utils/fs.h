@@ -55,5 +55,6 @@ int pv_fs_file_lock(int fd);
 int pv_fs_file_unlock(int fd);
 int pv_fs_file_gzip(const char *fname, const char *target_name);
 int pv_fs_file_check_and_open(const char *fname, int flags, mode_t mode);
+bool pv_fs_file_is_same(const char *path1, const char *path2);
 
 #endif

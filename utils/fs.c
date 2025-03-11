@@ -432,3 +432,27 @@ int pv_fs_file_check_and_open(const char *fname, int flags, mode_t mode)
 		return -1;
 	return open(fname, flags, mode);
 }
+
+static int pv_fs_file_inode_get(const char *path, ino_t *inode)
+{
+	struct stat st = { 0 };
+	if (stat(path, &st) != 0)
+		return -1;
+
+	*inode = st.st_ino;
+	return 0;
+}
+
+bool pv_fs_file_is_same(const char *path1, const char *path2)
+{
+	ino_t ino1;
+	ino_t ino2;
+
+	if (pv_fs_file_inode_get(path1, &ino1) != 0)
+		return false;
+
+	if (pv_fs_file_inode_get(path2, &ino2) != 0)
+		return false;
+
+	return ino1 == ino2;
+}
