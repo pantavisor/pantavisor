@@ -466,31 +466,21 @@ out:
 	return ret;
 }
 
-static bool pv_storage_validate_objects_object_checksum(char *checksum)
-{
-	char path[PATH_MAX];
-
-	pv_paths_storage_object(path, PATH_MAX, checksum);
-	pv_log(DEBUG, "validating checksum for object %s", path);
-	return !pv_storage_validate_file_checksum(path, checksum);
-}
-
 bool pv_storage_validate_trails_object_checksum(const char *rev,
 						const char *name,
 						char *checksum)
 {
-	char path[PATH_MAX];
+	char trail[PATH_MAX] = { 0 };
+	char object[PATH_MAX] = { 0 };
 
-	// validate object in pool to match
-	if (!pv_storage_validate_objects_object_checksum(checksum)) {
-		pv_log(ERROR, "object %s with checksum %s failed", name,
-		       checksum);
+	pv_paths_storage_trail_file(trail, PATH_MAX, rev, name);
+	pv_paths_storage_object(object, PATH_MAX, checksum);
+
+	if (!pv_fs_file_is_same(trail, object))
 		return false;
-	}
 
-	pv_paths_storage_trail_file(path, PATH_MAX, rev, name);
-	pv_log(DEBUG, "validating checksum for object in trail %s", path);
-	return !pv_storage_validate_file_checksum(path, checksum);
+	pv_log(DEBUG, "validating checksum for %s and %s", object, trail);
+	return !pv_storage_validate_file_checksum(trail, checksum);
 }
 
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
