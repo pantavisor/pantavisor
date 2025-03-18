@@ -251,6 +251,7 @@ void pv_platform_free(struct pv_platform *p)
 			free(*c);
 			c++;
 		}
+		free(p->configs);
 	}
 
 	dl_list_for_each_safe(d, tmp, &p->drivers, struct pv_platform_driver,

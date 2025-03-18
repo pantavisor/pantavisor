@@ -220,6 +220,10 @@ out:
 	return ret;
 }
 
+static void ubootab_free()
+{
+}
+
 static int ubootab_init()
 {
 	if (ubootab.init)
@@ -446,6 +450,7 @@ static int ubootab_flush_env()
 }
 
 const struct bl_ops ubootab_ops = {
+	.free = ubootab_free,
 	.init = ubootab_init,
 	.set_env_key = ubootab_set_env_key,
 	.unset_env_key = ubootab_unset_env_key,

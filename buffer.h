@@ -38,6 +38,7 @@ struct buffer *pv_buffer_get(bool large);
 
 void pv_buffer_drop(struct buffer *);
 
+void pv_buffer_close(void);
 void pv_buffer_init(int items, int size);
 
 static void __drop_buff(struct buffer **buf)

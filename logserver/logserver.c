@@ -1237,6 +1237,7 @@ static int logserver_send_subs_msg(int type, int fd, const char *platform,
 		char buf[CMSG_SPACE(sizeof(int))];
 		struct cmsghdr align;
 	} ctrl;
+	memset(&ctrl, 0, sizeof(ctrl));
 
 	struct msghdr msg = {
 		.msg_name = NULL,
@@ -1254,6 +1255,8 @@ static int logserver_send_subs_msg(int type, int fd, const char *platform,
 	memcpy(CMSG_DATA(cmsg), &fd, sizeof(int));
 
 	int sockfd = logserver_open_client_socket(LOGFD_FNAME);
+	if (sockfd < 0)
+		return -1;
 
 	int r = sendmsg(sockfd, &msg, 0);
 

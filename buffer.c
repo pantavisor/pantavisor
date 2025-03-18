@@ -73,6 +73,27 @@ void pv_buffer_drop(struct buffer *buffer)
 		dl_list_add(&buffer_list_double, &buffer->free_list);
 }
 
+static void pv_buffer_free(struct dl_list *head)
+{
+	struct buffer *b, *tmp;
+
+	if (dl_list_empty(head))
+		return;
+
+	dl_list_for_each_safe(b, tmp, head, struct buffer, free_list)
+	{
+		dl_list_del(&b->free_list);
+		free(b->buf);
+		free(b);
+	}
+}
+
+void pv_buffer_close(void)
+{
+	pv_buffer_free(&buffer_list);
+	pv_buffer_free(&buffer_list_double);
+}
+
 static struct buffer *pv_buffer_alloc(int buf_size)
 {
 	struct buffer *buffer = NULL;
@@ -96,15 +117,7 @@ static int pv_buffer_init_cache(int items, int size, struct dl_list *head)
 {
 	int allocated = 0;
 
-	if (!dl_list_empty(head)) {
-		struct buffer *item, *tmp;
-		dl_list_for_each_safe(item, tmp, head, struct buffer, free_list)
-		{
-			dl_list_del(&item->free_list);
-			free(item->buf);
-			free(item);
-		}
-	}
+	pv_buffer_free(head);
 
 	dl_list_init(head);
 	while (items > 0) {
