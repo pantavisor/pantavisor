@@ -338,6 +338,10 @@ bestguess:
 	return 0;
 }
 
+static void rpiab_free()
+{
+}
+
 static int rpiab_init()
 {
 	char *b;
@@ -1007,6 +1011,7 @@ static int rpiab_fail_update()
 }
 
 const struct bl_ops rpiab_ops = {
+	.free = rpiab_free,
 	.init = rpiab_init,
 	.set_env_key = rpiab_set_env_key,
 	.unset_env_key = rpiab_unset_env_key,

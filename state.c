@@ -1174,6 +1174,7 @@ static char *pv_state_add_novalidate_obj(char *nv_list, size_t nv_size,
 
 	nv_list = tmp;
 	memcpy(nv_list + nv_size, entry, entry_size);
+	nv_list[nv_size + entry_size] = '\0';
 
 	return nv_list;
 }

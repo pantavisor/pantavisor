@@ -62,6 +62,7 @@
 #include "mount.h"
 #include "debug.h"
 #include "cgroup.h"
+#include "buffer.h"
 
 #include "parser/parser.h"
 
@@ -936,6 +937,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// free up memory
 	pv_bootloader_remove();
+	pv_buffer_close();
 
 	// at this point, we can shutdown if not in appengine
 	if (init_mode != IM_APPENGINE) {

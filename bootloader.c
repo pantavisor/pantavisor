@@ -196,6 +196,8 @@ int pv_bootloader_fail_update()
 
 void pv_bootloader_remove()
 {
+	ops->free();
+
 	if (pv_bootloader.pv_rev)
 		free(pv_bootloader.pv_rev);
 	if (pv_bootloader.pv_try)
