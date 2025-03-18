@@ -44,6 +44,12 @@
 
 static char *grub_env = 0;
 
+static void grub_free()
+{
+	if (grub_env)
+		free(grub_env);
+}
+
 static int grub_init()
 {
 	int fd, ret;
@@ -251,6 +257,7 @@ static int grub_flush_env(void)
 }
 
 const struct bl_ops grub_ops = {
+	.free = grub_free,
 	.init = grub_init,
 	.set_env_key = grub_set_env_key,
 	.unset_env_key = grub_unset_env_key,

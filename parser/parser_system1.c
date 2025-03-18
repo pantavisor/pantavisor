@@ -344,7 +344,7 @@ static int parse_disks(struct pv_state *s, char *value)
 			diskv = NULL;
 		}
 
-		if (diskv) {
+		if (str) {
 			free(str);
 			str = NULL;
 		}

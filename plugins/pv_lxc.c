@@ -365,9 +365,10 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		}
 		close(fd);
 		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC, 0644);
-		if (fd >= 0)
+		if (fd >= 0) {
 			write(fd, new, strlen(new));
-		close(fd);
+			close(fd);
+		}
 		free(new);
 		free(buf);
 	}

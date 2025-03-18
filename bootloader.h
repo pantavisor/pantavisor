@@ -25,6 +25,7 @@
 #include <stdbool.h>
 
 struct bl_ops {
+	void (*free)(void);
 	int (*init)(void);
 
 	/* old primitive semantic */

@@ -53,6 +53,12 @@ static int single_env;
 #define MTD_ENV_SIZE 65536
 #define UBOOT_ENV_SIZE 1024
 
+static void uboot_free()
+{
+	if (uboot_txt)
+		free(uboot_txt);
+}
+
 static int uboot_init()
 {
 	int fd, ret;
@@ -316,6 +322,7 @@ static int uboot_flush_env(void)
 }
 
 const struct bl_ops uboot_ops = {
+	.free = uboot_free,
 	.init = uboot_init,
 	.set_env_key = uboot_set_env_key,
 	.unset_env_key = uboot_unset_env_key,
