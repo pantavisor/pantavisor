@@ -606,13 +606,11 @@ static int pv_metadata_add(struct dl_list *head, const char *key,
 	// find and update value
 	curr = pv_metadata_get_by_key(head, key);
 	if (curr) {
-		if (strcmp(curr->value, value) == 0) {
-			ret = 0;
-		} else {
+		if (!strcmp(curr->value, value) == 0) {
 			free(curr->value);
 			curr->value = strdup(value);
-			ret = 1;
 		}
+		ret = 1;
 		goto out;
 	}
 
