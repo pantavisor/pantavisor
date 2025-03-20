@@ -812,6 +812,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	trest_response_ptr res = NULL;
 	jsmntok_t *tokv = 0;
 	struct pv_update *update;
+	struct pv_update_progress progress;
 
 	if (!remote)
 		return 0;
@@ -881,7 +882,6 @@ static int trail_get_new_steps(struct pantavisor *pv)
 
 send_feedback:
 	// first, get on disk progress
-	struct pv_update_progress progress;
 	memset(&progress, 0, sizeof(progress));
 	pv_update_load_progress(update, &progress);
 
