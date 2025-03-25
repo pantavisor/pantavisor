@@ -606,11 +606,12 @@ static int pv_metadata_add(struct dl_list *head, const char *key,
 	// find and update value
 	curr = pv_metadata_get_by_key(head, key);
 	if (curr) {
+		ret = 0;
 		if (!strcmp(curr->value, value) == 0) {
 			free(curr->value);
 			curr->value = strdup(value);
+			ret = 1;
 		}
-		ret = 1;
 		goto out;
 	}
 
@@ -653,10 +654,9 @@ int pv_metadata_add_usermeta(const char *key, const char *value)
 		pv_log(DEBUG, "user metadata key %s added or updated", key);
 		pv_config_override_value(key, value);
 		pv_storage_save_usermeta(key, value);
-		return 0;
 	}
 
-	return -1;
+	return ret;
 }
 
 int pv_metadata_rm_usermeta(const char *key)
@@ -773,11 +773,9 @@ int pv_metadata_add_devmeta(const char *key, const char *value)
 		pv_log(DEBUG, "device metadata key %s added or updated", key);
 		pv->metadata->devmeta_uploaded = false;
 		pv_storage_save_devmeta(key, value);
-
-		return 0;
 	}
 
-	return -1;
+	return ret;
 }
 
 int pv_metadata_rm_devmeta(const char *key)
