@@ -410,7 +410,7 @@ static unsigned long parse_mount_options(const char *options,
 
 		for (const struct mount_option *mo = mount_options;
 		     mo->option != NULL; mo++) {
-			if (pv_str_matches(o, len, mo->option,
+			if (pv_str_matches_len(o, len, mo->option,
 					   strlen(mo->option))) {
 				if (mo->flag & MS_INVERTED_VALUE)
 					flags &= mo->flag;

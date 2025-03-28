@@ -981,9 +981,9 @@ static int do_action_for_group(struct json_key_action *jka, char *value)
 
 static restart_policy_t parse_restart_policy(char *value, size_t len)
 {
-	if (pv_str_matches(value, len, "system", strlen("system")))
+	if (pv_str_matches_len(value, len, "system", strlen("system")))
 		return RESTART_SYSTEM;
-	else if (pv_str_matches(value, len, "container", strlen("container")))
+	else if (pv_str_matches_len(value, len, "container", strlen("container")))
 		return RESTART_CONTAINER;
 
 	pv_log(ERROR, "invalid restart policy '%s'", value);
@@ -1010,11 +1010,11 @@ static int do_action_for_restart_policy(struct json_key_action *jka,
 
 static plat_status_t parse_status_goal(char *value, size_t len)
 {
-	if (pv_str_matches(value, len, "MOUNTED", strlen("MOUNTED")))
+	if (pv_str_matches_len(value, len, "MOUNTED", strlen("MOUNTED")))
 		return PLAT_MOUNTED;
-	else if (pv_str_matches(value, len, "STARTED", strlen("STARTED")))
+	else if (pv_str_matches_len(value, len, "STARTED", strlen("STARTED")))
 		return PLAT_STARTED;
-	else if (pv_str_matches(value, len, "READY", strlen("READY")))
+	else if (pv_str_matches_len(value, len, "READY", strlen("READY")))
 		return PLAT_READY;
 
 	pv_log(ERROR, "invalid status goal '%s'", value);

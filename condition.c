@@ -73,8 +73,8 @@ void pv_condition_set_value(struct pv_condition *c, const char *curr_value)
 
 bool pv_condition_check(struct pv_condition *c)
 {
-	return pv_str_matches(c->eval_value, strlen(c->eval_value),
-			      c->curr_value, strlen(c->curr_value));
+	return pv_str_matches_len(c->eval_value, strlen(c->eval_value),
+				  c->curr_value, strlen(c->curr_value));
 }
 
 char *pv_condition_get_json(struct pv_condition *c)

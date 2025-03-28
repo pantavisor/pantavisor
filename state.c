@@ -157,8 +157,8 @@ struct pv_group *pv_state_fetch_group(struct pv_state *s, const char *name)
 	// Iterate over all groups from state
 	dl_list_for_each_safe(g, tmp, &s->groups, struct pv_group, list)
 	{
-		if (pv_str_matches(g->name, strlen(g->name), name,
-				   strlen(name)))
+		if (pv_str_matches_len(g->name, strlen(g->name), name,
+				       strlen(name)))
 			return g;
 	}
 
@@ -176,8 +176,8 @@ struct pv_platform *pv_state_fetch_platform(struct pv_state *s,
 	// Iterate over all platforms from state
 	dl_list_for_each_safe(p, tmp, &s->platforms, struct pv_platform, list)
 	{
-		if (pv_str_matches(p->name, strlen(p->name), name,
-				   strlen(name)))
+		if (pv_str_matches_len(p->name, strlen(p->name), name,
+				       strlen(name)))
 			return p;
 	}
 
@@ -194,8 +194,8 @@ struct pv_object *pv_state_fetch_object(struct pv_state *s, const char *name)
 	// Iterate over all objects from state
 	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
 	{
-		if (pv_str_matches(o->name, strlen(o->name), name,
-				   strlen(name)))
+		if (pv_str_matches_len(o->name, strlen(o->name), name,
+				       strlen(name)))
 			return o;
 	}
 
@@ -212,8 +212,8 @@ struct pv_json *pv_state_fetch_json(struct pv_state *s, const char *name)
 	// Iterate over all groups from state
 	dl_list_for_each_safe(j, tmp, &s->jsons, struct pv_json, list)
 	{
-		if (pv_str_matches(j->name, strlen(j->name), name,
-				   strlen(name)))
+		if (pv_str_matches_len(j->name, strlen(j->name), name,
+				       strlen(name)))
 			return j;
 	}
 
@@ -230,8 +230,8 @@ static struct pv_disk *pv_state_fetch_disk(struct pv_state *s, const char *name)
 	// Iterate over all disks from state
 	dl_list_for_each_safe(d, tmp, &s->disks, struct pv_disk, list)
 	{
-		if (pv_str_matches(d->name, strlen(d->name), name,
-				   strlen(name)))
+		if (pv_str_matches_len(d->name, strlen(d->name), name,
+				       strlen(name)))
 			return d;
 	}
 
@@ -1208,8 +1208,8 @@ static char *pv_state_get_novalidate_known_obj(struct dl_list *objects,
 			continue;
 
 		char *entry = NULL;
-		int len = pv_str_fmt_build(&entry, "%s %s\n", obj->name,
-					    obj->id);
+		int len =
+			pv_str_fmt_build(&entry, "%s %s\n", obj->name, obj->id);
 
 		char *nv_tmp = pv_state_add_novalidate_obj(nv_list, *nv_size,
 							   entry, len);
@@ -1365,7 +1365,8 @@ int pv_state_interpret_signal(struct pv_state *s, const char *name,
 		return -1;
 	}
 
-	if (pv_str_matches(signal, strlen(signal), "ready", strlen("ready"))) {
+	if (pv_str_matches_len(signal, strlen(signal), "ready",
+			       strlen("ready"))) {
 		if (pv_platform_set_ready(p)) {
 			pv_log(WARN,
 			       "platform '%s' has not status_goal 'ready'",
@@ -1389,8 +1390,8 @@ struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name)
 
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
 	{
-		if (pv_str_matches(name, strlen(name), v->name,
-				   strlen(v->name)))
+		if (pv_str_matches_len(name, strlen(name), v->name,
+				       strlen(v->name)))
 			return v;
 	}
 

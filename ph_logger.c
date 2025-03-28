@@ -238,8 +238,8 @@ struct ph_logger_file *_search_log_file(const char *path)
 	dl_list_for_each_safe(f, tmp, &ph_logger.files, struct ph_logger_file,
 			      list)
 	{
-		if (pv_str_matches(path, strlen(path), f->path,
-				   strlen(f->path)))
+		if (pv_str_matches_len(path, strlen(path), f->path,
+				       strlen(f->path)))
 			return f;
 	}
 

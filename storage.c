@@ -507,7 +507,7 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 	}
 
 	pv_log(DEBUG, "validating value for json %s", path);
-	bool ret = pv_str_matches(val, strlen(val), buf, strlen(buf));
+	bool ret = pv_str_matches_len(val, strlen(val), buf, strlen(buf));
 	free(buf);
 	return ret;
 }

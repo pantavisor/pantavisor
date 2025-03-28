@@ -352,10 +352,10 @@ static bool pv_update_is_progress_final(struct pv_update_progress *progress)
 
 	const char *status = progress->status;
 	size_t len = strlen(status);
-	if (pv_str_matches(status, len, "DONE", strlen("DONE")) ||
-	    pv_str_matches(status, len, "UPDATED", strlen("UPDATED")) ||
-	    pv_str_matches(status, len, "WONTGO", strlen("WONTGO")) ||
-	    pv_str_matches(status, len, "ERROR", strlen("ERROR")))
+	if (pv_str_matches_len(status, len, "DONE", strlen("DONE")) ||
+	    pv_str_matches_len(status, len, "UPDATED", strlen("UPDATED")) ||
+	    pv_str_matches_len(status, len, "WONTGO", strlen("WONTGO")) ||
+	    pv_str_matches_len(status, len, "ERROR", strlen("ERROR")))
 		return true;
 
 	return false;
@@ -1462,8 +1462,8 @@ void pv_update_test(struct pantavisor *pv)
 static bool pv_update_can_rollback(struct pv_update *u)
 {
 	struct pantavisor *pv = pv_get_instance();
-	return pv_str_matches(pv->state->rev, strlen(pv->state->rev), u->rev,
-			      strlen(u->rev));
+	return pv_str_matches_len(pv->state->rev, strlen(pv->state->rev),
+				  u->rev, strlen(u->rev));
 }
 
 int pv_update_finish(struct pantavisor *pv)

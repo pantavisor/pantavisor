@@ -137,8 +137,8 @@ pv_group_fetch_platform_ref(struct pv_group *g, struct pv_platform *p)
 	dl_list_for_each_safe(pr, tmp, &g->platform_refs,
 			      struct pv_platform_ref, list)
 	{
-		if (pv_str_matches(p->name, strlen(p->name), pr->ref->name,
-				   strlen(pr->ref->name)))
+		if (pv_str_matches_len(p->name, strlen(p->name), pr->ref->name,
+				       strlen(pr->ref->name)))
 			return pr;
 	}
 

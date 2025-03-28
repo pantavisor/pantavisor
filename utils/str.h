@@ -84,13 +84,21 @@ static inline bool pv_str_startswith_case(const char *str1, size_t str1len, cons
 	return !strncasecmp(str1, str2, str1len);
 }
 
-static inline bool pv_str_matches(const char *str1, int str1len,
+static inline bool pv_str_matches(const char *str1, const char *str2)
+{
+	int str1len = strlen(str1);
+	int str2len = strlen(str2);
+
+	return ((str1len == str2len) && !strncmp(str1, str2, str1len));
+}
+
+static inline bool pv_str_matches_len(const char *str1, int str1len,
 				  const char *str2, int str2len)
 {
 	return ((str1len == str2len) && !strncmp(str1, str2, str1len));
 }
 
-static inline bool pv_str_matches_case(const char *str1, int str1len,
+static inline bool pv_str_matches_len_case(const char *str1, int str1len,
 				       const char *str2, int str2len)
 {
 	return ((str1len == str2len) && !strncasecmp(str1, str2, str1len));

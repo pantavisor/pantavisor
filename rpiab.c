@@ -52,7 +52,7 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #else
 #define pv_log(level, msg, ...)                                                \
-	printf("%s[%d]: ", MODULE_NAME, level);                     \
+	printf("%s[%d]: ", MODULE_NAME, level);                                \
 	printf(msg "\n", ##__VA_ARGS__)
 #endif
 #include "log.h"

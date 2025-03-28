@@ -161,7 +161,8 @@ static struct pv_signature *pv_signature_parse_pvs(const char *json)
 		goto err;
 	}
 
-	if (!pv_str_matches(spec, strlen(spec), SPEC_PVS2, strlen(SPEC_PVS2))) {
+	if (!pv_str_matches_len(spec, strlen(spec), SPEC_PVS2,
+				strlen(SPEC_PVS2))) {
 		goto err;
 	}
 
@@ -273,7 +274,7 @@ pv_signature_parse_protected(char *protected)
 		goto err;
 	}
 
-	if (!pv_str_matches(typ, strlen(typ), TYP_PVS, strlen(TYP_PVS))) {
+	if (!pv_str_matches_len(typ, strlen(typ), TYP_PVS, strlen(TYP_PVS))) {
 		pv_log(ERROR, "wrong typ %s", typ);
 		goto err;
 	}
@@ -371,7 +372,7 @@ static void _filter_json(
 	while ((str = pv_json_array_get_one_str(json, &size, &t))) {
 		fnflags = FNM_PATHNAME;
 
-		if (pv_str_matches("**", 2, str, strlen(str))) {
+		if (pv_str_matches_len("**", 2, str, strlen(str))) {
 			path_buf = strdup("");
 			path = path_buf;
 			fnflags |= FNM_LEADING_DIR;
@@ -629,8 +630,8 @@ static int _get_cn(struct mbedtls_x509_crt *cert, char *cn, int len)
 	do {
 		const char *oid_name;
 		if ((!mbedtls_oid_get_attr_short_name(&name->oid, &oid_name)) &&
-		    (pv_str_matches("CN", strlen("CN"), oid_name,
-				    strlen(oid_name)))) {
+		    (pv_str_matches_len("CN", strlen("CN"), oid_name,
+					strlen(oid_name)))) {
 			SNPRINTF_WTRUNC(cn, len, "%.*s", (int)name->val.len,
 					name->val.p);
 		}
@@ -647,8 +648,8 @@ static int _set_path_trust_crts(struct mbedtls_x509_crt *certs,
 		char cert_cn[256];
 		_get_cn(certs, cert_cn, 256);
 
-		if (pv_str_matches(oem_name, strlen(oem_name), cert_cn,
-				   strlen(cert_cn)))
+		if (pv_str_matches_len(oem_name, strlen(oem_name), cert_cn,
+				       strlen(cert_cn)))
 			name = PV_SECUREBOOT_OEM_TRUSTORE;
 	}
 
@@ -1000,16 +1001,16 @@ static bool pv_signature_verify_pvs(struct pv_signature *signature,
 
 	pv_log(DEBUG, "filtered json '%s'", payload);
 
-	if (pv_str_matches(headers->alg, strlen(headers->alg), "RS256",
-			   strlen("RS256")) ||
-	    pv_str_matches(headers->alg, strlen(headers->alg), "ES256",
-			   strlen("ES256"))) {
+	if (pv_str_matches_len(headers->alg, strlen(headers->alg), "RS256",
+			       strlen("RS256")) ||
+	    pv_str_matches_len(headers->alg, strlen(headers->alg), "ES256",
+			       strlen("ES256"))) {
 		mdtype = MBEDTLS_MD_SHA256;
-	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES384",
-				  strlen("ES384"))) {
+	} else if (pv_str_matches_len(headers->alg, strlen(headers->alg),
+				      "ES384", strlen("ES384"))) {
 		mdtype = MBEDTLS_MD_SHA384;
-	} else if (pv_str_matches(headers->alg, strlen(headers->alg), "ES512",
-				  strlen("ES512"))) {
+	} else if (pv_str_matches_len(headers->alg, strlen(headers->alg),
+				      "ES512", strlen("ES512"))) {
 		mdtype = MBEDTLS_MD_SHA512;
 	} else {
 		pv_log(ERROR, "unknown algorithm in protected JSON %s",

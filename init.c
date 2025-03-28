@@ -180,8 +180,8 @@ static void signal_handler(int signal)
 				continue;
 			sleep(1);
 			pv_log(WARN,
-			       "Respawn of critical service failed %d: %s",
-			       pid, strerror(errno));
+			       "Respawn of critical service failed %d: %s", pid,
+			       strerror(errno));
 		} else if (pid == pv_pid) {
 			reboot_requested = 1;
 		}

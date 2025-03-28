@@ -53,8 +53,8 @@ static struct config_item *_config_get_by_key(struct dl_list *list, char *key)
 
 	dl_list_for_each_safe(curr, tmp, list, struct config_item, list)
 	{
-		if (pv_str_matches_case(curr->key, strlen(curr->key), key,
-					strlen(key)))
+		if (pv_str_matches_len_case(curr->key, strlen(curr->key), key,
+					    strlen(key)))
 			return curr;
 	}
 	// Value not found

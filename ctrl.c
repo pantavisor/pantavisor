@@ -471,8 +471,8 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 	obj_fd = open(file_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (obj_fd < 0) {
 		pv_ctrl_consume_req(req_fd, content_length);
-		pv_log(ERROR, "'%s' could not be created: %s",
-		       file_path, strerror(errno));
+		pv_log(ERROR, "'%s' could not be created: %s", file_path,
+		       strerror(errno));
 		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
 					     "Cannot create file");
 		goto clean;
@@ -575,9 +575,9 @@ static size_t pv_ctrl_get_value_header_int(struct phr_header *headers,
 
 	for (size_t header_index = 0; header_index < num_headers;
 	     header_index++) {
-		if (pv_str_matches_case(headers[header_index].name,
-					headers[header_index].name_len, name,
-					strlen(name))) {
+		if (pv_str_matches_len_case(headers[header_index].name,
+					    headers[header_index].name_len,
+					    name, strlen(name))) {
 			value = calloc(headers[header_index].value_len,
 				       sizeof(char));
 			strncpy(value, headers[header_index].value,
@@ -598,12 +598,12 @@ static bool pv_ctrl_check_header_value(struct phr_header *headers,
 
 	for (size_t header_index = 0; header_index < num_headers;
 	     header_index++) {
-		if (pv_str_matches_case(headers[header_index].name,
-					headers[header_index].name_len, header,
-					strlen(header)) &&
-		    pv_str_matches_case(headers[header_index].value,
-					headers[header_index].value_len, value,
-					strlen(value)))
+		if (pv_str_matches_len_case(headers[header_index].name,
+					    headers[header_index].name_len,
+					    header, strlen(header)) &&
+		    pv_str_matches_len_case(headers[header_index].value,
+					    headers[header_index].value_len,
+					    value, strlen(value)))
 			ret = true;
 	}
 
@@ -801,14 +801,8 @@ static char *pv_ctrl_get_sender_pname(int req_fd)
 static struct pv_platform *pv_ctrl_get_sender_plat(const char *pname)
 {
 	struct pantavisor *pv = pv_get_instance();
-	struct pv_platform *plat;
 
-	plat = pv_state_fetch_platform(pv->state, pname);
-	if (!plat)
-		pv_log(WARN, "could not find platform %s in current state",
-		       pname);
-
-	return plat;
+	return pv_state_fetch_platform(pv->state, pname);
 }
 
 static bool pv_ctrl_check_sender_privileged(const char *pname)
@@ -818,6 +812,9 @@ static bool pv_ctrl_check_sender_privileged(const char *pname)
 		return true;
 
 	struct pv_platform *plat = pv_ctrl_get_sender_plat(pname);
+	if (!plat)
+		pv_log(WARN, "could not find platform %s in current state",
+		       pname);
 
 	return plat ? pv_platform_has_role(plat, PLAT_ROLE_MGMT) : false;
 }
@@ -845,8 +842,8 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 
 	mgmt = pv_ctrl_check_sender_privileged(pname);
 
-	if (pv_str_matches(ENDPOINT_CONTAINERS, strlen(ENDPOINT_CONTAINERS),
-			   path, path_len)) {
+	if (pv_str_matches_len(ENDPOINT_CONTAINERS, strlen(ENDPOINT_CONTAINERS),
+			       path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -855,8 +852,8 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 				pv_state_get_containers_json(pv->state));
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_GROUPS, strlen(ENDPOINT_GROUPS),
-				  path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_GROUPS, strlen(ENDPOINT_GROUPS),
+				      path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -864,8 +861,8 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 				req_fd, pv_state_get_groups_json(pv->state));
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_SIGNAL, strlen(ENDPOINT_SIGNAL),
-				  path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_SIGNAL, strlen(ENDPOINT_SIGNAL),
+				      path, path_len)) {
 		if (!strncmp("POST", method, method_len)) {
 			if (pv_ctrl_process_signal(req_fd, content_length,
 						   &signal, &payload)) {
@@ -901,8 +898,9 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 			pv_ctrl_write_ok_response(req_fd);
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_OBJECTS, strlen(ENDPOINT_OBJECTS),
-				  path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_OBJECTS,
+				      strlen(ENDPOINT_OBJECTS), path,
+				      path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -973,8 +971,8 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 			pv_ctrl_process_get_file(req_fd, file_path);
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS), path,
-				  path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_STEPS, strlen(ENDPOINT_STEPS),
+				      path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -1108,8 +1106,9 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 			pv_ctrl_process_get_file(req_fd, file_path);
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_USER_META,
-				  strlen(ENDPOINT_USER_META), path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_USER_META,
+				      strlen(ENDPOINT_USER_META), path,
+				      path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -1117,9 +1116,9 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 				req_fd, pv_metadata_get_user_meta_string());
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_DEVICE_META,
-				  strlen(ENDPOINT_DEVICE_META), path,
-				  path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_DEVICE_META,
+				      strlen(ENDPOINT_DEVICE_META), path,
+				      path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -1127,8 +1126,9 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 				req_fd, pv_metadata_get_device_meta_string());
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_BUILDINFO,
-				  strlen(ENDPOINT_BUILDINFO), path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_BUILDINFO,
+				      strlen(ENDPOINT_BUILDINFO), path,
+				      path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -1206,8 +1206,9 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 			pv_ctrl_write_ok_response(req_fd);
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_DRIVERS, strlen(ENDPOINT_DRIVERS),
-				  path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_DRIVERS,
+				      strlen(ENDPOINT_DRIVERS), path,
+				      path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -1291,8 +1292,8 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 			}
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_CONFIG, strlen(ENDPOINT_CONFIG),
-				  path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_CONFIG, strlen(ENDPOINT_CONFIG),
+				      path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;
@@ -1300,8 +1301,9 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 						   pv_config_get_alias_json());
 		} else
 			goto err_me;
-	} else if (pv_str_matches(ENDPOINT_CONFIG2, strlen(ENDPOINT_CONFIG2),
-				  path, path_len)) {
+	} else if (pv_str_matches_len(ENDPOINT_CONFIG2,
+				      strlen(ENDPOINT_CONFIG2), path,
+				      path_len)) {
 		if (!strncmp("GET", method, method_len)) {
 			if (!mgmt)
 				goto err_pr;

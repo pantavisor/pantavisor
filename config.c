@@ -437,17 +437,19 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 	if (!entry)
 		return;
 
-	if (pv_str_matches(value, strlen(value), "uboot", strlen("uboot")))
+	if (pv_str_matches_len(value, strlen(value), "uboot", strlen("uboot")))
 		entry->value.i = BL_UBOOT_PLAIN;
-	else if (pv_str_matches(value, strlen(value), "uboot-pvk",
-				strlen("uboot-pvk")))
+	else if (pv_str_matches_len(value, strlen(value), "uboot-pvk",
+				    strlen("uboot-pvk")))
 		entry->value.i = BL_UBOOT_PVK;
-	else if (pv_str_matches(value, strlen(value), "grub", strlen("grub")))
+	else if (pv_str_matches_len(value, strlen(value), "grub",
+				    strlen("grub")))
 		entry->value.i = BL_GRUB;
-	else if (pv_str_matches(value, strlen(value), "rpiab", strlen("rpiab")))
+	else if (pv_str_matches_len(value, strlen(value), "rpiab",
+				    strlen("rpiab")))
 		entry->value.i = BL_RPIAB;
-	else if (pv_str_matches(value, strlen(value), "uboot-ab",
-				strlen("uboot-ab")))
+	else if (pv_str_matches_len(value, strlen(value), "uboot-ab",
+				    strlen("uboot-ab")))
 		entry->value.i = BL_UBOOT_AB;
 	else
 		pv_log(WARN, "unknown bootloader type '%s'", value);
@@ -498,28 +500,29 @@ _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
 
 	for (token = strtok_r(val, ",", &tmp); token;
 	     token = strtok_r(NULL, ",", &tmp)) {
-		if (pv_str_matches(token, strlen(token), "singlefile",
-				   strlen("singlefile")))
+		if (pv_str_matches_len(token, strlen(token), "singlefile",
+				       strlen("singlefile")))
 			server_outputs |= LOG_SERVER_OUTPUT_SINGLE_FILE;
-		else if (pv_str_matches(token, strlen(token), "filetree",
-					strlen("filetree")))
+		else if (pv_str_matches_len(token, strlen(token), "filetree",
+					    strlen("filetree")))
 			server_outputs |= LOG_SERVER_OUTPUT_FILE_TREE;
-		else if (pv_str_matches(token, strlen(token), "nullsink",
-					strlen("nullsink")))
+		else if (pv_str_matches_len(token, strlen(token), "nullsink",
+					    strlen("nullsink")))
 			server_outputs |= LOG_SERVER_OUTPUT_NULL_SINK;
-		else if (pv_str_matches(token, strlen(token), "stdout_direct",
-					strlen("stdout_direct")))
+		else if (pv_str_matches_len(token, strlen(token),
+					    "stdout_direct",
+					    strlen("stdout_direct")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT_DIRECT;
-		else if (pv_str_matches(token, strlen(token),
-					"stdout.containers",
-					strlen("stdout.containers")))
+		else if (pv_str_matches_len(token, strlen(token),
+					    "stdout.containers",
+					    strlen("stdout.containers")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT_CONTAINERS;
-		else if (pv_str_matches(token, strlen(token),
-					"stdout.pantavisor",
-					strlen("stdout.pantavisor")))
+		else if (pv_str_matches_len(token, strlen(token),
+					    "stdout.pantavisor",
+					    strlen("stdout.pantavisor")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT_PANTAVISOR;
-		else if (pv_str_matches(token, strlen(token), "stdout",
-					strlen("stdout")))
+		else if (pv_str_matches_len(token, strlen(token), "stdout",
+					    strlen("stdout")))
 			server_outputs |= LOG_SERVER_OUTPUT_STDOUT;
 		else
 			pv_log(WARN, "unknown log server output '%s'", token);
@@ -563,16 +566,17 @@ static void _set_config_by_entry_secureboot_mode(struct pv_config_entry *entry,
 	if (!entry)
 		return;
 
-	if (pv_str_matches(value, strlen(value), "disabled",
-			   strlen("disabled")))
+	if (pv_str_matches_len(value, strlen(value), "disabled",
+			       strlen("disabled")))
 		entry->value.i = SB_DISABLED;
-	else if (pv_str_matches(value, strlen(value), "audit", strlen("audit")))
+	else if (pv_str_matches_len(value, strlen(value), "audit",
+				    strlen("audit")))
 		entry->value.i = SB_AUDIT;
-	else if (pv_str_matches(value, strlen(value), "lenient",
-				strlen("lenient")))
+	else if (pv_str_matches_len(value, strlen(value), "lenient",
+				    strlen("lenient")))
 		entry->value.i = SB_LENIENT;
-	else if (pv_str_matches(value, strlen(value), "strict",
-				strlen("strict")))
+	else if (pv_str_matches_len(value, strlen(value), "strict",
+				    strlen("strict")))
 		entry->value.i = SB_STRICT;
 	else
 		pv_log(WARN, "unknown secureboot mode '%s'", value);
@@ -608,14 +612,14 @@ static void _set_config_by_entry_init_mode(struct pv_config_entry *entry,
 	if (!entry)
 		return;
 
-	if (pv_str_matches(value, strlen(value), "embedded",
-			   strlen("embedded")))
+	if (pv_str_matches_len(value, strlen(value), "embedded",
+			       strlen("embedded")))
 		entry->value.i = IM_EMBEDDED;
-	else if (pv_str_matches(value, strlen(value), "standalone",
-				strlen("standalone")))
+	else if (pv_str_matches_len(value, strlen(value), "standalone",
+				    strlen("standalone")))
 		entry->value.i = IM_STANDALONE;
-	else if (pv_str_matches(value, strlen(value), "appengine",
-				strlen("appengine")))
+	else if (pv_str_matches_len(value, strlen(value), "appengine",
+				    strlen("appengine")))
 		entry->value.i = IM_APPENGINE;
 	else
 		pv_log(WARN, "unknown system init mode '%s'", value);
@@ -659,17 +663,17 @@ static void _set_config_by_entry_wdt_mode(struct pv_config_entry *entry,
 	if (!entry)
 		return;
 
-	if (pv_str_matches(value, strlen(value), "disabled",
-			   strlen("disabled")))
+	if (pv_str_matches_len(value, strlen(value), "disabled",
+			       strlen("disabled")))
 		entry->value.i = WDT_DISABLED;
-	else if (pv_str_matches(value, strlen(value), "shutdown",
-				strlen("shutdown")))
+	else if (pv_str_matches_len(value, strlen(value), "shutdown",
+				    strlen("shutdown")))
 		entry->value.i = WDT_SHUTDOWN;
-	else if (pv_str_matches(value, strlen(value), "startup",
-				strlen("startup")))
+	else if (pv_str_matches_len(value, strlen(value), "startup",
+				    strlen("startup")))
 		entry->value.i = WDT_STARTUP;
-	else if (pv_str_matches(value, strlen(value), "always",
-				strlen("always")))
+	else if (pv_str_matches_len(value, strlen(value), "always",
+				    strlen("always")))
 		entry->value.i = WDT_ALWAYS;
 	else
 		pv_log(WARN, "unknown wdt mode '%s'", value);
@@ -737,7 +741,7 @@ static struct pv_config_entry *_search_config_entry_by_key(const char *key)
 
 	for (config_index_t ci = 0; ci < PV_MAX; ci++) {
 		k = entries[ci].key;
-		if (pv_str_matches_case(k, strlen(k), key, strlen(key))) {
+		if (pv_str_matches_len_case(k, strlen(k), key, strlen(key))) {
 			entry = &entries[ci];
 			break;
 		}
@@ -843,7 +847,7 @@ static struct pv_config_entry *_search_config_entry_by_alias(const char *alias)
 
 	for (size_t ai = 0; ai < alias_number; ai++) {
 		a = aliases[ai].alias;
-		if (pv_str_matches(a, strlen(a), alias, strlen(alias)))
+		if (pv_str_matches_len(a, strlen(a), alias, strlen(alias)))
 			return _search_config_entry_by_key(aliases[ai].key);
 	}
 
@@ -1153,7 +1157,7 @@ static char *_search_config_alias_by_key(const char *key)
 
 	for (size_t ai = 0; ai < alias_number; ai++) {
 		k = aliases[ai].key;
-		if (pv_str_matches_case(k, strlen(k), key, strlen(key)))
+		if (pv_str_matches_len_case(k, strlen(k), key, strlen(key)))
 			return aliases[ai].alias;
 	}
 

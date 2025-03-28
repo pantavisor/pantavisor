@@ -203,6 +203,7 @@ static char *pv_cgroup_parse_proc_legacy(FILE *fd)
 	char *pvcg, *pname = NULL;
 	char buf[128];
 	while (fgets(buf, 128, fd)) {
+		pv_log(DEBUG, "%s", buf);
 		int l = strlen(buf) - 1;
 		if (buf[l] == '\n')
 			buf[l] = 0;
@@ -222,16 +223,34 @@ static char *pv_cgroup_parse_proc_legacy(FILE *fd)
 	return pname;
 }
 
+static void replace_newlines_with_null(char *str)
+{
+	for (int i = 0; str[i] != '\0'; i++) {
+		if (str[i] == '\n' || str[i] == '\r')
+			str[i] = '\0';
+	}
+}
+
 static char *pv_cgroup_parse_proc_unified(FILE *fd)
 {
+	pv_log(DEBUG, "it is unified indeed");
 	char *pvcg, *pname = NULL;
 	char buf[128];
 	while (fgets(buf, 128, fd)) {
+		replace_newlines_with_null(buf);
+		pv_log(DEBUG, "%s", buf);
 		pvcg = strstr(buf, "/lxc/");
 		if (pvcg) {
 			pvcg += strlen("/lxc/");
-			pvcg[strlen(pvcg) - 1] = '\0';
 			pname = strdup(pvcg);
+			break;
+		}
+		pv_log(DEBUG, "comparing '%s' %d '%s' %d", buf, strlen(buf),
+		       "0::/", strlen("0::/"));
+		if (pv_str_matches_len(buf, strlen(buf), "0::/",
+				       strlen("0::/"))) {
+			pv_log(DEBUG, "it is root");
+			pname = strdup("_pv_");
 			break;
 		}
 	}
