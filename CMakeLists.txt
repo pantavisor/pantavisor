@@ -24,6 +24,7 @@ set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
 
 # Find the shared library
 find_library(THTTP thttp)
+find_library(UEV uev)
 find_library(PICOHTTPPARSER picohttpparser)
 find_library(LXC lxc)
 find_library(ZLIB z)
@@ -224,6 +225,13 @@ install(DIRECTORY scripts/hooks_lxc-mount.d
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
 	DESTINATION /usr/bin)
+
+add_executable(ph-client
+            ph-client/ph-client.c
+)
+target_include_directories(ph-client PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
+target_link_libraries(ph-client  ${THTTP} ${UEV})
+install(TARGETS ph-client DESTINATION /lib/pv)
 
 add_executable(remount
 			remount/remount.c
