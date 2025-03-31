@@ -160,42 +160,41 @@ success:
 
 const char **pv_ph_get_certs(struct pantavisor *__unused)
 {
-	struct dirent **files;
-	char **cafiles;
+	struct pv_fs_dir *dirs;
+	struct dirent *d;
+	char **cafiles = NULL;
 	char path[PATH_MAX];
-	int n = 0, i = 0, size = 0;
+	int size = 0;
+	int n = 0, i = 0;
 
 	pv_paths_cert(path, PATH_MAX, "");
-	n = scandir(path, &files, NULL, alphasort);
-	if (n < 0) {
+
+	dirs = pv_fs_dir_scan(path, NULL, NULL);
+	if (!dirs) {
 		pv_log(WARN, "%s could not be scanned", path);
-		return NULL;
-	} else if (n == 0) {
+		goto out;
+	} else if (pv_fs_dir_len(dirs) == 0) {
 		pv_log(WARN, "%s is empty", path);
-		free(files);
-		return NULL;
+		goto out;
 	}
 
-	// Always n-1 due to . and .., and need one extra
-	cafiles = calloc(n - 1, sizeof(char *));
+	// Always len - 1 due to . and .., and need one extra
+	cafiles = calloc(pv_fs_dir_len(dirs) - 1, sizeof(char *));
 
-	while (n--) {
-		if (!strncmp(files[n]->d_name, ".", 1)) {
-			free(files[n]);
+	for (n = pv_fs_dir_len(dirs) - 1; n >= 0; n--) {
+		d = pv_fs_dir_get(dirs, n);
+		if (!strncmp(d->d_name, ".", 1))
 			continue;
-		}
 
-		pv_paths_cert(path, PATH_MAX, files[n]->d_name);
+		pv_paths_cert(path, PATH_MAX, d->d_name);
 		size = strlen(path);
 		cafiles[i] = malloc((size + 1) * sizeof(char));
 		memcpy(cafiles[i], path, size);
 		cafiles[i][size] = '\0';
 		i++;
-		free(files[n]);
 	}
-
-	free(files);
-
+out:
+	pv_fs_dir_free(dirs);
 	return (const char **)cafiles;
 }
 
