@@ -191,11 +191,9 @@ IF(PANTAVISOR_DEBUG)
 target_compile_definitions(pantavisor PRIVATE PANTAVISOR_DEBUG)
 ENDIF()
 
+IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 ## install basic filesystem skeleton
 install(DIRECTORY skel/ DESTINATION /)
-
-
-IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 ### ... insert defaults/
 install(DIRECTORY defaults DESTINATION /etc/pantavisor)
 ENDIF()
