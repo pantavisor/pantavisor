@@ -872,7 +872,7 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	if (!errno && (new_rev <= current_rev)) {
 		pv_log(WARN, "running revision %ld but trying to update to %ld",
 		       current_rev, new_rev);
-		if (new_rev < current_rev) {
+		if (new_rev <= current_rev) {
 			pv_log(WARN, "setting revision %ld as stale", new_rev);
 			pv_update_set_status(update, UPDATE_STALE_REVISION);
 		}
