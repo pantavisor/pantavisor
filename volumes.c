@@ -245,7 +245,7 @@ int pv_volume_mount(struct pv_volume *v)
 			sprintf(umount_cmd, "%s umount %s %s %s", script, path,
 				partname, name);
 			pv_log(INFO, "command: %s", command);
-			tsh_run(command, 1, &wstatus);
+			tsh_run_logserver(command, &wstatus, "volume-mount-out", "volume-mount-err");
 			if (!WIFEXITED(wstatus))
 				ret = -1;
 			else if (WEXITSTATUS(wstatus) != 0)
@@ -350,7 +350,7 @@ int pv_volume_unmount(struct pv_volume *v)
 		pv_log(DEBUG, "umounting with handler...");
 		pv_log(INFO, "umount_cmd: %s", v->umount_cmd);
 		int wstatus;
-		tsh_run(v->umount_cmd, 1, &wstatus);
+		tsh_run_logserver(v->umount_cmd, &wstatus, "volume-umount-out", "volume-umount-err");
 		if (!WIFEXITED(wstatus))
 			ret = -1;
 		else if (WEXITSTATUS(wstatus) != 0)
