@@ -231,6 +231,7 @@ add_executable(remount
 			utils/json.c
 			utils/str.c
 )
+target_compile_definitions(remount PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(remount PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
 target_link_libraries(remount  ${THTTP})
 install(TARGETS remount DESTINATION /lib/pv/hooks_lxc-mount.d)

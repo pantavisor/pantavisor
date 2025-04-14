@@ -38,9 +38,17 @@
 #include "tsh.h"
 #include "timer.h"
 #include "utils/pvsignals.h"
+#include "log.h"
+
+#ifndef DISABLE_LOGSERVER
+#include "logserver/logserver.h"
+#endif
 
 #define TSH_MAX_LENGTH 32
 #define TSH_DELIM " \t\r\n\a"
+
+#define MODULE_NAME "tsh"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 
 static char **_tsh_split_cmd(char *cmd)
 {
@@ -192,6 +200,61 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
 
 	return pid;
 }
+
+#ifndef DISABLE_LOGSERVER
+static int logserver_subscribe_pipe(int *cmd_pipe, const char *name, int level)
+{
+	errno = 0;
+	if (pipe(cmd_pipe) == -1) {
+		pv_log(ERROR, "cannot create pipe for %s, err: %s", name,
+		       strerror(errno));
+		return -1;
+	}
+
+	pv_logserver_subscribe_fd(cmd_pipe[0], "pantavisor", name, level);
+
+	return 0;
+}
+
+int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out, const char *log_source_err)
+{
+	int ret = 0;
+	int out_pipe[2] = { 0 };
+	int err_pipe[2] = { 0 };
+
+	if (logserver_subscribe_pipe(out_pipe, log_source_out, INFO) != 0 ||
+	    logserver_subscribe_pipe(err_pipe, log_source_err, WARN) != 0) {
+		return -1;
+	}
+
+	ret = tsh_run_io(cmd, 1, wstatus, NULL, out_pipe, err_pipe);
+
+	if (ret < 0) {
+		pv_log(ERROR, "command: %s error: %s", cmd);
+		return ret;
+	} else if (WIFEXITED(*wstatus) && WEXITSTATUS(*wstatus)) {
+		pv_log(ERROR, "command failed %s status: %d", cmd,
+		       WEXITSTATUS(*wstatus));
+		ret = -1;
+	} else if (WIFEXITED(*wstatus)) {
+		pv_log(DEBUG, "command succeeded: %s", cmd);
+		ret = 0;
+	} else if (WIFSIGNALED(*wstatus)) {
+		pv_log(ERROR, "command signalled %s: %d", cmd,
+		       WTERMSIG(*wstatus));
+		ret = -2;
+	} else {
+		pv_log(ERROR, "command failed with wstatus: %d", wstatus);
+		ret = -3;
+	}
+	close(out_pipe[1]);
+	close(err_pipe[1]);
+
+	return ret;
+}
+
+#endif
+
 
 static int safe_fd_set(int fd, fd_set *fds, int *max_fd)
 {
