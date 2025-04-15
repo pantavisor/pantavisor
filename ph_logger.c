@@ -45,7 +45,7 @@
 #include "../state.h"
 #include "../trestclient.h"
 #include "../pantavisor.h"
-#include "../pantahub.h"
+#include "../pantahub/pantahub.h"
 #include "../version.h"
 #include "../pvctl_utils.h"
 #include "list.h"

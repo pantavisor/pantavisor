@@ -46,7 +46,7 @@
 #include "objects.h"
 #include "parser/parser.h"
 #include "bootloader.h"
-#include "pantahub.h"
+#include "pantahub/pantahub.h"
 #include "storage.h"
 #include "wdt.h"
 #include "init.h"
@@ -1257,7 +1257,7 @@ static int trail_put_objects(struct pantavisor *pv)
 {
 	int ret = 0;
 	struct pv_object *curr = NULL;
-	const char **crtfiles = pv_ph_get_certs(pv);
+	const char **crtfiles = pv_ph_get_certs();
 
 	pv_objects_iter_begin(pv->state, curr)
 	{
@@ -1939,7 +1939,7 @@ static int trail_download_objects(struct pantavisor *pv)
 {
 	struct pv_update *u = pv->update;
 	struct pv_object *o = NULL;
-	const char **crtfiles = pv_ph_get_certs(pv);
+	const char **crtfiles = pv_ph_get_certs();
 
 	pv_objects_iter_begin(u->pending, o)
 	{

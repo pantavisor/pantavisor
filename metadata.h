@@ -48,7 +48,6 @@ typedef enum { USER_META, DEVICE_META } pv_metadata_t;
 struct pv_metadata {
 	struct dl_list usermeta; // pv_meta
 	struct dl_list devmeta; // pv_meta
-	bool devmeta_uploaded;
 };
 
 void pv_metadata_umount(void);
@@ -62,7 +61,6 @@ char *pv_metadata_get_usermeta(char *key);
 void pv_metadata_parse_usermeta(char *buf);
 
 int pv_metadata_init_devmeta(struct pantavisor *pv);
-int pv_metadata_upload_devmeta(struct pantavisor *pv);
 int pv_metadata_add_devmeta(const char *key, const char *value);
 int pv_metadata_rm_devmeta(const char *key);
 void pv_metadata_parse_devmeta(const char *buf);

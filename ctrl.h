@@ -47,7 +47,7 @@ struct pv_cmd {
 	char *payload;
 };
 
-struct pv_cmd *pv_ctrl_socket_wait(int ctrl_fd, int timeout);
+void pv_ctrl_socket_read(int fd, short event, void *arg);
 void pv_ctrl_free_cmd(struct pv_cmd *cmd);
 
 void pv_ctrl_socket_close(int ctrl_fd);

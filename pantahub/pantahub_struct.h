@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,47 +19,27 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
+#ifndef PV_PANTAHUB_STRUCT_H
+#define PV_PANTAHUB_STRUCT_H
 
-#include <stdbool.h>
+#include "event/event_timer.h"
 
-#include "config.h"
-#include "cgroup.h"
+typedef enum {
+	PH_STATE_INIT,
+	PH_STATE_REGISTER,
+	PH_STATE_CLAIM,
+	PH_STATE_SYNC,
+	PH_STATE_LOGIN,
+	PH_STATE_IDLE,
+	PH_STATE_UPDATE,
+	PH_STATE_MAX
+} ph_state_t;
 
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
-
-// pantavisor.h
-
-extern char pv_user_agent[4096];
-
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
-
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool synced;
-	bool loading_objects;
-	bool hard_poweroff;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
-};
-
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
-
-struct pantavisor *pv_get_instance(void);
+typedef struct {
+	ph_state_t state;
+	event_timer_t login_timer;
+	event_timer_t usrmeta_timer;
+	event_timer_t devmeta_timer;
+} pantahub_t;
 
 #endif

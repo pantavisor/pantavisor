@@ -19,47 +19,46 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
+#ifndef PV_PANTAHUB_H
+#define PV_PANTAHUB_H
 
-#include <stdbool.h>
+#define DEVICE_TOKEN_FMT "Pantahub-Devices-Auto-Token-V1: %s"
 
-#include "config.h"
-#include "cgroup.h"
+#include <time.h>
 
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
+#include "pantavisor.h"
 
-// pantavisor.h
+#include "pantahub/pantahub_struct.h"
 
-extern char pv_user_agent[4096];
+// OLD STUFF. TO BE REMOVED
 
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
-
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool synced;
-	bool loading_objects;
-	bool hard_poweroff;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
+struct pv_connection {
+	char *hostorip;
+	int port;
 };
 
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
+int pv_ph_is_available(struct pantavisor *pv);
+int pv_ph_device_exists(struct pantavisor *pv);
+int pv_ph_register_self(struct pantavisor *pv);
+bool pv_ph_is_auth(struct pantavisor *pv);
+const char **pv_ph_get_certs();
+int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
+void pv_ph_release_client(struct pantavisor *pv);
+void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
+int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
+struct pv_connection *pv_get_instance_connection(void);
 
-struct pantavisor *pv_get_instance(void);
+// TO MOVE TO STATIC IN .c
+
+const char *pv_pantahub_state_string(ph_state_t state);
+
+// NEW IMPLEMENTATION
+
+int pv_pantahub_init(void);
+int pv_pantahub_close(void);
+
+void pv_pantahub_step(void);
+
+pantahub_t *ph_get_instance(void);
 
 #endif

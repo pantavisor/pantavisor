@@ -476,8 +476,11 @@ bool pv_storage_validate_trails_object_checksum(const char *rev,
 	pv_paths_storage_trail_file(trail, PATH_MAX, rev, name);
 	pv_paths_storage_object(object, PATH_MAX, checksum);
 
-	if (!pv_fs_file_is_same(trail, object))
+	if (!pv_fs_file_is_same(trail, object)) {
+		pv_log(ERROR, "files '%s' and '%s' are not the same", trail,
+		       object);
 		return false;
+	}
 
 	pv_log(DEBUG, "validating checksum for %s and %s", object, trail);
 	return !pv_storage_validate_file_checksum(trail, checksum);
@@ -989,7 +992,7 @@ void pv_storage_save_usermeta(const char *key, const char *value)
 	char path[PATH_MAX];
 	char *pname, *pkey;
 
-	pv_log(DEBUG, "saving usermeta file with key %s and value %s", key,
+	pv_log(DEBUG, "saving usermeta file with key '%s' and value '%s'", key,
 	       value);
 
 	pv_paths_pv_usrmeta_key(path, PATH_MAX, key);

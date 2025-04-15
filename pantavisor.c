@@ -43,7 +43,6 @@
 #include "platforms.h"
 #include "volumes.h"
 #include "disk/disk.h"
-#include "pantahub.h"
 #include "bootloader.h"
 #include "ctrl.h"
 #include "version.h"
@@ -63,6 +62,12 @@
 #include "debug.h"
 #include "cgroup.h"
 #include "buffer.h"
+
+#include "event/event.h"
+#include "event/event_timer.h"
+#include "event/event_socket.h"
+
+#include "pantahub/pantahub.h"
 
 #include "parser/parser.h"
 
@@ -88,8 +93,6 @@ struct pantavisor *pv_get_instance()
 
 static struct timer timer_rollback_remote;
 static struct timer timer_wait_delay;
-static struct timer timer_usrmeta_interval;
-static struct timer timer_devmeta_interval;
 static struct timer timer_updater_interval;
 static struct timer timer_commit;
 
@@ -143,40 +146,6 @@ static const char *pv_state_string(pv_state_t st)
 }
 
 typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
-
-typedef enum {
-	PH_STATE_INIT,
-	PH_STATE_REGISTER,
-	PH_STATE_CLAIM,
-	PH_STATE_SYNC,
-	PH_STATE_IDLE,
-	PH_STATE_UPDATE,
-	PH_STATE_UPDATE_APPLY,
-} ph_state_t;
-
-static const char *ph_state_string(ph_state_t st)
-{
-	switch (st) {
-	case PH_STATE_INIT:
-		return "init";
-	case PH_STATE_REGISTER:
-		return "register";
-	case PH_STATE_CLAIM:
-		return "claim";
-	case PH_STATE_SYNC:
-		return "sync";
-	case PH_STATE_IDLE:
-		return "idle";
-	case PH_STATE_UPDATE:
-		return "update";
-	case PH_STATE_UPDATE_APPLY:
-		return "updateapply";
-	default:
-		return "STATE_UNKNOWN";
-	}
-
-	return "STATE_UNKNOWN";
-}
 
 static bool pv_wait_delay_timedout()
 {
@@ -334,12 +303,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		    pv_config_get_int(PH_UPDATER_NETWORK_TIMEOUT), 0,
 		    RELATIV_TIMER);
 	timer_start(&timer_wait_delay, PV_WAIT_PERIOD, 0, RELATIV_TIMER);
-	timer_start(&timer_usrmeta_interval,
-		    pv_config_get_int(PH_METADATA_USRMETA_INTERVAL), 0,
-		    RELATIV_TIMER);
-	timer_start(&timer_devmeta_interval,
-		    pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL), 0,
-		    RELATIV_TIMER);
 	timer_start(&timer_updater_interval,
 		    pv_config_get_int(PH_UPDATER_INTERVAL), 0, RELATIV_TIMER);
 
@@ -381,8 +344,9 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		need_register = 0;
 
 	if (need_register) {
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_REGISTER));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_REGISTER));
 		if (!pv_ph_register_self(pv)) {
 			pv_ph_release_client(pv);
 			return PV_STATE_WAIT;
@@ -392,13 +356,15 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 	}
 
 	if (!pv_ph_device_is_owned(pv, &c)) {
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_CLAIM));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_CLAIM));
 		pv_log(INFO, "device challenge: '%s'", c);
 		pv_ph_update_hint_file(pv, c);
 	} else {
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_SYNC));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_SYNC));
 		pv_log(INFO, "device has been claimed, proceeding normally");
 		pv->unclaimed = false;
 		pv_config_save_creds();
@@ -416,34 +382,6 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		free(c);
 
 	return PV_STATE_WAIT;
-}
-
-static int pv_meta_update_to_ph(struct pantavisor *pv)
-{
-	struct timer_state tstate;
-
-	if (!pv)
-		return -1;
-
-	tstate = timer_current_state(&timer_usrmeta_interval);
-	if (tstate.fin) {
-		if (pv_ph_device_get_meta(pv))
-			return -1;
-		timer_start(&timer_usrmeta_interval,
-			    pv_config_get_int(PH_METADATA_USRMETA_INTERVAL), 0,
-			    RELATIV_TIMER);
-	}
-
-	tstate = timer_current_state(&timer_devmeta_interval);
-	if (tstate.fin) {
-		if (pv_metadata_upload_devmeta(pv))
-			return -1;
-		timer_start(&timer_devmeta_interval,
-			    pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL), 0,
-			    RELATIV_TIMER);
-	}
-
-	return 0;
 }
 
 static pv_state_t pv_wait_update()
@@ -534,8 +472,8 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	// start or stop ph logger depending on network and configuration
 	ph_logger_toggle(pv->state->rev);
 
-	if (pv_meta_update_to_ph(pv))
-		goto out;
+	// ph client state machine
+	pv_pantahub_step();
 
 	// check for new remote update
 	tstate = timer_current_state(&timer_updater_interval);
@@ -543,7 +481,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		if (pv_updater_check_for_updates(pv) > 0) {
 			pv_metadata_add_devmeta(
 				DEVMETA_KEY_PH_STATE,
-				ph_state_string(PH_STATE_UPDATE));
+				pv_pantahub_state_string(PH_STATE_UPDATE));
 			return PV_STATE_UPDATE;
 		}
 		timer_start(&timer_updater_interval,
@@ -552,8 +490,9 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 
 	if (pv->synced)
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_IDLE));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_IDLE));
 
 out:
 	// process ongoing updates, if any
@@ -622,9 +561,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check state of debug tools
 	pv_debug_check_ssh_running();
 
-	// receive new command. Set 2 secs as the select max blocking time, so we can do the
-	// rest of WAIT operations
-	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
+	// this is set in the ctrl_listener event
 	if (pv->cmd)
 		next_state = PV_STATE_COMMAND;
 
@@ -797,7 +734,7 @@ out:
 static pv_state_t _pv_update_apply(struct pantavisor *pv)
 {
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-				ph_state_string(PH_STATE_UPDATE_APPLY));
+				pv_pantahub_state_string(PH_STATE_UPDATE));
 
 	// download and install pending step
 	if (pv_update_download(pv) || pv_update_install(pv)) {
@@ -812,7 +749,7 @@ static pv_state_t _pv_update_apply(struct pantavisor *pv)
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-				ph_state_string(PH_STATE_UPDATE));
+				pv_pantahub_state_string(PH_STATE_UPDATE));
 
 	// download and install pending step
 	if (pv_update_download(pv) || pv_update_install(pv)) {
@@ -961,14 +898,17 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		       shutdown_type_string(t));
 		sleep(2);
 		pv_remove(pv);
+		pv_event_base_close();
 		sync();
 		reboot(shutdown_type_reboot_cmd(t));
 	} else {
 		pv_log(INFO, "shutdown complete...");
 		pv_remove(pv);
 		sync();
-		if (t == POWEROFF)
+		if (t == POWEROFF) {
+			pv_event_base_close();
 			exit(3);
+		}
 	}
 
 	return PV_STATE_EXIT;
@@ -998,10 +938,49 @@ pv_state_func_t *const state_table[MAX_STATES] = {
 	_pv_poweroff, _pv_error,	NULL,
 };
 
-static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
+static pv_state_t state = PV_STATE_INIT;
+static event_timer_t wait_timer;
+static event_socket_t ctrl_listener = { -1, NULL };
+
+static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 {
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
 	pv_wdt_kick();
-	return state_table[state](pv);
+
+	pv_log(DEBUG, "run event: cb '%p'", (void *)_pv_run_state_cb);
+	pv_log(DEBUG, "next state: '%s'", pv_state_string(state));
+	pv_state_t next_state = state_table[state](pv);
+
+	if (next_state == PV_STATE_EXIT) {
+		pv_event_base_loopbreak();
+		goto out;
+	}
+
+	if (pv->hard_poweroff)
+		next_state = PV_STATE_POWEROFF;
+
+	if ((state != PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
+		// in case we are starting WAIT for the first time
+		pv_event_timer_run(&wait_timer, 2, _pv_run_state_cb);
+		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
+				       pv_ctrl_socket_read);
+		goto out;
+	} else if ((state == PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
+		// if we are stuck in wAIT
+		goto out;
+	} else if ((state == PV_STATE_WAIT) && (next_state != PV_STATE_WAIT)) {
+		// if we are leaving WAIT
+		pv_event_timer_close(&wait_timer);
+		pv_event_socket_ignore(&ctrl_listener);
+	}
+
+	// all states except WAIT are executed as soon as possible
+	pv_event_one_shot(_pv_run_state_cb);
+out:
+	state = next_state;
 }
 
 int pv_start()
@@ -1019,18 +998,12 @@ int pv_start()
 
 	setrlimit(RLIMIT_CORE, &core_limit);
 
-	pv_state_t state = PV_STATE_INIT;
+	if (pv_event_base_init() < 0)
+		return 1;
 
-	while (1) {
-		pv_log(DEBUG, "going to state = %s", pv_state_string(state));
-		state = _pv_run_state(state, pv);
-
-		if (state == PV_STATE_EXIT)
-			return 1;
-
-		if (pv->hard_poweroff)
-			state = PV_STATE_POWEROFF;
-	}
+	state = PV_STATE_INIT;
+	pv_event_one_shot(_pv_run_state_cb);
+	pv_event_base_loop();
 }
 
 void pv_stop()
@@ -1057,7 +1030,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 
 	pv = pv_get_instance();
 	if (!pv)
-		goto out;
+		return -1;
 	// Make sure this is initialized
 	pv->state = NULL;
 	pv->remote = NULL;
@@ -1072,7 +1045,6 @@ static int pv_pantavisor_init(struct pv_init *this)
 
 	ph_logger_init();
 
-out:
 	return 0;
 }
 
