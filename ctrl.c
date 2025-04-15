@@ -122,12 +122,25 @@ static const char *pv_ctrl_string_http_status_code(pv_http_status_code_t code)
 
 static int pv_ctrl_socket_open()
 {
-	int fd;
+	int fd, flags;
 	struct sockaddr_un addr;
 
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
 		pv_log(ERROR, "ctrl socket open error: %s", strerror(errno));
+		return -1;
+	}
+
+	// Set the socket to non-blocking mode
+	flags = fcntl(fd, F_GETFL, 0);
+	if (flags < 0) {
+		pv_log(ERROR, "could not get flags from ctrl socket: %s",
+		       strerror(errno));
+		goto out;
+	}
+	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+		pv_log(ERROR, "could not set flags to ctrl socket: %s",
+		       strerror(errno));
 		goto out;
 	}
 
@@ -142,8 +155,6 @@ static int pv_ctrl_socket_open()
 	if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		pv_log(ERROR, "ctrl socket with fd %d open error: %s", fd,
 		       strerror(errno));
-		close(fd);
-		fd = -1;
 		goto out;
 	}
 
@@ -151,12 +162,13 @@ static int pv_ctrl_socket_open()
 	if (listen(fd, 15)) {
 		pv_log(ERROR, "ctrl socket with fd %d listen error: %s", fd,
 		       strerror(errno));
-		close(fd);
-		fd = -1;
+		goto out;
 	}
 
-out:
 	return fd;
+out:
+	close(fd);
+	return -1;
 }
 
 void pv_ctrl_socket_close(int ctrl_fd)
@@ -801,7 +813,8 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		pv_ctrl_write_error_response(
 			req_fd, HTTP_STATUS_CONFLICT,
 			"Cannot do this operation when debug shell is not active");
-		pv_log(WARN, "Cannot do this operation when debug shell is not active");
+		pv_log(WARN,
+		       "Cannot do this operation when debug shell is not active");
 
 		goto error;
 	}
@@ -1464,46 +1477,33 @@ out:
 	return cmd;
 }
 
-struct pv_cmd *pv_ctrl_socket_wait(int ctrl_fd, int timeout)
+void pv_ctrl_socket_read(int fd, short event, void *arg)
 {
+	pv_log(DEBUG, "run event: cb '%p'", (void *)pv_ctrl_socket_read);
+
 	int req_fd = 0, ret;
-	fd_set fdset;
-	struct timeval tv;
-	struct pv_cmd *cmd = NULL;
 
-	if (ctrl_fd < 0) {
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+	pv->cmd = NULL;
+
+	if (fd < 0) {
 		pv_log(ERROR, "control socket not setup");
-		goto out;
-	}
-
-	FD_ZERO(&fdset);
-	FD_SET(ctrl_fd, &fdset);
-	tv.tv_sec = timeout;
-	tv.tv_usec = 0;
-
-	// select with blocking time
-	ret = select(ctrl_fd + 1, &fdset, 0, 0, &tv);
-	if (!ret)
-		goto out;
-	else if (ret < 0) {
-		pv_log(WARN, "could not select ctrl socket with fd %d: %s",
-		       ctrl_fd, strerror(errno));
-		goto out;
+		return;
 	}
 
 	// create dedicated fd
-	req_fd = accept(ctrl_fd, 0, 0);
+	req_fd = accept(fd, 0, 0);
 	if (req_fd < 0) {
-		pv_log(WARN, "could not accept ctrl socket with fd %d: %s",
-		       ctrl_fd, strerror(errno));
-		goto out;
+		pv_log(WARN, "could not accept ctrl socket with fd %d: %s", fd,
+		       strerror(errno));
+		return;
 	}
 
-	cmd = pv_ctrl_read_parse_request(req_fd);
+	pv->cmd = pv_ctrl_read_parse_request(req_fd);
 
 	close(req_fd);
-out:
-	return cmd;
 }
 
 void pv_ctrl_free_cmd(struct pv_cmd *cmd)

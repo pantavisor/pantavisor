@@ -42,7 +42,6 @@
 #include "metadata.h"
 #include "version.h"
 #include "state.h"
-#include "pantahub.h"
 #include "init.h"
 #include "str.h"
 #include "paths.h"
@@ -54,6 +53,8 @@
 #include "platforms.h"
 #include "buffer.h"
 #include "loop.h"
+
+#include "pantahub/pantahub.h"
 
 #include "utils/math.h"
 #include "utils/system.h"
@@ -765,13 +766,9 @@ int pv_metadata_add_devmeta(const char *key, const char *value)
 	int ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
 
 	if (ret > 0) {
-		// set updated flag only for added or updated so they can be uploaded
 		curr = pv_metadata_get_by_key(&pv->metadata->devmeta, key);
-		if (curr)
-			curr->updated = true;
 
 		pv_log(DEBUG, "device metadata key %s added or updated", key);
-		pv->metadata->devmeta_uploaded = false;
 		pv_storage_save_devmeta(key, value);
 	}
 
@@ -852,7 +849,7 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 	 */
 	buffer = pv_buffer_get(true);
 	if (!buffer) {
-		pv_log(INFO, "couldn't allocate buffer to upload device info");
+		pv_log(INFO, "couldn't allocate buffer to store device info");
 		return -1;
 	}
 
@@ -871,99 +868,7 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 						buf);
 	}
 	pv_buffer_drop(buffer);
-	pv->metadata->devmeta_uploaded = false;
 
-	return 0;
-}
-
-int pv_metadata_upload_devmeta(struct pantavisor *pv)
-{
-	unsigned int len = 0;
-	char *json = NULL;
-	struct pv_meta *info = NULL, *tmp = NULL;
-	struct dl_list *head = NULL;
-	int json_avail = 0, ret = 0;
-	struct buffer *buffer = NULL;
-
-	/*
-	 * we can use one of the large buffer. Since
-	 * this information won't be very large, it's safe
-	 * to assume even the complete json would
-	 * be small enough to fit inside this buffer.
-	 */
-	buffer = pv_buffer_get(true);
-	if (!buffer) {
-		pv_log(INFO, "couldn't allocate buffer to upload device info");
-		return -1;
-	}
-
-	if (pv->metadata->devmeta_uploaded)
-		goto out;
-
-	json = buffer->buf;
-	json_avail = buffer->size;
-	json_avail -= sprintf(json, "{");
-	len += 1;
-	head = &pv->metadata->devmeta;
-	dl_list_for_each_safe(info, tmp, head, struct pv_meta, list)
-	{
-		if (!info->updated)
-			continue;
-
-		char *key = pv_json_format(info->key, strlen(info->key));
-		char *val = pv_json_format(info->value, strlen(info->value));
-
-		if (key && val) {
-			if (!pv_json_is_valid(info->value)) {
-				int frag_len = strlen(key) + strlen(val) +
-					       // 2 pairs of quotes
-					       2 * 2 +
-					       // 1 colon and a ,
-					       1 + 1;
-				if (json_avail > frag_len) {
-					SNPRINTF_WTRUNC(json + len, json_avail,
-							"\"%s\":\"%s\",", key,
-							val);
-					len += frag_len;
-					json_avail -= frag_len;
-				}
-			} else {
-				int frag_len = strlen(info->key) +
-					       strlen(info->value) +
-					       // 1 pair of quotes
-					       1 * 2 +
-					       // 1 colon and a ,
-					       1 + 1;
-				if (json_avail > frag_len) {
-					SNPRINTF_WTRUNC(json + len, json_avail,
-							"\"%s\":%s,", info->key,
-							info->value);
-					len += frag_len;
-					json_avail -= frag_len;
-				}
-			}
-		}
-		if (key)
-			free(key);
-		if (val)
-			free(val);
-	}
-	/*
-	 * replace , with closing brace.
-	 */
-	json[len - 1] = '}';
-	pv_log(INFO, "uploading devmeta json '%s'", json);
-	ret = pv_ph_upload_metadata(pv, json);
-	if (!ret) {
-		pv->metadata->devmeta_uploaded = true;
-
-		dl_list_for_each_safe(info, tmp, head, struct pv_meta, list)
-		{
-			info->updated = false;
-		}
-	}
-out:
-	pv_buffer_drop(buffer);
 	return 0;
 }
 
@@ -1081,8 +986,6 @@ int pv_metadata_init()
 
 	dl_list_init(&pv->metadata->usermeta);
 	dl_list_init(&pv->metadata->devmeta);
-
-	pv->metadata->devmeta_uploaded = true;
 
 	pv_metadata_load_usermeta();
 	pv_metadata_load_devmeta();

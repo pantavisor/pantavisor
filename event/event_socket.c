@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,33 +19,47 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAHUB_H
-#define PV_PANTAHUB_H
 
-#define DEVICE_TOKEN_FMT "Pantahub-Devices-Auto-Token-V1: %s"
+#include "event_socket.h"
 
-#include <time.h>
+#include "event.h"
 
-#include "pantavisor.h"
+#define MODULE_NAME "event_socket"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
 
-struct pv_connection {
-	char *hostorip;
-	int port;
-};
+void pv_event_socket_listen(event_socket_t *listener, evutil_socket_t fd,
+			    event_callback_fn cb)
+{
+	if (!listener || !pv_event_get_base())
+		return;
 
-int pv_ph_is_available(struct pantavisor *pv);
-int pv_ph_device_get_meta(struct pantavisor *pv);
-int pv_ph_device_exists(struct pantavisor *pv);
-int pv_ph_register_self(struct pantavisor *pv);
-bool pv_ph_is_auth(struct pantavisor *pv);
-const char **pv_ph_get_certs(struct pantavisor *pv);
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
-void pv_ph_release_client(struct pantavisor *pv);
-void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
-int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
-struct pv_connection *pv_get_instance_connection(void);
+	if (listener->ev)
+		return;
 
-int pv_pantahub_init(void);
-int pv_pantahub_close(void);
+	listener->ev = event_new(pv_event_get_base(), fd, EV_READ | EV_PERSIST,
+				 cb, NULL);
 
-#endif
+	if (!listener->ev)
+		return;
+
+	event_add(listener->ev, NULL);
+	listener->fd = fd;
+
+	pv_log(DEBUG, "added event: type='listener' cb=%p fd=%d", (void *)cb,
+	       fd);
+}
+
+void pv_event_socket_ignore(event_socket_t *listener)
+{
+	if (!listener)
+		return;
+
+	if (!listener->ev)
+		return;
+
+	pv_log(DEBUG, "stop listening event to socket fd %d", listener->fd);
+
+	event_free(listener->ev);
+	listener->ev = NULL;
+}
