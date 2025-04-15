@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019-2021 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_PANTAHUB_REST_H
+#define PV_PANTAHUB_REST_H
 
-#ifndef PV_NETWORK_H
-#define PV_NETWORK_H
+#include <event2/event.h>
+#include <event2/http.h>
 
-#include "pantavisor.h"
+int pv_pantahub_rest_send(struct event_base *base, enum evhttp_cmd_type op,
+			  const char *uri, const char *token, const char *body,
+			  void (*cb)(struct evhttp_request *, void *));
+int pv_pantahub_rest_recv(struct evhttp_request *req, void *mbedtls_ctx,
+			  char *out, int max_len);
 
-void pv_network_update_meta(struct pantavisor *pv);
-
-#endif // PV_NETWORK_H
+#endif

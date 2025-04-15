@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,33 +19,47 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAHUB_H
-#define PV_PANTAHUB_H
+#include "pantahub/pantahub_timer.h"
 
-#define DEVICE_TOKEN_FMT "Pantahub-Devices-Auto-Token-V1: %s"
+#define MODULE_NAME "pantahub_timer"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
 
-#include <time.h>
+void pv_pantahub_timer_run(event_timer_t *timer, struct event_base *base,
+			   int next_interval, event_callback_fn cb)
+{
+	if (!timer || !base)
+		return;
 
-#include "pantavisor.h"
+	if (timer->ev && (next_interval == timer->interval))
+		return;
 
-struct pv_connection {
-	char *hostorip;
-	int port;
-};
+	if (timer->ev) {
+		event_del(timer->ev);
+		event_free(timer->ev);
+	}
 
-int pv_ph_is_available(struct pantavisor *pv);
-int pv_ph_device_get_meta(struct pantavisor *pv);
-int pv_ph_device_exists(struct pantavisor *pv);
-int pv_ph_register_self(struct pantavisor *pv);
-bool pv_ph_is_auth(struct pantavisor *pv);
-const char **pv_ph_get_certs(struct pantavisor *pv);
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
-void pv_ph_release_client(struct pantavisor *pv);
-void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
-int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
-struct pv_connection *pv_get_instance_connection(void);
+	timer->ev = event_new(base, -1, EV_PERSIST, cb, base);
+	if (!timer->ev) {
+		pv_log(ERROR, "could not create event");
+		return;
+	}
 
-int pv_pantahub_init(void);
-int pv_pantahub_close(void);
+	timer->interval = next_interval;
+	struct timeval time = { timer->interval, 0 };
+	if (event_add(timer->ev, &time) < 0) {
+		pv_log(ERROR, "could not add usrmeta event");
+		return;
+	}
+}
 
-#endif
+void pv_pantahub_timer_close(event_timer_t *timer)
+{
+	if (!timer)
+		return;
+
+	if (timer->ev) {
+		event_del(timer->ev);
+		event_free(timer->ev);
+	}
+}
