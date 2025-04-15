@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,33 +19,27 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAHUB_H
-#define PV_PANTAHUB_H
+#ifndef PV_PANTAHUB_STRUCT_H
+#define PV_PANTAHUB_STRUCT_H
 
-#define DEVICE_TOKEN_FMT "Pantahub-Devices-Auto-Token-V1: %s"
+#include "event/event_timer.h"
 
-#include <time.h>
+typedef enum {
+	PH_STATE_INIT,
+	PH_STATE_REGISTER,
+	PH_STATE_CLAIM,
+	PH_STATE_SYNC,
+	PH_STATE_LOGIN,
+	PH_STATE_IDLE,
+	PH_STATE_UPDATE,
+	PH_STATE_MAX
+} ph_state_t;
 
-#include "pantavisor.h"
-
-struct pv_connection {
-	char *hostorip;
-	int port;
-};
-
-int pv_ph_is_available(struct pantavisor *pv);
-int pv_ph_device_get_meta(struct pantavisor *pv);
-int pv_ph_device_exists(struct pantavisor *pv);
-int pv_ph_register_self(struct pantavisor *pv);
-bool pv_ph_is_auth(struct pantavisor *pv);
-const char **pv_ph_get_certs(struct pantavisor *pv);
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
-void pv_ph_release_client(struct pantavisor *pv);
-void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
-int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
-struct pv_connection *pv_get_instance_connection(void);
-
-int pv_pantahub_init(void);
-int pv_pantahub_close(void);
+typedef struct {
+	ph_state_t state;
+	event_timer_t login_timer;
+	event_timer_t usrmeta_timer;
+	event_timer_t devmeta_timer;
+} pantahub_t;
 
 #endif

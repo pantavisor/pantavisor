@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,47 +19,16 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
+#ifndef PV_PANTAHUB_PROTO_H
+#define PV_PANTAHUB_PROTO_H
 
 #include <stdbool.h>
 
-#include "config.h"
-#include "cgroup.h"
+void pv_pantahub_proto_open_session(void);
+bool pv_pantahub_proto_is_session_open(void);
+void pv_pantahub_proto_close_session(void);
 
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
-
-// pantavisor.h
-
-extern char pv_user_agent[4096];
-
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
-
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool synced;
-	bool loading_objects;
-	bool hard_poweroff;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
-};
-
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
-
-struct pantavisor *pv_get_instance(void);
+void pv_pantahub_proto_get_usrmeta(void);
+void pv_pantahub_proto_set_devmeta(void);
 
 #endif
