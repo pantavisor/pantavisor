@@ -206,7 +206,7 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 		goto err;
 	}
 
-	cafiles = pv_ph_get_certs(pv);
+	cafiles = pv_ph_get_certs();
 	if (!cafiles) {
 		pv_log(ERROR, "unable to assemble cert list");
 		goto err;

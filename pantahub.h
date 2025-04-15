@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Pantacor Ltd.
+ * Copyright (c) 2017-2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -28,6 +28,8 @@
 
 #include "pantavisor.h"
 
+// OLD STUFF. TO BE REMOVED
+
 struct pv_connection {
 	char *hostorip;
 	int port;
@@ -38,14 +40,18 @@ int pv_ph_device_get_meta(struct pantavisor *pv);
 int pv_ph_device_exists(struct pantavisor *pv);
 int pv_ph_register_self(struct pantavisor *pv);
 bool pv_ph_is_auth(struct pantavisor *pv);
-const char **pv_ph_get_certs(struct pantavisor *pv);
+const char **pv_ph_get_certs();
 int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
 void pv_ph_release_client(struct pantavisor *pv);
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
 int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
 struct pv_connection *pv_get_instance_connection(void);
 
+// NEW IMPLEMENTATION
+
 int pv_pantahub_init(void);
 int pv_pantahub_close(void);
+
+int pv_pantahub_step(struct event_base *base);
 
 #endif

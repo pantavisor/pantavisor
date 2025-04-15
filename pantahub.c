@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2017-2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -54,7 +54,7 @@
 #include "utils/str.h"
 #include "utils/fs.h"
 
-#define MODULE_NAME "pantahub-api"
+#define MODULE_NAME "pantahub"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
@@ -158,7 +158,7 @@ success:
 	return true;
 }
 
-const char **pv_ph_get_certs(struct pantavisor *__unused)
+const char **pv_ph_get_certs()
 {
 	struct dirent **files;
 	char **cafiles;
@@ -334,7 +334,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	char **headers = NULL;
 
 	tls_req = thttp_request_tls_new_0();
-	tls_req->crtfiles = (char **)pv_ph_get_certs(pv);
+	tls_req->crtfiles = (char **)pv_ph_get_certs();
 
 	thttp_request_t *req = (thttp_request_t *)tls_req;
 
@@ -594,8 +594,70 @@ out:
 	return ret;
 }
 
+#include <event2/bufferevent_ssl.h>
+#include <event2/bufferevent.h>
+#include <event2/buffer.h>
+#include <event2/listener.h>
+#include <event2/util.h>
+#include <event2/http.h>
+
+#include <mbedtls/error.h>
+#include <mbedtls/ssl.h>
+#include <mbedtls/ctr_drbg.h>
+#include <mbedtls/entropy.h>
+
+typedef enum {
+	PH_STATE_INIT,
+	PH_STATE_REGISTER,
+	PH_STATE_CLAIM,
+	PH_STATE_SYNC,
+	PH_STATE_IDLE,
+	PH_STATE_UPDATE,
+	PH_STATE_MAX
+} ph_state_t;
+
+static const char *_state_string(ph_state_t state)
+{
+	switch (state) {
+	case PH_STATE_INIT:
+		return "init";
+	case PH_STATE_REGISTER:
+		return "register";
+	case PH_STATE_CLAIM:
+		return "claim";
+	case PH_STATE_SYNC:
+		return "sync";
+	case PH_STATE_IDLE:
+		return "idle";
+	case PH_STATE_UPDATE:
+		return "update";
+	default:
+		return "unknown";
+	}
+
+	return "unknown";
+}
+
+typedef struct {
+	mbedtls_dyncontext *ssl;
+	mbedtls_ssl_config config;
+	mbedtls_ctr_drbg_context ctr_drbg;
+	mbedtls_entropy_context entropy;
+	mbedtls_x509_crt cacert;
+} mbedtls_t;
+
+typedef struct {
+	ph_state_t state;
+	mbedtls_t mbedtls;
+	char *token;
+} pantahub_t;
+
+static pantahub_t ph;
+
 int pv_pantahub_init()
 {
+	// OLD STUFF. TO BE REMOVED
+
 	struct pantavisor *pv = pv_get_instance();
 	char tmp[256], path[PATH_MAX];
 
@@ -624,10 +686,264 @@ int pv_pantahub_init()
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 
+	// NEW IMPLEMENTATION
+
+	ph.state = PH_STATE_INIT;
+	ph.token = NULL;
+
 	return 0;
 }
 
 int pv_pantahub_close()
 {
+	if (ph.token)
+		free(ph.token);
 	return pv_config_unload_creds();
+}
+
+void _next_state(ph_state_t state)
+{
+	if (ph.state == state)
+		return;
+
+	ph.state = state;
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, _state_string(state));
+}
+
+static void _state_init()
+{
+	_next_state(PH_STATE_IDLE);
+}
+
+static void _err_mbedtls(const char *func, int err)
+{
+	pv_log(ERROR, "%s failed with code %d\n", func, err);
+}
+
+static void _recv_response(struct evhttp_request *req, void *ctx, char *out,
+			   int max_len)
+{
+	if (!req || !evhttp_request_get_response_code(req)) {
+		struct bufferevent *bev = (struct bufferevent *)ctx;
+		unsigned long oslerr;
+		int printed_err = 0;
+		int errcode = EVUTIL_SOCKET_ERROR();
+		pv_log(WARN, "request failed");
+		while ((oslerr = bufferevent_get_mbedtls_error(bev))) {
+			_err_mbedtls("bufferevent_get_mbedtls_error", oslerr);
+			printed_err = 1;
+		}
+		if (!printed_err)
+			pv_log(WARN, "socket error = %s (%d)\n",
+			       evutil_socket_error_to_string(errcode), errcode);
+		return;
+	}
+
+	pv_log(DEBUG, "response: %d %s\n",
+	       evhttp_request_get_response_code(req),
+	       evhttp_request_get_response_code_line(req));
+
+	int nread = 0, i = 0;
+	while ((nread = evbuffer_remove(evhttp_request_get_input_buffer(req),
+					out, max_len - i)) > 0) {
+		out += nread;
+		i += nread;
+	}
+}
+
+static void _parse_post_auth_body(const char *json)
+{
+	int tokc;
+	jsmntok_t *tokv = NULL;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		goto out;
+	}
+
+	ph.token = pv_json_get_value(json, "token", tokv, tokc);
+
+out:
+	if (tokv)
+		free(tokv);
+}
+
+static void _recv_post_auth(struct evhttp_request *req, void *ctx)
+{
+	pv_log(DEBUG, "POST auth response received");
+	char buffer[1024];
+	memset(&buffer, 0, sizeof(buffer));
+	_recv_response(req, ctx, &buffer[0], 1024);
+	pv_log(DEBUG, "body: '%s'", buffer);
+	_parse_post_auth_body(buffer);
+	if (ph.token)
+		pv_log(DEBUG, "token: '%s'", ph.token);
+}
+
+static void _recv_get_usermeta(struct evhttp_request *req, void *ctx)
+{
+	pv_log(DEBUG, "GET usermeta response received");
+	char buffer[1024];
+	memset(&buffer, 0, sizeof(buffer));
+	_recv_response(req, ctx, &buffer[0], 1024);
+	pv_log(DEBUG, "body: '%s'", buffer);
+}
+
+static void _send_request(struct event_base *base, enum evhttp_cmd_type op,
+			  const char *uri, const char *body,
+			  void (*cb)(struct evhttp_request *, void *))
+{
+	ph.mbedtls.ssl = NULL;
+	mbedtls_x509_crt_init(&ph.mbedtls.cacert);
+	mbedtls_ctr_drbg_init(&ph.mbedtls.ctr_drbg);
+	mbedtls_entropy_init(&ph.mbedtls.entropy);
+	mbedtls_ssl_config_init(&ph.mbedtls.config);
+
+	mbedtls_ctr_drbg_seed(&ph.mbedtls.ctr_drbg, mbedtls_entropy_func,
+			      &ph.mbedtls.entropy,
+			      (const unsigned char *)"pantavisor",
+			      sizeof("pantavisor"));
+	mbedtls_ssl_config_defaults(&ph.mbedtls.config, MBEDTLS_SSL_IS_CLIENT,
+				    MBEDTLS_SSL_TRANSPORT_STREAM,
+				    MBEDTLS_SSL_PRESET_DEFAULT);
+	mbedtls_ssl_conf_rng(&ph.mbedtls.config, mbedtls_ctr_drbg_random,
+			     &ph.mbedtls.ctr_drbg);
+
+	const char **crts = pv_ph_get_certs();
+	int res;
+	res = mbedtls_x509_crt_parse_file(&ph.mbedtls.cacert, *crts);
+	if (res != 0) {
+		_err_mbedtls("mbedtls_x509_crt_parse_file", res);
+		goto error;
+	}
+	mbedtls_ssl_conf_ca_chain(&ph.mbedtls.config, &ph.mbedtls.cacert, NULL);
+
+	ph.mbedtls.ssl = bufferevent_mbedtls_dyncontext_new(&ph.mbedtls.config);
+
+	char *host = pv_config_get_str(PH_CREDS_HOST);
+	mbedtls_ssl_set_hostname(ph.mbedtls.ssl, host);
+
+	struct bufferevent *bev;
+	bev = bufferevent_mbedtls_socket_new(
+		base, -1, ph.mbedtls.ssl, BUFFEREVENT_SSL_CONNECTING,
+		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	if (!bev) {
+		pv_log(ERROR, "bufferevent_mbedtls_socket_new failed");
+		goto error;
+	}
+
+	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
+
+	struct evhttp_connection *evcon = NULL;
+	int port = pv_config_get_int(PH_CREDS_PORT);
+	evcon = evhttp_connection_base_bufferevent_new(base, NULL, bev, host,
+						       port);
+	if (!evcon) {
+		pv_log(ERROR, "evhttp_connection_base_bufferevent_new failed");
+		goto error;
+	}
+	evhttp_connection_set_family(evcon, AF_INET);
+
+	int retries = 2;
+	evhttp_connection_set_retries(evcon, retries);
+
+	int timeout = 2;
+	evhttp_connection_set_timeout(evcon, timeout);
+
+	struct evhttp_request *req;
+	req = evhttp_request_new(cb, bev);
+	if (!req) {
+		pv_log(ERROR, "evhttp_request_new failed");
+		goto error;
+	}
+
+	struct evkeyvalq *output_headers;
+	output_headers = evhttp_request_get_output_headers(req);
+	evhttp_add_header(output_headers, "Host", host);
+	evhttp_add_header(output_headers, "Connection", "close");
+	evhttp_add_header(output_headers, "User-Agent", pv_user_agent);
+
+	if (ph.token) {
+		char bearer[1024];
+		memset(bearer, 0, sizeof(bearer));
+		snprintf(bearer, sizeof(bearer), "Bearer %s", ph.token);
+
+		pv_log(DEBUG, "%s", bearer);
+		evhttp_add_header(output_headers, "Authorization", bearer);
+	}
+
+	if (body) {
+		size_t len = strlen(body);
+		pv_log(DEBUG, "body: '%s'; len: %zu", body, len);
+
+		struct evbuffer *output_buffer;
+		output_buffer = evhttp_request_get_output_buffer(req);
+		evbuffer_add(output_buffer, body, len);
+
+		char buf[64];
+		evutil_snprintf(buf, sizeof(buf) - 1, "%zu", len);
+		evhttp_add_header(output_headers, "Content-Length", buf);
+		evhttp_add_header(output_headers, "Content-Type",
+				  "application/json");
+	}
+
+	res = evhttp_make_request(evcon, req, op, uri);
+	if (res != 0) {
+		_err_mbedtls("evhttp_make_request", res);
+		goto error;
+	}
+
+	//if (evcon)
+	//	evhttp_connection_free(evcon);
+	//mbedtls_ssl_config_free(&ph.mbedtls.config);
+	//mbedtls_ctr_drbg_free(&ph.mbedtls.ctr_drbg);
+	//mbedtls_x509_crt_free(&ph.mbedtls.cacert);
+	return;
+error:
+	if (evcon)
+		evhttp_connection_free(evcon);
+	mbedtls_ssl_config_free(&ph.mbedtls.config);
+	mbedtls_ctr_drbg_free(&ph.mbedtls.ctr_drbg);
+	mbedtls_x509_crt_free(&ph.mbedtls.cacert);
+}
+
+static void _state_idle(struct event_base *base)
+{
+	char uri[256];
+	char body[1024];
+
+	if (!ph.token) {
+		snprintf(uri, sizeof(uri), "/auth/login");
+		snprintf(body, sizeof(body),
+			 "{\"username\":\"%s\",\"password\":\"%s\"}",
+			 pv_config_get_str(PH_CREDS_PRN),
+			 pv_config_get_str(PH_CREDS_SECRET));
+		pv_log(DEBUG, "POST %s", uri);
+		_send_request(base, EVHTTP_REQ_POST, uri, body,
+			      _recv_post_auth);
+	}
+
+	if (ph.token) {
+		snprintf(uri, sizeof(uri), "/devices/%s/user-meta",
+			 pv_config_get_str(PH_CREDS_ID));
+
+		pv_log(DEBUG, "GET %s", uri);
+		_send_request(base, EVHTTP_REQ_GET, uri, NULL,
+			      _recv_get_usermeta);
+	}
+}
+
+int pv_pantahub_step(struct event_base *base)
+{
+	pv_log(DEBUG, "next state: %s", _state_string(ph.state));
+
+	switch (ph.state) {
+	case PH_STATE_INIT:
+		_state_init();
+		break;
+	case PH_STATE_IDLE:
+		_state_idle(base);
+		break;
+	default:
+		pv_log(WARN, "state not implemented");
+	}
 }
