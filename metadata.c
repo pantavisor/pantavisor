@@ -42,7 +42,6 @@
 #include "metadata.h"
 #include "version.h"
 #include "state.h"
-#include "pantahub.h"
 #include "init.h"
 #include "str.h"
 #include "paths.h"
@@ -54,6 +53,8 @@
 #include "platforms.h"
 #include "buffer.h"
 #include "loop.h"
+
+#include "pantahub/pantahub.h"
 
 #include "utils/math.h"
 #include "utils/system.h"
