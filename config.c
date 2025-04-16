@@ -67,10 +67,10 @@ typedef enum {
 	PH_CONF = 1 << 2,
 	PH_CLIENT = 1 << 3,
 	POLICY = 1 << 4,
-	PV_CMDLINE = 1 << 5,
-	PH_CMDLINE = 1 << 6,
-	ENV = 1 << 7,
-	OEM = 1 << 8,
+	OEM = 1 << 5,
+	PV_CMDLINE = 1 << 6,
+	PH_CMDLINE = 1 << 7,
+	ENV = 1 << 8,
 	META = 1 << 9,
 	CMD = 1 << 10
 } level_t;
@@ -786,6 +786,14 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		pv_log(WARN, "key '%s' not allowed in %s level", entry->key,
 		       _get_mod_level_str(modified));
 		return -1;
+	}
+
+	if (modified < entry->modified) {
+		pv_log(WARN,
+		       "key '%s' in level %s already configured in upper level %s",
+		       entry->key, _get_mod_level_str(modified),
+		       _get_mod_level_str(entry->modified));
+		return 0;
 	}
 
 	long value_int = 0;
