@@ -200,7 +200,10 @@ int load_key_value_file(const char *path, struct dl_list *list)
 
 	while (fgets(buff, st.st_size + 1, fp)) {
 		// Remove newline from value (hacky)
-		buff[strlen(buff) - 1] = '\0';
+		int len = strlen(buff);
+		if (len > 0 && isspace((unsigned char)buff[len - 1]))
+			buff[strlen(buff) - 1] = '\0';
+
 		char *key = strstr(buff, "=");
 		if (key) {
 			char *value = key + 1;
