@@ -18,6 +18,8 @@ set(PANTAVISOR_DEBUG OFF CACHE BOOL "Enable debug features for Pantavisor")
 set(PANTAVISOR_APPENGINE OFF CACHE BOOL "Build Pantavisor as appengine")
 set(PANTAVISOR_DEFAULTS_SKIP_INSTALL OFF CACHE BOOL "Skip installing defaults/ to etc/pantavisor")
 set(PANTAVISOR_PVS_SKIP_INSTALL OFF CACHE BOOL "Skip installing developer trust store")
+set(PANTAVISOR_DISTRO_VERSION "" CACHE STRING "Set a distro version to include in pantavisor build version")
+set(PANTAVISOR_DISTRO_NAME "" CACHE STRING "Set a distro name to include in pantavisor build version")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -44,7 +46,7 @@ add_custom_command(
     OUTPUT  version.c
     COMMAND sh
 	-c
-	\"cd ${CMAKE_CURRENT_SOURCE_DIR}\; ./gen_version.sh CMAKE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SYSTEM_PROCESSOR}\"
+	\"cd ${CMAKE_CURRENT_SOURCE_DIR}\; DISTRO_NAME=${PANTAVISOR_DISTRO_NAME} DISTRO_VERSION=${PANTAVISOR_DISTRO_VERSION} ./gen_version.sh CMAKE ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SYSTEM_PROCESSOR}\"
 )
 
 # Build and Install Pantavisor
