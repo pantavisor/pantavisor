@@ -10,7 +10,7 @@ if [ "$type" = CMAKE ]; then
     gitdescribe=$(git describe --tags)
 
     echo "const char *pv_build_manifest = \"\";" > $buildir/version.c
-    echo "const char *pv_build_version = \"${gitdescribe}-${now}\";" >> $buildir/version.c
+    echo "const char *pv_build_version = \"${gitdescribe}-${now}${DISTRO_NAME:+ | ${DISTRO_NAME}}${DISTRO_VERSION:+ (${DISTRO_VERSION})}\";" >> $buildir/version.c
     echo "const char *pv_build_date = \"${now}\";" >> $buildir/version.c
     echo "const char *pv_build_arch = \"${3}\";" >> $buildir/version.c
 
