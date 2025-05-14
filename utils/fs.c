@@ -35,6 +35,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define PV_FS_BUF_SIZE (512)
+
 static void close_fd(int *fd)
 {
 	if (!fd || *fd < 0)
@@ -350,7 +352,7 @@ off_t pv_fs_path_get_size(const char *path)
 	return st.st_size;
 }
 
-ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size)
+ssize_t pv_fs_file_write_nointr(int fd, const void *buf, ssize_t size)
 {
 	ssize_t written = 0;
 
@@ -367,7 +369,7 @@ ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size)
 	return written;
 }
 
-ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size)
+ssize_t pv_fs_file_read_nointr(int fd, void *buf, ssize_t size)
 {
 	ssize_t total_read = 0;
 	errno = 0;
@@ -477,4 +479,99 @@ bool pv_fs_file_is_same(const char *path1, const char *path2)
 		return false;
 
 	return ino1 == ino2;
+}
+
+void pv_fs_basename(const char *path, char *base)
+{
+	char tmp[PATH_MAX] = { 0 };
+	memccpy(tmp, path, '\0', PATH_MAX);
+	char *p = basename(tmp);
+	memccpy(base, p, '\0', NAME_MAX);
+}
+
+void pv_fs_dirname(const char *path, char *parent)
+{
+	char tmp[PATH_MAX] = { 0 };
+	memccpy(tmp, path, '\0', PATH_MAX);
+	char *p = dirname(tmp);
+	memccpy(parent, p, '\0', PATH_MAX);
+}
+
+void pv_fs_extension(const char *path, char *ext)
+{
+	char base[NAME_MAX] = { 0 };
+	pv_fs_basename(path, base);
+	size_t size = strlen(base);
+	if (!strncmp(base, "..", size) || !strncmp(base, ".", size))
+		return;
+
+	char *p = strrchr(base, '.');
+	if (!p || p == &base[0])
+		return;
+
+	memccpy(ext, p, '\0', NAME_MAX);
+}
+
+void *pv_fs_file_read(const char *path, size_t *size)
+{
+	off_t fsize = pv_fs_path_get_size(path);
+
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return NULL;
+
+	void *buf = NULL;
+	// this +1 helps to convert plain text files on
+	// valid strings
+	buf = calloc(fsize + 1, sizeof(char));
+	if (!buf)
+		goto out;
+
+	ssize_t total = 0;
+	while (total != fsize) {
+		ssize_t cur =
+			pv_fs_file_read_nointr(fd, buf + total, PV_FS_BUF_SIZE);
+		if (cur > 0)
+			total += cur;
+	}
+out:
+	if (fd > -1)
+		close(fd);
+
+	if (size)
+		*size = fsize;
+
+	return buf;
+}
+
+int pv_fs_file_write(const char *path, void *buf, ssize_t len)
+{
+	char tmp[PATH_MAX] = { 0 };
+	if (pv_fs_file_tmp(tmp, path) != 0)
+		return -1;
+
+	int fd = open(tmp, O_CREAT | O_TRUNC | O_CLOEXEC | O_WRONLY, 0644);
+	if (fd < 0)
+		return -1;
+
+	ssize_t total = 0;
+	while (total != len) {
+		ssize_t to_write = len - total;
+		if (to_write > PV_FS_BUF_SIZE)
+			to_write = PV_FS_BUF_SIZE;
+		ssize_t cur =
+			pv_fs_file_write_nointr(fd, buf + total, to_write);
+		if (cur > 0)
+			total += cur;
+	}
+
+	fsync(fd);
+	close(fd);
+
+	if (pv_fs_path_rename(tmp, path) != 0)
+		return -1;
+
+	pv_fs_path_remove(tmp, false);
+
+	return total == len ? 0 : -1;
 }
