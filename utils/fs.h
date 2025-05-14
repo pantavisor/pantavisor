@@ -45,8 +45,8 @@ int pv_fs_file_copy(const char *src, const char *dst, mode_t mode);
 ssize_t pv_fs_file_copy_fd(int src, int dst, bool close_src);
 
 // This function doesn't perform sync
-ssize_t pv_fs_file_write_nointr(int fd, const char *buf, ssize_t size);
-ssize_t pv_fs_file_read_nointr(int fd, char *buf, ssize_t size);
+ssize_t pv_fs_file_write_nointr(int fd, const void *buf, ssize_t size);
+ssize_t pv_fs_file_read_nointr(int fd, void *buf, ssize_t size);
 
 // check path, open, read nointr and close
 ssize_t pv_fs_file_read_to_buf(const char *path, char *buf, ssize_t size);
@@ -56,5 +56,10 @@ int pv_fs_file_unlock(int fd);
 int pv_fs_file_gzip(const char *fname, const char *target_name);
 int pv_fs_file_check_and_open(const char *fname, int flags, mode_t mode);
 bool pv_fs_file_is_same(const char *path1, const char *path2);
+void pv_fs_basename(const char *path, char *base);
+void pv_fs_dirname(const char *path, char *parent);
+void pv_fs_extension(const char *path, char *ext);
+void *pv_fs_file_read(const char *path, size_t *size);
+int pv_fs_file_write(const char *path, void *buf, ssize_t size);
 
 #endif
