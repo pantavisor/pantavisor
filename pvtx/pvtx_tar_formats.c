@@ -23,7 +23,10 @@
 #include "pvtx_tar_impl.h"
 
 #include <zlib.h>
+
+#ifdef PV_PVXT_BZIP_ENABLE
 #include <bzlib.h>
+#endif
 
 #include <unistd.h>
 #include <string.h>
@@ -104,6 +107,7 @@ static off_t pv_pvtx_gzip_seek(void *impl_data, off_t offset, int whence)
 	return gzseek((gzFile)impl_data, offset, whence);
 }
 
+#ifdef PV_PVXT_BZIP_ENABLE
 // bzip2 file implementation
 // pos and path fields are needed to simulate the seek operations
 struct pvtx_bz2 {
@@ -230,8 +234,9 @@ static off_t pv_pvtx_bzip2_seek(void *impl_data, off_t offset, int whence)
 
 	return total;
 }
+#endif
 
-struct pv_pvtx_tar_imp pv_pvtx_raw = {
+struct pv_pvtx_tar_imp pv_pvtx_tar_raw = {
 	.is_fmt = pv_pvtx_raw_is_fmt,
 	.from_fd = pv_pvtx_raw_from_fd,
 	.read = pv_pvtx_raw_read,
@@ -239,7 +244,7 @@ struct pv_pvtx_tar_imp pv_pvtx_raw = {
 	.seek = pv_pvtx_raw_seek,
 };
 
-struct pv_pvtx_tar_imp pv_pvtx_gzip = {
+struct pv_pvtx_tar_imp pv_pvtx_tar_gzip = {
 	.is_fmt = pv_pvtx_gzip_is_fmt,
 	.from_fd = pv_pvtx_gzip_from_fd,
 	.read = pv_pvtx_gzip_read,
@@ -247,10 +252,12 @@ struct pv_pvtx_tar_imp pv_pvtx_gzip = {
 	.seek = pv_pvtx_gzip_seek,
 };
 
-struct pv_pvtx_tar_imp pv_pvtx_bz2 = {
+#ifdef PV_PVXT_BZIP_ENABLE
+struct pv_pvtx_tar_imp pv_pvtx_tar_bz2 = {
 	.is_fmt = pv_pvtx_bzip2_is_fmt,
 	.from_fd = pv_pvtx_bzip2_from_fd,
 	.read = pv_pvtx_bzip2_read,
 	.close = pv_pvtx_bzip2_close,
 	.seek = pv_pvtx_bzip2_seek,
 };
+#endif
