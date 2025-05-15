@@ -25,24 +25,24 @@
 
 #include "pvtx_error.h"
 
-int pvtx_txn_begin(const char *from, const char *obj_path,
+int pv_pvtx_txn_begin(const char *from, const char *obj_path,
 		   struct pv_pvtx_error *err);
-int pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err);
-int pvtx_txn_add_tar_from_fd(int fd, struct pv_pvtx_error *err);
+int pv_pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err);
+int pv_pvtx_txn_add_tar_from_fd(int fd, struct pv_pvtx_error *err);
 
-int pvtx_txn_abort(struct pv_pvtx_error *err);
-int pvtx_txn_commit(struct pv_pvtx_error *err);
-char *pvtx_txn_get_json(void);
-int pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err);
-int pvtx_txn_remove(const char *part, struct pv_pvtx_error *err);
+int pv_pvtx_txn_abort(struct pv_pvtx_error *err);
+int pv_pvtx_txn_commit(struct pv_pvtx_error *err);
+char *pv_pvtx_txn_get_json(void);
+int pv_pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err);
+int pv_pvtx_txn_remove(const char *part, struct pv_pvtx_error *err);
 
 // queue API
-int pvtx_queue_new(const char *queue_path, const char *obj_path,
+int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
 		   struct pv_pvtx_error *err);
-int pvtx_queue_remove(const char *part, struct pv_pvtx_error *err);
-int pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err);
-int pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err);
-int pvtx_queue_process(const char *from, const char *queue_path,
+int pv_pvtx_queue_remove(const char *part, struct pv_pvtx_error *err);
+int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err);
+int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err);
+int pv_pvtx_queue_process(const char *from, const char *queue_path,
 		       const char *obj_path, struct pv_pvtx_error *err);
 
 #endif
