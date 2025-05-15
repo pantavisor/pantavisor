@@ -610,7 +610,7 @@ static int create_fs(const char *obj_path, const char *deploy_path,
 	return ret;
 }
 
-int pvtx_txn_begin(const char *from, const char *obj_path,
+int pv_pvtx_txn_begin(const char *from, const char *obj_path,
 		   struct pv_pvtx_error *err)
 {
 	int ret = 0;
@@ -671,7 +671,7 @@ static int add_json_from_disk(const char *path, struct pv_pvtx_error *err)
 	return ret;
 }
 
-int pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err)
+int pv_pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err)
 {
 	enum pv_pvtx_tar_type type = pv_pvtx_tar_type_get(path, err);
 	if (type == PVTX_TAR_UNKNOWN) {
@@ -687,7 +687,7 @@ int pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err)
 	return ret;
 }
 
-int add_tar_from_fd(int fd, struct pv_pvtx_error *err)
+int pv_pvtx_txn_add_tar_from_fd(int fd, struct pv_pvtx_error *err)
 {
 	if (!is_active_txn()) {
 		pv_pvtx_error_set(err, 1, "no active transaction");
@@ -705,7 +705,7 @@ int add_tar_from_fd(int fd, struct pv_pvtx_error *err)
 	return ret;
 }
 
-int pvtx_txn_abort(struct pv_pvtx_error *err)
+int pv_pvtx_txn_abort(struct pv_pvtx_error *err)
 {
 	struct pvtx_txn *txn = pvtx_load();
 	if (!txn) {
@@ -726,7 +726,7 @@ int pvtx_txn_abort(struct pv_pvtx_error *err)
 	return 0;
 }
 
-int pvtx_txn_commit(struct pv_pvtx_error *err)
+int pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 {
 	int ret = 0;
 	char *json = NULL;
@@ -785,12 +785,12 @@ out:
 	return ret;
 }
 
-char *pvtx_txn_get_json()
+char *pv_pvtx_txn_get_json()
 {
 	return pv_fs_file_read(get_json_path(), NULL);
 }
 
-int pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err)
+int pv_pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err)
 {
 	if (!is_active_txn()) {
 		pv_pvtx_error_set(err, 11, "no active transaction");
@@ -823,7 +823,7 @@ out:
 	return ret;
 }
 
-int pvtx_txn_remove(const char *part, struct pv_pvtx_error *err)
+int pv_pvtx_txn_remove(const char *part, struct pv_pvtx_error *err)
 {
 	if (!is_active_txn()) {
 		pv_pvtx_error_set(err, 3, "no active transaction");
@@ -850,7 +850,7 @@ int pvtx_txn_remove(const char *part, struct pv_pvtx_error *err)
 
 	return ret;
 }
-int pvtx_queue_new(const char *queue_path, const char *obj_path,
+int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
 		   struct pv_pvtx_error *err)
 {
 	if (is_active_txn()) {
@@ -875,7 +875,7 @@ int pvtx_queue_new(const char *queue_path, const char *obj_path,
 	return pvtx_save(&q, sizeof(struct pvtx_queue));
 }
 
-int pvtx_queue_remove(const char *part, struct pv_pvtx_error *err)
+int pv_pvtx_queue_remove(const char *part, struct pv_pvtx_error *err)
 {
 	struct pvtx_queue *q = pvtx_load();
 	if (!q || !pv_fs_path_exist(q->queue)) {
@@ -997,7 +997,7 @@ out:
 	return ret;
 }
 
-int pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
+int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
 {
 	struct pvtx_queue *q = pvtx_load();
 	if (!q || !pv_fs_path_exist(q->queue)) {
@@ -1035,7 +1035,7 @@ int pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
 	return ret;
 }
 
-int pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err)
+int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err)
 {
 	struct pvtx_queue *q = pvtx_load();
 	if (!q || !pv_fs_path_exist(q->queue)) {
@@ -1059,11 +1059,11 @@ int pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err)
 	return ret;
 }
 
-int pvtx_queue_process(const char *from, const char *queue_path,
+int pv_pvtx_queue_process(const char *from, const char *queue_path,
 		       const char *obj_path, struct pv_pvtx_error *err)
 {
 	if (queue_path && obj_path) {
-		int ret = pvtx_queue_new(queue_path, obj_path, err);
+		int ret = pv_pvtx_queue_new(queue_path, obj_path, err);
 		if (ret != 0)
 			return ret;
 	}
@@ -1074,7 +1074,7 @@ int pvtx_queue_process(const char *from, const char *queue_path,
 	}
 
 	if (from) {
-		int ret = pvtx_txn_begin(from, obj_path, err);
+		int ret = pv_pvtx_txn_begin(from, obj_path, err);
 		if (ret != 0)
 			return ret;
 	}
@@ -1112,14 +1112,14 @@ int pvtx_queue_process(const char *from, const char *queue_path,
 			char complete_path[PATH_MAX] = { 0 };
 			pv_fs_path_concat(complete_path, 2, gb.gl_pathv[i],
 					  "json");
-			if (pvtx_txn_add_from_disk(complete_path, err) != 0)
+			if (pv_pvtx_txn_add_from_disk(complete_path, err) != 0)
 				goto out;
 		} else {
 			char base[NAME_MAX] = { 0 };
 			pv_fs_basename(gb.gl_pathv[i], base);
 			*strchr(base, '.') = '\0';
 			char *part = &base[5];
-			if (pvtx_txn_remove(part, err) != 0)
+			if (pv_pvtx_txn_remove(part, err) != 0)
 				goto out;
 		}
 	}

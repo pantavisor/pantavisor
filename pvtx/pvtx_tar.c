@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "pvtx_tar_impl.h"
 #include "pvtx_tar.h"
 
@@ -60,7 +64,10 @@ struct pv_pvtx_tar_metadata {
 
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_raw;
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_gzip;
+
+#ifdef PV_PVXT_BZIP_ENABLE
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_bz2;
+#endif
 
 static ssize_t read_nointr(struct pv_pvtx_tar *tar, void *buf, size_t size)
 {
@@ -200,8 +207,11 @@ static enum pv_pvtx_tar_type imp_from_file(int fd, struct pv_pvtx_error *err)
 		type = PVTX_TAR_GZIP;
 	} else if (pv_pvtx_tar_raw.is_fmt(fd)) {
 		type = PVTX_TAR_RAW;
+
+#ifdef PV_PVXT_BZIP_ENABLE
 	} else if (pv_pvtx_tar_bz2.is_fmt(fd)) {
 		type = PVTX_TAR_BZIP2;
+#endif
 	}
 
 	lseek(fd, 0, SEEK_SET);
@@ -258,9 +268,11 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_fd(int fd, enum pv_pvtx_tar_type type,
 	} else if (type == PVTX_TAR_GZIP) {
 		priv->imp = &pv_pvtx_tar_gzip;
 		tar->type = PVTX_TAR_GZIP;
+#ifdef PV_PVXT_BZIP_ENABLE
 	} else if (type == PVTX_TAR_BZIP2) {
 		priv->imp = &pv_pvtx_tar_bz2;
 		tar->type = PVTX_TAR_BZIP2;
+#endif
 	} else {
 		goto err;
 	}

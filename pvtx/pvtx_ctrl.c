@@ -89,7 +89,7 @@ static char *header_to_str(struct pv_pvtx_ctrl_header *head)
 	return concatenate_header(tmpl, head->path, head->ctype, head->clen);
 }
 
-void pvtx_ctrl_free(struct pv_pvtx_ctrl *ctrl)
+void pv_pvtx_ctrl_free(struct pv_pvtx_ctrl *ctrl)
 {
 	if (!ctrl)
 		return;
@@ -306,7 +306,7 @@ static char *read_data(struct pv_pvtx_ctrl *ctrl)
 	return data;
 }
 
-char *pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
+char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 			  size_t *size)
 {
 	char *tmpl = "/steps/%s";
@@ -368,7 +368,7 @@ static int put_request(struct pv_pvtx_ctrl *ctrl, const char *path_tmpl,
 	return err;
 }
 
-int pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
+int pv_pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
 			size_t size, const char *rev)
 {
 	const char *path_tmpl = "/steps/locals/%s";
@@ -377,7 +377,7 @@ int pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
 			   size);
 }
 
-int pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl, const unsigned char *data,
+int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl, const unsigned char *data,
 		      size_t size, const char *sha)
 {
 	const char *path_tmpl = "objects/%s";
