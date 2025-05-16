@@ -39,6 +39,7 @@
 
 #include <linux/reboot.h>
 
+#include "buildinfo.h"
 #include "init.h"
 #include "daemons.h"
 #include "config.h"
@@ -71,6 +72,7 @@
 #define O_LARGEFILE 0
 #endif
 
+#define MAX_BUILD_INFO_FILE_SIZE (64 * 1024) // 64KB
 #define MAX_PROC_STATUS (10)
 pid_t pv_pid;
 
@@ -180,8 +182,8 @@ static void signal_handler(int signal)
 				continue;
 			sleep(1);
 			pv_log(WARN,
-			       "Respawn of critical service failed %d: %s",
-			       pid, strerror(errno));
+			       "Respawn of critical service failed %d: %s", pid,
+			       strerror(errno));
 		} else if (pid == pv_pid) {
 			reboot_requested = 1;
 		}
@@ -394,6 +396,11 @@ int main(int argc, char *argv[])
 	pv_buffer_init(10, 128);
 
 	pv_pid = 0;
+
+	if (!pv_build_manifest || !strlen(pv_build_manifest)) {
+		// try to load yocto manifest if that exists.
+		pv_buildinfo_load_yocto_manifest();
+	}
 
 	setenv("LIBPVPATH", "/lib/pv", 0);
 

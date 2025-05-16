@@ -163,6 +163,8 @@ add_executable(pantavisor
 			updater.c
 			updater.h
 			utils/base64.c
+			utils/buildinfo.c
+			utils/buildinfo.h
 			utils/fitimg.c
 			utils/fs.c
 			utils/json.c
