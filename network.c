@@ -41,10 +41,12 @@
 
 #include <jsmn/jsmnutil.h>
 
-#include "pantahub.h"
 #include "network.h"
 #include "init.h"
 #include "metadata.h"
+
+#include "pantahub/pantahub.h"
+
 #include "utils/str.h"
 #include "utils/json.h"
 #include "utils/list.h"

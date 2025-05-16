@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,20 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_PANTAHUB_TIMER_H
+#define PV_PANTAHUB_TIMER_H
 
-#ifndef PV_NETWORK_H
-#define PV_NETWORK_H
+#include <event2/event.h>
+#include <event2/event_struct.h>
+#include <event2/util.h>
 
-#include "pantavisor.h"
+typedef struct {
+	int interval;
+	struct event *ev;
+} event_timer_t;
 
-void pv_network_update_meta(struct pantavisor *pv);
+void pv_pantahub_timer_run(event_timer_t *timer, struct event_base *base,
+			   int next_interval, event_callback_fn cb);
+void pv_pantahub_timer_close(event_timer_t *timer);
 
-#endif // PV_NETWORK_H
+#endif

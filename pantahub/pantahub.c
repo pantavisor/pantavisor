@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2022 Pantacor Ltd.
+ * Copyright (c) 2017-2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -42,19 +42,26 @@
 
 #include <arpa/inet.h>
 
+#include <event2/event.h>
+
 #include <jsmn/jsmnutil.h>
 
+#include "pantahub/pantahub.h"
+
 #include "trestclient.h"
-#include "pantahub.h"
 #include "pantavisor.h"
 #include "json.h"
 #include "paths.h"
 #include "metadata.h"
+
+#include "pantahub/pantahub_proto.h"
+#include "pantahub/pantahub_timer.h"
+
 #include "utils/tsh.h"
 #include "utils/str.h"
 #include "utils/fs.h"
 
-#define MODULE_NAME "pantahub-api"
+#define MODULE_NAME "pantahub"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
@@ -158,7 +165,7 @@ success:
 	return true;
 }
 
-const char **pv_ph_get_certs(struct pantavisor *__unused)
+const char **pv_ph_get_certs()
 {
 	struct dirent **files;
 	char **cafiles;
@@ -235,47 +242,6 @@ void pv_ph_release_client(struct pantavisor *pv)
 	}
 }
 
-int pv_ph_device_get_meta(struct pantavisor *pv)
-{
-	int ret = -1;
-
-	trest_request_ptr req = 0;
-	trest_response_ptr res = 0;
-
-	if (!ph_client_init(pv))
-		goto out;
-
-	char buf[256];
-	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s%s", endpoint, "/user-meta");
-
-	req = trest_make_request(THTTP_METHOD_GET, buf, 0);
-
-	res = trest_do_json_request(client, req);
-	if (!res) {
-		pv_log(WARN, "HTTP request GET %s could not be initialized",
-		       buf);
-	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
-		       buf, res->status);
-		ph_client_free();
-	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN,
-		       "request GET %s returned HTTP error (code=%d; body='%s')",
-		       buf, res->code, res->body);
-	} else {
-		pv_metadata_parse_usermeta(res->body);
-		ret = 0;
-	}
-
-out:
-	if (req)
-		trest_request_free(req);
-	if (res)
-		trest_response_free(res);
-
-	return ret;
-}
-
 int pv_ph_device_exists(struct pantavisor *pv)
 {
 	int ret = 0;
@@ -334,7 +300,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	char **headers = NULL;
 
 	tls_req = thttp_request_tls_new_0();
-	tls_req->crtfiles = (char **)pv_ph_get_certs(pv);
+	tls_req->crtfiles = (char **)pv_ph_get_certs();
 
 	thttp_request_t *req = (thttp_request_t *)tls_req;
 
@@ -594,8 +560,40 @@ out:
 	return ret;
 }
 
+const char *pv_pantahub_state_string(ph_state_t state)
+{
+	switch (state) {
+	case PH_STATE_INIT:
+		return "init";
+	case PH_STATE_REGISTER:
+		return "register";
+	case PH_STATE_CLAIM:
+		return "claim";
+	case PH_STATE_SYNC:
+		return "sync";
+	case PH_STATE_IDLE:
+		return "idle";
+	case PH_STATE_UPDATE:
+		return "update";
+	default:
+		return "unknown";
+	}
+
+	return "unknown";
+}
+
+typedef struct {
+	ph_state_t state;
+	event_timer_t usrmeta_timer;
+	event_timer_t devmeta_timer;
+} pantahub_t;
+
+static pantahub_t ph = { 0 };
+
 int pv_pantahub_init()
 {
+	// OLD STUFF. TO BE REMOVED
+
 	struct pantavisor *pv = pv_get_instance();
 	char tmp[256], path[PATH_MAX];
 
@@ -624,10 +622,77 @@ int pv_pantahub_init()
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
 
+	// NEW IMPLEMENTATION
+
+	ph.state = PH_STATE_INIT;
+
 	return 0;
 }
 
 int pv_pantahub_close()
 {
+	pv_pantahub_timer_close(&ph.usrmeta_timer);
+	pv_pantahub_timer_close(&ph.devmeta_timer);
+
 	return pv_config_unload_creds();
+}
+
+void _next_state(ph_state_t state)
+{
+	if (ph.state == state)
+		return;
+
+	ph.state = state;
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
+				pv_pantahub_state_string(state));
+}
+
+static void _state_init()
+{
+	_next_state(PH_STATE_IDLE);
+}
+
+static void _usrmeta_event_cb(evutil_socket_t fd, short event, void *ctx)
+{
+	pv_log(DEBUG, "usrmeta event");
+	struct event_base *base = (struct event_base *)ctx;
+	pv_pantahub_proto_get_usrmeta(base);
+}
+
+static void _devmeta_event_cb(evutil_socket_t fd, short event, void *ctx)
+{
+	pv_log(DEBUG, "devmeta event");
+	struct event_base *base = (struct event_base *)ctx;
+	pv_pantahub_proto_set_devmeta(base);
+}
+
+static void _state_idle(struct event_base *base)
+{
+	if (!pv_pantahub_proto_is_session_open()) {
+		pv_pantahub_proto_open_session(base);
+		return;
+	}
+
+	pv_pantahub_timer_run(&ph.usrmeta_timer, base,
+			      pv_config_get_int(PH_METADATA_USRMETA_INTERVAL),
+			      _usrmeta_event_cb);
+	pv_pantahub_timer_run(&ph.devmeta_timer, base,
+			      pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
+			      _devmeta_event_cb);
+}
+
+int pv_pantahub_step(struct event_base *base)
+{
+	pv_log(DEBUG, "next state: %s", pv_pantahub_state_string(ph.state));
+
+	switch (ph.state) {
+	case PH_STATE_INIT:
+		_state_init();
+		break;
+	case PH_STATE_IDLE:
+		_state_idle(base);
+		break;
+	default:
+		pv_log(WARN, "state not implemented");
+	}
 }

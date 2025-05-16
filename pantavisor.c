@@ -38,12 +38,16 @@
 #include <linux/limits.h>
 #include <linux/reboot.h>
 
+#include <event2/event.h>
+#include <event2/event_struct.h>
+#include <time.h>
+
 #include "pantavisor.h"
 #include "loop.h"
 #include "platforms.h"
 #include "volumes.h"
 #include "disk/disk.h"
-#include "pantahub.h"
+#include "pantahub/pantahub.h"
 #include "bootloader.h"
 #include "ctrl.h"
 #include "version.h"
@@ -143,40 +147,6 @@ static const char *pv_state_string(pv_state_t st)
 }
 
 typedef pv_state_t pv_state_func_t(struct pantavisor *pv);
-
-typedef enum {
-	PH_STATE_INIT,
-	PH_STATE_REGISTER,
-	PH_STATE_CLAIM,
-	PH_STATE_SYNC,
-	PH_STATE_IDLE,
-	PH_STATE_UPDATE,
-	PH_STATE_UPDATE_APPLY,
-} ph_state_t;
-
-static const char *ph_state_string(ph_state_t st)
-{
-	switch (st) {
-	case PH_STATE_INIT:
-		return "init";
-	case PH_STATE_REGISTER:
-		return "register";
-	case PH_STATE_CLAIM:
-		return "claim";
-	case PH_STATE_SYNC:
-		return "sync";
-	case PH_STATE_IDLE:
-		return "idle";
-	case PH_STATE_UPDATE:
-		return "update";
-	case PH_STATE_UPDATE_APPLY:
-		return "updateapply";
-	default:
-		return "STATE_UNKNOWN";
-	}
-
-	return "STATE_UNKNOWN";
-}
 
 static bool pv_wait_delay_timedout()
 {
@@ -381,8 +351,9 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		need_register = 0;
 
 	if (need_register) {
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_REGISTER));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_REGISTER));
 		if (!pv_ph_register_self(pv)) {
 			pv_ph_release_client(pv);
 			return PV_STATE_WAIT;
@@ -392,13 +363,15 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 	}
 
 	if (!pv_ph_device_is_owned(pv, &c)) {
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_CLAIM));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_CLAIM));
 		pv_log(INFO, "device challenge: '%s'", c);
 		pv_ph_update_hint_file(pv, c);
 	} else {
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_SYNC));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_SYNC));
 		pv_log(INFO, "device has been claimed, proceeding normally");
 		pv->unclaimed = false;
 		pv_config_save_creds();
@@ -427,8 +400,6 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 
 	tstate = timer_current_state(&timer_usrmeta_interval);
 	if (tstate.fin) {
-		if (pv_ph_device_get_meta(pv))
-			return -1;
 		timer_start(&timer_usrmeta_interval,
 			    pv_config_get_int(PH_METADATA_USRMETA_INTERVAL), 0,
 			    RELATIV_TIMER);
@@ -436,8 +407,7 @@ static int pv_meta_update_to_ph(struct pantavisor *pv)
 
 	tstate = timer_current_state(&timer_devmeta_interval);
 	if (tstate.fin) {
-		if (pv_metadata_upload_devmeta(pv))
-			return -1;
+		pv_pantahub_step(pv->base);
 		timer_start(&timer_devmeta_interval,
 			    pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL), 0,
 			    RELATIV_TIMER);
@@ -543,7 +513,7 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 		if (pv_updater_check_for_updates(pv) > 0) {
 			pv_metadata_add_devmeta(
 				DEVMETA_KEY_PH_STATE,
-				ph_state_string(PH_STATE_UPDATE));
+				pv_pantahub_state_string(PH_STATE_UPDATE));
 			return PV_STATE_UPDATE;
 		}
 		timer_start(&timer_updater_interval,
@@ -552,8 +522,9 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	}
 
 	if (pv->synced)
-		pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-					ph_state_string(PH_STATE_IDLE));
+		pv_metadata_add_devmeta(
+			DEVMETA_KEY_PH_STATE,
+			pv_pantahub_state_string(PH_STATE_IDLE));
 
 out:
 	// process ongoing updates, if any
@@ -579,6 +550,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			next_state = PV_STATE_REBOOT;
 		goto out;
 	}
+
+	pv_log(DEBUG, "pre event check");
+	event_base_loop(pv->base, EVLOOP_NONBLOCK);
+	pv_log(DEBUG, "post event check");
 
 	// we only get into network operations if remote mode is set to 1 in config (can be unset if revision is "locals/...")
 	// also, in case device is unclaimed, the current update must finish first (this is specially done for rev 0 that comes from command make-factory)
@@ -780,7 +755,7 @@ out:
 static pv_state_t _pv_update_apply(struct pantavisor *pv)
 {
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-				ph_state_string(PH_STATE_UPDATE_APPLY));
+				pv_pantahub_state_string(PH_STATE_UPDATE));
 
 	// download and install pending step
 	if (pv_update_download(pv) || pv_update_install(pv)) {
@@ -795,7 +770,7 @@ static pv_state_t _pv_update_apply(struct pantavisor *pv)
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-				ph_state_string(PH_STATE_UPDATE));
+				pv_pantahub_state_string(PH_STATE_UPDATE));
 
 	// download and install pending step
 	if (pv_update_download(pv) || pv_update_install(pv)) {
@@ -905,6 +880,10 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// give it a final sync here...
 	sync();
+
+	// clean up event loop
+	if (pv->base)
+		event_base_free(pv->base);
 
 	// stop childs leniently
 	pv_state_stop_lenient(pv->state);
@@ -1039,7 +1018,7 @@ static int pv_pantavisor_init(struct pv_init *this)
 
 	pv = pv_get_instance();
 	if (!pv)
-		goto out;
+		return -1;
 	// Make sure this is initialized
 	pv->state = NULL;
 	pv->remote = NULL;
@@ -1054,7 +1033,12 @@ static int pv_pantavisor_init(struct pv_init *this)
 
 	ph_logger_init();
 
-out:
+	pv->base = event_base_new();
+	if (!pv->base) {
+		pv_log(ERROR, "could not init event base: %s", strerror(errno));
+		return -1;
+	}
+
 	return 0;
 }
 
