@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,12 +19,18 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef PV_PANTAHUB_PROTO_H
+#define PV_PANTAHUB_PROTO_H
 
-#ifndef PV_NETWORK_H
-#define PV_NETWORK_H
+#include <stdbool.h>
 
-#include "pantavisor.h"
+#include <event2/event.h>
 
-void pv_network_update_meta(struct pantavisor *pv);
+void pv_pantahub_proto_open_session(struct event_base *base);
+bool pv_pantahub_proto_is_session_open(void);
+void pv_pantahub_proto_close_session(void);
 
-#endif // PV_NETWORK_H
+void pv_pantahub_proto_get_usrmeta(struct event_base *base);
+void pv_pantahub_proto_set_devmeta(struct event_base *base);
+
+#endif

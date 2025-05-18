@@ -37,6 +37,9 @@ set(MBEDTLS_LIBRARIES "${MBEDTLS_LIBRARY}" "${MBEDX509_LIBRARY}" "${MBEDCRYPTO_L
 find_package_handle_standard_args(MBEDTLS DEFAULT_MSG
     MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
 mark_as_advanced(MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
+find_library(EVENT event)
+find_library(EVENT_MBEDTLS event_mbedtls)
+set(EVENT_LIBRARIES "${EVENT}" "${EVENT_MBEDTLS}")
 
 # Compiler options
 add_compile_options(-Werror)
@@ -128,8 +131,14 @@ add_executable(pantavisor
 			network.h
 			objects.c
 			objects.h
-			pantahub.c
-			pantahub.h
+			pantahub/pantahub.c
+			pantahub/pantahub.h
+			pantahub/pantahub_proto.c
+			pantahub/pantahub_proto.h
+			pantahub/pantahub_rest.c
+			pantahub/pantahub_rest.h
+			pantahub/pantahub_timer.c
+			pantahub/pantahub_timer.h
 			pantavisor.c
 			pantavisor.h
 			parser/parser.c
@@ -189,7 +198,7 @@ add_executable(pantavisor
 			wdt.h
 )
 target_include_directories(pantavisor PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils ${MBEDTLS_INCLUDE_DIR})
-target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES} ${LXC} ${ZLIB})
+target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES} ${LXC} ${ZLIB} ${EVENT_LIBRARIES})
 install(TARGETS pantavisor DESTINATION bin)
 IF(PANTAVISOR_DEBUG)
 target_compile_definitions(pantavisor PRIVATE PANTAVISOR_DEBUG)
