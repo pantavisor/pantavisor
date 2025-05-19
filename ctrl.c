@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -80,6 +84,7 @@
 #define ENDPOINT_DRIVERS "/drivers"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
+#define HTTP_RES_OK_SIZE "HTTP/1.1 200 \r\nContent-Length: %zd\r\n\r\n"
 #define HTTP_RES_CONT "HTTP/1.1 100 Continue\r\n\r\n"
 
 #define HTTP_RESPONSE                                                          \
@@ -402,6 +407,24 @@ static void pv_ctrl_write_ok_response(int req_fd)
 	}
 }
 
+static void pv_ctrl_write_ok_response_size(int req_fd, ssize_t size)
+{
+	char *header = NULL;
+	if (asprintf(&header, HTTP_RES_OK_SIZE, size) == -1) {
+		pv_log(WARN, "HTTP OK response could not be allocated");
+		return;
+	}
+
+	int res = pv_ctrl_send_all(req_fd, header, strlen(header));
+	if (res < 0) {
+		pv_log(WARN,
+		       "HTTP OK response could not be written to ctrl socket with fd %d: %s",
+		       req_fd, strerror(errno));
+	} else if (res != strlen(HTTP_RES_OK)) {
+		pv_log(WARN, "HTTP OK response was not sent");
+	}
+}
+
 static void pv_ctrl_write_error_response(int req_fd, pv_http_status_code_t code,
 					 const char *message)
 {
@@ -471,8 +494,8 @@ static int pv_ctrl_process_put_file(int req_fd, size_t content_length,
 	obj_fd = open(file_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
 	if (obj_fd < 0) {
 		pv_ctrl_consume_req(req_fd, content_length);
-		pv_log(ERROR, "'%s' could not be created: %s",
-		       file_path, strerror(errno));
+		pv_log(ERROR, "'%s' could not be created: %s", file_path,
+		       strerror(errno));
 		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_ERROR,
 					     "Cannot create file");
 		goto clean;
@@ -625,7 +648,7 @@ static void pv_ctrl_process_get_file(int req_fd, char *file_path)
 		goto error;
 	}
 
-	pv_ctrl_write_ok_response(req_fd);
+	pv_ctrl_write_ok_response_size(req_fd, file_size);
 
 	// read and send
 	for (size_t to_send = file_size; to_send > 0;) {
@@ -680,7 +703,7 @@ static void pv_ctrl_process_get_string(int req_fd, char *buf)
 
 	buf_len = strlen(buf);
 
-	pv_ctrl_write_ok_response(req_fd);
+	pv_ctrl_write_ok_response_size(req_fd, buf_len);
 
 	res = pv_ctrl_send_all(req_fd, buf, buf_len);
 	if (res < 0) {
