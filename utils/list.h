@@ -1,7 +1,7 @@
 /*
  * Doubly-linked list
  * Copyright (c) 2009-2019, Jouni Malinen <j@w1.fi>
- * Modified by Pantacor Ltd 2021
+ * Modified by Pantacor Ltd 2021-2022
  *
  * This software may be distributed under the terms of the BSD license.
  * See README.hostapd for more details.
