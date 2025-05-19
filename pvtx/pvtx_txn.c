@@ -44,6 +44,7 @@
 #include <regex.h>
 #include <time.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <unistd.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -154,7 +155,6 @@ static char *url_decode(const char *url)
 		// while ((p = strstr(p + 1, "%2F")))
 		++count;
 
-	printf("estimated: %zd\n", strlen(url) - count * 2 + 1);
 	char *dec = calloc(strlen(url) - count * 2 + 1, sizeof(char));
 	if (!dec)
 		return NULL;
@@ -208,8 +208,8 @@ static int state_json_save(const char *from)
 		for (size_t i = 0; i < sizeof(loc) / sizeof(char *); ++i) {
 			pv_fs_path_concat(path, 2, from, loc[i]);
 
-			if (!pv_fs_path_exist(path))
-				continue;
+			if (pv_fs_path_exist(path))
+				break;
 
 			memset(path, 0, PATH_MAX);
 		}
@@ -374,7 +374,7 @@ static char *get_rev_name(const char *data, size_t len)
 	if (getrandom(&rand, sizeof(unsigned int), 0) == -1)
 		goto out;
 
-	int n = asprintf(&rev, "local/pvtx-%jd-%s-%d", (intmax_t)time(NULL),
+	int n = asprintf(&rev, "locals/pvtx-%jd-%s-%d", (intmax_t)time(NULL),
 			 hash8, (rand % 1000));
 	if (n == -1)
 		rev = NULL;
@@ -439,8 +439,9 @@ static int create_element(const char *deploy_path, const char *obj_path,
 	if (is_obj) {
 		char real_obj[PATH_MAX] = { 0 };
 		pv_fs_path_concat(real_obj, 2, obj_path, val);
-
-		return link(real_obj, local_obj);
+		errno = 0;
+		int ret = link(real_obj, local_obj);
+		return ret;
 	}
 	return pv_fs_file_write(local_obj, (char *)val, strlen(val));
 }
@@ -459,16 +460,20 @@ static int create_from_json(const char *deploy_path, const char *obj_path)
 	if (!data)
 		return -1;
 
-	int ret = -1;
+	int ret = 0;
 
 	int tkn_len = 0;
 	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(data, size, &tkn_len);
 
-	if (!tkn)
+	if (!tkn) {
+		ret = -2;
 		goto out;
+	}
 
-	if (regcomp(&exp, PVTX_TXN_OBJ_EXP, REG_EXTENDED))
+	if (regcomp(&exp, PVTX_TXN_OBJ_EXP, REG_EXTENDED)) {
+		ret = -3;
 		goto out;
+	}
 
 	int i = 0;
 	int no_top = 0;
@@ -492,12 +497,15 @@ static int create_from_json(const char *deploy_path, const char *obj_path)
 		ret = create_element(deploy_path, obj_path, is_obj, key, val);
 		free(key);
 		free(val);
-		if (ret != 0)
+		if (ret != 0) {
+			return ret;
 			goto out;
+		}
 
 	next:
 		no_top += tkn[i].size;
 	}
+	ret = 0;
 
 out:
 	if (data)
@@ -599,7 +607,8 @@ static int create_fs(const char *obj_path, const char *deploy_path,
 	ret = create_from_json(deploy_path, obj_path);
 	if (ret != 0) {
 		pv_pvtx_error_set(err, ret,
-				  "couldn't create objects from json");
+				  "couldn't create objects from json: %s",
+				  strerror(errno));
 		return ret;
 	}
 
@@ -611,7 +620,7 @@ static int create_fs(const char *obj_path, const char *deploy_path,
 }
 
 int pv_pvtx_txn_begin(const char *from, const char *obj_path,
-		   struct pv_pvtx_error *err)
+		      struct pv_pvtx_error *err)
 {
 	int ret = 0;
 	struct pvtx_txn *txn = pvtx_load();
@@ -764,6 +773,7 @@ int pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 	}
 
 	char *rev = get_rev_name(json, json_len);
+
 	if (!rev) {
 		ret = -1;
 		pv_pvtx_error_set(err, ret, "couldn't build revision string");
@@ -851,7 +861,7 @@ int pv_pvtx_txn_remove(const char *part, struct pv_pvtx_error *err)
 	return ret;
 }
 int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
-		   struct pv_pvtx_error *err)
+		      struct pv_pvtx_error *err)
 {
 	if (is_active_txn()) {
 		pv_pvtx_error_set(err, 12,
@@ -1060,7 +1070,7 @@ int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err)
 }
 
 int pv_pvtx_queue_process(const char *from, const char *queue_path,
-		       const char *obj_path, struct pv_pvtx_error *err)
+			  const char *obj_path, struct pv_pvtx_error *err)
 {
 	if (queue_path && obj_path) {
 		int ret = pv_pvtx_queue_new(queue_path, obj_path, err);

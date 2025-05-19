@@ -164,7 +164,7 @@ static int cmd_commit(int argc, char **argv)
 {
 	struct pv_pvtx_error err = { 0 };
 	int ret = pv_pvtx_txn_commit(&err);
-	if (!ret)
+	if (ret != 0)
 		fprintf(stderr, "ERROR: %s\n", err.str);
 	return ret;
 }
