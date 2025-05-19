@@ -371,7 +371,7 @@ static int put_request(struct pv_pvtx_ctrl *ctrl, const char *path_tmpl,
 int pv_pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
 			size_t size, const char *rev)
 {
-	const char *path_tmpl = "/steps/locals/%s";
+	const char *path_tmpl = "/steps/%s";
 	const char *type = "application/json";
 	return put_request(ctrl, path_tmpl, rev, type, (unsigned char *)data,
 			   size);
