@@ -99,7 +99,12 @@ static const char *get_pvtxdir(void)
 		memccpy(pvtxdir_cache, dir, '\0', PATH_MAX);
 	} else {
 		char *pfx = getenv(PVTX_TXN_PREFIX_PATH);
-		pv_fs_path_concat(pvtxdir_cache, 2, pfx, PVTX_TXN_DEFAULT_PATH);
+		if (pfx)
+			pv_fs_path_concat(pvtxdir_cache, 2, pfx,
+					  PVTX_TXN_DEFAULT_PATH);
+		else
+			memccpy(pvtxdir_cache, PVTX_TXN_DEFAULT_PATH, '\0',
+				PATH_MAX);
 	}
 
 	return pvtxdir_cache;
