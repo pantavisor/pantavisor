@@ -170,10 +170,11 @@ static int cmd_commit(int argc, char **argv)
 }
 static int cmd_show(int argc, char **argv)
 {
-	char *json = pv_pvtx_txn_get_json();
+	struct pv_pvtx_error err = { 0 };
+	char *json = pv_pvtx_txn_get_json(&err);
 	if (!json) {
-		fprintf(stderr, "ERROR: couldn't get state json\n");
-		return -1;
+		fprintf(stderr, "ERROR: %s\n", err.str);
+		return err.code;
 	}
 
 	printf("%s\n", json);
@@ -279,14 +280,14 @@ static int cmd_queue_process(int argc, char **argv)
 	if (ret != 0)
 		fprintf(stderr, "ERROR: %s\n", err.str);
 
-	return 0;
+	return ret;
 }
 
-static void pv_pvtx_proccess_args(int argc, char **argv)
+static int pv_pvtx_proccess_args(int argc, char **argv)
 {
 	if (argc < 2) {
 		cmd_help(argc, argv);
-		return;
+		return -1;
 	}
 
 	char *op = argv[1];
@@ -297,19 +298,21 @@ static void pv_pvtx_proccess_args(int argc, char **argv)
 		cmd = &queue;
 	}
 
+	int err = 0;
 	for (int i = 0; i < cmd->size; ++i) {
 		if (strncmp(op, cmd->names[i], strlen(op)))
 			continue;
 
-		int err = cmd->fn[i](argc, argv);
-		if (err)
-			fprintf(stderr, "command finish with errors\n");
+		err = cmd->fn[i](argc, argv);
+		if (err != 0)
+			fprintf(stderr, "command finish with errors err = %d\n",
+				err);
 		break;
 	}
+	return err;
 }
 
 int main(int argc, char **argv)
 {
-	pv_pvtx_proccess_args(argc, argv);
-	return 0;
+	return pv_pvtx_proccess_args(argc, argv);
 }
