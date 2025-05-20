@@ -801,9 +801,21 @@ out:
 	return ret;
 }
 
-char *pv_pvtx_txn_get_json()
+char *pv_pvtx_txn_get_json(struct pv_pvtx_error *err)
 {
-	return pv_fs_file_read(get_json_path(), NULL);
+	if (!is_active_txn()) {
+		pv_pvtx_error_set(err, 11, "no active transaction");
+		return NULL;
+	}
+
+	char *json = pv_fs_file_read(get_json_path(), NULL);
+	if (!json) {
+		pv_pvtx_error_set(err, -1,
+				  "unknown error, couldn't get state json");
+		return NULL;
+	}
+
+	return json;
 }
 
 int pv_pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err)
