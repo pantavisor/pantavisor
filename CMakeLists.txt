@@ -246,6 +246,7 @@ target_include_directories(remount PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DI
 target_link_libraries(remount  ${THTTP})
 install(TARGETS remount DESTINATION /lib/pv/hooks_lxc-mount.d)
 
+IF(PANTAVISOR_PVTX)
 add_executable(pvtx
 			utils/pvsignals.h utils/pvsignals.c
 			utils/tsh.c
@@ -270,7 +271,7 @@ target_compile_definitions(pvtx PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(pvtx PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
 target_link_libraries(pvtx ${THTTP} ${MBEDCRYPTO_LIBRARY} ${ZLIB})
 install(TARGETS pvtx DESTINATION /lib/pv)
-
+ENDIF()
 
 ### install dm crypt feature
 IF(PANTAVISOR_DM_CRYPT)
