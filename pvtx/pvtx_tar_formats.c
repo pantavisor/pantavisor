@@ -24,7 +24,7 @@
 
 #include <zlib.h>
 
-#ifdef PV_PVXT_BZIP_ENABLE
+#ifdef PANTAVISOR_PVTX_BZ2
 #include <bzlib.h>
 #endif
 
@@ -107,7 +107,7 @@ static off_t pv_pvtx_gzip_seek(void *impl_data, off_t offset, int whence)
 	return gzseek((gzFile)impl_data, offset, whence);
 }
 
-#ifdef PV_PVXT_BZIP_ENABLE
+#ifdef PANTAVISOR_PVTX_BZ2
 // bzip2 file implementation
 // pos and path fields are needed to simulate the seek operations
 struct pvtx_bz2 {
@@ -252,7 +252,7 @@ struct pv_pvtx_tar_imp pv_pvtx_tar_gzip = {
 	.seek = pv_pvtx_gzip_seek,
 };
 
-#ifdef PV_PVXT_BZIP_ENABLE
+#ifdef PANTAVISOR_PVTX_BZ2
 struct pv_pvtx_tar_imp pv_pvtx_tar_bz2 = {
 	.is_fmt = pv_pvtx_bzip2_is_fmt,
 	.from_fd = pv_pvtx_bzip2_from_fd,

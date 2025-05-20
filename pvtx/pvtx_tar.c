@@ -65,7 +65,7 @@ struct pv_pvtx_tar_metadata {
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_raw;
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_gzip;
 
-#ifdef PV_PVXT_BZIP_ENABLE
+#ifdef PANTAVISOR_PVTX_BZ2
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_bz2;
 #endif
 
@@ -208,7 +208,7 @@ static enum pv_pvtx_tar_type imp_from_file(int fd, struct pv_pvtx_error *err)
 	} else if (pv_pvtx_tar_raw.is_fmt(fd)) {
 		type = PVTX_TAR_RAW;
 
-#ifdef PV_PVXT_BZIP_ENABLE
+#ifdef PANTAVISOR_PVTX_BZ2
 	} else if (pv_pvtx_tar_bz2.is_fmt(fd)) {
 		type = PVTX_TAR_BZIP2;
 #endif
@@ -268,7 +268,7 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_fd(int fd, enum pv_pvtx_tar_type type,
 	} else if (type == PVTX_TAR_GZIP) {
 		priv->imp = &pv_pvtx_tar_gzip;
 		tar->type = PVTX_TAR_GZIP;
-#ifdef PV_PVXT_BZIP_ENABLE
+#ifdef PANTAVISOR_PVTX_BZ2
 	} else if (type == PVTX_TAR_BZIP2) {
 		priv->imp = &pv_pvtx_tar_bz2;
 		tar->type = PVTX_TAR_BZIP2;
