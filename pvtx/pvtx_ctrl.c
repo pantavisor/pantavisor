@@ -333,6 +333,10 @@ char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 	}
 
 	data = read_data(ctrl);
+	if (!data) {
+		pv_pvtx_error_set(&ctrl->error, -1, "empty data");
+		goto out;
+	}
 	*size = strlen(data);
 out:
 	if (path)
