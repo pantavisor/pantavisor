@@ -786,6 +786,7 @@ int pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 	}
 
 	ret = pv_pvtx_ctrl_steps_put(ctrl, json, json_len, rev);
+	printf("%s\n", rev);
 
 	txn->status = PVTX_TXN_STATUS_COMMITED;
 	pvtx_save(txn, sizeof(struct pvtx_txn));
