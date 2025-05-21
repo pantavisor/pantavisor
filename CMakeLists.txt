@@ -34,6 +34,18 @@ find_path(MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
 find_library(MBEDTLS_LIBRARY mbedtls)
 find_library(MBEDX509_LIBRARY mbedx509)
 find_library(MBEDCRYPTO_LIBRARY mbedcrypto)
+IF (PANTAVISOR_PVTX_BZ2)
+    find_library(BZ2 bz2)
+ENDIF()
+
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+find_library(ZLIB_STATIC z)
+find_library(MBEDCRYPTO_LIBRARY_STATIC mbedcrypto)
+find_library(THTTP_STATIC thttp)
+IF (PANTAVISOR_PVTX_BZ2)
+    find_library(BZ2_STATIC bz2)
+ENDIF()
+
 set(MBEDTLS_LIBRARIES "${MBEDTLS_LIBRARY}" "${MBEDX509_LIBRARY}" "${MBEDCRYPTO_LIBRARY}")
 find_package_handle_standard_args(MBEDTLS DEFAULT_MSG
     MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
@@ -246,7 +258,6 @@ target_include_directories(remount PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DI
 target_link_libraries(remount  ${THTTP})
 install(TARGETS remount DESTINATION /lib/pv/hooks_lxc-mount.d)
 
-IF(PANTAVISOR_PVTX)
 add_executable(pvtx
 			utils/pvsignals.h utils/pvsignals.c
 			utils/tsh.c
@@ -270,8 +281,39 @@ add_executable(pvtx
 target_compile_definitions(pvtx PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(pvtx PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
 target_link_libraries(pvtx ${THTTP} ${MBEDCRYPTO_LIBRARY} ${ZLIB})
-install(TARGETS pvtx DESTINATION /lib/pv)
+IF (PANTAVISOR_PVTX_BZ2)
+	target_link_libraries(pvtx ${BZ2})
 ENDIF()
+install(TARGETS pvtx DESTINATION /usr/bin)
+
+add_executable(pvtx-static
+			utils/pvsignals.h utils/pvsignals.c
+			utils/tsh.c
+			utils/fs.c
+			pvtx/pvtx_ctrl.c
+			pvtx/pvtx_ctrl.h
+			pvtx/pvtx_error.c
+			pvtx/pvtx_error.h
+			pvtx/pvtx_jsmn_utils.c
+			pvtx/pvtx_jsmn_utils.h
+			pvtx/pvtx_state.c
+			pvtx/pvtx_state.h
+			pvtx/pvtx_tar.c
+			pvtx/pvtx_tar_formats.c
+			pvtx/pvtx_tar.h
+			pvtx/pvtx_tar_impl.h
+			pvtx/pvtx_txn.c
+			pvtx/pvtx_txn.h
+			pvtx/pvtx.c
+)
+target_compile_definitions(pvtx-static PUBLIC -DDISABLE_LOGSERVER)
+target_include_directories(pvtx-static PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
+target_link_libraries(pvtx-static ${THTTP_STATIC} ${MBEDCRYPTO_LIBRARY_STATIC} ${ZLIB_STATIC})
+IF (PANTAVISOR_PVTX_BZ2)
+	target_link_libraries(pvtx ${BZ2_STATIC})
+ENDIF()
+target_link_options(pvtx-static PRIVATE -static-libgcc)
+install(TARGETS pvtx-static DESTINATION /usr/bin)
 
 ### install dm crypt feature
 IF(PANTAVISOR_DM_CRYPT)
