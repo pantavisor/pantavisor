@@ -283,7 +283,7 @@ static int cmd_queue_process(int argc, char **argv)
 	return ret;
 }
 
-static int pv_pvtx_proccess_args(int argc, char **argv)
+static int pv_pvtx_process_args(int argc, char **argv)
 {
 	if (argc < 2) {
 		cmd_help(argc, argv);
@@ -314,5 +314,5 @@ static int pv_pvtx_proccess_args(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	return pv_pvtx_proccess_args(argc, argv);
+	return pv_pvtx_process_args(argc, argv);
 }
