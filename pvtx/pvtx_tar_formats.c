@@ -195,9 +195,7 @@ static off_t pv_pvtx_bzip2_seek(void *impl_data, off_t offset, int whence)
 	off_t to_move = offset;
 	if (whence == SEEK_SET) {
 		if (offset < bz2->pos) {
-			printf("1===\n");
 			if (bz2->fd < 0) {
-				printf("****** dead fd\n");
 				return -2;
 			}
 			lseek(bz2->fd, 0, SEEK_SET);
@@ -209,10 +207,8 @@ static off_t pv_pvtx_bzip2_seek(void *impl_data, off_t offset, int whence)
 			bz2->bzfd = f;
 			bz2->pos = 0;
 		} else if (offset == bz2->pos) {
-			printf("2===\n");
 			return 0;
 		} else {
-			printf("3===\n");
 			to_move = offset - bz2->pos;
 		}
 	} else if (whence == SEEK_END)
