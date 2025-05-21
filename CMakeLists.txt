@@ -20,6 +20,7 @@ set(PANTAVISOR_DEFAULTS_SKIP_INSTALL OFF CACHE BOOL "Skip installing defaults/ t
 set(PANTAVISOR_PVS_SKIP_INSTALL OFF CACHE BOOL "Skip installing developer trust store")
 set(PANTAVISOR_DISTRO_VERSION "" CACHE STRING "Set a distro version to include in pantavisor build version")
 set(PANTAVISOR_DISTRO_NAME "" CACHE STRING "Set a distro name to include in pantavisor build version")
+set(PANTAVISOR_E2FSGROW_ENABLE ON CACHE BOOL "Enable autogrow partition feature")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -217,6 +218,14 @@ install(CODE "file(CREATE_LINK usr/bin/pantavisor ${CODE_INSTALL_BASE}/init SYMB
 ENDIF()
 
 ### install scripts
+if(PANTAVISOR_E2FSGROW_ENABLE)
+install(FILES scripts/pv_e2fsgrow
+	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
+	DESTINATION /lib/pv/)
+ENDIF()
+install(FILES scripts/JSON.sh scripts/pvcrash
+	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
+	DESTINATION /lib/pv/)
 install(FILES scripts/JSON.sh scripts/pv_e2fsgrow scripts/pvcrash
 	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
 	DESTINATION /lib/pv/)
