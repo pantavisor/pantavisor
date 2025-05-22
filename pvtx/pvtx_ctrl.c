@@ -57,7 +57,7 @@ enum pvtx_ctrl_method {
 
 struct pv_pvtx_ctrl_header {
 	enum pvtx_ctrl_method method;
-	const char *path;
+	char path[PATH_MAX];
 	const char *ctype;
 	off_t clen;
 };
@@ -170,9 +170,8 @@ struct pv_pvtx_ctrl *pv_pvtx_ctrl_new(const char *path)
 	return ctrl;
 }
 
-static int send_request(struct pv_pvtx_ctrl *ctrl,
-			struct pv_pvtx_ctrl_header *head,
-			const unsigned char *data)
+static int send_header(struct pv_pvtx_ctrl *ctrl,
+		       struct pv_pvtx_ctrl_header *head)
 {
 	pv_pvtx_error_clear(&ctrl->error);
 
@@ -184,11 +183,8 @@ static int send_request(struct pv_pvtx_ctrl *ctrl,
 				  "couldn't allocate header string");
 		return -1;
 	}
-
 	pv_fs_file_write_nointr(ctrl->sock, head_str, strlen(head_str));
-
-	if (head->method == PVTX_CTRL_METHOD_PUT && data)
-		pv_fs_file_write_nointr(ctrl->sock, data, head->clen);
+	free(head_str);
 
 	return 0;
 }
@@ -307,28 +303,18 @@ static char *read_data(struct pv_pvtx_ctrl *ctrl)
 }
 
 char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
-			  size_t *size)
+			     size_t *size)
 {
-	char *tmpl = "/steps/%s";
-	char *path = NULL;
 	char *data = NULL;
 
 	pv_pvtx_error_clear(&ctrl->error);
 
-	int len = asprintf(&path, tmpl, rev);
-
-	if (len == -1) {
-		pv_pvtx_error_set(&ctrl->error, -1,
-				  "couldn't allocate request");
-		goto out;
-	}
-
 	struct pv_pvtx_ctrl_header head = {
 		.method = PVTX_CTRL_METHOD_GET,
-		.path = path,
 	};
+	snprintf(head.path, PATH_MAX, "/steps/%s", rev);
 
-	if (send_request(ctrl, &head, NULL) != 0) {
+	if (send_header(ctrl, &head) != 0) {
 		goto out;
 	}
 
@@ -339,52 +325,45 @@ char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 	}
 	*size = strlen(data);
 out:
-	if (path)
-		free(path);
 
 	return data;
 }
 
-static int put_request(struct pv_pvtx_ctrl *ctrl, const char *path_tmpl,
-		       const char *path_arg, const char *type,
-		       const unsigned char *data, size_t size)
+int pv_pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
+			   size_t size, const char *rev)
 {
-	pv_pvtx_error_clear(&ctrl->error);
-
-	char *path = NULL;
-	int len = asprintf(&path, path_tmpl, path_arg);
-	if (len == -1) {
-		pv_pvtx_error_set(&ctrl->error, -1,
-				  "couldn't allocate request");
-		return -1;
-	}
-
 	struct pv_pvtx_ctrl_header head = {
 		.method = PVTX_CTRL_METHOD_PUT,
-		.path = path,
-		.ctype = type,
+		.ctype = "application/json",
 		.clen = size,
 	};
+	snprintf(head.path, PATH_MAX, "/steps/%s", rev);
 
-	int err = send_request(ctrl, &head, data);
+	// return put_request(ctrl, path_tmpl, rev, type, (unsigned char *)data,
+	// 		   size);
 
-	free(path);
-	return err;
+	send_header(ctrl, &head);
+	if (pv_fs_file_write_nointr(ctrl->sock, data, size) < 0)
+		return -1;
+	return 0;
 }
 
-int pv_pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
-			size_t size, const char *rev)
+int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
+			 struct pv_pvtx_tar_content *con)
 {
-	const char *path_tmpl = "/steps/%s";
-	const char *type = "application/json";
-	return put_request(ctrl, path_tmpl, rev, type, (unsigned char *)data,
-			   size);
-}
+	struct pv_pvtx_ctrl_header head = {
+		.method = PVTX_CTRL_METHOD_PUT,
+		.ctype = "application/octet-stream",
+		.clen = con->size,
+	};
+	snprintf(head.path, PATH_MAX, "/%s", con->name);
 
-int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl, const unsigned char *data,
-		      size_t size, const char *sha)
-{
-	const char *path_tmpl = "objects/%s";
-	const char *type = "application/octet-stream";
-	return put_request(ctrl, path_tmpl, sha, type, data, size);
+	send_header(ctrl, &head);
+	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
+	while (pv_pvtx_tar_content_read_block(con, buf) > 0) {
+		pv_fs_file_write_nointr(ctrl->sock, buf, PVTX_TAR_BLOCK_SIZE);
+		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
+	}
+
+	return 0;
 }

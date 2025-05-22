@@ -60,8 +60,6 @@ struct pv_pvtx_tar_metadata {
 	char prefix[155];
 };
 
-#define PVTX_TAR_BLOCK_SIZE (512)
-
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_raw;
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_gzip;
 
@@ -69,12 +67,11 @@ extern struct pv_pvtx_tar_imp pv_pvtx_tar_gzip;
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_bz2;
 #endif
 
-static ssize_t read_nointr(struct pv_pvtx_tar *tar, void *buf, size_t size)
+static ssize_t read_nointr(struct pv_pvtx_tar_priv *priv, void *buf,
+			   size_t size)
 {
 	ssize_t total_read = 0;
 	errno = 0;
-
-	struct pv_pvtx_tar_priv *priv = tar->priv;
 
 	while (total_read != size) {
 		int cur_read = priv->imp->read(priv->imp_data, buf + total_read,
@@ -103,68 +100,68 @@ static void get_name(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_metadata *meta,
 	// NOTE: here we could check the typeflag which
 	// for large name should be 'L' but seems redundant
 	char *buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
-	read_nointr(tar, buf, PVTX_TAR_BLOCK_SIZE);
+	read_nointr(tar->priv, buf, PVTX_TAR_BLOCK_SIZE);
 	memccpy(name, buf, '\0', NAME_MAX);
 }
 
-struct pv_pvtx_tar_content *pv_pvtx_tar_next(struct pv_pvtx_tar *tar)
+int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con)
 {
 	pv_pvtx_error_clear(&tar->err);
 
 	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
-	ssize_t size = read_nointr(tar, buf, PVTX_TAR_BLOCK_SIZE);
+	ssize_t size = read_nointr(tar->priv, buf, PVTX_TAR_BLOCK_SIZE);
 
 	if (size < PVTX_TAR_BLOCK_SIZE) {
 		pv_pvtx_error_set(&tar->err, -1, "couldn't read header");
-		return NULL;
+		return -1;
 	}
 
 	struct pv_pvtx_tar_metadata meta = { 0 };
 	memcpy(&meta, buf, sizeof(struct pv_pvtx_tar_metadata));
 	if (strncmp(meta.magic, "ustar", strlen("ustar"))) {
 		pv_pvtx_error_set(&tar->err, -1, "ustar not found");
-		return NULL;
+		return -1;
 	}
 
-	struct pv_pvtx_tar_content *content =
-		calloc(1, sizeof(struct pv_pvtx_tar_content));
-	if (!content) {
-		pv_pvtx_error_set(&tar->err, errno, "couldn't alloc content");
-		return NULL;
-	}
+	memset(con->name, 0, NAME_MAX);
+	get_name(tar, &meta, con->name);
 
-	get_name(tar, &meta, content->name);
-	content->size = strtoll(meta.size, NULL, 8);
+	con->size = strtoll(meta.size, NULL, 8);
+	con->cap = (con->size | (PVTX_TAR_BLOCK_SIZE - 1)) + 1;
+	if (!con->priv)
+		con->priv = tar->priv;
+	con->read = 0;
 
-	ssize_t cap = (content->size | (PVTX_TAR_BLOCK_SIZE - 1)) + 1;
-	content->data = calloc(cap, sizeof(unsigned char));
-	if (!content->data) {
-		pv_pvtx_error_set(&tar->err, errno, "couldn't alloc file data");
-		free(content);
-		return NULL;
-	}
-
-	ssize_t total = 0;
-	unsigned char *ptr = content->data;
-	while (total < content->size) {
-		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
-		size = read_nointr(tar, buf, PVTX_TAR_BLOCK_SIZE);
-		ptr = mempcpy(ptr, buf, size);
-		total += size;
-	}
-
-	return content;
+	return 0;
 }
 
-void pv_pvtx_tar_content_free(struct pv_pvtx_tar_content *con)
+ssize_t pv_pvtx_tar_content_read_block(struct pv_pvtx_tar_content *con,
+				       void *buf)
 {
-	if (!con)
-		return;
+	if (con->read >= con->size)
+		return 0;
 
-	if (con->data)
-		free(con->data);
+	memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
+	ssize_t size = read_nointr(con->priv, buf, PVTX_TAR_BLOCK_SIZE);
+	if (size > 0)
+		con->read += size;
+	return size;
+}
 
-	free(con);
+ssize_t pv_pvtx_tar_content_read_object(struct pv_pvtx_tar_content *con,
+					void *buf)
+{
+	memset(buf, 0, con->size);
+	while (con->read < con->cap) {
+		void *p = buf + con->read;
+		ssize_t size = read_nointr(con->priv, p, PVTX_TAR_BLOCK_SIZE);
+		if (size > 0)
+			con->read += size;
+		else
+			break;
+	}
+
+	return con->read;
 }
 
 void pv_pvtx_tar_free(struct pv_pvtx_tar *tar)

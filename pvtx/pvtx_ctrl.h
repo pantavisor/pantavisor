@@ -24,6 +24,7 @@
 #define PV_PVTX_CTRL_H
 
 #include "pvtx_error.h"
+#include "pvtx_tar.h"
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -40,7 +41,7 @@ char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 int pv_pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
 			   size_t size, const char *rev);
 
-int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl, const unsigned char *data,
-			 size_t size, const char *sha256);
+int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
+			 struct pv_pvtx_tar_content *con);
 
 #endif

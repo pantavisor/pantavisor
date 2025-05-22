@@ -193,6 +193,23 @@ static void *pvtx_load()
 	return pv_fs_file_read(path, NULL);
 }
 
+static void write_object_from_content(const char *path,
+				      struct pv_pvtx_tar_content *con)
+{
+	int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+	if (fd < 0)
+		return;
+
+	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
+	while (pv_pvtx_tar_content_read_block(con, buf) > 0) {
+		pv_fs_file_write_nointr(fd, buf, PVTX_TAR_BLOCK_SIZE);
+		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
+	}
+
+out:
+	close(fd);
+}
+
 static int state_json_save(const char *from)
 {
 	int ret = 0;
@@ -285,22 +302,24 @@ out:
 	return 0;
 }
 
-static int add_object_local(struct pv_pvtx_tar_content *cont,
+static int add_object_local(struct pv_pvtx_tar_content *con,
 			    const char *obj_path)
 {
 	char path[PATH_MAX] = { 0 };
-	pv_fs_path_concat(path, 2, obj_path, cont->name + strlen("objects/"));
-	return pv_fs_file_write(path, cont->data, cont->size);
+	pv_fs_path_concat(path, 2, obj_path, con->name + strlen("objects/"));
+
+	write_object_from_content(path, con);
+
+	return 0;
 }
 
-static int add_object_remote(struct pv_pvtx_tar_content *cont)
+static int add_object_remote(struct pv_pvtx_tar_content *con)
 {
-	char *sha = cont->name + strlen("objects/");
 	struct pv_pvtx_ctrl *ctrl = pv_pvtx_ctrl_new(NULL);
 	if (!ctrl)
 		return -1;
 
-	int ret = pv_pvtx_ctrl_obj_put(ctrl, cont->data, cont->size, sha);
+	int ret = pv_pvtx_ctrl_obj_put(ctrl, con);
 	free(ctrl);
 	return ret;
 }
@@ -316,18 +335,21 @@ static int add_tar(struct pv_pvtx_tar *tar, struct pv_pvtx_error *err)
 	}
 
 	int ret = -1;
-	struct pv_pvtx_tar_content *cont = NULL;
+	struct pv_pvtx_tar_content con = { 0 };
 
-	while ((cont = pv_pvtx_tar_next(tar))) {
-		if (!strncmp(cont->name, "json", strlen(cont->name))) {
-			ret = add_json((char *)cont->data, cont->size, err);
+	while (pv_pvtx_tar_next(tar, &con) == 0) {
+		if (!strncmp(con.name, "json", strlen(con.name))) {
+			char *data = calloc(con.size, sizeof(char));
+			pv_pvtx_tar_content_read_object(&con, data);
+			ret = add_json(data, con.size, err);
+			free(data);
 			if (ret != 0)
 				goto out;
-		} else if (!strncmp(cont->name, obj_pfx, strlen(obj_pfx))) {
+		} else if (!strncmp(con.name, obj_pfx, strlen(obj_pfx))) {
 			if (txn->is_local)
-				ret = add_object_local(cont, txn->obj);
+				ret = add_object_local(&con, txn->obj);
 			else
-				ret = add_object_remote(cont);
+				ret = add_object_remote(&con);
 			if (ret != 0) {
 				pv_pvtx_error_set(err, ret,
 						  "couldn't save obejct");
@@ -338,9 +360,6 @@ static int add_tar(struct pv_pvtx_tar *tar, struct pv_pvtx_error *err)
 out:
 	if (txn)
 		free(txn);
-	if (cont)
-		pv_pvtx_tar_content_free(cont);
-
 	return ret;
 }
 
@@ -948,41 +967,26 @@ out:
 	return ret;
 }
 
-static int queue_add_json(const char *part, char *data, size_t size,
-			  struct pv_pvtx_error *err)
+static void queue_get_json_path(const char *part, char *fname)
 {
 	struct pvtx_queue *q = pvtx_load();
-	if (!q) {
-		pv_pvtx_error_set(err, -1, "couldn't load queue data");
-		return -1;
-	}
+	if (!q)
+		return;
 
 	char bname[PATH_MAX] = { 0 };
 	int len = snprintf(bname, PATH_MAX, "%s/%03d__%s", q->queue, q->count,
 			   part);
-	int ret = 0;
 	if (len < 0) {
-		ret = -1;
-		pv_pvtx_error_set(err, ret, "couldn't create file name");
 		goto out;
 	}
 
 	pv_fs_mkdir_p(bname, 0755);
-
-	char fname[PATH_MAX] = { 0 };
 	pv_fs_path_concat(fname, 2, bname, "json");
-	ret = pv_fs_file_write(fname, data, size);
-	if (ret != 0) {
-		pv_pvtx_error_set(err, ret, "couldn't create file");
-		goto out;
-	}
+
+out:
 	q->count++;
 	pvtx_save(q, sizeof(struct pvtx_queue));
-out:
-	if (q)
-		free(q);
-
-	return ret;
+	free(q);
 }
 
 static int queue_add_tar(struct pv_pvtx_tar *tar, const char *name,
@@ -997,18 +1001,19 @@ static int queue_add_tar(struct pv_pvtx_tar *tar, const char *name,
 	}
 
 	int ret = -1;
-	struct pv_pvtx_tar_content *cont = NULL;
+	struct pv_pvtx_tar_content con = { 0 };
 
-	while ((cont = pv_pvtx_tar_next(tar))) {
-		if (!strncmp(cont->name, "json", strlen(cont->name))) {
-			const char *n = name ? name : "package";
+	while (pv_pvtx_tar_next(tar, &con)) {
+		if (!strncmp(con.name, "json", strlen(con.name))) {
+			const char *part = name ? name : "package";
 
-			ret = queue_add_json(n, (char *)cont->data, cont->size,
-					     err);
+			char fname[PATH_MAX] = { 0 };
+			queue_get_json_path(part, fname);
+			write_object_from_content(fname, &con);
 			if (ret != 0)
 				goto out;
-		} else if (!strncmp(cont->name, obj_pfx, strlen(obj_pfx))) {
-			ret = add_object_local(cont, q->txn.obj);
+		} else if (!strncmp(con.name, obj_pfx, strlen(obj_pfx))) {
+			ret = add_object_local(&con, q->txn.obj);
 			if (ret != 0) {
 				pv_pvtx_error_set(err, ret,
 						  "couldn't save obejct");
@@ -1019,8 +1024,6 @@ static int queue_add_tar(struct pv_pvtx_tar *tar, const char *name,
 out:
 	if (q)
 		free(q);
-	if (cont)
-		pv_pvtx_tar_content_free(cont);
 
 	return ret;
 }
@@ -1044,10 +1047,13 @@ int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
 		if (err->code != 0)
 			return err->code;
 
-		size_t size = 0;
-		char *data = pv_fs_file_read(part, &size);
-		int ret = queue_add_json(part, data, size, err);
-		free(data);
+		char fname[PATH_MAX] = { 0 };
+		queue_get_json_path(part, fname);
+		int ret = pv_fs_file_copy(part, fname, 0644);
+		if (ret != 0) {
+			pv_pvtx_error_set(err, ret, "couldn't copy %s to %s",
+					  part, fname);
+		}
 		return ret;
 	}
 
