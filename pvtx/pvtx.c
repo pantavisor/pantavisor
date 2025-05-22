@@ -156,7 +156,7 @@ static int cmd_abort(int argc, char **argv)
 {
 	struct pv_pvtx_error err = { 0 };
 	int ret = pv_pvtx_txn_abort(&err);
-	if (!ret)
+	if (ret != 0)
 		fprintf(stderr, "ERROR: %s\n", err.str);
 	return ret;
 }
@@ -300,16 +300,19 @@ static int pv_pvtx_process_args(int argc, char **argv)
 
 	int err = 0;
 	for (int i = 0; i < cmd->size; ++i) {
-		if (strncmp(op, cmd->names[i], strlen(op)))
+		if (strncmp(op, cmd->names[i], strlen(cmd->names[i])))
 			continue;
 
 		err = cmd->fn[i](argc, argv);
 		if (err != 0)
 			fprintf(stderr, "command finish with errors err = %d\n",
 				err);
-		break;
+		return err;
 	}
-	return err;
+
+	fprintf(stderr, "command not found\n");
+
+	return -1;
 }
 
 int main(int argc, char **argv)

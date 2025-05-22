@@ -28,6 +28,8 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 
+#define PVTX_TAR_BLOCK_SIZE (512)
+
 enum pv_pvtx_tar_type {
 	PVTX_TAR_UNKNOWN,
 	PVTX_TAR_RAW,
@@ -37,8 +39,10 @@ enum pv_pvtx_tar_type {
 
 struct pv_pvtx_tar_content {
 	char name[NAME_MAX];
-	unsigned char *data;
-	off_t size;
+	size_t size;
+	size_t read;
+	size_t cap;
+	struct pv_pvtx_tar_priv *priv;
 };
 
 struct pv_pvtx_tar {
@@ -70,9 +74,12 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_fd(int fd, enum pv_pvtx_tar_type type,
 struct pv_pvtx_tar *pv_pvtx_tar_from_path(const char *path,
 					  enum pv_pvtx_tar_type type,
 					  struct pv_pvtx_error *err);
-struct pv_pvtx_tar_content *pv_pvtx_tar_next(struct pv_pvtx_tar *tar);
+int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con);
+ssize_t pv_pvtx_tar_content_read_block(struct pv_pvtx_tar_content *con,
+				       void *buf);
+ssize_t pv_pvtx_tar_content_read_object(struct pv_pvtx_tar_content *con,
+					void *buf);
 
 void pv_pvtx_tar_free(struct pv_pvtx_tar *tar);
-void pv_pvtx_tar_content_free(struct pv_pvtx_tar_content *con);
 
 #endif
