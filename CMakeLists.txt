@@ -21,40 +21,55 @@ set(PANTAVISOR_PVS_SKIP_INSTALL OFF CACHE BOOL "Skip installing developer trust 
 set(PANTAVISOR_DISTRO_VERSION "" CACHE STRING "Set a distro version to include in pantavisor build version")
 set(PANTAVISOR_DISTRO_NAME "" CACHE STRING "Set a distro name to include in pantavisor build version")
 set(PANTAVISOR_E2FSGROW_ENABLE ON CACHE BOOL "Enable autogrow partition feature")
+set(PANTAVISOR_RUNTIME ON CACHE BOOL "build pantavisor runtime itself")
+set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
+set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
 
+# Pantavisor Runtime
+
+IF (PANTAVISOR_RUNTIME)
+
+### Pantavisor links shared where possible
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")
+
 # Find the shared library
-find_library(THTTP thttp)
-find_library(PICOHTTPPARSER picohttpparser)
-find_library(LXC lxc)
-find_library(ZLIB z)
-find_path(MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
-find_library(MBEDTLS_LIBRARY mbedtls)
-find_library(MBEDX509_LIBRARY mbedx509)
-find_library(MBEDCRYPTO_LIBRARY mbedcrypto)
-IF (PANTAVISOR_PVTX_BZ2)
-    find_library(BZ2 bz2)
-ENDIF()
+find_library(PANTAVISOR_RUNTIME_THTTP thttp)
+find_library(PANTAVISOR_RUNTIME_ZLIB z)
+find_path(PANTAVISOR_RUNTIME_MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
+find_library(PANTAVISOR_RUNTIME_MBEDTLS_LIBRARY mbedtls)
+find_library(PANTAVISOR_RUNTIME_MBEDX509_LIBRARY mbedx509)
+find_library(PANTAVISOR_RUNTIME_MBEDCRYPTO_LIBRARY mbedcrypto)
+find_library(PANTAVISOR_RUNTIME_PICOHTTPPARSER picohttpparser)
+find_library(PANTAVISOR_RUNTIME_LXC lxc)
 
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-find_library(ZLIB_STATIC z)
-find_library(MBEDCRYPTO_LIBRARY_STATIC mbedcrypto)
-find_library(THTTP_STATIC thttp)
-IF (PANTAVISOR_PVTX_BZ2)
-    find_library(BZ2_STATIC bz2)
-ENDIF()
 
-set(MBEDTLS_LIBRARIES "${MBEDTLS_LIBRARY}" "${MBEDX509_LIBRARY}" "${MBEDCRYPTO_LIBRARY}")
-find_package_handle_standard_args(MBEDTLS DEFAULT_MSG
-    MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
-mark_as_advanced(MBEDTLS_INCLUDE_DIRS MBEDTLS_LIBRARY MBEDX509_LIBRARY MBEDCRYPTO_LIBRARY)
+set(PANTAVISOR_RUNTIME_MBEDTLS_LIBRARIES
+	${PANTAVISOR_RUNTIME_MBEDTLS_LIBRARY}
+	${PANTAVISOR_RUNTIME_MBEDX509_LIBRARY}
+	${PANTAVISOR_RUNTIME_MBEDCRYPTO_LIBRARY}
+)
+find_package_handle_standard_args(
+	PANTAVISOR_RUNTIME_MBEDTLS
+	DEFAULT_MSG
+	PANTAVISOR_RUNTIME_MBEDTLS_INCLUDE_DIRS
+	PANTAVISOR_RUNTIME_MBEDTLS_LIBRARY
+	PANTAVISOR_RUNTIME_MBEDX509_LIBRAR
+	PANTAVISOR_RUNTIME_MBEDCRYPTO_LIBRARY
+)
 
-# Compiler options
+mark_as_advanced(PANTAVISOR_RUNTIME_MBEDTLS_INCLUDE_DIRS
+	PANTAVISOR_RUNTIME_MBEDTLS_LIBRARY
+	PANTAVISOR_RUNTIME_MBEDX509_LIBRARY
+	PANTAVISOR_RUNTIME_MBEDCRYPTO_LIBRARY
+)
+
+#### Compiler options
 add_compile_options(-Werror)
 
-# Generate version.c
+### Generate version.c
 add_custom_command(
     OUTPUT  version.c
     COMMAND sh
@@ -201,9 +216,20 @@ add_executable(pantavisor
 			wdt.c
 			wdt.h
 )
-target_include_directories(pantavisor PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils ${MBEDTLS_INCLUDE_DIR})
-target_link_libraries(pantavisor ${THTTP} ${PICOHTTPPARSER} ${MBEDTLS_LIBRARIES} ${LXC} ${ZLIB})
+target_include_directories(pantavisor PRIVATE
+	${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils
+	${PANTAVISOR_RUNTIME_MBEDTLS_INCLUDE_DIR}
+)
+target_link_libraries(pantavisor
+	${PANTAVISOR_RUNTIME_THTTP}
+	${PANTAVISOR_RUNTIME_PICOHTTPPARSER}
+	${PANTAVISOR_RUNTIME_MBEDTLS_LIBRARIES}
+	${PANTAVISOR_RUNTIME_LXC}
+	${PANTAVISOR_RUNTIME_ZLIB}
+)
+
 install(TARGETS pantavisor DESTINATION bin)
+
 IF(PANTAVISOR_DEBUG)
 target_compile_definitions(pantavisor PRIVATE PANTAVISOR_DEBUG)
 ENDIF()
@@ -255,65 +281,8 @@ add_executable(remount
 )
 target_compile_definitions(remount PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(remount PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
-target_link_libraries(remount  ${THTTP})
+target_link_libraries(remount  ${PANTAVISOR_RUNTIME_THTTP})
 install(TARGETS remount DESTINATION /lib/pv/hooks_lxc-mount.d)
-
-add_executable(pvtx
-			utils/pvsignals.h utils/pvsignals.c
-			utils/tsh.c
-			utils/fs.c
-			pvtx/pvtx_ctrl.c
-			pvtx/pvtx_ctrl.h
-			pvtx/pvtx_error.c
-			pvtx/pvtx_error.h
-			pvtx/pvtx_jsmn_utils.c
-			pvtx/pvtx_jsmn_utils.h
-			pvtx/pvtx_state.c
-			pvtx/pvtx_state.h
-			pvtx/pvtx_tar.c
-			pvtx/pvtx_tar_formats.c
-			pvtx/pvtx_tar.h
-			pvtx/pvtx_tar_impl.h
-			pvtx/pvtx_txn.c
-			pvtx/pvtx_txn.h
-			pvtx/pvtx.c
-)
-target_compile_definitions(pvtx PUBLIC -DDISABLE_LOGSERVER)
-target_include_directories(pvtx PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
-target_link_libraries(pvtx ${THTTP} ${MBEDCRYPTO_LIBRARY} ${ZLIB})
-IF (PANTAVISOR_PVTX_BZ2)
-	target_link_libraries(pvtx ${BZ2})
-ENDIF()
-install(TARGETS pvtx DESTINATION /usr/bin)
-
-add_executable(pvtx-static
-			utils/pvsignals.h utils/pvsignals.c
-			utils/tsh.c
-			utils/fs.c
-			pvtx/pvtx_ctrl.c
-			pvtx/pvtx_ctrl.h
-			pvtx/pvtx_error.c
-			pvtx/pvtx_error.h
-			pvtx/pvtx_jsmn_utils.c
-			pvtx/pvtx_jsmn_utils.h
-			pvtx/pvtx_state.c
-			pvtx/pvtx_state.h
-			pvtx/pvtx_tar.c
-			pvtx/pvtx_tar_formats.c
-			pvtx/pvtx_tar.h
-			pvtx/pvtx_tar_impl.h
-			pvtx/pvtx_txn.c
-			pvtx/pvtx_txn.h
-			pvtx/pvtx.c
-)
-target_compile_definitions(pvtx-static PUBLIC -DDISABLE_LOGSERVER)
-target_include_directories(pvtx-static PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
-target_link_libraries(pvtx-static ${THTTP_STATIC} ${MBEDCRYPTO_LIBRARY_STATIC} ${ZLIB_STATIC})
-IF (PANTAVISOR_PVTX_BZ2)
-	target_link_libraries(pvtx ${BZ2_STATIC})
-ENDIF()
-target_link_options(pvtx-static PRIVATE -static-libgcc)
-install(TARGETS pvtx-static DESTINATION /usr/bin)
 
 ### install dm crypt feature
 IF(PANTAVISOR_DM_CRYPT)
@@ -329,6 +298,89 @@ install(DIRECTORY scripts/volmount/verity
 	DESTINATION /lib/pv/volmount)
 ENDIF()
 
+ENDIF() # PANTAVISOR_RUNTIME
+
+## PVTX section
+
+set(PVTX_COMMON_SOURCES
+	utils/pvsignals.h
+	utils/pvsignals.c
+	utils/tsh.c
+	utils/fs.c
+	pvtx/pvtx_ctrl.c
+	pvtx/pvtx_ctrl.h
+	pvtx/pvtx_error.c
+	pvtx/pvtx_error.h
+	pvtx/pvtx_jsmn_utils.c
+	pvtx/pvtx_jsmn_utils.h
+	pvtx/pvtx_state.c
+	pvtx/pvtx_state.h
+	pvtx/pvtx_tar.c
+	pvtx/pvtx_tar_formats.c
+	pvtx/pvtx_tar.h
+	pvtx/pvtx_tar_impl.h
+	pvtx/pvtx_txn.c
+	pvtx/pvtx_txn.h
+	pvtx/pvtx.c
+)
+
+IF (PANTAVISOR_PVTX)
+
+find_library(PANTAVISOR_PVTX_THTTP thttp)
+find_library(PANTAVISOR_PVTX_ZLIB z)
+find_path(PANTAVISOR_PVTX_MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
+find_library(PANTAVISOR_PVTX_MBEDCRYPTO_LIBRARY mbedcrypto)
+
+add_executable(pvtx
+	${PVTX_COMMON_SOURCES}
+)
+target_compile_definitions(pvtx PUBLIC -DDISABLE_LOGSERVER)
+target_include_directories(pvtx PRIVATE
+	${CMAKE_SOURCE_DIR}
+	${CMAKE_SOURCE_DIR}/utils
+	${PANTAVISOR_PVTX_MBEDTLS_INCLUDE_DIRS}
+)
+target_link_libraries(pvtx
+	${PANTAVISOR_PVTX_THTTP}
+	${PANTAVISOR_PVTX_MBEDCRYPTO_LIBRARY}
+	${PANTAVISOR_PVTX_ZLIB}
+)
+install(TARGETS pvtx DESTINATION /usr/bin)
+
+ENDIF() # PANTAVISOR_PVTX
+
+IF (PANTAVISOR_PVTX_STATIC)
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+
+find_library(PANTAVISOR_PVTX_STATIC_THTTP thttp)
+find_library(PANTAVISOR_PVTX_STATIC_ZLIB z)
+find_path(PANTAVISOR_PVTX_STATIC_MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
+find_library(PANTAVISOR_PVTX_STATIC_MBEDCRYPTO_LIBRARY mbedcrypto)
+
+add_executable(pvtx-static
+	${PVTX_COMMON_SOURCES}
+)
+target_compile_definitions(pvtx-static PUBLIC -DDISABLE_LOGSERVER)
+target_include_directories(pvtx-static PRIVATE
+	${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils
+	${PANTAVISOR_PVTX_MBEDTLS_INCLUDE_DIRS}
+)
+target_link_libraries(pvtx-static
+	${PANTAVISOR_PVTX_STATIC_THTTP}
+	${PANTAVISOR_PVTX_STATIC_MBEDCRYPTO_LIBRARY}
+	${PANTAVISOR_PVTX_STATIC_ZLIB}
+)
+target_link_options(pvtx-static PRIVATE
+	LINKER:-static
+	-static
+	-static-libgcc
+)
+set_target_properties(pvtx-static PROPERTIES
+    LINK_SEARCH_END_STATIC 1 # Set to 1 (true)
+)
+install(TARGETS pvtx-static DESTINATION /usr/bin)
+
+ENDIF() # PANTAVISOR_PVTX_STATIC
 
 # Build and install tests feature
 IF(PANTAVISOR_TESTS)
@@ -357,4 +409,3 @@ add_executable(test-pv-tsh
 target_link_libraries(test-pv-tsh)
 install(TARGETS test-pv-tsh DESTINATION bin)
 ENDIF()
-
