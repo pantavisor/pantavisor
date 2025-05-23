@@ -52,6 +52,7 @@
 #include "utils/list.h"
 #include "utils/socket.h"
 #include "utils/pvsignals.h"
+#include "utils/math.h"
 #include "pvctl_utils.h"
 #include "config.h"
 
@@ -206,42 +207,42 @@ static void sigchld_handler(int signum)
 		;
 }
 
-static int logserver_msg_parse_data(struct logserver_msg *msg,
+static void logserver_msg_parse_binary_v1(unsigned char *raw_msg,
+					  struct logserver_log *log)
+{
+	struct logserver_msg *msg = (struct logserver_msg *)raw_msg;
+
+	sscanf(msg->buf, "%d", &log->lvl);
+	size_t bytes_read = strlen(msg->buf) + 1;
+	//+ 1 to Skip over the NULL byte post level
+	log->plat = msg->buf + strlen(msg->buf) + 1;
+	bytes_read += strlen(log->plat) + 1;
+	log->src = log->plat + strlen(log->plat) + 1;
+	log->running_rev = logserver.running_rev;
+	log->updated_rev = logserver.updated_rev;
+	bytes_read += strlen(log->src) + 1;
+
+	log->data.buf = log->src + strlen(log->src) + 1;
+	log->data.len = msg->len - bytes_read;
+	log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
+	log->tnano = 0;
+	log->time = time(NULL);
+}
+
+static int logserver_msg_parse_binary_v2(unsigned char *raw_msg,
+					 struct logserver_log *log)
+{
+	unsigned char *p = raw_msg + ARRAY_LEN(proto_bin_v2_header);
+	logserver_msg_parse_binary_v1(p, log);
+	return 0;
+}
+
+static void logserver_msg_parse_cmd(unsigned char *raw_msg,
 				    struct logserver_log *log)
 {
-	int bytes_read = 0;
-	int ret;
-	log->code = msg->code;
-	switch (log->code) {
-	case LOG_PROTOCOL_LEGACY:
-		sscanf(msg->buf, "%d", &log->lvl);
-		bytes_read += strlen(msg->buf) + 1;
-		//+ 1 to Skip over the NULL byte post level
-		log->plat = msg->buf + strlen(msg->buf) + 1;
-		bytes_read += strlen(log->plat) + 1;
-		log->src = log->plat + strlen(log->plat) + 1;
-		log->running_rev = logserver.running_rev;
-		log->updated_rev = logserver.updated_rev;
-		bytes_read += strlen(log->src) + 1;
-
-		log->data.buf = log->src + strlen(log->src) + 1;
-		log->data.len = msg->len - bytes_read;
-		log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
-		log->tnano = 0;
-		log->time = time(NULL), ret = 0;
-		break;
-	case LOG_PROTOCOL_CMD:
-		log->data.buf = msg->buf;
-		log->data.len = msg->len;
-		ret = 0;
-		break;
-	default:
-		pv_log(WARN, "got unkown logserver message version %d",
-		       log->code);
-		ret = -1;
-		break;
-	}
-	return ret;
+	struct logserver_msg *msg = (struct logserver_msg *)raw_msg;
+	log->data.buf = msg->buf;
+	log->data.len = msg->len;
 }
 
 static void logserver_rename_update(const char *rev)
@@ -261,7 +262,8 @@ static int logserver_process_cmd(const struct logserver_log *log,
 {
 	if (sender_pid != logserver.cmd_pid) {
 		pv_log(WARN,
-		       "logserver command received from pid %d while authorized pid is %d only",
+		       "logserver command received from pid %d "
+		       "while authorized pid is %d only",
 		       sender_pid, logserver.cmd_pid);
 		return -1;
 	}
@@ -316,24 +318,44 @@ static int logserver_process_cmd(const struct logserver_log *log,
 	return 0;
 }
 
-static int logserver_handle_msg(struct logserver_msg *msg, pid_t sender_pid)
+static log_protocol_code_t logserver_get_code_from_raw(unsigned char *raw_msg)
 {
-	struct logserver_log log;
-	int ret;
-
-	ret = logserver_msg_parse_data(msg, &log);
-	if (ret != 0) {
-		pv_log(WARN, "logserver message could not be handled");
-		return ret;
+	for (int i = 0; i < ARRAY_LEN(proto_bin_v2_header); i++) {
+		if (raw_msg[i] != proto_bin_v2_header[i]) {
+			return LOG_PROTOCOL_LEGACY;
+			break;
+		}
 	}
 
-	switch (msg->code) {
+	int code = ((int *)raw_msg)[0];
+	if (code != LOG_PROTOCOL_BINARY_V2 && code != LOG_PROTOCOL_CMD)
+		return LOG_PROTOCOL_UNKNOWN;
+	return code;
+}
+
+static int logserver_handle_msg(unsigned char *raw_msg, pid_t sender_pid)
+{
+	struct logserver_log log = { 0 };
+
+	log_protocol_code_t code = logserver_get_code_from_raw(raw_msg);
+
+	int ret = 0;
+	switch (log.code) {
 	case LOG_PROTOCOL_LEGACY:
+		logserver_msg_parse_binary_v1(raw_msg, &log);
+		ret = logserver_log_msg_data(&log, 0);
+		break;
+	case LOG_PROTOCOL_BINARY_V2:
+		logserver_msg_parse_binary_v2(raw_msg, &log);
 		ret = logserver_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:
+		logserver_msg_parse_cmd(raw_msg, &log);
 		ret = logserver_process_cmd(&log, sender_pid);
 		break;
+	case LOG_PROTOCOL_UNKNOWN:
+		pv_log(WARN, "got unkown logserver message version %d", code);
+		ret = -1;
 	}
 
 	return ret;
@@ -559,8 +581,7 @@ static void logserver_consume_log_data(int fd)
 	errno = 0;
 	if (pv_fs_file_read_nointr(fd, buffer->buf, buffer->size) > 0) {
 		pid_t sender_pid = pv_socket_get_sender_pid(fd);
-		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
-		logserver_handle_msg(msg, sender_pid);
+		logserver_handle_msg((unsigned char *)buffer->buf, sender_pid);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
 		       strerror(errno));

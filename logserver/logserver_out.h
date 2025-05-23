@@ -29,8 +29,6 @@
 #include <stdbool.h>
 #include <time.h>
 
-#define LOGSERVER_LOG_PROTOCOL_V1 0
-
 #ifdef DEBUG
 #define WARN_ONCE(msg, args...)                                                \
 	do {                                                                   \
@@ -51,8 +49,18 @@ struct logserver_data {
 
 typedef enum {
 	LOG_PROTOCOL_LEGACY = 0,
+	LOG_PROTOCOL_BINARY_V2 = 1,
+	LOG_PROTOCOL_UNKNOWN = 255,
 	LOG_PROTOCOL_CMD = 256
 } log_protocol_code_t;
+
+// alias to match the new protocols names
+#define LOG_PROTOCOL_BINARY_V1 (0)
+
+static unsigned char proto_bin_v2_header[] = {
+	//0pvlogv2 0xab 0xc8
+	0x00, 0x50, 0x76, 0x6c, 0x6f, 0x67, 0x76, 0x32, 0xab, 0xc8
+};
 
 struct logserver_log {
 	log_protocol_code_t code;
