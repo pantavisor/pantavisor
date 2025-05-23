@@ -19,6 +19,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <linux/limits.h>
 #include <sys/epoll.h>
@@ -52,6 +55,7 @@
 #include "utils/list.h"
 #include "utils/socket.h"
 #include "utils/pvsignals.h"
+#include "utils/math.h"
 #include "pvctl_utils.h"
 #include "config.h"
 
@@ -68,8 +72,23 @@
 #define LOGSERVER_BACKLOG (20)
 #define LOGSERVER_MAX_EV (5)
 #define LOGSERVER_MAX_HEADER_LEN (50)
+#define LOGSERVER_MAX_MSG_LEN (1024)
+#define LOGSERVER_HEADER_LEN (10)
+#define LOGSERVER_MAX_CMD_LEN (256)
 
 #define MODULE_NAME "logserver"
+
+static unsigned char LOGSERVER_V2_HEADER[] = {
+	//0pvlogv2 0xab 0xc8
+	0x00, 0x70, 0x76, 0x6c, 0x6f, 0x67, 0x76, 0x32, 0xab, 0xc8
+};
+
+typedef enum {
+	LOG_PROTOCOL_LEGACY = 0,
+	LOG_PROTOCOL_BINARY_V2 = 1,
+	LOG_PROTOCOL_UNKNOWN = 255,
+	LOG_PROTOCOL_CMD = 256
+} log_protocol_code_t;
 
 typedef enum {
 	LOG_CMD_NULL = 0,
@@ -173,7 +192,7 @@ static int pv_log(int level, char *msg, ...)
 		buf_len = vsnprintf(buf, pv_buffer->size, msg, args);
 
 		struct logserver_log data = {
-			.code = LOG_PROTOCOL_LEGACY,
+			.code = LOG_PROTOCOL_BINARY_V2,
 			.lvl = level,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 			.time = time(NULL),
@@ -206,42 +225,43 @@ static void sigchld_handler(int signum)
 		;
 }
 
-static int logserver_msg_parse_data(struct logserver_msg *msg,
+static void logserver_msg_parse_binary_v1(unsigned char *raw_msg,
+					  struct logserver_log *log)
+{
+	struct logserver_msg *msg = (struct logserver_msg *)raw_msg;
+
+	sscanf(msg->buf, "%d", &log->lvl);
+	size_t bytes_read = strlen(msg->buf) + 1;
+	//+ 1 to Skip over the NULL byte post level
+	log->plat = msg->buf + strlen(msg->buf) + 1;
+	bytes_read += strlen(log->plat) + 1;
+	log->src = log->plat + strlen(log->plat) + 1;
+	log->running_rev = logserver.running_rev;
+	log->updated_rev = logserver.updated_rev;
+	bytes_read += strlen(log->src) + 1;
+
+	log->data.buf = log->src + strlen(log->src) + 1;
+	log->data.len = msg->len - bytes_read;
+	log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
+	log->tnano = 0;
+	log->time = time(NULL);
+}
+
+static int logserver_msg_parse_binary_v2(unsigned char *raw_msg,
+					 struct logserver_log *log)
+{
+	unsigned char *p = raw_msg + LOGSERVER_HEADER_LEN;
+	logserver_msg_parse_binary_v1(p, log);
+	return 0;
+}
+
+static void logserver_msg_parse_cmd(unsigned char *raw_msg,
 				    struct logserver_log *log)
 {
-	int bytes_read = 0;
-	int ret;
-	log->code = msg->code;
-	switch (log->code) {
-	case LOG_PROTOCOL_LEGACY:
-		sscanf(msg->buf, "%d", &log->lvl);
-		bytes_read += strlen(msg->buf) + 1;
-		//+ 1 to Skip over the NULL byte post level
-		log->plat = msg->buf + strlen(msg->buf) + 1;
-		bytes_read += strlen(log->plat) + 1;
-		log->src = log->plat + strlen(log->plat) + 1;
-		log->running_rev = logserver.running_rev;
-		log->updated_rev = logserver.updated_rev;
-		bytes_read += strlen(log->src) + 1;
-
-		log->data.buf = log->src + strlen(log->src) + 1;
-		log->data.len = msg->len - bytes_read;
-		log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
-		log->tnano = 0;
-		log->time = time(NULL), ret = 0;
-		break;
-	case LOG_PROTOCOL_CMD:
-		log->data.buf = msg->buf;
-		log->data.len = msg->len;
-		ret = 0;
-		break;
-	default:
-		pv_log(WARN, "got unkown logserver message version %d",
-		       log->code);
-		ret = -1;
-		break;
-	}
-	return ret;
+	unsigned char *p = raw_msg + LOGSERVER_HEADER_LEN;
+	struct logserver_msg *msg = (struct logserver_msg *)p;
+	log->data.buf = msg->buf;
+	log->data.len = msg->len;
 }
 
 static void logserver_rename_update(const char *rev)
@@ -261,7 +281,8 @@ static int logserver_process_cmd(const struct logserver_log *log,
 {
 	if (sender_pid != logserver.cmd_pid) {
 		pv_log(WARN,
-		       "logserver command received from pid %d while authorized pid is %d only",
+		       "logserver command received from pid %d "
+		       "while authorized pid is %d only",
 		       sender_pid, logserver.cmd_pid);
 		return -1;
 	}
@@ -316,24 +337,44 @@ static int logserver_process_cmd(const struct logserver_log *log,
 	return 0;
 }
 
-static int logserver_handle_msg(struct logserver_msg *msg, pid_t sender_pid)
+static log_protocol_code_t logserver_get_code_from_raw(unsigned char *raw_msg)
 {
-	struct logserver_log log;
-	int ret;
-
-	ret = logserver_msg_parse_data(msg, &log);
-	if (ret != 0) {
-		pv_log(WARN, "logserver message could not be handled");
-		return ret;
+	for (int i = 0; i < LOGSERVER_HEADER_LEN; i++) {
+		if (raw_msg[i] != LOGSERVER_V2_HEADER[i])
+			return LOG_PROTOCOL_LEGACY;
 	}
 
-	switch (msg->code) {
+	int code = *(int *)(raw_msg + LOGSERVER_HEADER_LEN);
+
+	if (code != LOG_PROTOCOL_BINARY_V2 && code != LOG_PROTOCOL_CMD) {
+		pv_log(DEBUG, "unknown code: %d", code);
+		return LOG_PROTOCOL_UNKNOWN;
+	}
+	return code;
+}
+
+static int logserver_handle_msg(unsigned char *raw_msg, pid_t sender_pid)
+{
+	struct logserver_log log = { 0 };
+	log_protocol_code_t code = logserver_get_code_from_raw(raw_msg);
+
+	int ret = 0;
+	switch (code) {
 	case LOG_PROTOCOL_LEGACY:
+		logserver_msg_parse_binary_v1(raw_msg, &log);
+		ret = logserver_log_msg_data(&log, 0);
+		break;
+	case LOG_PROTOCOL_BINARY_V2:
+		logserver_msg_parse_binary_v2(raw_msg, &log);
 		ret = logserver_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:
+		logserver_msg_parse_cmd(raw_msg, &log);
 		ret = logserver_process_cmd(&log, sender_pid);
 		break;
+	case LOG_PROTOCOL_UNKNOWN:
+		pv_log(WARN, "got unknown logserver message version");
+		ret = -1;
 	}
 
 	return ret;
@@ -559,8 +600,7 @@ static void logserver_consume_log_data(int fd)
 	errno = 0;
 	if (pv_fs_file_read_nointr(fd, buffer->buf, buffer->size) > 0) {
 		pid_t sender_pid = pv_socket_get_sender_pid(fd);
-		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
-		logserver_handle_msg(msg, sender_pid);
+		logserver_handle_msg((unsigned char *)buffer->buf, sender_pid);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
 		       strerror(errno));
@@ -585,7 +625,7 @@ static void logserver_consume_fd(int fd)
 			logserver_fetch_fd_from_list(&logserver.fdlst, fd);
 
 		struct logserver_log d = {
-			.code = LOG_PROTOCOL_LEGACY,
+			.code = LOG_PROTOCOL_BINARY_V2,
 			.lvl = lfd->lvl,
 			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
 			.time = time(NULL),
@@ -982,102 +1022,57 @@ out:
 	return -1;
 }
 
-static int logserver_msg_fill(struct logserver_log *log,
-			      struct logserver_msg *msg)
-{
-	int avail_len = msg->len;
-	ssize_t written = 0;
-	int to_copy = 0;
-	msg->code = log->code;
-	switch (msg->code) {
-	case LOG_PROTOCOL_LEGACY:
-		//Copy level.
-		written += snprintf(msg->buf + written, avail_len, "%d%c",
-				    log->lvl, '\0');
-		avail_len = msg->len - written;
-
-		written += snprintf(msg->buf + written, avail_len, "%s%c",
-				    log->plat, '\0');
-		avail_len = msg->len - written;
-
-		written += snprintf(msg->buf + written, avail_len, "%s%c",
-				    log->src, '\0');
-		avail_len = msg->len - written;
-
-		to_copy = (log->data.len <= avail_len) ? log->data.len :
-							 avail_len;
-		memcpy(msg->buf + written, log->data.buf, to_copy);
-		msg->len = written + to_copy;
-
-		return to_copy;
-	case LOG_PROTOCOL_CMD:
-		to_copy = log->data.len;
-		memcpy(msg->buf + written, log->data.buf, to_copy);
-		msg->len = written + to_copy;
-		break;
-	default:
-		return 0;
-	}
-	return 0;
-}
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args)
 {
-	struct logserver_log log = {
-		.code = LOG_PROTOCOL_LEGACY,
-		.lvl = level,
-		.tsec = timer_get_current_time_sec(RELATIV_TIMER),
-		.tnano = 0,
-		.time = time(NULL),
-		.plat = platform,
-		.src = src,
-	};
-
 	if ((level != FATAL) && (level > pv_config_get_int(PV_LOG_LEVEL)))
 		return 0;
 
-	struct buffer *log_buf = pv_buffer_get(true);
-	if (!log_buf)
-		return -1;
-
-	log.data.buf = (char *)log_buf->buf;
-	log.data.len = log_buf->size;
-
-	log.data.len = vsnprintf(log.data.buf, log.data.len, msg, args);
+	char logmsg[LOGSERVER_MAX_MSG_LEN] = { 0 };
+	int loglen = vsnprintf(logmsg, LOGSERVER_MAX_MSG_LEN, msg, args);
 
 	if (((pv_config_get_log_server_outputs() & LOG_SERVER_OUTPUT_STDOUT) &&
 	     (logserver.pid < 0)) ||
 	    (pv_config_get_log_server_outputs() &
 	     LOG_SERVER_OUTPUT_STDOUT_DIRECT) ||
 	    (level == FATAL)) {
-		logserver_utils_stdout(&log);
+		logserver_utils_stdout(&(struct logserver_log){
+			.code = LOG_PROTOCOL_BINARY_V2,
+			.lvl = level,
+			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
+			.tnano = 0,
+			.time = time(NULL),
+			.plat = platform,
+			.src = src,
+			.data.buf = logmsg,
+			.data.len = loglen,
+		});
 	}
 
-	if (logserver.pid < 1) {
-		pv_buffer_drop(log_buf);
+	if (logserver.pid < 1)
 		return 0;
-	}
 
-	struct buffer *msg_buf = pv_buffer_get(true);
-	if (!msg_buf) {
-		pv_buffer_drop(log_buf);
-		return -1;
-	}
+	char buf[LOGSERVER_MAX_MSG_LEN] = { 0 };
+	char *p = buf;
 
-	struct logserver_msg *lsmsg = (struct logserver_msg *)msg_buf->buf;
-	lsmsg->len = msg_buf->size - sizeof(*lsmsg);
+	int size = LOGSERVER_HEADER_LEN + sizeof(int) * 2;
+	int code = LOG_PROTOCOL_BINARY_V2;
 
-	int len = logserver_msg_fill(&log, lsmsg);
+	p = mempcpy(p, LOGSERVER_V2_HEADER, LOGSERVER_HEADER_LEN);
+	p = mempcpy(p, &code, sizeof(int));
+
+	int *len_ptr = (int *)p;
+	p += sizeof(int);
+
+	*len_ptr = snprintf(p, LOGSERVER_MAX_MSG_LEN - size, "%d%c%s%c%s%c%s",
+			    level, '\0', platform, '\0', src, '\0', logmsg);
 
 	char path[PATH_MAX] = { 0 };
 	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
+	pvctl_write_to_path(is_platform ? PLATFORM_LOG_CTRL_PATH : path, buf,
+			    *len_ptr + size);
 
-	pvctl_write_to_path(is_platform ? PLATFORM_LOG_CTRL_PATH : path,
-			    (char *)lsmsg, lsmsg->len + sizeof(*lsmsg));
-
-	pv_buffer_drop(log_buf);
-	pv_buffer_drop(msg_buf);
-	return len;
+	return *len_ptr + size;
 }
 
 int pv_logserver_send_log(bool is_platform, char *platform, char *src,
@@ -1129,32 +1124,22 @@ static void pv_logserver_close(void)
 
 static void pv_logserver_send_cmd(log_cmd_code_t code, const char *data)
 {
-	struct logserver_log log = {
-		.code = LOG_PROTOCOL_CMD,
-	};
+	char buf[LOGSERVER_MAX_CMD_LEN] = { 0 };
+	char *p = buf;
+	int type = LOG_PROTOCOL_CMD;
+	int size = LOGSERVER_HEADER_LEN + sizeof(int) * 2;
 
-	static const unsigned int CMD_BUF_SIZE = 256;
-	char log_buf[CMD_BUF_SIZE];
-	memset(log_buf, 0, CMD_BUF_SIZE);
+	p = mempcpy(p, LOGSERVER_V2_HEADER, LOGSERVER_HEADER_LEN);
+	p = mempcpy(p, &type, sizeof(int));
+	int *len = (int *)p;
+	p += sizeof(int);
 
-	log.data.buf = (char *)log_buf;
-	log.data.len = CMD_BUF_SIZE;
-
-	log.data.len = snprintf(log.data.buf, log.data.len,
-				"{\"code\":%d,\"data\":\"%s\"}", code, data);
-
-	char msg_buf[CMD_BUF_SIZE];
-	memset(msg_buf, 0, CMD_BUF_SIZE);
-
-	struct logserver_msg *lsmsg = (struct logserver_msg *)msg_buf;
-	lsmsg->len = CMD_BUF_SIZE - sizeof(*lsmsg);
-
-	logserver_msg_fill(&log, lsmsg);
+	*len = snprintf(p, LOGSERVER_MAX_CMD_LEN - size,
+			"{\"code\":%d,\"data\":\"%s\"}", code, data);
 
 	char path[PATH_MAX] = { 0 };
 	pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-
-	pvctl_write_to_path(path, (char *)lsmsg, lsmsg->len + sizeof(*lsmsg));
+	pvctl_write_to_path(path, buf, *len + size);
 }
 
 void pv_logserver_transition(const char *rev)
