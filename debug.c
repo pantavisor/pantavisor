@@ -62,7 +62,7 @@ void pv_debug_start_shell()
 		return;
 	}
 
-	dprintf(con_fd, "Press [d] and [ENTER] for debug ash shell... ");
+	dprintf(con_fd, "Press ENTER] for debug ash shell... ");
 	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
 	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
 		dprintf(con_fd, "%d ", t);
@@ -72,7 +72,7 @@ void pv_debug_start_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN))
+	if (c[0] == '\n' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN))
 		shell_pid =
 			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
 }
