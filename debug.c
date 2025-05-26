@@ -37,6 +37,7 @@
 #include "paths.h"
 
 #include "utils/tsh.h"
+#include "utils/timer.h"
 
 #define MODULE_NAME "debug"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -46,6 +47,8 @@
 
 static pid_t db_pid = -1;
 static pid_t shell_pid = -1;
+
+static struct timer timer_debug_shell_timeout;
 
 void pv_debug_start_shell()
 {
@@ -62,7 +65,7 @@ void pv_debug_start_shell()
 		return;
 	}
 
-	dprintf(con_fd, "Press [d] and [ENTER] for debug ash shell... ");
+   	dprintf(con_fd, "Press [d] and [ENTER] for debug ash shell... ");
 	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
 	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
 		dprintf(con_fd, "%d ", t);
@@ -72,14 +75,27 @@ void pv_debug_start_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN))
+	if (c[0] == 'd' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN)) {
 		shell_pid =
 			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+
+		pv_log(DEBUG, "DEBUG SHELL started with pid %d", shell_pid);
+
+		pv_config_set_debug_shell_active(true);
+
+		timer_start(&timer_debug_shell_timeout,
+			    pv_config_get_int(PV_DEBUG_SHELL_TIMEOUT), 0,
+			    RELATIV_TIMER);
+
+		pv_log(DEBUG, "DEBUG SHELL timeout started with %d secs",
+		       PV_DEBUG_SHELL_TIMEOUT);
+	}
 }
 
 void pv_debug_wait_shell()
 {
-	if (shell_pid > -1) {
+	if (shell_pid > -1 &&
+         pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
 		pv_log(WARN, "waiting for debug shell with pid %d to exit",
 		       shell_pid);
 		waitpid(shell_pid, NULL, 0);
@@ -146,6 +162,39 @@ void pv_debug_check_ssh_running()
 		pv_debug_stop_ssh();
 }
 
+void pv_debug_shell_stop()
+{
+	pv_config_set_debug_shell_active(false);
+}
+
+bool pv_debug_check_shell_running()
+{
+    int status;
+    struct timer_state timeout_debug_shell;
+
+    timeout_debug_shell = timer_current_state(&timer_debug_shell_timeout);
+    pid_t pid = waitpid(shell_pid, &status, WNOHANG);
+
+    if(pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+
+		if (pid == shell_pid) {
+			pv_log(INFO, "DEBUG SHELL (pid=%d) ended with %d",
+			       shell_pid, WEXITSTATUS(status));
+			shell_pid = -1;
+			pv_config_set_debug_shell_active(false);
+            return false;
+		}
+
+		if (timeout_debug_shell.fin) {
+			pv_log(WARN,
+			       "DEBUG SHELL timeout reached, stopping shell with pid %d",
+			       shell_pid);
+			pv_config_set_debug_shell_active(false);
+            return true;
+		}
+    } else return false;
+}
+
 bool pv_debug_is_ssh_pid(pid_t pid)
 {
 	return (pid != -1) && (pid == db_pid);
@@ -170,6 +219,9 @@ void pv_debug_stop_ssh()
 {
 }
 void pv_debug_check_ssh_running()
+{
+}
+void pv_debug_check_shell_running()
 {
 }
 
