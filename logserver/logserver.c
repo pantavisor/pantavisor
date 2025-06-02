@@ -388,6 +388,8 @@ static struct logserver_fd *logserver_fd_new(char *platform, char *src, int fd,
 	lfd->fd = fd;
 	lfd->lvl = level;
 
+	fcntl(fd, F_SETFL, O_NONBLOCK);
+
 	dl_list_init(&lfd->list);
 
 	return lfd;
