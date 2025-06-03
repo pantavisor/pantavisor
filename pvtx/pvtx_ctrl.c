@@ -360,8 +360,18 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 
 	send_header(ctrl, &head);
 	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
-	while (pv_pvtx_tar_content_read_block(con, buf) > 0) {
-		pv_fs_file_write_nointr(ctrl->sock, buf, PVTX_TAR_BLOCK_SIZE);
+
+	ssize_t written = 0;
+
+	while (written < con->size) {
+		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf);
+		if (cur <= 0)
+			break;
+
+		ssize_t to_write = cur;
+		if ((written + cur) > con->size)
+			to_write = con->size - written;
+		written += pv_fs_file_write_nointr(ctrl->sock, buf, to_write);
 		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
 	}
 
