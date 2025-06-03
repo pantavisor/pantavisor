@@ -307,6 +307,8 @@ set(PVTX_COMMON_SOURCES
 	utils/pvsignals.c
 	utils/tsh.c
 	utils/fs.c
+	pvtx/pvtx_utils/base64.c
+	pvtx/pvtx_utils/sha256-internal.c
 	pvtx/pvtx_ctrl.c
 	pvtx/pvtx_ctrl.h
 	pvtx/pvtx_error.c
@@ -328,8 +330,6 @@ IF (PANTAVISOR_PVTX)
 
 find_library(PANTAVISOR_PVTX_THTTP thttp)
 find_library(PANTAVISOR_PVTX_ZLIB z)
-find_path(PANTAVISOR_PVTX_MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
-find_library(PANTAVISOR_PVTX_MBEDCRYPTO_LIBRARY mbedcrypto)
 
 add_executable(pvtx
 	${PVTX_COMMON_SOURCES}
@@ -338,11 +338,9 @@ target_compile_definitions(pvtx PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(pvtx PRIVATE
 	${CMAKE_SOURCE_DIR}
 	${CMAKE_SOURCE_DIR}/utils
-	${PANTAVISOR_PVTX_MBEDTLS_INCLUDE_DIRS}
 )
 target_link_libraries(pvtx
 	${PANTAVISOR_PVTX_THTTP}
-	${PANTAVISOR_PVTX_MBEDCRYPTO_LIBRARY}
 	${PANTAVISOR_PVTX_ZLIB}
 )
 install(TARGETS pvtx DESTINATION /usr/bin)
@@ -354,8 +352,6 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 
 find_library(PANTAVISOR_PVTX_STATIC_THTTP thttp)
 find_library(PANTAVISOR_PVTX_STATIC_ZLIB z)
-find_path(PANTAVISOR_PVTX_STATIC_MBEDTLS_INCLUDE_DIRS mbedtls/ssl.h)
-find_library(PANTAVISOR_PVTX_STATIC_MBEDCRYPTO_LIBRARY mbedcrypto)
 
 add_executable(pvtx-static
 	${PVTX_COMMON_SOURCES}
@@ -363,11 +359,9 @@ add_executable(pvtx-static
 target_compile_definitions(pvtx-static PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(pvtx-static PRIVATE
 	${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils
-	${PANTAVISOR_PVTX_MBEDTLS_INCLUDE_DIRS}
 )
 target_link_libraries(pvtx-static
 	${PANTAVISOR_PVTX_STATIC_THTTP}
-	${PANTAVISOR_PVTX_STATIC_MBEDCRYPTO_LIBRARY}
 	${PANTAVISOR_PVTX_STATIC_ZLIB}
 )
 target_link_options(pvtx-static PRIVATE

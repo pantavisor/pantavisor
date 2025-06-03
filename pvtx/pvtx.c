@@ -230,8 +230,6 @@ static int cmd_queue_remove(int argc, char **argv)
 		return 1;
 	}
 
-	printf("adding remove operation for %s to queue\n", argv[3]);
-
 	struct pv_pvtx_error err = { 0 };
 	int ret = pv_pvtx_queue_remove(argv[3], &err);
 	if (ret != 0)
@@ -267,11 +265,10 @@ static int cmd_queue_process(int argc, char **argv)
 	char *var[3] = { 0 };
 	struct pv_pvtx_error err = { 0 };
 
+	// NOTE: the third argument is the first important for the function
+	// because 0: program name; 1: "queue"; 2: "process"
 	for (int i = 3, j = 0; i < argc; ++i) {
-		printf("argv[%d] = %s\n", i, argv[i]);
 		var[j] = argv[i];
-
-		printf("var[%d]  = %s\n\n", j, var[j]);
 		j++;
 	}
 

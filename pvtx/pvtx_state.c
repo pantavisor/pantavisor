@@ -30,8 +30,7 @@
 #include "pvtx_state.h"
 #include "pvtx_jsmn_utils.h"
 #include "utils/fs.h"
-
-#include <mbedtls/base64.h>
+#include "pvtx_utils/base64.h"
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -67,70 +66,8 @@ static bool is_signature(const char *part)
 	return !strncmp(part, PVTX_STATE_SIGS_STR, strlen(PVTX_STATE_SIGS_STR));
 }
 
-static char *b64url_to_b64(const char *b64url, size_t len)
-{
-	size_t new_len = 0;
-
-	switch (len % 4) {
-	case 0:
-		new_len = len;
-		break;
-	case 2:
-		new_len = len + 2;
-		break;
-	case 3:
-		new_len = len + 1;
-		break;
-	default:
-		return NULL;
-	}
-
-	char *b64 = calloc(new_len + 1, sizeof(char));
-	if (!b64)
-		return NULL;
-
-	for (size_t i = 0; i < new_len; i++) {
-		if (i < len) {
-			if (b64url[i] == '_')
-				b64[i] = '/';
-			if (b64url[i] == '-')
-				b64[i] = '+';
-			else
-				b64[i] = b64url[i];
-		} else {
-			b64[i] = '=';
-		}
-	}
-
-	return b64;
-}
-
-static char *b64url_decode(const char *b64url, size_t len)
-{
-	char *b64 = b64url_to_b64(b64url, len);
-	if (!b64)
-		return NULL;
-
-	size_t size = 0;
-	mbedtls_base64_decode(NULL, 0, &size, (unsigned char *)b64,
-			      strlen(b64));
-
-	char *str = calloc(size + 1, sizeof(char));
-	if (!str)
-		goto out;
-
-	mbedtls_base64_decode((unsigned char *)str, size, &size,
-			      (unsigned char *)b64, strlen(b64));
-
-out:
-	if (b64)
-		free(b64);
-
-	return str;
-}
-
-static const char *token_to_str(struct pv_pvtx_state_data *std,
-					     int idx, int *size)
+static const char *token_to_str(struct pv_pvtx_state_data *std, int idx,
+				int *size)
 {
 	if (!std)
 		return NULL;
@@ -161,7 +98,7 @@ void pvtx_state_data_free(struct pv_pvtx_state_data *std)
 }
 
 static int search_tkn(struct pv_pvtx_state_data *std, const char *name,
-				 int from)
+		      int from)
 {
 	if (from >= std->tkn_len)
 		return -1;
@@ -213,7 +150,7 @@ err:
 }
 
 static int state_parse(struct pv_pvtx_state_data *std, const char *str,
-			    size_t len)
+		       size_t len)
 {
 	std->tkn = pv_pvtx_jsmn_parse_data(str, len, &std->tkn_len);
 	if (!std->tkn)
@@ -241,12 +178,14 @@ static int state_parse(struct pv_pvtx_state_data *std, const char *str,
 	return 0;
 }
 
-static struct pv_pvtx_state_data *pvtx_state_data_new(const char *str, size_t len)
+static struct pv_pvtx_state_data *pvtx_state_data_new(const char *str,
+						      size_t len)
 {
 	if (!str)
 		return NULL;
 
-	struct pv_pvtx_state_data *std = calloc(1, sizeof(struct pv_pvtx_state_data));
+	struct pv_pvtx_state_data *std =
+		calloc(1, sizeof(struct pv_pvtx_state_data));
 	if (!std)
 		return NULL;
 
@@ -390,8 +329,7 @@ int pv_pvtx_state_add(struct pv_pvtx_state *dst, struct pv_pvtx_state *src)
 	return 0;
 }
 
-static void remove_members(struct pv_pvtx_state_data *std,
-				      const char *exp)
+static void remove_members(struct pv_pvtx_state_data *std, const char *exp)
 {
 	int i = 1;
 	int no_top = 0;
@@ -474,11 +412,12 @@ static int remove_signed(struct pv_pvtx_state *st, const char *part)
 	int prot_data = prot_idx + 1;
 
 	jsmntok_t *t = &std->tkn[prot_data];
-	char *sig = b64url_decode(std->data + t->start,
-					     t->end - t->start);
+	size_t dec_len = 0;
+	char *sig = (char *)base64_url_decode(std->data + t->start,
+					      t->end - t->start, &dec_len);
 
 	int tkn_len = 0;
-	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(sig, strlen(sig), &tkn_len);
+	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(sig, dec_len, &tkn_len);
 
 	for (int i = 0; i < tkn_len; i++) {
 		if (strncmp(sig + tkn[i].start, "include", strlen("include")) &&
@@ -496,6 +435,8 @@ static int remove_signed(struct pv_pvtx_state *st, const char *part)
 			j++;
 		}
 	}
+	free(sig);
+
 	return 0;
 }
 
@@ -508,8 +449,7 @@ int pv_pvtx_state_remove(struct pv_pvtx_state *st, const char *part)
 	int ret = 0;
 	if (strchr(part, '/')) {
 		if (is_signature(part))
-			remove_signed(
-				st, part + strlen(PVTX_STATE_SIGS_STR));
+			remove_signed(st, part + strlen(PVTX_STATE_SIGS_STR));
 		else
 			ret = remove_part(st, part);
 	} else {
@@ -552,8 +492,7 @@ static char *write_signatures(char *p, struct pv_pvtx_state_data *std)
 		if (is_signature(tkn_name)) {
 			p = mempcpy(p, "\"", 1);
 			int len = 0;
-			const char *str =
-				token_to_str(std, i, &len);
+			const char *str = token_to_str(std, i, &len);
 			p = mempcpy(p, str, len);
 			p = mempcpy(p, "\":", 2);
 

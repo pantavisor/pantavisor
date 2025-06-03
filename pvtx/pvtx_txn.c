@@ -31,13 +31,12 @@
 #include "pvtx_ctrl.h"
 #include "pvtx_tar.h"
 #include "pvtx_jsmn_utils.h"
+#include "pvtx_utils/sha256_i.h"
 
 #ifndef JSMN_HEADER
 #define JSMN_HEADER
 #endif
 #include "jsmn/jsmn.h"
-
-#include <mbedtls/sha256.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -48,7 +47,7 @@
 #include <unistd.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <glob.h>
+#include <dirent.h>
 #include <linux/limits.h>
 #include <sys/random.h>
 
@@ -201,11 +200,20 @@ static void write_object_from_content(const char *path,
 		return;
 
 	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
-	while (pv_pvtx_tar_content_read_block(con, buf) > 0) {
-		pv_fs_file_write_nointr(fd, buf, PVTX_TAR_BLOCK_SIZE);
+
+	ssize_t written = 0;
+
+	while (written < con->size) {
+		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf);
+		if (cur <= 0)
+			break;
+
+		ssize_t to_write = cur;
+		if ((written + cur) > con->size)
+			to_write = con->size - written;
+		written += pv_fs_file_write_nointr(fd, buf, to_write);
 		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
 	}
-
 out:
 	close(fd);
 }
@@ -370,17 +378,15 @@ static void init_pvtxdir()
 	pv_fs_mkdir_p(pvtxdir, 0755);
 }
 
-static void get_sha256(const unsigned char *data, size_t len,
+static int get_sha256(const unsigned char *data, size_t len,
 		       unsigned char *hash)
 {
-	mbedtls_sha256_context ctx;
-	mbedtls_sha256_init(&ctx);
-	mbedtls_sha256_starts(&ctx, 0);
-	mbedtls_sha256_update(&ctx, data, len);
 
-	mbedtls_sha256_finish(&ctx, hash);
+	struct sha256_state state = { 0 };
+	sha256_init(&state);
+	sha256_process(&state, data, len);
 
-	mbedtls_sha256_free(&ctx);
+	return sha256_done(&state, hash);
 }
 
 static char *get_rev_name(const char *data, size_t len)
@@ -388,7 +394,8 @@ static char *get_rev_name(const char *data, size_t len)
 	char *rev = NULL;
 
 	unsigned char hash[32] = { 0 };
-	get_sha256((unsigned char *)data, len, hash);
+	if (get_sha256((unsigned char *)data, len, hash) != 0)
+		goto out;
 
 	char hash8[9] = { 0 };
 	for (int i = 0; i < 4; ++i)
@@ -438,6 +445,9 @@ static int write_state_json(const char *deploy_path)
 	char dst[PATH_MAX] = { 0 };
 	pv_fs_path_concat(dst, 2, deploy_path, PVTX_TXN_DST_JSON);
 
+	if (pv_fs_path_exist(dst))
+		pv_fs_path_remove(dst, false);
+
 	int ret = pv_fs_file_write(dst, data, size);
 	free(data);
 
@@ -459,6 +469,9 @@ static int create_element(const char *deploy_path, const char *obj_path,
 
 	char local_obj[PATH_MAX] = { 0 };
 	pv_fs_path_concat(local_obj, 2, deploy_path, file_path);
+
+	if (pv_fs_path_exist(local_obj))
+		pv_fs_path_remove(local_obj, false);
 
 	if (is_obj) {
 		char real_obj[PATH_MAX] = { 0 };
@@ -551,7 +564,9 @@ static int create_link(const char *deploy_path, const char *file,
 	char bsp_file[PATH_MAX] = { 0 };
 	pv_fs_path_concat(bsp_file, 3, deploy_path, "bsp", file);
 
-	pv_fs_path_remove(link_path, false);
+	if (pv_fs_path_exist(link_path))
+		pv_fs_path_remove(link_path, false);
+
 	return link(bsp_file, link_path);
 }
 
@@ -594,8 +609,9 @@ static int create_bsp_link(const char *deploy_path)
 		}
 
 		char *k = json + tkn[i].start;
+		int k_sz = tkn[i].end - tkn[i].start;
 		for (int j = 0; j < keys_len; j++) {
-			if (strncmp(k, keys[j], strlen(keys[j])))
+			if (strncmp(k, keys[j], k_sz))
 				continue;
 
 			char *file = token_to_str(json, &tkn[i + 1]);
@@ -741,10 +757,8 @@ int pv_pvtx_txn_add_tar_from_fd(int fd, struct pv_pvtx_error *err)
 int pv_pvtx_txn_abort(struct pv_pvtx_error *err)
 {
 	struct pvtx_txn *txn = pvtx_load();
-	if (!txn) {
-		pv_pvtx_error_set(err, -1, "couldn't load current transaction");
-		return -1;
-	}
+	if (!txn)
+		return 0;
 
 	txn->status = PVTX_TXN_STATUS_ABORTED;
 	int ret = pvtx_save(txn, sizeof(struct pvtx_txn));
@@ -916,6 +930,9 @@ int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
 		.error = 0,
 	};
 
+	if (!pv_fs_path_exist(queue_path))
+		pv_fs_mkdir_p(queue_path, 0775);
+
 	memccpy(q.queue, queue_path, '\0', PATH_MAX);
 	memccpy(q.txn.obj, obj_path, '\0', PATH_MAX);
 
@@ -1000,18 +1017,17 @@ static int queue_add_tar(struct pv_pvtx_tar *tar, const char *name,
 		return -1;
 	}
 
-	int ret = -1;
+	int ret = 0;
 	struct pv_pvtx_tar_content con = { 0 };
 
-	while (pv_pvtx_tar_next(tar, &con)) {
+	while (pv_pvtx_tar_next(tar, &con) == 0) {
 		if (!strncmp(con.name, "json", strlen(con.name))) {
 			const char *part = name ? name : "package";
 
 			char fname[PATH_MAX] = { 0 };
 			queue_get_json_path(part, fname);
+
 			write_object_from_content(fname, &con);
-			if (ret != 0)
-				goto out;
 		} else if (!strncmp(con.name, obj_pfx, strlen(obj_pfx))) {
 			ret = add_object_local(&con, q->txn.obj);
 			if (ret != 0) {
@@ -1058,14 +1074,16 @@ int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
 	}
 
 	struct pv_pvtx_tar *tar = pv_pvtx_tar_from_path(part, type, err);
-	if (!tar)
+	if (!tar) {
 		return -1;
+	}
 
 	char bname[NAME_MAX] = { 0 };
 	pv_fs_basename(part, bname);
 
 	int ret = queue_add_tar(tar, bname, err);
 	pv_pvtx_tar_free(tar);
+
 	return ret;
 }
 
@@ -1096,70 +1114,77 @@ int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err)
 int pv_pvtx_queue_process(const char *from, const char *queue_path,
 			  const char *obj_path, struct pv_pvtx_error *err)
 {
+	pv_pvtx_error_clear(err);
 	if (queue_path && obj_path) {
 		int ret = pv_pvtx_queue_new(queue_path, obj_path, err);
 		if (ret != 0)
 			return ret;
 	}
 
-	if (!pv_fs_path_exist(queue_path)) {
-		pv_pvtx_error_set(err, 1, "queue %s does not exist");
-		return 1;
-	}
-
-	if (from) {
-		int ret = pv_pvtx_txn_begin(from, obj_path, err);
-		if (ret != 0)
-			return ret;
-	}
-
-	if (!is_active_txn()) {
-		pv_pvtx_error_set(err, 3, "no active transaction");
-		return 3;
-	}
-
+	int ret = 0;
 	struct pvtx_queue *q = pvtx_load();
 	if (!q) {
 		pv_pvtx_error_set(err, -1, "couldn't load current config");
 		return -1;
 	}
 
-	glob_t gb = { 0 };
-
-	char glob_exp[PATH_MAX] = { 0 };
-	pv_fs_path_concat(glob_exp, 2, queue_path, "[0-9][0-9][0-9]__*");
-
-	int ret = glob(glob_exp, 0, NULL, &gb);
-	if (ret) {
-		if (ret == GLOB_NOSPACE)
-			pv_pvtx_error_set(err, ret, "no enough space for glob");
-		if (ret == GLOB_ABORTED)
-			pv_pvtx_error_set(err, ret, "glob aborted");
-		if (ret == GLOB_NOMATCH)
-			pv_pvtx_error_set(err, ret, "glob not match");
-		return ret;
+	if (!pv_fs_path_exist(q->queue)) {
+		pv_pvtx_error_set(err, 1, "queue %s does not exist");
+		ret = 1;
+		goto out;
 	}
 
-	for (int i = 0; i < gb.gl_pathc; i++) {
-		char *ext = strrchr(gb.gl_pathv[i], '.');
+	if (from) {
+		ret = pv_pvtx_txn_begin(from, q->txn.obj, err);
+		if (ret != 0)
+			goto out;
+	}
+
+	if (!is_active_txn()) {
+		pv_pvtx_error_set(err, 3, "no active transaction");
+		ret = 3;
+		goto out;
+	}
+
+	struct dirent **entry = NULL;
+
+	int len = scandir(q->queue, &entry, NULL, alphasort);
+	if (len < 0) {
+		pv_pvtx_error_set(err, -1, "couldn't scan directory %s",
+				  q->queue);
+		return err->code;
+	}
+
+	for (int i = 0; i < len; i++) {
+		const char *fname = entry[i]->d_name;
+		if (!strncmp(fname, ".", strlen(fname)) ||
+		    !strncmp(fname, "..", strlen(fname))) {
+			continue;
+		}
+		char *ext = strrchr(fname, '.');
 		if (!ext || strncmp(ext, ".remove", strlen(ext))) {
 			char complete_path[PATH_MAX] = { 0 };
-			pv_fs_path_concat(complete_path, 2, gb.gl_pathv[i],
+			pv_fs_path_concat(complete_path, 3, q->queue, fname,
 					  "json");
 			if (pv_pvtx_txn_add_from_disk(complete_path, err) != 0)
-				goto out;
+				break;
 		} else {
-			char base[NAME_MAX] = { 0 };
-			pv_fs_basename(gb.gl_pathv[i], base);
-			*strchr(base, '.') = '\0';
-			char *part = &base[5];
+			char name[NAME_MAX] = { 0 };
+			memccpy(name, fname, '\0', NAME_MAX);
+			*strchr(name, '.') = '\0';
+			char *part = &name[strlen("NNN__")];
 			if (pv_pvtx_txn_remove(part, err) != 0)
-				goto out;
+				break;
 		}
 	}
-	pv_pvtx_error_clear(err);
-out:
-	globfree(&gb);
 
-	return err->code;
+	for (int i = 0; i < len; i++)
+		free(entry[i]);
+	free(entry);
+
+out:
+	if (q)
+		free(q);
+
+	return 0;
 }
