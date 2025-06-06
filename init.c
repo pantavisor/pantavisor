@@ -387,6 +387,8 @@ int main(int argc, char *argv[])
 {
 	char *config_path = NULL, *cmdline = NULL;
 
+	fprintf(stderr, "Pantavisor starting...\n");
+
 	signal(SIGPIPE, SIG_IGN);
 
 	pv_system_set_process_name("pantavisor");
