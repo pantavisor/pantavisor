@@ -555,7 +555,17 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
 	{
-		if (v->plat == p)
+		if (v->plat == p && v->type != VOL_OVL)
+			if (pv_volume_mount(v)) {
+				pv_log(ERROR, "volume %s could not be mounted",
+				       v->name);
+				return -1;
+			}
+	}
+
+	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
+	{
+		if (v->plat == p && v->type == VOL_OVL)
 			if (pv_volume_mount(v)) {
 				pv_log(ERROR, "volume %s could not be mounted",
 				       v->name);
