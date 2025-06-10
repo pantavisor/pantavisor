@@ -129,4 +129,6 @@ static inline bool pv_is_sha256_hex_string(const char *value)
 	return issha;
 }
 
+char *pv_strvcat(const char *first_string, ...);
+
 #endif /* UTILS_PV_STRING_H_ */

@@ -102,12 +102,14 @@ struct pv_cont_ctrl {
 
 enum {
 	PV_CONT_LXC,
+	PV_CONT_RUNC,
 	//	PV_CONT_DOCKER,
 	PV_CONT_MAX
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 	{ "lxc", NULL, NULL, NULL, NULL, NULL },
+	{ "runc", NULL, NULL, NULL, NULL, NULL },
 	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 

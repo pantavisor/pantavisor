@@ -32,6 +32,7 @@ typedef enum {
 	VOL_PERMANENT,
 	VOL_REVISION,
 	VOL_BOOT,
+	VOL_OVL,
 	VOL_UNKNOWN
 } pv_volume_t;
 
@@ -41,9 +42,12 @@ struct pv_volume {
 	char *src;
 	char *dest;
 	pv_volume_t type;
+	char *ovllower;
+	char *ovlrw;
 	int loop_fd;
 	int file_fd;
 	char *umount_cmd;
+	int mounted;
 	struct pv_platform *plat;
 	struct pv_disk *disk;
 	struct dl_list list; // pv_volume
@@ -53,6 +57,8 @@ void pv_volume_free(struct pv_volume *v);
 
 struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
 					  char *disk);
+struct pv_volume *pv_volume_add_with_ovl(struct pv_state *s, char *name,
+					 char *lower, char *rw);
 struct pv_volume *pv_volume_add(struct pv_state *s, char *name);
 
 int pv_volume_mount(struct pv_volume *v);

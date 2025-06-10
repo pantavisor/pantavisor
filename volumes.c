@@ -67,11 +67,86 @@ static const char *pv_volume_type_str(pv_volume_t vt)
 		return "REVISION";
 	case VOL_BOOT:
 		return "TMPFS";
+	case VOL_OVL:
+		return "OVL";
 	default:
 		return "UNKNOWN";
 	}
 
 	return "UNKNOWN";
+}
+
+static char *pv_volume_lowertransform(const char *originalString,
+				      const char *prependWithSlash,
+				      const char *prependWithoutSlash)
+{
+	// Make a mutable copy of the original string as strtok modifies it
+	char *tempString = strdup(originalString);
+	if (tempString == NULL) {
+		pv_log(ERROR,
+		       "Failed to duplicate string in pv_volume_lowertransform.");
+		return NULL;
+	}
+
+	// Calculate an estimated size for the result string.
+	// This is a rough estimate and might need adjustment for very long strings
+	// or many small parts. A more robust solution might involve realloc.
+	size_t estimatedSize =
+		strlen(originalString) +
+		(strlen(prependWithSlash) * (strlen(originalString) / 2 + 1)) +
+		(strlen(prependWithoutSlash) *
+		 (strlen(originalString) / 2 + 1)) +
+		1;
+	char *result = (char *)malloc(estimatedSize);
+	if (result == NULL) {
+		pv_log(ERROR,
+		       "Failed to allocate memory for result in pv_volume_lowertransform.");
+		free(tempString);
+		return NULL;
+	}
+	result[0] = '\0'; // Initialize as empty string
+
+	char *part;
+	char *rest = tempString;
+	int firstPart = 1;
+
+	while ((part = strtok(rest, ":")) != NULL) {
+		if (!firstPart) {
+			strcat(result, ":");
+		}
+
+		// Check if the current part starts with '/'
+		if (part[0] == '/') {
+			// Do not prepend anything, just append the part
+			strcat(result, part);
+		}
+		// Check if the current part contains a '/' (but doesn't start with it)
+		else if (strchr(part, '/') != NULL) {
+			strcat(result, prependWithSlash);
+			strcat(result, part);
+		}
+		// If no '/' at all
+		else {
+			strcat(result, prependWithoutSlash);
+			strcat(result, part);
+		}
+		firstPart = 0;
+		rest = NULL; // Subsequent calls to strtok should pass NULL
+	}
+
+	free(tempString); // Free the duplicated string
+
+	// Reallocate to the exact size to save memory if estimatedSize was too large
+	char *finalResult = (char *)realloc(result, strlen(result) + 1);
+	if (finalResult == NULL) {
+		// Log an error if realloc fails, but return the potentially oversized
+		// but valid result to avoid data loss.
+		pv_log(ERROR,
+		       "Failed to reallocate memory to final size in pv_volume_lowertransform. Returning potentially oversized result.");
+		return result;
+	}
+
+	return finalResult;
 }
 
 void pv_volume_free(struct pv_volume *v)
@@ -135,6 +210,28 @@ struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
 	return v;
 }
 
+struct pv_volume *pv_volume_add_with_ovl(struct pv_state *s, char *name,
+					 char *lower, char *rw)
+{
+	struct pv_volume *v = calloc(1, sizeof(struct pv_volume));
+	struct pv_disk *d, *tmp;
+
+	if (!v)
+		return NULL;
+
+	v->type = VOL_OVL;
+	v->name = strdup(name);
+	v->ovllower = strdup(lower);
+	v->ovlrw = strdup(rw);
+
+	dl_list_init(&v->list);
+	dl_list_add_tail(&s->volumes, &v->list);
+
+	pv_log(INFO, "Added an ovl volume to plat list %s", name);
+
+	return v;
+}
+
 struct pv_volume *pv_volume_add(struct pv_state *s, char *name)
 {
 	return pv_volume_add_with_disk(s, name, NULL);
@@ -158,6 +255,9 @@ int pv_volume_mount(struct pv_volume *v)
 	char *command;
 	char *disk_name = NULL;
 	char *verity_options = NULL;
+
+	if (v->mounted)
+		return 0;
 
 	if (v->disk) {
 		disk_name = v->disk->name;
@@ -206,6 +306,48 @@ int pv_volume_mount(struct pv_volume *v)
 	pv_log(DEBUG, "mounting '%s' from platform '%s'", v->name, partname);
 
 	switch (v->type) {
+	case VOL_OVL:
+		char upperdir[PATH_MAX] = { 0 };
+		char workdir[PATH_MAX] = { 0 };
+		char platvolprefix[PATH_MAX] = { 0 };
+
+		sprintf(platvolprefix, "/volumes/%s/", v->plat->name);
+
+		char *volopt = pv_volume_lowertransform(v->ovllower, "/volumes/",
+							platvolprefix);
+		if (!volopt) {
+			ret = -2;
+			goto brkerr1;
+		}
+		pv_fs_mkdir_p(mntpoint, 0755);
+
+		sprintf(workdir, "/volumes/%s/%s/work", v->plat->name,
+			v->ovlrw);
+		sprintf(upperdir, "/volumes/%s/%s/upper", v->plat->name,
+			v->ovlrw);
+		pv_fs_mkdir_p(upperdir, 0755);
+		pv_fs_mkdir_p(workdir, 0755);
+
+		char *mntopt =
+			pv_strvcat("lowerdir=", volopt, ",upperdir=", upperdir,
+				   ",workdir=", workdir, NULL);
+		if (!mntopt) {
+			ret = -3;
+			pv_log(ERROR, "Cannot produce mntopt err=%s",
+			       strerror(errno));
+			goto brkerr2;
+		}
+
+		pv_log(DEBUG, "Mounting volume %s to %s with mntopt=%s", "overlay",
+		       mntpoint, mntopt);
+
+		ret = mount("overlay", mntpoint, "overlay", 0, mntopt);
+
+		free(mntopt);
+	brkerr1:
+		free(volopt);
+	brkerr2:
+		break;
 	case VOL_LOOPIMG:
 		fstype = strrchr(v->name, '.');
 		fstype++;
@@ -349,6 +491,7 @@ int pv_volume_mount(struct pv_volume *v)
 	v->file_fd = file_fd;
 	if (umount_cmd)
 		v->umount_cmd = strdup(umount_cmd);
+	v->mounted = 1;
 
 out:
 	if (umount_cmd)
