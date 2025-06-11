@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <unistd.h>
 
 static int cmd_begin(int argc, char **argv);
@@ -101,8 +102,13 @@ static int cmd_begin(int argc, char **argv)
 	char *from = NULL;
 	char *obj_path = NULL;
 
-	if (argc > 2)
-		from = argv[2];
+	if (argc < 3) {
+		printf("Missing arguments: base_rev, empty or \"\" is required\n");
+		return -1;
+	}
+
+	from = argv[2];
+
 	if (argc > 3)
 		obj_path = argv[3];
 
@@ -114,8 +120,10 @@ static int cmd_begin(int argc, char **argv)
 }
 static int cmd_add(int argc, char **argv)
 {
-	if (argc < 2)
+	if (argc < 3) {
+		printf("Missing argument: a file is needed or -\n");
 		return -1;
+	}
 
 	struct pv_pvtx_error err = { 0 };
 	int ret = 0;
@@ -201,7 +209,46 @@ static int cmd_deploy(int argc, char **argv)
 
 static int cmd_help(int argc, char **argv)
 {
-	printf("help:\n");
+	printf("Usage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
+	printf("Commands:\n");
+
+	printf("  %-22s", "begin <base> [object]");
+	printf("Creates a new transaction.\n");
+	printf("%-24s%s\n", " ",
+	       "The first argument <base> could be a real revision,");
+	printf("%-24s%s\n", " ",
+	       "\"\" (empty string, use current rev) or \"empty\" (empty revision).");
+	printf("%-24s%s\n", " ",
+	       "Transactions created without an object_path are called remote");
+	printf("%-24s%s\n", " ",
+	       "transactions and its objects sent directly to the pv-ctrl socket.");
+	printf("  %-22s", "add <file> or -");
+	printf("Adds a json or tarball to the current transaction.\n");
+	printf("%-24s%s\n", " ",
+	       "Alternatively '-' could be used to read from stdin.");
+	printf("  %-22s", "abort");
+	printf("Commit transaction, valid only for remote transactions.\n");
+	printf("  %-22s", "commit");
+	printf("Show the current state json.\n");
+	printf("  %-22s", "show");
+	printf("Show the current state json.\n");
+	printf("  %-22s", "deploy <directory>");
+	printf("Deploy the current transaction in the given directory.\n");
+	printf("  %-22s", "help <file>");
+	printf("Show this help and ends.\n");
+	printf("  %-22s", "queue <sub-command>");
+	printf("This command uses the queue mode and requires a sub-command.\n\n");
+
+	printf("Queue Sub-commands:\n");
+	printf("  %-22s", "new <queue> <object>");
+	printf("Creates a new queue at queue and save objects at object.\n");
+	printf("  %-22s", "remove <path>");
+	printf("Remove the given part from the current queue.\n");
+	printf("  %-22s", "unpack <tarball>");
+	printf("Unpack the given tarbal.\n");
+	printf("  %-22s", "process");
+	printf("Process the current queue.\n");
+
 	return 0;
 }
 
