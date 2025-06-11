@@ -23,10 +23,6 @@
 #define _GNU_SOURCE
 #endif
 
-#ifndef JSMN_HEADER
-#define JSMN_HEADER
-#endif
-#include "jsmn/jsmn.h"
 #include "pvtx_state.h"
 #include "pvtx_jsmn_utils.h"
 #include "utils/fs.h"

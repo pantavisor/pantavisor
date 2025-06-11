@@ -23,7 +23,10 @@
 #ifndef PV_PVTX_JSMN_UTILS_H
 #define PV_PVTX_JSMN_UTILS_H
 
-#include "jsmn/jsmn.h"
+#ifndef JSMN_HEADER
+#define JSMN_HEADER
+#endif
+#include "pvtx_utils/jsmn.h"
 
 #include <stdbool.h>
 #include <stddef.h>

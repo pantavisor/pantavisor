@@ -309,6 +309,7 @@ set(PVTX_COMMON_SOURCES
 	utils/fs.c
 	pvtx/pvtx_utils/base64.c
 	pvtx/pvtx_utils/sha256-internal.c
+	pvtx/pvtx_utils/jsmn.c
 	pvtx/pvtx_ctrl.c
 	pvtx/pvtx_ctrl.h
 	pvtx/pvtx_error.c
@@ -328,7 +329,6 @@ set(PVTX_COMMON_SOURCES
 
 IF (PANTAVISOR_PVTX)
 
-find_library(PANTAVISOR_PVTX_THTTP thttp)
 find_library(PANTAVISOR_PVTX_ZLIB z)
 
 add_executable(pvtx
@@ -339,10 +339,7 @@ target_include_directories(pvtx PRIVATE
 	${CMAKE_SOURCE_DIR}
 	${CMAKE_SOURCE_DIR}/utils
 )
-target_link_libraries(pvtx
-	${PANTAVISOR_PVTX_THTTP}
-	${PANTAVISOR_PVTX_ZLIB}
-)
+target_link_libraries(pvtx ${PANTAVISOR_PVTX_ZLIB})
 install(TARGETS pvtx DESTINATION /usr/bin)
 
 ENDIF() # PANTAVISOR_PVTX
@@ -350,7 +347,6 @@ ENDIF() # PANTAVISOR_PVTX
 IF (PANTAVISOR_PVTX_STATIC)
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 
-find_library(PANTAVISOR_PVTX_STATIC_THTTP thttp)
 find_library(PANTAVISOR_PVTX_STATIC_ZLIB z)
 
 add_executable(pvtx-static
@@ -360,10 +356,7 @@ target_compile_definitions(pvtx-static PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(pvtx-static PRIVATE
 	${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils
 )
-target_link_libraries(pvtx-static
-	${PANTAVISOR_PVTX_STATIC_THTTP}
-	${PANTAVISOR_PVTX_STATIC_ZLIB}
-)
+target_link_libraries(pvtx-static ${PANTAVISOR_PVTX_STATIC_ZLIB})
 target_link_options(pvtx-static PRIVATE
 	LINKER:-static
 	-static

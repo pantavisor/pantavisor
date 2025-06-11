@@ -33,11 +33,6 @@
 #include "pvtx_jsmn_utils.h"
 #include "pvtx_utils/sha256_i.h"
 
-#ifndef JSMN_HEADER
-#define JSMN_HEADER
-#endif
-#include "jsmn/jsmn.h"
-
 #include <stdlib.h>
 #include <string.h>
 #include <regex.h>
