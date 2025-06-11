@@ -4,9 +4,6 @@ cmake_minimum_required(VERSION 3.0)
 # Set the project name and version
 project(pantavisor VERSION 019)
 
-# subdirectories
-add_subdirectory(plugins)
-
 # include cmake packages
 include(FindPackageHandleStandardArgs)
 
@@ -31,6 +28,9 @@ set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
 # Pantavisor Runtime
 
 IF (PANTAVISOR_RUNTIME)
+
+# subdirectories
+add_subdirectory(plugins)
 
 ### Pantavisor links shared where possible
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")
