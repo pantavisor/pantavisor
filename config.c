@@ -249,7 +249,9 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_UPDATER_USE_TMP_OBJECTS", PV | OEM | RUN, 0,
 	  .value.b = false },
 	{ WDT_MODE, "PV_WDT_MODE", PV, 0, false, .value.i = WDT_SHUTDOWN },
-	{ INT, "PV_WDT_TIMEOUT", PV, 0, false, .value.i = 15 }
+	{ INT, "PV_WDT_TIMEOUT", PV, 0, false, .value.i = 15 },
+	{ BOOL, "PV_DEBUG_SHELL_ACTIVE", PV, 0, false, .value.b = false },
+	{ INT, "PV_DEBUG_SHELL_TIMEOUT", PV, 0, false, .value.i = 300 }
 };
 
 struct pv_config_alias {
@@ -477,6 +479,10 @@ void pv_config_set_debug_shell_autologin(bool shell)
 void pv_config_set_debug_ssh(bool ssh)
 {
 	_set_config_by_index_bool(PV_DEBUG_SSH, ssh, ARGS);
+}
+void pv_config_set_debug_shell_active(bool shell)
+{
+	_set_config_by_index_bool(PV_DEBUG_SHELL_ACTIVE, shell, ARGS);
 }
 
 log_server_output_mask_t pv_config_get_log_server_outputs()
