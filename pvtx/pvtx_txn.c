@@ -220,7 +220,7 @@ static int state_json_save(const char *from)
 	size_t json_len = 0;
 	struct pv_pvtx_state *st = NULL;
 
-	if (!from) {
+	if (strlen(from) == 0) {
 		struct pv_pvtx_ctrl *ctrl = pv_pvtx_ctrl_new(NULL);
 		json = pv_pvtx_ctrl_steps_get(ctrl, "current", &json_len);
 		pv_pvtx_ctrl_free(ctrl);
