@@ -249,6 +249,15 @@ static int cmd_help(int argc, char **argv)
 	printf("  %-22s", "process");
 	printf("Process the current queue.\n");
 
+	printf("Environment Variables:\n");
+	printf("  %-22s", "PVTXDIR");
+	printf("Temporary directory where PVTX store transaction related data\n");
+	printf("  %-22s", "PVTX_OBJECT_BUF_SIZE");
+	printf("Size of the buffer used to save objects. Min 512B max 10485760B (10M)\n");
+	printf("  %-22s", "PVTX_CTRL_BUF_SIZE");
+	printf("Size of the buffer used to get and post data to pv-ctrl.\n");
+	printf("%-24s%s\n", " ", "Min 16384B (16K) max 10485760B (10M)\n");
+
 	return 0;
 }
 
@@ -336,6 +345,12 @@ static int pv_pvtx_process_args(int argc, char **argv)
 
 	char *op = argv[1];
 	struct commands *cmd = &normal;
+
+	if (!strlen(op)) {
+		fprintf(stderr, "ERROR: empty command\n\n");
+		cmd_help(argc, argv);
+		exit(1);
+	}
 
 	if (!strncmp(op, "queue", strlen(op))) {
 		op = argv[2];

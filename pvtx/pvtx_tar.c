@@ -136,16 +136,23 @@ int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con)
 }
 
 ssize_t pv_pvtx_tar_content_read_block(struct pv_pvtx_tar_content *con,
-				       void *buf)
+				       void *buf, ssize_t size)
 {
-	if (con->read >= con->size)
+	if (con->read >= con->size || size < 1)
 		return 0;
 
-	memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
-	ssize_t size = read_nointr(con->priv, buf, PVTX_TAR_BLOCK_SIZE);
-	if (size > 0)
-		con->read += size;
-	return size;
+	ssize_t to_read = size;
+	if ((to_read + con->read) > con->size) {
+		to_read = con->size - con->read;
+		if (to_read % PVTX_TAR_BLOCK_SIZE)
+			to_read = (to_read | (PVTX_TAR_BLOCK_SIZE - 1)) + 1;
+	}
+
+	ssize_t read = read_nointr(con->priv, buf, to_read);
+	if (read > 0)
+		con->read += read;
+
+	return to_read;
 }
 
 ssize_t pv_pvtx_tar_content_read_object(struct pv_pvtx_tar_content *con,

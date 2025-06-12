@@ -26,6 +26,7 @@
 
 #include "utils/fs.h"
 #include "pvtx_ctrl.h"
+#include "pvtx_buffer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -35,6 +36,7 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/mman.h>
@@ -46,8 +48,11 @@
 #define PVTX_CTRL_GET_HEAD "GET %s HTTP/1.1\r\nHost: localhost\r\n\r\n\r\n"
 #define PVTX_CTRL_PUT_HEAD                                                     \
 	"PUT %s HTTP/1.1\r\nHost: localhost\r\nContent-type: %s\r\nContent-length: %jd\r\n\r\n"
-
-#define PVTX_CTRL_BUFF_SIZE (1024)
+#define PVTX_CTRL_BUFF_ENV "PVTX_CTRL_BUF_SIZE"
+// 16K
+#define PVTX_CTRL_BUFF_MIN (16384)
+// 10M
+#define PVTX_CTRL_BUFF_MAX (10485760)
 
 enum pvtx_ctrl_method {
 	PVTX_CTRL_METHOD_UNSET,
@@ -62,20 +67,31 @@ struct pv_pvtx_ctrl_header {
 	off_t clen;
 };
 
+struct pv_pvtx_buffer *get_buffer(struct pv_pvtx_error *err)
+{
+	struct pv_pvtx_buffer *buf =
+		pv_pvtx_buffer_from_env(PVTX_CTRL_BUFF_ENV, PVTX_CTRL_BUFF_MIN,
+					PVTX_CTRL_BUFF_MAX, 512);
+	if (!buf && err)
+		pv_pvtx_error_set(err, -1, "couldn't get buffer");
+
+	return buf;
+}
+
 static char *concatenate_header(const char *tmpl, ...)
 {
 	va_list list;
 	va_start(list, tmpl);
 
-	char *buf = NULL;
+	char *head = NULL;
 
-	int len = vasprintf(&buf, tmpl, list);
+	int len = vasprintf(&head, tmpl, list);
 	va_end(list);
 
 	if (len == -1)
 		return NULL;
 
-	return buf;
+	return head;
 }
 
 static char *header_to_str(struct pv_pvtx_ctrl_header *head)
@@ -103,7 +119,6 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 {
 	pv_pvtx_error_clear(&ctrl->error);
 
-	// const char *path = NULL;
 	if (!path) {
 		// checking both paths
 		if (pv_fs_path_exist(PVTX_CTRL_ROOT_SOCK))
@@ -248,56 +263,69 @@ static ssize_t get_content_length(const char *data)
 	if (!end)
 		return -1;
 
-	char buf[PVTX_CTRL_BUFF_SIZE] = { 0 };
-	memccpy(buf, beg, '\r', end - beg);
-	ssize_t len = strtol(buf, NULL, 10);
+	struct pv_pvtx_buffer *buf = pv_pvtx_buffer_new(end - beg + 1);
+	if (!buf)
+		return -1;
+
+	memccpy(buf->data, beg, '\r', end - beg);
+	ssize_t len = strtol(buf->data, NULL, 10);
+	pv_pvtx_buffer_free(buf);
 
 	if (errno == ERANGE)
 		return -ERANGE;
+
 	return len;
 }
 
 static char *read_data(struct pv_pvtx_ctrl *ctrl)
 {
-	char buf[PVTX_CTRL_BUFF_SIZE] = { 0 };
-
 	pv_pvtx_error_clear(&ctrl->error);
 
-	ssize_t cur_read =
-		pv_fs_file_read_nointr(ctrl->sock, buf, PVTX_CTRL_BUFF_SIZE);
-
-	if (check_error(ctrl, buf))
+	struct pv_pvtx_buffer *buf = get_buffer(&ctrl->error);
+	if (!buf)
 		return NULL;
 
-	ssize_t len = get_content_length(buf);
+	char *data = NULL;
+
+	ssize_t cur_read =
+		pv_fs_file_read_nointr(ctrl->sock, buf->data, buf->size - 1);
+
+	if (check_error(ctrl, buf->data))
+		goto out;
+
+	ssize_t len = get_content_length(buf->data);
 	if (len < 0) {
 		pv_pvtx_error_set(&ctrl->error, -1,
 				  "couldn't get Content-Length");
-		return NULL;
+		goto out;
 	}
 
-	const char *data_buf = pvtx_ctrl_get_data(buf, PVTX_CTRL_BUFF_SIZE);
+	const char *data_buf = pvtx_ctrl_get_data(buf->data, buf->size);
 	if (!data_buf) {
 		pv_pvtx_error_set(&ctrl->error, -1,
 				  "couldn't get data section");
-		return NULL;
+		goto out;
 	}
 
-	ssize_t data_buf_sz = cur_read - (data_buf - buf);
+	ssize_t data_buf_sz = cur_read - (data_buf - (const char *)buf->data);
 	if (data_buf_sz <= 0)
-		return NULL;
+		goto out;
 
-	char *data = calloc(len + 1, sizeof(char));
+	data = calloc(len + 1, sizeof(char));
 	if (!data) {
 		pv_pvtx_error_set(&ctrl->error, errno,
 				  "couldn't allocate data");
-		return NULL;
+		goto out;
 	}
 
 	char *p = mempcpy(data, data_buf, data_buf_sz);
 
 	if (data_buf_sz < len)
 		pv_fs_file_read_nointr(ctrl->sock, p, len - data_buf_sz);
+
+out:
+	if (buf)
+		pv_pvtx_buffer_free(buf);
 
 	return data;
 }
@@ -339,13 +367,20 @@ int pv_pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
 	};
 	snprintf(head.path, PATH_MAX, "/steps/%s", rev);
 
-	// return put_request(ctrl, path_tmpl, rev, type, (unsigned char *)data,
-	// 		   size);
-
 	send_header(ctrl, &head);
 	if (pv_fs_file_write_nointr(ctrl->sock, data, size) < 0)
 		return -1;
-	return 0;
+
+	struct pv_pvtx_buffer *buf = get_buffer(&ctrl->error);
+
+	if (!buf)
+		return -1;
+	ssize_t n = pv_fs_file_read_nointr(ctrl->sock, buf->data, buf->size);
+	int ret = check_error(ctrl, buf->data);
+
+	pv_pvtx_buffer_free(buf);
+
+	return ret;
 }
 
 int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
@@ -359,21 +394,30 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 	snprintf(head.path, PATH_MAX, "/%s", con->name);
 
 	send_header(ctrl, &head);
-	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
+	struct pv_pvtx_buffer *buf = get_buffer(&ctrl->error);
+
+	if (!buf)
+		return -1;
 
 	ssize_t written = 0;
-
 	while (written < con->size) {
-		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf);
+		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf->data,
+							     buf->size);
 		if (cur <= 0)
 			break;
 
 		ssize_t to_write = cur;
 		if ((written + cur) > con->size)
 			to_write = con->size - written;
-		written += pv_fs_file_write_nointr(ctrl->sock, buf, to_write);
-		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
+		written += pv_fs_file_write_nointr(ctrl->sock, buf->data,
+						   to_write);
+		memset(buf->data, 0, buf->size);
 	}
 
-	return 0;
+	ssize_t n = pv_fs_file_read_nointr(ctrl->sock, buf->data, buf->size);
+	int ret = check_error(ctrl, buf->data);
+
+	pv_pvtx_buffer_free(buf);
+
+	return ret;
 }

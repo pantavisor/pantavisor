@@ -29,6 +29,7 @@
 #include "utils/fs.h"
 #include "pvtx_state.h"
 #include "pvtx_ctrl.h"
+#include "pvtx_buffer.h"
 #include "pvtx_tar.h"
 #include "pvtx_jsmn_utils.h"
 #include "pvtx_utils/sha256_i.h"
@@ -55,6 +56,9 @@
 #define PVTX_TXN_DST_JSON ".pvr/json"
 #define PVTX_TXN_DST_RUNJS "bsp/run.json"
 #define PVTX_TXN_OBJ_EXP "^[0-9a-f]{64}$"
+#define PVTX_TXN_BUF_ENV "PVTX_OBJECT_BUF_SIZE"
+#define PVTX_TXN_BUF_MIN (512)
+#define PVTX_TXN_BUF_MAX (10485760)
 
 enum pvtx_txn_status {
 	PVTX_TXN_STATUS_ERROR,
@@ -118,6 +122,12 @@ static const char *get_json_path(void)
 static void get_data_file(char *path)
 {
 	pv_fs_path_concat(path, 2, get_pvtxdir(), PVTX_TXN_FILE);
+}
+
+static struct pv_pvtx_buffer *get_buffer()
+{
+	return pv_pvtx_buffer_from_env(PVTX_TXN_BUF_ENV, PVTX_TXN_BUF_MIN,
+				       PVTX_TXN_BUF_MAX, 512);
 }
 
 static char *url_encode(const char *url)
@@ -194,21 +204,24 @@ static void write_object_from_content(const char *path,
 	if (fd < 0)
 		return;
 
-	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
+	struct pv_pvtx_buffer *buf = get_buffer();
+	if (!buf)
+		goto out;
 
 	ssize_t written = 0;
-
 	while (written < con->size) {
-		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf);
+		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf->data,
+							     buf->size);
 		if (cur <= 0)
 			break;
 
 		ssize_t to_write = cur;
 		if ((written + cur) > con->size)
 			to_write = con->size - written;
-		written += pv_fs_file_write_nointr(fd, buf, to_write);
-		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
+		written += pv_fs_file_write_nointr(fd, buf->data, to_write);
+		memset(buf->data, 0, buf->size);
 	}
+	pv_pvtx_buffer_free(buf);
 out:
 	close(fd);
 }
@@ -323,7 +336,7 @@ static int add_object_remote(struct pv_pvtx_tar_content *con)
 		return -1;
 
 	int ret = pv_pvtx_ctrl_obj_put(ctrl, con);
-	free(ctrl);
+	pv_pvtx_ctrl_free(ctrl);
 	return ret;
 }
 
@@ -374,9 +387,8 @@ static void init_pvtxdir()
 }
 
 static int get_sha256(const unsigned char *data, size_t len,
-		       unsigned char *hash)
+		      unsigned char *hash)
 {
-
 	struct sha256_state state = { 0 };
 	sha256_init(&state);
 	sha256_process(&state, data, len);

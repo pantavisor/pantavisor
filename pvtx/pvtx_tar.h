@@ -76,7 +76,7 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_path(const char *path,
 					  struct pv_pvtx_error *err);
 int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con);
 ssize_t pv_pvtx_tar_content_read_block(struct pv_pvtx_tar_content *con,
-				       void *buf);
+				       void *buf, ssize_t size);
 ssize_t pv_pvtx_tar_content_read_object(struct pv_pvtx_tar_content *con,
 					void *buf);
 

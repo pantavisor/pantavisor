@@ -310,6 +310,8 @@ set(PVTX_COMMON_SOURCES
 	pvtx/pvtx_utils/base64.c
 	pvtx/pvtx_utils/sha256-internal.c
 	pvtx/pvtx_utils/jsmn.c
+	pvtx/pvtx_buffer.h
+	pvtx/pvtx_buffer.c
 	pvtx/pvtx_ctrl.c
 	pvtx/pvtx_ctrl.h
 	pvtx/pvtx_error.c
