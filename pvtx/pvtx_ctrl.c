@@ -48,6 +48,7 @@
 	"PUT %s HTTP/1.1\r\nHost: localhost\r\nContent-type: %s\r\nContent-length: %jd\r\n\r\n"
 
 #define PVTX_CTRL_BUFF_SIZE (1024)
+#define PVTX_CTRL_BLOCK_SIZE (8192)
 
 enum pvtx_ctrl_method {
 	PVTX_CTRL_METHOD_UNSET,
@@ -359,12 +360,13 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 	snprintf(head.path, PATH_MAX, "/%s", con->name);
 
 	send_header(ctrl, &head);
-	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
+	char buf[PVTX_CTRL_BLOCK_SIZE] = { 0 };
 
 	ssize_t written = 0;
 
 	while (written < con->size) {
-		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf);
+		ssize_t cur = pv_pvtx_tar_content_read_block(
+			con, buf, PVTX_CTRL_BLOCK_SIZE);
 		if (cur <= 0)
 			break;
 
@@ -372,7 +374,7 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 		if ((written + cur) > con->size)
 			to_write = con->size - written;
 		written += pv_fs_file_write_nointr(ctrl->sock, buf, to_write);
-		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
+		memset(buf, 0, PVTX_CTRL_BLOCK_SIZE);
 	}
 
 	return 0;

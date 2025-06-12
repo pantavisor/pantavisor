@@ -55,6 +55,7 @@
 #define PVTX_TXN_DST_JSON ".pvr/json"
 #define PVTX_TXN_DST_RUNJS "bsp/run.json"
 #define PVTX_TXN_OBJ_EXP "^[0-9a-f]{64}$"
+#define PVTX_TXN_BLOCK_SZ (8192)
 
 enum pvtx_txn_status {
 	PVTX_TXN_STATUS_ERROR,
@@ -194,12 +195,13 @@ static void write_object_from_content(const char *path,
 	if (fd < 0)
 		return;
 
-	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
+	char buf[PVTX_TXN_BLOCK_SZ] = { 0 };
 
 	ssize_t written = 0;
-
+	int i = 0;
 	while (written < con->size) {
-		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf);
+		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf,
+							     PVTX_TXN_BLOCK_SZ);
 		if (cur <= 0)
 			break;
 
@@ -207,7 +209,8 @@ static void write_object_from_content(const char *path,
 		if ((written + cur) > con->size)
 			to_write = con->size - written;
 		written += pv_fs_file_write_nointr(fd, buf, to_write);
-		memset(buf, 0, PVTX_TAR_BLOCK_SIZE);
+		memset(buf, 0, PVTX_TXN_BLOCK_SZ);
+		i++;
 	}
 out:
 	close(fd);
@@ -374,9 +377,8 @@ static void init_pvtxdir()
 }
 
 static int get_sha256(const unsigned char *data, size_t len,
-		       unsigned char *hash)
+		      unsigned char *hash)
 {
-
 	struct sha256_state state = { 0 };
 	sha256_init(&state);
 	sha256_process(&state, data, len);
