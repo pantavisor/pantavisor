@@ -24,6 +24,8 @@
 
 #include <stdbool.h>
 #include <unistd.h>
+#include <time.h>
+#include <utils/timer.h>
 
 void pv_debug_start_shell(void);
 void pv_debug_wait_shell(void);
@@ -31,6 +33,7 @@ void pv_debug_wait_shell(void);
 void pv_debug_start_ssh(void);
 void pv_debug_stop_ssh(void);
 void pv_debug_check_ssh_running(void);
+bool pv_debug_check_shell_running(void);
 bool pv_debug_is_ssh_pid(pid_t pid);
 pid_t pv_debug_get_ssh_pid(void);
 
