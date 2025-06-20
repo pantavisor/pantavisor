@@ -473,7 +473,9 @@ out:
 static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 {
 	int tokc, n;
-	char *key, *value, *pt, *disk;
+	char *key = NULL, *value = NULL;
+	char *pt = NULL, *disk = NULL;
+	char *lower = NULL, *rw = NULL;
 	jsmntok_t *tokv;
 	jsmntok_t *tokv_t;
 	jsmntok_t **k, **keys;
@@ -506,8 +508,11 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		jsmnutil_parse_json(value, &tokv_t, &tokc);
 		pt = pv_json_get_value(value, "persistence", tokv_t, tokc);
 		disk = pv_json_get_value(value, "disk", tokv_t, tokc);
+		lower = pv_json_get_value(value, "lowervols", tokv_t, tokc);
+		rw = pv_json_get_value(value, "rwvol", tokv_t, tokc);
 
 		if (pt) {
+			pv_log(INFO,"Adding a 'persistence' volume: %s", key);
 			struct pv_volume *v =
 				pv_volume_add_with_disk(s, key, disk);
 			v->plat = p;
@@ -519,14 +524,30 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 				v->type = VOL_BOOT;
 			else {
 				pv_log(WARN,
-				       "invalid persistence value '%s' for platform '%s', default to BOOT",
-				       pt, p ? p->name : "(NULL)");
+				       "invalid persistence value '%s' for platform/volume '%s/%s', default to BOOT",
+				       pt, p ? p->name : "(NULL)", key);
 				v->type = VOL_BOOT;
 			}
-			free(pt);
+		} else if (lower) {
+			if (!rw) {
+				pv_log(ERROR,
+				       "storage with lower, but witout rwvol cannot be mounted");
+				return 0;
+			}
+			pv_log(INFO,"Adding an 'ovl' volume: %s", key);
+			struct pv_volume *v =
+				pv_volume_add_with_ovl(s, key, lower, rw);
+			v->plat = p;
+		} else {
+			pv_log(WARN, "Unknown volume syntax parsed: %s/%s",
+			       p ? p->name : "NOPLAT", key);
 		}
 
 		// free intermediates
+		if (pt) {
+			free(pt);
+			pt = 0;
+		}
 		if (key) {
 			free(key);
 			key = 0;
@@ -542,6 +563,14 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 		if (disk) {
 			free(disk);
 			disk = NULL;
+		}
+		if (lower) {
+			free(lower);
+			lower = NULL;
+		}
+		if (rw) {
+			free(rw);
+			rw = NULL;
 		}
 		k++;
 	}
