@@ -53,6 +53,7 @@ struct timer_state {
 };
 
 int timer_start(struct timer *t, time_t sec, long nsec, timer_type_t type);
+void timer_stop(struct timer *t);
 struct timer_state timer_current_state(struct timer *t);
 
 #endif // TIMER_H

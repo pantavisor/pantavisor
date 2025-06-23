@@ -165,6 +165,7 @@ static struct pv_config_entry entries[] = {
 	  .value.b = false },
 	{ BOOL, "PV_DEBUG_SHELL", PV, 0, false, .value.b = true },
 	{ BOOL, "PV_DEBUG_SHELL_AUTOLOGIN", PV, 0, false, .value.b = false },
+	{ INT, "PV_DEBUG_SHELL_TIMEOUT", PV, 0, false, .value.i = 60 },
 	{ BOOL, "PV_DEBUG_SSH", PV | OEM | RUN, 0, false, .value.b = true },
 	{ STR, "PV_DEBUG_SSH_AUTHORIZED_KEYS", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },

@@ -629,6 +629,9 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		next_state = PV_STATE_COMMAND;
 
 out:
+	if (pv_debug_shell())
+		next_state = PV_STATE_REBOOT;
+
 	return next_state;
 }
 
@@ -768,6 +771,20 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		pv->remote_mode = true;
 		break;
+	case CMD_DEFER_REBOOT:
+		if (!pv_config_get_bool(PV_DEBUG_SHELL)) {
+			pv_log(WARN,
+			       "defer reboot command received but debug shell is not active");
+			goto out;
+		}
+		if (strlen(cmd->payload) == 0)
+			goto out;
+
+		pv_log(DEBUG, "defer reboot command received, new timeout '%s'",
+		       cmd->payload);
+
+		pv_debug_defer_reboot_shell(cmd->payload);
+		break;
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
@@ -898,8 +915,6 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		       "will not actually perform '%s' as we are in appengine mode",
 		       shutdown_type_string(t));
 
-	pv_debug_wait_shell();
-
 	if ((REBOOT == t) && (pv_config_get_wdt_mode() >= WDT_SHUTDOWN))
 		pv_wdt_start();
 
@@ -961,6 +976,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
+	if (pv_debug_check_timeout_shell())
+		return PV_STATE_WAIT;
+
 	return pv_shutdown(pv, REBOOT);
 }
 
