@@ -37,6 +37,8 @@
 #include "paths.h"
 
 #include "utils/tsh.h"
+#include "utils/timer.h"
+#include "utils/wall.h"
 
 #define MODULE_NAME "debug"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -46,6 +48,8 @@
 
 static pid_t db_pid = -1;
 static pid_t shell_pid = -1;
+static struct timer timer_shell_timeout;
+static bool shell_timeout_active = false;
 
 void pv_debug_start_shell()
 {
@@ -62,7 +66,7 @@ void pv_debug_start_shell()
 		return;
 	}
 
-	dprintf(con_fd, "Press [d] and [ENTER] for debug ash shell... ");
+	dprintf(con_fd, "Press [ENTER] for debug ash shell... ");
 	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
 	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
 		dprintf(con_fd, "%d ", t);
@@ -72,18 +76,115 @@ void pv_debug_start_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN))
+	if (c[0] == '\n' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN)) {
 		shell_pid =
 			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+
+		pv_log(INFO, "DEBUG SHELL started with pid %d", shell_pid);
+	}
 }
 
-void pv_debug_wait_shell()
+void pv_debug_get_shell()
 {
-	if (shell_pid > -1) {
-		pv_log(WARN, "waiting for debug shell with pid %d to exit",
-		       shell_pid);
-		waitpid(shell_pid, NULL, 0);
+	char c[64] = { 0 };
+	int con_fd;
+	int t = 1;
+
+	con_fd = open("/dev/console", O_RDWR);
+	if (con_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+		return;
 	}
+
+	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
+	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
+		fflush(NULL);
+		sleep(1);
+		t--;
+	}
+
+	if (c[0] == '\n') {
+		shell_pid =
+			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+
+		wall("### DEBUG SHELL ###");
+		pv_log(INFO, "DEBUG SHELL started with pid %d", shell_pid);
+	}
+}
+
+void pv_debug_stop_shell()
+{
+	if (shell_pid < 0)
+		return;
+
+	sigset_t blocked_sig, old_sigset;
+	int status = 0;
+	sigemptyset(&blocked_sig);
+	sigaddset(&blocked_sig, SIGCHLD);
+	/*
+		 * Block SIGCHLD while we want to wait on this child.
+		 * */
+	sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
+	if (!kill(shell_pid, SIGKILL))
+		waitpid(shell_pid, &status, 0);
+	sigprocmask(SIG_SETMASK, &old_sigset, NULL);
+	shell_pid = -1;
+
+	wall("### DEBUG SHELL stopped ###");
+	pv_log(INFO, "DEBUG SHELL stopped");
+}
+
+void pv_debug_start_timeout_shell()
+{
+	int debug_timeout = 0;
+
+	if (!pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+		return;
+	}
+	debug_timeout = pv_config_get_int(PV_DEBUG_SHELL_TIMEOUT);
+	timer_start(&timer_shell_timeout, debug_timeout, 0, RELATIV_TIMER);
+
+	shell_timeout_active = true;
+	pv_log(INFO, "DEBUG SHELL timeout started with %d secs", debug_timeout);
+}
+
+bool pv_debug_check_shell()
+{
+	struct timer_state timeout_debug_shell;
+	timeout_debug_shell = timer_current_state(&timer_shell_timeout);
+
+	if (shell_pid < 0) {
+		pv_config_set_debug_shell_active(false);
+		return false;
+	}
+
+	if (!shell_timeout_active)
+		return false;
+
+	if (timeout_debug_shell.nsec == 10) {
+		wall("System will reboot in 10 seconds... "
+		     "to defer reboot, run 'pvcontrol defer-reboot [new timeout]'");
+		return false;
+	}
+
+	if (timeout_debug_shell.fin) {
+		wall("DEBUG SHELL timeout reached, rebooting...");
+		pv_debug_stop_shell();
+		pv_config_set_debug_shell_active(false);
+		pv_log(INFO, "DEBUG SHELL timeout reached, rebooting...");
+		return true;
+	}
+}
+
+void pv_debug_defer_reboot_shell(const char *payload)
+{
+	int new_timeout = 0;
+
+	new_timeout = atoi(payload);
+
+	timer_stop(&timer_shell_timeout);
+	timer_start(&timer_shell_timeout, (long)new_timeout, 0, RELATIV_TIMER);
+	pv_log(INFO, "DEBUG SHELL timeout deferred to %d seconds", new_timeout);
 }
 
 #define DBCMD "dropbear -F -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"

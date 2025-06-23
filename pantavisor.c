@@ -70,6 +70,7 @@
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
+#include "utils/wall.h"
 
 #define MODULE_NAME "controller"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -622,6 +623,12 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check state of debug tools
 	pv_debug_check_ssh_running();
 
+	if (!pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+		pv_debug_get_shell();
+	}
+	if (pv_debug_check_shell())
+		next_state = PV_STATE_REBOOT;
+
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
 	pv->cmd = pv_ctrl_socket_wait(pv->ctrl_fd, 2);
@@ -768,6 +775,20 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		pv->remote_mode = true;
 		break;
+	case CMD_DEFER_REBOOT:
+		if (!pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+			pv_log(WARN,
+			       "defer reboot command received but debug shell is not active");
+			goto out;
+		}
+		if (strlen(cmd->payload) == 0)
+			goto out;
+
+		pv_log(DEBUG, "defer reboot command received, new timeout '%s'",
+		       cmd->payload);
+
+		pv_debug_defer_reboot_shell(cmd->payload);
+
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
@@ -898,8 +919,6 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		       "will not actually perform '%s' as we are in appengine mode",
 		       shutdown_type_string(t));
 
-	pv_debug_wait_shell();
-
 	if ((REBOOT == t) && (pv_config_get_wdt_mode() >= WDT_SHUTDOWN))
 		pv_wdt_start();
 
@@ -961,6 +980,11 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
+	if (pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+		pv_debug_start_timeout_shell();
+		return PV_STATE_WAIT;
+	}
+
 	return pv_shutdown(pv, REBOOT);
 }
 
