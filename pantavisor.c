@@ -621,6 +621,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// check state of debug tools
 	pv_debug_check_ssh_running();
+	if (pv_debug_check_shell_running()) {
+		next_state = PV_STATE_REBOOT;
+		goto out;
+	}
 
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
