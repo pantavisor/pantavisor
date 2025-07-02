@@ -800,15 +800,14 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 
 		current_process = "range_service_libthttp";
 		thttp_set_log_func(log_libthttp);
+		int sent_logs = 0;
 		while (current_rev >= 0) {
 			// skip current revision.
 			if (atoi(avoid_rev) == current_rev) {
 				current_rev--;
 				continue;
 			}
-			pv_log(DEBUG,
-			       "Range service about to push remaining logs for rev %d",
-			       current_rev);
+
 			len = snprintf(NULL, 0, "%d", current_rev) + 1;
 			rev = calloc(len, sizeof(char));
 			SNPRINTF_WTRUNC(rev, len, "%d", current_rev);
@@ -816,6 +815,10 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 			free(rev);
 			// if nothing else to send, go to previous revision
 			if (result == 0) {
+				pv_log(DEBUG,
+				       "Range service push %d logs for rev %d",
+				       sent_logs, current_rev);
+				sent_logs = 0;
 				current_rev--;
 				sleep_secs--;
 				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
@@ -831,6 +834,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 			} else {
 				sleep_secs--;
 				sleep_secs = (sleep_secs < 0 ? 0 : sleep_secs);
+				sent_logs += result;
 			}
 		}
 		pv_log(INFO, "Range service stopped normally");
