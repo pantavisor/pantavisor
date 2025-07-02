@@ -51,7 +51,8 @@ enum log_level {
 	WARN, // 2
 	INFO, // 3
 	DEBUG, // 4
-	ALL // 5
+	TRACE, // 5
+	ALL // 6
 };
 
 #define JSON_FORMAT                                                            \
