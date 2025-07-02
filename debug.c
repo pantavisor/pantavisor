@@ -37,6 +37,8 @@
 #include "paths.h"
 
 #include "utils/tsh.h"
+#include "utils/timer.h"
+#include "utils/wall.h"
 
 #define MODULE_NAME "debug"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -46,12 +48,57 @@
 
 static pid_t db_pid = -1;
 static pid_t shell_pid = -1;
+static struct timer timer_shell_timeout;
+
+bool pv_parse_positive_long(const char *str, long *out)
+{
+	if (!str || !*str)
+		return false;
+
+	long result = 0;
+
+	// Skip leading whitespace
+	while (*str == ' ' || *str == '\t')
+		str++;
+
+	for (; *str != '\0'; ++str) {
+		if (*str >= '0' && *str <= '9') {
+			result = result * 10 + (*str - '0');
+
+			// Simple overflow protection (adjust threshold as needed)
+			if (result > 1000000)
+				return false;
+		} else if (*str == ' ' || *str == '\t') {
+			// Allow trailing whitespace after number
+			break;
+		} else {
+			// Invalid non-digit character
+			return false;
+		}
+	}
+
+	// Skip any remaining trailing whitespace
+	while (*str == ' ' || *str == '\t')
+		str++;
+
+	// If anything remains, input was invalid
+	if (*str != '\0')
+		return false;
+
+	if (result <= 0)
+		return false;
+
+	*out = result;
+	return true;
+}
 
 void pv_debug_start_shell()
 {
 	char c[64] = { 0 };
 	int t = 5;
 	int con_fd;
+
+	int debug_timeout = pv_config_get_int(PV_DEBUG_SHELL_TIMEOUT);
 
 	if (shell_pid > -1)
 		return;
@@ -62,7 +109,7 @@ void pv_debug_start_shell()
 		return;
 	}
 
-	dprintf(con_fd, "Press [d] and [ENTER] for debug ash shell... ");
+	dprintf(con_fd, "Press [ENTER] for debug ash shell... ");
 	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
 	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
 		dprintf(con_fd, "%d ", t);
@@ -72,18 +119,74 @@ void pv_debug_start_shell()
 	}
 	dprintf(con_fd, "\n");
 
-	if (c[0] == 'd' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN))
+	if (c[0] == '\n' || pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN)) {
+		timer_start(&timer_shell_timeout, debug_timeout, 0,
+			    RELATIV_TIMER);
+
+		pv_config_set_debug_shell_active(true);
+
+		pv_log(DEBUG, "DEBUG SHELL timeout started with %d secs",
+		       debug_timeout);
+
 		shell_pid =
 			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+
+		wall("A reboot timeout is set for 60 seconds. "
+		     "To defer the reboot, run 'pvcontrol defer-reboot [new timeout]'");
+
+		pv_log(INFO, "DEBUG SHELL started with pid %d", shell_pid);
+	}
+}
+
+void pv_debug_stop_shell()
+{
+	if (shell_pid < 0)
+		return;
+
+	pv_log(DEBUG, "stopping DEBUG SHELL with pid %d...", shell_pid);
+
+	sigset_t blocked_sig, old_sigset;
+	int status = 0;
+	sigemptyset(&blocked_sig);
+	sigaddset(&blocked_sig, SIGCHLD);
+	/*
+		 * Block SIGCHLD while we want to wait on this child.
+		 * */
+	sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
+	if (!kill(shell_pid, SIGKILL))
+		waitpid(shell_pid, &status, 0);
+	sigprocmask(SIG_SETMASK, &old_sigset, NULL);
+	shell_pid = -1;
+
+	pv_log(DEBUG, "DEBUG SHELL stopped");
 }
 
 void pv_debug_wait_shell()
 {
-	if (shell_pid > -1) {
-		pv_log(WARN, "waiting for debug shell with pid %d to exit",
-		       shell_pid);
-		waitpid(shell_pid, NULL, 0);
+	struct timer_state timeout_debug_shell;
+	timeout_debug_shell = timer_current_state(&timer_shell_timeout);
+
+	if (shell_pid < 0)
+		return;
+
+	if (timeout_debug_shell.fin) {
+		pv_debug_stop_shell();
+		return;
 	}
+
+	pv_log(DEBUG, "waiting for debug shell with pid %d to exit", shell_pid);
+	waitpid(shell_pid, NULL, 0);
+}
+
+void pv_debug_defer_reboot_shell(const char *payload)
+{
+	long new_timeout = 0;
+
+	if (!pv_parse_positive_long(payload, &new_timeout))
+		return;
+
+	timer_stop(&timer_shell_timeout);
+	timer_start(&timer_shell_timeout, new_timeout, 0, RELATIV_TIMER);
 }
 
 #define DBCMD "dropbear -F -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"
@@ -144,6 +247,29 @@ void pv_debug_check_ssh_running()
 		pv_debug_start_ssh();
 	else
 		pv_debug_stop_ssh();
+}
+
+bool pv_debug_check_shell_running()
+{
+	struct timer_state timeout_debug_shell;
+	timeout_debug_shell = timer_current_state(&timer_shell_timeout);
+
+	if (!pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE))
+		return false;
+
+	if (!timeout_debug_shell.fin) {
+		pv_log(DEBUG, "DEBUG SHELL is active, timeout : %d secs",
+		       timeout_debug_shell.nsec);
+
+		if (timeout_debug_shell.nsec < 10) {
+			pv_log(DEBUG, "DEBUG SHELL ");
+			wall("System will reboot in 10 seconds... to defer reboot, run 'pvcontrol defer-reboot [new timeout]'");
+		}
+
+		return false;
+	}
+	pv_log(DEBUG, "DEBUG SHELL timeout reached, moving to reboot state");
+	return true;
 }
 
 bool pv_debug_is_ssh_pid(pid_t pid)

@@ -621,6 +621,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// check state of debug tools
 	pv_debug_check_ssh_running();
+	if (pv_debug_check_shell_running()) {
+		next_state = PV_STATE_REBOOT;
+		goto out;
+	}
 
 	// receive new command. Set 2 secs as the select max blocking time, so we can do the
 	// rest of WAIT operations
@@ -768,6 +772,20 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		pv->remote_mode = true;
 		break;
+	case CMD_DEFER_REBOOT:
+		if (!pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+			pv_log(WARN,
+			       "defer reboot command received but debug shell is not active");
+			goto out;
+		}
+		if (strlen(cmd->payload) == 0)
+			goto out;
+
+		pv_log(DEBUG, "defer reboot command received, new timeout '%s'",
+		       cmd->payload);
+
+		pv_debug_defer_reboot_shell(cmd->payload);
+
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
