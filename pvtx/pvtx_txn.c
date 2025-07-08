@@ -67,7 +67,6 @@ enum pvtx_txn_status {
 	PVTX_TXN_STATUS_ABORTED,
 	PVTX_TXN_STATUS_COMMITED,
 	PVTX_TXN_STATUS_DEPLOYED,
-	// keep always at the end
 	PVTX_TXN_STATUS_UNKNOWN,
 };
 
@@ -85,7 +84,7 @@ struct pvtx_queue {
 };
 
 static char pvtxdir_cache[PATH_MAX] = { 0 };
-static char pvtx_state_json_cahe[PATH_MAX] = { 0 };
+static char pvtx_state_json_cache[PATH_MAX] = { 0 };
 
 static const char *get_pvtxdir(void)
 {
@@ -95,28 +94,27 @@ static const char *get_pvtxdir(void)
 	char *dir = getenv(PVTX_TXN_PATH);
 	if (dir) {
 		memccpy(pvtxdir_cache, dir, '\0', PATH_MAX);
-	} else {
-		char *pfx = getenv(PVTX_TXN_PREFIX_PATH);
-		if (pfx)
-			pv_fs_path_concat(pvtxdir_cache, 2, pfx,
-					  PVTX_TXN_DEFAULT_PATH);
-		else
-			memccpy(pvtxdir_cache, PVTX_TXN_DEFAULT_PATH, '\0',
-				PATH_MAX);
+		return pvtxdir_cache;
 	}
+
+	char *pfx = getenv(PVTX_TXN_PREFIX_PATH);
+	if (pfx)
+		pv_fs_path_concat(pvtxdir_cache, 2, pfx, PVTX_TXN_DEFAULT_PATH);
+	else
+		memccpy(pvtxdir_cache, PVTX_TXN_DEFAULT_PATH, '\0', PATH_MAX);
 
 	return pvtxdir_cache;
 }
 
 static const char *get_json_path(void)
 {
-	if (pvtx_state_json_cahe[0] != '\0')
-		return pvtx_state_json_cahe;
+	if (pvtx_state_json_cache[0] != '\0')
+		return pvtx_state_json_cache;
 
-	pv_fs_path_concat(pvtx_state_json_cahe, 2, get_pvtxdir(),
+	pv_fs_path_concat(pvtx_state_json_cache, 2, get_pvtxdir(),
 			  PVTX_TXN_JSON);
 
-	return pvtx_state_json_cahe;
+	return pvtx_state_json_cache;
 }
 
 static void get_data_file(char *path)
@@ -161,7 +159,6 @@ static char *url_decode(const char *url)
 	int count = 0;
 	const char *p = url;
 	while ((p = strcasestr(p + 1, "%2F")))
-		// while ((p = strstr(p + 1, "%2F")))
 		++count;
 
 	char *dec = calloc(strlen(url) - count * 2 + 1, sizeof(char));
@@ -187,7 +184,7 @@ static int pvtx_save(void *data, size_t size)
 {
 	char path[PATH_MAX] = { 0 };
 	get_data_file(path);
-	return pv_fs_file_write(path, data, size);
+	return pv_fs_file_write_no_sync(path, data, size);
 }
 
 static void *pvtx_load()
@@ -197,13 +194,15 @@ static void *pvtx_load()
 	return pv_fs_file_read(path, NULL);
 }
 
-static void write_object_from_content(const char *path,
-				      struct pv_pvtx_tar_content *con)
+static int write_object_from_content(const char *path,
+				     struct pv_pvtx_tar_content *con)
 {
-	int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+	char tmp[PATH_MAX] = { 0 };
+	int fd = pv_fs_file_tmp(path, tmp);
 	if (fd < 0)
-		return;
+		return -1;
 
+	int ret = -1;
 	struct pv_pvtx_buffer *buf = get_buffer();
 	if (!buf)
 		goto out;
@@ -221,12 +220,33 @@ static void write_object_from_content(const char *path,
 		written += pv_fs_file_write_nointr(fd, buf->data, to_write);
 		memset(buf->data, 0, buf->size);
 	}
-	pv_pvtx_buffer_free(buf);
+
+	if (rename(tmp, path) != 0)
+		remove(tmp);
+	ret = 0;
 out:
 	close(fd);
+	pv_pvtx_buffer_free(buf);
+
+	return ret;
 }
 
-static int state_json_save(const char *from)
+static char *find_json(const char *dir)
+{
+	char test_path[PATH_MAX] = { 0 };
+	const char *loc[] = { "json", ".pvr/json" };
+	for (size_t i = 0; i < sizeof(loc) / sizeof(loc[0]); i++) {
+		pv_fs_path_concat(test_path, 2, dir, loc[i]);
+
+		if (pv_fs_path_exist(test_path))
+			return strdup(test_path);
+
+		memset(test_path, 0, PATH_MAX);
+	}
+	return NULL;
+}
+
+static int init_state_json(const char *from)
 {
 	int ret = 0;
 	char *json = NULL;
@@ -240,24 +260,20 @@ static int state_json_save(const char *from)
 		goto out;
 	}
 
-	if (strncmp(from, "empty", strlen(from))) {
-		char path[PATH_MAX] = { 0 };
-		char *loc[] = { "json", ".pvr/json", NULL };
-		for (size_t i = 0; i < sizeof(loc) / sizeof(char *); ++i) {
-			pv_fs_path_concat(path, 2, from, loc[i]);
-
-			if (pv_fs_path_exist(path))
-				break;
-
-			memset(path, 0, PATH_MAX);
-		}
-		st = pv_pvtx_state_from_file(path);
+	if (strncmp(from, "empty", strlen(from)) != 0) {
+		char *loc = find_json(from);
+		st = pv_pvtx_state_from_file(loc);
+		free(loc);
+		if (!st)
+			goto out;
 	}
 
+	// NOTE: at this point st could be NULL, that's ok
+	// pv_pvtx_state_to_str() returns the minimum json if this happend
 	json = pv_pvtx_state_to_str(st, &json_len);
 out:
 	if (json) {
-		ret = pv_fs_file_write(get_json_path(), json, json_len);
+		ret = pv_fs_file_write_no_sync(get_json_path(), json, json_len);
 		free(json);
 	} else {
 		ret = 13;
@@ -268,54 +284,118 @@ out:
 
 static bool is_active_txn()
 {
-	bool is_active = false;
 	struct pvtx_txn *txn = pvtx_load();
-	if (txn) {
-		is_active = txn->status == PVTX_TXN_STATUS_ACTIVE;
-		free(txn);
+	if (!txn)
+		return false;
+
+	bool ret = txn->status == PVTX_TXN_STATUS_ACTIVE;
+	free(txn);
+
+	return ret;
+}
+
+static int save_state_json(struct pv_pvtx_state *st, struct pv_pvtx_error *err)
+{
+	size_t jssz = 0;
+	char *js = pv_pvtx_state_to_str(st, &jssz);
+
+	pv_pvtx_error_clear(err);
+
+	if (!js) {
+		PVTX_ERROR_SET(err, -1, "string conversion error");
+		goto out;
 	}
 
-	return is_active;
+	char tmp[PATH_MAX] = { 0 };
+	int fd = pv_fs_file_tmp(get_json_path(), tmp);
+	if (fd < 0) {
+		PVTX_ERROR_SET(err, fd, "error creating temp file");
+		goto out;
+	}
+	close(fd);
+
+	if (pv_fs_file_write_no_sync(tmp, js, jssz) != 0) {
+		PVTX_ERROR_SET(err, -1, "error writing temp file");
+		goto out;
+	}
+
+	if (rename(tmp, get_json_path()) != 0) {
+		remove(tmp);
+		PVTX_ERROR_SET(err, -1, "rename error %s", strerror(errno));
+	}
+out:
+	if (js)
+		free(js);
+
+	return err->code;
 }
 
 static int add_json(const char *json, size_t size, struct pv_pvtx_error *err)
 {
+	pv_pvtx_error_clear(err);
+
 	struct pv_pvtx_state *cur = pv_pvtx_state_from_file(get_json_path());
 	if (!cur) {
-		pv_pvtx_error_set(err, -1, "couldn't load current state json");
+		PVTX_ERROR_SET(err, -1, "couldn't load current state json");
 		return -1;
 	}
 
-	int ret = 0;
 	struct pv_pvtx_state *st = pv_pvtx_state_from_str(json, size);
 	if (!st) {
-		ret = -1;
-		pv_pvtx_error_set(err, ret, "couldn't load incoming json");
+		PVTX_ERROR_SET(err, -1, "couldn't load incoming json");
 		goto out;
 	}
 
-	ret = pv_pvtx_state_add(cur, st);
-	if (ret != 0) {
-		pv_pvtx_error_set(err, ret, "couldn't merge incoming json");
+	if (pv_pvtx_state_add(cur, st) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't merge incoming json");
 		goto out;
 	}
 
-	size_t str_size = 0;
-	char *str = pv_pvtx_state_to_str(cur, &str_size);
-	ret = pv_fs_file_write(get_json_path(), str, str_size);
-
-	if (ret != 0)
-		pv_pvtx_error_set(err, ret, "couldn't write state json");
-
+	save_state_json(st, err);
 out:
-	if (cur)
-		pv_pvtx_state_free(cur);
-	if (st)
-		pv_pvtx_state_free(st);
-	if (str)
-		free(str);
+	pv_pvtx_state_free(cur);
+	pv_pvtx_state_free(st);
 
-	return 0;
+	return err->code;
+}
+
+static bool is_object_ok(const char *path)
+{
+	struct pv_pvtx_buffer *buf = get_buffer();
+	if (!buf)
+		return false;
+
+	bool ok = false;
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		goto out;
+
+	struct sha256_state state = { 0 };
+	sha256_init(&state);
+
+	ssize_t len = 0;
+	while ((len = read(fd, buf->data, buf->size)) != 0) {
+		sha256_process(&state, buf->data, len);
+		memset(buf->data, 0, buf->size);
+	}
+
+	unsigned char hash[32] = { 0 };
+	sha256_done(&state, hash);
+
+	char name[NAME_MAX] = { 0 };
+	pv_fs_basename(path, name);
+
+	char hash_str[65] = { 0 };
+	for (int i = 0; i < 32; ++i)
+		snprintf(hash_str + i * 2, 3, "%02x", hash[i]);
+
+	ok = strncmp(hash_str, name, 64) == 0;
+out:
+	if (fd > -1)
+		close(fd);
+
+	pv_pvtx_buffer_free(buf);
+	return ok;
 }
 
 static int add_object_local(struct pv_pvtx_tar_content *con,
@@ -323,6 +403,9 @@ static int add_object_local(struct pv_pvtx_tar_content *con,
 {
 	char path[PATH_MAX] = { 0 };
 	pv_fs_path_concat(path, 2, obj_path, con->name + strlen("objects/"));
+
+	if (pv_fs_path_exist(path) && is_object_ok(path))
+		return 0;
 
 	write_object_from_content(path, con);
 
@@ -342,47 +425,60 @@ static int add_object_remote(struct pv_pvtx_tar_content *con)
 
 static int add_tar(struct pv_pvtx_tar *tar, struct pv_pvtx_error *err)
 {
+	pv_pvtx_error_clear(err);
+
 	const char *obj_pfx = "objects/";
 
 	struct pvtx_txn *txn = pvtx_load();
 	if (!txn) {
-		pv_pvtx_error_set(err, -1, "couldn't load current transaction");
+		PVTX_ERROR_SET(err, -1, "couldn't load current transaction");
 		return -1;
 	}
 
-	int ret = -1;
+	char tmp[PATH_MAX] = { 0 };
+	int fd = pv_fs_file_tmp(get_json_path(), tmp);
+	if (fd < 0) {
+		PVTX_ERROR_SET(err, fd, "couldn't get tmp file for pkg json");
+		goto out;
+	}
+	close(fd);
+
 	struct pv_pvtx_tar_content con = { 0 };
 
+	int ret = 0;
 	while (pv_pvtx_tar_next(tar, &con) == 0) {
 		if (!strncmp(con.name, "json", strlen(con.name))) {
-			char *data = calloc(con.size, sizeof(char));
-			pv_pvtx_tar_content_read_object(&con, data);
-			ret = add_json(data, con.size, err);
-			free(data);
-			if (ret != 0)
-				goto out;
+			write_object_from_content(tmp, &con);
 		} else if (!strncmp(con.name, obj_pfx, strlen(obj_pfx))) {
 			if (txn->is_local)
 				ret = add_object_local(&con, txn->obj);
 			else
 				ret = add_object_remote(&con);
 			if (ret != 0) {
-				pv_pvtx_error_set(err, ret,
-						  "couldn't save obejct");
+				PVTX_ERROR_SET(err, ret,
+					       "couldn't save obejct");
 				goto out;
 			}
 		}
 	}
+
+	size_t js_size = 0;
+	char *json = pv_fs_file_read(tmp, &js_size);
+	ret = add_json(json, js_size, err);
+	free(json);
 out:
+	remove(tmp);
+
 	if (txn)
 		free(txn);
-	return ret;
+
+	return err->code;
 }
 
 static void init_pvtxdir()
 {
 	const char *pvtxdir = get_pvtxdir();
-	pv_fs_path_remove(pvtxdir, true);
+	pv_fs_path_remove_recursive_no_sync(pvtxdir);
 	pv_fs_mkdir_p(pvtxdir, 0755);
 }
 
@@ -420,43 +516,35 @@ out:
 	return rev;
 }
 
-static int init_config(const char *deploy_path, const char *obj_path)
+static int init_config(const char *deploy_path, const char *tmpdir,
+		       const char *obj_path)
 {
 	char path[PATH_MAX] = { 0 };
 	pv_fs_path_concat(path, 2, deploy_path, PVTX_TXN_DST_CONFIG);
 
-	if (pv_fs_path_exist(path))
-		return 0;
+	char dst[PATH_MAX] = { 0 };
+	pv_fs_path_concat(dst, 2, tmpdir, PVTX_TXN_DST_CONFIG);
 
-	char parent_dir[PATH_MAX] = { 0 };
-	pv_fs_dirname(path, parent_dir);
-	pv_fs_mkdir_p(parent_dir, 0755);
+	char tmp_parent[PATH_MAX] = { 0 };
+	pv_fs_dirname(dst, tmp_parent);
+
+	pv_fs_mkdir_p(tmp_parent, 0755);
+
+	if (pv_fs_path_exist(path)) {
+		char tmp[PATH_MAX] = { 0 };
+		int fd = pv_fs_file_tmp(dst, tmp);
+		pv_fs_file_copy_no_sync(path, dst, 0600);
+		return 0;
+	}
 
 	char *init_conf = NULL;
 	int err = asprintf(&init_conf, "{\"ObjectsDir\": \"%s\"}", obj_path);
 	if (err < 0)
 		return -1;
 
-	int ret = pv_fs_file_write(path, init_conf, strlen(init_conf));
+	int ret = pv_fs_file_write_no_sync(dst, init_conf, strlen(init_conf));
 
 	free(init_conf);
-
-	return ret;
-}
-
-static int write_state_json(const char *deploy_path)
-{
-	size_t size = 0;
-	char *data = pv_fs_file_read(get_json_path(), &size);
-
-	char dst[PATH_MAX] = { 0 };
-	pv_fs_path_concat(dst, 2, deploy_path, PVTX_TXN_DST_JSON);
-
-	if (pv_fs_path_exist(dst))
-		pv_fs_path_remove(dst, false);
-
-	int ret = pv_fs_file_write(dst, data, size);
-	free(data);
 
 	return ret;
 }
@@ -478,7 +566,7 @@ static int create_element(const char *deploy_path, const char *obj_path,
 	pv_fs_path_concat(local_obj, 2, deploy_path, file_path);
 
 	if (pv_fs_path_exist(local_obj))
-		pv_fs_path_remove(local_obj, false);
+		remove(local_obj);
 
 	if (is_obj) {
 		char real_obj[PATH_MAX] = { 0 };
@@ -487,7 +575,7 @@ static int create_element(const char *deploy_path, const char *obj_path,
 		int ret = link(real_obj, local_obj);
 		return ret;
 	}
-	return pv_fs_file_write(local_obj, (char *)val, strlen(val));
+	return pv_fs_file_write_no_sync(local_obj, (char *)val, strlen(val));
 }
 
 static char *token_to_str(const char *data, jsmntok_t *tkn)
@@ -541,11 +629,8 @@ static int create_from_json(const char *deploy_path, const char *obj_path)
 		ret = create_element(deploy_path, obj_path, is_obj, key, val);
 		free(key);
 		free(val);
-		if (ret != 0) {
-			return ret;
+		if (ret != 0)
 			goto out;
-		}
-
 	next:
 		no_top += tkn[i].size;
 	}
@@ -572,7 +657,7 @@ static int create_link(const char *deploy_path, const char *file,
 	pv_fs_path_concat(bsp_file, 3, deploy_path, "bsp", file);
 
 	if (pv_fs_path_exist(link_path))
-		pv_fs_path_remove(link_path, false);
+		remove(link_path);
 
 	return link(bsp_file, link_path);
 }
@@ -582,7 +667,7 @@ static int create_bsp_link(const char *deploy_path)
 	char pv_dir[PATH_MAX] = { 0 };
 	pv_fs_path_concat(pv_dir, 2, deploy_path, ".pv");
 
-	pv_fs_path_remove(pv_dir, true);
+	pv_fs_path_remove_recursive_no_sync(pv_dir);
 	pv_fs_mkdir_p(pv_dir, 0755);
 
 	char bsp_runjs[PATH_MAX] = { 0 };
@@ -645,80 +730,40 @@ out:
 static int create_fs(const char *obj_path, const char *deploy_path,
 		     struct pv_pvtx_error *err)
 {
-	int ret = write_state_json(deploy_path);
+	pv_pvtx_error_clear(err);
+
+	char js_dst[PATH_MAX] = { 0 };
+	pv_fs_path_concat(js_dst, 2, deploy_path, PVTX_TXN_DST_JSON);
+	pv_fs_mkbasedir_p(js_dst, 0755);
+	int ret = pv_fs_file_copy_no_sync(get_json_path(), js_dst, 0600);
 	if (ret != 0) {
-		pv_pvtx_error_set(err, ret, "couldn't write state json");
+		PVTX_ERROR_SET(err, ret, "couldn't write state json: %s",
+			       strerror(errno));
 		return ret;
 	}
 
-	ret = create_from_json(deploy_path, obj_path);
-	if (ret != 0) {
-		pv_pvtx_error_set(err, ret,
-				  "couldn't create objects from json: %s",
-				  strerror(errno));
-		return ret;
+	if (create_from_json(deploy_path, obj_path) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't create objects from json: %s",
+			       strerror(errno));
+		return err->code;
 	}
 
-	ret = create_bsp_link(deploy_path);
-	if (ret != 0)
-		pv_pvtx_error_set(err, ret, "couldn't link bsp to .pv/");
+	if (create_bsp_link(deploy_path) != 0)
+		PVTX_ERROR_SET(err, -1, "couldn't link bsp to .pv/");
 
-	return ret;
-}
-
-int pv_pvtx_txn_begin(const char *from, const char *obj_path,
-		      struct pv_pvtx_error *err)
-{
-	int ret = 0;
-	struct pvtx_txn *txn = pvtx_load();
-	if (txn && txn->status == PVTX_TXN_STATUS_ACTIVE) {
-		ret = 12;
-		pv_pvtx_error_set(err, ret,
-				  "active transaction; finish your work "
-				  "with 'deploy', 'commit' or 'abort' first");
-		return ret;
-	}
-
-	if (!txn || txn->status != PVTX_TXN_STATUS_SET) {
-		init_pvtxdir();
-		struct pvtx_txn txn_new = { .status = PVTX_TXN_STATUS_ACTIVE };
-
-		if (obj_path) {
-			memccpy(txn_new.obj, obj_path, '\0', PATH_MAX);
-			txn_new.is_local = 1;
-		} else {
-			txn_new.is_local = 0;
-		}
-
-		pvtx_save(&txn_new, sizeof(struct pvtx_txn));
-	} else {
-		struct pvtx_queue *q = pvtx_load();
-		if (!q) {
-			ret = -1;
-			pv_pvtx_error_set(err, -1,
-					  "couldn't load current config");
-			goto out;
-		}
-
-		q->txn.status = PVTX_TXN_STATUS_ACTIVE;
-		pvtx_save(q, sizeof(struct pvtx_queue));
-	}
-
-	ret = state_json_save(from);
-out:
-	if (txn)
-		free(txn);
-	return ret;
+	return err->code;
 }
 
 static int add_json_from_disk(const char *path, struct pv_pvtx_error *err)
 {
+	pv_pvtx_error_clear(err);
+
 	size_t size = 0;
 	char *json = pv_fs_file_read(path, &size);
 
 	if (!json) {
-		pv_pvtx_error_set(err, -1, "couldn't load json from %s", path);
-		return -1;
+		PVTX_ERROR_SET(err, -1, "couldn't load json from %s", path);
+		return err->code;
 	}
 
 	int ret = add_json(json, size, err);
@@ -727,17 +772,215 @@ static int add_json_from_disk(const char *path, struct pv_pvtx_error *err)
 	return ret;
 }
 
+static int get_queue_file_path(const char *part, const char *suffix,
+			       char *fname)
+{
+	struct pvtx_queue *q = pvtx_load();
+	if (!q)
+		return -1;
+
+	int ret = snprintf(fname, PATH_MAX, "%s/%03d__%s%s", q->queue, q->count,
+			   part, suffix);
+	if (ret < 0) {
+		ret = -1;
+		memset(fname, 0, PATH_MAX);
+		goto out;
+	}
+
+	ret = 0;
+	q->count++;
+	pvtx_save(q, sizeof(struct pvtx_queue));
+out:
+	free(q);
+	return ret;
+}
+
+static int get_queue_json_path(const char *part, char *fname)
+{
+	if (get_queue_file_path(part, "/json", fname) != 0)
+		return -1;
+
+	pv_fs_mkbasedir_p(fname, 0755);
+	return 0;
+}
+
+static int get_queue_remove_file(const char *part, char *fname)
+{
+	if (get_queue_file_path(part, ".remove", fname) != 0)
+		return -1;
+	return 0;
+}
+
+static int process_add_directory(struct pv_pvtx_state *st, const char *dir,
+				 const char *queue, struct pv_pvtx_error *err)
+{
+	char js[PATH_MAX] = { 0 };
+	pv_fs_path_concat(js, 3, queue, dir, "json");
+	struct pv_pvtx_state *new = pv_pvtx_state_from_file(js);
+	if (!new) {
+		PVTX_ERROR_SET(err, -1,
+			       "couldn't add json, error loading json from %s",
+			       js);
+		return err->code;
+	}
+
+	if (pv_pvtx_state_add(st, new) != 0) {
+		PVTX_ERROR_SET(err, -1,
+			       "couldn't add json, operation add failed");
+	}
+
+	pv_pvtx_state_free(new);
+	return err->code;
+}
+
+static int process_remove_file(struct pv_pvtx_state *st, const char *fname)
+{
+	char name[NAME_MAX] = { 0 };
+	memccpy(name, fname, '\0', NAME_MAX);
+	*strchr(name, '.') = '\0';
+	char *part = &name[strlen("NNN__")];
+	return pv_pvtx_state_remove(st, part);
+}
+
+static int queue_add_tar(struct pv_pvtx_tar *tar, const char *name,
+			 struct pv_pvtx_error *err)
+{
+	pv_pvtx_error_clear(err);
+
+	const char *obj_pfx = "objects/";
+
+	struct pvtx_queue *q = pvtx_load();
+	if (!q) {
+		PVTX_ERROR_SET(err, -1, "couldn't load current queue");
+		return err->code;
+	}
+
+	struct pv_pvtx_tar_content con = { 0 };
+
+	char tmp[PATH_MAX] = { 0 };
+	int fd = pv_fs_file_tmp(q->queue, tmp);
+	if (fd < 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't create json temp file");
+		goto out;
+	}
+	close(fd);
+
+	int ret = 0;
+	while (pv_pvtx_tar_next(tar, &con) == 0) {
+		if (!strncmp(con.name, "json", strlen(con.name))) {
+			ret = write_object_from_content(tmp, &con);
+		} else if (!strncmp(con.name, obj_pfx, strlen(obj_pfx)))
+			ret = add_object_local(&con, q->txn.obj);
+
+		if (ret != 0) {
+			PVTX_ERROR_SET(err, ret, "couldn't save obejct: %s",
+				       con.name);
+			goto out;
+		}
+	}
+
+	char fname[PATH_MAX] = { 0 };
+	if (get_queue_json_path(name ? name : "package", fname) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't create json path");
+		goto out;
+	}
+
+	if (rename(tmp, fname) != 0) {
+		remove(tmp);
+		PVTX_ERROR_SET(err, -1, "couldn't add tar: %s",
+			       strerror(errno));
+		goto out;
+	}
+out:
+	if (q)
+		free(q);
+
+	return err->code;
+}
+
+static void sync_all(const char *path)
+{
+	int fd = open(path, O_RDONLY);
+	if (!fd)
+		return;
+
+	syncfs(fd);
+	close(fd);
+}
+
+int pv_pvtx_txn_begin(const char *from, const char *obj_path,
+		      struct pv_pvtx_error *err)
+{
+	void *op = NULL;
+	size_t op_size = 0;
+	struct pvtx_queue *q = NULL;
+	struct pvtx_txn *txn = pvtx_load();
+	if (txn && txn->status == PVTX_TXN_STATUS_ACTIVE) {
+		PVTX_ERROR_SET(err, 12,
+			       "active transaction; finish your work "
+			       "with 'deploy', 'commit' or 'abort' first");
+		return err->code;
+	}
+
+	if (!txn || txn->status != PVTX_TXN_STATUS_SET) {
+		init_pvtxdir();
+		txn->status = PVTX_TXN_STATUS_ACTIVE;
+
+		memset(txn->obj, 0, PATH_MAX);
+		if (obj_path) {
+			memccpy(txn->obj, obj_path, '\0', PATH_MAX);
+			txn->is_local = 1;
+		} else {
+			txn->is_local = 0;
+		}
+
+		op = txn;
+		op_size = sizeof(struct pvtx_txn);
+	} else {
+		q = pvtx_load();
+		if (!q) {
+			PVTX_ERROR_SET(err, -1, "couldn't load current config");
+			goto out;
+		}
+
+		q->txn.status = PVTX_TXN_STATUS_ACTIVE;
+		op = q;
+		op_size = sizeof(struct pvtx_queue);
+	}
+
+	if (init_state_json(from) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't initialize state json");
+		goto out;
+	}
+
+	pvtx_save(op, op_size);
+out:
+	if (txn)
+		free(txn);
+	if (q)
+		free(q);
+
+	return err->code;
+}
+
 int pv_pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err)
 {
+	pv_pvtx_error_clear(err);
+
 	enum pv_pvtx_tar_type type = pv_pvtx_tar_type_get(path, err);
 	if (type == PVTX_TAR_UNKNOWN) {
 		if (err->code != 0)
 			return err->code;
-		return add_json_from_disk(path, err);
+
+		if (add_json_from_disk(path, err) != 0)
+			PVTX_ERROR_SET(err, -1, "couldn't add json");
+
+		return err->code;
 	}
 	struct pv_pvtx_tar *tar = pv_pvtx_tar_from_path(path, type, err);
 	if (!tar)
-		return -1;
+		return err->code;
+
 	int ret = add_tar(tar, err);
 	pv_pvtx_tar_free(tar);
 	return ret;
@@ -745,19 +988,19 @@ int pv_pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err)
 
 int pv_pvtx_txn_add_tar_from_fd(int fd, struct pv_pvtx_error *err)
 {
-	if (!is_active_txn()) {
-		pv_pvtx_error_set(err, 1, "no active transaction");
-		return 1;
-	}
+	pv_pvtx_error_clear(err);
 
-	struct pv_pvtx_tar *tar = pv_pvtx_tar_from_fd(fd, PVTX_TAR_GZIP, err);
-	if (!tar) {
+	if (!is_active_txn()) {
+		PVTX_ERROR_SET(err, 1, "no active transaction");
 		return err->code;
 	}
 
+	struct pv_pvtx_tar *tar = pv_pvtx_tar_from_fd(fd, PVTX_TAR_GZIP, err);
+	if (!tar)
+		return err->code;
+
 	int ret = add_tar(tar, err);
 	pv_pvtx_tar_free(tar);
-
 	return ret;
 }
 
@@ -772,8 +1015,7 @@ int pv_pvtx_txn_abort(struct pv_pvtx_error *err)
 	free(txn);
 
 	if (ret != 0) {
-		pv_pvtx_error_set(err, ret,
-				  "couldn't write transaction status");
+		PVTX_ERROR_SET(err, ret, "couldn't write transaction status");
 		return ret;
 	}
 
@@ -782,29 +1024,26 @@ int pv_pvtx_txn_abort(struct pv_pvtx_error *err)
 
 int pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 {
-	int ret = 0;
 	char *json = NULL;
+	char *rev = NULL;
 	struct pv_pvtx_ctrl *ctrl = NULL;
 	struct pvtx_txn *txn = pvtx_load();
 
 	if (!txn || txn->status != PVTX_TXN_STATUS_ACTIVE) {
-		pv_pvtx_error_set(err, 11, "not active transaction");
-		return 11;
+		PVTX_ERROR_SET(err, 11, "not active transaction");
+		goto out;
 	}
 
 	if (txn->is_local) {
-		ret = 12;
-		pv_pvtx_error_set(err, ret,
-				  "this is a local transaction, only can "
-				  "be deployed with pvtx deploy");
-		return ret;
+		PVTX_ERROR_SET(err, 12,
+			       "this is a local transaction, only can "
+			       "be deployed with pvtx deploy");
+		goto out;
 	}
 
 	ctrl = pv_pvtx_ctrl_new(NULL);
 	if (!ctrl) {
-		ret = -1;
-		pv_pvtx_error_set(err, ret,
-				  "couldn't communicate with pv-ctrl");
+		PVTX_ERROR_SET(err, -1, "couldn't communicate with pv-ctrl");
 		goto out;
 	}
 
@@ -812,46 +1051,51 @@ int pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 	json = pv_fs_file_read(get_json_path(), &json_len);
 
 	if (!json) {
-		ret = -1;
-		pv_pvtx_error_set(err, ret, "couldn't load state json");
+		PVTX_ERROR_SET(err, -1, "couldn't load state json");
 		goto out;
 	}
 
-	char *rev = get_rev_name(json, json_len);
+	rev = get_rev_name(json, json_len);
 
 	if (!rev) {
-		ret = -1;
-		pv_pvtx_error_set(err, ret, "couldn't build revision string");
+		PVTX_ERROR_SET(err, -1, "couldn't build revision string");
 		goto out;
 	}
 
-	ret = pv_pvtx_ctrl_steps_put(ctrl, json, json_len, rev);
+	if (pv_pvtx_ctrl_steps_put(ctrl, json, json_len, rev) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't set rev %s", rev);
+		goto out;
+	}
 	printf("%s\n", rev);
 
 	txn->status = PVTX_TXN_STATUS_COMMITED;
 	pvtx_save(txn, sizeof(struct pvtx_txn));
+	pv_pvtx_error_clear(err);
 out:
 	if (txn)
 		free(txn);
-	if (ctrl)
-		pv_pvtx_ctrl_free(ctrl);
 	if (json)
 		free(json);
+	if (rev)
+		free(rev);
 
-	return ret;
+	pv_pvtx_ctrl_free(ctrl);
+
+	return err->code;
 }
 
 char *pv_pvtx_txn_get_json(struct pv_pvtx_error *err)
 {
 	if (!is_active_txn()) {
-		pv_pvtx_error_set(err, 11, "no active transaction");
+		PVTX_ERROR_SET(err, 11, "no active transaction");
 		return NULL;
 	}
 
+	errno = 0;
 	char *json = pv_fs_file_read(get_json_path(), NULL);
 	if (!json) {
-		pv_pvtx_error_set(err, -1,
-				  "unknown error, couldn't get state json");
+		PVTX_ERROR_SET(err, -1, "couldn't get state json: %s",
+			       strerror(errno));
 		return NULL;
 	}
 
@@ -861,70 +1105,99 @@ char *pv_pvtx_txn_get_json(struct pv_pvtx_error *err)
 int pv_pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err)
 {
 	if (!is_active_txn()) {
-		pv_pvtx_error_set(err, 11, "no active transaction");
+		PVTX_ERROR_SET(err, 11, "no active transaction");
 		return 11;
 	}
 
-	int ret = -1;
 	struct pvtx_txn *txn = pvtx_load();
 
-	if (!txn->is_local) {
-		pv_pvtx_error_set(err, ret,
-				  "this not a local transaction. Only "
-				  "local transaction can be deployed");
+	if (!txn || !txn->is_local) {
+		PVTX_ERROR_SET(err, -1,
+			       "this not a local transaction. Only "
+			       "local transaction can be deployed");
 		goto out;
 	}
 
-	if (init_config(path, txn->obj) != 0) {
-		pv_pvtx_error_set(err, ret, "couldn't initialize config");
+	char tmpdir[PATH_MAX] = { 0 };
+	if (pv_fs_path_tmpdir(path, tmpdir) != 0) {
+		PVTX_ERROR_SET(err, -1,
+			       "couldn't set up temp dir; deploy failed");
 		goto out;
 	}
 
-	ret = create_fs(txn->obj, path, err);
+	if (init_config(path, tmpdir, txn->obj) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't initialize config");
+		goto out;
+	}
 
+	if (create_fs(txn->obj, tmpdir, err) != 0)
+		goto out;
+
+	char bakdir[PATH_MAX] = { 0 };
+	snprintf(bakdir, PATH_MAX, "%s.bak", path);
+
+	if (rename(path, bakdir) != 0) {
+		pv_fs_path_remove_recursive_no_sync(tmpdir);
+		PVTX_ERROR_SET(err, -1,
+			       "couldn't backup directory, deploy failed: %s",
+			       strerror(errno));
+		goto out;
+	}
+
+	if (rename(tmpdir, path) != 0) {
+		rename(bakdir, path);
+		pv_fs_path_remove_recursive_no_sync(tmpdir);
+		PVTX_ERROR_SET(err, -1, "couldn't deploy current rev: %s",
+			       strerror(errno));
+		goto out;
+	}
+
+	pv_fs_path_remove_recursive_no_sync(bakdir);
 	txn->status = PVTX_TXN_STATUS_DEPLOYED;
 	pvtx_save(txn, sizeof(struct pvtx_txn));
+	pv_pvtx_error_clear(err);
+
+	sync_all(txn->obj);
+	sync_all(path);
 
 out:
 	if (txn)
 		free(txn);
-	return ret;
+
+	return err->code;
 }
 
 int pv_pvtx_txn_remove(const char *part, struct pv_pvtx_error *err)
 {
 	if (!is_active_txn()) {
-		pv_pvtx_error_set(err, 3, "no active transaction");
+		PVTX_ERROR_SET(err, 3, "no active transaction");
 		return 3;
 	}
 
-	const char *json_path = get_json_path();
-	struct pv_pvtx_state *st = pv_pvtx_state_from_file(json_path);
+	struct pv_pvtx_state *st = pv_pvtx_state_from_file(get_json_path());
 	if (!st) {
-		pv_pvtx_error_set(err, -1, "couldn't load state json");
+		PVTX_ERROR_SET(err, -1, "couldn't load state json");
 		return -1;
 	}
 
-	int ret = pv_pvtx_state_remove(st, part);
+	if (pv_pvtx_state_remove(st, part) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't remove part");
+		goto out;
+	}
 
-	size_t str_size = 0;
-	char *str = pv_pvtx_state_to_str(st, &str_size);
-	ret = pv_fs_file_write(get_json_path(), str, str_size);
-
-	if (ret != 0)
-		pv_pvtx_error_set(err, ret, "couldn't write state json");
-
+	if (save_state_json(st, err) == 0)
+		pv_pvtx_error_clear(err);
+out:
 	pv_pvtx_state_free(st);
-
-	return ret;
+	return err->code;
 }
 int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
 		      struct pv_pvtx_error *err)
 {
 	if (is_active_txn()) {
-		pv_pvtx_error_set(err, 12,
-				  "active transaction; finish your work "
-				  "with 'deploy', 'commit' or 'abort' first");
+		PVTX_ERROR_SET(err, 12,
+			       "active transaction; finish your work "
+			       "with 'deploy', 'commit' or 'abort' first");
 		return 12;
 	}
 
@@ -943,44 +1216,46 @@ int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
 	memccpy(q.queue, queue_path, '\0', PATH_MAX);
 	memccpy(q.txn.obj, obj_path, '\0', PATH_MAX);
 
-	return pvtx_save(&q, sizeof(struct pvtx_queue));
+	if (pvtx_save(&q, sizeof(struct pvtx_queue)) != 0) {
+		PVTX_ERROR_SET(err, -1,
+			       "couldn't create queue, save operation failed");
+		return -1;
+	}
+
+	pv_pvtx_error_clear(err);
+
+	return 0;
 }
 
 int pv_pvtx_queue_remove(const char *part, struct pv_pvtx_error *err)
 {
 	struct pvtx_queue *q = pvtx_load();
+	char *enc = NULL;
+
 	if (!q || !pv_fs_path_exist(q->queue)) {
-		pv_pvtx_error_set(err, 1, "queue %s does not exist",
-				  q ? q->queue : "");
-		return 1;
+		PVTX_ERROR_SET(err, 1, "queue %s does not exist",
+			       q ? q->queue : "");
+		goto out;
 	}
 
-	int ret = 0;
-	char *enc = url_encode(part);
+	enc = url_encode(part);
 	if (!enc) {
-		ret = -1;
-		pv_pvtx_error_set(err, ret, "couldn't encode name");
+		PVTX_ERROR_SET(err, -1, "couldn't encode name");
 		goto out;
 	}
 
 	char fname[PATH_MAX] = { 0 };
-	int len = snprintf(fname, PATH_MAX, "%s/%03d__%s.remove", q->queue,
-			   q->count, enc);
-	if (len < 0) {
-		ret = -1;
-		pv_pvtx_error_set(err, ret,
-				  "couldn't create .remove file name");
+	if (get_queue_remove_file(part, fname) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't create .remove file name");
 		goto out;
 	}
 
-	ret = pv_fs_file_write(fname, NULL, 0);
-	if (ret != 0) {
-		pv_pvtx_error_set(err, ret, "couldn't create file %s", fname);
+	if (pv_fs_file_write_no_sync(fname, NULL, 0) != 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't create file %s", fname);
 		goto out;
 	}
 
-	q->count++;
-	pvtx_save(q, sizeof(struct pvtx_queue));
+	pv_pvtx_error_clear(err);
 
 out:
 	if (q)
@@ -988,75 +1263,17 @@ out:
 	if (enc)
 		free(enc);
 
-	return ret;
-}
-
-static void queue_get_json_path(const char *part, char *fname)
-{
-	struct pvtx_queue *q = pvtx_load();
-	if (!q)
-		return;
-
-	char bname[PATH_MAX] = { 0 };
-	int len = snprintf(bname, PATH_MAX, "%s/%03d__%s", q->queue, q->count,
-			   part);
-	if (len < 0) {
-		goto out;
-	}
-
-	pv_fs_mkdir_p(bname, 0755);
-	pv_fs_path_concat(fname, 2, bname, "json");
-
-out:
-	q->count++;
-	pvtx_save(q, sizeof(struct pvtx_queue));
-	free(q);
-}
-
-static int queue_add_tar(struct pv_pvtx_tar *tar, const char *name,
-			 struct pv_pvtx_error *err)
-{
-	const char *obj_pfx = "objects/";
-
-	struct pvtx_queue *q = pvtx_load();
-	if (!q) {
-		pv_pvtx_error_set(err, -1, "couldn't load current queue");
-		return -1;
-	}
-
-	int ret = 0;
-	struct pv_pvtx_tar_content con = { 0 };
-
-	while (pv_pvtx_tar_next(tar, &con) == 0) {
-		if (!strncmp(con.name, "json", strlen(con.name))) {
-			const char *part = name ? name : "package";
-
-			char fname[PATH_MAX] = { 0 };
-			queue_get_json_path(part, fname);
-
-			write_object_from_content(fname, &con);
-		} else if (!strncmp(con.name, obj_pfx, strlen(obj_pfx))) {
-			ret = add_object_local(&con, q->txn.obj);
-			if (ret != 0) {
-				pv_pvtx_error_set(err, ret,
-						  "couldn't save obejct");
-				goto out;
-			}
-		}
-	}
-out:
-	if (q)
-		free(q);
-
-	return ret;
+	return err->code;
 }
 
 int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
 {
 	struct pvtx_queue *q = pvtx_load();
 	if (!q || !pv_fs_path_exist(q->queue)) {
-		pv_pvtx_error_set(err, 1, "queue %s does not exist",
-				  q ? q->queue : "");
+		PVTX_ERROR_SET(err, 1, "queue %s does not exist",
+			       q ? q->queue : "");
+		if (q)
+			free(q);
 		return 1;
 	}
 
@@ -1071,19 +1288,23 @@ int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
 			return err->code;
 
 		char fname[PATH_MAX] = { 0 };
-		queue_get_json_path(part, fname);
-		int ret = pv_fs_file_copy(part, fname, 0644);
-		if (ret != 0) {
-			pv_pvtx_error_set(err, ret, "couldn't copy %s to %s",
-					  part, fname);
+		if (get_queue_json_path(part, fname) != 0) {
+			PVTX_ERROR_SET(err, -1, "couldn't create json path");
+			return -1;
 		}
-		return ret;
+
+		if (pv_fs_file_copy_no_sync(part, fname, 0644) != 0) {
+			PVTX_ERROR_SET(err, -1, "couldn't copy %s to %s", part,
+				       fname);
+			return -1;
+		}
+		pv_pvtx_error_clear(err);
+		return 0;
 	}
 
 	struct pv_pvtx_tar *tar = pv_pvtx_tar_from_path(part, type, err);
-	if (!tar) {
+	if (!tar)
 		return -1;
-	}
 
 	char bname[NAME_MAX] = { 0 };
 	pv_fs_basename(part, bname);
@@ -1091,15 +1312,18 @@ int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err)
 	int ret = queue_add_tar(tar, bname, err);
 	pv_pvtx_tar_free(tar);
 
-	return ret;
+	return err->code;
 }
 
 int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err)
 {
 	struct pvtx_queue *q = pvtx_load();
 	if (!q || !pv_fs_path_exist(q->queue)) {
-		pv_pvtx_error_set(err, 1, "queue %s does not exist",
-				  q ? q->queue : "");
+		PVTX_ERROR_SET(err, 1, "queue %s does not exist",
+			       q ? q->queue : "");
+		if (q)
+			free(q);
+
 		return 1;
 	}
 
@@ -1121,77 +1345,84 @@ int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err)
 int pv_pvtx_queue_process(const char *from, const char *queue_path,
 			  const char *obj_path, struct pv_pvtx_error *err)
 {
-	pv_pvtx_error_clear(err);
 	if (queue_path && obj_path) {
 		int ret = pv_pvtx_queue_new(queue_path, obj_path, err);
 		if (ret != 0)
 			return ret;
 	}
 
-	int ret = 0;
-	struct pvtx_queue *q = pvtx_load();
-	if (!q) {
-		pv_pvtx_error_set(err, -1, "couldn't load current config");
-		return -1;
-	}
-
-	if (!pv_fs_path_exist(q->queue)) {
-		pv_pvtx_error_set(err, 1, "queue %s does not exist");
-		ret = 1;
-		goto out;
-	}
-
-	if (from) {
-		ret = pv_pvtx_txn_begin(from, q->txn.obj, err);
-		if (ret != 0)
-			goto out;
-	}
-
-	if (!is_active_txn()) {
-		pv_pvtx_error_set(err, 3, "no active transaction");
-		ret = 3;
-		goto out;
-	}
-
 	struct dirent **entry = NULL;
+	struct pv_pvtx_state *st = NULL;
+	struct pvtx_queue *q = pvtx_load();
 
-	int len = scandir(q->queue, &entry, NULL, alphasort);
-	if (len < 0) {
-		pv_pvtx_error_set(err, -1, "couldn't scan directory %s",
-				  q->queue);
+	if (!q) {
+		PVTX_ERROR_SET(err, -1, "couldn't load current config");
 		return err->code;
 	}
 
+	if (!pv_fs_path_exist(q->queue)) {
+		PVTX_ERROR_SET(err, -1, "queue %s does not exist");
+		goto out;
+	}
+
+	if (from && pv_pvtx_txn_begin(from, q->txn.obj, err) != 0)
+		goto out;
+
+	if (!is_active_txn()) {
+		PVTX_ERROR_SET(err, 3, "no active transaction");
+		goto out;
+	}
+
+	int len = scandir(q->queue, &entry, NULL, alphasort);
+	if (len < 0) {
+		PVTX_ERROR_SET(err, -1, "couldn't scan directory %s", q->queue);
+		goto out;
+	}
+
+	st = pv_pvtx_state_from_file(get_json_path());
+	if (!st) {
+		PVTX_ERROR_SET(err, -1,
+			       "couldn't process queue, "
+			       "error loading current state json");
+		goto out;
+	}
+
 	for (int i = 0; i < len; i++) {
-		const char *fname = entry[i]->d_name;
+		char *fname = url_decode(entry[i]->d_name);
 		if (!strncmp(fname, ".", strlen(fname)) ||
 		    !strncmp(fname, "..", strlen(fname))) {
 			continue;
 		}
 		char *ext = strrchr(fname, '.');
-		if (!ext || strncmp(ext, ".remove", strlen(ext))) {
-			char complete_path[PATH_MAX] = { 0 };
-			pv_fs_path_concat(complete_path, 3, q->queue, fname,
-					  "json");
-			if (pv_pvtx_txn_add_from_disk(complete_path, err) != 0)
-				break;
-		} else {
-			char name[NAME_MAX] = { 0 };
-			memccpy(name, fname, '\0', NAME_MAX);
-			*strchr(name, '.') = '\0';
-			char *part = &name[strlen("NNN__")];
-			if (pv_pvtx_txn_remove(part, err) != 0)
-				break;
+		if (ext && !strncmp(ext, ".remove", strlen(ext))) {
+			if (process_remove_file(st, fname) != 0) {
+				PVTX_ERROR_SET(err, -1, "couldn't remove %s",
+					       fname);
+				goto out;
+			}
+		} else if (entry[i]->d_type == DT_DIR) {
+			if (process_add_directory(st, fname, q->queue, err) !=
+			    0)
+				goto out;
 		}
+		free(fname);
 	}
 
-	for (int i = 0; i < len; i++)
-		free(entry[i]);
-	free(entry);
+	if (save_state_json(st, err) != 0)
+		goto out;
 
+	pv_pvtx_error_clear(err);
 out:
+	if (entry) {
+		for (int i = 0; i < len; i++)
+			free(entry[i]);
+		free(entry);
+	}
+
 	if (q)
 		free(q);
 
-	return 0;
+	pv_pvtx_state_free(st);
+
+	return err->code;
 }

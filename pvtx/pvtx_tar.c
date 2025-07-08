@@ -25,6 +25,7 @@
 #endif
 
 #include "pvtx_tar_impl.h"
+#include "pvtx_buffer.h"
 #include "pvtx_tar.h"
 
 #include <unistd.h>
@@ -104,22 +105,44 @@ static void get_name(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_metadata *meta,
 	memccpy(name, buf, '\0', NAME_MAX);
 }
 
+static int read_remaining_bytes(struct pv_pvtx_tar *tar,
+				struct pv_pvtx_tar_content *con)
+{
+	struct pv_pvtx_buffer *buf = pv_pvtx_buffer_from_env(
+		"PVTX_OBJECT_BUF_SIZE", 512, 10485760, 512);
+
+	if (!buf)
+		return -1;
+
+	while (pv_pvtx_tar_content_read_block(con, buf->data, buf->size) > 0)
+		;
+
+	pv_pvtx_buffer_free(buf);
+
+	return 0;
+}
+
 int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con)
 {
 	pv_pvtx_error_clear(&tar->err);
+
+	if (read_remaining_bytes(tar, con) != 0) {
+		PVTX_ERROR_SET(&tar->err, -1, "couldn't read remaining bytes");
+		return -1;
+	}
 
 	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
 	ssize_t size = read_nointr(tar->priv, buf, PVTX_TAR_BLOCK_SIZE);
 
 	if (size < PVTX_TAR_BLOCK_SIZE) {
-		pv_pvtx_error_set(&tar->err, -1, "couldn't read header");
+		PVTX_ERROR_SET(&tar->err, -1, "couldn't read header");
 		return -1;
 	}
 
 	struct pv_pvtx_tar_metadata meta = { 0 };
 	memcpy(&meta, buf, sizeof(struct pv_pvtx_tar_metadata));
 	if (strncmp(meta.magic, "ustar", strlen("ustar"))) {
-		pv_pvtx_error_set(&tar->err, -1, "ustar not found");
+		PVTX_ERROR_SET(&tar->err, -1, "ustar not found");
 		return -1;
 	}
 
@@ -200,9 +223,9 @@ static enum pv_pvtx_tar_type imp_from_file(int fd, struct pv_pvtx_error *err)
 		char *e = NULL;
 		if (errno == ESPIPE) {
 			e = "type cannot be obtained from a no seekable fd: %s";
-			pv_pvtx_error_set(err, errno, e, strerror(errno));
+			PVTX_ERROR_SET(err, errno, e, strerror(errno));
 		} else {
-			pv_pvtx_error_set(err, errno, "%s", strerror(errno));
+			PVTX_ERROR_SET(err, errno, "%s", strerror(errno));
 		}
 		return type;
 	}
@@ -228,7 +251,7 @@ enum pv_pvtx_tar_type pv_pvtx_tar_type_get(const char *path,
 	pv_pvtx_error_clear(err);
 	int fd = open(path, O_RDONLY);
 	if (fd < 0) {
-		pv_pvtx_error_set(err, -1, "couldn't open file");
+		PVTX_ERROR_SET(err, -1, "couldn't open file");
 		return PVTX_TAR_UNKNOWN;
 	}
 
@@ -247,14 +270,13 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_fd(int fd, enum pv_pvtx_tar_type type,
 
 	struct pv_pvtx_tar *tar = calloc(1, sizeof(struct pv_pvtx_tar));
 	if (!tar) {
-		pv_pvtx_error_set(err, errno, "couldn't allocate tar object");
+		PVTX_ERROR_SET(err, errno, "couldn't allocate tar object");
 		return NULL;
 	}
 
 	tar->priv = calloc(1, sizeof(struct pv_pvtx_tar_priv));
 	if (!tar->priv) {
-		pv_pvtx_error_set(&tar->err, -1,
-				  "couldn't alloc implementation");
+		PVTX_ERROR_SET(&tar->err, -1, "couldn't alloc implementation");
 		goto err;
 	}
 
@@ -298,7 +320,7 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_path(const char *path,
 {
 	int fd = open(path, O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
-		pv_pvtx_error_set(err, -1, "couldn't open file %s", path);
+		PVTX_ERROR_SET(err, -1, "couldn't open file %s", path);
 		return NULL;
 	}
 

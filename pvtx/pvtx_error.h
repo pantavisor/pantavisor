@@ -22,17 +22,18 @@
 
 #ifndef PV_PVTX_ERROR_H
 #define PV_PVTX_ERROR_H
-#define PV_PVTX_ERROR_MAX_LEN (128)
+#define PV_PVTX_ERROR_MAX_LEN (512)
 
-// code == 0: no error
-// code > 0: code is an errno
-// code < 0: code is an unknown or custom error
 struct pv_pvtx_error {
 	int code;
 	char str[PV_PVTX_ERROR_MAX_LEN];
 };
 
-void pv_pvtx_error_set(struct pv_pvtx_error *err, int code, const char *, ...);
+#define PVTX_ERROR_SET(err, code, tmpl, ...)                                   \
+	pv_pvtx_error_set(err, code, __func__, __LINE__, tmpl, ##__VA_ARGS__)
+
+void pv_pvtx_error_set(struct pv_pvtx_error *err, int code, const char *func,
+		       int line, const char *tmpl, ...);
 void pv_pvtx_error_clear(struct pv_pvtx_error *err);
 
 #endif

@@ -36,7 +36,8 @@ int pv_fs_mkbasedir_p(const char *path, mode_t mode);
 int pv_fs_path_remove(const char *path, bool recursive);
 int pv_fs_path_rename(const char *src_path, const char *dst_path);
 off_t pv_fs_path_get_size(const char *path);
-int pv_fs_file_tmp(char *tmp, const char *fname);
+int pv_fs_file_tmp(const char *fname, char *tmp);
+int pv_fs_path_tmpdir(const char *fname, char *tmp);
 char *pv_fs_file_load(const char *path, off_t max);
 int pv_fs_file_save(const char *fname, const char *data, mode_t mode);
 int pv_fs_file_copy(const char *src, const char *dst, mode_t mode);
@@ -59,7 +60,11 @@ bool pv_fs_file_is_same(const char *path1, const char *path2);
 void pv_fs_basename(const char *path, char *base);
 void pv_fs_dirname(const char *path, char *parent);
 void pv_fs_extension(const char *path, char *ext);
+
 void *pv_fs_file_read(const char *path, size_t *size);
-int pv_fs_file_write(const char *path, void *buf, ssize_t size);
+
+int pv_fs_file_write_no_sync(const char *path, void *buf, ssize_t size);
+int pv_fs_path_remove_recursive_no_sync(const char *path);
+int pv_fs_file_copy_no_sync(const char *src, const char *dst, mode_t mode);
 
 #endif
