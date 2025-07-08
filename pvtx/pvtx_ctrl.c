@@ -73,7 +73,7 @@ struct pv_pvtx_buffer *get_buffer(struct pv_pvtx_error *err)
 		pv_pvtx_buffer_from_env(PVTX_CTRL_BUFF_ENV, PVTX_CTRL_BUFF_MIN,
 					PVTX_CTRL_BUFF_MAX, 512);
 	if (!buf && err)
-		pv_pvtx_error_set(err, -1, "couldn't get buffer");
+		PVTX_ERROR_SET(err, -1, "couldn't get buffer");
 
 	return buf;
 }
@@ -126,8 +126,8 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 		else if (pv_fs_path_exist(PVTX_CTRL_CONTAINER_SOCK))
 			path = PVTX_CTRL_CONTAINER_SOCK;
 		else {
-			pv_pvtx_error_set(&ctrl->error, -1,
-					  "couldn't locate socket");
+			PVTX_ERROR_SET(&ctrl->error, -1,
+				       "couldn't locate socket");
 			return -1;
 		}
 	}
@@ -146,8 +146,8 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 		ctrl->sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
 		if (ctrl->sock < 0) {
-			pv_pvtx_error_set(&ctrl->error, errno,
-					  "couldn't open socket");
+			PVTX_ERROR_SET(&ctrl->error, errno,
+				       "couldn't open socket");
 			return -1;
 		}
 
@@ -163,8 +163,8 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 	} while (!ok && retries > 0);
 
 	if (!ok || ctrl->sock < 0) {
-		pv_pvtx_error_set(&ctrl->error, -1,
-				  "couldn't connect, all atteps failed");
+		PVTX_ERROR_SET(&ctrl->error, -1,
+			       "couldn't connect, all atteps failed");
 		return -1;
 	}
 
@@ -194,8 +194,8 @@ static int send_header(struct pv_pvtx_ctrl *ctrl,
 
 	char *head_str = header_to_str(head);
 	if (!head_str) {
-		pv_pvtx_error_set(&ctrl->error, -1,
-				  "couldn't allocate header string");
+		PVTX_ERROR_SET(&ctrl->error, -1,
+			       "couldn't allocate header string");
 		return -1;
 	}
 	pv_fs_file_write_nointr(ctrl->sock, head_str, strlen(head_str));
@@ -223,8 +223,8 @@ static int check_error(struct pv_pvtx_ctrl *ctrl, const char *data)
 
 	char *p = strchr(data, ' ');
 	if (!p) {
-		pv_pvtx_error_set(&ctrl->error, -1,
-				  "couldn't parse header, error check failed");
+		PVTX_ERROR_SET(&ctrl->error, -1,
+			       "couldn't parse header, error check failed");
 		return -1;
 	}
 
@@ -238,13 +238,13 @@ static int check_error(struct pv_pvtx_ctrl *ctrl, const char *data)
 
 	char *end = strstr(data, "\r\n");
 	if (!end) {
-		pv_pvtx_error_set(&ctrl->error, -code, "couldn't parse header");
+		PVTX_ERROR_SET(&ctrl->error, -code, "couldn't parse header");
 		return -1;
 	}
 
 	char err[PV_PVTX_ERROR_MAX_LEN] = { 0 };
 	memcpy(err, p + 1, end - (p + 1));
-	pv_pvtx_error_set(&ctrl->error, -code, err);
+	PVTX_ERROR_SET(&ctrl->error, -code, err);
 
 	return -1;
 }
@@ -295,15 +295,13 @@ static char *read_data(struct pv_pvtx_ctrl *ctrl)
 
 	ssize_t len = get_content_length(buf->data);
 	if (len < 0) {
-		pv_pvtx_error_set(&ctrl->error, -1,
-				  "couldn't get Content-Length");
+		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't get Content-Length");
 		goto out;
 	}
 
 	const char *data_buf = pvtx_ctrl_get_data(buf->data, buf->size);
 	if (!data_buf) {
-		pv_pvtx_error_set(&ctrl->error, -1,
-				  "couldn't get data section");
+		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't get data section");
 		goto out;
 	}
 
@@ -313,8 +311,7 @@ static char *read_data(struct pv_pvtx_ctrl *ctrl)
 
 	data = calloc(len + 1, sizeof(char));
 	if (!data) {
-		pv_pvtx_error_set(&ctrl->error, errno,
-				  "couldn't allocate data");
+		PVTX_ERROR_SET(&ctrl->error, errno, "couldn't allocate data");
 		goto out;
 	}
 
@@ -348,7 +345,7 @@ char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 
 	data = read_data(ctrl);
 	if (!data) {
-		pv_pvtx_error_set(&ctrl->error, -1, "empty data");
+		PVTX_ERROR_SET(&ctrl->error, -1, "empty data");
 		goto out;
 	}
 	*size = strlen(data);
