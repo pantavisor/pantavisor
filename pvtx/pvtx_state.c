@@ -220,7 +220,7 @@ void pv_pvtx_state_free(struct pv_pvtx_state *st)
 struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path)
 {
 	int fd = open(path, O_RDONLY);
-	if (!fd)
+	if (fd < 0)
 		return NULL;
 
 	struct stat st = { 0 };

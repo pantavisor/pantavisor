@@ -203,20 +203,41 @@ int pv_fs_path_rename(const char *src_path, const char *dst_path)
 	return 0;
 }
 
-int pv_fs_file_tmp(char *tmp, const char *fname)
+int pv_fs_path_tmpdir(const char *fname, char *tmp)
 {
 	if (!fname)
 		return -1;
 
-	size_t size = strnlen(fname, PATH_MAX) + 5;
+	memset(tmp, 0, PATH_MAX);
+	snprintf(tmp, PATH_MAX, "%s.tmp", fname);
 
-	if (size > PATH_MAX) {
-		errno = ENAMETOOLONG;
+	pv_fs_path_remove(tmp, true);
+
+	if (pv_fs_mkdir_p(tmp, 0755) != 0) {
+		memset(tmp, 0, PATH_MAX);
 		return -1;
 	}
 
-	snprintf(tmp, size, "%s.tmp", fname);
 	return 0;
+}
+
+int pv_fs_file_tmp(const char *fname, char *tmp)
+{
+	if (!fname)
+		return -1;
+
+	memset(tmp, 0, PATH_MAX);
+	snprintf(tmp, PATH_MAX, "%s.tmp", fname);
+
+	pv_fs_path_remove(tmp, false);
+
+	int fd = open(tmp, O_RDWR | O_TRUNC | O_CLOEXEC | O_CREAT, 0600);
+	if (fd < 0) {
+		memset(tmp, 0, PATH_MAX);
+		return -1;
+	}
+
+	return fd;
 }
 
 char *pv_fs_file_load(const char *path, off_t max)
@@ -253,12 +274,9 @@ int pv_fs_file_save(const char *fname, const char *data, mode_t mode)
 		return -1;
 	}
 
-	char tmp[PATH_MAX] = { 0 };
-	if (pv_fs_file_tmp(tmp, fname) != 0)
-		return -1;
-
 	int ret = -1;
-	int fd = open(tmp, O_CREAT | O_WRONLY | O_TRUNC | O_SYNC, mode);
+	char tmp[PATH_MAX] = { 0 };
+	int fd = pv_fs_file_tmp(fname, tmp);
 	if (fd < 0)
 		goto out;
 
@@ -305,10 +323,7 @@ int pv_fs_file_copy(const char *src, const char *dst, mode_t mode)
 		return -1;
 
 	char tmp_path[PATH_MAX] = { 0 };
-	if (pv_fs_file_tmp(tmp_path, src) != 0)
-		return -1;
-
-	int tmp_fd = open(tmp_path, O_CREAT | O_WRONLY | O_TRUNC, mode);
+	int tmp_fd = pv_fs_file_tmp(dst, tmp_path);
 	if (tmp_fd < 0)
 		return -1;
 
@@ -547,10 +562,7 @@ out:
 int pv_fs_file_write(const char *path, void *buf, ssize_t len)
 {
 	char tmp[PATH_MAX] = { 0 };
-	if (pv_fs_file_tmp(tmp, path) != 0)
-		return -1;
-
-	int fd = open(tmp, O_CREAT | O_TRUNC | O_CLOEXEC | O_WRONLY, 0644);
+	int fd = pv_fs_file_tmp(path, tmp);
 	if (fd < 0)
 		return -1;
 
