@@ -203,6 +203,15 @@ void pv_paths_storage_trail_pvr_file(char *buf, size_t size, const char *rev,
 			pv_config_get_str(PV_STORAGE_MNTPOINT), rev, name);
 }
 
+#define PV_TRAILS_WASM_FILE_PATHF "%s/%s/%s/app.wasm"
+
+void pv_paths_storage_trail_wasm_file(char *buf, size_t size, const char *rev,
+				      const char *name)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_TRAILS_WASM_FILE_PATHF,
+			pv_config_get_str(PV_STORAGE_MNTPOINT), rev, name);
+}
+
 #define PV_CONFIG_PATHF "%s/config/%s"
 
 void pv_paths_storage_config_file(char *buf, size_t size, const char *name)

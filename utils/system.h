@@ -58,6 +58,7 @@ int get_cpu_model(char *buf, int buflen);
 
 void pv_system_kill_lenient(pid_t pid);
 void pv_system_kill_force(pid_t pid);
+int pv_system_kill_and_wait(pid_t pid);
 
 void pv_system_set_process_name(const char *fmt, ...);
 

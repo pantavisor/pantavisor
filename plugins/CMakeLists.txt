@@ -38,3 +38,16 @@ install(TARGETS pv_runc
 	DESTINATION /lib/
 )
 
+# Set the source files for the binary
+add_library(pv_wasmedge MODULE
+    pv_wasmedge.c
+    pv_wasmedge.h
+)
+
+target_include_directories(pv_wasmedge PRIVATE ${PARENT_DIR})
+SET_TARGET_PROPERTIES(pv_wasmedge PROPERTIES PREFIX "")
+
+install(TARGETS pv_wasmedge
+	DESTINATION /lib/
+)
+

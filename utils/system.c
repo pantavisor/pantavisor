@@ -28,11 +28,13 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdarg.h>
+#include <errno.h>
 
 #include <linux/reboot.h>
 
 #include <sys/types.h>
 #include <sys/prctl.h>
+#include <sys/wait.h>
 
 #include "system.h"
 #include "fs.h"
@@ -134,6 +136,77 @@ void pv_system_kill_force(pid_t pid)
 	// force kill if process could not finish
 	if (!exited)
 		kill(pid, SIGKILL);
+}
+
+/**
+ * @brief Wrapper around pv_system_kill_force that blocks SIGCHLD, attempts to kill,
+ * collects process status, and then unblocks SIGCHLD.
+ *
+ * @param pid The process ID to kill.
+ * @return The exit status of the killed process, or -1 if waitpid failed (e.g., ECHILD)
+ * or 0 if the process was already gone before attempting to kill.
+ * Note: The returned status is the raw status from waitpid. Use WIFEXITED, etc.
+ */
+int pv_system_kill_and_wait(pid_t pid)
+{
+	sigset_t block_mask, old_mask;
+	int status = -1; // Default status if waitpid fails or not applicable
+
+	if (pid <= 0) {
+		return 0; // Or some other indication that no action was taken
+	}
+
+	// 1. Initialize a signal set to block SIGCHLD
+	sigemptyset(&block_mask);
+	sigaddset(&block_mask, SIGCHLD);
+
+	// 2. Block SIGCHLD and save the old signal mask
+	//    IMPORTANT: If your application is multithreaded, use pthread_sigmask() here!
+	if (sigprocmask(SIG_BLOCK, &block_mask, &old_mask) == -1) {
+		perror("pv_system_kill_and_wait: sigprocmask SIG_BLOCK");
+		// We can't proceed reliably if we can't block signals.
+		// Depending on your error handling, you might exit, log, or continue unreliably.
+		// For this example, we'll return -1 and hope for the best if kill is called.
+		pv_system_kill_force(pid); // Still attempt to kill
+		return -1;
+	}
+
+	// 3. Call the original kill function
+	pv_system_kill_force(pid);
+
+	// 4. Try to wait for the process to get its exit status
+	//    Use WNOHANG to not block indefinitely if the process is not a direct child
+	//    or has already been reaped by another mechanism (unlikely with SIGCHLD blocked).
+	//    However, usually, we'd want to block here to ensure we get the status.
+	//    Forcing it to block to ensure status collection after termination.
+	pid_t result_pid = waitpid(pid, &status, 0);
+	if (result_pid == -1) {
+		if (errno == ECHILD) {
+			fprintf(stderr,
+				"pv_system_kill_and_wait: waitpid failed for PID %d (ECHILD - already reaped or not a child).\n",
+				pid);
+			status = 0; // Indicate it's likely gone.
+		} else {
+			perror("pv_system_kill_and_wait: waitpid");
+		}
+	} else if (result_pid == 0) {
+		// This case should ideally not happen if we called waitpid(pid, &status, 0)
+		// (i.e., not using WNOHANG) and the child was indeed terminated.
+		// If it did, it means the child might still be running (e.g., kill failed)
+		// or it's not a direct child.
+		fprintf(stderr,
+			"pv_system_kill_and_wait: waitpid returned 0 for PID %d, process might still be running or not a direct child.\n",
+			pid);
+		status = 0; // Indicate uncertain state
+	}
+
+	// 5. Unblock SIGCHLD (restore the old mask)
+	if (sigprocmask(SIG_SETMASK, &old_mask, NULL) == -1) {
+		perror("pv_system_kill_and_wait: sigprocmask SIG_SETMASK");
+		// Log this, but it doesn't prevent the previous actions from happening
+	}
+
+	return status;
 }
 
 void pv_system_set_process_name(const char *fmt, ...)
