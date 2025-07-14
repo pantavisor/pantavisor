@@ -234,6 +234,12 @@ IF(PANTAVISOR_DEBUG)
 target_compile_definitions(pantavisor PRIVATE PANTAVISOR_DEBUG)
 ENDIF()
 
+
+add_executable(pv-sched
+	pv-sched.c
+)
+install(TARGETS pv-sched DESTINATION bin)
+
 IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 ## install basic filesystem skeleton
 install(DIRECTORY skel/ DESTINATION /)
