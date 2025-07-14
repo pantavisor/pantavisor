@@ -914,8 +914,7 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 		char *val = pv_json_format(info->value, strlen(info->value));
 
 		if (key && val) {
-			// if value is a regular string
-			if (info->value[0] != '{') {
+			if (!pv_json_is_valid(info->value)) {
 				int frag_len = strlen(key) + strlen(val) +
 					       // 2 pairs of quotes
 					       2 * 2 +
@@ -928,7 +927,6 @@ int pv_metadata_upload_devmeta(struct pantavisor *pv)
 					len += frag_len;
 					json_avail -= frag_len;
 				}
-				// if value is a json
 			} else {
 				int frag_len = strlen(info->key) +
 					       strlen(info->value) +
@@ -1112,8 +1110,7 @@ static char *pv_metadata_get_meta_string(struct dl_list *meta_list)
 		if (!curr->value)
 			continue;
 
-		if (curr->value[0] != '{') {
-			// value is a plain string
+		if (!pv_json_is_valid(curr->value)) {
 			char *escaped = pv_json_format(curr->value,
 						       strlen(curr->value));
 			if (!escaped)
@@ -1124,7 +1121,6 @@ static char *pv_metadata_get_meta_string(struct dl_list *meta_list)
 					"\"%s\":\"%s\",", curr->key, escaped);
 			free(escaped);
 		} else {
-			// value is a json
 			line_len = strlen(curr->key) + strlen(curr->value) + 4;
 			json = realloc(json, len + line_len + 1);
 			SNPRINTF_WTRUNC(&json[len], line_len + 1, "\"%s\":%s,",

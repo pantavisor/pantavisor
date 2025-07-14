@@ -39,6 +39,8 @@ char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
 			int tokc);
 char *pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok);
 
+bool pv_json_is_valid(const char *json);
+
 struct pv_json_ser {
 	jsonb b;
 	size_t block_size;

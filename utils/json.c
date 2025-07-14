@@ -217,6 +217,29 @@ out:
 	return json_string;
 }
 
+bool pv_json_is_valid(const char *json)
+{
+	bool ret = false;
+
+	int tokc;
+	jsmntok_t *tokv = NULL;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0)
+		goto out;
+
+	// this way, we don't take plain strings as valid, as that
+	// is considered JSMN_PRIMITIVE by the library
+	if((tokv->type != JSMN_OBJECT) && (tokv->type != JSMN_ARRAY))
+		goto out;
+
+	ret = true;
+
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
 void pv_json_ser_init(struct pv_json_ser *js, size_t size)
 {
 	if (!js)
