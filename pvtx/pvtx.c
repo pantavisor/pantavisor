@@ -209,7 +209,7 @@ static int cmd_deploy(int argc, char **argv)
 
 static int cmd_help(int argc, char **argv)
 {
-	printf("Usage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
+	printf("LUsage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
 	printf("Commands:\n");
 
 	printf("  %-22s", "begin <base> [object]");

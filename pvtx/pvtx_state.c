@@ -220,11 +220,17 @@ void pv_pvtx_state_free(struct pv_pvtx_state *st)
 struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path)
 {
 	int fd = open(path, O_RDONLY);
-	if (!fd)
+	if (fd < 0)
 		return NULL;
 
 	struct stat st = { 0 };
 	if (fstat(fd, &st) != 0) {
+		close(fd);
+		return NULL;
+	}
+
+	// minimum possible json is [] or {}
+	if (st.st_size < 2) {
 		close(fd);
 		return NULL;
 	}
