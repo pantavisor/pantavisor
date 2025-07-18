@@ -272,7 +272,8 @@ static void _save_log_file_pos(off_t pos, const char *path)
 	f->pos = pos;
 
 	// save pos in xattr if possible by config
-	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
+	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE) ||
+	    !strlen(pv_config_get_str(PV_STORAGE_LOGTEMPSIZE))) {
 		char value[MAX_DEC_STRING_SIZE_OF_TYPE(pos)];
 		SNPRINTF_WTRUNC(value, sizeof(value), "%jd", (intmax_t)pos);
 		if (setxattr(path, PH_LOGGER_POS_XATTR, value, strlen(value),
@@ -297,7 +298,8 @@ static off_t _load_log_file_pos(const char *path)
 	// if not in memory, try to get it from xattr if possible
 	char dst[MAX_XATTR_SIZE] = { 0 };
 	off_t pos = 0;
-	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
+	if (!pv_config_get_str(PV_STORAGE_LOGTEMPSIZE) ||
+	    !strlen(pv_config_get_str(PV_STORAGE_LOGTEMPSIZE))) {
 		pv_log(DEBUG, "log file is persistent. Trying to get xattr...",
 		       path);
 		if (getxattr(path, PH_LOGGER_POS_XATTR, dst, MAX_XATTR_SIZE) >

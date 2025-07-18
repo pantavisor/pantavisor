@@ -78,7 +78,8 @@ void pv_mount_umount(void)
 	if (umount(path))
 		pv_log(ERROR, "Error unmounting etc_file %s", strerror(errno));
 
-	if (pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) {
+	if (pv_config_get_str(PV_STORAGE_LOGTEMPSIZE) &&
+	    strlen(pv_config_get_str(PV_STORAGE_LOGTEMPSIZE)) > 0) {
 		pv_paths_storage(path, PATH_MAX);
 		size_t logmount_size = strlen(path) + strlen("/logs  ");
 		char *logmount = malloc(sizeof(char) * logmount_size);
@@ -191,7 +192,7 @@ static int pv_mount_init(struct pv_init *this)
 	}
 	free_blkid_info(&dev_info); /*Keep if device_info is required later.*/
 
-	if (logtempsize) {
+	if (logtempsize && strlen(logtempsize)) {
 		size_t logmount_size = strlen(path) + strlen("/logs  ");
 		char *logmount = malloc(sizeof(char) * logmount_size);
 		size_t opts_size = strlen(logtempsize) + strlen("size=%s") + 1;
