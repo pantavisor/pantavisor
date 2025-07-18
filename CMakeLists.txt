@@ -213,6 +213,8 @@ add_executable(pantavisor
 			version.h
 			volumes.c
 			volumes.h
+			wall.c
+			wall.h
 			wdt.c
 			wdt.h
 )

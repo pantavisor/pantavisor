@@ -165,6 +165,8 @@ static struct pv_config_entry entries[] = {
 	  .value.b = false },
 	{ BOOL, "PV_DEBUG_SHELL", PV, 0, false, .value.b = true },
 	{ BOOL, "PV_DEBUG_SHELL_AUTOLOGIN", PV, 0, false, .value.b = false },
+	{ BOOL, "PV_DEBUG_SHELL_ACTIVE", PV, 0, false, .value.b = false },
+	{ INT, "PV_DEBUG_SHELL_TIMEOUT", PV, 0, false, .value.i = 60 },
 	{ BOOL, "PV_DEBUG_SSH", PV | OEM | RUN, 0, false, .value.b = true },
 	{ STR, "PV_DEBUG_SSH_AUTHORIZED_KEYS", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },
@@ -477,6 +479,10 @@ void pv_config_set_debug_shell_autologin(bool shell)
 void pv_config_set_debug_ssh(bool ssh)
 {
 	_set_config_by_index_bool(PV_DEBUG_SSH, ssh, ARGS);
+}
+void pv_config_set_debug_shell_active(bool shell)
+{
+	_set_config_by_index_bool(PV_DEBUG_SHELL_ACTIVE, shell, ARGS);
 }
 
 log_server_output_mask_t pv_config_get_log_server_outputs()
