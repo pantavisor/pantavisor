@@ -220,6 +220,8 @@ static struct pv_config_entry entries[] = {
 	  .value.s = SECUREBOOT_OEM_TRUSTSTORE_DEF },
 	{ STR, "PV_SECUREBOOT_TRUSTSTORE", PV, 0, false,
 	  .value.s = SECUREBOOT_TRUSTSTORE_DEF },
+	{ BOOL, "PV_SECUREBOOT_VERITY_CORRUPTION_CHECK", PV | OEM | RUN, 0,
+	  false, .value.b = false },
 	{ STR, "PV_STORAGE_DEVICE", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_STORAGE_FSTYPE", PV, 0, false, .value.s = NULL },
 	{ BOOL, "PV_STORAGE_GC_KEEP_FACTORY", PV | OEM | RUN, 0, false,
@@ -255,6 +257,8 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 120 },
 	{ BOOL, "PV_UPDATER_USE_TMP_OBJECTS", PV | OEM | RUN, 0,
 	  .value.b = false },
+	{ STR, "PV_VOLMOUNT_DM_EXTRAARGS", LEVEL_SYSCTL, 0, false,
+	  .value.s = NULL },
 	{ WDT_MODE, "PV_WDT_MODE", PV, 0, false, .value.i = WDT_SHUTDOWN },
 	{ INT, "PV_WDT_TIMEOUT", PV, 0, false, .value.i = 15 }
 };
