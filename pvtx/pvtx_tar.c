@@ -251,7 +251,10 @@ enum pv_pvtx_tar_type pv_pvtx_tar_type_get(const char *path,
 	pv_pvtx_error_clear(err);
 	int fd = open(path, O_RDONLY);
 	if (fd < 0) {
-		PVTX_ERROR_SET(err, -1, "couldn't open file");
+		PVTX_ERROR_SET(err, -1,
+			       "imposible to check the file type, "
+			       "couldn't open file %s",
+			       path);
 		return PVTX_TAR_UNKNOWN;
 	}
 
@@ -276,7 +279,8 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_fd(int fd, enum pv_pvtx_tar_type type,
 
 	tar->priv = calloc(1, sizeof(struct pv_pvtx_tar_priv));
 	if (!tar->priv) {
-		PVTX_ERROR_SET(&tar->err, -1, "couldn't alloc implementation");
+		PVTX_ERROR_SET(&tar->err, -1,
+			       "couldn't allocate implementation");
 		goto err;
 	}
 
@@ -318,9 +322,13 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_path(const char *path,
 					  enum pv_pvtx_tar_type type,
 					  struct pv_pvtx_error *err)
 {
+	errno = 0;
 	int fd = open(path, O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
-		PVTX_ERROR_SET(err, -1, "couldn't open file %s", path);
+		PVTX_ERROR_SET(err, -1,
+			       "couldn't create struct pv_pvtx_tar, "
+			       " open file %s error: %s",
+			       path, strerror(errno));
 		return NULL;
 	}
 

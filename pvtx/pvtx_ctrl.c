@@ -238,7 +238,7 @@ static int check_error(struct pv_pvtx_ctrl *ctrl, const char *data)
 
 	char *end = strstr(data, "\r\n");
 	if (!end) {
-		PVTX_ERROR_SET(&ctrl->error, -code, "couldn't parse header");
+		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't parse header");
 		return -1;
 	}
 
@@ -393,8 +393,10 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 	send_header(ctrl, &head);
 	struct pv_pvtx_buffer *buf = get_buffer(&ctrl->error);
 
-	if (!buf)
+	if (!buf) {
+		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't allocate buffer");
 		return -1;
+	}
 
 	ssize_t written = 0;
 	while (written < con->size) {
