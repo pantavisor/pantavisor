@@ -22,12 +22,14 @@
 
 #include "pvtx_txn.h"
 #include "pvtx_error.h"
+#include "utils/fs.h"
 
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <linux/limits.h>
 
 static int cmd_begin(int argc, char **argv);
 static int cmd_add(int argc, char **argv);
@@ -51,6 +53,7 @@ struct commands {
 };
 
 #define PVTX_DIR_VAR "PVTXDIR"
+#define LOCAL_ERR(msg) local_err(__FILE__, __LINE__, msg)
 
 static struct commands normal = {
 	.names =
@@ -96,6 +99,13 @@ static struct commands queue = {
 	.size = 4,
 };
 
+static void local_err(const char *file, int line, const char *msg)
+{
+	char bname[NAME_MAX] = { 0 };
+	pv_fs_basename(file, bname);
+	fprintf(stderr, "ERROR: %s\n(%s:%d)\n", msg, bname, line);
+}
+
 static int cmd_begin(int argc, char **argv)
 {
 	struct pv_pvtx_error err = { 0 };
@@ -103,7 +113,8 @@ static int cmd_begin(int argc, char **argv)
 	char *obj_path = NULL;
 
 	if (argc < 3) {
-		printf("Missing arguments: base_rev, empty or \"\" is required\n");
+		LOCAL_ERR("missing arguments, base_rev, empty "
+			  "or current is required");
 		return -1;
 	}
 
@@ -114,27 +125,24 @@ static int cmd_begin(int argc, char **argv)
 
 	int ret = pv_pvtx_txn_begin(from, obj_path, &err);
 	if (ret != 0)
-		fprintf(stderr, "%s", err.str);
+		fprintf(stderr, "ERROR: %s\n", err.str);
 
 	return ret;
 }
 static int cmd_add(int argc, char **argv)
 {
 	if (argc < 3) {
-		printf("Missing argument: a file is needed or -\n");
+		LOCAL_ERR("missing argument, files or - is needed");
 		return -1;
 	}
 
 	struct pv_pvtx_error err = { 0 };
 	int ret = 0;
 
-	if (argv[2][0] == '-') {
-		printf("adding pvexport from stdin\n");
+	if (argv[2][0] == '-')
 		ret = pv_pvtx_txn_add_tar_from_fd(STDIN_FILENO, &err);
-	} else {
-		printf("adding from %s\n", argv[2]);
+	else
 		ret = pv_pvtx_txn_add_from_disk(argv[2], &err);
-	}
 
 	if (ret != 0)
 		fprintf(stderr, "ERROR: %s\n", err.str);
@@ -144,13 +152,9 @@ static int cmd_add(int argc, char **argv)
 static int cmd_remove(int argc, char **argv)
 {
 	if (argc < 3) {
-		fprintf(stderr,
-			"ERROR: must remove a part (missing paramter)\n");
+		LOCAL_ERR("must remove a part, missing parameter");
 		return 4;
 	}
-
-	printf("removing %s and cleaning signed files if part has been signed\n",
-	       argv[2]);
 
 	struct pv_pvtx_error err = { 0 };
 	int ret = pv_pvtx_txn_remove(argv[2], &err);
@@ -171,10 +175,15 @@ static int cmd_abort(int argc, char **argv)
 static int cmd_commit(int argc, char **argv)
 {
 	struct pv_pvtx_error err = { 0 };
-	int ret = pv_pvtx_txn_commit(&err);
-	if (ret != 0)
+	char *rev = pv_pvtx_txn_commit(&err);
+	if (!rev) {
 		fprintf(stderr, "ERROR: %s\n", err.str);
-	return ret;
+		free(rev);
+	} else {
+		printf("%s\n", rev);
+	};
+
+	return err.code;
 }
 static int cmd_show(int argc, char **argv)
 {
@@ -193,7 +202,7 @@ static int cmd_show(int argc, char **argv)
 static int cmd_deploy(int argc, char **argv)
 {
 	if (argc < 3) {
-		fprintf(stderr, "ERROR: missing deploy folder\n");
+		LOCAL_ERR("missing deploy folder");
 		return 1;
 	}
 
@@ -209,7 +218,7 @@ static int cmd_deploy(int argc, char **argv)
 
 static int cmd_help(int argc, char **argv)
 {
-	printf("LUsage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
+	printf("Usage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
 	printf("Commands:\n");
 
 	printf("  %-22s", "begin <base> [object]");
@@ -264,10 +273,10 @@ static int cmd_help(int argc, char **argv)
 static int cmd_queue_new(int argc, char **argv)
 {
 	if (argc < 4) {
-		fprintf(stderr, "ERROR: queue argument is required\n");
+		LOCAL_ERR("queue argument is required");
 		return 1;
 	} else if (argc < 5) {
-		fprintf(stderr, "ERROR: objects argument is required\n");
+		LOCAL_ERR("objects argument is required");
 		return 1;
 	}
 
@@ -282,7 +291,7 @@ static int cmd_queue_new(int argc, char **argv)
 static int cmd_queue_remove(int argc, char **argv)
 {
 	if (argc < 4) {
-		fprintf(stderr, "ERROR: missing argument 'part'\n");
+		LOCAL_ERR("missing argument 'part'");
 		return 1;
 	}
 
@@ -296,7 +305,7 @@ static int cmd_queue_remove(int argc, char **argv)
 static int cmd_queue_unpack(int argc, char **argv)
 {
 	if (argc < 4) {
-		fprintf(stderr, "ERROR: missing argument 'part'\n");
+		LOCAL_ERR("missing argument, file or - is required");
 		return 1;
 	}
 
@@ -347,7 +356,7 @@ static int pv_pvtx_process_args(int argc, char **argv)
 	struct commands *cmd = &normal;
 
 	if (!strlen(op)) {
-		fprintf(stderr, "ERROR: empty command\n\n");
+		LOCAL_ERR("empty command");
 		cmd_help(argc, argv);
 		exit(1);
 	}
@@ -363,13 +372,10 @@ static int pv_pvtx_process_args(int argc, char **argv)
 			continue;
 
 		err = cmd->fn[i](argc, argv);
-		if (err != 0)
-			fprintf(stderr, "command finish with errors err = %d\n",
-				err);
 		return err;
 	}
 
-	fprintf(stderr, "command not found\n");
+	LOCAL_ERR("command not found");
 
 	return -1;
 }
