@@ -410,17 +410,20 @@ static void pv_ctrl_write_ok_response(int req_fd)
 static void pv_ctrl_write_ok_response_size(int req_fd, ssize_t size)
 {
 	char *header = NULL;
-	if (asprintf(&header, HTTP_RES_OK_SIZE, size) == -1) {
+	int len = asprintf(&header, HTTP_RES_OK_SIZE, size);
+	if (len == -1) {
 		pv_log(WARN, "HTTP OK response could not be allocated");
 		return;
 	}
 
 	int res = pv_ctrl_send_all(req_fd, header, strlen(header));
+	free(header);
+
 	if (res < 0) {
 		pv_log(WARN,
 		       "HTTP OK response could not be written to ctrl socket with fd %d: %s",
 		       req_fd, strerror(errno));
-	} else if (res != strlen(HTTP_RES_OK)) {
+	} else if (res != len) {
 		pv_log(WARN, "HTTP OK response was not sent");
 	}
 }
