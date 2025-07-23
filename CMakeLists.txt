@@ -44,6 +44,8 @@ find_library(PANTAVISOR_RUNTIME_MBEDX509_LIBRARY mbedx509)
 find_library(PANTAVISOR_RUNTIME_MBEDCRYPTO_LIBRARY mbedcrypto)
 find_library(PANTAVISOR_RUNTIME_PICOHTTPPARSER picohttpparser)
 find_library(PANTAVISOR_RUNTIME_LXC lxc)
+find_library(PANTAVISOR_RUNTIME_EVENT event)
+find_library(PANTAVISOR_RUNTIME_EVENT_MBEDTLS event_mbedtls)
 
 
 set(PANTAVISOR_RUNTIME_MBEDTLS_LIBRARIES
@@ -64,6 +66,11 @@ mark_as_advanced(PANTAVISOR_RUNTIME_MBEDTLS_INCLUDE_DIRS
 	PANTAVISOR_RUNTIME_MBEDTLS_LIBRARY
 	PANTAVISOR_RUNTIME_MBEDX509_LIBRARY
 	PANTAVISOR_RUNTIME_MBEDCRYPTO_LIBRARY
+)
+
+set(PANTAVISOR_RUNTIME_EVENT_LIBRARIES
+	${PANTAVISOR_RUNTIME_EVENT}
+	${PANTAVISOR_RUNTIME_EVENT_MBEDTLS}
 )
 
 #### Compiler options
@@ -156,8 +163,14 @@ add_executable(pantavisor
 			network.h
 			objects.c
 			objects.h
-			pantahub.c
-			pantahub.h
+			pantahub/pantahub.c
+			pantahub/pantahub.h
+			pantahub/pantahub_proto.c
+			pantahub/pantahub_proto.h
+			pantahub/pantahub_rest.c
+			pantahub/pantahub_rest.h
+			pantahub/pantahub_timer.c
+			pantahub/pantahub_timer.h
 			pantavisor.c
 			pantavisor.h
 			parser/parser.c
@@ -226,6 +239,7 @@ target_link_libraries(pantavisor
 	${PANTAVISOR_RUNTIME_MBEDTLS_LIBRARIES}
 	${PANTAVISOR_RUNTIME_LXC}
 	${PANTAVISOR_RUNTIME_ZLIB}
+	${PANTAVISOR_RUNTIME_EVENT_LIBRARIES}
 )
 
 install(TARGETS pantavisor DESTINATION bin)
