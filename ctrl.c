@@ -796,6 +796,14 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		goto error;
 	}
 
+	if (!pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE) &&
+	    ((*cmd)->op == CMD_DEFER_REBOOT)) {
+		pv_ctrl_write_error_response(
+			req_fd, HTTP_STATUS_CONFLICT,
+			"Cannot do this operation when Debug Shell is not active");
+		goto error;
+	}
+
 	if (pv->remote_mode && ((*cmd)->op == CMD_GO_REMOTE)) {
 		pv_ctrl_write_error_response(req_fd, HTTP_STATUS_CONFLICT,
 					     "Already in remote mode");

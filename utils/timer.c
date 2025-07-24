@@ -97,3 +97,12 @@ int timer_start(struct timer *t, time_t sec, long nsec, timer_type_t type)
 
 	return 1;
 }
+
+void timer_stop(struct timer *t)
+{
+	if (!t)
+		return;
+
+	t->timeout.tv_sec = 0;
+	t->timeout.tv_nsec = 0;
+}

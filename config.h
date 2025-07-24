@@ -60,6 +60,8 @@ typedef enum {
 	PV_CONTROL_REMOTE_ALWAYS,
 	PV_DEBUG_SHELL,
 	PV_DEBUG_SHELL_AUTOLOGIN,
+	PV_DEBUG_SHELL_ACTIVE,
+	PV_DEBUG_SHELL_TIMEOUT,
 	PV_DEBUG_SSH,
 	PV_DEBUG_SSH_AUTHORIZED_KEYS,
 	PV_DISK_EXPORTSDIR,
@@ -149,6 +151,7 @@ void pv_config_set_creds_secret(char *secret);
 void pv_config_set_debug_shell(bool shell);
 void pv_config_set_debug_shell_autologin(bool autologin);
 void pv_config_set_debug_ssh(bool ssh);
+void pv_config_set_debug_shell_active(bool shell);
 
 // LOG SERVER OUTPUTS
 

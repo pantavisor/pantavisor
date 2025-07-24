@@ -106,6 +106,7 @@ typedef enum {
 	PV_STATE_REBOOT,
 	PV_STATE_POWEROFF,
 	PV_STATE_ERROR,
+	PV_STATE_DEBUG,
 	PV_STATE_EXIT,
 	MAX_STATES
 } pv_state_t;
@@ -135,6 +136,8 @@ static const char *pv_state_string(pv_state_t st)
 		return "STATE_ERROR";
 	case PV_STATE_EXIT:
 		return "STATE_EXIT";
+	case PV_STATE_DEBUG:
+		return "STATE_DEBUG";
 	default:
 		return "STATE_UNKNOWN";
 	}
@@ -628,6 +631,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	if (pv->cmd)
 		next_state = PV_STATE_COMMAND;
 
+	next_state = PV_STATE_DEBUG;
+
 out:
 	return next_state;
 }
@@ -768,6 +773,20 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		}
 		pv->remote_mode = true;
 		break;
+	case CMD_DEFER_REBOOT:
+		if (!pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+			pv_log(WARN,
+			       "defer reboot command received but debug shell is not active");
+			goto out;
+		}
+		if (strlen(cmd->payload) == 0)
+			goto out;
+
+		pv_log(DEBUG, "defer reboot command received, new timeout '%s'",
+		       cmd->payload);
+
+		pv_debug_defer_reboot_shell(cmd->payload);
+
 	default:
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
@@ -831,6 +850,18 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 		pv_update_finish(pv);
 
 	return PV_STATE_REBOOT;
+}
+
+static pv_state_t _pv_debug(struct pantavisor *pv)
+{
+
+	if (!pv_debug_start_shell())
+		return PV_STATE_WAIT;
+	
+	if (pv_debug_check_shell())
+		return PV_STATE_REBOOT;
+	
+	return PV_STATE_WAIT;
 }
 
 typedef enum { POWEROFF, REBOOT } shutdown_type_t;
@@ -898,8 +929,6 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 		       "will not actually perform '%s' as we are in appengine mode",
 		       shutdown_type_string(t));
 
-	pv_debug_wait_shell();
-
 	if ((REBOOT == t) && (pv_config_get_wdt_mode() >= WDT_SHUTDOWN))
 		pv_wdt_start();
 
@@ -961,6 +990,10 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
+	if (pv_config_get_bool(PV_DEBUG_SHELL_ACTIVE)) {
+		pv_debug_start_timeout_shell();
+		return PV_STATE_WAIT;
+	}
 	return pv_shutdown(pv, REBOOT);
 }
 
@@ -977,7 +1010,7 @@ static pv_state_t _pv_error(struct pantavisor *pv)
 pv_state_func_t *const state_table[MAX_STATES] = {
 	_pv_init,     _pv_run,		_pv_wait,     _pv_command,
 	_pv_update,   _pv_update_apply, _pv_rollback, _pv_reboot,
-	_pv_poweroff, _pv_error,	NULL,
+	_pv_poweroff, _pv_error,	_pv_debug,    NULL,
 };
 
 static pv_state_t _pv_run_state(pv_state_t state, struct pantavisor *pv)
