@@ -23,6 +23,8 @@
 #ifndef PV_NETWORK_H
 #define PV_NETWORK_H
 
+#include "pantavisor.h"
+
 void pv_network_update_meta(struct pantavisor *pv);
 
 #endif // PV_NETWORK_H
