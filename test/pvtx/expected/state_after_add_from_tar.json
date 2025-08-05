@@ -1,0 +1,65 @@
+{
+  "#spec": "pantavisor-service-system@1",
+  "watchdog_pinger/lxc.container.conf": "d5b764cc7c7391e5a505d4b4964ec402ac417e58ee5b538105b960a462f8b911",
+  "watchdog_pinger/mdev.json": [
+    "watchdog.* 0:0 0660"
+  ],
+  "watchdog_pinger/root.squashfs": "2a267f8d5a928c8d4bdab8ca126df84e5c8f989d1150e7b0766515f6befaaa44",
+  "watchdog_pinger/root.squashfs.docker-digest": "f1379c31ed0d24b03f8780a0bbf01b86720ec877eefdc0adc34eb679a4310235",
+  "watchdog_pinger/run.json": {
+    "#spec": "service-manifest-run@1",
+    "config": "lxc.container.conf",
+    "drivers": {
+      "manual": [],
+      "optional": [],
+      "required": []
+    },
+    "name": "watchdog_pinger",
+    "root-volume": "root.squashfs",
+    "storage": {
+      "docker--tmp": {
+        "persistence": "permanent"
+      },
+      "lxc-overlay": {
+        "persistence": "boot"
+      }
+    },
+    "type": "lxc",
+    "volumes": []
+  },
+  "watchdog_pinger/src.json": {
+    "#spec": "service-manifest-src@1",
+    "docker_config": {
+      "ArgsEscaped": true,
+      "AttachStderr": false,
+      "AttachStdin": false,
+      "AttachStdout": false,
+      "Cmd": [
+        "/app/watchdog_pinger"
+      ],
+      "Domainname": "",
+      "Entrypoint": null,
+      "Env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      ],
+      "Hostname": "",
+      "Image": "",
+      "Labels": null,
+      "OnBuild": null,
+      "OpenStdin": false,
+      "StdinOnce": false,
+      "Tty": false,
+      "User": "",
+      "Volumes": {
+        "/tmp": {}
+      },
+      "WorkingDir": "/app"
+    },
+    "docker_digest": "sha256:30b736483744c3d53701e24f8bb66fc3ff4668f5b3117fedbbe15bbb123f641e",
+    "docker_name": "registry.gitlab.com/highercomve/watchdog_pinger",
+    "docker_platform": "linux/arm/v6",
+    "docker_source": "local,remote",
+    "docker_tag": "master",
+    "template": "builtin-lxc-docker"
+  }
+}
