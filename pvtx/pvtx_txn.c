@@ -46,6 +46,7 @@
 #include <dirent.h>
 #include <linux/limits.h>
 #include <sys/random.h>
+#include <sys/stat.h>
 
 #define PVTX_TXN_PATH "PVTXDIR"
 #define PVTX_TXN_PREFIX_PATH "PREFIX"
@@ -252,6 +253,13 @@ out:
 
 static char *find_json(const char *dir)
 {
+	struct stat st = { 0 };
+	if (stat(dir, &st) != 0)
+		return NULL;
+
+	if (!S_ISDIR(st.st_mode))
+		return strdup(dir);
+
 	char test_path[PATH_MAX] = { 0 };
 	const char *loc[] = { "json", ".pvr/json" };
 	for (size_t i = 0; i < sizeof(loc) / sizeof(loc[0]); i++) {
@@ -274,6 +282,8 @@ static int init_state_json(const char *from)
 
 	if (!strncmp(from, "current", strlen("current"))) {
 		struct pv_pvtx_ctrl *ctrl = pv_pvtx_ctrl_new(NULL);
+		if (!ctrl)
+			goto out;
 		json = pv_pvtx_ctrl_steps_get(ctrl, "current", &json_len);
 		pv_pvtx_ctrl_free(ctrl);
 		goto out;
@@ -281,8 +291,11 @@ static int init_state_json(const char *from)
 
 	if (strncmp(from, "empty", strlen("empty")) != 0) {
 		char *loc = find_json(from);
+		if (!loc)
+			goto out;
 		st = pv_pvtx_state_from_file(loc);
 		free(loc);
+
 		if (!st)
 			goto out;
 	}
@@ -1290,7 +1303,7 @@ int pv_pvtx_queue_remove(const char *part, struct pv_pvtx_error *err)
 	}
 
 	char fname[PATH_MAX] = { 0 };
-	if (get_queue_remove_file(part, fname) != 0) {
+	if (get_queue_remove_file(enc, fname) != 0) {
 		PVTX_ERROR_SET(err, -1, "couldn't create .remove file name");
 		goto out;
 	}

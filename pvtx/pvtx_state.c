@@ -45,6 +45,9 @@ struct pv_pvtx_state_data {
 	bool has_sig;
 	char **names;
 	int names_len;
+	char **sigs;
+	char **sigs_data;
+	int sigs_len;
 	char *data;
 	size_t data_len;
 	jsmntok_t *tkn;
@@ -145,6 +148,80 @@ err:
 	return NULL;
 }
 
+static int set_signatures(struct pv_pvtx_state_data *std, char ***sigsx,
+			  char ***sigs_datax)
+{
+	char **sigs = NULL;
+	char **sigs_data = NULL;
+	int sigs_len = 0;
+	int sigs_data_len = 0;
+	int idx = 0;
+
+	while ((idx = search_tkn(std, PVTX_STATE_SIGS_STR, idx)) != -1) {
+		int len = 0;
+		const char *tok_str = token_to_str(std, idx, &len);
+
+		char *ptr = calloc(len + 1, sizeof(char));
+		if (!ptr)
+			goto err;
+
+		memcpy(ptr, tok_str, len);
+
+		char **tmp = realloc(sigs, sizeof(char *) * sigs_len + 1);
+		if (!tmp) {
+			free(ptr);
+			goto err;
+		}
+
+		sigs = tmp;
+		sigs[sigs_len] = ptr;
+		sigs_len++;
+		++idx;
+
+		char *data = NULL;
+		int prot_idx = search_tkn(std, "protected", idx);
+		if (prot_idx < 0) {
+			goto set_data;
+		}
+
+		// check if match is inside of the current signature, if so,
+		// we will get the unserialized data from the signature
+		if (prot_idx > idx + 7) {
+			goto set_data;
+		}
+
+		int prot_data = prot_idx + 1;
+
+		jsmntok_t *t = &std->tkn[prot_data];
+		size_t dec_len = 0;
+
+		free(data);
+		data = (char *)base64_url_decode(std->data + t->start,
+						 t->end - t->start, &dec_len);
+	set_data:
+		tmp = realloc(sigs_data, sizeof(char *) * sigs_data_len + 1);
+		if (!tmp)
+			goto err;
+
+		sigs_data = tmp;
+		sigs_data[sigs_data_len] = data;
+		sigs_data_len++;
+	}
+	*sigsx = sigs;
+	*sigs_datax = sigs_data;
+	// ssigs_len = sigs_len;
+	return sigs_len;
+err:
+	if (sigs) {
+		for (int i = 0; i < sigs_len; i++) {
+			if (sigs[i])
+				free(sigs[i]);
+		}
+		free(sigs);
+	}
+	return -1;
+}
+
 static int state_parse(struct pv_pvtx_state_data *std, const char *str,
 		       size_t len)
 {
@@ -170,6 +247,8 @@ static int state_parse(struct pv_pvtx_state_data *std, const char *str,
 
 	std->names = get_names_from_state(std, &std->names_len);
 	std->has_sig = search_tkn(std, PVTX_STATE_SIGS_STR, 0) > -1;
+
+	std->sigs_len = set_signatures(std, &std->sigs, &std->sigs_data);
 
 	return 0;
 }
@@ -357,15 +436,6 @@ static int remove_part(struct pv_pvtx_state *st, const char *part)
 	char exp[PATH_MAX] = { 0 };
 	memccpy(exp, part, '\0', PATH_MAX);
 
-	size_t exp_len = strlen(part);
-
-	int i = exp_len - 1;
-	while (i >= 0 && exp[i] == '*') {
-		exp[i] = '\0';
-		exp_len--;
-		i--;
-	}
-
 	char name[NAME_MAX] = { 0 };
 	if (is_signature(part)) {
 		char ext[NAME_MAX] = { 0 };
@@ -374,7 +444,10 @@ static int remove_part(struct pv_pvtx_state *st, const char *part)
 		memcpy(name, part + sig_len,
 		       strlen(part) - sig_len - strlen(ext));
 	} else {
-		pv_fs_dirname(part, name);
+		if (strchr(part, '/'))
+			pv_fs_dirname(exp, name);
+		else
+			memccpy(name, exp, '\0', NAME_MAX);
 	}
 
 	int index = search_state_data(st, name);
@@ -388,38 +461,49 @@ static int remove_part(struct pv_pvtx_state *st, const char *part)
 	return 0;
 }
 
+static bool has_more_signatories(struct pv_pvtx_state *st, const char *part)
+{
+	int count = 0;
+	for (int i = 0; i < st->len; i++) {
+		struct pv_pvtx_state_data *std = st->std[i];
+		for (int j = 0; j < std->sigs_len; j++) {
+			if (!strstr(std->sigs_data[j], part))
+				continue;
+			count++;
+			if (count > 1) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 static int remove_signed(struct pv_pvtx_state *st, const char *part)
 {
-	int index = search_state_data(st, part);
-	if (index < 0)
-		return -1;
+	char sig_name[PATH_MAX] = { 0 };
 
-	struct pv_pvtx_state_data *std = st->std[index];
+	if (strstr(part, ".json"))
+		snprintf(sig_name, PATH_MAX, "_sigs/%s", part);
+	else
+		snprintf(sig_name, PATH_MAX, "_sigs/%s.json", part);
 
-	char signature_name[PATH_MAX] = { 0 };
-	snprintf(signature_name, PATH_MAX, "_sigs/%s", part);
+	size_t sig_name_sz = strlen(sig_name);
+	char *sig = NULL;
+	for (int i = 0; i < st->len; i++) {
+		struct pv_pvtx_state_data *std = st->std[i];
+		for (int j = 0; j < std->sigs_len; j++) {
+			if (!strncmp(sig_name, std->sigs[j], sig_name_sz)) {
+				sig = std->sigs_data[j];
+				break;
+			}
+		}
+	}
 
-	index = search_tkn(std, signature_name, 0);
-	if (index < 0)
-		return -1;
-
-	int prot_idx = search_tkn(std, "protected", index);
-	if (prot_idx < 0)
-		return -1;
-
-	// check if match inside the current signature
-	if (prot_idx > index + 7)
-		return -1;
-
-	int prot_data = prot_idx + 1;
-
-	jsmntok_t *t = &std->tkn[prot_data];
-	size_t dec_len = 0;
-	char *sig = (char *)base64_url_decode(std->data + t->start,
-					      t->end - t->start, &dec_len);
+	if (!sig)
+		return 0;
 
 	int tkn_len = 0;
-	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(sig, dec_len, &tkn_len);
+	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(sig, strlen(sig), &tkn_len);
 
 	for (int i = 0; i < tkn_len; i++) {
 		if (strncmp(sig + tkn[i].start, "include", strlen("include")) &&
@@ -429,15 +513,27 @@ static int remove_signed(struct pv_pvtx_state *st, const char *part)
 		int j = i + 2;
 		while (tkn[j].size == 0) {
 			char part_found[PATH_MAX] = { 0 };
-
 			char *src = sig + tkn[j].start;
 			int len = tkn[j].end - tkn[j].start;
-			memcpy(part_found, src, len);
-			remove_part(st, part_found);
+
+			// this is to look for signatures which start with this
+			// string and not a substring inside another signature.
+			part_found[0] = '"';
+			memcpy(part_found + 1, src, len);
+			// remove the *'s because we use strncmp, so just
+			// search until the char befor the first *
+			char *p = strchr(part_found, '*');
+			if (p)
+				*p = '\0';
+
+			if (!has_more_signatories(st, part_found))
+				// +1 to "remove" the initial "
+				remove_part(st, part_found + 1);
 			j++;
 		}
 	}
-	free(sig);
+
+	remove_part(st, sig_name);
 
 	return 0;
 }
@@ -449,21 +545,23 @@ static int remove_signed(struct pv_pvtx_state *st, const char *part)
 int pv_pvtx_state_remove(struct pv_pvtx_state *st, const char *part)
 {
 	int ret = 0;
-	if (strchr(part, '/')) {
-		if (is_signature(part))
-			remove_signed(st, part + strlen(PVTX_STATE_SIGS_STR));
-		else
-			ret = remove_part(st, part);
+	if (is_signature(part)) {
+		remove_signed(st, part + strlen(PVTX_STATE_SIGS_STR));
 	} else {
-		int index = search_state_data(st, part);
+		const char *name = strchr(part, '/');
+		if (name)
+			name++;
+		else
+			name = part;
+		int index = search_state_data(st, name);
 		if (index < 0)
 			return -1;
-		if (st->std[index]->has_sig)
-			remove_signed(st, part);
-		else {
+		if (st->std[index]->has_sig) {
+			remove_signed(st, name);
+		} else {
 			char conf_part[PATH_MAX] = { 0 };
-			snprintf(conf_part, PATH_MAX, "_config/%s", part);
-			ret = remove_part(st, part);
+			snprintf(conf_part, PATH_MAX, "_config/%s", name);
+			ret = remove_part(st, name);
 			if (ret != 0)
 				return -1;
 
@@ -508,7 +606,8 @@ static char *write_signatures(char *p, struct pv_pvtx_state_data *std)
 	return p;
 }
 
-static char *write_body(char *p, struct pv_pvtx_state_data *std)
+static char *write_body(char *p, struct pv_pvtx_state_data *std, char **groups,
+			char **disks, char **device)
 {
 	// starts in 1 to ignore the first element which is the global object
 	int i = 1;
@@ -531,6 +630,43 @@ static char *write_body(char *p, struct pv_pvtx_state_data *std)
 			// the appropiate way
 			t++;
 			i++;
+			goto next;
+		}
+
+		if (!strncmp(name, "groups.json", len)) {
+			t++;
+			i++;
+			if (*groups)
+				free(*groups);
+			*groups = strndup(std->data + t->start,
+					  t->end - t->start);
+			if (*device) {
+				free(*device);
+				*device = NULL;
+			}
+			goto next;
+		}
+		if (!strncmp(name, "disks.json", len)) {
+			t++;
+			i++;
+			if (*disks)
+				free(*disks);
+			*disks = strndup(std->data + t->start,
+					 t->end - t->start);
+			if (*device) {
+				free(*device);
+				*device = NULL;
+			}
+			goto next;
+		}
+
+		if (!strncmp(name, "device.json", len)) {
+			t++;
+			i++;
+			if (*device)
+				free(*device);
+			*device = strndup(std->data + t->start,
+					  t->end - t->start);
 			goto next;
 		}
 
@@ -565,6 +701,17 @@ static char *write_body(char *p, struct pv_pvtx_state_data *std)
 	return p;
 }
 
+char *write_string_body(char *dst, const char *key, const char *value)
+{
+	dst = mempcpy(dst, "\"", 1);
+	dst = mempcpy(dst, key, strlen(key));
+	dst = mempcpy(dst, "\"", 1);
+	dst = mempcpy(dst, ":", 1);
+	dst = mempcpy(dst, value, strlen(value));
+	dst = mempcpy(dst, ",", 1);
+	return dst;
+}
+
 char *pv_pvtx_state_to_str(struct pv_pvtx_state *st, size_t *len)
 {
 	if (!st) {
@@ -580,7 +727,7 @@ char *pv_pvtx_state_to_str(struct pv_pvtx_state *st, size_t *len)
 	if (mem_len == 0)
 		return NULL;
 
-	char *buf = calloc(mem_len, sizeof(char));
+	char *buf = calloc(mem_len * 2, sizeof(char));
 	if (!buf)
 		return NULL;
 
@@ -588,8 +735,23 @@ char *pv_pvtx_state_to_str(struct pv_pvtx_state *st, size_t *len)
 
 	for (int i = 0; i < st->len; ++i)
 		p = write_signatures(p, st->std[i]);
+
+	char *groups = NULL;
+	char *disks = NULL;
+	char *device = NULL;
 	for (int i = 0; i < st->len; ++i)
-		p = write_body(p, st->std[i]);
+		p = write_body(p, st->std[i], &groups, &disks, &device);
+
+	if (device) {
+		p = write_string_body(p, "device.json", device);
+	} else {
+		if (groups)
+			p = write_string_body(p, "groups.json", groups);
+
+		if (disks)
+			p = write_string_body(p, "disks.json", disks);
+	}
+
 	*(p - 1) = '}';
 	*p = '\0';
 
@@ -597,11 +759,5 @@ char *pv_pvtx_state_to_str(struct pv_pvtx_state *st, size_t *len)
 	if (len)
 		*len = json_len;
 
-	char *tmp = realloc(buf, json_len);
-	if (!tmp) {
-		free(buf);
-		return NULL;
-	}
-
-	return tmp;
+	return buf;
 }
