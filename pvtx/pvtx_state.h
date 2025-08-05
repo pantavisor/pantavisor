@@ -23,20 +23,22 @@
 #ifndef PV_PVTX_STATE_H
 #define PV_PVTX_STATE_H
 
-#include <stdbool.h>
-#include <sys/types.h>
+#include <stddef.h>
 
-#define PV_PVTX_STATE_CURRENT_SPEC "pantavisor-service-system@1"
+#define PVTX_STATE_EMPTY "{\"#spec\": \"pantavisor-service-system@1\"}"
 
-struct pv_pvtx_state;
+struct pv_pvtx_state {
+	char *json;
+	size_t len;
+	struct pv_pvtx_state_priv *priv;
+};
+
 struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len);
 struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path);
 
 void pv_pvtx_state_free(struct pv_pvtx_state *st);
 
-int pv_pvtx_state_alloc(struct pv_pvtx_state *st, int cap);
 int pv_pvtx_state_add(struct pv_pvtx_state *dst, struct pv_pvtx_state *src);
 int pv_pvtx_state_remove(struct pv_pvtx_state *st, const char *part);
-char *pv_pvtx_state_to_str(struct pv_pvtx_state *st, size_t *len);
 
 #endif

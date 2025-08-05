@@ -46,6 +46,7 @@
 #include <dirent.h>
 #include <linux/limits.h>
 #include <sys/random.h>
+#include <sys/stat.h>
 
 #define PVTX_TXN_PATH "PVTXDIR"
 #define PVTX_TXN_PREFIX_PATH "PREFIX"
@@ -252,6 +253,13 @@ out:
 
 static char *find_json(const char *dir)
 {
+	struct stat st = { 0 };
+	if (stat(dir, &st) != 0)
+		return NULL;
+
+	if (!S_ISDIR(st.st_mode))
+		return strdup(dir);
+
 	char test_path[PATH_MAX] = { 0 };
 	const char *loc[] = { "json", ".pvr/json" };
 	for (size_t i = 0; i < sizeof(loc) / sizeof(loc[0]); i++) {
@@ -274,22 +282,27 @@ static int init_state_json(const char *from)
 
 	if (!strncmp(from, "current", strlen("current"))) {
 		struct pv_pvtx_ctrl *ctrl = pv_pvtx_ctrl_new(NULL);
+		if (!ctrl)
+			goto out;
 		json = pv_pvtx_ctrl_steps_get(ctrl, "current", &json_len);
 		pv_pvtx_ctrl_free(ctrl);
 		goto out;
-	}
 
-	if (strncmp(from, "empty", strlen("empty")) != 0) {
+	} else if (!strncmp(from, "empty", strlen("empty"))) {
+		json = strdup(PVTX_STATE_EMPTY);
+		json_len = strlen(json);
+	} else {
 		char *loc = find_json(from);
+		if (!loc)
+			goto out;
 		st = pv_pvtx_state_from_file(loc);
 		free(loc);
-		if (!st)
-			goto out;
-	}
 
-	// NOTE: at this point st could be NULL, that's ok
-	// pv_pvtx_state_to_str() returns the minimum json if this happend
-	json = pv_pvtx_state_to_str(st, &json_len);
+		if (st) {
+			json = st->json;
+			json_len = st->len;
+		}
+	}
 out:
 	if (json) {
 		ret = pv_fs_file_write_no_sync(get_json_path(), json, json_len);
@@ -315,14 +328,7 @@ static bool is_active_txn()
 
 static int save_state_json(struct pv_pvtx_state *st, struct pv_pvtx_error *err)
 {
-	size_t jssz = 0;
-	char *js = pv_pvtx_state_to_str(st, &jssz);
 	pv_pvtx_error_clear(err);
-
-	if (!js) {
-		PVTX_ERROR_SET(err, -1, "string conversion error");
-		goto out;
-	}
 
 	char tmp[PATH_MAX] = { 0 };
 	int fd = pv_fs_file_tmp(get_json_path(), tmp);
@@ -332,7 +338,7 @@ static int save_state_json(struct pv_pvtx_state *st, struct pv_pvtx_error *err)
 	}
 	close(fd);
 
-	if (pv_fs_file_write_no_sync(tmp, js, jssz) != 0) {
+	if (pv_fs_file_write_no_sync(tmp, st->json, st->len) != 0) {
 		PVTX_ERROR_SET(err, -1, "error writing temp file");
 		goto out;
 	}
@@ -342,9 +348,6 @@ static int save_state_json(struct pv_pvtx_state *st, struct pv_pvtx_error *err)
 		PVTX_ERROR_SET(err, -1, "rename error %s", strerror(errno));
 	}
 out:
-	if (js)
-		free(js);
-
 	return err->code;
 }
 
@@ -698,11 +701,18 @@ static int create_bsp_link(const char *deploy_path)
 	char bsp_runjs[PATH_MAX] = { 0 };
 	pv_fs_path_concat(bsp_runjs, 2, deploy_path, PVTX_TXN_DST_RUNJS);
 
+	int ret = 0;
+
 	size_t json_len = 0;
 	char *json = pv_fs_file_read(bsp_runjs, &json_len);
+	jsmntok_t *tkn = NULL;
+
+	// if !json probably there isn't a bsp defined
+	if (!json)
+		goto out;
 
 	int tkn_len = 0;
-	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(json, json_len, &tkn_len);
+	tkn = pv_pvtx_jsmn_parse_data(json, json_len, &tkn_len);
 
 	const char *keys[] = {
 		"fit", "pantavisor", "initrd", "kernel", "linux", "ftd",
@@ -715,7 +725,6 @@ static int create_bsp_link(const char *deploy_path)
 
 	int keys_len = sizeof(keys) / sizeof(char *);
 
-	int ret = 0;
 	int no_top = 0;
 	for (int i = 1; i < tkn_len; i++) {
 		if ((tkn[i].type != JSMN_STRING &&
@@ -841,6 +850,7 @@ static int process_add_directory(struct pv_pvtx_state *st, const char *dir,
 {
 	char js[PATH_MAX] = { 0 };
 	pv_fs_path_concat(js, 3, queue, dir, "json");
+
 	struct pv_pvtx_state *new = pv_pvtx_state_from_file(js);
 	if (!new) {
 		PVTX_ERROR_SET(err, -1,
@@ -848,6 +858,14 @@ static int process_add_directory(struct pv_pvtx_state *st, const char *dir,
 			       js);
 		return err->code;
 	}
+
+	printf("%p == %p\n", st, new);
+	printf("is eq = %d\n", st == new);
+	printf("st  json size: %zd\n", st->len);
+	printf("new json size: %zd\n", new->len);
+
+	printf("st : %.*s\n", 10, st->json + 100);
+	printf("new: %.*s\n", 10, new->json + 100);
 
 	if (pv_pvtx_state_add(st, new) != 0) {
 		PVTX_ERROR_SET(err, -1,
@@ -862,7 +880,7 @@ static int process_remove_file(struct pv_pvtx_state *st, const char *fname)
 {
 	char name[NAME_MAX] = { 0 };
 	memccpy(name, fname, '\0', NAME_MAX);
-	*strchr(name, '.') = '\0';
+	*strrchr(name, '.') = '\0';
 	char *part = &name[strlen("NNN__")];
 	return pv_pvtx_state_remove(st, part);
 }
@@ -943,7 +961,7 @@ int pv_pvtx_txn_begin(const char *from, const char *obj_path,
 	if (txn && txn->status == PVTX_TXN_STATUS_ACTIVE) {
 		PVTX_ERROR_SET(err, -1,
 			       "there is a previous transaction active.");
-		return err->code;
+		goto out;
 	}
 
 	if (!txn || txn->status != PVTX_TXN_STATUS_SET) {
@@ -1290,7 +1308,7 @@ int pv_pvtx_queue_remove(const char *part, struct pv_pvtx_error *err)
 	}
 
 	char fname[PATH_MAX] = { 0 };
-	if (get_queue_remove_file(part, fname) != 0) {
+	if (get_queue_remove_file(enc, fname) != 0) {
 		PVTX_ERROR_SET(err, -1, "couldn't create .remove file name");
 		goto out;
 	}
@@ -1433,24 +1451,28 @@ int pv_pvtx_queue_process(const char *from, const char *queue_path,
 	}
 
 	for (int i = 0; i < len; i++) {
-		char *fname = url_decode(entry[i]->d_name);
-		if (!strncmp(fname, ".", strlen(fname)) ||
-		    !strncmp(fname, "..", strlen(fname))) {
+		char *fn = url_decode(entry[i]->d_name);
+		if (!strncmp(fn, ".", strlen(fn)) ||
+		    !strncmp(fn, "..", strlen(fn))) {
+			free(fn);
 			continue;
 		}
-		char *ext = strrchr(fname, '.');
+		char *ext = strrchr(fn, '.');
 		if (ext && !strncmp(ext, ".remove", strlen(ext))) {
-			if (process_remove_file(st, fname) != 0) {
+			if (process_remove_file(st, fn) != 0) {
 				PVTX_ERROR_SET(err, -1, "couldn't remove %s",
-					       fname);
+					       fn);
+				free(fn);
 				goto out;
 			}
 		} else if (entry[i]->d_type == DT_DIR) {
-			if (process_add_directory(st, fname, q->queue, err) !=
-			    0)
+			int ret = process_add_directory(st, fn, q->queue, err);
+			if (ret != 0) {
+				free(fn);
 				goto out;
+			}
 		}
-		free(fname);
+		free(fn);
 	}
 
 	if (save_state_json(st, err) != 0)
