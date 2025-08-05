@@ -112,13 +112,10 @@ static int cmd_begin(int argc, char **argv)
 	char *from = NULL;
 	char *obj_path = NULL;
 
-	if (argc < 3) {
-		LOCAL_ERR("missing arguments, base_rev, empty "
-			  "or current is required");
-		return -1;
-	}
-
-	from = argv[2];
+	if (argc < 3)
+		from = "current";
+	else
+		from = argv[2];
 
 	if (argc > 3)
 		obj_path = argv[3];
@@ -375,7 +372,10 @@ static int pv_pvtx_process_args(int argc, char **argv)
 		return err;
 	}
 
-	LOCAL_ERR("command not found");
+	char e[256] = { 0 };
+	snprintf(e, 256, "command not found: %s", op);
+
+	LOCAL_ERR(e);
 
 	return -1;
 }
