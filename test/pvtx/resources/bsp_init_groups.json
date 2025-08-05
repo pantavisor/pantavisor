@@ -1,0 +1,102 @@
+{
+	"#spec": "pantavisor-service-system@1",
+	"_sigs/bsp.json": {
+		"#spec": "pvs@2",
+		"protected": "eyJhbGciOiJSUzI1NiIsImp3ayI6eyJrdHkiOiJSU0EiLCJuIjoidjRJa0w1MzBYRlkyT1V4aG9vOWVRaWZ1TmxRRk9mOGxHblowUlVGSm9aTkRRNWlHRWlxeXhNMEtpOVh5UUpVV1g2RHpXY3lSVVZPUklJS29hRS1yZlB3YUh1QmdOVDRXY2RzRjN6NTRsWGQ5TUNsdWdfejl5bEgtVFNLUGFKam9ORlAyTVdDX0p5dXUxbG5ucW5iNUdzUlQ1WFh1RlA4MTNwVDlnX25fRmFWbDNuendMUnQ5ZmhHOGs3Y1M5MlJyR2Y0R1pqQnYzUEtORnJWOHBvTmZ1aDI5WHJtcTBWc3ktVGpPNUphT2Q2bzVFcXhGZXBKTnMtS21mMUdMZjlfYS1rN0I3YUQyQWdKYy1hSk9GZ2VEVjNtUFBESXFfbmtPeG9tYXA0a3ZlR0RjbkxMcDg2T1VkUEJaLWVjZHl4ZmhRT3plcm44c2o4ODQ1bmhmWlpPRkN3IiwiZSI6IkFRQUIifSwicHZzIjp7ImluY2x1ZGUiOlsiYnNwLyoqIiwiZ3JvdXBzLmpzb24iLCJkaXNrcy5qc29uIiwiI3NwZWMiXSwiZXhjbHVkZSI6WyJic3AvYnVpbGQuanNvbiIsImJzcC9zcmMuanNvbiIsIl9zaWdzLy5qc29uIiwiX3NpZ3MvYnNwLmpzb24iXX0sInR5cCI6IlBWUyIsIng1YyI6WyJNSUlEYWpDQ0FsS2dBd0lCQWdJUkFLQnNoZS9Bd1A5ZGI2dU9TSUxTdThJd0RRWUpLb1pJaHZjTkFRRUxCUUF3SERFYU1CZ0dBMVVFQXd3UlVHRnVkR0YyYVhOdmNpQkVaWFlnUTBFd0hoY05Nakl3TmpFeU1UQXdNREU0V2hjTk1qUXdPVEUwTVRBd01ERTRXakFhTVJnd0ZnWURWUVFEREE5d2RpMWtaWFpsYkc5d1pYSXRNREV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLQW9JQkFRQy9naVF2bmZSY1ZqWTVUR0dpajE1Q0orNDJWQVU1L3lVYWRuUkZRVW1oazBORG1JWVNLckxFelFxTDFmSkFsUlpmb1BOWnpKRlJVNUVnZ3Fob1Q2dDgvQm9lNEdBMVBoWngyd1hmUG5pVmQzMHdLVzZEL1AzS1VmNU5JbzlvbU9nMFUvWXhZTDhuSzY3V1dlZXFkdmtheEZQbGRlNFUvelhlbFAyRCtmOFZwV1hlZlBBdEczMStFYnlUdHhMM1pHc1ovZ1ptTUcvYzhvMFd0WHltZzErNkhiMWV1YXJSV3pMNU9NN2tsbzUzcWprU3JFVjZrazJ6NHFaL1VZdC8zOXI2VHNIdG9QWUNBbHo1b2s0V0I0TlhlWTg4TWlyK2VRN0dpWnFuaVM5NFlOeWNzdW56bzVSMDhGbjU1eDNMRitGQTdONnVmeXlQenpqbWVGOWxrNFVMQWdNQkFBR2pnYWd3Z2FVd0NRWURWUjBUQkFJd0FEQWRCZ05WSFE0RUZnUVUxZTN4WmhIUkJKejJKSkp5UjE2ZjJMRzIyR013VndZRFZSMGpCRkF3VG9BVVdZdVErcEtDNElicG1DbXZFL2o0SWVxUmdUMmhJS1FlTUJ3eEdqQVlCZ05WQkFNTUVWQmhiblJoZG1semIzSWdSR1YySUVOQmdoUmpjUVowZWlxcXRCazgwZUJqSUFTVFNjV0p5akFUQmdOVkhTVUVEREFLQmdnckJnRUZCUWNEQXpBTEJnTlZIUThFQkFNQ0I0QXdEUVlKS29aSWh2Y05BUUVMQlFBRGdnRUJBQlcwVUN6SDVtN2txNFE0Yi9qelFLM05QeTlQRjhwOWxoOEtzNWR2SElBUWJMbU1LeUZiWFFpcm5YcWVlZUhYOStNVEU2TDdtSlVaNkVab2JlMWppSjZURzNwcnE4M1dyUUhFaEJQV1k5NWFsZFBBblhCeEhPS3o5by9xYTMrZVVZWHVoTVorUFBiWWRjbVpvZTgyQTc3SlZzRzFKRmNlaURsWFZ6YjgvK2p1bWd4MFUzc1hXN2FBcjFaV2FNNFZqWkx0bGZ3Qk9KL1FDTThsdFJhUjJPejdtVGpmVTUzWlgzUThzVkFUR2VVRWhHbFN6SEhUQjQvb01nRnZ3YWhPaWZTeTJuUk1FL0F5L0NqTDMvSDIxRTBHRHAvaUJvQWdQbzcvQWhNZEU5aUYyV2d0Y0F3RVVFcHZqdldJNFlrN1libTMzUEl0VGhsN0NDTmNvNHVOTzlvPSJdfQ",
+		"signature": "XbXsYlx4_dXOpVS6gHvdnppMGRVJjhGZPGRtIQGnsUvAx9upPHNKjxA4eSiq6pEZ3kgX47YXhufhhQ0aCzdtpqg70jBzKmCSnylOk1P2JcaLGvZIu9POMghDf8nCkrTt2rB_dQOuDq78oS-SUW2Vmaa0_MnaGDQtci1vZBatI-IMUn8IBQpcerEutW0I8wGTOvaAB-fat2UV8ad0eaq-MEojlNQU6TAG4SGJWZ_2f0ktVz1YZMv5oksjmPTaNy-7tTVKBtF_o88vrjl9IcC_jaicygdrGKn0_1S3JOfbrklK89w3_OC9KXBO-iHsW2MKa6zRZ8bLQ9kmMGqWlZWEwg"
+	},
+	"bsp/drivers.json": {
+		"#spec": "driver-aliases@1",
+		"all": {
+			"bluetooth": [
+				"hci_uart",
+				"btbcm"
+			],
+			"usbncm": [],
+			"usbnet": [
+				"g_ether ${user-meta:usbnetmac}"
+			],
+			"wifi": [
+				"brcmfmac alternative_fw_path=${user-meta:brcmfmac.alternative_fw_path}"
+			],
+			"wireguard": [
+				"wireguard"
+			]
+		},
+		"fitconfig:conf-base-config": {}
+	},
+	"bsp/firmware.squashfs": "6cebf61ac61e4d21bdff9d361e0c93adce2553fe268507b9f88b34c6d1810775",
+	"bsp/fit-image.its": "62466bf4ffff352a87f120830470d0b653ee130156ec62333f5db90bc5def998",
+	"bsp/modules.squashfs": "99337dcd5ef853cd4758bb369a9c543d26e2c87a62f6c1e5f11e2c8cc5a17932",
+	"bsp/pantavisor.fit": "3b9fa2d41ce8df04a7b6cd7eca5affa69ca48eab4165f36ff3e7679305624cc3",
+	"bsp/run.json": {
+		"addons": [],
+		"firmware": "firmware.squashfs",
+		"fit": "pantavisor.fit",
+		"initrd_config": "",
+		"modules": "modules.squashfs"
+	},
+	"disks.json": [
+		{
+			"name": "dm-bsh-secrets",
+			"path": "/storage/dm-crypt-files/dm-bsh-secrets/dcp.img,2,dcp_key-bsh_secrets",
+			"type": "dm-crypt-dcp"
+		}
+	],
+	"groups.json": [
+		{
+			"description": "System containers",
+			"name": "System",
+			"restart_policy": "system"
+		},
+		{
+			"description": "Legacy runlevel: Containers which volumes we want to mount but not to be started",
+			"name": "data",
+			"restart_policy": "system",
+			"status_goal": "MOUNTED"
+		},
+		{
+			"description": "Legacy runlevel: Container or containers that are in charge of setting network connectivity up for the board",
+			"name": "root",
+			"restart_policy": "system",
+			"status_goal": "STARTED"
+		},
+		{
+			"description": "Legacy runlevel: Middleware and utility containers",
+			"name": "platform",
+			"restart_policy": "system",
+			"status_goal": "STARTED"
+		},
+		{
+			"description": "Development containers",
+			"name": "Development",
+			"restart_policy": "system"
+		},
+		{
+			"description": "Appliance containers",
+			"name": "Appliance",
+			"restart_policy": "system"
+		},
+		{
+			"description": "Legacy runlevel: Application level containers",
+			"name": "app",
+			"restart_policy": "container",
+			"status_goal": "STARTED"
+		},
+		{
+			"description": "Appliance interaction containers",
+			"name": "ApplianceInteraction",
+			"restart_policy": "system"
+		},
+		{
+			"description": "Digital platform containers",
+			"name": "DigitalPlatform",
+			"restart_policy": "system"
+		},
+		{
+			"description": "Digital service containers",
+			"name": "DigitalServices",
+			"restart_policy": "container"
+		}
+	]
+}
