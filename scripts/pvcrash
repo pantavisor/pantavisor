@@ -70,7 +70,7 @@ while [ -n "$1" ]; do
 			shift; signal=$1; ensure signal $signal
 			;;
 		-t)
-			shift; timeofdump=$1; ensure timeofdump $timeofdumpl
+			shift; timeofdump=$1; ensure timeofdump $timeofdump
 			;;
 		-u)
 			shift; uid=$1; ensure uid $uid
