@@ -37,85 +37,84 @@ while [ -n "$1" ]; do
 			exit 0
 			;;
 		-c)
-			shift; corelimit=$1; ensure corelimit $corelimit
+			shift; corelimit=$1; ensure corelimit "$corelimit"
 			;;
 		-d)
-			shift; mode=$1; ensure mode $mode
+			shift; mode=$1; ensure mode "$mode"
 			;;
 		-e)
-			shift; comm=$1; ensure comm $comm
+			shift; comm=$1; ensure comm "$comm"
 			;;
 		-E)
-			shift; path=$1; ensure path $path
+			shift; path=$1; ensure path "$path"
 			;;
 		-g)
-			shift; realgid=$1; ensure realgid $realgid
+			shift; realgid=$1; ensure realgid "$realgid"
 			;;
 		-h)
-			shift; hostname=$1; ensure hostname $hostname
+			shift; hostname=$1; ensure hostname "$hostname"
 			;;
 		-i)
-			shift; tidns=$1; ensure tidns $tidns
+			shift; tidns=$1; ensure tidns "$tidns"
 			;;
 		-I)
-			shift; tid=$1; ensure tid $tid
+			shift; tid=$1; ensure tid "$tid"
 			;;
 		-p)
-			shift; pidns=$1; ensure pidns $pidns
+			shift; pidns=$1; ensure pidns "$pidns"
 			;;
 		-P)
-			shift; pid=$1; ensure pid $pid
+			shift; pid=$1; ensure pid "$pid"
 			;;
 		-s)
-			shift; signal=$1; ensure signal $signal
+			shift; signal=$1; ensure signal "$signal"
 			;;
 		-t)
-			shift; timeofdump=$1; ensure timeofdump $timeofdump
+			shift; timeofdump=$1; ensure timeofdump "$timeofdump"
 			;;
 		-u)
-			shift; uid=$1; ensure uid $uid
+			shift; uid=$1; ensure uid "$uid"
 			;;
 		--help)
 			usage
 			exit 123
 			;;
 		*)
-			outdir=$1; ensure outdir $outdir
+			outdir=$1; ensure outdir "$outdir"
 			;;
 	esac
 	shift
 done
 
-ensure outdir $outdir
-mkdir -p $outdir
+ensure outdir "$outdir"
+mkdir -p "$outdir"
 
 dump_crash() {
 
 	fname=$outdir/pvcrash.1.crash
 	mname=$fname.manifest
-	if [ -f $fname ]; then
+	if [ -f "$fname" ]; then
 		echo "not overwriting existing crash; delete it first."
 		exit 2
 	fi
 
-	echo > $fname
-	echo > $mname
-
-	echo "corelimit: $corelimit" >> $mname
-	echo "mode: $mode" >> $mname
-	echo "comm: $comm" >> $mname
-	echo "path: $path" >> $mname
-	echo "realgid: $realgid" >> $mname
-	echo "hostname: $hostname" >> $mname
-	echo "tidns: $tidns" >> $mname
-	echo "pidns: $pidns" >> $mname
-	echo "pid: $pid" >> $mname
-	echo "signal: $signal" >> $mname
-	echo "timeofdump: $timeofdump" >> $mname
-	echo "uid: $uid" >> $mname
+	{
+		echo "corelimit: $corelimit"
+		echo "mode: $mode"
+		echo "comm: $comm"
+		echo "path: $path"
+		echo "realgid: $realgid"
+		echo "hostname: $hostname"
+		echo "tidns: $tidns"
+		echo "pidns: $pidns"
+		echo "pid: $pid"
+		echo "signal: $signal"
+		echo "timeofdump: $timeofdump"
+		echo "uid: $uid"
+	} > "$mname"
 
 	# cat the coredump to fname
-	cat > $fname
+	cat > "$fname"
 }
 
 dump_crash
