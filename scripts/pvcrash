@@ -25,8 +25,8 @@ ensure() {
 	if [ -z "$2" ]; then
 		echo "ERROR: missing $1 parameter; see usage"
 		usage
+		exit 125
 	fi
-	exit 125
 }
 
 
