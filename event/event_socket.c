@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,47 +19,46 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
 
-#include <stdbool.h>
+#include "event_socket.h"
 
-#include "config.h"
-#include "cgroup.h"
+#include "event.h"
 
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
+#define MODULE_NAME "event_socket"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
 
-// pantavisor.h
+void pv_event_socket_listen(event_socket_t *listener, evutil_socket_t fd,
+			    event_callback_fn cb)
+{
+	if (!listener || !pv_event_get_base())
+		return;
 
-extern char pv_user_agent[4096];
+	if (listener->ev)
+		return;
 
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
+	listener->ev = event_new(pv_event_get_base(), fd, EV_READ | EV_PERSIST,
+				 cb, NULL);
 
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool synced;
-	bool loading_objects;
-	bool hard_poweroff;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
-};
+	if (!listener->ev)
+		return;
 
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
+	event_add(listener->ev, NULL);
+	listener->fd = fd;
 
-struct pantavisor *pv_get_instance(void);
+	pv_log(DEBUG, "listen event added to socket fd %d", fd);
+}
 
-#endif
+void pv_event_socket_ignore(event_socket_t *listener)
+{
+	if (!listener)
+		return;
+
+	if (!listener->ev)
+		return;
+
+	pv_log(DEBUG, "stop listening event to socket fd %d", listener->fd);
+
+	event_free(listener->ev);
+	listener->ev = NULL;
+}
