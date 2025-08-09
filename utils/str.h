@@ -79,7 +79,8 @@ static inline bool pv_str_startswith(const char *str1, int str1len,
 	return !strncmp(str1, str2, str1len);
 }
 
-static inline bool pv_str_startswith_case(const char *str1, size_t str1len, const char *str2)
+static inline bool pv_str_startswith_case(const char *str1, size_t str1len,
+					  const char *str2)
 {
 	return !strncasecmp(str1, str2, str1len);
 }
@@ -126,5 +127,7 @@ static inline bool pv_is_sha256_hex_string(const char *value)
 	}
 	return issha;
 }
+
+char *pv_strvcat(const char *first_string, ...);
 
 #endif /* UTILS_PV_STRING_H_ */
