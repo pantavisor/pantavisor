@@ -271,6 +271,7 @@ install(DIRECTORY scripts/hooks_lxc-mount.d
 	DESTINATION /lib/pv)
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
+			tools/pvlog
 	DESTINATION /usr/bin)
 
 add_executable(remount

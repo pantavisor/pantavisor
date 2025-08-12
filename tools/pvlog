@@ -1,0 +1,42 @@
+#!/bin/sh
+
+rev=""
+
+usage() {
+	echo "USAGE: pventer [--rev|-r <REV>] [--help|-h]"
+	echo "Tail the Pantavisor log for a specific revision."
+	echo "If REV is not specified, it defaults to the 0 revision."
+}
+
+while [ "$1" ]; do
+	case "$1" in
+		--rev|-r)
+			shift
+			[ "${1:-}" ] || { echo "ERROR: --rev requires a value."; usage; exit 1; }
+			rev="$1"
+			shift
+			;;
+		--help|-h)
+			usage
+			exit 0
+			;;
+		--*)
+			echo "ERROR: unknown option: $1"
+			usage
+			exit 1
+			;;
+		*)
+			echo "ERROR: unsupported positional arguments: $*"
+			usage
+			exit 1
+			;;
+	esac
+done
+
+if [ -n "$rev" ]; then
+	log="/pv/logs/$rev/pantavisor/pantavisor.log"
+else
+	log="/pv/logs/0/pantavisor/pantavisor.log"
+fi
+
+exec tail -f "$log"
