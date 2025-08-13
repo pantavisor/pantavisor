@@ -55,6 +55,7 @@ static struct timer shell_timer;
 static bool shell_session = false;
 static bool shell_timeout_active = false;
 static bool shell_notify_last_message = false;
+static int shell_early = 1;
 
 static uint64_t pv_debug_timeout_elapsed_sec()
 {
@@ -130,10 +131,76 @@ static int pv_debug_check_shell()
 	return 1;
 }
 
-int pv_debug_shell()
+static void pv_debug_shell_get_early()
+{
+	char c[64] = { 0 };
+	int t = 5;
+	int con_fd;
+
+	if (shell_pid > -1)
+		return;
+
+	con_fd = open("/dev/console", O_RDWR);
+	if (con_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+		return;
+	}
+
+	if (pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN)) {
+		shell_pid =
+			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+		shell_session = true;
+		pv_wall("New shell session - AUTOLOGIN");
+		pv_log(INFO, "shell started with pid %d", shell_pid);
+		return;
+	}
+
+	dprintf(con_fd, "Press [ENTER] for debug ash shell... ");
+	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
+	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
+		dprintf(con_fd, "%d ", t);
+		fflush(NULL);
+		sleep(1);
+		t--;
+	}
+	dprintf(con_fd, "\n");
+
+	if (c[0] == '\n') {
+		shell_pid =
+			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+		shell_session = true;
+		pv_wall("New shell session");
+		pv_log(INFO, "shell started with pid %d", shell_pid);
+	}
+}
+
+static void pv_debug_shell_get()
 {
 	char c[64] = { 0 };
 	int con_fd;
+
+	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (con_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+		return;
+	}
+
+	read(con_fd, &c, sizeof(c));
+	close(con_fd);
+
+	if (c[0] == '\n') {
+		shell_pid =
+			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+
+		shell_session = true;
+		pv_wall("New shell session");
+		pv_log(INFO, "shell started with pid %d", shell_pid);
+		return;
+	}
+}
+
+int pv_debug_shell()
+{
 	static bool notify_once = true;
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
@@ -145,6 +212,12 @@ int pv_debug_shell()
 	if (notify_once) {
 		pv_wall_welcome();
 		notify_once = false;
+	}
+
+	if (shell_early) {
+		shell_early = 0;
+		pv_debug_shell_get_early();
+		goto out;
 	}
 
 	if (!is_shell_alive()) {
@@ -160,31 +233,8 @@ int pv_debug_shell()
 	if (shell_session)
 		goto out;
 
-	if (pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN)) {
-		shell_pid =
-			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
-		shell_session = true;
-		goto out;
-	}
+	pv_debug_shell_get();
 
-	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	if (con_fd < 0) {
-		pv_log(WARN, "Unable to open /dev/console");
-		return 0;
-	}
-
-	read(con_fd, &c, sizeof(c));
-	close(con_fd);
-
-	if (c[0] == '\n') {
-		shell_pid =
-			tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
-
-		shell_session = true;
-		pv_wall("New shell session");
-		pv_log(INFO, "shell started with pid %d", shell_pid);
-		goto out;
-	}
 out:
 	return pv_debug_check_shell();
 }
