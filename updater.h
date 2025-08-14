@@ -96,6 +96,7 @@ struct pv_update {
 	int retries;
 	struct download_info total;
 	bool local;
+	bool needs_commit;
 };
 
 struct trail_remote {
@@ -122,10 +123,12 @@ int pv_update_finish(struct pantavisor *pv);
 bool pv_update_is_transitioning(struct pv_update *u);
 bool pv_update_is_trying(struct pv_update *u);
 bool pv_update_is_testing(struct pv_update *u);
+bool pv_update_get_needs_commit(struct pv_update *update);
 
 void pv_update_set_status_msg(struct pv_update *update,
 			      enum update_status status, const char *msg);
 void pv_update_set_status(struct pv_update *update, enum update_status status);
 void pv_update_set_factory_status(void);
+void pv_update_set_needs_commit(struct pv_update *update);
 
 #endif
