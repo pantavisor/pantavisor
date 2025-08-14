@@ -652,6 +652,25 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update)
 			next_state = PV_STATE_UPDATE_APPLY;
 		break;
+	case CMD_LOCAL_RUN_COMMIT:
+		if (pv->update && pv->update->status != UPDATE_APPLIED) {
+			pv_log(WARN,
+			       "ignoring local run commit command because an update is in progress");
+			goto out;
+		} else if (pv->update && pv->update->status == UPDATE_APPLIED) {
+			pv_log(INFO,
+			       "aborting local run commit to allow local run commit request to proceed");
+			pv_update_finish(pv);
+		}
+
+		pv_log(DEBUG,
+		       "install run commit received. Processing %s json...",
+		       cmd->payload);
+		pv->update = pv_update_get_step_local(cmd->payload);
+		pv_update_set_needs_commit(pv->update);
+		if (pv->update)
+			next_state = PV_STATE_UPDATE;
+		break;
 	case CMD_MAKE_FACTORY:
 
 		if (!pv->unclaimed) {
@@ -744,6 +763,7 @@ static pv_state_t _pv_update_apply(struct pantavisor *pv)
 		return PV_STATE_WAIT;
 	}
 	pv_update_set_status(pv->update, UPDATE_APPLIED);
+
 	return PV_STATE_WAIT;
 }
 
@@ -766,8 +786,12 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return PV_STATE_REBOOT;
 	}
 
-	pv_log(INFO, "update does not require reboot");
 	pv_update_set_status(pv->update, UPDATE_TRANSITION);
+
+	if (pv_update_get_needs_commit(pv->update))
+		return PV_STATE_REBOOT;
+
+	pv_log(INFO, "update does not require reboot");
 	return PV_STATE_RUN;
 }
 
