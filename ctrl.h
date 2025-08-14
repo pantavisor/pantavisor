@@ -39,6 +39,7 @@ typedef enum {
 	CMD_DISABLE_SSH = 10,
 	CMD_GO_REMOTE = 11,
 	CMD_DEFER_REBOOT = 12,
+	CMD_LOCAL_RUN_COMMIT = 13,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 
@@ -67,7 +68,8 @@ pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 					 "ENABLE_SSH",
 					 "DISABLE_SSH",
 					 "GO_REMOTE",
-					 "DEFER_REBOOT" };
+					 "DEFER_REBOOT",
+					 "LOCAL_RUN_COMMIT" };
 	return strings[op];
 }
 
