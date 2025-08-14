@@ -293,7 +293,7 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 		goto error;
 	}
 
-	pv_log(DEBUG, "added event: type='rest' cb=%p req='%s %s HTTP/1.1'",
+	pv_log(DEBUG, "add event: type='rest' cb=%p req='%s %s HTTP/1.1'",
 	       (void *)cb, _op_string(op), uri);
 
 	return 0;

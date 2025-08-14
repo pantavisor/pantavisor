@@ -125,7 +125,7 @@ void pv_event_one_shot(event_callback_fn cb)
 	struct timeval when = { 0, 0 };
 	event_base_once(base, -1, EV_TIMEOUT, cb, NULL, &when);
 
-	pv_log(DEBUG, "added event: type='one shot' cb=%p", (void *)cb);
+	pv_log(DEBUG, "add event: type='one shot' cb=%p", (void *)cb);
 }
 
 struct event_base *pv_event_get_base()

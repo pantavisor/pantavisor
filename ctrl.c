@@ -1479,7 +1479,7 @@ out:
 
 void pv_ctrl_socket_read(int fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)pv_ctrl_socket_read);
+	pv_log(DEBUG, "run event: cb=%p", (void *)pv_ctrl_socket_read);
 
 	int req_fd = 0, ret;
 

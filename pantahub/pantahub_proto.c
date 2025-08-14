@@ -66,7 +66,7 @@ out:
 
 static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_recv_post_auth_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
 	char buffer[TMP_BUF_LEN] = { 0 };
 	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
@@ -126,9 +126,44 @@ void pv_pantahub_proto_close_session()
 	pv_log(DEBUG, "session closed");
 }
 
+static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
+
+	char buffer[TMP_BUF_LEN] = { 0 };
+	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
+	if (res == 401) {
+		pv_log(WARN, "GET pending steps unauthorized", res);
+		pv_pantahub_proto_close_session();
+	}
+	if (res != 200) {
+		pv_log(WARN, "GET pending steps returned %d", res);
+		return;
+	}
+
+	pv_log(DEBUG, "GET pending steps output '%s'", buffer);
+}
+
+void pv_pantahub_proto_get_pending_steps()
+{
+	pv_log(DEBUG, "requesting for pending steps from Hub");
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return;
+	}
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/trails/%s/steps",
+		 pv_config_get_str(PH_CREDS_ID));
+
+	pv_event_rest_send(EVHTTP_REQ_GET, uri, session.token, NULL,
+			   _recv_get_pending_steps_cb);
+}
+
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_recv_get_usrmeta_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);
 
 	char buffer[TMP_BUF_LEN] = { 0 };
 	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
@@ -165,7 +200,7 @@ void pv_pantahub_proto_get_usrmeta()
 
 static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_recv_set_devmeta_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_set_devmeta_cb);
 
 	char buffer[TMP_BUF_LEN] = { 0 };
 	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
