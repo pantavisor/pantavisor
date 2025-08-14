@@ -19,28 +19,23 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAHUB_STRUCT_H
-#define PV_PANTAHUB_STRUCT_H
-
-#include "event/event_timer.h"
-
-typedef enum {
-	PH_STATE_INIT,
-	PH_STATE_REGISTER,
-	PH_STATE_CLAIM,
-	PH_STATE_SYNC,
-	PH_STATE_LOGIN,
-	PH_STATE_IDLE,
-	PH_STATE_UPDATE,
-	PH_STATE_MAX
-} ph_state_t;
+#ifndef PV_PANTAHUB_MSG_H
+#define PV_PANTAHUB_MSG_H
 
 typedef struct {
-	ph_state_t state;
-	event_timer_t login_timer;
-	event_timer_t updater_timer;
-	event_timer_t usrmeta_timer;
-	event_timer_t devmeta_timer;
-} pantahub_t;
+	char *msg;
+	char *progress;
+	char *rev;
+	char *state;
+} pv_step_t;
+
+char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass);
+
+char *pv_pantahub_msg_parse_session_token(const char *json);
+char *pv_pantahub_msg_parse_next_step(const char *json);
+
+void pv_pantahub_msg_parse_step(const char *json, pv_step_t *step);
+void pv_pantahub_msg_print_step(pv_step_t *step);
+void pv_pantahub_msg_clean_step(pv_step_t *step);
 
 #endif

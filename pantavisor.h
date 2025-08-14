@@ -40,6 +40,7 @@ extern char pv_user_agent[4096];
 
 struct pantavisor {
 	struct pv_update *update;
+	struct pv_update2 *update2;
 	struct pv_state *state;
 	struct pv_cmd *cmd;
 	struct trail_remote *remote;

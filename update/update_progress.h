@@ -19,28 +19,22 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAHUB_STRUCT_H
-#define PV_PANTAHUB_STRUCT_H
+#ifndef PV_UPDATE_PROGRESS_H
+#define PV_UPDATE_PROGRESS_H
 
-#include "event/event_timer.h"
+#include "update/update_struct.h"
 
-typedef enum {
-	PH_STATE_INIT,
-	PH_STATE_REGISTER,
-	PH_STATE_CLAIM,
-	PH_STATE_SYNC,
-	PH_STATE_LOGIN,
-	PH_STATE_IDLE,
-	PH_STATE_UPDATE,
-	PH_STATE_MAX
-} ph_state_t;
+char *pv_update_progress_ser(pv_update_progress_t *p);
+int pv_update_progress_parse(const char *json, pv_update_progress_t *p);
 
-typedef struct {
-	ph_state_t state;
-	event_timer_t login_timer;
-	event_timer_t updater_timer;
-	event_timer_t usrmeta_timer;
-	event_timer_t devmeta_timer;
-} pantahub_t;
+void pv_update_progress_set_status(pv_update_progress_t *p, pv_status_t status);
+void pv_update_progress_set_msg_str(pv_update_progress_t *p, const char *str);
+void pv_update_progress_set_msg_code(pv_update_progress_t *p,
+				     pv_update_progress_msg_t code);
+void pv_update_progress_set_progress(pv_update_progress_t *p, int progress);
+void pv_update_progress_set_logs(pv_update_progress_t *p, const char *logs);
+void pv_update_progress_set_total(pv_update_progress_t *p, off_t total_size,
+				  off_t start_time, off_t current_time,
+				  off_t total_downloaded);
 
 #endif

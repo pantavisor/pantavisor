@@ -648,8 +648,9 @@ static void _close_state_idle()
 	if (!ph)
 		return;
 
-	pv_event_timer_close(&ph->usrmeta_timer);
 	pv_event_timer_close(&ph->devmeta_timer);
+	pv_event_timer_close(&ph->usrmeta_timer);
+	pv_event_timer_close(&ph->updater_timer);
 }
 
 static void _close_state()
@@ -740,6 +741,12 @@ static void _run_state_login()
 	pv_event_timer_run(&ph->login_timer, 5, _login_event_cb);
 }
 
+static void _updater_event_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_updater_event_cb);
+	pv_pantahub_proto_get_pending_steps();
+}
+
 static void _usrmeta_event_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_usrmeta_event_cb);
@@ -763,6 +770,9 @@ static void _run_state_idle()
 		return;
 	}
 
+	pv_event_timer_run(&ph->updater_timer,
+			   pv_config_get_int(PH_UPDATER_INTERVAL),
+			   _updater_event_cb);
 	pv_event_timer_run(&ph->usrmeta_timer,
 			   pv_config_get_int(PH_METADATA_USRMETA_INTERVAL),
 			   _usrmeta_event_cb);
