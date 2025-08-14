@@ -711,11 +711,18 @@ static int create_bsp_link(const char *deploy_path)
 	char bsp_runjs[PATH_MAX] = { 0 };
 	pv_fs_path_concat(bsp_runjs, 2, deploy_path, PVTX_TXN_DST_RUNJS);
 
+	int ret = 0;
+
 	size_t json_len = 0;
 	char *json = pv_fs_file_read(bsp_runjs, &json_len);
+	jsmntok_t *tkn = NULL;
+
+	// if !json probably there isn't a bsp defined
+	if (!json)
+		goto out;
 
 	int tkn_len = 0;
-	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(json, json_len, &tkn_len);
+	tkn = pv_pvtx_jsmn_parse_data(json, json_len, &tkn_len);
 
 	const char *keys[] = {
 		"fit", "pantavisor", "initrd", "kernel", "linux", "ftd",
@@ -728,7 +735,6 @@ static int create_bsp_link(const char *deploy_path)
 
 	int keys_len = sizeof(keys) / sizeof(char *);
 
-	int ret = 0;
 	int no_top = 0;
 	for (int i = 1; i < tkn_len; i++) {
 		if ((tkn[i].type != JSMN_STRING &&
@@ -956,7 +962,7 @@ int pv_pvtx_txn_begin(const char *from, const char *obj_path,
 	if (txn && txn->status == PVTX_TXN_STATUS_ACTIVE) {
 		PVTX_ERROR_SET(err, -1,
 			       "there is a previous transaction active.");
-		return err->code;
+		goto out;
 	}
 
 	if (!txn || txn->status != PVTX_TXN_STATUS_SET) {
@@ -1446,24 +1452,28 @@ int pv_pvtx_queue_process(const char *from, const char *queue_path,
 	}
 
 	for (int i = 0; i < len; i++) {
-		char *fname = url_decode(entry[i]->d_name);
-		if (!strncmp(fname, ".", strlen(fname)) ||
-		    !strncmp(fname, "..", strlen(fname))) {
+		char *fn = url_decode(entry[i]->d_name);
+		if (!strncmp(fn, ".", strlen(fn)) ||
+		    !strncmp(fn, "..", strlen(fn))) {
+			free(fn);
 			continue;
 		}
-		char *ext = strrchr(fname, '.');
+		char *ext = strrchr(fn, '.');
 		if (ext && !strncmp(ext, ".remove", strlen(ext))) {
-			if (process_remove_file(st, fname) != 0) {
+			if (process_remove_file(st, fn) != 0) {
 				PVTX_ERROR_SET(err, -1, "couldn't remove %s",
-					       fname);
+					       fn);
+				free(fn);
 				goto out;
 			}
 		} else if (entry[i]->d_type == DT_DIR) {
-			if (process_add_directory(st, fname, q->queue, err) !=
-			    0)
+			int ret = process_add_directory(st, fn, q->queue, err);
+			if (ret != 0) {
+				free(fn);
 				goto out;
+			}
 		}
-		free(fname);
+		free(fn);
 	}
 
 	if (save_state_json(st, err) != 0)

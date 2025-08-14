@@ -93,6 +93,24 @@ void pvtx_state_data_free(struct pv_pvtx_state_data *std)
 		free(std->names);
 	}
 
+	if (std->sigs_data) {
+		for (int i = 0; i < std->sigs_len; i++) {
+			if (std->sigs_data[i])
+				free(std->sigs_data[i]);
+		}
+		free(std->sigs_data);
+	}
+
+	if (std->sigs) {
+		for (int i = 0; i < std->sigs_len; i++) {
+			if (std->sigs[i])
+				free(std->sigs[i]);
+		}
+		free(std->sigs);
+	}
+
+
+
 	free(std);
 }
 
@@ -167,7 +185,7 @@ static int set_signatures(struct pv_pvtx_state_data *std, char ***sigsx,
 
 		memcpy(ptr, tok_str, len);
 
-		char **tmp = realloc(sigs, sizeof(char *) * sigs_len + 1);
+		char **tmp = realloc(sigs, sizeof(char *) * (sigs_len + 1));
 		if (!tmp) {
 			free(ptr);
 			goto err;
@@ -181,12 +199,14 @@ static int set_signatures(struct pv_pvtx_state_data *std, char ***sigsx,
 		char *data = NULL;
 		int prot_idx = search_tkn(std, "protected", idx);
 		if (prot_idx < 0) {
+			data = NULL;
 			goto set_data;
 		}
 
 		// check if match is inside of the current signature, if so,
 		// we will get the unserialized data from the signature
 		if (prot_idx > idx + 7) {
+			data = NULL;
 			goto set_data;
 		}
 
@@ -195,13 +215,15 @@ static int set_signatures(struct pv_pvtx_state_data *std, char ***sigsx,
 		jsmntok_t *t = &std->tkn[prot_data];
 		size_t dec_len = 0;
 
-		free(data);
 		data = (char *)base64_url_decode(std->data + t->start,
 						 t->end - t->start, &dec_len);
+
 	set_data:
-		tmp = realloc(sigs_data, sizeof(char *) * sigs_data_len + 1);
-		if (!tmp)
+		tmp = realloc(sigs_data, sizeof(char *) * (sigs_data_len + 1));
+		if (!tmp) {
+			free(data);
 			goto err;
+		}
 
 		sigs_data = tmp;
 		sigs_data[sigs_data_len] = data;
@@ -212,6 +234,14 @@ static int set_signatures(struct pv_pvtx_state_data *std, char ***sigsx,
 	// ssigs_len = sigs_len;
 	return sigs_len;
 err:
+	if (sigs_data) {
+		for (int i = 0; i < sigs_data_len; i++) {
+			if (sigs_data[i])
+				free(sigs_data[i]);
+		}
+		free(sigs_data);
+	}
+
 	if (sigs) {
 		for (int i = 0; i < sigs_len; i++) {
 			if (sigs[i])
@@ -247,7 +277,6 @@ static int state_parse(struct pv_pvtx_state_data *std, const char *str,
 
 	std->names = get_names_from_state(std, &std->names_len);
 	std->has_sig = search_tkn(std, PVTX_STATE_SIGS_STR, 0) > -1;
-
 	std->sigs_len = set_signatures(std, &std->sigs, &std->sigs_data);
 
 	return 0;
@@ -534,6 +563,7 @@ static int remove_signed(struct pv_pvtx_state *st, const char *part)
 	}
 
 	remove_part(st, sig_name);
+	free(tkn);
 
 	return 0;
 }
@@ -744,12 +774,17 @@ char *pv_pvtx_state_to_str(struct pv_pvtx_state *st, size_t *len)
 
 	if (device) {
 		p = write_string_body(p, "device.json", device);
+		free(device);
 	} else {
-		if (groups)
+		if (groups) {
 			p = write_string_body(p, "groups.json", groups);
+			free(groups);
+		}
 
-		if (disks)
+		if (disks) {
 			p = write_string_body(p, "disks.json", disks);
+			free(disks);
+		}
 	}
 
 	*(p - 1) = '}';
