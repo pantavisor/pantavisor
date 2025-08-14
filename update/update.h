@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2024 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,28 +19,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_LXC_H
-#define PV_LXC_H
+#ifndef PV_UPDATE_H
+#define PV_UPDATE_H
 
-#include "../config.h"
-#include "../platforms.h"
+#include "update/update_struct.h"
 
-void pv_set_pv_instance_fn(void *fn_pv_get_instance);
-void pv_set_pv_paths_fn(
-	void *fn_vlog, void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
-	void *fn_pv_paths_pv_log_plat, void *fn_pv_paths_pv_log_file,
-	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
-	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
-	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
-	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
-	void *fn_pv_paths_lib_lxc_lxcpath);
+char *pv_update_start_install(const char *rev, const char *msg,
+			      const char *progress_hub, const char *state);
 
-void pv_set_pv_conf_loglevel_fn(int loglevel);
-void pv_set_pv_conf_capture_fn(bool capture);
+char *pv_update_get_unrecorded_objects(char ***objects);
+char *pv_update_set_object_metadata(const char *sha256sum, off_t size,
+				    const char *geturl);
 
-void *pv_start_container(struct pv_platform *p, const char *rev,
-			 char *conf_file, int logfd, void *data);
-void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
-int pv_console_log_getfd(struct pv_platform_log *log, void *data);
+char *pv_update_get_unavailable_objects(char ***objects);
+char *pv_update_get_object_geturl(const char *sha256sum);
+char *pv_update_install_object(const char *path);
 
+char *pv_update_finish_install(void);
+
+bool pv_update_is_queued(void);
+bool pv_update_is_downloading(void);
+bool pv_update_is_inprogress(void);
+bool pv_update_is_final(void);
+
+char *pv_update_get_rev(void);
 #endif

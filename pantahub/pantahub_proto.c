@@ -19,19 +19,23 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include <string.h>
 
-#include <jsmn/jsmnutil.h>
+#include <string.h>
+#include <limits.h>
 
 #include "pantahub/pantahub.h"
+#include "pantahub/pantahub_msg.h"
 #include "pantahub/pantahub_proto.h"
 #include "pantahub/pantahub_struct.h"
 
 #include "event/event_rest.h"
 
 #include "metadata.h"
+#include "storage.h"
 
-#include "utils/json.h"
+#include "update/update.h"
+
+#include "utils/fs.h"
 #include "utils/str.h"
 
 #define MODULE_NAME "pantahub_proto"
@@ -47,22 +51,22 @@ typedef struct {
 
 static pantahub_session_t session = { 0 };
 
-static void _parse_post_auth_body(const char *json)
+static void _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
+			      const char *token, const char *body,
+			      void (*cb)(struct evhttp_request *, void *))
 {
-	int tokc;
-	jsmntok_t *tokv = NULL;
+	char *host;
+	int port;
 
-	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
-		goto out;
+	host = pv_config_get_str(PH_CREDS_PROXY_HOST);
+	port = pv_config_get_int(PH_CREDS_PROXY_PORT);
+	if (!host) {
+		host = pv_config_get_str(PH_CREDS_HOST);
+		port = pv_config_get_int(PH_CREDS_PORT);
 	}
 
-	session.token = pv_json_get_value(json, "token", tokv, tokc);
-	if (session.token)
-		pv_log(DEBUG, "new session opened");
-
-out:
-	if (tokv)
-		free(tokv);
+	pv_event_rest_send_by_components(op, host, port, endpoint, token, body,
+					 cb);
 }
 
 static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
@@ -70,7 +74,7 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
 	char *body = NULL;
-	int res = pv_event_rest_recv(req, ctx, &body, BODY_MAX_LEN);
+	int res = pv_event_rest_recv_buffer(req, ctx, &body, BODY_MAX_LEN);
 	if (res != 200) {
 		pv_log(WARN, "POST auth returned %d", res);
 		goto out;
@@ -80,7 +84,9 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
-	_parse_post_auth_body(body);
+	session.token = pv_pantahub_msg_parse_session_token(body);
+	if (session.token)
+		pv_log(DEBUG, "new session opened");
 
 out:
 	if (body)
@@ -98,26 +104,15 @@ void pv_pantahub_proto_open_session()
 
 	const char *uri = "/auth/login";
 
-	struct pv_json_ser js;
-	pv_json_ser_init(&js, AUTH_JSON_LEN);
-
-	pv_json_ser_object(&js);
-	{
-		pv_json_ser_key(&js, "username");
-		pv_json_ser_string(&js, pv_config_get_str(PH_CREDS_PRN));
-		pv_json_ser_key(&js, "password");
-		pv_json_ser_string(&js, pv_config_get_str(PH_CREDS_SECRET));
-		pv_json_ser_object_pop(&js);
-	}
-
-	char *body = pv_json_ser_str(&js);
+	char *body = pv_pantahub_msg_ser_login_json(
+		pv_config_get_str(PH_CREDS_PRN),
+		pv_config_get_str(PH_CREDS_SECRET));
 	if (!body) {
 		pv_log(ERROR, "could not serialize session auth JSON");
 		return;
 	}
 
-	pv_event_rest_send(EVHTTP_REQ_POST, uri, NULL, body,
-			   _recv_post_auth_cb);
+	_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body, _recv_post_auth_cb);
 	free(body);
 }
 
@@ -135,12 +130,127 @@ void pv_pantahub_proto_close_session()
 	pv_log(DEBUG, "session closed");
 }
 
+static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_put_progress_cb);
+
+	char *body = NULL;
+	int res = pv_event_rest_recv_buffer(req, ctx, &body, BODY_MAX_LEN);
+	if (res == 401) {
+		pv_log(WARN, "PUT progress unauthorized", res);
+		pv_pantahub_proto_close_session();
+		goto out;
+	}
+	if (res != 200) {
+		pv_log(WARN, "PUT progress returned %d", res);
+		goto out;
+	}
+
+	pv_log(DEBUG, "progress updated in Hub");
+out:
+	if (body)
+		free(body);
+}
+
+static void _put_progress(const char *progress)
+{
+	char *rev;
+
+	if (!progress)
+		return;
+
+	rev = pv_update_get_rev();
+	if (!rev)
+		return;
+
+	pv_log(DEBUG, "sending progress '%s' from rev '%s' to Hub", progress,
+	       rev);
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return;
+	}
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s/progress",
+		 pv_config_get_str(PH_CREDS_ID), rev);
+
+	_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, progress,
+			  _recv_put_progress_cb);
+}
+
+static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
+{
+	char *body = NULL, *state_json = NULL, *progress = NULL;
+	pv_step_t step;
+	memset(&step, 0, sizeof(step));
+
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
+
+	int res = pv_event_rest_recv_buffer(req, ctx, &body, BODY_MAX_LEN);
+	if (res == 401) {
+		pv_log(WARN, "GET pending steps unauthorized", res);
+		pv_pantahub_proto_close_session();
+		goto out;
+	}
+	if (res != 200) {
+		pv_log(WARN, "GET pending steps returned %d", res);
+		goto out;
+	}
+	if (!body) {
+		pv_log(WARN, "GET pending steps received empty body");
+		goto out;
+	}
+
+	state_json = pv_pantahub_msg_parse_next_step(body);
+	if (!state_json)
+		goto out;
+
+	pv_pantahub_msg_parse_step(state_json, &step);
+	if (!step.rev) {
+		pv_log(WARN, "could not parse rev from step");
+		goto out;
+	}
+
+	pv_pantahub_msg_print_step(&step);
+
+	progress = pv_update_start_install(step.rev, step.msg, step.progress,
+					   step.state);
+	_put_progress(progress);
+
+out:
+	pv_pantahub_msg_clean_step(&step);
+	if (progress)
+		free(progress);
+	if (state_json)
+		free(state_json);
+	if (body)
+		free(body);
+}
+
+void pv_pantahub_proto_get_pending_steps()
+{
+	pv_log(DEBUG, "requesting for pending steps from Hub");
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return;
+	}
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/trails/%s/steps",
+		 pv_config_get_str(PH_CREDS_ID));
+
+	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			  _recv_get_pending_steps_cb);
+}
+
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);
 
 	char *body = NULL;
-	int res = pv_event_rest_recv(req, ctx, &body, BODY_MAX_LEN);
+	int res = pv_event_rest_recv_buffer(req, ctx, &body, BODY_MAX_LEN);
 	if (res == 401) {
 		pv_log(WARN, "GET usrmeta unauthorized", res);
 		pv_pantahub_proto_close_session();
@@ -176,8 +286,8 @@ void pv_pantahub_proto_get_usrmeta()
 	snprintf(uri, sizeof(uri), "/devices/%s/user-meta",
 		 pv_config_get_str(PH_CREDS_ID));
 
-	pv_event_rest_send(EVHTTP_REQ_GET, uri, session.token, NULL,
-			   _recv_get_usrmeta_cb);
+	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			  _recv_get_usrmeta_cb);
 }
 
 static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
@@ -185,7 +295,7 @@ static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_set_devmeta_cb);
 
 	char *body = NULL;
-	int res = pv_event_rest_recv(req, ctx, &body, BODY_MAX_LEN);
+	int res = pv_event_rest_recv_buffer(req, ctx, &body, BODY_MAX_LEN);
 	if (res == 401) {
 		pv_log(WARN, "PUT devmeta unauthorized", res);
 		pv_pantahub_proto_close_session();
@@ -221,9 +331,174 @@ void pv_pantahub_proto_set_devmeta()
 		return;
 	}
 
-	pv_event_rest_send(EVHTTP_REQ_PUT, uri, session.token, json,
-			   _recv_set_devmeta_cb);
+	_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
+			  _recv_set_devmeta_cb);
 
 out:
 	free(json);
+}
+
+static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
+{
+	char *body = NULL, *progress = NULL;
+	int res;
+
+	pv_object_metadata_t object_metadata;
+	memset(&object_metadata, 0, sizeof(object_metadata));
+
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_metadata_cb);
+
+	res = pv_event_rest_recv_buffer(req, ctx, &body, BODY_MAX_LEN);
+	if (res == 401) {
+		pv_log(WARN, "GET object metadata unauthorized", res);
+		pv_pantahub_proto_close_session();
+		goto out;
+	}
+	if (res != 200) {
+		pv_log(WARN, "GET object metadata returned %d", res);
+		goto out;
+	}
+	if (!body) {
+		pv_log(WARN, "GET object metadata received empty body");
+		goto out;
+	}
+
+	pv_pantahub_msg_parse_object_metadata(body, &object_metadata);
+	if (!object_metadata.geturl) {
+		pv_log(WARN, "could not parse object metadata");
+		goto out;
+	}
+	pv_pantahub_msg_print_object_metadata(&object_metadata);
+
+	progress = pv_update_set_object_metadata(object_metadata.sha256sum,
+						 object_metadata.size,
+						 object_metadata.geturl);
+	_put_progress(progress);
+
+	pv_log(DEBUG, "object metadata updated from Hub");
+out:
+	pv_pantahub_msg_clean_object_metadata(&object_metadata);
+	if (body)
+		free(body);
+	if (progress)
+		free(progress);
+}
+
+static void _get_object_metadata(const char *id)
+{
+	pv_log(DEBUG, "requesting object '%s' metadata from Hub", id);
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return;
+	}
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/objects/%s", id);
+
+	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			  _recv_get_object_metadata_cb);
+}
+
+int pv_pantahub_proto_get_objects_metadata()
+{
+	int ret = -1;
+	char *progress = NULL;
+	char **objects = NULL, **o;
+
+	progress = pv_update_get_unrecorded_objects(&objects);
+	_put_progress(progress);
+	if (!objects) {
+		pv_log(WARN, "could not retrieve unrecorded objects");
+		goto out;
+	}
+
+	o = objects;
+	while (*o) {
+		_get_object_metadata(*o);
+		o++;
+	}
+	ret = 0;
+
+out:
+	if (progress)
+		free(progress);
+	if (objects)
+		free(objects);
+
+	return ret;
+}
+
+static void _recv_get_object_cb(struct evhttp_request *req, void *ctx)
+{
+	char path[PATH_MAX];
+	char *progress = NULL;
+	int res;
+
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_cb);
+
+	pv_storage_set_object_download_path(path, PATH_MAX);
+	res = pv_event_rest_recv_path(req, ctx, path);
+	if (res == 401) {
+		pv_log(WARN, "GET object unauthorized", res);
+		pv_pantahub_proto_close_session();
+		goto out;
+	}
+	if (res != 200) {
+		pv_log(WARN, "GET object returned %d", res);
+		goto out;
+	}
+
+	pv_log(DEBUG, "object downloaded from Hub");
+
+	progress = pv_update_install_object(path);
+	if (!progress) {
+		pv_log(WARN, "object download failed");
+		goto out;
+	}
+	_put_progress(progress);
+out:
+	pv_fs_path_remove(path, false);
+	if (progress)
+		free(progress);
+}
+
+void _get_object(const char *geturl, const char *id)
+{
+	if (!geturl || !id)
+		return;
+
+	pv_log(DEBUG, "requesting object '%s' from Hub", id);
+
+	pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl, _recv_get_object_cb);
+}
+
+int pv_pantahub_proto_get_objects()
+{
+	int ret = -1;
+	char *progress = NULL, *geturl;
+	char **objects = NULL, **o;
+
+	progress = pv_update_get_unavailable_objects(&objects);
+	_put_progress(progress);
+	if (!objects) {
+		pv_log(WARN, "could not retrieve unavailable objects");
+		goto out;
+	}
+
+	o = objects;
+	while (*o) {
+		geturl = pv_update_get_object_geturl(*o);
+		_get_object(geturl, *o);
+		o++;
+	}
+	ret = 0;
+
+out:
+	if (progress)
+		free(progress);
+	if (objects)
+		free(objects);
+
+	return ret;
 }

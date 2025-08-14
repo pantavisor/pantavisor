@@ -28,10 +28,17 @@
 int pv_event_rest_init(void);
 void pv_event_rest_cleanup(void);
 
-int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
-		       const char *token, const char *body,
-		       void (*cb)(struct evhttp_request *, void *));
-int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char **out,
-		       size_t max_len);
+int pv_event_rest_send_by_components(enum evhttp_cmd_type op, const char *host,
+				     int port, const char *endpoint,
+				     const char *token, const char *body,
+				     void (*cb)(struct evhttp_request *,
+						void *));
+int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
+			      void (*cb)(struct evhttp_request *, void *));
+
+int pv_event_rest_recv_buffer(struct evhttp_request *req, void *ctx, char **buf,
+			      size_t max_len);
+int pv_event_rest_recv_path(struct evhttp_request *req, void *ctx,
+			    const char *path);
 
 #endif

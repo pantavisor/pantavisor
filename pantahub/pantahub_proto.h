@@ -28,7 +28,10 @@ void pv_pantahub_proto_open_session(void);
 bool pv_pantahub_proto_is_session_open(void);
 void pv_pantahub_proto_close_session(void);
 
+void pv_pantahub_proto_get_pending_steps(void);
 void pv_pantahub_proto_get_usrmeta(void);
 void pv_pantahub_proto_set_devmeta(void);
+int pv_pantahub_proto_get_objects_metadata(void);
+int pv_pantahub_proto_get_objects(void);
 
 #endif

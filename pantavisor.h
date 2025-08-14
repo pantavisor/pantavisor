@@ -27,6 +27,8 @@
 #include "config.h"
 #include "cgroup.h"
 
+#include "update/update.h"
+
 #define RUNLEVEL_DATA 0
 #define RUNLEVEL_ROOT 1
 #define RUNLEVEL_PLATFORM 2
@@ -40,6 +42,7 @@ extern char pv_user_agent[4096];
 
 struct pantavisor {
 	struct pv_update *update;
+	pv_update_t *update2;
 	struct pv_state *state;
 	struct pv_cmd *cmd;
 	struct trail_remote *remote;

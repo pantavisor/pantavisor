@@ -26,6 +26,7 @@
 #include "group.h"
 
 #include "state.h"
+#include "pantavisor.h"
 #include "platforms.h"
 #include "utils/json.h"
 #include "utils/str.h"
