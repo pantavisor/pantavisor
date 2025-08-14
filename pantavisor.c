@@ -652,6 +652,9 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update)
 			next_state = PV_STATE_UPDATE_APPLY;
 		break;
+	case CMD_RUN_REBOOT:
+		pv_update_set_force_reboot(pv->update);
+		break;
 	case CMD_MAKE_FACTORY:
 
 		if (!pv->unclaimed) {
@@ -743,6 +746,12 @@ static pv_state_t _pv_update_apply(struct pantavisor *pv)
 		return PV_STATE_WAIT;
 	}
 	pv_update_set_status(pv->update, UPDATE_APPLIED);
+
+	if (pv_update_force_reboot(pv->update)) {
+		pv_log(INFO, "update requires reboot");
+		return PV_STATE_REBOOT;
+	}
+
 	return PV_STATE_WAIT;
 }
 
@@ -765,8 +774,14 @@ static pv_state_t _pv_update(struct pantavisor *pv)
 		return PV_STATE_REBOOT;
 	}
 
-	pv_log(INFO, "update does not require reboot");
 	pv_update_set_status(pv->update, UPDATE_TRANSITION);
+
+	if (pv_update_force_reboot(pv->update)) {
+		pv_log(INFO, "update requires reboot");
+		return PV_STATE_REBOOT;
+	}
+
+	pv_log(INFO, "update does not require reboot");
 	return PV_STATE_RUN;
 }
 

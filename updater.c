@@ -723,6 +723,7 @@ static struct pv_update *pv_update_new(const char *rev, bool local)
 		u->rev = strdup(rev);
 		u->retries = 0;
 		u->local = local;
+		u->force_reboot = false;
 
 		if (pv_storage_is_revision_local(rev)) {
 			u->local = true;
@@ -2151,4 +2152,14 @@ bool pv_update_is_testing(struct pv_update *u)
 {
 	return (u && ((u->status == UPDATE_TESTING_REBOOT) ||
 		      (u->status == UPDATE_TESTING_NONREBOOT)));
+}
+
+void pv_update_set_force_reboot(struct pv_update *update)
+{
+	update->force_reboot = true;
+}
+
+bool pv_update_force_reboot(struct pv_update *update)
+{
+	return update->force_reboot;
 }
