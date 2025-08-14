@@ -2154,7 +2154,7 @@ bool pv_update_is_testing(struct pv_update *u)
 		      (u->status == UPDATE_TESTING_NONREBOOT)));
 }
 
-void pv_update_set_force_reboot(struct pv_udpate *update)
+void pv_update_set_force_reboot(struct pv_update *update)
 {
 	update->force_reboot = true;
 }

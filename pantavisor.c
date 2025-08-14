@@ -652,8 +652,8 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		if (pv->update)
 			next_state = PV_STATE_UPDATE_APPLY;
 		break;
-	case CMD_LOCAL_RUN_REBOOT:
-		pv_update_set_force_update(pv->update);
+	case CMD_RUN_REBOOT:
+		pv_update_set_force_reboot(pv->update);
 		break;
 	case CMD_MAKE_FACTORY:
 

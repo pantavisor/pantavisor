@@ -39,6 +39,7 @@ typedef enum {
 	CMD_DISABLE_SSH = 10,
 	CMD_GO_REMOTE = 11,
 	CMD_DEFER_REBOOT = 12,
+	CMD_RUN_REBOOT = 13,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 
