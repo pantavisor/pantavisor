@@ -30,6 +30,7 @@ void pv_event_base_close(void);
 void pv_event_base_loop(void);
 void pv_event_base_loopbreak(void);
 
+void pv_event_timeout(int timeout, event_callback_fn cb);
 void pv_event_one_shot(event_callback_fn cb);
 
 // do not use outside event/

@@ -22,7 +22,7 @@
 #ifndef PV_PANTAHUB_STRUCT_H
 #define PV_PANTAHUB_STRUCT_H
 
-#include "event/event_timer.h"
+#include "event/event_periodic.h"
 
 typedef enum {
 	PH_STATE_INIT,
@@ -30,16 +30,20 @@ typedef enum {
 	PH_STATE_CLAIM,
 	PH_STATE_SYNC,
 	PH_STATE_LOGIN,
+	PH_STATE_WAIT_HUB,
+	PH_STATE_REPORT,
 	PH_STATE_IDLE,
-	PH_STATE_UPDATE,
+	PH_STATE_PREP_DOWNLOAD,
+	PH_STATE_DOWNLOAD,
 	PH_STATE_MAX
 } ph_state_t;
 
-typedef struct {
+struct pv_pantahub {
 	ph_state_t state;
-	event_timer_t login_timer;
-	event_timer_t usrmeta_timer;
-	event_timer_t devmeta_timer;
-} pantahub_t;
+	struct pv_event_periodic evaluate_timer;
+	struct pv_event_periodic request_timer;
+	struct pv_event_periodic usrmeta_timer;
+	struct pv_event_periodic devmeta_timer;
+};
 
 #endif

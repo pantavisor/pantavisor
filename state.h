@@ -23,7 +23,6 @@
 #ifndef PV_STATE_H
 #define PV_STATE_H
 
-#include "pantavisor.h"
 #include "group.h"
 
 typedef enum { SPEC_MULTI1, SPEC_SYSTEM1, SPEC_UNKNOWN } state_spec_t;
@@ -75,6 +74,7 @@ struct pv_group *pv_state_fetch_group(struct pv_state *s, const char *name);
 struct pv_platform *pv_state_fetch_platform(struct pv_state *s,
 					    const char *name);
 struct pv_object *pv_state_fetch_object(struct pv_state *s, const char *name);
+struct pv_object *pv_state_fetch_object_id(struct pv_state *s, const char *id);
 struct pv_json *pv_state_fetch_json(struct pv_state *s, const char *name);
 
 state_spec_t pv_state_spec(struct pv_state *s);
@@ -82,6 +82,7 @@ state_spec_t pv_state_spec(struct pv_state *s);
 int pv_state_validate(struct pv_state *s);
 bool pv_state_validate_checksum(struct pv_state *s);
 
+int pv_state_prepare_run(struct pv_state *s);
 int pv_state_start(struct pv_state *s);
 int pv_state_run(struct pv_state *s);
 void pv_state_stop_lenient(struct pv_state *s);
@@ -98,8 +99,21 @@ int pv_state_interpret_signal(struct pv_state *s, const char *name,
 
 struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name);
 
+void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
+				  const char *geturl);
+char **pv_state_get_unrecorded_objects(struct pv_state *s, unsigned int count);
+char **pv_state_get_unavailable_objects(struct pv_state *s, unsigned int count);
+int pv_state_get_object_count(struct pv_state *s);
+bool pv_state_are_all_objects_recorded(struct pv_state *s);
+bool pv_state_are_all_objects_installed(struct pv_state *s);
+char *pv_state_get_object_geturl(struct pv_state *s, const char *sha256sum);
+
 void pv_state_print(struct pv_state *s);
 char *pv_state_get_containers_json(struct pv_state *s);
 char *pv_state_get_groups_json(struct pv_state *s);
+
+void pv_state_set_done(struct pv_state *s);
+void pv_state_load_done(struct pv_state *s);
+bool pv_state_is_done(struct pv_state *s);
 
 #endif

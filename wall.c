@@ -30,6 +30,7 @@
 
 #include "log.h"
 #include "version.h"
+#include "pantavisor.h"
 #include "state.h"
 
 #define MODULE_NAME "wall"

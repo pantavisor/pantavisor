@@ -29,6 +29,8 @@
 #include <signal.h>
 #include <stdarg.h>
 
+#include <linux/reboot.h>
+
 #include <sys/types.h>
 #include <sys/prctl.h>
 
@@ -148,4 +150,32 @@ void pv_system_set_process_name(const char *fmt, ...)
 
 out:
 	va_end(args);
+}
+
+char *pv_system_transition_str(pv_system_transition_t t)
+{
+	switch (t) {
+	case PV_SYSTEM_TRANSITION_NONE:
+		return "none";
+	case PV_SYSTEM_TRANSITION_NONREBOOT:
+		return "nonreboot";
+	case PV_SYSTEM_TRANSITION_REBOOT:
+		return "reboot";
+	case PV_SYSTEM_TRANSITION_POWEROFF:
+		return "power off";
+	default:
+		return "invalid shutdown type";
+	}
+}
+
+int pv_system_linux_reboot_cmd(pv_system_transition_t t)
+{
+	switch (t) {
+	case PV_SYSTEM_TRANSITION_POWEROFF:
+		return LINUX_REBOOT_CMD_POWER_OFF;
+	case PV_SYSTEM_TRANSITION_REBOOT:
+		return LINUX_REBOOT_CMD_RESTART;
+	default:
+		return LINUX_REBOOT_CMD_RESTART;
+	}
 }
