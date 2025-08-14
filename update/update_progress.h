@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,17 +19,30 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UPDATER_H
-#define PV_UPDATER_H
+#ifndef PV_UPDATE_PROGRESS_H
+#define PV_UPDATE_PROGRESS_H
 
-#include <trest.h>
+#include "update/update_struct.h"
 
-struct trail_remote {
-	trest_ptr client;
-};
+void pv_update_progress_init(pv_update_progress_t *p,
+			     void (*report_cb)(const char *));
 
-void pv_trail_remote_remove(struct pantavisor *pv);
+char *pv_update_progress_ser(pv_update_progress_t *p);
+int pv_update_progress_parse(const char *json, pv_update_progress_t *p);
 
-int pv_updater_sync();
+void pv_update_progress_set(pv_update_progress_t *p,
+			    pv_update_progress_status_t status,
+			    pv_update_progress_msg_t code);
+void pv_update_progress_set_str(pv_update_progress_t *p,
+				pv_update_progress_status_t status,
+				const char *fmt, ...);
+
+void pv_update_progress_start_record(pv_update_progress_t *p);
+void pv_update_progress_add_size(pv_update_progress_t *p, off_t size);
+off_t pv_update_progress_get_size(pv_update_progress_t *p);
+
+void pv_update_progress_start_download(pv_update_progress_t *p);
+void pv_update_progress_add_downloaded(pv_update_progress_t *p,
+				       off_t downloaded);
 
 #endif

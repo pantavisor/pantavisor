@@ -199,7 +199,7 @@ static void shell_handler(int signal)
 	if (!pv)
 		return;
 
-	pv->hard_poweroff = true;
+	pv_issue_poweroff();
 }
 
 static void early_spawns()

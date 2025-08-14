@@ -27,6 +27,10 @@
 #include "config.h"
 #include "cgroup.h"
 
+#include "update/update.h"
+
+#include "utils/system.h"
+
 #define RUNLEVEL_DATA 0
 #define RUNLEVEL_ROOT 1
 #define RUNLEVEL_PLATFORM 2
@@ -39,7 +43,7 @@ extern char pv_user_agent[4096];
 #define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
 
 struct pantavisor {
-	struct pv_update *update;
+	pv_update_t *update;
 	struct pv_state *state;
 	struct pv_cmd *cmd;
 	struct trail_remote *remote;
@@ -51,7 +55,7 @@ struct pantavisor {
 	bool unclaimed;
 	bool synced;
 	bool loading_objects;
-	bool hard_poweroff;
+	pv_system_transition_t issued_transition;
 	cgroup_version_t cgroupv;
 	int ctrl_fd;
 };
@@ -59,6 +63,12 @@ struct pantavisor {
 void pv_init(void);
 int pv_start(void);
 void pv_stop(void);
+
+pv_system_transition_t pv_run_update(void);
+
+void pv_issue_nonreboot(void);
+void pv_issue_reboot(void);
+void pv_issue_poweroff(void);
 
 struct pantavisor *pv_get_instance(void);
 

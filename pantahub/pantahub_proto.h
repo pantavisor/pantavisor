@@ -30,5 +30,11 @@ void pv_pantahub_proto_close_session(void);
 
 void pv_pantahub_proto_get_usrmeta(void);
 void pv_pantahub_proto_set_devmeta(void);
+void pv_pantahub_proto_get_pending_steps(void);
+
+int pv_pantahub_proto_get_objects_metadata(void);
+int pv_pantahub_proto_get_objects(void);
+
+void pv_pantahub_proto_put_progress(const char *rev, const char *progress);
 
 #endif
