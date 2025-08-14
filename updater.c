@@ -814,6 +814,8 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	struct pv_update *update;
 	struct pv_update_progress progress;
 
+	return 0;
+
 	if (!remote)
 		return 0;
 

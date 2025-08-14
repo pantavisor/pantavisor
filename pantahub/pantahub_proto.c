@@ -135,6 +135,113 @@ void pv_pantahub_proto_close_session()
 	pv_log(DEBUG, "session closed");
 }
 
+static char *_parse_pending_steps_body(const char *json)
+{
+	int tokc, size;
+	jsmntok_t *tokv = NULL, *t = NULL;
+	char *state_json = NULL;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted pending steps body JSON");
+		goto out;
+	}
+
+	size = jsmnutil_array_count(json, tokv);
+	if (size <= 0) {
+		pv_log(DEBUG, "no pending revisions in Hub");
+		goto out;
+	}
+
+	state_json = pv_json_array_get_one_str(json, &size, &t);
+
+out:
+	if (tokv)
+		free(tokv);
+	return state_json;
+}
+
+static char *_get_rev_state_json(const char *json)
+{
+	int tokc;
+	jsmntok_t *tokv = NULL;
+	char *rev = NULL;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted state JSON");
+		goto out;
+	}
+
+	rev = pv_json_get_value(json, "rev", tokv, tokc);
+
+out:
+	if (tokv)
+		free(tokv);
+	return rev;
+}
+
+static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
+{
+	char *body = NULL, *state_json = NULL, *rev = NULL;
+
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
+
+	int res = pv_event_rest_recv(req, ctx, &body, BODY_MAX_LEN);
+	if (res == 401) {
+		pv_log(WARN, "GET pending steps unauthorized", res);
+		pv_pantahub_proto_close_session();
+		goto out;
+	}
+	if (res != 200) {
+		pv_log(WARN, "GET pending steps returned %d", res);
+		goto out;
+	}
+	if (!body) {
+		pv_log(WARN, "GET pending steps received empty body");
+		goto out;
+	}
+
+	pv_log(DEBUG, "GET pending steps output '%s'", body);
+
+	state_json = _parse_pending_steps_body(body);
+	if (!state_json)
+		goto out;
+
+	pv_log(DEBUG, "STATE JSON PARSED");
+
+	rev = _get_rev_state_json(state_json);
+	if (!rev)
+		goto out;
+
+	pv_log(DEBUG, "REV PARSED");
+
+	pv_log(DEBUG, "next step: rev='%s' JSON='%s'", rev, state_json);
+
+out:
+	if (rev)
+		free(rev);
+	if (state_json)
+		free(state_json);
+	if (body)
+		free(body);
+}
+
+void pv_pantahub_proto_get_pending_steps()
+{
+	pv_log(DEBUG, "requesting for pending steps from Hub");
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return;
+	}
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/trails/%s/steps",
+		 pv_config_get_str(PH_CREDS_ID));
+
+	pv_event_rest_send(EVHTTP_REQ_GET, uri, session.token, NULL,
+			   _recv_get_pending_steps_cb);
+}
+
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);

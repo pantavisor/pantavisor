@@ -38,6 +38,7 @@ typedef enum {
 typedef struct {
 	ph_state_t state;
 	event_timer_t login_timer;
+	event_timer_t updater_timer;
 	event_timer_t usrmeta_timer;
 	event_timer_t devmeta_timer;
 } pantahub_t;
