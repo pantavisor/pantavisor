@@ -771,6 +771,7 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 	    (((*cmd)->op == CMD_REBOOT_DEVICE) ||
 	     ((*cmd)->op == CMD_POWEROFF_DEVICE) ||
 	     ((*cmd)->op == CMD_LOCAL_RUN) || ((*cmd)->op == CMD_LOCAL_APPLY) ||
+	     ((*cmd)->op == CMD_LOCAL_RUN_COMMIT) ||
 	     ((*cmd)->op == CMD_MAKE_FACTORY))) {
 		pv_ctrl_write_error_response(
 			req_fd, HTTP_STATUS_CONFLICT,
