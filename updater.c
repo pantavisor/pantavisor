@@ -815,6 +815,8 @@ static int trail_get_new_steps(struct pantavisor *pv)
 	struct pv_update *update;
 	struct pv_update_progress progress;
 
+	return 0;
+
 	if (!remote)
 		return 0;
 
@@ -1911,7 +1913,7 @@ static int trail_link_objects(struct pantavisor *pv)
 	}
 	pv_objects_iter_end;
 
-	return pv_storage_meta_link_boot(pv, pv->update->pending);
+	return pv_storage_meta_link_boot(pv->update->pending);
 }
 
 static int trail_check_update_size(struct pantavisor *pv)
@@ -2080,7 +2082,7 @@ int pv_update_install(struct pantavisor *pv)
 		goto out;
 	}
 
-	if (!pv_storage_meta_expand_jsons(pv, pending)) {
+	if (!pv_storage_meta_expand_jsons(pending)) {
 		pv_log(ERROR,
 		       "unable to install platform and pantavisor jsons");
 		ret = -1;

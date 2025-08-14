@@ -23,7 +23,6 @@
 #ifndef PV_STATE_H
 #define PV_STATE_H
 
-#include "pantavisor.h"
 #include "group.h"
 
 typedef enum { SPEC_MULTI1, SPEC_SYSTEM1, SPEC_UNKNOWN } state_spec_t;
@@ -97,6 +96,13 @@ int pv_state_interpret_signal(struct pv_state *s, const char *name,
 			      const char *signal, const char *payload);
 
 struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name);
+
+void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
+				  const char *geturl);
+char **pv_state_get_unrecorded_objects(struct pv_state *s, unsigned int count);
+char **pv_state_get_unavailable_objects(struct pv_state *s, unsigned int count);
+int pv_state_get_object_count(struct pv_state *s);
+bool pv_state_are_all_objects_recorded(struct pv_state *s);
 
 void pv_state_print(struct pv_state *s);
 char *pv_state_get_containers_json(struct pv_state *s);

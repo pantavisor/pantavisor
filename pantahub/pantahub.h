@@ -57,7 +57,7 @@ const char *pv_pantahub_state_string(ph_state_t state);
 int pv_pantahub_init(void);
 int pv_pantahub_close(void);
 
-void pv_pantahub_step(void);
+void pv_pantahub_start(void);
 
 pantahub_t *ph_get_instance(void);
 

@@ -34,9 +34,11 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 
-#include "event_rest.h"
+#include "event/event_rest.h"
+#include "event/event.h"
 
-#include "event.h"
+#include "config.h"
+#include "pantavisor.h"
 #include "paths.h"
 
 #include "utils/str.h"
@@ -194,7 +196,12 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 	mbedtls_dyncontext *ssl;
 	ssl = bufferevent_mbedtls_dyncontext_new(&config);
 
-	char *host = pv_config_get_str(PH_CREDS_HOST);
+	char *host = pv_config_get_str(PH_CREDS_PROXY_HOST);
+	int port = pv_config_get_int(PH_CREDS_PROXY_PORT);
+	if (!host) {
+		port = pv_config_get_int(PH_CREDS_PORT);
+		host = pv_config_get_str(PH_CREDS_HOST);
+	}
 	mbedtls_ssl_set_hostname(ssl, host);
 
 	struct bufferevent *bev;
@@ -208,7 +215,6 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 
 	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
 
-	int port = pv_config_get_int(PH_CREDS_PORT);
 	struct evhttp_connection *evcon;
 	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
 						       NULL, bev, host, port);

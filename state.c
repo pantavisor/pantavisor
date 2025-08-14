@@ -1208,8 +1208,8 @@ static char *pv_state_get_novalidate_known_obj(struct dl_list *objects,
 			continue;
 
 		char *entry = NULL;
-		int len = pv_str_fmt_build(&entry, "%s %s\n", obj->name,
-					    obj->id);
+		int len =
+			pv_str_fmt_build(&entry, "%s %s\n", obj->name, obj->id);
 
 		char *nv_tmp = pv_state_add_novalidate_obj(nv_list, *nv_size,
 							   entry, len);
@@ -1395,6 +1395,123 @@ struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name)
 	}
 
 	return NULL;
+}
+
+static struct pv_object *_fetch_state_object_id(struct pv_state *s,
+						const char *id)
+{
+	struct pv_object *o, *tmp;
+
+	if (!id)
+		return NULL;
+
+	// Iterate over all objects from state
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		if (pv_str_matches(o->id, strlen(o->id), id, strlen(id)))
+			return o;
+	}
+
+	return NULL;
+}
+
+void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
+				  const char *geturl)
+{
+	struct pv_object *o;
+
+	if (!s || !sha256sum)
+		return;
+
+	o = _fetch_state_object_id(s, sha256sum);
+	if (!o) {
+		pv_log(WARN, "could not locate object '%s' in state",
+		       sha256sum);
+		return;
+	}
+
+	o->sha256 = strdup(sha256sum);
+	o->geturl = strdup(geturl);
+}
+
+char **pv_state_get_unrecorded_objects(struct pv_state *s, unsigned int count)
+{
+	int i = 0;
+	char **ret;
+	struct pv_object *o, *tmp;
+
+	if (!s || !count)
+		return NULL;
+
+	ret = calloc(count + 1, sizeof(char *));
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		if (i >= count)
+			break;
+		if (o->geturl)
+			continue;
+		ret[i] = o->id;
+		i++;
+	}
+
+	return ret;
+}
+
+char **pv_state_get_unavailable_objects(struct pv_state *s, unsigned int count)
+{
+	char **ret;
+	struct pv_object *o, *tmp;
+
+	if (!s || !count)
+		return NULL;
+
+	ret = calloc(count + 1, sizeof(char *));
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		if (count <= 0)
+			break;
+		if (pv_storage_does_object_exist(o->id))
+			continue;
+		ret = &o->id;
+		ret++;
+		count--;
+	}
+
+	return ret;
+}
+
+int pv_state_get_object_count(struct pv_state *s)
+{
+	int count = 0;
+	struct pv_object *o, *tmp;
+
+	if (!s)
+		return -1;
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		count++;
+	}
+
+	return count;
+}
+
+bool pv_state_are_all_objects_recorded(struct pv_state *s)
+{
+	struct pv_object *o, *tmp;
+
+	if (!s)
+		return false;
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		if (!o->geturl)
+			return false;
+	}
+
+	return true;
 }
 
 char *pv_state_get_containers_json(struct pv_state *s)
