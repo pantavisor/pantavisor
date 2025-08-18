@@ -38,7 +38,8 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-#define TMP_BUF_LEN 1024
+#define AUTH_JSON_LEN 128
+#define BODY_MAX_LEN (1 << 21) // 2MiB
 
 typedef struct {
 	char *token;
@@ -68,14 +69,22 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
-	char buffer[TMP_BUF_LEN] = { 0 };
-	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
+	char *body = NULL;
+	int res = pv_event_rest_recv(req, ctx, &body, BODY_MAX_LEN);
 	if (res != 200) {
 		pv_log(WARN, "POST auth returned %d", res);
-		return;
+		goto out;
+	}
+	if (body != NULL) {
+		pv_log(WARN, "POST auth received empty body");
+		goto out;
 	}
 
-	_parse_post_auth_body(buffer);
+	_parse_post_auth_body(body);
+
+out:
+	if (body)
+		free(body);
 }
 
 void pv_pantahub_proto_open_session()
@@ -90,7 +99,7 @@ void pv_pantahub_proto_open_session()
 	const char *uri = "/auth/login";
 
 	struct pv_json_ser js;
-	pv_json_ser_init(&js, TMP_BUF_LEN);
+	pv_json_ser_init(&js, AUTH_JSON_LEN);
 
 	pv_json_ser_object(&js);
 	{
@@ -130,20 +139,28 @@ static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);
 
-	char buffer[TMP_BUF_LEN] = { 0 };
-	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
+	char *body = NULL;
+	int res = pv_event_rest_recv(req, ctx, &body, BODY_MAX_LEN);
 	if (res == 401) {
 		pv_log(WARN, "GET usrmeta unauthorized", res);
 		pv_pantahub_proto_close_session();
+		goto out;
 	}
 	if (res != 200) {
 		pv_log(WARN, "GET usrmeta returned %d", res);
-		return;
+		goto out;
+	}
+	if (body != NULL) {
+		pv_log(WARN, "GET usrmeta received empty body");
+		goto out;
 	}
 
-	pv_metadata_parse_usermeta(buffer);
+	pv_metadata_parse_usermeta(body);
 
 	pv_log(DEBUG, "usmeta updated from Hub");
+out:
+	if (body)
+		free(body);
 }
 
 void pv_pantahub_proto_get_usrmeta()
@@ -167,18 +184,22 @@ static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_set_devmeta_cb);
 
-	char buffer[TMP_BUF_LEN] = { 0 };
-	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
+	char *body = NULL;
+	int res = pv_event_rest_recv(req, ctx, &body, BODY_MAX_LEN);
 	if (res == 401) {
 		pv_log(WARN, "PUT devmeta unauthorized", res);
 		pv_pantahub_proto_close_session();
+		goto out;
 	}
 	if (res != 200) {
 		pv_log(WARN, "PUT devmeta returned %d", res);
-		return;
+		goto out;
 	}
 
 	pv_log(DEBUG, "devmeta updated in Hub");
+out:
+	if (body)
+		free(body);
 }
 
 void pv_pantahub_proto_set_devmeta()
