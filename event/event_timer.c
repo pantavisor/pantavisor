@@ -55,7 +55,7 @@ void pv_event_timer_run(event_timer_t *timer, int next_interval,
 	}
 	timer->interval = next_interval;
 
-	pv_log(DEBUG, "added event: type='timer' cb=%p interval=%d", (void *)cb,
+	pv_log(DEBUG, "add event: type='timer' cb=%p interval=%d", (void *)cb,
 	       next_interval);
 }
 

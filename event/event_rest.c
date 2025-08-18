@@ -45,16 +45,54 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-typedef struct {
-	mbedtls_x509_crt cacert;
-	mbedtls_ctr_drbg_context ctr_drbg;
-	mbedtls_entropy_context entropy;
-	mbedtls_ssl_config config;
+static mbedtls_x509_crt cacert;
+static mbedtls_ctr_drbg_context ctr_drbg;
+static mbedtls_entropy_context entropy;
+static mbedtls_ssl_config config;
 
-	struct bufferevent *bev;
-	struct evhttp_connection *evcon;
-	mbedtls_dyncontext *ssl;
-} mbedtls_ctx_t;
+int pv_event_rest_init(void)
+{
+	mbedtls_x509_crt_init(&cacert);
+	mbedtls_ctr_drbg_init(&ctr_drbg);
+	mbedtls_entropy_init(&entropy);
+	mbedtls_ssl_config_init(&config);
+
+	mbedtls_ctr_drbg_seed(&ctr_drbg, mbedtls_entropy_func, &entropy,
+			      (const unsigned char *)"pantavisor",
+			      sizeof("pantavisor"));
+	mbedtls_ssl_config_defaults(&config, MBEDTLS_SSL_IS_CLIENT,
+				    MBEDTLS_SSL_TRANSPORT_STREAM,
+				    MBEDTLS_SSL_PRESET_DEFAULT);
+	mbedtls_ssl_conf_rng(&config, mbedtls_ctr_drbg_random, &ctr_drbg);
+
+	char path[PATH_MAX];
+	pv_paths_cert(path, PATH_MAX, "");
+
+	mbedtls_ssl_conf_authmode(&config, MBEDTLS_SSL_VERIFY_NONE);
+	int res;
+	res = mbedtls_x509_crt_parse_path(&cacert, path);
+	if (res != 0) {
+		pv_log(ERROR, "mbedtls_x509_crt_parse_file returned code %d",
+		       res);
+		pv_event_rest_cleanup();
+		return -1;
+	}
+	mbedtls_ssl_conf_ca_chain(&config, &cacert, NULL);
+
+	pv_log(DEBUG, "HTTP REST initialized");
+
+	return 0;
+}
+
+void pv_event_rest_cleanup(void)
+{
+	mbedtls_x509_crt_free(&cacert);
+	mbedtls_ssl_config_free(&config);
+	mbedtls_ctr_drbg_free(&ctr_drbg);
+	mbedtls_entropy_free(&entropy);
+
+	pv_log(DEBUG, "HTTP REST cleaned up");
+}
 
 static const char *_op_string(enum evhttp_cmd_type op)
 {
@@ -144,26 +182,6 @@ static void _print_error_cb(enum evhttp_request_error error, void *mbedtls_ctx)
 	}
 }
 
-static void _clean_ctx(struct bufferevent *bev, void *mbedtls_ctx)
-{
-	_debug_log(WARN, "cleaning ctx");
-
-	mbedtls_ctx_t *ctx = (mbedtls_ctx_t *)mbedtls_ctx;
-	if (!ctx) {
-		pv_log(WARN, "clean ctx got no context");
-		return;
-	}
-
-	mbedtls_x509_crt_free(&ctx->cacert);
-	mbedtls_ssl_config_free(&ctx->config);
-	mbedtls_ctr_drbg_free(&ctx->ctr_drbg);
-	mbedtls_entropy_free(&ctx->entropy);
-
-	free(ctx);
-
-	_debug_log(WARN, "ctx cleaned");
-}
-
 int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 		       const char *token, const char *body,
 		       void (*cb)(struct evhttp_request *, void *))
@@ -171,85 +189,53 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 	if (!pv_event_get_base())
 		return -1;
 
-	mbedtls_ctx_t *ctx = calloc(1, sizeof(mbedtls_ctx_t));
-	if (!ctx)
-		return -1;
-
 	_debug_log(DEBUG, "%s %s HTTP/1.1", _op_string(op), uri);
 
-	ctx->ssl = NULL;
-	mbedtls_x509_crt_init(&ctx->cacert);
-	mbedtls_ctr_drbg_init(&ctx->ctr_drbg);
-	mbedtls_entropy_init(&ctx->entropy);
-	mbedtls_ssl_config_init(&ctx->config);
-
-	mbedtls_ctr_drbg_seed(&ctx->ctr_drbg, mbedtls_entropy_func,
-			      &ctx->entropy,
-			      (const unsigned char *)"pantavisor",
-			      sizeof("pantavisor"));
-	mbedtls_ssl_config_defaults(&ctx->config, MBEDTLS_SSL_IS_CLIENT,
-				    MBEDTLS_SSL_TRANSPORT_STREAM,
-				    MBEDTLS_SSL_PRESET_DEFAULT);
-	mbedtls_ssl_conf_rng(&ctx->config, mbedtls_ctr_drbg_random,
-			     &ctx->ctr_drbg);
-
-	char path[PATH_MAX];
-	pv_paths_cert(path, PATH_MAX, "");
-
-	mbedtls_ssl_conf_authmode(&ctx->config, MBEDTLS_SSL_VERIFY_NONE);
-	int res;
-	res = mbedtls_x509_crt_parse_path(&ctx->cacert, path);
-	if (res != 0) {
-		pv_log(ERROR, "mbedtls_x509_crt_parse_file returned code %d",
-		       res);
-		goto error;
-	}
-	mbedtls_ssl_conf_ca_chain(&ctx->config, &ctx->cacert, NULL);
-
-	ctx->ssl = bufferevent_mbedtls_dyncontext_new(&ctx->config);
+	mbedtls_dyncontext *ssl;
+	ssl = bufferevent_mbedtls_dyncontext_new(&config);
 
 	char *host = pv_config_get_str(PH_CREDS_HOST);
-	mbedtls_ssl_set_hostname(ctx->ssl, host);
+	mbedtls_ssl_set_hostname(ssl, host);
 
-	ctx->bev = bufferevent_mbedtls_socket_new(
-		pv_event_get_base(), -1, ctx->ssl, BUFFEREVENT_SSL_CONNECTING,
+	struct bufferevent *bev;
+	bev = bufferevent_mbedtls_socket_new(
+		pv_event_get_base(), -1, ssl, BUFFEREVENT_SSL_CONNECTING,
 		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
-	if (!ctx->bev) {
+	if (!bev) {
 		pv_log(ERROR, "bufferevent_mbedtls_socket_new failed");
 		goto error;
 	}
 
-	bufferevent_set_finalize_cb(ctx->bev, _clean_ctx, ctx);
-
-	bufferevent_mbedtls_set_allow_dirty_shutdown(ctx->bev, 1);
+	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
 
 	int port = pv_config_get_int(PH_CREDS_PORT);
-	ctx->evcon = evhttp_connection_base_bufferevent_new(
-		pv_event_get_base(), NULL, ctx->bev, host, port);
-	if (!ctx->evcon) {
+	struct evhttp_connection *evcon;
+	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
+						       NULL, bev, host, port);
+	if (!evcon) {
 		pv_log(ERROR, "evhttp_connection_base_bufferevent_new failed");
 		goto error;
 	}
 
 	// libevent will manage its resourcess so we only have to free our own context
-	evhttp_connection_free_on_completion(ctx->evcon);
+	evhttp_connection_free_on_completion(evcon);
 
-	evhttp_connection_set_family(ctx->evcon, AF_INET);
+	evhttp_connection_set_family(evcon, AF_INET);
 
 	int retries = pv_config_get_int(PH_LIBEVENT_HTTP_RETRIES);
-	evhttp_connection_set_retries(ctx->evcon, retries);
+	evhttp_connection_set_retries(evcon, retries);
 
 	int timeout = pv_config_get_int(PH_LIBEVENT_HTTP_TIMEOUT);
-	evhttp_connection_set_timeout(ctx->evcon, timeout);
+	evhttp_connection_set_timeout(evcon, timeout);
 
 	const struct timeval time = { timeout, 0 };
-	evhttp_connection_set_timeout_tv(ctx->evcon, &time);
-	evhttp_connection_set_connect_timeout_tv(ctx->evcon, &time);
-	evhttp_connection_set_read_timeout_tv(ctx->evcon, &time);
-	evhttp_connection_set_write_timeout_tv(ctx->evcon, &time);
+	evhttp_connection_set_timeout_tv(evcon, &time);
+	evhttp_connection_set_connect_timeout_tv(evcon, &time);
+	evhttp_connection_set_read_timeout_tv(evcon, &time);
+	evhttp_connection_set_write_timeout_tv(evcon, &time);
 
 	struct evhttp_request *req;
-	req = evhttp_request_new(cb, ctx);
+	req = evhttp_request_new(cb, bev);
 	if (!req) {
 		pv_log(ERROR, "evhttp_request_new failed");
 		goto error;
@@ -287,37 +273,33 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 		_add_header(output_headers, "Content-Type", "application/json");
 	}
 
-	res = evhttp_make_request(ctx->evcon, req, op, uri);
+	int res;
+	res = evhttp_make_request(evcon, req, op, uri);
 	if (res != 0) {
 		pv_log(ERROR, "evhttp_make_request returned code %d", res);
 		goto error;
 	}
 
-	pv_log(DEBUG, "added event: type='rest' cb=%p req='%s %s HTTP/1.1'",
+	pv_log(DEBUG, "add event: type='rest' cb=%p req='%s %s HTTP/1.1'",
 	       (void *)cb, _op_string(op), uri);
 
 	return 0;
 error:
-	mbedtls_x509_crt_free(&ctx->cacert);
-	mbedtls_ctr_drbg_free(&ctx->ctr_drbg);
-	mbedtls_entropy_free(&ctx->entropy);
-	mbedtls_ssl_config_free(&ctx->config);
-
-	// this should free bev, evcon, ssl and ctx
-	if (ctx->evcon)
-		evhttp_connection_free(ctx->evcon);
+	// this should free bev, evcon and ssl
+	if (evcon)
+		evhttp_connection_free(evcon);
 
 	return -1;
 }
 
-int pv_event_rest_recv(struct evhttp_request *req, void *mbedtls_ctx, char *out,
+int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char *out,
 		       int max_len)
 {
 	int ret = -1;
 
-	mbedtls_ctx_t *ctx = (mbedtls_ctx_t *)mbedtls_ctx;
-	if (!ctx) {
-		pv_log(WARN, "response got no context");
+	struct bufferevent *bev = (struct bufferevent *)ctx;
+	if (!bev) {
+		pv_log(WARN, "response got no buffer event");
 		return ret;
 	}
 
@@ -327,7 +309,7 @@ int pv_event_rest_recv(struct evhttp_request *req, void *mbedtls_ctx, char *out,
 		int errcode = EVUTIL_SOCKET_ERROR();
 
 		pv_log(WARN, "request failed");
-		while ((oslerr = bufferevent_get_mbedtls_error(ctx->bev))) {
+		while ((oslerr = bufferevent_get_mbedtls_error(bev))) {
 			pv_log(WARN,
 			       "bufferevent_get_mbedtls_error returned code %d",
 			       oslerr);

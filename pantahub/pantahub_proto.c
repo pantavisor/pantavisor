@@ -66,7 +66,7 @@ out:
 
 static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_recv_post_auth_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
 	char buffer[TMP_BUF_LEN] = { 0 };
 	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
@@ -128,7 +128,7 @@ void pv_pantahub_proto_close_session()
 
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_recv_get_usrmeta_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);
 
 	char buffer[TMP_BUF_LEN] = { 0 };
 	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);
@@ -165,7 +165,7 @@ void pv_pantahub_proto_get_usrmeta()
 
 static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_recv_set_devmeta_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_set_devmeta_cb);
 
 	char buffer[TMP_BUF_LEN] = { 0 };
 	int res = pv_event_rest_recv(req, ctx, buffer, TMP_BUF_LEN);

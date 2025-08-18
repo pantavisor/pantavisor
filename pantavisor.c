@@ -950,7 +950,7 @@ static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 
 	pv_wdt_kick();
 
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_pv_run_state_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_pv_run_state_cb);
 	pv_log(DEBUG, "next state: '%s'", pv_state_string(state));
 	pv_state_t next_state = state_table[state](pv);
 

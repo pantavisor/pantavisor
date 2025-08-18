@@ -25,10 +25,13 @@
 #include <event2/event.h>
 #include <event2/http.h>
 
+int pv_event_rest_init(void);
+void pv_event_rest_cleanup(void);
+
 int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 		       const char *token, const char *body,
 		       void (*cb)(struct evhttp_request *, void *));
-int pv_event_rest_recv(struct evhttp_request *req, void *mbedtls_ctx, char *out,
+int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char *out,
 		       int max_len);
 
 #endif

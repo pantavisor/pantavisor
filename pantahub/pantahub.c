@@ -53,6 +53,7 @@
 #include "metadata.h"
 
 #include "event/event.h"
+#include "event/event_rest.h"
 
 #include "pantahub/pantahub_proto.h"
 
@@ -683,6 +684,8 @@ int pv_pantahub_close()
 
 	pv_pantahub_proto_close_session();
 
+	pv_event_rest_cleanup();
+
 	free(ph);
 	global_ph = NULL;
 
@@ -709,12 +712,17 @@ static void _next_state(ph_state_t state)
 
 static void _run_state_init()
 {
+	if (pv_event_rest_init()) {
+		pv_log(ERROR, "HTTP REST initialization failed");
+		_next_state(PH_STATE_INIT);
+	}
+
 	_next_state(PH_STATE_LOGIN);
 }
 
 static void _login_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_login_event_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_login_event_cb);
 	pv_pantahub_proto_open_session();
 }
 
@@ -734,13 +742,13 @@ static void _run_state_login()
 
 static void _usrmeta_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_usrmeta_event_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_usrmeta_event_cb);
 	pv_pantahub_proto_get_usrmeta();
 }
 
 static void _devmeta_event_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb '%p'", (void *)_devmeta_event_cb);
+	pv_log(DEBUG, "run event: cb=%p", (void *)_devmeta_event_cb);
 	pv_pantahub_proto_set_devmeta();
 }
 
