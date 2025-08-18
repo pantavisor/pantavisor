@@ -1,7 +1,5 @@
 #!/bin/sh
 
-# set -x
-
 err() {
 	echo >&2 "Error> ${1}"
 }

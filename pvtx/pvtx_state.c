@@ -41,13 +41,16 @@
 #define PVTX_STATE_EMPTY "{\"#spec\": \"pantavisor-service-system@1\"}"
 #define PVTX_STATE_SIGS_STR "_sigs/"
 
+struct pv_pvtx_array {
+	void **data;
+	int len;
+};
+
 struct pv_pvtx_state_data {
 	bool has_sig;
-	char **names;
-	int names_len;
-	char **sigs;
-	char **sigs_data;
-	int sigs_len;
+	struct pv_pvtx_array names;
+	struct pv_pvtx_array sigs;
+	struct pv_pvtx_array sigs_data;
 	char *data;
 	size_t data_len;
 	jsmntok_t *tkn;
@@ -60,6 +63,44 @@ struct pv_pvtx_state {
 	int cap;
 };
 
+void pv_pvtx_array_free(struct pv_pvtx_array *arr)
+{
+	if (!arr)
+		return;
+
+	if (!arr->data)
+		return;
+
+	for (size_t i = 0; i < arr->len; i++)
+		free(arr->data[i]);
+
+	free(arr->data);
+}
+
+int pv_pvtx_array_add(struct pv_pvtx_array *arr, const void *data, size_t size)
+{
+	void *ptr = NULL;
+	if (data) {
+		ptr = calloc(1, size + 1);
+		if (!ptr)
+			return -1;
+
+		memcpy(ptr, data, size);
+	}
+
+	void *tmp = realloc(arr->data, (arr->len + 1) * sizeof(void *));
+	if (!tmp) {
+		free(ptr);
+		return -1;
+	}
+
+	arr->data = tmp;
+	arr->data[arr->len] = ptr;
+	arr->len++;
+
+	return 0;
+}
+
 static bool is_signature(const char *part)
 {
 	return !strncmp(part, PVTX_STATE_SIGS_STR, strlen(PVTX_STATE_SIGS_STR));
@@ -71,24 +112,12 @@ static const char *token_to_str(struct pv_pvtx_state_data *std, int idx,
 	if (!std)
 		return NULL;
 
+	jsmntok_t *tkn = &std->tkn[idx];
+
 	if (size)
-		*size = std->tkn[idx].end - std->tkn[idx].start;
+		*size = tkn->end - tkn->start;
 
-	return std->data + std->tkn[idx].start;
-}
-
-static void free_vec(char **vec, int size)
-{
-	if (!vec)
-		return;
-
-	for (int i = 0; i < size; i++) {
-		if (!vec[i])
-			continue;
-		free(vec[i]);
-	}
-
-	free(vec);
+	return std->data + tkn->start;
 }
 
 void pvtx_state_data_free(struct pv_pvtx_state_data *std)
@@ -99,9 +128,10 @@ void pvtx_state_data_free(struct pv_pvtx_state_data *std)
 		free(std->data);
 	if (std->tkn)
 		free(std->tkn);
-	free_vec(std->names, std->names_len);
-	free_vec(std->sigs_data, std->sigs_len);
-	free_vec(std->sigs, std->sigs_len);
+
+	pv_pvtx_array_free(&std->names);
+	pv_pvtx_array_free(&std->sigs);
+	pv_pvtx_array_free(&std->sigs_data);
 
 	free(std);
 }
@@ -120,108 +150,57 @@ static int search_tkn(struct pv_pvtx_state_data *std, const char *name,
 	return -1;
 }
 
-static char **get_names_from_state(struct pv_pvtx_state_data *std, int *nlen)
+static int get_names_from_state(struct pv_pvtx_state_data *std)
 {
-	char **names = NULL;
-	int names_len = 0;
 	int idx = 0;
+
 	while ((idx = search_tkn(std, "name", idx)) != -1) {
-		names_len++;
-		char **tmp = realloc(names, sizeof(char *) * names_len);
-		if (!tmp)
+		int size = 0;
+		const char *data = token_to_str(std, idx + 1, &size);
+		int ret = pv_pvtx_array_add(&std->names, data, size);
+		if (ret != 0)
 			goto err;
-
-		names = tmp;
-		++idx;
-
-		int len = 0;
-		const char *ptr = token_to_str(std, idx, &len);
-
-		names[names_len - 1] = calloc(len + 1, sizeof(char));
-		if (!names[names_len - 1])
-			goto err;
-
-		memcpy(names[names_len - 1], ptr, len);
+		idx++;
 	}
-	*nlen = names_len;
-	return names;
-
+	return 0;
 err:
-	free_vec(names, names_len);
-	*nlen = 0;
-	return NULL;
+	pv_pvtx_array_free(&std->names);
+	return -1;
 }
 
-static int set_signatures(struct pv_pvtx_state_data *std, char ***sigsx,
-			  char ***sigs_datax)
+static int set_signatures(struct pv_pvtx_state_data *std)
 {
-	char **sigs = NULL;
-	char **sigs_data = NULL;
-	int sigs_len = 0;
-	int sigs_data_len = 0;
 	int idx = 0;
 
 	while ((idx = search_tkn(std, PVTX_STATE_SIGS_STR, idx)) != -1) {
-		int len = 0;
-		const char *tok_str = token_to_str(std, idx, &len);
+		int size = 0;
+		const char *sig = token_to_str(std, idx, &size);
 
-		char *ptr = calloc(len + 1, sizeof(char));
-		if (!ptr)
+		if (pv_pvtx_array_add(&std->sigs, sig, size) != 0)
 			goto err;
-
-		memcpy(ptr, tok_str, len);
-
-		char **tmp = realloc(sigs, sizeof(char *) * (sigs_len + 1));
-		if (!tmp) {
-			free(ptr);
-			goto err;
-		}
-
-		sigs = tmp;
-		sigs[sigs_len] = ptr;
-		sigs_len++;
-		++idx;
 
 		char *data = NULL;
+		size_t decode_len = 0;
 		int prot_idx = search_tkn(std, "protected", idx);
-		if (prot_idx < 0) {
-			data = NULL;
-			goto set_data;
+
+		// check if the found signature is within boundaries
+		if (prot_idx >= 0 && prot_idx <= idx + 7) {
+			int prot_data = prot_idx + 1;
+			jsmntok_t *t = &std->tkn[prot_data];
+			data = (char *)base64_url_decode(std->data + t->start,
+							 t->end - t->start,
+							 &decode_len);
 		}
 
-		// check if match is inside of the current signature, if so,
-		// we will get the unserialized data from the signature
-		if (prot_idx > idx + 7) {
-			data = NULL;
-			goto set_data;
-		}
-
-		int prot_data = prot_idx + 1;
-
-		jsmntok_t *t = &std->tkn[prot_data];
-		size_t dec_len = 0;
-
-		data = (char *)base64_url_decode(std->data + t->start,
-						 t->end - t->start, &dec_len);
-
-	set_data:
-		tmp = realloc(sigs_data, sizeof(char *) * (sigs_data_len + 1));
-		if (!tmp) {
-			free(data);
-			goto err;
-		}
-
-		sigs_data = tmp;
-		sigs_data[sigs_data_len] = data;
-		sigs_data_len++;
+		pv_pvtx_array_add(&std->sigs_data, data, decode_len);
+		free(data);
+		idx++;
 	}
-	*sigsx = sigs;
-	*sigs_datax = sigs_data;
-	// ssigs_len = sigs_len;
-	return sigs_len;
+	return 0;
 err:
-	free_vec(sigs_data, sigs_data_len);
-	free_vec(sigs, sigs_len);
+	pv_pvtx_array_free(&std->sigs);
+	pv_pvtx_array_free(&std->sigs_data);
+
 	return -1;
 }
 
@@ -248,9 +227,9 @@ static int state_parse(struct pv_pvtx_state_data *std, const char *str,
 	if (strncmp(spec, PV_PVTX_STATE_CURRENT_SPEC, spec_len))
 		return -1;
 
-	std->names = get_names_from_state(std, &std->names_len);
 	std->has_sig = search_tkn(std, PVTX_STATE_SIGS_STR, 0) > -1;
-	std->sigs_len = set_signatures(std, &std->sigs, &std->sigs_data);
+	get_names_from_state(std);
+	set_signatures(std);
 
 	return 0;
 }
@@ -378,8 +357,8 @@ static int search_state_data(struct pv_pvtx_state *st, const char *name)
 	for (int i = 0; i < st->len; i++) {
 		struct pv_pvtx_state_data *std = st->std[i];
 
-		for (int j = 0; j < std->names_len; j++) {
-			char *n = std->names[j];
+		for (int j = 0; j < std->names.len; j++) {
+			char *n = std->names.data[j];
 			if (!strncmp(n, name, strlen(n)))
 				return i;
 		}
@@ -391,8 +370,8 @@ int pv_pvtx_state_add(struct pv_pvtx_state *dst, struct pv_pvtx_state *src)
 {
 	for (int i = 0; i < src->len; i++) {
 		struct pv_pvtx_state_data *std = src->std[i];
-		for (int j = 0; j < std->names_len; j++) {
-			pv_pvtx_state_remove(dst, std->names[j]);
+		for (int j = 0; j < std->names.len; j++) {
+			pv_pvtx_state_remove(dst, std->names.data[j]);
 		}
 	}
 
@@ -468,8 +447,8 @@ static bool has_more_signatories(struct pv_pvtx_state *st, const char *part)
 	int count = 0;
 	for (int i = 0; i < st->len; i++) {
 		struct pv_pvtx_state_data *std = st->std[i];
-		for (int j = 0; j < std->sigs_len; j++) {
-			if (!strstr(std->sigs_data[j], part))
+		for (int j = 0; j < std->sigs.len; j++) {
+			if (!strstr(std->sigs_data.data[j], part))
 				continue;
 			count++;
 			if (count > 1) {
@@ -490,12 +469,13 @@ static int remove_signed(struct pv_pvtx_state *st, const char *part)
 		snprintf(sig_name, PATH_MAX, "_sigs/%s.json", part);
 
 	size_t sig_name_sz = strlen(sig_name);
-	char *sig = NULL;
+	const char *sig = NULL;
 	for (int i = 0; i < st->len; i++) {
 		struct pv_pvtx_state_data *std = st->std[i];
-		for (int j = 0; j < std->sigs_len; j++) {
-			if (!strncmp(sig_name, std->sigs[j], sig_name_sz)) {
-				sig = std->sigs_data[j];
+		for (int j = 0; j < std->sigs.len; j++) {
+			if (!strncmp(sig_name, std->sigs.data[j],
+				     sig_name_sz)) {
+				sig = std->sigs_data.data[j];
 				break;
 			}
 		}
@@ -515,7 +495,7 @@ static int remove_signed(struct pv_pvtx_state *st, const char *part)
 		int j = i + 2;
 		while (tkn[j].size == 0) {
 			char part_found[PATH_MAX] = { 0 };
-			char *src = sig + tkn[j].start;
+			const char *src = sig + tkn[j].start;
 			int len = tkn[j].end - tkn[j].start;
 
 			// this is to look for signatures which start with this
