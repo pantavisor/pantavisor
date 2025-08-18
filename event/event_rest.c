@@ -292,8 +292,8 @@ error:
 	return -1;
 }
 
-int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char *out,
-		       int max_len)
+int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char **buf,
+		       size_t max_len)
 {
 	int ret = -1;
 
@@ -325,16 +325,32 @@ int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char *out,
 	_debug_log(DEBUG, "HTTP/1.1 %d %s", ret,
 		   evhttp_request_get_response_code_line(req));
 
+	struct evbuffer *evbuf;
+	evbuf = evhttp_request_get_input_buffer(req);
+
+	size_t to_read;
+	to_read = evbuffer_get_length(evbuf);
+	if (to_read > max_len) {
+		pv_log(WARN, "body length %zu bigger than max allowed %zu",
+		       to_read, max_len);
+		goto out;
+	}
+
+	char *tmp;
+	tmp = calloc(to_read + 1, sizeof(char));
+	if (!tmp)
+		goto out;
+
+	*buf = tmp;
+
 	int nread = 0, i = 0;
-	char *tmp = out;
-	while ((nread = evbuffer_remove(evhttp_request_get_input_buffer(req),
-					tmp, max_len - i)) > 0) {
+	while ((nread = evbuffer_remove(evbuf, tmp, max_len - i)) > 0) {
 		tmp += nread;
 		i += nread;
 	}
 
 	_debug_log(DEBUG, "");
-	_debug_log(DEBUG, "%s", out);
+	_debug_log(DEBUG, "%s", buf);
 
 out:
 
