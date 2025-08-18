@@ -527,30 +527,14 @@ void pv_fs_extension(const char *path, char *ext)
 
 void *pv_fs_file_read(const char *path, size_t *size)
 {
+	char *buf = NULL;
 	off_t fsize = pv_fs_path_get_size(path);
 
-	int fd = open(path, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
-		return NULL;
-
-	void *buf = NULL;
-	// this +1 helps to convert plain text files on
-	// valid strings
-	buf = calloc(fsize + 1, sizeof(char));
-	if (!buf)
+	if (fsize < 0)
 		goto out;
 
-	ssize_t total = 0;
-	while (total != fsize) {
-		ssize_t cur =
-			pv_fs_file_read_nointr(fd, buf + total, PV_FS_BUF_SIZE);
-		if (cur > 0)
-			total += cur;
-	}
+	buf = pv_fs_file_load(path, fsize);
 out:
-	if (fd > -1)
-		close(fd);
-
 	if (size)
 		*size = fsize;
 

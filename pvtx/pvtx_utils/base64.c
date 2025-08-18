@@ -130,7 +130,7 @@ static unsigned char * base64_gen_decode(const char *src, size_t len,
 	extra_pad = (4 - count % 4) % 4;
 
 	olen = (count + extra_pad) / 4 * 3;
-	pos = out = malloc(olen);
+	pos = out = calloc(olen, sizeof(unsigned char));
 	if (out == NULL)
 		return NULL;
 
