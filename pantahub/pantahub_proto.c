@@ -75,7 +75,7 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 		pv_log(WARN, "POST auth returned %d", res);
 		goto out;
 	}
-	if (body != NULL) {
+	if (!body) {
 		pv_log(WARN, "POST auth received empty body");
 		goto out;
 	}
@@ -150,7 +150,7 @@ static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 		pv_log(WARN, "GET usrmeta returned %d", res);
 		goto out;
 	}
-	if (body != NULL) {
+	if (!body) {
 		pv_log(WARN, "GET usrmeta received empty body");
 		goto out;
 	}
