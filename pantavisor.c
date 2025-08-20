@@ -223,8 +223,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
-	// set current log and trail links
-	pv_storage_set_active(pv);
+	// set current and head links in logs and trails
+	pv_storage_set_active_rev();
 
 	if (!pv_state_validate_checksum(pv->state)) {
 		pv_log(ERROR, "state objects validation went wrong");

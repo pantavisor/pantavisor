@@ -505,19 +505,29 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 	return ret;
 }
 
-void pv_storage_set_active(struct pantavisor *pv)
+static void pv_storage_link_rev(const char *rev, const char *name)
 {
 	char path[PATH_MAX];
 
 	// path to current revision - relative and dir for fd
-	pv_paths_storage_trail(path, PATH_MAX, "current");
+	pv_paths_storage_trail(path, PATH_MAX, name);
 	unlink(path);
-	symlink(pv->state->rev, path);
+	symlink(rev, path);
 
 	// path to current logs - relative and fd for dir
-	pv_paths_pv_log(path, PATH_MAX, "current");
+	pv_paths_pv_log(path, PATH_MAX, name);
 	unlink(path);
-	symlink(pv->state->rev, path);
+	symlink(rev, path);
+}
+
+void pv_storage_set_active_rev()
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	if (pv->update)
+		pv_storage_link_rev(pv->state->rev, "head");
+
+	pv_storage_link_rev(pv->state->rev, "current");
 }
 
 int pv_storage_update_factory(const char *rev)
