@@ -435,6 +435,7 @@ int main(int argc, char *argv[])
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if (init_mode == IM_STANDALONE) {
+		pv_debug_run_early_shell();
 		if (pv_config_get_bool(PV_DEBUG_SSH))
 			pv_debug_start_ssh();
 		else
@@ -469,6 +470,7 @@ int main(int argc, char *argv[])
 	if (pv_config_get_wdt_mode() >= WDT_STARTUP)
 		pv_wdt_start();
 
+	pv_debug_run_early_shell();
 	if (pv_config_get_bool(PV_DEBUG_SSH))
 		pv_debug_start_ssh();
 	else

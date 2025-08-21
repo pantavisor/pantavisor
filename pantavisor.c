@@ -566,7 +566,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 		next_state = PV_STATE_COMMAND;
 
 out:
-	if (pv_debug_shell())
+	if (pv_debug_run_shell())
 		next_state = PV_STATE_REBOOT;
 
 	return next_state;
