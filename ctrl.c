@@ -825,6 +825,13 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		goto error;
 	}
 
+	if (pv->cmd) {
+		pv_ctrl_write_error_response(
+			req_fd, HTTP_STATUS_CONFLICT,
+			"A command is already in progress. Try again");
+		goto error;
+	}
+
 	return 0;
 
 error:
@@ -1486,7 +1493,6 @@ void pv_ctrl_socket_read(int fd, short event, void *arg)
 	struct pantavisor *pv = pv_get_instance();
 	if (!pv)
 		return;
-	pv->cmd = NULL;
 
 	if (fd < 0) {
 		pv_log(ERROR, "control socket not setup");
@@ -1501,7 +1507,11 @@ void pv_ctrl_socket_read(int fd, short event, void *arg)
 		return;
 	}
 
-	pv->cmd = pv_ctrl_read_parse_request(req_fd);
+	struct pv_cmd *cmd;
+	cmd = pv_ctrl_read_parse_request(req_fd);
+	// we don't want to queue any command if one is already being processed
+	if (!pv->cmd)
+		pv->cmd = cmd;
 
 	close(req_fd);
 }

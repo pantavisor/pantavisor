@@ -726,6 +726,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv_log(WARN, "unknown command received. Ignoring...");
 	}
 out:
+	// free processing command so we can take further ones
 	pv_ctrl_free_cmd(pv->cmd);
 	pv->cmd = NULL;
 	return next_state;
