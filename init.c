@@ -426,6 +426,10 @@ int main(int argc, char *argv[])
 	// this might override the configuration
 	parse_commands(argc, argv);
 
+	if (pv_config_get_str(PV_VOLMOUNT_DM_EXTRAARGS) != NULL)
+		setenv("PV_VOLMOUNT_DM_EXTRAARGS",
+		       pv_config_get_str(PV_VOLMOUNT_DM_EXTRAARGS), 0);
+
 	// loading drivers for both device modes
 	init_mode_t init_mode = pv_config_get_system_init_mode();
 	if ((init_mode == IM_EMBEDDED) || (init_mode == IM_STANDALONE)) {
