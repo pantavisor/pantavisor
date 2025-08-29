@@ -19,262 +19,314 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE
-#endif
 
 #include "pvtx_state.h"
 #include "pvtx_jsmn_utils.h"
-#include "utils/fs.h"
 #include "pvtx_utils/base64.h"
 
+#include <string.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <linux/limits.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <stdlib.h>
-#include <string.h>
-#include <libgen.h>
-#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
-#include <linux/limits.h>
 
-#define PVTX_STATE_EMPTY "{\"#spec\": \"pantavisor-service-system@1\"}"
 #define PVTX_STATE_SIGS_STR "_sigs/"
+#define PVTX_STATE_CONF_STR "_config/"
 
 struct pv_pvtx_array {
-	void **data;
-	int len;
+	union {
+		int *i;
+		jsmntok_t *t;
+		char **str;
+		void *v;
+	} data;
+	int size;
+	bool has_str;
 };
 
-struct pv_pvtx_state_data {
-	bool has_sig;
-	struct pv_pvtx_array names;
-	struct pv_pvtx_array sigs;
-	struct pv_pvtx_array sigs_data;
-	char *data;
-	size_t data_len;
-	jsmntok_t *tkn;
-	int tkn_len;
+struct pv_pvtx_state_priv {
+	struct pv_pvtx_array key;
+	struct pv_pvtx_array tok;
+	struct pv_pvtx_array pat;
 };
 
-struct pv_pvtx_state {
-	struct pv_pvtx_state_data **std;
-	int len;
-	int cap;
-};
-
-void pv_pvtx_array_free(struct pv_pvtx_array *arr)
+void pvtx_array_free(struct pv_pvtx_array *arr)
 {
 	if (!arr)
 		return;
 
-	if (!arr->data)
+	if (!arr->data.v)
 		return;
 
-	for (size_t i = 0; i < arr->len; i++)
-		free(arr->data[i]);
-
-	free(arr->data);
-}
-
-int pv_pvtx_array_add(struct pv_pvtx_array *arr, const void *data, size_t size)
-{
-	void *ptr = NULL;
-	if (data) {
-		ptr = calloc(1, size + 1);
-		if (!ptr)
-			return -1;
-
-		memcpy(ptr, data, size);
+	if (arr->has_str) {
+		for (int i = 0; i < arr->size; i++)
+			free(arr->data.str[i]);
 	}
 
-	void *tmp = realloc(arr->data, (arr->len + 1) * sizeof(void *));
+	free(arr->data.v);
+}
+
+int pvtx_array_add_int(struct pv_pvtx_array *arr, int n)
+{
+	int *tmp = realloc(arr->data.i, (arr->size + 1) * sizeof(int));
+	if (!tmp)
+		return -1;
+
+	arr->data.i = tmp;
+	arr->data.i[arr->size] = n;
+	arr->size++;
+
+	return 0;
+}
+
+int pvtx_array_add_str(struct pv_pvtx_array *arr, const char *str, int size)
+{
+	char *s = strndup(str, size);
+	if (!s)
+		return -1;
+
+	char **tmp = realloc(arr->data.str, (arr->size + 1) * sizeof(char *));
 	if (!tmp) {
-		free(ptr);
+		free(s);
 		return -1;
 	}
 
-	arr->data = tmp;
-	arr->data[arr->len] = ptr;
-	arr->len++;
+	arr->data.str = tmp;
+	arr->data.str[arr->size] = s;
+	arr->size++;
+	arr->has_str = true;
 
 	return 0;
 }
 
-static bool is_signature(const char *part)
+void pv_pvtx_state_priv_free(struct pv_pvtx_state_priv *priv)
 {
-	return !strncmp(part, PVTX_STATE_SIGS_STR, strlen(PVTX_STATE_SIGS_STR));
-}
-
-static const char *token_to_str(struct pv_pvtx_state_data *std, int idx,
-				int *size)
-{
-	if (!std)
-		return NULL;
-
-	jsmntok_t *tkn = &std->tkn[idx];
-
-	if (size)
-		*size = tkn->end - tkn->start;
-
-	return std->data + tkn->start;
-}
-
-void pvtx_state_data_free(struct pv_pvtx_state_data *std)
-{
-	if (!std)
+	if (!priv)
 		return;
-	if (std->data)
-		free(std->data);
-	if (std->tkn)
-		free(std->tkn);
 
-	pv_pvtx_array_free(&std->names);
-	pv_pvtx_array_free(&std->sigs);
-	pv_pvtx_array_free(&std->sigs_data);
+	priv->key.has_str = false;
+	pvtx_array_free(&priv->key);
 
-	free(std);
-}
+	priv->tok.has_str = false;
+	pvtx_array_free(&priv->tok);
 
-static int search_tkn(struct pv_pvtx_state_data *std, const char *name,
-		      int from)
-{
-	if (from >= std->tkn_len)
-		return -1;
+	priv->tok.has_str = true;
+	pvtx_array_free(&priv->pat);
 
-	for (int i = from; i < std->tkn_len; ++i) {
-		const char *str = token_to_str(std, i, NULL);
-		if (!strncmp(str, name, strlen(name)))
-			return i;
-	}
-	return -1;
-}
-
-static int get_names_from_state(struct pv_pvtx_state_data *std)
-{
-	int idx = 0;
-
-	while ((idx = search_tkn(std, "name", idx)) != -1) {
-		int size = 0;
-		const char *data = token_to_str(std, idx + 1, &size);
-		int ret = pv_pvtx_array_add(&std->names, data, size);
-		if (ret != 0)
-			goto err;
-		idx++;
-	}
-	return 0;
-err:
-	pv_pvtx_array_free(&std->names);
-	return -1;
-}
-
-static int set_signatures(struct pv_pvtx_state_data *std)
-{
-	int idx = 0;
-
-	while ((idx = search_tkn(std, PVTX_STATE_SIGS_STR, idx)) != -1) {
-		int size = 0;
-		const char *sig = token_to_str(std, idx, &size);
-
-		if (pv_pvtx_array_add(&std->sigs, sig, size) != 0)
-			goto err;
-
-		char *data = NULL;
-		size_t decode_len = 0;
-		int prot_idx = search_tkn(std, "protected", idx);
-
-		// check if the found signature is within boundaries
-		if (prot_idx >= 0 && prot_idx <= idx + 7) {
-			int prot_data = prot_idx + 1;
-			jsmntok_t *t = &std->tkn[prot_data];
-			data = (char *)base64_url_decode(std->data + t->start,
-							 t->end - t->start,
-							 &decode_len);
-		}
-
-		pv_pvtx_array_add(&std->sigs_data, data, decode_len);
-		free(data);
-		idx++;
-	}
-	return 0;
-err:
-	pv_pvtx_array_free(&std->sigs);
-	pv_pvtx_array_free(&std->sigs_data);
-
-	return -1;
-}
-
-static int state_parse(struct pv_pvtx_state_data *std, const char *str,
-		       size_t len)
-{
-	std->tkn = pv_pvtx_jsmn_parse_data(str, len, &std->tkn_len);
-	if (!std->tkn)
-		return -1;
-
-	int idx_key = search_tkn(std, "#spec", 0);
-	if (idx_key == -1)
-		return -1;
-
-	int idx_val = idx_key + 1;
-
-	// this is to avoid to write them when pv_pvtx_state_to_str() is called
-	std->tkn[idx_key].type = JSMN_UNDEFINED;
-	std->tkn[idx_val].type = JSMN_UNDEFINED;
-
-	int spec_len = 0;
-	const char *spec = token_to_str(std, idx_val, &spec_len);
-
-	if (strncmp(spec, PV_PVTX_STATE_CURRENT_SPEC, spec_len))
-		return -1;
-
-	std->has_sig = search_tkn(std, PVTX_STATE_SIGS_STR, 0) > -1;
-	get_names_from_state(std);
-	set_signatures(std);
-
-	return 0;
-}
-
-static struct pv_pvtx_state_data *pvtx_state_data_new(const char *str,
-						      size_t len)
-{
-	if (!str)
-		return NULL;
-
-	struct pv_pvtx_state_data *std =
-		calloc(1, sizeof(struct pv_pvtx_state_data));
-	if (!std)
-		return NULL;
-
-	std->data = calloc(len + 1, sizeof(char));
-	if (!std->data)
-		goto err;
-
-	memcpy(std->data, str, len);
-
-	std->data_len = len;
-
-	if (state_parse(std, str, len) != 0)
-		goto err;
-
-	return std;
-
-err:
-	pvtx_state_data_free(std);
-	return NULL;
+	free(priv);
 }
 
 void pv_pvtx_state_free(struct pv_pvtx_state *st)
 {
 	if (!st)
 		return;
-	if (st->std) {
-		for (int i = 0; i < st->len; i++)
-			pvtx_state_data_free(st->std[i]);
 
-		free(st->std);
-	}
+	if (st->priv)
+		pv_pvtx_state_priv_free(st->priv);
+
+	if (st->json)
+		free(st->json);
 
 	free(st);
+}
+
+static const char *token_to_str(struct pv_pvtx_state *st, int idx, int *len)
+{
+	if (!st || idx < 0 || idx > st->priv->tok.size)
+		goto err;
+
+	jsmntok_t *tok = &st->priv->tok.data.t[idx];
+
+	if (!tok || tok->type == JSMN_UNDEFINED)
+		goto err;
+
+	if (len)
+		*len = tok->end - tok->start;
+
+	return st->json + tok->start;
+err:
+	if (len)
+		*len = 0;
+	return NULL;
+}
+
+static char *get_decoded_sig(struct pv_pvtx_state *st, int idx, size_t *len)
+{
+	int json_len = 0;
+	const char *json = token_to_str(st, idx + 1, &json_len);
+
+	int tkn_len = 0;
+	jsmntok_t *tok = pv_pvtx_jsmn_parse_data(json, json_len, &tkn_len);
+
+	int enc_idx = 0;
+	const char *key = "protected";
+	size_t key_sz = strlen(key);
+
+	jsmntok_t *sig_tok = NULL;
+	for (int i = 0; i < tkn_len; i++) {
+		if (!strncmp(json + tok[i].start, key, key_sz)) {
+			sig_tok = &tok[i + 1];
+			break;
+		}
+	}
+
+	char *dec = NULL;
+
+	if (!sig_tok)
+		goto out;
+
+	size_t dec_len = 0;
+	dec = (char *)base64_url_decode(
+		json + sig_tok->start, sig_tok->end - sig_tok->start, &dec_len);
+
+	if (len)
+		*len = dec_len;
+out:
+	free(tok);
+	return dec;
+}
+
+static void add_patterns(struct pv_pvtx_array *arr, struct pv_pvtx_state *st,
+			 int idx)
+{
+	size_t dec_sz = 0;
+	char *dec = get_decoded_sig(st, idx, &dec_sz);
+
+	int tok_len = 0;
+	jsmntok_t *tok = pv_pvtx_jsmn_parse_data(dec, dec_sz, &tok_len);
+
+	for (int i = 0; i < tok_len; i++) {
+		const char *str = dec + tok[i].start;
+
+		if (strncmp(str, "include", strlen("include")) &&
+		    strncmp(str, "exclude", strlen("exclude")))
+			continue;
+
+		// i    : signature
+		// i + 1: the whole array
+		// i + 2: the first element
+		int j = i + 2;
+		// array elements hasn't childs
+		while (tok[j].size == 0) {
+			char pat[PATH_MAX] = { 0 };
+			memcpy(pat, dec + tok[j].start,
+			       tok[j].end - tok[j].start);
+
+			// discard * or **
+			char *p = strchr(pat, '*');
+			if (p)
+				*p = '\0';
+
+			pvtx_array_add_str(arr, pat, strlen(pat));
+			j++;
+		}
+	}
+
+	free(tok);
+	free(dec);
+}
+
+static int next_key(struct pv_pvtx_state *st, int cur)
+{
+	jsmntok_t *tok = &st->priv->tok.data.t[cur];
+	do {
+		if (tok->type == JSMN_ARRAY || tok->type == JSMN_OBJECT) {
+			int childs = 1;
+			do {
+				childs += tok->size;
+				cur++;
+				// we reach the end of the json
+				if (cur == st->priv->tok.size)
+					return -1;
+
+				--childs;
+				tok = &st->priv->tok.data.t[cur];
+			} while (childs > 0);
+		} else {
+			cur++;
+			if (cur == st->priv->tok.size)
+				return -1;
+			tok = &st->priv->tok.data.t[cur];
+		}
+
+	} while (tok->type == JSMN_UNDEFINED ||
+		 !pv_pvtx_jsmn_is_key(st->json, tok));
+
+	return cur;
+}
+
+static struct pv_pvtx_array get_keys(struct pv_pvtx_state *st)
+{
+	struct pv_pvtx_array arr = { 0 };
+
+	int idx = 1;
+	while ((idx = next_key(st, idx)) > 0)
+		pvtx_array_add_int(&arr, idx);
+
+	return arr;
+}
+
+static void get_all_patterns(struct pv_pvtx_state *st,
+			     struct pv_pvtx_array *patterns)
+{
+	struct pv_pvtx_array *keys = &st->priv->key;
+
+	for (int i = 0; i < keys->size; i++) {
+		int len = 0;
+		const char *key_str = token_to_str(st, keys->data.i[i], &len);
+
+		if (strncmp(key_str, PVTX_STATE_SIGS_STR,
+			    strlen(PVTX_STATE_SIGS_STR)) != 0)
+			continue;
+
+		add_patterns(patterns, st, keys->data.i[i]);
+	}
+}
+
+static struct pv_pvtx_state *pvtx_state_alloc()
+{
+	struct pv_pvtx_state *st = calloc(1, sizeof(struct pv_pvtx_state));
+	if (!st)
+		return NULL;
+
+	st->priv = calloc(1, sizeof(struct pv_pvtx_state_priv));
+	if (!st->priv)
+		goto err;
+
+	return st;
+err:
+	pv_pvtx_state_free(st);
+	return NULL;
+}
+
+struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len)
+{
+	struct pv_pvtx_state *st = pvtx_state_alloc();
+	if (!st)
+		goto err;
+
+	struct pv_pvtx_state_priv *priv = st->priv;
+
+	priv->tok.data.t = pv_pvtx_jsmn_parse_data(str, len, &priv->tok.size);
+	if (!priv->tok.data.t)
+		goto err;
+	priv->tok.has_str = false;
+
+	st->json = strndup(str, len);
+	st->len = len;
+	priv->key = get_keys(st);
+	priv->key.has_str = false;
+	st->priv = priv;
+
+	get_all_patterns(st, &st->priv->pat);
+
+	return st;
+err:
+	pv_pvtx_state_free(st);
+	return NULL;
 }
 
 struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path)
@@ -307,445 +359,268 @@ struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path)
 	return state;
 }
 
-struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len)
+static char *write_header(char *buf)
 {
-	struct pv_pvtx_state *st = calloc(1, sizeof(struct pv_pvtx_state));
-	if (!st)
-		return NULL;
-
-	if (!str)
-		goto err;
-
-	struct pv_pvtx_state_data *std = pvtx_state_data_new(str, len);
-	if (!std)
-		goto err;
-
-	st->std = calloc(1, sizeof(struct pv_pvtx_state_data *));
-	if (!st->std)
-		goto err;
-
-	st->std[0] = std;
-	st->len = 1;
-	st->cap = 1;
-
-	return st;
-
-err:
-	pvtx_state_data_free(std);
-	pv_pvtx_state_free(st);
-	return NULL;
+	size_t len = strlen(PVTX_STATE_EMPTY) - 1;
+	char *ptr = mempcpy(buf, PVTX_STATE_EMPTY, len);
+	*ptr = ',';
+	ptr++;
+	return ptr;
 }
 
-int pv_pvtx_state_alloc(struct pv_pvtx_state *st, int cap)
+static char *write_footer(char *buf)
 {
-	if (cap < st->cap)
-		return -1;
-
-	struct pv_pvtx_state_data **tmp =
-		realloc(st->std, sizeof(struct pv_pvtx_state_data *) * cap);
-	if (!tmp)
-		return -1;
-
-	st->std = tmp;
-	st->cap = cap;
-
-	return 0;
+	*(buf - 1) = '}';
+	*buf = '\0';
+	return buf;
 }
 
-static int search_state_data(struct pv_pvtx_state *st, const char *name)
+static char *write_key(char *buf, struct pv_pvtx_state *st, int idx)
 {
-	for (int i = 0; i < st->len; i++) {
-		struct pv_pvtx_state_data *std = st->std[i];
+	int klen = 0;
+	const char *key = token_to_str(st, idx, &klen);
 
-		for (int j = 0; j < std->names.len; j++) {
-			char *n = std->names.data[j];
-			if (!strncmp(n, name, strlen(n)))
-				return i;
+	int vlen = 0;
+	const char *val = token_to_str(st, idx + 1, &vlen);
+	jsmntok_t *tkn = &st->priv->tok.data.t[idx + 1];
+
+	char *ptr = buf;
+	ptr = mempcpy(ptr, "\"", 1);
+	ptr = mempcpy(ptr, key, klen);
+	ptr = mempcpy(ptr, "\":", 2);
+
+	if (tkn->type == JSMN_STRING)
+		ptr = mempcpy(ptr, "\"", 1);
+
+	ptr = mempcpy(ptr, val, vlen);
+
+	if (tkn->type == JSMN_STRING)
+		ptr = mempcpy(ptr, "\",", 2);
+	else
+		ptr = mempcpy(ptr, ",", 1);
+
+	return ptr;
+}
+
+static void get_patterns(struct pv_pvtx_state *st, const char *part, int plen,
+			 struct pv_pvtx_array *patterns)
+{
+	const char *part_ptr = part;
+	int ptr_len = plen;
+	if (*part == '_') {
+		if (!strncmp(part_ptr, PVTX_STATE_CONF_STR,
+			     strlen(PVTX_STATE_CONF_STR))) {
+			part_ptr += strlen(PVTX_STATE_CONF_STR);
+			ptr_len -= strlen(PVTX_STATE_CONF_STR);
+		} else if (!strncmp(part_ptr, PVTX_STATE_SIGS_STR,
+				    strlen(PVTX_STATE_SIGS_STR))) {
+			part_ptr += strlen(PVTX_STATE_SIGS_STR);
+			ptr_len -= strlen(PVTX_STATE_SIGS_STR);
 		}
 	}
-	return -1;
+
+	int sig_len = strlen(PVTX_STATE_SIGS_STR);
+	pvtx_array_add_str(patterns, part, plen);
+
+	struct pv_pvtx_array *key = &st->priv->key;
+	for (int i = 0; i < key->size; i++) {
+		int len = 0;
+		const char *key_str = token_to_str(st, key->data.i[i], &len);
+		if (strncmp(key_str, PVTX_STATE_SIGS_STR, sig_len) != 0)
+			continue;
+
+		len -= sig_len;
+		if (len < 1)
+			continue;
+		key_str += sig_len;
+
+		if (!strncmp(part_ptr, key_str, ptr_len)) {
+			add_patterns(patterns, st, key->data.i[i]);
+			break;
+		}
+	}
+}
+
+static void pvtx_state_move(struct pv_pvtx_state *dst,
+			    struct pv_pvtx_state *src)
+{
+	pv_pvtx_state_priv_free(dst->priv);
+	free(dst->json);
+
+	dst->json = src->json;
+	dst->len = src->len;
+	dst->priv = src->priv;
+
+	free(src);
+}
+
+static void state_from_keys(struct pv_pvtx_state *st,
+			    struct pv_pvtx_array *rm_keys, char *buf)
+{
+	if (rm_keys->size == 0)
+		return;
+
+	char *ptr = write_header(buf);
+	struct pv_pvtx_array *keys = &st->priv->key;
+
+	for (int i = 0; i < keys->size; i++) {
+		bool wr = true;
+		for (int j = 0; j < rm_keys->size; j++) {
+			if (keys->data.i[i] == rm_keys->data.i[j]) {
+				wr = false;
+				break;
+			}
+		}
+
+		if (wr)
+			ptr = write_key(ptr, st, keys->data.i[i]);
+		else
+			wr = true;
+	}
+
+	ptr = write_footer(ptr);
+
+	// struct pv_pvtx_state *new_st = pv_pvtx_state_from_str(buf, ptr - buf);
+	// pvtx_state_move(st, new_st);
+	pvtx_state_move(st, pv_pvtx_state_from_str(buf, ptr - buf));
+}
+
+static int match_pattern(struct pv_pvtx_state *st, struct pv_pvtx_array *pat,
+			 const char *key)
+{
+	int count = 0;
+	const char *cur_pat = NULL;
+	for (int i = 0; i < pat->size; i++) {
+		cur_pat = pat->data.str[i];
+		if (!strncmp(key, cur_pat, strlen(cur_pat)))
+			count++;
+	}
+
+	return count;
+}
+
+static void remove_keys(struct pv_pvtx_state *st, const char *part, int plen,
+			struct pv_pvtx_array *keys_rm)
+{
+	struct pv_pvtx_array patterns = { 0 };
+	get_patterns(st, part, plen, &patterns);
+
+	struct pv_pvtx_array *keys = &st->priv->key;
+
+	for (int i = 0; i < keys->size; i++) {
+		int len = 0;
+		const char *key_str = token_to_str(st, keys->data.i[i], &len);
+
+		int n = match_pattern(st, &patterns, key_str);
+		if (n < 1)
+			continue;
+
+		int m = match_pattern(st, &st->priv->pat, key_str);
+		if (m > n)
+			continue;
+
+		pvtx_array_add_int(keys_rm, keys->data.i[i]);
+	}
+
+	pvtx_array_free(&patterns);
+}
+
+int get_next_key_str(struct pv_pvtx_state *st, int last, char *str)
+{
+	if (last >= st->priv->key.size) {
+		str[0] = 0x7f;
+		return -1;
+	}
+
+	int len = 0;
+	const char *tmp = token_to_str(st, st->priv->key.data.i[last], &len);
+	memccpy(str, tmp, '\0', len);
+	return last;
+}
+
+static void merge_state(struct pv_pvtx_state *dst, struct pv_pvtx_state *src)
+{
+	struct pv_pvtx_array *dst_keys = &dst->priv->key;
+	struct pv_pvtx_array *src_keys = &src->priv->key;
+
+	char *buf = calloc((dst->len + src->len) * 1.5, sizeof(char));
+	if (!buf)
+		return;
+
+	char *ptr = write_header(buf);
+
+	char src_str[PATH_MAX] = { 0 };
+	char dst_str[PATH_MAX] = { 0 };
+
+	int src_idx = get_next_key_str(src, 0, src_str);
+	int dst_idx = get_next_key_str(dst, 0, dst_str);
+
+	while (src_idx != -1 || dst_idx != -1) {
+		if (strcmp(src_str, dst_str) < 0) {
+			ptr = write_key(ptr, src, src_keys->data.i[src_idx]);
+			memset(src_str, 0, PATH_MAX);
+			src_idx++;
+			src_idx = get_next_key_str(src, src_idx, src_str);
+		} else {
+			ptr = write_key(ptr, dst, dst_keys->data.i[dst_idx]);
+			memset(dst_str, 0, PATH_MAX);
+			dst_idx++;
+			dst_idx = get_next_key_str(dst, dst_idx, dst_str);
+		}
+	}
+
+	ptr = write_footer(ptr);
+
+	// struct pv_pvtx_state *m = pv_pvtx_state_from_str(buf, ptr - buf);
+
+	pvtx_state_move(dst, pv_pvtx_state_from_str(buf, ptr - buf));
+	free(buf);
 }
 
 int pv_pvtx_state_add(struct pv_pvtx_state *dst, struct pv_pvtx_state *src)
 {
-	for (int i = 0; i < src->len; i++) {
-		struct pv_pvtx_state_data *std = src->std[i];
-		for (int j = 0; j < std->names.len; j++) {
-			pv_pvtx_state_remove(dst, std->names.data[j]);
-		}
+	struct pv_pvtx_array *keys = &src->priv->key;
+	struct pv_pvtx_array keys_rm = { 0 };
+
+	for (int i = 0; i < keys->size; i++) {
+		int len = 0;
+		const char *key_str = token_to_str(src, keys->data.i[i], &len);
+
+		remove_keys(dst, key_str, len, &keys_rm);
 	}
 
-	if ((dst->cap - dst->len) < src->len) {
-		int err = pv_pvtx_state_alloc(dst, dst->cap + src->len);
-		if (err)
-			return -1;
-	}
+	int ret = -1;
 
-	for (int i = 0; i < src->len; i++) {
-		dst->std[dst->len] = src->std[i];
-		dst->len++;
+	char *buf = calloc(dst->len, sizeof(char));
+	if (!buf)
+		goto out;
 
-		src->std[i] = NULL;
-		src->len--;
-	}
-	return 0;
-}
+	state_from_keys(dst, &keys_rm, buf);
+	free(buf);
 
-static void remove_members(struct pv_pvtx_state_data *std, const char *exp)
-{
-	int i = 1;
-	int no_top = 0;
-
-	for (int i = 1; i < std->tkn_len; ++i) {
-		if ((std->tkn[i].type != JSMN_STRING &&
-		     std->tkn[i].type != JSMN_UNDEFINED) ||
-		    no_top) {
-			no_top--;
-			goto next;
-		}
-
-		if (!strncmp(std->data + std->tkn[i].start, exp, strlen(exp)))
-			std->tkn[i].type = JSMN_UNDEFINED;
-
-	next:
-		no_top += std->tkn[i].size;
-	}
-}
-
-static int remove_part(struct pv_pvtx_state *st, const char *part)
-{
-	char exp[PATH_MAX] = { 0 };
-	memccpy(exp, part, '\0', PATH_MAX);
-
-	char name[NAME_MAX] = { 0 };
-	if (is_signature(part)) {
-		char ext[NAME_MAX] = { 0 };
-		pv_fs_extension(part, ext);
-		size_t sig_len = strlen(PVTX_STATE_SIGS_STR);
-		memcpy(name, part + sig_len,
-		       strlen(part) - sig_len - strlen(ext));
-	} else {
-		if (strchr(part, '/'))
-			pv_fs_dirname(exp, name);
-		else
-			memccpy(name, exp, '\0', NAME_MAX);
-	}
-
-	int index = search_state_data(st, name);
-	if (index < 0) {
-		for (int i = 0; i < st->len; i++)
-			remove_members(st->std[i], exp);
-	} else {
-		remove_members(st->std[index], exp);
-	}
-
-	return 0;
-}
-
-static bool has_more_signatories(struct pv_pvtx_state *st, const char *part)
-{
-	int count = 0;
-	for (int i = 0; i < st->len; i++) {
-		struct pv_pvtx_state_data *std = st->std[i];
-		for (int j = 0; j < std->sigs.len; j++) {
-			if (!strstr(std->sigs_data.data[j], part))
-				continue;
-			count++;
-			if (count > 1) {
-				return true;
-			}
-		}
-	}
-	return false;
-}
-
-static int remove_signed(struct pv_pvtx_state *st, const char *part)
-{
-	char sig_name[PATH_MAX] = { 0 };
-
-	if (strstr(part, ".json"))
-		snprintf(sig_name, PATH_MAX, "_sigs/%s", part);
-	else
-		snprintf(sig_name, PATH_MAX, "_sigs/%s.json", part);
-
-	size_t sig_name_sz = strlen(sig_name);
-	const char *sig = NULL;
-	for (int i = 0; i < st->len; i++) {
-		struct pv_pvtx_state_data *std = st->std[i];
-		for (int j = 0; j < std->sigs.len; j++) {
-			if (!strncmp(sig_name, std->sigs.data[j],
-				     sig_name_sz)) {
-				sig = std->sigs_data.data[j];
-				break;
-			}
-		}
-	}
-
-	if (!sig)
-		return 0;
-
-	int tkn_len = 0;
-	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(sig, strlen(sig), &tkn_len);
-
-	for (int i = 0; i < tkn_len; i++) {
-		if (strncmp(sig + tkn[i].start, "include", strlen("include")) &&
-		    strncmp(sig + tkn[i].start, "exclude", strlen("exclude")))
-			continue;
-
-		int j = i + 2;
-		while (tkn[j].size == 0) {
-			char part_found[PATH_MAX] = { 0 };
-			const char *src = sig + tkn[j].start;
-			int len = tkn[j].end - tkn[j].start;
-
-			// this is to look for signatures which start with this
-			// string and not a substring inside another signature.
-			part_found[0] = '"';
-			memcpy(part_found + 1, src, len);
-			// remove the *'s because we use strncmp, so just
-			// search until the char befor the first *
-			char *p = strchr(part_found, '*');
-			if (p)
-				*p = '\0';
-
-			if (!has_more_signatories(st, part_found))
-				// +1 to "remove" the initial "
-				remove_part(st, part_found + 1);
-			j++;
-		}
-	}
-
-	remove_part(st, sig_name);
-	free(tkn);
-
-	return 0;
-}
-
-// this function doesn't remove anything from the pvtx_state, we just set the
-// parent token as JSMN_UNDEFINED this means that we don't print that token
-// and neither his sub keys
-
-int pv_pvtx_state_remove(struct pv_pvtx_state *st, const char *part)
-{
-	int ret = 0;
-	if (is_signature(part)) {
-		remove_signed(st, part + strlen(PVTX_STATE_SIGS_STR));
-	} else {
-		const char *name = strchr(part, '/');
-		if (name)
-			name++;
-		else
-			name = part;
-		int index = search_state_data(st, name);
-		if (index < 0)
-			return -1;
-		if (st->std[index]->has_sig) {
-			remove_signed(st, name);
-		} else {
-			char conf_part[PATH_MAX] = { 0 };
-			snprintf(conf_part, PATH_MAX, "_config/%s", name);
-			ret = remove_part(st, name);
-			if (ret != 0)
-				return -1;
-
-			ret = remove_part(st, conf_part);
-		}
-	}
-
+	merge_state(dst, src);
+	ret = 0;
+out:
+	pvtx_array_free(&keys_rm);
 	return ret;
 }
 
-static char *write_header(char *buf)
+int pv_pvtx_state_remove(struct pv_pvtx_state *st, const char *part)
 {
-	char *p = buf;
-	char *header = "{\"#spec\":\"";
-	p = mempcpy(p, header, strlen(header));
-	p = mempcpy(p, PV_PVTX_STATE_CURRENT_SPEC,
-		    strlen(PV_PVTX_STATE_CURRENT_SPEC));
-	return mempcpy(p, "\",", 2);
-}
+	struct pv_pvtx_array rm_keys = { 0 };
+	remove_keys(st, part, strlen(part), &rm_keys);
 
-static char *write_signatures(char *p, struct pv_pvtx_state_data *std)
-{
-	for (int i = 0; i < std->tkn_len; ++i) {
-		if (std->tkn[i].type == JSMN_UNDEFINED)
-			continue;
+	int ret = -1;
 
-		const char *tkn_name = token_to_str(std, i, NULL);
-		if (is_signature(tkn_name)) {
-			p = mempcpy(p, "\"", 1);
-			int len = 0;
-			const char *str = token_to_str(std, i, &len);
-			p = mempcpy(p, str, len);
-			p = mempcpy(p, "\":", 2);
-
-			len = 0;
-			str = token_to_str(std, i + 1, &len);
-
-			p = mempcpy(p, str, len);
-			p = mempcpy(p, ",", 1);
-		}
-	}
-	return p;
-}
-
-static char *write_body(char *p, struct pv_pvtx_state_data *std, char **groups,
-			char **disks, char **device)
-{
-	// starts in 1 to ignore the first element which is the global object
-	int i = 1;
-	while (i < std->tkn_len) {
-		jsmntok_t *t = &std->tkn[i];
-
-		if (t->type == JSMN_UNDEFINED) {
-			// only keys are mark as JSMN_UNDEFINED, so
-			// we need to eval next tkn, i.e the value
-			++i;
-			++t;
-			goto next;
-		}
-
-		int len = 0;
-		const char *name = token_to_str(std, i, &len);
-
-		if (is_signature(name)) {
-			// to skipt this we eval the value, to jump in
-			// the appropiate way
-			t++;
-			i++;
-			goto next;
-		}
-
-		if (!strncmp(name, "groups.json", len)) {
-			t++;
-			i++;
-			if (*groups)
-				free(*groups);
-			*groups = strndup(std->data + t->start,
-					  t->end - t->start);
-			if (*device) {
-				free(*device);
-				*device = NULL;
-			}
-			goto next;
-		}
-		if (!strncmp(name, "disks.json", len)) {
-			t++;
-			i++;
-			if (*disks)
-				free(*disks);
-			*disks = strndup(std->data + t->start,
-					 t->end - t->start);
-			if (*device) {
-				free(*device);
-				*device = NULL;
-			}
-			goto next;
-		}
-
-		if (!strncmp(name, "device.json", len)) {
-			t++;
-			i++;
-			if (*device)
-				free(*device);
-			*device = strndup(std->data + t->start,
-					  t->end - t->start);
-			goto next;
-		}
-
-		if (t->type == JSMN_STRING) {
-			p = mempcpy(p, "\"", 1);
-			p = mempcpy(p, name, len);
-			p = mempcpy(p, "\"", 1);
-		} else {
-			p = mempcpy(p, name, len);
-		}
-
-		if (pv_pvtx_jsmn_is_key(std->data, t))
-			p = mempcpy(p, ":", 1);
-		else
-			p = mempcpy(p, ",", 1);
-
-	next:
-		if (t->type == JSMN_ARRAY || t->type == JSMN_OBJECT) {
-			int childs = 1;
-			do {
-				childs += std->tkn[i].size;
-				++i;
-				// we reach the end of the json
-				if (i == std->tkn_len)
-					break;
-				--childs;
-			} while (childs > 0);
-		} else {
-			++i;
-		}
-	}
-	return p;
-}
-
-char *write_string_body(char *dst, const char *key, const char *value)
-{
-	dst = mempcpy(dst, "\"", 1);
-	dst = mempcpy(dst, key, strlen(key));
-	dst = mempcpy(dst, "\"", 1);
-	dst = mempcpy(dst, ":", 1);
-	dst = mempcpy(dst, value, strlen(value));
-	dst = mempcpy(dst, ",", 1);
-	return dst;
-}
-
-char *pv_pvtx_state_to_str(struct pv_pvtx_state *st, size_t *len)
-{
-	if (!st) {
-		if (len)
-			*len = strlen(PVTX_STATE_EMPTY);
-		return strdup(PVTX_STATE_EMPTY);
-	}
-
-	size_t mem_len = 0;
-	for (int i = 0; i < st->len; ++i)
-		mem_len += st->std[i]->data_len;
-
-	if (mem_len == 0)
-		return NULL;
-
-	char *buf = calloc(mem_len * 2, sizeof(char));
+	char *buf = calloc(st->len, sizeof(char));
 	if (!buf)
-		return NULL;
+		goto out;
 
-	char *p = write_header(buf);
+	state_from_keys(st, &rm_keys, buf);
+	free(buf);
+	ret = 0;
+out:
+	pvtx_array_free(&rm_keys);
 
-	for (int i = 0; i < st->len; ++i)
-		p = write_signatures(p, st->std[i]);
-
-	char *groups = NULL;
-	char *disks = NULL;
-	char *device = NULL;
-	for (int i = 0; i < st->len; ++i)
-		p = write_body(p, st->std[i], &groups, &disks, &device);
-
-	if (device) {
-		p = write_string_body(p, "device.json", device);
-		free(device);
-	} else {
-		if (groups) {
-			p = write_string_body(p, "groups.json", groups);
-			free(groups);
-		}
-
-		if (disks) {
-			p = write_string_body(p, "disks.json", disks);
-			free(disks);
-		}
-	}
-
-	*(p - 1) = '}';
-	*p = '\0';
-
-	size_t json_len = p - buf;
-	if (len)
-		*len = json_len;
-
-	return buf;
+	return ret;
 }

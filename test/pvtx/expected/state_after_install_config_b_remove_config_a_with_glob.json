@@ -6,7 +6,6 @@
 	"_config/ventilation_appliance_domain/etc/app/appliance_domain_config.json": "de389732a039b09232f9244b8b29bba3f5bfbca3984dc285534839c05d8ab706",
 	"_config/ventilation_appliance_domain/etc/app/performance_profile.xml": "5c943496e8a94d92baf82e04589fc515f47e0c93b72c08310cc4fa921dd17ea5",
 	"_config/ventilation_ecu_io/etc/app/ecu_io.json": "afd62328fc17447b322fb26f7f5356446166f45c3edda8da6c0a9ed1c40d58f9",
-	"_config/ventilation_ecu_io/etc/inittab": "ad93f9788bf6e7bc7ecaa7eed0f0ca082b24f2b481de70160b9c31decd64336e",
 	"_config/ventilation_ecu_io/usr/share/dbus2/fw/cpm/Parameter-1/Data": "f02763e5b3a04e36bd03fb2e640bd874e53b1222739921babfdbe2c9bd9e29b8",
 	"_config/ventilation_ecu_io/usr/share/dbus2/fw/cpm/Parameter-1/id": "359d128adb45ed1acc074c8115da652a0249802dce1c3fc4d1b4ad1ba50c7918",
 	"_config/ventilation_ecu_io/usr/share/dbus2/fw/cpm/Parameter-1/version": "8ad5ffa93d4f9de334799b2ab0f7a2001fbfeca1158e61515868fd88ebe9a0c1",
