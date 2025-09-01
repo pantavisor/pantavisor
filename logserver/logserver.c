@@ -381,6 +381,15 @@ static struct logserver_fd *logserver_fd_new(char *platform, char *src, int fd,
 	if (!lfd)
 		return NULL;
 
+	fcntl(fd, F_GETFL);
+
+	if ((fd & O_ACCMODE) != O_RDONLY || (fd & O_ACCMODE) != O_RDWR) {
+		pv_log(DEBUG,
+		       "fd hasn't read permissions, logserver couldn't read from there %d",
+		       fd);
+		return NULL;
+	}
+
 	if (platform)
 		lfd->platform = strdup(platform);
 	if (src)
