@@ -26,6 +26,7 @@ op=$1
 volumesrc=$2
 container=$3
 volume=$4
+veritysetup_options=$5
 
 # ensure that devicemapper builds with dev support
 # don't believe that udev will create the /dev/mapper/* nodes
@@ -57,8 +58,19 @@ do_mount_squash() {
 	hdev=`cat $dmmanifest | JSON.sh -l |  grep hash_device | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
 	rhash=`cat $dmmanifest | JSON.sh -l | grep root_hash | awk '{ print $2 }' | sed -e 's/^"//;s/"$//'`
 
+	veritysetup_options=""
+	while [ "$#" -gt 0 ]; do
+		veritysetup_options="$veritysetup_options --$1"
+		shift
+	done
+
 	clean_dm "$dmname"
-	if ! veritysetup create $dmname $traildir/$ddev $traildir/$hdev $rhash; then
+	if ! veritysetup open \
+		$ddev \
+		$dmname \
+		$hdev \
+		$rhash \
+		$veritysetup_options; then
 		echo "ERROR: could not setup dm volume with veritysetup"
 		return 2
 	fi
@@ -121,10 +133,11 @@ export PATH
 set -e
 case $op in
 	mount)
-		do_mount_squash $2 $3
+		shift 3
+		do_mount_squash $volumesrc $container $@
 		;;
 	umount)
-		do_umount_squash $2 $3
+		do_umount_squash $volumesrc $container
 		;;
 	verifylist)
 		verifylist $2
