@@ -845,11 +845,46 @@ static int get_queue_remove_file(const char *part, char *fname)
 	return 0;
 }
 
-static int process_add_directory(struct pv_pvtx_state *st, const char *dir,
-				 const char *queue, struct pv_pvtx_error *err)
+static int move_objects(const char *dirname, const char *queue,
+			const char *obj_path, struct pv_pvtx_error *err)
+{
+	char pkg_fld[PATH_MAX] = { 0 };
+	pv_fs_path_concat(pkg_fld, 3, queue, dirname, "objects");
+
+	DIR *dir = opendir(pkg_fld);
+	if (!dir)
+		goto out;
+
+	struct dirent *entry = NULL;
+	while ((entry = readdir(dir)) != NULL) {
+		if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+			continue;
+
+		char src[PATH_MAX] = { 0 };
+		pv_fs_path_concat(src, 2, pkg_fld, entry->d_name);
+
+		char dst[PATH_MAX] = { 0 };
+		pv_fs_path_concat(dst, 2, obj_path, entry->d_name);
+
+		if (rename(src, dst) != 0) {
+			PVTX_ERROR_SET(err, -1,
+				       "couldn't move %s to object dir (%s)",
+				       src, obj_path);
+			goto out;
+		}
+	}
+out:
+	closedir(dir);
+
+	return err->code;
+}
+
+static int process_add_directory(struct pv_pvtx_state *st, const char *dirname,
+				 const char *queue, const char *obj_path,
+				 struct pv_pvtx_error *err)
 {
 	char js[PATH_MAX] = { 0 };
-	pv_fs_path_concat(js, 3, queue, dir, "json");
+	pv_fs_path_concat(js, 3, queue, dirname, "json");
 
 	struct pv_pvtx_state *new = pv_pvtx_state_from_file(js);
 	if (!new) {
@@ -859,20 +894,17 @@ static int process_add_directory(struct pv_pvtx_state *st, const char *dir,
 		return err->code;
 	}
 
-	printf("%p == %p\n", st, new);
-	printf("is eq = %d\n", st == new);
-	printf("st  json size: %zd\n", st->len);
-	printf("new json size: %zd\n", new->len);
-
-	printf("st : %.*s\n", 10, st->json + 100);
-	printf("new: %.*s\n", 10, new->json + 100);
-
 	if (pv_pvtx_state_add(st, new) != 0) {
 		PVTX_ERROR_SET(err, -1,
 			       "couldn't add json, operation add failed");
+		goto out;
 	}
 
+	move_objects(dirname, queue, obj_path, err);
+
+out:
 	pv_pvtx_state_free(new);
+
 	return err->code;
 }
 
@@ -1466,7 +1498,8 @@ int pv_pvtx_queue_process(const char *from, const char *queue_path,
 				goto out;
 			}
 		} else if (entry[i]->d_type == DT_DIR) {
-			int ret = process_add_directory(st, fn, q->queue, err);
+			int ret = process_add_directory(st, fn, q->queue,
+							q->txn.obj, err);
 			if (ret != 0) {
 				free(fn);
 				goto out;
