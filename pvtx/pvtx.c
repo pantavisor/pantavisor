@@ -218,51 +218,58 @@ static int cmd_help(int argc, char **argv)
 	printf("Usage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
 	printf("Commands:\n");
 
-	printf("  %-22s", "begin <base> [object]");
+	printf("  %-30s", "begin <base> [object]");
 	printf("Creates a new transaction.\n");
-	printf("%-24s%s\n", " ",
+	printf("%-32s%s\n", " ",
 	       "The first argument <base> could be a real revision,");
-	printf("%-24s%s\n", " ",
-	       "\"\" (empty string, use current rev) or \"empty\" (empty revision).");
-	printf("%-24s%s\n", " ",
+	printf("%-32s%s\n", " ",
+	       "\"current\" (use current rev) or \"empty\" (empty revision).");
+	printf("%-32s%s\n", " ",
 	       "Transactions created without an object_path are called remote");
-	printf("%-24s%s\n", " ",
-	       "transactions and its objects sent directly to the pv-ctrl socket.");
-	printf("  %-22s", "add <file> or -");
+	printf("%-32s%s\n", " ",
+	       "and its objects are sent directly to the pv-ctrl socket.");
+	printf("  %-30s", "add <file> or -");
 	printf("Adds a json or tarball to the current transaction.\n");
-	printf("%-24s%s\n", " ",
+	printf("%-32s%s\n", " ",
 	       "Alternatively '-' could be used to read from stdin.");
-	printf("  %-22s", "abort");
+	printf("  %-30s", "remove <part>");
+	printf("Remove the given part from the revision.\n");
+	printf("  %-30s", "abort");
+	printf("Abort the current transaction.\n");
+	printf("  %-30s", "commit");
 	printf("Commit transaction, valid only for remote transactions.\n");
-	printf("  %-22s", "commit");
+	printf("  %-30s", "show");
 	printf("Show the current state json.\n");
-	printf("  %-22s", "show");
-	printf("Show the current state json.\n");
-	printf("  %-22s", "deploy <directory>");
+	printf("  %-30s", "deploy <directory>");
 	printf("Deploy the current transaction in the given directory.\n");
-	printf("  %-22s", "help <file>");
+	printf("  %-30s", "help");
 	printf("Show this help and ends.\n");
-	printf("  %-22s", "queue <sub-command>");
-	printf("This command uses the queue mode and requires a sub-command.\n\n");
+	printf("  %-30s", "queue <sub-command>");
+	printf("This command uses the queue mode and requires a sub-command.\n");
+	printf("%-32s%s\n", " ", "Queues creates a series of steps to be executed in the same order");
+	printf("%-32s%s\n", " ", "in which they were created.");
 
 	printf("Queue Sub-commands:\n");
-	printf("  %-22s", "new <queue> <object>");
+	printf("  %-30s", "new <queue> [object]");
 	printf("Creates a new queue at queue and save objects at object.\n");
-	printf("  %-22s", "remove <path>");
-	printf("Remove the given part from the current queue.\n");
-	printf("  %-22s", "unpack <tarball>");
-	printf("Unpack the given tarbal.\n");
-	printf("  %-22s", "process");
+	printf("  %-30s", "remove <part>");
+	printf("Add a remove instruction for the given part in the current queue.\n");
+	printf("  %-30s", "unpack <tarball> or -");
+	printf("Unpack the given tarball from file or from stdin (if - is used).\n");
+	printf("  %-30s", "process [base] [queue] [obj]");
 	printf("Process the current queue.\n");
+	printf("%-32s%s\n", " ", "base : use a specific revision, \"current\" or \"empty\" as base");
+	printf("%-32s%s\n", " ", "queue: define the queue path. Implicit call to queue new");
+	printf("%-32s%s\n", " ", "obj  : define the object path. Needed if the queue argument is used.");
 
 	printf("Environment Variables:\n");
-	printf("  %-22s", "PVTXDIR");
+	printf("  %-30s", "PVTXDIR");
 	printf("Temporary directory where PVTX store transaction related data\n");
-	printf("  %-22s", "PVTX_OBJECT_BUF_SIZE");
+	printf("  %-30s", "PVTX_OBJECT_BUF_SIZE");
 	printf("Size of the buffer used to save objects. Min 512B max 10485760B (10M)\n");
-	printf("  %-22s", "PVTX_CTRL_BUF_SIZE");
+	printf("  %-30s", "PVTX_CTRL_BUF_SIZE");
 	printf("Size of the buffer used to get and post data to pv-ctrl.\n");
-	printf("%-24s%s\n", " ", "Min 16384B (16K) max 10485760B (10M)\n");
+	printf("%-32s%s\n", " ", "Min 16384B (16K) max 10485760B (10M)\n");
 
 	return 0;
 }
