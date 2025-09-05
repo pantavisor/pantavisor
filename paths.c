@@ -23,7 +23,9 @@
 #include <stdio.h>
 #include <stddef.h>
 
+#include "config.h"
 #include "paths.h"
+
 #include "utils/str.h"
 
 #define MODULE_NAME "paths"

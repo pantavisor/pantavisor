@@ -45,9 +45,8 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress);
 char *pv_storage_get_rev_progress(const char *rev);
 void pv_storage_init_trail_pvr(void);
 void pv_storage_rm_rev(const char *rev);
-void pv_storage_set_active(struct pantavisor *pv);
+void pv_storage_set_active();
 int pv_storage_update_factory(const char *rev);
-int pv_storage_make_config(struct pantavisor *pv);
 bool pv_storage_is_revision_local(const char *rev);
 char *pv_storage_get_revisions_string(void);
 
@@ -62,14 +61,16 @@ bool pv_storage_validate_trails_object_checksum(const char *rev,
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 					   char *val);
 
+bool pv_storage_does_object_exist(const char *id);
+
 off_t pv_storage_get_free(void);
 int pv_storage_gc_run(void);
 off_t pv_storage_gc_run_needed(off_t needed);
 void pv_storage_gc_defer_run_threshold(void);
 void pv_storage_gc_run_threshold(void);
 
-int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
-int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
+int pv_storage_meta_expand_jsons(struct pv_state *s);
+int pv_storage_meta_link_boot(struct pv_state *s);
 
 void pv_storage_save_usermeta(const char *key, const char *value);
 void pv_storage_rm_usermeta(const char *key);

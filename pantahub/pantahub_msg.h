@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2024 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,28 +19,38 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_LXC_H
-#define PV_LXC_H
+#ifndef PV_PANTAHUB_MSG_H
+#define PV_PANTAHUB_MSG_H
 
-#include "../config.h"
-#include "../platforms.h"
+#include <sys/types.h>
 
-void pv_set_pv_instance_fn(void *fn_pv_get_instance);
-void pv_set_pv_paths_fn(
-	void *fn_vlog, void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
-	void *fn_pv_paths_pv_log_plat, void *fn_pv_paths_pv_log_file,
-	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
-	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
-	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
-	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
-	void *fn_pv_paths_lib_lxc_lxcpath);
+typedef struct {
+	char *msg;
+	char *progress;
+	char *rev;
+	char *state;
+} pv_step_t;
 
-void pv_set_pv_conf_loglevel_fn(int loglevel);
-void pv_set_pv_conf_capture_fn(bool capture);
+typedef struct {
+	off_t size;
+	char *sha256sum;
+	char *geturl;
+} pv_object_metadata_t;
 
-void *pv_start_container(struct pv_platform *p, const char *rev,
-			 char *conf_file, int logfd, void *data);
-void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
-int pv_console_log_getfd(struct pv_platform_log *log, void *data);
+char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass);
+
+char *pv_pantahub_msg_parse_session_token(const char *json);
+char *pv_pantahub_msg_parse_next_step(const char *json);
+
+void pv_pantahub_msg_parse_step(const char *json, pv_step_t *step);
+void pv_pantahub_msg_print_step(pv_step_t *step);
+void pv_pantahub_msg_clean_step(pv_step_t *step);
+
+void pv_pantahub_msg_parse_object_metadata(
+	const char *json, pv_object_metadata_t *object_metadata);
+void pv_pantahub_msg_print_object_metadata(
+	pv_object_metadata_t *object_metadata);
+void pv_pantahub_msg_clean_object_metadata(
+	pv_object_metadata_t *object_metadata);
 
 #endif

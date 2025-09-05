@@ -22,7 +22,9 @@
 
 #include <string.h>
 
-#include "event.h"
+#include "config.h"
+
+#include "event/event.h"
 
 #define MODULE_NAME "event"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)

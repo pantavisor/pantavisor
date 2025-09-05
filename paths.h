@@ -22,6 +22,7 @@
 #ifndef PV_PATHS_H
 #define PV_PATHS_H
 
+#include <limits.h>
 #include <stddef.h>
 
 #define ONLINE_FNAME "online"

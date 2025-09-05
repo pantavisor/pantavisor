@@ -56,6 +56,7 @@
 #include "signature.h"
 #include "paths.h"
 #include "metadata.h"
+#include "pantavisor.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -505,9 +506,23 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 	return ret;
 }
 
-void pv_storage_set_active(struct pantavisor *pv)
+bool pv_storage_does_object_exist(const char *id)
 {
 	char path[PATH_MAX];
+
+	if (!id)
+		return false;
+
+	pv_paths_storage_object(path, PATH_MAX, id);
+	return pv_fs_path_exist(path);
+}
+
+void pv_storage_set_active()
+{
+	char path[PATH_MAX];
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
 
 	// path to current revision - relative and dir for fd
 	pv_paths_storage_trail(path, PATH_MAX, "current");
@@ -780,12 +795,13 @@ void pv_storage_init_trail_pvr()
 		       strerror(errno));
 }
 
-int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_meta_expand_jsons(struct pv_state *s)
 {
 	int ret = 0;
 	struct stat st;
 	char path[PATH_MAX];
 	char *file = 0, *dir = 0;
+	struct pantavisor *pv = pv_get_instance();
 
 	if (!pv || !s)
 		goto out;
@@ -815,12 +831,15 @@ out:
 	return ret;
 }
 
-int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_meta_link_boot(struct pv_state *s)
 {
 	int i;
 	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[PATH_MAX];
 	struct pv_addon *a, *tmp;
 	struct dl_list *addons = NULL;
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return -1;
 
 	if (!s)
 		s = pv->state;
