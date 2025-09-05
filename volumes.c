@@ -155,6 +155,7 @@ int pv_volume_mount(struct pv_volume *v)
 	int wstatus;
 	char *command;
 	char *disk_name = NULL;
+	char *verity_options = NULL;
 
 	if (v->disk) {
 		disk_name = v->disk->name;
@@ -232,20 +233,42 @@ int pv_volume_mount(struct pv_volume *v)
 
 			pv_paths_lib_volmount(script, PATH_MAX, "verity",
 					      handler);
-			command = malloc(sizeof(char) *
-					 (strlen(script) + strlen(partname) +
-					  strlen(path) + strlen(name) +
-					  strlen("%s mount %s %s %s") + 1));
+
+			if (pv_config_get_str(PV_VOLMOUNT_DM_EXTRA_ARGS) != NULL)
+				verity_options =
+					getenv("PV_VOLMOUNT_DM_EXTRA_ARGS");
+
+			if (verity_options == NULL)
+				command = malloc(
+					sizeof(char) *
+					(strlen(script) + strlen(partname) +
+					 strlen(path) + strlen(name) +
+					 strlen("%s mount %s %s %s") + 1));
+			else
+				command = malloc(
+					sizeof(char) *
+					(strlen(script) + strlen(partname) +
+					 strlen(path) + strlen(name) +
+					 strlen(verity_options) +
+					 strlen("%s mount %s %s %s %s") + 1));
+
 			umount_cmd = malloc(sizeof(char) *
 					    (strlen(script) + strlen(partname) +
 					     strlen(path) + strlen(name) +
 					     strlen("%s umount %s %s %s") + 1));
-			sprintf(command, "%s mount %s %s %s", script, path,
-				partname, name);
+
+			if (verity_options == NULL)
+				sprintf(command, "%s mount %s %s %s", script,
+					path, partname, name);
+			else
+				sprintf(command, "%s mount %s %s %s %s", script,
+					path, partname, name, verity_options);
+
 			sprintf(umount_cmd, "%s umount %s %s %s", script, path,
 				partname, name);
 			pv_log(INFO, "command: %s", command);
-			tsh_run_logserver(command, &wstatus, "volume-mount-out", "volume-mount-err");
+			tsh_run_logserver(command, &wstatus, "volume-mount-out",
+					  "volume-mount-err");
 			if (!WIFEXITED(wstatus))
 				ret = -1;
 			else if (WEXITSTATUS(wstatus) != 0)
@@ -350,7 +373,8 @@ int pv_volume_unmount(struct pv_volume *v)
 		pv_log(DEBUG, "umounting with handler...");
 		pv_log(INFO, "umount_cmd: %s", v->umount_cmd);
 		int wstatus;
-		tsh_run_logserver(v->umount_cmd, &wstatus, "volume-umount-out", "volume-umount-err");
+		tsh_run_logserver(v->umount_cmd, &wstatus, "volume-umount-out",
+				  "volume-umount-err");
 		if (!WIFEXITED(wstatus))
 			ret = -1;
 		else if (WEXITSTATUS(wstatus) != 0)
