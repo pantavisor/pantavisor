@@ -25,7 +25,7 @@
 
 #include <stddef.h>
 
-#define PVTX_STATE_EMPTY "{\"#spec\": \"pantavisor-service-system@1\"}"
+#define PVTX_STATE_EMPTY "{\"#spec\":\"pantavisor-service-system@1\"}"
 
 struct pv_pvtx_state {
 	char *json;
