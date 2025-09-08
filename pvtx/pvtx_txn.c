@@ -1102,16 +1102,16 @@ int pv_pvtx_txn_abort(struct pv_pvtx_error *err)
 	if (!txn)
 		return 0;
 
-	txn->status = PVTX_TXN_STATUS_ABORTED;
-	int ret = pvtx_save(txn, sizeof(struct pvtx_txn));
-	free(txn);
+	if (unlink(get_json_path()) != 0)
+		PVTX_ERROR_SET(err, -1, "couldn't delete current json file");
 
-	if (ret != 0) {
-		PVTX_ERROR_SET(err, ret, "couldn't write transaction status");
-		return ret;
-	}
+	char path[PATH_MAX] = { 0 };
+	get_data_file(path);
 
-	return 0;
+	if (unlink(path) != 0)
+		PVTX_ERROR_SET(err, -1, "couldn't delete current status file");
+
+	return err->code;
 }
 
 char *pv_pvtx_txn_commit(struct pv_pvtx_error *err)
