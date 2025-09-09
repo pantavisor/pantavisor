@@ -239,16 +239,25 @@ int pv_volume_mount(struct pv_volume *v)
 				verity_options = pv_config_get_str(
 					PV_VOLMOUNT_DM_EXTRA_ARGS);
 
-			if (verity_options == NULL)
-				asprintf(&command, "%s mount %s %s %s",
-					 script, partname, path, name);
-			else
-				asprintf(&command, "%s mount %s %s %s %s",
-					 script, partname, path, name,
-					 verity_options);
+			pv_log(INFO, "PV_VOLMOUNT_DM_EXTRA_ARGS: %s",
+			       verity_options);
 
-			asprintf(&umount_cmd, "%s umount %s %s %s", script,
-				 partname, path, name);
+			if (verity_options == NULL)
+				ret = asprintf(&command, "%s mount %s %s %s",
+					       script, partname, path, name);
+			else
+				ret = asprintf(&command, "%s mount %s %s %s %s",
+					       script, partname, path, name,
+					       verity_options);
+
+			ret = asprintf(&umount_cmd, "%s umount %s %s %s",
+				       script, partname, path, name);
+
+			if (ret < 0) {
+				pv_log(ERROR,
+				       " cannot allocate memory for mount/umount command");
+				goto out;
+			}
 
 			pv_log(INFO, "command: %s", command);
 			tsh_run_logserver(command, &wstatus, "volume-mount-out",
