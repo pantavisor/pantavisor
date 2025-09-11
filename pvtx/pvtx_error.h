@@ -22,7 +22,7 @@
 
 #ifndef PV_PVTX_ERROR_H
 #define PV_PVTX_ERROR_H
-#define PV_PVTX_ERROR_MAX_LEN (512)
+#define PV_PVTX_ERROR_MAX_LEN (1024)
 
 struct pv_pvtx_error {
 	int code;
@@ -30,11 +30,16 @@ struct pv_pvtx_error {
 };
 
 #define PVTX_ERROR_SET(err, code, tmpl, ...)                                   \
-	pv_pvtx_error_set(err, code, __FILE__, __LINE__, tmpl,            \
-			  ##__VA_ARGS__)
+	pv_pvtx_error_set(err, code, __FILE__, __LINE__, tmpl, ##__VA_ARGS__)
+
+#define PVTX_ERROR_PREPEND(err, tmpl, ...)                                     \
+	pv_pvtx_error_prepend(err, __FILE__, __LINE__, tmpl, ##__VA_ARGS__)
 
 void pv_pvtx_error_set(struct pv_pvtx_error *err, int code, const char *file,
 		       int line, const char *tmpl, ...);
 void pv_pvtx_error_clear(struct pv_pvtx_error *err);
+
+void pv_pvtx_error_prepend(struct pv_pvtx_error *err, const char *file,
+			   int line, const char *tmpl, ...);
 
 #endif

@@ -46,6 +46,25 @@ static int get_buf_size(const char *env, size_t min, size_t max)
 	return size;
 }
 
+int pv_pvtx_buffer_realloc(struct pv_pvtx_buffer *buf, size_t new_size)
+{
+	if (!buf)
+		return -1;
+
+	if (!buf->data)
+		return -1;
+
+	char *tmp = realloc(buf->data, (new_size + 1) * sizeof(char));
+
+	if(!tmp)
+		return -1;
+
+	buf->data = tmp;
+	buf->size = new_size;
+
+	return 0;
+}
+
 struct pv_pvtx_buffer *pv_pvtx_buffer_new(size_t size)
 {
 	if (size < 0)

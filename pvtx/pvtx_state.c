@@ -157,7 +157,8 @@ err:
 	return NULL;
 }
 
-static char *get_decoded_sig(struct pv_pvtx_state *st, int idx, size_t *len)
+static int get_decoded_sig(struct pv_pvtx_state *st, int idx, char **dec,
+			   size_t *len)
 {
 	int json_len = 0;
 	const char *json = token_to_str(st, idx + 1, &json_len);
@@ -177,27 +178,35 @@ static char *get_decoded_sig(struct pv_pvtx_state *st, int idx, size_t *len)
 		}
 	}
 
-	char *dec = NULL;
-
+	int ret = 0;
 	if (!sig_tok)
 		goto out;
 
 	size_t dec_len = 0;
-	dec = (char *)base64_url_decode(
+	*dec = (char *)base64_url_decode(
 		json + sig_tok->start, sig_tok->end - sig_tok->start, &dec_len);
+
+	if (!*dec) {
+		ret = -1;
+		goto out;
+	}
 
 	if (len)
 		*len = dec_len;
 out:
 	free(tok);
-	return dec;
+	return ret;
 }
 
-static void add_patterns(struct pv_pvtx_array *arr, struct pv_pvtx_state *st,
-			 int idx)
+static int add_patterns(struct pv_pvtx_array *arr, struct pv_pvtx_state *st,
+			int idx)
 {
 	size_t dec_sz = 0;
-	char *dec = get_decoded_sig(st, idx, &dec_sz);
+	char *dec = NULL;
+	int ret = get_decoded_sig(st, idx, &dec, &dec_sz);
+
+	if (ret != 0)
+		return -1;
 
 	int tok_len = 0;
 	jsmntok_t *tok = pv_pvtx_jsmn_parse_data(dec, dec_sz, &tok_len);
@@ -231,6 +240,8 @@ static void add_patterns(struct pv_pvtx_array *arr, struct pv_pvtx_state *st,
 
 	free(tok);
 	free(dec);
+
+	return 0;
 }
 
 static int next_key(struct pv_pvtx_state *st, int cur)
@@ -273,8 +284,9 @@ static struct pv_pvtx_array get_keys(struct pv_pvtx_state *st)
 	return arr;
 }
 
-static void get_all_patterns(struct pv_pvtx_state *st,
-			     struct pv_pvtx_array *patterns)
+static int get_all_patterns(struct pv_pvtx_state *st,
+			    struct pv_pvtx_array *patterns,
+			    struct pv_pvtx_error *err)
 {
 	struct pv_pvtx_array *keys = &st->priv->key;
 
@@ -286,8 +298,21 @@ static void get_all_patterns(struct pv_pvtx_state *st,
 			    strlen(PVTX_STATE_SIGS_STR)) != 0)
 			continue;
 
-		add_patterns(patterns, st, keys->data.i[i]);
+		if (add_patterns(patterns, st, keys->data.i[i]) != 0) {
+			if (!err)
+				return -1;
+
+			int name_len = 0;
+			const char *name =
+				token_to_str(st, keys->data.i[i], &name_len);
+			PVTX_ERROR_SET(err, -1,
+				       "couldn't decrypt %.*s signature",
+				       name_len, name);
+
+			return -1;
+		}
 	}
+	return 0;
 }
 
 static struct pv_pvtx_state *pvtx_state_alloc()
@@ -306,17 +331,21 @@ err:
 	return NULL;
 }
 
-struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len)
+struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len,
+					     struct pv_pvtx_error *err)
 {
 	struct pv_pvtx_state *st = pvtx_state_alloc();
 	if (!st)
-		goto err;
+		goto error;
 
 	struct pv_pvtx_state_priv *priv = st->priv;
 
 	priv->tok.data.t = pv_pvtx_jsmn_parse_data(str, len, &priv->tok.size);
-	if (!priv->tok.data.t)
-		goto err;
+	if (!priv->tok.data.t) {
+		if (err)
+			PVTX_ERROR_SET(err, -1, "couldn't parse json data");
+		goto error;
+	}
 	priv->tok.has_str = false;
 
 	st->json = strndup(str, len);
@@ -325,15 +354,17 @@ struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len)
 	priv->key.has_str = false;
 	st->priv = priv;
 
-	get_all_patterns(st, &st->priv->pat);
+	if (get_all_patterns(st, &st->priv->pat, err) != 0)
+		goto error;
 
 	return st;
-err:
+error:
 	pv_pvtx_state_free(st);
 	return NULL;
 }
 
-struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path)
+struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path,
+					      struct pv_pvtx_error *err)
 {
 	int fd = open(path, O_RDONLY);
 	if (fd < 0)
@@ -357,7 +388,8 @@ struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path)
 	if (!data)
 		return NULL;
 
-	struct pv_pvtx_state *state = pv_pvtx_state_from_str(data, st.st_size);
+	struct pv_pvtx_state *state =
+		pv_pvtx_state_from_str(data, st.st_size, err);
 	munmap(data, st.st_size);
 
 	return state;
@@ -483,10 +515,7 @@ static void state_from_keys(struct pv_pvtx_state *st,
 	}
 
 	ptr = write_footer(ptr);
-
-	// struct pv_pvtx_state *new_st = pv_pvtx_state_from_str(buf, ptr - buf);
-	// pvtx_state_move(st, new_st);
-	pvtx_state_move(st, pv_pvtx_state_from_str(buf, ptr - buf));
+	pvtx_state_move(st, pv_pvtx_state_from_str(buf, ptr - buf, NULL));
 }
 
 static int match_pattern(struct pv_pvtx_state *st, struct pv_pvtx_array *pat,
@@ -575,9 +604,7 @@ static void merge_state(struct pv_pvtx_state *dst, struct pv_pvtx_state *src)
 
 	ptr = write_footer(ptr);
 
-	// struct pv_pvtx_state *m = pv_pvtx_state_from_str(buf, ptr - buf);
-
-	pvtx_state_move(dst, pv_pvtx_state_from_str(buf, ptr - buf));
+	pvtx_state_move(dst, pv_pvtx_state_from_str(buf, ptr - buf, NULL));
 	free(buf);
 }
 

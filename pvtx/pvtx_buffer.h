@@ -34,5 +34,6 @@ struct pv_pvtx_buffer *pv_pvtx_buffer_new(size_t size);
 struct pv_pvtx_buffer *pv_pvtx_buffer_from_env(const char *env, size_t min,
 					       size_t max, size_t rounging);
 void pv_pvtx_buffer_free(struct pv_pvtx_buffer *buf);
+int pv_pvtx_buffer_realloc(struct pv_pvtx_buffer *buf, size_t new_size);
 
 #endif

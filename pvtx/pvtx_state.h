@@ -23,6 +23,8 @@
 #ifndef PV_PVTX_STATE_H
 #define PV_PVTX_STATE_H
 
+#include "pvtx_error.h"
+
 #include <stddef.h>
 
 #define PVTX_STATE_EMPTY "{\"#spec\":\"pantavisor-service-system@1\"}"
@@ -33,8 +35,9 @@ struct pv_pvtx_state {
 	struct pv_pvtx_state_priv *priv;
 };
 
-struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len);
-struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path);
+struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len,
+					     struct pv_pvtx_error *err);
+struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path, struct pv_pvtx_error *err);
 
 void pv_pvtx_state_free(struct pv_pvtx_state *st);
 

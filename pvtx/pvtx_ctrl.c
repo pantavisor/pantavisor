@@ -53,6 +53,8 @@
 #define PVTX_CTRL_BUFF_MIN (16384)
 // 10M
 #define PVTX_CTRL_BUFF_MAX (10485760)
+// common size on many web servers
+#define PVTX_CTRL_HEADER_SIZE (8192)
 
 enum pvtx_ctrl_method {
 	PVTX_CTRL_METHOD_UNSET,
@@ -217,36 +219,48 @@ const char *pvtx_ctrl_get_data(const char *data, size_t size)
 	return p + 4;
 }
 
-static int check_error(struct pv_pvtx_ctrl *ctrl, const char *data)
+static void check_error(struct pv_pvtx_buffer *buf, struct pv_pvtx_error *err)
 {
-	pv_pvtx_error_clear(&ctrl->error);
+	if (!buf || !buf->data || buf->size < 1)
+		return;
 
-	char *p = strchr(data, ' ');
-	if (!p) {
-		PVTX_ERROR_SET(&ctrl->error, -1,
+	pv_pvtx_error_clear(err);
+
+	const char *ptr = strchr(buf->data, ' ');
+	if (!ptr) {
+		PVTX_ERROR_SET(err, -1,
 			       "couldn't parse header, error check failed");
-		return -1;
+		return;
 	}
 
+	// get http code
 	char n_str[4] = { 0 };
-	memcpy(n_str, p + 1, 3);
-
+	memcpy(n_str, ptr + 1, 3);
 	long code = strtol(n_str, NULL, 10);
 
 	if (code < 300 && code > 199)
-		return 0;
+		return;
 
-	char *end = strstr(data, "\r\n");
+	char *end = strstr(buf->data, "\r\n");
 	if (!end) {
-		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't parse header");
-		return -1;
+		PVTX_ERROR_SET(err, -1, "couldn't parse header");
+		return;
 	}
 
-	char err[PV_PVTX_ERROR_MAX_LEN] = { 0 };
-	memcpy(err, p + 1, end - (p + 1));
-	PVTX_ERROR_SET(&ctrl->error, -code, err);
+	char base_err[PV_PVTX_ERROR_MAX_LEN] = { 0 };
+	memcpy(base_err, ptr + 1, end - (ptr + 1));
 
-	return -1;
+	ptr = pvtx_ctrl_get_data(buf->data, buf->size);
+
+	char *error_str = NULL;
+	if (asprintf(&error_str, "%s\nResponse: %s", base_err, ptr) == -1) {
+		PVTX_ERROR_SET(err, -1, "couldn't get the complete err: %s",
+			       base_err);
+		return;
+	}
+
+	PVTX_ERROR_SET(err, -code, error_str);
+	free(error_str);
 }
 
 static ssize_t get_content_length(const char *data)
@@ -277,61 +291,43 @@ static ssize_t get_content_length(const char *data)
 	return len;
 }
 
-static char *read_data(struct pv_pvtx_ctrl *ctrl)
+static struct pv_pvtx_buffer *read_data(struct pv_pvtx_ctrl *ctrl)
 {
 	pv_pvtx_error_clear(&ctrl->error);
 
-	struct pv_pvtx_buffer *buf = get_buffer(&ctrl->error);
+	struct pv_pvtx_buffer *buf = pv_pvtx_buffer_new(PVTX_CTRL_HEADER_SIZE);
 	if (!buf)
 		return NULL;
-
-	char *data = NULL;
 
 	ssize_t cur_read =
 		pv_fs_file_read_nointr(ctrl->sock, buf->data, buf->size - 1);
 
-	if (check_error(ctrl, buf->data))
-		goto out;
-
 	ssize_t len = get_content_length(buf->data);
-	if (len < 0) {
-		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't get Content-Length");
+	if (len < 0)
+		goto out;
+
+	size_t new_size = cur_read + len;
+	if (pv_pvtx_buffer_realloc(buf, new_size) != 0) {
+		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't reallocate buffer");
 		goto out;
 	}
 
-	const char *data_buf = pvtx_ctrl_get_data(buf->data, buf->size);
-	if (!data_buf) {
-		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't get data section");
-		goto out;
-	}
-
-	ssize_t data_buf_sz = cur_read - (data_buf - (const char *)buf->data);
-	if (data_buf_sz <= 0)
-		goto out;
-
-	data = calloc(len + 1, sizeof(char));
-	if (!data) {
-		PVTX_ERROR_SET(&ctrl->error, errno, "couldn't allocate data");
-		goto out;
-	}
-
-	char *p = mempcpy(data, data_buf, data_buf_sz);
-
-	if (data_buf_sz < len)
-		pv_fs_file_read_nointr(ctrl->sock, p, len - data_buf_sz);
+	if (cur_read < new_size)
+		pv_fs_file_read_nointr(ctrl->sock, buf->data + cur_read,
+				       new_size - cur_read);
 
 out:
-	if (buf)
-		pv_pvtx_buffer_free(buf);
+	if (ctrl->error.code != 0) {
+		memset(buf->data, 0, buf->size);
+		buf->size = 0;
+	}
 
-	return data;
+	return buf;
 }
 
 char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 			     size_t *size)
 {
-	char *data = NULL;
-
 	pv_pvtx_error_clear(&ctrl->error);
 
 	struct pv_pvtx_ctrl_header head = {
@@ -343,14 +339,17 @@ char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 		goto out;
 	}
 
-	data = read_data(ctrl);
-	if (!data) {
-		PVTX_ERROR_SET(&ctrl->error, -1, "empty data");
-		goto out;
-	}
-	*size = strlen(data);
-out:
+	struct pv_pvtx_buffer *buf = read_data(ctrl);
 
+	check_error(buf, &ctrl->error);
+
+	const char *data_ptr = pvtx_ctrl_get_data(buf->data, buf->size);
+	char *data = strdup(data_ptr);
+	*size = strlen(data);
+
+	pv_pvtx_buffer_free(buf);
+
+out:
 	return data;
 }
 
@@ -368,16 +367,12 @@ int pv_pvtx_ctrl_steps_put(struct pv_pvtx_ctrl *ctrl, const char *data,
 	if (pv_fs_file_write_nointr(ctrl->sock, data, size) < 0)
 		return -1;
 
-	struct pv_pvtx_buffer *buf = get_buffer(&ctrl->error);
-
-	if (!buf)
-		return -1;
-	ssize_t n = pv_fs_file_read_nointr(ctrl->sock, buf->data, buf->size);
-	int ret = check_error(ctrl, buf->data);
+	struct pv_pvtx_buffer *buf = read_data(ctrl);
+	check_error(buf, &ctrl->error);
 
 	pv_pvtx_buffer_free(buf);
 
-	return ret;
+	return -ctrl->error.code;
 }
 
 int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
@@ -413,10 +408,11 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 		memset(buf->data, 0, buf->size);
 	}
 
-	ssize_t n = pv_fs_file_read_nointr(ctrl->sock, buf->data, buf->size);
-	int ret = check_error(ctrl, buf->data);
+	struct pv_pvtx_buffer *buf_data = read_data(ctrl);
+	check_error(buf_data, &ctrl->error);
 
+	pv_pvtx_buffer_free(buf_data);
 	pv_pvtx_buffer_free(buf);
 
-	return ret;
+	return -ctrl->error.code;
 }

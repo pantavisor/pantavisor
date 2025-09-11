@@ -273,17 +273,22 @@ static char *find_json(const char *dir)
 	return NULL;
 }
 
-static int init_state_json(const char *from)
+static int init_state_json(const char *from, struct pv_pvtx_error *err)
 {
-	int ret = 0;
 	char *json = NULL;
 	size_t json_len = 0;
 	struct pv_pvtx_state *st = NULL;
+	const char *err_msg = "couldn't initialize json with %s: %s";
+
+	pv_pvtx_error_clear(err);
 
 	if (!strncmp(from, "current", strlen("current"))) {
 		struct pv_pvtx_ctrl *ctrl = pv_pvtx_ctrl_new(NULL);
-		if (!ctrl)
+		if (!ctrl) {
+			PVTX_ERROR_SET(err, -1, err_msg, from,
+				       "pv-ctrl connection error");
 			goto out;
+		}
 		json = pv_pvtx_ctrl_steps_get(ctrl, "current", &json_len);
 		pv_pvtx_ctrl_free(ctrl);
 		goto out;
@@ -293,9 +298,17 @@ static int init_state_json(const char *from)
 		json_len = strlen(json);
 	} else {
 		char *loc = find_json(from);
-		if (!loc)
+		if (!loc) {
+			PVTX_ERROR_SET(err, -1, err_msg, from,
+				       "trail location error");
 			goto out;
-		st = pv_pvtx_state_from_file(loc);
+		}
+
+		st = pv_pvtx_state_from_file(loc, err);
+
+		if (!st)
+			PVTX_ERROR_PREPEND(err, "error loding %s", loc);
+
 		free(loc);
 
 		if (st) {
@@ -305,13 +318,14 @@ static int init_state_json(const char *from)
 	}
 out:
 	if (json) {
-		ret = pv_fs_file_write_no_sync(get_json_path(), json, json_len);
+		pv_fs_file_write_no_sync(get_json_path(), json, json_len);
 		free(json);
 	} else {
-		ret = -1;
+		PVTX_ERROR_SET(err, -1, err_msg, from,
+			       "error creating state json");
 	}
 
-	return ret;
+	return err->code;
 }
 
 static bool is_active_txn()
@@ -355,15 +369,16 @@ static int add_json(const char *json, size_t size, struct pv_pvtx_error *err)
 {
 	pv_pvtx_error_clear(err);
 
-	struct pv_pvtx_state *cur = pv_pvtx_state_from_file(get_json_path());
+	struct pv_pvtx_state *cur =
+		pv_pvtx_state_from_file(get_json_path(), err);
 	if (!cur) {
-		PVTX_ERROR_SET(err, -1, "couldn't load current state json");
+		PVTX_ERROR_PREPEND(err, "couldn't load current state json");
 		return -1;
 	}
 
-	struct pv_pvtx_state *st = pv_pvtx_state_from_str(json, size);
+	struct pv_pvtx_state *st = pv_pvtx_state_from_str(json, size, err);
 	if (!st) {
-		PVTX_ERROR_SET(err, -1, "couldn't load incoming json");
+		PVTX_ERROR_PREPEND(err, "couldn't load incoming json");
 		goto out;
 	}
 
@@ -886,11 +901,9 @@ static int process_add_directory(struct pv_pvtx_state *st, const char *dirname,
 	char js[PATH_MAX] = { 0 };
 	pv_fs_path_concat(js, 3, queue, dirname, "json");
 
-	struct pv_pvtx_state *new = pv_pvtx_state_from_file(js);
+	struct pv_pvtx_state *new = pv_pvtx_state_from_file(js, err);
 	if (!new) {
-		PVTX_ERROR_SET(err, -1,
-			       "couldn't add json, error loading json from %s",
-			       js);
+		PVTX_ERROR_PREPEND(err, "couldn't add %s", js);
 		return err->code;
 	}
 
@@ -1033,9 +1046,8 @@ int pv_pvtx_txn_begin(const char *from, const char *obj_path,
 		op_size = sizeof(struct pvtx_queue);
 	}
 
-	if (init_state_json(from) != 0) {
-		PVTX_ERROR_SET(err, -1,
-			       "couldn't initialize state json with %s", from);
+	if (init_state_json(from, err) != 0) {
+		PVTX_ERROR_PREPEND(err, "couldn't init transaction");
 		goto out;
 	}
 
@@ -1268,9 +1280,10 @@ int pv_pvtx_txn_remove(const char *part, struct pv_pvtx_error *err)
 		return 3;
 	}
 
-	struct pv_pvtx_state *st = pv_pvtx_state_from_file(get_json_path());
+	struct pv_pvtx_state *st =
+		pv_pvtx_state_from_file(get_json_path(), err);
 	if (!st) {
-		PVTX_ERROR_SET(err, -1, "couldn't load state json");
+		PVTX_ERROR_PREPEND(err, "couldn't load state json");
 		return -1;
 	}
 
@@ -1474,11 +1487,10 @@ int pv_pvtx_queue_process(const char *from, const char *queue_path,
 		goto out;
 	}
 
-	st = pv_pvtx_state_from_file(get_json_path());
+	st = pv_pvtx_state_from_file(get_json_path(), err);
 	if (!st) {
-		PVTX_ERROR_SET(err, -1,
-			       "couldn't process queue, "
-			       "error loading current state json");
+		PVTX_ERROR_PREPEND(err, "couldn't process queue, "
+					"error loading current state json");
 		goto out;
 	}
 
