@@ -67,6 +67,8 @@
 
 #define ENDPOINT_FMT "/devices/%s"
 
+#define DEFAULT_INTERVAL 6
+
 trest_ptr *client = 0;
 char *endpoint = 0;
 
@@ -575,8 +577,10 @@ const char *pv_pantahub_state_string(ph_state_t state)
 		return "login";
 	case PH_STATE_IDLE:
 		return "idle";
-	case PH_STATE_UPDATE:
-		return "update";
+	case PH_STATE_PREP_DOWNLOAD:
+		return "prep_download";
+	case PH_STATE_DOWNLOAD:
+		return "download";
 	default:
 		return "unknown";
 	}
@@ -639,7 +643,7 @@ static void _close_state_login()
 	if (!ph)
 		return;
 
-	pv_event_timer_close(&ph->login_timer);
+	pv_event_timer_close(&ph->default_timer);
 }
 
 static void _close_state_idle()
@@ -648,8 +652,32 @@ static void _close_state_idle()
 	if (!ph)
 		return;
 
-	pv_event_timer_close(&ph->usrmeta_timer);
+	pv_event_timer_close(&ph->default_timer);
 	pv_event_timer_close(&ph->devmeta_timer);
+	pv_event_timer_close(&ph->usrmeta_timer);
+	pv_event_timer_close(&ph->updater_timer);
+}
+
+static void _close_state_prep_download()
+{
+	pantahub_t *ph = ph_get_instance();
+	if (!ph)
+		return;
+
+	pv_event_timer_close(&ph->default_timer);
+	pv_event_timer_close(&ph->devmeta_timer);
+	pv_event_timer_close(&ph->usrmeta_timer);
+}
+
+static void _close_state_download()
+{
+	pantahub_t *ph = ph_get_instance();
+	if (!ph)
+		return;
+
+	pv_event_timer_close(&ph->default_timer);
+	pv_event_timer_close(&ph->devmeta_timer);
+	pv_event_timer_close(&ph->usrmeta_timer);
 }
 
 static void _close_state()
@@ -668,6 +696,12 @@ static void _close_state()
 		break;
 	case PH_STATE_IDLE:
 		_close_state_idle();
+		break;
+	case PH_STATE_PREP_DOWNLOAD:
+		_close_state_prep_download();
+		break;
+	case PH_STATE_DOWNLOAD:
+		_close_state_download();
 		break;
 	default:
 		pv_log(WARN, "state not implemented");
@@ -692,6 +726,8 @@ int pv_pantahub_close()
 	return pv_config_unload_creds();
 }
 
+static void _run_state_cb(evutil_socket_t fd, short events, void *arg);
+
 static void _next_state(ph_state_t state)
 {
 	pantahub_t *ph = ph_get_instance();
@@ -708,6 +744,8 @@ static void _next_state(ph_state_t state)
 	ph->state = state;
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
 				pv_pantahub_state_string(state));
+
+	pv_event_one_shot(_run_state_cb);
 }
 
 static void _run_state_init()
@@ -723,6 +761,12 @@ static void _run_state_init()
 static void _login_event_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_login_event_cb);
+
+	if (pv_pantahub_proto_is_session_open()) {
+		_next_state(PH_STATE_IDLE);
+		return;
+	}
+
 	pv_pantahub_proto_open_session();
 }
 
@@ -732,12 +776,29 @@ static void _run_state_login()
 	if (!ph)
 		return;
 
-	if (pv_pantahub_proto_is_session_open()) {
-		_next_state(PH_STATE_IDLE);
+	pv_event_timer_run(&ph->default_timer, DEFAULT_INTERVAL,
+			   _login_event_cb);
+}
+
+static void _evaluate_idle_event_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_idle_event_cb);
+
+	if (!pv_pantahub_proto_is_session_open()) {
+		_next_state(PH_STATE_LOGIN);
 		return;
 	}
 
-	pv_event_timer_run(&ph->login_timer, 5, _login_event_cb);
+	if (pv_update_is_queued()) {
+		_next_state(PH_STATE_PREP_DOWNLOAD);
+		return;
+	}
+}
+
+static void _updater_event_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_updater_event_cb);
+	pv_pantahub_proto_get_pending_steps();
 }
 
 static void _usrmeta_event_cb(evutil_socket_t fd, short event, void *arg)
@@ -758,11 +819,11 @@ static void _run_state_idle()
 	if (!ph)
 		return;
 
-	if (!pv_pantahub_proto_is_session_open()) {
-		_next_state(PH_STATE_LOGIN);
-		return;
-	}
-
+	pv_event_timer_run(&ph->default_timer, DEFAULT_INTERVAL,
+			   _evaluate_idle_event_cb);
+	pv_event_timer_run(&ph->updater_timer,
+			   pv_config_get_int(PH_UPDATER_INTERVAL),
+			   _updater_event_cb);
 	pv_event_timer_run(&ph->usrmeta_timer,
 			   pv_config_get_int(PH_METADATA_USRMETA_INTERVAL),
 			   _usrmeta_event_cb);
@@ -771,7 +832,92 @@ static void _run_state_idle()
 			   _devmeta_event_cb);
 }
 
-void pv_pantahub_step()
+static void _prep_download_event_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_prep_download_event_cb);
+
+	if (!pv_pantahub_proto_is_session_open()) {
+		_next_state(PH_STATE_LOGIN);
+		return;
+	}
+
+	if (pv_update_is_downloading()) {
+		_next_state(PH_STATE_DOWNLOAD);
+		return;
+	}
+
+	if (pv_update_is_final()) {
+		_next_state(PH_STATE_IDLE);
+		return;
+	}
+
+	if (pv_pantahub_proto_get_objects_metadata()) {
+		_next_state(PH_STATE_IDLE);
+		return;
+	}
+}
+
+static void _run_state_prep_download()
+{
+	pantahub_t *ph = ph_get_instance();
+	if (!ph)
+		return;
+
+	pv_event_timer_run(&ph->default_timer, DEFAULT_INTERVAL,
+			   _prep_download_event_cb);
+	pv_event_timer_run(&ph->usrmeta_timer,
+			   pv_config_get_int(PH_METADATA_USRMETA_INTERVAL),
+			   _usrmeta_event_cb);
+	pv_event_timer_run(&ph->devmeta_timer,
+			   pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
+			   _devmeta_event_cb);
+}
+
+static void _download_objects_event_cb(evutil_socket_t fd, short event,
+				       void *arg)
+{
+	char **objects, **o;
+
+	pv_log(DEBUG, "run event: cb=%p", (void *)_download_objects_event_cb);
+
+	if (!pv_pantahub_proto_is_session_open()) {
+		_next_state(PH_STATE_LOGIN);
+		return;
+	}
+
+	if (pv_update_is_inprogress()) {
+		_next_state(PH_STATE_IDLE);
+		return;
+	}
+
+	if (pv_update_is_final()) {
+		_next_state(PH_STATE_IDLE);
+		return;
+	}
+
+	if (pv_pantahub_proto_get_objects()) {
+		_next_state(PH_STATE_IDLE);
+		return;
+	}
+}
+
+static void _run_state_download()
+{
+	pantahub_t *ph = ph_get_instance();
+	if (!ph)
+		return;
+
+	pv_event_timer_run(&ph->default_timer, DEFAULT_INTERVAL,
+			   _download_objects_event_cb);
+	pv_event_timer_run(&ph->usrmeta_timer,
+			   pv_config_get_int(PH_METADATA_USRMETA_INTERVAL),
+			   _usrmeta_event_cb);
+	pv_event_timer_run(&ph->devmeta_timer,
+			   pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
+			   _devmeta_event_cb);
+}
+
+static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 {
 	pantahub_t *ph = ph_get_instance();
 	if (!ph)
@@ -787,7 +933,25 @@ void pv_pantahub_step()
 	case PH_STATE_IDLE:
 		_run_state_idle();
 		break;
+	case PH_STATE_PREP_DOWNLOAD:
+		_run_state_prep_download();
+		break;
+	case PH_STATE_DOWNLOAD:
+		_run_state_download();
+		break;
 	default:
 		pv_log(WARN, "state not implemented");
 	}
+}
+
+void pv_pantahub_start()
+{
+	pantahub_t *ph = ph_get_instance();
+	if (!ph)
+		return;
+
+	if (ph->state != PH_STATE_INIT)
+		return;
+
+	pv_event_one_shot(_run_state_cb);
 }

@@ -22,6 +22,7 @@
 #ifndef PV_PATHS_H
 #define PV_PATHS_H
 
+#include <limits.h>
 #include <stddef.h>
 
 #define ONLINE_FNAME "online"
@@ -73,6 +74,7 @@ void pv_paths_storage_dropbear(char *buf, size_t size);
 
 void pv_paths_storage_file(char *buf, size_t size, const char *name);
 void pv_paths_storage_object(char *buf, size_t size, const char *sha);
+void pv_paths_storage_object_tmp(char *buf, size_t size);
 
 #define DONE_FNAME "done"
 #define PROGRESS_FNAME "progress"

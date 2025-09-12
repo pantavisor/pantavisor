@@ -31,13 +31,15 @@ typedef enum {
 	PH_STATE_SYNC,
 	PH_STATE_LOGIN,
 	PH_STATE_IDLE,
-	PH_STATE_UPDATE,
+	PH_STATE_PREP_DOWNLOAD,
+	PH_STATE_DOWNLOAD,
 	PH_STATE_MAX
 } ph_state_t;
 
 typedef struct {
 	ph_state_t state;
-	event_timer_t login_timer;
+	event_timer_t default_timer;
+	event_timer_t updater_timer;
 	event_timer_t usrmeta_timer;
 	event_timer_t devmeta_timer;
 } pantahub_t;

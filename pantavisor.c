@@ -473,26 +473,18 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	ph_logger_toggle(pv->state->rev);
 
 	// ph client state machine
-	pv_pantahub_step();
+	pv_pantahub_start();
 
 	// check for new remote update
 	tstate = timer_current_state(&timer_updater_interval);
 	if (tstate.fin) {
 		if (pv_updater_check_for_updates(pv) > 0) {
-			pv_metadata_add_devmeta(
-				DEVMETA_KEY_PH_STATE,
-				pv_pantahub_state_string(PH_STATE_UPDATE));
 			return PV_STATE_UPDATE;
 		}
 		timer_start(&timer_updater_interval,
 			    pv_config_get_int(PH_UPDATER_INTERVAL), 0,
 			    RELATIV_TIMER);
 	}
-
-	if (pv->synced)
-		pv_metadata_add_devmeta(
-			DEVMETA_KEY_PH_STATE,
-			pv_pantahub_state_string(PH_STATE_IDLE));
 
 out:
 	// process ongoing updates, if any
@@ -753,9 +745,6 @@ out:
 
 static pv_state_t _pv_update_apply(struct pantavisor *pv)
 {
-	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-				pv_pantahub_state_string(PH_STATE_UPDATE));
-
 	// download and install pending step
 	if (pv_update_download(pv) || pv_update_install(pv)) {
 		pv_log(ERROR, "update has failed, continue...");
@@ -769,9 +758,6 @@ static pv_state_t _pv_update_apply(struct pantavisor *pv)
 
 static pv_state_t _pv_update(struct pantavisor *pv)
 {
-	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-				pv_pantahub_state_string(PH_STATE_UPDATE));
-
 	// download and install pending step
 	if (pv_update_download(pv) || pv_update_install(pv)) {
 		pv_log(ERROR, "update has failed, continue...");

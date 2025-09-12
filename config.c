@@ -39,6 +39,7 @@
 #include "state.h"
 #include "storage.h"
 #include "paths.h"
+#include "pantavisor.h"
 #include "parser/parser.h"
 #include "utils/fs.h"
 #include "utils/str.h"

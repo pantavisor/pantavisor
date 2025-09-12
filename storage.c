@@ -39,9 +39,9 @@
 #include <sys/prctl.h>
 #include <sys/statfs.h>
 
-#include <mbedtls/sha256.h>
-
 #include <jsmn/jsmnutil.h>
+
+#include <mbedtls/sha256.h>
 
 #include "updater.h"
 #include "objects.h"
@@ -56,6 +56,7 @@
 #include "signature.h"
 #include "paths.h"
 #include "metadata.h"
+#include "pantavisor.h"
 #include "parser/parser.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -422,19 +423,20 @@ out:
 	free(storage);
 }
 
-int pv_storage_validate_file_checksum(char *path, char *checksum)
+unsigned char *pv_storage_calculate_sha256sum(const char *path)
 {
-	int fd, ret = -1, bytes;
-	mbedtls_sha256_context sha256_ctx;
+	int fd, bytes;
 	unsigned char buf[4096];
-	unsigned char cloud_sha[32];
-	unsigned char local_sha[32];
-	char *tmp_sha;
-	char byte[3];
+	unsigned char *ret = NULL;
+	mbedtls_sha256_context sha256_ctx;
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0)
-		return ret;
+		return NULL;
+
+	ret = calloc(32, sizeof(char));
+	if (!ret)
+		goto out;
 
 	mbedtls_sha256_init(&sha256_ctx);
 	mbedtls_sha256_starts(&sha256_ctx, 0);
@@ -442,8 +444,24 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 	while ((bytes = read(fd, buf, 4096)) > 0)
 		mbedtls_sha256_update(&sha256_ctx, buf, bytes);
 
-	mbedtls_sha256_finish(&sha256_ctx, local_sha);
+	mbedtls_sha256_finish(&sha256_ctx, ret);
 	mbedtls_sha256_free(&sha256_ctx);
+
+out:
+	close(fd);
+
+	return ret;
+}
+
+int pv_storage_validate_file_checksum(char *path, char *checksum)
+{
+	int ret = -1;
+	unsigned char cloud_sha[32];
+	unsigned char *local_sha = NULL;
+	char *tmp_sha;
+	char byte[3];
+
+	local_sha = pv_storage_calculate_sha256sum(path);
 
 	// signed to unsigned
 	tmp_sha = checksum;
@@ -461,7 +479,8 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 	ret = 0;
 
 out:
-	close(fd);
+	if (local_sha)
+		free(local_sha);
 
 	return ret;
 }
@@ -505,9 +524,56 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 	return ret;
 }
 
-void pv_storage_set_active(struct pantavisor *pv)
+void pv_storage_set_object_download_path(char *path, size_t size)
+{
+	int fd;
+
+	memset(path, 0, size);
+
+	if (pv_config_get_bool(PV_UPDATER_USE_TMP_OBJECTS) &&
+	    (!strcmp(pv_config_get_str(PV_STORAGE_FSTYPE), "jffs2") ||
+	     !strcmp(pv_config_get_str(PV_STORAGE_FSTYPE), "ubifs")))
+		stpncpy(path, "/tmp/object-XXXXXX", size);
+	else
+		pv_paths_storage_object_tmp(path, size);
+
+	fd = mkstemp(path);
+	if (fd < 0)
+		return;
+	close(fd);
+}
+
+bool pv_storage_is_object_installed(const char *id)
 {
 	char path[PATH_MAX];
+
+	if (!id)
+		return false;
+
+	pv_paths_storage_object(path, PATH_MAX, id);
+	return pv_fs_path_exist(path);
+}
+
+int pv_storage_install_object(const char *src_path, const char *id)
+{
+	char dst_path[PATH_MAX];
+
+	pv_paths_storage_object(dst_path, PATH_MAX, id);
+	if (rename(src_path, dst_path)) {
+		pv_log(WARN, "could not rename '%s' to '%s': %s", src_path,
+		       dst_path, strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
+void pv_storage_set_active()
+{
+	char path[PATH_MAX];
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
 
 	// path to current revision - relative and dir for fd
 	pv_paths_storage_trail(path, PATH_MAX, "current");
@@ -780,12 +846,45 @@ void pv_storage_init_trail_pvr()
 		       strerror(errno));
 }
 
-int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_link_trail_object(const char *id, const char *rev,
+				 const char *name)
+{
+	char relpath[PATH_MAX], objpath[PATH_MAX];
+	char *ext;
+
+	pv_paths_storage_object(objpath, PATH_MAX, id);
+	pv_paths_storage_trail_file(relpath, PATH_MAX, rev, name);
+
+	pv_log(DEBUG, "linking '%s' to '%s'", objpath, relpath);
+
+	pv_fs_mkbasedir_p(relpath, 0775);
+	ext = strrchr(relpath, '.');
+	if (ext && (strcmp(ext, ".bind") == 0)) {
+		pv_log(INFO, "copying bind volume");
+		if (pv_fs_file_copy(objpath, relpath, 0644) < 0) {
+			pv_log(WARN, "could not copy objects: %s",
+			       strerror(errno));
+			return -1;
+		}
+	} else if (link(objpath, relpath) < 0) {
+		if (errno != EEXIST) {
+			pv_log(WARN, "unable to link: %s", strerror(errno));
+			return -1;
+		}
+	}
+
+	pv_fs_path_sync(relpath);
+
+	return 0;
+}
+
+int pv_storage_meta_expand_jsons(struct pv_state *s)
 {
 	int ret = 0;
 	struct stat st;
 	char path[PATH_MAX];
 	char *file = 0, *dir = 0;
+	struct pantavisor *pv = pv_get_instance();
 
 	if (!pv || !s)
 		goto out;
@@ -815,12 +914,15 @@ out:
 	return ret;
 }
 
-int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_meta_link_boot(struct pv_state *s)
 {
 	int i;
 	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[PATH_MAX];
 	struct pv_addon *a, *tmp;
 	struct dl_list *addons = NULL;
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return -1;
 
 	if (!s)
 		s = pv->state;
@@ -932,6 +1034,20 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 err:
 	pv_log(ERROR, "unable to link '%s' to '%s', errno %d", src, dst, errno);
 	return -1;
+}
+
+int pv_storage_install_state_json(const char *state, const char *rev)
+{
+	char path[PATH_MAX];
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, "");
+	pv_fs_mkdir_p(path, 0755);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
+	if (pv_fs_file_save(path, state, 0644) < 0) {
+		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
+		return -1;
+	}
+
+	return 0;
 }
 
 char *pv_storage_get_state_json(const char *rev)

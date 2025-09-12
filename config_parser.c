@@ -31,6 +31,7 @@
 #include <sys/stat.h>
 
 #include "config_parser.h"
+#include "pantavisor.h"
 #include "utils/str.h"
 #include "utils/fs.h"
 
