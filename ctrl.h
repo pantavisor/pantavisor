@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2023 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -23,67 +23,7 @@
 #ifndef PV_CTRL_H
 #define PV_CTRL_H
 
-#include <stdint.h>
-#include <string.h>
+int pv_ctrl_start(void);
+void pv_ctrl_stop(void);
 
-typedef enum {
-	CMD_UPDATE_METADATA = 1,
-	CMD_REBOOT_DEVICE = 2,
-	CMD_POWEROFF_DEVICE = 3,
-	CMD_TRY_ONCE = 4,
-	CMD_LOCAL_RUN = 5,
-	CMD_LOCAL_APPLY = 6,
-	CMD_MAKE_FACTORY = 7,
-	CMD_RUN_GC = 8,
-	CMD_ENABLE_SSH = 9,
-	CMD_DISABLE_SSH = 10,
-	CMD_GO_REMOTE = 11,
-	CMD_DEFER_REBOOT = 12,
-	CMD_LOCAL_RUN_COMMIT = 13,
-	MAX_CMD_OP
-} pv_cmd_operation_t;
-
-struct pv_cmd {
-	pv_cmd_operation_t op;
-	char *payload;
-};
-
-void pv_ctrl_socket_read(int fd, short event, void *arg);
-void pv_ctrl_free_cmd(struct pv_cmd *cmd);
-
-void pv_ctrl_socket_close(int ctrl_fd);
-
-static inline const char *
-pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
-{
-	static const char *strings[] = { NULL,
-					 "UPDATE_METADATA",
-					 "REBOOT_DEVICE",
-					 "POWEROFF_DEVICE",
-					 "TRY_ONCE",
-					 "LOCAL_RUN",
-					 "LOCAL_APPLY",
-					 "MAKE_FACTORY",
-					 "RUN_GC",
-					 "ENABLE_SSH",
-					 "DISABLE_SSH",
-					 "GO_REMOTE",
-					 "DEFER_REBOOT",
-					 "LOCAL_RUN_COMMIT" };
-	return strings[op];
-}
-
-static inline pv_cmd_operation_t
-pv_ctrl_int_cmd_operation(const char *op_string, const int op_string_size)
-{
-	for (pv_cmd_operation_t op_index = 1; op_index < MAX_CMD_OP;
-	     ++op_index) {
-		if (!strncmp(op_string, pv_ctrl_string_cmd_operation(op_index),
-			     op_string_size))
-			return op_index;
-	}
-
-	return 0;
-}
-
-#endif // PV_CTRL_H
+#endif
