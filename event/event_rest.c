@@ -20,7 +20,9 @@
  * SOFTWARE.
  */
 #include <dirent.h>
+#include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <event2/bufferevent_ssl.h>
 #include <event2/bufferevent.h>
@@ -34,9 +36,11 @@
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 
-#include "event_rest.h"
+#include "event/event_rest.h"
+#include "event/event.h"
 
-#include "event.h"
+#include "config.h"
+#include "pantavisor.h"
 #include "paths.h"
 
 #include "utils/str.h"
@@ -182,19 +186,20 @@ static void _print_error_cb(enum evhttp_request_error error, void *mbedtls_ctx)
 	}
 }
 
-int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
-		       const char *token, const char *body,
-		       void (*cb)(struct evhttp_request *, void *))
+int pv_event_rest_send_by_components(
+	enum evhttp_cmd_type op, const char *host, int port,
+	const char *endpoint, const char *token, const char *body,
+	void (*chunk_cb)(struct evhttp_request *, void *),
+	void (*done_cb)(struct evhttp_request *, void *), void *ctx)
 {
 	if (!pv_event_get_base())
 		return -1;
 
-	_debug_log(DEBUG, "%s %s HTTP/1.1", _op_string(op), uri);
+	_debug_log(DEBUG, "%s %s HTTP/1.1", _op_string(op), endpoint);
 
 	mbedtls_dyncontext *ssl;
 	ssl = bufferevent_mbedtls_dyncontext_new(&config);
 
-	char *host = pv_config_get_str(PH_CREDS_HOST);
 	mbedtls_ssl_set_hostname(ssl, host);
 
 	struct bufferevent *bev;
@@ -208,7 +213,6 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 
 	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
 
-	int port = pv_config_get_int(PH_CREDS_PORT);
 	struct evhttp_connection *evcon;
 	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
 						       NULL, bev, host, port);
@@ -235,12 +239,14 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 	evhttp_connection_set_write_timeout_tv(evcon, &time);
 
 	struct evhttp_request *req;
-	req = evhttp_request_new(cb, bev);
+	req = evhttp_request_new(done_cb, ctx);
 	if (!req) {
 		pv_log(ERROR, "evhttp_request_new failed");
 		goto error;
 	}
 
+	if (chunk_cb)
+		evhttp_request_set_chunked_cb(req, chunk_cb);
 	evhttp_request_set_error_cb(req, _print_error_cb);
 
 	struct evkeyvalq *output_headers;
@@ -274,14 +280,15 @@ int pv_event_rest_send(enum evhttp_cmd_type op, const char *uri,
 	}
 
 	int res;
-	res = evhttp_make_request(evcon, req, op, uri);
+	res = evhttp_make_request(evcon, req, op, endpoint);
 	if (res != 0) {
 		pv_log(ERROR, "evhttp_make_request returned code %d", res);
 		goto error;
 	}
 
-	pv_log(DEBUG, "add event: type='rest' cb=%p req='%s %s HTTP/1.1'",
-	       (void *)cb, _op_string(op), uri);
+	pv_log(DEBUG,
+	       "add event: type='rest' chunk_cb=%p done_cb=%p req='%s %s HTTP/1.1'",
+	       (void *)chunk_cb, (void *)done_cb, _op_string(op), endpoint);
 
 	return 0;
 error:
@@ -292,40 +299,87 @@ error:
 	return -1;
 }
 
-int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char **buf,
-		       size_t max_len)
+int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
+			      void (*chunk_cb)(struct evhttp_request *, void *),
+			      void (*done_cb)(struct evhttp_request *, void *),
+			      void *ctx)
+{
+	int ret = -1, port;
+	const char *scheme, *host, *path;
+	struct evhttp_uri *http_uri = NULL;
+
+	http_uri = evhttp_uri_parse(url);
+	if (!http_uri) {
+		pv_log(WARN, "could not parse URL");
+		goto out;
+	}
+
+	scheme = evhttp_uri_get_scheme(http_uri);
+	if (!scheme) {
+		pv_log(WARN, "could not get scheme");
+		goto out;
+	}
+
+	if (!pv_str_matches(scheme, strlen(scheme), "https", strlen("https"))) {
+		pv_log(WARN, "https is mandatory");
+		goto out;
+	}
+
+	host = evhttp_uri_get_host(http_uri);
+	if (!host) {
+		pv_log(WARN, "could not get host");
+		goto out;
+	}
+
+	port = evhttp_uri_get_port(http_uri);
+	if (port < 0)
+		port = 443;
+
+	path = evhttp_uri_get_path(http_uri);
+	if (!path || !strlen(path))
+		path = "/";
+
+	pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
+					 chunk_cb, done_cb, ctx);
+
+	ret = 0;
+out:
+	if (http_uri)
+		evhttp_uri_free(http_uri);
+
+	return ret;
+}
+
+int _recv_status_line(struct evhttp_request *req)
 {
 	int ret = -1;
 
-	struct bufferevent *bev = (struct bufferevent *)ctx;
-	if (!bev) {
-		pv_log(WARN, "response got no buffer event");
-		return ret;
-	}
-
 	if (!req || !evhttp_request_get_response_code(req)) {
-		unsigned long oslerr;
-		int printed_err = 0;
 		int errcode = EVUTIL_SOCKET_ERROR();
-
-		pv_log(WARN, "request failed");
-		while ((oslerr = bufferevent_get_mbedtls_error(bev))) {
-			pv_log(WARN,
-			       "bufferevent_get_mbedtls_error returned code %d",
-			       oslerr);
-			printed_err = 1;
-		}
-		if (!printed_err)
-			pv_log(WARN, "socket error %d: %s", errcode,
-			       evutil_socket_error_to_string(errcode));
-		goto out;
+		pv_log(WARN, "socket error %d: %s", errcode,
+		       evutil_socket_error_to_string(errcode));
+		return -1;
 	}
 
 	ret = evhttp_request_get_response_code(req);
 	_debug_log(DEBUG, "HTTP/1.1 %d %s", ret,
 		   evhttp_request_get_response_code_line(req));
 
+	return ret;
+}
+
+int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
+			      size_t max_len)
+{
+	int ret;
 	struct evbuffer *evbuf;
+
+	ret = _recv_status_line(req);
+	if (ret < 0) {
+		pv_log(WARN, "could not receive status line");
+		return -1;
+	}
+
 	evbuf = evhttp_request_get_input_buffer(req);
 
 	size_t to_read;
@@ -333,13 +387,13 @@ int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char **buf,
 	if (to_read > max_len) {
 		pv_log(WARN, "body length %zu bigger than max allowed %zu",
 		       to_read, max_len);
-		goto out;
+		return -1;
 	}
 
 	char *tmp;
 	tmp = calloc(to_read + 1, sizeof(char));
 	if (!tmp)
-		goto out;
+		return -1;
 
 	*buf = tmp;
 
@@ -352,7 +406,44 @@ int pv_event_rest_recv(struct evhttp_request *req, void *ctx, char **buf,
 	_debug_log(DEBUG, "");
 	_debug_log(DEBUG, "%s", buf);
 
-out:
+	return ret;
+}
+
+int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
+{
+	int fd, written;
+	struct evbuffer *evbuf;
+
+	evbuf = evhttp_request_get_input_buffer(req);
+
+	fd = open(path, O_CREAT | O_RDWR | O_APPEND, 0644);
+	if (fd < 0) {
+		pv_log(WARN, "could not open '%s': %s", path, strerror(errno));
+		return -1;
+	}
+
+	written = evbuffer_write(evbuf, fd);
+	if (written < 0)
+		pv_log(WARN, "could not write '%s': %s", path,
+		       strerror(
+			       errno)) else pv_log(WARN,
+						   "Successfully wrote %d bytes to file",
+						   written);
+
+	close(fd);
+
+	return 0;
+}
+
+int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path)
+{
+	int ret;
+
+	ret = _recv_status_line(req);
+	if (ret < 0) {
+		pv_log(WARN, "could not receive status line");
+		return -1;
+	}
 
 	return ret;
 }

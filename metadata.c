@@ -45,7 +45,6 @@
 #include "init.h"
 #include "str.h"
 #include "paths.h"
-#include "updater.h"
 #include "json.h"
 #include "config.h"
 #include "config_parser.h"

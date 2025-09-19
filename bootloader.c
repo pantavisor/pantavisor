@@ -32,7 +32,9 @@
 #include <mtd/mtd-user.h>
 
 #include "bootloader.h"
+#include "config.h"
 #include "init.h"
+#include "pantavisor.h"
 #include "utils/str.h"
 
 #define MODULE_NAME "bootloader"
