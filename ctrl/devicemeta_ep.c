@@ -1,0 +1,133 @@
+/*
+ * Copyright (c) 2025 Pantacor Ltd.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+#include "ctrl/sender.h"
+#include "ctrl/handler.h"
+#include "ctrl/utils.h"
+#include "metadata.h"
+
+#include <event2/http.h>
+#include <event2/buffer.h>
+
+#include <string.h>
+
+#define MODULE_NAME "devicemeta-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
+
+static void devicemeta_list(struct evhttp_request *req)
+{
+	int methods[] = { EVHTTP_REQ_GET, -1 };
+	struct pv_ctrl_sender *snd =
+		pv_ctrl_utils_checks(MODULE_NAME, req, methods, true);
+
+	if (!snd)
+		return;
+
+	char *devmeta = pv_metadata_get_device_meta_string();
+	if (!devmeta) {
+		pv_log(WARN, "couldn't get dev-maeta");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "couldn't get dev-meta");
+		goto out;
+	}
+
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, devmeta);
+
+out:
+	if (devmeta)
+		free(devmeta);
+
+	pv_ctrl_sender_free(snd);
+}
+
+static void devicemeta_add_or_update(struct evhttp_request *req,
+				     const char *key)
+{
+	const char *value = pv_ctrl_utils_get_incoming_data(req, NULL);
+	if (!value)
+		return;
+	int ret = pv_metadata_add_devmeta(key, value);
+
+	if (ret != 0) {
+		pv_log(DEBUG, "couldn't add new key: %s, val: %.*s", key, 20,
+		       value);
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot add or update device meta");
+		return;
+	}
+
+	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+}
+
+static void devicemeta_remove(struct evhttp_request *req, const char *key)
+{
+	if (pv_metadata_rm_devmeta(key) < 0) {
+		pv_log(DEBUG, "couldn't remove device meta, key: %s", key);
+		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
+					 "Device meta does not exist");
+		return;
+	}
+
+	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+}
+
+static void devicemeta_key(struct evhttp_request *req, const char *key)
+{
+	int methods[] = { EVHTTP_REQ_PUT, EVHTTP_REQ_DELETE, -1 };
+
+	struct pv_ctrl_sender *snd =
+		pv_ctrl_utils_checks(MODULE_NAME, req, methods, true);
+
+	if (!snd)
+		return;
+
+	if (snd->method == EVHTTP_REQ_PUT)
+		devicemeta_add_or_update(req, key);
+	else if (snd->method == EVHTTP_REQ_DELETE)
+		devicemeta_remove(req, key);
+
+	pv_ctrl_sender_free(snd);
+}
+
+static int devicemeta_handler(struct evhttp_request *req)
+{
+	const char *uri = evhttp_request_get_uri(req);
+	char *parts[PV_CTRL_UTILS_MAX_PARTS] = { 0 };
+	int size = pv_ctrl_utils_split_path(uri, parts);
+
+	if (size == 0 || size > 2 || strcmp(parts[0], "device-meta") != 0)
+		return -1;
+
+	if (size == 1) {
+		devicemeta_list(req);
+	} else if (size == 2) {
+		devicemeta_key(req, parts[1]);
+	}
+
+	return 0;
+}
+
+struct pv_ctrl_handler devicemeta_hnd = {
+	.path = "/device-meta",
+	.fn = devicemeta_handler,
+};
