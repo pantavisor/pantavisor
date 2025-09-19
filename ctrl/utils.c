@@ -1,0 +1,174 @@
+/*
+ * Copyright (c) 2025 Pantacor Ltd.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+#include "ctrl/utils.h"
+#include "ctrl/sender.h"
+
+#include <event2/http.h>
+#include <event2/buffer.h>
+
+#include <string.h>
+#include <stdlib.h>
+#include <stdarg.h>
+
+#define MODULE_NAME "ctrl-utils"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
+
+struct pv_ctrl_sender *pv_ctrl_utils_checks(const char *logname,
+					    struct evhttp_request *req,
+					    int *methods, bool check_mgmt)
+{
+	struct pv_ctrl_sender *snd = pv_ctrl_sender_new(req);
+
+	if (!snd) {
+		pv_log(WARN, "%s: couldn't create sender object", logname);
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL, "Internal error");
+		goto err;
+	}
+
+	bool method_ok = false;
+	int i = 0;
+	while (methods[i] != -1) {
+		if (methods[i] != snd->method)
+			continue;
+
+		method_ok = true;
+		break;
+		i++;
+	}
+
+	if (!method_ok) {
+		pv_log(WARN, "%s: HTTP method not supported for this endpoint",
+		       logname);
+		pv_ctrl_utils_send_error(
+			req, HTTP_BADREQUEST,
+			"Method not supported for this endpoint");
+		goto err;
+	}
+
+	if (check_mgmt && !snd->is_privileged) {
+		pv_log(WARN, "%s: Request not sent from mgmt platform",
+		       logname);
+		pv_ctrl_utils_send_error(req, HTTP_FORBIDDEN,
+					 "Request not sent from mgmt platform");
+		goto err;
+	}
+
+	return snd;
+err:
+	pv_ctrl_sender_free(snd);
+	return NULL;
+}
+
+void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
+			     const char *reason, const char *json, ...)
+{
+	struct evbuffer *reply = evbuffer_new();
+	if (!reply) {
+		pv_log(DEBUG, "couldn't allocate reply buffer");
+		return;
+	}
+
+	va_list lst;
+	va_start(lst, json);
+
+	evbuffer_add_vprintf(reply, json, lst);
+	va_end(lst);
+
+	evhttp_add_header(evhttp_request_get_output_headers(req),
+			  "Content-Type", "application/json");
+	evhttp_send_reply(req, code, reason, reply);
+	evbuffer_free(reply);
+}
+
+void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
+			      const char *err_str)
+{
+	pv_ctrl_utils_send_json(req, code, NULL, PV_CTRL_UTILS_ERR_RSP,
+				err_str);
+}
+
+static void parts_free(char **parts)
+{
+	for (int i = 0; i < PV_CTRL_UTILS_MAX_PARTS; i++) {
+		free(parts[i]);
+		parts[i] = NULL;
+	}
+}
+
+int pv_ctrl_utils_split_path(const char *path, char **parts)
+{
+	parts_free(parts);
+
+	if (!path)
+		return 0;
+
+	const char *start = path;
+	const char *end = path;
+	int parts_count = 0;
+
+	while (*start) {
+		while (*start == '/')
+			start++;
+
+		if (!*start)
+			break;
+
+		end = start;
+		while (*end && *end != '/')
+			end++;
+
+		if (end > start) {
+			parts[parts_count] = strndup(start, (end - start));
+			parts_count++;
+
+			if (parts_count == PV_CTRL_UTILS_MAX_PARTS)
+				return parts_count;
+		}
+
+		start = end;
+	}
+
+	return parts_count;
+}
+
+char *pv_ctrl_utils_get_incoming_data(struct evhttp_request *req, size_t *len)
+{
+	struct evbuffer *buf = evhttp_request_get_input_buffer(req);
+	if (!buf) {
+		pv_log(DEBUG, "couldn't get incoming data");
+		return NULL;
+	}
+
+	size_t cur_len = evbuffer_get_length(buf);
+	char *data = calloc(cur_len + 1, sizeof(char));
+	if (data) {
+		pv_log(DEBUG, "couldn't alloc incoming data");
+		return NULL;
+	}
+	evbuffer_remove(buf, data, cur_len);
+
+	if (len)
+		*len = cur_len;
+
+	return data;
+}
