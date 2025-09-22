@@ -29,6 +29,7 @@
 #include <event2/buffer.h>
 
 #include <string.h>
+#include <linux/limits.h>
 
 #define MODULE_NAME "usermeta-ep"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -111,7 +112,7 @@ static void usermeta_key(struct evhttp_request *req, const char *key)
 static int usermeta_handler(struct evhttp_request *req)
 {
 	const char *uri = evhttp_request_get_uri(req);
-	char *parts[PV_CTRL_UTILS_MAX_PARTS] = { 0 };
+	char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX] = { 0 };
 	int size = pv_ctrl_utils_split_path(uri, parts);
 
 	if (size == 0 || size > 2 || strcmp(parts[0], "user-meta") != 0)

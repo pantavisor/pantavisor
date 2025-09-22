@@ -25,6 +25,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <linux/limits.h>
 
 #define PV_CTRL_UTILS_MAX_PARTS (10)
 #define PV_CTRL_UTILS_ERR_RSP "{\"Error\":\"%s\"}"
@@ -39,7 +40,8 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 			      const char *err_str);
 
-int pv_ctrl_utils_split_path(const char *path, char **parts);
+int pv_ctrl_utils_split_path(const char *path,
+			     char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX]);
 
 struct pv_ctrl_sender *pv_ctrl_utils_checks(const char *logname,
 					    struct evhttp_request *req,

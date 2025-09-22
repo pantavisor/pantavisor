@@ -107,18 +107,9 @@ void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 				err_str);
 }
 
-static void parts_free(char **parts)
+int pv_ctrl_utils_split_path(const char *path,
+			     char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX])
 {
-	for (int i = 0; i < PV_CTRL_UTILS_MAX_PARTS; i++) {
-		free(parts[i]);
-		parts[i] = NULL;
-	}
-}
-
-int pv_ctrl_utils_split_path(const char *path, char **parts)
-{
-	parts_free(parts);
-
 	if (!path)
 		return 0;
 
@@ -138,7 +129,7 @@ int pv_ctrl_utils_split_path(const char *path, char **parts)
 			end++;
 
 		if (end > start) {
-			parts[parts_count] = strndup(start, (end - start));
+			memccpy(parts[parts_count], start, '\0', (end - start));
 			parts_count++;
 
 			if (parts_count == PV_CTRL_UTILS_MAX_PARTS)
