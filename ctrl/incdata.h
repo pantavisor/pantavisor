@@ -20,30 +20,41 @@
  * SOFTWARE.
  */
 
-#ifndef PV_CTRL_UTILS_H
-#define PV_CTRL_UTILS_H
+#ifndef PV_CTRL_INCDATA_H
+#define PV_CTRL_INCDATA_H
 
-#include <stdbool.h>
-#include <stddef.h>
+#include <sys/types.h>
 #include <linux/limits.h>
 
-#define PV_CTRL_UTILS_MAX_PARTS (10)
-#define PV_CTRL_UTILS_ERR_RSP "{\"Error\":\"%s\"}"
-
-struct pv_ctrl_sender;
 struct evhttp_request;
 struct evbuffer;
+struct evbuffer_cb_info;
 
-void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
-			     const char *reason, const char *json, ...);
+struct pv_ctrl_incdata {
+	int fd;
+	char path[PATH_MAX];
+	void *user_data;
+};
 
-void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
-			      const char *err_str);
+typedef void (*pv_ctrl_incdata_read_cb)(struct evbuffer *,
+					const struct evbuffer_cb_info *,
+					void *ctx);
 
-int pv_ctrl_utils_split_path(const char *path,
-			     char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX]);
+typedef void (*pv_ctrl_incdata_complete_cb)(struct evhttp_request *req,
+					    void *ctx);
 
-struct pv_ctrl_sender *pv_ctrl_utils_checks(const char *logname,
-					    struct evhttp_request *req,
-					    int *methods, bool check_mgmt);
+struct pv_ctrl_incdata *pv_ctrl_incdata_new(const char *path);
+void pv_ctrl_incdata_free(struct pv_ctrl_incdata *data);
+
+void pv_ctrl_incdata_set_watermark(struct evhttp_request *req, size_t low,
+				   size_t high);
+ssize_t pv_ctrl_incdata_get_size(struct evhttp_request *req);
+char *pv_ctrl_incdata_get_data(struct evhttp_request *req, size_t max,
+			       size_t *len);
+
+ssize_t pv_ctrl_incdata_to_file(struct evhttp_request *req, const char *dst,
+				pv_ctrl_incdata_read_cb read_cb,
+				pv_ctrl_incdata_complete_cb complete_cb,
+				void *user_data);
+
 #endif

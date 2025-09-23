@@ -141,25 +141,3 @@ int pv_ctrl_utils_split_path(const char *path,
 
 	return parts_count;
 }
-
-char *pv_ctrl_utils_get_incoming_data(struct evhttp_request *req, size_t *len)
-{
-	struct evbuffer *buf = evhttp_request_get_input_buffer(req);
-	if (!buf) {
-		pv_log(DEBUG, "couldn't get incoming data");
-		return NULL;
-	}
-
-	size_t cur_len = evbuffer_get_length(buf);
-	char *data = calloc(cur_len + 1, sizeof(char));
-	if (data) {
-		pv_log(DEBUG, "couldn't alloc incoming data");
-		return NULL;
-	}
-	evbuffer_remove(buf, data, cur_len);
-
-	if (len)
-		*len = cur_len;
-
-	return data;
-}
