@@ -124,6 +124,7 @@ bool pv_update_is_transitioning(struct pv_update *u);
 bool pv_update_is_trying(struct pv_update *u);
 bool pv_update_is_testing(struct pv_update *u);
 bool pv_update_get_needs_commit(struct pv_update *update);
+bool pv_update_is_local(struct pv_update *u);
 
 void pv_update_set_status_msg(struct pv_update *update,
 			      enum update_status status, const char *msg);

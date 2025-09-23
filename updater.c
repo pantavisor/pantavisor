@@ -2167,3 +2167,8 @@ bool pv_update_get_needs_commit(struct pv_update *update)
 {
 	return update->needs_commit;
 }
+
+bool pv_update_is_local(struct pv_update *u)
+{
+	return (u && u->local);
+}

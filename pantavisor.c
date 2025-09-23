@@ -445,8 +445,12 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 
 	// check if we are online and authenticated
 	if (!pv_ph_is_auth(pv) || !pv_trail_is_auth(pv)) {
-		// this could mean the trying update cannot connect to ph
-		if (pv_update_is_trying(pv->update)) {
+		if (pv_update_is_local(pv->update)) {
+			// we don't want to rollback local revisions because of failing Hub comms
+			// which could happen when PV_CONTROL_REMOTE_ALWAYS=1
+			return PV_STATE_WAIT;
+		} else if (pv_update_is_trying(pv->update)) {
+			// this could mean the trying update cannot connect to ph
 			tstate = timer_current_state(&timer_rollback_remote);
 			if (tstate.fin) {
 				pv_log(ERROR,
