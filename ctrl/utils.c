@@ -33,6 +33,27 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
+struct pv_ctrl_http_code_value {
+	int code;
+	const char *reason;
+};
+
+struct pv_ctrl_http_code_value http_codes[] = {
+	{ 507, "Insufficient Storage" },
+	{ 422, "Unprocessable Content" },
+};
+
+static struct pv_ctrl_http_code_value get_http_value(int code)
+{
+	if (code > -1) {
+		pv_log(WARN, "pv_ctrl_codes should be < 0");
+		// this will cause a problem in the clint, a good clue
+		// to debug this
+		return (struct pv_ctrl_http_code_value){ -1, "" };
+	}
+	return http_codes[(-code) - 1];
+}
+
 struct pv_ctrl_sender *pv_ctrl_utils_checks(const char *logname,
 					    struct evhttp_request *req,
 					    int *methods, bool check_mgmt)
@@ -103,7 +124,14 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 			      const char *err_str)
 {
-	pv_ctrl_utils_send_json(req, code, NULL, PV_CTRL_UTILS_ERR_RSP,
+	if (code > 0) {
+		pv_ctrl_utils_send_json(req, code, NULL, PV_CTRL_UTILS_ERR_RSP,
+					err_str);
+		return;
+	}
+
+	struct pv_ctrl_http_code_value v = get_http_value(code);
+	pv_ctrl_utils_send_json(req, v.code, v.reason, PV_CTRL_UTILS_ERR_RSP,
 				err_str);
 }
 

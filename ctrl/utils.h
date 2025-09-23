@@ -24,11 +24,17 @@
 #define PV_CTRL_UTILS_H
 
 #include <stdbool.h>
-#include <stddef.h>
 #include <linux/limits.h>
 
 #define PV_CTRL_UTILS_MAX_PARTS (10)
 #define PV_CTRL_UTILS_ERR_RSP "{\"Error\":\"%s\"}"
+
+// complementary codes missing in libevent
+// always use negatives numbers
+enum pv_ctrl_http_code {
+	PV_HTTP_INSF_STORAGE = -1,
+	PV_HTTP_UNPROC_CONTENT = -2,
+};
 
 struct pv_ctrl_sender;
 struct evhttp_request;
