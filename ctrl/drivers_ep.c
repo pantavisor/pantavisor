@@ -76,7 +76,7 @@ static void drivers_load_all(struct evhttp_request *req)
 		goto out;
 	}
 
-	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+	pv_ctrl_utils_send_ok(req);
 out:
 	pv_ctrl_sender_free(snd);
 }
@@ -92,7 +92,7 @@ static void drivers_unload_all(struct evhttp_request *req)
 		return;
 
 	pv_platform_unload_drivers(snd->plat, NULL, DRIVER_MANUAL);
-	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+	pv_ctrl_utils_send_ok(req);
 }
 
 static void driver_load(struct evhttp_request *req, const char *name)
@@ -113,7 +113,7 @@ static void driver_load(struct evhttp_request *req, const char *name)
 		goto out;
 	}
 
-	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+	pv_ctrl_utils_send_ok(req);
 out:
 	pv_ctrl_sender_free(snd);
 }
@@ -128,7 +128,7 @@ static void driver_unload(struct evhttp_request *req, const char *name)
 		return;
 
 	pv_platform_unload_drivers(snd->plat, (char *)name, DRIVER_MANUAL);
-	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+	pv_ctrl_utils_send_ok(req);
 	pv_ctrl_sender_free(snd);
 }
 

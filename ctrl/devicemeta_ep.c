@@ -23,6 +23,7 @@
 #include "ctrl/sender.h"
 #include "ctrl/handler.h"
 #include "ctrl/utils.h"
+#include "ctrl/incdata.h"
 #include "metadata.h"
 
 #include <event2/http.h>
@@ -34,6 +35,8 @@
 #define MODULE_NAME "devicemeta-ep"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
+
+#define PV_CTRL_MAX_META (4096)
 
 static void devicemeta_list(struct evhttp_request *req)
 {
@@ -64,7 +67,7 @@ out:
 static void devicemeta_add_or_update(struct evhttp_request *req,
 				     const char *key)
 {
-	const char *value = pv_ctrl_utils_get_incoming_data(req, NULL);
+	char *value = pv_ctrl_incdata_get_data(req, PV_CTRL_MAX_META, NULL);
 	if (!value)
 		return;
 	int ret = pv_metadata_add_devmeta(key, value);
@@ -74,10 +77,13 @@ static void devicemeta_add_or_update(struct evhttp_request *req,
 		       value);
 		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
 					 "Cannot add or update device meta");
-		return;
+		goto out;
 	}
 
-	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+	pv_ctrl_utils_send_ok(req);
+out:
+	if (value)
+		free(value);
 }
 
 static void devicemeta_remove(struct evhttp_request *req, const char *key)
@@ -89,7 +95,7 @@ static void devicemeta_remove(struct evhttp_request *req, const char *key)
 		return;
 	}
 
-	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+	pv_ctrl_utils_send_ok(req);
 }
 
 static void devicemeta_key(struct evhttp_request *req, const char *key)
