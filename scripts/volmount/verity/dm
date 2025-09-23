@@ -62,9 +62,9 @@ do_mount_squash() {
 
 	clean_dm "$dmname"
 	if ! veritysetup open \
-		$ddev \
+		$traildir/$ddev \
 		$dmname \
-		$hdev \
+		$traildir/$hdev \
 		$rhash \
 		$veritysetup_options; then
 		echo "ERROR: could not setup dm volume with veritysetup"
