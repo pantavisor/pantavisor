@@ -100,6 +100,11 @@ err:
 	return NULL;
 }
 
+void pv_ctrl_utils_send_ok(struct evhttp_request *req)
+{
+	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+}
+
 void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 			     const char *reason, const char *json, ...)
 {

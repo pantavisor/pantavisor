@@ -46,6 +46,8 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 			      const char *err_str);
 
+void pv_ctrl_utils_send_ok(struct evhttp_request *req);
+
 int pv_ctrl_utils_split_path(const char *path,
 			     char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX]);
 
