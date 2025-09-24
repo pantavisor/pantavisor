@@ -1,0 +1,83 @@
+/*
+ * Copyright (c) 2025 Pantacor Ltd.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+#include "ctrl/utils.h"
+#include "ctrl/handler.h"
+#include "ctrl/sender.h"
+#include "state.h"
+#include "pantavisor.h"
+
+#include <event2/http.h>
+#include <event2/buffer.h>
+
+#include <string.h>
+
+#define MODULE_NAME "containers-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
+
+static void containers_send(struct evhttp_request *req)
+{
+	int methods[] = { EVHTTP_REQ_GET, -1 };
+
+	struct pv_ctrl_sender *snd =
+		pv_ctrl_utils_checks(MODULE_NAME, req, methods, true);
+
+	if (!snd)
+		return;
+
+	struct pantavisor *pv = pv_get_instance();
+	char *cont = pv_state_get_containers_json(pv->state);
+
+	if (!cont) {
+		pv_log(WARN, "couldn't get container list");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot get container list");
+		goto out;
+	}
+
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, cont);
+
+out:
+	if (cont)
+		free(cont);
+
+	pv_ctrl_sender_free(snd);
+}
+
+static int containers_handler(struct evhttp_request *req)
+{
+	const char *uri = evhttp_request_get_uri(req);
+	char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX] = { 0 };
+	int size = pv_ctrl_utils_split_path(uri, parts);
+
+	if (size < 1 || size > 1 || strcmp(parts[0], "containers") != 0)
+		return -1;
+
+	containers_send(req);
+	return 0;
+}
+
+struct pv_ctrl_handler containers_hnd = {
+	.path = "/containers",
+	.fn = containers_handler,
+};

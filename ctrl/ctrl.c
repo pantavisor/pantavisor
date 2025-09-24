@@ -47,6 +47,7 @@ extern const struct pv_ctrl_handler devicemeta_hnd;
 extern const struct pv_ctrl_handler usermeta_hnd;
 extern const struct pv_ctrl_handler steps_hnd;
 extern const struct pv_ctrl_handler object_hnd;
+extern const struct pv_ctrl_handler containers_hnd;
 
 struct pv_ctrl pvctrl = {
 	.srv = NULL,
@@ -72,6 +73,9 @@ static void router_endpoint(struct evhttp_request *req, void *data)
 		fn = steps_hnd.fn;
 	else if (!strncmp(uri, object_hnd.path, strlen(object_hnd.path)))
 		fn = object_hnd.fn;
+	else if (!strncmp(uri, containers_hnd.path,
+			  strlen(containers_hnd.path)))
+		fn = containers_hnd.fn;
 
 	if (fn) {
 		fn(req);
