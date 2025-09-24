@@ -174,3 +174,9 @@ int pv_ctrl_utils_split_path(const char *path,
 
 	return parts_count;
 }
+
+void pv_ctrl_utils_drain_req(struct evhttp_request *req)
+{
+	struct evbuffer *buf = evhttp_request_get_input_buffer(req);
+	evbuffer_drain(buf, evbuffer_get_length(buf));
+}

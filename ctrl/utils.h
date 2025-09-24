@@ -54,4 +54,7 @@ int pv_ctrl_utils_split_path(const char *path,
 struct pv_ctrl_sender *pv_ctrl_utils_checks(const char *logname,
 					    struct evhttp_request *req,
 					    int *methods, bool check_mgmt);
+
+void pv_ctrl_utils_drain_req(struct evhttp_request *req);
+
 #endif
