@@ -151,3 +151,66 @@ exit_error:
 
 	return 0;
 }
+
+/**
+ * @brief Concatenates a variable number of strings into a newly allocated string,
+ * terminated by a NULL pointer.
+ *
+ * This function takes a variable number of string arguments (char*) and
+ * concatenates them into a single, newly allocated string. The list of strings
+ * MUST be terminated by a NULL pointer. The caller is responsible for freeing
+ * the returned memory using `free()`.
+ *
+ * Example: pv_strvcat("Hello", " ", "World!", NULL);
+ *
+ * @param first_string The first string in the list.
+ * @param ... The subsequent string arguments, ending with a NULL pointer.
+ * @return A pointer to the newly allocated concatenated string, or NULL if
+ * memory allocation fails. Returns an empty string if only NULL is passed.
+ */
+char *pv_strvcat(const char *first_string, ...)
+{
+	va_list args;
+	size_t total_length = 0;
+	char *result = NULL;
+	const char *current_string;
+
+	// Handle the case where the first string is NULL (i.e., empty list)
+	if (first_string == NULL) {
+		result = (char *)malloc(1);
+		if (result != NULL) {
+			result[0] = '\0'; // Return an empty string
+		}
+		return result;
+	}
+
+	// First pass: Calculate the total length required
+	total_length += strlen(first_string); // Add length of the first string
+
+	va_start(args, first_string);
+	while ((current_string = va_arg(args, const char *)) != NULL) {
+		total_length += strlen(current_string);
+	}
+	va_end(args);
+
+	// Allocate memory for the concatenated string (+1 for null terminator)
+	result = (char *)malloc(total_length + 1);
+	if (result == NULL) {
+		perror("Failed to allocate memory for concatenated string");
+		return NULL;
+	}
+
+	// Initialize result with the first string
+	strcpy(result, first_string); // Use strcpy for the first string
+
+	va_start(args, first_string); // Restart va_list for the second pass
+
+	// Second pass: Concatenate the remaining strings
+	while ((current_string = va_arg(args, const char *)) != NULL) {
+		strcat(result,
+		       current_string); // Use strcat for subsequent strings
+	}
+	va_end(args);
+
+	return result;
+}

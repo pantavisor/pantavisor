@@ -115,11 +115,11 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int stdin_p[],
 	} else {
 		ret = 0;
 		// closed all unused fds right away ..
-		if (stdin_p) // close writing end for stdin dup
+		if (stdin_p && stdin_p[1] >= 0)
 			close(stdin_p[1]);
-		if (stdout_p) // close reading ends for out and err dup
+		if (stdout_p && stdout_p[0] >= 0)
 			close(stdout_p[0]);
-		if (stderr_p)
+		if (stderr_p && stderr_p[0] >= 0)
 			close(stderr_p[0]);
 
 		signal(SIGCHLD, SIG_DFL);
@@ -211,12 +211,15 @@ static int logserver_subscribe_pipe(int *cmd_pipe, const char *name, int level)
 		return -1;
 	}
 
+	fcntl(cmd_pipe[0], F_SETFL, O_NONBLOCK);
+
 	pv_logserver_subscribe_fd(cmd_pipe[0], "pantavisor", name, level);
 
 	return 0;
 }
 
-int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out, const char *log_source_err)
+int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out,
+		      const char *log_source_err)
 {
 	int ret = 0;
 	int out_pipe[2] = { 0 };
@@ -253,8 +256,30 @@ int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out, const
 	return ret;
 }
 
-#endif
+pid_t tsh_run_logserver_bg(char *cmd, int *wstatus, const char *log_source_out,
+			   const char *log_source_err)
+{
+	pid_t ret = 0;
+	int out_pipe[2] = { 0 };
+	int err_pipe[2] = { 0 };
 
+	if (logserver_subscribe_pipe(out_pipe, log_source_out, INFO) != 0 ||
+	    logserver_subscribe_pipe(err_pipe, log_source_err, WARN) != 0) {
+		return -1;
+	}
+
+	ret = tsh_run_io(cmd, 0, wstatus, NULL, out_pipe, err_pipe);
+
+	if (ret < 0) {
+		pv_log(ERROR, "command: %s error: %s", cmd);
+	}
+	close(out_pipe[1]);
+	close(err_pipe[1]);
+
+	return ret;
+}
+
+#endif
 
 static int safe_fd_set(int fd, fd_set *fds, int *max_fd)
 {
@@ -308,8 +333,10 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		// redirect out and err of command to pipe
 		dup2(outfd[1], STDOUT_FILENO);
 		dup2(errfd[1], STDERR_FILENO);
-		close(outfd[0]);
-		close(errfd[0]);
+		if (outfd[0] >= 0)
+			close(outfd[0]);
+		if (errfd[0] >= 0)
+			close(errfd[0]);
 		// uncomment below to try how child that ignores SIGTERM
 		// also gets reaped
 		// signal(SIGTERM, SIG_IGN);

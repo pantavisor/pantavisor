@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,21 +19,29 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_TSH_H
-#define PV_TSH_H
+#ifndef PV_RUNC_H
+#define PV_RUNC_H
 
-#include <sys/types.h>
+#include "../pantavisor.h"
+#include "../config.h"
+#include "../platforms.h"
 
-pid_t tsh_run(char *cmd, int wait, int *status);
-pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
-		 int stdout_p[], int stderr_p[]);
-int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
-		   char *err_buf, int err_size);
+void pv_set_pv_instance_fn(void *fn_pv_get_instance);
+void pv_set_pv_paths_fn(
+	void *fn_vlog, void *fn_pv_paths_pv_file, void *fn_pv_paths_pv_log,
+	void *fn_pv_paths_pv_log_plat, void *fn_pv_paths_pv_log_file,
+	void *fn_pv_paths_pv_usrmeta_key, void *fn_pv_paths_pv_usrmeta_plat_key,
+	void *fn_pv_paths_pv_devmeta_key, void *fn_pv_paths_pv_devmeta_plat_key,
+	void *fn_pv_paths_lib_hook, void *fn_pv_paths_volumes_plat_file,
+	void *fn_pv_paths_configs_file, void *fn_pv_paths_lib_lxc_rootfs_mount,
+	void *fn_pv_paths_lib_lxc_lxcpath);
 
-#ifndef DISABLE_LOGSERVER
-// this method blocks till pid exits.
-int tsh_run_logserver(char *cmd, int *wstatus, const char *source, const char* level);
-pid_t tsh_run_logserver_bg(char *cmd, int *wstatus, const char *source, const char* level);
-#endif
+void pv_set_pv_conf_loglevel_fn(int loglevel);
+void pv_set_pv_conf_capture_fn(bool capture);
 
-#endif
+void *pv_start_container(struct pv_platform *p, const char *rev,
+			 char *conf_file, int logfd, void *data);
+void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
+int pv_console_log_getfd(struct pv_platform_log *log, void *data);
+
+#endif // PV_RUNC_H
