@@ -29,6 +29,7 @@ int pv_debug_run_shell(void);
 int pv_debug_check_timeout_shell(void);
 void pv_debug_defer_reboot_shell(const char *payload);
 void pv_debug_run_early_shell();
+void pv_debug_shell_rollback_warning();
 
 void pv_debug_start_ssh(void);
 void pv_debug_stop_ssh(void);
