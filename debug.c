@@ -286,6 +286,12 @@ void pv_debug_defer_reboot_shell(const char *payload)
 	pv_log(INFO, "shell timeout deferred to %d seconds", new_timeout);
 }
 
+void pv_debug_shell_rollback_warning()
+{
+	pv_wall("System is rolling back due to failed update");
+	pv_wall("Rebooting now...");
+}
+
 #define DBCMD "dropbear -F -p 0.0.0.0:8222 -n %s -R -c /usr/bin/fallbear-cmd"
 
 void pv_debug_start_ssh()
