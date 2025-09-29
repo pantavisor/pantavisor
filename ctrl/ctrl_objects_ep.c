@@ -20,10 +20,10 @@
  * SOFTWARE.
  */
 
-#include "ctrl/handler.h"
-#include "ctrl/utils.h"
-#include "ctrl/incdata.h"
-#include "ctrl/sender.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_utils.h"
+#include "ctrl/ctrl_indata.h"
+#include "ctrl/ctrl_sender.h"
 #include "ctrl/ctrl_outdata.h"
 #include "utils/fs.h"
 #include "objects.h"
@@ -85,7 +85,7 @@ static void objects_get(struct evhttp_request *req, const char *name)
 
 static void objects_complete_cb(struct evhttp_request *req, void *ctx)
 {
-	struct pv_ctrl_incdata *data = ctx;
+	struct pv_ctrl_indata *data = ctx;
 
 	char base[NAME_MAX] = { 0 };
 	pv_fs_basename(data->path, base);
@@ -112,7 +112,7 @@ static void objects_complete_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (tmp)
 		free(tmp);
-	pv_ctrl_incdata_free(data);
+	pv_ctrl_indata_free(data);
 }
 
 static void objects_set(struct evhttp_request *req, const char *name)
@@ -136,8 +136,8 @@ static void objects_set(struct evhttp_request *req, const char *name)
 	}
 
 	char *tmp_name = strdup(tmp);
-	pv_ctrl_incdata_set_watermark(req, OBJECTS_LOW_WMK, OBJECTS_HIGH_WMK);
-	pv_ctrl_incdata_to_file(req, tmp, NULL, objects_complete_cb, tmp_name);
+	pv_ctrl_indata_set_watermark(req, OBJECTS_LOW_WMK, OBJECTS_HIGH_WMK);
+	pv_ctrl_indata_to_file(req, tmp, NULL, objects_complete_cb, tmp_name);
 }
 
 static void objects_ops(struct evhttp_request *req, const char *name)

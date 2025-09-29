@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-#include "ctrl/sender.h"
+#include "ctrl/ctrl_sender.h"
 #include "utils/socket.h"
 #include "platforms.h"
 #include "state.h"

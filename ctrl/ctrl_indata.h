@@ -20,8 +20,8 @@
  * SOFTWARE.
  */
 
-#ifndef PV_CTRL_INCDATA_H
-#define PV_CTRL_INCDATA_H
+#ifndef PV_CTRL_INDATA_H
+#define PV_CTRL_INDATA_H
 
 #include <sys/types.h>
 #include <linux/limits.h>
@@ -32,31 +32,31 @@ struct evhttp_request;
 struct evbuffer;
 struct evbuffer_cb_info;
 
-struct pv_ctrl_incdata {
+struct pv_ctrl_indata {
 	int fd;
 	char path[PATH_MAX];
 	void *user_data;
 };
 
-typedef void (*pv_ctrl_incdata_read_cb)(struct evbuffer *,
-					const struct evbuffer_cb_info *,
-					void *ctx);
+typedef void (*pv_ctrl_indata_read_cb)(struct evbuffer *,
+				       const struct evbuffer_cb_info *,
+				       void *ctx);
 
-typedef void (*pv_ctrl_incdata_complete_cb)(struct evhttp_request *req,
-					    void *ctx);
+typedef void (*pv_ctrl_indata_complete_cb)(struct evhttp_request *req,
+					   void *ctx);
 
-struct pv_ctrl_incdata *pv_ctrl_incdata_new(const char *path);
-void pv_ctrl_incdata_free(struct pv_ctrl_incdata *data);
+struct pv_ctrl_indata *pv_ctrl_indata_new(const char *path);
+void pv_ctrl_indata_free(struct pv_ctrl_indata *data);
 
-void pv_ctrl_incdata_set_watermark(struct evhttp_request *req, size_t low,
-				   size_t high);
-ssize_t pv_ctrl_incdata_get_size(struct evhttp_request *req);
-char *pv_ctrl_incdata_get_data(struct evhttp_request *req, size_t max,
-			       size_t *len);
+void pv_ctrl_indata_set_watermark(struct evhttp_request *req, size_t low,
+				  size_t high);
+ssize_t pv_ctrl_indata_get_size(struct evhttp_request *req);
+char *pv_ctrl_indata_get_data(struct evhttp_request *req, size_t max,
+			      size_t *len);
 
-ssize_t pv_ctrl_incdata_to_file(struct evhttp_request *req, const char *dst,
-				pv_ctrl_incdata_read_cb read_cb,
-				pv_ctrl_incdata_complete_cb complete_cb,
-				void *user_data);
+ssize_t pv_ctrl_indata_to_file(struct evhttp_request *req, const char *dst,
+			       pv_ctrl_indata_read_cb read_cb,
+			       pv_ctrl_indata_complete_cb complete_cb,
+			       void *user_data);
 
 #endif

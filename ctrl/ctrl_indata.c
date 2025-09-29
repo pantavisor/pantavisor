@@ -20,8 +20,8 @@
  * SOFTWARE.
  */
 
-#include "ctrl/incdata.h"
-#include "ctrl/utils.h"
+#include "ctrl/ctrl_indata.h"
+#include "ctrl/ctrl_utils.h"
 #include "storage.h"
 
 #include <event2/event.h>
@@ -40,20 +40,19 @@
 
 #define PV_CTRL_STORAGE_ERR_BUF 256
 
-void pv_ctrl_incdata_free(struct pv_ctrl_incdata *data)
+void pv_ctrl_indata_free(struct pv_ctrl_indata *data)
 {
 	if (!data)
 		return;
 	close(data->fd);
 }
 
-struct pv_ctrl_incdata *pv_ctrl_incdata_new(const char *path)
+struct pv_ctrl_indata *pv_ctrl_indata_new(const char *path)
 {
 	if (!path)
 		return NULL;
 
-	struct pv_ctrl_incdata *data =
-		calloc(1, sizeof(struct pv_ctrl_incdata));
+	struct pv_ctrl_indata *data = calloc(1, sizeof(struct pv_ctrl_indata));
 
 	if (!data)
 		goto err;
@@ -65,15 +64,15 @@ struct pv_ctrl_incdata *pv_ctrl_incdata_new(const char *path)
 	memccpy(data->path, path, '\0', PATH_MAX);
 
 err:
-	pv_ctrl_incdata_free(data);
+	pv_ctrl_indata_free(data);
 	return NULL;
 }
 
-static void incdata_generic_read_cb(struct evbuffer *buf,
-				    const struct evbuffer_cb_info *info,
-				    void *ctx)
+static void indata_generic_read_cb(struct evbuffer *buf,
+				   const struct evbuffer_cb_info *info,
+				   void *ctx)
 {
-	struct pv_ctrl_incdata *data = ctx;
+	struct pv_ctrl_indata *data = ctx;
 	size_t len = evbuffer_get_length(buf);
 
 	pv_log(DEBUG, "upload, %zd received; file: %s", len, data->path);
@@ -87,9 +86,9 @@ static void incdata_generic_read_cb(struct evbuffer *buf,
 	evbuffer_write(buf, data->fd);
 }
 
-static void incdata_generic_complete_cb(struct evhttp_request *req, void *ctx)
+static void indata_generic_complete_cb(struct evhttp_request *req, void *ctx)
 {
-	struct pv_ctrl_incdata *data = ctx;
+	struct pv_ctrl_indata *data = ctx;
 
 	char err_str[PV_CTRL_STORAGE_ERR_BUF] = { 0 };
 
@@ -103,11 +102,11 @@ static void incdata_generic_complete_cb(struct evhttp_request *req, void *ctx)
 
 	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
 out:
-	pv_ctrl_incdata_free(data);
+	pv_ctrl_indata_free(data);
 }
 
-void pv_ctrl_incdata_set_watermark(struct evhttp_request *req, size_t low,
-				   size_t high)
+void pv_ctrl_indata_set_watermark(struct evhttp_request *req, size_t low,
+				  size_t high)
 {
 	struct evhttp_connection *con = evhttp_request_get_connection(req);
 	struct bufferevent *bev = evhttp_connection_get_bufferevent(con);
@@ -115,7 +114,7 @@ void pv_ctrl_incdata_set_watermark(struct evhttp_request *req, size_t low,
 	bufferevent_setwatermark(bev, EV_WRITE, low, high);
 }
 
-ssize_t pv_ctrl_incdata_get_size(struct evhttp_request *req)
+ssize_t pv_ctrl_indata_get_size(struct evhttp_request *req)
 {
 	struct evbuffer *buf = evhttp_request_get_input_buffer(req);
 	if (!buf) {
@@ -126,8 +125,8 @@ ssize_t pv_ctrl_incdata_get_size(struct evhttp_request *req)
 	return evbuffer_get_length(buf);
 }
 
-char *pv_ctrl_incdata_get_data(struct evhttp_request *req, size_t max,
-			       size_t *len)
+char *pv_ctrl_indata_get_data(struct evhttp_request *req, size_t max,
+			      size_t *len)
 {
 	struct evbuffer *buf = evhttp_request_get_input_buffer(req);
 	if (!buf) {
@@ -167,13 +166,13 @@ char *pv_ctrl_incdata_get_data(struct evhttp_request *req, size_t max,
 	return data;
 }
 
-ssize_t pv_ctrl_incdata_to_file(struct evhttp_request *req, const char *dst,
-				pv_ctrl_incdata_read_cb read_cb,
-				pv_ctrl_incdata_complete_cb complete_cb,
-				void *user_data)
+ssize_t pv_ctrl_indata_to_file(struct evhttp_request *req, const char *dst,
+			       pv_ctrl_indata_read_cb read_cb,
+			       pv_ctrl_indata_complete_cb complete_cb,
+			       void *user_data)
 {
 	size_t cur_free = pv_storage_get_free();
-	size_t cur_size = pv_ctrl_incdata_get_size(req);
+	size_t cur_size = pv_ctrl_indata_get_size(req);
 
 	if (cur_size > cur_free) {
 		pv_log(WARN,
@@ -188,15 +187,15 @@ ssize_t pv_ctrl_incdata_to_file(struct evhttp_request *req, const char *dst,
 	       "reading file with size %zu from endpoint and putting it in %s",
 	       cur_size, dst);
 
-	pv_ctrl_incdata_read_cb rcb = incdata_generic_read_cb;
+	pv_ctrl_indata_read_cb rcb = indata_generic_read_cb;
 	if (read_cb)
 		rcb = read_cb;
 
-	pv_ctrl_incdata_complete_cb ccb = incdata_generic_complete_cb;
+	pv_ctrl_indata_complete_cb ccb = indata_generic_complete_cb;
 	if (complete_cb)
 		ccb = complete_cb;
 
-	struct pv_ctrl_incdata *data = pv_ctrl_incdata_new(dst);
+	struct pv_ctrl_indata *data = pv_ctrl_indata_new(dst);
 	if (user_data)
 		data->user_data = user_data;
 

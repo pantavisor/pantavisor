@@ -19,8 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#include "ctrl/utils.h"
-#include "ctrl/sender.h"
+#include "ctrl/ctrl_utils.h"
+#include "ctrl/ctrl_sender.h"
 
 #include <event2/http.h>
 #include <event2/buffer.h>

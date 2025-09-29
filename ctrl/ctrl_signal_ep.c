@@ -20,10 +20,10 @@
  * SOFTWARE.
  */
 
-#include "ctrl/utils.h"
-#include "ctrl/handler.h"
-#include "ctrl/sender.h"
-#include "ctrl/incdata.h"
+#include "ctrl/ctrl_utils.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_sender.h"
+#include "ctrl/ctrl_indata.h"
 #include "state.h"
 #include "pantavisor.h"
 #include "json.h"
@@ -80,7 +80,7 @@ static void signal_process(struct evhttp_request *req)
 	struct pv_ctrl_signal sig = { 0 };
 	struct pantavisor *pv = pv_get_instance();
 
-	char *data = pv_ctrl_incdata_get_data(req, PV_CTRL_MAX_REQ_SIZE, NULL);
+	char *data = pv_ctrl_indata_get_data(req, PV_CTRL_MAX_REQ_SIZE, NULL);
 	if (!data) {
 		pv_log(WARN, "nothing to read from signal request");
 		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,

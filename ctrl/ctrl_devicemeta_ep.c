@@ -2,7 +2,7 @@
  * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
-* of this software and associated documentation files (the "Software"), to deal
+ * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
@@ -20,10 +20,10 @@
  * SOFTWARE.
  */
 
-#include "ctrl/sender.h"
-#include "ctrl/handler.h"
-#include "ctrl/utils.h"
-#include "ctrl/incdata.h"
+#include "ctrl/ctrl_sender.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_utils.h"
+#include "ctrl/ctrl_indata.h"
 #include "metadata.h"
 
 #include <event2/http.h>
@@ -32,13 +32,13 @@
 #include <string.h>
 #include <linux/limits.h>
 
-#define MODULE_NAME "usermeta-ep"
+#define MODULE_NAME "devicemeta-ep"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
 #define PV_CTRL_MAX_META (4096)
 
-static void usermeta_list(struct evhttp_request *req)
+static void devicemeta_list(struct evhttp_request *req)
 {
 	int methods[] = { EVHTTP_REQ_GET, -1 };
 	struct pv_ctrl_sender *snd =
@@ -47,35 +47,36 @@ static void usermeta_list(struct evhttp_request *req)
 	if (!snd)
 		return;
 
-	char *usermeta = pv_metadata_get_user_meta_string();
-	if (!usermeta) {
-		pv_log(WARN, "couldn't get user-maeta");
+	char *devmeta = pv_metadata_get_device_meta_string();
+	if (!devmeta) {
+		pv_log(WARN, "couldn't get dev-maeta");
 		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
-					 "couldn't get user-meta");
+					 "couldn't get dev-meta");
 		goto out;
 	}
 
-	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, usermeta);
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, devmeta);
 
 out:
-	if (usermeta)
-		free(usermeta);
+	if (devmeta)
+		free(devmeta);
 
 	pv_ctrl_sender_free(snd);
 }
 
-static void usermeta_add_or_update(struct evhttp_request *req, const char *key)
+static void devicemeta_add_or_update(struct evhttp_request *req,
+				     const char *key)
 {
-	char *value = pv_ctrl_incdata_get_data(req, PV_CTRL_MAX_META, NULL);
+	char *value = pv_ctrl_indata_get_data(req, PV_CTRL_MAX_META, NULL);
 	if (!value)
 		return;
-	int ret = pv_metadata_add_usermeta(key, value);
+	int ret = pv_metadata_add_devmeta(key, value);
 
 	if (ret != 0) {
 		pv_log(DEBUG, "couldn't add new key: %s, val: %.*s", key, 20,
 		       value);
 		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
-					 "Cannot add or update user meta");
+					 "Cannot add or update device meta");
 		goto out;
 	}
 
@@ -85,19 +86,19 @@ out:
 		free(value);
 }
 
-static void usermeta_remove(struct evhttp_request *req, const char *key)
+static void devicemeta_remove(struct evhttp_request *req, const char *key)
 {
-	if (pv_metadata_rm_usermeta(key) < 0) {
-		pv_log(DEBUG, "couldn't remove user meta, key: %s", key);
+	if (pv_metadata_rm_devmeta(key) < 0) {
+		pv_log(DEBUG, "couldn't remove device meta, key: %s", key);
 		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
-					 "User meta does not exist");
+					 "Device meta does not exist");
 		return;
 	}
 
 	pv_ctrl_utils_send_ok(req);
 }
 
-static void usermeta_key(struct evhttp_request *req, const char *key)
+static void devicemeta_key(struct evhttp_request *req, const char *key)
 {
 	int methods[] = { EVHTTP_REQ_PUT, EVHTTP_REQ_DELETE, -1 };
 
@@ -108,32 +109,32 @@ static void usermeta_key(struct evhttp_request *req, const char *key)
 		return;
 
 	if (snd->method == EVHTTP_REQ_PUT)
-		usermeta_add_or_update(req, key);
+		devicemeta_add_or_update(req, key);
 	else if (snd->method == EVHTTP_REQ_DELETE)
-		usermeta_remove(req, key);
+		devicemeta_remove(req, key);
 
 	pv_ctrl_sender_free(snd);
 }
 
-static int usermeta_handler(struct evhttp_request *req)
+static int devicemeta_handler(struct evhttp_request *req)
 {
 	const char *uri = evhttp_request_get_uri(req);
 	char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX] = { 0 };
 	int size = pv_ctrl_utils_split_path(uri, parts);
 
-	if (size == 0 || size > 2 || strcmp(parts[0], "user-meta") != 0)
+	if (size == 0 || size > 2 || strcmp(parts[0], "device-meta") != 0)
 		return -1;
 
 	if (size == 1) {
-		usermeta_list(req);
+		devicemeta_list(req);
 	} else if (size == 2) {
-		usermeta_key(req, parts[1]);
+		devicemeta_key(req, parts[1]);
 	}
 
 	return 0;
 }
 
-struct pv_ctrl_handler usermeta_hnd = {
-	.path = "/user-meta",
-	.fn = usermeta_handler,
+struct pv_ctrl_handler devicemeta_hnd = {
+	.path = "/device-meta",
+	.fn = devicemeta_handler,
 };

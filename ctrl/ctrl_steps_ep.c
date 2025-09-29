@@ -20,13 +20,12 @@
  * SOFTWARE.
  */
 
-#include "ctrl/sender.h"
-#include "ctrl/handler.h"
-#include "ctrl/incdata.h"
-
+#include "ctrl/ctrl_sender.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_indata.h"
+#include "ctrl/ctrl_utils.h"
 #include "storage.h"
 #include "paths.h"
-#include "ctrl/utils.h"
 #include "utils/fs.h"
 
 #include <event2/http.h>
@@ -95,7 +94,7 @@ out:
 
 static void upload_complete_cb(struct evhttp_request *req, void *ctx)
 {
-	struct pv_ctrl_incdata *data = ctx;
+	struct pv_ctrl_indata *data = ctx;
 
 	char err_str[256] = { 0 };
 
@@ -109,7 +108,7 @@ static void upload_complete_cb(struct evhttp_request *req, void *ctx)
 	pv_ctrl_utils_send_ok(req);
 
 out:
-	pv_ctrl_incdata_free(data);
+	pv_ctrl_indata_free(data);
 }
 
 static void steps_add(struct evhttp_request *req, const char *name)
@@ -125,10 +124,10 @@ static void steps_add(struct evhttp_request *req, const char *name)
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, name, JSON_FNAME);
 	pv_fs_mkbasedir_p(path, 0755);
 
-	pv_ctrl_incdata_set_watermark(req, STEPS_LOW_WATERMARK,
+	pv_ctrl_indata_set_watermark(req, STEPS_LOW_WATERMARK,
 				      STEPS_HIGH_WATERMARK);
 
-	pv_ctrl_incdata_to_file(req, name, NULL, upload_complete_cb, NULL);
+	pv_ctrl_indata_to_file(req, name, NULL, upload_complete_cb, NULL);
 }
 
 static void steps_name(struct evhttp_request *req, const char *name)
@@ -195,7 +194,7 @@ static void steps_commit(struct evhttp_request *req, const char *name)
 	pv_fs_mkbasedir_p(path, 0755);
 
 	size_t len = 0;
-	char *data = pv_ctrl_incdata_get_data(req, 2048, &len);
+	char *data = pv_ctrl_indata_get_data(req, 2048, &len);
 	if (!data)
 		return;
 

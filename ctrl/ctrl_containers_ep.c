@@ -20,9 +20,9 @@
  * SOFTWARE.
  */
 
-#include "ctrl/utils.h"
-#include "ctrl/handler.h"
-#include "ctrl/sender.h"
+#include "ctrl/ctrl_utils.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_sender.h"
 #include "state.h"
 #include "pantavisor.h"
 

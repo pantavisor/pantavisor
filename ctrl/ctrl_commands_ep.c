@@ -20,10 +20,10 @@
  * SOFTWARE.
  */
 
-#include "ctrl/utils.h"
-#include "ctrl/incdata.h"
-#include "ctrl/handler.h"
-#include "ctrl/sender.h"
+#include "ctrl/ctrl_utils.h"
+#include "ctrl/ctrl_indata.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_sender.h"
 #include "ctrl/ctrl_cmd.h"
 #include "pantavisor.h"
 #include "updater.h"
@@ -156,7 +156,7 @@ static void commands_process(struct evhttp_request *req)
 	if (!snd)
 		return;
 
-	char *data = pv_ctrl_incdata_get_data(req, PV_CTRL_REQ_MAX, NULL);
+	char *data = pv_ctrl_indata_get_data(req, PV_CTRL_REQ_MAX, NULL);
 	if (!data)
 		return;
 

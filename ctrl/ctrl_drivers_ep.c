@@ -20,9 +20,9 @@
  * SOFTWARE.
  */
 
-#include "ctrl/sender.h"
-#include "ctrl/handler.h"
-#include "ctrl/utils.h"
+#include "ctrl/ctrl_sender.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_utils.h"
 #include "drivers.h"
 
 #include <event2/http.h>
