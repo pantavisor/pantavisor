@@ -34,6 +34,7 @@
 enum pv_ctrl_http_code {
 	PV_HTTP_INSF_STORAGE = -1,
 	PV_HTTP_UNPROC_CONTENT = -2,
+	PV_HTTP_CONFLICT = -3,
 };
 
 struct pv_ctrl_sender;

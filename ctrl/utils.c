@@ -41,6 +41,7 @@ struct pv_ctrl_http_code_value {
 struct pv_ctrl_http_code_value http_codes[] = {
 	{ 507, "Insufficient Storage" },
 	{ 422, "Unprocessable Content" },
+	{ 409, "Conflict" },
 };
 
 static struct pv_ctrl_http_code_value get_http_value(int code)
