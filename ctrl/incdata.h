@@ -26,6 +26,8 @@
 #include <sys/types.h>
 #include <linux/limits.h>
 
+#define PV_CTRL_REQ_MAX (4096)
+
 struct evhttp_request;
 struct evbuffer;
 struct evbuffer_cb_info;
