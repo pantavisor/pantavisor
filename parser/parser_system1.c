@@ -363,9 +363,10 @@ out:
 	return ret;
 }
 
-static int parse_bsp(struct pv_state *s, char *value, int n)
+static int parse_bsp(struct pv_state *s, const char *value, int n,
+		     jsmntok_t *tv, int tc)
 {
-	int ret = 0, tokc, size;
+	int ret = 0, tokc, size, count;
 	char *str, *buf;
 	struct pv_volume *v;
 	jsmntok_t *tokv;
@@ -375,6 +376,23 @@ static int parse_bsp(struct pv_state *s, char *value, int n)
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		return 1;
+
+	count = pv_json_get_key_count(value, "bsp/run.json", tv, tc);
+	if (count != 1) {
+		pv_log(WARN, "bsp/run.json missing or duplicated");
+		ret = 0;
+		goto out;
+	}
+
+	value = pv_json_get_value(value, "bsp/run.json", tv, tc);
+	if (!value) {
+		pv_log(WARN, "unable to get bsp/run.json value from state");
+		ret = 0;
+		goto out;
+	}
+
+	pv_log(DEBUG, "adding json 'bsp/run.json'");
+	pv_jsons_add(s, "bsp/run.json", value);
 
 	// take null terminate copy of item to parse
 	buf = calloc(n + 1, sizeof(char));
@@ -1576,29 +1594,10 @@ static struct pv_state *system1_parse_bsp(struct pv_state *this,
 		goto out;
 	}
 
-	count = pv_json_get_key_count(buf, "bsp/run.json", tokv, tokc);
-	if (count != 1) {
-		pv_log(WARN, "bsp/run.json missing or duplicated");
+	if (!parse_bsp(this, buf, strlen(buf), tokv, tokc)) {
 		this = NULL;
 		goto out;
 	}
-
-	value = pv_json_get_value(buf, "bsp/run.json", tokv, tokc);
-	if (!value) {
-		pv_log(WARN, "unable to get bsp/run.json value from state");
-		this = NULL;
-		goto out;
-	}
-
-	pv_log(DEBUG, "adding json 'bsp/run.json'");
-	pv_jsons_add(this, "bsp/run.json", value);
-
-	if (!parse_bsp(this, value, strlen(value))) {
-		this = NULL;
-		goto out;
-	}
-	free(value);
-	value = NULL;
 
 	count = pv_json_get_key_count(buf, "bsp/drivers.json", tokv, tokc);
 	if (count == 1) {
