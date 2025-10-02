@@ -1,0 +1,6 @@
+Add your ssh authorized keys files you want to bake
+into the pantavisor initrd in this folder.
+
+Also consider to use user-meta/pvr-sdk.authorized keys to
+use a configurable way to allow ssh access (e.g. through
+Pantacor Hub)
