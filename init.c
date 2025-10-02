@@ -126,13 +126,13 @@ static int other_mounts()
 	if (!stat("/etc/fstab", &st))
 		tsh_run("mount -a", 1, NULL);
 
-	pv_paths_exports(path, PATH_MAX);
-	mkdir(path, 0755);
-	ret = mount("none", path, "tmpfs", 0, NULL);
-	if (!ret)
-		ret = mount("none", path, "tmpfs", MS_REC | MS_SHARED, NULL);
+	mkdir("/run", 0755);
+	ret = mount("none", "/run", "tmpfs", 0, NULL);
 	if (ret < 0)
-		exit_error(errno, "Could not create exports disk");
+		exit_error(errno, "Could not mount /run");
+
+	pv_paths_exports(path, PATH_MAX);
+	mkdir_p(path, 0755);
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		return 0;
@@ -141,11 +141,6 @@ static int other_mounts()
 	ret = mount("none", "/root", "tmpfs", 0, NULL);
 	if (ret < 0)
 		exit_error(errno, "Could not mount /root");
-
-	mkdir("/run", 0755);
-	ret = mount("none", "/run", "tmpfs", 0, NULL);
-	if (ret < 0)
-		exit_error(errno, "Could not mount /run");
 
 	if (pv_config_get_bool(PV_SYSTEM_MOUNT_SECURITYFS)) {
 		ret = mount("none", "/sys/kernel/security", "securityfs", 0,
