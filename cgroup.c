@@ -98,6 +98,18 @@ static int pv_cgroup_mkcgroup_root()
 	return ret;
 }
 
+static int pv_cgroup_mkcgroup2_init(const char *init)
+{
+	char path[PATH_MAX];
+	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s", init);
+
+	int ret;
+
+	mkdir(path, 0555);
+
+	return ret;
+}
+
 static int pv_cgroup_mkcgroup_init(const char *init)
 {
 	char path[PATH_MAX];
@@ -147,13 +159,60 @@ static int pv_cgroup_mkcgroup_unified()
 	return ret;
 }
 
+static int pv_cgroup2_join(const char *cgroup)
+{
+	int fd, written;
+	pid_t pid;
+	char path[PATH_MAX], pid_str[64];
+	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s/cgroup.procs",
+			cgroup);
+
+	// Open cgroup.procs
+	fd = open(path, O_WRONLY);
+	if (fd < 0) {
+		fprintf(stderr, "Failed to open %s: %s\n", path,
+			strerror(errno));
+		return -1;
+	}
+
+	// Get our PID
+	pid = getpid();
+	snprintf(pid_str, sizeof(pid_str), "%d", pid);
+
+	// Write PID to cgroup.procs
+	written = write(fd, pid_str, strlen(pid_str));
+	if (written < 0) {
+		fprintf(stderr, "Failed to write to %s: %s\n", path,
+			strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	close(fd);
+	return 0;
+}
+
 static int pv_cgroup_init_appengine()
 {
 	struct pantavisor *pv = pv_get_instance();
 	pv->cgroupv = pv_cgroup_get_version();
 
-	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID))
-		pv_cgroup_mkcgroup_init("pantavisor");
+	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID)) {
+		if (pv_cgroup_mkcgroup_init("pantavisor")) {
+			pv_log(WARN,
+			       "Pantavisor cgroup could not be initialized. It might be left over from previous runs. Continuing ...");
+		}
+	} else {
+		if (pv_cgroup_mkcgroup2_init("pantavisor")) {
+			pv_log(WARN,
+			       "Pantavisor cgroup could not be initialized. It might be left over from previous runs. Continuing ...");
+		}
+		if (pv_cgroup2_join("pantavisor")) {
+			pv_log(ERROR,
+			       "Pantavisor could not join 'pantavisor' cgroupv2.");
+			return -1;
+		}
+	}
 
 	return 0;
 }
@@ -229,6 +288,7 @@ static char *pv_cgroup_parse_proc_unified(FILE *fd)
 {
 	char *pvcg, *pname = NULL;
 	char buf[128];
+
 	while (fgets(buf, 128, fd)) {
 		pvcg = strstr(buf, "/lxc/");
 		if (pvcg) {
@@ -236,6 +296,23 @@ static char *pv_cgroup_parse_proc_unified(FILE *fd)
 			pvcg[strlen(pvcg) - 1] = '\0';
 			pname = strdup(pvcg);
 			break;
+		}
+		size_t len = strlen(buf);
+
+		if (len > 0 && buf[len - 1] == '\n') {
+			buf[--len] = '\0';
+		}
+		if (len >= 3) { // At least "0::"
+			int i;
+			for (i = 0; i < len - 3 && isdigit(buf[i]); i++)
+				;
+
+			// Check if we found at least one digit and string ends with "::/"
+			if (i > 0 && i == len - 3 &&
+			    strcmp(&buf[i], "::/") == 0) {
+				pname = strdup("_pv_");
+				break;
+			}
 		}
 	}
 
