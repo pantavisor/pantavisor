@@ -6,6 +6,7 @@ project(pantavisor VERSION 019)
 
 # include cmake packages
 include(FindPackageHandleStandardArgs)
+include(GNUInstallDirs)
 
 # feature flags
 set(PANTAVISOR_DM_VERITY OFF CACHE BOOL "Enable support for dm verity mounted squash volumes")
@@ -25,6 +26,28 @@ set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on buil
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
+
+set(PV_INSTALL_PVLIBDIR "lib/pv")
+IF (NOT PANTAVISOR_APPENGINE)
+    set(PV_INSTALL_FULL_PVLIBDIR "/lib/pv")
+else()
+        if(CMAKE_INSTALL_PREFIX STREQUAL "/usr")
+            set(PV_INSTALL_FULL_PVLIBDIR "${PV_INSTALL_PVLIBDIR}")
+       else()
+            set(PV_INSTALL_FULL_PVLIBDIR "${CMAKE_INSTALL_PREFIX}/${PV_INSTALL_PVLIBDIR}")
+       endif()
+endif()
+
+set(PV_INSTALL_STORAGEDIR "${CMAKE_INSTALL_LOCALSTATEDIR}/${CMAKE_PROJECT_NAME}/storage")
+if(NOT PANTAVISOR_APPENGINE)
+       set(PV_INSTALL_FULL_STORAGEDIR "/storage")
+else()
+       if(CMAKE_INSTALL_PREFIX STREQUAL "/usr")
+               set(PV_INSTALL_FULL_STORAGEDIR "${PV_INSTALL_STORAGEDIR}")
+       else()
+               set(PV_INSTALL_FULL_STORAGEDIR "${CMAKE_INSTALL_PREFIX}/${PV_INSTALL_STORAGEDIR}")
+       endif()
+endif()
 
 if(PANTAVISOR_CLANG_FORMAT_CHECK)
 
@@ -325,15 +348,15 @@ IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 ## install basic filesystem skeleton
 install(DIRECTORY skel/ DESTINATION /)
 ### ... insert defaults/
-install(DIRECTORY defaults DESTINATION /etc/pantavisor)
+install(DIRECTORY defaults DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/pantavisor)
 ENDIF()
 
 ### install PVS secureboot files
 IF(NOT PANTAVISOR_PVS_SKIP_INSTALL)
 IF(DEFINED PANTAVISOR_PVS_DIR)
-install(DIRECTORY ${PANTAVISOR_PVS_DIR}/ DESTINATION /etc/pantavisor/pvs/trust FILES_MATCHING PATTERN "*.crt")
+install(DIRECTORY ${PANTAVISOR_PVS_DIR}/ DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/pantavisor/pvs/trust FILES_MATCHING PATTERN "*.crt")
 ELSE()
-install(DIRECTORY pvs/ DESTINATION /etc/pantavisor/pvs)
+       install(DIRECTORY pvs/ DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/pantavisor/pvs)
 ENDIF()
 ENDIF()
 
@@ -346,14 +369,15 @@ ENDIF()
 if(PANTAVISOR_E2FSGROW_ENABLE)
 install(FILES scripts/pv_e2fsgrow
 	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv/)
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/)
 ENDIF()
 install(FILES scripts/JSON.sh scripts/pvcrash
 	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv/)
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/)
 install(DIRECTORY scripts/hooks_lxc-mount.d
 	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv)
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/)
+
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
 	DESTINATION /usr/bin)
@@ -369,23 +393,76 @@ add_executable(remount
 target_compile_definitions(remount PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(remount PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
 target_link_libraries(remount  ${PANTAVISOR_RUNTIME_THTTP})
-install(TARGETS remount DESTINATION /lib/pv/hooks_lxc-mount.d)
+install(TARGETS remount DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks_lxc-mount.d)
 
 ### install dm crypt feature
 IF(PANTAVISOR_DM_CRYPT)
 install(DIRECTORY scripts/volmount/crypt
 	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv/volmount)
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/volmount)
 ENDIF()
 
 ### install dm verity feature
 IF(PANTAVISOR_DM_VERITY)
 install(DIRECTORY scripts/volmount/verity
 	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION /lib/pv/volmount)
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/volmount)
 ENDIF()
 
 ENDIF() # PANTAVISOR_RUNTIME
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/pantavisor-run.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-run
+    @ONLY
+)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-run
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+IF(PANTAVISOR_APPENGINE)
+
+#install -m 0755 ${IMAGE_ROOTFS}/usr/share/pantavisor/skel/etc/pantavisor/defaults/groups.json ${IMAGE_ROOTFS}/etc/pantavisor/defaults/
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pv-appengine.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pv-appengine
+    @ONLY
+)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/pv-appengine
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/appengine/set-env.in
+    ${CMAKE_CURRENT_BINARY_DIR}/set-env
+    @ONLY
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/set-env
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/appengine/cmdline.txt.in
+    ${CMAKE_CURRENT_BINARY_DIR}/cmdline.txt
+    @ONLY
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/cmdline.txt
+    DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/boot/
+)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pantavisor.config.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-appengine.config
+    @ONLY
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-appengine.config
+    DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/
+)
+
+ENDIF() # PANTAVISOR_APPENGINE
+
 
 ## PVTX section
 
