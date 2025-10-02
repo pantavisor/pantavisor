@@ -106,6 +106,7 @@ typedef enum {
 #define SECUREBOOT_TRUSTSTORE_DEF PVS_CERT_DEFAULT_STORE
 #define SYSTEM_CONFDIR_DEF "/configs"
 #define SYSTEM_ETCDIR_DEF "/etc"
+#define SYSTEM_ETCPANTAVISORDIR_DEF "/etc/pantavisor"
 #define SYSTEM_LIBDIR_DEF "/lib"
 #define SYSTEM_MEDIADIR_DEF "/media"
 #define SYSTEM_RUNDIR_DEF "/pv"
@@ -248,6 +249,8 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO", PV, 0, false,
 	  .value.b = false },
 	{ STR, "PV_SYSTEM_ETCDIR", PV, 0, false, .value.s = SYSTEM_ETCDIR_DEF },
+	{ STR, "PV_SYSTEM_ETCPANTAVISORDIR", PV, 0, false,
+	  .value.s = SYSTEM_ETCPANTAVISORDIR_DEF },
 	{ INIT_MODE, "PV_SYSTEM_INIT_MODE", PV, 0, false,
 	  .value.i = IM_EMBEDDED },
 	{ STR, "PV_SYSTEM_LIBDIR", PV, 0, false, .value.s = SYSTEM_LIBDIR_DEF },
@@ -806,7 +809,7 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 	}
 
 	if (modified < entry->modified) {
-		pv_log(WARN,
+		pv_log(DEBUG,
 		       "key '%s' in level %s already configured in upper level %s",
 		       entry->key, _get_mod_level_str(modified),
 		       _get_mod_level_str(entry->modified));
@@ -889,8 +892,9 @@ static int _set_config_by_key(const char *key, const char *value, void *opaque)
 	if (!entry) {
 		entry = _search_config_entry_by_alias(key);
 		if (entry) {
-			pv_log(WARN, "translating legacy key '%s' as '%s'", key,
-			       entry->key);
+			pv_log(WARN,
+			       "Legacy config key detected! Please move to new config syntax ASAP! Translating legacy key '%s' as '%s'",
+			       key, entry->key);
 		}
 	}
 	if (!entry) {
@@ -996,7 +1000,7 @@ static int pv_config_override_config_from_file(char *path, level_t level)
 	DEFINE_DL_LIST(oem_config_list);
 
 	if (load_key_value_file(path, &oem_config_list) < 0) {
-		pv_log(WARN, "could not load config file from '%s'", path);
+		pv_log(DEBUG, "could not load config file from '%s'", path);
 		return -1;
 	}
 
@@ -1032,7 +1036,7 @@ static int pv_config_load_oem(const char *rev)
 	pv_paths_storage_trail_plat_file(path, PATH_MAX, rev, oem_name,
 					 file_name);
 	if (pv_config_override_config_from_file(path, OEM)) {
-		pv_log(WARN, "could not load OEM config file");
+		pv_log(INFO, "No OEM config file found in %s", path);
 		return -1;
 	}
 
@@ -1044,7 +1048,7 @@ int pv_config_load_update(const char *rev, const char *trail_config)
 	pv_config_load_bsp(rev, trail_config);
 
 	if (pv_config_load_oem(rev)) {
-		pv_log(WARN, "could not load OEM config");
+		pv_log(INFO, "OEM config not installed for rev=%s.", rev);
 		return -1;
 	}
 
