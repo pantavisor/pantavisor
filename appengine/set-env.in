@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# ENV VARIABLES
+export PATH="@CMAKE_INSTALL_FULL_BINDIR@:@PV_INSTALL_FULL_PVLIBDIR@:@PV_INSTALL_FULL_PVLIBDIR@/volmount/crypt:$PATH"
+export LD_LIBRARY_PATH="@CMAKE_INSTALL_FULL_LIBDIR@:$LD_LIBRARY_PATH"
+
+# ALIASES
+alias "pventer"="LXC_PATH=@CMAKE_INSTALL_FULL_LOCALSTATEDIR@/lib/lxc pventer"
+
+lxc_commands="
+lxc-attach
+lxc-autostart
+lxc-cgroup
+lxc-checkconfig
+lxc-checkpoint
+lxc-clone
+lxc-config
+lxc-console
+lxc-copy
+lxc-create
+lxc-destroy
+lxc-device
+lxc-execute
+lxc-freeze
+lxc-info
+lxc-init
+lxc-ls
+"
+
+# set alias so lxc-* commands can find lxc path
+for command in $lxc_commands
+do
+  alias "$command"="$command -P @CMAKE_INSTALL_FULL_LOCALSTATEDIR@/lib/lxc"
+done
