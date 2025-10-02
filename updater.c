@@ -458,3 +458,4 @@ int pv_updater_sync()
 	// sync factory revision with Hub
 	return trail_first_boot(pv);
 }
+
