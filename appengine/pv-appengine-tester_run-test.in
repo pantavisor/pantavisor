@@ -1,0 +1,316 @@
+#!/bin/sh
+
+usage() {
+	echo ""
+	echo "Usage: $0 <test-path> <interactive> <manual> <overwrite> <verbose> <netsim>"
+	echo ""
+}
+
+parse_test() {
+	json_path="$test_path/test.json"
+	if [ ! -e "$json_path" ]; then
+		echo "Error: '$json_path' not found"
+		exit 1
+	fi
+	
+	description=$(jq -r '.description' "$json_path")
+	cmdline=$(jq -r '.setup.cmdline' "$json_path")
+	pantavisor_config=$(jq -r '.setup."pantavisor.config"' "$json_path")
+	pvs=$(jq -r '.setup.pvs' "$json_path")
+	control_container=$(jq -r '.setup.containers.control' "$json_path")
+	tarballs=$(jq -r '.setup.containers.tarballs[]' "$json_path")
+	urls=$(jq -r '.setup.containers.urls[]' "$json_path")
+	ready_script=$(jq -r '.setup."ready-script"' "$json_path")
+	self_claim=$(jq -r '.setup."self-claim"' "$json_path")
+	test_script=$(jq -r '."test-script"' "$json_path")
+}
+
+cleanup_cryptdisk() {
+	cryptsetup close versatile > /dev/null 2>&1
+}
+
+cleanup_cgroup() {
+	find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1
+	rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1
+}
+
+setup_loop() {
+	local count="$1"
+	local first="$(losetup -f | grep -oE '[0-9]+$')"
+	first=$((first + 1))
+
+	for i in $(seq "$first" "$((first + count))"); do
+		mknod -m660 "/dev/loop$i" b 7 "$i" > /dev/null 2>&1
+	done
+
+	return "$first"
+}
+
+teardown_loop() {
+	local first="$1"
+	local count="$2"
+
+	for i in $(seq "$first" "$((first + count))"); do
+		rm -f "/dev/loop$i"
+	done
+}
+
+initial_setup() {
+	if [ ! -f "$test_path/$test_script" ]; then
+		echo "Error: '$test_path/$test_script' does not exist"
+		exit 1
+	fi
+
+	if [ ! -f "$test_path/$pantavisor_config" ]; then
+		echo "Error: '$test_path/$pantavisor_config' does not exist"
+		exit 1
+	fi
+
+	if [ "$netsim" = "true" ]; then
+		wait_for_status "ip link set wlan1 name wlan0" 0 5 > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			echo "Error: could not setup wlan0 interface for tester"
+			exit 1
+		fi
+	fi
+
+	cp "$test_path/$pantavisor_config" "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor.config"
+
+	if [ -n "$pvs" ]; then
+		rm -f @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/*
+		find $test_path/$pvs -exec tar -xf '{}' -C @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/ --strip-components=1 \;
+	fi
+	
+	cd /storage/trails/0
+	rm -rf *; pvr init; pvr add .; pvr commit > /dev/null 2>&1
+	for tarball in $tarballs; do
+		if [ ! -e "$test_path/$tarball" ]; then echo "Error: '$test_path/$tarball' does not exist"; exit 1; fi
+		pvr get "$test_path/$tarball" > /dev/null 2>&1
+		pvr checkout -c --hl
+	done
+	for url in $urls; do
+		pvr get "$url" > /dev/null 2>&1
+		pvr checkout -c --hl
+	done
+	cd - > /dev/null 2>&1
+
+	cleanup_cryptdisk
+	cleanup_cgroup
+	setup_loop "$loop_n"
+	first_loop=$?
+}
+
+exec_interactive() {
+	if [ "$interactive" = "false" ]; then
+		return
+	fi
+
+	echo ""
+	echo "Welcome to Pantavisor appengine!"
+	echo ""
+
+	if [ "$manual" = "true" ]; then
+		echo "Info: Pantavisor is not running."
+		echo "To run Pantavisor with stdout logs:"
+		echo "pv-appengine -c \"pv_log.server.outputs=filetree,stdout\""
+		echo ""
+	elif [ "$pv_ready" = "false" ]; then
+		echo "Warn: Pantavisor not responding or not ready."
+	else
+		echo "Info: Pantavisor is already running."
+		echo "To run your test:"
+		echo "$test_path/$test_script"
+		echo ""
+	fi
+	
+	sh -c "bash --rcfile @CMAKE_INSTALL_DATADIR@/@PROJECT_NAME@/set_env"
+}
+
+stop_pv() {
+	device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pv/device-id`
+	if [ "$self_claim" = "true" ] && [ -n "$device_id" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
+		pvr delete -y $device_id
+	fi
+
+	local pv_pid=$(ps -w | grep '[p]antavisor.*/opt/pantavisor/init' | awk '{print $1}')
+	if [ -n "$pv_pid" ]; then
+		eval "pventer -c $control_container pvcontrol commands poweroff" > /dev/null 2>&1
+		wait_for_process "[p]antavisor.*/opt/pantavisor/init" "120" "-d"
+		if [ $? -ne 0 ]; then
+			echo "Warn: Pantavisor still running. Shutting it down..."
+			kill -SIGTERM "$pv_pid"
+			wait_for_process "[p]antavisor.*/opt/pantavisor/init" "30" "-d"
+			if [ $? -ne 0 ]; then
+				echo "Error: Pantavisor still running. Exiting..."
+				pv_ready="false"
+			fi
+		fi
+	fi
+
+	teardown_loop "$first_loop" "$loop_n"
+	cleanup_cgroup
+}
+
+int_handler() {
+	echo "Debug: Stopping Pantavisor...."
+	stop_pv
+	exit 2
+}
+
+start_pv() {
+	if [ "$manual" = "true" ]; then
+		return
+	fi
+
+	pv_cmd="/opt/pantavisor/pantavisor"
+	
+	if [ -n "$cmdline" ]; then
+		pv_cmd="$pv_cmd -c \"$cmdline\""
+	fi
+	
+	if [ "$verbose" = "false" ]; then
+		eval "$pv_cmd > /dev/null 2>&1 &"
+	else
+		eval "$pv_cmd &"
+	fi
+
+	wait_for_process "[p]antavisor.*/opt/pantavisor/init" "30" "-a"
+	if [ $? != 0 ]; then
+    	echo "Error: timed out waiting for Pantavisor PID"
+		return
+	fi
+
+	trap 'int_handler' INT
+
+	if [ -n "$ready_script" ]; then
+		if [ "$verbose" = "false" ]; then
+			"$test_path/$ready_script" > /dev/null 2>&1
+		else
+			"$test_path/$ready_script"
+		fi
+	fi
+
+	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
+	if [ $? != 0 ]; then
+    	echo "Error: timed out waiting for pantavisor.status READY"
+	else
+		pv_ready="true"
+	fi
+
+	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib curl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 60
+	if [ $? -ne 0 ]; then
+		echo "Error: timed out waiting for $control_container pvr endpoint to be online"
+		stop_pv
+		exit 1
+	fi
+
+	if [ "$self_claim" = "true" ]; then
+		if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
+			echo "Error: you need to set PH_USER and PH_PASS to execute the test"
+			stop_pv
+			exit 1
+		fi
+		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
+		
+		wait_for_pantahub_state "$control_container" "claim"
+		
+		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pv/device-id`
+		challenge=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pv/challenge`
+		
+		pvr claim -c "$challenge" "$device_id"
+		
+		wait_for_pantahub_state "$control_container" "idle"
+	fi
+}
+	
+exec_test() {
+	if [ "$interactive" = "true" ] || [ "$pv_ready" = "false" ]; then
+		return
+	fi
+	
+	script_path="$test_path/$test_script"
+	tmp_script_path=
+	if [ "$overwrite" = "true" ]; then
+		tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
+		sed '5iset -x' "$test_path/$test_script" > "$tmp_script_path"
+		script_path="$tmp_script_path"
+		chmod +x "$tmp_script_path"
+	fi
+
+	tmp_out_path=$(mktemp /tmp/pv_appengine_output.XXXXXX)
+	# we use script to get stdout and stderr in the same order we do in console
+	# unwanted characters are trimmed from the output of script (escape sequences to control color and carriage returns)
+	script -q -c "$script_path" | sed -r "s/\x1B\[[0-9;]*[a-zA-Z]//g" | tr -d '\r' > $tmp_out_path 2>&1
+	output=$(cat "$tmp_out_path")
+	if [ "$overwrite" = "true" ]; then
+		echo "$output" > $test_path/output
+		rm -f "$tmp_script_path"
+	fi
+}
+
+eval_test() {
+	if [ "$interactive" = "true" ] || [ "$manual" = "true" ]; then
+		return
+	fi
+
+	if [ "$pv_ready" = "false" ]; then
+		stop_pv
+		exit 1
+	fi
+
+	if [ "$overwrite" != "true" ]; then
+		diff <(grep -vE '^(\+|$)' $test_path/output) <(grep -vE '^(\+|$)' "$tmp_out_path")
+		if [ $? -ne 0 ]; then
+			stop_pv
+			exit 1
+		fi
+		rm -f "$tmp_script_path"
+	fi
+}
+
+test_path=${1:-$TEST_PATH}
+interactive=${2-$INTERACTIVE}
+manual=${3:-$MANUAL}
+overwrite=${4:-$OVERWRITE}
+verbose=${5:-$VERBOSE}
+netsim=${6:-$NETSIM}
+
+if [ -z "$test_path" ] || [ -z "$interactive" ] || [ -z "$manual" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$netsim" ]; then
+	echo "Error: missing arguments / envs"
+	usage
+fi
+
+if [ "$verbose" = "true" ]; then set -x; fi
+
+source /usr/local/share/pv-appengine-tester/utils
+. /opt/pantavisor/set_env
+
+description=
+cmdline=
+pantavisor_config=
+pvs=
+control_container=
+tarballs=
+ready_script=
+self_claim=
+test_script=
+
+parse_test
+
+first_loop=
+loop_n=100
+
+initial_setup
+
+pv_ready="false"
+
+start_pv
+exec_interactive
+
+tmp_out_path=
+
+exec_test
+stop_pv
+
+eval_test
