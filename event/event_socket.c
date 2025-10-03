@@ -28,8 +28,8 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-void pv_event_socket_listen(event_socket_t *listener, evutil_socket_t fd,
-			    event_callback_fn cb)
+void pv_event_socket_listen(struct pv_event_socket *listener,
+			    evutil_socket_t fd, event_callback_fn cb)
 {
 	if (!listener || !pv_event_get_base())
 		return;
@@ -49,7 +49,7 @@ void pv_event_socket_listen(event_socket_t *listener, evutil_socket_t fd,
 	pv_log(DEBUG, "add event: type='listener' cb=%p fd=%d", (void *)cb, fd);
 }
 
-void pv_event_socket_ignore(event_socket_t *listener)
+void pv_event_socket_ignore(struct pv_event_socket *listener)
 {
 	if (!listener)
 		return;

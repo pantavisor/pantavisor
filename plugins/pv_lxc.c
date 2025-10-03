@@ -43,6 +43,7 @@
 #include "pvlogger.h"
 #include "state.h"
 #include "platforms.h"
+#include "pantavisor.h"
 #include "paths.h"
 #include "utils/pvsignals.h"
 #include "utils/system.h"

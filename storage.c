@@ -39,11 +39,10 @@
 #include <sys/prctl.h>
 #include <sys/statfs.h>
 
-#include <mbedtls/sha256.h>
-
 #include <jsmn/jsmnutil.h>
 
-#include "updater.h"
+#include <mbedtls/sha256.h>
+
 #include "objects.h"
 #include "storage.h"
 #include "state.h"
@@ -56,7 +55,9 @@
 #include "signature.h"
 #include "paths.h"
 #include "metadata.h"
+#include "pantavisor.h"
 #include "parser/parser.h"
+#include "update/update_struct.h"
 #include "utils/json.h"
 #include "utils/str.h"
 #include "utils/fs.h"
@@ -66,6 +67,10 @@
 #define MODULE_NAME "storage"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
+
+#define UPDATE_PROGRESS_JSON_SIZE 4096
+#define SHA256SUM_HEXA_SIZE 64
+#define SHA256SUM_BIN_SIZE 32
 
 static struct timer threshold_timer;
 
@@ -99,7 +104,7 @@ static int pv_storage_gc_objects(struct pantavisor *pv)
 
 		// do not remove objects belonging to an ongoing update
 		if (pv->update) {
-			if (pv_objects_id_in_step(pv->update->pending, o->path))
+			if (pv_objects_id_in_step(pv->update->state, o->path))
 				continue;
 		}
 
@@ -286,7 +291,7 @@ int pv_storage_gc_run()
 		s = pv->state;
 
 	if (pv->update)
-		u = pv->update->pending;
+		u = pv->update->state;
 
 	dl_list_init(&revisions);
 
@@ -422,19 +427,22 @@ out:
 	free(storage);
 }
 
-int pv_storage_validate_file_checksum(char *path, char *checksum)
+char *pv_storage_calculate_sha256sum(const char *path)
 {
-	int fd, ret = -1, bytes;
-	mbedtls_sha256_context sha256_ctx;
+	int fd, bytes;
+	off_t pos = 0, i = 0;
 	unsigned char buf[4096];
-	unsigned char cloud_sha[32];
-	unsigned char local_sha[32];
-	char *tmp_sha;
-	char byte[3];
+	unsigned char sha_bin[SHA256SUM_BIN_SIZE];
+	unsigned char *ret = NULL;
+	mbedtls_sha256_context sha256_ctx;
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0)
-		return ret;
+		return NULL;
+
+	ret = calloc(SHA256SUM_HEXA_SIZE + 1, sizeof(char));
+	if (!ret)
+		goto out;
 
 	mbedtls_sha256_init(&sha256_ctx);
 	mbedtls_sha256_starts(&sha256_ctx, 0);
@@ -442,18 +450,45 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 	while ((bytes = read(fd, buf, 4096)) > 0)
 		mbedtls_sha256_update(&sha256_ctx, buf, bytes);
 
-	mbedtls_sha256_finish(&sha256_ctx, local_sha);
+	mbedtls_sha256_finish(&sha256_ctx, sha_bin);
 	mbedtls_sha256_free(&sha256_ctx);
 
-	// signed to unsigned
-	tmp_sha = checksum;
-	for (int i = 0, j = 0; j < 32; i = i + 2, j++) {
-		strncpy(byte, &tmp_sha[i], 2);
-		byte[2] = 0;
-		cloud_sha[j] = strtoul(byte, NULL, 16);
+	while (i < SHA256SUM_BIN_SIZE) {
+		pos += snprintf(ret + pos, 3, "%02x", sha_bin[i]);
+		i++;
 	}
 
-	if (strncmp((char *)cloud_sha, (char *)local_sha, 32)) {
+out:
+	close(fd);
+
+	return ret;
+}
+
+int pv_storage_validate_file_checksum(char *path, char *checksum)
+{
+	int ret = -1;
+	char *path_sha = NULL;
+
+	path_sha = pv_storage_calculate_sha256sum(path);
+	if (!path_sha) {
+		pv_log(WARN, "could not calculate sha256sum of '%s': %s", path,
+		       strerror(errno));
+		goto out;
+	}
+
+	if (strlen(checksum) != SHA256SUM_HEXA_SIZE) {
+		pv_log(WARN, "wrong given checksum len %d '%s'",
+		       strlen(checksum), checksum);
+		goto out;
+	}
+
+	if (strlen(path_sha) != SHA256SUM_HEXA_SIZE) {
+		pv_log(WARN, "wrong loaded checksum len %d '%s'",
+		       strlen(path_sha), path_sha);
+		goto out;
+	}
+
+	if (strncmp(checksum, (char *)path_sha, SHA256SUM_HEXA_SIZE)) {
 		pv_log(WARN, "sha256 mismatch in %s", path);
 		goto out;
 	}
@@ -461,7 +496,8 @@ int pv_storage_validate_file_checksum(char *path, char *checksum)
 	ret = 0;
 
 out:
-	close(fd);
+	if (path_sha)
+		free(path_sha);
 
 	return ret;
 }
@@ -505,9 +541,50 @@ bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 	return ret;
 }
 
-void pv_storage_set_active(struct pantavisor *pv)
+void pv_storage_set_object_download_path(char *path, size_t size,
+					 const char *id)
+{
+	memset(path, 0, size);
+
+	if (pv_config_get_bool(PV_UPDATER_USE_TMP_OBJECTS) &&
+	    (!strcmp(pv_config_get_str(PV_STORAGE_FSTYPE), "jffs2") ||
+	     !strcmp(pv_config_get_str(PV_STORAGE_FSTYPE), "ubifs")))
+		SNPRINTF_WTRUNC(path, size, "/tmp/%s", id);
+	else
+		pv_paths_storage_object_tmp(path, size, id);
+}
+
+bool pv_storage_is_object_installed(const char *id)
 {
 	char path[PATH_MAX];
+
+	if (!id)
+		return false;
+
+	pv_paths_storage_object(path, PATH_MAX, id);
+	return pv_fs_path_exist(path);
+}
+
+int pv_storage_install_object(const char *src_path, const char *id)
+{
+	char dst_path[PATH_MAX];
+
+	pv_paths_storage_object(dst_path, PATH_MAX, id);
+	if (pv_fs_path_rename(src_path, dst_path)) {
+		pv_log(WARN, "could not rename '%s' to '%s': %s", src_path,
+		       dst_path, strerror(errno));
+		return -1;
+	}
+
+	return 0;
+}
+
+void pv_storage_set_active()
+{
+	char path[PATH_MAX];
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
 
 	// path to current revision - relative and dir for fd
 	pv_paths_storage_trail(path, PATH_MAX, "current");
@@ -734,10 +811,11 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress)
 
 	char path[PATH_MAX];
 
-	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, PROGRESS_FNAME);
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, "");
+	pv_fs_mkdir_p(path, 644);
 
-	pv_log(DEBUG, "saving progress file for rev %s in %s: %s", rev, path,
-	       progress);
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, PROGRESS_FNAME);
+	pv_log(DEBUG, "saving progress at '%s'", path);
 	if (pv_fs_file_save(path, progress, 0644) < 0)
 		pv_log(WARN, "could not save file %s: %s", path,
 		       strerror(errno));
@@ -780,12 +858,45 @@ void pv_storage_init_trail_pvr()
 		       strerror(errno));
 }
 
-int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_link_trail_object(const char *id, const char *rev,
+				 const char *name)
+{
+	char relpath[PATH_MAX], objpath[PATH_MAX];
+	char *ext;
+
+	pv_paths_storage_object(objpath, PATH_MAX, id);
+	pv_paths_storage_trail_file(relpath, PATH_MAX, rev, name);
+
+	pv_log(DEBUG, "linking '%s' to '%s'", objpath, relpath);
+
+	pv_fs_mkbasedir_p(relpath, 0775);
+	ext = strrchr(relpath, '.');
+	if (ext && (strcmp(ext, ".bind") == 0)) {
+		pv_log(INFO, "copying bind volume");
+		if (pv_fs_file_copy(objpath, relpath, 0644) < 0) {
+			pv_log(WARN, "could not copy objects: %s",
+			       strerror(errno));
+			return -1;
+		}
+	} else if (link(objpath, relpath) < 0) {
+		if (errno != EEXIST) {
+			pv_log(WARN, "unable to link: %s", strerror(errno));
+			return -1;
+		}
+	}
+
+	pv_fs_path_sync(relpath);
+
+	return 0;
+}
+
+int pv_storage_meta_expand_jsons(struct pv_state *s)
 {
 	int ret = 0;
 	struct stat st;
 	char path[PATH_MAX];
 	char *file = 0, *dir = 0;
+	struct pantavisor *pv = pv_get_instance();
 
 	if (!pv || !s)
 		goto out;
@@ -815,12 +926,15 @@ out:
 	return ret;
 }
 
-int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
+int pv_storage_meta_link_boot(struct pv_state *s)
 {
 	int i;
 	char src[PATH_MAX], dst[PATH_MAX], fname[PATH_MAX], prefix[PATH_MAX];
 	struct pv_addon *a, *tmp;
 	struct dl_list *addons = NULL;
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return -1;
 
 	if (!s)
 		s = pv->state;
@@ -932,6 +1046,22 @@ int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s)
 err:
 	pv_log(ERROR, "unable to link '%s' to '%s', errno %d", src, dst, errno);
 	return -1;
+}
+
+int pv_storage_install_state_json(const char *state, const char *rev)
+{
+	char path[PATH_MAX];
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, rev, "");
+	pv_fs_mkdir_p(path, 0755);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, "");
+	pv_fs_mkdir_p(path, 0755);
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, JSON_FNAME);
+	if (pv_fs_file_save(path, state, 0644) < 0) {
+		pv_log(ERROR, "could not save %s: %s", path, strerror(errno));
+		return -1;
+	}
+
+	return 0;
 }
 
 char *pv_storage_get_state_json(const char *rev)

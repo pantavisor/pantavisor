@@ -27,7 +27,6 @@
 #ifndef PV_LOG_H
 #define PV_LOG_H
 
-#include "pantavisor.h"
 #include <stdarg.h>
 
 #ifdef DEBUG

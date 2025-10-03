@@ -27,6 +27,10 @@
 #include "config.h"
 #include "cgroup.h"
 
+#include "update/update.h"
+
+#include "utils/system.h"
+
 #define RUNLEVEL_DATA 0
 #define RUNLEVEL_ROOT 1
 #define RUNLEVEL_PLATFORM 2
@@ -49,9 +53,8 @@ struct pantavisor {
 	bool remote_mode;
 	bool online;
 	bool unclaimed;
-	bool synced;
 	bool loading_objects;
-	bool hard_poweroff;
+	pv_system_transition_t issued_transition;
 	cgroup_version_t cgroupv;
 	int ctrl_fd;
 };
@@ -59,6 +62,12 @@ struct pantavisor {
 void pv_init(void);
 int pv_start(void);
 void pv_stop(void);
+
+pv_system_transition_t pv_run_update(void);
+
+void pv_issue_nonreboot(void);
+void pv_issue_reboot(void);
+void pv_issue_poweroff(void);
 
 struct pantavisor *pv_get_instance(void);
 

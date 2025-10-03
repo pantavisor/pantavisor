@@ -22,9 +22,6 @@
 #ifndef PV_OBJECTS_H
 #define PV_OBJECTS_H
 
-#define OBJPATH_FMT "%s/objects/%s"
-#define RELPATH_FMT "%s/trails/%s/%s"
-
 #include <stdlib.h>
 #include <limits.h>
 
@@ -34,10 +31,7 @@ struct pv_object {
 	char *name;
 	char *id;
 	char *geturl;
-	char *objpath;
-	char *relpath;
 	off_t size;
-	char *sha256;
 	struct pv_platform *plat;
 	struct dl_list list;
 	bool uploaded;
@@ -59,12 +53,6 @@ static inline void pv_object_free(struct pv_object *obj)
 		free(obj->id);
 	if (obj->geturl)
 		free(obj->geturl);
-	if (obj->objpath)
-		free(obj->objpath);
-	if (obj->relpath)
-		free(obj->relpath);
-	if (obj->sha256)
-		free(obj->sha256);
 
 	free(obj);
 }

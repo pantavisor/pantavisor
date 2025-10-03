@@ -26,8 +26,6 @@
 
 #include <sys/types.h>
 
-#include "pantavisor.h"
-
 #include "utils/list.h"
 #include "utils/json.h"
 #include "utils/timer.h"
@@ -156,7 +154,7 @@ const char *pv_platforms_restart_policy_str(restart_policy_t policy);
 
 void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p);
 
-int pv_platforms_init_ctrl(struct pantavisor *pv);
+int pv_platforms_init_ctrl(void);
 
 struct pv_platform *pv_platform_add(struct pv_state *s, char *name);
 

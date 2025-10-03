@@ -130,8 +130,8 @@ add_executable(pantavisor
 			event/event_rest.h
 			event/event_socket.c
 			event/event_socket.h
-			event/event_timer.c
-			event/event_timer.h
+			event/event_periodic.c
+			event/event_periodic.h
 			group.c
 			group.h
 			grub.c
@@ -173,6 +173,8 @@ add_executable(pantavisor
 			objects.h
 			pantahub/pantahub.c
 			pantahub/pantahub.h
+			pantahub/pantahub_msg.c
+			pantahub/pantahub_msg.h
 			pantahub/pantahub_proto.c
 			pantahub/pantahub_proto.h
 			pantavisor.c
@@ -207,6 +209,11 @@ add_executable(pantavisor
 			ubootab.c
 			updater.c
 			updater.h
+			update/update.c
+			update/update.h
+			update/update_progress.c
+			update/update_progress.h
+			update/update_struct.h
 			utils/base64.c
 			utils/buildinfo.c
 			utils/buildinfo.h

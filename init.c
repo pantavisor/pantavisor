@@ -199,7 +199,7 @@ static void shell_handler(int signal)
 	if (!pv)
 		return;
 
-	pv->hard_poweroff = true;
+	pv_issue_poweroff();
 }
 
 static void early_spawns()
@@ -530,6 +530,11 @@ void pv_init_umount()
 
 	pv_paths_exports(path, PATH_MAX);
 	umount(path);
+
+	umount("/proc");
+	umount("/dev");
+	umount("/sys");
+	umount("/dev/pts");
 
 	pv_cgroup_umount();
 }
