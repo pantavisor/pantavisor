@@ -24,6 +24,16 @@ exec_run() {
 		exit 1
 	fi
 
+	if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
+		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@-ovl/upper
+		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@-ovl/work
+		if ! mount -t overlay overlay -o lowerdir=@PV_INSTALL_FULL_STORAGEDIR@,upperdir=@PV_INSTALL_FULL_STORAGEDIR@-ovl/upper,workdir=@PV_INSTALL_FULL_STORAGEDIR@-ovl/work @PV_INSTALL_FULL_STORAGEDIR@; then
+			echo "Could not mount /storage; /storage might still be mounted from previous run on another pantavisor is running."
+			echo "To Fix: check and maybe umount /storage /var/pantavisor/storage; then try again."
+			exit 1
+		fi
+	fi
+
 	pv_trying=""
 	while true
 	do
@@ -47,15 +57,29 @@ exec_run() {
 
 		# exec Pantavisor
 		set +e
-		eval $envs /usr/bin/unshare --cgroup @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline "pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline"
+		eval $envs /usr/bin/unshare --cgroup @CMAKE_INSTALL_FULL_BINDIR@/pantavisor-run --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline "pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline"
 		set -e
+
+		# lets cosume inputs first
+		read -t 0 || true
 
 		# wait for user input or continue
 		if [ "$interactive" = 'true' ]
 		then
 			read -p "Reseting Pantavisor. Press ENTER to continue or CTRL-C to exit safely..." INPUT
 		fi
+
+		if read -t 3 -p "Will restart Pantavisor in 3 sec: Press ENTER to abort"; then
+			echo "Exiting ..."
+			break
+		fi
 	done
+
+if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
+	umount /var/pantavisor/storage
+fi
+
+
 }
 
 # parse options
