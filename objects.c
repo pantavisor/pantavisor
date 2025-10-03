@@ -61,15 +61,10 @@ struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
 				 char *mntpoint)
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
-	char path[PATH_MAX];
 
 	if (this) {
 		this->name = strdup(filename);
 		this->id = strdup(id);
-		pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
-		this->relpath = strdup(path);
-		pv_paths_storage_object(path, PATH_MAX, id);
-		this->objpath = strdup(path);
 		dl_list_init(&this->list);
 		dl_list_add(&s->objects, &this->list);
 		return this;

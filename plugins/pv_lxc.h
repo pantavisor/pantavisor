@@ -22,7 +22,6 @@
 #ifndef PV_LXC_H
 #define PV_LXC_H
 
-#include "../pantavisor.h"
 #include "../config.h"
 #include "../platforms.h"
 

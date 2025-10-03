@@ -35,6 +35,7 @@
 #include <linux/limits.h>
 
 #include "bootloader.h"
+#include "config.h"
 #include "paths.h"
 #include "utils/str.h"
 #include "utils/fs.h"

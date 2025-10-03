@@ -39,6 +39,7 @@
 #include "state.h"
 #include "storage.h"
 #include "paths.h"
+#include "pantavisor.h"
 #include "parser/parser.h"
 #include "utils/fs.h"
 #include "utils/str.h"
@@ -142,9 +143,13 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 10 },
 	{ INT, "PH_METADATA_USRMETA_INTERVAL", PH | OEM | RUN, 0, false,
 	  .value.i = 5 },
+	{ INT, "PH_ONLINE_REQUEST_THRESHOLD", PH | OEM | RUN, 0, false,
+	  .value.i = 0 },
 	{ INT, "PH_UPDATER_INTERVAL", PH | OEM | RUN, 0, false, .value.i = 60 },
 	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH | OEM | RUN, 0, false,
 	  .value.i = 120 },
+	{ INT, "PH_UPDATER_TRANSFER_MAX_COUNT", PH | OEM | RUN, 0, false,
+	  .value.i = 5 },
 	{ STR, "PV_BOOTLOADER_FITCONFIG", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_BOOTLOADER_MTD_ENV", PV, 0, false, .value.s = NULL },
 	{ BOOL, "PV_BOOTLOADER_MTD_ONLY", PV, 0, false, .value.b = false },
@@ -182,6 +187,8 @@ static struct pv_config_entry entries[] = {
 	  .value.s = DROPBEAR_CACHE_DIR_DEF },
 	{ BOOL, "PV_LIBEVENT_DEBUG_MODE", PV | OEM, 0, false,
 	  .value.b = false },
+	{ INT, "PV_LIBEVENT_SHUTDOWN_TIMEOUT", PV | OEM, 0, false,
+	  .value.i = 0 },
 	{ STR, "PV_LIBTHTTP_CERTSDIR", PV, 0, false,
 	  .value.s = LIBTHTTP_CERTSDIR_DEF },
 	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV | OEM | RUN, 0, false,

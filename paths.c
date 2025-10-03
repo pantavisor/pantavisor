@@ -23,7 +23,9 @@
 #include <stdio.h>
 #include <stddef.h>
 
+#include "config.h"
 #include "paths.h"
+
 #include "utils/str.h"
 
 #define MODULE_NAME "paths"
@@ -136,11 +138,18 @@ void pv_paths_storage_file(char *buf, size_t size, const char *name)
 }
 
 #define PV_OBJECT_PATHF "%s/objects/%s"
+#define PV_OBJECT_TMP_PATHF "%s/objects/%s.tmp"
 
 void pv_paths_storage_object(char *buf, size_t size, const char *sha)
 {
 	SNPRINTF_WTRUNC(buf, size, PV_OBJECT_PATHF,
 			pv_config_get_str(PV_STORAGE_MNTPOINT), sha);
+}
+
+void pv_paths_storage_object_tmp(char *buf, size_t size, const char *id)
+{
+	SNPRINTF_WTRUNC(buf, size, PV_OBJECT_TMP_PATHF,
+			pv_config_get_str(PV_STORAGE_MNTPOINT), id);
 }
 
 #define PV_TRAILS_PATHF "%s/trails/%s"

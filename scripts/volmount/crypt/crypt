@@ -291,6 +291,7 @@ do_umount_disk()
 
 	device_name=`echo $img_file | awk '{split($0,a,"."); print a[1]}'`
 	umount $3
+	rm -r $3
 	if [ $dm_type == "caam" ]; then
 		dmsetup remove $device_name
 		keyctl clear @u
