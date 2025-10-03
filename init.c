@@ -540,6 +540,10 @@ void pv_init_umount()
 	pv_paths_exports(path, PATH_MAX);
 	umount(path);
 
+	// only care for early mounts if we are pid 1
+	if (getpid() != 1)
+		return;
+
 	umount("/proc");
 	umount("/dev");
 	umount("/sys");
