@@ -25,10 +25,12 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-int pv_debug_run_shell(void);
-int pv_debug_check_timeout_shell(void);
+bool pv_debug_shell_isopen();
+int pv_debug_check_shell_timeout(void);
+void pv_debug_get_shell();
+void pv_debug_get_shell_early();
+void pv_debug_start_event();
 void pv_debug_defer_reboot_shell(const char *payload);
-void pv_debug_run_early_shell();
 
 void pv_debug_start_ssh(void);
 void pv_debug_stop_ssh(void);

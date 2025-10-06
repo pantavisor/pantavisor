@@ -106,13 +106,23 @@ void pv_wall_banner()
 	pv_wall("                                                 ");
 }
 
-void pv_wall_welcome()
+void pv_wall_shell_open()
 {
 	pv_wall_banner();
-	pv_wall("To access the debug shell, press <ENTER>.");
 	pv_wall("To exit the shell, type 'exit' or press CTRL+d.");
 	pv_wall("Press <ENTER> again to reopen the shell.");
+}
+
+void pv_wall_utils()
+{
 	pv_wall("Useful commands:");
 	pv_wall("    * lxc-ls                 :list available containers.");
 	pv_wall("    * pventer -c <CONTAINER> :to access the shell of a container.");
+}
+
+void pv_wall_welcome()
+{
+	pv_wall("Welcome to the Pantavisor!");
+	pv_wall("To access the debug shell, press <ENTER>.");
+	pv_wall("                                                 ");
 }
