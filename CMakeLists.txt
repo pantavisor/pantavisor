@@ -422,7 +422,6 @@ install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-run
 
 IF(PANTAVISOR_APPENGINE)
 
-#install -m 0755 ${IMAGE_ROOTFS}/usr/share/pantavisor/skel/etc/pantavisor/defaults/groups.json ${IMAGE_ROOTFS}/etc/pantavisor/defaults/
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pv-appengine.in
     ${CMAKE_CURRENT_BINARY_DIR}/pv-appengine
@@ -468,6 +467,11 @@ install(DIRECTORY DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/objects)
 install(DIRECTORY DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/trails)
 install(DIRECTORY DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/trails/0/.pv)
 install(DIRECTORY DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/trails/0/.pvr)
+
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/appengine/state.rev0.json
+    DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/trals/0/.pvr/json
+)
 
 ENDIF() # PANTAVISOR_APPENGINE
 
