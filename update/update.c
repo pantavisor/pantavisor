@@ -215,6 +215,7 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	struct pv_update *u = _update_new(rev, report_cb);
 	if (!u)
 		goto out;
+	pv->update = u;
 
 	pv_log(DEBUG, "checking existing progress data from disk");
 
@@ -225,7 +226,6 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		progress_str = strdup(progress_hub);
 	} else if (progress_str) {
 		pv_log(DEBUG, "progress from disk found, checking if final");
-		pv->update = u;
 		pv_update_progress_parse(progress_str, &u->progress);
 		if (pv_update_is_final()) {
 			pv_log(WARN, "progress already in a final state");
@@ -243,13 +243,6 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	pv_log(DEBUG, "queueing update");
 	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_QUEUED,
 			       PV_UPDATE_PROGRESS_MSG_QUEUED);
-
-	if (pv && pv->update) {
-		pv_log(DEBUG, "another update already in progress");
-		goto out;
-	}
-
-	pv->update = u;
 
 	pv_log(DEBUG, "verifying update");
 
@@ -332,20 +325,10 @@ static void _finish_object_metadata_setting()
 
 void pv_update_get_unrecorded_objects(char ***objects)
 {
+	struct pv_state *s;
 	struct pv_update *u = _get_update_instance();
 	if (!u)
 		goto out;
-
-	struct pv_state *s = u->state;
-	if (!s)
-		goto out;
-
-	if (pv_state_are_all_objects_recorded(s)) {
-		pv_log(WARN,
-		       "trying to get unrecorded objects, but they are all already recorded");
-		_finish_object_metadata_setting();
-		goto out;
-	}
 
 	if (_enroll_object_list(u)) {
 		pv_update_progress_set(&u->progress,
@@ -354,15 +337,26 @@ void pv_update_get_unrecorded_objects(char ***objects)
 		goto out;
 	}
 
+	s = u->state;
+	if (!s) {
+		pv_update_progress_set(&u->progress,
+				       PV_UPDATE_PROGRESS_STATUS_ERROR,
+				       PV_UPDATE_PROGRESS_MSG_INTERNAL_ERROR);
+		goto out;
+	}
+
+	if (pv_state_are_all_objects_recorded(s)) {
+		pv_log(WARN,
+		       "trying to get unrecorded objects, but they are all already recorded");
+		_finish_object_metadata_setting();
+		goto out;
+	}
+
 	pv_update_progress_start_record(&u->progress);
 
 	*objects = pv_state_get_unrecorded_objects(
 		s, pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT));
 out:
-	if (!objects)
-		pv_update_progress_set(&u->progress,
-				       PV_UPDATE_PROGRESS_STATUS_ERROR,
-				       PV_UPDATE_PROGRESS_MSG_INTERNAL_ERROR);
 	if (pv_update_is_final())
 		pv_update_finish();
 }
@@ -403,25 +397,30 @@ out:
 
 void pv_update_get_unavailable_objects(char ***objects)
 {
+	struct pv_state *s;
 	struct pv_update *u = _get_update_instance();
 	if (!u)
-		return;
-
-	struct pv_state *s = u->state;
-	if (!s)
-		return;
-
-	if (pv_state_are_all_objects_installed(s)) {
-		pv_log(WARN,
-		       "trying to get unavailable objects, but they are all already installed");
-		_finish_update_installation();
 		goto out;
-	}
 
 	if (_enroll_object_list(u)) {
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_WONTGO,
 				       PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD);
+		goto out;
+	}
+
+	s = u->state;
+	if (!s) {
+		pv_update_progress_set(&u->progress,
+				       PV_UPDATE_PROGRESS_STATUS_ERROR,
+				       PV_UPDATE_PROGRESS_MSG_INTERNAL_ERROR);
+		goto out;
+	}
+
+	if (pv_state_are_all_objects_installed(s)) {
+		pv_log(WARN,
+		       "trying to get unavailable objects, but they are all already installed");
+		_finish_update_installation();
 		goto out;
 	}
 
@@ -432,10 +431,6 @@ void pv_update_get_unavailable_objects(char ***objects)
 	*objects = pv_state_get_unavailable_objects(
 		s, pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT));
 out:
-	if (!objects)
-		pv_update_progress_set(&u->progress,
-				       PV_UPDATE_PROGRESS_STATUS_ERROR,
-				       PV_UPDATE_PROGRESS_MSG_INTERNAL_ERROR);
 	if (pv_update_is_final())
 		pv_update_finish();
 }

@@ -470,7 +470,7 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 	if (written < 0) {
 		pv_log(WARN, "could not write '%s': %s", path, strerror(errno));
 	} else {
-		pv_log(WARN, "successfully wrote %d bytes to file", written);
+		pv_log(DEBUG, "successfully wrote %d bytes to file", written);
 	}
 
 	close(fd);

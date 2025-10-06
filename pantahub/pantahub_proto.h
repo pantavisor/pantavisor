@@ -30,6 +30,8 @@ void pv_pantahub_proto_reset_trails_status(void);
 bool pv_pantahub_proto_is_online(void);
 bool pv_pantahub_proto_got_any_failure(void);
 
+bool pv_pantahub_proto_is_any_progress_request_pending(void);
+
 bool pv_pantahub_proto_is_trails_unknown(void);
 bool pv_pantahub_proto_is_trails_unsynced(void);
 

@@ -504,6 +504,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 
 	// check state of debug tools
 	pv_debug_check_ssh_running();
+	pv_debug_run_shell();
 
 	// this is set in the ctrl_listener event
 	if (pv->cmd)

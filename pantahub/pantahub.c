@@ -743,6 +743,12 @@ static void _evaluate_report_cb(evutil_socket_t fd, short event, void *arg)
 		return;
 	}
 
+	if (pv_pantahub_proto_is_any_progress_request_pending()) {
+		pv_log(DEBUG,
+		       "cannot leave state because still have progress request pending");
+		return;
+	}
+
 	if (!pv->update) {
 		_next_state(PH_STATE_IDLE);
 		return;
@@ -843,6 +849,12 @@ static void _evaluate_prep_download_cb(evutil_socket_t fd, short event,
 		return;
 	}
 
+	if (pv_pantahub_proto_is_any_progress_request_pending()) {
+		pv_log(DEBUG,
+		       "cannot leave state because still have progress request pending");
+		return;
+	}
+
 	if (pv_update_is_downloading()) {
 		_next_state(PH_STATE_DOWNLOAD);
 		return;
@@ -898,6 +910,12 @@ static void _evaluate_download_objects_cb(evutil_socket_t fd, short event,
 
 	if (!pv_pantahub_proto_is_session_open()) {
 		_next_state(PH_STATE_LOGIN);
+		return;
+	}
+
+	if (pv_pantahub_proto_is_any_progress_request_pending()) {
+		pv_log(DEBUG,
+		       "cannot leave state because still have progress request pending");
 		return;
 	}
 

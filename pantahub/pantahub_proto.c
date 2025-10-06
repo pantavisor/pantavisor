@@ -62,15 +62,16 @@ typedef enum {
 
 struct pv_pantahub_session {
 	char *token;
-	short failed_requests;
 	bool online;
+	short failed_requests;
 	bool any_failed_request;
+	short pending_progress_requests;
 	pv_trails_status_t trails_status;
 };
 
-static struct pv_pantahub_session session = { 0, UNRESPONSIVE_REQUESTS_MAX,
-					      false, false,
-					      PV_TRAILS_STATUS_UNKNOWN };
+static struct pv_pantahub_session session = {
+	0, false, UNRESPONSIVE_REQUESTS_MAX, false, 0, PV_TRAILS_STATUS_UNKNOWN
+};
 
 void pv_pantahub_proto_reset_fail()
 {
@@ -90,6 +91,11 @@ bool pv_pantahub_proto_is_online()
 bool pv_pantahub_proto_got_any_failure()
 {
 	return session.any_failed_request;
+}
+
+bool pv_pantahub_proto_is_any_progress_request_pending()
+{
+	return (session.pending_progress_requests > 0);
 }
 
 bool pv_pantahub_proto_is_trails_unknown()
@@ -598,6 +604,10 @@ static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_put_progress_cb);
 
+	session.pending_progress_requests--;
+	pv_log(DEBUG, "pending progress request %d",
+	       session.pending_progress_requests);
+
 	char *body = NULL;
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "PUT progress failed");
@@ -628,4 +638,8 @@ void pv_pantahub_proto_put_progress(const char *rev, const char *progress)
 
 	_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, progress,
 			  _recv_put_progress_cb);
+
+	session.pending_progress_requests++;
+	pv_log(DEBUG, "pending progress request %d",
+	       session.pending_progress_requests);
 }
