@@ -399,6 +399,7 @@ void pv_update_get_unavailable_objects(char ***objects)
 {
 	struct pv_state *s;
 	struct pv_update *u = _get_update_instance();
+
 	if (!u)
 		goto out;
 

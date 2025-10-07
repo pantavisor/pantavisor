@@ -493,7 +493,8 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 			       "successfully wrote part of %d bytes to file %s",
 			       total_written, path);
 	}
-	pv_log(DEBUG, "success: wrote %d bytes from %d bytes buffer to file %s",
+	pv_log(DEBUG,
+	       "success: wrote %d bytes from %d bytes buffer to file %s",
 	       total_written, blen, path);
 
 	close(fd);

@@ -65,7 +65,6 @@ struct pv_pantahub_session {
 	bool online;
 	short failed_requests;
 	bool any_failed_request;
-	short pending_progress_requests;
 	char *current_progress;
 	char *current_uri;
 	char *next_progress;
