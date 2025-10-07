@@ -497,6 +497,11 @@ int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path)
 	int ret;
 	off_t size;
 
+	if (pv_event_rest_recv_chunk_path(req, path)) {
+		pv_log(WARN, "could not finish transfer to path %s", path);
+		return -1;
+	}
+
 	ret = _recv_status_line(req);
 	if (ret == 200) {
 		size = pv_fs_path_get_size(path);
