@@ -70,6 +70,13 @@ struct pv_pantahub_session {
 	char *current_uri;
 	char *next_progress;
 	char *next_uri;
+
+	bool get_usrmeta_active;
+	bool set_devmeta_active;
+	bool get_trails_status_active;
+	bool get_pending_steps_active;
+	bool open_session_active;
+
 	pv_trails_status_t trails_status;
 };
 
@@ -203,6 +210,8 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
+	session.open_session_active = 0;
+
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "POST auth failed");
 		goto out;
@@ -230,6 +239,12 @@ void pv_pantahub_proto_open_session()
 		return;
 	}
 
+	if (session.open_session_active) {
+		pv_log(DEBUG,
+		       "open_session_active = true; skip sending another request...");
+		return;
+	}
+
 	const char *uri = "/auth/login";
 
 	char *body = pv_pantahub_msg_ser_login_json(
@@ -241,6 +256,9 @@ void pv_pantahub_proto_open_session()
 	}
 
 	_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body, _recv_post_auth_cb);
+
+	session.open_session_active = 1;
+
 	free(body);
 }
 
@@ -261,6 +279,8 @@ void pv_pantahub_proto_close_session()
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);
+
+	session.get_usrmeta_active = 0;
 
 	char *body = NULL;
 	if (_recv_buffer(req, &body)) {
@@ -287,6 +307,8 @@ static void _recv_get_trails_status_cb(struct evhttp_request *req, void *ctx)
 	memset(&step, 0, sizeof(step));
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_trails_status_cb);
+
+	session.get_trails_status_active = 0;
 
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET trails_status failed");
@@ -318,12 +340,19 @@ void pv_pantahub_proto_get_trails_status()
 		pv_log(ERROR, "session must be opened first");
 		return;
 	}
+	if (session.get_trails_status_active) {
+		pv_log(DEBUG,
+		       "get_usrmeta_active = true; skip sending another request...");
+		return;
+	}
 
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/trails/");
 
 	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
 			  _recv_get_trails_status_cb);
+
+	session.get_trails_status_active = 1;
 }
 
 void pv_pantahub_proto_get_usrmeta()
@@ -335,17 +364,27 @@ void pv_pantahub_proto_get_usrmeta()
 		return;
 	}
 
+	if (session.get_usrmeta_active) {
+		pv_log(DEBUG,
+		       "get_usrmeta_active = true; skip sending another request...");
+		return;
+	}
+
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/devices/%s/user-meta",
 		 pv_config_get_str(PH_CREDS_ID));
 
 	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
 			  _recv_get_usrmeta_cb);
+
+	session.get_usrmeta_active = 1;
 }
 
 static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_set_devmeta_cb);
+
+	session.set_devmeta_active = 0;
 
 	char *body = NULL;
 	if (_recv_buffer(req, &body)) {
@@ -368,6 +407,12 @@ void pv_pantahub_proto_set_devmeta()
 		return;
 	}
 
+	if (session.set_devmeta_active) {
+		pv_log(DEBUG,
+		       "set_devmeta_active = true; skip sending another request...");
+		return;
+	}
+
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/devices/%s/device-meta",
 		 pv_config_get_str(PH_CREDS_ID));
@@ -381,6 +426,8 @@ void pv_pantahub_proto_set_devmeta()
 	_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
 			  _recv_set_devmeta_cb);
 
+	session.set_devmeta_active = 1;
+
 out:
 	free(json);
 }
@@ -390,8 +437,9 @@ static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
 	char *body = NULL, *state_json = NULL;
 	struct pv_step step;
 	memset(&step, 0, sizeof(step));
-
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
+
+	session.get_pending_steps_active = 0;
 
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET pending steps auth failed");
@@ -431,6 +479,14 @@ void pv_pantahub_proto_get_pending_steps()
 		pv_log(ERROR, "session must be opened first");
 		return;
 	}
+
+	if (session.get_pending_steps_active) {
+		pv_log(DEBUG,
+		       "get_pending_steps_active; skip sending another request...");
+		return;
+	}
+
+	session.get_pending_steps_active = 1;
 
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/trails/%s/steps%s",
