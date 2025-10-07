@@ -402,13 +402,6 @@ void pv_update_get_unavailable_objects(char ***objects)
 	if (!u)
 		goto out;
 
-	if (_enroll_object_list(u)) {
-		pv_update_progress_set(&u->progress,
-				       PV_UPDATE_PROGRESS_STATUS_WONTGO,
-				       PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD);
-		goto out;
-	}
-
 	s = u->state;
 	if (!s) {
 		pv_update_progress_set(&u->progress,
@@ -430,6 +423,36 @@ void pv_update_get_unavailable_objects(char ***objects)
 
 	*objects = pv_state_get_unavailable_objects(
 		s, pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT));
+
+	if (*objects) {
+		int downloading_count = 0;
+		char **obj = *objects;
+		char tpath[PATH_MAX] = { 0 };
+		while (*obj) {
+			pv_storage_set_object_download_path(tpath, PATH_MAX,
+							    *obj);
+			// if file exist we are
+			if (!access(tpath, F_OK)) {
+				downloading_count++;
+			}
+			obj++;
+		}
+
+		// enroll_object_list will increase retry counter, dont do it unless
+		// there is actually no download ongoing
+		// XX: this is  hacky and potentially racy. we should track downloads
+		// properly and not just fire their downloads off and pray...
+		if (downloading_count == 0 && _enroll_object_list(u)) {
+			pv_update_progress_set(
+				&u->progress, PV_UPDATE_PROGRESS_STATUS_WONTGO,
+				PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD);
+			goto out;
+		} else if (downloading_count) {
+			// if we download anything we prevent retries in parallel
+			**objects = NULL;
+		}
+	}
+
 out:
 	if (pv_update_is_final())
 		pv_update_finish();

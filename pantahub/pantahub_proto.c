@@ -66,6 +66,10 @@ struct pv_pantahub_session {
 	short failed_requests;
 	bool any_failed_request;
 	short pending_progress_requests;
+	char *current_progress;
+	char *current_uri;
+	char *next_progress;
+	char *next_uri;
 	pv_trails_status_t trails_status;
 };
 
@@ -95,7 +99,7 @@ bool pv_pantahub_proto_got_any_failure()
 
 bool pv_pantahub_proto_is_any_progress_request_pending()
 {
-	return (session.pending_progress_requests > 0);
+	return session.current_progress || session.next_progress;
 }
 
 bool pv_pantahub_proto_is_trails_unknown()
@@ -600,13 +604,46 @@ out:
 	return ret;
 }
 
+static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx);
+
+static void _send_current_progress()
+{
+	if (!session.token) {
+		pv_log(WARN,
+		       "session must be opened first; not sending request (%p)%s",
+		       session.current_uri, session.current_uri);
+		return;
+	}
+	pv_log(DEBUG, "sending current progress request (%p)%s",
+	       session.current_uri, session.current_uri);
+	_send_by_endpoint(EVHTTP_REQ_PUT, session.current_uri, session.token,
+			  session.current_progress, _recv_put_progress_cb);
+}
+
 static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_put_progress_cb);
 
-	session.pending_progress_requests--;
-	pv_log(DEBUG, "pending progress request %d",
-	       session.pending_progress_requests);
+	pv_log(DEBUG, "finished progress request (%p)%s", session.current_uri,
+	       session.current_uri);
+
+	// clean up the current request now that we finished
+	free(session.current_progress);
+	session.current_progress = NULL;
+	free(session.current_uri);
+	session.current_uri = NULL;
+
+	// process a potential next request right away
+	if (session.next_progress) {
+		session.current_progress = session.next_progress;
+		session.current_uri = session.next_uri;
+		session.next_progress = session.next_uri = NULL;
+		pv_log(DEBUG, "dequeued next progress request (%p)%s",
+		       session.current_uri, session.current_uri);
+
+		// send current progress
+		_send_current_progress();
+	}
 
 	char *body = NULL;
 	if (_recv_buffer(req, &body)) {
@@ -632,14 +669,40 @@ void pv_pantahub_proto_put_progress(const char *rev, const char *progress)
 		return;
 	}
 
-	char uri[256];
+	char uri[4096];
 	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s/progress",
 		 pv_config_get_str(PH_CREDS_ID), rev);
 
-	_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, progress,
-			  _recv_put_progress_cb);
+	// first check if there is no current, but a next. if so we move next to current
 
-	session.pending_progress_requests++;
-	pv_log(DEBUG, "pending progress request %d",
-	       session.pending_progress_requests);
+	// if there is nothing going on we can fire something.
+	if (session.current_progress == NULL) {
+		if (session.next_progress != NULL) {
+			session.current_progress = session.next_progress;
+			session.current_uri = session.next_uri;
+			session.next_progress = strdup(progress);
+			session.next_uri = strdup(uri);
+			pv_log(DEBUG,
+			       "dequeued next progress request %s (queued new: %s)",
+			       session.current_uri, session.next_uri);
+		} else {
+			session.current_progress = strdup(progress);
+			session.current_uri = strdup(uri);
+		}
+
+		_send_current_progress();
+
+	} else {
+		if (session.next_progress) {
+			free(session.next_progress);
+			free(session.next_uri);
+			session.next_progress = session.next_uri = NULL;
+		}
+		session.next_progress = strdup(progress);
+		session.next_uri = strdup(uri);
+		pv_log(DEBUG,
+		       "queued next progress request (%p)%s (active: (%p)%s)",
+		       session.next_uri, session.next_uri, session.current_uri,
+		       session.current_uri);
+	}
 }
