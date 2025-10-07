@@ -119,9 +119,9 @@ bool pv_pantahub_proto_is_trails_unsynced()
 	return (session.trails_status == PV_TRAILS_STATUS_UNSYNCED);
 }
 
-static void _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
-			      const char *token, const char *body,
-			      void (*cb)(struct evhttp_request *, void *))
+static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
+			     const char *token, const char *body,
+			     void (*cb)(struct evhttp_request *, void *))
 {
 	char *host;
 	int port;
@@ -133,8 +133,8 @@ static void _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 		port = pv_config_get_int(PH_CREDS_PORT);
 	}
 
-	pv_event_rest_send_by_components(op, host, port, endpoint, token, body,
-					 NULL, cb, NULL);
+	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
+						body, NULL, cb, NULL);
 }
 
 static void _on_request_unresponsive()
@@ -255,9 +255,10 @@ void pv_pantahub_proto_open_session()
 		return;
 	}
 
-	_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body, _recv_post_auth_cb);
-
-	session.open_session_active = 1;
+	// on success remember active
+	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body,
+			       _recv_post_auth_cb))
+		session.open_session_active = 1;
 
 	free(body);
 }
@@ -349,10 +350,9 @@ void pv_pantahub_proto_get_trails_status()
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/trails/");
 
-	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			  _recv_get_trails_status_cb);
-
-	session.get_trails_status_active = 1;
+	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			       _recv_get_trails_status_cb))
+		session.get_trails_status_active = 1;
 }
 
 void pv_pantahub_proto_get_usrmeta()
@@ -374,10 +374,9 @@ void pv_pantahub_proto_get_usrmeta()
 	snprintf(uri, sizeof(uri), "/devices/%s/user-meta",
 		 pv_config_get_str(PH_CREDS_ID));
 
-	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			  _recv_get_usrmeta_cb);
-
-	session.get_usrmeta_active = 1;
+	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			       _recv_get_usrmeta_cb))
+		session.get_usrmeta_active = 1;
 }
 
 static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
@@ -423,10 +422,9 @@ void pv_pantahub_proto_set_devmeta()
 		return;
 	}
 
-	_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
-			  _recv_set_devmeta_cb);
-
-	session.set_devmeta_active = 1;
+	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
+			       _recv_set_devmeta_cb))
+		session.set_devmeta_active = 1;
 
 out:
 	free(json);
@@ -486,14 +484,13 @@ void pv_pantahub_proto_get_pending_steps()
 		return;
 	}
 
-	session.get_pending_steps_active = 1;
-
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/trails/%s/steps%s",
 		 pv_config_get_str(PH_CREDS_ID), QUERY_PENDING_STEPS);
 
-	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			  _recv_get_pending_steps_cb);
+	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			       _recv_get_pending_steps_cb))
+		session.get_pending_steps_active = 1;
 }
 
 static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
