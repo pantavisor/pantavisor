@@ -44,6 +44,7 @@
 #include "pantavisor.h"
 #include "paths.h"
 
+#include "utils/fs.h"
 #include "utils/str.h"
 
 #define MODULE_NAME "event_rest"
@@ -455,8 +456,7 @@ int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 
 int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 {
-	int fd;
-	size_t total_written = 0, blen;
+	int fd, written;
 	struct evbuffer *evbuf;
 
 	evbuf = evhttp_request_get_input_buffer(req);
@@ -467,35 +467,12 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 		return -1;
 	}
 
-	blen = evbuffer_get_length(evbuf);
-	while (evbuffer_get_length(evbuf) > 0) {
-		ssize_t n = evbuffer_write(evbuf, fd);
-
-		if (n < 0) {
-			if (errno == EINTR || errno == EAGAIN) {
-				// Temporary error, retry
-				continue;
-			}
-			// Actual error
-			pv_log(WARN, "could not write '%s': %s", path,
-			       strerror(errno));
-			close(fd);
-			return -1;
-		}
-
-		if (n == 0) {
-			break;
-		}
-
-		total_written += n;
-		if (total_written != blen)
-			pv_log(DEBUG,
-			       "successfully wrote part of %d bytes to file %s",
-			       total_written, path);
+	written = evbuffer_write(evbuf, fd);
+	if (written < 0) {
+		pv_log(WARN, "could not write '%s': %s", path, strerror(errno));
+	} else {
+		pv_log(DEBUG, "wrote %d bytes into '%s'", written, path);
 	}
-	pv_log(DEBUG,
-	       "success: wrote %d bytes from %d bytes buffer to file %s",
-	       total_written, blen, path);
 
 	close(fd);
 
@@ -505,8 +482,18 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path)
 {
 	int ret;
+	off_t size;
 
 	ret = _recv_status_line(req);
+	if (ret == 200) {
+		size = pv_fs_path_get_size(path);
+		pv_log(DEBUG, "successfully wrote %jd bytes to '%s'", size,
+		       path);
+	} else {
+		pv_log(WARN, "file transfer to '%s' failed", path);
+		pv_fs_path_remove(path, false);
+	}
+
 	if (ret < 0) {
 		pv_log(WARN, "could not receive status line");
 		return -1;

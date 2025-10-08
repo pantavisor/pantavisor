@@ -1471,15 +1471,33 @@ void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
 	o->geturl = strdup(geturl);
 }
 
-char **pv_state_get_unrecorded_objects(struct pv_state *s, unsigned int count)
+unsigned int _get_object_count(struct pv_state *s)
+{
+	unsigned int count = 0;
+	struct pv_object *o, *tmp;
+
+	if (!s)
+		return -1;
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		count++;
+	}
+
+	return count;
+}
+
+char **pv_state_get_unrecorded_objects(struct pv_state *s)
 {
 	int i = 0;
+	unsigned int count;
 	char **ret;
 	struct pv_object *o, *tmp;
 
-	if (!s || !count)
+	if (!s)
 		return NULL;
 
+	count = _get_object_count(s);
 	ret = calloc(count + 1, sizeof(char *));
 
 	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
@@ -1497,15 +1515,17 @@ char **pv_state_get_unrecorded_objects(struct pv_state *s, unsigned int count)
 	return ret;
 }
 
-char **pv_state_get_unavailable_objects(struct pv_state *s, unsigned int count)
+char **pv_state_get_unavailable_objects(struct pv_state *s)
 {
 	int i = 0;
+	unsigned int count;
 	char **ret;
 	struct pv_object *o, *tmp;
 
-	if (!s || !count)
+	if (!s)
 		return NULL;
 
+	count = _get_object_count(s);
 	ret = calloc(count + 1, sizeof(char *));
 
 	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
@@ -1519,22 +1539,6 @@ char **pv_state_get_unavailable_objects(struct pv_state *s, unsigned int count)
 	}
 
 	return ret;
-}
-
-int pv_state_get_object_count(struct pv_state *s)
-{
-	int count = 0;
-	struct pv_object *o, *tmp;
-
-	if (!s)
-		return -1;
-
-	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
-	{
-		count++;
-	}
-
-	return count;
 }
 
 bool pv_state_are_all_objects_recorded(struct pv_state *s)

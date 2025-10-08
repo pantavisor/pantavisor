@@ -24,6 +24,9 @@
 
 #include <stdbool.h>
 
+void pv_pantahub_proto_init(void);
+void pv_pantahub_proto_close(void);
+
 void pv_pantahub_proto_reset_fail(void);
 void pv_pantahub_proto_reset_trails_status(void);
 
@@ -45,6 +48,7 @@ void pv_pantahub_proto_get_usrmeta(void);
 void pv_pantahub_proto_set_devmeta(void);
 void pv_pantahub_proto_get_pending_steps(void);
 
+void pv_pantahub_proto_init_object_transfer(void);
 int pv_pantahub_proto_get_objects_metadata(void);
 int pv_pantahub_proto_get_objects(void);
 

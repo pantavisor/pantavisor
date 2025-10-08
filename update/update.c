@@ -119,21 +119,12 @@ static void _reset_object_list_retries(struct pv_update *update)
 
 static int _enroll_object_list(struct pv_update *update)
 {
-	const int max_count = pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT);
-	// we want to be able to retry each object at least once,
-	// so we divide by the max allowed per cycle and round up
-	int object_list_max_retries;
-	object_list_max_retries =
-		((pv_state_get_object_count(update->state) + max_count - 1) /
-		 max_count);
-
 	update->object_list_retries++;
 	pv_log(DEBUG, "enroll object list retry count %d",
 	       update->object_list_retries);
 
-	if (update->object_list_retries > object_list_max_retries) {
-		pv_log(DEBUG,
-		       "max enroll object list retries reached, retrying update");
+	// if we are listing more than once, we start counting as an update retry
+	if (update->object_list_retries > 1) {
 		update->progress.retries++;
 		pv_log(DEBUG, "update retry count %d",
 		       update->progress.retries);
@@ -143,8 +134,6 @@ static int _enroll_object_list(struct pv_update *update)
 			pv_log(WARN, "max update retries eached");
 			return -1;
 		}
-
-		_reset_object_list_retries(update);
 	}
 
 	return 0;
@@ -330,13 +319,6 @@ void pv_update_get_unrecorded_objects(char ***objects)
 	if (!u)
 		goto out;
 
-	if (_enroll_object_list(u)) {
-		pv_update_progress_set(&u->progress,
-				       PV_UPDATE_PROGRESS_STATUS_WONTGO,
-				       PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD);
-		goto out;
-	}
-
 	s = u->state;
 	if (!s) {
 		pv_update_progress_set(&u->progress,
@@ -352,10 +334,16 @@ void pv_update_get_unrecorded_objects(char ***objects)
 		goto out;
 	}
 
+	if (_enroll_object_list(u)) {
+		pv_update_progress_set(&u->progress,
+				       PV_UPDATE_PROGRESS_STATUS_WONTGO,
+				       PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD);
+		goto out;
+	}
+
 	pv_update_progress_start_record(&u->progress);
 
-	*objects = pv_state_get_unrecorded_objects(
-		s, pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT));
+	*objects = pv_state_get_unrecorded_objects(s);
 out:
 	if (pv_update_is_final())
 		pv_update_finish();
@@ -399,7 +387,6 @@ void pv_update_get_unavailable_objects(char ***objects)
 {
 	struct pv_state *s;
 	struct pv_update *u = _get_update_instance();
-
 	if (!u)
 		goto out;
 
@@ -418,42 +405,18 @@ void pv_update_get_unavailable_objects(char ***objects)
 		goto out;
 	}
 
+	if (_enroll_object_list(u)) {
+		pv_update_progress_set(&u->progress,
+				       PV_UPDATE_PROGRESS_STATUS_WONTGO,
+				       PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD);
+		goto out;
+	}
+
 	pv_update_progress_set(&u->progress,
 			       PV_UPDATE_PROGRESS_STATUS_DOWNLOADING,
 			       PV_UPDATE_PROGRESS_MSG_DOWNLOAD_PROGRESS);
 
-	*objects = pv_state_get_unavailable_objects(
-		s, pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT));
-
-	if (*objects) {
-		int downloading_count = 0;
-		char **obj = *objects;
-		char tpath[PATH_MAX] = { 0 };
-		while (*obj) {
-			pv_storage_set_object_download_path(tpath, PATH_MAX,
-							    *obj);
-			// if file exist we are
-			if (!access(tpath, F_OK)) {
-				downloading_count++;
-			}
-			obj++;
-		}
-
-		// enroll_object_list will increase retry counter, dont do it unless
-		// there is actually no download ongoing
-		// XX: this is  hacky and potentially racy. we should track downloads
-		// properly and not just fire their downloads off and pray...
-		if (downloading_count == 0 && _enroll_object_list(u)) {
-			pv_update_progress_set(
-				&u->progress, PV_UPDATE_PROGRESS_STATUS_WONTGO,
-				PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD);
-			goto out;
-		} else if (downloading_count) {
-			// if we download anything we prevent retries in parallel
-			**objects = NULL;
-		}
-	}
-
+	*objects = pv_state_get_unavailable_objects(s);
 out:
 	if (pv_update_is_final())
 		pv_update_finish();

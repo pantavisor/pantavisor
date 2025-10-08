@@ -60,11 +60,18 @@ typedef enum {
 	PV_TRAILS_STATUS_SYNCED
 } pv_trails_status_t;
 
+struct pv_object_transfer {
+	char *id;
+	bool active;
+	struct dl_list list; // struct pv_object_transfer
+};
+
 struct pv_pantahub_session {
 	char *token;
 	bool online;
 	short failed_requests;
 	bool any_failed_request;
+
 	char *current_progress;
 	char *current_uri;
 	char *next_progress;
@@ -77,11 +84,155 @@ struct pv_pantahub_session {
 	bool open_session_active;
 
 	pv_trails_status_t trails_status;
+
+	struct dl_list object_transfer_list; // struct pv_object_transfer
 };
 
-static struct pv_pantahub_session session = {
-	0, false, UNRESPONSIVE_REQUESTS_MAX, false, 0, PV_TRAILS_STATUS_UNKNOWN
-};
+static struct pv_pantahub_session session;
+
+void pv_pantahub_proto_init()
+{
+	session.token = NULL;
+	session.online = false;
+	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
+	session.any_failed_request = false;
+
+	session.trails_status = PV_TRAILS_STATUS_UNKNOWN;
+
+	dl_list_init(&session.object_transfer_list);
+}
+
+static void _free_object_transfer(struct pv_object_transfer *o)
+{
+	if (!o)
+		return;
+
+	if (o->id)
+		free(o->id);
+}
+
+static void _free_object_transfer_list(struct dl_list *l)
+{
+	struct pv_object_transfer *o, *tmp;
+
+	if (!l)
+		return;
+
+	dl_list_for_each_safe(o, tmp, l, struct pv_object_transfer, list)
+	{
+		dl_list_del(&o->list);
+		_free_object_transfer(o);
+	}
+}
+
+static bool _is_object_transfer_list_empty()
+{
+	return dl_list_empty(&session.object_transfer_list);
+}
+
+static void _add_object_transfer(const char *id)
+{
+	struct pv_object_transfer *o;
+
+	if (!id)
+		return;
+
+	o = calloc(1, sizeof(struct pv_object_transfer));
+	if (!o)
+		return;
+
+	o->id = strdup(id);
+
+	dl_list_add_tail(&session.object_transfer_list, &o->list);
+}
+
+static int _init_object_transfer_unrecorded()
+{
+	char **objects = NULL, **o;
+
+	if (!_is_object_transfer_list_empty())
+		return 0;
+
+	pv_update_get_unrecorded_objects(&objects);
+	if (!objects) {
+		pv_log(WARN, "could not retrieve unrecorded objects");
+		return -1;
+	}
+
+	o = objects;
+	while (*o) {
+		_add_object_transfer(*o);
+		o++;
+	}
+
+	if (objects)
+		free(objects);
+
+	return 0;
+}
+
+static int _init_object_transfer_unavailable()
+{
+	char **objects = NULL, **o;
+
+	if (!_is_object_transfer_list_empty())
+		return 0;
+
+	pv_update_get_unavailable_objects(&objects);
+	if (!objects) {
+		pv_log(WARN, "could not retrieve unrecorded objects");
+		return -1;
+	}
+
+	o = objects;
+	while (*o) {
+		_add_object_transfer(*o);
+		o++;
+	}
+
+	if (objects)
+		free(objects);
+
+	return 0;
+}
+
+static struct pv_object_transfer *_search_object_transfer(const char *id)
+{
+	struct pv_object_transfer *o, *tmp;
+
+	if (!id)
+		return NULL;
+
+	dl_list_for_each_safe(o, tmp, &session.object_transfer_list,
+			      struct pv_object_transfer, list)
+	{
+		if (pv_str_matches(id, strlen(id), o->id, strlen(o->id)))
+			return o;
+	}
+
+	return NULL;
+}
+
+static void _remove_object_transfer(const char *id)
+{
+	struct pv_object_transfer *o;
+
+	if (!id)
+		return;
+
+	o = _search_object_transfer(id);
+	if (!o)
+		return;
+
+	dl_list_del(&o->list);
+	_free_object_transfer(o);
+}
+
+void pv_pantahub_proto_close()
+{
+	_free_object_transfer_list(&session.object_transfer_list);
+	pv_pantahub_proto_close_session();
+}
 
 void pv_pantahub_proto_reset_fail()
 {
@@ -120,7 +271,8 @@ bool pv_pantahub_proto_is_trails_unsynced()
 
 static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 			     const char *token, const char *body,
-			     void (*cb)(struct evhttp_request *, void *))
+			     void (*cb)(struct evhttp_request *, void *),
+			     void *arg)
 {
 	char *host;
 	int port;
@@ -133,7 +285,7 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 	}
 
 	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, NULL);
+						body, NULL, cb, arg);
 }
 
 static void _on_request_unresponsive()
@@ -256,7 +408,7 @@ void pv_pantahub_proto_open_session()
 
 	// on success remember active
 	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body,
-			       _recv_post_auth_cb))
+			       _recv_post_auth_cb, NULL))
 		session.open_session_active = 1;
 
 	free(body);
@@ -350,7 +502,7 @@ void pv_pantahub_proto_get_trails_status()
 	snprintf(uri, sizeof(uri), "/trails/");
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_trails_status_cb))
+			       _recv_get_trails_status_cb, NULL))
 		session.get_trails_status_active = 1;
 }
 
@@ -374,7 +526,7 @@ void pv_pantahub_proto_get_usrmeta()
 		 pv_config_get_str(PH_CREDS_ID));
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_usrmeta_cb))
+			       _recv_get_usrmeta_cb, NULL))
 		session.get_usrmeta_active = 1;
 }
 
@@ -422,7 +574,7 @@ void pv_pantahub_proto_set_devmeta()
 	}
 
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
-			       _recv_set_devmeta_cb))
+			       _recv_set_devmeta_cb, NULL))
 		session.set_devmeta_active = 1;
 
 out:
@@ -488,19 +640,30 @@ void pv_pantahub_proto_get_pending_steps()
 		 pv_config_get_str(PH_CREDS_ID), QUERY_PENDING_STEPS);
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_pending_steps_cb))
+			       _recv_get_pending_steps_cb, NULL))
 		session.get_pending_steps_active = 1;
+}
+
+void pv_pantahub_proto_init_object_transfer()
+{
+	if (!_is_object_transfer_list_empty())
+		pv_log(WARN, "object transfer list found not empty");
+
+	_free_object_transfer_list(&session.object_transfer_list);
 }
 
 static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
 {
 	char *body = NULL;
 	int res;
+	const char *id = (char *)ctx;
 
 	struct pv_object_metadata object_metadata;
 	memset(&object_metadata, 0, sizeof(object_metadata));
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_metadata_cb);
+
+	_remove_object_transfer(id);
 
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET object metadata failed");
@@ -542,32 +705,35 @@ static void _get_object_metadata(const char *id)
 	snprintf(uri, sizeof(uri), "/objects/%s", id);
 
 	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			  _recv_get_object_metadata_cb);
+			  _recv_get_object_metadata_cb, (void *)id);
 }
 
 int pv_pantahub_proto_get_objects_metadata()
 {
 	int ret = -1;
-	char **objects = NULL, **o;
+	unsigned int count = 0;
+	struct pv_object_transfer *o, *tmp;
 
-	pv_update_get_unrecorded_objects(&objects);
-	if (!objects) {
-		pv_log(WARN, "could not retrieve unrecorded objects");
-		goto out;
+	if (_init_object_transfer_unrecorded()) {
+		pv_log(WARN,
+		       "could not init object trasfer list with unrecorded objects");
+		return -1;
 	}
 
-	o = objects;
-	while (*o) {
-		_get_object_metadata(*o);
-		o++;
+	dl_list_for_each_safe(o, tmp, &session.object_transfer_list,
+			      struct pv_object_transfer, list)
+	{
+		if (!o->active) {
+			_get_object_metadata(o->id);
+			o->active = true;
+		}
+
+		count++;
+		if (count >= pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT))
+			break;
 	}
-	ret = 0;
 
-out:
-	if (objects)
-		free(objects);
-
-	return ret;
+	return 0;
 }
 
 static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
@@ -589,6 +755,8 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	const char *id = (char *)ctx;
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_done_cb);
+
+	_remove_object_transfer(id);
 
 	pv_storage_set_object_download_path(path, PATH_MAX, id);
 	res = pv_event_rest_recv_done_path(req, path);
@@ -632,28 +800,31 @@ void _get_object(const char *geturl, const char *id)
 int pv_pantahub_proto_get_objects()
 {
 	int ret = -1;
+	unsigned int count = 0;
 	char *geturl;
-	char **objects = NULL, **o;
+	struct pv_object_transfer *o, *tmp;
 
-	pv_update_get_unavailable_objects(&objects);
-	if (!objects) {
-		pv_log(WARN, "could not retrieve unavailable objects");
-		goto out;
+	if (_init_object_transfer_unavailable()) {
+		pv_log(WARN,
+		       "could not init object trasfer list with unavailable objects");
+		return -1;
 	}
 
-	o = objects;
-	while (*o) {
-		geturl = pv_update_get_object_geturl(*o);
-		_get_object(geturl, *o);
-		o++;
+	dl_list_for_each_safe(o, tmp, &session.object_transfer_list,
+			      struct pv_object_transfer, list)
+	{
+		if (!o->active) {
+			geturl = pv_update_get_object_geturl(o->id);
+			_get_object(geturl, o->id);
+			o->active = true;
+		}
+
+		count++;
+		if (count >= pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT))
+			break;
 	}
-	ret = 0;
 
-out:
-	if (objects)
-		free(objects);
-
-	return ret;
+	return 0;
 }
 
 static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx);
@@ -669,7 +840,8 @@ static void _send_current_progress()
 	pv_log(DEBUG, "sending current progress request (%p)%s",
 	       session.current_uri, session.current_uri);
 	_send_by_endpoint(EVHTTP_REQ_PUT, session.current_uri, session.token,
-			  session.current_progress, _recv_put_progress_cb);
+			  session.current_progress, _recv_put_progress_cb,
+			  NULL);
 }
 
 static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx)

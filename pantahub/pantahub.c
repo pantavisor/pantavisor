@@ -579,6 +579,8 @@ int pv_pantahub_init()
 
 	// NEW IMPLEMENTATION
 
+	pv_pantahub_proto_init();
+
 	global_ph = calloc(1, sizeof(struct pv_pantahub));
 	global_ph->state = PH_STATE_INIT;
 
@@ -614,7 +616,7 @@ int pv_pantahub_close()
 
 	_close_state();
 
-	pv_pantahub_proto_close_session();
+	pv_pantahub_proto_close();
 
 	pv_event_rest_cleanup();
 
@@ -887,10 +889,11 @@ static void _run_state_prep_download()
 	if (!ph)
 		return;
 
+	pv_pantahub_proto_init_object_transfer();
+
 	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
 				_evaluate_prep_download_cb);
-	pv_event_periodic_start(&ph->request_timer,
-				pv_config_get_int(REQ_INTERVAL),
+	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
 				_prep_download_cb);
 	pv_event_periodic_start(&ph->usrmeta_timer,
 				pv_config_get_int(PH_METADATA_USRMETA_INTERVAL),
@@ -945,6 +948,8 @@ static void _run_state_download()
 	struct pv_pantahub *ph = _get_ph_instance();
 	if (!ph)
 		return;
+
+	pv_pantahub_proto_init_object_transfer();
 
 	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
 				_evaluate_download_objects_cb);
