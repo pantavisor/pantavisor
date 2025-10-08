@@ -1,0 +1,101 @@
+#!/bin/sh
+
+# wait for a cmd stdout
+wait_for_value() {
+    local cmd="$1"
+    local value="$2"
+    local timeout="$3"
+    
+    local counter=0
+    while [ $counter -lt $timeout ]; do
+        local result="$(eval "$cmd" 2>/dev/null)" 
+        if [ "$result" = "$value" ]; then
+            return 0
+        else
+            sleep 1
+            counter=$((counter+1))
+        fi
+    done
+    return 1
+}
+
+# wait for a cmd exit status code
+wait_for_status() {
+    local cmd="$1"
+    local status="$2"
+    local timeout="$3"
+    
+    local counter=0
+    while [ $counter -lt $timeout ]; do
+        eval "$cmd"
+        if [ "$?" = "$status" ]; then
+            return 0
+        else
+            sleep 1
+            counter=$((counter+1))
+        fi
+    done
+    return 1
+}
+
+# wait for a path to appear or dissapear
+wait_for_path() {
+	local control_container="$1"
+	local path="$2"
+	local action="$3"
+	local status=0
+
+	if [ "$action" = "-a" ]; then
+		status=0
+	elif [ "$action" = "-d" ]; then
+		status=1
+	fi
+
+	wait_for_status "pventer -c $control_container ls $path" "$status" 30
+}
+
+# wait for a process to appear or dissapear
+wait_for_process() {
+	local cmd="$1"
+	local timeout="$2"
+	local action="$3"
+	
+	local counter=0
+	local cmd_pid=
+	while [ $counter -lt $timeout ]; do
+		cmd_pid=$(ps -w | grep "$cmd" | awk '{print $1}')
+		if [ "$action" = "-a" ]; then
+			if [ -n "$cmd_pid" ]; then
+				return 0
+			fi
+		elif [ "$action" = "-d" ]; then
+			if [ -z "$cmd_pid" ]; then
+				return 0
+			fi
+		fi
+
+		sleep 1
+		counter=$((counter+1))
+	done
+	
+	return 1
+}
+
+# wait for Pantavisor to get to a given revision and update state
+wait_for_revision_state() {
+	local control_container="$1"
+	local rev="$2"
+	local state="$3"
+
+	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 30
+	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 30
+	wait_for_value "pventer -c $control_container pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 30
+}
+
+# wait for Pantahub to get to a given status
+wait_for_pantahub_state() {
+	local control_container="$1"
+	local state="$2"
+
+	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "$state" 30
+}
