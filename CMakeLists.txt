@@ -14,6 +14,7 @@ set(PANTAVISOR_DM_CRYPT OFF CACHE BOOL "Enable support for dm crypt mounted disk
 set(PANTAVISOR_PVZRAM_TEST OFF CACHE BOOL "Build pvzram-test binary")
 set(PANTAVISOR_DEBUG OFF CACHE BOOL "Enable debug features for Pantavisor")
 set(PANTAVISOR_APPENGINE OFF CACHE BOOL "Build Pantavisor as appengine")
+set(PANTAVISOR_PVTEST OFF CACHE BOOL "Build Pantavisor Test components")
 set(PANTAVISOR_DEFAULTS_SKIP_INSTALL OFF CACHE BOOL "Skip installing defaults/ to etc/pantavisor")
 set(PANTAVISOR_PVS_SKIP_INSTALL OFF CACHE BOOL "Skip installing developer trust store")
 set(PANTAVISOR_DISTRO_VERSION "" CACHE STRING "Set a distro version to include in pantavisor build version")
@@ -421,7 +422,6 @@ install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-run
 )
 
 IF(PANTAVISOR_APPENGINE)
-
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pv-appengine.in
     ${CMAKE_CURRENT_BINARY_DIR}/pv-appengine
@@ -474,6 +474,28 @@ install(FILES
 )
 
 ENDIF() # PANTAVISOR_APPENGINE
+
+IF(PANTAVISOR_PVTEST)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/pvtest-run.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pvtest-run
+    @ONLY
+)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/pvtest-run
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/utils.in
+    ${CMAKE_CURRENT_BINARY_DIR}/utils
+    @ONLY
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/utils
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/pvtest
+)
+ENDIF()
+
 
 ## PVTX section
 
