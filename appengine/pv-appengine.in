@@ -60,8 +60,10 @@ exec_run() {
 		eval $envs /usr/bin/unshare --cgroup @CMAKE_INSTALL_FULL_BINDIR@/pantavisor-run --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline "pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline"
 		set -e
 
-		# lets cosume inputs first
-		read -t 0 || true
+		# lets cosume all buffered input first
+		while read -d "" -t 0.01; do
+			:
+		done
 
 		# wait for user input or continue
 		if [ "$interactive" = 'true' ]
