@@ -662,7 +662,7 @@ static void _evaluate_login_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_login_cb);
 
-	if (!pv_pantahub_proto_is_session_open())
+	if (!pv_pantahub_proto_is_auth())
 		return;
 
 	_next_state(PH_STATE_WAIT_HUB);
@@ -672,7 +672,7 @@ static void _login_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_login_cb);
 
-	pv_pantahub_proto_open_session();
+	pv_pantahub_proto_post_auth();
 }
 
 static void _run_state_login()
@@ -740,7 +740,7 @@ static void _evaluate_report_cb(evutil_socket_t fd, short event, void *arg)
 	if (!pv)
 		return;
 
-	if (!pv_pantahub_proto_is_session_open()) {
+	if (!pv_pantahub_proto_is_auth()) {
 		_next_state(PH_STATE_LOGIN);
 		return;
 	}
@@ -800,7 +800,7 @@ static void _evaluate_idle_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_idle_cb);
 
-	if (!pv_pantahub_proto_is_session_open()) {
+	if (!pv_pantahub_proto_is_auth()) {
 		_next_state(PH_STATE_LOGIN);
 		return;
 	}
@@ -846,7 +846,7 @@ static void _evaluate_prep_download_cb(evutil_socket_t fd, short event,
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_prep_download_cb);
 
-	if (!pv_pantahub_proto_is_session_open()) {
+	if (!pv_pantahub_proto_is_auth()) {
 		_next_state(PH_STATE_LOGIN);
 		return;
 	}
@@ -911,7 +911,7 @@ static void _evaluate_download_objects_cb(evutil_socket_t fd, short event,
 	pv_log(DEBUG, "run event: cb=%p",
 	       (void *)_evaluate_download_objects_cb);
 
-	if (!pv_pantahub_proto_is_session_open()) {
+	if (!pv_pantahub_proto_is_auth()) {
 		_next_state(PH_STATE_LOGIN);
 		return;
 	}
@@ -1035,13 +1035,18 @@ bool pv_pantahub_got_any_failure()
 	return pv_pantahub_proto_got_any_failure();
 }
 
-void pv_pantahub_put_progress(const char *rev, const char *progress)
+bool pv_pantahub_is_progress_queue_empty()
 {
-	if (!pv_pantahub_proto_is_session_open()) {
+	return !pv_pantahub_proto_is_any_progress_request_pending();
+}
+
+void pv_pantahub_queue_progress(const char *rev, const char *progress)
+{
+	if (!pv_pantahub_proto_is_auth()) {
 		pv_log(DEBUG,
 		       "will not try to put progress as session is not opened yet");
 		return;
 	}
 
-	pv_pantahub_proto_put_progress(rev, progress);
+	pv_pantahub_proto_queue_progress(rev, progress);
 }

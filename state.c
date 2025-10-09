@@ -1454,7 +1454,7 @@ struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name)
 }
 
 void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
-				  const char *geturl)
+				  const char *geturl, off_t size)
 {
 	struct pv_object *o;
 
@@ -1469,6 +1469,7 @@ void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
 	}
 
 	o->geturl = strdup(geturl);
+	o->size = size;
 }
 
 unsigned int _get_object_count(struct pv_state *s)

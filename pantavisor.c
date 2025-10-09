@@ -106,7 +106,7 @@ typedef enum {
 	PV_STATE_ROLLBACK,
 	PV_STATE_REBOOT,
 	PV_STATE_POWEROFF,
-	PV_STATE_DEBUG,
+	PV_STATE_BLOCK_REBOOT,
 	PV_STATE_ERROR,
 	PV_STATE_EXIT,
 	MAX_STATES
@@ -129,8 +129,8 @@ static const char *pv_state_string(pv_state_t st)
 		return "STATE_REBOOT";
 	case PV_STATE_POWEROFF:
 		return "STATE_POWEROFF";
-	case PV_STATE_DEBUG:
-		return "STATE_DEBUG";
+	case PV_STATE_BLOCK_REBOOT:
+		return "STATE_BLOCK_REBOOT";
 	case PV_STATE_ERROR:
 		return "STATE_ERROR";
 	case PV_STATE_EXIT:
@@ -174,7 +174,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	char *json = NULL;
 
 	// resume update if we are booting up to test a new revision
-	if (pv_update_resume(pv_pantahub_put_progress)) {
+	if (pv_update_resume(pv_pantahub_queue_progress)) {
 		pv_log(ERROR, "update could not be resumed");
 		goto out;
 	}
@@ -774,8 +774,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
-	if (pv_debug_check_timeout_shell())
-		return PV_STATE_DEBUG;
+	if (pv_debug_check_timeout_shell() ||
+	    !pv_pantahub_is_progress_queue_empty())
+		return PV_STATE_BLOCK_REBOOT;
 
 	return pv_shutdown(pv, PV_SYSTEM_TRANSITION_REBOOT);
 }
@@ -785,16 +786,15 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 	return pv_shutdown(pv, PV_SYSTEM_TRANSITION_POWEROFF);
 }
 
-static pv_state_t _pv_debug(struct pantavisor *pv)
+static pv_state_t _pv_block_reboot(struct pantavisor *pv)
 {
-	pv_state_t next_state = PV_STATE_DEBUG;
+	if (!pv_debug_run_shell())
+		return PV_STATE_BLOCK_REBOOT;
 
-	if (pv_debug_run_shell())
-		next_state = PV_STATE_REBOOT;
+	if (!pv_pantahub_is_progress_queue_empty())
+		return PV_STATE_BLOCK_REBOOT;
 
-	sleep(1);
-
-	return next_state;
+	return PV_STATE_REBOOT;
 }
 
 static pv_state_t _pv_error(struct pantavisor *pv)
@@ -803,8 +803,8 @@ static pv_state_t _pv_error(struct pantavisor *pv)
 }
 
 pv_state_func_t *const state_table[MAX_STATES] = {
-	_pv_init,   _pv_run,	  _pv_wait,  _pv_command, _pv_rollback,
-	_pv_reboot, _pv_poweroff, _pv_debug, _pv_error,	  NULL,
+	_pv_init,   _pv_run,	  _pv_wait,	    _pv_command, _pv_rollback,
+	_pv_reboot, _pv_poweroff, _pv_block_reboot, _pv_error,	 NULL,
 };
 
 static pv_state_t state = PV_STATE_INIT;
@@ -855,19 +855,33 @@ static void _next_state(pv_state_t next_state)
 		return;
 
 	if ((state != PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
-		// in case we are starting WAIT for the first time
+		// starting PV_STATE_WAIT for the first time
 		pv_event_periodic_start(&wait_timer, WAIT_INTERVAL,
 					_pv_run_state_cb);
 		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
 				       pv_ctrl_socket_read);
 		goto out;
 	} else if ((state == PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
-		// if we are stuck in wAIT
+		// stuck in PV_STATE_WAIT
 		goto out;
 	} else if ((state == PV_STATE_WAIT) && (next_state != PV_STATE_WAIT)) {
-		// if we are leaving WAIT
+		// leaving PV_STATE_WAIT
 		pv_event_periodic_stop(&wait_timer);
 		pv_event_socket_ignore(&ctrl_listener);
+	} else if ((state != PV_STATE_BLOCK_REBOOT) &&
+		   (next_state == PV_STATE_BLOCK_REBOOT)) {
+		// starting PV_STATE_BLOCK_REBOOT for the first time
+		pv_event_periodic_start(&wait_timer, 1, _pv_run_state_cb);
+		goto out;
+	} else if ((state == PV_STATE_BLOCK_REBOOT) &&
+		   (next_state == PV_STATE_BLOCK_REBOOT)) {
+		// stuck in PV_STATE_BLOCK_REBOOT
+		goto out;
+	} else if ((state == PV_STATE_BLOCK_REBOOT) &&
+		   (next_state != PV_STATE_BLOCK_REBOOT)) {
+		// leaving PV_STATE_BLOCK_REBOOT
+		pv_event_periodic_stop(&wait_timer);
+		goto out;
 	}
 
 	// all states except WAIT are executed as soon as possible

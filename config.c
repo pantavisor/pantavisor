@@ -187,8 +187,6 @@ static struct pv_config_entry entries[] = {
 	  .value.s = DROPBEAR_CACHE_DIR_DEF },
 	{ BOOL, "PV_LIBEVENT_DEBUG_MODE", PV | OEM, 0, false,
 	  .value.b = false },
-	{ INT, "PV_LIBEVENT_SHUTDOWN_TIMEOUT", PV | OEM, 0, false,
-	  .value.i = 0 },
 	{ STR, "PV_LIBTHTTP_CERTSDIR", PV, 0, false,
 	  .value.s = LIBTHTTP_CERTSDIR_DEF },
 	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV | OEM | RUN, 0, false,

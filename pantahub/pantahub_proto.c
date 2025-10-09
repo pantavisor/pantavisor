@@ -54,17 +54,22 @@
 #define QUERY_PENDING_STEPS                                                    \
 	"?progress.status=%7B%22$in%22:%5B%22NEW%22,%22DOWNLOADING%22,%22INPROGRESS%22,%22TESTING%22,%22QUEUED%22%5D%7D"
 
+struct pv_progress {
+	char *rev;
+	char *body;
+};
+
+struct pv_object_transfer {
+	const char *id_ref;
+	bool active;
+	struct dl_list list; // struct pv_object_transfer
+};
+
 typedef enum {
 	PV_TRAILS_STATUS_UNKNOWN,
 	PV_TRAILS_STATUS_UNSYNCED,
 	PV_TRAILS_STATUS_SYNCED
 } pv_trails_status_t;
-
-struct pv_object_transfer {
-	char *id;
-	bool active;
-	struct dl_list list; // struct pv_object_transfer
-};
 
 struct pv_pantahub_session {
 	char *token;
@@ -72,20 +77,18 @@ struct pv_pantahub_session {
 	short failed_requests;
 	bool any_failed_request;
 
-	char *current_progress;
-	char *current_uri;
-	char *next_progress;
-	char *next_uri;
-
+	bool open_session_active;
 	bool get_usrmeta_active;
 	bool set_devmeta_active;
 	bool get_trails_status_active;
 	bool get_pending_steps_active;
-	bool open_session_active;
+	bool put_progress_active;
 
-	pv_trails_status_t trails_status;
+	struct pv_progress *next_progress;
 
 	struct dl_list object_transfer_list; // struct pv_object_transfer
+
+	pv_trails_status_t trails_status;
 };
 
 static struct pv_pantahub_session session;
@@ -97,18 +100,18 @@ void pv_pantahub_proto_init()
 	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
 	session.any_failed_request = false;
 
-	session.trails_status = PV_TRAILS_STATUS_UNKNOWN;
+	session.open_session_active = false;
+	session.get_usrmeta_active = false;
+	session.set_devmeta_active = false;
+	session.get_trails_status_active = false;
+	session.get_pending_steps_active = false;
+	session.put_progress_active = false;
+
+	session.next_progress = NULL;
 
 	dl_list_init(&session.object_transfer_list);
-}
 
-static void _free_object_transfer(struct pv_object_transfer *o)
-{
-	if (!o)
-		return;
-
-	if (o->id)
-		free(o->id);
+	session.trails_status = PV_TRAILS_STATUS_UNKNOWN;
 }
 
 static void _free_object_transfer_list(struct dl_list *l)
@@ -121,7 +124,7 @@ static void _free_object_transfer_list(struct dl_list *l)
 	dl_list_for_each_safe(o, tmp, l, struct pv_object_transfer, list)
 	{
 		dl_list_del(&o->list);
-		_free_object_transfer(o);
+		free(o);
 	}
 }
 
@@ -130,18 +133,18 @@ static bool _is_object_transfer_list_empty()
 	return dl_list_empty(&session.object_transfer_list);
 }
 
-static void _add_object_transfer(const char *id)
+static void _add_object_transfer(const char *id_ref)
 {
 	struct pv_object_transfer *o;
 
-	if (!id)
+	if (!id_ref)
 		return;
 
 	o = calloc(1, sizeof(struct pv_object_transfer));
 	if (!o)
 		return;
 
-	o->id = strdup(id);
+	o->id_ref = id_ref;
 
 	dl_list_add_tail(&session.object_transfer_list, &o->list);
 }
@@ -196,42 +199,51 @@ static int _init_object_transfer_unavailable()
 	return 0;
 }
 
-static struct pv_object_transfer *_search_object_transfer(const char *id)
+static struct pv_object_transfer *_search_object_transfer(const char *id_ref)
 {
 	struct pv_object_transfer *o, *tmp;
 
-	if (!id)
+	if (!id_ref)
 		return NULL;
 
 	dl_list_for_each_safe(o, tmp, &session.object_transfer_list,
 			      struct pv_object_transfer, list)
 	{
-		if (pv_str_matches(id, strlen(id), o->id, strlen(o->id)))
+		if (id_ref == o->id_ref)
 			return o;
 	}
 
 	return NULL;
 }
 
-static void _remove_object_transfer(const char *id)
+static void _remove_object_transfer(const char *id_ref)
 {
 	struct pv_object_transfer *o;
 
-	if (!id)
+	if (!id_ref)
 		return;
 
-	o = _search_object_transfer(id);
+	o = _search_object_transfer(id_ref);
 	if (!o)
 		return;
 
 	dl_list_del(&o->list);
-	_free_object_transfer(o);
+	free(o);
+}
+
+void _free_token()
+{
+	if (session.token)
+		free(session.token);
+	session.token = NULL;
+
+	pv_log(DEBUG, "removed token");
 }
 
 void pv_pantahub_proto_close()
 {
 	_free_object_transfer_list(&session.object_transfer_list);
-	pv_pantahub_proto_close_session();
+	_free_token();
 }
 
 void pv_pantahub_proto_reset_fail()
@@ -256,7 +268,7 @@ bool pv_pantahub_proto_got_any_failure()
 
 bool pv_pantahub_proto_is_any_progress_request_pending()
 {
-	return session.current_progress || session.next_progress;
+	return session.put_progress_active || session.next_progress;
 }
 
 bool pv_pantahub_proto_is_trails_unknown()
@@ -345,7 +357,7 @@ static int _recv_buffer(struct evhttp_request *req, char **body)
 
 	if (res == 401) {
 		pv_log(WARN, "unauthorized");
-		pv_pantahub_proto_close_session();
+		_free_token();
 		return -1;
 	} else if (res != 200) {
 		pv_log(WARN, "returned %d", res);
@@ -374,14 +386,14 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 
 	session.token = pv_pantahub_msg_parse_session_token(body);
 	if (session.token)
-		pv_log(DEBUG, "new session opened");
+		pv_log(DEBUG, "got new token");
 
 out:
 	if (body)
 		free(body);
 }
 
-void pv_pantahub_proto_open_session()
+void pv_pantahub_proto_post_auth()
 {
 	pv_log(DEBUG, "opening new session...");
 
@@ -406,7 +418,6 @@ void pv_pantahub_proto_open_session()
 		return;
 	}
 
-	// on success remember active
 	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body,
 			       _recv_post_auth_cb, NULL))
 		session.open_session_active = 1;
@@ -414,18 +425,9 @@ void pv_pantahub_proto_open_session()
 	free(body);
 }
 
-bool pv_pantahub_proto_is_session_open()
+bool pv_pantahub_proto_is_auth()
 {
 	return session.token;
-}
-
-void pv_pantahub_proto_close_session()
-{
-	if (session.token)
-		free(session.token);
-	session.token = NULL;
-
-	pv_log(DEBUG, "session closed");
 }
 
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
@@ -611,7 +613,7 @@ static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
 
 	pv_pantahub_msg_print_step(&step);
 	pv_update_start_install(step.rev, step.progress, step.state,
-				pv_pantahub_put_progress);
+				pv_pantahub_queue_progress);
 out:
 	pv_pantahub_msg_clean_step(&step);
 	if (state_json)
@@ -656,14 +658,14 @@ static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
 {
 	char *body = NULL;
 	int res;
-	const char *id = (char *)ctx;
+	const char *id_ref = (char *)ctx;
 
 	struct pv_object_metadata object_metadata;
 	memset(&object_metadata, 0, sizeof(object_metadata));
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_metadata_cb);
 
-	_remove_object_transfer(id);
+	_remove_object_transfer(id_ref);
 
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET object metadata failed");
@@ -692,20 +694,20 @@ out:
 		free(body);
 }
 
-static void _get_object_metadata(const char *id)
+static int _get_object_metadata(const char *id_ref)
 {
-	pv_log(DEBUG, "requesting object '%s' metadata from Hub", id);
+	pv_log(DEBUG, "requesting object '%s' metadata from Hub", id_ref);
 
 	if (!session.token) {
 		pv_log(ERROR, "session must be opened first");
-		return;
+		return -1;
 	}
 
 	char uri[256];
-	snprintf(uri, sizeof(uri), "/objects/%s", id);
+	snprintf(uri, sizeof(uri), "/objects/%s", id_ref);
 
-	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			  _recv_get_object_metadata_cb, (void *)id);
+	return _send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+				 _recv_get_object_metadata_cb, (void *)id_ref);
 }
 
 int pv_pantahub_proto_get_objects_metadata()
@@ -724,8 +726,8 @@ int pv_pantahub_proto_get_objects_metadata()
 			      struct pv_object_transfer, list)
 	{
 		if (!o->active) {
-			_get_object_metadata(o->id);
-			o->active = true;
+			if (!_get_object_metadata(o->id_ref))
+				o->active = true;
 		}
 
 		count++;
@@ -740,11 +742,11 @@ static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
 {
 	char path[PATH_MAX];
 	int res;
-	const char *id = (char *)ctx;
+	const char *id_ref = (char *)ctx;
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
 
-	pv_storage_set_object_download_path(path, PATH_MAX, id);
+	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
 	pv_event_rest_recv_chunk_path(req, path);
 }
 
@@ -752,26 +754,26 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 {
 	char path[PATH_MAX];
 	int res;
-	const char *id = (char *)ctx;
+	const char *id_ref = (char *)ctx;
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_done_cb);
 
-	pv_storage_set_object_download_path(path, PATH_MAX, id);
+	_remove_object_transfer(id_ref);
+
+	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
 	res = pv_event_rest_recv_done_path(req, path);
 	if (res == 401) {
 		pv_log(WARN, "GET object unauthorized", res);
-		pv_pantahub_proto_close_session();
+		_free_token();
 		goto out;
 	}
 	if (res != 200) {
 		pv_log(WARN, "GET object returned %d", res);
 		goto out;
 	}
-
-	_remove_object_transfer(id);
 	pv_log(DEBUG, "object downloaded from Hub");
 
-	if (pv_update_install_object(path)) {
+	if (pv_update_install_object(path, id_ref)) {
 		pv_log(WARN, "object download failed");
 		goto out;
 	}
@@ -779,21 +781,22 @@ out:
 	pv_fs_path_remove(path, false);
 }
 
-void _get_object(const char *geturl, const char *id)
+static int _get_object(const char *geturl, const char *id_ref)
 {
 	char path[PATH_MAX];
 
-	if (!geturl || !id)
-		return;
+	if (!geturl || !id_ref)
+		return -1;
 
-	pv_storage_set_object_download_path(path, PATH_MAX, id);
+	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
 	pv_fs_path_remove(path, true);
 
-	pv_log(DEBUG, "requesting object '%s' from Hub", id);
+	pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
 
-	pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
-				  _recv_get_object_chunk_cb,
-				  _recv_get_object_done_cb, (void *)id);
+	return pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
+					 _recv_get_object_chunk_cb,
+					 _recv_get_object_done_cb,
+					 (void *)id_ref);
 }
 
 int pv_pantahub_proto_get_objects()
@@ -813,9 +816,9 @@ int pv_pantahub_proto_get_objects()
 			      struct pv_object_transfer, list)
 	{
 		if (!o->active) {
-			geturl = pv_update_get_object_geturl(o->id);
-			_get_object(geturl, o->id);
-			o->active = true;
+			geturl = pv_update_get_object_geturl(o->id_ref);
+			if (!_get_object(geturl, o->id_ref))
+				o->active = true;
 		}
 
 		count++;
@@ -826,46 +829,44 @@ int pv_pantahub_proto_get_objects()
 	return 0;
 }
 
-static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx);
-
-static void _send_current_progress()
+static struct pv_progress *_new_progress(const char *rev, const char *progress)
 {
-	if (!session.token) {
-		pv_log(WARN,
-		       "session must be opened first; not sending request (%p)%s",
-		       session.current_uri, session.current_uri);
-		return;
-	}
-	pv_log(DEBUG, "sending current progress request (%p)%s",
-	       session.current_uri, session.current_uri);
-	_send_by_endpoint(EVHTTP_REQ_PUT, session.current_uri, session.token,
-			  session.current_progress, _recv_put_progress_cb,
-			  NULL);
+	struct pv_progress *p;
+	p = calloc(1, sizeof(struct pv_progress));
+	if (!p)
+		return NULL;
+
+	p->rev = strdup(rev);
+	p->body = strdup(progress);
+
+	return p;
 }
+
+static void _free_progress(struct pv_progress *p)
+{
+	if (!p)
+		return;
+
+	if (p->rev)
+		free(p->rev);
+	if (p->body)
+		free(p->body);
+	free(p);
+}
+
+static void _put_progress(const char *rev, const char *progress);
 
 static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_put_progress_cb);
 
-	pv_log(DEBUG, "finished progress request (%p)%s", session.current_uri,
-	       session.current_uri);
-
-	// clean up the current request now that we finished
-	free(session.current_progress);
-	session.current_progress = NULL;
-	free(session.current_uri);
-	session.current_uri = NULL;
-
-	// process a potential next request right away
+	session.put_progress_active = false;
 	if (session.next_progress) {
-		session.current_progress = session.next_progress;
-		session.current_uri = session.next_uri;
-		session.next_progress = session.next_uri = NULL;
-		pv_log(DEBUG, "dequeued next progress request (%p)%s",
-		       session.current_uri, session.current_uri);
-
-		// send current progress
-		_send_current_progress();
+		pv_log(DEBUG, "clearing progress queue");
+		_put_progress(session.next_progress->rev,
+			      session.next_progress->body);
+		_free_progress(session.next_progress);
+		session.next_progress = NULL;
 	}
 
 	char *body = NULL;
@@ -880,7 +881,7 @@ out:
 		free(body);
 }
 
-void pv_pantahub_proto_put_progress(const char *rev, const char *progress)
+static void _put_progress(const char *rev, const char *progress)
 {
 	if (!rev || !progress)
 		return;
@@ -896,36 +897,30 @@ void pv_pantahub_proto_put_progress(const char *rev, const char *progress)
 	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s/progress",
 		 pv_config_get_str(PH_CREDS_ID), rev);
 
-	// first check if there is no current, but a next. if so we move next to current
+	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, progress,
+			       _recv_put_progress_cb, NULL)) {
+		session.put_progress_active = true;
+	} else if (session.next_progress) {
+		pv_log(DEBUG, "clearing progress queue");
+		_put_progress(session.next_progress->rev,
+			      session.next_progress->body);
+		_free_progress(session.next_progress);
+		session.next_progress = NULL;
+	}
+}
 
-	// if there is nothing going on we can fire something.
-	if (session.current_progress == NULL) {
-		if (session.next_progress != NULL) {
-			session.current_progress = session.next_progress;
-			session.current_uri = session.next_uri;
-			session.next_progress = strdup(progress);
-			session.next_uri = strdup(uri);
-			pv_log(DEBUG,
-			       "dequeued next progress request %s (queued new: %s)",
-			       session.current_uri, session.next_uri);
-		} else {
-			session.current_progress = strdup(progress);
-			session.current_uri = strdup(uri);
-		}
+void pv_pantahub_proto_queue_progress(const char *rev, const char *progress)
+{
+	struct pv_progress *p;
 
-		_send_current_progress();
+	if (!rev || !progress)
+		return;
 
+	if (!session.put_progress_active) {
+		_put_progress(rev, progress);
 	} else {
-		if (session.next_progress) {
-			free(session.next_progress);
-			free(session.next_uri);
-			session.next_progress = session.next_uri = NULL;
-		}
-		session.next_progress = strdup(progress);
-		session.next_uri = strdup(uri);
-		pv_log(DEBUG,
-		       "queued next progress request (%p)%s (active: (%p)%s)",
-		       session.next_uri, session.next_uri, session.current_uri,
-		       session.current_uri);
+		pv_log(DEBUG, "queueing progress");
+		_free_progress(session.next_progress);
+		session.next_progress = _new_progress(rev, progress);
 	}
 }

@@ -44,6 +44,7 @@
 #include "pantavisor.h"
 #include "paths.h"
 
+#include "utils/fs.h"
 #include "utils/str.h"
 
 #define MODULE_NAME "event_rest"
@@ -489,12 +490,10 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 
 		total_written += n;
 		if (total_written != blen)
-			pv_log(DEBUG,
-			       "successfully wrote part of %d bytes to file %s",
+			pv_log(DEBUG, "wrote part of %d bytes into '%s'",
 			       total_written, path);
 	}
-	pv_log(DEBUG,
-	       "success: wrote %d bytes from %d bytes buffer to file %s",
+	pv_log(DEBUG, "wrote total of %jd bytes out of %jd bytes into '%s'",
 	       total_written, blen, path);
 
 	close(fd);
@@ -510,8 +509,9 @@ int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path)
 	ret = _recv_status_line(req);
 	if (ret == 200) {
 		size = pv_fs_path_get_size(path);
-		pv_log(DEBUG, "successfully wrote %jd bytes to '%s'", size,
-		       path);
+		pv_log(DEBUG,
+		       "successfully downloaded file with size %jd bytes at '%s'",
+		       size, path);
 	} else {
 		pv_log(WARN, "file transfer to '%s' failed", path);
 		pv_fs_path_remove(path, false);

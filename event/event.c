@@ -110,24 +110,13 @@ void pv_event_base_loop()
 	event_base_loop(base, EVLOOP_NO_EXIT_ON_EMPTY);
 }
 
-static void _base_loopbreak_cb(evutil_socket_t fd, short events, void *arg)
-{
-	pv_log(DEBUG, "run event: cb=%p", (void *)_base_loopbreak_cb);
-
-	pv_log(INFO, "event base will now stop processing events");
-	event_base_loopbreak(base);
-}
-
 void pv_event_base_loopbreak()
 {
 	if (!base)
 		return;
 
-	pv_log(DEBUG, "event base will stop processing events in %d s",
-	       pv_config_get_int(PV_LIBEVENT_SHUTDOWN_TIMEOUT));
-
-	pv_event_timeout(pv_config_get_int(PV_LIBEVENT_SHUTDOWN_TIMEOUT),
-			 _base_loopbreak_cb);
+	pv_log(INFO, "event base will now stop processing events");
+	event_base_loopbreak(base);
 }
 
 void pv_event_timeout(int timeout, event_callback_fn cb)

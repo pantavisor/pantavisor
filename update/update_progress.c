@@ -499,5 +499,14 @@ void pv_update_progress_add_downloaded(struct pv_update_progress *p,
 
 void pv_update_progress_reload_logs(struct pv_update_progress *p)
 {
+	char path[PATH_MAX];
+
+	if (!p)
+		return;
+
+	pv_paths_storage_trail_pv_file(path, PATH_MAX, p->rev_ref, LOGS_FNAME);
+	if (!pv_fs_path_exist(path))
+		return;
+
 	_call_report_cb(p);
 }

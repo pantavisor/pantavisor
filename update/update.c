@@ -129,7 +129,7 @@ static int _enroll_object_list(struct pv_update *update)
 		pv_log(DEBUG, "update retry count %d",
 		       update->progress.retries);
 
-		if (update->progress.retries >=
+		if (update->progress.retries >
 		    pv_config_get_int(PV_REVISION_RETRIES)) {
 			pv_log(WARN, "max update retries eached");
 			return -1;
