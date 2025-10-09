@@ -29,6 +29,7 @@ void pv_pantahub_proto_close(void);
 
 void pv_pantahub_proto_reset_fail(void);
 void pv_pantahub_proto_reset_trails_status(void);
+void pv_pantahub_proto_reset_object_transfers(void);
 
 bool pv_pantahub_proto_is_online(void);
 bool pv_pantahub_proto_got_any_failure(void);
