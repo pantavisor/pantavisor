@@ -130,10 +130,10 @@ stop_pv() {
 		pvr delete -y $device_id
 	fi
 
-	local pv_pid=$(ps -w | grep '[p]antavisor.*/opt/pantavisor/init' | awk '{print $1}')
+	local pv_pid=$(ps -w | grep 'pantavisor' | awk '{print $1}')
 	if [ -n "$pv_pid" ]; then
 		eval "pventer -c $control_container pvcontrol commands poweroff" > /dev/null 2>&1
-		wait_for_process "[p]antavisor.*/opt/pantavisor/init" "120" "-d"
+		wait_for_process "pantavisor" "120" "-d"
 		if [ $? -ne 0 ]; then
 			echo "Warn: Pantavisor still running. Shutting it down..."
 			kill -SIGTERM "$pv_pid"
@@ -160,7 +160,7 @@ start_pv() {
 		return
 	fi
 
-	pv_cmd="/opt/pantavisor/pantavisor"
+	pv_cmd="pv-appengine"
 	
 	if [ -n "$cmdline" ]; then
 		pv_cmd="$pv_cmd -c \"$cmdline\""
