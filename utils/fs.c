@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #define PV_FS_BUF_SIZE (512)
@@ -634,4 +635,80 @@ out:
 		remove(tmp_path);
 
 	return ret;
+}
+
+int pv_fs_path_copy_recursive_no_sync(const char *src, const char *dst)
+{
+        struct stat st;
+        if (stat(src, &st) != 0)
+                return -1;
+
+        // If source is not a directory, just copy the file
+        if (!S_ISDIR(st.st_mode)) {
+                return pv_fs_file_copy_no_sync(src, dst, st.st_mode);
+        }
+
+        // Create destination directory
+        if (mkdir(dst, st.st_mode) != 0 && errno != EEXIST)
+                return -1;
+
+        DIR *dir = opendir(src);
+        if (!dir)
+                return -1;
+
+        int ret = -1;
+        struct dirent *entry = NULL;
+        while ((entry = readdir(dir)) != NULL) {
+                if (strcmp(entry->d_name, ".") == 0 ||
+                    strcmp(entry->d_name, "..") == 0) {
+                        continue;
+                }
+
+                char src_path[PATH_MAX] = { 0 };
+                char dst_path[PATH_MAX] = { 0 };
+                pv_fs_path_concat(src_path, 2, src, entry->d_name);
+                pv_fs_path_concat(dst_path, 2, dst, entry->d_name);
+
+                if (entry->d_type == DT_DIR) {
+                        if (pv_fs_path_copy_recursive_no_sync(src_path, dst_path) != 0)
+                                goto out;
+                } else {
+                        struct stat file_st;
+                        if (stat(src_path, &file_st) != 0)
+                                goto out;
+                        if (pv_fs_file_copy_no_sync(src_path, dst_path, file_st.st_mode) != 0)
+                                goto out;
+                }
+        }
+
+        // Preserve permissions on the directory
+        chmod(dst, st.st_mode);
+
+        ret = 0;
+out:
+        closedir(dir);
+        return ret;
+}
+
+int pv_fs_rename_safe_noatomic(const char *oldpath, const char *newpath)
+{
+	// Try atomic rename first
+	if (rename(oldpath, newpath) == 0) {
+		return 0;
+	}
+
+	// If cross-device, fall back to copy + remove
+	if (errno == EXDEV) {
+		if (pv_fs_path_copy_recursive_no_sync(oldpath, newpath) != 0) {
+			return -1;
+		}
+
+		if (pv_fs_path_remove_recursive_no_sync(oldpath) != 0) {
+			return -1;
+		}
+
+		return 0;
+	}
+
+	return -1;
 }
