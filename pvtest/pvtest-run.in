@@ -80,12 +80,15 @@ initial_setup() {
 		find $test_path/$pvs -exec tar -xf '{}' -C @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/ --strip-components=1 \;
 	fi
 	
-	pvtx begin /storage/trails/0
+	pvtx abort
+	pvtx begin @PV_INSTALL_FULL_STORAGEDIR@/trails/0 @PV_INSTALL_FULL_STORAGEDIR@/objects
 	pvtx remove ""
 	for tarball in $tarballs; do
 		if [ ! -e "$test_path/$tarball" ]; then echo "Error: '$test_path/$tarball' does not exist"; exit 1; fi
 		pvtx add "$test_path/$tarball"
 	done
+	pvtx show
+	pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
 	cd - > /dev/null 2>&1
 
 	cleanup_cryptdisk
