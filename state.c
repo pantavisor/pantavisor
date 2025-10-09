@@ -1545,34 +1545,46 @@ char **pv_state_get_unavailable_objects(struct pv_state *s)
 bool pv_state_are_all_objects_recorded(struct pv_state *s)
 {
 	struct pv_object *o, *tmp;
+	bool ret = true;
 
 	if (!s)
 		return false;
 
 	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
 	{
+		pv_log(DEBUG, "object recorded testing: %s", o->id);
+
 		if (pv_storage_is_object_installed(o->id))
 			continue;
-		if (!o->geturl)
-			return false;
+		if (!o->geturl) {
+			pv_log(DEBUG, "object is not recorded: %s", o->id);
+			ret = false;
+		}
 	}
 
-	return true;
+	pv_log(DEBUG, "all objects recorded? %d", ret);
+	return ret;
 }
 
 bool pv_state_are_all_objects_installed(struct pv_state *s)
 {
 	struct pv_object *o, *tmp;
+	bool ret = true;
 
 	if (!s)
 		return false;
 
 	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
 	{
-		if (!pv_storage_is_object_installed(o->id))
+		pv_log(DEBUG, "object installed testing: %s", o->id);
+
+		if (!pv_storage_is_object_installed(o->id)) {
+			pv_log(DEBUG, "object is not installed: %s", o->id);
 			return false;
+		}
 	}
 
+	pv_log(DEBUG, "all objects installed? %d", ret);
 	return true;
 }
 

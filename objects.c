@@ -62,6 +62,9 @@ struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
 
+	if (pv_objects_fetch_object_id(&s->objects, id))
+		return NULL;
+
 	if (this) {
 		this->name = strdup(filename);
 		this->id = strdup(id);
@@ -69,6 +72,24 @@ struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
 		dl_list_add(&s->objects, &this->list);
 		return this;
 	}
+	return NULL;
+}
+
+struct pv_object *pv_objects_fetch_object_id(struct dl_list *objects,
+					     const char *id)
+{
+	struct pv_object *o, *tmp;
+
+	if (!id)
+		return NULL;
+
+	// Iterate over all objects from state
+	dl_list_for_each_safe(o, tmp, objects, struct pv_object, list)
+	{
+		if (pv_str_matches(o->id, strlen(o->id), id, strlen(id)))
+			return o;
+	}
+
 	return NULL;
 }
 

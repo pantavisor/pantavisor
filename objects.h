@@ -43,6 +43,8 @@ struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
 void pv_objects_remove(struct pv_object *o);
 void pv_objects_empty(struct pv_state *s);
 
+struct pv_object *pv_objects_fetch_object_id(struct dl_list *objects,
+					     const char *id);
 char *pv_objects_get_list_string(void);
 
 static inline void pv_object_free(struct pv_object *obj)

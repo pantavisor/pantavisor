@@ -100,7 +100,7 @@ int pv_state_interpret_signal(struct pv_state *s, const char *name,
 struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name);
 
 void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
-				  const char *geturl);
+				  const char *geturl, off_t size);
 char **pv_state_get_unrecorded_objects(struct pv_state *s);
 char **pv_state_get_unavailable_objects(struct pv_state *s);
 bool pv_state_are_all_objects_recorded(struct pv_state *s);

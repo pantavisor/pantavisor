@@ -881,7 +881,6 @@ static void _next_state(pv_state_t next_state)
 		   (next_state != PV_STATE_BLOCK_REBOOT)) {
 		// leaving PV_STATE_BLOCK_REBOOT
 		pv_event_periodic_stop(&wait_timer);
-		goto out;
 	}
 
 	// all states except WAIT are executed as soon as possible

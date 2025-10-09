@@ -371,7 +371,7 @@ void pv_update_set_object_metadata(const char *sha256sum, off_t size,
 	else
 		pv_log(DEBUG, "object '%s' already installed", sha256sum);
 
-	pv_state_set_object_metadata(s, sha256sum, geturl);
+	pv_state_set_object_metadata(s, sha256sum, geturl, size);
 	if (!pv_state_are_all_objects_recorded(s))
 		goto out;
 

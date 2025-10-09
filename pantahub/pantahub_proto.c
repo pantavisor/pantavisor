@@ -773,7 +773,7 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	}
 	pv_log(DEBUG, "object downloaded from Hub");
 
-	if (pv_update_install_object(path, id_ref)) {
+	if (pv_update_install_object(path)) {
 		pv_log(WARN, "object download failed");
 		goto out;
 	}
