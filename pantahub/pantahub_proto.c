@@ -756,8 +756,6 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_done_cb);
 
-	_remove_object_transfer(id);
-
 	pv_storage_set_object_download_path(path, PATH_MAX, id);
 	res = pv_event_rest_recv_done_path(req, path);
 	if (res == 401) {
@@ -770,6 +768,7 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
+	_remove_object_transfer(id);
 	pv_log(DEBUG, "object downloaded from Hub");
 
 	if (pv_update_install_object(path)) {
