@@ -19,19 +19,31 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_EVENT_TIMER_H
-#define PV_EVENT_TIMER_H
+#ifndef PV_UPDATE_PROGRESS_H
+#define PV_UPDATE_PROGRESS_H
 
-#include <event2/event.h>
-#include <event2/event_struct.h>
+#include "update/update_struct.h"
 
-typedef struct {
-	int interval;
-	struct event *ev;
-} event_timer_t;
+void pv_update_progress_init(struct pv_update_progress *p, const char *rev,
+			     void (*report_cb)(const char *));
 
-void pv_event_timer_run(event_timer_t *timer, int next_interval,
-			event_callback_fn cb);
-void pv_event_timer_close(event_timer_t *timer);
+int pv_update_progress_parse(const char *json, struct pv_update_progress *p);
+
+void pv_update_progress_set(struct pv_update_progress *p,
+			    pv_update_progress_status_t status,
+			    pv_update_progress_msg_t code);
+void pv_update_progress_set_str(struct pv_update_progress *p,
+				pv_update_progress_status_t status,
+				const char *fmt, ...);
+
+void pv_update_progress_start_record(struct pv_update_progress *p);
+void pv_update_progress_add_size(struct pv_update_progress *p, off_t size);
+off_t pv_update_progress_get_size(struct pv_update_progress *p);
+
+void pv_update_progress_start_download(struct pv_update_progress *p);
+void pv_update_progress_add_downloaded(struct pv_update_progress *p,
+				       off_t downloaded);
+
+void pv_update_progress_reload_logs(struct pv_update_progress *p);
 
 #endif

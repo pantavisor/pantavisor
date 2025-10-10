@@ -89,6 +89,7 @@ do_umount_squash() {
 	if ! umount $volpath; then
 		echo "WARNING: cannot umount volume: $volpath"
 	fi
+	rm -r $volpath
 
 	if ! veritysetup close $dmname; then
 		echo "WARNING: cannot close verity dm $dmname"

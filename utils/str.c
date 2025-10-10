@@ -75,6 +75,46 @@ void pv_str_unescape_to_ascii(char *buf, int size)
 	buf[j] = '\0';
 }
 
+char *pv_str_unescape_utf8_to_apvii(char *buf, char *code, char c)
+{
+	char *p = 0;
+	char *new_str = 0;
+	char *old;
+	int pos = 0, replaced = 0;
+	char *tmp;
+
+	size_t len = strlen(buf) + strlen(code) + 1;
+	tmp = calloc(strlen(buf) + strlen(code) + 1, sizeof(char));
+
+	snprintf(tmp, len, "%s%s", buf, code);
+
+	old = tmp;
+
+	p = strstr(tmp, code);
+	while (p) {
+		*p = '\0';
+		new_str = realloc(new_str, pos + strlen(tmp) + 2);
+		snprintf(new_str + pos, strlen(tmp) + 2, "%s", tmp);
+		pos = pos + strlen(tmp);
+		new_str[pos] = c;
+		pos += 1;
+		new_str[pos] = '\0';
+		replaced += 1;
+		tmp = p + strlen(code);
+		p = strstr(tmp, code);
+	}
+
+	if (new_str && new_str[strlen(new_str) - 1] == c)
+		new_str[strlen(new_str) - 1] = '\0';
+
+	if (old)
+		free(old);
+	if (buf)
+		free(buf);
+
+	return new_str;
+}
+
 int pv_str_count_list(char **list)
 {
 	int len = 0;

@@ -26,13 +26,13 @@
 #include <event2/event_struct.h>
 #include <event2/util.h>
 
-typedef struct {
+struct pv_event_socket {
 	evutil_socket_t fd;
 	struct event *ev;
-} event_socket_t;
+};
 
-void pv_event_socket_listen(event_socket_t *listener, evutil_socket_t fd,
-			    event_callback_fn cb);
-void pv_event_socket_ignore(event_socket_t *listener);
+void pv_event_socket_listen(struct pv_event_socket *listener,
+			    evutil_socket_t fd, event_callback_fn cb);
+void pv_event_socket_ignore(struct pv_event_socket *listener);
 
 #endif

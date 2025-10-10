@@ -37,7 +37,6 @@ struct pv_connection {
 	int port;
 };
 
-int pv_ph_is_available(struct pantavisor *pv);
 int pv_ph_device_exists(struct pantavisor *pv);
 int pv_ph_register_self(struct pantavisor *pv);
 bool pv_ph_is_auth(struct pantavisor *pv);
@@ -45,7 +44,6 @@ const char **pv_ph_get_certs();
 int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
 void pv_ph_release_client(struct pantavisor *pv);
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
-int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata);
 struct pv_connection *pv_get_instance_connection(void);
 
 // TO MOVE TO STATIC IN .c
@@ -57,8 +55,14 @@ const char *pv_pantahub_state_string(ph_state_t state);
 int pv_pantahub_init(void);
 int pv_pantahub_close(void);
 
-void pv_pantahub_step(void);
+void pv_pantahub_start(void);
 
-pantahub_t *ph_get_instance(void);
+bool pv_pantahub_is_reporting(void);
+
+bool pv_pantahub_is_online(void);
+bool pv_pantahub_got_any_failure(void);
+
+bool pv_pantahub_is_progress_queue_empty(void);
+void pv_pantahub_queue_progress(const char *rev, const char *progress);
 
 #endif

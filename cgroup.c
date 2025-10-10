@@ -32,6 +32,7 @@
 #include <linux/magic.h>
 
 #include "cgroup.h"
+#include "pantavisor.h"
 #include "utils/str.h"
 #include "utils/math.h"
 #include "utils/fs.h"

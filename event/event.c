@@ -22,7 +22,9 @@
 
 #include <string.h>
 
-#include "event.h"
+#include "config.h"
+
+#include "event/event.h"
 
 #define MODULE_NAME "event"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -113,19 +115,25 @@ void pv_event_base_loopbreak()
 	if (!base)
 		return;
 
-	pv_log(INFO, "event base will stop processing events");
+	pv_log(INFO, "event base will now stop processing events");
 	event_base_loopbreak(base);
 }
 
-void pv_event_one_shot(event_callback_fn cb)
+void pv_event_timeout(int timeout, event_callback_fn cb)
 {
 	if (!base)
 		return;
 
-	struct timeval when = { 0, 0 };
+	struct timeval when = { timeout, 0 };
 	event_base_once(base, -1, EV_TIMEOUT, cb, NULL, &when);
 
-	pv_log(DEBUG, "add event: type='one shot' cb=%p", (void *)cb);
+	pv_log(DEBUG, "add event: type='one shot' cb=%p timeout=%d", (void *)cb,
+	       timeout);
+}
+
+void pv_event_one_shot(event_callback_fn cb)
+{
+	pv_event_timeout(0, cb);
 }
 
 struct event_base *pv_event_get_base()

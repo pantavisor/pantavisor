@@ -35,6 +35,7 @@ struct pv_path {
 	struct dl_list list;
 };
 
+int pv_storage_install_state_json(const char *state, const char *rev);
 char *pv_storage_get_state_json(const char *rev);
 bool pv_storage_verify_state_json(const char *rev, char *msg,
 				  unsigned int msg_len);
@@ -45,9 +46,8 @@ void pv_storage_set_rev_progress(const char *rev, const char *progress);
 char *pv_storage_get_rev_progress(const char *rev);
 void pv_storage_init_trail_pvr(void);
 void pv_storage_rm_rev(const char *rev);
-void pv_storage_set_active(struct pantavisor *pv);
+void pv_storage_set_active();
 int pv_storage_update_factory(const char *rev);
-int pv_storage_make_config(struct pantavisor *pv);
 bool pv_storage_is_revision_local(const char *rev);
 char *pv_storage_get_revisions_string(void);
 
@@ -55,6 +55,7 @@ int pv_storage_get_subdir(const char *path, const char *prefix,
 			  struct dl_list *subdirs);
 void pv_storage_free_subdir(struct dl_list *subdirs);
 
+char *pv_storage_calculate_sha256sum(const char *path);
 int pv_storage_validate_file_checksum(char *path, char *checksum);
 bool pv_storage_validate_trails_object_checksum(const char *rev,
 						const char *name,
@@ -62,14 +63,21 @@ bool pv_storage_validate_trails_object_checksum(const char *rev,
 bool pv_storage_validate_trails_json_value(const char *rev, const char *name,
 					   char *val);
 
+void pv_storage_set_object_download_path(char *path, size_t size,
+					 const char *id);
+bool pv_storage_is_object_installed(const char *id);
+int pv_storage_install_object(const char *src_path, const char *dst_path);
+
 off_t pv_storage_get_free(void);
 int pv_storage_gc_run(void);
 off_t pv_storage_gc_run_needed(off_t needed);
 void pv_storage_gc_defer_run_threshold(void);
 void pv_storage_gc_run_threshold(void);
 
-int pv_storage_meta_expand_jsons(struct pantavisor *pv, struct pv_state *s);
-int pv_storage_meta_link_boot(struct pantavisor *pv, struct pv_state *s);
+int pv_storage_link_trail_object(const char *id, const char *rev,
+				 const char *name);
+int pv_storage_meta_expand_jsons(struct pv_state *s);
+int pv_storage_meta_link_boot(struct pv_state *s);
 
 void pv_storage_save_usermeta(const char *key, const char *value);
 void pv_storage_rm_usermeta(const char *key);

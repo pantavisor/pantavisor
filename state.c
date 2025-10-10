@@ -202,6 +202,23 @@ struct pv_object *pv_state_fetch_object(struct pv_state *s, const char *name)
 	return NULL;
 }
 
+struct pv_object *pv_state_fetch_object_id(struct pv_state *s, const char *id)
+{
+	struct pv_object *o, *tmp;
+
+	if (!id)
+		return NULL;
+
+	// Iterate over all objects from state
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		if (pv_str_matches(o->id, strlen(o->id), id, strlen(id)))
+			return o;
+	}
+
+	return NULL;
+}
+
 struct pv_json *pv_state_fetch_json(struct pv_state *s, const char *name)
 {
 	struct pv_json *j, *tmp;
@@ -462,6 +479,38 @@ static int pv_state_mount_bsp_volumes(struct pv_state *s)
 	}
 
 	return pv_volumes_mount_firmware_modules();
+}
+
+static int _link_trail_objects(struct pv_state *s)
+{
+	struct pv_object *o = NULL;
+	char *ext;
+
+	if (!s)
+		return -1;
+
+	pv_objects_iter_begin(s, o)
+	{
+		pv_storage_link_trail_object(o->id, s->rev, o->name);
+	}
+	pv_objects_iter_end;
+
+	return pv_storage_meta_link_boot(s);
+}
+
+int pv_state_prepare_run(struct pv_state *s)
+{
+	if (_link_trail_objects(s)) {
+		pv_log(WARN, "unable to link objects to relative path");
+		return -1;
+	}
+
+	if (!pv_storage_meta_expand_jsons(s)) {
+		pv_log(WARN, "unable to install platform and pantavisor JSONs");
+		return -1;
+	}
+
+	return 0;
 }
 
 int pv_state_start(struct pv_state *s)
@@ -1074,11 +1123,18 @@ static void pv_state_transfer_groups(struct pv_state *current)
 	struct pv_group *g, *g_tmp;
 	struct pv_platform *p, *p_tmp;
 
+	// it is costly to know which platform references are not needed anymore,
+	// so we remove all of them and relink again
+
+	pv_log(DEBUG, "removing all group platform references");
+
 	// empty current group revision list
 	dl_list_for_each_safe(g, g_tmp, &current->groups, struct pv_group, list)
 	{
 		pv_group_empty_platform_refs(g);
 	}
+
+	pv_log(DEBUG, "relinking all group platform references");
 
 	// relink platform groups to current groups
 	dl_list_for_each_safe(p, p_tmp, &current->platforms, struct pv_platform,
@@ -1208,8 +1264,8 @@ static char *pv_state_get_novalidate_known_obj(struct dl_list *objects,
 			continue;
 
 		char *entry = NULL;
-		int len = pv_str_fmt_build(&entry, "%s %s\n", obj->name,
-					    obj->id);
+		int len =
+			pv_str_fmt_build(&entry, "%s %s\n", obj->name, obj->id);
 
 		char *nv_tmp = pv_state_add_novalidate_obj(nv_list, *nv_size,
 							   entry, len);
@@ -1397,6 +1453,151 @@ struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name)
 	return NULL;
 }
 
+void pv_state_set_object_metadata(struct pv_state *s, const char *sha256sum,
+				  const char *geturl, off_t size)
+{
+	struct pv_object *o;
+
+	if (!s || !sha256sum)
+		return;
+
+	o = pv_state_fetch_object_id(s, sha256sum);
+	if (!o) {
+		pv_log(WARN, "could not locate object '%s' in state",
+		       sha256sum);
+		return;
+	}
+
+	o->geturl = strdup(geturl);
+	o->size = size;
+}
+
+unsigned int _get_object_count(struct pv_state *s)
+{
+	unsigned int count = 0;
+	struct pv_object *o, *tmp;
+
+	if (!s)
+		return -1;
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		count++;
+	}
+
+	return count;
+}
+
+char **pv_state_get_unrecorded_objects(struct pv_state *s)
+{
+	int i = 0;
+	unsigned int count;
+	char **ret;
+	struct pv_object *o, *tmp;
+
+	if (!s)
+		return NULL;
+
+	count = _get_object_count(s);
+	ret = calloc(count + 1, sizeof(char *));
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		if (i >= count)
+			break;
+		if (pv_storage_is_object_installed(o->id))
+			continue;
+		if (o->geturl)
+			continue;
+		ret[i] = o->id;
+		i++;
+	}
+
+	return ret;
+}
+
+char **pv_state_get_unavailable_objects(struct pv_state *s)
+{
+	int i = 0;
+	unsigned int count;
+	char **ret;
+	struct pv_object *o, *tmp;
+
+	if (!s)
+		return NULL;
+
+	count = _get_object_count(s);
+	ret = calloc(count + 1, sizeof(char *));
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		if (i >= count)
+			break;
+		if (pv_storage_is_object_installed(o->id))
+			continue;
+		ret[i] = o->id;
+		i++;
+	}
+
+	return ret;
+}
+
+bool pv_state_are_all_objects_recorded(struct pv_state *s)
+{
+	struct pv_object *o, *tmp;
+	bool ret = true;
+
+	if (!s)
+		return false;
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		pv_log(DEBUG, "object recorded testing: %s", o->id);
+
+		if (pv_storage_is_object_installed(o->id))
+			continue;
+		if (!o->geturl) {
+			pv_log(DEBUG, "object is not recorded: %s", o->id);
+			ret = false;
+		}
+	}
+
+	pv_log(DEBUG, "all objects recorded? %d", ret);
+	return ret;
+}
+
+bool pv_state_are_all_objects_installed(struct pv_state *s)
+{
+	struct pv_object *o, *tmp;
+	bool ret = true;
+
+	if (!s)
+		return false;
+
+	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	{
+		pv_log(DEBUG, "object installed testing: %s", o->id);
+
+		if (!pv_storage_is_object_installed(o->id)) {
+			pv_log(DEBUG, "object is not installed: %s", o->id);
+			return false;
+		}
+	}
+
+	pv_log(DEBUG, "all objects installed? %d", ret);
+	return true;
+}
+
+char *pv_state_get_object_geturl(struct pv_state *s, const char *sha256sum)
+{
+	struct pv_object *o;
+	o = pv_state_fetch_object_id(s, sha256sum);
+	if (!o)
+		return NULL;
+
+	return o->geturl;
+}
+
 char *pv_state_get_containers_json(struct pv_state *s)
 {
 	struct pv_json_ser js;
@@ -1439,4 +1640,29 @@ char *pv_state_get_groups_json(struct pv_state *s)
 	}
 
 	return pv_json_ser_str(&js);
+}
+
+void pv_state_set_done(struct pv_state *s)
+{
+	if (!s)
+		return;
+
+	pv_storage_set_rev_done(s->rev);
+	s->done = true;
+}
+
+void pv_state_load_done(struct pv_state *s)
+{
+	if (!s)
+		return;
+
+	s->done = pv_storage_is_rev_done(s->rev);
+}
+
+bool pv_state_is_done(struct pv_state *s)
+{
+	if (!s)
+		return false;
+
+	return s->done;
 }

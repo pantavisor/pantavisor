@@ -35,6 +35,7 @@
 
 #include <jsmn/jsmnutil.h>
 
+#include "config.h"
 #include "signature.h"
 #include "paths.h"
 #include "utils/json.h"
