@@ -1552,12 +1552,15 @@ bool pv_state_are_all_objects_recorded(struct pv_state *s)
 
 	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
 	{
-		pv_log(DEBUG, "object recorded testing: %s", o->id);
+		pv_log(DEBUG, "Object install/recorded testing: %s",
+		       o->id);
 
 		if (pv_storage_is_object_installed(o->id))
 			continue;
 		if (!o->geturl) {
-			pv_log(DEBUG, "object is not recorded: %s", o->id);
+			pv_log(DEBUG,
+			       "object is not recorded and not installed: %s",
+			       o->id);
 			ret = false;
 		}
 	}

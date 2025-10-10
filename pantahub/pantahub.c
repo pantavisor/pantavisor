@@ -858,6 +858,7 @@ static void _evaluate_prep_download_cb(evutil_socket_t fd, short event,
 	}
 
 	if (pv_update_is_downloading()) {
+		pv_pantahub_proto_reset_object_transfers();
 		_next_state(PH_STATE_DOWNLOAD);
 		return;
 	}

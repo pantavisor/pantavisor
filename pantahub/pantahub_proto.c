@@ -62,6 +62,7 @@ struct pv_progress {
 struct pv_object_transfer {
 	const char *id_ref;
 	bool active;
+	bool done;
 	struct dl_list list; // struct pv_object_transfer
 };
 
@@ -216,6 +217,17 @@ static struct pv_object_transfer *_search_object_transfer(const char *id_ref)
 	return NULL;
 }
 
+static void _done_object_transfer(struct pv_object_transfer *o)
+{
+	if (!o)
+		return;
+
+	pv_log(DEBUG, "Object (meta) transfer done: %s", o->id_ref);
+
+	o->done = 1;
+	o->active = 0;
+}
+
 static void _remove_object_transfer(const char *id_ref)
 {
 	struct pv_object_transfer *o;
@@ -244,6 +256,11 @@ void pv_pantahub_proto_close()
 {
 	_free_object_transfer_list(&session.object_transfer_list);
 	_free_token();
+}
+
+void pv_pantahub_proto_reset_object_transfers()
+{
+	_free_object_transfer_list(&session.object_transfer_list);
 }
 
 void pv_pantahub_proto_reset_fail()
@@ -658,14 +675,13 @@ static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
 {
 	char *body = NULL;
 	int res;
-	const char *id_ref = (char *)ctx;
+	struct pv_object_transfer *o = ctx;
+	const char *id_ref = o->id_ref;
 
 	struct pv_object_metadata object_metadata;
 	memset(&object_metadata, 0, sizeof(object_metadata));
 
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_metadata_cb);
-
-	_remove_object_transfer(id_ref);
 
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET object metadata failed");
@@ -689,14 +705,18 @@ static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
 
 	pv_log(DEBUG, "object metadata updated from Hub");
 out:
+
+	_done_object_transfer(o);
+
 	pv_pantahub_msg_clean_object_metadata(&object_metadata);
+
 	if (body)
 		free(body);
 }
 
-static int _get_object_metadata(const char *id_ref)
+static int _get_object_metadata(const struct pv_object_transfer *o)
 {
-	pv_log(DEBUG, "requesting object '%s' metadata from Hub", id_ref);
+	pv_log(DEBUG, "requesting object '%s' metadata from Hub", o->id_ref);
 
 	if (!session.token) {
 		pv_log(ERROR, "session must be opened first");
@@ -704,37 +724,57 @@ static int _get_object_metadata(const char *id_ref)
 	}
 
 	char uri[256];
-	snprintf(uri, sizeof(uri), "/objects/%s", id_ref);
+	snprintf(uri, sizeof(uri), "/objects/%s", o->id_ref);
 
-	return _send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-				 _recv_get_object_metadata_cb, (void *)id_ref);
+	_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			  _recv_get_object_metadata_cb, (void *)o);
+	return 0;
 }
 
-int pv_pantahub_proto_get_objects_metadata()
+static int _get_next_metadata()
 {
-	int ret = -1;
 	unsigned int count = 0;
 	struct pv_object_transfer *o, *tmp;
-
-	if (_init_object_transfer_unrecorded()) {
-		pv_log(WARN,
-		       "could not init object trasfer list with unrecorded objects");
-		return -1;
-	}
 
 	dl_list_for_each_safe(o, tmp, &session.object_transfer_list,
 			      struct pv_object_transfer, list)
 	{
-		if (!o->active) {
-			if (!_get_object_metadata(o->id_ref))
-				o->active = true;
+		if (o->done) {
+			pv_log(DEBUG, "DONE: %s", o->id_ref);
+			continue;
 		}
+
+		if (!o->active) {
+			if (_get_object_metadata(o))
+				continue;
+
+			o->active = true;
+		}
+		pv_log(DEBUG, "ACTIVE: %s", o->id_ref);
 
 		count++;
 		if (count >= pv_config_get_int(PH_UPDATER_TRANSFER_MAX_COUNT))
 			break;
 	}
 
+	pv_log(DEBUG, "ongoing transfer active: %d", count);
+
+	return !count;
+}
+
+int pv_pantahub_proto_get_objects_metadata()
+{
+	if (_init_object_transfer_unrecorded()) {
+		pv_log(WARN,
+		       "could not init object trasfer list with unrecorded objects");
+		return -1;
+	}
+
+	if (_get_next_metadata()) {
+		pv_log(INFO,
+		       "All Objects Metadata Loaded, going to next state");	
+		return 0;
+	}
 	return 0;
 }
 
