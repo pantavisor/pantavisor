@@ -39,6 +39,10 @@
 #include "paths.h"
 #include "wall.h"
 
+#include "event/event.h"
+#include "event/event_socket.h"
+#include "event/event_periodic.h"
+
 #include "utils/tsh.h"
 #include "utils/timer.h"
 #include "utils/pvsignals.h"
@@ -56,23 +60,96 @@ static bool shell_session = false;
 static bool shell_timeout_active = false;
 static bool shell_notify_last_message = false;
 
+static struct pv_event_periodic debug_event_timer;
+
+#define DEBUG_EVENT_INTERVAL 1
+#define TIMEOUT_WARNING_INTERVAL 10
+
 static uint64_t pv_debug_timeout_elapsed_sec()
 {
-	struct timer_state state = timer_current_state(&shell_timer);
-	if (!state.fin) {
-		pv_log(DEBUG, "shell timeout to reboot: %ju",
-		       (intmax_t)state.sec);
-		return state.sec;
-	}
-	return 0;
+	static uint32_t seconds_elapsed = 0;
+
+	struct timer_state timer = timer_current_state(&shell_timer);
+
+	if (timer.fin)
+		return 0;
+
+	if (seconds_elapsed > TIMEOUT_WARNING_INTERVAL)
+		seconds_elapsed = 0;
+
+	if (seconds_elapsed == 0)
+		pv_log(DEBUG, "system will reboot in: %ju seconds",
+		       (intmax_t)timer.sec);
+
+	seconds_elapsed++;
+
+	return timer.sec;
 }
 
-static int is_shell_alive(void)
+static void pv_debug_is_shell_alive()
 {
 	if (kill(shell_pid, 0) == 0)
-		return 1;
+		return;
 
-	return 0;
+	shell_session = false;
+	pv_log(INFO, "shell with pid %d closed", shell_pid);
+	shell_pid = -1;
+	pv_wall("Shell session closed");
+
+	return;
+}
+
+static void pv_debug_shell_new_session(int print_wall)
+{
+	shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
+	shell_session = true;
+	pv_log(INFO, "shell started with pid %d", shell_pid);
+	if (print_wall)
+		pv_wall_shell_open();
+}
+
+static void pv_debug_run_shell()
+{
+	char c[64] = { 0 };
+	int con_fd;
+
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		goto out;
+
+	if (!pv_config_get_bool(PV_DEBUG_SHELL))
+		goto out;
+
+	// we need to check if the shell was closed by the user
+	pv_debug_is_shell_alive();
+
+	if (shell_session)
+		goto out;
+
+	// proceed to get a new shell session if we get <ENTER> on console
+	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (con_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+		goto out;
+	}
+
+	read(con_fd, &c, sizeof(c));
+	close(con_fd);
+
+	if (c[0] == '\n') {
+		pv_debug_shell_new_session(1);
+	}
+
+out:
+	return;
+}
+
+static void _debug_cb(evutil_socket_t fd, short events, void *arg)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_debug_cb);
+
+	pv_debug_run_shell();
+
+	return;
 }
 
 static void pv_debug_stop_shell()
@@ -99,87 +176,93 @@ static void pv_debug_stop_shell()
 	shell_pid = -1;
 }
 
-static int pv_debug_check_shell()
+static int pv_debug_check_shell_timeout()
 {
+	int debug_timeout;
 	struct timer_state timeout_debug_shell;
 	timeout_debug_shell = timer_current_state(&shell_timer);
 
-	if (!shell_timeout_active)
-		return 1;
+	// first warning message
+	if (!shell_timeout_active) {
+		shell_timeout_active = true;
 
+		debug_timeout = pv_config_get_int(PV_DEBUG_SHELL_TIMEOUT);
+		timer_start(&shell_timer, debug_timeout, 0, RELATIV_TIMER);
+
+		pv_log(INFO, "shell timeout started with %d secs",
+		       debug_timeout);
+
+		pv_wall("System will reboot in %d seconds, to defer reboot:\n"
+			"run 'pventer -c <container-name> pvcontrol defer-reboot [new timeout]'\n"
+			"If you exit the shell, the system will reboot immediately.",
+			debug_timeout);
+
+		return 1;
+	}
+
+	// last warning message
 	if (pv_debug_timeout_elapsed_sec() < 10 && !shell_notify_last_message) {
 		pv_wall("System will reboot in 10 seconds, to defer reboot:\n"
 			"run 'pventer -c <container-name> pvcontrol defer-reboot [new timeout]'");
-		pv_wall_ssh_users(
-			"System will reboot in 10 seconds, to defer reboot:\n"
-			"run 'pventer -c <container-name> pvcontrol defer-reboot [new timeout]'");
 		shell_notify_last_message = true;
-		return 0;
+		return 1;
 	}
 
+	// timeout not yet reached -> keep waiting
 	if (!timeout_debug_shell.fin)
-		return 0;
+		return 1;
 
-	pv_log(INFO, "Shell timeout reached!");
+	// timeout reached -> close shell and proceed to normal reboot
 
-	pv_wall("Shell timeout reached, rebooting system...");
-	pv_log(INFO, "Shell timeout reached, rebooting system...");
+	pv_log(DEBUG, "Shell timeout reached, rebooting system...");
 
 	pv_debug_stop_shell();
 
-	return 1;
+	return 0;
 }
 
-static void pv_debug_shell_new_session(int print_wall)
+void pv_debug_start()
 {
-	shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
-	shell_session = true;
-	pv_log(INFO, "shell started with pid %d", shell_pid);
-	if (print_wall)
-		pv_wall_welcome();
+	pv_wall_welcome();
+	pv_event_periodic_start(&debug_event_timer, DEBUG_EVENT_INTERVAL,
+				_debug_cb);
 }
 
-static void pv_debug_shell_get()
+bool pv_debug_is_shell_open()
 {
-	char c[64] = { 0 };
-	int con_fd;
+	pv_debug_is_shell_alive();
 
-	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	if (con_fd < 0) {
-		pv_log(WARN, "Unable to open /dev/console");
-		return;
-	}
+	if (!shell_session)
+		return false;
 
-	read(con_fd, &c, sizeof(c));
-	close(con_fd);
-
-	if (c[0] == '\n') {
-		pv_debug_shell_new_session(1);
-		return;
-	}
+	return pv_debug_check_shell_timeout();
 }
 
-void pv_debug_run_early_shell()
+void pv_debug_run_shell_early()
 {
 	char c[64] = { 0 };
 	int t = 5;
 	int con_fd;
 
 	if (!pv_config_get_bool(PV_DEBUG_SHELL))
-		return;
+		goto out;
+
+	// check appengine mode and if debug shell config is enabled
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		goto out;
 
 	if (shell_pid > -1)
-		return;
+		goto out;
 
 	con_fd = open("/dev/console", O_RDWR);
 	if (con_fd < 0) {
 		pv_log(WARN, "Unable to open /dev/console");
-		return;
+		goto out;
 	}
 
 	if (pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN)) {
 		pv_debug_shell_new_session(0);
-		return;
+		goto out;
 	}
 
 	dprintf(con_fd, "Press [ENTER] for debug ash shell... ");
@@ -195,65 +278,8 @@ void pv_debug_run_early_shell()
 	if (c[0] == '\n') {
 		pv_debug_shell_new_session(0);
 	}
-}
-
-int pv_debug_run_shell()
-{
-	if (pv_config_get_system_init_mode() == IM_APPENGINE)
-		return 1;
-
-	if (!pv_config_get_bool(PV_DEBUG_SHELL))
-		return 1;
-
-	if (!is_shell_alive()) {
-		shell_session = false;
-		pv_log(INFO, "shell with pid %d closed", shell_pid);
-		shell_pid = -1;
-		pv_wall("Shell session closed");
-
-		if (shell_timeout_active)
-			return 1;
-	}
-
-	if (shell_session)
-		goto out;
-
-	pv_debug_shell_get();
-
 out:
-	return pv_debug_check_shell();
-}
-
-int pv_debug_check_timeout_shell()
-{
-	int debug_timeout = 0;
-
-	if (!shell_session)
-		return 0;
-
-	if (!shell_timeout_active) {
-		debug_timeout = pv_config_get_int(PV_DEBUG_SHELL_TIMEOUT);
-		timer_start(&shell_timer, debug_timeout, 0, RELATIV_TIMER);
-		shell_timeout_active = true;
-
-		pv_log(INFO, "shell timeout started with %d secs",
-		       debug_timeout);
-
-		pv_wall("System will reboot in %d seconds, to defer reboot:\n"
-			"run 'pventer -c <container-name> pvcontrol defer-reboot [new timeout]'\n"
-			"If you exit the shell, the system will reboot immediately.",
-			debug_timeout);
-
-		pv_wall_ssh_users(
-			"System will reboot in %d seconds, to defer reboot:\n"
-			"run 'pventer -c <container-name> pvcontrol defer-reboot [new timeout]'\n"
-			"If you exit the shell, the system will reboot immediately.",
-			debug_timeout);
-
-		return 1;
-	}
-
-	return 0;
+	return;
 }
 
 void pv_debug_defer_reboot_shell(const char *payload)
@@ -282,7 +308,6 @@ void pv_debug_defer_reboot_shell(const char *payload)
 	timer_stop(&shell_timer);
 	timer_start(&shell_timer, new_timeout, 0, RELATIV_TIMER);
 	pv_wall("shell timeout deferred to %ld seconds", new_timeout);
-	pv_wall_ssh_users("shell timeout deferred to %ld seconds", new_timeout);
 	pv_log(INFO, "shell timeout deferred to %d seconds", new_timeout);
 }
 
@@ -357,25 +382,19 @@ pid_t pv_debug_get_ssh_pid()
 }
 
 #else
-void pv_debug_run_shell()
+bool pv_debug_is_shell_open()
 {
 }
-void pv_debug_stop_shell()
+void pv_debug_run_shell_early()
+{
+}
+void pv_debug_start()
 {
 }
 void pv_debug_defer_reboot_shell(const char *payload)
 {
 }
-bool pv_debug_check_timeout_shell()
-{
-}
-int pv_debug_check_shell()
-{
-}
 
-void pv_debug_wait_shell()
-{
-}
 void pv_debug_start_ssh()
 {
 }
@@ -385,7 +404,6 @@ void pv_debug_stop_ssh()
 void pv_debug_check_ssh_running()
 {
 }
-
 bool pv_debug_is_ssh_pid(pid_t pid)
 {
 	return false;

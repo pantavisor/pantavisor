@@ -39,16 +39,18 @@
 void pv_wall(const char *message, ...)
 {
 	int con_fd;
+	va_list args;
 
 	con_fd = open("/dev/console", O_WRONLY | O_NOCTTY | O_NONBLOCK);
 	if (con_fd < 0) {
 		pv_log(WARN, "Unable to open /dev/console");
 		return;
 	}
-	va_list args;
+
 	va_start(args, message);
 	vdprintf(con_fd, message, args);
 	dprintf(con_fd, "\n");
+
 	va_end(args);
 	close(con_fd);
 }
@@ -65,8 +67,6 @@ void pv_wall_ssh_users(const char *message, ...)
 
 	setutent();
 
-	pv_log(DEBUG, "Sending message to /dev/pts");
-
 	while ((entry = getutent()) != NULL) {
 		if (entry->ut_type != USER_PROCESS)
 			continue;
@@ -76,7 +76,6 @@ void pv_wall_ssh_users(const char *message, ...)
 			continue;
 
 		char tty_path[PATH_MAX];
-		pv_log(DEBUG, "Sending message to /dev/pts/%s", entry->ut_line);
 		snprintf(tty_path, sizeof(tty_path), "/dev/pts/%s",
 			 entry->ut_line);
 
@@ -106,13 +105,24 @@ void pv_wall_banner()
 	pv_wall("                                                 ");
 }
 
-void pv_wall_welcome()
+void pv_wall_shell_open()
 {
 	pv_wall_banner();
-	pv_wall("To access the debug shell, press <ENTER>.");
 	pv_wall("To exit the shell, type 'exit' or press CTRL+d.");
 	pv_wall("Press <ENTER> again to reopen the shell.");
+}
+
+void pv_wall_utils()
+{
 	pv_wall("Useful commands:");
 	pv_wall("    * lxc-ls                 :list available containers.");
 	pv_wall("    * pventer -c <CONTAINER> :to access the shell of a container.");
+}
+
+void pv_wall_welcome()
+{
+	pv_wall("Welcome to the Pantavisor!");
+	pv_wall("To access the debug shell, press <ENTER>.");
+	pv_wall("                                                 ");
+	return;
 }
