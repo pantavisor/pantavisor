@@ -45,7 +45,6 @@
 #include "init.h"
 #include "str.h"
 #include "paths.h"
-#include "updater.h"
 #include "json.h"
 #include "config.h"
 #include "config_parser.h"
@@ -483,7 +482,7 @@ static int pv_devmeta_read_online(struct pv_devmeta_read *pv_devmeta_read)
 	if (pv_devmeta_buf_check(pv_devmeta_read))
 		return -1;
 
-	if (pv->online)
+	if (pv_pantahub_is_online())
 		SNPRINTF_WTRUNC(buf, buflen, "1");
 	else
 		SNPRINTF_WTRUNC(buf, buflen, "0");

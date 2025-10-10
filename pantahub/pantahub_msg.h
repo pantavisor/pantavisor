@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,17 +19,40 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UPDATER_H
-#define PV_UPDATER_H
+#ifndef PV_PANTAHUB_MSG_H
+#define PV_PANTAHUB_MSG_H
 
-#include <trest.h>
+#include <sys/types.h>
 
-struct trail_remote {
-	trest_ptr client;
+struct pv_step {
+	char *msg;
+	char *progress;
+	char *rev;
+	char *state;
 };
 
-void pv_trail_remote_remove(struct pantavisor *pv);
+struct pv_object_metadata {
+	off_t size;
+	char *sha256sum;
+	char *geturl;
+};
 
-int pv_updater_sync();
+char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass);
+
+char *pv_pantahub_msg_parse_session_token(const char *json);
+char *pv_pantahub_msg_parse_next_step(const char *json);
+
+int pv_pantahub_msg_parse_trails(const char *json);
+
+void pv_pantahub_msg_parse_step(const char *json, struct pv_step *step);
+void pv_pantahub_msg_print_step(struct pv_step *step);
+void pv_pantahub_msg_clean_step(struct pv_step *step);
+
+void pv_pantahub_msg_parse_object_metadata(
+	const char *json, struct pv_object_metadata *object_metadata);
+void pv_pantahub_msg_print_object_metadata(
+	struct pv_object_metadata *object_metadata);
+void pv_pantahub_msg_clean_object_metadata(
+	struct pv_object_metadata *object_metadata);
 
 #endif

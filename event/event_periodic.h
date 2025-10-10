@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,17 +19,19 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_UPDATER_H
-#define PV_UPDATER_H
+#ifndef PV_EVENT_PERIODIC_H
+#define PV_EVENT_PERIODIC_H
 
-#include <trest.h>
+#include <event2/event.h>
+#include <event2/event_struct.h>
 
-struct trail_remote {
-	trest_ptr client;
+struct pv_event_periodic {
+	int interval;
+	struct event *ev;
 };
 
-void pv_trail_remote_remove(struct pantavisor *pv);
-
-int pv_updater_sync();
+void pv_event_periodic_start(struct pv_event_periodic *timer, int interval,
+			     event_callback_fn cb);
+void pv_event_periodic_stop(struct pv_event_periodic *timer);
 
 #endif

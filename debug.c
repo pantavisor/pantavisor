@@ -105,7 +105,7 @@ static int pv_debug_check_shell()
 	timeout_debug_shell = timer_current_state(&shell_timer);
 
 	if (!shell_timeout_active)
-		return 0;
+		return 1;
 
 	if (pv_debug_timeout_elapsed_sec() < 10 && !shell_notify_last_message) {
 		pv_wall("System will reboot in 10 seconds, to defer reboot:\n"
@@ -200,10 +200,10 @@ void pv_debug_run_early_shell()
 int pv_debug_run_shell()
 {
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
-		return 0;
+		return 1;
 
 	if (!pv_config_get_bool(PV_DEBUG_SHELL))
-		return 0;
+		return 1;
 
 	if (!is_shell_alive()) {
 		shell_session = false;

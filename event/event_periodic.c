@@ -20,16 +20,16 @@
  * SOFTWARE.
  */
 
-#include "event_timer.h"
+#include "event_periodic.h"
 
 #include "event.h"
 
-#define MODULE_NAME "event_timer"
+#define MODULE_NAME "event_periodic"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-void pv_event_timer_run(event_timer_t *timer, int next_interval,
-			event_callback_fn cb)
+void pv_event_periodic_start(struct pv_event_periodic *timer, int next_interval,
+			     event_callback_fn cb)
 {
 	if (!timer || !pv_event_get_base())
 		return;
@@ -42,6 +42,10 @@ void pv_event_timer_run(event_timer_t *timer, int next_interval,
 		event_free(timer->ev);
 	}
 
+	// to be executed as soon as possible
+	pv_event_one_shot(cb);
+
+	// to be executed after the first timeout and on
 	timer->ev = event_new(pv_event_get_base(), -1, EV_PERSIST, cb, NULL);
 	if (!timer->ev) {
 		pv_log(ERROR, "could not create timer event");
@@ -55,21 +59,22 @@ void pv_event_timer_run(event_timer_t *timer, int next_interval,
 	}
 	timer->interval = next_interval;
 
-	pv_log(DEBUG, "add event: type='timer' cb=%p interval=%d", (void *)cb,
-	       next_interval);
+	pv_log(DEBUG, "add event: type='periodic' cb=%p interval=%d",
+	       (void *)cb, next_interval);
 }
 
-void pv_event_timer_close(event_timer_t *timer)
+void pv_event_periodic_stop(struct pv_event_periodic *timer)
 {
 	if (!timer)
+		return;
+
+	if (!timer->ev)
 		return;
 
 	pv_log(DEBUG, "closing timer event with interval %d s",
 	       timer->interval);
 
-	if (timer->ev) {
-		event_del(timer->ev);
-		event_free(timer->ev);
-	}
+	event_del(timer->ev);
+	event_free(timer->ev);
 	timer->ev = NULL;
 }

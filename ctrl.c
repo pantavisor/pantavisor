@@ -57,7 +57,6 @@
 #include "metadata.h"
 #include "version.h"
 #include "platforms.h"
-#include "updater.h"
 #include "drivers.h"
 #include "paths.h"
 #include "utils/math.h"
@@ -782,12 +781,11 @@ static int pv_ctrl_check_command(int req_fd, struct pv_cmd **cmd)
 		goto error;
 	}
 
-	if (pv->update && pv->update->status != UPDATE_APPLIED &&
-	    (((*cmd)->op == CMD_REBOOT_DEVICE) ||
-	     ((*cmd)->op == CMD_POWEROFF_DEVICE) ||
-	     ((*cmd)->op == CMD_LOCAL_RUN) || ((*cmd)->op == CMD_LOCAL_APPLY) ||
-	     ((*cmd)->op == CMD_LOCAL_RUN_COMMIT) ||
-	     ((*cmd)->op == CMD_MAKE_FACTORY))) {
+	if (pv->update && (((*cmd)->op == CMD_REBOOT_DEVICE) ||
+			   ((*cmd)->op == CMD_POWEROFF_DEVICE) ||
+			   ((*cmd)->op == CMD_LOCAL_RUN) ||
+			   ((*cmd)->op == CMD_LOCAL_RUN_COMMIT) ||
+			   ((*cmd)->op == CMD_MAKE_FACTORY))) {
 		pv_ctrl_write_error_response(
 			req_fd, HTTP_STATUS_CONFLICT,
 			"Cannot do this operation while update is ongoing");
@@ -1093,7 +1091,7 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 				goto err_pr;
 			}
 
-			mkdir(file_path_parent, 0755);
+			pv_fs_mkdir_p(file_path_parent, 0755);
 			if (pv_ctrl_process_put_file(req_fd, content_length,
 						     expect_continue,
 						     file_path_tmp) < 0)

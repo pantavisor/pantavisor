@@ -24,11 +24,33 @@
 
 #include <stdbool.h>
 
-void pv_pantahub_proto_open_session(void);
-bool pv_pantahub_proto_is_session_open(void);
-void pv_pantahub_proto_close_session(void);
+void pv_pantahub_proto_init(void);
+void pv_pantahub_proto_close(void);
+
+void pv_pantahub_proto_reset_fail(void);
+void pv_pantahub_proto_reset_trails_status(void);
+
+bool pv_pantahub_proto_is_online(void);
+bool pv_pantahub_proto_got_any_failure(void);
+
+bool pv_pantahub_proto_is_any_progress_request_pending(void);
+
+bool pv_pantahub_proto_is_trails_unknown(void);
+bool pv_pantahub_proto_is_trails_unsynced(void);
+
+void pv_pantahub_proto_post_auth(void);
+bool pv_pantahub_proto_is_auth(void);
+
+void pv_pantahub_proto_get_trails_status(void);
 
 void pv_pantahub_proto_get_usrmeta(void);
 void pv_pantahub_proto_set_devmeta(void);
+void pv_pantahub_proto_get_pending_steps(void);
+
+void pv_pantahub_proto_init_object_transfer(void);
+int pv_pantahub_proto_get_objects_metadata(void);
+int pv_pantahub_proto_get_objects(void);
+
+void pv_pantahub_proto_queue_progress(const char *rev, const char *progress);
 
 #endif

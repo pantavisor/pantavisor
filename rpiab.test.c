@@ -26,7 +26,8 @@
 
 #include "rpiab.c"
 #include "state.h"
-#include "updater.h"
+
+#include "update/update_struct.h"
 
 int main()
 {
@@ -37,7 +38,7 @@ int main()
 							.bootimg = "/test",
 						} } };
 
-	struct pv_update update_mock = { .pending = &state_mock };
+	struct struct pv_update update_mock = { .pending = &state_mock };
 
 	printf("=== _rpiab_install_trybootimg ===\n");
 

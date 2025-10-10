@@ -45,6 +45,13 @@
 #define PV_BITS "64"
 #endif
 
+typedef enum {
+	PV_SYSTEM_TRANSITION_NONE = 0,
+	PV_SYSTEM_TRANSITION_NONREBOOT = 1,
+	PV_SYSTEM_TRANSITION_REBOOT = 2,
+	PV_SYSTEM_TRANSITION_POWEROFF = 3
+} pv_system_transition_t;
+
 int get_endian(void);
 int get_dt_model(char *buf, int buflen);
 int get_cpu_model(char *buf, int buflen);
@@ -53,5 +60,8 @@ void pv_system_kill_lenient(pid_t pid);
 void pv_system_kill_force(pid_t pid);
 
 void pv_system_set_process_name(const char *fmt, ...);
+
+char *pv_system_transition_str(pv_system_transition_t t);
+int pv_system_linux_reboot_cmd(pv_system_transition_t t);
 
 #endif // UTILS_SYSTEM_H

@@ -475,7 +475,7 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 }
 
 // this should construct the table dynamically
-int pv_platforms_init_ctrl(struct pantavisor *pv)
+int pv_platforms_init_ctrl()
 {
 	int loaded = 0;
 
@@ -1114,7 +1114,7 @@ static int pv_platforms_early_init(struct pv_init *this)
 
 	pv = pv_get_instance();
 	// init platform controllers
-	if (!pv_platforms_init_ctrl(pv)) {
+	if (!pv_platforms_init_ctrl()) {
 		pv_log(ERROR, "unable to load any container runtime plugin");
 		return -1;
 	}
