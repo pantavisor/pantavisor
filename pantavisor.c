@@ -298,6 +298,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	if (pv_config_get_wdt_mode() <= WDT_STARTUP)
 		pv_wdt_stop();
 
+	pv_debug_start();
+
 	next_state = PV_STATE_WAIT;
 out:
 	if (json)
@@ -499,12 +501,11 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// update network info in devmeta
 	pv_network_update_meta(pv);
 
-	// check if we need to run garbage collector
-	pv_storage_gc_run_threshold();
-
 	// check state of debug tools
 	pv_debug_check_ssh_running();
-	pv_debug_run_shell();
+
+	// check if we need to run garbage collector
+	pv_storage_gc_run_threshold();
 
 	// this is set in the ctrl_listener event
 	if (pv->cmd)
@@ -774,8 +775,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
-	if (pv_debug_check_timeout_shell() ||
-	    !pv_pantahub_is_progress_queue_empty())
+	if (pv_debug_is_shell_open() || !pv_pantahub_is_progress_queue_empty())
 		return PV_STATE_BLOCK_REBOOT;
 
 	return pv_shutdown(pv, PV_SYSTEM_TRANSITION_REBOOT);
@@ -788,15 +788,18 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 
 static pv_state_t _pv_block_reboot(struct pantavisor *pv)
 {
-	if (!pv_debug_run_shell()) {
+	if (pv_debug_is_shell_open()) {
 		pv_log(DEBUG, "holding on reboot because shell is opened");
 		return PV_STATE_BLOCK_REBOOT;
 	}
 
 	if (!pv_pantahub_is_progress_queue_empty()) {
-		pv_log(DEBUG, "holding on reboot because progress queue is not empty");
+		pv_log(DEBUG,
+		       "holding on reboot because progress queue is not empty");
 		return PV_STATE_BLOCK_REBOOT;
 	}
+
+	pv_log(DEBUG, "continuing with normal reboot");
 
 	return PV_STATE_REBOOT;
 }
@@ -859,7 +862,7 @@ static void _next_state(pv_state_t next_state)
 		return;
 
 	if ((state != PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
-		// starting PV_STATE_WAIT for the first time
+		// in case we are starting WAIT for the first time
 		pv_event_periodic_start(&wait_timer, WAIT_INTERVAL,
 					_pv_run_state_cb);
 		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
@@ -912,6 +915,7 @@ int pv_start()
 		return 1;
 
 	_next_state(PV_STATE_INIT);
+
 	pv_event_base_loop();
 }
 
