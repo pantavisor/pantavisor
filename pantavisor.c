@@ -61,6 +61,7 @@
 #include "cgroup.h"
 #include "buffer.h"
 #include "updater.h"
+#include "wall.h"
 
 #include "event/event.h"
 #include "event/event_periodic.h"
@@ -502,10 +503,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if we need to run garbage collector
 	pv_storage_gc_run_threshold();
 
-	// check state of debug tools
-	pv_debug_check_ssh_running();
-	pv_debug_run_shell();
-
 	// this is set in the ctrl_listener event
 	if (pv->cmd)
 		next_state = PV_STATE_COMMAND;
@@ -774,8 +771,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 
 static pv_state_t _pv_reboot(struct pantavisor *pv)
 {
-	if (pv_debug_check_timeout_shell() ||
-	    !pv_pantahub_is_progress_queue_empty())
+	if (pv_debug_is_shell_open() || !pv_pantahub_is_progress_queue_empty())
 		return PV_STATE_BLOCK_REBOOT;
 
 	return pv_shutdown(pv, PV_SYSTEM_TRANSITION_REBOOT);
@@ -788,15 +784,18 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 
 static pv_state_t _pv_block_reboot(struct pantavisor *pv)
 {
-	if (!pv_debug_run_shell()) {
+	if (pv_debug_is_shell_open()) {
 		pv_log(DEBUG, "holding on reboot because shell is opened");
 		return PV_STATE_BLOCK_REBOOT;
 	}
 
 	if (!pv_pantahub_is_progress_queue_empty()) {
-		pv_log(DEBUG, "holding on reboot because progress queue is not empty");
+		pv_log(DEBUG,
+		       "holding on reboot because progress queue is not empty");
 		return PV_STATE_BLOCK_REBOOT;
 	}
+
+	pv_log(DEBUG, "continuing with normal reboot");
 
 	return PV_STATE_REBOOT;
 }
@@ -859,7 +858,7 @@ static void _next_state(pv_state_t next_state)
 		return;
 
 	if ((state != PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
-		// starting PV_STATE_WAIT for the first time
+		// in case we are starting WAIT for the first time
 		pv_event_periodic_start(&wait_timer, WAIT_INTERVAL,
 					_pv_run_state_cb);
 		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
@@ -911,7 +910,11 @@ int pv_start()
 	if (pv_event_base_init() < 0)
 		return 1;
 
+	pv_debug_start_event();
+
 	_next_state(PV_STATE_INIT);
+	pv_wall_welcome();
+
 	pv_event_base_loop();
 }
 
