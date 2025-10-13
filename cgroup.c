@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
