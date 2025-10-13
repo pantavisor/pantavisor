@@ -132,7 +132,7 @@ static int other_mounts()
 		exit_error(errno, "Could not mount /run");
 
 	pv_paths_exports(path, PATH_MAX);
-	mkdir_p(path, 0755);
+	pv_fs_mkdir_p(path, 0755);
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		return 0;
