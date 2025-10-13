@@ -154,6 +154,8 @@ const char **pv_ph_get_certs()
 		free(files[n]);
 	}
 
+	pv_log(INFO, "Found %d http x509 certs in as truststore.", i, path);
+
 	free(files);
 
 	return (const char **)cafiles;

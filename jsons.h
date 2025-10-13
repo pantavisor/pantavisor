@@ -33,7 +33,7 @@ struct pv_json {
 	struct dl_list list;
 };
 
-struct pv_json *pv_jsons_add(struct pv_state *s, char *name, char *value);
+struct pv_json *pv_jsons_add(struct pv_state *s, char *name, const char *value);
 void pv_jsons_remove(struct pv_json *j);
 void pv_jsons_empty(struct pv_state *s);
 

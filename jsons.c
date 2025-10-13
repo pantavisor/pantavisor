@@ -30,7 +30,7 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-struct pv_json *pv_jsons_add(struct pv_state *s, char *name, char *value)
+struct pv_json *pv_jsons_add(struct pv_state *s, char *name, const char *value)
 {
 	struct pv_json *this = calloc(1, sizeof(struct pv_json));
 
