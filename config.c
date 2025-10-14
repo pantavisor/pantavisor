@@ -136,7 +136,7 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PH_CREDS_TYPE", PH | OEM, 0, false, .value.s = CREDS_TYPE_DEF },
 	{ STR, "PH_FACTORY_AUTOTOK", PH | OEM, 0, true, .value.s = NULL },
 	{ INT, "PH_LIBEVENT_HTTP_TIMEOUT", PH | OEM | RUN, 0, false,
-	  .value.i = 6 },
+	  .value.i = 60 },
 	{ INT, "PH_LIBEVENT_HTTP_RETRIES", PH | OEM | RUN, 0, false,
 	  .value.i = 1 },
 	{ INT, "PH_METADATA_DEVMETA_INTERVAL", PH | OEM | RUN, 0, false,
