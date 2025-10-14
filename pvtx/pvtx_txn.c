@@ -61,6 +61,14 @@
 #define PVTX_TXN_BUF_MIN (512)
 #define PVTX_TXN_BUF_MAX (10485760)
 
+#define PVTX_TXN_CROSSDEV_ERR                                                    \
+	"CROSS-DEVICE ERROR:\n\tpvtx does not support cross-device renames or "  \
+	"linking. Please ensure all the target directories involved are on the " \
+	"same media that supports atomic renaming of directories.\n"             \
+	"Note: overlayfs used by distros often does not support this. "          \
+	"      Mount a dedicated partition instead."                             \
+	"\n\nERROR: linking or moving the following files:\n%s -> %s\n"
+
 enum pvtx_txn_status {
 	PVTX_TXN_STATUS_ERROR,
 	PVTX_TXN_STATUS_SET,
@@ -234,11 +242,15 @@ static int write_object_from_content(const char *path,
 	}
 
 	if (rename(tmp, path) != 0) {
-		PVTX_ERROR_SET(err, -1,
-			       "couldn't move temp file, object %s"
-			       "will not be written",
-			       con->name);
-
+		if (errno == EXDEV) {
+			PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR, tmp,
+				       path);
+		} else {
+			PVTX_ERROR_SET(err, -1,
+				       "couldn't move temp file, object %s"
+				       "will not be written",
+				       con->name);
+		}
 		remove(tmp);
 		goto out;
 	}
@@ -358,8 +370,14 @@ static int save_state_json(struct pv_pvtx_state *st, struct pv_pvtx_error *err)
 	}
 
 	if (rename(tmp, get_json_path()) != 0) {
+		if (errno == EXDEV) {
+			PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR, tmp,
+				       get_json_path());
+		} else {
+			PVTX_ERROR_SET(err, -1, "rename error %s",
+				       strerror(errno));
+		}
 		remove(tmp);
-		PVTX_ERROR_SET(err, -1, "rename error %s", strerror(errno));
 	}
 out:
 	return err->code;
@@ -593,10 +611,13 @@ static int init_config(const char *deploy_path, const char *tmpdir,
 }
 
 static int create_element(const char *deploy_path, const char *obj_path,
-			  bool is_obj, const char *file_path, const char *val)
+			  bool is_obj, const char *file_path, const char *val,
+			  struct pv_pvtx_error *err)
 {
 	if (!strncmp(val, "#spec", strlen("#spec")))
 		return 0;
+
+	pv_pvtx_error_clear(err);
 
 	char parent_dir[PATH_MAX] = { 0 };
 	pv_fs_dirname(file_path, parent_dir);
@@ -616,9 +637,25 @@ static int create_element(const char *deploy_path, const char *obj_path,
 		pv_fs_path_concat(real_obj, 2, obj_path, val);
 		errno = 0;
 		int ret = link(real_obj, local_obj);
-		return ret;
+		if (ret != 0) {
+			if (errno == EXDEV) {
+				PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR,
+					       real_obj, local_obj);
+			} else {
+				PVTX_ERROR_SET(
+					err, -1,
+					"Error linking object %s to %s: %s",
+					real_obj, local_obj, strerror(errno));
+			}
+		}
+		return err->code;
 	}
-	return pv_fs_file_write_no_sync(local_obj, (char *)val, strlen(val));
+	if (pv_fs_file_write_no_sync(local_obj, (char *)val, strlen(val)) !=
+	    0) {
+		PVTX_ERROR_SET(err, -1, "Error writing %s: %s", local_obj,
+			       strerror(errno));
+	}
+	return err->code;
 }
 
 static char *token_to_str(const char *data, jsmntok_t *tkn)
@@ -626,27 +663,30 @@ static char *token_to_str(const char *data, jsmntok_t *tkn)
 	return strndup(data + tkn->start, tkn->end - tkn->start);
 }
 
-static int create_from_json(const char *deploy_path, const char *obj_path)
+static int create_from_json(const char *deploy_path, const char *obj_path,
+			    struct pv_pvtx_error *err)
 {
+	pv_pvtx_error_clear(err);
 	regex_t exp = { 0 };
 
 	size_t size = 0;
 	char *data = pv_fs_file_read(get_json_path(), &size);
-	if (!data)
-		return -1;
-
-	int ret = 0;
+	if (!data) {
+		PVTX_ERROR_SET(err, -1, "couldn't read current state json: %s",
+			       strerror(errno));
+		return err->code;
+	}
 
 	int tkn_len = 0;
 	jsmntok_t *tkn = pv_pvtx_jsmn_parse_data(data, size, &tkn_len);
 
 	if (!tkn) {
-		ret = -2;
+		PVTX_ERROR_SET(err, -2, "couldn't parse current state json");
 		goto out;
 	}
 
 	if (regcomp(&exp, PVTX_TXN_OBJ_EXP, REG_EXTENDED)) {
-		ret = -3;
+		PVTX_ERROR_SET(err, -3, "couldn't create regex");
 		goto out;
 	}
 
@@ -669,15 +709,14 @@ static int create_from_json(const char *deploy_path, const char *obj_path)
 		char *val = token_to_str(data, &tkn[i + 1]);
 		bool is_obj = regexec(&exp, val, 0, NULL, 0) == 0;
 
-		ret = create_element(deploy_path, obj_path, is_obj, key, val);
+		create_element(deploy_path, obj_path, is_obj, key, val, err);
 		free(key);
 		free(val);
-		if (ret != 0)
+		if (err->code != 0)
 			goto out;
 	next:
 		no_top += tkn[i].size;
 	}
-	ret = 0;
 
 out:
 	if (data)
@@ -687,11 +726,11 @@ out:
 
 	regfree(&exp);
 
-	return ret;
+	return err->code;
 }
 
 static int create_link(const char *deploy_path, const char *file,
-		       const char *linkname)
+		       const char *linkname, struct pv_pvtx_error *err)
 {
 	char link_path[PATH_MAX] = { 0 };
 	pv_fs_path_concat(link_path, 3, deploy_path, ".pv", linkname);
@@ -702,11 +741,20 @@ static int create_link(const char *deploy_path, const char *file,
 	if (pv_fs_path_exist(link_path))
 		remove(link_path);
 
-	return link(bsp_file, link_path);
+	int ret = link(bsp_file, link_path);
+	if (errno == EXDEV) {
+		PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR, bsp_file,
+			       link_path);
+	} else {
+		PVTX_ERROR_SET(err, -1, "couldn't link bsp: %s",
+			       strerror(errno));
+	}
+	return err->code;
 }
 
-static int create_bsp_link(const char *deploy_path)
+static int create_bsp_link(const char *deploy_path, struct pv_pvtx_error *err)
 {
+	pv_pvtx_error_clear(err);
 	char pv_dir[PATH_MAX] = { 0 };
 	pv_fs_path_concat(pv_dir, 2, deploy_path, ".pv");
 
@@ -715,8 +763,6 @@ static int create_bsp_link(const char *deploy_path)
 
 	char bsp_runjs[PATH_MAX] = { 0 };
 	pv_fs_path_concat(bsp_runjs, 2, deploy_path, PVTX_TXN_DST_RUNJS);
-
-	int ret = 0;
 
 	size_t json_len = 0;
 	char *json = pv_fs_file_read(bsp_runjs, &json_len);
@@ -756,10 +802,10 @@ static int create_bsp_link(const char *deploy_path)
 				continue;
 
 			char *file = token_to_str(json, &tkn[i + 1]);
-			ret = create_link(deploy_path, file, linkname[j]);
+			create_link(deploy_path, file, linkname[j], err);
 			free(file);
 
-			if (ret != 0)
+			if (err->code != 0)
 				goto out;
 			break;
 		}
@@ -773,7 +819,7 @@ out:
 	if (tkn)
 		free(tkn);
 
-	return ret;
+	return err->code;
 }
 
 static int create_fs(const char *obj_path, const char *deploy_path,
@@ -791,14 +837,11 @@ static int create_fs(const char *obj_path, const char *deploy_path,
 		return ret;
 	}
 
-	if (create_from_json(deploy_path, obj_path) != 0) {
-		PVTX_ERROR_SET(err, -1, "couldn't create objects from json: %s",
-			       strerror(errno));
+	if (create_from_json(deploy_path, obj_path, err) != 0) {
 		return err->code;
 	}
 
-	if (create_bsp_link(deploy_path) != 0)
-		PVTX_ERROR_SET(err, -1, "couldn't link bsp to .pv/");
+	create_bsp_link(deploy_path, err);
 
 	return err->code;
 }
@@ -882,9 +925,15 @@ static int move_objects(const char *dirname, const char *queue,
 		pv_fs_path_concat(dst, 2, obj_path, entry->d_name);
 
 		if (rename(src, dst) != 0) {
-			PVTX_ERROR_SET(err, -1,
-				       "couldn't move %s to object dir (%s)",
-				       src, obj_path);
+			if (errno == EXDEV) {
+				PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR,
+					       src, dst);
+			} else {
+				PVTX_ERROR_SET(
+					err, -1,
+					"couldn't move %s to object dir (%s)",
+					src, obj_path);
+			}
 			goto out;
 		}
 	}
@@ -974,9 +1023,14 @@ static int queue_add_tar(struct pv_pvtx_tar *tar, const char *name,
 	}
 
 	if (rename(tmp, fname) != 0) {
+		if (errno == EXDEV) {
+			PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR, tmp,
+				       fname);
+		} else {
+			PVTX_ERROR_SET(err, -1, "couldn't add tar: %s",
+				       strerror(errno));
+		}
 		remove(tmp);
-		PVTX_ERROR_SET(err, -1, "couldn't add tar: %s",
-			       strerror(errno));
 		goto out;
 	}
 out:
@@ -1241,18 +1295,31 @@ int pv_pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err)
 	snprintf(bakdir, PATH_MAX, "%s.bak", path);
 
 	if (rename(path, bakdir) != 0) {
+		if (errno == EXDEV) {
+			PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR, path,
+				       bakdir);
+		} else {
+			PVTX_ERROR_SET(
+				err, -1,
+				"couldn't backup directory, deploy failed: %s",
+				strerror(errno));
+		}
+
 		pv_fs_path_remove_recursive_no_sync(tmpdir);
-		PVTX_ERROR_SET(err, -1,
-			       "couldn't backup directory, deploy failed: %s",
-			       strerror(errno));
 		goto out;
 	}
 
 	if (rename(tmpdir, path) != 0) {
+		if (errno == EXDEV) {
+			PVTX_ERROR_SET(err, -1, PVTX_TXN_CROSSDEV_ERR, tmpdir,
+				       path);
+		} else {
+			PVTX_ERROR_SET(err, -1,
+				       "couldn't deploy current rev: %s",
+				       strerror(errno));
+		}
 		rename(bakdir, path);
 		pv_fs_path_remove_recursive_no_sync(tmpdir);
-		PVTX_ERROR_SET(err, -1, "couldn't deploy current rev: %s",
-			       strerror(errno));
 		goto out;
 	}
 
