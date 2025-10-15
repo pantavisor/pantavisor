@@ -69,7 +69,6 @@
 #define ENDPOINT_FMT "/devices/%s"
 
 #define REQ_INTERVAL 6
-#define EVAL_INTERVAL 2
 
 trest_ptr *client = 0;
 char *endpoint = 0;
@@ -602,7 +601,6 @@ static void _close_state()
 
 	pv_log(DEBUG, "closing state: %s", pv_pantahub_state_string(ph->state));
 
-	pv_event_periodic_stop(&ph->evaluate_timer);
 	pv_event_periodic_stop(&ph->request_timer);
 	pv_event_periodic_stop(&ph->devmeta_timer);
 	pv_event_periodic_stop(&ph->usrmeta_timer);
@@ -658,16 +656,6 @@ static void _run_state_init()
 	_next_state(PH_STATE_LOGIN);
 }
 
-static void _evaluate_login_cb(evutil_socket_t fd, short event, void *arg)
-{
-	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_login_cb);
-
-	if (!pv_pantahub_proto_is_auth())
-		return;
-
-	_next_state(PH_STATE_WAIT_HUB);
-}
-
 static void _login_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_login_cb);
@@ -681,28 +669,7 @@ static void _run_state_login()
 	if (!ph)
 		return;
 
-	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
-				_evaluate_login_cb);
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _login_cb);
-}
-
-static void _evaluate_wait_hub_cb(evutil_socket_t fd, short event, void *arg)
-{
-	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_wait_hub_cb);
-
-	if (pv_pantahub_proto_is_trails_unknown())
-		return;
-
-	if (pv_pantahub_proto_is_trails_unsynced()) {
-		_next_state(PH_STATE_SYNC);
-		return;
-	}
-
-	if (pv_update_is_inprogress()) {
-		_next_state(PH_STATE_REPORT);
-		return;
-	}
-	_next_state(PH_STATE_IDLE);
 }
 
 static void _wait_hub_cb(evutil_socket_t fd, short event, void *arg)
@@ -718,8 +685,6 @@ static void _run_state_wait_hub()
 	if (!ph)
 		return;
 
-	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
-				_evaluate_wait_hub_cb);
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _wait_hub_cb);
 }
 
@@ -730,31 +695,6 @@ static void _run_state_sync()
 
 	pv_pantahub_proto_reset_trails_status();
 	_next_state(PH_STATE_WAIT_HUB);
-}
-
-static void _evaluate_report_cb(evutil_socket_t fd, short event, void *arg)
-{
-	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_report_cb);
-
-	struct pantavisor *pv = pv_get_instance();
-	if (!pv)
-		return;
-
-	if (!pv_pantahub_proto_is_auth()) {
-		_next_state(PH_STATE_LOGIN);
-		return;
-	}
-
-	if (pv_pantahub_proto_is_any_progress_request_pending()) {
-		pv_log(DEBUG,
-		       "cannot leave state because still have progress request pending");
-		return;
-	}
-
-	if (!pv->update) {
-		_next_state(PH_STATE_IDLE);
-		return;
-	}
 }
 
 static void _usrmeta_cb(evutil_socket_t fd, short event, void *arg)
@@ -786,34 +726,12 @@ static void _run_state_report()
 	// we reset the request failure count to begin testing Hub comms
 	pv_pantahub_proto_reset_fail();
 
-	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
-				_evaluate_report_cb);
 	pv_event_periodic_start(&ph->usrmeta_timer,
 				pv_config_get_int(PH_METADATA_USRMETA_INTERVAL),
 				_usrmeta_cb);
 	pv_event_periodic_start(&ph->devmeta_timer,
 				pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
 				_devmeta_cb);
-}
-
-static void _evaluate_idle_cb(evutil_socket_t fd, short event, void *arg)
-{
-	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_idle_cb);
-
-	if (!pv_pantahub_proto_is_auth()) {
-		_next_state(PH_STATE_LOGIN);
-		return;
-	}
-
-	if (pv_update_is_inprogress()) {
-		_next_state(PH_STATE_REPORT);
-		return;
-	}
-
-	if (pv_update_is_queued()) {
-		_next_state(PH_STATE_PREP_DOWNLOAD);
-		return;
-	}
 }
 
 static void _updater_cb(evutil_socket_t fd, short event, void *arg)
@@ -828,8 +746,6 @@ static void _run_state_idle()
 	if (!ph)
 		return;
 
-	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
-				_evaluate_idle_cb);
 	pv_event_periodic_start(&ph->request_timer,
 				pv_config_get_int(PH_UPDATER_INTERVAL),
 				_updater_cb);
@@ -839,38 +755,6 @@ static void _run_state_idle()
 	pv_event_periodic_start(&ph->devmeta_timer,
 				pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
 				_devmeta_cb);
-}
-
-static void _evaluate_prep_download_cb(evutil_socket_t fd, short event,
-				       void *arg)
-{
-	pv_log(DEBUG, "run event: cb=%p", (void *)_evaluate_prep_download_cb);
-
-	if (!pv_pantahub_proto_is_auth()) {
-		_next_state(PH_STATE_LOGIN);
-		return;
-	}
-
-	if (pv_pantahub_proto_is_any_progress_request_pending()) {
-		pv_log(DEBUG,
-		       "cannot leave state because still have progress request pending");
-		return;
-	}
-
-	if (pv_update_is_downloading()) {
-		_next_state(PH_STATE_DOWNLOAD);
-		return;
-	}
-
-	if (pv_update_is_inprogress()) {
-		_next_state(PH_STATE_REPORT);
-		return;
-	}
-
-	if (pv_update_is_final()) {
-		_next_state(PH_STATE_IDLE);
-		return;
-	}
 }
 
 static void _prep_download_cb(evutil_socket_t fd, short event, void *arg)
@@ -891,8 +775,6 @@ static void _run_state_prep_download()
 
 	pv_pantahub_proto_init_object_transfer();
 
-	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
-				_evaluate_prep_download_cb);
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
 				_prep_download_cb);
 	pv_event_periodic_start(&ph->usrmeta_timer,
@@ -901,36 +783,6 @@ static void _run_state_prep_download()
 	pv_event_periodic_start(&ph->devmeta_timer,
 				pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
 				_devmeta_cb);
-}
-
-static void _evaluate_download_objects_cb(evutil_socket_t fd, short event,
-					  void *arg)
-{
-	char **objects, **o;
-
-	pv_log(DEBUG, "run event: cb=%p",
-	       (void *)_evaluate_download_objects_cb);
-
-	if (!pv_pantahub_proto_is_auth()) {
-		_next_state(PH_STATE_LOGIN);
-		return;
-	}
-
-	if (pv_pantahub_proto_is_any_progress_request_pending()) {
-		pv_log(DEBUG,
-		       "cannot leave state because still have progress request pending");
-		return;
-	}
-
-	if (pv_update_is_inprogress()) {
-		_next_state(PH_STATE_REPORT);
-		return;
-	}
-
-	if (pv_update_is_final()) {
-		_next_state(PH_STATE_IDLE);
-		return;
-	}
 }
 
 static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
@@ -951,8 +803,6 @@ static void _run_state_download()
 
 	pv_pantahub_proto_init_object_transfer();
 
-	pv_event_periodic_start(&ph->evaluate_timer, EVAL_INTERVAL,
-				_evaluate_download_objects_cb);
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
 				_download_objects_cb);
 	pv_event_periodic_start(&ph->usrmeta_timer,
@@ -1011,6 +861,54 @@ void pv_pantahub_start()
 	pv_log(DEBUG, "starting Pantacor Hub client...");
 
 	pv_event_one_shot(_run_state_cb);
+}
+
+void pv_pantahub_evaluate_state()
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
+	if (!pv_pantahub_proto_is_auth()) {
+		_next_state(PH_STATE_LOGIN);
+		return;
+	}
+
+	if (pv_pantahub_proto_is_trails_unknown()) {
+		_next_state(PH_STATE_WAIT_HUB);
+		return;
+	}
+
+	if (pv_pantahub_proto_is_trails_unsynced()) {
+		_next_state(PH_STATE_SYNC);
+		return;
+	}
+
+	if (!pv->update || pv_update_is_final()) {
+		_next_state(PH_STATE_IDLE);
+		return;
+	}
+
+	if (pv_pantahub_proto_is_any_progress_request_pending()) {
+		pv_log(DEBUG,
+		       "cannot leave state because still have progress request pending");
+		return;
+	}
+
+	if (pv_update_is_queued()) {
+		_next_state(PH_STATE_PREP_DOWNLOAD);
+		return;
+	}
+
+	if (pv_update_is_downloading()) {
+		_next_state(PH_STATE_DOWNLOAD);
+		return;
+	}
+
+	if (pv_update_is_inprogress()) {
+		_next_state(PH_STATE_REPORT);
+		return;
+	}
 }
 
 bool pv_pantahub_is_reporting()

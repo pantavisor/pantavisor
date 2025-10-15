@@ -391,6 +391,7 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 void pv_pantahub_proto_post_auth()
@@ -452,6 +453,7 @@ static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 static void _recv_get_trails_status_cb(struct evhttp_request *req, void *ctx)
@@ -484,6 +486,7 @@ static void _recv_get_trails_status_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 void pv_pantahub_proto_get_trails_status()
@@ -548,6 +551,7 @@ static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 void pv_pantahub_proto_set_devmeta()
@@ -620,6 +624,7 @@ out:
 		free(state_json);
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 void pv_pantahub_proto_get_pending_steps()
@@ -692,6 +697,7 @@ out:
 	pv_pantahub_msg_clean_object_metadata(&object_metadata);
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 static int _get_object_metadata(const char *id_ref)
@@ -779,6 +785,7 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	}
 out:
 	pv_fs_path_remove(path, false);
+	pv_pantahub_evaluate_state();
 }
 
 static int _get_object(const char *geturl, const char *id_ref)
@@ -880,6 +887,7 @@ static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
+	pv_pantahub_evaluate_state();
 }
 
 static void _put_progress(const char *rev, const char *progress)
