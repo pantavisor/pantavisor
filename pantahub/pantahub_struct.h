@@ -40,7 +40,6 @@ typedef enum {
 
 struct pv_pantahub {
 	ph_state_t state;
-	struct pv_event_periodic evaluate_timer;
 	struct pv_event_periodic request_timer;
 	struct pv_event_periodic usrmeta_timer;
 	struct pv_event_periodic devmeta_timer;
