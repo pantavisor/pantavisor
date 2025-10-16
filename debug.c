@@ -61,8 +61,13 @@ static bool shell_timeout_active = false;
 static bool shell_notify_last_message = false;
 
 static struct pv_event_periodic debug_event_timer;
+static struct pv_event_socket console_listener = { -1, NULL };
 
-#define DEBUG_EVENT_INTERVAL 1
+static void pv_debug_is_shell_alive();
+static void _debug_check_cb(int con_fd, short events, void *arg);
+static void _debug_console_cb(int con_fd, short events, void *arg);
+
+#define DEBUG_EVENT_INTERVAL 5
 #define TIMEOUT_WARNING_INTERVAL 10
 
 static uint64_t pv_debug_timeout_elapsed_sec()
@@ -86,19 +91,6 @@ static uint64_t pv_debug_timeout_elapsed_sec()
 	return timer.sec;
 }
 
-static void pv_debug_is_shell_alive()
-{
-	if (kill(shell_pid, 0) == 0)
-		return;
-
-	shell_session = false;
-	pv_log(INFO, "shell with pid %d closed", shell_pid);
-	shell_pid = -1;
-	pv_wall("Shell session closed");
-
-	return;
-}
-
 static void pv_debug_shell_new_session(int print_wall)
 {
 	shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
@@ -106,12 +98,16 @@ static void pv_debug_shell_new_session(int print_wall)
 	pv_log(INFO, "shell started with pid %d", shell_pid);
 	if (print_wall)
 		pv_wall_shell_open();
+
+	pv_event_socket_ignore(&console_listener);
+	pv_event_periodic_start(&debug_event_timer, DEBUG_EVENT_INTERVAL,
+				_debug_check_cb);
 }
 
-static void pv_debug_run_shell()
+static void _debug_console_cb(int con_fd, short events, void *arg)
 {
+	pv_log(DEBUG, "run event: cb=%p", (void *)_debug_console_cb);
 	char c[64] = { 0 };
-	int con_fd;
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		goto out;
@@ -119,21 +115,10 @@ static void pv_debug_run_shell()
 	if (!pv_config_get_bool(PV_DEBUG_SHELL))
 		goto out;
 
-	// we need to check if the shell was closed by the user
-	pv_debug_is_shell_alive();
-
 	if (shell_session)
 		goto out;
 
-	// proceed to get a new shell session if we get <ENTER> on console
-	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	if (con_fd < 0) {
-		pv_log(WARN, "Unable to open /dev/console");
-		goto out;
-	}
-
 	read(con_fd, &c, sizeof(c));
-	close(con_fd);
 
 	if (c[0] == '\n') {
 		pv_debug_shell_new_session(1);
@@ -143,13 +128,35 @@ out:
 	return;
 }
 
-static void _debug_cb(evutil_socket_t fd, short events, void *arg)
+static void pv_debug_is_shell_alive()
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_debug_cb);
+	int con_fd = 0;
 
-	pv_debug_run_shell();
+	if (kill(shell_pid, 0) == 0)
+		return;
+
+	shell_session = false;
+	pv_log(INFO, "shell with pid %d closed", shell_pid);
+	shell_pid = -1;
+	pv_wall("Shell session closed");
+
+	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (con_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+	}
+
+	pv_event_periodic_stop(&debug_event_timer);
+	pv_event_socket_listen(&console_listener, con_fd, _debug_console_cb);
 
 	return;
+}
+
+static void _debug_check_cb(int con_fd, short events, void *arg)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_debug_check_cb);
+
+	// we need to check if the shell was closed by the user
+	pv_debug_is_shell_alive();
 }
 
 static void pv_debug_stop_shell()
@@ -223,9 +230,16 @@ static int pv_debug_check_shell_timeout()
 
 void pv_debug_start()
 {
+	int con_fd;
+
+	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (con_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+	}
+
+	pv_event_socket_listen(&console_listener, con_fd, _debug_console_cb);
+
 	pv_wall_welcome();
-	pv_event_periodic_start(&debug_event_timer, DEBUG_EVENT_INTERVAL,
-				_debug_cb);
 }
 
 bool pv_debug_is_shell_open()
