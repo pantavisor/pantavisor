@@ -107,6 +107,8 @@ static void _free_update(struct pv_update *update)
 		free(update->progress.logs);
 	if (update->state)
 		pv_state_free(update->state);
+
+	free(update);
 }
 
 static void _reset_object_list_retries(struct pv_update *update)
