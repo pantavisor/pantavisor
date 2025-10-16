@@ -28,6 +28,7 @@
 bool pv_debug_is_shell_open();
 void pv_debug_run_shell_early();
 void pv_debug_start();
+void pv_debug_stop_shell();
 void pv_debug_defer_reboot_shell(const char *payload);
 
 void pv_debug_start_ssh(void);
