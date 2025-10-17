@@ -28,11 +28,11 @@ jobs:
       - name: shared
         run: |
           mkdir -p /shared/sstate
-          chown builder:builder /shared/sstate 
-          mkdir -p /shared/dldir 
+          chown builder:builder /shared/sstate
+          mkdir -p /shared/dldir
           chown builder:builder /shared/dldir
 
-      - name: Build Kas
+      - name: Build Pantavisor
         run: su - builder -c "
           cd $GITHUB_WORKSPACE/meta-pantavisor &&
           env &&
@@ -42,7 +42,7 @@ jobs:
           cd build/workspace/sources/pantavisor &&
           git checkout ${{ github.sha }} &&
           bitbake pantavisor-starter
-        "
+          "
 
       - name: chmod
         run: chmod -R 777 $GITHUB_WORKSPACE
