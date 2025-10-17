@@ -17,7 +17,7 @@ jobs:
       image: ghcr.io/pantacor/kas/kas:next-v7
       volumes:
         - shared:/shared
-      options: --user root
+
     steps:
       - name: checkout meta-pantavisor repo
         uses: actions/checkout@v4
@@ -25,22 +25,25 @@ jobs:
           repository: 'pantacor/meta-pantavisor'
           path: 'meta-pantavisor'
 
-      - name: chown
-        run: chown -R builder:builder $RUNNER_WORKSPACE
-
-      - name: chowna
-        run: chown -R builder:builder /__w
-
       - name: shared
-        run: mkdir -p /shared/sstate && chown builder:builder /shared/sstate && mkdir -p /shared/dldir && chown builder:builder /shared/dldir
-      - name: Get branch 
         run: |
-          echo "BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+          mkdir -p /shared/sstate
+          chown builder:builder /shared/sstate 
+          mkdir -p /shared/dldir 
+          chown builder:builder /shared/dldir
 
-      - name: getgit
-        run: su - builder -c "cd $GITHUB_WORKSPACE/meta-pantavisor && git fetch origin $GITHUB_SHA && git reset --hard $GITHUB_SHA && rm -rf build/ && git clean -f -f -d -x "
       - name: Build Kas
-        run: su - builder -c "cd  $GITHUB_WORKSPACE/meta-pantavisor && env && kas checkout ${{ inputs.configs }} && . layers/poky/oe-init-build-env && devtool modify pantavisor && cd build/workspace/sources/pantavisor && git checkout $GITHUB_ENV && bitbake pantavisor-starter"
+        run: su - builder -c "
+          cd $GITHUB_WORKSPACE/meta-pantavisor &&
+          env &&
+          kas checkout ${{ inputs.configs }} &&
+          . layers/poky/oe-init-build-env &&
+          devtool modify pantavisor &&
+          cd build/workspace/sources/pantavisor &&
+          git checkout ${{ github.sha }} &&
+          bitbake pantavisor-starter
+        "
+
       - name: chmod
         run: chmod -R 777 $GITHUB_WORKSPACE
 
