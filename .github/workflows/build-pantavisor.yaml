@@ -1,0 +1,94 @@
+name: 'Build Pantavisor'
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        required: true
+        type: string
+      configs:
+        required: true
+        type: string
+
+jobs:
+  build-kas:
+    runs-on: ["self-hosted"]
+    container:
+      image: ghcr.io/pantacor/kas/kas:next-v7
+      volumes:
+        - shared:/shared
+      options: --user root
+
+    steps:
+
+      - name: checkout pantavisor repo
+        uses: actions/checkout@v5
+
+      - name: checkout meta-pantavisor
+        uses: actions/checkout@v5
+        with:
+          repository: pantavisor/meta-pantavisor
+          path: meta-pantavisor
+
+      - name: Setup shared directories and permissions
+        run: |
+          mkdir -p /shared/sstate
+          chmod -R 777 /shared/sstate
+          mkdir -p /shared/dldir
+          chmod -R 777 /shared/dldir
+          chown -R builder:builder  $RUNNER_WORKSPACE
+          chown -R builder:builder /__w
+
+      - name: test
+        run: |
+           ls -la
+           ls ${{ inputs.configs }}
+           ls -la $GITHUB_WORKSPACE
+           ls -la $GITHUB_WORKSPACE/meta-pantavisor
+           ls -la $GITHUB_WORKSPACE/pantavisor
+
+#     - name: Build Kas
+#       run: su - builder -c "cd $GITHUB_WORKSPACE/meta-pantavisor &&
+#            env && kas checkout ${{ inputs.configs }} && cat build/bblayers && cat build/local.conf"
+#          kas checkout ${{ inputs.configs }} && cat build/bblayers && cat build/local.conf"
+#        . layers/poky/oe-init-build-env &&
+#        devtool modify pantavisor &&
+#        cd build/workspace/sources/pantavisor &&
+#        git checkout ${{ github.sha }} &&
+#        bitbake pantavisor-starter"
+#
+#      run: su - builder -c "
+#        cd $GITHUB_WORKSPACE/meta-pantavisor &&
+#        env &&
+#        kas checkout ${{ inputs.configs }} &&
+#        . layers/poky/oe-init-build-env &&
+#        devtool modify pantavisor &&
+#        cd build/workspace/sources/pantavisor &&
+#        git checkout ${{ github.sha }} &&
+#        bitbake pantavisor-starter"
+
+#     - name: Fix permissions for artifacts
+#       run: chmod -R 777 $GITHUB_WORKSPACE
+
+#     - name: Prepare Artifacts for Upload
+#       run: |
+#         cp meta-pantavisor/build/tmp-*/deploy/images/*/pantavisor-starter*.wic.* .
+#         cp meta-pantavisor/build/tmp-*/deploy/images/*/*pvrexport.* .
+
+#     - name: Archive image artifacts
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: pantavisor-starter-${{ inputs.name }}
+#         path: pantavisor-starter*.wic.*
+
+#     - name: Archive bsp artifacts
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: pantavisor-bsp-${{ inputs.name }}
+#         path: 'pantavisor-bsp*pvrexport.tgz'
+
+#     - name: Archive containers artifacts
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: pvrexports-${{ inputs.name }}
+#         path: '*pvrexport*'
