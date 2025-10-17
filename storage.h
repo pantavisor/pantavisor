@@ -30,6 +30,9 @@
 #define PREFIX_LOCAL_REV "locals/"
 #define SIZE_LOCAL_REV 64
 
+struct pantavisor;
+struct pv_state;
+
 struct pv_path {
 	char *path;
 	struct dl_list list;

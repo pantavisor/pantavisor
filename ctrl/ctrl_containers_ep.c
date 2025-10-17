@@ -20,56 +20,64 @@
  * SOFTWARE.
  */
 
-#include "event_timer.h"
+#include "ctrl/ctrl_utils.h"
+#include "ctrl/ctrl_handler.h"
+#include "ctrl/ctrl_sender.h"
+#include "state.h"
+#include "pantavisor.h"
 
-#include "event.h"
+#include <event2/http.h>
+#include <event2/buffer.h>
 
-#define MODULE_NAME "event_timer"
+#include <string.h>
+
+#define MODULE_NAME "containers-ep"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-void pv_event_timer_run(event_timer_t *timer, int next_interval,
-			event_callback_fn cb)
+static void containers_send(struct evhttp_request *req)
 {
-	if (!timer || !pv_event_get_base())
+	int methods[] = { EVHTTP_REQ_GET, -1 };
+
+	struct pv_ctrl_sender *snd =
+		pv_ctrl_utils_checks(MODULE_NAME, req, methods, true);
+
+	if (!snd)
 		return;
 
-	if (timer->ev && (next_interval == timer->interval))
-		return;
+	struct pantavisor *pv = pv_get_instance();
+	char *cont = pv_state_get_containers_json(pv->state);
 
-	if (timer->ev) {
-		event_del(timer->ev);
-		event_free(timer->ev);
+	if (!cont) {
+		pv_log(WARN, "couldn't get container list");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot get container list");
+		goto out;
 	}
 
-	timer->ev = event_new(pv_event_get_base(), -1, EV_PERSIST, cb, NULL);
-	if (!timer->ev) {
-		pv_log(ERROR, "could not create timer event");
-		return;
-	}
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, cont);
 
-	struct timeval time = { next_interval, 0 };
-	if (event_add(timer->ev, &time) < 0) {
-		pv_log(ERROR, "could not add timer event");
-		return;
-	}
-	timer->interval = next_interval;
+out:
+	if (cont)
+		free(cont);
 
-	pv_log(DEBUG, "add event: type='timer' cb=%p interval=%d", (void *)cb,
-	       next_interval);
+	pv_ctrl_sender_free(snd);
 }
 
-void pv_event_timer_close(event_timer_t *timer)
+static int containers_handler(struct evhttp_request *req)
 {
-	if (!timer)
-		return;
+	const char *uri = evhttp_request_get_uri(req);
+	char parts[PV_CTRL_UTILS_MAX_PARTS][NAME_MAX] = { 0 };
+	int size = pv_ctrl_utils_split_path(uri, parts);
 
-	pv_log(DEBUG, "closing timer event with interval %d s",
-	       timer->interval);
+	if (size < 1 || size > 1 || strcmp(parts[0], "containers") != 0)
+		return -1;
 
-	if (timer->ev) {
-		event_del(timer->ev);
-		event_free(timer->ev);
-	}
-	timer->ev = NULL;
+	containers_send(req);
+	return 0;
 }
+
+struct pv_ctrl_handler containers_hnd = {
+	.path = "/containers",
+	.fn = containers_handler,
+};

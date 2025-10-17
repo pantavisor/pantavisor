@@ -62,6 +62,7 @@
 #include "debug.h"
 #include "cgroup.h"
 #include "buffer.h"
+#include "ctrl/ctrl.h"
 
 #include "event/event.h"
 #include "event/event_timer.h"
@@ -900,6 +901,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, shutdown_type_t t)
 
 	// close pvctrl
 	pv_ctrl_socket_close(pv->ctrl_fd);
+	pv_ctrl_stop();
 
 	pv_debug_stop_ssh();
 	pv_logserver_stop();

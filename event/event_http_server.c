@@ -20,56 +20,59 @@
  * SOFTWARE.
  */
 
-#include "event_timer.h"
-
+#include "event_http_server.h"
 #include "event.h"
 
-#define MODULE_NAME "event_timer"
+#include <sys/un.h>
+#include <unistd.h>
+#include <string.h>
+
+#include <event2/listener.h>
+
+#define MODULE_NAME "event_http_server"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-void pv_event_timer_run(event_timer_t *timer, int next_interval,
-			event_callback_fn cb)
+static struct evhttp *server_new()
 {
-	if (!timer || !pv_event_get_base())
-		return;
-
-	if (timer->ev && (next_interval == timer->interval))
-		return;
-
-	if (timer->ev) {
-		event_del(timer->ev);
-		event_free(timer->ev);
+	pv_event_base_init();
+	struct event_base *base = pv_event_get_base();
+	if (!base) {
+		pv_log(DEBUG, "couldn't initialize server, NULL base event");
+		return NULL;
 	}
 
-	timer->ev = event_new(pv_event_get_base(), -1, EV_PERSIST, cb, NULL);
-	if (!timer->ev) {
-		pv_log(ERROR, "could not create timer event");
-		return;
-	}
+	struct evhttp *http = evhttp_new(base);
 
-	struct timeval time = { next_interval, 0 };
-	if (event_add(timer->ev, &time) < 0) {
-		pv_log(ERROR, "could not add timer event");
-		return;
-	}
-	timer->interval = next_interval;
+	if (!http)
+		pv_log(DEBUG, "couldn't initialize server, NULL http object");
 
-	pv_log(DEBUG, "add event: type='timer' cb=%p interval=%d", (void *)cb,
-	       next_interval);
+	return http;
 }
 
-void pv_event_timer_close(event_timer_t *timer)
+struct evhttp *pv_http_server_new(const char *sock_path)
 {
-	if (!timer)
-		return;
+	struct evhttp *http = server_new();
+	if (!http)
+		return NULL;
 
-	pv_log(DEBUG, "closing timer event with interval %d s",
-	       timer->interval);
+	struct sockaddr_un addr = { .sun_family = AF_UNIX };
+	memccpy(addr.sun_path, sock_path, '\0', strlen(sock_path));
+	unlink(addr.sun_path);
 
-	if (timer->ev) {
-		event_del(timer->ev);
-		event_free(timer->ev);
+	struct event_base *base = pv_event_get_base();
+
+	int flags = LEV_OPT_CLOSE_ON_FREE | LEV_OPT_CLOSE_ON_EXEC;
+	struct evconnlistener *lev =
+		evconnlistener_new_bind(base, NULL, NULL, flags, -1,
+					(struct sockaddr *)&addr, sizeof(addr));
+
+	if (!lev) {
+		pv_log(DEBUG, "couldn't initialize connection listener");
+		evhttp_free(http);
+		return NULL;
 	}
-	timer->ev = NULL;
+
+	evhttp_bind_listener(http, lev);
+	return http;
 }

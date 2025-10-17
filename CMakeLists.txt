@@ -21,6 +21,7 @@ set(PANTAVISOR_E2FSGROW_ENABLE ON CACHE BOOL "Enable autogrow partition feature"
 set(PANTAVISOR_RUNTIME ON CACHE BOOL "build pantavisor runtime itself")
 set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -106,6 +107,31 @@ add_executable(pantavisor
 			config_parser.h
 			ctrl.c
 			ctrl.h
+            event/event_http_server.c
+            event/event_http_server.h
+			ctrl/ctrl_buildinfo_ep.c
+			ctrl/ctrl.c
+			# # ctrl_cmd.c
+			# # ctrl_cmd.h
+            # # ctrl/ctrl_commands_ep.c
+			ctrl/ctrl_containers_ep.c
+			ctrl/ctrl_devicemeta_ep.c
+			ctrl/ctrl_drivers_ep.c
+			ctrl/ctrl_groups_ep.c
+			ctrl/ctrl.h
+			ctrl/ctrl_handler.h
+			ctrl/ctrl_indata.c
+			ctrl/ctrl_indata.h
+			ctrl/ctrl_objects_ep.c
+			ctrl/ctrl_outdata.c
+			ctrl/ctrl_outdata.h
+			ctrl/ctrl_sender.c
+			ctrl/ctrl_sender.h
+			ctrl/ctrl_signal_ep.c
+			ctrl/ctrl_steps_ep.c
+			ctrl/ctrl_usermeta_ep.c
+			ctrl/ctrl_utils.c
+			ctrl/ctrl_utils.h
 			daemons.c
 			daemons.h
 			debug.c
