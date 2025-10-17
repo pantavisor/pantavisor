@@ -1,0 +1,53 @@
+name: 'Build Pantavisor'
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        required: true
+        type: string
+      configs:
+        required: true
+        type: string
+
+jobs:
+  build-kas:
+    runs-on: ["self-hosted"]
+    container:
+      image: ghcr.io/pantacor/kas/kas:next-v7
+      volumes:
+        - shared:/shared
+      options: --user root
+
+    steps:
+
+      - name: checkout meta-pantavisor
+        uses: actions/checkout@v2
+        with:
+          repository: pantavisor/meta-pantavisor
+
+      - name: debug
+        run: echo "Pantavisor ref - ${{ github.sha }}"
+
+      - name: chown
+        run: chown -R builder:builder $RUNNER_WORKSPACE
+      - name: chowna
+        run: chown -R builder:builder /__w
+      - name: shared
+        run: mkdir -p /shared/sstate && chown builder:builder /shared/sstate && mkdir -p /shared/dldir && chown builder:builder /shared/dldir
+
+      - name: Build Kas
+        run: su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ inputs.configs }}  -c 'devtool modify pantavisor &&
+         cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake pantavisor-bsp' "
+
+      - name: Fix permissions for artifacts
+        run: chmod -R 777 $GITHUB_WORKSPACE
+
+      - name: Prepare Artifacts for Upload
+        run: cp build/tmp-*/deploy/images/*/*pvrexport.* .
+
+      - name: Archive bsp artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pantavisor-bsp-${{ inputs.name }}
+          path: 'pantavisor-bsp*pvrexport.tgz'

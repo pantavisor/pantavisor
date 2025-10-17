@@ -1,0 +1,16 @@
+name: 'On push: Raspberry Pi ARMv8'
+
+on:
+  push:
+    paths:
+      - '**'
+      - '.github/configs/**'
+
+jobs:
+
+  build-raspberrypi-armv8-scarthgap:
+    uses: ./.github/workflows/build-pantavisor.yaml
+    with:
+      # meta-pantavisor
+      configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml
+      name: raspberrypi-armv8
