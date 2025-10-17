@@ -1,0 +1,18 @@
+name: 'on push: raspberrypi armv8 '
+
+on:
+  push:
+    paths:
+      - '**'
+      - '.github/configs/**'
+
+jobs:
+
+  build-raspberrypi-armv8-scarthgap:
+    uses: ./.github/workflows/build-pantavisor.yaml
+    with:
+      #From meta-pantavisor
+      configs: .github/configs/shared-vols.yaml:.github/configs/build-base-starter.yaml:kas/machines/raspberrypi-armv8.yaml:kas/bsp-base.yaml:kas/scarthgap.yaml
+      name: raspberrypi-armv8 
+      yocto-release: scarthgap
+    secrets: inherit
