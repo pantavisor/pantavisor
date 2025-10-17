@@ -19,20 +19,21 @@ jobs:
         - shared:/shared
 
     steps:
-      - name: checkout meta-pantavisor repo
-        uses: actions/checkout@v4
-        with:
-          repository: 'pantacor/meta-pantavisor'
-          path: 'meta-pantavisor'
 
-      - name: shared
+      - name: Clone meta-pantavisor
+        uses: actions/checkout@v5
+        with:
+          repository: pantavisor/meta-pantavisor
+          path: meta-pantavisor
+
+      - name: Setup shared directories and permissions
         run: |
           mkdir -p /shared/sstate
-          chown builder:builder /shared/sstate
+          chmod -R 777 /shared/sstate
           mkdir -p /shared/dldir
-          chown builder:builder /shared/dldir
+          chmod -R 777 /shared/dldir
 
-      - name: Build Pantavisor
+      - name: Build Kas
         run: su - builder -c "
           cd $GITHUB_WORKSPACE/meta-pantavisor &&
           env &&
@@ -41,10 +42,9 @@ jobs:
           devtool modify pantavisor &&
           cd build/workspace/sources/pantavisor &&
           git checkout ${{ github.sha }} &&
-          bitbake pantavisor-starter
-          "
+          bitbake pantavisor-starter"
 
-      - name: chmod
+      - name: Fix permissions for artifacts
         run: chmod -R 777 $GITHUB_WORKSPACE
 
       - name: Prepare Artifacts for Upload
