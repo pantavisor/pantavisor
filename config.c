@@ -221,7 +221,7 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV, 0, false, .value.b = true },
 	{ BOOL, "PV_SECUREBOOT_HANDLERS", PV, 0, false, .value.b = true },
 	{ SB_MODE, "PV_SECUREBOOT_MODE", PV, 0, false, .value.i = SB_LENIENT },
-	{ STR, "PV_SECUREBOOT_OEM_TRUSTORE", PV, 0, false,
+	{ STR, "PV_SECUREBOOT_OEM_TRUSTSTORE", PV, 0, false,
 	  .value.s = SECUREBOOT_OEM_TRUSTSTORE_DEF },
 	{ STR, "PV_SECUREBOOT_TRUSTSTORE", PV, 0, false,
 	  .value.s = SECUREBOOT_TRUSTSTORE_DEF },
@@ -358,7 +358,8 @@ static struct pv_config_alias aliases[] = {
 	// OTHER COMPATIBLE KEYS
 	{ "meta.cache.dir", "PV_CACHE_USRMETADIR" },
 	{ "pantahub.log.push", "PV_LOG_PUSH" },
-	{ "updater.keep_factory", "PV_STORAGE_GC_KEEP_FACTORY" }
+	{ "updater.keep_factory", "PV_STORAGE_GC_KEEP_FACTORY" },
+	{ "PV_SECUREBOOT_OEM_TRUSTORE", "PV_SECUREBOOT_OEM_TRUSTSTORE" },
 };
 
 bool pv_config_get_bool(config_index_t ci)

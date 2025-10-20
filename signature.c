@@ -650,7 +650,7 @@ static int _set_path_trust_crts(struct mbedtls_x509_crt *certs,
 
 		if (pv_str_matches(oem_name, strlen(oem_name), cert_cn,
 				   strlen(cert_cn)))
-			name = PV_SECUREBOOT_OEM_TRUSTORE;
+			name = PV_SECUREBOOT_OEM_TRUSTSTORE;
 	}
 
 	pv_paths_secureboot_trust_crts(path, PATH_MAX, pv_config_get_str(name));
