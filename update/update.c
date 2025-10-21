@@ -603,6 +603,13 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 		return -1;
 	}
 
+	if (pv_update_is_failed()) {
+		pv_log(DEBUG, "coming from a rolled back revision");
+		pv_bootloader_fail_update();
+		pv_update_finish();
+		return 0;
+	}
+
 	// if the revision errored, we might already have what we need to report
 	if (pv_update_is_final()) {
 		pv_log(DEBUG, "revision already in a final state");
