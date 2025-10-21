@@ -31,7 +31,9 @@
 #include "buffer.h"
 
 #define MODULE_NAME "buffer"
-#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#define pv_log(level, msg, ...)                                                \
+	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
+	     ##__VA_ARGS__)
 #include "log.h"
 
 static int max_items_num = 0;

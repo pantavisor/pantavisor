@@ -27,7 +27,9 @@
 #include "base64.h"
 
 #define MODULE_NAME "base64"
-#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#define pv_log(level, msg, ...)                                                \
+	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
+	     ##__VA_ARGS__)
 #include "log.h"
 
 static char *pv_base64_add_padding_multi4(char *str)

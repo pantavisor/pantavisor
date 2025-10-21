@@ -65,7 +65,9 @@
 #include "utils/math.h"
 
 #define MODULE_NAME "storage"
-#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#define pv_log(level, msg, ...)                                                \
+	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
+	     ##__VA_ARGS__)
 #include "log.h"
 
 #define UPDATE_PROGRESS_JSON_SIZE 4096
