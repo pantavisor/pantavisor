@@ -490,10 +490,10 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 
 		total_written += n;
 		if (total_written != blen)
-			pv_log(DEBUG, "wrote part of %d bytes into '%s'",
+			pv_log(DEBUG, "wrote part of %zu bytes into '%s'",
 			       total_written, path);
 	}
-	pv_log(DEBUG, "wrote total of %jd bytes out of %jd bytes into '%s'",
+	pv_log(DEBUG, "wrote total of %zu bytes out of %zu bytes into '%s'",
 	       total_written, blen, path);
 
 	close(fd);
@@ -511,7 +511,7 @@ int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path)
 		size = pv_fs_path_get_size(path);
 		pv_log(DEBUG,
 		       "successfully downloaded file with size %jd bytes at '%s'",
-		       size, path);
+		       (intmax_t)size, path);
 	} else {
 		pv_log(WARN, "file transfer to '%s' failed", path);
 		pv_fs_path_remove(path, false);
