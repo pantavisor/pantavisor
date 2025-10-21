@@ -841,7 +841,7 @@ bool pv_update_is_local()
 	if (!u)
 		return false;
 
-	return !(u->report_cb);
+	return pv_storage_is_revision_local(u->rev);
 }
 
 char *pv_update_get_rev()
