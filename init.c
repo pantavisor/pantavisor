@@ -66,7 +66,9 @@
 #include "utils/system.h"
 
 #define MODULE_NAME "init"
-#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#define pv_log(level, msg, ...)                                                \
+	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
+	     ##__VA_ARGS__)
 #include "log.h"
 
 #ifndef O_LARGEFILE
