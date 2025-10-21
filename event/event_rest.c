@@ -215,17 +215,18 @@ static int _header_cb(struct evhttp_request *req, void *ctx)
 		addr_in = (struct sockaddr_in *)sa;
 		inet_ntop(AF_INET, &(addr_in->sin_addr), ip, INET_ADDRSTRLEN);
 		port = ntohs(addr_in->sin_port);
+		SNPRINTF_WTRUNC(addr, 64, "%s:%d", ip, port);
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ADDRESS, addr);
 	} else if (sa->sa_family == AF_INET6) {
 		addr_in6 = (struct sockaddr_in6 *)sa;
 		inet_ntop(AF_INET6, &(addr_in6->sin6_addr), ip,
 			  INET6_ADDRSTRLEN);
 		port = ntohs(addr_in6->sin6_port);
+		SNPRINTF_WTRUNC(addr, 64, "%s:%d", ip, port);
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_ADDRESS, addr);
 	} else {
-		pv_log(WARN, "unsupported family");
+		pv_log(WARN, "unsupported address family: %d", sa->sa_family);
 	}
-	SNPRINTF_WTRUNC(addr, 64, "%s:%d", ip, port);
-
-	pv_metadata_add_devmeta(DEVMETA_KEY_PH_ADDRESS, addr);
 
 	return 0;
 }
@@ -266,8 +267,6 @@ int pv_event_rest_send_by_components(
 	}
 
 	// libevent will manage its resourcess so we only have to free our own context
-	evhttp_connection_free_on_completion(evcon);
-
 	evhttp_connection_set_family(evcon, AF_INET);
 
 	int retries = pv_config_get_int(PH_LIBEVENT_HTTP_RETRIES);
@@ -330,6 +329,7 @@ int pv_event_rest_send_by_components(
 		pv_log(ERROR, "evhttp_make_request returned code %d", res);
 		goto error;
 	}
+	evhttp_connection_free_on_completion(evcon);
 
 	pv_log(DEBUG,
 	       "add event: type='rest' chunk_cb=%p done_cb=%p req='%s %s HTTP/1.1'",
@@ -337,9 +337,11 @@ int pv_event_rest_send_by_components(
 
 	return 0;
 error:
-	// this should free bev, evcon and ssl
-	if (evcon)
+	if (evcon) {
 		evhttp_connection_free(evcon);
+	} else if (bev) {
+		bufferevent_free(bev);
+	}
 
 	return -1;
 }
@@ -384,10 +386,9 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 	if (!path || !strlen(path))
 		path = "/";
 
-	pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
-					 chunk_cb, done_cb, ctx);
+	ret = pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
+					       chunk_cb, done_cb, ctx);
 
-	ret = 0;
 out:
 	if (http_uri)
 		evhttp_uri_free(http_uri);
@@ -397,16 +398,19 @@ out:
 
 int _recv_status_line(struct evhttp_request *req)
 {
-	int ret = -1;
+	if (!req) {
+		pv_log(WARN, "null request");
+		return -1;
+	}
 
-	if (!req || !evhttp_request_get_response_code(req)) {
+	int ret = evhttp_request_get_response_code(req);
+	if (ret == 0) {
 		int errcode = EVUTIL_SOCKET_ERROR();
 		pv_log(WARN, "socket error %d: %s", errcode,
 		       evutil_socket_error_to_string(errcode));
 		return -1;
 	}
 
-	ret = evhttp_request_get_response_code(req);
 	_debug_log(DEBUG, "HTTP/1.1 %d %s", ret,
 		   evhttp_request_get_response_code_line(req));
 
@@ -419,6 +423,8 @@ int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 	int ret;
 	struct evbuffer *evbuf;
 
+	*buf = NULL;
+
 	ret = _recv_status_line(req);
 	if (ret < 0) {
 		pv_log(WARN, "could not receive status line");
@@ -427,29 +433,37 @@ int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 
 	evbuf = evhttp_request_get_input_buffer(req);
 
-	size_t to_read;
-	to_read = evbuffer_get_length(evbuf);
+	size_t to_read = evbuffer_get_length(evbuf);
 	if (to_read > max_len) {
 		pv_log(WARN, "body length %zu bigger than max allowed %zu",
 		       to_read, max_len);
 		return -1;
 	}
 
-	char *tmp;
-	tmp = calloc(to_read + 1, sizeof(char));
+	char *tmp = calloc(to_read + 1, sizeof(char));
 	if (!tmp)
 		return -1;
 
 	*buf = tmp;
 
-	int nread = 0, i = 0;
-	while ((nread = evbuffer_remove(evbuf, tmp, max_len - i)) > 0) {
-		tmp += nread;
-		i += nread;
+	int nread = 0;
+	size_t total = 0;
+	while (total < to_read &&
+	       (nread = evbuffer_remove(evbuf, tmp + total, to_read - total)) >
+		       0) {
+		total += nread;
+	}
+
+	if (total != to_read) {
+		pv_log(WARN, "incomplete read: got %zu bytes, expected %zu",
+		       total, to_read);
+		free(*buf);
+		*buf = NULL;
+		return -1;
 	}
 
 	_debug_log(DEBUG, "");
-	_debug_log(DEBUG, "%s", buf);
+	_debug_log(DEBUG, "%s", *buf);
 
 	return ret;
 }
