@@ -328,7 +328,7 @@ int pv_event_rest_send_by_components(
 	res = evhttp_make_request(evcon, req, op, endpoint);
 	if (res != 0) {
 		pv_log(ERROR, "evhttp_make_request returned code %d", res);
-		goto error;
+		return -1;
 	}
 
 	pv_log(DEBUG,
