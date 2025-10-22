@@ -21,9 +21,41 @@ set(PANTAVISOR_E2FSGROW_ENABLE ON CACHE BOOL "Enable autogrow partition feature"
 set(PANTAVISOR_RUNTIME ON CACHE BOOL "build pantavisor runtime itself")
 set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
+set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
+
+if(PANTAVISOR_CLANG_FORMAT_CHECK)
+
+# Find all .c and .h files
+file(GLOB_RECURSE ALL_SOURCE_FILES
+    ${CMAKE_SOURCE_DIR}/*.c
+    ${CMAKE_SOURCE_DIR}/*.h
+)
+
+# Exclude build directory
+list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "${CMAKE_BINARY_DIR}/.*")
+
+# Find clang-format
+find_program(CLANG_FORMAT NAMES clang-format)
+
+if(CLANG_FORMAT)
+    add_custom_target(
+        format-check ALL  # ALL makes it run on every build
+        COMMAND ${CLANG_FORMAT}
+        --dry-run
+        --Werror
+        --style=file
+        ${ALL_SOURCE_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Checking code formatting with clang-format (build will fail if formatting is incorrect)"
+    )
+else()
+    message(FATAL_ERROR "clang-format not found! Please install clang-format to build this project.")
+endif()
+
+endif() #PANTAVISOR_CLANG_FORMAT_CHECK
 
 # Pantavisor Runtime
 
