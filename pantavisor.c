@@ -905,12 +905,6 @@ int pv_start()
 	SNPRINTF_WTRUNC(pv_user_agent, sizeof(pv_user_agent), PV_USER_AGENT_FMT,
 			pv_build_arch, pv_build_version, pv_build_date);
 
-	struct rlimit core_limit;
-	core_limit.rlim_cur = RLIM_INFINITY;
-	core_limit.rlim_max = RLIM_INFINITY;
-
-	setrlimit(RLIMIT_CORE, &core_limit);
-
 	if (pv_event_base_init() < 0)
 		return 1;
 

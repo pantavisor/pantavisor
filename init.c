@@ -185,6 +185,8 @@ static void signal_handler(int signal)
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
 		} else if (pid == pv_pid) {
+			pv_log(WARN, "Reboot requested via child signal.");
+			fprintf(stderr, "Reboot requested via child signal.\n");
 			reboot_requested = 1;
 		}
 	}
@@ -406,9 +408,14 @@ int main(int argc, char *argv[])
 
 	setenv("LIBPVPATH", "/lib/pv", 0);
 
-	// extecuted as init
+	// executed as init
 	if (getpid() == 1) {
+		struct rlimit core_limit;
 		early_mounts();
+
+	        core_limit.rlim_cur = RLIM_INFINITY;
+		core_limit.rlim_max = RLIM_INFINITY;
+		setrlimit(RLIMIT_CORE, &core_limit);
 		signal(SIGCHLD, signal_handler);
 	}
 
@@ -487,6 +494,9 @@ loop:
 	while (!reboot_requested)
 		pause();
 
+	fprintf(stderr, "mainloop died. rebooting in 5 seconds...\n");
+	sleep(5);
+	sync();
 	if (reboot(RB_AUTOBOOT) != 0) {
 		perror("Reboot failed");
 		exit(EXIT_FAILURE);
