@@ -58,9 +58,6 @@ file(GLOB_RECURSE ALL_SOURCE_FILES
     ${CMAKE_SOURCE_DIR}/*.h
 )
 
-# Exclude build directory
-list(FILTER ALL_SOURCE_FILES EXCLUDE REGEX "${CMAKE_BINARY_DIR}/.*")
-
 # Find clang-format
 find_program(CLANG_FORMAT NAMES clang-format)
 
@@ -74,6 +71,16 @@ if(CLANG_FORMAT)
         ${ALL_SOURCE_FILES}
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Checking code formatting with clang-format (build will fail if formatting is incorrect)"
+    )
+
+    add_custom_target(
+        format
+        COMMAND ${CLANG_FORMAT}
+        -i
+        --style=file
+        ${ALL_SOURCE_FILES}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Formatting code with clang-format"
     )
 else()
     message(FATAL_ERROR "clang-format not found! Please install clang-format to build this project.")
