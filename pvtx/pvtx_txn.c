@@ -693,6 +693,7 @@ out:
 static int create_link(const char *deploy_path, const char *file,
 		       const char *linkname)
 {
+	struct stat st = { 0 };
 	char link_path[PATH_MAX] = { 0 };
 	pv_fs_path_concat(link_path, 3, deploy_path, ".pv", linkname);
 
@@ -701,6 +702,11 @@ static int create_link(const char *deploy_path, const char *file,
 
 	if (pv_fs_path_exist(link_path))
 		remove(link_path);
+
+	if (stat(bsp_file,&st)) {
+		printf("WARN: cannot bsp file does not exist. continuing anyway ... (%s)\n", bsp_file);
+	        return 0;
+	}
 
 	return link(bsp_file, link_path);
 }
