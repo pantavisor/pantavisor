@@ -24,14 +24,15 @@ exec_run() {
 		exit 1
 	fi
 
-	if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
-		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@-ovl/upper
-		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@-ovl/work
-		if ! mount -t overlay overlay -o lowerdir=@PV_INSTALL_FULL_STORAGEDIR@,upperdir=@PV_INSTALL_FULL_STORAGEDIR@-ovl/upper,workdir=@PV_INSTALL_FULL_STORAGEDIR@-ovl/work @PV_INSTALL_FULL_STORAGEDIR@; then
-			echo "Could not mount /storage; /storage might still be mounted from previous run on another pantavisor is running."
-			echo "To Fix: check and maybe umount /storage /var/pantavisor/storage; then try again."
-			exit 1
-		fi
+	if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+		echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
+		sleep 10
+		exit 1
+	fi
+
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
+		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
+		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
 	fi
 
 	pv_trying=""
