@@ -34,7 +34,11 @@
 #include "utils/json.h"
 #include "utils/str.h"
 
-#define STORAGE_TRAILS_CURRENT_PVR_JSON_PATH "/storage/trails/current/.pvr/json"
+#ifndef PV_INSTALL_FULL_STORAGEDIR
+	#define PV_INSTALL_FULL_STORAGEDIR "/storage"
+#endif
+
+#define STORAGE_TRAILS_CURRENT_PVR_JSON_PATH PV_INSTALL_FULL_STORAGEDIR "/trails/current/.pvr/json"
 #define PROC_MOUNTS_PATH "/proc/mounts"
 
 // Not defined until Linux 5.10
