@@ -28,16 +28,8 @@ set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on buil
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
 
-set(PV_INSTALL_PVLIBDIR "lib/pv")
-IF (NOT PANTAVISOR_APPENGINE)
-    set(PV_INSTALL_FULL_PVLIBDIR "/lib/pv")
-else()
-       if(CMAKE_INSTALL_PREFIX STREQUAL "/usr")
-            set(PV_INSTALL_FULL_PVLIBDIR "/${PV_INSTALL_PVLIBDIR}")
-       else()
-            set(PV_INSTALL_FULL_PVLIBDIR "${CMAKE_INSTALL_PREFIX}/${PV_INSTALL_PVLIBDIR}")
-       endif()
-endif()
+set(PV_INSTALL_PVLIBDIR "${CMAKE_PROJECT_NAME}/pv")
+set(PV_INSTALL_FULL_PVLIBDIR "${CMAKE_INSTALL_FULL_LIBDIR}/${PV_INSTALL_PVLIBDIR}")
 
 set(PV_INSTALL_STORAGEDIR "storage")
 if(NOT PANTAVISOR_APPENGINE)
@@ -460,7 +452,7 @@ configure_file(
 )
 install(FILES
     ${CMAKE_CURRENT_BINARY_DIR}/cmdline.txt
-    DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/boot/
+    DESTINATION ${PV_INSTALL_FULL_SKELDIR}/boot/
 )
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pantavisor.config.in
