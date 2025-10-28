@@ -58,7 +58,7 @@ static inline void WPA_PUT_BE32(uint8_t *a, uint32_t val)
 
 static inline uint32_t WPA_GET_BE32(const uint8_t *a)
 {
-	return ((uint32_t) a[0] << 24) | (a[1] << 16) | (a[2] << 8) | a[3];
+	return ((uint32_t)a[0] << 24) | (a[1] << 16) | (a[2] << 8) | a[3];
 }
 
 /**
@@ -84,7 +84,6 @@ int sha256_vector(size_t num_elem, const uint8_t *addr[], const size_t *len,
 	return 0;
 }
 
-
 /* ===== start - public domain SHA256 implementation ===== */
 
 /* This is based on SHA256 implementation in LibTomCrypt that was released into
@@ -107,19 +106,19 @@ static const unsigned long K[64] = {
 	0x90befffaUL, 0xa4506cebUL, 0xbef9a3f7UL, 0xc67178f2UL
 };
 
-
 /* Various logical functions */
-#define RORc(x, y) \
-( ((((unsigned long) (x) & 0xFFFFFFFFUL) >> (unsigned long) ((y) & 31)) | \
-   ((unsigned long) (x) << (unsigned long) (32 - ((y) & 31)))) & 0xFFFFFFFFUL)
-#define Ch(x,y,z)       (z ^ (x & (y ^ z)))
-#define Maj(x,y,z)      (((x | y) & z) | (x & y))
-#define S(x, n)         RORc((x), (n))
-#define R(x, n)         (((x)&0xFFFFFFFFUL)>>(n))
-#define Sigma0(x)       (S(x, 2) ^ S(x, 13) ^ S(x, 22))
-#define Sigma1(x)       (S(x, 6) ^ S(x, 11) ^ S(x, 25))
-#define Gamma0(x)       (S(x, 7) ^ S(x, 18) ^ R(x, 3))
-#define Gamma1(x)       (S(x, 17) ^ S(x, 19) ^ R(x, 10))
+#define RORc(x, y)                                                             \
+	(((((unsigned long)(x) & 0xFFFFFFFFUL) >> (unsigned long)((y) & 31)) | \
+	  ((unsigned long)(x) << (unsigned long)(32 - ((y) & 31)))) &          \
+	 0xFFFFFFFFUL)
+#define Ch(x, y, z) (z ^ (x & (y ^ z)))
+#define Maj(x, y, z) (((x | y) & z) | (x & y))
+#define S(x, n) RORc((x), (n))
+#define R(x, n) (((x) & 0xFFFFFFFFUL) >> (n))
+#define Sigma0(x) (S(x, 2) ^ S(x, 13) ^ S(x, 22))
+#define Sigma1(x) (S(x, 6) ^ S(x, 11) ^ S(x, 25))
+#define Gamma0(x) (S(x, 7) ^ S(x, 18) ^ R(x, 3))
+#define Gamma1(x) (S(x, 17) ^ S(x, 19) ^ R(x, 10))
 
 /* compress 512-bits */
 static int sha256_compress(struct sha256_state *md, unsigned char *buf)
@@ -140,20 +139,27 @@ static int sha256_compress(struct sha256_state *md, unsigned char *buf)
 	/* fill W[16..63] */
 	for (i = 16; i < 64; i++) {
 		W[i] = Gamma1(W[i - 2]) + W[i - 7] + Gamma0(W[i - 15]) +
-			W[i - 16];
+		       W[i - 16];
 	}
 
 	/* Compress */
-#define RND(a,b,c,d,e,f,g,h,i)                          \
-	t0 = h + Sigma1(e) + Ch(e, f, g) + K[i] + W[i];	\
-	t1 = Sigma0(a) + Maj(a, b, c);			\
-	d += t0;					\
-	h  = t0 + t1;
+#define RND(a, b, c, d, e, f, g, h, i)                                         \
+	t0 = h + Sigma1(e) + Ch(e, f, g) + K[i] + W[i];                        \
+	t1 = Sigma0(a) + Maj(a, b, c);                                         \
+	d += t0;                                                               \
+	h = t0 + t1;
 
 	for (i = 0; i < 64; ++i) {
 		RND(S[0], S[1], S[2], S[3], S[4], S[5], S[6], S[7], i);
-		t = S[7]; S[7] = S[6]; S[6] = S[5]; S[5] = S[4];
-		S[4] = S[3]; S[3] = S[2]; S[2] = S[1]; S[1] = S[0]; S[0] = t;
+		t = S[7];
+		S[7] = S[6];
+		S[6] = S[5];
+		S[5] = S[4];
+		S[4] = S[3];
+		S[3] = S[2];
+		S[2] = S[1];
+		S[1] = S[0];
+		S[0] = t;
 	}
 
 	/* feedback */
@@ -162,7 +168,6 @@ static int sha256_compress(struct sha256_state *md, unsigned char *buf)
 	}
 	return 0;
 }
-
 
 /* Initialize the hash state */
 void sha256_init(struct sha256_state *md)
@@ -196,7 +201,7 @@ int sha256_process(struct sha256_state *md, const unsigned char *in,
 
 	while (inlen > 0) {
 		if (md->curlen == 0 && inlen >= SHA256_BLOCK_SIZE) {
-			if (sha256_compress(md, (unsigned char *) in) < 0)
+			if (sha256_compress(md, (unsigned char *)in) < 0)
 				return -1;
 			md->length += SHA256_BLOCK_SIZE * 8;
 			in += SHA256_BLOCK_SIZE;
@@ -219,7 +224,6 @@ int sha256_process(struct sha256_state *md, const unsigned char *in,
 	return 0;
 }
 
-
 /**
    Terminate the hash to get the digest
    @param md  The hash state
@@ -237,7 +241,7 @@ int sha256_done(struct sha256_state *md, unsigned char *out)
 	md->length += md->curlen * 8;
 
 	/* append the '1' bit */
-	md->buf[md->curlen++] = (unsigned char) 0x80;
+	md->buf[md->curlen++] = (unsigned char)0x80;
 
 	/* if the length is currently above 56 bytes we append zeros
 	 * then compress.  Then we can fall back to padding zeros and length
@@ -245,7 +249,7 @@ int sha256_done(struct sha256_state *md, unsigned char *out)
 	 */
 	if (md->curlen > 56) {
 		while (md->curlen < SHA256_BLOCK_SIZE) {
-			md->buf[md->curlen++] = (unsigned char) 0;
+			md->buf[md->curlen++] = (unsigned char)0;
 		}
 		sha256_compress(md, md->buf);
 		md->curlen = 0;
@@ -253,7 +257,7 @@ int sha256_done(struct sha256_state *md, unsigned char *out)
 
 	/* pad up to 56 bytes of zeroes */
 	while (md->curlen < 56) {
-		md->buf[md->curlen++] = (unsigned char) 0;
+		md->buf[md->curlen++] = (unsigned char)0;
 	}
 
 	/* store length */

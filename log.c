@@ -60,10 +60,7 @@ struct level_name {
 	char *name;
 };
 
-#define LEVEL_NAME(LEVEL)                                                      \
-	{                                                                      \
-		LEVEL, #LEVEL                                                  \
-	}
+#define LEVEL_NAME(LEVEL) { LEVEL, #LEVEL }
 static struct level_name level_names[] = { LEVEL_NAME(FATAL), LEVEL_NAME(ERROR),
 					   LEVEL_NAME(WARN), LEVEL_NAME(INFO),
 					   LEVEL_NAME(DEBUG) };

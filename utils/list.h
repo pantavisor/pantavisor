@@ -21,10 +21,7 @@ struct dl_list {
 	struct dl_list *prev;
 };
 
-#define DL_LIST_HEAD_INIT(l)                                                   \
-	{                                                                      \
-		&(l), &(l)                                                     \
-	}
+#define DL_LIST_HEAD_INIT(l) { &(l), &(l) }
 
 static inline void dl_list_init(struct dl_list *list)
 {
@@ -76,11 +73,11 @@ static inline unsigned int dl_list_len(struct dl_list *list)
 
 #define dl_list_first(list, type, member)                                      \
 	(dl_list_empty((list)) ? NULL :                                        \
-				       dl_list_entry((list)->next, type, member))
+				 dl_list_entry((list)->next, type, member))
 
 #define dl_list_last(list, type, member)                                       \
 	(dl_list_empty((list)) ? NULL :                                        \
-				       dl_list_entry((list)->prev, type, member))
+				 dl_list_entry((list)->prev, type, member))
 
 #define dl_list_for_each(item, list, type, member)                             \
 	for (item = dl_list_first((list), type, member);                       \

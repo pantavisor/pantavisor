@@ -242,9 +242,9 @@ int pv_volume_mount(struct pv_volume *v)
 			pv_log(INFO, "PV_VOLMOUNT_DM_EXTRA_ARGS: %s",
 			       verity_options);
 
-			ret = asprintf(&command, "%s mount %s %s %s %s",
-					       script, path, partname, name,
-					       verity_options ? verity_options : "");
+			ret = asprintf(&command, "%s mount %s %s %s %s", script,
+				       path, partname, name,
+				       verity_options ? verity_options : "");
 
 			if (ret < 0) {
 				pv_log(ERROR,

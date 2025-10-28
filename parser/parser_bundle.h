@@ -46,14 +46,20 @@ struct json_key_action {
 
 #define ADD_JKA_ENTRY(__key, __type, __opaque, __action, __save)               \
 	{                                                                      \
-		.key = __key, .type = __type, .opaque = (void *)__opaque,      \
-		.action = __action, .save = __save                             \
+		.key = __key,                                                  \
+		.type = __type,                                                \
+		.opaque = (void *)__opaque,                                    \
+		.action = __action,                                            \
+		.save = __save,                                                \
 	}
 
 #define ADD_JKA_NULL_ENTRY()                                                   \
 	{                                                                      \
-		.key = NULL, .type = JSMN_UNDEFINED, .opaque = (void **)NULL,  \
-		.action = NULL, .save = false                                  \
+		.key = NULL,                                                   \
+		.type = JSMN_UNDEFINED,                                        \
+		.opaque = (void **)NULL,                                       \
+		.action = NULL,                                                \
+		.save = false,                                                 \
 	}
 
 struct platform_bundle {

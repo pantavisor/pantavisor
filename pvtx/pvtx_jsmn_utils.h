@@ -31,8 +31,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-jsmntok_t *pv_pvtx_jsmn_parse_data(const char *json, size_t json_len,
-				     int *len);
+jsmntok_t *pv_pvtx_jsmn_parse_data(const char *json, size_t json_len, int *len);
 bool pv_pvtx_jsmn_is_key(const char *data, jsmntok_t *tkn);
 
 #endif
