@@ -43,8 +43,8 @@ static const char base64_url_table[65] =
 #define BASE64_PAD BIT(0)
 #define BASE64_LF BIT(1)
 
-static char * base64_gen_encode(const unsigned char *src, size_t len,
-				size_t *out_len, const char *table, int add_pad)
+static char *base64_gen_encode(const unsigned char *src, size_t len,
+			       size_t *out_len, const char *table, int add_pad)
 {
 	char *out, *pos;
 	const unsigned char *end, *in;
@@ -87,8 +87,8 @@ static char * base64_gen_encode(const unsigned char *src, size_t len,
 			if (add_pad & BASE64_PAD)
 				*pos++ = '=';
 		} else {
-			*pos++ = table[(((in[0] & 0x03) << 4) |
-					(in[1] >> 4)) & 0x3f];
+			*pos++ = table[(((in[0] & 0x03) << 4) | (in[1] >> 4)) &
+				       0x3f];
 			*pos++ = table[((in[1] & 0x0f) << 2) & 0x3f];
 		}
 		if (add_pad & BASE64_PAD)
@@ -105,9 +105,8 @@ static char * base64_gen_encode(const unsigned char *src, size_t len,
 	return out;
 }
 
-
-static unsigned char * base64_gen_decode(const char *src, size_t len,
-					 size_t *out_len, const char *table)
+static unsigned char *base64_gen_decode(const char *src, size_t len,
+					size_t *out_len, const char *table)
 {
 	unsigned char dtable[256], *out, *pos, block[4], tmp;
 	size_t i, count, olen;
@@ -116,12 +115,12 @@ static unsigned char * base64_gen_decode(const char *src, size_t len,
 
 	memset(dtable, 0x80, 256);
 	for (i = 0; i < sizeof(base64_table) - 1; i++)
-		dtable[(unsigned char) table[i]] = (unsigned char) i;
+		dtable[(unsigned char)table[i]] = (unsigned char)i;
 	dtable['='] = 0;
 
 	count = 0;
 	for (i = 0; i < len; i++) {
-		if (dtable[(unsigned char) src[i]] != 0x80)
+		if (dtable[(unsigned char)src[i]] != 0x80)
 			count++;
 	}
 
@@ -174,7 +173,6 @@ static unsigned char * base64_gen_decode(const char *src, size_t len,
 	return out;
 }
 
-
 /**
  * base64_encode - Base64 encode
  * @src: Data to be encoded
@@ -187,24 +185,21 @@ static unsigned char * base64_gen_decode(const char *src, size_t len,
  * nul terminated to make it easier to use as a C string. The nul terminator is
  * not included in out_len.
  */
-char * base64_encode(const void *src, size_t len, size_t *out_len)
+char *base64_encode(const void *src, size_t len, size_t *out_len)
 {
 	return base64_gen_encode(src, len, out_len, base64_table,
 				 BASE64_PAD | BASE64_LF);
 }
 
-
-char * base64_encode_no_lf(const void *src, size_t len, size_t *out_len)
+char *base64_encode_no_lf(const void *src, size_t len, size_t *out_len)
 {
 	return base64_gen_encode(src, len, out_len, base64_table, BASE64_PAD);
 }
 
-
-char * base64_url_encode(const void *src, size_t len, size_t *out_len)
+char *base64_url_encode(const void *src, size_t len, size_t *out_len)
 {
 	return base64_gen_encode(src, len, out_len, base64_url_table, 0);
 }
-
 
 /**
  * base64_decode - Base64 decode
@@ -216,13 +211,12 @@ char * base64_url_encode(const void *src, size_t len, size_t *out_len)
  *
  * Caller is responsible for freeing the returned buffer.
  */
-unsigned char * base64_decode(const char *src, size_t len, size_t *out_len)
+unsigned char *base64_decode(const char *src, size_t len, size_t *out_len)
 {
 	return base64_gen_decode(src, len, out_len, base64_table);
 }
 
-
-unsigned char * base64_url_decode(const char *src, size_t len, size_t *out_len)
+unsigned char *base64_url_decode(const char *src, size_t len, size_t *out_len)
 {
 	return base64_gen_decode(src, len, out_len, base64_url_table);
 }

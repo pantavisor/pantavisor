@@ -39,7 +39,7 @@
 
 // Not defined until Linux 5.10
 #ifndef MS_NOSYMFOLLOW
-# define MS_NOSYMFOLLOW (1 << 8)
+#define MS_NOSYMFOLLOW (1 << 8)
 #endif
 // ~ bit
 #define MS_INVERTED_VALUE (1u << 31)

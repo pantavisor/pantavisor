@@ -246,7 +246,8 @@ static int cmd_help(int argc, char **argv)
 	printf("Show this help and ends.\n");
 	printf("  %-30s", "queue <sub-command>");
 	printf("This command uses the queue mode and requires a sub-command.\n");
-	printf("%-32s%s\n", " ", "Queues creates a series of steps to be executed in the same order");
+	printf("%-32s%s\n", " ",
+	       "Queues creates a series of steps to be executed in the same order");
 	printf("%-32s%s\n", " ", "in which they were created.");
 
 	printf("Queue Sub-commands:\n");
@@ -258,9 +259,12 @@ static int cmd_help(int argc, char **argv)
 	printf("Unpack the given tarball from file or from stdin (if - is used).\n");
 	printf("  %-30s", "process [base] [queue] [obj]");
 	printf("Process the current queue.\n");
-	printf("%-32s%s\n", " ", "base : use a specific revision, \"current\" or \"empty\" as base");
-	printf("%-32s%s\n", " ", "queue: define the queue path. Implicit call to queue new");
-	printf("%-32s%s\n", " ", "obj  : define the object path. Needed if the queue argument is used.");
+	printf("%-32s%s\n", " ",
+	       "base : use a specific revision, \"current\" or \"empty\" as base");
+	printf("%-32s%s\n", " ",
+	       "queue: define the queue path. Implicit call to queue new");
+	printf("%-32s%s\n", " ",
+	       "obj  : define the object path. Needed if the queue argument is used.");
 
 	printf("Environment Variables:\n");
 	printf("  %-30s", "PVTXDIR");

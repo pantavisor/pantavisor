@@ -26,7 +26,7 @@
 #include "pvtx_error.h"
 
 int pv_pvtx_txn_begin(const char *from, const char *obj_path,
-		   struct pv_pvtx_error *err);
+		      struct pv_pvtx_error *err);
 int pv_pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err);
 int pv_pvtx_txn_add_tar_from_fd(int fd, struct pv_pvtx_error *err);
 
@@ -38,11 +38,11 @@ int pv_pvtx_txn_remove(const char *part, struct pv_pvtx_error *err);
 
 // queue API
 int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
-		   struct pv_pvtx_error *err);
+		      struct pv_pvtx_error *err);
 int pv_pvtx_queue_remove(const char *part, struct pv_pvtx_error *err);
 int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err);
 int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err);
 int pv_pvtx_queue_process(const char *from, const char *queue_path,
-		       const char *obj_path, struct pv_pvtx_error *err);
+			  const char *obj_path, struct pv_pvtx_error *err);
 
 #endif

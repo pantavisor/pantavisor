@@ -229,7 +229,7 @@ bool pv_json_is_valid(const char *json)
 
 	// this way, we don't take plain strings as valid, as that
 	// is considered JSMN_PRIMITIVE by the library
-	if((tokv->type != JSMN_OBJECT) && (tokv->type != JSMN_ARRAY))
+	if ((tokv->type != JSMN_OBJECT) && (tokv->type != JSMN_ARRAY))
 		goto out;
 
 	ret = true;

@@ -56,7 +56,7 @@ int pv_pvtx_buffer_realloc(struct pv_pvtx_buffer *buf, size_t new_size)
 
 	char *tmp = realloc(buf->data, (new_size + 1) * sizeof(char));
 
-	if(!tmp)
+	if (!tmp)
 		return -1;
 
 	buf->data = tmp;

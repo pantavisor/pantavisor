@@ -80,7 +80,8 @@ static inline bool pv_str_startswith(const char *str1, int str1len,
 	return !strncmp(str1, str2, str1len);
 }
 
-static inline bool pv_str_startswith_case(const char *str1, size_t str1len, const char *str2)
+static inline bool pv_str_startswith_case(const char *str1, size_t str1len,
+					  const char *str2)
 {
 	return !strncasecmp(str1, str2, str1len);
 }

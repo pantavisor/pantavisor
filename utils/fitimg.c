@@ -38,7 +38,6 @@
 // https://github.com/devicetree-org/devicetree-specification
 // In particular to the chapter five: FLATTENED DEVICETREE (DTB) FORMAT
 
-
 #define PV_FIT_BEGIN_NODE 0x1
 #define PV_FIT_PROP_NODE 0x3
 
@@ -151,7 +150,7 @@ static struct pv_fit_prop *pv_fit_get_property(struct pv_fit *fit,
 		// token, so in this case:
 		// 0x3 len nameoff property_val
 		//      ^
-	        //      |
+		//      |
 		//  we are here
 		//
 		// all those values are 32bit integers, that's the reason for
@@ -171,7 +170,6 @@ int pv_fit_get_signatures(struct pv_fit *fit, struct dl_list *list)
 	// properties. There are as many signature-1 blocks as there are
 	// signatures in the file
 	while (pv_fit_go_to_init(fit, "signature-1") != -1) {
-
 		// "value" is the property where the signature value is stored
 		struct pv_fit_prop *prop = pv_fit_get_property(fit, "value");
 

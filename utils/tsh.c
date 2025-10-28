@@ -216,7 +216,8 @@ static int logserver_subscribe_pipe(int *cmd_pipe, const char *name, int level)
 	return 0;
 }
 
-int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out, const char *log_source_err)
+int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out,
+		      const char *log_source_err)
 {
 	int ret = 0;
 	int out_pipe[2] = { 0 };
@@ -254,7 +255,6 @@ int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out, const
 }
 
 #endif
-
 
 static int safe_fd_set(int fd, fd_set *fds, int *max_fd)
 {

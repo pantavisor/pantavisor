@@ -414,7 +414,7 @@ int main(int argc, char *argv[])
 		struct rlimit core_limit;
 		early_mounts();
 
-	        core_limit.rlim_cur = RLIM_INFINITY;
+		core_limit.rlim_cur = RLIM_INFINITY;
 		core_limit.rlim_max = RLIM_INFINITY;
 		setrlimit(RLIMIT_CORE, &core_limit);
 		signal(SIGCHLD, signal_handler);
