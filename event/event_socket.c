@@ -31,7 +31,7 @@
 #include "log.h"
 
 void pv_event_socket_listen(struct pv_event_socket *listener,
-			    evutil_socket_t fd, event_callback_fn cb)
+			    evutil_socket_t fd, event_callback_fn cb, void *arg)
 {
 	if (!listener || !pv_event_get_base())
 		return;
@@ -40,7 +40,7 @@ void pv_event_socket_listen(struct pv_event_socket *listener,
 		return;
 
 	listener->ev = event_new(pv_event_get_base(), fd, EV_READ | EV_PERSIST,
-				 cb, NULL);
+				 cb, arg);
 
 	if (!listener->ev)
 		return;

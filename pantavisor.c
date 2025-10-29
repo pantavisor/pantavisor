@@ -866,7 +866,7 @@ static void _next_state(pv_state_t next_state)
 	if ((state != PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
 		// in case we are starting WAIT for the first time
 		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
-				       pv_ctrl_socket_read);
+				       pv_ctrl_socket_read, NULL);
 	} else if ((state == PV_STATE_WAIT) && (next_state != PV_STATE_WAIT)) {
 		// leaving PV_STATE_WAIT
 		pv_event_socket_ignore(&ctrl_listener);
