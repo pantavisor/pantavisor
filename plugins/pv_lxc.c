@@ -515,6 +515,17 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		goto out_failure;
 	}
 	c->clear_config(c);
+
+	if (!c->load_config(c, conf_file))
+		goto out_failure;
+
+	pv_setup_lxc_container(c, p, rev); /*Do we need this?*/
+
+	if (p->exec)
+		c->set_config_item(c, "lxc.init.cmd", p->exec);
+
+	c->save_config(c, NULL);
+
 	/*
 	 * For returning back the
 	 * container_pid to pv parent
@@ -593,31 +604,6 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		}
 		__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
 
-		c = lxc_container_new(p->name, path);
-
-		*((pid_t *)data) = -4;
-		if (!c) {
-			pv_log(ERROR, "failed to create container struct");
-			goto out_container_init;
-		}
-		c->clear_config(c);
-		/*
-		 * Load config later which allows us to
-		 * override the log file configured by default.
-		 */
-		*((pid_t *)data) = -5;
-		if (!c->load_config(c, conf_file)) {
-			lxc_container_put(c);
-			pv_log(DEBUG, "load config failed %s", c->name);
-			goto out_container_init;
-		}
-
-		pv_setup_lxc_container(c, p, rev);
-		if (p->exec)
-			c->set_config_item(c, "lxc.init.cmd", p->exec);
-
-		c->save_config(c, NULL);
-
 		err = c->start(c, 0, NULL) ? 0 : 1;
 
 		chdir("/");
@@ -635,19 +621,6 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 			;
 		_exit(0);
 	}
-	/*
-	 * Parent loads the config after container is setup.
-	 * This is just required to stop container and get
-	 * any config items required in the parent.
-	 */
-	if (!c->load_config(c, conf_file))
-		goto out_failure;
-
-	pv_setup_lxc_container(c, p, rev); /*Do we need this?*/
-
-	if (!pv_conf.capture)
-		goto out_success;
-
 out_success:
 	chdir("/");
 	return (void *)c;
