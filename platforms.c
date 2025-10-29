@@ -91,12 +91,13 @@ static struct pv_logger_config plat_logger_config_messages = {
 
 struct pv_cont_ctrl {
 	char *type;
-	void *(*set_loglevel)(int loglevel);
-	void *(*set_capture)(bool capture);
-	void *(*start)(struct pv_platform *p, const char *rev, char *conf_file,
-		       int logfd, void *data);
-	void *(*stop)(struct pv_platform *p, char *conf_file, void *data);
-	int (*get_console_fd)(struct pv_platform_log *log, void *data);
+	void (*set_loglevel)(int loglevel);
+	void (*set_capture)(bool capture);
+	int (*start)(struct pv_platform *p, const char *rev, char *conf_file,
+		     int logfd, int pipefd);
+	void (*stop)(struct pv_platform *p, char *conf_file);
+	int (*get_console_fd)(struct pv_platform *p,
+			      struct pv_platform_log *log);
 };
 
 enum {
@@ -181,6 +182,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 
 	if (p) {
 		p->name = strdup(name);
+		p->init_pid = -1;
 		p->automodfw = true;
 		p->log.console_tty = -1;
 		p->log.console_pt = -1;
@@ -193,6 +195,10 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		p->updated = false;
 		p->state = s;
 		p->export = false;
+		p->pipefd[0] = -1;
+		p->pipefd[1] = -1;
+		p->pipefd_listener.fd = -1;
+		p->pipefd_listener.ev = NULL;
 		dl_list_init(&p->drivers);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
@@ -267,8 +273,6 @@ void pv_platform_free(struct pv_platform *p)
 
 	if (p->exec)
 		free(p->exec);
-	if (p->data)
-		free(p->data);
 
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
@@ -788,14 +792,56 @@ static void pv_platform_subscribe_fd(int fd, const char *plat, const char *src)
 	pv_log(DEBUG, "platform subscribed %s:%s (fd = %d)", plat, src, fd);
 }
 
+static void _read_platform_pipefd_cb(int fd, short event, void *arg)
+{
+	pv_log(DEBUG, "run event: cb=%p", (void *)_read_platform_pipefd_cb);
+
+	const struct pv_cont_ctrl *ctrl;
+	struct pv_platform *p = (struct pv_platform *)arg;
+	if (!p) {
+		pv_log(WARN, "could not get platform struct from event arg");
+		return;
+	}
+
+	while (read(p->pipefd[0], &p->init_pid, sizeof(pid_t)) < 0 &&
+	       errno == EINTR)
+		;
+	close(p->pipefd[0]);
+	p->pipefd[0] = -1;
+	pv_event_socket_ignore(&p->pipefd_listener);
+
+	if (p->init_pid <= 0) {
+		pv_log(WARN, "could not start platform '%s'", p->name);
+		pv_platform_set_status(p, PLAT_STOPPED);
+		return;
+	}
+
+	if (pv_config_get_bool(PV_LOG_LOGGERS))
+		if (start_pvlogger_for_platform(p) < 0)
+			pv_log(ERROR,
+			       "could not start pv_logger for platform %s",
+			       p->name);
+
+	ctrl = _pv_platforms_get_ctrl(p->type);
+	if (ctrl->get_console_fd(p, &p->log) == -1) {
+		pv_log(WARN, "could not get a valid console log fd for %s",
+		       p->name);
+	} else {
+		pv_platform_subscribe_fd(p->log.console_pt, p->name,
+					 PV_PLATFORM_LXC_CONSOLE_LOG);
+	}
+
+	pv_log(DEBUG, "started platform '%s' with pid %d", p->name,
+	       p->init_pid);
+	pv_platform_set_status(p, PLAT_STARTED);
+}
+
 int pv_platform_start(struct pv_platform *p)
 {
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_state *s = pv->state;
-	pid_t pid = -1;
 	char path[PATH_MAX], filename[PATH_MAX];
 	const struct pv_cont_ctrl *ctrl;
-	void *data;
 	char **c = p->configs;
 
 	if (!p->group) {
@@ -831,36 +877,30 @@ int pv_platform_start(struct pv_platform *p)
 	ctrl->set_capture(pv_config_get_bool(PV_LOG_CAPTURE));
 
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
-	data = ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], (void *)&pid);
-	if (!data) {
-		pv_log(ERROR, "error starting platform: '%s'", p->name);
-		return -1;
-	}
-	pv_log(DEBUG, "starting platform \'%s\' with pid %d", p->name, pid);
 
-	p->data = data;
-	p->init_pid = pid;
-	if (pid <= 0)
-		return -1;
-
-	if (pv_config_get_bool(PV_LOG_LOGGERS))
-		if (start_pvlogger_for_platform(p) < 0)
-			pv_log(ERROR,
-			       "could not start pv_logger for platform %s",
-			       p->name);
-
-	if (ctrl->get_console_fd(&p->log, p->data) == -1) {
-		pv_log(WARN, "could not get a valid console log fd for %s",
+	// to be able to receive pid from lxc fork
+	if (pipe(p->pipefd)) {
+		pv_log(ERROR, "could not create pipe for platform '%s",
 		       p->name);
-	} else {
-		pv_platform_subscribe_fd(p->log.console_pt, p->name,
-					 PV_PLATFORM_LXC_CONSOLE_LOG);
+		pv_platform_stop(p);
+		return -1;
 	}
+	pv_event_socket_listen(&p->pipefd_listener, p->pipefd[0],
+			       _read_platform_pipefd_cb, (void *)p);
 
 	pv_log(DEBUG, "setting status goal timer of %d secs for platform '%s'",
 	       p->group->default_status_goal_timeout, p->name);
 	timer_start(&p->timer_status_goal,
 		    p->group->default_status_goal_timeout, 0, RELATIV_TIMER);
+
+	pv_log(DEBUG, "starting platform '%s'", p->name);
+
+	if (ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], p->pipefd[1])) {
+		pv_log(ERROR, "could not start platform '%s'", p->name);
+		return -1;
+	}
+	close(p->pipefd[1]);
+	p->pipefd[1] = -1;
 
 	pv_platform_set_status(p, PLAT_STARTING);
 
@@ -952,13 +992,18 @@ int pv_platform_stop(struct pv_platform *p)
 	pv_platform_stop_loggers(p);
 	pv_platform_close_logs_fd(p);
 
+	if (p->pipefd[0] > -1)
+		close(p->pipefd[0]);
+	if (p->pipefd[1] > -1)
+		close(p->pipefd[1]);
+	pv_event_socket_ignore(&p->pipefd_listener);
+
 	if (p->init_pid <= 0)
 		return -1;
 
 	pv_log(DEBUG, "leniently stopping platform '%s'", p->name);
 	ctrl = _pv_platforms_get_ctrl(p->type);
-	ctrl->stop(p, NULL, p->data);
-	p->data = NULL;
+	ctrl->stop(p, NULL);
 	pv_platform_set_status(p, PLAT_STOPPING);
 
 	pv_platform_remove_config_overlay(p->name);
@@ -969,9 +1014,13 @@ int pv_platform_stop(struct pv_platform *p)
 void pv_platform_force_stop(struct pv_platform *p)
 {
 	pv_log(DEBUG, "force stopping platform '%s'", p->name);
-	kill(p->init_pid, SIGKILL);
 	pv_platform_set_status(p, PLAT_STOPPED);
 	pv_cgroup_destroy(p->name);
+
+	if (p->init_pid <= 0)
+		return;
+
+	kill(p->init_pid, SIGKILL);
 }
 
 void pv_platform_set_installed(struct pv_platform *p)
@@ -1007,14 +1056,11 @@ bool pv_platform_check_running(struct pv_platform *p)
 {
 	bool running;
 
+	if (p->init_pid <= 0)
+		return false;
+
 	running = !kill(p->init_pid, 0);
-	if (running) {
-		if ((p->status.current != PLAT_STARTED) &&
-		    (p->status.current != PLAT_READY) &&
-		    (p->status.current != PLAT_STOPPING)) {
-			pv_platform_set_status(p, PLAT_STARTED);
-		}
-	} else {
+	if (!running) {
 		if ((p->status.current != PLAT_STOPPED) &&
 		    (p->status.current != PLAT_STARTING)) {
 			pv_platform_set_status(p, PLAT_STOPPED);
