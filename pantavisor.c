@@ -868,7 +868,7 @@ static void _next_state(pv_state_t next_state)
 		pv_event_periodic_start(&wait_timer, WAIT_INTERVAL,
 					_pv_run_state_cb);
 		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
-				       pv_ctrl_socket_read);
+				       pv_ctrl_socket_read, NULL);
 		goto out;
 	} else if ((state == PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
 		// stuck in PV_STATE_WAIT

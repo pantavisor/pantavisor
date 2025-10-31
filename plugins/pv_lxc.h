@@ -41,6 +41,7 @@ void pv_set_pv_conf_capture_fn(bool capture);
 void *pv_start_container(struct pv_platform *p, const char *rev,
 			 char *conf_file, int logfd, void *data);
 void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data);
+void *pv_reload_data(void *data, char *conf_file);
 int pv_console_log_getfd(struct pv_platform_log *log, void *data);
 
 #endif

@@ -30,6 +30,8 @@
 #include "utils/json.h"
 #include "utils/timer.h"
 
+#include "event/event_socket.h"
+
 typedef enum {
 	PLAT_NONE,
 	PLAT_INSTALLED,
@@ -97,6 +99,8 @@ struct pv_platform {
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
+	int pipefd[2];
+	struct pv_event_socket pipefd_listener;
 	struct timer timer_status_goal;
 	struct dl_list drivers; // pv_platform_driver
 	struct dl_list list; // pv_platform
