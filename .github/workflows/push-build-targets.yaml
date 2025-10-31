@@ -8,17 +8,23 @@ on:
 
 jobs:
 
-  raspberrypi-armv8-scarthgap:
+  raspberrypi-armv8-glibc-scarthgap:
+    uses: ./.github/workflows/build-pantavisor-bsp.yaml
+    with:
+      # meta-pantavisor
+      configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml
+      name: raspberrypi-armv8-glibc
+
+  raspberrypi-armv8-musl-scarthgap:
+    uses: ./.github/workflows/build-pantavisor-bsp.yaml
+    with:
+      # meta-pantavisor
+      configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml:.github/configs/musl.yaml
+      name: raspberrypi-armv8-musl
+
+  raspberrypi-armv8-musl-pantavisor:
     uses: ./.github/workflows/build-pantavisor.yaml
     with:
       # meta-pantavisor
       configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml
       name: raspberrypi-armv8
-
-  orangepi-3-lts-scarthgap:
-    uses: ./.github/workflows/build-pantavisor.yaml
-    with:
-      # meta-pantavisor
-      configs: .github/configs/shared-vols.yaml:.github/configs/release/sunxi-orange-pi-3lts-scarthgap.yaml
-      name: raspberrypi-armv8
-
