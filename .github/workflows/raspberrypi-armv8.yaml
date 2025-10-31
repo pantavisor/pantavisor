@@ -1,10 +1,7 @@
-name: 'On push: Raspberry Pi ARMv8'
+name: 'Raspberry Pi ARMv8'
 
 on:
-  push:
-    paths:
-      - '**'
-      - '.github/configs/**'
+  workflow_call:
 
 jobs:
 

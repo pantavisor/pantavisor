@@ -1,0 +1,24 @@
+name: 'On push: build targets'
+
+on:
+  push:
+    paths:
+      - '**'
+      - '.github/configs/**'
+
+jobs:
+
+  raspberrypi-armv8-scarthgap:
+    uses: ./.github/workflows/build-pantavisor.yaml
+    with:
+      # meta-pantavisor
+      configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml
+      name: raspberrypi-armv8
+
+  orangepi-3-lts-scarthgap:
+    uses: ./.github/workflows/build-pantavisor.yaml
+    with:
+      # meta-pantavisor
+      configs: .github/configs/shared-vols.yaml:.github/configs/release/sunxi-orange-pi-3lts-scarthgap.yaml
+      name: raspberrypi-armv8
+
