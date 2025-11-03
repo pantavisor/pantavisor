@@ -27,8 +27,9 @@ wait_for_status() {
     
     local counter=0
     while [ $counter -lt $timeout ]; do
-        eval "$cmd"
-        if [ "$?" = "$status" ]; then
+        cmd_status=0
+        eval "$cmd" || cmd_status=$?
+        if [ "$cmd_status" = "$status" ]; then
             return 0
         else
             sleep 1

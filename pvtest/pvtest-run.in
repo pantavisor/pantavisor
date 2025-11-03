@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -e
+
 usage() {
 	echo ""
 	echo "Usage: $0 <test-path> <interactive> <manual> <overwrite> <verbose> <netsim>"
@@ -24,13 +26,20 @@ parse_test() {
 	test_script=$(jq -r '."test-script"' "$json_path")
 }
 
+cleanup() {
+    kill $(jobs -p) 2>/dev/null
+}
+trap cleanup EXIT
+
 cleanup_cryptdisk() {
-	cryptsetup close versatile > /dev/null 2>&1
+	cryptsetup close versatile > /dev/null 2>&1 || true
 }
 
 cleanup_cgroup() {
-	find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1
-	rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1
+	if [ -d /sys/fs/cgroup/lxc ]; then
+		find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1
+		rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1
+	fi
 }
 
 setup_loop() {
@@ -81,20 +90,18 @@ initial_setup() {
 	fi
 	
 	pvtx abort
-	pvtx begin @PV_INSTALL_FULL_STORAGEDIR@/trails/0 @PV_INSTALL_FULL_STORAGEDIR@/objects
-	pvtx remove ""
+	pvtx begin empty @PV_INSTALL_FULL_STORAGEDIR@/objects
 	for tarball in $tarballs; do
 		if [ ! -e "$test_path/$tarball" ]; then echo "Error: '$test_path/$tarball' does not exist"; exit 1; fi
 		pvtx add "$test_path/$tarball"
 	done
 	pvtx show
 	pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
-	cd - > /dev/null 2>&1
 
 	cleanup_cryptdisk
 	cleanup_cgroup
-	setup_loop "$loop_n"
-	first_loop=$?
+	first_loop=0
+	setup_loop "$loop_n" || first_loop=$?
 }
 
 exec_interactive() {
@@ -119,12 +126,10 @@ exec_interactive() {
 		echo "$test_path/$test_script"
 		echo ""
 	fi
-	
-	sh -c "bash --rcfile @CMAKE_INSTALL_DATADIR@/@PROJECT_NAME@/set_env"
 }
 
 stop_pv() {
-	device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pv/device-id`
+	device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
 	if [ "$self_claim" = "true" ] && [ -n "$device_id" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
 		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
 		pvr delete -y $device_id
@@ -137,7 +142,7 @@ stop_pv() {
 		if [ $? -ne 0 ]; then
 			echo "Warn: Pantavisor still running. Shutting it down..."
 			kill -SIGTERM "$pv_pid"
-			wait_for_process "[p]antavisor.*/opt/pantavisor/init" "30" "-d"
+			wait_for_process "pantavisor" "30" "-d"
 			if [ $? -ne 0 ]; then
 				echo "Error: Pantavisor still running. Exiting..."
 				pv_ready="false"
@@ -172,7 +177,7 @@ start_pv() {
 		eval "$pv_cmd &"
 	fi
 
-	wait_for_process "[p]antavisor.*/opt/pantavisor/init" "30" "-a"
+	wait_for_process "pantavisor" "30" "-a"
 	if [ $? != 0 ]; then
     	echo "Error: timed out waiting for Pantavisor PID"
 		return
@@ -182,9 +187,9 @@ start_pv() {
 
 	if [ -n "$ready_script" ]; then
 		if [ "$verbose" = "false" ]; then
-			"$test_path/$ready_script" > /dev/null 2>&1
+			sh -c ". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils \"$test_path/$ready_script\"" > /dev/null 2>&1
 		else
-			"$test_path/$ready_script"
+			sh -c ". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils \"$test_path/$ready_script\""
 		fi
 	fi
 
@@ -195,7 +200,7 @@ start_pv() {
 		pv_ready="true"
 	fi
 
-	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib curl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 60
+	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib curl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 120
 	if [ $? -ne 0 ]; then
 		echo "Error: timed out waiting for $control_container pvr endpoint to be online"
 		stop_pv
@@ -212,8 +217,8 @@ start_pv() {
 		
 		wait_for_pantahub_state "$control_container" "claim"
 		
-		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pv/device-id`
-		challenge=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pv/challenge`
+		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
+		challenge=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/challenge`
 		
 		pvr claim -c "$challenge" "$device_id"
 		
@@ -238,7 +243,7 @@ exec_test() {
 	tmp_out_path=$(mktemp /tmp/pv_appengine_output.XXXXXX)
 	# we use script to get stdout and stderr in the same order we do in console
 	# unwanted characters are trimmed from the output of script (escape sequences to control color and carriage returns)
-	script -q -c "$script_path" | sed -r "s/\x1B\[[0-9;]*[a-zA-Z]//g" | tr -d '\r' > $tmp_out_path 2>&1
+	script -q -c "sh -c \". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils && $script_path\"" | sed -r "s/\x1B\[[0-9;]*[a-zA-Z]//g" | tr -d '\r' > $tmp_out_path 2>&1
 	output=$(cat "$tmp_out_path")
 	if [ "$overwrite" = "true" ]; then
 		echo "$output" > $test_path/output
@@ -282,6 +287,18 @@ if [ "$verbose" = "true" ]; then set -x; fi
 
 source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 # . /@CMAKE_INSTALL_DATADIR@/@PROJECT_NAME@/pvtest/set_env
+
+        if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+                echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
+                sleep 10
+                exit 1
+        fi
+
+        if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
+                cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
+                touch @PV_INSTALL_FULL_STORAGEDIR@/.created
+        fi
+
 
 description=
 cmdline=
