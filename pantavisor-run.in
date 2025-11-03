@@ -13,6 +13,9 @@ for pid in $(cat /sys/fs/cgroup/cgroup.procs); do
     echo $pid > /sys/fs/cgroup/pantavisor/cgroup.procs 2>/dev/null || true
 done
 
+mkdir -p /storage
+mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage
+
 #mkdir -p @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
 #mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
 #mount --make-shared @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
@@ -23,4 +26,5 @@ mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes
 @CMAKE_INSTALL_FULL_BINDIR@/pantavisor $@
 
 umount /volumes
+umount /storage
 
