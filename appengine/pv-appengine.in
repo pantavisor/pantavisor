@@ -35,6 +35,16 @@ exec_run() {
 		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
 	fi
 
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done ]; then
+		pvtx abort
+		pvtx begin @PV_INSTALL_FULL_STORAGEDIR@/trails/0 @PV_INSTALL_FULL_STORAGEDIR@/objects
+		for a in `ls @PV_INSTALL_FULL_PVTXDIR@/* 2>/dev/null`; do
+			pvtx add $a
+		done
+		pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
+		touch @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
+	fi
+
 	pv_trying=""
 	while true
 	do
@@ -69,13 +79,13 @@ exec_run() {
 		# wait for user input or continue
 		if [ "$interactive" = 'true' ]
 		then
-			read -p "Reseting Pantavisor. Press ENTER to continue or CTRL-C to exit safely..." INPUT
+			if read -t 5 -p "Will restart Pantavisor in 5 sec: Press ENTER to abort"; then
+				echo "Exiting ..."
+				break
+			fi
 		fi
-
-		if read -t 3 -p "Will restart Pantavisor in 3 sec: Press ENTER to abort"; then
-			echo "Exiting ..."
-			break
-		fi
+		echo "restarting in 5 seconds..."
+		sleep 5
 	done
 
 if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
