@@ -499,6 +499,18 @@ install(FILES
     RENAME json
 )
 
+ELSE() # PANTAVISOR_APPENGINE
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/embedded/pantavisor.config.in
+    ${CMAKE_CURRENT_BINARY_DIR}/pantavisor.config
+    @ONLY
+)
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/pantavisor.config
+    DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/
+)
+
 ENDIF() # PANTAVISOR_APPENGINE
 
 IF(PANTAVISOR_PVTEST)
