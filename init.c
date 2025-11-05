@@ -513,7 +513,7 @@ loop:
  */
 struct pv_init *pv_init_tbl[] = {
 	&pv_init_mount,	     &pv_init_bl,      &pv_init_log,
-	&pv_init_apparmor,   &pv_init_storage, &pv_init_ctrl,
+	&pv_init_apparmor,   &pv_init_storage, &pv_init_ctrl, &pv_init_ctrl2,
 	&pv_init_network,    &pv_init_volume,  &pv_init_platform,
 	&pv_init_pantavisor,
 };

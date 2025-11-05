@@ -74,6 +74,7 @@ extern struct pv_init pv_init_creds;
 extern struct pv_init pv_init_config_trail;
 extern struct pv_init pv_init_storage;
 extern struct pv_init pv_init_ctrl;
+extern struct pv_init pv_init_ctrl2;
 extern struct pv_init pv_init_metadata;
 extern struct pv_init pv_init_log;
 extern struct pv_init pv_init_mount;
