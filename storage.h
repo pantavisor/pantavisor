@@ -23,6 +23,7 @@
 #define PV_STORAGE_H
 
 #include "utils/list.h"
+#include "state.h"
 
 #include <stdbool.h>
 #include <sys/types.h>
