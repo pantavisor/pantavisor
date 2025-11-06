@@ -45,33 +45,28 @@ void pv_str_unescape_to_ascii(char *buf, int size)
 	const char unescaped[] = { '"', '\\', 'b', 'f', 'n', 'r', 't' };
 	const char replacement[] = { '"', '\\', '\b', '\f', '\n', '\r', '\t' };
 
-	int i = -1;
+	int i = 0;
 	int j = 0;
 
-	bool ok = true;
-	do {
-		ok = true;
-		i = -1;
-		j = 0;
-		while (i < size) {
-		next:
-			++i;
-			if (buf[i] == '\\') {
-				for (size_t k = 0; k < sizeof(unescaped); ++k) {
-					if (buf[i + 1] == unescaped[k]) {
-						buf[j] = replacement[k];
-						++i;
-						++j;
-						ok = false;
-						goto next;
-					}
+	while (i < size && buf[i] != '\0') {
+		if (buf[i] == '\\' && i + 1 < size && buf[i + 1] != '\0') {
+			bool found = false;
+			for (size_t k = 0; k < sizeof(unescaped); ++k) {
+				if (buf[i + 1] == unescaped[k]) {
+					buf[j++] = replacement[k];
+					i += 2; // Skip both '\' and the escape char
+					found = true;
+					break;
 				}
 			}
-
-			buf[j] = buf[i];
-			++j;
+			if (!found) {
+				buf[j++] =
+					buf[i++]; // Copy '\' if not a valid escape
+			}
+		} else {
+			buf[j++] = buf[i++];
 		}
-	} while (!ok);
+	}
 	buf[j] = '\0';
 }
 
