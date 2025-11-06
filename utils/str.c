@@ -45,22 +45,34 @@ void pv_str_unescape_to_ascii(char *buf, int size)
 	const char unescaped[] = { '"', '\\', 'b', 'f', 'n', 'r', 't' };
 	const char replacement[] = { '"', '\\', '\b', '\f', '\n', '\r', '\t' };
 
-	bool escaping = false;
-	int escaped = 0;
+	int i = -1;
+	int j = 0;
 
-	int i = 0;
+	bool ok = true;
 	do {
-		if (!escaping && buf[i] == '\\') {
-			escaping = true;
-			escaped++;
-		} else if (escaping) {
-			buf[i - escaped] = buf[i];
-			escaping = false;
-		} else {
-			buf[i - escaped] = buf[i];
+		ok = true;
+		i = -1;
+		j = 0;
+		while (i < size) {
+		next:
+			++i;
+			if (buf[i] == '\\') {
+				for (size_t k = 0; k < sizeof(unescaped); ++k) {
+					if (buf[i + 1] == unescaped[k]) {
+						buf[j] = replacement[k];
+						++i;
+						++j;
+						ok = false;
+						goto next;
+					}
+				}
+			}
+
+			buf[j] = buf[i];
+			++j;
 		}
-		i++;
-	} while ((i < size) && (buf[i] != '\0'));
+	} while (!ok);
+	buf[j] = '\0';
 }
 
 char *pv_str_unescape_utf8_to_apvii(char *buf, char *code, char c)
