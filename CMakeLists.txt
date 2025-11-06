@@ -140,16 +140,22 @@ add_executable(pantavisor
 			ctrl.h
 			ctrl/ctrl.c
 			ctrl/ctrl.h
+			ctrl/ctrl_download.c
+			ctrl/ctrl_download.h
 			ctrl/ctrl_callback.c
 			ctrl/ctrl_callback.h
 			ctrl/ctrl_caller.c
 			ctrl/ctrl_caller.h
 			ctrl/ctrl_containers_ep.c
 			ctrl/ctrl_endpoints.h
+			ctrl/ctrl_file.c
+			ctrl/ctrl_file.h
 			ctrl/ctrl_groups_ep.c
 			ctrl/ctrl_objects_ep.c
 			ctrl/ctrl_signal_ep.c
 			ctrl/ctrl_steps_ep.c
+			ctrl/ctrl_upload.c
+			ctrl/ctrl_upload.h
 			ctrl/ctrl_util.c
 			ctrl/ctrl_util.h
 			daemons.c
