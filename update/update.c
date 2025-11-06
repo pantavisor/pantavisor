@@ -611,8 +611,8 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 	}
 
 	// if the revision errored, we might already have what we need to report
-	if (pv_update_is_final()) {
-		pv_log(DEBUG, "revision already in a final state");
+	if (pv_update_is_done()) {
+		pv_log(DEBUG, "revision already in status DONE");
 		pv_update_finish();
 		return 0;
 	}
@@ -826,6 +826,11 @@ bool pv_update_is_inprogress()
 bool pv_update_is_testing()
 {
 	return _progress_has_status(PV_UPDATE_PROGRESS_STATUS_TESTING);
+}
+
+bool pv_update_is_done()
+{
+	return _progress_has_status(PV_UPDATE_PROGRESS_STATUS_DONE);
 }
 
 bool pv_update_is_failed()

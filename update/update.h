@@ -60,6 +60,7 @@ bool pv_update_is_queued(void);
 bool pv_update_is_downloading(void);
 bool pv_update_is_inprogress(void);
 bool pv_update_is_testing(void);
+bool pv_update_is_done(void);
 bool pv_update_is_failed(void);
 bool pv_update_is_final(void);
 bool pv_update_is_local(void);
