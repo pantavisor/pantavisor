@@ -23,6 +23,7 @@
 #include "ctrl_upload.h"
 #include "ctrl_file.h"
 #include "ctrl_util.h"
+#include "storage.h"
 
 #include <event2/http.h>
 #include <event2/buffer.h>
@@ -69,6 +70,12 @@ static void ctrl_upload_complete_cb_caller(struct evbuffer *buf,
 
 	pv_log(DEBUG, "upload done, processing file");
 
+	if (!up->file->ok) {
+		pv_log(ERROR, "upload error, object cannot be processed");
+		pv_ctrl_utils_send_error(up->file->req, HTTP_INTERNAL,
+					 "Upload error");
+	}
+
 	if (up->complete_cb)
 		up->complete_cb(up->file);
 
@@ -81,12 +88,27 @@ static void ctrl_upload_read_cb(struct evbuffer *buf,
 	(void)info;
 	struct ctrl_upload *up = ctx;
 
+	if (!up->file->ok)
+		goto err;
+
 	size_t len = evbuffer_get_length(buf);
 
 	pv_log(DEBUG, "=== READ!!!!! %zd", len);
 
+	ssize_t free_space = pv_storage_get_free();
+	if (len > free_space) {
+		pv_log(WARN,
+		       "at least %zd B needed but only %zd B available. Cannot create file",
+		       len, free_space);
+		goto err;
+	}
+
 	if (len > 0)
 		evbuffer_write(buf, up->file->fd);
+
+err:
+	up->file->ok = false;
+	evbuffer_drain(buf, len);
 }
 
 int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,

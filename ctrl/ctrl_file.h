@@ -24,12 +24,14 @@
 #define PV_CTRL_FILE_H
 
 #include <linux/limits.h>
+#include <stdbool.h>
 
 struct evhttp_request;
 
 struct pv_ctrl_file {
 	int fd;
 	char path[PATH_MAX];
+	bool ok;
 	struct evhttp_request *req;
 };
 
