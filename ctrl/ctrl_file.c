@@ -47,6 +47,7 @@ struct pv_ctrl_file *pv_ctrl_file_new(struct evhttp_request *req,
 
 	// not owned!
 	file->req = req;
+	file->ok = true;
 
 	return file;
 

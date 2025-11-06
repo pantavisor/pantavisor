@@ -38,7 +38,6 @@
 struct pv_ctrl_download {
 	struct pv_ctrl_file *file;
 	ssize_t chunk_size;
-	bool ok;
 	struct event *timer;
 };
 
@@ -59,7 +58,7 @@ static void pv_ctrl_download_free(struct pv_ctrl_download *dl)
 static void ctrl_download_complete_cb(struct evhttp_connection *con, void *ctx)
 {
 	struct pv_ctrl_download *dl = ctx;
-	if (!dl->ok) {
+	if (!dl->file->ok) {
 		pv_log(WARN, "couldn't sent file %s", dl->file->path);
 	} else {
 		pv_log(DEBUG, "file %s sent successfully", dl->file->path);
@@ -86,11 +85,11 @@ static void ctrl_download_send_cb(evutil_socket_t fd, short events, void *ctx)
 	if (size < 0) {
 		pv_log(DEBUG, "couldn't read data");
 		evhttp_send_reply_end(dl->file->req);
-		dl->ok = false;
+		dl->file->ok = false;
 		goto out;
 	} else if (size == 0) {
 		evhttp_send_reply_end(dl->file->req);
-		dl->ok = true;
+		dl->file->ok = true;
 		goto out;
 	} else {
 		struct evbuffer *evbuf = evbuffer_new();
@@ -148,7 +147,6 @@ int pv_ctrl_download_start(struct evhttp_request *req,
 		evhttp_add_header(headers, "content-type", content_type);
 
 	dl->chunk_size = chunk_size;
-	dl->ok = true;
 
 	crtl_download_set_events(dl);
 

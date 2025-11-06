@@ -64,6 +64,9 @@ static void ctrl_object_list(struct evhttp_request *req, void *ctx)
 
 static int ctrl_object_upload_complete_cb(struct pv_ctrl_file *file)
 {
+	if (!file->ok)
+		return -1;
+
 	char bname[NAME_MAX] = { 0 };
 	pv_fs_basename(file->path, bname);
 
