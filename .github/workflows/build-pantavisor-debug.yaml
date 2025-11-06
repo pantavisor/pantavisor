@@ -1,0 +1,32 @@
+name: 'Build Pantavisor BSP'
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        required: true
+        type: string
+      configs:
+        required: true
+        type: string
+
+jobs:
+  build-kas:
+    runs-on: ["self-hosted"]
+    container:
+      image: ghcr.io/pantacor/kas/kas:next-v7
+      volumes:
+        - shared:/shared
+      options: --user root
+
+    steps:
+      - name: checkout meta-pantavisor
+        uses: actions/checkout@v2
+        with:
+          repository: pantavisor/meta-pantavisor
+
+      - name: build info
+        run: |
+         echo "Pantavisor - ${{ github.sha }}"
+         lscpu
+         lsmem

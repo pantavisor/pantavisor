@@ -1,4 +1,4 @@
-name: 'Build Pantavisor'
+name: 'Build Pantavisor BSP'
 
 on:
   workflow_call:
@@ -36,4 +36,4 @@ jobs:
 
       - name: build
         run: su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ inputs.configs }} -c 'devtool modify pantavisor &&
-         cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake pantavisor' "
+         cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake pantavisor-bsp' "

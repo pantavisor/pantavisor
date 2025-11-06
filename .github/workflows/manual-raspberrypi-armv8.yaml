@@ -1,15 +1,12 @@
-name: 'onpush: pantavisor'
+name: 'manual: pantavisor-bsp'
 
 on:
-  push:
-    paths:
-      - '**'
-      - '.github/configs/**'
+  workflow_dispatch:
 
 jobs:
 
   build-raspberrypi-armv8-scarthgap:
-    uses: ./.github/workflows/build-pantavisor.yaml
+    uses: ./.github/workflows/build-pantavisor-bsp.yaml
     with:
       # meta-pantavisor
       configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml
