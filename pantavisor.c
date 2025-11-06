@@ -82,6 +82,7 @@
 #include "log.h"
 
 #define WAIT_INTERVAL 2
+#define BLOCK_INTERVAL 1
 #define CMDLINE_OFFSET 7
 
 char pv_user_agent[4096];
@@ -817,7 +818,6 @@ pv_state_func_t *const state_table[MAX_STATES] = {
 };
 
 static pv_state_t state = PV_STATE_INIT;
-static struct pv_event_periodic wait_timer;
 static struct pv_event_socket ctrl_listener = { -1, NULL };
 
 static void _next_state(pv_state_t next_state);
@@ -865,37 +865,21 @@ static void _next_state(pv_state_t next_state)
 
 	if ((state != PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
 		// in case we are starting WAIT for the first time
-		pv_event_periodic_start(&wait_timer, WAIT_INTERVAL,
-					_pv_run_state_cb);
 		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
 				       pv_ctrl_socket_read);
-		goto out;
-	} else if ((state == PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
-		// stuck in PV_STATE_WAIT
-		goto out;
 	} else if ((state == PV_STATE_WAIT) && (next_state != PV_STATE_WAIT)) {
 		// leaving PV_STATE_WAIT
-		pv_event_periodic_stop(&wait_timer);
 		pv_event_socket_ignore(&ctrl_listener);
-	} else if ((state != PV_STATE_BLOCK_REBOOT) &&
-		   (next_state == PV_STATE_BLOCK_REBOOT)) {
-		// starting PV_STATE_BLOCK_REBOOT for the first time
-		pv_event_periodic_start(&wait_timer, 1, _pv_run_state_cb);
-		goto out;
-	} else if ((state == PV_STATE_BLOCK_REBOOT) &&
-		   (next_state == PV_STATE_BLOCK_REBOOT)) {
-		// stuck in PV_STATE_BLOCK_REBOOT
-		goto out;
-	} else if ((state == PV_STATE_BLOCK_REBOOT) &&
-		   (next_state != PV_STATE_BLOCK_REBOOT)) {
-		// leaving PV_STATE_BLOCK_REBOOT
-		pv_event_periodic_stop(&wait_timer);
 	}
 
-	// all states except WAIT are executed as soon as possible
-	pv_event_one_shot(_pv_run_state_cb);
-out:
 	state = next_state;
+
+	if (state == PV_STATE_WAIT)
+		pv_event_timeout(WAIT_INTERVAL, _pv_run_state_cb);
+	else if (state == PV_STATE_BLOCK_REBOOT)
+		pv_event_timeout(BLOCK_INTERVAL, _pv_run_state_cb);
+	else
+		pv_event_one_shot(_pv_run_state_cb);
 }
 
 int pv_start()
