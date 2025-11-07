@@ -29,5 +29,6 @@ int pv_ctrl_endpoints_signal_init(void);
 int pv_ctrl_endpoints_objects_init(void);
 int pv_ctrl_endpoints_steps_init(void);
 int pv_ctrl_endpoints_usrmeta_init(void);
+int pv_ctrl_endpoints_devmeta_init(void);
 
 #endif
