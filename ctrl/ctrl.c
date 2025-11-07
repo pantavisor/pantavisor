@@ -115,7 +115,8 @@ static void crtl_add_request(struct evhttp_request *req)
 static bool ctrl_is_running_req(struct evhttp_request *req)
 {
 	struct ctrl_run_req *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &pvctrl.request, struct ctrl_run_req, lst)
+	dl_list_for_each_safe(it, tmp, &pvctrl.request, struct ctrl_run_req,
+			      lst)
 	{
 		if (it->req == req)
 			return true;
@@ -127,11 +128,11 @@ static void ctrl_remove_req(struct evhttp_request *req)
 {
 	pv_log(DEBUG, "=== removing request");
 	struct ctrl_run_req *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &pvctrl.request, struct ctrl_run_req, lst)
+	dl_list_for_each_safe(it, tmp, &pvctrl.request, struct ctrl_run_req,
+			      lst)
 	{
 		if (it->req != req)
 			continue;
-
 
 		pv_log(DEBUG, "=== request removed");
 		dl_list_del(&it->lst);
@@ -288,6 +289,7 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_steps_init();
 	pv_ctrl_endpoints_usrmeta_init();
 	pv_ctrl_endpoints_devmeta_init();
+	pv_ctrl_endpoints_buildinfo_init();
 }
 
 int pv_ctrl_start()
