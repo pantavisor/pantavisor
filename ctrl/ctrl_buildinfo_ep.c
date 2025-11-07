@@ -20,16 +20,41 @@
  * SOFTWARE.
  */
 
-#ifndef PV_CTRL_ENDPOINTS_H
-#define PV_CTRL_ENDPOINTS_H
+#include "ctrl_endpoints.h"
+#include "ctrl.h"
+#include "ctrl_util.h"
+#include "version.h"
 
-int pv_ctrl_endpoints_containers_init(void);
-int pv_ctrl_endpoints_groups_init(void);
-int pv_ctrl_endpoints_signal_init(void);
-int pv_ctrl_endpoints_objects_init(void);
-int pv_ctrl_endpoints_steps_init(void);
-int pv_ctrl_endpoints_usrmeta_init(void);
-int pv_ctrl_endpoints_devmeta_init(void);
-int pv_ctrl_endpoints_buildinfo_init(void);
+#include <event2/http.h>
+#include <event2/buffer.h>
 
-#endif
+#define MODULE_NAME "buildinfo-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
+
+static void ctrl_buildinfo_send(struct evhttp_request *req, void *ctx)
+{
+	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+		return;
+
+	struct evbuffer *buf = evhttp_request_get_output_buffer(req);
+	if (!buf) {
+		pv_log(WARN, "couldn't get output buffer");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Error quering build info");
+		return;
+	}
+
+	evhttp_add_header(evhttp_request_get_output_headers(req),
+			  "content-type", "text/plain");
+	evbuffer_add_printf(buf, "%s", pv_build_manifest);
+	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+}
+
+int pv_ctrl_endpoints_buildinfo_init()
+{
+	pv_ctrl_add_endpoint("/buildinfo", EVHTTP_REQ_GET, true,
+			     ctrl_buildinfo_send);
+
+	return 0;
+}
