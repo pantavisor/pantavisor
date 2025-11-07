@@ -287,6 +287,7 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_objects_init();
 	pv_ctrl_endpoints_steps_init();
 	pv_ctrl_endpoints_usrmeta_init();
+	pv_ctrl_endpoints_devmeta_init();
 }
 
 int pv_ctrl_start()
