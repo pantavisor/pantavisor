@@ -185,7 +185,7 @@ static int _init_object_transfer_unavailable()
 
 	pv_update_get_unavailable_objects(&objects);
 	if (!objects) {
-		pv_log(WARN, "could not retrieve unrecorded objects");
+		pv_log(WARN, "could not retrieve unavailable objects");
 		return -1;
 	}
 
@@ -455,7 +455,6 @@ static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
-	pv_pantahub_evaluate_state();
 }
 
 static void _recv_get_trails_status_cb(struct evhttp_request *req, void *ctx)
@@ -553,7 +552,6 @@ static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 out:
 	if (body)
 		free(body);
-	pv_pantahub_evaluate_state();
 }
 
 void pv_pantahub_proto_set_devmeta()
@@ -597,13 +595,6 @@ static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
 	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
 
 	session.get_pending_steps_active = 0;
-
-	// if there is an update and its not final we dont process more steps
-	if (pv_update_get_rev() && !pv_update_is_final()) {
-		pv_log(WARN,
-		       "update is still not finished. defering to process new steps from hub ...");
-		return;
-	}
 
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET pending steps auth failed");

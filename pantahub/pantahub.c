@@ -763,10 +763,8 @@ static void _prep_download_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_prep_download_cb);
 
-	if (pv_pantahub_proto_get_objects_metadata()) {
-		_next_state(PH_STATE_IDLE);
-		return;
-	}
+	pv_pantahub_proto_get_objects_metadata();
+	pv_pantahub_evaluate_state();
 }
 
 static void _run_state_prep_download()
@@ -791,10 +789,8 @@ static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(DEBUG, "run event: cb=%p", (void *)_download_objects_cb);
 
-	if (pv_pantahub_proto_get_objects()) {
-		_next_state(PH_STATE_IDLE);
-		return;
-	}
+	pv_pantahub_proto_get_objects();
+	pv_pantahub_evaluate_state();
 }
 
 static void _run_state_download()
