@@ -142,6 +142,7 @@ add_executable(pantavisor
 			ctrl/ctrl.h
 			ctrl/ctrl_download.c
 			ctrl/ctrl_download.h
+			ctrl/ctrl_devmeta_ep.c
 			ctrl/ctrl_callback.c
 			ctrl/ctrl_callback.h
 			ctrl/ctrl_caller.c
