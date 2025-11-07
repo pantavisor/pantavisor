@@ -28,6 +28,9 @@ set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on buil
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
 
+# lets use FHS 3.0 from 2015
+set(CMAKE_INSTALL_RUNSTATEDIR "/run" CACHE PATH "Run-time variable data")
+
 set(PV_INSTALL_PVLIBDIR "${CMAKE_PROJECT_NAME}/pv")
 set(PV_INSTALL_FULL_PVLIBDIR "${CMAKE_INSTALL_FULL_LIBDIR}/${PV_INSTALL_PVLIBDIR}")
 
