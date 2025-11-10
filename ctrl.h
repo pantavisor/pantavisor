@@ -61,7 +61,6 @@ pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 					 "POWEROFF_DEVICE",
 					 "TRY_ONCE",
 					 "LOCAL_RUN",
-					 "LOCAL_APPLY",
 					 "MAKE_FACTORY",
 					 "RUN_GC",
 					 "ENABLE_SSH",
