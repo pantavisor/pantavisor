@@ -598,6 +598,13 @@ static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
 
 	session.get_pending_steps_active = 0;
 
+	// if there is an update and its not final we dont process more steps
+	if (pv_update_get_rev() && !pv_update_is_final()) {
+		pv_log(WARN,
+		       "update is still not finished. defering to process new steps from hub ...");
+		return;
+	}
+
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET pending steps auth failed");
 		goto out;
