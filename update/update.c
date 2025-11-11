@@ -287,7 +287,8 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	}
 
 	if (pv_state_are_all_objects_installed(u->state)) {
-		pv_log(DEBUG, "all objects already installed");
+		pv_log(DEBUG,
+		       "all objects already installed: _finish_update_installation");
 		_finish_update_installation();
 	}
 out:
@@ -407,9 +408,9 @@ void pv_update_get_unavailable_objects(char ***objects)
 	}
 
 	if (pv_state_are_all_objects_installed(s)) {
-		pv_log(WARN,
-		       "trying to get unavailable objects, but they are all already installed");
-		_finish_update_installation();
+		pv_log(DEBUG, "all objects installed; returning empty list");
+		// set objects to zero length if all went well (e.g. no error)
+		*objects = calloc(sizeof(char *), 1);
 		goto out;
 	}
 
@@ -484,8 +485,7 @@ int pv_update_install_object(const char *in_path)
 	if (!pv_state_are_all_objects_installed(s))
 		goto out;
 
-	pv_log(DEBUG, "all objects installed");
-
+	pv_log(DEBUG, "all objects installed: _finish_update_installation");
 	_finish_update_installation();
 out:
 	if (sha256sum)
@@ -536,6 +536,7 @@ void pv_update_run(const char *rev)
 		goto out;
 	}
 
+	pv_log(DEBUG, "pv_update_run successful: _finish_update_installation");
 	_finish_update_installation();
 out:
 	if (json)

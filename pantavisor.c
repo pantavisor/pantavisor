@@ -927,7 +927,6 @@ pv_system_transition_t pv_run_update()
 
 	pv_log(INFO, "running new state does not require reboot");
 	pv_issue_nonreboot();
-	goto out;
 out:
 	return pv->issued_transition;
 }
