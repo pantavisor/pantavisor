@@ -139,10 +139,6 @@ int pv_ctrl_utils_split_path(const char *uri,
 
 bool pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb)
 {
-	pv_log(DEBUG, "=== cb name: %s", cb->uri);
-	pv_log(DEBUG, "=== cb mgmt: %d", cb->need_mgmt);
-	pv_log(DEBUG, "=== cb fn: %x", cb->fn);
-
 	struct pv_ctrl_caller caller = { 0 };
 	if (pv_ctrl_caller_init(&caller, req) != 0) {
 		pv_log(WARN, "couldn't get caller info");

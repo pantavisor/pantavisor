@@ -135,7 +135,6 @@ int pv_ctrl_download_start(struct evhttp_request *req,
 	if (!dl)
 		goto err;
 
-	pv_log(DEBUG, "=== PATH = %s", path);
 	dl->file = pv_ctrl_file_new(req, path, PV_CTRL_FILE_READ);
 	if (!dl->file)
 		goto err;
