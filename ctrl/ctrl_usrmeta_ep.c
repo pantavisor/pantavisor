@@ -74,8 +74,6 @@ static void ctrl_usrmeta_set_key(struct evbuffer *buf,
 	char *value = pv_ctrl_utils_get_data(req, CTRL_USRMETA_MAX_DATA, &len);
 	const char *key = ctrl_usrmeta_get_key(req);
 
-	pv_log(DEBUG, "=== Adding %s", value);
-
 	int ret = pv_metadata_add_usermeta(key, value);
 
 	if (ret < 0) {

@@ -53,16 +53,9 @@ static void ctrl_upload_complete_cb_caller(struct evbuffer *buf,
 					   const struct evbuffer_cb_info *info,
 					   void *ctx)
 {
-	size_t len = evbuffer_get_length(buf);
-
-	pv_log(DEBUG, "=== COMPLETE CALLED %zd", len);
 
 	if (len <= 0)
 		return;
-
-	char *x = (char *)evbuffer_pullup(buf, len);
-
-	pv_log(DEBUG, "=== PULL: %s", x);
 
 	evbuffer_drain(buf, len);
 
@@ -92,9 +85,6 @@ static void ctrl_upload_read_cb(struct evbuffer *buf,
 		goto err;
 
 	size_t len = evbuffer_get_length(buf);
-
-	pv_log(DEBUG, "=== READ!!!!! %zd", len);
-
 	ssize_t free_space = pv_storage_get_free();
 	if (len > free_space) {
 		pv_log(WARN,
