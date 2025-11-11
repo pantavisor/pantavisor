@@ -88,9 +88,6 @@ static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
 	if (!pv_ctrl_utils_is_req_ok(req, ctx))
 		return;
 
-	// TODO space
-	// TODO checksum verification at chunks
-
 	const char *uri = evhttp_request_get_uri(req);
 
 	char parts[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };

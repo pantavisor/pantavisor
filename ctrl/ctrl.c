@@ -93,23 +93,19 @@ static bool ctrl_uri_equals(const char *uri1, const char *uri2)
 
 static void crtl_add_request(struct evhttp_request *req)
 {
-	pv_log(DEBUG, "=== adding request");
 	struct ctrl_run_req *runq = calloc(1, sizeof(struct ctrl_run_req));
 	if (!runq) {
 		pv_log(DEBUG, "couldn't add request to the running list");
 		return;
 	}
 
-	pv_log(DEBUG, "=== allocated");
 
 	runq->req = req;
 	dl_list_init(&runq->lst);
 
-	pv_log(DEBUG, "=== init");
 
 	dl_list_add(&pvctrl.request, &runq->lst);
 
-	pv_log(DEBUG, "=== added");
 }
 
 static bool ctrl_is_running_req(struct evhttp_request *req)
@@ -126,7 +122,6 @@ static bool ctrl_is_running_req(struct evhttp_request *req)
 
 static void ctrl_remove_req(struct evhttp_request *req)
 {
-	pv_log(DEBUG, "=== removing request");
 	struct ctrl_run_req *it, *tmp;
 	dl_list_for_each_safe(it, tmp, &pvctrl.request, struct ctrl_run_req,
 			      lst)
@@ -134,7 +129,6 @@ static void ctrl_remove_req(struct evhttp_request *req)
 		if (it->req != req)
 			continue;
 
-		pv_log(DEBUG, "=== request removed");
 		dl_list_del(&it->lst);
 		free(it);
 		return;
@@ -225,7 +219,6 @@ static int ctrl_add_normal(const char *path, const int methods, bool mgmt,
 
 	dl_list_add(&pvctrl.normal_cb, &cb->lst);
 
-	pv_log(DEBUG, "=== Setting %s", path);
 	return evhttp_set_cb(pvctrl.srv, path, fn, cb);
 }
 
@@ -234,16 +227,13 @@ int pv_ctrl_add_endpoint(const char *path, const int methods, bool mgmt,
 {
 	char path_split[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	int size = pv_ctrl_utils_split_path(path, path_split);
-	pv_log(DEBUG, "=== Size: %d", size);
 
 	for (int i = 0; i < size; i++) {
 		if (!strcmp(path_split[i], "{}")) {
-			pv_log(DEBUG, "=== Adding custom: %s", path);
 			return ctrl_add_custom(path, methods, mgmt, fn);
 		}
 	}
 
-	pv_log(DEBUG, "=== Adding normal: %s", path);
 	return ctrl_add_normal(path, methods, mgmt, fn);
 }
 
@@ -260,9 +250,7 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 	(void)ctx;
 
 	if (ctrl_is_running_req(req)) {
-		pv_log(DEBUG, "=== is runnig request");
 		ctrl_remove_req(req);
-		pv_log(DEBUG, "=== writting out");
 		evbuffer_add_printf(evhttp_request_get_output_buffer(req),
 				    "done");
 		return;
@@ -271,8 +259,6 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 	const char *uri = evhttp_request_get_uri(req);
 
 	pv_log(WARN, "HTTP request received has unknown endpoint: %s", uri);
-	pv_log(DEBUG, "=== actyion: %d", evhttp_request_get_command(req));
-	pv_log(DEBUG, "=== ==============================================");
 
 	char msg[PATH_MAX + 30] = { 0 };
 	snprintf(msg, PATH_MAX + 30, "%s: %s", "unknown endpoint", uri);
