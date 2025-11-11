@@ -733,7 +733,7 @@ int pv_pantahub_proto_get_objects_metadata()
 
 	if (_init_object_transfer_unrecorded()) {
 		pv_log(WARN,
-		       "could not init object trasfer list with unrecorded objects");
+		       "could not init object transfer list with unrecorded objects");
 		return -1;
 	}
 
@@ -824,7 +824,7 @@ int pv_pantahub_proto_get_objects()
 
 	if (_init_object_transfer_unavailable()) {
 		pv_log(WARN,
-		       "could not init object trasfer list with unavailable objects");
+		       "could not init object transfer list with unavailable objects");
 		return -1;
 	}
 
