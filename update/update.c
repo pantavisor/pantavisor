@@ -203,6 +203,12 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	pv_log(DEBUG, "evaluating whether update from rev '%s' can be started",
 	       rev);
 
+	if (!pv->update) {
+		pv_log(WARN,
+		       "trying to start an update but another one is already running");
+		goto out;
+	}
+
 	struct pv_update *u = _update_new(rev, report_cb);
 	if (!u)
 		goto out;

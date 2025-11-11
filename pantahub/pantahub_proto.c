@@ -185,7 +185,7 @@ static int _init_object_transfer_unavailable()
 
 	pv_update_get_unavailable_objects(&objects);
 	if (!objects) {
-		pv_log(WARN, "could not retrieve unrecorded objects");
+		pv_log(WARN, "could not retrieve unavailable objects");
 		return -1;
 	}
 
