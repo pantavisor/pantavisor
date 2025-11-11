@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2023 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,13 +20,15 @@
  * SOFTWARE.
  */
 
-#ifndef PV_CTRL_H
-#define PV_CTRL_H
+#ifndef PV_CTRL_CMD_H
+#define PV_CTRL_CMD_H
 
-#include <stdint.h>
+#include <stddef.h>
 #include <string.h>
 
-typedef enum {
+#define PV_CTRL_CMD_MAX_SIZE (4096)
+
+enum pv_ctrl_cmd_op {
 	CMD_UPDATE_METADATA = 1,
 	CMD_REBOOT_DEVICE = 2,
 	CMD_POWEROFF_DEVICE = 3,
@@ -40,48 +42,47 @@ typedef enum {
 	CMD_DEFER_REBOOT = 11,
 	CMD_LOCAL_RUN_COMMIT = 12,
 	MAX_CMD_OP
-} pv_cmd_operation_t;
+};
 
-struct pv_cmd {
-	pv_cmd_operation_t op;
+struct pv_ctrl_cmd {
+	enum pv_ctrl_cmd_op op;
 	char *payload;
 };
 
-void pv_ctrl_socket_read(int fd, short event, void *arg);
-void pv_ctrl_free_cmd(struct pv_cmd *cmd);
-
-void pv_ctrl_socket_close(int ctrl_fd);
-
-static inline const char *
-pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
+static inline const char *pv_ctrl_cmd_op_to_str(const enum pv_ctrl_cmd_op op)
 {
-	static const char *strings[] = { NULL,
-					 "UPDATE_METADATA",
-					 "REBOOT_DEVICE",
-					 "POWEROFF_DEVICE",
-					 "TRY_ONCE",
-					 "LOCAL_RUN",
-					 "MAKE_FACTORY",
-					 "RUN_GC",
-					 "ENABLE_SSH",
-					 "DISABLE_SSH",
-					 "GO_REMOTE",
-					 "DEFER_REBOOT",
-					 "LOCAL_RUN_COMMIT" };
+	static const char *strings[] = {
+		NULL,
+		"UPDATE_METADATA",
+		"REBOOT_DEVICE",
+		"POWEROFF_DEVICE",
+		"TRY_ONCE",
+		"LOCAL_RUN",
+		"MAKE_FACTORY",
+		"RUN_GC",
+		"ENABLE_SSH",
+		"DISABLE_SSH",
+		"GO_REMOTE",
+		"DEFER_REBOOT",
+		"LOCAL_RUN_COMMIT",
+	};
 	return strings[op];
 }
 
-static inline pv_cmd_operation_t
-pv_ctrl_int_cmd_operation(const char *op_string, const int op_string_size)
+static inline enum pv_ctrl_cmd_op
+pv_ctrl_cmd_op_from_str(const char *op_str, const size_t op_str_size)
 {
-	for (pv_cmd_operation_t op_index = 1; op_index < MAX_CMD_OP;
-	     ++op_index) {
-		if (!strncmp(op_string, pv_ctrl_string_cmd_operation(op_index),
-			     op_string_size))
-			return op_index;
+	for (enum pv_ctrl_cmd_op index = 1; index < MAX_CMD_OP; ++index) {
+		const char *index_str = pv_ctrl_cmd_op_to_str(index);
+		if (!strncmp(op_str, index_str, op_str_size))
+			return index;
 	}
 
 	return 0;
 }
 
-#endif // PV_CTRL_H
+struct pv_ctrl_cmd *pv_ctrl_cmd_parse(const char *buf);
+int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char *err);
+void pv_ctrl_cmd_free(struct pv_ctrl_cmd *cmd);
+
+#endif
