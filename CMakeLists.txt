@@ -136,11 +136,12 @@ add_executable(pantavisor
 			config.h
 			config_parser.c
 			config_parser.h
-			ctrl.c
-			ctrl.h
 			ctrl/ctrl.c
 			ctrl/ctrl.h
 			ctrl/ctrl_buildinfo_ep.c
+			ctrl/ctrl_cmd.h
+			ctrl/ctrl_cmd.c
+			ctrl/ctrl_commands_ep.c
 			ctrl/ctrl_devmeta_ep.c
 			ctrl/ctrl_download.c
 			ctrl/ctrl_download.h
