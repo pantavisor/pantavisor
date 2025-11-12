@@ -264,8 +264,5 @@ int pv_ctrl_endpoints_steps_init()
 			     ctrl_steps_commit);
 	pv_ctrl_add_endpoint("/steps/locals/{}/commitmsg", EVHTTP_REQ_PUT, true,
 			     ctrl_steps_commit);
-
-
-
 	return 0;
 }
