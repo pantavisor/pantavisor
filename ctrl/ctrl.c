@@ -27,6 +27,7 @@
 #include "ctrl_endpoints.h"
 #include "utils/list.h"
 #include "event/event_http_server.h"
+#include "paths.h"
 #include "init.h"
 
 #include <event2/http.h>
@@ -150,7 +151,6 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 	dl_list_for_each_safe(it, tmp, &pvctrl.custom_cb, struct pv_ctrl_cb,
 			      lst)
 	{
-		pv_log(DEBUG, "comparing %s -> %s", uri, it->uri);
 		if (!ctrl_uri_equals(uri, it->uri))
 			continue;
 
@@ -289,9 +289,7 @@ int pv_ctrl_start()
 	}
 
 	char sock_path[PATH_MAX] = { 0 };
-	// TODO: for test
-	// pv_paths_pv_file(sock_path, PATH_MAX - 1, PVCTRL_FNAME);
-	snprintf(sock_path, PATH_MAX, "/pv/pv-ctrl2");
+	pv_paths_pv_file(sock_path, PATH_MAX - 1, PVCTRL_FNAME);
 
 	pvctrl.srv = pv_http_server_new(sock_path);
 
@@ -348,7 +346,7 @@ static int ctrl_init(struct pv_init *this)
 	return pv_ctrl_start();
 }
 
-struct pv_init pv_init_ctrl2 = {
+struct pv_init pv_init_ctrl = {
 	.init_fn = ctrl_init,
 	.flags = 0,
 };
