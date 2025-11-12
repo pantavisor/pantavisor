@@ -65,12 +65,12 @@ static void ctrl_object_list(struct evhttp_request *req, void *ctx)
 static int ctrl_object_upload_complete_cb(struct pv_ctrl_file *file)
 {
 	if (!file->ok)
-		return -1;
+		goto out;
 
 	char bname[NAME_MAX] = { 0 };
 	pv_fs_basename(file->path, bname);
 
-	if (pv_storage_validate_file_checksum(file->path, bname) != 0) {
+	if (pv_storage_validate_file_checksum(file->path, bname)) {
 		pv_log(WARN, "file upload with errors, checksum error");
 		pv_ctrl_utils_send_error(file->req, HTTP_INTERNAL,
 					 "Checksum error");
@@ -79,8 +79,20 @@ static int ctrl_object_upload_complete_cb(struct pv_ctrl_file *file)
 		return -1;
 	}
 
+out:
 	pv_ctrl_utils_send_ok(file->req);
 	return 0;
+}
+
+static void ctrl_object_discard_request(struct evbuffer *buf,
+					const struct evbuffer_cb_info *info,
+					void *ctx)
+{
+	(void)info;
+	size_t len = evbuffer_get_length(buf);
+	pv_log(DEBUG, "discarding %zd bytes");
+	evbuffer_drain(buf, len);
+	pv_ctrl_utils_send_ok(ctx);
 }
 
 static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
@@ -108,26 +120,14 @@ static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
 		pv_log(WARN,
 		       "object %s already exists and is valid; discarding new object upload",
 		       fname);
-
-		pv_ctrl_utils_send_ok(req);
-
+		evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+				ctrl_object_discard_request, req);
 		return;
 	}
 
 	pv_log(DEBUG, "new object received, uploading");
 
 	pv_ctrl_upload_start(req, fname, ctrl_object_upload_complete_cb);
-
-	// struct ctrl_object_file *file =
-	// 	ctrl_object_file_new(req, fname, FILE_IN);
-	// if (!file)
-	// 	return;
-
-	// evbuffer_add_cb(evhttp_request_get_input_buffer(req),
-	// 		ctrl_object_upload_read_cb, file);
-
-	// evbuffer_add_cb(evhttp_request_get_output_buffer(req),
-	// 		ctrl_object_upload_complete_cb, file);
 }
 
 static void ctrl_objects_send(struct evhttp_request *req, void *ctx)
