@@ -322,6 +322,15 @@ static void ctrl_free_cb_list(struct dl_list *cb_list)
 	}
 }
 
+static void ctrl_free_request_list(struct dl_list *req_list)
+{
+	struct ctrl_run_req *it, *tmp;
+	dl_list_for_each_safe(it, tmp, req_list, struct ctrl_run_req, lst)
+	{
+		free(it);
+	}
+}
+
 void pv_ctrl_stop()
 {
 	evhttp_free(pvctrl.srv);
@@ -329,6 +338,7 @@ void pv_ctrl_stop()
 
 	ctrl_free_cb_list(&pvctrl.custom_cb);
 	ctrl_free_cb_list(&pvctrl.normal_cb);
+	ctrl_free_request_list(&pvctrl.normal_cb);
 
 	pv_log(DEBUG, "server stopped");
 }
