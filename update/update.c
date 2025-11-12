@@ -668,6 +668,8 @@ void pv_update_set_factory()
 	pv_state_set_done(s);
 
 	pv_update_finish();
+
+	pv_log(INFO, "Pantavisor initialized Factory revision %d.", u->rev);
 }
 
 void pv_update_set_testing()

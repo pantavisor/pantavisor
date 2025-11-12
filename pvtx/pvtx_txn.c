@@ -203,9 +203,9 @@ static int write_object_from_content(const char *path,
 	int fd = pv_fs_file_tmp(path, tmp);
 	if (fd < 0) {
 		PVTX_ERROR_SET(err, -1,
-			       "couldn't create temp file, object %s "
+			       "couldn't create temp file for %s, object %s "
 			       "will not be written",
-			       con->name);
+			       path, con->name);
 		return -1;
 	}
 
@@ -693,6 +693,7 @@ out:
 static int create_link(const char *deploy_path, const char *file,
 		       const char *linkname)
 {
+	struct stat st = { 0 };
 	char link_path[PATH_MAX] = { 0 };
 	pv_fs_path_concat(link_path, 3, deploy_path, ".pv", linkname);
 
@@ -701,6 +702,11 @@ static int create_link(const char *deploy_path, const char *file,
 
 	if (pv_fs_path_exist(link_path))
 		remove(link_path);
+
+	if (stat(bsp_file,&st)) {
+		printf("WARN: cannot bsp file does not exist. continuing anyway ... (%s)\n", bsp_file);
+	        return 0;
+	}
 
 	return link(bsp_file, link_path);
 }
@@ -1240,19 +1246,20 @@ int pv_pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err)
 	char bakdir[PATH_MAX] = { 0 };
 	snprintf(bakdir, PATH_MAX, "%s.bak", path);
 
-	if (rename(path, bakdir) != 0) {
+	if (pv_fs_rename_safe_noatomic(path, bakdir) != 0) {
+		PVTX_ERROR_SET(
+			err, -1,
+			"couldn't backup directory %s -> %s, deploy failed: %s",
+			path, bakdir, strerror(errno));
 		pv_fs_path_remove_recursive_no_sync(tmpdir);
-		PVTX_ERROR_SET(err, -1,
-			       "couldn't backup directory, deploy failed: %s",
-			       strerror(errno));
 		goto out;
 	}
 
-	if (rename(tmpdir, path) != 0) {
+	if (pv_fs_rename_safe_noatomic(tmpdir, path) != 0) {
 		rename(bakdir, path);
-		pv_fs_path_remove_recursive_no_sync(tmpdir);
 		PVTX_ERROR_SET(err, -1, "couldn't deploy current rev: %s",
 			       strerror(errno));
+		pv_fs_path_remove_recursive_no_sync(tmpdir);
 		goto out;
 	}
 
