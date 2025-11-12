@@ -25,14 +25,13 @@
 #include <event2/buffer.h>
 
 #include <linux/limits.h>
-#include <sys/types.h>
 
 struct evhttp_request;
 struct pv_ctrl_file;
 
-typedef int (*pv_ctrl_upload_complete_func)(struct pv_ctrl_file *file);
+typedef int (*pv_ctrl_upload_fn)(struct pv_ctrl_file *file);
 
 int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
-			 pv_ctrl_upload_complete_func complete_cb);
+			 pv_ctrl_upload_fn complete_cb);
 
 #endif

@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "ctrl_upload.h"
 #include "ctrl_file.h"
 #include "ctrl_util.h"
@@ -36,7 +40,9 @@
 
 struct ctrl_upload {
 	struct pv_ctrl_file *file;
-	pv_ctrl_upload_complete_func complete_cb;
+	struct evbuffer_cb_entry *read;
+	struct evbuffer_cb_entry *complete;
+	pv_ctrl_upload_fn complete_cb;
 };
 
 static void ctrl_upload_free(struct ctrl_upload *up)
@@ -53,21 +59,22 @@ static void ctrl_upload_complete_cb_caller(struct evbuffer *buf,
 					   const struct evbuffer_cb_info *info,
 					   void *ctx)
 {
+	(void)info;
 
+	size_t len = evbuffer_get_length(buf);
 	if (len <= 0)
 		return;
 
-	evbuffer_drain(buf, len);
-
 	struct ctrl_upload *up = ctx;
+	evbuffer_remove_cb_entry(buf, up->complete);
+	evbuffer_remove_cb_entry(evhttp_request_get_input_buffer(up->file->req),
+				 up->read);
+	evbuffer_drain(buf, len);
 
 	pv_log(DEBUG, "upload done, processing file");
 
-	if (!up->file->ok) {
+	if (!up->file->ok)
 		pv_log(ERROR, "upload error, object cannot be processed");
-		pv_ctrl_utils_send_error(up->file->req, HTTP_INTERNAL,
-					 "Upload error");
-	}
 
 	if (up->complete_cb)
 		up->complete_cb(up->file);
@@ -81,20 +88,26 @@ static void ctrl_upload_read_cb(struct evbuffer *buf,
 	(void)info;
 	struct ctrl_upload *up = ctx;
 
+	size_t len = evbuffer_get_length(buf);
+
 	if (!up->file->ok)
 		goto err;
 
-	size_t len = evbuffer_get_length(buf);
+	if (len <= 0)
+		return;
+
 	ssize_t free_space = pv_storage_get_free();
 	if (len > free_space) {
 		pv_log(WARN,
-		       "at least %zd B needed but only %zd B available. Cannot create file",
+		       "at least %zd B needed but only %zd B available. "
+		       "Cannot create file",
 		       len, free_space);
 		goto err;
 	}
 
-	if (len > 0)
-		evbuffer_write(buf, up->file->fd);
+	evbuffer_write(buf, up->file->fd);
+
+	return;
 
 err:
 	up->file->ok = false;
@@ -102,7 +115,7 @@ err:
 }
 
 int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
-			 pv_ctrl_upload_complete_func complete_cb)
+			 pv_ctrl_upload_fn complete_cb)
 {
 	struct ctrl_upload *up = calloc(1, sizeof(struct ctrl_upload));
 	if (!up)
@@ -116,11 +129,11 @@ int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
 	if (complete_cb)
 		up->complete_cb = complete_cb;
 
-	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
-			ctrl_upload_read_cb, up);
+	up->read = evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+				   ctrl_upload_read_cb, up);
 
-	evbuffer_add_cb(evhttp_request_get_output_buffer(req),
-			ctrl_upload_complete_cb_caller, up);
+	up->complete = evbuffer_add_cb(evhttp_request_get_output_buffer(req),
+				       ctrl_upload_complete_cb_caller, up);
 
 	return 0;
 
