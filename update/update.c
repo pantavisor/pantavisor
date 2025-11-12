@@ -339,6 +339,7 @@ void pv_update_get_unrecorded_objects(char ***objects)
 	if (pv_state_are_all_objects_recorded(s)) {
 		pv_log(WARN,
 		       "trying to get unrecorded objects, but they are all already recorded");
+		*objects = calloc(sizeof(char *), 1);
 		_finish_object_metadata_setting();
 		goto out;
 	}
