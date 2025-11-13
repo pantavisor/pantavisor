@@ -47,7 +47,7 @@ static const char *ctrl_usrmeta_get_key(struct evhttp_request *req)
 
 static void ctrl_usrmeta_list(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	char *usrmeta = pv_metadata_get_user_meta_string();
@@ -65,9 +65,12 @@ out:
 		free(usrmeta);
 }
 
-static void ctrl_usrmeta_set_key(struct evbuffer *buf,
-				 const struct evbuffer_cb_info *info, void *ctx)
+static void ctrl_usrmeta_set_cb(struct evbuffer *buf,
+				const struct evbuffer_cb_info *info, void *ctx)
 {
+	(void)buf;
+	(void)info;
+
 	struct evhttp_request *req = ctx;
 
 	ssize_t len = 0;
@@ -88,23 +91,24 @@ static void ctrl_usrmeta_set_key(struct evbuffer *buf,
 out:
 	if (value)
 		free(value);
-
 }
 
 static void ctrl_usrmeta_set(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx)) {
-		pv_ctrl_utils_drain_req(req);
+	char err[PV_CTRL_MAX_ERR] = { 0 };
+	int code = pv_ctrl_utils_is_req_ok(req, ctx, err) != 0;
+	if (code != 0) {
+		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
 		return;
 	}
 
 	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
-			ctrl_usrmeta_set_key, req);
+			ctrl_usrmeta_set_cb, req);
 }
 
 static void ctrl_usrmeta_delete(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	const char *key = ctrl_usrmeta_get_key(req);

@@ -55,7 +55,7 @@ static char *ctrl_drivers_get_name(struct evhttp_request *req)
 
 static void ctrl_drivers_list(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	struct pv_ctrl_caller caller = { 0 };
@@ -80,7 +80,7 @@ static void ctrl_drivers_list(struct evhttp_request *req, void *ctx)
 
 static void ctrl_drivers_load(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	struct pv_ctrl_caller caller = { 0 };
@@ -114,7 +114,7 @@ out:
 
 static void ctrl_drivers_unload(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	struct pv_ctrl_caller caller = { 0 };
@@ -141,7 +141,7 @@ static void ctrl_drivers_unload(struct evhttp_request *req, void *ctx)
 
 static void ctrl_drivers_load_bulk(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	struct pv_ctrl_caller caller = { 0 };
@@ -164,7 +164,7 @@ static void ctrl_drivers_load_bulk(struct evhttp_request *req, void *ctx)
 
 static void ctrl_drivers_unload_bulk(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	struct pv_ctrl_caller caller = { 0 };

@@ -48,9 +48,6 @@ static struct pv_ctrl_signal signal_parse(const char *buf)
 {
 	int tokc;
 	jsmntok_t *tokv;
-
-	pv_log(DEBUG, "parsing: %s", buf);
-
 	jsmnutil_parse_json(buf, &tokv, &tokc);
 
 	struct pv_ctrl_signal sig = { 0 };
@@ -71,6 +68,9 @@ static struct pv_ctrl_signal signal_parse(const char *buf)
 
 static void signal_process(struct evhttp_request *req, void *ctx)
 {
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
+
 	struct pv_ctrl_signal sig = { 0 };
 	struct pantavisor *pv = pv_get_instance();
 

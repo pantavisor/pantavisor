@@ -45,7 +45,7 @@
 
 static void ctrl_steps_list(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	char *steps = pv_storage_get_revisions_string();
@@ -69,8 +69,6 @@ static char *ctrl_steps_rev_name(struct evhttp_request *req)
 
 	if (size < 2) {
 		pv_log(DEBUG, "HTTP request has bad step name: %s", uri);
-		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
-					 "Request has bad step name");
 		return NULL;
 	}
 
@@ -91,7 +89,7 @@ static char *ctrl_steps_rev_name(struct evhttp_request *req)
 
 static void ctrl_steps_send(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	char *name = ctrl_steps_rev_name(req);
@@ -145,22 +143,24 @@ static int ctrl_steps_upload_complete(struct pv_ctrl_file *file)
 
 static void ctrl_steps_recv(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx)) {
-		pv_ctrl_utils_drain_req(req);
+	char err[PV_CTRL_MAX_ERR] = { 0 };
+	int code = pv_ctrl_utils_is_req_ok(req, ctx, err);
+	if (code != 0) {
+		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
 		return;
 	}
 
 	char *name = ctrl_steps_rev_name(req);
 	if (!name) {
-		pv_ctrl_utils_drain_req(req);
+		pv_ctrl_utils_drain_on_arrive_with_err(
+			req, HTTP_BADREQUEST, "Request has bad step name");
 		return;
 	}
 
 	if (!pv_storage_is_revision_local(name)) {
-		pv_ctrl_utils_drain_req(req);
 		pv_log(ERROR, "wrong local step name %s", name);
-		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
-					 "Step name has bad name");
+		pv_ctrl_utils_drain_on_arrive_with_err(
+			req, HTTP_BADREQUEST, "Request has bas step name");
 		goto out;
 	}
 
@@ -176,7 +176,7 @@ out:
 
 static void ctrl_steps_progress(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	char *name = ctrl_steps_rev_name(req);
@@ -198,11 +198,13 @@ out:
 		free(name);
 }
 
-static void ctrl_steps_commit(struct evhttp_request *req, void *ctx)
+static void ctrl_step_commit_cb(struct evbuffer *buf,
+				const struct evbuffer_cb_info *info, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
-		return;
+	(void)buf;
+	(void)info;
 
+	struct evhttp_request *req = ctx;
 	char *name = ctrl_steps_rev_name(req);
 
 	char path[PATH_MAX] = { 0 };
@@ -216,6 +218,8 @@ static void ctrl_steps_commit(struct evhttp_request *req, void *ctx)
 	ssize_t len = 0;
 	char *msg =
 		pv_ctrl_utils_get_data(req, CTRL_STEPS_COMMIT_MSG_MAX, &len);
+
+	pv_log(DEBUG, "new commit message arrived (%zd): %s", len, msg);
 
 	if (!msg) {
 		pv_log(WARN, "no commit message provided");
@@ -245,6 +249,19 @@ out:
 		free(msg);
 	if (name)
 		free(name);
+}
+
+static void ctrl_steps_commit(struct evhttp_request *req, void *ctx)
+{
+	char err[PV_CTRL_MAX_ERR] = { 0 };
+	int code = pv_ctrl_utils_is_req_ok(req, ctx, err) != 0;
+	if (code != 0) {
+		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
+		return;
+	}
+
+	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+			ctrl_step_commit_cb, req);
 }
 
 int pv_ctrl_endpoints_steps_init()
