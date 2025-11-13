@@ -105,6 +105,8 @@ static void ctrl_upload_read_cb(struct evbuffer *buf,
 		goto err;
 	}
 
+	pv_log(DEBUG, "incoming data: %zd bytes", len);
+
 	evbuffer_write(buf, up->file->fd);
 
 	return;

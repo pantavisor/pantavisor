@@ -36,6 +36,7 @@ enum pv_ctrl_http_code {
 };
 
 #define PV_CTRL_MAX_SPLIT (10)
+#define PV_CTRL_MAX_ERR (128)
 
 struct evhttp_request;
 struct pv_ctrl_cb;
@@ -51,10 +52,13 @@ void pv_ctrl_utils_send_ok(struct evhttp_request *req);
 int pv_ctrl_utils_split_path(const char *uri,
 			     char parts[PV_CTRL_MAX_SPLIT][NAME_MAX]);
 
-bool pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb);
+int pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb, char *err);
 char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 			     ssize_t *len);
 
 void pv_ctrl_utils_drain_req(struct evhttp_request *req);
+void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req);
+void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
+					     int code, const char *err_str);
 
 #endif
