@@ -48,7 +48,7 @@
 
 static void ctrl_object_list(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	char *objs = pv_objects_get_list_string();
@@ -70,6 +70,7 @@ static int ctrl_object_upload_complete_cb(struct pv_ctrl_file *file)
 	char bname[NAME_MAX] = { 0 };
 	pv_fs_basename(file->path, bname);
 
+	pv_log(DEBUG, "checking object integrity");
 	if (pv_storage_validate_file_checksum(file->path, bname)) {
 		pv_log(WARN, "file upload with errors, checksum error");
 		pv_ctrl_utils_send_error(file->req, HTTP_INTERNAL,
@@ -78,27 +79,21 @@ static int ctrl_object_upload_complete_cb(struct pv_ctrl_file *file)
 		pv_fs_path_remove(file->path, false);
 		return -1;
 	}
+	pv_log(DEBUG, "object %s stored", file->path);
 
 out:
 	pv_ctrl_utils_send_ok(file->req);
 	return 0;
 }
 
-static void ctrl_object_discard_request(struct evbuffer *buf,
-					const struct evbuffer_cb_info *info,
-					void *ctx)
-{
-	(void)info;
-	size_t len = evbuffer_get_length(buf);
-	pv_log(DEBUG, "discarding %zd bytes");
-	evbuffer_drain(buf, len);
-	pv_ctrl_utils_send_ok(ctx);
-}
-
 static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	char err[PV_CTRL_MAX_ERR] = { 0 };
+	int code = pv_ctrl_utils_is_req_ok(req, ctx, err);
+	if (code != 0) {
+		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
 		return;
+	}
 
 	const char *uri = evhttp_request_get_uri(req);
 
@@ -120,8 +115,7 @@ static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
 		pv_log(WARN,
 		       "object %s already exists and is valid; discarding new object upload",
 		       fname);
-		evbuffer_add_cb(evhttp_request_get_input_buffer(req),
-				ctrl_object_discard_request, req);
+		pv_ctrl_utils_drain_on_arrive_with_ok(req);
 		return;
 	}
 
@@ -132,8 +126,10 @@ static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
 
 static void ctrl_objects_send(struct evhttp_request *req, void *ctx)
 {
-	const char *uri = evhttp_request_get_uri(req);
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
 
+	const char *uri = evhttp_request_get_uri(req);
 	char parts[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	ssize_t size = pv_ctrl_utils_split_path(uri, parts);
 

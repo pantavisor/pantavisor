@@ -43,6 +43,12 @@ struct pv_ctrl_http_code_value {
 	const char *reason;
 };
 
+struct ctrl_utils_drain_data {
+	struct evhttp_request *req;
+	int code;
+	const char *msg;
+};
+
 struct pv_ctrl_http_code_value http_codes[] = {
 	{ 507, "Insufficient Storage" },
 	{ 422, "Unprocessable Content" },
@@ -137,32 +143,45 @@ int pv_ctrl_utils_split_path(const char *uri,
 	return parts_count;
 }
 
-bool pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb)
+int pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb,
+			    char *err)
 {
 	struct pv_ctrl_caller caller = { 0 };
 	if (pv_ctrl_caller_init(&caller, req) != 0) {
 		pv_log(WARN, "couldn't get caller info");
-		pv_ctrl_utils_send_error(req, HTTP_INTERNAL, "Internal error");
-
-		return false;
+		if (!err)
+			pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+						 "Internal Error");
+		else
+			memccpy(err, "Internal Error", '\0', PV_CTRL_MAX_ERR);
+		return HTTP_INTERNAL;
 	}
 
 	if (!(caller.method & cb->methods)) {
 		pv_log(WARN, "HTTP method not supported for this endpoint");
-		pv_ctrl_utils_send_error(
-			req, HTTP_BADREQUEST,
-			"Method not supported for this endpoint");
-
-		return false;
+		if (!err)
+			pv_ctrl_utils_send_error(
+				req, HTTP_BADREQUEST,
+				"Method not supported for this endpoint");
+		else
+			memccpy(err, "Method not supported for this endpoint",
+				'\0', PV_CTRL_MAX_ERR);
+		return HTTP_BADREQUEST;
 	}
 
 	if (cb->need_mgmt && !caller.is_privileged) {
 		pv_log(WARN, "Request not sent from mgmt platform");
-		pv_ctrl_utils_send_error(req, HTTP_FORBIDDEN,
-					 "Request not sent from mgmt platform");
-		return false;
+
+		if (!err)
+			pv_ctrl_utils_send_error(
+				req, HTTP_FORBIDDEN,
+				"Request not sent from a mgmt platform");
+		else
+			memccpy(err, "Request not sent from a mgmt platform",
+				'\0', PV_CTRL_MAX_ERR);
+		return HTTP_FORBIDDEN;
 	}
-	return true;
+	return 0;
 }
 
 char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
@@ -206,8 +225,67 @@ char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 	return data;
 }
 
+static void ctrl_utils_drain_buf(struct evbuffer *buf)
+{
+	size_t len = evbuffer_get_length(buf);
+	pv_log(DEBUG, "discarding %zd bytes");
+	evbuffer_drain(buf, len);
+}
+
 void pv_ctrl_utils_drain_req(struct evhttp_request *req)
 {
-	struct evbuffer *buf = evhttp_request_get_input_buffer(req);
-	evbuffer_drain(buf, evbuffer_get_length(buf));
+	ctrl_utils_drain_buf(evhttp_request_get_input_buffer(req));
+}
+
+static void ctrl_utils_drain_ok_callback(struct evbuffer *buf,
+					 const struct evbuffer_cb_info *info,
+					 void *ctx)
+{
+	(void)info;
+	ctrl_utils_drain_buf(buf);
+
+	pv_ctrl_utils_send_ok(ctx);
+}
+
+static void ctrl_utils_drain_error_callback(struct evbuffer *buf,
+					    const struct evbuffer_cb_info *info,
+					    void *ctx)
+{
+	(void)info;
+	ctrl_utils_drain_buf(buf);
+
+	if (!ctx)
+		return;
+
+	struct ctrl_utils_drain_data *data = ctx;
+	pv_ctrl_utils_send_error(data->req, data->code, data->msg);
+}
+
+void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req)
+{
+	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+			ctrl_utils_drain_ok_callback, req);
+}
+
+void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
+					    int code, const char *err_str)
+{
+	struct ctrl_utils_drain_data *data =
+		calloc(1, sizeof(struct ctrl_utils_drain_data));
+	if (!data) {
+		pv_log(DEBUG,
+		       "couldn't allocate message data. Request will be "
+		       "drain but a 'broken pipe' could happen on the client side");
+
+		evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+				ctrl_utils_drain_error_callback, data);
+		return;
+	}
+
+	data->code = code;
+	data->msg = err_str;
+	data->req = req;
+
+	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+			ctrl_utils_drain_error_callback, data);
 }
