@@ -89,24 +89,8 @@ static bool ctrl_uri_equals(const char *uri1, const char *uri2)
 		    strcmp(split2[i], "{}") != 0)
 			return false;
 	}
+
 	return true;
-}
-
-static void crtl_add_request(struct evhttp_request *req)
-{
-	struct ctrl_run_req *runq = calloc(1, sizeof(struct ctrl_run_req));
-	if (!runq) {
-		pv_log(DEBUG, "couldn't add request to the running list");
-		return;
-	}
-
-
-	runq->req = req;
-	dl_list_init(&runq->lst);
-
-
-	dl_list_add(&pvctrl.request, &runq->lst);
-
 }
 
 static bool ctrl_is_running_req(struct evhttp_request *req)
@@ -136,12 +120,35 @@ static void ctrl_remove_req(struct evhttp_request *req)
 	}
 }
 
+static void ctrl_auto_remove_req(struct evhttp_request *req, void *ctx)
+{
+	(void)ctx;
+	ctrl_remove_req(req);
+}
+
+static void crtl_add_request(struct evhttp_request *req)
+{
+	struct ctrl_run_req *runq = calloc(1, sizeof(struct ctrl_run_req));
+	if (!runq) {
+		pv_log(DEBUG, "couldn't add request to the running list");
+		return;
+	}
+
+	evhttp_request_set_on_complete_cb(req, ctrl_auto_remove_req, NULL);
+	runq->req = req;
+
+	dl_list_init(&runq->lst);
+	dl_list_add(&pvctrl.request, &runq->lst);
+}
+
 static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 {
 	if (strcmp(evhttp_request_get_host(req), "localhost") != 0)
 		return -1;
 
 	const char *uri = evhttp_request_get_uri(req);
+	pv_log(DEBUG, "New HTTP request recived: %s", uri);
+
 	char inc_split[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	int inc_sz = pv_ctrl_utils_split_path(uri, inc_split);
 
@@ -250,15 +257,13 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 	(void)ctx;
 
 	if (ctrl_is_running_req(req)) {
-		ctrl_remove_req(req);
 		evbuffer_add_printf(evhttp_request_get_output_buffer(req),
 				    "done");
 		return;
 	}
 
 	const char *uri = evhttp_request_get_uri(req);
-
-	pv_log(WARN, "HTTP request received has unknown endpoint: %s", uri);
+	pv_log(WARN, "HTTP request received to an unknown endpoint: %s", uri);
 
 	char msg[PATH_MAX + 30] = { 0 };
 	snprintf(msg, PATH_MAX + 30, "%s: %s", "unknown endpoint", uri);
