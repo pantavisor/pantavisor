@@ -34,7 +34,7 @@
 
 static void ctrl_buildinfo_send(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	struct evbuffer *buf = evhttp_request_get_output_buffer(req);

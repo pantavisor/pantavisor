@@ -47,7 +47,7 @@ static const char *ctrl_devmeta_get_key(struct evhttp_request *req)
 
 static void ctrl_devmeta_list(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	char *devmeta = pv_metadata_get_device_meta_string();
@@ -92,8 +92,10 @@ out:
 
 static void ctrl_devmeta_set(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx)) {
-		pv_ctrl_utils_drain_req(req);
+	char err[PV_CTRL_MAX_ERR] = { 0  };
+	int code = pv_ctrl_utils_is_req_ok(req, ctx, err);
+	if (code != 0) {
+		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
 		return;
 	}
 
@@ -103,7 +105,7 @@ static void ctrl_devmeta_set(struct evhttp_request *req, void *ctx)
 
 static void ctrl_devmeta_delete(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	const char *key = ctrl_devmeta_get_key(req);

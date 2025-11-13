@@ -34,7 +34,7 @@
 
 static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx)) {
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0) {
 		pv_ctrl_utils_drain_req(req);
 		return;
 	}
@@ -46,6 +46,8 @@ static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 						 "No command found");
 		return;
 	}
+
+	pv_log(DEBUG, "new command arrive: %s", data);
 
 	struct pv_ctrl_cmd *cmd = pv_ctrl_cmd_parse(data);
 	if (!cmd) {

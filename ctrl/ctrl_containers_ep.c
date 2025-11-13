@@ -37,7 +37,7 @@
 
 static void ctrl_containers_list(struct evhttp_request *req, void *ctx)
 {
-	if (!pv_ctrl_utils_is_req_ok(req, ctx))
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
 		return;
 
 	struct pantavisor *pv = pv_get_instance();
