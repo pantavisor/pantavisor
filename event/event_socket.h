@@ -32,7 +32,8 @@ struct pv_event_socket {
 };
 
 void pv_event_socket_listen(struct pv_event_socket *listener,
-			    evutil_socket_t fd, event_callback_fn cb);
+			    evutil_socket_t fd, event_callback_fn cb,
+			    void *arg);
 void pv_event_socket_ignore(struct pv_event_socket *listener);
 
 #endif

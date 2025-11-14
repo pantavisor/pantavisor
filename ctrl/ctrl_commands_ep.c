@@ -20,47 +20,56 @@
  * SOFTWARE.
  */
 
-#include "event_socket.h"
+#include "ctrl_endpoints.h"
+#include "ctrl.h"
+#include "ctrl_cmd.h"
+#include "ctrl_caller.h"
+#include "ctrl_util.h"
 
-#include "event.h"
+#include <event2/http.h>
 
-#define MODULE_NAME "event_socket"
-#define pv_log(level, msg, ...)                                                \
-	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
-	     ##__VA_ARGS__)
+#define MODULE_NAME "commands-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-void pv_event_socket_listen(struct pv_event_socket *listener,
-			    evutil_socket_t fd, event_callback_fn cb, void *arg)
+static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 {
-	if (!listener || !pv_event_get_base())
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0) {
+		pv_ctrl_utils_drain_req(req);
 		return;
+	}
 
-	if (listener->ev)
+	char *data = pv_ctrl_utils_get_data(req, PV_CTRL_CMD_MAX_SIZE, NULL);
+	if (!data) {
+		pv_log(WARN, "request without command")
+			pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+						 "No command found");
 		return;
+	}
 
-	listener->ev = event_new(pv_event_get_base(), fd, EV_READ | EV_PERSIST,
-				 cb, arg);
+	pv_log(DEBUG, "new command arrive: %s", data);
 
-	if (!listener->ev)
+	struct pv_ctrl_cmd *cmd = pv_ctrl_cmd_parse(data);
+	if (!cmd) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Command has bad format");
 		return;
+	}
 
-	event_add(listener->ev, NULL);
-	listener->fd = fd;
+	char *err = NULL;
+	if (pv_ctrl_cmd_add(cmd, err) != 0) {
 
-	pv_log(DEBUG, "add event: type='listener' cb=%p fd=%d", (void *)cb, fd);
+		if (err)
+			pv_ctrl_utils_send_error(req, PV_HTTP_CONFLICT, err);
+		return;
+	}
+
+	pv_ctrl_utils_send_ok(req);
 }
 
-void pv_event_socket_ignore(struct pv_event_socket *listener)
+int pv_ctrl_endpoints_commands_init()
 {
-	if (!listener)
-		return;
-
-	if (!listener->ev)
-		return;
-
-	pv_log(DEBUG, "stop listening event to socket fd %d", listener->fd);
-
-	event_free(listener->ev);
-	listener->ev = NULL;
+	pv_ctrl_add_endpoint("/commands", EVHTTP_REQ_POST, true,
+			     ctrl_command_run);
+	return 0;
 }

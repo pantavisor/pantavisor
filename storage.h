@@ -23,12 +23,15 @@
 #define PV_STORAGE_H
 
 #include "utils/list.h"
+#include "state.h"
 
 #include <stdbool.h>
 #include <sys/types.h>
 
 #define PREFIX_LOCAL_REV "locals/"
 #define SIZE_LOCAL_REV 64
+
+struct pv_state;
 
 struct pv_path {
 	char *path;
