@@ -666,10 +666,13 @@ int pv_state_run(struct pv_state *s)
 		} else if (pv_platform_is_started(p) ||
 			   pv_platform_is_ready(p)) {
 			if (!pv_platform_check_running(p)) {
-				pv_log(ERROR, "platform %s suddenly stopped",
+				pv_log(ERROR, "platform '%s' suddenly stopped",
 				       p->name);
 				ret = -1;
 			}
+		} else if (pv_platform_is_stopped(p)) {
+			pv_log(ERROR, "platform '%s' is not running", p->name);
+			ret = -1;
 		}
 
 		if (ret)

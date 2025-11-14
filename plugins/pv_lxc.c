@@ -52,7 +52,9 @@
 #include "utils/tsh.h"
 
 #define MODULE_NAME "pv_lxc"
-#define pv_log(level, msg, ...) __vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#define pv_log(level, msg, ...)                                                \
+	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
+	     ##__VA_ARGS__)
 #include "log.h"
 
 struct pv_lxc_conf {
@@ -258,7 +260,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		       "failed to setup configoverlay in lxc.rootfs.path %s + %s",
 		       path, seed);
 	} else if (!ret) {
-		pv_log(WARN, "setup config overlay in lxc.rootfs.path %s + %s",
+		pv_log(DEBUG, "setup config overlay in lxc.rootfs.path %s + %s",
 		       path, seed);
 		c->set_config_item(c, "lxc.rootfs.path", path);
 	} else {
@@ -489,14 +491,14 @@ static void pv_setup_default_log(struct pv_platform *p, struct lxc_container *c,
 	}
 }
 
-void *pv_start_container(struct pv_platform *p, const char *rev,
-			 char *conf_file, int logfd, void *data)
+int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
+		       int logfd, int pipefd)
 {
 	int err;
-	struct lxc_container *c;
+	struct lxc_container *c = NULL;
 	char *dname;
 	char path[PATH_MAX];
-	int pipefd[2];
+	pid_t init_pid = -1;
 	pid_t child_pid = -1;
 	sigset_t oldmask;
 	// Go to LXC config dir for platform
@@ -509,19 +511,10 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 	pv_log(DEBUG, "starting LXC container '%s'", p->name);
 
-	c = lxc_container_new(p->name, path);
-	if (!c) {
-		pv_log(DEBUG, "starting LXC container failed '%s'", p->name);
-		goto out_failure;
+	if (pipefd <= 0) {
+		pv_log(WARN, "could not get pipefd from container data");
+		return -1;
 	}
-	c->clear_config(c);
-	/*
-	 * For returning back the
-	 * container_pid to pv parent
-	 * process.
-	 */
-	if (pipe(pipefd))
-		goto out_failure;
 
 	if (pvsignals_block_chld(&oldmask)) {
 		pv_log(ERROR,
@@ -533,11 +526,9 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	child_pid = fork();
 
 	if (child_pid < 0) {
-		close(pipefd[0]);
-		close(pipefd[1]);
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
-			       "Unable to reset sigmask of pantavisor fork in failed fork: %s",
+			       "unable to reset sigmask of pantavisor fork in failed fork: %s",
 			       strerror(errno));
 		}
 		goto out_failure;
@@ -546,36 +537,18 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 	else if (child_pid) { /*Parent*/
 		if (pvsignals_setmask(&oldmask)) {
 			pv_log(ERROR,
-			       "Unable to reset sigmask of pantavisor fork in parent: %s",
+			       "unable to reset sigmask of pantavisor fork in parent: %s",
 			       strerror(errno));
 			goto out_failure;
 		}
-
-		pid_t container_pid = -1;
-		/*Parent would read*/
-		close(pipefd[1]);
-		while (read(pipefd[0], &container_pid, sizeof(container_pid)) <
-			       0 &&
-		       errno == EINTR)
-			;
-
-		if (container_pid <= 0)
-			goto out_failure;
-
-		*((pid_t *)data) = container_pid;
-		close(pipefd[0]);
 	} else {
 		// child process
 		pv_system_set_process_name("pv-platform-%s", p->name);
 
-		close(pipefd[0]);
-		*((pid_t *)data) = -1;
-
 		signal(SIGCHLD, SIG_DFL);
 		if (pvsignals_setmask(&oldmask)) {
-			*((pid_t *)data) = -2;
 			pv_log(ERROR,
-			       "Unable to reset sigmask of pantavisor fork in child %s",
+			       "unable to reset sigmask of pantavisor fork in child %s",
 			       strerror(errno));
 			goto out_container_init;
 		}
@@ -583,9 +556,12 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		/*
 		 * We need this for getting the revision..
 		 */
-		*((pid_t *)data) = -3;
-		if (!__pv_get_instance)
+		if (!__pv_get_instance) {
+			pv_log(ERROR,
+			       "could not get pv struct for LXC container '%s'",
+			       p->name);
 			goto out_container_init;
+		}
 
 		if (pv_conf.capture) {
 			lxc_log_init(&pv_lxc_log);
@@ -594,25 +570,24 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 		__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
 
 		c = lxc_container_new(p->name, path);
-
-		*((pid_t *)data) = -4;
 		if (!c) {
-			pv_log(ERROR, "failed to create container struct");
-			goto out_container_init;
+			pv_log(ERROR, "starting LXC container '%s' failed",
+			       p->name);
+			_exit(0);
 		}
+
 		c->clear_config(c);
-		/*
-		 * Load config later which allows us to
-		 * override the log file configured by default.
-		 */
-		*((pid_t *)data) = -5;
+
 		if (!c->load_config(c, conf_file)) {
+			pv_log(ERROR,
+			       "load config for LXC container '%s' failed",
+			       p->name);
 			lxc_container_put(c);
-			pv_log(DEBUG, "load config failed %s", c->name);
-			goto out_container_init;
+			_exit(0);
 		}
 
 		pv_setup_lxc_container(c, p, rev);
+
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
@@ -622,72 +597,69 @@ void *pv_start_container(struct pv_platform *p, const char *rev,
 
 		chdir("/");
 		if (err && (c->error_num != 1)) {
-			lxc_container_put(c);
-			c = NULL;
+			pv_log(ERROR, "could not start LXC container '%s'",
+			       p->name);
+			goto out_container_init;
 		}
 
-		*((pid_t *)data) = -6;
-		if (c)
-			*((pid_t *)data) = c->init_pid(c);
+		init_pid = c->init_pid(c);
+		pv_log(DEBUG, "started LXC container '%s' with pid %d", p->name,
+		       init_pid);
 	out_container_init:
-		while (write(pipefd[1], data, sizeof(pid_t)) < 0 &&
+		while (write(pipefd, &init_pid, sizeof(pid_t)) < 0 &&
 		       errno == EINTR)
 			;
+		lxc_container_put(c);
 		_exit(0);
 	}
-	/*
-	 * Parent loads the config after container is setup.
-	 * This is just required to stop container and get
-	 * any config items required in the parent.
-	 */
-	if (!c->load_config(c, conf_file))
-		goto out_failure;
 
-	pv_setup_lxc_container(c, p, rev); /*Do we need this?*/
-
-	if (!pv_conf.capture)
-		goto out_success;
-
-out_success:
 	chdir("/");
-	return (void *)c;
+	return 0;
 out_failure:
 	chdir("/");
-	if (c) {
-		c->shutdown(c, 0);
-		lxc_container_put(c);
-	}
-	return NULL;
+	return -1;
 }
 
 // cannot fail if data is valid
-void *pv_stop_container(struct pv_platform *p, char *conf_file, void *data)
+void pv_stop_container(struct pv_platform *p, char *conf_file)
 {
 	bool s;
-	struct lxc_container *c = (struct lxc_container *)data;
+	char path[PATH_MAX];
+	struct lxc_container *c = NULL;
 
 	pv_log(DEBUG, "stopping LXC container '%s'", p->name);
 
-	if (!data)
-		return NULL;
+	__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
+	c = lxc_container_new(p->name, path);
+	if (!c) {
+		pv_log(ERROR, "failed to take control of LXC container '%s'",
+		       p->name);
+		return;
+	}
 
 	s = c->shutdown(c, 0);
-
-	// unref
 	lxc_container_put(c);
 
-	return NULL;
+	return;
 }
 
-int pv_console_log_getfd(struct pv_platform_log *log, void *data)
+int pv_console_log_getfd(struct pv_platform *p, struct pv_platform_log *log)
 {
-	if (!data)
-		return -1;
-
-	struct lxc_container *c = (struct lxc_container *)data;
-
+	struct lxc_container *c = NULL;
 	int tty = 0;
+	char path[PATH_MAX];
+
+	__pv_paths_lib_lxc_lxcpath(path, PATH_MAX);
+	c = lxc_container_new(p->name, path);
+	if (!c) {
+		pv_log(ERROR, "failed to take control of LXC container '%s'",
+		       p->name);
+		return -1;
+	}
+
 	log->console_tty = c->console_getfd(c, &tty, &log->console_pt);
+	lxc_container_put(c);
+
 	int flags = fcntl(log->console_pt, F_GETFL, 0);
 	fcntl(log->console_pt, F_SETFL, flags | O_NONBLOCK);
 
