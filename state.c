@@ -880,6 +880,8 @@ static bool pv_state_compare_objects(struct pv_state *current,
 			// new objects belonging to platforms in certain groups require reboot
 			if (pv_state_platform_requires_reboot(o->plat))
 				return true;
+			if (pv_state_platform_requires_reboot(curr_o->plat))
+				return true;
 			// lenient stop of platform and continue
 			p = pv_state_fetch_platform(current, o->plat->name);
 			if (!p)
@@ -920,6 +922,8 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 			}
 			// changes in jsons belonging to platforms in certain groups require reboot
 			if (pv_state_platform_requires_reboot(j->plat))
+				return true;
+			if (pv_state_platform_requires_reboot(pend_j->plat))
 				return true;
 			// lenient stop of platform and continue
 			if (pv_platform_is_starting(j->plat) ||
