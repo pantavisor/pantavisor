@@ -33,5 +33,6 @@ int pv_ctrl_endpoints_devmeta_init(void);
 int pv_ctrl_endpoints_buildinfo_init(void);
 int pv_ctrl_endpoints_drivers_init(void);
 int pv_ctrl_endpoints_commands_init(void);
+int pv_ctrl_endpoints_config_init(void);
 
 #endif
