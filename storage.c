@@ -49,7 +49,6 @@
 #include "bootloader.h"
 #include "init.h"
 #include "addons.h"
-#include "state.h"
 #include "jsons.h"
 #include "tsh.h"
 #include "signature.h"
