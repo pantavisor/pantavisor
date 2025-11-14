@@ -283,6 +283,7 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_buildinfo_init();
 	pv_ctrl_endpoints_drivers_init();
 	pv_ctrl_endpoints_commands_init();
+	pv_ctrl_endpoints_config_init();
 }
 
 int pv_ctrl_start()
