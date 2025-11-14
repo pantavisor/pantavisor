@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,56 +19,28 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
 
+#ifndef PV_CTRL_FILE_H
+#define PV_CTRL_FILE_H
+
+#include <linux/limits.h>
 #include <stdbool.h>
 
-#include "config.h"
-#include "cgroup.h"
+struct evhttp_request;
 
-#include "update/update.h"
-
-#include "utils/system.h"
-
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
-
-// pantavisor.h
-
-extern char pv_user_agent[4096];
-
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
-
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_ctrl_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool loading_objects;
-	pv_system_transition_t issued_transition;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
+struct pv_ctrl_file {
+	int fd;
+	char path[PATH_MAX];
+	bool ok;
+	struct evhttp_request *req;
 };
 
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
+enum pv_ctrl_file_type { PV_CTRL_FILE_READ, PV_CTRL_FILE_WRITE };
 
-pv_system_transition_t pv_run_update(void);
+struct pv_ctrl_file *pv_ctrl_file_new(struct evhttp_request *req,
+				      const char *path,
+				      enum pv_ctrl_file_type type);
 
-void pv_issue_nonreboot(void);
-void pv_issue_reboot(void);
-void pv_issue_poweroff(void);
-
-struct pantavisor *pv_get_instance(void);
+void pv_ctrl_file_free(struct pv_ctrl_file *file);
 
 #endif

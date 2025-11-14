@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,56 +19,42 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
 
-#include <stdbool.h>
+#include "ctrl_endpoints.h"
+#include "ctrl.h"
+#include "ctrl_util.h"
+#include "version.h"
 
-#include "config.h"
-#include "cgroup.h"
+#include <event2/http.h>
+#include <event2/buffer.h>
 
-#include "update/update.h"
+#define MODULE_NAME "buildinfo-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
 
-#include "utils/system.h"
+static void ctrl_buildinfo_send(struct evhttp_request *req, void *ctx)
+{
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
 
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
+	struct evbuffer *buf = evhttp_request_get_output_buffer(req);
+	if (!buf) {
+		pv_log(WARN, "couldn't get output buffer");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Error quering build info");
+		return;
+	}
 
-// pantavisor.h
+	evhttp_add_header(evhttp_request_get_output_headers(req),
+			  "content-type", "text/plain");
+	evbuffer_add_printf(buf, "%s", pv_build_manifest);
+	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
+}
 
-extern char pv_user_agent[4096];
+int pv_ctrl_endpoints_buildinfo_init()
+{
+	pv_ctrl_add_endpoint("/buildinfo", EVHTTP_REQ_GET, true,
+			     ctrl_buildinfo_send);
 
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
-
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_ctrl_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool loading_objects;
-	pv_system_transition_t issued_transition;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
-};
-
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
-
-pv_system_transition_t pv_run_update(void);
-
-void pv_issue_nonreboot(void);
-void pv_issue_reboot(void);
-void pv_issue_poweroff(void);
-
-struct pantavisor *pv_get_instance(void);
-
-#endif
+	return 0;
+}

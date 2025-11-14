@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,56 +19,43 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
 
-#include <stdbool.h>
+#include "ctrl_endpoints.h"
+#include "ctrl.h"
+#include "ctrl_callback.h"
+#include "ctrl_util.h"
+#include "state.h"
+#include "pantavisor.h"
 
-#include "config.h"
-#include "cgroup.h"
+#include <event2/http.h>
 
-#include "update/update.h"
+#define MODULE_NAME "groups-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
 
-#include "utils/system.h"
+static void ctrl_groups_list(struct evhttp_request *req, void *ctx)
+{
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
 
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
+	struct pantavisor *pv = pv_get_instance();
+	char *groups = pv_state_get_groups_json(pv->state);
 
-// pantavisor.h
+	if (!groups) {
+		pv_log(WARN, "couldn't get group list");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot get group list");
+		return;
+	}
 
-extern char pv_user_agent[4096];
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, groups);
 
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
+	free(groups);
+}
 
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_ctrl_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool loading_objects;
-	pv_system_transition_t issued_transition;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
-};
+int pv_ctrl_endpoints_groups_init()
+{
+	pv_ctrl_add_endpoint("/groups", EVHTTP_REQ_GET, true, ctrl_groups_list);
 
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
-
-pv_system_transition_t pv_run_update(void);
-
-void pv_issue_nonreboot(void);
-void pv_issue_reboot(void);
-void pv_issue_poweroff(void);
-
-struct pantavisor *pv_get_instance(void);
-
-#endif
+	return 0;
+}
