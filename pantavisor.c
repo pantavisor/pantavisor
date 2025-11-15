@@ -43,7 +43,8 @@
 #include "volumes.h"
 #include "disk/disk.h"
 #include "bootloader.h"
-#include "ctrl.h"
+#include "ctrl/ctrl_cmd.h"
+#include "ctrl/ctrl.h"
 #include "version.h"
 #include "wdt.h"
 #include "network.h"
@@ -510,7 +511,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if we need to run garbage collector
 	pv_storage_gc_run_threshold();
 
-	// this is set in the ctrl_listener event
 	if (pv->cmd)
 		next_state = PV_STATE_COMMAND;
 
@@ -520,7 +520,7 @@ out:
 
 static pv_state_t _pv_command(struct pantavisor *pv)
 {
-	struct pv_cmd *cmd = pv->cmd;
+	struct pv_ctrl_cmd *cmd = pv->cmd;
 	pv_state_t next_state = PV_STATE_WAIT;
 	char *rev;
 
@@ -654,7 +654,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 	}
 out:
 	// free processing command so we can take further ones
-	pv_ctrl_free_cmd(pv->cmd);
+	pv_ctrl_cmd_free(pv->cmd);
 	pv->cmd = NULL;
 	return next_state;
 }
@@ -688,7 +688,7 @@ static void pv_remove(struct pantavisor *pv)
 
 	pv_state_free(pv->state);
 	pv->state = NULL;
-	pv_ctrl_free_cmd(pv->cmd);
+	pv_ctrl_cmd_free(pv->cmd);
 	pv_config_free();
 	pv_trail_remote_remove(pv);
 	pv_metadata_remove();
@@ -731,8 +731,8 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 
 	pv_pantahub_close();
 
-	// close pvctrl
-	pv_ctrl_socket_close(pv->ctrl_fd);
+	// stop pvctrl
+	pv_ctrl_stop();
 
 	pv_debug_stop_ssh();
 	pv_logserver_stop();
@@ -818,7 +818,6 @@ pv_state_func_t *const state_table[MAX_STATES] = {
 };
 
 static pv_state_t state = PV_STATE_INIT;
-static struct pv_event_socket ctrl_listener = { -1, NULL };
 
 static void _next_state(pv_state_t next_state);
 
@@ -862,15 +861,6 @@ static void _next_state(pv_state_t next_state)
 	struct pantavisor *pv = pv_get_instance();
 	if (!pv)
 		return;
-
-	if ((state != PV_STATE_WAIT) && (next_state == PV_STATE_WAIT)) {
-		// in case we are starting WAIT for the first time
-		pv_event_socket_listen(&ctrl_listener, pv->ctrl_fd,
-				       pv_ctrl_socket_read);
-	} else if ((state == PV_STATE_WAIT) && (next_state != PV_STATE_WAIT)) {
-		// leaving PV_STATE_WAIT
-		pv_event_socket_ignore(&ctrl_listener);
-	}
 
 	state = next_state;
 
