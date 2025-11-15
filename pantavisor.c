@@ -511,7 +511,6 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check if we need to run garbage collector
 	pv_storage_gc_run_threshold();
 
-	// this is set in the ctrl_listener event
 	if (pv->cmd)
 		next_state = PV_STATE_COMMAND;
 
@@ -819,7 +818,6 @@ pv_state_func_t *const state_table[MAX_STATES] = {
 };
 
 static pv_state_t state = PV_STATE_INIT;
-static struct pv_event_socket ctrl_listener = { -1, NULL };
 
 static void _next_state(pv_state_t next_state);
 
@@ -863,11 +861,6 @@ static void _next_state(pv_state_t next_state)
 	struct pantavisor *pv = pv_get_instance();
 	if (!pv)
 		return;
-
-	if ((state == PV_STATE_WAIT) && (next_state != PV_STATE_WAIT)) {
-		// leaving PV_STATE_WAIT
-		pv_event_socket_ignore(&ctrl_listener);
-	}
 
 	state = next_state;
 
