@@ -73,7 +73,7 @@ static int ctrl_object_upload_complete_cb(struct pv_ctrl_file *file)
 	pv_log(DEBUG, "checking object integrity");
 	if (pv_storage_validate_file_checksum(file->path, bname)) {
 		pv_log(WARN, "file upload with errors, checksum error");
-		pv_ctrl_utils_send_error(file->req, HTTP_INTERNAL,
+		pv_ctrl_utils_send_error(file->req, PV_HTTP_CONFLICT,
 					 "Checksum error");
 
 		pv_fs_path_remove(file->path, false);
