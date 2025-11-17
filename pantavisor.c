@@ -164,6 +164,8 @@ static pv_state_t _pv_init(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
+	pv_debug_start();
+
 	if (pv_do_execute_init())
 		return PV_STATE_EXIT;
 
@@ -300,8 +302,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	if (pv_config_get_wdt_mode() <= WDT_STARTUP)
 		pv_wdt_stop();
-
-	pv_debug_start();
 
 	next_state = PV_STATE_WAIT;
 out:
