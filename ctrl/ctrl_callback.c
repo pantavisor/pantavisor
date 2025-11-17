@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2025 Pantacor Ltd.
+ * Copyright (c) 2025 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,56 +19,43 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef PV_PANTAVISOR_H
-#define PV_PANTAVISOR_H
 
-#include <stdbool.h>
+#include "ctrl_callback.h"
 
-#include "config.h"
-#include "cgroup.h"
+#include <stdlib.h>
+#include <string.h>
 
-#include "update/update.h"
+struct pv_ctrl_cb *pv_ctrl_cb_new(const char *path, const int methods,
+				  bool mgmt, pv_ctrl_fn fn)
+{
+	struct pv_ctrl_cb *cb = calloc(1, sizeof(struct pv_ctrl_cb));
+	if (!cb)
+		return NULL;
 
-#include "utils/system.h"
+	cb->uri = strdup(path);
+	if (!cb->uri)
+		goto err;
 
-#define RUNLEVEL_DATA 0
-#define RUNLEVEL_ROOT 1
-#define RUNLEVEL_PLATFORM 2
-#define RUNLEVEL_APP 3
+	cb->methods = methods;
+	if (!cb->methods)
+		goto err;
 
-// pantavisor.h
+	cb->fn = fn;
+	cb->need_mgmt = mgmt;
+	dl_list_init(&cb->lst);
 
-extern char pv_user_agent[4096];
+	return cb;
 
-#define PV_USER_AGENT_FMT "Pantavisor/2 (Linux; %s) PV/%s Date/%s"
+err:
+	pv_ctrl_cb_free(cb);
+	return NULL;
+}
 
-struct pantavisor {
-	struct pv_update *update;
-	struct pv_state *state;
-	struct pv_ctrl_cmd *cmd;
-	struct trail_remote *remote;
-	struct pv_metadata *metadata;
-	struct pv_connection *conn;
-	char *cmdline;
-	bool remote_mode;
-	bool online;
-	bool unclaimed;
-	bool loading_objects;
-	pv_system_transition_t issued_transition;
-	cgroup_version_t cgroupv;
-	int ctrl_fd;
-};
-
-void pv_init(void);
-int pv_start(void);
-void pv_stop(void);
-
-pv_system_transition_t pv_run_update(void);
-
-void pv_issue_nonreboot(void);
-void pv_issue_reboot(void);
-void pv_issue_poweroff(void);
-
-struct pantavisor *pv_get_instance(void);
-
-#endif
+void pv_ctrl_cb_free(struct pv_ctrl_cb *cb)
+{
+	if (!cb)
+		return;
+	if (cb->uri)
+		free(cb->uri);
+	free(cb);
+}
