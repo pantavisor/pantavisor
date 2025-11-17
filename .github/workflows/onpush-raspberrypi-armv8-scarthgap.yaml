@@ -1,14 +1,12 @@
-name: 'On push: Raspberry Pi ARMv8'
+name: "PUSH: raspberrypi-armv8-scarthgap"
 
 on:
   push:
     paths:
-      - '**'
-      - '.github/configs/**'
-
+      - "**"
+      - ".github/configs/**"
 
 jobs:
-
   build:
     env:
       configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml
@@ -36,6 +34,6 @@ jobs:
         run: mkdir -p /shared/sstate && chown builder:builder /shared/sstate && mkdir -p /shared/dldir && chown builder:builder /shared/dldir
 
       - name: Build Kas
-        run: su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ env.configs }}  -c 'devtool modify pantavisor &&
-         cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake -c compile pantavisor' "
-
+        run:
+          su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ env.configs }}  -c 'devtool modify pantavisor &&
+          cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake -c compile pantavisor' "
