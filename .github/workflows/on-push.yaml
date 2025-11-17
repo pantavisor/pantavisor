@@ -1,4 +1,4 @@
-name: 'On push: Raspberry Pi ARMv8'
+name: 'On push'
 
 on:
   push:
