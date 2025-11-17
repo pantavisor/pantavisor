@@ -124,6 +124,6 @@ out:
 
 int pv_ctrl_endpoints_signal_init()
 {
-	pv_ctrl_add_endpoint("/signal", EVHTTP_REQ_POST, true, signal_process);
+	pv_ctrl_add_endpoint("/signal", EVHTTP_REQ_POST, false, signal_process);
 	return 0;
 }
