@@ -1,3 +1,4 @@
+
 /*
  * Copyright (c) 2021-2024 Pantacor Ltd.
  *
@@ -62,9 +63,15 @@ static bool shell_session = false;
 static bool shell_timeout_active = false;
 static bool shell_notify_last_message = false;
 
-static struct pv_event_periodic debug_event_timer;
+static struct pv_event_periodic console_checker;
+static struct pv_event_socket console_listener = { -1, NULL };
 
-#define DEBUG_EVENT_INTERVAL 1
+static void pv_debug_is_shell_alive();
+static void _debug_console_check(int con_fd, short events, void *arg);
+static void _debug_console_listener(int con_fd, short events, void *arg);
+static int console_fd = 0;
+
+#define DEBUG_EVENT_INTERVAL 5
 #define TIMEOUT_WARNING_INTERVAL 10
 
 static uint64_t pv_debug_timeout_elapsed_sec()
@@ -88,19 +95,6 @@ static uint64_t pv_debug_timeout_elapsed_sec()
 	return timer.sec;
 }
 
-static void pv_debug_is_shell_alive()
-{
-	if (kill(shell_pid, 0) == 0)
-		return;
-
-	shell_session = false;
-	pv_log(INFO, "shell with pid %d closed", shell_pid);
-	shell_pid = -1;
-	pv_wall("Shell session closed");
-
-	return;
-}
-
 static void pv_debug_shell_new_session(int print_wall)
 {
 	shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
@@ -108,12 +102,15 @@ static void pv_debug_shell_new_session(int print_wall)
 	pv_log(INFO, "shell started with pid %d", shell_pid);
 	if (print_wall)
 		pv_wall_shell_open();
+
+	pv_event_socket_ignore(&console_listener);
+	pv_event_periodic_start(&console_checker, DEBUG_EVENT_INTERVAL,
+				_debug_console_check);
 }
 
-static void pv_debug_run_shell()
+static void _debug_console_listener(int con_fd, short events, void *arg)
 {
 	char c[64] = { 0 };
-	int con_fd;
 
 	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		goto out;
@@ -121,21 +118,10 @@ static void pv_debug_run_shell()
 	if (!pv_config_get_bool(PV_DEBUG_SHELL))
 		goto out;
 
-	// we need to check if the shell was closed by the user
-	pv_debug_is_shell_alive();
-
 	if (shell_session)
 		goto out;
 
-	// proceed to get a new shell session if we get <ENTER> on console
-	con_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-	if (con_fd < 0) {
-		pv_log(WARN, "Unable to open /dev/console");
-		goto out;
-	}
-
 	read(con_fd, &c, sizeof(c));
-	close(con_fd);
 
 	if (c[0] == '\n') {
 		pv_debug_shell_new_session(1);
@@ -145,16 +131,37 @@ out:
 	return;
 }
 
-static void _debug_cb(evutil_socket_t fd, short events, void *arg)
+static void pv_debug_is_shell_alive()
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_debug_cb);
+	int console_fd = 0;
 
-	pv_debug_run_shell();
+	if (kill(shell_pid, 0) == 0)
+		return;
+
+	// shell process is not alive anymore, restart console listener
+	shell_session = false;
+	pv_log(INFO, "shell with pid %d closed", shell_pid);
+	shell_pid = -1;
+	pv_wall("Shell session closed");
+
+	console_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (console_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+	}
+
+	pv_event_periodic_stop(&console_checker);
+	pv_event_socket_listen(&console_listener, console_fd, _debug_console_listener);
 
 	return;
 }
 
-static void pv_debug_stop_shell()
+static void _debug_console_check(int con_fd, short events, void *arg)
+{
+	// we need to check if the shell was closed by the user
+	pv_debug_is_shell_alive();
+}
+
+static void pv_debug_stop_console()
 {
 	sigset_t old_sigset;
 	int status = 0;
@@ -225,9 +232,12 @@ static int pv_debug_check_shell_timeout()
 
 void pv_debug_start()
 {
-	pv_wall_welcome();
-	pv_event_periodic_start(&debug_event_timer, DEBUG_EVENT_INTERVAL,
-				_debug_cb);
+	console_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+	if (console_fd < 0) {
+		pv_log(WARN, "Unable to open /dev/console");
+	}
+
+	pv_event_socket_listen(&console_listener, console_fd, _debug_console_listener);
 }
 
 bool pv_debug_is_shell_open()
@@ -240,11 +250,18 @@ bool pv_debug_is_shell_open()
 	return pv_debug_check_shell_timeout();
 }
 
+void pv_debug_stop_shell()
+{
+	close(console_fd);
+	pv_event_socket_ignore(&console_listener);
+	pv_event_periodic_stop(&console_checker);
+	pv_debug_stop_console();
+}
+
 void pv_debug_run_shell_early()
 {
 	char c[64] = { 0 };
 	int t = 5;
-	int con_fd;
 
 	if (!pv_config_get_bool(PV_DEBUG_SHELL))
 		goto out;
@@ -256,29 +273,31 @@ void pv_debug_run_shell_early()
 	if (shell_pid > -1)
 		goto out;
 
-	con_fd = open("/dev/console", O_RDWR);
-	if (con_fd < 0) {
+	console_fd = open("/dev/console", O_RDWR);
+	if (console_fd < 0) {
 		pv_log(WARN, "Unable to open /dev/console");
 		goto out;
 	}
 
 	if (pv_config_get_bool(PV_DEBUG_SHELL_AUTOLOGIN)) {
 		pv_debug_shell_new_session(0);
+		close(console_fd);
 		goto out;
 	}
 
-	dprintf(con_fd, "Press [ENTER] for debug ash shell... ");
-	fcntl(con_fd, F_SETFL, fcntl(con_fd, F_GETFL) | O_NONBLOCK);
-	while (t && (read(con_fd, &c, sizeof(c)) < 0)) {
-		dprintf(con_fd, "%d ", t);
+	dprintf(console_fd, "Press [ENTER] for debug ash shell... ");
+	fcntl(console_fd, F_SETFL, fcntl(console_fd, F_GETFL) | O_NONBLOCK);
+	while (t && (read(console_fd, &c, sizeof(c)) < 0)) {
+		dprintf(console_fd, "%d ", t);
 		fflush(NULL);
 		sleep(1);
 		t--;
 	}
-	dprintf(con_fd, "\n");
+	dprintf(console_fd, "\n");
 
 	if (c[0] == '\n') {
 		pv_debug_shell_new_session(0);
+		close(console_fd);
 	}
 out:
 	return;
