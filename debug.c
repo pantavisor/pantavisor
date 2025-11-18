@@ -74,6 +74,10 @@ static int console_fd = 0;
 #define DEBUG_EVENT_INTERVAL 5
 #define TIMEOUT_WARNING_INTERVAL 10
 
+static const char *REBOOT_DEFERRAL_MESSAGE =
+	"System will reboot in 10 seconds, to defer reboot:\n"
+	"run 'pventer -c <container-name> pvcontrol cmd defer-reboot [new timeout]'";
+
 static uint64_t pv_debug_timeout_elapsed_sec()
 {
 	static uint32_t seconds_elapsed = 0;
@@ -150,7 +154,8 @@ static void pv_debug_is_shell_alive()
 	}
 
 	pv_event_periodic_stop(&console_checker);
-	pv_event_socket_listen(&console_listener, console_fd, _debug_console_listener);
+	pv_event_socket_listen(&console_listener, console_fd,
+			       _debug_console_listener);
 
 	return;
 }
@@ -201,18 +206,14 @@ static int pv_debug_check_shell_timeout()
 		pv_log(INFO, "shell timeout started with %d secs",
 		       debug_timeout);
 
-		pv_wall("System will reboot in %d seconds, to defer reboot:\n"
-			"run 'pventer -c <container-name> pvcontrol defer-reboot [new timeout]'\n"
-			"If you exit the shell, the system will reboot immediately.",
-			debug_timeout);
+		pv_wall(REBOOT_DEFERRAL_MESSAGE, debug_timeout);
 
 		return 1;
 	}
 
 	// last warning message
 	if (pv_debug_timeout_elapsed_sec() < 10 && !shell_notify_last_message) {
-		pv_wall("System will reboot in 10 seconds, to defer reboot:\n"
-			"run 'pventer -c <container-name> pvcontrol defer-reboot [new timeout]'");
+		pv_wall(REBOOT_DEFERRAL_MESSAGE);
 		shell_notify_last_message = true;
 		return 1;
 	}
@@ -237,7 +238,8 @@ void pv_debug_start()
 		pv_log(WARN, "Unable to open /dev/console");
 	}
 
-	pv_event_socket_listen(&console_listener, console_fd, _debug_console_listener);
+	pv_event_socket_listen(&console_listener, console_fd,
+			       _debug_console_listener);
 }
 
 bool pv_debug_is_shell_open()
