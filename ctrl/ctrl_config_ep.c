@@ -46,8 +46,6 @@ static void ctrl_config_send(struct evhttp_request *req, struct pv_ctrl_cb *cb,
 	}
 
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, conf);
-
-	free(conf);
 }
 
 static void ctrl_config_list(struct evhttp_request *req, void *ctx)

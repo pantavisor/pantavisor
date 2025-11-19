@@ -73,8 +73,17 @@ void pv_ctrl_utils_send_ok(struct evhttp_request *req)
 	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
 }
 
+static void ctrl_utils_clean_json_cb(const void *data, size_t datalen,
+				     void *extra)
+{
+	char *json = (char *)data;
+	if (!json)
+		return;
+	free(json);
+}
+
 void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
-			     const char *reason, const char *json, ...)
+			     const char *reason, char *json)
 {
 	struct evbuffer *reply = evbuffer_new();
 	if (!reply) {
@@ -82,10 +91,38 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 		return;
 	}
 
-	va_list lst;
-	va_start(lst, json);
+	if (!json)
+		return;
 
-	evbuffer_add_vprintf(reply, json, lst);
+	int ret;
+	ret = evbuffer_add_reference(reply, json, strlen(json),
+				     ctrl_utils_clean_json_cb, NULL);
+	if (ret) {
+		pv_log(WARN, "could not add reference to evbuffer to evbuffer");
+		free(json);
+	}
+
+	evhttp_add_header(evhttp_request_get_output_headers(req),
+			  "Content-Type", "application/json");
+	evhttp_send_reply(req, code, reason, reply);
+
+	evbuffer_free(reply);
+}
+
+static void ctrl_utils_send_fmt_str(struct evhttp_request *req, int code,
+				    const char *reason, const char *fmt, ...)
+{
+	struct evbuffer *reply = evbuffer_new();
+	if (!reply) {
+		pv_log(DEBUG, "couldn't allocate reply buffer");
+		return;
+	}
+
+	evbuffer_expand(reply, 4096);
+
+	va_list lst;
+	va_start(lst, fmt);
+	evbuffer_add_vprintf(reply, fmt, lst);
 	va_end(lst);
 
 	evhttp_add_header(evhttp_request_get_output_headers(req),
@@ -98,13 +135,13 @@ void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 			      const char *err_str)
 {
 	if (code > 0) {
-		pv_ctrl_utils_send_json(req, code, NULL, PV_CTRL_UTILS_ERR_RSP,
+		ctrl_utils_send_fmt_str(req, code, NULL, PV_CTRL_UTILS_ERR_RSP,
 					err_str);
 		return;
 	}
 
 	struct pv_ctrl_http_code_value v = ctrl_utils_get_http_value(code);
-	pv_ctrl_utils_send_json(req, v.code, v.reason, PV_CTRL_UTILS_ERR_RSP,
+	ctrl_utils_send_fmt_str(req, v.code, v.reason, PV_CTRL_UTILS_ERR_RSP,
 				err_str);
 }
 

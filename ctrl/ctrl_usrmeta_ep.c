@@ -55,14 +55,10 @@ static void ctrl_usrmeta_list(struct evhttp_request *req, void *ctx)
 		pv_log(WARN, "couldn't get user-meta");
 		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
 					 "couldn't get user-meta");
-		goto out;
+		return;
 	}
 
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, usrmeta);
-
-out:
-	if (usrmeta)
-		free(usrmeta);
 }
 
 static void ctrl_usrmeta_set_cb(struct evbuffer *buf,
