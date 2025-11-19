@@ -154,11 +154,8 @@ static void pv_debug_is_shell_alive()
 	}
 
 	pv_event_periodic_stop(&console_checker);
-	pv_event_socket_listen(&console_listener, console_fd, _debug_console_listener);
-=======
 	pv_event_socket_listen(&console_listener, console_fd,
 			       _debug_console_listener, NULL);
->>>>>>> 52b4bed (fix: typo deferrall reboot msg)
 
 	return;
 }
