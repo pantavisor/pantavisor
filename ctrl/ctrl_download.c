@@ -124,10 +124,8 @@ static void crtl_download_set_events(struct pv_ctrl_download *dl)
 	evhttp_send_reply_start(dl->file->req, 200, NULL);
 }
 
-int pv_ctrl_download_start(struct evhttp_request *req,
-						const char *path,
-						ssize_t chunk_size,
-						const char *content_type)
+int pv_ctrl_download_start(struct evhttp_request *req, const char *path,
+			   ssize_t chunk_size, const char *content_type)
 {
 	struct pv_ctrl_download *dl =
 		calloc(1, sizeof(struct pv_ctrl_download));

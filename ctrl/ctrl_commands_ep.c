@@ -58,7 +58,6 @@ static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 
 	char *err = NULL;
 	if (pv_ctrl_cmd_add(cmd, err) != 0) {
-
 		if (err)
 			pv_ctrl_utils_send_error(req, PV_HTTP_CONFLICT, err);
 		return;

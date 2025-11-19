@@ -75,7 +75,6 @@ static void ctrl_drivers_list(struct evhttp_request *req, void *ctx)
 	}
 
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, drivers);
-	free(drivers);
 }
 
 static void ctrl_drivers_load(struct evhttp_request *req, void *ctx)

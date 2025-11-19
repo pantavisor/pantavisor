@@ -55,14 +55,10 @@ static void ctrl_devmeta_list(struct evhttp_request *req, void *ctx)
 		pv_log(WARN, "couldn't get device-meta");
 		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
 					 "couldn't get device-meta");
-		goto out;
+		return;
 	}
 
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, devmeta);
-
-out:
-	if (devmeta)
-		free(devmeta);
 }
 
 static void ctrl_devmeta_set_key(struct evbuffer *buf,
@@ -92,7 +88,7 @@ out:
 
 static void ctrl_devmeta_set(struct evhttp_request *req, void *ctx)
 {
-	char err[PV_CTRL_MAX_ERR] = { 0  };
+	char err[PV_CTRL_MAX_ERR] = { 0 };
 	int code = pv_ctrl_utils_is_req_ok(req, ctx, err);
 	if (code != 0) {
 		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);

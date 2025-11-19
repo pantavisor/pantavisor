@@ -57,8 +57,6 @@ static void ctrl_steps_list(struct evhttp_request *req, void *ctx)
 	}
 
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, steps);
-
-	free(steps);
 }
 
 static char *ctrl_steps_rev_name(struct evhttp_request *req)
@@ -115,9 +113,6 @@ static void ctrl_steps_send(struct evhttp_request *req, void *ctx)
 out:
 	if (name)
 		free(name);
-
-	if (step)
-		free(step);
 }
 
 static int ctrl_steps_upload_complete(struct pv_ctrl_file *file)
