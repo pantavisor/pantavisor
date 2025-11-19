@@ -23,13 +23,13 @@
 #include "ctrl_download.h"
 #include "ctrl_util.h"
 #include "ctrl_file.h"
-#include "utils/fs.h"
 
 #include <event2/event.h>
 #include <event2/http.h>
 #include <event2/buffer.h>
 
 #include <stdlib.h>
+#include <sys/stat.h>
 
 #define MODULE_NAME "ctrl-download"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -38,6 +38,8 @@
 struct pv_ctrl_download {
 	struct pv_ctrl_file *file;
 	ssize_t chunk_size;
+	ssize_t cur;
+	ssize_t total;
 	struct event *timer;
 };
 
@@ -74,36 +76,45 @@ static void ctrl_download_send_cb(evutil_socket_t fd, short events, void *ctx)
 
 	struct pv_ctrl_download *dl = ctx;
 
-	char *buf = calloc(dl->chunk_size, sizeof(char));
+	struct evbuffer_file_segment *seg = evbuffer_file_segment_new(
+		dl->file->fd, dl->cur, dl->chunk_size, 0);
+
+	if (!seg) {
+		pv_log(DEBUG, "couldn't alloc file chunk");
+		return;
+	}
+
+	struct evbuffer *buf = evbuffer_new();
 	if (!buf) {
-		pv_log(DEBUG, "couldn't alloc data");
+		pv_log(DEBUG, "couldn't alloc buffer data");
 		goto out;
 	}
 
-	size_t size = pv_fs_file_read_nointr(dl->file->fd, buf, dl->chunk_size);
-
-	if (size < 0) {
-		pv_log(DEBUG, "couldn't read data");
-		evhttp_send_reply_end(dl->file->req);
-		dl->file->ok = false;
+	if (evbuffer_add_file_segment(buf, seg, 0, -1) != 0) {
+		pv_log(DEBUG, "couldn't add data chunk");
 		goto out;
-	} else if (size == 0) {
+	}
+
+	evhttp_send_reply_chunk(dl->file->req, buf);
+	dl->cur += dl->chunk_size;
+
+	// file completely read
+	if (dl->cur >= dl->total) {
 		evhttp_send_reply_end(dl->file->req);
 		dl->file->ok = true;
 		goto out;
-	} else {
-		struct evbuffer *evbuf = evbuffer_new();
-		evbuffer_add(evbuf, buf, size);
-		evhttp_send_reply_chunk(dl->file->req, evbuf);
-		evbuffer_free(evbuf);
-
-		// new timer for next chunk
-		struct timeval tv = { .tv_sec = 0, .tv_usec = 1 };
-		event_add(dl->timer, &tv);
 	}
+
+	pv_log(DEBUG, "%zd of %zd bytes send", dl->cur, dl->total);
+	// new timer for next chunk
+	struct timeval tv = { .tv_sec = 0, .tv_usec = 1 };
+	event_add(dl->timer, &tv);
+
 out:
+	if (seg)
+		evbuffer_file_segment_free(seg);
 	if (buf)
-		free(buf);
+		evbuffer_free(buf);
 }
 
 static void crtl_download_set_events(struct pv_ctrl_download *dl)
@@ -143,6 +154,13 @@ int pv_ctrl_download_start(struct evhttp_request *req, const char *path,
 	if (!evhttp_find_header(headers, "content-type"))
 		evhttp_add_header(headers, "content-type", content_type);
 
+	struct stat st = { 0 };
+	if (fstat(dl->file->fd, &st) != 0) {
+		pv_log(WARN, "stat failed");
+		goto err;
+	}
+
+	dl->total = st.st_size;
 	dl->chunk_size = chunk_size;
 
 	crtl_download_set_events(dl);
