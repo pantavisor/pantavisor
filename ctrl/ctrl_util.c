@@ -140,7 +140,7 @@ out:
 static void ctrl_utils_send_fmt_str(struct evhttp_request *req, int code,
 				    const char *reason, const char *fmt, ...)
 {
-	struct evbuffer *reply = evbuffer_new();
+	struct evbuffer *reply = evhttp_request_get_output_buffer(req);
 	if (!reply) {
 		pv_log(DEBUG, "couldn't allocate reply buffer");
 		return;
@@ -155,8 +155,8 @@ static void ctrl_utils_send_fmt_str(struct evhttp_request *req, int code,
 
 	evhttp_add_header(evhttp_request_get_output_headers(req),
 			  "Content-Type", "application/json");
-	evhttp_send_reply(req, code, reason, reply);
-	evbuffer_free(reply);
+
+	evhttp_send_reply(req, code, reason, NULL);
 }
 
 void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
