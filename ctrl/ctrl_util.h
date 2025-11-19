@@ -44,6 +44,8 @@ struct pv_ctrl_cb;
 void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 			     const char *reason, char *json);
 
+void pv_ctrl_utils_send_json_file(struct evhttp_request *req, const char *path);
+
 void pv_ctrl_utils_send_error(struct evhttp_request *req, int code,
 			      const char *err_str);
 

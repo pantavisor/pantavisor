@@ -32,8 +32,6 @@
 
 #include <event2/http.h>
 
-#include <errno.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define MODULE_NAME "steps-ep"
@@ -97,22 +95,9 @@ static void ctrl_steps_send(struct evhttp_request *req, void *ctx)
 	char path[PATH_MAX] = { 0 };
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, name, JSON_FNAME);
 
-	errno = 0;
-	char *step = pv_fs_file_read(path, NULL);
+	pv_ctrl_utils_send_json_file(req, path);
 
-	if (!step) {
-		pv_log(DEBUG, "couldn't get json file from %s: %s(%d)", path,
-		       strerror(errno), errno);
-		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
-					 "couldn't get requested step");
-		goto out;
-	}
-
-	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, step);
-
-out:
-	if (name)
-		free(name);
+	free(name);
 }
 
 static int ctrl_steps_upload_complete(struct pv_ctrl_file *file)
@@ -179,18 +164,9 @@ static void ctrl_steps_progress(struct evhttp_request *req, void *ctx)
 	char path[PATH_MAX] = { 0 };
 	pv_paths_storage_trail_pv_file(path, PATH_MAX, name, PROGRESS_FNAME);
 
-	char *prog_json = pv_fs_file_read(path, NULL);
-	if (!prog_json) {
-		pv_log(ERROR, "%s could not be opened for read", path);
-		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
-					 "Resource does not exist");
-		goto out;
-	}
+	pv_ctrl_utils_send_json_file(req, path);
 
-	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, prog_json);
-out:
-	if (name)
-		free(name);
+	free(name);
 }
 
 static void ctrl_step_commit_cb(struct evbuffer *buf,
