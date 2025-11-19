@@ -33,10 +33,15 @@
 #include <event2/bufferevent.h>
 
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 #define MODULE_NAME "ctrl-utils"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
+
+// to improve the evbuffer_add_file() performance
+#define EVBUFFER_FLAG_DRAINS_TO_FD 1
 
 struct pv_ctrl_http_code_value {
 	int code;
@@ -106,6 +111,30 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 			  "Content-Type", "application/json");
 
 	evhttp_send_reply(req, code, reason, NULL);
+}
+
+void pv_ctrl_utils_send_json_file(struct evhttp_request *req, const char *path)
+{
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0) {
+		pv_log(ERROR, "%s could not be opened for read", path);
+		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
+					 "Resource does not exist");
+		goto out;
+	}
+
+	struct evbuffer *buf = evhttp_request_get_output_buffer(req);
+	if (evbuffer_add_file(buf, fd, 0, -1) != 0) {
+		pv_log(ERROR, "%s could not send data", path);
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot send data");
+		goto out;
+	}
+
+	pv_ctrl_utils_send_ok(req);
+out:
+	if (fd > -1)
+		close(fd);
 }
 
 static void ctrl_utils_send_fmt_str(struct evhttp_request *req, int code,
