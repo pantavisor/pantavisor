@@ -85,7 +85,7 @@ static void ctrl_utils_clean_json_cb(const void *data, size_t datalen,
 void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 			     const char *reason, char *json)
 {
-	struct evbuffer *reply = evbuffer_new();
+	struct evbuffer *reply = evhttp_request_get_output_buffer(req);
 	if (!reply) {
 		pv_log(DEBUG, "couldn't allocate reply buffer");
 		return;
@@ -104,9 +104,8 @@ void pv_ctrl_utils_send_json(struct evhttp_request *req, int code,
 
 	evhttp_add_header(evhttp_request_get_output_headers(req),
 			  "Content-Type", "application/json");
-	evhttp_send_reply(req, code, reason, reply);
 
-	evbuffer_free(reply);
+	evhttp_send_reply(req, code, reason, NULL);
 }
 
 static void ctrl_utils_send_fmt_str(struct evhttp_request *req, int code,
