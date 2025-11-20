@@ -36,6 +36,7 @@
 #include "config_parser.h"
 #include "bootloader.h"
 #include "loop.h"
+#include "metadata.h"
 #include "state.h"
 #include "storage.h"
 #include "paths.h"
@@ -473,27 +474,33 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 void pv_config_set_creds_id(char *id)
 {
 	_set_config_by_index_str(PH_CREDS_ID, id, PH_CLIENT);
+	pv_config_save_devmeta();
 }
 void pv_config_set_creds_prn(char *prn)
 {
 	_set_config_by_index_str(PH_CREDS_PRN, prn, PH_CLIENT);
+	pv_config_save_devmeta();
 }
 void pv_config_set_creds_secret(char *secret)
 {
 	_set_config_by_index_str(PH_CREDS_SECRET, secret, PH_CLIENT);
+	pv_config_save_devmeta();
 }
 
 void pv_config_set_debug_shell(bool shell)
 {
 	_set_config_by_index_bool(PV_DEBUG_SHELL, shell, ARGS);
+	pv_config_save_devmeta();
 }
 void pv_config_set_debug_shell_autologin(bool shell)
 {
 	_set_config_by_index_bool(PV_DEBUG_SHELL_AUTOLOGIN, shell, ARGS);
+	pv_config_save_devmeta();
 }
 void pv_config_set_debug_ssh(bool ssh)
 {
 	_set_config_by_index_bool(PV_DEBUG_SSH, ssh, ARGS);
+	pv_config_save_devmeta();
 }
 
 log_server_output_mask_t pv_config_get_log_server_outputs()
@@ -725,6 +732,8 @@ static int _set_config_sysctl_by_key(const char *key, const char *value)
 	close(fd);
 	free(path);
 
+	pv_config_save_devmeta();
+
 	return 1;
 }
 
@@ -880,8 +889,9 @@ static int _set_config_by_key(const char *key, const char *value, void *opaque)
 	level_t *level = (level_t *)opaque;
 
 	if (*level & LEVEL_SYSCTL) {
-		if (_set_config_sysctl_by_key(key, value))
+		if (_set_config_sysctl_by_key(key, value)) {
 			return 0;
+		}
 	}
 
 	struct pv_config_entry *entry;
@@ -910,6 +920,8 @@ static int _set_config_by_key(const char *key, const char *value, void *opaque)
 		pv_log(WARN, "cannot set key '%s' in config", key);
 		return 0;
 	}
+
+	pv_config_save_devmeta();
 
 	return 0;
 }
@@ -1415,6 +1427,48 @@ int pv_config_init(char *path)
 	}
 
 	return 0;
+}
+
+static void _add_config_entry_json_pair(config_index_t ci,
+					struct pv_json_ser *js)
+{
+	if (ci >= PV_MAX)
+		return;
+
+	char value[256];
+
+	pv_json_ser_key(js, entries[ci].key);
+
+	_format_value_str(value, 256, ci);
+	pv_json_ser_string(js, value);
+}
+
+char *_get_json_pairs()
+{
+	struct pv_json_ser js;
+
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_object(&js);
+	{
+		for (config_index_t ci = 0; ci < PV_MAX; ci++) {
+			_add_config_entry_json_pair(ci, &js);
+		}
+
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
+}
+
+void pv_config_save_devmeta()
+{
+	char *json = _get_json_pairs();
+	if (!json)
+		return;
+
+	pv_metadata_add_devmeta("config", json);
+	free(json);
 }
 
 int pv_config_load_creds()
