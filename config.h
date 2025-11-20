@@ -208,6 +208,8 @@ char *pv_config_get_wdt_mode_str(void);
 
 int pv_config_init(char *path);
 
+void pv_config_save_devmeta(void);
+
 int pv_config_load_update(const char *rev, const char *trail_config);
 
 int pv_config_load_creds(void);
@@ -219,8 +221,8 @@ void pv_config_override_value(const char *key, const char *value);
 
 void pv_config_free(void);
 
-char *pv_config_get_alias_json(void);
-char *pv_config_get_json(void);
+char *pv_config_get_legacy_json(void);
+char *pv_config_get_complete_json(void);
 void pv_config_print(void);
 
 #endif

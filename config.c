@@ -36,6 +36,7 @@
 #include "config_parser.h"
 #include "bootloader.h"
 #include "loop.h"
+#include "metadata.h"
 #include "state.h"
 #include "storage.h"
 #include "paths.h"
@@ -382,6 +383,7 @@ static void _set_config_by_index_bool(config_index_t ci, bool value,
 {
 	entries[ci].modified = modified;
 	_set_config_by_entry_bool(&entries[ci], value);
+	pv_config_save_devmeta();
 }
 
 int pv_config_get_int(config_index_t ci)
@@ -418,6 +420,7 @@ static void _set_config_by_index_str(config_index_t ci, const char *value,
 {
 	entries[ci].modified = modified;
 	_set_config_by_entry_str(&entries[ci], value);
+	pv_config_save_devmeta();
 }
 
 bootloader_t pv_config_get_bootloader_type()
@@ -725,6 +728,8 @@ static int _set_config_sysctl_by_key(const char *key, const char *value)
 	close(fd);
 	free(path);
 
+	pv_config_save_devmeta();
+
 	return 1;
 }
 
@@ -910,6 +915,8 @@ static int _set_config_by_key(const char *key, const char *value, void *opaque)
 		pv_log(WARN, "cannot set key '%s' in config", key);
 		return 0;
 	}
+
+	pv_config_save_devmeta();
 
 	return 0;
 }
@@ -1218,7 +1225,7 @@ static void _add_config_entry_alias_json(config_index_t ci,
 	}
 }
 
-char *pv_config_get_alias_json()
+char *pv_config_get_legacy_json()
 {
 	struct pv_json_ser js;
 
@@ -1240,6 +1247,13 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 {
 	if (ci >= PV_MAX)
 		return;
+
+	bool secret = entries[ci].secret;
+
+	if (secret) {
+		snprintf(out, len, "XXXX");
+		return;
+	}
 
 	switch (entries[ci].type) {
 	case BOOL:
@@ -1301,7 +1315,7 @@ static void _add_config_entry_json(config_index_t ci, struct pv_json_ser *js)
 	}
 }
 
-char *pv_config_get_json()
+char *pv_config_get_complete_json()
 {
 	struct pv_json_ser js;
 
@@ -1415,6 +1429,48 @@ int pv_config_init(char *path)
 	}
 
 	return 0;
+}
+
+static void _add_config_entry_json_pair(config_index_t ci,
+					struct pv_json_ser *js)
+{
+	if (ci >= PV_MAX)
+		return;
+
+	char value[256];
+
+	pv_json_ser_key(js, entries[ci].key);
+
+	_format_value_str(value, 256, ci);
+	pv_json_ser_string(js, value);
+}
+
+char *_get_simplified_json()
+{
+	struct pv_json_ser js;
+
+	pv_json_ser_init(&js, 512);
+
+	pv_json_ser_object(&js);
+	{
+		for (config_index_t ci = 0; ci < PV_MAX; ci++) {
+			_add_config_entry_json_pair(ci, &js);
+		}
+
+		pv_json_ser_object_pop(&js);
+	}
+
+	return pv_json_ser_str(&js);
+}
+
+void pv_config_save_devmeta()
+{
+	char *json = _get_simplified_json();
+	if (!json)
+		return;
+
+	pv_metadata_add_devmeta(DEVMETA_KEY_PROC_ENVIRON, json);
+	free(json);
 }
 
 int pv_config_load_creds()
