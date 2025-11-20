@@ -323,7 +323,7 @@ static int get_blkid_ubifs(struct blkid_info *info, const char *key)
 	memcpy(vol, key + dev_sz + 1, strlen(key) - dev_sz);
 
 	char path[PATH_MAX] = { 0 };
-	pv_fs_path_concat(path, 2, "/sys/devices/virtual/ubi", dev);
+	pv_fs_path_concat(path, 2, "/sys/class/ubi", dev);
 
 	int vol_count = get_ubifs_vol_count(path);
 	if (vol_count < 1) {
