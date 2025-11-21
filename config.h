@@ -208,6 +208,8 @@ char *pv_config_get_wdt_mode_str(void);
 
 int pv_config_init(char *path);
 
+void pv_config_save_devmeta(void);
+
 int pv_config_load_update(const char *rev, const char *trail_config);
 
 int pv_config_load_creds(void);
