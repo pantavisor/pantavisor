@@ -116,9 +116,6 @@ static void _debug_console_listener(int con_fd, short events, void *arg)
 {
 	char c[64] = { 0 };
 
-	if (pv_config_get_system_init_mode() == IM_APPENGINE)
-		goto out;
-
 	if (!pv_config_get_bool(PV_DEBUG_SHELL))
 		goto out;
 
@@ -233,6 +230,9 @@ static int pv_debug_check_shell_timeout()
 
 void pv_debug_start()
 {
+	if (!pv_config_get_bool(PV_DEBUG_SHELL))
+		return;
+
 	console_fd = open("/dev/console", O_RDONLY | O_NONBLOCK | O_CLOEXEC);
 	if (console_fd < 0) {
 		pv_log(WARN, "Unable to open /dev/console");
@@ -244,6 +244,9 @@ void pv_debug_start()
 
 bool pv_debug_is_shell_open()
 {
+	if (!pv_config_get_bool(PV_DEBUG_SHELL))
+		return false;
+
 	pv_debug_is_shell_alive();
 
 	if (!shell_session)
@@ -254,6 +257,9 @@ bool pv_debug_is_shell_open()
 
 void pv_debug_stop_shell()
 {
+	if (!pv_config_get_bool(PV_DEBUG_SHELL))
+		return;
+
 	close(console_fd);
 	pv_event_socket_ignore(&console_listener);
 	pv_event_periodic_stop(&console_checker);
@@ -266,10 +272,6 @@ void pv_debug_run_shell_early()
 	int t = 5;
 
 	if (!pv_config_get_bool(PV_DEBUG_SHELL))
-		goto out;
-
-	// check appengine mode and if debug shell config is enabled
-	if (pv_config_get_system_init_mode() == IM_APPENGINE)
 		goto out;
 
 	if (shell_pid > -1)
