@@ -879,7 +879,7 @@ int pv_platform_start(struct pv_platform *p)
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
 
 	// to be able to receive pid from lxc fork
-	if (pipe(p->pipefd)) {
+	if (pipe2(p->pipefd, O_NONBLOCK | O_CLOEXEC)) {
 		pv_log(ERROR, "could not create pipe for platform '%s",
 		       p->name);
 		pv_platform_stop(p);
