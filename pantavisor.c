@@ -830,7 +830,7 @@ static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 
 	pv_wdt_kick();
 
-	pv_log(DEBUG, "run event: cb=%p", (void *)_pv_run_state_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_pv_run_state_cb);
 
 	switch (pv->issued_transition) {
 	case PV_SYSTEM_TRANSITION_NONREBOOT:

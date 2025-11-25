@@ -373,7 +373,7 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
 	char *body = NULL;
 
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_post_auth_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_auth_cb);
 
 	session.open_session_active = 0;
 
@@ -435,7 +435,7 @@ bool pv_pantahub_proto_is_auth()
 
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_usrmeta_cb);
 
 	session.get_usrmeta_active = 0;
 
@@ -464,7 +464,7 @@ static void _recv_get_trails_status_cb(struct evhttp_request *req, void *ctx)
 	struct pv_step step;
 	memset(&step, 0, sizeof(step));
 
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_trails_status_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_trails_status_cb);
 
 	session.get_trails_status_active = 0;
 
@@ -539,7 +539,7 @@ void pv_pantahub_proto_get_usrmeta()
 
 static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_set_devmeta_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_set_devmeta_cb);
 
 	session.set_devmeta_active = 0;
 
@@ -594,7 +594,7 @@ static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
 	char *body = NULL, *state_json = NULL;
 	struct pv_step step;
 	memset(&step, 0, sizeof(step));
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
 
 	session.get_pending_steps_active = 0;
 
@@ -677,7 +677,7 @@ static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
 	struct pv_object_metadata object_metadata;
 	memset(&object_metadata, 0, sizeof(object_metadata));
 
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_metadata_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_metadata_cb);
 
 	_remove_object_transfer(id_ref);
 
@@ -759,7 +759,7 @@ static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
 	int res;
 	const char *id_ref = (char *)ctx;
 
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
 
 	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
 	pv_event_rest_recv_chunk_path(req, path);
@@ -771,7 +771,7 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	int res;
 	const char *id_ref = (char *)ctx;
 
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_get_object_done_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_done_cb);
 
 	_remove_object_transfer(id_ref);
 
@@ -874,7 +874,7 @@ static void _put_progress(const char *rev, const char *progress);
 
 static void _recv_put_progress_cb(struct evhttp_request *req, void *ctx)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_recv_put_progress_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_put_progress_cb);
 
 	session.put_progress_active = false;
 	if (session.next_progress) {

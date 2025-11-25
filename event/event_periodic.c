@@ -61,7 +61,7 @@ void pv_event_periodic_start(struct pv_event_periodic *timer, int next_interval,
 	}
 	timer->interval = next_interval;
 
-	pv_log(DEBUG, "add event: type='periodic' cb=%p interval=%d",
+	pv_log(TRACE, "add event: type='periodic' cb=%p interval=%d",
 	       (void *)cb, next_interval);
 }
 

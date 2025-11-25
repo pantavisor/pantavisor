@@ -48,7 +48,7 @@ void pv_event_socket_listen(struct pv_event_socket *listener,
 	event_add(listener->ev, NULL);
 	listener->fd = fd;
 
-	pv_log(DEBUG, "add event: type='listener' cb=%p fd=%d", (void *)cb, fd);
+	pv_log(TRACE, "add event: type='listener' cb=%p fd=%d", (void *)cb, fd);
 }
 
 void pv_event_socket_ignore(struct pv_event_socket *listener)

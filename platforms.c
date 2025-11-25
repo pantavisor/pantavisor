@@ -794,7 +794,7 @@ static void pv_platform_subscribe_fd(int fd, const char *plat, const char *src)
 
 static void _read_platform_pipefd_cb(int fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_read_platform_pipefd_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_read_platform_pipefd_cb);
 
 	const struct pv_cont_ctrl *ctrl;
 	struct pv_platform *p = (struct pv_platform *)arg;
