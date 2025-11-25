@@ -660,7 +660,7 @@ static void _run_state_init()
 
 static void _login_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_login_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_login_cb);
 
 	pv_pantahub_proto_post_auth();
 }
@@ -676,7 +676,7 @@ static void _run_state_login()
 
 static void _wait_hub_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_wait_hub_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_wait_hub_cb);
 
 	pv_pantahub_proto_get_trails_status();
 }
@@ -701,7 +701,7 @@ static void _run_state_sync()
 
 static void _usrmeta_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_usrmeta_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_usrmeta_cb);
 
 	if (!pv_pantahub_proto_is_online())
 		return;
@@ -711,7 +711,7 @@ static void _usrmeta_cb(evutil_socket_t fd, short event, void *arg)
 
 static void _devmeta_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_devmeta_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_devmeta_cb);
 
 	if (!pv_pantahub_proto_is_online())
 		return;
@@ -738,7 +738,7 @@ static void _run_state_report()
 
 static void _updater_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_updater_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_updater_cb);
 	pv_pantahub_proto_get_pending_steps();
 }
 
@@ -761,7 +761,7 @@ static void _run_state_idle()
 
 static void _prep_download_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_prep_download_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_prep_download_cb);
 
 	if (pv_pantahub_proto_get_objects_metadata()) {
 		_next_state(PH_STATE_IDLE);
@@ -789,7 +789,7 @@ static void _run_state_prep_download()
 
 static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
 {
-	pv_log(DEBUG, "run event: cb=%p", (void *)_download_objects_cb);
+	pv_log(TRACE, "run event: cb=%p", (void *)_download_objects_cb);
 
 	if (pv_pantahub_proto_get_objects()) {
 		_next_state(PH_STATE_IDLE);

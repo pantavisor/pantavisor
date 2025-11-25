@@ -130,35 +130,10 @@ static const char *_op_string(enum evhttp_cmd_type op)
 	return "UNKNOWN";
 }
 
-// event_rest super verbose logging to inspect HTTP protocol
-static void _debug_log(int level, const char *fmt, ...)
-{
-	if (!pv_config_get_bool(PV_LIBEVENT_DEBUG_MODE))
-		return;
-
-	va_list args;
-	va_start(args, fmt);
-
-	char *msg = NULL;
-	int n = vasprintf(&msg, fmt, args);
-	va_end(args);
-
-	if (n < 0) {
-		free(msg);
-		goto out;
-	}
-
-	pv_log(level, "%s", msg);
-
-out:
-	if (msg)
-		free(msg);
-}
-
 static void _add_header(struct evkeyvalq *output_headers, const char *key,
 			const char *value)
 {
-	_debug_log(DEBUG, "%s: %s", key, value);
+	pv_log(TRACE, "%s: %s", key, value);
 	evhttp_add_header(output_headers, key, value);
 }
 
@@ -242,7 +217,7 @@ int pv_event_rest_send_by_components(
 	if (!pv_event_get_base())
 		return -1;
 
-	_debug_log(DEBUG, "%s %s HTTP/1.1", _op_string(op), endpoint);
+	pv_log(TRACE, "%s %s HTTP/1.1", _op_string(op), endpoint);
 
 	mbedtls_dyncontext *ssl;
 	ssl = bufferevent_mbedtls_dyncontext_new(&config);
@@ -312,8 +287,8 @@ int pv_event_rest_send_by_components(
 
 	if (body) {
 		size_t len = strlen(body);
-		_debug_log(DEBUG, "");
-		_debug_log(DEBUG, "%s", body);
+		pv_log(TRACE, "");
+		pv_log(TRACE, "%s", body);
 
 		struct evbuffer *output_buffer;
 		output_buffer = evhttp_request_get_output_buffer(req);
@@ -333,7 +308,7 @@ int pv_event_rest_send_by_components(
 	}
 	evhttp_connection_free_on_completion(evcon);
 
-	pv_log(DEBUG,
+	pv_log(TRACE,
 	       "add event: type='rest' chunk_cb=%p done_cb=%p req='%s %s HTTP/1.1'",
 	       (void *)chunk_cb, (void *)done_cb, _op_string(op), endpoint);
 
@@ -413,8 +388,8 @@ int _recv_status_line(struct evhttp_request *req)
 		return -1;
 	}
 
-	_debug_log(DEBUG, "HTTP/1.1 %d %s", ret,
-		   evhttp_request_get_response_code_line(req));
+	pv_log(TRACE, "HTTP/1.1 %d %s", ret,
+	       evhttp_request_get_response_code_line(req));
 
 	return ret;
 }
@@ -464,8 +439,8 @@ int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 		return -1;
 	}
 
-	_debug_log(DEBUG, "");
-	_debug_log(DEBUG, "%s", *buf);
+	pv_log(TRACE, "");
+	pv_log(TRACE, "%s", *buf);
 
 	return ret;
 }

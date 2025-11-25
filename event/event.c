@@ -129,7 +129,7 @@ void pv_event_timeout(int timeout, event_callback_fn cb)
 	struct timeval when = { timeout, 0 };
 	event_base_once(base, -1, EV_TIMEOUT, cb, NULL, &when);
 
-	pv_log(DEBUG, "add event: type='one shot' cb=%p timeout=%d", (void *)cb,
+	pv_log(TRACE, "add event: type='one shot' cb=%p timeout=%d", (void *)cb,
 	       timeout);
 }
 
