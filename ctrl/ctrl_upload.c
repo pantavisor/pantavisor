@@ -73,11 +73,14 @@ static void ctrl_upload_complete_cb_caller(struct evbuffer *buf,
 
 	pv_log(DEBUG, "upload done, processing file");
 
-	if (!up->file->ok)
-		pv_log(ERROR, "upload error, object cannot be processed");
-
 	if (up->complete_cb)
 		up->complete_cb(up->file);
+
+	if (!up->file->ok) {
+		pv_log(ERROR, "upload error, object cannot be processed");
+		pv_ctrl_utils_send_error(up->file->req, PV_HTTP_INSF_STORAGE,
+					 "Not enough disk space available");
+	}
 
 	ctrl_upload_free(up);
 }

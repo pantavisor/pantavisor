@@ -46,6 +46,8 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
+#define CTRL_OBJECT_NAME_LEN (64)
+
 static void ctrl_object_list(struct evhttp_request *req, void *ctx)
 {
 	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
@@ -71,9 +73,9 @@ static int ctrl_object_upload_complete_cb(struct pv_ctrl_file *file)
 
 	pv_log(DEBUG, "checking object integrity");
 	if (pv_storage_validate_file_checksum(file->path, bname)) {
-		pv_log(WARN, "file upload with errors, checksum error");
-		pv_ctrl_utils_send_error(file->req, PV_HTTP_CONFLICT,
-					 "Checksum error");
+		pv_log(WARN, "object %s has bad checksum", file->path);
+		pv_ctrl_utils_send_error(file->req, PV_HTTP_UNPROC_CONTENT,
+					 "Object has bad checksum");
 
 		pv_fs_path_remove(file->path, false);
 		return -1;
@@ -103,6 +105,13 @@ static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
 		pv_log(DEBUG, "couldn't find the objects name");
 		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
 					 "No object name provided");
+		return;
+	}
+
+	if (strlen(parts[1]) != CTRL_OBJECT_NAME_LEN) {
+		pv_log(WARN, "HTTP request has bad object name %s", parts[1]);
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Request has bad object name");
 		return;
 	}
 
@@ -139,8 +148,22 @@ static void ctrl_objects_send(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
+	if (strlen(parts[1]) != CTRL_OBJECT_NAME_LEN) {
+		pv_log(WARN, "HTTP request has bad object name %s", parts[1]);
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Request has bad object name");
+		return;
+	}
+
 	char path[PATH_MAX] = { 0 };
 	pv_paths_storage_object(path, PATH_MAX, parts[1]);
+
+	if (!pv_fs_path_exist(path)) {
+		pv_log(WARN, "object doesn't exist");
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Request has bad object name");
+		return;
+	}
 
 	pv_ctrl_download_start(req, path, 4096, "application/octet-stream");
 }

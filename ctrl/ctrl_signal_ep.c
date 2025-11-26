@@ -77,7 +77,7 @@ static void signal_process(struct evhttp_request *req, void *ctx)
 	char *data = pv_ctrl_utils_get_data(req, CTRL_SIGNAL_MAX_SIZE, NULL);
 	if (!data) {
 		pv_log(WARN, "nothing to read from signal request");
-		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
 					 "Signal has bad format");
 		return;
 	}
@@ -86,7 +86,7 @@ static void signal_process(struct evhttp_request *req, void *ctx)
 
 	if (!sig.type) {
 		pv_log(WARN, "unable to parse signal");
-		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
 					 "Signal has bad format");
 		goto out;
 	}

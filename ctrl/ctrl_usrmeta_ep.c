@@ -30,6 +30,7 @@
 #include <event2/buffer.h>
 
 #include <string.h>
+#include <inttypes.h>
 
 #define MODULE_NAME "usrmeta-ep"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -95,6 +96,12 @@ static void ctrl_usrmeta_set(struct evhttp_request *req, void *ctx)
 	int code = pv_ctrl_utils_is_req_ok(req, ctx, err) != 0;
 	if (code != 0) {
 		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
+		return;
+	}
+
+	if (pv_ctrl_utils_get_content_length(req) < 1) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Cannot add or update user meta");
 		return;
 	}
 
