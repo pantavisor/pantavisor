@@ -56,22 +56,25 @@ int pv_ctrl_caller_init(struct pv_ctrl_caller *caller,
 		return -1;
 	}
 
-	memccpy(caller->proc_name, name, '\0', 128);
-
+	int ret = -1;
 	caller->method = evhttp_request_get_command(req);
 
 	struct pantavisor *pv = pv_get_instance();
-	caller->plat = pv_state_fetch_platform(pv->state, caller->proc_name);
+	caller->plat = pv_state_fetch_platform(pv->state, name);
 	if (!caller->plat) {
-		pv_log(WARN, "platform %s not found in current state",
-		       caller->proc_name);
-		return -1;
+		pv_log(WARN, "platform %s not found in current state", name);
+		goto out;
 	}
 
-	if (!strncmp(caller->proc_name, "_pv_", strlen(caller->proc_name)))
+	if (!strncmp(name, "_pv_", strlen(name)))
 		caller->is_privileged = true;
 	else
 		caller->is_privileged =
 			pv_platform_has_role(caller->plat, PLAT_ROLE_MGMT);
-	return 0;
+	ret = 0;
+out:
+	if (name)
+		free(name);
+
+	return ret;
 }

@@ -30,7 +30,6 @@ struct pv_platform;
 
 struct pv_ctrl_caller {
 	bool is_privileged;
-	char proc_name[128];
 	struct pv_platform *plat;
 	int method;
 };
