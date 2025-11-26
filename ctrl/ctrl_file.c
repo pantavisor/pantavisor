@@ -63,5 +63,8 @@ void pv_ctrl_file_free(struct pv_ctrl_file *file)
 
 	if (file->fd >= 0)
 		close(file->fd);
+
+	free(file);
+
 	return;
 }
