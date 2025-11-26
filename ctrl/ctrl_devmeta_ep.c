@@ -95,6 +95,12 @@ static void ctrl_devmeta_set(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
+	if (pv_ctrl_utils_get_content_length(req) < 1) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Cannot add or update device meta");
+		return;
+	}
+
 	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
 			ctrl_devmeta_set_key, req);
 }

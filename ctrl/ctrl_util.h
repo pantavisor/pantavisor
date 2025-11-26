@@ -56,6 +56,9 @@ int pv_ctrl_utils_split_path(const char *uri,
 
 int pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb,
 			    char *err);
+
+ssize_t pv_ctrl_utils_get_content_length(struct evhttp_request *req);
+
 char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 			     ssize_t *len);
 

@@ -35,6 +35,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <inttypes.h>
 
 #define MODULE_NAME "ctrl-utils"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -249,6 +250,22 @@ int pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb,
 	return 0;
 }
 
+ssize_t pv_ctrl_utils_get_content_length(struct evhttp_request *req)
+{
+	struct evkeyvalq *headers = evhttp_request_get_input_headers(req);
+	const char *cl_str = evhttp_find_header(headers, "content-length");
+
+	if (!cl_str)
+		return -1;
+
+	errno = 0;
+	ssize_t cl = strtoimax(cl_str, NULL, 10);
+	if (errno == ERANGE)
+		return -1;
+
+	return cl;
+}
+
 char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 			     ssize_t *len)
 {
@@ -269,7 +286,7 @@ char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 		       max, cur_size);
 
 		pv_ctrl_utils_send_error(req, PV_HTTP_INSF_STORAGE,
-					 "Data size exceeds the limit");
+					 "Not enough disk space available");
 
 		return NULL;
 	}
