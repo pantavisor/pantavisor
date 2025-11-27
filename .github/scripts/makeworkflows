@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -e
+
+targetdir=$1
+
+configsuffix=:.github/configs/build-base-starter.yaml
+
+YOCTO_BRANCH=$(jq -r .yocto_branch .github/machines.json)
+ALL_MACHINES=$(jq -r .machines[] .github/machines.json)
+PUSH_MACHINES=$(jq -r .onpush[] .github/machines.json)
+
+create_files() {
+	base=$1
+	shift 1
+	machines=$@
+	for m in $machines; do
+		MACHINE=`echo $m | sed 's/.*machines.//;s/.yaml:.*//'`
+		echo "new $base workflow for: $MACHINE"
+		cat .github/template/$base.yaml | sed "s;!MACHINE;$MACHINE;g" \
+	| sed "s;!YOCTO_BRANCH;$YOCTO_BRANCH;g" > .github/workflows/$base-$YOCTO_BRANCH-$MACHINE.yaml 
+	done
+} 
+
+rm -f .github/workflows/manual*
+
+create_files manual $ALL_MACHINES
