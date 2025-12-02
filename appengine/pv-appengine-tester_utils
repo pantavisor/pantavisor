@@ -5,16 +5,16 @@ wait_for_value() {
     local cmd="$1"
     local value="$2"
     local timeout="$3"
-    
+
     local counter=0
     while [ $counter -lt $timeout ]; do
-        local result="$(eval "$cmd" 2>/dev/null)" 
-        if [ "$result" = "$value" ]; then
-            return 0
-        else
-            sleep 1
-            counter=$((counter+1))
-        fi
+	local result="$(eval "$cmd" 2>/dev/null)"
+	if [ "$result" = "$value" ]; then
+	    return 0
+	else
+	    sleep 1
+	    counter=$((counter+1))
+	fi
     done
     return 1
 }
@@ -24,16 +24,16 @@ wait_for_status() {
     local cmd="$1"
     local status="$2"
     local timeout="$3"
-    
+
     local counter=0
     while [ $counter -lt $timeout ]; do
-        eval "$cmd"
-        if [ "$?" = "$status" ]; then
-            return 0
-        else
-            sleep 1
-            counter=$((counter+1))
-        fi
+	eval "$cmd"
+	if [ "$?" = "$status" ]; then
+	    return 0
+	else
+	    sleep 1
+	    counter=$((counter+1))
+	fi
     done
     return 1
 }
@@ -59,7 +59,7 @@ wait_for_process() {
 	local cmd="$1"
 	local timeout="$2"
 	local action="$3"
-	
+
 	local counter=0
 	local cmd_pid=
 	while [ $counter -lt $timeout ]; do
@@ -77,7 +77,7 @@ wait_for_process() {
 		sleep 1
 		counter=$((counter+1))
 	done
-	
+
 	return 1
 }
 
