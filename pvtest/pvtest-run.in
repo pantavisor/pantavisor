@@ -14,7 +14,7 @@ parse_test() {
 		echo "Error: '$json_path' not found"
 		exit 1
 	fi
-	
+
 	description=$(jq -r '.description' "$json_path")
 	cmdline=$(jq -r '.setup.cmdline' "$json_path")
 	pantavisor_config=$(jq -r '.setup."pantavisor.config"' "$json_path")
@@ -88,7 +88,7 @@ initial_setup() {
 		rm -f @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/*
 		find $test_path/$pvs -exec tar -xf '{}' -C @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/ --strip-components=1 \;
 	fi
-	
+
 	pvtx abort
 	pvtx begin empty @PV_INSTALL_FULL_STORAGEDIR@/objects
 	for tarball in $tarballs; do
@@ -166,11 +166,11 @@ start_pv() {
 	fi
 
 	pv_cmd="pv-appengine"
-	
+
 	if [ -n "$cmdline" ]; then
 		pv_cmd="$pv_cmd -c \"$cmdline\""
 	fi
-	
+
 	if [ "$verbose" = "false" ]; then
 		eval "$pv_cmd > /dev/null 2>&1 &"
 	else
@@ -179,7 +179,7 @@ start_pv() {
 
 	wait_for_process "pantavisor" "30" "-a"
 	if [ $? != 0 ]; then
-    	echo "Error: timed out waiting for Pantavisor PID"
+	echo "Error: timed out waiting for Pantavisor PID"
 		return
 	fi
 
@@ -195,7 +195,7 @@ start_pv() {
 
 	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
 	if [ $? != 0 ]; then
-    	echo "Error: timed out waiting for pantavisor.status READY"
+	echo "Error: timed out waiting for pantavisor.status READY"
 	else
 		pv_ready="true"
 	fi
@@ -214,23 +214,23 @@ start_pv() {
 			exit 1
 		fi
 		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
-		
+
 		wait_for_pantahub_state "$control_container" "claim"
-		
+
 		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
 		challenge=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/challenge`
-		
+
 		pvr claim -c "$challenge" "$device_id"
-		
+
 		wait_for_pantahub_state "$control_container" "idle"
 	fi
 }
-	
+
 exec_test() {
 	if [ "$interactive" = "true" ] || [ "$pv_ready" = "false" ]; then
 		return
 	fi
-	
+
 	script_path="$test_path/$test_script"
 	tmp_script_path=
 	if [ "$overwrite" = "true" ]; then
@@ -288,16 +288,16 @@ if [ "$verbose" = "true" ]; then set -x; fi
 source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 # . /@CMAKE_INSTALL_DATADIR@/@PROJECT_NAME@/pvtest/set_env
 
-        if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
-                echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
-                sleep 10
-                exit 1
-        fi
+	if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+		echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
+		sleep 10
+		exit 1
+	fi
 
-        if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
-                cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
-                touch @PV_INSTALL_FULL_STORAGEDIR@/.created
-        fi
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
+		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
+		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
+	fi
 
 
 description=
