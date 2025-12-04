@@ -37,6 +37,46 @@
 
 #define AUTH_JSON_LEN 128
 
+int pv_pantahub_msg_parse_device(const char *json, struct pv_device *device)
+{
+	int tokc, ret = -1;
+	jsmntok_t *tokv = NULL;
+
+	if (!json || !device)
+		goto out;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted device JSON");
+		goto out;
+	}
+
+	device->id = pv_json_get_value(json, "id", tokv, tokc);
+	device->prn = pv_json_get_value(json, "prn", tokv, tokc);
+	device->secret = pv_json_get_value(json, "secret", tokv, tokc);
+	device->challenge = pv_json_get_value(json, "challenge", tokv, tokc);
+	device->owner = pv_json_get_value(json, "owner", tokv, tokc);
+
+	ret = 0;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
+void pv_pantahub_msg_clean_device(struct pv_device *device)
+{
+	if (device->id)
+		free(device->id);
+	if (device->prn)
+		free(device->prn);
+	if (device->secret)
+		free(device->secret);
+	if (device->challenge)
+		free(device->challenge);
+	if (device->owner)
+		free(device->owner);
+}
+
 char *pv_pantahub_msg_ser_login_json(const char *user, const char *pass)
 {
 	if (!user || !pass)

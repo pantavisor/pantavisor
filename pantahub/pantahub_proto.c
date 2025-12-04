@@ -91,11 +91,14 @@ typedef enum {
 
 struct pv_pantahub_session {
 	char *token;
+	bool owned;
 	bool online;
 	short failed_requests;
 	bool any_failed_request;
 
+	bool post_device_active;
 	bool open_session_active;
+	bool get_device_active;
 	bool get_usrmeta_active;
 	bool set_devmeta_active;
 	bool get_trails_status_active;
@@ -156,11 +159,14 @@ static bool _devmeta_gate_pass(const char *json)
 void pv_pantahub_proto_init()
 {
 	session.token = NULL;
+	session.owned = false;
 	session.online = false;
 	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
 	session.any_failed_request = false;
 
+	session.post_device_active = false;
 	session.open_session_active = false;
+	session.get_device_active = false;
 	session.get_usrmeta_active = false;
 	session.set_devmeta_active = false;
 	session.get_trails_status_active = false;
@@ -348,7 +354,8 @@ bool pv_pantahub_proto_is_trails_unsynced()
 }
 
 static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
-			     const char *token, const char *body,
+			     const char *autotok, const char *token,
+			     const char *body,
 			     void (*cb)(struct evhttp_request *, void *),
 			     void *arg, struct evhttp_request **out_req)
 {
@@ -362,9 +369,9 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 		port = pv_config_get_int(PH_CREDS_PORT);
 	}
 
-	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, arg, out_req, 0,
-						0);
+	return pv_event_rest_send_by_components(op, host, port, endpoint,
+						autotok, token, body, NULL, cb,
+						arg, out_req, 0, 0);
 }
 
 static void _on_request_unresponsive()
@@ -434,6 +441,84 @@ static int _recv_buffer(struct evhttp_request *req, char **body)
 	return 0;
 }
 
+static void _recv_post_device_cb(struct evhttp_request *req, void *ctx)
+{
+	char *body = NULL;
+	struct pv_device device;
+	memset(&device, 0, sizeof(device));
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_post_device_cb);
+
+	session.post_device_active = false;
+
+	if (_recv_buffer(req, &body)) {
+		pv_log(WARN, "POST device failed");
+		goto out;
+	}
+	if (!body) {
+		pv_log(WARN, "POST device received empty body");
+		goto out;
+	}
+
+	if (pv_pantahub_msg_parse_device(body, &device)) {
+		pv_log(WARN, "could not parse device");
+		goto out;
+	}
+
+	if (!device.id) {
+		pv_log(WARN, "POST device returned no id");
+		goto out;
+	}
+
+	if (!device.prn) {
+		pv_log(WARN, "POST device returned no prn");
+		goto out;
+	}
+
+	if (!device.secret) {
+		pv_log(WARN, "POST device returned no secret");
+		goto out;
+	}
+
+	pv_config_set_creds_id(device.id);
+	pv_config_set_creds_prn(device.prn);
+	pv_config_set_creds_secret(device.secret);
+	pv_config_save_creds();
+
+out:
+	if (body)
+		free(body);
+	pv_pantahub_msg_clean_device(&device);
+	pv_pantahub_evaluate_state();
+}
+
+void pv_pantahub_proto_post_device()
+{
+	pv_log(DEBUG, "registering new device...");
+
+	if (session.post_device_active) {
+		pv_log(DEBUG, "post device request pending. skipping...");
+		return;
+	}
+
+	const char *uri = "/devices/";
+
+	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri,
+			       pv_config_get_str(PH_FACTORY_AUTOTOK), NULL,
+			       NULL, _recv_post_device_cb, NULL, NULL))
+		session.post_device_active = true;
+}
+
+bool pv_pantahub_proto_is_registered()
+{
+	const char *id = pv_config_get_str(PH_CREDS_ID);
+	const char *prn = pv_config_get_str(PH_CREDS_PRN);
+	const char *secret = pv_config_get_str(PH_CREDS_SECRET);
+
+	return id && strlen(id) && prn && strlen(prn) && secret &&
+	       strlen(secret);
+}
+
 static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 {
 	char *body = NULL;
@@ -486,7 +571,7 @@ void pv_pantahub_proto_post_auth()
 		return;
 	}
 
-	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body,
+	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, NULL, body,
 			       _recv_post_auth_cb, NULL, NULL))
 		session.open_session_active = 1;
 
@@ -496,6 +581,99 @@ void pv_pantahub_proto_post_auth()
 bool pv_pantahub_proto_is_auth()
 {
 	return session.token;
+}
+
+void _save_hint(const char *challenge)
+{
+	char buf[256], path[PATH_MAX];
+
+	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
+	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n",
+			pv_config_get_str(PH_CREDS_ID));
+	if (pv_fs_file_save(path, buf, 0444))
+		pv_log(WARN, "could not save file %s: %s", path,
+		       strerror(errno));
+
+	if (!challenge)
+		return;
+
+	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
+	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", challenge);
+	if (pv_fs_file_save(path, buf, 0444))
+		pv_log(WARN, "could not save file %s: %s", path,
+		       strerror(errno));
+}
+
+static void _recv_get_device_cb(struct evhttp_request *req, void *ctx)
+{
+	char *body = NULL;
+	struct pv_device device;
+	memset(&device, 0, sizeof(device));
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_device_cb);
+
+	session.get_device_active = false;
+
+	if (_recv_buffer(req, &body)) {
+		pv_log(WARN, "GET device failed");
+		goto out;
+	}
+	if (!body) {
+		pv_log(WARN, "GET device received empty body");
+		goto out;
+	}
+
+	if (pv_pantahub_msg_parse_device(body, &device)) {
+		pv_log(WARN, "could not parse device");
+		goto out;
+	}
+
+	if (device.owner && strlen(device.owner)) {
+		pv_log(DEBUG, "device successfuly claimed");
+		pv_metadata_add_devmeta(DEVMETA_KEY_PH_CLAIMED, "1");
+		session.owned = true;
+		goto out;
+	}
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_CLAIMED, "0");
+
+	if (device.challenge) {
+		pv_log(DEBUG, "device ID: '%s'", device.id);
+		pv_log(DEBUG, "challenge: '%s'", device.challenge);
+		_save_hint(device.challenge);
+	}
+out:
+	if (body)
+		free(body);
+	pv_pantahub_msg_clean_device(&device);
+	pv_pantahub_evaluate_state();
+}
+
+void pv_pantahub_proto_get_device()
+{
+	pv_log(DEBUG, "checking device in Hub");
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return;
+	}
+	if (session.get_device_active) {
+		pv_log(DEBUG,
+		       "get_usrmeta_active = true; skip sending another request...");
+		return;
+	}
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/devices/%s",
+		 pv_config_get_str(PH_CREDS_ID));
+
+	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, NULL, session.token, NULL,
+			       _recv_get_device_cb, NULL, NULL))
+		session.get_device_active = true;
+}
+
+bool pv_pantahub_proto_is_device_owned()
+{
+	return session.owned;
 }
 
 static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
@@ -529,9 +707,7 @@ out:
 
 static void _recv_get_trails_status_cb(struct evhttp_request *req, void *ctx)
 {
-	char *body = NULL, *state_json = NULL;
-	struct pv_step step;
-	memset(&step, 0, sizeof(step));
+	char *body = NULL;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_trails_status_cb);
 
@@ -577,7 +753,7 @@ void pv_pantahub_proto_get_trails_status()
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/trails/");
 
-	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, NULL, session.token, NULL,
 			       _recv_get_trails_status_cb, NULL, NULL))
 		session.get_trails_status_active = 1;
 }
@@ -601,7 +777,7 @@ void pv_pantahub_proto_get_usrmeta()
 	snprintf(uri, sizeof(uri), "/devices/%s/user-meta",
 		 pv_config_get_str(PH_CREDS_ID));
 
-	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, NULL, session.token, NULL,
 			       _recv_get_usrmeta_cb, NULL, NULL))
 		session.get_usrmeta_active = 1;
 }
@@ -670,7 +846,7 @@ void pv_pantahub_proto_set_devmeta()
 		goto out;
 	}
 
-	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
+	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, NULL, session.token, json,
 			       _recv_set_devmeta_cb, NULL, NULL)) {
 		session.set_devmeta_active = 1;
 		free(devmeta_gate.inflight);
@@ -757,7 +933,7 @@ void pv_pantahub_proto_get_pending_steps()
 	snprintf(uri, sizeof(uri), "/trails/%s/steps%s",
 		 pv_config_get_str(PH_CREDS_ID), QUERY_PENDING_STEPS);
 
-	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, NULL, session.token, NULL,
 			       _recv_get_pending_steps_cb, NULL, NULL)) {
 		session.get_pending_steps_active = 1;
 		// keep the device awake for one poll roundtrip; released in
@@ -834,7 +1010,7 @@ int pv_pantahub_proto_get_step_status(void)
 	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s",
 		 pv_config_get_str(PH_CREDS_ID), rev);
 
-	if (_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+	if (_send_by_endpoint(EVHTTP_REQ_GET, uri, NULL, session.token, NULL,
 			      _recv_get_step_status_cb, NULL, NULL))
 		return -1;
 
@@ -921,7 +1097,7 @@ static int _get_object_metadata(const char *id_ref,
 	char uri[256];
 	snprintf(uri, sizeof(uri), "/objects/%s", id_ref);
 
-	return _send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+	return _send_by_endpoint(EVHTTP_REQ_GET, uri, NULL, session.token, NULL,
 				 _recv_get_object_metadata_cb, (void *)id_ref,
 				 out_req);
 }
@@ -1203,7 +1379,7 @@ static void _put_progress(const char *rev, const char *progress)
 	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s/progress",
 		 pv_config_get_str(PH_CREDS_ID), rev);
 
-	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, progress,
+	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, NULL, session.token, progress,
 			       _recv_put_progress_cb, NULL, NULL))
 		session.put_progress_active = true;
 }

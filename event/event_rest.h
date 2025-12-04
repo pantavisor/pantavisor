@@ -34,8 +34,8 @@ void pv_event_rest_cleanup(void);
 // on failure); NULL-tolerant for callers that never need to cancel
 int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
-	const char *endpoint, const char *token, const char *body,
-	void (*chunk_cb)(struct evhttp_request *, void *),
+	const char *endpoint, const char *autotok, const char *token,
+	const char *body, void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
 	struct evhttp_request **out_req, size_t rate_limit_bytes_per_sec,
 	off_t resume_from);
