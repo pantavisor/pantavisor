@@ -25,7 +25,16 @@
 #include <trest.h>
 #include "pantavisor.h"
 
+struct pv_connection {
+	char *hostorip;
+	int port;
+};
+
+struct pv_connection *pv_get_instance_connection();
+
 trest_ptr pv_get_trest_client(struct pantavisor *pv,
 			      struct pv_connection *conn);
+
+const char **pv_ph_get_certs();
 
 #endif /* PV_TRESTCLIENT_H */

@@ -26,9 +26,12 @@
 #include "pantavisor.h"
 #include "config.h"
 
+#include "pantahub/pantahub.h"
+
 #include <event2/http.h>
 
 #include <stdbool.h>
+
 #include <stdlib.h>
 
 #define MODULE_NAME "cmd"
@@ -116,7 +119,7 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 		};
 	}
 
-	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {
+	if (pv_pantahub_is_device_claimed() && cmd->op == CMD_MAKE_FACTORY) {
 		return (struct pv_ctrl_cmd_add_result){
 			false,
 			PV_HTTP_CONFLICT,

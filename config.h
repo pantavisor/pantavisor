@@ -146,6 +146,12 @@ typedef enum {
 bootloader_t pv_config_get_bootloader_type(void);
 char *pv_config_get_bootloader_type_str(void);
 
+// CREDS TYPE
+
+typedef enum { CREDS_BUILTIN = 0, CREDS_EXTERNAL, CREDS_ERROR } creds_t;
+
+creds_t pv_config_get_creds_type(void);
+
 // CREDS
 
 void pv_config_set_creds_id(char *id);
@@ -212,7 +218,6 @@ int pv_config_init(char *path);
 int pv_config_load_update(const char *rev, const char *trail_config);
 
 int pv_config_load_creds(void);
-int pv_config_load_unclaimed_creds(void);
 int pv_config_save_creds(void);
 int pv_config_unload_creds(void);
 

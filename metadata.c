@@ -475,54 +475,6 @@ static int pv_devmeta_read_mode(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
-static int pv_devmeta_read_online(struct pv_devmeta_read *pv_devmeta_read)
-{
-	char *buf = pv_devmeta_read->buf;
-	int buflen = pv_devmeta_read->buflen;
-	struct pantavisor *pv = pv_get_instance();
-
-	if (pv_devmeta_buf_check(pv_devmeta_read))
-		return -1;
-
-	if (pv_pantahub_is_online())
-		SNPRINTF_WTRUNC(buf, buflen, "1");
-	else
-		SNPRINTF_WTRUNC(buf, buflen, "0");
-	return 0;
-}
-
-static int pv_devmeta_read_claimed(struct pv_devmeta_read *pv_devmeta_read)
-{
-	char *buf = pv_devmeta_read->buf;
-	int buflen = pv_devmeta_read->buflen;
-	struct pantavisor *pv = pv_get_instance();
-
-	if (pv_devmeta_buf_check(pv_devmeta_read))
-		return -1;
-
-	if (pv->unclaimed)
-		SNPRINTF_WTRUNC(buf, buflen, "0");
-	else
-		SNPRINTF_WTRUNC(buf, buflen, "1");
-	return 0;
-}
-
-static int pv_devmeta_read_remote(struct pv_devmeta_read *pv_devmeta_read)
-{
-	char *buf = pv_devmeta_read->buf;
-	int buflen = pv_devmeta_read->buflen;
-	struct pantavisor *pv = pv_get_instance();
-
-	if (pv_devmeta_buf_check(pv_devmeta_read))
-		return -1;
-
-	if (pv->remote_mode)
-		SNPRINTF_WTRUNC(buf, buflen, "0");
-	else
-		SNPRINTF_WTRUNC(buf, buflen, "1");
-	return 0;
-}
-
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_ARCH, .reader = pv_devmeta_read_arch },
 	{ .key = DEVMETA_KEY_PV_VERSION, .reader = pv_devmeta_read_version },
@@ -530,12 +482,9 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_CPUMODEL, .reader = pv_devmeta_read_cpumodel },
 	{ .key = DEVMETA_KEY_PV_REVISION, .reader = pv_devmeta_read_revision },
 	{ .key = DEVMETA_KEY_PV_MODE, .reader = pv_devmeta_read_mode },
-	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
-	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
 	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname },
 	{ .key = DEVMETA_KEY_PV_TIME, .reader = pv_devmeta_time },
-	{ .key = DEVMETA_KEY_PV_SYSINFO, .reader = pv_devmeta_sysinfo },
-	{ .key = DEVMETA_KEY_PH_STATE, .reader = pv_devmeta_read_remote }
+	{ .key = DEVMETA_KEY_PV_SYSINFO, .reader = pv_devmeta_sysinfo }
 };
 
 static void pv_metadata_free(struct pv_meta *usermeta)

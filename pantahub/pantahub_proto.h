@@ -38,8 +38,14 @@ bool pv_pantahub_proto_is_any_progress_request_pending(void);
 bool pv_pantahub_proto_is_trails_unknown(void);
 bool pv_pantahub_proto_is_trails_unsynced(void);
 
+void pv_pantahub_proto_post_device(void);
+bool pv_pantahub_proto_is_registered(void);
+
 void pv_pantahub_proto_post_auth(void);
 bool pv_pantahub_proto_is_auth(void);
+
+void pv_pantahub_proto_get_device(void);
+bool pv_pantahub_proto_is_device_owned(void);
 
 void pv_pantahub_proto_get_trails_status(void);
 
