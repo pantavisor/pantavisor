@@ -210,8 +210,8 @@ static int _header_cb(struct evhttp_request *req, void *ctx)
 
 int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
-	const char *endpoint, const char *token, const char *body,
-	void (*chunk_cb)(struct evhttp_request *, void *),
+	const char *endpoint, const char *autotok, const char *token,
+	const char *body, void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx)
 {
 	if (!pv_event_get_base())
@@ -276,6 +276,10 @@ int pv_event_rest_send_by_components(
 	_add_header(output_headers, "Host", host);
 	_add_header(output_headers, "Connection", "close");
 	_add_header(output_headers, "User-Agent", pv_user_agent);
+
+	if (autotok)
+		_add_header(output_headers, "Pantahub-Devices-Auto-Token-V1",
+			    autotok);
 
 	if (token) {
 		char bearer[1024];
@@ -364,7 +368,7 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 		path = "/";
 
 	ret = pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
-					       chunk_cb, done_cb, ctx);
+					       NULL, chunk_cb, done_cb, ctx);
 
 out:
 	if (http_uri)
