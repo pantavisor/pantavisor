@@ -104,11 +104,7 @@ static int pv_cgroup_mkcgroup2_init(const char *init)
 	char path[PATH_MAX];
 	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s", init);
 
-	int ret;
-
-	mkdir(path, 0555);
-
-	return ret;
+	return mkdir(path, 0555);
 }
 
 static int pv_cgroup_mkcgroup_init(const char *init)
