@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -x
+
+if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+	echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
+	sleep 10
+	exit 1
+fi
+
+mkdir -p /sys/fs/cgroup/pantavisor
+for pid in $(cat /sys/fs/cgroup/cgroup.procs); do
+    echo $pid > /sys/fs/cgroup/pantavisor/cgroup.procs 2>/dev/null || true
+done
+
+mkdir -p /storage
+mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage
+
+#mkdir -p @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
+#mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
+#mount --make-shared @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
+
+mkdir -p /volumes
+mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes
+
+@CMAKE_INSTALL_FULL_BINDIR@/pantavisor $@
+
+umount /volumes
+umount /storage
+

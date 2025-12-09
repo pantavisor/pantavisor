@@ -423,7 +423,7 @@ ENDIF()
 ENDIF() # PANTAVISOR_RUNTIME
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/pantavisor-run.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/pantavisor-run.in
     ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-run
     @ONLY
 )
