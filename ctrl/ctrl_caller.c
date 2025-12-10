@@ -61,7 +61,7 @@ int pv_ctrl_caller_init(struct pv_ctrl_caller *caller,
 
 	struct pantavisor *pv = pv_get_instance();
 	caller->plat = pv_state_fetch_platform(pv->state, name);
-	if (!caller->plat) {
+	if (!caller->plat && strncmp(name, "_pv_", strlen(name))) {
 		pv_log(WARN, "platform %s not found in current state", name);
 		goto out;
 	}
