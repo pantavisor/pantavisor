@@ -25,6 +25,8 @@
 #include "pantavisor.h"
 #include "config.h"
 
+#include "pantahub/pantahub.h"
+
 #include <stdlib.h>
 
 #define MODULE_NAME "cmd"
@@ -98,7 +100,7 @@ int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char *err)
 		return -1;
 	}
 
-	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {
+	if (pv_pantahub_is_device_claimed() && cmd->op == CMD_MAKE_FACTORY) {
 		err = "Cannot do this operation if device is already claimed";
 		return -1;
 	}
