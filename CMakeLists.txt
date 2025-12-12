@@ -359,6 +359,8 @@ IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 install(DIRECTORY skel/ DESTINATION /)
 ### ... insert defaults/
 install(DIRECTORY defaults DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/pantavisor)
+install(DIRECTORY policies DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/pantavisor)
+install(DIRECTORY ssh DESTINATION ${CMAKE_INSTALL_FULL_SYSCONFDIR}/pantavisor)
 ENDIF()
 
 ### install PVS secureboot files
