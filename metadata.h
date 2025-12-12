@@ -42,6 +42,7 @@
 #define DEVMETA_KEY_PV_UNAME "pantavisor.uname"
 #define DEVMETA_KEY_PV_TIME "time"
 #define DEVMETA_KEY_PV_SYSINFO "sysinfo"
+#define DEVMETA_KEY_PROC_ENVIRON "proc.environ"
 
 typedef enum { USER_META, DEVICE_META } pv_metadata_t;
 

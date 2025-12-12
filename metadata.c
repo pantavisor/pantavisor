@@ -764,8 +764,12 @@ int pv_metadata_add_devmeta(const char *key, const char *value)
 {
 	struct pantavisor *pv = pv_get_instance();
 	struct pv_meta *curr;
-	int ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
+	int ret = -1;
 
+	if (!pv || !pv->metadata)
+		return ret;
+
+	ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
 	if (ret > 0) {
 		curr = pv_metadata_get_by_key(&pv->metadata->devmeta, key);
 
@@ -869,6 +873,9 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 						buf);
 	}
 	pv_buffer_drop(buffer);
+
+	// add config info that was set up previous to this function to initial devmeta
+	pv_config_save_devmeta();
 
 	return 0;
 }
