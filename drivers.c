@@ -19,6 +19,8 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <ctype.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +46,20 @@
 
 // modprobe + remove option + module name + module options
 #define DRIVER_MGMT_COMMAND "/sbin/modprobe %s %s %s"
+
+// Validate module name to prevent command injection
+// Module names should only contain: a-z, A-Z, 0-9, underscore, hyphen
+static bool _is_valid_module_name(const char *name)
+{
+	if (!name || !*name)
+		return false;
+
+	for (const char *p = name; *p; p++) {
+		if (!isalnum((unsigned char)*p) && *p != '_' && *p != '-')
+			return false;
+	}
+	return true;
+}
 
 static char *_sub_meta_values(char *str)
 {
@@ -162,10 +178,31 @@ static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 			mod = strtok(tmp, " ");
 		else
 			mod = tmp;
+
+		// Extract just the module name (first token) for validation
+		char mod_name[NAME_MAX];
+		char *space = strchr(mod, ' ');
+		if (space) {
+			size_t len = space - mod;
+			if (len >= sizeof(mod_name))
+				len = sizeof(mod_name) - 1;
+			strncpy(mod_name, mod, len);
+			mod_name[len] = '\0';
+		} else {
+			strncpy(mod_name, mod, sizeof(mod_name) - 1);
+			mod_name[sizeof(mod_name) - 1] = '\0';
+		}
+
+		// Validate module name to prevent command injection
+		if (!_is_valid_module_name(mod_name)) {
+			pv_log(WARN, "invalid module name '%s', skipping", mod);
+			goto next;
+		}
+
 		pv_log(DEBUG, "%s '%s' module",
 		       action == MOD_LOAD ? "loading" : "unloading", mod);
-		sprintf(cmd, "/sbin/modprobe %s %s",
-			action == MOD_LOAD ? "" : "-r", mod);
+		snprintf(cmd, sizeof(cmd), "/sbin/modprobe %s %s",
+			 action == MOD_LOAD ? "" : "-r", mod);
 		tsh_run(cmd, 1, &status);
 		if (WEXITSTATUS(status) == 0)
 			ret++;

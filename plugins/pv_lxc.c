@@ -341,30 +341,50 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		__pv_paths_volumes_plat_file(path, PATH_MAX, "bsp",
 					     "modules.squashfs");
 		if (stat(path, &st) == 0) {
-			sprintf(entry,
-				"%s "
-				"lib/modules/%s "
-				"none bind,ro,create=dir 0 0",
-				path, uts.release);
+			snprintf(entry, sizeof(entry),
+				 "%s "
+				 "lib/modules/%s "
+				 "none bind,ro,create=dir 0 0",
+				 path, uts.release);
 			c->set_config_item(c, "lxc.mount.entry", entry);
 		}
 	}
 	// Strip consoles from kernel cmdline
-	mkstemp(tmp_cmd);
+	if (mkstemp(tmp_cmd) < 0) {
+		pv_log(WARN, "failed to create temp file for cmdline");
+		goto skip_cmdline;
+	}
 	fd = open("/proc/cmdline", O_RDONLY);
 	if (fd >= 0) {
 		char *buf = calloc(1024, sizeof(char));
 		char *new = calloc(1024, sizeof(char));
-		read(fd, buf, 1024);
-		char *tok = strtok(buf, " ");
-		while (tok) {
-			if (strncmp("console=", tok, 8) == 0) {
+		if (!buf || !new) {
+			free(buf);
+			free(new);
+			close(fd);
+			goto skip_cmdline;
+		}
+		ssize_t bytes_read = read(fd, buf, 1023);
+		if (bytes_read > 0) {
+			buf[bytes_read] = '\0';
+			size_t new_len = 0;
+			char *tok = strtok(buf, " ");
+			while (tok) {
+				if (strncmp("console=", tok, 8) == 0) {
+					tok = strtok(NULL, " ");
+					continue;
+				}
+				size_t tok_len = strlen(tok);
+				// Check bounds before appending (leave room for
+				// space and null)
+				if (new_len + tok_len + 2 < 1024) {
+					memcpy(new + new_len, tok, tok_len);
+					new_len += tok_len;
+					new[new_len++] = ' ';
+					new[new_len] = '\0';
+				}
 				tok = strtok(NULL, " ");
-				continue;
 			}
-			strcat(new, tok);
-			strcat(new, " ");
-			tok = strtok(NULL, " ");
 		}
 		close(fd);
 		fd = open(tmp_cmd, O_CREAT | O_RDWR | O_SYNC, 0644);
@@ -375,11 +395,12 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		free(new);
 		free(buf);
 	}
+skip_cmdline:
 	// override container=lxc environment of pid 1
 	if (p->group)
-		sprintf(entry, "pv-%s", p->group->name);
+		snprintf(entry, sizeof(entry), "pv-%s", p->group->name);
 	else
-		sprintf(entry, "pv-unknown");
+		snprintf(entry, sizeof(entry), "pv-unknown");
 	c->set_container_type(c, entry);
 
 	/*
