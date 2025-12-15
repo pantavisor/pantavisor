@@ -4,11 +4,11 @@
 # cert-* (?)
 # readability-* (?)
 #
-Checks:          'clang-diagnostic-*,clang-analyzer-*,-*,clang-diagnostic-*,bugprone-*,clang-analyzer-*,-*,clang-analyzer-*,-clang-analyzer.cplusplus,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-analyzer-valist.Uninitialized'
+Checks: 'clang-diagnostic-*,clang-analyzer-*,-*,clang-diagnostic-*,bugprone-*,clang-analyzer-*,-*,clang-analyzer-*,-clang-analyzer.cplusplus,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-analyzer-valist.Uninitialized'
 WarningsAsErrors: 'clang-diagnostic-*,clang-analyzer-*,-*,clang-diagnostic-*,bugprone-*,clang-analyzer-*,-*,clang-analyzer-*,-clang-analyzer.cplusplus,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-analyzer-valist.Uninitialized'
 HeaderFilterRegex: './*.h'
 AnalyzeTemporaryDtors: false
-FormatStyle:     none
+FormatStyle: none
 CheckOptions:
   cert-dcl16-c.NewSuffixes: 'L;LL;LU;LLU'
   cert-oop54-cpp.WarnOnlyIfThisHasSuspiciousField: '0'
