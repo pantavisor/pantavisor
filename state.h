@@ -58,6 +58,7 @@ struct pv_state {
 	struct dl_list disks; // pv_disks
 	struct dl_list addons; // pv_addon
 	struct dl_list objects; //pv_object
+	struct dl_list installs; //pv_object
 	struct dl_list jsons; //pv_json
 	struct dl_list groups; //pv_group
 	bool using_runlevels;

@@ -64,9 +64,17 @@ struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
 {
 	struct pv_object *this = calloc(1, sizeof(struct pv_object));
 
+	if (this) {
+		this->name = strdup(filename);
+		this->id = strdup(id);
+		dl_list_init(&this->list);
+		dl_list_add(&s->installs, &this->list);
+	}
+
 	if (pv_objects_fetch_object_id(&s->objects, id))
 		return NULL;
 
+	this = calloc(1, sizeof(struct pv_object));
 	if (this) {
 		this->name = strdup(filename);
 		this->id = strdup(id);
@@ -95,12 +103,6 @@ struct pv_object *pv_objects_fetch_object_id(struct dl_list *objects,
 	return NULL;
 }
 
-void pv_objects_remove(struct pv_object *o)
-{
-	dl_list_del(&o->list);
-	pv_object_free(o);
-}
-
 void pv_objects_empty(struct pv_state *s)
 {
 	int num_obj = 0;
@@ -115,6 +117,17 @@ void pv_objects_empty(struct pv_state *s)
 	}
 
 	pv_log(INFO, "removed %d objects", num_obj);
+
+	num_obj = 0;
+	head = &s->installs;
+	dl_list_for_each_safe(curr, tmp, head, struct pv_object, list)
+	{
+		dl_list_del(&curr->list);
+		pv_object_free(curr);
+		num_obj++;
+	}
+
+	pv_log(INFO, "removed %d object installs", num_obj);
 }
 
 char *pv_objects_get_list_string()
