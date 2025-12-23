@@ -354,6 +354,10 @@ static int rpiab_init()
 		return 0;
 
 	b = malloc(PATH_MAX);
+	if (!b) {
+		pv_log(ERROR, "failed to allocate memory for rpiab init");
+		return -1;
+	}
 
 	if (getenv("PVTEST_PATH_BOOTIMG")) {
 		paths.bootimg[0] = strdup(getenv("PVTEST_PATH_BOOTIMG"));
@@ -654,6 +658,12 @@ static int _rpiab_install_trybootimg(char *rev)
 		       imgpath, trypath);
 
 		char *b = malloc(1024 * 1024);
+		if (!b) {
+			pv_log(ERROR, "failed to allocate buffer for bootimg");
+			fclose(tryf);
+			fclose(tryp);
+			return -1;
+		}
 
 		for (si = 0; si < st.st_size; si = si + (1024 * 1024)) {
 			int rc, wc;
@@ -661,7 +671,10 @@ static int _rpiab_install_trybootimg(char *rev)
 			if (rc < 0) {
 				pv_log(ERROR,
 				       "unable to finish write; too large boot.img for partition");
-				goto close_err;
+				free(b);
+				fclose(tryf);
+				fclose(tryp);
+				return -4;
 			}
 			if (!rc)
 				break;
@@ -669,16 +682,13 @@ static int _rpiab_install_trybootimg(char *rev)
 			if (wc != rc) {
 				pv_log(ERROR,
 				       "unable to finish write; too large boot.img for partition");
-				goto close_err;
+				free(b);
+				fclose(tryf);
+				fclose(tryp);
+				return -4;
 			}
-			continue;
-		close_err:
-			fclose(tryf);
-			fclose(tryp);
-			return -4;
 		}
 		free(b);
-		b = NULL;
 	}
 	fflush(tryp);
 	fsync(fileno(tryp));
