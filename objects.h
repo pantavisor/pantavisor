@@ -40,7 +40,6 @@ struct pv_object {
 int pv_objects_id_in_step(struct pv_state *s, char *id);
 struct pv_object *pv_objects_add(struct pv_state *s, char *filename, char *id,
 				 char *mntpoint);
-void pv_objects_remove(struct pv_object *o);
 void pv_objects_empty(struct pv_state *s);
 
 struct pv_object *pv_objects_fetch_object_id(struct dl_list *objects,
@@ -67,4 +66,13 @@ static inline void pv_object_free(struct pv_object *obj)
 				      struct pv_object, list)
 
 #define pv_objects_iter_end }
+
+#define pv_objects_installs_iter_begin(state, item)                                     \
+	{                                                                      \
+		struct pv_object *item##__tmp;                                 \
+		struct dl_list *item##__head = &(state)->installs;             \
+		dl_list_for_each_safe(item, item##__tmp, item##__head,         \
+				      struct pv_object, list)
+
+#define pv_objects_installs_iter_end }
 #endif // PV_OBJECTS_H

@@ -71,6 +71,7 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->disks);
 		dl_list_init(&s->addons);
 		dl_list_init(&s->objects);
+		dl_list_init(&s->installs);
 		dl_list_init(&s->jsons);
 		dl_list_init(&s->groups);
 		dl_list_init(&s->bsp.drivers);
@@ -194,7 +195,7 @@ struct pv_object *pv_state_fetch_object(struct pv_state *s, const char *name)
 		return NULL;
 
 	// Iterate over all objects from state
-	dl_list_for_each_safe(o, tmp, &s->objects, struct pv_object, list)
+	dl_list_for_each_safe(o, tmp, &s->installs, struct pv_object, list)
 	{
 		if (pv_str_matches(o->name, strlen(o->name), name,
 				   strlen(name)))
@@ -320,6 +321,14 @@ void pv_state_print(struct pv_state *s)
 			pv_log(DEBUG, "  platform: '%s'", curr->plat->name);
 	}
 	pv_objects_iter_end;
+	pv_objects_installs_iter_begin(s, curr)
+	{
+		pv_log(DEBUG, " install: '%s'", curr->name);
+		pv_log(DEBUG, "  id: '%s'", curr->id);
+		if (curr->plat)
+			pv_log(DEBUG, "  platform: '%s'", curr->plat->name);
+	}
+	pv_objects_installs_iter_end;
 	struct pv_json *j, *tmp_j;
 	struct dl_list *jsons = &s->jsons;
 	dl_list_for_each_safe(j, tmp_j, jsons, struct pv_json, list)
@@ -491,11 +500,11 @@ static int _link_trail_objects(struct pv_state *s)
 	if (!s)
 		return -1;
 
-	pv_objects_iter_begin(s, o)
+	pv_objects_installs_iter_begin(s, o)
 	{
 		pv_storage_link_trail_object(o->id, s->rev, o->name);
 	}
-	pv_objects_iter_end;
+	pv_objects_installs_iter_end;
 
 	return pv_storage_meta_link_boot(s);
 }
@@ -842,7 +851,7 @@ static bool pv_state_compare_objects(struct pv_state *current,
 		return true;
 
 	// search for modified or deleted objects
-	dl_list_for_each_safe(o, tmp, &current->objects, struct pv_object, list)
+	dl_list_for_each_safe(o, tmp, &current->installs, struct pv_object, list)
 	{
 		pend_o = pv_state_fetch_object(pending, o->name);
 		if (!pend_o || strcmp(o->id, pend_o->id)) {
@@ -868,7 +877,7 @@ static bool pv_state_compare_objects(struct pv_state *current,
 	}
 
 	// search for new objects
-	dl_list_for_each_safe(o, tmp, &pending->objects, struct pv_object, list)
+	dl_list_for_each_safe(o, tmp, &pending->installs, struct pv_object, list)
 	{
 		curr_o = pv_state_fetch_object(current, o->name);
 		if (!curr_o) {
@@ -1028,6 +1037,19 @@ static void pv_state_remove_updated_platforms(struct pv_state *s)
 		pv_object_free(o);
 	}
 
+	// install objects belonging to stopped platforms from state
+	dl_list_for_each_safe(o, o_tmp, &s->installs, struct pv_object, list)
+	{
+		if (!o->plat || !pv_platform_is_updated(o->plat))
+			continue;
+
+		pv_log(DEBUG, "removing install %s that belongs to platform %s",
+		       o->name, o->plat->name);
+		dl_list_del(&o->list);
+		pv_object_free(o);
+	}
+
+
 	// remove volumes belonging to stopped platforms from state
 	dl_list_for_each_safe(v, v_tmp, &s->volumes, struct pv_volume, list)
 	{
@@ -1091,6 +1113,21 @@ static void pv_state_transfer_platforms(struct pv_state *pending,
 		dl_list_del(&o->list);
 		dl_list_add_tail(&current->objects, &o->list);
 	}
+
+	// transfer objects belonging to platforms from pending that do not exist in current
+	dl_list_for_each_safe(o, o_tmp, &pending->installs, struct pv_object,
+			      list)
+	{
+		if (!o->plat || pv_state_fetch_platform(current, o->plat->name))
+			continue;
+
+		pv_log(DEBUG,
+		       "transferring object %s that belongs to platform %s",
+		       o->name, o->plat->name);
+		dl_list_del(&o->list);
+		dl_list_add_tail(&current->objects, &o->list);
+	}
+
 
 	// transfer volumes belonging to platforms from pending that do not exist in current
 	dl_list_for_each_safe(v, v_tmp, &pending->volumes, struct pv_volume,
@@ -1190,10 +1227,10 @@ static bool pv_state_json_is_dm(struct pv_json *js, jsmntok_t *tokv, int tokc)
 	return ret;
 }
 
-static char *pv_state_get_object_id(struct dl_list *objects, const char *name)
+static char *pv_state_get_object_id(struct dl_list *installs, const char *name)
 {
 	struct pv_object *obj, *tmp;
-	dl_list_for_each_safe(obj, tmp, objects, struct pv_object, list)
+	dl_list_for_each_safe(obj, tmp, installs, struct pv_object, list)
 	{
 		if (!strncmp(obj->name, name, strlen(obj->name)))
 			return obj->id;
@@ -1201,7 +1238,7 @@ static char *pv_state_get_object_id(struct dl_list *objects, const char *name)
 	return NULL;
 }
 
-static char *pv_state_get_formatted_nv_entry(struct dl_list *objects,
+static char *pv_state_get_formatted_nv_entry(struct dl_list *installs,
 					     const char *pname,
 					     const char *data_dev,
 					     size_t *entry_size)
@@ -1211,7 +1248,7 @@ static char *pv_state_get_formatted_nv_entry(struct dl_list *objects,
 	if (pv_str_fmt_build(&obj_name, "%s/%s", pname, data_dev) < 0)
 		return NULL;
 
-	char *id = pv_state_get_object_id(objects, obj_name);
+	char *id = pv_state_get_object_id(installs, obj_name);
 	if (!id)
 		goto out;
 
@@ -1321,7 +1358,7 @@ static char *pv_state_get_novalidate_list(struct pv_state *state)
 
 		size_t entry_size = 0;
 		entry = pv_state_get_formatted_nv_entry(
-			&state->objects, js->plat->name, data_dev, &entry_size);
+			&state->installs, js->plat->name, data_dev, &entry_size);
 
 		if (!entry)
 			goto next;
@@ -1372,7 +1409,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 	if (validate_list)
 		pv_log(DEBUG, "no validation list: %s", validate_list);
 
-	pv_objects_iter_begin(s, o)
+	pv_objects_installs_iter_begin(s, o)
 	{
 		/* validate instance in $rev/trails/$name to match */
 		char needle[PATH_MAX + 67];
@@ -1398,7 +1435,7 @@ bool pv_state_validate_checksum(struct pv_state *s)
 			goto out;
 		}
 	}
-	pv_objects_iter_end;
+	pv_objects_installs_iter_end;
 
 	pv_jsons_iter_begin(s, j)
 	{
