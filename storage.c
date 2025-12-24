@@ -513,6 +513,17 @@ bool pv_storage_validate_trails_object_checksum(const char *rev,
 	pv_paths_storage_trail_file(trail, PATH_MAX, rev, name);
 	pv_paths_storage_object(object, PATH_MAX, checksum);
 
+	if (!pv_fs_path_exist(trail)) {
+		pv_log(WARN, "trails file %s not installed; trying to cure ...",
+		       trail);
+		if (pv_storage_link_trail_object(checksum, rev, name)) {
+			pv_log(ERROR,
+			       "failed to cure file %s not installed: %s",
+			       trail, strerror(errno));
+			return false;
+		}
+	}
+
 	if (!pv_fs_file_is_same(trail, object)) {
 		pv_log(ERROR, "files '%s' and '%s' are not the same", trail,
 		       object);
