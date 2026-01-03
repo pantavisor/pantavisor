@@ -1,0 +1,62 @@
+name: "MAN: raspberrypi-armv8-scarthgap"
+
+on:
+  workflow_dispatch:
+env:
+  target-name: raspberrypi-armv8
+  target-yaml: .github/configs/release/raspberrypi-armv8-scarthgap.yaml
+
+jobs:
+  build-raspberrypi-armv8-scarthgap:
+    env:
+      configs: .github/configs/shared-vols.yaml:.github/configs/release/raspberrypi-armv8-scarthgap.yaml
+    runs-on: ["self-hosted"]
+    container:
+      image: ghcr.io/pantacor/kas/kas:next-v7
+      volumes:
+        - shared:/shared
+      options: --user root
+
+    steps:
+      - name: checkout meta-pantavisor
+        uses: actions/checkout@v2
+        with:
+          repository: pantavisor/meta-pantavisor
+
+      - name: debug
+        run: echo "Pantavisor ref - ${{ github.sha }}"
+
+      - name: chown
+        run: chown -R builder:builder $RUNNER_WORKSPACE
+      - name: chowna
+        run: chown -R builder:builder /__w
+      - name: shared
+        run: mkdir -p /shared/sstate && chown builder:builder /shared/sstate && mkdir -p /shared/dldir && chown builder:builder /shared/dldir
+
+      - name: Build Kas
+        run:
+          su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ env.configs }}:${{ env.target-yaml }}  -c 'devtool modify pantavisor &&
+          cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake pantavisor-remix' "
+
+      - name: chmod
+        run: chmod -R 777 $GITHUB_WORKSPACE
+      - name: Archive image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pantavisor-remix-${{ env.target-name }}-${{ github.ref }}
+          path: |
+            cp build/tmp-*/deploy/images/*/pantavisor-remix*.wic.* .
+            cp build/tmp-*/deploy/images/*/*pvrexport.* .
+
+      - name: Archive image artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pantavisor-remix-${{ env.target-name }}-${{ github.ref }}
+          path: |
+            pantavisor-remix*.wic.*
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pvrexports-${{ env.target-name }}-${{ github.ref }}
+          path: |
+            *pvrexport.*
