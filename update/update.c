@@ -70,10 +70,8 @@ static void _call_report_cb(const char *progress_str)
 	// save progress in disk
 	pv_storage_set_rev_progress(u->rev, progress_str);
 
-	if (!u->report_cb) {
-		pv_log(DEBUG, "report callback not set");
+	if (!u->report_cb)
 		return;
-	}
 
 	// send progress to hub
 	u->report_cb(u->rev, progress_str);
@@ -494,6 +492,23 @@ out:
 	if (pv_update_is_final())
 		pv_update_finish();
 	return ret;
+}
+
+void pv_update_init(const char *rev)
+{
+	char path[PATH_MAX] = { 0 };
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, "");
+	pv_fs_mkdir_p(path, 0775);
+
+	// temporary update struct for storing progress NEW
+	struct pv_update *u = _update_new(rev, NULL);
+	if (!u)
+		return;
+	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_NEW,
+			       PV_UPDATE_PROGRESS_MSG_NEW);
+	_free_update(u);
+
+	pv_log(DEBUG, "pv_update_init successful");
 }
 
 void pv_update_run(const char *rev)

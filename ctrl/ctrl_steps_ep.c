@@ -28,6 +28,7 @@
 #include "ctrl_util.h"
 #include "storage.h"
 #include "paths.h"
+#include "update/update.h"
 #include "utils/fs.h"
 
 #include <event2/http.h>
@@ -144,10 +145,10 @@ static void ctrl_steps_recv(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
+	pv_update_init(name);
+
 	char path[PATH_MAX] = { 0 };
 	pv_paths_storage_trail_pvr_file(path, PATH_MAX, name, JSON_FNAME);
-	pv_fs_mkbasedir_p(path, 0775);
-
 	pv_ctrl_upload_start(req, path, ctrl_steps_upload_complete);
 out:
 	if (name)

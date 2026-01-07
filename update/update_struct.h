@@ -42,6 +42,7 @@ typedef enum {
 } pv_update_progress_status_t;
 
 typedef enum {
+	PV_UPDATE_PROGRESS_MSG_NEW,
 	PV_UPDATE_PROGRESS_MSG_ABORTED,
 	PV_UPDATE_PROGRESS_MSG_QUEUED,
 	PV_UPDATE_PROGRESS_MSG_APPLIED,
