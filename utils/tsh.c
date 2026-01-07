@@ -191,8 +191,10 @@ pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
 		return -1;
 
 	args = _tsh_split_cmd(vcmd);
-	if (!args)
+	if (!args) {
+		free(vcmd);
 		return -1;
+	}
 
 	pid = _tsh_exec(args, wait, status, stdin_p, stdout_p, stderr_p);
 	free(vcmd);
