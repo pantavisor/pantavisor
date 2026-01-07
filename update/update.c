@@ -55,28 +55,22 @@ static struct pv_update *_get_update_instance()
 	return pv->update;
 }
 
-static void _call_report_cb(const char *progress_str)
+static void _call_report_cb(const char *rev, const char *progress_str)
 {
-	struct pv_update *u = _get_update_instance();
-	if (!u)
-		return;
-
 	if (!progress_str)
 		return;
 
-	pv_log(DEBUG, "report progress for rev '%s': '%s'", u->rev,
-	       progress_str);
+	pv_log(DEBUG, "report progress for rev '%s': '%s'", rev, progress_str);
 
 	// save progress in disk
-	pv_storage_set_rev_progress(u->rev, progress_str);
+	pv_storage_set_rev_progress(rev, progress_str);
 
-	if (!u->report_cb) {
-		pv_log(DEBUG, "report callback not set");
+	struct pv_update *u = _get_update_instance();
+	if (!u || !u->report_cb)
 		return;
-	}
 
 	// send progress to hub
-	u->report_cb(u->rev, progress_str);
+	u->report_cb(rev, progress_str);
 }
 
 static struct pv_update *
@@ -226,7 +220,7 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		pv_update_progress_parse(progress_str, &u->progress);
 		if (pv_update_is_final()) {
 			pv_log(WARN, "progress already in a final state");
-			_call_report_cb(progress_str);
+			_call_report_cb(u->rev, progress_str);
 			free(progress_str);
 			goto out;
 		} else {
@@ -494,6 +488,41 @@ out:
 	if (pv_update_is_final())
 		pv_update_finish();
 	return ret;
+}
+
+void pv_update_pre_install(const char *rev)
+{
+	char path[PATH_MAX] = { 0 };
+
+	pv_paths_storage_trail_pvr_file(path, PATH_MAX, rev, "");
+	pv_fs_mkdir_p(path, 0775);
+
+	// temporary update struct for storing progress NEW
+	struct pv_update *u = _update_new(rev, NULL);
+	if (!u)
+		return;
+
+	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_NEW,
+			       PV_UPDATE_PROGRESS_MSG_PREPARED);
+
+	_free_update(u);
+
+	pv_log(DEBUG, "pv_update_pre_install successful");
+}
+
+void pv_update_post_install(const char *rev)
+{
+	// temporary update struct for storing progress NEW
+	struct pv_update *u = _update_new(rev, NULL);
+	if (!u)
+		return;
+
+	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_NEW,
+			       PV_UPDATE_PROGRESS_MSG_INSTALLED);
+
+	_free_update(u);
+
+	pv_log(DEBUG, "pv_update_post_install successful");
 }
 
 void pv_update_run(const char *rev)

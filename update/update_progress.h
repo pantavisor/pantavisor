@@ -25,7 +25,7 @@
 #include "update/update_struct.h"
 
 void pv_update_progress_init(struct pv_update_progress *p, const char *rev,
-			     void (*report_cb)(const char *));
+			     void (*report_cb)(const char *, const char *));
 
 int pv_update_progress_parse(const char *json, struct pv_update_progress *p);
 
