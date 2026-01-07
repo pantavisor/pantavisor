@@ -41,7 +41,7 @@
 #define UPDATE_PROGRESS_LOGS_SIZE 4096
 
 void pv_update_progress_init(struct pv_update_progress *p, const char *rev,
-			     void (*report_cb)(const char *))
+			     void (*report_cb)(const char *, const char *))
 {
 	if (!p)
 		return;
@@ -204,7 +204,7 @@ static void _call_report_cb(struct pv_update_progress *p)
 	if (!progress_str)
 		return;
 
-	p->report_cb(progress_str);
+	p->report_cb(p->rev_ref, progress_str);
 	free(progress_str);
 }
 
@@ -306,6 +306,12 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 		return strdup("Internal error");
 
 	switch (code) {
+	case PV_UPDATE_PROGRESS_MSG_PREPARED:
+		ret = strdup("Update not yet installed");
+		break;
+	case PV_UPDATE_PROGRESS_MSG_INSTALLED:
+		ret = strdup("Update ready to be run");
+		break;
 	case PV_UPDATE_PROGRESS_MSG_ABORTED:
 		ret = strdup("Update aborted");
 		break;

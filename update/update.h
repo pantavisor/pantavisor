@@ -38,6 +38,8 @@ int pv_update_install_object(const char *path);
 
 // LOCAL UPDATE
 
+void pv_update_pre_install(const char *rev);
+void pv_update_post_install(const char *rev);
 void pv_update_run(const char *rev);
 
 // ALL UPDATES

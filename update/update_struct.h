@@ -42,6 +42,8 @@ typedef enum {
 } pv_update_progress_status_t;
 
 typedef enum {
+	PV_UPDATE_PROGRESS_MSG_PREPARED,
+	PV_UPDATE_PROGRESS_MSG_INSTALLED,
 	PV_UPDATE_PROGRESS_MSG_ABORTED,
 	PV_UPDATE_PROGRESS_MSG_QUEUED,
 	PV_UPDATE_PROGRESS_MSG_APPLIED,
@@ -83,7 +85,7 @@ struct pv_update_progress {
 	int retries;
 	struct pv_download_info total;
 	char *rev_ref;
-	void (*report_cb)(const char *);
+	void (*report_cb)(const char *, const char *);
 };
 
 struct pv_update {
