@@ -306,6 +306,9 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 		return strdup("Internal error");
 
 	switch (code) {
+	case PV_UPDATE_PROGRESS_MSG_NEW:
+		ret = strdup("Update not yet run");
+		break;
 	case PV_UPDATE_PROGRESS_MSG_ABORTED:
 		ret = strdup("Update aborted");
 		break;
