@@ -191,6 +191,8 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 
 	bool is_dmesg = !strncmp(util_src, "dmesg", strlen("dmesg"));
 
+	int ramoops_fd = open("/dev/pmsg0", O_WRONLY | O_CLOEXEC);
+
 	char *txt = NULL;
 	size_t txt_len = 0;
 	int total_len = 0;
@@ -210,15 +212,29 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 				dprintf(fd, fmt, ts, log->plat, log->tsec,
 					pv_log_level_name(log->lvl), util_src,
 					txt_len, txt, lf ? '\n' : '\0');
+
+			if (ramoops_fd > -1)
+				dprintf(ramoops_fd, fmt, ts, log->plat,
+					log->tsec, pv_log_level_name(log->lvl),
+					util_src, txt_len, txt,
+					lf ? '\n' : '\0');
+
 		} else {
 			total_len +=
 				dprintf(fd, fmt, log->plat, log->tsec,
+					pv_log_level_name(log->lvl), util_src,
+					txt_len, txt, lf ? '\n' : '\0');
+
+			if (ramoops_fd > -1)
+				dprintf(ramoops_fd, fmt, log->plat, log->tsec,
 					pv_log_level_name(log->lvl), util_src,
 					txt_len, txt, lf ? '\n' : '\0');
 		}
 		if (is_dmesg && txt)
 			free(txt);
 	}
+
+	close(ramoops_fd);
 
 	return total_len;
 }
