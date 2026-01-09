@@ -21,6 +21,7 @@
  */
 
 #include <stdio.h>
+#include <sys/mount.h>
 #include <unistd.h>
 #include <errno.h>
 
@@ -210,6 +211,10 @@ static int pv_mount_init(struct pv_init *this)
 		if (opts)
 			free(opts);
 	}
+
+	pv_fs_mkdir_p("/storage/ramoops", 0755);
+	mount("pstore", "/storage/ramoops", "pstore", 0, NULL);
+
 out:
 	if (ret < 0)
 		exit_error(errno, "Could not mount trails storage");
