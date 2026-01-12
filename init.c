@@ -404,7 +404,7 @@ int main(int argc, char *argv[])
 		pv_buildinfo_load_yocto_manifest();
 	}
 
-	setenv("LIBPVPATH", "/lib/pv", 0);
+	setenv("LIBPVPATH", PV_INSTALL_FULL_PVLIBDIR, 0);
 
 	// executed as init
 	if (getpid() == 1) {
