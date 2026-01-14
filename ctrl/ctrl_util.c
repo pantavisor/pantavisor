@@ -76,6 +76,9 @@ static struct pv_ctrl_http_code_value ctrl_utils_get_http_value(int code)
 
 void pv_ctrl_utils_send_ok(struct evhttp_request *req)
 {
+	evhttp_add_header(evhttp_request_get_output_headers(req),
+			  "Content-Type", "application/json");
+
 	evhttp_send_reply(req, HTTP_OK, NULL, NULL);
 }
 
