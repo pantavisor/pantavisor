@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 
 usage() {
 	echo ""
@@ -64,13 +64,19 @@ teardown_loop() {
 }
 
 initial_setup() {
-	if [ ! -f "$test_path/$test_script" ]; then
-		echo "Error: '$test_path/$test_script' does not exist"
+	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+		echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
+		sleep 10
 		exit 1
 	fi
+	
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
+		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
+		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
+	fi
 
-	if [ ! -f "$test_path/$pantavisor_config" ]; then
-		echo "Error: '$test_path/$pantavisor_config' does not exist"
+	if [ ! -f "$test_path/$test_script" ]; then
+		echo "Error: '$test_path/$test_script' does not exist"
 		exit 1
 	fi
 
@@ -82,7 +88,9 @@ initial_setup() {
 		fi
 	fi
 
-	# cp "$test_path/$pantavisor_config" "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor.config"
+	if [ -n "$pantavisor_config" ]; then
+		cp "$test_path/$pantavisor_config" "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config"
+	fi
 
 	if [ -n "$pvs" ]; then
 		rm -f @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/*
@@ -95,20 +103,38 @@ initial_setup() {
 		if [ ! -e "$test_path/$tarball" ]; then echo "Error: '$test_path/$tarball' does not exist"; exit 1; fi
 		pvtx add "$test_path/$tarball"
 	done
-	pvtx show
+	if [ "$verbose" = "true" ]; then pvtx show; fi
 	pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
+
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr/json ]; then
+		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr
+		echo -n '{"#spec":"pantavisor-service-system@1"}' > @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr/json
+	fi
+	
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt ]; then
+		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/boot
+		echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
+	fi
 
 	cleanup_cryptdisk
 	cleanup_cgroup
 	first_loop=0
 	setup_loop "$loop_n" || first_loop=$?
+
+	mkdir -p /sys/fs/cgroup/pantavisor
+	for pid in $(cat /sys/fs/cgroup/cgroup.procs); do
+	    echo $pid > /sys/fs/cgroup/pantavisor/cgroup.procs 2>/dev/null || true
+	done
+	
+	mkdir -p /storage
+	mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage
+	
+	mkdir -p @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
+	mkdir -p /volumes
+	mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes
 }
 
 exec_interactive() {
-	if [ "$interactive" = "false" ]; then
-		return
-	fi
-
 	echo ""
 	echo "Welcome to Pantavisor appengine!"
 	echo ""
@@ -126,29 +152,46 @@ exec_interactive() {
 		echo "$test_path/$test_script"
 		echo ""
 	fi
+
+	sh -c "bash"
 }
 
 stop_pv() {
-	device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
+	if [ -f "@CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id" ]; then
+		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
+	fi
 	if [ "$self_claim" = "true" ] && [ -n "$device_id" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
 		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
 		pvr delete -y $device_id
 	fi
 
-	local pv_pid=$(ps -w | grep 'pantavisor' | awk '{print $1}')
+	local pv_appengine_pid=$(ps | grep " pv-appengine$" | awk 'NR==1 {print $1}')
+	if [ -n "$pv_appengine_pid" ]; then
+		kill "$pv_appengine_pid"
+	fi
+
+	local pv_pid=$(ps | grep " pantavisor$" | awk 'NR==1 {print $1}')
 	if [ -n "$pv_pid" ]; then
 		eval "pventer -c $control_container pvcontrol commands poweroff" > /dev/null 2>&1
-		wait_for_process "pantavisor" "120" "-d"
+		wait_for_process " pantavisor$" "120" "-d"
 		if [ $? -ne 0 ]; then
 			echo "Warn: Pantavisor still running. Shutting it down..."
-			kill -SIGTERM "$pv_pid"
-			wait_for_process "pantavisor" "30" "-d"
+			kill "$pv_pid"
+			wait_for_process " pantavisor$" "30" "-d"
 			if [ $? -ne 0 ]; then
 				echo "Error: Pantavisor still running. Exiting..."
+				kill -SIGKILL "$pv_pid"
 				pv_ready="false"
 			fi
 		fi
 	fi
+
+	if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
+		umount -q /var/pantavisor/storage
+	fi
+
+	umount -q /volumes
+	umount -q /storage
 
 	teardown_loop "$first_loop" "$loop_n"
 	cleanup_cgroup
@@ -161,15 +204,7 @@ int_handler() {
 }
 
 start_pv() {
-	if [ "$manual" = "true" ]; then
-		return
-	fi
-
-	pv_cmd="pv-appengine"
-
-	if [ -n "$cmdline" ]; then
-		pv_cmd="$pv_cmd -c \"$cmdline\""
-	fi
+	pv_cmd="pv-appengine -c \"$cmdline\""
 
 	if [ "$verbose" = "false" ]; then
 		eval "$pv_cmd > /dev/null 2>&1 &"
@@ -177,13 +212,13 @@ start_pv() {
 		eval "$pv_cmd &"
 	fi
 
-	wait_for_process "pantavisor" "30" "-a"
+	trap 'int_handler' INT
+
+	wait_for_process " pantavisor$" "30" "-a"
 	if [ $? != 0 ]; then
 	echo "Error: timed out waiting for Pantavisor PID"
 		return
 	fi
-
-	trap 'int_handler' INT
 
 	if [ -n "$ready_script" ]; then
 		if [ "$verbose" = "false" ]; then
@@ -227,7 +262,7 @@ start_pv() {
 }
 
 exec_test() {
-	if [ "$interactive" = "true" ] || [ "$pv_ready" = "false" ]; then
+	if [ "$pv_ready" = "false" ]; then
 		return
 	fi
 
@@ -242,8 +277,7 @@ exec_test() {
 
 	tmp_out_path=$(mktemp /tmp/pv_appengine_output.XXXXXX)
 	# we use script to get stdout and stderr in the same order we do in console
-	# unwanted characters are trimmed from the output of script (escape sequences to control color and carriage returns)
-	script -q -c "sh -c \". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils && $script_path\"" | sed -r "s/\x1B\[[0-9;]*[a-zA-Z]//g" | tr -d '\r' > $tmp_out_path 2>&1
+	script -q -c "sh -c \". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils && $script_path\"" > $tmp_out_path 2>&1
 	output=$(cat "$tmp_out_path")
 	if [ "$overwrite" = "true" ]; then
 		echo "$output" > $test_path/output
@@ -252,10 +286,6 @@ exec_test() {
 }
 
 eval_test() {
-	if [ "$interactive" = "true" ] || [ "$manual" = "true" ]; then
-		return
-	fi
-
 	if [ "$pv_ready" = "false" ]; then
 		stop_pv
 		exit 1
@@ -285,21 +315,6 @@ fi
 
 if [ "$verbose" = "true" ]; then set -x; fi
 
-source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
-# . /@CMAKE_INSTALL_DATADIR@/@PROJECT_NAME@/pvtest/set_env
-
-	if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
-		echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
-		sleep 10
-		exit 1
-	fi
-
-	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
-		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
-		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
-	fi
-
-
 description=
 cmdline=
 pantavisor_config=
@@ -319,12 +334,22 @@ initial_setup
 
 pv_ready="false"
 
-start_pv
-exec_interactive
+if [ "$manual" = "false" ]; then
+	start_pv
+fi
+
+if [ "$interactive" = "true" ]; then
+	exec_interactive
+fi
 
 tmp_out_path=
 
-exec_test
+if [ "$interactive" = "false" ]; then
+	exec_test
+fi
+
 stop_pv
 
-eval_test
+if [ "$interactive" = "false" ]; then
+	eval_test
+fi

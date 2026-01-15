@@ -64,7 +64,7 @@ wait_for_process() {
 	local counter=0
 	local cmd_pid=
 	while [ $counter -lt $timeout ]; do
-		cmd_pid=$(ps -w | grep "$cmd" | awk '{print $1}')
+		cmd_pid=$(ps | grep "$cmd" | awk 'NR==1 {print $1}')
 		if [ "$action" = "-a" ]; then
 			if [ -n "$cmd_pid" ]; then
 				return 0

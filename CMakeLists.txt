@@ -426,15 +426,6 @@ ENDIF()
 
 ENDIF() # PANTAVISOR_RUNTIME
 
-configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/tools/pantavisor-run.in
-    ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-run
-    @ONLY
-)
-install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-run
-    DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
-
 IF(PANTAVISOR_APPENGINE)
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pv-appengine.in

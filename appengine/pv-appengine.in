@@ -1,50 +1,21 @@
 #!/bin/bash
 
+set -x
 set -e
 
-interactive='false'
+interrupt='false'
 
 usage() {
 	echo "Usage: $0 [options]"
 	echo "Run Pantavisor in an existing OS"
 	echo "options:"
 	echo "       -h         show help"
-	echo "       -i         wait for user confirmation between reboots"
+	echo "       -i         interrupt automated reboot and wait for user confirmation"
 	echo "       -c CMDLINE additional cmdline arguments (incl. legacy configs)"
 	echo "       -e ENVS envs to set (incl. new config format)"
 }
 
 exec_run() {
-	# get installation path
-	scriptpath=`readlink -f "$0"`
-
-	# check installed
-	if [ ! -f "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config" ]; then
-		echo "ERROR: installation path '@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config' not found"
-		exit 1
-	fi
-
-	if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
-		echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
-		sleep 10
-		exit 1
-	fi
-
-	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
-		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
-		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
-	fi
-
-	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done ]; then
-		pvtx abort
-		pvtx begin @PV_INSTALL_FULL_STORAGEDIR@/trails/0 @PV_INSTALL_FULL_STORAGEDIR@/objects
-		for a in `ls @PV_INSTALL_FULL_PVTXDIR@/* 2>/dev/null`; do
-			pvtx add $a
-		done
-		pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
-		touch @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
-	fi
-
 	pv_trying=""
 	while true
 	do
@@ -63,13 +34,10 @@ exec_run() {
 			fi
 		fi
 
-		# load cmdline file
 		cmdline_file=`cat "@PV_INSTALL_FULL_STORAGEDIR@/boot/cmdline.txt"`
 
 		# exec Pantavisor
-		set +e
-		eval $envs /usr/bin/unshare --cgroup @CMAKE_INSTALL_FULL_BINDIR@/pantavisor-run --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline "pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline"
-		set -e
+		/usr/bin/unshare --cgroup @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline "pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline"
 
 		# lets cosume all buffered input first
 		while read -d "" -t 0.01; do
@@ -77,22 +45,14 @@ exec_run() {
 		done
 
 		# wait for user input or continue
-		if [ "$interactive" = 'true' ]
+		if [ "$interrupt" = 'true' ]
 		then
-			if read -t 5 -p "Will restart Pantavisor in 5 sec: Press ENTER to abort"; then
-				echo "Exiting ..."
+			if read -t 5 -p "INFO: Will restart Pantavisor in 5 sec. Press ENTER to abort"; then
+				echo "INFO: Exiting..."
 				break
 			fi
 		fi
-		echo "restarting in 5 seconds..."
-		sleep 5
 	done
-
-if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
-	umount /var/pantavisor/storage
-fi
-
-
 }
 
 # parse options
@@ -102,12 +62,11 @@ while [ $# -gt 0 ]; do
 			usage; exit 0
 			;;
 		-i)
-			interactive='true'
+			interrupt='true'
 			;;
 		-c)
 			shift
 			cmdline="$1"
-			if [ -z "$cmdline" ]; then echo "ERROR: Empty cmdline"; usage; exit 1; fi
 			;;
 		-e)
 			shift
@@ -119,16 +78,5 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
-if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr/json ]; then
-	mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr
-	echo -n '{"#spec":"pantavisor-service-system@1"}' > @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr/json
-fi
-
-if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt ]; then
-	mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/boot
-	echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
-fi
-
 # uninstall Pantavisor
 exec_run
-
