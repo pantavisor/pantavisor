@@ -95,7 +95,7 @@ initial_setup() {
 		if [ ! -e "$test_path/$tarball" ]; then echo "Error: '$test_path/$tarball' does not exist"; exit 1; fi
 		pvtx add "$test_path/$tarball"
 	done
-	pvtx show
+	if [ "$verbose" = "true" ]; then pvtx show; fi
 	pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
 
 	cleanup_cryptdisk
@@ -105,10 +105,6 @@ initial_setup() {
 }
 
 exec_interactive() {
-	if [ "$interactive" = "false" ]; then
-		return
-	fi
-
 	echo ""
 	echo "Welcome to Pantavisor appengine!"
 	echo ""
@@ -126,10 +122,14 @@ exec_interactive() {
 		echo "$test_path/$test_script"
 		echo ""
 	fi
+
+	sh -c "bash"
 }
 
 stop_pv() {
-	device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
+	if [ -f "@CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-i" ]; then
+		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
+	fi
 	if [ "$self_claim" = "true" ] && [ -n "$device_id" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
 		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
 		pvr delete -y $device_id
@@ -161,10 +161,6 @@ int_handler() {
 }
 
 start_pv() {
-	if [ "$manual" = "true" ]; then
-		return
-	fi
-
 	pv_cmd="pv-appengine"
 
 	if [ -n "$cmdline" ]; then
@@ -227,7 +223,7 @@ start_pv() {
 }
 
 exec_test() {
-	if [ "$interactive" = "true" ] || [ "$pv_ready" = "false" ]; then
+	if [ "$pv_ready" = "false" ]; then
 		return
 	fi
 
@@ -252,10 +248,6 @@ exec_test() {
 }
 
 eval_test() {
-	if [ "$interactive" = "true" ] || [ "$manual" = "true" ]; then
-		return
-	fi
-
 	if [ "$pv_ready" = "false" ]; then
 		stop_pv
 		exit 1
@@ -288,7 +280,7 @@ if [ "$verbose" = "true" ]; then set -x; fi
 source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 # . /@CMAKE_INSTALL_DATADIR@/@PROJECT_NAME@/pvtest/set_env
 
-	if ! cat /proc/mounts | awk '{ print $2}' | grep '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
 		echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
 		sleep 10
 		exit 1
@@ -319,12 +311,22 @@ initial_setup
 
 pv_ready="false"
 
-start_pv
-exec_interactive
+if [ "$manual" = "false" ]; then
+	start_pv
+fi
+
+if [ "$interactive" = "true" ]; then
+	exec_interactive
+fi
 
 tmp_out_path=
 
-exec_test
+if [ "$interactive" = "false" ]; then
+	exec_test
+fi
+
 stop_pv
 
-eval_test
+if [ "$interactive" = "false" ]; then
+	eval_test
+fi
