@@ -298,11 +298,15 @@ struct pv_state *multi1_parse(struct pv_state *this, const char *buf)
 
 		// copy key
 		key = malloc(n + 1);
+		if (!key)
+			goto out;
 		SNPRINTF_WTRUNC(key, n + 1, "%s", buf + (*k)->start);
 
 		// copy value
 		n = (*k + 1)->end - (*k + 1)->start;
 		value = malloc(n + 1);
+		if (!value)
+			goto out;
 		SNPRINTF_WTRUNC(value, n + 1, "%s", buf + (*k + 1)->start);
 
 		// check extension in case of file (json=platform, other=file)
