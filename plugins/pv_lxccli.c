@@ -79,9 +79,9 @@
 
 /*
  * Runtime directory for generated configs
- * Each container gets: /run/pantavisor/lxc/<name>/config
+ * Each container gets: /run/pantavisor/lxccli/<name>/config
  */
-#define PV_LXCCLI_RUNDIR "/run/pantavisor/lxc"
+#define PV_LXCCLI_RUNDIR "/run/pantavisor/lxccli"
 
 struct pv_lxccli_conf {
 	int loglevel;

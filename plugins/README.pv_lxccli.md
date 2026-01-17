@@ -26,7 +26,7 @@ This plugin provides an alternative to `pv_lxc.so` that works with stock/unpatch
    - `lxc.mount.entry` - bind mounts for /pv, logs, metadata
    - `lxc.hook.mount` - mount hooks
    - `lxc.environment` - container type
-3. Writes merged config to `/run/pantavisor/lxc/<name>/config`
+3. Writes merged config to `/run/pantavisor/lxccli/<name>/config`
 4. Runs: `lxc-start -n <name> -P <lxcpath> -f <config> -d`
 
 ### Container Stop
