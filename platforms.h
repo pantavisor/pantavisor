@@ -55,6 +55,32 @@ typedef enum {
 	DRIVER_REQUIRED = (1 << 0),
 	DRIVER_OPTIONAL = (1 << 1),
 	DRIVER_MANUAL = (1 << 2)
+} plat_service_t;
+
+typedef enum {
+	SVC_TYPE_UNKNOWN,
+	SVC_TYPE_REST,
+	SVC_TYPE_DBUS,
+	SVC_TYPE_UNIX,
+	SVC_TYPE_DRM,
+	SVC_TYPE_WAYLAND,
+	SVC_TYPE_INPUT
+} service_type_t;
+
+struct pv_platform_service {
+	plat_service_t type;
+	service_type_t svc_type;
+	char *name;
+	char *role;
+	char *interface;
+	struct dl_list list;
+};
+
+struct pv_platform_service_export {
+	service_type_t svc_type;
+	char *name;
+	char *socket;
+	struct dl_list list;
 } plat_driver_t;
 
 typedef enum {
@@ -102,6 +128,8 @@ struct pv_platform {
 	struct pv_event_socket pipefd_listener;
 	struct timer timer_status_goal;
 	struct dl_list drivers; // pv_platform_driver
+tstruct dl_list services; // pv_platform_service
+	struct dl_list service_exports; // pv_platform_service_export
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*
@@ -113,6 +141,11 @@ struct pv_platform {
 void pv_platform_free(struct pv_platform *p);
 
 void pv_platform_add_driver(struct pv_platform *g, plat_driver_t type,
+nvoid pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			    service_type_t svc_type, char *name, char *role,
+			    char *interface);
+void pv_platform_add_service_export(struct pv_platform *p, service_type_t svc_type,
+				   char *name, char *socket);
 			    char *value);
 
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,

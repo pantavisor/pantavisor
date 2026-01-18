@@ -24,6 +24,7 @@ set(PANTAVISOR_RUNTIME ON CACHE BOOL "build pantavisor runtime itself")
 set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
+set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -96,6 +97,9 @@ IF (PANTAVISOR_RUNTIME)
 
 # subdirectories
 add_subdirectory(plugins)
+IF (PANTAVISOR_XCONNECT)
+  add_subdirectory(xconnect)
+ENDIF (PANTAVISOR_XCONNECT)
 
 ### Pantavisor links shared where possible
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")
@@ -194,8 +198,10 @@ add_executable(pantavisor
 			ctrl/ctrl_steps_ep.c
 			ctrl/ctrl_upload.c
 			ctrl/ctrl_upload.h
-			ctrl/ctrl_usrmeta_ep.c
-			ctrl/ctrl_util.c
+			                    ctrl/ctrl_usrmeta_ep.c
+			                    ctrl/ctrl_xconnect_graph_ep.c
+			                    ctrl/ctrl_util.c
+			
 			ctrl/ctrl_util.h
 			daemons.c
 			daemons.h

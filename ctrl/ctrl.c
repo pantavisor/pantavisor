@@ -282,11 +282,11 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_devmeta_init();
 	pv_ctrl_endpoints_buildinfo_init();
 	pv_ctrl_endpoints_drivers_init();
-	pv_ctrl_endpoints_commands_init();
-	pv_ctrl_endpoints_config_init();
-}
-
-int pv_ctrl_start()
+	        pv_ctrl_endpoints_commands_init();
+	        pv_ctrl_endpoints_config_init();
+	        pv_ctrl_endpoints_xconnect_graph_init();
+	}
+	int pv_ctrl_start()
 {
 	pv_log(DEBUG, "starting server");
 	if (pvctrl.srv) {

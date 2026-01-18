@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025 Pantacor Ltd.
+ * Copyright (c) 2026 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,20 +20,42 @@
  * SOFTWARE.
  */
 
-#ifndef PV_CTRL_ENDPOINTS_H
-#define PV_CTRL_ENDPOINTS_H
+#include "ctrl_endpoints.h"
+#include "ctrl.h"
+#include "ctrl_callback.h"
+#include "ctrl_util.h"
+#include "state.h"
+#include "pantavisor.h"
 
-int pv_ctrl_endpoints_containers_init(void);
-int pv_ctrl_endpoints_groups_init(void);
-int pv_ctrl_endpoints_signal_init(void);
-int pv_ctrl_endpoints_objects_init(void);
-int pv_ctrl_endpoints_steps_init(void);
-int pv_ctrl_endpoints_usrmeta_init(void);
-int pv_ctrl_endpoints_devmeta_init(void);
-int pv_ctrl_endpoints_buildinfo_init(void);
-int pv_ctrl_endpoints_drivers_init(void);
-int pv_ctrl_endpoints_commands_init(void);
-int pv_ctrl_endpoints_config_init(void);
-int pv_ctrl_endpoints_xconnect_graph_init(void);
+#include <event2/http.h>
 
-#endif
+#include <string.h>
+
+#define MODULE_NAME "xconnect-graph-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
+
+static void ctrl_xconnect_graph_get(struct evhttp_request *req, void *ctx)
+{
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
+
+	struct pantavisor *pv = pv_get_instance();
+	char *graph = pv_state_get_xconnect_graph_json(pv->state);
+
+	if (!graph) {
+		pv_log(WARN, "couldn't get xconnect graph");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot get xconnect graph");
+		return;
+	}
+
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, graph);
+}
+
+int pv_ctrl_endpoints_xconnect_graph_init()
+{
+	pv_ctrl_add_endpoint("/xconnect-graph", EVHTTP_REQ_GET, true,
+			     ctrl_xconnect_graph_get);
+	return 0;
+}

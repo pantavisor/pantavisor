@@ -613,6 +613,93 @@ out:
 	return ret;
 }
 
+static service_type_t service_str_to_type(char *str)
+{
+	if (!str) return SVC_TYPE_UNKNOWN;
+	if (!strcmp(str, "rest")) return SVC_TYPE_REST;
+	if (!strcmp(str, "dbus")) return SVC_TYPE_DBUS;
+	if (!strcmp(str, "unix")) return SVC_TYPE_UNIX;
+	if (!strcmp(str, "drm")) return SVC_TYPE_DRM;
+	if (!strcmp(str, "wayland")) return SVC_TYPE_WAYLAND;
+	if (!strcmp(str, "input")) return SVC_TYPE_INPUT;
+	return SVC_TYPE_UNKNOWN;
+}
+
+static int platform_services_add(struct pv_platform *p, plat_service_t type, char *buf)
+{
+	int tokc, size, ret = 0;
+	jsmntok_t *tokv, *t, *sv;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) return 0;
+	size = jsmnutil_array_count(buf, tokv);
+	if (size <= 0) goto out;
+	t = tokv + 1;
+	for (int i=0; i<size; i++) {
+		int svc_c;
+		char *svc_s = pv_json_array_get_one_str(buf, &size, &t);
+		if (!svc_s) break;
+		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
+			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
+			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
+			char *r = pv_json_get_value(svc_s, "role", sv, svc_c);
+			char *iface = pv_json_get_value(svc_s, "interface", sv, svc_c);
+			pv_platform_add_service(p, type, service_str_to_type(t_s), n, r, iface);
+			if (n) free(n); if (t_s) free(t_s); if (r) free(r); if (iface) free(iface);
+			free(sv);
+		} else {
+			pv_platform_add_service(p, type, SVC_TYPE_UNKNOWN, svc_s, NULL, NULL);
+		}
+		free(svc_s);
+	}
+	ret = 1;
+out:
+	if (tokv) free(tokv);
+	return ret;
+}
+
+static int parse_platform_services(struct pv_state *s, struct pv_platform *p, char *buf)
+{
+	int tokc, ret;
+	char *value;
+	jsmntok_t *tokv;
+	if (!buf) return 0;
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	if (ret < 0) return 0;
+	value = pv_json_get_value(buf, "required", tokv, tokc);
+	if (value) { platform_services_add(p, DRIVER_REQUIRED, value); free(value); }
+	value = pv_json_get_value(buf, "optional", tokv, tokc);
+	if (value) { platform_services_add(p, DRIVER_OPTIONAL, value); free(value); }
+	if (tokv) free(tokv);
+	return 1;
+}
+
+static int parse_service_exports(struct pv_state *s, struct pv_platform *p, char *buf)
+{
+	int tokc, size, ret = 0;
+	jsmntok_t *tokv, *t, *sv;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) return 0;
+	size = jsmnutil_array_count(buf, tokv);
+	if (size <= 0) goto out;
+	t = tokv + 1;
+	for (int i=0; i<size; i++) {
+		int svc_c;
+		char *svc_s = pv_json_array_get_one_str(buf, &size, &t);
+		if (!svc_s) break;
+		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
+			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
+			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
+			char *sock = pv_json_get_value(svc_s, "socket", sv, svc_c);
+			pv_platform_add_service_export(p, service_str_to_type(t_s), n, sock);
+			if (n) free(n); if (t_s) free(t_s); if (sock) free(sock);
+			free(sv);
+		}
+		free(svc_s);
+	}
+	ret = 1;
+out:
+	if (tokv) free(tokv);
+	return ret;
+}
+
 static int parse_platform_drivers(struct pv_state *s, struct pv_platform *p,
 				  char *buf)
 {
@@ -1238,6 +1325,24 @@ static int do_action_for_storage(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_services(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	value = jka->buf;
+	if (value)
+		parse_platform_services(bundle->s, *bundle->platform, value);
+	return 0;
+}
+
+static int do_action_for_services_json(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	value = jka->buf;
+	if (value)
+		parse_service_exports(bundle->s, *bundle->platform, value);
+	return 0;
+}
+
 static int do_action_for_drivers(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
@@ -1298,6 +1403,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 		ADD_JKA_ENTRY("storage", JSMN_OBJECT, &bundle,
 			      do_action_for_storage, false),
 		ADD_JKA_ENTRY("drivers", JSMN_OBJECT, &bundle,
+ 		ADD_JKA_ENTRY("services", JSMN_OBJECT, &bundle,
+			      do_action_for_services, false),
 			      do_action_for_drivers, false),
 		ADD_JKA_ENTRY("exports", JSMN_ARRAY, &bundle,
 			      do_action_for_export, false),
@@ -1823,6 +1930,15 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 				goto out;
 			}
 			pv_jsons_add(this, key, value);
+ 			} else if (ext && !strcmp(ext, "/services.json")) {
+				pv_log(DEBUG, "parsing and adding json '%s'", key);
+				char *plat_name = strdup(key);
+				char *slash = strrchr(plat_name, '/');
+				if (slash) *slash = 0;
+				struct pv_platform *p = pv_state_fetch_platform(this, plat_name);
+				if (p) parse_service_exports(this, p, value);
+				free(plat_name);
+				pv_jsons_add(this, key, value);
 			// if the extension is either src.json or build.json, we ignore it
 		} else if (ext && (!strcmp(ext, "/src.json") ||
 				   !strcmp(ext, "/build.json") ||

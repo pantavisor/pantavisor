@@ -1192,3 +1192,32 @@ void pv_platform_ref_free(struct pv_platform_ref *pr)
 {
 	free(pr);
 }
+
+void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			    service_type_t svc_type, char *name, char *role,
+			    char *interface)
+{
+	struct pv_platform_service *s = calloc(1, sizeof(struct pv_platform_service));
+	if (s) {
+		s->type = type;
+		s->svc_type = svc_type;
+		if (name) s->name = strdup(name);
+		if (role) s->role = strdup(role);
+		if (interface) s->interface = strdup(interface);
+		dl_list_init(&s->list);
+		dl_list_add_tail(&p->services, &s->list);
+	}
+}
+
+void pv_platform_add_service_export(struct pv_platform *p, service_type_t svc_type,
+				   char *name, char *socket)
+{
+	struct pv_platform_service_export *se = calloc(1, sizeof(struct pv_platform_service_export));
+	if (se) {
+		se->svc_type = svc_type;
+		if (name) se->name = strdup(name);
+		if (socket) se->socket = strdup(socket);
+		dl_list_init(&se->list);
+		dl_list_add_tail(&p->service_exports, &se->list);
+	}
+}
