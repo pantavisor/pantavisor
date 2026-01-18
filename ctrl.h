@@ -38,6 +38,7 @@ typedef enum {
 	CMD_ENABLE_SSH = 9,
 	CMD_DISABLE_SSH = 10,
 	CMD_GO_REMOTE = 11,
+ 	CMD_XCONNECT_GRAPH = 12,
 	MAX_CMD_OP
 } pv_cmd_operation_t;
 
@@ -65,7 +66,7 @@ pv_ctrl_string_cmd_operation(const pv_cmd_operation_t op)
 					 "RUN_GC",
 					 "ENABLE_SSH",
 					 "DISABLE_SSH",
-					 "GO_REMOTE" };
+					 "GO_REMOTE"", "XCONNECT_GRAPH" };
 	return strings[op];
 }
 

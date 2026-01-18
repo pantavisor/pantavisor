@@ -21,6 +21,7 @@ set(PANTAVISOR_E2FSGROW_ENABLE ON CACHE BOOL "Enable autogrow partition feature"
 set(PANTAVISOR_RUNTIME ON CACHE BOOL "build pantavisor runtime itself")
 set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
+set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -31,6 +32,9 @@ IF (PANTAVISOR_RUNTIME)
 
 # subdirectories
 add_subdirectory(plugins)
+IF (PANTAVISOR_XCONNECT)
+  add_subdirectory(xconnect)
+ENDIF (PANTAVISOR_XCONNECT)
 
 ### Pantavisor links shared where possible
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")

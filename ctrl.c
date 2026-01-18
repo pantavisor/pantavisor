@@ -82,6 +82,7 @@
 #define ENDPOINT_CONFIG "/config"
 #define ENDPOINT_CONFIG2 "/config2"
 #define ENDPOINT_DRIVERS "/drivers"
+#define ENDPOINT_XCONNECT_GRAPH "/xconnect-graph"
 
 #define HTTP_RES_OK "HTTP/1.1 200 OK\r\n\r\n"
 #define HTTP_RES_OK_SIZE "HTTP/1.1 200 \r\nContent-Length: %zd\r\n\r\n"
@@ -868,6 +869,15 @@ pv_ctrl_process_endpoint_and_reply(int req_fd, const char *method,
 
 	mgmt = pv_ctrl_check_sender_privileged(pname);
 
+ 	if (pv_str_matches(ENDPOINT_XCONNECT_GRAPH, strlen(ENDPOINT_XCONNECT_GRAPH),
+			      path, path_len)) {
+		if (!strncmp("GET", method, method_len)) {
+			pv_ctrl_process_get_string(
+				req_fd,
+				pv_state_get_xconnect_graph_json(pv->state));
+		} else
+			goto err_me;
+	} else 
 	if (pv_str_matches(ENDPOINT_CONTAINERS, strlen(ENDPOINT_CONTAINERS),
 			   path, path_len)) {
 		if (!strncmp("GET", method, method_len)) {

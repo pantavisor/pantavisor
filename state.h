@@ -100,6 +100,7 @@ struct pv_volume *pv_state_search_volume(struct pv_state *s, const char *name);
 
 void pv_state_print(struct pv_state *s);
 char *pv_state_get_containers_json(struct pv_state *s);
+char *pv_state_get_xconnect_graph_json(struct pv_state *s);
 char *pv_state_get_groups_json(struct pv_state *s);
 
 #endif
