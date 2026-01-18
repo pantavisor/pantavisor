@@ -37,14 +37,19 @@
 	     ##__VA_ARGS__)
 #include "log.h"
 
-struct pv_init_daemon daemons[] = { { "hwrngd", 0, 1, "/usr/sbin/rngd",
-				      "/usr/sbin/rngd -f", 0 },
-				    { 0, 0, 0, 0, 0, 0 } };
+struct pv_init_daemon daemons[] = {
+	{ "hwrngd", 0, 1, "/usr/sbin/rngd", "/usr/sbin/rngd -f", 0 },
+#ifdef PANTAVISOR_XCONNECT
+	{ "pv-xconnect", 0, 1, "/usr/bin/pv-xconnect", "/usr/bin/pv-xconnect",
+	  0 },
+#endif
+	{ 0, 0, 0, 0, 0, 0 }
+};
 
 static int daemon_spawn(struct pv_init_daemon *self)
 {
 	self->pid = 0;
-	pv_log(INFO, "Spawning rngd daemon.");
+	pv_log(INFO, "Spawning %s daemon.", self->name);
 	if (self->_respawning) {
 		pv_log(INFO, "... deferring respawn by 5 seconds");
 		self->pid = tsh_run("/bin/sleep 5", 0, 0);
@@ -61,7 +66,6 @@ static int daemon_spawn(struct pv_init_daemon *self)
 
 	return self->pid;
 }
-
 struct pv_init_daemon *pv_init_get_daemons(void)
 {
 	return daemons;
@@ -91,7 +95,8 @@ int pv_init_spawn_daemons()
 			continue;
 		}
 
-		daemons[i].pid = daemon_spawn(daemons);
+		daemons[i].pid = daemon_spawn(&daemons[i]);
+
 		pv_log(INFO, "spawned daemon %s: %d \n", daemons[i].name,
 		       daemons[i].pid);
 	}

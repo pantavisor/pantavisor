@@ -361,7 +361,9 @@ target_compile_definitions(pantavisor PRIVATE PANTAVISOR_DEBUG)
 ENDIF()
 
 target_compile_definitions(pantavisor PUBLIC PV_INSTALL_FULL_PVLIBDIR="${PV_INSTALL_FULL_PVLIBDIR}")
-
+target_compile_definitions(pantavisor PRIVATE PANTAVISOR_XCONNECT)
+ENDIF()
+>>>>>>> 6909fb5 (xconnect: initial implementation of service mesh mediator)
 IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 ## install basic filesystem skeleton
 install(DIRECTORY skel/ DESTINATION /)
