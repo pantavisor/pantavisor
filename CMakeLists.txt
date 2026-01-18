@@ -238,6 +238,10 @@ IF(PANTAVISOR_DEBUG)
 target_compile_definitions(pantavisor PRIVATE PANTAVISOR_DEBUG)
 ENDIF()
 
+IF(PANTAVISOR_XCONNECT)
+target_compile_definitions(pantavisor PRIVATE PANTAVISOR_XCONNECT)
+ENDIF()
+
 IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 ## install basic filesystem skeleton
 install(DIRECTORY skel/ DESTINATION /)

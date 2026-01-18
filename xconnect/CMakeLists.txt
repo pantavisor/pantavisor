@@ -5,7 +5,6 @@ project(pv-xconnect VERSION 0.1)
 
 # Find libevent
 find_library(LIBEVENT_LIB event)
-find_library(LIBEVENT_PTHREADS_LIB event_pthreads)
 
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/..
@@ -23,7 +22,6 @@ add_executable(pv-xconnect
 
 target_link_libraries(pv-xconnect
     ${LIBEVENT_LIB}
-    ${LIBEVENT_PTHREADS_LIB}
     dl
 )
 
