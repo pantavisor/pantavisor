@@ -38,6 +38,27 @@ A file within a container (e.g., `services.json`) that declares what services it
 ]
 ```
 
+### Arguments (`args.json`)
+For containers that consume services, requirements are defined in `args.json` during the container creation process (e.g., with `pvr app add --arg-json args.json`). These arguments are then rendered into the final `run.json` manifest.
+
+#### Example `args.json` (Consumer):
+```json
+{
+  "PV_SERVICES_REQUIRED": [
+    {
+      "name": "network-manager",
+      "target": "/run/nm/api.sock"
+    }
+  ],
+  "PV_SERVICES_OPTIONAL": [
+    {
+      "name": "system-bus",
+      "interface": "org.freedesktop.NetworkManager"
+    }
+  ]
+}
+```
+
 ### Requirements (`run.json`)
 A container requests access to services in its `run.json` manifest.
 
