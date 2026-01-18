@@ -105,7 +105,7 @@ typedef enum {
 #define SYSTEM_ETCDIR_DEF "/etc"
 #define SYSTEM_LIBDIR_DEF "/lib"
 #define SYSTEM_MEDIADIR_DEF "/media"
-#define SYSTEM_RUNDIR_DEF "/pv"
+#define SYSTEM_RUNDIR_DEF "/run/pantavisor/pv"
 #define SYSTEM_USRDIR_DEF "/usr"
 
 struct pv_config_entry {

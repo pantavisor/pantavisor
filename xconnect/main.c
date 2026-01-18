@@ -1,38 +1,22 @@
-/*
- * Copyright (c) 2026 Pantacor Ltd.
- *
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:
- *
- * The above copyright notice and this permission notice shall be included in all
- * copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
- */
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <event2/event.h>
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <event2/listener.h>
+#include <picohttpparser.h>
 #include <jsmn/jsmnutil.h>
 #include "utils/json.h"
 
 #include "include/xconnect.h"
+
+#define PV_CTRL_SOCKET "/run/pantavisor/pv/pv-ctrl"
 
 static struct event_base *g_base;
 static struct dl_list g_links;
@@ -128,11 +112,65 @@ static void reconcile_graph(const char *json)
 	free(tokv);
 }
 
-// In a real implementation, this would be a continuous bufferevent to pv-ctrl
-static void fetch_graph_mock(void)
+static void ctrl_read_cb(struct bufferevent *bev, void *ctx)
 {
-	// For now, let's just trigger a mock reconciliation if we were to test
-	// reconcile_graph("[...]");
+	struct evbuffer *input = bufferevent_get_input(bev);
+	size_t len = evbuffer_get_length(input);
+	char *data = malloc(len + 1);
+	evbuffer_remove(input, data, len);
+	data[len] = '\0';
+
+	const char *msg;
+	int minor_version, status;
+	struct phr_header headers[100];
+	size_t msg_len, num_headers = 100;
+	int pret = phr_parse_response(data, len, &minor_version, &status, &msg,
+				      &msg_len, headers, &num_headers, 0);
+
+	if (pret > 0 && status == 200) {
+		reconcile_graph(data + pret);
+	} else {
+		fprintf(stderr, "Failed to fetch graph: pret=%d, status=%d\n",
+			pret, status);
+	}
+
+	free(data);
+	bufferevent_free(bev);
+}
+
+static void ctrl_event_cb(struct bufferevent *bev, short events, void *ctx)
+{
+	if (events & BEV_EVENT_CONNECTED) {
+		printf("Connected to pv-ctrl\n");
+		evbuffer_add_printf(bufferevent_get_output(bev),
+				    "GET /xconnect-graph HTTP/1.0\r\n\r\n");
+	} else if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
+		if (events & BEV_EVENT_ERROR) {
+			fprintf(stderr, "Error connecting to pv-ctrl: %s\n",
+				strerror(errno));
+		}
+		bufferevent_free(bev);
+	}
+}
+
+static void fetch_graph(void)
+{
+	struct bufferevent *bev;
+	struct sockaddr_un sun;
+
+	memset(&sun, 0, sizeof(sun));
+	sun.sun_family = AF_UNIX;
+	strncpy(sun.sun_path, PV_CTRL_SOCKET, sizeof(sun.sun_path) - 1);
+
+	bev = bufferevent_socket_new(g_base, -1, BEV_OPT_CLOSE_ON_FREE);
+	bufferevent_setcb(bev, ctrl_read_cb, NULL, ctrl_event_cb, NULL);
+	bufferevent_enable(bev, EV_READ | EV_WRITE);
+
+	if (bufferevent_socket_connect(bev, (struct sockaddr *)&sun,
+				       sizeof(sun)) < 0) {
+		fprintf(stderr, "Failed to initiate connection to pv-ctrl\n");
+		bufferevent_free(bev);
+	}
 }
 
 static void signal_cb(evutil_socket_t fd, short event, void *arg)
@@ -162,8 +200,7 @@ int main(int argc, char **argv)
 
 	printf("pv-xconnect starting...\n");
 
-	// In real app, we'd start the pv-ctrl client here
-	fetch_graph_mock();
+	fetch_graph();
 
 	event_base_dispatch(g_base);
 
