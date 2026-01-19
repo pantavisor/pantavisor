@@ -34,57 +34,87 @@ struct rest_proxy_session {
 	struct bufferevent *be_client;
 	struct bufferevent *be_provider;
 	struct pvx_link *link;
-	bool headers_injected;
+	int client_eof;
+	int provider_eof;
 };
 
-static void proxy_event_cb(struct bufferevent *bev, short events, void *arg)
+static void proxy_check_close(struct rest_proxy_session *session)
 {
-	struct rest_proxy_session *session = arg;
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		bufferevent_free(session->be_client);
-		bufferevent_free(session->be_provider);
+	// Only close when both sides have EOF'd or errored
+	if (session->client_eof && session->provider_eof) {
+		if (session->be_client)
+			bufferevent_free(session->be_client);
+		if (session->be_provider)
+			bufferevent_free(session->be_provider);
 		free(session);
 	}
 }
 
-static void rest_read_client_cb(struct bufferevent *bev, void *arg)
+static void proxy_event_cb(struct bufferevent *bev, short events, void *arg)
 {
 	struct rest_proxy_session *session = arg;
-	struct evbuffer *src = bufferevent_get_input(bev);
-	struct evbuffer *dst = bufferevent_get_output(session->be_provider);
 
-	if (!session->headers_injected) {
-		char headers[512];
-		snprintf(headers, sizeof(headers),
-			 "X-PV-Client: %s\r\nX-PV-Role: %s\r\n",
-			 session->link->consumer, session->link->role);
-		evbuffer_add(dst, headers, strlen(headers));
-		session->headers_injected = true;
+	if (events & BEV_EVENT_ERROR) {
+		// On error, mark both as done and close
+		session->client_eof = 1;
+		session->provider_eof = 1;
+		proxy_check_close(session);
+		return;
 	}
 
+	if (events & BEV_EVENT_EOF) {
+		// Half-close: one side sent EOF
+		if (bev == session->be_client) {
+			session->client_eof = 1;
+			bufferevent_disable(bev, EV_READ);
+		} else {
+			session->provider_eof = 1;
+			bufferevent_disable(bev, EV_READ);
+		}
+		proxy_check_close(session);
+	}
+}
+
+static void rest_read_cb(struct bufferevent *bev, void *arg)
+{
+	struct rest_proxy_session *session = arg;
+	struct bufferevent *other =
+		(bev == session->be_client) ? session->be_provider :
+					      session->be_client;
+	struct evbuffer *src = bufferevent_get_input(bev);
+	struct evbuffer *dst = bufferevent_get_output(other);
 	evbuffer_add_buffer(dst, src);
 }
 
-static void rest_read_provider_cb(struct bufferevent *bev, void *arg)
-{
-	struct rest_proxy_session *session = arg;
-	struct evbuffer *src = bufferevent_get_input(bev);
-	struct evbuffer *dst = bufferevent_get_output(session->be_client);
-	evbuffer_add_buffer(dst, src);
-}
 
 static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 			   struct sockaddr *address, int socklen, void *arg)
 {
 	struct pvx_link *link = arg;
 	struct event_base *base = pvx_get_base();
-	struct rest_proxy_session *session = calloc(1, sizeof(*session));
+	char provider_path[256];
 
 	printf("%s: Accepted REST connection for service %s from %s (pid %d)\n",
 	       MODULE_NAME, link->name, link->consumer, link->consumer_pid);
 
+	// Build provider socket path - use /proc/pid/root/ to access container namespace
+	if (link->provider_pid > 0) {
+		snprintf(provider_path, sizeof(provider_path),
+			 "/proc/%d/root%s", link->provider_pid,
+			 link->provider_socket);
+	} else {
+		strncpy(provider_path, link->provider_socket,
+			sizeof(provider_path) - 1);
+	}
+
+	struct rest_proxy_session *session = calloc(1, sizeof(*session));
+	if (!session) {
+		fprintf(stderr, "Could not allocate REST proxy session\n");
+		close(fd);
+		return;
+	}
+
 	session->link = link;
-	session->headers_injected = false;
 	session->be_client =
 		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
 	session->be_provider =
@@ -93,22 +123,22 @@ static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	struct sockaddr_un sun;
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_UNIX;
-	strncpy(sun.sun_path, link->provider_socket, sizeof(sun.sun_path) - 1);
+	strncpy(sun.sun_path, provider_path, sizeof(sun.sun_path) - 1);
 
 	if (bufferevent_socket_connect(session->be_provider,
 				       (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
 		fprintf(stderr, "Could not connect to provider socket %s\n",
-			link->provider_socket);
+			provider_path);
 		bufferevent_free(session->be_client);
 		bufferevent_free(session->be_provider);
 		free(session);
 		return;
 	}
 
-	bufferevent_setcb(session->be_client, rest_read_client_cb, NULL,
+	bufferevent_setcb(session->be_client, rest_read_cb, NULL,
 			  proxy_event_cb, session);
-	bufferevent_setcb(session->be_provider, rest_read_provider_cb, NULL,
+	bufferevent_setcb(session->be_provider, rest_read_cb, NULL,
 			  proxy_event_cb, session);
 
 	bufferevent_enable(session->be_client, EV_READ | EV_WRITE);
