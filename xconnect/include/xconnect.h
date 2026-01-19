@@ -64,5 +64,7 @@ struct pvx_plugin {
 // Core Helpers
 struct event_base *pvx_get_base(void);
 int pvx_helper_inject_unix_socket(const char *path, int pid);
+int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
+			      const char *source_path, int provider_pid);
 
 #endif

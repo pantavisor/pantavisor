@@ -31,6 +31,8 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/mount.h>
+#include <sys/sysmacros.h>
 #include <libgen.h>
 #include <limits.h>
 
@@ -130,4 +132,96 @@ out:
 		close(target_ns_fd);
 
 	return fd;
+}
+
+int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
+			      const char *source_path, int provider_pid)
+{
+	int old_ns_fd = -1;
+	int target_ns_fd = -1;
+	int ret = -1;
+	char ns_path[PATH_MAX];
+	char provider_dev_path[PATH_MAX];
+
+	// Build the full path to provider's device via /proc
+	if (provider_pid > 0) {
+		snprintf(provider_dev_path, sizeof(provider_dev_path),
+			 "/proc/%d/root%s", provider_pid, source_path);
+	} else {
+		strncpy(provider_dev_path, source_path,
+			sizeof(provider_dev_path) - 1);
+	}
+
+	// Stat source device to get type and major/minor numbers
+	struct stat st;
+	if (stat(provider_dev_path, &st) < 0) {
+		fprintf(stderr, "pvx: Source device %s not found\n",
+			provider_dev_path);
+		return -1;
+	}
+
+	if (!S_ISCHR(st.st_mode) && !S_ISBLK(st.st_mode)) {
+		fprintf(stderr, "pvx: %s is not a device node\n",
+			provider_dev_path);
+		return -1;
+	}
+
+	// 1. Save current namespace
+	old_ns_fd = open("/proc/self/ns/mnt", O_RDONLY);
+	if (old_ns_fd < 0) {
+		perror("open current ns");
+		return -1;
+	}
+
+	// 2. Open target namespace
+	snprintf(ns_path, sizeof(ns_path), "/proc/%d/ns/mnt", consumer_pid);
+	target_ns_fd = open(ns_path, O_RDONLY);
+	if (target_ns_fd < 0) {
+		perror("open target ns");
+		close(old_ns_fd);
+		return -1;
+	}
+
+	// 3. Enter target namespace
+	if (setns(target_ns_fd, CLONE_NEWNS) < 0) {
+		perror("setns");
+		goto out;
+	}
+
+	// 4. Prepare target path inside namespace
+	char *path_copy = strdup(target_path);
+	char *dir = dirname(path_copy);
+	mkdir_p(dir, 0755);
+	free(path_copy);
+
+	// 5. Create device node with same major/minor as source
+	unlink(target_path);
+	if (mknod(target_path, st.st_mode, st.st_rdev) < 0) {
+		fprintf(stderr, "pvx: mknod %s failed: %s\n", target_path,
+			strerror(errno));
+		goto out;
+	}
+
+	// Set permissions to allow access
+	chmod(target_path, 0666);
+
+	printf("pvx-drm: Injected device %s -> %s (consumer pid %d, dev %d:%d)\n",
+	       provider_dev_path, target_path, consumer_pid,
+	       major(st.st_rdev), minor(st.st_rdev));
+
+	ret = 0;
+
+out:
+	// 6. Ensure we're back in host namespace
+	if (setns(old_ns_fd, CLONE_NEWNS) < 0) {
+		perror("setns back");
+		exit(1);
+	}
+
+	if (old_ns_fd >= 0)
+		close(old_ns_fd);
+	if (target_ns_fd >= 0)
+		close(target_ns_fd);
+
+	return ret;
 }

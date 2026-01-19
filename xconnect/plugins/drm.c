@@ -33,7 +33,21 @@ static int drm_on_link_added(struct pvx_link *link)
 	printf("%s: Target: %s, Provider Node: %s\n", MODULE_NAME,
 	       link->consumer_socket, link->provider_socket);
 
-	// Future: pvx_helper_inject_devnode(link->consumer_socket, link->consumer_pid, ...);
+	if (link->consumer_pid <= 0) {
+		fprintf(stderr, "%s: Consumer PID required for device injection\n",
+			MODULE_NAME);
+		return -1;
+	}
+
+	int ret = pvx_helper_inject_devnode(link->consumer_socket,
+					    link->consumer_pid,
+					    link->provider_socket,
+					    link->provider_pid);
+	if (ret < 0) {
+		fprintf(stderr, "%s: Failed to inject device node\n",
+			MODULE_NAME);
+		return -1;
+	}
 
 	return 0;
 }
