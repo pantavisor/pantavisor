@@ -30,23 +30,56 @@
 
 #define MODULE_NAME "pvx-wayland"
 
+struct wayland_proxy_session {
+	struct bufferevent *be_client;
+	struct bufferevent *be_provider;
+	int client_eof;
+	int provider_eof;
+};
+
+static void wayland_proxy_check_close(struct wayland_proxy_session *sess)
+{
+	// Only close when both sides have EOF'd or errored
+	if (sess->client_eof && sess->provider_eof) {
+		if (sess->be_client)
+			bufferevent_free(sess->be_client);
+		if (sess->be_provider)
+			bufferevent_free(sess->be_provider);
+		free(sess);
+	}
+}
+
 static void wayland_proxy_event_cb(struct bufferevent *bev, short events,
 				   void *arg)
 {
-	struct bufferevent *other = arg;
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		if (other) {
-			bufferevent_flush(other, EV_READ | EV_WRITE,
-					  BEV_FINISHED);
-			bufferevent_free(other);
+	struct wayland_proxy_session *sess = arg;
+
+	if (events & BEV_EVENT_ERROR) {
+		// On error, mark both as done and close
+		sess->client_eof = 1;
+		sess->provider_eof = 1;
+		wayland_proxy_check_close(sess);
+		return;
+	}
+
+	if (events & BEV_EVENT_EOF) {
+		// Half-close: one side sent EOF
+		if (bev == sess->be_client) {
+			sess->client_eof = 1;
+			bufferevent_disable(bev, EV_READ);
+		} else {
+			sess->provider_eof = 1;
+			bufferevent_disable(bev, EV_READ);
 		}
-		bufferevent_free(bev);
+		wayland_proxy_check_close(sess);
 	}
 }
 
 static void wayland_proxy_read_cb(struct bufferevent *bev, void *arg)
 {
-	struct bufferevent *other = arg;
+	struct wayland_proxy_session *sess = arg;
+	struct bufferevent *other =
+		(bev == sess->be_client) ? sess->be_provider : sess->be_client;
 	struct evbuffer *src = bufferevent_get_input(bev);
 	struct evbuffer *dst = bufferevent_get_output(other);
 	evbuffer_add_buffer(dst, src);
@@ -58,36 +91,54 @@ static void wayland_on_accept(struct evconnlistener *listener,
 {
 	struct pvx_link *link = arg;
 	struct event_base *base = pvx_get_base();
+	char provider_path[256];
 
 	printf("%s: Accepted Wayland connection for %s from pid %d\n",
 	       MODULE_NAME, link->name, link->consumer_pid);
 
-	struct bufferevent *be_client =
-		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	struct bufferevent *be_provider =
-		bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	// Build provider socket path - use /proc/pid/root/ to access container namespace
+	if (link->provider_pid > 0) {
+		snprintf(provider_path, sizeof(provider_path),
+			 "/proc/%d/root%s", link->provider_pid,
+			 link->provider_socket);
+	} else {
+		strncpy(provider_path, link->provider_socket,
+			sizeof(provider_path) - 1);
+	}
+
+	struct wayland_proxy_session *sess = calloc(1, sizeof(*sess));
+	if (!sess) {
+		fprintf(stderr, "%s: Could not allocate proxy session\n",
+			MODULE_NAME);
+		close(fd);
+		return;
+	}
+
+	sess->be_client = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+	sess->be_provider = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
 	struct sockaddr_un sun;
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_UNIX;
-	strncpy(sun.sun_path, link->provider_socket, sizeof(sun.sun_path) - 1);
+	strncpy(sun.sun_path, provider_path, sizeof(sun.sun_path) - 1);
 
-	if (bufferevent_socket_connect(be_provider, (struct sockaddr *)&sun,
+	if (bufferevent_socket_connect(sess->be_provider, (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
-		fprintf(stderr, "Could not connect to compositor socket %s\n",
-			link->provider_socket);
-		bufferevent_free(be_client);
-		bufferevent_free(be_provider);
+		fprintf(stderr, "%s: Could not connect to compositor socket %s\n",
+			MODULE_NAME, provider_path);
+		bufferevent_free(sess->be_client);
+		bufferevent_free(sess->be_provider);
+		free(sess);
 		return;
 	}
 
-	bufferevent_setcb(be_client, wayland_proxy_read_cb, NULL,
-			  wayland_proxy_event_cb, be_provider);
-	bufferevent_setcb(be_provider, wayland_proxy_read_cb, NULL,
-			  wayland_proxy_event_cb, be_client);
+	bufferevent_setcb(sess->be_client, wayland_proxy_read_cb, NULL,
+			  wayland_proxy_event_cb, sess);
+	bufferevent_setcb(sess->be_provider, wayland_proxy_read_cb, NULL,
+			  wayland_proxy_event_cb, sess);
 
-	bufferevent_enable(be_client, EV_READ | EV_WRITE);
-	bufferevent_enable(be_provider, EV_READ | EV_WRITE);
+	bufferevent_enable(sess->be_client, EV_READ | EV_WRITE);
+	bufferevent_enable(sess->be_provider, EV_READ | EV_WRITE);
 }
 
 static int wayland_on_link_added(struct pvx_link *link)
@@ -95,13 +146,15 @@ static int wayland_on_link_added(struct pvx_link *link)
 	struct event_base *base = pvx_get_base();
 	int fd;
 
-	printf("%s: Setting up Wayland link for %s\n", MODULE_NAME,
-	       link->consumer);
-
 	if (link->consumer_pid > 0) {
+		printf("%s: Injecting Wayland socket %s into pid %d\n",
+		       MODULE_NAME, link->consumer_socket, link->consumer_pid);
 		fd = pvx_helper_inject_unix_socket(link->consumer_socket,
 						   link->consumer_pid);
 	} else {
+		// Host-side listener
+		printf("%s: Creating host-side Wayland socket %s\n",
+		       MODULE_NAME, link->consumer_socket);
 		fd = socket(AF_UNIX, SOCK_STREAM, 0);
 		struct sockaddr_un sun;
 		memset(&sun, 0, sizeof(sun));
@@ -114,18 +167,23 @@ static int wayland_on_link_added(struct pvx_link *link)
 		evutil_make_socket_nonblocking(fd);
 	}
 
-	if (fd < 0)
+	if (fd < 0) {
+		fprintf(stderr, "%s: Failed to create socket for %s\n",
+			MODULE_NAME, link->consumer_socket);
 		return -1;
+	}
 
-	struct sockaddr_un sun;
-	memset(&sun, 0, sizeof(sun));
-	sun.sun_family = AF_UNIX;
-	// Note: fd is already bound, but libevent wants to know the address.
-	// In this case, we can use evconnlistener_new if we already have the fd.
 	link->listener =
 		evconnlistener_new(base, wayland_on_accept, link,
 				   LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE,
 				   -1, fd);
+
+	if (!link->listener) {
+		fprintf(stderr, "%s: Could not create listener for %s\n",
+			MODULE_NAME, link->consumer_socket);
+		close(fd);
+		return -1;
+	}
 
 	return 0;
 }
