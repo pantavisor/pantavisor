@@ -143,7 +143,9 @@ static void crtl_add_request(struct evhttp_request *req)
 
 static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 {
-	if (strcmp(evhttp_request_get_host(req), "localhost") != 0)
+	const char *host = evhttp_request_get_host(req);
+	// Allow localhost, empty, or NULL host for Unix socket connections
+	if (host && host[0] != '\0' && strcmp(host, "localhost") != 0)
 		return -1;
 
 	const char *uri = evhttp_request_get_uri(req);
