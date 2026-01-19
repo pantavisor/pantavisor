@@ -38,14 +38,14 @@
 #include "log.h"
 
 struct pv_init_daemon daemons[] = {
-	{ "hwrngd", 0, 1, "/usr/sbin/rngd", "/usr/sbin/rngd -f", 0 },
+	{ "hwrngd", 0, 1, "/usr/bin/rngd", "/usr/bin/rngd -f",
+	  DM_EMBEDDED | DM_STANDALONE, 0 },
 #ifdef PANTAVISOR_XCONNECT
 	{ "pv-xconnect", 0, 1, "/usr/bin/pv-xconnect", "/usr/bin/pv-xconnect",
-	  0 },
+	  DM_ALL, 0 },
 #endif
-	{ 0, 0, 0, 0, 0, 0 }
+	{ 0, 0, 0, 0, 0, 0, 0 }
 };
-
 static int daemon_spawn(struct pv_init_daemon *self)
 {
 	self->pid = 0;
@@ -71,10 +71,11 @@ struct pv_init_daemon *pv_init_get_daemons(void)
 	return daemons;
 }
 
-int pv_init_spawn_daemons()
+int pv_init_spawn_daemons(init_mode_t mode)
 {
 	int i = 0;
 	struct stat sb;
+	unsigned int mode_flag = (1 << mode);
 
 	sigset_t blocked_sig, old_sigset;
 	sigemptyset(&blocked_sig);
@@ -85,6 +86,14 @@ int pv_init_spawn_daemons()
 		if (daemons[i].pid > 0 ||
 		    (daemons[i].pid == 0 && !daemons[i].respawn))
 			continue;
+
+		// skip daemons not enabled for this init mode
+		if (!(daemons[i].modes & mode_flag)) {
+			pv_log(INFO,
+			       "daemon %s not enabled for init mode %d\n",
+			       daemons[i].name, mode);
+			continue;
+		}
 
 		if (stat(daemons[i].testpath, &sb)) {
 			pv_log(INFO,

@@ -26,18 +26,27 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "config.h"
+
+// Daemon mode flags (bitmask for init_mode_t)
+#define DM_EMBEDDED (1 << IM_EMBEDDED)
+#define DM_STANDALONE (1 << IM_STANDALONE)
+#define DM_APPENGINE (1 << IM_APPENGINE)
+#define DM_ALL (DM_EMBEDDED | DM_STANDALONE | DM_APPENGINE)
+
 struct pv_init_daemon {
 	char *name;
 	pid_t pid;
 	int respawn;
 	char *testpath;
 	char *cmd;
+	unsigned int modes; // bitmask of allowed init modes
 	int _respawning;
 };
 
 struct pv_init_daemon *pv_init_get_daemons(void);
 
-int pv_init_spawn_daemons(void);
+int pv_init_spawn_daemons(init_mode_t mode);
 
 int pv_init_is_daemon(pid_t pid);
 

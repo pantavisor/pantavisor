@@ -176,7 +176,7 @@ static void signal_handler(int signal)
 		if (getpid() == 1 && pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
 			pv_init_daemon_exited(pid);
-			if (!pv_init_spawn_daemons())
+			if (!pv_init_spawn_daemons(pv_config_get_system_init_mode()))
 				continue;
 			sleep(1);
 			pv_log(WARN,
@@ -435,8 +435,10 @@ int main(int argc, char *argv[])
 	init_mode_t init_mode = pv_config_get_system_init_mode();
 	if ((init_mode == IM_EMBEDDED) || (init_mode == IM_STANDALONE)) {
 		pv_drivers_load_early();
-		pv_init_spawn_daemons();
 	}
+
+	// spawn daemons based on their configured modes
+	pv_init_spawn_daemons(init_mode);
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if (init_mode == IM_STANDALONE) {
