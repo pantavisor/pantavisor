@@ -82,7 +82,7 @@ pv_ctrl_cmd_op_from_str(const char *op_str, const size_t op_str_size)
 }
 
 struct pv_ctrl_cmd *pv_ctrl_cmd_parse(const char *buf);
-int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char *err);
+int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char **err);
 void pv_ctrl_cmd_free(struct pv_ctrl_cmd *cmd);
 
 #endif

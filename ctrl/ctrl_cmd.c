@@ -77,15 +77,17 @@ out:
 	return cmd;
 }
 
-int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char *err)
+int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char **err)
 {
-	if (!cmd)
+	if (!cmd) {
+		*err = "Command is empty";
 		return -1;
+	}
 
 	struct pantavisor *pv = pv_get_instance();
 
 	if (!pv->remote_mode && cmd->op == CMD_UPDATE_METADATA) {
-		err = "Cannot do this operation while on local mode";
+		*err = "Cannot do this operation while on local mode";
 		return -1;
 	}
 
@@ -94,24 +96,24 @@ int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char *err)
 	     (cmd->op == CMD_POWEROFF_DEVICE) || (cmd->op == CMD_LOCAL_RUN) ||
 	     (cmd->op == CMD_LOCAL_RUN_COMMIT) ||
 	     (cmd->op == CMD_MAKE_FACTORY))) {
-		err = "Cannot do this operation while update is ongoing";
+		*err = "Cannot do this operation while update is ongoing";
 		return -1;
 	}
 
 	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {
-		err = "Cannot do this operation if device is already claimed";
+		*err = "Cannot do this operation if device is already claimed";
 		return -1;
 	}
 
 	if (!pv_config_get_bool(PV_CONTROL_REMOTE) &&
 	    cmd->op == CMD_GO_REMOTE) {
-		err = "Cannot do this operation when remote mode is disabled by config";
+		*err = "Cannot do this operation when remote mode is disabled by config";
 		return -1;
 	}
 
 	if (!pv_config_get_bool(PV_DEBUG_SHELL) &&
 	    cmd->op == CMD_DEFER_REBOOT) {
-		err = "Cannot do this operation when debug shell is not active";
+		*err = "Cannot do this operation when debug shell is not active";
 		pv_log(WARN,
 		       "Cannot do this operation when debug shell is not active");
 
@@ -119,12 +121,12 @@ int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char *err)
 	}
 
 	if (pv->remote_mode && cmd->op == CMD_GO_REMOTE) {
-		err = "Already in remote mode";
+		*err = "Already in remote mode";
 		return -1;
 	}
 
 	if (pv->cmd) {
-		err = "A command is already in progress. Try again";
+		*err = "A command is already in progress. Try again";
 		return -1;
 	}
 
