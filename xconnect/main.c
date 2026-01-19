@@ -83,21 +83,46 @@ static void reconcile_graph(const char *json)
 							       ov, obj_c);
 				link->provider_socket = pv_json_get_value(
 					obj_s, "socket", ov, obj_c);
+				link->interface = pv_json_get_value(
+					obj_s, "interface", ov, obj_c);
 
-				// For host testing, create a virtual path
-				char path[1024];
-				snprintf(path, sizeof(path),
-					 "/tmp/pvx_%s_%s.sock", link->consumer,
-					 link->name);
-				link->consumer_socket = strdup(path);
+				// Parse consumer_pid for namespace injection
+				char *pid_str = pv_json_get_value(
+					obj_s, "consumer_pid", ov, obj_c);
+				if (pid_str) {
+					link->consumer_pid = atoi(pid_str);
+					free(pid_str);
+				}
+
+				// Parse provider_pid for cross-namespace socket access
+				pid_str = pv_json_get_value(obj_s, "provider_pid",
+							    ov, obj_c);
+				if (pid_str) {
+					link->provider_pid = atoi(pid_str);
+					free(pid_str);
+				}
+
+				// Use interface as consumer socket path if available
+				if (link->interface && link->interface[0]) {
+					link->consumer_socket =
+						strdup(link->interface);
+				} else {
+					// Fallback for host testing
+					char path[1024];
+					snprintf(path, sizeof(path),
+						 "/tmp/pvx_%s_%s.sock",
+						 link->consumer, link->name);
+					link->consumer_socket = strdup(path);
+				}
 
 				link->plugin = p;
 				dl_list_init(&link->list);
 				dl_list_add_tail(&g_links, &link->list);
 
-				printf("Adding link: %s (%s) -> %s\n",
-				       link->consumer, link->type,
-				       link->provider_socket);
+				printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
+				       link->consumer, link->consumer_pid,
+				       link->type, link->provider_socket,
+				       link->consumer_socket);
 				p->on_link_added(link);
 			} else {
 				fprintf(stderr, "No plugin found for type %s\n",

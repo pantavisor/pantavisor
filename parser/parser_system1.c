@@ -654,6 +654,10 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 			char *r = pv_json_get_value(svc_s, "role", sv, svc_c);
 			char *iface = pv_json_get_value(svc_s, "interface", sv,
 							svc_c);
+			// Accept "target" as alias for "interface" for xconnect
+			if (!iface)
+				iface = pv_json_get_value(svc_s, "target", sv,
+							  svc_c);
 			pv_platform_add_service(
 				p, type, service_str_to_type(t_s), n, r, iface);
 			if (n)

@@ -33,27 +33,54 @@
 struct unix_proxy_session {
 	struct bufferevent *be_client;
 	struct bufferevent *be_provider;
+	int client_eof;
+	int provider_eof;
 };
+
+static void proxy_check_close(struct unix_proxy_session *sess)
+{
+	// Only close when both sides have EOF'd or errored
+	if (sess->client_eof && sess->provider_eof) {
+		if (sess->be_client)
+			bufferevent_free(sess->be_client);
+		if (sess->be_provider)
+			bufferevent_free(sess->be_provider);
+		free(sess);
+	}
+}
 
 static void proxy_event_cb(struct bufferevent *bev, short events, void *arg)
 {
-	struct bufferevent *other = arg;
-	if (events & (BEV_EVENT_EOF | BEV_EVENT_ERROR)) {
-		if (other) {
-			// Send EOF to other side
-			bufferevent_flush(other, EV_READ | EV_WRITE,
-					  BEV_FINISHED);
-			bufferevent_free(other);
+	struct unix_proxy_session *sess = arg;
+
+	if (events & BEV_EVENT_ERROR) {
+		// On error, mark both as done and close
+		sess->client_eof = 1;
+		sess->provider_eof = 1;
+		proxy_check_close(sess);
+		return;
+	}
+
+	if (events & BEV_EVENT_EOF) {
+		// Half-close: one side sent EOF
+		if (bev == sess->be_client) {
+			sess->client_eof = 1;
+			// Client done sending, but keep reading from provider
+			bufferevent_disable(bev, EV_READ);
+		} else {
+			sess->provider_eof = 1;
+			// Provider done sending, but keep reading from client
+			bufferevent_disable(bev, EV_READ);
 		}
-		bufferevent_free(bev);
-		// Note: we'd need a better way to free the session struct here
-		// if we weren't just passing the other bev as arg.
+		proxy_check_close(sess);
 	}
 }
 
 static void proxy_read_cb(struct bufferevent *bev, void *arg)
 {
-	struct bufferevent *other = arg;
+	struct unix_proxy_session *sess = arg;
+	struct bufferevent *other =
+		(bev == sess->be_client) ? sess->be_provider : sess->be_client;
 	struct evbuffer *src = bufferevent_get_input(bev);
 	struct evbuffer *dst = bufferevent_get_output(other);
 	evbuffer_add_buffer(dst, src);
@@ -64,36 +91,53 @@ static void unix_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 {
 	struct pvx_link *link = arg;
 	struct event_base *base = pvx_get_base();
+	char provider_path[256];
 
 	printf("%s: Accepted connection for service %s from pid %d\n",
 	       MODULE_NAME, link->name, link->consumer_pid);
 
-	struct bufferevent *be_client =
-		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	struct bufferevent *be_provider =
-		bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	// Build provider socket path - use /proc/pid/root/ to access container namespace
+	if (link->provider_pid > 0) {
+		snprintf(provider_path, sizeof(provider_path),
+			 "/proc/%d/root%s", link->provider_pid,
+			 link->provider_socket);
+	} else {
+		strncpy(provider_path, link->provider_socket,
+			sizeof(provider_path) - 1);
+	}
+
+	struct unix_proxy_session *sess = calloc(1, sizeof(*sess));
+	if (!sess) {
+		fprintf(stderr, "Could not allocate proxy session\n");
+		close(fd);
+		return;
+	}
+
+	sess->be_client = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
+	sess->be_provider = bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
 	struct sockaddr_un sun;
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_UNIX;
-	strncpy(sun.sun_path, link->provider_socket, sizeof(sun.sun_path) - 1);
+	strncpy(sun.sun_path, provider_path, sizeof(sun.sun_path) - 1);
 
-	if (bufferevent_socket_connect(be_provider, (struct sockaddr *)&sun,
+	if (bufferevent_socket_connect(sess->be_provider, (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
 		fprintf(stderr, "Could not connect to provider socket %s\n",
-			link->provider_socket);
-		bufferevent_free(be_client);
-		bufferevent_free(be_provider);
+			provider_path);
+		bufferevent_free(sess->be_client);
+		bufferevent_free(sess->be_provider);
+		free(sess);
 		return;
 	}
 
-	bufferevent_setcb(be_client, proxy_read_cb, NULL, proxy_event_cb,
-			  be_provider);
-	bufferevent_setcb(be_provider, proxy_read_cb, NULL, proxy_event_cb,
-			  be_client);
+	bufferevent_setcb(sess->be_client, proxy_read_cb, NULL, proxy_event_cb,
+			  sess);
+	bufferevent_setcb(sess->be_provider, proxy_read_cb, NULL, proxy_event_cb,
+			  sess);
 
-	bufferevent_enable(be_client, EV_READ | EV_WRITE);
-	bufferevent_enable(be_provider, EV_READ | EV_WRITE);
+	bufferevent_enable(sess->be_client, EV_READ | EV_WRITE);
+	bufferevent_enable(sess->be_provider, EV_READ | EV_WRITE);
 }
 
 static int unix_on_link_added(struct pvx_link *link)
