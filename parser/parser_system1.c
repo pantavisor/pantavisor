@@ -85,11 +85,15 @@ static int parse_one_driver(struct pv_state *s, char *buf)
 
 		// copy key
 		key = malloc(n + 1);
+		if (!key)
+			goto out;
 		snprintf(key, n + 1, "%s", buf + (*k)->start);
 
 		// copy modules array
 		n = (*k + 1)->end - (*k + 1)->start;
 		value = malloc(n + 1);
+		if (!value)
+			goto out;
 		snprintf(value, n + 1, "%s", buf + (*k + 1)->start);
 
 		if (jsmnutil_parse_json(value, &tokv_t, &tokc_t) < 0) {
@@ -201,12 +205,25 @@ static int parse_bsp_drivers(struct pv_state *s, char *v, int len)
 
 		// check key for [all,dtb:*,overlay:*]
 		key = malloc(n + 1);
+		if (!key) {
+			free(buf);
+			free(tokv);
+			jsmnutil_tokv_free(keys);
+			return 0;
+		}
 		snprintf(key, n + 1, "%s", buf + (*k)->start);
 
 		if (driver_should_parse(key)) {
 			// copy value
 			n = (*k + 1)->end - (*k + 1)->start;
 			value = malloc(n + 1);
+			if (!value) {
+				free(key);
+				free(buf);
+				free(tokv);
+				jsmnutil_tokv_free(keys);
+				return 0;
+			}
 			snprintf(value, n + 1, "%s", buf + (*k + 1)->start);
 			if (!parse_one_driver(s, value)) {
 				pv_log(ERROR, "unable to parse drivers");
@@ -496,11 +513,24 @@ static int parse_storage(struct pv_state *s, struct pv_platform *p, char *buf)
 
 		// copy key
 		key = malloc(n + 1);
+		if (!key) {
+			jsmnutil_tokv_free(keys);
+			if (tokv)
+				free(tokv);
+			return 0;
+		}
 		snprintf(key, n + 1, "%s", buf + (*k)->start);
 
 		// copy value
 		n = (*k + 1)->end - (*k + 1)->start;
 		value = malloc(n + 1);
+		if (!value) {
+			free(key);
+			jsmnutil_tokv_free(keys);
+			if (tokv)
+				free(tokv);
+			return 0;
+		}
 		snprintf(value, n + 1, "%s", buf + (*k + 1)->start);
 
 		jsmnutil_parse_json(value, &tokv_t, &tokc);
@@ -1777,11 +1807,19 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 
 		// copy key
 		key = malloc(n + 1);
+		if (!key) {
+			this = NULL;
+			goto out;
+		}
 		snprintf(key, n + 1, "%s", buf + (*k)->start);
 
 		// copy value
 		n = (*k + 1)->end - (*k + 1)->start;
 		value = malloc(n + 1);
+		if (!value) {
+			this = NULL;
+			goto out;
+		}
 		snprintf(value, n + 1, "%s", buf + (*k + 1)->start);
 
 		// check extension in case of file (json=platform, other=file)

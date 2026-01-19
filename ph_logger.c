@@ -603,10 +603,62 @@ static int ph_logger_push_from_file_parse_info(char *buf, int len,
 	return -1;
 }
 
+// Helper function to recursively process log files without using shell commands
+static int ph_logger_push_revision_dir(const char *dirpath, char *revision,
+				       int offset_bytes, int *result)
+{
+	DIR *dir = opendir(dirpath);
+	if (!dir)
+		return 0;
+
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry->d_name, ".") == 0 ||
+		    strcmp(entry->d_name, "..") == 0)
+			continue;
+
+		char fullpath[PATH_MAX];
+		SNPRINTF_WTRUNC(fullpath, sizeof(fullpath), "%s/%s", dirpath,
+				entry->d_name);
+
+		struct stat st;
+		if (stat(fullpath, &st) != 0)
+			continue;
+
+		if (S_ISDIR(st.st_mode)) {
+			// Recurse into subdirectory
+			if (ph_logger_push_revision_dir(fullpath, revision,
+							offset_bytes,
+							result) < 0) {
+				closedir(dir);
+				return -1;
+			}
+		} else if (S_ISREG(st.st_mode)) {
+			// Skip .gz files
+			const char *ext = strrchr(entry->d_name, '.');
+			if (ext && strstr(ext, ".gz"))
+				continue;
+
+			int ret = ph_logger_push_from_file_parse_info(
+				fullpath, strlen(fullpath) + 1, revision,
+				offset_bytes);
+			if (ret > 0)
+				*result = 1;
+			else if (ret < 0) {
+				*result = ret;
+				closedir(dir);
+				return -1;
+			}
+		}
+	}
+
+	closedir(dir);
+	return 0;
+}
+
 static int ph_logger_push_revision(char *revision)
 {
-	char find_cmd[1024], path[PATH_MAX];
-	FILE *find_fp = NULL;
+	char base_path[PATH_MAX], rev_path[PATH_MAX];
 	int offset_bytes = 0;
 	int result = 0;
 
@@ -618,46 +670,15 @@ static int ph_logger_push_revision(char *revision)
 	 * actual file path.
 	 */
 
-	pv_paths_pv_log(path, PATH_MAX, "");
-	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd), "%s/%s/", path, revision);
-	offset_bytes = strlen(find_cmd);
-
-	SNPRINTF_WTRUNC(find_cmd, sizeof(find_cmd),
-			"find %s/%s -type f ! -name '*.gz*' 2>/dev/null", path,
+	pv_paths_pv_log(base_path, PATH_MAX, "");
+	SNPRINTF_WTRUNC(rev_path, sizeof(rev_path), "%s/%s/", base_path,
 			revision);
-	find_fp = popen(find_cmd, "r");
+	offset_bytes = strlen(rev_path);
 
-	if (find_fp) {
-		char *buf = NULL;
-		size_t size = 0;
+	// Use directory traversal instead of popen("find ...") to avoid
+	// command injection
+	ph_logger_push_revision_dir(rev_path, revision, offset_bytes, &result);
 
-		while (!feof(find_fp)) {
-			ssize_t nr_read = 0;
-
-			nr_read = getline(&buf, &size, find_fp);
-			if (nr_read > 0) {
-				int ret = -1;
-
-				/*Get rid of '\n'*/
-				buf[nr_read - 1] = '\0';
-				ret = ph_logger_push_from_file_parse_info(
-					buf, nr_read, revision, offset_bytes);
-				// if there was something to send for al least one file, return 1
-				if (ret > 0)
-					result = 1;
-				// if we got an error while pushing any of the files, return -1
-				else if (ret < 0) {
-					result = ret;
-					break;
-				}
-			} else {
-				break;
-			}
-		}
-		if (buf)
-			free(buf);
-		pclose(find_fp);
-	}
 	return result;
 }
 
@@ -730,41 +751,41 @@ static pid_t ph_logger_start_push_service(char *revision)
 
 static int ph_logger_get_max_revision(struct pantavisor *pv)
 {
-	const char *cmd_fmt = "find %s -type d -mindepth 1 -maxdepth 1";
-	char cmd[PATH_MAX], path[PATH_MAX];
-	FILE *fp = NULL;
-	char *buf = NULL;
-	size_t buf_size = 0;
+	char path[PATH_MAX];
 	int max_revision = 0;
 
 	pv_paths_pv_log(path, PATH_MAX, "");
-	SNPRINTF_WTRUNC(cmd, PATH_MAX, cmd_fmt, path);
 
-	fp = popen(cmd, "r");
-	if (!fp)
-		goto out;
-	while (!feof(fp)) {
-		ssize_t ret = 0;
+	// Use opendir/readdir instead of popen("find ...") to avoid
+	// command injection
+	DIR *dir = opendir(path);
+	if (!dir)
+		return max_revision;
 
-		ret = getline(&buf, &buf_size, fp);
-		if (ret > 0) {
-			char *rev_dir = NULL;
-			int this_rev = -1;
+	struct dirent *entry;
+	while ((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry->d_name, ".") == 0 ||
+		    strcmp(entry->d_name, "..") == 0)
+			continue;
 
-			//Throw away null byte.
-			buf[ret - 1] = '\0';
-			rev_dir = basename(buf);
-			sscanf(rev_dir, "%d", &this_rev);
+		// Check if it's a directory
+		char fullpath[PATH_MAX];
+		SNPRINTF_WTRUNC(fullpath, sizeof(fullpath), "%s/%s", path,
+				entry->d_name);
+
+		struct stat st;
+		if (stat(fullpath, &st) != 0 || !S_ISDIR(st.st_mode))
+			continue;
+
+		// Try to parse directory name as revision number
+		int this_rev = -1;
+		if (sscanf(entry->d_name, "%d", &this_rev) == 1) {
 			if (this_rev > max_revision)
 				max_revision = this_rev;
-		} else {
-			break;
 		}
 	}
-	if (buf)
-		free(buf);
-	pclose(fp);
-out:
+
+	closedir(dir);
 	return max_revision;
 }
 
