@@ -143,7 +143,7 @@ static void ctrl_event_cb(struct bufferevent *bev, short events, void *ctx)
 	if (events & BEV_EVENT_CONNECTED) {
 		printf("Connected to pv-ctrl\n");
 		evbuffer_add_printf(bufferevent_get_output(bev),
-				    "GET /xconnect-graph HTTP/1.0\r\n\r\n");
+				    "GET /xconnect-graph HTTP/1.0\r\nHost: localhost\r\n\r\n");
 	} else if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
 		if (events & BEV_EVENT_ERROR) {
 			fprintf(stderr, "Error connecting to pv-ctrl: %s\n",
