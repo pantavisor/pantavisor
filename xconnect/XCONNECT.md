@@ -99,27 +99,34 @@ A container requests access to services in its `run.json` manifest. These are re
 - **Mechanism**: Role-aware proxy for the system bus.
 - **Protocol**: Mediates D-Bus messages over Unix Domain Sockets between isolated containers.
 - **Injection**: Injects a proxied D-Bus socket (e.g., `/run/dbus/system_bus_socket`) into the consumer container's namespace.
-- **Role-Based Identity**: 
-  - `pv-xconnect` performs **Identity Masquerading** during the D-Bus SASL authentication phase.
-  - The proxy takes the **Role** from the connect graph and looks up its corresponding **UID** in the provider container's `/etc/passwd`.
-  - For example, if the role is `"ubuntu"`, the proxy finds UID 1000 in the provider and sends `AUTH EXTERNAL <hex("1000")>`.
-  - This allows the provider's standard `dbus-daemon` to enforce permissions using standard `<policy user="username">` or `<policy user="UID">` rules.
-- **Filtering & Security**:
-  - **Names/Interfaces**: Access is restricted based on the `interface` field in `run.json`.
-  - **Policy XML**: D-Bus providers use standard D-Bus policy files to define permissions for specific users/UIDs mapped from roles.
-  - **Proxy Isolation**: The consumer only sees the bus of the specific provider it is linked to.
+- **Role-Based Identity Masquerading**: 
+  - `pv-xconnect` intercepts the D-Bus SASL authentication phase to provide identity to the provider.
+  - **UID Lookup**: The proxy take the **Role** from the Pantavisor connect graph and looks up the corresponding **UID** by reading `/etc/passwd` inside the **provider** container namespace.
+  - **SASL Injection**: The proxy replaces the consumer's `AUTH EXTERNAL <identity>` command with the resolved UID.
+  - **Example**: If a link has role `"operator"`, and the provider's `/etc/passwd` maps `"operator"` to UID `1001`, the proxy sends `AUTH EXTERNAL 31303031` (hex for `"1001"`).
+  - **Fallbacks**: 
+    - If the role string is numeric, it is used directly as the UID.
+    - If the role is not found in the provider's `/etc/passwd`, it defaults to UID `65534` (`nobody`).
+- **Security Enforcement**:
+  - This mechanism allows the provider's standard `dbus-daemon` to enforce fine-grained permissions using standard XML policy files based on the assigned role.
+  - The consumer container remains completely isolated from the host bus and other containers.
 
 #### Example Role-Based Policy (`.conf`):
 ```xml
 <busconfig>
-  <!-- Allow containers with the 'admin' role (mapped to provider's 'root' user) -->
+  <!-- Allow containers with the 'root' role (mapped to provider's 'root' user) to own the name -->
   <policy user="root">
     <allow own="org.pantavisor.Example"/>
     <allow send_destination="org.pantavisor.Example"/>
   </policy>
   
-  <!-- Allow containers with the 'viewer' role (mapped to provider's 'ubuntu' user) -->
-  <policy user="ubuntu">
+  <!-- Allow containers with the 'operator' role (mapped to provider's UID 1001) -->
+  <policy user="1001">
+    <allow send_destination="org.pantavisor.Example"/>
+  </policy>
+
+  <!-- Allow any other connected container (mapped to 'nobody') basic access -->
+  <policy user="nobody">
     <allow send_destination="org.pantavisor.Example"/>
   </policy>
 </busconfig>
