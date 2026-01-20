@@ -83,14 +83,11 @@ int pv_init_spawn_daemons(init_mode_t mode)
 	sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
 
 	for (i = 0; daemons[i].name; i++) {
-		if (daemons[i].pid > 0 ||
-		    (daemons[i].pid == 0 && !daemons[i].respawn))
+		if (daemons[i].pid > 0 || !daemons[i].respawn)
 			continue;
-
 		// skip daemons not enabled for this init mode
 		if (!(daemons[i].modes & mode_flag)) {
-			pv_log(INFO,
-			       "daemon %s not enabled for init mode %d\n",
+			pv_log(INFO, "daemon %s not enabled for init mode %d\n",
 			       daemons[i].name, mode);
 			continue;
 		}

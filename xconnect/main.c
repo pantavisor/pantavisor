@@ -95,8 +95,8 @@ static void reconcile_graph(const char *json)
 				}
 
 				// Parse provider_pid for cross-namespace socket access
-				pid_str = pv_json_get_value(obj_s, "provider_pid",
-							    ov, obj_c);
+				pid_str = pv_json_get_value(
+					obj_s, "provider_pid", ov, obj_c);
 				if (pid_str) {
 					link->provider_pid = atoi(pid_str);
 					free(pid_str);
@@ -167,8 +167,9 @@ static void ctrl_event_cb(struct bufferevent *bev, short events, void *ctx)
 {
 	if (events & BEV_EVENT_CONNECTED) {
 		printf("Connected to pv-ctrl\n");
-		evbuffer_add_printf(bufferevent_get_output(bev),
-				    "GET /xconnect-graph HTTP/1.0\r\nHost: localhost\r\n\r\n");
+		evbuffer_add_printf(
+			bufferevent_get_output(bev),
+			"GET /xconnect-graph HTTP/1.0\r\nHost: localhost\r\n\r\n");
 	} else if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
 		if (events & BEV_EVENT_ERROR) {
 			fprintf(stderr, "Error connecting to pv-ctrl: %s\n",
@@ -208,6 +209,7 @@ static void signal_cb(evutil_socket_t fd, short event, void *arg)
 int main(int argc, char **argv)
 {
 	struct event *signal_event;
+	struct event *term_event;
 
 	g_base = event_base_new();
 	if (!g_base) {
@@ -223,6 +225,11 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	term_event = evsignal_new(g_base, SIGTERM, signal_cb, (void *)g_base);
+	if (!term_event || event_add(term_event, NULL) < 0) {
+		fprintf(stderr, "Could not create/add a term event!\n");
+		return 1;
+	}
 	printf("pv-xconnect starting...\n");
 
 	fetch_graph();
@@ -230,6 +237,9 @@ int main(int argc, char **argv)
 	event_base_dispatch(g_base);
 
 	event_free(signal_event);
+
+	event_free(term_event);
+
 	event_base_free(g_base);
 
 	return 0;
