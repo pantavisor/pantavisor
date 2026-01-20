@@ -178,15 +178,37 @@ Query the current service mesh topology:
 curl --unix-socket /run/pantavisor/pv/pv-ctrl http://localhost/xconnect-graph
 ```
 
-Response:
+#### Graph Fields
+
+| Field | Description |
+|-------|-------------|
+| `consumer` | The container name requesting the service. |
+| `consumer_pid` | The PID of the consumer container's init process. |
+| `provider` | The container name providing the service. |
+| `provider_pid` | The PID of the provider container's init process. |
+| `name` | The service name as defined in `services.json`. |
+| `type` | The connection type (e.g., `unix`, `dbus`, `rest`). |
+| `role` | The role assigned to this link. Defaults to `"any"`. |
+| `interface` | Protocol identifier. Defaults to the `type` string if not set (e.g., `"unix"`). |
+| `target` | The path where the proxy is injected in the consumer. |
+| `socket` | The path to the real socket in the provider namespace. |
+
+#### Roles and Permissions
+
+Roles are used to define fine-grained access control between containers. 
+
+- **Custom Roles**: Containers can define specific roles (e.g., `"admin"`, `"readonly"`) to restrict access to certain subsets of a service.
+- **The `"any"` Role**: If no role is specified in the service requirement, Pantavisor assigns the special `"any"` role. This indicates that the link is open to any consumer that matches the service name and type, provided the provider's policy allows it.
+
+Response Example:
 ```json
 [{
   "type": "unix",
   "name": "raw",
   "consumer": "pv-example-unix-client",
-  "role": "client",
+  "role": "any",
   "socket": "/run/example/raw.sock",
-  "interface": null,
+  "interface": "unix",
   "target": "/run/pv/services/raw.sock",
   "consumer_pid": 1234,
   "provider_pid": 5678
