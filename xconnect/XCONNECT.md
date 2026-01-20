@@ -50,21 +50,25 @@ For containers that consume services, requirements are defined in `args.json` du
 {
   "PV_SERVICES_REQUIRED": [
     {
-      "name": "network-manager",
-      "target": "/run/nm/api.sock"
-    }
-  ],
-  "PV_SERVICES_OPTIONAL": [
+      "name": "raw-unix",
+      "type": "unix",
+      "target": "/run/pv/services/raw-unix.sock"
+    },
     {
       "name": "system-bus",
-      "interface": "org.freedesktop.NetworkManager"
+      "type": "dbus",
+      "interface": "org.pantavisor.Example",
+      "target": "/run/dbus/system_bus_socket"
     }
   ]
 }
 ```
 
+- **`interface`**: Protocol-specific identifier (e.g., D-Bus interface name).
+- **`target`**: The path where `pv-xconnect` should inject the proxied resource inside the consumer container.
+
 ### Requirements (`run.json`)
-A container requests access to services in its `run.json` manifest.
+A container requests access to services in its `run.json` manifest. These are rendered by `pvr` from the `args.json` templates.
 
 #### Example Requirement in `run.json` (Consumer):
 ```json
@@ -74,15 +78,10 @@ A container requests access to services in its `run.json` manifest.
   "services": {
     "required": [
       {
-        "name": "network-manager",
-        "role": "admin",
-        "target": "/run/nm/api.sock"
-      }
-    ],
-    "optional": [
-      {
         "name": "system-bus",
-        "interface": "org.freedesktop.NetworkManager"
+        "type": "dbus",
+        "interface": "org.pantavisor.Example",
+        "target": "/run/dbus/system_bus_socket"
       }
     ]
   },
@@ -97,8 +96,27 @@ A container requests access to services in its `run.json` manifest.
 - **Injection**: Injects `X-PV-Client` and `X-PV-Role` headers into the first request.
 
 ### D-Bus
-- **Mechanism**: Policy-aware proxy for the system/session bus.
-- **Filtering**: Access is restricted to specific D-Bus Names and Interfaces declared in `run.json`.
+- **Mechanism**: Policy-aware proxy for the system bus.
+- **Protocol**: Mediates D-Bus messages over Unix Domain Sockets between isolated containers.
+- **Injection**: Injects a proxied D-Bus socket (e.g., `/run/dbus/system_bus_socket`) into the consumer container's namespace.
+- **Filtering & Security**:
+  - **Names/Interfaces**: Access is restricted based on the `interface` field in `run.json`.
+  - **Policy XML**: D-Bus providers use standard D-Bus policy files (e.g., `/etc/dbus-1/system.d/org.pantavisor.Example.conf`) to define who can own names and send messages.
+  - **Proxy Isolation**: `pv-xconnect` bridges the consumer to the provider's `dbus-daemon`, allowing fine-grained control without sharing the entire host bus.
+
+#### Example D-Bus Policy (`.conf`):
+```xml
+<busconfig>
+  <policy user="root">
+    <allow own="org.pantavisor.Example"/>
+    <allow send_destination="org.pantavisor.Example"/>
+  </policy>
+  <policy context="default">
+    <allow send_destination="org.pantavisor.Example"/>
+  </policy>
+</busconfig>
+```
+This policy allows the provider (running as root) to own the name and other clients to send messages to it.
 
 ### Raw Unix Sockets
 - **Identity**: Handled via Greeting Packets, SCM_CREDENTIALS, or Role-Based Socket mapping.
@@ -168,7 +186,8 @@ Response:
   "consumer": "pv-example-unix-client",
   "role": "client",
   "socket": "/run/example/raw.sock",
-  "interface": "/run/pv/services/raw.sock",
+  "interface": null,
+  "target": "/run/pv/services/raw.sock",
   "consumer_pid": 1234,
   "provider_pid": 5678
 }]
