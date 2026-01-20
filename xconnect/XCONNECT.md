@@ -96,27 +96,33 @@ A container requests access to services in its `run.json` manifest. These are re
 - **Injection**: Injects `X-PV-Client` and `X-PV-Role` headers into the first request.
 
 ### D-Bus
-- **Mechanism**: Policy-aware proxy for the system bus.
+- **Mechanism**: Role-aware proxy for the system bus.
 - **Protocol**: Mediates D-Bus messages over Unix Domain Sockets between isolated containers.
 - **Injection**: Injects a proxied D-Bus socket (e.g., `/run/dbus/system_bus_socket`) into the consumer container's namespace.
+- **Role-Based Identity**: 
+  - `pv-xconnect` performs **Identity Masquerading** during the D-Bus SASL authentication phase.
+  - Instead of passing the host UID, the proxy tells the provider the **Role** of the client (e.g., `AUTH EXTERNAL <hex(admin@pantavisor)>`).
+  - This allows the provider's `dbus-daemon` to enforce permissions based on the role assigned in the Pantavisor connect graph.
 - **Filtering & Security**:
   - **Names/Interfaces**: Access is restricted based on the `interface` field in `run.json`.
-  - **Policy XML**: D-Bus providers use standard D-Bus policy files (e.g., `/etc/dbus-1/system.d/org.pantavisor.Example.conf`) to define who can own names and send messages.
-  - **Proxy Isolation**: `pv-xconnect` bridges the consumer to the provider's `dbus-daemon`, allowing fine-grained control without sharing the entire host bus.
+  - **Policy XML**: D-Bus providers use standard D-Bus policy files to define permissions for specific roles.
+  - **Proxy Isolation**: The consumer only sees the bus of the specific provider it is linked to.
 
-#### Example D-Bus Policy (`.conf`):
+#### Example Role-Based Policy (`.conf`):
 ```xml
 <busconfig>
-  <policy user="root">
+  <!-- Allow containers with the 'admin' role to own and talk to this service -->
+  <policy user="admin@pantavisor">
     <allow own="org.pantavisor.Example"/>
     <allow send_destination="org.pantavisor.Example"/>
   </policy>
-  <policy context="default">
+  
+  <!-- Allow any connected container to send messages -->
+  <policy user="any@pantavisor">
     <allow send_destination="org.pantavisor.Example"/>
   </policy>
 </busconfig>
 ```
-This policy allows the provider (running as root) to own the name and other clients to send messages to it.
 
 ### Raw Unix Sockets
 - **Identity**: Handled via Greeting Packets, SCM_CREDENTIALS, or Role-Based Socket mapping.
