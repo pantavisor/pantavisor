@@ -1864,13 +1864,18 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 									"role");
 								pv_json_ser_string(
 									&js,
-									svc->role);
+									svc->role ?
+										svc->role :
+										"any");
 								pv_json_ser_key(
 									&js,
 									"interface");
 								pv_json_ser_string(
 									&js,
-									svc->interface);
+									svc->interface ?
+										svc->interface :
+										pvx_svc_type_to_str(
+											exp->svc_type));
 								pv_json_ser_key(
 									&js,
 									"target");
