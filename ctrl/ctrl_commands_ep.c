@@ -27,6 +27,7 @@
 #include "ctrl_util.h"
 
 #include <event2/http.h>
+#include <stdio.h>
 
 #define MODULE_NAME "commands-ep"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -56,20 +57,29 @@ static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
-	char *err = NULL;
-	if (pv_ctrl_cmd_add(cmd, &err) != 0) {
-		if (err)
-			pv_ctrl_utils_send_error(req, PV_HTTP_CONFLICT, err);
-		else
-			// this code should never be executed, if run that means
-			// that we need to set an error on pv_ctrl_cmd_add()
-			pv_ctrl_utils_send_error(req, PV_HTTP_CONFLICT,
-						 "unknown conflict");
+	struct pv_ctrl_cmd_add_result rs = pv_ctrl_cmd_add(cmd);
 
+	if (rs.ok) {
+		pv_ctrl_utils_send_ok(req);
 		goto out;
 	}
 
-	pv_ctrl_utils_send_ok(req);
+	if (rs.err) {
+		if (rs.code == HTTP_SERVUNAVAIL && rs.retry > 0) {
+			char buf[12] = { 0 };
+			snprintf(buf, 12, "%d", rs.retry);
+
+			evhttp_add_header(
+				evhttp_request_get_output_headers(req),
+				"Retry-After", buf);
+		}
+
+		pv_ctrl_utils_send_error(req, rs.code, rs.err);
+	} else {
+		// this code should never be executed, if run that means
+		// that we need to set an error on pv_ctrl_cmd_add()
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL, "unknown error");
+	}
 out:
 	if (data)
 		free(data);

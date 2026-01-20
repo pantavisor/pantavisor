@@ -25,6 +25,7 @@
 
 #include <stddef.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define PV_CTRL_CMD_MAX_SIZE (4096)
 
@@ -47,6 +48,13 @@ enum pv_ctrl_cmd_op {
 struct pv_ctrl_cmd {
 	enum pv_ctrl_cmd_op op;
 	char *payload;
+};
+
+struct pv_ctrl_cmd_add_result {
+	bool ok;
+	int code;
+	int retry;
+	char *err;
 };
 
 static inline const char *pv_ctrl_cmd_op_to_str(const enum pv_ctrl_cmd_op op)
@@ -82,7 +90,7 @@ pv_ctrl_cmd_op_from_str(const char *op_str, const size_t op_str_size)
 }
 
 struct pv_ctrl_cmd *pv_ctrl_cmd_parse(const char *buf);
-int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char **err);
+struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd);
 void pv_ctrl_cmd_free(struct pv_ctrl_cmd *cmd);
 
 #endif

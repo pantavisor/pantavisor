@@ -21,10 +21,14 @@
  */
 
 #include "ctrl_cmd.h"
+#include "ctrl/ctrl_util.h"
 #include "json.h"
 #include "pantavisor.h"
 #include "config.h"
 
+#include <event2/http.h>
+
+#include <stdbool.h>
 #include <stdlib.h>
 
 #define MODULE_NAME "cmd"
@@ -77,18 +81,26 @@ out:
 	return cmd;
 }
 
-int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char **err)
+struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 {
 	if (!cmd) {
-		*err = "Command is empty";
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			HTTP_INTERNAL,
+			-1,
+			"Command is empty",
+		};
 	}
 
 	struct pantavisor *pv = pv_get_instance();
 
 	if (!pv->remote_mode && cmd->op == CMD_UPDATE_METADATA) {
-		*err = "Cannot do this operation while on local mode";
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			PV_HTTP_CONFLICT,
+			-1,
+			"Cannot do this operation while on local mode",
+		};
 	}
 
 	if (pv->update &&
@@ -96,43 +108,72 @@ int pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd, char **err)
 	     (cmd->op == CMD_POWEROFF_DEVICE) || (cmd->op == CMD_LOCAL_RUN) ||
 	     (cmd->op == CMD_LOCAL_RUN_COMMIT) ||
 	     (cmd->op == CMD_MAKE_FACTORY))) {
-		*err = "Cannot do this operation while update is ongoing";
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			HTTP_SERVUNAVAIL,
+			10 * 60,
+			"Cannot do this operation while update is ongoing",
+		};
 	}
 
 	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {
-		*err = "Cannot do this operation if device is already claimed";
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			PV_HTTP_CONFLICT,
+			-1,
+			"Cannot do this operation if device is already claimed",
+		};
 	}
 
 	if (!pv_config_get_bool(PV_CONTROL_REMOTE) &&
 	    cmd->op == CMD_GO_REMOTE) {
-		*err = "Cannot do this operation when remote mode is disabled by config";
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			PV_HTTP_CONFLICT,
+			-1,
+			"Cannot do this operation when remote mode is disabled by config",
+		};
 	}
 
 	if (!pv_config_get_bool(PV_DEBUG_SHELL) &&
 	    cmd->op == CMD_DEFER_REBOOT) {
-		*err = "Cannot do this operation when debug shell is not active";
 		pv_log(WARN,
 		       "Cannot do this operation when debug shell is not active");
 
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			PV_HTTP_CONFLICT,
+			-1,
+			"Cannot do this operation when debug shell is not active",
+		};
 	}
 
 	if (pv->remote_mode && cmd->op == CMD_GO_REMOTE) {
-		*err = "Already in remote mode";
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			HTTP_NOCONTENT,
+			-1,
+			"Already in remote mode",
+		};
 	}
 
 	if (pv->cmd) {
-		*err = "A command is already in progress. Try again";
-		return -1;
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			HTTP_SERVUNAVAIL,
+			2 * 60,
+			"A command is already in progress. Try again",
+		};
 	}
 
 	pv->cmd = cmd;
 
-	return 0;
+	return (struct pv_ctrl_cmd_add_result){
+		true,
+		HTTP_OK,
+		-1,
+		NULL,
+	};
 }
 
 void pv_ctrl_cmd_free(struct pv_ctrl_cmd *cmd)
