@@ -101,24 +101,25 @@ A container requests access to services in its `run.json` manifest. These are re
 - **Injection**: Injects a proxied D-Bus socket (e.g., `/run/dbus/system_bus_socket`) into the consumer container's namespace.
 - **Role-Based Identity**: 
   - `pv-xconnect` performs **Identity Masquerading** during the D-Bus SASL authentication phase.
-  - Instead of passing the host UID, the proxy tells the provider the **Role** of the client (e.g., `AUTH EXTERNAL <hex(admin@pantavisor)>`).
-  - This allows the provider's `dbus-daemon` to enforce permissions based on the role assigned in the Pantavisor connect graph.
+  - The proxy takes the **Role** from the connect graph and looks up its corresponding **UID** in the provider container's `/etc/passwd`.
+  - For example, if the role is `"ubuntu"`, the proxy finds UID 1000 in the provider and sends `AUTH EXTERNAL <hex("1000")>`.
+  - This allows the provider's standard `dbus-daemon` to enforce permissions using standard `<policy user="username">` or `<policy user="UID">` rules.
 - **Filtering & Security**:
   - **Names/Interfaces**: Access is restricted based on the `interface` field in `run.json`.
-  - **Policy XML**: D-Bus providers use standard D-Bus policy files to define permissions for specific roles.
+  - **Policy XML**: D-Bus providers use standard D-Bus policy files to define permissions for specific users/UIDs mapped from roles.
   - **Proxy Isolation**: The consumer only sees the bus of the specific provider it is linked to.
 
 #### Example Role-Based Policy (`.conf`):
 ```xml
 <busconfig>
-  <!-- Allow containers with the 'admin' role to own and talk to this service -->
-  <policy user="admin@pantavisor">
+  <!-- Allow containers with the 'admin' role (mapped to provider's 'root' user) -->
+  <policy user="root">
     <allow own="org.pantavisor.Example"/>
     <allow send_destination="org.pantavisor.Example"/>
   </policy>
   
-  <!-- Allow any connected container to send messages -->
-  <policy user="any@pantavisor">
+  <!-- Allow containers with the 'viewer' role (mapped to provider's 'ubuntu' user) -->
+  <policy user="ubuntu">
     <allow send_destination="org.pantavisor.Example"/>
   </policy>
 </busconfig>
