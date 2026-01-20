@@ -79,6 +79,7 @@ struct pv_platform_service {
 	char *name;
 	char *role;
 	char *interface;
+	char *target;
 	struct dl_list list;
 };
 
@@ -148,7 +149,7 @@ void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
 			    char *value);
 void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 			     service_type_t svc_type, char *name, char *role,
-			     char *interface);
+			     char *interface, char *target);
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
 				    char *socket);

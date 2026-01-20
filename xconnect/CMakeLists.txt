@@ -21,6 +21,7 @@ add_executable(pv-xconnect
     plugins/rest.c
     plugins/drm.c
     plugins/wayland.c
+    plugins/dbus.c
     ../utils/json.c
     ../utils/str.c
 )

@@ -202,6 +202,8 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		p->pipefd_listener.fd = -1;
 		p->pipefd_listener.ev = NULL;
 		dl_list_init(&p->drivers);
+		dl_list_init(&p->services);
+		dl_list_init(&p->service_exports);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -275,6 +277,34 @@ void pv_platform_free(struct pv_platform *p)
 
 	if (p->exec)
 		free(p->exec);
+
+	struct pv_platform_service *s, *s_tmp;
+	dl_list_for_each_safe(s, s_tmp, &p->services,
+			      struct pv_platform_service, list)
+	{
+		if (s->name)
+			free(s->name);
+		if (s->role)
+			free(s->role);
+		if (s->interface)
+			free(s->interface);
+		if (s->target)
+			free(s->target);
+		free(s);
+	}
+	dl_list_init(&p->services);
+
+	struct pv_platform_service_export *se, *se_tmp;
+	dl_list_for_each_safe(se, se_tmp, &p->service_exports,
+			      struct pv_platform_service_export, list)
+	{
+		if (se->name)
+			free(se->name);
+		if (se->socket)
+			free(se->socket);
+		free(se);
+	}
+	dl_list_init(&p->service_exports);
 
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
@@ -1194,29 +1224,38 @@ void pv_platform_ref_free(struct pv_platform_ref *pr)
 }
 
 void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
-			    service_type_t svc_type, char *name, char *role,
-			    char *interface)
+			     service_type_t svc_type, char *name, char *role,
+			     char *interface, char *target)
 {
-	struct pv_platform_service *s = calloc(1, sizeof(struct pv_platform_service));
+	struct pv_platform_service *s =
+		calloc(1, sizeof(struct pv_platform_service));
 	if (s) {
 		s->type = type;
 		s->svc_type = svc_type;
-		if (name) s->name = strdup(name);
-		if (role) s->role = strdup(role);
-		if (interface) s->interface = strdup(interface);
+		if (name)
+			s->name = strdup(name);
+		if (role)
+			s->role = strdup(role);
+		if (interface)
+			s->interface = strdup(interface);
+		if (target)
+			s->target = strdup(target);
 		dl_list_init(&s->list);
 		dl_list_add_tail(&p->services, &s->list);
 	}
 }
-
-void pv_platform_add_service_export(struct pv_platform *p, service_type_t svc_type,
-				   char *name, char *socket)
+void pv_platform_add_service_export(struct pv_platform *p,
+				    service_type_t svc_type, char *name,
+				    char *socket)
 {
-	struct pv_platform_service_export *se = calloc(1, sizeof(struct pv_platform_service_export));
+	struct pv_platform_service_export *se =
+		calloc(1, sizeof(struct pv_platform_service_export));
 	if (se) {
 		se->svc_type = svc_type;
-		if (name) se->name = strdup(name);
-		if (socket) se->socket = strdup(socket);
+		if (name)
+			se->name = strdup(name);
+		if (socket)
+			se->socket = strdup(socket);
 		dl_list_init(&se->list);
 		dl_list_add_tail(&p->service_exports, &se->list);
 	}

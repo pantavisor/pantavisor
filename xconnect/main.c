@@ -23,12 +23,13 @@ static struct dl_list g_links;
 
 extern struct pvx_plugin pvx_plugin_unix;
 extern struct pvx_plugin pvx_plugin_rest;
+extern struct pvx_plugin pvx_plugin_dbus;
 extern struct pvx_plugin pvx_plugin_drm;
 extern struct pvx_plugin pvx_plugin_wayland;
 
-static struct pvx_plugin *plugins[] = { &pvx_plugin_unix, &pvx_plugin_rest,
-					&pvx_plugin_drm, &pvx_plugin_wayland,
-					NULL };
+static struct pvx_plugin *plugins[] = { &pvx_plugin_unix,    &pvx_plugin_rest,
+					&pvx_plugin_dbus,    &pvx_plugin_drm,
+					&pvx_plugin_wayland, NULL };
 
 struct event_base *pvx_get_base(void)
 {
@@ -85,6 +86,8 @@ static void reconcile_graph(const char *json)
 					obj_s, "socket", ov, obj_c);
 				link->interface = pv_json_get_value(
 					obj_s, "interface", ov, obj_c);
+				char *target = pv_json_get_value(
+					obj_s, "target", ov, obj_c);
 
 				// Parse consumer_pid for namespace injection
 				char *pid_str = pv_json_get_value(
@@ -102,8 +105,11 @@ static void reconcile_graph(const char *json)
 					free(pid_str);
 				}
 
-				// Use interface as consumer socket path if available
-				if (link->interface && link->interface[0]) {
+				// Use target as consumer socket path if available
+				if (target && target[0]) {
+					link->consumer_socket = strdup(target);
+				} else if (link->interface &&
+					   link->interface[0]) {
 					link->consumer_socket =
 						strdup(link->interface);
 				} else {
@@ -114,6 +120,8 @@ static void reconcile_graph(const char *json)
 						 link->consumer, link->name);
 					link->consumer_socket = strdup(path);
 				}
+				if (target)
+					free(target);
 
 				link->plugin = p;
 				dl_list_init(&link->list);
