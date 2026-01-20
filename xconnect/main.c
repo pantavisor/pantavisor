@@ -55,96 +55,93 @@ static void reconcile_graph(const char *json)
 		return;
 	}
 
+	if (tokv->type != JSMN_ARRAY) {
+		fprintf(stderr, "Graph JSON is not an array\n");
+		free(tokv);
+		return;
+	}
+
 	int count = jsmnutil_array_count(json, tokv);
 	printf("Reconciling graph with %d links\n", count);
 
-	// Simplistic: just add new ones for now, don't delete
-	jsmntok_t *t = tokv + 1;
-	for (int i = 0; i < count; i++) {
-		int obj_c;
-		char *obj_s = pv_json_array_get_one_str(json, &count, &t);
-		if (!obj_s)
-			break;
-
-		jsmntok_t *ov;
-		if (jsmnutil_parse_json(obj_s, &ov, &obj_c) > 0) {
-			char *type =
-				pv_json_get_value(obj_s, "type", ov, obj_c);
-			struct pvx_plugin *p = find_plugin(type);
-
-			if (p) {
-				struct pvx_link *link =
-					calloc(1, sizeof(*link));
-				link->type = type;
-				link->name = pv_json_get_value(obj_s, "name",
-							       ov, obj_c);
-				link->consumer = pv_json_get_value(
-					obj_s, "consumer", ov, obj_c);
-				link->role = pv_json_get_value(obj_s, "role",
-							       ov, obj_c);
-				link->provider_socket = pv_json_get_value(
-					obj_s, "socket", ov, obj_c);
-				link->interface = pv_json_get_value(
-					obj_s, "interface", ov, obj_c);
-				char *target = pv_json_get_value(
-					obj_s, "target", ov, obj_c);
-
-				// Parse consumer_pid for namespace injection
-				char *pid_str = pv_json_get_value(
-					obj_s, "consumer_pid", ov, obj_c);
-				if (pid_str) {
-					link->consumer_pid = atoi(pid_str);
-					free(pid_str);
-				}
-
-				// Parse provider_pid for cross-namespace socket access
-				pid_str = pv_json_get_value(
-					obj_s, "provider_pid", ov, obj_c);
-				if (pid_str) {
-					link->provider_pid = atoi(pid_str);
-					free(pid_str);
-				}
-
-				// Use target as consumer socket path if available
-				if (target && target[0]) {
-					link->consumer_socket = strdup(target);
-				} else if (link->interface &&
-					   link->interface[0]) {
-					link->consumer_socket =
-						strdup(link->interface);
-				} else {
-					// Fallback for host testing
-					char path[1024];
-					snprintf(path, sizeof(path),
-						 "/tmp/pvx_%s_%s.sock",
-						 link->consumer, link->name);
-					link->consumer_socket = strdup(path);
-				}
-				if (target)
-					free(target);
-
-				link->plugin = p;
-				dl_list_init(&link->list);
-				dl_list_add_tail(&g_links, &link->list);
-
-				printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
-				       link->consumer, link->consumer_pid,
-				       link->type, link->provider_socket,
-				       link->consumer_socket);
-				p->on_link_added(link);
-			} else {
-				fprintf(stderr, "No plugin found for type %s\n",
-					type);
-				if (type)
-					free(type);
-			}
-			free(ov);
-		}
-		free(obj_s);
+	jsmntok_t **items = jsmnutil_get_array_toks(json, tokv);
+	if (!items) {
+		free(tokv);
+		return;
 	}
+
+	for (int i = 0; items[i]; i++) {
+		jsmntok_t *itok = items[i];
+		int rem_tokc = (tokv + tokc) - itok;
+
+		char *type = pv_json_get_value(json, "type", itok, rem_tokc);
+		struct pvx_plugin *p = find_plugin(type);
+
+		if (p) {
+			struct pvx_link *link = calloc(1, sizeof(*link));
+			link->type = type;
+			link->name =
+				pv_json_get_value(json, "name", itok, rem_tokc);
+			link->consumer = pv_json_get_value(json, "consumer",
+							   itok, rem_tokc);
+			link->role =
+				pv_json_get_value(json, "role", itok, rem_tokc);
+			link->provider_socket = pv_json_get_value(
+				json, "socket", itok, rem_tokc);
+			link->interface = pv_json_get_value(json, "interface",
+							    itok, rem_tokc);
+			char *target = pv_json_get_value(json, "target", itok,
+							 rem_tokc);
+
+			// Parse consumer_pid for namespace injection
+			char *pid_str = pv_json_get_value(json, "consumer_pid",
+							  itok, rem_tokc);
+			if (pid_str) {
+				link->consumer_pid = atoi(pid_str);
+				free(pid_str);
+			}
+
+			// Parse provider_pid for cross-namespace socket access
+			pid_str = pv_json_get_value(json, "provider_pid", itok,
+						    rem_tokc);
+			if (pid_str) {
+				link->provider_pid = atoi(pid_str);
+				free(pid_str);
+			}
+
+			// Use target as consumer socket path if available
+			if (target && target[0]) {
+				link->consumer_socket = strdup(target);
+			} else if (link->interface && link->interface[0]) {
+				link->consumer_socket = strdup(link->interface);
+			} else {
+				// Fallback for host testing
+				char path[1024];
+				snprintf(path, sizeof(path),
+					 "/tmp/pvx_%s_%s.sock", link->consumer,
+					 link->name);
+				link->consumer_socket = strdup(path);
+			}
+			if (target)
+				free(target);
+
+			link->plugin = p;
+			dl_list_init(&link->list);
+			dl_list_add_tail(&g_links, &link->list);
+
+			printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
+			       link->consumer, link->consumer_pid, link->type,
+			       link->provider_socket, link->consumer_socket);
+			p->on_link_added(link);
+		} else {
+			fprintf(stderr, "No plugin found for type %s\n", type);
+			if (type)
+				free(type);
+		}
+	}
+	jsmnutil_tokv_free(items);
 	free(tokv);
 }
-
 static void ctrl_read_cb(struct bufferevent *bev, void *ctx)
 {
 	struct evbuffer *input = bufferevent_get_input(bev);
