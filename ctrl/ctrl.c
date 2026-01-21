@@ -1,4 +1,3 @@
-
 /*
  * Copyright (c) 2025 Pantacor Ltd.
  *
@@ -45,6 +44,7 @@
 
 struct ctrl_run_req {
 	struct evhttp_request *req;
+	struct pv_ctrl_cb *cb;
 	struct dl_list lst;
 };
 
@@ -93,30 +93,29 @@ static bool ctrl_uri_equals(const char *uri1, const char *uri2)
 	return true;
 }
 
-static bool ctrl_is_running_req(struct evhttp_request *req)
+static struct ctrl_run_req *ctrl_get_run_req(struct evhttp_request *req)
 {
 	struct ctrl_run_req *it, *tmp;
 	dl_list_for_each_safe(it, tmp, &pvctrl.request, struct ctrl_run_req,
 			      lst)
 	{
 		if (it->req == req)
-			return true;
+			return it;
 	}
-	return false;
+	return NULL;
+}
+
+static bool ctrl_is_running_req(struct evhttp_request *req)
+{
+	return ctrl_get_run_req(req) != NULL;
 }
 
 static void ctrl_remove_req(struct evhttp_request *req)
 {
-	struct ctrl_run_req *it, *tmp;
-	dl_list_for_each_safe(it, tmp, &pvctrl.request, struct ctrl_run_req,
-			      lst)
-	{
-		if (it->req != req)
-			continue;
-
-		dl_list_del(&it->lst);
-		free(it);
-		return;
+	struct ctrl_run_req *runq = ctrl_get_run_req(req);
+	if (runq) {
+		dl_list_del(&runq->lst);
+		free(runq);
 	}
 }
 
@@ -126,7 +125,7 @@ static void ctrl_auto_remove_req(struct evhttp_request *req, void *ctx)
 	ctrl_remove_req(req);
 }
 
-static void crtl_add_request(struct evhttp_request *req)
+static void crtl_add_request(struct evhttp_request *req, struct pv_ctrl_cb *cb)
 {
 	struct ctrl_run_req *runq = calloc(1, sizeof(struct ctrl_run_req));
 	if (!runq) {
@@ -136,6 +135,7 @@ static void crtl_add_request(struct evhttp_request *req)
 
 	evhttp_request_set_on_complete_cb(req, ctrl_auto_remove_req, NULL);
 	runq->req = req;
+	runq->cb = cb;
 
 	dl_list_init(&runq->lst);
 	dl_list_add(&pvctrl.request, &runq->lst);
@@ -143,16 +143,13 @@ static void crtl_add_request(struct evhttp_request *req)
 
 static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 {
-	if (strcmp(evhttp_request_get_host(req), "localhost") != 0)
+	const char *host = evhttp_request_get_host(req);
+	// Allow localhost, empty, or NULL host for Unix socket connections
+	if (host && host[0] != '\0' && strcmp(host, "localhost") != 0)
 		return -1;
 
 	const char *uri = evhttp_request_get_uri(req);
 	pv_log(DEBUG, "New HTTP request recived: %s", uri);
-
-	char inc_split[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
-	int inc_sz = pv_ctrl_utils_split_path(uri, inc_split);
-
-	int err = 0;
 
 	struct pv_ctrl_cb *it, *tmp;
 	dl_list_for_each_safe(it, tmp, &pvctrl.custom_cb, struct pv_ctrl_cb,
@@ -171,31 +168,26 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 		}
 
 		if (!(caller.method & it->methods)) {
-			err = 1;
-			continue;
+			pv_log(WARN,
+			       "HTTP method not supported for this endpoint");
+			pv_ctrl_utils_send_error(
+				req, HTTP_BADREQUEST,
+				"Method not supported for this endpoint");
+			return 0;
 		}
 
 		if (it->need_mgmt && !caller.is_privileged) {
-			err = 2;
-			continue;
+			pv_log(WARN, "request not sent from mgmt platform");
+			pv_ctrl_utils_send_error(
+				req, HTTP_FORBIDDEN,
+				"Request not sent from mgmt platform");
+			return 0;
 		}
 
-		err = 0;
-		crtl_add_request(req);
-		it->fn(req, it);
-		break;
-	}
-
-	if (err == 1) {
-		pv_log(WARN, "HTTP method not supported for this endpoint");
-		pv_ctrl_utils_send_error(
-			req, HTTP_BADREQUEST,
-			"Method not supported for this endpoint");
-
-	} else if (err == 2) {
-		pv_log(WARN, "request not sent from mgmt platform");
-		pv_ctrl_utils_send_error(req, HTTP_FORBIDDEN,
-					 "Request not sent from mgmt platform");
+		// Add to request list but DO NOT call yet.
+		// ctrl_default_cb will be called when request is complete.
+		crtl_add_request(req, it);
+		return 0;
 	}
 
 	return 0;
@@ -256,9 +248,9 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 {
 	(void)ctx;
 
-	if (ctrl_is_running_req(req)) {
-		evbuffer_add_printf(evhttp_request_get_output_buffer(req),
-				    "done");
+	struct ctrl_run_req *runq = ctrl_get_run_req(req);
+	if (runq && runq->cb) {
+		runq->cb->fn(req, runq->cb);
 		return;
 	}
 
@@ -266,7 +258,7 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 	pv_log(WARN, "HTTP request received to an unknown endpoint: %s", uri);
 
 	char msg[PATH_MAX + 30] = { 0 };
-	snprintf(msg, PATH_MAX + 30, "%s: %s", "unknown endpoint", uri);
+	sprintf(msg, "%s: %s", "unknown endpoint", uri);
 
 	pv_ctrl_utils_send_error(req, HTTP_BADREQUEST, msg);
 }
@@ -284,6 +276,8 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_drivers_init();
 	pv_ctrl_endpoints_commands_init();
 	pv_ctrl_endpoints_config_init();
+	pv_ctrl_endpoints_xconnect_graph_init();
+	pv_ctrl_endpoints_daemons_init();
 }
 
 int pv_ctrl_start()
@@ -342,7 +336,7 @@ void pv_ctrl_stop()
 
 	ctrl_free_cb_list(&pvctrl.custom_cb);
 	ctrl_free_cb_list(&pvctrl.normal_cb);
-	ctrl_free_request_list(&pvctrl.normal_cb);
+	ctrl_free_request_list(&pvctrl.request);
 
 	pv_log(DEBUG, "server stopped");
 }
