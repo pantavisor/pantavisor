@@ -26,30 +26,32 @@
 #include "paths.h"
 #include "utils/fs.h"
 
+#include <limits.h>
 #include <string.h>
 #include <linux/limits.h>
 #include <unistd.h>
 #include <libgen.h>
 #include <stdio.h>
 
-static char *create_dir(const struct logserver_log *log)
+static int create_dir(const struct logserver_log *log, char *path)
 {
 	if (!log->running_rev) {
 		WARN_ONCE(
 			"Log with no revision (null) arrives to singlefile output: %s",
 			log->data.buf);
-		return NULL;
+		return -1;
 	}
 
-	char path[PATH_MAX];
-	pv_paths_pv_log(path, sizeof(path), log->running_rev);
+	char tmp_path[PATH_MAX] = { 0 };
+	pv_paths_pv_log(tmp_path, PATH_MAX, log->running_rev);
 
-	if (pv_fs_mkdir_p(path, 0755))
-		return NULL;
+	if (pv_fs_mkdir_p(tmp_path, 0755))
+		return -1;
 
-	pv_paths_pv_log_plat(path, sizeof(path), log->running_rev, "pv.log");
+	memset(path, 0, PATH_MAX);
+	pv_paths_pv_log_plat(path, PATH_MAX, log->running_rev, "pv.log");
 
-	return strdup(path);
+	return 0;
 }
 
 static int add_log(struct logserver_out *out, const struct logserver_log *log)
@@ -57,22 +59,20 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 	if (log->lvl > pv_config_get_int(PV_LOG_LEVEL))
 		return 0;
 
-	char *path = create_dir(log);
-	if (!path)
+	if (create_dir(log, out->last_log) != 0)
 		return -1;
 
-	int fd = logserver_utils_open_logfile(path);
+	int fd = logserver_utils_open_logfile(out->last_log);
 	if (fd < 0) {
-		WARN_ONCE("Error opening file %s, errno = %d\n", path, errno);
-		free(path);
-
+		WARN_ONCE("Error opening file %s, errno = %d\n", out->last_log,
+			  errno);
+		memset(out->last_log, 0, PATH_MAX);
 		return -1;
 	}
 
 	int len = logserver_utils_print_json_fmt(fd, log);
 
 	close(fd);
-	free(path);
 
 	return len;
 }

@@ -30,13 +30,12 @@
 #include <string.h>
 #include <netdb.h>
 #include <stdio.h>
-#include <inttypes.h>
 #include <libgen.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <fcntl.h>
-#include <inttypes.h>
 
+#include "logserver_rotation.h"
 #include "logserver_out.h"
 #include "logserver_utils.h"
 #include "logserver_null.h"
@@ -68,6 +67,7 @@
 #define LOGSERVER_BACKLOG (20)
 #define LOGSERVER_MAX_EV (5)
 #define LOGSERVER_MAX_HEADER_LEN (50)
+#define LOGSERVER_UPDATE_ROTATION_INTERVAL (100)
 
 #define MODULE_NAME "logserver"
 
@@ -100,9 +100,11 @@ struct logserver {
 	int epfd;
 	int logsock;
 	int fdsock;
+	int update_rot;
 	int active_out;
 	char *running_rev;
 	char *updated_rev;
+	struct logserver_rot rot;
 	// logserver_fd
 	struct dl_list fdlst;
 	// tmp store for fd returned by connect
@@ -117,9 +119,11 @@ static struct logserver logserver = {
 	.epfd = -1,
 	.logsock = -1,
 	.fdsock = -1,
+	.update_rot = 0,
 	.active_out = LOG_SERVER_OUTPUT_NULL_SINK,
 	.running_rev = NULL,
 	.updated_rev = NULL,
+	.rot = { 0 },
 };
 
 typedef struct logserver_out *(*logserver_outputs_builder_t)(void);
@@ -138,6 +142,8 @@ static logserver_outputs_builder_t
 		logserver_stdout_pantavisor_new
 	};
 
+static int pv_log(int level, char *msg, ...);
+
 static int logserver_log_msg_data(const struct logserver_log *log, int output)
 {
 	if ((output > 0 && !(logserver.active_out & output)) || output < 0)
@@ -155,6 +161,16 @@ static int logserver_log_msg_data(const struct logserver_log *log, int output)
 				continue;
 			it->add(it, log);
 		}
+
+		pv_logserver_rot_log_rot(&logserver.rot, it->last_log);
+	}
+	pv_logserver_rot_deletion(&logserver.rot);
+
+	logserver.update_rot++;
+
+	if (logserver.update_rot == LOGSERVER_UPDATE_ROTATION_INTERVAL) {
+		pv_logserver_rot_update(&logserver.rot);
+		logserver.update_rot = 0;
 	}
 
 	return 0;
@@ -966,6 +982,8 @@ int pv_logserver_init(const char *rev)
 
 	dl_list_init(&logserver.fdlst);
 	dl_list_init(&logserver.tmplst);
+	logserver.rot = pv_logserver_rot_init(rev, pv_log);
+
 	logserver_start_service(rev);
 	pv_log(DEBUG, "started log service with pid %d", logserver.pid);
 
