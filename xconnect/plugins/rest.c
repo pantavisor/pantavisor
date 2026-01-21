@@ -93,8 +93,14 @@ static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	struct event_base *base = pvx_get_base();
 	char provider_path[256];
 
+	if (!link->name || !link->provider_socket) {
+		close(fd);
+		return;
+	}
+
 	printf("%s: Accepted REST connection for service %s from %s (pid %d)\n",
-	       MODULE_NAME, link->name, link->consumer, link->consumer_pid);
+	       MODULE_NAME, link->name,
+	       link->consumer ? link->consumer : "unknown", link->consumer_pid);
 
 	// Build provider socket path - use /proc/pid/root/ to access container namespace
 	if (link->provider_pid > 0) {
@@ -104,8 +110,8 @@ static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	} else {
 		strncpy(provider_path, link->provider_socket,
 			sizeof(provider_path) - 1);
+		provider_path[sizeof(provider_path) - 1] = '\0';
 	}
-
 	struct rest_proxy_session *session = calloc(1, sizeof(*session));
 	if (!session) {
 		fprintf(stderr, "Could not allocate REST proxy session\n");

@@ -70,44 +70,145 @@ static void reconcile_graph(const char *json)
 		return;
 	}
 
-	for (int i = 0; items[i]; i++) {
-		jsmntok_t *itok = items[i];
-		int rem_tokc = (tokv + tokc) - itok;
+		for (int i = 0; items[i]; i++) {
 
-		char *type = pv_json_get_value(json, "type", itok, rem_tokc);
-		struct pvx_plugin *p = find_plugin(type);
+			jsmntok_t *itok = items[i];
 
-		if (p) {
-			struct pvx_link *link = calloc(1, sizeof(*link));
-			link->type = type;
-			link->name =
-				pv_json_get_value(json, "name", itok, rem_tokc);
-			link->consumer = pv_json_get_value(json, "consumer",
-							   itok, rem_tokc);
-			link->role =
-				pv_json_get_value(json, "role", itok, rem_tokc);
-			link->provider_socket = pv_json_get_value(
-				json, "socket", itok, rem_tokc);
-			link->interface = pv_json_get_value(json, "interface",
-							    itok, rem_tokc);
-			char *target = pv_json_get_value(json, "target", itok,
-							 rem_tokc);
+			int obj_tokc;
 
-			// Parse consumer_pid for namespace injection
-			char *pid_str = pv_json_get_value(json, "consumer_pid",
-							  itok, rem_tokc);
-			if (pid_str) {
-				link->consumer_pid = atoi(pid_str);
-				free(pid_str);
+			if (items[i + 1]) {
+
+				obj_tokc = items[i + 1] - items[i];
+
+			} else {
+
+				obj_tokc = (tokv + tokc) - itok;
+
 			}
 
-			// Parse provider_pid for cross-namespace socket access
-			pid_str = pv_json_get_value(json, "provider_pid", itok,
-						    rem_tokc);
-			if (pid_str) {
-				link->provider_pid = atoi(pid_str);
-				free(pid_str);
-			}
+	
+
+			char *type = pv_json_get_value(json, "type", itok, obj_tokc);
+
+			if (!type)
+
+				continue;
+
+	
+
+			struct pvx_plugin *p = find_plugin(type);
+
+	
+
+			if (p) {
+
+				struct pvx_link *link = calloc(1, sizeof(*link));
+
+				if (!link) {
+
+					free(type);
+
+					continue;
+
+				}
+
+				link->type = type;
+
+				link->name =
+
+					pv_json_get_value(json, "name", itok, obj_tokc);
+
+				link->consumer = pv_json_get_value(json, "consumer",
+
+								   itok, obj_tokc);
+
+				link->role =
+
+					pv_json_get_value(json, "role", itok, obj_tokc);
+
+				link->provider_socket = pv_json_get_value(
+
+					json, "socket", itok, obj_tokc);
+
+				link->interface = pv_json_get_value(json, "interface",
+
+								    itok, obj_tokc);
+
+				char *target = pv_json_get_value(json, "target", itok,
+
+								 obj_tokc);
+
+	
+
+				if (!link->name || !link->consumer ||
+
+				    !link->provider_socket) {
+
+					fprintf(stderr, "Link missing required fields\n");
+
+					if (link->name)
+
+						free(link->name);
+
+					if (link->consumer)
+
+						free(link->consumer);
+
+					if (link->role)
+
+						free(link->role);
+
+					if (link->provider_socket)
+
+						free(link->provider_socket);
+
+					if (link->interface)
+
+						free(link->interface);
+
+					if (target)
+
+						free(target);
+
+					free(link->type);
+
+					free(link);
+
+					continue;
+
+				}
+
+	
+
+				// Parse consumer_pid for namespace injection
+
+				char *pid_str = pv_json_get_value(json, "consumer_pid",
+
+								  itok, obj_tokc);
+
+				if (pid_str) {
+
+					link->consumer_pid = atoi(pid_str);
+
+					free(pid_str);
+
+				}
+
+	
+
+				// Parse provider_pid for cross-namespace socket access
+
+				pid_str = pv_json_get_value(json, "provider_pid", itok,
+
+							    obj_tokc);
+
+				if (pid_str) {
+
+					link->provider_pid = atoi(pid_str);
+
+					free(pid_str);
+
+				}
 
 			// Use target as consumer socket path if available
 			if (target && target[0]) {
@@ -129,12 +230,30 @@ static void reconcile_graph(const char *json)
 			dl_list_init(&link->list);
 			dl_list_add_tail(&g_links, &link->list);
 
-			printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
-			       link->consumer, link->consumer_pid, link->type,
-			       link->provider_socket, link->consumer_socket);
-			p->on_link_added(link);
-		} else {
-			fprintf(stderr, "No plugin found for type %s\n", type);
+						printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
+						       link->consumer ? link->consumer : "unknown",
+						       link->consumer_pid, link->type,
+						       link->provider_socket, link->consumer_socket);
+						if (p->on_link_added(link) < 0) {
+							fprintf(stderr, "Failed to add link for %s\n",
+								link->name);
+							dl_list_del(&link->list);
+							if (link->name)
+								free(link->name);
+							if (link->consumer)
+								free(link->consumer);
+							if (link->role)
+								free(link->role);
+							if (link->provider_socket)
+								free(link->provider_socket);
+							if (link->interface)
+								free(link->interface);
+							if (link->consumer_socket)
+								free(link->consumer_socket);
+							free(link->type);
+							free(link);
+						}
+					} else {			fprintf(stderr, "No plugin found for type %s\n", type);
 			if (type)
 				free(type);
 		}

@@ -199,6 +199,11 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	struct event_base *base = pvx_get_base();
 	char provider_path[256];
 
+	if (!link->name || !link->provider_socket) {
+		close(fd);
+		return;
+	}
+
 	printf("%s: Accepted connection for service %s from pid %d\n",
 	       MODULE_NAME, link->name, link->consumer_pid);
 
@@ -209,8 +214,8 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	} else {
 		strncpy(provider_path, link->provider_socket,
 			sizeof(provider_path) - 1);
+		provider_path[sizeof(provider_path) - 1] = '\0';
 	}
-
 	struct dbus_proxy_session *sess = calloc(1, sizeof(*sess));
 	if (!sess) {
 		fprintf(stderr, "Could not allocate proxy session\n");
