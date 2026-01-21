@@ -720,12 +720,11 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 		       p->name, p->auto_recovery.current_retries,
 		       p->auto_recovery.max_retries);
 
-		// For now, immediate restart. Backoff logic requires timer integration.
-		// We set status to INSTALLED so pv_state_run picks it up.
-		pv_platform_set_status(p, PLAT_INSTALLED);
-		return true;
-	}
-
+		                // For now, immediate restart. Backoff logic requires timer integration.
+		                // We set status to INSTALLED so pv_state_run picks it up.
+		                pv_platform_set_installed(p);
+		                return true;
+		        }
 	return false;
 }
 
