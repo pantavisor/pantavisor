@@ -634,15 +634,16 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 		return -1;
 	}
 
+	if (pv_platform_start(p)) {
+		pv_log(ERROR, "platform %s could not be started", p->name);
+		return -1;
+	}
+
 	// Update last start time for auto-recovery
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	p->auto_recovery.last_start = now.tv_sec;
 
-	if (pv_platform_start(p)) {
-		pv_log(ERROR, "platform %s could not be started", p->name);
-		return -1;
-	}
 	return 0;
 }
 
@@ -715,19 +716,36 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 		}
 
 		p->auto_recovery.current_retries++;
-		pv_log(INFO,
-		       "platform '%s' crashed. Attempting auto-recovery (attempt %d/%d)...",
-		       p->name, p->auto_recovery.current_retries,
-		       p->auto_recovery.max_retries);
 
-		                // For now, immediate restart. Backoff logic requires timer integration.
-		                // We set status to INSTALLED so pv_state_run picks it up.
-		                pv_platform_set_installed(p);
-		                return true;
-		        }
+		// Calculate backoff delay
+		int delay = p->auto_recovery.retry_delay;
+		if (p->auto_recovery.current_retries > 1 &&
+		    p->auto_recovery.backoff_factor > 1.0) {
+			double factor = 1.0;
+			for (int i = 0;
+			     i < p->auto_recovery.current_retries - 1; i++) {
+				factor *= p->auto_recovery.backoff_factor;
+			}
+			delay = (int)(delay * factor);
+		}
+
+		pv_log(INFO,
+		       "platform '%s' crashed. Attempting auto-recovery (attempt %d/%d) in %d seconds...",
+		       p->name, p->auto_recovery.current_retries,
+		       p->auto_recovery.max_retries, delay);
+
+		if (delay > 0) {
+			timer_start(&p->auto_recovery.timer_retry, delay, 0,
+				    RELATIV_TIMER);
+			pv_platform_set_recovering(p);
+		} else {
+			pv_platform_set_installed(p);
+		}
+		return true;
+	}
+
 	return false;
 }
-
 int pv_state_run(struct pv_state *s)
 {
 	if (pv_state_validate_services(s))
@@ -771,6 +789,15 @@ int pv_state_run(struct pv_state *s)
 				pv_log(ERROR, "platform '%s' suddenly stopped",
 				       p->name);
 				ret = -1;
+			}
+		} else if (pv_platform_is_recovering(p)) {
+			struct timer_state tstate = timer_current_state(
+				&p->auto_recovery.timer_retry);
+			if (tstate.fin) {
+				pv_log(INFO,
+				       "recovery timer finished for platform '%s'. Restarting...",
+				       p->name);
+				pv_platform_set_installed(p);
 			}
 		} else if (pv_platform_is_stopped(p)) {
 			if (pv_state_check_auto_recovery(s, p))

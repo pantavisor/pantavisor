@@ -40,7 +40,9 @@ typedef enum {
 	PLAT_STARTING,
 	PLAT_STARTED,
 	PLAT_READY,
+	PLAT_RECOVERING,
 	PLAT_STOPPING,
+
 	PLAT_STOPPED
 } plat_status_t;
 
@@ -186,8 +188,7 @@ bool pv_platform_check_running(struct pv_platform *p);
 void pv_platform_set_installed(struct pv_platform *p);
 void pv_platform_set_mounted(struct pv_platform *p);
 void pv_platform_set_blocked(struct pv_platform *p);
-void pv_platform_set_updated(struct pv_platform *p);
-
+void pv_platform_set_recovering(struct pv_platform *p);
 int pv_platform_set_ready(struct pv_platform *p);
 
 bool pv_platform_is_installed(struct pv_platform *p);
@@ -195,6 +196,7 @@ bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
 bool pv_platform_is_started(struct pv_platform *p);
 bool pv_platform_is_ready(struct pv_platform *p);
+bool pv_platform_is_recovering(struct pv_platform *p);
 bool pv_platform_is_stopping(struct pv_platform *p);
 bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
