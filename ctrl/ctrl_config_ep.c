@@ -50,12 +50,12 @@ static void ctrl_config_send(struct evhttp_request *req, struct pv_ctrl_cb *cb,
 
 static void ctrl_config_list(struct evhttp_request *req, void *ctx)
 {
-	ctrl_config_send(req, ctx, pv_config_get_alias_json);
+	ctrl_config_send(req, ctx, pv_config_get_legacy_json);
 }
 
 static void ctrl_config_list2(struct evhttp_request *req, void *ctx)
 {
-	ctrl_config_send(req, ctx, pv_config_get_json);
+	ctrl_config_send(req, ctx, pv_config_get_complete_json);
 }
 
 int pv_ctrl_endpoints_config_init()
