@@ -634,11 +634,15 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 		return -1;
 	}
 
+	// Update last start time for auto-recovery
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	p->auto_recovery.last_start = now.tv_sec;
+
 	if (pv_platform_start(p)) {
 		pv_log(ERROR, "platform %s could not be started", p->name);
 		return -1;
 	}
-
 	return 0;
 }
 
@@ -684,8 +688,48 @@ static int pv_state_validate_services(struct pv_state *s)
 	return 0;
 }
 
-int pv_state_run(struct pv_state *s)
+static bool pv_state_check_auto_recovery(struct pv_state *s,
+					 struct pv_platform *p)
+{
+	if (p->auto_recovery.type == RECOVERY_NO)
+		return false;
 
+	// Check if we are within the reset window to reset retries
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	if (p->auto_recovery.reset_window > 0 &&
+	    (now.tv_sec - p->auto_recovery.last_start) >
+		    p->auto_recovery.reset_window) {
+		p->auto_recovery.current_retries = 0;
+	}
+
+	if (p->auto_recovery.type == RECOVERY_ON_FAILURE ||
+	    p->auto_recovery.type == RECOVERY_ALWAYS) {
+		if (p->auto_recovery.max_retries > 0 &&
+		    p->auto_recovery.current_retries >=
+			    p->auto_recovery.max_retries) {
+			pv_log(WARN,
+			       "platform '%s' reached max retries (%d). Giving up.",
+			       p->name, p->auto_recovery.max_retries);
+			return false;
+		}
+
+		p->auto_recovery.current_retries++;
+		pv_log(INFO,
+		       "platform '%s' crashed. Attempting auto-recovery (attempt %d/%d)...",
+		       p->name, p->auto_recovery.current_retries,
+		       p->auto_recovery.max_retries);
+
+		// For now, immediate restart. Backoff logic requires timer integration.
+		// We set status to INSTALLED so pv_state_run picks it up.
+		pv_platform_set_status(p, PLAT_INSTALLED);
+		return true;
+	}
+
+	return false;
+}
+
+int pv_state_run(struct pv_state *s)
 {
 	if (pv_state_validate_services(s))
 		return -1;
@@ -722,15 +766,20 @@ int pv_state_run(struct pv_state *s)
 		} else if (pv_platform_is_started(p) ||
 			   pv_platform_is_ready(p)) {
 			if (!pv_platform_check_running(p)) {
+				if (pv_state_check_auto_recovery(s, p))
+					continue;
+
 				pv_log(ERROR, "platform '%s' suddenly stopped",
 				       p->name);
 				ret = -1;
 			}
 		} else if (pv_platform_is_stopped(p)) {
+			if (pv_state_check_auto_recovery(s, p))
+				continue;
+
 			pv_log(ERROR, "platform '%s' is not running", p->name);
 			ret = -1;
 		}
-
 		if (ret)
 			goto out;
 	}

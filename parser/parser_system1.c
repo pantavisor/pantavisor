@@ -1179,9 +1179,65 @@ out:
 	return ret;
 }
 
-static int do_action_for_one_volume(struct json_key_action *jka, char *value)
+static recovery_type_t parse_recovery_type(char *value)
 {
-	/*
+	if (!strcmp(value, "no"))
+		return RECOVERY_NO;
+	if (!strcmp(value, "always"))
+		return RECOVERY_ALWAYS;
+	if (!strcmp(value, "on-failure"))
+		return RECOVERY_ON_FAILURE;
+	if (!strcmp(value, "unless-stopped"))
+		return RECOVERY_UNLESS_STOPPED;
+	return RECOVERY_NO;
+}
+
+static int do_action_for_auto_recovery(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	struct pv_platform *p = *bundle->platform;
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	char *str = NULL;
+
+	if (!p || !value)
+		return -1;
+
+	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format auto_recovery");
+		goto out;
+	}
+
+	str = pv_json_get_value(value, "type", tokv, tokc);
+	if (str) {
+		p->auto_recovery.type = parse_recovery_type(str);
+		free(str);
+	}
+
+	p->auto_recovery.max_retries =
+		pv_json_get_value_int(value, "maximum_retry_count", tokv, tokc);
+	p->auto_recovery.retry_delay =
+		pv_json_get_value_int(value, "retry_delay", tokv, tokc);
+	p->auto_recovery.reset_window =
+		pv_json_get_value_int(value, "reset_window", tokv, tokc);
+
+	// backoff_factor is double, but we only have get_value_int
+	// implementing simple int parsing for now
+	str = pv_json_get_value(value, "backoff_factor", tokv, tokc);
+	if (str) {
+		p->auto_recovery.backoff_factor = atof(str);
+		free(str);
+	}
+
+	ret = 0;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
+static int do_action_for_one_volume(struct json_key_action *jka, char *value)
+{ /*
 	 * Opaque will contain the platform
 	 * */
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
@@ -1377,6 +1433,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_roles_object, false),
 		ADD_JKA_ENTRY("roles", JSMN_ARRAY, &bundle,
 			      do_action_for_roles_array, false),
+		ADD_JKA_ENTRY("auto_recovery", JSMN_OBJECT, &bundle,
+			      do_action_for_auto_recovery, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
 		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle,
