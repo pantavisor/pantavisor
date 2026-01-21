@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Pantacor Ltd.
+ * Copyright (c) 2026 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -19,37 +19,40 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "../include/xconnect.h"
 
-#ifndef PV_DAEMONS_H
-#define PV_DAEMONS_H
+#define MODULE_NAME "pvx-drm"
 
-#include <sys/types.h>
-#include <unistd.h>
+static int drm_on_link_added(struct pvx_link *link)
+{
+	printf("%s: Adding DRM link for %s (role: %s)\n", MODULE_NAME,
+	       link->consumer, link->role);
+	printf("%s: Target: %s, Provider Node: %s\n", MODULE_NAME,
+	       link->consumer_socket, link->provider_socket);
 
-#include "config.h"
+	if (link->consumer_pid <= 0) {
+		fprintf(stderr,
+			"%s: Consumer PID required for device injection\n",
+			MODULE_NAME);
+		return -1;
+	}
 
-// Daemon mode flags (bitmask for init_mode_t)
-#define DM_EMBEDDED (1 << IM_EMBEDDED)
-#define DM_STANDALONE (1 << IM_STANDALONE)
-#define DM_APPENGINE (1 << IM_APPENGINE)
-#define DM_ALL (DM_EMBEDDED | DM_STANDALONE | DM_APPENGINE)
+	int ret = pvx_helper_inject_devnode(link->consumer_socket,
+					    link->consumer_pid,
+					    link->provider_socket,
+					    link->provider_pid);
+	if (ret < 0) {
+		fprintf(stderr, "%s: Failed to inject device node\n",
+			MODULE_NAME);
+		return -1;
+	}
 
-struct pv_init_daemon {
-	char *name;
-	pid_t pid;
-	int respawn;
-	char *testpath;
-	char *cmd;
-	unsigned int modes; // bitmask of allowed init modes
-	int _respawning;
-};
+	return 0;
+}
 
-struct pv_init_daemon *pv_init_get_daemons(void);
-
-int pv_init_spawn_daemons(init_mode_t mode);
-
-int pv_init_is_daemon(pid_t pid);
-
-int pv_init_daemon_exited(pid_t pid);
-
-#endif // PV_DAEMONS_H
+struct pvx_plugin pvx_plugin_drm = { .type = "drm",
+				     .on_link_added = drm_on_link_added,
+				     .on_accept = NULL };
