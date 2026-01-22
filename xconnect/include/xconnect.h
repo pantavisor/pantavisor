@@ -47,6 +47,7 @@ struct pvx_link {
 	struct pvx_plugin *plugin;
 	struct evconnlistener *listener;
 	void *plugin_data;
+	bool established; // Track if link setup completed
 	struct dl_list list;
 };
 

@@ -148,8 +148,93 @@ out:
 	return fd;
 }
 int pvx_helper_inject_devnode(const char *target_path, int consumer_pid,
-			      const char *source_path, int provider_pid)
+                              const char *source_path, int provider_pid)
 {
-	// TODO: implement devnode injection using mknod or mount bind
-	return 0;
+        struct stat st;
+        char provider_root_path[PATH_MAX];
+        int old_ns_fd = -1;
+        int target_ns_fd = -1;
+        int ret = -1;
+        char ns_path[PATH_MAX];
+
+        // 1. Get devnode info from provider namespace
+        snprintf(provider_root_path, sizeof(provider_root_path),
+                 "/proc/%d/root/%s", provider_pid,
+                 source_path[0] == '/' ? source_path + 1 : source_path);
+
+        printf("pvx-helper: Statting provider node %s\n", provider_root_path);
+        if (stat(provider_root_path, &st) < 0) {
+                perror("stat provider devnode");
+                return -1;
+        }
+
+        if (!S_ISCHR(st.st_mode) && !S_ISBLK(st.st_mode)) {
+                fprintf(stderr, "Source %s is not a device node\n",
+                        provider_root_path);
+                return -1;
+        }
+        printf("pvx-helper: Found device 0x%lx (mode 0x%x)\n", (unsigned long)st.st_rdev, st.st_mode);
+
+        // 2. Save current namespace
+        old_ns_fd = open("/proc/self/ns/mnt", O_RDONLY);
+        if (old_ns_fd < 0) {
+                perror("open current ns");
+                return -1;
+        }
+
+        // 3. Open target namespace
+        snprintf(ns_path, sizeof(ns_path), "/proc/%d/ns/mnt", consumer_pid);
+        printf("pvx-helper: Entering consumer namespace %s\n", ns_path);
+        target_ns_fd = open(ns_path, O_RDONLY);
+        if (target_ns_fd < 0) {
+                perror("open target ns");
+                close(old_ns_fd);
+                return -1;
+        }
+
+        // 4. Enter target namespace
+        if (setns(target_ns_fd, CLONE_NEWNS) < 0) {
+                perror("setns");
+                goto out;
+        }
+
+        // 5. Prepare path inside namespace
+        char *path_copy = strdup(target_path);
+        if (path_copy) {
+                char *dir = dirname(path_copy);
+                if (dir) {
+                        printf("pvx-helper: Creating directory %s\n", dir);
+                        mkdir_p(dir, 0755);
+                }
+                free(path_copy);
+        }
+
+        printf("pvx-helper: Mknod %s\n", target_path);
+        unlink(target_path);
+
+        // 6. Create devnode
+        if (mknod(target_path, st.st_mode, st.st_rdev) < 0) {
+                perror("mknod");
+                goto out;
+        }
+
+        // 7. Set ownership (optional, but good for consistency)
+        chown(target_path, st.st_uid, st.st_gid);
+        chmod(target_path, st.st_mode & 0777);
+
+        ret = 0;
+
+out:
+        // 8. Always switch back to host namespace
+        if (setns(old_ns_fd, CLONE_NEWNS) < 0) {
+                perror("setns back");
+                exit(1);
+        }
+
+        if (old_ns_fd >= 0)
+                close(old_ns_fd);
+        if (target_ns_fd >= 0)
+                close(target_ns_fd);
+
+        return ret;
 }

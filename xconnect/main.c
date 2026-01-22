@@ -17,9 +17,11 @@
 #include "include/xconnect.h"
 
 #define PV_CTRL_SOCKET "/run/pantavisor/pv/pv-ctrl"
+#define RECONCILE_INTERVAL_SEC 5
 
 static struct event_base *g_base;
 static struct dl_list g_links;
+static struct event *g_reconcile_timer;
 
 extern struct pvx_plugin pvx_plugin_unix;
 extern struct pvx_plugin pvx_plugin_rest;
@@ -41,6 +43,18 @@ static struct pvx_plugin *find_plugin(const char *type)
 	for (int i = 0; plugins[i]; i++) {
 		if (!strcmp(plugins[i]->type, type))
 			return plugins[i];
+	}
+	return NULL;
+}
+
+static struct pvx_link *find_link(const char *consumer, const char *name)
+{
+	struct pvx_link *link;
+	dl_list_for_each(link, &g_links, struct pvx_link, list)
+	{
+		if (link->consumer && link->name && !strcmp(link->consumer, consumer) &&
+		    !strcmp(link->name, name))
+			return link;
 	}
 	return NULL;
 }
@@ -101,26 +115,61 @@ static void reconcile_graph(const char *json)
 	
 
 			if (p) {
+				// Parse consumer name first to check for existing link
+				char *consumer_tmp =
+					pv_json_get_value(json, "consumer", itok, obj_tokc);
+				char *name_tmp =
+					pv_json_get_value(json, "name", itok, obj_tokc);
+
+				// Check if link already exists and is established
+				struct pvx_link *existing =
+					find_link(consumer_tmp, name_tmp);
+				if (existing && existing->established) {
+					free(type);
+					if (consumer_tmp)
+						free(consumer_tmp);
+					if (name_tmp)
+						free(name_tmp);
+					continue;
+				}
+
+				// If link exists but not established, remove it for retry
+				if (existing) {
+					printf("Retrying link: %s/%s\n", consumer_tmp,
+					       name_tmp);
+					dl_list_del(&existing->list);
+					if (existing->name)
+						free(existing->name);
+					if (existing->consumer)
+						free(existing->consumer);
+					if (existing->role)
+						free(existing->role);
+					if (existing->provider_socket)
+						free(existing->provider_socket);
+					if (existing->interface)
+						free(existing->interface);
+					if (existing->consumer_socket)
+						free(existing->consumer_socket);
+					if (existing->type)
+						free(existing->type);
+					free(existing);
+				}
 
 				struct pvx_link *link = calloc(1, sizeof(*link));
 
 				if (!link) {
-
 					free(type);
-
+					if (consumer_tmp)
+						free(consumer_tmp);
+					if (name_tmp)
+						free(name_tmp);
 					continue;
-
 				}
 
+				// Use already-parsed values
+				link->consumer = consumer_tmp;
+				link->name = name_tmp;
 				link->type = type;
-
-				link->name =
-
-					pv_json_get_value(json, "name", itok, obj_tokc);
-
-				link->consumer = pv_json_get_value(json, "consumer",
-
-								   itok, obj_tokc);
 
 				link->role =
 
@@ -230,29 +279,33 @@ static void reconcile_graph(const char *json)
 			dl_list_init(&link->list);
 			dl_list_add_tail(&g_links, &link->list);
 
-						printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
-						       link->consumer ? link->consumer : "unknown",
-						       link->consumer_pid, link->type,
-						       link->provider_socket, link->consumer_socket);
-						if (p->on_link_added(link) < 0) {
-							fprintf(stderr, "Failed to add link for %s\n",
-								link->name);
-							dl_list_del(&link->list);
-							if (link->name)
-								free(link->name);
-							if (link->consumer)
-								free(link->consumer);
-							if (link->role)
-								free(link->role);
-							if (link->provider_socket)
-								free(link->provider_socket);
-							if (link->interface)
-								free(link->interface);
-							if (link->consumer_socket)
-								free(link->consumer_socket);
-							free(link->type);
-							free(link);
-						}
+				printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
+			       link->consumer ? link->consumer : "unknown",
+			       link->consumer_pid, link->type,
+			       link->provider_socket, link->consumer_socket);
+			if (p->on_link_added(link) < 0) {
+				fprintf(stderr, "Failed to add link for %s\n",
+					link->name);
+				dl_list_del(&link->list);
+				if (link->name)
+					free(link->name);
+				if (link->consumer)
+					free(link->consumer);
+				if (link->role)
+					free(link->role);
+				if (link->provider_socket)
+					free(link->provider_socket);
+				if (link->interface)
+					free(link->interface);
+				if (link->consumer_socket)
+					free(link->consumer_socket);
+				free(link->type);
+				free(link);
+			} else {
+				link->established = true;
+				printf("Link established: %s/%s\n",
+				       link->consumer, link->name);
+			}
 					} else {			fprintf(stderr, "No plugin found for type %s\n", type);
 			if (type)
 				free(type);
@@ -330,6 +383,16 @@ static void signal_cb(evutil_socket_t fd, short event, void *arg)
 	event_base_loopexit(base, NULL);
 }
 
+static void reconcile_timer_cb(evutil_socket_t fd, short event, void *arg)
+{
+	printf("Periodic reconciliation check...\n");
+	fetch_graph();
+
+	// Re-arm the timer
+	struct timeval tv = { RECONCILE_INTERVAL_SEC, 0 };
+	evtimer_add(g_reconcile_timer, &tv);
+}
+
 int main(int argc, char **argv)
 {
 	struct event *signal_event;
@@ -356,14 +419,23 @@ int main(int argc, char **argv)
 	}
 	printf("pv-xconnect starting...\n");
 
+	// Set up periodic reconciliation timer
+	g_reconcile_timer = evtimer_new(g_base, reconcile_timer_cb, NULL);
+	if (!g_reconcile_timer) {
+		fprintf(stderr, "Could not create reconcile timer!\n");
+		return 1;
+	}
+	struct timeval tv = { RECONCILE_INTERVAL_SEC, 0 };
+	evtimer_add(g_reconcile_timer, &tv);
+
+	// Initial graph fetch
 	fetch_graph();
 
 	event_base_dispatch(g_base);
 
+	event_free(g_reconcile_timer);
 	event_free(signal_event);
-
 	event_free(term_event);
-
 	event_base_free(g_base);
 
 	return 0;
