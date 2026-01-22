@@ -283,39 +283,30 @@ static char *pv_cgroup_parse_proc_legacy(FILE *fd)
 
 static char *pv_cgroup_parse_proc_unified(FILE *fd)
 {
-	char *pvcg, *pname = NULL;
-	char buf[128];
+        char *pvcg, *pname = NULL;
+        char buf[128];
 
-	while (fgets(buf, 128, fd)) {
-		pvcg = strstr(buf, "/lxc/");
-		if (pvcg) {
-			pvcg += strlen("/lxc/");
-			pvcg[strlen(pvcg) - 1] = '\0';
-			pname = strdup(pvcg);
-			break;
-		}
-		size_t len = strlen(buf);
+        while (fgets(buf, 128, fd)) {
+                pvcg = strstr(buf, "/lxc/");
+                if (pvcg) {
+                        pvcg += strlen("/lxc/");
+                        // remove trailing newline if any
+                        size_t len = strlen(pvcg);
+                        if (len > 0 && pvcg[len - 1] == '\n')
+                                pvcg[len - 1] = '\0';
+                        pname = strdup(pvcg);
+                        break;
+                }
 
-		if (len > 0 && buf[len - 1] == '\n') {
-			buf[--len] = '\0';
-		}
-		if (len >= 3) { // At least "0::"
-			int i;
-			for (i = 0; i < len - 3 && isdigit(buf[i]); i++)
-				;
+                // If it's the unified cgroup line (starts with 0::)
+                if (strncmp(buf, "0::/", 4) == 0) {
+                        pname = strdup("_pv_");
+                        break;
+                }
+        }
 
-			// Check if we found at least one digit and string ends with "::/"
-			if (i > 0 && i == len - 3 &&
-			    strcmp(&buf[i], "::/") == 0) {
-				pname = strdup("_pv_");
-				break;
-			}
-		}
-	}
-
-	return pname;
+        return pname;
 }
-
 char *pv_cgroup_get_process_name(pid_t pid)
 {
 	int len;
