@@ -639,12 +639,120 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 		return -1;
 	}
 
+	// Update last start time for auto-recovery
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	p->auto_recovery.last_start = now.tv_sec;
+
 	return 0;
 }
 
+static int pv_state_validate_services(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp_p;
+	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_platform_service *svc, *tmp_svc;
+		dl_list_for_each_safe(svc, tmp_svc, &p->services,
+				      struct pv_platform_service, list)
+		{
+			if (svc->type != DRIVER_REQUIRED)
+				continue;
+			bool found = false;
+			struct pv_platform *p_prov, *tmp_p_prov;
+			dl_list_for_each_safe(p_prov, tmp_p_prov, &s->platforms,
+					      struct pv_platform, list)
+			{
+				struct pv_platform_service_export *exp,
+					*tmp_exp;
+				dl_list_for_each_safe(
+					exp, tmp_exp, &p_prov->service_exports,
+					struct pv_platform_service_export, list)
+				{
+					if (svc->name && exp->name &&
+					    !strcmp(svc->name, exp->name)) {
+						found = true;
+						break;
+					}
+				}
+				if (found)
+					break;
+			}
+			if (!found) {
+				pv_log(ERROR,
+				       "required service '%s' for platform '%s' not found",
+				       svc->name, p->name);
+				return -1;
+			}
+		}
+	}
+	return 0;
+}
+
+static bool pv_state_check_auto_recovery(struct pv_state *s,
+					 struct pv_platform *p)
+{
+	if (p->auto_recovery.type == RECOVERY_NO)
+		return false;
+
+	// Check if we are within the reset window to reset retries
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	if (p->auto_recovery.reset_window > 0 &&
+	    (now.tv_sec - p->auto_recovery.last_start) >
+		    p->auto_recovery.reset_window) {
+		p->auto_recovery.current_retries = 0;
+	}
+
+	if (p->auto_recovery.type == RECOVERY_ON_FAILURE ||
+	    p->auto_recovery.type == RECOVERY_ALWAYS) {
+		if (p->auto_recovery.max_retries > 0 &&
+		    p->auto_recovery.current_retries >=
+			    p->auto_recovery.max_retries) {
+			pv_log(WARN,
+			       "platform '%s' reached max retries (%d). Giving up.",
+			       p->name, p->auto_recovery.max_retries);
+			return false;
+		}
+
+		p->auto_recovery.current_retries++;
+
+		// Calculate backoff delay
+		int delay = p->auto_recovery.retry_delay;
+		if (p->auto_recovery.current_retries > 1 &&
+		    p->auto_recovery.backoff_factor > 1.0) {
+			double factor = 1.0;
+			for (int i = 0;
+			     i < p->auto_recovery.current_retries - 1; i++) {
+				factor *= p->auto_recovery.backoff_factor;
+			}
+			delay = (int)(delay * factor);
+		}
+
+		pv_log(INFO,
+		       "platform '%s' crashed. Attempting auto-recovery (attempt %d/%d) in %d seconds...",
+		       p->name, p->auto_recovery.current_retries,
+		       p->auto_recovery.max_retries, delay);
+
+		if (delay > 0) {
+			timer_start(&p->auto_recovery.timer_retry, delay, 0,
+				    RELATIV_TIMER);
+			pv_platform_set_recovering(p);
+		} else {
+			pv_platform_set_installed(p);
+		}
+		return true;
+	}
+
+	return false;
+}
 int pv_state_run(struct pv_state *s)
 {
+	if (pv_state_validate_services(s))
+		return -1;
+
 	int ret = 0;
+
 	struct pv_platform *p, *tmp_p;
 
 	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
@@ -675,15 +783,35 @@ int pv_state_run(struct pv_state *s)
 		} else if (pv_platform_is_started(p) ||
 			   pv_platform_is_ready(p)) {
 			if (!pv_platform_check_running(p)) {
+				if (pv_state_check_auto_recovery(s, p))
+					continue;
+
 				pv_log(ERROR, "platform '%s' suddenly stopped",
 				       p->name);
 				ret = -1;
 			}
+		} else if (pv_platform_is_recovering(p)) {
+			struct timer_state tstate = timer_current_state(
+				&p->auto_recovery.timer_retry);
+			if (tstate.fin) {
+				pv_log(INFO,
+				       "recovery timer finished for platform '%s'. Restarting...",
+				       p->name);
+				pv_platform_set_installed(p);
+			}
 		} else if (pv_platform_is_stopped(p)) {
+			// If the status goal is STOPPED, this is an intentional
+			// stop via API - skip without triggering auto-recovery
+			// or error
+			if (p->status.goal == PLAT_STOPPED)
+				continue;
+
+			if (pv_state_check_auto_recovery(s, p))
+				continue;
+
 			pv_log(ERROR, "platform '%s' is not running", p->name);
 			ret = -1;
 		}
-
 		if (ret)
 			goto out;
 	}
@@ -851,7 +979,8 @@ static bool pv_state_compare_objects(struct pv_state *current,
 		return true;
 
 	// search for modified or deleted objects
-	dl_list_for_each_safe(o, tmp, &current->installs, struct pv_object, list)
+	dl_list_for_each_safe(o, tmp, &current->installs, struct pv_object,
+			      list)
 	{
 		pend_o = pv_state_fetch_object(pending, o->name);
 		if (!pend_o || strcmp(o->id, pend_o->id)) {
@@ -877,7 +1006,8 @@ static bool pv_state_compare_objects(struct pv_state *current,
 	}
 
 	// search for new objects
-	dl_list_for_each_safe(o, tmp, &pending->installs, struct pv_object, list)
+	dl_list_for_each_safe(o, tmp, &pending->installs, struct pv_object,
+			      list)
 	{
 		curr_o = pv_state_fetch_object(current, o->name);
 		if (!curr_o) {
@@ -1049,7 +1179,6 @@ static void pv_state_remove_updated_platforms(struct pv_state *s)
 		pv_object_free(o);
 	}
 
-
 	// remove volumes belonging to stopped platforms from state
 	dl_list_for_each_safe(v, v_tmp, &s->volumes, struct pv_volume, list)
 	{
@@ -1127,7 +1256,6 @@ static void pv_state_transfer_platforms(struct pv_state *pending,
 		dl_list_del(&o->list);
 		dl_list_add_tail(&current->objects, &o->list);
 	}
-
 
 	// transfer volumes belonging to platforms from pending that do not exist in current
 	dl_list_for_each_safe(v, v_tmp, &pending->volumes, struct pv_volume,
@@ -1357,8 +1485,9 @@ static char *pv_state_get_novalidate_list(struct pv_state *state)
 			goto next;
 
 		size_t entry_size = 0;
-		entry = pv_state_get_formatted_nv_entry(
-			&state->installs, js->plat->name, data_dev, &entry_size);
+		entry = pv_state_get_formatted_nv_entry(&state->installs,
+							js->plat->name,
+							data_dev, &entry_size);
 
 		if (!entry)
 			goto next;
@@ -1711,4 +1840,134 @@ bool pv_state_is_done(struct pv_state *s)
 		return false;
 
 	return s->done;
+}
+
+static const char *pvx_svc_type_to_str(service_type_t type)
+{
+	switch (type) {
+	case SVC_TYPE_REST:
+		return "rest";
+	case SVC_TYPE_DBUS:
+		return "dbus";
+	case SVC_TYPE_UNIX:
+		return "unix";
+	case SVC_TYPE_DRM:
+		return "drm";
+	case SVC_TYPE_WAYLAND:
+		return "wayland";
+	case SVC_TYPE_INPUT:
+		return "input";
+	default:
+		return "unknown";
+	}
+}
+
+char *pv_state_get_xconnect_graph_json(struct pv_state *s)
+{
+	struct pv_json_ser js;
+	pv_json_ser_init(&js, 1024);
+	pv_json_ser_array(&js);
+	{
+		struct pv_platform *cp, *cp_tmp;
+		dl_list_for_each_safe(cp, cp_tmp, &s->platforms,
+				      struct pv_platform, list)
+		{
+			struct pv_platform_service *svc, *svc_tmp;
+			dl_list_for_each_safe(svc, svc_tmp, &cp->services,
+					      struct pv_platform_service, list)
+			{
+				struct pv_platform *pp, *pp_tmp;
+				dl_list_for_each_safe(pp, pp_tmp, &s->platforms,
+						      struct pv_platform, list)
+				{
+					struct pv_platform_service_export *exp,
+						*se_tmp;
+					dl_list_for_each_safe(
+						exp, se_tmp,
+						&pp->service_exports,
+						struct pv_platform_service_export,
+						list)
+					{
+						if (svc->name && exp->name &&
+						    !strcmp(svc->name,
+							    exp->name)) {
+							pv_json_ser_object(&js);
+							{
+								pv_json_ser_key(
+									&js,
+									"consumer");
+								pv_json_ser_string(
+									&js,
+									cp->name);
+								pv_json_ser_key(
+									&js,
+									"consumer_pid");
+								pv_json_ser_number(
+									&js,
+									cp->init_pid);
+								pv_json_ser_key(
+									&js,
+									"provider");
+								pv_json_ser_string(
+									&js,
+									pp->name);
+								pv_json_ser_key(
+									&js,
+									"provider_pid");
+								pv_json_ser_number(
+									&js,
+									pp->init_pid);
+								pv_json_ser_key(
+									&js,
+									"name");
+								pv_json_ser_string(
+									&js,
+									svc->name);
+								pv_json_ser_key(
+									&js,
+									"type");
+								pv_json_ser_string(
+									&js,
+									pvx_svc_type_to_str(
+										exp->svc_type));
+								pv_json_ser_key(
+									&js,
+									"role");
+								pv_json_ser_string(
+									&js,
+									svc->role ?
+										svc->role :
+										"any");
+								pv_json_ser_key(
+									&js,
+									"interface");
+								pv_json_ser_string(
+									&js,
+									svc->interface ?
+										svc->interface :
+										pvx_svc_type_to_str(
+											exp->svc_type));
+								pv_json_ser_key(
+									&js,
+									"target");
+								pv_json_ser_string(
+									&js,
+									svc->target);
+								pv_json_ser_key(
+									&js,
+									"socket");
+								pv_json_ser_string(
+									&js,
+									exp->socket);
+							}
+							pv_json_ser_object_pop(
+								&js);
+						}
+					}
+				}
+			}
+		}
+	}
+	pv_json_ser_array_pop(&js);
+	return pv_json_ser_str(&js);
 }

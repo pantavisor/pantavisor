@@ -57,6 +57,8 @@
 #include "utils/tsh.h"
 #include "utils/system.h"
 
+#include <time.h>
+
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
@@ -128,8 +130,11 @@ const char *pv_platform_status_string(plat_status_t status)
 		return "STARTED";
 	case PLAT_READY:
 		return "READY";
+	case PLAT_RECOVERING:
+		return "RECOVERING";
 	case PLAT_STOPPING:
 		return "STOPPING";
+
 	case PLAT_STOPPED:
 		return "STOPPED";
 	default:
@@ -200,6 +205,8 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		p->pipefd_listener.fd = -1;
 		p->pipefd_listener.ev = NULL;
 		dl_list_init(&p->drivers);
+		dl_list_init(&p->services);
+		dl_list_init(&p->service_exports);
 		dl_list_init(&p->logger_list);
 		dl_list_init(&p->logger_configs);
 		dl_list_init(&p->list);
@@ -274,6 +281,34 @@ void pv_platform_free(struct pv_platform *p)
 	if (p->exec)
 		free(p->exec);
 
+	struct pv_platform_service *s, *s_tmp;
+	dl_list_for_each_safe(s, s_tmp, &p->services,
+			      struct pv_platform_service, list)
+	{
+		if (s->name)
+			free(s->name);
+		if (s->role)
+			free(s->role);
+		if (s->interface)
+			free(s->interface);
+		if (s->target)
+			free(s->target);
+		free(s);
+	}
+	dl_list_init(&p->services);
+
+	struct pv_platform_service_export *se, *se_tmp;
+	dl_list_for_each_safe(se, se_tmp, &p->service_exports,
+			      struct pv_platform_service_export, list)
+	{
+		if (se->name)
+			free(se->name);
+		if (se->socket)
+			free(se->socket);
+		free(se);
+	}
+	dl_list_init(&p->service_exports);
+
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
 
@@ -320,18 +355,78 @@ const char *pv_platforms_restart_policy_str(restart_policy_t policy)
 	return "unknown";
 }
 
+static const char *pv_recovery_type_str(recovery_type_t type)
+{
+	switch (type) {
+	case RECOVERY_NO:
+		return "no";
+	case RECOVERY_ALWAYS:
+		return "always";
+	case RECOVERY_ON_FAILURE:
+		return "on-failure";
+	case RECOVERY_UNLESS_STOPPED:
+		return "unless-stopped";
+	default:
+		return "unknown";
+	}
+}
+
+static const char *pv_service_type_str(service_type_t type)
+{
+	switch (type) {
+	case SVC_TYPE_REST:
+		return "rest";
+	case SVC_TYPE_DBUS:
+		return "dbus";
+	case SVC_TYPE_UNIX:
+		return "unix";
+	case SVC_TYPE_DRM:
+		return "drm";
+	case SVC_TYPE_WAYLAND:
+		return "wayland";
+	case SVC_TYPE_INPUT:
+		return "input";
+	default:
+		return "unknown";
+	}
+}
+
+static const char *pv_service_requirement_str(plat_service_t type)
+{
+	if (type & SERVICE_REQUIRED)
+		return "required";
+	if (type & SERVICE_OPTIONAL)
+		return "optional";
+	if (type & SERVICE_MANUAL)
+		return "manual";
+	return "unknown";
+}
+
 void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 {
 	char *group = NULL;
 	const char *status = pv_platform_status_string(p->status.current);
 	const char *status_goal = pv_platform_status_string(p->status.goal);
 	int i;
+	time_t now;
+	long uptime_secs = 0;
+	struct pv_platform_service *svc, *svc_tmp;
+	struct pv_platform_service_export *exp, *exp_tmp;
 
 	if (p->group)
 		group = p->group->name;
 
+	// Calculate uptime if container is running
+	if (p->init_pid > 0 && p->auto_recovery.last_start > 0) {
+		now = time(NULL);
+		uptime_secs = (long)(now - p->auto_recovery.last_start);
+		if (uptime_secs < 0)
+			uptime_secs = 0;
+	}
+
 	pv_json_ser_object(js);
 	{
+		// Basic info
 		pv_json_ser_key(js, "name");
 		pv_json_ser_string(js, p->name);
 		pv_json_ser_key(js, "group");
@@ -343,6 +438,37 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 		pv_json_ser_key(js, "restart_policy");
 		pv_json_ser_string(
 			js, pv_platforms_restart_policy_str(p->restart_policy));
+
+		// Runtime info
+		pv_json_ser_key(js, "pid");
+		pv_json_ser_number(js, p->init_pid);
+		pv_json_ser_key(js, "uptime_secs");
+		pv_json_ser_number(js, uptime_secs);
+
+		// Auto-recovery details
+		pv_json_ser_key(js, "auto_recovery");
+		pv_json_ser_object(js);
+		{
+			pv_json_ser_key(js, "type");
+			pv_json_ser_string(js,
+					   pv_recovery_type_str(
+						   p->auto_recovery.type));
+			pv_json_ser_key(js, "max_retries");
+			pv_json_ser_number(js, p->auto_recovery.max_retries);
+			pv_json_ser_key(js, "current_retries");
+			pv_json_ser_number(js, p->auto_recovery.current_retries);
+			pv_json_ser_key(js, "retry_delay");
+			pv_json_ser_number(js, p->auto_recovery.retry_delay);
+			pv_json_ser_key(js, "backoff_factor");
+			pv_json_ser_number(js,
+					   (int)(p->auto_recovery.backoff_factor *
+						 100));
+			pv_json_ser_key(js, "reset_window");
+			pv_json_ser_number(js, p->auto_recovery.reset_window);
+			pv_json_ser_object_pop(js);
+		}
+
+		// Roles
 		pv_json_ser_key(js, "roles");
 		pv_json_ser_array(js);
 		{
@@ -360,6 +486,64 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 						js, pv_platforms_role_str(i));
 			}
 		close_roles:
+			pv_json_ser_array_pop(js);
+		}
+
+		// Services provided (exports)
+		pv_json_ser_key(js, "provides");
+		pv_json_ser_array(js);
+		{
+			dl_list_for_each_safe(exp, exp_tmp, &p->service_exports,
+					      struct pv_platform_service_export,
+					      list)
+			{
+				pv_json_ser_object(js);
+				{
+					pv_json_ser_key(js, "name");
+					pv_json_ser_string(js, exp->name);
+					pv_json_ser_key(js, "type");
+					pv_json_ser_string(
+						js,
+						pv_service_type_str(
+							exp->svc_type));
+					pv_json_ser_key(js, "socket");
+					pv_json_ser_string(js, exp->socket);
+					pv_json_ser_object_pop(js);
+				}
+			}
+			pv_json_ser_array_pop(js);
+		}
+
+		// Services consumed
+		pv_json_ser_key(js, "consumes");
+		pv_json_ser_array(js);
+		{
+			dl_list_for_each_safe(svc, svc_tmp, &p->services,
+					      struct pv_platform_service, list)
+			{
+				pv_json_ser_object(js);
+				{
+					pv_json_ser_key(js, "name");
+					pv_json_ser_string(js, svc->name);
+					pv_json_ser_key(js, "type");
+					pv_json_ser_string(
+						js, pv_service_type_str(
+							    svc->svc_type));
+					pv_json_ser_key(js, "requirement");
+					pv_json_ser_string(
+						js, pv_service_requirement_str(
+							    svc->type));
+					pv_json_ser_key(js, "role");
+					pv_json_ser_string(
+						js,
+						svc->role ? svc->role : "any");
+					pv_json_ser_key(js, "interface");
+					pv_json_ser_string(js, svc->interface);
+					pv_json_ser_key(js, "target");
+					pv_json_ser_string(js, svc->target);
+					pv_json_ser_object_pop(js);
+				}
+			}
 			pv_json_ser_array_pop(js);
 		}
 
@@ -1034,11 +1218,19 @@ void pv_platform_set_mounted(struct pv_platform *p)
 }
 
 void pv_platform_set_blocked(struct pv_platform *p)
+
 {
 	pv_platform_set_status(p, PLAT_BLOCKED);
 }
 
+void pv_platform_set_recovering(struct pv_platform *p)
+
+{
+	pv_platform_set_status(p, PLAT_RECOVERING);
+}
+
 int pv_platform_set_ready(struct pv_platform *p)
+
 {
 	if (p->status.goal != PLAT_READY)
 		return -1;
@@ -1095,11 +1287,15 @@ bool pv_platform_is_ready(struct pv_platform *p)
 	return (p->status.current == PLAT_READY);
 }
 
+bool pv_platform_is_recovering(struct pv_platform *p)
+{
+	return (p->status.current == PLAT_RECOVERING);
+}
+
 bool pv_platform_is_stopping(struct pv_platform *p)
 {
 	return (p->status.current == PLAT_STOPPING);
 }
-
 bool pv_platform_is_stopped(struct pv_platform *p)
 {
 	return (p->status.current == PLAT_STOPPED);
@@ -1189,4 +1385,42 @@ struct pv_platform_ref *pv_platform_ref_new(struct pv_platform *p)
 void pv_platform_ref_free(struct pv_platform_ref *pr)
 {
 	free(pr);
+}
+
+void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			     service_type_t svc_type, char *name, char *role,
+			     char *interface, char *target)
+{
+	struct pv_platform_service *s =
+		calloc(1, sizeof(struct pv_platform_service));
+	if (s) {
+		s->type = type;
+		s->svc_type = svc_type;
+		if (name)
+			s->name = strdup(name);
+		if (role)
+			s->role = strdup(role);
+		if (interface)
+			s->interface = strdup(interface);
+		if (target)
+			s->target = strdup(target);
+		dl_list_init(&s->list);
+		dl_list_add_tail(&p->services, &s->list);
+	}
+}
+void pv_platform_add_service_export(struct pv_platform *p,
+				    service_type_t svc_type, char *name,
+				    char *socket)
+{
+	struct pv_platform_service_export *se =
+		calloc(1, sizeof(struct pv_platform_service_export));
+	if (se) {
+		se->svc_type = svc_type;
+		if (name)
+			se->name = strdup(name);
+		if (socket)
+			se->socket = strdup(socket);
+		dl_list_init(&se->list);
+		dl_list_add_tail(&p->service_exports, &se->list);
+	}
 }
