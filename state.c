@@ -800,6 +800,12 @@ int pv_state_run(struct pv_state *s)
 				pv_platform_set_installed(p);
 			}
 		} else if (pv_platform_is_stopped(p)) {
+			// If the status goal is STOPPED, this is an intentional
+			// stop via API - skip without triggering auto-recovery
+			// or error
+			if (p->status.goal == PLAT_STOPPED)
+				continue;
+
 			if (pv_state_check_auto_recovery(s, p))
 				continue;
 

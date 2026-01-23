@@ -27,6 +27,7 @@
 #include "state.h"
 #include "pantavisor.h"
 #include "platforms.h"
+#include "group.h"
 #include "utils/json.h"
 
 #include <event2/http.h>
@@ -134,7 +135,12 @@ static void ctrl_container_put(struct evhttp_request *req, void *ctx)
 		} else {
 			// Disable auto-recovery during explicit stop
 			p->auto_recovery.type = RECOVERY_NO;
-			pv_platform_stop(p);
+			// Set status goal to STOPPED so pv_state_run() doesn't
+			// treat this as an unexpected crash requiring reboot
+			pv_platform_set_status_goal(p, PLAT_STOPPED);
+			// Use force_stop for reliable stop via API
+			// This stops the container immediately and sets status to STOPPED
+			pv_platform_force_stop(p);
 		}
 	} else if (strcmp(action, "start") == 0) {
 		pv_log(INFO, "Starting container %s via ctrl", p->name);
@@ -144,6 +150,9 @@ static void ctrl_container_put(struct evhttp_request *req, void *ctx)
 			pv_log(INFO, "Container %s is already running",
 			       p->name);
 		} else if (pv_platform_is_stopped(p)) {
+			// Restore status goal to group default (usually READY)
+			pv_platform_set_status_goal(p,
+						    p->group->default_status_goal);
 			// Volumes remain mounted when container is stopped,
 			// so we can just restart it
 			pv_platform_set_mounted(p);
@@ -157,13 +166,44 @@ static void ctrl_container_put(struct evhttp_request *req, void *ctx)
 				"Container must be in STOPPED state to start. Current state does not allow start.");
 			return;
 		}
+	} else if (strcmp(action, "restart") == 0) {
+		pv_log(INFO, "Restarting container %s via ctrl", p->name);
+
+		if (pv_platform_is_stopped(p)) {
+			// Container already stopped, just start it
+			pv_platform_set_status_goal(p,
+						    p->group->default_status_goal);
+			pv_platform_set_mounted(p);
+			pv_platform_start(p);
+		} else if (pv_platform_is_started(p) ||
+			   pv_platform_is_starting(p) ||
+			   pv_platform_is_ready(p)) {
+			// Container running, stop it first then start
+			// Disable auto-recovery during restart
+			p->auto_recovery.type = RECOVERY_NO;
+			pv_platform_set_status_goal(p, PLAT_STOPPED);
+			pv_platform_force_stop(p);
+			// Restore status goal and restart
+			pv_platform_set_status_goal(p,
+						    p->group->default_status_goal);
+			pv_platform_set_mounted(p);
+			pv_platform_start(p);
+		} else {
+			free(action);
+			free(tokv);
+			free(data);
+			pv_ctrl_utils_send_error(
+				req, HTTP_BADREQUEST,
+				"Container state does not allow restart.");
+			return;
+		}
 	} else {
 		free(action);
 		free(tokv);
 		free(data);
 		pv_ctrl_utils_send_error(
 			req, HTTP_BADREQUEST,
-			"Invalid action. Use 'start' or 'stop'");
+			"Invalid action. Use 'start', 'stop', or 'restart'");
 		return;
 	}
 
