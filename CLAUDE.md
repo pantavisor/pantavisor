@@ -160,7 +160,7 @@ HTTP REST API for device management via Unix socket at `/run/pantavisor/pv/pv-ct
 #### Container Control API (`ctrl/ctrl_containers_ep.c`)
 
 **GET /containers**
-Returns JSON array of all containers with their status:
+Returns JSON array of all containers with detailed runtime status and service mesh info:
 ```json
 [{
   "name": "my-container",
@@ -168,9 +168,35 @@ Returns JSON array of all containers with their status:
   "status": "STARTED",
   "status_goal": "STARTED",
   "restart_policy": "container",
-  "roles": ["mgmt"]
+  "pid": 1234,
+  "uptime_secs": 3600,
+  "auto_recovery": {
+    "type": "on-failure",
+    "max_retries": 5,
+    "current_retries": 0,
+    "retry_delay": 1,
+    "backoff_factor": 200,
+    "reset_window": 300
+  },
+  "roles": ["mgmt"],
+  "provides": [
+    {"name": "my-service", "type": "rest", "socket": "/run/my.sock"}
+  ],
+  "consumes": [
+    {"name": "other-service", "type": "dbus", "requirement": "required",
+     "role": "client", "interface": "org.example.Service", "target": "/run/proxy.sock"}
+  ]
 }]
 ```
+
+| Field | Description |
+|-------|-------------|
+| `pid` | Container init process PID (0 if not running) |
+| `uptime_secs` | Seconds since container started |
+| `auto_recovery.type` | Recovery policy: `no`, `always`, `on-failure`, `unless-stopped` |
+| `auto_recovery.current_retries` | Current retry count |
+| `provides` | Services this container exports (pv-xconnect) |
+| `consumes` | Services this container requires/uses |
 
 **PUT /containers/{name}**
 Performs lifecycle actions on a container. Only containers with `restart_policy: "container"` can be controlled; containers with `restart_policy: "system"` are protected.
