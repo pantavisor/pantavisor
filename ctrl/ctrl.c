@@ -342,7 +342,7 @@ void pv_ctrl_stop()
 
 	ctrl_free_cb_list(&pvctrl.custom_cb);
 	ctrl_free_cb_list(&pvctrl.normal_cb);
-	ctrl_free_request_list(&pvctrl.normal_cb);
+	ctrl_free_request_list(&pvctrl.request);
 
 	pv_log(DEBUG, "server stopped");
 }
