@@ -1302,12 +1302,27 @@ static void system1_link_object_json_platforms(struct pv_state *s)
 	struct dl_list *new_jsons = &s->jsons;
 	struct pv_object *o, *tmp_o;
 	struct dl_list *new_objects = &s->objects;
+	struct dl_list *new_installs = &s->installs;
 	char *name, *dir;
 
 	// link objects
 	if (!new_objects)
-		goto link_jsons;
+		goto link_installs;
 	dl_list_for_each_safe(o, tmp_o, new_objects, struct pv_object, list)
+	{
+		name = strdup(o->name);
+		dir = strtok(name, "/");
+		if (!strcmp(dir, "_config"))
+			dir = strtok(NULL, "/");
+		o->plat = pv_state_fetch_platform(s, dir);
+		free(name);
+	}
+
+link_installs:
+	// link installs
+	if (!new_installs)
+		goto link_jsons;
+	dl_list_for_each_safe(o, tmp_o, new_installs, struct pv_object, list)
 	{
 		name = strdup(o->name);
 		dir = strtok(name, "/");
