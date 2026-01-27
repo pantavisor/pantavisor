@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <errno.h>
 
+#include <jsmn/jsmnutil.h>
 #include "json.h"
 #include "json-build/json-build.h"
 
@@ -131,7 +132,6 @@ char *pv_json_array_get_one_str(const char *buf, int *n, jsmntok_t **tok)
 	}
 	return value;
 }
-
 int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t *tok,
 			  int tokc)
 {

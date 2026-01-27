@@ -67,9 +67,10 @@ typedef enum {
 	SVC_TYPE_UNIX,
 	SVC_TYPE_DRM,
 	SVC_TYPE_WAYLAND,
-	SVC_TYPE_INPUT
+	SVC_TYPE_INPUT,
+	SVC_TYPE_TCP,
+	SVC_TYPE_HTTP
 } service_type_t;
-
 typedef enum {
 	SERVICE_REQUIRED = (1 << 0),
 	SERVICE_OPTIONAL = (1 << 1),
@@ -90,6 +91,7 @@ struct pv_platform_service_export {
 	service_type_t svc_type;
 	char *name;
 	char *socket;
+	int port; // TCP port number (0 if not specified, used for IPAM backends)
 	struct dl_list list;
 };
 typedef enum {
@@ -170,12 +172,16 @@ void pv_platform_free(struct pv_platform *p);
 
 void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
 			    char *value);
+void pv_service_add_to_list(struct dl_list *list, plat_service_t type,
+			    service_type_t svc_type, char *name, char *role,
+			    char *interface, char *target);
 void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 			     service_type_t svc_type, char *name, char *role,
 			     char *interface, char *target);
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
-				    char *socket);
+				    char *socket, int port);
+const char *pv_platform_get_ipv4_address(struct pv_platform *p);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
 void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
@@ -202,6 +208,7 @@ bool pv_platform_is_recovering(struct pv_platform *p);
 bool pv_platform_is_stopping(struct pv_platform *p);
 bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
+void pv_platform_set_updated(struct pv_platform *p);
 
 void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal);
 plat_goal_state_t pv_platform_check_goal(struct pv_platform *p);
@@ -226,6 +233,7 @@ void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);
 
 void pv_platforms_empty(struct pv_state *s);
+void pv_ingress_empty(struct pv_state *s);
 
 struct pv_platform_ref {
 	struct pv_platform *ref;
