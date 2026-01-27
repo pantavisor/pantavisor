@@ -56,6 +56,9 @@
 #include "utils/pvsignals.h"
 #include "utils/tsh.h"
 #include "utils/system.h"
+#include "ipam.h"
+
+#include <time.h>
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
@@ -310,6 +313,20 @@ void pv_platform_free(struct pv_platform *p)
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
 
+	// Release IPAM allocations for this platform
+	if (p->network && p->network->mode == NET_MODE_POOL) {
+		struct pv_platform_network_iface *iface;
+		dl_list_for_each(iface, &p->network->interfaces,
+				 struct pv_platform_network_iface, list)
+		{
+			if (iface->pool)
+				pv_ipam_release(iface->pool, p->name);
+		}
+	}
+
+	if (p->network)
+		pv_platform_network_free(p->network);
+
 	free(p);
 }
 
@@ -353,18 +370,78 @@ const char *pv_platforms_restart_policy_str(restart_policy_t policy)
 	return "unknown";
 }
 
+static const char *pv_recovery_type_str(recovery_type_t type)
+{
+	switch (type) {
+	case RECOVERY_NO:
+		return "no";
+	case RECOVERY_ALWAYS:
+		return "always";
+	case RECOVERY_ON_FAILURE:
+		return "on-failure";
+	case RECOVERY_UNLESS_STOPPED:
+		return "unless-stopped";
+	default:
+		return "unknown";
+	}
+}
+
+static const char *pv_service_type_str(service_type_t type)
+{
+	switch (type) {
+	case SVC_TYPE_REST:
+		return "rest";
+	case SVC_TYPE_DBUS:
+		return "dbus";
+	case SVC_TYPE_UNIX:
+		return "unix";
+	case SVC_TYPE_DRM:
+		return "drm";
+	case SVC_TYPE_WAYLAND:
+		return "wayland";
+	case SVC_TYPE_INPUT:
+		return "input";
+	default:
+		return "unknown";
+	}
+}
+
+static const char *pv_service_requirement_str(plat_service_t type)
+{
+	if (type & SERVICE_REQUIRED)
+		return "required";
+	if (type & SERVICE_OPTIONAL)
+		return "optional";
+	if (type & SERVICE_MANUAL)
+		return "manual";
+	return "unknown";
+}
+
 void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 {
 	char *group = NULL;
 	const char *status = pv_platform_status_string(p->status.current);
 	const char *status_goal = pv_platform_status_string(p->status.goal);
 	int i;
+	time_t now;
+	long uptime_secs = 0;
+	struct pv_platform_service *svc, *svc_tmp;
+	struct pv_platform_service_export *exp, *exp_tmp;
 
 	if (p->group)
 		group = p->group->name;
 
+	// Calculate uptime if container is running
+	if (p->init_pid > 0 && p->auto_recovery.last_start > 0) {
+		now = time(NULL);
+		uptime_secs = (long)(now - p->auto_recovery.last_start);
+		if (uptime_secs < 0)
+			uptime_secs = 0;
+	}
+
 	pv_json_ser_object(js);
 	{
+		// Basic info
 		pv_json_ser_key(js, "name");
 		pv_json_ser_string(js, p->name);
 		pv_json_ser_key(js, "group");
@@ -376,6 +453,37 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 		pv_json_ser_key(js, "restart_policy");
 		pv_json_ser_string(
 			js, pv_platforms_restart_policy_str(p->restart_policy));
+
+		// Runtime info
+		pv_json_ser_key(js, "pid");
+		pv_json_ser_number(js, p->init_pid);
+		pv_json_ser_key(js, "uptime_secs");
+		pv_json_ser_number(js, uptime_secs);
+
+		// Auto-recovery details
+		pv_json_ser_key(js, "auto_recovery");
+		pv_json_ser_object(js);
+		{
+			pv_json_ser_key(js, "type");
+			pv_json_ser_string(js, pv_recovery_type_str(
+						       p->auto_recovery.type));
+			pv_json_ser_key(js, "max_retries");
+			pv_json_ser_number(js, p->auto_recovery.max_retries);
+			pv_json_ser_key(js, "current_retries");
+			pv_json_ser_number(js,
+					   p->auto_recovery.current_retries);
+			pv_json_ser_key(js, "retry_delay");
+			pv_json_ser_number(js, p->auto_recovery.retry_delay);
+			pv_json_ser_key(js, "backoff_factor");
+			pv_json_ser_number(
+				js,
+				(int)(p->auto_recovery.backoff_factor * 100));
+			pv_json_ser_key(js, "reset_window");
+			pv_json_ser_number(js, p->auto_recovery.reset_window);
+			pv_json_ser_object_pop(js);
+		}
+
+		// Roles
 		pv_json_ser_key(js, "roles");
 		pv_json_ser_array(js);
 		{
@@ -393,6 +501,63 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 						js, pv_platforms_role_str(i));
 			}
 		close_roles:
+			pv_json_ser_array_pop(js);
+		}
+
+		// Services provided (exports)
+		pv_json_ser_key(js, "provides");
+		pv_json_ser_array(js);
+		{
+			dl_list_for_each_safe(exp, exp_tmp, &p->service_exports,
+					      struct pv_platform_service_export,
+					      list)
+			{
+				pv_json_ser_object(js);
+				{
+					pv_json_ser_key(js, "name");
+					pv_json_ser_string(js, exp->name);
+					pv_json_ser_key(js, "type");
+					pv_json_ser_string(
+						js, pv_service_type_str(
+							    exp->svc_type));
+					pv_json_ser_key(js, "socket");
+					pv_json_ser_string(js, exp->socket);
+					pv_json_ser_object_pop(js);
+				}
+			}
+			pv_json_ser_array_pop(js);
+		}
+
+		// Services consumed
+		pv_json_ser_key(js, "consumes");
+		pv_json_ser_array(js);
+		{
+			dl_list_for_each_safe(svc, svc_tmp, &p->services,
+					      struct pv_platform_service, list)
+			{
+				pv_json_ser_object(js);
+				{
+					pv_json_ser_key(js, "name");
+					pv_json_ser_string(js, svc->name);
+					pv_json_ser_key(js, "type");
+					pv_json_ser_string(
+						js, pv_service_type_str(
+							    svc->svc_type));
+					pv_json_ser_key(js, "requirement");
+					pv_json_ser_string(
+						js, pv_service_requirement_str(
+							    svc->type));
+					pv_json_ser_key(js, "role");
+					pv_json_ser_string(
+						js,
+						svc->role ? svc->role : "any");
+					pv_json_ser_key(js, "interface");
+					pv_json_ser_string(js, svc->interface);
+					pv_json_ser_key(js, "target");
+					pv_json_ser_string(js, svc->target);
+					pv_json_ser_object_pop(js);
+				}
+			}
 			pv_json_ser_array_pop(js);
 		}
 
@@ -926,7 +1091,97 @@ int pv_platform_start(struct pv_platform *p)
 	timer_start(&p->timer_status_goal,
 		    p->group->default_status_goal_timeout, 0, RELATIV_TIMER);
 
+	// Allocate IPAM network resources if platform uses pool-based networking
+	if (p->network && p->network->mode == NET_MODE_POOL) {
+		struct pv_platform_network_iface *iface;
+		dl_list_for_each(iface, &p->network->interfaces,
+				 struct pv_platform_network_iface, list)
+		{
+			if (!iface->pool)
+				continue;
+
+			struct pv_ip_pool *pool =
+				pv_ipam_find_pool(iface->pool);
+			if (!pool) {
+				pv_log(ERROR,
+				       "platform '%s' references unknown pool '%s', refusing to start",
+				       p->name, iface->pool);
+				goto ipam_error;
+			}
+
+			// Allocate or reserve IP from pool
+			char *ip = NULL;
+			if (iface->static_ip) {
+				// Use static IP - reserve it in the pool
+				if (pv_ipam_reserve(iface->pool, p->name,
+						    iface->static_ip) == 0) {
+					ip = strdup(iface->static_ip);
+					pv_log(DEBUG,
+					       "platform '%s' using static IP %s",
+					       p->name, ip);
+				} else {
+					pv_log(ERROR,
+					       "failed to reserve static IP %s for platform '%s' (already in use or outside subnet), refusing to start",
+					       iface->static_ip, p->name);
+					goto ipam_error;
+				}
+			} else {
+				// Allocate IP dynamically
+				ip = pv_ipam_allocate(iface->pool, p->name);
+				if (!ip) {
+					pv_log(ERROR,
+					       "failed to allocate IP for platform '%s' from pool '%s' (pool exhausted), refusing to start",
+					       p->name, iface->pool);
+					goto ipam_error;
+				}
+			}
+
+			// Store allocated info in interface struct
+			iface->ipv4_address = ip;
+			iface->ipv4_gateway = pv_ipam_ip_to_str(pool->gateway);
+			iface->bridge = strdup(pool->bridge);
+
+			// Use static MAC if provided, otherwise generate from IP
+			if (iface->static_mac) {
+				iface->mac_address = strdup(iface->static_mac);
+			} else {
+				struct pv_ip_lease *lease =
+					pv_ipam_get_lease(iface->pool, p->name);
+				iface->mac_address =
+					lease ? pv_ipam_generate_mac(
+							lease->ip) :
+						NULL;
+			}
+
+			pv_log(INFO, "platform '%s' IP %s MAC %s on bridge %s",
+			       p->name, iface->ipv4_address,
+			       iface->mac_address ? iface->mac_address : "auto",
+			       iface->bridge);
+		}
+	}
+
 	pv_log(DEBUG, "starting platform '%s'", p->name);
+
+	goto ipam_ok;
+
+ipam_error:
+	// Release any IPAM leases allocated for this platform before failing
+	if (p->network && p->network->mode == NET_MODE_POOL) {
+		struct pv_platform_network_iface *iface;
+		dl_list_for_each(iface, &p->network->interfaces,
+				 struct pv_platform_network_iface, list)
+		{
+			if (iface->pool)
+				pv_ipam_release(iface->pool, p->name);
+		}
+	}
+	pv_log(ERROR,
+	       "platform '%s' failed IPAM network validation, triggering rollback if in try-boot",
+	       p->name);
+	pv_platform_stop(p);
+	return -1;
+
+ipam_ok:
 
 	if (ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], p->pipefd[1])) {
 		pv_log(ERROR, "could not start platform '%s'", p->name);

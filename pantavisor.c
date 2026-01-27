@@ -70,6 +70,7 @@
 #include "pantahub/pantahub.h"
 
 #include "parser/parser.h"
+#include "ipam.h"
 
 #include "utils/timer.h"
 #include "utils/fs.h"
@@ -179,6 +180,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_state_t next_state = PV_STATE_ROLLBACK;
 	char *json = NULL;
 
+	// Initialize IPAM subsystem
+	pv_ipam_init();
+
 	// resume update if we are booting up to test a new revision
 	if (pv_update_resume(pv_pantahub_queue_progress)) {
 		pv_log(ERROR, "update could not be resumed");
@@ -231,6 +235,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_update_set_factory();
 
 	pv_state_load_done(pv->state);
+
+	// Setup IPAM network bridges (must happen after state parsing)
+	pv_ipam_setup_bridges();
 
 	// once state is verified, we can load credentials, in case they are stored in a volume
 	if (!pv_update_get_state()) {
