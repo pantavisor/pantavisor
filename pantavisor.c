@@ -70,6 +70,7 @@
 #include "pantahub/pantahub.h"
 
 #include "parser/parser.h"
+#include "ipam.h"
 
 #include "utils/timer.h"
 #include "utils/fs.h"
@@ -179,6 +180,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_state_t next_state = PV_STATE_ROLLBACK;
 	char *json = NULL;
 
+	// Initialize IPAM subsystem
+	pv_ipam_init();
+
 	// resume update if we are booting up to test a new revision
 	if (pv_update_resume(pv_pantahub_queue_progress)) {
 		pv_log(ERROR, "update could not be resumed");
@@ -231,6 +235,9 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	pv_update_set_factory();
 
 	pv_state_load_done(pv->state);
+
+	// Setup IPAM network bridges (must happen after state parsing)
+	pv_ipam_setup_bridges();
 
 	// once state is verified, we can load credentials, in case they are stored in a volume
 	if (!pv_update_get_state()) {
@@ -721,12 +728,21 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	pv_update_finish();
 
 	// stop childs leniently
-	pv_state_stop_lenient(pv->state);
+
+	if (pv->state)
+
+		pv_state_stop_lenient(pv->state);
+
 	ph_logger_stop_lenient();
 
 	// force stop childs
-	pv_state_stop_force(pv->state);
+
+	if (pv->state)
+
+		pv_state_stop_force(pv->state);
+
 	ph_logger_stop_force();
+
 	ph_logger_close();
 
 	pv_pantahub_close();
@@ -734,17 +750,28 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	// stop pvctrl
 	pv_ctrl_stop();
 
+	// stop managed daemons
+	pv_init_stop_daemons();
+
 	pv_debug_stop_ssh();
 	pv_logserver_stop();
 
 	// unmounting
+
 	pv_volumes_umount_firmware_modules();
+
 	pv_log_umount();
+
 	pv_mount_umount();
+
 	pv_metadata_umount();
 
-	pv_disk_umount_all(&pv->state->disks);
+	if (pv->state)
+
+		pv_disk_umount_all(&pv->state->disks);
+
 	pv_storage_umount();
+
 	pv_init_umount();
 
 	pv_mount_print();

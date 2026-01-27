@@ -31,6 +31,7 @@
 #include "utils/timer.h"
 
 #include "event/event_socket.h"
+#include "ipam.h"
 
 typedef enum {
 	PLAT_NONE,
@@ -40,7 +41,9 @@ typedef enum {
 	PLAT_STARTING,
 	PLAT_STARTED,
 	PLAT_READY,
+	PLAT_RECOVERING,
 	PLAT_STOPPING,
+
 	PLAT_STOPPED
 } plat_status_t;
 
@@ -58,10 +61,62 @@ typedef enum {
 } plat_driver_t;
 
 typedef enum {
+	SVC_TYPE_UNKNOWN,
+	SVC_TYPE_REST,
+	SVC_TYPE_DBUS,
+	SVC_TYPE_UNIX,
+	SVC_TYPE_DRM,
+	SVC_TYPE_WAYLAND,
+	SVC_TYPE_INPUT,
+	SVC_TYPE_TCP,
+	SVC_TYPE_HTTP
+} service_type_t;
+typedef enum {
+	SERVICE_REQUIRED = (1 << 0),
+	SERVICE_OPTIONAL = (1 << 1),
+	SERVICE_MANUAL = (1 << 2)
+} plat_service_t;
+
+struct pv_platform_service {
+	plat_service_t type;
+	service_type_t svc_type;
+	char *name;
+	char *role;
+	char *interface;
+	char *target;
+	struct dl_list list;
+};
+
+struct pv_platform_service_export {
+	service_type_t svc_type;
+	char *name;
+	char *socket;
+	int port; // TCP port number (0 if not specified, used for IPAM backends)
+	struct dl_list list;
+};
+typedef enum {
 	RESTART_NONE,
 	RESTART_SYSTEM,
 	RESTART_CONTAINER
 } restart_policy_t;
+
+typedef enum {
+	RECOVERY_NO,
+	RECOVERY_ALWAYS,
+	RECOVERY_ON_FAILURE,
+	RECOVERY_UNLESS_STOPPED
+} recovery_type_t;
+
+struct pv_auto_recovery {
+	recovery_type_t type;
+	int max_retries;
+	int current_retries;
+	int retry_delay;
+	double backoff_factor;
+	int reset_window;
+	struct timer timer_retry;
+	time_t last_start;
+};
 
 struct pv_platform_driver {
 	plat_driver_t type;
@@ -95,6 +150,7 @@ struct pv_platform {
 	struct pv_state *state;
 	int roles;
 	restart_policy_t restart_policy;
+	struct pv_auto_recovery auto_recovery;
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
@@ -102,19 +158,30 @@ struct pv_platform {
 	struct pv_event_socket pipefd_listener;
 	struct timer timer_status_goal;
 	struct dl_list drivers; // pv_platform_driver
+	struct dl_list services; // pv_platform_service
+	struct dl_list service_exports; // pv_platform_service_export
+	struct pv_platform_network *network; // dynamic IPAM network config
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*
-	 * To be freed once logger_list is setup.
-	 * */
+	         * To be freed once logger_list is setup.
+	         * */
 	struct dl_list logger_configs; // pv_logger_config
 };
-
 void pv_platform_free(struct pv_platform *p);
 
-void pv_platform_add_driver(struct pv_platform *g, plat_driver_t type,
+void pv_platform_add_driver(struct pv_platform *p, plat_driver_t type,
 			    char *value);
-
+void pv_service_add_to_list(struct dl_list *list, plat_service_t type,
+			    service_type_t svc_type, char *name, char *role,
+			    char *interface, char *target);
+void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
+			     service_type_t svc_type, char *name, char *role,
+			     char *interface, char *target);
+void pv_platform_add_service_export(struct pv_platform *p,
+				    service_type_t svc_type, char *name,
+				    char *socket, int port);
+const char *pv_platform_get_ipv4_address(struct pv_platform *p);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
 void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
@@ -129,8 +196,7 @@ bool pv_platform_check_running(struct pv_platform *p);
 void pv_platform_set_installed(struct pv_platform *p);
 void pv_platform_set_mounted(struct pv_platform *p);
 void pv_platform_set_blocked(struct pv_platform *p);
-void pv_platform_set_updated(struct pv_platform *p);
-
+void pv_platform_set_recovering(struct pv_platform *p);
 int pv_platform_set_ready(struct pv_platform *p);
 
 bool pv_platform_is_installed(struct pv_platform *p);
@@ -138,9 +204,11 @@ bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
 bool pv_platform_is_started(struct pv_platform *p);
 bool pv_platform_is_ready(struct pv_platform *p);
+bool pv_platform_is_recovering(struct pv_platform *p);
 bool pv_platform_is_stopping(struct pv_platform *p);
 bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
+void pv_platform_set_updated(struct pv_platform *p);
 
 void pv_platform_set_status_goal(struct pv_platform *p, plat_status_t goal);
 plat_goal_state_t pv_platform_check_goal(struct pv_platform *p);
@@ -165,6 +233,7 @@ void pv_platforms_remove_not_installed(struct pv_state *s);
 void pv_platforms_add_all_loggers(struct pv_state *s);
 
 void pv_platforms_empty(struct pv_state *s);
+void pv_ingress_empty(struct pv_state *s);
 
 struct pv_platform_ref {
 	struct pv_platform *ref;

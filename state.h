@@ -61,6 +61,7 @@ struct pv_state {
 	struct dl_list installs; //pv_object
 	struct dl_list jsons; //pv_json
 	struct dl_list groups; //pv_group
+	struct dl_list ingress; // pv_platform_service
 	bool using_runlevels;
 	int tryonce;
 	bool done;
@@ -110,6 +111,7 @@ char *pv_state_get_object_geturl(struct pv_state *s, const char *sha256sum);
 
 void pv_state_print(struct pv_state *s);
 char *pv_state_get_containers_json(struct pv_state *s);
+char *pv_state_get_xconnect_graph_json(struct pv_state *s);
 char *pv_state_get_groups_json(struct pv_state *s);
 
 void pv_state_set_done(struct pv_state *s);

@@ -52,6 +52,7 @@
 #include "state.h"
 #include "pvlogger.h"
 #include "paths.h"
+#include "ipam.h"
 
 #include "utils/str.h"
 #include "utils/fs.h"
@@ -584,6 +585,177 @@ out:
 	return ret;
 }
 
+static service_type_t service_str_to_type(char *str)
+{
+	if (!str)
+		return SVC_TYPE_UNKNOWN;
+	if (!strcmp(str, "rest"))
+		return SVC_TYPE_REST;
+	if (!strcmp(str, "dbus"))
+		return SVC_TYPE_DBUS;
+	if (!strcmp(str, "unix"))
+		return SVC_TYPE_UNIX;
+	if (!strcmp(str, "drm"))
+		return SVC_TYPE_DRM;
+	if (!strcmp(str, "wayland"))
+		return SVC_TYPE_WAYLAND;
+	if (!strcmp(str, "tcp"))
+		return SVC_TYPE_TCP;
+	if (!strcmp(str, "http"))
+		return SVC_TYPE_HTTP;
+
+	return SVC_TYPE_UNKNOWN;
+}
+
+static int services_add_to_list(struct dl_list *list, plat_service_t type,
+				char *buf)
+{
+	int tokc, size, ret = 0;
+	jsmntok_t *tokv, *t, *sv;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+		return 0;
+	size = jsmnutil_array_count(buf, tokv);
+	if (size <= 0)
+		goto out;
+	t = tokv + 1;
+
+	for (int i = 0; i < size; i++) {
+		int svc_c;
+		char *svc_s = pv_json_get_one_str(buf, &t);
+		if (!svc_s)
+			break;
+
+		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
+			char *n =
+				pv_json_get_value(svc_s, "service", sv, svc_c);
+			if (!n)
+				n = pv_json_get_value(svc_s, "name", sv, svc_c);
+
+			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
+			char *r =
+				pv_json_get_value(svc_s, "provider", sv, svc_c);
+			if (!r)
+				r = pv_json_get_value(svc_s, "role", sv, svc_c);
+			char *iface = pv_json_get_value(svc_s, "interface", sv,
+							svc_c);
+
+			char *target =
+				pv_json_get_value(svc_s, "external", sv, svc_c);
+			if (!target)
+				target = pv_json_get_value(svc_s, "target", sv,
+							   svc_c);
+
+			pv_service_add_to_list(list, type,
+					       service_str_to_type(t_s), n, r,
+					       iface, target);
+			if (n)
+				free(n);
+			if (t_s)
+				free(t_s);
+			if (r)
+				free(r);
+			if (iface)
+				free(iface);
+			if (target)
+				free(target);
+			free(sv);
+		} else {
+			pv_service_add_to_list(list, type, SVC_TYPE_UNKNOWN,
+					       svc_s, NULL, NULL, NULL);
+		}
+		t += jsmnutil_traverse_token(buf, t);
+		free(svc_s);
+	}
+	ret = 1;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
+static int platform_services_add(struct pv_platform *p, plat_service_t type,
+				 char *buf)
+{
+	return services_add_to_list(&p->services, type, buf);
+}
+
+static int parse_ingress(struct pv_state *this, char *buf)
+{
+	return services_add_to_list(&this->ingress, SERVICE_REQUIRED, buf);
+}
+
+static int parse_platform_services(struct pv_state *s, struct pv_platform *p,
+				   char *buf)
+{
+	int tokc, ret;
+	char *value;
+	jsmntok_t *tokv;
+	if (!buf)
+		return 0;
+	ret = jsmnutil_parse_json(buf, &tokv, &tokc);
+	if (ret < 0)
+		return 0;
+	value = pv_json_get_value(buf, "required", tokv, tokc);
+	if (value) {
+		platform_services_add(p, DRIVER_REQUIRED, value);
+		free(value);
+	}
+	value = pv_json_get_value(buf, "optional", tokv, tokc);
+	if (value) {
+		platform_services_add(p, DRIVER_OPTIONAL, value);
+		free(value);
+	}
+	if (tokv)
+		free(tokv);
+	return 1;
+}
+
+static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
+				 char *buf)
+{
+	int tokc, size, ret = 0;
+	jsmntok_t *tokv, *t, *sv;
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
+		return 0;
+	size = jsmnutil_array_count(buf, tokv);
+	if (size <= 0)
+		goto out;
+	t = tokv + 1;
+	for (int i = 0; i < size; i++) {
+		int svc_c;
+		char *svc_s = pv_json_get_one_str(buf, &t);
+		if (!svc_s)
+			break;
+		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
+			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
+			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
+			char *sock =
+				pv_json_get_value(svc_s, "socket", sv, svc_c);
+			char *port_s =
+				pv_json_get_value(svc_s, "port", sv, svc_c);
+			int port = port_s ? atoi(port_s) : 0;
+			pv_platform_add_service_export(
+				p, service_str_to_type(t_s), n, sock, port);
+			if (n)
+				free(n);
+			if (t_s)
+				free(t_s);
+			if (sock)
+				free(sock);
+			if (port_s)
+				free(port_s);
+			free(sv);
+		}
+		t += jsmnutil_traverse_token(buf, t);
+		free(svc_s);
+	}
+	ret = 1;
+out:
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
 static int parse_platform_drivers(struct pv_state *s, struct pv_platform *p,
 				  char *buf)
 {
@@ -719,20 +891,33 @@ static int do_one_jka_action(struct json_key_action *jka)
 		break;
 
 	case JSMN_OBJECT:
+
 		//create a new buffer.
+
 		length = (jka->tokv + 1)->end - (jka->tokv + 1)->start;
+
 		value = calloc(length + 1, sizeof(char));
+
 		if (value) {
 			char *orig_buf = NULL;
-			snprintf(value, length + 1, "%s",
-				 buf + (jka->tokv + 1)->start);
+
+			memcpy(value, buf + (jka->tokv + 1)->start, length);
+
+			value[length] = '\0';
+
 			orig_buf = jka->buf;
+
 			jka->buf = value;
+
 			ret = do_json_key_action_object(jka);
+
 			free(value);
+
 			jka->buf = orig_buf;
 		}
+
 		break;
+
 	default:
 		break;
 	}
@@ -1078,9 +1263,165 @@ out:
 	return ret;
 }
 
-static int do_action_for_one_volume(struct json_key_action *jka, char *value)
+static recovery_type_t parse_recovery_type(char *value)
 {
-	/*
+	if (!strcmp(value, "no"))
+		return RECOVERY_NO;
+	if (!strcmp(value, "always"))
+		return RECOVERY_ALWAYS;
+	if (!strcmp(value, "on-failure"))
+		return RECOVERY_ON_FAILURE;
+	if (!strcmp(value, "unless-stopped"))
+		return RECOVERY_UNLESS_STOPPED;
+	return RECOVERY_NO;
+}
+
+static int do_action_for_auto_recovery(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	struct pv_platform *p = *bundle->platform;
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	char *str = NULL;
+	char *buf = jka->buf;
+
+	if (!p || !buf)
+		return -1;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format auto_recovery");
+		return -1;
+	}
+
+	str = pv_json_get_value(buf, "policy", tokv, tokc);
+	if (str) {
+		p->auto_recovery.type = parse_recovery_type(str);
+		free(str);
+	}
+
+	p->auto_recovery.max_retries =
+		pv_json_get_value_int(buf, "max_retries", tokv, tokc);
+	p->auto_recovery.retry_delay =
+		pv_json_get_value_int(buf, "retry_delay", tokv, tokc);
+	p->auto_recovery.reset_window =
+		pv_json_get_value_int(buf, "reset_window", tokv, tokc);
+
+	// backoff_factor is double, but we only have get_value_int
+	// implementing simple int parsing for now
+	str = pv_json_get_value(buf, "backoff_factor", tokv, tokc);
+	if (str) {
+		p->auto_recovery.backoff_factor = atof(str);
+		free(str);
+	}
+
+	ret = 0;
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
+static int do_action_for_network(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	struct pv_platform *p = *bundle->platform;
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	char *mode_str = NULL;
+	char *pool = NULL;
+	char *hostname = NULL;
+	char *static_ip = NULL;
+	char *static_mac = NULL;
+	char *buf = jka->buf;
+	pv_net_mode_t mode = NET_MODE_NONE;
+
+	if (!p || !buf)
+		return -1;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format network");
+		return -1;
+	}
+
+	// Check for mode first
+	mode_str = pv_json_get_value(buf, "mode", tokv, tokc);
+	if (mode_str) {
+		if (strcmp(mode_str, "host") == 0) {
+			mode = NET_MODE_HOST;
+		} else if (strcmp(mode_str, "pool") == 0) {
+			mode = NET_MODE_POOL;
+		}
+		free(mode_str);
+	}
+
+	// Check for pool (shorthand for single interface)
+	pool = pv_json_get_value(buf, "pool", tokv, tokc);
+	if (pool) {
+		mode = NET_MODE_POOL;
+	}
+
+	hostname = pv_json_get_value(buf, "hostname", tokv, tokc);
+	static_ip = pv_json_get_value(buf, "ip", tokv, tokc);
+	static_mac = pv_json_get_value(buf, "mac", tokv, tokc);
+
+	// Create network config for the platform
+	if (mode != NET_MODE_NONE) {
+		p->network = pv_platform_network_new(mode);
+		if (!p->network) {
+			pv_log(ERROR, "failed to create network config for %s",
+			       p->name);
+			ret = -1;
+			goto out;
+		}
+
+		if (hostname) {
+			p->network->hostname = strdup(hostname);
+		}
+
+		// If pool specified, create default eth0 interface
+		if (mode == NET_MODE_POOL && pool) {
+			struct pv_platform_network_iface *iface;
+			iface = pv_platform_network_add_iface(p->network,
+							      "eth0", pool);
+			if (!iface) {
+				pv_log(ERROR, "failed to add interface for %s",
+				       p->name);
+				ret = -1;
+				goto out;
+			}
+			// Set static overrides if provided
+			if (static_ip) {
+				iface->static_ip = strdup(static_ip);
+			}
+			if (static_mac) {
+				iface->static_mac = strdup(static_mac);
+			}
+			pv_log(DEBUG,
+			       "platform '%s' network: pool=%s, hostname=%s, ip=%s, mac=%s",
+			       p->name, pool, hostname ? hostname : "(none)",
+			       static_ip ? static_ip : "(auto)",
+			       static_mac ? static_mac : "(auto)");
+		} else if (mode == NET_MODE_HOST) {
+			pv_log(DEBUG, "platform '%s' network: mode=host",
+			       p->name);
+		}
+	}
+
+out:
+	if (pool)
+		free(pool);
+	if (hostname)
+		free(hostname);
+	if (static_ip)
+		free(static_ip);
+	if (static_mac)
+		free(static_mac);
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
+static int do_action_for_one_volume(struct json_key_action *jka, char *value)
+{ /*
 	 * Opaque will contain the platform
 	 * */
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
@@ -1209,6 +1550,24 @@ static int do_action_for_storage(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_services(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	value = jka->buf;
+	if (value)
+		parse_platform_services(bundle->s, *bundle->platform, value);
+	return 0;
+}
+
+static int do_action_for_services_json(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	value = jka->buf;
+	if (value)
+		parse_service_exports(bundle->s, *bundle->platform, value);
+	return 0;
+}
+
 static int do_action_for_drivers(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
@@ -1258,6 +1617,10 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_roles_object, false),
 		ADD_JKA_ENTRY("roles", JSMN_ARRAY, &bundle,
 			      do_action_for_roles_array, false),
+		ADD_JKA_ENTRY("auto_recovery", JSMN_OBJECT, &bundle,
+			      do_action_for_auto_recovery, false),
+		ADD_JKA_ENTRY("network", JSMN_OBJECT, &bundle,
+			      do_action_for_network, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
 		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle,
@@ -1270,6 +1633,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_storage, false),
 		ADD_JKA_ENTRY("drivers", JSMN_OBJECT, &bundle,
 			      do_action_for_drivers, false),
+		ADD_JKA_ENTRY("services", JSMN_OBJECT, &bundle,
+			      do_action_for_services, false),
 		ADD_JKA_ENTRY("exports", JSMN_ARRAY, &bundle,
 			      do_action_for_export, false),
 		ADD_JKA_NULL_ENTRY()
@@ -1649,6 +2014,160 @@ out:
 	return this;
 }
 
+static int parse_network_pools(struct pv_state *s, char *buf)
+{
+	int tokc, size, ret = 1;
+	char *str = NULL;
+	jsmntok_t *tokv, *t, *poolv = NULL;
+	jsmntok_t **k, **keys;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse network pools");
+		goto out;
+	}
+
+	// Get pool names (keys)
+	keys = jsmnutil_get_object_keys(buf, tokv);
+	if (!keys) {
+		pv_log(DEBUG, "no network pools defined");
+		ret = 0;
+		goto out;
+	}
+
+	k = keys;
+	while (*k) {
+		char *name, *type_str, *bridge, *parent, *subnet, *gateway;
+		char *nat_str;
+		pv_pool_type_t type;
+		bool nat;
+		int n, poolc;
+
+		n = (*k)->end - (*k)->start;
+
+		// Get pool name
+		name = malloc(n + 1);
+		snprintf(name, n + 1, "%s", buf + (*k)->start);
+
+		// Get pool value
+		n = (*k + 1)->end - (*k + 1)->start;
+		str = malloc(n + 1);
+		snprintf(str, n + 1, "%s", buf + (*k + 1)->start);
+
+		if (jsmnutil_parse_json(str, &poolv, &poolc) <= 0) {
+			pv_log(ERROR, "invalid pool entry for '%s'", name);
+			free(name);
+			free(str);
+			str = NULL;
+			goto out;
+		}
+
+		// Parse pool fields
+		type_str = pv_json_get_value(str, "type", poolv, poolc);
+		bridge = pv_json_get_value(str, "bridge", poolv, poolc);
+		parent = pv_json_get_value(str, "parent", poolv, poolc);
+		subnet = pv_json_get_value(str, "subnet", poolv, poolc);
+		gateway = pv_json_get_value(str, "gateway", poolv, poolc);
+		nat_str = pv_json_get_value(str, "nat", poolv, poolc);
+
+		// Determine pool type
+		if (type_str && strcmp(type_str, "macvlan") == 0)
+			type = POOL_TYPE_MACVLAN;
+		else
+			type = POOL_TYPE_BRIDGE;
+
+		// Parse NAT flag
+		nat = (nat_str && strcmp(nat_str, "true") == 0);
+
+		// Validate required fields
+		if (!subnet || !gateway) {
+			pv_log(ERROR, "pool '%s' missing subnet or gateway",
+			       name);
+			goto free_pool;
+		}
+
+		if (type == POOL_TYPE_BRIDGE && !bridge) {
+			pv_log(ERROR, "bridge pool '%s' missing bridge name",
+			       name);
+			goto free_pool;
+		}
+
+		if (type == POOL_TYPE_MACVLAN && !parent) {
+			pv_log(ERROR,
+			       "macvlan pool '%s' missing parent interface",
+			       name);
+			goto free_pool;
+		}
+
+		// Add pool to IPAM
+		if (!pv_ipam_add_pool(name, type,
+				      type == POOL_TYPE_BRIDGE ? bridge :
+								 parent,
+				      subnet, gateway, nat)) {
+			pv_log(ERROR, "failed to add pool '%s'", name);
+		} else {
+			pv_log(DEBUG, "added network pool '%s'", name);
+		}
+
+	free_pool:
+		if (type_str)
+			free(type_str);
+		if (bridge)
+			free(bridge);
+		if (parent)
+			free(parent);
+		if (subnet)
+			free(subnet);
+		if (gateway)
+			free(gateway);
+		if (nat_str)
+			free(nat_str);
+		if (poolv) {
+			free(poolv);
+			poolv = NULL;
+		}
+		free(name);
+		free(str);
+		str = NULL;
+
+		k++;
+	}
+	jsmnutil_tokv_free(keys);
+	ret = 0;
+
+out:
+	if (str)
+		free(str);
+	if (poolv)
+		free(poolv);
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
+static int parse_network(struct pv_state *s, char *buf)
+{
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	char *pools_str = NULL;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse network section");
+		return -1;
+	}
+
+	pools_str = pv_json_get_value(buf, "pools", tokv, tokc);
+	if (pools_str) {
+		ret = parse_network_pools(s, pools_str);
+		free(pools_str);
+	}
+
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
 static struct pv_state *parse_device(struct pv_state *this, char *buf)
 {
 	int tokc;
@@ -1674,32 +2193,78 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 
 	value = pv_json_get_value(buf, "disks", tokv, tokc);
 	if (!value) {
-		pv_log(WARN, "disks not defined in device.json");
-		goto out;
+		pv_log(DEBUG, "disks not defined in device.json");
+	} else {
+		// Only parse if non-empty (parse_disks errors on empty array)
+		jsmntok_t *disk_tokv;
+		int disk_tokc;
+		if (jsmnutil_parse_json(value, &disk_tokv, &disk_tokc) >= 0) {
+			int disk_count = jsmnutil_array_count(value, disk_tokv);
+			free(disk_tokv);
+			if (disk_count > 0) {
+				if (parse_disks(this, value)) {
+					pv_log(ERROR,
+					       "cannot parse disks in device.json");
+					free(value);
+					this = NULL;
+					goto out;
+				}
+			} else {
+				pv_log(DEBUG,
+				       "empty disks array in device.json");
+			}
+		}
+		free(value);
+		value = NULL;
+
+		value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
+		if (value) {
+			if (jsmnutil_parse_json(value, &disk_tokv,
+						&disk_tokc) >= 0) {
+				int disk_count =
+					jsmnutil_array_count(value, disk_tokv);
+				free(disk_tokv);
+				if (disk_count > 0 &&
+				    parse_disks(this, value)) {
+					pv_log(ERROR,
+					       "cannot parse disks_v2 in device.json");
+					free(value);
+					this = NULL;
+					goto out;
+				}
+			}
+			free(value);
+			value = NULL;
+		}
 	}
-	if (parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks in device.json");
-		this = NULL;
-		goto out;
-	}
-	free(value);
-	value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
-	if (value && parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks_v2 in device.json");
-		this = NULL;
-		goto out;
-	}
-	free(value);
 
 	value = pv_json_get_value(buf, "volumes", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "volumes not defined in device.json");
-		goto out;
+	} else {
+		if (!parse_storage(this, NULL, value)) {
+			pv_log(ERROR, "cannot parse storage in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
 	}
-	if (!parse_storage(this, NULL, value)) {
-		pv_log(ERROR, "cannot parse storage in device.json");
-		this = NULL;
-		goto out;
+
+	// Parse network pools (optional)
+	value = pv_json_get_value(buf, "network", tokv, tokc);
+	if (value) {
+		if (parse_network(this, value)) {
+			pv_log(WARN, "failed to parse network in device.json");
+		}
+	}
+
+	// Parse global ingress (optional)
+	value = pv_json_get_value(buf, "ingress", tokv, tokc);
+	if (value) {
+		if (!parse_ingress(this, value)) {
+			pv_log(WARN, "failed to parse ingress in device.json");
+		}
 	}
 
 out:
@@ -1808,6 +2373,18 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 				this = NULL;
 				goto out;
 			}
+			pv_jsons_add(this, key, value);
+		} else if (ext && !strcmp(ext, "/services.json")) {
+			pv_log(DEBUG, "parsing and adding json '%s'", key);
+			char *plat_name = strdup(key);
+			char *slash = strrchr(plat_name, '/');
+			if (slash)
+				*slash = 0;
+			struct pv_platform *p =
+				pv_state_fetch_platform(this, plat_name);
+			if (p)
+				parse_service_exports(this, p, value);
+			free(plat_name);
 			pv_jsons_add(this, key, value);
 			// if the extension is either src.json or build.json, we ignore it
 		} else if (ext && (!strcmp(ext, "/src.json") ||
