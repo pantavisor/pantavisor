@@ -374,7 +374,6 @@ static char *pv_cgroup_parse_proc_unified(FILE *fd)
 
 	return pname;
 }
-
 char *pv_cgroup_get_process_name(pid_t pid)
 {
 	int len;

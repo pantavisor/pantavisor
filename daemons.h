@@ -52,4 +52,6 @@ int pv_init_is_daemon(pid_t pid);
 
 int pv_init_daemon_exited(pid_t pid);
 
+void pv_init_stop_daemons(void);
+
 #endif // PV_DAEMONS_H
