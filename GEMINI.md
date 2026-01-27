@@ -2,9 +2,24 @@
 
 This document provides guidance for AI assistants and developers working with the Pantavisor codebase.
 
-## Current Branch: feature/ipam
+## Current Branch: feature/ingress
 
-This branch implements IP Address Management (IPAM) for container networking with automatic rollback on configuration errors.
+This branch implements global ingress for external traffic routing to IPAM-networked containers.
+
+## Branch Structure
+
+The feature branches are stacked and should be merged in order:
+
+```
+master → feature/xconnect → feature/auto-recovery → feature/ipam → feature/ingress
+```
+
+| Branch | Commits | Key Features |
+|--------|---------|--------------|
+| feature/xconnect | 3 | pv-xconnect service mesh, plugins (Unix/REST/D-Bus/DRM/Wayland), pvcontrol/pvcurl tools |
+| feature/auto-recovery | 1 | Container auto-recovery with exponential backoff, restart policies |
+| feature/ipam | 3 | Container lifecycle API, IPAM networking with pools/leases, platform docs |
+| feature/ingress | 2 | Global ingress policy, TCP/HTTP plugins, IPAM backend routing |
 
 ## Quick Reference
 
@@ -228,6 +243,80 @@ feat(ipam): support static IP and MAC overrides from run.json
 docs: comprehensive IPAM design with in-memory leases
 fix(ctrl): handle NULL host header in HTTP requests
 ```
+
+---
+
+---
+
+## Ingress (This Branch)
+
+### Overview
+
+Global ingress enables external traffic routing to containers in isolated IPAM networks. Configuration is in `device.json`:
+
+```json
+{
+    "ingress": [
+        {
+            "name": "nginx-http",
+            "type": "tcp",
+            "external": "0.0.0.0:80",
+            "provider": "example-nginx-ingress",
+            "service": "nginx-http"
+        }
+    ]
+}
+```
+
+### Ingress Patterns
+
+| Pattern | Description | Use Case |
+|---------|-------------|----------|
+| Direct | Provider on host network, binds port directly | Simple single-service |
+| Host Proxy | Proxy on host network, provider isolated | Multiple backends |
+| Hybrid (2b) | Both isolated, global ingress routes to IPAM IP | Full isolation |
+
+### TCP Backend Connection
+
+The TCP plugin supports both Unix socket and TCP backends:
+
+- **Unix socket**: `/path/to/socket.sock` - Provider in same network namespace
+- **TCP backend**: `IP:port` format - Provider in IPAM network (e.g., `10.0.4.2:80`)
+
+Backend detection in `xconnect/plugins/tcp.c`:
+```c
+if (is_tcp_address(link->provider_socket)) {
+    // Connect to IP:port
+    tcp_connect_backend_tcp(session, link->provider_socket);
+} else {
+    // Connect to Unix socket
+    tcp_connect_backend_unix(session, link);
+}
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `xconnect/plugins/tcp.c` | TCP ingress plugin with dual backend support |
+| `xconnect/plugins/http.c` | HTTP ingress with path routing |
+| `state.c` | Constructs socket address from IPAM IP + port |
+| `parser/parser_system1.c` | Parses ingress config and service port |
+| `INGRESS.md` | Ingress specification |
+| `xconnect/TCP-BACKEND.md` | TCP backend implementation details |
+
+### services.json for TCP Services
+
+Providers declare port (not socket) for TCP services:
+
+```json
+[
+  { "name": "nginx-http", "type": "tcp", "port": 80 },
+  { "name": "nginx-https", "type": "tcp", "port": 443 }
+]
+```
+
+The `port` field is combined with container's IPAM IP to form the backend address.
 
 ---
 
