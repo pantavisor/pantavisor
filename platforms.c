@@ -128,8 +128,11 @@ const char *pv_platform_status_string(plat_status_t status)
 		return "STARTED";
 	case PLAT_READY:
 		return "READY";
+	case PLAT_RECOVERING:
+		return "RECOVERING";
 	case PLAT_STOPPING:
 		return "STOPPING";
+
 	case PLAT_STOPPED:
 		return "STOPPED";
 	default:
@@ -1064,11 +1067,19 @@ void pv_platform_set_mounted(struct pv_platform *p)
 }
 
 void pv_platform_set_blocked(struct pv_platform *p)
+
 {
 	pv_platform_set_status(p, PLAT_BLOCKED);
 }
 
+void pv_platform_set_recovering(struct pv_platform *p)
+
+{
+	pv_platform_set_status(p, PLAT_RECOVERING);
+}
+
 int pv_platform_set_ready(struct pv_platform *p)
+
 {
 	if (p->status.goal != PLAT_READY)
 		return -1;
@@ -1125,11 +1136,15 @@ bool pv_platform_is_ready(struct pv_platform *p)
 	return (p->status.current == PLAT_READY);
 }
 
+bool pv_platform_is_recovering(struct pv_platform *p)
+{
+	return (p->status.current == PLAT_RECOVERING);
+}
+
 bool pv_platform_is_stopping(struct pv_platform *p)
 {
 	return (p->status.current == PLAT_STOPPING);
 }
-
 bool pv_platform_is_stopped(struct pv_platform *p)
 {
 	return (p->status.current == PLAT_STOPPED);

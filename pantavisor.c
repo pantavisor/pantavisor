@@ -721,12 +721,21 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	pv_update_finish();
 
 	// stop childs leniently
-	pv_state_stop_lenient(pv->state);
+
+	if (pv->state)
+
+		pv_state_stop_lenient(pv->state);
+
 	ph_logger_stop_lenient();
 
 	// force stop childs
-	pv_state_stop_force(pv->state);
+
+	if (pv->state)
+
+		pv_state_stop_force(pv->state);
+
 	ph_logger_stop_force();
+
 	ph_logger_close();
 
 	pv_pantahub_close();
@@ -734,17 +743,28 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	// stop pvctrl
 	pv_ctrl_stop();
 
+	// stop managed daemons
+	pv_init_stop_daemons();
+
 	pv_debug_stop_ssh();
 	pv_logserver_stop();
 
 	// unmounting
+
 	pv_volumes_umount_firmware_modules();
+
 	pv_log_umount();
+
 	pv_mount_umount();
+
 	pv_metadata_umount();
 
-	pv_disk_umount_all(&pv->state->disks);
+	if (pv->state)
+
+		pv_disk_umount_all(&pv->state->disks);
+
 	pv_storage_umount();
+
 	pv_init_umount();
 
 	pv_mount_print();

@@ -141,6 +141,20 @@ int pv_init_daemon_exited(pid_t pid)
         return 0;
 }
 
+void pv_init_stop_daemons(void)
+{
+	int i = 0;
+	while (daemons[i].name) {
+		if (daemons[i].pid > 0) {
+			pv_log(INFO, "Stopping daemon %s (pid %d)",
+			       daemons[i].name, daemons[i].pid);
+			daemons[i].respawn = 0;
+			kill(daemons[i].pid, SIGTERM);
+		}
+		i++;
+	}
+}
+
 static int pv_daemons_init(struct pv_init *this)
 {
         init_mode_t mode = pv_config_get_system_init_mode();

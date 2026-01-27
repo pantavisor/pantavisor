@@ -343,12 +343,15 @@ static char *pv_cgroup_parse_proc_unified(FILE *fd)
 		pvcg = strstr(buf, "/lxc/");
 		if (pvcg) {
 			pvcg += strlen("/lxc/");
-			pvcg[strlen(pvcg) - 1] = '\0';
+			// remove trailing newline if any
+			size_t len = strlen(pvcg);
+			if (len > 0 && pvcg[len - 1] == '\n')
+				pvcg[len - 1] = '\0';
 			pname = strdup(pvcg);
 			break;
 		}
-		size_t len = strlen(buf);
 
+		size_t len = strlen(buf);
 		if (len > 0 && buf[len - 1] == '\n') {
 			buf[--len] = '\0';
 		}
@@ -374,7 +377,6 @@ static char *pv_cgroup_parse_proc_unified(FILE *fd)
 
 	return pname;
 }
-
 char *pv_cgroup_get_process_name(pid_t pid)
 {
 	int len;
