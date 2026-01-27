@@ -401,11 +401,14 @@ static const char *pv_service_type_str(service_type_t type)
 		return "wayland";
 	case SVC_TYPE_INPUT:
 		return "input";
+	case SVC_TYPE_TCP:
+		return "tcp";
+	case SVC_TYPE_HTTP:
+		return "http";
 	default:
 		return "unknown";
 	}
 }
-
 static const char *pv_service_requirement_str(plat_service_t type)
 {
 	if (type & SERVICE_REQUIRED)
@@ -1514,7 +1517,7 @@ void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 }
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
-				    char *socket)
+				    char *socket, int port)
 {
 	struct pv_platform_service_export *se =
 		calloc(1, sizeof(struct pv_platform_service_export));
@@ -1524,7 +1527,64 @@ void pv_platform_add_service_export(struct pv_platform *p,
 			se->name = strdup(name);
 		if (socket)
 			se->socket = strdup(socket);
+		se->port = port;
 		dl_list_init(&se->list);
 		dl_list_add_tail(&p->service_exports, &se->list);
+	}
+}
+
+const char *pv_platform_get_ipv4_address(struct pv_platform *p)
+{
+	if (!p || !p->network || p->network->mode != NET_MODE_POOL)
+		return NULL;
+
+	struct pv_platform_network_iface *iface;
+	dl_list_for_each(iface, &p->network->interfaces,
+			 struct pv_platform_network_iface, list)
+	{
+		if (iface->ipv4_address)
+			return iface->ipv4_address;
+	}
+	return NULL;
+}
+
+void pv_ingress_empty(struct pv_state *s)
+{
+	struct pv_platform_service *srv, *tmp;
+	dl_list_for_each_safe(srv, tmp, &s->ingress, struct pv_platform_service,
+			      list)
+	{
+		dl_list_del(&srv->list);
+		if (srv->name)
+			free(srv->name);
+		if (srv->role)
+			free(srv->role);
+		if (srv->interface)
+			free(srv->interface);
+		if (srv->target)
+			free(srv->target);
+		free(srv);
+	}
+}
+
+void pv_service_add_to_list(struct dl_list *list, plat_service_t type,
+			    service_type_t svc_type, char *name, char *role,
+			    char *interface, char *target)
+{
+	struct pv_platform_service *s =
+		calloc(1, sizeof(struct pv_platform_service));
+	if (s) {
+		s->type = type;
+		s->svc_type = svc_type;
+		if (name)
+			s->name = strdup(name);
+		if (role)
+			s->role = strdup(role);
+		if (interface)
+			s->interface = strdup(interface);
+		if (target)
+			s->target = strdup(target);
+		dl_list_init(&s->list);
+		dl_list_add_tail(list, &s->list);
 	}
 }

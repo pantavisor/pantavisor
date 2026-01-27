@@ -599,13 +599,16 @@ static service_type_t service_str_to_type(char *str)
 		return SVC_TYPE_DRM;
 	if (!strcmp(str, "wayland"))
 		return SVC_TYPE_WAYLAND;
-	if (!strcmp(str, "input"))
-		return SVC_TYPE_INPUT;
+	if (!strcmp(str, "tcp"))
+		return SVC_TYPE_TCP;
+	if (!strcmp(str, "http"))
+		return SVC_TYPE_HTTP;
+
 	return SVC_TYPE_UNKNOWN;
 }
 
-static int platform_services_add(struct pv_platform *p, plat_service_t type,
-				 char *buf)
+static int services_add_to_list(struct dl_list *list, plat_service_t type,
+				char *buf)
 {
 	int tokc, size, ret = 0;
 	jsmntok_t *tokv, *t, *sv;
@@ -615,22 +618,36 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 	if (size <= 0)
 		goto out;
 	t = tokv + 1;
+
 	for (int i = 0; i < size; i++) {
 		int svc_c;
-		char *svc_s = pv_json_array_get_one_str(buf, &size, &t);
+		char *svc_s = pv_json_get_one_str(buf, &t);
 		if (!svc_s)
 			break;
+
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
-			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
+			char *n =
+				pv_json_get_value(svc_s, "service", sv, svc_c);
+			if (!n)
+				n = pv_json_get_value(svc_s, "name", sv, svc_c);
+
 			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
-			char *r = pv_json_get_value(svc_s, "role", sv, svc_c);
+			char *r =
+				pv_json_get_value(svc_s, "provider", sv, svc_c);
+			if (!r)
+				r = pv_json_get_value(svc_s, "role", sv, svc_c);
 			char *iface = pv_json_get_value(svc_s, "interface", sv,
 							svc_c);
+
 			char *target =
-				pv_json_get_value(svc_s, "target", sv, svc_c);
-			pv_platform_add_service(p, type,
-						service_str_to_type(t_s), n, r,
-						iface, target);
+				pv_json_get_value(svc_s, "external", sv, svc_c);
+			if (!target)
+				target = pv_json_get_value(svc_s, "target", sv,
+							   svc_c);
+
+			pv_service_add_to_list(list, type,
+					       service_str_to_type(t_s), n, r,
+					       iface, target);
 			if (n)
 				free(n);
 			if (t_s)
@@ -643,9 +660,10 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 				free(target);
 			free(sv);
 		} else {
-			pv_platform_add_service(p, type, SVC_TYPE_UNKNOWN,
-						svc_s, NULL, NULL, NULL);
+			pv_service_add_to_list(list, type, SVC_TYPE_UNKNOWN,
+					       svc_s, NULL, NULL, NULL);
 		}
+		t += jsmnutil_traverse_token(buf, t);
 		free(svc_s);
 	}
 	ret = 1;
@@ -653,6 +671,17 @@ out:
 	if (tokv)
 		free(tokv);
 	return ret;
+}
+
+static int platform_services_add(struct pv_platform *p, plat_service_t type,
+				 char *buf)
+{
+	return services_add_to_list(&p->services, type, buf);
+}
+
+static int parse_ingress(struct pv_state *this, char *buf)
+{
+	return services_add_to_list(&this->ingress, SERVICE_REQUIRED, buf);
 }
 
 static int parse_platform_services(struct pv_state *s, struct pv_platform *p,
@@ -694,7 +723,7 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 	t = tokv + 1;
 	for (int i = 0; i < size; i++) {
 		int svc_c;
-		char *svc_s = pv_json_array_get_one_str(buf, &size, &t);
+		char *svc_s = pv_json_get_one_str(buf, &t);
 		if (!svc_s)
 			break;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
@@ -702,16 +731,22 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
 			char *sock =
 				pv_json_get_value(svc_s, "socket", sv, svc_c);
+			char *port_s =
+				pv_json_get_value(svc_s, "port", sv, svc_c);
+			int port = port_s ? atoi(port_s) : 0;
 			pv_platform_add_service_export(
-				p, service_str_to_type(t_s), n, sock);
+				p, service_str_to_type(t_s), n, sock, port);
 			if (n)
 				free(n);
 			if (t_s)
 				free(t_s);
 			if (sock)
 				free(sock);
+			if (port_s)
+				free(port_s);
 			free(sv);
 		}
+		t += jsmnutil_traverse_token(buf, t);
 		free(svc_s);
 	}
 	ret = 1;
@@ -2206,6 +2241,14 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 	if (value) {
 		if (parse_network(this, value)) {
 			pv_log(WARN, "failed to parse network in device.json");
+		}
+	}
+
+	// Parse global ingress (optional)
+	value = pv_json_get_value(buf, "ingress", tokv, tokc);
+	if (value) {
+		if (!parse_ingress(this, value)) {
+			pv_log(WARN, "failed to parse ingress in device.json");
 		}
 	}
 

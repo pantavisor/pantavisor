@@ -22,12 +22,15 @@ add_executable(pv-xconnect
     plugins/drm.c
     plugins/wayland.c
     plugins/dbus.c
+    plugins/tcp.c
+    plugins/http.c
     ../utils/json.c
     ../utils/str.c
 )
 
 target_link_libraries(pv-xconnect
     ${LIBEVENT_LIB}
+    event_extra
     ${PICOHTTPPARSER_LIB}
     ${THTTP_LIB}
     dl
