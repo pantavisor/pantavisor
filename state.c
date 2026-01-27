@@ -41,6 +41,7 @@
 #include "jsons.h"
 #include "addons.h"
 #include "pantavisor.h"
+#include "ipam.h"
 #include "storage.h"
 #include "metadata.h"
 #include "utils/tsh.h"
@@ -692,11 +693,31 @@ static int pv_state_validate_services(struct pv_state *s)
 static bool pv_state_check_auto_recovery(struct pv_state *s,
 					 struct pv_platform *p)
 {
-	if (p->auto_recovery.type == RECOVERY_NO)
+	if (p->auto_recovery.type == RECOVERY_NO) {
+		if (p->restart_policy == RESTART_CONTAINER) {
+			pv_log(INFO,
+			       "platform '%s' suddenly stopped. Restarting (restart_policy: container)...",
+			       p->name);
+			// Release any IPAM leases before restarting
+			if (p->network && p->network->mode == NET_MODE_POOL) {
+				struct pv_platform_network_iface *iface;
+				dl_list_for_each(
+					iface, &p->network->interfaces,
+					struct pv_platform_network_iface, list)
+				{
+					if (iface->pool)
+						pv_ipam_release(iface->pool,
+								p->name);
+				}
+			}
+			pv_platform_set_installed(p);
+			return true;
+		}
 		return false;
+	}
 
-	// Check if we are within the reset window to reset retries
 	struct timespec now;
+	// Check if we are within the reset window to reset retries
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	if (p->auto_recovery.reset_window > 0 &&
 	    (now.tv_sec - p->auto_recovery.last_start) >
@@ -739,6 +760,18 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 				    RELATIV_TIMER);
 			pv_platform_set_recovering(p);
 		} else {
+			// Release any IPAM leases before restarting
+			if (p->network && p->network->mode == NET_MODE_POOL) {
+				struct pv_platform_network_iface *iface;
+				dl_list_for_each(
+					iface, &p->network->interfaces,
+					struct pv_platform_network_iface, list)
+				{
+					if (iface->pool)
+						pv_ipam_release(iface->pool,
+								p->name);
+				}
+			}
 			pv_platform_set_installed(p);
 		}
 		return true;
@@ -800,6 +833,12 @@ int pv_state_run(struct pv_state *s)
 				pv_platform_set_installed(p);
 			}
 		} else if (pv_platform_is_stopped(p)) {
+			// If the status goal is STOPPED, this is an intentional
+			// stop via API - skip without triggering auto-recovery
+			// or error
+			if (p->status.goal == PLAT_STOPPED)
+				continue;
+
 			if (pv_state_check_auto_recovery(s, p))
 				continue;
 

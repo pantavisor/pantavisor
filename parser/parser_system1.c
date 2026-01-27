@@ -52,6 +52,7 @@
 #include "state.h"
 #include "pvlogger.h"
 #include "paths.h"
+#include "ipam.h"
 
 #include "utils/str.h"
 #include "utils/fs.h"
@@ -1284,6 +1285,106 @@ static int do_action_for_auto_recovery(struct json_key_action *jka, char *value)
 	return ret;
 }
 
+static int do_action_for_network(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	struct pv_platform *p = *bundle->platform;
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	char *mode_str = NULL;
+	char *pool = NULL;
+	char *hostname = NULL;
+	char *static_ip = NULL;
+	char *static_mac = NULL;
+	char *buf = jka->buf;
+	pv_net_mode_t mode = NET_MODE_NONE;
+
+	if (!p || !buf)
+		return -1;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format network");
+		return -1;
+	}
+
+	// Check for mode first
+	mode_str = pv_json_get_value(buf, "mode", tokv, tokc);
+	if (mode_str) {
+		if (strcmp(mode_str, "host") == 0) {
+			mode = NET_MODE_HOST;
+		} else if (strcmp(mode_str, "pool") == 0) {
+			mode = NET_MODE_POOL;
+		}
+		free(mode_str);
+	}
+
+	// Check for pool (shorthand for single interface)
+	pool = pv_json_get_value(buf, "pool", tokv, tokc);
+	if (pool) {
+		mode = NET_MODE_POOL;
+	}
+
+	hostname = pv_json_get_value(buf, "hostname", tokv, tokc);
+	static_ip = pv_json_get_value(buf, "ip", tokv, tokc);
+	static_mac = pv_json_get_value(buf, "mac", tokv, tokc);
+
+	// Create network config for the platform
+	if (mode != NET_MODE_NONE) {
+		p->network = pv_platform_network_new(mode);
+		if (!p->network) {
+			pv_log(ERROR, "failed to create network config for %s",
+			       p->name);
+			ret = -1;
+			goto out;
+		}
+
+		if (hostname) {
+			p->network->hostname = strdup(hostname);
+		}
+
+		// If pool specified, create default eth0 interface
+		if (mode == NET_MODE_POOL && pool) {
+			struct pv_platform_network_iface *iface;
+			iface = pv_platform_network_add_iface(p->network,
+							      "eth0", pool);
+			if (!iface) {
+				pv_log(ERROR, "failed to add interface for %s",
+				       p->name);
+				ret = -1;
+				goto out;
+			}
+			// Set static overrides if provided
+			if (static_ip) {
+				iface->static_ip = strdup(static_ip);
+			}
+			if (static_mac) {
+				iface->static_mac = strdup(static_mac);
+			}
+			pv_log(DEBUG,
+			       "platform '%s' network: pool=%s, hostname=%s, ip=%s, mac=%s",
+			       p->name, pool, hostname ? hostname : "(none)",
+			       static_ip ? static_ip : "(auto)",
+			       static_mac ? static_mac : "(auto)");
+		} else if (mode == NET_MODE_HOST) {
+			pv_log(DEBUG, "platform '%s' network: mode=host",
+			       p->name);
+		}
+	}
+
+out:
+	if (pool)
+		free(pool);
+	if (hostname)
+		free(hostname);
+	if (static_ip)
+		free(static_ip);
+	if (static_mac)
+		free(static_mac);
+	if (tokv)
+		free(tokv);
+	return ret;
+}
+
 static int do_action_for_one_volume(struct json_key_action *jka, char *value)
 { /*
 	 * Opaque will contain the platform
@@ -1483,6 +1584,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_roles_array, false),
 		ADD_JKA_ENTRY("auto_recovery", JSMN_OBJECT, &bundle,
 			      do_action_for_auto_recovery, false),
+		ADD_JKA_ENTRY("network", JSMN_OBJECT, &bundle,
+			      do_action_for_network, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
 		ADD_JKA_ENTRY("share", JSMN_STRING, &shares, NULL, true),
 		ADD_JKA_ENTRY("root-volume", JSMN_STRING, &bundle,
@@ -1861,6 +1964,160 @@ out:
 	return this;
 }
 
+static int parse_network_pools(struct pv_state *s, char *buf)
+{
+	int tokc, size, ret = 1;
+	char *str = NULL;
+	jsmntok_t *tokv, *t, *poolv = NULL;
+	jsmntok_t **k, **keys;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse network pools");
+		goto out;
+	}
+
+	// Get pool names (keys)
+	keys = jsmnutil_get_object_keys(buf, tokv);
+	if (!keys) {
+		pv_log(DEBUG, "no network pools defined");
+		ret = 0;
+		goto out;
+	}
+
+	k = keys;
+	while (*k) {
+		char *name, *type_str, *bridge, *parent, *subnet, *gateway;
+		char *nat_str;
+		pv_pool_type_t type;
+		bool nat;
+		int n, poolc;
+
+		n = (*k)->end - (*k)->start;
+
+		// Get pool name
+		name = malloc(n + 1);
+		snprintf(name, n + 1, "%s", buf + (*k)->start);
+
+		// Get pool value
+		n = (*k + 1)->end - (*k + 1)->start;
+		str = malloc(n + 1);
+		snprintf(str, n + 1, "%s", buf + (*k + 1)->start);
+
+		if (jsmnutil_parse_json(str, &poolv, &poolc) <= 0) {
+			pv_log(ERROR, "invalid pool entry for '%s'", name);
+			free(name);
+			free(str);
+			str = NULL;
+			goto out;
+		}
+
+		// Parse pool fields
+		type_str = pv_json_get_value(str, "type", poolv, poolc);
+		bridge = pv_json_get_value(str, "bridge", poolv, poolc);
+		parent = pv_json_get_value(str, "parent", poolv, poolc);
+		subnet = pv_json_get_value(str, "subnet", poolv, poolc);
+		gateway = pv_json_get_value(str, "gateway", poolv, poolc);
+		nat_str = pv_json_get_value(str, "nat", poolv, poolc);
+
+		// Determine pool type
+		if (type_str && strcmp(type_str, "macvlan") == 0)
+			type = POOL_TYPE_MACVLAN;
+		else
+			type = POOL_TYPE_BRIDGE;
+
+		// Parse NAT flag
+		nat = (nat_str && strcmp(nat_str, "true") == 0);
+
+		// Validate required fields
+		if (!subnet || !gateway) {
+			pv_log(ERROR, "pool '%s' missing subnet or gateway",
+			       name);
+			goto free_pool;
+		}
+
+		if (type == POOL_TYPE_BRIDGE && !bridge) {
+			pv_log(ERROR, "bridge pool '%s' missing bridge name",
+			       name);
+			goto free_pool;
+		}
+
+		if (type == POOL_TYPE_MACVLAN && !parent) {
+			pv_log(ERROR,
+			       "macvlan pool '%s' missing parent interface",
+			       name);
+			goto free_pool;
+		}
+
+		// Add pool to IPAM
+		if (!pv_ipam_add_pool(name, type,
+				      type == POOL_TYPE_BRIDGE ? bridge :
+								 parent,
+				      subnet, gateway, nat)) {
+			pv_log(ERROR, "failed to add pool '%s'", name);
+		} else {
+			pv_log(DEBUG, "added network pool '%s'", name);
+		}
+
+	free_pool:
+		if (type_str)
+			free(type_str);
+		if (bridge)
+			free(bridge);
+		if (parent)
+			free(parent);
+		if (subnet)
+			free(subnet);
+		if (gateway)
+			free(gateway);
+		if (nat_str)
+			free(nat_str);
+		if (poolv) {
+			free(poolv);
+			poolv = NULL;
+		}
+		free(name);
+		free(str);
+		str = NULL;
+
+		k++;
+	}
+	jsmnutil_tokv_free(keys);
+	ret = 0;
+
+out:
+	if (str)
+		free(str);
+	if (poolv)
+		free(poolv);
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
+static int parse_network(struct pv_state *s, char *buf)
+{
+	int tokc, ret = 0;
+	jsmntok_t *tokv;
+	char *pools_str = NULL;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "cannot parse network section");
+		return -1;
+	}
+
+	pools_str = pv_json_get_value(buf, "pools", tokv, tokc);
+	if (pools_str) {
+		ret = parse_network_pools(s, pools_str);
+		free(pools_str);
+	}
+
+	if (tokv)
+		free(tokv);
+
+	return ret;
+}
+
 static struct pv_state *parse_device(struct pv_state *this, char *buf)
 {
 	int tokc;
@@ -1886,32 +2143,70 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 
 	value = pv_json_get_value(buf, "disks", tokv, tokc);
 	if (!value) {
-		pv_log(WARN, "disks not defined in device.json");
-		goto out;
+		pv_log(DEBUG, "disks not defined in device.json");
+	} else {
+		// Only parse if non-empty (parse_disks errors on empty array)
+		jsmntok_t *disk_tokv;
+		int disk_tokc;
+		if (jsmnutil_parse_json(value, &disk_tokv, &disk_tokc) >= 0) {
+			int disk_count = jsmnutil_array_count(value, disk_tokv);
+			free(disk_tokv);
+			if (disk_count > 0) {
+				if (parse_disks(this, value)) {
+					pv_log(ERROR,
+					       "cannot parse disks in device.json");
+					free(value);
+					this = NULL;
+					goto out;
+				}
+			} else {
+				pv_log(DEBUG,
+				       "empty disks array in device.json");
+			}
+		}
+		free(value);
+		value = NULL;
+
+		value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
+		if (value) {
+			if (jsmnutil_parse_json(value, &disk_tokv,
+						&disk_tokc) >= 0) {
+				int disk_count =
+					jsmnutil_array_count(value, disk_tokv);
+				free(disk_tokv);
+				if (disk_count > 0 &&
+				    parse_disks(this, value)) {
+					pv_log(ERROR,
+					       "cannot parse disks_v2 in device.json");
+					free(value);
+					this = NULL;
+					goto out;
+				}
+			}
+			free(value);
+			value = NULL;
+		}
 	}
-	if (parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks in device.json");
-		this = NULL;
-		goto out;
-	}
-	free(value);
-	value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
-	if (value && parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks_v2 in device.json");
-		this = NULL;
-		goto out;
-	}
-	free(value);
 
 	value = pv_json_get_value(buf, "volumes", tokv, tokc);
 	if (!value) {
 		pv_log(WARN, "volumes not defined in device.json");
-		goto out;
+	} else {
+		if (!parse_storage(this, NULL, value)) {
+			pv_log(ERROR, "cannot parse storage in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
 	}
-	if (!parse_storage(this, NULL, value)) {
-		pv_log(ERROR, "cannot parse storage in device.json");
-		this = NULL;
-		goto out;
+
+	// Parse network pools (optional)
+	value = pv_json_get_value(buf, "network", tokv, tokc);
+	if (value) {
+		if (parse_network(this, value)) {
+			pv_log(WARN, "failed to parse network in device.json");
+		}
 	}
 
 out:
