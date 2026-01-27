@@ -47,6 +47,7 @@
 #include "paths.h"
 #include "utils/pvsignals.h"
 #include "utils/system.h"
+#include "ipam.h"
 
 #define PV_VLOG __vlog
 #include "utils/tsh.h"
@@ -222,6 +223,106 @@ static char *inschr(char *path, int n, char chr, char *seed)
 	*(path + pl + sl + 1) = 0;
 
 	return path;
+}
+
+static void pv_setup_lxc_network(struct lxc_container *c, struct pv_platform *p)
+{
+	struct pv_platform_network_iface *iface;
+	int idx = 0;
+	char key[64], value[256];
+
+	if (!p->network || p->network->mode != NET_MODE_POOL)
+		return;
+
+	// Set hostname if configured
+	if (p->network->hostname) {
+		c->set_config_item(c, "lxc.uts.name", p->network->hostname);
+		pv_log(DEBUG, "set container hostname to '%s'",
+		       p->network->hostname);
+	}
+
+	// Configure each network interface
+	dl_list_for_each(iface, &p->network->interfaces,
+			 struct pv_platform_network_iface, list)
+	{
+		if (!iface->ipv4_address || !iface->bridge) {
+			pv_log(WARN, "skipping interface without IP or bridge");
+			continue;
+		}
+
+		// Set interface type to veth
+		snprintf(key, sizeof(key), "lxc.net.%d.type", idx);
+		c->set_config_item(c, key, "veth");
+
+		// Link to bridge
+		snprintf(key, sizeof(key), "lxc.net.%d.link", idx);
+		c->set_config_item(c, key, iface->bridge);
+
+		// Set container-side interface name
+		snprintf(key, sizeof(key), "lxc.net.%d.name", idx);
+		c->set_config_item(c, key, iface->name ? iface->name : "eth0");
+
+		// Set IPv4 address
+		snprintf(key, sizeof(key), "lxc.net.%d.ipv4.address", idx);
+		c->set_config_item(c, key, iface->ipv4_address);
+
+		// Set gateway
+		if (iface->ipv4_gateway) {
+			snprintf(key, sizeof(key), "lxc.net.%d.ipv4.gateway",
+				 idx);
+			c->set_config_item(c, key, iface->ipv4_gateway);
+		}
+
+		// Set MAC address if available
+		if (iface->mac_address) {
+			snprintf(key, sizeof(key), "lxc.net.%d.hwaddr", idx);
+			c->set_config_item(c, key, iface->mac_address);
+		}
+
+		// Bring interface up
+		snprintf(key, sizeof(key), "lxc.net.%d.flags", idx);
+		c->set_config_item(c, key, "up");
+
+		pv_log(INFO, "configured net.%d: type=veth link=%s ip=%s gw=%s",
+		       idx, iface->bridge, iface->ipv4_address,
+		       iface->ipv4_gateway ? iface->ipv4_gateway : "none");
+
+		idx++;
+	}
+
+	// If we configured any interfaces, we need to remove 'net' from namespace.keep
+	// The container will get its own network namespace
+	if (idx > 0) {
+		// Check current namespace.keep setting and remove 'net' if present
+		char ns_keep[256] = { 0 };
+		c->get_config_item(c, "lxc.namespace.keep", ns_keep,
+				   sizeof(ns_keep));
+
+		if (strlen(ns_keep) > 0) {
+			// Remove 'net' from the list (values separated by newlines)
+			char new_ns_keep[256] = { 0 };
+			char *saveptr = NULL;
+			char *tok = strtok_r(ns_keep, " \t\n", &saveptr);
+			while (tok) {
+				if (strcmp(tok, "net") != 0) {
+					if (strlen(new_ns_keep) > 0)
+						strcat(new_ns_keep, "\n");
+					strcat(new_ns_keep, tok);
+				}
+				tok = strtok_r(NULL, " \t\n", &saveptr);
+			}
+			// Clear and set each namespace individually
+			c->clear_config_item(c, "lxc.namespace.keep");
+			char *ns_saveptr = NULL;
+			char *ns = strtok_r(new_ns_keep, "\n", &ns_saveptr);
+			while (ns) {
+				c->set_config_item(c, "lxc.namespace.keep", ns);
+				ns = strtok_r(NULL, "\n", &ns_saveptr);
+			}
+			pv_log(DEBUG,
+			       "updated lxc.namespace.keep (removed 'net')");
+		}
+	}
 }
 
 static void pv_setup_lxc_container(struct lxc_container *c,
@@ -406,6 +507,9 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 		c->set_config_item(c, "lxc.hook.mount", path);
 	}
 	closedir(d);
+
+	// Configure IPAM network if platform has pool-based networking
+	pv_setup_lxc_network(c, p);
 }
 
 static void pv_setup_default_log(struct pv_platform *p, struct lxc_container *c,
