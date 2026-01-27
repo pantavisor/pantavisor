@@ -58,6 +58,7 @@
 #include "utils/pvsignals.h"
 #include "utils/tsh.h"
 #include "utils/system.h"
+#include "ipam.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
@@ -371,6 +372,20 @@ void pv_platform_free(struct pv_platform *p)
 
 	pv_platform_empty_logger_list(p);
 	pv_platform_empty_logger_configs(p);
+
+	// Release IPAM allocations for this platform
+	if (p->network && p->network->mode == NET_MODE_POOL) {
+		struct pv_platform_network_iface *iface;
+		dl_list_for_each(iface, &p->network->interfaces,
+				 struct pv_platform_network_iface, list)
+		{
+			if (iface->pool)
+				pv_ipam_release(iface->pool, p->name);
+		}
+	}
+
+	if (p->network)
+		pv_platform_network_free(p->network);
 
 	free(p);
 }
@@ -1126,7 +1141,97 @@ int pv_platform_start(struct pv_platform *p)
 	timer_start(&p->timer_status_goal,
 		    p->group->default_status_goal_timeout, 0, RELATIV_TIMER);
 
+	// Allocate IPAM network resources if platform uses pool-based networking
+	if (p->network && p->network->mode == NET_MODE_POOL) {
+		struct pv_platform_network_iface *iface;
+		dl_list_for_each(iface, &p->network->interfaces,
+				 struct pv_platform_network_iface, list)
+		{
+			if (!iface->pool)
+				continue;
+
+			struct pv_ip_pool *pool =
+				pv_ipam_find_pool(iface->pool);
+			if (!pool) {
+				pv_log(ERROR,
+				       "platform '%s' references unknown pool '%s', refusing to start",
+				       p->name, iface->pool);
+				goto ipam_error;
+			}
+
+			// Allocate or reserve IP from pool
+			char *ip = NULL;
+			if (iface->static_ip) {
+				// Use static IP - reserve it in the pool
+				if (pv_ipam_reserve(iface->pool, p->name,
+						    iface->static_ip) == 0) {
+					ip = strdup(iface->static_ip);
+					pv_log(DEBUG,
+					       "platform '%s' using static IP %s",
+					       p->name, ip);
+				} else {
+					pv_log(ERROR,
+					       "failed to reserve static IP %s for platform '%s' (already in use or outside subnet), refusing to start",
+					       iface->static_ip, p->name);
+					goto ipam_error;
+				}
+			} else {
+				// Allocate IP dynamically
+				ip = pv_ipam_allocate(iface->pool, p->name);
+				if (!ip) {
+					pv_log(ERROR,
+					       "failed to allocate IP for platform '%s' from pool '%s' (pool exhausted), refusing to start",
+					       p->name, iface->pool);
+					goto ipam_error;
+				}
+			}
+
+			// Store allocated info in interface struct
+			iface->ipv4_address = ip;
+			iface->ipv4_gateway = pv_ipam_ip_to_str(pool->gateway);
+			iface->bridge = strdup(pool->bridge);
+
+			// Use static MAC if provided, otherwise generate from IP
+			if (iface->static_mac) {
+				iface->mac_address = strdup(iface->static_mac);
+			} else {
+				struct pv_ip_lease *lease =
+					pv_ipam_get_lease(iface->pool, p->name);
+				iface->mac_address =
+					lease ? pv_ipam_generate_mac(
+							lease->ip) :
+						NULL;
+			}
+
+			pv_log(INFO, "platform '%s' IP %s MAC %s on bridge %s",
+			       p->name, iface->ipv4_address,
+			       iface->mac_address ? iface->mac_address : "auto",
+			       iface->bridge);
+		}
+	}
+
 	pv_log(DEBUG, "starting platform '%s'", p->name);
+
+	goto ipam_ok;
+
+ipam_error:
+	// Release any IPAM leases allocated for this platform before failing
+	if (p->network && p->network->mode == NET_MODE_POOL) {
+		struct pv_platform_network_iface *iface;
+		dl_list_for_each(iface, &p->network->interfaces,
+				 struct pv_platform_network_iface, list)
+		{
+			if (iface->pool)
+				pv_ipam_release(iface->pool, p->name);
+		}
+	}
+	pv_log(ERROR,
+	       "platform '%s' failed IPAM network validation, triggering rollback if in try-boot",
+	       p->name);
+	pv_platform_stop(p);
+	return -1;
+
+ipam_ok:
 
 	if (ctrl->start(p, s->rev, path, p->log.lxc_pipe[1], p->pipefd[1])) {
 		pv_log(ERROR, "could not start platform '%s'", p->name);

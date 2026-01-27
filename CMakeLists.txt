@@ -241,6 +241,8 @@ add_executable(pantavisor
 			grub.c
 			init.c
 			init.h
+			ipam.c
+			ipam.h
 			jsons.c
 			jsons.h
 			log.c
