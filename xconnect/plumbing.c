@@ -31,6 +31,8 @@
 #include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <linux/limits.h>
 #include <libgen.h>
 #include <stddef.h>
@@ -41,7 +43,6 @@ static int mkdir_p(const char *path, mode_t mode)
 {
 	char tmp[1024];
 	char *p = NULL;
-	size_t len;
 
 	if (!path || !path[0] || strlen(path) >= sizeof(tmp))
 		return 0;
@@ -137,6 +138,104 @@ out:
 	if (setns(old_ns_fd, CLONE_NEWNS) < 0) {
 		perror("setns back");
 		// This is fatal for the process if it fails
+		exit(1);
+	}
+
+	if (old_ns_fd >= 0)
+		close(old_ns_fd);
+	if (target_ns_fd >= 0)
+		close(target_ns_fd);
+
+	return fd;
+}
+
+int pvx_helper_inject_tcp_socket(const char *addr_str, int pid)
+{
+	int old_ns_fd = -1;
+	int target_ns_fd = -1;
+	int fd = -1;
+	char ns_path[PATH_MAX];
+	struct sockaddr_in sin;
+	char *host = NULL;
+	int port = 0;
+
+	if (!addr_str)
+		return -1;
+
+	// Parse IP:PORT
+	char *tmp = strdup(addr_str);
+	char *colon = strchr(tmp, ':');
+	if (!colon) {
+		free(tmp);
+		return -1;
+	}
+	*colon = '\0';
+	host = tmp;
+	port = atoi(colon + 1);
+
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port);
+	if (inet_pton(AF_INET, host, &sin.sin_addr) <= 0) {
+		free(tmp);
+		return -1;
+	}
+	free(tmp);
+
+	// 1. Save current network namespace
+	old_ns_fd = open("/proc/self/ns/net", O_RDONLY);
+	if (old_ns_fd < 0) {
+		perror("open current net ns");
+		return -1;
+	}
+
+	if (pid > 0) {
+		// 2. Open target network namespace
+		snprintf(ns_path, sizeof(ns_path), "/proc/%d/ns/net", pid);
+		target_ns_fd = open(ns_path, O_RDONLY);
+		if (target_ns_fd < 0) {
+			perror("open target net ns");
+			close(old_ns_fd);
+			return -1;
+		}
+
+		// 3. Enter target network namespace
+		if (setns(target_ns_fd, CLONE_NEWNET) < 0) {
+			perror("setns net");
+			goto out;
+		}
+	}
+
+	// 4. Create and bind socket
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0) {
+		perror("socket");
+		goto out;
+	}
+
+	evutil_make_socket_nonblocking(fd);
+
+	int on = 1;
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+
+	if (bind(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+		perror("bind tcp");
+		close(fd);
+		fd = -1;
+		goto out;
+	}
+
+	if (listen(fd, 10) < 0) {
+		perror("listen tcp");
+		close(fd);
+		fd = -1;
+		goto out;
+	}
+
+out:
+	// 5. Always switch back to host network namespace
+	if (setns(old_ns_fd, CLONE_NEWNET) < 0) {
+		perror("setns net back");
 		exit(1);
 	}
 

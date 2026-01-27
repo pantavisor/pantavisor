@@ -75,6 +75,7 @@ struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 		dl_list_init(&s->installs);
 		dl_list_init(&s->jsons);
 		dl_list_init(&s->groups);
+		dl_list_init(&s->ingress);
 		dl_list_init(&s->bsp.drivers);
 		s->using_runlevels = false;
 		s->done = false;
@@ -130,6 +131,7 @@ void pv_state_free(struct pv_state *s)
 
 	pv_drivers_empty(s);
 	pv_platforms_empty(s);
+	pv_ingress_empty(s);
 	pv_volumes_empty(s);
 	pv_disk_empty(&s->disks);
 	pv_addons_empty(s);
@@ -1810,8 +1812,7 @@ char *pv_state_get_containers_json(struct pv_state *s)
 {
 	struct pv_json_ser js;
 
-	pv_json_ser_init(&js, 512);
-
+	pv_json_ser_init(&js, 8192);
 	pv_json_ser_array(&js);
 	{
 		struct pv_platform *p, *tmp;
@@ -1832,8 +1833,7 @@ char *pv_state_get_groups_json(struct pv_state *s)
 {
 	struct pv_json_ser js;
 
-	pv_json_ser_init(&js, 512);
-
+	pv_json_ser_init(&js, 4096);
 	pv_json_ser_array(&js);
 	{
 		struct pv_group *g, *tmp_g;
@@ -1890,15 +1890,18 @@ static const char *pvx_svc_type_to_str(service_type_t type)
 		return "wayland";
 	case SVC_TYPE_INPUT:
 		return "input";
+	case SVC_TYPE_TCP:
+		return "tcp";
+	case SVC_TYPE_HTTP:
+		return "http";
 	default:
 		return "unknown";
 	}
 }
-
 char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 {
 	struct pv_json_ser js;
-	pv_json_ser_init(&js, 1024);
+	pv_json_ser_init(&js, 4096);
 	pv_json_ser_array(&js);
 	{
 		struct pv_platform *cp, *cp_tmp;
@@ -1921,9 +1924,15 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 						struct pv_platform_service_export,
 						list)
 					{
+						pv_log(DEBUG,
+						       "Checking match: consumer=%s svc=%s provider=%s exp=%s",
+						       cp->name, svc->name,
+						       pp->name, exp->name);
 						if (svc->name && exp->name &&
 						    !strcmp(svc->name,
 							    exp->name)) {
+							pv_log(DEBUG,
+							       "MATCH FOUND!");
 							pv_json_ser_object(&js);
 							{
 								pv_json_ser_key(
@@ -1962,7 +1971,7 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 								pv_json_ser_string(
 									&js,
 									pvx_svc_type_to_str(
-										exp->svc_type));
+										svc->svc_type));
 								pv_json_ser_key(
 									&js,
 									"role");
@@ -1996,6 +2005,125 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 							pv_json_ser_object_pop(
 								&js);
 						}
+					}
+				}
+			}
+		}
+	}
+
+	{
+		struct pv_platform_service *svc, *svc_tmp;
+		dl_list_for_each_safe(svc, svc_tmp, &s->ingress,
+				      struct pv_platform_service, list)
+		{
+			struct pv_platform *pp, *pp_tmp;
+			dl_list_for_each_safe(pp, pp_tmp, &s->platforms,
+					      struct pv_platform, list)
+			{
+				struct pv_platform_service_export *exp, *se_tmp;
+				dl_list_for_each_safe(
+					exp, se_tmp, &pp->service_exports,
+					struct pv_platform_service_export, list)
+				{
+					if (svc->name && exp->name &&
+					    svc->role && pp->name &&
+					    !strcmp(svc->name, exp->name) &&
+					    !strcmp(svc->role, pp->name)) {
+						pv_json_ser_object(&js);
+						{
+							pv_json_ser_key(
+								&js,
+								"consumer");
+							pv_json_ser_string(
+								&js,
+								"EXTERNAL");
+							pv_json_ser_key(
+								&js,
+								"consumer_pid");
+							pv_json_ser_number(&js,
+									   0);
+							pv_json_ser_key(
+								&js,
+								"provider");
+							pv_json_ser_string(
+								&js, pp->name);
+							pv_json_ser_key(
+								&js,
+								"provider_pid");
+							pv_json_ser_number(
+								&js,
+								pp->init_pid);
+							pv_json_ser_key(&js,
+									"name");
+							pv_json_ser_string(
+								&js, svc->name);
+							pv_json_ser_key(&js,
+									"type");
+							pv_json_ser_string(
+								&js,
+								pvx_svc_type_to_str(
+									svc->svc_type));
+							pv_json_ser_key(&js,
+									"role");
+							pv_json_ser_string(
+								&js,
+								"EXTERNAL");
+							pv_json_ser_key(
+								&js,
+								"interface");
+							pv_json_ser_string(
+								&js,
+								svc->interface ?
+									svc->interface :
+									"");
+							pv_json_ser_key(
+								&js, "target");
+							pv_json_ser_string(
+								&js,
+								svc->target ?
+									svc->target :
+									"");
+
+							// Construct socket address for TCP services with port
+							char socket_buf[64] =
+								"";
+							if (exp->svc_type ==
+								    SVC_TYPE_TCP &&
+							    exp->port > 0 &&
+							    !exp->socket) {
+								const char *ip =
+									pv_platform_get_ipv4_address(
+										pp);
+								if (ip) {
+									// ip is CIDR format (e.g., "10.0.4.2/24")
+									const char *slash = strchr(
+										ip,
+										'/');
+									int ip_len =
+										slash ? (int)(slash -
+											      ip) :
+											(int)strlen(
+												ip);
+									snprintf(
+										socket_buf,
+										sizeof(socket_buf),
+										"%.*s:%d",
+										ip_len,
+										ip,
+										exp->port);
+								}
+							}
+							pv_json_ser_key(
+								&js, "socket");
+							pv_json_ser_string(
+								&js,
+								socket_buf[0] ?
+									socket_buf :
+									(exp->socket ?
+										 exp->socket :
+										 ""));
+						}
+						pv_json_ser_object_pop(&js);
 					}
 				}
 			}
