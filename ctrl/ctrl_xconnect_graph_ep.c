@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Pantacor Ltd.
+ * Copyright (c) 2026 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,36 +20,42 @@
  * SOFTWARE.
  */
 
-#ifndef PV_DAEMONS_H
-#define PV_DAEMONS_H
+#include "ctrl_endpoints.h"
+#include "ctrl.h"
+#include "ctrl_callback.h"
+#include "ctrl_util.h"
+#include "state.h"
+#include "pantavisor.h"
 
-#include <sys/types.h>
-#include <unistd.h>
+#include <event2/http.h>
 
-#include "config.h"
+#include <string.h>
 
-// Daemon mode flags (bitmask for init_mode_t)
-#define DM_EMBEDDED (1 << IM_EMBEDDED)
-#define DM_STANDALONE (1 << IM_STANDALONE)
-#define DM_APPENGINE (1 << IM_APPENGINE)
-#define DM_ALL (DM_EMBEDDED | DM_STANDALONE | DM_APPENGINE)
+#define MODULE_NAME "xconnect-graph-ep"
+#define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
+#include "log.h"
 
-struct pv_init_daemon {
-	char *name;
-	pid_t pid;
-	int respawn;
-	char *testpath;
-	char *cmd;
-	unsigned int modes; // bitmask of allowed init modes
-	int _respawning;
-};
+static void ctrl_xconnect_graph_get(struct evhttp_request *req, void *ctx)
+{
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
 
-struct pv_init_daemon *pv_init_get_daemons(void);
+	struct pantavisor *pv = pv_get_instance();
+	char *graph = pv_state_get_xconnect_graph_json(pv->state);
 
-int pv_init_spawn_daemons(init_mode_t mode);
+	if (!graph) {
+		pv_log(WARN, "couldn't get xconnect graph");
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "Cannot get xconnect graph");
+		return;
+	}
 
-int pv_init_is_daemon(pid_t pid);
+	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, graph);
+}
 
-int pv_init_daemon_exited(pid_t pid);
-
-#endif // PV_DAEMONS_H
+int pv_ctrl_endpoints_xconnect_graph_init()
+{
+	pv_ctrl_add_endpoint("/xconnect-graph", EVHTTP_REQ_GET, true,
+			     ctrl_xconnect_graph_get);
+	return 0;
+}
