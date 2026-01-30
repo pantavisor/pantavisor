@@ -89,31 +89,32 @@ int pv_init_spawn_daemons(init_mode_t mode)
 	sigaddset(&blocked_sig, SIGCHLD);
 	sigprocmask(SIG_BLOCK, &blocked_sig, &old_sigset);
 
-	for (i = 0; daemons[i].name; i++) {
-		if (daemons[i].pid > 0 || !daemons[i].respawn)
-			continue;
-		// skip daemons not enabled for this init mode
-		if (!(daemons[i].modes & mode_flag)) {
-			pv_log(INFO, "daemon %s not enabled for init mode %d\n",
-			       daemons[i].name, mode);
-			continue;
-		}
-
-		if (stat(daemons[i].testpath, &sb)) {
-			pv_log(INFO,
-			       "daemon not enabled %s: disabling respawn\n",
-			       daemons[i].name);
-			daemons[i].pid = 0;
-			daemons[i].respawn = 0;
-			continue;
-		}
-
-		daemons[i].pid = daemon_spawn(&daemons[i]);
-
-		pv_log(INFO, "spawned daemon %s: %d \n", daemons[i].name,
-		       daemons[i].pid);
-	}
-	sigprocmask(SIG_SETMASK, &old_sigset, NULL);
+	        for (i = 0; daemons[i].name; i++) {
+	                if (daemons[i].pid > 0 || !daemons[i].respawn)
+	                        continue;
+	                // skip daemons not enabled for this init mode
+	                if (!(daemons[i].modes & mode_flag)) {
+	                        pv_log(DEBUG, "daemon %s not enabled for init mode %d",
+	                               daemons[i].name, mode);
+	                        continue;
+	                }
+	
+	                pv_log(INFO, "enabling daemon: %s", daemons[i].name);
+	
+	                if (stat(daemons[i].testpath, &sb)) {
+	                        pv_log(INFO,
+	                               "daemon not found %s: disabling respawn",
+	                               daemons[i].name);
+	                        daemons[i].pid = 0;
+	                        daemons[i].respawn = 0;
+	                        continue;
+	                }
+	
+	                daemons[i].pid = daemon_spawn(&daemons[i]);
+	
+	                pv_log(INFO, "spawned daemon %s: %d", daemons[i].name,
+	                       daemons[i].pid);
+	        }	sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 	return 0;
 }
 
