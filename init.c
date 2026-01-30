@@ -432,17 +432,15 @@ int main(int argc, char *argv[])
 	// this might override the configuration
 	parse_commands(argc, argv);
 
-	// loading drivers for both device modes
-	init_mode_t init_mode = pv_config_get_system_init_mode();
-	if ((init_mode == IM_EMBEDDED) || (init_mode == IM_STANDALONE)) {
-		pv_drivers_load_early();
-	}
-
-	// spawn daemons based on their configured modes
-	pv_init_spawn_daemons(init_mode);
-
-	// in case of standalone is set, we only start debugging tools up in main thread
-	if (init_mode == IM_STANDALONE) {
+	        // loading drivers for both device modes
+	        init_mode_t init_mode = pv_config_get_system_init_mode();
+	        if ((init_mode == IM_EMBEDDED) || (init_mode == IM_STANDALONE)) {
+	                pv_drivers_load_early();
+	        }
+	
+	                // in case of standalone is set, we only start debugging tools up in main thread
+	
+	                if (init_mode == IM_STANDALONE) {
 		pv_debug_run_shell_early();
 		if (pv_config_get_bool(PV_DEBUG_SSH))
 			pv_debug_start_ssh();
@@ -510,10 +508,10 @@ loop:
  * order.
  */
 struct pv_init *pv_init_tbl[] = {
-	&pv_init_mount,	     &pv_init_bl,      &pv_init_log,
-	&pv_init_apparmor,   &pv_init_storage, &pv_init_ctrl,
-	&pv_init_network,    &pv_init_volume,  &pv_init_platform,
-	&pv_init_pantavisor,
+        &pv_init_mount,      &pv_init_bl,      &pv_init_log,
+        &pv_init_daemons,    &pv_init_apparmor,   &pv_init_storage, &pv_init_ctrl,
+        &pv_init_network,    &pv_init_volume,  &pv_init_platform,
+        &pv_init_pantavisor,
 };
 
 int pv_do_execute_init()
