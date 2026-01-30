@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "init.h"
 #include "daemons.h"
 #include "tsh.h"
 
@@ -131,11 +132,25 @@ int pv_init_is_daemon(pid_t pid)
 
 int pv_init_daemon_exited(pid_t pid)
 {
-	int i = 0;
-	while (daemons[i].name) {
-		if (daemons[i].pid == pid)
-			daemons[i].pid = daemons[i].respawn ? 0 : -1;
-		i++;
-	}
-	return 0;
+        int i = 0;
+        while (daemons[i].name) {
+                if (daemons[i].pid == pid)
+                        daemons[i].pid = daemons[i].respawn ? 0 : -1;
+                i++;
+        }
+        return 0;
 }
+
+static int pv_daemons_init(struct pv_init *this)
+{
+        init_mode_t mode = pv_config_get_system_init_mode();
+
+        pv_init_spawn_daemons(mode);
+
+        return 0;
+}
+
+struct pv_init pv_init_daemons = {
+        .init_fn = pv_daemons_init,
+        .flags = 0,
+};
