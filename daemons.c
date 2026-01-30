@@ -56,8 +56,11 @@ static int daemon_spawn(struct pv_init_daemon *self)
                 self->_respawning = 0;
         } else {
 #ifndef DISABLE_LOGSERVER
-                self->pid = tsh_run_daemon_logserver(self->cmd, self->name,
-                                                     self->name);
+                char out_name[64], err_name[64];
+                snprintf(out_name, sizeof(out_name), "%s-out", self->name);
+                snprintf(err_name, sizeof(err_name), "%s-err", self->name);
+                self->pid = tsh_run_daemon_logserver(self->cmd, out_name,
+                                                     err_name);
 #else
                 self->pid = tsh_run(self->cmd, 0, 0);
 #endif
