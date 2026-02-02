@@ -116,16 +116,16 @@ stop_pv() {
 	if [ -n "$pv_pid" ]; then
 		eval "pventer -c $control_container pvcontrol commands poweroff" > /dev/null 2>&1
 		wait_for_process " pantavisor$" "120" "-d"
+		if [ $? -ne 0 ]; then
+			echo "Warn: Pantavisor still running. Shutting it down..."
+			kill "$pv_pid"
+			wait_for_process " pantavisor$" "30" "-d"
 			if [ $? -ne 0 ]; then
-				echo "Warn: Pantavisor still running. Shutting it down..."
-				kill "$pv_pid"
-				wait_for_process " pantavisor$" "30" "-d"
-				if [ $? -ne 0 ]; then
-					echo "Error: Pantavisor still running. Exiting..."
-					kill -SIGKILL "$pv_pid"
-					pv_ready="false"
-				fi
+				echo "Error: Pantavisor still running. Exiting..."
+				kill -SIGKILL "$pv_pid"
+				pv_ready="false"
 			fi
+		fi
 	fi
 }
 
@@ -148,7 +148,7 @@ start_pv() {
 
 	wait_for_process " pantavisor$" "30" "-a"
 	if [ $? != 0 ]; then
-	echo "Error: timed out waiting for Pantavisor PID"
+		echo "Error: timed out waiting for Pantavisor PID"
 		return
 	fi
 
@@ -162,7 +162,7 @@ start_pv() {
 
 	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
 	if [ $? != 0 ]; then
-	echo "Error: timed out waiting for pantavisor.status READY"
+		echo "Error: timed out waiting for pantavisor.status READY"
 	else
 		pv_ready="true"
 	fi
