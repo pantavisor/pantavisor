@@ -86,13 +86,13 @@ set -- sh -c "[ -x '$home' ] && cd '$home'; "'exec "$@"' sh "$@"
 # check if nsenter supports --caps
 caps=
 if nsenter --caps /bin/true &>/dev/null; then
-       caps=--caps
+	caps=--caps
 fi
 
 # check if nsenter supports -C 
 cgroups=
 if nsenter -t $$ -C /bin/true &>/dev/null; then
-       cgroups=-C
+	cgroups=-C
 fi
 
 # check cgroup version
@@ -121,7 +121,6 @@ pidi=$$
 		echo $pidi > $cgroup_procs_path
 	done
 done
-
 # store PATH and LD_LIBRARY_PATH so we can call the right nsenter command
 HOST_PATH=$PATH
 HOST_LD_LIBRARY_PATH=$LD_LIBRARY_PATH
