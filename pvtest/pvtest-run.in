@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 
@@ -27,41 +27,9 @@ parse_test() {
 }
 
 cleanup() {
-    kill $(jobs -p) 2>/dev/null
+	kill $(jobs -p) 2>/dev/null
 }
 trap cleanup EXIT
-
-cleanup_cryptdisk() {
-	cryptsetup close versatile > /dev/null 2>&1 || true
-}
-
-cleanup_cgroup() {
-	if [ -d /sys/fs/cgroup/lxc ]; then
-		find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1
-		rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1
-	fi
-}
-
-setup_loop() {
-	local count="$1"
-	local first="$(losetup -f | grep -oE '[0-9]+$')"
-	first=$((first + 1))
-
-	for i in $(seq "$first" "$((first + count))"); do
-		mknod -m660 "/dev/loop$i" b 7 "$i" > /dev/null 2>&1
-	done
-
-	return "$first"
-}
-
-teardown_loop() {
-	local first="$1"
-	local count="$2"
-
-	for i in $(seq "$first" "$((first + count))"); do
-		rm -f "/dev/loop$i"
-	done
-}
 
 initial_setup() {
 	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
@@ -69,7 +37,7 @@ initial_setup() {
 		sleep 10
 		exit 1
 	fi
-	
+
 	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
 		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
 		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
@@ -97,41 +65,16 @@ initial_setup() {
 		find $test_path/$pvs -exec tar -xf '{}' -C @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/ --strip-components=1 \;
 	fi
 
+	# lets be double sure we start from fresh revision
 	pvtx abort
 	pvtx begin empty @PV_INSTALL_FULL_STORAGEDIR@/objects
+	# copy rev to pvtxdir
+	mkdir -p @PV_INSTALL_FULL_PVTXDIR@
 	for tarball in $tarballs; do
 		if [ ! -e "$test_path/$tarball" ]; then echo "Error: '$test_path/$tarball' does not exist"; exit 1; fi
-		pvtx add "$test_path/$tarball"
+		cp -f "$test_path/$tarball" @PV_INSTALL_FULL_PVTXDIR@/
 	done
-	if [ "$verbose" = "true" ]; then pvtx show; fi
-	pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
-
-	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr/json ]; then
-		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr
-		echo -n '{"#spec":"pantavisor-service-system@1"}' > @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr/json
-	fi
-	
-	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt ]; then
-		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/boot
-		echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
-	fi
-
-	cleanup_cryptdisk
-	cleanup_cgroup
-	first_loop=0
-	setup_loop "$loop_n" || first_loop=$?
-
-	mkdir -p /sys/fs/cgroup/pantavisor
-	for pid in $(cat /sys/fs/cgroup/cgroup.procs); do
-	    echo $pid > /sys/fs/cgroup/pantavisor/cgroup.procs 2>/dev/null || true
-	done
-	
-	mkdir -p /storage
-	mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage
-	
-	mkdir -p @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
-	mkdir -p /volumes
-	mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes
+	rm -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
 }
 
 exec_interactive() {
@@ -142,7 +85,7 @@ exec_interactive() {
 	if [ "$manual" = "true" ]; then
 		echo "Info: Pantavisor is not running."
 		echo "To run Pantavisor with stdout logs:"
-		echo "pv-appengine -c \"pv_log.server.outputs=filetree,stdout\""
+		echo "pv-appengine -c \"PV_LOG_SERVER_OUTPUTS=filetree,stdout\""
 		echo ""
 	elif [ "$pv_ready" = "false" ]; then
 		echo "Warn: Pantavisor not responding or not ready."
@@ -155,7 +98,6 @@ exec_interactive() {
 
 	sh -c "bash"
 }
-
 stop_pv() {
 	if [ -f "@CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id" ]; then
 		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
@@ -174,27 +116,17 @@ stop_pv() {
 	if [ -n "$pv_pid" ]; then
 		eval "pventer -c $control_container pvcontrol commands poweroff" > /dev/null 2>&1
 		wait_for_process " pantavisor$" "120" "-d"
-		if [ $? -ne 0 ]; then
-			echo "Warn: Pantavisor still running. Shutting it down..."
-			kill "$pv_pid"
-			wait_for_process " pantavisor$" "30" "-d"
 			if [ $? -ne 0 ]; then
-				echo "Error: Pantavisor still running. Exiting..."
-				kill -SIGKILL "$pv_pid"
-				pv_ready="false"
+				echo "Warn: Pantavisor still running. Shutting it down..."
+				kill "$pv_pid"
+				wait_for_process " pantavisor$" "30" "-d"
+				if [ $? -ne 0 ]; then
+					echo "Error: Pantavisor still running. Exiting..."
+					kill -SIGKILL "$pv_pid"
+					pv_ready="false"
+				fi
 			fi
-		fi
 	fi
-
-	if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
-		umount -q /var/pantavisor/storage
-	fi
-
-	umount -q /volumes
-	umount -q /storage
-
-	teardown_loop "$first_loop" "$loop_n"
-	cleanup_cgroup
 }
 
 int_handler() {
@@ -292,7 +224,7 @@ eval_test() {
 	fi
 
 	if [ "$overwrite" != "true" ]; then
-		diff <(grep -vE '^(\+|$)' $test_path/output) <(grep -vE '^(\+|$)' "$tmp_out_path")
+		diff <(grep -vE '^(\+|\$)' $test_path/output) <(grep -vE '^(\+|\$)' "$tmp_out_path")
 		if [ $? -ne 0 ]; then
 			stop_pv
 			exit 1
@@ -300,6 +232,7 @@ eval_test() {
 		rm -f "$tmp_script_path"
 	fi
 }
+
 
 test_path=${1:-$TEST_PATH}
 interactive=${2-$INTERACTIVE}
@@ -326,9 +259,6 @@ self_claim=
 test_script=
 
 parse_test
-
-first_loop=
-loop_n=100
 
 initial_setup
 
