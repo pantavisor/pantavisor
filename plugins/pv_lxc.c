@@ -174,6 +174,10 @@ static int pv_setup_lxc_log(struct pv_log_info *pv_log_i, const char *plat_name,
 
 static void pv_setup_lxc_container_cgroup(struct lxc_container *c)
 {
+	if (pv_config_get_system_init_mode() == IM_APPENGINE) {
+		c->set_config_item(c, "lxc.cgroup.relative", "1");
+	}
+
 	// only for cgroup unified
 	if (__pv_get_instance()->cgroupv != CGROUP_UNIFIED)
 		return;

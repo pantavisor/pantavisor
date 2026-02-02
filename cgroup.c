@@ -20,11 +20,13 @@
  * SOFTWARE.
  */
 
+#define _GNU_SOURCE
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sched.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/mount.h>
@@ -156,11 +158,22 @@ static int pv_cgroup_mkcgroup_unified()
 	return ret;
 }
 
-static int pv_cgroup2_join(const char *cgroup)
+#include <errno.h>
+#include <fcntl.h>
+#include <linux/limits.h>
+#include <sched.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/mount.h>
+#include <unistd.h>
+
+static int pv_cgroup2_join_2(const char *cgroup, int unshare_ns,
+			     int remount_cgroupfs)
 {
 	int fd, written;
 	pid_t pid;
 	char path[PATH_MAX], pid_str[64];
+
 	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s/cgroup.procs",
 			cgroup);
 
@@ -184,9 +197,50 @@ static int pv_cgroup2_join(const char *cgroup)
 		close(fd);
 		return -1;
 	}
-
 	close(fd);
+
+	// check if we are already in the right namespace
+	char *name = pv_cgroup_get_process_name(getpid());
+	bool is_pv = (name && !strcmp(name, "_pv_"));
+	if (name)
+		free(name);
+
+	if (is_pv)
+		return 0;
+
+	if (!unshare_ns)
+		return 0;
+
+	// Unshare cgroup namespace - must be done AFTER joining the cgroup
+	if (unshare(CLONE_NEWCGROUP) < 0) {
+		fprintf(stderr, "Failed to unshare cgroup namespace: %s\n",
+			strerror(errno));
+		return -1;
+	}
+
+	if (!remount_cgroupfs)
+		return 0;
+
+	// Remount cgroupfs to reflect new namespace view
+	// Note: requires being in a mount namespace already
+	if (umount2("/sys/fs/cgroup", MNT_DETACH) < 0) {
+		fprintf(stderr, "Failed to umount /sys/fs/cgroup: %s\n",
+			strerror(errno));
+		return -1;
+	}
+
+	if (mount("none", "/sys/fs/cgroup", "cgroup2", 0, NULL) < 0) {
+		fprintf(stderr, "Failed to mount cgroup2: %s\n",
+			strerror(errno));
+		return -1;
+	}
+
 	return 0;
+}
+
+static int pv_cgroup2_join(const char *cgroup)
+{
+	return pv_cgroup2_join_2(cgroup, 1, 1);
 }
 
 static int pv_cgroup_init_appengine()
@@ -213,7 +267,6 @@ static int pv_cgroup_init_appengine()
 
 	return 0;
 }
-
 int pv_cgroup_init()
 {
 	// IM_APPENGINE supports all cgroup versions
@@ -304,18 +357,21 @@ static char *pv_cgroup_parse_proc_unified(FILE *fd)
 			for (i = 0; i < len - 3 && isdigit(buf[i]); i++)
 				;
 
-			// Check if we found at least one digit and string ends with "::/"
+			// Check if we found at least one digit and string ends with "::/" or "::/.."
 			if (i > 0 && i == len - 3 &&
 			    strcmp(&buf[i], "::/") == 0) {
 				pname = strdup("_pv_");
 				break;
 			}
+			if (i > 0 && i == len - 5 &&
+			    pv_config_get_system_init_mode() == IM_APPENGINE &&
+			    strcmp(&buf[i], "::/..") == 0) {
+				pname = strdup("_pv_");
+				break;
+			}
 		}
 	}
-
-	return pname;
 }
-
 char *pv_cgroup_get_process_name(pid_t pid)
 {
 	int len;
