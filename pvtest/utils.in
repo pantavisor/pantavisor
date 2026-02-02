@@ -2,41 +2,41 @@
 
 # wait for a cmd stdout
 wait_for_value() {
-    local cmd="$1"
-    local value="$2"
-    local timeout="$3"
-    
-    local counter=0
-    while [ $counter -lt $timeout ]; do
-        local result="$(eval "$cmd" 2>/dev/null)" 
-        if [ "$result" = "$value" ]; then
-            return 0
-        else
-            sleep 1
-            counter=$((counter+1))
-        fi
-    done
-    return 1
+	local cmd="$1"
+	local value="$2"
+	local timeout="$3"
+
+	local counter=0
+	while [ $counter -lt $timeout ]; do
+		local result="$(eval "$cmd" 2>/dev/null)"
+		if [ "$result" = "$value" ]; then
+			return 0
+		else
+			sleep 1
+			counter=$((counter+1))
+		fi
+	done
+	return 1
 }
 
 # wait for a cmd exit status code
 wait_for_status() {
-    local cmd="$1"
-    local status="$2"
-    local timeout="$3"
-    
-    local counter=0
-    while [ $counter -lt $timeout ]; do
-        cmd_status=0
-        eval "$cmd" || cmd_status=$?
-        if [ "$cmd_status" = "$status" ]; then
-            return 0
-        else
-            sleep 1
-            counter=$((counter+1))
-        fi
-    done
-    return 1
+	local cmd="$1"
+	local status="$2"
+	local timeout="$3"
+
+	local counter=0
+	while [ $counter -lt $timeout ]; do
+		cmd_status=0
+		eval "$cmd" || cmd_status=$?
+		if [ "$cmd_status" = "$status" ]; then
+			return 0
+		else
+			sleep 1
+			counter=$((counter+1))
+		fi
+	done
+	return 1
 }
 
 # wait for a path to appear or dissapear
@@ -60,7 +60,7 @@ wait_for_process() {
 	local cmd="$1"
 	local timeout="$2"
 	local action="$3"
-	
+
 	local counter=0
 	local cmd_pid=
 	while [ $counter -lt $timeout ]; do
@@ -78,7 +78,7 @@ wait_for_process() {
 		sleep 1
 		counter=$((counter+1))
 	done
-	
+
 	return 1
 }
 
