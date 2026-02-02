@@ -120,12 +120,12 @@ exec_run() {
 		echo 0 > /sys/fs/cgroup/pantavisor/cgroup.procs
 		mkdir -p /storage
 		mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage || true
-		mkdir -p /volumes
+		                mkdir -p /volumes
 		                mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes || true
 		                eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline\"
 		                umount /volumes
+		                umount /storage
 		
-		umount /storage
 		set -e
 		if [ "$shutdown" -eq 1 ]; then
 			break
