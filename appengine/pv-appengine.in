@@ -1,23 +1,93 @@
 #!/bin/bash
 
-set -x
 set -e
 
-interrupt='false'
+interactive='false'
 
 usage() {
 	echo "Usage: $0 [options]"
 	echo "Run Pantavisor in an existing OS"
 	echo "options:"
 	echo "       -h         show help"
-	echo "       -i         interrupt automated reboot and wait for user confirmation"
+	echo "       -i         wait for user confirmation between reboots"
 	echo "       -c CMDLINE additional cmdline arguments (incl. legacy configs)"
 	echo "       -e ENVS envs to set (incl. new config format)"
 }
 
-exec_run() {
+cleanup_cryptdisk() {
+	cryptsetup close versatile > /dev/null 2>&1 || true
+}
+
+cleanup_cgroup() {
+	if [ -d /sys/fs/cgroup/lxc ]; then
+		find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1
+		rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1
+	fi
+}
+
+	setup_loop() {
+		local count="$1"
+		local first="$(losetup -f | grep -oE '[0-9]+$')"
+		first=$((first + 1))
+
+		for i in $(seq "$first" "$((first + count))"); do
+			mknod -m660 "/dev/loop$i" b 7 "$i" > /dev/null 2>&1 || true
+		done
+
+		echo "$first"
+	}
+teardown_loop() {
+	local first="$1"
+	local count="$2"
+
+	for i in $(seq "$first" "$((first + count))"); do
+		rm -f "/dev/loop$i"
+	done
+}
+
+	exec_run() {
+		# get installation path
+		scriptpath=`readlink -f "$0"`
+
+		# check installed
+		if [ ! -f "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config" ]; then
+			echo "ERROR: installation path '@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config' not found"
+			exit 1
+		fi
+
+		if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+			echo "WARN: @PV_INSTALL_FULL_STORAGEDIR@ is not a mountpoint. Automatic installation might fail."
+		fi
+
+		if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
+			cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/ || true
+			touch @PV_INSTALL_FULL_STORAGEDIR@/.created || true
+		fi
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done ]; then
+		pvtx abort
+		pvtx begin @PV_INSTALL_FULL_STORAGEDIR@/trails/0 @PV_INSTALL_FULL_STORAGEDIR@/objects
+		for a in `ls @PV_INSTALL_FULL_PVTXDIR@/* 2>/dev/null`; do
+			pvtx add $a
+		done
+		pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
+		touch @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
+	fi
+
+	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt ]; then
+		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/boot
+		echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
+	fi
+
+	cleanup_cryptdisk
+	cleanup_cgroup
+	loop_n=100
+	first_loop=$(setup_loop "$loop_n")
+
 	pv_trying=""
-	while true
+	shutdown=0
+	trap 'shutdown=1; echo "Recevied SIGINT, shutting down pantavisor ..."' SIGINT
+
+	while [ "$shutdown" -eq 0 ]
 	do
 		# load boot info
 		revs=`cat "@PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt"`
@@ -34,27 +104,52 @@ exec_run() {
 			fi
 		fi
 
+		# load cmdline file
 		cmdline_file=`cat "@PV_INSTALL_FULL_STORAGEDIR@/boot/cmdline.txt"`
 
 		# exec Pantavisor
-		/usr/bin/unshare --cgroup @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline "pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline"
-
+		set +e
+		if ! grep -q "cgroup2" /proc/mounts | grep -q "/sys/fs/cgroup"; then
+			if [ -z "$(ls -A /sys/fs/cgroup 2>/dev/null)" ]; then
+				mount -t cgroup2 none /sys/fs/cgroup || true
+			fi
+		fi
+		mkdir -p /sys/fs/cgroup/pantavisor
+		echo 1 > /sys/fs/cgroup/pantavisor/cgroup.procs || true
+		echo 0 > /sys/fs/cgroup/pantavisor/cgroup.procs
+		mkdir -p /storage
+		mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage || true
+		mkdir -p /volumes
+		mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes || true
+		eval $envs /usr/bin/unshare --cgroup @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline\"
+		umount /volumes
+		umount /storage
+		set -e
+		if [ "$shutdown" -eq 1 ]; then
+			break
+		fi
 		# lets cosume all buffered input first
-		while read -d "" -t 0.01; do
-			:
-		done
-
 		# wait for user input or continue
-		if [ "$interrupt" = 'true' ]
-		then
-			if read -t 5 -p "INFO: Will restart Pantavisor in 5 sec. Press ENTER to abort"; then
-				echo "INFO: Exiting..."
+		if [ "$interactive" = 'true' ]; then
+			while read -d "" -t 0.01; do
+				:
+			done
+			if read -t 5 -p "Will restart Pantavisor in 5 sec: Press ENTER to abort"; then
+				echo "Exiting ..."
 				break
 			fi
 		fi
+		echo "restarting in 5 seconds..."
+		sleep 5 || true
 	done
-}
 
+	if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
+		umount /var/pantavisor/storage
+	fi
+
+	teardown_loop "$first_loop" "$loop_n"
+	cleanup_cgroup
+}
 # parse options
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -62,7 +157,7 @@ while [ $# -gt 0 ]; do
 			usage; exit 0
 			;;
 		-i)
-			interrupt='true'
+			interactive='true'
 			;;
 		-c)
 			shift
@@ -80,3 +175,4 @@ done
 
 # uninstall Pantavisor
 exec_run
+
