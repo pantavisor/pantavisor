@@ -240,7 +240,7 @@ static int pv_cgroup2_join_2(const char *cgroup, int unshare_ns,
 
 static int pv_cgroup2_join(const char *cgroup)
 {
-	return pv_cgroup2_join_2(cgroup, 1, 1);
+	return pv_cgroup2_join_2(cgroup, 1, 0);
 }
 
 static int pv_cgroup_init_appengine()
