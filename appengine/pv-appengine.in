@@ -27,7 +27,7 @@ cleanup_cgroup() {
 
 setup_loop() {
 	local count="$1"
-	local first="$(losetup -f | grep -oE '[0-9]+$')"
+	local first="$(losetup -f | grep -oE '[0-9]+$' )"
 	first=$((first + 1))
 
 	for i in $(seq "$first" "$((first + count))"); do
@@ -56,7 +56,7 @@ exec_run() {
 		exit 1
 	fi
 
-	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
+	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$' ; then
 		echo "WARN: @PV_INSTALL_FULL_STORAGEDIR@ is not a mountpoint. Automatic installation might fail."
 	fi
 
@@ -92,8 +92,8 @@ exec_run() {
 	while [ "$shutdown" -eq 0 ]; do
 		# load boot info
 		revs=`cat "@PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt"`
-		pv_rev=`echo "$revs" | awk -v FS="(pv_rev=|pv_try=)" '{print $2}'`
-		pv_try=`echo "$revs" | awk -v FS="(pv_rev=|pv_try=)" '{print $3}'`
+		pv_rev=`echo "$revs" | awk -v FS="(pv_rev=|pv_try=)" '{print $2}' `
+		pv_try=`echo "$revs" | awk -v FS="(pv_rev=|pv_try=)" '{print $3}' `
 
 		# set boot info
 		if [ -n "$pv_try" ]; then
@@ -118,14 +118,15 @@ exec_run() {
 		mkdir -p /sys/fs/cgroup/pantavisor
 		echo 1 > /sys/fs/cgroup/pantavisor/cgroup.procs || true
 		echo 0 > /sys/fs/cgroup/pantavisor/cgroup.procs
+		mount -t cgroup2 none /sys/fs/cgroup || true
 		mkdir -p /storage
 		mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage || true
-		                mkdir -p /volumes
-		                mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes || true
-		                eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline\"
-		                umount /volumes
-		                umount /storage
-		
+		mkdir -p /volumes
+		mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes || true
+		eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline\"
+		umount /volumes
+		umount /storage
+
 		set -e
 		if [ "$shutdown" -eq 1 ]; then
 			break
@@ -165,7 +166,7 @@ while [ $# -gt 0 ]; do
 	-c)
 		shift
 		cmdline="$1"
-		;; 
+		;;
 	-e)
 		shift
 		envs="$1"

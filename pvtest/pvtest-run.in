@@ -240,12 +240,12 @@ manual=${3:-$MANUAL}
 overwrite=${4:-$OVERWRITE}
 verbose=${5:-$VERBOSE}
 netsim=${6:-$NETSIM}
+daemon=${7:-$DAEMON}
 
 if [ -z "$test_path" ] || [ -z "$interactive" ] || [ -z "$manual" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$netsim" ]; then
 	echo "Error: missing arguments / envs"
 	usage
 fi
-
 if [ "$verbose" = "true" ]; then set -x; fi
 
 description=
@@ -274,10 +274,11 @@ fi
 
 tmp_out_path=
 
-if [ "$interactive" = "false" ]; then
+if [ "$daemon" = "true" ]; then
+	sleep 100000
+elif [ "$interactive" = "false" ]; then
 	exec_test
 fi
-
 stop_pv
 
 if [ "$interactive" = "false" ]; then
