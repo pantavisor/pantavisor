@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 
@@ -85,7 +85,7 @@ exec_interactive() {
 	if [ "$manual" = "true" ]; then
 		echo "Info: Pantavisor is not running."
 		echo "To run Pantavisor with stdout logs:"
-		echo "pv-appengine -c \"PV_LOG_SERVER_OUTPUTS=filetree,stdout\""
+		echo "pv-appengine -e \"PV_LOG_SERVER_OUTPUTS=filetree,stdout\""
 		echo ""
 	elif [ "$pv_ready" = "false" ]; then
 		echo "Warn: Pantavisor not responding or not ready."
