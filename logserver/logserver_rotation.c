@@ -125,6 +125,9 @@ struct logserver_rot pv_logserver_rot_init(const char *rev)
 
 int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname)
 {
+	if (!fname || fname[0] == 0)
+		return 0;
+
 	off_t file_size = pv_fs_path_get_size(fname);
 	if (file_size < 0)
 		return -1;
