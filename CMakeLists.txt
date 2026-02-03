@@ -244,6 +244,8 @@ add_executable(pantavisor
 			logserver/logserver_null.h
 			logserver/logserver_out.c
 			logserver/logserver_out.h
+			logserver/logserver_rotation.c
+			logserver/logserver_rotation.h
 			logserver/logserver_singlefile.c
 			logserver/logserver_singlefile.h
 			logserver/logserver_stdout.c
