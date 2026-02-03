@@ -43,6 +43,8 @@ struct logserver_out *logserver_out_new(
 		return NULL;
 	}
 
+	memset(out->log_path, 0, PATH_MAX);
+
 	out->id = id;
 	out->add = add;
 	out->free = free;
