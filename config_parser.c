@@ -125,22 +125,15 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 	token = strtok_r(buf, " ", &ptr_out);
 
 	while (token) {
-		k = NULL;
-		if ((strncmp("PV_", token, 3) == 0) ||
-		    (strncmp("PH_", token, 3) == 0)) {
-			k = token;
-		} else if (strncmp(hint, token, strlen(hint)) == 0) {
+		if (strncmp(hint, token, strlen(hint)) == 0) {
 			k = token + strlen(hint);
-		}
-
-		if (k) {
 			key = strtok_r(k, "=", &ptr_in);
 			value = strtok_r(NULL, "\0", &ptr_in);
 			/*
-                         * for things like XYZ= there would be nothing
-                         * in the value as strtok returns only non-empty
-                         * strings.
-                         * */
+			 * for things like XYZ= there would be nothing
+			 * in the value as strtok returns only non-empty
+			 * strings.
+			 * */
 			if (!value)
 				value = ""; /*We keep the key but give it an empty value*/
 			nl = strchr(value, '\n');
@@ -154,6 +147,7 @@ int config_parse_cmdline(struct dl_list *list, char *hint)
 
 	return 0;
 }
+
 extern char **environ;
 
 int config_parse_env(struct dl_list *list)

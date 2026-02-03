@@ -2,14 +2,14 @@
 
 set -e
 
-interactive='false'
+interrupt='false'
 
 usage() {
 	echo "Usage: $0 [options]"
 	echo "Run Pantavisor in an existing OS"
 	echo "options:"
 	echo "       -h         show help"
-	echo "       -i         wait for user confirmation between reboots"
+	echo "       -i         interrupt auto reboot and wait for user confirmation"
 	echo "       -c CMDLINE additional cmdline arguments (incl. legacy configs)"
 	echo "       -e ENVS envs to set (incl. new config format)"
 }
@@ -105,9 +105,6 @@ exec_run() {
 			fi
 		fi
 
-		# load cmdline file
-		cmdline_file=`cat "@PV_INSTALL_FULL_STORAGEDIR@/boot/cmdline.txt"`
-
 		# exec Pantavisor
 		set +e
 		if ! grep -q "cgroup2" /proc/mounts | grep -q "/sys/fs/cgroup"; then
@@ -123,7 +120,7 @@ exec_run() {
 		mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage || true
 		mkdir -p /volumes
 		mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes || true
-		eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline_file $cmdline\"
+		eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline\"
 		umount /volumes
 		umount /storage
 
@@ -131,14 +128,14 @@ exec_run() {
 		if [ "$shutdown" -eq 1 ]; then
 			break
 		fi
-		# lets cosume all buffered input first
-		# wait for user input or continue
-		if [ "$interactive" = 'true' ]; then
+		if [ "$interrupt" = 'true' ]; then
+			# lets cosume all buffered input first
 			while read -d "" -t 0.01; do
 				:
 			done
-			if read -t 5 -p "Will restart Pantavisor in 5 sec: Press ENTER to abort"; then
-				echo "Exiting ..."
+			# wait for user input or continue
+			if read -t 5 -p "INFO: Will restart Pantavisor in 5 sec. Press ENTER to abort"; then
+				echo "INFO: Exiting..."
 				break
 			fi
 		fi
@@ -161,7 +158,7 @@ while [ $# -gt 0 ]; do
 		exit 0
 		;; 
 	-i)
-		interactive='true'
+		interrupt='true'
 		;; 
 	-c)
 		shift

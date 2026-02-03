@@ -447,19 +447,6 @@ install(FILES
 )
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/appengine/cmdline.txt.in
-    ${CMAKE_CURRENT_BINARY_DIR}/cmdline.txt
-    @ONLY
-)
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/cmdline.txt
-    DESTINATION ${PV_INSTALL_FULL_SKELDIR}/boot/
-)
-install(FILES
-    ${CMAKE_CURRENT_BINARY_DIR}/cmdline.txt
-    DESTINATION ${PV_INSTALL_FULL_STORAGEDIR}/boot/
-)
-configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pantavisor.config.in
     ${CMAKE_CURRENT_BINARY_DIR}/pantavisor-appengine.config
     @ONLY
