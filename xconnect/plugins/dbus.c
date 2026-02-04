@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -40,10 +41,10 @@ struct dbus_proxy_session {
 	int authenticated;
 };
 
-static void hex_encode(const char *src, char *dst, size_t len)
+static void hex_encode(const char *src, char *dst, size_t dst_size, size_t len)
 {
-	for (size_t i = 0; i < len; i++) {
-		sprintf(dst + (i * 2), "%02x", (unsigned char)src[i]);
+	for (size_t i = 0; i < len && (i * 2 + 2) < dst_size; i++) {
+		snprintf(dst + (i * 2), 3, "%02x", (unsigned char)src[i]);
 	}
 	dst[len * 2] = '\0';
 }
@@ -58,8 +59,13 @@ static int lookup_uid_in_provider(const char *username, int provider_pid)
 		return -1;
 
 	// If numeric, return directly
-	if (username[0] >= '0' && username[0] <= '9')
-		return atoi(username);
+	if (username[0] >= '0' && username[0] <= '9') {
+		char *endptr;
+		long val = strtol(username, &endptr, 10);
+		if (*endptr == '\0' && val >= 0 && val <= INT_MAX)
+			return (int)val;
+		return -1;
+	}
 
 	snprintf(path, sizeof(path), "/proc/%d/root/etc/passwd", provider_pid);
 	FILE *f = fopen(path, "r");
@@ -70,8 +76,13 @@ static int lookup_uid_in_provider(const char *username, int provider_pid)
 		char *name = strtok(line, ":");
 		strtok(NULL, ":"); // password
 		char *uid_s = strtok(NULL, ":");
-		if (name && uid_s && strcmp(name, username) == 0) {
-			uid = atoi(uid_s);
+		if (name && uid_s &&
+		    strncmp(name, username, strlen(username)) == 0 &&
+		    name[strlen(username)] == '\0') {
+			char *endptr;
+			long val = strtol(uid_s, &endptr, 10);
+			if (val >= 0 && val <= INT_MAX)
+				uid = (int)val;
 			break;
 		}
 	}
@@ -166,7 +177,8 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 		}
 
 		snprintf(uid_str, sizeof(uid_str), "%d", uid);
-		hex_encode(uid_str, hex_identity, strlen(uid_str));
+		hex_encode(uid_str, hex_identity, sizeof(hex_identity),
+			   strlen(uid_str));
 
 		printf("%s: Masquerading D-Bus identity as role '%s' (UID %d) for service %s\n",
 		       MODULE_NAME, role, uid, sess->link->name);
@@ -197,7 +209,7 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 {
 	struct pvx_link *link = arg;
 	struct event_base *base = pvx_get_base();
-	char provider_path[256];
+	char provider_path[PATH_MAX];
 
 	if (!link->name || !link->provider_socket) {
 		close(fd);
