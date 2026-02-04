@@ -151,6 +151,8 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 	const char *uri = evhttp_request_get_uri(req);
 	pv_log(DEBUG, "New HTTP request recived: %s", uri);
 
+	int err = 0;
+
 	struct pv_ctrl_cb *it, *tmp;
 	dl_list_for_each_safe(it, tmp, &pvctrl.custom_cb, struct pv_ctrl_cb,
 			      lst)
@@ -168,26 +170,30 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 		}
 
 		if (!(caller.method & it->methods)) {
-			pv_log(WARN,
-			       "HTTP method not supported for this endpoint");
-			pv_ctrl_utils_send_error(
-				req, HTTP_BADREQUEST,
-				"Method not supported for this endpoint");
-			return 0;
+			err = 1;
+			continue;
 		}
 
 		if (it->need_mgmt && !caller.is_privileged) {
-			pv_log(WARN, "request not sent from mgmt platform");
-			pv_ctrl_utils_send_error(
-				req, HTTP_FORBIDDEN,
-				"Request not sent from mgmt platform");
-			return 0;
+			err = 2;
+			continue;
 		}
 
 		// Add to request list but DO NOT call yet.
 		// ctrl_default_cb will be called when request is complete.
 		crtl_add_request(req, it);
 		return 0;
+	}
+
+	if (err == 1) {
+		pv_log(WARN, "HTTP method not supported for this endpoint");
+		pv_ctrl_utils_send_error(
+			req, HTTP_BADREQUEST,
+			"Method not supported for this endpoint");
+	} else if (err == 2) {
+		pv_log(WARN, "request not sent from mgmt platform");
+		pv_ctrl_utils_send_error(req, HTTP_FORBIDDEN,
+					 "Request not sent from mgmt platform");
 	}
 
 	return 0;
@@ -258,7 +264,7 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 	pv_log(WARN, "HTTP request received to an unknown endpoint: %s", uri);
 
 	char msg[PATH_MAX + 30] = { 0 };
-	sprintf(msg, "%s: %s", "unknown endpoint", uri);
+	snprintf(msg, sizeof(msg), "%s: %s", "unknown endpoint", uri);
 
 	pv_ctrl_utils_send_error(req, HTTP_BADREQUEST, msg);
 }
