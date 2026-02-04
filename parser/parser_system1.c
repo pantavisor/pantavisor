@@ -685,12 +685,36 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 {
 	int tokc, size, ret = 0;
 	jsmntok_t *tokv, *t, *sv;
+	char *services_buf = NULL;
+	jsmntok_t *services_tokv = NULL;
+	int services_tokc;
+
 	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0)
 		return 0;
-	size = jsmnutil_array_count(buf, tokv);
-	if (size <= 0)
-		goto out;
-	t = tokv + 1;
+
+	// Try new object format: {"#spec": "...", "services": [...]}
+	services_buf = pv_json_get_value(buf, "services", tokv, tokc);
+	if (services_buf) {
+		if (jsmnutil_parse_json(services_buf, &services_tokv,
+					&services_tokc) < 0) {
+			free(services_buf);
+			goto out;
+		}
+		size = jsmnutil_array_count(services_buf, services_tokv);
+		if (size <= 0) {
+			free(services_buf);
+			free(services_tokv);
+			goto out;
+		}
+		t = services_tokv + 1;
+		buf = services_buf;
+	} else {
+		// Fall back to old array format: [{...}, {...}]
+		size = jsmnutil_array_count(buf, tokv);
+		if (size <= 0)
+			goto out;
+		t = tokv + 1;
+	}
 	for (int i = 0; i < size; i++) {
 		int svc_c;
 		char *svc_s = pv_json_array_get_one_str(buf, &size, &t);
@@ -715,6 +739,10 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 	}
 	ret = 1;
 out:
+	if (services_buf)
+		free(services_buf);
+	if (services_tokv)
+		free(services_tokv);
 	if (tokv)
 		free(tokv);
 	return ret;
