@@ -32,7 +32,8 @@ int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 
 #ifndef DISABLE_LOGSERVER
 int tsh_run_logserver(char *cmd, int *wstatus, const char *source,
-		      const char *level);
+                      const char *level);
+pid_t tsh_run_daemon_logserver(char *cmd, const char *log_source_out,
+                               const char *log_source_err);
 #endif
-
 #endif
