@@ -698,12 +698,15 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 		if (jsmnutil_parse_json(services_buf, &services_tokv,
 					&services_tokc) < 0) {
 			free(services_buf);
+			services_buf = NULL;
 			goto out;
 		}
 		size = jsmnutil_array_count(services_buf, services_tokv);
 		if (size <= 0) {
 			free(services_buf);
+			services_buf = NULL;
 			free(services_tokv);
+			services_tokv = NULL;
 			goto out;
 		}
 		t = services_tokv + 1;
