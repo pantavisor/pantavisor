@@ -41,15 +41,12 @@ static void ctrl_daemons_get(struct evhttp_request *req, void *ctx)
 {
 	struct pv_json_ser js;
 	struct pv_init_daemon *daemons = pv_init_get_daemons();
-	char *json_str;
-
-	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
-		return;
+	int i;
 
 	pv_json_ser_init(&js, 1024);
 	pv_json_ser_array(&js);
 
-	for (int i = 0; daemons[i].name; i++) {
+	for (i = 0; daemons[i].name; i++) {
 		pv_json_ser_object(&js);
 		pv_json_ser_key(&js, "name");
 		pv_json_ser_string(&js, daemons[i].name);
@@ -62,25 +59,20 @@ static void ctrl_daemons_get(struct evhttp_request *req, void *ctx)
 
 	pv_json_ser_array_pop(&js);
 
-	json_str = pv_json_ser_str(&js);
-	pv_ctrl_utils_send_json(req, HTTP_OK, "OK", json_str);
-	free(json_str);
+	pv_ctrl_utils_send_json(req, HTTP_OK, "OK", pv_json_ser_str(&js));
 }
 
 static void ctrl_daemons_put(struct evhttp_request *req, void *ctx)
 {
+	pv_log(INFO, "PUT request for daemons");
 	char *name = NULL;
 	char *data = NULL;
 	char *action = NULL;
 	struct pv_init_daemon *daemons = pv_init_get_daemons();
-	struct pv_init_daemon *daemon = NULL;
+	struct pv_init_daemon *d = NULL;
+	int i;
 	int tokc;
 	jsmntok_t *tokv = NULL;
-
-	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
-		return;
-
-	pv_log(INFO, "PUT request for daemons");
 
 	const char *uri = evhttp_request_get_uri(req);
 	char split[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
@@ -96,14 +88,14 @@ static void ctrl_daemons_put(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
-	for (int i = 0; daemons[i].name; i++) {
+	for (i = 0; daemons[i].name; i++) {
 		if (strcmp(daemons[i].name, name) == 0) {
-			daemon = &daemons[i];
+			d = &daemons[i];
 			break;
 		}
 	}
 
-	if (!daemon) {
+	if (!d) {
 		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
 					 "Daemon not found");
 		return;
@@ -123,35 +115,33 @@ static void ctrl_daemons_put(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
-	jsmn_parser parser;
-	jsmn_init(&parser);
-	tokc = jsmn_parse(&parser, data, strlen(data), NULL, 0);
+	jsmn_parser p;
+	jsmn_init(&p);
+	tokc = jsmn_parse(&p, data, strlen(data), NULL, 0);
 	if (tokc < 0) {
 		free(data);
 		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST, "Invalid JSON");
 		return;
 	}
 	tokv = calloc(tokc, sizeof(jsmntok_t));
-	jsmn_init(&parser);
-	jsmn_parse(&parser, data, strlen(data), tokv, tokc);
+	jsmn_init(&p);
+	jsmn_parse(&p, data, strlen(data), tokv, tokc);
 
 	action = pv_json_get_value(data, "action", tokv, tokc);
 
 	if (action) {
 		if (strcmp(action, "stop") == 0) {
-			pv_log(INFO, "Stopping daemon %s via ctrl",
-			       daemon->name);
-			daemon->respawn = 0;
-			if (daemon->pid > 0) {
-				kill(daemon->pid, SIGTERM);
+			pv_log(INFO, "Stopping daemon %s via ctrl", d->name);
+			d->respawn = 0;
+			if (d->pid > 0) {
+				kill(d->pid, SIGTERM);
 			}
 		} else if (strcmp(action, "start") == 0) {
-			pv_log(INFO, "Starting daemon %s via ctrl",
-			       daemon->name);
-			daemon->respawn = 1;
-			if (daemon->pid <= 0) {
-				if (daemon->pid < 0)
-					daemon->pid = 0;
+			pv_log(INFO, "Starting daemon %s via ctrl", d->name);
+			d->respawn = 1;
+			if (d->pid <= 0) {
+				if (d->pid < 0)
+					d->pid = 0;
 				pv_init_spawn_daemons(
 					pv_config_get_system_init_mode());
 			}

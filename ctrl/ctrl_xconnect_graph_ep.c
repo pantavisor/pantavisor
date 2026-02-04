@@ -51,7 +51,6 @@ static void ctrl_xconnect_graph_get(struct evhttp_request *req, void *ctx)
 	}
 
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, graph);
-	free(graph);
 }
 
 int pv_ctrl_endpoints_xconnect_graph_init()
