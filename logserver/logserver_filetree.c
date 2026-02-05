@@ -26,6 +26,7 @@
 #include "paths.h"
 #include "utils/fs.h"
 
+#include <limits.h>
 #include <string.h>
 #include <unistd.h>
 #include <linux/limits.h>
@@ -42,18 +43,20 @@ static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
 		return -1;
 	}
 
-	memset(path, 0, PATH_MAX);
-	pv_paths_pv_log_file(path, sizeof(path), log->running_rev, log->plat,
+	char tmp_path[PATH_MAX] = { 0 };
+	pv_paths_pv_log_file(tmp_path, PATH_MAX, log->running_rev, log->plat,
 			     is_pv ? "pantavisor.log" : log->src);
 
 	char dir[PATH_MAX] = { 0 };
-	pv_fs_dirname(path, dir);
+	pv_fs_dirname(tmp_path, dir);
 
 	// Create directory for logged item according to platform and source.
 	if (pv_fs_mkdir_p(dir, 0755) != 0) {
-		memset(path, 0, PATH_MAX);
 		return -1;
 	}
+
+	memset(path, 0, PATH_MAX);
+	memccpy(path, tmp_path, 0, PATH_MAX);
 
 	return 0;
 }
@@ -65,18 +68,16 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 
 	bool is_pv = !strncmp(log->plat, MAIN_PLATFORM, strlen(MAIN_PLATFORM));
 
-	if (out->log_path[0] == 0 || !pv_fs_path_exist(out->log_path)) {
-		if (create_dir(log, is_pv, out->log_path) != 0)
-			return -1;
-	}
+	if (create_dir(log, is_pv, out->last_log) != 0)
+		return -1;
 
-	int fd = logserver_utils_open_logfile(out->log_path);
+	int fd = logserver_utils_open_logfile(out->last_log);
 
 	if (fd < 0) {
 		WARN_ONCE("Error opening file %s/%s, errno = %d\n", platform,
 			  source, errno);
 
-		memset(out->log_path, 0, PATH_MAX);
+		memset(out->last_log, 0, PATH_MAX);
 		return -1;
 	}
 

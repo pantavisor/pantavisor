@@ -26,6 +26,7 @@
 #include "paths.h"
 #include "utils/fs.h"
 
+#include <limits.h>
 #include <string.h>
 #include <linux/limits.h>
 #include <unistd.h>
@@ -41,16 +42,14 @@ static int create_dir(const struct logserver_log *log, char *path)
 		return -1;
 	}
 
-	memset(path, 0, PATH_MAX);
-	pv_paths_pv_log(path, sizeof(path), log->running_rev);
+	char tmp_path[PATH_MAX] = { 0 };
+	pv_paths_pv_log(tmp_path, PATH_MAX, log->running_rev);
 
-	if (pv_fs_mkdir_p(path, 0755)) {
-		memset(path, 0, PATH_MAX);
+	if (pv_fs_mkdir_p(tmp_path, 0755))
 		return -1;
-	}
 
 	memset(path, 0, PATH_MAX);
-	pv_paths_pv_log_plat(path, sizeof(path), log->running_rev, "pv.log");
+	pv_paths_pv_log_plat(path, PATH_MAX, log->running_rev, "pv.log");
 
 	return 0;
 }
@@ -60,15 +59,13 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 	if (log->lvl > pv_config_get_int(PV_LOG_LEVEL))
 		return 0;
 
-	if (out->log_path[0] == 0 || !pv_fs_path_exist(out->log_path)) {
-		if (create_dir(log, out->log_path) != 0)
-			return -1;
-	}
+	if (create_dir(log, out->last_log) != 0)
+		return -1;
 
-	int fd = logserver_utils_open_logfile(out->log_path);
+	int fd = logserver_utils_open_logfile(out->last_log);
 	if (fd < 0) {
 		WARN_ONCE("Error opening file %s, errno = %d\n", path, errno);
-		memset(out->log_path, 0, PATH_MAX);
+		memset(out->last_log, 0, PATH_MAX);
 		return -1;
 	}
 

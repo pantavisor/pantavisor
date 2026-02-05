@@ -71,7 +71,7 @@ struct logserver_log {
 struct logserver_out {
 	int id;
 	char *name;
-	char log_path[PATH_MAX];
+	char last_log[PATH_MAX];
 	int (*add)(struct logserver_out *out, const struct logserver_log *log);
 	void (*free)(struct logserver_out *out);
 	void *opaque;
