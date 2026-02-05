@@ -32,7 +32,6 @@
 #define LOGCTRL_FNAME "pv-ctrl-log"
 #define LOGFD_FNAME "pv-fd-log"
 #define PHCONFIG_DNAME "phconfig"
-#define UNCLAIMED_FNAME "phconfig/unclaimed.config"
 #define PANTAHUB_FNAME "phconfig/pantahub.config"
 
 void pv_paths_pv_file(char *buf, size_t size, const char *name);

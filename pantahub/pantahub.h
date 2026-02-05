@@ -22,46 +22,21 @@
 #ifndef PV_PANTAHUB_H
 #define PV_PANTAHUB_H
 
-#define DEVICE_TOKEN_FMT "Pantahub-Devices-Auto-Token-V1: %s"
-
-#include <time.h>
-
 #include "pantavisor.h"
 
 #include "pantahub/pantahub_struct.h"
 
-// OLD STUFF. TO BE REMOVED
+int pv_pantahub_start(void);
+int pv_pantahub_stop(void);
 
-struct pv_connection {
-	char *hostorip;
-	int port;
-};
-
-int pv_ph_device_exists(struct pantavisor *pv);
-int pv_ph_register_self(struct pantavisor *pv);
-bool pv_ph_is_auth(struct pantavisor *pv);
-const char **pv_ph_get_certs();
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
-void pv_ph_release_client(struct pantavisor *pv);
-void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
-struct pv_connection *pv_get_instance_connection(void);
-
-// TO MOVE TO STATIC IN .c
-
-const char *pv_pantahub_state_string(ph_state_t state);
-
-// NEW IMPLEMENTATION
-
-int pv_pantahub_init(void);
-int pv_pantahub_close(void);
-
-void pv_pantahub_start(void);
 void pv_pantahub_evaluate_state(void);
 
 bool pv_pantahub_is_reporting(void);
 
 bool pv_pantahub_is_online(void);
 bool pv_pantahub_got_any_failure(void);
+
+bool pv_pantahub_is_device_claimed(void);
 
 bool pv_pantahub_is_progress_queue_empty(void);
 void pv_pantahub_queue_progress(const char *rev, const char *progress);

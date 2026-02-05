@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+#include <dirent.h>
 #include <limits.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -31,6 +32,7 @@
 
 #include <jsmn/jsmnutil.h>
 
+#include "paths.h"
 #include "trestclient.h"
 
 #include "pantahub/pantahub.h"
@@ -46,6 +48,32 @@
 
 #define PANTAVISOR_EXTERNAL_LOGIN_HANDLER_FMT "/btools/%s.login"
 #define PV_TRESTCLIENT_MAX_READ 4096
+
+struct pv_connection *pv_get_instance_connection()
+{
+	struct pv_connection *conn = NULL;
+	int port = 0;
+	char *host = NULL;
+
+	conn = (struct pv_connection *)calloc(1, sizeof(struct pv_connection));
+	if (!conn) {
+		pv_log(DEBUG, "Unable to allocate memory for connection");
+		return NULL;
+	}
+	// default to global PH instance
+	host = pv_config_get_str(PH_CREDS_HOST);
+	if (!host || (strcmp(host, "") == 0))
+		host = "api.pantahub.com";
+
+	port = pv_config_get_int(PH_CREDS_PORT);
+	if (!port)
+		port = 443;
+
+	conn->hostorip = host;
+	conn->port = port;
+
+	return conn;
+}
 
 static struct trest_response *external_login_handler(trest_ptr self, void *data)
 {
@@ -156,9 +184,6 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	const char **cafiles;
 	trest_ptr client;
 
-	if (!conn)
-		conn = pv->conn;
-
 	enum {
 		HUB_CREDS_TYPE_BUILTIN = 0,
 		HUB_CREDS_TYPE_EXTERNAL,
@@ -263,4 +288,45 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 	return client;
 err:
 	return NULL;
+}
+
+const char **pv_ph_get_certs()
+{
+	struct dirent **files;
+	char **cafiles;
+	char path[PATH_MAX];
+	int n = 0, i = 0, size = 0;
+
+	pv_paths_cert(path, PATH_MAX, "");
+	n = scandir(path, &files, NULL, alphasort);
+	if (n < 0) {
+		pv_log(WARN, "%s could not be scanned", path);
+		return NULL;
+	} else if (n == 0) {
+		pv_log(WARN, "%s is empty", path);
+		free(files);
+		return NULL;
+	}
+
+	// Always n-1 due to . and .., and need one extra
+	cafiles = calloc(n - 1, sizeof(char *));
+
+	while (n--) {
+		if (!strncmp(files[n]->d_name, ".", 1)) {
+			free(files[n]);
+			continue;
+		}
+
+		pv_paths_cert(path, PATH_MAX, files[n]->d_name);
+		size = strlen(path);
+		cafiles[i] = malloc((size + 1) * sizeof(char));
+		memcpy(cafiles[i], path, size);
+		cafiles[i][size] = '\0';
+		i++;
+		free(files[n]);
+	}
+
+	free(files);
+
+	return (const char **)cafiles;
 }

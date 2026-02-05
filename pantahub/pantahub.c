@@ -26,7 +26,6 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <dirent.h>
 #include <limits.h>
 #include <errno.h>
 #include <string.h>
@@ -49,7 +48,6 @@
 #include "trestclient.h"
 #include "pantavisor.h"
 #include "json.h"
-#include "paths.h"
 #include "metadata.h"
 #include "updater.h"
 
@@ -72,451 +70,12 @@
 
 #define REQ_INTERVAL 6
 
-trest_ptr *client = 0;
-char *endpoint = 0;
-
-static void ph_client_free()
-{
-	if (!client)
-		return;
-
-	trest_free(client);
-	client = NULL;
-}
-
-static int ph_client_init(struct pantavisor *pv)
-{
-	int size;
-	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
-
-	if (client)
-		goto auth;
-
-	client = pv_get_trest_client(pv, NULL);
-
-	if (!client)
-		return 0;
-
-auth:
-	status = trest_update_auth(client);
-	if (status != TREST_AUTH_STATUS_OK) {
-		ph_client_free();
-		return 0;
-	}
-
-	const char *id = pv_config_get_str(PH_CREDS_ID);
-	if (!id) {
-		ph_client_free();
-		return 0;
-	}
-
-	if (!endpoint) {
-		size = sizeof(ENDPOINT_FMT) + strlen(id) + 1;
-		endpoint = malloc(size * sizeof(char));
-		SNPRINTF_WTRUNC(endpoint, size, ENDPOINT_FMT, id);
-	}
-
-	return 1;
-}
-
-const char **pv_ph_get_certs()
-{
-	struct dirent **files;
-	char **cafiles;
-	char path[PATH_MAX];
-	int n = 0, i = 0, size = 0;
-
-	pv_paths_cert(path, PATH_MAX, "");
-	n = scandir(path, &files, NULL, alphasort);
-	if (n < 0) {
-		pv_log(WARN, "%s could not be scanned", path);
-		return NULL;
-	} else if (n == 0) {
-		pv_log(WARN, "%s is empty", path);
-		free(files);
-		return NULL;
-	}
-
-	// Always n-1 due to . and .., and need one extra
-	cafiles = calloc(n - 1, sizeof(char *));
-
-	while (n--) {
-		if (!strncmp(files[n]->d_name, ".", 1)) {
-			free(files[n]);
-			continue;
-		}
-
-		pv_paths_cert(path, PATH_MAX, files[n]->d_name);
-		size = strlen(path);
-		cafiles[i] = malloc((size + 1) * sizeof(char));
-		memcpy(cafiles[i], path, size);
-		cafiles[i][size] = '\0';
-		i++;
-		free(files[n]);
-	}
-
-	pv_log(INFO, "Found %d http x509 certs in truststore: %s.", i, path);
-
-	free(files);
-
-	return (const char **)cafiles;
-}
-
-struct pv_connection *pv_get_instance_connection()
-{
-	struct pv_connection *conn = NULL;
-	int port = 0;
-	char *host = NULL;
-
-	conn = (struct pv_connection *)calloc(1, sizeof(struct pv_connection));
-	if (!conn) {
-		pv_log(DEBUG, "Unable to allocate memory for connection");
-		return NULL;
-	}
-	// default to global PH instance
-	host = pv_config_get_str(PH_CREDS_HOST);
-	if (!host || (strcmp(host, "") == 0))
-		host = "api.pantahub.com";
-
-	port = pv_config_get_int(PH_CREDS_PORT);
-	if (!port)
-		port = 443;
-
-	conn->hostorip = host;
-	conn->port = port;
-
-	return conn;
-}
-
-void pv_ph_release_client(struct pantavisor *pv)
-{
-	ph_client_free();
-
-	if (endpoint) {
-		free(endpoint);
-		endpoint = 0;
-	}
-}
-
-int pv_ph_device_exists(struct pantavisor *pv)
-{
-	int ret = 0;
-	char *id = 0;
-	trest_request_ptr req = 0;
-	trest_response_ptr res = 0;
-
-	if (!ph_client_init(pv)) {
-		pv_log(WARN, "failed to initialize PantaHub connection");
-		goto out;
-	}
-
-	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
-
-	res = trest_do_json_request(client, req);
-	if (!res) {
-		pv_log(WARN, "HTTP request GET %s could not be initialized",
-		       endpoint);
-	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
-		       endpoint, res->status);
-		ph_client_free();
-	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN,
-		       "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
-		       endpoint, res->code, res->body);
-	} else {
-		id = pv_json_get_value(res->body, "id", res->json_tokv,
-				       res->json_tokc);
-
-		if (id && (strcmp(id, "") != 0)) {
-			pv_log(DEBUG, "device exists: '%s'", id);
-			ret = 1;
-		}
-	}
-
-out:
-	if (id)
-		free(id);
-	if (req)
-		trest_request_free(req);
-	if (res)
-		trest_response_free(res);
-
-	return ret;
-}
-
-static int pv_ph_register_self_builtin(struct pantavisor *pv)
-{
-	int ret = 0;
-	int tokc;
-	int baseurl_size, header_size;
-	thttp_request_tls_t *tls_req = 0;
-	thttp_response_t *res = 0;
-	jsmntok_t *tokv;
-	char **headers = NULL;
-
-	tls_req = thttp_request_tls_new_0();
-	tls_req->crtfiles = (char **)pv_ph_get_certs();
-
-	thttp_request_t *req = (thttp_request_t *)tls_req;
-
-	req->method = THTTP_METHOD_POST;
-	req->proto = THTTP_PROTO_HTTP;
-	req->proto_version = THTTP_PROTO_VERSION_10;
-	req->user_agent = pv_user_agent;
-
-	req->host = pv_config_get_str(PH_CREDS_HOST);
-	req->port = pv_config_get_int(PH_CREDS_PORT);
-	req->host_proxy = pv_config_get_str(PH_CREDS_PROXY_HOST);
-	req->port_proxy = pv_config_get_int(PH_CREDS_PROXY_PORT);
-	req->proxyconnect = !pv_config_get_int(PH_CREDS_PROXY_NOPROXYCONNECT);
-
-	baseurl_size = strlen("https://") + strlen(req->host) + 1 /* : */ +
-		       5 /* port */ + 2 /* 0-delim */;
-	req->baseurl = calloc(baseurl_size, sizeof(char));
-	SNPRINTF_WTRUNC(req->baseurl, baseurl_size, "https://%s:%d", req->host,
-			req->port);
-
-	if (req->host_proxy)
-		req->is_tls =
-			false; /* XXX: global config if proxy is tls is TBD */
-
-	req->path = "/devices/";
-	req->body = 0;
-
-	const char *autotok = pv_config_get_str(PH_FACTORY_AUTOTOK);
-	if (autotok && strcmp(autotok, "")) {
-		headers = calloc(2, sizeof(char *));
-		header_size = sizeof(DEVICE_TOKEN_FMT) + 64;
-		headers[0] = calloc(header_size, sizeof(char));
-		SNPRINTF_WTRUNC(headers[0], header_size, DEVICE_TOKEN_FMT,
-				autotok);
-		thttp_add_headers(req, headers, 1);
-	}
-
-	req->body_content_type = "application/json";
-
-	res = thttp_request_do(req);
-
-	// If registered, override in-memory PantaHub credentials
-	if (!res) {
-		pv_log(WARN, "HTTP request GET %s could not be initialized",
-		       req->path);
-	} else if (res->code == THTTP_STATUS_OK && res->body) {
-		jsmnutil_parse_json(res->body, &tokv, &tokc);
-		pv_config_set_creds_id(
-			pv_json_get_value(res->body, "id", tokv, tokc));
-		pv_config_set_creds_prn(
-			pv_json_get_value(res->body, "prn", tokv, tokc));
-		pv_config_set_creds_secret(
-			pv_json_get_value(res->body, "secret", tokv, tokc));
-		ret = 1;
-	} else if (!res->code) {
-		pv_log(WARN, "HTTP request GET %s got no response", req->path);
-	} else {
-		pv_log(WARN,
-		       "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
-		       req->path, res->code, res->body);
-	}
-
-	if (headers) {
-		free(headers[0]);
-		free(headers);
-	}
-	if (req)
-		thttp_request_free(req);
-	if (res)
-		thttp_response_free(res);
-
-	return ret;
-}
-
-static int pv_ph_register_self_ext(struct pantavisor *pv, char *cmd)
-{
-	int status = -1;
-
-	if (tsh_run(cmd, 1, &status) < 0) {
-		pv_log(ERROR, "registration attempt with cmd: %s", cmd);
-		return 0;
-	}
-
-	return 1;
-}
-
 #define PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT "/btools/%s.register"
 
-int pv_ph_register_self(struct pantavisor *pv)
-{
-	int ret = 1;
-	char cmd[PATH_MAX];
-	enum {
-		HUB_CREDS_TYPE_BUILTIN = 0,
-		HUB_CREDS_TYPE_EXTERNAL,
-		HUB_CREDS_TYPE_ERROR
-	} creds_type;
 
-	const char *type = pv_config_get_str(PH_CREDS_TYPE);
-	if (!strcmp(type, "builtin")) {
-		creds_type = HUB_CREDS_TYPE_BUILTIN;
-	} else if (strlen(type) >= 4 && !strncmp(type, "ext-", 4)) {
-		struct stat sb;
-		int rv;
+static struct pv_pantahub *global_ph;
 
-		// if no executable handler is found; fall back to builtin
-		SNPRINTF_WTRUNC(cmd, sizeof(cmd),
-				PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT, type);
-		rv = stat(cmd, &sb);
-		if (rv) {
-			pv_log(ERROR,
-			       "unable to stat trest client for cmd %s: %s",
-			       cmd, strerror(errno));
-			goto err;
-		}
-		if (!(sb.st_mode & S_IXUSR)) {
-			pv_log(ERROR,
-			       "unable to get trest client for cmd %s ... not executable.",
-			       cmd);
-			goto err;
-		}
-
-		creds_type = HUB_CREDS_TYPE_EXTERNAL;
-	} else {
-		pv_log(ERROR, "unable to get trest client for creds_type %s.",
-		       type);
-		goto err;
-	}
-
-	switch (creds_type) {
-	case HUB_CREDS_TYPE_BUILTIN:
-		ret = pv_ph_register_self_builtin(pv);
-		break;
-	case HUB_CREDS_TYPE_EXTERNAL:
-		ret = pv_ph_register_self_ext(pv, cmd);
-		break;
-	default:
-		pv_log(ERROR,
-		       "unable to register for creds_type %s. "
-		       "Currently supported: builtin and ext-* handlers",
-		       type);
-		ret = 0;
-		goto err;
-	}
-
-err:
-	return ret;
-}
-
-int pv_ph_device_is_owned(struct pantavisor *pv, char **c)
-{
-	int ret = 0;
-	char *owner = 0;
-	trest_request_ptr req = 0;
-	trest_response_ptr res = 0;
-
-	if (!ph_client_init(pv)) {
-		pv_log(ERROR, "failed to initialize PantaHub connection");
-		goto out;
-	}
-
-	req = trest_make_request(THTTP_METHOD_GET, endpoint, 0);
-
-	res = trest_do_json_request(client, req);
-	if (!res) {
-		pv_log(WARN, "HTTP request GET %s could not be initialized",
-		       endpoint);
-	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "HTTP request GET %s could not auth (status=%d)",
-		       endpoint, res->status);
-		ph_client_free();
-	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN,
-		       "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
-		       endpoint, res->code, res->body);
-	} else {
-		owner = pv_json_get_value(res->body, "owner", res->json_tokv,
-					  res->json_tokc);
-
-		if (owner && (strcmp(owner, "") != 0)) {
-			pv_log(DEBUG, "device-owner: '%s'", owner);
-			ret = 1;
-			goto out;
-		}
-
-		*c = pv_json_get_value(res->body, "challenge", res->json_tokv,
-				       res->json_tokc);
-	}
-
-out:
-	if (owner)
-		free(owner);
-	if (req)
-		trest_request_free(req);
-	if (res)
-		trest_response_free(res);
-
-	return ret;
-}
-
-void pv_ph_update_hint_file(struct pantavisor *pv, char *c)
-{
-	char buf[256], path[PATH_MAX];
-
-	pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n",
-			pv_config_get_str(PH_CREDS_ID));
-	if (pv_fs_file_save(path, buf, 0444))
-		pv_log(WARN, "could not save file %s: %s", path,
-		       strerror(errno));
-
-	if (!c)
-		return;
-
-	pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s\n", c);
-	if (pv_fs_file_save(path, buf, 0444))
-		pv_log(WARN, "could not save file %s: %s", path,
-		       strerror(errno));
-}
-
-int pv_ph_upload_metadata(struct pantavisor *pv, char *metadata)
-{
-	uint8_t ret = -1;
-	trest_request_ptr req = 0;
-	trest_response_ptr res = 0;
-	char buf[256];
-
-	if (!ph_client_init(pv))
-		goto out;
-
-	SNPRINTF_WTRUNC(buf, sizeof(buf), "%s%s", endpoint, "/device-meta");
-
-	req = trest_make_request(THTTP_METHOD_PATCH, buf, metadata);
-
-	res = trest_do_json_request(client, req);
-	if (!res) {
-		pv_log(WARN, "PATCH %s could not be initialized", endpoint);
-	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
-		pv_log(WARN, "HTTP request PATCH %s could not auth (status=%d)",
-		       endpoint, res->status);
-		ph_client_free();
-	} else if (res->code != THTTP_STATUS_OK) {
-		pv_log(WARN,
-		       "HTTP request PATCH %s returned HTTP error (code=%d; body='%s')",
-		       endpoint, res->code, res->body);
-	} else {
-		ret = 0;
-	}
-
-out:
-	if (req)
-		trest_request_free(req);
-	if (res)
-		trest_response_free(res);
-
-	return ret;
-}
-
-const char *pv_pantahub_state_string(ph_state_t state)
+const char *_get_state_string(ph_state_t state)
 {
 	switch (state) {
 	case PH_STATE_INIT:
@@ -546,52 +105,6 @@ const char *pv_pantahub_state_string(ph_state_t state)
 	return "unknown";
 }
 
-static struct pv_pantahub *global_ph;
-
-int pv_pantahub_init()
-{
-	// OLD STUFF. TO BE REMOVED
-
-	struct pantavisor *pv = pv_get_instance();
-	char tmp[256], path[PATH_MAX];
-
-	pv_log(DEBUG, "initializing Pantacor Hub client...");
-
-	const char *prn = pv_config_get_str(PH_CREDS_PRN);
-	if (!prn || !strcmp(prn, "")) {
-		pv_log(DEBUG, "device is not claimed yet");
-		pv->unclaimed = true;
-	} else {
-		pv_log(DEBUG, "device is already claimed");
-		pv->unclaimed = false;
-		pv_paths_pv_file(path, PATH_MAX, DEVICE_ID_FNAME);
-		SNPRINTF_WTRUNC(tmp, sizeof(tmp), "%s\n",
-				pv_config_get_str(PH_CREDS_ID));
-		if (pv_fs_file_save(path, tmp, 0444) < 0)
-			pv_log(WARN, "could not save file %s: %s", path,
-			       strerror(errno));
-	}
-
-	pv_paths_pv_file(path, PATH_MAX, PHHOST_FNAME);
-	SNPRINTF_WTRUNC(tmp, sizeof(tmp), "https://%s:%d\n",
-			pv_config_get_str(PH_CREDS_HOST),
-			pv_config_get_int(PH_CREDS_PORT));
-	if (pv_fs_file_save(path, tmp, 0444) < 0)
-		pv_log(WARN, "could not save file %s: %s", path,
-		       strerror(errno));
-
-	// NEW IMPLEMENTATION
-
-	pv_pantahub_proto_init();
-
-	global_ph = calloc(1, sizeof(struct pv_pantahub));
-	global_ph->state = PH_STATE_INIT;
-
-	pv_log(DEBUG, "Pantacor Hub client initialized");
-
-	return 0;
-}
-
 struct pv_pantahub *_get_ph_instance()
 {
 	return global_ph;
@@ -603,14 +116,14 @@ static void _close_state()
 	if (!ph)
 		return;
 
-	pv_log(DEBUG, "closing state: %s", pv_pantahub_state_string(ph->state));
+	pv_log(DEBUG, "closing state: %s", _get_state_string(ph->state));
 
 	pv_event_periodic_stop(&ph->request_timer);
 	pv_event_periodic_stop(&ph->devmeta_timer);
 	pv_event_periodic_stop(&ph->usrmeta_timer);
 }
 
-int pv_pantahub_close()
+int pv_pantahub_stop()
 {
 	struct pv_pantahub *ph = _get_ph_instance();
 	if (!ph)
@@ -641,23 +154,74 @@ static void _next_state(ph_state_t state)
 
 	_close_state();
 
-	pv_log(DEBUG, "next state: %s", pv_pantahub_state_string(state));
+	pv_log(DEBUG, "next state: %s", _get_state_string(state));
 
 	ph->state = state;
-	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE,
-				pv_pantahub_state_string(state));
+	pv_metadata_add_devmeta(DEVMETA_KEY_PH_STATE, _get_state_string(state));
 
 	pv_event_one_shot(_run_state_cb);
 }
 
 static void _run_state_init()
 {
+	pv_pantahub_proto_init();
+
 	if (pv_event_rest_init()) {
 		pv_log(ERROR, "HTTP REST initialization failed");
 		_next_state(PH_STATE_INIT);
 	}
 
-	_next_state(PH_STATE_LOGIN);
+	pv_pantahub_evaluate_state();
+}
+
+static void _register_builtin_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_register_builtin_cb);
+
+	pv_pantahub_proto_post_device();
+}
+
+static void _register_ext()
+{
+	char path[PATH_MAX];
+	int status;
+
+	SNPRINTF_WTRUNC(path, sizeof(path),
+			PANTAVISOR_EXTERNAL_REGISTER_HANDLER_FMT,
+			pv_config_get_str(PH_CREDS_TYPE));
+
+	if (!pv_fs_path_exist(path)) {
+		pv_log(ERROR, "path '%s' does not exist. Rebooting...", path);
+		pv_issue_reboot();
+		return;
+	}
+
+	if (tsh_run(path, 1, &status) < 0) {
+		pv_log(ERROR, "registration failed: %s", path);
+	}
+}
+
+static void _run_state_register()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
+		return;
+
+	switch (pv_config_get_creds_type()) {
+	case CREDS_BUILTIN:
+		pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
+					_register_builtin_cb);
+		break;
+	case CREDS_EXTERNAL:
+		_register_ext();
+		pv_pantahub_evaluate_state();
+		break;
+	default:
+		pv_log(ERROR,
+		       "cannot continue registering device. Rebooting...");
+		pv_issue_reboot();
+		break;
+	}
 }
 
 static void _login_cb(evutil_socket_t fd, short event, void *arg)
@@ -674,6 +238,22 @@ static void _run_state_login()
 		return;
 
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _login_cb);
+}
+
+static void _claim_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_claim_cb);
+
+	pv_pantahub_proto_get_device();
+}
+
+static void _run_state_claim()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
+		return;
+
+	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _claim_cb);
 }
 
 static void _wait_hub_cb(evutil_socket_t fd, short event, void *arg)
@@ -694,6 +274,17 @@ static void _run_state_wait_hub()
 
 static void _run_state_sync()
 {
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return;
+
+	if (!pv_state_is_done(pv->state)) {
+		pv_log(WARN,
+		       "will not proceed with syncing if not running a DONE revision");
+		_next_state(PH_STATE_INIT);
+		return;
+	}
+
 	// TODO: this is old and blocking, but mainly blocking
 	pv_updater_sync();
 
@@ -827,8 +418,14 @@ static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 	case PH_STATE_INIT:
 		_run_state_init();
 		break;
+	case PH_STATE_REGISTER:
+		_run_state_register();
+		break;
 	case PH_STATE_LOGIN:
 		_run_state_login();
+		break;
+	case PH_STATE_CLAIM:
+		_run_state_claim();
 		break;
 	case PH_STATE_WAIT_HUB:
 		_run_state_wait_hub();
@@ -853,16 +450,21 @@ static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 	}
 }
 
-void pv_pantahub_start()
+int pv_pantahub_start()
 {
-	struct pv_pantahub *ph = _get_ph_instance();
-	if (!ph)
-		return;
-
-	if (ph->state != PH_STATE_INIT)
-		return;
-
 	pv_log(DEBUG, "starting Pantacor Hub client...");
+
+	global_ph = calloc(1, sizeof(struct pv_pantahub));
+	if (!global_ph)
+		return -1;
+
+	global_ph->state = PH_STATE_INIT;
+
+	// load pantahub.config from vol or storage
+	if (pv_config_load_creds()) {
+		pv_log(ERROR, "creds load failed");
+		return -1;
+	}
 
 	pv_event_one_shot(_run_state_cb);
 }
@@ -873,8 +475,18 @@ void pv_pantahub_evaluate_state()
 	if (!pv)
 		return;
 
+	if (!pv_pantahub_proto_is_registered()) {
+		_next_state(PH_STATE_REGISTER);
+		return;
+	}
+
 	if (!pv_pantahub_proto_is_auth()) {
 		_next_state(PH_STATE_LOGIN);
+		return;
+	}
+
+	if (!pv_pantahub_proto_is_device_owned()) {
+		_next_state(PH_STATE_CLAIM);
 		return;
 	}
 
@@ -935,6 +547,11 @@ bool pv_pantahub_is_online()
 bool pv_pantahub_got_any_failure()
 {
 	return pv_pantahub_proto_got_any_failure();
+}
+
+bool pv_pantahub_is_device_claimed()
+{
+	return pv_pantahub_proto_is_device_owned();
 }
 
 bool pv_pantahub_is_progress_queue_empty()
