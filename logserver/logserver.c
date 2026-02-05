@@ -119,7 +119,7 @@ static struct logserver logserver = {
 	.epfd = -1,
 	.logsock = -1,
 	.fdsock = -1,
-	.update_rot = LOGSERVER_UPDATE_ROTATION_INTERVAL,
+	.update_rot = 0,
 	.active_out = LOG_SERVER_OUTPUT_NULL_SINK,
 	.running_rev = NULL,
 	.updated_rev = NULL,
@@ -142,6 +142,8 @@ static logserver_outputs_builder_t
 		logserver_stdout_pantavisor_new
 	};
 
+static int pv_log(int level, char *msg, ...);
+
 static int logserver_log_msg_data(const struct logserver_log *log, int output)
 {
 	if ((output > 0 && !(logserver.active_out & output)) || output < 0)
@@ -160,14 +162,20 @@ static int logserver_log_msg_data(const struct logserver_log *log, int output)
 			it->add(it, log);
 		}
 
-		pv_logserver_rot_log_rot(&logserver.rot, it->log_path);
+		pv_logserver_rot_log_rot(&logserver.rot, it->last_log);
 	}
 	pv_logserver_rot_deletion(&logserver.rot);
 
 	logserver.update_rot++;
 
-	if (logserver.update_rot == LOGSERVER_UPDATE_ROTATION_INTERVAL)
+	if (logserver.update_rot == LOGSERVER_UPDATE_ROTATION_INTERVAL) {
 		pv_logserver_rot_update(&logserver.rot);
+		pv_log(INFO, "updating log directory status");
+		pv_log(INFO, "log directory   : %s", logserver.rot.path);
+		pv_log(INFO, "log current size: %jd", logserver.rot.cur_size);
+		pv_log(INFO, "log maximum size: %jd", logserver.rot.high_wm);
+		logserver.update_rot = 0;
+	}
 
 	return 0;
 }
