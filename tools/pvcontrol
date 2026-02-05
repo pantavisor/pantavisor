@@ -1,0 +1,24 @@
+#!/bin/sh
+# pvcontrol - Pantavisor Control CLI wrapper
+
+SOCK="/run/pantavisor/pv/pv-ctrl"
+
+usage() {
+    echo "Usage: pvcontrol [endpoint] [method] [data]"
+    echo "Endpoints: containers, groups, daemons, xconnect-graph, buildinfo, etc."
+    exit 1
+}
+
+ENDPOINT=$1
+METHOD=${2:-GET}
+DATA=$3
+
+if [ -z "$ENDPOINT" ]; then
+    usage
+fi
+
+if [ "$METHOD" = "PUT" ] || [ "$METHOD" = "POST" ]; then
+    pvcurl -X "$METHOD" --data "$DATA" --unix-socket "$SOCK" "http://localhost/$ENDPOINT"
+else
+    pvcurl -X "$METHOD" --unix-socket "$SOCK" "http://localhost/$ENDPOINT"
+fi

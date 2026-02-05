@@ -173,12 +173,12 @@ static void signal_handler(int signal)
 		return;
 
 	while ((pid = waitpids(&wstatus)) > 0) {
-		if (getpid() == 1 && pv_init_is_daemon(pid)) {
+		if (pv_init_is_daemon(pid)) {
 			pv_log(WARN, "Daemon exited.");
 			pv_init_daemon_exited(pid);
-			if (!pv_init_spawn_daemons())
+			if (!pv_init_spawn_daemons(
+				    pv_config_get_system_init_mode()))
 				continue;
-			sleep(1);
 			pv_log(WARN,
 			       "Respawn of critical service failed %d: %s", pid,
 			       strerror(errno));
@@ -397,6 +397,8 @@ int main(int argc, char *argv[])
 	// init buffer with 128Kb to allow logging. Will later be resized according to config
 	pv_buffer_init(10, 128);
 
+	signal(SIGCHLD, signal_handler);
+
 	pv_pid = 0;
 
 	if (!pv_build_manifest || !strlen(pv_build_manifest)) {
@@ -414,7 +416,6 @@ int main(int argc, char *argv[])
 		core_limit.rlim_cur = RLIM_INFINITY;
 		core_limit.rlim_max = RLIM_INFINITY;
 		setrlimit(RLIMIT_CORE, &core_limit);
-		signal(SIGCHLD, signal_handler);
 	}
 
 	// get command argument options
@@ -435,8 +436,10 @@ int main(int argc, char *argv[])
 	init_mode_t init_mode = pv_config_get_system_init_mode();
 	if ((init_mode == IM_EMBEDDED) || (init_mode == IM_STANDALONE)) {
 		pv_drivers_load_early();
-		pv_init_spawn_daemons();
 	}
+
+	// spawn daemons based on their configured modes
+	pv_init_spawn_daemons(init_mode);
 
 	// in case of standalone is set, we only start debugging tools up in main thread
 	if (init_mode == IM_STANDALONE) {
