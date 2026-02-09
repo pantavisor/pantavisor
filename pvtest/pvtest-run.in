@@ -154,9 +154,9 @@ start_pv() {
 
 	if [ -n "$ready_script" ]; then
 		if [ "$verbose" = "false" ]; then
-			sh -c ". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils \"$test_path/$ready_script\"" > /dev/null 2>&1
+			sh -c "$test_path/$ready_script" > /dev/null 2>&1
 		else
-			sh -c ". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils \"$test_path/$ready_script\""
+			sh -c "$test_path/$ready_script"
 		fi
 	fi
 
@@ -209,7 +209,7 @@ exec_test() {
 
 	tmp_out_path=$(mktemp /tmp/pv_appengine_output.XXXXXX)
 	# we use script to get stdout and stderr in the same order we do in console
-	script -q -c "sh -c \". @CMAKE_INSTALL_FULL_DATADIR@/@CMAKE_PROJECT_NAME@/pvtest/utils && $script_path\"" > $tmp_out_path 2>&1
+	script -q -c "sh -c \"$script_path\"" > $tmp_out_path 2>&1
 	output=$(cat "$tmp_out_path")
 	if [ "$overwrite" = "true" ]; then
 		echo "$output" > $test_path/output
