@@ -606,6 +606,12 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 	}
 
 	// we know if we are not coming from a reboot from bootloader
+	pv_log(DEBUG, "update_resume: in_progress=%d trying=%d rev=%s try=%s",
+	       pv_bootloader_update_in_progress(),
+	       pv_bootloader_trying_update(),
+	       pv_bootloader_get_rev() ? pv_bootloader_get_rev() : "(null)",
+	       pv_bootloader_get_try() ? pv_bootloader_get_try() : "(null)");
+
 	if (pv_bootloader_update_in_progress()) {
 		rev = pv_bootloader_get_try();
 		if (!rev)
@@ -636,6 +642,12 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 		free(progress_str);
 	}
 
+	pv_log(DEBUG, "update_resume: trying=%d failed=%d done=%d factory=%d",
+	       pv_bootloader_trying_update(),
+	       pv_update_is_failed(),
+	       pv_update_is_done(),
+	       _is_factory(rev));
+
 	// if we are currently trying a revision that already failed
 	if (pv_bootloader_trying_update() && pv_update_is_failed()) {
 		pv_log(DEBUG, "revision already failed");
@@ -664,6 +676,7 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_ERROR,
 				       PV_UPDATE_PROGRESS_MSG_ROLLEDBACK);
+		pv_bootloader_fail_update();
 		pv_update_finish();
 		return 0;
 	}

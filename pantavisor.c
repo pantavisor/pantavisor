@@ -198,6 +198,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	} else {
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
+		if (!json) {
+			pv_log(ERROR, "get_state_json returned NULL for rev '%s'",
+			       pv_bootloader_get_rev());
+			goto out;
+		}
 		sign_state_res_t sres;
 		sres = pv_signature_verify(json);
 		if (sres != SIGN_STATE_OK) {
@@ -252,7 +257,6 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 			goto out;
 		}
 	}
-
 	// load configuration that lives in revision
 	pv_config_load_update(pv->state->rev, pv->state->bsp.config);
 
