@@ -243,10 +243,8 @@ static int pv_bl_init()
 
 static int pv_bl_early_init(struct pv_init *this)
 {
-	struct pantavisor *pv = pv_get_instance();
 	int len;
-	char *done = NULL, *token = NULL, *buf = NULL;
-	const int CMDLINE_OFFSET = 7;
+	char *done = NULL;
 
 	// initialize to factory revision
 	len = strlen("0") + 1;
@@ -255,21 +253,40 @@ static int pv_bl_early_init(struct pv_init *this)
 	pv_bootloader.pv_try = NULL;
 	pv_bootloader.pv_done = strdup(pv_bootloader.pv_rev);
 
-	// parse command line
-	buf = strdup(pv->cmdline);
-	token = strtok(buf, " ");
-	while (token) {
-		if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
-			len = strlen(token + CMDLINE_OFFSET) + 1;
-			pv_bootloader.pv_rev = realloc(pv_bootloader.pv_rev,
-						       len * sizeof(char));
-			SNPRINTF_WTRUNC(pv_bootloader.pv_rev, len, "%s",
-					token + CMDLINE_OFFSET);
-		}
-		token = strtok(NULL, " ");
-	}
-	free(buf);
+	/*
+	 * Parse pv_rev from environment variable (kernel exports cmdline
+	 * params as env vars to init) or fall back to cmdline parsing.
+	 * Do this before storage read so pv_done has a sane fallback
+	 * matching the bootloader-provided revision (e.g. factory rev).
+	 */
+	const char *env_rev = getenv("pv_rev");
+	if (env_rev && strlen(env_rev) > 0) {
+		free(pv_bootloader.pv_rev);
+		pv_bootloader.pv_rev = strdup(env_rev);
+		pv_log(DEBUG, "pv_rev from environment: %s", pv_bootloader.pv_rev);
+	} else {
+		/* Fallback: parse pv_rev from cmdline */
+		struct pantavisor *pv = pv_get_instance();
+		if (pv && pv->cmdline) {
+			char *buf = strdup(pv->cmdline);
+			char *token = strtok(buf, " ");
+			const int CMDLINE_OFFSET = 7; /* strlen("pv_rev=") */
 
+			while (token) {
+				if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
+					free(pv_bootloader.pv_rev);
+					pv_bootloader.pv_rev = strdup(token + CMDLINE_OFFSET);
+					pv_log(DEBUG, "pv_rev from cmdline: %s",
+					       pv_bootloader.pv_rev);
+					break;
+				}
+				token = strtok(NULL, " ");
+			}
+			free(buf);
+		}
+	}
+
+	/* pv_done defaults to cmdline/env pv_rev (e.g. factory revision) */
 	free(pv_bootloader.pv_done);
 	pv_bootloader.pv_done = strdup(pv_bootloader.pv_rev);
 
@@ -277,16 +294,48 @@ static int pv_bl_early_init(struct pv_init *this)
 	if (pv_bl_init() < 0)
 		return -1;
 
-	// get latest pv_try from /storage place
+	// get latest pv_try and pv_rev from storage
 	pv_bootloader.pv_try = ops->get_env_key("pv_try");
 
-	// overload pv_done with value from boot env file
 	done = ops->get_env_key("pv_rev");
 	if (done) {
 		free(pv_bootloader.pv_done);
 		pv_bootloader.pv_done = done;
 	}
 
+	pv_log(DEBUG, "bl_early_init: pv_rev=%s pv_try=%s pv_done=%s",
+	       pv_bootloader.pv_rev,
+	       pv_bootloader.pv_try ? pv_bootloader.pv_try : "(null)",
+	       pv_bootloader.pv_done);
+
+	/*
+	 * If bootloader provides validate_state, let it override pv_rev.
+	 * This allows bootloaders like rpiab to read from pv_rev.txt.
+	 */
+	if (ops->validate_state) {
+		char *pv_rev_out = NULL;
+
+		if (ops->validate_state(pv_bootloader.pv_try,
+					pv_bootloader.pv_done,
+					&pv_rev_out) < 0) {
+			pv_log(ERROR, "Boot state validation failed");
+			if (pv_rev_out)
+				free(pv_rev_out);
+			return -1;
+		}
+
+		if (pv_rev_out) {
+			free(pv_bootloader.pv_rev);
+			pv_bootloader.pv_rev = pv_rev_out;
+		}
+	}
+
+	pv_log(DEBUG, "bl_early_init done: pv_rev=%s pv_try=%s pv_done=%s",
+	       pv_bootloader.pv_rev,
+	       pv_bootloader.pv_try ? pv_bootloader.pv_try : "(null)",
+	       pv_bootloader.pv_done);
+
+	pv_bootloader_print();
 	return 0;
 }
 
