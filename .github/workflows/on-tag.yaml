@@ -1,0 +1,69 @@
+name: On Tag
+
+on:
+  push:
+    tags:
+      - "*-rc*"
+      - "*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: checkout pantavisor
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get current commit hash
+        run: |
+          CURRENT_HASH=$(git rev-parse HEAD)
+          echo "CURRENT_HASH=$CURRENT_HASH" >> $GITHUB_ENV
+          echo "Current commit hash: $CURRENT_HASH"
+
+      - name: checkout meta-pantavisor
+        uses: actions/checkout@v2
+        with:
+          repository: pantavisor/meta-pantavisor
+          path: meta-pantavisor
+          ref: master
+          token: ${{ secrets.META_PANTAVISOR_PR }}
+
+      - name: Update SRCREV in pantavisor_git.bb
+        run: |
+          BB_FILE="meta-pantavisor/recipes-pv/pantavisor/pantavisor_git.bb"
+          # Old SRCREV
+          grep "SRCREV" "$BB_FILE"
+
+          if [ -f "$BB_FILE" ]; then
+            echo "Updating SRCREV in $BB_FILE"
+            sed -i "s/SRCREV = \".*\"/SRCREV = \"${CURRENT_HASH}\"/" "$BB_FILE"
+            echo "Updated SRCREV to: $CURRENT_HASH"
+
+            # Verify the change
+            grep "SRCREV" "$BB_FILE"
+          else
+            echo "Error: $BB_FILE not found"
+            exit 1
+          fi
+
+          echo $BB_FILE
+          cat $BB_FILE
+
+      - name: Commit and push changes
+        working-directory: ./meta-pantavisor
+        run: |
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+          git config --local user.email "pantavisor-meta@ci.pantavisor.io"
+          git config --local user.name "Pantavisor Meta Layer CI"
+          git checkout -b autopr/pantavisor-update-$GITHUB_REF_NAME-next
+          git add recipes-pv/pantavisor/pantavisor_git.bb
+          git commit -m "AutoPR: update pantavisor SRCREV to $GITHUB_REF_NAME"
+
+          git push origin -f autopr/pantavisor-update-$GITHUB_REF_NAME && gh pr create --base $GITHUB_REF_NAME --fill 2>&1 | grep github.com.*pull || true
+
+        env:
+          GH_TOKEN: ${{ github.token }}
