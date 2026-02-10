@@ -29,12 +29,14 @@
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <sys/mman.h>
+#include <sys/reboot.h>
 #include <sys/wait.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <mtd/mtd-user.h>
 #include <linux/limits.h>
+#include <linux/watchdog.h>
 
 #include <byteswap.h>
 
@@ -60,9 +62,19 @@
 #include "log.h"
 
 enum {
+	RPI_FIRMWARE_GET_GENCMD_RESULT = 0x00030080,
 	RPI_FIRMWARE_GET_REBOOT_FLAGS = 0x00030064,
 	RPI_FIRMWARE_SET_REBOOT_FLAGS = 0x00038064,
 };
+
+/*
+ * Minimum EEPROM bootloader version (Unix timestamp) for tryboot_a_b.
+ * Pi 4: tryboot_a_b mode (correct partition numbering for A/B schemes)
+ *       was added in pieeprom-2022-11-25, promoted to DEFAULT 2022-12-01.
+ *       Earlier EEPROMs (e.g. 2022-08-02) report flipped partition numbers.
+ * Pi 5: all EEPROM versions support tryboot_a_b.
+ */
+#define RPIAB_MIN_TRYBOOT_VERSION 1669334400
 
 struct rpiab_paths {
 	int init;
@@ -88,6 +100,296 @@ static int mbox_open(void);
 static void mbox_close(int file_desc);
 static int _rpiab_mark_tryboot(void);
 static int _rpiab_read_boot_partition_rev(void);
+
+/*
+ * Get the EEPROM bootloader version via mbox GET_GENCMD_RESULT (0x00030080).
+ *
+ * This sends "bootloader_version" to the VC firmware through /dev/vcio,
+ * the same interface that vcgencmd uses. The response contains a
+ * "timestamp XXXXXXXXXX" line with the EEPROM bootloader build date.
+ *
+ * Note: The DTB /proc/device-tree/chosen/bootloader/version shows the
+ * VC firmware (start4.elf) version, NOT the EEPROM version.
+ *
+ * Returns the Unix timestamp, or 0 on failure.
+ */
+#define GENCMD_MAX_STRING 1024
+static uint32_t rpiab_get_eeprom_version(void)
+{
+	/*
+	 * Buffer layout (same as vcgencmd from raspberrypi/utils):
+	 *   [0]   = total size in bytes
+	 *   [1]   = request code (0)
+	 *   [2]   = tag: GET_GENCMD_RESULT (0x00030080)
+	 *   [3]   = tag: buffer length (1024)
+	 *   [4]   = tag: request/response indicator
+	 *   [5]   = tag: error code (0 in request)
+	 *   [6..] = command string / response string (1024 bytes = 256 words)
+	 *   [262] = end tag (0)
+	 */
+	unsigned p[263] = {};
+	const char *cmd = "bootloader_version";
+	int i = 0;
+	uint32_t version = 0;
+	char *ts;
+
+	int mbox = mbox_open();
+	if (mbox < 0)
+		return 0;
+
+	i = 0;
+	p[i++] = 0; /* size - filled below */
+	p[i++] = 0; /* request */
+	p[i++] = RPI_FIRMWARE_GET_GENCMD_RESULT;
+	p[i++] = GENCMD_MAX_STRING; /* buffer length */
+	p[i++] = 0; /* request */
+	p[i++] = 0; /* error code */
+	memcpy(p + i, cmd, strlen(cmd) + 1);
+	i += GENCMD_MAX_STRING >> 2;
+	p[i++] = 0; /* end tag */
+	p[0] = i * sizeof(unsigned);
+
+	if (mbox_property(mbox, p) < 0) {
+		mbox_close(mbox);
+		return 0;
+	}
+	mbox_close(mbox);
+
+	if (p[5] != 0) {
+		pv_log(WARN, "bootloader_version command returned error %d",
+		       p[5]);
+		return 0;
+	}
+
+	/* Response string is at p[6], parse "timestamp XXXXXXXXXX" */
+	ts = strstr((const char *)(p + 6), "timestamp ");
+	if (ts) {
+		version = (uint32_t)strtoul(ts + 10, NULL, 10);
+	}
+
+	return version;
+}
+
+static uint32_t bootloader_version = 0;
+
+/*
+ * Stage EEPROM recovery files on the bootsel partition.
+ *
+ * The bootsel partition carries platform-specific EEPROM firmware:
+ *   recovery-2711.bin / pieeprom-2711.bin (Pi 4)
+ *   recovery-2712.bin / pieeprom-2712.bin (Pi 5)
+ *
+ * This function detects the SoC, mounts bootsel, renames the correct
+ * files to recovery.bin / pieeprom.upd, and reboots. The EEPROM
+ * bootloader picks up recovery.bin at the very start of boot (before
+ * config.txt), flashes the new EEPROM, and reboots again.
+ */
+/*
+ * Run an mtools command via tsh, wait for completion.
+ * Returns 0 on success, -1 on failure.
+ */
+static int rpiab_run_mtools(char *cmd)
+{
+	sigset_t oldset;
+	pid_t p;
+	int wstatus;
+
+	pv_log(DEBUG, "mtools: %s", cmd);
+
+	if (pvsignals_block_chld(&oldset)) {
+		pv_log(ERROR, "Cannot block sigchld: %s", strerror(errno));
+		return -1;
+	}
+
+	p = tsh_run(cmd, 0, NULL);
+	if (p < 0) {
+		pv_log(ERROR, "tsh_run '%s' failed: %s", cmd,
+		       strerror(errno));
+		pvsignals_setmask(&oldset);
+		return -1;
+	}
+
+	for (int i = 0; i < 10; i++) {
+		pid_t wp = waitpid(p, &wstatus, WNOHANG);
+		if (wp < 0) {
+			pv_log(ERROR, "waitpid '%s' failed: %s", cmd,
+			       strerror(errno));
+			pvsignals_setmask(&oldset);
+			return -1;
+		}
+		if (wp > 0) {
+			pvsignals_setmask(&oldset);
+			if (!WIFEXITED(wstatus)) {
+				pv_log(ERROR, "'%s' killed by signal %d",
+				       cmd, WTERMSIG(wstatus));
+				return -1;
+			}
+			if (WEXITSTATUS(wstatus)) {
+				pv_log(ERROR, "'%s' exited with status %d",
+				       cmd, WEXITSTATUS(wstatus));
+				return -1;
+			}
+			pv_log(DEBUG, "mtools ok: %s", cmd);
+			return 0;
+		}
+		sleep(1);
+	}
+	pv_log(ERROR, "'%s' timed out after 10s", cmd);
+	pvsignals_setmask(&oldset);
+	return -1;
+}
+
+static void rpiab_stage_eeprom_update(void)
+{
+	const char *soc = NULL;
+	const char *bootsel_dev;
+	char compat[256] = {};
+	char cmd[512];
+	FILE *f;
+	size_t r;
+
+	/* Detect SoC from device tree compatible string.
+	 * The compatible property is null-separated (e.g.
+	 * "raspberrypi,4-model-b\0brcm,bcm2711\0"), so replace
+	 * nulls with spaces to make it searchable with strstr. */
+	f = fopen("/proc/device-tree/compatible", "r");
+	if (!f) {
+		pv_log(ERROR, "Cannot detect SoC type: %s", strerror(errno));
+		return;
+	}
+	r = fread(compat, 1, sizeof(compat) - 1, f);
+	fclose(f);
+	for (size_t i = 0; i < r; i++) {
+		if (compat[i] == '\0')
+			compat[i] = ' ';
+	}
+	compat[r] = '\0';
+
+	if (strstr(compat, "bcm2712"))
+		soc = "2712";
+	else if (strstr(compat, "bcm2711"))
+		soc = "2711";
+	else {
+		pv_log(WARN, "Unknown SoC, cannot select EEPROM firmware");
+		fprintf(stderr,
+			"rpiab: unknown SoC - no EEPROM firmware available, cannot auto-update\n");
+		return;
+	}
+
+	bootsel_dev = (boot_mode & 4) ? "/dev/sda1" : "/dev/mmcblk0p1";
+
+	pv_log(INFO, "Staging EEPROM update for BCM%s from %s", soc,
+	       bootsel_dev);
+	fprintf(stderr, "rpiab: staging EEPROM update for BCM%s\n", soc);
+
+	/* Check source file exists on bootsel via mdir */
+	snprintf(cmd, sizeof(cmd),
+		 "mdir -i %s ::pieeprom-%s.bin", bootsel_dev, soc);
+	if (rpiab_run_mtools(cmd)) {
+		pv_log(WARN, "No EEPROM firmware on bootsel for BCM%s", soc);
+		fprintf(stderr, "rpiab: no pieeprom-%s.bin on bootsel\n", soc);
+		return;
+	}
+
+	/* Clean up leftovers from a previous failed flash attempt */
+	snprintf(cmd, sizeof(cmd),
+		 "mdel -i %s ::RECOVERY.000", bootsel_dev);
+	rpiab_run_mtools(cmd); /* ignore error — file may not exist */
+	snprintf(cmd, sizeof(cmd),
+		 "mdel -i %s ::pieeprom.upd", bootsel_dev);
+	rpiab_run_mtools(cmd);
+	snprintf(cmd, sizeof(cmd),
+		 "mdel -i %s ::pieeprom.sig", bootsel_dev);
+	rpiab_run_mtools(cmd);
+
+	/* Copy pieeprom first — recovery.bin is the trigger that starts
+	 * the flash process, so it must be created last.  We extract to
+	 * /tmp then write back with the target name so the originals
+	 * survive a failed flash and we can retry on next boot.
+	 * (mcopy cannot copy within the same FAT image.) */
+	snprintf(cmd, sizeof(cmd),
+		 "mcopy -i %s ::pieeprom-%s.bin /tmp/pieeprom.upd",
+		 bootsel_dev, soc);
+	if (rpiab_run_mtools(cmd)) {
+		pv_log(ERROR, "Failed to extract pieeprom-%s.bin from bootsel",
+		       soc);
+		return;
+	}
+	snprintf(cmd, sizeof(cmd),
+		 "mcopy -o -i %s /tmp/pieeprom.upd ::pieeprom.upd",
+		 bootsel_dev);
+	if (rpiab_run_mtools(cmd)) {
+		pv_log(ERROR, "Failed to write pieeprom.upd to bootsel");
+		return;
+	}
+	/* Copy the signature file — recovery.bin verifies pieeprom.upd
+	 * against pieeprom.sig (SHA256 hash) before flashing. */
+	snprintf(cmd, sizeof(cmd),
+		 "mcopy -i %s ::pieeprom-%s.sig /tmp/pieeprom.sig",
+		 bootsel_dev, soc);
+	if (rpiab_run_mtools(cmd)) {
+		pv_log(ERROR, "Failed to extract pieeprom-%s.sig from bootsel",
+		       soc);
+		return;
+	}
+	snprintf(cmd, sizeof(cmd),
+		 "mcopy -o -i %s /tmp/pieeprom.sig ::pieeprom.sig",
+		 bootsel_dev);
+	if (rpiab_run_mtools(cmd)) {
+		pv_log(ERROR, "Failed to write pieeprom.sig to bootsel");
+		return;
+	}
+	pv_log(INFO, "Staged pieeprom-%s.bin -> pieeprom.upd + pieeprom.sig",
+	       soc);
+
+	/* Now copy recovery — this arms the EEPROM flash */
+	snprintf(cmd, sizeof(cmd),
+		 "mcopy -i %s ::recovery-%s.bin /tmp/recovery.bin",
+		 bootsel_dev, soc);
+	if (rpiab_run_mtools(cmd)) {
+		pv_log(ERROR, "Failed to extract recovery-%s.bin from bootsel",
+		       soc);
+		return;
+	}
+	snprintf(cmd, sizeof(cmd),
+		 "mcopy -o -i %s /tmp/recovery.bin ::recovery.bin",
+		 bootsel_dev);
+	if (rpiab_run_mtools(cmd)) {
+		pv_log(ERROR, "Failed to write recovery.bin to bootsel");
+		return;
+	}
+	pv_log(INFO, "Staged recovery-%s.bin -> recovery.bin (armed)", soc);
+
+	sync();
+
+	/* Arm hardware watchdog as safety net in case reboot() hangs.
+	 * We open /dev/watchdog directly rather than using pv_wdt_start()
+	 * because the pantavisor config system isn't initialized yet. */
+	{
+		int wdt_fd = open("/dev/watchdog", O_RDWR | O_CLOEXEC);
+		if (wdt_fd >= 0) {
+			int timeout = 15;
+			ioctl(wdt_fd, WDIOC_SETTIMEOUT, &timeout);
+			pv_log(INFO,
+			       "Watchdog armed (%ds) as reboot safety net",
+			       timeout);
+			/* Do NOT close — keeps watchdog ticking */
+		} else {
+			pv_log(WARN,
+			       "Cannot arm watchdog for reboot safety: %s",
+			       strerror(errno));
+		}
+	}
+
+	fprintf(stderr,
+		"rpiab: EEPROM update staged, rebooting for flash...\n");
+	sleep(2);
+	reboot(RB_AUTOBOOT);
+
+	/* Should not reach here — watchdog will reset if reboot() hangs */
+	while (1)
+		sleep(1);
+}
 
 static struct rpiab_paths paths = {
 	.init = 0,
@@ -148,6 +450,32 @@ static int rpiab_init_fw(struct rpiab_paths *paths)
 	fclose(f);
 	boot_mode = bswap_32(boot_mode);
 	pv_log(DEBUG, "RPI Boot Mode: %ju", boot_mode);
+
+	/* Check EEPROM bootloader version via mbox GET_GENCMD_RESULT */
+	bootloader_version = rpiab_get_eeprom_version();
+	if (bootloader_version) {
+		pv_log(INFO, "EEPROM bootloader version: %u", bootloader_version);
+		fprintf(stderr, "rpiab: eeprom version=%u\n",
+			bootloader_version);
+		if (bootloader_version < RPIAB_MIN_TRYBOOT_VERSION) {
+			pv_log(ERROR,
+			       "EEPROM bootloader version %u is too old for tryboot "
+			       "(need >= %u / 2022-01-25)",
+			       bootloader_version, RPIAB_MIN_TRYBOOT_VERSION);
+			fprintf(stderr,
+				"rpiab: ERROR: EEPROM too old for tryboot! version=%u need>=%u\n",
+				bootloader_version, RPIAB_MIN_TRYBOOT_VERSION);
+			/* Try to stage auto-update from bootsel partition.
+			 * If successful, this reboots and never returns.
+			 * If firmware files are not available, fall through
+			 * to return -1 (pantavisor exits, kernel panics,
+			 * reboots after panic=5 seconds). */
+			rpiab_stage_eeprom_update();
+			return -1;
+		}
+	} else {
+		pv_log(WARN, "Could not query EEPROM version via mbox");
+	}
 
 	// for now we only support boot mode sd card (1) and usb disk (4)
 	if (boot_mode & 4) {
@@ -1082,6 +1410,7 @@ static int rpiab_fail_update()
 {
 	return -1;
 }
+
 
 /*
  * Validate boot state and determine the current revision.

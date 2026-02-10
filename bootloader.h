@@ -51,6 +51,7 @@ struct bl_ops {
 	 */
 	int (*validate_state)(const char *pv_try, const char *pv_done,
 			      char **pv_rev_out);
+
 };
 
 void pv_bootloader_print(void);
