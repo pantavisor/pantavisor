@@ -543,7 +543,10 @@ void pv_update_run(const char *rev)
 
 	json = pv_storage_get_state_json(rev);
 	if (!json) {
-		pv_log(WARN, "Could not read state json");
+		pv_log(WARN, "could not read state json");
+		pv_update_progress_set(&u->progress,
+				       PV_UPDATE_PROGRESS_STATUS_WONTGO,
+				       PV_UPDATE_PROGRESS_MSG_NO_STATE_JSON);
 		goto out;
 	}
 

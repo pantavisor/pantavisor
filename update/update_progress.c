@@ -368,6 +368,9 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 	case PV_UPDATE_PROGRESS_MSG_NO_DOWNLOAD:
 		ret = strdup("Max download update retries reached");
 		break;
+	case PV_UPDATE_PROGRESS_MSG_NO_STATE_JSON:
+		ret = strdup("State JSON not found");
+		break;
 	case PV_UPDATE_PROGRESS_MSG_NO_PARSE:
 		ret = strdup("State JSON has bad format");
 		break;
