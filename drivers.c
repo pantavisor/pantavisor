@@ -19,6 +19,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -197,6 +198,41 @@ void pv_drivers_load_early()
 	tsh_run("/sbin/mdev -s > /dev/null 2>&1", 0, &r);
 	if (r != 0)
 		pv_log(WARN, "Cannot load drivers using mdev error: %d", r);
+}
+
+static int _install_mdev_conf(void)
+{
+	FILE *f = fopen("/etc/mdev.conf", "w");
+	if (!f) {
+		pv_log(WARN, "cannot create /etc/mdev.conf: %s",
+		       strerror(errno));
+		return -1;
+	}
+	fprintf(f, "$MODALIAS=.* 0:0 660 @modprobe \"$MODALIAS\"\n");
+	fclose(f);
+	return 0;
+}
+
+void pv_drivers_load_auto(void)
+{
+	int mode = pv_config_get_drivers_auto();
+	int r = -1;
+
+	if (mode == DRIVERS_AUTO_DISABLED)
+		return;
+
+	if (_install_mdev_conf())
+		return;
+
+	if (mode == DRIVERS_AUTO_ONCE) {
+		pv_log(INFO, "auto-loading drivers (once)");
+		tsh_run("/sbin/mdev -s", 1, &r);
+		if (r != 0)
+			pv_log(WARN, "mdev -s failed: %d", r);
+	} else if (mode == DRIVERS_AUTO_HOTPLUG) {
+		pv_log(INFO, "starting mdev hotplug daemon");
+		tsh_run("/sbin/mdev -d", 0, NULL);
+	}
 }
 
 const char *pv_drivers_state_str(char *match)

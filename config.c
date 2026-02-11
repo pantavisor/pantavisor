@@ -55,6 +55,7 @@
 typedef enum {
 	BOOL,
 	BOOTLOADER,
+	DRIVERS_AUTO,
 	INIT_MODE,
 	INT,
 	LOG_SERVER_OUTPUT_UPDATE_MASK,
@@ -246,6 +247,8 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_SYSTEM_APPARMOR_PROFILES", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_SYSTEM_CONFDIR", PV, 0, false,
 	  .value.s = SYSTEM_CONFDIR_DEF },
+	{ DRIVERS_AUTO, "PV_SYSTEM_DRIVERS_AUTO", PV | OEM, 0, false,
+	  .value.i = DRIVERS_AUTO_DISABLED },
 	{ BOOL, "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO", PV, 0, false,
 	  .value.b = false },
 	{ STR, "PV_SYSTEM_ETCDIR", PV, 0, false, .value.s = SYSTEM_ETCDIR_DEF },
@@ -346,6 +349,7 @@ static struct pv_config_alias aliases[] = {
 	{ "storage.wait", "PV_STORAGE_WAIT" },
 	{ "system.apparmor.profiles", "PV_SYSTEM_APPARMOR_PROFILES" },
 	{ "system.confdir", "PV_SYSTEM_CONFDIR" },
+	{ "system.drivers.auto", "PV_SYSTEM_DRIVERS_AUTO" },
 	{ "system.drivers.load_early.auto",
 	  "PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO" },
 	{ "system.etcdir", "PV_SYSTEM_ETCDIR" },
@@ -673,6 +677,43 @@ char *pv_config_get_wdt_mode_str(void)
 	return _get_wdt_mode_str(pv_config_get_wdt_mode());
 }
 
+static const char *_get_drivers_auto_str(int mode)
+{
+	switch (mode) {
+	case DRIVERS_AUTO_DISABLED:
+		return "disabled";
+	case DRIVERS_AUTO_ONCE:
+		return "once";
+	case DRIVERS_AUTO_HOTPLUG:
+		return "hotplug";
+	default:
+		return "unknown";
+	}
+}
+
+drivers_auto_t pv_config_get_drivers_auto(void)
+{
+	return pv_config_get_int(PV_SYSTEM_DRIVERS_AUTO);
+}
+
+static void _set_config_by_entry_drivers_auto(struct pv_config_entry *entry,
+					     const char *value)
+{
+	if (!entry)
+		return;
+
+	if (pv_str_matches(value, strlen(value), "disabled",
+			   strlen("disabled")))
+		entry->value.i = DRIVERS_AUTO_DISABLED;
+	else if (pv_str_matches(value, strlen(value), "once", strlen("once")))
+		entry->value.i = DRIVERS_AUTO_ONCE;
+	else if (pv_str_matches(value, strlen(value), "hotplug",
+				strlen("hotplug")))
+		entry->value.i = DRIVERS_AUTO_HOTPLUG;
+	else
+		pv_log(WARN, "unknown drivers auto mode '%s'", value);
+}
+
 static void _set_config_by_entry_wdt_mode(struct pv_config_entry *entry,
 					  const char *value)
 {
@@ -836,6 +877,9 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		break;
 	case BOOTLOADER:
 		_set_config_by_entry_bootloader_type(entry, value);
+		break;
+	case DRIVERS_AUTO:
+		_set_config_by_entry_drivers_auto(entry, value);
 		break;
 	case INIT_MODE:
 		_set_config_by_entry_init_mode(entry, value);
@@ -1205,6 +1249,7 @@ static void _add_config_entry_alias_json(config_index_t ci,
 		pv_json_ser_bool(js, entries[ci].value.b);
 		break;
 	case BOOTLOADER:
+	case DRIVERS_AUTO:
 	case INIT_MODE:
 	case INT:
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
@@ -1252,6 +1297,10 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 	case BOOTLOADER:
 		snprintf(out, len, "%s",
 			 _get_bootloader_type_str(entries[ci].value.i));
+		break;
+	case DRIVERS_AUTO:
+		snprintf(out, len, "%s",
+			 _get_drivers_auto_str(entries[ci].value.i));
 		break;
 	case INIT_MODE:
 		snprintf(out, len, "%s",
@@ -1346,6 +1395,11 @@ static void _print_config_entry(config_index_t ci)
 	case BOOTLOADER:
 		pv_log(INFO, "%s = '%s' (%s)", key,
 		       _get_bootloader_type_str(entries[ci].value.i),
+		       _get_mod_level_str(modified));
+		break;
+	case DRIVERS_AUTO:
+		pv_log(INFO, "%s = '%s' (%s)", key,
+		       _get_drivers_auto_str(entries[ci].value.i),
 		       _get_mod_level_str(modified));
 		break;
 	case INIT_MODE:

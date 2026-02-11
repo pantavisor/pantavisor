@@ -111,6 +111,7 @@ typedef enum {
 	PV_STORAGE_WAIT,
 	PV_SYSTEM_APPARMOR_PROFILES,
 	PV_SYSTEM_CONFDIR,
+	PV_SYSTEM_DRIVERS_AUTO,
 	PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO,
 	PV_SYSTEM_ETCDIR,
 	PV_SYSTEM_ETCPANTAVISORDIR,
@@ -192,6 +193,16 @@ typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
 init_mode_t pv_config_get_system_init_mode(void);
 char *pv_config_get_system_init_mode_str(void);
 void pv_config_set_system_init_mode(init_mode_t mode);
+
+// DRIVERS AUTO MODE
+
+typedef enum {
+	DRIVERS_AUTO_DISABLED,
+	DRIVERS_AUTO_ONCE,
+	DRIVERS_AUTO_HOTPLUG,
+} drivers_auto_t;
+
+drivers_auto_t pv_config_get_drivers_auto(void);
 
 // WATCHDOG MODE
 

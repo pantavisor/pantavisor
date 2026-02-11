@@ -489,7 +489,12 @@ static int pv_state_mount_bsp_volumes(struct pv_state *s)
 			}
 	}
 
-	return pv_volumes_mount_firmware_modules();
+	if (pv_volumes_mount_firmware_modules())
+		return -1;
+
+	pv_drivers_load_auto();
+
+	return 0;
 }
 
 static int _link_trail_objects(struct pv_state *s)
