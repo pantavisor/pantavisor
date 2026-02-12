@@ -76,7 +76,7 @@ static int console_fd = 0;
 
 static const char *REBOOT_DEFERRAL_MESSAGE =
 	"System will reboot in %d seconds, to defer reboot:\n"
-	"run 'pventer -c <container-name> pvcontrol cmd defer-reboot [new timeout]'";
+	"run 'pvcontrol cmd defer-reboot [new timeout]'";
 
 static uint64_t pv_debug_timeout_elapsed_sec()
 {
