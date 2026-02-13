@@ -167,7 +167,7 @@ start_pv() {
 		pv_ready="true"
 	fi
 
-	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib pvcurl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 120
+	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib curl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 120
 	if [ $? -ne 0 ]; then
 		echo "Error: timed out waiting for $control_container pvr endpoint to be online"
 		stop_pv
