@@ -26,7 +26,7 @@
 #include "paths.h"
 #include "utils/fs.h"
 
-#include <stdio.h>
+#include <limits.h>
 #include <string.h>
 #include <unistd.h>
 #include <linux/limits.h>
@@ -34,29 +34,31 @@
 
 #define MAIN_PLATFORM "pantavisor"
 
-static char *create_dir(const struct logserver_log *log, bool is_pv)
+static int create_dir(const struct logserver_log *log, bool is_pv, char *path)
 {
 	if (!log->running_rev) {
 		WARN_ONCE(
 			"Log with no revision (null) arrives to filetree output: %s",
 			log->data.buf);
-		return NULL;
+		return -1;
 	}
 
-	char path[PATH_MAX];
-	pv_paths_pv_log_file(path, sizeof(path), log->running_rev, log->plat,
+	char tmp_path[PATH_MAX] = { 0 };
+	pv_paths_pv_log_file(tmp_path, PATH_MAX, log->running_rev, log->plat,
 			     is_pv ? "pantavisor.log" : log->src);
 
-	char *dup_path = strdup(path);
-	char *fname = dirname(path);
+	char dir[PATH_MAX] = { 0 };
+	pv_fs_dirname(tmp_path, dir);
 
 	// Create directory for logged item according to platform and source.
-	if (pv_fs_mkdir_p(fname, 0755) != 0) {
-		free(dup_path);
-		return NULL;
+	if (pv_fs_mkdir_p(dir, 0755) != 0) {
+		return -1;
 	}
 
-	return dup_path;
+	memset(path, 0, PATH_MAX);
+	memccpy(path, tmp_path, 0, PATH_MAX);
+
+	return 0;
 }
 
 static int add_log(struct logserver_out *out, const struct logserver_log *log)
@@ -66,17 +68,16 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 
 	bool is_pv = !strncmp(log->plat, MAIN_PLATFORM, strlen(MAIN_PLATFORM));
 
-	char *path = create_dir(log, is_pv);
-	if (!path)
+	if (create_dir(log, is_pv, out->last_log) != 0)
 		return -1;
 
-	int fd = logserver_utils_open_logfile(path);
+	int fd = logserver_utils_open_logfile(out->last_log);
 
 	if (fd < 0) {
 		WARN_ONCE("Error opening file %s/%s, errno = %d\n", platform,
 			  source, errno);
 
-		free(path);
+		memset(out->last_log, 0, PATH_MAX);
 		return -1;
 	}
 
@@ -88,7 +89,6 @@ static int add_log(struct logserver_out *out, const struct logserver_log *log)
 		len = logserver_utils_print_raw(fd, log);
 
 	close(fd);
-	free(path);
 
 	return len;
 }

@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
+#include <linux/limits.h>
 
 #define LOGSERVER_LOG_PROTOCOL_V1 0
 
@@ -70,6 +71,7 @@ struct logserver_log {
 struct logserver_out {
 	int id;
 	char *name;
+	char last_log[PATH_MAX];
 	int (*add)(struct logserver_out *out, const struct logserver_log *log);
 	void (*free)(struct logserver_out *out);
 	void *opaque;
