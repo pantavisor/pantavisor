@@ -160,10 +160,11 @@ static int pv_mount_init(struct pv_init *this)
 	// attempt auto resize only if we have ext4 and in embedded init mode
 	if ((pv_config_get_system_init_mode() == IM_EMBEDDED) &&
 	    !strcmp(pv_config_get_str(PV_STORAGE_FSTYPE), "ext4")) {
-		size_t run_size = strlen("/lib/pv/pv_e2fsgrow") +
+		size_t run_size = strlen(PV_INSTALL_FULL_PVLIBDIR "/pv_e2fsgrow") +
 				  strlen(dev_info.device) + 3;
 		char *run = malloc(sizeof(char) * run_size);
-		SNPRINTF_WTRUNC(run, run_size, "/lib/pv/pv_e2fsgrow %s",
+		SNPRINTF_WTRUNC(run, run_size,
+				PV_INSTALL_FULL_PVLIBDIR "/pv_e2fsgrow %s",
 				dev_info.device);
 		tsh_run(run, 1, NULL);
 		free(run);
