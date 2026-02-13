@@ -102,3 +102,4 @@ void pv_wdt_kick()
 
 	pv_log(DEBUG, "watchdog kicked");
 }
+

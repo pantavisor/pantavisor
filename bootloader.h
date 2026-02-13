@@ -38,6 +38,20 @@ struct bl_ops {
 	int (*install_update)(char *rev);
 	int (*commit_update)();
 	int (*fail_update)();
+
+	/*
+	 * Validate boot state and determine current revision.
+	 * Called after pv_try/pv_done are loaded from storage.
+	 *
+	 * pv_try: stored pv_try value (may be NULL)
+	 * pv_done: stored pv_rev/pv_done value
+	 * pv_rev_out: output - the revision to use as current (caller frees)
+	 *
+	 * Returns: 0 on success, -1 on error (causes bootloader init to fail)
+	 */
+	int (*validate_state)(const char *pv_try, const char *pv_done,
+			      char **pv_rev_out);
+
 };
 
 void pv_bootloader_print(void);
