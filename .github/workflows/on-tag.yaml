@@ -59,7 +59,7 @@ jobs:
           git config --global --add safe.directory $GITHUB_WORKSPACE
           git config --local user.email "pantavisor-meta@ci.pantavisor.io"
           git config --local user.name "Pantavisor Meta Layer CI"
-          git checkout -b autopr/pantavisor-update-$GITHUB_REF_NAME-next
+          git checkout -b autopr/pantavisor-update-$GITHUB_REF_NAME
           git add recipes-pv/pantavisor/pantavisor_git.bb
           git commit -m "AutoPR: update pantavisor SRCREV to $GITHUB_REF_NAME"
 
