@@ -37,6 +37,27 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
+/*
+ * Skip a jsmn token and all its children, returning the number of
+ * tokens consumed. For primitives/strings returns 1, for objects/arrays
+ * returns 1 + all nested tokens.
+ */
+static int jsmnutil_traverse_token(const char *buf, jsmntok_t *tok)
+{
+	int i, count = 1;
+	if (tok->type == JSMN_OBJECT) {
+		for (i = 0; i < tok->size; i++) {
+			count += jsmnutil_traverse_token(buf, tok + count);
+			count += jsmnutil_traverse_token(buf, tok + count);
+		}
+	} else if (tok->type == JSMN_ARRAY) {
+		for (i = 0; i < tok->size; i++) {
+			count += jsmnutil_traverse_token(buf, tok + count);
+		}
+	}
+	return count;
+}
+
 #include "parser_system1.h"
 #include "addons.h"
 #include "platforms.h"
