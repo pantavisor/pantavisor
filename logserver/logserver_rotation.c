@@ -53,8 +53,10 @@ struct logserver_rot_dirs {
 static void pv_logserver_rot_get_comp_name(char *comp, const char *dir,
 					   const char *name, int seq)
 {
+	char tmp[PATH_MAX] = { 0 };
+	snprintf(tmp, PATH_MAX, "%s.%d", name, seq);
 	memset(comp, 0, PATH_MAX);
-	snprintf(comp, PATH_MAX, "%s/%s.%d", dir, name, seq);
+	pv_fs_path_concat(comp, 2, dir, tmp);
 }
 
 static long pv_logserver_rot_get_num(const char *fname)
