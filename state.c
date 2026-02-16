@@ -866,7 +866,8 @@ static bool pv_state_compare_objects(struct pv_state *current,
 			// changes in objects belonging to platforms in certain groups require reboot
 			if (pv_state_platform_requires_reboot(o->plat))
 				return true;
-			if (pend_o && pv_state_platform_requires_reboot(pend_o->plat))
+			if (pend_o &&
+			    pv_state_platform_requires_reboot(pend_o->plat))
 				return true;
 			// lenient stop of platform and continue
 			if (pv_platform_is_starting(o->plat) ||
@@ -935,7 +936,8 @@ static bool pv_state_compare_jsons(struct pv_state *current,
 			// changes in jsons belonging to platforms in certain groups require reboot
 			if (pv_state_platform_requires_reboot(j->plat))
 				return true;
-			if (pend_j && pv_state_platform_requires_reboot(pend_j->plat))
+			if (pend_j &&
+			    pv_state_platform_requires_reboot(pend_j->plat))
 				return true;
 			// lenient stop of platform and continue
 			if (pv_platform_is_starting(j->plat) ||
@@ -1049,7 +1051,6 @@ static void pv_state_remove_updated_platforms(struct pv_state *s)
 		pv_object_free(o);
 	}
 
-
 	// remove volumes belonging to stopped platforms from state
 	dl_list_for_each_safe(v, v_tmp, &s->volumes, struct pv_volume, list)
 	{
@@ -1127,7 +1128,6 @@ static void pv_state_transfer_platforms(struct pv_state *pending,
 		dl_list_del(&o->list);
 		dl_list_add_tail(&current->objects, &o->list);
 	}
-
 
 	// transfer volumes belonging to platforms from pending that do not exist in current
 	dl_list_for_each_safe(v, v_tmp, &pending->volumes, struct pv_volume,

@@ -795,6 +795,8 @@ static pv_state_t _pv_block_reboot(struct pantavisor *pv)
 		if (pv->cmd->op == CMD_DEFER_REBOOT) {
 			_pv_command(pv);
 		} else {
+			pv_log(WARN,
+			       "cmd received but ignored. Only defer-reboot cmd allowed in this state");
 			// free processing command so we can take further ones
 			pv_ctrl_cmd_free(pv->cmd);
 			pv->cmd = NULL;
