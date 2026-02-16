@@ -791,6 +791,16 @@ static pv_state_t _pv_poweroff(struct pantavisor *pv)
 
 static pv_state_t _pv_block_reboot(struct pantavisor *pv)
 {
+	if (pv->cmd) {
+		if (pv->cmd->op == CMD_DEFER_REBOOT) {
+			_pv_command(pv);
+		} else {
+			// free processing command so we can take further ones
+			pv_ctrl_cmd_free(pv->cmd);
+			pv->cmd = NULL;
+		}
+	}
+
 	if (pv_debug_is_shell_open()) {
 		pv_log(DEBUG, "holding on reboot because shell is opened");
 		return PV_STATE_BLOCK_REBOOT;
