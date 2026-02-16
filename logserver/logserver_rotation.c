@@ -110,7 +110,7 @@ void pv_logserver_rot_update(struct logserver_rot *rot)
 {
 	int hyst_gap_factor = pv_config_get_int(PV_LOG_HYSTERESIS_FACTOR);
 	int rot_factor = pv_config_get_int(PV_LOG_ROTATE_FACTOR);
-	off_t total_size = pv_config_get_int(PV_LOG_MAXSIZE);
+	off_t total_size = pv_config_get_int(PV_LOG_MAX_DIR_SIZE);
 	int hyst_gap = total_size / hyst_gap_factor;
 
 	rot->total_size = total_size;
