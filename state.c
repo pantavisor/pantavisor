@@ -866,6 +866,8 @@ static bool pv_state_compare_objects(struct pv_state *current,
 			// changes in objects belonging to platforms in certain groups require reboot
 			if (pv_state_platform_requires_reboot(o->plat))
 				return true;
+			if (pend_o && pv_state_platform_requires_reboot(pend_o->plat))
+				return true;
 			// lenient stop of platform and continue
 			if (pv_platform_is_starting(o->plat) ||
 			    pv_platform_is_started(o->plat) ||
