@@ -59,7 +59,7 @@ void pv_event_socket_ignore(struct pv_event_socket *listener)
 	if (!listener->ev)
 		return;
 
-	pv_log(DEBUG, "stop listening event to socket fd %d", listener->fd);
+	pv_log(TRACE, "stop listening event to socket fd %d", listener->fd);
 
 	event_free(listener->ev);
 	listener->ev = NULL;

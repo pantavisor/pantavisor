@@ -73,7 +73,7 @@ void pv_event_periodic_stop(struct pv_event_periodic *timer)
 	if (!timer->ev)
 		return;
 
-	pv_log(DEBUG, "closing timer event with interval %d s",
+	pv_log(TRACE, "closing timer event with interval %d s",
 	       timer->interval);
 
 	event_del(timer->ev);
