@@ -49,7 +49,7 @@ static void ctrl_daemons_get(struct evhttp_request *req, void *ctx)
 	pv_json_ser_init(&js, 1024);
 	pv_json_ser_array(&js);
 
-	for (i = 0; daemons[i].name; i++) {
+	for (int i = 0; daemons[i].name; i++) {
 		pv_json_ser_object(&js);
 		pv_json_ser_key(&js, "name");
 		pv_json_ser_string(&js, daemons[i].name);
@@ -75,8 +75,7 @@ static void ctrl_daemons_put(struct evhttp_request *req, void *ctx)
 	char *data = NULL;
 	char *action = NULL;
 	struct pv_init_daemon *daemons = pv_init_get_daemons();
-	struct pv_init_daemon *d = NULL;
-	int i;
+	struct pv_init_daemon *daemon = NULL;
 	int tokc;
 	jsmntok_t *tokv = NULL;
 
@@ -94,14 +93,14 @@ static void ctrl_daemons_put(struct evhttp_request *req, void *ctx)
 		return;
 	}
 
-	for (i = 0; daemons[i].name; i++) {
+	for (int i = 0; daemons[i].name; i++) {
 		if (strcmp(daemons[i].name, name) == 0) {
-			d = &daemons[i];
+			daemon = &daemons[i];
 			break;
 		}
 	}
 
-	if (!d) {
+	if (!daemon) {
 		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
 					 "Daemon not found");
 		return;
@@ -137,17 +136,19 @@ static void ctrl_daemons_put(struct evhttp_request *req, void *ctx)
 
 	if (action) {
 		if (strcmp(action, "stop") == 0) {
-			pv_log(INFO, "Stopping daemon %s via ctrl", d->name);
-			d->respawn = 0;
-			if (d->pid > 0) {
-				kill(d->pid, SIGTERM);
+			pv_log(INFO, "Stopping daemon %s via ctrl",
+			       daemon->name);
+			daemon->respawn = 0;
+			if (daemon->pid > 0) {
+				kill(daemon->pid, SIGTERM);
 			}
 		} else if (strcmp(action, "start") == 0) {
-			pv_log(INFO, "Starting daemon %s via ctrl", d->name);
-			d->respawn = 1;
-			if (d->pid <= 0) {
-				if (d->pid < 0)
-					d->pid = 0;
+			pv_log(INFO, "Starting daemon %s via ctrl",
+			       daemon->name);
+			daemon->respawn = 1;
+			if (daemon->pid <= 0) {
+				if (daemon->pid < 0)
+					daemon->pid = 0;
 				pv_init_spawn_daemons(
 					pv_config_get_system_init_mode());
 			}
