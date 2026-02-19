@@ -219,45 +219,69 @@ static int logserver_subscribe_pipe(int *cmd_pipe, const char *name, int level)
 }
 
 int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out,
-		      const char *log_source_err)
+                      const char *log_source_err)
 {
-	int ret = 0;
-	int out_pipe[2] = { 0 };
-	int err_pipe[2] = { 0 };
+        int ret = 0;
+        int out_pipe[2] = { 0 };
+        int err_pipe[2] = { 0 };
 
-	if (logserver_subscribe_pipe(out_pipe, log_source_out, INFO) != 0 ||
-	    logserver_subscribe_pipe(err_pipe, log_source_err, WARN) != 0) {
-		return -1;
-	}
+        if (logserver_subscribe_pipe(out_pipe, log_source_out, INFO) != 0 ||
+            logserver_subscribe_pipe(err_pipe, log_source_err, WARN) != 0) {
+                return -1;
+        }
 
-	ret = tsh_run_io(cmd, 1, wstatus, NULL, out_pipe, err_pipe);
+        ret = tsh_run_io(cmd, 1, wstatus, NULL, out_pipe, err_pipe);
 
-	if (ret < 0) {
-		pv_log(ERROR, "command: %s error: %s", cmd);
-		return ret;
-	} else if (WIFEXITED(*wstatus) && WEXITSTATUS(*wstatus)) {
-		pv_log(ERROR, "command failed %s status: %d", cmd,
-		       WEXITSTATUS(*wstatus));
-		ret = -1;
-	} else if (WIFEXITED(*wstatus)) {
-		pv_log(DEBUG, "command succeeded: %s", cmd);
-		ret = 0;
-	} else if (WIFSIGNALED(*wstatus)) {
-		pv_log(ERROR, "command signalled %s: %d", cmd,
-		       WTERMSIG(*wstatus));
-		ret = -2;
-	} else {
-		pv_log(ERROR, "command failed with wstatus: %d", wstatus);
-		ret = -3;
-	}
-	close(out_pipe[1]);
-	close(err_pipe[1]);
+        if (ret < 0) {
+                pv_log(ERROR, "command: %s error: %s", cmd);
+                return ret;
+        } else if (WIFEXITED(*wstatus) && WEXITSTATUS(*wstatus)) {
+                pv_log(ERROR, "command failed %s status: %d", cmd,
+                       WEXITSTATUS(*wstatus));
+                ret = -1;
+        } else if (WIFEXITED(*wstatus)) {
+                pv_log(DEBUG, "command succeeded: %s", cmd);
+                ret = 0;
+        } else if (WIFSIGNALED(*wstatus)) {
+                pv_log(ERROR, "command signalled %s: %d", cmd,
+                       WTERMSIG(*wstatus));
+                ret = -2;
+        } else {
+                pv_log(ERROR, "command failed with wstatus: %d", wstatus);
+                ret = -3;
+        }
+        close(out_pipe[1]);
+        close(err_pipe[1]);
 
-	return ret;
+        return ret;
+}
+
+pid_t tsh_run_daemon_logserver(char *cmd, const char *log_source_out,
+                               const char *log_source_err)
+{
+        pid_t pid;
+        int out_pipe[2] = { 0 };
+        int err_pipe[2] = { 0 };
+
+        if (logserver_subscribe_pipe(out_pipe, log_source_out, INFO) != 0 ||
+            logserver_subscribe_pipe(err_pipe, log_source_err, WARN) != 0) {
+                return -1;
+        }
+
+        pid = tsh_run_io(cmd, 0, NULL, NULL, out_pipe, err_pipe);
+
+        if (pid < 0) {
+                pv_log(ERROR, "daemon start failed: %s", cmd);
+        }
+
+        // Close write ends in parent so only child has them
+        close(out_pipe[1]);
+        close(err_pipe[1]);
+
+        return pid;
 }
 
 #endif
-
 static int safe_fd_set(int fd, fd_set *fds, int *max_fd)
 {
 	FD_SET(fd, fds);
