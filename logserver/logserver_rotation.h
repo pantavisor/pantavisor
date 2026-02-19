@@ -29,7 +29,6 @@
 typedef int (*logfn)(int, char *, ...);
 
 struct logserver_rot {
-	logfn log;
 	char path[PATH_MAX];
 	off_t total_size;
 	off_t rot_size;

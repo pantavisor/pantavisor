@@ -39,7 +39,7 @@
 #include <string.h>
 #include <errno.h>
 
-#define pv_log(level, msg, ...) rot->log(level, msg, ##__VA_ARGS__)
+static logfn pv_log = NULL;
 
 // maximum log files types in the same folder
 #define PV_LOG_SERVER_ROT_MAX_FILES 10
@@ -132,13 +132,12 @@ void pv_logserver_rot_update(struct logserver_rot *rot)
 
 struct logserver_rot pv_logserver_rot_init(const char *rev, logfn log)
 {
+	struct logserver_rot rot = { 0 };
 	if (!log)
-		return (struct logserver_rot){ 0 };
+		return rot;
 
-	struct logserver_rot rot = { .log = log };
-
-	pv_paths_pv_log(rot.path, PATH_MAX, rev);
-	pv_logserver_rot_update(&rot);
+	pv_log = log;
+	pv_logserver_rot_update(&rot, rev);
 
 	return rot;
 }
