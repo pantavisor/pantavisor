@@ -3,6 +3,7 @@
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -60,6 +61,132 @@ static struct pvx_link *find_link(const char *consumer, const char *name)
 	return NULL;
 }
 
+static void pvx_link_free(struct pvx_link *link)
+{
+	if (!link)
+		return;
+
+	free(link->name);
+	free(link->consumer);
+	free(link->role);
+	free(link->provider_socket);
+	free(link->interface);
+	free(link->consumer_socket);
+	free(link->type);
+	free(link);
+}
+
+static int parse_pid_field(const char *json, const char *key, jsmntok_t *tokv,
+			   int tokc)
+{
+	char *pid_str = pv_json_get_value(json, key, tokv, tokc);
+	if (!pid_str)
+		return 0;
+
+	char *endptr;
+	long val = strtol(pid_str, &endptr, 10);
+	int pid = (*endptr == '\0' && val > 0 && val <= INT_MAX) ? (int)val : 0;
+	free(pid_str);
+	return pid;
+}
+
+static struct pvx_link *parse_link(const char *json, jsmntok_t *itok,
+				   int obj_tokc, struct pvx_plugin *plugin)
+{
+	struct pvx_link *link = calloc(1, sizeof(*link));
+	if (!link)
+		return NULL;
+
+	link->consumer = pv_json_get_value(json, "consumer", itok, obj_tokc);
+	link->name = pv_json_get_value(json, "name", itok, obj_tokc);
+	link->type = pv_json_get_value(json, "type", itok, obj_tokc);
+	link->role = pv_json_get_value(json, "role", itok, obj_tokc);
+	link->provider_socket =
+		pv_json_get_value(json, "socket", itok, obj_tokc);
+	link->interface = pv_json_get_value(json, "interface", itok, obj_tokc);
+
+	if (!link->name || !link->consumer || !link->provider_socket) {
+		fprintf(stderr, "Link missing required fields\n");
+		pvx_link_free(link);
+		return NULL;
+	}
+
+	link->consumer_pid =
+		parse_pid_field(json, "consumer_pid", itok, obj_tokc);
+	link->provider_pid =
+		parse_pid_field(json, "provider_pid", itok, obj_tokc);
+
+	char *target = pv_json_get_value(json, "target", itok, obj_tokc);
+	if (target && target[0]) {
+		link->consumer_socket = strdup(target);
+	} else if (link->interface && link->interface[0]) {
+		link->consumer_socket = strdup(link->interface);
+	} else {
+		char path[PATH_MAX];
+		snprintf(path, sizeof(path), "/tmp/pvx_%s_%s.sock",
+			 link->consumer, link->name);
+		link->consumer_socket = strdup(path);
+	}
+	free(target);
+
+	link->plugin = plugin;
+	return link;
+}
+
+static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
+{
+	char *type = pv_json_get_value(json, "type", itok, obj_tokc);
+	if (!type)
+		return;
+
+	struct pvx_plugin *plugin = find_plugin(type);
+	if (!plugin) {
+		fprintf(stderr, "No plugin found for type %s\n", type);
+		free(type);
+		return;
+	}
+	free(type);
+
+	char *consumer = pv_json_get_value(json, "consumer", itok, obj_tokc);
+	char *name = pv_json_get_value(json, "name", itok, obj_tokc);
+	struct pvx_link *existing = find_link(consumer, name);
+
+	if (existing && existing->established) {
+		free(consumer);
+		free(name);
+		return;
+	}
+
+	if (existing) {
+		printf("Retrying link: %s/%s\n", consumer, name);
+		dl_list_del(&existing->list);
+		pvx_link_free(existing);
+	}
+
+	free(consumer);
+	free(name);
+
+	struct pvx_link *link = parse_link(json, itok, obj_tokc, plugin);
+	if (!link)
+		return;
+
+	dl_list_init(&link->list);
+	dl_list_add_tail(&g_links, &link->list);
+
+	printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
+	       link->consumer ? link->consumer : "unknown", link->consumer_pid,
+	       link->type, link->provider_socket, link->consumer_socket);
+
+	if (plugin->on_link_added(link) < 0) {
+		fprintf(stderr, "Failed to add link for %s\n", link->name);
+		dl_list_del(&link->list);
+		pvx_link_free(link);
+	} else {
+		link->established = true;
+		printf("Link established: %s/%s\n", link->consumer, link->name);
+	}
+}
+
 static void reconcile_graph(const char *json)
 {
 	jsmntok_t *tokv;
@@ -87,211 +214,11 @@ static void reconcile_graph(const char *json)
 
 	for (int i = 0; items[i]; i++) {
 		jsmntok_t *itok = items[i];
-
-		int obj_tokc;
-
-		if (items[i + 1]) {
-			obj_tokc = items[i + 1] - items[i];
-
-		} else {
-			obj_tokc = (tokv + tokc) - itok;
-		}
-
-		char *type = pv_json_get_value(json, "type", itok, obj_tokc);
-
-		if (!type)
-
-			continue;
-
-		struct pvx_plugin *p = find_plugin(type);
-
-		if (p) {
-			// Parse consumer name first to check for existing link
-			char *consumer_tmp = pv_json_get_value(json, "consumer",
-							       itok, obj_tokc);
-			char *name_tmp =
-				pv_json_get_value(json, "name", itok, obj_tokc);
-
-			// Check if link already exists and is established
-			struct pvx_link *existing =
-				find_link(consumer_tmp, name_tmp);
-			if (existing && existing->established) {
-				free(type);
-				if (consumer_tmp)
-					free(consumer_tmp);
-				if (name_tmp)
-					free(name_tmp);
-				continue;
-			}
-
-			// If link exists but not established, remove it for retry
-			if (existing) {
-				printf("Retrying link: %s/%s\n", consumer_tmp,
-				       name_tmp);
-				dl_list_del(&existing->list);
-				if (existing->name)
-					free(existing->name);
-				if (existing->consumer)
-					free(existing->consumer);
-				if (existing->role)
-					free(existing->role);
-				if (existing->provider_socket)
-					free(existing->provider_socket);
-				if (existing->interface)
-					free(existing->interface);
-				if (existing->consumer_socket)
-					free(existing->consumer_socket);
-				if (existing->type)
-					free(existing->type);
-				free(existing);
-			}
-
-			struct pvx_link *link = calloc(1, sizeof(*link));
-
-			if (!link) {
-				free(type);
-				if (consumer_tmp)
-					free(consumer_tmp);
-				if (name_tmp)
-					free(name_tmp);
-				continue;
-			}
-
-			// Use already-parsed values
-			link->consumer = consumer_tmp;
-			link->name = name_tmp;
-			link->type = type;
-
-			link->role =
-
-				pv_json_get_value(json, "role", itok, obj_tokc);
-
-			link->provider_socket = pv_json_get_value(
-
-				json, "socket", itok, obj_tokc);
-
-			link->interface = pv_json_get_value(json, "interface",
-
-							    itok, obj_tokc);
-
-			char *target = pv_json_get_value(json, "target", itok,
-
-							 obj_tokc);
-
-			if (!link->name || !link->consumer ||
-
-			    !link->provider_socket) {
-				fprintf(stderr,
-					"Link missing required fields\n");
-
-				if (link->name)
-
-					free(link->name);
-
-				if (link->consumer)
-
-					free(link->consumer);
-
-				if (link->role)
-
-					free(link->role);
-
-				if (link->provider_socket)
-
-					free(link->provider_socket);
-
-				if (link->interface)
-
-					free(link->interface);
-
-				if (target)
-
-					free(target);
-
-				free(link->type);
-
-				free(link);
-
-				continue;
-			}
-
-			// Parse consumer_pid for namespace injection
-
-			char *pid_str = pv_json_get_value(json, "consumer_pid",
-
-							  itok, obj_tokc);
-
-			if (pid_str) {
-				link->consumer_pid = atoi(pid_str);
-
-				free(pid_str);
-			}
-
-			// Parse provider_pid for cross-namespace socket access
-
-			pid_str = pv_json_get_value(json, "provider_pid", itok,
-
-						    obj_tokc);
-
-			if (pid_str) {
-				link->provider_pid = atoi(pid_str);
-
-				free(pid_str);
-			}
-
-			// Use target as consumer socket path if available
-			if (target && target[0]) {
-				link->consumer_socket = strdup(target);
-			} else if (link->interface && link->interface[0]) {
-				link->consumer_socket = strdup(link->interface);
-			} else {
-				// Fallback for host testing
-				char path[1024];
-				snprintf(path, sizeof(path),
-					 "/tmp/pvx_%s_%s.sock", link->consumer,
-					 link->name);
-				link->consumer_socket = strdup(path);
-			}
-			if (target)
-				free(target);
-
-			link->plugin = p;
-			dl_list_init(&link->list);
-			dl_list_add_tail(&g_links, &link->list);
-
-			printf("Adding link: %s (pid=%d, %s) -> %s (inject to: %s)\n",
-			       link->consumer ? link->consumer : "unknown",
-			       link->consumer_pid, link->type,
-			       link->provider_socket, link->consumer_socket);
-			if (p->on_link_added(link) < 0) {
-				fprintf(stderr, "Failed to add link for %s\n",
-					link->name);
-				dl_list_del(&link->list);
-				if (link->name)
-					free(link->name);
-				if (link->consumer)
-					free(link->consumer);
-				if (link->role)
-					free(link->role);
-				if (link->provider_socket)
-					free(link->provider_socket);
-				if (link->interface)
-					free(link->interface);
-				if (link->consumer_socket)
-					free(link->consumer_socket);
-				free(link->type);
-				free(link);
-			} else {
-				link->established = true;
-				printf("Link established: %s/%s\n",
-				       link->consumer, link->name);
-			}
-		} else {
-			fprintf(stderr, "No plugin found for type %s\n", type);
-			if (type)
-				free(type);
-		}
+		int obj_tokc = items[i + 1] ? items[i + 1] - items[i] :
+					      (tokv + tokc) - itok;
+		reconcile_link(json, itok, obj_tokc);
 	}
+
 	jsmnutil_tokv_free(items);
 	free(tokv);
 }
