@@ -39,6 +39,9 @@
 
 static void ctrl_daemons_get(struct evhttp_request *req, void *ctx)
 {
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
+
 	struct pv_json_ser js;
 	struct pv_init_daemon *daemons = pv_init_get_daemons();
 	int i;
@@ -64,6 +67,9 @@ static void ctrl_daemons_get(struct evhttp_request *req, void *ctx)
 
 static void ctrl_daemons_put(struct evhttp_request *req, void *ctx)
 {
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
+
 	pv_log(INFO, "PUT request for daemons");
 	char *name = NULL;
 	char *data = NULL;
