@@ -61,21 +61,22 @@ struct pv_ctrl_cmd_add_result {
 
 static inline const char *pv_ctrl_cmd_op_to_str(const enum pv_ctrl_cmd_op op)
 {
-	static const char *strings[] = { NULL,
-					 "UPDATE_METADATA",
-					 "REBOOT_DEVICE",
-					 "POWEROFF_DEVICE",
-					 "TRY_ONCE",
-					 "LOCAL_RUN",
-					 "MAKE_FACTORY",
-					 "RUN_GC",
-					 "ENABLE_SSH",
-					 "DISABLE_SSH",
-					 "GO_REMOTE",
-					 "DEFER_REBOOT",
-					 "LOCAL_RUN_COMMIT",
-					 "LOCAL_APPLY",
-					 "XCONNECT_GRAPH",
+	static const char *strings[] = {
+		NULL,
+		"UPDATE_METADATA",
+		"REBOOT_DEVICE",
+		"POWEROFF_DEVICE",
+		"TRY_ONCE",
+		"LOCAL_RUN",
+		"MAKE_FACTORY",
+		"RUN_GC",
+		"ENABLE_SSH",
+		"DISABLE_SSH",
+		"GO_REMOTE",
+		"DEFER_REBOOT",
+		"LOCAL_RUN_COMMIT",
+		"LOCAL_APPLY",
+		"XCONNECT_GRAPH",
 	};
 	return strings[op];
 }
