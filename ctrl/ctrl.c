@@ -44,7 +44,6 @@
 
 struct ctrl_run_req {
 	struct evhttp_request *req;
-	struct pv_ctrl_cb *cb;
 	struct dl_list lst;
 };
 
@@ -125,7 +124,7 @@ static void ctrl_auto_remove_req(struct evhttp_request *req, void *ctx)
 	ctrl_remove_req(req);
 }
 
-static void crtl_add_request(struct evhttp_request *req, struct pv_ctrl_cb *cb)
+static void crtl_add_request(struct evhttp_request *req)
 {
 	struct ctrl_run_req *runq = calloc(1, sizeof(struct ctrl_run_req));
 	if (!runq) {
@@ -135,7 +134,6 @@ static void crtl_add_request(struct evhttp_request *req, struct pv_ctrl_cb *cb)
 
 	evhttp_request_set_on_complete_cb(req, ctrl_auto_remove_req, NULL);
 	runq->req = req;
-	runq->cb = cb;
 
 	dl_list_init(&runq->lst);
 	dl_list_add(&pvctrl.request, &runq->lst);
@@ -179,10 +177,10 @@ static int ctrl_router_cb(struct evhttp_request *req, void *ctx)
 			continue;
 		}
 
-		// Add to request list but DO NOT call yet.
-		// ctrl_default_cb will be called when request is complete.
-		crtl_add_request(req, it);
-		return 0;
+		err = 0;
+		crtl_add_request(req);
+		it->fn(req, it);
+		break;
 	}
 
 	if (err == 1) {
@@ -254,9 +252,9 @@ static void ctrl_default_cb(struct evhttp_request *req, void *ctx)
 {
 	(void)ctx;
 
-	struct ctrl_run_req *runq = ctrl_get_run_req(req);
-	if (runq && runq->cb) {
-		runq->cb->fn(req, runq->cb);
+	if (ctrl_is_running_req(req)) {
+		evbuffer_add_printf(evhttp_request_get_output_buffer(req),
+				    "done");
 		return;
 	}
 
