@@ -75,7 +75,8 @@ static inline const char *pv_ctrl_cmd_op_to_str(const enum pv_ctrl_cmd_op op)
 					 "DEFER_REBOOT",
 					 "LOCAL_RUN_COMMIT",
 					 "LOCAL_APPLY",
-					 "XCONNECT_GRAPH" };
+					 "XCONNECT_GRAPH",
+	};
 	return strings[op];
 }
 
