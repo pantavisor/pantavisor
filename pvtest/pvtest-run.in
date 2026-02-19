@@ -200,7 +200,7 @@ exec_test() {
 
 	script_path="$test_path/$test_script"
 	tmp_script_path=
-	if [ "$overwrite" = "true" ]; then
+	if [ "$overwrite" = "true" ] || [ "$verbose" = "true" ]; then
 		tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
 		sed '5iset -x' "$test_path/$test_script" > "$tmp_script_path"
 		script_path="$tmp_script_path"
