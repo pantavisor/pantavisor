@@ -169,10 +169,11 @@ static int logserver_log_msg_data(const struct logserver_log *log, int output)
 	}
 	pv_logserver_rot_deletion(&logserver.rot);
 
-	logserver.update_rot++;
+	if (!strncmp(log->plat, "pantavisor", strlen("pantavisor")))
+		logserver.update_rot++;
 
 	if (logserver.update_rot == LOGSERVER_UPDATE_ROTATION_INTERVAL) {
-		pv_logserver_rot_update(&logserver.rot);
+		pv_logserver_rot_update(&logserver.rot, logserver.running_rev);
 		logserver.update_rot = 0;
 	}
 
