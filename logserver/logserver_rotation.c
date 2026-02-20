@@ -108,8 +108,10 @@ static long pv_logserver_rot_get_next_rot(const char *path, const char *fname)
 	return max_rot + 1;
 }
 
-void pv_logserver_rot_update(struct logserver_rot *rot)
+void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev)
 {
+	pv_paths_pv_log(rot->path, PATH_MAX, rev);
+
 	int hyst_gap_factor = pv_config_get_int(PV_LOG_HYSTERESIS_FACTOR);
 	int rot_factor = pv_config_get_int(PV_LOG_ROTATE_FACTOR);
 	off_t total_size = pv_config_get_int(PV_LOG_MAX_DIR_SIZE);

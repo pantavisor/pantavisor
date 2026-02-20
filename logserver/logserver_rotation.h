@@ -38,7 +38,7 @@ struct logserver_rot {
 };
 
 struct logserver_rot pv_logserver_rot_init(const char *rev, logfn log);
-void pv_logserver_rot_update(struct logserver_rot *rot);
+void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev);
 int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname);
 int pv_logserver_rot_deletion(struct logserver_rot *rot);
 
