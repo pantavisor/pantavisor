@@ -132,6 +132,12 @@ void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev)
 	pv_log(DEBUG, "\t* current size  : %jd", rot->cur_size);
 }
 
+void pv_logserver_rot_add(struct logserver_rot *rot, int len)
+{
+	if (len > 0)
+		rot->cur_size += len;
+}
+
 struct logserver_rot pv_logserver_rot_init(const char *rev, logfn log)
 {
 	struct logserver_rot rot = { 0 };
