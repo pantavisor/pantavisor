@@ -162,7 +162,10 @@ static int logserver_log_msg_data(const struct logserver_log *log, int output)
 			it->add(it, log);
 		}
 
-		pv_logserver_rot_log_rot(&logserver.rot, it->last_log);
+		if (it->last_log[0] != '\0') {
+			pv_logserver_rot_log_rot(&logserver.rot, it->last_log);
+			pv_logserver_rot_add(&logserver.rot, log->data.len);
+		}
 	}
 	pv_logserver_rot_deletion(&logserver.rot);
 
