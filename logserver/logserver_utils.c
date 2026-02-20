@@ -39,6 +39,7 @@
 #include <fcntl.h>
 #include <glob.h>
 #include <sys/stat.h>
+#include <ctype.h>
 #include <linux/limits.h>
 #include <libgen.h>
 
@@ -47,7 +48,11 @@ static int get_data_line(const struct logserver_data *data,
 {
 	char *end = data->buf + data->len;
 	char *buf = !line->buf ? data->buf : line->buf + line->len;
-	char *ptr = *buf == sep && buf != end ? buf + 1 : buf;
+
+	if (buf == end)
+		return 0;
+
+	char *ptr = *buf == sep ? buf + 1 : buf;
 
 	while (ptr != end && *ptr != sep)
 		++ptr;
@@ -55,6 +60,15 @@ static int get_data_line(const struct logserver_data *data,
 	int count = ptr - buf;
 
 	line->len = ptr == end && count == 0 ? 0 : count;
+
+	if (buf[0] == sep) {
+		if (line->len == 1)
+			return 0;
+
+		line->len--;
+		buf++;
+	}
+
 	line->buf = buf;
 
 	return line->len;
@@ -78,6 +92,9 @@ static char *format_dmesg_log(const char *str, int len)
 
 	while (*txt != ';' && txt != end)
 		++txt;
+
+	if (isprint(txt[1]) == 0)
+		return NULL;
 
 	char *formatted = NULL;
 	if (txt == end) {
@@ -105,6 +122,7 @@ static char *format_dmesg_log(const char *str, int len)
 			 (int)(end - txt), txt);
 
 	remove_line_feed(formatted);
+
 	return formatted;
 }
 
@@ -179,48 +197,56 @@ static int print_pvfmt_log(int fd, const struct logserver_log *log,
 	const char *util_src = log->src ? log->src : src;
 
 	char ts[256] = { 0 };
-	strncpy(ts, "--", 3);
+	char fmt[50] = "[%s] %jd %s\t -- [%s]: %.*s\n";
 
-	char *fmt = NULL;
 	if (ts_fmt) {
 		logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt);
-		fmt = "[%s] [%s] %" PRId64 " %s\t -- [%s]: %.*s%c";
-	} else {
-		fmt = "[%s] %" PRId64 " %s\t -- [%s]: %.*s%c";
+		if (ts[0] == '\0') {
+			ts[0] = '-';
+			ts[1] = '-';
+		}
+
+		snprintf(fmt, 50, "[%%s] [%s] %%jd %%s\t -- [%%s]: %%.*s\n",
+			 ts);
 	}
 
 	bool is_dmesg = !strncmp(util_src, "dmesg", strlen("dmesg"));
 
-	char *txt = NULL;
-	size_t txt_len = 0;
-	int total_len = 0;
+	int total = 0;
+	struct logserver_data logline = { 0 };
 	struct logserver_data line = { 0 };
+	char *line_str = NULL;
+
+	if (!lf)
+		log->data.buf[log->data.len] = '\0';
 
 	while (get_data_line(&log->data, &line, '\n') > 0) {
 		if (is_dmesg) {
-			txt = format_dmesg_log(line.buf, line.len);
-			txt_len = strlen(txt);
+			logline.buf = format_dmesg_log(line.buf, line.len);
+			if (!logline.buf)
+				continue;
+
+			logline.len = line.len;
 		} else {
-			txt = line.buf;
-			txt_len = line.len;
+			logline.buf = line.buf;
+			logline.len = line.len;
 		}
 
-		if (ts_fmt) {
-			total_len +=
-				dprintf(fd, fmt, ts, log->plat, log->tsec,
-					pv_log_level_name(log->lvl), util_src,
-					txt_len, txt, lf ? '\n' : '\0');
-		} else {
-			total_len +=
-				dprintf(fd, fmt, log->plat, log->tsec,
-					pv_log_level_name(log->lvl), util_src,
-					txt_len, txt, lf ? '\n' : '\0');
-		}
-		if (is_dmesg && txt)
-			free(txt);
+		int cur_len = asprintf(&line_str, fmt, log->plat, log->tsec,
+				       pv_log_level_name(log->lvl), util_src,
+				       logline.len, logline.buf);
+
+		if (cur_len == -1)
+			goto next;
+
+		total += pv_fs_file_write_nointr(fd, line_str, cur_len);
+
+		free(line_str);
+	next:
+		if (is_dmesg && logline.buf)
+			free(logline.buf);
 	}
-
-	return total_len;
+	return total;
 }
 
 int logserver_utils_print_raw(int fd, const struct logserver_log *log)
