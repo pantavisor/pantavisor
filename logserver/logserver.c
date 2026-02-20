@@ -322,6 +322,7 @@ static int logserver_process_cmd(const struct logserver_log *log,
 		if (logserver.running_rev)
 			free(logserver.running_rev);
 		logserver.running_rev = strdup(data);
+		pv_logserver_rot_update(&logserver.rot, logserver.running_rev);
 		break;
 	case LOG_CMD_NULL:
 		pv_log(WARN, "unknown command received");
