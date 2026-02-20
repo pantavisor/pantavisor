@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Pantacor Ltd.
+ * Copyright (c) 2026 Pantacor Ltd.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -20,50 +20,28 @@
  * SOFTWARE.
  */
 
-#include "logserver_out.h"
+#ifndef PV_LOGSERVER_ROTATION_H
+#define PV_LOGSERVER_ROTATION_H
 
-#include <stdlib.h>
-#include <string.h>
+#include <linux/limits.h>
+#include <sys/types.h>
 
-struct logserver_out *logserver_out_new(
-	int id, const char *name,
-	int (*add)(struct logserver_out *out, const struct logserver_log *log),
-	void (*free)(struct logserver_out *out), void *opaque)
-{
-	if (!add)
-		return NULL;
+typedef int (*logfn)(int, char *, ...);
 
-	struct logserver_out *out = calloc(1, sizeof(struct logserver_out));
-	if (!out)
-		return NULL;
+struct logserver_rot {
+	char path[PATH_MAX];
+	off_t total_size;
+	off_t rot_size;
+	off_t high_wm;
+	off_t low_wm;
+	off_t cur_size;
+};
 
-	out->name = strdup(name);
-	if (!out->name) {
-		free(out);
-		return NULL;
-	}
+struct logserver_rot pv_logserver_rot_init(const char *rev, logfn log);
+void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev);
+int pv_logserver_rot_log_rot(struct logserver_rot *rot, const char *fname);
+void pv_logserver_rot_add(struct logserver_rot *rot, int len);
+int pv_logserver_rot_deletion(struct logserver_rot *rot);
 
-	memset(out->last_log, 0, PATH_MAX);
 
-	out->id = id;
-	out->add = add;
-	out->free = free;
-	out->opaque = opaque;
-	dl_list_init(&out->list);
-
-	return out;
-}
-
-void logserver_out_free(struct logserver_out *out)
-{
-	if (!out)
-		return;
-
-	if (out->name)
-		free(out->name);
-
-	if (out->free)
-		out->free(out);
-
-	free(out);
-}
+#endif

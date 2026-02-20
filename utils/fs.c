@@ -356,12 +356,43 @@ out:
 	return ret;
 }
 
+static off_t get_dir_size(const char *cur_path)
+{
+	off_t total = 0;
+	DIR *dir = opendir(cur_path);
+	if (!dir)
+		return 0;
+
+	struct dirent *entry = NULL;
+	while ((entry = readdir(dir))) {
+		if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, ".."))
+			continue;
+
+		char path[PATH_MAX] = { 0 };
+		snprintf(path, PATH_MAX, "%s/%s", cur_path, entry->d_name);
+
+		struct stat st;
+		if (stat(path, &st) == 0) {
+			if (S_ISDIR(st.st_mode))
+				total += get_dir_size(path);
+			else
+				total += st.st_size;
+		}
+	}
+	closedir(dir);
+
+	return total;
+}
+
 off_t pv_fs_path_get_size(const char *path)
 {
 	struct stat st;
 
 	if (stat(path, &st) < 0)
 		return -1;
+
+	if (S_ISDIR(st.st_mode))
+		return get_dir_size(path);
 
 	return st.st_size;
 }
