@@ -1123,10 +1123,10 @@ static void pv_state_transfer_platforms(struct pv_state *pending,
 			continue;
 
 		pv_log(DEBUG,
-		       "transferring object %s that belongs to platform %s",
+		       "transferring install %s that belongs to platform %s",
 		       o->name, o->plat->name);
 		dl_list_del(&o->list);
-		dl_list_add_tail(&current->objects, &o->list);
+		dl_list_add_tail(&current->installs, &o->list);
 	}
 
 	// transfer volumes belonging to platforms from pending that do not exist in current
