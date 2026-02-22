@@ -29,8 +29,6 @@
 #include <stdbool.h>
 #include <time.h>
 
-#define LOGSERVER_LOG_PROTOCOL_V1 0
-
 #ifdef DEBUG
 #define WARN_ONCE(msg, args...)                                                \
 	do {                                                                   \
@@ -49,13 +47,8 @@ struct logserver_data {
 	int len;
 };
 
-typedef enum {
-	LOG_PROTOCOL_LEGACY = 0,
-	LOG_PROTOCOL_CMD = 256
-} log_protocol_code_t;
-
 struct logserver_log {
-	log_protocol_code_t code;
+	int code;
 	int lvl;
 	uint64_t tsec;
 	uint32_t tnano;
