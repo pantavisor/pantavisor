@@ -12,6 +12,7 @@ usage() {
 	echo "       -i         interrupt auto reboot and wait for user confirmation"
 	echo "       -c CMDLINE additional cmdline arguments (incl. legacy configs)"
 	echo "       -e ENVS envs to set (incl. new config format)"
+	echo "       -V         run with valgrind"
 }
 
 cleanup_cryptdisk() {
@@ -120,7 +121,13 @@ exec_run() {
 		mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage || true
 		mkdir -p /volumes
 		mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes || true
-		eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline\"
+		if [ "$valgrind" = "true" ]; then
+			mkdir -p /tmp/valgrind
+			eval $envs valgrind --tool=memcheck --leak-check=full --show-leak-kinds=all --track-fds=yes --log-file=/tmp/valgrind/valgrind.log.%p \
+				@CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline\"
+		else
+			eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline\"
+		fi
 		umount /volumes
 		umount /storage
 
@@ -168,6 +175,9 @@ while [ $# -gt 0 ]; do
 		shift
 		envs="$1"
 		;; 
+	-V)
+		valgrind='true'
+		;;
 	*)
 		break
 		;; 
