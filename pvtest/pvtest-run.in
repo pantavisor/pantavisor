@@ -136,7 +136,7 @@ int_handler() {
 }
 
 start_pv() {
-	pv_cmd="pv-appengine -c \"$cmdline\""
+	pv_cmd="pv-appengine -V -c \"$cmdline\""
 
 	if [ "$verbose" = "false" ]; then
 		eval "$pv_cmd > /dev/null 2>&1 &"
