@@ -256,6 +256,31 @@ int tsh_run_logserver(char *cmd, int *wstatus, const char *log_source_out,
 	return ret;
 }
 
+pid_t tsh_run_daemon_logserver(char *cmd, const char *log_source_out,
+			       const char *log_source_err)
+{
+	pid_t pid;
+	int out_pipe[2] = { 0 };
+	int err_pipe[2] = { 0 };
+
+	if (logserver_subscribe_pipe(out_pipe, log_source_out, INFO) != 0 ||
+	    logserver_subscribe_pipe(err_pipe, log_source_err, WARN) != 0) {
+		return -1;
+	}
+
+	pid = tsh_run_io(cmd, 0, NULL, NULL, out_pipe, err_pipe);
+
+	if (pid < 0) {
+		pv_log(ERROR, "daemon start failed: %s", cmd);
+	}
+
+	// Close write ends in parent so only child has them
+	close(out_pipe[1]);
+	close(err_pipe[1]);
+
+	return pid;
+}
+
 #endif
 
 static int safe_fd_set(int fd, fd_set *fds, int *max_fd)
