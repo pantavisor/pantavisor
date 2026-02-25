@@ -303,17 +303,14 @@ static int pv_bl_early_init(struct pv_init *this)
 		pv_bootloader.pv_done = done;
 	}
 
-	pv_log(DEBUG, "bl_early_init: pv_rev=%s pv_try=%s pv_done=%s",
-	       pv_bootloader.pv_rev,
-	       pv_bootloader.pv_try ? pv_bootloader.pv_try : "(null)",
-	       pv_bootloader.pv_done);
-
 	/*
 	 * If bootloader provides validate_state, let it override pv_rev.
 	 * This allows bootloaders like rpiab to read from pv_rev.txt.
 	 */
 	if (ops->validate_state) {
 		char *pv_rev_out = NULL;
+
+		pv_bootloader_print();
 
 		if (ops->validate_state(pv_bootloader.pv_try,
 					pv_bootloader.pv_done,
@@ -329,11 +326,6 @@ static int pv_bl_early_init(struct pv_init *this)
 			pv_bootloader.pv_rev = pv_rev_out;
 		}
 	}
-
-	pv_log(DEBUG, "bl_early_init done: pv_rev=%s pv_try=%s pv_done=%s",
-	       pv_bootloader.pv_rev,
-	       pv_bootloader.pv_try ? pv_bootloader.pv_try : "(null)",
-	       pv_bootloader.pv_done);
 
 	pv_bootloader_print();
 	return 0;

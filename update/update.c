@@ -796,6 +796,16 @@ void pv_update_set_error_hub_unstable()
 			       PV_UPDATE_PROGRESS_MSG_HUB_NOT_STABLE);
 }
 
+void pv_update_set_error_no_state_json()
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u)
+		return;
+
+	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_ERROR,
+			       PV_UPDATE_PROGRESS_MSG_NO_STATE_JSON);
+}
+
 void pv_update_set_final()
 {
 	struct pantavisor *pv = pv_get_instance();

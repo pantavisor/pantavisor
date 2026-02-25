@@ -201,6 +201,7 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		if (!json) {
 			pv_log(ERROR, "get_state_json returned NULL for rev '%s'",
 			       pv_bootloader_get_rev());
+			pv_update_set_error_no_state_json();
 			goto out;
 		}
 		sign_state_res_t sres;

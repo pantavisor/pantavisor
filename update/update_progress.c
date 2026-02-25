@@ -389,6 +389,9 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 	case PV_UPDATE_PROGRESS_MSG_ROLLEDBACK:
 		ret = strdup("Unexpected rollback");
 		break;
+	case PV_UPDATE_PROGRESS_MSG_NO_STATE_JSON:
+		ret = strdup("State JSON not found for revision");
+		break;
 	default:
 		ret = strdup("Internal error");
 	}
