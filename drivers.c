@@ -233,8 +233,8 @@ char *pv_drivers_state_all(struct pv_platform *p)
 	struct pv_json_ser js;
 	struct pv_platform_driver *d, *tmp;
 
-	if (dl_list_empty(&p->drivers))
-		return strdup("[]");
+	if (!p || dl_list_empty(&p->drivers))
+		return strdup("{}");
 
 	pv_json_ser_init(&js, 4096);
 

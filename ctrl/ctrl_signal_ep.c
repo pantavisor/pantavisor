@@ -98,9 +98,11 @@ static void signal_process(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
+	const char *plat_name = caller.plat ? caller.plat->name : "_pv_";
+
 	pv_log(DEBUG, "received signal %s: %s", sig.type, sig.payload);
 
-	int ret = pv_state_interpret_signal(pv->state, caller.plat->name,
+	int ret = pv_state_interpret_signal(pv->state, plat_name,
 					    sig.type, sig.payload);
 	if (ret != 0) {
 		pv_ctrl_utils_send_error(
