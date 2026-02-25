@@ -39,9 +39,8 @@
 
 static int mkdir_p(const char *path, mode_t mode)
 {
-	char tmp[1024];
+	char tmp[PATH_MAX];
 	char *p = NULL;
-	size_t len;
 
 	if (!path || !path[0] || strlen(path) >= sizeof(tmp))
 		return 0;
