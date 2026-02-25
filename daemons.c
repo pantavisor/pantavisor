@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "init.h"
 #include "daemons.h"
 #include "tsh.h"
 
@@ -46,6 +47,7 @@ struct pv_init_daemon daemons[] = {
 #endif
 	{ 0, 0, 0, 0, 0, 0, 0 }
 };
+
 static int daemon_spawn(struct pv_init_daemon *self)
 {
 	self->pid = 0;
@@ -55,7 +57,15 @@ static int daemon_spawn(struct pv_init_daemon *self)
 		self->pid = tsh_run("/bin/sleep 5", 0, 0);
 		self->_respawning = 0;
 	} else {
+#ifndef DISABLE_LOGSERVER
+		char out_name[64], err_name[64];
+		snprintf(out_name, sizeof(out_name), "%s-out", self->name);
+		snprintf(err_name, sizeof(err_name), "%s-err", self->name);
+		self->pid = tsh_run_daemon_logserver(self->cmd, out_name,
+						     err_name);
+#else
 		self->pid = tsh_run(self->cmd, 0, 0);
+#endif
 		self->_respawning = 1;
 	}
 	if (self->pid < 0) {
@@ -66,6 +76,7 @@ static int daemon_spawn(struct pv_init_daemon *self)
 
 	return self->pid;
 }
+
 struct pv_init_daemon *pv_init_get_daemons(void)
 {
 	return daemons;
@@ -87,14 +98,16 @@ int pv_init_spawn_daemons(init_mode_t mode)
 			continue;
 		// skip daemons not enabled for this init mode
 		if (!(daemons[i].modes & mode_flag)) {
-			pv_log(INFO, "daemon %s not enabled for init mode %d\n",
+			pv_log(DEBUG, "daemon %s not enabled for init mode %d",
 			       daemons[i].name, mode);
 			continue;
 		}
 
+		pv_log(INFO, "enabling daemon: %s", daemons[i].name);
+
 		if (stat(daemons[i].testpath, &sb)) {
 			pv_log(INFO,
-			       "daemon not enabled %s: disabling respawn\n",
+			       "daemon not found %s: disabling respawn",
 			       daemons[i].name);
 			daemons[i].pid = 0;
 			daemons[i].respawn = 0;
@@ -103,7 +116,7 @@ int pv_init_spawn_daemons(init_mode_t mode)
 
 		daemons[i].pid = daemon_spawn(&daemons[i]);
 
-		pv_log(INFO, "spawned daemon %s: %d \n", daemons[i].name,
+		pv_log(INFO, "spawned daemon %s: %d", daemons[i].name,
 		       daemons[i].pid);
 	}
 	sigprocmask(SIG_SETMASK, &old_sigset, NULL);
@@ -131,3 +144,17 @@ int pv_init_daemon_exited(pid_t pid)
 	}
 	return 0;
 }
+
+static int pv_daemons_init(struct pv_init *this)
+{
+	init_mode_t mode = pv_config_get_system_init_mode();
+
+	pv_init_spawn_daemons(mode);
+
+	return 0;
+}
+
+struct pv_init pv_init_daemons = {
+	.init_fn = pv_daemons_init,
+	.flags = 0,
+};
