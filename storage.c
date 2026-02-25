@@ -1028,6 +1028,28 @@ int pv_storage_meta_link_boot(struct pv_state *s)
 		pv_fs_path_remove(dst, false);
 		if (link(src, dst) < 0)
 			goto err;
+	} else if (s->bsp.img.efiab.bootimg &&
+		   pv_config_get_bootloader_type() == BL_EFIAB) {
+		// efiboot.img[.gz]
+		// NOTE: efiab and rpiab share a union, so check bootloader
+		// type to disambiguate (efiab.bootimg == rpiab.bootimg)
+		if (!strcmp(s->bsp.img.efiab.bootimg +
+				    (strlen(s->bsp.img.efiab.bootimg) - 3),
+			    ".gz")) {
+			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
+						       "efiboot.img.gz");
+		} else {
+			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
+						       "efiboot.img");
+		}
+		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
+						 s->bsp.img.efiab.bootimg);
+		pv_log(DEBUG, "installing hardlink of platform file %s to %s",
+		       src, dst);
+
+		pv_fs_path_remove(dst, false);
+		if (link(src, dst) < 0)
+			goto err;
 	} else if (s->bsp.img.rpiab.bootimg) {
 		// rpiboot.img[.gz]
 		if (!strcmp(s->bsp.img.rpiab.bootimg +
@@ -1041,25 +1063,6 @@ int pv_storage_meta_link_boot(struct pv_state *s)
 		}
 		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
 						 s->bsp.img.rpiab.bootimg);
-		pv_log(DEBUG, "installing hardlink of platform file %s to %s",
-		       src, dst);
-
-		pv_fs_path_remove(dst, false);
-		if (link(src, dst) < 0)
-			goto err;
-	} else if (s->bsp.img.efiab.bootimg) {
-		// efiboot.img[.gz]
-		if (!strcmp(s->bsp.img.efiab.bootimg +
-				    (strlen(s->bsp.img.efiab.bootimg) - 3),
-			    ".gz")) {
-			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
-						       "efiboot.img.gz");
-		} else {
-			pv_paths_storage_trail_pv_file(dst, PATH_MAX, s->rev,
-						       "efiboot.img");
-		}
-		pv_paths_storage_trail_plat_file(src, PATH_MAX, s->rev, prefix,
-						 s->bsp.img.efiab.bootimg);
 		pv_log(DEBUG, "installing hardlink of platform file %s to %s",
 		       src, dst);
 

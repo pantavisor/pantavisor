@@ -125,8 +125,7 @@ static int efiab_run_mtools(char *cmd)
 
 	p = tsh_run(cmd, 0, NULL);
 	if (p < 0) {
-		pv_log(ERROR, "tsh_run '%s' failed: %s", cmd,
-		       strerror(errno));
+		pv_log(ERROR, "tsh_run '%s' failed: %s", cmd, strerror(errno));
 		pvsignals_setmask(&oldset);
 		return -1;
 	}
@@ -183,8 +182,8 @@ static int efiab_mount_efivarfs(void)
 	struct stat st;
 
 	/* Check if efivarfs is already mounted */
-	if (stat(EFIVARFS_PATH "PvBootPartition-" EFIAB_VENDOR_GUID,
-		 &st) == 0) {
+	if (stat(EFIVARFS_PATH "PvBootPartition-" EFIAB_VENDOR_GUID, &st) ==
+	    0) {
 		pv_log(DEBUG, "efivarfs already accessible");
 		return 0;
 	}
@@ -250,7 +249,7 @@ static int efiab_read_efivar(const char *name, void *buf, size_t size)
 /*
  * Write an EFI variable to efivarfs.
  * efivarfs files have FS_IMMUTABLE_FL flag that must be cleared before writing.
- * File format: 4-byte LE attributes + data.
+ * File format: 4-byte LE attributes + data, written in a single write() call.
  * Returns 0 on success, -1 on failure.
  */
 static int efiab_write_efivar(const char *name, uint32_t attrs,
@@ -260,6 +259,8 @@ static int efiab_write_efivar(const char *name, uint32_t attrs,
 	int fd;
 	int flags;
 	ssize_t w;
+	size_t total = sizeof(attrs) + size;
+	uint8_t *buf;
 
 	efiab_efivar_path(path, sizeof(path), name);
 
@@ -275,27 +276,31 @@ static int efiab_write_efivar(const char *name, uint32_t attrs,
 		close(fd);
 	}
 
+	/* Build single buffer: 4-byte LE attributes + data.
+	 * efivarfs requires attributes and data in one write() call. */
+	buf = malloc(total);
+	if (!buf) {
+		pv_log(ERROR, "Cannot allocate efivar write buffer for %s",
+		       name);
+		return -1;
+	}
+	memcpy(buf, &attrs, sizeof(attrs));
+	memcpy(buf + sizeof(attrs), data, size);
+
 	fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	if (fd < 0) {
 		pv_log(ERROR, "Cannot open efivar %s for write: %s", path,
 		       strerror(errno));
+		free(buf);
 		return -1;
 	}
 
-	/* Write 4-byte attributes prefix */
-	w = write(fd, &attrs, sizeof(attrs));
-	if (w != sizeof(attrs)) {
-		pv_log(ERROR, "Cannot write efivar attrs %s: %s", name,
-		       strerror(errno));
-		close(fd);
-		return -1;
-	}
-
-	/* Write data */
-	w = write(fd, data, size);
-	if (w != (ssize_t)size) {
-		pv_log(ERROR, "Cannot write efivar data %s: %s", name,
-		       strerror(errno));
+	/* Single write: attrs + data */
+	w = write(fd, buf, total);
+	free(buf);
+	if (w != (ssize_t)total) {
+		pv_log(ERROR, "Cannot write efivar %s: %s (wrote %zd/%zu)",
+		       name, strerror(errno), w, total);
 		close(fd);
 		return -1;
 	}
@@ -658,8 +663,7 @@ static int efiab_init(void)
 			partition = autoboot_boot_partition;
 	}
 
-	pv_log(DEBUG,
-	       "efiab_init: is_tryboot=%d partition=%d boot=%d try=%d",
+	pv_log(DEBUG, "efiab_init: is_tryboot=%d partition=%d boot=%d try=%d",
 	       is_tryboot, partition, autoboot_boot_partition,
 	       autoboot_try_partition);
 
@@ -861,8 +865,7 @@ static int _efiab_install_trybootimg(char *rev)
 	off_t si;
 
 #ifndef PVTEST
-	pv_paths_storage_trail_pv_file(imgpath, PATH_MAX, rev,
-				       "efiboot.img");
+	pv_paths_storage_trail_pv_file(imgpath, PATH_MAX, rev, "efiboot.img");
 	if (stat(imgpath, &st)) {
 		pv_paths_storage_trail_pv_file(imgpath, PATH_MAX, rev,
 					       "efiboot.img.gz");
@@ -886,8 +889,7 @@ static int _efiab_install_trybootimg(char *rev)
 	}
 
 	sprintf(trypath, "%s", paths.bootimg[autoboot_try_partition - 1]);
-	pv_log(INFO,
-	       "Installing efiab boot.img on try path partition %d: %s",
+	pv_log(INFO, "Installing efiab boot.img on try path partition %d: %s",
 	       autoboot_try_partition, trypath);
 
 	FILE *tryf = fopen(imgpath, "r");
@@ -919,8 +921,7 @@ static int _efiab_install_trybootimg(char *rev)
 			return -1;
 		}
 	} else {
-		pv_log(DEBUG,
-		       "Installing bootimg with no compression %s -> %s",
+		pv_log(DEBUG, "Installing bootimg with no compression %s -> %s",
 		       imgpath, trypath);
 
 		char *b = malloc(1024 * 1024);
@@ -1145,8 +1146,7 @@ static int efiab_install_update(char *rev)
 	}
 
 	if (_efiab_write_pv_rev_txt(rev)) {
-		pv_log(ERROR,
-		       "Error writing pv_rev.txt to tryboot partition");
+		pv_log(ERROR, "Error writing pv_rev.txt to tryboot partition");
 		return -1;
 	}
 
@@ -1238,8 +1238,7 @@ static int efiab_commit_update(void)
 	for (int i = 0; i < 10; i++) {
 		pid_t wp = waitpid(p, &wstatus, WNOHANG);
 		if (wp < 0) {
-			pv_log(INFO,
-			       "error running mcopy for autoboot.txt: %s",
+			pv_log(INFO, "error running mcopy for autoboot.txt: %s",
 			       strerror(errno));
 			pvsignals_setmask(&oldset);
 			return -1;
@@ -1306,8 +1305,7 @@ static int efiab_validate_state(const char *pv_try, const char *pv_done,
 	if (is_tryboot) {
 		/* We're in a tryboot */
 		if (!has_pv_try) {
-			pv_log(ERROR,
-			       "Tryboot active but no pv_try stored");
+			pv_log(ERROR, "Tryboot active but no pv_try stored");
 			return -1;
 		}
 
@@ -1318,8 +1316,7 @@ static int efiab_validate_state(const char *pv_try, const char *pv_done,
 			return -1;
 		}
 
-		pv_log(INFO, "Tryboot state valid: trying revision %s",
-		       pv_try);
+		pv_log(INFO, "Tryboot state valid: trying revision %s", pv_try);
 		*pv_rev_out = strdup(pv_try);
 		return 0;
 
