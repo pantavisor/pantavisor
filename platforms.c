@@ -707,6 +707,9 @@ void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
 {
 	struct pv_platform_driver *d, *tmp;
 
+	if (!p)
+		return;
+
 	if (dl_list_empty(&p->drivers)) {
 		pv_log(DEBUG, "no drivers for platform '%s'", p->name);
 		return;
@@ -733,6 +736,9 @@ int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch)
 {
 	struct pv_platform_driver *d, *tmp;
+
+	if (!p)
+		return 0;
 
 	if (dl_list_empty(&p->drivers)) {
 		pv_log(DEBUG, "no drivers for platform '%s'", p->name);
