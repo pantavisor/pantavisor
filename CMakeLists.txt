@@ -25,6 +25,7 @@ set(PANTAVISOR_PVCONTROL ON CACHE BOOL "install pantavisor pvcontrol")
 set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
+set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -97,6 +98,9 @@ IF (PANTAVISOR_RUNTIME)
 
 # subdirectories
 add_subdirectory(plugins)
+IF (PANTAVISOR_XCONNECT)
+  add_subdirectory(xconnect)
+ENDIF (PANTAVISOR_XCONNECT)
 
 ### Pantavisor links shared where possible
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")
@@ -186,6 +190,7 @@ add_executable(pantavisor
 			ctrl/ctrl_caller.c
 			ctrl/ctrl_caller.h
 			ctrl/ctrl_containers_ep.c
+			ctrl/ctrl_daemons_ep.c
 			ctrl/ctrl_endpoints.h
 			ctrl/ctrl_file.c
 			ctrl/ctrl_file.h
@@ -196,6 +201,7 @@ add_executable(pantavisor
 			ctrl/ctrl_upload.c
 			ctrl/ctrl_upload.h
 			ctrl/ctrl_usrmeta_ep.c
+			ctrl/ctrl_xconnect_graph_ep.c
 			ctrl/ctrl_util.c
 			ctrl/ctrl_util.h
 			daemons.c
@@ -358,6 +364,10 @@ target_compile_definitions(pantavisor PRIVATE PANTAVISOR_DEBUG)
 ENDIF()
 
 target_compile_definitions(pantavisor PUBLIC PV_INSTALL_FULL_PVLIBDIR="${PV_INSTALL_FULL_PVLIBDIR}")
+
+IF(PANTAVISOR_XCONNECT)
+	target_compile_definitions(pantavisor PRIVATE PANTAVISOR_XCONNECT)
+ENDIF()
 
 IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
 ## install basic filesystem skeleton
