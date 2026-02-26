@@ -35,6 +35,7 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
+#ifdef PANTAVISOR_XCONNECT
 static void ctrl_xconnect_graph_get(struct evhttp_request *req, void *ctx)
 {
 	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
@@ -52,6 +53,16 @@ static void ctrl_xconnect_graph_get(struct evhttp_request *req, void *ctx)
 
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, graph);
 }
+#else
+static void ctrl_xconnect_graph_get(struct evhttp_request *req, void *ctx)
+{
+	if (pv_ctrl_utils_is_req_ok(req, ctx, NULL) != 0)
+		return;
+
+	pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
+				 "xconnect not enabled at build time");
+}
+#endif
 
 int pv_ctrl_endpoints_xconnect_graph_init()
 {
