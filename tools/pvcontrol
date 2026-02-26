@@ -1,0 +1,687 @@
+#!/bin/sh
+
+cmd=''
+metakey=''
+metavalue=''
+path=''
+sha=''
+rev=''
+response=''
+signal=''
+
+CURL_CMD=${CURL_CMD:-curl}
+
+if ! command -v $CURL_CMD >/dev/null 2>&1; then
+	CURL_CMD="pvcurl"
+fi
+
+if ! command -v $CURL_CMD >/dev/null 2>&1; then
+	echo "Error: Neither 'curl' nor 'pvcurl' found in PATH." >&2
+	exit 1
+fi
+
+if [ "$CURL_CMD" = "pvcurl" ]; then
+	echo "INFO: Experimental pvcurl backend. Some features might not work..." >&2
+fi
+
+# only use --no-progress-meter if curl supports it
+noprogress_arg=
+if $CURL_CMD --help all | grep -q no-progress-meter; then
+	noprogress_arg=--no-progress-meter
+fi
+CURL="$CURL_CMD ${CURL_ARGS:-$noprogress_arg -s -w "\\n%{http_code}" --connect-timeout 5 --max-time 240}"
+CURL_RAW="$CURL_CMD ${CURL_ARGS:-$noprogress_arg --connect-timeout 5 --max-time 240}"
+
+# use paths known from initramfs
+if [ -S "/run/pantavisor/pv/pv-ctrl" ]; then
+        SOCKET="/run/pantavisor/pv/pv-ctrl"
+elif [ -S "/pv/pv-ctrl" ]; then
+        SOCKET="/pv/pv-ctrl"
+fi
+# if those are not found, we go for the standard container location
+SOCKET=${SOCKET:-"/pantavisor/pv-ctrl"}
+
+OUTPUT=""
+MESSAGE=""
+
+usage() {
+	echo "Usage: pvcontrol [options] <ls|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf> [arguments]"
+	echo "Control Pantavisor from your container"
+	echo "options:"
+	echo "       -h           show help"
+	echo "       -v           verbose"
+	echo "       -s <path>    send queries to PATH socket (default: /pantavisor/pv-ctrl)"
+	echo "       -f <path>    send output to file instead of stdout"
+	echo "       -m <message> commit message (only used for steps install and steps put)"
+}
+
+usage_ls() {
+	echo "Usage: pvcontrol ls"
+	echo "List all containers existing in the current revision"
+}
+
+usage_groups() {
+	echo "Usage: pvcontrol groups <ls>"
+	echo "Container groups related operations"
+	echo "       pvcontrol groups ls - lists groups of containers"
+}
+
+usage_signal() {
+	echo "Usage: pvcontrol signal <ready|alive>"
+	echo "Send status signals to Pantavisor"
+	echo "       pvcontrol groups ready - container is ready"
+	echo "       pvcontrol groups alive - container is alive"
+}
+
+usage_command() {
+	echo "Usage: pvcontrol cmd <run|poweroff|reboot|run-gc|make-factory|enable-ssh|disable-ssh|go-remote> [arguments]"
+	echo "Send command to the Pantavisor state machine"
+	echo "       pvcontrol cmd run <locals/revision|revision> 			- runs an installed step"
+	echo "       pvcontrol cmd run-commit <locals/revision|revision>		- runs and commit an installed step"
+	echo "       pvcontrol cmd poweroff [message]             			- leniently powers device off"
+	echo "       pvcontrol cmd reboot [message]               			- leniently reboots device"
+	echo "       pvcontrol cmd run-gc                         			- run garbage collector"
+	echo "       pvcontrol cmd make-factory [revision]        			- make revision the factory revision if device is not yet claimed. It will use current revision if not set"
+	echo "       pvcontrol cmd enable-ssh                     			- start SSH server ignoring config until reboot"
+	echo "       pvcontrol cmd disable-ssh                    			- stops SSH server ignoring config until reboot"
+	echo "       pvcontrol cmd go-remote                      			- go remote when running on a locals/ revision if allowed by config"
+	echo "       pvcontrol cmd defer-reboot [new_timeout]     			- when debug shell is enabled and a reboot is issue, it will defer reboot to a new timeout"
+}
+
+usage_devmeta() {
+	echo "Usage: pvcontrol devmeta <save|delete|ls> [arguments]"
+	echo "Device metadata related operations"
+	echo "       pvcontrol devmeta save <key> [value] - creates or updates key-value pair in device metadata list"
+	echo "       pvcontrol devmeta delete <key>       - deletes key-value pair from device metadata list"
+	echo "       pvcontrol devmeta ls                 - lists stored device metadata"
+}
+
+usage_usrmeta() {
+	echo "Usage: pvcontrol usrmeta <save|delete|ls> [arguments]"
+	echo "User metadata related operations"
+	echo "       pvcontrol usrmeta save <key> [value] - creates or updates key-value pair in user metadata list"
+	echo "       pvcontrol usrmeta delete <key>       - deletes key-value pair from user metadata list"
+	echo "       pvcontrol usrmeta ls                 - lists stored user metadata"
+}
+
+usage_buildinfo() {
+	echo "Usage: pvcontrol buildinfo"
+	echo "Dump Pantavisor build info"
+}
+
+usage_objects() {
+	echo "Usage: pvcontrol objects <put|get|ls> [path] <sha>"
+	echo "Object related operations"
+	echo "       pvcontrol objects put [path] <sha> - puts object with a given sha256"
+	echo "       pvcontrol objects get <sha>        - gets object with a fiven sha256"
+	echo "       pvcontrol objects ls               - lists stored objects"
+}
+
+usage_steps() {
+	echo "Usage: pvcontrol steps <install|put|get|show-progress|ls> [path] <[remotes|locals]/branch/rev>"
+	echo "Step related operations"
+	echo "       pvcontrol steps install <path> locals/<revision>                 - installs a .tgz compressed tarball step and returns generated name if not specified"
+	echo "       pvcontrol steps put <path> locals/<revision>                     - creates step and puts state json in a given step"
+	echo "       pvcontrol steps get <locals/revision|revision|current>           - returns state json from a given step"
+	echo "       pvcontrol steps show-progress <locals/revision|revision|current> - returns update progress json from a given step"
+	echo "       pvcontrol steps ls                                               - lists steps from device"
+}
+
+usage_config() {
+	echo "Usage: pvcontrol config <ls>"
+	echo "Legacy configuration related operations"
+	echo "       pvcontrol config ls - lists legacy configuration"
+}
+
+usage_conf() {
+	echo "Usage: pvcontrol <configuration|conf> <ls>"
+	echo "Configuration related operations"
+	echo "       pvcontrol conf ls - lists current configuration"
+}
+
+parse_ls_args() {
+	case "$1" in
+	'')
+		cmd='listcontainers';
+		;;
+	--help)
+		usage_ls; exit 0
+		;;
+	*)
+		usage_ls; exit 1
+		;;
+	esac
+}
+
+parse_groups_args() {
+	case "$1" in
+	ls)
+		cmd='listgroups';
+		;;
+	--help)
+		usage_groups; exit 0
+		;;
+	*)
+		usage_groups; exit 1
+		;;
+	esac
+}
+
+parse_signal_args() {
+	case "$1" in
+	--help)
+		usage_signal; exit 0
+		;;
+	ready)
+		cmd='signal'
+		signal='ready'
+		;;
+	alive)
+		cmd='signal'
+		signal='alive'
+		;;
+	*)
+		usage_signal; exit 1
+		;;
+	esac
+}
+
+parse_command_args() {
+	case "$1" in
+	run)
+		if [ -z "$2" ]; then usage_command; exit 1; fi
+		cmd='run'
+		rev="$2"
+		;;
+	run-commit)
+		if [ -z "$2" ]; then usage_command; exit 1; fi
+		cmd='runcommit'
+		rev="$2"
+		;;
+	reboot)
+		cmd='reboot'
+		MESSAGE="$2"
+		;;
+	poweroff)
+		cmd='poweroff'
+		MESSAGE="$2"
+		;;
+	make-factory)
+		cmd='makefactory'
+		rev="$2"
+		;;
+	run-gc)
+		cmd='rungc'
+		;;
+	enable-ssh)
+		cmd='enablessh'
+		;;
+	disable-ssh)
+		cmd='disablessh'
+		;;
+	go-remote)
+		cmd='goremote'
+		;;
+	defer-reboot)
+		if [ -z "$2" ]; then usage_command; exit 1; fi
+		cmd='deferreboot'
+		timeout="$2"
+		;;
+	--help)
+		usage_command; exit 0
+		;;
+	*)
+		usage_command; exit 1
+		;;
+	esac
+}
+
+parse_devmeta_args() {
+	case "$1" in
+	save|upload)
+		if [ -z "$2" ]; then usage_devmeta; exit 1; fi
+		cmd='savedevmeta'
+		metakey="$2"
+		metavalue="$3"
+		;;
+	delete)
+		if [ -z "$2" ]; then usage_devmeta; exit 1; fi
+		cmd='deletedevmeta'
+		metakey="$2"
+		;;
+	ls|list)
+		cmd='listdevmeta'
+		;;
+	--help)
+		usage_devmeta; exit 0
+		;;
+	*)
+		usage_devmeta; exit 1
+		;;
+	esac
+}
+
+parse_usrmeta_args() {
+	case "$1" in
+	save)
+		if [ -z "$2" ]; then usage_usrmeta; exit 1; fi
+		cmd='saveusrmeta'
+		metakey="$2"
+		metavalue="$3"
+		;;
+	delete)
+		if [ -z "$2" ]; then usage_usrmeta; exit 1; fi
+		cmd='deleteusrmeta'
+		metakey="$2"
+		;;
+	ls|list)
+		cmd='listusrmeta'
+		;;
+	--help)
+		usage_usrmeta; exit 0
+		;;
+	*)
+		usage_usrmeta; exit 1
+		;;
+	esac
+}
+
+parse_buildinfo_args() {
+	case "$1" in
+	'')
+		cmd='dumpbuildinfo'
+		;;
+	--help)
+		usage_buildinfo; exit 0
+		;;
+	*)
+		usage_buildinfo; exit 1
+		;;
+	esac
+}
+
+parse_objects_args() {
+	case "$1" in
+	put)
+		if [ -z "$2" ] || [ -z "$3" ]; then usage_objects; exit 1; fi
+		cmd='putobject'
+		path="$2"
+		sha="$3"
+		;;
+	get)
+		if [ -z "$2" ]; then usage_objects; exit 1; fi
+		cmd='getobject'
+		sha="$2"
+		;;
+	ls|list)
+		cmd='listobjects'
+		;;
+	--help)
+		usage_objects; exit 0
+		;;
+	*)
+		usage_objects; exit 1
+		;;
+	esac
+}
+
+parse_steps_args() {
+	case "$1" in
+	install)
+		if [ -z "$2" ]; then usage_steps; exit 1; fi
+		cmd='installstep'
+		path="$2"
+		rev="$3"
+		;;
+	put)
+		if [ -z "$2" ] || [ -z "$3" ]; then usage_steps; exit 1; fi
+		cmd='putsteps'
+		path="$2"
+		rev="$3"
+		;;
+	get)
+		if [ -z "$2" ]; then usage_steps; exit 1; fi
+		cmd='getsteps'
+		rev="$2"
+		;;
+	show-progress)
+		if [ -z "$2" ]; then usage_steps; exit 1; fi
+		cmd='stepprogress'
+		rev="$2"
+		;;
+	ls|list)
+		cmd='steplist'
+		;;
+	--help)
+		usage_steps; exit 0
+		;;
+	*)
+		usage_steps; exit 1
+		;;
+	esac
+}
+
+parse_config_args() {
+	case "$1" in
+	ls|list)
+		cmd='listconfig'
+		;;
+	--help)
+		usage_config; exit 0
+		;;
+	*)
+		usage_config; exit 1
+		;;
+	esac
+}
+
+parse_conf_args() {
+	case "$1" in
+	ls|list)
+		cmd='listconf'
+		;;
+	--help)
+		usage_conf; exit 0
+		;;
+	*)
+		usage_conf; exit 1
+		;;
+	esac
+}
+
+parse_args() {
+	# parse options
+	while [ $# -gt 0 ]; do
+		key="$1"
+		case "$key" in
+			-h)
+				usage; exit 0
+				;;
+			-v)
+				CURL="$CURL -v"
+				;;
+			-s)
+				shift
+				SOCKET="$1"
+				;;
+			-f)
+				shift
+				OUTPUT="$1"
+				;;
+			-m)
+				shift
+				MESSAGE="$1"
+				;;
+			*)
+				break
+		esac
+		shift
+	done
+
+	# parse cmd and its arguments
+	case "$1" in
+	ls|list)
+		parse_ls_args "$2"
+		;;
+	groups)
+		parse_groups_args "$2"
+		;;
+	signal)
+		parse_signal_args "$2"
+		;;
+	cmd|command|commands)
+		parse_command_args "$2" "$3"
+		;;
+	devmeta)
+		parse_devmeta_args "$2" "$3" "$4"
+		;;
+	usrmeta)
+		parse_usrmeta_args "$2" "$3" "$4"
+		;;
+	buildinfo)
+		parse_buildinfo_args "$2"
+		;;
+	objects)
+		parse_objects_args "$2" "$3" "$4"	
+		;;
+	steps)
+		parse_steps_args "$2" "$3" "$4"	
+		;;
+	config)
+		parse_config_args "$2" "$3" "$4"
+		;;
+	configuration|conf)
+		parse_conf_args "$2" "$3" "$4"
+		;;
+	--help)
+		usage; exit 0
+		;;
+	*)
+		usage; exit 1
+		;;
+	esac
+}
+
+check_sock() {
+	if [ ! -S "$SOCKET" ];
+	then
+		echo "ERROR: $SOCKET not found"; exit 1
+	fi
+}
+
+set_output() {
+	if [ ! -z "$OUTPUT" ];
+	then
+		exec 1>"$OUTPUT"
+	fi
+}
+
+put_object() {
+	path=$1
+	sizearg=
+	if ! [ ${path#-} = ${path} ]; then
+		sizearg="-H Content-Length:${path#-}"
+		path=-
+	fi
+
+	response=`$CURL --max-time 14400 -X PUT $sizearg \
+		-H "Content-Type: application/octet-stream" \
+		-H "Transfer-Encoding: identity" -T $path \
+		--unix-socket "$SOCKET" "http://localhost/objects/$2"`
+}
+
+put_step() {
+	response=`$CURL -X PUT --upload-file "$1" --unix-socket "$SOCKET" "http://localhost/steps/$2"`
+
+	http_code=`echo "$response" | tail -c 4`
+	if [ "$http_code" = "200" ] && [ -n "$MESSAGE" ] ; then
+		response=`$CURL -X PUT --data "$MESSAGE" --unix-socket "$SOCKET" "http://localhost/steps/$2/commitmsg"`
+	fi
+}
+
+install_step() {
+	path="$1"
+	rev="$2"
+
+	cd `mktemp -d -t pvr.XXXXXXXXXX`
+
+	## unpack compressed step
+	case "$path" in
+		*.tgz)
+			tar zxf "$path"
+			;;
+		*)
+			echo "ERROR: unkwnown file format"; exit 1
+			;;
+	esac
+
+	## check contents of step
+	if [ ! -f "json" ] || [ ! -d "objects" ]; then echo "ERROR: wrong contents of compressed step"; exit 1; fi
+
+	## generate new name for revision if not explicitly specified
+	if [ -z "$rev"];
+	then
+		sha=`sha256sum "$path" | cut -d " " -f 1`
+		rev="locals/$sha"
+	fi
+
+	## get object list
+	olist=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/objects"`
+
+	## put every object
+	for object in objects/*; do
+		sha=`echo "$object" | cut -d "/" -f 2`
+		case "$olist" in
+			(*$sha*) ;;
+			(*) put_object "$object" "$sha" ;;
+		esac
+	done
+
+	## get state list
+	slist=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps"`
+
+	## put state json
+	case "$slist" in
+		(*$rev*) ;;
+		(*) put_step json "$rev" ;;
+	esac
+
+	echo "{\"revision\":\"$rev\"}"
+	exit 0
+}
+
+exec_cmd() {
+	case "$cmd" in
+		listcontainers)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/containers"`
+			;;
+		listgroups)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/groups"`
+			;;
+		signal)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"type\":\"$signal\",\"payload\":\"\"}" --unix-socket "$SOCKET" http://localhost/signal`
+			;;
+		run)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"LOCAL_RUN\",\"payload\":\"$rev\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		runcommit)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"LOCAL_RUN_COMMIT\",\"payload\":\"$rev\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		poweroff)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"POWEROFF_DEVICE\",\"payload\":\"$MESSAGE\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		reboot)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"REBOOT_DEVICE\",\"payload\":\"$MESSAGE\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		makefactory)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"MAKE_FACTORY\",\"payload\":\"$rev\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		rungc)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"RUN_GC\",\"payload\":\"\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		enablessh)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"ENABLE_SSH\",\"payload\":\"\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		disablessh)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"DISABLE_SSH\",\"payload\":\"\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		goremote)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"GO_REMOTE\",\"payload\":\"\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		deferreboot)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"DEFER_REBOOT\",\"payload\":\"$timeout\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
+		savedevmeta)
+			response=`$CURL -X PUT --data "$metavalue" --unix-socket "$SOCKET" "http://localhost/device-meta/$metakey"`
+			;;
+		deletedevmeta)
+			response=`$CURL -X DELETE --unix-socket "$SOCKET" "http://localhost/device-meta/$metakey"`
+			;;
+		listdevmeta)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/device-meta"`
+			;;
+		saveusrmeta)
+			response=`$CURL -X PUT --data "$metavalue" --unix-socket "$SOCKET" "http://localhost/user-meta/$metakey"`
+			;;
+		deleteusrmeta)
+			response=`$CURL -X DELETE --unix-socket "$SOCKET" "http://localhost/user-meta/$metakey"`
+			;;
+		listusrmeta)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/user-meta"`
+			;;
+		dumpbuildinfo)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/buildinfo"`
+			;;
+		putobject)
+			put_object "$path" "$sha"
+			;;
+		getobject)
+			$CURL_RAW -X GET --unix-socket "$SOCKET" "http://localhost/objects/$sha"
+			exit 0
+			;;
+		listobjects)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/objects"`
+			;;
+		installstep)
+			install_step "$path" "$rev"
+			;;
+		putsteps)
+			put_step "$path" "$rev"
+			;;
+		getsteps)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps/$rev"`
+			;;
+		stepprogress)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps/$rev/progress"`
+			;;
+		steplist)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps"`
+			;;
+		listconfig)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/config"`
+			;;
+		listconf)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/config2"`
+			;;
+		*)
+			echo "ERROR: unknown operation"; exit 1
+			;;
+	esac
+}
+
+show_output() {
+	if [ -z "$response" ]; then
+		echo "ERROR: got no response" 1>&2
+		exit 1
+	fi
+
+	http_code=`echo "$response" | tail -n 1`
+	content=`echo "$response" | head -n -1`
+
+	if ! [ "$http_code" = "200" ]; then		
+		code=255
+		case "$content" in
+			"{\"Error\":\"Not enough disk space available\"}")
+				code=48
+				;;
+			"{\"Error\":\"Object has bad checksum\"}")
+				code=60
+				;;
+			"{\"Error\":\"State verification has failed\"}")
+				code=70
+				;;
+			*)
+		esac
+		echo "$content" 1>&2
+		exit $code
+	fi
+	
+	echo "$content"
+	exit 0
+}
+
+parse_args "$@"
+check_sock
+set_output
+exec_cmd
+show_output

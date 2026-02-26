@@ -21,6 +21,7 @@ set(PANTAVISOR_DISTRO_VERSION "" CACHE STRING "Set a distro version to include i
 set(PANTAVISOR_DISTRO_NAME "" CACHE STRING "Set a distro name to include in pantavisor build version")
 set(PANTAVISOR_E2FSGROW_ENABLE ON CACHE BOOL "Enable autogrow partition feature")
 set(PANTAVISOR_RUNTIME ON CACHE BOOL "build pantavisor runtime itself")
+set(PANTAVISOR_PVCONTROL ON CACHE BOOL "install pantavisor pvcontrol")
 set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
@@ -397,6 +398,14 @@ install(DIRECTORY scripts/hooks_lxc-mount.d
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
 	DESTINATION /usr/bin)
+
+## PVCONTROL
+
+if(PANTAVISOR_PVCONTROL)
+install(PROGRAMS tools/pvcontrol
+               tools/pvcurl
+       DESTINATION /usr/bin)
+ENDIF()
 
 add_executable(remount
 			remount/remount.c
