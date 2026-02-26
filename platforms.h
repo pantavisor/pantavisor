@@ -139,8 +139,8 @@ struct pv_platform {
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*
-	         * To be freed once logger_list is setup.
-	         * */
+	 * To be freed once logger_list is setup.
+	 */
 	struct dl_list logger_configs; // pv_logger_config
 };
 void pv_platform_free(struct pv_platform *p);
