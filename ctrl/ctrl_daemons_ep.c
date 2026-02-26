@@ -114,6 +114,11 @@ static void ctrl_daemons_process_action(struct evbuffer *buf,
 		return;
 	}
 	tokv = calloc(tokc, sizeof(jsmntok_t));
+	if (!tokv) {
+		free(data);
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL, "Out of memory");
+		return;
+	}
 	jsmn_init(&parser);
 	jsmn_parse(&parser, data, strlen(data), tokv, tokc);
 
