@@ -24,23 +24,28 @@ pv-xconnect runs as a daemon spawned by Pantavisor init. It is enabled for all i
 ## Service Manifests
 
 ### Exports (`services.json`)
-A file within a container (e.g., `services.json`) that declares what services it provides.
+A file within a container (e.g., `services.json`) that declares what services it provides. The file uses the `#spec` format for identification by pantavisor's parser.
 
 #### Example `services.json` (Provider):
 ```json
-[
-  {
-    "name": "network-manager",
-    "type": "rest",
-    "socket": "/run/network-manager/api.sock"
-  },
-  {
-    "name": "system-bus",
-    "type": "dbus",
-    "socket": "/run/dbus/system_bus_socket"
-  }
-]
+{
+  "#spec": "service-manifest-xconnect@1",
+  "services": [
+    {
+      "name": "network-manager",
+      "type": "rest",
+      "socket": "/run/network-manager/api.sock"
+    },
+    {
+      "name": "system-bus",
+      "type": "dbus",
+      "socket": "/run/dbus/system_bus_socket"
+    }
+  ]
+}
 ```
+
+The `#spec` field is required — pantavisor's parser uses it to identify and process the service manifest.
 
 ### Arguments (`args.json`)
 For containers that consume services, requirements are defined in `args.json` during the container creation process (e.g., with `pvr app add --arg-json args.json`). These arguments are then rendered into the final `run.json` manifest.
@@ -184,12 +189,26 @@ Plugins access container filesystems via `/proc/{pid}/root/` paths:
 
 ## API
 
+### Daemons Endpoint
+
+pv-xconnect runs as a managed daemon. Its lifecycle can be controlled via the `/daemons` API:
+
+- `GET /daemons` — List all managed daemons with PID and respawn status
+- `PUT /daemons/pv-xconnect` with `{"action":"stop"}` — Disable respawn and kill
+- `PUT /daemons/pv-xconnect` with `{"action":"start"}` — Enable respawn and start
+
+```bash
+# Use pvcurl (lightweight curl wrapper using nc, preferred in appengine)
+pvcurl --unix-socket /run/pantavisor/pv/pv-ctrl http://localhost/daemons
+pvcurl -X PUT --data '{"action":"stop"}' --unix-socket /run/pantavisor/pv/pv-ctrl http://localhost/daemons/pv-xconnect
+```
+
 ### xconnect-graph Endpoint
 
 Query the current service mesh topology:
 
 ```bash
-curl --unix-socket /run/pantavisor/pv/pv-ctrl http://localhost/xconnect-graph
+pvcurl --unix-socket /run/pantavisor/pv/pv-ctrl http://localhost/xconnect-graph
 ```
 
 #### Graph Fields
@@ -229,8 +248,29 @@ Response Example:
 }]
 ```
 
+## Tools
+
+### pvcurl
+
+A lightweight shell script wrapping `nc` for HTTP-over-Unix-socket communication. Preferred over `curl` in appengine environments where standard curl is not available.
+
+Supports: `-X` (method), `-T` (timeout), `-v` (verbose), `-o` (output file), `-w` (response code), `--data`, `--unix-socket`.
+
+```bash
+# Query API
+pvcurl --unix-socket /run/pantavisor/pv/pv-ctrl http://localhost/xconnect-graph
+
+# PUT with data
+pvcurl -X PUT --data '{"action":"stop"}' --unix-socket /run/pantavisor/pv/pv-ctrl http://localhost/daemons/pv-xconnect
+```
+
+### pvcontrol
+
+A CLI wrapper around pvcurl for common pv-ctrl operations.
+
 ## Testing
 
 For testing instructions and example containers, see the `meta-pantavisor` layer documentation:
 - [EXAMPLES.md](https://github.com/pantavisor/meta-pantavisor/blob/main/EXAMPLES.md) - Example containers and testing
 - [DEVELOPMENT.md](https://github.com/pantavisor/meta-pantavisor/blob/main/DEVELOPMENT.md) - Development workflow
+- [TESTPLAN-pvctrl.md](https://github.com/pantavisor/meta-pantavisor/blob/main/TESTPLAN-pvctrl.md) - 31 pv-ctrl API tests
