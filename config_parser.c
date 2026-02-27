@@ -197,7 +197,7 @@ int load_key_value_file(const char *path, struct dl_list *list)
 		return -1;
 
 	stat(path, &st);
-	buff = calloc(st.st_size, sizeof(char));
+	buff = calloc(st.st_size + 1, sizeof(char));
 	if (!buff)
 		goto out;
 
