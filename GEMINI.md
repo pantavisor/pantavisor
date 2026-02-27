@@ -1,17 +1,28 @@
-# feature/wasm-engine
+# feature/xconnect-landing
 
-This branch adds support for WasmEdge integration and the `pv-xconnect` service mesh architecture.
+This branch adds the pv-xconnect service mesh, daemon management, control API enhancements, and shell tooling (pvcurl/pvcontrol).
 
-## Architecture & Vision
+## Key Components
 
-- **pv-xconnect**: A standalone mediation service for cross-container and host-to-container communication.
-  - Detailed design in [xconnect/XCONNECT.md](xconnect/XCONNECT.md).
-- **WasmEdge Engine**: Evolving the Wasm support from a simple CLI wrapper to a C API-based host function system.
-  - **Goal**: Allow Wasm apps to reach container services (D-Bus, REST) via mediated host functions.
+| Component | Description |
+|-----------|-------------|
+| `xconnect/` | Service mesh daemon with plugins (unix, rest, dbus, drm, wayland) |
+| `ctrl/` | REST API: /xconnect-graph, /daemons, /signal endpoints |
+| `tools/pvcurl` | Lightweight curl wrapper using nc for HTTP-over-Unix-socket |
+| `tools/pvcontrol` | CLI wrapper around pvcurl for pv-ctrl operations |
+| `utils/tsh.c` | Daemon stdout/stderr capture via logserver |
 
-## Service Broker Concept
+## Architecture
 
-Beyond WasmEdge, Pantavisor acts as a **Security Broker** for all container types (LXC, runc, Wasm):
-- **Decoupling**: Containers use logical service names.
-- **Security**: Isolation by default; access granted only via explicit `run.json` requirements.
-- **Consistency**: Unified high-level APIs across all runtimes.
+- **pv-xconnect**: Standalone mediation service for cross-container communication
+  - Detailed design in [xconnect/XCONNECT.md](xconnect/XCONNECT.md)
+  - Plugin-driven: unix, rest, dbus, drm, wayland
+  - Runs as a managed daemon (DM_ALL mode, all init modes)
+- **Pantavisor as Security Broker**: Containers use logical service names, access granted via explicit `run.json` requirements
+- **Build flag**: `PANTAVISOR_XCONNECT` (CMake), controlled by `xconnect` in `PANTAVISOR_FEATURES` (Yocto)
+
+## Development Guidelines
+
+- **Formatting**: Run `clang-format -i` on modified `.c`/`.h` files before committing
+- **API testing**: Use `pvcurl` (not `curl`) inside appengine containers
+- **Build**: Use `kas/with-workspace.yaml` overlay for local source development
