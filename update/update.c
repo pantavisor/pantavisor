@@ -712,9 +712,9 @@ void pv_update_set_factory()
 			       PV_UPDATE_PROGRESS_MSG_FACTORY);
 	pv_state_set_done(s);
 
-	pv_update_finish();
+	pv_log(INFO, "Pantavisor initialized Factory revision %s.", u->rev);
 
-	pv_log(INFO, "Pantavisor initialized Factory revision %d.", u->rev);
+	pv_update_finish();
 }
 
 void pv_update_set_testing()
