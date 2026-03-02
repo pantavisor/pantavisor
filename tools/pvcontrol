@@ -27,7 +27,7 @@ fi
 
 # only use --no-progress-meter if curl supports it
 noprogress_arg=
-if $CURL_CMD --help all | grep -q no-progress-meter; then
+if $CURL_CMD --help all 2>/dev/null | grep -q no-progress-meter; then
 	noprogress_arg=--no-progress-meter
 fi
 CURL="$CURL_CMD ${CURL_ARGS:-$noprogress_arg -s -w "\\n%{http_code}" --connect-timeout 5 --max-time 240}"
