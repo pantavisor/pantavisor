@@ -48,11 +48,8 @@ struct pantavisor {
 	struct pv_ctrl_cmd *cmd;
 	struct trail_remote *remote;
 	struct pv_metadata *metadata;
-	struct pv_connection *conn;
 	char *cmdline;
 	bool remote_mode;
-	bool online;
-	bool unclaimed;
 	bool loading_objects;
 	pv_system_transition_t issued_transition;
 	cgroup_version_t cgroupv;
