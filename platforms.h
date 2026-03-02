@@ -31,6 +31,7 @@
 #include "utils/timer.h"
 
 #include "event/event_socket.h"
+#include "ipam.h"
 
 typedef enum {
 	PLAT_NONE,
@@ -157,6 +158,7 @@ struct pv_platform {
 	struct dl_list drivers; // pv_platform_driver
 	struct dl_list services; // pv_platform_service
 	struct dl_list service_exports; // pv_platform_service_export
+	struct pv_platform_network *network; // dynamic IPAM network config
 	struct dl_list list; // pv_platform
 	struct dl_list logger_list; // pv_log_info
 	/*
