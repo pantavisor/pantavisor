@@ -766,14 +766,14 @@ static int pv_platform_setup_config_overlay(const char *plat)
 	char dstpath[PATH_MAX];
 	pv_paths_configs_file(dstpath, PATH_MAX, plat);
 	pv_fs_path_remove(dstpath, true);
-	pv_fs_mkdir_p(dstpath, 0755);
 
-	char cmd[PATH_MAX];
-	SNPRINTF_WTRUNC(cmd, sizeof(cmd), "/bin/cp -aL %s/* %s/", srcpath,
-			dstpath);
-	pv_log(INFO, "setting up '%s' config overlay: %s", plat, cmd);
+	pv_log(INFO, "setting up '%s' config overlay: %s -> %s", plat, srcpath,
+	       dstpath);
 
-	system(cmd);
+	if (pv_fs_path_copy_recursive_no_sync(srcpath, dstpath) != 0) {
+		pv_log(ERROR, "failed to copy config overlay for '%s'", plat);
+		return -1;
+	}
 
 	return 0;
 }
