@@ -42,7 +42,8 @@ while [ "$#" -gt 0 ]; do
         -i|--include) SHOW_HEADERS=true; shift ;;
         -w|--write-out) WRITE_OUT="$2"; shift 2 ;;
         --no-progress-meter) shift ;;
-        *) 
+        -h|--help) usage ;;
+        *)
             case "$1" in -*) log_err "Error: Unrecognized option '$1'"; exit 1 ;; esac
             if [ -z "$URL" ]; then
                 URL=$(echo "$1" | sed -e 's|^http://localhost||' -e 's|^http://||')
