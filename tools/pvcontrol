@@ -8,6 +8,7 @@ sha=''
 rev=''
 response=''
 signal=''
+daemon_name=''
 
 CURL_CMD=${CURL_CMD:-curl}
 
@@ -45,7 +46,7 @@ OUTPUT=""
 MESSAGE=""
 
 usage() {
-	echo "Usage: pvcontrol [options] <ls|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf> [arguments]"
+	echo "Usage: pvcontrol [options] <ls|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons> [arguments]"
 	echo "Control Pantavisor from your container"
 	echo "options:"
 	echo "       -h           show help"
@@ -125,6 +126,21 @@ usage_steps() {
 	echo "       pvcontrol steps get <locals/revision|revision|current>           - returns state json from a given step"
 	echo "       pvcontrol steps show-progress <locals/revision|revision|current> - returns update progress json from a given step"
 	echo "       pvcontrol steps ls                                               - lists steps from device"
+}
+
+usage_graph() {
+	echo "Usage: pvcontrol graph <ls>"
+	echo "xconnect service mesh graph operations"
+	echo "       pvcontrol graph ls - show current xconnect graph"
+}
+
+usage_daemons() {
+	echo "Usage: pvcontrol daemons <ls|start|stop|restart> [arguments]"
+	echo "Daemon lifecycle operations"
+	echo "       pvcontrol daemons ls             - list all daemons and their status"
+	echo "       pvcontrol daemons start <name>   - start a daemon"
+	echo "       pvcontrol daemons stop <name>    - stop a daemon"
+	echo "       pvcontrol daemons restart <name> - restart a daemon"
 }
 
 usage_config() {
@@ -361,6 +377,49 @@ parse_steps_args() {
 	esac
 }
 
+parse_graph_args() {
+	case "$1" in
+	ls|list)
+		cmd='graphls'
+		;;
+	--help)
+		usage_graph; exit 0
+		;;
+	*)
+		usage_graph; exit 1
+		;;
+	esac
+}
+
+parse_daemons_args() {
+	case "$1" in
+	ls|list)
+		cmd='daemonsls'
+		;;
+	start)
+		if [ -z "$2" ]; then usage_daemons; exit 1; fi
+		cmd='daemonstart'
+		daemon_name="$2"
+		;;
+	stop)
+		if [ -z "$2" ]; then usage_daemons; exit 1; fi
+		cmd='daemonstop'
+		daemon_name="$2"
+		;;
+	restart)
+		if [ -z "$2" ]; then usage_daemons; exit 1; fi
+		cmd='daemonrestart'
+		daemon_name="$2"
+		;;
+	--help)
+		usage_daemons; exit 0
+		;;
+	*)
+		usage_daemons; exit 1
+		;;
+	esac
+}
+
 parse_config_args() {
 	case "$1" in
 	ls|list)
@@ -452,6 +511,12 @@ parse_args() {
 		;;
 	configuration|conf)
 		parse_conf_args "$2" "$3" "$4"
+		;;
+	graph)
+		parse_graph_args "$2"
+		;;
+	daemons)
+		parse_daemons_args "$2" "$3"
 		;;
 	--help)
 		usage; exit 0
@@ -636,6 +701,25 @@ exec_cmd() {
 			;;
 		steplist)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps"`
+			;;
+		graphls)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/xconnect-graph"`
+			;;
+		daemonsls)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/daemons"`
+			;;
+		daemonstart)
+			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"start\"}" --unix-socket "$SOCKET" "http://localhost/daemons/$daemon_name"`
+			;;
+		daemonstop)
+			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"stop\"}" --unix-socket "$SOCKET" "http://localhost/daemons/$daemon_name"`
+			;;
+		daemonrestart)
+			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"stop\"}" --unix-socket "$SOCKET" "http://localhost/daemons/$daemon_name"`
+			http_code=`echo "$response" | tail -n 1`
+			if [ "$http_code" = "200" ]; then
+				response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"start\"}" --unix-socket "$SOCKET" "http://localhost/daemons/$daemon_name"`
+			fi
 			;;
 		listconfig)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/config"`
