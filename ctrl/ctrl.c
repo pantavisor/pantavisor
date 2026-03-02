@@ -34,8 +34,8 @@
 #include <event2/buffer.h>
 
 #include <linux/limits.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 #define MODULE_NAME "ctrl"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -337,6 +337,9 @@ static void ctrl_free_request_list(struct dl_list *req_list)
 
 void pv_ctrl_stop()
 {
+	if (!pvctrl.srv)
+		return;
+
 	evhttp_free(pvctrl.srv);
 	pvctrl.srv = NULL;
 
