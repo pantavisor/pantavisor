@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <event2/util.h>
 #include "../include/xconnect.h"
 
 #define MODULE_NAME "pvx-tcp"
@@ -54,8 +55,18 @@ static void proxy_check_close(struct tcp_proxy_session *session)
 static void proxy_event_cb(struct bufferevent *bev, short events, void *arg)
 {
 	struct tcp_proxy_session *session = arg;
+	const char *side =
+		(bev == session->be_client) ? "client" : "provider";
+
+	if (events & BEV_EVENT_CONNECTED) {
+		fprintf(stderr, "%s: %s connected\n", MODULE_NAME, side);
+		return;
+	}
 
 	if (events & BEV_EVENT_ERROR) {
+		fprintf(stderr, "%s: %s error: %s\n", MODULE_NAME, side,
+			evutil_socket_error_to_string(
+				EVUTIL_SOCKET_ERROR()));
 		session->client_eof = 1;
 		session->provider_eof = 1;
 		proxy_check_close(session);
@@ -63,6 +74,7 @@ static void proxy_event_cb(struct bufferevent *bev, short events, void *arg)
 	}
 
 	if (events & BEV_EVENT_EOF) {
+		fprintf(stderr, "%s: %s EOF\n", MODULE_NAME, side);
 		if (bev == session->be_client) {
 			session->client_eof = 1;
 			bufferevent_disable(bev, EV_READ);
@@ -125,6 +137,7 @@ static int tcp_connect_backend_tcp(struct tcp_proxy_session *session,
 	if (inet_pton(AF_INET, host, &sin.sin_addr) <= 0)
 		return -1;
 
+	// be_provider already has an AF_INET socket from tcp_on_accept
 	printf("%s: Connecting to TCP backend %s:%d\n", MODULE_NAME, host,
 	       port);
 
@@ -184,14 +197,26 @@ static void tcp_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	session->link = link;
 	session->be_client =
 		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	session->be_provider =
-		bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 
-	// Determine backend type and connect
+	// For TCP backends, create an AF_INET socket directly
+	// For Unix backends, use fd=-1 (libevent auto-creates AF_UNIX)
 	if (is_tcp_address(link->provider_socket)) {
+		int tcp_fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (tcp_fd < 0) {
+			fprintf(stderr, "%s: socket(AF_INET) failed: %s\n",
+				MODULE_NAME, strerror(errno));
+			bufferevent_free(session->be_client);
+			free(session);
+			return;
+		}
+		evutil_make_socket_nonblocking(tcp_fd);
+		session->be_provider = bufferevent_socket_new(
+			base, tcp_fd, BEV_OPT_CLOSE_ON_FREE);
 		connect_result =
 			tcp_connect_backend_tcp(session, link->provider_socket);
 	} else {
+		session->be_provider =
+			bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
 		connect_result = tcp_connect_backend_unix(session, link);
 	}
 

@@ -182,6 +182,20 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 			       consumer, name, existing->provider_pid, new_pid);
 			existing->provider_pid = new_pid;
 		}
+		// Update provider_socket if it was empty (e.g. IP not
+		// yet allocated when link was first established)
+		char *new_socket =
+			pv_json_get_value(json, "socket", itok, obj_tokc);
+		if (new_socket && new_socket[0] &&
+		    (!existing->provider_socket ||
+		     !existing->provider_socket[0])) {
+			free(existing->provider_socket);
+			existing->provider_socket = new_socket;
+			printf("Updating provider_socket for %s/%s: %s\n",
+			       consumer, name, new_socket);
+		} else {
+			free(new_socket);
+		}
 		free(consumer);
 		free(name);
 		return;
