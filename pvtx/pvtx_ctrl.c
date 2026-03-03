@@ -37,6 +37,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <errno.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/mman.h>
@@ -68,6 +69,28 @@ struct pv_pvtx_ctrl_header {
 	const char *ctype;
 	off_t clen;
 };
+
+int socket_wait(struct pv_pvtx_ctrl *ctrl, int events)
+{
+	struct pollfd fds[] = { {
+		.fd = ctrl->sock,
+		.events = events,
+	} };
+
+	int res = poll(fds, 1, 10000);
+
+	if (res < 0) {
+		PVTX_ERROR_SET(&ctrl->error, errno, "poll failed: %s",
+			       strerror(errno));
+		return -1;
+	} else if (res == 0) {
+		PVTX_ERROR_SET(&ctrl->error, -1,
+			       "couldn't get server response, timeout! (10s)");
+		return -1;
+	}
+
+	return fds[0].revents;
+}
 
 struct pv_pvtx_buffer *get_buffer(struct pv_pvtx_error *err)
 {
@@ -145,7 +168,8 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 			sleep(wait);
 		}
 
-		ctrl->sock = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+		ctrl->sock = socket(
+			AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 
 		if (ctrl->sock < 0) {
 			PVTX_ERROR_SET(&ctrl->error, errno,
@@ -299,6 +323,17 @@ static struct pv_pvtx_buffer *read_data(struct pv_pvtx_ctrl *ctrl)
 	if (!buf)
 		return NULL;
 
+	int revents = socket_wait(ctrl, POLLIN);
+
+	if (revents == -1)
+		return NULL;
+
+	if (!(revents & POLLIN)) {
+		PVTX_ERROR_SET(&ctrl->error, errno, "poll error: %s",
+			       strerror(errno));
+		goto out;
+	}
+
 	ssize_t cur_read =
 		pv_fs_file_read_nointr(ctrl->sock, buf->data, buf->size - 1);
 
@@ -306,16 +341,26 @@ static struct pv_pvtx_buffer *read_data(struct pv_pvtx_ctrl *ctrl)
 	if (len < 0)
 		goto out;
 
-	size_t new_size = cur_read + len;
-	if (pv_pvtx_buffer_realloc(buf, new_size) != 0) {
-		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't reallocate buffer");
+	char *p = buf->data;
+	char *pos = strstr(p, "\r\n\r\n");
+
+	if (!pos)
 		goto out;
-	}
 
-	if (cur_read < new_size)
+	size_t header_size = pos + 4 - (char*)buf->data;
+	size_t body_read = cur_read - header_size;
+	size_t total = len + header_size;
+
+	if (cur_read < total) {
+		if (pv_pvtx_buffer_realloc(buf, total + 1) != 0) {
+			PVTX_ERROR_SET(&ctrl->error, -1,
+				       "couldn't reallocate buffer");
+			goto out;
+		}
+
 		pv_fs_file_read_nointr(ctrl->sock, buf->data + cur_read,
-				       new_size - cur_read);
-
+				       len - body_read);
+	}
 out:
 	if (ctrl->error.code != 0) {
 		memset(buf->data, 0, buf->size);
@@ -394,7 +439,20 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 	}
 
 	ssize_t written = 0;
+	int i = 0;
+
 	while (written < con->size) {
+		int revents = socket_wait(ctrl, POLLOUT);
+
+		if (revents == -1)
+			return -1;
+
+		if (!(revents & POLLOUT)) {
+			PVTX_ERROR_SET(&ctrl->error, errno, "poll error: %s",
+				       strerror(errno));
+			return -1;
+		}
+
 		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf->data,
 							     buf->size);
 		if (cur <= 0)
@@ -403,9 +461,12 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 		ssize_t to_write = cur;
 		if ((written + cur) > con->size)
 			to_write = con->size - written;
+
 		written += pv_fs_file_write_nointr(ctrl->sock, buf->data,
 						   to_write);
+
 		memset(buf->data, 0, buf->size);
+		i++;
 	}
 
 	struct pv_pvtx_buffer *buf_data = read_data(ctrl);
