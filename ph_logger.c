@@ -857,7 +857,7 @@ static pid_t ph_logger_start_range_service(struct pantavisor *pv,
 
 static void ph_logger_start_cloud(struct pantavisor *pv, char *revision)
 {
-	if (!pv || !pv->online)
+	if (!pv || !pv_pantahub_is_online())
 		return;
 
 	if (ph_logger.push_service == -1) {
