@@ -57,7 +57,7 @@ static void pv_ctrl_download_free(struct pv_ctrl_download *dl)
 	free(dl);
 }
 
-static void ctrl_download_complete_cb(struct evhttp_connection *con, void *ctx)
+static void ctrl_download_on_complete_cb(struct evhttp_request *req, void *ctx)
 {
 	struct pv_ctrl_download *dl = ctx;
 	if (!dl->file->ok) {
@@ -76,45 +76,69 @@ static void ctrl_download_send_cb(evutil_socket_t fd, short events, void *ctx)
 
 	struct pv_ctrl_download *dl = ctx;
 
+	ssize_t to_send = dl->chunk_size;
+	if (to_send > (dl->total - dl->cur))
+		to_send = dl->total - dl->cur;
+
+	if (to_send <= 0) {
+		dl->file->ok = true;
+		evhttp_send_reply_end(dl->file->req);
+		return;
+	}
+
+	bool is_last = (dl->cur + to_send >= dl->total);
+	unsigned flags = 0;
+
+	if (is_last)
+		flags = EVBUF_FS_CLOSE_ON_FREE;
+
 	struct evbuffer_file_segment *seg = evbuffer_file_segment_new(
-		dl->file->fd, dl->cur, dl->chunk_size, 0);
+		dl->file->fd, dl->cur, to_send, flags);
 
 	if (!seg) {
 		pv_log(DEBUG, "couldn't alloc file chunk");
 		return;
 	}
 
+	if (is_last)
+		dl->file->fd = -1;
+
 	struct evbuffer *buf = evbuffer_new();
 	if (!buf) {
 		pv_log(DEBUG, "couldn't alloc buffer data");
-		goto out;
+		if (seg)
+			evbuffer_file_segment_free(seg);
+		return;
 	}
 
 	if (evbuffer_add_file_segment(buf, seg, 0, -1) != 0) {
 		pv_log(DEBUG, "couldn't add data chunk");
-		goto out;
+		if (seg)
+			evbuffer_file_segment_free(seg);
+		if (buf)
+			evbuffer_free(buf);
+		return;
 	}
 
-	evhttp_send_reply_chunk(dl->file->req, buf);
-	dl->cur += dl->chunk_size;
+	evbuffer_file_segment_free(seg);
 
-	// file completely read
-	if (dl->cur >= dl->total) {
-		evhttp_send_reply_end(dl->file->req);
-		dl->file->ok = true;
-		goto out;
+	if (!is_last) {
+		struct timeval tv = { .tv_sec = 0, .tv_usec = 1 };
+		event_add(dl->timer, &tv);
 	}
 
-	pv_log(DEBUG, "%zd of %zd bytes send", dl->cur, dl->total);
-	// new timer for next chunk
-	struct timeval tv = { .tv_sec = 0, .tv_usec = 1 };
-	event_add(dl->timer, &tv);
+	dl->cur += to_send;
+	struct evhttp_request *req = dl->file->req;
 
-out:
-	if (seg)
-		evbuffer_file_segment_free(seg);
+	evhttp_send_reply_chunk(req, buf);
+
 	if (buf)
 		evbuffer_free(buf);
+
+	if (is_last) {
+		dl->file->ok = true;
+		evhttp_send_reply_end(req);
+	}
 }
 
 static void crtl_download_set_events(struct pv_ctrl_download *dl)
@@ -124,8 +148,6 @@ static void crtl_download_set_events(struct pv_ctrl_download *dl)
 
 	struct evhttp_connection *con =
 		evhttp_request_get_connection(dl->file->req);
-
-	evhttp_connection_set_closecb(con, ctrl_download_complete_cb, dl);
 
 	dl->timer = evtimer_new(evhttp_connection_get_base(con),
 				ctrl_download_send_cb, dl);
@@ -163,6 +185,7 @@ int pv_ctrl_download_start(struct evhttp_request *req, const char *path,
 	dl->total = st.st_size;
 	dl->chunk_size = chunk_size;
 
+	evhttp_request_set_on_complete_cb(req, ctrl_download_on_complete_cb, dl);
 	crtl_download_set_events(dl);
 
 	return 0;
