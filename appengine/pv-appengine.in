@@ -4,12 +4,17 @@ set -e
 
 interrupt='false'
 
+once='false'
+
+
+
 usage() {
 	echo "Usage: $0 [options]"
 	echo "Run Pantavisor in an existing OS"
 	echo "options:"
 	echo "       -h         show help"
-	echo "       -i         interrupt auto reboot and wait for user confirmation"
+	echo "       -i         wait for user confirmation between reboots"
+	echo "       -o         run only once and exit"
 	echo "       -c CMDLINE additional cmdline arguments (incl. legacy configs)"
 	echo "       -e ENVS envs to set (incl. new config format)"
 }
@@ -139,6 +144,10 @@ exec_run() {
 				break
 			fi
 		fi
+		if [ "$once" = 'true' ]; then
+			echo "Run once mode enabled. Exiting..."
+			break
+		fi
 		echo "restarting in 5 seconds..."
 		sleep 5 || true
 	done
@@ -156,10 +165,13 @@ while [ $# -gt 0 ]; do
 	-h)
 		usage
 		exit 0
-		;; 
+		;;
 	-i)
 		interrupt='true'
-		;; 
+		;;
+	-o)
+		once='true'
+		;;
 	-c)
 		shift
 		cmdline="$1"
@@ -167,10 +179,10 @@ while [ $# -gt 0 ]; do
 	-e)
 		shift
 		envs="$1"
-		;; 
+		;;
 	*)
 		break
-		;; 
+		;;
 	esac
 	shift
 done

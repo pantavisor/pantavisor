@@ -40,7 +40,9 @@ typedef enum {
 	PLAT_STARTING,
 	PLAT_STARTED,
 	PLAT_READY,
+	PLAT_RECOVERING,
 	PLAT_STOPPING,
+
 	PLAT_STOPPED
 } plat_status_t;
 
@@ -95,6 +97,24 @@ typedef enum {
 	RESTART_CONTAINER
 } restart_policy_t;
 
+typedef enum {
+	RECOVERY_NO,
+	RECOVERY_ALWAYS,
+	RECOVERY_ON_FAILURE,
+	RECOVERY_UNLESS_STOPPED
+} recovery_type_t;
+
+struct pv_auto_recovery {
+	recovery_type_t type;
+	int max_retries;
+	int current_retries;
+	int retry_delay;
+	double backoff_factor;
+	int reset_window;
+	struct timer timer_retry;
+	time_t last_start;
+};
+
 struct pv_platform_driver {
 	plat_driver_t type;
 	char *match;
@@ -127,6 +147,7 @@ struct pv_platform {
 	struct pv_state *state;
 	int roles;
 	restart_policy_t restart_policy;
+	struct pv_auto_recovery auto_recovery;
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
@@ -167,8 +188,7 @@ bool pv_platform_check_running(struct pv_platform *p);
 void pv_platform_set_installed(struct pv_platform *p);
 void pv_platform_set_mounted(struct pv_platform *p);
 void pv_platform_set_blocked(struct pv_platform *p);
-void pv_platform_set_updated(struct pv_platform *p);
-
+void pv_platform_set_recovering(struct pv_platform *p);
 int pv_platform_set_ready(struct pv_platform *p);
 
 bool pv_platform_is_installed(struct pv_platform *p);
@@ -176,6 +196,7 @@ bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
 bool pv_platform_is_started(struct pv_platform *p);
 bool pv_platform_is_ready(struct pv_platform *p);
+bool pv_platform_is_recovering(struct pv_platform *p);
 bool pv_platform_is_stopping(struct pv_platform *p);
 bool pv_platform_is_stopped(struct pv_platform *p);
 bool pv_platform_is_updated(struct pv_platform *p);
