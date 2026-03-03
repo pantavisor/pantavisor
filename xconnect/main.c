@@ -175,6 +175,13 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 	struct pvx_link *existing = find_link(consumer, name);
 
 	if (existing && existing->established) {
+		int new_pid =
+			parse_pid_field(json, "provider_pid", itok, obj_tokc);
+		if (new_pid > 0 && existing->provider_pid != new_pid) {
+			printf("Updating provider_pid for %s/%s: %d -> %d\n",
+			       consumer, name, existing->provider_pid, new_pid);
+			existing->provider_pid = new_pid;
+		}
 		free(consumer);
 		free(name);
 		return;
