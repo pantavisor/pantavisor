@@ -4,7 +4,7 @@ source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 
 usage() {
 	echo ""
-	echo "Usage: $0 <test-path> <interactive> <manual> <overwrite> <verbose> <netsim>"
+	echo "Usage: $0 <test-path> <interactive> <manual> <overwrite> <verbose> <netsim> <valgrind>"
 	echo ""
 }
 
@@ -136,7 +136,11 @@ int_handler() {
 }
 
 start_pv() {
-	pv_cmd="pv-appengine -V -c \"$cmdline\""
+	local valgrind_opt=""
+	if [ "$valgrind" = "true" ]; then
+		valgrind_opt="-V"
+	fi
+	pv_cmd="pv-appengine $valgrind_opt -V -c \"$cmdline\""
 
 	if [ "$verbose" = "false" ]; then
 		eval "$pv_cmd > /dev/null 2>&1 &"
@@ -241,6 +245,7 @@ overwrite=${4:-$OVERWRITE}
 verbose=${5:-$VERBOSE}
 netsim=${6:-$NETSIM}
 daemon=${7:-$DAEMON}
+valgrind=${8:-$VALGRIND}
 
 if [ -z "$test_path" ] || [ -z "$interactive" ] || [ -z "$manual" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$netsim" ]; then
 	echo "Error: missing arguments / envs"
