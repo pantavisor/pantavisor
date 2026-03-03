@@ -39,6 +39,39 @@ basename_i() {
 	echo $1 | sed -e 's/.*\/\([^/]*\)$/\1/'
 }
 
+# Check if the ext4 filesystem on a partition needs growing.
+# Compares filesystem size (from dumpe2fs) with partition size (from blockdev).
+# Returns 0 if resize2fs is needed, 1 if filesystem already fills the partition.
+fs_needs_grow() {
+	local part=$1
+
+	local part_bytes=$(blockdev --getsize64 "$part" 2>/dev/null)
+	if [ -z "$part_bytes" ] || [ "$part_bytes" -eq 0 ]; then
+		echo_info "cannot read partition size; assuming grow needed"
+		return 0
+	fi
+
+	local dump=$(dumpe2fs -h "$part" 2>/dev/null)
+	local fs_blocks=$(echo "$dump" | sed -n 's/^Block count:[[:space:]]*//p')
+	local fs_bsize=$(echo "$dump" | sed -n 's/^Block size:[[:space:]]*//p')
+
+	if [ -z "$fs_blocks" ] || [ -z "$fs_bsize" ]; then
+		echo_info "cannot read ext4 filesystem info; assuming grow needed"
+		return 0
+	fi
+
+	local fs_bytes=$((fs_blocks * fs_bsize))
+
+	# Allow 2 blocks of slack for metadata/alignment
+	local gap=$((part_bytes - fs_bytes))
+	if [ "$gap" -le "$((fs_bsize * 2))" ]; then
+		return 1
+	fi
+
+	echo_info "filesystem ${fs_bytes} bytes < partition ${part_bytes} bytes"
+	return 0
+}
+
 rootpart=$1
 
 if ! [ -b $rootpart ]; then
@@ -87,7 +120,14 @@ if /sbin/fdisk -l $rootdisk | grep GPT; then
 		| grep -v "Setting name" \
 		| grep -v "partNum is" > /tmp/sgdisk2
 	if diff /tmp/sgdisk1 /tmp/sgdisk2 &> /dev/null; then
-		echo_info "GPT table already captures max disk size; skipping grow partition"
+		echo_info "GPT table already captures max disk size"
+		if fs_needs_grow "$rootpart"; then
+			echo_info "filesystem smaller than partition; growing..."
+			fsck.ext4 -p -f $rootpart || true
+			resize2fs $rootpart || true
+		else
+			echo_info "filesystem already fills partition; skipping"
+		fi
 		exit 0
 	fi
 	if ! sgdisk -d $rootno -e -n $rootno:$STARTSECTOR: -c $rootno:$name -u $rootno:$guid -p $rootdisk; then
@@ -111,7 +151,14 @@ if test -z "$partstart"; then echo "ERROR parsing fdisk output (partstart empty)
 if test -z "$partend"; then echo "ERROR parsing fdisk output (partstart empty); skipping grow partition"; exit 6; fi
 
 if test $(( $sectors - $partend )) -lt 10; then
-	echo_info "partition already maximized; skipping."
+	echo_info "partition already maximized"
+	if fs_needs_grow "$rootpart"; then
+		echo_info "filesystem smaller than partition; growing..."
+		fsck.ext4 -p -f $rootpart || true
+		resize2fs $rootpart || true
+	else
+		echo_info "filesystem already fills partition; skipping"
+	fi
 	exit 0
 fi
 
