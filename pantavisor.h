@@ -51,7 +51,6 @@ struct pantavisor {
 	struct pv_connection *conn;
 	char *cmdline;
 	bool remote_mode;
-	bool online;
 	bool unclaimed;
 	bool loading_objects;
 	pv_system_transition_t issued_transition;
