@@ -39,6 +39,11 @@ static void ctrl_groups_list(struct evhttp_request *req, void *ctx)
 		return;
 
 	struct pantavisor *pv = pv_get_instance();
+	if (!pv->state) {
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "State not loaded yet");
+		return;
+	}
 	char *groups = pv_state_get_groups_json(pv->state);
 
 	if (!groups) {

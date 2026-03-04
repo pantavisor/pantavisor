@@ -42,6 +42,11 @@ static void ctrl_xconnect_graph_get(struct evhttp_request *req, void *ctx)
 		return;
 
 	struct pantavisor *pv = pv_get_instance();
+	if (!pv->state) {
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "State not loaded yet");
+		return;
+	}
 	char *graph = pv_state_get_xconnect_graph_json(pv->state);
 
 	if (!graph) {
