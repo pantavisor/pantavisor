@@ -922,6 +922,46 @@ static int rpiab_flush_env(void)
 	return 0;
 }
 
+/*
+ * Check if the tryboot flag is currently armed via mbox GET_REBOOT_FLAGS.
+ * Returns 1 if armed, 0 if not.
+ */
+static int _rpiab_is_tryboot_armed(void)
+{
+#ifdef PVTEST
+	/* In test mode, fall back to checking pv_try in rpiab.txt */
+	char *pv_try = rpiab_get_env_key("pv_try");
+	int armed = (pv_try && strlen(pv_try) > 0);
+	free(pv_try);
+	return armed;
+#else
+	unsigned args[7] = {};
+	int rv;
+
+	int mbox = mbox_open();
+	if (mbox < 0)
+		return 0;
+
+	args[0] = 7 * sizeof(args[0]);
+	args[1] = 0;
+	args[2] = RPI_FIRMWARE_GET_REBOOT_FLAGS;
+	args[3] = 4;
+	args[4] = 0;
+	args[5] = 0;
+	args[6] = 0;
+
+	rv = mbox_property(mbox, args);
+	mbox_close(mbox);
+
+	if (rv >= 0 && args[1] == 0x80000000 && (args[5] & 1)) {
+		pv_log(DEBUG, "tryboot flag is armed (flags=0x%x)", args[5]);
+		return 1;
+	}
+
+	return 0;
+#endif
+}
+
 static int _rpiab_mark_tryboot()
 {
 	int rv = 0;
@@ -1097,6 +1137,130 @@ static int _rpiab_install_trybootimg(char *rev)
 }
 
 /*
+ * Check if 'rev' appears in a comma-separated list of revisions.
+ * Returns 1 if found, 0 if not.
+ */
+static int _rpiab_rev_in_list(const char *list, const char *rev)
+{
+	char *copy, *token;
+
+	if (!list || !rev)
+		return 0;
+
+	copy = strdup(list);
+	if (!copy)
+		return 0;
+
+	token = strtok(copy, ",");
+	while (token) {
+		/* trim leading whitespace */
+		while (*token == ' ')
+			token++;
+		if (strcmp(token, rev) == 0) {
+			free(copy);
+			return 1;
+		}
+		token = strtok(NULL, ",");
+	}
+
+	free(copy);
+	return 0;
+}
+
+/*
+ * Read pv_rev.txt from a specific partition number.
+ * Returns allocated string with contents, or NULL if not found.
+ * Caller must free the returned string.
+ */
+static char *_rpiab_read_pv_rev_txt_from_partition(int part)
+{
+	int wstatus;
+	size_t s, r;
+	sigset_t oldset;
+	char *cmdbuf = NULL;
+	char buf[256] = { 0 };
+	FILE *f;
+	pid_t p;
+	int found = 0;
+
+	pv_log(DEBUG, "reading pv_rev.txt from partition %d", part);
+
+	s = snprintf(NULL, 0, "mcopy -n -i %s ::pv_rev.txt %s",
+		     paths.bootimg[part - 1],
+		     paths.pv_rev_tmp) + 1;
+
+	cmdbuf = malloc(s);
+	if (!cmdbuf) {
+		pv_log(ERROR, "OOM allocating cmdbuf");
+		return NULL;
+	}
+
+	snprintf(cmdbuf, s, "mcopy -n -i %s ::pv_rev.txt %s",
+		 paths.bootimg[part - 1],
+		 paths.pv_rev_tmp);
+
+	if (pvsignals_block_chld(&oldset)) {
+		free(cmdbuf);
+		return NULL;
+	}
+
+	p = tsh_run(cmdbuf, 0, NULL);
+	if (p < 0) {
+		pv_log(DEBUG, "tsh_run '%s' failed: %s", cmdbuf, strerror(errno));
+		pvsignals_setmask(&oldset);
+		free(cmdbuf);
+		return NULL;
+	}
+	free(cmdbuf);
+
+	for (int i = 0; i < 10; i++) {
+		pid_t wp = waitpid(p, &wstatus, WNOHANG);
+		if (wp < 0) {
+			pvsignals_setmask(&oldset);
+			return NULL;
+		}
+		if (wp > 0) {
+			if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus)) {
+				pv_log(DEBUG, "pv_rev.txt not found on partition %d",
+				       part);
+				pvsignals_setmask(&oldset);
+				return NULL;
+			}
+			found = 1;
+			break;
+		}
+		sleep(1);
+	}
+	pvsignals_setmask(&oldset);
+
+	if (!found)
+		return NULL;
+
+	f = fopen(paths.pv_rev_tmp, "r");
+	if (!f) {
+		pv_log(WARN, "Cannot open extracted pv_rev.txt");
+		return NULL;
+	}
+
+	r = fread(buf, 1, sizeof(buf) - 1, f);
+	fclose(f);
+
+	if (r <= 0) {
+		pv_log(WARN, "Empty pv_rev.txt");
+		return NULL;
+	}
+
+	/* Trim whitespace/newline */
+	buf[r] = '\0';
+	char *end = buf + strlen(buf) - 1;
+	while (end > buf && (*end == '\n' || *end == '\r' || *end == ' '))
+		*end-- = '\0';
+
+	pv_log(DEBUG, "pv_rev.txt from partition %d: %s", part, buf);
+	return strdup(buf);
+}
+
+/*
  * Read pv_rev.txt from the currently booted partition.
  * This tells us what revision that partition was installed for.
  *
@@ -1107,93 +1271,16 @@ static int _rpiab_install_trybootimg(char *rev)
  */
 static int _rpiab_read_boot_partition_rev(void)
 {
-	int wstatus;
-	size_t s, r;
-	sigset_t oldset;
-	char *cmdbuf = NULL;
-	char buf[256] = { 0 };
-	FILE *f;
-	pid_t p;
-	int pv_rev_txt_found = 0;
+	char *rev;
 
 	/* 'partition' is the partition number we booted from */
-	pv_log(DEBUG, "reading pv_rev.txt from boot partition %d", partition);
-
-	s = snprintf(NULL, 0, "mcopy -n -i %s ::pv_rev.txt %s",
-		     paths.bootimg[partition - 1],
-		     paths.pv_rev_tmp) + 1;
-
-	cmdbuf = malloc(s);
-	if (!cmdbuf) {
-		pv_log(ERROR, "OOM allocating cmdbuf");
+	rev = _rpiab_read_pv_rev_txt_from_partition(partition);
+	if (!rev)
 		return -1;
-	}
-
-	snprintf(cmdbuf, s, "mcopy -n -i %s ::pv_rev.txt %s",
-		 paths.bootimg[partition - 1],
-		 paths.pv_rev_tmp);
-
-	if (pvsignals_block_chld(&oldset)) {
-		free(cmdbuf);
-		return -1;
-	}
-
-	p = tsh_run(cmdbuf, 0, NULL);
-	if (p < 0) {
-		pv_log(DEBUG, "tsh_run '%s' failed: %s", cmdbuf, strerror(errno));
-		pvsignals_setmask(&oldset);
-		free(cmdbuf);
-		return -1;
-	}
-	free(cmdbuf);
-
-	for (int i = 0; i < 10; i++) {
-		pid_t wp = waitpid(p, &wstatus, WNOHANG);
-		if (wp < 0) {
-			pvsignals_setmask(&oldset);
-			return -1;
-		}
-		if (wp > 0) {
-			if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus)) {
-				pv_log(DEBUG, "pv_rev.txt not found on partition %d",
-				       partition);
-				pvsignals_setmask(&oldset);
-				return -1;
-			}
-			pv_rev_txt_found = 1;
-			break;
-		}
-		sleep(1);
-	}
-	pvsignals_setmask(&oldset);
-
-	if (!pv_rev_txt_found)
-		return -1;
-
-	/* Read the extracted file */
-	f = fopen(paths.pv_rev_tmp, "r");
-	if (!f) {
-		pv_log(WARN, "Cannot open extracted pv_rev.txt");
-		return -1;
-	}
-
-	r = fread(buf, 1, sizeof(buf) - 1, f);
-	fclose(f);
-
-	if (r <= 0) {
-		pv_log(WARN, "Empty pv_rev.txt");
-		return -1;
-	}
-
-	/* Trim whitespace/newline */
-	buf[r] = '\0';
-	char *end = buf + strlen(buf) - 1;
-	while (end > buf && (*end == '\n' || *end == '\r' || *end == ' '))
-		*end-- = '\0';
 
 	if (boot_partition_rev)
 		free(boot_partition_rev);
-	boot_partition_rev = strdup(buf);
+	boot_partition_rev = rev;
 	pv_log(INFO, "Boot partition revision (from pv_rev.txt): %s", boot_partition_rev);
 
 	return 0;
@@ -1201,10 +1288,13 @@ static int _rpiab_read_boot_partition_rev(void)
 
 /*
  * Write pv_rev.txt to the try boot partition.
- * This file contains just the revision string, used to verify
- * that the boot partition matches the expected revision.
+ *
+ * prev_rev_list: the previous pv_rev.txt content read before the boot image
+ *                was dd'd (which destroys it). May be NULL.
+ *
+ * Returns: 0 on success, -1 on error, 1 if pv_rev.txt overflow forces reboot.
  */
-static int _rpiab_write_pv_rev_txt(const char *rev)
+static int _rpiab_write_pv_rev_txt(const char *rev, const char *prev_rev_list)
 {
 	int wstatus;
 	size_t s;
@@ -1215,14 +1305,34 @@ static int _rpiab_write_pv_rev_txt(const char *rev)
 
 	pv_log(INFO, "writing pv_rev.txt to tryboot partition");
 
-	/* Write revision to temp file */
 	f = fopen(paths.pv_rev_tmp, "w");
 	if (!f) {
 		pv_log(ERROR, "Cannot create pv_rev.txt temp file %s: %s",
 		       paths.pv_rev_tmp, strerror(errno));
 		return -1;
 	}
-	fprintf(f, "%s\n", rev);
+
+	int need_reboot = 0;
+
+	if (prev_rev_list && strlen(prev_rev_list) > 0 &&
+	    !_rpiab_rev_in_list(prev_rev_list, rev)) {
+		/* Check if appended list would exceed limit */
+		size_t new_len = strlen(prev_rev_list) + 1 + strlen(rev) + 1;
+		if (new_len > 511) {
+			pv_log(WARN, "pv_rev.txt would exceed limit (%zu bytes); "
+			       "forcing reboot update", new_len);
+			fprintf(f, "%s\n", rev);
+			need_reboot = 1;
+		} else {
+			fprintf(f, "%s,%s\n", prev_rev_list, rev);
+			pv_log(INFO, "pv_rev.txt: appending %s to existing list %s",
+			       rev, prev_rev_list);
+		}
+	} else {
+		fprintf(f, "%s\n", rev);
+		if (prev_rev_list && _rpiab_rev_in_list(prev_rev_list, rev))
+			pv_log(DEBUG, "pv_rev.txt: rev %s already in list", rev);
+	}
 	fclose(f);
 
 	/* Copy to try partition via mcopy */
@@ -1279,17 +1389,34 @@ static int _rpiab_write_pv_rev_txt(const char *rev)
 	pvsignals_setmask(&oldset);
 
 	pv_log(INFO, "pv_rev.txt written successfully");
-	return 0;
+	return need_reboot;
 }
 
 static int rpiab_install_update(char *rev)
 {
+	int rv;
+	char *prev_rev_list;
+
+	/*
+	 * Only preserve the existing pv_rev.txt list if tryboot is already
+	 * armed (checked via mbox GET_REBOOT_FLAGS). This means we are
+	 * stacking a new update on top of a pending one on the try partition.
+	 * For a genuine first install, start with a clean list.
+	 */
+	prev_rev_list = NULL;
+	if (_rpiab_is_tryboot_armed())
+		prev_rev_list = _rpiab_read_pv_rev_txt_from_partition(
+			autoboot_try_partition);
+
 	if (_rpiab_install_trybootimg(rev)) {
 		pv_log(ERROR, "Error installing tryboot image.");
+		free(prev_rev_list);
 		return -1;
 	}
 
-	if (_rpiab_write_pv_rev_txt(rev)) {
+	rv = _rpiab_write_pv_rev_txt(rev, prev_rev_list);
+	free(prev_rev_list);
+	if (rv < 0) {
 		pv_log(ERROR, "Error writing pv_rev.txt to tryboot partition");
 		return -1;
 	}
@@ -1305,7 +1432,8 @@ static int rpiab_install_update(char *rev)
 	 */
 
 	pv_log(INFO, "Install update prepared (tryboot not yet armed).");
-	return 0;
+	/* rv > 0 signals "needs reboot" (pv_rev.txt overflow) */
+	return rv;
 }
 
 static int rpiab_commit_update()
@@ -1403,6 +1531,63 @@ static int rpiab_commit_update()
 
 	pv_log(INFO, "committing tryboot to autoboot.txt done.");
 
+	/*
+	 * Swap the globals so subsequent installs (e.g. no-reboot updates)
+	 * target the correct partition.
+	 */
+	{
+		int tmp = autoboot_boot_partition;
+		autoboot_boot_partition = autoboot_try_partition;
+		autoboot_try_partition = tmp;
+		pv_log(INFO, "partition globals swapped: boot=%d try=%d",
+		       autoboot_boot_partition, autoboot_try_partition);
+	}
+
+	/*
+	 * Clean up pv_rev.txt on the now-committed (boot) partition.
+	 * After the globals swap above, autoboot_boot_partition is the
+	 * newly committed partition. If there were accumulated no-reboot
+	 * revisions (e.g. "rev5,rev6,rev7"), replace with just the
+	 * committed revision.
+	 */
+	{
+		const char *done_rev = pv_bootloader_get_done();
+		if (done_rev && strlen(done_rev) > 0) {
+			FILE *rf = fopen(paths.pv_rev_tmp, "w");
+			if (rf) {
+				fprintf(rf, "%s\n", done_rev);
+				fclose(rf);
+
+				s = snprintf(NULL, 0, "mcopy -o -i %s %s ::pv_rev.txt",
+					     paths.bootimg[autoboot_boot_partition - 1],
+					     paths.pv_rev_tmp) + 1;
+				cmdbuf = malloc(s);
+				if (cmdbuf) {
+					snprintf(cmdbuf, s, "mcopy -o -i %s %s ::pv_rev.txt",
+						 paths.bootimg[autoboot_boot_partition - 1],
+						 paths.pv_rev_tmp);
+
+					if (!pvsignals_block_chld(&oldset)) {
+						p = tsh_run(cmdbuf, 0, NULL);
+						if (p >= 0) {
+							for (int i = 0; i < 10; i++) {
+								pid_t wp = waitpid(p, &wstatus, WNOHANG);
+								if (wp > 0)
+									break;
+								if (wp < 0)
+									break;
+								sleep(1);
+							}
+						}
+						pvsignals_setmask(&oldset);
+					}
+					free(cmdbuf);
+				}
+				pv_log(INFO, "pv_rev.txt cleaned to single revision: %s", done_rev);
+			}
+		}
+	}
+
 	return 0;
 }
 
@@ -1460,7 +1645,7 @@ static int rpiab_validate_state(const char *pv_try, const char *pv_done,
 			return -1;
 		}
 
-		if (strcmp(partition_rev, pv_try) != 0) {
+		if (!_rpiab_rev_in_list(partition_rev, pv_try)) {
 			/* Boot partition revision doesn't match what we expected to try */
 			pv_log(ERROR, "Partition mismatch: booted rev=%s but pv_try=%s",
 			       partition_rev, pv_try);
@@ -1495,7 +1680,7 @@ static int rpiab_validate_state(const char *pv_try, const char *pv_done,
 			pv_log(WARN, "Update to revision %s failed before reaching pantavisor",
 			       pv_try);
 
-			if (strcmp(partition_rev, pv_done) != 0) {
+			if (!_rpiab_rev_in_list(partition_rev, pv_done)) {
 				pv_log(WARN, "Partition rev=%s != pv_done=%s (expected during early rollback)",
 				       partition_rev, pv_done);
 			}
@@ -1505,7 +1690,7 @@ static int rpiab_validate_state(const char *pv_try, const char *pv_done,
 			return 0;
 		}
 
-		if (strcmp(partition_rev, pv_done) != 0) {
+		if (!_rpiab_rev_in_list(partition_rev, pv_done)) {
 			/* Boot partition doesn't match committed revision */
 			pv_log(ERROR, "Partition mismatch: booted rev=%s but pv_rev=%s",
 			       partition_rev, pv_done);
