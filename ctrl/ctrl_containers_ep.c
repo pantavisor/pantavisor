@@ -41,6 +41,11 @@ static void ctrl_containers_list(struct evhttp_request *req, void *ctx)
 		return;
 
 	struct pantavisor *pv = pv_get_instance();
+	if (!pv->state) {
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL,
+					 "State not loaded yet");
+		return;
+	}
 	char *cont = pv_state_get_containers_json(pv->state);
 
 	if (!cont) {
