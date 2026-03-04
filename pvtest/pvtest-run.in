@@ -104,7 +104,7 @@ stop_pv() {
 	fi
 	if [ "$self_claim" = "true" ] && [ -n "$device_id" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
 		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
-		pvr delete -y $device_id
+		pvr dev delete -y $device_id
 	fi
 
 	local pv_appengine_pid=$(ps | grep " pv-appengine$" | awk 'NR==1 {print $1}')
