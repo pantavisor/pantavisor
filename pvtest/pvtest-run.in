@@ -140,7 +140,7 @@ start_pv() {
 	if [ "$valgrind" = "true" ]; then
 		valgrind_opt="-V"
 	fi
-	pv_cmd="pv-appengine $valgrind_opt -V -c \"$cmdline\""
+	pv_cmd="pv-appengine $valgrind_opt -c \"$cmdline\""
 
 	if [ "$verbose" = "false" ]; then
 		eval "$pv_cmd > /dev/null 2>&1 &"
