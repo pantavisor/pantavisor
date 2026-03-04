@@ -153,7 +153,8 @@ static void _finish_update_installation()
 		return;
 	}
 
-	if (pv_bootloader_install_update(u->rev)) {
+	int bl_rv = pv_bootloader_install_update(u->rev);
+	if (bl_rv < 0) {
 		pv_log(WARN, "could not set bootloader with new update info");
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_ERROR,
@@ -162,6 +163,14 @@ static void _finish_update_installation()
 	}
 
 	u->transition = pv_run_update();
+
+	/* Bootloader can force reboot (e.g. pv_rev.txt overflow) */
+	if (bl_rv > 0 && u->transition == PV_SYSTEM_TRANSITION_NONREBOOT) {
+		pv_log(INFO, "bootloader requests forced reboot for this update");
+		pv_issue_reboot();
+		u->transition = PV_SYSTEM_TRANSITION_REBOOT;
+	}
+
 	switch (u->transition) {
 	case PV_SYSTEM_TRANSITION_REBOOT:
 		pv_update_progress_set(&u->progress,

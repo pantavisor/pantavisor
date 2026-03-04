@@ -137,15 +137,19 @@ bool pv_bootloader_trying_update()
 
 int pv_bootloader_install_update(char *rev)
 {
+	int rv = 0;
+
 	pv_log(INFO,
 	       "setting installed revision %s to be started after next reboot",
 	       rev);
 
 	if (ops->install_update) {
-		if (ops->install_update(rev)) {
+		rv = ops->install_update(rev);
+		if (rv < 0) {
 			pv_log(ERROR, "could not install update");
 			return -1;
 		}
+		/* rv > 0 means "success but force reboot" */
 	}
 
 	if (pv_bootloader_set_try(rev)) {
@@ -153,7 +157,7 @@ int pv_bootloader_install_update(char *rev)
 		return -1;
 	}
 
-	return 0;
+	return rv;
 }
 
 int pv_bootloader_pre_commit_update(char *rev)
