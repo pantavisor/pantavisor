@@ -1,0 +1,178 @@
+#!/bin/sh
+# devicepass-cli — DevicePass device identity and onboarding
+
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+LIB_DIR="${SCRIPT_DIR}/../lib/devicepass"
+
+. "${LIB_DIR}/display.sh"
+. "${LIB_DIR}/config.sh"
+
+GUARDIAN_LIB_DIR="${LIB_DIR}/guardian"
+
+usage() {
+	printf "Usage: devicepass-cli <command> [options]\n\n"
+	printf "Device commands:\n"
+	printf "  init         Generate device identity (keypair + address)\n"
+	printf "  onboard      Create signed onboard claim blob\n"
+	printf "  status       Show device identity status\n"
+	printf "  export-key   Export public key in various formats\n"
+	printf "  serve        Start pv-devicepass daemon\n"
+	printf "\nGuardian commands:\n"
+	printf "  guardian claim     Submit claim blob to register device on-chain\n"
+	printf "  guardian list      List owned devices\n"
+	printf "  guardian status    Show device passport and balance\n"
+	printf "  guardian fund      Send ETH to device wallet\n"
+	printf "  guardian balance   Check device wallet balance\n"
+	printf "  guardian transfer  Transfer device to new guardian\n"
+	printf "  guardian revoke    Deactivate device passport\n"
+	printf "\nCommon options:\n"
+	printf "  --rpc=URL          RPC endpoint (default: http://localhost:8545)\n"
+	printf "  --contract=ADDR    Registry contract address\n"
+	printf "  --account=NAME     Cast keystore account name\n"
+	printf "  --private-key=KEY  Private key for signing\n"
+	exit 1
+}
+
+guardian_usage() {
+	printf "Usage: devicepass-cli guardian <subcommand> [options]\n\n"
+	printf "Subcommands:\n"
+	printf "  claim     <BLOB_FILE>              Submit claim blob on-chain\n"
+	printf "  list      [--json]                 List owned devices\n"
+	printf "  status    <DEVICE> [--json]        Show passport + balance\n"
+	printf "  fund      <DEVICE> <AMOUNT>        Send ETH to device\n"
+	printf "  balance   <DEVICE>                 Check device balance\n"
+	printf "  transfer  <DEVICE> <NEW_GUARDIAN>  Transfer ownership\n"
+	printf "  revoke    <DEVICE>                 Deactivate passport\n"
+	exit 1
+}
+
+cmd_guardian() {
+	subcmd="${1:-}"
+	[ -n "$subcmd" ] && shift
+
+	. "${GUARDIAN_LIB_DIR}/common.sh"
+
+	case "$subcmd" in
+		claim)
+			. "${GUARDIAN_LIB_DIR}/claim.sh"
+			cmd_guardian_claim "$@"
+			;;
+		list)
+			. "${GUARDIAN_LIB_DIR}/list.sh"
+			cmd_guardian_list "$@"
+			;;
+		status)
+			. "${GUARDIAN_LIB_DIR}/status.sh"
+			cmd_guardian_status "$@"
+			;;
+		fund)
+			. "${GUARDIAN_LIB_DIR}/fund.sh"
+			cmd_guardian_fund "$@"
+			;;
+		balance)
+			. "${GUARDIAN_LIB_DIR}/balance.sh"
+			cmd_guardian_balance "$@"
+			;;
+		transfer)
+			. "${GUARDIAN_LIB_DIR}/transfer.sh"
+			cmd_guardian_transfer "$@"
+			;;
+		revoke)
+			. "${GUARDIAN_LIB_DIR}/revoke.sh"
+			cmd_guardian_revoke "$@"
+			;;
+		*)
+			guardian_usage
+			;;
+	esac
+}
+
+cmd_status() {
+	check_deps
+
+	if ! identity_exists; then
+		log_warn "No device identity found"
+		log_info "Run 'devicepass-cli init' to generate one"
+		exit 1
+	fi
+
+	address=$(cat "$DEVICEPASS_ADDR")
+	devid=$(cat "$DEVICEPASS_ID")
+
+	printf "Device Identity\n"
+	printf "  Address:   %s\n" "$address"
+	printf "  ID:        %s\n" "$devid"
+	printf "  Chain ID:  %s\n" "$DEVICEPASS_CHAIN_ID"
+	printf "  Contract:  %s\n" "$DEVICEPASS_CONTRACT"
+	printf "  Key dir:   %s\n" "$DEVICEPASS_DIR"
+}
+
+cmd_export_key() {
+	fmt="hex"
+	for arg in "$@"; do
+		case "$arg" in
+			--format=*) fmt="${arg#--format=}" ;;
+			*) log_error "Unknown option: $arg"; exit 1 ;;
+		esac
+	done
+
+	if ! identity_exists; then
+		log_error "No device identity found"
+		exit 1
+	fi
+
+	case "$fmt" in
+		hex)
+			cat "$DEVICEPASS_PUB"
+			;;
+		bin)
+			# Convert hex pubkey to binary
+			keccak256sum --help >/dev/null 2>&1  # just checking it exists
+			# Use printf to output binary from hex
+			pub=$(cat "$DEVICEPASS_PUB" | tr -d '\n')
+			i=0
+			while [ $i -lt ${#pub} ]; do
+				byte=$(echo "$pub" | cut -c$((i+1))-$((i+2)))
+				printf "\\x$byte"
+				i=$((i+2))
+			done
+			;;
+		*)
+			log_error "Unknown format: $fmt (use hex or bin)"
+			exit 1
+			;;
+	esac
+}
+
+case "${1:-}" in
+	init)
+		shift
+		. "${LIB_DIR}/identity.sh"
+		cmd_init "$@"
+		;;
+	onboard)
+		shift
+		. "${LIB_DIR}/identity.sh"
+		. "${LIB_DIR}/signing.sh"
+		cmd_onboard "$@"
+		;;
+	status)
+		shift
+		cmd_status "$@"
+		;;
+	export-key)
+		shift
+		cmd_export_key "$@"
+		;;
+	serve)
+		shift
+		exec pv-devicepass "$@"
+		;;
+	guardian)
+		shift
+		cmd_guardian "$@"
+		;;
+	*)
+		usage
+		;;
+esac

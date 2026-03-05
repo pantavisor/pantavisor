@@ -26,6 +26,7 @@ set(PANTAVISOR_PVCONTROL ON CACHE BOOL "install pantavisor pvcontrol")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
 set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
+set(PANTAVISOR_DEVICEPASS OFF CACHE BOOL "Build pv-devicepass management agent")
 
 #set cmake defintions
 set(CODE_INSTALL_BASE "$ENV{DESTDIR}")
@@ -102,6 +103,9 @@ add_subdirectory(plugins)
 IF (PANTAVISOR_XCONNECT)
   add_subdirectory(xconnect)
 ENDIF (PANTAVISOR_XCONNECT)
+IF (PANTAVISOR_DEVICEPASS)
+  add_subdirectory(pv-devicepass)
+ENDIF (PANTAVISOR_DEVICEPASS)
 
 ### Pantavisor links shared where possible
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")
