@@ -6,13 +6,23 @@ _encode_uint256() {
 	printf "%064x" "$1"
 }
 
+# Encode address as 40 hex chars (20 bytes, zero-padded, no 0x prefix)
+_encode_address() {
+	printf "%s" "$1" | sed 's/^0x//' | tr '[:upper:]' '[:lower:]'
+}
+
+# Zero address (40 hex chars)
+ZERO_ADDRESS="0000000000000000000000000000000000000000"
+
 cmd_onboard() {
 	quiet=0
 	outfile=""
+	guardian_addr=""
 	for arg in "$@"; do
 		case "$arg" in
 			--quiet) quiet=1 ;;
 			--out=*) outfile="${arg#--out=}" ;;
+			--guardian=*) guardian_addr="${arg#--guardian=}" ;;
 			*) log_error "Unknown option: $arg"; exit 1 ;;
 		esac
 	done
@@ -27,7 +37,15 @@ cmd_onboard() {
 
 	address=$(cat "$DEVICEPASS_ADDR")
 	# Strip 0x prefix for encoding
-	addr_hex=$(echo "$address" | sed 's/^0x//')
+	addr_hex=$(_encode_address "$address")
+
+	# Guardian address: zero-padded if omitted (open claim)
+	if [ -n "$guardian_addr" ]; then
+		guardian_hex=$(_encode_address "$guardian_addr")
+	else
+		guardian_hex="$ZERO_ADDRESS"
+		guardian_addr="0x${ZERO_ADDRESS}"
+	fi
 
 	nonce=$(date +%s)
 	chain_id="$DEVICEPASS_CHAIN_ID"
@@ -35,13 +53,14 @@ cmd_onboard() {
 
 	[ "$quiet" = "0" ] && log_info "Building onboard claim..."
 
-	# ABI encodePacked(address, nonce, chain_id)
-	# address: 20 bytes (40 hex)
-	# nonce:   32 bytes (64 hex) big-endian
+	# ABI encodePacked(address, guardian, nonce, chain_id)
+	# address:  20 bytes (40 hex)
+	# guardian: 20 bytes (40 hex)
+	# nonce:    32 bytes (64 hex) big-endian
 	# chain_id: 32 bytes (64 hex) big-endian
 	nonce_hex=$(_encode_uint256 "$nonce")
 	chain_hex=$(_encode_uint256 "$chain_id")
-	packed="${addr_hex}${nonce_hex}${chain_hex}"
+	packed="${addr_hex}${guardian_hex}${nonce_hex}${chain_hex}"
 
 	# Inner hash: keccak256(packed)
 	inner_hash=$(printf "%s" "$packed" | keccak256sum --hex)
@@ -70,9 +89,9 @@ cmd_onboard() {
 		exit 1
 	fi
 
-	# Build claim JSON
-	claim=$(printf '{"version":1,"device":"%s","nonce":%s,"chain_id":%s,"contract":"%s","signature":"0x%s"}' \
-		"$address" "$nonce" "$chain_id" "$contract" "$signature")
+	# Build claim JSON (includes guardian field)
+	claim=$(printf '{"version":2,"device":"%s","guardian":"%s","nonce":%s,"chain_id":%s,"contract":"%s","signature":"0x%s"}' \
+		"$address" "$guardian_addr" "$nonce" "$chain_id" "$contract" "$signature")
 
 	if [ -n "$outfile" ]; then
 		printf "%s\n" "$claim" > "$outfile"

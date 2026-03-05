@@ -9,27 +9,32 @@ LIB_DIR="${SCRIPT_DIR}/../lib/devicepass"
 
 GUARDIAN_LIB_DIR="${LIB_DIR}/guardian"
 
+DEVICEPASS_CLI_VERSION="0.3.0"
+
 usage() {
 	printf "Usage: devicepass-cli <command> [options]\n\n"
-	printf "Device commands:\n"
+	printf "Subcommands:\n"
+	printf "  dev          Device-side commands (identity, onboarding)\n"
+	printf "  guardian     Guardian/fleet management commands\n"
+	printf "\nDevice commands (shorthand):\n"
+	printf "  init         Alias for 'dev init'\n"
+	printf "  onboard      Alias for 'dev onboard'\n"
+	printf "  status       Alias for 'dev status'\n"
+	printf "  serve        Alias for 'dev serve'\n"
+	printf "\nOptions:\n"
+	printf "  --version    Show version\n"
+	printf "\nRun 'devicepass-cli dev' or 'devicepass-cli guardian' for subcommand help.\n"
+	exit 1
+}
+
+dev_usage() {
+	printf "Usage: devicepass-cli dev <subcommand> [options]\n\n"
+	printf "Subcommands:\n"
 	printf "  init         Generate device identity (keypair + address)\n"
 	printf "  onboard      Create signed onboard claim blob\n"
 	printf "  status       Show device identity status\n"
 	printf "  export-key   Export public key in various formats\n"
 	printf "  serve        Start pv-devicepass daemon\n"
-	printf "\nGuardian commands:\n"
-	printf "  guardian claim     Submit claim blob to register device on-chain\n"
-	printf "  guardian list      List owned devices\n"
-	printf "  guardian status    Show device passport and balance\n"
-	printf "  guardian fund      Send ETH to device wallet\n"
-	printf "  guardian balance   Check device wallet balance\n"
-	printf "  guardian transfer  Transfer device to new guardian\n"
-	printf "  guardian revoke    Deactivate device passport\n"
-	printf "\nCommon options:\n"
-	printf "  --rpc=URL          RPC endpoint (default: http://localhost:8545)\n"
-	printf "  --contract=ADDR    Registry contract address\n"
-	printf "  --account=NAME     Cast keystore account name\n"
-	printf "  --private-key=KEY  Private key for signing\n"
 	exit 1
 }
 
@@ -37,6 +42,7 @@ guardian_usage() {
 	printf "Usage: devicepass-cli guardian <subcommand> [options]\n\n"
 	printf "Subcommands:\n"
 	printf "  claim     <BLOB_FILE>              Submit claim blob on-chain\n"
+	printf "  deploy                             Deploy registry contract via forge\n"
 	printf "  list      [--json]                 List owned devices\n"
 	printf "  status    <DEVICE> [--json]        Show passport + balance\n"
 	printf "  fund      <DEVICE> <AMOUNT>        Send ETH to device\n"
@@ -56,6 +62,10 @@ cmd_guardian() {
 		claim)
 			. "${GUARDIAN_LIB_DIR}/claim.sh"
 			cmd_guardian_claim "$@"
+			;;
+		deploy)
+			. "${GUARDIAN_LIB_DIR}/deploy.sh"
+			cmd_guardian_deploy "$@"
 			;;
 		list)
 			. "${GUARDIAN_LIB_DIR}/list.sh"
@@ -92,7 +102,7 @@ cmd_status() {
 
 	if ! identity_exists; then
 		log_warn "No device identity found"
-		log_info "Run 'devicepass-cli init' to generate one"
+		log_info "Run 'devicepass-cli dev init' to generate one"
 		exit 1
 	fi
 
@@ -144,33 +154,68 @@ cmd_export_key() {
 	esac
 }
 
+cmd_dev() {
+	subcmd="${1:-}"
+	[ -n "$subcmd" ] && shift
+
+	case "$subcmd" in
+		init)
+			. "${LIB_DIR}/identity.sh"
+			cmd_init "$@"
+			;;
+		onboard)
+			. "${LIB_DIR}/identity.sh"
+			. "${LIB_DIR}/signing.sh"
+			cmd_onboard "$@"
+			;;
+		status)
+			cmd_status "$@"
+			;;
+		export-key)
+			cmd_export_key "$@"
+			;;
+		serve)
+			exec pv-devicepass "$@"
+			;;
+		*)
+			dev_usage
+			;;
+	esac
+}
+
 case "${1:-}" in
-	init)
-		shift
-		. "${LIB_DIR}/identity.sh"
-		cmd_init "$@"
+	--version|version)
+		printf "devicepass-cli %s\n" "$DEVICEPASS_CLI_VERSION"
+		exit 0
 		;;
-	onboard)
+	dev)
 		shift
-		. "${LIB_DIR}/identity.sh"
-		. "${LIB_DIR}/signing.sh"
-		cmd_onboard "$@"
-		;;
-	status)
-		shift
-		cmd_status "$@"
-		;;
-	export-key)
-		shift
-		cmd_export_key "$@"
-		;;
-	serve)
-		shift
-		exec pv-devicepass "$@"
+		cmd_dev "$@"
 		;;
 	guardian)
 		shift
 		cmd_guardian "$@"
+		;;
+	# Backwards-compatible aliases (top-level shortcuts for dev commands)
+	init)
+		shift
+		cmd_dev init "$@"
+		;;
+	onboard)
+		shift
+		cmd_dev onboard "$@"
+		;;
+	status)
+		shift
+		cmd_dev status "$@"
+		;;
+	export-key)
+		shift
+		cmd_dev export-key "$@"
+		;;
+	serve)
+		shift
+		cmd_dev serve "$@"
 		;;
 	*)
 		usage

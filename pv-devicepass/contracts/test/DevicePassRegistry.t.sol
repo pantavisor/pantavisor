@@ -20,12 +20,13 @@ contract DevicePassRegistryTest is Test {
     }
 
     /// @dev Build a device signature matching devicepass-cli onboard format
-    function _makeClaimSig(uint256 deviceKey, uint256 nonce) internal view returns (bytes memory) {
+    /// @param guardianInBlob Zero address for open claims, specific address for bound claims
+    function _makeClaimSig(uint256 deviceKey, address guardianInBlob, uint256 nonce) internal view returns (bytes memory) {
         address device = vm.addr(deviceKey);
 
-        // Match devicepass-cli: keccak256(abi.encodePacked(device, nonce, chainId))
+        // Match devicepass-cli: keccak256(abi.encodePacked(device, guardian, nonce, chainId))
         bytes32 innerHash = keccak256(
-            abi.encodePacked(device, nonce, block.chainid)
+            abi.encodePacked(device, guardianInBlob, nonce, block.chainid)
         );
         // Ethereum signed message prefix
         bytes32 messageHash = keccak256(
@@ -36,12 +37,14 @@ contract DevicePassRegistryTest is Test {
         return abi.encodePacked(r, s, v);
     }
 
-    function test_claimDevice() public {
+    // --- Open claim tests (guardian = address(0)) ---
+
+    function test_claimDevice_open() public {
         uint256 nonce = 1739612345;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         (address dev, address grd, uint256 created, bool active) = registry.passports(deviceAddr);
         assertEq(dev, deviceAddr);
@@ -53,40 +56,53 @@ contract DevicePassRegistryTest is Test {
         assertEq(registry.guardianDeviceAt(guardian, 0), deviceAddr);
     }
 
+    function test_claimDevice_open_anySubmitter() public {
+        uint256 nonce = 100;
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
+
+        // Open claim (guardian=0x0) works with any submitter
+        vm.prank(guardian2);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
+
+        (, address grd, , bool active) = registry.passports(deviceAddr);
+        assertEq(grd, guardian2);
+        assertTrue(active);
+    }
+
     function test_claimDevice_emitsEvent() public {
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.expectEmit(true, true, false, false);
         emit DevicePassRegistry.PassportCreated(deviceAddr, guardian);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
     }
 
     function test_claimDevice_revert_alreadyClaimed() public {
         uint256 nonce1 = 100;
-        bytes memory sig1 = _makeClaimSig(DEVICE_KEY, nonce1);
+        bytes memory sig1 = _makeClaimSig(DEVICE_KEY, address(0), nonce1);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce1, sig1);
+        registry.claimDevice(deviceAddr, address(0), nonce1, sig1);
 
         // Second claim with different nonce should fail
         uint256 nonce2 = 200;
-        bytes memory sig2 = _makeClaimSig(DEVICE_KEY, nonce2);
+        bytes memory sig2 = _makeClaimSig(DEVICE_KEY, address(0), nonce2);
 
         vm.prank(guardian2);
         vm.expectRevert(DevicePassRegistry.AlreadyClaimed.selector);
-        registry.claimDevice(deviceAddr, nonce2, sig2);
+        registry.claimDevice(deviceAddr, address(0), nonce2, sig2);
     }
 
     function test_claimDevice_revert_nonceReplay() public {
         // First: claim and revoke so the device can be reclaimed
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         vm.prank(guardian);
         registry.revokeDevice(deviceAddr);
@@ -94,32 +110,59 @@ contract DevicePassRegistryTest is Test {
         // Try to re-claim with same nonce — should fail even after revoke
         vm.prank(guardian2);
         vm.expectRevert(DevicePassRegistry.NonceAlreadyUsed.selector);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
     }
 
     function test_claimDevice_revert_wrongSigner() public {
         // Sign with a different key than the device address
         uint256 wrongKey = 0xdead;
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(wrongKey, nonce);
+        bytes memory sig = _makeClaimSig(wrongKey, address(0), nonce);
 
         vm.prank(guardian);
         vm.expectRevert(DevicePassRegistry.InvalidSignature.selector);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
     }
 
     function test_claimDevice_revert_badSignatureLength() public {
         vm.prank(guardian);
         vm.expectRevert(DevicePassRegistry.InvalidSignature.selector);
-        registry.claimDevice(deviceAddr, 100, hex"deadbeef");
+        registry.claimDevice(deviceAddr, address(0), 100, hex"deadbeef");
     }
+
+    // --- Guardian-bound claim tests ---
+
+    function test_claimDevice_guardianBound() public {
+        uint256 nonce = 300;
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, guardian, nonce);
+
+        vm.prank(guardian);
+        registry.claimDevice(deviceAddr, guardian, nonce, sig);
+
+        (address dev, address grd, , bool active) = registry.passports(deviceAddr);
+        assertEq(dev, deviceAddr);
+        assertEq(grd, guardian);
+        assertTrue(active);
+    }
+
+    function test_claimDevice_guardianBound_revert_mismatch() public {
+        uint256 nonce = 400;
+        // Blob is bound to guardian, but guardian2 submits
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, guardian, nonce);
+
+        vm.prank(guardian2);
+        vm.expectRevert(DevicePassRegistry.GuardianMismatch.selector);
+        registry.claimDevice(deviceAddr, guardian, nonce, sig);
+    }
+
+    // --- Transfer / revoke tests ---
 
     function test_transferDevice() public {
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         vm.expectEmit(true, true, true, false);
         emit DevicePassRegistry.PassportTransferred(deviceAddr, guardian, guardian2);
@@ -138,10 +181,10 @@ contract DevicePassRegistryTest is Test {
 
     function test_transferDevice_revert_notGuardian() public {
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         vm.prank(guardian2);
         vm.expectRevert(DevicePassRegistry.NotGuardian.selector);
@@ -150,10 +193,10 @@ contract DevicePassRegistryTest is Test {
 
     function test_transferDevice_revert_toSelf() public {
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         vm.prank(guardian);
         vm.expectRevert(DevicePassRegistry.TransferToSelf.selector);
@@ -162,10 +205,10 @@ contract DevicePassRegistryTest is Test {
 
     function test_revokeDevice() public {
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         vm.expectEmit(true, true, false, false);
         emit DevicePassRegistry.PassportRevoked(deviceAddr, guardian);
@@ -179,10 +222,10 @@ contract DevicePassRegistryTest is Test {
 
     function test_revokeDevice_revert_notGuardian() public {
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         vm.prank(guardian2);
         vm.expectRevert(DevicePassRegistry.NotGuardian.selector);
@@ -191,10 +234,10 @@ contract DevicePassRegistryTest is Test {
 
     function test_revokeDevice_revert_alreadyRevoked() public {
         uint256 nonce = 100;
-        bytes memory sig = _makeClaimSig(DEVICE_KEY, nonce);
+        bytes memory sig = _makeClaimSig(DEVICE_KEY, address(0), nonce);
 
         vm.prank(guardian);
-        registry.claimDevice(deviceAddr, nonce, sig);
+        registry.claimDevice(deviceAddr, address(0), nonce, sig);
 
         vm.prank(guardian);
         registry.revokeDevice(deviceAddr);
@@ -209,12 +252,12 @@ contract DevicePassRegistryTest is Test {
         uint256 key2 = 0xbeef;
         address device2 = vm.addr(key2);
 
-        bytes memory sig1 = _makeClaimSig(DEVICE_KEY, 100);
-        bytes memory sig2 = _makeClaimSig(key2, 200);
+        bytes memory sig1 = _makeClaimSig(DEVICE_KEY, address(0), 100);
+        bytes memory sig2 = _makeClaimSig(key2, address(0), 200);
 
         vm.startPrank(guardian);
-        registry.claimDevice(deviceAddr, 100, sig1);
-        registry.claimDevice(device2, 200, sig2);
+        registry.claimDevice(deviceAddr, address(0), 100, sig1);
+        registry.claimDevice(device2, address(0), 200, sig2);
         vm.stopPrank();
 
         assertEq(registry.guardianDeviceCount(guardian), 2);

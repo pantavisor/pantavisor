@@ -17,9 +17,12 @@ contract ClaimScript is Script {
 
         uint256 nonce = block.timestamp;
 
+        // Open claim (guardian = address(0))
+        address guardianInBlob = address(0);
+
         // Reconstruct the message the device signs (matches devicepass-cli onboard)
         bytes32 innerHash = keccak256(
-            abi.encodePacked(device, nonce, block.chainid)
+            abi.encodePacked(device, guardianInBlob, nonce, block.chainid)
         );
         bytes32 messageHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n32", innerHash)
@@ -35,7 +38,7 @@ contract ClaimScript is Script {
 
         // Submit claim as guardian (msg.sender = the --private-key account)
         vm.startBroadcast();
-        DevicePassRegistry(registry).claimDevice(device, nonce, sig);
+        DevicePassRegistry(registry).claimDevice(device, guardianInBlob, nonce, sig);
         vm.stopBroadcast();
 
         // Verify

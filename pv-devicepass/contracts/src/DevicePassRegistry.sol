@@ -33,23 +33,26 @@ contract DevicePassRegistry {
     error NotGuardian();
     error NotActive();
     error TransferToSelf();
+    error GuardianMismatch();
 
     /// @notice Claim a device by submitting its signed onboard blob.
     /// @param device The device's Ethereum address
+    /// @param guardianInBlob Guardian address from claim blob (zero = open claim, non-zero = bound)
     /// @param nonce The nonce from the claim blob (typically a timestamp)
     /// @param deviceSignature 65-byte Ethereum signature (r, s, v) from the device
-    /// @dev The device signs: keccak256("\x19Ethereum Signed Message:\n32" + keccak256(abi.encodePacked(device, nonce, chainId)))
+    /// @dev The device signs: keccak256("\x19Ethereum Signed Message:\n32" + keccak256(abi.encodePacked(device, guardian, nonce, chainId)))
     function claimDevice(
         address device,
+        address guardianInBlob,
         uint256 nonce,
         bytes calldata deviceSignature
     ) external {
         if (passports[device].active) revert AlreadyClaimed();
         if (usedNonces[device][nonce]) revert NonceAlreadyUsed();
 
-        // Reconstruct the message the device signed
+        // Reconstruct the message the device signed (guardian always in hash)
         bytes32 innerHash = keccak256(
-            abi.encodePacked(device, nonce, block.chainid)
+            abi.encodePacked(device, guardianInBlob, nonce, block.chainid)
         );
         bytes32 messageHash = keccak256(
             abi.encodePacked("\x19Ethereum Signed Message:\n32", innerHash)
@@ -58,6 +61,10 @@ contract DevicePassRegistry {
         // Recover signer from signature
         address signer = _recover(messageHash, deviceSignature);
         if (signer != device) revert InvalidSignature();
+
+        // If guardian-bound, enforce submitter matches
+        if (guardianInBlob != address(0) && guardianInBlob != msg.sender)
+            revert GuardianMismatch();
 
         // Mark nonce as used
         usedNonces[device][nonce] = true;

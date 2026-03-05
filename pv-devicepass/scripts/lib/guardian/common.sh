@@ -20,6 +20,12 @@ _find_cast() {
 
 CAST=$(_find_cast)
 
+# Check for jq
+if ! command -v jq >/dev/null 2>&1; then
+	log_error "jq not found. Install: apt install jq"
+	exit 1
+fi
+
 # Build cast auth flags from --account or --private-key
 _cast_auth_flags() {
 	if [ -n "$DEVICEPASS_PRIVATE_KEY" ]; then

@@ -27,7 +27,7 @@ cmd_guardian_claim() {
 		# Try reading from stdin
 		if [ -t 0 ]; then
 			log_error "Usage: devicepass-cli guardian claim --blob=FILE"
-			log_info "  Or pipe claim JSON: devicepass-cli onboard --quiet | devicepass-cli guardian claim"
+			log_info "  Or pipe claim JSON: devicepass-cli dev onboard --quiet | devicepass-cli guardian claim"
 			exit 1
 		fi
 		blob_json=$(cat)
@@ -37,6 +37,8 @@ cmd_guardian_claim() {
 	device=$(printf '%s' "$blob_json" | jq -r '.device')
 	nonce=$(printf '%s' "$blob_json" | jq -r '.nonce')
 	signature=$(printf '%s' "$blob_json" | jq -r '.signature')
+	# Guardian from blob (default to zero address for v1 blobs without guardian field)
+	guardian_in_blob=$(printf '%s' "$blob_json" | jq -r '.guardian // "0x0000000000000000000000000000000000000000"')
 
 	if [ "$device" = "null" ] || [ "$nonce" = "null" ] || [ "$signature" = "null" ]; then
 		log_error "Invalid claim blob — missing device, nonce, or signature"
@@ -48,15 +50,16 @@ cmd_guardian_claim() {
 	log_info "  Contract: $DEVICEPASS_CONTRACT"
 	log_info "  RPC:      $DEVICEPASS_RPC"
 	log_info "  Nonce:    $nonce"
+	log_info "  Bound to: $guardian_in_blob"
 
-	# Submit claimDevice(address,uint256,bytes)
+	# Submit claimDevice(address,address,uint256,bytes)
 	auth_flags=$(_cast_auth_flags)
 	result=$($CAST send \
 		--rpc-url "$DEVICEPASS_RPC" \
 		$auth_flags \
 		"$DEVICEPASS_CONTRACT" \
-		"claimDevice(address,uint256,bytes)" \
-		"$device" "$nonce" "$signature" 2>&1)
+		"claimDevice(address,address,uint256,bytes)" \
+		"$device" "$guardian_in_blob" "$nonce" "$signature" 2>&1)
 
 	if [ $? -ne 0 ]; then
 		log_error "Claim transaction failed"
