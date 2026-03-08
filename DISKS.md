@@ -108,9 +108,46 @@ Path format: `-v2 <imgpath>,<size-in-MB>,<keyname>`
 ### dm-crypt-dcp
 
 NXP DCP (Data Co-Processor) backed encryption (i.MX6ULL and similar).
+Requires an explicit `mode` field.
+
+**mode: nxp** — Legacy NXP grey blob key format.
 - Cipher: `capi:cbc(aes)-essiv:sha256`
 - Uses `cryptsetup open --type plain`
-- Key handling: `x--pv-dcp-tool` or `x--pv-dcp-tool-v2` (seal/unseal)
+- Requires a `x--pv-dcp-tool` command (not included, must be provided)
+  that implements two operations:
+  - `x--pv-dcp-tool encrypt <outfile>`: read plaintext key from stdin,
+    encrypt it using the DCP hardware UNIQUE key, write sealed blob to
+    `<outfile>`
+  - `x--pv-dcp-tool decrypt <infile>`: read sealed blob from `<infile>`,
+    decrypt it using the DCP hardware UNIQUE key, write plaintext key
+    to stdout
+- Key generation: `dd if=/dev/random bs=32 count=1 | x--pv-dcp-tool encrypt <keyfile>`
+- At mount time the plaintext key is recovered via `x--pv-dcp-tool decrypt`
+  and passed to cryptsetup via a temporary key file
+
+**mode: mainline** — Upstream Linux trusted key subsystem (`trusted.source=dcp`).
+- Cipher: `capi:cbc(aes)-essiv:sha256`
+- Key type: `trusted` (kernel keyring, plaintext never leaves kernel)
+- Key generation: `keyctl add trusted <name> "new 32"`, sealed blob as `.bb`
+- Key import: `keyctl add trusted <name> "load <blob>"`
+- Uses `dmsetup create` with kernel keyring reference
+- Kernel requirement: Linux 6.14+ (or 6.13 with VMAP_STACK fix backported)
+
+**Key migration (nxp → mainline):** When mode is `mainline` and a legacy
+NXP grey blob exists but no `.bb` file is found, automatic migration runs:
+1. Decrypt NXP grey blob via `x--pv-dcp-tool decrypt` to recover plaintext key
+2. Pipe plaintext into `dcp-blob-create` to create a valid kernel DCP
+   trusted key blob
+3. Save blob as `.bb.pending`
+4. Load blob via `keyctl`, mount disk
+5. Only on successful mount: finalize `.bb.pending` → `.bb`
+6. Stale `.pending` files are cleaned up on retry (idempotent)
+
+Migration requires `x--pv-dcp-tool` (see nxp mode above) and the
+`dcp-blob-create` tool which needs an NXP DCP kernel patch that maps
+zero-length key in `mxs_dcp_aes_setkey()` to `DCP_PAES_KEY_UNIQUE`.
+
+Path format: `<imgpath>,<size-in-MB>,<keyname>`
 
 ### dm-crypt-versatile
 
@@ -130,7 +167,7 @@ Defined in the type enum but has no implementation. Will fail at runtime.
 | `name` | yes | all | Disk identifier, used for mount path and volume references |
 | `type` | yes | all | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk` |
 | `path` | yes | all | Device/image path. CAAM: `-v2 <img>,<size>,<key>` |
-| `mode` | caam | crypt | `mainline` or `nxp` — required for caam, rejected if missing |
+| `mode` | caam, dcp | crypt | `mainline` or `nxp` — required for caam and dcp |
 | `format` | volume | volume | `ext4`, `ext3`, or `swap` |
 | `provision` | swap/vol | swap, volume | Backend type. `"zram"` for zram, `"file"` for file-backed swap |
 | `provision_ops` | no | swap, volume | Backend-specific options (see type docs above) |

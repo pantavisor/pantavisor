@@ -26,7 +26,8 @@
 # ## Overview:
 #
 # We support dcp and caam both for mainline and nxp variant; versatile is always mainline
-#   - dcp: will maintain a nxp and mainline key; will transition key to mainline and mount via mainline if available.
+#   - dcp: requires mode 'mainline' or 'nxp'. mainline uses trusted key subsystem (trusted.source=dcp).
+#          nxp mode uses legacy x--pv-dcp-tool. mainline mode auto-migrates nxp key blobs via dcp-blob-create.
 #   - caam: has caam mainline and nxp implementation. To allow better transition
 #           the caam mainline type is identified through a new 'mode=mainline' field
 #           in pantavisor device.json disk definition. the legacy disk must specify "nxp"
@@ -36,8 +37,7 @@
 #           code that cannot distinguish mode yet, will eaccidentially create a crypt disk
 #           using the wrong mode - because the script will fail early.
 #   - the field 'path' must have the following syntax for all 'caam' disks: "-v2 <imgpath>,<size-in-MB>,<keyname>"
-#   - the new field 'mode' most have the following
-#     the mode part is currently only need for caam. valid values are 'mainline' and 'nxp'
+#   - 'mode' is required for caam and dcp types. valid values are 'mainline' and 'nxp'
 #
 # Usage:
 #   crypt <action> --type <type> --mode <mode> [--read-only] [--copy-from <src>] [--specialrun <run>] <path> <mntpath>
@@ -122,17 +122,23 @@ case "$dm_type" in
 		;;
 esac
 
-# caam disks require an explicit --mode and -v2 path prefix
+# caam and dcp disks require an explicit --mode
 case "$dm_type" in
-	caam*)
+	caam*|dcp)
 		case "$mode" in
 			mainline|nxp) ;;
 			*)
-				echo "ERROR: caam disk '$path' requires --mode (mainline or nxp) but got '${mode:-<empty>}'"
+				echo "ERROR: $dm_type disk '$path' requires --mode (mainline or nxp) but got '${mode:-<empty>}'"
 				echo "       add '\"mode\": \"mainline\"' or '\"mode\": \"nxp\"' to the disk definition in device.json"
 				exit 1
 				;;
 		esac
+		;;
+esac
+
+# caam disks require -v2 path prefix as safety measure
+case "$dm_type" in
+	caam*)
 		newpath=${path#-v2 }
 		if [ "$newpath" = "$path" ]; then
 			echo "ERROR: caam disk path must start with '-v2 ' but got: $path"
@@ -238,24 +244,36 @@ do_crypt_init()
 				fi
 			fi
 			;;
-		dcp__*)
-			if [ ! -f "$dir/$keyname" ]; then
-				# if we have -v2 type command
-				if ! which x--pv-dcp-tool-v2 >/dev/null 2>&1; then
-					if ! dd if=/dev/random bs=32 count=1 | x--pv-dcp-tool \
-						encrypt "$dir/$keyname.new"; then
-						echo "ERROR: DCP: Unable to create grey blob"
-						exit 1
-					fi
-					sync
-					mv "$dir/$keyname.new" "$dir/$keyname"
-				else
-					if ! dd if=/dev/random bs=32 count=1 | x--pv-dcp-tool-v2 \
-						seal "$dir" "$keyname"; then
-						echo "ERROR: DCP: Unable to create grey blob"
-						exit 1
-					fi
+		dcp__mainline)
+			if [ ! -f "$dir/$keyblob" ]; then
+				if ! TKEY=$(keyctl add "${KEY_TYPE}" "${KEY_NAME}" "new ${key_size}" @u); then
+					echo "ERROR: Cannot create trusted key ${KEY_TYPE}:${KEY_NAME} with size ${key_size}!"
+					exit 1
 				fi
+				if ! keyctl pipe "$TKEY" > "$dir/$keyblob.tmp"; then
+					echo "ERROR: DCP: Unable to persist keyblob: $keyblob"
+					exit 1
+				fi
+				sync
+				mv "$dir/$keyblob.tmp" "$dir/$keyblob"
+			else
+				echo "WARN: DCP mainline keyblob exists but init_done missing, recovering init"
+				read -r trusted_key 2> /dev/null < "$dir/$keyblob" || true
+				if ! keyctl add "$KEY_TYPE" "$KEY_NAME" "load $trusted_key" @u; then
+					echo "ERROR: DCP: Unable to load trusted key during init recovery"
+					exit 1
+				fi
+			fi
+			;;
+		dcp__nxp)
+			if [ ! -f "$dir/$keyname" ]; then
+				if ! dd if=/dev/random bs=32 count=1 | x--pv-dcp-tool \
+					encrypt "$dir/$keyname.new"; then
+					echo "ERROR: DCP: Unable to create grey blob"
+					exit 1
+				fi
+				sync
+				mv "$dir/$keyname.new" "$dir/$keyname"
 			else
 				echo "WARN: DCP key exists but init_done missing, recovering init"
 			fi
@@ -289,8 +307,7 @@ do_crypt_init()
 	dd if=/dev/zero of="$dir/$img_file" bs=1M count="$img_size"
 
 	case "${dm_type_mode}" in
-		caam*)
-			# all caam are the same
+		caam*|dcp__mainline)
 			if ! CAAM_LOOP=$(atomic_losetup "$dir/$img_file"); then
 				echo "ERROR: Unable to loop setup"
 				exit 1
@@ -306,20 +323,15 @@ do_crypt_init()
 				exit 1
 			fi
 			;;
-		caam__mainline|caam-mainline__*)
+		caam__mainline|caam-mainline__*|dcp__mainline)
 			if ! dmsetup -v create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
 				exit 1
 			fi
 			;;
-		dcp__*)
+		dcp__nxp)
 			keyfile=$(mktemp)
-			# if we have -v2 type of dcp tool we use unseal
-			if ! which x--pv-dcp-tool-v2 >/dev/null 2>&1; then
-				x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
-			else
-				x--pv-dcp-tool-v2 unseal "$dir" "$keyname" > "$keyfile"
-			fi
+			x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
 			if ! cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$img_file" "$device_name"; then
 				rm -f "$keyfile"
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
@@ -408,18 +420,24 @@ do_crypt_init()
 	fi
 
 	sync
-	case ${dm_type} in
-		caam*)
+	case "${dm_type_mode}" in
+		caam__nxp)
 			dmsetup remove "$device_name"
 			keyctl clear @u
 			keyctl purge @u
 			rm -rf /data
 			losetup -d "$CAAM_LOOP"
 			;;
-		dcp)
+		caam__mainline|caam-mainline__*|dcp__mainline)
+			dmsetup remove "$device_name"
+			keyctl clear @u
+			keyctl purge @u
+			losetup -d "$CAAM_LOOP"
+			;;
+		dcp__nxp)
 			cryptsetup close "$device_name"
 			;;
-		versatile)
+		versatile__*)
 			cryptsetup close "$device_name"
 			;;
 		*)
@@ -434,16 +452,20 @@ do_crypt_init()
 
 do_dm_sanity()
 {
-	case ${dm_type} in
-		caam|caam-mainline)
+	case "${dm_type}__${mode}" in
+		caam__nxp)
 			which "$CAAM_KEYGEN" >/dev/null 2>&1 || exit 111
 			which dmsetup >/dev/null 2>&1 || exit 111
 			which keyctl >/dev/null 2>&1 || exit 111
 			;;
-		dcp)
+		caam__mainline|caam-mainline__*|dcp__mainline)
+			which dmsetup >/dev/null 2>&1 || exit 111
+			which keyctl >/dev/null 2>&1 || exit 111
+			;;
+		dcp__nxp)
 			which cryptsetup >/dev/null 2>&1 || exit 111
 			;;
-		versatile)
+		versatile__*)
 			which cryptsetup >/dev/null 2>&1 || exit 111
 			;;
 		*)
@@ -461,14 +483,14 @@ clean_disk()
 {
 	name="$1"
 
-	case "$dm_type" in
-		caam*)
+	case "$dm_type_mode" in
+		caam*|dcp__mainline)
 			if dmsetup info -c "$name" >/dev/null 2>&1; then
 				echo "WARN: dm $name still exists"
 				dmsetup remove "$name" > /dev/null 2>&1 || true
 			fi
 			;;
-		dcp|versatile)
+		dcp__nxp|versatile__*)
 			if cryptsetup status "$name" > /dev/null 2>&1; then
 				echo "WARN: cryptdisk $1 still exists"
 				cryptsetup close "$name" > /dev/null 2>&1 || true
@@ -487,8 +509,7 @@ do_mount_disk()
 	keyname=$(echo "$base" | awk '{split($0,a,","); print a[3]}')
 	dm_type_mode="${dm_type}__${mode}"
 	case "${dm_type_mode}" in
-		caam__nxp|dcp__*|versatile__*)
-			keyname=$(echo "$base" | awk '{split($0,a,","); print a[3]}')
+		caam__nxp|dcp__nxp|versatile__*)
 			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
 			;;
 		caam__mainline|caam-mainline__*)
@@ -498,6 +519,41 @@ do_mount_disk()
 			KEY_NAME="logkey:"
 
 			keyblob="${keyname}.bb"
+			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
+			;;
+		dcp__mainline)
+			cipher="capi:cbc(aes)-essiv:sha256"
+			key_size=32
+			KEY_TYPE="trusted"
+			KEY_NAME="logkey:"
+
+			keyblob="${keyname}.bb"
+			_dcp_migrating=""
+
+			# key migration: convert nxp grey blob to mainline trusted key blob
+			# blob is kept as .bb.pending until first successful mount
+			if [ ! -f "$dir/$keyblob" ] && [ -f "$dir/$keyname" ]; then
+				# remove stale pending blob from previous failed attempt
+				rm -f "$dir/$keyblob.pending"
+				echo "DCP: migrating nxp key to mainline trusted key blob..."
+				if ! x--pv-dcp-tool decrypt "$dir/$keyname" | \
+					dcp-blob-create > "$dir/$keyblob.pending.tmp"; then
+					echo "ERROR: DCP: key migration failed"
+					rm -f "$dir/$keyblob.pending.tmp"
+					exit 2
+				fi
+				sync
+				mv "$dir/$keyblob.pending.tmp" "$dir/$keyblob.pending"
+				sync
+				echo "DCP: pending blob created, will finalize after successful mount"
+				_dcp_migrating="yes"
+			fi
+
+			# use pending blob if migrating
+			if [ "$_dcp_migrating" = "yes" ]; then
+				keyblob="${keyname}.bb.pending"
+			fi
+
 			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
 			;;
 		*)
@@ -520,18 +576,18 @@ do_mount_disk()
 				exit 2
 			fi
 			;;
-		caam__mainline|caam-mainline__*)
+		caam__mainline|caam-mainline__*|dcp__mainline)
 			if [ -f "$keyblob" ]; then
 				# The "trusted load" interface requires a string explicitly. The read command
 				# doesn't handle string input without a line feed gracefully, but still assigns
 				# the content to the variable. Therefore, we use 2> /dev/null and || true.
 				read -r trusted_key 2> /dev/null < "$keyblob" || true
 				if ! keyctl add "$KEY_TYPE" "$KEY_NAME" "load $trusted_key" @u; then
-					echo "ERROR: CAAM: Unable to load trusted key"
+					echo "ERROR: $dm_type: Unable to load trusted key"
 					exit 2
 				fi
 			else
-				echo "ERROR: CAAM: no trusted key $keyblob found in storage" && exit 2
+				echo "ERROR: $dm_type: no trusted key $keyblob found in storage" && exit 2
 			fi
 			;;
 	esac
@@ -558,19 +614,15 @@ do_mount_disk()
 				exit 3
 			fi
 			;;
-		caam__mainline|caam-mainline__*)
+		caam__mainline|caam-mainline__*|dcp__mainline)
 			if ! dmsetup create $_dm_ro "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
 				exit 3
 			fi
 			;;
-		dcp__*)
+		dcp__nxp)
 			keyfile=$(mktemp)
-			if ! which x--pv-dcp-tool-v2 >/dev/null 2>&1; then
-				x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
-			else
-				x--pv-dcp-tool-v2 unseal "$dir" "$keyname" > "$keyfile"
-			fi
+			x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
 			if ! cryptsetup open $_dm_ro -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$img_file" "$device_name"; then
 				rm -f "$keyfile"
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
@@ -610,8 +662,21 @@ do_mount_disk()
 	if mount $MNT_OPTS_EXT4 $_mnt_ro /dev/mapper/"$device_name" "$mntpath"; then
 		# only backup if a clean run success
 		[ -z "$specialrun" ] && [ ! -f "$dir/$img_file.goodbak" ] && cp -f "$dir/$img_file.prebak" "$dir/$img_file.goodbak"
+		# finalize DCP key migration: pending blob is proven to work
+		if [ "$_dcp_migrating" = "yes" ]; then
+			mv "$dir/${keyname}.bb.pending" "$dir/${keyname}.bb"
+			sync
+			echo "DCP: key migration verified and finalized"
+		fi
 		sync
 		return 0
+	fi
+
+	# mount failed: if we were migrating, remove the unverified pending blob
+	# next boot will recreate from scratch
+	if [ "$_dcp_migrating" = "yes" ]; then
+		rm -f "$dir/${keyname}.bb.pending"
+		echo "WARN: DCP migration blob failed to mount, removed pending blob"
 	fi
 
 	echo "ERROR: could not setup dm-crypt volume"
@@ -659,19 +724,24 @@ do_umount_disk()
 {
 	base=$(basename "$path")
 	img_file=$(echo "$base" | awk '{split($0,a,","); print a[1]}')
+	dm_type_mode="${dm_type}__${mode}"
 
 	device_name=$(echo "$img_file" | awk '{split($0,a,"."); print a[1]}')
 	umount "$mntpath"
 	rm -r "$mntpath"
 	case "$dm_type_mode" in
-		caam*)
-			# all caam including mainline use this
+		caam__nxp)
 			dmsetup remove "$device_name"
 			keyctl clear @u
 			keyctl purge @u
 			rm -rf /data
 			;;
-		dcp__*)
+		caam__mainline|caam-mainline__*|dcp__mainline)
+			dmsetup remove "$device_name"
+			keyctl clear @u
+			keyctl purge @u
+			;;
+		dcp__nxp)
 			cryptsetup close "$device_name"
 			;;
 		versatile__*)
