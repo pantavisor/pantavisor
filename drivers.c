@@ -190,11 +190,8 @@ void pv_drivers_load_early()
 	if (pv_drivers_load_single(fstype, NULL) != 0)
 		pv_log(WARN, "cannot load filesystem module");
 
-	// some driver will fail (not found), but that's ok
-	// because at this point we have only a few drivers,
-	// so we send the output to /dev/null
 	int r = -1;
-	tsh_run("/sbin/mdev -s > /dev/null 2>&1", 0, &r);
+	tsh_run("/sbin/mdev -s", 0, &r);
 	if (r != 0)
 		pv_log(WARN, "Cannot load drivers using mdev error: %d", r);
 }

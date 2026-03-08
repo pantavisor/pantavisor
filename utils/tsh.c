@@ -52,24 +52,61 @@
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
 	     ##__VA_ARGS__)
 
+/*
+ * Split cmd into argv-style tokens on whitespace, with shell-like quoting:
+ *   - Single quotes: everything inside is literal (no escaping).
+ *   - Double quotes: backslash escapes \ and " inside; other \ are literal.
+ *   - Outside quotes: backslash escapes the next character.
+ * Quotes are stripped from the resulting tokens.  Modifies cmd in-place.
+ */
 static char **_tsh_split_cmd(char *cmd)
 {
 	int pos = 0;
 	char **ts = malloc(TSH_MAX_LENGTH * sizeof(char *));
-	char *t;
 
 	if (!ts)
 		return NULL;
 
-	t = strtok(cmd, TSH_DELIM);
-	while (t != NULL) {
-		ts[pos] = t;
-		pos++;
-
-		if (pos >= TSH_MAX_LENGTH)
+	char *p = cmd;
+	while (*p && pos < TSH_MAX_LENGTH - 1) {
+		/* skip leading delimiters */
+		while (*p && strchr(TSH_DELIM, *p))
+			p++;
+		if (!*p)
 			break;
 
-		t = strtok(NULL, TSH_DELIM);
+		char *out = p; /* write position (in-place, always <= p) */
+		ts[pos] = out;
+
+		while (*p && !strchr(TSH_DELIM, *p)) {
+			if (*p == '\'') {
+				p++; /* skip opening quote */
+				while (*p && *p != '\'')
+					*out++ = *p++;
+				if (*p == '\'')
+					p++; /* skip closing quote */
+			} else if (*p == '"') {
+				p++; /* skip opening quote */
+				while (*p && *p != '"') {
+					if (*p == '\\' &&
+					    (p[1] == '"' || p[1] == '\\')) {
+						p++;
+					}
+					*out++ = *p++;
+				}
+				if (*p == '"')
+					p++; /* skip closing quote */
+			} else if (*p == '\\' && p[1]) {
+				p++; /* skip backslash */
+				*out++ = *p++;
+			} else {
+				*out++ = *p++;
+			}
+		}
+		if (*p)
+			p++; /* skip the delimiter */
+		*out = '\0';
+		pos++;
 	}
 	ts[pos] = NULL;
 

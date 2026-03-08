@@ -39,6 +39,12 @@ typedef enum {
 } pv_disk_t;
 
 typedef enum {
+	DISK_DM_CRYPT_MODE_UNKNOWN,
+	DISK_DM_CRYPT_MODE_MAINLINE,
+	DISK_DM_CRYPT_MODE_NXP
+} pv_disk_dm_crypt_mode_t;
+
+typedef enum {
 	DISK_FORMAT_UNKNOWN,
 	DISK_FORMAT_SWAP,
 	DISK_FORMAT_EXT4,
@@ -54,6 +60,7 @@ typedef enum {
 struct pv_disk {
 	char *name;
 	pv_disk_t type;
+	pv_disk_dm_crypt_mode_t mode;
 	pv_disk_format_t format;
 	char *path;
 	char *uuid;
@@ -63,6 +70,8 @@ struct pv_disk {
 	char *provision;
 	char *mount_target;
 	bool def;
+	bool always_on;
+	bool read_only;
 	bool mounted;
 	// pv_disk
 	struct dl_list list;
@@ -70,6 +79,7 @@ struct pv_disk {
 
 struct pv_disk *pv_disk_add(struct dl_list *disks);
 int pv_disk_mount_swap(struct dl_list *disks);
+int pv_disk_mount_always_on(struct dl_list *disks);
 int pv_disk_umount_all(struct dl_list *disks);
 void pv_disk_empty(struct dl_list *disks);
 int pv_disk_mount(struct pv_disk *disk);
@@ -103,6 +113,19 @@ static inline pv_disk_format_t pv_disk_str_to_format(const char *format_str)
 	return DISK_FORMAT_UNKNOWN;
 }
 
+static inline const char *pv_disk_dm_crypt_mode_to_str(pv_disk_dm_crypt_mode_t mode)
+{
+	switch (mode) {
+	case DISK_DM_CRYPT_MODE_UNKNOWN:
+		return "unknown";
+	case DISK_DM_CRYPT_MODE_MAINLINE:
+		return "mainline";
+	case DISK_DM_CRYPT_MODE_NXP:
+		return "nxp";
+	}
+	return "unknown";
+}
+
 static inline const char *pv_disk_type_to_str(pv_disk_t type)
 {
 	switch (type) {
@@ -124,6 +147,17 @@ static inline const char *pv_disk_type_to_str(pv_disk_t type)
 	return "unknown";
 }
 
+static inline pv_disk_dm_crypt_mode_t pv_disk_dm_crypt_str_to_mode(const char *mode_str)
+{
+	if (mode_str) {
+		if (!strcmp(mode_str, "mainline"))
+			return DISK_DM_CRYPT_MODE_MAINLINE;
+		else if (!strcmp(mode_str, "nxp"))
+			return DISK_DM_CRYPT_MODE_NXP;
+	}
+	return DISK_DM_CRYPT_MODE_UNKNOWN;
+}
+
 static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 {
 	if (type_str) {
@@ -140,7 +174,6 @@ static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 		else if (!strcmp(type_str, "volume-disk"))
 			return DISK_VOLUME;
 	}
-
 	return DISK_UNKNOWN;
 }
 
