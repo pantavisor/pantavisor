@@ -666,7 +666,6 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 
 	if (pv_update_is_failed()) {
 		pv_log(DEBUG, "coming from a rolled back revision");
-		pv_bootloader_fail_update();
 		pv_update_finish();
 		return 0;
 	}
@@ -685,7 +684,12 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_ERROR,
 				       PV_UPDATE_PROGRESS_MSG_ROLLEDBACK);
-		pv_bootloader_fail_update();
+		/*
+		 * Do NOT clear pv_try here. The rolled-back revision
+		 * needs to complete its rollback handling (cloud report,
+		 * cleanup) first. pv_try will be cleared when the update
+		 * is finalized after reporting.
+		 */
 		pv_update_finish();
 		return 0;
 	}
@@ -861,6 +865,15 @@ void pv_update_finish()
 		return;
 
 	pv_log(DEBUG, "finishing update");
+
+	/*
+	 * Clear pv_try when the update reaches a final state.
+	 * This must happen here — not earlier — so the rolled-back
+	 * revision has a chance to detect and handle the rollback
+	 * (report to cloud, cleanup) before pv_try is removed.
+	 */
+	if (pv_update_is_failed())
+		pv_bootloader_fail_update();
 
 	pv_logserver_stop_update(u->rev);
 

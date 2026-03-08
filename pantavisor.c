@@ -668,7 +668,12 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
-	pv_bootloader_fail_update();
+	/*
+	 * Do NOT clear pv_try here. We are about to reboot into the
+	 * previous (good) revision, which needs pv_try to still be set
+	 * so it can detect that a rollback happened, do its cleanup
+	 * (report to cloud, etc.), and only then clear pv_try itself.
+	 */
 
 	if (pv->state && !strncmp(pv->state->rev, "0", sizeof("0"))) {
 		pv_log(ERROR, "bad factory revision");
