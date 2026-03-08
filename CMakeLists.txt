@@ -26,6 +26,7 @@ set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
 set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
+set(PANTAVISOR_DCP_BLOB_CREATE OFF CACHE BOOL "Build dcp-blob-create tool for DCP trusted key migration")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -433,16 +434,23 @@ install(TARGETS remount DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks_lxc-mount.
 
 ### install dm crypt feature
 IF(PANTAVISOR_DM_CRYPT)
-install(DIRECTORY scripts/volmount/crypt
-	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/volmount)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/volmount/crypt/crypt
+	${CMAKE_CURRENT_BINARY_DIR}/volmount/crypt/crypt COPYONLY)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/volmount/crypt/crypt
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/volmount/crypt)
+ENDIF()
+
+### build dcp-blob-create tool
+IF(PANTAVISOR_DCP_BLOB_CREATE)
+add_subdirectory(tools/dcp-blob-create)
 ENDIF()
 
 ### install dm verity feature
 IF(PANTAVISOR_DM_VERITY)
-install(DIRECTORY scripts/volmount/verity
-	FILE_PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
-	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/volmount)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/scripts/volmount/verity/dm
+	${CMAKE_CURRENT_BINARY_DIR}/volmount/verity/dm COPYONLY)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/volmount/verity/dm
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/volmount/verity)
 ENDIF()
 
 ENDIF() # PANTAVISOR_RUNTIME

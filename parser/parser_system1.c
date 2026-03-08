@@ -249,6 +249,15 @@ static pv_disk_format_t parse_disks_get_format(const char *str,
 	return format;
 }
 
+static pv_disk_dm_crypt_mode_t parse_disks_dm_crypt_get_mode(const char *str,
+					jsmntok_t *diskv, int diskc)
+{
+	char *mode_str = pv_json_get_value(str, "mode", diskv, diskc);
+	pv_disk_dm_crypt_mode_t mode = pv_disk_dm_crypt_str_to_mode(mode_str);
+	free(mode_str);
+	return mode;
+}
+
 static pv_disk_t parse_disks_get_type(const char *str, jsmntok_t *diskv,
 				      int diskc)
 {
@@ -268,6 +277,20 @@ static bool parse_disks_get_default(const char *str, jsmntok_t *diskv,
 		ret = true;
 
 	free(default_str);
+
+	return ret;
+}
+
+static bool parse_disks_get_bool(const char *str, const char *key,
+				 jsmntok_t *diskv, int diskc)
+{
+	bool ret = false;
+	char *val = pv_json_get_value(str, key, diskv, diskc);
+
+	if (val && (!strncmp(val, "true", 4) || !strncmp(val, "yes", 3)))
+		ret = true;
+
+	free(val);
 
 	return ret;
 }
@@ -319,20 +342,25 @@ static int parse_disks(struct pv_state *s, char *value)
 						     diskv, diskc);
 		d->uuid = pv_json_get_value(str, "uuid", diskv, diskc);
 		d->type = parse_disks_get_type(str, diskv, diskc);
+		d->mode = parse_disks_dm_crypt_get_mode(str, diskv, diskc);
 
 		if (d->type == DISK_UNKNOWN) {
-			pv_log(ERROR, "cannot add new disk, type = UNKNOWN");
-			goto out;
+			pv_log(WARN, "new disk type = UNKNOWN - likely that mount fails");
 		}
 
 		d->format = parse_disks_get_format(str, diskv, diskc);
 		if ((d->type == DISK_SWAP || d->type == DISK_VOLUME) &&
 		    d->format == DISK_FORMAT_UNKNOWN) {
-			pv_log(ERROR, "cannot add new disk, format = UNKNOWN");
-			goto out;
+			pv_log(WARN, "new disk format = UNKNOWN - likely that mount fails");
 		}
 
 		d->def = parse_disks_get_default(str, diskv, diskc);
+		d->always_on = parse_disks_get_bool(str, "always_on", diskv,
+						    diskc);
+		d->read_only = parse_disks_get_bool(str, "read_only", diskv,
+						    diskc);
+		d->copy_from =
+			pv_json_get_value(str, "copy_from", diskv, diskc);
 		d->mounted = false;
 
 		// you need to jump (in tokens) to the next array, so

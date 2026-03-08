@@ -63,6 +63,8 @@ static void pv_disk_free(struct pv_disk *disk)
 		free(disk->provision);
 	if (disk->mount_target)
 		free(disk->mount_target);
+	if (disk->copy_from)
+		free(disk->copy_from);
 
 	free(disk);
 }
@@ -210,6 +212,30 @@ int pv_disk_mount_swap(struct dl_list *disks)
 		int err = pv_disk_mount(d);
 		if (err != 0) {
 			pv_log(ERROR, "cannot mount %s", d->name);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+int pv_disk_mount_always_on(struct dl_list *disks)
+{
+	if (!disks)
+		return -1;
+
+	pv_log(INFO, "mounting all always-on disks");
+
+	struct pv_disk *d, *tmp;
+	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
+	{
+		if (!d->always_on || d->type == DISK_SWAP)
+			continue;
+
+		int err = pv_disk_mount(d);
+		if (err != 0) {
+			pv_log(ERROR, "cannot mount always-on disk %s",
+			       d->name);
 			return -1;
 		}
 	}
