@@ -40,12 +40,13 @@
 #     the mode part is currently only need for caam. valid values are 'mainline' and 'nxp'
 #
 # Usage:
-#   crypt <action> --type <type> --mode <mode> [--read-only] [--specialrun <run>] <path> <mntpath>
+#   crypt <action> --type <type> --mode <mode> [--read-only] [--copy-from <src>] [--specialrun <run>] <path> <mntpath>
 #
 #   action:       mount or umount (positional)
 #   --type:       dm-crypt type (dcp, caam, versatile)
 #   --mode:       encryption mode (mainline, nxp)
 #   --read-only:  set up dm-crypt device as read-only
+#   --copy-from:  on first init, copy content from this mounted path instead of empty mkfs
 #   --specialrun: internal flag for recovery retries (fsck, bak)
 #   path:         disk image path (positional)
 #   mntpath:      mount target path (positional)
@@ -61,6 +62,7 @@ dm_type=""
 mode=""
 specialrun=""
 read_only=""
+copy_from=""
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -79,6 +81,10 @@ while [ $# -gt 0 ]; do
 		--read-only)
 			read_only="yes"
 			shift
+			;;
+		--copy-from)
+			copy_from="$2"
+			shift 2
 			;;
 		--)
 			shift
@@ -99,7 +105,7 @@ mntpath=$2
 
 if [ -z "$op" ] || [ -z "$dm_type" ] || [ -z "$path" ]; then
 	echo "ERROR: missing required arguments"
-	echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--specialrun <run>] <path> <mntpath>"
+	echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--copy-from <path>] [--specialrun <run>] <path> <mntpath>"
 	exit 1
 fi
 
@@ -337,6 +343,68 @@ do_crypt_init()
 	if ! mkfs.ext4 $MKFS_OPTS_EXT4 /dev/mapper/"$device_name"; then
 		echo "ERROR: Unable to format to ext4"
 		exit 1
+	fi
+
+	# copy_from: populate the new filesystem from a source disk mount
+	if [ -n "$copy_from" ]; then
+		_copy_tmp=$(mktemp -d)
+		if ! mount /dev/mapper/"$device_name" "$_copy_tmp"; then
+			echo "ERROR: copy_from: cannot mount new filesystem for copy"
+			rm -rf "$_copy_tmp"
+			exit 1
+		fi
+
+		if [ ! -d "$copy_from" ]; then
+			echo "ERROR: copy_from source '$copy_from' is not mounted or does not exist"
+			umount "$_copy_tmp"
+			rm -rf "$_copy_tmp"
+			exit 1
+		fi
+
+		# safety: verify source block device is read-only
+		_src_dev=$(awk -v mp="$copy_from" '$2 == mp { print $1; exit }' /proc/mounts)
+		if [ -z "$_src_dev" ] || [ "$(blockdev --getro "$_src_dev" 2>/dev/null)" != "1" ]; then
+			echo "ERROR: copy_from source '$copy_from' block device is not read-only, refusing to copy"
+			umount "$_copy_tmp"
+			rm -rf "$_copy_tmp"
+			exit 1
+		fi
+
+		echo "copy_from: copying from '$copy_from' to new disk..."
+		if ! cp -a "$copy_from"/. "$_copy_tmp"/; then
+			echo "ERROR: copy_from: cp failed"
+			umount "$_copy_tmp"
+			rm -rf "$_copy_tmp"
+			exit 1
+		fi
+
+		# flush all writes to disk
+		sync
+		echo 3 > /proc/sys/vm/drop_caches
+
+		# verify: compare checksums of every file
+		_src_sums=$(mktemp)
+		_dst_sums=$(mktemp)
+
+		(cd "$copy_from" && find . -type f -exec md5sum {} \; | sort) > "$_src_sums"
+		(cd "$_copy_tmp" && find . -type f -exec md5sum {} \; | sort) > "$_dst_sums"
+
+		if ! diff -q "$_src_sums" "$_dst_sums" >/dev/null 2>&1; then
+			echo "ERROR: copy_from: checksum verification failed"
+			diff "$_src_sums" "$_dst_sums" || true
+			rm -f "$_src_sums" "$_dst_sums"
+			umount "$_copy_tmp"
+			rm -rf "$_copy_tmp"
+			exit 1
+		fi
+
+		_file_count=$(wc -l < "$_src_sums")
+		rm -f "$_src_sums" "$_dst_sums"
+
+		umount "$_copy_tmp"
+		rm -rf "$_copy_tmp"
+
+		echo "copy_from: verified $_file_count files, all checksums match"
 	fi
 
 	sync
@@ -627,7 +695,7 @@ case $op in
 		;;
 	*)
 		echo "ERROR: unknown action '$op'"
-		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--specialrun <run>] <path> <mntpath>"
+		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--copy-from <path>] [--specialrun <run>] <path> <mntpath>"
 		exit 5
 		;;
 esac

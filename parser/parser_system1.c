@@ -359,6 +359,8 @@ static int parse_disks(struct pv_state *s, char *value)
 						    diskc);
 		d->read_only = parse_disks_get_bool(str, "read_only", diskv,
 						    diskc);
+		d->copy_from =
+			pv_json_get_value(str, "copy_from", diskv, diskc);
 		d->mounted = false;
 
 		// you need to jump (in tokens) to the next array, so

@@ -69,6 +69,7 @@ struct pv_disk {
 	char *provision_ops;
 	char *provision;
 	char *mount_target;
+	char *copy_from;
 	bool def;
 	bool always_on;
 	bool read_only;

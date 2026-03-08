@@ -63,6 +63,8 @@ static void pv_disk_free(struct pv_disk *disk)
 		free(disk->provision);
 	if (disk->mount_target)
 		free(disk->mount_target);
+	if (disk->copy_from)
+		free(disk->copy_from);
 
 	free(disk);
 }

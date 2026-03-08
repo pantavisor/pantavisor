@@ -38,7 +38,7 @@
 #include "log.h"
 
 #define PV_DISK_CRYPT_CMD_TMPL \
-	"%s %s --type '%s' --mode '%s'%s -- '%s' '%s'"
+	"%s %s --type '%s' --mode '%s'%s%s -- '%s' '%s'"
 
 static int run_action(struct pv_disk *disk, const char *action)
 {
@@ -52,9 +52,20 @@ static int run_action(struct pv_disk *disk, const char *action)
 	char script[PATH_MAX] = { 0 };
 	pv_paths_lib_crypt(script, PATH_MAX, "crypt");
 
+	char copy_from_arg[PATH_MAX + 16] = { 0 };
+	if (disk->copy_from) {
+		char src_mnt[PATH_MAX] = { 0 };
+		pv_paths_storage_mounted_disk_path(src_mnt, PATH_MAX,
+						   "dmcrypt",
+						   disk->copy_from);
+		snprintf(copy_from_arg, sizeof(copy_from_arg),
+			 " --copy-from '%s'", src_mnt);
+	}
+
 	int ret = pv_disk_utils_run_cmd(PV_DISK_CRYPT_CMD_TMPL,
 					"disk-crypt-info", "disk-crypt-err",
 					script, action, type, mode, ro,
+					copy_from_arg,
 					disk->path, mntpath);
 	if (ret == 0) {
 		if (!strcmp(action, "mount"))
