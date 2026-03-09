@@ -24,6 +24,7 @@
 #define PV_CONFIG_H
 
 #include <stdbool.h>
+#include <sys/types.h>
 
 #include "utils/list.h"
 
@@ -175,6 +176,10 @@ typedef enum {
 } log_server_output_mask_t;
 
 log_server_output_mask_t pv_config_get_log_server_outputs(void);
+
+// LOG SERVER MAXIMUM SIZE
+
+off_t pv_config_get_log_dir_maxsize(void);
 
 // SECUREBOOT MODE
 
