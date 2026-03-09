@@ -28,6 +28,8 @@
 #include <errno.h>
 
 #include <sys/stat.h>
+#include <mntent.h>
+#include <sys/statvfs.h>
 
 #include <linux/limits.h>
 
@@ -36,6 +38,7 @@
 #include "config_parser.h"
 #include "bootloader.h"
 #include "loop.h"
+#include "log.h"
 #include "state.h"
 #include "storage.h"
 #include "paths.h"
@@ -98,7 +101,6 @@ typedef enum {
 #define LIBTHTTP_CERTSDIR_DEF "/certs"
 #define LOG_DIR_DEF "/storage/logs/"
 #define LOG_MAXSIZE_DEF (1 << 21) // 2MiB
-#define LOG_MAX_DIR_SIZE_DEF (1 << 24) // 16MiB
 #define LOG_SERVER_OUTPUTS_DEF "filetree"
 #define NET_BRADDRESS4_DEF "10.0.3.1"
 #define NET_BRDEV_DEF "lxcbr0"
@@ -110,7 +112,7 @@ typedef enum {
 #define SYSTEM_ETCPANTAVISORDIR_DEF "/etc/pantavisor"
 #define SYSTEM_LIBDIR_DEF "/lib"
 #define SYSTEM_MEDIADIR_DEF "/media"
-#define SYSTEM_RUNDIR_DEF "/run/pantavisor/pv"
+#define SYSTEM_RUNDIR_DEF "/pv"
 #define SYSTEM_USRDIR_DEF "/usr"
 
 struct pv_config_entry {
@@ -199,11 +201,11 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | OEM, 0, false, .value.b = true },
 	{ INT, "PV_LOG_BUF_NITEMS", PV | OEM, 0, false, .value.i = 128 },
 	{ STR, "PV_LOG_DIR", PV, 0, false, .value.s = LOG_DIR_DEF },
-	{ INT, "PV_LOG_DIR_MAXSIZE", PV | OEM | RUN, 0, false,
-	  .value.i = LOG_MAX_DIR_SIZE_DEF },
+	{ STR, "PV_LOG_DIR_MAXSIZE", PV | OEM | RUN, 0, false, .value.s = "0" },
 	{ STR, "PV_LOG_FILETREE_TIMESTAMP_FORMAT", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },
-	{ INT, "PV_LOG_HYSTERESIS_FACTOR", PV | OEM | RUN, 0, false, .value.i = 4 },
+	{ INT, "PV_LOG_HYSTERESIS_FACTOR", PV | OEM | RUN, 0, false,
+	  .value.i = 4 },
 	{ INT, "PV_LOG_LEVEL", PV | OEM | RUN, 0, false, .value.i = 0 },
 	{ BOOL, "PV_LOG_LOGGERS", PV | OEM, 0, false, .value.b = true },
 	{ INT, "PV_LOG_MAXSIZE", PV | OEM | RUN, 0, false,
@@ -554,6 +556,168 @@ _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
 
 	server_outputs |= LOG_SERVER_OUTPUT_UPDATE;
 	entry->value.i = server_outputs;
+}
+
+static off_t _get_size_in_bytes(const char *size_str)
+{
+	if (!size_str || !strlen(size_str))
+		return -1;
+
+	errno = 0;
+	char *suffix = NULL;
+	off_t val = strtoll(size_str, &suffix, 10);
+
+	if (suffix == size_str || val < 0)
+		return -1;
+
+	if (errno != 0)
+		return -1;
+
+	off_t size = 0;
+	if (!strlen(suffix) || !strcmp(suffix, "B"))
+		size = val;
+	else if (!strcmp(suffix, "KB"))
+		size = val * 1000;
+	else if (!strcmp(suffix, "K"))
+		size = val * 1024;
+	else if (!strcmp(suffix, "MB"))
+		size = val * 1000 * 1000;
+	else if (!strcmp(suffix, "M"))
+		size = val * 1024 * 1024;
+	else if (!strcmp(suffix, "GB"))
+		size = val * 1000 * 1000 * 1000;
+	else if (!strcmp(suffix, "G"))
+		size = val * 1024 * 1024 * 1024;
+	else if (!strcmp(suffix, "TB"))
+		size = val * 1000LL * 1000LL * 1000LL * 1000LL;
+	else if (!strcmp(suffix, "T"))
+		size = val * 1024LL * 1024LL * 1024LL * 1024LL;
+	else
+		return -1;
+
+	return size;
+}
+
+static off_t _get_partition_size(const char *device)
+{
+	char path[PATH_MAX];
+	const char *dev_name = strrchr(device, '/');
+	if (dev_name)
+		dev_name++;
+	else
+		dev_name = device;
+
+	snprintf(path, sizeof(path), "/sys/class/block/%s/size", dev_name);
+	int fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return -1;
+
+	char buf[64];
+	ssize_t len = pv_fs_file_read_nointr(fd, buf, sizeof(buf) - 1);
+	close(fd);
+
+	if (len <= 0)
+		return -1;
+
+	buf[len] = '\0';
+
+	// kernel reports size in 512-byte sectors
+	return (off_t)atoll(buf) * 512;
+}
+
+static int get_mount_point_info(const char *path, off_t *size, bool *is_tmpfs)
+{
+	FILE *mount_file = setmntent("/proc/mounts", "r");
+	if (!mount_file)
+		return -1;
+
+	char dev[PATH_MAX] = { 0 };
+	char mnt[PATH_MAX] = { 0 };
+	char type[32] = { 0 };
+	size_t match = 0;
+	struct mntent *entry = NULL;
+
+	while ((entry = getmntent(mount_file))) {
+		size_t mnt_len = strlen(entry->mnt_dir);
+		if (strncmp(path, entry->mnt_dir, mnt_len))
+			continue;
+
+		if (path[mnt_len] != '\0' && path[mnt_len] != '/' &&
+		    (mnt_len != 1 || entry->mnt_dir[0] != '/'))
+			continue;
+
+		if (mnt_len >= match) {
+			match = mnt_len;
+			strncpy(dev, entry->mnt_fsname, sizeof(dev) - 1);
+			strncpy(type, entry->mnt_type, sizeof(type) - 1);
+			strncpy(mnt, entry->mnt_dir, sizeof(mnt) - 1);
+		}
+	}
+
+	endmntent(mount_file);
+
+	if (!match)
+		return -1;
+
+	*is_tmpfs = (strcmp(type, "tmpfs") == 0);
+
+	struct statvfs st = { 0 };
+
+	if (*is_tmpfs) {
+		goto fallback;
+	} else {
+		*size = _get_partition_size(dev);
+		if (*size <= 0)
+			goto fallback;
+	}
+
+	return (*size > 0) ? 0 : -1;
+
+fallback:
+	if (statvfs(mnt, &st) != 0)
+		return -1;
+	*size = (off_t)st.f_blocks * st.f_frsize;
+
+	return (*size > 0) ? 0 : -1;
+}
+
+off_t pv_config_get_log_dir_maxsize(void)
+{
+	char path[PATH_MAX] = { 0 };
+	pv_paths_storage_log(path, PATH_MAX);
+
+	off_t cur_size = 0;
+	bool is_tmpfs = false;
+	if (get_mount_point_info(path, &cur_size, &is_tmpfs) != 0)
+		return -1;
+
+	const char *size_str = pv_config_get_str(PV_LOG_DIR_MAXSIZE);
+	if (!size_str)
+		return -1;
+
+	size_t len = strlen(size_str);
+	if (len == 0 || size_str[0] == '0')
+		return is_tmpfs ? cur_size : (cur_size / 10); // 10% fallback
+
+	if (size_str[len - 1] == '%') {
+		long max = atol(size_str);
+		if (max < 0 || max > 100)
+			exit_error(
+				EINVAL,
+				"PV_LOG_DIR_MAXSIZE has an invalid percentage");
+
+		return (cur_size * max) / 100;
+	}
+
+	off_t size = _get_size_in_bytes(size_str);
+	if (size < 0)
+		exit_error(EINVAL, "PV_LOG_DIR_MAXSIZE has an invalid value");
+
+	if (size > cur_size)
+		exit_error(EINVAL, "current PV_LOG_DIR_MAXSIZE is greater than "
+				   "the partition size, aborting boot");
+
+	return size;
 }
 
 secureboot_mode_t pv_config_get_secureboot_mode()

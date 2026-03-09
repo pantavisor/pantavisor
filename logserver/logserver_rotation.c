@@ -108,28 +108,34 @@ static long pv_logserver_rot_get_next_rot(const char *path, const char *fname)
 	return max_rot + 1;
 }
 
+void pv_logserver_rot_show_status(struct logserver_rot *rot, int level)
+{
+	pv_log(level, "\t* path          : %s", rot->path);
+	pv_log(level, "\t* total_size    : %jd", rot->total_size);
+	pv_log(level, "\t* rot_size      : %jd", rot->rot_size);
+	pv_log(level, "\t* high watermark: %jd", rot->high_wm);
+	pv_log(level, "\t* low watermark : %jd", rot->low_wm);
+	pv_log(level, "\t* current size  : %jd", rot->cur_size);
+}
+
 void pv_logserver_rot_update(struct logserver_rot *rot, const char *rev)
 {
 	pv_paths_pv_log(rot->path, PATH_MAX, rev);
 
 	int hyst_gap_factor = pv_config_get_int(PV_LOG_HYSTERESIS_FACTOR);
 	int rot_factor = pv_config_get_int(PV_LOG_ROTATE_FACTOR);
-	off_t total_size = pv_config_get_int(PV_LOG_DIR_MAXSIZE);
+	off_t total_size = pv_config_get_log_dir_maxsize();
 	int hyst_gap = total_size / hyst_gap_factor;
 
 	rot->total_size = total_size;
 	rot->rot_size = hyst_gap / rot_factor;
-	rot->high_wm = total_size * 0.95;
+	rot->high_wm = total_size * 0.90;
 	rot->low_wm = total_size - hyst_gap;
 	rot->cur_size = pv_fs_path_get_size(rot->path);
 
-	pv_log(DEBUG, "updating log rotation status");
-	pv_log(TRACE, "\t* path          : %s", rot->path);
-	pv_log(TRACE, "\t* total_size    : %jd", rot->total_size);
-	pv_log(TRACE, "\t* rot_size      : %jd", rot->rot_size);
-	pv_log(TRACE, "\t* high watermark: %jd", rot->high_wm);
-	pv_log(TRACE, "\t* low watermark : %jd", rot->low_wm);
-	pv_log(TRACE, "\t* current size  : %jd", rot->cur_size);
+	pv_log(DEBUG, "updating log rotation status (size: %jd)",
+	       rot->total_size);
+	pv_logserver_rot_show_status(rot, TRACE);
 }
 
 void pv_logserver_rot_add(struct logserver_rot *rot, int len)
@@ -146,6 +152,7 @@ struct logserver_rot pv_logserver_rot_init(const char *rev, logfn log)
 
 	pv_log = log;
 	pv_logserver_rot_update(&rot, rev);
+	pv_logserver_rot_show_status(&rot, DEBUG);
 
 	return rot;
 }
