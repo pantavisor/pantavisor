@@ -12,6 +12,19 @@ This branch adds the pv-xconnect service mesh, daemon management, control API en
 | `tools/pvcontrol` | CLI wrapper around pvcurl for pv-ctrl operations |
 | `utils/tsh.c` | Daemon stdout/stderr capture via logserver |
 
+## Documentation
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| **Control Socket** | [docs/reference/pantavisor-commands.md](docs/reference/pantavisor-commands.md) | Reference for pv-ctrl HTTP endpoints (containers -> PV) |
+| **xconnect** | [docs/reference/pantavisor-xconnect.md](docs/reference/pantavisor-xconnect.md) | Service mesh logic and manifests (container <-> container) |
+| **xconnect Spec** | [xconnect/XCONNECT.md](xconnect/XCONNECT.md) | Technical specification and plugin architecture |
+| **Configuration** | [docs/reference/pantavisor-configuration.md](docs/reference/pantavisor-configuration.md) | Pantavisor configuration reference |
+| **Log Sockets** | [docs/reference/logserver-sockets.md](docs/reference/logserver-sockets.md) | Logserver unix sockets reference |
+| **Metadata** | [docs/reference/pantavisor-metadata.md](docs/reference/pantavisor-metadata.md) | User and device metadata reference |
+| **State Format** | [docs/reference/pantavisor-state-format-v2.md](docs/reference/pantavisor-state-format-v2.md) | Pantavisor state.json format (v2) |
+| **Config (Legacy)**| [docs/reference/pantavisor-configuration-legacy.md](docs/reference/pantavisor-configuration-legacy.md) | Legacy configuration reference |
+
 ## Architecture
 
 - **pv-xconnect**: Standalone mediation service for cross-container communication
