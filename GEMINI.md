@@ -36,6 +36,8 @@ This branch adds the pv-xconnect service mesh, daemon management, control API en
 
 ## Development Guidelines
 
+- **Documentation**: Always check if [reference documentation](docs/reference/) should be updated after making changes to the code.
+- **Commits**: Always use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification (v1.0.0) for all commit messages.
 - **Formatting**: Run `clang-format -i` on modified `.c`/`.h` files before committing
 - **API testing**: Use `pvcurl` (not `curl`) inside appengine containers
 - **Build**: Use `kas/with-workspace.yaml` overlay for local source development
