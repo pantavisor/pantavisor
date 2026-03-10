@@ -194,7 +194,7 @@ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/device-meta/k
 
 ## /xconnect-graph
 
-This endpoint returns the current xconnect service mesh graph in JSON format.
+This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](pantavisor-xconnect.md) reference.
 
 ```
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect-graph"
