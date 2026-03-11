@@ -42,6 +42,10 @@ struct pv_bsp {
 			void *padding;
 			char *bootimg;
 		} rpiab;
+		struct {
+			void *padding;
+			char *bootimg;
+		} efiab;
 	} img;
 	char *firmware;
 	char *modules;

@@ -446,6 +446,8 @@ static char *_get_bootloader_type_str(bootloader_t type)
 		return "rpiab";
 	case BL_UBOOT_AB:
 		return "uboot-ab";
+	case BL_EFIAB:
+		return "efiab";
 	default:
 		return "unknown";
 	}
@@ -474,6 +476,9 @@ static void _set_config_by_entry_bootloader_type(struct pv_config_entry *entry,
 	else if (pv_str_matches(value, strlen(value), "uboot-ab",
 				strlen("uboot-ab")))
 		entry->value.i = BL_UBOOT_AB;
+	else if (pv_str_matches(value, strlen(value), "efiab",
+				strlen("efiab")))
+		entry->value.i = BL_EFIAB;
 	else
 		pv_log(WARN, "unknown bootloader type '%s'", value);
 }
