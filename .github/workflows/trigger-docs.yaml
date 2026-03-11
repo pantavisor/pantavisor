@@ -1,0 +1,19 @@
+name: Trigger Docs Update
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'docs/**'
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger GitLab CI
+        run: |
+          curl --request POST \
+            --form token=${{ secrets.GITLAB_DOCS_TRIGGER_TOKEN }} \
+            --form ref=master \
+            https://gitlab.com/api/v4/projects/pantacor%2Fdocs/trigger/pipeline
