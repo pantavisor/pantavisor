@@ -52,7 +52,7 @@ static int rpmsg_rx_cb(struct rpmsg_endpoint *ept, void *data,
 	return RPMSG_SUCCESS;
 }
 
-static void rpmsg_ns_bind_cb(struct rpmsg_device *rdev,
+static void pvcm_rpmsg_ns_bind_cb(struct rpmsg_device *rdev,
 			     const char *name,
 			     uint32_t dest)
 {

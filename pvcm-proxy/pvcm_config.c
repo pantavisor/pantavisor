@@ -11,6 +11,7 @@
  */
 
 #include "pvcm_config.h"
+#include "../protocol/pvcm_protocol.h"
 
 #include <stdio.h>
 #include <stdlib.h>

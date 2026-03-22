@@ -74,12 +74,13 @@ typedef enum {
 	/* MCU Detection */
 	PVCM_OP_SMP_REJECT          = 0x29,
 
-	/* REST Gateway -- MCU as client */
-	PVCM_OP_REST_REQ            = 0x30,
-	PVCM_OP_REST_RESP           = 0x31,
-	/* REST Gateway -- MCU as server */
-	PVCM_OP_REST_INVOKE         = 0x32,
-	PVCM_OP_REST_INVOKE_RESP    = 0x33,
+	/* HTTP Gateway -- chunked request/response (both directions)
+	 * MCU as client: MCU sends HTTP_REQ, proxy forwards to Linux
+	 * MCU as server: proxy sends HTTP_REQ, MCU handles and responds
+	 * All bodies are chunked via HTTP_DATA frames */
+	PVCM_OP_HTTP_REQ            = 0x30,  /* open request: method/status + path + headers */
+	PVCM_OP_HTTP_DATA           = 0x31,  /* body chunk */
+	PVCM_OP_HTTP_END            = 0x32,  /* transfer complete */
 
 	/* DBus Gateway */
 	PVCM_OP_DBUS_CALL           = 0x40,
@@ -97,12 +98,21 @@ typedef enum {
 #define PVCM_HEALTH_OK          0
 #define PVCM_HEALTH_DEGRADED    1
 
-/* --- REST Methods --- */
+/* --- HTTP Methods --- */
 
-#define PVCM_REST_GET           0
-#define PVCM_REST_POST          1
-#define PVCM_REST_PUT           2
-#define PVCM_REST_DELETE        3
+#define PVCM_HTTP_GET           0
+#define PVCM_HTTP_POST          1
+#define PVCM_HTTP_PUT           2
+#define PVCM_HTTP_DELETE        3
+#define PVCM_HTTP_HEAD          4
+#define PVCM_HTTP_PATCH         5
+
+/* --- HTTP Direction --- */
+
+#define PVCM_HTTP_DIR_REQUEST   0  /* MCU → Linux (outbound) */
+#define PVCM_HTTP_DIR_RESPONSE  1  /* Linux → MCU (response to outbound) */
+#define PVCM_HTTP_DIR_INVOKE    2  /* Linux → MCU (inbound request) */
+#define PVCM_HTTP_DIR_REPLY     3  /* MCU → Linux (response to inbound) */
 
 /* --- Log Levels --- */
 
@@ -198,45 +208,49 @@ typedef struct {
 	uint32_t crc32;
 } __packed pvcm_log_t;
 
-/* REST_REQ (MCU -> Linux: outbound REST request) */
+/*
+ * HTTP_REQ -- opens an HTTP exchange (request or response)
+ *
+ * For requests (dir=REQUEST/INVOKE):
+ *   method = PVCM_HTTP_GET/POST/etc, status_code = 0
+ *   path = request path (e.g. "/sensor/config")
+ *
+ * For responses (dir=RESPONSE/REPLY):
+ *   method = 0, status_code = HTTP status (200, 404, etc)
+ *   path = "" (not used)
+ *
+ * headers: optional HTTP headers as "Key: Value\r\n" pairs
+ * total_body_size: expected body size (0 if no body, or unknown)
+ */
 typedef struct {
 	uint8_t  op;
-	uint8_t  req_id;
-	uint8_t  method;            /* PVCM_REST_* */
-	uint8_t  reserved;
-	char     path[60];
-	char     body[192];
+	uint8_t  stream_id;         /* correlates REQ/DATA/END */
+	uint8_t  direction;         /* PVCM_HTTP_DIR_* */
+	uint8_t  method;            /* PVCM_HTTP_* (for requests) */
+	uint16_t status_code;       /* HTTP status (for responses) */
+	uint32_t total_body_size;   /* 0 = unknown/no body */
+	uint16_t path_len;
+	uint16_t headers_len;
+	char     data[240];         /* path + headers, packed */
 	uint32_t crc32;
-} __packed pvcm_rest_req_t;
+} __packed pvcm_http_req_t;
 
-/* REST_RESP (Linux -> MCU: outbound REST response) */
+/* HTTP_DATA -- body chunk */
 typedef struct {
 	uint8_t  op;
-	uint8_t  req_id;
-	uint16_t status_code;
-	char     body[248];
+	uint8_t  stream_id;
+	uint16_t len;               /* bytes in this chunk */
+	uint8_t  data[PVCM_MAX_CHUNK_SIZE];
 	uint32_t crc32;
-} __packed pvcm_rest_resp_t;
+} __packed pvcm_http_data_t;
 
-/* REST_INVOKE (Linux -> MCU: inbound REST request) */
+/* HTTP_END -- transfer complete */
 typedef struct {
 	uint8_t  op;
-	uint8_t  invoke_id;
-	uint8_t  method;
-	uint8_t  reserved;
-	char     path[60];
-	char     body[192];
+	uint8_t  stream_id;
+	uint8_t  reserved[2];
 	uint32_t crc32;
-} __packed pvcm_rest_invoke_t;
-
-/* REST_INVOKE_RESP (MCU -> Linux: inbound REST response) */
-typedef struct {
-	uint8_t  op;
-	uint8_t  invoke_id;
-	uint16_t status_code;
-	char     body[248];
-	uint32_t crc32;
-} __packed pvcm_rest_invoke_resp_t;
+} __packed pvcm_http_end_t;
 
 /* DBUS_CALL (MCU -> Linux: call DBus method) */
 typedef struct {
