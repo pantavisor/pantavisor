@@ -21,6 +21,7 @@ LOG_MODULE_REGISTER(pvcm_uart, CONFIG_LOG_DEFAULT_LEVEL);
 
 #ifdef CONFIG_PANTAVISOR_TRANSPORT_UART
 
+static K_MUTEX_DEFINE(uart_tx_mutex);
 static const struct device *uart_dev;
 
 static int uart_tx_byte(uint8_t b)
@@ -94,9 +95,11 @@ static int uart_send_frame(const void *payload, size_t len)
 	crc_bytes[2] = (crc >> 16) & 0xFF;
 	crc_bytes[3] = (crc >> 24) & 0xFF;
 
+	k_mutex_lock(&uart_tx_mutex, K_FOREVER);
 	uart_tx_buf(header, 4);
 	uart_tx_buf(payload, len);
 	uart_tx_buf(crc_bytes, 4);
+	k_mutex_unlock(&uart_tx_mutex);
 
 	return 0;
 }
