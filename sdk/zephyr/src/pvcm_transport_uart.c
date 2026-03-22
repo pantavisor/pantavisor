@@ -43,7 +43,7 @@ static int uart_rx_byte(uint8_t *b, int timeout_ms)
 	while (k_uptime_get() < deadline) {
 		if (uart_poll_in(uart_dev, b) == 0)
 			return 0;
-		k_sleep(K_USEC(100));
+		k_sleep(K_MSEC(1));
 	}
 	return -2; /* timeout */
 }
@@ -60,15 +60,19 @@ static int uart_rx_buf(uint8_t *buf, size_t len, int timeout_ms)
 
 static int uart_init(void)
 {
-	uart_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
-	if (!device_is_ready(uart_dev)) {
-		/* try Kconfig device name */
-		uart_dev = device_get_binding(
-			CONFIG_PANTAVISOR_UART_DEVICE);
-		if (!uart_dev) {
-			LOG_ERR("UART device not found");
-			return -1;
-		}
+	/* try dedicated PVCM UART device first */
+	uart_dev = device_get_binding(CONFIG_PANTAVISOR_UART_DEVICE);
+	if (!uart_dev || !device_is_ready(uart_dev)) {
+		/* fall back to DT uart0 */
+		uart_dev = DEVICE_DT_GET_OR_NULL(DT_NODELABEL(uart0));
+	}
+	if (!uart_dev || !device_is_ready(uart_dev)) {
+		/* last resort: console */
+		uart_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
+	}
+	if (!uart_dev || !device_is_ready(uart_dev)) {
+		LOG_ERR("UART device not found");
+		return -1;
 	}
 
 	LOG_INF("PVCM UART transport ready on %s", uart_dev->name);
