@@ -21,6 +21,7 @@
 #include "pvcm_config.h"
 #include "pvcm_transport.h"
 #include "pvcm_protocol.h"
+#include "pvcm_bridge.h"
 
 static volatile bool running = true;
 
@@ -130,6 +131,12 @@ int main(int argc, char **argv)
 		transport->close(transport);
 		return 1;
 	}
+
+	/* start HTTP bridge */
+	pvcm_bridge_init(transport);
+
+	/* start MCU HTTP server listener on port 18081 */
+	pvcm_bridge_start_listener(transport, 18081);
 
 	/* main protocol loop */
 	pvcm_run(&session, &running);

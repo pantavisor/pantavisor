@@ -194,14 +194,21 @@ int pvcm_dispatch_one(struct pvcm_session *s, int timeout_ms)
 		break;
 
 	/* HTTP gateway */
-	case PVCM_OP_HTTP_REQ:
-		pvcm_bridge_on_http_req(s->transport, buf, len);
+	case PVCM_OP_HTTP_REQ: {
+		const pvcm_http_req_t *hreq = (const pvcm_http_req_t *)buf;
+		if (hreq->direction == PVCM_HTTP_DIR_REQUEST)
+			pvcm_bridge_on_http_req(s->transport, buf, len);
+		else if (hreq->direction == PVCM_HTTP_DIR_REPLY)
+			pvcm_bridge_on_reply_req(s->transport, buf, len);
 		break;
+	}
 	case PVCM_OP_HTTP_DATA:
 		pvcm_bridge_on_http_data(s->transport, buf, len);
+		pvcm_bridge_on_reply_data(s->transport, buf, len);
 		break;
 	case PVCM_OP_HTTP_END:
 		pvcm_bridge_on_http_end(s->transport, buf, len);
+		pvcm_bridge_on_reply_end(s->transport, buf, len);
 		break;
 
 	default:

@@ -109,6 +109,30 @@ static void run_http_tests(void)
 	LOG_INF("=== All Tests Complete ===");
 }
 
+/* MCU HTTP server handler — serves sensor data to Linux */
+static void sensor_handler(uint8_t method, const char *path,
+			   const char *headers, const char *body,
+			   size_t body_len, void *ctx)
+{
+	LOG_INF("[server] %s %s (body=%zu)",
+		method == PVCM_HTTP_GET ? "GET" : "POST", path, body_len);
+
+	if (method == PVCM_HTTP_GET) {
+		const char *resp = "{\"temperature\":22.4,\"humidity\":65}";
+		/* ctx is the stream_id passed via invoke_pending */
+		extern uint8_t pvcm_get_invoke_stream_id(void);
+		pvcm_http_respond(pvcm_get_invoke_stream_id(), 200,
+				  "Content-Type: application/json\r\n",
+				  resp, strlen(resp));
+	} else {
+		const char *resp = "{\"ok\":true}";
+		extern uint8_t pvcm_get_invoke_stream_id(void);
+		pvcm_http_respond(pvcm_get_invoke_stream_id(), 200,
+				  "Content-Type: application/json\r\n",
+				  resp, strlen(resp));
+	}
+}
+
 #endif /* CONFIG_PANTAVISOR_BRIDGE */
 
 int main(void)
@@ -116,6 +140,10 @@ int main(void)
 	LOG_INF("PVCM shell demo starting");
 
 #ifdef CONFIG_PANTAVISOR_BRIDGE
+	/* Register MCU HTTP server handler */
+	pvcm_http_serve("/sensor", sensor_handler, NULL);
+	LOG_INF("MCU HTTP server registered for /sensor");
+
 	LOG_INF("Waiting 8s for pvcm-proxy connection...");
 	k_sleep(K_SECONDS(8));
 	run_http_tests();

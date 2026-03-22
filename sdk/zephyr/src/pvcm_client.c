@@ -269,16 +269,179 @@ int pvcm_http_stream_close(pvcm_http_stream_t *s)
 	return -ENOTSUP;
 }
 
+/* ---- MCU as HTTP server ---- */
+
+#define MAX_SERVE_HANDLERS 8
+
+static struct {
+	const char *path_prefix;
+	pvcm_http_handler_t handler;
+	void *ctx;
+} serve_handlers[MAX_SERVE_HANDLERS];
+static int serve_handler_count;
+
+/* pending inbound request being assembled from INVOKE frames */
+static struct {
+	uint8_t stream_id;
+	uint8_t method;
+	char path[256];
+	char headers[512];
+	char body[4096];
+	size_t body_len;
+	bool active;
+} invoke_pending;
+
 int pvcm_http_serve(const char *path_prefix, pvcm_http_handler_t handler,
 		    void *ctx)
 {
-	LOG_WRN("pvcm_http_serve not yet implemented");
-	return -ENOTSUP;
+	if (serve_handler_count >= MAX_SERVE_HANDLERS)
+		return -ENOMEM;
+
+	serve_handlers[serve_handler_count].path_prefix = path_prefix;
+	serve_handlers[serve_handler_count].handler = handler;
+	serve_handlers[serve_handler_count].ctx = ctx;
+	serve_handler_count++;
+
+	LOG_INF("registered HTTP handler for %s", path_prefix);
+	return 0;
 }
 
 int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 		      const char *headers,
 		      const char *body, size_t body_len)
 {
-	return -ENOTSUP;
+	const struct pvcm_transport *t = pvcm_transport_get();
+	if (!t)
+		return -ENODEV;
+
+	/* send HTTP_REQ(REPLY) */
+	pvcm_http_req_t resp = {
+		.op = PVCM_OP_HTTP_REQ,
+		.stream_id = stream_id,
+		.direction = PVCM_HTTP_DIR_REPLY,
+		.status_code = status_code,
+		.total_body_size = (uint32_t)body_len,
+	};
+
+	size_t hlen = headers ? strlen(headers) : 0;
+	if (hlen > sizeof(resp.data))
+		hlen = sizeof(resp.data);
+	resp.headers_len = (uint16_t)hlen;
+	resp.path_len = 0;
+	if (hlen > 0)
+		memcpy(resp.data, headers, hlen);
+
+	t->send_frame(&resp, sizeof(resp) - sizeof(uint32_t));
+
+	/* send body chunks */
+	if (body && body_len > 0) {
+		size_t offset = 0;
+		while (offset < body_len) {
+			pvcm_http_data_t data = {
+				.op = PVCM_OP_HTTP_DATA,
+				.stream_id = stream_id,
+			};
+			size_t chunk = body_len - offset;
+			if (chunk > PVCM_MAX_CHUNK_SIZE)
+				chunk = PVCM_MAX_CHUNK_SIZE;
+			data.len = (uint16_t)chunk;
+			memcpy(data.data, body + offset, chunk);
+			t->send_frame(&data, 4 + chunk);
+			offset += chunk;
+		}
+	}
+
+	/* send HTTP_END */
+	pvcm_http_end_t end = {
+		.op = PVCM_OP_HTTP_END,
+		.stream_id = stream_id,
+	};
+	t->send_frame(&end, sizeof(end) - sizeof(uint32_t));
+
+	return 0;
+}
+
+/*
+ * Called by server thread for inbound INVOKE requests from pvcm-proxy.
+ */
+void pvcm_client_on_invoke_req(const uint8_t *buf, int len)
+{
+	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
+
+	if (req->direction != PVCM_HTTP_DIR_INVOKE)
+		return;
+
+	invoke_pending.stream_id = req->stream_id;
+	invoke_pending.method = req->method;
+	invoke_pending.body_len = 0;
+	invoke_pending.active = true;
+
+	size_t plen = req->path_len;
+	if (plen > sizeof(invoke_pending.path) - 1)
+		plen = sizeof(invoke_pending.path) - 1;
+	memcpy(invoke_pending.path, req->data, plen);
+	invoke_pending.path[plen] = '\0';
+
+	size_t hlen = req->headers_len;
+	if (hlen > sizeof(invoke_pending.headers) - 1)
+		hlen = sizeof(invoke_pending.headers) - 1;
+	if (hlen > 0)
+		memcpy(invoke_pending.headers, req->data + plen, hlen);
+	invoke_pending.headers[hlen] = '\0';
+
+	LOG_INF("INVOKE: %s %s",
+		req->method == PVCM_HTTP_GET ? "GET" :
+		req->method == PVCM_HTTP_POST ? "POST" : "?",
+		invoke_pending.path);
+}
+
+void pvcm_client_on_invoke_data(const uint8_t *buf, int len)
+{
+	const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
+
+	if (!invoke_pending.active || d->stream_id != invoke_pending.stream_id)
+		return;
+
+	size_t chunk = d->len;
+	if (invoke_pending.body_len + chunk > sizeof(invoke_pending.body) - 1)
+		chunk = sizeof(invoke_pending.body) - 1 - invoke_pending.body_len;
+
+	memcpy(invoke_pending.body + invoke_pending.body_len, d->data, chunk);
+	invoke_pending.body_len += chunk;
+}
+
+void pvcm_client_on_invoke_end(const uint8_t *buf, int len)
+{
+	if (!invoke_pending.active)
+		return;
+
+	invoke_pending.body[invoke_pending.body_len] = '\0';
+	invoke_pending.active = false;
+
+	/* find matching handler */
+	for (int i = 0; i < serve_handler_count; i++) {
+		const char *prefix = serve_handlers[i].path_prefix;
+		if (strncmp(invoke_pending.path, prefix, strlen(prefix)) == 0) {
+			serve_handlers[i].handler(
+				invoke_pending.method,
+				invoke_pending.path,
+				invoke_pending.headers,
+				invoke_pending.body,
+				invoke_pending.body_len,
+				serve_handlers[i].ctx);
+			return;
+		}
+	}
+
+	/* no handler — send 404 */
+	LOG_WRN("no handler for %s", invoke_pending.path);
+	pvcm_http_respond(invoke_pending.stream_id, 404,
+			  "Content-Type: application/json\r\n",
+			  "{\"error\":\"not found\"}", 20);
+}
+
+/* Helper: get the stream_id of the current invoke being handled */
+uint8_t pvcm_get_invoke_stream_id(void)
+{
+	return invoke_pending.stream_id;
 }
