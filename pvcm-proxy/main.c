@@ -5,14 +5,6 @@
  * inside a mount namespace. From xconnect's perspective this IS
  * the container.
  *
- * Responsibilities:
- *  - Open transport (UART or RPMsg) to the MCU
- *  - Speak PVCM protocol (handshake, heartbeat, log, REST/DBus bridge)
- *  - Flash firmware if needed
- *  - Monitor MCU health
- *  - Create service sockets for xconnect
- *  - Bridge xconnect sockets ↔ PVCM protocol frames
- *
  * Copyright (c) 2024-2026 Pantacor Ltd.
  * SPDX-License-Identifier: MIT
  */
@@ -26,7 +18,9 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "../protocol/pvcm_protocol.h"
+#include "pvcm_config.h"
+#include "pvcm_transport.h"
+#include "pvcm_protocol.h"
 
 static volatile bool running = true;
 
@@ -35,14 +29,6 @@ static void signal_handler(int sig)
 	(void)sig;
 	running = false;
 }
-
-struct pvcm_config {
-	const char *name;     /* container name */
-	const char *config;   /* path to run.json */
-	const char *device;   /* transport device path */
-	const char *transport; /* "uart" or "rpmsg" */
-	uint32_t baudrate;
-};
 
 static void usage(const char *prog)
 {
@@ -63,10 +49,11 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 	       -1) {
 		switch (opt) {
 		case 'n':
-			cfg->name = optarg;
+			strncpy(cfg->name, optarg, sizeof(cfg->name) - 1);
 			break;
 		case 'c':
-			cfg->config = optarg;
+			strncpy(cfg->config_path, optarg,
+				sizeof(cfg->config_path) - 1);
 			break;
 		case 'h':
 			usage(argv[0]);
@@ -77,7 +64,7 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 		}
 	}
 
-	if (!cfg->name || !cfg->config) {
+	if (!cfg->name[0] || !cfg->config_path[0]) {
 		usage(argv[0]);
 		return -1;
 	}
@@ -85,83 +72,71 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 	return 0;
 }
 
-/*
- * Probe MCU via PVCM HELLO.
- * Returns 0 if MCU responds with HELLO_RESP, -1 otherwise.
- */
-static int pvcm_probe(int transport_fd)
-{
-	/* TODO: send HELLO frame, wait for HELLO_RESP */
-	fprintf(stdout, "[pvcm-proxy] probing MCU...\n");
-	return 0;
-}
-
-/*
- * Run heartbeat monitor loop.
- * Receives PVCM_EVT_HEARTBEAT frames every 5s from MCU.
- * Reports health status to stdout (captured by pantavisor logger).
- */
-static int pvcm_heartbeat_loop(int transport_fd)
-{
-	while (running) {
-		/* TODO: read frame from transport
-		 * - if HEARTBEAT: log status, update health
-		 * - if LOG: forward to stdout
-		 * - if REST_REQ/DBUS_CALL: bridge to xconnect socket
-		 * - if timeout: MCU unresponsive, report degraded
-		 */
-		sleep(1);
-	}
-
-	return 0;
-}
-
 int main(int argc, char **argv)
 {
-	struct pvcm_config cfg = {
-		.name = NULL,
-		.config = NULL,
-		.device = NULL,
-		.transport = "uart",
-		.baudrate = PVCM_DEFAULT_BAUDRATE,
-	};
+	struct pvcm_config cfg = { 0 };
+	cfg.baudrate = PVCM_DEFAULT_BAUDRATE;
 
 	if (parse_args(argc, argv, &cfg) < 0)
 		return 1;
 
-	/* install signal handlers for clean shutdown */
 	signal(SIGTERM, signal_handler);
 	signal(SIGINT, signal_handler);
 
-	fprintf(stdout, "[pvcm-proxy] starting for MCU '%s' (config=%s)\n",
-		cfg.name, cfg.config);
+	fprintf(stdout, "[pvcm-proxy] starting for MCU '%s'\n", cfg.name);
 
-	/* TODO: parse run.json to get device, transport, baudrate, firmware */
-
-	/* TODO: open transport (UART or RPMsg) */
-	int transport_fd = -1;
-
-	/* probe MCU */
-	if (pvcm_probe(transport_fd) < 0) {
-		fprintf(stderr,
-			"[pvcm-proxy] MCU '%s' not responding, will retry\n",
-			cfg.name);
-		/* TODO: SMP probe for virgin MCUboot, firmware install */
+	/* parse run.json */
+	if (pvcm_config_parse(&cfg, cfg.config_path) < 0) {
+		fprintf(stderr, "[pvcm-proxy] failed to parse config\n");
+		return 1;
 	}
 
-	fprintf(stdout, "[pvcm-proxy] MCU '%s' connected\n", cfg.name);
+	/* select transport */
+	struct pvcm_transport *transport;
+	if (strcmp(cfg.transport, "rpmsg") == 0) {
+		/* TODO: RPMsg transport */
+		fprintf(stderr, "[pvcm-proxy] RPMsg transport not yet "
+			"implemented\n");
+		return 1;
+	} else {
+		transport = &pvcm_transport_uart;
+	}
 
-	/* TODO: check firmware version, flash if needed */
+	/* open transport */
+	if (transport->open(transport, cfg.device, cfg.baudrate) < 0) {
+		fprintf(stderr, "[pvcm-proxy] failed to open transport\n");
+		return 1;
+	}
 
-	/* TODO: create service sockets in our namespace for xconnect */
+	/* set up protocol session */
+	struct pvcm_session session = {
+		.transport = transport,
+		.connected = false,
+	};
 
-	/* main loop: heartbeat monitor + protocol dispatch */
-	pvcm_heartbeat_loop(transport_fd);
+	/* handshake with MCU */
+	int retries = 3;
+	while (retries-- > 0 && running) {
+		if (pvcm_handshake(&session) == 0)
+			break;
+		fprintf(stderr, "[pvcm-proxy] handshake failed, "
+			"retrying (%d left)\n", retries);
+		sleep(1);
+	}
 
-	/* shutdown: signal MCU, close transport */
+	if (!session.connected) {
+		fprintf(stderr, "[pvcm-proxy] MCU '%s' not responding\n",
+			cfg.name);
+		transport->close(transport);
+		return 1;
+	}
+
+	/* main protocol loop */
+	pvcm_run(&session, &running);
+
+	/* shutdown */
 	fprintf(stdout, "[pvcm-proxy] shutting down MCU '%s'\n", cfg.name);
-
-	/* TODO: send shutdown to MCU, close transport fd */
+	transport->close(transport);
 
 	return 0;
 }
