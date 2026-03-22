@@ -3,6 +3,9 @@ project(pvcm-proxy VERSION 1)
 
 add_executable(pvcm-proxy
     main.c
+    pvcm_config.c
+    pvcm_transport_uart.c
+    pvcm_protocol.c
 )
 
 target_include_directories(pvcm-proxy PRIVATE ${CMAKE_SOURCE_DIR})
