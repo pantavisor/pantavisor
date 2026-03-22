@@ -9,6 +9,7 @@ zephyr_library_sources(
   src/pvcm_server.c
   src/pvcm_state.c
   src/pvcm_heartbeat.c
+  src/pvcm_crc32.c
 )
 
 zephyr_library_sources_ifdef(CONFIG_PANTAVISOR_LOG_BACKEND

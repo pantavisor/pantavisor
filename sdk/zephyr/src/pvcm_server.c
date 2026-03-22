@@ -1,8 +1,12 @@
 /*
  * PVCM Server -- mandatory protocol server task
  *
- * Handles all incoming PVCM frames, dispatches to handlers,
- * manages transport lifecycle.
+ * Handles all incoming PVCM frames from pvcm-proxy (Linux side):
+ *  - Responds to HELLO with HELLO_RESP
+ *  - Responds to QUERY_STATE with current boot state
+ *  - Dispatches other opcodes to registered handlers
+ *
+ * Runs as a dedicated Zephyr thread, started automatically.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -11,11 +15,101 @@
 #include <zephyr/logging/log.h>
 #include <pantavisor/pvcm.h>
 #include <pantavisor/pvcm_protocol.h>
+#include <pantavisor/pvcm_transport.h>
 
 LOG_MODULE_REGISTER(pvcm_server, CONFIG_LOG_DEFAULT_LEVEL);
 
 #define PVCM_SERVER_STACK_SIZE  2048
 #define PVCM_SERVER_PRIORITY    7
+
+static const struct pvcm_transport *transport;
+
+static void handle_hello(void)
+{
+	pvcm_hello_resp_t resp = {
+		.op = PVCM_OP_HELLO_RESP,
+		.protocol_version = PVCM_PROTOCOL_VERSION,
+		.baudrate = PVCM_DEFAULT_BAUDRATE,
+		.max_msg_size = 512,
+		.mcu_fw_version = 1,
+	};
+
+	LOG_INF("HELLO received, sending HELLO_RESP");
+	transport->send_frame(&resp, sizeof(resp) - sizeof(uint32_t));
+}
+
+static void handle_query_state(void)
+{
+	/* TODO: read actual boot state from flash */
+	pvcm_state_resp_t resp = {
+		.op = PVCM_OP_STATE_RESP,
+		.status = PVCM_HEALTH_OK,
+		.stable_slot = 0,
+		.tryboot_slot = 0,
+		.tryboot_pending = 0,
+		.tryboot_trying = 0,
+		.stable_rev = 1,
+		.tryboot_rev = 0,
+		.mcu_fw_version = 1,
+	};
+
+	LOG_INF("QUERY_STATE received, sending STATE_RESP");
+	transport->send_frame(&resp, sizeof(resp) - sizeof(uint32_t));
+}
+
+static void handle_commit(void)
+{
+	LOG_INF("COMMIT received");
+	/* TODO: write stable state to flash */
+
+	pvcm_ack_t ack = {
+		.op = PVCM_OP_ACK,
+		.ref_op = PVCM_OP_COMMIT,
+	};
+	transport->send_frame(&ack, sizeof(ack) - sizeof(uint32_t));
+}
+
+static void handle_set_tryboot(void)
+{
+	LOG_INF("SET_TRYBOOT received");
+	/* TODO: write tryboot state to flash */
+
+	pvcm_ack_t ack = {
+		.op = PVCM_OP_ACK,
+		.ref_op = PVCM_OP_SET_TRYBOOT,
+	};
+	transport->send_frame(&ack, sizeof(ack) - sizeof(uint32_t));
+}
+
+static void dispatch(const uint8_t *buf, int len)
+{
+	if (len < 1)
+		return;
+
+	uint8_t op = buf[0];
+
+	switch (op) {
+	case PVCM_OP_HELLO:
+		handle_hello();
+		break;
+	case PVCM_OP_QUERY_STATE:
+		handle_query_state();
+		break;
+	case PVCM_OP_COMMIT:
+		handle_commit();
+		break;
+	case PVCM_OP_SET_TRYBOOT:
+		handle_set_tryboot();
+		break;
+	case PVCM_OP_ROLLBACK:
+		LOG_WRN("ROLLBACK received");
+		/* TODO: revert to stable slot */
+		break;
+	default:
+		LOG_DBG("unhandled opcode 0x%02x (len=%d)", op, len);
+		break;
+	}
+}
 
 static void pvcm_server_thread(void *p1, void *p2, void *p3)
 {
@@ -25,9 +119,26 @@ static void pvcm_server_thread(void *p1, void *p2, void *p3)
 
 	LOG_INF("PVCM server starting (protocol v%d)", PVCM_PROTOCOL_VERSION);
 
-	/* TODO: init transport, enter recv loop, dispatch opcodes */
+	transport = pvcm_transport_get();
+	if (!transport) {
+		LOG_ERR("no transport available");
+		return;
+	}
+
+	if (transport->init() < 0) {
+		LOG_ERR("transport init failed");
+		return;
+	}
+
+	LOG_INF("transport ready, entering recv loop");
+
+	uint8_t buf[512];
 	while (1) {
-		k_sleep(K_FOREVER);
+		int len = transport->recv_frame(buf, sizeof(buf), 1000);
+		if (len > 0) {
+			dispatch(buf, len);
+		}
+		/* timeout is normal — just loop and let heartbeat run */
 	}
 }
 
