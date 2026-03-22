@@ -6,6 +6,7 @@ add_executable(pvcm-proxy
     pvcm_config.c
     pvcm_transport_uart.c
     pvcm_protocol.c
+    pvcm_bridge.c
 )
 
 target_include_directories(pvcm-proxy PRIVATE ${CMAKE_SOURCE_DIR})
