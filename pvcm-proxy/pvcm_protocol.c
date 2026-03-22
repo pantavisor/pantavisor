@@ -45,32 +45,42 @@ int pvcm_handshake(struct pvcm_session *s)
 		return -1;
 	}
 
-	/* wait for HELLO_RESP (5s timeout) */
+	/* wait for HELLO_RESP, skipping any interleaved frames
+	 * (heartbeats may arrive before the MCU processes our HELLO) */
 	uint8_t buf[256];
-	int len = s->transport->recv_frame(s->transport, buf, sizeof(buf),
-					   5000);
-	if (len < 0) {
-		fprintf(stderr, "[pvcm-proxy] no HELLO_RESP (len=%d)\n", len);
-		return len;
+	int attempts = 10; /* max frames to skip */
+
+	while (attempts-- > 0) {
+		int len = s->transport->recv_frame(s->transport, buf,
+						   sizeof(buf), 5000);
+		if (len < 0) {
+			fprintf(stderr, "[pvcm-proxy] no HELLO_RESP "
+				"(len=%d)\n", len);
+			return len;
+		}
+
+		if (len >= 1 && buf[0] == PVCM_OP_HELLO_RESP) {
+			pvcm_hello_resp_t *resp = (pvcm_hello_resp_t *)buf;
+			s->protocol_version = resp->protocol_version;
+			s->mcu_fw_version = resp->mcu_fw_version;
+			s->connected = true;
+
+			fprintf(stdout, "[pvcm-proxy] MCU connected: "
+				"protocol=v%d fw=v%d baudrate=%u\n",
+				resp->protocol_version,
+				resp->mcu_fw_version,
+				resp->baudrate);
+			return 0;
+		}
+
+		/* not HELLO_RESP — log and keep waiting */
+		fprintf(stdout, "[pvcm-proxy] skipping frame op=0x%02x "
+			"during handshake\n", buf[0]);
 	}
 
-	if (len < 1 || buf[0] != PVCM_OP_HELLO_RESP) {
-		fprintf(stderr, "[pvcm-proxy] unexpected response op=%d\n",
-			buf[0]);
-		return -1;
-	}
-
-	pvcm_hello_resp_t *resp = (pvcm_hello_resp_t *)buf;
-	s->protocol_version = resp->protocol_version;
-	s->mcu_fw_version = resp->mcu_fw_version;
-	s->connected = true;
-
-	fprintf(stdout, "[pvcm-proxy] MCU connected: protocol=v%d "
-		"fw=v%d baudrate=%u\n",
-		resp->protocol_version, resp->mcu_fw_version,
-		resp->baudrate);
-
-	return 0;
+	fprintf(stderr, "[pvcm-proxy] HELLO_RESP not received after "
+		"skipping %d frames\n", 10);
+	return -1;
 }
 
 /*

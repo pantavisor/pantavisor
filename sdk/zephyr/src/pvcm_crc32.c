@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <stdbool.h>
 #include <pantavisor/pvcm_transport.h>
 
 static uint32_t crc32_table[256];
