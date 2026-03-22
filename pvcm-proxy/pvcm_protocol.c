@@ -11,6 +11,7 @@
  */
 
 #include "pvcm_protocol.h"
+#include "pvcm_bridge.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -190,6 +191,17 @@ int pvcm_dispatch_one(struct pvcm_session *s, int timeout_ms)
 				p->percent, p->bytes_written,
 				p->total_bytes);
 		}
+		break;
+
+	/* HTTP gateway */
+	case PVCM_OP_HTTP_REQ:
+		pvcm_bridge_on_http_req(s->transport, buf, len);
+		break;
+	case PVCM_OP_HTTP_DATA:
+		pvcm_bridge_on_http_data(s->transport, buf, len);
+		break;
+	case PVCM_OP_HTTP_END:
+		pvcm_bridge_on_http_end(s->transport, buf, len);
 		break;
 
 	default:

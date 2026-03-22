@@ -1,0 +1,296 @@
+/*
+ * pvcm-proxy HTTP bridge
+ *
+ * Receives HTTP_REQ/DATA/END frames from the MCU, reassembles the
+ * request, makes an HTTP request to the configured upstream, and
+ * sends the response back as HTTP_REQ(RESPONSE)/DATA/END frames.
+ *
+ * For testing, the upstream is a simple HTTP connection to a local
+ * server. In production, the upstream would be a Unix domain socket
+ * injected by xconnect.
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include "pvcm_bridge.h"
+
+#include <stdbool.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netdb.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+/* pending request being assembled from MCU frames */
+static struct {
+	uint8_t stream_id;
+	uint8_t method;
+	uint16_t status_code;
+	char path[256];
+	char headers[512];
+	char body[8192];
+	size_t body_len;
+	bool active;
+} pending_req;
+
+/* Simple HTTP client — connects to host:port, sends request, gets response */
+static int http_request(const char *method_str, const char *host, int port,
+			const char *path, const char *req_headers,
+			const char *req_body, size_t req_body_len,
+			char *resp_buf, size_t resp_buf_size,
+			int *resp_status, char *resp_headers,
+			size_t resp_headers_size)
+{
+	struct sockaddr_in addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(port),
+	};
+	inet_pton(AF_INET, host, &addr.sin_addr);
+
+	int fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0)
+		return -1;
+
+	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+		close(fd);
+		return -1;
+	}
+
+	/* send HTTP request */
+	char req_line[512];
+	int n = snprintf(req_line, sizeof(req_line),
+			 "%s %s HTTP/1.1\r\nHost: %s:%d\r\n"
+			 "Connection: close\r\n"
+			 "%s"
+			 "%s%s"
+			 "\r\n",
+			 method_str, path, host, port,
+			 req_headers ? req_headers : "",
+			 req_body_len > 0 ? "Content-Length: " : "",
+			 req_body_len > 0 ? "" : "");
+
+	if (req_body_len > 0) {
+		char cl[32];
+		snprintf(cl, sizeof(cl), "Content-Length: %zu\r\n",
+			 req_body_len);
+		n = snprintf(req_line, sizeof(req_line),
+			     "%s %s HTTP/1.1\r\nHost: %s:%d\r\n"
+			     "Connection: close\r\n"
+			     "%s"
+			     "%s"
+			     "\r\n",
+			     method_str, path, host, port,
+			     req_headers ? req_headers : "",
+			     cl);
+	}
+
+	write(fd, req_line, n);
+	if (req_body && req_body_len > 0)
+		write(fd, req_body, req_body_len);
+
+	/* read response */
+	char raw[16384];
+	size_t total = 0;
+	while (total < sizeof(raw) - 1) {
+		ssize_t r = read(fd, raw + total, sizeof(raw) - 1 - total);
+		if (r <= 0)
+			break;
+		total += r;
+	}
+	raw[total] = '\0';
+	close(fd);
+
+	/* parse HTTP response */
+	char *status_line = raw;
+	char *hdr_end = strstr(raw, "\r\n\r\n");
+	if (!hdr_end)
+		return -1;
+
+	/* parse status code */
+	char *sp = strchr(status_line, ' ');
+	if (sp)
+		*resp_status = atoi(sp + 1);
+
+	/* extract headers */
+	char *hdr_start = strstr(status_line, "\r\n");
+	if (hdr_start && resp_headers) {
+		size_t hlen = hdr_end - hdr_start - 2;
+		if (hlen > resp_headers_size - 1)
+			hlen = resp_headers_size - 1;
+		memcpy(resp_headers, hdr_start + 2, hlen);
+		resp_headers[hlen] = '\0';
+	}
+
+	/* extract body */
+	char *body_start = hdr_end + 4;
+	size_t body_len = total - (body_start - raw);
+	if (body_len > resp_buf_size - 1)
+		body_len = resp_buf_size - 1;
+	memcpy(resp_buf, body_start, body_len);
+	resp_buf[body_len] = '\0';
+
+	return (int)body_len;
+}
+
+static const char *method_to_str(uint8_t method)
+{
+	switch (method) {
+	case PVCM_HTTP_GET:    return "GET";
+	case PVCM_HTTP_POST:   return "POST";
+	case PVCM_HTTP_PUT:    return "PUT";
+	case PVCM_HTTP_DELETE: return "DELETE";
+	case PVCM_HTTP_HEAD:   return "HEAD";
+	case PVCM_HTTP_PATCH:  return "PATCH";
+	default:               return "GET";
+	}
+}
+
+int pvcm_bridge_init(struct pvcm_transport *t)
+{
+	memset(&pending_req, 0, sizeof(pending_req));
+	return 0;
+}
+
+int pvcm_bridge_on_http_req(struct pvcm_transport *t,
+			    const uint8_t *buf, int len)
+{
+	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
+
+	if (req->direction != PVCM_HTTP_DIR_REQUEST) {
+		fprintf(stderr, "[bridge] ignoring non-request HTTP_REQ "
+			"dir=%d\n", req->direction);
+		return 0;
+	}
+
+	pending_req.stream_id = req->stream_id;
+	pending_req.method = req->method;
+	pending_req.body_len = 0;
+	pending_req.active = true;
+
+	/* extract path */
+	size_t plen = req->path_len;
+	if (plen > sizeof(pending_req.path) - 1)
+		plen = sizeof(pending_req.path) - 1;
+	memcpy(pending_req.path, req->data, plen);
+	pending_req.path[plen] = '\0';
+
+	/* extract headers */
+	size_t hlen = req->headers_len;
+	if (hlen > sizeof(pending_req.headers) - 1)
+		hlen = sizeof(pending_req.headers) - 1;
+	if (hlen > 0)
+		memcpy(pending_req.headers, req->data + plen, hlen);
+	pending_req.headers[hlen] = '\0';
+
+	fprintf(stdout, "[bridge] HTTP_REQ: %s %s (body_size=%u)\n",
+		method_to_str(req->method), pending_req.path,
+		req->total_body_size);
+
+	return 0;
+}
+
+int pvcm_bridge_on_http_data(struct pvcm_transport *t,
+			     const uint8_t *buf, int len)
+{
+	const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
+
+	if (!pending_req.active || d->stream_id != pending_req.stream_id)
+		return 0;
+
+	size_t chunk = d->len;
+	if (pending_req.body_len + chunk > sizeof(pending_req.body) - 1)
+		chunk = sizeof(pending_req.body) - 1 - pending_req.body_len;
+
+	memcpy(pending_req.body + pending_req.body_len, d->data, chunk);
+	pending_req.body_len += chunk;
+
+	return 0;
+}
+
+int pvcm_bridge_on_http_end(struct pvcm_transport *t,
+			    const uint8_t *buf, int len)
+{
+	if (!pending_req.active)
+		return 0;
+
+	pending_req.body[pending_req.body_len] = '\0';
+	pending_req.active = false;
+
+	fprintf(stdout, "[bridge] HTTP_END: forwarding %s %s "
+		"(body=%zu bytes)\n",
+		method_to_str(pending_req.method), pending_req.path,
+		pending_req.body_len);
+
+	/* forward to upstream HTTP server (localhost:18080 for testing) */
+	char resp_body[8192] = "";
+	char resp_headers[1024] = "";
+	int resp_status = 500;
+
+	int body_len = http_request(
+		method_to_str(pending_req.method),
+		"127.0.0.1", 18080,
+		pending_req.path,
+		pending_req.headers[0] ? pending_req.headers : NULL,
+		pending_req.body_len > 0 ? pending_req.body : NULL,
+		pending_req.body_len,
+		resp_body, sizeof(resp_body),
+		&resp_status, resp_headers, sizeof(resp_headers));
+
+	if (body_len < 0) {
+		fprintf(stderr, "[bridge] upstream request failed\n");
+		resp_status = 502;
+		body_len = 0;
+	}
+
+	fprintf(stdout, "[bridge] upstream response: %d, body=%d bytes\n",
+		resp_status, body_len);
+
+	/* send HTTP_REQ response */
+	pvcm_http_req_t resp = {
+		.op = PVCM_OP_HTTP_REQ,
+		.stream_id = pending_req.stream_id,
+		.direction = PVCM_HTTP_DIR_RESPONSE,
+		.method = 0,
+		.status_code = (uint16_t)resp_status,
+		.total_body_size = (uint32_t)body_len,
+	};
+
+	/* pack response headers */
+	size_t hlen = strlen(resp_headers);
+	if (hlen > sizeof(resp.data))
+		hlen = sizeof(resp.data);
+	resp.headers_len = (uint16_t)hlen;
+	resp.path_len = 0;
+	if (hlen > 0)
+		memcpy(resp.data, resp_headers, hlen);
+
+	t->send_frame(t, &resp, sizeof(resp) - sizeof(uint32_t));
+
+	/* send body chunks */
+	size_t offset = 0;
+	while (offset < (size_t)body_len) {
+		pvcm_http_data_t data = {
+			.op = PVCM_OP_HTTP_DATA,
+			.stream_id = pending_req.stream_id,
+		};
+		size_t chunk = body_len - offset;
+		if (chunk > PVCM_MAX_CHUNK_SIZE)
+			chunk = PVCM_MAX_CHUNK_SIZE;
+		data.len = (uint16_t)chunk;
+		memcpy(data.data, resp_body + offset, chunk);
+		t->send_frame(t, &data, 4 + chunk);
+		offset += chunk;
+	}
+
+	/* send HTTP_END */
+	pvcm_http_end_t end = {
+		.op = PVCM_OP_HTTP_END,
+		.stream_id = pending_req.stream_id,
+	};
+	t->send_frame(t, &end, sizeof(end) - sizeof(uint32_t));
+
+	return 0;
+}
