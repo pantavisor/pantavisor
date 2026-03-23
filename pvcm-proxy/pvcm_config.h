@@ -13,9 +13,12 @@ struct pvcm_config {
 	char config_path[256];
 
 	/* from run.json mcu section */
-	char device[64];
-	char transport[16];   /* "uart" or "rpmsg" */
+	char device[64];        /* /dev/ttyACM0 or auto-discovered for rpmsg */
+	char transport[16];     /* "uart" or "rpmsg" */
 	uint32_t baudrate;
+
+	/* remoteproc (internal M core) */
+	char remoteproc[32];    /* "remoteproc0" — sysfs instance name */
 
 	/* firmware path (relative to container dir) */
 	char firmware[128];

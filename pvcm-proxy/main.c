@@ -54,8 +54,9 @@ static void usage(const char *prog)
 		"Examples:\n"
 		"  %s --name mcu0 --device /dev/ttyACM0\n"
 		"  %s --name mcu0 --config /trails/0/mcu0/run.json\n"
-		"  %s --name mcu0 --device /dev/ttyRPMSG0 --transport rpmsg\n",
-		prog, prog, prog, prog);
+		"  %s --name mcu0 --remoteproc remoteproc0\n"
+		"  %s --name mcu0 --remoteproc remoteproc0 --firmware fw.elf\n",
+		prog, prog, prog, prog, prog);
 }
 
 static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
@@ -67,6 +68,7 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 		{ "firmware", required_argument, NULL, 'f' },
 		{ "transport", required_argument, NULL, 't' },
 		{ "baudrate", required_argument, NULL, 'b' },
+		{ "remoteproc", required_argument, NULL, 'r' },
 		{ "listen-port", required_argument, NULL, 'p' },
 		{ "help", no_argument, NULL, 'h' },
 		{ NULL, 0, NULL, 0 }
@@ -76,10 +78,11 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 	const char *cli_device = NULL;
 	const char *cli_firmware = NULL;
 	const char *cli_transport = NULL;
+	const char *cli_remoteproc = NULL;
 	uint32_t cli_baudrate = 0;
 
 	int opt;
-	while ((opt = getopt_long(argc, argv, "n:c:d:f:t:b:p:h",
+	while ((opt = getopt_long(argc, argv, "n:c:d:f:t:b:r:p:h",
 				  long_opts, NULL)) != -1) {
 		switch (opt) {
 		case 'n':
@@ -100,6 +103,9 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 			break;
 		case 'b':
 			cli_baudrate = (uint32_t)atoi(optarg);
+			break;
+		case 'r':
+			cli_remoteproc = optarg;
 			break;
 		case 'p':
 			listen_port = atoi(optarg);
@@ -127,6 +133,9 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 	if (cli_transport)
 		strncpy(cfg->transport, cli_transport,
 			sizeof(cfg->transport) - 1);
+	if (cli_remoteproc)
+		strncpy(cfg->remoteproc, cli_remoteproc,
+			sizeof(cfg->remoteproc) - 1);
 	if (cli_baudrate)
 		cfg->baudrate = cli_baudrate;
 
@@ -138,48 +147,158 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
  * For i.MX8MN: copies ELF to /lib/firmware/, writes to remoteproc sysfs.
  * For external MCUs: firmware is flashed via PVCM protocol after connect.
  */
-static int load_firmware(const struct pvcm_config *cfg)
+static int write_sysfs(const char *path, const char *value)
 {
-	if (!cfg->firmware[0]) {
-		fprintf(stdout, "[pvcm-proxy] no firmware specified, "
-			"assuming MCU already running\n");
+	FILE *f = fopen(path, "w");
+	if (!f) {
+		fprintf(stderr, "[pvcm-proxy] cannot write %s: %m\n", path);
+		return -1;
+	}
+	fputs(value, f);
+	fclose(f);
+	return 0;
+}
+
+static int read_sysfs(const char *path, char *buf, size_t size)
+{
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return -1;
+	if (!fgets(buf, size, f)) {
+		fclose(f);
+		return -1;
+	}
+	fclose(f);
+	/* strip newline */
+	char *nl = strchr(buf, '\n');
+	if (nl)
+		*nl = '\0';
+	return 0;
+}
+
+/*
+ * Discover ttyRPMSG device from remoteproc instance.
+ * Walks /sys/class/tty/ttyRPMSG* and finds one whose device
+ * path contains the remoteproc's device.
+ * Falls back to /dev/ttyRPMSG0 if discovery fails.
+ */
+static int discover_rpmsg_tty(const char *remoteproc, char *device,
+			      size_t device_size)
+{
+	/* simple approach: try /dev/ttyRPMSG0..3 */
+	for (int i = 0; i < 4; i++) {
+		char path[64];
+		snprintf(path, sizeof(path), "/dev/ttyRPMSG%d", i);
+		if (access(path, R_OK | W_OK) == 0) {
+			strncpy(device, path, device_size - 1);
+			fprintf(stdout, "[pvcm-proxy] discovered RPMsg "
+				"device: %s\n", device);
+			return 0;
+		}
+	}
+
+	fprintf(stderr, "[pvcm-proxy] no ttyRPMSG device found\n");
+	return -1;
+}
+
+static int load_firmware(struct pvcm_config *cfg)
+{
+	if (!cfg->remoteproc[0]) {
+		if (cfg->firmware[0])
+			fprintf(stdout, "[pvcm-proxy] external MCU, firmware "
+				"will be checked after connect\n");
+		else
+			fprintf(stdout, "[pvcm-proxy] no remoteproc, "
+				"assuming MCU already running\n");
 		return 0;
 	}
 
-	/* check if firmware file exists */
-	if (access(cfg->firmware, R_OK) != 0) {
-		fprintf(stderr, "[pvcm-proxy] firmware not found: %s\n",
-			cfg->firmware);
+	/* internal M core via remoteproc */
+	char rproc_path[128];
+	snprintf(rproc_path, sizeof(rproc_path),
+		 "/sys/class/remoteproc/%s", cfg->remoteproc);
+
+	if (access(rproc_path, F_OK) != 0) {
+		fprintf(stderr, "[pvcm-proxy] remoteproc not found: %s\n",
+			rproc_path);
 		return -1;
 	}
 
-	fprintf(stdout, "[pvcm-proxy] firmware: %s\n", cfg->firmware);
+	/* check current state */
+	char state[32] = "";
+	char state_path[160];
+	snprintf(state_path, sizeof(state_path), "%s/state", rproc_path);
+	read_sysfs(state_path, state, sizeof(state));
 
-	if (strcmp(cfg->transport, "rpmsg") == 0) {
-		/* internal M core: load via remoteproc */
-		fprintf(stdout, "[pvcm-proxy] loading firmware via "
-			"remoteproc...\n");
+	fprintf(stdout, "[pvcm-proxy] remoteproc %s state: %s\n",
+		cfg->remoteproc, state);
 
-		/* copy to /lib/firmware/ if not already there */
-		/* echo firmware name to /sys/class/remoteproc/remoteprocN/firmware */
-		/* echo start to /sys/class/remoteproc/remoteprocN/state */
-
-		/* TODO: find the right remoteproc instance,
-		 * copy firmware, start M core */
-		fprintf(stderr, "[pvcm-proxy] remoteproc loading not yet "
-			"implemented\n");
-		fprintf(stderr, "[pvcm-proxy] please load firmware manually:\n"
-			"  cp %s /lib/firmware/\n"
-			"  echo firmware.elf > /sys/class/remoteproc/remoteproc0/firmware\n"
-			"  echo start > /sys/class/remoteproc/remoteproc0/state\n",
-			cfg->firmware);
-		return -1;
+	if (strcmp(state, "running") == 0) {
+		fprintf(stdout, "[pvcm-proxy] M core already running\n");
+		goto discover;
 	}
 
-	/* external MCU: firmware will be flashed via PVCM protocol
-	 * after transport is connected */
-	fprintf(stdout, "[pvcm-proxy] external MCU firmware will be "
-		"checked after connect\n");
+	/* load firmware if specified */
+	if (cfg->firmware[0]) {
+		if (access(cfg->firmware, R_OK) != 0) {
+			fprintf(stderr, "[pvcm-proxy] firmware not found: "
+				"%s\n", cfg->firmware);
+			return -1;
+		}
+
+		/* copy to /lib/firmware/ */
+		char fw_name[64];
+		const char *base = strrchr(cfg->firmware, '/');
+		base = base ? base + 1 : cfg->firmware;
+		snprintf(fw_name, sizeof(fw_name), "%s", base);
+
+		char dest[256];
+		snprintf(dest, sizeof(dest), "/lib/firmware/%s", fw_name);
+
+		if (access(dest, F_OK) != 0) {
+			char cmd[512];
+			snprintf(cmd, sizeof(cmd), "cp '%s' '%s'",
+				 cfg->firmware, dest);
+			fprintf(stdout, "[pvcm-proxy] copying firmware: "
+				"%s -> %s\n", cfg->firmware, dest);
+			if (system(cmd) != 0) {
+				fprintf(stderr, "[pvcm-proxy] firmware copy "
+					"failed\n");
+				return -1;
+			}
+		}
+
+		/* set firmware name */
+		char fw_path[160];
+		snprintf(fw_path, sizeof(fw_path), "%s/firmware", rproc_path);
+		fprintf(stdout, "[pvcm-proxy] setting firmware: %s\n",
+			fw_name);
+		if (write_sysfs(fw_path, fw_name) < 0)
+			return -1;
+	}
+
+	/* start M core */
+	fprintf(stdout, "[pvcm-proxy] starting M core via %s\n",
+		cfg->remoteproc);
+	if (write_sysfs(state_path, "start") < 0)
+		return -1;
+
+	/* wait for RPMsg device to appear */
+	fprintf(stdout, "[pvcm-proxy] waiting for RPMsg device...\n");
+	sleep(2);
+
+discover:
+	/* auto-discover the ttyRPMSG device */
+	if (cfg->device[0] == '\0') {
+		if (discover_rpmsg_tty(cfg->remoteproc, cfg->device,
+				       sizeof(cfg->device)) < 0)
+			return -1;
+	}
+
+	/* set transport to rpmsg if not already */
+	if (cfg->transport[0] == '\0' || strcmp(cfg->transport, "uart") == 0)
+		strncpy(cfg->transport, "rpmsg", sizeof(cfg->transport));
+
 	return 0;
 }
 
@@ -201,7 +320,7 @@ int main(int argc, char **argv)
 	if (cfg.config_path[0]) {
 		/* save CLI overrides */
 		char saved_device[64] = "", saved_transport[16] = "";
-		char saved_firmware[128] = "";
+		char saved_firmware[128] = "", saved_remoteproc[32] = "";
 		uint32_t saved_baudrate = 0;
 		if (cfg.device[0])
 			strncpy(saved_device, cfg.device, sizeof(saved_device));
@@ -211,6 +330,9 @@ int main(int argc, char **argv)
 		if (cfg.firmware[0])
 			strncpy(saved_firmware, cfg.firmware,
 				sizeof(saved_firmware));
+		if (cfg.remoteproc[0])
+			strncpy(saved_remoteproc, cfg.remoteproc,
+				sizeof(saved_remoteproc));
 		saved_baudrate = cfg.baudrate;
 
 		if (pvcm_config_parse(&cfg, cfg.config_path) < 0)
@@ -226,22 +348,27 @@ int main(int argc, char **argv)
 		if (saved_firmware[0])
 			strncpy(cfg.firmware, saved_firmware,
 				sizeof(cfg.firmware));
+		if (saved_remoteproc[0])
+			strncpy(cfg.remoteproc, saved_remoteproc,
+				sizeof(cfg.remoteproc));
 		if (saved_baudrate != PVCM_DEFAULT_BAUDRATE)
 			cfg.baudrate = saved_baudrate;
 	}
 
-	/* need at least a device */
-	if (!cfg.device[0]) {
-		fprintf(stderr, "[pvcm-proxy] no device specified. "
-			"Use --device or --config\n");
-		return 1;
+	/* load firmware / start M core if remoteproc specified
+	 * This may also auto-discover the device path */
+	if (cfg.remoteproc[0]) {
+		if (load_firmware(&cfg) < 0)
+			return 1;
+	} else if (cfg.firmware[0]) {
+		load_firmware(&cfg);
 	}
 
-	/* load firmware if specified */
-	if (cfg.firmware[0] && load_firmware(&cfg) < 0) {
-		/* non-fatal for UART — MCU may already be running */
-		if (strcmp(cfg.transport, "rpmsg") == 0)
-			return 1;
+	/* need at least a device by now */
+	if (!cfg.device[0]) {
+		fprintf(stderr, "[pvcm-proxy] no device specified. "
+			"Use --device, --remoteproc, or --config\n");
+		return 1;
 	}
 
 	/* select transport */

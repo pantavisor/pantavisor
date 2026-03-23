@@ -120,12 +120,23 @@ int pvcm_config_parse(struct pvcm_config *cfg, const char *run_json_path)
 	cfg->firmware[0] = '\0';
 	json_get_str(json, "firmware", cfg->firmware, sizeof(cfg->firmware));
 
-	/* default transport */
-	if (cfg->transport[0] == '\0')
-		strncpy(cfg->transport, "uart", sizeof(cfg->transport));
+	/* remoteproc field (for internal M cores) */
+	cfg->remoteproc[0] = '\0';
+	json_get_str(json, "remoteproc", cfg->remoteproc,
+		     sizeof(cfg->remoteproc));
 
-	/* default device from container name */
-	if (cfg->device[0] == '\0')
+	/* default transport: rpmsg if remoteproc set, uart otherwise */
+	if (cfg->transport[0] == '\0') {
+		if (cfg->remoteproc[0])
+			strncpy(cfg->transport, "rpmsg",
+				sizeof(cfg->transport));
+		else
+			strncpy(cfg->transport, "uart",
+				sizeof(cfg->transport));
+	}
+
+	/* default device from container name (UART only) */
+	if (cfg->device[0] == '\0' && strcmp(cfg->transport, "uart") == 0)
 		strncpy(cfg->device, cfg->name, sizeof(cfg->device));
 
 	free(json);
