@@ -197,11 +197,37 @@ int main(int argc, char **argv)
 
 	fprintf(stdout, "[pvcm-proxy] starting for MCU '%s'\n", cfg.name);
 
-	/* parse run.json if provided */
+	/* parse run.json if provided, then re-apply CLI overrides */
 	if (cfg.config_path[0]) {
+		/* save CLI overrides */
+		char saved_device[64] = "", saved_transport[16] = "";
+		char saved_firmware[128] = "";
+		uint32_t saved_baudrate = 0;
+		if (cfg.device[0])
+			strncpy(saved_device, cfg.device, sizeof(saved_device));
+		if (cfg.transport[0] && strcmp(cfg.transport, "uart") != 0)
+			strncpy(saved_transport, cfg.transport,
+				sizeof(saved_transport));
+		if (cfg.firmware[0])
+			strncpy(saved_firmware, cfg.firmware,
+				sizeof(saved_firmware));
+		saved_baudrate = cfg.baudrate;
+
 		if (pvcm_config_parse(&cfg, cfg.config_path) < 0)
 			fprintf(stderr, "[pvcm-proxy] warning: could not "
 				"parse config, using CLI args\n");
+
+		/* re-apply CLI overrides over config values */
+		if (saved_device[0])
+			strncpy(cfg.device, saved_device, sizeof(cfg.device));
+		if (saved_transport[0])
+			strncpy(cfg.transport, saved_transport,
+				sizeof(cfg.transport));
+		if (saved_firmware[0])
+			strncpy(cfg.firmware, saved_firmware,
+				sizeof(cfg.firmware));
+		if (saved_baudrate != PVCM_DEFAULT_BAUDRATE)
+			cfg.baudrate = saved_baudrate;
 	}
 
 	/* need at least a device */
@@ -221,9 +247,7 @@ int main(int argc, char **argv)
 	/* select transport */
 	struct pvcm_transport *transport;
 	if (strcmp(cfg.transport, "rpmsg") == 0) {
-		fprintf(stderr, "[pvcm-proxy] RPMsg transport not yet "
-			"implemented\n");
-		return 1;
+		transport = &pvcm_transport_rpmsg;
 	} else {
 		transport = &pvcm_transport_uart;
 	}
