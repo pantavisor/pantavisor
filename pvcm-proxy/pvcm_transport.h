@@ -22,5 +22,6 @@ struct pvcm_transport {
 };
 
 extern struct pvcm_transport pvcm_transport_uart;
+extern struct pvcm_transport pvcm_transport_rpmsg;
 
 #endif

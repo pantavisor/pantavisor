@@ -5,6 +5,7 @@ add_executable(pvcm-proxy
     main.c
     pvcm_config.c
     pvcm_transport_uart.c
+    pvcm_transport_rpmsg.c
     pvcm_protocol.c
     pvcm_bridge.c
 )
