@@ -102,6 +102,7 @@ IF (PANTAVISOR_XCONNECT)
   add_subdirectory(xconnect)
 ENDIF (PANTAVISOR_XCONNECT)
 IF (PANTAVISOR_PVCM)
+  add_definitions(-DPANTAVISOR_PVCM)
   add_subdirectory(pvcm-proxy)
 ENDIF (PANTAVISOR_PVCM)
 
