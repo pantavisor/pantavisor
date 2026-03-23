@@ -21,7 +21,7 @@
  */
 
 /*
- * pv_pvcm -- MCU container plugin for Pantavisor
+ * pv_mcu -- MCU container plugin for Pantavisor
  *
  * Thin plugin that forks pvcm-proxy for each MCU container.
  * pvcm-proxy runs in its own mount namespace, appears to xconnect
@@ -31,7 +31,7 @@
  * the actual work.
  */
 
-#include "pv_pvcm.h"
+#include "pv_mcu.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -56,7 +56,7 @@ static bool capture = false;
 #define pvcm_log(level, fmt, ...)                                              \
 	do {                                                                   \
 		if (__log)                                                     \
-			__log(level, "pv_pvcm: " fmt, ##__VA_ARGS__);         \
+			__log(level, "pv_mcu: " fmt, ##__VA_ARGS__);         \
 	} while (0)
 
 /* log levels matching pantavisor */
@@ -68,7 +68,7 @@ static bool capture = false;
 
 /*
  * Path to pvcm-proxy binary.
- * Installed alongside pv_pvcm.so in /lib/pv/ or /usr/lib/pantavisor/
+ * Installed alongside pv_mcu.so in /lib/pv/ or /usr/lib/pantavisor/
  */
 #define PVCM_PROXY_BIN "pvcm-proxy"
 
