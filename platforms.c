@@ -899,7 +899,10 @@ int pv_platform_start(struct pv_platform *p)
 		return -1;
 	}
 
-	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
+	if (!c || !*c) {
+		/* MCU containers have no config file — pass run.json path */
+		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s/run.json", p->name);
+	} else if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
 		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s/%s", p->name, *c);
 	else
 		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s", *c);
