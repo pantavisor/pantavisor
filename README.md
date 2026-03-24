@@ -53,6 +53,23 @@ After you've downloaded and flashed your device with Pantavisor, try out a tutor
 | **State Format** | [docs/reference/pantavisor-state-format-v2.md](docs/reference/pantavisor-state-format-v2.md) | Pantavisor state.json format (v2) |
 | **Config (Legacy)**| [docs/reference/pantavisor-configuration-legacy.md](docs/reference/pantavisor-configuration-legacy.md) | Legacy configuration reference |
 
+## Technical Overview
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| **Architecture** | [docs/overview/pantavisor-architecture.md](docs/overview/pantavisor-architecture.md) | High-level architecture and state machine |
+| **Revisions** | [docs/overview/revisions.md](docs/overview/revisions.md) | Revision concept and state JSON structure |
+| **BSP** | [docs/overview/bsp.md](docs/overview/bsp.md) | Kernel, modules, firmware, bootloader |
+| **Containers** | [docs/overview/containers.md](docs/overview/containers.md) | Container runtime, groups, roles, status |
+| **Updates** | [docs/overview/updates.md](docs/overview/updates.md) | Update flow, states, transitions |
+| **Storage** | [docs/overview/storage.md](docs/overview/storage.md) | On-disk layout, logs, metadata, integrity |
+| **Remote Control** | [docs/overview/remote-control.md](docs/overview/remote-control.md) | Pantacor Hub client and remote controllers |
+| **Local Control** | [docs/overview/local-control.md](docs/overview/local-control.md) | pv-ctrl socket, Pantabox, pvcontrol |
+| **Configuration Levels** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
+| **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
+| **Watchdog** | [docs/overview/watchdog.md](docs/overview/watchdog.md) | Watchdog configuration and modes |
+| **Inter-Container Communication** | [docs/overview/xconnect.md](docs/overview/xconnect.md) | xconnect service mesh overview |
+
 ## Getting help and support
 We're a friendly and helpful community and welcome questions, and any feedback you may have. 
 
