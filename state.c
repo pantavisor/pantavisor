@@ -51,6 +51,7 @@
 #include "utils/str.h"
 #include "utils/json.h"
 #include "utils/timer.h"
+#include "hook/hooks.h"
 
 #define MODULE_NAME "state"
 #define pv_log(level, msg, ...)                                                \
@@ -536,6 +537,16 @@ static void pv_state_set_status(struct pv_state *s, plat_status_t status)
 {
 	if (s->status == status)
 		return;
+
+	if (status == PLAT_READY) {
+		pv_hooks_set_default_env("system-done", s->rev, "", NULL, 0);
+		int ret = pv_hooks_run("system.d", true);
+		pv_hooks_unset_default_env(NULL, 0);
+
+		if (ret < 0) {
+			pv_log(ERROR, "hook system-done has failed");
+		}
+	}
 
 	s->status = status;
 	pv_log(INFO, "state revision '%s' status is now %s", s->rev,

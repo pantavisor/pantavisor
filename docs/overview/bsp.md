@@ -27,7 +27,7 @@ The modules that are part of a driver will only be loaded if referenced from a [
 
 ## Bootloader
 
-To natively run Pantavisor on a device, it is necessary to have some on-disk artifacts that fall out of the umbrella of Pantavisor [revisions](revisions.md). This is the case of the bootloader, which will load the Linux kernel and directly execute the initrd (Pantavisor) after that. Both the bootloader and Pantavisor will interact with [Pantavisor storage](storage.md) to communicate with each other so the bootloader kwnows where to find the artifacts to boot.
+To natively run Pantavisor on a device, it is necessary to have some on-disk artifacts that fall out of the umbrella of Pantavisor [revisions](revisions.md). This is the case of the bootloader, which will load the Linux kernel and directly execute the initrd (Pantavisor) after that. Pantavisor and the bootloader communicate through [storage](storage.md): Pantavisor is solely responsible for writing the target revision into the bootloader environment; the bootloader only reads from it at boot time to locate the kernel and initrd to load.
 
 We support a number of boards, using both U-Boot and GRUB bootloaders. These include all the bring up mechanisms that is necessary to run Pantavisor in its minimal form. You can take a look at the supported boards [here](../../../initial-devices.md). [Contact us](https://community.pantavisor.io) if you need support for your board!
 

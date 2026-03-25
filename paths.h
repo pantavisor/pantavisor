@@ -62,6 +62,9 @@ void pv_paths_pv_log_plat(char *buf, size_t size, const char *rev,
 void pv_paths_pv_log_file(char *buf, size_t size, const char *rev,
 			  const char *plat, const char *name);
 
+#define SYSTEM_HOOKS "hooks"
+void pv_paths_pv_system_hooks(char *buf, size_t size);
+
 void pv_paths_storage(char *buf, size_t size);
 void pv_paths_storage_log(char *buf, size_t size);
 void pv_paths_storage_usrmeta(char *buf, size_t size);
