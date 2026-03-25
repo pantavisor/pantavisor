@@ -16,4 +16,5 @@ jobs:
           curl --request POST \
             --form token=${{ secrets.GITLAB_DOCS_TRIGGER_TOKEN }} \
             --form ref=master \
+            --form "variables[TRIGGER_SOURCE]=pantavisor" \
             https://gitlab.com/api/v4/projects/pantacor%2Fdocs/trigger/pipeline
