@@ -106,6 +106,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_STORAGE_MNTTYPE` | string | empty | set storage mount type |
 | `PV_STORAGE_PHCONFIG_VOL` | `0` or `1` | `0` | use volume for Pantahub configuration |
 | `PV_STORAGE_WAIT` | time (in seconds) | `5` | time to wait for storage device |
+| `PV_SYSCTL_*` | string | — | set any kernel sysctl at runtime; key maps to `/proc/sys/` (e.g. `PV_SYSCTL_KERNEL_CORE_PATTERN` → `/proc/sys/kernel/core_pattern`) |
+| `PV_SYSCTL_KERNEL_CORE_PATTERN` | string | `\|/lib/pv/pvcrash --skip` | set kernel core dump pattern |
 | `PV_SYSTEM_APPARMOR_PROFILES` | string | empty | AppArmor profiles to load |
 | `PV_SYSTEM_CONFDIR` | path | `/configs` | set directory for system configurations |
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO` | `0` or `1` | `0` | enable early auto-loading of drivers |
@@ -116,8 +118,6 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSTEM_MEDIADIR` | path | `/media` | set system media directory |
 | `PV_SYSTEM_MOUNT_SECURITYFS` | `0` or `1` | `0` | mount securityfs |
 | `PV_SYSTEM_RUNDIR` | path | `/run/pantavisor/pv` | set system run directory |
-| `PV_SYSCTL_*` | string | — | set any kernel sysctl at runtime; key maps to `/proc/sys/` (e.g. `PV_SYSCTL_KERNEL_CORE_PATTERN` → `/proc/sys/kernel/core_pattern`) |
-| `PV_SYSCTL_KERNEL_CORE_PATTERN` | string | `\|/lib/pv/pvcrash --skip` | set kernel core dump pattern |
 | `PV_SYSTEM_USRDIR` | path | `/usr` | set system usr directory |
 | `PV_UPDATER_COMMIT_DELAY` | time (in seconds) | `25` | delay before committing an update |
 | `PV_UPDATER_GOALS_TIMEOUT` | time (in seconds) | `120` | timeout for reaching update goals |
@@ -214,6 +214,8 @@ This table shows the [configuration levels](pantavisor-configuration-levels.md) 
 | `PV_STORAGE_MNTPOINT`                | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |
 | `PV_STORAGE_MNTTYPE`                 | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |
 | `PV_STORAGE_WAIT`                    | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |
+| `PV_SYSCTL_*`                        | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
+| `PV_SYSCTL_KERNEL_CORE_PATTERN`      | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
 | `PV_SYSTEM_APPARMOR_PROFILES`        | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |
 | `PV_SYSTEM_CONFDIR`                  | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO`  | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |
