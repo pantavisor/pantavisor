@@ -27,6 +27,7 @@ set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
 set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
 set(PANTAVISOR_DCP_BLOB_CREATE OFF CACHE BOOL "Build dcp-blob-create tool for DCP trusted key migration")
+set(PANTAVISOR_MOCK_HOOKS ON CACHE BOOL "Add mock test for Pantavisor hooks")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
@@ -239,6 +240,8 @@ add_executable(pantavisor
 			group.c
 			group.h
 			grub.c
+			hook/hooks.c
+			hook/hooks.h
 			init.c
 			init.h
 			ipam.c
@@ -414,6 +417,32 @@ install(DIRECTORY scripts/hooks_lxc-mount.d
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
 	DESTINATION /usr/bin)
+
+## HOOKS
+if(PANTAVISOR_MOCK_HOOKS)
+install(FILES scripts/system-hooks/hook-mock
+	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks/system.d/
+	RENAME 00-hook-mock)
+install(FILES scripts/system-hooks/hook-mock
+	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks/system.d/
+	RENAME 99-hook-mock)
+
+file(GLOB HOOK_CONFIGS scripts/system-hooks/conf/*.cfg)
+
+install(FILES ${HOOK_CONFIGS}
+	PERMISSIONS WORLD_READ GROUP_READ OWNER_READ OWNER_WRITE
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks-mock-conf/00-hook-mock/locals)
+
+install(FILES ${HOOK_CONFIGS}
+	PERMISSIONS WORLD_READ GROUP_READ OWNER_READ OWNER_WRITE
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks-mock-conf/99-hook-mock/locals)
+ELSE()
+install(DIRECTORY
+	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks/system.d
+	DIRECTORY_PERMISSIONS WORLD_READ GROUP_READ OWNER_READ OWNER_WRITE)
+ENDIF()
 
 ## PVCONTROL
 

@@ -1,0 +1,43 @@
+#!/bin/sh
+
+conf="${0%/*}/../../hooks-mock-conf/$(basename "$0")/$PV_REV.cfg"
+
+printf "looking config at %s" "$conf"
+
+if [ ! -f "$conf" ]; then
+	echo
+	echo "config file not found for rev = $PV_REV"
+	exit 0
+fi
+
+echo "... OK"
+
+while IFS=':' read -r key val; do
+	key=$(printf '%s\n' "$key" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+	val=$(printf '%s\n' "$val" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+
+	case "$key" in
+	'#'* | '') continue ;;
+	esac
+
+	if [ "$key" = "$PV_OP" ]; then
+		case "$val" in
+		"OK")
+			echo "command OK found for REV = $PV_REV OP = $PV_OP"
+			exit 0
+			;;
+		"ERROR")
+			echo "command ERROR found for REV = $PV_REV OP = $PV_OP"
+			exit 1
+			;;
+		"REBOOT")
+			echo "command REBOOT found for REV = $PV_REV OP = $PV_OP"
+			pvcontrol cmd reboot
+			exit 0
+			;;
+		esac
+	fi
+
+done <"$conf"
+
+echo "no command found for REV = $PV_REV OP = $PV_OP"

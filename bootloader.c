@@ -35,6 +35,7 @@
 #include "config.h"
 #include "init.h"
 #include "pantavisor.h"
+#include "hook/hooks.h"
 #include "utils/str.h"
 
 #define MODULE_NAME "bootloader"
@@ -144,12 +145,53 @@ int pv_bootloader_install_update(char *rev)
 	       rev);
 
 	if (ops->install_update) {
+		char *stored_rev = ops->get_env_key("pv_rev");
+		pv_hooks_set_default_env("system-before-install-update",
+					 stored_rev, rev, NULL, 0);
+
+		rv = pv_hooks_run("system.d", true);
+		pv_hooks_unset_default_env(NULL, 0);
+		free(stored_rev);
+		if (rv < 0) {
+			pv_log(ERROR,
+			       "hook system-before-install-update has failed");
+			return -1;
+		}
+
 		rv = ops->install_update(rev);
 		if (rv < 0) {
 			pv_log(ERROR, "could not install update");
 			return -1;
 		}
 		/* rv > 0 means "success but force reboot" */
+
+		stored_rev = ops->get_env_key("pv_rev");
+		pv_hooks_set_default_env("system-after-install-update",
+					 stored_rev, rev, NULL, 0);
+
+		rv = pv_hooks_run("system.d", true);
+		pv_hooks_unset_default_env(NULL, 0);
+		free(stored_rev);
+
+		if (rv < 0) {
+			pv_log(ERROR,
+			       "hook system-after-install-update has failed");
+			return -1;
+		}
+
+	} else {
+		char *stored_rev = ops->get_env_key("pv_rev");
+		pv_hooks_set_default_env("system-install-update", stored_rev,
+					 rev, NULL, 0);
+
+		rv = pv_hooks_run("system.d", true);
+		pv_hooks_unset_default_env(NULL, 0);
+		free(stored_rev);
+
+		if (rv < 0) {
+			pv_log(ERROR, "hook system-install-update has failed");
+			return -1;
+		}
 	}
 
 	if (pv_bootloader_set_try(rev)) {
@@ -189,6 +231,16 @@ int pv_bootloader_post_commit_update(const char *rev)
 	}
 
 	pv_log(INFO, "revision %s commited", rev);
+
+	const char *env[] = { "PV_TRYBOOT", "true" };
+	pv_hooks_set_default_env("system-boot-done", rev, "", env, 1);
+	int ret = pv_hooks_run("system.d", true);
+	pv_hooks_unset_default_env(env, 1);
+
+	if (ret < 0) {
+		pv_log(ERROR, "hook system-boot-done has failed");
+		return -1;
+	}
 
 	return 0;
 }
@@ -267,7 +319,8 @@ static int pv_bl_early_init(struct pv_init *this)
 	if (env_rev && strlen(env_rev) > 0) {
 		free(pv_bootloader.pv_rev);
 		pv_bootloader.pv_rev = strdup(env_rev);
-		pv_log(DEBUG, "pv_rev from environment: %s", pv_bootloader.pv_rev);
+		pv_log(DEBUG, "pv_rev from environment: %s",
+		       pv_bootloader.pv_rev);
 	} else {
 		/* Fallback: parse pv_rev from cmdline */
 		struct pantavisor *pv = pv_get_instance();
@@ -277,9 +330,11 @@ static int pv_bl_early_init(struct pv_init *this)
 			const int CMDLINE_OFFSET = 7; /* strlen("pv_rev=") */
 
 			while (token) {
-				if (strncmp("pv_rev=", token, CMDLINE_OFFSET) == 0) {
+				if (strncmp("pv_rev=", token, CMDLINE_OFFSET) ==
+				    0) {
 					free(pv_bootloader.pv_rev);
-					pv_bootloader.pv_rev = strdup(token + CMDLINE_OFFSET);
+					pv_bootloader.pv_rev =
+						strdup(token + CMDLINE_OFFSET);
 					pv_log(DEBUG, "pv_rev from cmdline: %s",
 					       pv_bootloader.pv_rev);
 					break;
