@@ -88,6 +88,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_NET_BRMASK4` | IP mask | `255.255.255.0` | set bridge IPv4 mask |
 | `PV_OEM_NAME` | string | empty | set OEM name for configuration overrides |
 | `PV_POLICY` | string | empty | set policy name for configuration |
+| `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](storage.md#artifact-checksum) |
 | `PV_SECUREBOOT_HANDLERS` | `0` or `1` | `1` | enable handlers verification |
@@ -115,6 +116,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSTEM_MEDIADIR` | path | `/media` | set system media directory |
 | `PV_SYSTEM_MOUNT_SECURITYFS` | `0` or `1` | `0` | mount securityfs |
 | `PV_SYSTEM_RUNDIR` | path | `/run/pantavisor/pv` | set system run directory |
+| `PV_SYSCTL_*` | string | — | set any kernel sysctl at runtime; key maps to `/proc/sys/` (e.g. `PV_SYSCTL_KERNEL_CORE_PATTERN` → `/proc/sys/kernel/core_pattern`) |
+| `PV_SYSCTL_KERNEL_CORE_PATTERN` | string | `\|/lib/pv/pvcrash --skip` | set kernel core dump pattern |
 | `PV_SYSTEM_USRDIR` | path | `/usr` | set system usr directory |
 | `PV_UPDATER_COMMIT_DELAY` | time (in seconds) | `25` | delay before committing an update |
 | `PV_UPDATER_GOALS_TIMEOUT` | time (in seconds) | `120` | timeout for reaching update goals |
