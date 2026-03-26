@@ -100,7 +100,6 @@ typedef enum {
 #define DROPBEAR_CACHE_DIR_DEF "/storage/cache/dropbear"
 #define LIBTHTTP_CERTSDIR_DEF "/certs"
 #define LOG_DIR_DEF "/storage/logs/"
-#define LOG_MAXSIZE_DEF (1 << 21) // 2MiB
 #define LOG_SERVER_OUTPUTS_DEF "filetree"
 #define NET_BRADDRESS4_DEF "10.0.3.1"
 #define NET_BRDEV_DEF "lxcbr0"
@@ -208,8 +207,6 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 4 },
 	{ INT, "PV_LOG_LEVEL", PV | OEM | RUN, 0, false, .value.i = 0 },
 	{ BOOL, "PV_LOG_LOGGERS", PV | OEM, 0, false, .value.b = true },
-	{ INT, "PV_LOG_MAXSIZE", PV | OEM | RUN, 0, false,
-	  .value.i = LOG_MAXSIZE_DEF },
 	{ BOOL, "PV_LOG_PUSH", PV | OEM | RUN, 0, false, .value.b = true },
 	{ INT, "PV_LOG_ROTATE_FACTOR", PV | OEM | RUN, 0, false, .value.i = 5 },
 	{ LOG_SERVER_OUTPUT_UPDATE_MASK, "PV_LOG_SERVER_OUTPUTS",
@@ -324,7 +321,6 @@ static struct pv_config_alias aliases[] = {
 	{ "log.filetree.timestamp.format", "PV_LOG_FILETREE_TIMESTAMP_FORMAT" },
 	{ "log.level", "PV_LOG_LEVEL" },
 	{ "log.loggers", "PV_LOG_LOGGERS" },
-	{ "log.maxsize", "PV_LOG_MAXSIZE" },
 	{ "log.push", "PV_LOG_PUSH" },
 	{ "log.server.outputs", "PV_LOG_SERVER_OUTPUTS" },
 	{ "log.singlefile.timestamp.format",
