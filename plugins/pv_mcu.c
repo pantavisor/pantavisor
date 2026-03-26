@@ -48,23 +48,18 @@
 
 /* function pointers provided by pantavisor */
 static void *(*__pv_get_instance)(void) = NULL;
-static void (*__log)(int level, const char *fmt, ...) = NULL;
+
+#define PV_VLOG __vlog
+static void (*__vlog)(char *module, int level, const char *fmt, ...) = NULL;
+
+#define MODULE_NAME "pv_mcu"
+#define pv_log(level, msg, ...)                                                \
+	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
+	     ##__VA_ARGS__)
+#include "log.h"
 
 static int loglevel = 4; /* INFO */
 static bool capture = false;
-
-#define pvcm_log(level, fmt, ...)                                              \
-	do {                                                                   \
-		if (__log)                                                     \
-			__log(level, "pv_mcu: " fmt, ##__VA_ARGS__);         \
-	} while (0)
-
-/* log levels matching pantavisor */
-#define FATAL 1
-#define ERROR 2
-#define WARN 3
-#define INFO 4
-#define DEBUG 5
 
 /*
  * Path to pvcm-proxy binary.
@@ -91,7 +86,7 @@ void pv_set_pv_paths_fn(void *fn_vlog, void *fn_pv_paths_pv_file,
 			 void *fn_pv_paths_lib_lxc_rootfs_mount,
 			 void *fn_pv_paths_lib_lxc_lxcpath)
 {
-	__log = fn_vlog;
+	__vlog = fn_vlog;
 }
 
 void pv_set_pv_conf_loglevel_fn(int level)
@@ -124,7 +119,21 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 	pid_t pid;
 	sigset_t oldmask, newmask;
 
-	pvcm_log(INFO, "starting MCU container '%s' (conf=%s)", p->name,
+	/* early stderr log before any struct access — survives even if
+	 * __log is not wired up or the struct pointer is bad. */
+	fprintf(stderr, "pv_mcu: pv_start_container called (p=%p conf=%s)\n",
+		(void *)p, conf_file ? conf_file : "(null)");
+
+	if (!p) {
+		fprintf(stderr, "pv_mcu: ERROR: p is NULL\n");
+		pid_t err = -1;
+		write(pipefd, &err, sizeof(pid_t));
+		return -1;
+	}
+
+	fprintf(stderr, "pv_mcu: platform name='%s'\n", p->name ? p->name : "(null)");
+
+	pv_log(INFO, "starting MCU container '%s' (conf=%s)", p->name,
 		 conf_file);
 
 	/* block SIGCHLD during fork to avoid race */
@@ -135,7 +144,7 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 	pid = fork();
 
 	if (pid < 0) {
-		pvcm_log(ERROR, "fork failed for '%s': %s", p->name,
+		pv_log(ERROR, "fork failed for '%s': %s", p->name,
 			 strerror(errno));
 		sigprocmask(SIG_SETMASK, &oldmask, NULL);
 		pid_t err = -1;
@@ -183,7 +192,7 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 	/* parent: send child PID back to pantavisor */
 	sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
-	pvcm_log(INFO, "pvcm-proxy started for '%s' with pid %d", p->name,
+	pv_log(INFO, "pvcm-proxy started for '%s' with pid %d", p->name,
 		 pid);
 
 	while (write(pipefd, &pid, sizeof(pid_t)) < 0 && errno == EINTR)
@@ -199,7 +208,7 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
  */
 void pv_stop_container(struct pv_platform *p, char *conf_file)
 {
-	pvcm_log(INFO, "stopping MCU container '%s' (pid=%d)", p->name,
+	pv_log(INFO, "stopping MCU container '%s' (pid=%d)", p->name,
 		 p->init_pid);
 
 	if (p->init_pid > 0)

@@ -9,6 +9,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
 #include <signal.h>
@@ -16,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "pvcm_config.h"
@@ -24,6 +26,24 @@
 #include "pvcm_bridge.h"
 
 static volatile bool running = true;
+static FILE *dbglog = NULL;
+
+/* log to both stdout/stderr and debug file */
+#define pvcm_log(fmt, ...) do {                                           \
+	fprintf(stdout, "[pvcm-proxy] " fmt "\n", ##__VA_ARGS__);         \
+	if (dbglog) {                                                     \
+		fprintf(dbglog, "[pvcm-proxy] " fmt "\n", ##__VA_ARGS__); \
+		fflush(dbglog);                                           \
+	}                                                                 \
+} while (0)
+
+#define pvcm_err(fmt, ...) do {                                           \
+	fprintf(stderr, "[pvcm-proxy] " fmt "\n", ##__VA_ARGS__);         \
+	if (dbglog) {                                                     \
+		fprintf(dbglog, "[pvcm-proxy] ERROR: " fmt "\n", ##__VA_ARGS__); \
+		fflush(dbglog);                                           \
+	}                                                                 \
+} while (0)
 
 static void signal_handler(int sig)
 {
@@ -151,7 +171,7 @@ static int write_sysfs(const char *path, const char *value)
 {
 	FILE *f = fopen(path, "w");
 	if (!f) {
-		fprintf(stderr, "[pvcm-proxy] cannot write %s: %m\n", path);
+		pvcm_err("cannot write %s: %m", path);
 		return -1;
 	}
 	fputs(value, f);
@@ -191,13 +211,12 @@ static int discover_rpmsg_tty(const char *remoteproc, char *device,
 		snprintf(path, sizeof(path), "/dev/ttyRPMSG%d", i);
 		if (access(path, R_OK | W_OK) == 0) {
 			strncpy(device, path, device_size - 1);
-			fprintf(stdout, "[pvcm-proxy] discovered RPMsg "
-				"device: %s\n", device);
+			pvcm_log("discovered RPMsg device: %s", device);
 			return 0;
 		}
 	}
 
-	fprintf(stderr, "[pvcm-proxy] no ttyRPMSG device found\n");
+	pvcm_err("no ttyRPMSG device found");
 	return -1;
 }
 
@@ -205,11 +224,9 @@ static int load_firmware(struct pvcm_config *cfg)
 {
 	if (!cfg->remoteproc[0]) {
 		if (cfg->firmware[0])
-			fprintf(stdout, "[pvcm-proxy] external MCU, firmware "
-				"will be checked after connect\n");
+			pvcm_log("external MCU, firmware will be checked after connect");
 		else
-			fprintf(stdout, "[pvcm-proxy] no remoteproc, "
-				"assuming MCU already running\n");
+			pvcm_log("no remoteproc, assuming MCU already running");
 		return 0;
 	}
 
@@ -219,8 +236,7 @@ static int load_firmware(struct pvcm_config *cfg)
 		 "/sys/class/remoteproc/%s", cfg->remoteproc);
 
 	if (access(rproc_path, F_OK) != 0) {
-		fprintf(stderr, "[pvcm-proxy] remoteproc not found: %s\n",
-			rproc_path);
+		pvcm_err("remoteproc not found: %s", rproc_path);
 		return -1;
 	}
 
@@ -230,70 +246,86 @@ static int load_firmware(struct pvcm_config *cfg)
 	snprintf(state_path, sizeof(state_path), "%s/state", rproc_path);
 	read_sysfs(state_path, state, sizeof(state));
 
-	fprintf(stdout, "[pvcm-proxy] remoteproc %s state: %s\n",
-		cfg->remoteproc, state);
+	pvcm_log("remoteproc %s state: %s", cfg->remoteproc, state);
 
 	if (strcmp(state, "running") == 0) {
-		fprintf(stdout, "[pvcm-proxy] M core already running\n");
+		pvcm_log("M core already running");
 		goto discover;
 	}
 
 	/* load firmware if specified */
 	if (cfg->firmware[0]) {
 		if (access(cfg->firmware, R_OK) != 0) {
-			fprintf(stderr, "[pvcm-proxy] firmware not found: "
-				"%s\n", cfg->firmware);
+			pvcm_err("firmware not found: %s", cfg->firmware);
 			return -1;
 		}
 
-		/* copy to /lib/firmware/ */
+		/* set firmware search path to directory containing the ELF */
 		char fw_name[64];
 		const char *base = strrchr(cfg->firmware, '/');
-		base = base ? base + 1 : cfg->firmware;
+		if (base) {
+			char fw_dir[256];
+			size_t dir_len = base - cfg->firmware;
+			if (dir_len >= sizeof(fw_dir))
+				dir_len = sizeof(fw_dir) - 1;
+			memcpy(fw_dir, cfg->firmware, dir_len);
+			fw_dir[dir_len] = '\0';
+			base++;
+
+			pvcm_log("setting firmware search path: %s", fw_dir);
+			write_sysfs("/sys/module/firmware_class"
+				    "/parameters/path", fw_dir);
+		} else {
+			base = cfg->firmware;
+		}
 		snprintf(fw_name, sizeof(fw_name), "%s", base);
 
-		char dest[256];
-		snprintf(dest, sizeof(dest), "/lib/firmware/%s", fw_name);
-
-		if (access(dest, F_OK) != 0) {
-			char cmd[512];
-			snprintf(cmd, sizeof(cmd), "cp '%s' '%s'",
-				 cfg->firmware, dest);
-			fprintf(stdout, "[pvcm-proxy] copying firmware: "
-				"%s -> %s\n", cfg->firmware, dest);
-			if (system(cmd) != 0) {
-				fprintf(stderr, "[pvcm-proxy] firmware copy "
-					"failed\n");
-				return -1;
-			}
-		}
-
-		/* set firmware name */
-		char fw_path[160];
-		snprintf(fw_path, sizeof(fw_path), "%s/firmware", rproc_path);
-		fprintf(stdout, "[pvcm-proxy] setting firmware: %s\n",
-			fw_name);
-		if (write_sysfs(fw_path, fw_name) < 0)
+		/* set firmware name in remoteproc */
+		char fw_rproc_path[160];
+		snprintf(fw_rproc_path, sizeof(fw_rproc_path),
+			 "%s/firmware", rproc_path);
+		pvcm_log("setting firmware: %s", fw_name);
+		if (write_sysfs(fw_rproc_path, fw_name) < 0)
 			return -1;
 	}
 
 	/* start M core */
-	fprintf(stdout, "[pvcm-proxy] starting M core via %s\n",
-		cfg->remoteproc);
+	pvcm_log("starting M core via %s", cfg->remoteproc);
 	if (write_sysfs(state_path, "start") < 0)
 		return -1;
 
+	/* restore original firmware search path */
+	if (cfg->firmware[0]) {
+		pvcm_log("restoring firmware search path");
+		write_sysfs("/sys/module/firmware_class"
+			    "/parameters/path", "");
+	}
+
 	/* wait for RPMsg device to appear */
-	fprintf(stdout, "[pvcm-proxy] waiting for RPMsg device...\n");
+	pvcm_log("waiting for RPMsg device...");
 	sleep(2);
 
 discover:
-	/* auto-discover the ttyRPMSG device */
-	if (cfg->device[0] == '\0') {
-		if (discover_rpmsg_tty(cfg->remoteproc, cfg->device,
-				       sizeof(cfg->device)) < 0)
-			return -1;
+	/* auto-discover the ttyRPMSG device —
+	 * always override when using remoteproc since the device field
+	 * from run.json is the MCU name, not a /dev path.
+	 * Retry for up to 30 seconds — RPMsg channels can take time
+	 * to appear after M core boot. */
+	{
+		int rpmsg_retries = 15;
+		while (rpmsg_retries-- > 0) {
+			if (discover_rpmsg_tty(cfg->remoteproc, cfg->device,
+					       sizeof(cfg->device)) == 0)
+				goto rpmsg_found;
+			pvcm_log("waiting for ttyRPMSG (%d retries left)",
+				 rpmsg_retries);
+			sleep(2);
+		}
+		pvcm_err("ttyRPMSG never appeared — M core may not have "
+			 "announced an RPMsg endpoint");
+		return -1;
 	}
+rpmsg_found:
 
 	/* set transport to rpmsg if not already */
 	if (cfg->transport[0] == '\0' || strcmp(cfg->transport, "uart") == 0)
@@ -308,13 +340,20 @@ int main(int argc, char **argv)
 	cfg.baudrate = PVCM_DEFAULT_BAUDRATE;
 	strncpy(cfg.transport, "uart", sizeof(cfg.transport));
 
+	/* disable stdio buffering so logs appear immediately in logserver */
+	setvbuf(stdout, NULL, _IONBF, 0);
+	setvbuf(stderr, NULL, _IONBF, 0);
+
 	if (parse_args(argc, argv, &cfg) < 0)
 		return 1;
 
 	signal(SIGTERM, signal_handler);
 	signal(SIGINT, signal_handler);
 
-	fprintf(stdout, "[pvcm-proxy] starting for MCU '%s'\n", cfg.name);
+	mkdir("/storage/logs/current/claudecli", 0755);
+	dbglog = fopen("/storage/logs/current/claudecli/pvcm-proxy.log", "w");
+
+	pvcm_log("starting for MCU '%s'", cfg.name);
 
 	/* parse run.json if provided, then re-apply CLI overrides */
 	if (cfg.config_path[0]) {
@@ -336,8 +375,7 @@ int main(int argc, char **argv)
 		saved_baudrate = cfg.baudrate;
 
 		if (pvcm_config_parse(&cfg, cfg.config_path) < 0)
-			fprintf(stderr, "[pvcm-proxy] warning: could not "
-				"parse config, using CLI args\n");
+			pvcm_err("could not parse config, using CLI args");
 
 		/* re-apply CLI overrides over config values */
 		if (saved_device[0])
@@ -355,6 +393,30 @@ int main(int argc, char **argv)
 			cfg.baudrate = saved_baudrate;
 	}
 
+	/* auto-discover firmware ELF from config directory if not set */
+	if (!cfg.firmware[0] && cfg.config_path[0]) {
+		char dir[256];
+		strncpy(dir, cfg.config_path, sizeof(dir) - 1);
+		char *slash = strrchr(dir, '/');
+		if (slash) {
+			*slash = '\0';
+			DIR *d = opendir(dir);
+			if (d) {
+				struct dirent *ent;
+				while ((ent = readdir(d)) != NULL) {
+					size_t len = strlen(ent->d_name);
+					if (len > 4 && strcmp(ent->d_name + len - 4, ".elf") == 0) {
+						snprintf(cfg.firmware, sizeof(cfg.firmware),
+							 "%s/%s", dir, ent->d_name);
+						pvcm_log("auto-discovered firmware: %s", cfg.firmware);
+						break;
+					}
+				}
+				closedir(d);
+			}
+		}
+	}
+
 	/* load firmware / start M core if remoteproc specified
 	 * This may also auto-discover the device path */
 	if (cfg.remoteproc[0]) {
@@ -366,8 +428,7 @@ int main(int argc, char **argv)
 
 	/* need at least a device by now */
 	if (!cfg.device[0]) {
-		fprintf(stderr, "[pvcm-proxy] no device specified. "
-			"Use --device, --remoteproc, or --config\n");
+		pvcm_err("no device specified. Use --device, --remoteproc, or --config");
 		return 1;
 	}
 
@@ -381,8 +442,7 @@ int main(int argc, char **argv)
 
 	/* open transport */
 	if (transport->open(transport, cfg.device, cfg.baudrate) < 0) {
-		fprintf(stderr, "[pvcm-proxy] failed to open %s\n",
-			cfg.device);
+		pvcm_err("failed to open %s", cfg.device);
 		return 1;
 	}
 
@@ -397,14 +457,12 @@ int main(int argc, char **argv)
 	while (retries-- > 0 && running) {
 		if (pvcm_handshake(&session) == 0)
 			break;
-		fprintf(stderr, "[pvcm-proxy] handshake failed, "
-			"retrying (%d left)\n", retries);
+		pvcm_err("handshake failed, retrying (%d left)", retries);
 		sleep(2);
 	}
 
 	if (!session.connected) {
-		fprintf(stderr, "[pvcm-proxy] MCU '%s' not responding "
-			"on %s\n", cfg.name, cfg.device);
+		pvcm_err("MCU '%s' not responding on %s", cfg.name, cfg.device);
 		transport->close(transport);
 		return 1;
 	}
@@ -417,7 +475,7 @@ int main(int argc, char **argv)
 	pvcm_run(&session, &running);
 
 	/* shutdown */
-	fprintf(stdout, "[pvcm-proxy] shutting down MCU '%s'\n", cfg.name);
+	pvcm_log("shutting down MCU '%s'", cfg.name);
 	transport->close(transport);
 
 	return 0;
