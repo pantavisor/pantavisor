@@ -1,3 +1,6 @@
+---
+nav_order: 3
+---
 # BSP
 
 In addition to [containers](containers.md), Pantavisor is in charge of the life-cycle of the Linux kernel, modules and firmware. To allow upgrading all this plus Pantavisor itself, all these binaries have been included under the BSP denomination in the [state JSON](pantavisor-state-format-v2.md#bsprunjson). 

@@ -1,3 +1,7 @@
+---
+nav_order: 10
+nav_title: Configuration
+---
 # Pantavisor Configuration
 
 !!! Note

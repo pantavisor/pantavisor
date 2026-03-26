@@ -1,0 +1,19 @@
+name: Trigger Docs Tag Freeze
+
+on:
+  push:
+    tags:
+      - '[0-9]*'
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger GitLab CI tag freeze
+        run: |
+          curl --request POST \
+            --form token=${{ secrets.GITLAB_DOCS_TRIGGER_TOKEN }} \
+            --form ref=master \
+            --form "variables[TRIGGER_SOURCE]=pantavisor-tag" \
+            --form "variables[TRIGGER_TAG]=${{ github.ref_name }}" \
+            https://gitlab.com/api/v4/projects/pantacor%2Fdocs/trigger/pipeline

@@ -1,3 +1,6 @@
+---
+nav_order: 8
+---
 # Local Control
 
 With local control, we mean the control that is performed from one of the [containers](containers.md) running in the [revision](revisions.md) using the [control socket](pantavisor-commands.md), which offers an HTTP REST API to control and monitor Pantavisor.

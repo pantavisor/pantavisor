@@ -1,3 +1,6 @@
+---
+nav_order: 11
+---
 # Init Mode
 
 Pantavisor offers several [configurable](pantavisor-configuration.md#summary) init modes for convenience: embedded, standalone and appengine.

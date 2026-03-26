@@ -1,3 +1,6 @@
+---
+nav_order: 7
+---
 # Remote Control
 
 This page is for explaining cloud-oriented ways of controlling your Pantavisor devices.

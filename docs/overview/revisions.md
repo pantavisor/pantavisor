@@ -1,3 +1,6 @@
+---
+nav_order: 2
+---
 # Revisions
 
 A revision is composed by a [BSP](bsp.md) (Pantavisor binary, Linux kernel, modules and firmware) plus a number of [containers](containers.md).
