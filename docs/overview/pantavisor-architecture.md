@@ -1,3 +1,6 @@
+---
+nav_order: 1
+---
 # Pantavisor Architecture
 
 At a high level, Pantavisor is just in charge of two things: container orchestration and communication with the outside world.

@@ -1,3 +1,6 @@
+---
+nav_order: 4
+---
 # Containers
 
 Pantavisor implements a lightweight container run-time with the help of Linux Containers (LXC). Each container, in its minimal form, is then comprised of a rootfs that will be run isolated in its own name-space and an LXC configuration file. All these, as well as more advanced configuration, are included in the [state JSON](pantavisor-state-format-v2.md#containerrunjson).

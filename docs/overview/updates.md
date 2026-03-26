@@ -1,3 +1,6 @@
+---
+nav_order: 5
+---
 # Updates
 
 Getting back to [revisions](revisions.md), these can be modified and upgraded, thus creating a new revision of the device.

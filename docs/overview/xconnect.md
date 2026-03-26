@@ -1,3 +1,6 @@
+---
+nav_order: 9
+---
 # Inter-Container Communication
 
 Pantavisor includes `pv-xconnect`, a built-in service mesh that manages communication between [containers](containers.md) at runtime. It runs as a managed daemon alongside Pantavisor, active in all [init modes](init-mode.md).

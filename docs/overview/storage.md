@@ -1,3 +1,6 @@
+---
+nav_order: 6
+---
 # Storage
 
 Pantavisor needs some persistent artifacts on disk to perform several operations such as storing [revisions](revisions.md), [updates](updates.md), [disks](#disks), [logs](#logs) and other RW operations.
