@@ -71,7 +71,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |
 | `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](storage.md#logs) directory |
-| `PV_LOG_DIR_MAXSIZE` | size in bytes | `16777216` | max size of the log directory |
+| `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto 10% (100% if tmpfs) | `16777216` | max size of log directory |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for filetree logs |
 | `PV_LOG_HYSTERESIS_FACTOR` | integer | `4` | hysteresis factor for log rotation |
 | `PV_LOG_LEVEL` | `0` to `5` | `0` | set Pantavisor log level (0: FATAL to 5: ALL) |
