@@ -76,7 +76,6 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_HYSTERESIS_FACTOR` | integer | `4` | hysteresis factor for log rotation |
 | `PV_LOG_LEVEL` | `0` to `5` | `0` | set Pantavisor log level (0: FATAL to 5: ALL) |
 | `PV_LOG_LOGGERS` | `0` or `1` | `1` | enable loggers for containers |
-| `PV_LOG_MAXSIZE` | size in bytes | `2097152` | max size of individual log files |
 | `PV_LOG_PUSH` | `0` or `1` | `1` | push logs to [Pantacor Hub](remote-control.md#pantacor-hub) |
 | `PV_LOG_ROTATE_FACTOR` | integer | `5` | number of rotated log files to keep |
 | `PV_LOG_SERVER_OUTPUTS` | string | `filetree` | set log server outputs (comma separated) |
@@ -185,7 +184,6 @@ This table shows the [configuration levels](pantavisor-configuration-levels.md) 
 | `PV_LOG_HYSTERESIS_FACTOR`           | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_LEVEL`                       | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_LOGGERS`                     | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
-| `PV_LOG_MAXSIZE`                     | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_PUSH`                        | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_ROTATE_FACTOR`               | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_SERVER_OUTPUTS`              | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
