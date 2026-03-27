@@ -23,9 +23,7 @@
 		zephyr,flash = &ddr_code;
 		zephyr,sram = &ddr_sys;
 
-		/* UART4 is Linux console — do NOT use for Zephyr.
-		 * Zephyr logs go to the RAM console (if enabled)
-		 * or are silent. RPMsg is the communication channel. */
+		/* UART4 disabled — RPMsg is the communication channel */
 
 		/* shared memory for OpenAMP IPC */
 		zephyr,ipc_shm = &vdevbuffer;
@@ -54,7 +52,7 @@
 	reg = <0x7e200000 DT_SIZE_M(2)>;
 };
 
-/* UART4 disabled — shared with Linux console */
+/* UART4 disabled — debug via devmem markers */
 &uart4 {
 	status = "disabled";
 };
