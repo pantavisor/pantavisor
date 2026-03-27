@@ -85,8 +85,9 @@ int timer_start(struct timer *t, time_t sec, long nsec, timer_type_t type)
 {
 	struct timespec now;
 
+	t->type = type;
 	if (type == RELATIV_TIMER) {
-		get_current_time(t->type, &now);
+		get_current_time(type, &now);
 
 		t->timeout.tv_sec = now.tv_sec + sec;
 		t->timeout.tv_nsec = now.tv_nsec + nsec;
