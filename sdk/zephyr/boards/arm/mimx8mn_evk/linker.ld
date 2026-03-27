@@ -10,7 +10,18 @@
 
 MEMORY
      {
-        DDR      (wx) : ORIGIN = 0x7e000000, LENGTH = 0x01000000
+        DDR       (wx) : ORIGIN = 0x7e000000, LENGTH = 0x01000000
+        RSC_TABLE  (w) : ORIGIN = 0x400ff000, LENGTH = 0x1000
      }
 
 #include <zephyr/arch/arm/cortex_m/scripts/linker.ld>
+
+SECTIONS
+     {
+#ifdef CONFIG_OPENAMP_RSC_TABLE
+        SECTION_PROLOGUE(.resource_table,, SUBALIGN(4))
+        {
+            KEEP(*(.resource_table*))
+        } > RSC_TABLE
+#endif
+     }
