@@ -381,6 +381,7 @@ static int trail_put_objects(struct pantavisor *pv)
 	}
 	pv_objects_iter_end;
 
+	pv_ph_free_certs(crtfiles);
 	return ret;
 }
 
