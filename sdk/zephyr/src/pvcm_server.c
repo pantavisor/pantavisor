@@ -19,6 +19,7 @@
 
 LOG_MODULE_REGISTER(pvcm_server, CONFIG_LOG_DEFAULT_LEVEL);
 
+#ifdef CONFIG_PANTAVISOR_BRIDGE
 /* HTTP client/server callbacks (from pvcm_client.c) */
 extern void pvcm_client_on_http_req(const uint8_t *buf, int len);
 extern void pvcm_client_on_http_data(const uint8_t *buf, int len);
@@ -26,6 +27,7 @@ extern void pvcm_client_on_http_end(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_req(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_data(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_end(const uint8_t *buf, int len);
+#endif
 
 #define PVCM_SERVER_STACK_SIZE  2048
 #define PVCM_SERVER_PRIORITY    7
@@ -113,6 +115,7 @@ static void dispatch(const uint8_t *buf, int len)
 		LOG_WRN("ROLLBACK received");
 		/* TODO: revert to stable slot */
 		break;
+#ifdef CONFIG_PANTAVISOR_BRIDGE
 	/* HTTP frames — route based on direction */
 	case PVCM_OP_HTTP_REQ: {
 		const pvcm_http_req_t *hreq = (const pvcm_http_req_t *)buf;
@@ -123,7 +126,6 @@ static void dispatch(const uint8_t *buf, int len)
 		break;
 	}
 	case PVCM_OP_HTTP_DATA:
-		/* route to client or invoke based on active pending */
 		pvcm_client_on_http_data(buf, len);
 		pvcm_client_on_invoke_data(buf, len);
 		break;
@@ -131,6 +133,7 @@ static void dispatch(const uint8_t *buf, int len)
 		pvcm_client_on_http_end(buf, len);
 		pvcm_client_on_invoke_end(buf, len);
 		break;
+#endif
 	default:
 		LOG_DBG("unhandled opcode 0x%02x (len=%d)", op, len);
 		break;
