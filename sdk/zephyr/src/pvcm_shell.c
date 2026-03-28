@@ -12,9 +12,26 @@
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/logging/log.h>
+#include <pantavisor/pvcm.h>
 #include <pantavisor/pvcm_protocol.h>
 
 LOG_MODULE_REGISTER(pvcm_shell, CONFIG_LOG_DEFAULT_LEVEL);
+
+#ifdef CONFIG_PANTAVISOR_BRIDGE
+static const struct shell *http_shell;
+
+static void http_response_cb(uint16_t status_code,
+			     const char *body, size_t body_len,
+			     const char *headers, void *ctx)
+{
+	if (http_shell) {
+		shell_print(http_shell, "HTTP %d (%zu bytes)", status_code,
+			    body_len);
+		if (body_len > 0)
+			shell_print(http_shell, "%s", body);
+	}
+}
+#endif
 
 static int cmd_pv_status(const struct shell *sh, size_t argc, char **argv)
 {
@@ -56,10 +73,32 @@ static int cmd_pv_heartbeat(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+#ifdef CONFIG_PANTAVISOR_BRIDGE
+static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
+{
+	if (argc < 2) {
+		shell_print(sh, "Usage: pv http <path>");
+		return -EINVAL;
+	}
+
+	http_shell = sh;
+	shell_print(sh, "GET %s ...", argv[1]);
+	int ret = pvcm_get(argv[1], http_response_cb, NULL);
+	if (ret)
+		shell_error(sh, "pvcm_get failed: %d", ret);
+	http_shell = NULL;
+
+	return ret;
+}
+#endif
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
 	SHELL_CMD(status, NULL, "Show PVCM status", cmd_pv_status),
 	SHELL_CMD(containers, NULL, "List containers", cmd_pv_containers),
 	SHELL_CMD(heartbeat, NULL, "Show heartbeat stats", cmd_pv_heartbeat),
+#ifdef CONFIG_PANTAVISOR_BRIDGE
+	SHELL_CMD(http, NULL, "GET <path> via pvcm-proxy", cmd_pv_http),
+#endif
 	SHELL_SUBCMD_SET_END
 );
 
