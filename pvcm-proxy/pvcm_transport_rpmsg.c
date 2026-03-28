@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 
 /* CRC32 — same as UART transport */
@@ -60,6 +61,14 @@ static int rpmsg_open(struct pvcm_transport *t, const char *device,
 	if (fd < 0) {
 		fprintf(stderr, "[pvcm-proxy] cannot open %s: %m\n", device);
 		return -1;
+	}
+
+	/* Set raw mode — PVCM is a binary protocol, tty line discipline
+	 * must not interpret newlines, echo, or do flow control */
+	struct termios tio;
+	if (tcgetattr(fd, &tio) == 0) {
+		cfmakeraw(&tio);
+		tcsetattr(fd, TCSANOW, &tio);
 	}
 
 	t->fd = fd;
@@ -114,7 +123,9 @@ static int rpmsg_recv_frame(struct pvcm_transport *t, void *payload,
 
 	/* verify sync bytes */
 	if (buf[0] != PVCM_SYNC_BYTE_0 || buf[1] != PVCM_SYNC_BYTE_1) {
-		fprintf(stderr, "[pvcm-proxy] rpmsg sync mismatch\n");
+		fprintf(stderr, "[pvcm-proxy] rpmsg sync mismatch "
+			"(got 0x%02x 0x%02x, n=%zd)\n",
+			buf[0], buf[1], n);
 		return -1;
 	}
 
@@ -131,7 +142,9 @@ static int rpmsg_recv_frame(struct pvcm_transport *t, void *payload,
 			    (buf[4 + len + 3] << 24);
 	uint32_t calc_crc = crc32_calc(&buf[4], len);
 	if (recv_crc != calc_crc) {
-		fprintf(stderr, "[pvcm-proxy] rpmsg CRC mismatch\n");
+		fprintf(stderr, "[pvcm-proxy] rpmsg CRC mismatch "
+			"(recv=0x%08x calc=0x%08x len=%u op=0x%02x)\n",
+			recv_crc, calc_crc, len, buf[4]);
 		return -1;
 	}
 

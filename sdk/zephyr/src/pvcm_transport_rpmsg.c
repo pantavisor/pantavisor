@@ -5,6 +5,9 @@
  * protocol RPMsg endpoint. This module just provides send_frame/recv_frame
  * over that pre-created endpoint.
  *
+ * Uses a message queue to avoid dropping frames when multiple arrive
+ * in one vring notification (e.g. HTTP_REQ + HTTP_END).
+ *
  * SPDX-License-Identifier: MIT
  */
 
@@ -18,10 +21,13 @@
 
 LOG_MODULE_REGISTER(pvcm_rpmsg, CONFIG_LOG_DEFAULT_LEVEL);
 
-#define RPMSG_RX_BUFSZ 2048
-static uint8_t rx_buf[RPMSG_RX_BUFSZ];
-static size_t rx_len;
-static K_SEM_DEFINE(rx_sem, 0, 1);
+/* Each queued message: 2 bytes length + up to 512 bytes payload */
+#define RX_MSG_MAX_SIZE 514
+#define RX_QUEUE_DEPTH  8
+
+static char rx_queue_buf[RX_QUEUE_DEPTH * RX_MSG_MAX_SIZE];
+static struct k_msgq rx_msgq;
+static bool rx_msgq_initialized;
 
 static struct rpmsg_endpoint *proto_ept;
 static volatile bool transport_ready;
@@ -34,20 +40,31 @@ int pvcm_rpmsg_rx_cb(struct rpmsg_endpoint *ept, void *data,
 	ARG_UNUSED(src);
 	ARG_UNUSED(priv);
 
-	if (len > RPMSG_RX_BUFSZ) {
+	if (len > RX_MSG_MAX_SIZE - 2) {
 		LOG_ERR("rpmsg frame too large: %zu", len);
 		return RPMSG_ERR_BUFF_SIZE;
 	}
 
-	memcpy(rx_buf, data, len);
-	rx_len = len;
-	k_sem_give(&rx_sem);
+	/* pack: [len_lo, len_hi, data...] */
+	uint8_t msg[RX_MSG_MAX_SIZE];
+	msg[0] = len & 0xFF;
+	msg[1] = (len >> 8) & 0xFF;
+	memcpy(&msg[2], data, len);
+
+	if (k_msgq_put(&rx_msgq, msg, K_NO_WAIT) != 0) {
+		LOG_WRN("rx queue full, dropping frame");
+	}
 
 	return RPMSG_SUCCESS;
 }
 
 void pvcm_rpmsg_set_endpoint(struct rpmsg_endpoint *ept)
 {
+	if (!rx_msgq_initialized) {
+		k_msgq_init(&rx_msgq, rx_queue_buf, RX_MSG_MAX_SIZE,
+			    RX_QUEUE_DEPTH);
+		rx_msgq_initialized = true;
+	}
 	proto_ept = ept;
 	transport_ready = true;
 }
@@ -100,11 +117,16 @@ static int rpmsg_send_frame(const void *payload, size_t len)
 
 static int rpmsg_recv_frame(void *payload, size_t max_len, int timeout_ms)
 {
-	if (k_sem_take(&rx_sem, K_MSEC(timeout_ms)) != 0)
+	uint8_t msg[RX_MSG_MAX_SIZE];
+
+	if (k_msgq_get(&rx_msgq, msg, K_MSEC(timeout_ms)) != 0)
 		return -2; /* timeout */
 
+	uint16_t rx_len = msg[0] | (msg[1] << 8);
+	uint8_t *rx_buf = &msg[2];
+
 	if (rx_len < 8) {
-		LOG_ERR("rpmsg frame too short: %zu", rx_len);
+		LOG_ERR("rpmsg frame too short: %u", rx_len);
 		return -1;
 	}
 
