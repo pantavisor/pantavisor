@@ -181,30 +181,14 @@ static int do_http_request(uint8_t method, const char *path,
 	};
 	t->send_frame(&end, sizeof(end) - sizeof(uint32_t));
 
-	/* Pump recv_frame ourselves while waiting for the response.
-	 * We can't use k_sem_take because the server thread (which
-	 * normally calls recv_frame) is blocked here — deadlock.
-	 * Instead, read frames in a loop and dispatch them.
+	/*
+	 * Wait for the server thread to receive and dispatch the response.
+	 * pvcm_get is called from the shell thread (or app thread), NOT from
+	 * the server thread. The server thread continues its recv loop and
+	 * dispatches HTTP_REQ(RESPONSE)/DATA/END to pvcm_client_on_http_*
+	 * which populates pending and signals http_resp_sem.
 	 */
-	extern void pvcm_server_dispatch(const uint8_t *buf, int len);
-	uint8_t rx[1024];
-	int64_t deadline = k_uptime_get() + 10000; /* 10s timeout */
-	int ret = -ETIMEDOUT;
-
-	while (k_uptime_get() < deadline) {
-		/* sleep briefly to let the management thread (COOP 8)
-		 * process vring and deliver frames to our queue */
-		k_sleep(K_MSEC(50));
-
-		int flen = t->recv_frame(rx, sizeof(rx), 200);
-		if (flen > 0) {
-			pvcm_server_dispatch(rx, flen);
-		}
-		if (pending.complete) {
-			ret = 0;
-			break;
-		}
-	}
+	int ret = k_sem_take(&http_resp_sem, K_SECONDS(10));
 
 	pending.active = false;
 
