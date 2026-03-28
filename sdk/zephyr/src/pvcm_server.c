@@ -91,7 +91,7 @@ static void handle_set_tryboot(void)
 	transport->send_frame(&ack, sizeof(ack) - sizeof(uint32_t));
 }
 
-static void dispatch(const uint8_t *buf, int len)
+void pvcm_server_dispatch(const uint8_t *buf, int len)
 {
 	if (len < 1)
 		return;
@@ -165,7 +165,7 @@ static void pvcm_server_thread(void *p1, void *p2, void *p3)
 	while (1) {
 		int len = transport->recv_frame(buf, sizeof(buf), 1000);
 		if (len > 0) {
-			dispatch(buf, len);
+			pvcm_server_dispatch(buf, len);
 		}
 		/* timeout is normal — just loop and let heartbeat run */
 	}

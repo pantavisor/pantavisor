@@ -181,8 +181,25 @@ static int do_http_request(uint8_t method, const char *path,
 	};
 	t->send_frame(&end, sizeof(end) - sizeof(uint32_t));
 
-	/* wait for response (10s timeout) */
-	int ret = k_sem_take(&http_resp_sem, K_SECONDS(10));
+	/* Pump recv_frame ourselves while waiting for the response.
+	 * We can't use k_sem_take because the server thread (which
+	 * normally calls recv_frame) is blocked here — deadlock.
+	 * Instead, read frames in a loop and dispatch them.
+	 */
+	extern void pvcm_server_dispatch(const uint8_t *buf, int len);
+	uint8_t rx[1024];
+	int64_t deadline = k_uptime_get() + 10000; /* 10s timeout */
+	int ret = -ETIMEDOUT;
+
+	while (k_uptime_get() < deadline) {
+		int flen = t->recv_frame(rx, sizeof(rx), 500);
+		if (flen > 0)
+			pvcm_server_dispatch(rx, flen);
+		if (pending.complete) {
+			ret = 0;
+			break;
+		}
+	}
 
 	pending.active = false;
 
