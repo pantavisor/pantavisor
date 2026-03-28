@@ -224,14 +224,14 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 		method_to_str(pending_req.method), pending_req.path,
 		pending_req.body_len);
 
-	/* forward to upstream HTTP server (localhost:18080 for testing) */
+	/* forward to upstream HTTP server */
 	char resp_body[8192] = "";
 	char resp_headers[1024] = "";
 	int resp_status = 500;
 
 	int body_len = http_request(
 		method_to_str(pending_req.method),
-		"127.0.0.1", 18080,
+		"127.0.0.1", 12368,
 		pending_req.path,
 		pending_req.headers[0] ? pending_req.headers : NULL,
 		pending_req.body_len > 0 ? pending_req.body : NULL,
