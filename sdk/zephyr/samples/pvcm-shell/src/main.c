@@ -18,7 +18,9 @@
 #include <resource_table.h>
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(openamp_rsc_table, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(pvcm_shell, LOG_LEVEL_DBG);
+
+#include "shell_rpmsg.h"
 
 #define SHM_DEVICE_NAME	"shm"
 
@@ -37,9 +39,11 @@ LOG_MODULE_REGISTER(openamp_rsc_table, LOG_LEVEL_DBG);
 #define APP_TTY_TASK_STACK_SIZE (1536)
 
 K_THREAD_STACK_DEFINE(thread_mng_stack, APP_TASK_STACK_SIZE);
+K_THREAD_STACK_DEFINE(thread_rp__client_stack, APP_TASK_STACK_SIZE);
 K_THREAD_STACK_DEFINE(thread_tty_stack, APP_TTY_TASK_STACK_SIZE);
 
 static struct k_thread thread_mng_data;
+static struct k_thread thread_rp__client_data;
 static struct k_thread thread_tty_data;
 
 static const struct device *const ipm_handle =
@@ -73,10 +77,15 @@ static struct rpmsg_virtio_device rvdev;
 static void *rsc_table;
 static struct rpmsg_device *rpdev;
 
+static char rx_sc_msg[20];  /* should receive "Hello world!" */
+static struct rpmsg_endpoint sc_ept;
+static struct rpmsg_rcv_msg sc_msg = {.data = rx_sc_msg};
+
 static struct rpmsg_endpoint tty_ept;
 static struct rpmsg_rcv_msg tty_msg;
 
 static K_SEM_DEFINE(data_sem, 0, 1);
+static K_SEM_DEFINE(data_sc_sem, 0, 1);
 static K_SEM_DEFINE(data_tty_sem, 0, 1);
 
 static void platform_ipm_callback(const struct device *dev, void *context,
@@ -84,6 +93,16 @@ static void platform_ipm_callback(const struct device *dev, void *context,
 {
 	LOG_DBG("%s: msg received from mb %d\n", __func__, id);
 	k_sem_give(&data_sem);
+}
+
+static int rpmsg_recv_cs_callback(struct rpmsg_endpoint *ept, void *data,
+				  size_t len, uint32_t src, void *priv)
+{
+	memcpy(sc_msg.data, data, len);
+	sc_msg.len = len;
+	k_sem_give(&data_sc_sem);
+
+	return RPMSG_SUCCESS;
 }
 
 static int rpmsg_recv_tty_callback(struct rpmsg_endpoint *ept, void *data,
@@ -120,7 +139,7 @@ int mailbox_notify(void *priv, uint32_t id)
 	ARG_UNUSED(priv);
 
 	LOG_DBG("%s: msg received\n", __func__);
-	ipm_send(ipm_handle, 0, id, NULL, 0);
+	ipm_send(ipm_handle, 0, 1, NULL, 0);
 
 	return 0;
 }
@@ -132,13 +151,6 @@ int platform_init(void)
 	struct metal_device *device;
 	struct metal_init_params metal_params = METAL_INIT_DEFAULTS;
 	int status;
-
-	/*
-	 * Zero shared memory to clear stale vrings from any previous run.
-	 * Without this, remoteproc stop/start leaves stale avail/used ring
-	 * indices and Linux virtio never creates RPMsg channels.
-	 */
-	memset((void *)SHM_START_ADDR, 0, SHM_SIZE);
 
 	status = metal_init(&metal_params);
 	if (status) {
@@ -261,6 +273,35 @@ failed:
 	return NULL;
 }
 
+void app_rpmsg_client_sample(void *arg1, void *arg2, void *arg3)
+{
+	ARG_UNUSED(arg1);
+	ARG_UNUSED(arg2);
+	ARG_UNUSED(arg3);
+
+	unsigned int msg_cnt = 0;
+	int ret = 0;
+
+	k_sem_take(&data_sc_sem,  K_FOREVER);
+
+	printk("\r\nOpenAMP[remote] Linux sample client responder started\r\n");
+
+	ret = rpmsg_create_ept(&sc_ept, rpdev, "rpmsg-client-sample",
+			       RPMSG_ADDR_ANY, RPMSG_ADDR_ANY,
+			       rpmsg_recv_cs_callback, NULL);
+
+	while (msg_cnt < 100) {
+		k_sem_take(&data_sc_sem,  K_FOREVER);
+		msg_cnt++;
+		printk("[Linux sample client] incoming msg %d: %.*s\n", msg_cnt, sc_msg.len,
+		       (char *)sc_msg.data);
+		rpmsg_send(&sc_ept, sc_msg.data, sc_msg.len);
+	}
+	rpmsg_destroy_ept(&sc_ept);
+
+	printk("OpenAMP Linux sample client responder ended\n");
+}
+
 void app_rpmsg_tty(void *arg1, void *arg2, void *arg3)
 {
 	ARG_UNUSED(arg1);
@@ -324,7 +365,16 @@ void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
 		goto task_end;
 	}
 
-	/* start the tty responder */
+	/* Channel 1: debug shell over RPMsg */
+	extern struct shell_transport shell_transport_rpmsg;
+	int shell_ret = shell_rpmsg_set_rpdev(&shell_transport_rpmsg, rpdev);
+	if (shell_ret) {
+		LOG_ERR("shell_rpmsg_set_rpdev failed: %d", shell_ret);
+	} else {
+		printk("PVCM debug shell channel ready\n");
+	}
+
+	/* Channel 0: protocol tty */
 	k_sem_give(&data_tty_sem);
 
 	while (1) {
@@ -339,7 +389,7 @@ task_end:
 
 int main(void)
 {
-	printk("PVCM Shell starting\n");
+	printk("PVCM Shell starting — 2 channels (protocol + debug shell)\n");
 	k_thread_create(&thread_mng_data, thread_mng_stack, APP_TASK_STACK_SIZE,
 			rpmsg_mng_task,
 			NULL, NULL, NULL, K_PRIO_COOP(8), 0, K_NO_WAIT);
