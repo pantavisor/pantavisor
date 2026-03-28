@@ -306,9 +306,15 @@ static int load_firmware(struct pvcm_config *cfg)
 	sleep(2);
 
 discover:
+	/* Skip auto-discovery if device is already a valid /dev path
+	 * (set via CLI --device /dev/ttyRPMSGN) */
+	if (cfg->device[0] == '/' && access(cfg->device, R_OK | W_OK) == 0) {
+		pvcm_log("using explicit device: %s", cfg->device);
+		goto rpmsg_found;
+	}
+
 	/* auto-discover the ttyRPMSG device —
-	 * always override when using remoteproc since the device field
-	 * from run.json is the MCU name, not a /dev path.
+	 * override when device field from run.json is an MCU name, not a /dev path.
 	 * Retry for up to 30 seconds — RPMsg channels can take time
 	 * to appear after M core boot. */
 	{
