@@ -331,7 +331,9 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 	if (hlen > 0)
 		memcpy(resp.data, headers, hlen);
 
-	t->send_frame(&resp, sizeof(resp) - sizeof(uint32_t));
+	int ret = t->send_frame(&resp, sizeof(resp) - sizeof(uint32_t));
+	LOG_INF("HTTP respond: sent REQ(REPLY) sid=%d status=%d ret=%d",
+		stream_id, status_code, ret);
 
 	/* send body chunks */
 	if (body && body_len > 0) {
@@ -346,7 +348,9 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 				chunk = PVCM_MAX_CHUNK_SIZE;
 			data.len = (uint16_t)chunk;
 			memcpy(data.data, body + offset, chunk);
-			t->send_frame(&data, 4 + chunk);
+			ret = t->send_frame(&data, 4 + chunk);
+			LOG_INF("HTTP respond: sent DATA sid=%d chunk=%zu ret=%d",
+				stream_id, chunk, ret);
 			offset += chunk;
 		}
 	}
@@ -356,7 +360,8 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 		.op = PVCM_OP_HTTP_END,
 		.stream_id = stream_id,
 	};
-	t->send_frame(&end, sizeof(end) - sizeof(uint32_t));
+	ret = t->send_frame(&end, sizeof(end) - sizeof(uint32_t));
+	LOG_INF("HTTP respond: sent END sid=%d ret=%d", stream_id, ret);
 
 	return 0;
 }

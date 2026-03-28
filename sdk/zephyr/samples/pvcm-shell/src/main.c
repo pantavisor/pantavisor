@@ -23,6 +23,8 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(pvcm_main, LOG_LEVEL_DBG);
 
+#include <pantavisor/pvcm.h>
+#include <pantavisor/pvcm_protocol.h>
 #include "shell_rpmsg.h"
 
 /* PVCM transport hooks (from pvcm_transport_rpmsg.c) */
@@ -267,9 +269,49 @@ void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
 	}
 }
 
+#ifdef CONFIG_PANTAVISOR_BRIDGE
+/*
+ * MCU HTTP server handler — serves sensor data to Linux containers.
+ * Linux sends: curl http://localhost:18081/sensor
+ * pvcm-proxy forwards to MCU, MCU responds with JSON.
+ */
+static void sensor_handler(uint8_t method, const char *path,
+			   const char *headers, const char *body,
+			   size_t body_len, void *ctx)
+{
+	printk("[mcu-server] method=%d path=%s\n", method, path);
+
+	extern uint8_t pvcm_get_invoke_stream_id(void);
+	uint8_t sid = pvcm_get_invoke_stream_id();
+
+	if (method == PVCM_HTTP_GET) {
+		const char *resp =
+			"{\"temperature\":22.4,\"humidity\":65,\"uptime_ms\":"
+			;
+		char full_resp[128];
+		snprintf(full_resp, sizeof(full_resp),
+			 "%s%u}", resp, (unsigned)k_uptime_get_32());
+		pvcm_http_respond(sid, 200,
+				  "Content-Type: application/json\r\n",
+				  full_resp, strlen(full_resp));
+	} else {
+		const char *resp = "{\"ok\":true}";
+		pvcm_http_respond(sid, 200,
+				  "Content-Type: application/json\r\n",
+				  resp, strlen(resp));
+	}
+}
+#endif /* CONFIG_PANTAVISOR_BRIDGE */
+
 int main(void)
 {
 	printk("PVCM Shell starting — 2 channels (shell + protocol)\n");
+
+#ifdef CONFIG_PANTAVISOR_BRIDGE
+	pvcm_http_serve("/sensor", sensor_handler, NULL);
+	printk("MCU HTTP server: /sensor registered\n");
+#endif
+
 	k_thread_create(&thread_mng_data, thread_mng_stack, APP_TASK_STACK_SIZE,
 			rpmsg_mng_task,
 			NULL, NULL, NULL, K_PRIO_COOP(8), 0, K_NO_WAIT);
