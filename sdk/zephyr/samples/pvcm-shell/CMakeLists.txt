@@ -6,4 +6,4 @@ zephyr_compile_definitions(METAL_MAX_DEVICE_REGIONS=2)
 
 target_include_directories(app PRIVATE ${LIBMETAL_INCLUDE_DIR} ${OPENAMP_INCLUDE_DIR} ${PLATFORM_DIR})
 
-target_sources(app PRIVATE src/main.c)
+target_sources(app PRIVATE src/main.c src/shell_rpmsg.c)
