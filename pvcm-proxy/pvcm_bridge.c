@@ -21,7 +21,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 /* pending request being assembled from MCU frames */
@@ -91,7 +93,10 @@ static int http_request(const char *method_str, const char *host, int port,
 	if (req_body && req_body_len > 0)
 		write(fd, req_body, req_body_len);
 
-	/* read response */
+	/* read response with timeout — upstream may stream or hang */
+	struct timeval tv = { .tv_sec = 3, .tv_usec = 0 };
+	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
 	char raw[16384];
 	size_t total = 0;
 	while (total < sizeof(raw) - 1) {
@@ -99,13 +104,32 @@ static int http_request(const char *method_str, const char *host, int port,
 		if (r <= 0)
 			break;
 		total += r;
+		/* if we got headers + some body, check if we have Content-Length
+		 * worth of data and stop early */
+		if (total > 4) {
+			char *hdr_end = strstr(raw, "\r\n\r\n");
+			if (hdr_end) {
+				char *cl = strcasestr(raw, "Content-Length:");
+				if (cl && cl < hdr_end) {
+					size_t expected = atoi(cl + 15);
+					size_t body_start = (hdr_end + 4) - raw;
+					if (total - body_start >= expected)
+						break;
+				}
+			}
+		}
 	}
 	raw[total] = '\0';
 	close(fd);
 
-	/* parse HTTP response */
+	/* parse HTTP response — accept both \r\n\r\n and \n\n as header end */
 	char *status_line = raw;
 	char *hdr_end = strstr(raw, "\r\n\r\n");
+	int hdr_sep_len = 4;
+	if (!hdr_end) {
+		hdr_end = strstr(raw, "\n\n");
+		hdr_sep_len = 2;
+	}
 	if (!hdr_end)
 		return -1;
 
@@ -125,7 +149,7 @@ static int http_request(const char *method_str, const char *host, int port,
 	}
 
 	/* extract body */
-	char *body_start = hdr_end + 4;
+	char *body_start = hdr_end + hdr_sep_len;
 	size_t body_len = total - (body_start - raw);
 	if (body_len > resp_buf_size - 1)
 		body_len = resp_buf_size - 1;
