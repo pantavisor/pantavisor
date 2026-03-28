@@ -1,15 +1,9 @@
 /*
  * pvcm-proxy RPMsg transport
  *
- * RPMsg on Linux appears as /dev/rpmsgX character devices.
- * Messages have built-in boundaries (no stream reassembly needed).
- * We still use the PVCM frame format (sync + len + payload + crc32)
- * for consistency with UART, but RPMsg preserves message boundaries.
- *
- * The device path is typically:
- *   /dev/rpmsg0          - first RPMsg endpoint
- *   /dev/ttyRPMSG0       - RPMsg TTY (alternative interface)
- *   /dev/rpmsg_ctrl0     - control device for creating endpoints
+ * RPMsg on Linux appears as /dev/ttyRPMSGN character devices.
+ * The tty layer may concatenate multiple RPMsg messages in one
+ * read(), so we maintain a residual buffer between calls.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -26,7 +20,7 @@
 #include <termios.h>
 #include <unistd.h>
 
-/* CRC32 — same as UART transport */
+/* CRC32 */
 static uint32_t crc32_table[256];
 static bool crc32_init_done = false;
 
@@ -52,10 +46,14 @@ static uint32_t crc32_calc(const void *data, size_t len)
 	return crc ^ 0xFFFFFFFF;
 }
 
+/* Residual buffer for handling concatenated RPMsg messages */
+static uint8_t residual[4096];
+static size_t residual_len = 0;
+
 static int rpmsg_open(struct pvcm_transport *t, const char *device,
 		      uint32_t baudrate)
 {
-	(void)baudrate; /* RPMsg has no baudrate */
+	(void)baudrate;
 
 	int fd = open(device, O_RDWR);
 	if (fd < 0) {
@@ -63,8 +61,7 @@ static int rpmsg_open(struct pvcm_transport *t, const char *device,
 		return -1;
 	}
 
-	/* Set raw mode — PVCM is a binary protocol, tty line discipline
-	 * must not interpret newlines, echo, or do flow control */
+	/* Set raw mode — PVCM is a binary protocol */
 	struct termios tio;
 	if (tcgetattr(fd, &tio) == 0) {
 		cfmakeraw(&tio);
@@ -72,6 +69,7 @@ static int rpmsg_open(struct pvcm_transport *t, const char *device,
 	}
 
 	t->fd = fd;
+	residual_len = 0;
 	fprintf(stdout, "[pvcm-proxy] RPMsg opened: %s\n", device);
 	return 0;
 }
@@ -79,7 +77,6 @@ static int rpmsg_open(struct pvcm_transport *t, const char *device,
 static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 			    size_t len)
 {
-	/* build complete frame in one buffer for atomic write */
 	uint8_t frame[4 + len + 4];
 	frame[0] = PVCM_SYNC_BYTE_0;
 	frame[1] = PVCM_SYNC_BYTE_1;
@@ -93,7 +90,6 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 	frame[4 + len + 2] = (crc >> 16) & 0xFF;
 	frame[4 + len + 3] = (crc >> 24) & 0xFF;
 
-	/* single write — RPMsg preserves message boundaries */
 	ssize_t n = write(t->fd, frame, 4 + len + 4);
 	if (n != (ssize_t)(4 + len + 4)) {
 		fprintf(stderr, "[pvcm-proxy] rpmsg write failed: %m\n");
@@ -103,40 +99,33 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 	return 0;
 }
 
-static int rpmsg_recv_frame(struct pvcm_transport *t, void *payload,
-			    size_t max_len, int timeout_ms)
+/*
+ * Try to extract one PVCM frame from buf[0..buflen-1].
+ * Returns payload length on success, -1 on parse error.
+ * Sets *consumed to the total bytes consumed (header+payload+crc).
+ */
+static int parse_one_frame(const uint8_t *buf, size_t buflen,
+			   void *payload, size_t max_len, size_t *consumed)
 {
-	struct pollfd pfd = { .fd = t->fd, .events = POLLIN };
-
-	int ret = poll(&pfd, 1, timeout_ms);
-	if (ret <= 0)
-		return ret == 0 ? -2 : -1;
-
-	/* RPMsg delivers complete messages — read entire frame at once */
-	uint8_t buf[4 + max_len + 4];
-	ssize_t n = read(t->fd, buf, sizeof(buf));
-	if (n < 8) { /* min: 4 header + 0 payload + 4 crc */
-		if (n < 0)
-			fprintf(stderr, "[pvcm-proxy] rpmsg read failed: %m\n");
+	if (buflen < 8)
 		return -1;
-	}
 
-	/* verify sync bytes */
 	if (buf[0] != PVCM_SYNC_BYTE_0 || buf[1] != PVCM_SYNC_BYTE_1) {
 		fprintf(stderr, "[pvcm-proxy] rpmsg sync mismatch "
-			"(got 0x%02x 0x%02x, n=%zd)\n",
-			buf[0], buf[1], n);
+			"(got 0x%02x 0x%02x, buflen=%zu)\n",
+			buf[0], buf[1], buflen);
 		return -1;
 	}
 
 	uint16_t len = buf[2] | (buf[3] << 8);
-	if (len > max_len || (size_t)(4 + len + 4) > (size_t)n) {
+	size_t frame_size = 4 + len + 4;
+
+	if (len > max_len || frame_size > buflen) {
 		fprintf(stderr, "[pvcm-proxy] rpmsg frame length mismatch "
-			"(len=%u, read=%zd)\n", len, n);
+			"(len=%u, buflen=%zu)\n", len, buflen);
 		return -1;
 	}
 
-	/* verify CRC */
 	uint32_t recv_crc = buf[4 + len] | (buf[4 + len + 1] << 8) |
 			    (buf[4 + len + 2] << 16) |
 			    (buf[4 + len + 3] << 24);
@@ -149,7 +138,59 @@ static int rpmsg_recv_frame(struct pvcm_transport *t, void *payload,
 	}
 
 	memcpy(payload, &buf[4], len);
+	*consumed = frame_size;
 	return (int)len;
+}
+
+static int rpmsg_recv_frame(struct pvcm_transport *t, void *payload,
+			    size_t max_len, int timeout_ms)
+{
+	/* First check if we have a complete frame in the residual buffer */
+	if (residual_len >= 8) {
+		size_t consumed = 0;
+		int ret = parse_one_frame(residual, residual_len, payload,
+					  max_len, &consumed);
+		if (ret >= 0) {
+			/* Remove consumed bytes from residual */
+			residual_len -= consumed;
+			if (residual_len > 0)
+				memmove(residual, residual + consumed,
+					residual_len);
+			return ret;
+		}
+		/* Parse failed — discard residual and read fresh */
+		residual_len = 0;
+	}
+
+	/* Read more data from the tty */
+	struct pollfd pfd = { .fd = t->fd, .events = POLLIN };
+	int ret = poll(&pfd, 1, timeout_ms);
+	if (ret <= 0)
+		return ret == 0 ? -2 : -1;
+
+	ssize_t n = read(t->fd, residual + residual_len,
+			 sizeof(residual) - residual_len);
+	if (n <= 0)
+		return -1;
+
+	residual_len += n;
+
+	/* Try to parse one frame from the buffer */
+	if (residual_len >= 8) {
+		size_t consumed = 0;
+		ret = parse_one_frame(residual, residual_len, payload,
+				      max_len, &consumed);
+		if (ret >= 0) {
+			residual_len -= consumed;
+			if (residual_len > 0)
+				memmove(residual, residual + consumed,
+					residual_len);
+			return ret;
+		}
+	}
+
+	/* Not enough data for a complete frame yet */
+	return -1;
 }
 
 static void rpmsg_close(struct pvcm_transport *t)
@@ -158,6 +199,7 @@ static void rpmsg_close(struct pvcm_transport *t)
 		close(t->fd);
 		t->fd = -1;
 	}
+	residual_len = 0;
 }
 
 struct pvcm_transport pvcm_transport_rpmsg = {
