@@ -859,7 +859,8 @@ static void _read_platform_pipefd_cb(int fd, short event, void *arg)
 			       p->name);
 
 	ctrl = _pv_platforms_get_ctrl(p->type);
-	if (ctrl->get_console_fd(p, &p->log) == -1) {
+	if (!ctrl || !ctrl->get_console_fd ||
+	    ctrl->get_console_fd(p, &p->log) == -1) {
 		pv_log(WARN, "could not get a valid console log fd for %s",
 		       p->name);
 	} else {
@@ -907,10 +908,28 @@ int pv_platform_start(struct pv_platform *p)
 	}
 
 	ctrl = _pv_platforms_get_ctrl(p->type);
+	if (!ctrl) {
+		pv_log(ERROR,
+		       "no plugin for platform type '%s' (platform '%s')",
+		       p->type, p->name);
+		return -1;
+	}
 
 	// update plugin with current config
-	ctrl->set_loglevel(pv_config_get_int(PV_LXC_LOG_LEVEL));
-	ctrl->set_capture(pv_config_get_bool(PV_LOG_CAPTURE));
+	if (ctrl->set_loglevel) {
+		ctrl->set_loglevel(pv_config_get_int(PV_LXC_LOG_LEVEL));
+	} else {
+		pv_log(WARN,
+		       "plugin '%s' has no set_loglevel — cannot configure log level",
+		       p->type);
+	}
+	if (ctrl->set_capture) {
+		ctrl->set_capture(pv_config_get_bool(PV_LOG_CAPTURE));
+	} else {
+		pv_log(WARN,
+		       "plugin '%s' has no set_capture — cannot configure capture",
+		       p->type);
+	}
 
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
 
@@ -1039,7 +1058,10 @@ int pv_platform_stop(struct pv_platform *p)
 
 	pv_log(DEBUG, "leniently stopping platform '%s'", p->name);
 	ctrl = _pv_platforms_get_ctrl(p->type);
-	ctrl->stop(p, NULL);
+	if (ctrl && ctrl->stop)
+		ctrl->stop(p, NULL);
+	else
+		pv_log(ERROR, "no plugin for platform type '%s'", p->type);
 	pv_platform_set_status(p, PLAT_STOPPING);
 
 	pv_platform_remove_config_overlay(p->name);
