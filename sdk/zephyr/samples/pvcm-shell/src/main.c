@@ -86,9 +86,16 @@ static void platform_ipm_callback(const struct device *dev, void *context,
 
 static void receive_message(void)
 {
-	if (k_sem_take(&data_sem, K_FOREVER) == 0) {
-		rproc_virtio_notified(rvdev.vdev, VRING1_ID);
-	}
+	/*
+	 * Poll with short timeout instead of blocking forever.
+	 * The Linux→M7 MU kick (TYPE_TX) can time out if the M7
+	 * doesn't read MU RR[1] quickly enough. By polling, we
+	 * process vring data even when the kick notification is lost.
+	 */
+	/* Poll with short timeout — the MU kick from Linux can fail
+	 * with ETIME, so we must poll the vring periodically */
+	k_sem_take(&data_sem, K_MSEC(50));
+	rproc_virtio_notified(rvdev.vdev, VRING1_ID);
 }
 
 static void new_service_cb(struct rpmsg_device *rdev, const char *name,

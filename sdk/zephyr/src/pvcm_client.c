@@ -192,9 +192,14 @@ static int do_http_request(uint8_t method, const char *path,
 	int ret = -ETIMEDOUT;
 
 	while (k_uptime_get() < deadline) {
-		int flen = t->recv_frame(rx, sizeof(rx), 500);
-		if (flen > 0)
+		/* sleep briefly to let the management thread (COOP 8)
+		 * process vring and deliver frames to our queue */
+		k_sleep(K_MSEC(50));
+
+		int flen = t->recv_frame(rx, sizeof(rx), 200);
+		if (flen > 0) {
 			pvcm_server_dispatch(rx, flen);
+		}
 		if (pending.complete) {
 			ret = 0;
 			break;
