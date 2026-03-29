@@ -29,6 +29,12 @@ extern void pvcm_client_on_invoke_data(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_end(const uint8_t *buf, int len);
 #endif
 
+#ifdef CONFIG_PANTAVISOR_DBUS
+/* D-Bus callbacks (from pvcm_dbus.c) */
+extern void pvcm_dbus_on_call_resp(const uint8_t *buf, int len);
+extern void pvcm_dbus_on_signal(const uint8_t *buf, int len);
+#endif
+
 #define PVCM_SERVER_STACK_SIZE  2048
 #define PVCM_SERVER_PRIORITY    7
 
@@ -132,6 +138,14 @@ void pvcm_server_dispatch(const uint8_t *buf, int len)
 	case PVCM_OP_HTTP_END:
 		pvcm_client_on_http_end(buf, len);
 		pvcm_client_on_invoke_end(buf, len);
+		break;
+#endif
+#ifdef CONFIG_PANTAVISOR_DBUS
+	case PVCM_OP_DBUS_CALL_RESP:
+		pvcm_dbus_on_call_resp(buf, len);
+		break;
+	case PVCM_OP_DBUS_SIGNAL:
+		pvcm_dbus_on_signal(buf, len);
 		break;
 #endif
 	default:
