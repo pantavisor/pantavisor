@@ -1,10 +1,13 @@
 /*
- * PVCM Shell — two-channel RPMsg firmware.
+ * PVCM Shell — MCU firmware with protocol + shell channels.
  *
- * Channel 0 (ttyRPMSG0): Zephyr debug shell
- * Channel 1 (ttyRPMSG1): PVCM protocol (heartbeat, HTTP gateway)
+ * On RPMsg (i.MX8MN):
+ *   Channel 0 (ttyRPMSG0): Zephyr debug shell
+ *   Channel 1 (ttyRPMSG1): PVCM protocol (heartbeat, HTTP/D-Bus gateway)
  *
- * Based on zephyr/samples/subsys/ipc/openamp_rsc_table.
+ * On native_sim:
+ *   uart0: console/shell
+ *   uart_1: PVCM protocol (PTY)
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -14,17 +17,22 @@
 #include <string.h>
 #include <stdio.h>
 
-#include <zephyr/drivers/ipm.h>
-
-#include <openamp/open_amp.h>
-#include <metal/device.h>
-#include <resource_table.h>
-
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(pvcm_main, LOG_LEVEL_DBG);
 
 #include <pantavisor/pvcm.h>
 #include <pantavisor/pvcm_protocol.h>
+
+#ifdef CONFIG_OPENAMP
+/*
+ * RPMsg platform — OpenAMP + remoteproc on real hardware.
+ * Two RPMsg channels: shell + PVCM protocol.
+ */
+
+#include <zephyr/drivers/ipm.h>
+#include <openamp/open_amp.h>
+#include <metal/device.h>
+#include <resource_table.h>
 #include "shell_rpmsg.h"
 
 /* PVCM transport hooks (from pvcm_transport_rpmsg.c) */
@@ -276,6 +284,8 @@ void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
 	}
 }
 
+#endif /* CONFIG_OPENAMP */
+
 #ifdef CONFIG_PANTAVISOR_BRIDGE
 /*
  * MCU HTTP server handler — serves sensor data to Linux containers.
@@ -310,17 +320,33 @@ static void sensor_handler(uint8_t method, const char *path,
 }
 #endif /* CONFIG_PANTAVISOR_BRIDGE */
 
+#ifdef CONFIG_PANTAVISOR_DBUS
+/* D-Bus gateway: shell commands provide interactive testing
+ * (pv dbus call, pv dbus list, pv dbus subscribe) */
+#endif /* CONFIG_PANTAVISOR_DBUS */
+
 int main(void)
 {
-	printk("PVCM Shell starting — 2 channels (shell + protocol)\n");
+	printk("PVCM Shell starting\n");
 
 #ifdef CONFIG_PANTAVISOR_BRIDGE
 	pvcm_http_serve("/sensor", sensor_handler, NULL);
 	printk("MCU HTTP server: /sensor registered\n");
 #endif
 
+#ifdef CONFIG_PANTAVISOR_DBUS
+	printk("MCU D-Bus gateway enabled\n");
+#endif
+
+#ifdef CONFIG_OPENAMP
+	/* RPMsg platform: start management thread for OpenAMP vring polling */
 	k_thread_create(&thread_mng_data, thread_mng_stack, APP_TASK_STACK_SIZE,
 			rpmsg_mng_task,
 			NULL, NULL, NULL, K_PRIO_COOP(8), 0, K_NO_WAIT);
+#else
+	/* native_sim / UART: PVCM server thread auto-starts via K_THREAD_DEFINE */
+	printk("PVCM UART mode — server thread auto-started\n");
+#endif
+
 	return 0;
 }

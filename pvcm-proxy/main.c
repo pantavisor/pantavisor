@@ -24,9 +24,11 @@
 #include "pvcm_transport.h"
 #include "pvcm_protocol.h"
 #include "pvcm_bridge.h"
+#include "pvcm_dbus_bridge.h"
 
 static volatile bool running = true;
 static FILE *dbglog = NULL;
+static char dbus_socket[256] = "";
 
 /* log to both stdout/stderr and debug file */
 #define pvcm_log(fmt, ...) do {                                           \
@@ -66,6 +68,8 @@ static void usage(const char *prog)
 		"  --transport, -t <type>   Transport: uart or rpmsg (default: uart)\n"
 		"  --baudrate, -b <rate>    UART baudrate (default: 921600)\n"
 		"  --listen-port, -p <port> HTTP listener port (default: 18081)\n"
+		"  --dbus-socket <path>     D-Bus socket path (enables D-Bus bridge)\n"
+		"  --dbus-session           Use session D-Bus (for testing)\n"
 		"  --help, -h               Show this help\n"
 		"\n"
 		"If --config is given, device/transport/baudrate are read from\n"
@@ -90,6 +94,8 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 		{ "baudrate", required_argument, NULL, 'b' },
 		{ "remoteproc", required_argument, NULL, 'r' },
 		{ "listen-port", required_argument, NULL, 'p' },
+		{ "dbus-socket", required_argument, NULL, 'D' },
+		{ "dbus-session", no_argument, NULL, 'S' },
 		{ "help", no_argument, NULL, 'h' },
 		{ NULL, 0, NULL, 0 }
 	};
@@ -130,6 +136,27 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 		case 'p':
 			listen_port = atoi(optarg);
 			break;
+		case 'D':
+			strncpy(dbus_socket, optarg, sizeof(dbus_socket) - 1);
+			break;
+		case 'S': {
+			/* use session D-Bus for testing */
+			const char *addr = getenv("DBUS_SESSION_BUS_ADDRESS");
+			if (addr) {
+				/* extract path from unix:path=/run/user/1000/bus */
+				const char *p = strstr(addr, "path=");
+				if (p) {
+					p += 5;
+					const char *end = strchr(p, ',');
+					size_t len = end ? (size_t)(end - p) : strlen(p);
+					if (len >= sizeof(dbus_socket))
+						len = sizeof(dbus_socket) - 1;
+					memcpy(dbus_socket, p, len);
+					dbus_socket[len] = '\0';
+				}
+			}
+			break;
+		}
 		case 'h':
 			usage(argv[0]);
 			return -1;
@@ -477,11 +504,18 @@ int main(int argc, char **argv)
 	pvcm_bridge_init(transport);
 	pvcm_bridge_start_listener(transport, listen_port);
 
+	/* start D-Bus bridge if socket configured */
+	if (dbus_socket[0]) {
+		if (pvcm_dbus_bridge_init(transport, dbus_socket) < 0)
+			pvcm_err("D-Bus bridge init failed (continuing without)");
+	}
+
 	/* main protocol loop */
 	pvcm_run(&session, &running);
 
 	/* shutdown */
 	pvcm_log("shutting down MCU '%s'", cfg.name);
+	pvcm_dbus_bridge_cleanup();
 	transport->close(transport);
 
 	return 0;

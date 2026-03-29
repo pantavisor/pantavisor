@@ -12,6 +12,7 @@
 
 #include "pvcm_protocol.h"
 #include "pvcm_bridge.h"
+#include "pvcm_dbus_bridge.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -211,6 +212,17 @@ int pvcm_dispatch_one(struct pvcm_session *s, int timeout_ms)
 		pvcm_bridge_on_reply_end(s->transport, buf, len);
 		break;
 
+	/* D-Bus gateway */
+	case PVCM_OP_DBUS_CALL:
+		pvcm_dbus_bridge_on_call(s->transport, buf, len);
+		break;
+	case PVCM_OP_DBUS_SUBSCRIBE:
+		pvcm_dbus_bridge_on_subscribe(s->transport, buf, len);
+		break;
+	case PVCM_OP_DBUS_UNSUBSCRIBE:
+		pvcm_dbus_bridge_on_unsubscribe(s->transport, buf, len);
+		break;
+
 	default:
 		fprintf(stderr, "[pvcm-proxy] unhandled opcode 0x%02x "
 			"(len=%d)\n", op, len);
@@ -240,6 +252,9 @@ int pvcm_run(struct pvcm_session *s, volatile bool *running)
 			if (s->last_heartbeat_uptime > 0)
 				last_heartbeat = time(NULL);
 		}
+
+		/* poll D-Bus for pending signals (non-blocking) */
+		pvcm_dbus_bridge_poll();
 
 		/* check heartbeat timeout */
 		time_t now = time(NULL);

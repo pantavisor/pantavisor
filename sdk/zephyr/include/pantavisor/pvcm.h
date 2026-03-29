@@ -99,6 +99,41 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 		      const char *headers,
 		      const char *body, size_t body_len);
 
+/* ---- D-Bus Gateway API (requires CONFIG_PANTAVISOR_DBUS) ----
+ *
+ * Call D-Bus methods on the Linux system bus and subscribe to signals.
+ * The proxy handles D-Bus type marshalling — args and results are JSON.
+ */
+
+/* Callback for D-Bus method call results */
+typedef void (*pvcm_dbus_cb_t)(uint8_t error, const char *result,
+			       size_t result_len, void *ctx);
+
+/* Call a D-Bus method.
+ * args_json: JSON array of positional args, e.g. '["hello",42]', or NULL.
+ * Returns 0 on success (result delivered via callback), negative on error. */
+int pvcm_dbus_call(const char *dest, const char *obj_path,
+		   const char *interface, const char *member,
+		   const char *args_json,
+		   pvcm_dbus_cb_t cb, void *ctx);
+
+/* Callback for D-Bus signal delivery */
+typedef void (*pvcm_dbus_signal_cb_t)(const char *sender,
+				      const char *obj_path,
+				      const char *interface,
+				      const char *member,
+				      const char *args_json,
+				      void *ctx);
+
+/* Subscribe to a D-Bus signal. Empty/NULL fields match all.
+ * Returns sub_id (>0) on success, negative on error. */
+int pvcm_dbus_subscribe(const char *sender, const char *obj_path,
+			const char *interface, const char *signal_name,
+			pvcm_dbus_signal_cb_t cb, void *ctx);
+
+/* Unsubscribe from a D-Bus signal */
+int pvcm_dbus_unsubscribe(int sub_id);
+
 /* ---- Log API (for non-Zephyr log users, e.g. FreeRTOS compat) ---- */
 
 void pvcm_log(uint8_t level, const char *module, const char *fmt, ...);
