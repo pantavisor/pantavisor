@@ -12,6 +12,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+#define _GNU_SOURCE  /* for strcasestr */
+
 #include "pvcm_bridge.h"
 
 #include <stdbool.h>
@@ -24,7 +26,138 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/un.h>
 #include <unistd.h>
+
+/* ---- Route table ---- */
+
+static struct http_route routes[PVCM_MAX_ROUTES];
+static int num_routes;
+
+int pvcm_bridge_add_route(const char *spec)
+{
+	if (num_routes >= PVCM_MAX_ROUTES)
+		return -1;
+
+	/* parse "name=unix:/path" or "name=tcp:host:port" */
+	const char *eq = strchr(spec, '=');
+	if (!eq)
+		return -1;
+
+	struct http_route *r = &routes[num_routes];
+	memset(r, 0, sizeof(*r));
+
+	size_t nlen = eq - spec;
+	if (nlen >= sizeof(r->name))
+		nlen = sizeof(r->name) - 1;
+	memcpy(r->name, spec, nlen);
+	r->name[nlen] = '\0';
+
+	const char *val = eq + 1;
+	if (strncmp(val, "unix:", 5) == 0) {
+		strncpy(r->unix_path, val + 5, sizeof(r->unix_path) - 1);
+	} else if (strncmp(val, "tcp:", 4) == 0) {
+		const char *hp = val + 4;
+		const char *colon = strrchr(hp, ':');
+		if (!colon)
+			return -1;
+		size_t hlen = colon - hp;
+		if (hlen >= sizeof(r->tcp_host))
+			hlen = sizeof(r->tcp_host) - 1;
+		memcpy(r->tcp_host, hp, hlen);
+		r->tcp_host[hlen] = '\0';
+		r->tcp_port = atoi(colon + 1);
+	} else {
+		return -1;
+	}
+
+	fprintf(stdout, "[bridge] route: %s -> %s%s%s%s\n",
+		r->name,
+		r->unix_path[0] ? "unix:" : "tcp:",
+		r->unix_path[0] ? r->unix_path : r->tcp_host,
+		r->unix_path[0] ? "" : ":",
+		r->unix_path[0] ? "" : val + 4 + strlen(r->tcp_host) + 1);
+
+	num_routes++;
+	return 0;
+}
+
+static const struct http_route *find_route(const char *hostname)
+{
+	if (!hostname)
+		return NULL;
+
+	/* strip .pvlocal suffix if present */
+	char name[64];
+	strncpy(name, hostname, sizeof(name) - 1);
+	name[sizeof(name) - 1] = '\0';
+	char *suffix = strstr(name, ".pvlocal");
+	if (suffix)
+		*suffix = '\0';
+	/* also strip port if present (Host: foo.pvlocal:80) */
+	char *colon = strchr(name, ':');
+	if (colon)
+		*colon = '\0';
+
+	for (int i = 0; i < num_routes; i++) {
+		if (strcmp(routes[i].name, name) == 0)
+			return &routes[i];
+	}
+	return NULL;
+}
+
+/* Extract Host header value from raw headers string */
+static const char *extract_host(const char *headers, char *buf, size_t buf_size)
+{
+	if (!headers)
+		return NULL;
+
+	const char *h = strcasestr(headers, "Host:");
+	if (!h)
+		return NULL;
+
+	h += 5;
+	while (*h == ' ' || *h == '\t') h++;
+
+	size_t len = 0;
+	while (h[len] && h[len] != '\r' && h[len] != '\n' && len < buf_size - 1)
+		len++;
+	memcpy(buf, h, len);
+	buf[len] = '\0';
+	return buf;
+}
+
+/* Connect to a backend — returns fd or -1 */
+static int connect_backend(const struct http_route *route)
+{
+	if (route->unix_path[0]) {
+		int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+		if (fd < 0)
+			return -1;
+		struct sockaddr_un addr = { .sun_family = AF_UNIX };
+		strncpy(addr.sun_path, route->unix_path,
+			sizeof(addr.sun_path) - 1);
+		if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+			close(fd);
+			return -1;
+		}
+		return fd;
+	} else {
+		int fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (fd < 0)
+			return -1;
+		struct sockaddr_in addr = {
+			.sin_family = AF_INET,
+			.sin_port = htons(route->tcp_port),
+		};
+		inet_pton(AF_INET, route->tcp_host, &addr.sin_addr);
+		if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+			close(fd);
+			return -1;
+		}
+		return fd;
+	}
+}
 
 /* pending request being assembled from MCU frames */
 static struct {
@@ -38,56 +171,60 @@ static struct {
 	bool active;
 } pending_req;
 
-/* Simple HTTP client — connects to host:port, sends request, gets response */
-static int http_request(const char *method_str, const char *host, int port,
+/* Simple HTTP client — connects to backend, sends request, gets response.
+ * If route is non-NULL, connects to the route's backend.
+ * Otherwise falls back to host:port (legacy). */
+static int http_request(const char *method_str,
+			const struct http_route *route,
+			const char *host, int port,
 			const char *path, const char *req_headers,
 			const char *req_body, size_t req_body_len,
 			char *resp_buf, size_t resp_buf_size,
 			int *resp_status, char *resp_headers,
 			size_t resp_headers_size)
 {
-	struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(port),
-	};
-	inet_pton(AF_INET, host, &addr.sin_addr);
+	int fd;
 
-	int fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (route) {
+		fd = connect_backend(route);
+	} else {
+		fd = socket(AF_INET, SOCK_STREAM, 0);
+		if (fd >= 0) {
+			struct sockaddr_in addr = {
+				.sin_family = AF_INET,
+				.sin_port = htons(port),
+			};
+			inet_pton(AF_INET, host, &addr.sin_addr);
+			if (connect(fd, (struct sockaddr *)&addr,
+				    sizeof(addr)) < 0) {
+				close(fd);
+				fd = -1;
+			}
+		}
+	}
 	if (fd < 0)
 		return -1;
 
-	if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		close(fd);
-		return -1;
-	}
-
 	/* send HTTP request */
-	char req_line[512];
-	int n = snprintf(req_line, sizeof(req_line),
-			 "%s %s HTTP/1.1\r\nHost: %s:%d\r\n"
-			 "Connection: close\r\n"
-			 "%s"
-			 "%s%s"
-			 "\r\n",
-			 method_str, path, host, port,
-			 req_headers ? req_headers : "",
-			 req_body_len > 0 ? "Content-Length: " : "",
-			 req_body_len > 0 ? "" : "");
+	const char *host_hdr = host;
+	if (route)
+		host_hdr = route->name;
 
-	if (req_body_len > 0) {
-		char cl[32];
+	char req_line[512];
+	int n;
+	char cl[32];
+	if (req_body_len > 0)
 		snprintf(cl, sizeof(cl), "Content-Length: %zu\r\n",
 			 req_body_len);
-		n = snprintf(req_line, sizeof(req_line),
-			     "%s %s HTTP/1.1\r\nHost: %s:%d\r\n"
-			     "Connection: close\r\n"
-			     "%s"
-			     "%s"
-			     "\r\n",
-			     method_str, path, host, port,
-			     req_headers ? req_headers : "",
-			     cl);
-	}
+	n = snprintf(req_line, sizeof(req_line),
+		     "%s %s HTTP/1.1\r\nHost: %s\r\n"
+		     "Connection: close\r\n"
+		     "%s"
+		     "%s"
+		     "\r\n",
+		     method_str, path, host_hdr,
+		     req_headers ? req_headers : "",
+		     req_body_len > 0 ? cl : "");
 
 	write(fd, req_line, n);
 	if (req_body && req_body_len > 0)
@@ -248,6 +385,21 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 		method_to_str(pending_req.method), pending_req.path,
 		pending_req.body_len);
 
+	/* resolve route from Host header */
+	char host_buf[64] = "";
+	const char *hostname = extract_host(
+		pending_req.headers[0] ? pending_req.headers : NULL,
+		host_buf, sizeof(host_buf));
+	const struct http_route *route = find_route(hostname);
+
+	if (route) {
+		fprintf(stdout, "[bridge] route: %s -> %s%s\n",
+			hostname,
+			route->unix_path[0] ? "unix:" : "",
+			route->unix_path[0] ? route->unix_path
+					    : route->tcp_host);
+	}
+
 	/* forward to upstream HTTP server */
 	char resp_body[8192] = "";
 	char resp_headers[1024] = "";
@@ -255,6 +407,7 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 
 	int body_len = http_request(
 		method_to_str(pending_req.method),
+		route,
 		"127.0.0.1", 12368,
 		pending_req.path,
 		pending_req.headers[0] ? pending_req.headers : NULL,
