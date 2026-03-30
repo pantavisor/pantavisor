@@ -41,7 +41,6 @@ int pv_ph_device_exists(struct pantavisor *pv);
 int pv_ph_register_self(struct pantavisor *pv);
 bool pv_ph_is_auth(struct pantavisor *pv);
 const char **pv_ph_get_certs();
-void pv_ph_free_certs(const char **certs);
 int pv_ph_device_is_owned(struct pantavisor *pv, char **c);
 void pv_ph_release_client(struct pantavisor *pv);
 void pv_ph_update_hint_file(struct pantavisor *pv, char *c);
