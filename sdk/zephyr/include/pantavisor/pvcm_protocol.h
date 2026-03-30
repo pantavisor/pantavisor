@@ -142,6 +142,7 @@ typedef enum {
 #define PVCM_DBUS_ERR_TIMEOUT     3  /* D-Bus call timed out */
 #define PVCM_DBUS_ERR_FAILED      4  /* generic D-Bus error */
 #define PVCM_DBUS_ERR_ARGS        5  /* argument marshalling error */
+#define PVCM_DBUS_ERR_TRUNCATED   6  /* reply too large for frame */
 
 /* --- Message Structs --- */
 

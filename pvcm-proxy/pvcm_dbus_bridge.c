@@ -350,7 +350,20 @@ static int json_args_to_dbus(DBusMessage *msg, const char *json)
 					DBUS_TYPE_INVALID);
 			}
 		} else {
-			p++;
+			/* bare word — treat as unquoted string
+			 * (common when Zephyr shell strips quotes) */
+			const char *start = p;
+			while (*p && *p != ',' && *p != ']' &&
+			       *p != ' ' && *p != '\t')
+				p++;
+			size_t len = p - start;
+			char val[256];
+			if (len >= sizeof(val)) len = sizeof(val) - 1;
+			memcpy(val, start, len);
+			val[len] = '\0';
+			dbus_message_append_args(msg,
+				DBUS_TYPE_STRING, &(const char *){val},
+				DBUS_TYPE_INVALID);
 		}
 	}
 
@@ -883,10 +896,21 @@ int pvcm_dbus_bridge_on_call(struct pvcm_transport *t,
 	}
 
 	/* success — serialize reply to JSON */
-	resp.error = PVCM_DBUS_OK;
 	int json_len = dbus_reply_to_json(reply, resp.data,
 					  sizeof(resp.data) - 1);
-	if (json_len < 0) json_len = 0;
+	if (json_len < 0) {
+		/* result too large for frame */
+		resp.error = PVCM_DBUS_ERR_TRUNCATED;
+		int elen = snprintf(resp.data, sizeof(resp.data),
+				    "reply exceeds %zu byte frame limit",
+				    sizeof(resp.data) - 1);
+		resp.data_len = (uint16_t)elen;
+		fprintf(stderr, "[dbus-bridge] CALL truncated: %s\n", resp.data);
+		dbus_message_unref(reply);
+		t->send_frame(t, &resp, 6 + resp.data_len);
+		return -1;
+	}
+	resp.error = PVCM_DBUS_OK;
 	resp.data[json_len] = '\0';
 	resp.data_len = (uint16_t)json_len;
 
