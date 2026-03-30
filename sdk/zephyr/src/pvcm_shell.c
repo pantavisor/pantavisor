@@ -79,13 +79,64 @@ static int cmd_pv_heartbeat(const struct shell *sh, size_t argc, char **argv)
 static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 {
 	if (argc < 2) {
-		shell_print(sh, "Usage: pv http <path>");
+		shell_print(sh, "Usage: pv http <url>\n"
+			    "       pv http <service> <path>\n"
+			    "Examples:\n"
+			    "  pv http http://pv-ctrl.pvlocal/containers\n"
+			    "  pv http pv-ctrl /containers\n"
+			    "  pv http /cgi-bin/logs  (default host)");
 		return -EINVAL;
 	}
 
+	char host_hdr[128] = "";
+	const char *path;
+
+	if (strncmp(argv[1], "http://", 7) == 0) {
+		/* full URL: http://hostname.pvlocal/path */
+		const char *hp = argv[1] + 7;
+		const char *slash = strchr(hp, '/');
+		if (slash) {
+			size_t hlen = slash - hp;
+			if (hlen >= sizeof(host_hdr))
+				hlen = sizeof(host_hdr) - 1;
+			memcpy(host_hdr, hp, hlen);
+			host_hdr[hlen] = '\0';
+			path = slash;
+		} else {
+			strncpy(host_hdr, hp, sizeof(host_hdr) - 1);
+			path = "/";
+		}
+	} else if (argc >= 3 && argv[1][0] != '/') {
+		/* shortform: pv http servicename /path */
+		snprintf(host_hdr, sizeof(host_hdr), "%s.pvlocal", argv[1]);
+		path = argv[2];
+	} else {
+		/* legacy: pv http /path (no host, default route) */
+		path = argv[1];
+	}
+
 	http_shell = sh;
-	shell_print(sh, "GET %s ...", argv[1]);
-	int ret = pvcm_get(argv[1], http_response_cb, NULL);
+
+	if (host_hdr[0]) {
+		char headers[160];
+		snprintf(headers, sizeof(headers), "Host: %s\r\n", host_hdr);
+		shell_print(sh, "GET http://%s%s ...", host_hdr, path);
+		struct pvcm_http_request req = {
+			.method = PVCM_HTTP_GET,
+			.path = path,
+			.headers = headers,
+			.body = NULL,
+			.body_len = 0,
+		};
+		int ret = pvcm_http(&req, http_response_cb, NULL);
+		if (ret)
+			shell_error(sh, "pvcm_http failed: %d", ret);
+		http_shell = NULL;
+		return ret;
+	}
+
+	shell_print(sh, "GET %s ...", path);
+	int ret = pvcm_get(path, http_response_cb, NULL);
 	if (ret)
 		shell_error(sh, "pvcm_get failed: %d", ret);
 	http_shell = NULL;

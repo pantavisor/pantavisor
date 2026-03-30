@@ -11,6 +11,19 @@
 
 #include <stddef.h>
 
+/* Route entry: maps a hostname to a backend (unix socket or TCP) */
+struct http_route {
+	char name[64];         /* hostname without .pvlocal suffix */
+	char unix_path[256];   /* unix socket path (if non-empty, use AF_UNIX) */
+	char tcp_host[64];     /* TCP host (if unix_path empty) */
+	int  tcp_port;         /* TCP port */
+};
+
+#define PVCM_MAX_ROUTES 16
+
+/* Add a route. spec format: "name=unix:/path" or "name=tcp:host:port" */
+int pvcm_bridge_add_route(const char *spec);
+
 /* Initialize the HTTP bridge with the transport */
 int pvcm_bridge_init(struct pvcm_transport *t);
 

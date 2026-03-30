@@ -68,6 +68,7 @@ static void usage(const char *prog)
 		"  --transport, -t <type>   Transport: uart or rpmsg (default: uart)\n"
 		"  --baudrate, -b <rate>    UART baudrate (default: 921600)\n"
 		"  --listen-port, -p <port> HTTP listener port (default: 18081)\n"
+		"  --route <spec>           HTTP route: name=unix:/path or name=tcp:host:port\n"
 		"  --dbus-socket <path>     D-Bus socket path (enables D-Bus bridge)\n"
 		"  --dbus-session           Use session D-Bus (for testing)\n"
 		"  --help, -h               Show this help\n"
@@ -94,6 +95,7 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 		{ "baudrate", required_argument, NULL, 'b' },
 		{ "remoteproc", required_argument, NULL, 'r' },
 		{ "listen-port", required_argument, NULL, 'p' },
+		{ "route", required_argument, NULL, 'R' },
 		{ "dbus-socket", required_argument, NULL, 'D' },
 		{ "dbus-session", no_argument, NULL, 'S' },
 		{ "help", no_argument, NULL, 'h' },
@@ -157,6 +159,12 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 			}
 			break;
 		}
+		case 'R':
+			if (pvcm_bridge_add_route(optarg) < 0) {
+				fprintf(stderr, "invalid route: %s\n", optarg);
+				return -1;
+			}
+			break;
 		case 'h':
 			usage(argv[0]);
 			return -1;
