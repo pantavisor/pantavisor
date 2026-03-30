@@ -202,13 +202,23 @@ static int http_request(const char *method_str,
 			}
 		}
 	}
-	if (fd < 0)
+	if (fd < 0) {
+		fprintf(stderr, "[bridge] connect failed: %s (%s)\n",
+			route ? (route->unix_path[0] ? route->unix_path
+						     : route->tcp_host)
+			      : host,
+			strerror(errno));
 		return -1;
+	}
 
-	/* send HTTP request */
+	/* send HTTP request — unix sockets use Host: localhost */
 	const char *host_hdr = host;
-	if (route)
-		host_hdr = route->name;
+	if (route) {
+		if (route->unix_path[0])
+			host_hdr = "localhost";
+		else
+			host_hdr = route->tcp_host;
+	}
 
 	char req_line[512];
 	int n;
@@ -258,6 +268,11 @@ static int http_request(const char *method_str,
 	}
 	raw[total] = '\0';
 	close(fd);
+
+	if (total == 0) {
+		fprintf(stderr, "[bridge] empty response from backend\n");
+		return -1;
+	}
 
 	/* parse HTTP response — accept both \r\n\r\n and \n\n as header end */
 	char *status_line = raw;
@@ -405,12 +420,19 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 	char resp_headers[1024] = "";
 	int resp_status = 500;
 
+	/* Don't forward MCU's Host header to backend — http_request
+	 * sets its own Host header based on the route. Only forward
+	 * non-Host headers from the MCU. */
+	const char *fwd_headers = NULL;
+	if (!route && pending_req.headers[0])
+		fwd_headers = pending_req.headers;
+
 	int body_len = http_request(
 		method_to_str(pending_req.method),
 		route,
 		"127.0.0.1", 12368,
 		pending_req.path,
-		pending_req.headers[0] ? pending_req.headers : NULL,
+		fwd_headers,
 		pending_req.body_len > 0 ? pending_req.body : NULL,
 		pending_req.body_len,
 		resp_body, sizeof(resp_body),
