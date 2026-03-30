@@ -162,15 +162,6 @@ const char **pv_ph_get_certs()
 	return (const char **)cafiles;
 }
 
-void pv_ph_free_certs(const char **certs)
-{
-	if (!certs)
-		return;
-	for (int i = 0; certs[i]; i++)
-		free((char *)certs[i]);
-	free(certs);
-}
-
 struct pv_connection *pv_get_instance_connection()
 {
 	struct pv_connection *conn = NULL;
@@ -263,11 +254,9 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 	thttp_response_t *res = 0;
 	jsmntok_t *tokv = NULL;
 	char **headers = NULL;
-	const char **certs = NULL;
 
 	tls_req = thttp_request_tls_new_0();
-	certs = pv_ph_get_certs();
-	tls_req->crtfiles = (char **)certs;
+	tls_req->crtfiles = (char **)pv_ph_get_certs();
 
 	thttp_request_t *req = (thttp_request_t *)tls_req;
 
@@ -325,6 +314,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 		val = pv_json_get_value(res->body, "secret", tokv, tokc);
 		pv_config_set_creds_secret(val);
 		free(val);
+		free(tokv);
 		ret = 1;
 	} else if (!res->code) {
 		pv_log(WARN, "HTTP request GET %s got no response", req->path);
@@ -342,8 +332,6 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 		thttp_request_free(req);
 	if (res)
 		thttp_response_free(res);
-	free(tokv);
-	pv_ph_free_certs(certs);
 
 	return ret;
 }
