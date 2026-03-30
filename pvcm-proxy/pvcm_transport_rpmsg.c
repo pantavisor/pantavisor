@@ -90,13 +90,30 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 	frame[4 + len + 2] = (crc >> 16) & 0xFF;
 	frame[4 + len + 3] = (crc >> 24) & 0xFF;
 
-	ssize_t n = write(t->fd, frame, 4 + len + 4);
-	if (n != (ssize_t)(4 + len + 4)) {
-		fprintf(stderr, "[pvcm-proxy] rpmsg write failed: %m\n");
-		return -1;
+	size_t total = 4 + len + 4;
+
+	/* RPMsg vring has limited TX slots. If write fails (ENOMEM/EAGAIN),
+	 * the MCU hasn't consumed the buffer yet. Retry with backoff. */
+	for (int attempt = 0; attempt < 20; attempt++) {
+		ssize_t n = write(t->fd, frame, total);
+		if (n == (ssize_t)total)
+			return 0;
+		if (n >= 0) {
+			/* partial write — shouldn't happen with RPMsg tty */
+			fprintf(stderr, "[pvcm-proxy] rpmsg partial write: "
+				"%zd/%zu\n", n, total);
+			return -1;
+		}
+		if (errno != ENOMEM && errno != EAGAIN) {
+			fprintf(stderr, "[pvcm-proxy] rpmsg write error: %m\n");
+			return -1;
+		}
+		/* vring full — wait for MCU to consume, then retry */
+		usleep(5000); /* 5ms */
 	}
 
-	return 0;
+	fprintf(stderr, "[pvcm-proxy] rpmsg write failed after retries\n");
+	return -1;
 }
 
 /*
