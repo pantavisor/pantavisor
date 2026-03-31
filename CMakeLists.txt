@@ -103,7 +103,7 @@ IF (PANTAVISOR_XCONNECT)
 ENDIF (PANTAVISOR_XCONNECT)
 IF (PANTAVISOR_PVCM)
   add_definitions(-DPANTAVISOR_PVCM)
-  add_subdirectory(pvcm-proxy)
+  add_subdirectory(pvcm-run)
 ENDIF (PANTAVISOR_PVCM)
 
 ### Pantavisor links shared where possible

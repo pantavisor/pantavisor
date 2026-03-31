@@ -1,6 +1,6 @@
 /*
  * CRC32 -- shared by both UART and RPMsg transports
- * Same implementation as the Linux pvcm-proxy side.
+ * Same implementation as the Linux pvcm-run side.
  * SPDX-License-Identifier: MIT
  */
 

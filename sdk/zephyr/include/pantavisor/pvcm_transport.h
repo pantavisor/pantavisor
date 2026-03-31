@@ -1,7 +1,7 @@
 /*
  * Pantavisor RTOS SDK -- Transport abstraction
  *
- * Same abstraction as the Linux pvcm-proxy side.
+ * Same abstraction as the Linux pvcm-run side.
  * Two implementations: UART (polling) and RPMsg (OpenAMP).
  *
  * SPDX-License-Identifier: MIT

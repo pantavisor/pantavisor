@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy config parser -- minimal JSON parsing for run.json
+ * pvcm-run config parser -- minimal JSON parsing for run.json
  *
  * Only extracts the fields we need from the MCU run.json:
  *   mcu.device, mcu.transport, mcu.baudrate, firmware
@@ -81,7 +81,7 @@ int pvcm_config_parse(struct pvcm_config *cfg, const char *run_json_path)
 {
 	FILE *f = fopen(run_json_path, "r");
 	if (!f) {
-		fprintf(stderr, "[pvcm-proxy] cannot open %s: %m\n",
+		fprintf(stderr, "[pvcm-run] cannot open %s: %m\n",
 			run_json_path);
 		return -1;
 	}
@@ -141,7 +141,7 @@ int pvcm_config_parse(struct pvcm_config *cfg, const char *run_json_path)
 
 	free(json);
 
-	fprintf(stdout, "[pvcm-proxy] config: device=%s transport=%s "
+	fprintf(stdout, "[pvcm-run] config: device=%s transport=%s "
 		"baudrate=%u firmware=%s\n",
 		cfg->device, cfg->transport, cfg->baudrate,
 		cfg->firmware[0] ? cfg->firmware : "(none)");

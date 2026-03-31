@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy RPMsg transport
+ * pvcm-run RPMsg transport
  *
  * RPMsg on Linux appears as /dev/ttyRPMSGN character devices.
  * The tty layer may concatenate multiple RPMsg messages in one
@@ -57,7 +57,7 @@ static int rpmsg_open(struct pvcm_transport *t, const char *device,
 
 	int fd = open(device, O_RDWR);
 	if (fd < 0) {
-		fprintf(stderr, "[pvcm-proxy] cannot open %s: %m\n", device);
+		fprintf(stderr, "[pvcm-run] cannot open %s: %m\n", device);
 		return -1;
 	}
 
@@ -70,7 +70,7 @@ static int rpmsg_open(struct pvcm_transport *t, const char *device,
 
 	t->fd = fd;
 	residual_len = 0;
-	fprintf(stdout, "[pvcm-proxy] RPMsg opened: %s\n", device);
+	fprintf(stdout, "[pvcm-run] RPMsg opened: %s\n", device);
 	return 0;
 }
 
@@ -100,19 +100,19 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 			return 0;
 		if (n >= 0) {
 			/* partial write — shouldn't happen with RPMsg tty */
-			fprintf(stderr, "[pvcm-proxy] rpmsg partial write: "
+			fprintf(stderr, "[pvcm-run] rpmsg partial write: "
 				"%zd/%zu\n", n, total);
 			return -1;
 		}
 		if (errno != ENOMEM && errno != EAGAIN) {
-			fprintf(stderr, "[pvcm-proxy] rpmsg write error: %m\n");
+			fprintf(stderr, "[pvcm-run] rpmsg write error: %m\n");
 			return -1;
 		}
 		/* vring full — wait for MCU to consume, then retry */
 		usleep(5000); /* 5ms */
 	}
 
-	fprintf(stderr, "[pvcm-proxy] rpmsg write failed after retries\n");
+	fprintf(stderr, "[pvcm-run] rpmsg write failed after retries\n");
 	return -1;
 }
 
@@ -128,7 +128,7 @@ static int parse_one_frame(const uint8_t *buf, size_t buflen,
 		return -1;
 
 	if (buf[0] != PVCM_SYNC_BYTE_0 || buf[1] != PVCM_SYNC_BYTE_1) {
-		fprintf(stderr, "[pvcm-proxy] rpmsg sync mismatch "
+		fprintf(stderr, "[pvcm-run] rpmsg sync mismatch "
 			"(got 0x%02x 0x%02x, buflen=%zu)\n",
 			buf[0], buf[1], buflen);
 		return -1;
@@ -138,7 +138,7 @@ static int parse_one_frame(const uint8_t *buf, size_t buflen,
 	size_t frame_size = 4 + len + 4;
 
 	if (len > max_len || frame_size > buflen) {
-		fprintf(stderr, "[pvcm-proxy] rpmsg frame length mismatch "
+		fprintf(stderr, "[pvcm-run] rpmsg frame length mismatch "
 			"(len=%u, buflen=%zu)\n", len, buflen);
 		return -1;
 	}
@@ -148,7 +148,7 @@ static int parse_one_frame(const uint8_t *buf, size_t buflen,
 			    (buf[4 + len + 3] << 24);
 	uint32_t calc_crc = crc32_calc(&buf[4], len);
 	if (recv_crc != calc_crc) {
-		fprintf(stderr, "[pvcm-proxy] rpmsg CRC mismatch "
+		fprintf(stderr, "[pvcm-run] rpmsg CRC mismatch "
 			"(recv=0x%08x calc=0x%08x len=%u op=0x%02x)\n",
 			recv_crc, calc_crc, len, buf[4]);
 		return -1;

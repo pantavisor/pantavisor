@@ -386,7 +386,7 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 }
 
 /*
- * Called by server thread for inbound INVOKE requests from pvcm-proxy.
+ * Called by server thread for inbound INVOKE requests from pvcm-run.
  */
 void pvcm_client_on_invoke_req(const uint8_t *buf, int len)
 {

@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy protocol handler
+ * pvcm-run protocol handler
  *
  * Implements the Linux side of the PVCM protocol:
  *  - HELLO/HELLO_RESP handshake
@@ -41,11 +41,11 @@ int pvcm_handshake(struct pvcm_session *s)
 		.op = PVCM_OP_HELLO,
 	};
 
-	fprintf(stdout, "[pvcm-proxy] sending HELLO\n");
+	fprintf(stdout, "[pvcm-run] sending HELLO\n");
 
 	if (s->transport->send_frame(s->transport, &hello,
 				     sizeof(hello) - sizeof(uint32_t)) < 0) {
-		fprintf(stderr, "[pvcm-proxy] failed to send HELLO\n");
+		fprintf(stderr, "[pvcm-run] failed to send HELLO\n");
 		return -1;
 	}
 
@@ -58,7 +58,7 @@ int pvcm_handshake(struct pvcm_session *s)
 		int len = s->transport->recv_frame(s->transport, buf,
 						   sizeof(buf), 5000);
 		if (len < 0) {
-			fprintf(stderr, "[pvcm-proxy] no HELLO_RESP "
+			fprintf(stderr, "[pvcm-run] no HELLO_RESP "
 				"(len=%d)\n", len);
 			return len;
 		}
@@ -70,7 +70,7 @@ int pvcm_handshake(struct pvcm_session *s)
 			s->connected = true;
 			s->last_heartbeat_time = time(NULL);
 
-			fprintf(stdout, "[pvcm-proxy] MCU connected: "
+			fprintf(stdout, "[pvcm-run] MCU connected: "
 				"protocol=v%d fw=v%d baudrate=%u\n",
 				resp->protocol_version,
 				resp->mcu_fw_version,
@@ -79,11 +79,11 @@ int pvcm_handshake(struct pvcm_session *s)
 		}
 
 		/* not HELLO_RESP — log and keep waiting */
-		fprintf(stdout, "[pvcm-proxy] skipping frame op=0x%02x "
+		fprintf(stdout, "[pvcm-run] skipping frame op=0x%02x "
 			"during handshake\n", buf[0]);
 	}
 
-	fprintf(stderr, "[pvcm-proxy] HELLO_RESP not received after "
+	fprintf(stderr, "[pvcm-run] HELLO_RESP not received after "
 		"skipping %d frames\n", 10);
 	return -1;
 }
@@ -103,7 +103,7 @@ static void handle_heartbeat(struct pvcm_session *s, const uint8_t *buf,
 	s->crash_count = hb->crash_count;
 	s->last_heartbeat_time = time(NULL);
 
-	fprintf(stdout, "[pvcm-proxy] heartbeat: status=%s uptime=%us "
+	fprintf(stdout, "[pvcm-run] heartbeat: status=%s uptime=%us "
 		"crashes=%d\n",
 		hb->status == PVCM_HEALTH_OK ? "OK" : "DEGRADED",
 		hb->uptime_s, hb->crash_count);
@@ -170,19 +170,19 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 
 	case PVCM_OP_NACK:
 		if (len >= 3)
-			fprintf(stderr, "[pvcm-proxy] NACK: ref_op=0x%02x "
+			fprintf(stderr, "[pvcm-run] NACK: ref_op=0x%02x "
 				"error=%d\n", buf[1], buf[2]);
 		break;
 
 	case PVCM_OP_REQUEST_ROLLBACK:
-		fprintf(stderr, "[pvcm-proxy] MCU requested rollback!\n");
+		fprintf(stderr, "[pvcm-run] MCU requested rollback!\n");
 		break;
 
 	case PVCM_EVT_FW_PROGRESS:
 		if ((size_t)len >= sizeof(pvcm_fw_progress_t) - sizeof(uint32_t)) {
 			const pvcm_fw_progress_t *p =
 				(const pvcm_fw_progress_t *)buf;
-			fprintf(stdout, "[pvcm-proxy] fw progress: %d%% "
+			fprintf(stdout, "[pvcm-run] fw progress: %d%% "
 				"(%u/%u)\n",
 				p->percent, p->bytes_written,
 				p->total_bytes);
@@ -227,7 +227,7 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 		const pvcm_echo_t *echo = (const pvcm_echo_t *)buf;
 		uint16_t total = echo->data_len; /* total bytes to send back */
 
-		fprintf(stdout, "[pvcm-proxy] PING: seq=%d total=%d\n",
+		fprintf(stdout, "[pvcm-run] PING: seq=%d total=%d\n",
 			echo->seq, total);
 
 		/* send response in chunks of up to 400 bytes per frame */
@@ -253,13 +253,13 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 			frag++;
 		}
 
-		fprintf(stdout, "[pvcm-proxy] PING: sent %d bytes in %d frames\n",
+		fprintf(stdout, "[pvcm-run] PING: sent %d bytes in %d frames\n",
 			sent, frag);
 		break;
 	}
 
 	default:
-		fprintf(stderr, "[pvcm-proxy] unhandled opcode 0x%02x "
+		fprintf(stderr, "[pvcm-run] unhandled opcode 0x%02x "
 			"(len=%d)\n", op, len);
 		break;
 	}

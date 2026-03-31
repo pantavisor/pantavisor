@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy D-Bus bridge
+ * pvcm-run D-Bus bridge
  *
  * Bridges PVCM D-Bus frames to the Linux system D-Bus.
  * MCU firmware calls D-Bus methods and subscribes to signals

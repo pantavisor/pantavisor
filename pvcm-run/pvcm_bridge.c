@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy HTTP bridge
+ * pvcm-run HTTP bridge
  *
  * Two directions:
  *   MCU → Linux: MCU sends HTTP_REQ/DATA/END, proxy forwards to a

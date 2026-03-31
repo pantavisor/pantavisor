@@ -1,23 +1,23 @@
-# pvcm-proxy — Per-MCU Runtime Process
+# pvcm-run — Per-MCU Runtime Process
 
-pvcm-proxy is the Linux-side runtime for each MCU container in
+pvcm-run is the Linux-side runtime for each MCU container in
 Pantavisor. One instance runs per MCU, started by the `pv_pvcm`
 plugin inside a mount namespace. From xconnect's perspective,
-pvcm-proxy IS the container.
+pvcm-run IS the container.
 
 ## Architecture
 
 ```
 pantavisor
   └── pv_pvcm plugin (start)
-      └── fork pvcm-proxy in namespace
+      └── fork pvcm-run in namespace
           ├── opens UART or RPMsg transport to MCU
           ├── PVCM protocol: handshake, heartbeat, log forwarding
           ├── HTTP bridge: MCU ↔ Linux service requests
           ├── creates service sockets for xconnect injection
           └── reports health via exit code / pipe
 
-xconnect sees pvcm-proxy as a normal container (init_pid + namespace)
+xconnect sees pvcm-run as a normal container (init_pid + namespace)
 ```
 
 ## PVCM Protocol
@@ -39,26 +39,26 @@ See `protocol/pvcm_protocol.h` for the complete wire format.
 
 ## HTTP Gateway
 
-pvcm-proxy bridges HTTP between MCU and Linux:
+pvcm-run bridges HTTP between MCU and Linux:
 
 **MCU as client** (MCU calls Linux services):
 ```
 MCU: pvcm_get("/sensor/config")
-  → HTTP_REQ frame → pvcm-proxy → HTTP GET http://service/sensor/config
-  ← HTTP response   ← pvcm-proxy ← HTTP_REQ(RESPONSE) + DATA + END
+  → HTTP_REQ frame → pvcm-run → HTTP GET http://service/sensor/config
+  ← HTTP response   ← pvcm-run ← HTTP_REQ(RESPONSE) + DATA + END
 ```
 
 **MCU as server** (Linux calls MCU):
 ```
 Linux: curl http://proxy:18081/sensor/temperature
-  → pvcm-proxy → HTTP_REQ(INVOKE) + END → MCU handler
-  ← HTTP response ← pvcm-proxy ← HTTP_REQ(REPLY) + DATA + END
+  → pvcm-run → HTTP_REQ(INVOKE) + END → MCU handler
+  ← HTTP response ← pvcm-run ← HTTP_REQ(REPLY) + DATA + END
 ```
 
 ## Files
 
 ```
-pvcm-proxy/
+pvcm-run/
 ├── main.c               entry point, transport selection, session setup
 ├── pvcm_config.h/c      run.json parser
 ├── pvcm_transport.h      transport abstraction
@@ -72,21 +72,21 @@ pvcm-proxy/
 
 ## Building
 
-pvcm-proxy is built as part of pantavisor when `PANTAVISOR_PVCM=ON`:
+pvcm-run is built as part of pantavisor when `PANTAVISOR_PVCM=ON`:
 
 ```cmake
 if(PANTAVISOR_PVCM)
-    add_subdirectory(pvcm-proxy)
+    add_subdirectory(pvcm-run)
 endif()
 ```
 
 For host testing (against native_sim Zephyr binary):
 
 ```bash
-gcc -o pvcm-proxy-test \
-    pvcm-proxy/main.c pvcm-proxy/pvcm_config.c \
-    pvcm-proxy/pvcm_transport_uart.c pvcm-proxy/pvcm_protocol.c \
-    pvcm-proxy/pvcm_bridge.c \
+gcc -o pvcm-run-test \
+    pvcm-run/main.c pvcm-run/pvcm_config.c \
+    pvcm-run/pvcm_transport_uart.c pvcm-run/pvcm_protocol.c \
+    pvcm-run/pvcm_bridge.c \
     -I. -lpthread
 ```
 

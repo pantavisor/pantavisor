@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy D-Bus bridge
+ * pvcm-run D-Bus bridge
  *
  * Bridges PVCM DBUS_CALL/SUBSCRIBE frames to the Linux system D-Bus.
  *

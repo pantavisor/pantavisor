@@ -362,7 +362,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
 	SHELL_CMD(ping, NULL, "Transport ping: pv ping [bytes]",
 		  cmd_pv_ping),
 #ifdef CONFIG_PANTAVISOR_BRIDGE
-	SHELL_CMD(http, NULL, "GET <path> via pvcm-proxy", cmd_pv_http),
+	SHELL_CMD(http, NULL, "GET <path> via pvcm-run", cmd_pv_http),
 #endif
 #ifdef CONFIG_PANTAVISOR_DBUS
 	SHELL_CMD(dbus, &pv_dbus_cmds, "D-Bus gateway commands", NULL),

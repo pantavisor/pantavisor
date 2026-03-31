@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy UART transport
+ * pvcm-run UART transport
  *
  * Opens a tty device, configures baudrate, and implements
  * PVCM frame send/recv with sync bytes and CRC32.
@@ -72,13 +72,13 @@ static int uart_open(struct pvcm_transport *t, const char *device,
 {
 	int fd = open(device, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	if (fd < 0) {
-		fprintf(stderr, "[pvcm-proxy] cannot open %s: %m\n", device);
+		fprintf(stderr, "[pvcm-run] cannot open %s: %m\n", device);
 		return -1;
 	}
 
 	struct termios tty;
 	if (tcgetattr(fd, &tty) != 0) {
-		fprintf(stderr, "[pvcm-proxy] tcgetattr failed: %m\n");
+		fprintf(stderr, "[pvcm-run] tcgetattr failed: %m\n");
 		close(fd);
 		return -1;
 	}
@@ -101,7 +101,7 @@ static int uart_open(struct pvcm_transport *t, const char *device,
 	tty.c_cc[VTIME] = 0;
 
 	if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-		fprintf(stderr, "[pvcm-proxy] tcsetattr failed: %m\n");
+		fprintf(stderr, "[pvcm-run] tcsetattr failed: %m\n");
 		close(fd);
 		return -1;
 	}
@@ -113,7 +113,7 @@ static int uart_open(struct pvcm_transport *t, const char *device,
 	tcflush(fd, TCIOFLUSH);
 
 	t->fd = fd;
-	fprintf(stdout, "[pvcm-proxy] UART opened: %s @ %u baud\n",
+	fprintf(stdout, "[pvcm-run] UART opened: %s @ %u baud\n",
 		device, baudrate);
 	return 0;
 }
@@ -214,7 +214,7 @@ static int uart_recv_frame(struct pvcm_transport *t, void *payload,
 	uint32_t calc_crc = crc32_calc(payload, len);
 
 	if (recv_crc != calc_crc) {
-		fprintf(stderr, "[pvcm-proxy] CRC mismatch: recv=%08x "
+		fprintf(stderr, "[pvcm-run] CRC mismatch: recv=%08x "
 			"calc=%08x\n", recv_crc, calc_crc);
 		return -1;
 	}
