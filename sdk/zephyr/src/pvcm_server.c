@@ -11,6 +11,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <stdbool.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <pantavisor/pvcm.h>
@@ -24,6 +25,8 @@ LOG_MODULE_REGISTER(pvcm_server, CONFIG_LOG_DEFAULT_LEVEL);
 extern void pvcm_client_on_http_req(const uint8_t *buf, int len);
 extern void pvcm_client_on_http_data(const uint8_t *buf, int len);
 extern void pvcm_client_on_http_end(const uint8_t *buf, int len);
+extern bool pvcm_client_has_pending_http(uint8_t stream_id);
+extern void pvcm_echo_on_resp(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_req(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_data(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_end(const uint8_t *buf, int len);
@@ -125,20 +128,32 @@ void pvcm_server_dispatch(const uint8_t *buf, int len)
 	/* HTTP frames — route based on direction */
 	case PVCM_OP_HTTP_REQ: {
 		const pvcm_http_req_t *hreq = (const pvcm_http_req_t *)buf;
+		LOG_INF("HTTP_REQ: dir=%d sid=%d status=%d body=%u len=%d",
+			hreq->direction, hreq->stream_id,
+			hreq->status_code, hreq->total_body_size, len);
 		if (hreq->direction == PVCM_HTTP_DIR_RESPONSE)
 			pvcm_client_on_http_req(buf, len);
 		else if (hreq->direction == PVCM_HTTP_DIR_INVOKE)
 			pvcm_client_on_invoke_req(buf, len);
 		break;
 	}
-	case PVCM_OP_HTTP_DATA:
-		pvcm_client_on_http_data(buf, len);
-		pvcm_client_on_invoke_data(buf, len);
+	case PVCM_OP_HTTP_DATA: {
+		const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
+		/* route DATA to the correct pending handler by stream_id */
+		if (pvcm_client_has_pending_http(d->stream_id))
+			pvcm_client_on_http_data(buf, len);
+		else
+			pvcm_client_on_invoke_data(buf, len);
 		break;
-	case PVCM_OP_HTTP_END:
-		pvcm_client_on_http_end(buf, len);
-		pvcm_client_on_invoke_end(buf, len);
+	}
+	case PVCM_OP_HTTP_END: {
+		uint8_t sid = buf[1];
+		if (pvcm_client_has_pending_http(sid))
+			pvcm_client_on_http_end(buf, len);
+		else
+			pvcm_client_on_invoke_end(buf, len);
 		break;
+	}
 #endif
 #ifdef CONFIG_PANTAVISOR_DBUS
 	case PVCM_OP_DBUS_CALL_RESP:
@@ -148,6 +163,9 @@ void pvcm_server_dispatch(const uint8_t *buf, int len)
 		pvcm_dbus_on_signal(buf, len);
 		break;
 #endif
+	case PVCM_OP_ECHO_RESP:
+		pvcm_echo_on_resp(buf, len);
+		break;
 	default:
 		LOG_DBG("unhandled opcode 0x%02x (len=%d)", op, len);
 		break;

@@ -218,6 +218,46 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 		pvcm_dbus_bridge_on_unsubscribe(s->transport, buf, len);
 		break;
 
+	/* Transport ping test — proxy responds with requested total size,
+	 * split across multiple ECHO_RESP frames if needed (like HTTP).
+	 * ECHO.data_len = total response size requested (can be > frame). */
+	case PVCM_OP_ECHO: {
+		if ((size_t)len < 4)
+			break;
+		const pvcm_echo_t *echo = (const pvcm_echo_t *)buf;
+		uint16_t total = echo->data_len; /* total bytes to send back */
+
+		fprintf(stdout, "[pvcm-proxy] PING: seq=%d total=%d\n",
+			echo->seq, total);
+
+		/* send response in chunks of up to 400 bytes per frame */
+		uint16_t sent = 0;
+		uint8_t frag = 0;
+		while (sent < total) {
+			uint16_t chunk = total - sent;
+			if (chunk > 400)
+				chunk = 400;
+
+			pvcm_echo_t resp = {
+				.op = PVCM_OP_ECHO_RESP,
+				.seq = echo->seq,
+				.data_len = chunk,
+			};
+			/* fill with pattern: frag number + offset */
+			for (uint16_t i = 0; i < chunk; i++)
+				resp.data[i] = (uint8_t)((frag << 4) | (i & 0xF));
+
+			s->transport->send_frame(s->transport, &resp,
+						 4 + chunk);
+			sent += chunk;
+			frag++;
+		}
+
+		fprintf(stdout, "[pvcm-proxy] PING: sent %d bytes in %d frames\n",
+			sent, frag);
+		break;
+	}
+
 	default:
 		fprintf(stderr, "[pvcm-proxy] unhandled opcode 0x%02x "
 			"(len=%d)\n", op, len);

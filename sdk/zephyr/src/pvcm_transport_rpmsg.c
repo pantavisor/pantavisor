@@ -35,7 +35,18 @@ static bool rx_msgq_initialized;
 static struct rpmsg_endpoint *proto_ept;
 static volatile bool transport_ready;
 
-/* RPMsg rx callback — called from the management thread's receive_message() */
+/* Mutex for rpmsg_send — heartbeat thread + shell thread both call
+ * send_frame, and rpmsg_send is not thread-safe (shared TX vring). */
+static K_MUTEX_DEFINE(rpmsg_tx_mutex);
+
+/*
+ * RPMsg rx callback — called from ISR context (IPM interrupt).
+ * Uses a static buffer to avoid 534-byte stack allocation in ISR.
+ * Safe because ISR callbacks at the same priority can't nest on
+ * single-core Cortex-M.
+ */
+static uint8_t rx_cb_buf[RX_MSG_MAX_SIZE];
+
 int pvcm_rpmsg_rx_cb(struct rpmsg_endpoint *ept, void *data,
 		     size_t len, uint32_t src, void *priv)
 {
@@ -49,12 +60,11 @@ int pvcm_rpmsg_rx_cb(struct rpmsg_endpoint *ept, void *data,
 	}
 
 	/* pack: [len_lo, len_hi, data...] */
-	uint8_t msg[RX_MSG_MAX_SIZE];
-	msg[0] = len & 0xFF;
-	msg[1] = (len >> 8) & 0xFF;
-	memcpy(&msg[2], data, len);
+	rx_cb_buf[0] = len & 0xFF;
+	rx_cb_buf[1] = (len >> 8) & 0xFF;
+	memcpy(&rx_cb_buf[2], data, len);
 
-	if (k_msgq_put(&rx_msgq, msg, K_NO_WAIT) != 0) {
+	if (k_msgq_put(&rx_msgq, rx_cb_buf, K_NO_WAIT) != 0) {
 		LOG_WRN("rx queue full, dropping frame");
 	}
 
@@ -109,7 +119,11 @@ static int rpmsg_send_frame(const void *payload, size_t len)
 	frame[4 + len + 2] = (crc >> 16) & 0xFF;
 	frame[4 + len + 3] = (crc >> 24) & 0xFF;
 
+	/* serialize access — heartbeat + shell threads share the TX vring */
+	k_mutex_lock(&rpmsg_tx_mutex, K_FOREVER);
 	int ret = rpmsg_send(proto_ept, frame, 4 + len + 4);
+	k_mutex_unlock(&rpmsg_tx_mutex);
+
 	if (ret < 0) {
 		LOG_ERR("rpmsg_send failed: %d", ret);
 		return ret;

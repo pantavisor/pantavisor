@@ -36,6 +36,12 @@ static struct {
 } pending;
 static uint8_t next_stream_id = 1;
 
+/* Check if stream_id matches a pending outbound HTTP request */
+bool pvcm_client_has_pending_http(uint8_t stream_id)
+{
+	return pending.active && pending.stream_id == stream_id;
+}
+
 /*
  * Called by the server thread when an HTTP response frame arrives.
  * Reassembles the response body from DATA chunks.
@@ -47,6 +53,10 @@ void pvcm_client_on_http_req(const uint8_t *buf, int len)
 		return;
 
 	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
+
+	LOG_INF("HTTP resp: dir=%d sid=%d pending_sid=%d active=%d status=%d",
+		req->direction, req->stream_id,
+		pending.stream_id, pending.active, req->status_code);
 
 	if (req->direction != PVCM_HTTP_DIR_RESPONSE)
 		return;
@@ -97,6 +107,8 @@ void pvcm_client_on_http_end(const uint8_t *buf, int len)
 		return;
 
 	pending.complete = true;
+	LOG_INF("HTTP complete: sid=%d status=%d body=%zu",
+		stream_id, pending.status_code, pending.body_len);
 	k_sem_give(&http_resp_sem);
 }
 
@@ -121,6 +133,7 @@ static int do_http_request(uint8_t method, const char *path,
 	/* set up pending response slot */
 	pending.stream_id = sid;
 	pending.active = true;
+	LOG_INF("HTTP send: sid=%d path=%s", sid, path);
 	pending.status_code = 0;
 	pending.body_len = 0;
 	pending.body_cap = sizeof(pending.body) - 1;

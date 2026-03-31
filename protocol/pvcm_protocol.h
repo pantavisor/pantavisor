@@ -95,6 +95,10 @@ typedef enum {
 	PVCM_OP_DBUS_EXPOSE         = 0x45,  /* MCU -> Linux: register endpoint */
 	PVCM_OP_DBUS_INVOKE         = 0x46,  /* Linux -> MCU: call MCU method */
 	PVCM_OP_DBUS_INVOKE_RESP    = 0x47,  /* MCU -> Linux: MCU reply */
+
+	/* Transport test — bidirectional echo for debugging */
+	PVCM_OP_ECHO                = 0xE0,  /* either direction: echo back */
+	PVCM_OP_ECHO_RESP           = 0xE1,  /* response to echo */
 } pvcm_op_t;
 
 /* --- Health Status --- */
@@ -397,6 +401,16 @@ typedef struct {
 	uint32_t total_bytes;
 	uint32_t crc32;
 } __packed pvcm_fw_progress_t;
+
+/* ECHO / ECHO_RESP — transport test.
+ * Send ECHO with N bytes of data; receiver sends ECHO_RESP with same data. */
+typedef struct {
+	uint8_t  op;
+	uint8_t  seq;               /* sequence number for correlation */
+	uint16_t data_len;
+	uint8_t  data[504];         /* up to 504 bytes echo payload */
+	uint32_t crc32;
+} __packed pvcm_echo_t;
 
 /* --- MCU Flash State --- */
 
