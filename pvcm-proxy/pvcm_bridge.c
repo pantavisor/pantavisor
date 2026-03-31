@@ -1,13 +1,13 @@
 /*
  * pvcm-proxy HTTP bridge
  *
- * Receives HTTP_REQ/DATA/END frames from the MCU, reassembles the
- * request, makes an HTTP request to the configured upstream, and
- * sends the response back as HTTP_REQ(RESPONSE)/DATA/END frames.
+ * Two directions:
+ *   MCU → Linux: MCU sends HTTP_REQ/DATA/END, proxy forwards to a
+ *     local backend (unix socket or TCP), sends response back.
+ *   Linux → MCU: evhttp listener accepts requests, forwards to MCU
+ *     as INVOKE frames, waits for MCU reply asynchronously.
  *
- * For testing, the upstream is a simple HTTP connection to a local
- * server. In production, the upstream would be a Unix domain socket
- * injected by xconnect.
+ * All I/O is event-driven via libevent. No threads.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -16,10 +16,9 @@
 
 #include "pvcm_bridge.h"
 
-#include <stdbool.h>
 #include <arpa/inet.h>
 #include <errno.h>
-#include <netdb.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +27,10 @@
 #include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
+
+#include <event2/event.h>
+#include <event2/http.h>
+#include <event2/buffer.h>
 
 /* ---- Route table ---- */
 
@@ -71,12 +74,10 @@ int pvcm_bridge_add_route(const char *spec)
 		return -1;
 	}
 
-	fprintf(stdout, "[bridge] route: %s -> %s%s%s%s\n",
+	fprintf(stdout, "[bridge] route: %s -> %s%s\n",
 		r->name,
 		r->unix_path[0] ? "unix:" : "tcp:",
-		r->unix_path[0] ? r->unix_path : r->tcp_host,
-		r->unix_path[0] ? "" : ":",
-		r->unix_path[0] ? "" : val + 4 + strlen(r->tcp_host) + 1);
+		r->unix_path[0] ? r->unix_path : r->tcp_host);
 
 	num_routes++;
 	return 0;
@@ -94,7 +95,7 @@ static const struct http_route *find_route(const char *hostname)
 	char *suffix = strstr(name, ".pvlocal");
 	if (suffix)
 		*suffix = '\0';
-	/* also strip port if present (Host: foo.pvlocal:80) */
+	/* strip port if present (Host: foo.pvlocal:80) */
 	char *colon = strchr(name, ':');
 	if (colon)
 		*colon = '\0';
@@ -138,6 +139,8 @@ static int connect_backend(const struct http_route *route)
 		strncpy(addr.sun_path, route->unix_path,
 			sizeof(addr.sun_path) - 1);
 		if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+			fprintf(stderr, "[bridge] connect unix:%s: %s\n",
+				route->unix_path, strerror(errno));
 			close(fd);
 			return -1;
 		}
@@ -152,6 +155,9 @@ static int connect_backend(const struct http_route *route)
 		};
 		inet_pton(AF_INET, route->tcp_host, &addr.sin_addr);
 		if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+			fprintf(stderr, "[bridge] connect %s:%d: %s\n",
+				route->tcp_host, route->tcp_port,
+				strerror(errno));
 			close(fd);
 			return -1;
 		}
@@ -159,25 +165,17 @@ static int connect_backend(const struct http_route *route)
 	}
 }
 
-/* pending request being assembled from MCU frames */
-static struct {
-	uint8_t stream_id;
-	uint8_t method;
-	uint16_t status_code;
-	char path[256];
-	char headers[512];
-	char body[8192];
-	size_t body_len;
-	bool active;
-} pending_req;
+/* ---- HTTP client (MCU → Linux backend) ---- */
 
-/* Simple HTTP client — connects to backend, sends request, gets response.
- * If route is non-NULL, connects to the route's backend.
- * Otherwise falls back to host:port (legacy). */
+/*
+ * Send an HTTP request to a backend and read the response.
+ * Connects to the route's backend or falls back to host:port.
+ * This is synchronous — acceptable for local sockets (sub-ms).
+ */
 static int http_request(const char *method_str,
 			const struct http_route *route,
 			const char *host, int port,
-			const char *path, const char *req_headers,
+			const char *path,
 			const char *req_body, size_t req_body_len,
 			char *resp_buf, size_t resp_buf_size,
 			int *resp_status, char *resp_headers,
@@ -202,16 +200,10 @@ static int http_request(const char *method_str,
 			}
 		}
 	}
-	if (fd < 0) {
-		fprintf(stderr, "[bridge] connect failed: %s (%s)\n",
-			route ? (route->unix_path[0] ? route->unix_path
-						     : route->tcp_host)
-			      : host,
-			strerror(errno));
+	if (fd < 0)
 		return -1;
-	}
 
-	/* send HTTP request — unix sockets use Host: localhost */
+	/* unix sockets require Host: localhost */
 	const char *host_hdr = host;
 	if (route) {
 		if (route->unix_path[0])
@@ -221,26 +213,23 @@ static int http_request(const char *method_str,
 	}
 
 	char req_line[512];
-	int n;
 	char cl[32];
 	if (req_body_len > 0)
 		snprintf(cl, sizeof(cl), "Content-Length: %zu\r\n",
 			 req_body_len);
-	n = snprintf(req_line, sizeof(req_line),
-		     "%s %s HTTP/1.1\r\nHost: %s\r\n"
-		     "Connection: close\r\n"
-		     "%s"
-		     "%s"
-		     "\r\n",
-		     method_str, path, host_hdr,
-		     req_headers ? req_headers : "",
-		     req_body_len > 0 ? cl : "");
+	int n = snprintf(req_line, sizeof(req_line),
+			 "%s %s HTTP/1.1\r\nHost: %s\r\n"
+			 "Connection: close\r\n"
+			 "%s"
+			 "\r\n",
+			 method_str, path, host_hdr,
+			 req_body_len > 0 ? cl : "");
 
 	write(fd, req_line, n);
 	if (req_body && req_body_len > 0)
 		write(fd, req_body, req_body_len);
 
-	/* read response with timeout — upstream may stream or hang */
+	/* read response with timeout */
 	struct timeval tv = { .tv_sec = 3, .tv_usec = 0 };
 	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
@@ -251,14 +240,12 @@ static int http_request(const char *method_str,
 		if (r <= 0)
 			break;
 		total += r;
-		/* if we got headers + some body, check if we have Content-Length
-		 * worth of data and stop early */
 		if (total > 4) {
 			char *hdr_end = strstr(raw, "\r\n\r\n");
 			if (hdr_end) {
-				char *cl = strcasestr(raw, "Content-Length:");
-				if (cl && cl < hdr_end) {
-					size_t expected = atoi(cl + 15);
+				char *clh = strcasestr(raw, "Content-Length:");
+				if (clh && clh < hdr_end) {
+					size_t expected = atoi(clh + 15);
 					size_t body_start = (hdr_end + 4) - raw;
 					if (total - body_start >= expected)
 						break;
@@ -269,12 +256,10 @@ static int http_request(const char *method_str,
 	raw[total] = '\0';
 	close(fd);
 
-	if (total == 0) {
-		fprintf(stderr, "[bridge] empty response from backend\n");
+	if (total == 0)
 		return -1;
-	}
 
-	/* parse HTTP response — accept both \r\n\r\n and \n\n as header end */
+	/* parse HTTP response */
 	char *status_line = raw;
 	char *hdr_end = strstr(raw, "\r\n\r\n");
 	int hdr_sep_len = 4;
@@ -285,12 +270,10 @@ static int http_request(const char *method_str,
 	if (!hdr_end)
 		return -1;
 
-	/* parse status code */
 	char *sp = strchr(status_line, ' ');
 	if (sp)
 		*resp_status = atoi(sp + 1);
 
-	/* extract headers */
 	char *hdr_start = strstr(status_line, "\r\n");
 	if (hdr_start && resp_headers) {
 		size_t hlen = hdr_end - hdr_start - 2;
@@ -300,7 +283,6 @@ static int http_request(const char *method_str,
 		resp_headers[hlen] = '\0';
 	}
 
-	/* extract body */
 	char *body_start = hdr_end + hdr_sep_len;
 	size_t body_len = total - (body_start - raw);
 	if (body_len > resp_buf_size - 1)
@@ -324,8 +306,23 @@ static const char *method_to_str(uint8_t method)
 	}
 }
 
+/* ---- MCU → Linux: outbound HTTP request ---- */
+
+/* pending request being assembled from MCU frames */
+static struct {
+	uint8_t stream_id;
+	uint8_t method;
+	uint16_t status_code;
+	char path[256];
+	char headers[512];
+	char body[8192];
+	size_t body_len;
+	bool active;
+} pending_req;
+
 int pvcm_bridge_init(struct pvcm_transport *t)
 {
+	(void)t;
 	memset(&pending_req, 0, sizeof(pending_req));
 	return 0;
 }
@@ -333,27 +330,23 @@ int pvcm_bridge_init(struct pvcm_transport *t)
 int pvcm_bridge_on_http_req(struct pvcm_transport *t,
 			    const uint8_t *buf, int len)
 {
+	(void)t;
 	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
 
-	if (req->direction != PVCM_HTTP_DIR_REQUEST) {
-		fprintf(stderr, "[bridge] ignoring non-request HTTP_REQ "
-			"dir=%d\n", req->direction);
+	if (req->direction != PVCM_HTTP_DIR_REQUEST)
 		return 0;
-	}
 
 	pending_req.stream_id = req->stream_id;
 	pending_req.method = req->method;
 	pending_req.body_len = 0;
 	pending_req.active = true;
 
-	/* extract path */
 	size_t plen = req->path_len;
 	if (plen > sizeof(pending_req.path) - 1)
 		plen = sizeof(pending_req.path) - 1;
 	memcpy(pending_req.path, req->data, plen);
 	pending_req.path[plen] = '\0';
 
-	/* extract headers */
 	size_t hlen = req->headers_len;
 	if (hlen > sizeof(pending_req.headers) - 1)
 		hlen = sizeof(pending_req.headers) - 1;
@@ -371,6 +364,7 @@ int pvcm_bridge_on_http_req(struct pvcm_transport *t,
 int pvcm_bridge_on_http_data(struct pvcm_transport *t,
 			     const uint8_t *buf, int len)
 {
+	(void)t;
 	const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
 
 	if (!pending_req.active || d->stream_id != pending_req.stream_id)
@@ -389,6 +383,7 @@ int pvcm_bridge_on_http_data(struct pvcm_transport *t,
 int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 			    const uint8_t *buf, int len)
 {
+	(void)len;
 	if (!pending_req.active)
 		return 0;
 
@@ -415,24 +410,20 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 					    : route->tcp_host);
 	}
 
-	/* forward to upstream HTTP server */
-	char resp_body[8192] = "";
-	char resp_headers[1024] = "";
-	int resp_status = 500;
-
-	/* Don't forward MCU's Host header to backend — http_request
-	 * sets its own Host header based on the route. Only forward
-	 * non-Host headers from the MCU. */
+	/* Don't forward MCU's Host header — http_request sets its own */
 	const char *fwd_headers = NULL;
 	if (!route && pending_req.headers[0])
 		fwd_headers = pending_req.headers;
+
+	char resp_body[8192] = "";
+	char resp_headers[1024] = "";
+	int resp_status = 500;
 
 	int body_len = http_request(
 		method_to_str(pending_req.method),
 		route,
 		"127.0.0.1", 12368,
 		pending_req.path,
-		fwd_headers,
 		pending_req.body_len > 0 ? pending_req.body : NULL,
 		pending_req.body_len,
 		resp_body, sizeof(resp_body),
@@ -457,7 +448,6 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 		.total_body_size = (uint32_t)body_len,
 	};
 
-	/* pack response headers */
 	size_t hlen = strlen(resp_headers);
 	if (hlen > sizeof(resp.data))
 		hlen = sizeof(resp.data);
@@ -482,7 +472,7 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 		memcpy(data.data, resp_body + offset, chunk);
 		t->send_frame(t, &data, 4 + chunk);
 		offset += chunk;
-		usleep(2000); /* 2ms between chunks — let MCU process */
+		usleep(2000);
 	}
 
 	/* send HTTP_END */
@@ -495,10 +485,9 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 	return 0;
 }
 
-/* ---- MCU as HTTP server (inbound requests) ---- */
+/* ---- Linux → MCU: inbound HTTP via evhttp ---- */
 
-#include <pthread.h>
-#include <poll.h>
+static struct pvcm_transport *invoke_transport;
 
 /* pending reply from MCU */
 static struct {
@@ -510,122 +499,194 @@ static struct {
 	size_t headers_len;
 	char body[8192];
 	size_t body_len;
-	pthread_mutex_t mutex;
-	pthread_cond_t cond;
-} invoke_reply = {
-	.mutex = PTHREAD_MUTEX_INITIALIZER,
-	.cond = PTHREAD_COND_INITIALIZER,
-};
+	struct evhttp_request *pending_req;  /* stashed evhttp request */
+	struct event *timeout_ev;            /* 10s timeout timer */
+} invoke_reply;
 
 static uint8_t invoke_stream_id = 128; /* high range to avoid collision */
 
 int pvcm_bridge_on_reply_req(struct pvcm_transport *t,
 			     const uint8_t *buf, int len)
 {
+	(void)t;
 	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
-	fprintf(stdout, "[bridge] REPLY_REQ: dir=%d sid=%d status=%d "
-		"(expect sid=%d active=%d)\n",
-		req->direction, req->stream_id, req->status_code,
-		invoke_reply.stream_id, invoke_reply.active);
 	if (req->direction != PVCM_HTTP_DIR_REPLY)
 		return 0;
 
-	pthread_mutex_lock(&invoke_reply.mutex);
 	if (invoke_reply.active && req->stream_id == invoke_reply.stream_id) {
 		invoke_reply.status_code = req->status_code;
 		size_t hlen = req->headers_len;
 		if (hlen > sizeof(invoke_reply.headers) - 1)
 			hlen = sizeof(invoke_reply.headers) - 1;
 		if (hlen > 0)
-			memcpy(invoke_reply.headers, req->data + req->path_len, hlen);
+			memcpy(invoke_reply.headers,
+			       req->data + req->path_len, hlen);
 		invoke_reply.headers[hlen] = '\0';
 		invoke_reply.headers_len = hlen;
 	}
-	pthread_mutex_unlock(&invoke_reply.mutex);
 	return 0;
 }
 
 int pvcm_bridge_on_reply_data(struct pvcm_transport *t,
 			      const uint8_t *buf, int len)
 {
+	(void)t;
 	const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
 
-	pthread_mutex_lock(&invoke_reply.mutex);
 	if (invoke_reply.active && d->stream_id == invoke_reply.stream_id) {
 		size_t chunk = d->len;
-		if (invoke_reply.body_len + chunk > sizeof(invoke_reply.body) - 1)
-			chunk = sizeof(invoke_reply.body) - 1 - invoke_reply.body_len;
-		memcpy(invoke_reply.body + invoke_reply.body_len, d->data, chunk);
+		if (invoke_reply.body_len + chunk >
+		    sizeof(invoke_reply.body) - 1)
+			chunk = sizeof(invoke_reply.body) - 1 -
+				invoke_reply.body_len;
+		memcpy(invoke_reply.body + invoke_reply.body_len,
+		       d->data, chunk);
 		invoke_reply.body_len += chunk;
 	}
-	pthread_mutex_unlock(&invoke_reply.mutex);
 	return 0;
+}
+
+/* Send the HTTP response back to the evhttp client */
+static void invoke_send_response(int status_code, const char *body,
+				 size_t body_len)
+{
+	struct evhttp_request *req = invoke_reply.pending_req;
+	if (!req)
+		return;
+
+	struct evbuffer *buf = evbuffer_new();
+	if (body && body_len > 0)
+		evbuffer_add(buf, body, body_len);
+
+	evhttp_add_header(evhttp_request_get_output_headers(req),
+			  "Content-Type", "application/json");
+	evhttp_add_header(evhttp_request_get_output_headers(req),
+			  "Connection", "close");
+	evhttp_send_reply(req, status_code, "OK", buf);
+	evbuffer_free(buf);
+
+	invoke_reply.pending_req = NULL;
 }
 
 int pvcm_bridge_on_reply_end(struct pvcm_transport *t,
 			     const uint8_t *buf, int len)
 {
+	(void)t;
 	uint8_t sid = buf[1];
-	fprintf(stdout, "[bridge] REPLY_END: sid=%d (expect sid=%d "
-		"active=%d)\n", sid, invoke_reply.stream_id,
-		invoke_reply.active);
 
-	pthread_mutex_lock(&invoke_reply.mutex);
-	if (invoke_reply.active && sid == invoke_reply.stream_id) {
-		invoke_reply.body[invoke_reply.body_len] = '\0';
-		invoke_reply.complete = true;
-		fprintf(stdout, "[bridge] REPLY complete: status=%d "
-			"body=%zu\n", invoke_reply.status_code,
-			invoke_reply.body_len);
-		pthread_cond_signal(&invoke_reply.cond);
+	if (!invoke_reply.active || sid != invoke_reply.stream_id)
+		return 0;
+
+	invoke_reply.body[invoke_reply.body_len] = '\0';
+	invoke_reply.complete = true;
+
+	fprintf(stdout, "[bridge] INVOKE reply: status=%d body=%zu\n",
+		invoke_reply.status_code, invoke_reply.body_len);
+
+	/* cancel timeout timer */
+	if (invoke_reply.timeout_ev) {
+		evtimer_del(invoke_reply.timeout_ev);
+		event_free(invoke_reply.timeout_ev);
+		invoke_reply.timeout_ev = NULL;
 	}
-	pthread_mutex_unlock(&invoke_reply.mutex);
+
+	/* send HTTP response */
+	invoke_send_response(invoke_reply.status_code,
+			     invoke_reply.body, invoke_reply.body_len);
+	invoke_reply.active = false;
 	return 0;
 }
 
-/* Forward an inbound HTTP request to the MCU and wait for reply */
-static int invoke_mcu(struct pvcm_transport *t,
-		      const char *method, const char *path,
-		      const char *req_body, size_t req_body_len,
-		      char *resp_body, size_t resp_body_size,
-		      int *resp_status)
+/* Timeout callback — send 504 if MCU doesn't reply in time */
+static void invoke_timeout_cb(evutil_socket_t fd, short what, void *arg)
 {
+	(void)fd;
+	(void)what;
+	(void)arg;
+
+	if (!invoke_reply.active)
+		return;
+
+	fprintf(stderr, "[bridge] INVOKE timeout (10s)\n");
+	invoke_send_response(504, "{\"error\":\"MCU timeout\"}", 22);
+	invoke_reply.active = false;
+	invoke_reply.timeout_ev = NULL;
+}
+
+/* evhttp request handler — invokes MCU and waits for async reply */
+static void on_http_request(struct evhttp_request *req, void *arg)
+{
+	struct event_base *base = evhttp_connection_get_base(
+		evhttp_request_get_connection(req));
+
+	if (invoke_reply.active) {
+		/* only one in-flight invoke at a time */
+		evhttp_send_error(req, 503, "MCU busy");
+		return;
+	}
+
+	const char *uri = evhttp_request_get_uri(req);
+	enum evhttp_cmd_type cmd = evhttp_request_get_command(req);
+
+	const char *method = "GET";
+	uint8_t method_code = PVCM_HTTP_GET;
+	switch (cmd) {
+	case EVHTTP_REQ_POST:   method = "POST";   method_code = PVCM_HTTP_POST;   break;
+	case EVHTTP_REQ_PUT:    method = "PUT";     method_code = PVCM_HTTP_PUT;    break;
+	case EVHTTP_REQ_DELETE: method = "DELETE";  method_code = PVCM_HTTP_DELETE; break;
+	default: break;
+	}
+
+	/* read request body */
+	struct evbuffer *input = evhttp_request_get_input_buffer(req);
+	size_t req_body_len = evbuffer_get_length(input);
+	char req_body[4096] = "";
+	if (req_body_len > 0) {
+		if (req_body_len > sizeof(req_body) - 1)
+			req_body_len = sizeof(req_body) - 1;
+		evbuffer_copyout(input, req_body, req_body_len);
+		req_body[req_body_len] = '\0';
+	}
+
+	fprintf(stdout, "[bridge-listen] %s %s (body=%zu)\n",
+		method, uri, req_body_len);
+
 	uint8_t sid = invoke_stream_id++;
 	if (invoke_stream_id == 0)
 		invoke_stream_id = 128;
 
-	uint8_t method_code = PVCM_HTTP_GET;
-	if (strcmp(method, "POST") == 0) method_code = PVCM_HTTP_POST;
-	else if (strcmp(method, "PUT") == 0) method_code = PVCM_HTTP_PUT;
-	else if (strcmp(method, "DELETE") == 0) method_code = PVCM_HTTP_DELETE;
-
 	/* setup pending reply */
-	pthread_mutex_lock(&invoke_reply.mutex);
 	invoke_reply.stream_id = sid;
 	invoke_reply.active = true;
 	invoke_reply.complete = false;
 	invoke_reply.body_len = 0;
 	invoke_reply.status_code = 0;
-	pthread_mutex_unlock(&invoke_reply.mutex);
+	invoke_reply.pending_req = req;
+
+	/* start 10s timeout */
+	invoke_reply.timeout_ev = evtimer_new(base, invoke_timeout_cb, NULL);
+	struct timeval tv = { .tv_sec = 10, .tv_usec = 0 };
+	evtimer_add(invoke_reply.timeout_ev, &tv);
 
 	/* send INVOKE request to MCU */
-	pvcm_http_req_t req = {
+	pvcm_http_req_t ireq = {
 		.op = PVCM_OP_HTTP_REQ,
 		.stream_id = sid,
 		.direction = PVCM_HTTP_DIR_INVOKE,
 		.method = method_code,
 		.total_body_size = (uint32_t)req_body_len,
 	};
-	size_t plen = strlen(path);
-	if (plen > sizeof(req.data)) plen = sizeof(req.data);
-	req.path_len = (uint16_t)plen;
-	req.headers_len = 0;
-	memcpy(req.data, path, plen);
+	size_t plen = strlen(uri);
+	if (plen > sizeof(ireq.data)) plen = sizeof(ireq.data);
+	ireq.path_len = (uint16_t)plen;
+	ireq.headers_len = 0;
+	memcpy(ireq.data, uri, plen);
 
-	t->send_frame(t, &req, sizeof(req) - sizeof(uint32_t));
+	invoke_transport->send_frame(invoke_transport, &ireq,
+				     sizeof(ireq) - sizeof(uint32_t));
 
 	/* send body if any */
-	if (req_body && req_body_len > 0) {
+	if (req_body_len > 0) {
 		size_t off = 0;
 		while (off < req_body_len) {
 			pvcm_http_data_t data = {
@@ -633,131 +694,43 @@ static int invoke_mcu(struct pvcm_transport *t,
 				.stream_id = sid,
 			};
 			size_t chunk = req_body_len - off;
-			if (chunk > PVCM_MAX_CHUNK_SIZE) chunk = PVCM_MAX_CHUNK_SIZE;
+			if (chunk > PVCM_MAX_CHUNK_SIZE)
+				chunk = PVCM_MAX_CHUNK_SIZE;
 			data.len = (uint16_t)chunk;
 			memcpy(data.data, req_body + off, chunk);
-			t->send_frame(t, &data, 4 + chunk);
+			invoke_transport->send_frame(invoke_transport,
+						     &data, 4 + chunk);
 			off += chunk;
 		}
 	}
 
 	pvcm_http_end_t end = { .op = PVCM_OP_HTTP_END, .stream_id = sid };
-	t->send_frame(t, &end, sizeof(end) - sizeof(uint32_t));
+	invoke_transport->send_frame(invoke_transport, &end,
+				     sizeof(end) - sizeof(uint32_t));
 
-	/* wait for MCU reply (10s timeout) */
-	pthread_mutex_lock(&invoke_reply.mutex);
-	struct timespec ts;
-	clock_gettime(CLOCK_REALTIME, &ts);
-	ts.tv_sec += 10;
-
-	while (!invoke_reply.complete) {
-		if (pthread_cond_timedwait(&invoke_reply.cond,
-					  &invoke_reply.mutex, &ts) != 0) {
-			invoke_reply.active = false;
-			pthread_mutex_unlock(&invoke_reply.mutex);
-			fprintf(stderr, "[bridge] MCU invoke timeout\n");
-			*resp_status = 504;
-			return -1;
-		}
-	}
-
-	*resp_status = invoke_reply.status_code;
-	size_t blen = invoke_reply.body_len;
-	if (blen > resp_body_size - 1) blen = resp_body_size - 1;
-	memcpy(resp_body, invoke_reply.body, blen);
-	resp_body[blen] = '\0';
-	invoke_reply.active = false;
-	pthread_mutex_unlock(&invoke_reply.mutex);
-
-	return (int)blen;
+	/* don't send reply here — reply comes async via on_reply_end */
 }
 
-/* HTTP listener thread — accepts connections and invokes MCU */
-static struct pvcm_transport *listener_transport;
-static int listener_port;
-
-static void handle_client(int client_fd)
+int pvcm_bridge_start_listener(struct event_base *base,
+			       struct pvcm_transport *t, int port)
 {
-	char raw[4096];
-	ssize_t n = read(client_fd, raw, sizeof(raw) - 1);
-	if (n <= 0) { close(client_fd); return; }
-	raw[n] = '\0';
+	invoke_transport = t;
 
-	/* parse HTTP request line */
-	char method[16], path[256];
-	sscanf(raw, "%15s %255s", method, path);
-
-	/* find body */
-	char *body_start = strstr(raw, "\r\n\r\n");
-	char *req_body = NULL;
-	size_t req_body_len = 0;
-	if (body_start) {
-		req_body = body_start + 4;
-		req_body_len = n - (req_body - raw);
+	struct evhttp *http = evhttp_new(base);
+	if (!http) {
+		fprintf(stderr, "[bridge-listen] evhttp_new failed\n");
+		return -1;
 	}
 
-	fprintf(stdout, "[bridge-listen] %s %s (body=%zu)\n",
-		method, path, req_body_len);
+	evhttp_set_gencb(http, on_http_request, NULL);
 
-	/* invoke MCU */
-	char resp_body[8192] = "";
-	int resp_status = 500;
-	int body_len = invoke_mcu(listener_transport, method, path,
-				  req_body, req_body_len,
-				  resp_body, sizeof(resp_body),
-				  &resp_status);
-	if (body_len < 0) body_len = 0;
-
-	/* send HTTP response */
-	char resp[16384];
-	int rn = snprintf(resp, sizeof(resp),
-			  "HTTP/1.1 %d OK\r\n"
-			  "Content-Type: application/json\r\n"
-			  "Content-Length: %d\r\n"
-			  "Connection: close\r\n"
-			  "\r\n%s",
-			  resp_status, body_len, resp_body);
-	write(client_fd, resp, rn);
-	close(client_fd);
-}
-
-static void *listener_thread(void *arg)
-{
-	int port = listener_port;
-	int srv = socket(AF_INET, SOCK_STREAM, 0);
-	int opt = 1;
-	setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-	struct sockaddr_in addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(port),
-		.sin_addr.s_addr = htonl(INADDR_LOOPBACK),
-	};
-
-	if (bind(srv, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		fprintf(stderr, "[bridge-listen] bind failed: %m\n");
-		return NULL;
+	if (evhttp_bind_socket(http, "127.0.0.1", port) != 0) {
+		fprintf(stderr, "[bridge-listen] bind failed on port %d\n",
+			port);
+		evhttp_free(http);
+		return -1;
 	}
-	listen(srv, 4);
+
 	fprintf(stdout, "[bridge-listen] MCU HTTP server on port %d\n", port);
-
-	while (1) {
-		int client = accept(srv, NULL, NULL);
-		if (client < 0) break;
-		handle_client(client);
-	}
-	close(srv);
-	return NULL;
-}
-
-int pvcm_bridge_start_listener(struct pvcm_transport *t, int port)
-{
-	listener_transport = t;
-	listener_port = port;
-
-	pthread_t tid;
-	pthread_create(&tid, NULL, listener_thread, NULL);
-	pthread_detach(tid);
-
 	return 0;
 }

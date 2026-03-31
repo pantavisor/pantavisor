@@ -210,6 +210,57 @@ static int rpmsg_recv_frame(struct pvcm_transport *t, void *payload,
 	return -1;
 }
 
+/*
+ * Non-blocking try_recv — used by the event loop.
+ * Does one non-blocking read, then tries to extract a frame.
+ * Returns payload length on success, 0 if no complete frame, -1 on error.
+ */
+static int rpmsg_try_recv_frame(struct pvcm_transport *t, void *payload,
+				size_t max_len)
+{
+	/* check residual buffer first */
+	if (residual_len >= 8) {
+		size_t consumed = 0;
+		int ret = parse_one_frame(residual, residual_len, payload,
+					  max_len, &consumed);
+		if (ret >= 0) {
+			residual_len -= consumed;
+			if (residual_len > 0)
+				memmove(residual, residual + consumed,
+					residual_len);
+			return ret;
+		}
+		/* parse error — discard and read fresh */
+		residual_len = 0;
+	}
+
+	/* non-blocking read */
+	ssize_t n = read(t->fd, residual + residual_len,
+			 sizeof(residual) - residual_len);
+	if (n > 0) {
+		residual_len += n;
+		if (residual_len >= 8) {
+			size_t consumed = 0;
+			int ret = parse_one_frame(residual, residual_len,
+						  payload, max_len, &consumed);
+			if (ret >= 0) {
+				residual_len -= consumed;
+				if (residual_len > 0)
+					memmove(residual,
+						residual + consumed,
+						residual_len);
+				return ret;
+			}
+		}
+		return 0; /* not enough data yet */
+	}
+
+	if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+		return -1;
+
+	return 0;
+}
+
 static void rpmsg_close(struct pvcm_transport *t)
 {
 	if (t->fd >= 0) {
@@ -225,5 +276,6 @@ struct pvcm_transport pvcm_transport_rpmsg = {
 	.open = rpmsg_open,
 	.send_frame = rpmsg_send_frame,
 	.recv_frame = rpmsg_recv_frame,
+	.try_recv_frame = rpmsg_try_recv_frame,
 	.close = rpmsg_close,
 };

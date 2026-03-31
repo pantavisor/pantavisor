@@ -10,6 +10,7 @@
 #include "../protocol/pvcm_protocol.h"
 
 #include <stddef.h>
+#include <event2/event.h>
 
 /* Route entry: maps a hostname to a backend (unix socket or TCP) */
 struct http_route {
@@ -24,7 +25,7 @@ struct http_route {
 /* Add a route. spec format: "name=unix:/path" or "name=tcp:host:port" */
 int pvcm_bridge_add_route(const char *spec);
 
-/* Initialize the HTTP bridge with the transport */
+/* Initialize the HTTP bridge */
 int pvcm_bridge_init(struct pvcm_transport *t);
 
 /* Handle incoming HTTP frames from MCU (outbound requests) */
@@ -35,8 +36,9 @@ int pvcm_bridge_on_http_data(struct pvcm_transport *t,
 int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 			    const uint8_t *buf, int len);
 
-/* Start HTTP listener for inbound requests to MCU (runs in thread) */
-int pvcm_bridge_start_listener(struct pvcm_transport *t, int port);
+/* Start evhttp listener for inbound requests to MCU */
+int pvcm_bridge_start_listener(struct event_base *base,
+			       struct pvcm_transport *t, int port);
 
 /* Handle REPLY frames from MCU (responses to inbound requests) */
 int pvcm_bridge_on_reply_req(struct pvcm_transport *t,

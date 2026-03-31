@@ -222,12 +222,92 @@ static int uart_recv_frame(struct pvcm_transport *t, void *payload,
 	return (int)len;
 }
 
+/* ---- Non-blocking try_recv for event loop ---- */
+
+static uint8_t uart_residual[4096];
+static size_t uart_residual_len;
+
+static int uart_try_parse(void *payload, size_t max_len)
+{
+	/* scan for sync bytes */
+	while (uart_residual_len >= 8) {
+		if (uart_residual[0] != PVCM_SYNC_BYTE_0 ||
+		    uart_residual[1] != PVCM_SYNC_BYTE_1) {
+			/* discard one byte, try again */
+			uart_residual_len--;
+			memmove(uart_residual, uart_residual + 1,
+				uart_residual_len);
+			continue;
+		}
+
+		uint16_t plen = uart_residual[2] | (uart_residual[3] << 8);
+		size_t frame_size = 4 + plen + 4;
+
+		if (frame_size > uart_residual_len)
+			return 0; /* incomplete */
+
+		if (plen > max_len) {
+			/* too big — discard frame */
+			uart_residual_len -= frame_size;
+			memmove(uart_residual, uart_residual + frame_size,
+				uart_residual_len);
+			return -1;
+		}
+
+		uint32_t recv_crc = uart_residual[4 + plen] |
+				    (uart_residual[4 + plen + 1] << 8) |
+				    (uart_residual[4 + plen + 2] << 16) |
+				    (uart_residual[4 + plen + 3] << 24);
+		uint32_t calc_crc = crc32_calc(&uart_residual[4], plen);
+
+		if (recv_crc != calc_crc) {
+			/* bad CRC — skip sync bytes, try again */
+			uart_residual_len--;
+			memmove(uart_residual, uart_residual + 1,
+				uart_residual_len);
+			continue;
+		}
+
+		memcpy(payload, &uart_residual[4], plen);
+		uart_residual_len -= frame_size;
+		if (uart_residual_len > 0)
+			memmove(uart_residual, uart_residual + frame_size,
+				uart_residual_len);
+		return (int)plen;
+	}
+
+	return 0; /* not enough data */
+}
+
+static int uart_try_recv_frame(struct pvcm_transport *t, void *payload,
+			       size_t max_len)
+{
+	/* first check residual buffer */
+	int ret = uart_try_parse(payload, max_len);
+	if (ret != 0)
+		return ret;
+
+	/* non-blocking read */
+	ssize_t n = read(t->fd, uart_residual + uart_residual_len,
+			 sizeof(uart_residual) - uart_residual_len);
+	if (n > 0) {
+		uart_residual_len += n;
+		return uart_try_parse(payload, max_len);
+	}
+
+	if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
+		return -1;
+
+	return 0; /* no data available */
+}
+
 static void uart_close(struct pvcm_transport *t)
 {
 	if (t->fd >= 0) {
 		close(t->fd);
 		t->fd = -1;
 	}
+	uart_residual_len = 0;
 }
 
 struct pvcm_transport pvcm_transport_uart = {
@@ -236,5 +316,6 @@ struct pvcm_transport pvcm_transport_uart = {
 	.open = uart_open,
 	.send_frame = uart_send_frame,
 	.recv_frame = uart_recv_frame,
+	.try_recv_frame = uart_try_recv_frame,
 	.close = uart_close,
 };
