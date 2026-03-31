@@ -16,8 +16,15 @@ struct pvcm_transport {
 		    uint32_t baudrate);
 	int (*send_frame)(struct pvcm_transport *t, const void *payload,
 			  size_t len);
+	/* blocking recv with timeout — used during handshake */
 	int (*recv_frame)(struct pvcm_transport *t, void *payload,
 			  size_t max_len, int timeout_ms);
+	/* non-blocking recv — used in event loop. Returns:
+	 *   >0: payload length (frame received)
+	 *    0: no complete frame available yet
+	 *   -1: error */
+	int (*try_recv_frame)(struct pvcm_transport *t, void *payload,
+			      size_t max_len);
 	void (*close)(struct pvcm_transport *t);
 };
 

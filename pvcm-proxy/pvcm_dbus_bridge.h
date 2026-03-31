@@ -15,10 +15,13 @@
 #include "pvcm_transport.h"
 #include "../protocol/pvcm_protocol.h"
 #include <stddef.h>
+#include <event2/event.h>
 
-/* Initialize D-Bus bridge. Connects to the bus at socket_path.
- * Pass NULL to skip D-Bus (no-op bridge). */
-int pvcm_dbus_bridge_init(struct pvcm_transport *t,
+/* Initialize D-Bus bridge with event loop. Connects to the bus at
+ * socket_path. The dbus_fd is registered with the event_base for
+ * async signal delivery. Pass NULL socket_path to skip D-Bus. */
+int pvcm_dbus_bridge_init(struct event_base *base,
+			   struct pvcm_transport *t,
 			   const char *socket_path);
 
 /* Handle incoming D-Bus frames from MCU */
@@ -29,10 +32,7 @@ int pvcm_dbus_bridge_on_subscribe(struct pvcm_transport *t,
 int pvcm_dbus_bridge_on_unsubscribe(struct pvcm_transport *t,
 				    const uint8_t *buf, int len);
 
-/* Poll for D-Bus signals — call from main loop, non-blocking */
-void pvcm_dbus_bridge_poll(void);
-
-/* Clean up D-Bus connection */
+/* Clean up D-Bus connection and events */
 void pvcm_dbus_bridge_cleanup(void);
 
 #endif /* PVCM_DBUS_BRIDGE_H */

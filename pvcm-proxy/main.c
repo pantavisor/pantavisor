@@ -5,12 +5,20 @@
  * inside a mount namespace. From xconnect's perspective this IS
  * the container.
  *
+ * Architecture: single-threaded, event-driven via libevent.
+ *   - Transport fd read event: dispatches PVCM frames
+ *   - evhttp listener: inbound HTTP to MCU
+ *   - D-Bus fd read event: signal delivery + async call replies
+ *   - Heartbeat timer: monitors MCU health
+ *   - Signal events: clean shutdown on SIGTERM/SIGINT
+ *
  * Copyright (c) 2024-2026 Pantacor Ltd.
  * SPDX-License-Identifier: MIT
  */
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -20,13 +28,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <event2/event.h>
+
 #include "pvcm_config.h"
 #include "pvcm_transport.h"
 #include "pvcm_protocol.h"
 #include "pvcm_bridge.h"
 #include "pvcm_dbus_bridge.h"
 
-static volatile bool running = true;
 static FILE *dbglog = NULL;
 static char dbus_socket[256] = "";
 
@@ -46,12 +55,6 @@ static char dbus_socket[256] = "";
 		fflush(dbglog);                                           \
 	}                                                                 \
 } while (0)
-
-static void signal_handler(int sig)
-{
-	(void)sig;
-	running = false;
-}
 
 static int listen_port = 18081;
 
@@ -199,8 +202,6 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 
 /*
  * Load MCU firmware via remoteproc.
- * For i.MX8MN: copies ELF to /lib/firmware/, writes to remoteproc sysfs.
- * For external MCUs: firmware is flashed via PVCM protocol after connect.
  */
 static int write_sysfs(const char *path, const char *value)
 {
@@ -224,23 +225,15 @@ static int read_sysfs(const char *path, char *buf, size_t size)
 		return -1;
 	}
 	fclose(f);
-	/* strip newline */
 	char *nl = strchr(buf, '\n');
 	if (nl)
 		*nl = '\0';
 	return 0;
 }
 
-/*
- * Discover ttyRPMSG device from remoteproc instance.
- * Walks /sys/class/tty/ttyRPMSG* and finds one whose device
- * path contains the remoteproc's device.
- * Falls back to /dev/ttyRPMSG0 if discovery fails.
- */
 static int discover_rpmsg_tty(const char *remoteproc, char *device,
 			      size_t device_size)
 {
-	/* simple approach: try /dev/ttyRPMSG0..3 */
 	for (int i = 0; i < 4; i++) {
 		char path[64];
 		snprintf(path, sizeof(path), "/dev/ttyRPMSG%d", i);
@@ -265,7 +258,6 @@ static int load_firmware(struct pvcm_config *cfg)
 		return 0;
 	}
 
-	/* internal M core via remoteproc */
 	char rproc_path[128];
 	snprintf(rproc_path, sizeof(rproc_path),
 		 "/sys/class/remoteproc/%s", cfg->remoteproc);
@@ -275,7 +267,6 @@ static int load_firmware(struct pvcm_config *cfg)
 		return -1;
 	}
 
-	/* check current state */
 	char state[32] = "";
 	char state_path[160];
 	snprintf(state_path, sizeof(state_path), "%s/state", rproc_path);
@@ -288,14 +279,12 @@ static int load_firmware(struct pvcm_config *cfg)
 		goto discover;
 	}
 
-	/* load firmware if specified */
 	if (cfg->firmware[0]) {
 		if (access(cfg->firmware, R_OK) != 0) {
 			pvcm_err("firmware not found: %s", cfg->firmware);
 			return -1;
 		}
 
-		/* set firmware search path to directory containing the ELF */
 		char fw_name[64];
 		const char *base = strrchr(cfg->firmware, '/');
 		if (base) {
@@ -315,7 +304,6 @@ static int load_firmware(struct pvcm_config *cfg)
 		}
 		snprintf(fw_name, sizeof(fw_name), "%s", base);
 
-		/* set firmware name in remoteproc */
 		char fw_rproc_path[160];
 		snprintf(fw_rproc_path, sizeof(fw_rproc_path),
 			 "%s/firmware", rproc_path);
@@ -324,34 +312,25 @@ static int load_firmware(struct pvcm_config *cfg)
 			return -1;
 	}
 
-	/* start M core */
 	pvcm_log("starting M core via %s", cfg->remoteproc);
 	if (write_sysfs(state_path, "start") < 0)
 		return -1;
 
-	/* restore original firmware search path */
 	if (cfg->firmware[0]) {
 		pvcm_log("restoring firmware search path");
 		write_sysfs("/sys/module/firmware_class"
 			    "/parameters/path", "");
 	}
 
-	/* wait for RPMsg device to appear */
 	pvcm_log("waiting for RPMsg device...");
 	sleep(2);
 
 discover:
-	/* Skip auto-discovery if device is already a valid /dev path
-	 * (set via CLI --device /dev/ttyRPMSGN) */
 	if (cfg->device[0] == '/' && access(cfg->device, R_OK | W_OK) == 0) {
 		pvcm_log("using explicit device: %s", cfg->device);
 		goto rpmsg_found;
 	}
 
-	/* auto-discover the ttyRPMSG device —
-	 * override when device field from run.json is an MCU name, not a /dev path.
-	 * Retry for up to 30 seconds — RPMsg channels can take time
-	 * to appear after M core boot. */
 	{
 		int rpmsg_retries = 15;
 		while (rpmsg_retries-- > 0) {
@@ -362,18 +341,60 @@ discover:
 				 rpmsg_retries);
 			sleep(2);
 		}
-		pvcm_err("ttyRPMSG never appeared — M core may not have "
-			 "announced an RPMsg endpoint");
+		pvcm_err("ttyRPMSG never appeared");
 		return -1;
 	}
 rpmsg_found:
 
-	/* set transport to rpmsg if not already */
 	if (cfg->transport[0] == '\0' || strcmp(cfg->transport, "uart") == 0)
 		strncpy(cfg->transport, "rpmsg", sizeof(cfg->transport));
 
 	return 0;
 }
+
+/* ---- Event callbacks ---- */
+
+/* Transport fd is readable — dispatch PVCM frames */
+static void transport_read_cb(evutil_socket_t fd, short what, void *arg)
+{
+	(void)fd;
+	(void)what;
+	struct pvcm_session *s = arg;
+
+	/* drain all available frames */
+	for (;;) {
+		int ret = pvcm_dispatch_one(s);
+		if (ret <= 0)
+			break;
+	}
+}
+
+/* Heartbeat timer — check if MCU is still alive */
+static void heartbeat_timer_cb(evutil_socket_t fd, short what, void *arg)
+{
+	(void)fd;
+	(void)what;
+	struct pvcm_session *s = arg;
+
+	time_t now = time(NULL);
+	time_t elapsed = now - s->last_heartbeat_time;
+
+	if (elapsed > 15) {
+		fprintf(stderr, "[pvcm-proxy] heartbeat timeout (%lds)\n",
+			elapsed);
+	}
+}
+
+/* Signal handler — break event loop */
+static void signal_cb(evutil_socket_t fd, short what, void *arg)
+{
+	(void)fd;
+	(void)what;
+	struct event_base *base = arg;
+	event_base_loopbreak(base);
+}
+
+/* ---- main ---- */
 
 int main(int argc, char **argv)
 {
@@ -381,15 +402,12 @@ int main(int argc, char **argv)
 	cfg.baudrate = PVCM_DEFAULT_BAUDRATE;
 	strncpy(cfg.transport, "uart", sizeof(cfg.transport));
 
-	/* disable stdio buffering so logs appear immediately in logserver */
+	/* disable stdio buffering so logs appear immediately */
 	setvbuf(stdout, NULL, _IONBF, 0);
 	setvbuf(stderr, NULL, _IONBF, 0);
 
 	if (parse_args(argc, argv, &cfg) < 0)
 		return 1;
-
-	signal(SIGTERM, signal_handler);
-	signal(SIGINT, signal_handler);
 
 	mkdir("/storage/logs/current/claudecli", 0755);
 	dbglog = fopen("/storage/logs/current/claudecli/pvcm-proxy.log", "w");
@@ -398,7 +416,6 @@ int main(int argc, char **argv)
 
 	/* parse run.json if provided, then re-apply CLI overrides */
 	if (cfg.config_path[0]) {
-		/* save CLI overrides */
 		char saved_device[64] = "", saved_transport[16] = "";
 		char saved_firmware[128] = "", saved_remoteproc[32] = "";
 		uint32_t saved_baudrate = 0;
@@ -418,7 +435,6 @@ int main(int argc, char **argv)
 		if (pvcm_config_parse(&cfg, cfg.config_path) < 0)
 			pvcm_err("could not parse config, using CLI args");
 
-		/* re-apply CLI overrides over config values */
 		if (saved_device[0])
 			strncpy(cfg.device, saved_device, sizeof(cfg.device));
 		if (saved_transport[0])
@@ -434,7 +450,7 @@ int main(int argc, char **argv)
 			cfg.baudrate = saved_baudrate;
 	}
 
-	/* auto-discover firmware ELF from config directory if not set */
+	/* auto-discover firmware ELF from config directory */
 	if (!cfg.firmware[0] && cfg.config_path[0]) {
 		char dir[256];
 		strncpy(dir, cfg.config_path, sizeof(dir) - 1);
@@ -447,9 +463,12 @@ int main(int argc, char **argv)
 				while ((ent = readdir(d)) != NULL) {
 					size_t len = strlen(ent->d_name);
 					if (len > 4 && strcmp(ent->d_name + len - 4, ".elf") == 0) {
-						snprintf(cfg.firmware, sizeof(cfg.firmware),
-							 "%s/%s", dir, ent->d_name);
-						pvcm_log("auto-discovered firmware: %s", cfg.firmware);
+						snprintf(cfg.firmware,
+							 sizeof(cfg.firmware),
+							 "%s/%s", dir,
+							 ent->d_name);
+						pvcm_log("auto-discovered firmware: %s",
+							 cfg.firmware);
 						break;
 					}
 				}
@@ -458,8 +477,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* load firmware / start M core if remoteproc specified
-	 * This may also auto-discover the device path */
+	/* load firmware / start M core */
 	if (cfg.remoteproc[0]) {
 		if (load_firmware(&cfg) < 0)
 			return 1;
@@ -467,7 +485,6 @@ int main(int argc, char **argv)
 		load_firmware(&cfg);
 	}
 
-	/* need at least a device by now */
 	if (!cfg.device[0]) {
 		pvcm_err("no device specified. Use --device, --remoteproc, or --config");
 		return 1;
@@ -475,11 +492,10 @@ int main(int argc, char **argv)
 
 	/* select transport */
 	struct pvcm_transport *transport;
-	if (strcmp(cfg.transport, "rpmsg") == 0) {
+	if (strcmp(cfg.transport, "rpmsg") == 0)
 		transport = &pvcm_transport_rpmsg;
-	} else {
+	else
 		transport = &pvcm_transport_uart;
-	}
 
 	/* open transport */
 	if (transport->open(transport, cfg.device, cfg.baudrate) < 0) {
@@ -493,9 +509,9 @@ int main(int argc, char **argv)
 		.connected = false,
 	};
 
-	/* handshake with MCU */
+	/* blocking handshake — before event loop */
 	int retries = 5;
-	while (retries-- > 0 && running) {
+	while (retries-- > 0) {
 		if (pvcm_handshake(&session) == 0)
 			break;
 		pvcm_err("handshake failed, retrying (%d left)", retries);
@@ -503,28 +519,67 @@ int main(int argc, char **argv)
 	}
 
 	if (!session.connected) {
-		pvcm_err("MCU '%s' not responding on %s", cfg.name, cfg.device);
+		pvcm_err("MCU '%s' not responding on %s", cfg.name,
+			 cfg.device);
 		transport->close(transport);
 		return 1;
 	}
 
+	/* switch transport fd to non-blocking for event loop */
+	int flags = fcntl(transport->fd, F_GETFL, 0);
+	fcntl(transport->fd, F_SETFL, flags | O_NONBLOCK);
+
+	/* create event base */
+	struct event_base *base = event_base_new();
+	if (!base) {
+		pvcm_err("event_base_new failed");
+		transport->close(transport);
+		return 1;
+	}
+
+	/* transport read event */
+	struct event *transport_ev = event_new(base, transport->fd,
+					       EV_READ | EV_PERSIST,
+					       transport_read_cb, &session);
+	event_add(transport_ev, NULL);
+
+	/* heartbeat timer (5s interval) */
+	struct event *heartbeat_ev = event_new(base, -1, EV_PERSIST,
+					       heartbeat_timer_cb, &session);
+	struct timeval hb_tv = { .tv_sec = 5, .tv_usec = 0 };
+	event_add(heartbeat_ev, &hb_tv);
+
+	/* signal events for clean shutdown */
+	struct event *sigterm_ev = evsignal_new(base, SIGTERM, signal_cb, base);
+	struct event *sigint_ev = evsignal_new(base, SIGINT, signal_cb, base);
+	event_add(sigterm_ev, NULL);
+	event_add(sigint_ev, NULL);
+
 	/* start HTTP bridge */
 	pvcm_bridge_init(transport);
-	pvcm_bridge_start_listener(transport, listen_port);
+	pvcm_bridge_start_listener(base, transport, listen_port);
 
-	/* start D-Bus bridge if socket configured */
+	/* start D-Bus bridge */
 	if (dbus_socket[0]) {
-		if (pvcm_dbus_bridge_init(transport, dbus_socket) < 0)
+		if (pvcm_dbus_bridge_init(base, transport, dbus_socket) < 0)
 			pvcm_err("D-Bus bridge init failed (continuing without)");
 	}
 
-	/* main protocol loop */
-	pvcm_run(&session, &running);
+	pvcm_log("entering event loop");
+
+	/* run the event loop — single thread, no mutex, no pthread */
+	event_base_dispatch(base);
 
 	/* shutdown */
 	pvcm_log("shutting down MCU '%s'", cfg.name);
 	pvcm_dbus_bridge_cleanup();
-	transport->close(transport);
 
+	event_free(transport_ev);
+	event_free(heartbeat_ev);
+	event_free(sigterm_ev);
+	event_free(sigint_ev);
+	event_base_free(base);
+
+	transport->close(transport);
 	return 0;
 }

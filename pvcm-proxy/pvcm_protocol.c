@@ -6,6 +6,7 @@
  *  - Heartbeat reception and health tracking
  *  - Log forwarding to stdout (pantavisor log server)
  *  - ACK/NACK handling
+ *  - Frame dispatch to HTTP bridge and D-Bus bridge
  *
  * SPDX-License-Identifier: MIT
  */
@@ -31,6 +32,7 @@ static const char *log_level_str(uint8_t level)
 
 /*
  * Send HELLO and wait for HELLO_RESP.
+ * Uses blocking recv_frame — must be called before the event loop.
  * Returns 0 on success, -1 on error, -2 on timeout.
  */
 int pvcm_handshake(struct pvcm_session *s)
@@ -66,6 +68,7 @@ int pvcm_handshake(struct pvcm_session *s)
 			s->protocol_version = resp->protocol_version;
 			s->mcu_fw_version = resp->mcu_fw_version;
 			s->connected = true;
+			s->last_heartbeat_time = time(NULL);
 
 			fprintf(stdout, "[pvcm-proxy] MCU connected: "
 				"protocol=v%d fw=v%d baudrate=%u\n",
@@ -98,6 +101,7 @@ static void handle_heartbeat(struct pvcm_session *s, const uint8_t *buf,
 	s->last_health_status = hb->status;
 	s->last_heartbeat_uptime = hb->uptime_s;
 	s->crash_count = hb->crash_count;
+	s->last_heartbeat_time = time(NULL);
 
 	fprintf(stdout, "[pvcm-proxy] heartbeat: status=%s uptime=%us "
 		"crashes=%d\n",
@@ -111,6 +115,7 @@ static void handle_heartbeat(struct pvcm_session *s, const uint8_t *buf,
  */
 static void handle_log(struct pvcm_session *s, const uint8_t *buf, int len)
 {
+	(void)s;
 	if ((size_t)len < 4)
 		return;
 
@@ -127,24 +132,14 @@ static void handle_log(struct pvcm_session *s, const uint8_t *buf, int len)
 }
 
 /*
- * Handle MCU requesting rollback.
+ * Try to receive and dispatch one PVCM frame (non-blocking).
+ * Returns: >0 frame dispatched, 0 no frame available, <0 error.
  */
-static void handle_request_rollback(struct pvcm_session *s)
-{
-	fprintf(stderr, "[pvcm-proxy] MCU requested rollback!\n");
-	/* TODO: signal pantavisor to trigger rollback */
-}
-
-/*
- * Receive and dispatch one PVCM frame.
- * Returns 0 on success, -1 on error, -2 on timeout.
- */
-int pvcm_dispatch_one(struct pvcm_session *s, int timeout_ms)
+int pvcm_dispatch_one(struct pvcm_session *s)
 {
 	uint8_t buf[1024];
 
-	int len = s->transport->recv_frame(s->transport, buf, sizeof(buf),
-					   timeout_ms);
+	int len = s->transport->try_recv_frame(s->transport, buf, sizeof(buf));
 	if (len <= 0)
 		return len;
 
@@ -180,7 +175,7 @@ int pvcm_dispatch_one(struct pvcm_session *s, int timeout_ms)
 		break;
 
 	case PVCM_OP_REQUEST_ROLLBACK:
-		handle_request_rollback(s);
+		fprintf(stderr, "[pvcm-proxy] MCU requested rollback!\n");
 		break;
 
 	case PVCM_EVT_FW_PROGRESS:
@@ -229,41 +224,5 @@ int pvcm_dispatch_one(struct pvcm_session *s, int timeout_ms)
 		break;
 	}
 
-	return 0;
-}
-
-/*
- * Main protocol loop. Runs until *running becomes false (SIGTERM).
- * Monitors heartbeat interval — if no heartbeat for 15s, reports
- * degraded status.
- */
-int pvcm_run(struct pvcm_session *s, volatile bool *running)
-{
-	time_t last_heartbeat = time(NULL);
-	const int heartbeat_timeout_s = 15;
-
-	fprintf(stdout, "[pvcm-proxy] entering main loop\n");
-
-	while (*running) {
-		int ret = pvcm_dispatch_one(s, 1000);
-
-		if (ret == 0) {
-			/* got a frame — check if it was a heartbeat */
-			if (s->last_heartbeat_uptime > 0)
-				last_heartbeat = time(NULL);
-		}
-
-		/* poll D-Bus for pending signals (non-blocking) */
-		pvcm_dbus_bridge_poll();
-
-		/* check heartbeat timeout */
-		time_t now = time(NULL);
-		if (now - last_heartbeat > heartbeat_timeout_s) {
-			fprintf(stderr, "[pvcm-proxy] heartbeat timeout "
-				"(%lds)\n", now - last_heartbeat);
-			/* TODO: report to pantavisor as health degraded */
-		}
-	}
-
-	return 0;
+	return 1; /* frame dispatched */
 }
