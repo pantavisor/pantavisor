@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -x
+
 #
 # Copyright (c) 2021-2026 Pantacor Ltd.
 #
@@ -101,6 +103,7 @@ while [ $# -gt 0 ]; do
 done
 
 path=$1
+origpath=$1
 mntpath=$2
 
 if [ -z "$op" ] || [ -z "$dm_type" ] || [ -z "$path" ]; then
@@ -169,7 +172,7 @@ export LD_LIBRARY_PATH="/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 atomic_losetup()
 {
 	_imgfile=$1
-	if ! losetup -f "$dir/$img_file"; then
+	if ! losetup -f "$_imgfile"; then
 		echo "ERROR: unable to setup loop device for $_imgfile"
 		return 122
 	fi
@@ -189,6 +192,8 @@ do_crypt_init()
 	mkdir -p "$dir"
 
 	keyname=$(echo "$base" | awk '{split($0,a,","); print a[3]}')
+	img_file=$(echo "$base" | awk '{split($0,a,","); print a[1]}')
+	img_size=$(echo "$base" | awk '{split($0,a,","); print a[2]}')
 
 	# Phase 1: Key creation.
 	# If the key already exists but init_done is missing, we are recovering
@@ -199,13 +204,15 @@ do_crypt_init()
 				# creates $keyname.. and $keyname in /data/caam (tmpfs, lost on reboot)
 				# copy to persistent storage atomically: aux files first, guard file last
 				"$CAAM_KEYGEN" create "$keyname" ecb -s 16
-				cp /data/caam/"$keyname".bb "$dir/$keyname.bb"
+				cp -f /data/caam/"$keyname".bb "$dir/$keyname.bb.tmp"
 				sync
-				cp /data/caam/"$keyname" "$dir/$keyname.tmp"
+				mv "$dir/$keyname.bb.tmp" "$dir/$keyname.bb"
+				sync
+				cp -f /data/caam/"$keyname" "$dir/$keyname.tmp"
 				sync
 				mv "$dir/$keyname.tmp" "$dir/$keyname"
 				sync
-				if ! keyctl padd logon logkey: @u < /data/caam/"$keyname"; then
+				if ! keyctl padd logon $KEY_NAME @u < /data/caam/"$keyname"; then
 					echo "ERROR: CAAM: Unable to load key"
 					exit 1
 				fi
@@ -213,11 +220,11 @@ do_crypt_init()
 				echo "WARN: CAAM NXP key exists but init_done missing, recovering init"
 				mkdir -p /data/caam
 				cp "$dir/$keyname"* /data/caam
-				if ! "$CAAM_KEYGEN" import "$keyname.bb" "$keyname.import"; then
+				if ! ( cd /data/caam && "$CAAM_KEYGEN" import "$keyname.bb" "$keyname.import" ); then
 					echo "ERROR: CAAM: Unable to import black blob during init recovery"
 					exit 1
 				fi
-				if ! keyctl padd logon logkey: @u < /data/caam/"$keyname.import"; then
+				if ! keyctl padd logon $KEY_NAME @u < /data/caam/"$keyname.import"; then
 					echo "ERROR: CAAM: Unable to load key during init recovery"
 					exit 1
 				fi
@@ -300,149 +307,160 @@ do_crypt_init()
 	# sync after keyname files got created
 	sync
 
-	# Phase 2: Image creation and formatting.
-	# Always redo this if we get here (init_done is missing).
-	img_file=$(echo "$base" | awk '{split($0,a,","); print a[1]}')
-	img_size=$(echo "$base" | awk '{split($0,a,","); print a[2]}')
-	dd if=/dev/zero of="$dir/$img_file" bs=1M count="$img_size"
-
-	case "${dm_type_mode}" in
-		caam*|dcp__mainline)
-			if ! CAAM_LOOP=$(atomic_losetup "$dir/$img_file"); then
-				echo "ERROR: Unable to loop setup"
-				exit 1
-			fi
-			;;
-	esac
-
-	device_name=$(echo "$img_file" | awk '{split($0,a,"."); print a[1]}')
-	case "${dm_type_mode}" in
-		caam__nxp)
-			if ! dmsetup -v create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"; then
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 1
-			fi
-			;;
-		caam__mainline|caam-mainline__*|dcp__mainline)
-			if ! dmsetup -v create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 1
-			fi
-			;;
-		dcp__nxp)
-			keyfile=$(mktemp)
-			x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
-			if ! cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$img_file" "$device_name"; then
-				rm -f "$keyfile"
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 1
-			fi
-			rm -f "$keyfile"
-			;;
-		versatile__*)
-			if ! cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file="$dir/$keyname.txt" "$dir/$img_file" "$device_name"; then
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 1
-			fi
-			;;
-		*)
-			echo "Unknown device mapper target"
-			exit 1
-			;;
-	esac
-
-	# shellcheck disable=SC2086
-	if ! mkfs.ext4 $MKFS_OPTS_EXT4 /dev/mapper/"$device_name"; then
-		echo "ERROR: Unable to format to ext4"
-		exit 1
-	fi
-
-	# copy_from: populate the new filesystem from a source disk mount
-	if [ -n "$copy_from" ]; then
-		_copy_tmp=$(mktemp -d)
-		if ! mount /dev/mapper/"$device_name" "$_copy_tmp"; then
-			echo "ERROR: copy_from: cannot mount new filesystem for copy"
-			rm -rf "$_copy_tmp"
-			exit 1
-		fi
-
-		if [ ! -d "$copy_from" ]; then
-			echo "ERROR: copy_from source '$copy_from' is not mounted or does not exist"
-			umount "$_copy_tmp"
-			rm -rf "$_copy_tmp"
-			exit 1
-		fi
-
-		# safety: verify source block device is read-only
-		_src_dev=$(awk -v mp="$copy_from" '$2 == mp { print $1; exit }' /proc/mounts)
-		if [ -z "$_src_dev" ] || [ "$(blockdev --getro "$_src_dev" 2>/dev/null)" != "1" ]; then
-			echo "ERROR: copy_from source '$copy_from' block device is not read-only, refusing to copy"
-			umount "$_copy_tmp"
-			rm -rf "$_copy_tmp"
-			exit 1
-		fi
-
-		echo "copy_from: copying from '$copy_from' to new disk..."
-		if ! cp -a "$copy_from"/. "$_copy_tmp"/; then
-			echo "ERROR: copy_from: cp failed"
-			umount "$_copy_tmp"
-			rm -rf "$_copy_tmp"
-			exit 1
-		fi
-
-		# flush all writes to disk
+	# Phase 2: Image creation, formatting, and optional copy.
+	# Only needed when the image file does not exist yet.
+	# If the image already exists but init_done is missing, we are
+	# recovering from a power loss after formatting — just re-touch init_done.
+	if ! [ -f "$dir/$img_file" ]; then
+		_img_file_new=$img_file.new
+		dd if=/dev/zero of="$dir/$_img_file_new" bs=1M count="$img_size"
 		sync
-		echo 3 > /proc/sys/vm/drop_caches
 
-		# verify: compare checksums of every file
-		_src_sums=$(mktemp)
-		_dst_sums=$(mktemp)
+		case "${dm_type_mode}" in
+			caam*|dcp__mainline)
+				if ! CAAM_LOOP=$(atomic_losetup "$dir/$_img_file_new"); then
+					echo "ERROR: Unable to loop setup"
+					exit 1
+				fi
+				;;
+		esac
 
-		(cd "$copy_from" && find . -type f -exec md5sum {} \; | sort) > "$_src_sums"
-		(cd "$_copy_tmp" && find . -type f -exec md5sum {} \; | sort) > "$_dst_sums"
+		device_name=$(echo "$img_file" | awk '{split($0,a,"."); print a[1]}')
+		case "${dm_type_mode}" in
+			caam__nxp)
+				if ! dmsetup -v create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt capi:tk(cbc(aes))-plain :36:logon:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
+					echo "ERROR: $dm_type: Unable to create/open crypt device"
+					exit 1
+				fi
+				;;
+			caam__mainline|caam-mainline__*|dcp__mainline)
+				if ! dmsetup -v create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
+					echo "ERROR: $dm_type: Unable to create/open crypt device"
+					exit 1
+				fi
+				;;
+			dcp__nxp)
+				keyfile=$(mktemp)
+				x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
+				if ! cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$_img_file_new" "$device_name"; then
+					rm -f "$keyfile"
+					echo "ERROR: $dm_type: Unable to create/open crypt device"
+					exit 1
+				fi
+				rm -f "$keyfile"
+				;;
+			versatile__*)
+				if ! cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file="$dir/$keyname.txt" "$dir/$_img_file_new" "$device_name"; then
+					echo "ERROR: $dm_type: Unable to create/open crypt device"
+					exit 1
+				fi
+				;;
+			*)
+				echo "Unknown device mapper target"
+				exit 1
+				;;
+		esac
 
-		if ! diff -q "$_src_sums" "$_dst_sums" >/dev/null 2>&1; then
-			echo "ERROR: copy_from: checksum verification failed"
-			diff "$_src_sums" "$_dst_sums" || true
-			rm -f "$_src_sums" "$_dst_sums"
-			umount "$_copy_tmp"
-			rm -rf "$_copy_tmp"
+		# shellcheck disable=SC2086
+		if [ "$read_only" = "yes" ]; then
+			echo "ERROR: cannot format read-only disk."
+			exit 1
+		elif ! mkfs.ext4 $MKFS_OPTS_EXT4 /dev/mapper/"$device_name"; then
+			echo "ERROR: Unable to format to ext4"
 			exit 1
 		fi
 
-		_file_count=$(wc -l < "$_src_sums")
-		rm -f "$_src_sums" "$_dst_sums"
+		# copy_from: populate the new filesystem from a source disk mount
+		# note that if the copy_from disk was not mounted, we will get an empty copy here.
+		if [ -n "$copy_from" ] && ! [ -d "$copy_from" ]; then
+			echo "WARN: copy-from $copy_from is not available; skipping copy ..."
+		elif [ -n "$copy_from" ]; then
+			_copy_tmp=$(mktemp -d)
+			if ! mount /dev/mapper/"$device_name" "$_copy_tmp"; then
+				echo "ERROR: copy_from: cannot mount new filesystem for copy"
+				rm -rf "$_copy_tmp"
+				exit 1
+			fi
 
-		umount "$_copy_tmp"
-		rm -rf "$_copy_tmp"
+			if [ ! -d "$copy_from" ]; then
+				echo "ERROR: copy_from source '$copy_from' is not mounted or does not exist"
+				umount "$_copy_tmp"
+				rm -rf "$_copy_tmp"
+				exit 1
+			fi
 
-		echo "copy_from: verified $_file_count files, all checksums match"
+			echo "copy_from: copying from '$copy_from' to new disk..."
+			if ! cp -a "$copy_from"/. "$_copy_tmp"/; then
+				echo "ERROR: copy_from: cp failed"
+				umount "$_copy_tmp"
+				rm -rf "$_copy_tmp"
+				exit 1
+			fi
+
+			# flush all writes to disk
+			sync
+			echo 3 > /proc/sys/vm/drop_caches
+
+			# verify: compare checksums of every file
+			_src_sums=$(mktemp)
+			_dst_sums=$(mktemp)
+
+			(cd "$copy_from" && find . -type f -exec md5sum {} \; | sort) > "$_src_sums"
+			(cd "$_copy_tmp" && find . -type f -exec md5sum {} \; | sort) > "$_dst_sums"
+
+			if ! diff -q "$_src_sums" "$_dst_sums" >/dev/null 2>&1; then
+				echo "ERROR: copy_from: checksum verification failed"
+				diff "$_src_sums" "$_dst_sums" || true
+				rm -f "$_src_sums" "$_dst_sums"
+				umount "$_copy_tmp"
+				rm -rf "$_copy_tmp"
+				exit 1
+			fi
+
+			_file_count=$(wc -l < "$_src_sums")
+			rm -f "$_src_sums" "$_dst_sums"
+
+			umount "$_copy_tmp"
+			rm -rf "$_copy_tmp"
+
+			echo "copy_from: verified $_file_count files, all checksums match"
+		fi
+
+		# Tear down dm-crypt device and loop after formatting
+		sync
+		case "${dm_type_mode}" in
+			caam__nxp)
+				dmsetup remove "$device_name"
+				rm -rf /data
+				losetup -d "$CAAM_LOOP"
+				;;
+			caam__mainline|caam-mainline__*|dcp__mainline)
+				dmsetup remove "$device_name"
+				losetup -d "$CAAM_LOOP"
+				;;
+			dcp__nxp)
+				cryptsetup close "$device_name"
+				;;
+			versatile__*)
+				cryptsetup close "$device_name"
+				;;
+			*)
+				echo "Unknown device mapper target"
+				exit 1
+				;;
+		esac
+
+		mv "$dir/$_img_file_new" "$dir/$img_file"
 	fi
 
-	sync
+	# Unlink the key loaded during Phase 1 (fresh or recovery);
+	# do_mount_disk will re-load it for the actual mount.
 	case "${dm_type_mode}" in
 		caam__nxp)
-			dmsetup remove "$device_name"
-			keyctl clear @u
-			keyctl purge @u
-			rm -rf /data
-			losetup -d "$CAAM_LOOP"
+			keyctl unlink $(keyctl search @u logon $KEY_NAME) @u 2>/dev/null || true
 			;;
 		caam__mainline|caam-mainline__*|dcp__mainline)
-			dmsetup remove "$device_name"
-			keyctl clear @u
-			keyctl purge @u
-			losetup -d "$CAAM_LOOP"
-			;;
-		dcp__nxp)
-			cryptsetup close "$device_name"
-			;;
-		versatile__*)
-			cryptsetup close "$device_name"
-			;;
-		*)
-			echo "Unknown device mapper target"
-			exit 1
+			keyctl unlink $(keyctl search @u $KEY_TYPE $KEY_NAME) @u 2>/dev/null || true
 			;;
 	esac
 
@@ -499,6 +517,72 @@ clean_disk()
 	esac
 }
 
+# Open the dm-crypt device.  $1 is extra dmsetup/cryptsetup flags (e.g. --readonly).
+# Expects: device_name, CAAM_LOOP, dm_type_mode, KEY_NAME, cipher, key_size,
+#          KEY_TYPE, keyname, dir, img_file  — all set by do_mount_disk.
+_do_crypt_open()
+{
+	_crypt_flags=$1
+	case "${dm_type_mode}" in
+		caam__nxp)
+			if ! dmsetup create $_crypt_flags "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt capi:tk(cbc(aes))-plain :36:logon:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
+				echo "ERROR: $dm_type: Unable to create/open crypt device"
+				exit 3
+			fi
+			;;
+		caam__mainline|caam-mainline__*|dcp__mainline)
+			if ! dmsetup create $_crypt_flags "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
+				echo "ERROR: $dm_type: Unable to create/open crypt device"
+				exit 3
+			fi
+			;;
+		dcp__nxp)
+			keyfile=$(mktemp)
+			x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
+			if ! cryptsetup open $_crypt_flags -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$img_file" "$device_name"; then
+				rm -f "$keyfile"
+				echo "ERROR: $dm_type: Unable to create/open crypt device"
+				exit 3
+			fi
+			rm -f "$keyfile"
+			;;
+		versatile__*)
+			if ! cryptsetup open $_crypt_flags -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file="$dir/$keyname.txt" "$dir/$img_file" "$device_name"; then
+				echo "ERROR: $dm_type: Unable to create/open crypt device"
+				exit 3
+			fi
+			;;
+		*)
+			echo "Unknown device mapper type_mode: ${dm_type_mode}"
+			exit 2
+			;;
+	esac
+
+	for _ in 1 2 3; do
+		if [ -b /dev/mapper/"$device_name" ]; then
+			break
+		fi
+		sleep 1
+	done
+	if [ ! -b /dev/mapper/"$device_name" ]; then
+		echo "ERROR: could not find the matching crypt mapper device /dev/mapper/$device_name"
+		return 2
+	fi
+}
+
+# Close the dm-crypt device.
+_do_crypt_close()
+{
+	case "${dm_type_mode}" in
+		caam*|dcp__mainline)
+			dmsetup remove "$device_name"
+			;;
+		dcp__nxp|versatile__*)
+			cryptsetup close "$device_name"
+			;;
+	esac
+}
+
 do_mount_disk()
 {
 	do_dm_sanity
@@ -509,14 +593,19 @@ do_mount_disk()
 	keyname=$(echo "$base" | awk '{split($0,a,","); print a[3]}')
 	dm_type_mode="${dm_type}__${mode}"
 	case "${dm_type_mode}" in
-		caam__nxp|dcp__nxp|versatile__*)
+		caam__nxp|dcp__nxp)
+			KEY_NAME="logkey:$keyname"
+			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
+			;;
+		versatile__*)
+			KEY_NAME="logkey:$keyname"
 			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
 			;;
 		caam__mainline|caam-mainline__*)
 			cipher="capi:cbc(aes)-plain64"
 			key_size=32
 			KEY_TYPE="trusted"
-			KEY_NAME="logkey:"
+			KEY_NAME="logkey:$keyname"
 
 			keyblob="${keyname}.bb"
 			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
@@ -525,7 +614,7 @@ do_mount_disk()
 			cipher="capi:cbc(aes)-essiv:sha256"
 			key_size=32
 			KEY_TYPE="trusted"
-			KEY_NAME="logkey:"
+			KEY_NAME="logkey:$keyname"
 
 			keyblob="${keyname}.bb"
 			_dcp_migrating=""
@@ -571,7 +660,7 @@ do_mount_disk()
 				echo "ERROR: CAAM: Unable to import black blob"
 				exit 2
 			fi
-			if ! keyctl padd logon logkey: @u < /data/caam/"$keyname.import"; then
+			if ! keyctl padd logon $KEY_NAME @u < /data/caam/"$keyname.import"; then
 				echo "ERROR: CAAM: Unable to load logon key"
 				exit 2
 			fi
@@ -602,56 +691,28 @@ do_mount_disk()
 	device_name=$(echo "$img_file" | awk '{split($0,a,"."); print a[1]}')
 	clean_disk "$device_name"
 
+	# For read-only disks, first do a RW mount/umount cycle to replay the
+	# ext4 journal.  Without this, a dirty journal from an unclean shutdown
+	# (e.g. factory power-cut) makes the ro mount fail with EINVAL.
+	if [ "$read_only" = "yes" ]; then
+		_do_crypt_open "" # RW
+		_recovery_tmp=$(mktemp -d)
+		if mount /dev/mapper/"$device_name" "$_recovery_tmp" 2>/dev/null; then
+			echo "read-only: journal recovery mount succeeded"
+			umount "$_recovery_tmp"
+		else
+			echo "WARN: read-only: journal recovery mount failed, trying fsck"
+			fsck.ext4 -y /dev/mapper/"$device_name" || true
+		fi
+		rm -rf "$_recovery_tmp"
+		_do_crypt_close
+	fi
+
 	_dm_ro=""
 	if [ "$read_only" = "yes" ]; then
 		_dm_ro="--readonly"
 	fi
-
-	case "${dm_type_mode}" in
-		caam__nxp)
-			if ! dmsetup create $_dm_ro "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt capi:tk(cbc(aes))-plain :36:logon:logkey: 0 $CAAM_LOOP 0 1 sector_size:512"; then
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 3
-			fi
-			;;
-		caam__mainline|caam-mainline__*|dcp__mainline)
-			if ! dmsetup create $_dm_ro "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 3
-			fi
-			;;
-		dcp__nxp)
-			keyfile=$(mktemp)
-			x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
-			if ! cryptsetup open $_dm_ro -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$img_file" "$device_name"; then
-				rm -f "$keyfile"
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 3
-			fi
-			rm -f "$keyfile"
-			;;
-		versatile__*)
-			if ! cryptsetup open $_dm_ro -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file="$dir/$keyname.txt" "$dir/$img_file" "$device_name"; then
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 3
-			fi
-			;;
-		*)
-			echo "Unknown device mapper type_mode: ${dm_type_mode}"
-			exit 2
-			;;
-	esac
-
-	for _ in 1 2 3; do
-		if [ -b /dev/mapper/"$device_name" ]; then
-			break
-		fi
-		sleep 1
-	done
-	if [ ! -b /dev/mapper/"$device_name" ]; then
-		echo "ERROR: could not find the matching crypt mapper device /dev/mapper/$device_name"
-		return 2
-	fi
+	_do_crypt_open "$_dm_ro"
 
 	mkdir -p "$mntpath"
 	_mnt_ro=""
@@ -684,9 +745,7 @@ do_mount_disk()
 		echo "Specialrun $specialrun did not succeed ... trying from goodbackup"
 		cp -f "$dir/$img_file.goodbak" "$dir/$img_file"
 		cryptsetup close "$device_name" || true
-		if ! do_mount_disk_retry bak; then
-			return $?;
-		fi
+		do_mount_disk_retry bak || return $?
 		echo "do_mount_disk from backup suceeded..."
 		return 0
 	elif [ "$specialrun" = "fsck" ]; then
@@ -703,9 +762,7 @@ do_mount_disk()
 	fsck.ext4 -y /dev/mapper/"$device_name" || true
 	cryptsetup close "$device_name" || true
 	sync
-	if ! do_mount_disk_retry fsck; then
-		return $?
-	fi
+	do_mount_disk_retry fsck || return $?
 	return 0
 }
 
@@ -717,13 +774,14 @@ do_mount_disk_retry()
 	if [ "$read_only" = "yes" ]; then
 		_retry_ro="--read-only"
 	fi
-	"$0" mount --type "$dm_type" --mode "$mode" --specialrun "$_retry_specialrun" $_retry_ro -- "$path" "$mntpath"
+	"$0" mount --type "$dm_type" --mode "$mode" --specialrun "$_retry_specialrun" $_retry_ro -- "$origpath" "$mntpath"
 }
 
 do_umount_disk()
 {
 	base=$(basename "$path")
 	img_file=$(echo "$base" | awk '{split($0,a,","); print a[1]}')
+	keyname=$(echo "$base" | awk '{split($0,a,","); print a[3]}')
 	dm_type_mode="${dm_type}__${mode}"
 
 	device_name=$(echo "$img_file" | awk '{split($0,a,"."); print a[1]}')
@@ -732,14 +790,12 @@ do_umount_disk()
 	case "$dm_type_mode" in
 		caam__nxp)
 			dmsetup remove "$device_name"
-			keyctl clear @u
-			keyctl purge @u
+			keyctl unlink $(keyctl search @u logon logkey:$keyname) @u
 			rm -rf /data
 			;;
 		caam__mainline|caam-mainline__*|dcp__mainline)
 			dmsetup remove "$device_name"
-			keyctl clear @u
-			keyctl purge @u
+			keyctl unlink $(keyctl search @u trusted logkey:$keyname) @u
 			;;
 		dcp__nxp)
 			cryptsetup close "$device_name"
