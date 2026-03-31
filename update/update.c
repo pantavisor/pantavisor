@@ -224,6 +224,7 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		pv_log(DEBUG,
 		       "could not get progress from disk, using progress from Hub");
 		progress_str = strdup(progress_hub);
+		pv_update_progress_parse(progress_str, &u->progress);
 	} else if (progress_str) {
 		pv_log(DEBUG, "progress from disk found, checking if final");
 		pv_update_progress_parse(progress_str, &u->progress);
