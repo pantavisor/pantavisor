@@ -106,7 +106,13 @@ static int rpmsg_init(void)
 	return 0;
 }
 
-/* ---- TX ---- */
+/* ---- TX ----
+ *
+ * Static frame buffer — protected by rpmsg_tx_mutex so multiple
+ * threads (heartbeat, shell) can share it safely. No VLA on stack.
+ */
+#define TX_FRAME_MAX (4 + PVCM_MAX_CHUNK_SIZE + 8 + 4) /* sync+len + max payload + crc */
+static uint8_t tx_frame[TX_FRAME_MAX];
 
 static int rpmsg_send_frame(const void *payload, size_t len)
 {
@@ -115,22 +121,27 @@ static int rpmsg_send_frame(const void *payload, size_t len)
 		return -1;
 	}
 
-	uint8_t frame[4 + len + 4];
-
-	frame[0] = PVCM_SYNC_BYTE_0;
-	frame[1] = PVCM_SYNC_BYTE_1;
-	frame[2] = len & 0xFF;
-	frame[3] = (len >> 8) & 0xFF;
-	memcpy(&frame[4], payload, len);
-
-	uint32_t crc = pvcm_crc32(payload, len);
-	frame[4 + len + 0] = crc & 0xFF;
-	frame[4 + len + 1] = (crc >> 8) & 0xFF;
-	frame[4 + len + 2] = (crc >> 16) & 0xFF;
-	frame[4 + len + 3] = (crc >> 24) & 0xFF;
+	size_t frame_len = 4 + len + 4;
+	if (frame_len > TX_FRAME_MAX) {
+		LOG_ERR("frame too large: %zu", frame_len);
+		return -1;
+	}
 
 	k_mutex_lock(&rpmsg_tx_mutex, K_FOREVER);
-	int ret = rpmsg_send(proto_ept, frame, 4 + len + 4);
+
+	tx_frame[0] = PVCM_SYNC_BYTE_0;
+	tx_frame[1] = PVCM_SYNC_BYTE_1;
+	tx_frame[2] = len & 0xFF;
+	tx_frame[3] = (len >> 8) & 0xFF;
+	memcpy(&tx_frame[4], payload, len);
+
+	uint32_t crc = pvcm_crc32(payload, len);
+	tx_frame[4 + len + 0] = crc & 0xFF;
+	tx_frame[4 + len + 1] = (crc >> 8) & 0xFF;
+	tx_frame[4 + len + 2] = (crc >> 16) & 0xFF;
+	tx_frame[4 + len + 3] = (crc >> 24) & 0xFF;
+
+	int ret = rpmsg_send(proto_ept, tx_frame, frame_len);
 	k_mutex_unlock(&rpmsg_tx_mutex);
 
 	if (ret < 0) {
