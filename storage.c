@@ -400,6 +400,10 @@ void pv_storage_gc_run_threshold()
 	struct pantavisor *pv = pv_get_instance();
 	struct timer_state tstate;
 
+	// if remote update is downloading, let update triggered GC handle things
+	if (pv_update_is_downloading())
+		return;
+
 	storage = pv_storage_new();
 	if (!storage)
 		return;
