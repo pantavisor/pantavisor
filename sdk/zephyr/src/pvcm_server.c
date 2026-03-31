@@ -35,7 +35,7 @@ extern void pvcm_dbus_on_call_resp(const uint8_t *buf, int len);
 extern void pvcm_dbus_on_signal(const uint8_t *buf, int len);
 #endif
 
-#define PVCM_SERVER_STACK_SIZE  2048
+#define PVCM_SERVER_STACK_SIZE  4096
 #define PVCM_SERVER_PRIORITY    7
 
 static const struct pvcm_transport *transport;
@@ -175,7 +175,7 @@ static void pvcm_server_thread(void *p1, void *p2, void *p3)
 
 	LOG_INF("transport ready, entering recv loop");
 
-	uint8_t buf[512];
+	uint8_t buf[PVCM_MAX_CHUNK_SIZE + 8]; /* max payload + header room */
 	while (1) {
 		int len = transport->recv_frame(buf, sizeof(buf), 1000);
 		if (len > 0) {

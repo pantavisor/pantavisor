@@ -468,7 +468,7 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 
 	t->send_frame(t, &resp, sizeof(resp) - sizeof(uint32_t));
 
-	/* send body chunks */
+	/* send body chunks — pace writes to let MCU drain the vring */
 	size_t offset = 0;
 	while (offset < (size_t)body_len) {
 		pvcm_http_data_t data = {
@@ -482,6 +482,7 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 		memcpy(data.data, resp_body + offset, chunk);
 		t->send_frame(t, &data, 4 + chunk);
 		offset += chunk;
+		usleep(2000); /* 2ms between chunks — let MCU process */
 	}
 
 	/* send HTTP_END */

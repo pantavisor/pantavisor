@@ -21,8 +21,11 @@
 
 LOG_MODULE_REGISTER(pvcm_rpmsg, CONFIG_LOG_DEFAULT_LEVEL);
 
-/* Each queued message: 2 bytes length + up to 512 bytes payload */
-#define RX_MSG_MAX_SIZE 514
+/* Each queued message: 2 bytes length prefix + full PVCM wire frame.
+ * Max frame = sync(2) + len(2) + payload(520) + crc(4) = 528 bytes
+ * (HTTP_DATA payload = op+sid+len+data[512] = 516, + CRC = 520)
+ * Round up for safety. */
+#define RX_MSG_MAX_SIZE (2 + 532)
 #define RX_QUEUE_DEPTH  8
 
 static char rx_queue_buf[RX_QUEUE_DEPTH * RX_MSG_MAX_SIZE];

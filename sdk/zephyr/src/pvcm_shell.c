@@ -26,11 +26,24 @@ static void http_response_cb(uint16_t status_code,
 			     const char *body, size_t body_len,
 			     const char *headers, void *ctx)
 {
-	if (http_shell) {
-		shell_print(http_shell, "HTTP %d (%zu bytes)", status_code,
-			    body_len);
-		if (body_len > 0)
+	if (!http_shell)
+		return;
+
+	shell_print(http_shell, "HTTP %d (%zu bytes)", status_code,
+		    body_len);
+	if (body_len > 0) {
+		/* Truncate large responses to avoid overwhelming the
+		 * shell RPMsg TX buffer. Print in small chunks. */
+		size_t max_print = 480;
+		if (body_len > max_print) {
+			char trunc[496];
+			memcpy(trunc, body, max_print);
+			trunc[max_print] = '\0';
+			shell_print(http_shell, "%s\n[...truncated %zu bytes]",
+				    trunc, body_len - max_print);
+		} else {
 			shell_print(http_shell, "%s", body);
+		}
 	}
 }
 #endif
