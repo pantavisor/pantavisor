@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy -- per-MCU runtime process
+ * pvcm-run -- per-MCU runtime process
  *
  * One instance per MCU container, started by the pv_pvcm plugin
  * inside a mount namespace. From xconnect's perspective this IS
@@ -41,17 +41,17 @@ static char dbus_socket[256] = "";
 
 /* log to both stdout/stderr and debug file */
 #define pvcm_log(fmt, ...) do {                                           \
-	fprintf(stdout, "[pvcm-proxy] " fmt "\n", ##__VA_ARGS__);         \
+	fprintf(stdout, "[pvcm-run] " fmt "\n", ##__VA_ARGS__);         \
 	if (dbglog) {                                                     \
-		fprintf(dbglog, "[pvcm-proxy] " fmt "\n", ##__VA_ARGS__); \
+		fprintf(dbglog, "[pvcm-run] " fmt "\n", ##__VA_ARGS__); \
 		fflush(dbglog);                                           \
 	}                                                                 \
 } while (0)
 
 #define pvcm_err(fmt, ...) do {                                           \
-	fprintf(stderr, "[pvcm-proxy] " fmt "\n", ##__VA_ARGS__);         \
+	fprintf(stderr, "[pvcm-run] " fmt "\n", ##__VA_ARGS__);         \
 	if (dbglog) {                                                     \
-		fprintf(dbglog, "[pvcm-proxy] ERROR: " fmt "\n", ##__VA_ARGS__); \
+		fprintf(dbglog, "[pvcm-run] ERROR: " fmt "\n", ##__VA_ARGS__); \
 		fflush(dbglog);                                           \
 	}                                                                 \
 } while (0)
@@ -380,7 +380,7 @@ static void heartbeat_timer_cb(evutil_socket_t fd, short what, void *arg)
 	time_t elapsed = now - s->last_heartbeat_time;
 
 	if (elapsed > 15) {
-		fprintf(stderr, "[pvcm-proxy] heartbeat timeout (%lds)\n",
+		fprintf(stderr, "[pvcm-run] heartbeat timeout (%lds)\n",
 			elapsed);
 	}
 }
@@ -410,7 +410,7 @@ int main(int argc, char **argv)
 		return 1;
 
 	mkdir("/storage/logs/current/claudecli", 0755);
-	dbglog = fopen("/storage/logs/current/claudecli/pvcm-proxy.log", "w");
+	dbglog = fopen("/storage/logs/current/claudecli/pvcm-run.log", "w");
 
 	pvcm_log("starting for MCU '%s'", cfg.name);
 

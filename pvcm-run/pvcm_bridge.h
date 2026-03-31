@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy HTTP bridge
+ * pvcm-run HTTP bridge
  * SPDX-License-Identifier: MIT
  */
 

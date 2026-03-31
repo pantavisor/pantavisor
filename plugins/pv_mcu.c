@@ -23,8 +23,8 @@
 /*
  * pv_mcu -- MCU container plugin for Pantavisor
  *
- * Thin plugin that forks pvcm-proxy for each MCU container.
- * pvcm-proxy runs in its own mount namespace, appears to xconnect
+ * Thin plugin that forks pvcm-run for each MCU container.
+ * pvcm-run runs in its own mount namespace, appears to xconnect
  * as a normal container with init_pid and injectable sockets.
  *
  * Same pattern as pv_lxc.c: plugin does fork/exec, runtime does
@@ -62,10 +62,10 @@ static int loglevel = 4; /* INFO */
 static bool capture = false;
 
 /*
- * Path to pvcm-proxy binary.
+ * Path to pvcm-run binary.
  * Installed alongside pv_mcu.so in /lib/pv/ or /usr/lib/pantavisor/
  */
-#define PVCM_PROXY_BIN "pvcm-proxy"
+#define PVCM_RUN_BIN "pvcm-run"
 
 void pv_set_pv_instance_fn(void *fn_pv_get_instance)
 {
@@ -100,13 +100,13 @@ void pv_set_pv_conf_capture_fn(bool cap)
 }
 
 /*
- * Start an MCU container by forking pvcm-proxy.
+ * Start an MCU container by forking pvcm-run.
  *
- * The child creates a new mount namespace and exec's pvcm-proxy
+ * The child creates a new mount namespace and exec's pvcm-run
  * with the run.json config path. The parent writes the child's
  * PID back through the pipe so pantavisor can track it.
  *
- * pvcm-proxy then:
+ * pvcm-run then:
  *  - opens the UART/RPMsg transport
  *  - probes and optionally flashes the MCU
  *  - monitors heartbeat
@@ -177,14 +177,14 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 		sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
 		/*
-		 * exec pvcm-proxy with:
+		 * exec pvcm-run with:
 		 *   --name <container-name>
 		 *   --config <path-to-run.json>
 		 */
-		execlp(PVCM_PROXY_BIN, PVCM_PROXY_BIN, "--name", p->name,
+		execlp(PVCM_RUN_BIN, PVCM_RUN_BIN, "--name", p->name,
 		       "--config", conf_file, (char *)NULL);
 
-		fprintf(stderr, "pvcm: exec %s failed: %s\n", PVCM_PROXY_BIN,
+		fprintf(stderr, "pvcm: exec %s failed: %s\n", PVCM_RUN_BIN,
 			strerror(errno));
 		_exit(1);
 	}
@@ -192,7 +192,7 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 	/* parent: send child PID back to pantavisor */
 	sigprocmask(SIG_SETMASK, &oldmask, NULL);
 
-	pv_log(INFO, "pvcm-proxy started for '%s' with pid %d", p->name,
+	pv_log(INFO, "pvcm-run started for '%s' with pid %d", p->name,
 		 pid);
 
 	while (write(pipefd, &pid, sizeof(pid_t)) < 0 && errno == EINTR)
@@ -202,8 +202,8 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 }
 
 /*
- * Stop an MCU container by signaling pvcm-proxy.
- * pvcm-proxy handles MCU shutdown (reset GPIO, remoteproc stop)
+ * Stop an MCU container by signaling pvcm-run.
+ * pvcm-run handles MCU shutdown (reset GPIO, remoteproc stop)
  * before exiting.
  */
 void pv_stop_container(struct pv_platform *p, char *conf_file)
@@ -217,12 +217,12 @@ void pv_stop_container(struct pv_platform *p, char *conf_file)
 
 /*
  * Get console log fd for MCU container.
- * pvcm-proxy forwards MCU log output to stdout which is connected
+ * pvcm-run forwards MCU log output to stdout which is connected
  * to the lxc_pipe log fd.
  */
 int pv_console_log_getfd(struct pv_platform *p, struct pv_platform_log *log)
 {
-	/* MCU logs flow through pvcm-proxy stdout → lxc_pipe.
+	/* MCU logs flow through pvcm-run stdout → lxc_pipe.
 	 * No separate console fd needed. */
 	log->console_pt = -1;
 	return -1;

@@ -290,7 +290,7 @@ void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
 /*
  * MCU HTTP server handler — serves sensor data to Linux containers.
  * Linux sends: curl http://localhost:18081/sensor
- * pvcm-proxy forwards to MCU, MCU responds with JSON.
+ * pvcm-run forwards to MCU, MCU responds with JSON.
  */
 static void sensor_handler(uint8_t method, const char *path,
 			   const char *headers, const char *body,

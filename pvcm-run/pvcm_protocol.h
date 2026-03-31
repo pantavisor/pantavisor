@@ -1,10 +1,10 @@
 /*
- * pvcm-proxy protocol handler
+ * pvcm-run protocol handler
  * SPDX-License-Identifier: MIT
  */
 
-#ifndef PVCM_PROXY_PROTOCOL_H
-#define PVCM_PROXY_PROTOCOL_H
+#ifndef PVCM_RUN_PROTOCOL_H
+#define PVCM_RUN_PROTOCOL_H
 
 #include "pvcm_transport.h"
 #include "../protocol/pvcm_protocol.h"

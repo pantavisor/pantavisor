@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy transport abstraction
+ * pvcm-run transport abstraction
  * SPDX-License-Identifier: MIT
  */
 

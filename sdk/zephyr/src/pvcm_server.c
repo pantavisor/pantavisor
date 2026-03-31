@@ -1,7 +1,7 @@
 /*
  * PVCM Server -- mandatory protocol server task
  *
- * Handles all incoming PVCM frames from pvcm-proxy (Linux side):
+ * Handles all incoming PVCM frames from pvcm-run (Linux side):
  *  - Responds to HELLO with HELLO_RESP
  *  - Responds to QUERY_STATE with current boot state
  *  - Dispatches other opcodes to registered handlers

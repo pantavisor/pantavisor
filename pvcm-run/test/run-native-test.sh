@@ -1,17 +1,17 @@
 #!/bin/bash
 #
-# End-to-end test: pvcm-proxy <-> Zephyr native_sim via PTY
+# End-to-end test: pvcm-run <-> Zephyr native_sim via PTY
 #
 # The native_sim UART reads from stdin and writes to a PTY.
-# pvcm-proxy reads from the PTY and writes to a named pipe
+# pvcm-run reads from the PTY and writes to a named pipe
 # which is connected to Zephyr's stdin.
 #
-# Usage: ./run-native-test.sh <path-to-zephyr.exe> [path-to-pvcm-proxy]
+# Usage: ./run-native-test.sh <path-to-zephyr.exe> [path-to-pvcm-run]
 
 set -e
 
-ZEPHYR_EXE="${1:?Usage: $0 <zephyr.exe> [pvcm-proxy]}"
-PROXY="${2:-/tmp/pvcm-proxy-test}"
+ZEPHYR_EXE="${1:?Usage: $0 <zephyr.exe> [pvcm-run]}"
+PROXY="${2:-/tmp/pvcm-run-test}"
 
 PIPE="/tmp/pvcm-test-pipe"
 ZLOG="/tmp/zephyr-test.log"
@@ -23,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Create named pipe for pvcm-proxy stdout -> Zephyr stdin
+# Create named pipe for pvcm-run stdout -> Zephyr stdin
 rm -f "$PIPE"
 mkfifo "$PIPE"
 
@@ -41,22 +41,22 @@ if [ -z "$PTY" ]; then
 fi
 echo "Zephyr PID=$ZP PTY=$PTY"
 
-# Create run.json for pvcm-proxy (reads from PTY)
+# Create run.json for pvcm-run (reads from PTY)
 cat > /tmp/pvcm-test-run.json <<EOF
 {"name":"test","type":"mcu","mcu":{"device":"$PTY","transport":"uart","baudrate":921600}}
 EOF
 
-# Start pvcm-proxy: reads from PTY, writes to pipe (-> Zephyr stdin)
+# Start pvcm-run: reads from PTY, writes to pipe (-> Zephyr stdin)
 # stderr goes to terminal for debugging
 "$PROXY" --name test --config /tmp/pvcm-test-run.json > "$PIPE" 2>"$PLOG" &
 PP=$!
 
-echo "pvcm-proxy PID=$PP"
+echo "pvcm-run PID=$PP"
 echo "Waiting 15 seconds..."
 sleep 15
 
 echo ""
-echo "=== pvcm-proxy log ==="
+echo "=== pvcm-run log ==="
 cat "$PLOG"
 echo ""
 echo "=== Zephyr log ==="

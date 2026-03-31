@@ -1,5 +1,5 @@
 /*
- * pvcm-proxy config parser
+ * pvcm-run config parser
  * SPDX-License-Identifier: MIT
  */
 
