@@ -16,6 +16,7 @@
 #include <string.h>
 #include <pantavisor/pvcm.h>
 #include <pantavisor/pvcm_protocol.h>
+#include <pantavisor/pvcm_transport.h>
 
 LOG_MODULE_REGISTER(pvcm_shell, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -29,22 +30,9 @@ static void http_response_cb(uint16_t status_code,
 	if (!http_shell)
 		return;
 
+	/* Print status line only — keep it short to avoid RPMsg TX overflow */
 	shell_print(http_shell, "HTTP %d (%zu bytes)", status_code,
 		    body_len);
-	if (body_len > 0) {
-		/* Truncate large responses to avoid overwhelming the
-		 * shell RPMsg TX buffer. Print in small chunks. */
-		size_t max_print = 480;
-		if (body_len > max_print) {
-			char trunc[496];
-			memcpy(trunc, body, max_print);
-			trunc[max_print] = '\0';
-			shell_print(http_shell, "%s\n[...truncated %zu bytes]",
-				    trunc, body_len - max_print);
-		} else {
-			shell_print(http_shell, "%s", body);
-		}
-	}
 }
 #endif
 
@@ -282,10 +270,97 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pv_dbus_cmds,
 );
 #endif
 
+/* ---- Transport ping test ---- */
+
+static K_SEM_DEFINE(ping_done_sem, 0, 1);
+static volatile int ping_frames_received;
+static volatile int ping_bytes_received;
+static volatile uint8_t ping_expected_seq;
+
+void pvcm_echo_on_resp(const uint8_t *buf, int len)
+{
+	if (len < 4)
+		return;
+	const pvcm_echo_t *resp = (const pvcm_echo_t *)buf;
+
+	if (resp->seq != ping_expected_seq)
+		return;
+
+	ping_frames_received++;
+	ping_bytes_received += resp->data_len;
+
+	/* signal completion on every frame — caller decides when done */
+	k_sem_give(&ping_done_sem);
+}
+
+static int cmd_pv_ping(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct pvcm_transport *t = pvcm_transport_get();
+	if (!t) {
+		shell_error(sh, "no transport");
+		return -1;
+	}
+
+	/* pv ping <total_bytes>  — proxy splits response into 400-byte frames */
+	int total = 100;
+	if (argc >= 2)
+		total = atoi(argv[1]);
+	if (total < 1 || total > 10000) {
+		shell_error(sh, "size must be 1-10000");
+		return -1;
+	}
+
+	/* how many response frames to expect (proxy uses 400-byte chunks) */
+	int expected_frames = (total + 399) / 400;
+
+	static uint8_t seq_counter;
+	seq_counter++;
+	if (seq_counter == 0) seq_counter = 1;
+
+	ping_expected_seq = seq_counter;
+	ping_frames_received = 0;
+	ping_bytes_received = 0;
+	k_sem_reset(&ping_done_sem);
+
+	/* send ECHO with data_len = total requested size */
+	pvcm_echo_t echo = {
+		.op = PVCM_OP_ECHO,
+		.seq = seq_counter,
+		.data_len = (uint16_t)total,
+	};
+	t->send_frame(&echo, 4); /* just header, no payload needed */
+
+	shell_print(sh, "ping %d bytes (expect %d frames)...",
+		    total, expected_frames);
+
+	/* collect response frames with timeout */
+	int64_t deadline = k_uptime_get() + 10000; /* 10s total */
+	while (ping_frames_received < expected_frames) {
+		int64_t remaining = deadline - k_uptime_get();
+		if (remaining <= 0)
+			break;
+		k_sem_take(&ping_done_sem, K_MSEC(remaining));
+	}
+
+	if (ping_frames_received == expected_frames) {
+		shell_print(sh, "PASS: %d frames, %d bytes received",
+			    ping_frames_received, ping_bytes_received);
+	} else {
+		shell_error(sh, "FAIL: got %d/%d frames, %d bytes "
+			    "(timeout)",
+			    ping_frames_received, expected_frames,
+			    ping_bytes_received);
+	}
+
+	return ping_frames_received == expected_frames ? 0 : -1;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
 	SHELL_CMD(status, NULL, "Show PVCM status", cmd_pv_status),
 	SHELL_CMD(containers, NULL, "List containers", cmd_pv_containers),
 	SHELL_CMD(heartbeat, NULL, "Show heartbeat stats", cmd_pv_heartbeat),
+	SHELL_CMD(ping, NULL, "Transport ping: pv ping [bytes]",
+		  cmd_pv_ping),
 #ifdef CONFIG_PANTAVISOR_BRIDGE
 	SHELL_CMD(http, NULL, "GET <path> via pvcm-proxy", cmd_pv_http),
 #endif
