@@ -407,8 +407,9 @@ typedef struct {
 typedef struct {
 	uint8_t  op;
 	uint8_t  seq;               /* sequence number for correlation */
-	uint16_t data_len;
-	uint8_t  data[504];         /* up to 504 bytes echo payload */
+	uint16_t reserved;
+	uint32_t data_len;          /* total bytes requested (ping) or per-frame (echo) */
+	uint8_t  data[500];         /* up to 500 bytes echo payload */
 	uint32_t crc32;
 } __packed pvcm_echo_t;
 

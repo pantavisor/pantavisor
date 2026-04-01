@@ -322,8 +322,8 @@ static int cmd_pv_ping(const struct shell *sh, size_t argc, char **argv)
 	int total = 100;
 	if (argc >= 2)
 		total = atoi(argv[1]);
-	if (total < 1 || total > 10000) {
-		shell_error(sh, "size must be 1-10000");
+	if (total < 1 || total > 1000000) {
+		shell_error(sh, "size must be 1-1000000");
 		return -1;
 	}
 
@@ -343,7 +343,7 @@ static int cmd_pv_ping(const struct shell *sh, size_t argc, char **argv)
 	pvcm_echo_t echo = {
 		.op = PVCM_OP_ECHO,
 		.seq = seq_counter,
-		.data_len = (uint16_t)total,
+		.data_len = (uint32_t)total,
 	};
 	t->send_frame(&echo, 4); /* just header, no payload needed */
 
