@@ -165,9 +165,11 @@ Defined in the type enum but has no implementation. Will fail at runtime.
 | Field | Required | Applies to | Description |
 |-------|----------|------------|-------------|
 | `name` | yes | all | Disk identifier, used for mount path and volume references |
-| `type` | yes | all | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk` |
-| `path` | yes | all | Device/image path. CAAM: `-v2 <img>,<size>,<key>` |
-| `mode` | caam, dcp | crypt | `mainline` or `nxp` — required for caam and dcp |
+| `type` | yes | all (not dual) | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk` |
+| `path` | yes | all (not dual) | Device/image path. CAAM: `-v2 <img>,<size>,<key>` |
+| `mode` | yes | crypt, dual | `mainline`, `nxp`, or `dual` |
+| `disks` | dual | dual | JSON array of sub-disk names: `["primary-name", "secondary-name"]` |
+| `init_order` | dual | dual | JSON array of actions (see Dual Mode section) |
 | `format` | volume | volume | `ext4`, `ext3`, or `swap` |
 | `provision` | swap/vol | swap, volume | Backend type. `"zram"` for zram, `"file"` for file-backed swap |
 | `provision_ops` | no | swap, volume | Backend-specific options (see type docs above) |
@@ -177,7 +179,6 @@ Defined in the type enum but has no implementation. Will fail at runtime.
 | `default` | no | all | `"yes"`: use as default disk for volumes without explicit disk ref |
 | `always_on` | no | all | `"true"`: mount at boot regardless of volume references |
 | `read_only` | no | crypt | `"true"`: dm-crypt device created read-only, mount with `-o ro` |
-| `copy_from` | no | crypt | Source disk name to copy content from on first init |
 | `uuid` | no | all | Disk UUID |
 
 ## Boot Sequence
@@ -198,51 +199,105 @@ On first mount (no `<keyname>.init_done` sentinel file):
 2. Create image file (`dd if=/dev/zero`)
 3. Set up loop device and dm-crypt mapping
 4. Format with `mkfs.ext4`
-5. If `copy_from` is set: mount, copy content from source, verify checksums
-6. Tear down dm-crypt and loop device
-7. Write `<keyname>.init_done` sentinel
+5. Tear down dm-crypt and loop device
+6. Write `<keyname>.init_done` sentinel
 
 Key writes use atomic `.tmp` + `sync` + `mv` pattern for power-loss safety.
 If init is interrupted (power loss), the next boot detects the missing
 `init_done` file and retries. Key creation is idempotent — existing keys
 are reused.
 
-## copy_from Migration
+## Dual Mode
 
-Enables populating a new encrypted disk from an existing read-only source:
+Dual mode orchestrates a primary and secondary disk as a single logical
+disk. The `init_order` field defines an ordered list of actions tried in
+sequence — the first to succeed wins.
 
 ```json
 {
     "disks": [
         {
-            "name": "secrets-legacy",
-            "type": "dm-crypt-caam",
-            "mode": "nxp",
-            "path": "-v2 /storage/dm-crypt-files/secrets/caam.img,2,key",
-            "always_on": "true",
-            "read_only": "true"
-        },
-        {
-            "name": "secrets",
+            "name": "dm-pv-secrets-ml",
             "type": "dm-crypt-caam",
             "mode": "mainline",
-            "path": "-v2 /storage/dm-crypt-files/secrets-ml/caam.img,2,key",
-            "always_on": "true",
-            "copy_from": "secrets-legacy"
+            "path": "-v2 /storage/dm-crypt-files/secrets-ml/caam-mainline.img,2,key-ml"
+        },
+        {
+            "name": "dm-pv-secrets-legacy",
+            "type": "dm-crypt-caam",
+            "mode": "nxp",
+            "path": "-v2 /storage/dm-crypt-files/secrets/caam.img,2,key"
+        },
+        {
+            "name": "dm-pv-secrets",
+            "mode": "dual",
+            "disks": ["dm-pv-secrets-ml", "dm-pv-secrets-legacy"],
+            "init_order": ["copy-once-to-primary", "primary", "create-primary"]
         }
     ]
 }
 ```
 
-Requirements:
-- Source disk must be listed before target (mounted first via `always_on`)
-- Source disk must be `read_only: true` (verified at block device level)
-- Copy is verified by comparing md5 checksums of all files
-- `init_done` is only written after successful verification
-- If copy fails, next boot retries from scratch (mkfs + copy)
+The sub-disks are just configuration references — they are not mounted
+independently. Only the dual entry is mounted (triggered by volume
+references or `always_on`). Sub-disk configs are exported to
+`/run/pantavisor/disks/<name>.json` before mounting so the crypt script
+can look them up.
 
-After migration completes, the legacy disk entry can remain (read-only,
-minimal overhead) or be removed.
+### init_order Actions
+
+| Action | Description |
+|--------|-------------|
+| `primary` | Try mounting existing primary disk (no creation) |
+| `secondary` | Try mounting existing secondary disk (no creation) |
+| `create-primary` | Create, format, and mount primary disk |
+| `create-secondary` | Create, format, and mount secondary disk |
+| `copy-once-to-primary` | Mount secondary read-only, create primary, copy all data, verify checksums. Skipped if already done (tracked by dual `init_done` marker) |
+
+### Common Policies
+
+**Migration (nxp to mainline):**
+```json
+"init_order": ["copy-once-to-primary", "primary", "create-primary"]
+```
+First boot: copy data from nxp to mainline. Subsequent boots: mount
+mainline directly. If nxp doesn't exist, create empty mainline. If
+mainline creation fails, pantavisor rolls back to the previous revision.
+
+**Mainline-only (no legacy fallback):**
+```json
+"init_order": ["primary", "create-primary"]
+```
+Mount or create mainline. No nxp involvement.
+
+**Either-or (mainline preferred, nxp fallback):**
+```json
+"init_order": ["primary", "secondary", "create-primary"]
+```
+Try mainline, fall back to nxp if it exists, create mainline if neither.
+No data migration.
+
+### Power-Loss Safety
+
+The `copy-once-to-primary` action uses a dual-level `init_done` marker:
+
+- **Sub-disk `init_done`**: created by `do_crypt_init` — means the key
+  and image exist and the disk is mountable.
+- **Dual `init_done`**: created only after the init_order step fully
+  succeeds (data copied and verified, or disk mounted).
+
+If power is lost during `copy-once-to-primary`:
+1. Sub-disk mainline may have `init_done` (image exists, mountable)
+2. Dual `init_done` is missing (copy didn't complete)
+3. Next boot: `copy-once-to-primary` sees no dual marker → re-runs copy
+4. Primary image exists → idempotent init (no recreation) → mounts → copy → verify → touches dual marker
+
+### Unmount
+
+`do_umount_dual` tries unmounting primary first, then secondary. The
+`do_umount_disk` check uses `/proc/mounts` (with `realpath` resolution)
+to detect whether a disk is actually mounted, preventing errors from
+double-unmount when `umount_all` runs after dual already cleaned up.
 
 ## Mount Recovery (fsck/backup)
 
