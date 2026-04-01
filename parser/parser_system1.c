@@ -359,9 +359,51 @@ static int parse_disks(struct pv_state *s, char *value)
 						    diskc);
 		d->read_only = parse_disks_get_bool(str, "read_only", diskv,
 						    diskc);
-		d->copy_from =
-			pv_json_get_value(str, "copy_from", diskv, diskc);
 		d->mounted = false;
+
+		// save raw JSON for export to /run/pantavisor/disks/
+		d->json_str = strdup(str);
+
+		// parse dual mode arrays
+		if (d->mode == DISK_DM_CRYPT_MODE_DUAL) {
+			char *disks_str = pv_json_get_value(str, "disks", diskv, diskc);
+			if (disks_str) {
+				jsmntok_t *dtokv = NULL;
+				int dtokc;
+				if (jsmnutil_parse_json(disks_str, &dtokv, &dtokc) > 0) {
+					int dcount = jsmnutil_array_count(disks_str, dtokv);
+					int dremain = dcount;
+					jsmntok_t *dt = dtokv + 1;
+					for (int i = 0; i < dcount && i < PV_DISK_DUAL_MAX_DISKS; i++) {
+						char *entry = pv_json_array_get_one_str(disks_str, &dremain, &dt);
+						if (entry) {
+							d->dual_disks[d->dual_disks_count++] = entry;
+						}
+					}
+					free(dtokv);
+				}
+				free(disks_str);
+			}
+
+			char *order_str = pv_json_get_value(str, "init_order", diskv, diskc);
+			if (order_str) {
+				jsmntok_t *otokv = NULL;
+				int otokc;
+				if (jsmnutil_parse_json(order_str, &otokv, &otokc) > 0) {
+					int ocount = jsmnutil_array_count(order_str, otokv);
+					int oremain = ocount;
+					jsmntok_t *ot = otokv + 1;
+					for (int i = 0; i < ocount && i < PV_DISK_DUAL_MAX_INIT_ORDER; i++) {
+						char *entry = pv_json_array_get_one_str(order_str, &oremain, &ot);
+						if (entry) {
+							d->init_order[d->init_order_count++] = entry;
+						}
+					}
+					free(otokv);
+				}
+				free(order_str);
+			}
+		}
 
 		// you need to jump (in tokens) to the next array, so
 		// this is the number of keys + values

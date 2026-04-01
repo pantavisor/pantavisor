@@ -38,35 +38,52 @@
 #include "log.h"
 
 #define PV_DISK_CRYPT_CMD_TMPL \
-	"%s %s --type '%s' --mode '%s'%s%s -- '%s' '%s'"
+	"%s %s --type '%s' --mode '%s'%s -- '%s' '%s'"
+
+#define PV_DISK_CRYPT_CMD_DUAL_TMPL \
+	"%s %s --mode 'dual' --disks '%s' --init-order '%s' -- '%s'"
 
 static int run_action(struct pv_disk *disk, const char *action)
 {
-	const char *type = pv_disk_type_to_str(disk->type);
-	const char *mode = pv_disk_dm_crypt_mode_to_str(disk->mode);
-	const char *ro = disk->read_only ? " --read-only" : "";
-
 	char mntpath[PATH_MAX] = { 0 };
 	pv_paths_storage_mounted_disk_path(mntpath, PATH_MAX, "dmcrypt",
 					   disk->name);
 	char script[PATH_MAX] = { 0 };
 	pv_paths_lib_crypt(script, PATH_MAX, "crypt");
 
-	char copy_from_arg[PATH_MAX + 16] = { 0 };
-	if (disk->copy_from) {
-		char src_mnt[PATH_MAX] = { 0 };
-		pv_paths_storage_mounted_disk_path(src_mnt, PATH_MAX,
-						   "dmcrypt",
-						   disk->copy_from);
-		snprintf(copy_from_arg, sizeof(copy_from_arg),
-			 " --copy-from '%s'", src_mnt);
+	int ret;
+
+	if (disk->mode == DISK_DM_CRYPT_MODE_DUAL) {
+		// build colon-separated disk list and init_order
+		char disks_arg[PATH_MAX] = { 0 };
+		for (int i = 0; i < disk->dual_disks_count; i++) {
+			if (i > 0)
+				strncat(disks_arg, ":", sizeof(disks_arg) - strlen(disks_arg) - 1);
+			strncat(disks_arg, disk->dual_disks[i], sizeof(disks_arg) - strlen(disks_arg) - 1);
+		}
+
+		char order_arg[PATH_MAX] = { 0 };
+		for (int i = 0; i < disk->init_order_count; i++) {
+			if (i > 0)
+				strncat(order_arg, ":", sizeof(order_arg) - strlen(order_arg) - 1);
+			strncat(order_arg, disk->init_order[i], sizeof(order_arg) - strlen(order_arg) - 1);
+		}
+
+		ret = pv_disk_utils_run_cmd(PV_DISK_CRYPT_CMD_DUAL_TMPL,
+					    "disk-crypt-info", "disk-crypt-err",
+					    script, action,
+					    disks_arg, order_arg, mntpath);
+	} else {
+		const char *type = pv_disk_type_to_str(disk->type);
+		const char *mode = pv_disk_dm_crypt_mode_to_str(disk->mode);
+		const char *ro = disk->read_only ? " --read-only" : "";
+
+		ret = pv_disk_utils_run_cmd(PV_DISK_CRYPT_CMD_TMPL,
+					    "disk-crypt-info", "disk-crypt-err",
+					    script, action, type, mode, ro,
+					    disk->path, mntpath);
 	}
 
-	int ret = pv_disk_utils_run_cmd(PV_DISK_CRYPT_CMD_TMPL,
-					"disk-crypt-info", "disk-crypt-err",
-					script, action, type, mode, ro,
-					copy_from_arg,
-					disk->path, mntpath);
 	if (ret == 0) {
 		if (!strcmp(action, "mount"))
 			disk->mounted = true;
@@ -79,6 +96,10 @@ static int run_action(struct pv_disk *disk, const char *action)
 
 static int pv_disk_crypt_init(struct pv_disk *disk)
 {
+	// dual mode disks have no type of their own
+	if (disk->mode == DISK_DM_CRYPT_MODE_DUAL)
+		return 0;
+
 	if (disk->type == DISK_UNKNOWN) {
 		pv_log(ERROR, "disk %s has unknown type", disk->name);
 		return -1;

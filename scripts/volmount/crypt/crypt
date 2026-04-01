@@ -64,7 +64,9 @@ dm_type=""
 mode=""
 specialrun=""
 read_only=""
-copy_from=""
+no_create=""
+dual_disks=""
+dual_init_order=""
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -84,8 +86,16 @@ while [ $# -gt 0 ]; do
 			read_only="yes"
 			shift
 			;;
-		--copy-from)
-			copy_from="$2"
+		--no-create)
+			no_create="yes"
+			shift
+			;;
+		--disks)
+			dual_disks="$2"
+			shift 2
+			;;
+		--init-order)
+			dual_init_order="$2"
 			shift 2
 			;;
 		--)
@@ -102,20 +112,36 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-path=$1
-origpath=$1
-mntpath=$2
+if [ "$mode" = "dual" ]; then
+	mntpath=$1
+	if [ -z "$op" ] || [ -z "$dual_disks" ] || [ -z "$dual_init_order" ] || [ -z "$mntpath" ]; then
+		echo "ERROR: dual mode requires --disks, --init-order, and <mntpath>"
+		exit 1
+	fi
+else
+	path=$1
+	origpath=$1
+	mntpath=$2
 
-if [ -z "$op" ] || [ -z "$dm_type" ] || [ -z "$path" ]; then
-	echo "ERROR: missing required arguments"
-	echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--copy-from <path>] [--specialrun <run>] <path> <mntpath>"
-	exit 1
+	if [ -z "$op" ] || [ -z "$dm_type" ] || [ -z "$path" ]; then
+		echo "ERROR: missing required arguments"
+		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--no-create] <path> <mntpath>"
+		exit 1
+	fi
+
+	if [ "$op" = "mount" ] && [ -z "$mntpath" ]; then
+		echo "ERROR: mount requires a <mntpath> argument"
+		exit 1
+	fi
 fi
 
-if [ "$op" = "mount" ] && [ -z "$mntpath" ]; then
-	echo "ERROR: mount requires a <mntpath> argument"
-	exit 1
+# skip remaining validation for dual mode — handled in do_mount_dual
+if [ "$mode" = "dual" ]; then
+	# Resolve DISKSDIR from config or use default
+	DISKSDIR="${PV_SYSTEM_DISKSDIR:-/run/pantavisor/disks}"
 fi
+
+if [ "$mode" != "dual" ]; then
 
 case "$dm_type" in
 	caam|caam-mainline|dcp|versatile) ;;
@@ -152,6 +178,8 @@ case "$dm_type" in
 		;;
 esac
 
+fi # mode != dual
+
 CAAM_KEYGEN=caam-keygen
 
 MKFS_OPTS_EXT4=${MKFS_OPTS_EXT4:-"-b 1024"}
@@ -181,6 +209,47 @@ atomic_losetup()
 		return 122
 	fi
 	echo "$_l" | sed -e 's/: [0-9][0-9]* .*//'
+}
+
+# Copy all files from $1 (source dir) to $2 (destination dir) and verify checksums.
+# Both directories must already be mounted.
+do_copy_verify()
+{
+	_cv_src=$1
+	_cv_dst=$2
+
+	if [ ! -d "$_cv_src" ]; then
+		echo "ERROR: copy source '$_cv_src' does not exist"
+		return 1
+	fi
+
+	echo "copy: copying from '$_cv_src' to '$_cv_dst'..."
+	if ! cp -a "$_cv_src"/. "$_cv_dst"/; then
+		echo "ERROR: copy failed"
+		return 1
+	fi
+
+	sync
+	echo 3 > /proc/sys/vm/drop_caches
+
+	_src_sums=$(mktemp)
+	_dst_sums=$(mktemp)
+
+	(cd "$_cv_src" && find . -type f -exec md5sum {} \; | sort) > "$_src_sums"
+	(cd "$_cv_dst" && find . -type f -exec md5sum {} \; | sort) > "$_dst_sums"
+
+	if ! diff -q "$_src_sums" "$_dst_sums" >/dev/null 2>&1; then
+		echo "ERROR: checksum verification failed"
+		diff "$_src_sums" "$_dst_sums" || true
+		rm -f "$_src_sums" "$_dst_sums"
+		return 1
+	fi
+
+	_file_count=$(wc -l < "$_src_sums")
+	rm -f "$_src_sums" "$_dst_sums"
+
+	echo "copy: verified $_file_count files, all checksums match"
+	return 0
 }
 
 do_crypt_init()
@@ -366,62 +435,6 @@ do_crypt_init()
 			exit 1
 		fi
 
-		# copy_from: populate the new filesystem from a source disk mount
-		# note that if the copy_from disk was not mounted, we will get an empty copy here.
-		if [ -n "$copy_from" ] && ! [ -d "$copy_from" ]; then
-			echo "WARN: copy-from $copy_from is not available; skipping copy ..."
-		elif [ -n "$copy_from" ]; then
-			_copy_tmp=$(mktemp -d)
-			if ! mount /dev/mapper/"$device_name" "$_copy_tmp"; then
-				echo "ERROR: copy_from: cannot mount new filesystem for copy"
-				rm -rf "$_copy_tmp"
-				exit 1
-			fi
-
-			if [ ! -d "$copy_from" ]; then
-				echo "ERROR: copy_from source '$copy_from' is not mounted or does not exist"
-				umount "$_copy_tmp"
-				rm -rf "$_copy_tmp"
-				exit 1
-			fi
-
-			echo "copy_from: copying from '$copy_from' to new disk..."
-			if ! cp -a "$copy_from"/. "$_copy_tmp"/; then
-				echo "ERROR: copy_from: cp failed"
-				umount "$_copy_tmp"
-				rm -rf "$_copy_tmp"
-				exit 1
-			fi
-
-			# flush all writes to disk
-			sync
-			echo 3 > /proc/sys/vm/drop_caches
-
-			# verify: compare checksums of every file
-			_src_sums=$(mktemp)
-			_dst_sums=$(mktemp)
-
-			(cd "$copy_from" && find . -type f -exec md5sum {} \; | sort) > "$_src_sums"
-			(cd "$_copy_tmp" && find . -type f -exec md5sum {} \; | sort) > "$_dst_sums"
-
-			if ! diff -q "$_src_sums" "$_dst_sums" >/dev/null 2>&1; then
-				echo "ERROR: copy_from: checksum verification failed"
-				diff "$_src_sums" "$_dst_sums" || true
-				rm -f "$_src_sums" "$_dst_sums"
-				umount "$_copy_tmp"
-				rm -rf "$_copy_tmp"
-				exit 1
-			fi
-
-			_file_count=$(wc -l < "$_src_sums")
-			rm -f "$_src_sums" "$_dst_sums"
-
-			umount "$_copy_tmp"
-			rm -rf "$_copy_tmp"
-
-			echo "copy_from: verified $_file_count files, all checksums match"
-		fi
-
 		# Tear down dm-crypt device and loop after formatting
 		sync
 		case "${dm_type_mode}" in
@@ -591,11 +604,17 @@ do_mount_disk()
 	case "${dm_type_mode}" in
 		caam__nxp|dcp__nxp)
 			KEY_NAME="logkey:$keyname"
-			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
+			if [ ! -f "$dir/$keyname.init_done" ]; then
+				[ "$no_create" = "yes" ] && return 1
+				do_crypt_init "$path"
+			fi
 			;;
 		versatile__*)
 			KEY_NAME="logkey:$keyname"
-			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
+			if [ ! -f "$dir/$keyname.init_done" ]; then
+				[ "$no_create" = "yes" ] && return 1
+				do_crypt_init "$path"
+			fi
 			;;
 		caam__mainline|caam-mainline__*)
 			cipher="capi:cbc(aes)-plain64"
@@ -604,7 +623,10 @@ do_mount_disk()
 			KEY_NAME="logkey:$keyname"
 
 			keyblob="${keyname}.bb"
-			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
+			if [ ! -f "$dir/$keyname.init_done" ]; then
+				[ "$no_create" = "yes" ] && return 1
+				do_crypt_init "$path"
+			fi
 			;;
 		dcp__mainline)
 			cipher="capi:cbc(aes)-essiv:sha256"
@@ -639,7 +661,10 @@ do_mount_disk()
 				keyblob="${keyname}.bb.pending"
 			fi
 
-			[ ! -f "$dir/$keyname.init_done" ] && do_crypt_init "$path"
+			if [ ! -f "$dir/$keyname.init_done" ]; then
+				[ "$no_create" = "yes" ] && return 1
+				do_crypt_init "$path"
+			fi
 			;;
 		*)
 			echo "ERROR: crypt vol dm_type_mode '${dm_type_mode}' not support"
@@ -777,6 +802,13 @@ do_mount_disk_retry()
 
 do_umount_disk()
 {
+	# idempotent: if not mounted, succeed immediately
+	_real_mntpath=$(realpath "$mntpath" 2>/dev/null || echo "$mntpath")
+	if ! grep -q " $_real_mntpath " /proc/mounts 2>/dev/null; then
+		echo "disk not mounted at $mntpath, nothing to unmount"
+		return 0
+	fi
+
 	base=$(basename "$path")
 	img_file=$(echo "$base" | awk '{split($0,a,","); print a[1]}')
 	keyname=$(echo "$base" | awk '{split($0,a,","); print a[3]}')
@@ -810,16 +842,199 @@ do_umount_disk()
 	losetup -d "$loop_dev"
 }
 
+# Simple JSON value extractor for flat objects (no nesting).
+# Usage: json_val '{"key":"value"}' key  ->  value
+json_val()
+{
+	echo "$1" | sed -n 's/.*"'"$2"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+# Read disk config from /run/pantavisor/disks/<name>.json
+# Sets: _disk_type, _disk_mode, _disk_path, _disk_read_only
+disk_config_load()
+{
+	_disk_name=$1
+	_disk_json_path="${DISKSDIR}/${_disk_name}.json"
+
+	if [ ! -f "$_disk_json_path" ]; then
+		echo "ERROR: disk config not found: $_disk_json_path"
+		return 1
+	fi
+
+	_disk_json=$(cat "$_disk_json_path")
+	_disk_type=$(json_val "$_disk_json" "type")
+	_disk_mode=$(json_val "$_disk_json" "mode")
+	_disk_path=$(json_val "$_disk_json" "path")
+	_disk_read_only=$(json_val "$_disk_json" "read_only")
+
+	# map type string to --type arg
+	case "$_disk_type" in
+		dm-crypt-caam) _disk_type="caam" ;;
+		dm-crypt-dcp) _disk_type="dcp" ;;
+		dm-crypt-versatile) _disk_type="versatile" ;;
+	esac
+}
+
+# Dual mode: walk init_order steps, first success wins.
+# Receives: dual_disks (colon-sep), dual_init_order (colon-sep), mntpath
+do_mount_dual()
+{
+	_primary_name="${dual_disks%%:*}"
+	_secondary_name="${dual_disks#*:}"
+
+	_dual_init_done="${DISKSDIR}/dual_${_primary_name}_${_secondary_name}.init_done"
+
+	_script="$0"
+	_old_ifs="$IFS"
+	IFS=":"
+	for _step in $dual_init_order; do
+		IFS="$_old_ifs"
+		case "$_step" in
+			primary)
+				echo "dual: trying primary '$_primary_name'..."
+				disk_config_load "$_primary_name" || continue
+				_ro_arg=""
+				[ "$_disk_read_only" = "true" ] && _ro_arg="--read-only"
+				if "$_script" mount --type "$_disk_type" --mode "$_disk_mode" \
+					--no-create $_ro_arg -- "$_disk_path" "$mntpath"; then
+					echo "dual: primary mounted"
+					touch "$_dual_init_done"
+					return 0
+				fi
+				echo "dual: primary not available"
+				;;
+			secondary)
+				echo "dual: trying secondary '$_secondary_name'..."
+				disk_config_load "$_secondary_name" || continue
+				_ro_arg=""
+				[ "$_disk_read_only" = "true" ] && _ro_arg="--read-only"
+				if "$_script" mount --type "$_disk_type" --mode "$_disk_mode" \
+					--no-create $_ro_arg -- "$_disk_path" "$mntpath"; then
+					echo "dual: secondary mounted"
+					touch "$_dual_init_done"
+					return 0
+				fi
+				echo "dual: secondary not available"
+				;;
+			create-primary)
+				echo "dual: creating primary '$_primary_name'..."
+				disk_config_load "$_primary_name" || continue
+				_ro_arg=""
+				[ "$_disk_read_only" = "true" ] && _ro_arg="--read-only"
+				if "$_script" mount --type "$_disk_type" --mode "$_disk_mode" \
+					$_ro_arg -- "$_disk_path" "$mntpath"; then
+					echo "dual: primary created and mounted"
+					touch "$_dual_init_done"
+					return 0
+				fi
+				echo "dual: primary creation failed"
+				;;
+			create-secondary)
+				echo "dual: creating secondary '$_secondary_name'..."
+				disk_config_load "$_secondary_name" || continue
+				_ro_arg=""
+				[ "$_disk_read_only" = "true" ] && _ro_arg="--read-only"
+				if "$_script" mount --type "$_disk_type" --mode "$_disk_mode" \
+					$_ro_arg -- "$_disk_path" "$mntpath"; then
+					echo "dual: secondary created and mounted"
+					touch "$_dual_init_done"
+					return 0
+				fi
+				echo "dual: secondary creation failed"
+				;;
+			copy-once-to-primary)
+				# skip if dual init already completed (copy was done)
+				if [ -f "$_dual_init_done" ]; then
+					echo "dual: copy-once-to-primary: already done, skipping"
+					continue
+				fi
+				echo "dual: copying secondary to primary..."
+				# mount secondary to temp dir
+				disk_config_load "$_secondary_name" || continue
+				_sec_type="$_disk_type"
+				_sec_mode="$_disk_mode"
+				_sec_path="$_disk_path"
+
+				_sec_mnt=$(mktemp -d)
+				if ! "$_script" mount --type "$_sec_type" --mode "$_sec_mode" \
+					--no-create --read-only -- "$_sec_path" "$_sec_mnt"; then
+					echo "dual: secondary not available for copy"
+					umount "$_sec_mnt" 2>/dev/null || true
+					rm -rf "$_sec_mnt"
+					continue
+				fi
+
+				# create + mount primary
+				disk_config_load "$_primary_name" || { "$_script" umount --type "$_sec_type" --mode "$_sec_mode" -- "$_sec_path" "$_sec_mnt"; rm -rf "$_sec_mnt"; continue; }
+
+				if "$_script" mount --type "$_disk_type" --mode "$_disk_mode" \
+					-- "$_disk_path" "$mntpath"; then
+					# primary is mounted at $mntpath, copy + verify
+					if do_copy_verify "$_sec_mnt" "$mntpath"; then
+						"$_script" umount --type "$_sec_type" --mode "$_sec_mode" -- "$_sec_path" "$_sec_mnt" || true
+						rm -rf "$_sec_mnt"
+						echo "dual: copied secondary to primary"
+						touch "$_dual_init_done"
+						return 0
+					fi
+					echo "dual: copy verification failed"
+				else
+					echo "dual: primary creation for copy failed"
+				fi
+
+				"$_script" umount --type "$_sec_type" --mode "$_sec_mode" -- "$_sec_path" "$_sec_mnt" || true
+				rm -rf "$_sec_mnt"
+				;;
+			*)
+				echo "dual: unknown init_order step: $_step"
+				;;
+		esac
+		IFS=":"
+	done
+	IFS="$_old_ifs"
+
+	echo "ERROR: dual: all init_order steps failed"
+	return 1
+}
+
+do_umount_dual()
+{
+	_primary_name="${dual_disks%%:*}"
+	_secondary_name="${dual_disks#*:}"
+
+	_script="$0"
+
+	# try unmounting primary first, then secondary
+	for _name in "$_primary_name" "$_secondary_name"; do
+		disk_config_load "$_name" || continue
+		if "$_script" umount --type "$_disk_type" --mode "$_disk_mode" \
+			-- "$_disk_path" "$mntpath"; then
+			return 0
+		fi
+	done
+
+	echo "ERROR: dual: nothing to unmount"
+	return 1
+}
+
 case $op in
 	mount)
-		do_mount_disk
+		if [ "$mode" = "dual" ]; then
+			do_mount_dual
+		else
+			do_mount_disk
+		fi
 		;;
 	umount)
-		do_umount_disk
+		if [ "$mode" = "dual" ]; then
+			do_umount_dual
+		else
+			do_umount_disk
+		fi
 		;;
 	*)
 		echo "ERROR: unknown action '$op'"
-		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--copy-from <path>] [--specialrun <run>] <path> <mntpath>"
+		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--no-create] <path> <mntpath>"
 		exit 5
 		;;
 esac

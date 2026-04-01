@@ -111,6 +111,7 @@ typedef enum {
 #define SYSTEM_LIBDIR_DEF "/lib"
 #define SYSTEM_MEDIADIR_DEF "/media"
 #define SYSTEM_RUNDIR_DEF "/run/pantavisor/pv"
+#define SYSTEM_DISKSDIR_DEF "/run/pantavisor/disks"
 #define SYSTEM_USRDIR_DEF "/usr"
 
 struct pv_config_entry {
@@ -263,6 +264,7 @@ static struct pv_config_entry entries[] = {
 	  .value.s = SYSTEM_MEDIADIR_DEF },
 	{ BOOL, "PV_SYSTEM_MOUNT_SECURITYFS", PV, 0, false, .value.b = false },
 	{ STR, "PV_SYSTEM_RUNDIR", PV, 0, false, .value.s = SYSTEM_RUNDIR_DEF },
+	{ STR, "PV_SYSTEM_DISKSDIR", PV, 0, false, .value.s = SYSTEM_DISKSDIR_DEF },
 	{ STR, "PV_SYSTEM_USRDIR", PV, 0, false, .value.s = SYSTEM_USRDIR_DEF },
 	{ INT, "PV_UPDATER_COMMIT_DELAY", PV | OEM | RUN, 0, false,
 	  .value.i = 25 },
@@ -359,6 +361,7 @@ static struct pv_config_alias aliases[] = {
 	{ "system.mediadir", "PV_SYSTEM_MEDIADIR" },
 	{ "system.mount.securityfs", "PV_SYSTEM_MOUNT_SECURITYFS" },
 	{ "system.rundir", "PV_SYSTEM_RUNDIR" },
+	{ "system.disksdir", "PV_SYSTEM_DISKSDIR" },
 	{ "system.usrdir", "PV_SYSTEM_USRDIR" },
 	{ "updater.commit.delay", "PV_UPDATER_COMMIT_DELAY" },
 	{ "updater.goals.timeout", "PV_UPDATER_GOALS_TIMEOUT" },

@@ -41,8 +41,12 @@ typedef enum {
 typedef enum {
 	DISK_DM_CRYPT_MODE_UNKNOWN,
 	DISK_DM_CRYPT_MODE_MAINLINE,
-	DISK_DM_CRYPT_MODE_NXP
+	DISK_DM_CRYPT_MODE_NXP,
+	DISK_DM_CRYPT_MODE_DUAL
 } pv_disk_dm_crypt_mode_t;
+
+#define PV_DISK_DUAL_MAX_DISKS 4
+#define PV_DISK_DUAL_MAX_INIT_ORDER 8
 
 typedef enum {
 	DISK_FORMAT_UNKNOWN,
@@ -69,11 +73,17 @@ struct pv_disk {
 	char *provision_ops;
 	char *provision;
 	char *mount_target;
-	char *copy_from;
 	bool def;
 	bool always_on;
 	bool read_only;
 	bool mounted;
+	// dual mode fields
+	char *dual_disks[PV_DISK_DUAL_MAX_DISKS];
+	int dual_disks_count;
+	char *init_order[PV_DISK_DUAL_MAX_INIT_ORDER];
+	int init_order_count;
+	// raw JSON for export to /run/pantavisor/disks/
+	char *json_str;
 	// pv_disk
 	struct dl_list list;
 };
@@ -123,6 +133,8 @@ static inline const char *pv_disk_dm_crypt_mode_to_str(pv_disk_dm_crypt_mode_t m
 		return "mainline";
 	case DISK_DM_CRYPT_MODE_NXP:
 		return "nxp";
+	case DISK_DM_CRYPT_MODE_DUAL:
+		return "dual";
 	}
 	return "unknown";
 }
@@ -155,6 +167,8 @@ static inline pv_disk_dm_crypt_mode_t pv_disk_dm_crypt_str_to_mode(const char *m
 			return DISK_DM_CRYPT_MODE_MAINLINE;
 		else if (!strcmp(mode_str, "nxp"))
 			return DISK_DM_CRYPT_MODE_NXP;
+		else if (!strcmp(mode_str, "dual"))
+			return DISK_DM_CRYPT_MODE_DUAL;
 	}
 	return DISK_DM_CRYPT_MODE_UNKNOWN;
 }
@@ -177,6 +191,9 @@ static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 	}
 	return DISK_UNKNOWN;
 }
+
+struct pv_disk *pv_disk_find(struct dl_list *disks, const char *name);
+int pv_disk_export_all(struct dl_list *disks);
 
 extern struct pv_disk_impl zram_impl;
 extern struct pv_disk_impl crypt_impl;

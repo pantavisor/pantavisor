@@ -29,6 +29,8 @@
 #include "paths.h"
 #include "utils/tsh.h"
 #include "utils/fs.h"
+#include "utils/str.h"
+#include "config.h"
 #include "logserver/logserver.h"
 
 #include <errno.h>
@@ -63,8 +65,13 @@ static void pv_disk_free(struct pv_disk *disk)
 		free(disk->provision);
 	if (disk->mount_target)
 		free(disk->mount_target);
-	if (disk->copy_from)
-		free(disk->copy_from);
+	if (disk->json_str)
+		free(disk->json_str);
+
+	for (int i = 0; i < disk->dual_disks_count; i++)
+		free(disk->dual_disks[i]);
+	for (int i = 0; i < disk->init_order_count; i++)
+		free(disk->init_order[i]);
 
 	free(disk);
 }
@@ -92,6 +99,10 @@ void pv_disk_empty(struct dl_list *disks)
 static struct pv_disk_impl *get_disk_implementation(struct pv_disk *disk)
 {
 	struct pv_disk_impl *impl = NULL;
+
+	// dual mode disks use crypt_impl regardless of type
+	if (disk->mode == DISK_DM_CRYPT_MODE_DUAL)
+		return &crypt_impl;
 
 	switch (disk->type) {
 	case DISK_DM_CRYPT_CAAM:
@@ -278,4 +289,46 @@ struct pv_disk *pv_disk_add(struct dl_list *disks)
 	}
 
 	return d;
+}
+
+struct pv_disk *pv_disk_find(struct dl_list *disks, const char *name)
+{
+	if (!disks || !name)
+		return NULL;
+
+	struct pv_disk *d;
+	dl_list_for_each(d, disks, struct pv_disk, list)
+	{
+		if (d->name && !strcmp(d->name, name))
+			return d;
+	}
+
+	return NULL;
+}
+
+int pv_disk_export_all(struct dl_list *disks)
+{
+	if (!disks)
+		return -1;
+
+	const char *disksdir = pv_config_get_str(PV_SYSTEM_DISKSDIR);
+	pv_fs_mkdir_p(disksdir, 0755);
+
+	struct pv_disk *d;
+	dl_list_for_each(d, disks, struct pv_disk, list)
+	{
+		if (!d->name || !d->json_str)
+			continue;
+
+		char path[PATH_MAX];
+		SNPRINTF_WTRUNC(path, sizeof(path), "%s/%s.json",
+				disksdir, d->name);
+
+		if (pv_fs_file_save(path, d->json_str, 0644) < 0) {
+			pv_log(WARN, "cannot export disk %s to %s", d->name,
+			       path);
+		}
+	}
+
+	return 0;
 }
