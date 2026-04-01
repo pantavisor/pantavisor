@@ -103,15 +103,20 @@ void pvcm_client_on_http_data(const uint8_t *buf, int len)
 			}
 			src += n; remaining -= n; off += n;
 		} else {
-			/* body region */
+			/* body region — copy what fits, skip the rest */
 			size_t n = remaining;
-			if (pending.body_len + n > pending.body_cap)
-				n = pending.body_cap - pending.body_len;
-			if (n > 0) {
-				memcpy(pending.body + pending.body_len, src, n);
+			size_t writable = pending.body_cap - pending.body_len;
+			if (writable > 0 && writable < n) {
+				memcpy(pending.body + pending.body_len,
+				       src, writable);
+				pending.body_len += writable;
+			} else if (writable >= n) {
+				memcpy(pending.body + pending.body_len,
+				       src, n);
 				pending.body_len += n;
 			}
-			src += n; remaining -= n; off += n;
+			/* always advance past ALL remaining bytes */
+			src += n; remaining = 0; off += n;
 		}
 	}
 
@@ -485,16 +490,16 @@ void pvcm_client_on_invoke_data(const uint8_t *buf, int len)
 			src += n; remaining -= n; off += n;
 		} else {
 			size_t n = remaining;
-			if (invoke_pending.body_len + n >
-			    sizeof(invoke_pending.body) - 1)
-				n = sizeof(invoke_pending.body) - 1 -
-				    invoke_pending.body_len;
-			if (n > 0) {
+			size_t writable = sizeof(invoke_pending.body) - 1 -
+					  invoke_pending.body_len;
+			size_t to_copy = n < writable ? n : writable;
+			if (to_copy > 0) {
 				memcpy(invoke_pending.body +
-				       invoke_pending.body_len, src, n);
-				invoke_pending.body_len += n;
+				       invoke_pending.body_len, src, to_copy);
+				invoke_pending.body_len += to_copy;
 			}
-			src += n; remaining -= n; off += n;
+			/* always advance past all remaining bytes */
+			src += n; remaining = 0; off += n;
 		}
 	}
 
