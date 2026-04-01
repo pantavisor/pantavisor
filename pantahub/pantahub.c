@@ -621,11 +621,7 @@ int pv_pantahub_close()
 	if (!ph)
 		return -1;
 
-	_close_state();
-
-	pv_pantahub_proto_close();
-
-	pv_event_rest_cleanup();
+	pv_pantahub_stop();
 
 	free(ph);
 	global_ph = NULL;
@@ -870,6 +866,25 @@ void pv_pantahub_start()
 	pv_log(DEBUG, "starting Pantacor Hub client...");
 
 	pv_event_one_shot(_run_state_cb);
+}
+
+void pv_pantahub_stop()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
+		return;
+
+	if (ph->state == PH_STATE_INIT)
+		return;
+
+	pv_log(DEBUG, "stopping Pantacor Hub client...");
+
+	_close_state();
+	ph->state = PH_STATE_INIT;
+
+	pv_pantahub_proto_close();
+
+	pv_event_rest_cleanup();
 }
 
 void pv_pantahub_evaluate_state()
