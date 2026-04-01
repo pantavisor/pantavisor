@@ -34,7 +34,10 @@ extern "C" {
 #define PVCM_MAGIC              0x5056434D  /* "PVCM" */
 #define PVCM_PROTOCOL_VERSION   1
 #define PVCM_DEFAULT_BAUDRATE   921600
-#define PVCM_MAX_CHUNK_SIZE     512
+/* Max data per HTTP_DATA/FW_DATA chunk.
+ * Sized to fit in one RPMsg message: vring buffer (512) - RPMsg header (16)
+ * - PVCM wire overhead (8) - DATA header (4) = 484. Round to 480. */
+#define PVCM_MAX_CHUNK_SIZE     480
 
 /* --- Opcodes --- */
 
@@ -227,18 +230,16 @@ typedef struct {
 } __packed pvcm_log_t;
 
 /*
- * HTTP_REQ -- opens an HTTP exchange (request or response)
+ * HTTP_REQ -- opens an HTTP exchange (metadata only)
  *
- * For requests (dir=REQUEST/INVOKE):
- *   method = PVCM_HTTP_GET/POST/etc, status_code = 0
- *   path = request path (e.g. "/sensor/config")
+ * Path, headers, and body all flow as HTTP_DATA frames in order:
+ *   first path_len bytes = path (e.g. "/sensor/config")
+ *   next headers_len bytes = headers ("Key: Value\r\n" pairs)
+ *   remaining bytes = body (total: body_len)
  *
- * For responses (dir=RESPONSE/REPLY):
- *   method = 0, status_code = HTTP status (200, 404, etc)
- *   path = "" (not used)
- *
- * headers: optional HTTP headers as "Key: Value\r\n" pairs
- * total_body_size: expected body size (0 if no body, or unknown)
+ * HTTP_END marks the transfer complete.
+ * No size limits on path, headers, or body — the transport
+ * chunks them into DATA frames transparently.
  */
 typedef struct {
 	uint8_t  op;
@@ -246,10 +247,9 @@ typedef struct {
 	uint8_t  direction;         /* PVCM_HTTP_DIR_* */
 	uint8_t  method;            /* PVCM_HTTP_* (for requests) */
 	uint16_t status_code;       /* HTTP status (for responses) */
-	uint32_t total_body_size;   /* 0 = unknown/no body */
-	uint16_t path_len;
-	uint16_t headers_len;
-	char     data[240];         /* path + headers, packed */
+	uint16_t path_len;          /* bytes of path in DATA stream */
+	uint16_t headers_len;       /* bytes of headers in DATA stream */
+	uint32_t body_len;          /* bytes of body in DATA stream */
 	uint32_t crc32;
 } __packed pvcm_http_req_t;
 

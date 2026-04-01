@@ -306,17 +306,69 @@ static const char *method_to_str(uint8_t method)
 	}
 }
 
+/*
+ * Send arbitrary data as HTTP_DATA frames.
+ * Concatenates multiple buffers (e.g. headers + body) into
+ * a single DATA stream. Chunks to PVCM_MAX_CHUNK_SIZE per frame.
+ */
+static void send_data_stream(struct pvcm_transport *t, uint8_t stream_id,
+			     const char *buf1, size_t len1,
+			     const char *buf2, size_t len2)
+{
+	/* concatenate into one logical stream */
+	const char *bufs[] = { buf1, buf2 };
+	size_t lens[] = { len1, len2 };
+	int nbufs = 2;
+
+	size_t buf_idx = 0, buf_off = 0;
+	pvcm_http_data_t data;
+	data.op = PVCM_OP_HTTP_DATA;
+	data.stream_id = stream_id;
+
+	while (buf_idx < (size_t)nbufs) {
+		size_t chunk = 0;
+
+		/* fill one DATA frame from possibly multiple buffers */
+		while (chunk < PVCM_MAX_CHUNK_SIZE && buf_idx < (size_t)nbufs) {
+			size_t avail = lens[buf_idx] - buf_off;
+			size_t room = PVCM_MAX_CHUNK_SIZE - chunk;
+			size_t n = avail < room ? avail : room;
+
+			if (n > 0 && bufs[buf_idx]) {
+				memcpy(data.data + chunk,
+				       bufs[buf_idx] + buf_off, n);
+				chunk += n;
+				buf_off += n;
+			}
+
+			if (buf_off >= lens[buf_idx]) {
+				buf_idx++;
+				buf_off = 0;
+			}
+		}
+
+		if (chunk > 0) {
+			data.len = (uint16_t)chunk;
+			t->send_frame(t, &data, 4 + chunk);
+		}
+	}
+}
+
 /* ---- MCU → Linux: outbound HTTP request ---- */
 
-/* pending request being assembled from MCU frames */
+/* pending request being assembled from MCU frames.
+ * DATA stream carries: path (path_len) + headers (headers_len) + body */
 static struct {
 	uint8_t stream_id;
 	uint8_t method;
 	uint16_t status_code;
-	char path[256];
-	char headers[512];
+	char path[1024];
+	char headers[2048];
 	char body[8192];
-	size_t body_len;
+	uint16_t path_len;      /* expected from REQ */
+	uint16_t headers_len;   /* expected from REQ */
+	uint32_t body_expected; /* expected from REQ */
+	size_t stream_offset;   /* total bytes received in DATA stream */
 	bool active;
 } pending_req;
 
@@ -338,29 +390,27 @@ int pvcm_bridge_on_http_req(struct pvcm_transport *t,
 
 	pending_req.stream_id = req->stream_id;
 	pending_req.method = req->method;
-	pending_req.body_len = 0;
+	pending_req.path_len = req->path_len;
+	pending_req.headers_len = req->headers_len;
+	pending_req.body_expected = req->body_len;
+	pending_req.stream_offset = 0;
+	pending_req.path[0] = '\0';
+	pending_req.headers[0] = '\0';
+	pending_req.body[0] = '\0';
 	pending_req.active = true;
 
-	size_t plen = req->path_len;
-	if (plen > sizeof(pending_req.path) - 1)
-		plen = sizeof(pending_req.path) - 1;
-	memcpy(pending_req.path, req->data, plen);
-	pending_req.path[plen] = '\0';
-
-	size_t hlen = req->headers_len;
-	if (hlen > sizeof(pending_req.headers) - 1)
-		hlen = sizeof(pending_req.headers) - 1;
-	if (hlen > 0)
-		memcpy(pending_req.headers, req->data + plen, hlen);
-	pending_req.headers[hlen] = '\0';
-
-	fprintf(stdout, "[bridge] HTTP_REQ: %s %s (body_size=%u)\n",
-		method_to_str(req->method), pending_req.path,
-		req->total_body_size);
+	fprintf(stdout, "[bridge] HTTP_REQ: %s path_len=%u hdr_len=%u "
+		"body_len=%u\n",
+		method_to_str(req->method), req->path_len,
+		req->headers_len, req->body_len);
 
 	return 0;
 }
 
+/*
+ * Demux DATA chunk into path / headers / body based on stream offset.
+ * The DATA stream carries: path (path_len) + headers (headers_len) + body.
+ */
 int pvcm_bridge_on_http_data(struct pvcm_transport *t,
 			     const uint8_t *buf, int len)
 {
@@ -370,13 +420,44 @@ int pvcm_bridge_on_http_data(struct pvcm_transport *t,
 	if (!pending_req.active || d->stream_id != pending_req.stream_id)
 		return 0;
 
-	size_t chunk = d->len;
-	if (pending_req.body_len + chunk > sizeof(pending_req.body) - 1)
-		chunk = sizeof(pending_req.body) - 1 - pending_req.body_len;
+	const uint8_t *src = d->data;
+	size_t remaining = d->len;
+	size_t off = pending_req.stream_offset;
 
-	memcpy(pending_req.body + pending_req.body_len, d->data, chunk);
-	pending_req.body_len += chunk;
+	size_t path_end = pending_req.path_len;
+	size_t hdr_end = path_end + pending_req.headers_len;
 
+	while (remaining > 0) {
+		if (off < path_end) {
+			/* path region */
+			size_t n = path_end - off;
+			if (n > remaining) n = remaining;
+			if (off + n <= sizeof(pending_req.path) - 1)
+				memcpy(pending_req.path + off, src, n);
+			pending_req.path[off + n < sizeof(pending_req.path) ?
+					 off + n : sizeof(pending_req.path) - 1] = '\0';
+			src += n; remaining -= n; off += n;
+		} else if (off < hdr_end) {
+			/* headers region */
+			size_t hoff = off - path_end;
+			size_t n = hdr_end - off;
+			if (n > remaining) n = remaining;
+			if (hoff + n <= sizeof(pending_req.headers) - 1)
+				memcpy(pending_req.headers + hoff, src, n);
+			pending_req.headers[hoff + n < sizeof(pending_req.headers) ?
+					    hoff + n : sizeof(pending_req.headers) - 1] = '\0';
+			src += n; remaining -= n; off += n;
+		} else {
+			/* body region */
+			size_t boff = off - hdr_end;
+			size_t n = remaining;
+			if (boff + n <= sizeof(pending_req.body) - 1)
+				memcpy(pending_req.body + boff, src, n);
+			src += n; remaining -= n; off += n;
+		}
+	}
+
+	pending_req.stream_offset = off;
 	return 0;
 }
 
@@ -387,13 +468,20 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 	if (!pending_req.active)
 		return 0;
 
-	pending_req.body[pending_req.body_len] = '\0';
+	/* compute actual body length from stream */
+	size_t hdr_end = pending_req.path_len + pending_req.headers_len;
+	size_t body_received = 0;
+	if (pending_req.stream_offset > hdr_end)
+		body_received = pending_req.stream_offset - hdr_end;
+	if (body_received < sizeof(pending_req.body))
+		pending_req.body[body_received] = '\0';
+
 	pending_req.active = false;
 
 	fprintf(stdout, "[bridge] HTTP_END: forwarding %s %s "
 		"(body=%zu bytes)\n",
 		method_to_str(pending_req.method), pending_req.path,
-		pending_req.body_len);
+		body_received);
 
 	/* resolve route from Host header */
 	char host_buf[64] = "";
@@ -424,8 +512,8 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 		route,
 		"127.0.0.1", 12368,
 		pending_req.path,
-		pending_req.body_len > 0 ? pending_req.body : NULL,
-		pending_req.body_len,
+		body_received > 0 ? pending_req.body : NULL,
+		body_received,
 		resp_body, sizeof(resp_body),
 		&resp_status, resp_headers, sizeof(resp_headers));
 
@@ -438,42 +526,25 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 	fprintf(stdout, "[bridge] upstream response: %d, body=%d bytes\n",
 		resp_status, body_len);
 
-	/* send HTTP_REQ response */
+	/* send HTTP_REQ metadata (no data — path+headers+body via DATA) */
+	size_t hlen = strlen(resp_headers);
+
 	pvcm_http_req_t resp = {
 		.op = PVCM_OP_HTTP_REQ,
 		.stream_id = pending_req.stream_id,
 		.direction = PVCM_HTTP_DIR_RESPONSE,
 		.method = 0,
 		.status_code = (uint16_t)resp_status,
-		.total_body_size = (uint32_t)body_len,
+		.path_len = 0,
+		.headers_len = (uint16_t)hlen,
+		.body_len = (uint32_t)body_len,
 	};
-
-	size_t hlen = strlen(resp_headers);
-	if (hlen > sizeof(resp.data))
-		hlen = sizeof(resp.data);
-	resp.headers_len = (uint16_t)hlen;
-	resp.path_len = 0;
-	if (hlen > 0)
-		memcpy(resp.data, resp_headers, hlen);
-
 	t->send_frame(t, &resp, sizeof(resp) - sizeof(uint32_t));
 
-	/* send body chunks */
-	size_t offset = 0;
-	while (offset < (size_t)body_len) {
-		pvcm_http_data_t data = {
-			.op = PVCM_OP_HTTP_DATA,
-			.stream_id = pending_req.stream_id,
-		};
-		size_t chunk = body_len - offset;
-		if (chunk > PVCM_MAX_CHUNK_SIZE)
-			chunk = PVCM_MAX_CHUNK_SIZE;
-		data.len = (uint16_t)chunk;
-		memcpy(data.data, resp_body + offset, chunk);
-		t->send_frame(t, &data, 4 + chunk);
-		offset += chunk;
-		usleep(2000); /* 2ms between chunks */
-	}
+	/* stream headers + body as DATA frames */
+	send_data_stream(t, pending_req.stream_id,
+			 resp_headers, hlen,
+			 resp_body, body_len);
 
 	/* send HTTP_END */
 	pvcm_http_end_t end = {
@@ -515,14 +586,9 @@ int pvcm_bridge_on_reply_req(struct pvcm_transport *t,
 
 	if (invoke_reply.active && req->stream_id == invoke_reply.stream_id) {
 		invoke_reply.status_code = req->status_code;
-		size_t hlen = req->headers_len;
-		if (hlen > sizeof(invoke_reply.headers) - 1)
-			hlen = sizeof(invoke_reply.headers) - 1;
-		if (hlen > 0)
-			memcpy(invoke_reply.headers,
-			       req->data + req->path_len, hlen);
-		invoke_reply.headers[hlen] = '\0';
-		invoke_reply.headers_len = hlen;
+		/* headers arrive via DATA stream in the new format */
+		invoke_reply.headers_len = 0;
+		invoke_reply.headers[0] = '\0';
 	}
 	return 0;
 }
@@ -668,41 +734,26 @@ static void on_http_request(struct evhttp_request *req, void *arg)
 	struct timeval tv = { .tv_sec = 10, .tv_usec = 0 };
 	evtimer_add(invoke_reply.timeout_ev, &tv);
 
-	/* send INVOKE request to MCU */
+	/* send INVOKE metadata + path + body as DATA stream */
+	size_t plen = strlen(uri);
+
 	pvcm_http_req_t ireq = {
 		.op = PVCM_OP_HTTP_REQ,
 		.stream_id = sid,
 		.direction = PVCM_HTTP_DIR_INVOKE,
 		.method = method_code,
-		.total_body_size = (uint32_t)req_body_len,
+		.path_len = (uint16_t)plen,
+		.headers_len = 0,
+		.body_len = (uint32_t)req_body_len,
 	};
-	size_t plen = strlen(uri);
-	if (plen > sizeof(ireq.data)) plen = sizeof(ireq.data);
-	ireq.path_len = (uint16_t)plen;
-	ireq.headers_len = 0;
-	memcpy(ireq.data, uri, plen);
 
 	invoke_transport->send_frame(invoke_transport, &ireq,
 				     sizeof(ireq) - sizeof(uint32_t));
 
-	/* send body if any */
-	if (req_body_len > 0) {
-		size_t off = 0;
-		while (off < req_body_len) {
-			pvcm_http_data_t data = {
-				.op = PVCM_OP_HTTP_DATA,
-				.stream_id = sid,
-			};
-			size_t chunk = req_body_len - off;
-			if (chunk > PVCM_MAX_CHUNK_SIZE)
-				chunk = PVCM_MAX_CHUNK_SIZE;
-			data.len = (uint16_t)chunk;
-			memcpy(data.data, req_body + off, chunk);
-			invoke_transport->send_frame(invoke_transport,
-						     &data, 4 + chunk);
-			off += chunk;
-		}
-	}
+	/* stream path + body as DATA frames */
+	send_data_stream(invoke_transport, sid,
+			 uri, plen,
+			 req_body, req_body_len);
 
 	pvcm_http_end_t end = { .op = PVCM_OP_HTTP_END, .stream_id = sid };
 	invoke_transport->send_frame(invoke_transport, &end,
