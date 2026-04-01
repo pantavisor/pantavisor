@@ -63,4 +63,14 @@ config PANTAVISOR_HEARTBEAT_INTERVAL_MS
 	help
 	  Interval between heartbeat messages sent to pvcm-manager.
 
+config HEAP_MEM_POOL_ADD_SIZE_PANTAVISOR
+	int "Heap memory for Pantavisor SDK (bytes)"
+	default 32768 if PANTAVISOR_BRIDGE || PANTAVISOR_DBUS
+	default 4096
+	help
+	  Heap memory required by the Pantavisor SDK for dynamic HTTP/D-Bus
+	  buffers. Path, headers, and body are k_malloc'd from REQ metadata
+	  sizes — no fixed limits. 32KB is sufficient for typical API
+	  responses up to ~16KB per request.
+
 endif # PANTAVISOR
