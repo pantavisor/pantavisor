@@ -480,6 +480,7 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	}
 
 	if (pv->remote_mode) {
+		pv_metadata_add_devmeta(DEVMETA_KEY_PV_MODE, "remote");
 		timer_start(&t, 5, 0, RELATIV_TIMER);
 		// with this wait, we make sure we have not consecutively executed network stuff
 		// twice in less than the configured interval
@@ -500,6 +501,8 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			       "network operations are taking %jd seconds!",
 			       (intmax_t)(5 + tstate.sec));
 	} else {
+		pv_metadata_add_devmeta(DEVMETA_KEY_PV_MODE, "local");
+		pv_pantahub_stop();
 		// process ongoing updates, if any
 		next_state = pv_wait_update();
 	}
@@ -639,6 +642,7 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 			goto out;
 		}
 		pv->remote_mode = true;
+		pv_metadata_add_devmeta(DEVMETA_KEY_PV_MODE, "remote");
 		break;
 	case CMD_DEFER_REBOOT:
 		if (!pv_config_get_bool(PV_DEBUG_SHELL)) {
