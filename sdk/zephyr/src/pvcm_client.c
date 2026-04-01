@@ -23,17 +23,18 @@ static K_SEM_DEFINE(http_resp_sem, 0, 1);
 static K_MUTEX_DEFINE(client_mutex);
 
 /* pending request slot (single in-flight request for simplicity).
- * Response DATA stream carries: headers (headers_expected) + body. */
+ * Response DATA stream carries: headers (headers_expected) + body.
+ * Buffers are k_malloc'd from REQ metadata sizes — no fixed limits. */
 static struct {
 	uint8_t stream_id;
 	bool active;
 	uint16_t status_code;
 	uint16_t headers_expected;  /* from REQ metadata */
+	uint32_t body_expected;     /* from REQ metadata */
 	size_t stream_offset;       /* total DATA bytes received */
-	char body[2048];
+	char *body;                 /* k_malloc'd */
 	size_t body_len;
-	size_t body_cap;
-	char headers[2048];
+	char *headers;              /* k_malloc'd */
 	size_t headers_len;
 	bool complete;
 } pending;
@@ -68,8 +69,20 @@ void pvcm_client_on_http_req(const uint8_t *buf, int len)
 
 	pending.status_code = req->status_code;
 	pending.headers_expected = req->headers_len;
+	pending.body_expected = req->body_len;
 	pending.stream_offset = 0;
-	/* headers and body arrive via DATA frames */
+
+	/* allocate from metadata sizes */
+	k_free(pending.headers);
+	k_free(pending.body);
+	pending.headers = req->headers_len > 0
+			  ? k_malloc(req->headers_len + 1) : NULL;
+	pending.body = req->body_len > 0
+		       ? k_malloc(req->body_len + 1) : NULL;
+	if (pending.headers) pending.headers[0] = '\0';
+	if (pending.body) pending.body[0] = '\0';
+	pending.headers_len = 0;
+	pending.body_len = 0;
 }
 
 /*
@@ -91,32 +104,26 @@ void pvcm_client_on_http_data(const uint8_t *buf, int len)
 	size_t off = pending.stream_offset;
 	size_t hdr_end = pending.headers_expected;
 
+	size_t body_end = hdr_end + pending.body_expected;
+
 	while (remaining > 0) {
-		if (off < hdr_end) {
-			/* headers region */
+		if (off < hdr_end && pending.headers) {
 			size_t n = hdr_end - off;
 			if (n > remaining) n = remaining;
-			if (off + n <= sizeof(pending.headers) - 1) {
-				memcpy(pending.headers + off, src, n);
-				pending.headers[off + n] = '\0';
-				pending.headers_len = off + n;
-			}
+			memcpy(pending.headers + off, src, n);
+			pending.headers[off + n] = '\0';
+			pending.headers_len = off + n;
+			src += n; remaining -= n; off += n;
+		} else if (off < body_end && pending.body) {
+			size_t boff = off - hdr_end;
+			size_t n = body_end - off;
+			if (n > remaining) n = remaining;
+			memcpy(pending.body + boff, src, n);
+			pending.body[boff + n] = '\0';
+			pending.body_len = boff + n;
 			src += n; remaining -= n; off += n;
 		} else {
-			/* body region — copy what fits, skip the rest */
-			size_t n = remaining;
-			size_t writable = pending.body_cap - pending.body_len;
-			if (writable > 0 && writable < n) {
-				memcpy(pending.body + pending.body_len,
-				       src, writable);
-				pending.body_len += writable;
-			} else if (writable >= n) {
-				memcpy(pending.body + pending.body_len,
-				       src, n);
-				pending.body_len += n;
-			}
-			/* always advance past ALL remaining bytes */
-			src += n; remaining = 0; off += n;
+			break; /* past expected data */
 		}
 	}
 
@@ -163,11 +170,13 @@ static int do_http_request(uint8_t method, const char *path,
 	LOG_INF("HTTP send: sid=%d path=%s", sid, path);
 	pending.status_code = 0;
 	pending.headers_expected = 0;
+	pending.body_expected = 0;
 	pending.stream_offset = 0;
 	pending.body_len = 0;
-	pending.body_cap = sizeof(pending.body) - 1;
 	pending.headers_len = 0;
-	pending.headers[0] = '\0';
+	/* buffers allocated in on_http_req when metadata arrives */
+	k_free(pending.headers); pending.headers = NULL;
+	k_free(pending.body); pending.body = NULL;
 	pending.complete = false;
 	k_sem_reset(&http_resp_sem);
 
@@ -244,21 +253,26 @@ static int do_http_request(uint8_t method, const char *path,
 
 	if (ret != 0) {
 		LOG_ERR("HTTP request timeout (path=%s)", path);
+		k_free(pending.headers); pending.headers = NULL;
+		k_free(pending.body); pending.body = NULL;
 		k_mutex_unlock(&client_mutex);
 		return -ETIMEDOUT;
 	}
 
-	/* null-terminate body */
-	pending.body[pending.body_len] = '\0';
-
 	LOG_INF("HTTP response: %d, body=%zu bytes",
 		pending.status_code, pending.body_len);
 
-	/* deliver to callback */
+	/* deliver to callback, then free */
 	if (cb) {
-		cb(pending.status_code, pending.body, pending.body_len,
-		   pending.headers, ctx);
+		cb(pending.status_code,
+		   pending.body ? pending.body : "",
+		   pending.body_len,
+		   pending.headers ? pending.headers : "",
+		   ctx);
 	}
+
+	k_free(pending.headers); pending.headers = NULL;
+	k_free(pending.body); pending.body = NULL;
 
 	k_mutex_unlock(&client_mutex);
 	return 0;
@@ -343,13 +357,24 @@ static struct {
 	uint8_t method;
 	uint16_t path_len;
 	uint16_t headers_len;
+	uint32_t body_expected;
 	size_t stream_offset;
-	char path[1024];
-	char headers[2048];
-	char body[4096];
+	char *path;         /* k_malloc'd */
+	char *headers;      /* k_malloc'd */
+	char *body;         /* k_malloc'd */
 	size_t body_len;
 	bool active;
 } invoke_pending;
+
+static void invoke_pending_free(void)
+{
+	k_free(invoke_pending.path);
+	k_free(invoke_pending.headers);
+	k_free(invoke_pending.body);
+	invoke_pending.path = NULL;
+	invoke_pending.headers = NULL;
+	invoke_pending.body = NULL;
+}
 
 int pvcm_http_serve(const char *path_prefix, pvcm_http_handler_t handler,
 		    void *ctx)
@@ -442,14 +467,23 @@ void pvcm_client_on_invoke_req(const uint8_t *buf, int len)
 	if (req->direction != PVCM_HTTP_DIR_INVOKE)
 		return;
 
+	invoke_pending_free();
 	invoke_pending.stream_id = req->stream_id;
 	invoke_pending.method = req->method;
 	invoke_pending.path_len = req->path_len;
 	invoke_pending.headers_len = req->headers_len;
+	invoke_pending.body_expected = req->body_len;
 	invoke_pending.stream_offset = 0;
 	invoke_pending.body_len = 0;
-	invoke_pending.path[0] = '\0';
-	invoke_pending.headers[0] = '\0';
+	invoke_pending.path = req->path_len > 0
+			      ? k_malloc(req->path_len + 1) : NULL;
+	invoke_pending.headers = req->headers_len > 0
+				 ? k_malloc(req->headers_len + 1) : NULL;
+	invoke_pending.body = req->body_len > 0
+			      ? k_malloc(req->body_len + 1) : NULL;
+	if (invoke_pending.path) invoke_pending.path[0] = '\0';
+	if (invoke_pending.headers) invoke_pending.headers[0] = '\0';
+	if (invoke_pending.body) invoke_pending.body[0] = '\0';
 	invoke_pending.active = true;
 
 	LOG_INF("INVOKE: method=%d path_len=%u hdr_len=%u body_len=%u",
@@ -469,37 +503,32 @@ void pvcm_client_on_invoke_data(const uint8_t *buf, int len)
 	size_t off = invoke_pending.stream_offset;
 	size_t path_end = invoke_pending.path_len;
 	size_t hdr_end = path_end + invoke_pending.headers_len;
+	size_t body_end = hdr_end + invoke_pending.body_expected;
 
 	while (remaining > 0) {
-		if (off < path_end) {
+		if (off < path_end && invoke_pending.path) {
 			size_t n = path_end - off;
 			if (n > remaining) n = remaining;
-			if (off + n <= sizeof(invoke_pending.path) - 1) {
-				memcpy(invoke_pending.path + off, src, n);
-				invoke_pending.path[off + n] = '\0';
-			}
+			memcpy(invoke_pending.path + off, src, n);
+			invoke_pending.path[off + n] = '\0';
 			src += n; remaining -= n; off += n;
-		} else if (off < hdr_end) {
+		} else if (off < hdr_end && invoke_pending.headers) {
 			size_t hoff = off - path_end;
 			size_t n = hdr_end - off;
 			if (n > remaining) n = remaining;
-			if (hoff + n <= sizeof(invoke_pending.headers) - 1) {
-				memcpy(invoke_pending.headers + hoff, src, n);
-				invoke_pending.headers[hoff + n] = '\0';
-			}
+			memcpy(invoke_pending.headers + hoff, src, n);
+			invoke_pending.headers[hoff + n] = '\0';
+			src += n; remaining -= n; off += n;
+		} else if (off < body_end && invoke_pending.body) {
+			size_t boff = off - hdr_end;
+			size_t n = body_end - off;
+			if (n > remaining) n = remaining;
+			memcpy(invoke_pending.body + boff, src, n);
+			invoke_pending.body[boff + n] = '\0';
+			invoke_pending.body_len = boff + n;
 			src += n; remaining -= n; off += n;
 		} else {
-			size_t n = remaining;
-			size_t writable = sizeof(invoke_pending.body) - 1 -
-					  invoke_pending.body_len;
-			size_t to_copy = n < writable ? n : writable;
-			if (to_copy > 0) {
-				memcpy(invoke_pending.body +
-				       invoke_pending.body_len, src, to_copy);
-				invoke_pending.body_len += to_copy;
-			}
-			/* always advance past all remaining bytes */
-			src += n; remaining = 0; off += n;
+			break;
 		}
 	}
 
@@ -511,29 +540,32 @@ void pvcm_client_on_invoke_end(const uint8_t *buf, int len)
 	if (!invoke_pending.active)
 		return;
 
-	invoke_pending.body[invoke_pending.body_len] = '\0';
 	invoke_pending.active = false;
 
 	/* find matching handler */
 	for (int i = 0; i < serve_handler_count; i++) {
 		const char *prefix = serve_handlers[i].path_prefix;
-		if (strncmp(invoke_pending.path, prefix, strlen(prefix)) == 0) {
+		if (invoke_pending.path &&
+		    strncmp(invoke_pending.path, prefix, strlen(prefix)) == 0) {
 			serve_handlers[i].handler(
 				invoke_pending.method,
-				invoke_pending.path,
-				invoke_pending.headers,
-				invoke_pending.body,
+				invoke_pending.path ? invoke_pending.path : "",
+				invoke_pending.headers ? invoke_pending.headers : "",
+				invoke_pending.body ? invoke_pending.body : "",
 				invoke_pending.body_len,
 				serve_handlers[i].ctx);
+			invoke_pending_free();
 			return;
 		}
 	}
 
 	/* no handler — send 404 */
-	LOG_WRN("no handler for %s", invoke_pending.path);
+	LOG_WRN("no handler for %s",
+		invoke_pending.path ? invoke_pending.path : "(null)");
 	pvcm_http_respond(invoke_pending.stream_id, 404,
 			  "Content-Type: application/json\r\n",
 			  "{\"error\":\"not found\"}", 20);
+	invoke_pending_free();
 }
 
 /* Helper: get the stream_id of the current invoke being handled */
