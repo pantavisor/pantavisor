@@ -200,26 +200,22 @@ do_crypt_init()
 	# from a power loss. Skip key creation but load the key for formatting.
 	case "${dm_type_mode}" in
 		caam__nxp)
-			if [ ! -f "$dir/$keyname" ]; then
+			if [ ! -f "$dir/$keyname.bb" ]; then
 				# creates $keyname.. and $keyname in /data/caam (tmpfs, lost on reboot)
-				# copy to persistent storage atomically: aux files first, guard file last
+				# copy to persistent storage atomically
 				"$CAAM_KEYGEN" create "$keyname" ecb -s 16
-				cp -f /data/caam/"$keyname".bb "$dir/$keyname.bb.tmp"
-				sync
-				mv "$dir/$keyname.bb.tmp" "$dir/$keyname.bb"
-				sync
-				cp -f /data/caam/"$keyname" "$dir/$keyname.tmp"
-				sync
-				mv "$dir/$keyname.tmp" "$dir/$keyname"
-				sync
 				if ! keyctl padd logon $KEY_NAME @u < /data/caam/"$keyname"; then
 					echo "ERROR: CAAM: Unable to load key"
 					exit 1
 				fi
+				cp -f /data/caam/"$keyname".bb "$dir/$keyname.bb.tmp"
+				sync
+				mv "$dir/$keyname.bb.tmp" "$dir/$keyname.bb"
+				sync
 			else
 				echo "WARN: CAAM NXP key exists but init_done missing, recovering init"
 				mkdir -p /data/caam
-				cp "$dir/$keyname"* /data/caam
+				cp "$dir/$keyname.bb" /data/caam/
 				if ! ( cd /data/caam && "$CAAM_KEYGEN" import "$keyname.bb" "$keyname.import" ); then
 					echo "ERROR: CAAM: Unable to import black blob during init recovery"
 					exit 1
@@ -654,8 +650,10 @@ do_mount_disk()
 	cd "$dir" || { echo "ERROR: cannot cd to $dir"; exit 1; }
 	case "${dm_type_mode}" in
 		caam__nxp)
+			# remove legacy raw key file from old installs
+			rm -f "$dir/$keyname"
 			mkdir -p /data/caam
-			cp "$keyname"* /data/caam
+			cp "$keyname.bb" /data/caam/
 			if ! "$CAAM_KEYGEN" import "$keyname.bb" "$keyname.import"; then
 				echo "ERROR: CAAM: Unable to import black blob"
 				exit 2
@@ -744,7 +742,7 @@ do_mount_disk()
 	if [ "$specialrun" = "fsck" ] && [ -f "$dir/$img_file.goodbak" ]; then
 		echo "Specialrun $specialrun did not succeed ... trying from goodbackup"
 		cp -f "$dir/$img_file.goodbak" "$dir/$img_file"
-		cryptsetup close "$device_name" || true
+		_do_crypt_close || true
 		do_mount_disk_retry bak || return $?
 		echo "do_mount_disk from backup suceeded..."
 		return 0
@@ -760,7 +758,7 @@ do_mount_disk()
 
 	echo "Trying fsck ...."
 	fsck.ext4 -y /dev/mapper/"$device_name" || true
-	cryptsetup close "$device_name" || true
+	_do_crypt_close || true
 	sync
 	do_mount_disk_retry fsck || return $?
 	return 0
