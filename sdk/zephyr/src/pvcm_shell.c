@@ -355,6 +355,45 @@ static int cmd_pv_ping(const struct shell *sh, size_t argc, char **argv)
 	return ping_frames_received == expected_frames ? 0 : -1;
 }
 
+/* pv hdrtest <size> — sends request with a large synthetic header */
+static int cmd_pv_hdrtest(const struct shell *sh, size_t argc, char **argv)
+{
+	int hdr_size = 600;
+	if (argc >= 2)
+		hdr_size = atoi(argv[1]);
+	if (hdr_size < 10 || hdr_size > 4000) {
+		shell_error(sh, "header size must be 10-4000");
+		return -1;
+	}
+
+	/* build a large header: "X-Test: AAAA...AAA\r\nHost: pv-ctrl.pvlocal\r\n" */
+	static char big_hdr[4096];
+	int off = snprintf(big_hdr, sizeof(big_hdr), "X-Test: ");
+	int fill = hdr_size - off - 2 - 23; /* minus "X-Test: " + \r\n + Host line */
+	if (fill < 0) fill = 0;
+	memset(big_hdr + off, 'A', fill);
+	off += fill;
+	off += snprintf(big_hdr + off, sizeof(big_hdr) - off,
+			"\r\nHost: pv-ctrl.pvlocal\r\n");
+
+	shell_print(sh, "GET /x with %d-byte header (%d frames)...",
+		    off, (int)((strlen("/x") + off + 479) / 480));
+
+	http_shell = sh;
+	struct pvcm_http_request req = {
+		.method = PVCM_HTTP_GET,
+		.path = "/x",
+		.headers = big_hdr,
+		.body = NULL,
+		.body_len = 0,
+	};
+	int ret = pvcm_http(&req, http_response_cb, NULL);
+	if (ret)
+		shell_error(sh, "pvcm_http failed: %d", ret);
+	http_shell = NULL;
+	return ret;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
 	SHELL_CMD(status, NULL, "Show PVCM status", cmd_pv_status),
 	SHELL_CMD(containers, NULL, "List containers", cmd_pv_containers),
@@ -362,7 +401,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
 	SHELL_CMD(ping, NULL, "Transport ping: pv ping [bytes]",
 		  cmd_pv_ping),
 #ifdef CONFIG_PANTAVISOR_BRIDGE
-	SHELL_CMD(http, NULL, "GET <path> via pvcm-run", cmd_pv_http),
+	SHELL_CMD(http, NULL, "GET <url> via pvcm-run", cmd_pv_http),
+	SHELL_CMD(hdrtest, NULL, "Header size test: pv hdrtest [bytes]",
+		  cmd_pv_hdrtest),
 #endif
 #ifdef CONFIG_PANTAVISOR_DBUS
 	SHELL_CMD(dbus, &pv_dbus_cmds, "D-Bus gateway commands", NULL),
