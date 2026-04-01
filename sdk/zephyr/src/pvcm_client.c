@@ -29,8 +29,10 @@ static struct {
 	uint8_t stream_id;
 	bool active;
 	uint16_t status_code;
-	uint16_t headers_expected;  /* from REQ metadata */
-	uint32_t body_expected;     /* from REQ metadata */
+	uint16_t headers_expected;  /* original from REQ (for stream demux) */
+	uint32_t body_expected;     /* original from REQ (for stream demux) */
+	uint16_t headers_alloc;     /* capped allocation size */
+	uint32_t body_alloc;        /* capped allocation size */
 	size_t stream_offset;       /* total DATA bytes received */
 	char *body;                 /* k_malloc'd */
 	size_t body_len;
@@ -68,17 +70,27 @@ void pvcm_client_on_http_req(const uint8_t *buf, int len)
 		return;
 
 	pending.status_code = req->status_code;
+	/* stream offsets use original sizes for correct demux positioning */
 	pending.headers_expected = req->headers_len;
 	pending.body_expected = req->body_len;
 	pending.stream_offset = 0;
 
-	/* allocate from metadata sizes */
+	/* allocate from metadata sizes, capped for non-streaming use.
+	 * Larger responses should use the streaming API. */
+	#define PVCM_MAX_HEADERS_SIZE (16 * 1024)
+	#define PVCM_MAX_BODY_SIZE    (32 * 1024)
+
+	uint16_t hdr_alloc = req->headers_len < PVCM_MAX_HEADERS_SIZE
+			     ? req->headers_len : PVCM_MAX_HEADERS_SIZE;
+	uint32_t body_alloc = req->body_len < PVCM_MAX_BODY_SIZE
+			      ? req->body_len : PVCM_MAX_BODY_SIZE;
+
 	k_free(pending.headers);
 	k_free(pending.body);
-	pending.headers = req->headers_len > 0
-			  ? k_malloc(req->headers_len + 1) : NULL;
-	pending.body = req->body_len > 0
-		       ? k_malloc(req->body_len + 1) : NULL;
+	pending.headers_alloc = hdr_alloc;
+	pending.body_alloc = body_alloc;
+	pending.headers = hdr_alloc > 0 ? k_malloc(hdr_alloc + 1) : NULL;
+	pending.body = body_alloc > 0 ? k_malloc(body_alloc + 1) : NULL;
 	if (pending.headers) pending.headers[0] = '\0';
 	if (pending.body) pending.body[0] = '\0';
 	pending.headers_len = 0;
@@ -107,23 +119,35 @@ void pvcm_client_on_http_data(const uint8_t *buf, int len)
 	size_t body_end = hdr_end + pending.body_expected;
 
 	while (remaining > 0) {
-		if (off < hdr_end && pending.headers) {
+		if (off < hdr_end) {
+			/* headers region — copy up to alloc cap */
 			size_t n = hdr_end - off;
 			if (n > remaining) n = remaining;
-			memcpy(pending.headers + off, src, n);
-			pending.headers[off + n] = '\0';
-			pending.headers_len = off + n;
+			if (pending.headers && off < pending.headers_alloc) {
+				size_t to_copy = n;
+				if (off + to_copy > pending.headers_alloc)
+					to_copy = pending.headers_alloc - off;
+				memcpy(pending.headers + off, src, to_copy);
+				pending.headers[off + to_copy] = '\0';
+				pending.headers_len = off + to_copy;
+			}
 			src += n; remaining -= n; off += n;
-		} else if (off < body_end && pending.body) {
+		} else if (off < body_end) {
+			/* body region — copy up to alloc cap */
 			size_t boff = off - hdr_end;
 			size_t n = body_end - off;
 			if (n > remaining) n = remaining;
-			memcpy(pending.body + boff, src, n);
-			pending.body[boff + n] = '\0';
-			pending.body_len = boff + n;
+			if (pending.body && boff < pending.body_alloc) {
+				size_t to_copy = n;
+				if (boff + to_copy > pending.body_alloc)
+					to_copy = pending.body_alloc - boff;
+				memcpy(pending.body + boff, src, to_copy);
+				pending.body[boff + to_copy] = '\0';
+				pending.body_len = boff + to_copy;
+			}
 			src += n; remaining -= n; off += n;
 		} else {
-			break; /* past expected data */
+			break;
 		}
 	}
 
