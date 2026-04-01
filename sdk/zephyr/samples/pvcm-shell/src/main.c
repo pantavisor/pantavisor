@@ -292,14 +292,12 @@ void rpmsg_mng_task(void *arg1, void *arg2, void *arg3)
  * Linux sends: curl http://localhost:18081/sensor
  * pvcm-run forwards to MCU, MCU responds with JSON.
  */
-static void sensor_handler(uint8_t method, const char *path,
-			   const char *headers, const char *body,
-			   size_t body_len, void *ctx)
+static void sensor_handler(uint8_t stream_id, uint8_t method,
+			   const char *path, const char *headers,
+			   const char *body, size_t body_len, void *ctx)
 {
 	printk("[mcu-server] method=%d path=%s\n", method, path);
-
-	extern uint8_t pvcm_get_invoke_stream_id(void);
-	uint8_t sid = pvcm_get_invoke_stream_id();
+	uint8_t sid = stream_id;
 
 	if (method == PVCM_HTTP_GET) {
 		const char *resp =

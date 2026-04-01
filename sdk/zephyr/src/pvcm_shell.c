@@ -22,17 +22,24 @@ LOG_MODULE_REGISTER(pvcm_shell, CONFIG_LOG_DEFAULT_LEVEL);
 
 #ifdef CONFIG_PANTAVISOR_BRIDGE
 static const struct shell *http_shell;
+static K_SEM_DEFINE(http_done_sem, 0, 1);
 
 static void http_response_cb(uint16_t status_code,
 			     const char *body, size_t body_len,
 			     const char *headers, void *ctx)
 {
-	if (!http_shell)
-		return;
+	if (http_shell)
+		shell_print(http_shell, "HTTP %d (%zu bytes)", status_code,
+			    body_len);
+	k_sem_give(&http_done_sem);
+}
 
-	/* Print status line only — keep it short to avoid RPMsg TX overflow */
-	shell_print(http_shell, "HTTP %d (%zu bytes)", status_code,
-		    body_len);
+static void http_error_cb(int error, const char *msg, void *ctx)
+{
+	if (http_shell)
+		shell_error(http_shell, "HTTP error %d: %s", error,
+			    msg ? msg : "unknown");
+	k_sem_give(&http_done_sem);
 }
 #endif
 
@@ -117,7 +124,15 @@ static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 	}
 
 	http_shell = sh;
+	k_sem_reset(&http_done_sem);
 
+	struct pvcm_http_callbacks cb = {
+		.on_response = http_response_cb,
+		.on_error = http_error_cb,
+		.ctx = NULL,
+	};
+
+	int ret;
 	if (host_hdr[0]) {
 		char headers[160];
 		snprintf(headers, sizeof(headers), "Host: %s\r\n", host_hdr);
@@ -126,23 +141,25 @@ static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 			.method = PVCM_HTTP_GET,
 			.path = path,
 			.headers = headers,
-			.body = NULL,
-			.body_len = 0,
 		};
-		int ret = pvcm_http(&req, http_response_cb, NULL);
-		if (ret)
-			shell_error(sh, "pvcm_http failed: %d", ret);
+		ret = pvcm_http(&req, &cb);
+	} else {
+		shell_print(sh, "GET %s ...", path);
+		ret = pvcm_get(path, &cb);
+	}
+
+	if (ret) {
+		shell_error(sh, "send failed: %d", ret);
 		http_shell = NULL;
 		return ret;
 	}
 
-	shell_print(sh, "GET %s ...", path);
-	int ret = pvcm_get(path, http_response_cb, NULL);
-	if (ret)
-		shell_error(sh, "pvcm_get failed: %d", ret);
-	http_shell = NULL;
+	/* wait for async response (shell convenience — SDK is async) */
+	if (k_sem_take(&http_done_sem, K_SECONDS(15)) != 0)
+		shell_error(sh, "timeout");
 
-	return ret;
+	http_shell = NULL;
+	return 0;
 }
 #endif
 
@@ -380,18 +397,29 @@ static int cmd_pv_hdrtest(const struct shell *sh, size_t argc, char **argv)
 		    off, (int)((strlen("/x") + off + 479) / 480));
 
 	http_shell = sh;
+	k_sem_reset(&http_done_sem);
+
 	struct pvcm_http_request req = {
 		.method = PVCM_HTTP_GET,
 		.path = "/x",
 		.headers = big_hdr,
-		.body = NULL,
-		.body_len = 0,
 	};
-	int ret = pvcm_http(&req, http_response_cb, NULL);
-	if (ret)
-		shell_error(sh, "pvcm_http failed: %d", ret);
+	struct pvcm_http_callbacks cb = {
+		.on_response = http_response_cb,
+		.on_error = http_error_cb,
+	};
+	int ret = pvcm_http(&req, &cb);
+	if (ret) {
+		shell_error(sh, "send failed: %d", ret);
+		http_shell = NULL;
+		return ret;
+	}
+
+	if (k_sem_take(&http_done_sem, K_SECONDS(15)) != 0)
+		shell_error(sh, "timeout");
+
 	http_shell = NULL;
-	return ret;
+	return 0;
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
