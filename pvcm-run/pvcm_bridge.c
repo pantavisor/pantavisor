@@ -172,14 +172,18 @@ static int connect_backend(const struct http_route *route)
  * Connects to the route's backend or falls back to host:port.
  * This is synchronous — acceptable for local sockets (sub-ms).
  */
+/*
+ * Send HTTP request to backend. Returns malloc'd body (caller frees).
+ * *out_headers is also malloc'd if non-NULL.
+ * Returns body length, or -1 on error.
+ */
 static int http_request(const char *method_str,
 			const struct http_route *route,
 			const char *host, int port,
 			const char *path,
 			const char *req_body, size_t req_body_len,
-			char *resp_buf, size_t resp_buf_size,
-			int *resp_status, char *resp_headers,
-			size_t resp_headers_size)
+			char **out_body, int *resp_status,
+			char **out_headers)
 {
 	int fd;
 
@@ -229,67 +233,82 @@ static int http_request(const char *method_str,
 	if (req_body && req_body_len > 0)
 		write(fd, req_body, req_body_len);
 
-	/* read response with timeout */
+	/* read response with timeout — dynamic buffer, no size limit */
 	struct timeval tv = { .tv_sec = 3, .tv_usec = 0 };
 	setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
-	char raw[16384];
+	size_t raw_cap = 4096;
+	char *raw = malloc(raw_cap);
+	if (!raw) { close(fd); return -1; }
+
 	size_t total = 0;
-	while (total < sizeof(raw) - 1) {
-		ssize_t r = read(fd, raw + total, sizeof(raw) - 1 - total);
+	for (;;) {
+		if (total + 1024 > raw_cap) {
+			raw_cap *= 2;
+			char *tmp = realloc(raw, raw_cap);
+			if (!tmp) break;
+			raw = tmp;
+		}
+		ssize_t r = read(fd, raw + total, raw_cap - total - 1);
 		if (r <= 0)
 			break;
 		total += r;
-		if (total > 4) {
-			char *hdr_end = strstr(raw, "\r\n\r\n");
-			if (hdr_end) {
-				char *clh = strcasestr(raw, "Content-Length:");
-				if (clh && clh < hdr_end) {
-					size_t expected = atoi(clh + 15);
-					size_t body_start = (hdr_end + 4) - raw;
-					if (total - body_start >= expected)
-						break;
-				}
+		raw[total] = '\0';
+
+		/* check if we have the full response */
+		char *hdr_end = strstr(raw, "\r\n\r\n");
+		if (hdr_end) {
+			char *clh = strcasestr(raw, "Content-Length:");
+			if (clh && clh < hdr_end) {
+				size_t expected = atoi(clh + 15);
+				size_t body_off = (hdr_end + 4) - raw;
+				if (total - body_off >= expected)
+					break;
 			}
 		}
 	}
-	raw[total] = '\0';
 	close(fd);
 
-	if (total == 0)
-		return -1;
+	if (total == 0) { free(raw); return -1; }
 
 	/* parse HTTP response */
-	char *status_line = raw;
 	char *hdr_end = strstr(raw, "\r\n\r\n");
 	int hdr_sep_len = 4;
 	if (!hdr_end) {
 		hdr_end = strstr(raw, "\n\n");
 		hdr_sep_len = 2;
 	}
-	if (!hdr_end)
-		return -1;
+	if (!hdr_end) { free(raw); return -1; }
 
-	char *sp = strchr(status_line, ' ');
+	char *sp = strchr(raw, ' ');
 	if (sp)
 		*resp_status = atoi(sp + 1);
 
-	char *hdr_start = strstr(status_line, "\r\n");
-	if (hdr_start && resp_headers) {
-		size_t hlen = hdr_end - hdr_start - 2;
-		if (hlen > resp_headers_size - 1)
-			hlen = resp_headers_size - 1;
-		memcpy(resp_headers, hdr_start + 2, hlen);
-		resp_headers[hlen] = '\0';
+	/* extract headers — malloc'd */
+	if (out_headers) {
+		char *hdr_start = strstr(raw, "\r\n");
+		if (hdr_start) {
+			size_t hlen = hdr_end - hdr_start - 2;
+			*out_headers = malloc(hlen + 1);
+			if (*out_headers) {
+				memcpy(*out_headers, hdr_start + 2, hlen);
+				(*out_headers)[hlen] = '\0';
+			}
+		} else {
+			*out_headers = NULL;
+		}
 	}
 
+	/* extract body — malloc'd */
 	char *body_start = hdr_end + hdr_sep_len;
 	size_t body_len = total - (body_start - raw);
-	if (body_len > resp_buf_size - 1)
-		body_len = resp_buf_size - 1;
-	memcpy(resp_buf, body_start, body_len);
-	resp_buf[body_len] = '\0';
+	*out_body = malloc(body_len + 1);
+	if (*out_body) {
+		memcpy(*out_body, body_start, body_len);
+		(*out_body)[body_len] = '\0';
+	}
 
+	free(raw);
 	return (int)body_len;
 }
 
@@ -357,14 +376,15 @@ static void send_data_stream(struct pvcm_transport *t, uint8_t stream_id,
 /* ---- MCU → Linux: outbound HTTP request ---- */
 
 /* pending request being assembled from MCU frames.
- * DATA stream carries: path (path_len) + headers (headers_len) + body */
+ * DATA stream carries: path (path_len) + headers (headers_len) + body.
+ * Buffers are dynamically allocated from REQ metadata sizes. */
 static struct {
 	uint8_t stream_id;
 	uint8_t method;
 	uint16_t status_code;
-	char path[1024];
-	char headers[2048];
-	char body[8192];
+	char *path;             /* malloc'd, path_len + 1 */
+	char *headers;          /* malloc'd, headers_len + 1 */
+	char *body;             /* malloc'd, body_len + 1 */
 	uint16_t path_len;      /* expected from REQ */
 	uint16_t headers_len;   /* expected from REQ */
 	uint32_t body_expected; /* expected from REQ */
@@ -372,10 +392,21 @@ static struct {
 	bool active;
 } pending_req;
 
+static void pending_req_free(void)
+{
+	free(pending_req.path);
+	free(pending_req.headers);
+	free(pending_req.body);
+	pending_req.path = NULL;
+	pending_req.headers = NULL;
+	pending_req.body = NULL;
+}
+
 int pvcm_bridge_init(struct pvcm_transport *t)
 {
 	(void)t;
 	memset(&pending_req, 0, sizeof(pending_req));
+	/* pointers are NULL after memset — allocated on demand in on_http_req */
 	return 0;
 }
 
@@ -388,15 +419,20 @@ int pvcm_bridge_on_http_req(struct pvcm_transport *t,
 	if (req->direction != PVCM_HTTP_DIR_REQUEST)
 		return 0;
 
+	/* free any previous buffers */
+	pending_req_free();
+
 	pending_req.stream_id = req->stream_id;
 	pending_req.method = req->method;
 	pending_req.path_len = req->path_len;
 	pending_req.headers_len = req->headers_len;
 	pending_req.body_expected = req->body_len;
 	pending_req.stream_offset = 0;
-	pending_req.path[0] = '\0';
-	pending_req.headers[0] = '\0';
-	pending_req.body[0] = '\0';
+
+	/* allocate exact sizes from metadata */
+	pending_req.path = calloc(1, req->path_len + 1);
+	pending_req.headers = calloc(1, req->headers_len + 1);
+	pending_req.body = calloc(1, req->body_len + 1);
 	pending_req.active = true;
 
 	fprintf(stdout, "[bridge] HTTP_REQ: %s path_len=%u hdr_len=%u "
@@ -409,7 +445,7 @@ int pvcm_bridge_on_http_req(struct pvcm_transport *t,
 
 /*
  * Demux DATA chunk into path / headers / body based on stream offset.
- * The DATA stream carries: path (path_len) + headers (headers_len) + body.
+ * Buffers are exact-sized from REQ metadata — no overflow possible.
  */
 int pvcm_bridge_on_http_data(struct pvcm_transport *t,
 			     const uint8_t *buf, int len)
@@ -426,34 +462,32 @@ int pvcm_bridge_on_http_data(struct pvcm_transport *t,
 
 	size_t path_end = pending_req.path_len;
 	size_t hdr_end = path_end + pending_req.headers_len;
+	size_t body_end = hdr_end + pending_req.body_expected;
 
 	while (remaining > 0) {
-		if (off < path_end) {
-			/* path region */
+		if (off < path_end && pending_req.path) {
 			size_t n = path_end - off;
 			if (n > remaining) n = remaining;
-			if (off + n <= sizeof(pending_req.path) - 1)
-				memcpy(pending_req.path + off, src, n);
-			pending_req.path[off + n < sizeof(pending_req.path) ?
-					 off + n : sizeof(pending_req.path) - 1] = '\0';
+			memcpy(pending_req.path + off, src, n);
+			pending_req.path[off + n] = '\0';
 			src += n; remaining -= n; off += n;
-		} else if (off < hdr_end) {
-			/* headers region */
+		} else if (off < hdr_end && pending_req.headers) {
 			size_t hoff = off - path_end;
 			size_t n = hdr_end - off;
 			if (n > remaining) n = remaining;
-			if (hoff + n <= sizeof(pending_req.headers) - 1)
-				memcpy(pending_req.headers + hoff, src, n);
-			pending_req.headers[hoff + n < sizeof(pending_req.headers) ?
-					    hoff + n : sizeof(pending_req.headers) - 1] = '\0';
+			memcpy(pending_req.headers + hoff, src, n);
+			pending_req.headers[hoff + n] = '\0';
+			src += n; remaining -= n; off += n;
+		} else if (off < body_end && pending_req.body) {
+			size_t boff = off - hdr_end;
+			size_t n = body_end - off;
+			if (n > remaining) n = remaining;
+			memcpy(pending_req.body + boff, src, n);
+			pending_req.body[boff + n] = '\0';
 			src += n; remaining -= n; off += n;
 		} else {
-			/* body region */
-			size_t boff = off - hdr_end;
-			size_t n = remaining;
-			if (boff + n <= sizeof(pending_req.body) - 1)
-				memcpy(pending_req.body + boff, src, n);
-			src += n; remaining -= n; off += n;
+			/* past all expected data — discard */
+			break;
 		}
 	}
 
@@ -473,8 +507,6 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 	size_t body_received = 0;
 	if (pending_req.stream_offset > hdr_end)
 		body_received = pending_req.stream_offset - hdr_end;
-	if (body_received < sizeof(pending_req.body))
-		pending_req.body[body_received] = '\0';
 
 	pending_req.active = false;
 
@@ -500,11 +532,11 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 
 	/* Don't forward MCU's Host header — http_request sets its own */
 	const char *fwd_headers = NULL;
-	if (!route && pending_req.headers[0])
+	if (!route && pending_req.headers && pending_req.headers[0])
 		fwd_headers = pending_req.headers;
 
-	char resp_body[8192] = "";
-	char resp_headers[1024] = "";
+	char *resp_body = NULL;
+	char *resp_headers = NULL;
 	int resp_status = 500;
 
 	int body_len = http_request(
@@ -514,8 +546,7 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 		pending_req.path,
 		body_received > 0 ? pending_req.body : NULL,
 		body_received,
-		resp_body, sizeof(resp_body),
-		&resp_status, resp_headers, sizeof(resp_headers));
+		&resp_body, &resp_status, &resp_headers);
 
 	if (body_len < 0) {
 		fprintf(stderr, "[bridge] upstream request failed\n");
@@ -526,8 +557,7 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 	fprintf(stdout, "[bridge] upstream response: %d, body=%d bytes\n",
 		resp_status, body_len);
 
-	/* send HTTP_REQ metadata (no data — path+headers+body via DATA) */
-	size_t hlen = strlen(resp_headers);
+	size_t hlen = resp_headers ? strlen(resp_headers) : 0;
 
 	pvcm_http_req_t resp = {
 		.op = PVCM_OP_HTTP_REQ,
@@ -553,6 +583,9 @@ int pvcm_bridge_on_http_end(struct pvcm_transport *t,
 	};
 	t->send_frame(t, &end, sizeof(end) - sizeof(uint32_t));
 
+	free(resp_body);
+	free(resp_headers);
+	pending_req_free();
 	return 0;
 }
 
