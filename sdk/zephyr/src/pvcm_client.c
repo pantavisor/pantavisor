@@ -1,10 +1,13 @@
 /*
- * PVCM HTTP Client -- simple HTTP over PVCM protocol
+ * PVCM HTTP Client — async HTTP over PVCM protocol
  *
- * Implements the simple pvcm_get/post/put/delete API by translating
- * to HTTP_REQ/DATA/END frames. Responses are reassembled from
- * incoming HTTP_REQ(RESPONSE)/DATA/END frames delivered by the
- * server thread.
+ * All requests are fire-and-forget: pvcm_get() sends frames and
+ * returns immediately. Responses arrive via callbacks on the
+ * PVCM server thread.
+ *
+ * Multiple requests can be in flight simultaneously, keyed by
+ * stream_id. Each pending slot holds the callbacks and reassembly
+ * state.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -19,192 +22,104 @@
 
 LOG_MODULE_REGISTER(pvcm_client, CONFIG_LOG_DEFAULT_LEVEL);
 
-static K_SEM_DEFINE(http_resp_sem, 0, 1);
-static K_MUTEX_DEFINE(client_mutex);
+/* ---- Pending request slots ---- */
 
-/* pending request slot (single in-flight request for simplicity).
- * Response DATA stream carries: headers (headers_expected) + body.
- * Buffers are k_malloc'd from REQ metadata sizes — no fixed limits. */
-static struct {
+#define MAX_PENDING 4
+
+#define PVCM_MAX_HEADERS_SIZE (16 * 1024)
+#define PVCM_MAX_BODY_SIZE    (32 * 1024)
+
+struct pending_http {
 	uint8_t stream_id;
 	bool active;
+
+	/* callbacks */
+	struct pvcm_http_callbacks cb;
+
+	/* response metadata from REQ frame */
 	uint16_t status_code;
-	uint16_t headers_expected;  /* original from REQ (for stream demux) */
-	uint32_t body_expected;     /* original from REQ (for stream demux) */
-	uint16_t headers_alloc;     /* capped allocation size */
-	uint32_t body_alloc;        /* capped allocation size */
-	size_t stream_offset;       /* total DATA bytes received */
-	char *body;                 /* k_malloc'd */
-	size_t body_len;
-	char *headers;              /* k_malloc'd */
+	uint16_t headers_expected;
+	uint32_t body_expected;
+
+	/* stream reassembly */
+	size_t stream_offset;
+
+	/* buffered mode (on_response) */
+	char *headers;          /* k_malloc'd */
+	uint16_t headers_alloc;
 	size_t headers_len;
-	bool complete;
-} pending;
+	char *body;             /* k_malloc'd */
+	uint32_t body_alloc;
+	size_t body_len;
+
+	/* chunk mode flags */
+	bool headers_delivered; /* first chunk got headers */
+};
+
+static struct pending_http pending[MAX_PENDING];
 static uint8_t next_stream_id = 1;
+
+static struct pending_http *find_pending(uint8_t stream_id)
+{
+	for (int i = 0; i < MAX_PENDING; i++) {
+		if (pending[i].active && pending[i].stream_id == stream_id)
+			return &pending[i];
+	}
+	return NULL;
+}
+
+static struct pending_http *alloc_pending(void)
+{
+	for (int i = 0; i < MAX_PENDING; i++) {
+		if (!pending[i].active)
+			return &pending[i];
+	}
+	return NULL;
+}
+
+static void free_pending(struct pending_http *p)
+{
+	k_free(p->headers);
+	k_free(p->body);
+	memset(p, 0, sizeof(*p));
+}
 
 /* Check if stream_id matches a pending outbound HTTP request */
 bool pvcm_client_has_pending_http(uint8_t stream_id)
 {
-	return pending.active && pending.stream_id == stream_id;
+	return find_pending(stream_id) != NULL;
 }
 
-/*
- * Called by the server thread when an HTTP response frame arrives.
- * Reassembles the response body from DATA chunks.
- */
-void pvcm_client_on_http_req(const uint8_t *buf, int len)
-{
-	if ((size_t)len < sizeof(pvcm_http_req_t) - sizeof(uint32_t))
-		return;
+/* ---- Send request frames ---- */
 
-	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
-
-	LOG_INF("HTTP resp: dir=%d sid=%d pending_sid=%d active=%d status=%d",
-		req->direction, req->stream_id,
-		pending.stream_id, pending.active, req->status_code);
-
-	if (req->direction != PVCM_HTTP_DIR_RESPONSE)
-		return;
-
-	if (!pending.active || req->stream_id != pending.stream_id)
-		return;
-
-	pending.status_code = req->status_code;
-	/* stream offsets use original sizes for correct demux positioning */
-	pending.headers_expected = req->headers_len;
-	pending.body_expected = req->body_len;
-	pending.stream_offset = 0;
-
-	/* allocate from metadata sizes, capped for non-streaming use.
-	 * Larger responses should use the streaming API. */
-	#define PVCM_MAX_HEADERS_SIZE (16 * 1024)
-	#define PVCM_MAX_BODY_SIZE    (32 * 1024)
-
-	uint16_t hdr_alloc = req->headers_len < PVCM_MAX_HEADERS_SIZE
-			     ? req->headers_len : PVCM_MAX_HEADERS_SIZE;
-	uint32_t body_alloc = req->body_len < PVCM_MAX_BODY_SIZE
-			      ? req->body_len : PVCM_MAX_BODY_SIZE;
-
-	k_free(pending.headers);
-	k_free(pending.body);
-	pending.headers_alloc = hdr_alloc;
-	pending.body_alloc = body_alloc;
-	pending.headers = hdr_alloc > 0 ? k_malloc(hdr_alloc + 1) : NULL;
-	pending.body = body_alloc > 0 ? k_malloc(body_alloc + 1) : NULL;
-	if (pending.headers) pending.headers[0] = '\0';
-	if (pending.body) pending.body[0] = '\0';
-	pending.headers_len = 0;
-	pending.body_len = 0;
-}
-
-/*
- * Demux DATA into headers + body based on stream offset.
- * Response DATA stream: headers (headers_expected bytes) + body.
- */
-void pvcm_client_on_http_data(const uint8_t *buf, int len)
-{
-	if ((size_t)len < 4)
-		return;
-
-	const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
-
-	if (!pending.active || d->stream_id != pending.stream_id)
-		return;
-
-	const uint8_t *src = d->data;
-	size_t remaining = d->len;
-	size_t off = pending.stream_offset;
-	size_t hdr_end = pending.headers_expected;
-
-	size_t body_end = hdr_end + pending.body_expected;
-
-	while (remaining > 0) {
-		if (off < hdr_end) {
-			/* headers region — copy up to alloc cap */
-			size_t n = hdr_end - off;
-			if (n > remaining) n = remaining;
-			if (pending.headers && off < pending.headers_alloc) {
-				size_t to_copy = n;
-				if (off + to_copy > pending.headers_alloc)
-					to_copy = pending.headers_alloc - off;
-				memcpy(pending.headers + off, src, to_copy);
-				pending.headers[off + to_copy] = '\0';
-				pending.headers_len = off + to_copy;
-			}
-			src += n; remaining -= n; off += n;
-		} else if (off < body_end) {
-			/* body region — copy up to alloc cap */
-			size_t boff = off - hdr_end;
-			size_t n = body_end - off;
-			if (n > remaining) n = remaining;
-			if (pending.body && boff < pending.body_alloc) {
-				size_t to_copy = n;
-				if (boff + to_copy > pending.body_alloc)
-					to_copy = pending.body_alloc - boff;
-				memcpy(pending.body + boff, src, to_copy);
-				pending.body[boff + to_copy] = '\0';
-				pending.body_len = boff + to_copy;
-			}
-			src += n; remaining -= n; off += n;
-		} else {
-			break;
-		}
-	}
-
-	pending.stream_offset = off;
-}
-
-void pvcm_client_on_http_end(const uint8_t *buf, int len)
-{
-	if ((size_t)len < 2)
-		return;
-
-	uint8_t stream_id = buf[1];
-
-	if (!pending.active || stream_id != pending.stream_id)
-		return;
-
-	pending.complete = true;
-	LOG_INF("HTTP complete: sid=%d status=%d body=%zu",
-		stream_id, pending.status_code, pending.body_len);
-	k_sem_give(&http_resp_sem);
-}
-
-/*
- * Send an HTTP request and wait for the complete response.
- */
-static int do_http_request(uint8_t method, const char *path,
-			   const char *req_headers,
-			   const char *body, size_t body_len,
-			   pvcm_http_cb_t cb, void *ctx)
+static int send_http_request(uint8_t method, const char *path,
+			     const char *req_headers,
+			     const char *body, size_t body_len,
+			     const struct pvcm_http_callbacks *cb)
 {
 	const struct pvcm_transport *t = pvcm_transport_get();
 	if (!t)
 		return -ENODEV;
 
-	k_mutex_lock(&client_mutex, K_FOREVER);
+	struct pending_http *p = alloc_pending();
+	if (!p) {
+		LOG_ERR("no pending slots available");
+		return -ENOMEM;
+	}
 
 	uint8_t sid = next_stream_id++;
 	if (next_stream_id == 0)
 		next_stream_id = 1;
 
-	/* set up pending response slot */
-	pending.stream_id = sid;
-	pending.active = true;
-	LOG_INF("HTTP send: sid=%d path=%s", sid, path);
-	pending.status_code = 0;
-	pending.headers_expected = 0;
-	pending.body_expected = 0;
-	pending.stream_offset = 0;
-	pending.body_len = 0;
-	pending.headers_len = 0;
-	/* buffers allocated in on_http_req when metadata arrives */
-	k_free(pending.headers); pending.headers = NULL;
-	k_free(pending.body); pending.body = NULL;
-	pending.complete = false;
-	k_sem_reset(&http_resp_sem);
+	memset(p, 0, sizeof(*p));
+	p->stream_id = sid;
+	p->active = true;
+	if (cb)
+		p->cb = *cb;
 
-	/* build and send HTTP_REQ metadata (no data — path+headers+body via DATA) */
+	LOG_INF("HTTP send: sid=%d path=%s", sid, path);
+
+	/* send REQ metadata */
 	size_t path_len = strlen(path);
 	size_t hdr_len = req_headers ? strlen(req_headers) : 0;
 
@@ -219,7 +134,11 @@ static int do_http_request(uint8_t method, const char *path,
 		.body_len = (uint32_t)body_len,
 	};
 
-	t->send_frame(&req, sizeof(req) - sizeof(uint32_t));
+	int ret = t->send_frame(&req, sizeof(req) - sizeof(uint32_t));
+	if (ret < 0) {
+		free_pending(p);
+		return -EIO;
+	}
 
 	/* stream path + headers + body as DATA frames */
 	const char *parts[] = { path, req_headers, body };
@@ -235,20 +154,14 @@ static int do_http_request(uint8_t method, const char *path,
 
 		while (chunk < PVCM_MAX_CHUNK_SIZE && pi < 3) {
 			if (!parts[pi] || part_lens[pi] == 0) {
-				pi++;
-				poff = 0;
-				continue;
+				pi++; poff = 0; continue;
 			}
 			size_t avail = part_lens[pi] - poff;
 			size_t room = PVCM_MAX_CHUNK_SIZE - chunk;
 			size_t n = avail < room ? avail : room;
 			memcpy(data.data + chunk, parts[pi] + poff, n);
-			chunk += n;
-			poff += n;
-			if (poff >= part_lens[pi]) {
-				pi++;
-				poff = 0;
-			}
+			chunk += n; poff += n;
+			if (poff >= part_lens[pi]) { pi++; poff = 0; }
 		}
 
 		if (chunk > 0) {
@@ -257,110 +170,234 @@ static int do_http_request(uint8_t method, const char *path,
 		}
 	}
 
-	/* send HTTP_END */
+	/* send END */
 	pvcm_http_end_t end = {
 		.op = PVCM_OP_HTTP_END,
 		.stream_id = sid,
 	};
 	t->send_frame(&end, sizeof(end) - sizeof(uint32_t));
 
-	/*
-	 * Wait for the server thread to receive and dispatch the response.
-	 * pvcm_get is called from the shell thread (or app thread), NOT from
-	 * the server thread. The server thread continues its recv loop and
-	 * dispatches HTTP_REQ(RESPONSE)/DATA/END to pvcm_client_on_http_*
-	 * which populates pending and signals http_resp_sem.
-	 */
-	int ret = k_sem_take(&http_resp_sem, K_SECONDS(10));
-
-	pending.active = false;
-
-	if (ret != 0) {
-		LOG_ERR("HTTP request timeout (path=%s)", path);
-		k_free(pending.headers); pending.headers = NULL;
-		k_free(pending.body); pending.body = NULL;
-		k_mutex_unlock(&client_mutex);
-		return -ETIMEDOUT;
-	}
-
-	LOG_INF("HTTP response: %d, body=%zu bytes",
-		pending.status_code, pending.body_len);
-
-	/* deliver to callback, then free */
-	if (cb) {
-		cb(pending.status_code,
-		   pending.body ? pending.body : "",
-		   pending.body_len,
-		   pending.headers ? pending.headers : "",
-		   ctx);
-	}
-
-	k_free(pending.headers); pending.headers = NULL;
-	k_free(pending.body); pending.body = NULL;
-
-	k_mutex_unlock(&client_mutex);
 	return 0;
 }
 
-int pvcm_get(const char *path, pvcm_http_cb_t cb, void *ctx)
+/* ---- Response handlers (called from server thread) ---- */
+
+void pvcm_client_on_http_req(const uint8_t *buf, int len)
 {
-	return do_http_request(PVCM_HTTP_GET, path, NULL, NULL, 0, cb, ctx);
+	if ((size_t)len < sizeof(pvcm_http_req_t) - sizeof(uint32_t))
+		return;
+
+	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
+
+	if (req->direction != PVCM_HTTP_DIR_RESPONSE)
+		return;
+
+	struct pending_http *p = find_pending(req->stream_id);
+	if (!p)
+		return;
+
+	LOG_INF("HTTP resp: sid=%d status=%d hdr=%u body=%u",
+		req->stream_id, req->status_code,
+		req->headers_len, req->body_len);
+
+	p->status_code = req->status_code;
+	p->headers_expected = req->headers_len;
+	p->body_expected = req->body_len;
+	p->stream_offset = 0;
+	p->headers_delivered = false;
+
+	if (p->cb.on_response) {
+		/* buffered mode — allocate, cap at limits */
+		uint16_t ha = req->headers_len < PVCM_MAX_HEADERS_SIZE
+			      ? req->headers_len : PVCM_MAX_HEADERS_SIZE;
+		uint32_t ba = req->body_len < PVCM_MAX_BODY_SIZE
+			      ? req->body_len : PVCM_MAX_BODY_SIZE;
+
+		if (req->body_len > PVCM_MAX_BODY_SIZE) {
+			/* too large for buffered mode */
+			if (p->cb.on_error) {
+				p->cb.on_error(PVCM_ERR_OVERSIZED,
+					       "body exceeds 32K, use on_chunk",
+					       p->cb.ctx);
+			}
+			free_pending(p);
+			return;
+		}
+
+		p->headers_alloc = ha;
+		p->body_alloc = ba;
+		p->headers = ha > 0 ? k_malloc(ha + 1) : NULL;
+		p->body = ba > 0 ? k_malloc(ba + 1) : NULL;
+		if (p->headers) p->headers[0] = '\0';
+		if (p->body) p->body[0] = '\0';
+	}
+	/* chunk mode: no allocation needed — deliver directly */
+}
+
+void pvcm_client_on_http_data(const uint8_t *buf, int len)
+{
+	if ((size_t)len < 4)
+		return;
+
+	const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
+
+	struct pending_http *p = find_pending(d->stream_id);
+	if (!p)
+		return;
+
+	const uint8_t *src = d->data;
+	size_t remaining = d->len;
+	size_t off = p->stream_offset;
+	size_t hdr_end = p->headers_expected;
+	size_t body_end = hdr_end + p->body_expected;
+
+	if (p->cb.on_chunk) {
+		/* streaming mode — deliver chunks directly */
+		while (remaining > 0) {
+			if (off < hdr_end) {
+				/* skip headers in chunk mode — buffer them
+				 * temporarily for the first on_chunk call */
+				size_t n = hdr_end - off;
+				if (n > remaining) n = remaining;
+
+				/* buffer headers for first delivery */
+				if (!p->headers && p->headers_expected > 0) {
+					uint16_t ha = p->headers_expected < PVCM_MAX_HEADERS_SIZE
+						      ? p->headers_expected : PVCM_MAX_HEADERS_SIZE;
+					p->headers_alloc = ha;
+					p->headers = k_malloc(ha + 1);
+					if (p->headers) p->headers[0] = '\0';
+				}
+				if (p->headers && off < p->headers_alloc) {
+					size_t tc = n;
+					if (off + tc > p->headers_alloc)
+						tc = p->headers_alloc - off;
+					memcpy(p->headers + off, src, tc);
+					p->headers[off + tc] = '\0';
+					p->headers_len = off + tc;
+				}
+				src += n; remaining -= n; off += n;
+			} else {
+				/* body region — deliver as chunk */
+				size_t n = remaining;
+				if (off + n > body_end)
+					n = body_end - off;
+
+				const char *hdrs = NULL;
+				if (!p->headers_delivered) {
+					hdrs = p->headers;
+					p->headers_delivered = true;
+				}
+
+				p->cb.on_chunk(p->status_code,
+					       (const char *)src, n,
+					       hdrs, false, p->cb.ctx);
+				src += n; remaining -= n; off += n;
+			}
+		}
+	} else if (p->cb.on_response) {
+		/* buffered mode — accumulate */
+		while (remaining > 0) {
+			if (off < hdr_end) {
+				size_t n = hdr_end - off;
+				if (n > remaining) n = remaining;
+				if (p->headers && off < p->headers_alloc) {
+					size_t tc = n;
+					if (off + tc > p->headers_alloc)
+						tc = p->headers_alloc - off;
+					memcpy(p->headers + off, src, tc);
+					p->headers[off + tc] = '\0';
+					p->headers_len = off + tc;
+				}
+				src += n; remaining -= n; off += n;
+			} else if (off < body_end) {
+				size_t boff = off - hdr_end;
+				size_t n = body_end - off;
+				if (n > remaining) n = remaining;
+				if (p->body && boff < p->body_alloc) {
+					size_t tc = n;
+					if (boff + tc > p->body_alloc)
+						tc = p->body_alloc - boff;
+					memcpy(p->body + boff, src, tc);
+					p->body[boff + tc] = '\0';
+					p->body_len = boff + tc;
+				}
+				src += n; remaining -= n; off += n;
+			} else {
+				break;
+			}
+		}
+	}
+
+	p->stream_offset = off;
+}
+
+void pvcm_client_on_http_end(const uint8_t *buf, int len)
+{
+	if ((size_t)len < 2)
+		return;
+
+	uint8_t stream_id = buf[1];
+
+	struct pending_http *p = find_pending(stream_id);
+	if (!p)
+		return;
+
+	LOG_INF("HTTP complete: sid=%d status=%d body=%zu",
+		stream_id, p->status_code, p->body_len);
+
+	if (p->cb.on_chunk) {
+		/* final chunk delivery */
+		const char *hdrs = NULL;
+		if (!p->headers_delivered) {
+			hdrs = p->headers;
+			p->headers_delivered = true;
+		}
+		p->cb.on_chunk(p->status_code, "", 0, hdrs, true, p->cb.ctx);
+	} else if (p->cb.on_response) {
+		p->cb.on_response(p->status_code,
+				  p->body ? p->body : "",
+				  p->body_len,
+				  p->headers ? p->headers : "",
+				  p->cb.ctx);
+	}
+
+	free_pending(p);
+}
+
+/* ---- Public API ---- */
+
+int pvcm_get(const char *path, const struct pvcm_http_callbacks *cb)
+{
+	return send_http_request(PVCM_HTTP_GET, path, NULL, NULL, 0, cb);
 }
 
 int pvcm_post(const char *path, const char *body, size_t body_len,
-	      pvcm_http_cb_t cb, void *ctx)
+	      const struct pvcm_http_callbacks *cb)
 {
-	return do_http_request(PVCM_HTTP_POST, path,
-			      "Content-Type: application/json\r\n",
-			      body, body_len, cb, ctx);
+	return send_http_request(PVCM_HTTP_POST, path,
+				"Content-Type: application/json\r\n",
+				body, body_len, cb);
 }
 
 int pvcm_put(const char *path, const char *body, size_t body_len,
-	     pvcm_http_cb_t cb, void *ctx)
+	     const struct pvcm_http_callbacks *cb)
 {
-	return do_http_request(PVCM_HTTP_PUT, path,
-			      "Content-Type: application/json\r\n",
-			      body, body_len, cb, ctx);
+	return send_http_request(PVCM_HTTP_PUT, path,
+				"Content-Type: application/json\r\n",
+				body, body_len, cb);
 }
 
-int pvcm_delete(const char *path, pvcm_http_cb_t cb, void *ctx)
+int pvcm_delete(const char *path, const struct pvcm_http_callbacks *cb)
 {
-	return do_http_request(PVCM_HTTP_DELETE, path, NULL, NULL, 0, cb, ctx);
+	return send_http_request(PVCM_HTTP_DELETE, path, NULL, NULL, 0, cb);
 }
 
 int pvcm_http(const struct pvcm_http_request *req,
-	      pvcm_http_cb_t cb, void *ctx)
+	      const struct pvcm_http_callbacks *cb)
 {
-	return do_http_request(req->method, req->path, req->headers,
-			      req->body, req->body_len, cb, ctx);
-}
-
-/* streaming and server APIs - stubs for now */
-
-pvcm_http_stream_t *pvcm_http_download(const char *path,
-					pvcm_http_stream_cb_t cb, void *ctx)
-{
-	LOG_WRN("pvcm_http_download not yet implemented");
-	return NULL;
-}
-
-pvcm_http_stream_t *pvcm_http_upload(uint8_t method, const char *path,
-				     const char *headers,
-				     uint32_t total_size)
-{
-	LOG_WRN("pvcm_http_upload not yet implemented");
-	return NULL;
-}
-
-int pvcm_http_stream_write(pvcm_http_stream_t *s, const void *data,
-			   size_t len)
-{
-	return -ENOTSUP;
-}
-
-int pvcm_http_stream_close(pvcm_http_stream_t *s)
-{
-	return -ENOTSUP;
+	return send_http_request(req->method, req->path, req->headers,
+				req->body, req->body_len, cb);
 }
 
 /* ---- MCU as HTTP server ---- */
@@ -374,8 +411,7 @@ static struct {
 } serve_handlers[MAX_SERVE_HANDLERS];
 static int serve_handler_count;
 
-/* pending inbound request assembled from INVOKE DATA stream.
- * DATA carries: path (path_len) + headers (headers_len) + body. */
+/* pending inbound INVOKE request */
 static struct {
 	uint8_t stream_id;
 	uint8_t method;
@@ -383,9 +419,9 @@ static struct {
 	uint16_t headers_len;
 	uint32_t body_expected;
 	size_t stream_offset;
-	char *path;         /* k_malloc'd */
-	char *headers;      /* k_malloc'd */
-	char *body;         /* k_malloc'd */
+	char *path;
+	char *headers;
+	char *body;
 	size_t body_len;
 	bool active;
 } invoke_pending;
@@ -423,7 +459,6 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 	if (!t)
 		return -ENODEV;
 
-	/* send HTTP_REQ(REPLY) metadata */
 	size_t hlen = headers ? strlen(headers) : 0;
 
 	pvcm_http_req_t resp = {
@@ -470,7 +505,6 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 		}
 	}
 
-	/* send HTTP_END */
 	pvcm_http_end_t end = {
 		.op = PVCM_OP_HTTP_END,
 		.stream_id = stream_id,
@@ -481,9 +515,8 @@ int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 	return 0;
 }
 
-/*
- * Called by server thread for inbound INVOKE requests from pvcm-run.
- */
+/* ---- INVOKE handlers (called from server thread) ---- */
+
 void pvcm_client_on_invoke_req(const uint8_t *buf, int len)
 {
 	const pvcm_http_req_t *req = (const pvcm_http_req_t *)buf;
@@ -514,7 +547,6 @@ void pvcm_client_on_invoke_req(const uint8_t *buf, int len)
 		req->method, req->path_len, req->headers_len, req->body_len);
 }
 
-/* Demux INVOKE DATA into path + headers + body */
 void pvcm_client_on_invoke_data(const uint8_t *buf, int len)
 {
 	const pvcm_http_data_t *d = (const pvcm_http_data_t *)buf;
@@ -566,12 +598,12 @@ void pvcm_client_on_invoke_end(const uint8_t *buf, int len)
 
 	invoke_pending.active = false;
 
-	/* find matching handler */
 	for (int i = 0; i < serve_handler_count; i++) {
 		const char *prefix = serve_handlers[i].path_prefix;
 		if (invoke_pending.path &&
 		    strncmp(invoke_pending.path, prefix, strlen(prefix)) == 0) {
 			serve_handlers[i].handler(
+				invoke_pending.stream_id,
 				invoke_pending.method,
 				invoke_pending.path ? invoke_pending.path : "",
 				invoke_pending.headers ? invoke_pending.headers : "",
@@ -583,17 +615,10 @@ void pvcm_client_on_invoke_end(const uint8_t *buf, int len)
 		}
 	}
 
-	/* no handler — send 404 */
 	LOG_WRN("no handler for %s",
 		invoke_pending.path ? invoke_pending.path : "(null)");
 	pvcm_http_respond(invoke_pending.stream_id, 404,
 			  "Content-Type: application/json\r\n",
 			  "{\"error\":\"not found\"}", 20);
 	invoke_pending_free();
-}
-
-/* Helper: get the stream_id of the current invoke being handled */
-uint8_t pvcm_get_invoke_stream_id(void)
-{
-	return invoke_pending.stream_id;
 }

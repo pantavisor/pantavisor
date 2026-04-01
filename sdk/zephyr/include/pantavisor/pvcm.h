@@ -1,5 +1,9 @@
 /*
- * Pantavisor RTOS SDK -- Public API
+ * Pantavisor RTOS SDK — public API
+ *
+ * All HTTP and D-Bus calls are asynchronous. The caller sends the
+ * request and returns immediately. Responses arrive via callbacks
+ * on the PVCM server thread.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -7,86 +11,77 @@
 #ifndef PANTAVISOR_PVCM_H
 #define PANTAVISOR_PVCM_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <pantavisor/pvcm_protocol.h>
 
-/*
- * Health callback -- called by heartbeat module before each heartbeat.
- * Return PVCM_HEALTH_OK or PVCM_HEALTH_DEGRADED.
- */
+/* ---- Health monitoring ---- */
+
 typedef uint8_t (*pvcm_health_cb_t)(void);
-
 void pvcm_register_health_cb(pvcm_health_cb_t cb);
 
-/* ---- Simple HTTP API (requires CONFIG_PANTAVISOR_BRIDGE) ----
+/* ---- HTTP API (requires CONFIG_PANTAVISOR_BRIDGE) ----
  *
- * For small JSON requests/responses. The SDK collects all response
- * chunks and delivers the complete body to the callback.
+ * All calls are async — send request, return immediately.
+ * Response delivered via callbacks on the server thread.
  */
+
+/* Error codes for on_error callback */
+#define PVCM_ERR_TIMEOUT    (-1)  /* no response within deadline */
+#define PVCM_ERR_OVERSIZED  (-2)  /* body > 32K with on_response (use on_chunk) */
+#define PVCM_ERR_SEND       (-3)  /* failed to send request frames */
+#define PVCM_ERR_NOMEM      (-4)  /* allocation failed */
+
+/* Full response — called once with complete body.
+ * Only used when on_response is set and body fits in 32K. */
 typedef void (*pvcm_http_cb_t)(uint16_t status_code,
 			       const char *body, size_t body_len,
 			       const char *headers, void *ctx);
 
-int pvcm_get(const char *path, pvcm_http_cb_t cb, void *ctx);
-int pvcm_post(const char *path, const char *body, size_t body_len,
-	      pvcm_http_cb_t cb, void *ctx);
-int pvcm_put(const char *path, const char *body, size_t body_len,
-	     pvcm_http_cb_t cb, void *ctx);
-int pvcm_delete(const char *path, pvcm_http_cb_t cb, void *ctx);
+/* Chunk callback — called per body chunk, any size.
+ * headers is non-NULL on the first call only.
+ * is_last=true on the final chunk. */
+typedef void (*pvcm_http_chunk_cb_t)(uint16_t status_code,
+				     const char *data, size_t data_len,
+				     const char *headers, bool is_last,
+				     void *ctx);
 
-/* ---- Generic HTTP API ----
- *
- * Full control over method, headers, and body. Use for non-standard
- * methods, custom headers, or when you need response headers.
- */
+/* Error callback — transport, timeout, oversized, etc. */
+typedef void (*pvcm_http_error_cb_t)(int error, const char *msg, void *ctx);
+
+struct pvcm_http_callbacks {
+	pvcm_http_cb_t       on_response;  /* set this OR on_chunk */
+	pvcm_http_chunk_cb_t on_chunk;     /* streaming body delivery */
+	pvcm_http_error_cb_t on_error;     /* errors (timeout, etc.) */
+	void *ctx;
+};
+
+/* Simple API — async GET/POST/PUT/DELETE */
+int pvcm_get(const char *path, const struct pvcm_http_callbacks *cb);
+int pvcm_post(const char *path, const char *body, size_t body_len,
+	      const struct pvcm_http_callbacks *cb);
+int pvcm_put(const char *path, const char *body, size_t body_len,
+	     const struct pvcm_http_callbacks *cb);
+int pvcm_delete(const char *path, const struct pvcm_http_callbacks *cb);
+
+/* Generic API — full control over method, headers, body */
 struct pvcm_http_request {
-	uint8_t  method;        /* PVCM_HTTP_GET, POST, etc. */
+	uint8_t     method;      /* PVCM_HTTP_GET, POST, etc. */
 	const char *path;
-	const char *headers;    /* "Key: Value\r\n..." or NULL */
+	const char *headers;     /* "Key: Value\r\n..." or NULL */
 	const char *body;
-	size_t   body_len;
+	size_t      body_len;
 };
 
 int pvcm_http(const struct pvcm_http_request *req,
-	      pvcm_http_cb_t cb, void *ctx);
+	      const struct pvcm_http_callbacks *cb);
 
-/* ---- Streaming HTTP API ----
- *
- * For large transfers (firmware images, assets, sensor logs).
- * Data is delivered/sent in chunks — no full-body buffering.
- */
-typedef struct pvcm_http_stream pvcm_http_stream_t;
+/* ---- MCU as HTTP server ---- */
 
-/* Download: callback called for each chunk received */
-typedef void (*pvcm_http_stream_cb_t)(const void *data, size_t len,
-				      bool is_last, void *ctx);
-
-/* Start a streaming download */
-pvcm_http_stream_t *pvcm_http_download(const char *path,
-					pvcm_http_stream_cb_t cb, void *ctx);
-
-/* Start a streaming upload (POST/PUT) */
-pvcm_http_stream_t *pvcm_http_upload(uint8_t method, const char *path,
-				     const char *headers,
-				     uint32_t total_size);
-
-/* Send a chunk of upload data */
-int pvcm_http_stream_write(pvcm_http_stream_t *s, const void *data,
-			   size_t len);
-
-/* Finish the stream (upload: sends HTTP_END, download: cleanup) */
-int pvcm_http_stream_close(pvcm_http_stream_t *s);
-
-/* ---- MCU as HTTP server ----
- *
- * Register handlers for inbound HTTP requests from Linux containers.
- */
-typedef void (*pvcm_http_handler_t)(uint8_t method, const char *path,
+typedef void (*pvcm_http_handler_t)(uint8_t stream_id,
+				    uint8_t method, const char *path,
 				    const char *headers,
 				    const char *body, size_t body_len,
 				    void *ctx);
@@ -94,52 +89,30 @@ typedef void (*pvcm_http_handler_t)(uint8_t method, const char *path,
 int pvcm_http_serve(const char *path_prefix, pvcm_http_handler_t handler,
 		    void *ctx);
 
-/* Send response to an inbound request */
 int pvcm_http_respond(uint8_t stream_id, uint16_t status_code,
 		      const char *headers,
 		      const char *body, size_t body_len);
 
-/* ---- D-Bus Gateway API (requires CONFIG_PANTAVISOR_DBUS) ----
- *
- * Call D-Bus methods on the Linux system bus and subscribe to signals.
- * The proxy handles D-Bus type marshalling — args and results are JSON.
- */
+/* ---- D-Bus Gateway API (requires CONFIG_PANTAVISOR_DBUS) ---- */
 
-/* Callback for D-Bus method call results */
 typedef void (*pvcm_dbus_cb_t)(uint8_t error, const char *result,
 			       size_t result_len, void *ctx);
 
-/* Call a D-Bus method.
- * args_json: JSON array of positional args, e.g. '["hello",42]', or NULL.
- * Returns 0 on success (result delivered via callback), negative on error. */
 int pvcm_dbus_call(const char *dest, const char *obj_path,
 		   const char *interface, const char *member,
 		   const char *args_json,
 		   pvcm_dbus_cb_t cb, void *ctx);
 
-/* Callback for D-Bus signal delivery */
 typedef void (*pvcm_dbus_signal_cb_t)(const char *sender,
 				      const char *obj_path,
 				      const char *interface,
 				      const char *member,
-				      const char *args_json,
-				      void *ctx);
+				      const char *args_json, void *ctx);
 
-/* Subscribe to a D-Bus signal. Empty/NULL fields match all.
- * Returns sub_id (>0) on success, negative on error. */
 int pvcm_dbus_subscribe(const char *sender, const char *obj_path,
 			const char *interface, const char *signal_name,
 			pvcm_dbus_signal_cb_t cb, void *ctx);
 
-/* Unsubscribe from a D-Bus signal */
 int pvcm_dbus_unsubscribe(int sub_id);
-
-/* ---- Log API (for non-Zephyr log users, e.g. FreeRTOS compat) ---- */
-
-void pvcm_log(uint8_t level, const char *module, const char *fmt, ...);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* PANTAVISOR_PVCM_H */
