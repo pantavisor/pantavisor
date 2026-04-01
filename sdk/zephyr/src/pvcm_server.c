@@ -128,9 +128,10 @@ void pvcm_server_dispatch(const uint8_t *buf, int len)
 	/* HTTP frames — route based on direction */
 	case PVCM_OP_HTTP_REQ: {
 		const pvcm_http_req_t *hreq = (const pvcm_http_req_t *)buf;
-		LOG_INF("HTTP_REQ: dir=%d sid=%d status=%d body=%u len=%d",
+		LOG_INF("HTTP_REQ: dir=%d sid=%d status=%d path=%u hdr=%u body=%u",
 			hreq->direction, hreq->stream_id,
-			hreq->status_code, hreq->total_body_size, len);
+			hreq->status_code, hreq->path_len,
+			hreq->headers_len, hreq->body_len);
 		if (hreq->direction == PVCM_HTTP_DIR_RESPONSE)
 			pvcm_client_on_http_req(buf, len);
 		else if (hreq->direction == PVCM_HTTP_DIR_INVOKE)
