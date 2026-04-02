@@ -9,8 +9,8 @@ on:
         required: false
 
 concurrency:
-  group: '${{ github.workflow }}-review-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number }}'
-  cancel-in-progress: true
+  group: 'gemini-review-${{ github.repository }}'
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -68,7 +68,7 @@ jobs:
           settings: |-
             {
               "model": {
-                "maxSessionTurns": 25
+                "maxSessionTurns": 10
               },
               "telemetry": {
                 "enabled": true,
