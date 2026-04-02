@@ -345,7 +345,29 @@ static int parse_disks(struct pv_state *s, char *value)
 		d->mode = parse_disks_dm_crypt_get_mode(str, diskv, diskc);
 
 		if (d->type == DISK_UNKNOWN) {
-			pv_log(WARN, "new disk type = UNKNOWN - likely that mount fails");
+			pv_log(WARN, "disk '%s' has unknown type, skipping",
+			       d->name ? d->name : "(null)");
+			dl_list_del(&d->list);
+			t = t + (jsmnutil_object_key_count(str, diskv) * 2);
+			free(d->name);
+			free(d->path);
+			free(d->mount_target);
+			free(d->mount_ops);
+			free(d->format_ops);
+			free(d->provision);
+			free(d->provision_ops);
+			free(d->uuid);
+			free(d->json_str);
+			free(d);
+			if (diskv) {
+				free(diskv);
+				diskv = NULL;
+			}
+			if (str) {
+				free(str);
+				str = NULL;
+			}
+			continue;
 		}
 
 		d->format = parse_disks_get_format(str, diskv, diskc);
@@ -365,7 +387,7 @@ static int parse_disks(struct pv_state *s, char *value)
 		d->json_str = strdup(str);
 
 		// parse dual mode arrays
-		if (d->mode == DISK_DM_CRYPT_MODE_DUAL) {
+		if (d->type == DISK_DUAL) {
 			char *disks_str = pv_json_get_value(str, "disks", diskv, diskc);
 			if (disks_str) {
 				jsmntok_t *dtokv = NULL;
@@ -1643,6 +1665,34 @@ static struct pv_state *system1_parse_disks(struct pv_state *this,
 		value = NULL;
 	}
 
+	count = pv_json_get_key_count(buf, "disks_v3.json", tokv, tokc);
+	if (count == 1) {
+		if (pv_json_get_key_count(buf, "device.json", tokv, tokc)) {
+			pv_log(WARN,
+			       "disks_v3.json found but device.json was already parsed. Ignoring disks_v3.json...");
+			goto out;
+		}
+
+		value = pv_json_get_value(buf, "disks_v3.json", tokv, tokc);
+		if (!value) {
+			pv_log(WARN,
+			       "Unable to get disks_v3.json value from state");
+			this = NULL;
+			goto out;
+		}
+
+		pv_log(DEBUG, "adding json 'disks_v3.json'");
+		pv_jsons_add(this, "disks_v3.json", value);
+
+		if (parse_disks(this, value)) {
+			this = NULL;
+			goto out;
+		}
+
+		free(value);
+		value = NULL;
+	}
+
 out:
 	if (tokv)
 		free(tokv);
@@ -1947,6 +1997,13 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 		goto out;
 	}
 	free(value);
+	value = pv_json_get_value(buf, "disks_v3", tokv, tokc);
+	if (value && parse_disks(this, value)) {
+		pv_log(ERROR, "cannot parse disks_v3 in device.json");
+		this = NULL;
+		goto out;
+	}
+	free(value);
 
 	value = pv_json_get_value(buf, "volumes", tokv, tokc);
 	if (!value) {
@@ -2040,6 +2097,7 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 		if (!strncmp("bsp/run.json", buf + (*k)->start, n) ||
 		    !strncmp("bsp/drivers.json", buf + (*k)->start, n) ||
 		    !strncmp("disks.json", buf + (*k)->start, n) ||
+		    !strncmp("disks_v3.json", buf + (*k)->start, n) ||
 		    !strncmp("groups.json", buf + (*k)->start, n) ||
 		    !strncmp("device.json", buf + (*k)->start, n) ||
 		    !strncmp("#spec", buf + (*k)->start, n)) {

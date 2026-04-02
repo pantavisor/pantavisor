@@ -35,7 +35,8 @@ typedef enum {
 	DISK_DM_CRYPT_CAAM,
 	DISK_DM_CRYPT_DCP,
 	DISK_SWAP,
-	DISK_VOLUME
+	DISK_VOLUME,
+	DISK_DUAL
 } pv_disk_t;
 
 typedef enum {
@@ -84,6 +85,8 @@ struct pv_disk {
 	int init_order_count;
 	// raw JSON for export to /run/pantavisor/disks/
 	char *json_str;
+	// back-pointer to parent disk list (set by pv_disk_add)
+	struct dl_list *disk_list;
 	// pv_disk
 	struct dl_list list;
 };
@@ -156,6 +159,8 @@ static inline const char *pv_disk_type_to_str(pv_disk_t type)
 		return "swap-disk";
 	case DISK_VOLUME:
 		return "volume-disk";
+	case DISK_DUAL:
+		return "dual";
 	}
 	return "unknown";
 }
@@ -188,6 +193,8 @@ static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 			return DISK_SWAP;
 		else if (!strcmp(type_str, "volume-disk"))
 			return DISK_VOLUME;
+		else if (!strcmp(type_str, "dual"))
+			return DISK_DUAL;
 	}
 	return DISK_UNKNOWN;
 }
@@ -199,5 +206,6 @@ extern struct pv_disk_impl zram_impl;
 extern struct pv_disk_impl crypt_impl;
 extern struct pv_disk_impl volume_impl;
 extern struct pv_disk_impl swap_impl;
+extern struct pv_disk_impl dual_impl;
 
 #endif

@@ -100,15 +100,14 @@ static struct pv_disk_impl *get_disk_implementation(struct pv_disk *disk)
 {
 	struct pv_disk_impl *impl = NULL;
 
-	// dual mode disks use crypt_impl regardless of type
-	if (disk->mode == DISK_DM_CRYPT_MODE_DUAL)
-		return &crypt_impl;
-
 	switch (disk->type) {
 	case DISK_DM_CRYPT_CAAM:
 	case DISK_DM_CRYPT_DCP:
 	case DISK_DM_CRYPT_VERSATILE:
 		impl = &crypt_impl;
+		break;
+	case DISK_DUAL:
+		impl = &dual_impl;
 		break;
 	case DISK_SWAP:
 		if (!disk->provision) {
@@ -286,6 +285,7 @@ struct pv_disk *pv_disk_add(struct dl_list *disks)
 	if (d) {
 		dl_list_init(&d->list);
 		dl_list_add_tail(disks, &d->list);
+		d->disk_list = disks;
 	}
 
 	return d;
