@@ -1,0 +1,65 @@
+name: "On push: Raspberry Pi ARMv8"
+
+on:
+  push:
+    paths:
+      - "**"
+      - ".github/configs/**"
+
+jobs:
+  build:
+    name: "build (${{ matrix.machine_name }})"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - machine_name: sunxi-bananapi-m2-berry-scarthgap
+            configs: kas/build-configs/release/sunxi-bananapi-m2-berry-scarthgap.yaml:kas/build-configs/shared-vols.yaml
+          - machine_name: raspberrypi-armv8-scarthgap
+            configs: kas/build-configs/release/raspberrypi-armv8-scarthgap.yaml:kas/build-configs/shared-vols.yaml
+          - machine_name: docker-x86_64-scarthgap
+            configs: kas/build-configs/release/docker-x86_64-scarthgap.yaml:kas/build-configs/shared-vols.yaml
+
+    runs-on: ["self-hosted"]
+    container:
+      image: ghcr.io/pantacor/kas/kas:next-v7
+      volumes:
+        - shared:/shared
+      options: --user root
+    env:
+      configs: ${{ matrix.configs }}
+    steps:
+      - name: checkout meta-pantavisor
+        uses: actions/checkout@v2
+        with:
+          repository: pantavisor/meta-pantavisor
+
+      - name: debug
+        run: echo "Pantavisor ref - ${{ github.sha }}"
+
+      - name: chown
+        run: chown -R builder:builder $RUNNER_WORKSPACE
+      - name: chowna
+        run: chown -R builder:builder /__w
+      - name: shared
+        run: mkdir -p /shared/sstate && chown builder:builder /shared/sstate && mkdir -p /shared/dldir && chown builder:builder /shared/dldir
+
+      - name: Build Kas
+        run:
+          su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ env.configs }}  -c 'devtool modify pantavisor &&
+          cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake -c compile pantavisor' "
+
+  summary:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build Summary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Machine | Result |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs | jq -r '.jobs[] | select(.name | startswith("build (")) | "| " + (.name | ltrimstr("build (") | rtrimstr(")")) + " | " + (if .conclusion == "success" then "✅" elif .conclusion == "failure" then "❌" elif .conclusion == "cancelled" then "🚫" elif .conclusion == "skipped" then "⏭️" else (.conclusion // "🔄") end) + " |"' >> $GITHUB_STEP_SUMMARY
