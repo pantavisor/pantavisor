@@ -37,21 +37,27 @@
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-#define PV_DISK_CRYPT_CMD_TMPL "%s %s %s %s %s"
+#define PV_DISK_CRYPT_CMD_TMPL \
+	"%s %s --type '%s' --mode '%s'%s%s -- '%s' '%s'"
 
 static int run_action(struct pv_disk *disk, const char *action)
 {
-	const char *type = pv_disk_type_to_str(disk->type);
-
-	char path[PATH_MAX] = { 0 };
-	pv_paths_storage_mounted_disk_path(path, PATH_MAX, "dmcrypt",
+	char mntpath[PATH_MAX] = { 0 };
+	pv_paths_storage_mounted_disk_path(mntpath, PATH_MAX, "dmcrypt",
 					   disk->name);
 	char script[PATH_MAX] = { 0 };
 	pv_paths_lib_crypt(script, PATH_MAX, "crypt");
 
+	const char *type = pv_disk_type_to_str(disk->type);
+	const char *mode = pv_disk_dm_crypt_mode_to_str(disk->mode);
+	const char *ro = disk->read_only ? " --read-only" : "";
+	const char *nc = disk->no_create ? " --no-create" : "";
+
 	int ret = pv_disk_utils_run_cmd(PV_DISK_CRYPT_CMD_TMPL,
 					"disk-crypt-info", "disk-crypt-err",
-					script, action, type, disk->path, path);
+					script, action, type, mode, ro, nc,
+					disk->path, mntpath);
+
 	if (ret == 0) {
 		if (!strcmp(action, "mount"))
 			disk->mounted = true;

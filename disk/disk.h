@@ -35,8 +35,19 @@ typedef enum {
 	DISK_DM_CRYPT_CAAM,
 	DISK_DM_CRYPT_DCP,
 	DISK_SWAP,
-	DISK_VOLUME
+	DISK_VOLUME,
+	DISK_DUAL
 } pv_disk_t;
+
+typedef enum {
+	DISK_DM_CRYPT_MODE_UNKNOWN,
+	DISK_DM_CRYPT_MODE_MAINLINE,
+	DISK_DM_CRYPT_MODE_NXP,
+	DISK_DM_CRYPT_MODE_DUAL
+} pv_disk_dm_crypt_mode_t;
+
+#define PV_DISK_DUAL_MAX_DISKS 4
+#define PV_DISK_DUAL_MAX_INIT_ORDER 8
 
 typedef enum {
 	DISK_FORMAT_UNKNOWN,
@@ -54,6 +65,7 @@ typedef enum {
 struct pv_disk {
 	char *name;
 	pv_disk_t type;
+	pv_disk_dm_crypt_mode_t mode;
 	pv_disk_format_t format;
 	char *path;
 	char *uuid;
@@ -63,13 +75,26 @@ struct pv_disk {
 	char *provision;
 	char *mount_target;
 	bool def;
+	bool always_on;
+	bool read_only;
+	bool no_create;
 	bool mounted;
+	// dual mode fields
+	char *dual_disks[PV_DISK_DUAL_MAX_DISKS];
+	int dual_disks_count;
+	char *init_order[PV_DISK_DUAL_MAX_INIT_ORDER];
+	int init_order_count;
+	// raw JSON for export to /run/pantavisor/disks/
+	char *json_str;
+	// back-pointer to parent disk list (set by pv_disk_add)
+	struct dl_list *disk_list;
 	// pv_disk
 	struct dl_list list;
 };
 
 struct pv_disk *pv_disk_add(struct dl_list *disks);
 int pv_disk_mount_swap(struct dl_list *disks);
+int pv_disk_mount_always_on(struct dl_list *disks);
 int pv_disk_umount_all(struct dl_list *disks);
 void pv_disk_empty(struct dl_list *disks);
 int pv_disk_mount(struct pv_disk *disk);
@@ -103,6 +128,21 @@ static inline pv_disk_format_t pv_disk_str_to_format(const char *format_str)
 	return DISK_FORMAT_UNKNOWN;
 }
 
+static inline const char *pv_disk_dm_crypt_mode_to_str(pv_disk_dm_crypt_mode_t mode)
+{
+	switch (mode) {
+	case DISK_DM_CRYPT_MODE_UNKNOWN:
+		return "unknown";
+	case DISK_DM_CRYPT_MODE_MAINLINE:
+		return "mainline";
+	case DISK_DM_CRYPT_MODE_NXP:
+		return "nxp";
+	case DISK_DM_CRYPT_MODE_DUAL:
+		return "dual";
+	}
+	return "unknown";
+}
+
 static inline const char *pv_disk_type_to_str(pv_disk_t type)
 {
 	switch (type) {
@@ -120,8 +160,23 @@ static inline const char *pv_disk_type_to_str(pv_disk_t type)
 		return "swap-disk";
 	case DISK_VOLUME:
 		return "volume-disk";
+	case DISK_DUAL:
+		return "dual";
 	}
 	return "unknown";
+}
+
+static inline pv_disk_dm_crypt_mode_t pv_disk_dm_crypt_str_to_mode(const char *mode_str)
+{
+	if (mode_str) {
+		if (!strcmp(mode_str, "mainline"))
+			return DISK_DM_CRYPT_MODE_MAINLINE;
+		else if (!strcmp(mode_str, "nxp"))
+			return DISK_DM_CRYPT_MODE_NXP;
+		else if (!strcmp(mode_str, "dual"))
+			return DISK_DM_CRYPT_MODE_DUAL;
+	}
+	return DISK_DM_CRYPT_MODE_UNKNOWN;
 }
 
 static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
@@ -139,14 +194,28 @@ static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 			return DISK_SWAP;
 		else if (!strcmp(type_str, "volume-disk"))
 			return DISK_VOLUME;
+		else if (!strcmp(type_str, "dual"))
+			return DISK_DUAL;
 	}
-
 	return DISK_UNKNOWN;
 }
+
+struct pv_disk *pv_disk_find(struct dl_list *disks, const char *name);
+int pv_disk_export_all(struct dl_list *disks);
+
+/* Disks with names starting with '_' are internal — intended only as
+ * sub-disk references for composite types (dual, future raid, etc.).
+ * Volumes should not reference them directly. */
+static inline bool pv_disk_is_internal(struct pv_disk *d)
+{
+	return d->name && d->name[0] == '_';
+}
+
 
 extern struct pv_disk_impl zram_impl;
 extern struct pv_disk_impl crypt_impl;
 extern struct pv_disk_impl volume_impl;
 extern struct pv_disk_impl swap_impl;
+extern struct pv_disk_impl dual_impl;
 
 #endif

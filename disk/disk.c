@@ -29,6 +29,8 @@
 #include "paths.h"
 #include "utils/tsh.h"
 #include "utils/fs.h"
+#include "utils/str.h"
+#include "config.h"
 #include "logserver/logserver.h"
 
 #include <errno.h>
@@ -63,6 +65,13 @@ static void pv_disk_free(struct pv_disk *disk)
 		free(disk->provision);
 	if (disk->mount_target)
 		free(disk->mount_target);
+	if (disk->json_str)
+		free(disk->json_str);
+
+	for (int i = 0; i < disk->dual_disks_count; i++)
+		free(disk->dual_disks[i]);
+	for (int i = 0; i < disk->init_order_count; i++)
+		free(disk->init_order[i]);
 
 	free(disk);
 }
@@ -96,6 +105,9 @@ static struct pv_disk_impl *get_disk_implementation(struct pv_disk *disk)
 	case DISK_DM_CRYPT_DCP:
 	case DISK_DM_CRYPT_VERSATILE:
 		impl = &crypt_impl;
+		break;
+	case DISK_DUAL:
+		impl = &dual_impl;
 		break;
 	case DISK_SWAP:
 		if (!disk->provision) {
@@ -217,6 +229,30 @@ int pv_disk_mount_swap(struct dl_list *disks)
 	return 0;
 }
 
+int pv_disk_mount_always_on(struct dl_list *disks)
+{
+	if (!disks)
+		return -1;
+
+	pv_log(INFO, "mounting all always-on disks");
+
+	struct pv_disk *d, *tmp;
+	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
+	{
+		if (!d->always_on || d->type == DISK_SWAP)
+			continue;
+
+		int err = pv_disk_mount(d);
+		if (err != 0) {
+			pv_log(ERROR, "cannot mount always-on disk %s",
+			       d->name);
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 int pv_disk_umount_all(struct dl_list *disks)
 {
 	int ret = 0;
@@ -249,7 +285,50 @@ struct pv_disk *pv_disk_add(struct dl_list *disks)
 	if (d) {
 		dl_list_init(&d->list);
 		dl_list_add_tail(disks, &d->list);
+		d->disk_list = disks;
 	}
 
 	return d;
+}
+
+struct pv_disk *pv_disk_find(struct dl_list *disks, const char *name)
+{
+	if (!disks || !name)
+		return NULL;
+
+	struct pv_disk *d;
+	dl_list_for_each(d, disks, struct pv_disk, list)
+	{
+		if (d->name && !strcmp(d->name, name))
+			return d;
+	}
+
+	return NULL;
+}
+
+int pv_disk_export_all(struct dl_list *disks)
+{
+	if (!disks)
+		return -1;
+
+	const char *disksdir = pv_config_get_str(PV_SYSTEM_DISKSDIR);
+	pv_fs_mkdir_p(disksdir, 0755);
+
+	struct pv_disk *d;
+	dl_list_for_each(d, disks, struct pv_disk, list)
+	{
+		if (!d->name || !d->json_str)
+			continue;
+
+		char path[PATH_MAX];
+		SNPRINTF_WTRUNC(path, sizeof(path), "%s/%s.json",
+				disksdir, d->name);
+
+		if (pv_fs_file_save(path, d->json_str, 0644) < 0) {
+			pv_log(WARN, "cannot export disk %s to %s", d->name,
+			       path);
+		}
+	}
+
+	return 0;
 }

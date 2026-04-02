@@ -32,6 +32,8 @@ set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
 
 # lets use FHS 3.0 from 2015
 set(CMAKE_INSTALL_RUNSTATEDIR "/run" CACHE PATH "Run-time variable data")
+set(CMAKE_INSTALL_FULL_RUNSTATEDIR "/run" CACHE PATH "Run-time variable data")
+set(PV_INSTALL_FULL_RUNSTATEDIR "${CMAKE_INSTALL_FULL_RUNSTATEDIR}/pantavisor")
 
 set(PV_INSTALL_PVLIBDIR "${CMAKE_PROJECT_NAME}/pv")
 set(PV_INSTALL_FULL_PVLIBDIR "${CMAKE_INSTALL_FULL_LIBDIR}/${PV_INSTALL_PVLIBDIR}")
@@ -211,6 +213,7 @@ add_executable(pantavisor
 			disk/disk.c
 			disk/disk.h
 			disk/disk_crypt.c
+			disk/disk_dual.c
 			disk/disk_impl.h
 			disk/disk_swap.c
 			disk/disk_utils.c
