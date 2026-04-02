@@ -231,10 +231,10 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 			echo->seq, total);
 
 		/* send response in chunks of up to 400 bytes per frame */
-		uint16_t sent = 0;
+		uint32_t sent = 0;
 		uint8_t frag = 0;
 		while (sent < total) {
-			uint16_t chunk = total - sent;
+			uint32_t chunk = total - sent;
 			if (chunk > 400)
 				chunk = 400;
 
@@ -243,12 +243,11 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 				.seq = echo->seq,
 				.data_len = chunk,
 			};
-			/* fill with pattern: frag number + offset */
-			for (uint16_t i = 0; i < chunk; i++)
+			for (uint32_t i = 0; i < chunk; i++)
 				resp.data[i] = (uint8_t)((frag << 4) | (i & 0xF));
 
 			s->transport->send_frame(s->transport, &resp,
-						 4 + chunk);
+						 8 + chunk);
 			sent += chunk;
 			frag++;
 		}
