@@ -14,6 +14,7 @@
 #include "pvcm_protocol.h"
 #include "pvcm_bridge.h"
 #include "pvcm_dbus_bridge.h"
+#include "pvcm_fs_bridge.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -219,6 +220,17 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 		break;
 	case PVCM_OP_DBUS_UNSUBSCRIBE:
 		pvcm_dbus_bridge_on_unsubscribe(s->transport, buf, len);
+		break;
+
+	/* Filesystem gateway */
+	case PVCM_OP_FS_REQ:
+		pvcm_fs_bridge_on_req(s->transport, buf, len);
+		break;
+	case PVCM_OP_FS_DATA:
+		pvcm_fs_bridge_on_data(s->transport, buf, len);
+		break;
+	case PVCM_OP_FS_END:
+		pvcm_fs_bridge_on_end(s->transport, buf, len);
 		break;
 
 	/* Transport ping test — proxy responds with requested total size,

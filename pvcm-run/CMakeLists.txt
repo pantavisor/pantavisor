@@ -15,6 +15,7 @@ add_executable(pvcm-run
     pvcm_protocol.c
     pvcm_bridge.c
     pvcm_dbus_bridge.c
+    pvcm_fs_bridge.c
     pvcm_sendq.c
 )
 

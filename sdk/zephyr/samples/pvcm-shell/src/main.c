@@ -21,6 +21,9 @@
 LOG_MODULE_REGISTER(pvcm_main, LOG_LEVEL_DBG);
 
 #include <pantavisor/pvcm.h>
+#ifdef CONFIG_PANTAVISOR_FS
+#include <pantavisor/pvcm_fs.h>
+#endif
 #include <pantavisor/pvcm_protocol.h>
 
 #ifdef CONFIG_OPENAMP
@@ -334,6 +337,12 @@ int main(void)
 
 #ifdef CONFIG_PANTAVISOR_DBUS
 	printk("MCU D-Bus gateway enabled\n");
+#endif
+
+#ifdef CONFIG_PANTAVISOR_FS
+	printk("MCU filesystem gateway enabled\n");
+	/* Mount deferred — needs transport ready (after handshake).
+	 * Use pvcm_fs_mount() from app code or a delayed work item. */
 #endif
 
 #ifdef CONFIG_OPENAMP

@@ -100,6 +100,12 @@ typedef enum {
 	PVCM_OP_DBUS_INVOKE_RESP    = 0x47,  /* MCU -> Linux: MCU reply */
 	PVCM_OP_DBUS_DATA           = 0x48,  /* either: data stream for D-Bus ops */
 
+	/* Filesystem Gateway -- remote FS operations over RPMsg */
+	PVCM_OP_FS_REQ              = 0x50,  /* MCU -> Linux: FS operation request */
+	PVCM_OP_FS_RESP             = 0x51,  /* Linux -> MCU: operation result */
+	PVCM_OP_FS_DATA             = 0x52,  /* either: data chunk (read/write) */
+	PVCM_OP_FS_END              = 0x53,  /* either: transfer complete */
+
 	/* Transport test — bidirectional echo for debugging */
 	PVCM_OP_ECHO                = 0xE0,  /* either direction: echo back */
 	PVCM_OP_ECHO_RESP           = 0xE1,  /* response to echo */
@@ -384,6 +390,77 @@ typedef struct {
 	uint32_t data_len;
 	uint32_t crc32;
 } __packed pvcm_dbus_invoke_resp_t;
+
+/* ---- Filesystem Gateway ---- */
+
+/* FS sub-operations */
+enum pvcm_fs_op {
+	PVCM_FS_MOUNT     = 0x00,
+	PVCM_FS_UNMOUNT   = 0x01,
+	PVCM_FS_OPEN      = 0x02,
+	PVCM_FS_CLOSE     = 0x03,
+	PVCM_FS_READ      = 0x04,
+	PVCM_FS_WRITE     = 0x05,
+	PVCM_FS_LSEEK     = 0x06,
+	PVCM_FS_TRUNCATE  = 0x07,
+	PVCM_FS_SYNC      = 0x08,
+	PVCM_FS_STAT      = 0x09,
+	PVCM_FS_UNLINK    = 0x0A,
+	PVCM_FS_RENAME    = 0x0B,
+	PVCM_FS_MKDIR     = 0x0C,
+	PVCM_FS_OPENDIR   = 0x0D,
+	PVCM_FS_READDIR   = 0x0E,
+	PVCM_FS_CLOSEDIR  = 0x0F,
+	PVCM_FS_STATVFS   = 0x10,
+};
+
+/* FS_REQ (MCU -> Linux) */
+typedef struct {
+	uint8_t  op;            /* PVCM_OP_FS_REQ */
+	uint8_t  req_id;
+	uint8_t  fs_op;         /* PVCM_FS_OPEN, READ, etc. */
+	uint8_t  fh;            /* file/dir handle (0 for open/mount) */
+	uint32_t arg1;          /* flags, offset, whence, etc. */
+	uint32_t arg2;          /* length, mode, etc. */
+	uint16_t path_len;      /* bytes of path in FS_DATA stream */
+	uint16_t reserved;
+	uint32_t data_len;      /* total bytes of write data in FS_DATA */
+	uint32_t crc32;
+} __packed pvcm_fs_req_t;
+
+/* FS_RESP (Linux -> MCU) */
+typedef struct {
+	uint8_t  op;            /* PVCM_OP_FS_RESP */
+	uint8_t  req_id;
+	uint8_t  fs_op;         /* echo back which operation */
+	uint8_t  fh;            /* assigned handle (for open/opendir) */
+	int32_t  result;        /* 0 success, negative errno */
+	uint32_t data_len;      /* bytes of data in FS_DATA stream */
+	uint32_t crc32;
+} __packed pvcm_fs_resp_t;
+
+/* FS_DATA (bidirectional: write MCU->Linux, read Linux->MCU) */
+typedef struct {
+	uint8_t  op;            /* PVCM_OP_FS_DATA */
+	uint8_t  req_id;
+	uint16_t len;
+	uint8_t  data[PVCM_MAX_CHUNK_SIZE];
+	uint32_t crc32;
+} __packed pvcm_fs_data_t;
+
+/* FS_END (bidirectional: marks data stream complete) */
+typedef struct {
+	uint8_t  op;            /* PVCM_OP_FS_END */
+	uint8_t  req_id;
+	uint8_t  reserved[2];
+	uint32_t crc32;
+} __packed pvcm_fs_end_t;
+
+/* Serialized stat result in FS_DATA for STAT/READDIR responses */
+struct pvcm_fs_stat {
+	uint32_t type;          /* FS_DIR_ENTRY_FILE or FS_DIR_ENTRY_DIR */
+	uint32_t size;          /* file size in bytes */
+} __packed;
 
 /* FW_UPDATE_START (Linux -> MCU) */
 typedef struct {
