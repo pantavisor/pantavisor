@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 #include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
