@@ -603,7 +603,7 @@ static off_t _get_partition_size(const char *device)
 	else
 		dev_name = device;
 
-	snprintf(path, sizeof(path), "/sys/class/block/%s/size", dev_name);
+	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/class/block/%s/size", dev_name);
 	int fd = open(path, O_RDONLY);
 	if (fd < 0)
 		return -1;
