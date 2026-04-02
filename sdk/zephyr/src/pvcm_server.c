@@ -36,6 +36,7 @@ extern void pvcm_client_on_invoke_end(const uint8_t *buf, int len);
 /* D-Bus callbacks (from pvcm_dbus.c) */
 extern void pvcm_dbus_on_call_resp(const uint8_t *buf, int len);
 extern void pvcm_dbus_on_signal(const uint8_t *buf, int len);
+extern void pvcm_dbus_on_data(const uint8_t *buf, int len);
 #endif
 
 #define PVCM_SERVER_STACK_SIZE  4096
@@ -162,6 +163,9 @@ void pvcm_server_dispatch(const uint8_t *buf, int len)
 		break;
 	case PVCM_OP_DBUS_SIGNAL:
 		pvcm_dbus_on_signal(buf, len);
+		break;
+	case PVCM_OP_DBUS_DATA:
+		pvcm_dbus_on_data(buf, len);
 		break;
 #endif
 	case PVCM_OP_ECHO_RESP:
