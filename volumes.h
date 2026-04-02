@@ -46,6 +46,7 @@ struct pv_volume {
 	char *umount_cmd;
 	struct pv_platform *plat;
 	struct pv_disk *disk;
+	char *disk_ref; // explicitly requested disk name (NULL = default)
 	struct dl_list list; // pv_volume
 };
 

@@ -86,6 +86,8 @@ void pv_volume_free(struct pv_volume *v)
 		free(v->dest);
 	if (v->umount_cmd)
 		free(v->umount_cmd);
+	if (v->disk_ref)
+		free(v->disk_ref);
 
 	free(v);
 }
@@ -119,6 +121,7 @@ struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
 		return NULL;
 
 	v->name = strdup(name);
+	v->disk_ref = disk ? strdup(disk) : NULL;
 	dl_list_init(&v->list);
 	dl_list_add_tail(&s->volumes, &v->list);
 	disks = &s->disks;
@@ -161,6 +164,14 @@ int pv_volume_mount(struct pv_volume *v)
 
 	if (v->disk) {
 		disk_name = v->disk->name;
+	}
+
+	/* if a disk was explicitly requested but not resolved, fail */
+	if (v->disk_ref && !v->disk) {
+		pv_log(ERROR,
+		       "volume '%s' requires disk '%s' which was not found",
+		       v->name, v->disk_ref);
+		return -1;
 	}
 
 	if (v->disk && !v->disk->def && !v->disk->mounted) {

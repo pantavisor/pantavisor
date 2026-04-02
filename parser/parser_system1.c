@@ -249,6 +249,15 @@ static pv_disk_format_t parse_disks_get_format(const char *str,
 	return format;
 }
 
+static pv_disk_dm_crypt_mode_t parse_disks_dm_crypt_get_mode(const char *str,
+				jsmntok_t *diskv, int diskc)
+{
+	char *mode_str = pv_json_get_value(str, "mode", diskv, diskc);
+	pv_disk_dm_crypt_mode_t mode = pv_disk_dm_crypt_str_to_mode(mode_str);
+	free(mode_str);
+	return mode;
+}
+
 static pv_disk_t parse_disks_get_type(const char *str, jsmntok_t *diskv,
 				      int diskc)
 {
@@ -272,7 +281,21 @@ static bool parse_disks_get_default(const char *str, jsmntok_t *diskv,
 	return ret;
 }
 
-static int parse_disks(struct pv_state *s, char *value)
+static bool parse_disks_get_bool(const char *str, const char *key,
+				 jsmntok_t *diskv, int diskc)
+{
+	bool ret = false;
+	char *val = pv_json_get_value(str, key, diskv, diskc);
+
+	if (val && (!strncmp(val, "true", 4) || !strncmp(val, "yes", 3)))
+		ret = true;
+
+	free(val);
+
+	return ret;
+}
+
+static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 {
 	int tokc, size, ret = 1;
 	char *str = NULL;
@@ -319,21 +342,95 @@ static int parse_disks(struct pv_state *s, char *value)
 						     diskv, diskc);
 		d->uuid = pv_json_get_value(str, "uuid", diskv, diskc);
 		d->type = parse_disks_get_type(str, diskv, diskc);
+		d->mode = parse_disks_dm_crypt_get_mode(str, diskv, diskc);
 
 		if (d->type == DISK_UNKNOWN) {
-			pv_log(ERROR, "cannot add new disk, type = UNKNOWN");
+			if (lenient) {
+				pv_log(WARN, "disk '%s' has unknown type, skipping",
+				       d->name ? d->name : "(null)");
+				dl_list_del(&d->list);
+				t = t + (jsmnutil_object_key_count(str, diskv) * 2);
+				free(d->name);
+				free(d->path);
+				free(d->mount_target);
+				free(d->mount_ops);
+				free(d->format_ops);
+				free(d->provision);
+				free(d->provision_ops);
+				free(d->uuid);
+				free(d->json_str);
+				free(d);
+				if (diskv) {
+					free(diskv);
+					diskv = NULL;
+				}
+				if (str) {
+					free(str);
+					str = NULL;
+				}
+				continue;
+			}
+			pv_log(ERROR, "disk '%s' has unknown type",
+			       d->name ? d->name : "(null)");
 			goto out;
 		}
 
 		d->format = parse_disks_get_format(str, diskv, diskc);
 		if ((d->type == DISK_SWAP || d->type == DISK_VOLUME) &&
 		    d->format == DISK_FORMAT_UNKNOWN) {
-			pv_log(ERROR, "cannot add new disk, format = UNKNOWN");
-			goto out;
+			pv_log(WARN, "new disk format = UNKNOWN - likely that mount fails");
 		}
 
 		d->def = parse_disks_get_default(str, diskv, diskc);
+		d->always_on = parse_disks_get_bool(str, "always_on", diskv,
+						    diskc);
+		d->read_only = parse_disks_get_bool(str, "read_only", diskv,
+						    diskc);
 		d->mounted = false;
+
+		// save raw JSON for export to /run/pantavisor/disks/
+		d->json_str = strdup(str);
+
+		// parse dual mode arrays
+		if (d->type == DISK_DUAL) {
+			char *disks_str = pv_json_get_value(str, "disks", diskv, diskc);
+			if (disks_str) {
+				jsmntok_t *dtokv = NULL;
+				int dtokc;
+				if (jsmnutil_parse_json(disks_str, &dtokv, &dtokc) > 0) {
+					int dcount = jsmnutil_array_count(disks_str, dtokv);
+					int dremain = dcount;
+					jsmntok_t *dt = dtokv + 1;
+					for (int i = 0; i < dcount && i < PV_DISK_DUAL_MAX_DISKS; i++) {
+						char *entry = pv_json_array_get_one_str(disks_str, &dremain, &dt);
+						if (entry) {
+							d->dual_disks[d->dual_disks_count++] = entry;
+						}
+					}
+					free(dtokv);
+				}
+				free(disks_str);
+			}
+
+			char *order_str = pv_json_get_value(str, "init_order", diskv, diskc);
+			if (order_str) {
+				jsmntok_t *otokv = NULL;
+				int otokc;
+				if (jsmnutil_parse_json(order_str, &otokv, &otokc) > 0) {
+					int ocount = jsmnutil_array_count(order_str, otokv);
+					int oremain = ocount;
+					jsmntok_t *ot = otokv + 1;
+					for (int i = 0; i < ocount && i < PV_DISK_DUAL_MAX_INIT_ORDER; i++) {
+						char *entry = pv_json_array_get_one_str(order_str, &oremain, &ot);
+						if (entry) {
+							d->init_order[d->init_order_count++] = entry;
+						}
+					}
+					free(otokv);
+				}
+				free(order_str);
+			}
+		}
 
 		// you need to jump (in tokens) to the next array, so
 		// this is the number of keys + values
@@ -361,6 +458,11 @@ out:
 		free(tokv);
 
 	return ret;
+}
+
+static int parse_disks(struct pv_state *s, char *value)
+{
+	return parse_disks_ex(s, value, false);
 }
 
 static int parse_bsp(struct pv_state *s, char *value, int n)
@@ -1639,6 +1741,34 @@ static struct pv_state *system1_parse_disks(struct pv_state *this,
 		value = NULL;
 	}
 
+	count = pv_json_get_key_count(buf, "disks_v3.json", tokv, tokc);
+	if (count == 1) {
+		if (pv_json_get_key_count(buf, "device.json", tokv, tokc)) {
+			pv_log(WARN,
+			       "disks_v3.json found but device.json was already parsed. Ignoring disks_v3.json...");
+			goto out;
+		}
+
+		value = pv_json_get_value(buf, "disks_v3.json", tokv, tokc);
+		if (!value) {
+			pv_log(WARN,
+			       "Unable to get disks_v3.json value from state");
+			this = NULL;
+			goto out;
+		}
+
+		pv_log(DEBUG, "adding json 'disks_v3.json'");
+		pv_jsons_add(this, "disks_v3.json", value);
+
+		if (parse_disks_ex(this, value, true)) {
+			this = NULL;
+			goto out;
+		}
+
+		free(value);
+		value = NULL;
+	}
+
 out:
 	if (tokv)
 		free(tokv);
@@ -1940,23 +2070,35 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 	free(value);
 
 	value = pv_json_get_value(buf, "disks", tokv, tokc);
-	if (!value) {
-		pv_log(WARN, "disks not defined in device.json");
-		goto out;
+	if (value) {
+		if (parse_disks(this, value)) {
+			pv_log(ERROR, "cannot parse disks in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
 	}
-	if (parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks in device.json");
-		this = NULL;
-		goto out;
-	}
-	free(value);
 	value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
-	if (value && parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks_v2 in device.json");
-		this = NULL;
-		goto out;
+	if (value) {
+		if (parse_disks(this, value)) {
+			pv_log(ERROR, "cannot parse disks_v2 in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
 	}
-	free(value);
+	value = pv_json_get_value(buf, "disks_v3", tokv, tokc);
+	if (value) {
+		if (parse_disks_ex(this, value, true)) {
+			pv_log(ERROR, "cannot parse disks_v3 in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
+	}
 
 	value = pv_json_get_value(buf, "volumes", tokv, tokc);
 	if (!value) {
@@ -2050,6 +2192,7 @@ static struct pv_state *system1_parse_objects(struct pv_state *this,
 		if (!strncmp("bsp/run.json", buf + (*k)->start, n) ||
 		    !strncmp("bsp/drivers.json", buf + (*k)->start, n) ||
 		    !strncmp("disks.json", buf + (*k)->start, n) ||
+		    !strncmp("disks_v3.json", buf + (*k)->start, n) ||
 		    !strncmp("groups.json", buf + (*k)->start, n) ||
 		    !strncmp("device.json", buf + (*k)->start, n) ||
 		    !strncmp("#spec", buf + (*k)->start, n)) {
