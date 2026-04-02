@@ -1990,30 +1990,35 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 	free(value);
 
 	value = pv_json_get_value(buf, "disks", tokv, tokc);
-	if (!value) {
-		pv_log(WARN, "disks not defined in device.json");
-		goto out;
+	if (value) {
+		if (parse_disks(this, value)) {
+			pv_log(ERROR, "cannot parse disks in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
 	}
-	if (parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks in device.json");
-		this = NULL;
-		goto out;
-	}
-	free(value);
 	value = pv_json_get_value(buf, "disks_v2", tokv, tokc);
-	if (value && parse_disks(this, value)) {
-		pv_log(ERROR, "cannot parse disks_v2 in device.json");
-		this = NULL;
-		goto out;
+	if (value) {
+		if (parse_disks(this, value)) {
+			pv_log(ERROR, "cannot parse disks_v2 in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
 	}
-	free(value);
 	value = pv_json_get_value(buf, "disks_v3", tokv, tokc);
-	if (value && parse_disks_ex(this, value, true)) {
-		pv_log(ERROR, "cannot parse disks_v3 in device.json");
-		this = NULL;
-		goto out;
+	if (value) {
+		if (parse_disks_ex(this, value, true)) {
+			pv_log(ERROR, "cannot parse disks_v3 in device.json");
+			this = NULL;
+			goto out;
+		}
+		free(value);
+		value = NULL;
 	}
-	free(value);
 
 	value = pv_json_get_value(buf, "volumes", tokv, tokc);
 	if (!value) {
