@@ -93,13 +93,13 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 	size_t total = 4 + len + 4;
 
 	/* RPMsg vring has limited TX slots. If write fails (ENOMEM/EAGAIN),
-	 * the MCU hasn't consumed the buffer yet. Retry with backoff. */
-	for (int attempt = 0; attempt < 20; attempt++) {
+	 * poll for write-readiness — the MCU will consume buffers and the
+	 * fd becomes writable again. No blind sleep. */
+	for (;;) {
 		ssize_t n = write(t->fd, frame, total);
 		if (n == (ssize_t)total)
 			return 0;
 		if (n >= 0) {
-			/* partial write — shouldn't happen with RPMsg tty */
 			fprintf(stderr, "[pvcm-run] rpmsg partial write: "
 				"%zd/%zu\n", n, total);
 			return -1;
@@ -108,12 +108,14 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 			fprintf(stderr, "[pvcm-run] rpmsg write error: %m\n");
 			return -1;
 		}
-		/* vring full — wait for MCU to consume, then retry */
-		usleep(5000); /* 5ms */
+		/* wait for vring space (10s timeout) */
+		struct pollfd pfd = { .fd = t->fd, .events = POLLOUT };
+		int ret = poll(&pfd, 1, 10000);
+		if (ret <= 0) {
+			fprintf(stderr, "[pvcm-run] rpmsg write timeout\n");
+			return -1;
+		}
 	}
-
-	fprintf(stderr, "[pvcm-run] rpmsg write failed after retries\n");
-	return -1;
 }
 
 /*
