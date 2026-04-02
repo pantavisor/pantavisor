@@ -93,39 +93,19 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 
 	size_t total = 4 + len + 4;
 
-	/* RPMsg vring has limited TX slots. If write fails (ENOMEM/EAGAIN),
-	 * the MCU hasn't consumed the buffer yet. Yield briefly to let the
-	 * M7 process, then retry. The ttyRPMSG driver doesn't support
-	 * POLLOUT, so we use a short yield (100μs) instead. */
-	struct timespec deadline;
-	clock_gettime(CLOCK_MONOTONIC, &deadline);
-	deadline.tv_sec += 10; /* 10s total timeout */
+	/* Blocking send — used during handshake only.
+	 * After event loop starts, send_frame is replaced by the
+	 * async send queue (pvcm_sendq_send_frame). */
+	ssize_t n = write(t->fd, frame, total);
+	if (n == (ssize_t)total)
+		return 0;
 
-	for (;;) {
-		ssize_t n = write(t->fd, frame, total);
-		if (n == (ssize_t)total)
-			return 0;
-		if (n >= 0) {
-			fprintf(stderr, "[pvcm-run] rpmsg partial write: "
-				"%zd/%zu\n", n, total);
-			return -1;
-		}
-		if (errno != ENOMEM && errno != EAGAIN) {
-			fprintf(stderr, "[pvcm-run] rpmsg write error: %m\n");
-			return -1;
-		}
-
-		struct timespec now;
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		if (now.tv_sec > deadline.tv_sec ||
-		    (now.tv_sec == deadline.tv_sec &&
-		     now.tv_nsec >= deadline.tv_nsec)) {
-			fprintf(stderr, "[pvcm-run] rpmsg write timeout\n");
-			return -1;
-		}
-
-		usleep(100); /* 100μs yield — let MCU drain vring */
-	}
+	if (n >= 0)
+		fprintf(stderr, "[pvcm-run] rpmsg partial write: %zd/%zu\n",
+			n, total);
+	else
+		fprintf(stderr, "[pvcm-run] rpmsg write error: %m\n");
+	return -1;
 }
 
 /*

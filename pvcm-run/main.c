@@ -543,6 +543,9 @@ int main(int argc, char **argv)
 					       transport_read_cb, &session);
 	event_add(transport_ev, NULL);
 
+	/* transport write queue — send_frame becomes non-blocking enqueue */
+	pvcm_transport_setup_write_event(transport, base);
+
 	/* heartbeat timer (5s interval) */
 	struct event *heartbeat_ev = event_new(base, -1, EV_PERSIST,
 					       heartbeat_timer_cb, &session);
