@@ -379,6 +379,75 @@ library. Frontend container presents UI on USB plug:
 One slot, catches everything, each stick gets a subdirectory. Zero
 config, zero API, zero UI. Containers read from `/media/usb/`.
 
+### Mount propagation into running containers
+
+Hotplug mounts must appear inside already-running containers without
+restarting them and without runtime mount injection.
+
+**Solution: shared mount propagation.** At container start, pantavisor
+bind-mounts the slot's host-level directory into the container
+namespace (e.g. `/media/pv/slots/ha-media/` → container's `/media`).
+The directory is empty initially. When a USB device is bound and
+mounted on the host side under that directory, Linux mount propagation
+(`MS_SHARED` / `MS_SLAVE`) makes the content appear inside the
+container automatically. Unmount propagates the same way.
+
+This means:
+- **No dynamic mount injection** into running containers
+- **No container restart** on hotplug events
+- Container gets an empty mount point at boot, populated at runtime
+- Standard Linux kernel mechanism, no pantavisor-specific plumbing
+- Container uses inotify on the mount point or status file to react
+
+**Setup at container start:**
+
+```
+host:      mkdir -p /media/pv/slots/ha-media
+host:      mount --make-shared /media/pv/slots/ha-media
+container: bind-mount /media/pv/slots/ha-media → /media  (via lxc.mount.entry)
+```
+
+**On USB plug:**
+
+```
+host:      mount /dev/sda1 /media/pv/slots/ha-media
+           → propagates into container's /media automatically
+```
+
+**On USB remove:**
+
+```
+host:      umount /media/pv/slots/ha-media
+           → propagates into container's /media automatically
+```
+
+**Example: Home Assistant media**
+
+device.json:
+```json
+{
+    "name": "ha-media",
+    "type": "hotplug-slot",
+    "strategy": "first-fit",
+    "accept": {"bus": ["usb"], "fstype": ["vfat", "ext4", "ntfs"]},
+    "format_policy": "preserve"
+}
+```
+
+Home Assistant container run.json:
+```json
+"storage": {
+    "docker--media": {
+        "disk": "ha-media",
+        "persistence": "hotplug"
+    }
+}
+```
+
+User plugs in any formatted USB stick → appears at `/media` inside
+Home Assistant. Pulls it out → `/media` is empty again. No config,
+no UI, no restart.
+
 ### Design principles
 
 - **Slots are OTA-managed, bindings are local state.** Platform defines
