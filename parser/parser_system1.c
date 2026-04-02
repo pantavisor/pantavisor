@@ -295,7 +295,7 @@ static bool parse_disks_get_bool(const char *str, const char *key,
 	return ret;
 }
 
-static int parse_disks(struct pv_state *s, char *value)
+static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 {
 	int tokc, size, ret = 1;
 	char *str = NULL;
@@ -345,29 +345,34 @@ static int parse_disks(struct pv_state *s, char *value)
 		d->mode = parse_disks_dm_crypt_get_mode(str, diskv, diskc);
 
 		if (d->type == DISK_UNKNOWN) {
-			pv_log(WARN, "disk '%s' has unknown type, skipping",
+			if (lenient) {
+				pv_log(WARN, "disk '%s' has unknown type, skipping",
+				       d->name ? d->name : "(null)");
+				dl_list_del(&d->list);
+				t = t + (jsmnutil_object_key_count(str, diskv) * 2);
+				free(d->name);
+				free(d->path);
+				free(d->mount_target);
+				free(d->mount_ops);
+				free(d->format_ops);
+				free(d->provision);
+				free(d->provision_ops);
+				free(d->uuid);
+				free(d->json_str);
+				free(d);
+				if (diskv) {
+					free(diskv);
+					diskv = NULL;
+				}
+				if (str) {
+					free(str);
+					str = NULL;
+				}
+				continue;
+			}
+			pv_log(ERROR, "disk '%s' has unknown type",
 			       d->name ? d->name : "(null)");
-			dl_list_del(&d->list);
-			t = t + (jsmnutil_object_key_count(str, diskv) * 2);
-			free(d->name);
-			free(d->path);
-			free(d->mount_target);
-			free(d->mount_ops);
-			free(d->format_ops);
-			free(d->provision);
-			free(d->provision_ops);
-			free(d->uuid);
-			free(d->json_str);
-			free(d);
-			if (diskv) {
-				free(diskv);
-				diskv = NULL;
-			}
-			if (str) {
-				free(str);
-				str = NULL;
-			}
-			continue;
+			goto out;
 		}
 
 		d->format = parse_disks_get_format(str, diskv, diskc);
@@ -453,6 +458,11 @@ out:
 		free(tokv);
 
 	return ret;
+}
+
+static int parse_disks(struct pv_state *s, char *value)
+{
+	return parse_disks_ex(s, value, false);
 }
 
 static int parse_bsp(struct pv_state *s, char *value, int n)
@@ -1684,7 +1694,7 @@ static struct pv_state *system1_parse_disks(struct pv_state *this,
 		pv_log(DEBUG, "adding json 'disks_v3.json'");
 		pv_jsons_add(this, "disks_v3.json", value);
 
-		if (parse_disks(this, value)) {
+		if (parse_disks_ex(this, value, true)) {
 			this = NULL;
 			goto out;
 		}
@@ -1998,7 +2008,7 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 	}
 	free(value);
 	value = pv_json_get_value(buf, "disks_v3", tokv, tokc);
-	if (value && parse_disks(this, value)) {
+	if (value && parse_disks_ex(this, value, true)) {
 		pv_log(ERROR, "cannot parse disks_v3 in device.json");
 		this = NULL;
 		goto out;
