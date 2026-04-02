@@ -84,24 +84,53 @@ static int cmd_pv_heartbeat(const struct shell *sh, size_t argc, char **argv)
 }
 
 #ifdef CONFIG_PANTAVISOR_BRIDGE
+/*
+ * pv http [METHOD] <url> [body]
+ *
+ * Examples:
+ *   pv http http://pv-ctrl.pvlocal/containers
+ *   pv http GET pv-ctrl /containers
+ *   pv http POST http://pv-ctrl.pvlocal/data {"key":"value"}
+ *   pv http PUT pv-ctrl /config {"mode":"auto"}
+ *   pv http DELETE http://pv-ctrl.pvlocal/data/1
+ */
 static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 {
 	if (argc < 2) {
-		shell_print(sh, "Usage: pv http <url>\n"
-			    "       pv http <service> <path>\n"
-			    "Examples:\n"
+		shell_print(sh, "Usage: pv http [METHOD] <url> [body]\n"
 			    "  pv http http://pv-ctrl.pvlocal/containers\n"
-			    "  pv http pv-ctrl /containers\n"
-			    "  pv http /cgi-bin/logs  (default host)");
+			    "  pv http POST http://host.pvlocal/api {\"k\":\"v\"}\n"
+			    "  pv http pv-ctrl /path");
 		return -EINVAL;
 	}
 
+	/* parse optional method */
+	uint8_t method = PVCM_HTTP_GET;
+	const char *method_str = "GET";
+	int arg_idx = 1;
+
+	if (strcmp(argv[1], "GET") == 0 || strcmp(argv[1], "POST") == 0 ||
+	    strcmp(argv[1], "PUT") == 0 || strcmp(argv[1], "DELETE") == 0) {
+		if (strcmp(argv[1], "POST") == 0) {
+			method = PVCM_HTTP_POST; method_str = "POST";
+		} else if (strcmp(argv[1], "PUT") == 0) {
+			method = PVCM_HTTP_PUT; method_str = "PUT";
+		} else if (strcmp(argv[1], "DELETE") == 0) {
+			method = PVCM_HTTP_DELETE; method_str = "DELETE";
+		}
+		arg_idx = 2;
+		if (arg_idx >= argc) {
+			shell_error(sh, "need URL after method");
+			return -EINVAL;
+		}
+	}
+
+	/* parse URL / host / path */
 	char host_hdr[128] = "";
 	const char *path;
 
-	if (strncmp(argv[1], "http://", 7) == 0) {
-		/* full URL: http://hostname.pvlocal/path */
-		const char *hp = argv[1] + 7;
+	if (strncmp(argv[arg_idx], "http://", 7) == 0) {
+		const char *hp = argv[arg_idx] + 7;
 		const char *slash = strchr(hp, '/');
 		if (slash) {
 			size_t hlen = slash - hp;
@@ -114,14 +143,20 @@ static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 			strncpy(host_hdr, hp, sizeof(host_hdr) - 1);
 			path = "/";
 		}
-	} else if (argc >= 3 && argv[1][0] != '/') {
-		/* shortform: pv http servicename /path */
-		snprintf(host_hdr, sizeof(host_hdr), "%s.pvlocal", argv[1]);
-		path = argv[2];
+		arg_idx++;
+	} else if (arg_idx + 1 < argc && argv[arg_idx][0] != '/') {
+		snprintf(host_hdr, sizeof(host_hdr), "%s.pvlocal", argv[arg_idx]);
+		arg_idx++;
+		path = argv[arg_idx];
+		arg_idx++;
 	} else {
-		/* legacy: pv http /path (no host, default route) */
-		path = argv[1];
+		path = argv[arg_idx];
+		arg_idx++;
 	}
+
+	/* remaining args = body */
+	const char *body = (arg_idx < argc) ? argv[arg_idx] : NULL;
+	size_t body_len = body ? strlen(body) : 0;
 
 	http_shell = sh;
 	k_sem_reset(&http_done_sem);
@@ -129,24 +164,33 @@ static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 	struct pvcm_http_callbacks cb = {
 		.on_response = http_response_cb,
 		.on_error = http_error_cb,
-		.ctx = NULL,
 	};
 
-	int ret;
-	if (host_hdr[0]) {
-		char headers[160];
-		snprintf(headers, sizeof(headers), "Host: %s\r\n", host_hdr);
-		shell_print(sh, "GET http://%s%s ...", host_hdr, path);
-		struct pvcm_http_request req = {
-			.method = PVCM_HTTP_GET,
-			.path = path,
-			.headers = headers,
-		};
-		ret = pvcm_http(&req, &cb);
-	} else {
-		shell_print(sh, "GET %s ...", path);
-		ret = pvcm_get(path, &cb);
-	}
+	/* build headers */
+	char headers[256] = "";
+	int hoff = 0;
+	if (host_hdr[0])
+		hoff += snprintf(headers + hoff, sizeof(headers) - hoff,
+				 "Host: %s\r\n", host_hdr);
+	if (body_len > 0)
+		hoff += snprintf(headers + hoff, sizeof(headers) - hoff,
+				 "Content-Type: application/json\r\n");
+
+	shell_print(sh, "%s %s%s%s%s ...",
+		    method_str,
+		    host_hdr[0] ? "http://" : "",
+		    host_hdr[0] ? host_hdr : "",
+		    path,
+		    body_len > 0 ? " (with body)" : "");
+
+	struct pvcm_http_request req = {
+		.method = method,
+		.path = path,
+		.headers = hoff > 0 ? headers : NULL,
+		.body = body,
+		.body_len = body_len,
+	};
+	int ret = pvcm_http(&req, &cb);
 
 	if (ret) {
 		shell_error(sh, "send failed: %d", ret);
@@ -154,7 +198,6 @@ static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 		return ret;
 	}
 
-	/* wait for async response (shell convenience — SDK is async) */
 	if (k_sem_take(&http_done_sem, K_SECONDS(15)) != 0)
 		shell_error(sh, "timeout");
 
