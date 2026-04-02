@@ -77,6 +77,7 @@ struct pv_disk {
 	bool def;
 	bool always_on;
 	bool read_only;
+	bool no_create;
 	bool mounted;
 	// dual mode fields
 	char *dual_disks[PV_DISK_DUAL_MAX_DISKS];
@@ -201,6 +202,15 @@ static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 
 struct pv_disk *pv_disk_find(struct dl_list *disks, const char *name);
 int pv_disk_export_all(struct dl_list *disks);
+
+/* Disks with names starting with '_' are internal — intended only as
+ * sub-disk references for composite types (dual, future raid, etc.).
+ * Volumes should not reference them directly. */
+static inline bool pv_disk_is_internal(struct pv_disk *d)
+{
+	return d->name && d->name[0] == '_';
+}
+
 
 extern struct pv_disk_impl zram_impl;
 extern struct pv_disk_impl crypt_impl;

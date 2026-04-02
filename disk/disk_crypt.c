@@ -38,7 +38,7 @@
 #include "log.h"
 
 #define PV_DISK_CRYPT_CMD_TMPL \
-	"%s %s --type '%s' --mode '%s'%s -- '%s' '%s'"
+	"%s %s --type '%s' --mode '%s'%s%s -- '%s' '%s'"
 
 static int run_action(struct pv_disk *disk, const char *action)
 {
@@ -51,10 +51,11 @@ static int run_action(struct pv_disk *disk, const char *action)
 	const char *type = pv_disk_type_to_str(disk->type);
 	const char *mode = pv_disk_dm_crypt_mode_to_str(disk->mode);
 	const char *ro = disk->read_only ? " --read-only" : "";
+	const char *nc = disk->no_create ? " --no-create" : "";
 
 	int ret = pv_disk_utils_run_cmd(PV_DISK_CRYPT_CMD_TMPL,
 					"disk-crypt-info", "disk-crypt-err",
-					script, action, type, mode, ro,
+					script, action, type, mode, ro, nc,
 					disk->path, mntpath);
 
 	if (ret == 0) {

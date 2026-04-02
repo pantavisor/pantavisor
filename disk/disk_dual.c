@@ -64,49 +64,79 @@ static struct pv_disk *resolve_subdisk(struct pv_disk *dual, int index)
 	return pv_disk_find(dual->disk_list, dual->dual_disks[index]);
 }
 
+static int bind_mount_to_dual(struct pv_disk *dual, struct pv_disk *sub)
+{
+	char src[PATH_MAX], dst[PATH_MAX];
+
+	pv_paths_storage_mounted_disk_path(src, PATH_MAX, "dmcrypt",
+					   sub->name);
+	pv_paths_storage_mounted_disk_path(dst, PATH_MAX, "dmcrypt",
+					   dual->name);
+
+	pv_fs_mkdir_p(dst, 0755);
+
+	if (mount(src, dst, NULL, MS_BIND, NULL) != 0) {
+		pv_log(ERROR, "dual: bind mount '%s' -> '%s' failed: %s",
+		       src, dst, strerror(errno));
+		return -1;
+	}
+
+	pv_log(INFO, "dual: bind mounted '%s' -> '%s'", src, dst);
+	return 0;
+}
+
+static int unbind_dual(struct pv_disk *dual)
+{
+	char dst[PATH_MAX];
+	pv_paths_storage_mounted_disk_path(dst, PATH_MAX, "dmcrypt",
+					   dual->name);
+
+	if (umount(dst) != 0) {
+		if (errno == EINVAL || errno == ENOENT) {
+			pv_log(DEBUG, "dual: '%s' not mounted", dst);
+			return 0;
+		}
+		pv_log(ERROR, "dual: unbind '%s' failed: %s", dst,
+		       strerror(errno));
+		return -1;
+	}
+
+	pv_fs_path_remove(dst, true);
+	pv_log(INFO, "dual: unbound '%s'", dst);
+	return 0;
+}
+
+/*
+ * Mount a sub-disk under its own name, then bind-mount to the dual path.
+ * If !allow_create, set no_create on the sub-disk so the crypt script
+ * won't create the image/key if they don't exist.
+ */
 static int try_mount_subdisk(struct pv_disk *dual, struct pv_disk *sub,
 			     bool allow_create)
 {
 	if (!sub)
 		return -1;
 
-	/*
-	 * Override the sub-disk mount path so it mounts where the dual
-	 * disk is expected. The crypt script uses the mntpath argument.
-	 * We do this by temporarily inheriting the dual disk's name into
-	 * the sub-disk's mounted path resolution — the sub-disk mount
-	 * functions resolve path from disk->name via
-	 * pv_paths_storage_mounted_disk_path().
-	 *
-	 * For --no-create behavior: we check if the sub-disk's init_done
-	 * sentinel exists. If not and !allow_create, skip.
-	 */
-	if (!allow_create) {
-		/* check if sub-disk has been initialized (key + image exist) */
-		char initpath[PATH_MAX];
-		pv_paths_storage_mounted_disk_path(initpath, PATH_MAX,
-						   "dmcrypt", sub->name);
-		/* The init_done marker is at <disksdir>/<keyname>.init_done
-		 * but we can't easily derive the keyname here. Instead,
-		 * try mounting and let the crypt script handle --no-create.
-		 * We pass read_only as a hint to avoid creation. */
-	}
-
-	/* Save and override sub-disk name temporarily for mount path */
-	char *orig_name = sub->name;
-	sub->name = dual->name;
+	bool orig_no_create = sub->no_create;
+	sub->no_create = !allow_create;
 
 	int ret = pv_disk_mount(sub);
 
-	sub->name = orig_name;
+	sub->no_create = orig_no_create;
 
-	if (ret == 0) {
-		dual->mounted = true;
-		pv_log(INFO, "dual: mounted sub-disk '%s' as '%s'",
-		       orig_name, dual->name);
+	if (ret != 0)
+		return -1;
+
+	ret = bind_mount_to_dual(dual, sub);
+	if (ret != 0) {
+		pv_disk_umount(sub);
+		return -1;
 	}
 
-	return ret;
+	dual->mounted = true;
+	pv_log(INFO, "dual: mounted sub-disk '%s' for '%s'", sub->name,
+	       dual->name);
+	return 0;
 }
 
 static int do_copy_verify(const char *src_dir, const char *dst_dir)
@@ -154,7 +184,6 @@ static int do_copy_verify(const char *src_dir, const char *dst_dir)
 				ret = -1;
 				break;
 			}
-			/* verify copy */
 			if (!pv_fs_file_is_same(src_path, dst_path)) {
 				pv_log(ERROR,
 				       "dual: verify failed '%s' != '%s'",
@@ -181,77 +210,62 @@ static int do_copy_once_to_primary(struct pv_disk *dual)
 
 	struct pv_disk *primary = resolve_subdisk(dual, 0);
 	struct pv_disk *secondary = resolve_subdisk(dual, 1);
-	if (!secondary) {
-		pv_log(WARN, "dual: secondary disk not found for copy");
+	if (!primary || !secondary) {
+		pv_log(WARN, "dual: need both sub-disks for copy");
 		return -1;
 	}
 
-	/* mount secondary read-only to a temp path */
-	char sec_mnt[PATH_MAX];
-	SNPRINTF_WTRUNC(sec_mnt, sizeof(sec_mnt), "/tmp/dual_sec_%s",
-			secondary->name);
-	pv_fs_mkdir_p(sec_mnt, 0755);
-
-	/* mount secondary under its own name (--no-create + read-only) */
+	/* mount secondary read-only under its own name */
 	bool orig_ro = secondary->read_only;
+	bool orig_nc = secondary->no_create;
 	secondary->read_only = true;
+	secondary->no_create = true;
 	int ret = pv_disk_mount(secondary);
 	secondary->read_only = orig_ro;
+	secondary->no_create = orig_nc;
 
 	if (ret != 0) {
 		pv_log(WARN, "dual: secondary not available for copy");
-		pv_fs_path_remove(sec_mnt, true);
 		return -1;
 	}
 
-	/* secondary is mounted at its standard path, get that path */
-	char sec_path[PATH_MAX];
-	pv_paths_storage_mounted_disk_path(sec_path, PATH_MAX, "dmcrypt",
-					   secondary->name);
-
-	/* create + mount primary at dual's mount point */
-	if (!primary) {
-		pv_log(ERROR, "dual: primary disk not found");
-		pv_disk_umount(secondary);
-		return -1;
-	}
-
-	char *orig_name = primary->name;
-	primary->name = dual->name;
+	/* create + mount primary under its own name */
 	ret = pv_disk_mount(primary);
-	primary->name = orig_name;
-
 	if (ret != 0) {
 		pv_log(ERROR, "dual: primary creation for copy failed");
 		pv_disk_umount(secondary);
 		return -1;
 	}
 
-	/* copy from secondary to primary (mounted at dual's path) */
-	char pri_path[PATH_MAX];
+	/* copy from secondary to primary */
+	char sec_path[PATH_MAX], pri_path[PATH_MAX];
+	pv_paths_storage_mounted_disk_path(sec_path, PATH_MAX, "dmcrypt",
+					   secondary->name);
 	pv_paths_storage_mounted_disk_path(pri_path, PATH_MAX, "dmcrypt",
-					   dual->name);
+					   primary->name);
 
 	ret = do_copy_verify(sec_path, pri_path);
 
-	/* always umount secondary */
+	/* umount secondary — no longer needed */
 	pv_disk_umount(secondary);
 
-	if (ret == 0) {
-		dual->mounted = true;
-		pv_fs_file_save(init_done, "", 0644);
-		pv_log(INFO, "dual: copied secondary to primary");
-		return 0;
+	if (ret != 0) {
+		pv_log(ERROR, "dual: copy verification failed");
+		pv_disk_umount(primary);
+		return -1;
 	}
 
-	pv_log(ERROR, "dual: copy verification failed");
-	/* umount primary on failure */
-	char *on = primary->name;
-	primary->name = dual->name;
-	pv_disk_umount(primary);
-	primary->name = on;
+	/* primary stays mounted, bind-mount to dual path */
+	ret = bind_mount_to_dual(dual, primary);
+	if (ret != 0) {
+		pv_disk_umount(primary);
+		return -1;
+	}
 
-	return -1;
+	dual->mounted = true;
+	pv_fs_file_save(init_done, "", 0644);
+	pv_log(INFO, "dual: copied secondary to primary");
+	return 0;
 }
 
 static int pv_disk_dual_init(struct pv_disk *disk)
@@ -269,7 +283,6 @@ static int pv_disk_dual_init(struct pv_disk *disk)
 		return -1;
 	}
 
-	/* verify sub-disks exist */
 	for (int i = 0; i < disk->dual_disks_count; i++) {
 		if (!pv_disk_find(disk->disk_list, disk->dual_disks[i])) {
 			pv_log(ERROR, "dual disk %s: sub-disk '%s' not found",
@@ -364,26 +377,21 @@ done:
 
 static int pv_disk_dual_umount(struct pv_disk *disk)
 {
-	/* try unmounting primary first, then secondary */
+	/* unbind the dual mount point first */
+	unbind_dual(disk);
+	disk->mounted = false;
+
+	/* then umount whichever sub-disk is mounted */
 	for (int i = 0; i < disk->dual_disks_count; i++) {
 		struct pv_disk *sub = resolve_subdisk(disk, i);
 		if (!sub)
 			continue;
 
-		/* the sub-disk was mounted under dual's name */
-		char *orig_name = sub->name;
-		sub->name = disk->name;
-		int ret = pv_disk_umount(sub);
-		sub->name = orig_name;
-
-		if (ret == 0) {
-			disk->mounted = false;
-			return 0;
-		}
+		if (sub->mounted)
+			pv_disk_umount(sub);
 	}
 
-	pv_log(ERROR, "dual: nothing to unmount for %s", disk->name);
-	return -1;
+	return 0;
 }
 
 struct pv_disk_impl dual_impl = {
