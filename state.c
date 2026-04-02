@@ -476,6 +476,9 @@ int pv_state_validate(struct pv_state *s)
 
 static int pv_state_mount_bsp_volumes(struct pv_state *s)
 {
+	// export disk definitions to /run/pantavisor/disks/ for scripts
+	pv_disk_export_all(&s->disks);
+
 	if (pv_disk_mount_swap(&s->disks) != 0)
 		return -1;
 
