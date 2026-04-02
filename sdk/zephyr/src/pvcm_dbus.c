@@ -1,14 +1,11 @@
 /*
- * PVCM D-Bus Gateway Client
+ * PVCM D-Bus Gateway Client — async, streaming, no size limits
  *
- * Implements pvcm_dbus_call() and pvcm_dbus_subscribe() by translating
- * to DBUS_CALL/SUBSCRIBE/UNSUBSCRIBE frames.  Responses and signals
- * are delivered by the server dispatch thread.
+ * All D-Bus calls are async: pvcm_dbus_call() sends and returns
+ * immediately. Responses arrive via callback on the server thread.
  *
- * Follows the same pattern as pvcm_client.c (HTTP):
- *   - Single in-flight call (mutex-protected)
- *   - Semaphore-based request/response pairing
- *   - Callback array for signal subscriptions
+ * Wire format: metadata header + DBUS_DATA frames.
+ * Data is dynamically allocated — no fixed buffers.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -23,22 +20,26 @@
 
 LOG_MODULE_REGISTER(pvcm_dbus, CONFIG_LOG_DEFAULT_LEVEL);
 
-static K_SEM_DEFINE(dbus_resp_sem, 0, 1);
-static K_MUTEX_DEFINE(dbus_mutex);
+/* ---- Pending D-Bus calls ---- */
 
-/* pending method call (single in-flight for simplicity) */
-static struct {
+#define MAX_DBUS_PENDING 4
+
+struct dbus_pending_call {
 	uint8_t req_id;
 	bool active;
-	bool complete;
+	pvcm_dbus_cb_t cb;
+	void *ctx;
+	uint32_t expected;     /* total data_len from CALL_RESP */
 	uint8_t error;
-	char result[248];
-	size_t result_len;
-} dbus_pending;
+	char *data;            /* k_malloc'd result buffer */
+	size_t data_len;
+};
 
+static struct dbus_pending_call dbus_calls[MAX_DBUS_PENDING];
 static uint8_t next_req_id = 1;
 
-/* signal subscriptions */
+/* ---- Signal subscriptions ---- */
+
 #define MAX_DBUS_SUBS 16
 
 static struct {
@@ -46,14 +47,16 @@ static struct {
 	bool active;
 	pvcm_dbus_signal_cb_t cb;
 	void *ctx;
+	/* pending signal data assembly */
+	uint32_t expected;
+	char *data;
+	size_t data_len;
 } dbus_subs[MAX_DBUS_SUBS];
 
 static uint8_t next_sub_id = 1;
 
-/*
- * Pack null-separated fields into a data buffer.
- * Returns total bytes written, or negative on overflow.
- */
+/* ---- Field packing ---- */
+
 static int pack_fields(char *buf, size_t buf_size,
 		       const char *f1, const char *f2,
 		       const char *f3, const char *f4,
@@ -76,11 +79,6 @@ static int pack_fields(char *buf, size_t buf_size,
 	return (int)off;
 }
 
-/*
- * Unpack null-separated fields from a data buffer.
- * Fills ptrs[] with up to max_fields pointers into buf.
- * Returns number of fields found.
- */
 static int unpack_fields(const char *buf, size_t buf_len,
 			 const char **ptrs, int max_fields)
 {
@@ -89,59 +87,96 @@ static int unpack_fields(const char *buf, size_t buf_len,
 
 	while (off < buf_len && count < max_fields) {
 		ptrs[count++] = buf + off;
-		/* advance past null terminator */
 		while (off < buf_len && buf[off] != '\0')
 			off++;
-		off++; /* skip the null */
+		off++;
 	}
 
 	return count;
 }
 
-/*
- * Called by server thread when DBUS_CALL_RESP arrives.
- */
+/* Send data as DBUS_DATA frames */
+static void send_dbus_data_frames(const struct pvcm_transport *t,
+				  uint8_t id, const char *data, size_t len)
+{
+	size_t off = 0;
+	while (off < len) {
+		pvcm_dbus_data_t frame = {
+			.op = PVCM_OP_DBUS_DATA,
+			.id = id,
+		};
+		size_t chunk = len - off;
+		if (chunk > PVCM_MAX_CHUNK_SIZE)
+			chunk = PVCM_MAX_CHUNK_SIZE;
+		frame.len = (uint16_t)chunk;
+		memcpy(frame.data, data + off, chunk);
+		t->send_frame(&frame, 4 + chunk);
+		off += chunk;
+	}
+}
+
+/* ---- Response handlers (called from server thread) ---- */
+
 void pvcm_dbus_on_call_resp(const uint8_t *buf, int len)
 {
 	const pvcm_dbus_call_resp_t *resp = (const pvcm_dbus_call_resp_t *)buf;
 
-	if (!dbus_pending.active || resp->req_id != dbus_pending.req_id)
+	/* find matching pending call */
+	struct dbus_pending_call *pc = NULL;
+	for (int i = 0; i < MAX_DBUS_PENDING; i++) {
+		if (dbus_calls[i].active &&
+		    dbus_calls[i].req_id == resp->req_id) {
+			pc = &dbus_calls[i];
+			break;
+		}
+	}
+	if (!pc)
 		return;
 
-	dbus_pending.error = resp->error;
+	pc->error = resp->error;
+	pc->expected = resp->data_len;
 
-	size_t dlen = resp->data_len;
-	if (dlen > sizeof(dbus_pending.result) - 1)
-		dlen = sizeof(dbus_pending.result) - 1;
+	if (resp->data_len > 0) {
+		pc->data = k_malloc(resp->data_len + 1);
+		if (pc->data)
+			pc->data[0] = '\0';
+	}
+	pc->data_len = 0;
 
-	if (dlen > 0)
-		memcpy(dbus_pending.result, resp->data, dlen);
-	dbus_pending.result[dlen] = '\0';
-	dbus_pending.result_len = dlen;
-	dbus_pending.complete = true;
-
-	k_sem_give(&dbus_resp_sem);
+	/* if no data expected, deliver immediately */
+	if (resp->data_len == 0) {
+		if (pc->cb) {
+			pc->cb(pc->error, "", 0, pc->ctx);
+		}
+		k_free(pc->data);
+		pc->data = NULL;
+		pc->active = false;
+	}
 }
 
-/*
- * Called by server thread when DBUS_SIGNAL arrives.
- */
 void pvcm_dbus_on_signal(const uint8_t *buf, int len)
 {
 	const pvcm_dbus_signal_t *sig = (const pvcm_dbus_signal_t *)buf;
 
-	/* find matching subscription */
 	for (int i = 0; i < MAX_DBUS_SUBS; i++) {
 		if (!dbus_subs[i].active || dbus_subs[i].sub_id != sig->sub_id)
 			continue;
 
-		/* unpack signal data: sender\0path\0iface\0member\0args_json */
-		const char *fields[5] = { "", "", "", "", "" };
-		int nf = unpack_fields(sig->data, sig->data_len, fields, 5);
-		(void)nf;
+		/* allocate buffer for signal data */
+		k_free(dbus_subs[i].data);
+		dbus_subs[i].expected = sig->data_len;
+		dbus_subs[i].data_len = 0;
 
-		dbus_subs[i].cb(fields[0], fields[1], fields[2],
-				fields[3], fields[4], dbus_subs[i].ctx);
+		if (sig->data_len > 0) {
+			dbus_subs[i].data = k_malloc(sig->data_len + 1);
+			if (dbus_subs[i].data)
+				dbus_subs[i].data[0] = '\0';
+		} else {
+			dbus_subs[i].data = NULL;
+			/* empty signal — deliver immediately */
+			dbus_subs[i].cb("", "", "", "", "",
+					dbus_subs[i].ctx);
+		}
 		return;
 	}
 
@@ -149,82 +184,134 @@ void pvcm_dbus_on_signal(const uint8_t *buf, int len)
 }
 
 /*
- * Core D-Bus method call implementation.
+ * DBUS_DATA — accumulate data for pending call response or signal.
  */
-static int do_dbus_call(const char *dest, const char *obj_path,
-			const char *interface, const char *member,
-			const char *args_json,
-			pvcm_dbus_cb_t cb, void *ctx)
+void pvcm_dbus_on_data(const uint8_t *buf, int len)
 {
-	const struct pvcm_transport *t = pvcm_transport_get();
-	if (!t)
-		return -ENODEV;
+	if (len < 4)
+		return;
 
-	k_mutex_lock(&dbus_mutex, K_FOREVER);
+	const pvcm_dbus_data_t *d = (const pvcm_dbus_data_t *)buf;
+	size_t chunk = d->len;
 
-	uint8_t rid = next_req_id++;
-	if (next_req_id == 0)
-		next_req_id = 1;
+	/* check pending calls */
+	for (int i = 0; i < MAX_DBUS_PENDING; i++) {
+		struct dbus_pending_call *pc = &dbus_calls[i];
+		if (!pc->active || pc->req_id != d->id || !pc->data)
+			continue;
 
-	/* set up pending response */
-	dbus_pending.req_id = rid;
-	dbus_pending.active = true;
-	dbus_pending.complete = false;
-	dbus_pending.error = 0;
-	dbus_pending.result_len = 0;
-	k_sem_reset(&dbus_resp_sem);
+		if (pc->data_len + chunk > pc->expected)
+			chunk = pc->expected - pc->data_len;
+		memcpy(pc->data + pc->data_len, d->data, chunk);
+		pc->data_len += chunk;
+		pc->data[pc->data_len] = '\0';
 
-	/* build DBUS_CALL frame */
-	pvcm_dbus_call_t call = {
-		.op = PVCM_OP_DBUS_CALL,
-		.req_id = rid,
-	};
-
-	int dlen = pack_fields(call.data, sizeof(call.data),
-			       dest, obj_path, interface, member,
-			       args_json);
-	if (dlen < 0) {
-		LOG_ERR("D-Bus call fields too long");
-		dbus_pending.active = false;
-		k_mutex_unlock(&dbus_mutex);
-		return -ENOMEM;
-	}
-	call.data_len = (uint16_t)dlen;
-
-	t->send_frame(&call, 4 + dlen); /* op + req_id + data_len + data */
-
-	LOG_INF("D-Bus call: %s %s %s.%s", dest, obj_path, interface, member);
-
-	/* wait for response from server thread */
-	int ret = k_sem_take(&dbus_resp_sem, K_SECONDS(10));
-
-	dbus_pending.active = false;
-
-	if (ret != 0) {
-		LOG_ERR("D-Bus call timeout: %s.%s", interface, member);
-		k_mutex_unlock(&dbus_mutex);
-		return -ETIMEDOUT;
+		/* all data received? deliver */
+		if (pc->data_len >= pc->expected) {
+			if (pc->cb) {
+				pc->cb(pc->error, pc->data, pc->data_len,
+				       pc->ctx);
+			}
+			k_free(pc->data);
+			pc->data = NULL;
+			pc->active = false;
+		}
+		return;
 	}
 
-	LOG_INF("D-Bus response: error=%d len=%zu",
-		dbus_pending.error, dbus_pending.result_len);
+	/* check pending signals */
+	for (int i = 0; i < MAX_DBUS_SUBS; i++) {
+		if (!dbus_subs[i].active || dbus_subs[i].sub_id != d->id ||
+		    !dbus_subs[i].data)
+			continue;
 
-	if (cb) {
-		cb(dbus_pending.error, dbus_pending.result,
-		   dbus_pending.result_len, ctx);
+		if (dbus_subs[i].data_len + chunk > dbus_subs[i].expected)
+			chunk = dbus_subs[i].expected - dbus_subs[i].data_len;
+		memcpy(dbus_subs[i].data + dbus_subs[i].data_len,
+		       d->data, chunk);
+		dbus_subs[i].data_len += chunk;
+		dbus_subs[i].data[dbus_subs[i].data_len] = '\0';
+
+		/* all data? unpack and deliver */
+		if (dbus_subs[i].data_len >= dbus_subs[i].expected) {
+			const char *fields[5] = { "", "", "", "", "" };
+			unpack_fields(dbus_subs[i].data,
+				      dbus_subs[i].data_len, fields, 5);
+
+			dbus_subs[i].cb(fields[0], fields[1], fields[2],
+					fields[3], fields[4],
+					dbus_subs[i].ctx);
+
+			k_free(dbus_subs[i].data);
+			dbus_subs[i].data = NULL;
+		}
+		return;
 	}
-
-	k_mutex_unlock(&dbus_mutex);
-	return 0;
 }
+
+/* ---- Public API (async) ---- */
 
 int pvcm_dbus_call(const char *dest, const char *obj_path,
 		   const char *interface, const char *member,
 		   const char *args_json,
 		   pvcm_dbus_cb_t cb, void *ctx)
 {
-	return do_dbus_call(dest, obj_path, interface, member,
-			    args_json, cb, ctx);
+	const struct pvcm_transport *t = pvcm_transport_get();
+	if (!t)
+		return -ENODEV;
+
+	/* find free slot */
+	struct dbus_pending_call *pc = NULL;
+	for (int i = 0; i < MAX_DBUS_PENDING; i++) {
+		if (!dbus_calls[i].active) {
+			pc = &dbus_calls[i];
+			break;
+		}
+	}
+	if (!pc)
+		return -ENOMEM;
+
+	uint8_t rid = next_req_id++;
+	if (next_req_id == 0)
+		next_req_id = 1;
+
+	/* pack fields into dynamic buffer */
+	size_t total = strlen(dest) + strlen(obj_path) + strlen(interface) +
+		       strlen(member) + (args_json ? strlen(args_json) : 0) + 5;
+	char *packed = k_malloc(total);
+	if (!packed)
+		return -ENOMEM;
+
+	int dlen = pack_fields(packed, total, dest, obj_path, interface,
+			       member, args_json);
+	if (dlen < 0) {
+		k_free(packed);
+		return -ENOMEM;
+	}
+
+	/* setup pending */
+	memset(pc, 0, sizeof(*pc));
+	pc->req_id = rid;
+	pc->active = true;
+	pc->cb = cb;
+	pc->ctx = ctx;
+
+	/* send CALL metadata */
+	pvcm_dbus_call_t call = {
+		.op = PVCM_OP_DBUS_CALL,
+		.req_id = rid,
+		.data_len = (uint16_t)dlen,
+	};
+	t->send_frame(&call, sizeof(call) - sizeof(uint32_t));
+
+	/* send data */
+	send_dbus_data_frames(t, rid, packed, dlen);
+	k_free(packed);
+
+	LOG_INF("D-Bus call: %s %s %s.%s (async, req_id=%d)",
+		dest, obj_path, interface, member, rid);
+
+	return 0;
 }
 
 int pvcm_dbus_subscribe(const char *sender, const char *obj_path,
@@ -235,7 +322,6 @@ int pvcm_dbus_subscribe(const char *sender, const char *obj_path,
 	if (!t)
 		return -ENODEV;
 
-	/* find free slot */
 	int slot = -1;
 	for (int i = 0; i < MAX_DBUS_SUBS; i++) {
 		if (!dbus_subs[i].active) {
@@ -250,34 +336,46 @@ int pvcm_dbus_subscribe(const char *sender, const char *obj_path,
 	if (next_sub_id == 0)
 		next_sub_id = 1;
 
-	/* build DBUS_SUBSCRIBE frame */
-	pvcm_dbus_sub_t sub = {
-		.op = PVCM_OP_DBUS_SUBSCRIBE,
-		.sub_id = sid,
-	};
+	/* pack fields */
+	size_t total = (sender ? strlen(sender) : 0) +
+		       (obj_path ? strlen(obj_path) : 0) +
+		       (interface ? strlen(interface) : 0) +
+		       (signal_name ? strlen(signal_name) : 0) + 4;
+	char *packed = k_malloc(total);
+	if (!packed)
+		return -ENOMEM;
 
-	int dlen = pack_fields(sub.data, sizeof(sub.data),
+	int dlen = pack_fields(packed, total,
 			       sender ? sender : "",
 			       obj_path ? obj_path : "",
 			       interface ? interface : "",
 			       signal_name ? signal_name : "",
 			       NULL);
-	if (dlen < 0)
+	if (dlen < 0) {
+		k_free(packed);
 		return -ENOMEM;
-	sub.data_len = (uint16_t)dlen;
+	}
 
-	/* register before sending so we don't miss the first signal */
+	/* register before sending */
 	dbus_subs[slot].sub_id = sid;
 	dbus_subs[slot].cb = cb;
 	dbus_subs[slot].ctx = ctx;
 	dbus_subs[slot].active = true;
+	dbus_subs[slot].data = NULL;
 
-	t->send_frame(&sub, 4 + dlen);
+	/* send SUBSCRIBE metadata */
+	pvcm_dbus_sub_t sub = {
+		.op = PVCM_OP_DBUS_SUBSCRIBE,
+		.sub_id = sid,
+		.data_len = (uint16_t)dlen,
+	};
+	t->send_frame(&sub, sizeof(sub) - sizeof(uint32_t));
 
-	LOG_INF("D-Bus subscribe: sub_id=%d %s %s.%s",
-		sid, obj_path ? obj_path : "*",
-		interface ? interface : "*",
-		signal_name ? signal_name : "*");
+	/* send data */
+	send_dbus_data_frames(t, sid, packed, dlen);
+	k_free(packed);
+
+	LOG_INF("D-Bus subscribe: sub_id=%d (async)", sid);
 
 	return sid;
 }
@@ -288,10 +386,12 @@ int pvcm_dbus_unsubscribe(int sub_id)
 	if (!t)
 		return -ENODEV;
 
-	/* find and deactivate */
 	for (int i = 0; i < MAX_DBUS_SUBS; i++) {
-		if (dbus_subs[i].active && dbus_subs[i].sub_id == (uint8_t)sub_id) {
+		if (dbus_subs[i].active &&
+		    dbus_subs[i].sub_id == (uint8_t)sub_id) {
 			dbus_subs[i].active = false;
+			k_free(dbus_subs[i].data);
+			dbus_subs[i].data = NULL;
 
 			pvcm_dbus_unsub_t unsub = {
 				.op = PVCM_OP_DBUS_UNSUBSCRIBE,

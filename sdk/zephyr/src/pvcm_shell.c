@@ -165,20 +165,20 @@ static int cmd_pv_http(const struct shell *sh, size_t argc, char **argv)
 
 #ifdef CONFIG_PANTAVISOR_DBUS
 static const struct shell *dbus_shell;
+static K_SEM_DEFINE(dbus_done_sem, 0, 1);
 
 static void dbus_call_cb(uint8_t error, const char *result,
 			  size_t result_len, void *ctx)
 {
-	if (!dbus_shell)
-		return;
-
-	if (error != PVCM_DBUS_OK) {
-		shell_error(dbus_shell, "D-Bus error %d: %s", error,
-			    result_len > 0 ? result : "(no details)");
-	} else {
-		shell_print(dbus_shell, "%s",
-			    result_len > 0 ? result : "(empty)");
+	if (dbus_shell) {
+		if (error != PVCM_DBUS_OK)
+			shell_error(dbus_shell, "D-Bus error %d: %s", error,
+				    result_len > 0 ? result : "(no details)");
+		else
+			shell_print(dbus_shell, "%s",
+				    result_len > 0 ? result : "(empty)");
 	}
+	k_sem_give(&dbus_done_sem);
 }
 
 static void dbus_signal_cb(const char *sender, const char *obj_path,
@@ -199,15 +199,23 @@ static int cmd_pv_dbus_call(const struct shell *sh, size_t argc, char **argv)
 	}
 
 	dbus_shell = sh;
+	k_sem_reset(&dbus_done_sem);
+
 	const char *args = argc > 5 ? argv[5] : NULL;
 	shell_print(sh, "D-Bus call: %s %s %s.%s", argv[1], argv[2], argv[3], argv[4]);
 	int ret = pvcm_dbus_call(argv[1], argv[2], argv[3], argv[4],
 				 args, dbus_call_cb, NULL);
-	if (ret)
-		shell_error(sh, "pvcm_dbus_call failed: %d", ret);
-	dbus_shell = NULL;
+	if (ret) {
+		shell_error(sh, "send failed: %d", ret);
+		dbus_shell = NULL;
+		return ret;
+	}
 
-	return ret;
+	if (k_sem_take(&dbus_done_sem, K_SECONDS(15)) != 0)
+		shell_error(sh, "timeout");
+
+	dbus_shell = NULL;
+	return 0;
 }
 
 static int cmd_pv_dbus_list(const struct shell *sh, size_t argc, char **argv)
@@ -216,17 +224,25 @@ static int cmd_pv_dbus_list(const struct shell *sh, size_t argc, char **argv)
 	ARG_UNUSED(argv);
 
 	dbus_shell = sh;
+	k_sem_reset(&dbus_done_sem);
+
 	shell_print(sh, "D-Bus ListNames ...");
 	int ret = pvcm_dbus_call("org.freedesktop.DBus",
 				 "/org/freedesktop/DBus",
 				 "org.freedesktop.DBus",
 				 "ListNames", NULL,
 				 dbus_call_cb, NULL);
-	if (ret)
-		shell_error(sh, "ListNames failed: %d", ret);
-	dbus_shell = NULL;
+	if (ret) {
+		shell_error(sh, "send failed: %d", ret);
+		dbus_shell = NULL;
+		return ret;
+	}
 
-	return ret;
+	if (k_sem_take(&dbus_done_sem, K_SECONDS(15)) != 0)
+		shell_error(sh, "timeout");
+
+	dbus_shell = NULL;
+	return 0;
 }
 
 static int cmd_pv_dbus_subscribe(const struct shell *sh, size_t argc, char **argv)

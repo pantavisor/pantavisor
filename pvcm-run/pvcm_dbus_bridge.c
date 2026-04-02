@@ -54,6 +54,27 @@ struct pending_dbus_call {
 
 static struct pending_dbus_call pending_calls[MAX_PENDING_CALLS];
 
+/* pending incoming D-Bus data assembly (CALL or SUBSCRIBE metadata + DATA) */
+enum dbus_pending_type { DBUS_PENDING_NONE, DBUS_PENDING_CALL, DBUS_PENDING_SUB };
+
+static struct {
+	enum dbus_pending_type type;
+	uint8_t id;          /* req_id or sub_id */
+	uint32_t expected;   /* total data_len from metadata */
+	char *buf;           /* malloc'd, grows as DATA arrives */
+	size_t received;
+} dbus_rx;
+
+static void dbus_rx_reset(void)
+{
+	free(dbus_rx.buf);
+	memset(&dbus_rx, 0, sizeof(dbus_rx));
+}
+
+/* forward declarations for data assembly dispatch */
+static void process_dbus_call(struct pvcm_transport *t);
+static void process_dbus_subscribe(struct pvcm_transport *t);
+
 /* ---- signal subscriptions ---- */
 
 #define MAX_SUBS 16
@@ -107,6 +128,42 @@ static int pack_fields(char *buf, size_t buf_size, ...)
 
 	va_end(ap);
 	return (int)off;
+}
+
+/* Send data as DBUS_DATA frames via the transport send queue */
+static void send_dbus_data(struct pvcm_transport *t, uint8_t id,
+			   const char *data, size_t data_len)
+{
+	size_t off = 0;
+	while (off < data_len) {
+		pvcm_dbus_data_t frame = {
+			.op = PVCM_OP_DBUS_DATA,
+			.id = id,
+		};
+		size_t chunk = data_len - off;
+		if (chunk > PVCM_MAX_CHUNK_SIZE)
+			chunk = PVCM_MAX_CHUNK_SIZE;
+		frame.len = (uint16_t)chunk;
+		memcpy(frame.data, data + off, chunk);
+		t->send_frame(t, &frame, 4 + chunk);
+		off += chunk;
+	}
+}
+
+/* Send a DBUS_CALL_RESP with optional data via DBUS_DATA frames */
+static void send_dbus_resp(struct pvcm_transport *t, uint8_t req_id,
+			   uint8_t error, const char *data, size_t data_len)
+{
+	pvcm_dbus_call_resp_t resp = {
+		.op = PVCM_OP_DBUS_CALL_RESP,
+		.req_id = req_id,
+		.error = error,
+		.data_len = (uint32_t)data_len,
+	};
+	t->send_frame(t, &resp, sizeof(resp) - sizeof(uint32_t));
+
+	if (data && data_len > 0)
+		send_dbus_data(t, req_id, data, data_len);
 }
 
 /* ---- D-Bus → JSON serialization (uses libdbus iterators) ---- */
@@ -655,25 +712,50 @@ static void handle_signal(DBusMessage *msg)
 		if (subs[i].member[0] && strcmp(subs[i].member, member) != 0)
 			continue;
 
-		char args_json[200] = "";
-		dbus_reply_to_json(msg, args_json, sizeof(args_json));
+		/* serialize args to JSON — dynamic buffer */
+		size_t json_sz = 1024;
+		char *args_json = malloc(json_sz);
+		if (args_json) {
+			int jl = dbus_reply_to_json(msg, args_json, json_sz - 1);
+			if (jl < 0) {
+				json_sz *= 4;
+				char *tmp = realloc(args_json, json_sz);
+				if (tmp) {
+					args_json = tmp;
+					jl = dbus_reply_to_json(msg, args_json, json_sz - 1);
+				}
+			}
+			if (jl >= 0) args_json[jl] = '\0';
+			else { args_json[0] = '\0'; }
+		}
 
-		pvcm_dbus_signal_t sig = {
-			.op = PVCM_OP_DBUS_SIGNAL,
-			.sub_id = subs[i].sub_id,
-		};
+		/* pack fields into a dynamic buffer */
+		size_t packed_size = strlen(sender) + strlen(path) +
+				     strlen(iface) + strlen(member) +
+				     (args_json ? strlen(args_json) : 0) + 5;
+		char *packed = malloc(packed_size);
+		int dlen = 0;
+		if (packed)
+			dlen = pack_fields(packed, packed_size,
+					   sender, path, iface, member,
+					   args_json ? args_json : "", NULL);
+		free(args_json);
 
-		int dlen = pack_fields(sig.data, sizeof(sig.data),
-				       sender, path, iface, member,
-				       args_json, NULL);
-		if (dlen < 0)
-			continue;
-		sig.data_len = (uint16_t)dlen;
+		if (dlen > 0 && packed) {
+			pvcm_dbus_signal_t sig = {
+				.op = PVCM_OP_DBUS_SIGNAL,
+				.sub_id = subs[i].sub_id,
+				.data_len = (uint16_t)dlen,
+			};
+			bridge_transport->send_frame(bridge_transport, &sig,
+						     sizeof(sig) - sizeof(uint32_t));
+			send_dbus_data(bridge_transport, subs[i].sub_id,
+				       packed, dlen);
 
-		bridge_transport->send_frame(bridge_transport, &sig, 4 + dlen);
-
-		fprintf(stdout, "[dbus-bridge] signal: %s.%s → sub_id=%d\n",
-			iface, member, subs[i].sub_id);
+			fprintf(stdout, "[dbus-bridge] signal: %s.%s → sub_id=%d\n",
+				iface, member, subs[i].sub_id);
+		}
+		free(packed);
 	}
 }
 
@@ -738,56 +820,68 @@ static struct event_base *dbus_event_base;
  */
 static void handle_dbus_reply(struct pending_dbus_call *pc, DBusMessage *reply)
 {
-	pvcm_dbus_call_resp_t resp = {
-		.op = PVCM_OP_DBUS_CALL_RESP,
-		.req_id = pc->pvcm_req_id,
-	};
+	uint8_t error = PVCM_DBUS_OK;
 
 	if (dbus_message_get_type(reply) == DBUS_MESSAGE_TYPE_ERROR) {
 		const char *err_name = dbus_message_get_error_name(reply);
 		if (!err_name) err_name = "Unknown";
 
-		resp.error = PVCM_DBUS_ERR_FAILED;
+		error = PVCM_DBUS_ERR_FAILED;
 		if (strstr(err_name, "ServiceUnknown"))
-			resp.error = PVCM_DBUS_ERR_NO_SERVICE;
+			error = PVCM_DBUS_ERR_NO_SERVICE;
 		else if (strstr(err_name, "UnknownMethod"))
-			resp.error = PVCM_DBUS_ERR_NO_METHOD;
+			error = PVCM_DBUS_ERR_NO_METHOD;
 
 		const char *err_msg = NULL;
 		dbus_message_get_args(reply, NULL,
 			DBUS_TYPE_STRING, &err_msg, DBUS_TYPE_INVALID);
 
-		int elen = snprintf(resp.data, sizeof(resp.data),
-				    "%s: %s", err_name,
+		char *emsg = NULL;
+		int elen = asprintf(&emsg, "%s: %s", err_name,
 				    err_msg ? err_msg : "");
 		if (elen < 0) elen = 0;
-		if (elen > (int)sizeof(resp.data) - 1)
-			elen = sizeof(resp.data) - 1;
-		resp.data_len = (uint16_t)elen;
 
-		fprintf(stderr, "[dbus-bridge] CALL error: %s\n", resp.data);
+		fprintf(stderr, "[dbus-bridge] CALL error: %s\n",
+			emsg ? emsg : "");
+		send_dbus_resp(bridge_transport, pc->pvcm_req_id,
+			       error, emsg, elen);
+		free(emsg);
 	} else {
-		int json_len = dbus_reply_to_json(reply, resp.data,
-						  sizeof(resp.data) - 1);
-		if (json_len < 0) {
-			resp.error = PVCM_DBUS_ERR_TRUNCATED;
-			int elen = snprintf(resp.data, sizeof(resp.data),
-					    "reply exceeds %zu byte frame limit",
-					    sizeof(resp.data) - 1);
-			resp.data_len = (uint16_t)elen;
-			fprintf(stderr, "[dbus-bridge] CALL truncated: %s\n",
-				resp.data);
-		} else {
-			resp.error = PVCM_DBUS_OK;
-			resp.data[json_len] = '\0';
-			resp.data_len = (uint16_t)json_len;
-			fprintf(stdout, "[dbus-bridge] CALL result: %.*s\n",
-				(int)resp.data_len, resp.data);
-		}
-	}
+		/* serialize reply to JSON — dynamic buffer, no size limit */
+		size_t buf_size = 4096;
+		char *buf = malloc(buf_size);
+		int json_len = -1;
 
-	bridge_transport->send_frame(bridge_transport, &resp,
-				     6 + resp.data_len);
+		while (buf) {
+			json_len = dbus_reply_to_json(reply, buf, buf_size - 1);
+			if (json_len >= 0)
+				break;
+			/* buffer too small — double and retry */
+			buf_size *= 2;
+			if (buf_size > 1024 * 1024) {
+				/* safety cap at 1MB */
+				free(buf);
+				buf = NULL;
+				break;
+			}
+			char *tmp = realloc(buf, buf_size);
+			if (!tmp) { free(buf); buf = NULL; break; }
+			buf = tmp;
+		}
+
+		if (buf && json_len >= 0) {
+			buf[json_len] = '\0';
+			fprintf(stdout, "[dbus-bridge] CALL result: %.*s\n",
+				json_len > 200 ? 200 : json_len, buf);
+			send_dbus_resp(bridge_transport, pc->pvcm_req_id,
+				       PVCM_DBUS_OK, buf, json_len);
+		} else {
+			send_dbus_resp(bridge_transport, pc->pvcm_req_id,
+				       PVCM_DBUS_ERR_FAILED,
+				       "JSON serialization failed", 25);
+		}
+		free(buf);
+	}
 
 	/* clean up pending call */
 	if (pc->timeout_ev) {
@@ -811,16 +905,8 @@ static void dbus_call_timeout_cb(evutil_socket_t fd, short what, void *arg)
 	fprintf(stderr, "[dbus-bridge] CALL timeout (req_id=%d serial=%u)\n",
 		pc->pvcm_req_id, pc->serial);
 
-	pvcm_dbus_call_resp_t resp = {
-		.op = PVCM_OP_DBUS_CALL_RESP,
-		.req_id = pc->pvcm_req_id,
-		.error = PVCM_DBUS_ERR_TIMEOUT,
-	};
-	const char *emsg = "D-Bus call timeout";
-	resp.data_len = (uint16_t)strlen(emsg);
-	memcpy(resp.data, emsg, resp.data_len);
-	bridge_transport->send_frame(bridge_transport, &resp,
-				     6 + resp.data_len);
+	send_dbus_resp(bridge_transport, pc->pvcm_req_id,
+		       PVCM_DBUS_ERR_TIMEOUT, "D-Bus call timeout", 18);
 
 	pc->timeout_ev = NULL;
 	pc->active = false;
@@ -930,38 +1016,62 @@ int pvcm_dbus_bridge_init(struct event_base *base,
 	return 0;
 }
 
+/*
+ * DBUS_CALL — metadata only. Start accumulating DBUS_DATA frames.
+ */
 int pvcm_dbus_bridge_on_call(struct pvcm_transport *t,
 			     const uint8_t *buf, int len)
 {
+	const pvcm_dbus_call_t *call = (const pvcm_dbus_call_t *)buf;
+
 	if (dbus_fd < 0) {
-		pvcm_dbus_call_resp_t resp = {
-			.op = PVCM_OP_DBUS_CALL_RESP,
-			.req_id = buf[1],
-			.error = PVCM_DBUS_ERR_FAILED,
-		};
-		const char *emsg = "D-Bus not connected";
-		resp.data_len = (uint16_t)strlen(emsg);
-		memcpy(resp.data, emsg, resp.data_len);
-		t->send_frame(t, &resp, 6 + resp.data_len);
+		send_dbus_resp(t, call->req_id, PVCM_DBUS_ERR_FAILED,
+			       "D-Bus not connected", 19);
 		return -1;
 	}
 
-	const pvcm_dbus_call_t *call = (const pvcm_dbus_call_t *)buf;
+	dbus_rx_reset();
+	dbus_rx.type = DBUS_PENDING_CALL;
+	dbus_rx.id = call->req_id;
+	dbus_rx.expected = call->data_len;
 
+	if (call->data_len > 0) {
+		dbus_rx.buf = malloc(call->data_len + 1);
+		if (!dbus_rx.buf) {
+			send_dbus_resp(t, call->req_id, PVCM_DBUS_ERR_FAILED,
+				       "out of memory", 13);
+			dbus_rx_reset();
+			return -1;
+		}
+		dbus_rx.buf[0] = '\0';
+	}
+
+	/* if data_len == 0, process immediately (no args, no data) */
+	if (call->data_len == 0) {
+		/* empty call — shouldn't happen, need at least dest+path+iface+member */
+		send_dbus_resp(t, call->req_id, PVCM_DBUS_ERR_ARGS,
+			       "need dest, path, iface, member", 30);
+		dbus_rx_reset();
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Process a completed DBUS_CALL after all data received.
+ */
+static void process_dbus_call(struct pvcm_transport *t)
+{
+	uint8_t req_id = dbus_rx.id;
 	const char *fields[5] = { "", "", "", "", "" };
-	int nf = unpack_fields(call->data, call->data_len, fields, 5);
+	int nf = unpack_fields(dbus_rx.buf, dbus_rx.received, fields, 5);
 
 	if (nf < 4) {
-		pvcm_dbus_call_resp_t resp = {
-			.op = PVCM_OP_DBUS_CALL_RESP,
-			.req_id = call->req_id,
-			.error = PVCM_DBUS_ERR_ARGS,
-		};
-		const char *emsg = "need dest, path, iface, member";
-		resp.data_len = (uint16_t)strlen(emsg);
-		memcpy(resp.data, emsg, resp.data_len);
-		t->send_frame(t, &resp, 6 + resp.data_len);
-		return -1;
+		send_dbus_resp(t, req_id, PVCM_DBUS_ERR_ARGS,
+			       "need dest, path, iface, member", 30);
+		dbus_rx_reset();
+		return;
 	}
 
 	const char *dest = fields[0];
@@ -974,39 +1084,25 @@ int pvcm_dbus_bridge_on_call(struct pvcm_transport *t,
 		dest, obj_path, iface, member,
 		args_json ? args_json : "(none)");
 
-	/* build D-Bus message — libdbus for type marshalling only */
 	DBusMessage *msg = dbus_message_new_method_call(
 		dest, obj_path, iface, member);
 	if (!msg) {
-		pvcm_dbus_call_resp_t resp = {
-			.op = PVCM_OP_DBUS_CALL_RESP,
-			.req_id = call->req_id,
-			.error = PVCM_DBUS_ERR_FAILED,
-		};
-		const char *emsg = "failed to create message";
-		resp.data_len = (uint16_t)strlen(emsg);
-		memcpy(resp.data, emsg, resp.data_len);
-		t->send_frame(t, &resp, 6 + resp.data_len);
-		return -1;
+		send_dbus_resp(t, req_id, PVCM_DBUS_ERR_FAILED,
+			       "failed to create message", 24);
+		dbus_rx_reset();
+		return;
 	}
 
 	if (args_json && args_json[0]) {
 		if (json_args_to_dbus(msg, args_json) < 0) {
 			dbus_message_unref(msg);
-			pvcm_dbus_call_resp_t resp = {
-				.op = PVCM_OP_DBUS_CALL_RESP,
-				.req_id = call->req_id,
-				.error = PVCM_DBUS_ERR_ARGS,
-			};
-			const char *emsg = "failed to parse args JSON";
-			resp.data_len = (uint16_t)strlen(emsg);
-			memcpy(resp.data, emsg, resp.data_len);
-			t->send_frame(t, &resp, 6 + resp.data_len);
-			return -1;
+			send_dbus_resp(t, req_id, PVCM_DBUS_ERR_ARGS,
+				       "failed to parse args JSON", 25);
+			dbus_rx_reset();
+			return;
 		}
 	}
 
-	/* find a free pending call slot */
 	struct pending_dbus_call *pc = NULL;
 	for (int i = 0; i < MAX_PENDING_CALLS; i++) {
 		if (!pending_calls[i].active) {
@@ -1016,41 +1112,26 @@ int pvcm_dbus_bridge_on_call(struct pvcm_transport *t,
 	}
 	if (!pc) {
 		dbus_message_unref(msg);
-		pvcm_dbus_call_resp_t resp = {
-			.op = PVCM_OP_DBUS_CALL_RESP,
-			.req_id = call->req_id,
-			.error = PVCM_DBUS_ERR_FAILED,
-		};
-		const char *emsg = "too many pending D-Bus calls";
-		resp.data_len = (uint16_t)strlen(emsg);
-		memcpy(resp.data, emsg, resp.data_len);
-		t->send_frame(t, &resp, 6 + resp.data_len);
-		return -1;
+		send_dbus_resp(t, req_id, PVCM_DBUS_ERR_FAILED,
+			       "too many pending D-Bus calls", 28);
+		dbus_rx_reset();
+		return;
 	}
 
-	/* send message asynchronously — reply arrives via dbus_read_cb */
 	int serial = dbus_send_msg(msg);
 	dbus_message_unref(msg);
 
 	if (serial < 0) {
-		pvcm_dbus_call_resp_t resp = {
-			.op = PVCM_OP_DBUS_CALL_RESP,
-			.req_id = call->req_id,
-			.error = PVCM_DBUS_ERR_FAILED,
-		};
-		const char *emsg = "failed to send D-Bus message";
-		resp.data_len = (uint16_t)strlen(emsg);
-		memcpy(resp.data, emsg, resp.data_len);
-		t->send_frame(t, &resp, 6 + resp.data_len);
-		return -1;
+		send_dbus_resp(t, req_id, PVCM_DBUS_ERR_FAILED,
+			       "failed to send D-Bus message", 28);
+		dbus_rx_reset();
+		return;
 	}
 
-	/* register pending call */
 	pc->serial = (uint32_t)serial;
-	pc->pvcm_req_id = call->req_id;
+	pc->pvcm_req_id = req_id;
 	pc->active = true;
 
-	/* start 10s timeout */
 	if (dbus_event_base) {
 		pc->timeout_ev = evtimer_new(dbus_event_base,
 					     dbus_call_timeout_cb, pc);
@@ -1058,9 +1139,45 @@ int pvcm_dbus_bridge_on_call(struct pvcm_transport *t,
 		evtimer_add(pc->timeout_ev, &tv);
 	}
 
+	dbus_rx_reset();
+}
+
+/*
+ * DBUS_DATA — accumulate data for pending CALL or SUBSCRIBE.
+ */
+int pvcm_dbus_bridge_on_data(struct pvcm_transport *t,
+			     const uint8_t *buf, int len)
+{
+	if (dbus_rx.type == DBUS_PENDING_NONE || !dbus_rx.buf)
+		return 0;
+
+	const pvcm_dbus_data_t *d = (const pvcm_dbus_data_t *)buf;
+
+	if (d->id != dbus_rx.id)
+		return 0;
+
+	size_t chunk = d->len;
+	if (dbus_rx.received + chunk > dbus_rx.expected)
+		chunk = dbus_rx.expected - dbus_rx.received;
+
+	memcpy(dbus_rx.buf + dbus_rx.received, d->data, chunk);
+	dbus_rx.received += chunk;
+	dbus_rx.buf[dbus_rx.received] = '\0';
+
+	/* all data received? dispatch */
+	if (dbus_rx.received >= dbus_rx.expected) {
+		if (dbus_rx.type == DBUS_PENDING_CALL)
+			process_dbus_call(t);
+		else if (dbus_rx.type == DBUS_PENDING_SUB)
+			process_dbus_subscribe(t);
+	}
+
 	return 0;
 }
 
+/*
+ * DBUS_SUBSCRIBE — metadata only. Accumulate data via DBUS_DATA.
+ */
 int pvcm_dbus_bridge_on_subscribe(struct pvcm_transport *t,
 				  const uint8_t *buf, int len)
 {
@@ -1069,6 +1186,33 @@ int pvcm_dbus_bridge_on_subscribe(struct pvcm_transport *t,
 
 	const pvcm_dbus_sub_t *sub = (const pvcm_dbus_sub_t *)buf;
 
+	dbus_rx_reset();
+	dbus_rx.type = DBUS_PENDING_SUB;
+	dbus_rx.id = sub->sub_id;
+	dbus_rx.expected = sub->data_len;
+
+	if (sub->data_len > 0) {
+		dbus_rx.buf = malloc(sub->data_len + 1);
+		if (!dbus_rx.buf) {
+			dbus_rx_reset();
+			return -1;
+		}
+		dbus_rx.buf[0] = '\0';
+	} else {
+		/* empty subscribe — process immediately */
+		dbus_rx_reset();
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+ * Process completed SUBSCRIBE after all data received.
+ */
+static void process_dbus_subscribe(struct pvcm_transport *t)
+{
+	(void)t;
 	int slot = -1;
 	for (int i = 0; i < MAX_SUBS; i++) {
 		if (!subs[i].active) {
@@ -1076,20 +1220,21 @@ int pvcm_dbus_bridge_on_subscribe(struct pvcm_transport *t,
 			break;
 		}
 	}
-	if (slot < 0)
-		return -1;
+	if (slot < 0) {
+		dbus_rx_reset();
+		return;
+	}
 
 	const char *fields[4] = { "", "", "", "" };
-	unpack_fields(sub->data, sub->data_len, fields, 4);
+	unpack_fields(dbus_rx.buf, dbus_rx.received, fields, 4);
 
 	struct dbus_sub *s = &subs[slot];
-	s->sub_id = sub->sub_id;
+	s->sub_id = dbus_rx.id;
 	snprintf(s->sender, sizeof(s->sender), "%s", fields[0]);
 	snprintf(s->path, sizeof(s->path), "%s", fields[1]);
 	snprintf(s->interface, sizeof(s->interface), "%s", fields[2]);
 	snprintf(s->member, sizeof(s->member), "%s", fields[3]);
 
-	/* build and send AddMatch */
 	char rule[512];
 	int off = snprintf(rule, sizeof(rule), "type='signal'");
 	if (s->sender[0])
@@ -1107,14 +1252,15 @@ int pvcm_dbus_bridge_on_subscribe(struct pvcm_transport *t,
 
 	if (dbus_add_match(rule) < 0) {
 		fprintf(stderr, "[dbus-bridge] AddMatch failed\n");
-		return -1;
+		dbus_rx_reset();
+		return;
 	}
 
 	s->active = true;
 
 	fprintf(stdout, "[dbus-bridge] subscribed: sub_id=%d rule=%s\n",
 		s->sub_id, rule);
-	return 0;
+	dbus_rx_reset();
 }
 
 int pvcm_dbus_bridge_on_unsubscribe(struct pvcm_transport *t,

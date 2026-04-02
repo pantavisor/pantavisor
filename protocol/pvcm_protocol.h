@@ -98,6 +98,7 @@ typedef enum {
 	PVCM_OP_DBUS_EXPOSE         = 0x45,  /* MCU -> Linux: register endpoint */
 	PVCM_OP_DBUS_INVOKE         = 0x46,  /* Linux -> MCU: call MCU method */
 	PVCM_OP_DBUS_INVOKE_RESP    = 0x47,  /* MCU -> Linux: MCU reply */
+	PVCM_OP_DBUS_DATA           = 0x48,  /* either: data stream for D-Bus ops */
 
 	/* Transport test — bidirectional echo for debugging */
 	PVCM_OP_ECHO                = 0xE0,  /* either direction: echo back */
@@ -271,52 +272,58 @@ typedef struct {
 } __packed pvcm_http_end_t;
 
 /*
+ * D-Bus Gateway — streaming protocol
+ *
+ * All D-Bus operations use metadata-only headers followed by
+ * DBUS_DATA frames carrying the actual payload. No size limits.
+ *
+ * Data is null-separated fields packed into the DBUS_DATA stream.
+ * The metadata frame specifies field lengths so the receiver can
+ * demux without buffering the entire payload.
+ */
+
+/*
  * DBUS_CALL (MCU -> Linux: call D-Bus method)
  *
- * data[] packs null-separated strings:
- *   dest\0obj_path\0interface\0member[\0args_json]
- *
- * Example: "net.connman\0/\0net.connman.Manager\0GetServices\0"
- * args_json is optional — omit or empty string for no-arg methods.
- * JSON args are positional: '["hello",42]' for method(s,i).
+ * Followed by DBUS_DATA frames carrying:
+ *   dest + obj_path + interface + member + args_json
+ *   (null-separated, lengths from metadata)
  */
 typedef struct {
 	uint8_t  op;
 	uint8_t  req_id;            /* correlates with CALL_RESP */
-	uint16_t data_len;          /* bytes used in data[] */
-	char     data[248];
+	uint16_t data_len;          /* total bytes in DBUS_DATA stream */
 	uint32_t crc32;
 } __packed pvcm_dbus_call_t;
 
-/* DBUS_CALL_RESP (Linux -> MCU: method reply)
- * data[] contains JSON-encoded return value, or error message. */
+/*
+ * DBUS_CALL_RESP (Linux -> MCU: method reply)
+ *
+ * Followed by DBUS_DATA frames carrying JSON result or error string.
+ */
 typedef struct {
 	uint8_t  op;
 	uint8_t  req_id;
 	uint8_t  error;             /* PVCM_DBUS_OK or PVCM_DBUS_ERR_* */
 	uint8_t  reserved;
-	uint16_t data_len;
-	char     data[246];         /* JSON result or error string */
+	uint32_t data_len;          /* bytes in DBUS_DATA stream */
 	uint32_t crc32;
 } __packed pvcm_dbus_call_resp_t;
 
 /*
  * DBUS_SUBSCRIBE (MCU -> Linux: subscribe to signal)
  *
- * data[] packs null-separated match fields:
+ * Followed by DBUS_DATA frames carrying:
  *   sender\0obj_path\0interface\0signal_name
- *
- * Empty fields match all (e.g. "\0/\0org.freedesktop.DBus\0NameOwnerChanged").
  */
 typedef struct {
 	uint8_t  op;
 	uint8_t  sub_id;            /* assigned by MCU, used to unsubscribe */
-	uint16_t data_len;
-	char     data[248];
+	uint16_t data_len;          /* total bytes in DBUS_DATA stream */
 	uint32_t crc32;
 } __packed pvcm_dbus_sub_t;
 
-/* DBUS_UNSUBSCRIBE (MCU -> Linux) */
+/* DBUS_UNSUBSCRIBE (MCU -> Linux) — no data needed */
 typedef struct {
 	uint8_t  op;
 	uint8_t  sub_id;
@@ -324,44 +331,57 @@ typedef struct {
 	uint32_t crc32;
 } __packed pvcm_dbus_unsub_t;
 
-/* DBUS_SIGNAL (Linux -> MCU: signal fired)
- * data[] = sender\0obj_path\0interface\0member\0args_json */
+/*
+ * DBUS_SIGNAL (Linux -> MCU: signal fired)
+ *
+ * Followed by DBUS_DATA frames carrying:
+ *   sender\0obj_path\0interface\0member\0args_json
+ */
 typedef struct {
 	uint8_t  op;
 	uint8_t  sub_id;
-	uint16_t data_len;
-	char     data[248];
+	uint16_t data_len;          /* total bytes in DBUS_DATA stream */
 	uint32_t crc32;
 } __packed pvcm_dbus_signal_t;
 
-/* DBUS_EXPOSE (MCU -> Linux: register D-Bus endpoint) -- reserved */
+/*
+ * DBUS_DATA — generic data frame for all D-Bus operations.
+ * Correlated with the preceding metadata frame by context
+ * (single-threaded dispatch, one pending operation per type).
+ */
+typedef struct {
+	uint8_t  op;
+	uint8_t  id;                /* req_id or sub_id from metadata */
+	uint16_t len;               /* bytes in this chunk */
+	uint8_t  data[PVCM_MAX_CHUNK_SIZE];
+	uint32_t crc32;
+} __packed pvcm_dbus_data_t;
+
+/* DBUS_EXPOSE (MCU -> Linux: register D-Bus endpoint) -- future */
 typedef struct {
 	uint8_t  op;
 	uint8_t  endpoint_id;
 	uint16_t data_len;
-	char     data[248];         /* obj_path\0interface */
 	uint32_t crc32;
 } __packed pvcm_dbus_expose_t;
 
-/* DBUS_INVOKE (Linux -> MCU: call MCU endpoint) -- reserved */
+/* DBUS_INVOKE (Linux -> MCU: call MCU endpoint) -- future */
 typedef struct {
 	uint8_t  op;
 	uint8_t  invoke_id;
 	uint8_t  endpoint_id;
 	uint8_t  reserved;
-	uint16_t data_len;
-	char     data[246];         /* member\0args_json */
+	uint32_t data_len;
 	uint32_t crc32;
 } __packed pvcm_dbus_invoke_t;
 
-/* DBUS_INVOKE_RESP (MCU -> Linux) -- reserved */
+/* DBUS_INVOKE_RESP (MCU -> Linux) -- future */
 typedef struct {
 	uint8_t  op;
 	uint8_t  invoke_id;
 	uint8_t  error;
 	uint8_t  reserved;
-	uint16_t data_len;
-	char     data[246];         /* JSON result */
+	uint32_t data_len;
 	uint32_t crc32;
 } __packed pvcm_dbus_invoke_resp_t;
 

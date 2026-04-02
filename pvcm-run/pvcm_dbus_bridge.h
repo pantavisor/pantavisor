@@ -27,6 +27,8 @@ int pvcm_dbus_bridge_init(struct event_base *base,
 /* Handle incoming D-Bus frames from MCU */
 int pvcm_dbus_bridge_on_call(struct pvcm_transport *t,
 			     const uint8_t *buf, int len);
+int pvcm_dbus_bridge_on_data(struct pvcm_transport *t,
+			     const uint8_t *buf, int len);
 int pvcm_dbus_bridge_on_subscribe(struct pvcm_transport *t,
 				  const uint8_t *buf, int len);
 int pvcm_dbus_bridge_on_unsubscribe(struct pvcm_transport *t,

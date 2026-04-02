@@ -211,6 +211,9 @@ int pvcm_dispatch_one(struct pvcm_session *s)
 	case PVCM_OP_DBUS_CALL:
 		pvcm_dbus_bridge_on_call(s->transport, buf, len);
 		break;
+	case PVCM_OP_DBUS_DATA:
+		pvcm_dbus_bridge_on_data(s->transport, buf, len);
+		break;
 	case PVCM_OP_DBUS_SUBSCRIBE:
 		pvcm_dbus_bridge_on_subscribe(s->transport, buf, len);
 		break;
