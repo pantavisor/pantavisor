@@ -481,6 +481,28 @@ static int cmd_pv_hdrtest(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+#ifdef CONFIG_PANTAVISOR_FS
+#include <pantavisor/pvcm_fs.h>
+
+static int cmd_pv_mount(const struct shell *sh, size_t argc, char **argv)
+{
+	if (argc < 3) {
+		shell_print(sh, "Usage: pv mount <share> <mountpoint>\n"
+			    "  pv mount storage /storage");
+		return -EINVAL;
+	}
+
+	shell_print(sh, "Mounting share '%s' at %s ...", argv[1], argv[2]);
+	int ret = pvcm_fs_mount(argv[2], argv[1]);
+	if (ret) {
+		shell_error(sh, "mount failed: %d", ret);
+		return ret;
+	}
+	shell_print(sh, "Mounted. Use 'fs ls %s' to browse.", argv[2]);
+	return 0;
+}
+#endif
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
 	SHELL_CMD(status, NULL, "Show PVCM status", cmd_pv_status),
 	SHELL_CMD(containers, NULL, "List containers", cmd_pv_containers),
@@ -494,6 +516,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pv_cmds,
 #endif
 #ifdef CONFIG_PANTAVISOR_DBUS
 	SHELL_CMD(dbus, &pv_dbus_cmds, "D-Bus gateway commands", NULL),
+#endif
+#ifdef CONFIG_PANTAVISOR_FS
+	SHELL_CMD(mount, NULL, "Mount share: pv mount <share> <path>",
+		  cmd_pv_mount),
 #endif
 	SHELL_SUBCMD_SET_END
 );

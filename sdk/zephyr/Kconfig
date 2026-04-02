@@ -51,6 +51,14 @@ config PANTAVISOR_DBUS
 	  Enable DBus method calls, signal subscriptions, and service
 	  exposure from firmware.
 
+config PANTAVISOR_FS
+	bool "Remote filesystem"
+	depends on FILE_SYSTEM
+	help
+	  Mount Linux directories on the MCU via pvcm-run.
+	  Standard Zephyr filesystem API (fs_open, fs_read, etc.)
+	  backed by RPC over the PVCM protocol.
+
 config PANTAVISOR_SHELL
 	bool "Shell commands"
 	depends on SHELL
@@ -65,7 +73,7 @@ config PANTAVISOR_HEARTBEAT_INTERVAL_MS
 
 config HEAP_MEM_POOL_ADD_SIZE_PANTAVISOR
 	int "Heap memory for Pantavisor SDK (bytes)"
-	default 32768 if PANTAVISOR_BRIDGE || PANTAVISOR_DBUS
+	default 32768 if PANTAVISOR_BRIDGE || PANTAVISOR_DBUS || PANTAVISOR_FS
 	default 4096
 	help
 	  Heap memory required by the Pantavisor SDK for dynamic HTTP/D-Bus

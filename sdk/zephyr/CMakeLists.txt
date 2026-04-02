@@ -34,6 +34,10 @@ zephyr_library_sources_ifdef(CONFIG_PANTAVISOR_DBUS
   src/pvcm_dbus.c
 )
 
+zephyr_library_sources_ifdef(CONFIG_PANTAVISOR_FS
+  src/pvcm_fs.c
+)
+
 zephyr_library_sources_ifdef(CONFIG_PANTAVISOR_SHELL
   src/pvcm_shell.c
 )

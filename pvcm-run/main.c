@@ -35,6 +35,7 @@
 #include "pvcm_protocol.h"
 #include "pvcm_bridge.h"
 #include "pvcm_dbus_bridge.h"
+#include "pvcm_fs_bridge.h"
 
 static FILE *dbglog = NULL;
 static char dbus_socket[256] = "";
@@ -72,6 +73,7 @@ static void usage(const char *prog)
 		"  --baudrate, -b <rate>    UART baudrate (default: 921600)\n"
 		"  --listen-port, -p <port> HTTP listener port (default: 18081)\n"
 		"  --route <spec>           HTTP route: name=unix:/path or name=tcp:host:port\n"
+		"  --fs-share <spec>        FS share: name=/linux/path\n"
 		"  --dbus-socket <path>     D-Bus socket path (enables D-Bus bridge)\n"
 		"  --dbus-session           Use session D-Bus (for testing)\n"
 		"  --help, -h               Show this help\n"
@@ -99,6 +101,7 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 		{ "remoteproc", required_argument, NULL, 'r' },
 		{ "listen-port", required_argument, NULL, 'p' },
 		{ "route", required_argument, NULL, 'R' },
+		{ "fs-share", required_argument, NULL, 'F' },
 		{ "dbus-socket", required_argument, NULL, 'D' },
 		{ "dbus-session", no_argument, NULL, 'S' },
 		{ "help", no_argument, NULL, 'h' },
@@ -165,6 +168,12 @@ static int parse_args(int argc, char **argv, struct pvcm_config *cfg)
 		case 'R':
 			if (pvcm_bridge_add_route(optarg) < 0) {
 				fprintf(stderr, "invalid route: %s\n", optarg);
+				return -1;
+			}
+			break;
+		case 'F':
+			if (pvcm_fs_bridge_add_share(optarg) < 0) {
+				fprintf(stderr, "invalid fs-share: %s\n", optarg);
 				return -1;
 			}
 			break;
@@ -412,7 +421,7 @@ int main(int argc, char **argv)
 	mkdir("/storage/logs/current/claudecli", 0755);
 	dbglog = fopen("/storage/logs/current/claudecli/pvcm-run.log", "w");
 
-	pvcm_log("starting for MCU '%s'", cfg.name);
+	pvcm_log("starting pvcm-run for MCU '%s'", cfg.name);
 
 	/* parse run.json if provided, then re-apply CLI overrides */
 	if (cfg.config_path[0]) {
@@ -561,6 +570,9 @@ int main(int argc, char **argv)
 	/* start HTTP bridge */
 	pvcm_bridge_init(transport);
 	pvcm_bridge_start_listener(base, transport, listen_port);
+
+	/* start filesystem bridge */
+	pvcm_fs_bridge_init(transport);
 
 	/* start D-Bus bridge */
 	if (dbus_socket[0]) {

@@ -26,6 +26,9 @@ extern void pvcm_client_on_http_req(const uint8_t *buf, int len);
 extern void pvcm_client_on_http_data(const uint8_t *buf, int len);
 extern void pvcm_client_on_http_end(const uint8_t *buf, int len);
 extern bool pvcm_client_has_pending_http(uint8_t stream_id);
+extern void pvcm_fs_on_resp(const uint8_t *buf, int len);
+extern void pvcm_fs_on_data(const uint8_t *buf, int len);
+extern void pvcm_fs_on_end(const uint8_t *buf, int len);
 extern void pvcm_echo_on_resp(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_req(const uint8_t *buf, int len);
 extern void pvcm_client_on_invoke_data(const uint8_t *buf, int len);
@@ -166,6 +169,17 @@ void pvcm_server_dispatch(const uint8_t *buf, int len)
 		break;
 	case PVCM_OP_DBUS_DATA:
 		pvcm_dbus_on_data(buf, len);
+		break;
+#endif
+#ifdef CONFIG_PANTAVISOR_FS
+	case PVCM_OP_FS_RESP:
+		pvcm_fs_on_resp(buf, len);
+		break;
+	case PVCM_OP_FS_DATA:
+		pvcm_fs_on_data(buf, len);
+		break;
+	case PVCM_OP_FS_END:
+		pvcm_fs_on_end(buf, len);
 		break;
 #endif
 	case PVCM_OP_ECHO_RESP:
