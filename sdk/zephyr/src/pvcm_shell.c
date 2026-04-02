@@ -345,7 +345,7 @@ static int cmd_pv_ping(const struct shell *sh, size_t argc, char **argv)
 		.seq = seq_counter,
 		.data_len = (uint32_t)total,
 	};
-	t->send_frame(&echo, 4); /* just header, no payload needed */
+	t->send_frame(&echo, 8); /* op + seq + reserved + data_len */
 
 	shell_print(sh, "ping %d bytes (expect %d frames)...",
 		    total, expected_frames);
