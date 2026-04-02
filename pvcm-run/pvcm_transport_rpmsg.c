@@ -93,8 +93,13 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 	size_t total = 4 + len + 4;
 
 	/* RPMsg vring has limited TX slots. If write fails (ENOMEM/EAGAIN),
-	 * poll for write-readiness — the MCU will consume buffers and the
-	 * fd becomes writable again. No blind sleep. */
+	 * the MCU hasn't consumed the buffer yet. Yield briefly to let the
+	 * M7 process, then retry. The ttyRPMSG driver doesn't support
+	 * POLLOUT, so we use a short yield (100μs) instead. */
+	struct timespec deadline;
+	clock_gettime(CLOCK_MONOTONIC, &deadline);
+	deadline.tv_sec += 10; /* 10s total timeout */
+
 	for (;;) {
 		ssize_t n = write(t->fd, frame, total);
 		if (n == (ssize_t)total)
@@ -108,13 +113,17 @@ static int rpmsg_send_frame(struct pvcm_transport *t, const void *payload,
 			fprintf(stderr, "[pvcm-run] rpmsg write error: %m\n");
 			return -1;
 		}
-		/* wait for vring space (10s timeout) */
-		struct pollfd pfd = { .fd = t->fd, .events = POLLOUT };
-		int ret = poll(&pfd, 1, 10000);
-		if (ret <= 0) {
+
+		struct timespec now;
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		if (now.tv_sec > deadline.tv_sec ||
+		    (now.tv_sec == deadline.tv_sec &&
+		     now.tv_nsec >= deadline.tv_nsec)) {
 			fprintf(stderr, "[pvcm-run] rpmsg write timeout\n");
 			return -1;
 		}
+
+		usleep(100); /* 100μs yield — let MCU drain vring */
 	}
 }
 
