@@ -29,6 +29,27 @@
  *
  * Same pattern as pv_lxc.c: plugin does fork/exec, runtime does
  * the actual work.
+ *
+ * TODO: Full MCU device management
+ *
+ * Currently this plugin only fork/execs pvcm-run with the container's
+ * run.json. The following is needed for production:
+ *
+ * 1. Parse BSP-level MCU hardware declaration from bsp/mcu.json or
+ *    the "mcu" field in device.json. This tells pantavisor what MCU
+ *    devices the board has (remoteproc instance, transport type,
+ *    ttyRPMSG channel assignment, firmware constraints).
+ *
+ * 2. Map MCU containers to hardware: match the container's
+ *    mcu.device name against the BSP MCU list to resolve the
+ *    actual /dev/ttyRPMSG path and remoteproc instance.
+ *
+ * 3. Parse the xconnect service graph to set up the correct
+ *    --route, --dbus-socket, and --fs-share forwards between
+ *    the MCU container and Linux containers.
+ *
+ * 4. Lifecycle: load firmware via remoteproc before starting
+ *    pvcm-run, stop remoteproc on container stop.
  */
 
 #include "pv_mcu.h"
