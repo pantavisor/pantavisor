@@ -395,7 +395,7 @@ struct pvcmfs_dir {
 
 static int pvcmfs_opendir(struct fs_dir_t *dirp, const char *path)
 {
-	printk("pvcmfs: opendir '%s'\n", path);
+	LOG_INF("opendir: %s", path);
 	int ret = fs_rpc(PVCM_FS_OPENDIR, 0, 0, 0,
 			 path, strlen(path), NULL, 0, NULL, 0);
 	fs_rpc_cleanup();

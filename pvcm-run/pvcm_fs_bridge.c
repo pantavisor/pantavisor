@@ -120,15 +120,22 @@ static int resolve_path(const char *mcu_path, char *out, size_t out_size)
 		return -1;
 	}
 
-	/* strip mount point prefix if present */
+	/* strip mount point prefix: MCU sends "/storage/foo",
+	 * share name is "storage" — skip leading / then strip name */
 	const char *rel = mcu_path;
-	size_t mnt_len = strlen(mounted_share->name);
-	if (strncmp(rel, mounted_share->name, mnt_len) == 0)
-		rel += mnt_len;
 	if (rel[0] == '/')
 		rel++;
+	size_t mnt_len = strlen(mounted_share->name);
+	if (strncmp(rel, mounted_share->name, mnt_len) == 0) {
+		rel += mnt_len;
+		if (rel[0] == '/')
+			rel++;
+	}
 
-	snprintf(out, out_size, "%s/%s", mounted_share->root, rel);
+	if (rel[0] == '\0')
+		snprintf(out, out_size, "%s", mounted_share->root);
+	else
+		snprintf(out, out_size, "%s/%s", mounted_share->root, rel);
 	return 0;
 }
 
