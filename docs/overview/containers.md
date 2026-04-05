@@ -109,6 +109,7 @@ These are the different status containers can be at:
 * STARTING: container is starting.
 * STARTED: container PID is running.
 * READY: Pantavisor has received a readiness [signal](#signals) from the container.
+* RECOVERING: container crashed and [auto-recovery](#auto-recovery) is waiting to restart it.
 * STOPPING: container is stopping because of a [update transition](#updates.md).
 * STOPPED: container has stopped.
 
@@ -135,6 +136,43 @@ A [timeout](../../../reference/legacy/pantavisor-state-format-v2.md#device.json)
 Signals can be sent from the container namespace to Pantavisor using the [local control interface](../../../reference/legacy/pantavisor-commands.md#signal) in order to affect the container [status](#status).
 
 For now, we only support the `ready` signal, which can be used to get to the [READY status goal](#status-goal) from a container.
+
+## Auto-Recovery
+
+Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](pantavisor-state-format-v2.md#containerrunjson) or inherited from the container's [group](#groups).
+
+### Recovery Policies
+
+| Policy | Behavior |
+| ------ | -------- |
+| `no` | Never restart (default). |
+| `on-failure` | Restart only on non-zero exit code. |
+| `always` | Restart on any exit, regardless of exit code. |
+| `unless-stopped` | Restart unless the container was explicitly stopped via API. |
+
+### Exponential Backoff
+
+When a container crashes, Pantavisor waits `retry_delay` seconds before restarting. On each subsequent crash, the delay is multiplied by `backoff_factor` (e.g., 5s, 10s, 20s, 40s with factor 2.0). The `reset_window` resets the retry counter if the container has been running longer than the configured seconds since its last start.
+
+### Stability Tracking
+
+The `stable_timeout` field defines how many seconds a container must survive after reaching its [status goal](#status-goal) before being considered stable. This does **not** block [group](#groups) startup chaining — groups still gate on `status_goal` only. However, during [TESTING](updates.md#testing), the commit is held until all containers with a `stable_timeout` have proven stable. If a container crashes within its stability window, the timer resets on the next successful start.
+
+### Backoff Policy
+
+The `backoff_policy` field controls what happens after `max_retries` is exhausted:
+
+| Value | Behavior |
+| ----- | -------- |
+| `reboot` | Reboot the system (default). |
+| `never` | Leave the container stopped; system continues running. |
+| Duration (e.g., `10min`) | Wait the specified duration, reset the retry counter, and restart the full recovery cycle. Supported units: `s` (seconds), `min` (minutes), `h` (hours). |
+
+During [TESTING](updates.md#testing), `max_retries` exhaustion always triggers a [rollback](updates.md#error) regardless of the backoff policy.
+
+### Group-Level Defaults
+
+Groups in [device.json](pantavisor-state-format-v2.md#devicejson) can define a default `auto_recovery` object. Containers inherit this configuration **all-or-nothing**: if a container has its own `auto_recovery` in `run.json`, it is used entirely; otherwise the group's default applies. No field-level merging is performed. The default `app` group ships with an on-failure recovery policy.
 
 ## Drivers
 

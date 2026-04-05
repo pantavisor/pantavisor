@@ -43,6 +43,7 @@
 #include "pantavisor.h"
 #include "storage.h"
 #include "metadata.h"
+#include "update/update.h"
 #include "utils/tsh.h"
 #include "utils/math.h"
 #include "utils/str.h"
@@ -644,6 +645,15 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	clock_gettime(CLOCK_MONOTONIC, &now);
 	p->auto_recovery.last_start = now.tv_sec;
 
+	// Inherit auto_recovery from group if container has none
+	if (p->auto_recovery.type == RECOVERY_NO && p->group &&
+	    p->group->default_auto_recovery.type != RECOVERY_NO)
+		p->auto_recovery = p->group->default_auto_recovery;
+
+	// Reset stability state on (re)start
+	p->auto_recovery.is_stable = false;
+	p->auto_recovery.recovery_failed = false;
+
 	return 0;
 }
 
@@ -709,9 +719,40 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 		if (p->auto_recovery.max_retries > 0 &&
 		    p->auto_recovery.current_retries >=
 			    p->auto_recovery.max_retries) {
-			pv_log(WARN,
-			       "platform '%s' reached max retries (%d). Giving up.",
+			pv_log(WARN, "platform '%s' reached max retries (%d).",
 			       p->name, p->auto_recovery.max_retries);
+
+			// During TESTING/update: always fail (causes rollback)
+			if (pv_update_is_inprogress() ||
+			    pv_update_is_testing()) {
+				pv_log(WARN,
+				       "during update — will trigger rollback");
+				return false;
+			}
+
+			// Steady state: consult backoff_policy
+			switch (p->auto_recovery.backoff_policy) {
+			case BACKOFF_REBOOT:
+				pv_log(WARN,
+				       "backoff_policy=reboot — triggering reboot");
+				return false;
+			case BACKOFF_NEVER:
+				pv_log(WARN,
+				       "backoff_policy=never — leaving '%s' stopped",
+				       p->name);
+				p->auto_recovery.recovery_failed = true;
+				return true;
+			case BACKOFF_DURATION:
+				pv_log(WARN,
+				       "backoff_policy=%ds — scheduling retry cycle reset",
+				       p->auto_recovery.backoff_duration);
+				p->auto_recovery.current_retries = 0;
+				timer_start(&p->auto_recovery.timer_retry,
+					    p->auto_recovery.backoff_duration,
+					    0, RELATIV_TIMER);
+				pv_platform_set_recovering(p);
+				return true;
+			}
 			return false;
 		}
 
@@ -783,12 +824,33 @@ int pv_state_run(struct pv_state *s)
 		} else if (pv_platform_is_started(p) ||
 			   pv_platform_is_ready(p)) {
 			if (!pv_platform_check_running(p)) {
+				// Container crashed — reset stability
+				p->auto_recovery.is_stable = false;
+
 				if (pv_state_check_auto_recovery(s, p))
 					continue;
 
 				pv_log(ERROR, "platform '%s' suddenly stopped",
 				       p->name);
 				ret = -1;
+			} else if (p->auto_recovery.stable_timeout > 0 &&
+				   !p->auto_recovery.is_stable) {
+				// Container running — track stability
+				struct timer_state st = timer_current_state(
+					&p->auto_recovery.timer_stable);
+				if (st.sec == 0 && st.nsec == 0 && st.fin) {
+					// Timer not started yet
+					timer_start(
+						&p->auto_recovery.timer_stable,
+						p->auto_recovery.stable_timeout,
+						0, RELATIV_TIMER);
+				} else if (st.fin) {
+					pv_log(INFO,
+					       "platform '%s' is now STABLE (survived %d seconds)",
+					       p->name,
+					       p->auto_recovery.stable_timeout);
+					p->auto_recovery.is_stable = true;
+				}
 			}
 		} else if (pv_platform_is_recovering(p)) {
 			struct timer_state tstate = timer_current_state(
@@ -800,6 +862,9 @@ int pv_state_run(struct pv_state *s)
 				pv_platform_set_installed(p);
 			}
 		} else if (pv_platform_is_stopped(p)) {
+			if (p->auto_recovery.recovery_failed)
+				continue;
+
 			if (pv_state_check_auto_recovery(s, p))
 				continue;
 
@@ -813,6 +878,39 @@ int pv_state_run(struct pv_state *s)
 
 out:
 	return ret;
+}
+
+pv_stability_t pv_state_check_stability(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp_p;
+
+	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
+	{
+		// Container that exhausted retries and is stopped = FAILED
+		if (pv_platform_is_stopped(p) &&
+		    !p->auto_recovery.recovery_failed &&
+		    p->auto_recovery.type != RECOVERY_NO &&
+		    p->auto_recovery.max_retries > 0 &&
+		    p->auto_recovery.current_retries >=
+			    p->auto_recovery.max_retries) {
+			pv_log(WARN,
+			       "platform '%s' stability FAILED (max retries exhausted)",
+			       p->name);
+			return PV_STABILITY_FAILED;
+		}
+
+		// Container with stable_timeout that hasn't proven stable yet
+		if (p->auto_recovery.stable_timeout > 0 &&
+		    !p->auto_recovery.is_stable &&
+		    !p->auto_recovery.recovery_failed) {
+			pv_log(DEBUG,
+			       "platform '%s' stability PENDING (waiting for stable_timeout)",
+			       p->name);
+			return PV_STABILITY_PENDING;
+		}
+	}
+
+	return PV_STABILITY_ALL_STABLE;
 }
 
 static bool pv_state_check_all_stopped(struct pv_state *s)

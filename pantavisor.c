@@ -419,7 +419,23 @@ static pv_state_t pv_wait_update()
 			       (intmax_t)tstate.sec);
 			return PV_STATE_WAIT;
 		}
-		pv_update_set_final();
+
+		// commit timer expired — check stability before committing
+		pv_stability_t stability = pv_state_check_stability(pv->state);
+		switch (stability) {
+		case PV_STABILITY_FAILED:
+			pv_log(ERROR,
+			       "container stability check failed. Rolling back...");
+			pv_update_set_error_platform();
+			return PV_STATE_ROLLBACK;
+		case PV_STABILITY_PENDING:
+			pv_log(INFO,
+			       "commit held: waiting for all containers to become stable");
+			return PV_STATE_WAIT;
+		case PV_STABILITY_ALL_STABLE:
+			pv_update_set_final();
+			break;
+		}
 	}
 
 	return PV_STATE_WAIT;

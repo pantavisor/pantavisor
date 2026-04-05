@@ -25,6 +25,14 @@
     "description": "Application level containers",
     "restart_policy": "container",
     "timeout": 30,
-    "status_goal": "STARTED"
+    "status_goal": "STARTED",
+    "auto_recovery": {
+      "policy": "on-failure",
+      "max_retries": 5,
+      "retry_delay": 5,
+      "backoff_factor": 2.0,
+      "stable_timeout": 30,
+      "backoff_policy": "reboot"
+    }
   }
 ]

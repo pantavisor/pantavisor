@@ -106,10 +106,13 @@ In this case, Pantavisor will only stop the containers that were affected by the
 
 Waiting to see if the revision is stable. During this stage, Pantavisor checks if all containers are running and will [rollback](#error) if any of them exits. Besides that, in the case of a [remote](remote-control.md#pantacor-hub) update, it will also [rollback](#error) in case Pantacor Hub communication is lost.
 
+If any container has a [stable_timeout](containers.md#stability-tracking), the commit is held even after the commit delay timer expires, until all containers have survived their stability window. If a container with [auto-recovery](containers.md#auto-recovery) exhausts its `max_retries` during TESTING, a rollback is triggered immediately regardless of the configured `backoff_policy`.
+
 | Messages |
 | ---------|
 Awaiting to set rollback point if update is stable |
 Awaiting to see if update is stable |
+Commit held: waiting for all containers to become stable |
 
 ### UPDATED
 

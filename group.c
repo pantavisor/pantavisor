@@ -198,6 +198,27 @@ void pv_group_add_json(struct pv_json_ser *js, struct pv_group *g)
 					       g->default_restart_policy));
 		pv_json_ser_key(js, "status");
 		pv_json_ser_string(js, pv_platform_status_string(g->status));
+		if (g->default_auto_recovery.type != RECOVERY_NO) {
+			pv_json_ser_key(js, "auto_recovery");
+			pv_json_ser_object(js);
+			{
+				pv_json_ser_key(js, "max_retries");
+				pv_json_ser_number(
+					js,
+					g->default_auto_recovery.max_retries);
+				pv_json_ser_key(js, "stable_timeout");
+				pv_json_ser_number(js, g->default_auto_recovery
+							       .stable_timeout);
+				pv_json_ser_key(js, "backoff_policy");
+				pv_json_ser_string(
+					js, pv_backoff_policy_str(
+						    g->default_auto_recovery
+							    .backoff_policy,
+						    g->default_auto_recovery
+							    .backoff_duration));
+				pv_json_ser_object_pop(js);
+			}
+		}
 
 		pv_json_ser_object_pop(js);
 	}
