@@ -33,6 +33,7 @@ struct pv_group {
 	plat_status_t default_status_goal;
 	restart_policy_t default_restart_policy;
 	int default_status_goal_timeout;
+	struct pv_auto_recovery default_auto_recovery;
 	struct dl_list platform_refs; // pv_platform_ref
 	struct dl_list list; // pv_group
 };

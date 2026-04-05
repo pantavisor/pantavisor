@@ -82,6 +82,7 @@ Defines how containers are grouped and started.
 | `status_goal` | enum | `STARTED` | Goal for all members: `MOUNTED`, `STARTED`, `READY`. |
 | `restart_policy` | enum | `container` | Policy on failure: `system`, `container`. |
 | `timeout` | integer | 30 | Seconds to wait for members to reach `status_goal`. |
+| `auto_recovery` | object | none | Default [auto-recovery](#auto-recovery-object) for containers in this group. Inherited all-or-nothing by containers without their own `auto_recovery`. |
 
 ---
 
@@ -124,6 +125,21 @@ Configures an individual container runtime.
 | `services` | object | No | [Service mesh requirements](#service-requirements). |
 | `logs` | array | No | [Logger configurations](#loggers-array). |
 | `exports` | array | No | (Boolean flag in code) Marks container as an exporter. |
+| `auto_recovery` | object | No | [Auto-recovery configuration](#auto-recovery-object). If absent, inherited from group. |
+
+### Auto-Recovery Object
+
+Configures automatic restart behavior when a container crashes.
+
+| Key | Value Type | Default | Description |
+|:---|:---|:---:|:---|
+| `policy` | enum | `no` | Recovery policy: `no`, `always`, `on-failure`, `unless-stopped`. |
+| `max_retries` | integer | 0 | Maximum restart attempts. 0 = unlimited. |
+| `retry_delay` | integer | 0 | Initial delay in seconds before first restart. |
+| `backoff_factor` | number | 1.0 | Multiplier applied to `retry_delay` on each subsequent retry. |
+| `reset_window` | integer | 0 | Seconds of continuous uptime after which the retry counter resets to 0. |
+| `stable_timeout` | integer | 0 | Seconds the container must survive after reaching its status goal to be considered stable. Used to gate [TESTING](../overview/updates.md#testing) commit. |
+| `backoff_policy` | string | `reboot` | Action after `max_retries` exhausted in steady state: `reboot`, `never`, or a duration string (`10min`, `1h`, `30s`). |
 
 ### Storage Object
 Defines persistence for specific directories. Keys are paths relative to container root.

@@ -352,6 +352,56 @@ const char *pv_platforms_restart_policy_str(restart_policy_t policy)
 	return "unknown";
 }
 
+const char *pv_backoff_policy_str(backoff_policy_t policy, int duration)
+{
+	static char buf[32];
+
+	switch (policy) {
+	case BACKOFF_REBOOT:
+		return "reboot";
+	case BACKOFF_NEVER:
+		return "never";
+	case BACKOFF_DURATION:
+		if (duration >= 3600 && duration % 3600 == 0)
+			snprintf(buf, sizeof(buf), "%dh", duration / 3600);
+		else if (duration >= 60 && duration % 60 == 0)
+			snprintf(buf, sizeof(buf), "%dmin", duration / 60);
+		else
+			snprintf(buf, sizeof(buf), "%ds", duration);
+		return buf;
+	}
+
+	return "reboot";
+}
+
+backoff_policy_t pv_parse_backoff_policy(const char *value, int *duration_out)
+{
+	if (!value || !value[0])
+		return BACKOFF_REBOOT;
+
+	if (!strcmp(value, "reboot"))
+		return BACKOFF_REBOOT;
+	if (!strcmp(value, "never"))
+		return BACKOFF_NEVER;
+
+	// Parse duration string: "10min", "30s", "1h"
+	char *end = NULL;
+	long val = strtol(value, &end, 10);
+	if (val <= 0 || !end || end == value)
+		return BACKOFF_REBOOT;
+
+	int seconds = (int)val;
+	if (!strcmp(end, "h"))
+		seconds *= 3600;
+	else if (!strcmp(end, "min"))
+		seconds *= 60;
+	// "s" or no suffix = seconds
+
+	if (duration_out)
+		*duration_out = seconds;
+	return BACKOFF_DURATION;
+}
+
 void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 {
 	char *group = NULL;
@@ -393,6 +443,29 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 			}
 		close_roles:
 			pv_json_ser_array_pop(js);
+		}
+
+		pv_json_ser_key(js, "auto_recovery");
+		pv_json_ser_object(js);
+		{
+			pv_json_ser_key(js, "max_retries");
+			pv_json_ser_number(js, p->auto_recovery.max_retries);
+			pv_json_ser_key(js, "current_retries");
+			pv_json_ser_number(js,
+					   p->auto_recovery.current_retries);
+			pv_json_ser_key(js, "stable_timeout");
+			pv_json_ser_number(js, p->auto_recovery.stable_timeout);
+			pv_json_ser_key(js, "is_stable");
+			pv_json_ser_string(js, p->auto_recovery.is_stable ?
+						       "true" :
+						       "false");
+			pv_json_ser_key(js, "backoff_policy");
+			pv_json_ser_string(
+				js, pv_backoff_policy_str(
+					    p->auto_recovery.backoff_policy,
+					    p->auto_recovery.backoff_duration));
+
+			pv_json_ser_object_pop(js);
 		}
 
 		pv_json_ser_object_pop(js);

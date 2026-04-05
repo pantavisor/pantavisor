@@ -1258,13 +1258,41 @@ static recovery_type_t parse_recovery_type(char *value)
 	return RECOVERY_NO;
 }
 
+static void pv_parse_auto_recovery_json(const char *buf, jsmntok_t *tokv,
+					int tokc, struct pv_auto_recovery *ar)
+{
+	char *str;
+
+	str = pv_json_get_value(buf, "policy", tokv, tokc);
+	if (str) {
+		ar->type = parse_recovery_type(str);
+		free(str);
+	}
+	ar->max_retries = pv_json_get_value_int(buf, "max_retries", tokv, tokc);
+	ar->retry_delay = pv_json_get_value_int(buf, "retry_delay", tokv, tokc);
+	ar->reset_window =
+		pv_json_get_value_int(buf, "reset_window", tokv, tokc);
+	str = pv_json_get_value(buf, "backoff_factor", tokv, tokc);
+	if (str) {
+		ar->backoff_factor = atof(str);
+		free(str);
+	}
+	ar->stable_timeout =
+		pv_json_get_value_int(buf, "stable_timeout", tokv, tokc);
+	str = pv_json_get_value(buf, "backoff_policy", tokv, tokc);
+	if (str) {
+		ar->backoff_policy =
+			pv_parse_backoff_policy(str, &ar->backoff_duration);
+		free(str);
+	}
+}
+
 static int do_action_for_auto_recovery(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
 	struct pv_platform *p = *bundle->platform;
-	int tokc, ret = 0;
+	int tokc;
 	jsmntok_t *tokv;
-	char *str = NULL;
 	char *buf = jka->buf;
 
 	if (!p || !buf)
@@ -1275,31 +1303,11 @@ static int do_action_for_auto_recovery(struct json_key_action *jka, char *value)
 		return -1;
 	}
 
-	str = pv_json_get_value(buf, "policy", tokv, tokc);
-	if (str) {
-		p->auto_recovery.type = parse_recovery_type(str);
-		free(str);
-	}
+	pv_parse_auto_recovery_json(buf, tokv, tokc, &p->auto_recovery);
 
-	p->auto_recovery.max_retries =
-		pv_json_get_value_int(buf, "max_retries", tokv, tokc);
-	p->auto_recovery.retry_delay =
-		pv_json_get_value_int(buf, "retry_delay", tokv, tokc);
-	p->auto_recovery.reset_window =
-		pv_json_get_value_int(buf, "reset_window", tokv, tokc);
-
-	// backoff_factor is double, but we only have get_value_int
-	// implementing simple int parsing for now
-	str = pv_json_get_value(buf, "backoff_factor", tokv, tokc);
-	if (str) {
-		p->auto_recovery.backoff_factor = atof(str);
-		free(str);
-	}
-
-	ret = 0;
 	if (tokv)
 		free(tokv);
-	return ret;
+	return 0;
 }
 
 static int do_action_for_one_volume(struct json_key_action *jka, char *value)
@@ -1645,6 +1653,7 @@ static int parse_groups(struct pv_state *s, char *value)
 	int tokc, size, ret = 1;
 	char *str = NULL;
 	char *tmp = NULL;
+	char *tmp2 = NULL;
 	jsmntok_t *tokv, *t;
 
 	if (jsmnutil_parse_json(value, &tokv, &tokc) < 0) {
@@ -1719,6 +1728,19 @@ static int parse_groups(struct pv_state *s, char *value)
 			goto out;
 		}
 		g = pv_group_new(tmp, timeout, status, restart);
+		tmp2 = pv_json_get_value(str, "auto_recovery", groupv, groupc);
+		if (tmp2) {
+			jsmntok_t *artokv;
+			int artokc;
+			if (jsmnutil_parse_json(tmp2, &artokv, &artokc) >= 0) {
+				pv_parse_auto_recovery_json(
+					tmp2, artokv, artokc,
+					&g->default_auto_recovery);
+				free(artokv);
+			}
+			free(tmp2);
+			tmp2 = NULL;
+		}
 		pv_state_add_group(s, g);
 		free(tmp);
 		tmp = NULL;
