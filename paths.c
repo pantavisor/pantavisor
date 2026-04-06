@@ -99,10 +99,10 @@ void pv_paths_pv_log_file(char *buf, size_t size, const char *rev,
 			pv_config_get_str(PV_SYSTEM_RUNDIR), rev, plat, name);
 }
 
-#define PV_UPDATE_HOOKS_PATHF "%s/" UPDATE_HOOKS
-void pv_paths_pv_update_hooks(char *buf, size_t size)
+#define PV_SYSTEM_HOOKS_PATHF "%s/" SYSTEM_HOOKS
+void pv_paths_pv_system_hooks(char *buf, size_t size)
 {
-	SNPRINTF_WTRUNC(buf, size, PV_UPDATE_HOOKS_PATHF,
+	SNPRINTF_WTRUNC(buf, size, PV_SYSTEM_HOOKS_PATHF,
 			PV_INSTALL_FULL_PVLIBDIR);
 }
 

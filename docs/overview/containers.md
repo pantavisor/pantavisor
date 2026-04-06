@@ -146,6 +146,8 @@ Signals can be sent from the container namespace to Pantavisor using the [local 
 
 For now, we only support the `ready` signal, which can be used to get to the [READY status goal](#status-goal) from a container.
 
+Once all containers have met their [status goal](#status-goal), Pantavisor fires the `system-done` [hook point](hooks.md#hook-points), allowing operators to react to the platform reaching its fully-running state.
+
 ## Auto-Recovery
 
 Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](pantavisor-state-format-v2.md#containerrunjson) or inherited from the container's [group](#groups).

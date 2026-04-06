@@ -17,7 +17,7 @@ Pantavisor-enabled devices need to communicate with the outside world to consume
 
 ## Customisation
 
-Pantavisor can be set up in different ways, offering [multi-level configuration](pantavisor-configuration-levels.md) as well as several [operational init modes](init-mode.md).
+Pantavisor can be set up in different ways, offering [multi-level configuration](pantavisor-configuration-levels.md) as well as several [operational init modes](init-mode.md). System behaviour can also be extended through [system hooks](hooks.md): executable scripts that Pantavisor runs at well-defined [lifecycle points](hooks.md#hook-points) — such as system start, update installation, and platform ready — allowing operators to integrate custom logic into the system lifecycle.
 
 ## Service Mesh
 
@@ -40,6 +40,7 @@ Each state can be summarized as:
     - Initialize [log system](storage.md#logs)
     - Initialize [control socket](local-control.md)
     - Initialize [watchdog](watchdog.md)
+    - Run [system-start hooks](hooks.md#hook-points)
 * **RUN**:
     - Initialize the running [revision](revisions.md)
     - Check [object checksum](storage.md#artifact-checksum)

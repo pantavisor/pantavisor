@@ -174,7 +174,7 @@ void pv_hooks_unset_default_env(const char **extra_env, int size)
 int pv_hooks_run(const char *dirname, bool log)
 {
 	char base[PATH_MAX] = { 0 };
-	pv_paths_pv_update_hooks(base, sizeof(base));
+	pv_paths_pv_system_hooks(base, sizeof(base));
 
 	char dir[PATH_MAX] = { 0 };
 	SNPRINTF_WTRUNC(dir, sizeof(dir), "%s/%s", base, dirname);
