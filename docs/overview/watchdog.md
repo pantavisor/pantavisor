@@ -3,7 +3,7 @@ nav_order: 12
 ---
 # Watchdog
 
-Pantavisor also offers some [configurable](pantavisor-configuration.md#summary) convenience to set up and ping the [Linux Kernel watchdog](https://www.kernel.org/doc/html/v6.1/watchdog/watchdog-api.html).
+Pantavisor also offers some [configurable](../../../reference/legacy/pantavisor-configuration.md#summary) convenience to set up and ping the [Linux Kernel watchdog](https://www.kernel.org/doc/html/v6.1/watchdog/watchdog-api.html).
 
 ## Mode
 

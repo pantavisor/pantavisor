@@ -6,7 +6,7 @@ hide:
 # Pantavisor Configuration
 
 !!! Note
-    This reference page presents the newly unified configuration key syntax. To get to the deprecated but still supported previous format, you will have to go [here](pantavisor-configuration-legacy.md).
+    This reference page presents the newly unified configuration key syntax. To get to the deprecated but still supported previous format, you will have to go [here](../legacy/pantavisor-configuration-legacy.md).
 
 ## Summary
 
@@ -23,60 +23,60 @@ This table contains the currently supported list of configuration keys, sorted a
 
 | Key | Value | Default | Description |
 |-----|-------|---------|-------------|
-| `PH_CREDS_HOST` | IP or hostname | `api.pantahub.com` | set [Pantacor Hub](remote-control.md#pantacor-hub) address |
-| `PH_CREDS_ID` | string | empty | set [Pantacor Hub](remote-control.md#pantacor-hub) device ID |
-| `PH_CREDS_PORT` | port | `443` | set port for communication with [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_CREDS_PROXY_HOST` | IP or hostname | empty | set [Pantacor Hub](remote-control.md#pantacor-hub) proxy address |
-| `PH_CREDS_PROXY_NOPROXYCONNECT` | `0` or `1` | `0` | disable proxy communication with [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_CREDS_PROXY_PORT` | port | `3218` | set port for proxy communication with [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_CREDS_PRN` | string | empty | set [Pantacor Hub](remote-control.md#pantacor-hub) device PRN |
-| `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](remote-control.md#pantacor-hub) credentials secret |
-| `PH_CREDS_TYPE` | `builtin` | `builtin` | set [Pantacor Hub](remote-control.md#pantacor-hub) credentials type |
-| `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](storage.md#device-metadata) to [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](storage.md#user-metadata) from [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_ONLINE_REQUEST_THRESHOLD` | number of failures | `0` | number of failed requests to [Pantacor Hub](remote-control.md#pantacor-hub) allowed to still consider device online |
-| `PH_UPDATER_INTERVAL` | time (in seconds) | `60` | set time between [Pantacor Hub](remote-control.md#pantacor-hub) [update](updates.md) requests |
-| `PH_UPDATER_NETWORK_TIMEOUT` | time (in seconds) | `120` | set time before [rollback](updates.md#error) if device cannot communicate with [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PH_UPDATER_TRANSFER_MAX_COUNT` | number of transfers | `5` | set maximum number of object transfers to and from [Pantacor Hub](remote-control.md#pantacor-hub) during [updates](updates.md) |
+| `PH_CREDS_HOST` | IP or hostname | `api.pantahub.com` | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) address |
+| `PH_CREDS_ID` | string | empty | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) device ID |
+| `PH_CREDS_PORT` | port | `443` | set port for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_CREDS_PROXY_HOST` | IP or hostname | empty | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) proxy address |
+| `PH_CREDS_PROXY_NOPROXYCONNECT` | `0` or `1` | `0` | disable proxy communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_CREDS_PROXY_PORT` | port | `3218` | set port for proxy communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_CREDS_PRN` | string | empty | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) device PRN |
+| `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) credentials secret |
+| `PH_CREDS_TYPE` | `builtin` | `builtin` | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) credentials type |
+| `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](../../pantavisor-src/docs/overview/storage.md#device-metadata) to [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](../../pantavisor-src/docs/overview/storage.md#user-metadata) from [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_ONLINE_REQUEST_THRESHOLD` | number of failures | `0` | number of failed requests to [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) allowed to still consider device online |
+| `PH_UPDATER_INTERVAL` | time (in seconds) | `60` | set time between [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) [update](../../pantavisor-src/docs/overview/updates.md) requests |
+| `PH_UPDATER_NETWORK_TIMEOUT` | time (in seconds) | `120` | set time before [rollback](../../pantavisor-src/docs/overview/updates.md#error) if device cannot communicate with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_UPDATER_TRANSFER_MAX_COUNT` | number of transfers | `5` | set maximum number of object transfers to and from [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) during [updates](../../pantavisor-src/docs/overview/updates.md) |
 | `PV_BOOTLOADER_FITCONFIG` | string | empty | set FIT configuration name |
 | `PV_BOOTLOADER_MTD_ENV` | string | empty | set MTD name for bootloader env |
 | `PV_BOOTLOADER_MTD_ONLY` | `0` or `1` | `0` | enable MTD for bootloader env |
-| `PV_BOOTLOADER_TYPE` | `uboot`, `uboot-ab`, `uboot-pvk`, `rpiab` or `grub` | `uboot` | set [bootloader](bsp.md#bootloader) type |
+| `PV_BOOTLOADER_TYPE` | `uboot`, `uboot-ab`, `uboot-pvk`, `rpiab` or `grub` | `uboot` | set [bootloader](../../pantavisor-src/docs/overview/bsp.md#bootloader) type |
 | `PV_BOOTLOADER_UBOOTAB_A_NAME` | string | `fitA` | name of the partition to use as "A" in uboot-ab mode |
 | `PV_BOOTLOADER_UBOOTAB_B_NAME` | string | `fitB` | name of the partition to use as "B" in uboot-ab mode |
 | `PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME` | string | empty | name of the partition where the uboot environment is backed up |
 | `PV_BOOTLOADER_UBOOTAB_ENV_NAME` | string | empty | name  of the partition where the uboot environment is stored |
 | `PV_BOOTLOADER_UBOOTAB_ENV_OFFSET` | offset in bytes | `0` | environment offset from the beginning of the partition |
 | `PV_BOOTLOADER_UBOOTAB_ENV_SIZE` | size in bytes | `0` | size of the uboot environment |
-| `PV_CACHE_DEVMETADIR` | path | `/storage/cache/devmeta` | set persistent [device metadata](pantavisor-metadata.md#device-metadata) dir |
-| `PV_CACHE_USRMETADIR` | path | `/storage/cache/meta` | set persistent [user metadata](pantavisor-metadata.md#user-metadata) dir |
-| `PV_CONTROL_REMOTE` | `0` or `1` | `1` | allow remote control from [Pantacor Hub](remote-control.md#pantacor-hub) |
-| `PV_CONTROL_REMOTE_ALWAYS` | `0` or `1` | `0` | keep [communication with Pantacor Hub](remote-control.md#pantacor-hub) even when a [local revision](local-control.md) is running |
+| `PV_CACHE_DEVMETADIR` | path | `/storage/cache/devmeta` | set persistent [device metadata](../legacy/pantavisor-metadata.md#device-metadata) dir |
+| `PV_CACHE_USRMETADIR` | path | `/storage/cache/meta` | set persistent [user metadata](../legacy/pantavisor-metadata.md#user-metadata) dir |
+| `PV_CONTROL_REMOTE` | `0` or `1` | `1` | allow remote control from [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PV_CONTROL_REMOTE_ALWAYS` | `0` or `1` | `0` | keep [communication with Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) even when a [local revision](../../pantavisor-src/docs/overview/local-control.md) is running |
 | `PV_DEBUG_SHELL` | `0` or `1` | `1` | enable local debug shell |
 | `PV_DEBUG_SHELL_AUTOLOGIN` | `0` or `1` | `0` | enable autologin for debug shell |
-| `PV_DEBUG_SHELL_TIMEOUT` | time (in seconds) | `60` | time that Pantavisor waits before rebooting if [debug shell console](inspect-device.md#tty) is opened |
+| `PV_DEBUG_SHELL_TIMEOUT` | time (in seconds) | `60` | time that Pantavisor waits before rebooting if [debug shell console](../../inspect-device.md#tty) is opened |
 | `PV_DEBUG_SSH` | `0` or `1` | `1` | enable SSH debug access |
 | `PV_DEBUG_SSH_AUTHORIZED_KEYS` | string | empty | set authorized keys for SSH debug access |
 | `PV_DISK_EXPORTSDIR` | path | `/exports` | set exports directory |
 | `PV_DISK_VOLDIR` | path | `/volumes` | set volumes directory |
 | `PV_DISK_WRITABLEDIR` | path | `/writable` | set writable directory |
-| `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](inspect-device.md#ssh) cache directory |
+| `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](../../inspect-device.md#ssh) cache directory |
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
 | `PV_LIBTHTTP_LOG_LEVEL` | `0` to `5` | `3` | set libthttp log verbosity level |
-| `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](storage.md#logs) buffer size |
+| `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../../pantavisor-src/docs/overview/storage.md#logs) buffer size |
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |
-| `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](storage.md#logs) directory |
+| `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](../../pantavisor-src/docs/overview/storage.md#logs) directory |
 | `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto 10% (100% if tmpfs) | `16777216` | max size of log directory |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for filetree logs |
 | `PV_LOG_HYSTERESIS_FACTOR` | integer | `4` | hysteresis factor for log rotation |
 | `PV_LOG_LEVEL` | `0` to `5` | `0` | set Pantavisor log level (0: FATAL to 5: ALL) |
 | `PV_LOG_LOGGERS` | `0` or `1` | `1` | enable loggers for containers |
-| `PV_LOG_PUSH` | `0` or `1` | `1` | push logs to [Pantacor Hub](remote-control.md#pantacor-hub) |
+| `PV_LOG_PUSH` | `0` or `1` | `1` | push logs to [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
 | `PV_LOG_ROTATE_FACTOR` | integer | `5` | number of rotated log files to keep |
 | `PV_LOG_SERVER_OUTPUTS` | string | `filetree` | set log server outputs (comma separated) |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for single-file logs |
@@ -89,7 +89,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_POLICY` | string | empty | set policy name for configuration |
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
-| `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](storage.md#artifact-checksum) |
+| `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../../pantavisor-src/docs/overview/storage.md#artifact-checksum) |
 | `PV_SECUREBOOT_HANDLERS` | `0` or `1` | `1` | enable handlers verification |
 | `PV_SECUREBOOT_MODE` | `disabled`, `audit`, `lenient` or `strict` | `lenient` | set secureboot mode |
 | `PV_SECUREBOOT_OEM_TRUSTSTORE` | path | `/etc/pantavisor/certs/oem` | set path to OEM truststore |
@@ -112,7 +112,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO` | `0` or `1` | `0` | enable early auto-loading of drivers |
 | `PV_SYSTEM_ETCDIR` | path | `/etc` | set system etc directory |
 | `PV_SYSTEM_ETCPANTAVISORDIR` | path | `/etc/pantavisor` | set Pantavisor etc directory |
-| `PV_SYSTEM_INIT_MODE` | `embedded`, `standalone` or `appengine` | `embedded` | set [system init mode](init-mode.md) |
+| `PV_SYSTEM_INIT_MODE` | `embedded`, `standalone` or `appengine` | `embedded` | set [system init mode](../../pantavisor-src/docs/overview/init-mode.md) |
 | `PV_SYSTEM_LIBDIR` | path | `/lib` | set system library directory |
 | `PV_SYSTEM_MEDIADIR` | path | `/media` | set system media directory |
 | `PV_SYSTEM_MOUNT_SECURITYFS` | `0` or `1` | `0` | mount securityfs |
@@ -122,14 +122,14 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_UPDATER_GOALS_TIMEOUT` | time (in seconds) | `120` | timeout for reaching update goals |
 | `PV_UPDATER_USE_TMP_OBJECTS` | `0` or `1` | `0` | use temporary objects during updates |
 | `PV_VOLMOUNT_DM_EXTRA_ARGS` | string | empty | extra arguments for DM volume mounting |
-| `PV_WDT_MODE` | `disabled`, `shutdown`, `startup` or `always` | `shutdown` | set [watchdog mode](watchdog.md) |
+| `PV_WDT_MODE` | `disabled`, `shutdown`, `startup` or `always` | `shutdown` | set [watchdog mode](../../pantavisor-src/docs/overview/watchdog.md) |
 | `PV_WDT_TIMEOUT` | time (in seconds) | `15` | set watchdog timeout |
 
 ## Levels
 
-This table shows the [configuration levels](pantavisor-configuration-levels.md) that are allowed for each [configuration key](#summary).
+This table shows the [configuration levels](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md) that are allowed for each [configuration key](#summary).
 
-| Key | [pv.conf](pantavisor-configuration-levels.md#pantavisorconfig) | [ph.conf](pantavisor-configuration-levels.md#pantahubconfig) | [env,bootargs](pantavisor-configuration-levels.md#environment-variables) | [Policy](pantavisor-configuration-levels.md#policies) | [OEM](pantavisor-configuration-levels.md#oem) | [User meta](pantavisor-configuration-levels.md#user-metadata) | [Command](pantavisor-configuration-levels.md#commands) |
+| Key | [pv.conf](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#pantavisorconfig) | [ph.conf](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#pantahubconfig) | [env,bootargs](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#environment-variables) | [Policy](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#policies) | [OEM](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#oem) | [User meta](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#user-metadata) | [Command](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#commands) |
 |-----|------------------------------------------------------------|------------------------------------------------------------|-----------------------------------------------------------------|-------------------------------------------------------|-----------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | `PH_CREDS_HOST`                      | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
 | `PH_CREDS_ID`                        | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |

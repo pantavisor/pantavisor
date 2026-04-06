@@ -17,7 +17,7 @@ The diagram shows a high level concept of how [remote](remote-control.md#pantaco
 
 ### Local
 
-In this diagram, you can see how [local](local-control.md) updates work. In the case of this kind of update, we have a one-shot process triggered by a [run revision command](pantavisor-commands.md#commands):
+In this diagram, you can see how [local](local-control.md) updates work. In the case of this kind of update, we have a one-shot process triggered by a [run revision command](../../../reference/legacy/pantavisor-commands.md#commands):
 
 ![](images/flow-local-update.png)
 
@@ -53,7 +53,7 @@ Device is syncing its first revision with the [cloud](remote-control.md#pantacor
 
 Only valid for [remote](remote-control.md#pantacor-hub) updates.
 
-Pantavisor has got the [state JSON](pantavisor-state-format-v2.md) of the new [revision](revisions.md), but is performing other operations and has put it to the queue to be processed later.
+Pantavisor has got the [state JSON](../../../reference/legacy/pantavisor-state-format-v2.md) of the new [revision](revisions.md), but is performing other operations and has put it to the queue to be processed later.
 
 | Messages |
 | ---------|
@@ -73,7 +73,7 @@ Retry X of Y |
 
 Installing or progressing to this revision. Transitions to new revisions can either require a [reboot](#reboot-transition) or [not](#non-reboot-transition).
 
-To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a [configurable](pantavisor-state-format-v2.md#groupsjson) time, Pantavisor will [rollback](#error) the revision.
+To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a [configurable](../../../reference/legacy/pantavisor-state-format-v2.md#groupsjson) time, Pantavisor will [rollback](#error) the revision.
 
 | Messages |
 | ---------|
@@ -88,7 +88,7 @@ Rebooting |
 
 Reboot transitions are performed based on the location of the changes belonging to the new [revision](revisions.md) update:
 
-* In the root of the [status JSON](pantavisor-state-format-v2.md#spec-format)
+* In the root of the [status JSON](../../../reference/legacy/pantavisor-state-format-v2.md#spec-format)
 * In the [BSP](bsp.md)
 * In any of the containers with a _system_ [restart policy](containers.md#restart-policy)
 * In any [additional file](containers.md#additional-files) that belongs to a container with _system_ [restart policy](containers.md#restart-policy)
@@ -113,7 +113,7 @@ Awaiting to see if update is stable |
 
 ### UPDATED
 
-The revision is stable, but the update did not need a board reboot, so the rollback point is not set until you [force a reboot](pantavisor-commands.md#commands).
+The revision is stable, but the update did not need a board reboot, so the rollback point is not set until you [force a reboot](../../../reference/legacy/pantavisor-commands.md#commands).
 
 | Messages |
 | ---------|
@@ -130,11 +130,11 @@ Factory revision |
 
 ### WONTGO
 
-The new revision cannot be installed because of a bad [state JSON](pantavisor-state-format-v2.md), so it is aborted before getting into [INPROGRESS](#INPROGRESS) or [TESTING](#TESTING).
+The new revision cannot be installed because of a bad [state JSON](../../../reference/legacy/pantavisor-state-format-v2.md), so it is aborted before getting into [INPROGRESS](#INPROGRESS) or [TESTING](#TESTING).
 
 | Messages | Possible causes |
 | ---------|---------------- |
-Update aborted | [Local update](local-control.md) cancelled by a [command](pantavisor-commands.md#commands) |
+Update aborted | [Local update](local-control.md) cancelled by a [command](../../../reference/legacy/pantavisor-commands.md#commands) |
 Max download retries reached | The maximum processing or download retry number was reached for a [remote update](remote-control.md#pantacor-hub) |
 Space required X B, available Y B | Not enough space in disk for [remote update](remote-control.md#pantacor-hub)  |
 Internal error | Memory allocation error or code bug |
