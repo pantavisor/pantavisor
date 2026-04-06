@@ -337,5 +337,5 @@ int logserver_utils_printk_devmsg_on()
 int logserver_utils_ignore_loglevel()
 {
 	return write_option("/sys/module/printk/parameters/ignore_loglevel",
-			    "Y");
+			    "Y\n");
 }

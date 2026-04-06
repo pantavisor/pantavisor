@@ -956,6 +956,20 @@ int pv_logserver_init(const char *rev)
 		if (logserver_utils_ignore_loglevel() == 0)
 			pv_log(DEBUG,
 			       "stdout: ignoring kernel log level, all messages will be shown");
+		else
+			pv_log(WARN,
+			       "stdout: could not set ignore_loglevel: %s",
+			       strerror(errno));
+		if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT) ||
+		    (logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT)) {
+			if (logserver_utils_printk_devmsg_on() == 0)
+				pv_log(DEBUG,
+				       "stdout: setting printk_devmsg=on, all messages will be captured");
+			else
+				pv_log(WARN,
+				       "stdout: could not set printk_devkmsg=on: %s",
+				       strerror(errno));
+		}
 	}
 
 	errno = 0;
