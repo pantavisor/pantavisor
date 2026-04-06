@@ -203,6 +203,70 @@ golang:RFC1123Z | "Mon, 02 Jan 2006 15:04:05 -0700"|
 
 Those formats are based in the [Golang time constants](https://pkg.go.dev/time#pkg-constants). For other formats, the strftime formatters can be used setting the `strftime:` prefix. For example: `strftime:%d, %T %Y`. Please check the [strftime manual](https://man7.org/linux/man-pages/man3/strftime.3.html) for more information about formatters.
 
+### Log Directory Size Management
+
+Pantavisor manages log storage at two levels:
+
+1. **Per-file rotation** — individual log files are compressed in place once they reach the per-file rotation threshold (derived from `PV_LOG_DIR_MAXSIZE` and `PV_LOG_ROTATE_FACTOR`).
+2. **Directory-level management** — the total size of the log directory is kept within a configurable budget using a watermark-based cleanup algorithm.
+
+#### Auto-sizing (zero-config)
+
+When `PV_LOG_DIR_MAXSIZE` is set to `0` (the default), Pantavisor automatically determines the log budget at startup by inspecting `/proc/mounts` to identify the filesystem backing the log directory:
+
+- **tmpfs**: budget = 100% of the partition size (the log partition is in RAM, so all of it can be used for logs)
+- **Block device**: budget = 10% of the partition size (conservative default to share storage with other data)
+
+Partition size is read from `/sys/class/block/<dev>/size` (kernel sectors × 512 B) with a `statvfs()` fallback.
+
+#### Manual sizing
+
+Set `PV_LOG_DIR_MAXSIZE` to an explicit value using one of these formats:
+
+| Format | Example | Meaning |
+|--------|---------|---------|
+| Plain integer (bytes) | `16777216` | 16 MiB |
+| With unit suffix | `256MB`, `1GB`, `512K` | Absolute size |
+| Percentage | `20%` | 20% of the underlying partition |
+
+Values exceeding the available partition capacity are rejected and fall back to the auto-calculated default.
+
+#### Watermark-based cleanup
+
+Pantavisor tracks the total size of the log directory and applies a high/low watermark algorithm to keep disk usage in check without constant thrashing:
+
+```
+hysteresis_gap = PV_LOG_DIR_MAXSIZE / PV_LOG_HYSTERESIS_FACTOR
+high_watermark = PV_LOG_DIR_MAXSIZE × 0.90
+low_watermark  = PV_LOG_DIR_MAXSIZE - hysteresis_gap
+rotation_size  = hysteresis_gap / PV_LOG_ROTATE_FACTOR
+```
+
+**How cleanup works:**
+
+1. Every 100 log messages the current log directory size is recalculated.
+2. If `current_size > high_watermark`, deletion is triggered.
+3. The oldest compressed log files are deleted from the largest subdirectories first.
+4. Deletion continues until `current_size < low_watermark`.
+
+**Example** with defaults and an auto-calculated budget of 512 MB:
+
+```
+hysteresis_gap = 512 MB / 4 = 128 MB
+high_watermark = 512 MB × 0.90 ≈ 460 MB   → cleanup starts here
+low_watermark  = 512 MB - 128 MB = 384 MB  → cleanup stops here
+rotation_size  = 128 MB / 5 ≈ 25 MB       → per-file size before rotation
+```
+
+#### Configuration reference
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| [`PV_LOG_DIR_MAXSIZE`](pantavisor-configuration.md#summary) | `0` (auto) | Total log directory budget |
+| [`PV_LOG_HYSTERESIS_FACTOR`](pantavisor-configuration.md#summary) | `4` | Controls the gap between high and low watermarks |
+| [`PV_LOG_ROTATE_FACTOR`](pantavisor-configuration.md#summary) | `5` | Per-file rotation size divisor |
+
+
 ## Trails and objects
 
 Pantavisor trails, with their [state JSONs](../../../reference/legacy/pantavisor-state-format-v2.md) are stored for each installed revision. The rest of artifacts that can be shared between revisions, are called objects and are stored separately so objects can belong to different revisions at the same time.
