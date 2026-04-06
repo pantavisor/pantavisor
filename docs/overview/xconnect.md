@@ -17,7 +17,7 @@ The service mesh operates through a graph of connections maintained by `pv-xconn
 
 1. **Providers** declare services in a `services.json` file in their container manifest.
 2. **Consumers** declare requirements in their `run.json`, including service name, type, and where the resource should be injected inside the container.
-3. `pv-xconnect` periodically reads the xconnect-graph from the [control socket](pantavisor-commands.md#xconnect-graph), resolves provider/consumer pairs, and injects resources into consumer namespaces.
+3. `pv-xconnect` periodically reads the xconnect-graph from the [control socket](../../../reference/legacy/pantavisor-commands.md#xconnect-graph), resolves provider/consumer pairs, and injects resources into consumer namespaces.
 
 This is entirely declarative: no code changes are needed in containers to expose or consume services.
 
@@ -37,6 +37,6 @@ Pantavisor acts as the security broker. Containers use logical service names rat
 
 ## Configuration and Control
 
-The xconnect service mesh can be inspected at runtime through the [/xconnect-graph](pantavisor-commands.md#xconnect-graph) endpoint of the [Pantavisor control socket](local-control.md). The `pv-xconnect` daemon can be started and stopped via the [/daemons](pantavisor-commands.md#daemons) endpoint.
+The xconnect service mesh can be inspected at runtime through the [/xconnect-graph](../../../reference/legacy/pantavisor-commands.md#xconnect-graph) endpoint of the [Pantavisor control socket](local-control.md). The `pv-xconnect` daemon can be started and stopped via the [/daemons](../../../reference/legacy/pantavisor-commands.md#daemons) endpoint.
 
-For a full reference of service manifest formats and mediation patterns, see the [xconnect reference](pantavisor-xconnect.md).
+For a full reference of service manifest formats and mediation patterns, see the [xconnect reference](../../../reference/legacy/pantavisor-xconnect.md).

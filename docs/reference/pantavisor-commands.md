@@ -9,7 +9,7 @@ The following subsections describe the behaviour of the HTTP API for the differe
 
 ## /containers
 
-This endpoint can be used to list the containers (with their [status](containers.md#status)) that are installed in the current revision.
+This endpoint can be used to list the containers (with their [status](../../pantavisor-src/docs/overview/containers.md#status)) that are installed in the current revision.
 
 An example of use:
 
@@ -41,7 +41,7 @@ $ curl -X PUT --header "Content-Type: application/json" --data "{\"action\":\"st
 
 ## /groups
 
-These requests can be used to list [groups](containers.md#groups).
+These requests can be used to list [groups](../../pantavisor-src/docs/overview/containers.md#groups).
 
 To list all groups in the current revision:
 
@@ -51,7 +51,7 @@ $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/groups"
 
 ## /signal
 
-This type of command can be issued to alter the container [status](containers.md#status) in Pantavisor.
+This type of command can be issued to alter the container [status](../../pantavisor-src/docs/overview/containers.md#status) in Pantavisor.
 
 To send the one-shot readiness signal:
 
@@ -59,11 +59,11 @@ To send the one-shot readiness signal:
 $ curl -X POST --header "Content-Type: application/json" --data "{\"type\":\"ready\",\"payload\":\"\"}" --unix-socket /pantavisor/pv-ctrl http://localhost/signal
 ```
 
-This request will fail if the [signal type](containers.md#signals) is not supported, or if that [status goal](containers.md#status-goal) is not expected.
+This request will fail if the [signal type](../../pantavisor-src/docs/overview/containers.md#signals) is not supported, or if that [status goal](../../pantavisor-src/docs/overview/containers.md#status-goal) is not expected.
 
 ## /commands
 
-These commands can perform changes in Pantavisor [container engine](pantavisor-architecture.md#container-orchestration) itself, so the result will not be inmediate to the request.
+These commands can perform changes in Pantavisor [container engine](../../pantavisor-src/docs/overview/pantavisor-architecture.md#container-orchestration) itself, so the result will not be inmediate to the request.
 
 An example of a command that tells Pantavisor to transition to revision 4:
 
@@ -81,12 +81,12 @@ These are the different commands that are supported. You can test them by substi
 | REBOOT_DEVICE | message | reboot device with optional message |
 | POWEROFF_DEVICE | message | poweroff device with optional message |
 | TRY_ONCE | revision | try a revision once (will rollback on failure or next reboot) |
-| LOCAL_RUN | [revision](make-a-new-revision.md) | transition to specified revision |
-| MAKE_FACTORY | revision | make the revision the factory revision. If revision is not set, Pantavisor will use the current one. Device needs to be [not claimed](claim-device.md) |
+| LOCAL_RUN | [revision](../../make-a-new-revision.md) | transition to specified revision |
+| MAKE_FACTORY | revision | make the revision the factory revision. If revision is not set, Pantavisor will use the current one. Device needs to be [not claimed](../../claim-device.md) |
 | RUN_GC | N/A | run garbage collector |
-| ENABLE_SSH | N/A | [enable SSH server](pantavisor-configuration-levels.md#commands) ignoring config until reboot |
-| DISABLE_SSH | N/A | [disable SSH server](pantavisor-configuration-levels.md#commands) ignoring config until reboot |
-| GO_REMOTE | N/A | go remote when running on a [locals/ revision](pantavisor-commands.md#steps) if allowed by config |
+| ENABLE_SSH | N/A | [enable SSH server](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#commands) ignoring config until reboot |
+| DISABLE_SSH | N/A | [disable SSH server](../../pantavisor-src/docs/overview/pantavisor-configuration-levels.md#commands) ignoring config until reboot |
+| GO_REMOTE | N/A | go remote when running on a [locals/ revision](../../reference/legacy/pantavisor-commands.md#steps) if allowed by config |
 | DEFER_REBOOT | N/A | defer reboot when debug shell is active |
 | LOCAL_RUN_COMMIT | revision | transition to revision and commit it automatically |
 | LOCAL_APPLY | revision | apply revision changes without a full reboot |
@@ -130,7 +130,7 @@ To get an existing step json:
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/033e779113f2499a2bfb55c0c374803fba9c820361d71bbda616643007cacd5a"
 ```
 
-To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must be under 64 characters and must not contain any other "/" character. These revisions that are installed using the socket ([locals](local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](remote-control.md)), as you will have to manually request the transition to locals using the [run command](#/commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued.
+To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must be under 64 characters and must not contain any other "/" character. These revisions that are installed using the socket ([locals](../../pantavisor-src/docs/overview/local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](../../pantavisor-src/docs/overview/remote-control.md)), as you will have to manually request the transition to locals using the [run command](#/commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued.
 
 ```
 curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/locals/example"
@@ -150,7 +150,7 @@ curl -X PUT --data "message" --unix-socket /pantavisor/pv-ctrl "http://localhost
 
 ## /user-meta
 
-The user-meta endpoint offers the ability to list, save and delete [user metadata](pantavisor-metadata.md#user-metadata).
+The user-meta endpoint offers the ability to list, save and delete [user metadata](../legacy/pantavisor-metadata.md#user-metadata).
 
 To list all user meta in json format:
 
@@ -172,7 +172,7 @@ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/user-meta/key
 
 ## /device-meta
 
-The device-meta endpoint offers the ability to list [device metadata](pantavisor-metadata.md#device-metadata).
+The device-meta endpoint offers the ability to list [device metadata](../legacy/pantavisor-metadata.md#device-metadata).
 
 To list all device meta in json format:
 
@@ -194,7 +194,7 @@ curl -X DELETE --unix-socket /pantavisor/pv-ctrl "http://localhost/device-meta/k
 
 ## /xconnect-graph
 
-This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](pantavisor-xconnect.md) reference.
+This endpoint returns the current xconnect service mesh graph in JSON format. For details on how the service mesh operates and how to define manifests, see the [Pantavisor xconnect](../legacy/pantavisor-xconnect.md) reference.
 
 ```
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect-graph"
@@ -212,7 +212,7 @@ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/buildinfo"
 
 ## /drivers
 
-The drivers endpoint lets you list load and unload [managed drivers](bsp.md#managed-drivers).
+The drivers endpoint lets you list load and unload [managed drivers](../../pantavisor-src/docs/overview/bsp.md#managed-drivers).
 
 To list drivers referenced by container and their load state:
 
