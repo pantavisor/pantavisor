@@ -48,6 +48,7 @@ static bool pv_pvtx_raw_is_fmt(int fd)
 static void *pv_pvtx_raw_from_fd(int fd)
 {
 	lseek(fd, 0, SEEK_SET);
+	posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 	int *tar_fd = malloc(sizeof(int));
 	if (!tar_fd)
 		return NULL;
@@ -89,7 +90,10 @@ static bool pv_pvtx_gzip_is_fmt(int fd)
 static void *pv_pvtx_gzip_from_fd(int fd)
 {
 	lseek(fd, 0, SEEK_SET);
-	return gzdopen(fd, "r");
+	gzFile gz = gzdopen(fd, "r");
+	if (gz)
+		gzbuffer(gz, 32768);
+	return gz;
 }
 
 static ssize_t pv_pvtx_gzip_read(void *impl_data, void *buf, size_t count)

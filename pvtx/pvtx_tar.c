@@ -25,7 +25,6 @@
 #endif
 
 #include "pvtx_tar_impl.h"
-#include "pvtx_buffer.h"
 #include "pvtx_tar.h"
 
 #include <unistd.h>
@@ -61,6 +60,8 @@ struct pv_pvtx_tar_metadata {
 	char prefix[155];
 };
 
+#define PVTX_TAR_TYPEFLAG_LONG_NAME 'L'
+
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_raw;
 extern struct pv_pvtx_tar_imp pv_pvtx_tar_gzip;
 
@@ -92,33 +93,22 @@ static ssize_t read_nointr(struct pv_pvtx_tar_priv *priv, void *buf,
 static void get_name(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_metadata *meta,
 		     char *name)
 {
-	const char *long_link = "/./@LongLink";
-	if (strncmp(meta->name, long_link, strlen(long_link))) {
-		memccpy(name, meta->name, '\0', 100);
+	if (meta->typeflag == PVTX_TAR_TYPEFLAG_LONG_NAME) {
+		char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
+		read_nointr(tar->priv, buf, PVTX_TAR_BLOCK_SIZE);
+		memccpy(name, buf, '\0', NAME_MAX);
 		return;
 	}
 
-	// NOTE: here we could check the typeflag which
-	// for large name should be 'L' but seems redundant
-	char *buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
-	read_nointr(tar->priv, buf, PVTX_TAR_BLOCK_SIZE);
-	memccpy(name, buf, '\0', NAME_MAX);
+	memccpy(name, meta->name, '\0', 100);
 }
 
 static int read_remaining_bytes(struct pv_pvtx_tar *tar,
 				struct pv_pvtx_tar_content *con)
 {
-	struct pv_pvtx_buffer *buf = pv_pvtx_buffer_from_env(
-		"PVTX_OBJECT_BUF_SIZE", 512, 10485760, 512);
-
-	if (!buf)
-		return -1;
-
-	while (pv_pvtx_tar_content_read_block(con, buf->data, buf->size) > 0)
+	char buf[4096];
+	while (pv_pvtx_tar_content_read_block(con, buf, sizeof(buf)) > 0)
 		;
-
-	pv_pvtx_buffer_free(buf);
-
 	return 0;
 }
 
@@ -131,16 +121,14 @@ int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con)
 		return -1;
 	}
 
-	char buf[PVTX_TAR_BLOCK_SIZE] = { 0 };
-	ssize_t size = read_nointr(tar->priv, buf, PVTX_TAR_BLOCK_SIZE);
+	struct pv_pvtx_tar_metadata meta = { 0 };
+	ssize_t size = read_nointr(tar->priv, &meta, PVTX_TAR_BLOCK_SIZE);
 
 	if (size < PVTX_TAR_BLOCK_SIZE) {
 		PVTX_ERROR_SET(&tar->err, -1, "couldn't read header");
 		return -1;
 	}
 
-	struct pv_pvtx_tar_metadata meta = { 0 };
-	memcpy(&meta, buf, sizeof(struct pv_pvtx_tar_metadata));
 	if (strncmp(meta.magic, "ustar", strlen("ustar"))) {
 		PVTX_ERROR_SET(&tar->err, -1, "ustar not found");
 		return -1;
@@ -150,7 +138,9 @@ int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con)
 	get_name(tar, &meta, con->name);
 
 	con->size = strtoll(meta.size, NULL, 8);
-	con->cap = (con->size | (PVTX_TAR_BLOCK_SIZE - 1)) + 1;
+	con->cap = con->size == 0
+			   ? 0
+			   : (con->size | (PVTX_TAR_BLOCK_SIZE - 1)) + 1;
 	if (!con->priv)
 		con->priv = tar->priv;
 	con->read = 0;
@@ -182,13 +172,12 @@ ssize_t pv_pvtx_tar_content_read_object(struct pv_pvtx_tar_content *con,
 					void *buf)
 {
 	memset(buf, 0, con->size);
-	while (con->read < con->cap) {
-		void *p = buf + con->read;
-		ssize_t size = read_nointr(con->priv, p, PVTX_TAR_BLOCK_SIZE);
-		if (size > 0)
-			con->read += size;
-		else
-			break;
+	ssize_t remaining = con->cap - con->read;
+	if (remaining > 0) {
+		ssize_t n = read_nointr(con->priv, (char *)buf + con->read,
+					remaining);
+		if (n > 0)
+			con->read += n;
 	}
 
 	return con->read;
@@ -199,19 +188,17 @@ void pv_pvtx_tar_free(struct pv_pvtx_tar *tar)
 	if (!tar)
 		return;
 
-	if (!tar->priv || !tar->priv->imp_data)
-		goto out;
-
 	struct pv_pvtx_tar_priv *priv = tar->priv;
+	if (priv) {
+		if (priv->imp_data) {
+			if (priv->imp)
+				priv->imp->close(priv->imp_data);
+			else
+				free(priv->imp_data);
+		}
+		free(priv);
+	}
 
-	if (priv->imp)
-		priv->imp->close(priv->imp_data);
-	else
-		free(priv->imp_data);
-
-	free(priv);
-
-out:
 	free(tar);
 }
 
@@ -308,6 +295,11 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_fd(int fd, enum pv_pvtx_tar_type type,
 	}
 
 	priv->imp_data = priv->imp->from_fd(fd);
+	if (!priv->imp_data) {
+		PVTX_ERROR_SET(err, errno,
+			       "couldn't initialize format implementation");
+		goto err;
+	}
 
 	return tar;
 
@@ -333,6 +325,8 @@ struct pv_pvtx_tar *pv_pvtx_tar_from_path(const char *path,
 	}
 
 	struct pv_pvtx_tar *tar = pv_pvtx_tar_from_fd(fd, type, err);
+	if (!tar)
+		close(fd);
 
 	return tar;
 }
