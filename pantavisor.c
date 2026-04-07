@@ -420,22 +420,17 @@ static pv_state_t pv_wait_update()
 			return PV_STATE_WAIT;
 		}
 
-		// commit timer expired — check stability before committing
-		pv_stability_t stability = pv_state_check_stability(pv->state);
-		switch (stability) {
-		case PV_STABILITY_FAILED:
-			pv_log(ERROR,
-			       "container stability check failed. Rolling back...");
-			pv_update_set_error_platform();
-			return PV_STATE_ROLLBACK;
-		case PV_STABILITY_PENDING:
-			pv_log(INFO,
-			       "commit held: waiting for all containers to become stable");
+		/* commit timer expired — hold commit until all containers
+		 * have become stable. A container that exhausts max_retries
+		 * during TESTING already triggers ret=-1 in pv_state_run,
+		 * which falls through to the rollback path above.
+		 */
+		if (pv_state_is_stability_pending(pv->state)) {
+			pv_update_set_stability_wait();
 			return PV_STATE_WAIT;
-		case PV_STABILITY_ALL_STABLE:
-			pv_update_set_final();
-			break;
 		}
+
+		pv_update_set_final();
 	}
 
 	return PV_STATE_WAIT;
@@ -776,8 +771,7 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	pv_log_umount();
 	pv_mount_umount();
 	pv_metadata_umount();
-
-	pv_disk_umount_all(&pv->state->disks);
+	pv_state_disk_umount_all(pv->state);
 	pv_storage_umount();
 	pv_init_umount();
 

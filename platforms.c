@@ -141,28 +141,56 @@ const char *pv_platform_status_string(plat_status_t status)
 	return "UNKNOWN";
 }
 
-static void pv_platform_log_timer_status(struct pv_platform *p)
+static void pv_platform_on_status_goal_reached(struct pv_platform *p)
 {
 	struct timer_state tstate = timer_current_state(&p->timer_status_goal);
-	if (pv_platform_check_goal(p) == PLAT_GOAL_ACHIEVED) {
-		if (!tstate.fin) {
-			pv_log(INFO,
-			       "platform '%s' reached its status goal; took %d secs; %d secs till timeout (of %d)",
-			       p->name,
-			       p->group->default_status_goal_timeout -
-				       tstate.sec,
-			       tstate.sec,
-			       p->group->default_status_goal_timeout)
-		} else {
-			pv_log(INFO,
-			       "platform '%s' reached its status goal; took %d secs; %d secs over timeout (of %d)",
-			       p->name,
-			       p->group->default_status_goal_timeout +
-				       tstate.sec,
-			       tstate.sec,
-			       p->group->default_status_goal_timeout);
-		}
+	if (pv_platform_check_goal(p) != PLAT_GOAL_ACHIEVED)
+		return;
+
+	if (!tstate.fin) {
+		pv_log(INFO,
+		       "platform '%s' reached its status goal; took %d secs; %d secs till timeout (of %d)",
+		       p->name,
+		       p->group->default_status_goal_timeout - tstate.sec,
+		       tstate.sec, p->group->default_status_goal_timeout);
+	} else {
+		pv_log(INFO,
+		       "platform '%s' reached its status goal; took %d secs; %d secs over timeout (of %d)",
+		       p->name,
+		       p->group->default_status_goal_timeout + tstate.sec,
+		       tstate.sec, p->group->default_status_goal_timeout);
 	}
+
+	/* Start the stability timer now that the goal has been reached.
+	 * Only arm it once: subsequent set_status calls (e.g. STARTED→READY)
+	 * must not reset it.
+	 */
+	if (p->auto_recovery.stable_timeout > 0 &&
+	    !p->auto_recovery.is_stable &&
+	    !p->auto_recovery.timer_stable_armed) {
+		timer_start(&p->auto_recovery.timer_stable,
+			    p->auto_recovery.stable_timeout, 0, RELATIV_TIMER);
+		p->auto_recovery.timer_stable_armed = true;
+	}
+}
+
+bool pv_platform_track_stability(struct pv_platform *p)
+{
+	if (p->auto_recovery.stable_timeout <= 0 || p->auto_recovery.is_stable)
+		return p->auto_recovery.is_stable;
+
+	if (!p->auto_recovery.timer_stable_armed)
+		return false;
+
+	struct timer_state st =
+		timer_current_state(&p->auto_recovery.timer_stable);
+	if (st.fin) {
+		pv_log(INFO,
+		       "platform '%s' is now STABLE (survived %d seconds)",
+		       p->name, p->auto_recovery.stable_timeout);
+		p->auto_recovery.is_stable = true;
+	}
+	return p->auto_recovery.is_stable;
 }
 
 static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
@@ -173,7 +201,7 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	p->status.current = status;
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
-	pv_platform_log_timer_status(p);
+	pv_platform_on_status_goal_reached(p);
 
 	pv_group_eval_status(p->group);
 }
