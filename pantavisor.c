@@ -61,6 +61,7 @@
 #include "debug.h"
 #include "cgroup.h"
 #include "buffer.h"
+#include "daemons.h"
 #include "updater.h"
 
 #include "event/event.h"
@@ -747,6 +748,9 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 
 	// stop pvctrl
 	pv_ctrl_stop();
+
+	// stop managed daemons
+	pv_init_stop_daemons();
 
 	pv_debug_stop_ssh();
 	pv_logserver_stop();
