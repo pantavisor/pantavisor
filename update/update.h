@@ -48,6 +48,7 @@ int pv_update_resume(void (*report_cb)(const char *, const char *));
 
 void pv_update_set_factory(void);
 void pv_update_set_testing(void);
+void pv_update_set_stability_wait(void);
 void pv_update_set_error_signature(const char *msg);
 void pv_update_set_error_checksum(void);
 void pv_update_set_error_platform(void);

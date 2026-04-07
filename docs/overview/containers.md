@@ -146,9 +146,9 @@ Containers can be configured to automatically restart after a crash using the `a
 | Policy | Behavior |
 | ------ | -------- |
 | `no` | Never restart (default). |
-| `on-failure` | Restart only on non-zero exit code. |
-| `always` | Restart on any exit, regardless of exit code. |
-| `unless-stopped` | Restart unless the container was explicitly stopped via API. |
+| `on-failure` | Restart on exit. (Note: the current implementation does not distinguish exit codes — it behaves the same as `always`. A future revision will leave the container stopped if it exits with status 0.) |
+| `always` | Restart on any exit. |
+| `unless-stopped` | Restart on any exit unless the container was explicitly stopped via API. |
 
 ### Exponential Backoff
 

@@ -381,6 +381,9 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 	case PV_UPDATE_PROGRESS_MSG_TESTING_NONREBOOT:
 		ret = strdup("Awaiting to see if update is stable");
 		break;
+	case PV_UPDATE_PROGRESS_MSG_TESTING_STABILITY_WAIT:
+		ret = strdup("Waiting for all containers to become stable");
+		break;
 	case PV_UPDATE_PROGRESS_MSG_PREP_DOWNLOAD_PROGRESS:
 		asprintf(&ret, "Downloading update metadata, retry %d of %d",
 			 p->retries, pv_config_get_int(PV_REVISION_RETRIES));

@@ -86,14 +86,9 @@ bool pv_state_validate_checksum(struct pv_state *s);
 int pv_state_prepare_run(struct pv_state *s);
 int pv_state_start(struct pv_state *s);
 int pv_state_run(struct pv_state *s);
+bool pv_state_is_stability_pending(struct pv_state *s);
 
-typedef enum {
-	PV_STABILITY_ALL_STABLE,
-	PV_STABILITY_PENDING,
-	PV_STABILITY_FAILED
-} pv_stability_t;
-
-pv_stability_t pv_state_check_stability(struct pv_state *s);
+int pv_state_disk_umount_all(struct pv_state *s);
 
 void pv_state_stop_lenient(struct pv_state *s);
 int pv_state_stop_force(struct pv_state *s);

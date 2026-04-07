@@ -122,6 +122,7 @@ struct pv_auto_recovery {
 	backoff_policy_t backoff_policy;
 	int backoff_duration;
 	struct timer timer_stable;
+	bool timer_stable_armed;
 	bool is_stable;
 	bool recovery_failed;
 };
@@ -226,6 +227,8 @@ const char *pv_platform_status_string(plat_status_t status);
 const char *pv_platforms_restart_policy_str(restart_policy_t policy);
 const char *pv_backoff_policy_str(backoff_policy_t policy, int duration);
 backoff_policy_t pv_parse_backoff_policy(const char *value, int *duration_out);
+
+bool pv_platform_track_stability(struct pv_platform *p);
 
 void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p);
 

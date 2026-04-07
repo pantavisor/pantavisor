@@ -112,7 +112,7 @@ If any container has a [stable_timeout](containers.md#stability-tracking), the c
 | ---------|
 Awaiting to set rollback point if update is stable |
 Awaiting to see if update is stable |
-Commit held: waiting for all containers to become stable |
+Waiting for all containers to become stable |
 
 ### UPDATED
 

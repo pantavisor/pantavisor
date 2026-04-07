@@ -129,11 +129,11 @@ Configures an individual container runtime.
 
 ### Auto-Recovery Object
 
-Configures automatic restart behavior when a container crashes.
+Configures automatic restart behavior when a container crashes. See [Auto-Recovery overview](../overview/containers.md#auto-recovery) for the broader context.
 
 | Key | Value Type | Default | Description |
 |:---|:---|:---:|:---|
-| `policy` | enum | `no` | Recovery policy: `no`, `always`, `on-failure`, `unless-stopped`. |
+| `policy` | enum | `no` | Recovery policy: `no`, `always`, `on-failure`, `unless-stopped`. Note: the current implementation does not distinguish exit codes — `on-failure` behaves the same as `always`. |
 | `max_retries` | integer | 0 | Maximum restart attempts. 0 = unlimited. |
 | `retry_delay` | integer | 0 | Initial delay in seconds before first restart. |
 | `backoff_factor` | number | 1.0 | Multiplier applied to `retry_delay` on each subsequent retry. |

@@ -753,6 +753,16 @@ void pv_update_set_testing()
 	}
 }
 
+void pv_update_set_stability_wait()
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u)
+		return;
+
+	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_TESTING,
+			       PV_UPDATE_PROGRESS_MSG_TESTING_STABILITY_WAIT);
+}
+
 void pv_update_set_error_signature(const char *msg)
 {
 	struct pv_update *u = _get_update_instance();

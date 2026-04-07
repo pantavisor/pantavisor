@@ -652,6 +652,7 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 
 	// Reset stability state on (re)start
 	p->auto_recovery.is_stable = false;
+	p->auto_recovery.timer_stable_armed = false;
 	p->auto_recovery.recovery_failed = false;
 
 	return 0;
@@ -824,33 +825,14 @@ int pv_state_run(struct pv_state *s)
 		} else if (pv_platform_is_started(p) ||
 			   pv_platform_is_ready(p)) {
 			if (!pv_platform_check_running(p)) {
-				// Container crashed — reset stability
-				p->auto_recovery.is_stable = false;
-
 				if (pv_state_check_auto_recovery(s, p))
 					continue;
 
 				pv_log(ERROR, "platform '%s' suddenly stopped",
 				       p->name);
 				ret = -1;
-			} else if (p->auto_recovery.stable_timeout > 0 &&
-				   !p->auto_recovery.is_stable) {
-				// Container running — track stability
-				struct timer_state st = timer_current_state(
-					&p->auto_recovery.timer_stable);
-				if (st.sec == 0 && st.nsec == 0 && st.fin) {
-					// Timer not started yet
-					timer_start(
-						&p->auto_recovery.timer_stable,
-						p->auto_recovery.stable_timeout,
-						0, RELATIV_TIMER);
-				} else if (st.fin) {
-					pv_log(INFO,
-					       "platform '%s' is now STABLE (survived %d seconds)",
-					       p->name,
-					       p->auto_recovery.stable_timeout);
-					p->auto_recovery.is_stable = true;
-				}
+			} else {
+				pv_platform_track_stability(p);
 			}
 		} else if (pv_platform_is_recovering(p)) {
 			struct timer_state tstate = timer_current_state(
@@ -880,37 +862,24 @@ out:
 	return ret;
 }
 
-pv_stability_t pv_state_check_stability(struct pv_state *s)
+bool pv_state_is_stability_pending(struct pv_state *s)
 {
 	struct pv_platform *p, *tmp_p;
 
 	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
 	{
-		// Container that exhausted retries and is stopped = FAILED
-		if (pv_platform_is_stopped(p) &&
-		    !p->auto_recovery.recovery_failed &&
-		    p->auto_recovery.type != RECOVERY_NO &&
-		    p->auto_recovery.max_retries > 0 &&
-		    p->auto_recovery.current_retries >=
-			    p->auto_recovery.max_retries) {
-			pv_log(WARN,
-			       "platform '%s' stability FAILED (max retries exhausted)",
-			       p->name);
-			return PV_STABILITY_FAILED;
-		}
-
 		// Container with stable_timeout that hasn't proven stable yet
 		if (p->auto_recovery.stable_timeout > 0 &&
 		    !p->auto_recovery.is_stable &&
 		    !p->auto_recovery.recovery_failed) {
 			pv_log(DEBUG,
-			       "platform '%s' stability PENDING (waiting for stable_timeout)",
+			       "platform '%s' stability pending (waiting for stable_timeout)",
 			       p->name);
-			return PV_STABILITY_PENDING;
+			return true;
 		}
 	}
 
-	return PV_STABILITY_ALL_STABLE;
+	return false;
 }
 
 static bool pv_state_check_all_stopped(struct pv_state *s)
@@ -1014,6 +983,13 @@ void pv_state_stop_lenient(struct pv_state *s)
 	pv_log(DEBUG, "leniently stopping state %s", s->rev);
 
 	pv_state_lenient_stop(s);
+}
+
+int pv_state_disk_umount_all(struct pv_state *s)
+{
+	if (!s)
+		return 0;
+	return pv_disk_umount_all(&s->disks);
 }
 
 int pv_state_stop_force(struct pv_state *s)
