@@ -341,9 +341,9 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 				   " 0 0");
 	ret = uname(&uts);
 	// FIXME: Implement modules volume and use that instead
-	if (p->automodfw && !ret) {
-		__pv_paths_volumes_plat_file(path, PATH_MAX, "bsp",
-					     "modules.squashfs");
+	if (p->automodfw && stat("/lib/modules", &st) == 0 && !ret) {
+		snprintf(path, PATH_MAX, "/lib/modules/%s", uts.release);
+
 		if (stat(path, &st) == 0) {
 			sprintf(entry,
 				"%s "
