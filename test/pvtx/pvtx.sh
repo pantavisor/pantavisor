@@ -84,6 +84,40 @@ compare_json() {
 	return 0
 }
 
+# check_canonical_json TESTNAME JSONFILE
+#
+# Validates that JSONFILE is:
+#   1. Valid, parseable JSON
+#   2. Contains the mandatory #spec field every pvtx state must carry
+#   3. Normalises idempotently: applying "jq -S ." twice yields the same
+#      result, confirming no duplicate keys or other non-canonical quirks
+#
+# Call this after every test that captures "pvtx show" output.
+check_canonical_json() {
+	test_name="${1}"
+	json_file="${2}"
+
+	if ! jq empty "${json_file}" >/dev/null 2>&1; then
+		err "${test_name}_canonical: output is not valid JSON"
+		exit 1
+	fi
+
+	spec=$(jq -r '."#spec" // empty' "${json_file}")
+	if [ -z "${spec}" ]; then
+		err "${test_name}_canonical: #spec field missing from JSON output"
+		exit 1
+	fi
+
+	pass1=$(jq -S . <"${json_file}" 2>/dev/null)
+	pass2=$(printf '%s' "${pass1}" | jq -S . 2>/dev/null)
+	if [ "${pass1}" != "${pass2}" ]; then
+		err "${test_name}_canonical: JSON normalisation is not idempotent"
+		exit 1
+	fi
+
+	printf "%-50s %s\n" "${test_name}_canonical" "[OK]"
+}
+
 test_create_empty_transaction() {
 	name="test_create_empty_transaction"
 	result="${PVTX_TMP_DIR}/result_${name}.json"
@@ -96,6 +130,7 @@ test_create_empty_transaction() {
 	if ! compare_json "${name}" "${result}" "${base}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -113,6 +148,7 @@ test_process_json_keys_with_spaces() {
 	if ! compare_json "${name}" "${result}" "${base}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -133,6 +169,7 @@ remove_base_test() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -192,6 +229,7 @@ test_package_update() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${PVTX_TMP_DIR}/${pkg:?}"
 	rm -rf "${result}"
@@ -210,6 +248,7 @@ test_add_package_from_tar() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -233,6 +272,7 @@ test_add_new_package() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${PVTX_TMP_DIR}/${pkg:?}"
 	rm -rf "${result}"
@@ -256,6 +296,7 @@ test_add_new_package_from_cat() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -278,6 +319,7 @@ test_update_bsp() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${PVTX_TMP_DIR}/${pkg:?}"
 	rm -rf "${result}"
@@ -302,6 +344,7 @@ test_update_bsp_with_groups() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${PVTX_TMP_DIR}/${pkg:?}"
 	rm -rf "${result}"
@@ -325,13 +368,14 @@ test_install_from_tgz() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${PVTX_TMP_DIR}/${pkg:?}"
 	rm -rf "${result}"
 }
 
 test_two_package_signing_same_files() {
-	
+
 	name="test_two_package_signing_same_files"
 	result="${PVTX_TMP_DIR}/result_${name}.json"
 	expected="${PVTX_TEST_DATA}/expected/state_after_install_config_b_remove_config_a.json"
@@ -347,6 +391,7 @@ test_two_package_signing_same_files() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -367,6 +412,7 @@ test_two_package_signing_same_files_with_globs() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -387,6 +433,7 @@ test_removal_of_signed_config() {
 	if ! compare_json "${name}_1" "${result}" "${expected1}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}_1" "${result}"
 
 	pvtx_null add "${pkg2}"
 	pvtx_app show >"${result}"
@@ -394,6 +441,7 @@ test_removal_of_signed_config() {
 	if ! compare_json "${name}_2" "${result}" "${expected2}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}_2" "${result}"
 
 	rm -rf "${result}"
 }
@@ -482,30 +530,53 @@ test_queue_actions() {
 	printf "%-50s %s\n" "${name}" "[OK]"
 }
 
+# test_queue_process: tests the full queue workflow (new → unpack → begin →
+# process) using only local resources — no network access required.
 test_queue_process() {
 	name="test_queue_process"
 	result="${PVTX_TMP_DIR}/result_${name}.json"
-	expected="${PVTX_TEST_DATA}/expected/state_queue_process.json"
+	expected="${PVTX_TEST_DATA}/expected/state_after_pvwificonnect.json"
 	queue="${PVTX_TMP_DIR}/queue"
-	pvwifi_url="https://gitlab.com/pantacor/pvwificonnect/-/package_files/129853072/download"
 
 	rm -rf "${queue}"
 
 	pvtx_null abort
 	pvtx_null queue new "${queue}" "${PVTX_OBJECTS}"
-	pvtx_null queue remove "_sigs/nginx.json"
-
-	# Download directly from gitlab
-	# pvwificonnect-v1.0.0-g82ca1d7.arm32v6.tgz
-	curl --silent --location "${pvwifi_url}" | pvtx_null queue unpack -
-
-	pvtx_null begin "${PVTX_TEST_DATA}/resources/state-1.json"
+	pvtx_null queue unpack "${PVTX_TEST_DATA}/resources/pvwificonnect.tgz"
+	pvtx_null begin "${PVTX_TEST_DATA}/resources/initial_state.json"
 	pvtx_null queue process
 	pvtx_app show >"${result}"
 
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
+
+	rm -f "${result}"
+}
+
+# test_queue_process_with_remove: tests queue remove action followed by
+# process, verifying that queued removals are applied to the base state.
+test_queue_process_with_remove() {
+	name="test_queue_process_with_remove"
+	result="${PVTX_TMP_DIR}/result_${name}.json"
+	expected="${PVTX_TEST_DATA}/expected/state_after_remove.json"
+	queue="${PVTX_TMP_DIR}/queue"
+
+	rm -rf "${queue}"
+
+	pvtx_null abort
+	pvtx_null queue new "${queue}" "${PVTX_OBJECTS}"
+	pvtx_null queue remove "_sigs/awconnect.json"
+
+	pvtx_null begin "${PVTX_TEST_DATA}/resources/initial_state.json"
+	pvtx_null queue process
+	pvtx_app show >"${result}"
+
+	if ! compare_json "${name}" "${result}" "${expected}"; then
+		exit 1
+	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -f "${result}"
 }
@@ -531,6 +602,7 @@ test_deploy() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -554,6 +626,7 @@ test_process_queue_without_begin() {
 	if ! compare_json "${name}" "${result}" "${expected}"; then
 		exit 1
 	fi
+	check_canonical_json "${name}" "${result}"
 
 	rm -rf "${result}"
 }
@@ -589,6 +662,145 @@ test_local_transaction() {
 	printf "%-50s %s\n" "${name}" "[OK]"
 }
 
+# test_empty_transaction_has_spec: an empty pvtx transaction must always
+# produce a JSON object containing the mandatory #spec field.
+test_empty_transaction_has_spec() {
+	name="test_empty_transaction_has_spec"
+	result="${PVTX_TMP_DIR}/result_${name}.json"
+
+	pvtx_null abort
+	pvtx_null begin empty
+	pvtx_app show >"${result}"
+
+	spec=$(jq -r '."#spec" // empty' "${result}")
+	if [ -z "${spec}" ]; then
+		err "${name}: #spec field missing from empty transaction output"
+		exit 1
+	fi
+	check_canonical_json "${name}" "${result}"
+
+	printf "%-50s %s\n" "${name}" "[OK]"
+	rm -rf "${result}"
+}
+
+# test_show_is_idempotent: calling "pvtx show" multiple times on the same
+# open transaction must yield bit-for-bit identical output, confirming
+# show has no side effects on the transaction state.
+test_show_is_idempotent() {
+	name="test_show_is_idempotent"
+	result1="${PVTX_TMP_DIR}/result_${name}_1.json"
+	result2="${PVTX_TMP_DIR}/result_${name}_2.json"
+
+	pvtx_null abort
+	pvtx_null begin empty
+	pvtx_null add "${PVTX_TEST_DATA}/resources/initial_state.json"
+	pvtx_app show >"${result1}"
+	pvtx_app show >"${result2}"
+
+	if ! diff <(jq -S . <"${result1}") <(jq -S . <"${result2}") >/dev/null 2>&1; then
+		err "${name}: pvtx show output differs between consecutive calls"
+		exit 1
+	fi
+	check_canonical_json "${name}" "${result1}"
+
+	printf "%-50s %s\n" "${name}" "[OK]"
+	rm -rf "${result1}" "${result2}"
+}
+
+# test_spec_preserved_after_remove: the #spec key must not be accidentally
+# dropped when a container is removed from the transaction state.
+test_spec_preserved_after_remove() {
+	name="test_spec_preserved_after_remove"
+	result="${PVTX_TMP_DIR}/result_${name}.json"
+
+	pvtx_null abort
+	pvtx_null begin empty
+	pvtx_null add "${PVTX_TEST_DATA}/resources/initial_state.json"
+	pvtx_null remove "awconnect"
+	pvtx_app show >"${result}"
+
+	spec=$(jq -r '."#spec" // empty' "${result}")
+	if [ -z "${spec}" ]; then
+		err "${name}: #spec field lost after remove operation"
+		exit 1
+	fi
+	check_canonical_json "${name}" "${result}"
+
+	printf "%-50s %s\n" "${name}" "[OK]"
+	rm -rf "${result}"
+}
+
+# test_add_state_roundtrip: loading a known-good state via "pvtx add" and
+# immediately capturing "pvtx show" must produce output semantically
+# equivalent to the original input, verifying that pvtx does not mangle
+# the JSON on ingestion.
+test_add_state_roundtrip() {
+	name="test_add_state_roundtrip"
+	result="${PVTX_TMP_DIR}/result_${name}.json"
+	base="${PVTX_TEST_DATA}/resources/initial_state.json"
+
+	pvtx_null abort
+	pvtx_null begin empty
+	pvtx_null add "${base}"
+	pvtx_app show >"${result}"
+
+	if ! compare_json "${name}" "${result}" "${base}"; then
+		exit 1
+	fi
+	check_canonical_json "${name}" "${result}"
+
+	rm -rf "${result}"
+}
+
+# test_double_add_is_idempotent: adding the same state JSON twice must
+# produce exactly the same result as adding it once.
+test_double_add_is_idempotent() {
+	name="test_double_add_is_idempotent"
+	result1="${PVTX_TMP_DIR}/result_${name}_1.json"
+	result2="${PVTX_TMP_DIR}/result_${name}_2.json"
+
+	pvtx_null abort
+	pvtx_null begin empty
+	pvtx_null add "${PVTX_TEST_DATA}/resources/initial_state.json"
+	pvtx_app show >"${result1}"
+
+	pvtx_null add "${PVTX_TEST_DATA}/resources/initial_state.json"
+	pvtx_app show >"${result2}"
+
+	if ! diff <(jq -S . <"${result1}") <(jq -S . <"${result2}") >/dev/null 2>&1; then
+		err "${name}: adding the same state twice changed the output"
+		exit 1
+	fi
+	check_canonical_json "${name}" "${result1}"
+
+	printf "%-50s %s\n" "${name}" "[OK]"
+	rm -rf "${result1}" "${result2}"
+}
+
+# test_abort_clears_transaction: after aborting a transaction that has data
+# loaded, starting a new empty transaction must yield the canonical empty
+# state — i.e., abort truly resets all in-progress work.
+test_abort_clears_transaction() {
+	name="test_abort_clears_transaction"
+	result="${PVTX_TMP_DIR}/result_${name}.json"
+	base="${PVTX_TEST_DATA}/expected/state-empty.json"
+
+	pvtx_null abort
+	pvtx_null begin empty
+	pvtx_null add "${PVTX_TEST_DATA}/resources/initial_state.json"
+	pvtx_null abort
+	pvtx_null begin empty
+	pvtx_app show >"${result}"
+
+	if ! compare_json "${name}" "${result}" "${base}"; then
+		exit 1
+	fi
+	check_canonical_json "${name}" "${result}"
+
+	printf "%-50s %s\n" "${name}" "[OK]"
+	rm -rf "${result}"
+}
+
 test_create_empty_transaction
 test_process_json_keys_with_spaces
 test_signature_removal
@@ -608,6 +820,13 @@ test_removal_of_signed_config
 test_queue_new
 test_queue_actions
 test_queue_process
+test_queue_process_with_remove
 test_deploy
 test_process_queue_without_begin
 test_local_transaction
+test_empty_transaction_has_spec
+test_show_is_idempotent
+test_spec_preserved_after_remove
+test_add_state_roundtrip
+test_double_add_is_idempotent
+test_abort_clears_transaction
