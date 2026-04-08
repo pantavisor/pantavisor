@@ -697,7 +697,9 @@ test_show_is_idempotent() {
 	pvtx_app show >"${result1}"
 	pvtx_app show >"${result2}"
 
-	if ! diff <(jq -S . <"${result1}") <(jq -S . <"${result2}") >/dev/null 2>&1; then
+	norm1=$(jq -S . <"${result1}")
+	norm2=$(jq -S . <"${result2}")
+	if [ "${norm1}" != "${norm2}" ]; then
 		err "${name}: pvtx show output differs between consecutive calls"
 		exit 1
 	fi
@@ -767,7 +769,9 @@ test_double_add_is_idempotent() {
 	pvtx_null add "${PVTX_TEST_DATA}/resources/initial_state.json"
 	pvtx_app show >"${result2}"
 
-	if ! diff <(jq -S . <"${result1}") <(jq -S . <"${result2}") >/dev/null 2>&1; then
+	norm1=$(jq -S . <"${result1}")
+	norm2=$(jq -S . <"${result2}")
+	if [ "${norm1}" != "${norm2}" ]; then
 		err "${name}: adding the same state twice changed the output"
 		exit 1
 	fi
