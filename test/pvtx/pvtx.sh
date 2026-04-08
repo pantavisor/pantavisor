@@ -22,7 +22,9 @@ CURRENT_SRC_DIR="${1}"
 CURRENT_BIN_DIR="${2}"
 PVTX_TEST_NAME="${3:-}"
 
-PVTX_TMP_DIR=$(mktemp -d "${CURRENT_BIN_DIR}/pvtx.test.XXXXXX")
+if [ -z "${PVTX_TMP_DIR}" ]; then
+	PVTX_TMP_DIR=$(mktemp -d "${CURRENT_BIN_DIR}/pvtx.test.XXXXXX")
+fi
 check_path "${PVTX_TMP_DIR}"
 
 PVTX_TEST_DATA="${CURRENT_SRC_DIR}/test/pvtx"

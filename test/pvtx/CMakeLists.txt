@@ -19,6 +19,9 @@
 cmake_minimum_required(VERSION 3.0)
 
 if(PANTAVISOR_PVTX)
+    set(PVTX_TMP_DIR "${CMAKE_CURRENT_BINARY_DIR}/pvtx-workdir")
+    file(MAKE_DIRECTORY "${PVTX_TMP_DIR}")
+
     set(PVTX_TESTS
         test_create_empty_transaction
         test_process_json_keys_with_spaces
@@ -58,6 +61,9 @@ if(PANTAVISOR_PVTX)
                     ${CMAKE_CURRENT_SOURCE_DIR}/../..
                     ${CMAKE_CURRENT_BINARY_DIR}/../..
                     ${PVTX_TEST}
+        )
+        set_tests_properties(pvtx::${PVTX_TEST} PROPERTIES
+            ENVIRONMENT "PVTX_TMP_DIR=${PVTX_TMP_DIR}"
         )
     endforeach()
 endif()
