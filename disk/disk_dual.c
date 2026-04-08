@@ -48,6 +48,7 @@
 static void dual_init_done_path(struct pv_disk *disk, char *buf, size_t size)
 {
 	const char *disksdir = pv_config_get_str(PV_SYSTEM_DISKSDIR);
+	pv_fs_mkdir_p(disksdir, 0755);
 	if (disk->dual_disks_count >= 2)
 		SNPRINTF_WTRUNC(buf, size, "%s/dual_%s_%s.init_done",
 				disksdir, disk->dual_disks[0],
@@ -215,13 +216,10 @@ static int do_copy_once_to_primary(struct pv_disk *dual)
 		return -1;
 	}
 
-	/* mount secondary read-only under its own name */
-	bool orig_ro = secondary->read_only;
+	/* mount secondary under its own name */
 	bool orig_nc = secondary->no_create;
-	secondary->read_only = true;
 	secondary->no_create = true;
 	int ret = pv_disk_mount(secondary);
-	secondary->read_only = orig_ro;
 	secondary->no_create = orig_nc;
 
 	if (ret != 0) {

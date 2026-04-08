@@ -349,8 +349,6 @@ use it to signal "don't reference these directly from volumes."
 | `mount_options` | no | volume | Comma-separated mount flags (e.g. `MS_NOATIME`) |
 | `format_options` | no | swap, vol | Options passed to mkfs/mkswap |
 | `default` | no | all | `"yes"`: use as default disk for volumes without explicit disk ref |
-| `always_on` | no | all | `"true"`: mount at boot regardless of volume references |
-| `read_only` | no | crypt | `"true"`: dm-crypt device created read-only, mount with `-o ro` |
 | `uuid` | no | all | Disk UUID |
 
 ## Volume Disk References
@@ -379,12 +377,9 @@ when a required disk is missing.
 
 ## Boot Sequence
 
-1. **Export disk configs** — `pv_disk_export_all()` writes each disk's
-   raw JSON to `/run/pantavisor/disks/<name>.json`
-2. **Swap disks** — `pv_disk_mount_swap()` mounts all `swap-disk` type disks
-3. **Always-on disks** — `pv_disk_mount_always_on()` mounts disks with `always_on: true`
-4. **BSP volumes** — volumes without a platform trigger on-demand disk mount
-5. **Platform volumes** — platform-specific volumes trigger on-demand disk mount
+1. **Swap disks** — `pv_disk_mount_swap()` mounts all `swap-disk` type disks
+2. **BSP volumes** — volumes without a platform trigger on-demand disk mount
+3. **Platform volumes** — platform-specific volumes trigger on-demand disk mount
 
 Volumes reference disks by name. When a volume mounts and its referenced
 disk is not yet mounted, the disk is mounted on demand.
@@ -419,12 +414,6 @@ On encrypted disk mount failure (ext4 corruption):
 4. If fsck fails and `goodbak` exists, restore from backup and retry
 5. If all recovery fails, mount returns error (triggers state rollback)
 
-## Journal Recovery
-
-ext4 with a dirty journal blocks read-only mount with EINVAL. When
-`read_only` is set, the crypt script performs a RW mount/umount cycle
-to replay the journal before the final RO mount.
-
 ## Mount Paths
 
 Crypt disks: `<mediadir>/pv/dmcrypt/<disk-name>`
@@ -439,7 +428,7 @@ Swap disks: no mount point (activated via `swapon`).
 | File | Purpose |
 |------|---------|
 | `disk/disk.h` | `struct pv_disk`, type enums, inline string converters, `pv_disk_is_internal()` |
-| `disk/disk.c` | Dispatcher: `pv_disk_mount()`, `pv_disk_find()`, `pv_disk_export_all()`, boot sequence |
+| `disk/disk.c` | Dispatcher: `pv_disk_mount()`, `pv_disk_find()`, boot sequence |
 | `disk/disk_crypt.c` | Crypt impl: builds command string with `--no-create` support, invokes crypt script |
 | `disk/disk_dual.c` | Dual impl: init_order walk, sub-disk resolution, bind-mount, copy+verify |
 | `disk/disk_swap.c` | Swap impl: mkswap, swapon/swapoff |

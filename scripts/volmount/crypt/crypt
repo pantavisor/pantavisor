@@ -42,13 +42,12 @@ set -x
 #   - 'mode' is required for caam and dcp types. valid values are 'mainline' and 'nxp'
 #
 # Usage:
-#   crypt <action> --type <type> --mode <mode> [--read-only] [--no-create] [--specialrun <run>] <path> <mntpath>
+#   crypt <action> --type <type> --mode <mode> [--no-create] [--specialrun <run>] <path> <mntpath>
 #
 #   action:       mount or umount (positional)
 #   --type:       dm-crypt type (dcp, caam, versatile)
 #   --mode:       encryption mode (mainline, nxp)
-#   --read-only:  set up dm-crypt device as read-only
-#   --copy-from:  on first init, copy content from this mounted path instead of empty mkfs
+#   --no-create:  do not create image/key if missing — fail instead
 #   --specialrun: internal flag for recovery retries (fsck, bak)
 #   path:         disk image path (positional)
 #   mntpath:      mount target path (positional)
@@ -63,7 +62,6 @@ shift
 dm_type=""
 mode=""
 specialrun=""
-read_only=""
 no_create=""
 
 while [ $# -gt 0 ]; do
@@ -79,10 +77,6 @@ while [ $# -gt 0 ]; do
 		--specialrun)
 			specialrun="$2"
 			shift 2
-			;;
-		--read-only)
-			read_only="yes"
-			shift
 			;;
 		--no-create)
 			no_create="yes"
@@ -108,7 +102,7 @@ mntpath=$2
 
 if [ -z "$op" ] || [ -z "$dm_type" ] || [ -z "$path" ]; then
 	echo "ERROR: missing required arguments"
-	echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--no-create] <path> <mntpath>"
+	echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--no-create] <path> <mntpath>"
 	exit 1
 fi
 
@@ -360,10 +354,7 @@ do_crypt_init()
 		esac
 
 		# shellcheck disable=SC2086
-		if [ "$read_only" = "yes" ]; then
-			echo "ERROR: cannot format read-only disk."
-			exit 1
-		elif ! mkfs.ext4 $MKFS_OPTS_EXT4 /dev/mapper/"$device_name"; then
+		if ! mkfs.ext4 $MKFS_OPTS_EXT4 /dev/mapper/"$device_name"; then
 			echo "ERROR: Unable to format to ext4"
 			exit 1
 		fi
@@ -459,21 +450,20 @@ clean_disk()
 	esac
 }
 
-# Open the dm-crypt device.  $1 is extra dmsetup/cryptsetup flags (e.g. --readonly).
+# Open the dm-crypt device.
 # Expects: device_name, CAAM_LOOP, dm_type_mode, KEY_NAME, cipher, key_size,
 #          KEY_TYPE, keyname, dir, img_file  — all set by do_mount_disk.
 _do_crypt_open()
 {
-	_crypt_flags=$1
 	case "${dm_type_mode}" in
 		caam__nxp)
-			if ! dmsetup create $_crypt_flags "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt capi:tk(cbc(aes))-plain :36:logon:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
+			if ! dmsetup create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt capi:tk(cbc(aes))-plain :36:logon:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
 				exit 3
 			fi
 			;;
 		caam__mainline|caam-mainline__*|dcp__mainline)
-			if ! dmsetup create $_crypt_flags "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
+			if ! dmsetup create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
 				exit 3
 			fi
@@ -481,7 +471,7 @@ _do_crypt_open()
 		dcp__nxp)
 			keyfile=$(mktemp)
 			x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
-			if ! cryptsetup open $_crypt_flags -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$img_file" "$device_name"; then
+			if ! cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$dir/$img_file" "$device_name"; then
 				rm -f "$keyfile"
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
 				exit 3
@@ -489,7 +479,7 @@ _do_crypt_open()
 			rm -f "$keyfile"
 			;;
 		versatile__*)
-			if ! cryptsetup open $_crypt_flags -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file="$dir/$keyname.txt" "$dir/$img_file" "$device_name"; then
+			if ! cryptsetup open -s 256 -c "aes-cbc-essiv:sha256" --type plain --key-file="$dir/$keyname.txt" "$dir/$img_file" "$device_name"; then
 				echo "ERROR: $dm_type: Unable to create/open crypt device"
 				exit 3
 			fi
@@ -647,36 +637,11 @@ do_mount_disk()
 	device_name=$(echo "$img_file" | awk '{split($0,a,"."); print a[1]}')
 	clean_disk "$device_name"
 
-	# For read-only disks, first do a RW mount/umount cycle to replay the
-	# ext4 journal.  Without this, a dirty journal from an unclean shutdown
-	# (e.g. factory power-cut) makes the ro mount fail with EINVAL.
-	if [ "$read_only" = "yes" ]; then
-		_do_crypt_open "" # RW
-		_recovery_tmp=$(mktemp -d)
-		if mount /dev/mapper/"$device_name" "$_recovery_tmp" 2>/dev/null; then
-			echo "read-only: journal recovery mount succeeded"
-			umount "$_recovery_tmp"
-		else
-			echo "WARN: read-only: journal recovery mount failed, trying fsck"
-			fsck.ext4 -y /dev/mapper/"$device_name" || true
-		fi
-		rm -rf "$_recovery_tmp"
-		_do_crypt_close
-	fi
-
-	_dm_ro=""
-	if [ "$read_only" = "yes" ]; then
-		_dm_ro="--readonly"
-	fi
-	_do_crypt_open "$_dm_ro"
+	_do_crypt_open
 
 	mkdir -p "$mntpath"
-	_mnt_ro=""
-	if [ "$read_only" = "yes" ]; then
-		_mnt_ro="-o ro"
-	fi
 	# shellcheck disable=SC2086
-	if mount $MNT_OPTS_EXT4 $_mnt_ro /dev/mapper/"$device_name" "$mntpath"; then
+	if mount $MNT_OPTS_EXT4 /dev/mapper/"$device_name" "$mntpath"; then
 		# only backup if a clean run success
 		[ -z "$specialrun" ] && [ ! -f "$dir/$img_file.goodbak" ] && cp -f "$dir/$img_file.prebak" "$dir/$img_file.goodbak"
 		# finalize DCP key migration: pending blob is proven to work
@@ -726,11 +691,7 @@ do_mount_disk()
 do_mount_disk_retry()
 {
 	_retry_specialrun=$1
-	_retry_ro=""
-	if [ "$read_only" = "yes" ]; then
-		_retry_ro="--read-only"
-	fi
-	"$0" mount --type "$dm_type" --mode "$mode" --specialrun "$_retry_specialrun" $_retry_ro -- "$origpath" "$mntpath"
+	"$0" mount --type "$dm_type" --mode "$mode" --specialrun "$_retry_specialrun" -- "$origpath" "$mntpath"
 }
 
 do_umount_disk()
@@ -784,7 +745,7 @@ case $op in
 		;;
 	*)
 		echo "ERROR: unknown action '$op'"
-		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--read-only] [--no-create] <path> <mntpath>"
+		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--no-create] <path> <mntpath>"
 		exit 5
 		;;
 esac
