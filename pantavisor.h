@@ -46,7 +46,6 @@ struct pantavisor {
 	struct pv_update *update;
 	struct pv_state *state;
 	struct pv_ctrl_cmd *cmd;
-	struct trail_remote *remote;
 	struct pv_metadata *metadata;
 	char *cmdline;
 	bool remote_mode;

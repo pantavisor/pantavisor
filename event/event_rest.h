@@ -48,6 +48,11 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 
 // drops any download pacer for req, then evhttp_cancel_request()s it
 void pv_event_rest_cancel_request(struct evhttp_request *req);
+int pv_event_rest_send_file_by_url(const char *url, const char *path,
+				   off_t size,
+				   void (*done_cb)(struct evhttp_request *,
+						   void *),
+				   void *ctx);
 
 int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 			      size_t max_len);
