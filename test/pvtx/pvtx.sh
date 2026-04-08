@@ -20,6 +20,7 @@ create_path() {
 
 CURRENT_SRC_DIR="${1}"
 CURRENT_BIN_DIR="${2}"
+PVTX_TEST_NAME="${3:-}"
 
 PVTX_TMP_DIR=$(mktemp -d "${CURRENT_BIN_DIR}/pvtx.test.XXXXXX")
 check_path "${PVTX_TMP_DIR}"
@@ -805,32 +806,36 @@ test_abort_clears_transaction() {
 	rm -rf "${result}"
 }
 
-test_create_empty_transaction
-test_process_json_keys_with_spaces
-test_signature_removal
-test_signature_removal2
-test_signature_removal3
-test_removal_config_pkg
-test_package_update
-test_add_package_from_tar
-test_add_new_package
-test_add_new_package_from_cat
-test_update_bsp
-test_update_bsp_with_groups
-test_install_from_tgz
-test_two_package_signing_same_files
-test_two_package_signing_same_files_with_globs
-test_removal_of_signed_config
-test_queue_new
-test_queue_actions
-test_queue_process
-test_queue_process_with_remove
-test_deploy
-test_process_queue_without_begin
-test_local_transaction
-test_empty_transaction_has_spec
-test_show_is_idempotent
-test_spec_preserved_after_remove
-test_add_state_roundtrip
-test_double_add_is_idempotent
-test_abort_clears_transaction
+if [ -n "${PVTX_TEST_NAME}" ]; then
+	"${PVTX_TEST_NAME}"
+else
+	test_create_empty_transaction
+	test_process_json_keys_with_spaces
+	test_signature_removal
+	test_signature_removal2
+	test_signature_removal3
+	test_removal_config_pkg
+	test_package_update
+	test_add_package_from_tar
+	test_add_new_package
+	test_add_new_package_from_cat
+	test_update_bsp
+	test_update_bsp_with_groups
+	test_install_from_tgz
+	test_two_package_signing_same_files
+	test_two_package_signing_same_files_with_globs
+	test_removal_of_signed_config
+	test_queue_new
+	test_queue_actions
+	test_queue_process
+	test_queue_process_with_remove
+	test_deploy
+	test_process_queue_without_begin
+	test_local_transaction
+	test_empty_transaction_has_spec
+	test_show_is_idempotent
+	test_spec_preserved_after_remove
+	test_add_state_roundtrip
+	test_double_add_is_idempotent
+	test_abort_clears_transaction
+fi

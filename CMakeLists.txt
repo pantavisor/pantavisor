@@ -650,4 +650,4 @@ install(TARGETS test-pv-tsh DESTINATION bin)
 ENDIF()
 
 enable_testing()
-add_test(pvtx ${CMAKE_CURRENT_SOURCE_DIR}/test/pvtx/pvtx.sh ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+add_subdirectory(test/pvtx)
