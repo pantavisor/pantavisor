@@ -281,20 +281,6 @@ static bool parse_disks_get_default(const char *str, jsmntok_t *diskv,
 	return ret;
 }
 
-static bool parse_disks_get_bool(const char *str, const char *key,
-				 jsmntok_t *diskv, int diskc)
-{
-	bool ret = false;
-	char *val = pv_json_get_value(str, key, diskv, diskc);
-
-	if (val && (!strncmp(val, "true", 4) || !strncmp(val, "yes", 3)))
-		ret = true;
-
-	free(val);
-
-	return ret;
-}
-
 static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 {
 	int tokc, size, ret = 1;
@@ -358,7 +344,6 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 				free(d->provision);
 				free(d->provision_ops);
 				free(d->uuid);
-				free(d->json_str);
 				free(d);
 				if (diskv) {
 					free(diskv);
@@ -382,14 +367,7 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 		}
 
 		d->def = parse_disks_get_default(str, diskv, diskc);
-		d->always_on = parse_disks_get_bool(str, "always_on", diskv,
-						    diskc);
-		d->read_only = parse_disks_get_bool(str, "read_only", diskv,
-						    diskc);
 		d->mounted = false;
-
-		// save raw JSON for export to /run/pantavisor/disks/
-		d->json_str = strdup(str);
 
 		// parse dual mode arrays
 		if (d->type == DISK_DUAL) {
