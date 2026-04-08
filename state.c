@@ -482,6 +482,9 @@ static int pv_state_mount_bsp_volumes(struct pv_state *s)
 	if (pv_disk_mount_swap(&s->disks) != 0)
 		return -1;
 
+	if (pv_disk_mount_always_on(&s->disks) != 0)
+		return -1;
+
 	struct pv_volume *v, *tmp;
 
 	dl_list_for_each_safe(v, tmp, &s->volumes, struct pv_volume, list)
