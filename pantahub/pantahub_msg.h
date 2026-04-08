@@ -66,4 +66,6 @@ void pv_pantahub_msg_print_object_metadata(
 void pv_pantahub_msg_clean_object_metadata(
 	struct pv_object_metadata *object_metadata);
 
+char *pv_pantahub_msg_parse_object_puturl(const char *json);
+
 #endif

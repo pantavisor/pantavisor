@@ -49,7 +49,6 @@
 #include "pantavisor.h"
 #include "json.h"
 #include "metadata.h"
-#include "updater.h"
 
 #include "event/event.h"
 #include "event/event_rest.h"
@@ -84,8 +83,12 @@ const char *_get_state_string(ph_state_t state)
 		return "register";
 	case PH_STATE_CLAIM:
 		return "claim";
-	case PH_STATE_SYNC:
-		return "sync";
+	case PH_STATE_PREP_SYNC:
+		return "prep sync";
+	case PH_STATE_SYNC_OBJECTS:
+		return "sync objects";
+	case PH_STATE_SYNC_STATE:
+		return "sync state";
 	case PH_STATE_LOGIN:
 		return "login";
 	case PH_STATE_WAIT_HUB:
@@ -272,24 +275,64 @@ static void _run_state_wait_hub()
 	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _wait_hub_cb);
 }
 
-static void _run_state_sync()
+static void _prep_sync_cb(evutil_socket_t fd, short event, void *arg)
 {
-	struct pantavisor *pv = pv_get_instance();
-	if (!pv)
+	pv_log(TRACE, "run event: cb=%p", (void *)_prep_sync_cb);
+
+	if (pv_pantahub_proto_post_objects())
+		_next_state(PH_STATE_SYNC_OBJECTS);
+}
+
+static void _run_state_prep_sync()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
 		return;
 
-	if (!pv_state_is_done(pv->state)) {
-		pv_log(WARN,
-		       "will not proceed with syncing if not running a DONE revision");
-		_next_state(PH_STATE_INIT);
+	pv_pantahub_proto_init_sync();
+
+	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL, _prep_sync_cb);
+}
+
+static void _sync_objects_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_sync_objects_cb);
+
+	if (pv_pantahub_proto_put_objects())
+		_next_state(PH_STATE_SYNC_STATE);
+}
+
+static void _run_state_sync_objects()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
 		return;
+
+	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
+				_sync_objects_cb);
+}
+
+static void _sync_state_cb(evutil_socket_t fd, short event, void *arg)
+{
+	pv_log(TRACE, "run event: cb=%p", (void *)_sync_state_cb);
+
+	pv_pantahub_proto_post_trail();
+
+	if (pv_pantahub_proto_is_synced()) {
+		pv_pantahub_proto_free_sync();
+		pv_pantahub_proto_reset_trails_status();
+		_next_state(PH_STATE_WAIT_HUB);
 	}
+}
 
-	// TODO: this is old and blocking, but mainly blocking
-	pv_updater_sync();
+static void _run_state_sync_state()
+{
+	struct pv_pantahub *ph = _get_ph_instance();
+	if (!ph)
+		return;
 
-	pv_pantahub_proto_reset_trails_status();
-	_next_state(PH_STATE_WAIT_HUB);
+	pv_event_periodic_start(&ph->request_timer, REQ_INTERVAL,
+				_sync_state_cb);
 }
 
 static void _usrmeta_cb(evutil_socket_t fd, short event, void *arg)
@@ -430,8 +473,14 @@ static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 	case PH_STATE_WAIT_HUB:
 		_run_state_wait_hub();
 		break;
-	case PH_STATE_SYNC:
-		_run_state_sync();
+	case PH_STATE_PREP_SYNC:
+		_run_state_prep_sync();
+		break;
+	case PH_STATE_SYNC_OBJECTS:
+		_run_state_sync_objects();
+		break;
+	case PH_STATE_SYNC_STATE:
+		_run_state_sync_state();
 		break;
 	case PH_STATE_REPORT:
 		_run_state_report();
@@ -498,7 +547,7 @@ void pv_pantahub_evaluate_state()
 	}
 
 	if (pv_pantahub_proto_is_trails_unsynced()) {
-		_next_state(PH_STATE_SYNC);
+		_next_state(PH_STATE_PREP_SYNC);
 		return;
 	}
 

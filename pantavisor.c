@@ -62,7 +62,6 @@
 #include "cgroup.h"
 #include "buffer.h"
 #include "daemons.h"
-#include "updater.h"
 
 #include "event/event.h"
 #include "event/event_periodic.h"
@@ -631,7 +630,6 @@ static void pv_remove(struct pantavisor *pv)
 	pv->state = NULL;
 	pv_ctrl_cmd_free(pv->cmd);
 	pv_config_free();
-	pv_trail_remote_remove(pv);
 	pv_metadata_remove();
 
 	free(pv);

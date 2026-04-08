@@ -287,3 +287,25 @@ void pv_pantahub_msg_clean_object_metadata(
 	if (object_metadata->geturl)
 		free(object_metadata->geturl);
 }
+
+char *pv_pantahub_msg_parse_object_puturl(const char *json)
+{
+	int tokc;
+	jsmntok_t *tokv = NULL;
+	char *puturl = NULL;
+
+	if (!json)
+		goto out;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted object registration JSON");
+		goto out;
+	}
+
+	puturl = pv_json_get_value(json, "signed-puturl", tokv, tokc);
+
+out:
+	if (tokv)
+		free(tokv);
+	return puturl;
+}

@@ -309,8 +309,6 @@ add_executable(pantavisor
 			trestclient.h
 			uboot.c
 			ubootab.c
-			updater.c
-			updater.h
 			update/update.c
 			update/update.h
 			update/update_progress.c
