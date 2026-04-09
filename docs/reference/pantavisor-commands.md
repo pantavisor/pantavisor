@@ -9,13 +9,50 @@ The following subsections describe the behaviour of the HTTP API for the differe
 
 ## /containers
 
-This endpoint can be used to list the containers (with their [status](../../pantavisor-src/docs/overview/containers.md#status)) that are installed in the current revision.
+This endpoint can be used to list and manage [containers](../../pantavisor-src/docs/overview/containers.md) in the current revision.
 
-An example of use:
+### List containers
+
+Returns all containers with their [status](../../pantavisor-src/docs/overview/containers.md#status), [restart policy](../../pantavisor-src/docs/overview/containers.md#restart-policy), [auto-recovery](../../pantavisor-src/docs/overview/containers.md#auto-recovery) state, and service mesh information.
 
 ```
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/containers"
 ```
+
+### Lifecycle control
+
+Containers with `restart_policy: "container"` can be stopped, started, and restarted via the API. Containers with `restart_policy: "system"` are protected and will return HTTP 403.
+
+To stop a container:
+
+```
+$ curl -X PUT --header "Content-Type: application/json" --data "{\"action\":\"stop\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-container"
+```
+
+Stopping a container sets the `user_stopped` flag, which prevents [auto-recovery](#auto-recovery) from restarting it. The container's auto-recovery configuration is preserved — no retry counters are consumed and no backoff is triggered.
+
+To start a previously stopped container:
+
+```
+$ curl -X PUT --header "Content-Type: application/json" --data "{\"action\":\"start\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-container"
+```
+
+Starting clears the `user_stopped` flag and returns the container to the normal engine lifecycle. Auto-recovery is fully restored.
+
+To restart a running container:
+
+```
+$ curl -X PUT --header "Content-Type: application/json" --data "{\"action\":\"restart\"}" --unix-socket /pantavisor/pv-ctrl "http://localhost/containers/my-container"
+```
+
+Restart force-stops the container and resets the retry counter to zero. For containers with auto-recovery configured, the recovery engine restarts it naturally through the standard path. For containers without auto-recovery (`RECOVERY_NO`), the container is restarted directly.
+
+| Action | State change | Auto-recovery effect |
+| ------ | ------------ | -------------------- |
+| stop | Running → STOPPED | `user_stopped` set; recovery skipped |
+| start | STOPPED → INSTALLED → start | `user_stopped` cleared; recovery restored |
+| restart (with recovery) | Running → STOPPED → recovery engine restarts | Retry counter reset to 0 |
+| restart (no recovery) | Running → STOPPED → INSTALLED → start | Direct restart |
 
 ## /daemons
 

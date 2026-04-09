@@ -46,7 +46,7 @@ OUTPUT=""
 MESSAGE=""
 
 usage() {
-	echo "Usage: pvcontrol [options] <ls|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons> [arguments]"
+	echo "Usage: pvcontrol [options] <ls|containers|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons> [arguments]"
 	echo "Control Pantavisor from your container"
 	echo "options:"
 	echo "       -h           show help"
@@ -132,6 +132,15 @@ usage_graph() {
 	echo "Usage: pvcontrol graph <ls>"
 	echo "xconnect service mesh graph operations"
 	echo "       pvcontrol graph ls - show current xconnect graph"
+}
+
+usage_containers() {
+	echo "Usage: pvcontrol containers <ls|start|stop|restart> [arguments]"
+	echo "Container lifecycle operations"
+	echo "       pvcontrol containers ls               - list all containers and their status"
+	echo "       pvcontrol containers start <name>     - start a stopped container"
+	echo "       pvcontrol containers stop <name>      - stop a running container"
+	echo "       pvcontrol containers restart <name>   - restart a container"
 }
 
 usage_daemons() {
@@ -391,6 +400,37 @@ parse_graph_args() {
 	esac
 }
 
+container_name=''
+
+parse_containers_args() {
+	case "$1" in
+	ls|list)
+		cmd='containersls'
+		;;
+	start)
+		if [ -z "$2" ]; then usage_containers; exit 1; fi
+		cmd='containerstart'
+		container_name="$2"
+		;;
+	stop)
+		if [ -z "$2" ]; then usage_containers; exit 1; fi
+		cmd='containerstop'
+		container_name="$2"
+		;;
+	restart)
+		if [ -z "$2" ]; then usage_containers; exit 1; fi
+		cmd='containerrestart'
+		container_name="$2"
+		;;
+	--help)
+		usage_containers; exit 0
+		;;
+	*)
+		usage_containers; exit 1
+		;;
+	esac
+}
+
 parse_daemons_args() {
 	case "$1" in
 	ls|list)
@@ -481,6 +521,9 @@ parse_args() {
 	case "$1" in
 	ls|list)
 		parse_ls_args "$2"
+		;;
+	containers)
+		parse_containers_args "$2" "$3"
 		;;
 	groups)
 		parse_groups_args "$2"
@@ -701,6 +744,18 @@ exec_cmd() {
 			;;
 		steplist)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/steps"`
+			;;
+		containersls)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/containers"`
+			;;
+		containerstart)
+			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"start\"}" --unix-socket "$SOCKET" "http://localhost/containers/$container_name"`
+			;;
+		containerstop)
+			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"stop\"}" --unix-socket "$SOCKET" "http://localhost/containers/$container_name"`
+			;;
+		containerrestart)
+			response=`$CURL -X PUT --header "Content-Type: application/json" --data "{\"action\":\"restart\"}" --unix-socket "$SOCKET" "http://localhost/containers/$container_name"`
 			;;
 		graphls)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/xconnect-graph"`
