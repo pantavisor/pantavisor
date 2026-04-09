@@ -41,6 +41,7 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 | **Containers** | [docs/overview/containers.md](docs/overview/containers.md) | Container runtime, groups, roles, status |
 | **Updates** | [docs/overview/updates.md](docs/overview/updates.md) | Update flow, states, transitions |
 | **Storage** | [docs/overview/storage.md](docs/overview/storage.md) | On-disk layout, logs, metadata, integrity |
+| **Disks** | [docs/overview/disks.md](docs/overview/disks.md) | Disk types, dual mode, dm-crypt, boot sequence |
 | **Remote Control** | [docs/overview/remote-control.md](docs/overview/remote-control.md) | Pantacor Hub client and remote controllers |
 | **Local Control** | [docs/overview/local-control.md](docs/overview/local-control.md) | pv-ctrl socket, Pantabox, pvcontrol |
 | **Configuration** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |

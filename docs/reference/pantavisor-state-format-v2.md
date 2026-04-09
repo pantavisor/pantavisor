@@ -65,7 +65,9 @@ The unified hardware and orchestration manifest.
 
 | Key | Value Type | Description |
 |:---|:---|:---|
-| `disks` | array | List of [Disk Definitions](#6-disksjson). |
+| `disks` | array | List of [Disk Definitions](#6-storage-disksjson). Strict parsing — unknown types are fatal. |
+| `disks_v2` | array | Same schema as `disks`, additive. Parsed independently. |
+| `disks_v3` | array | Same schema as `disks` with lenient parsing (unknown types are warned and skipped). Required for the `dual` type — old firmware safely ignores this key. |
 | `groups` | array | List of [Orchestration Groups](#5-groupsjson). |
 | `volumes` | object | List of [Persistent Volumes](#storage-object) for Pantavisor itself. |
 
@@ -88,19 +90,27 @@ Defines how containers are grouped and started.
 
 ## 6. Storage (`disks.json`)
 
-Defines physical storage mediums.
+Defines physical storage mediums. Each entry in the `disks`, `disks_v2`,
+or `disks_v3` array uses this schema. See the
+[Disks overview](../overview/disks.md) for type-specific details and
+examples.
 
 | Key | Value Type | Default | Description |
 |:---|:---|:---:|:---|
-| `name` | string | **Mandatory** | Unique name used in `run.json` storage keys. |
-| `type` | enum | **Mandatory** | `directory`, `dm-crypt-versatile`, `swap-disk`, `volume-disk`. |
-| `path` | string | **Mandatory** | Path to block device or image file. |
-| `format` | enum | `ext4` | Filesystem format (`ext3`, `ext4`, `swap`). |
-| `provision` | string | empty | Provisioning source (e.g., `zram`). |
-| `mount_target` | path | empty | Where to mount the disk on the host. |
-| `mount_options` | string | empty | Comma-separated mount flags. |
-| `format_options` | string | empty | Arguments for the `mkfs` command. |
+| `name` | string | **Mandatory** | Unique name used in `run.json` storage keys and mount paths. |
+| `type` | enum | **Mandatory** | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk`, `dual`, `directory`. |
+| `path` | string | **Mandatory** (crypt, swap, vol) | Device/image path. CAAM v2: `-v2 <img>,<size>,<key>`. DCP/versatile: `<img>,<size>,<key>`. |
+| `mode` | enum | **Mandatory** (crypt) | `mainline` or `nxp`. Selects key subsystem. |
+| `format` | enum | `ext4` | Filesystem format: `ext4`, `ext3`, or `swap`. |
+| `provision` | string | empty | Backend provisioning: `zram`, `file`, or a custom value. Required for swap and volume types. |
+| `provision_ops` | string | empty | Backend-specific options (e.g. `disksize=128M comp_algorithm=lz4`). |
+| `mount_target` | path | empty | Where to mount the disk on the host. Required for `volume-disk`. |
+| `mount_options` | string | empty | Comma-separated mount flags (e.g. `MS_NOATIME,MS_NOSUID`). |
+| `format_options` | string | empty | Arguments for the `mkfs` or `mkswap` command. |
 | `default` | string | `"no"` | If `"yes"`, this disk is used for all volumes without a `disk` key. |
+| `uuid` | string | empty | Disk UUID. |
+| `disks` | array | **Mandatory** (dual) | Sub-disk names: `["primary-name", "secondary-name"]`. |
+| `init_order` | array | **Mandatory** (dual) | Actions tried in sequence: `primary`, `secondary`, `create-primary`, `create-secondary`, `copy-once-to-primary`. |
 
 ---
 

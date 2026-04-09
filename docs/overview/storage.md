@@ -100,21 +100,16 @@ These configuration keys are persistent. By default, they are saved in plain tex
 
 ## Disks
 
-Pantavisor offers a way to define the physical storage medium by setting up [disks](../../../reference/legacy/pantavisor-state-format-v2.md#disksjson) and [disk v2](../../../reference/legacy/pantavisor-state-format-v2.md#disks_v2json).
+Pantavisor manages persistent [disk](disks.md) definitions inside
+[`device.json`](pantavisor-state-format-v2.md#6-storage-disksjson).
+Supported types include dm-crypt volumes with hardware-backed keys
+(CAAM, DCP, versatile), swap devices, plain ext4/ext3 volumes, and
+composite dual disks for key migration. See the full
+[Disks overview](disks.md) for type details and examples.
 
-There are currently 4 disks types supported for disk:
-
-* Non-encrypted directory
-* Device Mapper crypt using without hardware acceleration (versatile) 
-* Device Mapper crypt using i.Mx CAAM
-* Device Mapper crypt using i.Mx DCP
-
-The new disk v2 supports all the previous ones and adds 2 new types:
-
-* Swap disk based on zram
-* Volume disk based on zram
-
-Each disk, with the exception of swap disk, that is defined in the [state JSON](../../../reference/legacy/pantavisor-state-format-v2.md) can then be privately used by the [containers](containers.md#storage). They can also be internally used by [Pantavisor volumes](#volumes), as in the case of [metadata](#metadata).
+Each disk, with the exception of swap disks, can be privately used by
+[containers](containers.md#storage) or internally by
+[Pantavisor volumes](#volumes), as in the case of [metadata](#metadata).
 
 ### Volumes
 
