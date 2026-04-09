@@ -125,6 +125,7 @@ struct pv_auto_recovery {
 	bool timer_stable_armed;
 	bool is_stable;
 	bool recovery_failed;
+	bool user_stopped;
 };
 
 struct pv_platform_driver {
@@ -145,6 +146,9 @@ struct pv_platform_log {
 	int console_pt;
 	int lxc_pipe[2];
 };
+
+struct pv_platform;
+typedef void (*pv_platform_stopped_cb)(struct pv_platform *p, void *opaque);
 
 struct pv_platform {
 	char *name;
@@ -175,6 +179,8 @@ struct pv_platform {
 	 * To be freed once logger_list is setup.
 	 */
 	struct dl_list logger_configs; // pv_logger_config
+	pv_platform_stopped_cb on_stopped;
+	void *on_stopped_opaque;
 };
 void pv_platform_free(struct pv_platform *p);
 
@@ -193,6 +199,8 @@ void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
 
 int pv_platform_start(struct pv_platform *p);
 int pv_platform_stop(struct pv_platform *p);
+void pv_platform_stop_with_callback(struct pv_platform *p,
+				    pv_platform_stopped_cb cb, void *opaque);
 void pv_platform_force_stop(struct pv_platform *p);
 
 bool pv_platform_check_running(struct pv_platform *p);

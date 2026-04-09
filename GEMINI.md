@@ -68,6 +68,8 @@ Changes to `docs/**` on master automatically trigger a GitLab CI pipeline in the
 ## Development Guidelines
 
 - **Documentation**: Always check if [reference documentation](docs/reference/) should be updated after making changes to the code.
+  - **Reference links from overview docs**: Link to `../../../reference/legacy/` for content that already exists there, or `../../../reference/027/` (current development tag) for new content appearing for the first time.
+  - **Overview docs**: Use relative links within `docs/overview/` (e.g., `containers.md#restart-policy`).
 - **Commits**: Always use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification (v1.0.0) for all commit messages.
 - **Formatting**: Run `clang-format -i` on modified `.c`/`.h` files before committing
 - **API testing**: Use `pvcurl` (not `curl`) inside appengine containers

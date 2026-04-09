@@ -650,10 +650,13 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	    p->group->default_auto_recovery.type != RECOVERY_NO)
 		p->auto_recovery = p->group->default_auto_recovery;
 
-	// Reset stability state on (re)start
+	// Reset stability and lifecycle state on (re)start
 	p->auto_recovery.is_stable = false;
 	p->auto_recovery.timer_stable_armed = false;
 	p->auto_recovery.recovery_failed = false;
+	p->auto_recovery.user_stopped = false;
+	p->on_stopped = NULL;
+	p->on_stopped_opaque = NULL;
 
 	return 0;
 }
@@ -834,6 +837,22 @@ int pv_state_run(struct pv_state *s)
 			} else {
 				pv_platform_track_stability(p);
 			}
+		} else if (pv_platform_is_stopping(p)) {
+			if (!pv_platform_check_running(p)) {
+				pv_log(DEBUG,
+				       "platform '%s' exited during lenient stop",
+				       p->name);
+				pv_platform_force_stop(p);
+			} else {
+				struct timer_state tstate = timer_current_state(
+					&p->timer_status_goal);
+				if (tstate.fin) {
+					pv_log(WARN,
+					       "platform '%s' did not exit after lenient stop, force stopping",
+					       p->name);
+					pv_platform_force_stop(p);
+				}
+			}
 		} else if (pv_platform_is_recovering(p)) {
 			struct timer_state tstate = timer_current_state(
 				&p->auto_recovery.timer_retry);
@@ -844,6 +863,18 @@ int pv_state_run(struct pv_state *s)
 				pv_platform_set_installed(p);
 			}
 		} else if (pv_platform_is_stopped(p)) {
+			if (p->on_stopped) {
+				pv_platform_stopped_cb cb = p->on_stopped;
+				void *opaque = p->on_stopped_opaque;
+				p->on_stopped = NULL;
+				p->on_stopped_opaque = NULL;
+				cb(p, opaque);
+				continue;
+			}
+
+			if (p->auto_recovery.user_stopped)
+				continue;
+
 			if (p->auto_recovery.recovery_failed)
 				continue;
 
@@ -871,7 +902,8 @@ bool pv_state_is_stability_pending(struct pv_state *s)
 		// Container with stable_timeout that hasn't proven stable yet
 		if (p->auto_recovery.stable_timeout > 0 &&
 		    !p->auto_recovery.is_stable &&
-		    !p->auto_recovery.recovery_failed) {
+		    !p->auto_recovery.recovery_failed &&
+		    !p->auto_recovery.user_stopped) {
 			pv_log(DEBUG,
 			       "platform '%s' stability pending (waiting for stable_timeout)",
 			       p->name);

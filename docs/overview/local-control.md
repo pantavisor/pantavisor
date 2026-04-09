@@ -7,6 +7,18 @@ With local control, we mean the control that is performed from one of the [conta
 
 This kind of control can be performed even if the device is already [claimed in Pantacor Hub](remote-control.md#pantacor-hub). It can also be the only option if you [disable remote control](../../../reference/legacy/pantavisor-configuration.md#summary) or if you install a [local revision](../../../reference/legacy/pantavisor-commands.md#steps) at any given time, which will interrupt Pantacor Hub remote control unless a [go remote command](../../../reference/legacy/pantavisor-commands.md#commands) is issued. This behavior can be avoided with the [remote always configuration](../../../reference/legacy/pantavisor-configuration.md#summary).
 
+## Available Operations
+
+The [control socket](../../../reference/027/pantavisor-commands.md) exposes a REST API for managing the device from within a container. Key operations include:
+
+* [List and manage containers](../../../reference/027/pantavisor-commands.md#containers) — query status, [stop/start/restart](containers.md#lifecycle-control) individual containers with [restart_policy](containers.md#restart-policy) "container"
+* [Send signals](../../../reference/027/pantavisor-commands.md#signal) — report [readiness](containers.md#signals) to Pantavisor
+* [Issue commands](../../../reference/027/pantavisor-commands.md#commands) — [reboot](../../../reference/027/pantavisor-commands.md#commands), run revisions, trigger [updates](updates.md)
+* [Manage metadata](../../../reference/027/pantavisor-commands.md#user-meta) — read and write user/device metadata
+* [Manage steps](../../../reference/027/pantavisor-commands.md#steps) — install and query [revisions](revisions.md)
+* [Manage daemons](../../../reference/027/pantavisor-commands.md#daemons) — start/stop internal Pantavisor daemons
+* [Query service mesh](../../../reference/027/pantavisor-commands.md#xconnect-graph) — inspect the [xconnect](xconnect.md) graph
+
 ## Pantabox
 
 [Pantabox](../../../pvr-sdk/reference/pantabox.md) is the top level control tool that can be run inside of a [container](containers.md). It offers a [ncurses](https://invisible-island.net/ncurses/) user interface that lets you interact with Pantavisor (install new [revisions](revisions.md), exchange [metadata](storage.md#metadata), reboot or shutdown your device...).
