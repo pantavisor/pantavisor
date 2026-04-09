@@ -1,15 +1,17 @@
-# Pantavisor Disk Management
-
-## Overview
+---
+nav_order: 7
+---
+# Disks
 
 Pantavisor manages persistent storage through disk definitions in
-`device.json`. Disk types range from encrypted dm-crypt volumes with
-hardware-backed keys to swap devices, plain ext4 volumes, and composite
-dual disks for key migration. All disk types share a common `struct
-pv_disk` and lifecycle (init, status, format, mount, umount) but use
-type-specific implementations.
+[`device.json`](pantavisor-state-format-v2.md#6-storage-disksjson).
+Disk types range from encrypted dm-crypt volumes with hardware-backed
+keys to swap devices, plain ext4 volumes, and composite dual disks
+for key migration. All disk types share a common lifecycle (init,
+status, format, mount, umount) but use type-specific implementations.
 
 Disk definitions can live in three arrays inside `device.json`:
+
 - `disks` — original format, strict parsing (unknown types are fatal)
 - `disks_v2` — same as disks, additive
 - `disks_v3` — lenient parsing (unknown types are warned and skipped),
@@ -332,24 +334,9 @@ The `pv_disk_is_internal()` helper checks for this convention. This is
 advisory — pantavisor does not enforce it, but platform builders can
 use it to signal "don't reference these directly from volumes."
 
-## device.json Fields
-
-| Field | Required | Applies to | Description |
-|-------|----------|------------|-------------|
-| `name` | yes | all | Disk identifier, used for mount path and volume references |
-| `type` | yes | all | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk`, `dual` |
-| `path` | yes | crypt, swap, vol | Device/image path. CAAM: `-v2 <img>,<size>,<key>` |
-| `mode` | yes | crypt | `mainline` or `nxp` |
-| `disks` | yes | dual | JSON array of sub-disk names: `["primary-name", "secondary-name"]` |
-| `init_order` | yes | dual | JSON array of actions (see Dual Mode section) |
-| `format` | yes | volume | `ext4`, `ext3`, or `swap` |
-| `provision` | yes | swap, vol | Backend type. `"zram"` for zram, `"file"` for file-backed swap |
-| `provision_ops` | no | swap, vol | Backend-specific options (see type docs above) |
-| `mount_target` | yes | volume | Filesystem mount point |
-| `mount_options` | no | volume | Comma-separated mount flags (e.g. `MS_NOATIME`) |
-| `format_options` | no | swap, vol | Options passed to mkfs/mkswap |
-| `default` | no | all | `"yes"`: use as default disk for volumes without explicit disk ref |
-| `uuid` | no | all | Disk UUID |
+For the full field reference, see
+[`disks.json`](pantavisor-state-format-v2.md#6-storage-disksjson) in
+the state format.
 
 ## Volume Disk References
 
@@ -422,92 +409,3 @@ Crypt disks: `<mediadir>/pv/dmcrypt/<disk-name>`
 Volume disks: configured via `mount_target` field.
 
 Swap disks: no mount point (activated via `swapon`).
-
-## C Code Structure
-
-| File | Purpose |
-|------|---------|
-| `disk/disk.h` | `struct pv_disk`, type enums, inline string converters, `pv_disk_is_internal()` |
-| `disk/disk.c` | Dispatcher: `pv_disk_mount()`, `pv_disk_find()`, boot sequence |
-| `disk/disk_crypt.c` | Crypt impl: builds command string with `--no-create` support, invokes crypt script |
-| `disk/disk_dual.c` | Dual impl: init_order walk, sub-disk resolution, bind-mount, copy+verify |
-| `disk/disk_swap.c` | Swap impl: mkswap, swapon/swapoff |
-| `disk/disk_volume.c` | Volume impl: mkfs, mount/umount to mount_target |
-| `disk/disk_zram.c` | Zram backend: creates zram device, delegates to swap/volume impl |
-| `disk/disk_zram_utils.c` | Zram sysfs helpers: compression, size, streams |
-| `disk/disk_utils.c` | Shared: `pv_disk_utils_run_cmd()`, mount/format/swap helpers |
-| `disk/disk_impl.h` | `struct pv_disk_impl` interface (init/status/format/mount/umount) |
-| `parser/parser_system1.c` | `parse_disks_ex()` — JSON parsing with lenient mode for disks_v3 |
-| `volumes.c` | Volume-disk reference resolution with `disk_ref` safety check |
-| `utils/tsh.c` | `tsh_run_io()` — command execution with quote-aware arg splitting |
-| `scripts/volmount/crypt/crypt` | Shell script: key mgmt, dm-crypt setup, mount/umount/recovery |
-
-## TODO
-
-- **GC cleanup of orphaned dm-crypt-files**: When a disk is removed from
-  `device.json`, its files under `/storage/dm-crypt-files/<disk>/` (image,
-  keys, backups) are not cleaned up by `pv_storage_gc_run()`. Adding this
-  requires scanning the dm-crypt-files directory and comparing against
-  disk paths in the current state. Care needed: misconfigured device.json
-  temporarily missing a disk entry could cause irreversible key deletion.
-- **Remove `set -x` debug tracing** from crypt script before production.
-- **volume-disk format policy**: Currently reformats every boot. Add a
-  `format` policy field: `"auto"` (detect existing FS, format only if
-  none found — safe default), `"no"` (never format, fail if not
-  mountable), `"always"` (current behavior, only sane for zram).
-- **raid disk type**: Composite disk that combines multiple sub-disks
-  into an mdadm array. Single `DISK_RAID` type with a `level` field
-  (0, 1, 5, 6, 10, linear). Reuses `disks` array from dual. Requires
-  `open`/`close` actions in the crypt script (dm-crypt setup without
-  mount) and matching callbacks in `struct pv_disk_impl`. See
-  [ROADMAP.md](ROADMAP.md) for full design.
-- **UUID/LABEL path resolution**: Allow `path` to accept `UUID=`,
-  `LABEL=`, `PARTUUID=`, `PARTLABEL=` syntax (resolved via `blkid`
-  at mount time). Stable across hardware changes and boot order
-  variations. Applies to all disk types that take a `path`.
-- **Implicit pvroot disk**: The root storage partition (configured via
-  `PV_STORAGE_DEVICE` in pantavisor.config, typically `LABEL=root`)
-  is mounted at init before device.json is parsed. It should be
-  exposed as an implicit disk entry named `pvroot` in the disk list
-  with `default: true`. This unifies the model — all storage goes
-  through the disk subsystem, and volumes without an explicit `"disk"`
-  ref resolve to pvroot. Device.json disks are additive alongside it.
-  The pvroot disk is never reformatted and cannot be defined in
-  device.json (chicken-and-egg: device.json lives on pvroot).
-- **Source abstraction**: Decouple "where the block device comes from"
-  from "what to do with it." Replace the overloaded `path` field with
-  a structured `source` object supporting `image` (loop-backed file),
-  `device` (fixed block device), `partition` (match by label/UUID/bus),
-  and `zram` (compressed RAM) source types. The current `path` field
-  maps transparently to the new format.
-- **Hotplug slots**: New `hotplug-slot` disk type for removable and
-  external storage. Defines abstract storage endpoints (slots) that
-  physical devices get bound to at runtime. Key features:
-  - **Auto-assign strategies**: `first-fit` (first match wins),
-    `replace` (new device replaces current), `partlabel` (match by
-    GPT partition label — the USB stick declares what it's for),
-    `priority` (prefer by size/serial), `manual` (API only).
-  - **Multi-device slots**: `multi: true` allows multiple devices
-    bound to one slot. Merge strategies: `subdirs` (each device gets
-    a subdirectory), `overlay-ro` (overlayfs merged read-only view),
-    `overlay-rw` (merged view with write layer).
-  - **Bind modes**: `remember` (persist binding by serial+UUID for
-    dedicated drives), `auto` (policy match only, no memory — for
-    media import), `manual` (always ask platform via API).
-  - **Accept criteria**: filter by `bus`, `bus_path_prefix` (specific
-    USB port), `fstype`, `partlabel`, `min_size`, `max_size`,
-    `vendor`, `model`.
-  - **Format policies**: `preserve`, `format-if-empty`, `always-format`,
-    `ask` (notify platform via API).
-  - **Mount propagation**: Slot directory is bind-mounted into
-    containers at start (empty). When a device is bound on the host,
-    `MS_SHARED` propagation makes content appear inside running
-    containers automatically — no restart, no dynamic mount injection.
-  - **Ctrl API**: `GET /slots`, `GET /slots/{name}`, `POST /slots/{name}/bind`,
-    `POST /slots/{name}/unbind`, `GET /devices/unbound`.
-  - **Status notification**: per-slot status file at
-    `/run/pantavisor/slots/<name>/status.json`, watchable via inotify.
-  - Slot definitions are OTA-managed (device.json). Bindings are local
-    persistent state (`/storage/pantavisor/slot-bindings.json`).
-  - RAID should use internal (permanently attached) legs only. Hotplug
-    slots handle removable media — keep them separate.
