@@ -24,16 +24,29 @@
 
 #include <sys/types.h>
 
-pid_t tsh_run(char *cmd, int wait, int *status);
-pid_t tsh_run_io(char *cmd, int wait, int *status, int stdin_p[],
+#define TSH_DEFAULT_TIMEOUT (60)
+#define TSH_NO_TIMEOUT (-1)
+
+pid_t tsh_run(const char *cmd, int wait, int *status);
+pid_t tsh_run_io(const char *cmd, int wait, int *status, int stdin_p[],
 		 int stdout_p[], int stderr_p[]);
+
+pid_t tsh_run_timeout(const char *cmd, int wait, int *status, int timeout_s);
+pid_t tsh_run_io_timeout(const char *cmd, int wait, int *status, int timeout_s,
+			 int stdin_p[], int stdout_p[], int stderr_p[]);
+
 int tsh_run_output(const char *cmd, int timeout_s, char *out_buf, int out_size,
 		   char *err_buf, int err_size);
 
 #ifndef DISABLE_LOGSERVER
-int tsh_run_logserver(char *cmd, int *wstatus, const char *source,
-		      const char *level);
-pid_t tsh_run_daemon_logserver(char *cmd, const char *log_source_out,
+int tsh_run_logserver(const char *cmd, int *wstatus, const char *log_source_out,
+		      const char *log_source_err);
+
+int tsh_run_logserver_timeout(const char *cmd, int *wstatus, int timeout_s,
+			      const char *log_source_out,
+			      const char *log_source_err);
+
+pid_t tsh_run_daemon_logserver(const char *cmd, const char *log_source_out,
 			       const char *log_source_err);
 #endif
 
