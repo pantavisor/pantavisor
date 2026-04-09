@@ -654,6 +654,7 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	p->auto_recovery.is_stable = false;
 	p->auto_recovery.timer_stable_armed = false;
 	p->auto_recovery.recovery_failed = false;
+	p->auto_recovery.user_stopped = false;
 
 	return 0;
 }
@@ -844,6 +845,9 @@ int pv_state_run(struct pv_state *s)
 				pv_platform_set_installed(p);
 			}
 		} else if (pv_platform_is_stopped(p)) {
+			if (p->auto_recovery.user_stopped)
+				continue;
+
 			if (p->auto_recovery.recovery_failed)
 				continue;
 
@@ -871,7 +875,8 @@ bool pv_state_is_stability_pending(struct pv_state *s)
 		// Container with stable_timeout that hasn't proven stable yet
 		if (p->auto_recovery.stable_timeout > 0 &&
 		    !p->auto_recovery.is_stable &&
-		    !p->auto_recovery.recovery_failed) {
+		    !p->auto_recovery.recovery_failed &&
+		    !p->auto_recovery.user_stopped) {
 			pv_log(DEBUG,
 			       "platform '%s' stability pending (waiting for stable_timeout)",
 			       p->name);

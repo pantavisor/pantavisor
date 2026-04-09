@@ -29,6 +29,10 @@ It is also included in [pvr-sdk](https://gitlab.com/pantacor/pv-platforms/pvr-sd
 pvcontrol
 ```
 
+## Container Lifecycle Control
+
+The control socket provides [lifecycle management](../../../reference/legacy/pantavisor-commands.md#containers) for individual containers. Containers with `restart_policy: "container"` can be stopped, started, and restarted at runtime without a system reboot or update. See [Lifecycle Control](containers.md#lifecycle-control) for details on how this interacts with [auto-recovery](containers.md#auto-recovery).
+
 ## Other Local Controllers
 
 In the end, [Pantabox](#pantabox) and [pvcontrol](#pvcontrol) are just HTTP clients that are making use of [Pantavisor control socket](../../../reference/legacy/pantavisor-commands.md).

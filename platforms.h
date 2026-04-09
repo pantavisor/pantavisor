@@ -125,6 +125,7 @@ struct pv_auto_recovery {
 	bool timer_stable_armed;
 	bool is_stable;
 	bool recovery_failed;
+	bool user_stopped;
 };
 
 struct pv_platform_driver {
