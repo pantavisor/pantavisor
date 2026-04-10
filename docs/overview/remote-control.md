@@ -38,7 +38,9 @@ The client state machine goes through the following stages:
 * **init**: means we are in remote mode and the client has been initialized.
 * **register**: device is trying to register as a non-claimed device in the cloud. This credentials will be stored after reboot.
 * **claim**: device is registered and is waiting to be claimed.
-* **sync**: device has been claimed and will try to upload the objects and state JSON to the cloud.
+* **prep sync**: device has been claimed and is initializing the sync session with Hub.
+* **sync objects**: device is uploading any [artifacts](../../../reference/legacy/revisions.md) that are not yet present in the cloud.
+* **sync state**: device is posting the current [state JSON](../../../reference/legacy/revisions.md) to Hub to record the installed revision.
 * **login**: device is using its credentials to start a session with Hub.
 * **wait hub**: device is waiting for Hub to reply. We also use this to decide whether the device is claimed or not.
 * **report**: an update finished and device will continue uploading devmeta, downloading usrmeta while reporting its update status.
