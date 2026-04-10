@@ -41,6 +41,7 @@
 #include <sched.h>
 
 #include "platforms.h"
+#include "volumes.h"
 #include "paths.h"
 #include "wdt.h"
 #include "drivers.h"
@@ -193,6 +194,27 @@ bool pv_platform_track_stability(struct pv_platform *p)
 	return p->auto_recovery.is_stable;
 }
 
+static void pv_platform_unmount_volumes(struct pv_platform *p)
+{
+	if (!p->state)
+		return;
+
+	struct pv_volume *v, *tmp;
+	dl_list_for_each_safe(v, tmp, &p->state->volumes, struct pv_volume,
+			      list)
+	{
+		if (v->plat == p)
+			pv_volume_unmount(v);
+	}
+}
+
+/*
+ * All transitions to PLAT_STOPPED come through this function, whether from
+ * pv_platform_force_stop (intentional kill), pv_platform_check_running
+ * (crash detection), or a failed start. When entering STOPPED, we unmount
+ * platform volumes so the next start cycle gets clean mounts instead of
+ * accumulating overmounts.
+ */
 static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 {
 	if (p->status.current == status)
@@ -201,6 +223,10 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	p->status.current = status;
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
+
+	if (status == PLAT_STOPPED)
+		pv_platform_unmount_volumes(p);
+
 	pv_platform_on_status_goal_reached(p);
 
 	pv_group_eval_status(p->group);
