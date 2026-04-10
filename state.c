@@ -956,25 +956,6 @@ static int pv_state_unmount_platform_volumes(struct pv_state *s,
 	return ret;
 }
 
-static int pv_state_unmount_platforms_volumes(struct pv_state *s)
-{
-	int ret = 0;
-	struct pv_platform *p, *tmp_p;
-
-	// unmount platform volumes
-	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
-	{
-		if (!(pv_platform_is_stopping(p) ||
-		      pv_platform_is_starting(p) || pv_platform_is_started(p) ||
-		      pv_platform_is_ready(p))) {
-			if (pv_state_unmount_platform_volumes(s, p))
-				ret = -1;
-		}
-	}
-
-	return ret;
-}
-
 void pv_state_stop_lenient(struct pv_state *s)
 {
 	if (!s)
@@ -1004,11 +985,9 @@ int pv_state_stop_force(struct pv_state *s)
 		ret |= -2;
 	}
 
-	// unmount all platform related volumes
-	if (pv_state_unmount_platforms_volumes(s))
-		ret |= -4;
-
-	// unmount bsp volumes
+	// Platform volumes are unmounted when each platform transitions to
+	// STOPPED (in pv_platform_set_status). Only BSP volumes (plat==NULL)
+	// need explicit unmount here.
 	if (pv_state_unmount_platform_volumes(s, NULL))
 		ret |= -8;
 
@@ -1195,11 +1174,8 @@ int pv_state_stop_platforms(struct pv_state *current, struct pv_state *pending)
 	if (!pv_state_check_all_stopped(current))
 		pv_state_force_stop(current);
 
-	if (pv_state_unmount_platforms_volumes(current)) {
-		pv_log(ERROR, "could not unmount volumes");
-		return -1;
-	}
-
+	// Platform volumes are unmounted when each platform transitions to
+	// STOPPED (in pv_platform_set_status).
 	return 0;
 }
 
