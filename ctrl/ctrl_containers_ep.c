@@ -28,6 +28,7 @@
 #include "pantavisor.h"
 #include "platforms.h"
 #include "group.h"
+#include "event_log.h"
 #include "utils/json.h"
 
 #include <event2/http.h>
@@ -143,6 +144,8 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 			pv_log(DEBUG, "Container %s is already stopped by user",
 			       p->name);
 		} else {
+			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+					  "user_stopped", "");
 			p->auto_recovery.user_stopped = true;
 			pv_platform_force_stop(p);
 		}
@@ -155,6 +158,8 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 			       p->name);
 		} else if (pv_platform_is_stopped(p) ||
 			   pv_platform_is_recovering(p)) {
+			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+					  "user_started", "");
 			p->auto_recovery.user_stopped = false;
 			p->auto_recovery.current_retries = 0;
 			p->auto_recovery.recovery_failed = false;
@@ -170,6 +175,8 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 		}
 	} else if (strcmp(action, "restart") == 0) {
 		pv_log(DEBUG, "Restarting container %s via ctrl", p->name);
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  "user_restarted", "");
 
 		if (pv_platform_is_stopped(p) || pv_platform_is_recovering(p)) {
 			p->auto_recovery.user_stopped = false;

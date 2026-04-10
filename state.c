@@ -49,6 +49,7 @@
 #include "utils/str.h"
 #include "utils/json.h"
 #include "utils/timer.h"
+#include "event_log.h"
 
 #define MODULE_NAME "state"
 #define pv_log(level, msg, ...)                                                \
@@ -724,6 +725,19 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 			pv_log(WARN, "platform '%s' reached max retries (%d).",
 			       p->name, p->auto_recovery.max_retries);
 
+			{
+				char detail[128];
+				snprintf(
+					detail, sizeof(detail), "backoff=%s",
+					pv_backoff_policy_str(
+						p->auto_recovery.backoff_policy,
+						p->auto_recovery
+							.backoff_duration));
+				pv_event_log_push(PV_EVENT_TYPE_PLATFORM,
+						  p->name, "max_retries",
+						  detail);
+			}
+
 			// During TESTING/update: always fail (causes rollback)
 			if (pv_update_is_inprogress() ||
 			    pv_update_is_testing()) {
@@ -776,6 +790,16 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 		       "platform '%s' crashed. Attempting auto-recovery (attempt %d/%d) in %d seconds...",
 		       p->name, p->auto_recovery.current_retries,
 		       p->auto_recovery.max_retries, delay);
+
+		{
+			char detail[128];
+			snprintf(detail, sizeof(detail),
+				 "attempt=%d/%d delay=%ds",
+				 p->auto_recovery.current_retries,
+				 p->auto_recovery.max_retries, delay);
+			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+					  "recovering", detail);
+		}
 
 		if (delay > 0) {
 			timer_start(&p->auto_recovery.timer_retry, delay, 0,

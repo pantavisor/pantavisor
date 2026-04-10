@@ -57,6 +57,7 @@
 #include "utils/pvsignals.h"
 #include "utils/tsh.h"
 #include "utils/system.h"
+#include "event_log.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
@@ -190,6 +191,8 @@ bool pv_platform_track_stability(struct pv_platform *p)
 		       "platform '%s' is now STABLE (survived %d seconds)",
 		       p->name, p->auto_recovery.stable_timeout);
 		p->auto_recovery.is_stable = true;
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name, "stable",
+				  "");
 	}
 	return p->auto_recovery.is_stable;
 }
@@ -223,6 +226,11 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	p->status.current = status;
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
+
+	if (status == PLAT_STARTED || status == PLAT_READY ||
+	    status == PLAT_STOPPED)
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  pv_platform_status_string(status), "");
 
 	if (status == PLAT_STOPPED)
 		pv_platform_unmount_volumes(p);
@@ -1289,6 +1297,8 @@ bool pv_platform_check_running(struct pv_platform *p)
 	if (!running) {
 		if ((p->status.current != PLAT_STOPPED) &&
 		    (p->status.current != PLAT_STARTING)) {
+			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+					  "crashed", "");
 			pv_platform_set_status(p, PLAT_STOPPED);
 		}
 	}

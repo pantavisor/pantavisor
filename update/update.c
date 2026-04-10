@@ -39,6 +39,7 @@
 
 #include "utils/fs.h"
 #include "utils/str.h"
+#include "event_log.h"
 
 #define MODULE_NAME "update"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -166,18 +167,22 @@ static void _finish_update_installation()
 
 	/* Bootloader can force reboot (e.g. pv_rev.txt overflow) */
 	if (bl_rv > 0 && u->transition == PV_SYSTEM_TRANSITION_NONREBOOT) {
-		pv_log(INFO, "bootloader requests forced reboot for this update");
+		pv_log(INFO,
+		       "bootloader requests forced reboot for this update");
 		pv_issue_reboot();
 		u->transition = PV_SYSTEM_TRANSITION_REBOOT;
 	}
 
 	switch (u->transition) {
 	case PV_SYSTEM_TRANSITION_REBOOT:
+		pv_event_log_push(PV_EVENT_TYPE_UPDATE, u->rev, "reboot", "");
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_INPROGRESS,
 				       PV_UPDATE_PROGRESS_MSG_REBOOT);
 		return;
 	case PV_SYSTEM_TRANSITION_NONREBOOT:
+		pv_event_log_push(PV_EVENT_TYPE_UPDATE, u->rev, "transition",
+				  "");
 		pv_update_progress_set(&u->progress,
 				       PV_UPDATE_PROGRESS_STATUS_INPROGRESS,
 				       PV_UPDATE_PROGRESS_MSG_TRANSITION);
@@ -242,6 +247,13 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	}
 
 	pv_log(DEBUG, "queueing update");
+	{
+		char detail[128];
+		snprintf(detail, sizeof(detail), "retry=%d/%d",
+			 u->progress.retries + 1,
+			 pv_config_get_int(PV_REVISION_RETRIES));
+		pv_event_log_push(PV_EVENT_TYPE_UPDATE, rev, "queued", detail);
+	}
 	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_QUEUED,
 			       PV_UPDATE_PROGRESS_MSG_QUEUED);
 
@@ -653,10 +665,8 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 	}
 
 	pv_log(DEBUG, "update_resume: trying=%d failed=%d done=%d factory=%d",
-	       pv_bootloader_trying_update(),
-	       pv_update_is_failed(),
-	       pv_update_is_done(),
-	       _is_factory(rev));
+	       pv_bootloader_trying_update(), pv_update_is_failed(),
+	       pv_update_is_done(), _is_factory(rev));
 
 	// if we are currently trying a revision that already failed
 	if (pv_bootloader_trying_update() && pv_update_is_failed()) {
@@ -736,6 +746,16 @@ void pv_update_set_testing()
 	struct pv_update *u = _get_update_instance();
 	if (!u)
 		return;
+
+	{
+		char detail[128];
+		snprintf(detail, sizeof(detail), "mode=%s",
+			 u->transition == PV_SYSTEM_TRANSITION_REBOOT ?
+				 "reboot" :
+				 "nonreboot");
+		pv_event_log_push(PV_EVENT_TYPE_UPDATE, u->rev, "testing",
+				  detail);
+	}
 
 	if (u->transition == PV_SYSTEM_TRANSITION_REBOOT) {
 		pv_update_progress_set(&u->progress,
@@ -842,6 +862,8 @@ void pv_update_set_final()
 	struct pv_update *u = pv->update;
 	if (!u)
 		return;
+
+	pv_event_log_push(PV_EVENT_TYPE_UPDATE, u->rev, "committed", "");
 
 	if (u->transition == PV_SYSTEM_TRANSITION_NONREBOOT) {
 		pv_update_progress_set(&u->progress,
