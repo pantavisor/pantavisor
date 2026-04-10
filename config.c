@@ -198,6 +198,7 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 3 },
 	{ BOOL, "PV_LOG_CAPTURE", PV | OEM, 0, false, .value.b = true },
 	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | OEM, 0, false, .value.b = true },
+	{ BOOL, "PV_LOG_EVENTS", PV | OEM | RUN, 0, false, .value.b = true },
 	{ INT, "PV_LOG_BUF_NITEMS", PV | OEM, 0, false, .value.i = 128 },
 	{ STR, "PV_LOG_DIR", PV, 0, false, .value.s = LOG_DIR_DEF },
 	{ STR, "PV_LOG_DIR_MAXSIZE", PV | OEM | RUN, 0, false, .value.s = "0" },
@@ -316,6 +317,7 @@ static struct pv_config_alias aliases[] = {
 	{ "libthttp.log.level", "PV_LIBTHTTP_LOG_LEVEL" },
 	{ "log.capture", "PV_LOG_CAPTURE" },
 	{ "log.capture.dmesg", "PV_LOG_CAPTURE_DMESG" },
+	{ "log.events", "PV_LOG_EVENTS" },
 	{ "log.buf_nitems", "PV_LOG_BUF_NITEMS" },
 	{ "log.dir", "PV_LOG_DIR" },
 	{ "log.filetree.timestamp.format", "PV_LOG_FILETREE_TIMESTAMP_FORMAT" },
@@ -603,7 +605,8 @@ static off_t _get_partition_size(const char *device)
 	else
 		dev_name = device;
 
-	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/class/block/%s/size", dev_name);
+	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/class/block/%s/size",
+			dev_name);
 	int fd = open(path, O_RDONLY);
 	if (fd < 0)
 		return -1;
