@@ -227,10 +227,15 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
 
-	if (status == PLAT_STARTED || status == PLAT_READY ||
-	    status == PLAT_STOPPED)
+	if (status == PLAT_STARTED)
 		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
-				  pv_platform_status_string(status), "");
+				  "started", "");
+	else if (status == PLAT_READY)
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  "ready", "");
+	else if (status == PLAT_STOPPED)
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  "stopped", "");
 
 	if (status == PLAT_STOPPED)
 		pv_platform_unmount_volumes(p);
@@ -1297,8 +1302,14 @@ bool pv_platform_check_running(struct pv_platform *p)
 	if (!running) {
 		if ((p->status.current != PLAT_STOPPED) &&
 		    (p->status.current != PLAT_STARTING)) {
-			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
-					  "crashed", "");
+			{
+				char detail[128];
+				snprintf(detail, sizeof(detail), "pid=%d",
+					 p->init_pid);
+				pv_event_log_push(PV_EVENT_TYPE_PLATFORM,
+						  p->name, "crashed",
+						  detail);
+			}
 			pv_platform_set_status(p, PLAT_STOPPED);
 		}
 	}

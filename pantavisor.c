@@ -187,6 +187,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
+	if (pv_update_get_rev())
+		pv_event_log_push(PV_EVENT_TYPE_UPDATE, pv_update_get_rev(),
+				  "boot", "resumed after reboot");
+
 	if (pv_update_get_state()) {
 		// for non-reboot updates...
 		pv_logserver_transition(pv_update_get_rev());

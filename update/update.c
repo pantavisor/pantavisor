@@ -334,6 +334,7 @@ static void _finish_object_metadata_setting()
 	}
 
 	_reset_object_list_retries(u);
+	pv_event_log_push(PV_EVENT_TYPE_UPDATE, u->rev, "downloading", "");
 	pv_update_progress_start_download(&u->progress);
 }
 
