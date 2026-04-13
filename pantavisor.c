@@ -76,6 +76,7 @@
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/tsh.h"
+#include "event_log.h"
 
 #define MODULE_NAME "controller"
 #define pv_log(level, msg, ...)                                                \
@@ -186,6 +187,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		goto out;
 	}
 
+	if (pv_update_get_rev())
+		pv_event_log_push(PV_EVENT_TYPE_UPDATE, pv_update_get_rev(),
+				  "boot", "resumed after reboot");
+
 	if (pv_update_get_state()) {
 		// for non-reboot updates...
 		pv_logserver_transition(pv_update_get_rev());
@@ -200,7 +205,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
 		if (!json) {
-			pv_log(ERROR, "get_state_json returned NULL for rev '%s'",
+			pv_log(ERROR,
+			       "get_state_json returned NULL for rev '%s'",
 			       pv_bootloader_get_rev());
 			pv_update_set_error_no_state_json();
 			goto out;
@@ -684,6 +690,10 @@ static pv_state_t _pv_rollback(struct pantavisor *pv)
 {
 	pv_log(DEBUG, "%s():%d", __func__, __LINE__);
 
+	pv_event_log_push(PV_EVENT_TYPE_UPDATE,
+			  pv->state ? pv->state->rev : "unknown", "rollback",
+			  "");
+
 	/*
 	 * Do NOT clear pv_try here. We are about to reboot into the
 	 * previous (good) revision, which needs pv_try to still be set
@@ -902,6 +912,14 @@ static void _next_state(pv_state_t next_state)
 	if (!pv)
 		return;
 
+	if (next_state != state) {
+		char detail[128];
+		snprintf(detail, sizeof(detail), "%s -> %s",
+			 pv_state_string(state), pv_state_string(next_state));
+		pv_event_log_push(PV_EVENT_TYPE_SYSTEM, "pantavisor",
+				  "state_change", detail);
+	}
+
 	state = next_state;
 
 	if (state == PV_STATE_WAIT)
@@ -923,6 +941,8 @@ int pv_start()
 
 	if (pv_event_base_init() < 0)
 		return 1;
+
+	pv_event_log_init();
 
 	_next_state(PV_STATE_INIT);
 

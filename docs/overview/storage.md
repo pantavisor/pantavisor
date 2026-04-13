@@ -287,6 +287,8 @@ A progress JSON is stored with [update info](updates.md#progress) relevant to ea
 }
 ```
 
+When [event journaling](event-journal.md) is enabled, the progress JSON also includes an `events` array with structured lifecycle events. See [Event Journal](event-journal.md) for details.
+
 Update progress can be consulted locally using the [ctrl steps endpoint](../../../reference/legacy/pantavisor-commands.md#steps).
 
 ### Integrity

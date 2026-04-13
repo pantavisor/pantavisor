@@ -57,6 +57,7 @@
 #include "utils/pvsignals.h"
 #include "utils/tsh.h"
 #include "utils/system.h"
+#include "event_log.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
@@ -190,6 +191,8 @@ bool pv_platform_track_stability(struct pv_platform *p)
 		       "platform '%s' is now STABLE (survived %d seconds)",
 		       p->name, p->auto_recovery.stable_timeout);
 		p->auto_recovery.is_stable = true;
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name, "stable",
+				  "");
 	}
 	return p->auto_recovery.is_stable;
 }
@@ -223,6 +226,16 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	p->status.current = status;
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
+
+	if (status == PLAT_STARTED)
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  "started", "");
+	else if (status == PLAT_READY)
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  "ready", "");
+	else if (status == PLAT_STOPPED)
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  "stopped", "");
 
 	if (status == PLAT_STOPPED)
 		pv_platform_unmount_volumes(p);
@@ -392,6 +405,22 @@ static const char *pv_platforms_role_str(roles_mask_t role)
 	return "unknown";
 }
 
+static const char *pv_recovery_type_str(recovery_type_t type)
+{
+	switch (type) {
+	case RECOVERY_NO:
+		return "no";
+	case RECOVERY_ALWAYS:
+		return "always";
+	case RECOVERY_ON_FAILURE:
+		return "on-failure";
+	case RECOVERY_UNLESS_STOPPED:
+		return "unless-stopped";
+	}
+
+	return "no";
+}
+
 const char *pv_platforms_restart_policy_str(restart_policy_t policy)
 {
 	switch (policy) {
@@ -499,27 +528,45 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 			pv_json_ser_array_pop(js);
 		}
 
-		pv_json_ser_key(js, "auto_recovery");
-		pv_json_ser_object(js);
-		{
-			pv_json_ser_key(js, "max_retries");
-			pv_json_ser_number(js, p->auto_recovery.max_retries);
-			pv_json_ser_key(js, "current_retries");
-			pv_json_ser_number(js,
-					   p->auto_recovery.current_retries);
-			pv_json_ser_key(js, "stable_timeout");
-			pv_json_ser_number(js, p->auto_recovery.stable_timeout);
-			pv_json_ser_key(js, "is_stable");
-			pv_json_ser_string(js, p->auto_recovery.is_stable ?
+		if (p->auto_recovery.type != RECOVERY_NO) {
+			pv_json_ser_key(js, "auto_recovery");
+			pv_json_ser_object(js);
+			{
+				pv_json_ser_key(js, "policy");
+				pv_json_ser_string(
+					js, pv_recovery_type_str(
+						    p->auto_recovery.type));
+				pv_json_ser_key(js, "max_retries");
+				pv_json_ser_number(
+					js, p->auto_recovery.max_retries);
+				pv_json_ser_key(js, "current_retries");
+				pv_json_ser_number(
+					js, p->auto_recovery.current_retries);
+				pv_json_ser_key(js, "stable_timeout");
+				pv_json_ser_number(
+					js, p->auto_recovery.stable_timeout);
+				pv_json_ser_key(js, "is_stable");
+				pv_json_ser_string(js,
+						   p->auto_recovery.is_stable ?
+							   "true" :
+							   "false");
+				pv_json_ser_key(js, "backoff_policy");
+				pv_json_ser_string(
+					js,
+					pv_backoff_policy_str(
+						p->auto_recovery.backoff_policy,
+						p->auto_recovery
+							.backoff_duration));
+
+				pv_json_ser_object_pop(js);
+			}
+		}
+
+		if (p->restart_policy == RESTART_CONTAINER) {
+			pv_json_ser_key(js, "user_stopped");
+			pv_json_ser_string(js, p->auto_recovery.user_stopped ?
 						       "true" :
 						       "false");
-			pv_json_ser_key(js, "backoff_policy");
-			pv_json_ser_string(
-				js, pv_backoff_policy_str(
-					    p->auto_recovery.backoff_policy,
-					    p->auto_recovery.backoff_duration));
-
-			pv_json_ser_object_pop(js);
 		}
 
 		pv_json_ser_object_pop(js);
@@ -1255,6 +1302,14 @@ bool pv_platform_check_running(struct pv_platform *p)
 	if (!running) {
 		if ((p->status.current != PLAT_STOPPED) &&
 		    (p->status.current != PLAT_STARTING)) {
+			{
+				char detail[128];
+				snprintf(detail, sizeof(detail), "pid=%d",
+					 p->init_pid);
+				pv_event_log_push(PV_EVENT_TYPE_PLATFORM,
+						  p->name, "crashed",
+						  detail);
+			}
 			pv_platform_set_status(p, PLAT_STOPPED);
 		}
 	}

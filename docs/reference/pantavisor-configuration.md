@@ -68,6 +68,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
 | `PV_LIBTHTTP_LOG_LEVEL` | `0` to `5` | `3` | set libthttp log verbosity level |
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../../pantavisor-src/docs/overview/storage.md#logs) buffer size |
+| `PV_LOG_EVENTS` | `0` or `1` | `1` | enable [event journaling](../../pantavisor-src/docs/overview/event-journal.md) in progress payload |
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |
 | `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](../../pantavisor-src/docs/overview/storage.md#logs) directory |
@@ -176,6 +177,7 @@ This table shows the [configuration levels](../../pantavisor-src/docs/overview/p
 | `PV_LIBTHTTP_CERTSDIR`               | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |
 | `PV_LIBTHTTP_LOG_LEVEL`              | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_BUF_NITEMS`                  | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
+| `PV_LOG_EVENTS`                      | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-check: |
 | `PV_LOG_CAPTURE`                     | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
 | `PV_LOG_CAPTURE_DMESG`               | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
 | `PV_LOG_DIR`                         | :material-check: | :material-close: | :material-check: | :material-check: | :material-close: | :material-close: | :material-close: |

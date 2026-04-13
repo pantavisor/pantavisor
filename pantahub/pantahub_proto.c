@@ -41,6 +41,7 @@
 
 #include "utils/fs.h"
 #include "utils/str.h"
+#include "event_log.h"
 
 #define MODULE_NAME "pantahub_proto"
 #define pv_log(level, msg, ...)                                                \
@@ -323,6 +324,14 @@ static void _on_request_unresponsive()
 	pv_log(DEBUG, "Pantacor Hub client is now offline");
 	session.online = false;
 
+	{
+		char detail[128];
+		snprintf(detail, sizeof(detail), "failed_reqs=%d",
+			 session.failed_requests);
+		pv_event_log_push(PV_EVENT_TYPE_PANTAHUB, "pantahub", "offline",
+				  detail);
+	}
+
 	// update devmeta key
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "0");
 }
@@ -337,6 +346,7 @@ static void _on_request_responsive()
 
 	pv_log(DEBUG, "Pantacor Hub client is now online");
 	session.online = true;
+	pv_event_log_push(PV_EVENT_TYPE_PANTAHUB, "pantahub", "online", "");
 
 	// update devmeta key
 	pv_metadata_add_devmeta(DEVMETA_KEY_PH_ONLINE, "1");
@@ -387,8 +397,14 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 	}
 
 	session.token = pv_pantahub_msg_parse_session_token(body);
-	if (session.token)
+	if (session.token) {
 		pv_log(DEBUG, "got new token");
+		pv_event_log_push(PV_EVENT_TYPE_PANTAHUB, "pantahub", "auth",
+				  "");
+	} else {
+		pv_event_log_push(PV_EVENT_TYPE_PANTAHUB, "pantahub",
+				  "auth_failed", "");
+	}
 
 out:
 	if (body)

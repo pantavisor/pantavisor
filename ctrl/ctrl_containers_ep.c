@@ -26,8 +26,14 @@
 #include "ctrl_util.h"
 #include "state.h"
 #include "pantavisor.h"
+#include "platforms.h"
+#include "group.h"
+#include "event_log.h"
+#include "utils/json.h"
 
 #include <event2/http.h>
+#include <event2/buffer.h>
+#include <linux/limits.h>
 
 #include <string.h>
 
@@ -58,9 +64,179 @@ static void ctrl_containers_list(struct evhttp_request *req, void *ctx)
 	pv_ctrl_utils_send_json(req, HTTP_OK, NULL, cont);
 }
 
+static void ctrl_container_process_action(struct evbuffer *buf,
+					  const struct evbuffer_cb_info *info,
+					  void *ctx)
+{
+	struct evhttp_request *req = ctx;
+	char *data = NULL;
+	char *action = NULL;
+	int tokc;
+	jsmntok_t *tokv = NULL;
+	struct pv_platform *p = NULL;
+	struct pantavisor *pv = pv_get_instance();
+
+	if (!info->n_added)
+		return;
+
+	const char *uri = evhttp_request_get_uri(req);
+	char split[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
+	int size = pv_ctrl_utils_split_path(uri, split);
+
+	if (size < 2) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Missing container name");
+		return;
+	}
+
+	p = pv_state_fetch_platform(pv->state, split[1]);
+	if (!p) {
+		pv_ctrl_utils_send_error(req, HTTP_NOTFOUND,
+					 "Container not found");
+		return;
+	}
+
+	if (p->restart_policy != RESTART_CONTAINER) {
+		pv_ctrl_utils_send_error(
+			req, HTTP_FORBIDDEN,
+			"Container has restart_policy 'system' and cannot be controlled via API");
+		return;
+	}
+
+	data = pv_ctrl_utils_get_data(req, 1024, NULL);
+	if (!data) {
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST, "No data");
+		return;
+	}
+
+	jsmn_parser parser;
+	jsmn_init(&parser);
+	tokc = jsmn_parse(&parser, data, strlen(data), NULL, 0);
+	if (tokc < 0) {
+		free(data);
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST, "Invalid JSON");
+		return;
+	}
+	tokv = calloc(tokc, sizeof(jsmntok_t));
+	if (!tokv) {
+		free(data);
+		pv_ctrl_utils_send_error(req, HTTP_INTERNAL, "Out of memory");
+		return;
+	}
+	jsmn_init(&parser);
+	jsmn_parse(&parser, data, strlen(data), tokv, tokc);
+
+	action = pv_json_get_value(data, "action", tokv, tokc);
+
+	if (!action) {
+		free(tokv);
+		free(data);
+		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST,
+					 "Missing 'action' field");
+		return;
+	}
+
+	if (strcmp(action, "stop") == 0) {
+		pv_log(DEBUG, "Stopping container %s via ctrl", p->name);
+
+		if (pv_platform_is_stopped(p) &&
+		    p->auto_recovery.user_stopped) {
+			pv_log(DEBUG, "Container %s is already stopped by user",
+			       p->name);
+		} else {
+			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+					  "user_stopped", "");
+			p->auto_recovery.user_stopped = true;
+			pv_platform_force_stop(p);
+		}
+	} else if (strcmp(action, "start") == 0) {
+		pv_log(DEBUG, "Starting container %s via ctrl", p->name);
+
+		if (pv_platform_is_started(p) || pv_platform_is_starting(p) ||
+		    pv_platform_is_ready(p)) {
+			pv_log(DEBUG, "Container %s is already running",
+			       p->name);
+		} else if (pv_platform_is_stopped(p) ||
+			   pv_platform_is_recovering(p)) {
+			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+					  "user_started", "");
+			p->auto_recovery.user_stopped = false;
+			p->auto_recovery.current_retries = 0;
+			p->auto_recovery.recovery_failed = false;
+			pv_platform_set_installed(p);
+		} else {
+			free(action);
+			free(tokv);
+			free(data);
+			pv_ctrl_utils_send_error(
+				req, HTTP_BADREQUEST,
+				"Container must be in STOPPED or RECOVERING state to start");
+			return;
+		}
+	} else if (strcmp(action, "restart") == 0) {
+		pv_log(DEBUG, "Restarting container %s via ctrl", p->name);
+		pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+				  "user_restarted", "");
+
+		if (pv_platform_is_stopped(p) || pv_platform_is_recovering(p)) {
+			p->auto_recovery.user_stopped = false;
+			p->auto_recovery.current_retries = 0;
+			p->auto_recovery.recovery_failed = false;
+			pv_platform_set_installed(p);
+		} else if (pv_platform_is_started(p) ||
+			   pv_platform_is_starting(p) ||
+			   pv_platform_is_ready(p)) {
+			p->auto_recovery.current_retries = 0;
+			pv_platform_force_stop(p);
+			if (p->auto_recovery.type == RECOVERY_NO)
+				pv_platform_set_installed(p);
+			// Otherwise auto-recovery picks it up naturally
+		} else {
+			free(action);
+			free(tokv);
+			free(data);
+			pv_ctrl_utils_send_error(
+				req, HTTP_BADREQUEST,
+				"Container state does not allow restart");
+			return;
+		}
+	} else {
+		free(action);
+		free(tokv);
+		free(data);
+		pv_ctrl_utils_send_error(
+			req, HTTP_BADREQUEST,
+			"Invalid action. Use 'start', 'stop', or 'restart'");
+		return;
+	}
+
+	free(action);
+	free(tokv);
+	free(data);
+
+	pv_ctrl_utils_send_ok(req);
+}
+
+static void ctrl_container_put(struct evhttp_request *req, void *ctx)
+{
+	char err[PV_CTRL_MAX_ERR] = { 0 };
+	int code = pv_ctrl_utils_is_req_ok(req, ctx, err);
+	if (code != 0) {
+		pv_ctrl_utils_drain_on_arrive_with_err(req, code, err);
+		return;
+	}
+
+	pv_log(DEBUG, "PUT request for containers");
+
+	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+			ctrl_container_process_action, req);
+}
+
 int pv_ctrl_endpoints_containers_init()
 {
 	pv_ctrl_add_endpoint("/containers", EVHTTP_REQ_GET, true,
 			     ctrl_containers_list);
+	pv_ctrl_add_endpoint("/containers/{}", EVHTTP_REQ_PUT, true,
+			     ctrl_container_put);
 	return 0;
 }

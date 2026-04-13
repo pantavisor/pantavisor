@@ -45,6 +45,7 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 | **Configuration** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
 | **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
 | **Watchdog** | [docs/overview/watchdog.md](docs/overview/watchdog.md) | Watchdog configuration and modes |
+| **Event Journal** | [docs/overview/event-journal.md](docs/overview/event-journal.md) | Structured lifecycle event recording |
 | **Inter-Container Communication** | [docs/overview/xconnect.md](docs/overview/xconnect.md) | xconnect service mesh overview |
 
 ## Docs Pipeline

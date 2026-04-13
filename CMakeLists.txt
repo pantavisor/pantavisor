@@ -232,6 +232,8 @@ add_executable(pantavisor
 			event/event_socket.h
 			event/event_periodic.c
 			event/event_periodic.h
+			event_log.c
+			event_log.h
 			group.c
 			group.h
 			grub.c

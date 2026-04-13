@@ -29,6 +29,7 @@
 
 #include "update/update_progress.h"
 
+#include "event_log.h"
 #include "utils/fs.h"
 #include "utils/json.h"
 #include "utils/str.h"
@@ -129,6 +130,7 @@ static char *_ser_progress(struct pv_update_progress *p)
 			pv_json_ser_key(&js, "logs");
 			pv_json_ser_string(&js, p->logs);
 		}
+		pv_event_log_serialize(&js);
 		pv_json_ser_object_pop(&js);
 	}
 

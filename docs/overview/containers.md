@@ -174,6 +174,27 @@ During [TESTING](updates.md#testing), `max_retries` exhaustion always triggers a
 
 Groups in [device.json](pantavisor-state-format-v2.md#devicejson) can define a default `auto_recovery` object. Containers inherit this configuration **all-or-nothing**: if a container has its own `auto_recovery` in `run.json`, it is used entirely; otherwise the group's default applies. No field-level merging is performed. The default `app` group ships with an on-failure recovery policy.
 
+## Lifecycle Control
+
+Containers with `restart_policy: "container"` can be stopped, started, and restarted at runtime via the [control socket](../../../reference/legacy/pantavisor-commands.md#containers). Containers with `restart_policy: "system"` cannot be controlled this way — they require a system-level transition (reboot or update).
+
+### Stop
+
+Stopping a container via the API is fundamentally different from a crash. It sets the `user_stopped` flag on the container's auto-recovery state, which tells the recovery engine to leave the container stopped. No retry counters are consumed and no backoff policy is triggered — even for containers with `max_retries: 0` that would normally go to backoff on first crash.
+
+When a container transitions to [STOPPED](#status), its volumes are unmounted. This ensures clean state for a subsequent start.
+
+### Start
+
+Starting a previously stopped container clears the `user_stopped` flag and transitions the container to INSTALLED, which triggers the normal engine lifecycle: volumes are mounted, drivers are loaded, and the container process is started. Auto-recovery is fully restored with its original configuration.
+
+### Restart
+
+Restart force-stops the container and resets the auto-recovery retry counter to zero. For containers with auto-recovery configured, the recovery engine picks up the stopped container and restarts it through the standard recovery path (respecting retry delays and backoff). For containers without auto-recovery, the restart transitions the container directly to INSTALLED for an immediate start.
+
+!!! Note "Volume unmount on stop"
+    TODO: The bulk volume unmount in `pv_state_stop_force` and `pv_state_stop_platforms` is now redundant for platform volumes, since volumes are unmounted individually when each platform transitions to STOPPED. The bulk unmount paths should be cleaned up to only handle BSP volumes (plat == NULL). Additionally, `pv_volume_unmount` should guard against double-unmount to avoid spurious error logs during shutdown.
+
 ## Drivers
 
 Containers can [reference](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson) the BSP [managed drivers](bsp.md#managed-drivers) as required, optional or manual.

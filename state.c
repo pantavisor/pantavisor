@@ -49,6 +49,7 @@
 #include "utils/str.h"
 #include "utils/json.h"
 #include "utils/timer.h"
+#include "event_log.h"
 
 #define MODULE_NAME "state"
 #define pv_log(level, msg, ...)                                                \
@@ -654,6 +655,7 @@ static int pv_state_start_platform(struct pv_state *s, struct pv_platform *p)
 	p->auto_recovery.is_stable = false;
 	p->auto_recovery.timer_stable_armed = false;
 	p->auto_recovery.recovery_failed = false;
+	p->auto_recovery.user_stopped = false;
 
 	return 0;
 }
@@ -723,6 +725,19 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 			pv_log(WARN, "platform '%s' reached max retries (%d).",
 			       p->name, p->auto_recovery.max_retries);
 
+			{
+				char detail[128];
+				snprintf(
+					detail, sizeof(detail), "backoff=%s",
+					pv_backoff_policy_str(
+						p->auto_recovery.backoff_policy,
+						p->auto_recovery
+							.backoff_duration));
+				pv_event_log_push(PV_EVENT_TYPE_PLATFORM,
+						  p->name, "max_retries",
+						  detail);
+			}
+
 			// During TESTING/update: always fail (causes rollback)
 			if (pv_update_is_inprogress() ||
 			    pv_update_is_testing()) {
@@ -775,6 +790,16 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 		       "platform '%s' crashed. Attempting auto-recovery (attempt %d/%d) in %d seconds...",
 		       p->name, p->auto_recovery.current_retries,
 		       p->auto_recovery.max_retries, delay);
+
+		{
+			char detail[128];
+			snprintf(detail, sizeof(detail),
+				 "attempt=%d/%d delay=%ds",
+				 p->auto_recovery.current_retries,
+				 p->auto_recovery.max_retries, delay);
+			pv_event_log_push(PV_EVENT_TYPE_PLATFORM, p->name,
+					  "recovering", detail);
+		}
 
 		if (delay > 0) {
 			timer_start(&p->auto_recovery.timer_retry, delay, 0,
@@ -844,6 +869,9 @@ int pv_state_run(struct pv_state *s)
 				pv_platform_set_installed(p);
 			}
 		} else if (pv_platform_is_stopped(p)) {
+			if (p->auto_recovery.user_stopped)
+				continue;
+
 			if (p->auto_recovery.recovery_failed)
 				continue;
 
@@ -871,7 +899,8 @@ bool pv_state_is_stability_pending(struct pv_state *s)
 		// Container with stable_timeout that hasn't proven stable yet
 		if (p->auto_recovery.stable_timeout > 0 &&
 		    !p->auto_recovery.is_stable &&
-		    !p->auto_recovery.recovery_failed) {
+		    !p->auto_recovery.recovery_failed &&
+		    !p->auto_recovery.user_stopped) {
 			pv_log(DEBUG,
 			       "platform '%s' stability pending (waiting for stable_timeout)",
 			       p->name);
