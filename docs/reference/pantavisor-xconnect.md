@@ -87,8 +87,4 @@ Mediates the Wayland protocol for isolated UI rendering, allowing a containerize
 
 ## Tools
 
-### pvcurl
-A lightweight shell script wrapping `nc` for HTTP-over-Unix-socket communication. It is preferred in App Engine environments where standard `curl` might not be available.
-
-### pvcontrol
-A high-level CLI wrapper around `pvcurl` for common Pantavisor control operations.
+For `pvcurl` and `pvcontrol` reference, see [Pantavisor Tools](pantavisor-tools.md).
