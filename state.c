@@ -37,6 +37,7 @@
 #include "volumes.h"
 #include "disk/disk.h"
 #include "platforms.h"
+#include "cgroup.h"
 #include "objects.h"
 #include "jsons.h"
 #include "addons.h"
@@ -842,7 +843,7 @@ int pv_state_run(struct pv_state *s)
 				pv_log(DEBUG,
 				       "platform '%s' exited during lenient stop",
 				       p->name);
-				pv_platform_force_stop(p);
+				pv_cgroup_destroy(p->name);
 			} else {
 				struct timer_state tstate = timer_current_state(
 					&p->timer_status_goal);
