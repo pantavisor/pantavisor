@@ -42,12 +42,13 @@ set -x
 #   - 'mode' is required for caam and dcp types. valid values are 'mainline' and 'nxp'
 #
 # Usage:
-#   crypt <action> --type <type> --mode <mode> [--no-create] [--specialrun <run>] <path> <mntpath>
+#   crypt <action> --type <type> --mode <mode> [--no-create] [--migrate-keyblob] [--specialrun <run>] <path> <mntpath>
 #
 #   action:       mount or umount (positional)
 #   --type:       dm-crypt type (dcp, caam, versatile)
 #   --mode:       encryption mode (mainline, nxp)
 #   --no-create:  do not create image/key if missing — fail instead
+#   --migrate-keyblob: convert nxp key blob to mainline trusted key blob on first boot
 #   --specialrun: internal flag for recovery retries (fsck, bak)
 #   path:         disk image path (positional)
 #   mntpath:      mount target path (positional)
@@ -63,6 +64,7 @@ dm_type=""
 mode=""
 specialrun=""
 no_create=""
+migrate_keyblob=""
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -80,6 +82,10 @@ while [ $# -gt 0 ]; do
 			;;
 		--no-create)
 			no_create="yes"
+			shift
+			;;
+		--migrate-keyblob)
+			migrate_keyblob="yes"
 			shift
 			;;
 		--)
@@ -102,7 +108,7 @@ mntpath=$2
 
 if [ -z "$op" ] || [ -z "$dm_type" ] || [ -z "$path" ]; then
 	echo "ERROR: missing required arguments"
-	echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--no-create] <path> <mntpath>"
+	echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--no-create] [--migrate-keyblob] <path> <mntpath>"
 	exit 1
 fi
 
@@ -463,9 +469,20 @@ _do_crypt_open()
 			fi
 			;;
 		caam__mainline|caam-mainline__*|dcp__mainline)
-			if ! dmsetup create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
-				echo "ERROR: $dm_type: Unable to create/open crypt device"
-				exit 3
+			if [ "$_dcp_use_nxp" = "yes" ]; then
+				keyfile=$(mktemp)
+				x--pv-dcp-tool decrypt "$dir/$keyname" > "$keyfile"
+				if ! cryptsetup open -s 256 -c "capi:cbc(aes)-essiv:sha256" --type plain --key-file="$keyfile" "$CAAM_LOOP" "$device_name"; then
+					rm -f "$keyfile"
+					echo "ERROR: $dm_type: Unable to create/open crypt device (nxp fallback)"
+					exit 3
+				fi
+				rm -f "$keyfile"
+			else
+				if ! dmsetup create "$device_name" --table "0 $(blockdev --getsz "$CAAM_LOOP") crypt $cipher :$key_size:$KEY_TYPE:$KEY_NAME 0 $CAAM_LOOP 0 1 sector_size:512"; then
+					echo "ERROR: $dm_type: Unable to create/open crypt device"
+					exit 3
+				fi
 			fi
 			;;
 		dcp__nxp)
@@ -559,29 +576,38 @@ do_mount_disk()
 
 			keyblob="${keyname}.bb"
 			_dcp_migrating=""
+			_dcp_use_nxp=""
 
-			# key migration: convert nxp grey blob to mainline trusted key blob
-			# blob is kept as .bb.pending until first successful mount
-			if [ ! -f "$dir/$keyblob" ] && [ -f "$dir/$keyname" ]; then
-				# remove stale pending blob from previous failed attempt
-				rm -f "$dir/$keyblob.pending"
-				echo "DCP: migrating nxp key to mainline trusted key blob..."
-				if ! x--pv-dcp-tool decrypt "$dir/$keyname" | \
-					dcp-blob-create > "$dir/$keyblob.pending.tmp"; then
-					echo "ERROR: DCP: key migration failed"
-					rm -f "$dir/$keyblob.pending.tmp"
-					exit 2
+			if [ "$migrate_keyblob" = "yes" ]; then
+				# key migration: convert nxp grey blob to mainline trusted key blob
+				# blob is kept as .bb.pending until first successful mount
+				if [ ! -f "$dir/$keyblob" ] && [ -f "$dir/$keyname" ]; then
+					# remove stale pending blob from previous failed attempt
+					rm -f "$dir/$keyblob.pending"
+					echo "DCP: migrating nxp key to mainline trusted key blob..."
+					if ! x--pv-dcp-tool decrypt "$dir/$keyname" | \
+						dcp-blob-create > "$dir/$keyblob.pending.tmp"; then
+						echo "ERROR: DCP: key migration failed"
+						rm -f "$dir/$keyblob.pending.tmp"
+						exit 2
+					fi
+					sync
+					mv "$dir/$keyblob.pending.tmp" "$dir/$keyblob.pending"
+					sync
+					echo "DCP: pending blob created, will finalize after successful mount"
+					_dcp_migrating="yes"
 				fi
-				sync
-				mv "$dir/$keyblob.pending.tmp" "$dir/$keyblob.pending"
-				sync
-				echo "DCP: pending blob created, will finalize after successful mount"
-				_dcp_migrating="yes"
-			fi
 
-			# use pending blob if migrating
-			if [ "$_dcp_migrating" = "yes" ]; then
-				keyblob="${keyname}.bb.pending"
+				# use pending blob if migrating
+				if [ "$_dcp_migrating" = "yes" ]; then
+					keyblob="${keyname}.bb.pending"
+				fi
+			else
+				# no migration: try mainline .bb first, fall back to nxp key
+				if [ ! -f "$dir/$keyblob" ] && [ -f "$dir/$keyname" ]; then
+					echo "DCP: no mainline blob, using nxp key"
+					_dcp_use_nxp="yes"
+				fi
 			fi
 
 			if [ ! -f "$dir/$keyname.init_done" ]; then
@@ -612,7 +638,10 @@ do_mount_disk()
 			fi
 			;;
 		caam__mainline|caam-mainline__*|dcp__mainline)
-			if [ -f "$keyblob" ]; then
+			if [ "$_dcp_use_nxp" = "yes" ]; then
+				# nxp key loaded inline during crypt open
+				:
+			elif [ -f "$keyblob" ]; then
 				# The "trusted load" interface requires a string explicitly. The read command
 				# doesn't handle string input without a line feed gracefully, but still assigns
 				# the content to the variable. Therefore, we use 2> /dev/null and || true.
@@ -691,7 +720,11 @@ do_mount_disk()
 do_mount_disk_retry()
 {
 	_retry_specialrun=$1
-	"$0" mount --type "$dm_type" --mode "$mode" --specialrun "$_retry_specialrun" -- "$origpath" "$mntpath"
+	_retry_mk=""
+	if [ "$migrate_keyblob" = "yes" ]; then
+		_retry_mk="--migrate-keyblob"
+	fi
+	"$0" mount --type "$dm_type" --mode "$mode" --specialrun "$_retry_specialrun" $_retry_mk -- "$origpath" "$mntpath"
 }
 
 do_umount_disk()
@@ -745,7 +778,7 @@ case $op in
 		;;
 	*)
 		echo "ERROR: unknown action '$op'"
-		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--no-create] <path> <mntpath>"
+		echo "Usage: crypt <mount|umount> --type <type> --mode <mode> [--no-create] [--migrate-keyblob] <path> <mntpath>"
 		exit 5
 		;;
 esac

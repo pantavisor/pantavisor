@@ -267,18 +267,24 @@ static pv_disk_t parse_disks_get_type(const char *str, jsmntok_t *diskv,
 	return type;
 }
 
+static bool parse_disks_get_default_key(const char *str, const char *key,
+					jsmntok_t *diskv, int diskc)
+{
+	bool ret = false;
+	char *val = pv_json_get_value(str, key, diskv, diskc);
+
+	if (val && !strcmp(val, "yes"))
+		ret = true;
+
+	free(val);
+
+	return ret;
+}
+
 static bool parse_disks_get_default(const char *str, jsmntok_t *diskv,
 				    int diskc)
 {
-	bool ret = false;
-	char *default_str = pv_json_get_value(str, "default", diskv, diskc);
-
-	if (default_str && !strcmp(default_str, "yes"))
-		ret = true;
-
-	free(default_str);
-
-	return ret;
+	return parse_disks_get_default_key(str, "default", diskv, diskc);
 }
 
 static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
@@ -367,6 +373,8 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 		}
 
 		d->def = parse_disks_get_default(str, diskv, diskc);
+		d->migrate_keyblob = parse_disks_get_default_key(
+			str, "migrate_keyblob", diskv, diskc);
 		d->mounted = false;
 
 		// parse dual mode arrays
