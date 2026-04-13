@@ -74,6 +74,7 @@ struct pv_disk {
 	char *provision;
 	char *mount_target;
 	bool def;
+	bool migrate_keyblob;
 	bool no_create;
 	bool mounted;
 	// dual mode fields
