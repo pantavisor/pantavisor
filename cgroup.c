@@ -407,11 +407,7 @@ char *pv_cgroup_get_process_name(pid_t pid)
 
 void pv_cgroup_destroy(const char *name)
 {
-	// keep this only for appengine for now
-	if (pv_config_get_system_init_mode() != IM_APPENGINE)
-		return;
-
-	// hanging cgroup has not been seen out of cgroup v2
+	// only relevant for cgroup v2
 	struct pantavisor *pv = pv_get_instance();
 	if (pv->cgroupv != CGROUP_UNIFIED)
 		return;
