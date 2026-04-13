@@ -87,8 +87,6 @@ exec_interactive() {
 		echo "To run Pantavisor with stdout logs:"
 		echo "pv-appengine -e \"PV_LOG_SERVER_OUTPUTS=filetree,stdout\""
 		echo ""
-	elif [ "$pv_ready" = "false" ]; then
-		echo "Warn: Pantavisor not responding or not ready."
 	else
 		echo "Info: Pantavisor is already running."
 		echo "To run your test:"
@@ -123,7 +121,6 @@ stop_pv() {
 			if [ $? -ne 0 ]; then
 				echo "Error: Pantavisor still running. Exiting..."
 				kill -SIGKILL "$pv_pid"
-				pv_ready="false"
 			fi
 		fi
 	fi
@@ -153,7 +150,8 @@ start_pv() {
 	wait_for_process " pantavisor$" "30" "-a"
 	if [ $? != 0 ]; then
 		echo "Error: timed out waiting for Pantavisor PID"
-		return
+		stop_pv
+		exit 1
 	fi
 
 	if [ -n "$ready_script" ]; then
@@ -167,8 +165,8 @@ start_pv() {
 	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
 	if [ $? != 0 ]; then
 		echo "Error: timed out waiting for pantavisor.status READY"
-	else
-		pv_ready="true"
+		stop_pv
+		exit 1
 	fi
 
 	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib curl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 120
@@ -179,54 +177,51 @@ start_pv() {
 	fi
 
 	if [ "$self_claim" = "true" ]; then
-		if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
-			echo "Error: you need to set PH_USER and PH_PASS to execute the test"
-			stop_pv
-			exit 1
-		fi
 		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
 
 		wait_for_pantahub_state "$control_container" "claim"
+		if [ $? -ne 0 ]; then
+			echo "Error: timed out waiting for pantahub.state claim"
+			stop_pv
+			exit 1
+		fi
 
-		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
-		challenge=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/challenge`
+		device_id=$(cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id)
+		challenge=$(cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/challenge)
 
 		pvr claim -c "$challenge" "$device_id"
+		if [ $? -ne 0 ]; then
+			echo "Error: pvr claim failed"
+			stop_pv
+			exit 1
+		fi
 
 		wait_for_pantahub_state "$control_container" "idle"
+		if [ $? -ne 0 ]; then
+			echo "Error: timed out waiting for pantahub.state idle after claim"
+			stop_pv
+			exit 1
+		fi
 	fi
 }
 
 exec_test() {
-	if [ "$pv_ready" = "false" ]; then
-		return
-	fi
-
-	script_path="$test_path/$test_script"
-	tmp_script_path=
-	if [ "$overwrite" = "true" ] || [ "$verbose" = "true" ]; then
-		tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
-		sed '5iset -x' "$test_path/$test_script" > "$tmp_script_path"
-		script_path="$tmp_script_path"
-		chmod +x "$tmp_script_path"
-	fi
+	tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
+	sed '5iset -x' "$test_path/$test_script" > "$tmp_script_path"
+	chmod +x "$tmp_script_path"
 
 	tmp_out_path=$(mktemp /tmp/pv_appengine_output.XXXXXX)
 	# we use script to get stdout and stderr in the same order we do in console
-	script -q -c "sh -c \"$script_path\"" > $tmp_out_path 2>&1
-	output=$(cat "$tmp_out_path")
+	# tee shows output in real-time while saving it for later comparison
+	script -q -c "sh -c \"$tmp_script_path\"" | tee $tmp_out_path
+
 	if [ "$overwrite" = "true" ]; then
-		echo "$output" > $test_path/output
-		rm -f "$tmp_script_path"
+		cat $tmp_out_path > $test_path/output
 	fi
+	rm -f "$tmp_script_path"
 }
 
 eval_test() {
-	if [ "$pv_ready" = "false" ]; then
-		stop_pv
-		exit 1
-	fi
-
 	if [ "$overwrite" != "true" ]; then
 		diff <(grep -vE '^(\+|\$)' $test_path/output) <(grep -vE '^(\+|\$)' "$tmp_out_path")
 		if [ $? -ne 0 ]; then
@@ -265,9 +260,14 @@ test_script=
 
 parse_test
 
-initial_setup
+if [ "$self_claim" = "true" ]; then
+	if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
+		echo "Error: you need to set PH_USER and PH_PASS to execute the test"
+		exit 1
+	fi
+fi
 
-pv_ready="false"
+initial_setup
 
 if [ "$manual" = "false" ]; then
 	start_pv
@@ -276,8 +276,6 @@ fi
 if [ "$interactive" = "true" ]; then
 	exec_interactive
 fi
-
-tmp_out_path=
 
 if [ "$daemon" = "true" ]; then
 	sleep 100000
