@@ -88,9 +88,9 @@ wait_for_revision_state() {
 	local rev="$2"
 	local state="$3"
 
-	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 30
-	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 30
-	wait_for_value "pventer -c $control_container pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 30
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 30 || return 1
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 30 || return 1
+	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 30 || return 1
 }
 
 # wait for Pantahub to get to a given status
@@ -98,5 +98,5 @@ wait_for_pantahub_state() {
 	local control_container="$1"
 	local state="$2"
 
-	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "$state" 30
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "$state" 30
 }

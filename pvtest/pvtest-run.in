@@ -112,7 +112,7 @@ stop_pv() {
 
 	local pv_pid=$(ps | grep " pantavisor$" | awk 'NR==1 {print $1}')
 	if [ -n "$pv_pid" ]; then
-		eval "pventer -c $control_container pvcontrol commands poweroff" > /dev/null 2>&1
+		eval "pvcontrol commands poweroff" > /dev/null 2>&1
 		wait_for_process " pantavisor$" "120" "-d"
 		if [ $? -ne 0 ]; then
 			echo "Warn: Pantavisor still running. Shutting it down..."
@@ -162,7 +162,7 @@ start_pv() {
 		fi
 	fi
 
-	wait_for_value "pventer -c $control_container pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
+	wait_for_value "pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
 	if [ $? != 0 ]; then
 		echo "Error: timed out waiting for pantavisor.status READY"
 		stop_pv
