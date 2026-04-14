@@ -22,6 +22,7 @@
 
 #define _GNU_SOURCE
 #include <ctype.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -406,29 +407,101 @@ char *pv_cgroup_get_process_name(pid_t pid)
 	return pname;
 }
 
-#define CGROUP_PATH "/sys/fs/cgroup/lxc/%s/"
-
-void pv_cgroup_destroy(const char *name)
+static void pv_cgroup_remove_retry(const char *path)
 {
-	// only relevant for cgroup v2
-	struct pantavisor *pv = pv_get_instance();
-	if (pv->cgroupv != CGROUP_UNIFIED)
+	struct stat st;
+
+	if (stat(path, &st))
 		return;
 
-	int i;
-	struct stat st;
-	char path[PATH_MAX];
-	snprintf(path, strlen(name) + strlen(CGROUP_PATH), CGROUP_PATH, name);
-
-	for (i = 0; i < 5; i++) {
+	for (int i = 0; i < 5; i++) {
 		if (stat(path, &st))
 			return;
-
-		pv_log(WARN, "/sys/fs/cgroup/lxc/%s/ still exists. Removing...",
-		       name);
+		pv_log(WARN, "%s still exists. Removing...", path);
 		pv_fs_path_remove(path, false);
 		sleep(1);
 	}
 
-	pv_log(ERROR, "/sys/fs/cgroup/lxc/%s/ still exists", name);
+	pv_log(ERROR, "%s still exists after retries", path);
+}
+
+// Remove lxc.monitor.<name> and any lxc.monitor.<name>-<digit>* variants
+// that LXC creates when it finds the preferred path occupied.
+static void pv_cgroup_remove_monitor_variants(const char *tree,
+					      const char *name)
+{
+	DIR *d = opendir(tree);
+	if (!d)
+		return;
+
+	char prefix[NAME_MAX];
+	int plen = snprintf(prefix, sizeof(prefix), "lxc.monitor.%s", name);
+	if (plen < 0 || (size_t)plen >= sizeof(prefix)) {
+		closedir(d);
+		return;
+	}
+
+	struct dirent *entry;
+	while ((entry = readdir(d)) != NULL) {
+		if (strncmp(entry->d_name, prefix, plen))
+			continue;
+
+		const char *rest = entry->d_name + plen;
+		// match exact or "<prefix>-<digit>..."
+		if (*rest != '\0' &&
+		    !(*rest == '-' && isdigit((unsigned char)*(rest + 1))))
+			continue;
+
+		char path[PATH_MAX];
+		snprintf(path, sizeof(path), "%s/%s", tree, entry->d_name);
+		pv_cgroup_remove_retry(path);
+	}
+
+	closedir(d);
+}
+
+// Clean lxc/<name>/ and lxc.monitor.<name>[-N]/ leaves in a single hierarchy.
+static void pv_cgroup_remove_hierarchy_leaves(const char *hierarchy,
+					      const char *name)
+{
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path), "%s/lxc/%s", hierarchy, name);
+	pv_cgroup_remove_retry(path);
+
+	pv_cgroup_remove_monitor_variants(hierarchy, name);
+}
+
+void pv_cgroup_destroy(const char *name)
+{
+	struct pantavisor *pv = pv_get_instance();
+
+	switch (pv->cgroupv) {
+	case CGROUP_UNIFIED:
+		pv_cgroup_remove_hierarchy_leaves("/sys/fs/cgroup", name);
+		break;
+	case CGROUP_HYBRID: {
+		// Walk every cgroup hierarchy under /sys/fs/cgroup. The
+		// container is attached to all v1 controllers plus the v2
+		// unified tree; each retains its own lxc/<name>/ and
+		// lxc.monitor.<name>[-N]/ leaves that need cleaning.
+		DIR *d = opendir("/sys/fs/cgroup");
+		if (!d)
+			return;
+
+		struct dirent *entry;
+		while ((entry = readdir(d)) != NULL) {
+			if (entry->d_name[0] == '.')
+				continue;
+
+			char hierarchy[PATH_MAX];
+			snprintf(hierarchy, sizeof(hierarchy),
+				 "/sys/fs/cgroup/%s", entry->d_name);
+			pv_cgroup_remove_hierarchy_leaves(hierarchy, name);
+		}
+		closedir(d);
+		break;
+	}
+	default:
+		return;
+	}
 }
