@@ -135,7 +135,31 @@ void pv_event_timeout(int timeout, event_callback_fn cb)
 
 void pv_event_one_shot(event_callback_fn cb)
 {
-	pv_event_timeout(0, cb);
+	if (!base)
+		return;
+
+	// Schedule a one-shot to fire as soon as possible — but defer just long
+	// enough that libevent goes through its dispatch (epoll_wait) cycle
+	// first. With timeval={0,0} event_base_once takes a fast path that
+	// directly appends to the active queue (event.c:event_base_once at the
+	// "If the event is going to become active immediately, don't put it on
+	// the timeout queue" branch → event_active_nolock_). That fires the
+	// callback inside the same event_process_active drain that scheduled
+	// it, BEFORE any pending bufferevent EV_WRITE has a chance to flush.
+	// For wakes triggered from inside ctrl request handlers (signal,
+	// container lifecycle endpoints, ...), that delays the queued response
+	// to the calling container by however long _pv_run_state_cb takes —
+	// observed as ~+1-2 s per signalling container while the next group's
+	// volume-mount runs.
+	//
+	// A 1 µs timeout puts the event in the timer heap instead. It is then
+	// activated by timeout_process() AFTER evsel->dispatch() has had a
+	// chance to flush ready fds, so the request response goes out first
+	// and the wake's heavy work runs after.
+	struct timeval when = { 0, 1 };
+	event_base_once(base, -1, EV_TIMEOUT, cb, NULL, &when);
+
+	pv_log(TRACE, "add event: type='one shot' cb=%p", (void *)cb);
 }
 
 struct event_base *pv_event_get_base()
