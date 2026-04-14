@@ -22,6 +22,7 @@
 #ifndef PV_UPDATE_STRUCT_H
 #define PV_UPDATE_STRUCT_H
 
+#include <stdbool.h>
 #include <sys/types.h>
 
 #include "state.h"
@@ -97,6 +98,11 @@ struct pv_update {
 	int object_list_retries;
 	pv_system_transition_t transition;
 	void (*report_cb)(const char *, const char *);
+	// True after pv_logserver_start_update was called for this update.
+	// pv_update_finish uses this to skip the ~5s wait-for-logs path in
+	// pv_logserver_stop_update when no logs were ever tracked (e.g. the
+	// factory/DONE early-return branches of pv_update_resume).
+	bool logserver_started;
 };
 
 #endif
