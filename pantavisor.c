@@ -859,7 +859,53 @@ pv_state_func_t *const state_table[MAX_STATES] = {
 
 static pv_state_t state = PV_STATE_INIT;
 
+// Invariant: at most one _pv_run_state_cb is pending at any time, either as an
+// immediate one-shot (when wake_pending is true) or as the persistent
+// safety-net timer (wait_timer_ev). pv_wake_state_machine() cancels the timer
+// and schedules the one-shot; _pv_run_state_cb clears wake_pending on entry
+// and _next_state re-arms the timer when returning to WAIT / BLOCK_REBOOT.
+static bool wake_pending = false;
+static struct event *wait_timer_ev = NULL;
+
 static void _next_state(pv_state_t next_state);
+static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg);
+
+static void _cancel_wait_timer(void)
+{
+	if (wait_timer_ev)
+		event_del(wait_timer_ev);
+}
+
+static void _arm_wait_timer(int secs, event_callback_fn cb)
+{
+	struct event_base *base = pv_event_get_base();
+	if (!base)
+		return;
+
+	if (!wait_timer_ev) {
+		wait_timer_ev =
+			event_new(base, -1, EV_PERSIST, cb, NULL);
+		if (!wait_timer_ev) {
+			pv_log(ERROR, "could not create wait safety-net timer");
+			return;
+		}
+	}
+
+	struct timeval tv = { secs, 0 };
+	event_add(wait_timer_ev, &tv);
+}
+
+void pv_wake_state_machine(void)
+{
+	if (wake_pending)
+		return;
+
+	wake_pending = true;
+	_cancel_wait_timer();
+	pv_event_one_shot(_pv_run_state_cb);
+
+	pv_log(TRACE, "state machine wake scheduled");
+}
 
 static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 {
@@ -867,6 +913,8 @@ static void _pv_run_state_cb(evutil_socket_t fd, short events, void *arg)
 	struct pantavisor *pv = pv_get_instance();
 	if (!pv)
 		return;
+
+	wake_pending = false;
 
 	pv_wdt_kick();
 
@@ -902,14 +950,23 @@ static void _next_state(pv_state_t next_state)
 	if (!pv)
 		return;
 
+	pv_state_t prev_state = state;
 	state = next_state;
 
-	if (state == PV_STATE_WAIT)
-		pv_event_timeout(WAIT_INTERVAL, _pv_run_state_cb);
-	else if (state == PV_STATE_BLOCK_REBOOT)
-		pv_event_timeout(BLOCK_INTERVAL, _pv_run_state_cb);
-	else
-		pv_event_one_shot(_pv_run_state_cb);
+	if (state != PV_STATE_WAIT && state != PV_STATE_BLOCK_REBOOT) {
+		pv_wake_state_machine();
+		return;
+	}
+
+	int interval = (state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
+
+	// First entry into WAIT / BLOCK_REBOOT: run the handler immediately so
+	// container group progression and command handling do not pay a full
+	// interval of latency before the first evaluation.
+	if (prev_state != state)
+		pv_wake_state_machine();
+
+	_arm_wait_timer(interval, _pv_run_state_cb);
 }
 
 int pv_start()

@@ -68,6 +68,13 @@ void pv_issue_nonreboot(void);
 void pv_issue_reboot(void);
 void pv_issue_poweroff(void);
 
+// Wake the main state machine to run as soon as possible. Idempotent: if a
+// tick is already pending (either as a one-shot or as the safety-net timer),
+// later calls are cheap no-ops. Call this from anywhere that produces a
+// state-machine-relevant event (platform status change, ctrl command, update
+// progress) to avoid waiting for the WAIT_INTERVAL safety-net tick.
+void pv_wake_state_machine(void);
+
 struct pantavisor *pv_get_instance(void);
 
 #endif
