@@ -277,9 +277,6 @@ int pv_cgroup_init()
 	if (pv_cgroup_mkcgroup_root())
 		return -1;
 
-	struct pantavisor *pv = pv_get_instance();
-	pv->cgroupv = pv_cgroup_get_version();
-
 	if (pv_cgroup_mkcgroup_init("systemd"))
 		return -1;
 	if (pv_cgroup_mkcgroup_init("pantavisor"))
@@ -301,6 +298,12 @@ int pv_cgroup_init()
 	pv_cgroup_mkcgroup_resource("rdma");
 
 	pv_cgroup_mkcgroup_unified();
+
+	// Detect after all mounts are in place so HYBRID is recognised
+	// via the presence of /sys/fs/cgroup/unified/. Running this before
+	// the unified mount misreports HYBRID setups as LEGACY.
+	struct pantavisor *pv = pv_get_instance();
+	pv->cgroupv = pv_cgroup_get_version();
 
 	return 0;
 }
