@@ -282,6 +282,7 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	pv_log(DEBUG, "starting update");
 
 	pv_logserver_start_update(rev);
+	u->logserver_started = true;
 
 	if (pv_storage_install_state_json(state, rev)) {
 		pv_update_progress_set(&u->progress,
@@ -550,6 +551,7 @@ void pv_update_run(const char *rev)
 	pv_log(DEBUG, "loading rev '%s' to be run", rev);
 
 	pv_logserver_start_update(rev);
+	u->logserver_started = true;
 
 	json = pv_storage_get_state_json(rev);
 	if (!json) {
@@ -642,7 +644,6 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 	if (!u)
 		return -1;
 
-	pv_logserver_start_update(rev);
 	pv->update = u;
 
 	pv_log(DEBUG, "checking existing progress data from disk");
@@ -694,6 +695,13 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 		pv_update_finish();
 		return 0;
 	}
+
+	// Defer logserver tracking until we're sure we'll actually run this
+	// update (past the DONE/FAILED/ROLLEDBACK early-returns above). Those
+	// branches otherwise incur a ~5 s wait in pv_logserver_stop_update
+	// while it polls for an update-logs file that was never produced.
+	pv_logserver_start_update(rev);
+	u->logserver_started = true;
 out:
 	if (!u)
 		return -1;
@@ -886,7 +894,8 @@ void pv_update_finish()
 	if (pv_update_is_failed())
 		pv_bootloader_fail_update();
 
-	pv_logserver_stop_update(u->rev);
+	if (u->logserver_started)
+		pv_logserver_stop_update(u->rev);
 
 	pv_update_progress_reload_logs(&u->progress);
 
