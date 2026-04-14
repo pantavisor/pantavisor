@@ -40,6 +40,7 @@
 
 #include <sched.h>
 
+#include "pantavisor.h"
 #include "platforms.h"
 #include "volumes.h"
 #include "paths.h"
@@ -230,6 +231,14 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	pv_platform_on_status_goal_reached(p);
 
 	pv_group_eval_status(p->group);
+
+	// Status transitions that can change a group's goal state drive the
+	// main loop forward — wake it instead of waiting for the next
+	// WAIT_INTERVAL tick. STARTED / READY achieve start goals; STOPPED
+	// surfaces crashes and auto-recovery decisions.
+	if (status == PLAT_STARTED || status == PLAT_READY ||
+	    status == PLAT_STOPPED)
+		pv_wake_state_machine();
 }
 
 struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
