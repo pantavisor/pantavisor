@@ -74,6 +74,14 @@ A container opts into a pool from its `run.json` (typically generated via `args.
 
 Static IP and MAC overrides are available under `interfaces[]` — see the reference for exact field names.
 
+## Coexistence with backend-native static IPs
+
+A pool's subnet may overlap with a bridge that is also used by containers with backend-native networking — most commonly, the legacy `lxcbr0` bridge on `10.0.3.0/24` that BSPs ship with. Such containers hard-code their address in `lxc.container.conf` as `lxc.net.0.ipv4.address = <X.Y.Z.W>`, and IPAM must not hand the same address to a pool-using container.
+
+Pantavisor handles this automatically. At startup, right after `pv_ipam_setup_bridges()` runs, a **reservation walk** visits every container and asks the backend plugin to enumerate its hard-coded IPv4 addresses. Each enumerated address that falls inside a pool's subnet is added to that pool's lease list as a tagged reservation (`pv:static:<container>`), so `pv_ipam_allocate()`'s `is_ip_available()` check already skips it without any change to the allocator. Addresses outside any pool's subnet are logged at DEBUG and ignored — those containers are managing their own networking on a bridge pantavisor doesn't know about, and that's fine.
+
+The plugin hook is optional — backends that don't provide it simply contribute nothing to the reservation set, and the pool allocates from the full subnet minus the gateway and any existing leases.
+
 ## Pre-start validation
 
 A container that opts into an IPAM pool **must not** bake `lxc.net.*` entries into its `lxc.container.conf`. Pantavisor owns the container's network namespace when IPAM is in use and injects its own `lxc.net.0.*` at start time; silently overwriting a user-baked entry would leak orphan attributes (e.g. `lxc.net.0.macvlan.mode` from the previous type), and silently ignores the user's stated intent.
