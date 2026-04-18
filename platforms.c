@@ -36,6 +36,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <arpa/inet.h>
 #include <linux/limits.h>
 
 #include <sched.h>
@@ -101,6 +102,15 @@ struct pv_cont_ctrl {
 	// lxc.namespace.keep=net while also declaring an IPAM pool). Returns
 	// 0 when the config is acceptable, non-zero to refuse the start.
 	int (*validate_config)(struct pv_platform *p, const char *conf_file);
+	// Optional: enumerate static IPv4 addresses this container's backend
+	// config will claim at start time (e.g. lxc.net.N.ipv4.address for
+	// the LXC plugin), so IPAM can reserve them from its pool allocator
+	// and avoid handing the same address to another container. The
+	// callback receives the IPv4 address in host byte order; ctx is
+	// passed through.
+	void (*enumerate_static_ips)(
+		struct pv_platform *p, const char *conf_file,
+		void (*cb)(uint32_t ip_host_order, void *ctx), void *ctx);
 	int (*start)(struct pv_platform *p, const char *rev, char *conf_file,
 		     int logfd, int pipefd);
 	void (*stop)(struct pv_platform *p, char *conf_file);
@@ -115,7 +125,7 @@ enum {
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
-	{ "lxc", NULL, NULL, NULL, NULL, NULL, NULL },
+	{ "lxc", NULL, NULL, NULL, NULL, NULL, NULL, NULL },
 	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
@@ -589,6 +599,48 @@ void pv_platform_add_json(struct pv_json_ser *js, struct pv_platform *p)
 	}
 }
 
+static struct pv_cont_ctrl *_pv_platforms_get_ctrl(char *type);
+
+static void _reserve_static_ip_cb(uint32_t ip_host_order, void *ctx)
+{
+	struct pv_platform *p = (struct pv_platform *)ctx;
+	// Callback receives the IP in host byte order; pv_ipam_reserve_static
+	// takes network byte order.
+	uint32_t ip_net = htonl(ip_host_order);
+	pv_ipam_reserve_static(ip_net, p ? p->name : NULL);
+}
+
+void pv_platforms_reserve_static_ips(struct pv_state *s)
+{
+	struct pv_platform *p;
+	char path[PATH_MAX], filename[PATH_MAX];
+
+	if (!s)
+		return;
+
+	dl_list_for_each(p, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_cont_ctrl *ctrl;
+		char **c = p->configs;
+
+		ctrl = _pv_platforms_get_ctrl(p->type);
+		if (!ctrl || !ctrl->enumerate_static_ips)
+			continue;
+
+		// Iterate every config file the platform declares and ask the
+		// plugin to report any hard-coded IPv4 addresses inside.
+		while (c && *c) {
+			SNPRINTF_WTRUNC(filename, PATH_MAX, "%s/%s", p->name,
+					*c);
+			pv_paths_storage_trail_file(path, PATH_MAX, s->rev,
+						    filename);
+			ctrl->enumerate_static_ips(p, path,
+						   _reserve_static_ip_cb, p);
+			c++;
+		}
+	}
+}
+
 void pv_platforms_empty(struct pv_state *s)
 {
 	int num_plats = 0;
@@ -681,6 +733,12 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 		c->validate_config = dlsym(lib, "pv_validate_container_config");
 		// Optional hook — plugins without it simply skip pre-start
 		// validation. No warning needed.
+	}
+
+	if (c->enumerate_static_ips == NULL) {
+		c->enumerate_static_ips = dlsym(lib, "pv_enumerate_static_ips");
+		// Optional hook — plugins without it simply contribute no
+		// reservations to IPAM.
 	}
 
 	void (*__pv_get_instance)(void *) = dlsym(lib, "pv_set_pv_instance_fn");

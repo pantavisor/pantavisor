@@ -23,6 +23,8 @@
 #include <dirent.h>
 #include <errno.h>
 #include <string.h>
+#include <strings.h>
+#include <arpa/inet.h>
 #include <libgen.h>
 #include <unistd.h>
 #include <inttypes.h>
@@ -289,6 +291,75 @@ int pv_validate_container_config(struct pv_platform *p, const char *conf_file)
 	}
 
 	return 0;
+}
+
+// Enumerate static IPv4 addresses this container's baked lxc.container.conf
+// will claim at start time. For each `lxc.net.N.ipv4.address = X.Y.Z.W[/M]`
+// line we parse the address and deliver it to the caller via `cb` in host
+// byte order so IPAM can reserve it.
+//
+// Called from platforms.c during IPAM setup, once per container, before
+// any pool-using container has tried to allocate. Exported via dlsym as
+// `pv_enumerate_static_ips` and wired into the cont_ctrl table.
+void pv_enumerate_static_ips(struct pv_platform *p, const char *conf_file,
+			     void (*cb)(uint32_t ip_host_order, void *ctx),
+			     void *ctx)
+{
+	FILE *f;
+	char line[512];
+
+	if (!conf_file || !cb)
+		return;
+
+	f = fopen(conf_file, "r");
+	if (!f)
+		return;
+
+	while (fgets(line, sizeof(line), f)) {
+		char *s = line;
+		while (*s == ' ' || *s == '\t')
+			s++;
+		if (*s == '#' || *s == '\n' || *s == '\r' || *s == '\0')
+			continue;
+
+		if (strncmp(s, "lxc.net.", 8) != 0)
+			continue;
+
+		// Look for ...ipv4.address after the lxc.net.N prefix.
+		char *key_end = strchr(s, '=');
+		if (!key_end)
+			continue;
+		// Terminate the key side for strstr.
+		*key_end = '\0';
+		bool is_ipv4_addr = strstr(s, ".ipv4.address") != NULL;
+		*key_end = '=';
+		if (!is_ipv4_addr)
+			continue;
+
+		// Value starts after '='. Trim whitespace and strip any CIDR
+		// suffix / trailing comment / whitespace.
+		char *v = key_end + 1;
+		while (*v == ' ' || *v == '\t')
+			v++;
+		char *end = v;
+		while (*end && *end != '/' && *end != ' ' && *end != '\t' &&
+		       *end != '\r' && *end != '\n' && *end != '#')
+			end++;
+		*end = '\0';
+		if (*v == '\0')
+			continue;
+
+		// Skip the DHCP sentinels LXC accepts.
+		if (!strcasecmp(v, "auto") || !strcasecmp(v, "dhcp"))
+			continue;
+
+		struct in_addr addr;
+		if (inet_pton(AF_INET, v, &addr) != 1)
+			continue;
+
+		cb(ntohl(addr.s_addr), ctx);
+	}
+	fclose(f);
 }
 
 static void pv_setup_lxc_network(struct lxc_container *c, struct pv_platform *p)

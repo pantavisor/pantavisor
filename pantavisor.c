@@ -204,7 +204,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
 		if (!json) {
-			pv_log(ERROR, "get_state_json returned NULL for rev '%s'",
+			pv_log(ERROR,
+			       "get_state_json returned NULL for rev '%s'",
 			       pv_bootloader_get_rev());
 			pv_update_set_error_no_state_json();
 			goto out;
@@ -245,6 +246,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 
 	// Setup IPAM network bridges (must happen after state parsing)
 	pv_ipam_setup_bridges();
+
+	// Reserve static IPs baked into each container's backend config so
+	// IPAM's dynamic allocator doesn't hand them to someone else. Runs
+	// after bridge+pool setup so the lookups find the right subnet.
+	pv_platforms_reserve_static_ips(pv->state);
 
 	// once state is verified, we can load credentials, in case they are stored in a volume
 	if (!pv_update_get_state()) {
@@ -890,8 +896,7 @@ static void _arm_wait_timer(int secs, event_callback_fn cb)
 		return;
 
 	if (!wait_timer_ev) {
-		wait_timer_ev =
-			event_new(base, -1, EV_PERSIST, cb, NULL);
+		wait_timer_ev = event_new(base, -1, EV_PERSIST, cb, NULL);
 		if (!wait_timer_ev) {
 			pv_log(ERROR, "could not create wait safety-net timer");
 			return;
@@ -965,7 +970,8 @@ static void _next_state(pv_state_t next_state)
 		return;
 	}
 
-	int interval = (state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
+	int interval =
+		(state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
 
 	// First entry into WAIT / BLOCK_REBOOT: run the handler immediately so
 	// container group progression and command handling do not pay a full
