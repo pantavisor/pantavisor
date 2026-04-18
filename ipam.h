@@ -120,6 +120,14 @@ int pv_ipam_reserve(const char *pool_name, const char *container_name,
 // Release an IP back to the pool
 void pv_ipam_release(const char *pool_name, const char *container_name);
 
+// Reserve a static IP inside the pool that matches it, without attributing
+// ownership to any container. Used to keep IPAM's dynamic allocator from
+// handing out an address that some other component (e.g. a container with
+// a hard-coded lxc.net.N.ipv4.address) already claims. Returns 0 if the
+// IP was successfully reserved (or was already reserved), or -1 if the IP
+// is not in any pool's subnet.
+int pv_ipam_reserve_static(uint32_t ip_network_order, const char *source);
+
 // Get the lease for a container in a pool
 struct pv_ip_lease *pv_ipam_get_lease(const char *pool_name,
 				      const char *container_name);

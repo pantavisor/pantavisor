@@ -376,6 +376,80 @@ int pv_ipam_reserve(const char *pool_name, const char *container_name,
 	return 0;
 }
 
+// Reserve a static IP in whatever pool's subnet contains it, so
+// pv_ipam_allocate's is_ip_available check skips it. Called during setup
+// to walk every container's backend-specific static assignments (e.g. LXC
+// lxc.net.N.ipv4.address entries). The lease is tagged with a synthetic
+// container name derived from `source` so it never collides with a real
+// container name lookup.
+int pv_ipam_reserve_static(uint32_t ip_network_order, const char *source)
+{
+	struct pv_ip_pool *pool, *match = NULL;
+	struct pv_ip_lease *lease;
+	char tag[128];
+
+	dl_list_for_each(pool, &ipam_state.pools, struct pv_ip_pool, list)
+	{
+		if (pv_ipam_ip_in_subnet(ip_network_order, pool->subnet,
+					 pool->mask)) {
+			match = pool;
+			break;
+		}
+	}
+
+	if (!match) {
+		// The address doesn't belong to any pool — the container is
+		// attaching to a bridge/subnet we don't manage, so there's
+		// nothing to reserve. Log and move on.
+		char *ip_str = pv_ipam_ip_to_str(ip_network_order);
+		pv_log(DEBUG,
+		       "static IP %s (from %s) is outside any pool subnet — not reserving",
+		       ip_str, source ? source : "<unknown>");
+		free(ip_str);
+		return -1;
+	}
+
+	if (ip_network_order == match->gateway) {
+		char *ip_str = pv_ipam_ip_to_str(ip_network_order);
+		pv_log(WARN,
+		       "static IP %s (from %s) clashes with pool '%s' gateway — not reserving",
+		       ip_str, source ? source : "<unknown>", match->name);
+		free(ip_str);
+		return -1;
+	}
+
+	// If this IP is already leased, skip (duplicate-reserve is fine).
+	dl_list_for_each(lease, &match->leases, struct pv_ip_lease, list)
+	{
+		if (lease->ip == ip_network_order) {
+			char *ip_str = pv_ipam_ip_to_str(ip_network_order);
+			pv_log(DEBUG,
+			       "static IP %s (from %s) already reserved in pool '%s' — skip",
+			       ip_str, source ? source : "<unknown>",
+			       match->name);
+			free(ip_str);
+			return 0;
+		}
+	}
+
+	lease = calloc(1, sizeof(struct pv_ip_lease));
+	if (!lease)
+		return -1;
+
+	snprintf(tag, sizeof(tag), "pv:static:%s", source ? source : "unknown");
+	lease->container_name = strdup(tag);
+	lease->ip = ip_network_order;
+	lease->in_use = true;
+	dl_list_init(&lease->list);
+	dl_list_add_tail(&match->leases, &lease->list);
+
+	char *ip_str = pv_ipam_ip_to_str(ip_network_order);
+	pv_log(INFO, "reserved static IP %s (from %s) in pool '%s'", ip_str,
+	       source ? source : "<unknown>", match->name);
+	free(ip_str);
+	return 0;
+}
+
 void pv_ipam_release(const char *pool_name, const char *container_name)
 {
 	struct pv_ip_pool *pool;
@@ -388,7 +462,8 @@ void pv_ipam_release(const char *pool_name, const char *container_name)
 	dl_list_for_each_safe(lease, tmp, &pool->leases, struct pv_ip_lease,
 			      list)
 	{
-		if (strcmp(lease->container_name, container_name) == 0) {
+		if (lease->container_name && container_name &&
+		    strcmp(lease->container_name, container_name) == 0) {
 			char *ip_str = pv_ipam_ip_to_str(lease->ip);
 			pv_log(INFO, "released %s from %s in pool %s", ip_str,
 			       container_name, pool_name);
