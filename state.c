@@ -786,18 +786,6 @@ static bool pv_state_check_auto_recovery(struct pv_state *s,
 				    RELATIV_TIMER);
 			pv_platform_set_recovering(p);
 		} else {
-			// Release any IPAM leases before restarting
-			if (p->network && p->network->mode == NET_MODE_POOL) {
-				struct pv_platform_network_iface *iface;
-				dl_list_for_each(
-					iface, &p->network->interfaces,
-					struct pv_platform_network_iface, list)
-				{
-					if (iface->pool)
-						pv_ipam_release(iface->pool,
-								p->name);
-				}
-			}
 			pv_platform_set_installed(p);
 		}
 		return true;
