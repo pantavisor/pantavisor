@@ -572,17 +572,14 @@ static int setup_nat(struct pv_ip_pool *pool)
 		pv_log(WARN, "failed to enable IP forwarding");
 	}
 
-	// Try iptables first, fall back to nftables
-	snprintf(
-		cmd, sizeof(cmd),
-		"iptables -t nat -C POSTROUTING -s %s/%d ! -o %s -j MASQUERADE 2>/dev/null || "
-		"iptables -t nat -A POSTROUTING -s %s/%d ! -o %s -j MASQUERADE 2>/dev/null",
-		subnet_str, prefix_len, pool->bridge, subnet_str, prefix_len,
-		pool->bridge);
+	// Prefer nftables (default on modern distros and kernel-native since
+	// 3.13); fall back to iptables if nft is missing or fails (e.g. a BSP
+	// with only the legacy tools, or kernel without nf_tables).
+	bool have_nft = system("command -v nft >/dev/null 2>&1") == 0;
+	bool have_iptables = system("command -v iptables >/dev/null 2>&1") == 0;
 
-	ret = system(cmd);
-	if (ret != 0) {
-		// Try nftables
+	ret = -1;
+	if (have_nft) {
 		snprintf(
 			cmd, sizeof(cmd),
 			"nft add table nat 2>/dev/null; "
@@ -590,15 +587,35 @@ static int setup_nat(struct pv_ip_pool *pool)
 			"nft add rule nat postrouting ip saddr %s/%d oifname != \"%s\" masquerade 2>/dev/null",
 			subnet_str, prefix_len, pool->bridge);
 		ret = system(cmd);
-		if (ret != 0) {
-			pv_log(WARN, "failed to setup NAT for pool %s",
-			       pool->name);
-		} else {
+		if (ret == 0) {
 			pv_log(INFO, "setup NAT (nftables) for pool %s",
 			       pool->name);
 		}
-	} else {
-		pv_log(INFO, "setup NAT (iptables) for pool %s", pool->name);
+	}
+
+	if (ret != 0 && have_iptables) {
+		snprintf(
+			cmd, sizeof(cmd),
+			"iptables -t nat -C POSTROUTING -s %s/%d ! -o %s -j MASQUERADE 2>/dev/null || "
+			"iptables -t nat -A POSTROUTING -s %s/%d ! -o %s -j MASQUERADE 2>/dev/null",
+			subnet_str, prefix_len, pool->bridge, subnet_str,
+			prefix_len, pool->bridge);
+		ret = system(cmd);
+		if (ret == 0) {
+			pv_log(INFO, "setup NAT (iptables) for pool %s",
+			       pool->name);
+		}
+	}
+
+	if (ret != 0) {
+		if (!have_nft && !have_iptables) {
+			pv_log(WARN,
+			       "neither nftables (nft) nor iptables available; cannot setup NAT for pool %s",
+			       pool->name);
+		} else {
+			pv_log(WARN, "failed to setup NAT for pool %s",
+			       pool->name);
+		}
 	}
 
 	free(subnet_str);
