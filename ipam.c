@@ -622,6 +622,118 @@ static int setup_nat(struct pv_ip_pool *pool)
 	return 0;
 }
 
+// Isolate pools from each other at L3. Same-bridge (same-pool) traffic is
+// L2-bridged and never hits FORWARD. External egress (container -> uplink)
+// targets the uplink iface (not another pool bridge) and falls through to
+// POSTROUTING MASQUERADE. NAT return traffic is preserved via the
+// conntrack-ESTABLISHED,RELATED accept installed at the top of the chain
+// before any DROP rule. Cross-pool routed traffic (bridge A -> bridge B)
+// matches the per-pair DROP and is dropped.
+static int setup_isolation(void)
+{
+	char cmd[1024];
+	int ret;
+	int pairs = 0;
+	struct pv_ip_pool *a, *b;
+
+	// If fewer than two bridge pools exist, nothing to isolate.
+	int bridge_pools = 0;
+	dl_list_for_each(a, &ipam_state.pools, struct pv_ip_pool, list)
+	{
+		if (a->type == POOL_TYPE_BRIDGE)
+			bridge_pools++;
+	}
+	if (bridge_pools < 2)
+		return 0;
+
+	bool have_nft = system("command -v nft >/dev/null 2>&1") == 0;
+	bool have_iptables = system("command -v iptables >/dev/null 2>&1") == 0;
+
+	ret = -1;
+	if (have_nft) {
+		// Ensure filter table + forward chain + conntrack-accept rule
+		// exist. Use `add` with 2>/dev/null so re-running is idempotent.
+		ret = system(
+			"nft add table inet pv_ipam 2>/dev/null; "
+			"nft add chain inet pv_ipam forward { type filter hook forward priority 0 \\; } 2>/dev/null; "
+			"nft add rule inet pv_ipam forward ct state related,established accept 2>/dev/null");
+
+		if (ret == 0) {
+			dl_list_for_each(a, &ipam_state.pools,
+					 struct pv_ip_pool, list)
+			{
+				if (a->type != POOL_TYPE_BRIDGE)
+					continue;
+				dl_list_for_each(b, &ipam_state.pools,
+						 struct pv_ip_pool, list)
+				{
+					if (b->type != POOL_TYPE_BRIDGE)
+						continue;
+					if (a == b)
+						continue;
+					snprintf(
+						cmd, sizeof(cmd),
+						"nft add rule inet pv_ipam forward iifname \"%s\" oifname \"%s\" drop 2>/dev/null",
+						a->bridge, b->bridge);
+					if (system(cmd) == 0)
+						pairs++;
+				}
+			}
+			pv_log(INFO,
+			       "pool isolation (nftables): %d cross-pool drop rule(s) installed",
+			       pairs);
+			return 0;
+		}
+	}
+
+	if (ret != 0 && have_iptables) {
+		// Insert the conntrack-accept prelude at the top of FORWARD so
+		// NAT return flows pass before we start dropping cross-bridge
+		// traffic. Use -C / -I pattern for idempotency.
+		ret = system(
+			"iptables -C FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || "
+			"iptables -I FORWARD 1 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT 2>/dev/null");
+
+		if (ret == 0) {
+			dl_list_for_each(a, &ipam_state.pools,
+					 struct pv_ip_pool, list)
+			{
+				if (a->type != POOL_TYPE_BRIDGE)
+					continue;
+				dl_list_for_each(b, &ipam_state.pools,
+						 struct pv_ip_pool, list)
+				{
+					if (b->type != POOL_TYPE_BRIDGE)
+						continue;
+					if (a == b)
+						continue;
+					snprintf(
+						cmd, sizeof(cmd),
+						"iptables -C FORWARD -i %s -o %s -j DROP 2>/dev/null || "
+						"iptables -A FORWARD -i %s -o %s -j DROP 2>/dev/null",
+						a->bridge, b->bridge, a->bridge,
+						b->bridge);
+					if (system(cmd) == 0)
+						pairs++;
+				}
+			}
+			pv_log(INFO,
+			       "pool isolation (iptables): %d cross-pool drop rule(s) installed",
+			       pairs);
+			return 0;
+		}
+	}
+
+	if (!have_nft && !have_iptables) {
+		pv_log(WARN,
+		       "neither nftables (nft) nor iptables available; pools are NOT isolated");
+	} else {
+		pv_log(WARN,
+		       "failed to install pool isolation rules; pools are NOT isolated");
+	}
+	return -1;
+}
+
 int pv_ipam_setup_bridges(void)
 {
 	struct pv_ip_pool *pool;
@@ -636,6 +748,8 @@ int pv_ipam_setup_bridges(void)
 				setup_nat(pool);
 		}
 	}
+
+	setup_isolation();
 
 	return ret;
 }
