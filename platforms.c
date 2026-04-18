@@ -96,6 +96,11 @@ struct pv_cont_ctrl {
 	char *type;
 	void (*set_loglevel)(int loglevel);
 	void (*set_capture)(bool capture);
+	// Pre-start hook for the plugin to vet backend-specific config
+	// (e.g. the LXC plugin refuses a container that bakes lxc.net.* or
+	// lxc.namespace.keep=net while also declaring an IPAM pool). Returns
+	// 0 when the config is acceptable, non-zero to refuse the start.
+	int (*validate_config)(struct pv_platform *p, const char *conf_file);
 	int (*start)(struct pv_platform *p, const char *rev, char *conf_file,
 		     int logfd, int pipefd);
 	void (*stop)(struct pv_platform *p, char *conf_file);
@@ -110,7 +115,7 @@ enum {
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
-	{ "lxc", NULL, NULL, NULL, NULL, NULL },
+	{ "lxc", NULL, NULL, NULL, NULL, NULL, NULL },
 	//	{ "docker", start_docker_platform, stop_docker_platform }
 };
 
@@ -672,6 +677,12 @@ static int load_pv_plugin(struct pv_cont_ctrl *c)
 			       "could not locate symbol 'pv_console_log_getfd'");
 	}
 
+	if (c->validate_config == NULL) {
+		c->validate_config = dlsym(lib, "pv_validate_container_config");
+		// Optional hook — plugins without it simply skip pre-start
+		// validation. No warning needed.
+	}
+
 	void (*__pv_get_instance)(void *) = dlsym(lib, "pv_set_pv_instance_fn");
 	if (__pv_get_instance)
 		__pv_get_instance(pv_get_instance);
@@ -1125,6 +1136,16 @@ int pv_platform_start(struct pv_platform *p)
 	}
 
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
+
+	// Give the backend plugin a chance to veto the start on backend-
+	// specific config problems (e.g. the LXC plugin refuses an IPAM
+	// pool-using container that also bakes lxc.net.* / keep=net).
+	if (ctrl->validate_config && ctrl->validate_config(p, path) != 0) {
+		pv_log(ERROR,
+		       "platform '%s' refused by backend pre-start validation",
+		       p->name);
+		return -1;
+	}
 
 	// to be able to receive pid from lxc fork
 	if (pipe2(p->pipefd, O_NONBLOCK | O_CLOEXEC)) {
