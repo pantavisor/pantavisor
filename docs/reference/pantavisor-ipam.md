@@ -111,6 +111,19 @@ Bridge creation uses netlink. NAT installation uses a probe-based backend select
 
 The preference order is nftables-first because every modern Linux kernel (3.13+, so any host from 2014 onward) has nftables native, and recent distros ship iptables as a compat shim over nftables anyway.
 
+## Static-IP Reservation from Backend Config
+
+A second plugin hook — `pv_enumerate_static_ips(p, conf_file, cb, ctx)` — lets pantavisor reserve any hard-coded IPv4 addresses in the container's backend config from the pool allocator, so IPAM never hands the same address out twice.
+
+Called once at startup from `pv_platforms_reserve_static_ips(state)` right after `pv_ipam_setup_bridges()`. For each platform that has a backend with this hook, every configured address file is scanned; the hook invokes `cb(ip_in_host_order, ctx)` for each hard-coded address it finds. The default callback routes that into `pv_ipam_reserve_static(ip, source)`:
+
+- If the IP falls inside any pool's subnet, a lease tagged `pv:static:<source>` is added to that pool. `is_ip_available()` already filters these out, so no change to `pv_ipam_allocate()` is needed.
+- If the IP is outside every pool's subnet: logged at DEBUG, ignored. The container is managing its own networking on a bridge pantavisor doesn't know about.
+- If the IP clashes with a pool's gateway: logged at WARN, not reserved. The container will likely fail to bring that interface up anyway.
+- Duplicate reservations (same IP already leased) are skipped.
+
+The LXC plugin implements this by grepping `lxc.container.conf` for `lxc.net.N.ipv4.address = X.Y.Z.W[/M]` lines, ignoring the `auto` and `dhcp` sentinels. Plugins without the hook contribute no reservations — IPAM then allocates from the full subnet minus the gateway and existing dynamic leases.
+
 ## Pre-start Validation
 
 Container-backend plugins can reject a start with backend-specific config problems via `pv_validate_container_config(p, conf_file)` — a dlsym'd symbol on the backend plugin library. If present, pantavisor calls it from `pv_platform_start` before the IPAM allocation block. A non-zero return refuses the start; `pv_state_run` returns `-1` and the error bubbles into `PV_STATE_ROLLBACK` (TESTING update) or `PV_STATE_REBOOT` (steady state).
