@@ -247,6 +247,11 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	// Setup IPAM network bridges (must happen after state parsing)
 	pv_ipam_setup_bridges();
 
+	// Reserve static IPs baked into each container's backend config so
+	// IPAM's dynamic allocator doesn't hand them to someone else. Runs
+	// after bridge+pool setup so the lookups find the right subnet.
+	pv_platforms_reserve_static_ips(pv->state);
+
 	// once state is verified, we can load credentials, in case they are stored in a volume
 	if (!pv_update_get_state()) {
 		// mount bsp volumes

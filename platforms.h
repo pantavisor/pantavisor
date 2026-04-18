@@ -252,6 +252,14 @@ void pv_platforms_add_all_loggers(struct pv_state *s);
 
 void pv_platforms_empty(struct pv_state *s);
 
+// Walk every platform in the state and ask its backend plugin to enumerate
+// the static IPv4 addresses that will be claimed by its container at start
+// time. Reserve each of them in the IPAM pool whose subnet contains the
+// address, so pv_ipam_allocate never hands the same IP to another
+// container. Safe to call when no pool is defined (it just becomes a
+// walk with every lookup missing).
+void pv_platforms_reserve_static_ips(struct pv_state *s);
+
 struct pv_platform_ref {
 	struct pv_platform *ref;
 	struct dl_list list; // pv_platform_ref
