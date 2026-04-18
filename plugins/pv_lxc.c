@@ -229,6 +229,68 @@ static char *inschr(char *path, int n, char chr, char *seed)
 	return path;
 }
 
+// Backend pre-start validation hook. Called from platforms.c (via the
+// pv_cont_ctrl::validate_config dispatch) before any IPAM allocation.
+//
+// Policy: a container that declares an IPAM pool (p->network->mode ==
+// NET_MODE_POOL) must not bake lxc.net.* entries into its
+// lxc.container.conf. Pantavisor owns the container's network namespace
+// when IPAM is in use and injects its own lxc.net.0.* at start time;
+// silently overwriting a user-baked lxc.net.0 risks leaving orphan
+// attributes from the previous type (e.g. a stray
+// lxc.net.0.macvlan.mode when we switch to veth). The defensive
+// policy is to refuse the start and ask the user to remove the
+// conflict.
+//
+// `lxc.namespace.keep = net` is NOT a conflict here — pvr's default
+// lxc.container.conf template includes it, and pantavisor's network
+// setup strips 'net' from the keep list at runtime when it injects a
+// veth interface. We only flag user-baked lxc.net.* entries.
+//
+// Returns 0 on success, -1 to refuse the start.
+int pv_validate_container_config(struct pv_platform *p, const char *conf_file)
+{
+	FILE *f;
+	char line[512];
+	bool has_net = false;
+
+	if (!p || !conf_file)
+		return 0;
+
+	if (!p->network || p->network->mode != NET_MODE_POOL)
+		return 0;
+
+	f = fopen(conf_file, "r");
+	if (!f) {
+		// Can't read config: let c->load_config surface the real error
+		// in the normal start path. Don't block here.
+		return 0;
+	}
+
+	while (fgets(line, sizeof(line), f)) {
+		char *s = line;
+		while (*s == ' ' || *s == '\t')
+			s++;
+		if (*s == '#' || *s == '\n' || *s == '\r' || *s == '\0')
+			continue;
+
+		if (strncmp(s, "lxc.net.", 8) == 0) {
+			has_net = true;
+			break;
+		}
+	}
+	fclose(f);
+
+	if (has_net) {
+		pv_log(ERROR,
+		       "platform '%s' declares an IPAM pool but its lxc.container.conf already contains lxc.net.* entries — pantavisor will not overwrite them. Remove the baked lxc.net.* config, or drop the PV_NETWORK_POOL reference.",
+		       p->name);
+		return -1;
+	}
+
+	return 0;
+}
+
 static void pv_setup_lxc_network(struct lxc_container *c, struct pv_platform *p)
 {
 	struct pv_platform_network_iface *iface;
