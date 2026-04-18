@@ -50,6 +50,15 @@ Container rootfs directories can be mounted back into the host using the `export
 
 This opens the possibility to share directories between containers and Pantavisor itself.
 
+## Networking
+
+Containers can opt into IP networking by declaring a named pool in their `run.json`. Pantavisor's [IPAM subsystem](ipam.md) allocates an address from the pool's subnet, derives a deterministic MAC, creates the bridge, and — for pools with `nat: true` — installs a MASQUERADE rule so the container can reach the external network. Stop/start and auto-recovery preserve the assigned IP by reusing the lease keyed on the container name.
+
+See also:
+- [IPAM technical overview](ipam.md) — pools, leases, lifecycle
+- [Pantavisor IPAM reference](../reference/pantavisor-ipam.md) — schema, fields, error handling
+- [Inter-container communication (xconnect)](xconnect.md) — service-level mediation on top of (or instead of) flat IP reachability
+
 ## Groups
 
 Containers can be [grouped](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson).
