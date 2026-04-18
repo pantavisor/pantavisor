@@ -179,7 +179,9 @@ static int get_logger_xattr(struct log *log)
 	if (getxattr(fname, PV_LOGGER_POS_XATTR, buf, 32) < 0) {
 		pv_log(DEBUG, "Attribute %s not present", PV_LOGGER_POS_XATTR);
 	} else {
-		sscanf(buf, "%jd", &stored_pos);
+		intmax_t parsed = 0;
+		if (sscanf(buf, "%jd", &parsed) == 1)
+			stored_pos = (off_t)parsed;
 	}
 	return stored_pos;
 }
@@ -415,9 +417,11 @@ pv_new_log(bool islxc, struct pv_logger_config *logger_config, const char *name)
 		if (!strncmp(trunc_val, "true", strlen("true"))) {
 			trunc_val = pv_log_get_config_item(logger_config,
 							   "maxsize");
-			if (trunc_val)
-				sscanf(trunc_val, "%jd",
-				       &log_info->truncate_size);
+			if (trunc_val) {
+				intmax_t parsed = 0;
+				if (sscanf(trunc_val, "%jd", &parsed) == 1)
+					log_info->truncate_size = (off_t)parsed;
+			}
 		}
 	}
 	dl_list_init(&log_info->next);

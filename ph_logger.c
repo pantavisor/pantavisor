@@ -28,6 +28,7 @@
 #include <sys/un.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <inttypes.h>
 #include <trest.h>
 #include <thttp.h>
 #include <sys/epoll.h>
@@ -305,9 +306,11 @@ static off_t _load_log_file_pos(const char *path)
 		pv_log(DEBUG, "log file is persistent. Trying to get xattr...",
 		       path);
 		if (getxattr(path, PH_LOGGER_POS_XATTR, dst, MAX_XATTR_SIZE) >
-		    0)
-			sscanf(dst, "%jd", &pos);
-		else {
+		    0) {
+			intmax_t parsed = 0;
+			if (sscanf(dst, "%jd", &parsed) == 1)
+				pos = (off_t)parsed;
+		} else {
 			if (errno == ENODATA)
 				// if xattr does not yet exist for that path, we save it with pos 0
 				_save_log_file_pos(pos, path);
