@@ -886,12 +886,16 @@ void pv_update_finish()
 	pv_log(DEBUG, "finishing update");
 
 	/*
-	 * Clear pv_try when the update reaches a final state.
-	 * This must happen here — not earlier — so the rolled-back
-	 * revision has a chance to detect and handle the rollback
-	 * (report to cloud, cleanup) before pv_try is removed.
+	 * Clear pv_try only on the rolled-back boot, after ERROR has been
+	 * recorded for the tried revision. Never clear it on the failing
+	 * revision itself: the bootloader still needs pv_try across the
+	 * upcoming reboot so it can drive the tryboot->fallback logic and
+	 * so the rolled-back revision can detect that it came up as a
+	 * rollback. pv_bootloader_trying_update() distinguishes the two:
+	 * it is true on the failing tryboot (pv_rev == pv_try) and false
+	 * on the rolled-back boot (pv_rev = old, pv_try = failed rev).
 	 */
-	if (pv_update_is_failed())
+	if (pv_update_is_failed() && !pv_bootloader_trying_update())
 		pv_bootloader_fail_update();
 
 	if (u->logserver_started)
