@@ -67,8 +67,8 @@ compare_json() {
 	proc="${PVTX_TMP_DIR}/${test_name}.process.json"
 	expected="${PVTX_TMP_DIR}/${test_name}.expected.json"
 
-	jq --sort-keys . <"${orig_proc}" >"${proc}"
-	jq --sort-keys . <"${orig_exp}" >"${expected}"
+	jq --sort-keys -c . <"${orig_proc}" >"${proc}"
+	jq --sort-keys -c . <"${orig_exp}" >"${expected}"
 
 	if ! diff=$(diff -u "${proc}" "${expected}") || [ -n "${diff}" ]; then
 		echo
@@ -111,8 +111,8 @@ check_canonical_json() {
 		exit 1
 	fi
 
-	pass1=$(jq -S . <"${json_file}" 2>/dev/null)
-	pass2=$(printf '%s' "${pass1}" | jq -S . 2>/dev/null)
+	pass1=$(jq -S -c . <"${json_file}" 2>/dev/null)
+	pass2=$(printf '%s' "${pass1}" | jq -S -c . 2>/dev/null)
 	if [ "${pass1}" != "${pass2}" ]; then
 		err "${test_name}_canonical: JSON normalisation is not idempotent"
 		exit 1
