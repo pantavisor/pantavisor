@@ -1,0 +1,118 @@
+/*
+ * Copyright (c) 2024-2026 Pantacor Ltd.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * i.MX8M Nano M7 core — DDR variant for remoteproc loading.
+ *
+ * The Linux DTB reserves 0x7E000000–0x7EFFFFFF (16 MiB) for the M core.
+ * We place code at 0x7E000000 and data at 0x7E200000 (2+2 MiB),
+ * matching the Linux reserved-memory node "m_core@7e000000".
+ */
+
+/dts-v1/;
+
+#include <nxp/nxp_imx8ml_m7.dtsi>
+#include "mimx8mn_evk-pinctrl.dtsi"
+
+/ {
+	model = "NXP i.MX8M Nano EVK board (M7)";
+	compatible = "nxp,mimx8mn_evk";
+
+	chosen {
+		zephyr,flash = &ddr_code;
+		zephyr,sram = &ddr_sys;
+
+		/* UART4 disabled — RPMsg is the communication channel */
+
+		/* shared memory for OpenAMP IPC */
+		zephyr,ipc_shm = &vdevbuffer;
+		zephyr,ipc = &mailbox0;
+	};
+
+	/*
+	 * Shared memory regions matching the Linux DTB:
+	 *   vdev0vring0@40000000   32 KiB
+	 *   vdev0vring1@40008000   32 KiB
+	 *   vdevbuffer@40400000    1 MiB
+	 *   rsc-table@400ff000     4 KiB
+	 */
+	vdevbuffer: memory@40400000 {
+		compatible = "mmio-sram";
+		reg = <0x40400000 0x100000>;
+	};
+};
+
+/* Override DDR regions to match Linux reserved memory */
+&ddr_code {
+	reg = <0x7e000000 DT_SIZE_M(2)>;
+};
+
+&ddr_sys {
+	reg = <0x7e200000 DT_SIZE_M(2)>;
+};
+
+/* UART4 disabled — debug via devmem markers */
+&uart4 {
+	status = "disabled";
+};
+
+/*
+ * Override gpio3 pinmux — i.MX8MN has no HDMI, so pins 26-29
+ * (hdmi_ddc_scl, hdmi_ddc_sda, hdmi_cec, hdmi_hpd) don't exist.
+ * Only keep pins 0-25 from nxp_imx8ml_m7.dtsi.
+ */
+&gpio3 {
+	status = "okay";
+	pinmux = <&iomuxc_nand_ale_gpio_io_gpio3_io0>,
+		<&iomuxc_nand_ce0_b_gpio_io_gpio3_io1>,
+		<&iomuxc_nand_ce1_b_gpio_io_gpio3_io2>,
+		<&iomuxc_nand_ce2_b_gpio_io_gpio3_io3>,
+		<&iomuxc_nand_ce3_b_gpio_io_gpio3_io4>,
+		<&iomuxc_nand_cle_gpio_io_gpio3_io5>,
+		<&iomuxc_nand_data00_gpio_io_gpio3_io6>,
+		<&iomuxc_nand_data01_gpio_io_gpio3_io7>,
+		<&iomuxc_nand_data02_gpio_io_gpio3_io8>,
+		<&iomuxc_nand_data03_gpio_io_gpio3_io9>,
+		<&iomuxc_nand_data04_gpio_io_gpio3_io10>,
+		<&iomuxc_nand_data05_gpio_io_gpio3_io11>,
+		<&iomuxc_nand_data06_gpio_io_gpio3_io12>,
+		<&iomuxc_nand_data07_gpio_io_gpio3_io13>,
+		<&iomuxc_nand_dqs_gpio_io_gpio3_io14>,
+		<&iomuxc_nand_re_b_gpio_io_gpio3_io15>,
+		<&iomuxc_nand_ready_b_gpio_io_gpio3_io16>,
+		<&iomuxc_nand_we_b_gpio_io_gpio3_io17>,
+		<&iomuxc_nand_wp_b_gpio_io_gpio3_io18>,
+		<&iomuxc_sai5_rxfs_gpio_io_gpio3_io19>,
+		<&iomuxc_sai5_rxc_gpio_io_gpio3_io20>,
+		<&iomuxc_sai5_rxd0_gpio_io_gpio3_io21>,
+		<&iomuxc_sai5_rxd1_gpio_io_gpio3_io22>,
+		<&iomuxc_sai5_rxd2_gpio_io_gpio3_io23>,
+		<&iomuxc_sai5_rxd3_gpio_io_gpio3_io24>,
+		<&iomuxc_sai5_mclk_gpio_io_gpio3_io25>;
+};
+
+/*
+ * Disable GPIO1/2/4/5 — the pinmux labels in nxp_imx8ml_m7.dtsi are
+ * i.MX8MP-specific and don't match the i.MX8MN HAL pinctrl header.
+ * Only GPIO3 (overridden above) is enabled for now.
+ */
+&gpio1 {
+	/delete-property/ pinmux;
+};
+
+&gpio2 {
+	/delete-property/ pinmux;
+};
+
+&gpio4 {
+	/delete-property/ pinmux;
+};
+
+&gpio5 {
+	/delete-property/ pinmux;
+};
+
+&mailbox0 {
+	status = "okay";
+};

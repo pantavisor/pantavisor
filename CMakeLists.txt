@@ -104,6 +104,10 @@ add_subdirectory(plugins)
 IF (PANTAVISOR_XCONNECT)
   add_subdirectory(xconnect)
 ENDIF (PANTAVISOR_XCONNECT)
+IF (PANTAVISOR_PVCM)
+  add_definitions(-DPANTAVISOR_PVCM)
+  add_subdirectory(pvcm-run)
+ENDIF (PANTAVISOR_PVCM)
 
 ### Pantavisor links shared where possible
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".so;.a")

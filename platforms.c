@@ -105,12 +105,18 @@ struct pv_cont_ctrl {
 enum {
 	PV_CONT_LXC,
 	//	PV_CONT_DOCKER,
+#ifdef PANTAVISOR_PVCM
+	PV_CONT_MCU,
+#endif
 	PV_CONT_MAX
 };
 
 struct pv_cont_ctrl cont_ctrl[PV_CONT_MAX] = {
 	{ "lxc", NULL, NULL, NULL, NULL, NULL },
 	//	{ "docker", start_docker_platform, stop_docker_platform }
+#ifdef PANTAVISOR_PVCM
+	{ "mcu", NULL, NULL, NULL, NULL, NULL },
+#endif
 };
 
 const char *pv_platform_status_string(plat_status_t status)
@@ -1066,7 +1072,10 @@ int pv_platform_start(struct pv_platform *p)
 		return -1;
 	}
 
-	if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
+	if (!c || !*c) {
+		/* MCU containers have no config file — pass run.json path */
+		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s/run.json", p->name);
+	} else if (pv_state_spec(pv->state) == SPEC_SYSTEM1)
 		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s/%s", p->name, *c);
 	else
 		SNPRINTF_WTRUNC(filename, PATH_MAX, "%s", *c);
