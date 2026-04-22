@@ -27,7 +27,7 @@ if [ -z "${PVTX_TMP_DIR}" ]; then
 fi
 check_path "${PVTX_TMP_DIR}"
 
-PVTX_TEST_DATA="${CURRENT_SRC_DIR}/test/pvtx"
+PVTX_TEST_DATA="${CURRENT_SRC_DIR}"
 check_path "${PVTX_TEST_DATA}"
 
 PVTX_DIR="${PVTX_TMP_DIR}/pvtxdir"
@@ -378,7 +378,6 @@ test_install_from_tgz() {
 }
 
 test_two_package_signing_same_files() {
-
 	name="test_two_package_signing_same_files"
 	result="${PVTX_TMP_DIR}/result_${name}.json"
 	expected="${PVTX_TEST_DATA}/expected/state_after_install_config_b_remove_config_a.json"

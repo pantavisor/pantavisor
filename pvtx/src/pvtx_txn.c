@@ -24,7 +24,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "pvtx_txn.h"
+#include <pvtx/txn.h>
 
 #include "utils/fs.h"
 #include "pvtx_state.h"
@@ -231,7 +231,6 @@ static int write_object_from_content(const char *path,
 		return -1;
 	}
 
-	int ret = -1;
 	struct pv_pvtx_buffer *buf = get_buffer();
 	if (!buf) {
 		pv_pvtx_error_set(err, -1,
@@ -241,7 +240,7 @@ static int write_object_from_content(const char *path,
 		goto out;
 	}
 
-	ssize_t written = 0;
+	size_t written = 0;
 	while (written < con->size) {
 		ssize_t cur = pv_pvtx_tar_content_read_block(con, buf->data,
 							     buf->size);
@@ -303,7 +302,7 @@ static int init_state_json(const char *from, struct pv_pvtx_error *err)
 
 	pv_pvtx_error_clear(err);
 
-	if (!strncmp(from, "current", strlen("current"))) {
+	if (!from || !strncmp(from, "current", strlen("current"))) {
 		struct pv_pvtx_ctrl *ctrl = pv_pvtx_ctrl_new(NULL, err);
 		if (!ctrl) {
 			pv_pvtx_error_prepend(
@@ -313,6 +312,7 @@ static int init_state_json(const char *from, struct pv_pvtx_error *err)
 				"is running and the pv-ctrl socket is available\n"
 				"or check the 'help' command if you are looking "
 				"other ways to start a transaction");
+
 			goto out;
 		}
 		json = pv_pvtx_ctrl_steps_get(ctrl, "current", &json_len);
@@ -321,6 +321,7 @@ static int init_state_json(const char *from, struct pv_pvtx_error *err)
 				err, -1,
 				"connected to pv-ctrl but failed to "
 				"retrieve the current revision state");
+
 		pv_pvtx_ctrl_free(ctrl);
 		goto out;
 
@@ -335,6 +336,7 @@ static int init_state_json(const char *from, struct pv_pvtx_error *err)
 				"no state JSON found at '%s'; expected "
 				"a revision directory or a json file",
 				from);
+
 			goto out;
 		}
 
@@ -610,7 +612,7 @@ static int init_config(const char *deploy_path, const char *tmpdir,
 
 	if (pv_fs_path_exist(path)) {
 		char tmp[PATH_MAX] = { 0 };
-		int fd = pv_fs_file_tmp(dst, tmp);
+		pv_fs_file_tmp(dst, tmp);
 		pv_fs_file_copy_no_sync(path, dst, 0600);
 		return 0;
 	}
@@ -685,7 +687,6 @@ static int create_from_json(const char *deploy_path, const char *obj_path)
 		goto out;
 	}
 
-	int i = 0;
 	int no_top = 0;
 
 	// start from 3 to skip the #spec
@@ -831,6 +832,7 @@ static int create_fs(const char *obj_path, const char *deploy_path,
 		pv_pvtx_error_set(err, ret,
 				  "couldn't write state.json to '%s': %s",
 				  js_dst, strerror(errno));
+
 		return ret;
 	}
 
@@ -838,6 +840,7 @@ static int create_fs(const char *obj_path, const char *deploy_path,
 		pv_pvtx_error_set(err, -1,
 				  "couldn't hard-link objects into '%s': %s",
 				  deploy_path, strerror(errno));
+
 		return err->code;
 	}
 
@@ -957,6 +960,7 @@ static int process_add_directory(struct pv_pvtx_state *st, const char *dirname,
 		pv_pvtx_error_set(err, -1,
 				  "couldn't apply queued add step from '%s'",
 				  js);
+
 		goto out;
 	}
 
@@ -1055,6 +1059,7 @@ int pv_pvtx_txn_begin(const char *from, const char *obj_path,
 				  "a transaction is already in progress\n"
 				  "run 'pvtx abort' to discard it or "
 				  "'pvtx commit'/'pvtx deploy' to finalize it");
+
 		goto out;
 	}
 
@@ -1203,6 +1208,7 @@ char *pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 		pv_pvtx_error_prepend(
 			err, "failed to connect to pv-ctrl to submit the "
 			     "revision; make sure Pantavisor is running");
+
 		goto out;
 	}
 
@@ -1227,6 +1233,7 @@ char *pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 			"failed to upload revision '%s' to Pantavisor "
 			"via pv-ctrl",
 			rev);
+
 		goto out;
 	}
 
@@ -1522,6 +1529,7 @@ int pv_pvtx_queue_process(const char *from, const char *queue_path,
 			return ret;
 	}
 
+	int len = 0;
 	struct dirent **entry = NULL;
 	struct pv_pvtx_state *st = NULL;
 	struct pvtx_queue *q = pvtx_load();
@@ -1545,7 +1553,7 @@ int pv_pvtx_queue_process(const char *from, const char *queue_path,
 		goto out;
 	}
 
-	int len = scandir(q->queue, &entry, NULL, alphasort);
+	len = scandir(q->queue, &entry, NULL, alphasort);
 	if (len < 0) {
 		pv_pvtx_error_set(err, -1, "couldn't scan directory %s",
 				  q->queue);

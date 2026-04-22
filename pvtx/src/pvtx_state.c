@@ -166,7 +166,6 @@ static int get_decoded_sig(struct pv_pvtx_state *st, int idx, char **dec,
 	int tkn_len = 0;
 	jsmntok_t *tok = pv_pvtx_jsmn_parse_data(json, json_len, &tkn_len);
 
-	int enc_idx = 0;
 	const char *key = "protected";
 	size_t key_sz = strlen(key);
 
@@ -518,8 +517,7 @@ static void state_from_keys(struct pv_pvtx_state *st,
 	pvtx_state_move(st, pv_pvtx_state_from_str(buf, ptr - buf, NULL));
 }
 
-static int match_pattern(struct pv_pvtx_state *st, struct pv_pvtx_array *pat,
-			 const char *key)
+static int match_pattern(struct pv_pvtx_array *pat, const char *key)
 {
 	int count = 0;
 	const char *cur_pat = NULL;
@@ -544,11 +542,11 @@ static void remove_keys(struct pv_pvtx_state *st, const char *part, int plen,
 		int len = 0;
 		const char *key_str = token_to_str(st, keys->data.i[i], &len);
 
-		int n = match_pattern(st, &patterns, key_str);
+		int n = match_pattern(&patterns, key_str);
 		if (n < 1)
 			continue;
 
-		int m = match_pattern(st, &st->priv->pat, key_str);
+		int m = match_pattern(&st->priv->pat, key_str);
 		if (m > n)
 			continue;
 

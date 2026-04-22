@@ -551,75 +551,7 @@ ENDIF()
 
 
 ## PVTX section
-
-set(PVTX_COMMON_SOURCES
-	utils/pvsignals.h
-	utils/pvsignals.c
-	utils/tsh.c
-	utils/fs.c
-	pvtx/pvtx_utils/base64.c
-	pvtx/pvtx_utils/sha256-internal.c
-	pvtx/pvtx_utils/jsmn.c
-	pvtx/pvtx_buffer.h
-	pvtx/pvtx_buffer.c
-	pvtx/pvtx_ctrl.c
-	pvtx/pvtx_ctrl.h
-	pvtx/pvtx_error.c
-	pvtx/pvtx_error.h
-	pvtx/pvtx_jsmn_utils.c
-	pvtx/pvtx_jsmn_utils.h
-	pvtx/pvtx_state.c
-	pvtx/pvtx_state.h
-	pvtx/pvtx_tar.c
-	pvtx/pvtx_tar_formats.c
-	pvtx/pvtx_tar.h
-	pvtx/pvtx_tar_impl.h
-	pvtx/pvtx_txn.c
-	pvtx/pvtx_txn.h
-	pvtx/pvtx.c
-)
-
-IF (PANTAVISOR_PVTX)
-
-find_library(PANTAVISOR_PVTX_ZLIB z)
-
-add_executable(pvtx
-	${PVTX_COMMON_SOURCES}
-)
-target_compile_definitions(pvtx PUBLIC -DDISABLE_LOGSERVER)
-target_include_directories(pvtx PRIVATE
-	${CMAKE_SOURCE_DIR}
-	${CMAKE_SOURCE_DIR}/utils
-)
-target_link_libraries(pvtx ${PANTAVISOR_PVTX_ZLIB})
-install(TARGETS pvtx DESTINATION /usr/bin)
-
-ENDIF() # PANTAVISOR_PVTX
-
-IF (PANTAVISOR_PVTX_STATIC)
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-
-find_library(PANTAVISOR_PVTX_STATIC_ZLIB z)
-
-add_executable(pvtx-static
-	${PVTX_COMMON_SOURCES}
-)
-target_compile_definitions(pvtx-static PUBLIC -DDISABLE_LOGSERVER)
-target_include_directories(pvtx-static PRIVATE
-	${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils
-)
-target_link_libraries(pvtx-static ${PANTAVISOR_PVTX_STATIC_ZLIB})
-target_link_options(pvtx-static PRIVATE
-	LINKER:-static
-	-static
-	-static-libgcc
-)
-set_target_properties(pvtx-static PROPERTIES
-    LINK_SEARCH_END_STATIC 1 # Set to 1 (true)
-)
-install(TARGETS pvtx-static DESTINATION /usr/bin)
-
-ENDIF() # PANTAVISOR_PVTX_STATIC
+add_subdirectory(pvtx)
 
 # Build and install tests feature
 IF(PANTAVISOR_TESTS)
@@ -650,4 +582,3 @@ install(TARGETS test-pv-tsh DESTINATION bin)
 ENDIF()
 
 enable_testing()
-add_subdirectory(test/pvtx)

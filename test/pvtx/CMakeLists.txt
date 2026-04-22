@@ -58,8 +58,8 @@ if(PANTAVISOR_PVTX)
         add_test(
             NAME pvtx::${PVTX_TEST}
             COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/pvtx.sh
-                    ${CMAKE_CURRENT_SOURCE_DIR}/../..
-                    ${CMAKE_CURRENT_BINARY_DIR}/../..
+                    ${CMAKE_CURRENT_SOURCE_DIR}
+                    ${CMAKE_CURRENT_BINARY_DIR}/../
                     ${PVTX_TEST}
         )
         set_tests_properties(pvtx::${PVTX_TEST} PROPERTIES
