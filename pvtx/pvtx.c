@@ -22,7 +22,6 @@
 
 #include "pvtx_txn.h"
 #include "pvtx_error.h"
-#include "utils/fs.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -53,20 +52,10 @@ struct commands {
 };
 
 #define PVTX_DIR_VAR "PVTXDIR"
-#define LOCAL_ERR(msg) local_err(__FILE__, __LINE__, msg)
 
 static struct commands normal = {
-	.names =
-		(const char *[]){
-			"begin",
-			"add",
-			"remove",
-			"abort",
-			"commit",
-			"show",
-			"deploy",
-			"help",
-		},
+	.names = (const char *[]){ "begin", "add", "remove", "abort", "commit",
+				   "show", "deploy", "help", "--help" },
 	.fn =
 		(const func[]){
 			cmd_begin,
@@ -77,8 +66,9 @@ static struct commands normal = {
 			cmd_show,
 			cmd_deploy,
 			cmd_help,
+			cmd_help,
 		},
-	.size = 8,
+	.size = 9,
 };
 
 static struct commands queue = {
@@ -99,13 +89,6 @@ static struct commands queue = {
 	.size = 4,
 };
 
-static void local_err(const char *file, int line, const char *msg)
-{
-	char bname[NAME_MAX] = { 0 };
-	pv_fs_basename(file, bname);
-	fprintf(stderr, "ERROR: %s\n(%s:%d)\n", msg, bname, line);
-}
-
 static int cmd_begin(int argc, char **argv)
 {
 	struct pv_pvtx_error err = { 0 };
@@ -122,14 +105,15 @@ static int cmd_begin(int argc, char **argv)
 
 	int ret = pv_pvtx_txn_begin(from, obj_path, &err);
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "begin");
 
 	return ret;
 }
 static int cmd_add(int argc, char **argv)
 {
 	if (argc < 3) {
-		LOCAL_ERR("missing argument, files or - is needed");
+		pv_pvtx_error_print_raw(
+			"add", "missing argument, file or - is needed");
 		return -1;
 	}
 
@@ -142,14 +126,14 @@ static int cmd_add(int argc, char **argv)
 		ret = pv_pvtx_txn_add_from_disk(argv[2], &err);
 
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "add");
 
 	return ret;
 }
 static int cmd_remove(int argc, char **argv)
 {
 	if (argc < 3) {
-		LOCAL_ERR("must remove a part, missing parameter");
+		pv_pvtx_error_print_raw("remove", "must supply a part name");
 		return 4;
 	}
 
@@ -157,7 +141,7 @@ static int cmd_remove(int argc, char **argv)
 	int ret = pv_pvtx_txn_remove(argv[2], &err);
 
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "remove");
 
 	return ret;
 }
@@ -166,7 +150,7 @@ static int cmd_abort(int argc, char **argv)
 	struct pv_pvtx_error err = { 0 };
 	int ret = pv_pvtx_txn_abort(&err);
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "abort");
 	return ret;
 }
 static int cmd_commit(int argc, char **argv)
@@ -174,10 +158,10 @@ static int cmd_commit(int argc, char **argv)
 	struct pv_pvtx_error err = { 0 };
 	char *rev = pv_pvtx_txn_commit(&err);
 	if (!rev) {
-		fprintf(stderr, "ERROR: %s\n", err.str);
-		free(rev);
+		pv_pvtx_error_print(&err, "commit");
 	} else {
 		printf("%s\n", rev);
+		free(rev);
 	};
 
 	return err.code;
@@ -187,7 +171,7 @@ static int cmd_show(int argc, char **argv)
 	struct pv_pvtx_error err = { 0 };
 	char *json = pv_pvtx_txn_get_json(&err);
 	if (!json) {
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "show");
 		return err.code;
 	}
 
@@ -199,7 +183,7 @@ static int cmd_show(int argc, char **argv)
 static int cmd_deploy(int argc, char **argv)
 {
 	if (argc < 3) {
-		LOCAL_ERR("missing deploy folder");
+		pv_pvtx_error_print_raw("deploy", "missing deploy folder");
 		return 1;
 	}
 
@@ -207,7 +191,7 @@ static int cmd_deploy(int argc, char **argv)
 	int ret = pv_pvtx_txn_deploy(argv[2], &err);
 
 	if (ret != 0) {
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "deploy");
 	}
 
 	return ret;
@@ -216,64 +200,133 @@ static int cmd_deploy(int argc, char **argv)
 static int cmd_help(int argc, char **argv)
 {
 	printf("Usage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
+	printf("pvtx manages Pantavisor revision transactions. A transaction\n");
+	printf("starts with 'begin', is built up with 'add'/'remove', and is\n");
+	printf("finalized with either 'commit' (remote) or 'deploy' (local).\n\n");
+
 	printf("Commands:\n");
 
 	printf("  %-30s", "begin <base> [object]");
-	printf("Creates a new transaction.\n");
+	printf("Start a new transaction based on an existing revision.\n");
 	printf("%-32s%s\n", " ",
-	       "The first argument <base> could be a real revision,");
+	       "<base> can be \"current\" (copy state from the running Pantavisor");
 	printf("%-32s%s\n", " ",
-	       "\"current\" (use current rev) or \"empty\" (empty revision).");
+	       "via pv-ctrl), \"empty\" (start from a blank revision), or a path");
+	printf("%-32s%s\n", " ", "to a revision directory or state JSON file.");
 	printf("%-32s%s\n", " ",
-	       "Transactions created without an object_path are called remote");
+	       "If [object] is given, the transaction is local: objects are saved");
 	printf("%-32s%s\n", " ",
-	       "and its objects are sent directly to the pv-ctrl socket.");
-	printf("  %-30s", "add <file> or -");
-	printf("Adds a json or tarball to the current transaction.\n");
+	       "to that directory and finalized with 'deploy'. Without [object],");
 	printf("%-32s%s\n", " ",
-	       "Alternatively '-' could be used to read from stdin.");
+	       "the transaction is remote: objects are streamed to pv-ctrl and");
+	printf("%-32s%s\n", " ", "finalized with 'commit'.");
+
+	printf("  %-30s", "add <file | ->");
+	printf("Add a package to the current transaction.\n");
+	printf("%-32s%s\n", " ",
+	       "<file> can be a state JSON file or a gzip tarball containing a");
+	printf("%-32s%s\n", " ",
+	       "\"json\" descriptor and an \"objects/\" directory with content");
+	printf("%-32s%s\n", " ",
+	       "files named by their SHA-256 hash. Use '-' to read a tarball");
+	printf("%-32s%s\n", " ",
+	       "from stdin. For remote transactions, objects are uploaded to");
+	printf("%-32s%s\n", " ",
+	       "pv-ctrl directly; for local ones, saved to the object dir.");
+
 	printf("  %-30s", "remove <part>");
-	printf("Remove the given part from the revision.\n");
+	printf("Remove a named part (container/component) from the current\n");
+	printf("%-32s%s\n", " ", "transaction's state JSON.");
+
 	printf("  %-30s", "abort");
-	printf("Abort the current transaction.\n");
+	printf("Discard the current transaction, deleting the in-progress\n");
+	printf("%-32s%s\n", " ", "state JSON and transaction status file.");
+
 	printf("  %-30s", "commit");
-	printf("Commit transaction, valid only for remote transactions.\n");
+	printf("Finalize a remote transaction by sending the state JSON to\n");
+	printf("%-32s%s\n", " ",
+	       "Pantavisor via the pv-ctrl socket. Generates and prints a");
+	printf("%-32s%s\n", " ",
+	       "revision name (locals/pvtx-<timestamp>-<hash>-<rand>).");
+	printf("%-32s%s\n", " ",
+	       "Only valid for remote transactions (begun without [object]).");
+
 	printf("  %-30s", "show");
-	printf("Show the current state json.\n");
+	printf("Print the in-progress state JSON of the current transaction.\n");
+
 	printf("  %-30s", "deploy <directory>");
-	printf("Deploy the current transaction in the given directory.\n");
-	printf("  %-30s", "help");
-	printf("Show this help and ends.\n");
+	printf("Finalize a local transaction by writing the revision layout\n");
+	printf("%-32s%s\n", " ",
+	       "to <directory>. Creates .pvr/json, .pvr/config, hard-links");
+	printf("%-32s%s\n", " ",
+	       "objects from the object dir, and sets up .pv/ BSP links.");
+	printf("%-32s%s\n", " ",
+	       "Performs a safe atomic-like swap: the old directory is kept");
+	printf("%-32s%s\n", " ", "as <directory>.bak until deploy succeeds.");
+	printf("%-32s%s\n", " ",
+	       "Only valid for local transactions (begun with [object]).");
+
+	printf("  %-30s", "help | --help");
+	printf("Show this help message.\n");
+
 	printf("  %-30s", "queue <sub-command>");
-	printf("This command uses the queue mode and requires a sub-command.\n");
+	printf("Operate in queue mode, which records an ordered sequence of\n");
 	printf("%-32s%s\n", " ",
-	       "Queues creates a series of steps to be executed in the same order");
-	printf("%-32s%s\n", " ", "in which they were created.");
+	       "add/remove steps and replays them atomically in one 'process'");
+	printf("%-32s%s\n", " ",
+	       "call. Useful for batching multiple package updates together.");
 
-	printf("Queue Sub-commands:\n");
-	printf("  %-30s", "new <queue> [object]");
-	printf("Creates a new queue at queue and save objects at object.\n");
+	printf("\nQueue Sub-commands:\n");
+
+	printf("  %-30s", "new <queue> <object>");
+	printf("Initialize a new queue. <queue> is the directory where step\n");
+	printf("%-32s%s\n", " ",
+	       "files are stored in order; <object> is the directory where");
+	printf("%-32s%s\n", " ", "unpacked content objects will be saved.");
+
 	printf("  %-30s", "remove <part>");
-	printf("Add a remove instruction for the given part in the current queue.\n");
-	printf("  %-30s", "unpack <tarball> or -");
-	printf("Unpack the given tarball from file or from stdin (if - is used).\n");
-	printf("  %-30s", "process [base] [queue] [obj]");
-	printf("Process the current queue.\n");
+	printf("Schedule a remove step for <part> in the current queue.\n");
 	printf("%-32s%s\n", " ",
-	       "base : use a specific revision, \"current\" or \"empty\" as base");
-	printf("%-32s%s\n", " ",
-	       "queue: define the queue path. Implicit call to queue new");
-	printf("%-32s%s\n", " ",
-	       "obj  : define the object path. Needed if the queue argument is used.");
+	       "Creates a numbered .remove marker that 'queue process' will");
+	printf("%-32s%s\n", " ", "apply in sequence.");
 
-	printf("Environment Variables:\n");
+	printf("  %-30s", "unpack <tarball|->");
+	printf("Stage a package into the current queue. Extracts the state\n");
+	printf("%-32s%s\n", " ",
+	       "JSON descriptor and saves objects to the object directory.");
+	printf("%-32s%s\n", " ",
+	       "Each call adds a numbered step entry. Use '-' for stdin.");
+
+	printf("  %-30s", "process [base [queue obj]]");
+	printf("Replay all queued steps in order to build a final revision.\n");
+	printf("%-32s%s\n", " ",
+	       "Applies add directories and .remove markers alphabetically.");
+	printf("%-32s%s\n", " ",
+	       "base : revision to start from (\"current\", \"empty\", or path).");
+	printf("%-32s%s\n", " ",
+	       "queue: queue directory path; implicitly calls 'queue new'");
+	printf("%-32s%s\n", " ",
+	       "       when provided (requires obj to be set as well).");
+	printf("%-32s%s\n", " ",
+	       "obj  : object directory path; required when queue is given.");
+	printf("%-32s%s\n", " ",
+	       "When called with no arguments, resumes the active queue and");
+	printf("%-32s%s\n", " ", "active transaction.");
+
+	printf("\nEnvironment Variables:\n");
 	printf("  %-30s", "PVTXDIR");
-	printf("Temporary directory where PVTX store transaction related data\n");
+	printf("Directory where pvtx stores transaction state (status file\n");
+	printf("%-32s%s\n", " ",
+	       "and current.json). Default (root): /var/cache/pvtx");
+	printf("%-32s%s\n", " ",
+	       "Default (user): ~/.local/share/pvtx");
 	printf("  %-30s", "PVTX_OBJECT_BUF_SIZE");
-	printf("Size of the buffer used to save objects. Min 512B max 10485760B (10M)\n");
+	printf("I/O buffer size for reading/writing object files.\n");
+	printf("%-32s%s\n", " ",
+	       "Min 512B, max 10485760B (10M). Default: 512B.");
 	printf("  %-30s", "PVTX_CTRL_BUF_SIZE");
-	printf("Size of the buffer used to get and post data to pv-ctrl.\n");
-	printf("%-32s%s\n", " ", "Min 16384B (16K) max 10485760B (10M)\n");
+	printf("I/O buffer size for communicating with pv-ctrl socket.\n");
+	printf("%-32s%s\n", " ", "Min 16384B (16K), max 10485760B (10M).\n");
 
 	return 0;
 }
@@ -281,10 +334,12 @@ static int cmd_help(int argc, char **argv)
 static int cmd_queue_new(int argc, char **argv)
 {
 	if (argc < 4) {
-		LOCAL_ERR("queue argument is required");
+		pv_pvtx_error_print_raw("queue new",
+					"queue argument is required");
 		return 1;
 	} else if (argc < 5) {
-		LOCAL_ERR("objects argument is required");
+		pv_pvtx_error_print_raw("queue new",
+					"objects argument is required");
 		return 1;
 	}
 
@@ -292,28 +347,31 @@ static int cmd_queue_new(int argc, char **argv)
 
 	int ret = pv_pvtx_queue_new(argv[3], argv[4], &err);
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "queue new");
 
 	return ret;
 }
 static int cmd_queue_remove(int argc, char **argv)
 {
 	if (argc < 4) {
-		LOCAL_ERR("missing argument 'part'");
+		pv_pvtx_error_print_raw("queue remove",
+					"missing argument 'part'");
 		return 1;
 	}
 
 	struct pv_pvtx_error err = { 0 };
 	int ret = pv_pvtx_queue_remove(argv[3], &err);
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "queue remove");
 
 	return ret;
 }
 static int cmd_queue_unpack(int argc, char **argv)
 {
 	if (argc < 4) {
-		LOCAL_ERR("missing argument, file or - is required");
+		pv_pvtx_error_print_raw(
+			"queue unpack",
+			"missing argument, file or - is required");
 		return 1;
 	}
 
@@ -326,7 +384,7 @@ static int cmd_queue_unpack(int argc, char **argv)
 		ret = pv_pvtx_queue_unpack_from_disk(argv[3], &err);
 
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "queue unpack");
 
 	return ret;
 }
@@ -348,7 +406,7 @@ static int cmd_queue_process(int argc, char **argv)
 	int ret = pv_pvtx_queue_process(var[0], var[1], var[2], &err);
 
 	if (ret != 0)
-		fprintf(stderr, "ERROR: %s\n", err.str);
+		pv_pvtx_error_print(&err, "queue process");
 
 	return ret;
 }
@@ -364,7 +422,6 @@ static int pv_pvtx_process_args(int argc, char **argv)
 	struct commands *cmd = &normal;
 
 	if (!strlen(op)) {
-		LOCAL_ERR("empty command");
 		cmd_help(argc, argv);
 		exit(1);
 	}
@@ -383,10 +440,10 @@ static int pv_pvtx_process_args(int argc, char **argv)
 		return err;
 	}
 
-	char e[256] = { 0 };
-	snprintf(e, 256, "command not found: %s", op);
-
-	LOCAL_ERR(e);
+	pv_pvtx_error_print_raw("command process",
+				"sub command not found: %s\nplease use 'help' "
+				"to find the right sub command",
+				op);
 
 	return -1;
 }

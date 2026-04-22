@@ -80,12 +80,12 @@ int socket_wait(struct pv_pvtx_ctrl *ctrl, int events)
 	int res = poll(fds, 1, 10000);
 
 	if (res < 0) {
-		PVTX_ERROR_SET(&ctrl->error, errno, "poll failed: %s",
-			       strerror(errno));
+		pv_pvtx_error_set(&ctrl->error, errno, "poll failed: %s",
+				  strerror(errno));
 		return -1;
 	} else if (res == 0) {
-		PVTX_ERROR_SET(&ctrl->error, -1,
-			       "couldn't get server response, timeout! (10s)");
+		pv_pvtx_error_set(&ctrl->error, -1,
+				  "pv-ctrl did not respond within 10 seconds");
 		return -1;
 	}
 
@@ -98,7 +98,7 @@ struct pv_pvtx_buffer *get_buffer(struct pv_pvtx_error *err)
 		pv_pvtx_buffer_from_env(PVTX_CTRL_BUFF_ENV, PVTX_CTRL_BUFF_MIN,
 					PVTX_CTRL_BUFF_MAX, 512);
 	if (!buf && err)
-		PVTX_ERROR_SET(err, -1, "couldn't get buffer");
+		pv_pvtx_error_set(err, -1, "couldn't get buffer");
 
 	return buf;
 }
@@ -140,9 +140,10 @@ void pv_pvtx_ctrl_free(struct pv_pvtx_ctrl *ctrl)
 	free(ctrl);
 }
 
-static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
+static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path,
+			struct pv_pvtx_error *err)
 {
-	pv_pvtx_error_clear(&ctrl->error);
+	pv_pvtx_error_clear(err);
 
 	if (!path) {
 		// checking both paths
@@ -151,8 +152,10 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 		else if (pv_fs_path_exist(PVTX_CTRL_CONTAINER_SOCK))
 			path = PVTX_CTRL_CONTAINER_SOCK;
 		else {
-			PVTX_ERROR_SET(&ctrl->error, -1,
-				       "couldn't locate socket");
+			pv_pvtx_error_set(
+				err, -1,
+				"pv-ctrl socket not found (tried /pv/pv-ctrl and "
+				"/pantavisor/pv-ctrl)");
 			return -1;
 		}
 	}
@@ -172,8 +175,9 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 			AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
 
 		if (ctrl->sock < 0) {
-			PVTX_ERROR_SET(&ctrl->error, errno,
-				       "couldn't open socket");
+			pv_pvtx_error_set(err, errno,
+					  "failed to create client socket: %s",
+					  strerror(errno));
 			return -1;
 		}
 
@@ -189,21 +193,24 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path)
 	} while (!ok && retries > 0);
 
 	if (!ok || ctrl->sock < 0) {
-		PVTX_ERROR_SET(&ctrl->error, -1,
-			       "couldn't connect, all atteps failed");
+		pv_pvtx_error_set(
+			err, -1,
+			"failed to connect to pv-ctrl (%s) after 5 attempts: %s",
+			path, strerror(errno));
 		return -1;
 	}
 
 	return 0;
 }
 
-struct pv_pvtx_ctrl *pv_pvtx_ctrl_new(const char *path)
+struct pv_pvtx_ctrl *pv_pvtx_ctrl_new(const char *path,
+				      struct pv_pvtx_error *err)
 {
 	struct pv_pvtx_ctrl *ctrl = calloc(1, sizeof(struct pv_pvtx_ctrl));
 	if (!ctrl)
 		return NULL;
 
-	if (connect_sock(ctrl, path) != 0) {
+	if (connect_sock(ctrl, path, err) != 0) {
 		free(ctrl);
 		return NULL;
 	}
@@ -220,8 +227,8 @@ static int send_header(struct pv_pvtx_ctrl *ctrl,
 
 	char *head_str = header_to_str(head);
 	if (!head_str) {
-		PVTX_ERROR_SET(&ctrl->error, -1,
-			       "couldn't allocate header string");
+		pv_pvtx_error_set(&ctrl->error, -1,
+				  "couldn't allocate header string");
 		return -1;
 	}
 	pv_fs_file_write_nointr(ctrl->sock, head_str, strlen(head_str));
@@ -252,8 +259,8 @@ static void check_error(struct pv_pvtx_buffer *buf, struct pv_pvtx_error *err)
 
 	const char *ptr = strchr(buf->data, ' ');
 	if (!ptr) {
-		PVTX_ERROR_SET(err, -1,
-			       "couldn't parse header, error check failed");
+		pv_pvtx_error_set(err, -1,
+				  "couldn't parse header, error check failed");
 		return;
 	}
 
@@ -267,7 +274,7 @@ static void check_error(struct pv_pvtx_buffer *buf, struct pv_pvtx_error *err)
 
 	char *end = strstr(buf->data, "\r\n");
 	if (!end) {
-		PVTX_ERROR_SET(err, -1, "couldn't parse header");
+		pv_pvtx_error_set(err, -1, "couldn't parse header");
 		return;
 	}
 
@@ -278,12 +285,12 @@ static void check_error(struct pv_pvtx_buffer *buf, struct pv_pvtx_error *err)
 
 	char *error_str = NULL;
 	if (asprintf(&error_str, "%s\nResponse: %s", base_err, ptr) == -1) {
-		PVTX_ERROR_SET(err, -1, "couldn't get the complete err: %s",
-			       base_err);
+		pv_pvtx_error_set(err, -1, "couldn't get the complete err: %s",
+				  base_err);
 		return;
 	}
 
-	PVTX_ERROR_SET(err, -code, error_str);
+	pv_pvtx_error_set(err, -code, error_str);
 	free(error_str);
 }
 
@@ -329,8 +336,8 @@ static struct pv_pvtx_buffer *read_data(struct pv_pvtx_ctrl *ctrl)
 		return NULL;
 
 	if (!(revents & POLLIN)) {
-		PVTX_ERROR_SET(&ctrl->error, errno, "poll error: %s",
-			       strerror(errno));
+		pv_pvtx_error_set(&ctrl->error, errno, "poll error: %s",
+				  strerror(errno));
 		goto out;
 	}
 
@@ -347,14 +354,14 @@ static struct pv_pvtx_buffer *read_data(struct pv_pvtx_ctrl *ctrl)
 	if (!pos)
 		goto out;
 
-	size_t header_size = pos + 4 - (char*)buf->data;
+	size_t header_size = pos + 4 - (char *)buf->data;
 	size_t body_read = cur_read - header_size;
 	size_t total = len + header_size;
 
 	if (cur_read < total) {
 		if (pv_pvtx_buffer_realloc(buf, total + 1) != 0) {
-			PVTX_ERROR_SET(&ctrl->error, -1,
-				       "couldn't reallocate buffer");
+			pv_pvtx_error_set(&ctrl->error, -1,
+					  "couldn't reallocate buffer");
 			goto out;
 		}
 
@@ -434,7 +441,7 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 	struct pv_pvtx_buffer *buf = get_buffer(&ctrl->error);
 
 	if (!buf) {
-		PVTX_ERROR_SET(&ctrl->error, -1, "couldn't allocate buffer");
+		pv_pvtx_error_set(&ctrl->error, -1, "couldn't allocate buffer");
 		return -1;
 	}
 
@@ -448,8 +455,8 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 			return -1;
 
 		if (!(revents & POLLOUT)) {
-			PVTX_ERROR_SET(&ctrl->error, errno, "poll error: %s",
-				       strerror(errno));
+			pv_pvtx_error_set(&ctrl->error, errno, "poll error: %s",
+					  strerror(errno));
 			return -1;
 		}
 

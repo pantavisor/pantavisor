@@ -305,9 +305,9 @@ static int get_all_patterns(struct pv_pvtx_state *st,
 			int name_len = 0;
 			const char *name =
 				token_to_str(st, keys->data.i[i], &name_len);
-			PVTX_ERROR_SET(err, -1,
-				       "couldn't decrypt %.*s signature",
-				       name_len, name);
+			pv_pvtx_error_set(err, -1,
+					  "couldn't decrypt %.*s signature",
+					  name_len, name);
 
 			return -1;
 		}
@@ -343,7 +343,7 @@ struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len,
 	priv->tok.data.t = pv_pvtx_jsmn_parse_data(str, len, &priv->tok.size);
 	if (!priv->tok.data.t) {
 		if (err)
-			PVTX_ERROR_SET(err, -1, "couldn't parse json data");
+			pv_pvtx_error_set(err, -1, "couldn't parse json data");
 		goto error;
 	}
 	priv->tok.has_str = false;

@@ -34,7 +34,8 @@ struct pv_pvtx_ctrl {
 	struct pv_pvtx_error error;
 };
 
-struct pv_pvtx_ctrl *pv_pvtx_ctrl_new(const char *path);
+struct pv_pvtx_ctrl *pv_pvtx_ctrl_new(const char *path,
+				      struct pv_pvtx_error *err);
 void pv_pvtx_ctrl_free(struct pv_pvtx_ctrl *ctrl);
 char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 			     size_t *size);
