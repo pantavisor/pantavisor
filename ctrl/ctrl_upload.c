@@ -110,6 +110,8 @@ static void ctrl_upload_read_cb(struct evbuffer *buf,
 
 	pv_log(DEBUG, "incoming data: %zd bytes", len);
 
+	pv_storage_gc_defer_run_threshold();
+
 	evbuffer_write(buf, up->file->fd);
 
 	return;
@@ -139,6 +141,8 @@ int pv_ctrl_upload_start(struct evhttp_request *req, const char *path,
 
 	up->complete = evbuffer_add_cb(evhttp_request_get_output_buffer(req),
 				       ctrl_upload_complete_cb_caller, up);
+
+	pv_storage_gc_defer_run_threshold();
 
 	return 0;
 
