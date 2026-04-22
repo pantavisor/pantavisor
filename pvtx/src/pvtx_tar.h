@@ -23,7 +23,7 @@
 #ifndef PVTX_TAR_H
 #define PVTX_TAR_H
 
-#include "pvtx_error.h"
+#include <pvtx/error.h>
 
 #include <sys/types.h>
 #include <linux/limits.h>

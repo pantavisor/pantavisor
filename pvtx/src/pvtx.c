@@ -20,8 +20,9 @@
  * SOFTWARE.
  */
 
-#include "pvtx_txn.h"
-#include "pvtx_error.h"
+#include <pvtx/txn.h>
+#include <pvtx/error.h>
+#include "utils/fs.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -95,9 +96,7 @@ static int cmd_begin(int argc, char **argv)
 	char *from = NULL;
 	char *obj_path = NULL;
 
-	if (argc < 3)
-		from = "current";
-	else
+	if (argc > 2)
 		from = argv[2];
 
 	if (argc > 3)
@@ -147,6 +146,9 @@ static int cmd_remove(int argc, char **argv)
 }
 static int cmd_abort(int argc, char **argv)
 {
+	(void)argc;
+	(void)argv;
+
 	struct pv_pvtx_error err = { 0 };
 	int ret = pv_pvtx_txn_abort(&err);
 	if (ret != 0)
@@ -155,6 +157,9 @@ static int cmd_abort(int argc, char **argv)
 }
 static int cmd_commit(int argc, char **argv)
 {
+	(void)argc;
+	(void)argv;
+
 	struct pv_pvtx_error err = { 0 };
 	char *rev = pv_pvtx_txn_commit(&err);
 	if (!rev) {
@@ -168,6 +173,9 @@ static int cmd_commit(int argc, char **argv)
 }
 static int cmd_show(int argc, char **argv)
 {
+	(void)argc;
+	(void)argv;
+
 	struct pv_pvtx_error err = { 0 };
 	char *json = pv_pvtx_txn_get_json(&err);
 	if (!json) {
@@ -199,6 +207,8 @@ static int cmd_deploy(int argc, char **argv)
 
 static int cmd_help(int argc, char **argv)
 {
+	(void)argc;
+
 	printf("Usage: %s COMMAND [SUB-COMMAND] args...\n\n", argv[0]);
 	printf("pvtx manages Pantavisor revision transactions. A transaction\n");
 	printf("starts with 'begin', is built up with 'add'/'remove', and is\n");
@@ -233,7 +243,6 @@ static int cmd_help(int argc, char **argv)
 	       "from stdin. For remote transactions, objects are uploaded to");
 	printf("%-32s%s\n", " ",
 	       "pv-ctrl directly; for local ones, saved to the object dir.");
-
 	printf("  %-30s", "remove <part>");
 	printf("Remove a named part (container/component) from the current\n");
 	printf("%-32s%s\n", " ", "transaction's state JSON.");

@@ -23,7 +23,7 @@
 #ifndef PV_PVTX_CTRL_H
 #define PV_PVTX_CTRL_H
 
-#include "pvtx_error.h"
+#include <pvtx/error.h>
 #include "pvtx_tar.h"
 
 #include <stddef.h>
