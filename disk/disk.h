@@ -23,6 +23,7 @@
 #ifndef PV_DISK_H
 #define PV_DISK_H
 
+#include <stdbool.h>
 #include <string.h>
 
 #include "utils/list.h"
@@ -82,6 +83,11 @@ struct pv_disk {
 	int dual_disks_count;
 	char *init_order[PV_DISK_DUAL_MAX_INIT_ORDER];
 	int init_order_count;
+	// name aliases: volumes may reference the disk by any of these in
+	// addition to ->name. Resolves at lookup time only; all downstream
+	// paths/logs use the canonical ->name of the resolved disk.
+	char **aliases;
+	int aliases_count;
 	// back-pointer to parent disk list (set by pv_disk_add)
 	struct dl_list *disk_list;
 	// pv_disk
@@ -123,7 +129,8 @@ static inline pv_disk_format_t pv_disk_str_to_format(const char *format_str)
 	return DISK_FORMAT_UNKNOWN;
 }
 
-static inline const char *pv_disk_dm_crypt_mode_to_str(pv_disk_dm_crypt_mode_t mode)
+static inline const char *
+pv_disk_dm_crypt_mode_to_str(pv_disk_dm_crypt_mode_t mode)
 {
 	switch (mode) {
 	case DISK_DM_CRYPT_MODE_UNKNOWN:
@@ -159,7 +166,8 @@ static inline const char *pv_disk_type_to_str(pv_disk_t type)
 	return "unknown";
 }
 
-static inline pv_disk_dm_crypt_mode_t pv_disk_dm_crypt_str_to_mode(const char *mode_str)
+static inline pv_disk_dm_crypt_mode_t
+pv_disk_dm_crypt_str_to_mode(const char *mode_str)
 {
 	if (mode_str) {
 		if (!strcmp(mode_str, "mainline"))
@@ -193,6 +201,19 @@ static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 
 struct pv_disk *pv_disk_find(struct dl_list *disks, const char *name);
 
+/* Returns true if `name` matches this disk's canonical ->name or any of
+ * its aliases. */
+bool pv_disk_has_name(const struct pv_disk *d, const char *name);
+
+/* Sanity-check the disk list as a whole. Returns 0 on success, -1 on
+ * conflict. The parser must call this once after all disks have been
+ * registered and refuse to boot if it fails. Checks:
+ *   - no alias shadows another disk's canonical name
+ *   - no alias is shared between two disks
+ *   - aliases array and name are non-empty strings
+ */
+int pv_disk_list_validate(struct dl_list *disks);
+
 /* Disks with names starting with '_' are internal — intended only as
  * sub-disk references for composite types (dual, future raid, etc.).
  * Volumes should not reference them directly. */
@@ -200,7 +221,6 @@ static inline bool pv_disk_is_internal(struct pv_disk *d)
 {
 	return d->name && d->name[0] == '_';
 }
-
 
 extern struct pv_disk_impl zram_impl;
 extern struct pv_disk_impl crypt_impl;

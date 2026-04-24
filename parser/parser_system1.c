@@ -249,8 +249,8 @@ static pv_disk_format_t parse_disks_get_format(const char *str,
 	return format;
 }
 
-static pv_disk_dm_crypt_mode_t parse_disks_dm_crypt_get_mode(const char *str,
-				jsmntok_t *diskv, int diskc)
+static pv_disk_dm_crypt_mode_t
+parse_disks_dm_crypt_get_mode(const char *str, jsmntok_t *diskv, int diskc)
 {
 	char *mode_str = pv_json_get_value(str, "mode", diskv, diskc);
 	pv_disk_dm_crypt_mode_t mode = pv_disk_dm_crypt_str_to_mode(mode_str);
@@ -338,10 +338,12 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 
 		if (d->type == DISK_UNKNOWN) {
 			if (lenient) {
-				pv_log(WARN, "disk '%s' has unknown type, skipping",
+				pv_log(WARN,
+				       "disk '%s' has unknown type, skipping",
 				       d->name ? d->name : "(null)");
 				dl_list_del(&d->list);
-				t = t + (jsmnutil_object_key_count(str, diskv) * 2);
+				t = t +
+				    (jsmnutil_object_key_count(str, diskv) * 2);
 				free(d->name);
 				free(d->path);
 				free(d->mount_target);
@@ -369,7 +371,8 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 		d->format = parse_disks_get_format(str, diskv, diskc);
 		if ((d->type == DISK_SWAP || d->type == DISK_VOLUME) &&
 		    d->format == DISK_FORMAT_UNKNOWN) {
-			pv_log(WARN, "new disk format = UNKNOWN - likely that mount fails");
+			pv_log(WARN,
+			       "new disk format = UNKNOWN - likely that mount fails");
 		}
 
 		d->def = parse_disks_get_default(str, diskv, diskc);
@@ -377,20 +380,68 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 			str, "migrate_keyblob", diskv, diskc);
 		d->mounted = false;
 
+		/* Optional name aliases — lets volumes refer to this disk
+		 * by a synonym. Collisions are rejected later by
+		 * pv_disk_list_validate(). */
+		char *aliases_str =
+			pv_json_get_value(str, "aliases", diskv, diskc);
+		if (aliases_str) {
+			jsmntok_t *atokv = NULL;
+			int atokc;
+			if (jsmnutil_parse_json(aliases_str, &atokv, &atokc) >
+			    0) {
+				int acount = jsmnutil_array_count(aliases_str,
+								  atokv);
+				if (acount > 0) {
+					d->aliases =
+						calloc(acount, sizeof(char *));
+					if (d->aliases) {
+						int aremain = acount;
+						jsmntok_t *at = atokv + 1;
+						for (int i = 0; i < acount;
+						     i++) {
+							char *entry =
+								pv_json_array_get_one_str(
+									aliases_str,
+									&aremain,
+									&at);
+							if (entry)
+								d->aliases
+									[d->aliases_count++] =
+									entry;
+						}
+					}
+				}
+				free(atokv);
+			}
+			free(aliases_str);
+		}
+
 		// parse dual mode arrays
 		if (d->type == DISK_DUAL) {
-			char *disks_str = pv_json_get_value(str, "disks", diskv, diskc);
+			char *disks_str =
+				pv_json_get_value(str, "disks", diskv, diskc);
 			if (disks_str) {
 				jsmntok_t *dtokv = NULL;
 				int dtokc;
-				if (jsmnutil_parse_json(disks_str, &dtokv, &dtokc) > 0) {
-					int dcount = jsmnutil_array_count(disks_str, dtokv);
+				if (jsmnutil_parse_json(disks_str, &dtokv,
+							&dtokc) > 0) {
+					int dcount = jsmnutil_array_count(
+						disks_str, dtokv);
 					int dremain = dcount;
 					jsmntok_t *dt = dtokv + 1;
-					for (int i = 0; i < dcount && i < PV_DISK_DUAL_MAX_DISKS; i++) {
-						char *entry = pv_json_array_get_one_str(disks_str, &dremain, &dt);
+					for (int i = 0;
+					     i < dcount &&
+					     i < PV_DISK_DUAL_MAX_DISKS;
+					     i++) {
+						char *entry =
+							pv_json_array_get_one_str(
+								disks_str,
+								&dremain, &dt);
 						if (entry) {
-							d->dual_disks[d->dual_disks_count++] = entry;
+							d->dual_disks
+								[d->dual_disks_count++] =
+								entry;
 						}
 					}
 					free(dtokv);
@@ -398,18 +449,29 @@ static int parse_disks_ex(struct pv_state *s, char *value, bool lenient)
 				free(disks_str);
 			}
 
-			char *order_str = pv_json_get_value(str, "init_order", diskv, diskc);
+			char *order_str = pv_json_get_value(str, "init_order",
+							    diskv, diskc);
 			if (order_str) {
 				jsmntok_t *otokv = NULL;
 				int otokc;
-				if (jsmnutil_parse_json(order_str, &otokv, &otokc) > 0) {
-					int ocount = jsmnutil_array_count(order_str, otokv);
+				if (jsmnutil_parse_json(order_str, &otokv,
+							&otokc) > 0) {
+					int ocount = jsmnutil_array_count(
+						order_str, otokv);
 					int oremain = ocount;
 					jsmntok_t *ot = otokv + 1;
-					for (int i = 0; i < ocount && i < PV_DISK_DUAL_MAX_INIT_ORDER; i++) {
-						char *entry = pv_json_array_get_one_str(order_str, &oremain, &ot);
+					for (int i = 0;
+					     i < ocount &&
+					     i < PV_DISK_DUAL_MAX_INIT_ORDER;
+					     i++) {
+						char *entry =
+							pv_json_array_get_one_str(
+								order_str,
+								&oremain, &ot);
 						if (entry) {
-							d->init_order[d->init_order_count++] = entry;
+							d->init_order
+								[d->init_order_count++] =
+								entry;
 						}
 					}
 					free(otokv);
@@ -1755,6 +1817,15 @@ static struct pv_state *system1_parse_disks(struct pv_state *this,
 		value = NULL;
 	}
 
+	/* All disks from disks.json / disks_v3.json have been parsed —
+	 * enforce alias/name uniqueness before any volume tries to
+	 * resolve against this list. */
+	if (this && pv_disk_list_validate(&this->disks)) {
+		pv_log(ERROR, "disk alias validation failed");
+		this = NULL;
+		goto out;
+	}
+
 out:
 	if (tokv)
 		free(tokv);
@@ -2084,6 +2155,15 @@ static struct pv_state *parse_device(struct pv_state *this, char *buf)
 		}
 		free(value);
 		value = NULL;
+	}
+
+	/* Validate disk aliases after disks / disks_v2 / disks_v3 are all
+	 * in. Volumes parsed below will resolve against this set — bail
+	 * out now if any alias shadows or clashes. */
+	if (pv_disk_list_validate(&this->disks)) {
+		pv_log(ERROR, "disk alias validation failed in device.json");
+		this = NULL;
+		goto out;
 	}
 
 	value = pv_json_get_value(buf, "volumes", tokv, tokc);

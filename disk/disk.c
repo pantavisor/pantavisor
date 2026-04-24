@@ -71,7 +71,96 @@ static void pv_disk_free(struct pv_disk *disk)
 	for (int i = 0; i < disk->init_order_count; i++)
 		free(disk->init_order[i]);
 
+	if (disk->aliases) {
+		for (int i = 0; i < disk->aliases_count; i++)
+			free(disk->aliases[i]);
+		free(disk->aliases);
+	}
+
 	free(disk);
+}
+
+bool pv_disk_has_name(const struct pv_disk *d, const char *name)
+{
+	if (!d || !name)
+		return false;
+	if (d->name && !strcmp(d->name, name))
+		return true;
+	for (int i = 0; i < d->aliases_count; i++) {
+		if (d->aliases[i] && !strcmp(d->aliases[i], name))
+			return true;
+	}
+	return false;
+}
+
+int pv_disk_list_validate(struct dl_list *disks)
+{
+	if (!disks)
+		return 0;
+
+	struct pv_disk *d, *tmp;
+	/* Every canonical name must be non-empty. Collect them first so
+	 * we can cross-check aliases against them in a second pass. */
+	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
+	{
+		if (!d->name || !d->name[0]) {
+			pv_log(ERROR, "disk list contains an unnamed disk");
+			return -1;
+		}
+	}
+
+	/* Check aliases:
+	 *   1. non-empty
+	 *   2. must not equal any canonical disk name (shadowing)
+	 *   3. must be unique across the whole list (no two disks share one)
+	 *
+	 * Alias equal to the owning disk's own ->name is accepted as a no-op
+	 * (harmless redundancy), but an alias equal to a *different* disk's
+	 * name is a hard conflict.
+	 */
+	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
+	{
+		for (int i = 0; i < d->aliases_count; i++) {
+			const char *a = d->aliases[i];
+			if (!a || !a[0]) {
+				pv_log(ERROR,
+				       "disk '%s' has empty alias at index %d",
+				       d->name, i);
+				return -1;
+			}
+
+			struct pv_disk *d2, *tmp2;
+			dl_list_for_each_safe(d2, tmp2, disks, struct pv_disk,
+					      list)
+			{
+				/* (2) alias shadowing another disk's name */
+				if (d2 != d && d2->name &&
+				    !strcmp(d2->name, a)) {
+					pv_log(ERROR,
+					       "disk '%s' alias '%s' conflicts with canonical name of disk '%s'",
+					       d->name, a, d2->name);
+					return -1;
+				}
+				/* (3) same alias on another disk */
+				if (d2 != d) {
+					for (int j = 0; j < d2->aliases_count;
+					     j++) {
+						if (d2->aliases[j] &&
+						    !strcmp(d2->aliases[j],
+							    a)) {
+							pv_log(ERROR,
+							       "alias '%s' is claimed by both disk '%s' and disk '%s'",
+							       a, d->name,
+							       d2->name);
+							return -1;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return 0;
 }
 
 void pv_disk_empty(struct dl_list *disks)
@@ -279,4 +368,3 @@ struct pv_disk *pv_disk_find(struct dl_list *disks, const char *name)
 
 	return NULL;
 }
-

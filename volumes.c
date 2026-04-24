@@ -129,8 +129,16 @@ struct pv_volume *pv_volume_add_with_disk(struct pv_state *s, char *name,
 	dl_list_for_each_safe(d, tmp, disks, struct pv_disk, list)
 	{
 		// if no disk name requested: use the default
-		if ((!disk && d->def) || (disk && !strcmp(d->name, disk))) {
+		if (!disk && d->def) {
 			v->disk = d;
+			break;
+		}
+		if (disk && pv_disk_has_name(d, disk)) {
+			v->disk = d;
+			if (strcmp(d->name, disk))
+				pv_log(INFO,
+				       "volume '%s' disk ref '%s' resolved to '%s' via alias",
+				       name, disk, d->name);
 			break;
 		}
 	}
