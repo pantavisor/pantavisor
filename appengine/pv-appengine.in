@@ -119,7 +119,7 @@ exec_run() {
 		mount -t cgroup2 none /sys/fs/cgroup || true
 		mkdir -p /storage
 		mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage || true
-		mkdir -p /volumes
+		mkdir -p /volumes @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes
 		mount --bind @CMAKE_INSTALL_RUNSTATEDIR@/pv/volumes /volumes || true
 		if [ "$valgrind" = "true" ]; then
 			mkdir -p /tmp/valgrind
