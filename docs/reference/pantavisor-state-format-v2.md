@@ -98,6 +98,7 @@ examples.
 | Key | Value Type | Default | Description |
 |:---|:---|:---:|:---|
 | `name` | string | **Mandatory** | Unique name used in `run.json` storage keys and mount paths. |
+| `aliases` | string array | empty | Additional names this disk answers to. Volumes referring to any alias resolve to this disk. Aliases must not shadow another disk's `name` or be claimed by more than one disk; conflicts make the state refuse to boot. See [Aliases](../overview/disks.md#aliases) in the overview. |
 | `type` | enum | **Mandatory** | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk`, `dual`, `directory`. |
 | `path` | string | **Mandatory** (crypt, swap, vol) | Device/image path. CAAM v2: `-v2 <img>,<size>,<key>`. DCP/versatile: `<img>,<size>,<key>`. |
 | `mode` | enum | **Mandatory** (crypt) | `mainline` or `nxp`. Selects key subsystem. |
