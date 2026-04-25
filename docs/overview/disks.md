@@ -362,6 +362,52 @@ volume 'docker--secrets' requires disk 'dm-secrets' which was not found
 This prevents silent fallthrough to another disk or diskless operation
 when a required disk is missing.
 
+### Aliases
+
+A disk may declare additional names via the `aliases` array. Volumes
+referring to any alias resolve to the same `pv_disk` as the canonical
+`name`. This is a lookup-time convenience — all downstream paths,
+mountpoints, and log lines continue to use the canonical `name`, so
+aliasing never produces a ghost mount or path ambiguity.
+
+```json
+"disks": [
+    {
+        "name": "dm-internal-secrets",
+        "type": "dm-crypt-versatile",
+        "path": "/storage/dm-crypt-files/dm-internal-secrets/versatile.img,2,versatile_key-internal_secrets",
+        "aliases": ["dm-versatile"]
+    }
+]
+```
+
+A container whose `run.json` storage section declares
+`"disk": "dm-versatile"` then resolves to `dm-internal-secrets`.
+
+When a volume resolves through an alias, pantavisor logs an INFO line
+naming both the alias used and the canonical disk:
+
+```
+volume 'docker--var-dmcrypt-volume' disk ref 'dm-versatile' resolved to 'dm-internal-secrets' via alias
+```
+
+Aliases are useful when a prebuilt container image references a disk
+name your device skel doesn't ship, and editing the upstream container
+is not an option.
+
+#### Validation
+
+Pantavisor refuses to boot the revision if any of these hold for the
+final merged disk list (across `disks`, `disks_v2`, and `disks_v3`):
+
+- a disk has an empty `name` or any empty alias string;
+- an alias matches another disk's canonical `name` (shadowing);
+- two disks declare the same alias.
+
+An alias equal to the disk's own `name` is accepted as a no-op. The
+strict missing-disk check above is **not weakened** by aliases — an
+unknown disk reference still fails the volume mount.
+
 ## Boot Sequence
 
 1. **Swap disks** — `pv_disk_mount_swap()` mounts all `swap-disk` type disks
