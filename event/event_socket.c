@@ -61,6 +61,15 @@ void pv_event_socket_ignore(struct pv_event_socket *listener)
 
 	pv_log(DEBUG, "stop listening event to socket fd %d", listener->fd);
 
+	/* event_del removes the fd from the epoll set while it is still
+	 * open; without it, callers that close(fd) before pv_event_socket_ignore
+	 * leak the registration into the epoll set. The kernel later reuses
+	 * the fd number for an unrelated file, libevent keeps firing the
+	 * stale EV_PERSIST callback on every iteration (level-triggered
+	 * EPOLLHUP / EPOLLERR for regular files), and pv-main-loop spins
+	 * at full CPU. event_free alone does not guarantee EPOLL_CTL_DEL
+	 * because the underlying fd may already be closed by then. */
+	event_del(listener->ev);
 	event_free(listener->ev);
 	listener->ev = NULL;
 }
