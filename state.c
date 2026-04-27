@@ -116,6 +116,8 @@ void pv_state_free(struct pv_state *s)
 		free(s->bsp.img.ut.fit);
 	} else if (s->bsp.img.rpiab.bootimg) {
 		free(s->bsp.img.rpiab.bootimg);
+	} else if (s->bsp.img.efiab.bootimg) {
+		free(s->bsp.img.efiab.bootimg);
 	} else {
 		if (s->bsp.img.std.kernel)
 			free(s->bsp.img.std.kernel);
@@ -266,8 +268,21 @@ void pv_state_print(struct pv_state *s)
 		return;
 
 	pv_log(DEBUG, "state %s:", s->rev);
-	pv_log(DEBUG, " kernel: '%s'", s->bsp.img.std.kernel);
-	pv_log(DEBUG, " initrd: '%s'", s->bsp.img.std.initrd);
+	if (s->bsp.img.ut.fit) {
+		pv_log(DEBUG, " fit: '%s'", s->bsp.img.ut.fit);
+	} else if (s->bsp.img.efiab.bootimg &&
+		   pv_config_get_bootloader_type() == BL_EFIAB) {
+		pv_log(DEBUG, " efiab: '%s'", s->bsp.img.efiab.bootimg);
+	} else if (s->bsp.img.rpiab.bootimg) {
+		pv_log(DEBUG, " rpiab: '%s'", s->bsp.img.rpiab.bootimg);
+	} else {
+		pv_log(DEBUG, " kernel: '%s'",
+		       s->bsp.img.std.kernel ? s->bsp.img.std.kernel :
+					       "(null)");
+		pv_log(DEBUG, " initrd: '%s'",
+		       s->bsp.img.std.initrd ? s->bsp.img.std.initrd :
+					       "(null)");
+	}
 	struct pv_group *g, *tmp_g;
 	struct dl_list *groups = &s->groups;
 	dl_list_for_each_safe(g, tmp_g, groups, struct pv_group, list)

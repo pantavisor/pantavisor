@@ -100,6 +100,7 @@ void pv_paths_storage_config_file(char *buf, size_t size, const char *name);
 #define GRUBENV_FNAME "grubenv"
 #define UBOOTTXT_FNAME "uboot.txt"
 #define RPIABTXT_FNAME "rpiab.txt"
+#define EFIABTXT_FNAME "efiab.txt"
 
 void pv_paths_storage_boot_file(char *buf, size_t size, const char *name);
 
