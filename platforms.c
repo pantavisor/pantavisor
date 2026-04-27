@@ -1014,9 +1014,15 @@ static void _read_platform_pipefd_cb(int fd, short event, void *arg)
 	while (read(p->pipefd[0], &p->init_pid, sizeof(pid_t)) < 0 &&
 	       errno == EINTR)
 		;
+	/* Stop libevent listening before closing the fd. Otherwise EPOLL_CTL_DEL
+	 * cannot be issued on a still-valid fd, the registration leaks into the
+	 * epoll set, the kernel reuses the fd number for an unrelated file
+	 * (squashfs loop, socketpair, pipe), and the stale EV_PERSIST entry
+	 * keeps firing EPOLLHUP/EPOLLERR every iteration — pv-main-loop pegs
+	 * at ~25% CPU per leaked listener. */
+	pv_event_socket_ignore(&p->pipefd_listener);
 	close(p->pipefd[0]);
 	p->pipefd[0] = -1;
-	pv_event_socket_ignore(&p->pipefd_listener);
 
 	if (p->init_pid <= 0) {
 		pv_log(WARN, "could not start platform '%s'", p->name);
