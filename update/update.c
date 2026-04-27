@@ -231,7 +231,6 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		if (pv_update_is_final()) {
 			pv_log(WARN, "progress already in a final state");
 			_call_report_cb(u->rev, progress_str);
-			free(progress_str);
 			goto out;
 		} else {
 			pv_log(DEBUG, "progress not final, queueing again");
@@ -297,6 +296,8 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		_finish_update_installation();
 	}
 out:
+	if (progress_str)
+		free(progress_str);
 	if (pv_update_is_final())
 		pv_update_finish();
 }

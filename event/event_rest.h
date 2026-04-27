@@ -22,6 +22,8 @@
 #ifndef PV_EVENT_REST_H
 #define PV_EVENT_REST_H
 
+#include <sys/types.h>
+
 #include <event2/event.h>
 #include <event2/http.h>
 
@@ -30,13 +32,18 @@ void pv_event_rest_cleanup(void);
 
 int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
-	const char *endpoint, const char *token, const char *body,
-	void (*chunk_cb)(struct evhttp_request *, void *),
+	const char *endpoint, const char *autotok, const char *token,
+	const char *body, void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx);
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
 			      void *ctx);
+int pv_event_rest_send_file_by_url(const char *url, const char *path,
+				   off_t size,
+				   void (*done_cb)(struct evhttp_request *,
+						   void *),
+				   void *ctx);
 
 int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 			      size_t max_len);

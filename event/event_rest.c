@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
@@ -210,8 +211,8 @@ static int _header_cb(struct evhttp_request *req, void *ctx)
 
 int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
-	const char *endpoint, const char *token, const char *body,
-	void (*chunk_cb)(struct evhttp_request *, void *),
+	const char *endpoint, const char *autotok, const char *token,
+	const char *body, void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx)
 {
 	if (!pv_event_get_base())
@@ -276,6 +277,10 @@ int pv_event_rest_send_by_components(
 	_add_header(output_headers, "Host", host);
 	_add_header(output_headers, "Connection", "close");
 	_add_header(output_headers, "User-Agent", pv_user_agent);
+
+	if (autotok)
+		_add_header(output_headers, "Pantahub-Devices-Auto-Token-V1",
+			    autotok);
 
 	if (token) {
 		char bearer[1024];
@@ -364,9 +369,155 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 		path = "/";
 
 	ret = pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
-					       chunk_cb, done_cb, ctx);
+					       NULL, chunk_cb, done_cb, ctx);
 
 out:
+	if (http_uri)
+		evhttp_uri_free(http_uri);
+
+	return ret;
+}
+
+int pv_event_rest_send_file_by_url(const char *url, const char *path,
+				   off_t size,
+				   void (*done_cb)(struct evhttp_request *,
+						   void *),
+				   void *ctx)
+{
+	int ret = -1, port, fd = -1;
+	const char *scheme, *host, *uri_path, *query;
+	char endpoint[PATH_MAX];
+	struct evhttp_uri *http_uri = NULL;
+	struct bufferevent *bev = NULL;
+	struct evhttp_connection *evcon = NULL;
+	struct evhttp_request *req = NULL;
+	mbedtls_dyncontext *ssl = NULL;
+
+	http_uri = evhttp_uri_parse(url);
+	if (!http_uri) {
+		pv_log(WARN, "could not parse URL");
+		goto out;
+	}
+
+	scheme = evhttp_uri_get_scheme(http_uri);
+	if (!scheme || !pv_str_matches(scheme, strlen(scheme), "https",
+				       strlen("https"))) {
+		pv_log(WARN, "https is mandatory");
+		goto out;
+	}
+
+	host = evhttp_uri_get_host(http_uri);
+	if (!host) {
+		pv_log(WARN, "could not get host");
+		goto out;
+	}
+
+	port = evhttp_uri_get_port(http_uri);
+	if (port < 0)
+		port = 443;
+
+	uri_path = evhttp_uri_get_path(http_uri);
+	if (!uri_path || !strlen(uri_path))
+		uri_path = "/";
+
+	query = evhttp_uri_get_query(http_uri);
+	if (query)
+		snprintf(endpoint, sizeof(endpoint), "%s?%s", uri_path, query);
+	else
+		snprintf(endpoint, sizeof(endpoint), "%s", uri_path);
+
+	fd = open(path, O_RDONLY);
+	if (fd < 0) {
+		pv_log(WARN, "could not open '%s': %s", path, strerror(errno));
+		goto out;
+	}
+
+	pv_log(TRACE, "PUT %s HTTP/1.1", endpoint);
+
+	ssl = bufferevent_mbedtls_dyncontext_new(&config);
+	mbedtls_ssl_set_hostname(ssl, host);
+
+	bev = bufferevent_mbedtls_socket_new(
+		pv_event_get_base(), -1, ssl, BUFFEREVENT_SSL_CONNECTING,
+		BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	if (!bev) {
+		pv_log(ERROR, "bufferevent_mbedtls_socket_new failed");
+		goto out;
+	}
+
+	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
+
+	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
+						       NULL, bev, host, port);
+	if (!evcon) {
+		pv_log(ERROR, "evhttp_connection_base_bufferevent_new failed");
+		goto out;
+	}
+
+	evhttp_connection_set_family(evcon, AF_INET);
+
+	int retries = pv_config_get_int(PH_LIBEVENT_HTTP_RETRIES);
+	evhttp_connection_set_retries(evcon, retries);
+
+	int timeout = pv_config_get_int(PH_LIBEVENT_HTTP_TIMEOUT);
+	evhttp_connection_set_timeout(evcon, timeout);
+
+	const struct timeval time = { timeout, 0 };
+	evhttp_connection_set_timeout_tv(evcon, &time);
+	evhttp_connection_set_connect_timeout_tv(evcon, &time);
+	evhttp_connection_set_read_timeout_tv(evcon, &time);
+	evhttp_connection_set_write_timeout_tv(evcon, &time);
+
+	req = evhttp_request_new(done_cb, ctx);
+	if (!req) {
+		pv_log(ERROR, "evhttp_request_new failed");
+		goto out;
+	}
+
+	evhttp_request_set_error_cb(req, _print_error_cb);
+
+	struct evkeyvalq *output_headers;
+	output_headers = evhttp_request_get_output_headers(req);
+
+	_add_header(output_headers, "Host", host);
+	_add_header(output_headers, "Connection", "close");
+	_add_header(output_headers, "User-Agent", pv_user_agent);
+	_add_header(output_headers, "Content-Type", "application/json");
+
+	char buf[64];
+	evutil_snprintf(buf, sizeof(buf) - 1, "%jd", (intmax_t)size);
+	_add_header(output_headers, "Content-Length", buf);
+
+	struct evbuffer *output_buffer;
+	output_buffer = evhttp_request_get_output_buffer(req);
+	// evbuffer_add_file takes ownership of fd; close only on error path below
+	if (evbuffer_add_file(output_buffer, fd, 0, size) != 0) {
+		pv_log(ERROR, "evbuffer_add_file failed");
+		goto out;
+	}
+	fd = -1; // ownership transferred
+
+	int res;
+	res = evhttp_make_request(evcon, req, EVHTTP_REQ_PUT, endpoint);
+	if (res != 0) {
+		pv_log(ERROR, "evhttp_make_request returned code %d", res);
+		goto out;
+	}
+	evhttp_connection_free_on_completion(evcon);
+
+	pv_log(TRACE, "add event: type='rest' done_cb=%p req='PUT %s HTTP/1.1'",
+	       (void *)done_cb, endpoint);
+
+	ret = 0;
+out:
+	if (fd >= 0)
+		close(fd);
+	if (ret != 0) {
+		if (evcon)
+			evhttp_connection_free(evcon);
+		else if (bev)
+			bufferevent_free(bev);
+	}
 	if (http_uri)
 		evhttp_uri_free(http_uri);
 
