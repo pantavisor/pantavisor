@@ -763,12 +763,28 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 	size = jsmnutil_array_count(buf, tokv);
 	if (size <= 0)
 		goto out;
+	/* Iterate the array of service objects directly off the parsed
+	 * jsmn token stream rather than via pv_json_array_get_one_str.
+	 * That helper advances *tok by exactly one token per call which
+	 * is fine for arrays of primitives but lands inside the previous
+	 * object on arrays of objects — second-and-later entries get
+	 * mis-parsed (the first key of the prior object surfaces as a
+	 * bogus element with no `name`, and platform validation then
+	 * fails with "required service '(null)' not found"). Walk the
+	 * subtree explicitly using start/end byte offsets, bounded by
+	 * tokv+tokc so we never read past the token array. */
 	t = tokv + 1;
-	for (int i = 0; i < size; i++) {
-		int svc_c;
-		char *svc_s = pv_json_array_get_one_str(buf, &size, &t);
+	jsmntok_t *tok_end = tokv + tokc;
+	for (int i = 0; i < size && t < tok_end; i++) {
+		int el_start = t->start;
+		int el_end = t->end;
+		int el_len = el_end - el_start;
+		char *svc_s = calloc(el_len + 1, 1);
 		if (!svc_s)
 			break;
+		memcpy(svc_s, buf + el_start, el_len);
+
+		int svc_c;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
 			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
 			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
@@ -796,6 +812,14 @@ static int platform_services_add(struct pv_platform *p, plat_service_t type,
 						svc_s, NULL, NULL, NULL);
 		}
 		free(svc_s);
+
+		/* Advance past the entire subtree of this element. Any
+		 * descendant token has start > el_start and start < el_end;
+		 * stop when we land on a token whose start is at or past
+		 * el_end (i.e. the next sibling). */
+		t++;
+		while (t < tok_end && t->start < el_end)
+			t++;
 	}
 	ret = 1;
 out:
@@ -868,11 +892,22 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 			goto out;
 		t = tokv + 1;
 	}
-	for (int i = 0; i < size; i++) {
-		int svc_c;
-		char *svc_s = pv_json_array_get_one_str(buf, &size, &t);
+	/* Walk the array of objects via byte offsets — same reasoning
+	 * as platform_services_add. The bound is the end of whichever
+	 * token array we just parsed: services_tokv if we used the
+	 * new {"services":[...]} format, otherwise tokv. */
+	jsmntok_t *tok_end =
+		services_tokv ? services_tokv + services_tokc : tokv + tokc;
+	for (int i = 0; i < size && t < tok_end; i++) {
+		int el_start = t->start;
+		int el_end = t->end;
+		int el_len = el_end - el_start;
+		char *svc_s = calloc(el_len + 1, 1);
 		if (!svc_s)
 			break;
+		memcpy(svc_s, buf + el_start, el_len);
+
+		int svc_c;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
 			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
 			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
@@ -889,6 +924,10 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 			free(sv);
 		}
 		free(svc_s);
+
+		t++;
+		while (t < tok_end && t->start < el_end)
+			t++;
 	}
 	ret = 1;
 out:
