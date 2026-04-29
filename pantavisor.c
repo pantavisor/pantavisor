@@ -200,7 +200,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
 		if (!json) {
-			pv_log(ERROR, "get_state_json returned NULL for rev '%s'",
+			pv_log(ERROR,
+			       "get_state_json returned NULL for rev '%s'",
 			       pv_bootloader_get_rev());
 			pv_update_set_error_no_state_json();
 			goto out;
@@ -501,6 +502,15 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 			if (pv->unclaimed) {
 				// unclaimed wait operations
 				next_state = pv_wait_unclaimed(pv);
+				// drive the update FSM too: claim is gated on
+				// running a DONE rev, so an unclaimed device that
+				// boots into a try revision (e.g. a local upgrade
+				// installed before claim under
+				// PV_CONTROL_REMOTE_ALWAYS=1) would otherwise
+				// deadlock — claim refuses while INPROGRESS, and
+				// pv_wait_update() never runs from this branch.
+				if (next_state == PV_STATE_WAIT)
+					next_state = pv_wait_update();
 			} else {
 				// rest of network wait stuff: connectivity check. update management,
 				// meta data uppload, ph logger push start...
@@ -883,8 +893,7 @@ static void _arm_wait_timer(int secs, event_callback_fn cb)
 		return;
 
 	if (!wait_timer_ev) {
-		wait_timer_ev =
-			event_new(base, -1, EV_PERSIST, cb, NULL);
+		wait_timer_ev = event_new(base, -1, EV_PERSIST, cb, NULL);
 		if (!wait_timer_ev) {
 			pv_log(ERROR, "could not create wait safety-net timer");
 			return;
@@ -958,7 +967,8 @@ static void _next_state(pv_state_t next_state)
 		return;
 	}
 
-	int interval = (state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
+	int interval =
+		(state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
 
 	// First entry into WAIT / BLOCK_REBOOT: run the handler immediately so
 	// container group progression and command handling do not pay a full
