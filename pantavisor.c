@@ -200,7 +200,8 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 		// after a reboot...
 		json = pv_storage_get_state_json(pv_bootloader_get_rev());
 		if (!json) {
-			pv_log(ERROR, "get_state_json returned NULL for rev '%s'",
+			pv_log(ERROR,
+			       "get_state_json returned NULL for rev '%s'",
 			       pv_bootloader_get_rev());
 			pv_update_set_error_no_state_json();
 			goto out;
@@ -443,6 +444,18 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	ph_logger_toggle(pv->state->rev);
 	// new ph client state machine
 	pv_pantahub_start();
+
+	// rollback local revisions during TESTING only if the Hub was reachable
+	// at some point during this boot and then turned unstable. Devices that
+	// have never seen the Hub (e.g. PV_CONTROL_REMOTE_ALWAYS=1 with no
+	// network yet) keep committing locally and are not penalized.
+	if (pv_update_is_testing() && pv_pantahub_was_ever_online() &&
+	    pv_pantahub_got_any_failure()) {
+		pv_log(ERROR,
+		       "Hub was reachable earlier this boot but became unstable during testing. Rolling back...");
+		pv_update_set_error_hub_unstable();
+		return PV_STATE_ROLLBACK;
+	}
 
 	// we don't want to rollback local revisions because of failing Hub comms
 	// which could happen when PV_CONTROL_REMOTE_ALWAYS=1
@@ -883,8 +896,7 @@ static void _arm_wait_timer(int secs, event_callback_fn cb)
 		return;
 
 	if (!wait_timer_ev) {
-		wait_timer_ev =
-			event_new(base, -1, EV_PERSIST, cb, NULL);
+		wait_timer_ev = event_new(base, -1, EV_PERSIST, cb, NULL);
 		if (!wait_timer_ev) {
 			pv_log(ERROR, "could not create wait safety-net timer");
 			return;
@@ -958,7 +970,8 @@ static void _next_state(pv_state_t next_state)
 		return;
 	}
 
-	int interval = (state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
+	int interval =
+		(state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
 
 	// First entry into WAIT / BLOCK_REBOOT: run the handler immediately so
 	// container group progression and command handling do not pay a full

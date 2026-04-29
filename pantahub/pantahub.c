@@ -952,6 +952,11 @@ bool pv_pantahub_is_online()
 	return pv_pantahub_proto_is_online();
 }
 
+bool pv_pantahub_was_ever_online()
+{
+	return pv_pantahub_proto_was_ever_online();
+}
+
 bool pv_pantahub_got_any_failure()
 {
 	return pv_pantahub_proto_got_any_failure();
