@@ -230,8 +230,7 @@ int pv_bootloader_post_commit_update(const char *rev)
 
 	pv_log(INFO, "revision %s commited", rev);
 
-	const char *env[][2] = { { "PV_TRYBOOT", "true" } };
-	pv_hooks_set_default_env("system-boot-done", rev, "", env, 1);
+	pv_hooks_set_default_env("system-boot-done", rev, "", NULL, 0);
 	int ret = pv_hooks_run("system.d", true);
 	pv_hooks_unset_default_env(NULL, 0);
 
@@ -392,3 +391,4 @@ struct pv_init pv_init_bl = {
 	.init_fn = pv_bl_early_init,
 	.flags = 0,
 };
+
