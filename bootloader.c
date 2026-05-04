@@ -136,6 +136,28 @@ bool pv_bootloader_trying_update()
 			 strlen(pv_bootloader_get_rev()) + 1));
 }
 
+static int pv_bootloader_run_install_hook(const char *pv_op, const char *rev)
+{
+	if (!ops || !ops->get_env_key)
+		return 0;
+
+	char *stored_rev = ops->get_env_key("pv_rev");
+	pv_hooks_set_default_env(pv_op, stored_rev, rev, NULL, 0);
+
+	int ret = pv_hooks_run("system.d", true);
+	pv_hooks_unset_default_env(NULL, 0);
+
+	free(stored_rev);
+
+	if (ret < 0) {
+		pv_log(ERROR, "hook %s has failed, install update failed",
+		       pv_op);
+		return -1;
+	}
+
+	return ret;
+}
+
 int pv_bootloader_install_update(char *rev)
 {
 	int rv = 0;
@@ -145,18 +167,11 @@ int pv_bootloader_install_update(char *rev)
 	       rev);
 
 	if (ops->install_update) {
-		char *stored_rev = ops->get_env_key("pv_rev");
-		pv_hooks_set_default_env("system-before-install-update",
-					 stored_rev, rev, NULL, 0);
+		rv = pv_bootloader_run_install_hook(
+			"system-before-install-update", rev);
 
-		rv = pv_hooks_run("system.d", true);
-		pv_hooks_unset_default_env(NULL, 0);
-		free(stored_rev);
-		if (rv < 0) {
-			pv_log(ERROR,
-			       "hook system-before-install-update has failed");
+		if (rv < 0)
 			return -1;
-		}
 
 		rv = ops->install_update(rev);
 		if (rv < 0) {
@@ -165,33 +180,16 @@ int pv_bootloader_install_update(char *rev)
 		}
 		/* rv > 0 means "success but force reboot" */
 
-		stored_rev = ops->get_env_key("pv_rev");
-		pv_hooks_set_default_env("system-after-install-update",
-					 stored_rev, rev, NULL, 0);
+		rv = pv_bootloader_run_install_hook(
+			"system-after-install-update", rev);
 
-		rv = pv_hooks_run("system.d", true);
-		pv_hooks_unset_default_env(NULL, 0);
-		free(stored_rev);
-
-		if (rv < 0) {
-			pv_log(ERROR,
-			       "hook system-after-install-update has failed");
+		if (rv < 0)
 			return -1;
-		}
 
 	} else {
-		char *stored_rev = ops->get_env_key("pv_rev");
-		pv_hooks_set_default_env("system-install-update", stored_rev,
-					 rev, NULL, 0);
-
-		rv = pv_hooks_run("system.d", true);
-		pv_hooks_unset_default_env(NULL, 0);
-		free(stored_rev);
-
-		if (rv < 0) {
-			pv_log(ERROR, "hook system-install-update has failed");
+		if (pv_bootloader_run_install_hook("system-install-update",
+						   rev) < 0)
 			return -1;
-		}
 	}
 
 	if (pv_bootloader_set_try(rev)) {
