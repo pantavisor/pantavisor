@@ -78,7 +78,7 @@ int pv_hooks_set_var(const char *key, const char *value)
 
 void pv_hooks_unset_var(const char *key)
 {
-	if (!key || !secure_getenv(key))
+	if (!key || !getenv(key))
 		return;
 
 	unsetenv(key);
