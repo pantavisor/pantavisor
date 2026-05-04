@@ -185,7 +185,10 @@ int pv_hooks_run(const char *dirname, bool log)
 	if (count < 0) {
 		pv_log(DEBUG, "couldn't open directory %s: %s", dir,
 		       strerror(errno));
-		return -1;
+		// if hooks directory is not found, we return 0 to avoid
+		// blocks any process. So no directory means no hook to
+		// execute
+		return 0;
 	}
 	int ret = 0;
 	int i = 0;
