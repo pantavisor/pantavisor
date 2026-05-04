@@ -7,6 +7,20 @@ nav_order: 13
 
 Hooks are executable scripts that Pantavisor runs at well-defined lifecycle points. They allow operators to execute custom logic — such as notifying an external service, validating system state, or triggering a reboot — at specific moments during startup, update installation, and platform status goal complete.
 
+## Hooks Are Part of the Revision
+
+Hooks live under `/usr/lib/pantavisor/pv/hooks/system.d/` on the root filesystem, which is part of the BSP layer shipped with each revision. When Pantavisor boots a new revision, it runs that revision's hooks — not the previous one's. This makes hooks a first-class part of the revision contract: if you change a hook, you update the revision.
+
+The implications are significant for `system-start`:
+
+- On a **try-boot** (booting a new, unconfirmed revision), `system-start` runs from the new revision's hook directory.
+- If `system-start` exits non-zero, Pantavisor treats the boot as failed, triggers a reboot, and the bootloader's tryboot counter decrements toward rollback.
+- Once the counter is exhausted, the bootloader selects the last-good revision and the device returns to a known-good state.
+
+`system-start` is therefore a **gate on the revision, not a side-effect**. Use it to validate preconditions that must hold for the new revision to be viable — hardware presence, key material, valid configuration. A failure leaves no persistent state; the system simply reboots or rolls back.
+
+`system-done` is intentionally asymmetric: it fires when all containers have reached their [status goal](containers.md#status-goal), but a non-zero exit is only logged and does not block the transition. Use `system-done` for notifications, telemetry, or late-stage side-effects where partial failure is acceptable. See [Failure Behaviour](#failure-behaviour) for details.
+
 ## Hook Directory
 
 All hooks are placed under:
@@ -30,9 +44,9 @@ Each hook point corresponds to a specific moment in [Pantavisor's lifecycle](pan
 | `PV_OP` value | When it fires |
 |---|---|
 | `system-start` | Early during Pantavisor initialization, before containers are started. |
-| [`system-before-install-update`](updates.md) | Before Pantavisor writes the incoming revision into the [bootloader](bsp.md#bootloader) environment (so the bootloader loads the right kernel on next boot). Only fired on bootloaders that support separate before/after install hooks. |
-| [`system-after-install-update`](updates.md) | After Pantavisor has written the incoming revision into the [bootloader](bsp.md#bootloader) environment. Only fired on bootloaders that support separate before/after install hooks. |
-| [`system-install-update`](updates.md) | Combines before and after into a single hook point, fired on [bootloaders](bsp.md#bootloader) that do not support separate before/after hooks. |
+| [`system-before-install-update`](updates.md) | Before Pantavisor writes the incoming revision into the [bootloader](bsp.md#bootloader) environment (so the bootloader loads the right kernel on next boot). Fired only on backends with a dedicated install step: [`uboot-ab`](bsp.md#uboot-ab) and [`rpiab`](bsp.md#rpiab). |
+| [`system-after-install-update`](updates.md) | After Pantavisor has written the incoming revision into the [bootloader](bsp.md#bootloader) environment. Same backends as `system-before-install-update`: [`uboot-ab`](bsp.md#uboot-ab) and [`rpiab`](bsp.md#rpiab). |
+| [`system-install-update`](updates.md) | Combines before and after into a single hook point. Fired on backends without a dedicated install step: [`uboot`](bsp.md#uboot) and [`grub`](bsp.md#grub). |
 | `system-boot-done` | After the new revision has been committed following a successful try-boot. `PV_TRYBOOT` is always `"true"` at this point. See [environment variables](#environment-variables) |
 | `system-done` | When the platform reaches fully-running state (all containers have met their [status goal](containers.md#status-goal)). |
 
@@ -75,17 +89,22 @@ esac
 exit 0
 ```
 
-Install the script into the hook directory, this is done in build time in the CMakeLists.txt file. As example, on cmake this should be the command to install an script:
+Hooks are installed as part of the BSP build. Operators ship them via a dedicated BSP package or Yocto recipe — not by editing Pantavisor's own source tree. Any packaging mechanism that places an executable file at the hook directory path on the target filesystem is sufficient.
 
-```sh
+For a CMake-based BSP package, the install directive looks like:
+
+```cmake
 install(FILES path/to/50-my-script
 	PERMISSIONS WORLD_READ WORLD_EXECUTE GROUP_READ GROUP_EXECUTE OWNER_READ OWNER_WRITE OWNER_EXECUTE
 	DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks/system.d)
 ```
 
+For a Yocto recipe, use `do_install` to copy the file and `chmod +x` it, or place it under `files/` and use `install -m 0755`.
+
 ## Failure Behaviour
 
 - A hook that exits with a **non-zero status** causes Pantavisor to abort any remaining hooks in the directory and fail the triggering operation.
+- For `system-start`, failure is **fatal**: Pantavisor exits, the device reboots, and the bootloader's tryboot counter decrements. Once the counter reaches zero, the bootloader selects the last-good revision and the device rolls back. Treat `system-start` as a hard gate on the revision.
 - For update hooks (`system-before-install-update`, `system-after-install-update`, `system-install-update`, `system-boot-done`), failure aborts the update process.
-- For `system-done`, failure is logged but does not prevent the platform from transitioning to its running state.
+- For `system-done`, failure is **logged only** and does not prevent the platform from transitioning to its running state. This asymmetry with `system-start` is intentional: `system-done` fires after all containers have reached their status goal and the revision is already running; at that point there is no safe rollback path, so the hook result is informational.
 - Hook output (stdout and stderr) is captured by the [logserver](storage.md#logs) and available in the device logs.

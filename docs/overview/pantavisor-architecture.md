@@ -47,7 +47,10 @@ Each state can be summarized as:
     - Check [revision signatures](storage.md#state-signature)
 * **WAIT**:
     - Start [containers](containers.md) and check its [statuses](containers.md#status)
-    - Manage any ongoing [update](updates.md), incluiding installation, verification, transition, etc.
+    - Run [system-done hooks](hooks.md#hook-points) once all containers have met their [status goal](containers.md#status-goal)
+    - Manage any ongoing [update](updates.md), including installation, verification, transition, etc.
+    - Run [update hooks](hooks.md#hook-points) (`system-before-install-update` / `system-after-install-update` or `system-install-update`) during update installation
+    - Run [system-boot-done hooks](hooks.md#hook-points) after committing a successful try-boot
     - Run [Pantacor Hub client full state machine](remote-control.md#state-machine)
     - Process [control socket](local-control.md) requests
     - Manage [metadata](storage.md#metadata)
