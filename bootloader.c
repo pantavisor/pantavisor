@@ -232,10 +232,10 @@ int pv_bootloader_post_commit_update(const char *rev)
 
 	pv_log(INFO, "revision %s commited", rev);
 
-	const char *env[] = { "PV_TRYBOOT", "true" };
+	const char *env[][2] = { { "PV_TRYBOOT", "true" } };
 	pv_hooks_set_default_env("system-boot-done", rev, "", env, 1);
 	int ret = pv_hooks_run("system.d", true);
-	pv_hooks_unset_default_env(env, 1);
+	pv_hooks_unset_default_env(NULL, 0);
 
 	if (ret < 0) {
 		pv_log(ERROR, "hook system-boot-done has failed");

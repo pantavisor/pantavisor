@@ -25,13 +25,13 @@
 
 #include <stdbool.h>
 
-int pv_hooks_set_env(const char **env, int size);
+int pv_hooks_set_env(const char *env[][2], int size);
 int pv_hooks_set_var(const char *key, const char *value);
 void pv_hooks_unset_var(const char *key);
 void pv_hooks_unset_env(const char **env, int size);
 void pv_hooks_unset_default_env(const char **extra_env, int size);
 void pv_hooks_set_default_env(const char *pv_op, const char *pv_rev,
-			      const char *pv_try, const char **extra_env,
+			      const char *pv_try, const char *extra_env[][2],
 			      int size);
 int pv_hooks_run(const char *dir, bool log);
 

@@ -53,10 +53,10 @@
 #define PV_TRAILS_STORAGE "PV_TRAILS_STORAGE"
 #define PV_STATUS "PV_STATUS"
 
-int pv_hooks_set_env(const char **env, int size)
+int pv_hooks_set_env(const char *env[][2], int size)
 {
-	for (int i = 0; i < size * 2; i += 2) {
-		if (pv_hooks_set_var(env[i], env[i + 1]) != 0)
+	for (int i = 0; i < size; i++) {
+		if (pv_hooks_set_var(env[i][0], env[i][1]) != 0)
 			return -1;
 	}
 
@@ -115,7 +115,7 @@ out:
 }
 
 void pv_hooks_set_default_env(const char *pv_op, const char *pv_rev,
-			      const char *pv_try, const char **extra_env,
+			      const char *pv_try, const char *extra_env[][2],
 			      int size)
 {
 	if (!pv_rev)
