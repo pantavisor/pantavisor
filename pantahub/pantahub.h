@@ -62,6 +62,7 @@ void pv_pantahub_evaluate_state(void);
 bool pv_pantahub_is_reporting(void);
 
 bool pv_pantahub_is_online(void);
+bool pv_pantahub_was_ever_online(void);
 bool pv_pantahub_got_any_failure(void);
 
 bool pv_pantahub_is_progress_queue_empty(void);
