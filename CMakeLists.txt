@@ -27,7 +27,7 @@ set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
 set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
 set(PANTAVISOR_DCP_BLOB_CREATE OFF CACHE BOOL "Build dcp-blob-create tool for DCP trusted key migration")
-set(PANTAVISOR_MOCK_HOOKS ON CACHE BOOL "Add mock test for Pantavisor hooks")
+set(PANTAVISOR_MOCK_HOOKS OFF CACHE BOOL "Add mock test for Pantavisor hooks")
 
 # set cmake defintions
 set(CODE_INSTALL_BASE "\$ENV{DESTDIR}")
