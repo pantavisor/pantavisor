@@ -1,5 +1,9 @@
 #!/bin/sh
 
+case "$PV_REV" in
+*..* | */*) exit 0 ;;
+esac
+
 conf="${0%/*}/../../hooks-mock-conf/$(basename "$0")/$PV_REV.cfg"
 
 printf "looking config at %s" "$conf"
