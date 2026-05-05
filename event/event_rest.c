@@ -484,8 +484,6 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 			pv_log(DEBUG, "wrote part of %zu bytes into '%s'",
 			       total_written, path);
 	}
-	pv_log(DEBUG, "wrote total of %zu bytes out of %zu bytes into '%s'",
-	       total_written, blen, path);
 
 	close(fd);
 
