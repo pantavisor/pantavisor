@@ -91,10 +91,16 @@ void pv_hooks_unset_env(const char **env, int size)
 		pv_hooks_unset_var(env[i]);
 }
 
-static char *get_current_status()
+static char *get_current_status(const char *pv_rev, const char *pv_try)
 {
 	char *status = NULL;
-	char *json = pv_storage_get_rev_progress("current");
+	char *json = NULL;
+
+	if (pv_try && strlen(pv_try) > 0)
+		pv_storage_get_rev_progress(pv_try);
+	else
+		pv_storage_get_rev_progress(pv_rev);
+
 	if (!json)
 		return NULL;
 
@@ -144,7 +150,7 @@ void pv_hooks_set_default_env(const char *pv_op, const char *pv_rev,
 	pv_paths_storage_trail(path, sizeof(path), pv_rev);
 	pv_hooks_set_var(PV_TRAILS_STORAGE, path);
 
-	char *status = get_current_status();
+	char *status = get_current_status(pv_rev, pv_try);
 	if (!status) {
 		pv_log(DEBUG, "couldn't get the current rev status");
 		pv_hooks_set_var(PV_STATUS, "");
