@@ -72,7 +72,7 @@ extern struct pv_pvtx_tar_imp pv_pvtx_tar_bz2;
 static ssize_t read_nointr(struct pv_pvtx_tar_priv *priv, void *buf,
 			   size_t size)
 {
-	ssize_t total_read = 0;
+	size_t total_read = 0;
 	errno = 0;
 
 	while (total_read != size) {
@@ -81,7 +81,7 @@ static ssize_t read_nointr(struct pv_pvtx_tar_priv *priv, void *buf,
 		if (cur_read < 0) {
 			if (errno == EINTR)
 				continue;
-			return total_read == 0 ? cur_read : total_read;
+			return total_read == 0 ? (size_t)cur_read : total_read;
 		}
 		if (cur_read == 0)
 			break;
@@ -103,8 +103,7 @@ static void get_name(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_metadata *meta,
 	memccpy(name, meta->name, '\0', 100);
 }
 
-static int read_remaining_bytes(struct pv_pvtx_tar *tar,
-				struct pv_pvtx_tar_content *con)
+static int read_remaining_bytes(struct pv_pvtx_tar_content *con)
 {
 	char buf[4096];
 	while (pv_pvtx_tar_content_read_block(con, buf, sizeof(buf)) > 0)
@@ -116,7 +115,7 @@ int pv_pvtx_tar_next(struct pv_pvtx_tar *tar, struct pv_pvtx_tar_content *con)
 {
 	pv_pvtx_error_clear(&tar->err);
 
-	if (read_remaining_bytes(tar, con) != 0) {
+	if (read_remaining_bytes(con) != 0) {
 		pv_pvtx_error_set(&tar->err, -1,
 				  "couldn't read remaining bytes");
 		return -1;

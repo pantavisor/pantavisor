@@ -197,6 +197,7 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path,
 			err, -1,
 			"failed to connect to pv-ctrl (%s) after 5 attempts: %s",
 			path, strerror(errno));
+
 		return -1;
 	}
 
@@ -223,8 +224,6 @@ static int send_header(struct pv_pvtx_ctrl *ctrl,
 {
 	pv_pvtx_error_clear(&ctrl->error);
 
-	const char *err = NULL;
-
 	char *head_str = header_to_str(head);
 	if (!head_str) {
 		pv_pvtx_error_set(&ctrl->error, -1,
@@ -243,7 +242,7 @@ const char *pvtx_ctrl_get_data(const char *data, size_t size)
 	if (!p)
 		return NULL;
 
-	if ((p - data) > size)
+	if ((size_t)(p - data) > size)
 		return NULL;
 
 	// return pointer after the delimiter
@@ -358,7 +357,7 @@ static struct pv_pvtx_buffer *read_data(struct pv_pvtx_ctrl *ctrl)
 	size_t body_read = cur_read - header_size;
 	size_t total = len + header_size;
 
-	if (cur_read < total) {
+	if ((size_t)cur_read < total) {
 		if (pv_pvtx_buffer_realloc(buf, total + 1) != 0) {
 			pv_pvtx_error_set(&ctrl->error, -1,
 					  "couldn't reallocate buffer");
@@ -380,6 +379,8 @@ out:
 char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 			     size_t *size)
 {
+	char *data = NULL;
+
 	pv_pvtx_error_clear(&ctrl->error);
 
 	struct pv_pvtx_ctrl_header head = {
@@ -396,7 +397,7 @@ char *pv_pvtx_ctrl_steps_get(struct pv_pvtx_ctrl *ctrl, const char *rev,
 	check_error(buf, &ctrl->error);
 
 	const char *data_ptr = pvtx_ctrl_get_data(buf->data, buf->size);
-	char *data = strdup(data_ptr);
+	data = strdup(data_ptr);
 	*size = strlen(data);
 
 	pv_pvtx_buffer_free(buf);
@@ -445,7 +446,7 @@ int pv_pvtx_ctrl_obj_put(struct pv_pvtx_ctrl *ctrl,
 		return -1;
 	}
 
-	ssize_t written = 0;
+	size_t written = 0;
 	int i = 0;
 
 	while (written < con->size) {

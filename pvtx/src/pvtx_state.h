@@ -20,29 +20,29 @@
  * SOFTWARE.
  */
 
-#ifndef PVTX_TXN_LIB_H
-#define PVTX_TXN_LIB_H
+#ifndef PV_PVTX_STATE_H
+#define PV_PVTX_STATE_H
 
-#include "pvtx_error.h"
+#include <pvtx/error.h>
 
-int pv_pvtx_txn_begin(const char *from, const char *obj_path,
-		      struct pv_pvtx_error *err);
-int pv_pvtx_txn_add_from_disk(const char *path, struct pv_pvtx_error *err);
-int pv_pvtx_txn_add_tar_from_fd(int fd, struct pv_pvtx_error *err);
+#include <stddef.h>
 
-int pv_pvtx_txn_abort(struct pv_pvtx_error *err);
-char *pv_pvtx_txn_commit(struct pv_pvtx_error *err);
-char *pv_pvtx_txn_get_json(struct pv_pvtx_error *err);
-int pv_pvtx_txn_deploy(const char *path, struct pv_pvtx_error *err);
-int pv_pvtx_txn_remove(const char *part, struct pv_pvtx_error *err);
+#define PVTX_STATE_EMPTY "{\"#spec\":\"pantavisor-service-system@1\"}"
 
-// queue API
-int pv_pvtx_queue_new(const char *queue_path, const char *obj_path,
-		      struct pv_pvtx_error *err);
-int pv_pvtx_queue_remove(const char *part, struct pv_pvtx_error *err);
-int pv_pvtx_queue_unpack_from_disk(const char *part, struct pv_pvtx_error *err);
-int pv_pvtx_queue_unpack_tar_from_fd(int fd, struct pv_pvtx_error *err);
-int pv_pvtx_queue_process(const char *from, const char *queue_path,
-			  const char *obj_path, struct pv_pvtx_error *err);
+struct pv_pvtx_state {
+	char *json;
+	size_t len;
+	struct pv_pvtx_state_priv *priv;
+};
+
+struct pv_pvtx_state *pv_pvtx_state_from_str(const char *str, size_t len,
+					     struct pv_pvtx_error *err);
+struct pv_pvtx_state *pv_pvtx_state_from_file(const char *path,
+					      struct pv_pvtx_error *err);
+
+void pv_pvtx_state_free(struct pv_pvtx_state *st);
+
+int pv_pvtx_state_add(struct pv_pvtx_state *dst, struct pv_pvtx_state *src);
+int pv_pvtx_state_remove(struct pv_pvtx_state *st, const char *part);
 
 #endif

@@ -37,7 +37,7 @@ static int get_buf_size(const char *env, size_t min, size_t max)
 		return min;
 
 	errno = 0;
-	int size = strtol(size_str, NULL, 10);
+	size_t size = strtol(size_str, NULL, 10);
 	if (errno != 0 || size < min)
 		return min;
 	if (size > max)
@@ -67,9 +67,6 @@ int pv_pvtx_buffer_realloc(struct pv_pvtx_buffer *buf, size_t new_size)
 
 struct pv_pvtx_buffer *pv_pvtx_buffer_new(size_t size)
 {
-	if (size < 0)
-		return NULL;
-
 	struct pv_pvtx_buffer *buf = calloc(1, sizeof(struct pv_pvtx_buffer));
 	if (!buf)
 		return NULL;
