@@ -1195,9 +1195,24 @@ int pv_platform_start(struct pv_platform *p)
 
 	pv_paths_storage_trail_file(path, PATH_MAX, s->rev, filename);
 
+	// Manifest-level network-anchor invariant for xconnect participants:
+	// any container that touches the service mesh (exports a service via
+	// services.json or requires one via services.required) must declare
+	// a network anchor in run.json — either an IPAM pool or explicit
+	// host mode. Pantavisor never silently rewrites a container's
+	// network config; ambiguity is a hard parse-time failure that flows
+	// through the existing status-goal/rollback machinery.
+	if (pv_platform_is_service_participant(p) && !p->network) {
+		pv_log(ERROR,
+		       "platform '%s' touches xconnect services but declares no network anchor; specify network.pool or network.mode=host in run.json",
+		       p->name);
+		return -1;
+	}
+
 	// Give the backend plugin a chance to veto the start on backend-
 	// specific config problems (e.g. the LXC plugin refuses an IPAM
-	// pool-using container that also bakes lxc.net.* / keep=net).
+	// pool-using container that also bakes lxc.net.* / keep=net, or a
+	// host-net service participant that does NOT bake lxc.net.*).
 	if (ctrl->validate_config && ctrl->validate_config(p, path) != 0) {
 		pv_log(ERROR,
 		       "platform '%s' refused by backend pre-start validation",
@@ -1504,6 +1519,14 @@ bool pv_platform_check_running(struct pv_platform *p)
 	}
 
 	return running;
+}
+
+bool pv_platform_is_service_participant(struct pv_platform *p)
+{
+	if (!p)
+		return false;
+	return !dl_list_empty(&p->services) ||
+	       !dl_list_empty(&p->service_exports);
 }
 
 bool pv_platform_is_installed(struct pv_platform *p)

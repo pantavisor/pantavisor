@@ -217,6 +217,11 @@ void pv_platform_set_recovering(struct pv_platform *p);
 int pv_platform_set_ready(struct pv_platform *p);
 void pv_platform_set_updated(struct pv_platform *p);
 
+// True if the platform participates in the xconnect service mesh,
+// either by exporting a service via services.json or by requiring one
+// via services.required. Used to gate network-anchor invariants.
+bool pv_platform_is_service_participant(struct pv_platform *p);
+
 bool pv_platform_is_installed(struct pv_platform *p);
 bool pv_platform_is_blocked(struct pv_platform *p);
 bool pv_platform_is_starting(struct pv_platform *p);
