@@ -255,11 +255,20 @@ int pv_validate_container_config(struct pv_platform *p, const char *conf_file)
 	FILE *f;
 	char line[512];
 	bool has_net = false;
+	bool is_pool;
+	bool is_host;
+	bool is_participant;
 
 	if (!p || !conf_file)
 		return 0;
 
-	if (!p->network || p->network->mode != NET_MODE_POOL)
+	is_pool = p->network && p->network->mode == NET_MODE_POOL;
+	is_host = p->network && p->network->mode == NET_MODE_HOST;
+	is_participant = pv_platform_is_service_participant(p);
+
+	// Bail early when neither rule applies: no pool to protect from
+	// stale lxc.net.*, and no service participation to require one.
+	if (!is_pool && !(is_host && is_participant))
 		return 0;
 
 	f = fopen(conf_file, "r");
@@ -283,9 +292,16 @@ int pv_validate_container_config(struct pv_platform *p, const char *conf_file)
 	}
 	fclose(f);
 
-	if (has_net) {
+	if (is_pool && has_net) {
 		pv_log(ERROR,
 		       "platform '%s' declares an IPAM pool but its lxc.container.conf already contains lxc.net.* entries — pantavisor will not overwrite them. Remove the baked lxc.net.* config, or drop the PV_NETWORK_POOL reference.",
+		       p->name);
+		return -1;
+	}
+
+	if (is_host && is_participant && !has_net) {
+		pv_log(ERROR,
+		       "platform '%s' declares network.mode=host and participates in xconnect services but its lxc.container.conf has no lxc.net.* entries — host-net service participants must bring their own network config. Add lxc.net.* to the conf, or declare an IPAM pool instead.",
 		       p->name);
 		return -1;
 	}

@@ -751,6 +751,8 @@ static service_type_t service_str_to_type(char *str)
 		return SVC_TYPE_WAYLAND;
 	if (!strcmp(str, "input"))
 		return SVC_TYPE_INPUT;
+	if (!strcmp(str, "tcp"))
+		return SVC_TYPE_TCP;
 	return SVC_TYPE_UNKNOWN;
 }
 
@@ -914,14 +916,24 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
 			char *sock =
 				pv_json_get_value(svc_s, "socket", sv, svc_c);
+			char *port_s =
+				pv_json_get_value(svc_s, "port", sv, svc_c);
+			uint16_t port = 0;
+			if (port_s) {
+				long v = strtol(port_s, NULL, 10);
+				if (v > 0 && v <= 65535)
+					port = (uint16_t)v;
+			}
 			pv_platform_add_service_export(
-				p, service_str_to_type(t_s), n, sock);
+				p, service_str_to_type(t_s), n, sock, port);
 			if (n)
 				free(n);
 			if (t_s)
 				free(t_s);
 			if (sock)
 				free(sock);
+			if (port_s)
+				free(port_s);
 			free(sv);
 		}
 		free(svc_s);

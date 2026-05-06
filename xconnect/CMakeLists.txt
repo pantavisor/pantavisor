@@ -17,13 +17,18 @@ include_directories(
 add_executable(pv-xconnect
     main.c
     plumbing.c
+    services.c
+    services_bridge.c
+    services_nft.c
     plugins/unix.c
     plugins/rest.c
+    plugins/tcp.c
     plugins/drm.c
     plugins/wayland.c
     plugins/dbus.c
     ../utils/json.c
     ../utils/str.c
+    ../utils/sysctl.c
 )
 
 target_link_libraries(pv-xconnect

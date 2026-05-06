@@ -30,6 +30,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "state.h"
 #include "drivers.h"
@@ -43,6 +45,7 @@
 #include "addons.h"
 #include "pantavisor.h"
 #include "ipam.h"
+#include "config.h"
 #include "storage.h"
 #include "metadata.h"
 #include "update/update.h"
@@ -1938,9 +1941,163 @@ static const char *pvx_svc_type_to_str(service_type_t type)
 		return "wayland";
 	case SVC_TYPE_INPUT:
 		return "input";
+	case SVC_TYPE_TCP:
+		return "tcp";
 	default:
 		return "unknown";
 	}
+}
+
+// Tag a service_type_t with its transport family, so xconnect can pick the
+// right data plane (kernel-DNAT for tcp/tcp, userspace proxy otherwise).
+static const char *pvx_svc_transport_str(service_type_t type)
+{
+	return (type == SVC_TYPE_TCP) ? "tcp" : "unix";
+}
+
+// Deterministic ClusterIP from service name. Mirrors xconnect/services.c:
+// FNV-1a hash mapped into 198.18.0.0/15 (RFC 2544 benchmark range, no
+// avahi/zeroconf/Tailscale conflicts). Same algorithm both sides — pv-ctrl
+// computes and emits, xconnect bind/DNATs the same value. Override via
+// PV_XCONNECT_SERVICES_CIDR is honored on the xconnect side; for graph
+// emission we use the same default unless the config override is set, in
+// which case we read it via pv_config_get_str(PV_XCONNECT_SERVICES_CIDR).
+static uint32_t pvx_fnv1a(const char *s)
+{
+	uint32_t h = 0x811c9dc5u;
+	for (; *s; s++) {
+		h ^= (unsigned char)*s;
+		h *= 0x01000193u;
+	}
+	return h;
+}
+
+static int pvx_parse_cidr(const char *cidr, uint32_t *net_host,
+			  uint32_t *host_mask_host)
+{
+	if (!cidr)
+		return -1;
+	char buf[64];
+	strncpy(buf, cidr, sizeof(buf) - 1);
+	buf[sizeof(buf) - 1] = '\0';
+	char *slash = strchr(buf, '/');
+	if (!slash)
+		return -1;
+	*slash = '\0';
+	int prefix = atoi(slash + 1);
+	if (prefix < 0 || prefix > 32)
+		return -1;
+	struct in_addr a;
+	if (inet_aton(buf, &a) == 0)
+		return -1;
+	uint32_t netmask = (prefix == 0) ? 0u : (~0u << (32 - prefix));
+	*net_host = ntohl(a.s_addr) & netmask;
+	*host_mask_host = ~netmask;
+	return 0;
+}
+
+static uint32_t pvx_clusterip_for_name(const char *name)
+{
+	if (!name || !name[0])
+		return 0;
+	uint32_t subnet = 0, host_mask = 0;
+	const char *cidr = pv_config_get_str(PV_XCONNECT_SERVICES_CIDR);
+	if (!cidr || pvx_parse_cidr(cidr, &subnet, &host_mask) != 0) {
+		// Fall back to the same default xconnect uses.
+		pvx_parse_cidr("198.18.0.0/15", &subnet, &host_mask);
+	}
+	uint32_t h = pvx_fnv1a(name);
+	uint32_t host_part = h & host_mask;
+	if (host_part == 0)
+		host_part = 1;
+	if (host_part == host_mask)
+		host_part = host_mask - 1;
+	return htonl(subnet | host_part);
+}
+
+// IPAM-allocated IPv4 (network byte order) on the platform's first
+// pool-mode interface. Returns 0 if no such interface (legacy containers,
+// host-net providers — caller decides the fallback policy).
+static uint32_t pvx_platform_ipam_ipv4(struct pv_platform *p)
+{
+	if (!p || !p->network)
+		return 0;
+	struct pv_platform_network_iface *it;
+	dl_list_for_each(it, &p->network->interfaces,
+			 struct pv_platform_network_iface, list)
+	{
+		if (!it->ipv4_address || !it->ipv4_address[0])
+			continue;
+		char tmp[INET_ADDRSTRLEN + 8];
+		strncpy(tmp, it->ipv4_address, sizeof(tmp) - 1);
+		tmp[sizeof(tmp) - 1] = '\0';
+		char *slash = strchr(tmp, '/');
+		if (slash)
+			*slash = '\0';
+		struct in_addr a;
+		if (inet_aton(tmp, &a) != 0)
+			return a.s_addr;
+	}
+	return 0;
+}
+
+// Find the gateway IP of the IPAM pool that a consumer container sits on.
+// For host-net providers (which bind 0.0.0.0 in the host netns), this is
+// the address the consumer reaches the host at — its own default route.
+// Returns 0 if the consumer has no IPAM-pool interface.
+static uint32_t pvx_consumer_pool_gateway(struct pv_platform *consumer)
+{
+	if (!consumer || !consumer->network)
+		return 0;
+	struct pv_platform_network_iface *it;
+	dl_list_for_each(it, &consumer->network->interfaces,
+			 struct pv_platform_network_iface, list)
+	{
+		if (!it->pool || !it->pool[0])
+			continue;
+		struct pv_ip_pool *pool = pv_ipam_find_pool(it->pool);
+		if (pool && pool->gateway)
+			return pool->gateway; // already network byte order
+	}
+	return 0;
+}
+
+// Resolve the provider IP that pv-xconnect should target for this specific
+// (consumer, provider) link.
+//
+//   1. Provider has an IPAM lease  →  its IPAM IP (pool-to-pool service mesh).
+//   2. Provider is host-net AND consumer is on an IPAM pool  →  the gateway
+//      IP of the consumer's pool. Provider binds 0.0.0.0 in the host netns;
+//      from inside the consumer netns the host is reachable at that gateway.
+//      Lets host-services participate in the service mesh without an IPAM
+//      lease of their own.
+//   3. Provider is host-net AND consumer is host-net  →  127.0.0.1. Both
+//      live in the host netns, so loopback is the natural backend;
+//      pv-xconnect's OUTPUT-chain DNAT rewrites the locally generated
+//      packet from ClusterIP → 127.0.0.1 before routing.
+//   4. Otherwise  →  0.0.0.0. xconnect treats that as no resolvable backend
+//      and the link surfaces unhealthy via /xconnect-status.
+static uint32_t pvx_provider_ipv4_for(struct pv_platform *consumer,
+				      struct pv_platform *provider)
+{
+	uint32_t prov = pvx_platform_ipam_ipv4(provider);
+	if (prov)
+		return prov;
+
+	if (provider && provider->network &&
+	    provider->network->mode == NET_MODE_HOST) {
+		uint32_t gw = pvx_consumer_pool_gateway(consumer);
+		if (gw)
+			return gw;
+
+		// Host-net provider + host-net consumer: backend is loopback.
+		// Reachable only via the OUTPUT-chain DNAT installed by
+		// pv-xconnect's services_nft layer.
+		if (consumer && consumer->network &&
+		    consumer->network->mode == NET_MODE_HOST)
+			return htonl(INADDR_LOOPBACK);
+	}
+	return 0;
 }
 
 char *pv_state_get_xconnect_graph_json(struct pv_state *s)
@@ -2040,6 +2197,73 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 								pv_json_ser_string(
 									&js,
 									exp->socket);
+
+								// Service-IP layer: emit
+								// cluster_ip / provider_ip / ports
+								// / transports for TCP services.
+								// Other types keep legacy shape.
+								if (exp->svc_type ==
+								    SVC_TYPE_TCP) {
+									uint32_t cip =
+										pvx_clusterip_for_name(
+											svc->name);
+									uint32_t pip =
+										pvx_provider_ipv4_for(
+											cp, pp);
+									char ipbuf
+										[INET_ADDRSTRLEN];
+									struct in_addr a;
+
+									a.s_addr = cip;
+									inet_ntop(AF_INET,
+										  &a,
+										  ipbuf,
+										  sizeof(ipbuf));
+									pv_json_ser_key(
+										&js,
+										"cluster_ip");
+									pv_json_ser_string(
+										&js,
+										ipbuf);
+									pv_json_ser_key(
+										&js,
+										"cluster_port");
+									pv_json_ser_number(
+										&js,
+										exp->port);
+
+									a.s_addr = pip;
+									inet_ntop(AF_INET,
+										  &a,
+										  ipbuf,
+										  sizeof(ipbuf));
+									pv_json_ser_key(
+										&js,
+										"provider_ip");
+									pv_json_ser_string(
+										&js,
+										ipbuf);
+									pv_json_ser_key(
+										&js,
+										"provider_port");
+									pv_json_ser_number(
+										&js,
+										exp->port);
+									pv_json_ser_key(
+										&js,
+										"provider_transport");
+									pv_json_ser_string(
+										&js,
+										pvx_svc_transport_str(
+											exp->svc_type));
+									pv_json_ser_key(
+										&js,
+										"consumer_transport");
+									pv_json_ser_string(
+										&js,
+										pvx_svc_transport_str(
+											exp->svc_type));
+								}
 							}
 							pv_json_ser_object_pop(
 								&js);

@@ -27,6 +27,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include "utils/sysctl.h"
+
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
@@ -641,10 +643,10 @@ static int setup_nat(struct pv_ip_pool *pool)
 	mask_host = ntohl(pool->mask);
 	prefix_len = __builtin_popcount(mask_host);
 
-	// Enable IP forwarding
-	ret = system("echo 1 > /proc/sys/net/ipv4/ip_forward");
-	if (ret != 0) {
-		pv_log(WARN, "failed to enable IP forwarding");
+	// Enable IP forwarding via direct /proc/sys write (no shell fork).
+	if (pv_sysctl_write("/proc/sys/net/ipv4/ip_forward", "1\n") != 0) {
+		pv_log(WARN, "failed to enable IP forwarding: %s",
+		       strerror(errno));
 	}
 
 	// Prefer nftables (default on modern distros and kernel-native since
