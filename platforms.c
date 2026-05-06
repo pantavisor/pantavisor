@@ -1657,7 +1657,7 @@ void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
-				    char *socket)
+				    char *socket, uint16_t port)
 {
 	struct pv_platform_service_export *se =
 		calloc(1, sizeof(struct pv_platform_service_export));
@@ -1669,6 +1669,7 @@ void pv_platform_add_service_export(struct pv_platform *p,
 		se->name = strdup(name);
 	if (socket)
 		se->socket = strdup(socket);
+	se->port = port;
 	dl_list_init(&se->list);
 	dl_list_add_tail(&p->service_exports, &se->list);
 }

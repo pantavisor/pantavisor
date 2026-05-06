@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -30,6 +31,7 @@
 
 #include "init.h"
 #include "daemons.h"
+#include "config.h"
 #include "tsh.h"
 
 #define MODULE_NAME "daemons"
@@ -82,11 +84,23 @@ struct pv_init_daemon *pv_init_get_daemons(void)
 	return daemons;
 }
 
+// Export config values that managed daemons consume via env. Children
+// inherit our environment on fork+exec, so a single setenv() here is
+// enough; no per-daemon env plumbing needed.
+static void daemons_export_env(void)
+{
+	char *cidr = pv_config_get_str(PV_XCONNECT_SERVICES_CIDR);
+	if (cidr && cidr[0])
+		setenv("PV_XCONNECT_SERVICES_CIDR", cidr, 1);
+}
+
 int pv_init_spawn_daemons(init_mode_t mode)
 {
 	int i = 0;
 	struct stat sb;
 	unsigned int mode_flag = (1 << mode);
+
+	daemons_export_env();
 
 	sigset_t blocked_sig, old_sigset;
 	sigemptyset(&blocked_sig);

@@ -205,6 +205,7 @@ add_executable(pantavisor
 			ctrl/ctrl_upload.h
 			ctrl/ctrl_usrmeta_ep.c
 			ctrl/ctrl_xconnect_graph_ep.c
+			ctrl/ctrl_xconnect_status_ep.c
 			ctrl/ctrl_util.c
 			ctrl/ctrl_util.h
 			daemons.c
@@ -338,6 +339,8 @@ add_executable(pantavisor
 			utils/socket.h
 			utils/str.c
 			utils/strrep.c
+			utils/sysctl.c
+			utils/sysctl.h
 			utils/system.c
 			utils/timer.c
 			utils/tsh.c

@@ -23,6 +23,7 @@
 #define PV_PLATFORMS_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include <sys/types.h>
 
@@ -66,7 +67,8 @@ typedef enum {
 	SVC_TYPE_UNIX,
 	SVC_TYPE_DRM,
 	SVC_TYPE_WAYLAND,
-	SVC_TYPE_INPUT
+	SVC_TYPE_INPUT,
+	SVC_TYPE_TCP, // IP/TCP service, addressable by ClusterIP+port
 } service_type_t;
 
 typedef enum {
@@ -89,6 +91,7 @@ struct pv_platform_service_export {
 	service_type_t svc_type;
 	char *name;
 	char *socket;
+	uint16_t port; // For SVC_TYPE_TCP: backend port. Zero otherwise.
 	struct dl_list list;
 };
 typedef enum {
@@ -193,7 +196,7 @@ void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 			     char *interface, char *target);
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
-				    char *socket);
+				    char *socket, uint16_t port);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
 void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
