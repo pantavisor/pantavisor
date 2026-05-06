@@ -370,6 +370,10 @@ int tsh_run_logserver_timeout(const char *cmd, int *wstatus, int timeout_s,
 		goto out;
 	}
 
+	int ws = 0;
+	if (!wstatus)
+		wstatus = &ws;
+
 	ret = tsh_run_io_timeout(cmd, 1, wstatus, timeout_s, NULL, out_pipe,
 				 err_pipe);
 

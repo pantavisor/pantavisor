@@ -17,7 +17,7 @@ Pantavisor-enabled devices need to communicate with the outside world to consume
 
 ## Customisation
 
-Pantavisor can be set up in different ways, offering [multi-level configuration](pantavisor-configuration-levels.md) as well as several [operational init modes](init-mode.md).
+Pantavisor can be set up in different ways, offering [multi-level configuration](pantavisor-configuration-levels.md) as well as several [operational init modes](init-mode.md). System behaviour can also be extended through [system hooks](hooks.md): executable scripts that Pantavisor runs at well-defined [lifecycle points](hooks.md#hook-points) — such as system start, update installation, and platform ready — allowing operators to integrate custom logic into the system lifecycle.
 
 ## Service Mesh
 
@@ -40,13 +40,17 @@ Each state can be summarized as:
     - Initialize [log system](storage.md#logs)
     - Initialize [control socket](local-control.md)
     - Initialize [watchdog](watchdog.md)
+    - Run [system-start hooks](hooks.md#hook-points)
 * **RUN**:
     - Initialize the running [revision](revisions.md)
     - Check [object checksum](storage.md#artifact-checksum)
     - Check [revision signatures](storage.md#state-signature)
 * **WAIT**:
     - Start [containers](containers.md) and check its [statuses](containers.md#status)
-    - Manage any ongoing [update](updates.md), incluiding installation, verification, transition, etc.
+    - Run [system-done hooks](hooks.md#hook-points) once all containers have met their [status goal](containers.md#status-goal)
+    - Manage any ongoing [update](updates.md), including installation, verification, transition, etc.
+    - Run [update hooks](hooks.md#hook-points) (`system-before-install-update` / `system-after-install-update` or `system-install-update`) during update installation
+    - Run [system-boot-done hooks](hooks.md#hook-points) after committing a successful try-boot
     - Run [Pantacor Hub client full state machine](remote-control.md#state-machine)
     - Process [control socket](local-control.md) requests
     - Manage [metadata](storage.md#metadata)

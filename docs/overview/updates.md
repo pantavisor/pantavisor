@@ -73,6 +73,8 @@ Retry X of Y |
 
 Installing or progressing to this revision. Transitions to new revisions can either require a [reboot](#reboot-transition) or [not](#non-reboot-transition).
 
+[Hooks](hooks.md) fire at key points during installation: before and after the bootloader writes the new revision (`system-before-install-update` / `system-after-install-update`), and once the revision has been committed after a successful try-boot (`system-boot-done`).
+
 To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a [configurable](../../../reference/legacy/pantavisor-state-format-v2.md#groupsjson) time, Pantavisor will [rollback](#error) the revision.
 
 | Messages |
