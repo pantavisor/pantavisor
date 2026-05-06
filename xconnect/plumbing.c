@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 #define _GNU_SOURCE
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -147,16 +148,56 @@ out:
 
 	return fd;
 }
-// Marker we tag onto every line we manage in a consumer's /etc/hosts so
-// re-injection / removal does not touch user-authored entries.
-#define PVX_HOSTS_MARK "# pvx-services managed"
+// Layout we maintain inside a consumer's /etc/hosts:
+//
+//     <user content above — preserved verbatim, append-friendly>
+//     # >>> pvx-services managed BEGIN — DO NOT EDIT INSIDE THIS BLOCK
+//     # Lines between BEGIN and END are rewritten by pv-xconnect on every
+//     # service reconcile. Add your own entries ABOVE the BEGIN line or
+//     # BELOW the END line; both regions are preserved across reconciles.
+//     198.18.x.y	<service>.pv.local	# pvx-services managed
+//     ...
+//     # <<< pvx-services managed END — safe to append your own lines below
+//     <user content below — preserved verbatim, append-friendly>
+//
+// The fence comments give the user (and append-blind tooling like Docker
+// bridge setup or `echo ... >> /etc/hosts` from init scripts) a clear
+// visual contract: the inside is ours, everything else is theirs. The
+// per-line `# pvx-services managed` marker is still used inside the
+// block so we can update individual entries without rewriting siblings.
+#define PVX_HOSTS_BEGIN "# >>> pvx-services managed BEGIN"
+#define PVX_HOSTS_END   "# <<< pvx-services managed END"
+#define PVX_HOSTS_MARK  "# pvx-services managed"
+
+// Block header lines emitted on first install. The trailing newlines
+// keep the fputs path simple; we never include leading whitespace so
+// matching is straightforward.
+#define PVX_HOSTS_BEGIN_LINE                                                   \
+	PVX_HOSTS_BEGIN " — DO NOT EDIT INSIDE THIS BLOCK\n"                  \
+	"# Lines between BEGIN and END are rewritten by pv-xconnect on every\n" \
+	"# service reconcile. Add your own entries ABOVE the BEGIN line or\n" \
+	"# BELOW the END line; both regions are preserved across reconciles.\n"
+#define PVX_HOSTS_END_LINE PVX_HOSTS_END " — safe to append your own lines below\n"
 
 static int hosts_rewrite_locked(const char *hostname, const char *ip_str_or_null)
 {
-	// Read existing /etc/hosts (if present), strip prior pvx-managed line
-	// for `hostname`, append fresh line if ip_str_or_null != NULL, write
-	// back atomically via temp + rename. We're already inside the consumer
-	// mount namespace at this point; all paths are container-local.
+	// Algorithm:
+	//   1. Walk existing /etc/hosts line-by-line.
+	//   2. Track whether we're outside / inside / past the managed block.
+	//   3. Outside the block: copy through verbatim (user content).
+	//   4. Inside the block: drop the prior line for `hostname` (matched
+	//      by per-line marker AND hostname). Other managed entries —
+	//      different hostnames — are copied through verbatim. The new
+	//      entry is emitted just before the END marker if `ip_str_or_null`
+	//      is non-NULL.
+	//   5. After the loop: if no BEGIN was seen and we have something to
+	//      add, append a fresh BEGIN/entry/END block at the end. If we
+	//      saw BEGIN but never END (truncated/malformed input), emit the
+	//      missing END so future reconciles resume cleanly.
+	//
+	// We're already inside the consumer mount namespace; paths are
+	// container-local. /etc/hosts is small (a few KB at most), so the
+	// streaming approach is fine.
 	FILE *in = fopen("/etc/hosts", "r");
 	FILE *out = fopen("/etc/hosts.pvx.tmp", "w");
 	if (!out) {
@@ -167,24 +208,71 @@ static int hosts_rewrite_locked(const char *hostname, const char *ip_str_or_null
 
 	char line[1024];
 	char marker[256];
-	snprintf(marker, sizeof(marker), "\t%s %s\n", hostname, PVX_HOSTS_MARK);
+	snprintf(marker, sizeof(marker), "\t%s\t%s\n", hostname, PVX_HOSTS_MARK);
+
+	enum { ST_BEFORE, ST_INSIDE, ST_AFTER } state = ST_BEFORE;
+	bool entry_written = false;
 
 	if (in) {
 		while (fgets(line, sizeof(line), in)) {
-			// Drop any prior pvx-managed line for this hostname.
-			// We match the trailing tab+hostname+marker so we
-			// don't accidentally clobber a user line that just
-			// happens to contain the hostname.
-			if (strstr(line, PVX_HOSTS_MARK) &&
-			    strstr(line, hostname))
+			if (state == ST_BEFORE) {
+				if (strstr(line, PVX_HOSTS_BEGIN)) {
+					// Re-emit a fresh BEGIN header (in case
+					// someone trimmed the explanatory lines).
+					fputs(PVX_HOSTS_BEGIN_LINE, out);
+					state = ST_INSIDE;
+				} else {
+					fputs(line, out);
+				}
 				continue;
+			}
+			if (state == ST_INSIDE) {
+				if (strstr(line, PVX_HOSTS_END)) {
+					// Emit the new entry just before END.
+					if (ip_str_or_null && !entry_written) {
+						fprintf(out, "%s%s",
+							ip_str_or_null, marker);
+						entry_written = true;
+					}
+					fputs(PVX_HOSTS_END_LINE, out);
+					state = ST_AFTER;
+					continue;
+				}
+				// Drop the prior line for this hostname so we
+				// don't emit duplicates. Other managed lines
+				// (different hostnames) are preserved.
+				if (strstr(line, PVX_HOSTS_MARK) &&
+				    strstr(line, hostname))
+					continue;
+				// Skip the explanatory header lines that the
+				// previous BEGIN block emitted; we re-emit a
+				// fresh header above. Match by leading "# ".
+				if (line[0] == '#' && line[1] == ' ' &&
+				    (strstr(line, "DO NOT EDIT") ||
+				     strstr(line, "rewritten by pv-xconnect") ||
+				     strstr(line, "Add your own entries") ||
+				     strstr(line, "service reconcile")))
+					continue;
+				fputs(line, out);
+				continue;
+			}
+			// ST_AFTER: copy through.
 			fputs(line, out);
 		}
 		fclose(in);
 	}
 
-	if (ip_str_or_null) {
+	// Tail handling:
+	//   - never saw BEGIN: append a fresh block if we have something to add
+	//   - saw BEGIN but never END (malformed): close the block now
+	if (state == ST_BEFORE && ip_str_or_null) {
+		fputs(PVX_HOSTS_BEGIN_LINE, out);
 		fprintf(out, "%s%s", ip_str_or_null, marker);
+		fputs(PVX_HOSTS_END_LINE, out);
+	} else if (state == ST_INSIDE) {
+		if (ip_str_or_null && !entry_written)
+			fprintf(out, "%s%s", ip_str_or_null, marker);
+		fputs(PVX_HOSTS_END_LINE, out);
 	}
 
 	if (fclose(out) != 0)
