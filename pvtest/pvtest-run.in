@@ -223,8 +223,8 @@ exec_test() {
 
 eval_test() {
 	if [ "$overwrite" != "true" ]; then
-		diff <(grep -vE '^(\+|\$)' $test_path/output) <(grep -vE '^(\+|\$)' "$tmp_out_path")
-		if [ $? -ne 0 ]; then
+		diff <(grep -vE '^(\+|\$)' $test_path/output) <(grep -vE '^(\+|\$)' "$tmp_out_path") | tee /var/pantavisor/storage/diff
+		if [ "${PIPESTATUS[0]}" -ne 0 ]; then
 			stop_pv
 			exit 1
 		fi
