@@ -17,6 +17,9 @@ usage() {
 }
 
 cleanup_cryptdisk() {
+	# Sub-mounts inside the dm-crypt volume must go first; they hold the mapper open after a crash.
+	awk '$1 ~ /dmcrypt\/dm-internal-secrets/ {print $2}' /proc/mounts 2>/dev/null \
+		| sort -r | xargs -r umount -l 2>/dev/null || true
 	umount -l /dev/mapper/versatile > /dev/null 2>&1 || true
 	cryptsetup close versatile > /dev/null 2>&1 || true
 }
