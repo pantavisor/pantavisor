@@ -21,6 +21,7 @@
  */
 
 #include <string.h>
+#include <unistd.h>
 
 #include "config.h"
 
@@ -61,6 +62,7 @@ static void _event_log_cb(int severity, const char *msg)
 static void _event_fatal_cb(int err)
 {
 	pv_log(ERROR, "libevent fatal error %d", err);
+	_exit(1);
 }
 
 int pv_event_base_init()

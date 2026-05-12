@@ -153,7 +153,7 @@ err:
 
 trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 {
-	const char **cafiles;
+	const char **cafiles = NULL;
 	trest_ptr client;
 
 	if (!conn)
@@ -260,7 +260,9 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 					!noproxyconnect);
 	}
 
+	free(cafiles);
 	return client;
 err:
+	free(cafiles);
 	return NULL;
 }
