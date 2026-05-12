@@ -274,7 +274,6 @@ int pv_event_rest_send_by_components(
 	output_headers = evhttp_request_get_output_headers(req);
 
 	_add_header(output_headers, "Host", host);
-	_add_header(output_headers, "Connection", "close");
 	_add_header(output_headers, "User-Agent", pv_user_agent);
 
 	if (token) {
