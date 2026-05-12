@@ -61,7 +61,14 @@ static void _event_log_cb(int severity, const char *msg)
 
 static void _event_fatal_cb(int err)
 {
-	pv_log(ERROR, "libevent fatal error %d", err);
+	/* This must not happen. A libevent fatal error means internal event
+	 * loop state is corrupt and cannot be recovered. Do NOT return: the
+	 * libevent caller will then call exit(-1), whose atexit/cleanup path
+	 * fires bufferevent callbacks on the already-broken state and causes
+	 * a secondary SIGSEGV. sync() first to flush any pending storage
+	 * writes, then _exit(1) to terminate immediately. */
+	pv_log(ERROR, "libevent fatal error %d — this should not happen", err);
+	sync();
 	_exit(1);
 }
 
