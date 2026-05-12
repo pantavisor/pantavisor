@@ -260,9 +260,9 @@ trest_ptr pv_get_trest_client(struct pantavisor *pv, struct pv_connection *conn)
 					!noproxyconnect);
 	}
 
-	free(cafiles);
+	pv_ph_free_certs(cafiles);
 	return client;
 err:
-	free(cafiles);
+	pv_ph_free_certs(cafiles);
 	return NULL;
 }
