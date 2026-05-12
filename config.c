@@ -144,7 +144,7 @@ static struct pv_config_entry entries[] = {
 	{ INT, "PH_LIBEVENT_HTTP_TIMEOUT", PH | OEM | RUN, 0, false,
 	  .value.i = 60 },
 	{ INT, "PH_LIBEVENT_HTTP_RETRIES", PH | OEM | RUN, 0, false,
-	  .value.i = 1 },
+	  .value.i = 0 },
 	{ INT, "PH_METADATA_DEVMETA_INTERVAL", PH | OEM | RUN, 0, false,
 	  .value.i = 10 },
 	{ INT, "PH_METADATA_USRMETA_INTERVAL", PH | OEM | RUN, 0, false,
