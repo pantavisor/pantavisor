@@ -33,7 +33,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) credentials secret |
 | `PH_CREDS_TYPE` | `builtin` | `builtin` | set [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) credentials type |
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
-| `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
+| `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `0` | set HTTP request number of retries for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
 | `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](../../pantavisor-src/docs/overview/storage.md#device-metadata) to [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
 | `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](../../pantavisor-src/docs/overview/storage.md#user-metadata) from [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
