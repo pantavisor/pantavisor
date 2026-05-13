@@ -1090,6 +1090,19 @@ static int do_one_jka_action(struct json_key_action *jka)
 			jka->buf = orig_buf;
 		}
 		break;
+
+	case JSMN_PRIMITIVE:
+		val_token = jka->tokv + 1;
+		length = val_token->end - val_token->start;
+		value = calloc(length + 1, sizeof(char));
+		if (value) {
+			memcpy(value, buf + val_token->start, length);
+			value[length] = '\0';
+			if (jka->action)
+				ret = jka->action(jka, value);
+			free(value);
+		}
+		break;
 	default:
 		break;
 	}
@@ -1768,6 +1781,31 @@ static int do_action_for_export(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_dev_log(struct json_key_action *jka, char *value)
+{
+	if (!jka || !value)
+		return -1;
+
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	if (!bundle || !bundle->platform)
+		return -1;
+
+	int len = jka->tokv->end - jka->tokv->start;
+
+	struct pv_platform *p = *bundle->platform;
+
+	if (!strncmp(value, "true", len)) {
+		pv_platform_set_std_log(*bundle->platform, true);
+	} else if (!strncmp(value, "false", len)) {
+		pv_platform_set_std_log(*bundle->platform, false);
+	} else {
+		pv_log(DEBUG, "couldn't parse dev-log key: %.*s", len,
+		       value);
+	}
+
+	return 0;
+}
+
 static int parse_platform(struct pv_state *s, char *buf, int n)
 {
 	char *config = NULL, *shares = NULL;
@@ -1817,6 +1855,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_services, false),
 		ADD_JKA_ENTRY("exports", JSMN_ARRAY, &bundle,
 			      do_action_for_export, false),
+		ADD_JKA_ENTRY("dev-log", JSMN_PRIMITIVE, &bundle,
+			      do_action_for_dev_log, false),
 		ADD_JKA_NULL_ENTRY()
 	};
 

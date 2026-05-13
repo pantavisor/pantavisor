@@ -79,6 +79,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_PUSH` | `0` or `1` | `1` | push logs to [Pantacor Hub](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub) |
 | `PV_LOG_ROTATE_FACTOR` | integer | `5` | determines per-file rotation threshold for [log directory cleanup](../../pantavisor-src/docs/overview/storage.md#log-directory-size-management) |
 | `PV_LOG_SERVER_OUTPUTS` | string | `filetree` | set log server outputs (comma separated) |
+| `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for single-file logs |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT` | format string | empty | timestamp format for stdout logs |
 | `PV_LXC_LOG_LEVEL` | `0` to `5` | `2` | set LXC log level |
@@ -188,6 +189,7 @@ This table shows the [configuration levels](../../pantavisor-src/docs/overview/p
 | `PV_LOG_PUSH`                        | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_ROTATE_FACTOR`               | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_SERVER_OUTPUTS`              | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
+| `PV_LOG_AUTO_DEVLOG`                 | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT`     | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-check: | :material-close: |
 | `PV_LXC_LOG_LEVEL`                   | :material-check: | :material-close: | :material-check: | :material-check: | :material-check: | :material-close: | :material-close: |

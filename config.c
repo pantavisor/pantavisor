@@ -197,6 +197,7 @@ static struct pv_config_entry entries[] = {
 	  .value.s = LIBTHTTP_CERTSDIR_DEF },
 	{ INT, "PV_LIBTHTTP_LOG_LEVEL", PV | OEM | RUN, 0, false,
 	  .value.i = 3 },
+	{ BOOL, "PV_LOG_AUTO_DEVLOG", PV | OEM, 0, false, .value.b = true },
 	{ BOOL, "PV_LOG_CAPTURE", PV | OEM, 0, false, .value.b = true },
 	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | OEM, 0, false, .value.b = true },
 	{ INT, "PV_LOG_BUF_NITEMS", PV | OEM, 0, false, .value.i = 128 },
@@ -264,7 +265,8 @@ static struct pv_config_entry entries[] = {
 	  .value.s = SYSTEM_MEDIADIR_DEF },
 	{ BOOL, "PV_SYSTEM_MOUNT_SECURITYFS", PV, 0, false, .value.b = false },
 	{ STR, "PV_SYSTEM_RUNDIR", PV, 0, false, .value.s = SYSTEM_RUNDIR_DEF },
-	{ STR, "PV_SYSTEM_DISKSDIR", PV, 0, false, .value.s = SYSTEM_DISKSDIR_DEF },
+	{ STR, "PV_SYSTEM_DISKSDIR", PV, 0, false,
+	  .value.s = SYSTEM_DISKSDIR_DEF },
 	{ STR, "PV_SYSTEM_USRDIR", PV, 0, false, .value.s = SYSTEM_USRDIR_DEF },
 	{ INT, "PV_UPDATER_COMMIT_DELAY", PV | OEM | RUN, 0, false,
 	  .value.i = 25 },
@@ -607,7 +609,8 @@ static off_t _get_partition_size(const char *device)
 	else
 		dev_name = device;
 
-	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/class/block/%s/size", dev_name);
+	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/class/block/%s/size",
+			dev_name);
 	int fd = open(path, O_RDONLY);
 	if (fd < 0)
 		return -1;

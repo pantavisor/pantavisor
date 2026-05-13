@@ -31,6 +31,7 @@
 #include <linux/limits.h>
 
 #define LOGSERVER_LOG_PROTOCOL_V1 0
+#define LOGSERVER_PLAT_MAX_LEN 64
 
 #ifdef DEBUG
 #define WARN_ONCE(msg, args...)                                                \
@@ -52,6 +53,9 @@ struct logserver_data {
 
 typedef enum {
 	LOG_PROTOCOL_LEGACY = 0,
+	LOG_PROTOCOL_UNKNOWN,
+	LOG_PROTOCOL_RFC5424,
+	LOG_PROTOCOL_RFC3164,
 	LOG_PROTOCOL_CMD = 256
 } log_protocol_code_t;
 
@@ -61,7 +65,7 @@ struct logserver_log {
 	uint64_t tsec;
 	uint32_t tnano;
 	time_t time;
-	char *plat;
+	char plat[LOGSERVER_PLAT_MAX_LEN];
 	char *src;
 	char *running_rev;
 	char *updated_rev;

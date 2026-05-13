@@ -832,6 +832,15 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
+		if (p->std_log) {
+			char *mount_log =
+				"/dev/log dev/log none bind,create=file 0 0";
+			if (!c->set_config_item(c, "lxc.mount.entry",
+						mount_log)) {
+				pv_log(WARN, "/dev/log not mounting");
+			}
+		}
+
 		c->save_config(c, NULL);
 
 		err = c->start(c, 0, NULL) ? 0 : 1;

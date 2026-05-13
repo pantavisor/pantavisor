@@ -168,6 +168,7 @@ struct pv_platform {
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
+	bool std_log;
 	int pipefd[2];
 	struct pv_event_socket pipefd_listener;
 	struct timer timer_status_goal;
@@ -233,6 +234,9 @@ void pv_platform_set_restart_policy(struct pv_platform *p,
 void pv_platform_set_role(struct pv_platform *p, roles_mask_t role);
 void pv_platform_unset_role(struct pv_platform *p, roles_mask_t role);
 bool pv_platform_has_role(struct pv_platform *p, roles_mask_t role);
+
+void pv_platform_set_std_log(struct pv_platform *p, bool std_log_support);
+bool pv_platform_support_std_log(struct pv_platform *p);
 
 const char *pv_platform_status_string(plat_status_t status);
 const char *pv_platforms_restart_policy_str(restart_policy_t policy);

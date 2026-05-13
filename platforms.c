@@ -274,6 +274,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		p->roles = PLAT_ROLE_MGMT;
 		p->restart_policy = RESTART_NONE;
 		p->updated = false;
+		p->std_log = pv_config_get_bool(PV_LOG_AUTO_DEVLOG);
 		p->state = s;
 		p->export = false;
 		p->pipefd[0] = -1;
@@ -1595,6 +1596,22 @@ void pv_platform_unset_role(struct pv_platform *p, roles_mask_t role)
 bool pv_platform_has_role(struct pv_platform *p, roles_mask_t role)
 {
 	return p->roles & role;
+}
+
+void pv_platform_set_std_log(struct pv_platform *p, bool std_log_support)
+{
+	if (!p)
+		return;
+
+	p->std_log = std_log_support;
+}
+
+bool pv_platform_support_std_log(struct pv_platform *p)
+{
+	if (!p)
+		return false;
+
+	return p->std_log;
 }
 
 static int pv_platforms_early_init(struct pv_init *this)

@@ -260,6 +260,12 @@ add_executable(pantavisor
 			logserver/logserver_null.h
 			logserver/logserver_out.c
 			logserver/logserver_out.h
+			logserver/proto/logserver_binary.c
+			logserver/proto/logserver_binary.h
+			logserver/proto/logserver_rfc.c
+			logserver/proto/logserver_rfc.h
+			logserver/proto/logserver_rfc5424.c
+			logserver/proto/logserver_rfc3164.c
 			logserver/logserver_rotation.c
 			logserver/logserver_rotation.h
 			logserver/logserver_singlefile.c

@@ -129,6 +129,8 @@ Pantavisor can centralize all of your [container logs](containers.md#loggers), s
 * [pv-ctrl-log](../../../reference/legacy/logserver-sockets.md#pv-ctrl-log): to send log traces.
 * [pv-fd-log](../../../reference/legacy/logserver-sockets.md#pv-fd-log): to suscribe file descriptors.
 
+Containers can also log using the standard syslog protocol by writing to `/dev/log`. Both [RFC 3164](../../../reference/027/logserver-sockets.md#rfc-3164) and [RFC 5424](../../../reference/027/logserver-sockets.md#rfc-5424) are supported and auto-detected per message — no configuration is needed. See the [/dev/log section](../../../reference/027/logserver-sockets.md#devlog) for message formats, priority mapping, and per-language library examples.
+
 There are a number of parameters that can be tweaked from the [configuration](../../../reference/legacy/pantavisor-configuration.md#summary) that will affect Log Server, such as `log.capture`, `log.maxsize`, `log.level`, etc. Between those, there is an important parameter called `log.server.outputs` that allows to change how the logs will be stored:
 
 * [filetree](#file-tree)
