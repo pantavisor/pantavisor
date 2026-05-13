@@ -97,9 +97,9 @@ static char *get_current_status(const char *pv_rev, const char *pv_try)
 	char *json = NULL;
 
 	if (pv_try && strlen(pv_try) > 0)
-		pv_storage_get_rev_progress(pv_try);
+		json = pv_storage_get_rev_progress(pv_try);
 	else
-		pv_storage_get_rev_progress(pv_rev);
+		json = pv_storage_get_rev_progress(pv_rev);
 
 	if (!json)
 		return NULL;
