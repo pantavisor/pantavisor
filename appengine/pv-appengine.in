@@ -21,7 +21,7 @@ cleanup_cryptdisk() {
 		[ "$dev" = "control" ] && continue
 		umount -l "/dev/mapper/$dev" > /dev/null 2>&1 || true
 		cryptsetup close "$dev" > /dev/null 2>&1 || \
-			dmsetup remove "$dev" > /dev/null 2>&1 || true
+			dmsetup remove --force "$dev" > /dev/null 2>&1 || true
 	done
 }
 
