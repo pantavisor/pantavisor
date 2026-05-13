@@ -35,6 +35,8 @@
 #include <stdarg.h>
 #include <fcntl.h>
 
+#include "proto/logserver_rfc.h"
+#include "proto/logserver_binary.h"
 #include "logserver_rotation.h"
 #include "logserver_out.h"
 #include "logserver_utils.h"
@@ -78,12 +80,6 @@ typedef enum {
 	LOG_CMD_STOP_UPDATE,
 	LOG_CMD_TRANSITION,
 } log_cmd_code_t;
-
-struct logserver_msg {
-	log_protocol_code_t code;
-	int len;
-	char buf[0];
-};
 
 struct logserver_fd {
 	char *platform;
@@ -229,44 +225,6 @@ static void sigchld_handler(int signum)
 		;
 }
 
-static int logserver_msg_parse_data(struct logserver_msg *msg,
-				    struct logserver_log *log)
-{
-	int bytes_read = 0;
-	int ret;
-	log->code = msg->code;
-	switch (log->code) {
-	case LOG_PROTOCOL_LEGACY:
-		sscanf(msg->buf, "%d", &log->lvl);
-		bytes_read += strlen(msg->buf) + 1;
-		//+ 1 to Skip over the NULL byte post level
-		log->plat = msg->buf + strlen(msg->buf) + 1;
-		bytes_read += strlen(log->plat) + 1;
-		log->src = log->plat + strlen(log->plat) + 1;
-		log->running_rev = logserver.running_rev;
-		log->updated_rev = logserver.updated_rev;
-		bytes_read += strlen(log->src) + 1;
-
-		log->data.buf = log->src + strlen(log->src) + 1;
-		log->data.len = msg->len - bytes_read;
-		log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
-		log->tnano = 0;
-		log->time = time(NULL), ret = 0;
-		break;
-	case LOG_PROTOCOL_CMD:
-		log->data.buf = msg->buf;
-		log->data.len = msg->len;
-		ret = 0;
-		break;
-	default:
-		pv_log(WARN, "got unkown logserver message version %d",
-		       log->code);
-		ret = -1;
-		break;
-	}
-	return ret;
-}
-
 static void logserver_rename_update(const char *rev)
 {
 	char path_tmp[PATH_MAX];
@@ -340,24 +298,39 @@ static int logserver_process_cmd(const struct logserver_log *log,
 	return 0;
 }
 
-static int logserver_handle_msg(struct logserver_msg *msg, pid_t sender_pid)
+static int logserver_handle_msg(char *buf, pid_t sender_pid)
 {
 	struct logserver_log log;
-	int ret;
+	int ret = 0;
 
-	ret = logserver_msg_parse_data(msg, &log);
+	log_protocol_code_t type = logserver_rfc_get_type(buf);
+
+	if (type == LOG_PROTOCOL_RFC5424)
+		ret = logserver_rfc5424_to_log(buf, logserver.running_rev,
+					       logserver.updated_rev, &log);
+	else if (type == LOG_PROTOCOL_RFC3164)
+		ret = logserver_rfc3164_to_log(buf, logserver.running_rev,
+					       logserver.updated_rev, &log);
+	else
+		ret = logserver_bin_to_log(buf, logserver.running_rev,
+					   logserver.updated_rev, &log);
+
 	if (ret != 0) {
 		pv_log(WARN, "logserver message could not be handled");
 		return ret;
 	}
 
-	switch (msg->code) {
+	switch (log.code) {
 	case LOG_PROTOCOL_LEGACY:
+	case LOG_PROTOCOL_RFC5424:
+	case LOG_PROTOCOL_RFC3164:
 		ret = logserver_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:
 		ret = logserver_process_cmd(&log, sender_pid);
 		break;
+	case LOG_PROTOCOL_UNKNOWN:
+		pv_log(DEBUG, "unknown log protocol");
 	}
 
 	return ret;
@@ -578,15 +551,22 @@ static void logserver_remove_fd(int fd)
 static void logserver_consume_log_data(int fd)
 {
 	struct buffer *buffer = pv_buffer_get(true);
-
-	if (!buffer)
-		return;
-
 	errno = 0;
-	if (pv_fs_file_read_nointr(fd, buffer->buf, buffer->size) > 0) {
+
+	// set fd as non-block
+	int flags = fcntl(fd, F_GETFL, 0);
+	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+	ssize_t total = pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
+
+	int end = total;
+	if (total >= buffer->size)
+		end = buffer->size - 1;
+
+	buffer->buf[end] = '\0';
+	if (total > 0) {
 		pid_t sender_pid = pv_socket_get_sender_pid(fd);
-		struct logserver_msg *msg = (struct logserver_msg *)buffer->buf;
-		logserver_handle_msg(msg, sender_pid);
+		logserver_handle_msg(buffer->buf, sender_pid);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
 		       strerror(errno));
@@ -799,6 +779,10 @@ static int logserver_open_server_socket(const char *fname)
 		       strerror(errno));
 		close(fd);
 		return -1;
+	}
+
+	if (logserver_rfc_create_socket(addr.sun_path) != 0) {
+		pv_log(WARN, "standard socket could not be linked");
 	}
 
 	return fd;
