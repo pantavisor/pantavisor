@@ -444,13 +444,23 @@ clean_disk()
 		caam*|dcp__mainline)
 			if dmsetup info -c "$name" >/dev/null 2>&1; then
 				echo "WARN: dm $name still exists"
-				dmsetup remove "$name" > /dev/null 2>&1 || true
+				mnt=$(grep "^/dev/mapper/$name " /proc/mounts | awk '{print $2}' | head -1)
+				if [ -n "$mnt" ]; then
+					echo "WARN: /dev/mapper/$name mounted at $mnt, unmounting"
+					umount "$mnt" >/dev/null 2>&1 || umount -l "$mnt" >/dev/null 2>&1 || true
+				fi
+				dmsetup remove "$name" >/dev/null 2>&1 || true
 			fi
 			;;
 		dcp__nxp|versatile__*)
-			if cryptsetup status "$name" > /dev/null 2>&1; then
-				echo "WARN: cryptdisk $1 still exists"
-				cryptsetup close "$name" > /dev/null 2>&1 || true
+			if cryptsetup status "$name" >/dev/null 2>&1; then
+				echo "WARN: cryptdisk $name still exists"
+				mnt=$(grep "^/dev/mapper/$name " /proc/mounts | awk '{print $2}' | head -1)
+				if [ -n "$mnt" ]; then
+					echo "WARN: /dev/mapper/$name mounted at $mnt, unmounting"
+					umount "$mnt" >/dev/null 2>&1 || umount -l "$mnt" >/dev/null 2>&1 || true
+				fi
+				cryptsetup close "$name" >/dev/null 2>&1 || true
 			fi
 			;;
 	esac
