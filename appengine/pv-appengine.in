@@ -17,8 +17,12 @@ usage() {
 }
 
 cleanup_cryptdisk() {
-	umount -l /dev/mapper/versatile > /dev/null 2>&1 || true
-	cryptsetup close versatile > /dev/null 2>&1 || true
+	for dev in $(ls /dev/mapper/ 2>/dev/null); do
+		[ "$dev" = "control" ] && continue
+		umount -l "/dev/mapper/$dev" > /dev/null 2>&1 || true
+		cryptsetup close "$dev" > /dev/null 2>&1 || \
+			dmsetup remove "$dev" > /dev/null 2>&1 || true
+	done
 }
 
 cleanup_cgroup() {
