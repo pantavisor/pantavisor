@@ -166,7 +166,8 @@ static void _finish_update_installation()
 
 	/* Bootloader can force reboot (e.g. pv_rev.txt overflow) */
 	if (bl_rv > 0 && u->transition == PV_SYSTEM_TRANSITION_NONREBOOT) {
-		pv_log(INFO, "bootloader requests forced reboot for this update");
+		pv_log(INFO,
+		       "bootloader requests forced reboot for this update");
 		pv_issue_reboot();
 		u->transition = PV_SYSTEM_TRANSITION_REBOOT;
 	}
@@ -231,7 +232,6 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		if (pv_update_is_final()) {
 			pv_log(WARN, "progress already in a final state");
 			_call_report_cb(u->rev, progress_str);
-			free(progress_str);
 			goto out;
 		} else {
 			pv_log(DEBUG, "progress not final, queueing again");
@@ -297,6 +297,7 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 		_finish_update_installation();
 	}
 out:
+	free(progress_str);
 	if (pv_update_is_final())
 		pv_update_finish();
 }
@@ -654,10 +655,8 @@ int pv_update_resume(void (*report_cb)(const char *, const char *))
 	}
 
 	pv_log(DEBUG, "update_resume: trying=%d failed=%d done=%d factory=%d",
-	       pv_bootloader_trying_update(),
-	       pv_update_is_failed(),
-	       pv_update_is_done(),
-	       _is_factory(rev));
+	       pv_bootloader_trying_update(), pv_update_is_failed(),
+	       pv_update_is_done(), _is_factory(rev));
 
 	// if we are currently trying a revision that already failed
 	if (pv_bootloader_trying_update() && pv_update_is_failed()) {
