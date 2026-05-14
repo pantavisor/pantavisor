@@ -53,6 +53,7 @@ static void pv_trail_remote_free(struct trail_remote *trail)
 
 	pv_log(DEBUG, "removing trail");
 
+	trest_free(trail->client);
 	free(trail);
 }
 
@@ -94,10 +95,8 @@ static int trail_remote_init(struct pantavisor *pv)
 	return 0;
 
 err:
-	if (client)
-		free(client);
-	if (remote)
-		free(remote);
+	trest_free(client);
+	free(remote);
 
 	return -1;
 }
