@@ -35,6 +35,9 @@
 #include <event2/http.h>
 #include <event2/buffer.h>
 #include <event2/event.h>
+#include <event2/bufferevent.h>
+
+#include "event/event.h"
 
 #include <string.h>
 #include <stddef.h>
@@ -129,6 +132,11 @@ static void ctrl_object_recv(struct evhttp_request *req, void *ctx)
 
 	pv_log(DEBUG, "new object received, uploading");
 
+	// Demote this connection so bulk upload doesn't starve other ctrl requests.
+	struct bufferevent *bev = evhttp_connection_get_bufferevent(
+		evhttp_request_get_connection(req));
+	bufferevent_priority_set(bev, PV_EVENT_PRIORITY_LOW);
+
 	pv_ctrl_upload_start(req, fname, ctrl_object_upload_complete_cb);
 }
 
@@ -164,6 +172,11 @@ static void ctrl_objects_send(struct evhttp_request *req, void *ctx)
 					 "Request has bad object name");
 		return;
 	}
+
+	// Demote this connection so bulk download doesn't starve other ctrl requests.
+	struct bufferevent *bev = evhttp_connection_get_bufferevent(
+		evhttp_request_get_connection(req));
+	bufferevent_priority_set(bev, PV_EVENT_PRIORITY_LOW);
 
 	pv_ctrl_download_start(req, path, 4096, "application/octet-stream");
 }
