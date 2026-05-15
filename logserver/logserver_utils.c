@@ -204,14 +204,26 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 		return dprintf(fd, "%.*s", log->data.len, log->data.buf);
 
 	char *ts_fmt = pv_config_get_str(PV_LOG_FILETREE_TIMESTAMP_FORMAT);
+
+	char tmpl[64] = { 0 };
 	if (!ts_fmt)
-		return dprintf(fd, "%.*s", log->data.len, log->data.buf);
+		strcpy(tmpl, "%.*s");
+	else
+		strcpy(tmpl, "[%s] %.*s");
+
+	if (log->code == LOG_PROTOCOL_RFC3164 ||
+	    log->code == LOG_PROTOCOL_RFC5424)
+		strcat(tmpl, "\n");
+
+	if (!ts_fmt)
+		return dprintf(fd, tmpl, log->data.len, log->data.buf);
+
 
 	char ts[256] = { 0 };
 	if (logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt) != 0)
 		strncpy(ts, "--", 3);
 
-	return dprintf(fd, "[%s] %.*s", ts, log->data.len, log->data.buf);
+	return dprintf(fd, tmpl, ts, log->data.len, log->data.buf);
 }
 
 int logserver_utils_stdout(const struct logserver_log *log)
