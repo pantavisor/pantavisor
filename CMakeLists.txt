@@ -37,14 +37,14 @@ set(CMAKE_INSTALL_RUNSTATEDIR "/run" CACHE PATH "Run-time variable data")
 set(CMAKE_INSTALL_FULL_RUNSTATEDIR "/run" CACHE PATH "Run-time variable data")
 set(PV_INSTALL_FULL_RUNSTATEDIR "${CMAKE_INSTALL_FULL_RUNSTATEDIR}/pantavisor")
 
-set(PV_INSTALL_PVLIBDIR "${CMAKE_PROJECT_NAME}/pv")
+set(PV_INSTALL_PVLIBDIR "${PROJECT_NAME}/pv")
 set(PV_INSTALL_FULL_PVLIBDIR "${CMAKE_INSTALL_FULL_LIBDIR}/${PV_INSTALL_PVLIBDIR}")
 
 set(PV_INSTALL_STORAGEDIR "storage")
 if(NOT PANTAVISOR_APPENGINE)
 	set(PV_INSTALL_FULL_STORAGEDIR "/storage")
 else()
-	set(PV_INSTALL_STORAGEDIR "${CMAKE_INSTALL_LOCALSTATEDIR}/${CMAKE_PROJECT_NAME}/storage")
+	set(PV_INSTALL_STORAGEDIR "${CMAKE_INSTALL_LOCALSTATEDIR}/${PROJECT_NAME}/storage")
 	if(CMAKE_INSTALL_PREFIX STREQUAL "/usr")
 		set(PV_INSTALL_FULL_STORAGEDIR "${PV_INSTALL_STORAGEDIR}")
 	else()
@@ -52,18 +52,18 @@ else()
 	endif()
 endif()
 
-set(PV_INSTALL_PVTXDIR "${CMAKE_INSTALL_LIBDIR}/${CMAKE_PROJECT_NAME}/pvtx.d")
+set(PV_INSTALL_PVTXDIR "${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/pvtx.d")
 set(PV_INSTALL_FULL_PVTXDIR "${CMAKE_INSTALL_PREFIX}/${PV_INSTALL_PVTXDIR}")
 
-set(PV_INSTALL_SKELDIR "${CMAKE_INSTALL_LIBDIR}/${CMAKE_PROJECT_NAME}/skel")
+set(PV_INSTALL_SKELDIR "${CMAKE_INSTALL_LIBDIR}/${PROJECT_NAME}/skel")
 set(PV_INSTALL_FULL_SKELDIR "${CMAKE_INSTALL_PREFIX}/${PV_INSTALL_SKELDIR}")
 
 if(PANTAVISOR_CLANG_FORMAT_CHECK)
 
 # Find all .c and .h files
 file(GLOB_RECURSE ALL_SOURCE_FILES
-    ${CMAKE_SOURCE_DIR}/*.c
-    ${CMAKE_SOURCE_DIR}/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/*.h
 )
 
 # Find clang-format
@@ -77,7 +77,7 @@ if(CLANG_FORMAT)
         --Werror
         --style=file
         ${ALL_SOURCE_FILES}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Checking code formatting with clang-format (build will fail if formatting is incorrect)"
     )
 
@@ -87,7 +87,7 @@ if(CLANG_FORMAT)
         -i
         --style=file
         ${ALL_SOURCE_FILES}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Formatting code with clang-format"
     )
 else()
@@ -354,7 +354,7 @@ add_executable(pantavisor
 			wdt.h
 )
 target_include_directories(pantavisor PRIVATE
-	${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils
+	${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/utils
 	${PANTAVISOR_RUNTIME_MBEDTLS_INCLUDE_DIR}
 )
 target_link_libraries(pantavisor
@@ -416,7 +416,7 @@ install(DIRECTORY scripts/hooks_lxc-mount.d
 
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
-	DESTINATION /usr/bin)
+	DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ## HOOKS
 if(PANTAVISOR_DEBUG_HOOKS)
@@ -444,14 +444,6 @@ install(DIRECTORY
 	DIRECTORY_PERMISSIONS WORLD_READ GROUP_READ OWNER_READ OWNER_WRITE)
 ENDIF()
 
-## PVCONTROL
-
-if(PANTAVISOR_PVCONTROL)
-install(PROGRAMS tools/pvcontrol
-               tools/pvcurl
-       DESTINATION /usr/bin)
-ENDIF()
-
 add_executable(remount
 			remount/remount.c
 			utils/pvsignals.h utils/pvsignals.c
@@ -462,7 +454,7 @@ add_executable(remount
 )
 target_compile_definitions(remount PUBLIC -DDISABLE_LOGSERVER)
 target_compile_definitions(remount PUBLIC PV_INSTALL_FULL_STORAGEDIR="${PV_INSTALL_FULL_STORAGEDIR}")
-target_include_directories(remount PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils)
+target_include_directories(remount PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/utils)
 target_link_libraries(remount  ${PANTAVISOR_RUNTIME_THTTP})
 install(TARGETS remount DESTINATION ${PV_INSTALL_FULL_PVLIBDIR}/hooks_lxc-mount.d)
 
@@ -487,6 +479,14 @@ ENDIF()
 
 ENDIF() # PANTAVISOR_RUNTIME
 
+## PVCONTROL (scripts only, independent of RUNTIME)
+if(PANTAVISOR_PVCONTROL)
+install(PROGRAMS tools/pvcontrol
+               tools/pvcurl
+       DESTINATION ${CMAKE_INSTALL_BINDIR})
+ENDIF()
+
+IF(PANTAVISOR_RUNTIME OR PANTAVISOR_APPENGINE)
 IF(PANTAVISOR_APPENGINE)
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/appengine/pv-appengine.in
@@ -558,6 +558,7 @@ install(FILES
 )
 
 ENDIF() # PANTAVISOR_APPENGINE
+ENDIF() # PANTAVISOR_RUNTIME OR PANTAVISOR_APPENGINE
 
 IF(PANTAVISOR_PVTEST)
 configure_file(
@@ -619,11 +620,11 @@ add_executable(pvtx
 )
 target_compile_definitions(pvtx PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(pvtx PRIVATE
-	${CMAKE_SOURCE_DIR}
-	${CMAKE_SOURCE_DIR}/utils
+	${CMAKE_CURRENT_SOURCE_DIR}
+	${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 target_link_libraries(pvtx ${PANTAVISOR_PVTX_ZLIB})
-install(TARGETS pvtx DESTINATION /usr/bin)
+install(TARGETS pvtx DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ENDIF() # PANTAVISOR_PVTX
 
@@ -637,7 +638,7 @@ add_executable(pvtx-static
 )
 target_compile_definitions(pvtx-static PUBLIC -DDISABLE_LOGSERVER)
 target_include_directories(pvtx-static PRIVATE
-	${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/utils
+	${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 target_link_libraries(pvtx-static ${PANTAVISOR_PVTX_STATIC_ZLIB})
 target_link_options(pvtx-static PRIVATE
@@ -648,7 +649,7 @@ target_link_options(pvtx-static PRIVATE
 set_target_properties(pvtx-static PROPERTIES
     LINK_SEARCH_END_STATIC 1 # Set to 1 (true)
 )
-install(TARGETS pvtx-static DESTINATION /usr/bin)
+install(TARGETS pvtx-static DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ENDIF() # PANTAVISOR_PVTX_STATIC
 
@@ -680,5 +681,9 @@ target_link_libraries(test-pv-tsh)
 install(TARGETS test-pv-tsh DESTINATION bin)
 ENDIF()
 
+# Only enable tests when this project is the top-level CMake project
+# (avoids polluting parent projects that embed pantavisor as a subdirectory).
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND PANTAVISOR_PVTX)
 enable_testing()
 add_subdirectory(test/pvtx)
+endif()
