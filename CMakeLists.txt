@@ -416,7 +416,7 @@ install(DIRECTORY scripts/hooks_lxc-mount.d
 
 install(PROGRAMS tools/pventer
 			tools/fallbear-cmd
-	DESTINATION /usr/bin)
+	DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ## HOOKS
 if(PANTAVISOR_DEBUG_HOOKS)
@@ -483,7 +483,7 @@ ENDIF() # PANTAVISOR_RUNTIME
 if(PANTAVISOR_PVCONTROL)
 install(PROGRAMS tools/pvcontrol
                tools/pvcurl
-       DESTINATION /usr/bin)
+       DESTINATION ${CMAKE_INSTALL_BINDIR})
 ENDIF()
 
 IF(PANTAVISOR_RUNTIME OR PANTAVISOR_APPENGINE)
@@ -624,7 +624,7 @@ target_include_directories(pvtx PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/utils
 )
 target_link_libraries(pvtx ${PANTAVISOR_PVTX_ZLIB})
-install(TARGETS pvtx DESTINATION /usr/bin)
+install(TARGETS pvtx DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ENDIF() # PANTAVISOR_PVTX
 
@@ -649,7 +649,7 @@ target_link_options(pvtx-static PRIVATE
 set_target_properties(pvtx-static PROPERTIES
     LINK_SEARCH_END_STATIC 1 # Set to 1 (true)
 )
-install(TARGETS pvtx-static DESTINATION /usr/bin)
+install(TARGETS pvtx-static DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 ENDIF() # PANTAVISOR_PVTX_STATIC
 
