@@ -914,12 +914,16 @@ static void _arm_wait_timer(int secs, event_callback_fn cb)
 
 	struct timeval tv = { secs, 0 };
 	event_add(wait_timer_ev, &tv);
+
+	pv_log(TRACE, "wait timer armed: %d s", secs);
 }
 
 void pv_wake_state_machine(void)
 {
-	if (wake_pending)
+	if (wake_pending) {
+		pv_log(TRACE, "state machine wake skipped (already pending)");
 		return;
+	}
 
 	wake_pending = true;
 	_cancel_wait_timer();
@@ -981,6 +985,9 @@ static void _next_state(pv_state_t next_state)
 
 	int interval =
 		(state == PV_STATE_WAIT) ? WAIT_INTERVAL : BLOCK_INTERVAL;
+
+	pv_log(TRACE, "transition: %s -> %s (wait-timer=%d s)",
+	       pv_state_string(prev_state), pv_state_string(state), interval);
 
 	// First entry into WAIT / BLOCK_REBOOT: run the handler immediately so
 	// container group progression and command handling do not pay a full
