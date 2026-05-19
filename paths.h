@@ -140,6 +140,7 @@ void pv_paths_lib_lxc_lxcpath(char *buf, size_t size);
 #define USRMETAVOL_DNAME "pv--usrmeta"
 #define DEVMETAVOL_DNAME "pv--devmeta"
 #define PHCONFIGVOL_DNAME "pv--phconfig"
+#define FIRMWAREVOL_DNAME "pv--firmware"
 
 void pv_paths_root_file(char *buf, size_t size, const char *path);
 void pv_paths_volumes_file(char *buf, size_t size, const char *name);

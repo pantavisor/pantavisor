@@ -55,6 +55,56 @@
 #include "log.h"
 
 #define FW_PATH "/lib/firmware"
+#define FW_CLASS_PARAM_PATH "/sys/module/firmware_class/parameters/path"
+
+static int pv_volumes_set_firmware_alt_path(void)
+{
+	char vol_path[PATH_MAX];
+	char real_path[PATH_MAX];
+	struct stat st;
+
+	if (!pv_config_get_bool(PV_STORAGE_FIRMWARE_VOL)) {
+		pv_log(DEBUG,
+		       "PV_STORAGE_FIRMWARE_VOL not set; skip setting alt firmware load path");
+		return 0;
+	}
+
+	pv_paths_volumes_plat_file(vol_path, PATH_MAX, BSP_DNAME,
+				   FIRMWAREVOL_DNAME);
+
+	if (stat(vol_path, &st) != 0) {
+		pv_log(ERROR,
+		       "'%s' does not exist but required by config (PV_STORAGE_FIRMWARE_VOL)",
+		       vol_path);
+		return -1;
+	}
+
+	// resolve symlinks (e.g. /volumes -> /run/...) so the kernel records
+	// the real mount-point path
+	if (!realpath(vol_path, real_path)) {
+		pv_log(WARN, "cannot resolve real path for '%s': %s", vol_path,
+		       strerror(errno));
+		SNPRINTF_WTRUNC(real_path, sizeof(real_path), "%s", vol_path);
+	}
+
+	int fd = open(FW_CLASS_PARAM_PATH, O_WRONLY | O_SYNC);
+	if (fd < 0) {
+		pv_log(ERROR, "cannot open '%s': %s", FW_CLASS_PARAM_PATH,
+		       strerror(errno));
+		return -1;
+	}
+
+	if (write(fd, real_path, strlen(real_path)) < 0) {
+		pv_log(ERROR, "cannot write '%s' to '%s': %s", real_path,
+		       FW_CLASS_PARAM_PATH, strerror(errno));
+		close(fd);
+		return -1;
+	}
+
+	close(fd);
+	pv_log(INFO, "firmware_class.path set to '%s'", real_path);
+	return 0;
+}
 
 static const char *pv_volume_type_str(pv_volume_t vt)
 {
@@ -487,7 +537,9 @@ modules:
 		       path_volumes);
 
 out:
-	return ret;
+	if (ret < 0)
+		return ret;
+	return pv_volumes_set_firmware_alt_path();
 }
 
 int pv_volumes_umount_firmware_modules()
