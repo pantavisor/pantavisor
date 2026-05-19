@@ -246,6 +246,7 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_STORAGE_LOGTEMPSIZE", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_STORAGE_MNTPOINT", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_STORAGE_MNTTYPE", PV, 0, false, .value.s = NULL },
+	{ BOOL, "PV_STORAGE_FIRMWARE_VOL", PV, 0, false, .value.b = false },
 	{ BOOL, "PV_STORAGE_PHCONFIG_VOL", PV, 0, false, .value.b = false },
 	{ INT, "PV_STORAGE_WAIT", PV, 0, false, .value.i = 5 },
 	{ STR, "PV_SYSTEM_APPARMOR_PROFILES", PV, 0, false, .value.s = NULL },

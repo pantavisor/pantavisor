@@ -118,6 +118,7 @@ Additional volumes can be [specified](../../../reference/legacy/pantavisor-state
 * pv--devmeta: if defined, Pantavisor will use this volume to save and load [device metadata](#device-metadata).
 * pv--usrmeta: if defined, Pantavisor will use this volume to save and load [user metadata](#user-metadata).
 * pv--phconfig: when defined, Pantavisor will reserve this volume to save and load [Pantacor Hub credentials](#config). To make Pantavisor use it, it has to be forced from [configuration](../../../reference/legacy/pantavisor-configuration.md#summary) with the key `PV_STORAGE_PHCONFIG_VOL`.
+* pv--firmware: when defined, Pantavisor will publish this volume's mount-point to the kernel firmware loader by writing it to `/sys/module/firmware_class/parameters/path`. The kernel will then search this directory first before falling through to the defaults under `/lib/firmware`. The volume is intended as a writable drop-zone where management containers can place customized firmware (e.g. board-specific NVRAM or calibration blobs) for the kernel to pick up — without modifying the rootfs. To make Pantavisor use it, it has to be forced from [configuration](../../../reference/legacy/pantavisor-configuration.md#summary) with the key `PV_STORAGE_FIRMWARE_VOL`; if the flag is set but the volume is missing from `device.json`, state-start fails and the standard tryboot rollback is triggered.
 
 ## Logs
 

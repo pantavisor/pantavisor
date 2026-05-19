@@ -103,6 +103,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_STORAGE_LOGTEMPSIZE` | size string | empty | set size for temporary log storage |
 | `PV_STORAGE_MNTPOINT` | path | empty | set storage mount point |
 | `PV_STORAGE_MNTTYPE` | string | empty | set storage mount type |
+| `PV_STORAGE_FIRMWARE_VOL` | `0` or `1` | `0` | use bsp volume `pv--firmware` as alternate kernel firmware load path (written to `/sys/module/firmware_class/parameters/path`); requires the volume to be declared in `device.json` |
 | `PV_STORAGE_PHCONFIG_VOL` | `0` or `1` | `0` | use volume for Pantahub configuration |
 | `PV_STORAGE_WAIT` | time (in seconds) | `5` | time to wait for storage device |
 | `PV_SYSCTL_*` | string | — | set any kernel sysctl at runtime; key maps to `/proc/sys/` (e.g. `PV_SYSCTL_KERNEL_CORE_PATTERN` → `/proc/sys/kernel/core_pattern`) |
