@@ -85,6 +85,12 @@ int pv_event_base_init()
 		return -1;
 	}
 
+	// PV_EVENT_PRIORITY_COUNT levels: HIGH(0)=reserved, DEFAULT(1)=hub API
+	// and state machine, CTRL(2)=ctrl non-file-transfer (libevent default),
+	// LOW(3)=bulk transfers.  Drains all priority-N before touching N+1.
+	if (event_base_priority_init(base, PV_EVENT_PRIORITY_COUNT) < 0)
+		pv_log(WARN, "could not init event priorities");
+
 	pv_log(DEBUG, "event base initialized");
 
 	return 0;

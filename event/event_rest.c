@@ -212,7 +212,8 @@ int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
 	const char *endpoint, const char *token, const char *body,
 	void (*chunk_cb)(struct evhttp_request *, void *),
-	void (*done_cb)(struct evhttp_request *, void *), void *ctx)
+	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
+	int priority)
 {
 	if (!pv_event_get_base())
 		return -1;
@@ -232,6 +233,8 @@ int pv_event_rest_send_by_components(
 		pv_log(ERROR, "bufferevent_mbedtls_socket_new failed");
 		goto error;
 	}
+
+	bufferevent_priority_set(bev, priority);
 
 	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
 
@@ -326,7 +329,7 @@ error:
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
-			      void *ctx)
+			      void *ctx, int priority)
 {
 	int ret = -1, port;
 	const char *scheme, *host, *path;
@@ -364,7 +367,8 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 		path = "/";
 
 	ret = pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
-					       chunk_cb, done_cb, ctx);
+					       chunk_cb, done_cb, ctx,
+					       priority);
 
 out:
 	if (http_uri)

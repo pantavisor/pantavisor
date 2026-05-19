@@ -299,7 +299,8 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 	}
 
 	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, arg);
+						body, NULL, cb, arg,
+						PV_EVENT_PRIORITY_DEFAULT);
 }
 
 static void _on_request_unresponsive()
@@ -812,7 +813,7 @@ static int _get_object(const char *geturl, const char *id_ref)
 	return pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
 					 _recv_get_object_chunk_cb,
 					 _recv_get_object_done_cb,
-					 (void *)id_ref);
+					 (void *)id_ref, PV_EVENT_PRIORITY_LOW);
 }
 
 int pv_pantahub_proto_get_objects()

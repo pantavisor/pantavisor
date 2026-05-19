@@ -24,6 +24,15 @@
 
 #include <event2/event.h>
 
+// Event priorities — lower number fires first.
+// Must match PV_EVENT_PRIORITY_COUNT passed to event_base_priority_init().
+// With COUNT=4 the libevent default for new events is 4/2=2 (CTRL).
+#define PV_EVENT_PRIORITY_HIGH 0 // reserved — available for future use
+#define PV_EVENT_PRIORITY_DEFAULT 1 // state machine, hub API, general events
+#define PV_EVENT_PRIORITY_CTRL 2 // ctrl non-file-transfer (libevent default)
+#define PV_EVENT_PRIORITY_LOW 3 // bulk transfers (hub downloads, ctrl objects)
+#define PV_EVENT_PRIORITY_COUNT 4
+
 int pv_event_base_init(void);
 void pv_event_base_close(void);
 
