@@ -308,6 +308,7 @@ add_executable(pantavisor
 			pvlogger.c
 			pvlogger.h
 			rpiab.c
+			efiab.c
 			signature.c
 			signature.h
 			state.c

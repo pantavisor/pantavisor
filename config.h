@@ -144,7 +144,8 @@ typedef enum {
 	BL_UBOOT_PVK,
 	BL_GRUB,
 	BL_RPIAB,
-	BL_UBOOT_AB
+	BL_UBOOT_AB,
+	BL_EFIAB
 } bootloader_t;
 
 bootloader_t pv_config_get_bootloader_type(void);
