@@ -20,16 +20,20 @@
  * SOFTWARE.
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <string.h>
 #include <unistd.h>
+
+#include <event2/buffer.h>
 
 #include "pantahub/pantahub.h"
 #include "pantahub/pantahub_msg.h"
 #include "pantahub/pantahub_proto.h"
 #include "pantahub/pantahub_struct.h"
 
+#include "event/event.h"
 #include "event/event_rest.h"
 
 #include "config.h"
@@ -753,32 +757,37 @@ int pv_pantahub_proto_get_objects_metadata()
 	return 0;
 }
 
-static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
-{
+/* Bytes written to disk per deferred callback; bounds each event-loop block. */
+#define OBJECT_WRITE_CHUNK_SIZE (256 * 1024)
+
+/*
+ * Download-to-disk context. Allocated in _get_object(), freed in
+ * _object_writer_finish() once all data is on disk and the object installed.
+ */
+struct pv_object_writer {
+	struct evbuffer *buf; /* accumulates incoming data; drained by write_cb */
+	int fd;
 	char path[PATH_MAX];
-	int res;
-	const char *id_ref = (char *)ctx;
+	const char *id_ref; /* non-owning; matched by address */
+	bool finalized; /* done_cb has fired and http_status is valid */
+	bool write_scheduled; /* a write_cb is already queued in the event loop */
+	bool write_error;
+	int http_status;
+};
 
-	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
-
-	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
-	pv_event_rest_recv_chunk_path(req, path);
-}
-
-static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
+static void _object_writer_finish(struct pv_object_writer *w)
 {
-	char path[PATH_MAX];
-	int res;
-	const char *id_ref = (char *)ctx;
+	int res = w->http_status;
 
-	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_done_cb);
+	if (w->fd >= 0) {
+		close(w->fd);
+		w->fd = -1;
+	}
 
-	_remove_object_transfer(id_ref);
+	_remove_object_transfer(w->id_ref);
 
-	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
-	res = pv_event_rest_recv_done_path(req, path);
 	if (res == 401) {
-		pv_log(WARN, "GET object unauthorized", res);
+		pv_log(WARN, "GET object unauthorized");
 		_free_token();
 		goto out;
 	}
@@ -786,20 +795,130 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 		pv_log(WARN, "GET object returned %d", res);
 		goto out;
 	}
-	pv_log(DEBUG, "object downloaded from Hub");
 
-	if (pv_update_install_object(path)) {
+	{
+		off_t size = pv_fs_path_get_size(w->path);
+		pv_log(DEBUG,
+		       "successfully downloaded file with size %jd bytes at '%s'",
+		       (intmax_t)size, w->path);
+	}
+
+	if (pv_update_install_object(w->path)) {
 		pv_log(WARN, "object download failed");
 		goto out;
 	}
+	pv_log(DEBUG, "object downloaded from Hub");
+
 out:
-	pv_fs_path_remove(path, false);
+	pv_fs_path_remove(w->path, false);
+	evbuffer_free(w->buf);
+	free(w);
 	pv_pantahub_evaluate_state();
+}
+
+static void _object_writer_write_cb(evutil_socket_t fd_unused, short what,
+				    void *ctx)
+{
+	static const struct timeval zero = { 0, 0 };
+	(void)fd_unused;
+	(void)what;
+	struct pv_object_writer *w = ctx;
+
+	if (evbuffer_get_length(w->buf) > 0) {
+		/* Write one chunk and re-schedule; the zero-timeout yield lets the
+		 * event loop dispatch ctrl requests between writes. */
+		ssize_t n = evbuffer_write_atmost(w->buf, w->fd,
+						  OBJECT_WRITE_CHUNK_SIZE);
+		if (n < 0) {
+			if (errno == EINTR || errno == EAGAIN) {
+				event_base_once(pv_event_get_base(), -1,
+						EV_TIMEOUT,
+						_object_writer_write_cb, w,
+						&zero);
+				return;
+			}
+			pv_log(WARN, "error writing '%s': %s", w->path,
+			       strerror(errno));
+			w->write_error = true;
+			w->write_scheduled = false;
+			if (w->finalized)
+				_object_writer_finish(w);
+			return;
+		}
+		pv_log(TRACE, "wrote %zd bytes into '%s'", n, w->path);
+	}
+
+	if (evbuffer_get_length(w->buf) > 0) {
+		event_base_once(pv_event_get_base(), -1, EV_TIMEOUT,
+				_object_writer_write_cb, w, &zero);
+	} else {
+		w->write_scheduled = false;
+		if (w->finalized)
+			_object_writer_finish(w);
+	}
+}
+
+static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
+{
+	static const struct timeval zero = { 0, 0 };
+	struct pv_object_writer *w = ctx;
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
+
+	/* O(1) chain-pointer move; no copy of the incoming data. */
+	evbuffer_add_buffer(w->buf, evhttp_request_get_input_buffer(req));
+
+	if (!w->write_scheduled && evbuffer_get_length(w->buf) > 0) {
+		w->write_scheduled = true;
+		event_base_once(pv_event_get_base(), -1, EV_TIMEOUT,
+				_object_writer_write_cb, w, &zero);
+	}
+}
+
+static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
+{
+	static const struct timeval zero = { 0, 0 };
+	struct pv_object_writer *w = ctx;
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_done_cb);
+
+	/* Capture http_status now — req is freed by the caller after this returns. */
+	if (req) {
+		w->http_status = evhttp_request_get_response_code(req);
+		if (w->http_status == 0) {
+			pv_log(WARN, "connection error downloading object");
+			w->http_status = -1;
+		} else {
+			pv_log(TRACE, "HTTP/1.1 %d %s", w->http_status,
+			       evhttp_request_get_response_code_line(req));
+		}
+		struct evbuffer *req_buf = evhttp_request_get_input_buffer(req);
+		if (req_buf && evbuffer_get_length(req_buf) > 0)
+			evbuffer_add_buffer(w->buf, req_buf);
+	} else {
+		pv_log(WARN, "connection error downloading object");
+		w->http_status = -1;
+	}
+
+	w->finalized = true;
+
+	if (w->write_error) {
+		_object_writer_finish(w);
+	} else if (!w->write_scheduled) {
+		if (evbuffer_get_length(w->buf) > 0) {
+			w->write_scheduled = true;
+			event_base_once(pv_event_get_base(), -1, EV_TIMEOUT,
+					_object_writer_write_cb, w, &zero);
+		} else {
+			_object_writer_finish(w);
+		}
+	}
 }
 
 static int _get_object(const char *geturl, const char *id_ref)
 {
 	char path[PATH_MAX];
+	struct pv_object_writer *w;
 
 	if (!geturl || !id_ref)
 		return -1;
@@ -809,10 +928,39 @@ static int _get_object(const char *geturl, const char *id_ref)
 
 	pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
 
-	return pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
-					 _recv_get_object_chunk_cb,
-					 _recv_get_object_done_cb,
-					 (void *)id_ref);
+	w = calloc(1, sizeof(*w));
+	if (!w)
+		return -1;
+
+	w->fd = -1;
+
+	w->buf = evbuffer_new();
+	if (!w->buf)
+		goto error;
+
+	w->fd = open(path, O_CREAT | O_RDWR | O_APPEND, 0644);
+	if (w->fd < 0) {
+		pv_log(WARN, "could not open '%s': %s", path, strerror(errno));
+		goto error;
+	}
+
+	strncpy(w->path, path, sizeof(w->path) - 1);
+	w->id_ref = id_ref;
+
+	if (pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
+				      _recv_get_object_chunk_cb,
+				      _recv_get_object_done_cb, w))
+		goto error;
+
+	return 0;
+
+error:
+	if (w->fd >= 0)
+		close(w->fd);
+	if (w->buf)
+		evbuffer_free(w->buf);
+	free(w);
+	return -1;
 }
 
 int pv_pantahub_proto_get_objects()
