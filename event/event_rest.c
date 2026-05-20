@@ -454,6 +454,7 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 	size_t total_written = 0, blen;
 	struct evbuffer *evbuf;
 
+	pv_log(DEBUG, "entering recv_chunk_path for '%s'", path);
 	evbuf = evhttp_request_get_input_buffer(req);
 
 	fd = open(path, O_CREAT | O_RDWR | O_APPEND, 0644);
@@ -464,6 +465,7 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 
 	blen = evbuffer_get_length(evbuf);
 	while (evbuffer_get_length(evbuf) > 0) {
+		pv_log(DEBUG, "busy loop here my friend");
 		ssize_t n = evbuffer_write(evbuf, fd);
 
 		if (n < 0) {
