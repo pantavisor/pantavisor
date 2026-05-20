@@ -48,6 +48,7 @@
 #include "utils/str.h"
 
 #define MODULE_NAME "event_rest"
+#define HTTP_DOWNLOAD_READ_HIGHWATER (128 * 1024)
 #define pv_log(level, msg, ...)                                                \
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
 	     ##__VA_ARGS__)
@@ -234,6 +235,8 @@ int pv_event_rest_send_by_components(
 	}
 
 	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
+	/* Bound buffered read data so large downloads don't starve the event loop. */
+	bufferevent_setwatermark(bev, EV_READ, 0, HTTP_DOWNLOAD_READ_HIGHWATER);
 
 	struct evhttp_connection *evcon;
 	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
