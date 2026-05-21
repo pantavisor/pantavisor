@@ -248,6 +248,7 @@ int pv_event_rest_send_by_components(
 
 	// libevent will manage its resourcess so we only have to free our own context
 	evhttp_connection_set_family(evcon, AF_INET);
+	evhttp_connection_set_flags(evcon, EVHTTP_CON_HTTP10);
 
 	int retries = pv_config_get_int(PH_LIBEVENT_HTTP_RETRIES);
 	evhttp_connection_set_retries(evcon, retries);
