@@ -465,12 +465,16 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 
 	blen = evbuffer_get_length(evbuf);
 	while (evbuffer_get_length(evbuf) > 0) {
-		pv_log(DEBUG, "busy loop here my friend");
+		pv_log(DEBUG,
+		       "recv_chunk_path loop iter: blen=%zu remaining=%zu",
+		       blen, evbuffer_get_length(evbuf));
 		ssize_t n = evbuffer_write(evbuf, fd);
 
 		if (n < 0) {
 			if (errno == EINTR || errno == EAGAIN) {
-				// Temporary error, retry
+				pv_log(DEBUG,
+				       "recv_chunk_path temp error errno=%d (%s), retrying",
+				       errno, strerror(errno));
 				continue;
 			}
 			// Actual error
@@ -481,12 +485,16 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 		}
 
 		if (n == 0) {
+			pv_log(DEBUG, "recv_chunk_path n==0, exiting loop");
 			break;
 		}
 
 		total_written += n;
-		if (total_written != blen)
-			pv_log(DEBUG, "wrote part of %zu bytes into '%s'",
+		if (total_written < blen)
+			pv_log(DEBUG, "wrote part of %zu/%zu bytes into '%s'",
+			       total_written, blen, path);
+		else
+			pv_log(DEBUG, "wrote all %zu bytes into '%s'",
 			       total_written, path);
 	}
 
