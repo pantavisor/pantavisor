@@ -30,7 +30,6 @@
 #include <event2/listener.h>
 #include <event2/util.h>
 #include <event2/http.h>
-#include <event2/http_struct.h>
 
 #include <mbedtls/error.h>
 #include <mbedtls/ssl.h>
@@ -268,8 +267,6 @@ int pv_event_rest_send_by_components(
 		pv_log(ERROR, "evhttp_request_new failed");
 		goto error;
 	}
-	req->major = 1;
-	req->minor = 0;
 
 	if (chunk_cb)
 		evhttp_request_set_chunked_cb(req, chunk_cb);
