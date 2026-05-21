@@ -140,6 +140,8 @@ static void _add_header(struct evkeyvalq *output_headers, const char *key,
 
 static void _print_error_cb(enum evhttp_request_error error, void *ctx)
 {
+	pv_log(TRACE, "run event: cb=%p", (void *)_print_error_cb);
+
 	switch (error) {
 	case EVREQ_HTTP_TIMEOUT:
 		pv_log(WARN, "timeout reached");
@@ -170,6 +172,8 @@ static void _print_error_cb(enum evhttp_request_error error, void *ctx)
 
 static int _header_cb(struct evhttp_request *req, void *ctx)
 {
+	pv_log(TRACE, "run event: cb=%p", (void *)_header_cb);
+
 	struct evhttp_connection *evcon;
 	const struct sockaddr *sa;
 	struct sockaddr_in6 *addr_in6;
