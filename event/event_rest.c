@@ -453,7 +453,7 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 
 	evbuf = evhttp_request_get_input_buffer(req);
 	blen = evbuffer_get_length(evbuf);
-	pv_log(DEBUG, "recv chunk '%s': %zu bytes", path, blen);
+	pv_log(TRACE, "recv chunk '%s': %zu bytes", path, blen);
 
 	fd = open(path, O_CREAT | O_RDWR | O_APPEND, 0644);
 	if (fd < 0) {
@@ -466,7 +466,7 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 
 		if (n < 0) {
 			if (errno == EINTR || errno == EAGAIN) {
-				pv_log(WARN,
+				pv_log(TRACE,
 				       "recv chunk '%s': temp error (%s), retrying",
 				       path, strerror(errno));
 				continue;
@@ -478,7 +478,7 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 		}
 
 		if (n == 0) {
-			pv_log(DEBUG,
+			pv_log(TRACE,
 			       "recv chunk '%s': zero-write, exiting loop",
 			       path);
 			break;
@@ -486,11 +486,11 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 
 		total_written += n;
 		if (total_written < blen)
-			pv_log(DEBUG, "recv chunk '%s': partial write %zu/%zu",
+			pv_log(TRACE, "recv chunk '%s': partial write %zu/%zu",
 			       path, total_written, blen);
 	}
 
-	pv_log(DEBUG, "recv chunk '%s': wrote %zu/%zu bytes", path,
+	pv_log(TRACE, "recv chunk '%s': wrote %zu/%zu bytes", path,
 	       total_written, blen);
 	close(fd);
 	return 0;
