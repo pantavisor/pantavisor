@@ -833,6 +833,8 @@ static void _run_state_download()
 
 static void _run_state_cb(evutil_socket_t fd, short events, void *arg)
 {
+	pv_log(TRACE, "run event: cb=%p", (void *)_run_state_cb);
+
 	struct pv_pantahub *ph = _get_ph_instance();
 	if (!ph)
 		return;
