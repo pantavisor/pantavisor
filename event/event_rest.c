@@ -490,12 +490,13 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 		}
 
 		total_written += n;
-		if (total_written < blen)
+		if (total_written < blen) {
 			pv_log(DEBUG, "wrote part of %zu/%zu bytes into '%s'",
 			       total_written, blen, path);
-		else
+		} else {
 			pv_log(DEBUG, "wrote all %zu bytes into '%s'",
 			       total_written, path);
+		}
 	}
 
 	close(fd);
