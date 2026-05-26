@@ -66,7 +66,9 @@ static void ctrl_usrmeta_set_cb(struct evbuffer *buf,
 				const struct evbuffer_cb_info *info, void *ctx)
 {
 	(void)buf;
-	(void)info;
+
+	if (info->n_added == 0)
+		return;
 
 	struct evhttp_request *req = ctx;
 
