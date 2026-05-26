@@ -32,7 +32,9 @@
 #include <event2/http.h>
 #include <event2/buffer.h>
 
+#include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define MODULE_NAME "ctrl_upload"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -112,7 +114,14 @@ static void ctrl_upload_read_cb(struct evbuffer *buf,
 
 	pv_storage_gc_defer_run_threshold();
 
-	evbuffer_write(buf, up->file->fd);
+	while (evbuffer_get_length(buf) > 0) {
+		int written = evbuffer_write(buf, up->file->fd);
+		if (written <= 0) {
+			pv_log(WARN, "upload write failed: %s",
+			       strerror(errno));
+			goto err;
+		}
+	}
 
 	return;
 

@@ -32,6 +32,7 @@
 #include "utils/fs.h"
 
 #include <event2/http.h>
+#include <event2/buffer.h>
 
 #include <string.h>
 
@@ -176,7 +177,13 @@ static void ctrl_step_commit_cb(struct evbuffer *buf,
 				const struct evbuffer_cb_info *info, void *ctx)
 {
 	(void)buf;
-	(void)info;
+	if (!info->n_added)
+		return;
+
+	if (!pv_ctrl_utils_has_all_data(ctx))
+		return;
+
+	evbuffer_remove_cb(buf, ctrl_step_commit_cb, ctx);
 
 	struct evhttp_request *req = ctx;
 	char *name = ctrl_steps_rev_name(req);

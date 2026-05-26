@@ -64,6 +64,14 @@ static void ctrl_devmeta_list(struct evhttp_request *req, void *ctx)
 static void ctrl_devmeta_set_key(struct evbuffer *buf,
 				 const struct evbuffer_cb_info *info, void *ctx)
 {
+	if (!info->n_added)
+		return;
+
+	if (!pv_ctrl_utils_has_all_data(ctx))
+		return;
+
+	evbuffer_remove_cb(buf, ctrl_devmeta_set_key, ctx);
+
 	struct evhttp_request *req = ctx;
 
 	ssize_t len = 0;

@@ -36,6 +36,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <stdlib.h>
 
 #define MODULE_NAME "ctrl-utils"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
@@ -52,7 +53,7 @@ struct pv_ctrl_http_code_value {
 struct ctrl_utils_drain_data {
 	struct evhttp_request *req;
 	int code;
-	const char *msg;
+	char *msg;
 };
 
 struct pv_ctrl_http_code_value http_codes[] = {
@@ -135,6 +136,7 @@ void pv_ctrl_utils_send_json_file(struct evhttp_request *req, const char *path)
 		goto out;
 	}
 
+	fd = -1;
 	pv_ctrl_utils_send_ok(req);
 out:
 	if (fd > -1)
@@ -269,6 +271,19 @@ ssize_t pv_ctrl_utils_get_content_length(struct evhttp_request *req)
 	return cl;
 }
 
+bool pv_ctrl_utils_has_all_data(struct evhttp_request *req)
+{
+	ssize_t expected = pv_ctrl_utils_get_content_length(req);
+	if (expected < 0)
+		return true;
+
+	struct evbuffer *buf = evhttp_request_get_input_buffer(req);
+	if (!buf)
+		return false;
+
+	return evbuffer_get_length(buf) >= (size_t)expected;
+}
+
 char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 			     ssize_t *len)
 {
@@ -313,7 +328,7 @@ char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 static void ctrl_utils_drain_buf(struct evbuffer *buf)
 {
 	size_t len = evbuffer_get_length(buf);
-	pv_log(DEBUG, "discarding %zd bytes");
+	pv_log(DEBUG, "discarding %zd bytes", len);
 	evbuffer_drain(buf, len);
 }
 
@@ -326,7 +341,13 @@ static void ctrl_utils_drain_ok_callback(struct evbuffer *buf,
 					 const struct evbuffer_cb_info *info,
 					 void *ctx)
 {
-	(void)info;
+	if (!info->n_added)
+		return;
+
+	if (!pv_ctrl_utils_has_all_data(ctx))
+		return;
+
+	evbuffer_remove_cb(buf, ctrl_utils_drain_ok_callback, ctx);
 	ctrl_utils_drain_buf(buf);
 
 	pv_ctrl_utils_send_ok(ctx);
@@ -336,7 +357,16 @@ static void ctrl_utils_drain_error_callback(struct evbuffer *buf,
 					    const struct evbuffer_cb_info *info,
 					    void *ctx)
 {
-	(void)info;
+	if (!info->n_added)
+		return;
+
+	if (ctx) {
+		struct ctrl_utils_drain_data *data = ctx;
+		if (!pv_ctrl_utils_has_all_data(data->req))
+			return;
+	}
+
+	evbuffer_remove_cb(buf, ctrl_utils_drain_error_callback, ctx);
 	ctrl_utils_drain_buf(buf);
 
 	if (!ctx)
@@ -344,6 +374,8 @@ static void ctrl_utils_drain_error_callback(struct evbuffer *buf,
 
 	struct ctrl_utils_drain_data *data = ctx;
 	pv_ctrl_utils_send_error(data->req, data->code, data->msg);
+	free(data->msg);
+	free(data);
 }
 
 void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req)
@@ -368,7 +400,17 @@ void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
 	}
 
 	data->code = code;
-	data->msg = err_str;
+	data->msg = strdup(err_str ? err_str : "");
+	if (!data->msg) {
+		free(data);
+		pv_log(DEBUG,
+		       "couldn't allocate message data. Request will be "
+		       "drain but a 'broken pipe' could happen on the client side");
+
+		evbuffer_add_cb(evhttp_request_get_input_buffer(req),
+				ctrl_utils_drain_error_callback, NULL);
+		return;
+	}
 	data->req = req;
 
 	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
