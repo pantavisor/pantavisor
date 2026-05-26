@@ -66,7 +66,13 @@ static void ctrl_usrmeta_set_cb(struct evbuffer *buf,
 				const struct evbuffer_cb_info *info, void *ctx)
 {
 	(void)buf;
-	(void)info;
+	if (!info->n_added)
+		return;
+
+	if (!pv_ctrl_utils_has_all_data(ctx))
+		return;
+
+	evbuffer_remove_cb(buf, ctrl_usrmeta_set_cb, ctx);
 
 	struct evhttp_request *req = ctx;
 

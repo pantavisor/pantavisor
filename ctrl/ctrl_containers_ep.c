@@ -94,6 +94,11 @@ static void ctrl_container_process_action(struct evbuffer *buf,
 	if (!info->n_added)
 		return;
 
+	if (!pv_ctrl_utils_has_all_data(req))
+		return;
+
+	evbuffer_remove_cb(buf, ctrl_container_process_action, ctx);
+
 	const char *uri = evhttp_request_get_uri(req);
 	char split[PV_CTRL_MAX_SPLIT][NAME_MAX] = { 0 };
 	int size = pv_ctrl_utils_split_path(uri, split);

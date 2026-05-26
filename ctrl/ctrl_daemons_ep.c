@@ -68,6 +68,14 @@ static void ctrl_daemons_process_action(struct evbuffer *buf,
 					const struct evbuffer_cb_info *info,
 					void *ctx)
 {
+	if (!info->n_added)
+		return;
+
+	if (!pv_ctrl_utils_has_all_data(ctx))
+		return;
+
+	evbuffer_remove_cb(buf, ctrl_daemons_process_action, ctx);
+
 	struct evhttp_request *req = ctx;
 	char *data = NULL;
 	char *action = NULL;

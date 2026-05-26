@@ -59,6 +59,8 @@ int pv_ctrl_utils_is_req_ok(struct evhttp_request *req, struct pv_ctrl_cb *cb,
 
 ssize_t pv_ctrl_utils_get_content_length(struct evhttp_request *req);
 
+bool pv_ctrl_utils_has_all_data(struct evhttp_request *req);
+
 char *pv_ctrl_utils_get_data(struct evhttp_request *req, ssize_t max,
 			     ssize_t *len);
 
