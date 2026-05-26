@@ -52,7 +52,7 @@ struct pv_ctrl_http_code_value {
 struct ctrl_utils_drain_data {
 	struct evhttp_request *req;
 	int code;
-	const char *msg;
+	char msg[PV_CTRL_MAX_ERR];
 };
 
 struct pv_ctrl_http_code_value http_codes[] = {
@@ -348,6 +348,7 @@ static void ctrl_utils_drain_error_callback(struct evbuffer *buf,
 
 	struct ctrl_utils_drain_data *data = ctx;
 	pv_ctrl_utils_send_error(data->req, data->code, data->msg);
+	free(data);
 }
 
 void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req)
@@ -372,7 +373,7 @@ void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
 	}
 
 	data->code = code;
-	data->msg = err_str;
+	memccpy(data->msg, err_str, '\0', PV_CTRL_MAX_ERR - 1);
 	data->req = req;
 
 	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
