@@ -8,7 +8,7 @@ This is the device metadata created by Pantavisor that will give you useful info
 
 | Key | Value | Description |
 | --- | ----- | ----------- |
-| `interfaces` | json | network interfaces of the device |
+| `interfaces` | json | network interfaces of the device, keyed by `<iface>.<family>` where family is `ipv4`, `ipv6` or `mac` (see below) |
 | `pantahub.address` | IP:port | Pantacor Hub address the client is communicating with |
 | `pantahub.claimed` | 0 or 1 | 1 if claimed in Pantacor Hub |
 | `pantahub.online` | 0 or 1 | 1 if connection to Pantacor Hub was established |
@@ -25,6 +25,20 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `storage` | json | disk usage of the device |
 | `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) |
 | `time` | json | time information |
+
+## `interfaces` format
+
+The `interfaces` device metadata is a JSON object keyed by `<iface>.<family>`. Each value is an array, since an interface can hold multiple addresses of the same family. The `mac` family carries the interface hardware (MAC) address; interfaces without a hardware address (e.g. `lo`) have no `mac` entry.
+
+```json
+{
+  "eth0.mac": ["b8:27:eb:00:11:22"],
+  "eth0.ipv4": ["192.168.1.10"],
+  "eth0.ipv6": ["fe80::ba27:ebff:fe00:1122"],
+  "lo.ipv4": ["127.0.0.1"],
+  "lo.ipv6": ["::1"]
+}
+```
 
 # User metadata
 
