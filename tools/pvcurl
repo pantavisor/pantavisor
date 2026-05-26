@@ -125,7 +125,7 @@ if [ -n "$OUTPUT_FILE" ]; then
 elif [ "$SHOW_HEADERS" = true ]; then
     cat /tmp/http_res
 else
-    sed '1,/^\r\{0,1\}$/d' /tmp/http_res
+    extract_body
 fi
 
 if [ -n "$WRITE_OUT" ]; then
