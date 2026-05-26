@@ -39,6 +39,8 @@
 #include <linux/if.h>
 #include <linux/sockios.h>
 
+#include <netpacket/packet.h>
+
 #include <jsmn/jsmnutil.h>
 
 #include "network.h"
@@ -133,19 +135,34 @@ void pv_network_update_meta(struct pantavisor *pv)
 			continue;
 
 		char *family = NULL;
-		size_t size = 0;
 		if (ifa->ifa_addr->sa_family == AF_PACKET) {
-			continue;
-		} else if (ifa->ifa_addr->sa_family == AF_INET) {
-			family = "ipv4";
-			size = sizeof(struct sockaddr_in);
+			struct sockaddr_ll *sll =
+				(struct sockaddr_ll *)ifa->ifa_addr;
+			// only emit ethernet-style 6-byte addresses, and skip
+			// the all-zero hardware address of loopback-like ifaces
+			static const unsigned char zero[6] = { 0 };
+			if (sll->sll_halen != 6 ||
+			    !memcmp(sll->sll_addr, zero, 6))
+				continue;
+			family = "mac";
+			snprintf(host, NI_MAXHOST,
+				 "%02x:%02x:%02x:%02x:%02x:%02x",
+				 sll->sll_addr[0], sll->sll_addr[1],
+				 sll->sll_addr[2], sll->sll_addr[3],
+				 sll->sll_addr[4], sll->sll_addr[5]);
 		} else {
-			family = "ipv6";
-			size = sizeof(struct sockaddr_in6);
-		}
+			size_t size = 0;
+			if (ifa->ifa_addr->sa_family == AF_INET) {
+				family = "ipv4";
+				size = sizeof(struct sockaddr_in);
+			} else {
+				family = "ipv6";
+				size = sizeof(struct sockaddr_in6);
+			}
 
-		getnameinfo(ifa->ifa_addr, size, host, NI_MAXHOST, NULL, 0,
-			    NI_NUMERICHOST);
+			getnameinfo(ifa->ifa_addr, size, host, NI_MAXHOST, NULL,
+				    0, NI_NUMERICHOST);
+		}
 
 		snprintf(cur, IFACE_KEY_SIZE, "%s.%s", ifa->ifa_name, family);
 		if (strncmp(cur, last, IFACE_KEY_SIZE)) {
