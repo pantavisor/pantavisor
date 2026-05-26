@@ -326,7 +326,9 @@ static void ctrl_utils_drain_ok_callback(struct evbuffer *buf,
 					 const struct evbuffer_cb_info *info,
 					 void *ctx)
 {
-	(void)info;
+	if (!info->n_added)
+		return;
+
 	ctrl_utils_drain_buf(buf);
 
 	pv_ctrl_utils_send_ok(ctx);
@@ -336,7 +338,9 @@ static void ctrl_utils_drain_error_callback(struct evbuffer *buf,
 					    const struct evbuffer_cb_info *info,
 					    void *ctx)
 {
-	(void)info;
+	if (!info->n_added)
+		return;
+
 	ctrl_utils_drain_buf(buf);
 
 	if (!ctx)

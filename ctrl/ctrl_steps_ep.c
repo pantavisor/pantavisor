@@ -176,7 +176,9 @@ static void ctrl_step_commit_cb(struct evbuffer *buf,
 				const struct evbuffer_cb_info *info, void *ctx)
 {
 	(void)buf;
-	(void)info;
+
+	if (!info->n_added)
+		return;
 
 	struct evhttp_request *req = ctx;
 	char *name = ctrl_steps_rev_name(req);

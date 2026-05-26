@@ -68,6 +68,11 @@ static void ctrl_daemons_process_action(struct evbuffer *buf,
 					const struct evbuffer_cb_info *info,
 					void *ctx)
 {
+	(void)buf;
+
+	if (!info->n_added)
+		return;
+
 	struct evhttp_request *req = ctx;
 	char *data = NULL;
 	char *action = NULL;
