@@ -90,8 +90,9 @@ log_verbose "> $METHOD $URL HTTP/1.0"
 
 NC_EXIT=0
 # Use -N (close write on stdin EOF) for non-streaming requests.
-# For streaming downloads (-o), omit -N to keep connection alive for chunked data.
-if [ -n "$OUTPUT_FILE" ]; then
+# For GET downloads, omit -N to keep the connection alive while the server
+# streams the response body.
+if [ -n "$OUTPUT_FILE" ] || [ "$METHOD" = "GET" ]; then
     nc -w "$CONNECT_TIMEOUT" -U "$SOCKET" < /tmp/http_req > /tmp/http_res 2>/tmp/nc_err || NC_EXIT=$?
 else
     nc -N -w "$CONNECT_TIMEOUT" -U "$SOCKET" < /tmp/http_req > /tmp/http_res 2>/tmp/nc_err || NC_EXIT=$?

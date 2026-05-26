@@ -720,7 +720,11 @@ exec_cmd() {
 			put_object "$path" "$sha"
 			;;
 		getobject)
-			$CURL_RAW -X GET --unix-socket "$SOCKET" "http://localhost/objects/$sha"
+			if [ -n "$OUTPUT" ]; then
+				$CURL_RAW -o "$OUTPUT" -X GET --unix-socket "$SOCKET" "http://localhost/objects/$sha"
+			else
+				$CURL_RAW -X GET --unix-socket "$SOCKET" "http://localhost/objects/$sha"
+			fi
 			exit 0
 			;;
 		listobjects)
