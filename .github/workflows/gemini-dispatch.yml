@@ -10,10 +10,6 @@ on:
     pull_request:
         types:
             - "opened"
-    issues:
-        types:
-            - "opened"
-            - "reopened"
     issue_comment:
         types:
             - "created"
@@ -44,15 +40,11 @@ jobs:
 
     dispatch:
         # For PRs: only if not from a fork
-        # For issues: only on open/reopen
         # For comments: only if user types @gemini-cli and is OWNER/MEMBER/COLLABORATOR
         if: |-
             (
               github.event_name == 'pull_request' &&
               github.event.pull_request.head.repo.fork == false
-            ) || (
-              github.event_name == 'issues' &&
-              contains(fromJSON('["opened", "reopened"]'), github.event.action)
             ) || (
               github.event.sender.type == 'User' &&
               startsWith(github.event.comment.body || github.event.review.body || github.event.issue.body, '@gemini-cli') &&
@@ -90,25 +82,17 @@ jobs:
               with:
                   script: |
                       const eventType = process.env.EVENT_TYPE;
-                      const request = process.env.REQUEST;
+                      const request = (process.env.REQUEST || "").trim();
                       core.setOutput('request', request);
+
+                      const match = request.match(/^@gemini-cli\s+\/?review\b\s*(.*)/si);
 
                       if (eventType === 'pull_request.opened') {
                         core.setOutput('command', 'review');
-                      } else if (['issues.opened', 'issues.reopened'].includes(eventType)) {
-                        core.setOutput('command', 'triage');
-                      } else if (request.startsWith("@gemini-cli /review")) {
+                        core.setOutput('additional_context', "");
+                      } else if (match) {
                         core.setOutput('command', 'review');
-                        const additionalContext = request.replace(/^@gemini-cli \/review/, '').trim();
-                        core.setOutput('additional_context', additionalContext);
-                      } else if (request.startsWith("@gemini-cli /triage")) {
-                        core.setOutput('command', 'triage');
-                      } else if (request.startsWith("@gemini-cli /approve")) {
-                        core.setOutput('command', 'approve');
-                      } else if (request.startsWith("@gemini-cli")) {
-                        const additionalContext = request.replace(/^@gemini-cli/, '').trim();
-                        core.setOutput('command', 'invoke');
-                        core.setOutput('additional_context', additionalContext);
+                        core.setOutput('additional_context', match[1].trim());
                       } else {
                         core.setOutput('command', 'fallthrough');
                       }
