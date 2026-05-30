@@ -268,6 +268,29 @@ pvcurl -X PUT --data '{"action":"stop"}' --unix-socket /run/pantavisor/pv/pv-ctr
 
 A CLI wrapper around pvcurl for common pv-ctrl operations.
 
+## Service-IP layer (k8s-Services-style)
+
+On top of the legacy unix-socket / dbus / drm / wayland mediation, xconnect supports **named TCP services with stable virtual ClusterIPs and DNS** (`<service>.pv.local`). Provider declares `type: tcp, port: N` in `services.json`, consumer declares the service name in `args.json`, and the runtime wires up:
+
+1. **ClusterIP** — deterministic FNV-1a hash of the service name into a configurable subnet (default `198.18.0.0/15`, RFC 2544 benchmark range; override via `pantavisor.config` key `xconnect.services.cidr` or env `PV_XCONNECT_SERVICES_CIDR`). Reboot-stable without on-disk allocator state.
+2. **`pv-services` bridge** — owns each ClusterIP as a `/32`. Brought up by `pv-xconnect` on start; idempotent.
+3. **Two-tier data plane**:
+   - **Tier 1 (TCP→TCP, kernel forward)**: `inet pvx_services` PREROUTING rule rewrites `cluster_ip:port → backend_ip:port`. Zero-copy. Used by default for embedded throughput.
+   - **Tier 2 (cross-transport)**: userspace listener on ClusterIP, proxies bytes to a unix-socket backend (or to TCP with TLS termination etc.). Same `evconnlistener` shape as `unix.c` / `rest.c`.
+4. **DNS** — `<service>.pv.local` injected into the consumer's `/etc/hosts` via mount-namespace setns. Marker comment (`# pvx-services managed`) so re-injection / removal touches only managed lines.
+5. **Failure semantics** — hosts injection failure (read-only fs, missing file, EPERM, setns fail) is a **hard link establishment failure**: `last_error` is set, link stays in retry queue, never silently dropped. Surfaces via `/xconnect-graph/status` (v1.1) to drive pantavisor's health/rollback path.
+
+Manifest example (provider):
+```json
+{"#spec": "service-manifest-xconnect@2", "services": [{"name": "my-api", "type": "tcp", "port": 8080}]}
+```
+
+Code map: `xconnect/services.c` (hash + range parsing), `xconnect/services_bridge.{c,h}` (bridge + /32s + ip_forward), `xconnect/services_nft.{c,h}` (DNAT table), `xconnect/plugins/tcp.c` (per-link plugin with kernel-forward / userspace-proxy branch), `xconnect/plumbing.c:pvx_helper_inject_hosts_entry`. pv-ctrl side: `state.c:pv_state_get_xconnect_graph_json` emits `cluster_ip` / `provider_ip` / port / transport when `svc_type == SVC_TYPE_TCP`.
+
+Status (v1): TCP→TCP fast path, ClusterIP, DNS, config knob, IPAM coexistence — all wired and tested. Cross-transport plugin, `/xconnect-graph/status` endpoint, and `pv_platform_start` health gate are deferred to v1.1; multi-backend policies and an explicit `services` block in `device.json` to v2.
+
+See [meta-pantavisor `docs/overview/xconnect-services.md`](https://github.com/pantavisor/meta-pantavisor/blob/master/docs/overview/xconnect-services.md) for the integrator's view.
+
 ## Testing
 
 For testing instructions and example containers, see the `meta-pantavisor` layer documentation:

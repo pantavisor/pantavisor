@@ -130,6 +130,7 @@ typedef enum {
 	PV_VOLMOUNT_DM_EXTRA_ARGS,
 	PV_WDT_MODE,
 	PV_WDT_TIMEOUT,
+	PV_XCONNECT_SERVICES_CIDR,
 	PV_MAX
 } config_index_t;
 

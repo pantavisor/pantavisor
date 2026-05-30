@@ -112,6 +112,7 @@ typedef enum {
 #define SYSTEM_LIBDIR_DEF "/lib"
 #define SYSTEM_MEDIADIR_DEF "/media"
 #define SYSTEM_RUNDIR_DEF "/pv"
+#define XCONNECT_SERVICES_CIDR_DEF "198.18.0.0/15"
 #define SYSTEM_DISKSDIR_DEF "/run/pantavisor/disks"
 #define SYSTEM_USRDIR_DEF "/usr"
 
@@ -274,7 +275,9 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_VOLMOUNT_DM_EXTRA_ARGS", PV | OEM, 0, false,
 	  .value.s = NULL },
 	{ WDT_MODE, "PV_WDT_MODE", PV, 0, false, .value.i = WDT_SHUTDOWN },
-	{ INT, "PV_WDT_TIMEOUT", PV, 0, false, .value.i = 15 }
+	{ INT, "PV_WDT_TIMEOUT", PV, 0, false, .value.i = 15 },
+	{ STR, "PV_XCONNECT_SERVICES_CIDR", PV | OEM | RUN, 0, false,
+	  .value.s = XCONNECT_SERVICES_CIDR_DEF }
 };
 
 struct pv_config_alias {
@@ -366,6 +369,7 @@ static struct pv_config_alias aliases[] = {
 	{ "updater.use_tmp_objects", "PV_UPDATER_USE_TMP_OBJECTS" },
 	{ "wdt.mode", "PV_WDT_MODE" },
 	{ "wdt.timeout", "PV_WDT_TIMEOUT" },
+	{ "xconnect.services.cidr", "PV_XCONNECT_SERVICES_CIDR" },
 	// OTHER COMPATIBLE KEYS
 	{ "meta.cache.dir", "PV_CACHE_USRMETADIR" },
 	{ "pantahub.log.push", "PV_LOG_PUSH" },

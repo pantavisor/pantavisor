@@ -35,6 +35,7 @@ int pv_ctrl_endpoints_drivers_init(void);
 int pv_ctrl_endpoints_commands_init(void);
 int pv_ctrl_endpoints_config_init(void);
 int pv_ctrl_endpoints_xconnect_graph_init(void);
+int pv_ctrl_endpoints_xconnect_status_init(void);
 int pv_ctrl_endpoints_daemons_init(void);
 
 #endif
