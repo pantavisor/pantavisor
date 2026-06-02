@@ -1,12 +1,7 @@
 name: '🔎 Gemini Review'
 
 on:
-  workflow_call:
-    inputs:
-      additional_context:
-        type: 'string'
-        description: 'Any additional context from the request'
-        required: false
+  workflow_dispatch:
 
 concurrency:
   group: 'gemini-review-${{ github.repository }}'
