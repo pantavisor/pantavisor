@@ -150,7 +150,7 @@ Once all containers have met their [status goal](#status-goal), Pantavisor fires
 
 ## Auto-Recovery
 
-Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](pantavisor-state-format-v2.md#containerrunjson) or inherited from the container's [group](#groups).
+Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](../reference/pantavisor-state-format-v2.md#containerrunjson) or inherited from the container's [group](#groups).
 
 ### Recovery Policies
 
@@ -183,7 +183,7 @@ During [TESTING](updates.md#testing), `max_retries` exhaustion always triggers a
 
 ### Group-Level Defaults
 
-Groups in [device.json](pantavisor-state-format-v2.md#devicejson) can define a default `auto_recovery` object. Containers inherit this configuration **all-or-nothing**: if a container has its own `auto_recovery` in `run.json`, it is used entirely; otherwise the group's default applies. No field-level merging is performed. The default `app` group ships with an on-failure recovery policy.
+Groups in [device.json](../reference/pantavisor-state-format-v2.md#devicejson) can define a default `auto_recovery` object. Containers inherit this configuration **all-or-nothing**: if a container has its own `auto_recovery` in `run.json`, it is used entirely; otherwise the group's default applies. No field-level merging is performed. The default `app` group ships with an on-failure recovery policy.
 
 ## Lifecycle Control
 

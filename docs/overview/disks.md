@@ -4,7 +4,7 @@ nav_order: 7
 # Disks
 
 Pantavisor manages persistent storage through disk definitions in
-[`device.json`](pantavisor-state-format-v2.md#6-storage-disksjson).
+[`device.json`](../reference/pantavisor-state-format-v2.md#6-storage-disksjson).
 Disk types range from encrypted dm-crypt volumes with hardware-backed
 keys to swap devices, plain ext4 volumes, and composite dual disks
 for key migration. All disk types share a common lifecycle (init,
@@ -335,7 +335,7 @@ advisory — pantavisor does not enforce it, but platform builders can
 use it to signal "don't reference these directly from volumes."
 
 For the full field reference, see
-[`disks.json`](pantavisor-state-format-v2.md#6-storage-disksjson) in
+[`disks.json`](../reference/pantavisor-state-format-v2.md#6-storage-disksjson) in
 the state format.
 
 ## Volume Disk References
