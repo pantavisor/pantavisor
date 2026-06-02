@@ -101,7 +101,7 @@ These configuration keys are persistent. By default, they are saved in plain tex
 ## Disks
 
 Pantavisor manages persistent [disk](disks.md) definitions inside
-[`device.json`](pantavisor-state-format-v2.md#6-storage-disksjson).
+[`device.json`](../reference/pantavisor-state-format-v2.md#6-storage-disksjson).
 Supported types include dm-crypt volumes with hardware-backed keys
 (CAAM, DCP, versatile), swap devices, plain ext4/ext3 volumes, and
 composite dual disks for key migration. See the full
@@ -258,9 +258,9 @@ rotation_size  = 128 MB / 5 ≈ 25 MB       → per-file size before rotation
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| [`PV_LOG_DIR_MAXSIZE`](pantavisor-configuration.md#summary) | `0` (auto) | Total log directory budget |
-| [`PV_LOG_HYSTERESIS_FACTOR`](pantavisor-configuration.md#summary) | `4` | Controls the gap between high and low watermarks |
-| [`PV_LOG_ROTATE_FACTOR`](pantavisor-configuration.md#summary) | `5` | Per-file rotation size divisor |
+| [`PV_LOG_DIR_MAXSIZE`](../reference/pantavisor-configuration.md#summary) | `0` (auto) | Total log directory budget |
+| [`PV_LOG_HYSTERESIS_FACTOR`](../reference/pantavisor-configuration.md#summary) | `4` | Controls the gap between high and low watermarks |
+| [`PV_LOG_ROTATE_FACTOR`](../reference/pantavisor-configuration.md#summary) | `5` | Per-file rotation size divisor |
 
 
 ## Trails and objects
