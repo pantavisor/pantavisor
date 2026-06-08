@@ -55,6 +55,9 @@ Shell wrapper around `pvcurl` for common control operations. Prefers `curl` if a
 pvcontrol [-s <socket-path>] <command> [arguments]
 ```
 
+See [pvcontrol.md](pvcontrol.md) for the full command reference, options, exit
+codes, and worked examples.
+
 ### Key commands
 
 ```bash
@@ -71,7 +74,9 @@ pvcontrol graph ls                   # show current xconnect service graph
 
 # Daemon status (REST API daemons)
 pvcontrol daemons ls                 # list managed daemons
-pvcontrol daemons get <name>
+pvcontrol daemons start <name>
+pvcontrol daemons stop <name>
+pvcontrol daemons restart <name>
 
 # Status signals (sent by a container to signal readiness)
 pvcontrol signal ready               # signal container is ready

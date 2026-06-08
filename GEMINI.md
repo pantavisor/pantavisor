@@ -28,6 +28,7 @@ API and format specifications, versioned with each Pantavisor release. Always up
 | **Metadata** | [docs/reference/pantavisor-metadata.md](docs/reference/pantavisor-metadata.md) | User and device metadata reference |
 | **State Format** | [docs/reference/pantavisor-state-format-v2.md](docs/reference/pantavisor-state-format-v2.md) | state.json format (v2) |
 | **Tools** | [docs/reference/pantavisor-tools.md](docs/reference/pantavisor-tools.md) | pventer, pvcurl, pvcontrol, pvtx — on-device CLI tools |
+| **pvcontrol** | [docs/reference/pvcontrol.md](docs/reference/pvcontrol.md) | Full `pvcontrol` CLI reference with worked examples |
 
 ### Technical Overview (`docs/overview/`)
 
