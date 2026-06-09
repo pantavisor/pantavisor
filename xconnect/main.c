@@ -66,6 +66,19 @@ static void pvx_link_free(struct pvx_link *link)
 	if (!link)
 		return;
 
+	// Let the plugin release any per-link resources before we drop the
+	// listener that owns the (possibly injected) listening socket.
+	if (link->plugin && link->plugin->on_link_removed)
+		link->plugin->on_link_removed(link);
+
+	// The link owns its listener; freeing it here closes the listening
+	// socket and prevents a listener/fd leak when a link is replaced (e.g.
+	// on container restart) or retried.
+	if (link->listener) {
+		evconnlistener_free(link->listener);
+		link->listener = NULL;
+	}
+
 	free(link->name);
 	free(link->consumer);
 	free(link->role);
@@ -152,12 +165,32 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 	struct pvx_link *existing = find_link(consumer, name);
 
 	if (existing && existing->established) {
-		free(consumer);
-		free(name);
-		return;
-	}
-
-	if (existing) {
+		// A link is keyed on consumer+name, which survive a container
+		// restart. If a peer restarted, its pid changes: the old proxy
+		// would keep connecting to the dead provider pid and the consumer
+		// socket would never be re-injected into the new namespace. Detect
+		// the pid change and re-establish; otherwise leave it untouched.
+		int new_cpid =
+			parse_pid_field(json, "consumer_pid", itok, obj_tokc);
+		int new_ppid =
+			parse_pid_field(json, "provider_pid", itok, obj_tokc);
+		// A reported pid of 0 means "unknown/down" (or a host-side peer);
+		// don't tear down a working link until a real, different pid shows.
+		bool cpid_changed =
+			new_cpid && new_cpid != existing->consumer_pid;
+		bool ppid_changed =
+			new_ppid && new_ppid != existing->provider_pid;
+		if (!cpid_changed && !ppid_changed) {
+			free(consumer);
+			free(name);
+			return;
+		}
+		printf("Re-establishing link %s/%s after restart (consumer pid %d->%d, provider pid %d->%d)\n",
+		       consumer, name, existing->consumer_pid, new_cpid,
+		       existing->provider_pid, new_ppid);
+		dl_list_del(&existing->list);
+		pvx_link_free(existing);
+	} else if (existing) {
 		printf("Retrying link: %s/%s\n", consumer, name);
 		dl_list_del(&existing->list);
 		pvx_link_free(existing);
