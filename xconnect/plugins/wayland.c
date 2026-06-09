@@ -27,63 +27,9 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include "../include/xconnect.h"
+#include "proxy_common.h"
 
 #define MODULE_NAME "pvx-wayland"
-
-struct wayland_proxy_session {
-	struct bufferevent *be_client;
-	struct bufferevent *be_provider;
-	int client_eof;
-	int provider_eof;
-};
-
-static void wayland_proxy_check_close(struct wayland_proxy_session *sess)
-{
-	// Only close when both sides have EOF'd or errored
-	if (sess->client_eof && sess->provider_eof) {
-		if (sess->be_client)
-			bufferevent_free(sess->be_client);
-		if (sess->be_provider)
-			bufferevent_free(sess->be_provider);
-		free(sess);
-	}
-}
-
-static void wayland_proxy_event_cb(struct bufferevent *bev, short events,
-				   void *arg)
-{
-	struct wayland_proxy_session *sess = arg;
-
-	if (events & BEV_EVENT_ERROR) {
-		// On error, mark both as done and close
-		sess->client_eof = 1;
-		sess->provider_eof = 1;
-		wayland_proxy_check_close(sess);
-		return;
-	}
-
-	if (events & BEV_EVENT_EOF) {
-		// Half-close: one side sent EOF
-		if (bev == sess->be_client) {
-			sess->client_eof = 1;
-			bufferevent_disable(bev, EV_READ);
-		} else {
-			sess->provider_eof = 1;
-			bufferevent_disable(bev, EV_READ);
-		}
-		wayland_proxy_check_close(sess);
-	}
-}
-
-static void wayland_proxy_read_cb(struct bufferevent *bev, void *arg)
-{
-	struct wayland_proxy_session *sess = arg;
-	struct bufferevent *other =
-		(bev == sess->be_client) ? sess->be_provider : sess->be_client;
-	struct evbuffer *src = bufferevent_get_input(bev);
-	struct evbuffer *dst = bufferevent_get_output(other);
-	evbuffer_add_buffer(dst, src);
-}
 
 static void wayland_on_accept(struct evconnlistener *listener,
 			      evutil_socket_t fd, struct sockaddr *address,
@@ -92,6 +38,9 @@ static void wayland_on_accept(struct evconnlistener *listener,
 	struct pvx_link *link = arg;
 	struct event_base *base = pvx_get_base();
 	char provider_path[256];
+	(void)listener;
+	(void)address;
+	(void)socklen;
 
 	if (!link->name || !link->provider_socket) {
 		close(fd);
@@ -111,43 +60,46 @@ static void wayland_on_accept(struct evconnlistener *listener,
 			sizeof(provider_path) - 1);
 		provider_path[sizeof(provider_path) - 1] = '\0';
 	}
-	struct wayland_proxy_session *sess = calloc(1, sizeof(*sess));
-	if (!sess) {
+
+	struct pvx_proxy *p = calloc(1, sizeof(*p));
+	if (!p) {
 		fprintf(stderr, "%s: Could not allocate proxy session\n",
 			MODULE_NAME);
 		close(fd);
 		return;
 	}
 
-	sess->be_client =
-		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	sess->be_provider =
-		bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	// DEFER_CALLBACKS keeps bufferevent_socket_connect() from invoking our
+	// event callback re-entrantly on an immediate connect failure (which
+	// would free the session while we still use it below), and makes
+	// freeing a bufferevent from within its own callback safe.
+	p->be_client = bufferevent_socket_new(
+		base, fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	p->be_provider = bufferevent_socket_new(
+		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+	// Register callbacks before connecting so a deferred error is handled.
+	bufferevent_setcb(p->be_client, pvx_proxy_read_cb, NULL,
+			  pvx_proxy_event_cb, p);
+	bufferevent_setcb(p->be_provider, pvx_proxy_read_cb, NULL,
+			  pvx_proxy_event_cb, p);
 
 	struct sockaddr_un sun;
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_UNIX;
 	strncpy(sun.sun_path, provider_path, sizeof(sun.sun_path) - 1);
 
-	if (bufferevent_socket_connect(sess->be_provider,
-				       (struct sockaddr *)&sun,
+	if (bufferevent_socket_connect(p->be_provider, (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
 		fprintf(stderr,
 			"%s: Could not connect to compositor socket %s\n",
 			MODULE_NAME, provider_path);
-		bufferevent_free(sess->be_client);
-		bufferevent_free(sess->be_provider);
-		free(sess);
+		pvx_proxy_free(p);
 		return;
 	}
 
-	bufferevent_setcb(sess->be_client, wayland_proxy_read_cb, NULL,
-			  wayland_proxy_event_cb, sess);
-	bufferevent_setcb(sess->be_provider, wayland_proxy_read_cb, NULL,
-			  wayland_proxy_event_cb, sess);
-
-	bufferevent_enable(sess->be_client, EV_READ | EV_WRITE);
-	bufferevent_enable(sess->be_provider, EV_READ | EV_WRITE);
+	bufferevent_enable(p->be_client, EV_READ | EV_WRITE);
+	bufferevent_enable(p->be_provider, EV_READ | EV_WRITE);
 }
 
 static int wayland_on_link_added(struct pvx_link *link)
@@ -193,6 +145,9 @@ static int wayland_on_link_added(struct pvx_link *link)
 		close(fd);
 		return -1;
 	}
+
+	// Survive fd exhaustion instead of busy-looping on accept().
+	pvx_listener_set_emfile_backoff(link->listener);
 
 	return 0;
 }

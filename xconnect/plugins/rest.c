@@ -27,64 +27,9 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include "../include/xconnect.h"
+#include "proxy_common.h"
 
 #define MODULE_NAME "pvx-rest"
-
-struct rest_proxy_session {
-	struct bufferevent *be_client;
-	struct bufferevent *be_provider;
-	struct pvx_link *link;
-	int client_eof;
-	int provider_eof;
-};
-
-static void proxy_check_close(struct rest_proxy_session *session)
-{
-	// Only close when both sides have EOF'd or errored
-	if (session->client_eof && session->provider_eof) {
-		if (session->be_client)
-			bufferevent_free(session->be_client);
-		if (session->be_provider)
-			bufferevent_free(session->be_provider);
-		free(session);
-	}
-}
-
-static void proxy_event_cb(struct bufferevent *bev, short events, void *arg)
-{
-	struct rest_proxy_session *session = arg;
-
-	if (events & BEV_EVENT_ERROR) {
-		// On error, mark both as done and close
-		session->client_eof = 1;
-		session->provider_eof = 1;
-		proxy_check_close(session);
-		return;
-	}
-
-	if (events & BEV_EVENT_EOF) {
-		// Half-close: one side sent EOF
-		if (bev == session->be_client) {
-			session->client_eof = 1;
-			bufferevent_disable(bev, EV_READ);
-		} else {
-			session->provider_eof = 1;
-			bufferevent_disable(bev, EV_READ);
-		}
-		proxy_check_close(session);
-	}
-}
-
-static void rest_read_cb(struct bufferevent *bev, void *arg)
-{
-	struct rest_proxy_session *session = arg;
-	struct bufferevent *other = (bev == session->be_client) ?
-					    session->be_provider :
-					    session->be_client;
-	struct evbuffer *src = bufferevent_get_input(bev);
-	struct evbuffer *dst = bufferevent_get_output(other);
-	evbuffer_add_buffer(dst, src);
-}
 
 static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 			   struct sockaddr *address, int socklen, void *arg)
@@ -92,6 +37,9 @@ static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	struct pvx_link *link = arg;
 	struct event_base *base = pvx_get_base();
 	char provider_path[256];
+	(void)listener;
+	(void)address;
+	(void)socklen;
 
 	if (!link->name || !link->provider_socket) {
 		close(fd);
@@ -112,42 +60,44 @@ static void rest_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 			sizeof(provider_path) - 1);
 		provider_path[sizeof(provider_path) - 1] = '\0';
 	}
-	struct rest_proxy_session *session = calloc(1, sizeof(*session));
-	if (!session) {
+
+	struct pvx_proxy *p = calloc(1, sizeof(*p));
+	if (!p) {
 		fprintf(stderr, "Could not allocate REST proxy session\n");
 		close(fd);
 		return;
 	}
 
-	session->link = link;
-	session->be_client =
-		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	session->be_provider =
-		bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	// DEFER_CALLBACKS keeps bufferevent_socket_connect() from invoking our
+	// event callback re-entrantly on an immediate connect failure (which
+	// would free the session while we still use it below), and makes
+	// freeing a bufferevent from within its own callback safe.
+	p->be_client = bufferevent_socket_new(
+		base, fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	p->be_provider = bufferevent_socket_new(
+		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+
+	// Register callbacks before connecting so a deferred error is handled.
+	bufferevent_setcb(p->be_client, pvx_proxy_read_cb, NULL,
+			  pvx_proxy_event_cb, p);
+	bufferevent_setcb(p->be_provider, pvx_proxy_read_cb, NULL,
+			  pvx_proxy_event_cb, p);
 
 	struct sockaddr_un sun;
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_UNIX;
 	strncpy(sun.sun_path, provider_path, sizeof(sun.sun_path) - 1);
 
-	if (bufferevent_socket_connect(session->be_provider,
-				       (struct sockaddr *)&sun,
+	if (bufferevent_socket_connect(p->be_provider, (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
 		fprintf(stderr, "Could not connect to provider socket %s\n",
 			provider_path);
-		bufferevent_free(session->be_client);
-		bufferevent_free(session->be_provider);
-		free(session);
+		pvx_proxy_free(p);
 		return;
 	}
 
-	bufferevent_setcb(session->be_client, rest_read_cb, NULL,
-			  proxy_event_cb, session);
-	bufferevent_setcb(session->be_provider, rest_read_cb, NULL,
-			  proxy_event_cb, session);
-
-	bufferevent_enable(session->be_client, EV_READ | EV_WRITE);
-	bufferevent_enable(session->be_provider, EV_READ | EV_WRITE);
+	bufferevent_enable(p->be_client, EV_READ | EV_WRITE);
+	bufferevent_enable(p->be_provider, EV_READ | EV_WRITE);
 }
 
 static int rest_on_link_added(struct pvx_link *link)
@@ -187,6 +137,9 @@ static int rest_on_link_added(struct pvx_link *link)
 		close(fd);
 		return -1;
 	}
+
+	// Survive fd exhaustion instead of busy-looping on accept().
+	pvx_listener_set_emfile_backoff(link->listener);
 
 	return 0;
 }

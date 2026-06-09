@@ -29,15 +29,13 @@
 #include <unistd.h>
 #include <linux/limits.h>
 #include "../include/xconnect.h"
+#include "proxy_common.h"
 
 #define MODULE_NAME "pvx-dbus"
 
 struct dbus_proxy_session {
-	struct bufferevent *be_client;
-	struct bufferevent *be_provider;
+	struct pvx_proxy proxy; // must stay first: shared callbacks cast to it
 	struct pvx_link *link;
-	int client_eof;
-	int provider_eof;
 	int authenticated;
 };
 
@@ -90,56 +88,13 @@ static int lookup_uid_in_provider(const char *username, int provider_pid)
 	return uid;
 }
 
-static void proxy_check_close(struct dbus_proxy_session *sess)
-{
-	if (sess->client_eof && sess->provider_eof) {
-		if (sess->be_client)
-			bufferevent_free(sess->be_client);
-		if (sess->be_provider)
-			bufferevent_free(sess->be_provider);
-		free(sess);
-	}
-}
-
-static void proxy_event_cb(struct bufferevent *bev, short events, void *arg)
-{
-	struct dbus_proxy_session *sess = arg;
-
-	if (events & BEV_EVENT_ERROR) {
-		sess->client_eof = 1;
-		sess->provider_eof = 1;
-		proxy_check_close(sess);
-		return;
-	}
-
-	if (events & BEV_EVENT_EOF) {
-		if (bev == sess->be_client) {
-			sess->client_eof = 1;
-			bufferevent_disable(bev, EV_READ);
-		} else {
-			sess->provider_eof = 1;
-			bufferevent_disable(bev, EV_READ);
-		}
-		proxy_check_close(sess);
-	}
-}
-
-static void proxy_read_cb(struct bufferevent *bev, void *arg)
-{
-	struct dbus_proxy_session *sess = arg;
-	struct bufferevent *other =
-		(bev == sess->be_client) ? sess->be_provider : sess->be_client;
-	struct evbuffer *src = bufferevent_get_input(bev);
-	struct evbuffer *dst = bufferevent_get_output(other);
-	evbuffer_add_buffer(dst, src);
-}
-
 static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 {
 	struct dbus_proxy_session *sess = arg;
 
 	if (sess->authenticated) {
-		proxy_read_cb(bev, arg);
+		// Past the auth handshake: behave as a plain byte splice.
+		pvx_proxy_read_cb(bev, arg);
 		return;
 	}
 
@@ -151,8 +106,8 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 	// D-Bus authentication starts with a single NULL byte
 	unsigned char *data = evbuffer_pullup(src, 1);
 	if (data[0] == '\0') {
-		evbuffer_add(bufferevent_get_output(sess->be_provider), "\0",
-			     1);
+		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
+			     "\0", 1);
 		evbuffer_drain(src, 1);
 		if (evbuffer_get_length(src) == 0)
 			return;
@@ -183,19 +138,20 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 		printf("%s: Masquerading D-Bus identity as role '%s' (UID %d) for service %s\n",
 		       MODULE_NAME, role, uid, sess->link->name);
 
-		evbuffer_add_printf(bufferevent_get_output(sess->be_provider),
-				    "AUTH EXTERNAL %s\r\n", hex_identity);
+		evbuffer_add_printf(
+			bufferevent_get_output(sess->proxy.be_provider),
+			"AUTH EXTERNAL %s\r\n", hex_identity);
 		sess->authenticated = 1;
 	} else if (strncmp(line, "BEGIN", 5) == 0) {
-		evbuffer_add(bufferevent_get_output(sess->be_provider),
+		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
 			     "BEGIN\r\n", 7);
 		sess->authenticated = 1;
 	} else {
 		// Pass-through anything else during auth
-		evbuffer_add(bufferevent_get_output(sess->be_provider), line,
-			     strlen(line));
-		evbuffer_add(bufferevent_get_output(sess->be_provider), "\r\n",
-			     2);
+		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
+			     line, strlen(line));
+		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
+			     "\r\n", 2);
 	}
 
 	free(line);
@@ -210,6 +166,9 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	struct pvx_link *link = arg;
 	struct event_base *base = pvx_get_base();
 	char provider_path[PATH_MAX];
+	(void)listener;
+	(void)address;
+	(void)socklen;
 
 	if (!link->name || !link->provider_socket) {
 		close(fd);
@@ -236,34 +195,38 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	}
 	sess->link = link;
 
-	sess->be_client =
-		bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
-	sess->be_provider =
-		bufferevent_socket_new(base, -1, BEV_OPT_CLOSE_ON_FREE);
+	// DEFER_CALLBACKS keeps bufferevent_socket_connect() from invoking our
+	// event callback re-entrantly on an immediate connect failure (which
+	// would free the session while we still use it below), and makes
+	// freeing a bufferevent from within its own callback safe.
+	sess->proxy.be_client = bufferevent_socket_new(
+		base, fd, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
+	sess->proxy.be_provider = bufferevent_socket_new(
+		base, -1, BEV_OPT_CLOSE_ON_FREE | BEV_OPT_DEFER_CALLBACKS);
 
-	bufferevent_setcb(sess->be_client, dbus_client_read_cb, NULL,
-			  proxy_event_cb, sess);
-	bufferevent_setcb(sess->be_provider, proxy_read_cb, NULL,
-			  proxy_event_cb, sess);
+	// Client side runs the dbus auth filter first, then plain splicing;
+	// provider side and both event callbacks are the shared proxy core.
+	bufferevent_setcb(sess->proxy.be_client, dbus_client_read_cb, NULL,
+			  pvx_proxy_event_cb, sess);
+	bufferevent_setcb(sess->proxy.be_provider, pvx_proxy_read_cb, NULL,
+			  pvx_proxy_event_cb, sess);
 
 	struct sockaddr_un sun;
 	memset(&sun, 0, sizeof(sun));
 	sun.sun_family = AF_UNIX;
 	strncpy(sun.sun_path, provider_path, sizeof(sun.sun_path) - 1);
 
-	if (bufferevent_socket_connect(sess->be_provider,
+	if (bufferevent_socket_connect(sess->proxy.be_provider,
 				       (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
 		fprintf(stderr, "Could not connect to provider %s\n",
 			provider_path);
-		bufferevent_free(sess->be_client);
-		bufferevent_free(sess->be_provider);
-		free(sess);
+		pvx_proxy_free(&sess->proxy);
 		return;
 	}
 
-	bufferevent_enable(sess->be_client, EV_READ | EV_WRITE);
-	bufferevent_enable(sess->be_provider, EV_READ | EV_WRITE);
+	bufferevent_enable(sess->proxy.be_client, EV_READ | EV_WRITE);
+	bufferevent_enable(sess->proxy.be_provider, EV_READ | EV_WRITE);
 }
 
 static int dbus_on_link_added(struct pvx_link *link)
@@ -306,6 +269,9 @@ static int dbus_on_link_added(struct pvx_link *link)
 		close(fd);
 		return -1;
 	}
+
+	// Survive fd exhaustion instead of busy-looping on accept().
+	pvx_listener_set_emfile_backoff(link->listener);
 
 	return 0;
 }
