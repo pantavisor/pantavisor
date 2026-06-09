@@ -139,11 +139,7 @@ start_pv() {
 	fi
 	pv_cmd="pv-appengine $valgrind_opt -d 0 -c \"$cmdline\""
 
-	if [ "$verbose" = "false" ]; then
-		eval "$pv_cmd > /dev/null 2>&1 &"
-	else
-		eval "$pv_cmd &"
-	fi
+	eval "$pv_cmd &"
 
 	trap 'int_handler' INT
 
@@ -155,11 +151,7 @@ start_pv() {
 	fi
 
 	if [ -n "$ready_script" ]; then
-		if [ "$verbose" = "false" ]; then
-			sh -c "$test_path/$ready_script" > /dev/null 2>&1
-		else
-			sh -c "$test_path/$ready_script"
-		fi
+		sh -c "$test_path/$ready_script"
 	fi
 
 	wait_for_value "pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
