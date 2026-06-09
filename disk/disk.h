@@ -31,7 +31,6 @@
 
 typedef enum {
 	DISK_UNKNOWN,
-	DISK_DIR,
 	DISK_DM_CRYPT_VERSATILE,
 	DISK_DM_CRYPT_CAAM,
 	DISK_DM_CRYPT_DCP,
@@ -148,8 +147,6 @@ static inline const char *pv_disk_type_to_str(pv_disk_t type)
 	switch (type) {
 	case DISK_UNKNOWN:
 		return "unknown";
-	case DISK_DIR:
-		return "dir";
 	case DISK_DM_CRYPT_VERSATILE:
 		return "versatile";
 	case DISK_DM_CRYPT_CAAM:
@@ -181,9 +178,7 @@ pv_disk_dm_crypt_str_to_mode(const char *mode_str)
 static inline pv_disk_t pv_disk_str_to_type(const char *type_str)
 {
 	if (type_str) {
-		if (!strcmp(type_str, "directory"))
-			return DISK_DIR;
-		else if (!strcmp(type_str, "dm-crypt-versatile"))
+		if (!strcmp(type_str, "dm-crypt-versatile"))
 			return DISK_DM_CRYPT_VERSATILE;
 		else if (!strcmp(type_str, "dm-crypt-caam"))
 			return DISK_DM_CRYPT_CAAM;
@@ -222,7 +217,7 @@ static inline bool pv_disk_is_internal(struct pv_disk *d)
 	return d->name && d->name[0] == '_';
 }
 
-extern struct pv_disk_impl dir_impl;
+extern struct pv_disk_impl volume_bind_impl;
 extern struct pv_disk_impl zram_impl;
 extern struct pv_disk_impl crypt_impl;
 extern struct pv_disk_impl volume_impl;

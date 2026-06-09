@@ -210,18 +210,12 @@ static struct pv_disk_impl *get_disk_implementation(struct pv_disk *disk)
 		break;
 	case DISK_VOLUME:
 		if (!disk->provision) {
-			pv_log(ERROR,
-			       "cannot use disk, must define a provision");
-			break;
-		}
-
-		if (!strcmp(disk->provision, "zram"))
+			impl = &volume_bind_impl;
+		} else if (!strcmp(disk->provision, "zram")) {
 			impl = &zram_impl;
-		else
+		} else {
 			impl = &volume_impl;
-		break;
-	case DISK_DIR:
-		impl = &dir_impl;
+		}
 		break;
 	case DISK_UNKNOWN:
 	default:

@@ -20,6 +20,16 @@
  * SOFTWARE.
  */
 
+/*
+ * volume-disk without a provision field: bind-mounts a persistent directory
+ * from /storage into the ephemeral tmpfs at /run/pantavisor/media/pv/dmcrypt/<name>.
+ *
+ * The mount target path uses the "dmcrypt" namespace because volumes.c hardcodes
+ * that namespace when building paths for disk-backed volumes.  The backing store
+ * lives under /storage (Docker bind-mount from the workspace) so it survives
+ * repeated pantavisor restarts within the same appengine container.
+ */
+
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -27,19 +37,21 @@
 #include "disk.h"
 #include "disk_impl.h"
 #include "config.h"
+#include "paths.h"
 #include "utils/fs.h"
 
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <sys/stat.h>
 #include <linux/limits.h>
 
-#define MODULE_NAME "disk-dir"
+#define MODULE_NAME "disk-volume-bind"
 #define pv_log(level, msg, ...) vlog(MODULE_NAME, level, msg, ##__VA_ARGS__)
 #include "log.h"
 
-static int pv_disk_dir_init(struct pv_disk *disk)
+static int pv_disk_volume_bind_init(struct pv_disk *disk)
 {
 	if (!disk->name) {
 		pv_log(ERROR, "disk definition error, name not defined");
@@ -48,8 +60,8 @@ static int pv_disk_dir_init(struct pv_disk *disk)
 
 	if (!disk->mount_target) {
 		char buf[PATH_MAX];
-		snprintf(buf, sizeof(buf), "%s/%s",
-			 pv_config_get_str(PV_DISK_VOLDIR), disk->name);
+		pv_paths_storage_mounted_disk_path(buf, sizeof(buf), "dmcrypt",
+						   disk->name);
 		disk->mount_target = strdup(buf);
 		if (!disk->mount_target) {
 			pv_log(ERROR, "OOM allocating mount_target for %s",
@@ -61,7 +73,7 @@ static int pv_disk_dir_init(struct pv_disk *disk)
 	return 0;
 }
 
-static pv_disk_status_t pv_disk_dir_status(struct pv_disk *disk)
+static pv_disk_status_t pv_disk_volume_bind_status(struct pv_disk *disk)
 {
 	struct stat st;
 
@@ -74,33 +86,58 @@ static pv_disk_status_t pv_disk_dir_status(struct pv_disk *disk)
 	return DISK_STATUS_NOT_MOUNTED;
 }
 
-static int pv_disk_dir_format(struct pv_disk *disk)
+static int pv_disk_volume_bind_format(struct pv_disk *disk)
 {
 	return 0;
 }
 
-static int pv_disk_dir_mount(struct pv_disk *disk)
+static int pv_disk_volume_bind_mount(struct pv_disk *disk)
 {
+	char backing[PATH_MAX];
+	snprintf(backing, sizeof(backing), "%s/pv/volume-disk/%s",
+		 pv_config_get_str(PV_STORAGE_MNTPOINT), disk->name);
+
+	if (pv_fs_mkdir_p(backing, 0755) != 0) {
+		pv_log(WARN, "cannot create backing dir %s: %s", backing,
+		       strerror(errno));
+		return -1;
+	}
+
 	if (pv_fs_mkdir_p(disk->mount_target, 0755) != 0) {
-		pv_log(WARN, "cannot create directory %s: %s",
+		pv_log(WARN, "cannot create mount target %s: %s",
 		       disk->mount_target, strerror(errno));
 		return -1;
 	}
 
-	pv_log(DEBUG, "directory disk %s ready at %s", disk->name,
-	       disk->mount_target);
+	if (mount(backing, disk->mount_target, "none", MS_BIND, NULL) != 0) {
+		pv_log(WARN, "cannot bind-mount %s -> %s: %s", backing,
+		       disk->mount_target, strerror(errno));
+		return -1;
+	}
+
+	pv_log(DEBUG, "volume-disk %s bind-mounted %s -> %s", disk->name,
+	       backing, disk->mount_target);
 	return 0;
 }
 
-static int pv_disk_dir_umount(struct pv_disk *disk)
+static int pv_disk_volume_bind_umount(struct pv_disk *disk)
 {
+	if (!disk->mount_target)
+		return 0;
+
+	if (umount(disk->mount_target) != 0) {
+		pv_log(WARN, "cannot umount %s: %s", disk->mount_target,
+		       strerror(errno));
+		return -1;
+	}
+
 	return 0;
 }
 
-struct pv_disk_impl dir_impl = {
-	.init = pv_disk_dir_init,
-	.status = pv_disk_dir_status,
-	.format = pv_disk_dir_format,
-	.mount = pv_disk_dir_mount,
-	.umount = pv_disk_dir_umount,
+struct pv_disk_impl volume_bind_impl = {
+	.init = pv_disk_volume_bind_init,
+	.status = pv_disk_volume_bind_status,
+	.format = pv_disk_volume_bind_format,
+	.mount = pv_disk_volume_bind_mount,
+	.umount = pv_disk_volume_bind_umount,
 };
