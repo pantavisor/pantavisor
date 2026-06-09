@@ -16,41 +16,11 @@ usage() {
 	echo "       -d SECS    restart delay in seconds (default: 5)"
 }
 
-cleanup_cryptdisk() {
-	for dev in $(ls /dev/mapper/ 2>/dev/null); do
-		[ "$dev" = "control" ] && continue
-		umount -l "/dev/mapper/$dev" > /dev/null 2>&1 || true
-		cryptsetup close "$dev" > /dev/null 2>&1 || \
-			dmsetup remove --force "$dev" > /dev/null 2>&1 || true
-	done
-}
-
 cleanup_cgroup() {
 	if [ -d /sys/fs/cgroup/lxc ]; then
 		find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1
 		rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1
 	fi
-}
-
-setup_loop() {
-	local count="$1"
-	local first="$(losetup -f | grep -oE '[0-9]+$' )"
-	first=$((first + 1))
-
-	for i in $(seq "$first" "$((first + count))"); do
-		mknod -m660 "/dev/loop$i" b 7 "$i" > /dev/null 2>&1 || true
-	done
-
-	echo "$first"
-}
-
-teardown_loop() {
-	local first="$1"
-	local count="$2"
-
-	for i in $(seq "$first" "$((first + count))"); do
-		rm -f "/dev/loop$i"
-	done
 }
 
 exec_run() {
@@ -87,10 +57,7 @@ exec_run() {
 		echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
 	fi
 
-	cleanup_cryptdisk
 	cleanup_cgroup
-	loop_n=100
-	first_loop=$(setup_loop "$loop_n")
 
 	pv_trying=""
 	shutdown=0
@@ -137,7 +104,6 @@ exec_run() {
 		fi
 		umount -l /volumes || true
 		umount -l /storage || true
-		cleanup_cryptdisk
 		cleanup_cgroup
 
 		set -e
@@ -165,7 +131,6 @@ exec_run() {
 		umount /var/pantavisor/storage
 	fi
 
-	teardown_loop "$first_loop" "$loop_n"
 	cleanup_cgroup
 }
 # parse options

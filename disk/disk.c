@@ -221,6 +221,8 @@ static struct pv_disk_impl *get_disk_implementation(struct pv_disk *disk)
 			impl = &volume_impl;
 		break;
 	case DISK_DIR:
+		impl = &dir_impl;
+		break;
 	case DISK_UNKNOWN:
 	default:
 		pv_log(ERROR, "unknown disk type %d", disk->type);
