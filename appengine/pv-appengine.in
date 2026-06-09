@@ -18,8 +18,8 @@ usage() {
 
 cleanup_cgroup() {
 	if [ -d /sys/fs/cgroup/lxc ]; then
-		find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1
-		rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1
+		find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1 || true
+		rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1 || true
 	fi
 }
 
