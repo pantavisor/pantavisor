@@ -222,6 +222,7 @@ static inline bool pv_disk_is_internal(struct pv_disk *d)
 	return d->name && d->name[0] == '_';
 }
 
+extern struct pv_disk_impl dir_impl;
 extern struct pv_disk_impl zram_impl;
 extern struct pv_disk_impl crypt_impl;
 extern struct pv_disk_impl volume_impl;
