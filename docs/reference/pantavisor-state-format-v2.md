@@ -99,11 +99,11 @@ examples.
 |:---|:---|:---:|:---|
 | `name` | string | **Mandatory** | Unique name used in `run.json` storage keys and mount paths. |
 | `aliases` | string array | empty | Additional names this disk answers to. Volumes referring to any alias resolve to this disk. Aliases must not shadow another disk's `name` or be claimed by more than one disk; conflicts make the state refuse to boot. See [Aliases](../overview/disks.md#aliases) in the overview. |
-| `type` | enum | **Mandatory** | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk`, `dual`, `directory`. |
-| `path` | string | **Mandatory** (crypt, swap, vol) | Device/image path. CAAM v2: `-v2 <img>,<size>,<key>`. DCP/versatile: `<img>,<size>,<key>`. Not used by `directory`. |
+| `type` | enum | **Mandatory** | `dm-crypt-caam`, `dm-crypt-dcp`, `dm-crypt-versatile`, `swap-disk`, `volume-disk`, `dual`. |
+| `path` | string | **Mandatory** (crypt, swap, vol with provision) | Device/image path. CAAM v2: `-v2 <img>,<size>,<key>`. DCP/versatile: `<img>,<size>,<key>`. Not required for `volume-disk` without `provision`. |
 | `mode` | enum | **Mandatory** (crypt) | `mainline` or `nxp`. Selects key subsystem. |
 | `format` | enum | `ext4` | Filesystem format: `ext4`, `ext3`, or `swap`. |
-| `provision` | string | empty | Backend provisioning: `zram`, `file`, or a custom value. Required for swap and volume types. |
+| `provision` | string | empty | Backend provisioning: `zram`, `file`, or a custom value. Required for swap; optional for `volume-disk` (absent → bind-mount backend). |
 | `provision_ops` | string | empty | Backend-specific options (e.g. `disksize=128M comp_algorithm=lz4`). |
 | `mount_target` | path | empty | Where to mount the disk on the host. Required for `volume-disk`. |
 | `mount_options` | string | empty | Comma-separated mount flags (e.g. `MS_NOATIME,MS_NOSUID`). |

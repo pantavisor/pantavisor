@@ -215,7 +215,7 @@ add_executable(pantavisor
 			disk/disk.c
 			disk/disk.h
 			disk/disk_crypt.c
-			disk/disk_dir.c
+			disk/disk_volume_bind.c
 			disk/disk_dual.c
 			disk/disk_impl.h
 			disk/disk_swap.c

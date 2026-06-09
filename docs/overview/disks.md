@@ -70,22 +70,53 @@ Swap disks are mounted first during boot, before all other disk types.
 }
 ```
 
-### volume-disk (EXPERIMENTAL)
+### volume-disk
 
-> **WARNING**: volume-disk runs `mkfs` on every mount cycle —
-> **it reformats the block device every boot**. This is safe for zram
-> backends (ephemeral RAM) but **will destroy data on real block
-> devices**. Do not use with persistent block devices until a
-> `format` policy (`auto`/`no`) is implemented. See TODO section.
+A `volume-disk` entry has two distinct behaviours depending on whether a
+`provision` field is present.
+
+#### Without `provision` — bind-mount backend
+
+No block device, no loop device, no dm-crypt. Pantavisor bind-mounts a
+persistent directory from `/storage/pv/volume-disk/<name>` (the Docker
+workspace bind-mount, or the real storage partition on hardware) into the
+ephemeral tmpfs at `/run/pantavisor/media/pv/dmcrypt/<name>`. Because the
+backing store lives under `/storage`, data survives repeated pantavisor
+restarts within the same appengine container.
+
+The bind mount target uses the `dmcrypt` namespace because `volumes.c`
+resolves disk-backed volume paths under that namespace regardless of the
+actual disk type.
+
+- `provision`: absent
+- `path`, `format`, `mount_target`: not required
+
+This is the recommended mode for appengine and CI test environments where
+dm-crypt hardware (CAAM, DCP) is unavailable.
+
+```json
+{
+    "name": "dm-internal-secrets",
+    "type": "volume-disk",
+    "aliases": ["dm-versatile"]
+}
+```
+
+#### With `provision` — block device / zram backend (EXPERIMENTAL)
+
+> **WARNING**: volume-disk with a provision runs `mkfs` on every mount
+> cycle — **it reformats the block device every boot**. This is safe for
+> zram backends (ephemeral RAM) but **will destroy data on real block
+> devices**. Do not use with persistent block devices until a `format`
+> policy (`auto`/`no`) is implemented.
 
 Plain (unencrypted) ext4/ext3 volume mounted at a specified target.
 
 - `format`: required — `"ext4"` or `"ext3"`
 - `mount_target`: required — where to mount the filesystem
 - `path`: required — block device path (ignored when `provision` is `"zram"`)
-- `provision`: required by the dispatcher — set to `"zram"` for
-  compressed RAM backend (see Zram section). For block device backed
-  disks, set to any non-zram value (e.g. `"block"`).
+- `provision`: set to `"zram"` for compressed RAM backend (see Zram section);
+  any other non-empty value selects block device mode.
 - `format_ops`: optional — passed to `mkfs.<format>`
 - `mount_ops`: optional — comma-separated mount flags:
   `MS_NOATIME`, `MS_NODEV`, `MS_NOEXEC`, `MS_NOSUID`, `MS_RDONLY`,
@@ -100,6 +131,7 @@ Plain (unencrypted) ext4/ext3 volume mounted at a specified target.
     "format": "ext4",
     "path": "/dev/mmcblk0p5",
     "mount_target": "/data",
+    "provision": "block",
     "mount_options": "MS_NOATIME,MS_NOSUID"
 }
 ```
@@ -321,41 +353,6 @@ If power is lost during `copy-once-to-primary`:
 3. Next boot: `copy-once-to-primary` sees no dual marker → re-runs copy
 4. Primary image exists → idempotent init (no recreation) → mounts →
    copy → verify → touches dual marker
-
-### directory
-
-A plain host directory. No loop device, no dm-crypt, no block device — just
-`mkdir -p` at boot time. Intended for workloads that need a persistent, writable
-directory shared between containers or accessible from the host, without the
-overhead or hardware requirements of a block-backed disk.
-
-**How it works:**
-
-- `init`: derives `mount_target` from `PV_DISK_VOLDIR/<name>` when no explicit
-  `mount_target` is set (`PV_DISK_VOLDIR` defaults to `/volumes`).
-- `format`: no-op — no filesystem to create.
-- `mount`: creates the directory with `mkdir -p` and returns. No `mount(2)` call.
-- `umount`: no-op — the directory lives on the host tmpfs or storage volume and
-  is left in place across pantavisor restarts.
-- `status`: `MOUNTED` if `stat(mount_target)` succeeds and returns a directory;
-  `NOT_MOUNTED` otherwise.
-
-**`device.json` example:**
-
-```json
-{
-  "name": "my-secrets",
-  "type": "directory",
-  "aliases": ["dm-versatile"]
-}
-```
-
-No `path` field is needed. The directory is created at `/volumes/my-secrets`
-(or the custom path set via `mount_target`).
-
-**When to use:** appengine and CI test environments where dm-crypt hardware
-(CAAM, DCP) is unavailable. Also suitable for any deployment that needs a
-simple shared directory without encryption.
 
 ## Internal Disks
 
