@@ -322,9 +322,40 @@ If power is lost during `copy-once-to-primary`:
 4. Primary image exists → idempotent init (no recreation) → mounts →
    copy → verify → touches dual marker
 
-### directory (not implemented)
+### directory
 
-Defined in the type enum but has no implementation. Will fail at runtime.
+A plain host directory. No loop device, no dm-crypt, no block device — just
+`mkdir -p` at boot time. Intended for workloads that need a persistent, writable
+directory shared between containers or accessible from the host, without the
+overhead or hardware requirements of a block-backed disk.
+
+**How it works:**
+
+- `init`: derives `mount_target` from `PV_DISK_VOLDIR/<name>` when no explicit
+  `mount_target` is set (`PV_DISK_VOLDIR` defaults to `/volumes`).
+- `format`: no-op — no filesystem to create.
+- `mount`: creates the directory with `mkdir -p` and returns. No `mount(2)` call.
+- `umount`: no-op — the directory lives on the host tmpfs or storage volume and
+  is left in place across pantavisor restarts.
+- `status`: `MOUNTED` if `stat(mount_target)` succeeds and returns a directory;
+  `NOT_MOUNTED` otherwise.
+
+**`device.json` example:**
+
+```json
+{
+  "name": "my-secrets",
+  "type": "directory",
+  "aliases": ["dm-versatile"]
+}
+```
+
+No `path` field is needed. The directory is created at `/volumes/my-secrets`
+(or the custom path set via `mount_target`).
+
+**When to use:** appengine and CI test environments where dm-crypt hardware
+(CAAM, DCP) is unavailable. Also suitable for any deployment that needs a
+simple shared directory without encryption.
 
 ## Internal Disks
 
