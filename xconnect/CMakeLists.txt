@@ -17,6 +17,7 @@ include_directories(
 add_executable(pv-xconnect
     main.c
     plumbing.c
+    plugins/proxy_common.c
     plugins/unix.c
     plugins/rest.c
     plugins/drm.c
