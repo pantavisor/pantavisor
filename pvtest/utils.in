@@ -1,5 +1,7 @@
 #!/bin/sh
 
+pvtest_log() { local level=$1; shift; printf '[pvtest] %s %s -- [%s]: %s\n' "$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*"; }
+
 # wait for a cmd stdout
 wait_for_value() {
 	local cmd="$1"
