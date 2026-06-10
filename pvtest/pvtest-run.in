@@ -1,5 +1,6 @@
 #!/bin/sh
 
+PVTEST_LOG_SOURCE=pvtest-run
 source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
 
 usage() {
@@ -11,7 +12,7 @@ usage() {
 parse_test() {
 	json_path="$test_path/test.json"
 	if [ ! -e "$json_path" ]; then
-		echo "Error: '$json_path' not found"
+		pvtest_log ERROR "'$json_path' not found"
 		exit 1
 	fi
 
@@ -33,7 +34,7 @@ trap cleanup EXIT
 
 initial_setup() {
 	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
-		echo "ERROR: @PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
+		pvtest_log ERROR "@PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
 		sleep 10
 		exit 1
 	fi
@@ -44,14 +45,14 @@ initial_setup() {
 	fi
 
 	if [ ! -f "$test_path/$test_script" ]; then
-		echo "Error: '$test_path/$test_script' does not exist"
+		pvtest_log ERROR "'$test_path/$test_script' does not exist"
 		exit 1
 	fi
 
 	if [ "$netsim" = "true" ]; then
 		wait_for_status "ip link set wlan1 name wlan0" 0 5 > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
-			echo "Error: could not setup wlan0 interface for tester"
+			pvtest_log ERROR "could not setup wlan0 interface for tester"
 			exit 1
 		fi
 	fi
@@ -71,7 +72,7 @@ initial_setup() {
 	# copy rev to pvtxdir
 	mkdir -p @PV_INSTALL_FULL_PVTXDIR@
 	for tarball in $tarballs; do
-		if [ ! -e "$test_path/$tarball" ]; then echo "Error: '$test_path/$tarball' does not exist"; exit 1; fi
+		if [ ! -e "$test_path/$tarball" ]; then pvtest_log ERROR "'$test_path/$tarball' does not exist"; exit 1; fi
 		cp -f "$test_path/$tarball" @PV_INSTALL_FULL_PVTXDIR@/
 	done
 	rm -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
@@ -83,12 +84,12 @@ exec_interactive() {
 	echo ""
 
 	if [ "$manual" = "true" ]; then
-		echo "Info: Pantavisor is not running."
+		pvtest_log INFO "Pantavisor is not running."
 		echo "To run Pantavisor with stdout logs:"
 		echo "pv-appengine -e \"PV_LOG_SERVER_OUTPUTS=filetree,stdout\""
 		echo ""
 	else
-		echo "Info: Pantavisor is already running."
+		pvtest_log INFO "Pantavisor is already running."
 		echo "To run your test:"
 		echo "$test_path/$test_script"
 		echo ""
@@ -97,6 +98,7 @@ exec_interactive() {
 	sh -c "bash"
 }
 stop_pv() {
+	pvtest_log DEBUG "stopping Pantavisor"
 	if [ -f "@CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id" ]; then
 		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
 	fi
@@ -115,11 +117,11 @@ stop_pv() {
 		eval "pvcontrol commands poweroff" > /dev/null 2>&1
 		wait_for_process " pantavisor$" "120" "-d"
 		if [ $? -ne 0 ]; then
-			echo "Warn: Pantavisor still running. Shutting it down..."
+			pvtest_log WARN "Pantavisor still running. Shutting it down..."
 			kill "$pv_pid"
 			wait_for_process " pantavisor$" "30" "-d"
 			if [ $? -ne 0 ]; then
-				echo "Error: Pantavisor still running. Exiting..."
+				pvtest_log ERROR "Pantavisor still running. Exiting..."
 				kill -SIGKILL "$pv_pid"
 			fi
 		fi
@@ -127,7 +129,7 @@ stop_pv() {
 }
 
 int_handler() {
-	echo "Debug: Stopping Pantavisor...."
+	pvtest_log DEBUG "Stopping Pantavisor..."
 	stop_pv
 	exit 2
 }
@@ -136,19 +138,22 @@ start_pv() {
 	local valgrind_opt=""
 	if [ "$valgrind" = "true" ]; then
 		valgrind_opt="-V"
+		pvtest_log DEBUG "valgrind enabled"
 	fi
 	pv_cmd="pv-appengine $valgrind_opt -d 0 -c \"$cmdline\""
 
+	pvtest_log INFO "starting Pantavisor"
 	eval "$pv_cmd &"
 
 	trap 'int_handler' INT
 
 	wait_for_process " pantavisor$" "30" "-a"
 	if [ $? != 0 ]; then
-		echo "Error: timed out waiting for Pantavisor PID"
+		pvtest_log ERROR "timed out waiting for Pantavisor PID"
 		stop_pv
 		exit 1
 	fi
+	pvtest_log INFO "Pantavisor running"
 
 	if [ -n "$ready_script" ]; then
 		sh -c "$test_path/$ready_script"
@@ -156,24 +161,26 @@ start_pv() {
 
 	wait_for_value "pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
 	if [ $? != 0 ]; then
-		echo "Error: timed out waiting for pantavisor.status READY"
+		pvtest_log ERROR "timed out waiting for pantavisor.status READY"
 		stop_pv
 		exit 1
 	fi
+	pvtest_log INFO "Pantavisor status: READY"
 
 	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib curl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 120
 	if [ $? -ne 0 ]; then
-		echo "Error: timed out waiting for $control_container pvr endpoint to be online"
+		pvtest_log ERROR "timed out waiting for $control_container pvr endpoint to be online"
 		stop_pv
 		exit 1
 	fi
+	pvtest_log DEBUG "pvr endpoint online"
 
 	if [ "$self_claim" = "true" ]; then
 		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
 
 		wait_for_pantahub_state "$control_container" "claim"
 		if [ $? -ne 0 ]; then
-			echo "Error: timed out waiting for pantahub.state claim"
+			pvtest_log ERROR "timed out waiting for pantahub.state claim"
 			stop_pv
 			exit 1
 		fi
@@ -183,14 +190,14 @@ start_pv() {
 
 		pvr claim -c "$challenge" "$device_id"
 		if [ $? -ne 0 ]; then
-			echo "Error: pvr claim failed"
+			pvtest_log ERROR "pvr claim failed"
 			stop_pv
 			exit 1
 		fi
 
 		wait_for_pantahub_state "$control_container" "idle"
 		if [ $? -ne 0 ]; then
-			echo "Error: timed out waiting for pantahub.state idle after claim"
+			pvtest_log ERROR "timed out waiting for pantahub.state idle after claim"
 			stop_pv
 			exit 1
 		fi
@@ -199,15 +206,17 @@ start_pv() {
 
 exec_test() {
 	tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
-	sed '5iset -x' "$test_path/$test_script" > "$tmp_script_path"
+	sed '5iexport PS4='"'"'[pvtest] $(date +%s) DEBUG -- [test-script]: '"'"'; set -x' "$test_path/$test_script" > "$tmp_script_path"
 	chmod +x "$tmp_script_path"
 
 	tmp_out_path=$(mktemp /tmp/pv_appengine_output.XXXXXX)
 	# we use script to get stdout and stderr in the same order we do in console
 	# tee shows output in real-time while saving it for later comparison
-	script -q -c "sh -c \"$tmp_script_path\"" | tee $tmp_out_path
+	script -q -c "bash -c \"$tmp_script_path\"" | tee $tmp_out_path
+	pvtest_log INFO "test script complete"
 
 	if [ "$overwrite" = "true" ]; then
+		pvtest_log INFO "overwriting expected output"
 		cat $tmp_out_path > $test_path/output
 	fi
 	rm -f "$tmp_script_path"
@@ -215,7 +224,7 @@ exec_test() {
 
 eval_test() {
 	if [ "$overwrite" != "true" ]; then
-		diff <(grep -vE '^(\+|\$)' $test_path/output) <(grep -vE '^(\+|\$)' "$tmp_out_path") | tee /var/pantavisor/storage/diff
+		diff <(grep -vE '^(\+|\$|\[+pvtest\] [0-9]+ DEBUG -- \[test-script\]:)' $test_path/output) <(grep -vE '^(\+|\$|\[+pvtest\] [0-9]+ DEBUG -- \[test-script\]:)' "$tmp_out_path") | tee /var/pantavisor/storage/diff
 		if [ "${PIPESTATUS[0]}" -ne 0 ]; then
 			stop_pv
 			exit 1
@@ -235,7 +244,7 @@ daemon=${7:-$DAEMON}
 valgrind=${8:-$VALGRIND}
 
 if [ -z "$test_path" ] || [ -z "$interactive" ] || [ -z "$manual" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$netsim" ]; then
-	echo "Error: missing arguments / envs"
+	pvtest_log ERROR "missing arguments / envs"
 	usage
 fi
 if [ "$verbose" = "true" ]; then set -x; fi
@@ -254,11 +263,12 @@ parse_test
 
 if [ "$self_claim" = "true" ]; then
 	if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
-		echo "Error: you need to set PH_USER and PH_PASS to execute the test"
+		pvtest_log ERROR "you need to set PH_USER and PH_PASS to execute the test"
 		exit 1
 	fi
 fi
 
+pvtest_log INFO "setting up test: $test_path"
 initial_setup
 
 if [ "$manual" = "false" ]; then
@@ -272,6 +282,7 @@ fi
 if [ "$daemon" = "true" ]; then
 	sleep 100000
 elif [ "$interactive" = "false" ]; then
+	pvtest_log INFO "running test script"
 	exec_test
 fi
 stop_pv

@@ -4,6 +4,8 @@ set -e
 
 interrupt='false'
 
+pvtest_log() { local level=$1; shift; printf '[pvtest] %s %s -- [pv-appengine]: %s\n' "$(date +%s)" "$level" "$*"; }
+
 usage() {
 	echo "Usage: $0 [options]"
 	echo "Run Pantavisor in an existing OS"
@@ -29,20 +31,22 @@ exec_run() {
 
 	# check installed
 	if [ ! -f "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config" ]; then
-		echo "ERROR: installation path '@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config' not found"
+		pvtest_log ERROR "installation path '@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config' not found"
 		exit 1
 	fi
 
 	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$' ; then
-		echo "WARN: @PV_INSTALL_FULL_STORAGEDIR@ is not a mountpoint. Automatic installation might fail."
+		pvtest_log WARN "@PV_INSTALL_FULL_STORAGEDIR@ is not a mountpoint. Automatic installation might fail."
 	fi
 
 	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
+		pvtest_log DEBUG "first boot: initialising storage skeleton"
 		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/ || true
 		touch @PV_INSTALL_FULL_STORAGEDIR@/.created || true
 	fi
 
 	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done ]; then
+		pvtest_log DEBUG "first boot: running pvtx deploy"
 		pvtx abort
 		pvtx begin @PV_INSTALL_FULL_STORAGEDIR@/trails/0 @PV_INSTALL_FULL_STORAGEDIR@/objects
 		for a in `ls @PV_INSTALL_FULL_PVTXDIR@/* 2>/dev/null`; do
@@ -53,6 +57,7 @@ exec_run() {
 	fi
 
 	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt ]; then
+		pvtest_log DEBUG "first boot: initialising boot state"
 		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/boot
 		echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
 	fi
@@ -62,7 +67,7 @@ exec_run() {
 	pv_trying=""
 	shutdown=0
 	restart_delay="${restart_delay:-5}"
-	trap 'shutdown=1; echo "Recevied SIGINT, shutting down pantavisor ..."' SIGINT
+	trap 'shutdown=1; pvtest_log INFO "received SIGINT, shutting down Pantavisor..."' SIGINT
 
 	while [ "$shutdown" -eq 0 ]; do
 		# load boot info
@@ -81,6 +86,7 @@ exec_run() {
 		fi
 
 		# exec Pantavisor
+		pvtest_log INFO "launching pantavisor rev=$pv_rev${pv_try:+ (try=$pv_try)}"
 		set +e
 		if ! grep -q "cgroup2" /proc/mounts | grep -q "/sys/fs/cgroup"; then
 			if [ -z "$(ls -A /sys/fs/cgroup 2>/dev/null)" ]; then
@@ -105,6 +111,7 @@ exec_run() {
 		umount -l /volumes || true
 		umount -l /storage || true
 		cleanup_cgroup
+		pvtest_log DEBUG "pantavisor exited"
 
 		set -e
 		if [ "$shutdown" -eq 1 ]; then
@@ -116,16 +123,18 @@ exec_run() {
 				:
 			done
 			# wait for user input or continue
-			if read -t 5 -p "INFO: Will restart Pantavisor in 5 sec. Press ENTER to abort"; then
-				echo "INFO: Exiting..."
+			if read -t 5 -p "$(pvtest_log INFO "Will restart Pantavisor in 5 sec. Press ENTER to abort")"; then
+				pvtest_log INFO "Exiting..."
 				break
 			fi
 		fi
 		if [ "$restart_delay" -gt 0 ] 2>/dev/null; then
-			echo "restarting in $restart_delay seconds..."
+			pvtest_log DEBUG "restarting in $restart_delay seconds..."
 			sleep "$restart_delay" || true
 		fi
 	done
+
+	pvtest_log INFO "Pantavisor stopped"
 
 	if [ -d @PV_INSTALL_FULL_STORAGEDIR@-ovl ]; then
 		umount /var/pantavisor/storage
@@ -139,10 +148,10 @@ while [ $# -gt 0 ]; do
 	-h)
 		usage
 		exit 0
-		;; 
+		;;
 	-i)
 		interrupt='true'
-		;; 
+		;;
 	-c)
 		shift
 		cmdline="$1"
@@ -150,7 +159,7 @@ while [ $# -gt 0 ]; do
 	-e)
 		shift
 		envs="$1"
-		;; 
+		;;
 	-V)
 		valgrind='true'
 		;;
@@ -164,6 +173,8 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
+
+if [ "${VERBOSE:-false}" = "true" ]; then set -x; fi
 
 # uninstall Pantavisor
 exec_run
