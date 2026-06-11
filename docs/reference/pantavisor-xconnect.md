@@ -84,6 +84,52 @@ Policy-aware proxy for the system bus. It performs **Role-Based Identity Masquer
 
 This allows the provider's standard `dbus-daemon` to enforce fine-grained permissions using standard XML policy files based on the assigned role.
 
+#### Pantavisor-Hosted System Bus
+
+As a lower-friction alternative to the per-provider model above, pantavisor can
+host a **single shared system bus** itself, so both D-Bus providers and
+consumers become equally cheap single-pid containers — no `dbus-daemon`, policy
+XML, `/etc/passwd` or bus container to ship.
+
+It is gated by two independent switches: the `xconnect-dbus-systembus` build
+feature and the `xconnect.dbus.systembus.enabled` configuration key (default
+`1`). When enabled, pantavisor runs the bus as a managed daemon and registers a
+builtin `system-bus` export.
+
+A **name-owning app** declares the well-known name it owns, its owner role and
+the caller roles allowed to reach it, in its `services.json`:
+
+```json
+{
+  "#spec": "service-manifest-xconnect@1",
+  "services": [
+    {
+      "type": "dbus",
+      "bus": "system-bus",
+      "owns": "org.example.Foo",
+      "role": "foo-service",
+      "allow": ["operator", "monitor"]
+    }
+  ]
+}
+```
+
+Both owners and callers attach to the bus with a normal `system-bus`
+requirement entry (under their role), e.g.:
+
+```json
+{ "name": "system-bus", "type": "dbus", "role": "operator",
+  "target": "/run/dbus/system_bus_socket" }
+```
+
+Pantavisor allocates a stable numeric UID per role, generates a default-deny
+bus policy from the `owns`/`allow` declarations (no XML authoring), and the
+proxy masquerades each connection to its role UID. A multi-identity container
+declares several requirement entries with distinct `role` + `target` pairs.
+States that shadow the builtin `system-bus` export or double-own a well-known
+name are rejected at validation. The full design lives in
+[xconnect/XCONNECT.md](https://github.com/pantavisor/pantavisor/blob/master/xconnect/XCONNECT.md).
+
 ### DRM / Graphics
 - **Master Role**: Injects `/dev/dri/cardX` for display servers (KMS access).
 - **Render Role**: Injects `/dev/dri/renderDX` for accelerated applications.
