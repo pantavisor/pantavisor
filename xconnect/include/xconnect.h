@@ -43,6 +43,7 @@ struct pvx_link {
 	char *interface;
 	char *provider_socket;
 	char *consumer_socket; // Virtual socket path
+	int uid; // hosted-bus role uid for SASL masquerade, -1 if not set
 
 	struct pvx_plugin *plugin;
 	struct evconnlistener *listener;
