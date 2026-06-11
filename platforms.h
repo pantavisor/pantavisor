@@ -89,6 +89,15 @@ struct pv_platform_service_export {
 	service_type_t svc_type;
 	char *name;
 	char *socket;
+	// Hosted system-bus (xconnect dbus) "owns" declaration: this platform
+	// owns the well-known name `owns` on bus `bus`, under owner role `role`,
+	// callable by the roles listed in allow[]. name/socket stay NULL for
+	// these entries — they are not consumed as a per-provider service.
+	char *bus;
+	char *owns;
+	char *role;
+	char **allow;
+	int allow_count;
 	struct dl_list list;
 };
 typedef enum {
@@ -195,6 +204,10 @@ void pv_platform_add_service(struct pv_platform *p, plat_service_t type,
 void pv_platform_add_service_export(struct pv_platform *p,
 				    service_type_t svc_type, char *name,
 				    char *socket);
+void pv_platform_add_service_owns(struct pv_platform *p,
+				  service_type_t svc_type, const char *bus,
+				  const char *owns, const char *role,
+				  char **allow, int allow_count);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
 void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
