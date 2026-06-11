@@ -33,6 +33,25 @@ cleanup() {
 trap cleanup EXIT
 
 initial_setup() {
+	# Pre-create loop device nodes. The tester container has /dev/loop-control,
+	# CAP_MKNOD and a 'b 7:* rmw' device-cgroup rule, but no devtmpfs/udev — so
+	# LOOP_CTL_GET_FREE hands out a free index while the matching /dev/loopN node
+	# is never created, and losetup (for the dm-crypt disk or container
+	# squashfs) fails with "failed to set up loop device: No such file or
+	# directory". Creating the nodes up front makes losetup work for whatever
+	# index the kernel picks, no matter how loaded the host is. This is
+	# parallel-safe: LOOP_CTL_GET_FREE is host-global and atomic so concurrent
+	# tester containers get distinct backing indices, and each container has its
+	# own /dev so the nodes never collide. Idempotent and harmless where the
+	# nodes already exist (real devices with devtmpfs).
+	if [ -e /dev/loop-control ]; then
+		i=0
+		while [ "$i" -lt 1024 ]; do
+			[ -e "/dev/loop$i" ] || mknod "/dev/loop$i" b 7 "$i" 2>/dev/null
+			i=$((i + 1))
+		done
+	fi
+
 	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
 		pvtest_log ERROR "@PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
 		sleep 10
