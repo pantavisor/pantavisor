@@ -382,6 +382,15 @@ void pv_platform_free(struct pv_platform *p)
 			free(se->name);
 		if (se->socket)
 			free(se->socket);
+		if (se->bus)
+			free(se->bus);
+		if (se->owns)
+			free(se->owns);
+		if (se->role)
+			free(se->role);
+		for (int i = 0; i < se->allow_count; i++)
+			free(se->allow[i]);
+		free(se->allow);
 		free(se);
 	}
 	dl_list_init(&p->service_exports);
@@ -1686,6 +1695,36 @@ void pv_platform_add_service_export(struct pv_platform *p,
 		se->name = strdup(name);
 	if (socket)
 		se->socket = strdup(socket);
+	dl_list_init(&se->list);
+	dl_list_add_tail(&p->service_exports, &se->list);
+}
+
+void pv_platform_add_service_owns(struct pv_platform *p,
+				  service_type_t svc_type, const char *bus,
+				  const char *owns, const char *role,
+				  char **allow, int allow_count)
+{
+	struct pv_platform_service_export *se =
+		calloc(1, sizeof(struct pv_platform_service_export));
+	if (!se)
+		return;
+
+	se->svc_type = svc_type;
+	if (bus)
+		se->bus = strdup(bus);
+	if (owns)
+		se->owns = strdup(owns);
+	if (role)
+		se->role = strdup(role);
+	if (allow_count > 0 && allow) {
+		se->allow = calloc(allow_count, sizeof(char *));
+		if (se->allow) {
+			for (int i = 0; i < allow_count; i++)
+				se->allow[i] =
+					allow[i] ? strdup(allow[i]) : NULL;
+			se->allow_count = allow_count;
+		}
+	}
 	dl_list_init(&se->list);
 	dl_list_add_tail(&p->service_exports, &se->list);
 }
