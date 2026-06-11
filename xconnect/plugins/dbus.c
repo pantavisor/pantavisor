@@ -122,8 +122,13 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 		char hex_identity[64];
 		const char *role =
 			sess->link->role ? sess->link->role : "nobody";
-		int uid =
-			lookup_uid_in_provider(role, sess->link->provider_pid);
+		// Hosted system bus: pantavisor resolved the role to a numeric
+		// uid and put it on the link, so masquerade to it directly. The
+		// legacy per-provider path keeps the /etc/passwd lookup.
+		int uid = sess->link->uid >= 0 ?
+				  sess->link->uid :
+				  lookup_uid_in_provider(
+					  role, sess->link->provider_pid);
 
 		if (uid < 0) {
 			printf("%s: Role '%s' not found in provider, using UID 65534 (nobody)\n",
