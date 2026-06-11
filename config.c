@@ -284,7 +284,9 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_VOLMOUNT_DM_EXTRA_ARGS", PV | OEM, 0, false,
 	  .value.s = NULL },
 	{ WDT_MODE, "PV_WDT_MODE", PV, 0, false, .value.i = WDT_SHUTDOWN },
-	{ INT, "PV_WDT_TIMEOUT", PV, 0, false, .value.i = 15 }
+	{ INT, "PV_WDT_TIMEOUT", PV, 0, false, .value.i = 15 },
+	{ BOOL, "PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED", PV | OEM, 0, false,
+	  .value.b = true }
 };
 
 struct pv_config_alias {
@@ -376,6 +378,8 @@ static struct pv_config_alias aliases[] = {
 	{ "updater.use_tmp_objects", "PV_UPDATER_USE_TMP_OBJECTS" },
 	{ "wdt.mode", "PV_WDT_MODE" },
 	{ "wdt.timeout", "PV_WDT_TIMEOUT" },
+	{ "xconnect.dbus.systembus.enabled",
+	  "PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED" },
 	// OTHER COMPATIBLE KEYS
 	{ "meta.cache.dir", "PV_CACHE_USRMETADIR" },
 	{ "pantahub.log.push", "PV_LOG_PUSH" },
