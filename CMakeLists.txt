@@ -26,6 +26,7 @@ set(PANTAVISOR_PVTX ON CACHE BOOL "build pantavisor pvtx")
 set(PANTAVISOR_PVTX_STATIC OFF CACHE BOOL "build pantavisor pvtx static")
 set(PANTAVISOR_CLANG_FORMAT_CHECK OFF CACHE BOOL "run clang-format check on build")
 set(PANTAVISOR_XCONNECT OFF CACHE BOOL "Build pantavisor xconnect")
+set(PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS OFF CACHE BOOL "Build pantavisor-hosted xconnect D-Bus system bus")
 set(PANTAVISOR_DCP_BLOB_CREATE OFF CACHE BOOL "Build dcp-blob-create tool for DCP trusted key migration")
 set(PANTAVISOR_DEBUG_HOOKS OFF CACHE BOOL "Add debug test for Pantavisor hooks")
 
@@ -383,6 +384,10 @@ target_compile_definitions(pantavisor PUBLIC PV_INSTALL_FULL_PVLIBDIR="${PV_INST
 
 IF(PANTAVISOR_XCONNECT)
 	target_compile_definitions(pantavisor PRIVATE PANTAVISOR_XCONNECT)
+ENDIF()
+
+IF(PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS)
+	target_compile_definitions(pantavisor PRIVATE PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS)
 ENDIF()
 
 IF(NOT PANTAVISOR_DEFAULTS_SKIP_INSTALL)
