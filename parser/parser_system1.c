@@ -910,18 +910,87 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 
 		int svc_c;
 		if (jsmnutil_parse_json(svc_s, &sv, &svc_c) > 0) {
-			char *n = pv_json_get_value(svc_s, "name", sv, svc_c);
 			char *t_s = pv_json_get_value(svc_s, "type", sv, svc_c);
-			char *sock =
-				pv_json_get_value(svc_s, "socket", sv, svc_c);
-			pv_platform_add_service_export(
-				p, service_str_to_type(t_s), n, sock);
-			if (n)
-				free(n);
+			char *owns =
+				pv_json_get_value(svc_s, "owns", sv, svc_c);
+
+			if (owns) {
+				// Hosted system-bus name declaration:
+				// {type:"dbus", bus:"system-bus",
+				//  owns:"org.x.Foo", role:"...", allow:[...]}
+				char *bus = pv_json_get_value(svc_s, "bus", sv,
+							      svc_c);
+				char *role = pv_json_get_value(svc_s, "role",
+							       sv, svc_c);
+				char **allow = NULL;
+				int allow_count = 0;
+				char *allow_str = pv_json_get_value(
+					svc_s, "allow", sv, svc_c);
+				if (allow_str) {
+					jsmntok_t *atokv = NULL;
+					int atokc;
+					if (jsmnutil_parse_json(allow_str,
+								&atokv,
+								&atokc) > 0) {
+						int acount =
+							jsmnutil_array_count(
+								allow_str,
+								atokv);
+						if (acount > 0) {
+							allow = calloc(
+								acount,
+								sizeof(char *));
+							if (allow) {
+								int rem =
+									acount;
+								jsmntok_t *at =
+									atokv +
+									1;
+								for (int j = 0;
+								     j < acount;
+								     j++) {
+									char *e = pv_json_array_get_one_str(
+										allow_str,
+										&rem,
+										&at);
+									if (e)
+										allow[allow_count++] =
+											e;
+								}
+							}
+						}
+						free(atokv);
+					}
+					free(allow_str);
+				}
+
+				pv_platform_add_service_owns(
+					p, service_str_to_type(t_s), bus, owns,
+					role, allow, allow_count);
+
+				for (int j = 0; j < allow_count; j++)
+					free(allow[j]);
+				free(allow);
+				if (bus)
+					free(bus);
+				if (role)
+					free(role);
+				free(owns);
+			} else {
+				char *n = pv_json_get_value(svc_s, "name", sv,
+							    svc_c);
+				char *sock = pv_json_get_value(svc_s, "socket",
+							       sv, svc_c);
+				pv_platform_add_service_export(
+					p, service_str_to_type(t_s), n, sock);
+				if (n)
+					free(n);
+				if (sock)
+					free(sock);
+			}
+
 			if (t_s)
 				free(t_s);
-			if (sock)
-				free(sock);
 			free(sv);
 		}
 		free(svc_s);
@@ -1799,8 +1868,7 @@ static int do_action_for_dev_log(struct json_key_action *jka, char *value)
 	} else if (!strncmp(value, "false", len)) {
 		pv_platform_set_std_log(*bundle->platform, false);
 	} else {
-		pv_log(DEBUG, "couldn't parse dev-log key: %.*s", len,
-		       value);
+		pv_log(DEBUG, "couldn't parse dev-log key: %.*s", len, value);
 	}
 
 	return 0;
