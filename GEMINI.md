@@ -51,15 +51,6 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 | **Hooks** | [docs/overview/hooks.md](docs/overview/hooks.md) | System lifecycle hooks |
 | **Inter-Container Communication** | [docs/overview/xconnect.md](docs/overview/xconnect.md) | xconnect service mesh overview |
 
-## Docs Pipeline
-
-Changes to `docs/**` on master automatically trigger a GitLab CI pipeline in the docs repo (via GitHub Action → GitLab CI trigger). The docs pipeline:
-1. Updates the `content/pantavisor-src` submodule to latest master
-2. Copies `docs/reference/` files into versioned directories (`content/reference/<version>/`)
-3. Copies `docs/overview/` files into `content/` (the docs site root, overwriting existing)
-4. Regenerates the `mkdocs.yml` navigation for the Reference Pages section
-5. Auto-commits and pushes if anything changed
-
 ## Architecture
 
 - **pv-xconnect**: Standalone mediation service for cross-container communication
