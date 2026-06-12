@@ -1,8 +1,14 @@
+---
+title: "xconnect"
+sidebar_position: 6
+description: "Service mesh manifest formats and mediation patterns."
+---
+
 # Pantavisor xconnect
 
 The `pv-xconnect` service mesh facilitates efficient container-to-container and container-to-host interactions. It uses a plugin-driven architecture to inject resources (Unix sockets, D-Bus proxies, DRM nodes) into consumer containers on demand.
 
-For information on how to inspect or manage the service mesh via the Pantavisor Control API, see the [Pantavisor Control Socket](../legacy/pantavisor-commands.md#xconnect-graph) reference.
+For information on how to inspect or manage the service mesh via the Pantavisor Control API, see the [Pantavisor Control Socket](pantavisor-commands.md#xconnect-graph) reference.
 
 ## Architecture
 

@@ -1,3 +1,9 @@
+---
+title: "IPAM"
+sidebar_position: 9
+description: "IP address management configuration: pools, leases, and per-container networks."
+---
+
 # Pantavisor IPAM
 
 Reference for the IP Address Management (IPAM) subsystem: `device.json` pool schema, per-container `run.json` / `args.json` schema, lifecycle behaviors, and backend-plugin hook.

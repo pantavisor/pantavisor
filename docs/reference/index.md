@@ -10,6 +10,7 @@ description: "Exact specifications for state formats, configuration, commands, t
 - [Configuration](pantavisor-configuration.md) — All `pantavisor.json` keys, default values, value types, and the configuration level at which each key is effective
 - [Control Socket](pantavisor-commands.md) — pv-ctrl HTTP-over-Unix-socket endpoints: containers, groups, signals, daemons, and xconnect graph
 - [Tools](pantavisor-tools.md) — On-device CLI tools: `pventer`, `pvcurl`, `pvcontrol`, and `pvtx` — commands, flags, and usage examples
+- [pvcontrol](pvcontrol.md) — Full `pvcontrol` CLI reference: options, socket auto-detection, and worked examples for every command
 - [xconnect](pantavisor-xconnect.md) — Service mesh manifest format: `services.json` export declarations and `run.json` requirement declarations for Unix sockets, D-Bus, DRM, and Wayland
 - [Metadata](pantavisor-metadata.md) — User-defined and system-managed device metadata: key namespaces, update API, and persistence
 - [Log Sockets](logserver-sockets.md) — Logserver Unix socket paths, message format, and how containers attach to the log stream

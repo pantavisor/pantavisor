@@ -1,5 +1,5 @@
 ---
-nav_order: 2
+sidebar_position: 2
 ---
 # Revisions
 
@@ -100,4 +100,4 @@ In order to make revisions reproducible, they can be defined in a state JSON. Th
 }
 ```
 
-To know more about this, you can take a look at our [state JSON reference](../../../reference/legacy/pantavisor-state-format-v2.md).
+To know more about this, you can take a look at our [state JSON reference](../reference/pantavisor-state-format-v2.md).

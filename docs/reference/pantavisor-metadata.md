@@ -1,6 +1,12 @@
+---
+title: "Metadata"
+sidebar_position: 7
+description: "User-defined and system-managed device metadata reference."
+---
+
 # Pantavisor Metadata
 
-This page contains reference information about [Pantavisor metadata](../../pantavisor-src/docs/overview/storage.md#metadata).
+This page contains reference information about [Pantavisor metadata](../overview/storage.md#metadata).
 
 ## Device metadata
 
@@ -12,14 +18,14 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantahub.address` | IP:port | Pantacor Hub address the client is communicating with |
 | `pantahub.claimed` | 0 or 1 | 1 if claimed in Pantacor Hub |
 | `pantahub.online` | 0 or 1 | 1 if connection to Pantacor Hub was established |
-| `pantahub.state` | string | [see Pantacor Hub states](../../pantavisor-src/docs/overview/remote-control.md#pantacor-hub-client) (init, register, claim, sync, login, wait hub, report, idle, prep download or download) |
+| `pantahub.state` | string | [see Pantacor Hub states](../overview/remote-control.md#pantacor-hub-client) (init, register, claim, sync, login, wait hub, report, idle, prep download or download) |
 | `pantavisor.arch` | string | CPU architecture |
 | `pantavisor.claimed` | 0 or 1 | 1 if device has ever been claimed (local or remote) |
 | `pantavisor.cpumodel` | string | CPU model name |
 | `pantavisor.dtmodel` | string | Device Tree model name |
-| `pantavisor.mode` | local or remote | [see operation modes](../../pantavisor-src/docs/overview/pantavisor-architecture.md#communication-with-the-outside-world) |
-| `pantavisor.revision` | string | [revision number](../../make-a-new-revision.md) |
-| `pantavisor.status` | string | [revision status](../../pantavisor-src/docs/overview/containers.md#status) |
+| `pantavisor.mode` | local or remote | [see operation modes](../overview/pantavisor-architecture.md#communication-with-the-outside-world) |
+| `pantavisor.revision` | string | [revision number](https://docs.pantavisor.io/develop/cli-tools/workflows) |
+| `pantavisor.status` | string | [revision status](../overview/containers.md#status) |
 | `pantavisor.uname` | json | [uname](https://man7.org/linux/man-pages/man1/uname.1.html) output |
 | `pantavisor.version` | string | Pantavisor build version |
 | `storage` | json | disk usage of the device |
@@ -40,14 +46,14 @@ The `interfaces` device metadata is a JSON object keyed by `<iface>.<family>`. E
 }
 ```
 
-# User metadata
+## User metadata
 
 This is the user metadata that can be set by the user which is parsed and have some actions on Pantavisor:
 
 | Key | Value | Description |
 | --- | ----- | ----------- |
-| `pvr-sdk.authorized_keys` | SSH pub key | set [public key](../../inspect-device.md) to get SSH access |
-| `pvr-auto-follow.url` | URL | device will automatically pull every change in the device associated to that [clone URL](../../clone-your-system.md) |
-| `pantahub.log.push` | 0 or 1 | disable/enable log pushing to Pantacor Hub. Overrides [PV_LOG_PUSH](../legacy/pantavisor-configuration.md#summary) |
-| `<config-key>` | config-value | override any [configuration](../legacy/pantavisor-configuration.md#summary) keys that allow RUN level |
+| `pvr-sdk.authorized_keys` | SSH pub key | set [public key](https://docs.pantavisor.io/operate/device-access/local-network) to get SSH access |
+| `pvr-auto-follow.url` | URL | device will automatically pull every change in the device associated to that [clone URL](https://docs.pantavisor.io/develop/cli-tools/pvr-cli) |
+| `pantahub.log.push` | 0 or 1 | disable/enable log pushing to Pantacor Hub. Overrides [PV_LOG_PUSH](pantavisor-configuration.md#summary) |
+| `<config-key>` | config-value | override any [configuration](pantavisor-configuration.md#summary) keys that allow RUN level |
 | `<container>/<key>` | value | send user metadata that can be consumed by one of the containers |

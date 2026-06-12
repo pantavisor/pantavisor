@@ -1,3 +1,9 @@
+---
+title: "Log Sockets"
+sidebar_position: 8
+description: "Logserver Unix socket paths and message formats."
+---
+
 # Pantavisor Log Sockets
 
 The Pantavisor logging system uses two Unix sockets for inter-process log management: `pv-ctrl-log` for receiving direct log messages and `pv-fd-log` for subscribing file descriptors to be polled by Pantavisor.
@@ -62,8 +68,9 @@ The `msghdr` must contain an `iovec` array with 4 elements:
 - The file descriptor passed in `SCM_RIGHTS` can be `-1`.
 - Pantavisor will stop polling and close its internal reference to the FD for that platform/source pair.
 
-!!! Note
-    Only one file descriptor can be subscribed per platform-source pair. Subscribing a new FD for an existing pair will replace the previous one.
+:::note
+Only one file descriptor can be subscribed per platform-source pair. Subscribing a new FD for an existing pair will replace the previous one.
+:::
 
 ## /dev/log
 
@@ -159,8 +166,9 @@ Nil fields are represented by a single `-` character. Pantavisor accepts `PROCID
 | `MSG` | log data | Everything after the structured-data field |
 | `PROCID`, `MSGID`, `STRUCTURED-DATA` | — | Accepted but ignored |
 
-!!! Note
-    Fractional seconds in RFC 5424 timestamps are silently dropped. Use UTC (`Z` suffix) for best fidelity.
+:::note
+Fractional seconds in RFC 5424 timestamps are silently dropped. Use UTC (`Z` suffix) for best fidelity.
+:::
 
 ### Priority and Facility
 

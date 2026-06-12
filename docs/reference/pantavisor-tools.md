@@ -1,3 +1,9 @@
+---
+title: "Tools"
+sidebar_position: 4
+description: "On-device CLI tools: pventer, pvcurl, pvcontrol, and pvtx."
+---
+
 # Pantavisor Tools
 
 On-device CLI tools shipped with Pantavisor for development, debugging, and container control.
