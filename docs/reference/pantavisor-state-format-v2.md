@@ -1,3 +1,9 @@
+---
+title: "State Format"
+sidebar_position: 1
+description: "state.json schema (v2): root keys and all manifest definitions."
+---
+
 # Pantavisor State Format (state.json)
 
 A Pantavisor revision is defined by a single JSON object called `state.json`. It acts as a **virtual filesystem manifest** where every key represents a relative file path within the revision, and every value is either a nested configuration object or a SHA256 identifier for a binary artifact.
@@ -10,14 +16,14 @@ These keys represent the files at the root of a revision.
 |:---|:---|:---:|:---|
 | `#spec` | string | Yes | Parser version. Must be `"pantavisor-service-system@1"`. |
 | `README.md` | string | No | Documentation for the revision in Markdown format. |
-| `bsp/run.json` | [BSP Manifest](#2-bsp-runjson) | Yes | Board Support Package configuration. |
-| `bsp/drivers.json` | [Drivers Manifest](#3-bsp-driversjson) | No | Abstract driver mapping for the kernel. |
-| `device.json` | [Infrastructure Manifest](#4-devicejson) | No | Unified physical storage and logical group definition. |
-| `groups.json` | [Groups Manifest](#5-groupsjson) | No | (Legacy) Logical container orchestration groups. |
-| `disks.json` | [Disks Manifest](#6-disksjson) | No | (Legacy) Physical storage medium definitions. |
-| `<container>/run.json` | [Container Manifest](#7-containerrunjson) | Yes | Individual container configuration. |
-| `<container>/services.json` | [Service Exports](#8-containerservicesjson) | No | Services exported to the xconnect mesh. |
-| `_sigs/<container>.json` | [Signature Manifest](#9-_sigscontainerjson) | No | Security signature for container artifacts. |
+| `bsp/run.json` | [BSP Manifest](#2-bsp-bsprunjson) | Yes | Board Support Package configuration. |
+| `bsp/drivers.json` | [Drivers Manifest](#3-drivers-bspdriversjson) | No | Abstract driver mapping for the kernel. |
+| `device.json` | [Infrastructure Manifest](#4-infrastructure-devicejson) | No | Unified physical storage and logical group definition. |
+| `groups.json` | [Groups Manifest](#5-orchestration-groupsjson) | No | (Legacy) Logical container orchestration groups. |
+| `disks.json` | [Disks Manifest](#6-storage-disksjson) | No | (Legacy) Physical storage medium definitions. |
+| `<container>/run.json` | [Container Manifest](#7-container-containerrunjson) | Yes | Individual container configuration. |
+| `<container>/services.json` | [Service Exports](#8-service-mesh-containerservicesjson) | No | Services exported to the xconnect mesh. |
+| `_sigs/<container>.json` | [Signature Manifest](#9-security-_sigscontainerjson) | No | Security signature for container artifacts. |
 | `_config/<container>/<path>` | string | No | Injects data into `<path>` inside the container's rootfs. |
 | `<any/other/path>` | string | No | SHA256 identifier for a binary artifact at that path. |
 
@@ -68,7 +74,7 @@ The unified hardware and orchestration manifest.
 | `disks` | array | List of [Disk Definitions](#6-storage-disksjson). Strict parsing — unknown types are fatal. |
 | `disks_v2` | array | Same schema as `disks`, additive. Parsed independently. |
 | `disks_v3` | array | Same schema as `disks` with lenient parsing (unknown types are warned and skipped). Required for the `dual` type — old firmware safely ignores this key. |
-| `groups` | array | List of [Orchestration Groups](#5-groupsjson). |
+| `groups` | array | List of [Orchestration Groups](#5-orchestration-groupsjson). |
 | `volumes` | object | List of [Persistent Volumes](#storage-object) for Pantavisor itself. |
 
 ---
@@ -134,7 +140,7 @@ Configures an individual container runtime.
 | `storage` | object | Yes | [Persistence settings](#storage-object) for rootfs paths. |
 | `drivers` | object | No | Requirements: `required`, `optional`, or `manual`. |
 | `services` | object | No | [Service mesh requirements](#service-requirements). |
-| `logs` | array | No | [Logger configurations](#loggers-array). |
+| `logs` | array | No | [Logger configurations](../overview/containers.md#loggers). |
 | `dev-log` | boolean | No | Whether to bind-mount `/dev/log` into this container. Overrides the global [`PV_LOG_AUTO_DEVLOG`](pantavisor-configuration.md#summary) setting for this container. |
 | `exports` | array | No | (Boolean flag in code) Marks container as an exporter. |
 | `auto_recovery` | object | No | [Auto-recovery configuration](#auto-recovery-object). If absent, inherited from group. |

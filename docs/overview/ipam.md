@@ -1,5 +1,5 @@
 ---
-nav_order: 9.5
+sidebar_position: 10
 ---
 # IPAM — Container IP Address Management
 

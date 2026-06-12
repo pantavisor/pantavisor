@@ -1,3 +1,9 @@
+---
+title: "pvcontrol"
+sidebar_position: 5
+description: "Full pvcontrol CLI reference with worked examples."
+---
+
 # pvcontrol
 
 `pvcontrol` is the on-device CLI for controlling Pantavisor from inside a

@@ -1,5 +1,5 @@
 ---
-nav_order: 8
+sidebar_position: 8
 ---
 # Remote Control
 
@@ -9,18 +9,16 @@ This page is for explaining cloud-oriented ways of controlling your Pantavisor d
 
 [Pantacor Hub](https://hub.pantacor.com) is our remote device state management system.
 
-To interact with Pantacor Hub, you can either use the [web user interface](https://hub.pantacor.com), the [API](pantahub-base/README.md) or the [pvr CLI tool](pvr/README.md).
+To interact with Pantacor Hub, you can either use the [web user interface](https://hub.pantacor.com), the [API](https://github.com/pantacor/pantahub-base) or the [pvr CLI tool](https://github.com/pantacor/pvr).
 
 ### Pantacor Hub Client
 
-Pantavisor includes a build-in Pantacor Hub client which is [enabled by default](../../../reference/legacy/pantavisor-configuration.md#summary). To begin remote control and monitoring of devices with [Pantacor Hub](https://hub.pantacor.com), it is necessary to create an account and [claim the device to it](../../../claim-device.md). From that moment on, the device will be attached to that account and will try to keep the connection with Pantacor Hub opened, except if a [local revision](../../../reference/legacy/pantavisor-commands.md#steps) is installed. In that case, the device will turn to [local control](local-control.md) until a [go remote command](../../../reference/legacy/pantavisor-commands.md#commands) is issued. This behavior can be avoided with the [remote always configuration](../../../reference/legacy/pantavisor-configuration.md#summary).
+Pantavisor includes a build-in Pantacor Hub client which is [enabled by default](../reference/pantavisor-configuration.md#summary). To begin remote control and monitoring of devices with [Pantacor Hub](https://hub.pantacor.com), it is necessary to create an account and [claim the device to it](https://docs.pantavisor.io/operate/device-access/remote-pantahub). From that moment on, the device will be attached to that account and will try to keep the connection with Pantacor Hub opened, except if a [local revision](../reference/pantavisor-commands.md#steps) is installed. In that case, the device will turn to [local control](local-control.md) until a [go remote command](../reference/pantavisor-commands.md#commands) is issued. This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary).
 
 The main features offered by remote control are:
 
-* Keeping the device up to date: the [revisions](revisions.md) form a trail of steps in Pantacor Hub. This trail is ordered according to the time of [deploying](../../../deploy-a-new-revision.md) and will be consumed by Pantavisor step by step. After founding a new step, Pantavisor will parse the [revision State JSON](../../../reference/legacy/pantavisor-state-format-v2.md), download the artifacts into the [storage](storage.md#trails-and-objects) and [transition](updates.md) to the new revision.
+* Keeping the device up to date: the [revisions](revisions.md) form a trail of steps in Pantacor Hub. This trail is ordered according to the time of [deploying](https://docs.pantavisor.io/develop/cli-tools/workflows) and will be consumed by Pantavisor step by step. After founding a new step, Pantavisor will parse the [revision State JSON](../reference/pantavisor-state-format-v2.md), download the artifacts into the [storage](storage.md#trails-and-objects) and [transition](updates.md) to the new revision.
 * Sending [device metadata](storage.md#device-metadata) and receiving [user metadata](storage.md#user-metadata).
-* Sending logs: sending [stored logs](storage.md#logs) up.
-
 * Sending logs: sending [stored logs](storage.md#logs) up.
 
 #### State Machine
@@ -29,11 +27,13 @@ The client state machine goes through the following stages:
 
 ![](images/state-phclient.png)
 
-!!! Note
-    All states are independent from the [Pantavisor state machine](pantavisor-architecture.md#state-machine), but all their associated processes are run from its WAIT state.
+:::note
+All states are independent from the [Pantavisor state machine](pantavisor-architecture.md#state-machine), but all their associated processes are run from its WAIT state.
+:::
 
-!!! Note
-    The client state can be consulted at any moment via [device metadata](../../../reference/legacy/pantavisor-metadata.md#device-metadata).
+:::note
+The client state can be consulted at any moment via [device metadata](../reference/pantavisor-metadata.md#device-metadata).
+:::
 
 * **init**: means we are in remote mode and the client has been initialized.
 * **register**: device is trying to register as a non-claimed device in the cloud. This credentials will be stored after reboot.

@@ -1,5 +1,5 @@
 ---
-nav_order: 5
+sidebar_position: 5
 ---
 # Updates
 
@@ -17,7 +17,7 @@ The diagram shows a high level concept of how [remote](remote-control.md#pantaco
 
 ### Local
 
-In this diagram, you can see how [local](local-control.md) updates work. In the case of this kind of update, we have a one-shot process triggered by a [run revision command](../../../reference/legacy/pantavisor-commands.md#commands):
+In this diagram, you can see how [local](local-control.md) updates work. In the case of this kind of update, we have a one-shot process triggered by a [run revision command](../reference/pantavisor-commands.md#commands):
 
 ![](images/flow-local-update.png)
 
@@ -39,7 +39,7 @@ Pantavisor will only progress to the new revision in case of success. Otherwise,
 * [DONE](#done)
 * [WONTGO](#wontgo)
 * [ERROR](#error)
-* [CANCELED](#cancelled)
+* [CANCELLED](#cancelled)
 
 ### NEW
 
@@ -53,7 +53,7 @@ Device is syncing its first revision with the [cloud](remote-control.md#pantacor
 
 Only valid for [remote](remote-control.md#pantacor-hub) updates.
 
-Pantavisor has got the [state JSON](../../../reference/legacy/pantavisor-state-format-v2.md) of the new [revision](revisions.md), but is performing other operations and has put it to the queue to be processed later.
+Pantavisor has got the [state JSON](../reference/pantavisor-state-format-v2.md) of the new [revision](revisions.md), but is performing other operations and has put it to the queue to be processed later.
 
 | Messages |
 | ---------|
@@ -75,7 +75,7 @@ Installing or progressing to this revision. Transitions to new revisions can eit
 
 [Hooks](hooks.md) fire at key points during installation: before and after the bootloader writes the new revision (`system-before-install-update` / `system-after-install-update`), and once the revision has been committed after a successful try-boot (`system-boot-done`).
 
-To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a [configurable](../../../reference/legacy/pantavisor-state-format-v2.md#groupsjson) time, Pantavisor will [rollback](#error) the revision.
+To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a [configurable](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson) time, Pantavisor will [rollback](#error) the revision.
 
 | Messages |
 | ---------|
@@ -90,17 +90,17 @@ Rebooting |
 
 Reboot transitions are performed based on the location of the changes belonging to the new [revision](revisions.md) update:
 
-* In the root of the [status JSON](../../../reference/legacy/pantavisor-state-format-v2.md#spec-format)
+* In the root of the [status JSON](../reference/pantavisor-state-format-v2.md#1-root-level-statejson)
 * In the [BSP](bsp.md)
 * In any of the containers with a _system_ [restart policy](containers.md#restart-policy)
-* In any [additional file](containers.md#additional-files) that belongs to a container with _system_ [restart policy](containers.md#restart-policy)
-* In any [additional file](containers.md#additional-files) that does not belong to any container
+* In any [additional file](containers.md#configuration-overlay) that belongs to a container with _system_ [restart policy](containers.md#restart-policy)
+* In any [additional file](containers.md#configuration-overlay) that does not belong to any container
 
 In this case, Pantavisor will stop all the containers and reboot the board.
 
 #### Non-reboot transition 
 
-Non-reboot transitions are performed after an update that does not contain any changes in any of the components described for the [reboot updates](#reboot-updates).
+Non-reboot transitions are performed after an update that does not contain any changes in any of the components described for the [reboot transition](#reboot-transition).
 
 In this case, Pantavisor will only stop the containers that were affected by the update and restart them with the recently installed new revision artifacts.
 
@@ -118,7 +118,7 @@ Waiting for all containers to become stable |
 
 ### UPDATED
 
-The revision is stable, but the update did not need a board reboot, so the rollback point is not set until you [force a reboot](../../../reference/legacy/pantavisor-commands.md#commands).
+The revision is stable, but the update did not need a board reboot, so the rollback point is not set until you [force a reboot](../reference/pantavisor-commands.md#commands).
 
 | Messages |
 | ---------|
@@ -135,11 +135,11 @@ Factory revision |
 
 ### WONTGO
 
-The new revision cannot be installed because of a bad [state JSON](../../../reference/legacy/pantavisor-state-format-v2.md), so it is aborted before getting into [INPROGRESS](#INPROGRESS) or [TESTING](#TESTING).
+The new revision cannot be installed because of a bad [state JSON](../reference/pantavisor-state-format-v2.md), so it is aborted before getting into [INPROGRESS](#inprogress) or [TESTING](#testing).
 
 | Messages | Possible causes |
 | ---------|---------------- |
-Update aborted | [Local update](local-control.md) cancelled by a [command](../../../reference/legacy/pantavisor-commands.md#commands) |
+Update aborted | [Local update](local-control.md) cancelled by a [command](../reference/pantavisor-commands.md#commands) |
 Max download retries reached | The maximum processing or download retry number was reached for a [remote update](remote-control.md#pantacor-hub) |
 Space required X B, available Y B | Not enough space in disk for [remote update](remote-control.md#pantacor-hub)  |
 Internal error | Memory allocation error or code bug |
@@ -150,7 +150,7 @@ State JSON has bad format | [State JSON](revisions.md) could not be parsed |
 
 ### ERROR
 
-The new revision failed during [INPROGRESS](#INPROGRESS) or [TESTING](#TESTING) stages. Pantavisor will try to rollback to the latest [DONE](#done) revision.
+The new revision failed during [INPROGRESS](#inprogress) or [TESTING](#testing) stages. Pantavisor will try to rollback to the latest [DONE](#done) revision.
 
 | Messages | Possible causes |
 | ---------|---------------- |

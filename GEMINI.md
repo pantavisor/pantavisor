@@ -51,6 +51,22 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 | **Hooks** | [docs/overview/hooks.md](docs/overview/hooks.md) | System lifecycle hooks |
 | **Inter-Container Communication** | [docs/overview/xconnect.md](docs/overview/xconnect.md) | xconnect service mesh overview |
 
+## Docs Pipeline
+
+The `docs/` folder is published on [docs.pantavisor.io/reference](https://docs.pantavisor.io/reference) by the [docs.pantavisor](https://github.com/pantavisor/docs.pantavisor) Docusaurus site:
+1. Each meta-pantavisor release bundles a docs tarball containing this repo's `docs/` as `pantavisor/` and meta-pantavisor's `docs/` as a sibling `meta-pantavisor/` directory.
+2. `scripts/sync-reference.mjs` + `migrate-docs.js` in docs.pantavisor download the tarball for each published version and generate the versioned Reference instance at `/reference/<version>/pantavisor/...`.
+3. Hand-authored, versionless guides live in the site's `curated/` instance (served at the site root, e.g. `/build`, `/install`, `/operate`); they are never generated from this repo.
+
+### Link conventions (docs/)
+
+- **Within the same folder**: plain relative links, e.g. `containers.md#restart-policy`.
+- **Between `docs/overview/` and `docs/reference/`**: relative sibling links, e.g. `../reference/pantavisor-configuration.md#summary` or `../overview/containers.md#status`. These resolve both on GitHub and on the published site.
+- **To meta-pantavisor docs**: `../../meta-pantavisor/<section>/<page>.md` — resolves only on the published site, where both repos' docs are siblings.
+- **To curated site pages**: full URLs, e.g. `https://docs.pantavisor.io/operate/device-access/serial-port`.
+- **Do not** use the retired MkDocs-era prefixes (`../../../reference/legacy/`, `../../../reference/027/`, `../../pantavisor-src/docs/...`) — they dangle on the Docusaurus site.
+- **Syntax**: the site renders MDX. Use Docusaurus admonitions (`:::note` … `:::`), not MkDocs `!!! Note`; avoid MkDocs Material icon codes like `:material-check:`.
+
 ## Architecture
 
 - **pv-xconnect**: Standalone mediation service for cross-container communication
@@ -62,9 +78,7 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 
 ## Development Guidelines
 
-- **Documentation**: Always check if [reference documentation](docs/reference/) should be updated after making changes to the code.
-  - **Reference links from overview docs**: Link to `../../../reference/legacy/` for content that already exists there, or `../../../reference/027/` (current development tag) for new content appearing for the first time.
-  - **Overview docs**: Use relative links within `docs/overview/` (e.g., `containers.md#restart-policy`).
+- **Documentation**: Always check if [reference documentation](docs/reference/) should be updated after making changes to the code. Follow the link conventions in the Docs Pipeline section above.
 - **Commits**: Always use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification (v1.0.0) for all commit messages.
 - **Formatting**: Run `clang-format -i` on modified `.c`/`.h` files before committing
 - **API testing**: Use `pvcurl` (not `curl`) inside appengine containers

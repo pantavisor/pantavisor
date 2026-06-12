@@ -1,9 +1,9 @@
 ---
-nav_order: 4
+sidebar_position: 4
 ---
 # Containers
 
-Pantavisor implements a lightweight container run-time with the help of Linux Containers (LXC). Each container, in its minimal form, is then comprised of a rootfs that will be run isolated in its own name-space and an LXC configuration file. All these, as well as more advanced configuration, are included in the [state JSON](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson).
+Pantavisor implements a lightweight container run-time with the help of Linux Containers (LXC). Each container, in its minimal form, is then comprised of a rootfs that will be run isolated in its own name-space and an LXC configuration file. All these, as well as more advanced configuration, are included in the [state JSON](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
 
 ## Storage
 
@@ -13,7 +13,7 @@ The most basic storage unit of any container is always the rootfs.
 
 ### Volumes
 
-In addition to the rootfs, a container may define more auxiliary [storage volumes](../../../reference/legacy/pantavisor-state-format-v2.md#storage). Pantavisor gives flexibility to configure the persistence of changes and encryption. 
+In addition to the rootfs, a container may define more auxiliary [storage volumes](../reference/pantavisor-state-format-v2.md#storage-object). Pantavisor gives flexibility to configure the persistence of changes and encryption. 
 
 There a three types of persistence options:
 
@@ -25,15 +25,15 @@ Storage can be linked to a [storage disk](storage.md#disks).
 
 ### Remount Policies
 
-After mounting the rootfs and additional volumes, Pantavisor can perform one to many remount operations. These operations can be defined either at a [global level](../../../reference/legacy/pantavisor-state-format-v2.md#devicejson) or [per container](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson).
+After mounting the rootfs and additional volumes, Pantavisor can perform one to many remount operations. These operations can be defined either at a [global level](../reference/pantavisor-state-format-v2.md#4-infrastructure-devicejson) or [per container](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
 
-Several policies can be defined, but only one will be run, depending on the `PV_REMOUNT_POLICY` key set in [configuration](../../../reference/legacy/pantavisor-configuration.md).
+Several policies can be defined, but only one will be run, depending on the `PV_REMOUNT_POLICY` key set in [configuration](../reference/pantavisor-configuration.md).
 
 Each policy contains a list of remount directives that follows the [mount command](https://www.man7.org/linux/man-pages/man8/mount.8.html) format for path (can use wildcards) and mount options.
 
 ### Configuration Overlay
 
-On top of that, [additional files](../../../reference/legacy/pantavisor-state-format-v2.md#_configcontainer) can be attached to a [revision](revisions.md) to create a new overlay that will overwrite whatever is in that location in the rootfs of the container, creating the directories or files if necessary.
+On top of that, [additional files](../reference/pantavisor-state-format-v2.md#1-root-level-statejson) can be attached to a [revision](revisions.md) to create a new overlay that will overwrite whatever is in that location in the rootfs of the container, creating the directories or files if necessary.
 
 Thanks to this, configuration files or scripts can be added or modified without having to do it in the rootfs itself when preparing a new revision. It is advisable to limit this fature to small text based files, as bigger files might make boot up slower.
 
@@ -46,7 +46,7 @@ mount -t overlay overlay -olowerdir=/configs/container:/volumes/container/root.s
 
 ### Exports
 
-Container rootfs directories can be mounted back into the host using the `exports` feature from [a container](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson). Those will be mounted to `/exports/<container>` at a relative path equal to its absolute path in the container.
+Container rootfs directories can be mounted back into the host using the `exports` feature from [a container](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson). Those will be mounted to `/exports/<container>` at a relative path equal to its absolute path in the container.
 
 This opens the possibility to share directories between containers and Pantavisor itself.
 
@@ -61,11 +61,11 @@ See also:
 
 ## Groups
 
-Containers can be [grouped](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson).
+Containers can be [grouped](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
 
 Groups main function is to define the order in which containers are started. Groups are ordered and will not begin the mount and/or start up of their containers until all [status goals](#status-goal) from all the containers belonging to the previous group are achieved. The status goal of each container can be configured at group level as well as overloaded for each container. If not configured at container level, group also determines the [restart policy](#restart-policy) in a similar way as the status goal.
 
-If groups are not [explicitly configured](../../../reference/legacy/pantavisor-state-format-v2.md#groupsjson), Pantavisor will create the default ones:
+If groups are not [explicitly configured](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson), Pantavisor will create the default ones:
 
 | name | default status goal | default restart policy | description | 
 | ---- | ------------------- | ---------------------- | ----------- | 
@@ -78,33 +78,33 @@ When using the default groups and if a container is not linked to a group, it wi
 
 ## Roles
 
-[Roles](../../../reference/legacy/pantavisor-state-format-v2.md#containerrun.json) can be set to a given container. Roles will determine the elements that Pantavisor will make available in the container rootfs. There is just two role supported for now: `mgmt` and `nobody`.
+[Roles](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) can be set to a given container. Roles will determine the elements that Pantavisor will make available in the container rootfs. There is just two role supported for now: `mgmt` and `nobody`.
 
 If no role or the role `nobody` is defined, Pantavisor just mounts these elements into the container under the /pantavisor path:
 
-* [pv-ctrl socket](../../../reference/legacy/pantavisor-commands.md) with no privileges (only allows to report [signals](#signals) to alter the [status goal](#status-goal)).
-* [pv-ctrl-log socket](../../../reference/legacy/logserver-sockets.md#pv-ctrl-log) to send logs at [Log Server](storage.md#logs).
-* [pv-fd-log socket](../../../reference/legacy/logserver-sockets.md#pv-fd-log) to subscribe file descriptor at [Log Server](storage.md#logs).
+* [pv-ctrl socket](../reference/pantavisor-commands.md) with no privileges (only allows to report [signals](#signals) to alter the [status goal](#status-goal)).
+* [pv-ctrl-log socket](../reference/logserver-sockets.md#pv-ctrl-log) to send logs at [Log Server](storage.md#logs).
+* [pv-fd-log socket](../reference/logserver-sockets.md#pv-fd-log) to subscribe file descriptor at [Log Server](storage.md#logs).
 * The [stored logs](storage.md#logs) for that container and revision.
 * The stored [user metadata](storage.md#user-metadata) and [device metadata](storage.md#device-metadata) for that container.
 
 In addition to this, `mgmt` containers get these elements in /pantavisor:
 
-* [pv-ctrl socket](../../../reference/legacy/pantavisor-commands.md) with privileges (full request support) for [local control](local-control.md).
-* [pv-ctrl-log socket](../../../reference/legacy/logserver-sockets.md#pv-ctrl-log) to send logs at [Log Server](storage.md#logs).
-* [pv-fd-log socket](../../../reference/legacy/logserver-sockets.md#pv-fd-log) to subscribe file descriptor at [Log Server](storage.md#logs).
+* [pv-ctrl socket](../reference/pantavisor-commands.md) with privileges (full request support) for [local control](local-control.md).
+* [pv-ctrl-log socket](../reference/logserver-sockets.md#pv-ctrl-log) to send logs at [Log Server](storage.md#logs).
+* [pv-fd-log socket](../reference/logserver-sockets.md#pv-fd-log) to subscribe file descriptor at [Log Server](storage.md#logs).
 * Full [stored logs](storage.md#logs) for all containers and revisions.
 * The stored [user metadata](storage.md#user-metadata) and [device metadata](storage.md#device-metadata) for all containers.
 * Challenge and device-id information for [Pantacor Hub](remote-control.md#pantacor-hub).
 
 ## Restart Policy
 
-[Restart policy](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson) defines how Pantavisor is going to [transition](updates.md#inprogress) into a new revision. There are two types of policies:
+[Restart policy](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) defines how Pantavisor is going to [transition](updates.md#inprogress) into a new revision. There are two types of policies:
 
 * system: any update that modifies any object or JSON belonging to at least one of the containers with _system_ restart policy will result in a [reboot transition](updates.md#reboot-transition).
 * container: any update that only modifies objects or JSONs belonging to containers with the _container_ restart policy will result in a [non-reboot transition](updates.md#non-reboot-transition)
 
-If the restart policy is not [explicitly configured](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson) in a container, it will be set according to its [group](#groups) default one.
+If the restart policy is not [explicitly configured](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) in a container, it will be set according to its [group](#groups) default one.
 
 ## Status
 
@@ -119,12 +119,12 @@ These are the different status containers can be at:
 * STARTED: container PID is running.
 * READY: Pantavisor has received a readiness [signal](#signals) from the container.
 * RECOVERING: container crashed and [auto-recovery](#auto-recovery) is waiting to restart it.
-* STOPPING: container is stopping because of a [update transition](#updates.md).
+* STOPPING: container is stopping because of an [update transition](updates.md).
 * STOPPED: container has stopped.
 
-This status is also stored at the [group](#groups) level. The status of a group is always READY, except if any of the containers that form the group has not yet achieved their [status goal](#status-goal). In that case, the status of a group is the same as the container with the lower status, not counting the containers that have reached its status goal. This group status can be consulted from our [local control interface](../../../reference/legacy/pantavisor-commands.md#groups) and is also registered at the [Pantavisor logs](storage.md#logs).
+This status is also stored at the [group](#groups) level. The status of a group is always READY, except if any of the containers that form the group has not yet achieved their [status goal](#status-goal). In that case, the status of a group is the same as the container with the lower status, not counting the containers that have reached its status goal. This group status can be consulted from our [local control interface](../reference/pantavisor-commands.md#groups) and is also registered at the [Pantavisor logs](storage.md#logs).
 
-Same way as with the group status, a [revision](revisions.md) global status is also stored. The way to calculate this status is the same as with the group one, but taking all containers from the revision into account. The revision status is stored in [device metadata](../../../reference/legacy/pantavisor-metadata.md#device-metadata), can be consulted from our [local control interface](../../../reference/legacy/pantavisor-commands.md#device-meta) and changes are registered at the [Pantavisor logs](storage.md#logs).
+Same way as with the group status, a [revision](revisions.md) global status is also stored. The way to calculate this status is the same as with the group one, but taking all containers from the revision into account. The revision status is stored in [device metadata](../reference/pantavisor-metadata.md#device-metadata), can be consulted from our [local control interface](../reference/pantavisor-commands.md#device-meta) and changes are registered at the [Pantavisor logs](storage.md#logs).
 
 ### Status Goal
 
@@ -136,13 +136,13 @@ These are the status goals currently supported:
 * STARTED: rest of containers that we want mounted and started, but we only check if its PID is running.
 * READY: same as STARTED, but a readiness [signal](#signals) coming from the container namespace is required.
 
-If the status goal is not [explicitely configured](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson) in a container, it will be set according to its [group](#groups) default one.
+If the status goal is not [explicitely configured](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) in a container, it will be set according to its [group](#groups) default one.
 
-A [timeout](../../../reference/legacy/pantavisor-state-format-v2.md#device.json) can be configured so an [update](updates.md#testing) will [fail](updates.md#error) if the status goal is not achieved withing the defined time value. If the timeout occurs during a regular bootup, the status goal checking will be omited and the following [group](#groups) will be unlocked.
+A [timeout](../reference/pantavisor-state-format-v2.md#4-infrastructure-devicejson) can be configured so an [update](updates.md#testing) will [fail](updates.md#error) if the status goal is not achieved withing the defined time value. If the timeout occurs during a regular bootup, the status goal checking will be omited and the following [group](#groups) will be unlocked.
 
 ### Signals
 
-Signals can be sent from the container namespace to Pantavisor using the [local control interface](../../../reference/legacy/pantavisor-commands.md#signal) in order to affect the container [status](#status).
+Signals can be sent from the container namespace to Pantavisor using the [local control interface](../reference/pantavisor-commands.md#signal) in order to affect the container [status](#status).
 
 For now, we only support the `ready` signal, which can be used to get to the [READY status goal](#status-goal) from a container.
 
@@ -150,7 +150,7 @@ Once all containers have met their [status goal](#status-goal), Pantavisor fires
 
 ## Auto-Recovery
 
-Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](../reference/pantavisor-state-format-v2.md#containerrunjson) or inherited from the container's [group](#groups).
+Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) or inherited from the container's [group](#groups).
 
 ### Recovery Policies
 
@@ -183,11 +183,11 @@ During [TESTING](updates.md#testing), `max_retries` exhaustion always triggers a
 
 ### Group-Level Defaults
 
-Groups in [device.json](../reference/pantavisor-state-format-v2.md#devicejson) can define a default `auto_recovery` object. Containers inherit this configuration **all-or-nothing**: if a container has its own `auto_recovery` in `run.json`, it is used entirely; otherwise the group's default applies. No field-level merging is performed. The default `app` group ships with an on-failure recovery policy.
+Groups in [device.json](../reference/pantavisor-state-format-v2.md#4-infrastructure-devicejson) can define a default `auto_recovery` object. Containers inherit this configuration **all-or-nothing**: if a container has its own `auto_recovery` in `run.json`, it is used entirely; otherwise the group's default applies. No field-level merging is performed. The default `app` group ships with an on-failure recovery policy.
 
 ## Lifecycle Control
 
-Containers with [restart_policy](containers.md#restart-policy): "container" can be stopped, started, and restarted at runtime via the [control socket](../../../reference/027/pantavisor-commands.md#containers). Containers with [restart_policy](containers.md#restart-policy): "system" cannot be controlled this way — they require a system-level transition ([reboot](../../../reference/027/pantavisor-commands.md#commands) or [update](updates.md)).
+Containers with [restart_policy](containers.md#restart-policy): "container" can be stopped, started, and restarted at runtime via the [control socket](../reference/pantavisor-commands.md#containers). Containers with [restart_policy](containers.md#restart-policy): "system" cannot be controlled this way — they require a system-level transition ([reboot](../reference/pantavisor-commands.md#commands) or [update](updates.md)).
 
 ### Stop
 
@@ -205,11 +205,11 @@ Restart force-stops the container and resets the auto-recovery retry counter to 
 
 ## Drivers
 
-Containers can [reference](../../../reference/legacy/pantavisor-state-format-v2.md#containerrunjson) the BSP [managed drivers](bsp.md#managed-drivers) as required, optional or manual.
+Containers can [reference](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) the BSP [managed drivers](bsp.md#managed-drivers) as required, optional or manual.
 
 * required: these drivers will be loaded as soon as container is [STARTED](#status). The [revision](revisions.md) will fail if the drivers are not enabled through BSP as managed drivers.
 * optional: these drivers will be loaded as soon as container is [STARTED](#status) too. In this case the revision will not fail if the drivers are not defined in the BSP.
-* manual: drivers can be loaded from within containers trough [local control](local-control.md). The success or failure of loading drivers using the REST API will not determine whether a revision fails or not, but the [calls](../../../reference/legacy/pantavisor-commands.md#drivers) will return an error response if necessary.
+* manual: drivers can be loaded from within containers trough [local control](local-control.md). The success or failure of loading drivers using the REST API will not determine whether a revision fails or not, but the [calls](../reference/pantavisor-commands.md#drivers) will return an error response if necessary.
 
 ## Loggers
 
@@ -220,7 +220,7 @@ Containers, by default, will automatically direct these logs from the container 
 * lxc log
 * lxc console
 
-This list can be expanded to other files using the [state JSON](../../../reference/legacy/pantavisor-state-format-v2.md#logger).
+This list can be expanded to other files using the [state JSON](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson).
 
 ## Service Mesh
 
