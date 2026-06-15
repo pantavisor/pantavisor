@@ -1,8 +1,15 @@
 #!/bin/bash
+# When the OCI image launches this script via 'sh <script>' (sh is PID 1),
+# SIGTERM reaches sh and is deferred until the foreground child exits.
+# Docker's SIGKILL timeout then fires before any trap can run cleanup.
+# Re-exec with bash as PID 1 so SIGTERM/EXIT traps fire immediately.
+[ -z "$_PV_APPENGINE_REEXEC" ] && exec env _PV_APPENGINE_REEXEC=1 /bin/bash "$0" "$@"
 
 set -e
 
 interrupt='false'
+manual='false'
+valgrind="${VALGRIND:-false}"
 
 pvtest_log() { local level=$1; shift; printf '[pvtest] %s %s -- [pv-appengine]: %s\n' "$(date +%s)" "$level" "$*"; }
 
@@ -12,6 +19,7 @@ usage() {
 	echo "options:"
 	echo "       -h         show help"
 	echo "       -i         interrupt auto reboot and wait for user confirmation"
+	echo "       -m         drop to shell without starting Pantavisor (manual mode)"
 	echo "       -c CMDLINE additional cmdline arguments (incl. legacy configs)"
 	echo "       -e ENVS envs to set (incl. new config format)"
 	echo "       -V         run with valgrind"
@@ -25,14 +33,38 @@ cleanup_cgroup() {
 	fi
 }
 
-exec_run() {
-	# get installation path
-	scriptpath=`readlink -f "$0"`
+init_storage() {
+	# Pre-create loop device nodes. The appengine container has /dev/loop-control,
+	# CAP_MKNOD and a 'b 7:* rmw' device-cgroup rule, but no devtmpfs/udev — so
+	# LOOP_CTL_GET_FREE hands out a free index while the matching /dev/loopN node
+	# is never created, and losetup (for the dm-crypt disk or container squashfs)
+	# fails with "failed to set up loop device: No such file or directory".
+	# Creating the nodes up front makes losetup work for whatever index the kernel
+	# picks, no matter how loaded the host is. This is parallel-safe:
+	# LOOP_CTL_GET_FREE is host-global and atomic so concurrent appengine
+	# containers get distinct backing indices, and each container has its own /dev
+	# so the nodes never collide. Idempotent and harmless where the nodes already
+	# exist (real devices with devtmpfs).
+	if [ -e /dev/loop-control ]; then
+		i=0
+		while [ "$i" -lt 1024 ]; do
+			[ -e "/dev/loop$i" ] || mknod "/dev/loop$i" b 7 "$i" 2>/dev/null
+			i=$((i + 1))
+		done
+	fi
 
-	# check installed
 	if [ ! -f "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config" ]; then
 		pvtest_log ERROR "installation path '@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config' not found"
 		exit 1
+	fi
+
+	# Write SSH authorized_keys from env var so test.docker.sh doesn't need
+	# host sudo to chown the file to root (dropbear-pv requires root ownership).
+	if [ -n "$PV_DEBUG_SSH_PUBKEY" ]; then
+		mkdir -p "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/ssh"
+		local _ak="@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/ssh/${PV_DEBUG_SSH_AUTHORIZED_KEYS:-pvtest-authorized_keys}"
+		printf '%s\n' "$PV_DEBUG_SSH_PUBKEY" > "$_ak"
+		chmod 600 "$_ak"
 	fi
 
 	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$' ; then
@@ -48,10 +80,16 @@ exec_run() {
 	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done ]; then
 		pvtest_log DEBUG "first boot: running pvtx deploy"
 		pvtx abort
-		pvtx begin @PV_INSTALL_FULL_STORAGEDIR@/trails/0 @PV_INSTALL_FULL_STORAGEDIR@/objects
-		for a in `ls @PV_INSTALL_FULL_PVTXDIR@/* 2>/dev/null`; do
-			pvtx add $a
+		pvtx begin empty @PV_INSTALL_FULL_STORAGEDIR@/objects
+		for a in $(ls @PV_INSTALL_FULL_PVTXDIR@/* @PV_INSTALL_FULL_PVTXEXTRADIR@/* 2>/dev/null); do
+			# Skip non-files: @PV_INSTALL_FULL_PVTXEXTRADIR@ may be empty, making
+			# the glob expand to /* and ls output directory headers like "/bin:".
+			[ -f "$a" ] || continue
+			pvtx add "$a"
 		done
+		# Remove only the .pvr stub inside trails/0 — pvtx deploy needs the directory
+		# to exist for its atomic rename(trails/0 → trails/0.bak) swap step.
+		rm -rf @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr
 		pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
 		touch @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
 	fi
@@ -61,13 +99,31 @@ exec_run() {
 		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/boot
 		echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
 	fi
+}
+
+exec_run() {
+	# get installation path
+	scriptpath=`readlink -f "$0"`
+
+	init_storage
 
 	cleanup_cgroup
 
 	pv_trying=""
 	shutdown=0
 	restart_delay="${restart_delay:-5}"
-	trap 'shutdown=1; pvtest_log INFO "received SIGINT, shutting down Pantavisor..."' SIGINT
+	# Forward SIGINT/SIGTERM to the running pantavisor child so the while
+	# loop unblocks quickly before Docker falls back to SIGKILL.
+	_do_shutdown() {
+		shutdown=1
+		pvtest_log INFO "received $1, shutting down pantavisor ..."
+		local _pv
+		_pv=$(ps | awk '$4 == "@CMAKE_INSTALL_FULL_BINDIR@/pantavisor" {print $1; exit}')
+		[ -n "$_pv" ] && kill "$_pv" 2>/dev/null || true
+	}
+	trap '_do_shutdown SIGINT'  SIGINT
+	trap '_do_shutdown SIGTERM' TERM
+	trap 'cleanup_cgroup' EXIT
 
 	while [ "$shutdown" -eq 0 ]; do
 		# load boot info
@@ -108,13 +164,18 @@ exec_run() {
 		else
 			eval $envs @CMAKE_INSTALL_FULL_BINDIR@/pantavisor --config @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config --cmdline \"pv_rev=$pv_rev pv_try=$pv_try $cmdline\"
 		fi
+		_pv_exit=$?
 		umount -l /volumes || true
 		umount -l /storage || true
 		cleanup_cgroup
 		pvtest_log DEBUG "pantavisor exited"
 
 		set -e
-		if [ "$shutdown" -eq 1 ]; then
+		# exit 3: pantavisor powered off gracefully (pv_shutdown POWEROFF)
+		# non-zero non-valgrind: crashed or killed — don't restart (valgrind's own exit codes are unreliable)
+		if [ "$shutdown" -eq 1 ] \
+		   || [ "$_pv_exit" -eq 3 ] \
+		   || { [ "$valgrind" != "true" ] && [ "$_pv_exit" -ne 0 ]; }; then
 			break
 		fi
 		if [ "$interrupt" = 'true' ]; then
@@ -163,6 +224,9 @@ while [ $# -gt 0 ]; do
 	-V)
 		valgrind='true'
 		;;
+	-m)
+		manual='true'
+		;;
 	-d)
 		shift
 		restart_delay="$1"
@@ -176,5 +240,18 @@ done
 
 if [ "${VERBOSE:-false}" = "true" ]; then set -x; fi
 
-# uninstall Pantavisor
+if [ "$manual" = "true" ]; then
+	init_storage
+	mkdir -p /storage
+	mount --bind @PV_INSTALL_FULL_STORAGEDIR@ /storage 2>/dev/null || true
+	echo ""
+	echo "Welcome to Pantavisor appengine!"
+	echo ""
+	echo "Pantavisor is not running. You are in the appengine container shell."
+	echo "To run Pantavisor with stdout logs:"
+	echo "pv-appengine -i -e \"PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct\""
+	echo ""
+	exec bash
+fi
+
 exec_run
