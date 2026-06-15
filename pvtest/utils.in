@@ -2,6 +2,26 @@
 
 pvtest_log() { local level=$1; shift; printf '[pvtest] %s %s -- [%s]: %s\n' "$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*"; }
 
+# Run a command on the test target via PVTEST_EXEC (e.g. SSH).
+# SSH joins all args into a single shell command on the remote side, so each
+# argument must be shell-quoted before passing; printf '%q' handles this.
+_pv_exec() {
+	local prog="$1"; shift
+	if [ -n "$PVTEST_EXEC" ]; then
+		local cmd="$prog"
+		for a in "$@"; do
+			cmd="$cmd $(printf '%q' "$a")"
+		done
+		$PVTEST_EXEC "$cmd"
+	else
+		command "$prog" "$@"
+	fi
+}
+
+pvcontrol() { _pv_exec pvcontrol "$@"; }
+pventer()   { _pv_exec pventer   "$@"; }
+pvcurl()    { _pv_exec pvcurl    "$@"; }
+
 # wait for a cmd stdout
 wait_for_value() {
 	local cmd="$1"
@@ -82,6 +102,39 @@ wait_for_process() {
 	done
 
 	return 1
+}
+
+# Wait until a freshly-posted revision is fully applied on the target:
+#   1) pv-ctrl is responsive (devmeta answers);
+#   2) the target revision is current;
+#   3) its step status is terminal-good: DONE (factory/boot revision) or
+#      UPDATED (a freshly applied local revision) — both mean the revision is
+#      live and ready to test;
+#   4) (optional) pantavisor.status is READY.
+# Pass require_ready=false for BSP-only revisions that never bring up containers
+# and so never reach READY. Routes via PVTEST_EXEC like every other pvcontrol
+# call. Call this after every `pvr post` before continuing to drive the device.
+wait_for_new_revision() {
+	local rev="$1"
+	local require_ready="${2:-true}"
+
+	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120 || return 1
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120 || return 1
+
+	local counter=0 st
+	while [ $counter -lt 120 ]; do
+		st=$(pvcontrol steps show-progress "$rev" 2>/dev/null | jq -r '.status' 2>/dev/null)
+		case "$st" in
+			DONE|UPDATED) break ;;
+			ERROR|WONTGO) return 1 ;;
+		esac
+		sleep 1
+		counter=$((counter + 1))
+	done
+	[ $counter -lt 120 ] || return 1
+
+	[ "$require_ready" != "true" ] && return 0
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60
 }
 
 # wait for Pantavisor to get to a given revision and update state
