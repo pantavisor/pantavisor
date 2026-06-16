@@ -1446,13 +1446,15 @@ void pv_platform_stop_with_callback(struct pv_platform *p,
 void pv_platform_force_stop(struct pv_platform *p)
 {
 	pv_log(DEBUG, "force stopping platform '%s'", p->name);
+
+	// Kill and drain the cgroup before STOPPED unmounts the volumes,
+	// otherwise the rootfs is still busy (dm-verity close fails).
+	if (p->init_pid > 0) {
+		kill(p->init_pid, SIGKILL);
+		pv_cgroup_destroy(p->name);
+	}
+
 	pv_platform_set_status(p, PLAT_STOPPED);
-
-	if (p->init_pid <= 0)
-		return;
-
-	kill(p->init_pid, SIGKILL);
-	pv_cgroup_destroy(p->name);
 }
 
 void pv_platform_set_installed(struct pv_platform *p)
