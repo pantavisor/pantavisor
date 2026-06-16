@@ -24,12 +24,16 @@ parse_test() {
 	fi
 
 	description=$(jq -r '.description' "$j")
-	cmdline=$(jq -r '.setup.cmdline' "$j")
-	pantavisor_config=$(jq -r '.setup."pantavisor.config"' "$j")
-	pvs=$(jq -r '.setup.pvs' "$j")
+	# Persistent-device model: setup.env is the *required* config a device must
+	# already have for this test to run on it (matched against `conf ls`), not
+	# env to inject. setup.usrmeta is per-test runtime metadata applied via
+	# `pvcontrol usrmeta` after the initial revision is ready and removed in
+	# teardown. Deprecated keys (cmdline, pantavisor.config, pvs, ready-script)
+	# are no longer read.
+	required_env=$(jq -r '.setup.env // ""' "$j")
+	usrmeta=$(jq -r '.setup.usrmeta // ""' "$j")
 	control_container=$(jq -r '.setup.containers.control' "$j")
 	tarballs=$(jq -r '.setup.containers.tarballs[]' "$j")
-	ready_script=$(jq -r '.setup."ready-script"' "$j")
 	self_claim=$(jq -r '.setup."self-claim"' "$j")
 	test_script=$(jq -r '."test-script"' "$j")
 	return 0
@@ -101,6 +105,36 @@ _ae_host() {
 	fi
 }
 
+# Path to the stored `conf ls` JSON for a given appengine name (captured in
+# init_device). Used by the config matcher to decide test/device assignment.
+_ae_conf_file() {
+	local ae="$1" ae_safe
+	ae_safe=$(printf '%s' "$ae" | tr '/' '_' | tr '-' '_' | tr '.' '_')
+	printf '/tmp/pvtest_device_conf_%s.json' "$ae_safe"
+}
+
+# Echo the value of config key $1 from a `conf ls` JSON file $2 (empty if absent).
+# conf ls format: [{"key":"PV_CONTROL_REMOTE","value":"0","modified":"..."}, ...]
+_conf_value() {
+	jq -r --arg k "$1" 'if type=="array" then (.[] | select(.key==$k) | .value) // empty else empty end' \
+		"$2" 2>/dev/null
+}
+
+# Return 0 if device conf file $2 satisfies every KEY=VALUE in the required-env
+# string $1 (space-separated). An empty required-env matches any device.
+device_matches_env() {
+	local _env="$1" _conf="$2" kv k v cv
+	[ -s "$_conf" ] || return 1
+	for kv in $_env; do
+		k=${kv%%=*}
+		v=${kv#*=}
+		[ -n "$k" ] || continue
+		cv=$(_conf_value "$k" "$_conf")
+		[ "$cv" = "$v" ] || return 1
+	done
+	return 0
+}
+
 # pvcontrol wrapper that retries on exit 75 (HTTP 503 — command slot busy).
 # Use instead of pvcontrol for any command that may race with another in-progress command.
 pv_ctrl() {
@@ -162,6 +196,17 @@ init_device() {
 	fi
 	pvtest_log INFO "[device $ae] init: pantavisor ready"
 
+	# Best-effort READY wait. A BSP-only factory revision (no containers) never
+	# reaches READY, so this must not be fatal — config is available regardless.
+	pvtest_log INFO "[device $ae] init: best-effort wait for READY [via SSH]..."
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "30" \
+		|| pvtest_log WARN "[device $ae] not READY (expected for BSP-only factory revision); continuing"
+
+	# Persistent-device model: capture the device's live config once. Tests are
+	# matched against this (their setup.env) to decide which device can run them.
+	pvtest_log INFO "[device $ae] init: storing config [via SSH]..."
+	pvcontrol conf ls > "$(_ae_conf_file "$ae")" 2>/dev/null || true
+
 	pvtest_log INFO "[device $ae] init: collecting device info [via SSH]..."
 	pvcontrol devmeta ls > "/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null || true
 	jq -r '"  revision=\(.["pantavisor.revision"])  arch=\(.["pantavisor.arch"])  version=\(.["pantavisor.version"])"' \
@@ -203,6 +248,87 @@ start_pv() {
 	pvtest_log INFO "done — factory_revision=$factory_revision"
 }
 
+# Read a file from the device, routing over SSH when PVTEST_EXEC is set.
+_dev_read_file() {
+	if [ -n "$PVTEST_EXEC" ]; then
+		$PVTEST_EXEC "cat $1" 2>/dev/null
+	else
+		cat "$1" 2>/dev/null
+	fi
+}
+
+# Wipe local Pantahub creds so the device re-registers fresh after a reboot.
+# NOTE: exact phconfig handling is remote-only and needs verification on a real
+# claimed device (see auto-claim test for the inverse operation).
+_dev_clean_ph_creds() {
+	if [ -n "$PVTEST_EXEC" ]; then
+		$PVTEST_EXEC "rm -f /var/run/pantavisor/pv/phconfig/pantahub.config" 2>/dev/null
+	else
+		rm -f /var/run/pantavisor/pv/phconfig/pantahub.config 2>/dev/null
+	fi
+}
+
+# Bring the device into the claim state required by setup.self-claim.
+# pantahub.state: "claim" = unclaimed, "idle" = claimed. No-op for local devices
+# (no pantahub.state) and for the matching combinations. A device claimed here
+# (self-claim=true) is recorded in claimed_device for deletion in teardown.
+handle_self_claim() {
+	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
+	claimed_device=
+
+	local state
+	state=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantahub.state"] // empty')
+	[ -n "$state" ] || return 0
+
+	local device_id
+	device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+
+	if [ "$state" = "idle" ] && [ "$self_claim" = "false" ]; then
+		pvtest_log INFO "${_p}self-claim=false but device claimed; unclaiming ($device_id)..."
+		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
+		fi
+		[ -n "$device_id" ] && pvr dev delete -y "$device_id" > /dev/null 2>&1
+		_dev_clean_ph_creds
+		pv_ctrl cmd reboot
+		wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120
+		wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "claim" 120
+	elif [ "$state" = "claim" ] && [ "$self_claim" = "true" ]; then
+		pvtest_log INFO "${_p}self-claim=true and device unclaimed; claiming ($device_id)..."
+		local challenge
+		challenge=$(_dev_read_file /var/run/pantavisor/pv/challenge)
+		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
+		fi
+		if [ -n "$device_id" ] && [ -n "$challenge" ]; then
+			pvr claim -c "$challenge" "$device_id" > /dev/null 2>&1
+			claimed_device="$device_id"
+			wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "idle" 120
+		else
+			pvtest_log ERROR "${_p}cannot claim: missing device-id or challenge"
+			return 1
+		fi
+	fi
+	return 0
+}
+
+# Apply per-test runtime metadata (setup.usrmeta, same KEY=VALUE format as env),
+# one key at a time. Applied keys are recorded for removal in teardown.
+apply_usrmeta() {
+	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
+	applied_usrmeta_keys=
+	[ -n "$usrmeta" ] || return 0
+	local kv k v
+	for kv in $usrmeta; do
+		k=${kv%%=*}
+		v=${kv#*=}
+		[ -n "$k" ] || continue
+		pvtest_log INFO "${_p}usrmeta save $k=$v"
+		pv_ctrl usrmeta save "$k" "$v"
+		applied_usrmeta_keys="${applied_usrmeta_keys:+$applied_usrmeta_keys }$k"
+	done
+}
+
 # Provision the test's initial revision and wait until the device is live on it.
 # setup_test only *installs state* — the test body itself runs later in exec_test.
 #
@@ -214,11 +340,12 @@ start_pv() {
 # on the device — which is why no per-test reset is needed.
 setup_test() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
-	pvtest_log INFO "${_p}installing initial revision for $test_id [via pvr HTTP]..."
 
-	if [ -n "$pantavisor_config" ]; then
-		pvtest_log WARN "${_p}pantavisor.config override not supported for external target (skipping)"
-	fi
+	# Bring the device into the claim state this test requires before installing
+	# its revision. No-op for local devices (no pantahub.state).
+	handle_self_claim || return 1
+
+	pvtest_log INFO "${_p}installing initial revision for $test_id [via pvr HTTP]..."
 
 	if [ -z "$tarballs" ]; then
 		pvtest_log INFO "${_p}no tarballs declared; running against current state"
@@ -308,12 +435,35 @@ setup_test() {
 		return 1
 	fi
 
+	# Apply per-test runtime metadata. The initial revision is now DONE/READY,
+	# so usrmeta keys take effect for the test body and are removed in teardown.
+	apply_usrmeta
+
 	pvtest_log INFO "${_p}done — installed $rev_name"
 }
 
 teardown_test() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
-	pvtest_log INFO "${_p}teardown: no-op for legacy single-device mode"
+
+	# Remove any usrmeta applied for this test so the next test starts clean.
+	if [ -n "$applied_usrmeta_keys" ]; then
+		local k
+		for k in $applied_usrmeta_keys; do
+			pvtest_log INFO "${_p}usrmeta delete $k"
+			pv_ctrl usrmeta delete "$k"
+		done
+		applied_usrmeta_keys=
+	fi
+
+	# If this test claimed the device (self-claim=true), delete it from the Hub.
+	if [ -n "$claimed_device" ]; then
+		pvtest_log INFO "${_p}deleting self-claimed device $claimed_device"
+		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
+		fi
+		pvr dev delete -y "$claimed_device" > /dev/null 2>&1
+		claimed_device=
+	fi
 }
 
 exec_test() {
@@ -430,6 +580,7 @@ run_test_attempt() {
 		[ -n "$ae_log" ] && [ -f "$ae_log" ] && \
 			tail -n "+$((ae_log_start + 1))" "$ae_log" >> "$run_dir/$test_id/test.log" 2>/dev/null || true
 		pvtest_log ERROR "'$test_id' ABORTED ($_test_runtime s)"
+		teardown_test
 		return 1
 	fi
 
@@ -447,6 +598,7 @@ run_test_attempt() {
 		local _test_runtime=$(( $(date +%s) - _test_start ))
 		[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
 		pvtest_log ERROR "'$test_id' ABORTED ($_test_runtime s)"
+		teardown_test
 		return 1
 	fi
 
@@ -462,15 +614,72 @@ run_test_attempt() {
 		pvtest_log INFO "'$test_id' PASSED ($_test_runtime s)"
 	else
 		pvtest_log ERROR "'$test_id' FAILED ($_test_runtime s)"
+		teardown_test
 		return 1
 	fi
 
+	teardown_test
 	return 0
 }
 
+# Dispatch a list of tests across a set of devices using a FIFO as a semaphore.
+# $1 = space-separated device (appengine) names, $2 = newline/space-separated
+# test.json paths. Relies on dynamic scoping for max_retries and failed_flag,
+# set by the calling run_tests_pool.
+# Use a fixed FD (7) to stay POSIX-sh compatible (no bash {var} FD syntax).
+dispatch_tests() {
+	local _devices="$1" _tests="$2"
+	local ae json_path attempt rc
+
+	local ae_fifo
+	ae_fifo=$(mktemp -u /tmp/pvtest_ae_fifo.XXXXXX)
+	mkfifo "$ae_fifo"
+	exec 7<>"$ae_fifo"
+	rm -f "$ae_fifo"
+
+	# Seed pool with this bucket's matching devices.
+	for ae in $_devices; do
+		printf '%s\n' "$ae" >&7
+	done
+
+	# No per-test reset: each test installs its own self-contained initial
+	# revision in setup_test (built from its tarballs), so tests don't inherit
+	# each other's state. The device is returned to factory once at the end.
+	for json_path in $_tests; do
+		read -r ae <&7
+		(
+			export PVTEST_EXEC="$(_ae_exec_cmd "$ae")"
+			export PVTEST_HOST="$(_ae_host "$ae")"
+			export PVTEST_AE="$ae"
+
+			attempt=0
+			rc=1
+			while true; do
+				run_test_attempt "$json_path"
+				rc=$?
+				{ [ $rc -eq 0 ] || [ $rc -eq 2 ]; } && break
+				attempt=$((attempt + 1))
+				[ $attempt -gt $max_retries ] && break
+				pvtest_log INFO "[device $ae] retry attempt $attempt/$max_retries for $json_path"
+				sleep 5
+				# setup_test (re-run inside run_test_attempt) re-installs the
+				# test's initial revision, so the retry starts clean.
+			done
+
+			{ [ $rc -ne 0 ] && [ $rc -ne 2 ]; } && touch "$failed_flag"
+
+			printf '%s\n' "$ae" >&7
+		) &
+	done
+
+	wait
+	exec 7>&-
+}
+
 # Run all tests across N appengines using a FIFO-based pool.
-# Each appengine is initialised in parallel (Step 2), then tests are
-# dispatched to free appengines as they become available (Steps 3+4).
+# Each appengine is initialised in parallel (Phase 1). Tests are then bucketed
+# by the set of devices whose stored config matches their required env
+# (setup.env) and each bucket is dispatched over its matching devices.
 run_tests_pool() {
 	local max_retries="${MAX_RETRIES:-0}"
 	local overall_result=0
@@ -505,55 +714,55 @@ run_tests_pool() {
 
 	pvtest_log INFO "pool ready: $n_ready device(s): $ready_aes"
 
-	# Phase 2: dispatch tests using a FIFO as a semaphore.
-	# Use a fixed FD (7) to stay POSIX-sh compatible (no bash {var} FD syntax).
-	local ae_fifo
-	ae_fifo=$(mktemp -u /tmp/pvtest_ae_fifo.XXXXXX)
-	mkfifo "$ae_fifo"
-	exec 7<>"$ae_fifo"
-	rm -f "$ae_fifo"
-
-	# Seed pool with ready devices.
-	for ae in $ready_aes; do
-		printf '%s\n' "$ae" >&7
-	done
-
 	local failed_flag
 	failed_flag=$(mktemp /tmp/pvtest_failed.XXXXXX)
 	rm -f "$failed_flag"
 
-	# No per-test reset: each test installs its own self-contained initial
-	# revision in setup_test (built from its tarballs), so tests don't inherit
-	# each other's state. The device is returned to factory once at the end.
+	# Phase 2: bucket tests by the set of ready devices whose stored config
+	# matches their required env (setup.env), then dispatch each bucket over
+	# its matching devices. A test that matches no ready device is SKIPPED
+	# (no runner can ever satisfy its config). Devices of the same policy share
+	# an identical conf, so all tests of a policy fall into the same bucket and
+	# get the FIFO/-p parallelism within it.
+	#
+	# Buckets run sequentially; since each test maps to exactly one policy and
+	# policies have disjoint device sets, no device is shared concurrently.
+	# (Cross-policy concurrency is a possible future improvement.)
+	local sig_file
+	sig_file=$(mktemp /tmp/pvtest_sigs.XXXXXX)
+
+	local json_path
 	for json_path in $test_json_list; do
-		read -r ae <&7
-		(
-			export PVTEST_EXEC="$(_ae_exec_cmd "$ae")"
-			export PVTEST_HOST="$(_ae_host "$ae")"
-			export PVTEST_AE="$ae"
-
-			attempt=0
-			rc=1
-			while true; do
-				run_test_attempt "$json_path"
-				rc=$?
-				[ $rc -eq 0 ] || [ $rc -eq 2 ] && break
-				attempt=$((attempt + 1))
-				[ $attempt -gt $max_retries ] && break
-				pvtest_log INFO "[device $ae] retry attempt $attempt/$max_retries for $json_path"
-				sleep 5
-				# setup_test (re-run inside run_test_attempt) re-installs the
-				# test's initial revision, so the retry starts clean.
-			done
-
-			[ $rc -ne 0 ] && [ $rc -ne 2 ] && touch "$failed_flag"
-
-			printf '%s\n' "$ae" >&7
-		) &
+		local _env _match _tid
+		_env=$(jq -r '.setup.env // ""' "$json_path")
+		_match=
+		for ae in $ready_aes; do
+			if device_matches_env "$_env" "$(_ae_conf_file "$ae")"; then
+				_match="${_match:+$_match }$ae"
+			fi
+		done
+		_tid=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
+		if [ -z "$_match" ]; then
+			pvtest_log INFO "'$_tid' SKIPPED (no matching runner for env: ${_env:-<any>})"
+			continue
+		fi
+		# tab-separate the matching device set (signature) from the test path
+		printf '%s\t%s\n' "$_match" "$json_path" >> "$sig_file"
 	done
 
-	wait
-	exec 7>&-
+	# Dispatch one bucket per unique matching device set. Read the unique
+	# signatures from a file via redirection (not a pipe) so the loop and
+	# dispatch_tests run in this shell — preserving FD 7 and dynamic scoping.
+	local sigs_file sig bucket_tests
+	sigs_file=$(mktemp /tmp/pvtest_usigs.XXXXXX)
+	cut -f1 "$sig_file" | sort -u > "$sigs_file"
+	while IFS= read -r sig; do
+		[ -n "$sig" ] || continue
+		bucket_tests=$(awk -F'\t' -v s="$sig" '$1==s{print $2}' "$sig_file")
+		pvtest_log INFO "dispatching $(printf '%s\n' "$bucket_tests" | grep -c .) test(s) to device(s): $sig"
+		dispatch_tests "$sig" "$bucket_tests"
+	done < "$sigs_file"
+	rm -f "$sig_file" "$sigs_file"
 
 	# All tests done: send a lenient shutdown to all devices. Skipped when running
 	# from the tester console; the console exit path handles shutdown after the
@@ -604,13 +813,13 @@ fi
 if [ "$verbose" = "true" ]; then set -x; fi
 
 description=
-cmdline=
-pantavisor_config=
-pvs=
+required_env=
+usrmeta=
 control_container=
 tarballs=
-ready_script=
 self_claim=
+claimed_device=
+applied_usrmeta_keys=
 test_script=
 factory_revision=0
 test_dir=
