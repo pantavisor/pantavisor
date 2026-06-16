@@ -24,13 +24,13 @@ parse_test() {
 	fi
 
 	description=$(jq -r '.description' "$j")
-	# Persistent-device model: setup.env is the *required* config a device must
+	# Persistent-device model: setup.required-config is the config a device must
 	# already have for this test to run on it (matched against `conf ls`), not
 	# env to inject. setup.usrmeta is per-test runtime metadata applied via
 	# `pvcontrol usrmeta` after the initial revision is ready and removed in
 	# teardown. Deprecated keys (cmdline, pantavisor.config, pvs, ready-script)
 	# are no longer read.
-	required_env=$(jq -r '.setup.env // ""' "$j")
+	required_env=$(jq -r '.setup."required-config" // ""' "$j")
 	usrmeta=$(jq -r '.setup.usrmeta // ""' "$j")
 	control_container=$(jq -r '.setup.containers.control' "$j")
 	tarballs=$(jq -r '.setup.containers.tarballs[]' "$j")
@@ -120,8 +120,8 @@ _conf_value() {
 		"$2" 2>/dev/null
 }
 
-# Return 0 if device conf file $2 satisfies every KEY=VALUE in the required-env
-# string $1 (space-separated). An empty required-env matches any device.
+# Return 0 if device conf file $2 satisfies every KEY=VALUE in the required-config
+# string $1 (space-separated). An empty required-config matches any device.
 device_matches_env() {
 	local _env="$1" _conf="$2" kv k v cv
 	[ -s "$_conf" ] || return 1
@@ -203,7 +203,7 @@ init_device() {
 		|| pvtest_log WARN "[device $ae] not READY (expected for BSP-only factory revision); continuing"
 
 	# Persistent-device model: capture the device's live config once. Tests are
-	# matched against this (their setup.env) to decide which device can run them.
+	# matched against this (their setup.required-config) to decide which device can run them.
 	pvtest_log INFO "[device $ae] init: storing config [via SSH]..."
 	pvcontrol conf ls > "$(_ae_conf_file "$ae")" 2>/dev/null || true
 
@@ -526,14 +526,15 @@ run_test_attempt() {
 	test_dir=$(dirname "$json_path")
 	test_id=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
 
-	# Identify which per-slot appengine log file belongs to this pool slot.
+	# Identify this device's appengine log file. Logs are keyed by the full
+	# container name (appengine-<container-name>.log) so per-policy containers
+	# that share a trailing index (…-local-lenient-0, …-local-strict-0) never
+	# collide.
 	local ae_log="" ae_log_start=0
 	if [ -n "$PVTEST_AE" ] && [ -n "$appengine_logs" ]; then
-		local ae_idx
-		ae_idx=$(printf '%s' "$PVTEST_AE" | grep -oE '[0-9]+$' || echo "0")
 		for _l in $appengine_logs; do
 			case "$_l" in
-				*"/appengine-${ae_idx}.log") ae_log="$_l"; break ;;
+				*"/appengine-${PVTEST_AE}.log") ae_log="$_l"; break ;;
 			esac
 		done
 		[ -n "$ae_log" ] && [ -f "$ae_log" ] && ae_log_start=$(wc -l < "$ae_log")
@@ -676,10 +677,13 @@ dispatch_tests() {
 	exec 7>&-
 }
 
-# Run all tests across N appengines using a FIFO-based pool.
-# Each appengine is initialised in parallel (Phase 1). Tests are then bucketed
-# by the set of devices whose stored config matches their required env
-# (setup.env) and each bucket is dispatched over its matching devices.
+# Run all selected tests across a HOMOGENEOUS pool of N appengines (one policy).
+# The host (test.docker.sh) starts one policy's -p containers at a time and
+# invokes pvtest-run per policy, so every device here shares the same stored
+# config. Each appengine is initialised in parallel (Phase 1). A test whose
+# required-config matches the pool is dispatched over the -p devices (FIFO,
+# with retries); a test that does not match emits a SKIPPED result so the host
+# can merge results across policies (Phase 2).
 run_tests_pool() {
 	local max_retries="${MAX_RETRIES:-0}"
 	local overall_result=0
@@ -718,51 +722,30 @@ run_tests_pool() {
 	failed_flag=$(mktemp /tmp/pvtest_failed.XXXXXX)
 	rm -f "$failed_flag"
 
-	# Phase 2: bucket tests by the set of ready devices whose stored config
-	# matches their required env (setup.env), then dispatch each bucket over
-	# its matching devices. A test that matches no ready device is SKIPPED
-	# (no runner can ever satisfy its config). Devices of the same policy share
-	# an identical conf, so all tests of a policy fall into the same bucket and
-	# get the FIFO/-p parallelism within it.
-	#
-	# Buckets run sequentially; since each test maps to exactly one policy and
-	# policies have disjoint device sets, no device is shared concurrently.
-	# (Cross-policy concurrency is a possible future improvement.)
-	local sig_file
-	sig_file=$(mktemp /tmp/pvtest_sigs.XXXXXX)
+	# Phase 2: the pool is homogeneous (one policy), so every ready device shares
+	# the same stored config — the first ready device represents the pool. For
+	# each selected test, match its required-config against the pool once: if it
+	# matches, queue it for dispatch across the -p devices; otherwise emit a
+	# SKIPPED result line so the host can merge results across policies.
+	local pool_conf
+	pool_conf=$(_ae_conf_file "$(printf '%s\n' "$ready_aes" | head -n1)")
 
-	local json_path
+	local run_tests="" json_path
 	for json_path in $test_json_list; do
-		local _env _match _tid
-		_env=$(jq -r '.setup.env // ""' "$json_path")
-		_match=
-		for ae in $ready_aes; do
-			if device_matches_env "$_env" "$(_ae_conf_file "$ae")"; then
-				_match="${_match:+$_match }$ae"
-			fi
-		done
+		local _env _tid
+		_env=$(jq -r '.setup."required-config" // ""' "$json_path")
 		_tid=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
-		if [ -z "$_match" ]; then
-			pvtest_log INFO "'$_tid' SKIPPED (no matching runner for env: ${_env:-<any>})"
-			continue
+		if device_matches_env "$_env" "$pool_conf"; then
+			run_tests="${run_tests:+$run_tests }$json_path"
+		else
+			pvtest_log INFO "'$_tid' SKIPPED (no matching runner for required-config: ${_env:-<any>})"
 		fi
-		# tab-separate the matching device set (signature) from the test path
-		printf '%s\t%s\n' "$_match" "$json_path" >> "$sig_file"
 	done
 
-	# Dispatch one bucket per unique matching device set. Read the unique
-	# signatures from a file via redirection (not a pipe) so the loop and
-	# dispatch_tests run in this shell — preserving FD 7 and dynamic scoping.
-	local sigs_file sig bucket_tests
-	sigs_file=$(mktemp /tmp/pvtest_usigs.XXXXXX)
-	cut -f1 "$sig_file" | sort -u > "$sigs_file"
-	while IFS= read -r sig; do
-		[ -n "$sig" ] || continue
-		bucket_tests=$(awk -F'\t' -v s="$sig" '$1==s{print $2}' "$sig_file")
-		pvtest_log INFO "dispatching $(printf '%s\n' "$bucket_tests" | grep -c .) test(s) to device(s): $sig"
-		dispatch_tests "$sig" "$bucket_tests"
-	done < "$sigs_file"
-	rm -f "$sig_file" "$sigs_file"
+	if [ -n "$run_tests" ]; then
+		pvtest_log INFO "dispatching $(printf '%s\n' $run_tests | grep -c .) test(s) across $n_ready device(s): $ready_aes"
+		dispatch_tests "$ready_aes" "$run_tests"
+	fi
 
 	# All tests done: send a lenient shutdown to all devices. Skipped when running
 	# from the tester console; the console exit path handles shutdown after the
