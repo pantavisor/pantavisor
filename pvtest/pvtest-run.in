@@ -234,6 +234,8 @@ init_device() {
 		pvtest_log ERROR "[device $ae] failed to clone factory revision"
 		return 1
 	fi
+	# Remember the factory revision name so each test can reset back to it.
+	jq -r '.["pantavisor.revision"] // "0"' "/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null > "$factory_dir.rev"
 
 	pvtest_log INFO "[device $ae] init: done"
 	return 0
@@ -355,18 +357,47 @@ apply_usrmeta() {
 # Provision the test's initial revision and wait until the device is live on it.
 # setup_test only *installs state* — the test body itself runs later in exec_test.
 #
-# The initial revision is built solely from the tarballs declared in test.json.
-# Each tarball is a self-contained pvr fragment (a `json` state file + `objects/`),
-# so we start from an empty repo (pvr init) and merge every fragment, then check
-# out and commit the merged tree before posting. This makes each test's starting
-# state fully self-contained and independent of whatever the previous test left
-# on the device — which is why no per-test reset is needed.
+# The device is first reset to its pristine factory revision (so the previous
+# test's revision is abandoned and garbage-collected). The initial revision is
+# then built from a clean copy of the factory clone with every tarball fragment
+# (a `json` state file + `objects/`) merged in, checked out and committed before
+# posting. This keeps each test's starting state self-contained and the device
+# trail at [factory, this-test] regardless of the previous test.
 setup_test() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
 
 	# Bring the device into the claim state this test requires before installing
 	# its revision. No-op for local devices (no pantahub.state).
 	handle_self_claim || return 1
+
+	# Reset the device to its pristine factory revision before installing this
+	# test's state. Running factory makes the previous test's revision abandoned
+	# so the garbage collector drops it, keeping the trail at [factory, this-test]
+	# regardless of run order or parallelism. If `cmd run` reports the factory
+	# revision is no longer installed (already GC'd), re-post it from the stored
+	# clone.
+	if [ -n "$PVTEST_AE" ]; then
+		local factory_dir factory_rev
+		factory_dir="$(_ae_factory_dir "$PVTEST_AE")"
+		factory_rev=$(cat "$factory_dir.rev" 2>/dev/null)
+		[ -n "$factory_rev" ] || factory_rev="0"
+		pvtest_log INFO "${_p}resetting device to factory revision $factory_rev"
+		if ! pv_ctrl cmd run "$factory_rev" > /dev/null 2>&1; then
+			pvtest_log INFO "${_p}factory revision $factory_rev not installed; re-posting from clone"
+			if [ ! -d "$factory_dir/.pvr" ]; then
+				pvtest_log ERROR "${_p}factory clone missing; cannot restore factory revision"
+				return 1
+			fi
+			( export HOME="$factory_dir.home"; cd "$factory_dir" && \
+				pvr post --rev "$factory_rev" "http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr" > /dev/null 2>&1 )
+		fi
+		if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$factory_rev" 60; then
+			pvtest_log ERROR "${_p}device did not reach factory revision $factory_rev"
+			return 1
+		fi
+		# Collect the abandoned previous-test revision so it does not linger in the trail.
+		pv_ctrl cmd run-gc > /dev/null 2>&1
+	fi
 
 	pvtest_log INFO "${_p}installing initial revision for $test_id [via pvr HTTP]..."
 
