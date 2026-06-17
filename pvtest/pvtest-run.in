@@ -113,6 +113,15 @@ _ae_conf_file() {
 	printf '/tmp/pvtest_device_conf_%s.json' "$ae_safe"
 }
 
+# Path to the per-device pristine factory pvr clone captured in init_device.
+# Each test's setup starts from a clean copy of this so the device trail never
+# accumulates revisions across tests on the pool.
+_ae_factory_dir() {
+	local ae="$1" ae_safe
+	ae_safe=$(printf '%s' "$ae" | tr '/' '_' | tr '-' '_' | tr '.' '_')
+	printf '/tmp/pvtest_factory_%s' "$ae_safe"
+}
+
 # Echo the value of config key $1 from a `conf ls` JSON file $2 (empty if absent).
 # conf ls format: [{"key":"PV_CONTROL_REMOTE","value":"0","modified":"..."}, ...]
 _conf_value() {
@@ -211,6 +220,20 @@ init_device() {
 	pvcontrol devmeta ls > "/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null || true
 	jq -r '"  revision=\(.["pantavisor.revision"])  arch=\(.["pantavisor.arch"])  version=\(.["pantavisor.version"])"' \
 		"/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null || true
+
+	# Capture a pristine clone of the device's factory revision once. Each
+	# test's setup starts from a clean copy of this (see setup_test), so every
+	# test's revision is a direct child of factory and the device trail does not
+	# accumulate one test's revision into the next.
+	pvtest_log INFO "[device $ae] init: cloning factory revision [via pvr HTTP]..."
+	local factory_dir; factory_dir="$(_ae_factory_dir "$ae")"
+	rm -rf "$factory_dir" "$factory_dir.home"
+	mkdir -p "$factory_dir.home"
+	wait_for_status "curl -s 'http://$(_ae_host "$ae"):12368/cgi-bin/pvr' > /dev/null 2>&1; ec=\$?; [ \$ec -eq 0 ] || [ \$ec -eq 52 ]" 0 30
+	if ! ( export HOME="$factory_dir.home"; pvr clone "http://$(_ae_host "$ae"):12368/cgi-bin/pvr" "$factory_dir" > /dev/null 2>&1 ); then
+		pvtest_log ERROR "[device $ae] failed to clone factory revision"
+		return 1
+	fi
 
 	pvtest_log INFO "[device $ae] init: done"
 	return 0
@@ -362,12 +385,31 @@ setup_test() {
 	# `pvr merge`/`post` of the same objects (e.g. bsp.tgz) race on that shared
 	# cache. Point HOME at this test's private setup_parent so each pvr pipeline
 	# gets its own isolated cache. It is cleaned up with setup_parent below.
-	pvtest_log DEBUG "${_p}pvr init $setup_dir"
-	( export HOME="$setup_parent"; cd "$setup_dir" && pvr init > /dev/null 2>&1 )
-	if [ $? -ne 0 ]; then
-		pvtest_log ERROR "${_p}pvr init failed"
-		rm -rf "$setup_parent"
-		return 1
+	# Start from a clean copy of the device's factory revision clone (captured
+	# in init_device) rather than an empty repo, so the test's revision is a
+	# direct child of factory and replaces the previous test's revision in the
+	# device trail instead of accumulating on top of it.
+	local factory_dir; factory_dir="$(_ae_factory_dir "$PVTEST_AE")"
+	if [ -n "$PVTEST_AE" ] && [ -d "$factory_dir/.pvr" ]; then
+		# Pool mode: seed from the device's pristine factory clone so the
+		# revision is a direct child of factory and replaces (not accumulates
+		# on) the previous test's revision in the device trail.
+		pvtest_log DEBUG "${_p}seeding $setup_dir from factory clone $factory_dir"
+		if ! cp -a "$factory_dir/." "$setup_dir/" 2>/dev/null; then
+			pvtest_log ERROR "${_p}failed to copy factory clone"
+			rm -rf "$setup_parent"
+			return 1
+		fi
+	else
+		# Legacy single-device / external-target mode: no factory clone was
+		# captured, fall back to an empty repo (pre-pool behaviour).
+		pvtest_log DEBUG "${_p}pvr init $setup_dir"
+		( export HOME="$setup_parent"; cd "$setup_dir" && pvr init > /dev/null 2>&1 )
+		if [ $? -ne 0 ]; then
+			pvtest_log ERROR "${_p}pvr init failed"
+			rm -rf "$setup_parent"
+			return 1
+		fi
 	fi
 
 	for t in $tarballs; do
