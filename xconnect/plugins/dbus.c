@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <linux/limits.h>
@@ -312,6 +313,10 @@ static int dbus_on_link_added(struct pvx_link *link)
 		unlink(link->consumer_socket);
 		bind(fd, (struct sockaddr *)&sun, sizeof(sun));
 		listen(fd, 10);
+		// World-connectable like a real system bus socket; the role
+		// masquerade + bus policy enforce access, not the socket mode.
+		if (chmod(link->consumer_socket, 0666) < 0)
+			perror("chmod socket");
 		evutil_make_socket_nonblocking(fd);
 	}
 
