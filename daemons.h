@@ -34,16 +34,8 @@
 #define DM_APPENGINE (1 << IM_APPENGINE)
 #define DM_ALL (DM_EMBEDDED | DM_STANDALONE | DM_APPENGINE)
 
-// Pantavisor-hosted D-Bus system bus (xconnect). The daemon socket, generated
-// config and policy include dir all live on a host path that is only reachable
-// through an injected xconnect proxy. Shared with state.c (builtin export +
-// generated policy). Matches the paths in xconnect/XCONNECT.md.
-#define PV_DBUS_SYSTEMBUS_NAME "system-bus"
-#define PV_DBUS_SYSTEMBUS_DAEMON "pv-dbus"
-#define PV_DBUS_SYSTEMBUS_DIR "/run/pv/dbus"
-#define PV_DBUS_SYSTEMBUS_SOCKET PV_DBUS_SYSTEMBUS_DIR "/system_bus_socket"
-#define PV_DBUS_SYSTEMBUS_CONF PV_DBUS_SYSTEMBUS_DIR "/system.conf"
-#define PV_DBUS_SYSTEMBUS_POLICYDIR PV_DBUS_SYSTEMBUS_DIR "/policy.d"
+// The hosted D-Bus system bus (xconnect) lives in its own module; see
+// dbus_daemon.h for its paths, generated config/policy and the role uid map.
 
 struct pv_init_daemon {
 	char *name;
@@ -52,6 +44,9 @@ struct pv_init_daemon {
 	char *testpath;
 	char *cmd;
 	unsigned int modes; // bitmask of allowed init modes
+	// When set, spawn this daemon in a private mount namespace with this
+	// file bind-mounted over /etc/passwd (a passwd jail). NULL = no jail.
+	const char *jail_passwd;
 	int _respawning;
 };
 

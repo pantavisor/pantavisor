@@ -48,6 +48,13 @@ int tsh_run_logserver_timeout(const char *cmd, int *wstatus, int timeout_s,
 
 pid_t tsh_run_daemon_logserver(const char *cmd, const char *log_source_out,
 			       const char *log_source_err);
+
+// Like tsh_run_daemon_logserver but, when jail_passwd is non-NULL, spawns the
+// daemon in a private mount namespace with jail_passwd bind-mounted over
+// /etc/passwd (a passwd jail). jail_passwd == NULL behaves identically.
+pid_t tsh_run_daemon_logserver_jail(const char *cmd, const char *log_source_out,
+				    const char *log_source_err,
+				    const char *jail_passwd);
 #endif
 
 #endif
