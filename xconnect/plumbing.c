@@ -131,6 +131,15 @@ int pvx_helper_inject_unix_socket(const char *path, int pid)
 		goto out;
 	}
 
+	// 6. Make the socket world-connectable, like a real system bus socket.
+	// Access control is enforced by the bus policy and the per-link role
+	// masquerade (every connection through this socket is assigned the
+	// link's role regardless of the in-container uid), so a daemon that
+	// drops privileges (e.g. avahi -> uid 'avahi') must still be able to
+	// connect. Without this it inherits restrictive perms and only root can.
+	if (chmod(path, 0666) < 0)
+		perror("chmod socket");
+
 out:
 	// 7. Always switch back to host namespace
 	if (setns(old_ns_fd, CLONE_NEWNS) < 0) {
