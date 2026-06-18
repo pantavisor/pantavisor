@@ -39,7 +39,15 @@ parse_test() {
 	return 0
 }
 
+# Run-scoped record of devices this harness has self-claimed but not yet deleted.
+# Cleared per-device on teardown; any survivors (a test killed mid-run) are swept
+# on exit. Scoped to this run only — we never touch devices we did not claim, so
+# it is safe on a shared Pantahub account.
+PVTEST_CLAIMED_DEVICES_FILE="/tmp/pvtest_claimed_devices.$$"
+: > "$PVTEST_CLAIMED_DEVICES_FILE" 2>/dev/null || true
+
 cleanup() {
+	_sweep_tracked_devices
 	kill $(jobs -p) 2>/dev/null
 }
 trap cleanup EXIT
@@ -120,6 +128,59 @@ _ae_factory_dir() {
 	local ae="$1" ae_safe
 	ae_safe=$(printf '%s' "$ae" | tr '/' '_' | tr '-' '_' | tr '.' '_')
 	printf '/tmp/pvtest_factory_%s' "$ae_safe"
+}
+
+# Per-device isolated pvr auth/cache home. Pool slots run pvr concurrently in the
+# same tester container; without this they race on the shared ~/.pvr config during
+# login/claim/delete. Keyed by the appengine name (falls back to a shared default
+# in legacy single-device mode where PVTEST_AE is unset).
+_ae_pvr_home() {
+	local ae="${1:-$PVTEST_AE}" ae_safe
+	ae_safe=$(printf '%s' "$ae" | tr '/' '_' | tr '-' '_' | tr '.' '_')
+	printf '/tmp/pvtest_pvrhome_%s' "${ae_safe:-default}"
+}
+
+# Run a pvr command authenticated against the Hub in this device's isolated HOME,
+# logging in first when PH creds are set. All self-claim Hub operations (login,
+# claim, dev delete) must go through here so concurrent pool slots never share a
+# ~/.pvr config.
+_pvr_auth() {
+	local home; home="$(_ae_pvr_home)"
+	mkdir -p "$home" 2>/dev/null
+	(
+		export HOME="$home"
+		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
+		fi
+		pvr "$@"
+	)
+}
+
+# Track ($1=add) / untrack ($1=del) a self-claimed device id ($2) in the
+# run-scoped claimed-devices file, serialised with flock for the parallel pool.
+_track_device() {
+	local op="$1" dev="$2" f="$PVTEST_CLAIMED_DEVICES_FILE"
+	[ -n "$f" ] && [ -n "$dev" ] || return 0
+	(
+		flock -x 8
+		case "$op" in
+			add) grep -qxF "$dev" "$f" 2>/dev/null || printf '%s\n' "$dev" >> "$f" ;;
+			del) [ -f "$f" ] && { grep -vxF "$dev" "$f" > "$f.tmp" 2>/dev/null; mv "$f.tmp" "$f" 2>/dev/null; } ;;
+		esac
+	) 8>>"$f.lock"
+}
+
+# Delete any still-tracked self-claimed devices (a test killed before teardown).
+# Called from the EXIT trap.
+_sweep_tracked_devices() {
+	local f="$PVTEST_CLAIMED_DEVICES_FILE" d
+	[ -n "$f" ] && [ -s "$f" ] || return 0
+	while IFS= read -r d; do
+		[ -n "$d" ] || continue
+		pvtest_log WARN "sweeping leftover self-claimed device $d"
+		_pvr_auth dev delete -y "$d" > /dev/null 2>&1
+	done < "$f"
+	: > "$f" 2>/dev/null || true
 }
 
 # Echo the value of config key $1 from a `conf ls` JSON file $2 (empty if absent).
@@ -293,6 +354,22 @@ _dev_clean_ph_creds() {
 	fi
 }
 
+# Delete device $1 from the Hub and force the appengine back to a registered-but-
+# unclaimed baseline (pantahub.state=claim): delete on the Hub, wipe the persisted
+# Pantahub creds, reboot, and wait for pantavisor to re-register. Used by both the
+# setup unclaim path and teardown so a self-claimed device is fully reset for the
+# next test — the two paths must stay symmetric or the next test inherits a dead
+# device-id.
+_dev_delete_and_reset() {
+	local dev="$1"
+	[ -n "$dev" ] && _pvr_auth dev delete -y "$dev" > /dev/null 2>&1
+	_track_device del "$dev"
+	_dev_clean_ph_creds
+	pv_ctrl cmd reboot
+	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "claim" 120
+}
+
 # Bring the device into the claim state required by setup.self-claim.
 # pantahub.state: "claim" = unclaimed, "idle" = claimed. No-op for local devices
 # (no pantahub.state) and for the matching combinations. A device claimed here
@@ -310,24 +387,15 @@ handle_self_claim() {
 
 	if [ "$state" = "idle" ] && [ "$self_claim" = "false" ]; then
 		pvtest_log INFO "${_p}self-claim=false but device claimed; unclaiming ($device_id)..."
-		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
-			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
-		fi
-		[ -n "$device_id" ] && pvr dev delete -y "$device_id" > /dev/null 2>&1
-		_dev_clean_ph_creds
-		pv_ctrl cmd reboot
-		wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120
-		wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "claim" 120
+		_dev_delete_and_reset "$device_id"
 	elif [ "$state" = "claim" ] && [ "$self_claim" = "true" ]; then
 		pvtest_log INFO "${_p}self-claim=true and device unclaimed; claiming ($device_id)..."
 		local challenge
 		challenge=$(_dev_read_file /var/run/pantavisor/pv/challenge)
-		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
-			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
-		fi
 		if [ -n "$device_id" ] && [ -n "$challenge" ]; then
-			pvr claim -c "$challenge" "$device_id" > /dev/null 2>&1
+			_pvr_auth claim -c "$challenge" "$device_id" > /dev/null 2>&1
 			claimed_device="$device_id"
+			_track_device add "$device_id"
 			wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "idle" 120
 		else
 			pvtest_log ERROR "${_p}cannot claim: missing device-id or challenge"
@@ -505,13 +573,14 @@ teardown_test() {
 		applied_usrmeta_keys=
 	fi
 
-	# If this test claimed the device (self-claim=true), delete it from the Hub.
+	# If this test claimed the device (self-claim=true), delete it from the Hub and
+	# reset the appengine to a registered-but-unclaimed baseline (state=claim).
+	# Symmetric with the setup unclaim path: deleting alone would leave the device
+	# polling with a dead device-id, so the next test must start from a fresh
+	# re-registration.
 	if [ -n "$claimed_device" ]; then
-		pvtest_log INFO "${_p}deleting self-claimed device $claimed_device"
-		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
-			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
-		fi
-		pvr dev delete -y "$claimed_device" > /dev/null 2>&1
+		pvtest_log INFO "${_p}deleting self-claimed device $claimed_device and resetting to unclaimed"
+		_dev_delete_and_reset "$claimed_device"
 		claimed_device=
 	fi
 }
