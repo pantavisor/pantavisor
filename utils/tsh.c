@@ -35,6 +35,8 @@
 
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sched.h>
+#include <sys/mount.h>
 
 #include "tsh.h"
 #include "utils/pvsignals.h"
@@ -165,8 +167,25 @@ static int _tsh_wait(int timeout, sigset_t mask, sigset_t old, int pid)
 	return status;
 }
 
+// Enter a private mount namespace and bind `passwd_file` over /etc/passwd, so
+// the about-to-exec child sees a scoped /etc/passwd without affecting the host
+// mount namespace. Used to give a daemon its own user database. Must run in the
+// child between fork and exec. Returns 0 on success, -1 on failure.
+static int _tsh_enter_passwd_jail(const char *passwd_file)
+{
+	if (unshare(CLONE_NEWNS) < 0)
+		return -1;
+	// Don't propagate our bind back into the host mount namespace.
+	if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0)
+		return -1;
+	if (mount(passwd_file, "/etc/passwd", NULL, MS_BIND, NULL) < 0)
+		return -1;
+	return 0;
+}
+
 static pid_t _tsh_exec(char **argv, int wait, int *status, int timeout,
-		       int stdin_p[], int stdout_p[], int stderr_p[])
+		       int stdin_p[], int stdout_p[], int stderr_p[],
+		       const char *jail_passwd)
 {
 	pid_t pid = -1;
 	sigset_t blocked_sig, old_sigset;
@@ -248,6 +267,10 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int timeout,
 		if (stderr_p)
 			close(stderr_p[1]);
 
+		// enter the passwd jail (private mnt ns) before exec if asked
+		if (jail_passwd && _tsh_enter_passwd_jail(jail_passwd) < 0)
+			_exit(EXIT_FAILURE);
+
 		// now we let it flow ...
 		setenv("PATH", TSH_PATH_VAR, 0);
 		execvp(argv[0], argv);
@@ -256,8 +279,9 @@ static pid_t _tsh_exec(char **argv, int wait, int *status, int timeout,
 
 	return pid;
 }
-pid_t tsh_run_io_timeout(const char *cmd, int wait, int *status, int timeout_s,
-			 int stdin_p[], int stdout_p[], int stderr_p[])
+static pid_t _tsh_run_io_jail(const char *cmd, int wait, int *status,
+			      int timeout_s, int stdin_p[], int stdout_p[],
+			      int stderr_p[], const char *jail_passwd)
 {
 	pid_t pid = -1;
 	char **args = NULL;
@@ -272,7 +296,7 @@ pid_t tsh_run_io_timeout(const char *cmd, int wait, int *status, int timeout_s,
 		goto out;
 
 	pid = _tsh_exec(args, wait, status, timeout_s, stdin_p, stdout_p,
-			stderr_p);
+			stderr_p, jail_passwd);
 	if (pid < 0)
 		pv_log(DEBUG, "cannot run \"%s\"", cmd);
 
@@ -283,6 +307,13 @@ out:
 		free(args);
 
 	return pid;
+}
+
+pid_t tsh_run_io_timeout(const char *cmd, int wait, int *status, int timeout_s,
+			 int stdin_p[], int stdout_p[], int stderr_p[])
+{
+	return _tsh_run_io_jail(cmd, wait, status, timeout_s, stdin_p, stdout_p,
+				stderr_p, NULL);
 }
 
 pid_t tsh_run_timeout(const char *cmd, int wait, int *status, int timeout_s)
@@ -398,8 +429,9 @@ int tsh_run_logserver(const char *cmd, int *wstatus, const char *log_source_out,
 					 log_source_out, log_source_err);
 }
 
-pid_t tsh_run_daemon_logserver(const char *cmd, const char *log_source_out,
-			       const char *log_source_err)
+pid_t tsh_run_daemon_logserver_jail(const char *cmd, const char *log_source_out,
+				    const char *log_source_err,
+				    const char *jail_passwd)
 {
 	pid_t pid;
 	int out_pipe[] = { -1, -1 };
@@ -411,8 +443,8 @@ pid_t tsh_run_daemon_logserver(const char *cmd, const char *log_source_out,
 		goto out;
 	}
 
-	pid = tsh_run_io_timeout(cmd, 0, NULL, TSH_NO_TIMEOUT, NULL, out_pipe,
-				 err_pipe);
+	pid = _tsh_run_io_jail(cmd, 0, NULL, TSH_NO_TIMEOUT, NULL, out_pipe,
+			       err_pipe, jail_passwd);
 
 	if (pid < 0)
 		pv_log(ERROR, "daemon start failed: %s", cmd);
@@ -421,6 +453,13 @@ out:
 	_tsh_close_pipe(err_pipe);
 
 	return pid;
+}
+
+pid_t tsh_run_daemon_logserver(const char *cmd, const char *log_source_out,
+			       const char *log_source_err)
+{
+	return tsh_run_daemon_logserver_jail(cmd, log_source_out,
+					     log_source_err, NULL);
 }
 
 #endif

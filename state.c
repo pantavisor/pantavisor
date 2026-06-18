@@ -54,237 +54,14 @@
 #include "hook/hooks.h"
 #include "config.h"
 #include "daemons.h"
+#include "dbus_daemon.h"
 #include "utils/fs.h"
-
-#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
-#include <signal.h>
-#endif
 
 #define MODULE_NAME "state"
 #define pv_log(level, msg, ...)                                                \
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
 	     ##__VA_ARGS__)
 #include "log.h"
-
-#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
-
-#define PV_DBUS_ROLE_UID_BASE 90000
-#define PV_DBUS_ROLE_UID_MAP "dbus-role-uids.json"
-
-// Allocate-or-return a stable numeric uid for `role`, persisted as a flat JSON
-// object { "<role>": <uid>, ... } in the storage config dir. UIDs come from a
-// reserved range and are never reused, so a role keeps its uid across reboots
-// and revisions. Returns the uid (>= base) or -1 on bad input.
-static int pv_state_dbus_role_uid(const char *role)
-{
-	if (!role)
-		return -1;
-
-	char path[PATH_MAX];
-	pv_paths_storage_config_file(path, PATH_MAX, PV_DBUS_ROLE_UID_MAP);
-
-	int next = PV_DBUS_ROLE_UID_BASE;
-	int found = -1;
-
-	struct pv_json_ser js;
-	pv_json_ser_init(&js, 256);
-	pv_json_ser_object(&js);
-
-	size_t size = 0;
-	char *buf = pv_fs_file_read(path, &size);
-	jsmntok_t *tokv = NULL;
-	int tokc;
-	if (buf && size > 0 && jsmnutil_parse_json(buf, &tokv, &tokc) > 0 &&
-	    tokc > 0 && tokv[0].type == JSMN_OBJECT) {
-		int n = tokv[0].size;
-		jsmntok_t *t = tokv + 1;
-		for (int i = 0; i < n; i++) {
-			int klen = t->end - t->start;
-			char kbuf[256];
-			if (klen >= (int)sizeof(kbuf))
-				klen = sizeof(kbuf) - 1;
-			memcpy(kbuf, buf + t->start, klen);
-			kbuf[klen] = '\0';
-			int v = atoi(buf + (t + 1)->start);
-
-			// Carry every existing mapping forward unchanged.
-			pv_json_ser_key(&js, kbuf);
-			pv_json_ser_number(&js, v);
-			if (v >= next)
-				next = v + 1;
-			if (!strcmp(kbuf, role))
-				found = v;
-
-			t += 2;
-		}
-	}
-	if (tokv)
-		free(tokv);
-	if (buf)
-		free(buf);
-
-	if (found >= 0) {
-		char *tmp = (pv_json_ser_object_pop(&js), pv_json_ser_str(&js));
-		if (tmp)
-			free(tmp);
-		return found;
-	}
-
-	// New role: append and persist the rewritten map.
-	pv_json_ser_key(&js, role);
-	pv_json_ser_number(&js, next);
-	pv_json_ser_object_pop(&js);
-
-	char *out = pv_json_ser_str(&js);
-	if (out) {
-		pv_fs_file_save(path, out, 0600);
-		free(out);
-	}
-
-	return next;
-}
-
-// Reject states that would shadow the builtin host export or double-own a
-// well-known name. Returning -1 rejects the revision (rollback during update).
-static int pv_state_validate_dbus_systembus(struct pv_state *s)
-{
-	if (!pv_config_get_bool(PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED))
-		return 0;
-
-	struct pv_platform *p, *tmp_p;
-	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
-	{
-		struct pv_platform_service_export *exp, *tmp_exp;
-		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
-				      struct pv_platform_service_export, list)
-		{
-			// (a) platform export name collides with builtin export
-			if (exp->name &&
-			    !strcmp(exp->name, PV_DBUS_SYSTEMBUS_NAME)) {
-				pv_log(ERROR,
-				       "platform '%s' exports reserved service name '%s' while the hosted system bus is enabled",
-				       p->name, PV_DBUS_SYSTEMBUS_NAME);
-				return -1;
-			}
-
-			if (!exp->owns)
-				continue;
-
-			// (b) two apps owning the same name on the same bus
-			const char *bus =
-				exp->bus ? exp->bus : PV_DBUS_SYSTEMBUS_NAME;
-			struct pv_platform *p2, *tmp_p2;
-			dl_list_for_each_safe(p2, tmp_p2, &s->platforms,
-					      struct pv_platform, list)
-			{
-				struct pv_platform_service_export *e2, *te2;
-				dl_list_for_each_safe(
-					e2, te2, &p2->service_exports,
-					struct pv_platform_service_export, list)
-				{
-					const char *b2 =
-						e2->bus ?
-							e2->bus :
-							PV_DBUS_SYSTEMBUS_NAME;
-					if (e2 == exp || !e2->owns)
-						continue;
-					if (!strcmp(e2->owns, exp->owns) &&
-					    !strcmp(b2, bus)) {
-						pv_log(ERROR,
-						       "well-known name '%s' on bus '%s' is owned by more than one app",
-						       exp->owns, bus);
-						return -1;
-					}
-				}
-			}
-		}
-	}
-	return 0;
-}
-
-// Generate default-deny per-name policy fragments from every `owns` declaration
-// and reload the running daemon. Each owner role uid gets own + send/receive on
-// its name; each allowed caller role uid gets send/receive to it.
-static void pv_state_dbus_generate_policy(struct pv_state *s)
-{
-	if (!pv_config_get_bool(PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED))
-		return;
-
-	if (pv_fs_mkdir_p(PV_DBUS_SYSTEMBUS_POLICYDIR, 0755))
-		return;
-
-	char path[PATH_MAX];
-	snprintf(path, sizeof(path), "%s/pv-generated.conf",
-		 PV_DBUS_SYSTEMBUS_POLICYDIR);
-
-	FILE *f = fopen(path, "w");
-	if (!f) {
-		pv_log(ERROR, "could not write dbus policy %s: %s", path,
-		       strerror(errno));
-		return;
-	}
-
-	fputs("<!DOCTYPE busconfig PUBLIC "
-	      "\"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" "
-	      "\"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n"
-	      "<busconfig>\n",
-	      f);
-
-	struct pv_platform *p, *tmp_p;
-	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
-	{
-		struct pv_platform_service_export *exp, *tmp_exp;
-		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
-				      struct pv_platform_service_export, list)
-		{
-			if (!exp->owns || exp->svc_type != SVC_TYPE_DBUS)
-				continue;
-
-			const char *orole = exp->role ? exp->role : exp->owns;
-			int owner_uid = pv_state_dbus_role_uid(orole);
-			if (owner_uid < 0)
-				continue;
-
-			fprintf(f,
-				"  <!-- %s owns %s (owner role '%s' uid %d) -->\n"
-				"  <policy user=\"%d\">\n"
-				"    <allow own=\"%s\"/>\n"
-				"    <allow send_destination=\"%s\"/>\n"
-				"    <allow receive_sender=\"%s\"/>\n"
-				"  </policy>\n",
-				p->name, exp->owns, orole, owner_uid, owner_uid,
-				exp->owns, exp->owns, exp->owns);
-
-			for (int i = 0; i < exp->allow_count; i++) {
-				int uid = pv_state_dbus_role_uid(exp->allow[i]);
-				if (uid < 0)
-					continue;
-				fprintf(f,
-					"  <!-- caller role '%s' uid %d -> %s -->\n"
-					"  <policy user=\"%d\">\n"
-					"    <allow send_destination=\"%s\"/>\n"
-					"    <allow receive_sender=\"%s\"/>\n"
-					"  </policy>\n",
-					exp->allow[i], uid, exp->owns, uid,
-					exp->owns, exp->owns);
-			}
-		}
-	}
-
-	fputs("</busconfig>\n", f);
-	fclose(f);
-
-	struct pv_init_daemon *d = pv_init_get_daemons();
-	for (int i = 0; d && d[i].name; i++) {
-		if (!strcmp(d[i].name, PV_DBUS_SYSTEMBUS_DAEMON) &&
-		    d[i].pid > 0) {
-			pv_log(INFO, "reloading %s (pid %d) dbus policy",
-			       PV_DBUS_SYSTEMBUS_DAEMON, d[i].pid);
-			kill(d[i].pid, SIGHUP);
-		}
-	}
-}
-#endif
 
 struct pv_state *pv_state_new(const char *rev, state_spec_t spec)
 {
@@ -1048,9 +825,9 @@ int pv_state_run(struct pv_state *s)
 		return -1;
 
 #ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
-	if (pv_state_validate_dbus_systembus(s))
+	if (pv_dbus_daemon_validate(s))
 		return -1;
-	pv_state_dbus_generate_policy(s);
+	pv_dbus_daemon_generate(s);
 #endif
 
 	int ret = 0;
@@ -2225,7 +2002,7 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 					    PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED)) {
 					int uid =
 						svc->role ?
-							pv_state_dbus_role_uid(
+							pv_dbus_daemon_role_uid(
 								svc->role) :
 							65534;
 					if (uid < 0)
