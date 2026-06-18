@@ -143,9 +143,13 @@ wait_for_revision_state() {
 	local rev="$2"
 	local state="$3"
 
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 30 || return 1
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 30 || return 1
-	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 30 || return 1
+	# Generous timeouts: deep into a no-reset suite the device has more trail and
+	# objects to scan, so an update can take well over the in-engine 30s status
+	# goal. Match wait_for_new_revision (120s/60s) so update-driven tests tolerate
+	# a loaded device rather than racing it.
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120 || return 1
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60 || return 1
+	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 120 || return 1
 }
 
 # wait for Pantahub to get to a given status

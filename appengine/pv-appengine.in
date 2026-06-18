@@ -259,7 +259,7 @@ if [ "$manual" = "true" ]; then
 	done
 	echo ""
 	echo "To run Pantavisor with a specific policy:"
-	echo "pv-appengine -i -e \"PV_POLICY=pv-appengine-local-lenient PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct\""
+	echo "pv-appengine -i -e \"PV_POLICY=pv-appengine-local-disabled PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct\""
 	echo ""
 	exec bash
 fi

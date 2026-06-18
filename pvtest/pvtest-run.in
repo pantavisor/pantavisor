@@ -357,12 +357,11 @@ apply_usrmeta() {
 # Provision the test's initial revision and wait until the device is live on it.
 # setup_test only *installs state* — the test body itself runs later in exec_test.
 #
-# The device is first reset to its pristine factory revision (so the previous
-# test's revision is abandoned and garbage-collected). The initial revision is
-# then built from a clean copy of the factory clone with every tarball fragment
-# (a `json` state file + `objects/`) merged in, checked out and committed before
-# posting. This keeps each test's starting state self-contained and the device
-# trail at [factory, this-test] regardless of the previous test.
+# The initial revision is built from a clean copy of the factory clone with
+# every tarball fragment (a `json` state file + `objects/`) merged in, checked
+# out and committed before posting. This keeps each test's starting state
+# self-contained (a child of factory) regardless of the previous test, without
+# resetting the device — the device transitions directly to the posted revision.
 setup_test() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
 
@@ -370,34 +369,12 @@ setup_test() {
 	# its revision. No-op for local devices (no pantahub.state).
 	handle_self_claim || return 1
 
-	# Reset the device to its pristine factory revision before installing this
-	# test's state. Running factory makes the previous test's revision abandoned
-	# so the garbage collector drops it, keeping the trail at [factory, this-test]
-	# regardless of run order or parallelism. If `cmd run` reports the factory
-	# revision is no longer installed (already GC'd), re-post it from the stored
-	# clone.
-	if [ -n "$PVTEST_AE" ]; then
-		local factory_dir factory_rev
-		factory_dir="$(_ae_factory_dir "$PVTEST_AE")"
-		factory_rev=$(cat "$factory_dir.rev" 2>/dev/null)
-		[ -n "$factory_rev" ] || factory_rev="0"
-		pvtest_log INFO "${_p}resetting device to factory revision $factory_rev"
-		if ! pv_ctrl cmd run "$factory_rev" > /dev/null 2>&1; then
-			pvtest_log INFO "${_p}factory revision $factory_rev not installed; re-posting from clone"
-			if [ ! -d "$factory_dir/.pvr" ]; then
-				pvtest_log ERROR "${_p}factory clone missing; cannot restore factory revision"
-				return 1
-			fi
-			( export HOME="$factory_dir.home"; cd "$factory_dir" && \
-				pvr post --rev "$factory_rev" "http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr" > /dev/null 2>&1 )
-		fi
-		if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$factory_rev" 60; then
-			pvtest_log ERROR "${_p}device did not reach factory revision $factory_rev"
-			return 1
-		fi
-		# Collect the abandoned previous-test revision so it does not linger in the trail.
-		pv_ctrl cmd run-gc > /dev/null 2>&1
-	fi
+	# No device reset between tests: each test's initial revision is built fresh
+	# from the pristine factory clone (see below) and posted, so the device
+	# transitions straight from the previous test's revision to this one. This is
+	# faster than bouncing through factory, and tests must not rely on the device
+	# trail being pruned to [factory] — trail-sensitive tests report only their
+	# own current revision instead of the full `steps ls`.
 
 	pvtest_log INFO "${_p}installing initial revision for $test_id [via pvr HTTP]..."
 
@@ -601,7 +578,7 @@ run_test_attempt() {
 
 	# Identify this device's appengine log file. Logs are keyed by the full
 	# container name (appengine-<container-name>.log) so per-policy containers
-	# that share a trailing index (…-local-lenient-0, …-local-strict-0) never
+	# that share a trailing index (…-local-disabled-0, …-local-strict-0) never
 	# collide.
 	local ae_log="" ae_log_start=0
 	if [ -n "$PVTEST_AE" ] && [ -n "$appengine_logs" ]; then
