@@ -211,6 +211,8 @@ add_executable(pantavisor
 			ctrl/ctrl_util.h
 			daemons.c
 			daemons.h
+			dbus_daemon.c
+			dbus_daemon.h
 			debug.c
 			debug.h
 			disk/disk.c
