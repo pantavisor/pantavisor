@@ -1,6 +1,15 @@
 #!/bin/sh
 
-pvtest_log() { local level=$1; shift; printf '[pvtest] %s %s -- [%s]: %s\n' "$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*"; }
+pvtest_log() {
+	local level=$1; shift
+	local line
+	line=$(printf '[pvtest] %s %s -- [%s]: %s' "$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*")
+	printf '%s\n' "$line"
+	# When a test is active, mirror the message into its per-test test.log so the
+	# log holds the whole test (setup -> script -> teardown), not just the script.
+	[ -n "$PVTEST_ACTIVE_TESTLOG" ] && printf '%s\n' "$line" >> "$PVTEST_ACTIVE_TESTLOG" 2>/dev/null
+	return 0
+}
 
 # Run a command on the test target via PVTEST_EXEC (e.g. SSH).
 # SSH joins all args into a single shell command on the remote side, so each

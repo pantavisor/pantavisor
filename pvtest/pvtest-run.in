@@ -773,43 +773,46 @@ run_test_attempt() {
 		return 2
 	fi
 
+	# Per-test log: capture the WHOLE test (setup -> script -> teardown) — the
+	# pvtest-run messages (mirrored by pvtest_log via PVTEST_ACTIVE_TESTLOG), the
+	# test script output (appended by exec_test), and this device's pantavisor
+	# logs (tailed below). PVTEST_ACTIVE_TESTLOG is a local (NOT exported), so the
+	# test script child process does not re-mirror its own pvtest_log calls.
+	mkdir -p "$run_dir/$test_id"
+	local PVTEST_ACTIVE_TESTLOG="$run_dir/$test_id/test.log"
+
+	# Follow this device's pantavisor log into test.log for the whole test window.
+	# Started before setup_test (and stopped after teardown_test) so setup and
+	# teardown device logs are captured too, not just the test script's.
+	local ae_tail_pid=""
+	if [ -n "$ae_log" ] && [ -f "$ae_log" ]; then
+		tail -n "+$((ae_log_start + 1))" -f "$ae_log" >> "$PVTEST_ACTIVE_TESTLOG" 2>/dev/null &
+		ae_tail_pid=$!
+	fi
+
 	pvtest_log INFO "'$test_id' START"
 	local _test_start
 	_test_start=$(date +%s)
 
 	if ! setup_test; then
 		local _test_runtime=$(( $(date +%s) - _test_start ))
-		mkdir -p "$run_dir/$test_id"
-		[ -n "$ae_log" ] && [ -f "$ae_log" ] && \
-			tail -n "+$((ae_log_start + 1))" "$ae_log" >> "$run_dir/$test_id/test.log" 2>/dev/null || true
 		pvtest_log ERROR "'$test_id' ABORTED ($_test_runtime s)"
 		teardown_test
+		[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
 		return 1
-	fi
-
-	# Re-capture ae_log position after setup so tail -f only follows exec_test logs.
-	[ -n "$ae_log" ] && [ -f "$ae_log" ] && ae_log_start=$(wc -l < "$ae_log")
-
-	mkdir -p "$run_dir/$test_id"
-	local ae_tail_pid=""
-	if [ -n "$ae_log" ] && [ -f "$ae_log" ]; then
-		tail -n "+$((ae_log_start + 1))" -f "$ae_log" >> "$run_dir/$test_id/test.log" 2>/dev/null &
-		ae_tail_pid=$!
 	fi
 
 	if ! exec_test; then
 		local _test_runtime=$(( $(date +%s) - _test_start ))
-		[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
 		pvtest_log ERROR "'$test_id' ABORTED ($_test_runtime s)"
 		teardown_test
+		[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
 		return 1
 	fi
 
 	eval_test
 	local test_result=$?
 	local _test_runtime=$(( $(date +%s) - _test_start ))
-
-	[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
 
 	if [ "$overwrite" = "true" ]; then
 		pvtest_log INFO "'$test_id' RECORDED ($_test_runtime s)"
@@ -818,10 +821,12 @@ run_test_attempt() {
 	else
 		pvtest_log ERROR "'$test_id' FAILED ($_test_runtime s)"
 		teardown_test
+		[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
 		return 1
 	fi
 
 	teardown_test
+	[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
 	return 0
 }
 
