@@ -156,6 +156,39 @@ _pvr_auth() {
 	)
 }
 
+# _pvr_auth wrapper that captures output and logs it on failure, so Hub
+# operations (claim, dev delete) are not silent when they fail. Returns the pvr
+# exit code; the captured output is echoed only on error.
+_pvr_logged() {
+	local _p="${PVTEST_AE:+[device $PVTEST_AE] }" out rc
+	out=$(_pvr_auth "$@" 2>&1)
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		pvtest_log ERROR "${_p}pvr $* failed (exit $rc)${out:+: $out}"
+	fi
+	return $rc
+}
+
+# Wait until the Pantahub client settles into a terminal claim state and echo it
+# ("claim" = unclaimed, "idle" = claimed), or nothing on timeout. The client only
+# runs while the device is in remote mode and needs time after boot to register,
+# so callers must wait for this instead of reading pantahub.state once.
+_wait_pantahub_terminal_state() {
+	local timeout="${1:-120}" counter=0 st
+	while [ "$counter" -lt "$timeout" ]; do
+		st=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantahub.state"] // empty')
+		case "$st" in
+		claim | idle)
+			printf '%s' "$st"
+			return 0
+			;;
+		esac
+		sleep 2
+		counter=$((counter + 2))
+	done
+	return 1
+}
+
 # Track ($1=add) / untrack ($1=del) a self-claimed device id ($2) in the
 # run-scoped claimed-devices file, serialised with flock for the parallel pool.
 _track_device() {
@@ -370,6 +403,51 @@ _dev_delete_and_reset() {
 	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "claim" 120
 }
 
+# Claim the device this slot points at once and leave it in the idle (claimed)
+# state. Waits for the Pantahub client to reach the unclaimed 'claim' state, reads
+# the device-id + challenge, runs pvr claim, records the device for cleanup, and
+# waits for 'idle'. Returns non-zero on any failure. Called once per device at the
+# start of the claim=true phase (run_tests_pool), not per test.
+_dev_claim() {
+	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
+	local state
+	state=$(_wait_pantahub_terminal_state 120)
+	if [ "$state" != "claim" ]; then
+		pvtest_log ERROR "${_p}cannot claim: pantahub.state='${state:-<none>}' (expected claim)"
+		return 1
+	fi
+	local device_id challenge
+	device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+	challenge=$(_dev_read_file /var/run/pantavisor/pv/challenge)
+	if [ -z "$device_id" ] || [ -z "$challenge" ]; then
+		pvtest_log ERROR "${_p}cannot claim: missing device-id ('$device_id') or challenge"
+		return 1
+	fi
+	pvtest_log INFO "${_p}claiming device $device_id..."
+	if ! _pvr_logged claim -c "$challenge" "$device_id"; then
+		return 1
+	fi
+	_track_device add "$device_id"
+	if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "idle" 120; then
+		pvtest_log ERROR "${_p}timed out waiting for pantahub.state=idle after claim"
+		return 1
+	fi
+	pvtest_log INFO "${_p}claimed device $device_id"
+	return 0
+}
+
+# Delete the device this slot currently points at from the Hub, without rebooting.
+# Called once per device at the end of the claim=true phase (run_tests_pool).
+_dev_delete_only() {
+	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
+	local device_id
+	device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+	[ -n "$device_id" ] || return 0
+	pvtest_log INFO "${_p}deleting claimed device $device_id"
+	_pvr_logged dev delete -y "$device_id"
+	_track_device del "$device_id"
+}
+
 # Bring the device into the claim state required by setup.self-claim.
 # pantahub.state: "claim" = unclaimed, "idle" = claimed. No-op for local devices
 # (no pantahub.state) and for the matching combinations. A device claimed here
@@ -433,9 +511,14 @@ apply_usrmeta() {
 setup_test() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
 
-	# Bring the device into the claim state this test requires before installing
-	# its revision. No-op for local devices (no pantahub.state).
-	handle_self_claim || return 1
+	# Pool mode manages the claim lifecycle per phase, not per test: the claim=true
+	# bucket claims each device once up front and deletes it once at the end
+	# (run_tests_pool), and remote self-claim=false tests run on dedicated unclaimed
+	# containers whose own test script does the claiming. Only the legacy
+	# single-device path (PVTEST_AE unset) still claims per test here.
+	if [ -z "$PVTEST_AE" ]; then
+		handle_self_claim || return 1
+	fi
 
 	# No device reset between tests: each test's initial revision is built fresh
 	# from the pristine factory clone (see below) and posted, so the device
@@ -573,11 +656,11 @@ teardown_test() {
 		applied_usrmeta_keys=
 	fi
 
-	# If this test claimed the device (self-claim=true), delete it from the Hub and
-	# reset the appengine to a registered-but-unclaimed baseline (state=claim).
-	# Symmetric with the setup unclaim path: deleting alone would leave the device
-	# polling with a dead device-id, so the next test must start from a fresh
-	# re-registration.
+	# Legacy single-device path only: if this test claimed the device per-test
+	# (handle_self_claim, PVTEST_AE unset), delete it from the Hub and reset to a
+	# registered-but-unclaimed baseline (state=claim). In pool mode claimed_device
+	# is never set here — the claim lifecycle is managed per phase in run_tests_pool
+	# (claim once / delete once per device), so this block is a no-op.
 	if [ -n "$claimed_device" ]; then
 		pvtest_log INFO "${_p}deleting self-claimed device $claimed_device and resetting to unclaimed"
 		_dev_delete_and_reset "$claimed_device"
@@ -842,33 +925,89 @@ run_tests_pool() {
 	rm -f "$failed_flag"
 
 	# Phase 2: the pool is homogeneous (one policy), so every ready device shares
-	# the same stored config — the first ready device represents the pool. For
-	# each selected test, match its required-config against the pool once: if it
-	# matches, queue it for dispatch across the -p devices; otherwise emit a
-	# SKIPPED result line so the host can merge results across policies.
+	# the same stored config — the first ready device represents the pool. Match
+	# each selected test's required-config against the pool (subset match); a
+	# non-matching test emits a SKIPPED line so the host can merge across policies.
+	#
+	# Claim model: a REMOTE pool is claimed ONCE per device up front iff at least one
+	# matched test is self-claim=true; all matched tests then run on the claimed pool
+	# and each device is deleted from the Hub once at the end. self-claim=false remote
+	# tests (auto-claim, manual-claim) are routed to their own dedicated policy pools
+	# (a PV_LXC_LOG_LEVEL marker in their required-config that the self-claim=true
+	# tests pin to the default, so they never match those pools); such a pool has no
+	# self-claim=true test, so it is left UNCLAIMED and the test's own script does its
+	# claim and cleanup. Local pools never claim.
 	local pool_conf
 	pool_conf=$(_ae_conf_file "$(printf '%s\n' "$ready_aes" | head -n1)")
+	local pool_remote=no
+	[ "$(_conf_value PV_CONTROL_REMOTE "$pool_conf")" = "1" ] && pool_remote=yes
 
-	local run_tests="" json_path
+	local run_tests="" json_path want_claim=no
 	for json_path in $test_json_list; do
-		local _env _tid
+		local _env _tid _sc
 		_env=$(jq -r '.setup."required-config" // ""' "$json_path")
 		_tid=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
-		if device_matches_env "$_env" "$pool_conf"; then
-			run_tests="${run_tests:+$run_tests }$json_path"
-		else
+		if ! device_matches_env "$_env" "$pool_conf"; then
 			pvtest_log INFO "'$_tid' SKIPPED (no matching runner for required-config: ${_env:-<any>})"
+			continue
 		fi
+		run_tests="${run_tests:+$run_tests }$json_path"
+		_sc=$(jq -r '.setup."self-claim"' "$json_path")
+		[ "$_sc" = "true" ] && want_claim=yes
 	done
 
-	if [ -n "$run_tests" ]; then
+	if [ -z "$run_tests" ]; then
+		: # nothing matched this pool
+	elif [ "$pool_remote" = yes ] && [ "$want_claim" = yes ]; then
+		# Claim each ready device once, run all matched tests on the claimed pool,
+		# then delete each claimed device from the Hub once.
+		pvtest_log INFO "phase claim=true: claiming $n_ready device(s) once before dispatch"
+		local claimed_list_file claimed_lock_file
+		claimed_list_file=$(mktemp /tmp/pvtest_claimed.XXXXXX)
+		claimed_lock_file="${claimed_list_file}.lock"
+		for ae in $ready_aes; do
+			(
+				export PVTEST_EXEC="$(_ae_exec_cmd "$ae")"
+				export PVTEST_HOST="$(_ae_host "$ae")"
+				export PVTEST_AE="$ae"
+				if _dev_claim; then
+					(flock -x 9; printf '%s\n' "$ae" >> "$claimed_list_file") 9>"$claimed_lock_file"
+				else
+					pvtest_log ERROR "[device $ae] claim failed; excluded from dispatch"
+				fi
+			) &
+		done
+		wait
+		local claimed_aes
+		claimed_aes=$(cat "$claimed_list_file")
+		rm -f "$claimed_list_file" "$claimed_lock_file"
+
+		if [ -z "$claimed_aes" ]; then
+			pvtest_log ERROR "no devices could be claimed; failing claim=true tests"
+			touch "$failed_flag"
+		else
+			pvtest_log INFO "phase claim=true: dispatching $(printf '%s\n' $run_tests | grep -c .) test(s) across claimed device(s): $claimed_aes"
+			dispatch_tests "$claimed_aes" "$run_tests"
+			for ae in $claimed_aes; do
+				(
+					export PVTEST_EXEC="$(_ae_exec_cmd "$ae")"
+					export PVTEST_HOST="$(_ae_host "$ae")"
+					export PVTEST_AE="$ae"
+					_dev_delete_only
+				) &
+			done
+			wait
+		fi
+	else
+		# Unclaimed dispatch: local pools, or a remote pool dedicated to
+		# self-claim=false tests (the test's own script claims and cleans up).
 		pvtest_log INFO "dispatching $(printf '%s\n' $run_tests | grep -c .) test(s) across $n_ready device(s): $ready_aes"
 		dispatch_tests "$ready_aes" "$run_tests"
 	fi
 
 	# All tests done: send a lenient shutdown to all devices. Skipped when running
-	# from the tester console; the console exit path handles shutdown after the
-	# user types exit/Ctrl-D.
+	# from the tester console; the console exit path handles shutdown after the user
+	# types exit/Ctrl-D.
 	if [ -z "${PVTEST_CONSOLE:-}" ]; then
 		for ae in $ready_aes; do
 			(
