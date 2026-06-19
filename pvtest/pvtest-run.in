@@ -145,12 +145,20 @@ _ae_pvr_home() {
 # claim, dev delete) must go through here so concurrent pool slots never share a
 # ~/.pvr config.
 _pvr_auth() {
+	# Hub operations require authentication. Without PH creds — or if login fails —
+	# do NOT fall through to `pvr "$@"`: an unauthenticated pvr attempts an
+	# interactive browser login that hangs ~5 min before a misleading 401.
+	if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
+		pvtest_log ERROR "PH_USER/PH_PASS not set; refusing unauthenticated 'pvr $*'"
+		return 1
+	fi
 	local home; home="$(_ae_pvr_home)"
 	mkdir -p "$home" 2>/dev/null
 	(
 		export HOME="$home"
-		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
-			PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1
+		if ! PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1; then
+			pvtest_log ERROR "pvr login failed; refusing 'pvr $*'"
+			exit 1
 		fi
 		pvr "$@"
 	)
@@ -979,6 +987,12 @@ run_tests_pool() {
 
 	if [ -z "$run_tests" ]; then
 		: # nothing matched this pool
+	elif [ "$pool_remote" = yes ] && [ "$want_claim" = yes ] && { [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; }; then
+		# No Hub creds: self-claim=true tests can't run remotely. Skip them cleanly
+		# (matches the per-test check) instead of attempting an unauthenticated claim.
+		for json_path in $run_tests; do
+			pvtest_log INFO "'$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')' SKIPPED (PH_USER/PH_PASS not set)"
+		done
 	elif [ "$pool_remote" = yes ] && [ "$want_claim" = yes ]; then
 		# Claim each ready device once, run all matched tests on the claimed pool,
 		# then delete each claimed device from the Hub once.
