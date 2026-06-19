@@ -676,8 +676,24 @@ exec_test() {
 		return 1
 	fi
 
+	# The test script runs in the tester, not on the device, so its pvr/curl-to-Hub
+	# calls need a logged-in ~/.pvr. Point HOME at this device's isolated pvr home
+	# (per-device, so parallel pool slots never race on ~/.pvr) and log in there, so
+	# no remote test script has to call `pvr login` itself.
+	local pvrhome=""
+	if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+		pvrhome="$(_ae_pvr_home)"
+		mkdir -p "$pvrhome" 2>/dev/null
+		HOME="$pvrhome" PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" \
+			pvr login > /dev/null 2>&1 \
+			|| pvtest_log WARN "${_p}pvr login failed for test script"
+	fi
+
 	tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
 	{
+		# Run with HOME at the pre-authenticated pvr home so the script's pvr/curl
+		# Hub calls (and "$HOME/.pvr/auth.json" reads) work without an explicit login.
+		[ -n "$pvrhome" ] && printf 'export HOME=%s\n' "$pvrhome"
 		# Source utils so pvcurl/pvcontrol/pventer route via PVTEST_EXEC in the
 		# test script subprocess (shell functions don't propagate across processes).
 		echo ". @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils"
