@@ -493,10 +493,20 @@ handle_self_claim() {
 
 # Apply per-test runtime metadata (setup.usrmeta, same KEY=VALUE format as env),
 # one key at a time. Applied keys are recorded for removal in teardown.
+#
+# usrmeta keys are delivered to a real device as Hub *user-meta*. A remote device
+# (PV_CONTROL_REMOTE_ALWAYS=1) syncs user-meta down from the Hub and would override
+# — and wipe — any value set only locally. So set each key BOTH locally (immediate
+# effect for the test body) and on the Hub (survives the sync). The Hub set is
+# best-effort: self-claim=false tests do not own the device yet and simply skip it.
 apply_usrmeta() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
 	applied_usrmeta_keys=
 	[ -n "$usrmeta" ] || return 0
+	local device_id=""
+	if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+		device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+	fi
 	local kv k v
 	for kv in $usrmeta; do
 		k=${kv%%=*}
@@ -504,6 +514,10 @@ apply_usrmeta() {
 		[ -n "$k" ] || continue
 		pvtest_log INFO "${_p}usrmeta save $k=$v"
 		pv_ctrl usrmeta save "$k" "$v"
+		if [ -n "$device_id" ]; then
+			_pvr_auth device set "$device_id" "$k=$v" > /dev/null 2>&1 \
+				|| pvtest_log WARN "${_p}could not set Hub user-meta $k=$v (device not owned yet?)"
+		fi
 		applied_usrmeta_keys="${applied_usrmeta_keys:+$applied_usrmeta_keys }$k"
 	done
 }
@@ -654,12 +668,20 @@ setup_test() {
 teardown_test() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
 
-	# Remove any usrmeta applied for this test so the next test starts clean.
+	# Remove any usrmeta applied for this test so the next test starts clean —
+	# locally and on the Hub (clear the value so a remote device's next sync does
+	# not re-apply a stale override). Hub clear is best-effort.
 	if [ -n "$applied_usrmeta_keys" ]; then
+		local device_id=""
+		if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+			device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+		fi
 		local k
 		for k in $applied_usrmeta_keys; do
 			pvtest_log INFO "${_p}usrmeta delete $k"
 			pv_ctrl usrmeta delete "$k"
+			[ -n "$device_id" ] && \
+				_pvr_auth device set "$device_id" "$k=" > /dev/null 2>&1
 		done
 		applied_usrmeta_keys=
 	fi
