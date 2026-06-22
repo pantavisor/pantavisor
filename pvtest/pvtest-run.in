@@ -1048,6 +1048,15 @@ run_tests_pool() {
 
 		if [ -z "$claimed_aes" ]; then
 			pvtest_log ERROR "no devices could be claimed; failing claim=true tests"
+			# Emit a per-test ABORTED line for each matched test so the host merge
+			# attributes them to THIS (remote) policy. Without it the only records
+			# are the cross-policy SKIPPED lines, which the merge collapses onto the
+			# first policy (local-disabled). ABORTED outranks SKIPPED and is honest:
+			# the device matched but setup/claim aborted before the test could run.
+			for json_path in $run_tests; do
+				_tid=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
+				pvtest_log ERROR "'$_tid' ABORTED (claim failed: no devices could be claimed)"
+			done
 			touch "$failed_flag"
 		else
 			pvtest_log INFO "phase claim=true: dispatching $(printf '%s\n' $run_tests | grep -c .) test(s) across claimed device(s): $claimed_aes"
