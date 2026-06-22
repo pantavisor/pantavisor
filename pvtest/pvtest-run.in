@@ -96,7 +96,10 @@ _ae_exec_cmd() {
 	if [ -n "$PVTEST_EXEC" ]; then
 		printf '%s' "$PVTEST_EXEC"
 	elif [ -n "$PVTEST_SSH_KEY" ]; then
-		printf 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i %s -p 8222 _pv_@%s' \
+		# ConnectTimeout/ServerAlive/BatchMode bound each attempt to a few seconds so
+		# that while the device is rebooting (crash tests) a poll fails fast instead
+		# of hanging on a dead TCP connect — keeping wait_for_value's 1s cadence real.
+		printf 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2 -i %s -p 8222 _pv_@%s' \
 			"$PVTEST_SSH_KEY" "$ae"
 	else
 		printf ''

@@ -171,11 +171,20 @@ exec_run() {
 		pvtest_log DEBUG "pantavisor exited"
 
 		set -e
-		# exit 3: pantavisor powered off gracefully (pv_shutdown POWEROFF)
-		# non-zero non-valgrind: crashed or killed — don't restart (valgrind's own exit codes are unreliable)
-		if [ "$shutdown" -eq 1 ] \
-		   || [ "$_pv_exit" -eq 3 ] \
-		   || { [ "$valgrind" != "true" ] && [ "$_pv_exit" -ne 0 ]; }; then
+		# Intentional stops — leave the loop so the container exits:
+		#   exit 3:      pantavisor powered off gracefully (pv_shutdown POWEROFF)
+		#   shutdown==1: SIGINT/SIGTERM to the wrapper (Docker stop / Ctrl-C)
+		if [ "$shutdown" -eq 1 ] || [ "$_pv_exit" -eq 3 ]; then
+			break
+		fi
+		# Killed by a signal (exit >= 128) == a crash: reboot the device like a real
+		# target by falling through to the restart_delay + loop. The kill-based crash
+		# pvtests rely on this. Benign non-zero exits (startup/config errors) still
+		# fail fast so a broken build does not reboot-loop silently; valgrind keeps
+		# restarting on non-zero as before (its own exit codes are unreliable).
+		if [ "$_pv_exit" -ge 128 ]; then
+			pvtest_log WARN "pantavisor crashed (signal $((_pv_exit - 128))); rebooting device..."
+		elif [ "$valgrind" != "true" ] && [ "$_pv_exit" -ne 0 ]; then
 			break
 		fi
 		if [ "$interrupt" = 'true' ]; then

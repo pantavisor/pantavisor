@@ -31,6 +31,12 @@ pvcontrol() { _pv_exec pvcontrol "$@"; }
 pventer()   { _pv_exec pventer   "$@"; }
 pvcurl()    { _pv_exec pvcurl    "$@"; }
 
+# Hard-crash the target's pantavisor (SIGKILL, routed via PVTEST_EXEC like every
+# other device command). SIGKILL — not SIGTERM — so PV cannot catch it and shut
+# down gracefully; pv-appengine then reboots the device. SSH and pv-ctrl drop until
+# the reboot completes, so callers must wait for pantavisor.status READY afterwards.
+crash_pv() { _pv_exec killall -9 pantavisor; }
+
 # wait for a cmd stdout
 wait_for_value() {
 	local cmd="$1"
