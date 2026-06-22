@@ -693,10 +693,16 @@ static int pv_usermeta_parse(struct pantavisor *pv, char *buf)
 		strncpy(value, buf + (*key_i + 1)->start, n);
 		pv_str_unescape_to_ascii(value, n);
 
-		// add or update metadata
-		// primitives with value 'null' have value NULL
-		if ((*key_i + 1)->type != JSMN_PRIMITIVE ||
-		    strcmp("null", value))
+		// A 'null' primitive or an empty string value means the key has
+		// been cleared on the Hub. Treat it as a deletion: remove the
+		// user metadata pair so any config override it held is reverted
+		// to the previous value, instead of storing an empty value that
+		// would coerce numeric config keys to 0.
+		bool is_null = ((*key_i + 1)->type == JSMN_PRIMITIVE) &&
+			       !strcmp("null", value);
+		if (is_null || value[0] == '\0')
+			pv_metadata_rm_usermeta(key);
+		else
 			pv_metadata_add_usermeta(key, value);
 
 		// free intermediates
