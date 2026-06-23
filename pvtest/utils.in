@@ -152,6 +152,34 @@ wait_for_new_revision() {
 	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60
 }
 
+# Wait until the device has settled onto its CURRENT revision: pv-ctrl
+# responsive, current revision terminal-good (DONE for factory/boot, UPDATED for
+# an applied local revision) and — when require_ready=true — pantavisor.status
+# READY (best effort; a BSP-only factory revision never reaches READY). Used to
+# drain the previous test's activity before installing the next test's initial
+# revision, so a test never aborts for the previous test's turbulence. Transient
+# ERROR/rollback on the current step is NOT treated as terminal here: keep
+# waiting until it settles to DONE/UPDATED or the timeout elapses.
+wait_for_current_settled() {
+	local require_ready="${1:-true}"
+	local term_timeout="${2:-180}" ready_timeout="${3:-120}"
+
+	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120 || return 1
+
+	local counter=0 st
+	while [ $counter -lt $term_timeout ]; do
+		st=$(pvcontrol steps show-progress current 2>/dev/null | jq -r '.status' 2>/dev/null)
+		case "$st" in DONE|UPDATED) break ;; esac
+		sleep 1
+		counter=$((counter + 1))
+	done
+	[ $counter -lt $term_timeout ] || return 1
+
+	[ "$require_ready" = "true" ] || return 0
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "$ready_timeout" || true
+	return 0
+}
+
 # wait for Pantavisor to get to a given revision and update state
 wait_for_revision_state() {
 	local control_container="$1"

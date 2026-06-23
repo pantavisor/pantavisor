@@ -634,6 +634,19 @@ setup_test() {
 	local rev_name
 	rev_name="locals/$(printf '%s' "$test_id" | tr '/' '_' | tr '-' '_')"
 
+	# Drain any leftover activity from the PREVIOUS test before posting this test's
+	# initial revision: wait for pv-ctrl, the current revision to reach DONE/UPDATED
+	# and (unless on BSP-only factory) READY. A previous test that ended in a
+	# rollback storm can leave the device briefly busy; waiting here means we do not
+	# abort THIS test for the previous test's mess.
+	local _cur_rev _factory_rev="" _need_ready=true
+	[ -f "$factory_dir.rev" ] && _factory_rev=$(cat "$factory_dir.rev" 2>/dev/null)
+	_cur_rev=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantavisor.revision"] // empty')
+	[ -n "$_factory_rev" ] && [ "$_cur_rev" = "$_factory_rev" ] && _need_ready=false
+	pvtest_log INFO "${_p}waiting for device to settle from previous test (require_ready=$_need_ready) [via pvcontrol]..."
+	wait_for_current_settled "$_need_ready" \
+		|| pvtest_log WARN "${_p}device did not fully settle before initial revision; continuing"
+
 	# curl returns 52 (empty reply) when the pvr endpoint is up but returns no
 	# body to a bare GET — that is normal. Accept 0 or 52 as "server ready".
 	pvtest_log DEBUG "${_p}waiting for pvr HTTP endpoint [via pvr HTTP]"
