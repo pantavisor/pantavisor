@@ -195,6 +195,17 @@ wait_for_revision_state() {
 	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 120 || return 1
 }
 
+# Post the current pvr checkout to the device's Hub trail and print the integer
+# revision the Hub assigned (parsed from `pvr post` output). The Hub numbers
+# revisions sequentially per trail and the remote suite shares one trail across
+# tests, so the rev is NOT fixed — always capture it here, never hardcode it.
+# Usage: rev=$(pvr_post_rev -m "msg" "$trail_url")
+pvr_post_rev() {
+	pvr post "$@" 2>&1 \
+		| sed -n 's/.*Successfully posted Revision \([0-9][0-9]*\).*/\1/p' \
+		| head -n1
+}
+
 # wait for Pantahub to get to a given status
 wait_for_pantahub_state() {
 	local control_container="$1"
