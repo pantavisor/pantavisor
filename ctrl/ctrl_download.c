@@ -24,6 +24,8 @@
 #include "ctrl_util.h"
 #include "ctrl_file.h"
 
+#include "event/event.h"
+
 #include <event2/event.h>
 #include <event2/http.h>
 #include <event2/buffer.h>
@@ -151,6 +153,7 @@ static void crtl_download_set_events(struct pv_ctrl_download *dl)
 
 	dl->timer = evtimer_new(evhttp_connection_get_base(con),
 				ctrl_download_send_cb, dl);
+	event_priority_set(dl->timer, PV_EVENT_PRIORITY_LOW);
 
 	struct timeval tv = { .tv_sec = 0, .tv_usec = 1 };
 	event_add(dl->timer, &tv);
@@ -185,7 +188,8 @@ int pv_ctrl_download_start(struct evhttp_request *req, const char *path,
 	dl->total = st.st_size;
 	dl->chunk_size = chunk_size;
 
-	evhttp_request_set_on_complete_cb(req, ctrl_download_on_complete_cb, dl);
+	evhttp_request_set_on_complete_cb(req, ctrl_download_on_complete_cb,
+					  dl);
 	crtl_download_set_events(dl);
 
 	return 0;
