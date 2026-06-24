@@ -31,11 +31,16 @@ pvcontrol() { _pv_exec pvcontrol "$@"; }
 pventer()   { _pv_exec pventer   "$@"; }
 pvcurl()    { _pv_exec pvcurl    "$@"; }
 
-# Hard-crash the target's pantavisor (SIGKILL, routed via PVTEST_EXEC like every
-# other device command). SIGKILL — not SIGTERM — so PV cannot catch it and shut
-# down gracefully; pv-appengine then reboots the device. SSH and pv-ctrl drop until
-# the reboot completes, so callers must wait for pantavisor.status READY afterwards.
-crash_pv() { _pv_exec killall -9 pantavisor; }
+# Crash the target's pantavisor (SIGTERM, routed via PVTEST_EXEC like every other
+# device command). On a real target a crash reboots the whole device and PV cleans
+# everything up on the way down. SIGKILL on the appengine model instead leaves the
+# containers running with now-stale bind-mounted pv-ctrl sockets (orphaned loggers,
+# a dead /pantavisor/pv-ctrl in pvr-sdk), which wedges the next test's pvr post. So
+# we send SIGTERM: in appengine mode PV catches it and issues a graceful *reboot*
+# (tears down containers/mounts cleanly, then pv-appengine relaunches it) — mirroring
+# a real crash-reboot. SSH and pv-ctrl drop until the reboot completes, so callers
+# must wait for pantavisor.status READY afterwards.
+crash_pv() { _pv_exec killall pantavisor; }
 
 # wait for a cmd stdout
 wait_for_value() {

@@ -177,11 +177,16 @@ exec_run() {
 		if [ "$shutdown" -eq 1 ] || [ "$_pv_exit" -eq 3 ]; then
 			break
 		fi
-		# Killed by a signal (exit >= 128) == a crash: reboot the device like a real
-		# target by falling through to the restart_delay + loop. The kill-based crash
-		# pvtests rely on this. Benign non-zero exits (startup/config errors) still
-		# fail fast so a broken build does not reboot-loop silently; valgrind keeps
-		# restarting on non-zero as before (its own exit codes are unreliable).
+		# Reboot the device like a real target by falling through to the restart_delay
+		# + loop, in two crash cases:
+		#   - exit >= 128: pantavisor killed by an uncaught signal (segfault, SIGKILL).
+		#   - exit 0 via a graceful reboot: crash_pv's SIGTERM is caught in appengine
+		#     mode and turned into pv_issue_reboot(), so PV tears its containers down
+		#     cleanly (no stale pv-ctrl socket mounts) and returns 0 — the fall-through
+		#     below relaunches it. This is the path the kill-based crash pvtests rely on.
+		# Benign non-zero exits (startup/config errors) still fail fast so a broken
+		# build does not reboot-loop silently; valgrind keeps restarting on non-zero as
+		# before (its own exit codes are unreliable).
 		if [ "$_pv_exit" -ge 128 ]; then
 			pvtest_log WARN "pantavisor crashed (signal $((_pv_exit - 128))); rebooting device..."
 		elif [ "$valgrind" != "true" ] && [ "$_pv_exit" -ne 0 ]; then

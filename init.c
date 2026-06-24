@@ -199,7 +199,18 @@ static void shell_handler(int signal)
 	if (!pv)
 		return;
 
-	pv_issue_poweroff();
+	// In appengine mode Pantavisor is not PID 1, so a graceful poweroff
+	// (exit 3) makes the pv-appengine wrapper leave its loop and the
+	// container exits. A SIGTERM there models a crash that must reboot the
+	// device: issue a graceful reboot instead, so PV tears down its
+	// containers cleanly (no stale bind-mounted pv-ctrl sockets) and the
+	// wrapper relaunches it. SIGINT (interactive Ctrl-C) and every other
+	// mode keep the poweroff behaviour.
+	if (signal == SIGTERM &&
+	    pv_config_get_system_init_mode() == IM_APPENGINE)
+		pv_issue_reboot();
+	else
+		pv_issue_poweroff();
 }
 
 static void early_spawns()
