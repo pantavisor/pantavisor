@@ -265,15 +265,9 @@ if [ "$manual" = "true" ]; then
 	echo "To run Pantavisor with stdout logs:"
 	echo "pv-appengine -i -e \"PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct\""
 	echo ""
-	echo "Available policies (PV_POLICY):"
-	for _pol in @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/policies/*.config; do
-		[ -e "$_pol" ] || { echo "  (none installed)"; break; }
-		_pol=${_pol##*/}
-		echo "  - ${_pol%.config}"
-	done
-	echo ""
-	echo "To run Pantavisor with a specific policy:"
-	echo "pv-appengine -i -e \"PV_POLICY=pv-appengine-local-disabled PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct\""
+	echo "Pantavisor reads PV_* config keys straight from the environment, so pass a"
+	echo "device's required-config directly, e.g.:"
+	echo "pv-appengine -i -e \"PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct\""
 	echo ""
 	exec bash
 fi

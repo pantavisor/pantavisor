@@ -143,6 +143,26 @@ _ae_pvr_home() {
 	printf '/tmp/pvtest_pvrhome_%s' "${ae_safe:-default}"
 }
 
+# Claim role ("yes"/"no") for appengine $1, parsed from PVTEST_AE_CLAIM
+# ("ae1=yes ae2=no ..."), the per-runner claim role the host (test.docker.sh)
+# assigns from each runner-type's needs-claim. Defaults to "no" (never claim).
+_ae_claim_role() {
+	local ae="$1" kv
+	for kv in $PVTEST_AE_CLAIM; do
+		case "$kv" in
+			"${ae}="*) printf '%s' "${kv#*=}"; return ;;
+		esac
+	done
+	printf 'no'
+}
+
+# Normalize a required-config string to a stable runner-type signature: drop empty
+# tokens and any PV_LXC_LOG_LEVEL marker (legacy discriminator), sort the KEY=VALUE
+# tokens. Mirrors normalize_reqcfg in test.docker.sh.
+_reqcfg_norm() {
+	printf '%s\n' $1 | grep -v '^$' | grep -v '^PV_LXC_LOG_LEVEL=' | sort | tr '\n' ' ' | sed 's/ *$//'
+}
+
 # Run a pvr command authenticated against the Hub in this device's isolated HOME,
 # logging in first when PH creds are set. All self-claim Hub operations (login,
 # claim, dev delete) must go through here so concurrent pool slots never share a
@@ -955,16 +975,21 @@ dispatch_tests() {
 	exec 7>&-
 }
 
-# Run all selected tests across a HOMOGENEOUS pool of N appengines (one policy).
-# The host (test.docker.sh) starts one policy's -p containers at a time and
-# invokes pvtest-run per policy, so every device here shares the same stored
-# config. Each appengine is initialised in parallel (Phase 1). A test whose
-# required-config matches the pool is dispatched over the -p devices (FIFO,
-# with retries); a test that does not match emits a SKIPPED result so the host
-# can merge results across policies (Phase 2).
+# Run all selected tests across a HETEROGENEOUS fleet of N appengines. The host
+# (test.docker.sh) boots one wave's runners — each configured for a runner-type
+# (its required-config, as PV_* env) and tagged with a claim role in
+# PVTEST_AE_CLAIM — and passes the exact test list in PVTEST_JSON_LIST.
+#
+# Tests are grouped into the SAME runner-types (normalized required-config +
+# needs-claim). Each ready device is assigned to the type whose config it matches
+# AND whose claim role it carries (so two same-config pools — one claimed for
+# self-claim=true, one unclaimed for the self-claim=false claim tests — stay
+# distinct without any PV_LXC_LOG_LEVEL marker). For each type: claim its devices
+# once up front if the type needs claiming, dispatch its tests across its devices
+# (one FIFO per type, all types in parallel), then delete the claimed devices.
+# Every test runs exactly once.
 run_tests_pool() {
 	local max_retries="${MAX_RETRIES:-0}"
-	local overall_result=0
 
 	# Phase 1: initialise all devices in parallel; collect ready ones.
 	local ready_list_file
@@ -994,112 +1019,132 @@ run_tests_pool() {
 		return 1
 	fi
 
-	pvtest_log INFO "pool ready: $n_ready device(s): $ready_aes"
+	pvtest_log INFO "pool ready: $n_ready device(s): $(echo $ready_aes)"
 
 	local failed_flag
 	failed_flag=$(mktemp /tmp/pvtest_failed.XXXXXX)
 	rm -f "$failed_flag"
 
-	# Phase 2: the pool is homogeneous (one policy), so every ready device shares
-	# the same stored config — the first ready device represents the pool. Match
-	# each selected test's required-config against the pool (subset match); a
-	# non-matching test emits a SKIPPED line so the host can merge across policies.
-	#
-	# Claim model: a REMOTE pool is claimed ONCE per device up front iff at least one
-	# matched test is self-claim=true; all matched tests then run on the claimed pool
-	# and each device is deleted from the Hub once at the end. self-claim=false remote
-	# tests (auto-claim, manual-claim) are routed to their own dedicated policy pools
-	# (a PV_LXC_LOG_LEVEL marker in their required-config that the self-claim=true
-	# tests pin to the default, so they never match those pools); such a pool has no
-	# self-claim=true test, so it is left UNCLAIMED and the test's own script does its
-	# claim and cleanup. Local pools never claim.
-	local pool_conf
-	pool_conf=$(_ae_conf_file "$(printf '%s\n' "$ready_aes" | head -n1)")
-	local pool_remote=no
-	[ "$(_conf_value PV_CONTROL_REMOTE "$pool_conf")" = "1" ] && pool_remote=yes
-
-	local run_tests="" json_path want_claim=no
+	# Phase 2: group the selected tests into runner-types under a temp dir, keyed
+	# by a checksum of "<needs-claim>|<normalized required-config>". Per type we
+	# store its tests, its normalized config, and its claim role.
+	local tpool
+	tpool=$(mktemp -d /tmp/pvtest_pool.XXXXXX)
+	local json_path
 	for json_path in $test_json_list; do
-		local _env _tid _sc
-		_env=$(jq -r '.setup."required-config" // ""' "$json_path")
-		_tid=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
-		if ! device_matches_env "$_env" "$pool_conf"; then
-			pvtest_log INFO "'$_tid' SKIPPED (no matching runner for required-config: ${_env:-<any>})"
-			continue
+		local _req _sc _nc _tok
+		_req=$(_reqcfg_norm "$(jq -r '.setup."required-config" // ""' "$json_path")")
+		_sc=$(jq -r '.setup."self-claim" // "false"' "$json_path")
+		case " $_req " in
+			*" PV_CONTROL_REMOTE=1 "*) [ "$_sc" = "true" ] && _nc=yes || _nc=no ;;
+			*) _nc=no ;;
+		esac
+		_tok=$(printf '%s' "${_nc}|${_req}" | cksum | cut -d' ' -f1)
+		printf '%s\n' "$json_path" >> "$tpool/tests.$_tok"
+		if [ ! -f "$tpool/req.$_tok" ]; then
+			printf '%s' "$_req" > "$tpool/req.$_tok"
+			printf '%s' "$_nc" > "$tpool/role.$_tok"
 		fi
-		run_tests="${run_tests:+$run_tests }$json_path"
-		_sc=$(jq -r '.setup."self-claim"' "$json_path")
-		[ "$_sc" = "true" ] && want_claim=yes
 	done
 
-	if [ -z "$run_tests" ]; then
-		: # nothing matched this pool
-	elif [ "$pool_remote" = yes ] && [ "$want_claim" = yes ] && { [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; }; then
-		# No Hub creds: self-claim=true tests can't run remotely. Skip them cleanly
-		# (matches the per-test check) instead of attempting an unauthenticated claim.
-		pvtest_log ERROR "PH_USER/PH_PASS not set but required by self-claim test(s)"
-		for json_path in $run_tests; do
-			pvtest_log INFO "'$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')' SKIPPED (PH_USER/PH_PASS not set)"
+	# Assign each ready device to the most-specific type it matches (by config),
+	# constrained to types whose claim role equals the device's role. A device
+	# that matches no type is left out (and shut down at the end).
+	local f ae
+	for ae in $ready_aes; do
+		local _role _conf _best="" _bestkeys=-1 _tok _treq _trole _k
+		_role=$(_ae_claim_role "$ae")
+		_conf=$(_ae_conf_file "$ae")
+		for f in "$tpool"/req.*; do
+			[ -e "$f" ] || continue
+			_tok=${f##*/req.}
+			_trole=$(cat "$tpool/role.$_tok")
+			[ "$_trole" = "$_role" ] || continue
+			_treq=$(cat "$f")
+			device_matches_env "$_treq" "$_conf" || continue
+			_k=$(printf '%s\n' $_treq | grep -c .)
+			if [ "$_k" -gt "$_bestkeys" ]; then _bestkeys=$_k; _best=$_tok; fi
 		done
-	elif [ "$pool_remote" = yes ] && [ "$want_claim" = yes ]; then
-		# Claim each ready device once, run all matched tests on the claimed pool,
-		# then delete each claimed device from the Hub once.
-		pvtest_log INFO "phase claim=true: claiming $n_ready device(s) once before dispatch"
-		local claimed_list_file claimed_lock_file
-		claimed_list_file=$(mktemp /tmp/pvtest_claimed.XXXXXX)
-		claimed_lock_file="${claimed_list_file}.lock"
-		for ae in $ready_aes; do
-			(
-				export PVTEST_EXEC="$(_ae_exec_cmd "$ae")"
-				export PVTEST_HOST="$(_ae_host "$ae")"
-				export PVTEST_AE="$ae"
-				if _dev_claim; then
-					(flock -x 9; printf '%s\n' "$ae" >> "$claimed_list_file") 9>"$claimed_lock_file"
-				else
-					pvtest_log ERROR "[device $ae] claim failed; excluded from dispatch"
-				fi
-			) &
-		done
-		wait
-		local claimed_aes
-		claimed_aes=$(cat "$claimed_list_file")
-		rm -f "$claimed_list_file" "$claimed_lock_file"
-
-		if [ -z "$claimed_aes" ]; then
-			pvtest_log ERROR "no devices could be claimed; failing claim=true tests"
-			# Emit a per-test ABORTED line for each matched test so the host merge
-			# attributes them to THIS (remote) policy. Without it the only records
-			# are the cross-policy SKIPPED lines, which the merge collapses onto the
-			# first policy (local-disabled). ABORTED outranks SKIPPED and is honest:
-			# the device matched but setup/claim aborted before the test could run.
-			for json_path in $run_tests; do
-				_tid=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
-				pvtest_log ERROR "'$_tid' ABORTED (claim failed: no devices could be claimed)"
-			done
-			touch "$failed_flag"
+		if [ -n "$_best" ]; then
+			printf '%s\n' "$ae" >> "$tpool/devs.$_best"
 		else
-			pvtest_log INFO "phase claim=true: dispatching $(printf '%s\n' $run_tests | grep -c .) test(s) across claimed device(s): $claimed_aes"
-			dispatch_tests "$claimed_aes" "$run_tests"
-			for ae in $claimed_aes; do
-				(
-					export PVTEST_EXEC="$(_ae_exec_cmd "$ae")"
-					export PVTEST_HOST="$(_ae_host "$ae")"
-					export PVTEST_AE="$ae"
-					_dev_delete_only
-				) &
-			done
-			wait
+			pvtest_log WARN "device $ae (claim=$_role) matched no runner-type; excluding"
 		fi
-	else
-		# Unclaimed dispatch: local pools, or a remote pool dedicated to
-		# self-claim=false tests (the test's own script claims and cleans up).
-		pvtest_log INFO "dispatching $(printf '%s\n' $run_tests | grep -c .) test(s) across $n_ready device(s): $ready_aes"
-		dispatch_tests "$ready_aes" "$run_tests"
-	fi
+	done
 
-	# All tests done: send a lenient shutdown to all devices. Skipped when running
-	# from the tester console; the console exit path handles shutdown after the user
-	# types exit/Ctrl-D.
+	# Phase 3: per type — claim role=yes devices once (in parallel), dispatch the
+	# type's tests across its devices (its own FIFO, in a background subshell so
+	# every type's FD 7 is independent), then delete the claimed devices once.
+	local tf _type_pids=""
+	for tf in "$tpool"/tests.*; do
+		[ -e "$tf" ] || continue
+		local _tok=${tf##*/tests.}
+		local _trole; _trole=$(cat "$tpool/role.$_tok")
+		local _tests; _tests=$(tr '\n' ' ' < "$tf")
+		local _devs=""; [ -f "$tpool/devs.$_tok" ] && _devs=$(tr '\n' ' ' < "$tpool/devs.$_tok")
+
+		if [ -z "$_devs" ]; then
+			for json_path in $_tests; do
+				pvtest_log INFO "'$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')' SKIPPED (no matching runner)"
+			done
+			continue
+		fi
+		if [ "$_trole" = yes ] && { [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; }; then
+			pvtest_log ERROR "PH_USER/PH_PASS not set but required by self-claim test(s)"
+			for json_path in $_tests; do
+				pvtest_log INFO "'$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')' SKIPPED (PH_USER/PH_PASS not set)"
+			done
+			continue
+		fi
+
+		(
+			local run_devs="$_devs" _ae
+			# Claim this type's devices once (remote self-claim=true types only).
+			if [ "$_trole" = yes ]; then
+				local clf="$tpool/claimed.$_tok"
+				: > "$clf"
+				pvtest_log INFO "claim phase (type $_tok): claiming $(printf '%s\n' $_devs | grep -c .) device(s)"
+				for _ae in $_devs; do
+					(
+						export PVTEST_EXEC="$(_ae_exec_cmd "$_ae")"
+						export PVTEST_HOST="$(_ae_host "$_ae")"
+						export PVTEST_AE="$_ae"
+						if _dev_claim; then
+							(flock -x 9; printf '%s\n' "$_ae" >> "$clf") 9>"$clf.lock"
+						else
+							pvtest_log ERROR "[device $_ae] claim failed; excluded from dispatch"
+						fi
+					) &
+				done
+				wait
+				run_devs=$(tr '\n' ' ' < "$clf"); rm -f "$clf" "$clf.lock"
+			fi
+
+			if [ -z "$run_devs" ]; then
+				for json_path in $_tests; do
+					pvtest_log ERROR "'$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')' ABORTED (claim failed: no devices could be claimed)"
+				done
+				touch "$failed_flag"
+			else
+				pvtest_log INFO "dispatching $(printf '%s\n' $_tests | grep -c .) test(s) across device(s): $run_devs"
+				dispatch_tests "$run_devs" "$_tests"
+				# Delete each claimed device from the Hub once.
+				if [ "$_trole" = yes ]; then
+					for _ae in $run_devs; do
+						export PVTEST_EXEC="$(_ae_exec_cmd "$_ae")"
+						export PVTEST_HOST="$(_ae_host "$_ae")"
+						export PVTEST_AE="$_ae"
+						_dev_delete_only
+					done
+				fi
+			fi
+		) &
+		_type_pids="${_type_pids:+$_type_pids }$!"
+	done
+	[ -n "$_type_pids" ] && wait $_type_pids
+
+	# Phase 4: send a lenient shutdown to all devices. Skipped when running from
+	# the tester console; the console exit path handles shutdown on exit/Ctrl-D.
 	if [ -z "${PVTEST_CONSOLE:-}" ]; then
 		for ae in $ready_aes; do
 			(
@@ -1112,6 +1157,7 @@ run_tests_pool() {
 		wait
 	fi
 
+	rm -rf "$tpool"
 	if [ -f "$failed_flag" ]; then
 		rm -f "$failed_flag"
 		return 1
@@ -1185,6 +1231,14 @@ if [ -n "$PVTEST_APPENGINES" ]; then
 		fi
 		sleep 100000
 		exit 0
+	fi
+
+	# Explicit test list (from the host's runner-type grouping) takes precedence
+	# over the path selector; it lists the exact test.json paths for this wave.
+	if [ -n "$PVTEST_JSON_LIST" ]; then
+		test_json_list="$PVTEST_JSON_LIST"
+		run_tests_pool
+		exit $?
 	fi
 
 	# Resolve selector to list of test.json paths.
