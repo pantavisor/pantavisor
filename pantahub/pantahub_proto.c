@@ -76,6 +76,7 @@ typedef enum {
 struct pv_pantahub_session {
 	char *token;
 	bool online;
+	bool was_ever_online;
 	short failed_requests;
 	bool any_failed_request;
 
@@ -99,6 +100,7 @@ void pv_pantahub_proto_init()
 {
 	session.token = NULL;
 	session.online = false;
+	session.was_ever_online = false;
 	session.failed_requests = UNRESPONSIVE_REQUESTS_MAX;
 	session.any_failed_request = false;
 
@@ -263,6 +265,11 @@ bool pv_pantahub_proto_is_online()
 	return session.online;
 }
 
+bool pv_pantahub_proto_was_ever_online()
+{
+	return session.was_ever_online;
+}
+
 bool pv_pantahub_proto_got_any_failure()
 {
 	return session.any_failed_request;
@@ -387,8 +394,10 @@ static void _recv_post_auth_cb(struct evhttp_request *req, void *ctx)
 	}
 
 	session.token = pv_pantahub_msg_parse_session_token(body);
-	if (session.token)
+	if (session.token) {
 		pv_log(DEBUG, "got new token");
+		session.was_ever_online = true;
+	}
 
 out:
 	if (body)
