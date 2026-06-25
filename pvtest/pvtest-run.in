@@ -1146,7 +1146,7 @@ slot_worker() {
 # Group the queued tests into runner-types and dispatch them across the slots.
 run_slot_pool() {
 	local _slots="${PVTEST_SLOTS:-1}"
-	local _pool _failed _j _req _sc _nc _extra _tok _t _pids _s _dur _mx _sm
+	local _pool _failed _j _req _sc _nc _extra _tok _t _pids _s _dur _mx _sm _iso
 	_pool=$(mktemp -d /tmp/pvtest_slotpool.XXXXXX)
 	: > "$_pool/order"
 
@@ -1154,15 +1154,24 @@ run_slot_pool() {
 		_req=$(_reqcfg_norm "$(jq -r '.setup."required-config" // ""' "$_j")")
 		_sc=$(jq -r '.setup."self-claim" // "false"' "$_j")
 		_dur=$(jq -r '.setup."expected-seconds" // 0' "$_j")
+		_iso=$(jq -r '.setup."isolate" // "false"' "$_j")
 		case " $_req " in
 			*" PV_CONTROL_REMOTE=1 "*) [ "$_sc" = "true" ] && _nc=yes || _nc=no ;;
 			*) _nc=no ;;
 		esac
+		# A destructive test (isolate=true, e.g. a GC test that removes the
+		# factory revision) gets a private token so it lands in its own
+		# singleton runner-type: its own container/device, never shared, torn
+		# down on detach -- so the next same-config test runs on a fresh clone
+		# of the factory instead of the wreckage. This reuses the same private-
+		# token mechanism that keeps self-claim=false remote tests off claimed
+		# devices.
 		_extra=""
 		case " $_req " in
 			*" PV_CONTROL_REMOTE=1 "*)
 				[ "$_sc" != "true" ] && _extra="|self=$(echo "$_j" | sed 's|^/work/||; s|/test\.json$||')" ;;
 		esac
+		[ "$_iso" = "true" ] && _extra="|iso=$(echo "$_j" | sed 's|^/work/||; s|/test\.json$||')"
 		_tok=$(printf '%s' "${_nc}|${_req}${_extra}" | cksum | cut -d' ' -f1)
 		if [ ! -f "$_pool/req.$_tok" ]; then
 			printf '%s' "$_req" > "$_pool/req.$_tok"
