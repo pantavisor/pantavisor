@@ -984,8 +984,8 @@ dispatch_tests() {
 # each self-claim=false remote test in its own type so it never shares a claimed
 # device). A slot holds one container; a worker stays on its current type while
 # it has pending tests (affinity -> claim-once + minimal re-types) and otherwise
-# attaches to the non-empty type with the fewest attached workers (tie: most
-# remaining), keeping every slot busy. Claim-once: a claimed device is claimed
+# attaches to the non-empty type with the fewest attached workers (tie: longest-
+# first order), keeping every slot busy. Claim-once: a claimed device is claimed
 # when a worker attaches to its type and deleted when the worker switches away.
 # ===========================================================================
 
@@ -1041,7 +1041,7 @@ _slot_abort_tests() {
 # Pick the next test for a worker currently on type $2 (empty if unattached),
 # from pool dir $1. Under a global lock: stay on the current type while it has
 # tests (affinity); else release it (decrement its attached count) and attach to
-# the non-empty type with the fewest attached workers (tie: most remaining).
+# the non-empty type with the fewest attached workers (tie: longest-first order).
 # Pops and echoes "<token>\t<jsonpath>", or nothing when the queue is drained.
 _slot_pick() {
 	local _pool="$1" _cur="$2"
@@ -1057,7 +1057,7 @@ _slot_pick() {
 				printf '%s' "$_a" > "$_pool/attached.$_cur"
 			fi
 			# Attach to the non-empty type with the fewest attached workers; break
-			# ties by the expensive-first order of the pool's "order" file (the
+			# ties by the longest-first order of the pool's "order" file (the
 			# first such type wins, since we only replace on strictly fewer
 			# attached and iterate in that order).
 			_best=""; _best_att=2000000000
@@ -1146,13 +1146,14 @@ slot_worker() {
 # Group the queued tests into runner-types and dispatch them across the slots.
 run_slot_pool() {
 	local _slots="${PVTEST_SLOTS:-1}"
-	local _pool _failed _j _req _sc _nc _extra _tok _t _pids _s _rr _cnt
+	local _pool _failed _j _req _sc _nc _extra _tok _t _pids _s _dur _mx _sm
 	_pool=$(mktemp -d /tmp/pvtest_slotpool.XXXXXX)
 	: > "$_pool/order"
 
 	for _j in $test_json_list; do
 		_req=$(_reqcfg_norm "$(jq -r '.setup."required-config" // ""' "$_j")")
 		_sc=$(jq -r '.setup."self-claim" // "false"' "$_j")
+		_dur=$(jq -r '.setup."expected-seconds" // 0' "$_j")
 		case " $_req " in
 			*" PV_CONTROL_REMOTE=1 "*) [ "$_sc" = "true" ] && _nc=yes || _nc=no ;;
 			*) _nc=no ;;
@@ -1169,22 +1170,30 @@ run_slot_pool() {
 			printf '0' > "$_pool/attached.$_tok"
 			printf '%s\n' "$_tok" >> "$_pool/order"
 		fi
-		printf '%s\n' "$_j" >> "$_pool/q.$_tok"
+		printf '%s\t%s\n' "$_dur" "$_j" >> "$_pool/qd.$_tok"
 	done
 
-	# Order types expensive-first so the slow, claim-heavy work starts at t=0 and
-	# overlaps the rest instead of tailing: claim=yes types first (they pay a
-	# ~one-time device-claim prefix before any test runs), then by test-count
-	# desc. This drives both the cold-start picks and the load-balance tie-break
-	# in _slot_pick (which, on equal attached-count, keeps the first type in this
-	# order).
+	# Order longest-first (LPT makespan heuristic) so the long tests start at t=0
+	# and the short ones backfill the tail, instead of a long test running alone
+	# at the end with idle slots. Two levels, both keyed on each test.json's
+	# .setup."expected-seconds" hint (0 if absent): each type's queue is sorted
+	# longest-test-first, and the type list is ordered by its heaviest single
+	# test (tie: larger total) so a cold-start worker grabs the type holding the
+	# longest pole and runs that test first. This order also drives the
+	# load-balance tie-break in _slot_pick.
+	: > "$_pool/order.w"
 	while IFS= read -r _t; do
 		[ -n "$_t" ] || continue
-		[ "$(cat "$_pool/role.$_t")" = yes ] && _rr=0 || _rr=1
-		_cnt=$(wc -l < "$_pool/q.$_t")
-		printf '%s\t%s\t%s\n' "$_rr" "$_cnt" "$_t"
-	done < "$_pool/order" | sort -k1,1n -k2,2nr | cut -f3 > "$_pool/order.sorted"
+		sort -k1,1nr "$_pool/qd.$_t" > "$_pool/qd.$_t.s"
+		cut -f2- "$_pool/qd.$_t.s" > "$_pool/q.$_t"
+		_mx=$(head -n1 "$_pool/qd.$_t.s" | cut -f1)
+		_sm=$(awk -F'\t' '{s+=$1} END{print s+0}' "$_pool/qd.$_t")
+		rm -f "$_pool/qd.$_t.s"
+		printf '%s\t%s\t%s\n' "${_mx:-0}" "$_sm" "$_t" >> "$_pool/order.w"
+	done < "$_pool/order"
+	sort -k1,1nr -k2,2nr "$_pool/order.w" | cut -f3 > "$_pool/order.sorted"
 	mv "$_pool/order.sorted" "$_pool/order"
+	rm -f "$_pool/order.w"
 
 	while IFS= read -r _t; do
 		pvtest_log INFO "runner-type $_t: claim=$(cat "$_pool/role.$_t") tests=$(wc -l < "$_pool/q.$_t") cfg=[$(cat "$_pool/req.$_t")]"
