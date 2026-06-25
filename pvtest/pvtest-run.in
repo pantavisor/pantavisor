@@ -1047,7 +1047,7 @@ _slot_pick() {
 	local _pool="$1" _cur="$2"
 	(
 		flock -x 9
-		local _tok="" _a _best _best_att _best_rem _t _rem _att _head
+		local _tok="" _a _best _best_att _t _att _head
 		if [ -n "$_cur" ] && [ -s "$_pool/q.$_cur" ]; then
 			_tok="$_cur"
 		else
@@ -1056,13 +1056,16 @@ _slot_pick() {
 				_a=$((_a - 1)); [ "$_a" -lt 0 ] && _a=0
 				printf '%s' "$_a" > "$_pool/attached.$_cur"
 			fi
-			_best=""; _best_att=2000000000; _best_rem=-1
+			# Attach to the non-empty type with the fewest attached workers; break
+			# ties by the expensive-first order of the pool's "order" file (the
+			# first such type wins, since we only replace on strictly fewer
+			# attached and iterate in that order).
+			_best=""; _best_att=2000000000
 			while IFS= read -r _t; do
 				[ -s "$_pool/q.$_t" ] || continue
-				_rem=$(wc -l < "$_pool/q.$_t")
 				_att=$(cat "$_pool/attached.$_t" 2>/dev/null || echo 0)
-				if [ "$_att" -lt "$_best_att" ] || { [ "$_att" -eq "$_best_att" ] && [ "$_rem" -gt "$_best_rem" ]; }; then
-					_best="$_t"; _best_att="$_att"; _best_rem="$_rem"
+				if [ "$_att" -lt "$_best_att" ]; then
+					_best="$_t"; _best_att="$_att"
 				fi
 			done < "$_pool/order"
 			[ -n "$_best" ] || exit 0
@@ -1143,7 +1146,7 @@ slot_worker() {
 # Group the queued tests into runner-types and dispatch them across the slots.
 run_slot_pool() {
 	local _slots="${PVTEST_SLOTS:-1}"
-	local _pool _failed _j _req _sc _nc _extra _tok _t _pids _s
+	local _pool _failed _j _req _sc _nc _extra _tok _t _pids _s _rr _cnt
 	_pool=$(mktemp -d /tmp/pvtest_slotpool.XXXXXX)
 	: > "$_pool/order"
 
@@ -1168,6 +1171,20 @@ run_slot_pool() {
 		fi
 		printf '%s\n' "$_j" >> "$_pool/q.$_tok"
 	done
+
+	# Order types expensive-first so the slow, claim-heavy work starts at t=0 and
+	# overlaps the rest instead of tailing: claim=yes types first (they pay a
+	# ~one-time device-claim prefix before any test runs), then by test-count
+	# desc. This drives both the cold-start picks and the load-balance tie-break
+	# in _slot_pick (which, on equal attached-count, keeps the first type in this
+	# order).
+	while IFS= read -r _t; do
+		[ -n "$_t" ] || continue
+		[ "$(cat "$_pool/role.$_t")" = yes ] && _rr=0 || _rr=1
+		_cnt=$(wc -l < "$_pool/q.$_t")
+		printf '%s\t%s\t%s\n' "$_rr" "$_cnt" "$_t"
+	done < "$_pool/order" | sort -k1,1n -k2,2nr | cut -f3 > "$_pool/order.sorted"
+	mv "$_pool/order.sorted" "$_pool/order"
 
 	while IFS= read -r _t; do
 		pvtest_log INFO "runner-type $_t: claim=$(cat "$_pool/role.$_t") tests=$(wc -l < "$_pool/q.$_t") cfg=[$(cat "$_pool/req.$_t")]"
