@@ -975,6 +975,220 @@ dispatch_tests() {
 	exec 7>&-
 }
 
+# ===========================================================================
+# Slot-pool dispatcher: a single global FIFO semaphore of PVTEST_SLOTS slots
+# over a flat test queue, with the host (test.docker.sh) re-typing each slot's
+# appengine container on demand over the PVTEST_CTRL control dir.
+#
+# Tests are grouped into runner-types (normalized required-config + needs-claim,
+# each self-claim=false remote test in its own type so it never shares a claimed
+# device). A slot holds one container; a worker stays on its current type while
+# it has pending tests (affinity -> claim-once + minimal re-types) and otherwise
+# attaches to the non-empty type with the fewest attached workers (tie: most
+# remaining), keeping every slot busy. Claim-once: a claimed device is claimed
+# when a worker attaches to its type and deleted when the worker switches away.
+# ===========================================================================
+
+# Bind PVTEST_EXEC/HOST/AE to container $1. In container mode (PVTEST_SSH_KEY set)
+# clear the previous values first so the per-container accessors rebuild for $1
+# instead of short-circuiting on the prior container's exec/host; in external
+# mode (host-provided PVTEST_EXEC) leave them as given.
+_slot_bind_ae() {
+	if [ -n "$PVTEST_SSH_KEY" ]; then PVTEST_EXEC=""; PVTEST_HOST=""; fi
+	export PVTEST_EXEC="$(_ae_exec_cmd "$1")"
+	export PVTEST_HOST="$(_ae_host "$1")"
+	export PVTEST_AE="$1"
+}
+
+# Ask the host to re-type slot $1 to required-config $2 (empty = tear the slot's
+# container down). Echoes the new container name on success (and nothing else, so
+# the caller can capture it); returns non-zero on failure/timeout. Stays silent
+# on error so it never pollutes the captured name — the caller logs the abort.
+_retype_slot() {
+	local _slot="$1" _cfg="$2" _req _resp _waited _status _ae
+	_req="$PVTEST_CTRL/req/slot${_slot}"
+	_resp="$PVTEST_CTRL/resp/slot${_slot}"
+	rm -f "$_resp"
+	printf 'slot=%s\ncfg=%s\n' "$_slot" "$_cfg" > "$PVTEST_CTRL/req/.tmp.slot${_slot}"
+	mv "$PVTEST_CTRL/req/.tmp.slot${_slot}" "$_req"
+	_waited=0
+	while [ ! -f "$_resp" ]; do
+		sleep 1
+		_waited=$((_waited + 1))
+		[ "$_waited" -gt 300 ] && return 1
+	done
+	_status=$(sed -n 's/^status=//p' "$_resp")
+	_ae=$(sed -n 's/^ae=//p' "$_resp")
+	rm -f "$_resp"
+	case "$_status" in
+		ready) printf '%s' "$_ae"; return 0 ;;
+		down)  return 0 ;;
+		*)     return 1 ;;
+	esac
+}
+
+# Emit an ABORTED result line for each test path in "$@" (after $1=reason), so a
+# failed attach still produces a SUMMARY record for every test it stranded.
+_slot_abort_tests() {
+	local _reason="$1" _j _tid
+	shift
+	for _j in "$@"; do
+		_tid=$(echo "$_j" | sed 's|^/work/||; s|/test\.json$||')
+		pvtest_log ERROR "'${_tid}' ABORTED (${_reason})"
+	done
+}
+
+# Pick the next test for a worker currently on type $2 (empty if unattached),
+# from pool dir $1. Under a global lock: stay on the current type while it has
+# tests (affinity); else release it (decrement its attached count) and attach to
+# the non-empty type with the fewest attached workers (tie: most remaining).
+# Pops and echoes "<token>\t<jsonpath>", or nothing when the queue is drained.
+_slot_pick() {
+	local _pool="$1" _cur="$2"
+	(
+		flock -x 9
+		local _tok="" _a _best _best_att _best_rem _t _rem _att _head
+		if [ -n "$_cur" ] && [ -s "$_pool/q.$_cur" ]; then
+			_tok="$_cur"
+		else
+			if [ -n "$_cur" ] && [ -f "$_pool/attached.$_cur" ]; then
+				_a=$(cat "$_pool/attached.$_cur")
+				_a=$((_a - 1)); [ "$_a" -lt 0 ] && _a=0
+				printf '%s' "$_a" > "$_pool/attached.$_cur"
+			fi
+			_best=""; _best_att=2000000000; _best_rem=-1
+			while IFS= read -r _t; do
+				[ -s "$_pool/q.$_t" ] || continue
+				_rem=$(wc -l < "$_pool/q.$_t")
+				_att=$(cat "$_pool/attached.$_t" 2>/dev/null || echo 0)
+				if [ "$_att" -lt "$_best_att" ] || { [ "$_att" -eq "$_best_att" ] && [ "$_rem" -gt "$_best_rem" ]; }; then
+					_best="$_t"; _best_att="$_att"; _best_rem="$_rem"
+				fi
+			done < "$_pool/order"
+			[ -n "$_best" ] || exit 0
+			_tok="$_best"
+			_a=$(cat "$_pool/attached.$_tok" 2>/dev/null || echo 0)
+			_a=$((_a + 1))
+			printf '%s' "$_a" > "$_pool/attached.$_tok"
+		fi
+		_head=$(head -n1 "$_pool/q.$_tok")
+		tail -n +2 "$_pool/q.$_tok" > "$_pool/q.$_tok.tmp" && mv "$_pool/q.$_tok.tmp" "$_pool/q.$_tok"
+		printf '%s\t%s' "$_tok" "$_head"
+	) 9>"$_pool/lock"
+}
+
+# One slot worker: pull tests from the pool, re-typing the slot's container when
+# the next test's type differs, with claim-once managed at attach/detach.
+slot_worker() {
+	local _slot="$1" _pool="$2" _failed="$3"
+	local _max="${MAX_RETRIES:-0}"
+	local _tok="" _ae="" _role="no"
+	local _sel _newtok _json _attempt _rc
+
+	while : ; do
+		_sel=$(_slot_pick "$_pool" "$_tok")
+		[ -n "$_sel" ] || break
+		_newtok=${_sel%%	*}
+		_json=${_sel#*	}
+
+		# (Re)attach when switching type or recovering from a failed attach.
+		if [ "$_newtok" != "$_tok" ] || [ -z "$_ae" ]; then
+			# Detach the current container first (delete-once if it was claimed).
+			if [ -n "$_ae" ]; then
+				_slot_bind_ae "$_ae"
+				[ "$_role" = yes ] && _dev_delete_only
+				pv_ctrl cmd poweroff > /dev/null 2>&1 || true
+			fi
+			_tok="$_newtok"
+			_role=$(cat "$_pool/role.$_newtok")
+			_ae=$(_retype_slot "$_slot" "$(cat "$_pool/req.$_newtok")")
+			if [ -z "$_ae" ]; then
+				_slot_abort_tests "re-type failed" "$_json"; touch "$_failed"; continue
+			fi
+			_slot_bind_ae "$_ae"
+			if ! init_device "$_ae"; then
+				pvtest_log ERROR "[device $_ae] init failed"
+				_slot_abort_tests "device init failed" "$_json"; touch "$_failed"
+				_ae=""; continue
+			fi
+			if [ "$_role" = yes ] && ! _dev_claim; then
+				_slot_abort_tests "claim failed" "$_json"; touch "$_failed"
+				_ae=""; continue
+			fi
+		fi
+
+		# Run the test on this slot's container, with retries.
+		_slot_bind_ae "$_ae"
+		_attempt=0; _rc=1
+		while : ; do
+			run_test_attempt "$_json"; _rc=$?
+			{ [ "$_rc" -eq 0 ] || [ "$_rc" -eq 2 ]; } && break
+			_attempt=$((_attempt + 1))
+			[ "$_attempt" -gt "$_max" ] && break
+			pvtest_log INFO "[device $_ae] retry attempt $_attempt/$_max for $_json"
+			sleep 5
+		done
+		{ [ "$_rc" -ne 0 ] && [ "$_rc" -ne 2 ]; } && touch "$_failed"
+	done
+
+	# Final detach: delete-once if claimed, power off, release the container.
+	if [ -n "$_ae" ]; then
+		_slot_bind_ae "$_ae"
+		[ "$_role" = yes ] && _dev_delete_only
+		pv_ctrl cmd poweroff > /dev/null 2>&1 || true
+		_retype_slot "$_slot" "" > /dev/null 2>&1 || true
+	fi
+}
+
+# Group the queued tests into runner-types and dispatch them across the slots.
+run_slot_pool() {
+	local _slots="${PVTEST_SLOTS:-1}"
+	local _pool _failed _j _req _sc _nc _extra _tok _t _pids _s
+	_pool=$(mktemp -d /tmp/pvtest_slotpool.XXXXXX)
+	: > "$_pool/order"
+
+	for _j in $test_json_list; do
+		_req=$(_reqcfg_norm "$(jq -r '.setup."required-config" // ""' "$_j")")
+		_sc=$(jq -r '.setup."self-claim" // "false"' "$_j")
+		case " $_req " in
+			*" PV_CONTROL_REMOTE=1 "*) [ "$_sc" = "true" ] && _nc=yes || _nc=no ;;
+			*) _nc=no ;;
+		esac
+		_extra=""
+		case " $_req " in
+			*" PV_CONTROL_REMOTE=1 "*)
+				[ "$_sc" != "true" ] && _extra="|self=$(echo "$_j" | sed 's|^/work/||; s|/test\.json$||')" ;;
+		esac
+		_tok=$(printf '%s' "${_nc}|${_req}${_extra}" | cksum | cut -d' ' -f1)
+		if [ ! -f "$_pool/req.$_tok" ]; then
+			printf '%s' "$_req" > "$_pool/req.$_tok"
+			printf '%s' "$_nc" > "$_pool/role.$_tok"
+			printf '0' > "$_pool/attached.$_tok"
+			printf '%s\n' "$_tok" >> "$_pool/order"
+		fi
+		printf '%s\n' "$_j" >> "$_pool/q.$_tok"
+	done
+
+	while IFS= read -r _t; do
+		pvtest_log INFO "runner-type $_t: claim=$(cat "$_pool/role.$_t") tests=$(wc -l < "$_pool/q.$_t") cfg=[$(cat "$_pool/req.$_t")]"
+	done < "$_pool/order"
+	pvtest_log INFO "=== slot pool: dispatching across up to ${_slots} slot(s) ==="
+
+	_failed=$(mktemp); rm -f "$_failed"
+
+	_pids=""; _s=0
+	while [ "$_s" -lt "$_slots" ]; do
+		slot_worker "$_s" "$_pool" "$_failed" &
+		_pids="${_pids:+$_pids }$!"
+		_s=$((_s + 1))
+	done
+	[ -n "$_pids" ] && wait $_pids
+
+	rm -rf "$_pool"
+	if [ -f "$_failed" ]; then rm -f "$_failed"; return 1; fi
+	return 0
+}
+
 # Run all selected tests across a HETEROGENEOUS fleet of N appengines. The host
 # (test.docker.sh) boots one wave's runners — each configured for a runner-type
 # (its required-config, as PV_* env) and tagged with a claim role in
@@ -1207,6 +1421,14 @@ tmp_out_path=
 
 pvtest_log INFO "starting test run: $test_selector"
 initial_setup
+
+# Slot-pool mode: a flat queue (PVTEST_QUEUE) dispatched across PVTEST_SLOTS
+# slots, with the host re-typing each slot's container on demand over PVTEST_CTRL.
+if [ -n "$PVTEST_QUEUE" ] && [ -n "$PVTEST_CTRL" ]; then
+	test_json_list="$PVTEST_QUEUE"
+	run_slot_pool
+	exit $?
+fi
 
 # Pool mode: PVTEST_APPENGINES is set — use N-device pool.
 if [ -n "$PVTEST_APPENGINES" ]; then
