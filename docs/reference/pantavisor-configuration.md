@@ -131,6 +131,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_VOLMOUNT_DM_EXTRA_ARGS` | string | empty | extra arguments for DM volume mounting |
 | `PV_WDT_MODE` | `disabled`, `shutdown`, `startup` or `always` | `shutdown` | set [watchdog mode](../overview/watchdog.md) |
 | `PV_WDT_TIMEOUT` | time (in seconds) | `15` | set watchdog timeout |
+| `PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED` | `0` or `1` | `1` | enable the [pantavisor-hosted D-Bus system bus](pantavisor-xconnect.md#pantavisor-hosted-system-bus) (also requires the `xconnect-dbus-systembus` build feature) |
 
 ## Levels
 
@@ -238,3 +239,4 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_VOLMOUNT_DM_EXTRA_ARGS`          | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_WDT_MODE`                        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_WDT_TIMEOUT`                     | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED` | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |

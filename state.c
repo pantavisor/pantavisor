@@ -52,6 +52,10 @@
 #include "utils/json.h"
 #include "utils/timer.h"
 #include "hook/hooks.h"
+#include "config.h"
+#include "daemons.h"
+#include "dbus_daemon.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME "state"
 #define pv_log(level, msg, ...)                                                \
@@ -685,6 +689,17 @@ static int pv_state_validate_services(struct pv_state *s)
 		{
 			if (svc->type != DRIVER_REQUIRED)
 				continue;
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+			// The hosted system bus is provided by pantavisor itself
+			// (builtin export), not by a platform export, so a
+			// requirement for it is satisfied whenever the hosted bus
+			// is enabled.
+			if (svc->name &&
+			    !strcmp(svc->name, PV_DBUS_SYSTEMBUS_NAME) &&
+			    pv_config_get_bool(
+				    PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED))
+				continue;
+#endif
 			bool found = false;
 			struct pv_platform *p_prov, *tmp_p_prov;
 			dl_list_for_each_safe(p_prov, tmp_p_prov, &s->platforms,
@@ -808,6 +823,12 @@ int pv_state_run(struct pv_state *s)
 {
 	if (pv_state_validate_services(s))
 		return -1;
+
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+	if (pv_dbus_daemon_validate(s))
+		return -1;
+	pv_dbus_daemon_generate(s);
+#endif
 
 	int ret = 0;
 
@@ -1968,6 +1989,71 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 			dl_list_for_each_safe(svc, svc_tmp, &cp->services,
 					      struct pv_platform_service, list)
 			{
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+				// Builtin host export: a requirement for the
+				// hosted system bus resolves to the pantavisor-
+				// managed daemon (provider_pid 0), carrying the
+				// role's resolved uid for the dbus plugin's
+				// SASL masquerade.
+				if (svc->name &&
+				    !strcmp(svc->name,
+					    PV_DBUS_SYSTEMBUS_NAME) &&
+				    pv_config_get_bool(
+					    PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED)) {
+					int uid =
+						svc->role ?
+							pv_dbus_daemon_role_uid(
+								svc->role) :
+							65534;
+					if (uid < 0)
+						uid = 65534;
+					pv_json_ser_object(&js);
+					{
+						pv_json_ser_key(&js,
+								"consumer");
+						pv_json_ser_string(&js,
+								   cp->name);
+						pv_json_ser_key(&js,
+								"consumer_pid");
+						pv_json_ser_number(
+							&js, cp->init_pid);
+						pv_json_ser_key(&js,
+								"provider");
+						pv_json_ser_string(&js, "_pv_");
+						pv_json_ser_key(&js,
+								"provider_pid");
+						pv_json_ser_number(&js, 0);
+						pv_json_ser_key(&js, "name");
+						pv_json_ser_string(&js,
+								   svc->name);
+						pv_json_ser_key(&js, "type");
+						pv_json_ser_string(&js, "dbus");
+						pv_json_ser_key(&js, "role");
+						pv_json_ser_string(
+							&js, svc->role ?
+								     svc->role :
+								     "any");
+						pv_json_ser_key(&js,
+								"interface");
+						pv_json_ser_string(
+							&js,
+							svc->interface ?
+								svc->interface :
+								"dbus");
+						pv_json_ser_key(&js, "target");
+						pv_json_ser_string(&js,
+								   svc->target);
+						pv_json_ser_key(&js, "socket");
+						pv_json_ser_string(
+							&js,
+							PV_DBUS_SYSTEMBUS_SOCKET);
+						pv_json_ser_key(&js, "uid");
+						pv_json_ser_number(&js, uid);
+					}
+					pv_json_ser_object_pop(&js);
+					continue;
+				}
+#endif
 				struct pv_platform *pp, *pp_tmp;
 				dl_list_for_each_safe(pp, pp_tmp, &s->platforms,
 						      struct pv_platform, list)

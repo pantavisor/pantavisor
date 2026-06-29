@@ -48,14 +48,22 @@ static struct pvx_plugin *find_plugin(const char *type)
 	return NULL;
 }
 
-static struct pvx_link *find_link(const char *consumer, const char *name)
+// Links are keyed on (consumer, name, target). The target (resolved consumer
+// socket) is part of the key so a multi-identity consumer can hold several
+// links to the same service name on different sockets (e.g. distinct dbus roles
+// on the hosted system bus) without them tearing each other down on reconcile.
+static struct pvx_link *find_link(const char *consumer, const char *name,
+				  const char *target)
 {
 	struct pvx_link *link;
 	dl_list_for_each(link, &g_links, struct pvx_link, list)
 	{
 		if (link->consumer && link->name &&
 		    !strcmp(link->consumer, consumer) &&
-		    !strcmp(link->name, name))
+		    !strcmp(link->name, name) &&
+		    ((!target && !link->consumer_socket) ||
+		     (target && link->consumer_socket &&
+		      !strcmp(target, link->consumer_socket))))
 			return link;
 	}
 	return NULL;
@@ -118,6 +126,21 @@ static struct pvx_link *parse_link(const char *json, jsmntok_t *itok,
 		pv_json_get_value(json, "socket", itok, obj_tokc);
 	link->interface = pv_json_get_value(json, "interface", itok, obj_tokc);
 
+	// Hosted system-bus links carry the role's resolved uid; the dbus plugin
+	// masquerades to it directly instead of an /etc/passwd lookup. Absent for
+	// legacy per-provider links, which keep the passwd path (uid stays -1).
+	char *uid_str = pv_json_get_value(json, "uid", itok, obj_tokc);
+	if (uid_str) {
+		char *uend;
+		long uval = strtol(uid_str, &uend, 10);
+		link->uid = (*uend == '\0' && uval >= 0 && uval <= INT_MAX) ?
+				    (int)uval :
+				    -1;
+		free(uid_str);
+	} else {
+		link->uid = -1;
+	}
+
 	if (!link->name || !link->consumer || !link->provider_socket) {
 		fprintf(stderr, "Link missing required fields\n");
 		pvx_link_free(link);
@@ -160,48 +183,44 @@ static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 	}
 	free(type);
 
-	char *consumer = pv_json_get_value(json, "consumer", itok, obj_tokc);
-	char *name = pv_json_get_value(json, "name", itok, obj_tokc);
-	struct pvx_link *existing = find_link(consumer, name);
-
-	if (existing && existing->established) {
-		// A link is keyed on consumer+name, which survive a container
-		// restart. If a peer restarted, its pid changes: the old proxy
-		// would keep connecting to the dead provider pid and the consumer
-		// socket would never be re-injected into the new namespace. Detect
-		// the pid change and re-establish; otherwise leave it untouched.
-		int new_cpid =
-			parse_pid_field(json, "consumer_pid", itok, obj_tokc);
-		int new_ppid =
-			parse_pid_field(json, "provider_pid", itok, obj_tokc);
-		// A reported pid of 0 means "unknown/down" (or a host-side peer);
-		// don't tear down a working link until a real, different pid shows.
-		bool cpid_changed =
-			new_cpid && new_cpid != existing->consumer_pid;
-		bool ppid_changed =
-			new_ppid && new_ppid != existing->provider_pid;
-		if (!cpid_changed && !ppid_changed) {
-			free(consumer);
-			free(name);
-			return;
-		}
-		printf("Re-establishing link %s/%s after restart (consumer pid %d->%d, provider pid %d->%d)\n",
-		       consumer, name, existing->consumer_pid, new_cpid,
-		       existing->provider_pid, new_ppid);
-		dl_list_del(&existing->list);
-		pvx_link_free(existing);
-	} else if (existing) {
-		printf("Retrying link: %s/%s\n", consumer, name);
-		dl_list_del(&existing->list);
-		pvx_link_free(existing);
-	}
-
-	free(consumer);
-	free(name);
-
+	// Parse first so the key (consumer, name, resolved target) and the new
+	// pids are available before we decide whether an existing link stands.
 	struct pvx_link *link = parse_link(json, itok, obj_tokc, plugin);
 	if (!link)
 		return;
+
+	struct pvx_link *existing =
+		find_link(link->consumer, link->name, link->consumer_socket);
+
+	if (existing && existing->established) {
+		// The key survives a container restart, but a restarted peer's pid
+		// changes: the old proxy would keep connecting to the dead provider
+		// pid and the consumer socket would never be re-injected into the
+		// new namespace. Detect the pid change and re-establish; otherwise
+		// leave the working link untouched.
+		// A reported pid of 0 means "unknown/down" (or a host-side peer);
+		// don't tear down a working link until a real, different pid shows.
+		bool cpid_changed =
+			link->consumer_pid &&
+			link->consumer_pid != existing->consumer_pid;
+		bool ppid_changed =
+			link->provider_pid &&
+			link->provider_pid != existing->provider_pid;
+		if (!cpid_changed && !ppid_changed) {
+			pvx_link_free(link);
+			return;
+		}
+		printf("Re-establishing link %s/%s (target %s) after restart (consumer pid %d->%d, provider pid %d->%d)\n",
+		       link->consumer, link->name, link->consumer_socket,
+		       existing->consumer_pid, link->consumer_pid,
+		       existing->provider_pid, link->provider_pid);
+		dl_list_del(&existing->list);
+		pvx_link_free(existing);
+	} else if (existing) {
+		printf("Retrying link: %s/%s\n", link->consumer, link->name);
+		dl_list_del(&existing->list);
+		pvx_link_free(existing);
+	}
 
 	dl_list_init(&link->list);
 	dl_list_add_tail(&g_links, &link->list);

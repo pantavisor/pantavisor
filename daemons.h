@@ -34,6 +34,9 @@
 #define DM_APPENGINE (1 << IM_APPENGINE)
 #define DM_ALL (DM_EMBEDDED | DM_STANDALONE | DM_APPENGINE)
 
+// The hosted D-Bus system bus (xconnect) lives in its own module; see
+// dbus_daemon.h for its paths, generated config/policy and the role uid map.
+
 struct pv_init_daemon {
 	char *name;
 	pid_t pid;
@@ -41,6 +44,9 @@ struct pv_init_daemon {
 	char *testpath;
 	char *cmd;
 	unsigned int modes; // bitmask of allowed init modes
+	// When set, spawn this daemon in a private mount namespace with this
+	// file bind-mounted over /etc/passwd (a passwd jail). NULL = no jail.
+	const char *jail_passwd;
 	int _respawning;
 };
 

@@ -30,7 +30,9 @@
 
 #include "init.h"
 #include "daemons.h"
+#include "dbus_daemon.h"
 #include "tsh.h"
+#include "utils/fs.h"
 
 #define MODULE_NAME "daemons"
 #define pv_log(level, msg, ...)                                                \
@@ -40,12 +42,22 @@
 
 struct pv_init_daemon daemons[] = {
 	{ "hwrngd", 0, 1, "/usr/bin/rngd", "/usr/bin/rngd -f",
-	  DM_EMBEDDED | DM_STANDALONE, 0 },
+	  DM_EMBEDDED | DM_STANDALONE, NULL, 0 },
 #ifdef PANTAVISOR_XCONNECT
 	{ "pv-xconnect", 0, 1, "/usr/bin/pv-xconnect", "/usr/bin/pv-xconnect",
-	  DM_ALL, 0 },
+	  DM_ALL, NULL, 0 },
 #endif
-	{ 0, 0, 0, 0, 0, 0, 0 }
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+	// No --system: that is shorthand for --config-file=.../system.conf and
+	// would conflict with our generated --config-file. Our config declares
+	// <type>system</type>, so this is still a system bus. Spawned in a
+	// passwd jail so its policy can resolve the per-role masquerade uids
+	// without touching the rootfs /etc/passwd.
+	{ PV_DBUS_SYSTEMBUS_DAEMON, 0, 1, "/usr/bin/dbus-daemon",
+	  "/usr/bin/dbus-daemon --nofork --nopidfile --config-file=" PV_DBUS_SYSTEMBUS_CONF,
+	  DM_ALL, PV_DBUS_SYSTEMBUS_PASSWD, 0 },
+#endif
+	{ 0, 0, 0, 0, 0, 0, NULL, 0 }
 };
 
 static int daemon_spawn(struct pv_init_daemon *self)
@@ -61,8 +73,8 @@ static int daemon_spawn(struct pv_init_daemon *self)
 		char out_name[64], err_name[64];
 		snprintf(out_name, sizeof(out_name), "%s-out", self->name);
 		snprintf(err_name, sizeof(err_name), "%s-err", self->name);
-		self->pid = tsh_run_daemon_logserver(self->cmd, out_name,
-						     err_name);
+		self->pid = tsh_run_daemon_logserver_jail(
+			self->cmd, out_name, err_name, self->jail_passwd);
 #else
 		self->pid = tsh_run(self->cmd, 0, 0);
 #endif
@@ -106,8 +118,7 @@ int pv_init_spawn_daemons(init_mode_t mode)
 		pv_log(INFO, "enabling daemon: %s", daemons[i].name);
 
 		if (stat(daemons[i].testpath, &sb)) {
-			pv_log(INFO,
-			       "daemon not found %s: disabling respawn",
+			pv_log(INFO, "daemon not found %s: disabling respawn",
 			       daemons[i].name);
 			daemons[i].pid = 0;
 			daemons[i].respawn = 0;
@@ -162,6 +173,10 @@ void pv_init_stop_daemons(void)
 static int pv_daemons_init(struct pv_init *this)
 {
 	init_mode_t mode = pv_config_get_system_init_mode();
+
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+	pv_dbus_daemon_prepare();
+#endif
 
 	pv_init_spawn_daemons(mode);
 

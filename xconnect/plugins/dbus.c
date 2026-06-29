@@ -19,12 +19,17 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <linux/limits.h>
@@ -118,29 +123,57 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 		return;
 
 	if (strncmp(line, "AUTH EXTERNAL", 13) == 0) {
-		char uid_str[32];
-		char hex_identity[64];
-		const char *role =
-			sess->link->role ? sess->link->role : "nobody";
-		int uid =
-			lookup_uid_in_provider(role, sess->link->provider_pid);
+		// The daemon authenticates our provider connection by its kernel
+		// credential (SO_PEERCRED == the role uid we set in
+		// dbus_on_accept), so the identity the client puts on the wire
+		// only needs to not contradict it. Two client styles exist:
+		const char *ext_arg = line + 13;
+		while (*ext_arg == ' ')
+			ext_arg++;
 
-		if (uid < 0) {
-			printf("%s: Role '%s' not found in provider, using UID 65534 (nobody)\n",
-			       MODULE_NAME, role);
-			uid = 65534;
+		if (*ext_arg != '\0') {
+			// One-step (e.g. libdbus/dbus-send): the client asserts
+			// its own uid inline and expects an immediate OK. That
+			// uid differs from our SO_PEERCRED and would be rejected,
+			// so rewrite it to the role uid.
+			char uid_str[32];
+			char hex_identity[64];
+			const char *role =
+				sess->link->role ? sess->link->role : "nobody";
+			// Hosted system bus put the resolved uid on the link;
+			// the legacy per-provider path keeps the passwd lookup.
+			int uid =
+				sess->link->uid >= 0 ?
+					sess->link->uid :
+					lookup_uid_in_provider(
+						role, sess->link->provider_pid);
+
+			if (uid < 0) {
+				printf("%s: Role '%s' not found in provider, using UID 65534 (nobody)\n",
+				       MODULE_NAME, role);
+				uid = 65534;
+			}
+
+			snprintf(uid_str, sizeof(uid_str), "%d", uid);
+			hex_encode(uid_str, hex_identity, sizeof(hex_identity),
+				   strlen(uid_str));
+
+			printf("%s: Masquerading D-Bus identity as role '%s' (UID %d) for service %s\n",
+			       MODULE_NAME, role, uid, sess->link->name);
+
+			evbuffer_add_printf(
+				bufferevent_get_output(sess->proxy.be_provider),
+				"AUTH EXTERNAL %s\r\n", hex_identity);
+		} else {
+			// Multi-step (e.g. GDBus/pydbus): the client sends a bare
+			// AUTH EXTERNAL and an empty identity in the following
+			// DATA line, asking the daemon to use SO_PEERCRED — which
+			// is already the role uid. Forward verbatim and let the
+			// rest of the handshake splice through untouched.
+			evbuffer_add(
+				bufferevent_get_output(sess->proxy.be_provider),
+				"AUTH EXTERNAL\r\n", 15);
 		}
-
-		snprintf(uid_str, sizeof(uid_str), "%d", uid);
-		hex_encode(uid_str, hex_identity, sizeof(hex_identity),
-			   strlen(uid_str));
-
-		printf("%s: Masquerading D-Bus identity as role '%s' (UID %d) for service %s\n",
-		       MODULE_NAME, role, uid, sess->link->name);
-
-		evbuffer_add_printf(
-			bufferevent_get_output(sess->proxy.be_provider),
-			"AUTH EXTERNAL %s\r\n", hex_identity);
 		sess->authenticated = 1;
 	} else if (strncmp(line, "BEGIN", 5) == 0) {
 		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
@@ -216,9 +249,35 @@ static void dbus_on_accept(struct evconnlistener *listener, evutil_socket_t fd,
 	sun.sun_family = AF_UNIX;
 	strncpy(sun.sun_path, provider_path, sizeof(sun.sun_path) - 1);
 
-	if (bufferevent_socket_connect(sess->proxy.be_provider,
-				       (struct sockaddr *)&sun,
-				       sizeof(sun)) < 0) {
+	// Hosted system bus: the daemon authenticates connections by their kernel
+	// credential (SO_PEERCRED, which is the *real* uid), so asserting a role
+	// uid over SASL EXTERNAL while staying root is rejected. Become the role
+	// uid across the connect() so the provider-side socket carries it; the
+	// credential is frozen at connect time, so we can restore root right after
+	// and keep splicing as root. Keep the saved uid at 0 so the restore is
+	// permitted. Single-threaded event loop => nothing runs in the window.
+	// Legacy per-provider links (uid < 0) keep the old behaviour untouched.
+	int role_uid = sess->link->uid;
+	if (role_uid >= 0 && setresuid(role_uid, role_uid, 0) < 0) {
+		fprintf(stderr, "%s: setresuid(%d) failed: %s\n", MODULE_NAME,
+			role_uid, strerror(errno));
+		pvx_proxy_free(&sess->proxy);
+		return;
+	}
+
+	int connect_rc = bufferevent_socket_connect(
+		sess->proxy.be_provider, (struct sockaddr *)&sun, sizeof(sun));
+
+	if (role_uid >= 0 && setresuid(0, 0, 0) < 0) {
+		// Lost the ability to regain root: the proxy can no longer
+		// service other roles correctly, so fail hard rather than run
+		// with the wrong identity.
+		fprintf(stderr, "%s: setresuid restore to root failed: %s\n",
+			MODULE_NAME, strerror(errno));
+		abort();
+	}
+
+	if (connect_rc < 0) {
 		fprintf(stderr, "Could not connect to provider %s\n",
 			provider_path);
 		pvx_proxy_free(&sess->proxy);
@@ -254,6 +313,10 @@ static int dbus_on_link_added(struct pvx_link *link)
 		unlink(link->consumer_socket);
 		bind(fd, (struct sockaddr *)&sun, sizeof(sun));
 		listen(fd, 10);
+		// World-connectable like a real system bus socket; the role
+		// masquerade + bus policy enforce access, not the socket mode.
+		if (chmod(link->consumer_socket, 0666) < 0)
+			perror("chmod socket");
 		evutil_make_socket_nonblocking(fd);
 	}
 
