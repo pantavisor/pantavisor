@@ -144,18 +144,25 @@ static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 {
 	int ret = 0, status;
 	char cmd[PATH_MAX];
-	char **module, *tmp, *mod;
+	char *tmp, *mod;
 
 	if (!modules)
 		return ret;
 
-	module = modules;
-	while (*module) {
-		tmp = _sub_meta_values(*module);
+	int count = pv_str_count_list(modules);
+	int i;
+
+	for (i = 0; i < count; i++) {
+		/* load in list order; unload in reverse so that dependent
+		 * modules are removed before the dependencies they were
+		 * built on */
+		int idx = (action == MOD_UNLOAD) ? (count - 1 - i) : i;
+
+		tmp = _sub_meta_values(modules[idx]);
 		if (!tmp) {
-			pv_log(WARN, "illegal module value '%s'", *module);
+			pv_log(WARN, "illegal module value '%s'", modules[idx]);
 			ret++;
-			goto next;
+			continue;
 		}
 
 		if (action == MOD_UNLOAD)
@@ -169,11 +176,8 @@ static int _pv_drivers_modprobe(char **modules, mod_action_t action)
 		tsh_run(cmd, 1, &status);
 		if (WEXITSTATUS(status) == 0)
 			ret++;
-		;
-	next:
-		module++;
-		if (tmp)
-			free(tmp);
+
+		free(tmp);
 		tmp = NULL;
 	}
 
