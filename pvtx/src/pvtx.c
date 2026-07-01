@@ -157,11 +157,10 @@ static int cmd_abort(int argc, char **argv)
 }
 static int cmd_commit(int argc, char **argv)
 {
-	(void)argc;
-	(void)argv;
+	const char *name = (argc > 2) ? argv[2] : NULL;
 
 	struct pv_pvtx_error err = { 0 };
-	char *rev = pv_pvtx_txn_commit(&err);
+	char *rev = pv_pvtx_txn_commit(name, &err);
 	if (!rev) {
 		pv_pvtx_error_print(&err, "commit");
 	} else {
@@ -251,12 +250,14 @@ static int cmd_help(int argc, char **argv)
 	printf("Discard the current transaction, deleting the in-progress\n");
 	printf("%-32s%s\n", " ", "state JSON and transaction status file.");
 
-	printf("  %-30s", "commit");
+	printf("  %-30s", "commit [name]");
 	printf("Finalize a remote transaction by sending the state JSON to\n");
 	printf("%-32s%s\n", " ",
-	       "Pantavisor via the pv-ctrl socket. Generates and prints a");
+	       "Pantavisor via the pv-ctrl socket. Prints the revision name.");
 	printf("%-32s%s\n", " ",
-	       "revision name (locals/pvtx-<timestamp>-<hash>-<rand>).");
+	       "With [name], uses it verbatim (e.g. \"locals/my-rev\");");
+	printf("%-32s%s\n", " ",
+	       "otherwise generates locals/pvtx-<timestamp>-<hash>-<rand>.");
 	printf("%-32s%s\n", " ",
 	       "Only valid for remote transactions (begun without [object]).");
 
