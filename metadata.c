@@ -655,6 +655,7 @@ int pv_metadata_rm_usermeta(const char *key)
 		dl_list_del(&meta->list);
 		pv_storage_rm_usermeta(meta->key);
 		pv_metadata_free(meta);
+		pv_config_unset_value(key);
 		return 0;
 	}
 

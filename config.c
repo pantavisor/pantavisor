@@ -126,6 +126,14 @@ struct pv_config_entry {
 		int i;
 		char *s;
 	} value;
+	// pre-metadata snapshot, restored when usermeta key is removed
+	bool meta_saved;
+	level_t base_modified;
+	struct {
+		bool b;
+		int i;
+		char *s;
+	} base_value;
 };
 
 // configuration lookup table
@@ -151,7 +159,7 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 5 },
 	{ INT, "PH_ONLINE_REQUEST_THRESHOLD", PH | OEM | RUN, 0, false,
 	  .value.i = 0 },
-	{ INT, "PH_UPDATER_INTERVAL", PH | OEM | RUN, 0, false, .value.i = 60 },
+	{ INT, "PH_UPDATER_INTERVAL", PH | OEM | RUN, 0, false, .value.i = 5 },
 	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH | OEM | RUN, 0, false,
 	  .value.i = 120 },
 	{ INT, "PH_UPDATER_TRANSFER_MAX_COUNT", PH | OEM | RUN, 0, false,
@@ -1000,6 +1008,16 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		}
 	}
 
+	// snapshot pre-metadata value before first override
+	if ((modified == META) && !entry->meta_saved) {
+		entry->base_modified = entry->modified;
+		entry->base_value.b = entry->value.b;
+		entry->base_value.i = entry->value.i;
+		entry->base_value.s =
+			entry->value.s ? strdup(entry->value.s) : NULL;
+		entry->meta_saved = true;
+	}
+
 	entry->modified = modified;
 
 	switch (entry->type) {
@@ -1339,11 +1357,39 @@ void pv_config_override_value(const char *key, const char *value)
 	_set_config_by_key(key, value, (void *)&level);
 }
 
+void pv_config_unset_value(const char *key)
+{
+	struct pv_config_entry *entry = _search_config_entry_by_key(key);
+	if (!entry)
+		entry = _search_config_entry_by_alias(key);
+	if (!entry || !entry->meta_saved)
+		return;
+
+	if (entry->type == STR) {
+		if (entry->value.s)
+			free(entry->value.s);
+		entry->value.s = entry->base_value.s;
+		entry->base_value.s = NULL;
+	} else {
+		entry->value.b = entry->base_value.b;
+		entry->value.i = entry->base_value.i;
+	}
+	entry->modified = entry->base_modified;
+	entry->meta_saved = false;
+
+	pv_log(DEBUG, "reverted '%s' to level '%s' after metadata removal",
+	       entry->key, _get_mod_level_str(entry->modified));
+}
+
 void pv_config_free()
 {
 	for (config_index_t ci = 0; ci < PV_MAX; ci++) {
-		if (entries[ci].type == STR)
+		if (entries[ci].type != STR)
+			continue;
+		if (entries[ci].value.s)
 			free(entries[ci].value.s);
+		if (entries[ci].base_value.s)
+			free(entries[ci].base_value.s);
 	}
 }
 
