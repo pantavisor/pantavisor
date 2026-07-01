@@ -222,14 +222,28 @@ auth:
 	} else if (!res->code) {
 		/*
 		 * res->code == 0 means no HTTP response was received at
-		 * all (transport-level timeout or hangup). Auth already
-		 * succeeded above via trest_update_auth(), so this is NOT
-		 * an auth failure. We cannot tell timeout from hangup here
-		 * without a libthttp change, so report it as a generic
-		 * transport error and surface the trest status for context.
+		 * all. Auth already succeeded above via trest_update_auth(),
+		 * so this is NOT an auth failure. libthttp !52 exposes the
+		 * underlying transport error via res->transport_error, which
+		 * lets us tell a timeout from a peer hangup from a generic
+		 * transport/TLS error.
 		 */
-		pv_log(WARN,
-		       "POST /logs/ got no HTTP response (transport error/timeout), trest_status=%d",
+		const char *reason;
+		switch (res->transport_error) {
+		case THTTP_TRANSPORT_TIMEOUT:
+			reason = "timed out waiting for connect/response";
+			break;
+		case THTTP_TRANSPORT_EOF:
+			reason = "server closed connection without responding";
+			break;
+		case THTTP_TRANSPORT_ERROR:
+			reason = "transport/TLS error";
+			break;
+		default:
+			reason = "no HTTP response";
+			break;
+		}
+		pv_log(WARN, "POST /logs/ failed: %s (trest_status=%d)", reason,
 		       res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
