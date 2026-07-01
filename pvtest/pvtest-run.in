@@ -14,6 +14,11 @@ usage() {
 	echo "appengine container names. Each appengine is used as a device slot. Tests are"
 	echo "dispatched to free slots in parallel."
 	echo ""
+	echo "Single-device mode (real hardware): set PVTEST_DEVICE_TARGET to the device name"
+	echo "and PVTEST_EXEC/PVTEST_HOST to reach it. Every queued test runs sequentially"
+	echo "against the one device; tests whose required-config the device does not already"
+	echo "satisfy are SKIPPED. See docs/testing/device-target.md."
+	echo ""
 }
 
 parse_test() {
@@ -249,6 +254,22 @@ _sweep_tracked_devices() {
 _conf_value() {
 	jq -r --arg k "$1" 'if type=="array" then (.[] | select(.key==$k) | .value) // empty else empty end' \
 		"$2" 2>/dev/null
+}
+
+# True when the device's captured `conf ls` ($2) already satisfies every KEY=VALUE
+# in the normalized required-config ($1). Unlike an appengine container — booted
+# with required-config injected as env — a real device's config can't be changed
+# per test, so a test whose required-config the device doesn't already have is
+# SKIPPED rather than run (see run_test_attempt / docs/testing/device-target.md).
+_reqcfg_satisfied() {
+	local kv k v actual
+	for kv in $(_reqcfg_norm "$1"); do
+		k=${kv%%=*}
+		v=${kv#*=}
+		actual=$(_conf_value "$k" "$2")
+		[ "$actual" = "$v" ] || return 1
+	done
+	return 0
 }
 
 # pvcontrol wrapper: retries on 75/503 (slot busy); -q silences WARNs, keeps retry
@@ -663,9 +684,11 @@ _install_initial_pvr() {
 setup_test() {
 	local _p="${PVTEST_AE:+[device $PVTEST_AE] }"
 
-	# claim lifecycle is per-attach (slot pool), not per test; only legacy single-device
-	# path (PVTEST_AE unset) claims here.
-	if [ -z "$PVTEST_AE" ]; then
+	# claim lifecycle is per-attach (slot pool), not per test; the legacy single-device
+	# path (PVTEST_AE unset) and the single real-device path (PVTEST_DEVICE_TARGET set)
+	# both claim per-test here — a single device binds once for the whole run, with no
+	# attach/detach batching to hang claim-once semantics off.
+	if [ -z "$PVTEST_AE" ] || [ -n "$PVTEST_DEVICE_TARGET" ]; then
 		handle_self_claim || return 1
 	fi
 
@@ -815,15 +838,14 @@ run_test_attempt() {
 	test_dir=$(dirname "$json_path")
 	test_id=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
 
-	# logs are keyed by full container name so per-policy containers sharing a trailing index never collide
+	# logs are keyed by full container/device name so per-policy runners sharing a
+	# trailing index never collide. APPENGINE_LOGS is a single mounted directory
+	# (host's $work_path) containing every appengine-<name>.log; construct the path
+	# directly rather than scanning a list.
 	local ae_log="" ae_log_start=0
-	if [ -n "$PVTEST_AE" ] && [ -n "$appengine_logs" ]; then
-		for _l in $appengine_logs; do
-			case "$_l" in
-				*"/appengine-${PVTEST_AE}.log") ae_log="$_l"; break ;;
-			esac
-		done
-		[ -n "$ae_log" ] && [ -f "$ae_log" ] && ae_log_start=$(wc -l < "$ae_log")
+	if [ -n "$PVTEST_AE" ] && [ -n "$APPENGINE_LOGS" ]; then
+		ae_log="$APPENGINE_LOGS/appengine-${PVTEST_AE}.log"
+		[ -f "$ae_log" ] && ae_log_start=$(wc -l < "$ae_log")
 	fi
 
 	if ! parse_test; then
@@ -853,6 +875,17 @@ run_test_attempt() {
 					return 2
 					;;
 			esac
+		fi
+	fi
+
+	# real-device mode: SKIP tests whose required-config the live device doesn't
+	# already satisfy — a device's config can't be injected the way an appengine
+	# container's is at boot. Gated on PVTEST_MATCH_REQCFG so the slot pool (which
+	# does inject required-config) never skips on it.
+	if [ "$PVTEST_MATCH_REQCFG" = "true" ] && [ -n "$required_env" ]; then
+		if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
+			pvtest_log INFO "'$test_id' SKIPPED (required-config not satisfied by device: $required_env)"
+			return 2
 		fi
 	fi
 
@@ -1063,6 +1096,47 @@ slot_worker() {
 	fi
 }
 
+# Single real-device runner (the deliberately-downgraded device path): unlike the
+# appengine slot pool, a real device can't be re-booted with new config, so there
+# is no pool/re-type/claim-batching — the one device binds once, inits once, then
+# every queued test runs against it sequentially via run_test_attempt (which
+# applies the skip / devices-filter / required-config matcher and per-test console
+# interleaving). PVTEST_EXEC/PVTEST_HOST are already set by test.docker.sh from the
+# manifest; init_device reuses them (the appengine accessors pass a pre-set value
+# through). No poweroff at the end — a real board stays reachable after the run.
+run_single_device() {
+	local _name="$1"
+	local _max="${MAX_RETRIES:-0}"
+	local _json _attempt _rc _overall=0
+
+	export PVTEST_AE="$_name"
+	if ! init_device "$_name"; then
+		pvtest_log ERROR "[device $_name] init failed"
+		return 1
+	fi
+	pvtest_log INFO "[device $_name] SLOT_ATTACH"
+
+	local _n
+	_n=$(printf '%s\n' $test_json_list | grep -c .)
+	pvtest_log INFO "=== single device: ${_n} test(s) against $_name ==="
+
+	for _json in $test_json_list; do
+		_attempt=0; _rc=1
+		while : ; do
+			run_test_attempt "$_json"; _rc=$?
+			{ [ "$_rc" -eq 0 ] || [ "$_rc" -eq 2 ]; } && break
+			_attempt=$((_attempt + 1))
+			[ "$_attempt" -gt "$_max" ] && break
+			pvtest_log INFO "[device $_name] retry attempt $_attempt/$_max for $_json"
+			sleep 5
+		done
+		{ [ "$_rc" -ne 0 ] && [ "$_rc" -ne 2 ]; } && _overall=1
+	done
+
+	pvtest_log INFO "[device $_name] SLOT_DETACH"
+	return $_overall
+}
+
 # Group the queued tests into runner-types and dispatch them across the slots.
 run_slot_pool() {
 	local _slots="${PVTEST_SLOTS:-1}"
@@ -1130,7 +1204,8 @@ daemon=${7:-$DAEMON}
 valgrind=${8:-$VALGRIND}
 # /work/run is mounted from work_path/results on the host for per-test result files
 run_dir=${RUN_DIR:-/work/run}
-appengine_logs=${APPENGINE_LOGS:-}
+# APPENGINE_LOGS (if set): mounted host dir containing appengine-<name>.log files,
+# read directly by run_test_attempt() via $APPENGINE_LOGS/appengine-<name>.log
 
 if [ -z "$test_selector" ] || [ -z "$interactive" ] || [ -z "$manual" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$netsim" ]; then
 	pvtest_log ERROR "missing arguments / envs"
@@ -1158,6 +1233,14 @@ _run_scope=${test_selector#/work/}
 _run_scope=${_run_scope%/}
 pvtest_log INFO "starting test run: ${_run_scope:-all}"
 initial_setup
+
+# single real-device mode: flat queue (PVTEST_QUEUE) run sequentially against the
+# one device named in PVTEST_DEVICE_TARGET (PVTEST_EXEC/PVTEST_HOST reach it)
+if [ -n "$PVTEST_QUEUE" ] && [ -n "$PVTEST_DEVICE_TARGET" ]; then
+	test_json_list="$PVTEST_QUEUE"
+	run_single_device "$PVTEST_DEVICE_TARGET"
+	exit $?
+fi
 
 # slot-pool mode: flat queue (PVTEST_QUEUE) dispatched across PVTEST_SLOTS slots
 if [ -n "$PVTEST_QUEUE" ] && [ -n "$PVTEST_CTRL" ]; then
