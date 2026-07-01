@@ -72,6 +72,18 @@
 #define PH_LOGGER_FLAG_STOP (1 << 0)
 #define USER_AGENT_LEN (128)
 
+/*
+ * Caps for a single POST /logs/ request. Accumulated log fragments are
+ * flushed in chunks bounded by these limits and the file is drained
+ * across successive chunks. A single oversized POST is silently dropped
+ * by pantahub and can also exceed the on-device HTTP timeout, so we keep
+ * each request comfortably below the doubled log buffer size (the reader
+ * block is PV_LOG_BUF_NITEMS * 1024, 128K by default; the doubled buffer
+ * used for formatting is 256K).
+ */
+#define PH_LOGGER_PUSH_MAX_BYTES (256 * 1024)
+#define PH_LOGGER_PUSH_MAX_FRAGS (200)
+
 #define MODULE_NAME "ph_logger"
 #define pv_log(level, msg, ...)                                                \
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
@@ -88,6 +100,12 @@ static struct pantavisor *pv_global;
 struct ph_logger_fragment {
 	struct dl_list list;
 	char *json_frag;
+	/*
+	 * File position just past the log line this fragment was built
+	 * from. Used to advance the saved log-file position only for
+	 * fragments that were actually pushed successfully.
+	 */
+	off_t pos;
 };
 
 static DEFINE_DL_LIST(frag_list);
@@ -201,9 +219,17 @@ auth:
 	if (!res) {
 		pv_log(WARN,
 		       "HTTP request POST /logs/ could not be initialized");
-	} else if (!res->code && res->status != TREST_AUTH_STATUS_OK) {
+	} else if (!res->code) {
+		/*
+		 * res->code == 0 means no HTTP response was received at
+		 * all (transport-level timeout or hangup). Auth already
+		 * succeeded above via trest_update_auth(), so this is NOT
+		 * an auth failure. We cannot tell timeout from hangup here
+		 * without a libthttp change, so report it as a generic
+		 * transport error and surface the trest status for context.
+		 */
 		pv_log(WARN,
-		       "HTTP request POST /logs/ could not auth (status=%d)",
+		       "POST /logs/ got no HTTP response (transport error/timeout), trest_status=%d",
 		       res->status);
 	} else if (res->code != THTTP_STATUS_OK) {
 		pv_log(WARN,
@@ -341,8 +367,6 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 	int fd = -1;
 	char *buf = NULL;
 	int bytes_read = 0;
-	int nr_frags = 0;
-	int len_frags = 0;
 	struct buffer *log_buff = NULL;
 	struct buffer *large_buff = NULL;
 
@@ -472,6 +496,23 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 			if (__json_frag) {
 				char *shrinked = NULL;
 
+				/*
+				 * TODO: tsec/tnano and lvl are hardcoded to
+				 * 0/0/INFO here, so pantahub stamps every
+				 * pushed entry with event-time 1970 and level
+				 * INFO. The real timestamp and level are not
+				 * recoverable at this point: the filetree sink
+				 * (logserver_filetree.c /
+				 * logserver_utils_print_raw /
+				 * print_pvfmt_log) writes human-readable,
+				 * config-dependent lines and, for raw/container
+				 * sources, no epoch tsec or machine-parseable
+				 * level at all. Recovering them cleanly
+				 * requires a larger on-disk log format change
+				 * (e.g. a structured/sidecar record) rather
+				 * than a fragile parse here, so this is left
+				 * as-is for a follow-up.
+				 */
 				SNPRINTF_WTRUNC(__json_frag, frag_len,
 						PH_LOGGER_JSON_FORMAT,
 						(uint64_t)0, (uint32_t)0,
@@ -482,10 +523,15 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 				if (shrinked)
 					__json_frag = shrinked;
 				frag = ph_logger_alloc_frag(__json_frag);
-				dl_list_add_tail(&frag_list, &frag->list);
-				nr_frags++;
-				len_frags += strlen(frag->json_frag);
 				pos = read_pos + offset;
+				/*
+				 * Remember the file position just past this
+				 * line so a partially-flushed backlog only
+				 * advances the saved position for fragments
+				 * actually sent.
+				 */
+				frag->pos = pos;
+				dl_list_add_tail(&frag_list, &frag->list);
 			} else {
 				/*Bail out on the first error*/
 				pv_log(ERROR, "alloc error for filename %s",
@@ -508,60 +554,124 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 	}
 close_fd:
 	close(fd);
-	if (!dl_list_empty(&frag_list)) {
+	/*
+	 * Drain the accumulated fragments in chunks capped by
+	 * PH_LOGGER_PUSH_MAX_BYTES / PH_LOGGER_PUSH_MAX_FRAGS. Each chunk is
+	 * a single "[...]" POST. The saved log-file position is only advanced
+	 * for fragments that were actually pushed successfully, so on a push
+	 * failure we stop and leave the position where it is for retry.
+	 */
+	while (!dl_list_empty(&frag_list)) {
 		struct ph_logger_fragment *item, *tmp;
 		char *json_frag_array = NULL;
+		int chunk_frags = 0;
+		int chunk_len = 0;
+		off_t chunk_pos = 0;
 		int off = 0;
 		int avail = 0;
 		int written = 0;
-		/*
-		 * Each fragment will need to be separated by ',' thus
-		 * we'll need nr_frags - 1 bytes in addition to size
-		 * of each of the frags. The whole bundle needs to be
-		 * inside '[' ']'. Thus
-		 * bytes_reqd = nr_frags - 1 + 2 + len_frags + 1 (for null).
-		 */
-		avail = nr_frags + len_frags + 2;
-		json_frag_array = calloc(avail, sizeof(char));
-		if (json_frag_array) {
-			off = snprintf(json_frag_array, 2, "[");
-			avail -= off;
-		}
+		int n = 0;
 
+		/*
+		 * First pass: figure out how many leading fragments fit into
+		 * this chunk. Always include at least one fragment so an
+		 * oversized single line still makes progress.
+		 */
 		dl_list_for_each_safe(item, tmp, &frag_list,
 				      struct ph_logger_fragment, list)
 		{
-			if (json_frag_array) {
-				written = snprintf(json_frag_array + off, avail,
-						   "%s", item->json_frag);
-				avail -= written;
-				off += written;
-			}
-			dl_list_del(&item->list);
-			/*
-			 * Is there another item if so add , in
-			 * json.
-			 */
-			if (!dl_list_empty(&frag_list) && json_frag_array) {
+			int this_len = strlen(item->json_frag);
+
+			if (chunk_frags > 0 &&
+			    (chunk_frags >= PH_LOGGER_PUSH_MAX_FRAGS ||
+			     chunk_len + this_len + 1 >
+				     PH_LOGGER_PUSH_MAX_BYTES))
+				break;
+
+			chunk_frags++;
+			chunk_len += this_len;
+			chunk_pos = item->pos;
+		}
+
+		/*
+		 * Each fragment needs a ',' separator (chunk_frags - 1 of
+		 * them), the whole bundle is wrapped in '[' ']' and we need a
+		 * trailing null. Thus:
+		 * bytes_reqd = (chunk_frags - 1) + 2 + chunk_len + 1.
+		 */
+		avail = chunk_frags + chunk_len + 2;
+		json_frag_array = calloc(avail, sizeof(char));
+		if (!json_frag_array) {
+			pv_log(ERROR, "alloc error for filename %s", filename);
+			ret = -1;
+			break;
+		}
+
+		off = snprintf(json_frag_array, 2, "[");
+		avail -= off;
+
+		n = 0;
+		dl_list_for_each_safe(item, tmp, &frag_list,
+				      struct ph_logger_fragment, list)
+		{
+			if (n >= chunk_frags)
+				break;
+
+			written = snprintf(json_frag_array + off, avail, "%s",
+					   item->json_frag);
+			avail -= written;
+			off += written;
+			n++;
+			/* Separate fragments within this chunk with ','. */
+			if (n < chunk_frags) {
 				written = snprintf(json_frag_array + off, avail,
 						   ",");
 				avail -= written;
 				off += written;
 			}
+		}
+		SNPRINTF_WTRUNC(json_frag_array + off, avail, "]");
+
+		if (ph_logger_push_logs_endpoint(&ph_logger, json_frag_array)) {
+			/*
+			 * Push failed: leave the unsent fragments and the
+			 * saved position untouched so they are retried later.
+			 */
+			free(json_frag_array);
+			ret = -1;
+			break;
+		}
+		free(json_frag_array);
+
+		/* Chunk sent: advance the saved position and drop it. */
+		_save_log_file_pos(chunk_pos, filename);
+		ret = 1;
+
+		n = 0;
+		dl_list_for_each_safe(item, tmp, &frag_list,
+				      struct ph_logger_fragment, list)
+		{
+			if (n >= chunk_frags)
+				break;
+			dl_list_del(&item->list);
 			free(item->json_frag);
 			free(item);
+			n++;
 		}
-		if (json_frag_array) {
-			SNPRINTF_WTRUNC(json_frag_array + off, avail, "]");
-			// set ret to 1, something pending to be sent
-			ret = 1;
-			if (!ph_logger_push_logs_endpoint(&ph_logger,
-							  json_frag_array))
-				_save_log_file_pos(pos, filename);
-			// in case of error while sending, we return -1
-			else
-				ret = -1;
-			free(json_frag_array);
+	}
+
+	/*
+	 * Free any fragments left over (push failure or alloc error). Their
+	 * position was not saved, so they will be re-read on the next pass.
+	 */
+	{
+		struct ph_logger_fragment *item, *tmp;
+		dl_list_for_each_safe(item, tmp, &frag_list,
+				      struct ph_logger_fragment, list)
+		{
+			dl_list_del(&item->list);
+			free(item->json_frag);
+			free(item);
 		}
 	}
 out:
