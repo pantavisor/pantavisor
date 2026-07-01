@@ -161,6 +161,24 @@ _pvr_logged() {
 	return $rc
 }
 
+# delete Hub user-meta key via PATCH null (-> Mongo $unset); pvr has no delete verb.
+# best-effort, needs PH creds.
+_hub_usrmeta_delete() {
+	local device_id="$1" key="$2" home tok
+	{ [ -n "$PH_USER" ] && [ -n "$PH_PASS" ] && [ -n "$device_id" ]; } || return 0
+	home="$(_ae_pvr_home)"; mkdir -p "$home" 2>/dev/null
+	( export HOME="$home"
+	  PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1 )
+	tok=$(jq -r 'first(.tokens[]) | .["access-token"] // empty' \
+		"$home/.pvr/auth.json" 2>/dev/null)
+	[ -n "$tok" ] || return 0
+	curl -s -X PATCH \
+		-H "Authorization: Bearer $tok" -H "Content-Type: application/json" \
+		-d "{\"$key\": null}" \
+		"${PVTEST_HUB_URL:-https://api.pantahub.com}/devices/$device_id/user-meta" \
+		> /dev/null 2>&1
+}
+
 # set Hub user-meta key (PATCH), retried — ownership propagation lag right after claim
 _hub_usrmeta_set() {
 	local device_id="$1" key="$2" value="$3" home tok attempt=1
@@ -709,8 +727,7 @@ teardown_test() {
 		for k in $applied_usrmeta_keys; do
 			pvtest_log INFO "${_p}usrmeta delete $k"
 			pv_ctrl -q usrmeta delete "$k"
-			[ -n "$device_id" ] && \
-				_pvr_auth device set "$device_id" "$k=" > /dev/null 2>&1
+			[ -n "$device_id" ] && _hub_usrmeta_delete "$device_id" "$k"
 		done
 		applied_usrmeta_keys=
 	fi
