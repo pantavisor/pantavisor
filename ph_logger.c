@@ -191,9 +191,23 @@ static void sigchld_handler(int signum)
 		;
 }
 
+/*
+ * Result of a POST /logs/ push, used by the drain loop to decide whether to
+ * retry the batch or to give up on it. A REJECTED batch will never be accepted
+ * no matter how often it is resent (definitive 4xx / bad content), so the
+ * caller isolates and drops the offending fragment instead of wedging the
+ * whole log stream on it. TRANSIENT covers transport errors, 5xx and
+ * backpressure (429/408), which a later retry of the same batch can clear.
+ */
+enum ph_logger_push_result {
+	PH_LOGGER_PUSH_OK = 0,
+	PH_LOGGER_PUSH_TRANSIENT = -1,
+	PH_LOGGER_PUSH_REJECTED = -2,
+};
+
 static int ph_logger_push_logs_endpoint(struct ph_logger *ph_logger, char *logs)
 {
-	int ret = -1;
+	int ret = PH_LOGGER_PUSH_TRANSIENT;
 	trest_auth_status_enum status = TREST_AUTH_STATUS_NOTAUTH;
 	trest_request_ptr req = NULL;
 	trest_response_ptr res = NULL;
@@ -231,12 +245,35 @@ auth:
 		pv_log(WARN,
 		       "POST /logs/ got no HTTP response (transport error/timeout), trest_status=%d",
 		       res->status);
-	} else if (res->code != THTTP_STATUS_OK) {
+	} else if (res->code == THTTP_STATUS_OK) {
+		ret = PH_LOGGER_PUSH_OK;
+	} else if (res->code == 429 /* Too Many Requests */ ||
+		   res->code == 408 /* Request Timeout */ ||
+		   res->code == 401 /* Unauthorized */ ||
+		   res->code == 403 /* Forbidden */ ||
+		   res->code >= 500 /* server-side error */) {
+		/*
+		 * Retryable: backpressure, an auth hiccup or a server-side
+		 * error. Resending the same batch later can still succeed.
+		 */
 		pv_log(WARN,
-		       "HTTP request POST /logs/ returned HTTP error (code=%d; body='%s')",
+		       "POST /logs/ transient HTTP error (code=%d; body='%s')",
 		       res->code, res->body);
+	} else if (res->code >= 400) {
+		/*
+		 * Definitive client/content rejection (400 bad request, 413
+		 * payload too large, 422, ...): the server will never accept
+		 * this batch, so resending it forever would stall the log
+		 * stream. Tell the caller to isolate and drop the offender.
+		 */
+		pv_log(WARN,
+		       "POST /logs/ rejected batch content (code=%d; body='%s')",
+		       res->code, res->body);
+		ret = PH_LOGGER_PUSH_REJECTED;
 	} else {
-		ret = 0;
+		/* Unexpected 1xx/3xx: be conservative and retry. */
+		pv_log(WARN, "POST /logs/ unexpected HTTP status (code=%d)",
+		       res->code);
 	}
 
 out:
@@ -367,6 +404,7 @@ static int ph_logger_push_from_file(const char *filename, char *platform,
 	int fd = -1;
 	char *buf = NULL;
 	int bytes_read = 0;
+	int isolate = 0;
 	struct buffer *log_buff = NULL;
 	struct buffer *large_buff = NULL;
 
@@ -546,6 +584,7 @@ close_fd:
 	 */
 	while (!dl_list_empty(&frag_list)) {
 		struct ph_logger_fragment *item, *tmp;
+		struct ph_logger_fragment *head = NULL;
 		char *json_frag_array = NULL;
 		int chunk_frags = 0;
 		int chunk_len = 0;
@@ -574,6 +613,16 @@ close_fd:
 			chunk_frags++;
 			chunk_len += this_len;
 			chunk_pos = item->pos;
+			if (!head)
+				head = item;
+
+			/*
+			 * When narrowing a rejected batch, push exactly one
+			 * fragment so the offending line can be pinned down
+			 * (and dropped if the server still refuses it).
+			 */
+			if (isolate)
+				break;
 		}
 
 		/*
@@ -615,20 +664,54 @@ close_fd:
 		}
 		SNPRINTF_WTRUNC(json_frag_array + off, avail, "]");
 
-		if (ph_logger_push_logs_endpoint(&ph_logger, json_frag_array)) {
+		int push_res = ph_logger_push_logs_endpoint(&ph_logger,
+							    json_frag_array);
+		free(json_frag_array);
+
+		if (push_res == PH_LOGGER_PUSH_REJECTED) {
+			if (chunk_frags > 1) {
+				/*
+				 * Server refused this batch on content grounds.
+				 * Retry the head as a single fragment to pin
+				 * down the offending line before dropping it.
+				 */
+				isolate = 1;
+				continue;
+			}
 			/*
-			 * Push failed: leave the unsent fragments and the
+			 * A single fragment the server will never accept: drop
+			 * it (drop-and-log) and advance past it so the rest of
+			 * the backlog and all newer logs still upload, instead
+			 * of wedging the whole stream on one poison line.
+			 */
+			pv_log(ERROR,
+			       "dropping log fragment POST /logs/ refused; advancing past pos %jd: %.256s",
+			       (intmax_t)chunk_pos,
+			       head ? head->json_frag : "");
+			_save_log_file_pos(chunk_pos, filename);
+			ret = 1;
+			isolate = 0;
+			if (head) {
+				dl_list_del(&head->list);
+				free(head->json_frag);
+				free(head);
+			}
+			continue;
+		}
+
+		if (push_res != PH_LOGGER_PUSH_OK) {
+			/*
+			 * Transient failure: leave the unsent fragments and the
 			 * saved position untouched so they are retried later.
 			 */
-			free(json_frag_array);
 			ret = -1;
 			break;
 		}
-		free(json_frag_array);
 
 		/* Chunk sent: advance the saved position and drop it. */
 		_save_log_file_pos(chunk_pos, filename);
 		ret = 1;
+		isolate = 0;
 
 		n = 0;
 		dl_list_for_each_safe(item, tmp, &frag_list,
