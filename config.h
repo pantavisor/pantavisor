@@ -227,6 +227,7 @@ int pv_config_save_creds(void);
 int pv_config_unload_creds(void);
 
 void pv_config_override_value(const char *key, const char *value);
+void pv_config_unset_value(const char *key);
 
 void pv_config_free(void);
 
