@@ -233,7 +233,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_SYSTEM_RUNDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_USRDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_UPDATER_COMMIT_DELAY`            | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| `PV_UPDATER_GOALS_TIMEOUT`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_UPDATER_GOALS_TIMEOUT`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_UPDATER_USE_TMP_OBJECTS`         | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_VOLMOUNT_DM_EXTRA_ARGS`          | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_WDT_MODE`                        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
