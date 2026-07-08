@@ -43,6 +43,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#define PVTX_CTRL_RUN_SOCK "/run/pantavisor/pv/pv-ctrl"
 #define PVTX_CTRL_ROOT_SOCK "/pv/pv-ctrl"
 #define PVTX_CTRL_CONTAINER_SOCK "/pantavisor/pv-ctrl"
 
@@ -146,15 +147,18 @@ static int connect_sock(struct pv_pvtx_ctrl *ctrl, const char *path,
 	pv_pvtx_error_clear(err);
 
 	if (!path) {
-		// checking both paths
-		if (pv_fs_path_exist(PVTX_CTRL_ROOT_SOCK))
+		// try the known socket locations (same order as pvcontrol)
+		if (pv_fs_path_exist(PVTX_CTRL_RUN_SOCK))
+			path = PVTX_CTRL_RUN_SOCK;
+		else if (pv_fs_path_exist(PVTX_CTRL_ROOT_SOCK))
 			path = PVTX_CTRL_ROOT_SOCK;
 		else if (pv_fs_path_exist(PVTX_CTRL_CONTAINER_SOCK))
 			path = PVTX_CTRL_CONTAINER_SOCK;
 		else {
 			pv_pvtx_error_set(
 				err, -1,
-				"pv-ctrl socket not found (tried /pv/pv-ctrl and "
+				"pv-ctrl socket not found (tried "
+				"/run/pantavisor/pv/pv-ctrl, /pv/pv-ctrl and "
 				"/pantavisor/pv-ctrl)");
 			return -1;
 		}

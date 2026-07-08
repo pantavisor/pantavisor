@@ -1182,7 +1182,7 @@ int pv_pvtx_txn_abort(struct pv_pvtx_error *err)
 	return err->code;
 }
 
-char *pv_pvtx_txn_commit(struct pv_pvtx_error *err)
+char *pv_pvtx_txn_commit(const char *name, struct pv_pvtx_error *err)
 {
 	char *json = NULL;
 	char *rev = NULL;
@@ -1220,7 +1220,8 @@ char *pv_pvtx_txn_commit(struct pv_pvtx_error *err)
 		goto out;
 	}
 
-	rev = get_rev_name(json, json_len);
+	// caller-supplied name used verbatim; else auto-generate
+	rev = (name && name[0]) ? strdup(name) : get_rev_name(json, json_len);
 
 	if (!rev) {
 		pv_pvtx_error_set(err, -1, "couldn't build revision string");
