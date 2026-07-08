@@ -199,7 +199,12 @@ static void shell_handler(int signal)
 	if (!pv)
 		return;
 
-	pv_issue_poweroff();
+	// appengine: SIGTERM means "crash, reboot" (not poweroff) so the wrapper relaunches cleanly
+	if (signal == SIGTERM &&
+	    pv_config_get_system_init_mode() == IM_APPENGINE)
+		pv_issue_reboot();
+	else
+		pv_issue_poweroff();
 }
 
 static void early_spawns()
