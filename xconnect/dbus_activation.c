@@ -167,6 +167,7 @@ static void mon_down(void)
 		g_mon = NULL;
 	}
 	g_mon_state = MON_DOWN;
+	printf("pvx-act: ownership monitor disconnected, will retry\n");
 	// Ownership is unknown while disconnected; a cold call then re-triggers
 	// activation (idempotent) rather than trusting a stale owned-set.
 	set_clear(&g_owned);
@@ -294,9 +295,11 @@ static void mon_event_cb(struct bufferevent *bev, short events, void *arg)
 	(void)arg;
 	if (events & BEV_EVENT_CONNECTED) {
 		// EXTERNAL auth as our real uid (root on host => "0"); the bus
-		// authenticates by SO_PEERCRED. Leading NUL then the AUTH line.
-		const char *hello = "\0AUTH EXTERNAL 30\r\n"; // 30 = hex("0")
-		evbuffer_add(bufferevent_get_output(bev), hello, 18);
+		// authenticates by SO_PEERCRED. Leading NUL byte, then the AUTH
+		// line as its own write (the NUL would truncate a single buffer).
+		struct evbuffer *out = bufferevent_get_output(bev);
+		evbuffer_add(out, "\0", 1);
+		evbuffer_add(out, "AUTH EXTERNAL 30\r\n", 18); // 30 = hex("0")
 		g_mon_state = MON_AUTH;
 	} else if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
 		mon_down();
@@ -320,6 +323,7 @@ static void mon_connect(void)
 	bufferevent_setcb(g_mon, mon_read_cb, NULL, mon_event_cb, NULL);
 	bufferevent_enable(g_mon, EV_READ | EV_WRITE);
 	g_mon_state = MON_AUTH;
+	printf("pvx-act: connecting ownership monitor to %s\n", g_bus_socket);
 	if (bufferevent_socket_connect(g_mon, (struct sockaddr *)&sun,
 				       sizeof(sun)) < 0) {
 		mon_down();
