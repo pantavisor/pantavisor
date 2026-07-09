@@ -256,6 +256,27 @@ struct pv_platform *pv_dbus_daemon_activatable_owner(struct pv_state *s,
 	return NULL;
 }
 
+int pv_dbus_daemon_activate(struct pv_state *s, const char *name)
+{
+	struct pv_platform *owner = pv_dbus_daemon_activatable_owner(s, name);
+	if (!owner)
+		return -1; // no activatable owner for this name
+
+	if (pv_platform_is_started(owner))
+		return 0; // already active — nothing to do
+
+	// Reuse the normal lifecycle: flip the goal to STARTED and re-inject the
+	// owner into the run loop (set_installed). The next pv_state_run tick
+	// drives mount -> drivers -> start; a chained dependency (this owner
+	// making its own cold call) re-enters activation through the proxy.
+	pv_log(INFO,
+	       "on-demand activation: starting '%s' (owner of D-Bus name '%s')",
+	       owner->name, name);
+	pv_platform_set_status_goal(owner, PLAT_STARTED);
+	pv_platform_set_installed(owner);
+	return 0;
+}
+
 // Map a role to its passwd username ("<prefix><role>").
 static void role_to_user(const char *role, char *buf, size_t n)
 {
