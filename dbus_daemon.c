@@ -185,6 +185,17 @@ int pv_dbus_daemon_validate(struct pv_state *s)
 			// (b) two apps owning the same name on the same bus
 			const char *bus =
 				exp->bus ? exp->bus : PV_DBUS_SYSTEMBUS_NAME;
+
+			// (c) on-demand activation is limited to the hosted
+			// system bus in v1 (see xconnect/XCONNECT.md scope).
+			if (exp->activatable &&
+			    strcmp(bus, PV_DBUS_SYSTEMBUS_NAME)) {
+				pv_log(ERROR,
+				       "name '%s' declares on-demand activation on bus '%s'; activation is only supported on the hosted '%s'",
+				       exp->owns, bus, PV_DBUS_SYSTEMBUS_NAME);
+				return -1;
+			}
+
 			struct pv_platform *p2, *tmp_p2;
 			dl_list_for_each_safe(p2, tmp_p2, &s->platforms,
 					      struct pv_platform, list)
@@ -212,6 +223,37 @@ int pv_dbus_daemon_validate(struct pv_state *s)
 		}
 	}
 	return 0;
+}
+
+struct pv_platform *pv_dbus_daemon_activatable_owner(struct pv_state *s,
+						     const char *name)
+{
+	if (!name)
+		return NULL;
+
+	// The owner index: the platform that owns well-known `name` on the
+	// hosted system bus AND declares on-demand activation. Used by the
+	// activate endpoint to resolve which container to start on first use.
+	// One-owner-per-name is enforced by pv_dbus_daemon_validate(), so the
+	// first match is authoritative.
+	struct pv_platform *p, *tmp_p;
+	dl_list_for_each_safe(p, tmp_p, &s->platforms, struct pv_platform, list)
+	{
+		struct pv_platform_service_export *exp, *tmp_exp;
+		dl_list_for_each_safe(exp, tmp_exp, &p->service_exports,
+				      struct pv_platform_service_export, list)
+		{
+			if (!exp->owns || !exp->activatable)
+				continue;
+			const char *bus =
+				exp->bus ? exp->bus : PV_DBUS_SYSTEMBUS_NAME;
+			if (strcmp(bus, PV_DBUS_SYSTEMBUS_NAME))
+				continue;
+			if (!strcmp(exp->owns, name))
+				return p;
+		}
+	}
+	return NULL;
 }
 
 // Map a role to its passwd username ("<prefix><role>").
