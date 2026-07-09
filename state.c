@@ -2175,6 +2175,12 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 							PV_DBUS_SYSTEMBUS_NAME);
 					pv_json_ser_key(&js, "owner");
 					pv_json_ser_string(&js, op->name);
+					// The host-side bus socket, so the
+					// pv-xconnect ownership monitor knows
+					// where to connect.
+					pv_json_ser_key(&js, "socket");
+					pv_json_ser_string(
+						&js, PV_DBUS_SYSTEMBUS_SOCKET);
 				}
 				pv_json_ser_object_pop(&js);
 			}

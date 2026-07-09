@@ -51,6 +51,8 @@ void pvx_proxy_free(struct pvx_proxy *p)
 {
 	if (!p)
 		return;
+	if (p->on_free)
+		p->on_free(p);
 	if (p->linger)
 		event_free(p->linger);
 	if (p->be_client)
