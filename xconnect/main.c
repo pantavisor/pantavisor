@@ -16,6 +16,7 @@
 #include "utils/json.h"
 
 #include "include/xconnect.h"
+#include "dbus_activation.h"
 
 #define PV_CTRL_SOCKET "/run/pantavisor/pv/pv-ctrl"
 #define RECONCILE_INTERVAL_SEC 5
@@ -171,6 +172,19 @@ static struct pvx_link *parse_link(const char *json, jsmntok_t *itok,
 
 static void reconcile_link(const char *json, jsmntok_t *itok, int obj_tokc)
 {
+	// Activatable-name descriptors ({activatable,bus,owner,socket}) are not
+	// links — collect the name (and the bus socket the ownership monitor
+	// connects to) into the activation set and stop.
+	char *act = pv_json_get_value(json, "activatable", itok, obj_tokc);
+	if (act) {
+		char *sock = pv_json_get_value(json, "socket", itok, obj_tokc);
+		pvx_act_reconcile_add(act, sock ? sock : "");
+		free(act);
+		if (sock)
+			free(sock);
+		return;
+	}
+
 	char *type = pv_json_get_value(json, "type", itok, obj_tokc);
 	if (!type)
 		return;
@@ -264,12 +278,14 @@ static void reconcile_graph(const char *json)
 		return;
 	}
 
+	pvx_act_reconcile_begin();
 	for (int i = 0; items[i]; i++) {
 		jsmntok_t *itok = items[i];
 		int obj_tokc = items[i + 1] ? items[i + 1] - items[i] :
 					      (tokv + tokc) - itok;
 		reconcile_link(json, itok, obj_tokc);
 	}
+	pvx_act_reconcile_end();
 
 	jsmnutil_tokv_free(items);
 	free(tokv);

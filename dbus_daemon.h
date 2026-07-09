@@ -62,6 +62,12 @@ struct pv_platform;
 struct pv_platform *pv_dbus_daemon_activatable_owner(struct pv_state *s,
 						     const char *name);
 
+// On-demand activation entry point for POST /xconnect/dbus/activate: resolve the
+// activatable owner of `name` and, unless it is already started, transition it
+// MOUNTED->STARTED. Returns 0 on activation (or already active), -1 if `name`
+// has no activatable owner.
+int pv_dbus_daemon_activate(struct pv_state *s, const char *name);
+
 // Lay down the runtime dir, base config and seed passwd before the managed
 // dbus-daemon is spawned. Disables the daemon when the feature is off in config.
 void pv_dbus_daemon_prepare(void);
