@@ -98,6 +98,11 @@ struct pv_platform_service_export {
 	char *role;
 	char **allow;
 	int allow_count;
+	// Hosted-bus D-Bus service activation (see xconnect/XCONNECT.md):
+	// true when the owned name declares activation.mode="on-demand", i.e.
+	// the owner is started on first message to `owns` rather than at boot.
+	// Meaningful only on an `owns` dbus export; false ("always") otherwise.
+	bool activatable;
 	struct dl_list list;
 };
 typedef enum {
@@ -207,7 +212,8 @@ void pv_platform_add_service_export(struct pv_platform *p,
 void pv_platform_add_service_owns(struct pv_platform *p,
 				  service_type_t svc_type, const char *bus,
 				  const char *owns, const char *role,
-				  char **allow, int allow_count);
+				  char **allow, int allow_count,
+				  bool activatable);
 int pv_platform_load_drivers(struct pv_platform *p, char *namematch,
 			     plat_driver_t typematch);
 void pv_platform_unload_drivers(struct pv_platform *p, char *namematch,
