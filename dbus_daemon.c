@@ -25,6 +25,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <limits.h>
 #include <signal.h>
@@ -300,6 +301,33 @@ void pv_dbus_daemon_prepare(void)
 	       PV_DBUS_SYSTEMBUS_CONF);
 }
 
+// True if the file at `path` does not already hold exactly `len` bytes of
+// `buf` (missing file counts as different).
+static bool file_differs(const char *path, const char *buf, size_t len)
+{
+	size_t n = 0;
+	char *cur = pv_fs_file_read(path, &n);
+	bool diff = !cur || n != len || memcmp(cur, buf, len) != 0;
+	if (cur)
+		free(cur);
+	return diff;
+}
+
+// Rewrite `path` in place (fopen "w" truncates the existing inode) with the
+// generated content, so a passwd bind-mount keeps tracking the same inode.
+static int write_inplace(const char *path, const char *buf, size_t len)
+{
+	FILE *fp = fopen(path, "w");
+	if (!fp) {
+		pv_log(ERROR, "could not write %s: %s", path, strerror(errno));
+		return -1;
+	}
+	if (len)
+		fwrite(buf, 1, len, fp);
+	fclose(fp);
+	return 0;
+}
+
 void pv_dbus_daemon_generate(struct pv_state *s)
 {
 	if (!pv_config_get_bool(PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED))
@@ -309,28 +337,33 @@ void pv_dbus_daemon_generate(struct pv_state *s)
 		return;
 
 	// passwd and policy are two projections of the same role->uid map and
-	// must stay in lockstep, so they are written together here. The passwd
-	// is rewritten in place (fopen "w" truncates the existing inode) so the
-	// daemon's bind-mount keeps seeing it.
-	FILE *pw = fopen(PV_DBUS_SYSTEMBUS_PASSWD, "w");
-	if (!pw) {
-		pv_log(ERROR, "could not write %s: %s",
-		       PV_DBUS_SYSTEMBUS_PASSWD, strerror(errno));
+	// must stay in lockstep. pv_state_run() calls us on every controller
+	// tick, but this projection only changes when the state's owns/allow
+	// declarations change; rewriting the files and SIGHUP'ing the daemon
+	// unconditionally would reload the bus every couple of seconds for the
+	// life of the revision. So build both into memory, and only touch disk
+	// (and reload the daemon) when the generated content actually differs.
+	char *pw_buf = NULL, *pol_buf = NULL;
+	size_t pw_len = 0, pol_len = 0;
+
+	FILE *pw = open_memstream(&pw_buf, &pw_len);
+	FILE *f = open_memstream(&pol_buf, &pol_len);
+	if (!pw || !f) {
+		pv_log(ERROR, "could not allocate dbus policy buffers");
+		if (pw)
+			fclose(pw);
+		if (f)
+			fclose(f);
+		free(pw_buf);
+		free(pol_buf);
 		return;
 	}
+
 	passwd_write_base(pw);
 
 	char polpath[PATH_MAX];
 	snprintf(polpath, sizeof(polpath), "%s/pv-generated.conf",
 		 PV_DBUS_SYSTEMBUS_POLICYDIR);
-
-	FILE *f = fopen(polpath, "w");
-	if (!f) {
-		pv_log(ERROR, "could not write dbus policy %s: %s", polpath,
-		       strerror(errno));
-		fclose(pw);
-		return;
-	}
 
 	fputs("<!DOCTYPE busconfig PUBLIC "
 	      "\"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\" "
@@ -398,15 +431,27 @@ void pv_dbus_daemon_generate(struct pv_state *s)
 	fclose(f);
 	fclose(pw);
 
-	struct pv_init_daemon *d = pv_init_get_daemons();
-	for (int i = 0; d && d[i].name; i++) {
-		if (!strcmp(d[i].name, PV_DBUS_SYSTEMBUS_DAEMON) &&
-		    d[i].pid > 0) {
-			pv_log(INFO, "reloading %s (pid %d) dbus policy",
-			       PV_DBUS_SYSTEMBUS_DAEMON, d[i].pid);
-			kill(d[i].pid, SIGHUP);
+	bool changed = file_differs(PV_DBUS_SYSTEMBUS_PASSWD, pw_buf, pw_len) ||
+		       file_differs(polpath, pol_buf, pol_len);
+
+	if (changed) {
+		write_inplace(PV_DBUS_SYSTEMBUS_PASSWD, pw_buf, pw_len);
+		write_inplace(polpath, pol_buf, pol_len);
+
+		struct pv_init_daemon *d = pv_init_get_daemons();
+		for (int i = 0; d && d[i].name; i++) {
+			if (!strcmp(d[i].name, PV_DBUS_SYSTEMBUS_DAEMON) &&
+			    d[i].pid > 0) {
+				pv_log(INFO,
+				       "reloading %s (pid %d) dbus policy",
+				       PV_DBUS_SYSTEMBUS_DAEMON, d[i].pid);
+				kill(d[i].pid, SIGHUP);
+			}
 		}
 	}
+
+	free(pw_buf);
+	free(pol_buf);
 }
 
 #endif /* PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS */
