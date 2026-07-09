@@ -44,6 +44,7 @@ struct dbus_proxy_session {
 	struct pvx_proxy proxy; // must stay first: shared callbacks cast to it
 	struct pvx_link *link;
 	int authenticated;
+	int begun; // client sent BEGIN -> binary D-Bus message phase started
 	// On-demand activation gating (post-auth, client->bus direction):
 	int passthrough; // parsing gave up -> splice the rest untouched
 	int holding; // a cold method_call is held awaiting activation
@@ -225,9 +226,9 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 {
 	struct dbus_proxy_session *sess = arg;
 
-	if (sess->authenticated) {
-		// Past the auth handshake: gate cold calls to activatable names,
-		// otherwise splice through.
+	if (sess->begun) {
+		// Past BEGIN: binary message phase. Gate cold calls to
+		// activatable names, otherwise splice through.
 		dbus_process_client(sess);
 		return;
 	}
@@ -308,6 +309,8 @@ static void dbus_client_read_cb(struct bufferevent *bev, void *arg)
 		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
 			     "BEGIN\r\n", 7);
 		sess->authenticated = 1;
+		// Only now do binary D-Bus messages begin; framing/gating starts.
+		sess->begun = 1;
 	} else {
 		// Pass-through anything else during auth
 		evbuffer_add(bufferevent_get_output(sess->proxy.be_provider),
