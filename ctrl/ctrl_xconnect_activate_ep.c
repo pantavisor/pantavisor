@@ -44,19 +44,10 @@
 
 #define ACTIVATE_MAX_DATA 512
 
-// Fires once the full POST body has arrived; body is {"name":"<well-known>"}.
-static void ctrl_xconnect_activate_body(struct evbuffer *buf,
-					const struct evbuffer_cb_info *info,
-					void *ctx)
+// Read the {"name":"<well-known>"} body and activate its owner. Called either
+// inline (body already buffered) or from the arrival callback below.
+static void ctrl_xconnect_activate_process(struct evhttp_request *req)
 {
-	if (!info->n_added)
-		return;
-	if (!pv_ctrl_utils_has_all_data(ctx))
-		return;
-
-	evbuffer_remove_cb(buf, ctrl_xconnect_activate_body, ctx);
-	struct evhttp_request *req = ctx;
-
 	ssize_t len = 0;
 	char *data = pv_ctrl_utils_get_data(req, ACTIVATE_MAX_DATA, &len);
 	if (!data || len <= 0) {
@@ -100,6 +91,20 @@ out:
 		free(data);
 }
 
+// Arrival callback: fires when the body is still streaming in when the request
+// handler ran (evbuffer grows after we registered).
+static void ctrl_xconnect_activate_body(struct evbuffer *buf,
+					const struct evbuffer_cb_info *info,
+					void *ctx)
+{
+	if (!info->n_added)
+		return;
+	if (!pv_ctrl_utils_has_all_data(ctx))
+		return;
+	evbuffer_remove_cb(buf, ctrl_xconnect_activate_body, ctx);
+	ctrl_xconnect_activate_process(ctx);
+}
+
 static void ctrl_xconnect_activate_post(struct evhttp_request *req, void *ctx)
 {
 	char err[PV_CTRL_MAX_ERR] = { 0 };
@@ -111,6 +116,15 @@ static void ctrl_xconnect_activate_post(struct evhttp_request *req, void *ctx)
 
 	if (pv_ctrl_utils_get_content_length(req) < 1) {
 		pv_ctrl_utils_send_error(req, HTTP_BADREQUEST, "Empty body");
+		return;
+	}
+
+	// Over a unix socket the small body usually arrives with the headers, so
+	// it is already fully buffered here — process inline. Only fall back to
+	// the arrival callback if it is still streaming (add_cb would otherwise
+	// never fire for an already-complete body).
+	if (pv_ctrl_utils_has_all_data(req)) {
+		ctrl_xconnect_activate_process(req);
 		return;
 	}
 
