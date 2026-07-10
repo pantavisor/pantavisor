@@ -22,6 +22,7 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "config.h"
@@ -188,15 +189,17 @@ static void _set_progress(struct pv_update_progress *p)
 	}
 }
 
-static void _call_report_cb(struct pv_update_progress *p)
+static void _report(struct pv_update_progress *p, bool reload_logs)
 {
 	char *progress_str = NULL;
 
 	if (!p || !p->report_cb)
 		return;
 
-	// adding update logs from disk
-	_load_logs(p);
+	// adding update logs from disk (only change on failure paths, so the
+	// byte-progress cadence reuses the in-memory copy)
+	if (reload_logs)
+		_load_logs(p);
 	// this progress int does not mean anything, but it is still sent to Hub
 	_set_progress(p);
 
@@ -415,7 +418,7 @@ void pv_update_progress_set(struct pv_update_progress *p,
 		free(p->msg);
 	p->msg = _ser_update_progress_msg(p, code);
 
-	_call_report_cb(p);
+	_report(p, true);
 }
 
 void pv_update_progress_set_str(struct pv_update_progress *p,
@@ -442,7 +445,7 @@ void pv_update_progress_set_str(struct pv_update_progress *p,
 		free(p->msg);
 	p->msg = msg;
 
-	_call_report_cb(p);
+	_report(p, true);
 }
 
 void pv_update_progress_start_record(struct pv_update_progress *p)
@@ -459,7 +462,7 @@ void pv_update_progress_start_record(struct pv_update_progress *p)
 
 	p->total.size = 0;
 
-	_call_report_cb(p);
+	_report(p, true);
 }
 
 void pv_update_progress_add_size(struct pv_update_progress *p, off_t size)
@@ -491,10 +494,11 @@ void pv_update_progress_start_download(struct pv_update_progress *p)
 		p, PV_UPDATE_PROGRESS_MSG_DOWNLOAD_PROGRESS);
 
 	p->total.downloaded = 0;
+	p->total.reported = 0;
 	p->total.start_time = time(NULL);
 	p->total.current_time = time(NULL);
 
-	_call_report_cb(p);
+	_report(p, true);
 }
 
 void pv_update_progress_add_downloaded(struct pv_update_progress *p,
@@ -503,10 +507,24 @@ void pv_update_progress_add_downloaded(struct pv_update_progress *p,
 	if (!p)
 		return;
 
+	// pure in-memory accounting; reporting is driven by the periodic
+	// download heartbeat via pv_update_progress_report()
 	p->total.downloaded += downloaded;
 	p->total.current_time = time(NULL);
+}
 
-	_call_report_cb(p);
+void pv_update_progress_report(struct pv_update_progress *p)
+{
+	if (!p)
+		return;
+
+	// nothing new since last push
+	if (p->total.downloaded == p->total.reported)
+		return;
+
+	p->total.reported = p->total.downloaded;
+	// reuse in-memory logs; they only change on failure paths
+	_report(p, false);
 }
 
 void pv_update_progress_reload_logs(struct pv_update_progress *p)
@@ -520,5 +538,5 @@ void pv_update_progress_reload_logs(struct pv_update_progress *p)
 	if (!pv_fs_path_exist(path))
 		return;
 
-	_call_report_cb(p);
+	_report(p, true);
 }

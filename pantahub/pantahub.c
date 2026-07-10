@@ -53,6 +53,8 @@
 #include "metadata.h"
 #include "updater.h"
 
+#include "update/update.h"
+
 #include "event/event.h"
 #include "event/event_rest.h"
 
@@ -811,6 +813,10 @@ static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
 		_next_state(PH_STATE_IDLE);
 		return;
 	}
+
+	// push the current byte counter to the trail-dir file and Hub, ~every
+	// REQ_INTERVAL seconds; skipped internally if no bytes moved
+	pv_update_report_download_progress();
 }
 
 static void _run_state_download()

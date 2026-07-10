@@ -41,7 +41,9 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 			      size_t max_len);
 
-int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path);
-int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path);
+int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path,
+				  size_t *written);
+int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path,
+				 size_t *written);
 
 #endif

@@ -452,11 +452,15 @@ int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 	return ret;
 }
 
-int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
+int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path,
+				  size_t *written)
 {
 	int fd;
 	size_t total_written = 0, blen;
 	struct evbuffer *evbuf;
+
+	if (written)
+		*written = 0;
 
 	evbuf = evhttp_request_get_input_buffer(req);
 	blen = evbuffer_get_length(evbuf);
@@ -500,15 +504,18 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path)
 	pv_log(TRACE, "recv chunk '%s': wrote %zu/%zu bytes", path,
 	       total_written, blen);
 	close(fd);
+	if (written)
+		*written = total_written;
 	return 0;
 }
 
-int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path)
+int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path,
+				 size_t *written)
 {
 	int ret;
 	off_t size;
 
-	if (pv_event_rest_recv_chunk_path(req, path)) {
+	if (pv_event_rest_recv_chunk_path(req, path, written)) {
 		pv_log(WARN, "could not finish transfer to path %s", path);
 		return -1;
 	}
