@@ -485,8 +485,6 @@ int pv_update_install_object(const char *in_path)
 		goto out;
 	}
 
-	pv_update_progress_add_downloaded(&u->progress, o->size);
-
 	ret = 0;
 
 	if (!pv_state_are_all_objects_installed(s))
@@ -500,6 +498,24 @@ out:
 	if (pv_update_is_final())
 		pv_update_finish();
 	return ret;
+}
+
+void pv_update_add_downloaded(off_t downloaded)
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u)
+		return;
+
+	pv_update_progress_add_downloaded(&u->progress, downloaded);
+}
+
+void pv_update_report_download_progress(void)
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u)
+		return;
+
+	pv_update_progress_report(&u->progress);
 }
 
 void pv_update_pre_install(const char *rev)

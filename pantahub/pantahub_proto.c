@@ -64,6 +64,7 @@ struct pv_progress {
 struct pv_object_transfer {
 	const char *id_ref;
 	bool active;
+	off_t received; // bytes received so far for this object
 	struct dl_list list; // struct pv_object_transfer
 };
 
@@ -756,40 +757,62 @@ int pv_pantahub_proto_get_objects_metadata()
 static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
 {
 	char path[PATH_MAX];
-	int res;
+	size_t written = 0;
 	const char *id_ref = (char *)ctx;
+	struct pv_object_transfer *o;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
 
 	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
-	pv_event_rest_recv_chunk_path(req, path);
+	if (pv_event_rest_recv_chunk_path(req, path, &written))
+		return;
+
+	o = _search_object_transfer(id_ref);
+	if (o)
+		o->received += written;
+	pv_update_add_downloaded((off_t)written);
 }
 
 static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 {
 	char path[PATH_MAX];
+	size_t written = 0;
 	int res;
 	const char *id_ref = (char *)ctx;
+	struct pv_object_transfer *o;
+	off_t received = 0;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_done_cb);
 
+	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
+	res = pv_event_rest_recv_done_path(req, path, &written);
+
+	// account the final flush; read received before _remove frees the transfer
+	o = _search_object_transfer(id_ref);
+	if (o) {
+		o->received += written;
+		received = o->received;
+	}
+	pv_update_add_downloaded((off_t)written);
+
 	_remove_object_transfer(id_ref);
 
-	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
-	res = pv_event_rest_recv_done_path(req, path);
 	if (res == 401) {
-		pv_log(WARN, "GET object unauthorized", res);
+		pv_log(WARN, "GET object unauthorized");
 		_free_token();
+		pv_update_add_downloaded(-received); // roll back partial
 		goto out;
 	}
 	if (res != 200) {
 		pv_log(WARN, "GET object returned %d", res);
+		pv_update_add_downloaded(-received); // roll back partial
 		goto out;
 	}
 	pv_log(DEBUG, "object downloaded from Hub");
 
 	if (pv_update_install_object(path)) {
 		pv_log(WARN, "object download failed");
+		pv_update_add_downloaded(-received); // roll back partial
 		goto out;
 	}
 out:

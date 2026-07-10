@@ -43,6 +43,7 @@ off_t pv_update_progress_get_size(struct pv_update_progress *p);
 void pv_update_progress_start_download(struct pv_update_progress *p);
 void pv_update_progress_add_downloaded(struct pv_update_progress *p,
 				       off_t downloaded);
+void pv_update_progress_report(struct pv_update_progress *p);
 
 void pv_update_progress_reload_logs(struct pv_update_progress *p);
 
