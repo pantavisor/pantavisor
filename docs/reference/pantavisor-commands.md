@@ -136,6 +136,17 @@ These are the different commands that are supported. You can test them by substi
 | LOCAL_APPLY | revision | apply revision changes without a full reboot |
 | XCONNECT_GRAPH | N/A | trigger an immediate xconnect graph reconciliation |
 
+## /storage
+
+This endpoint groups [storage](../overview/storage.md) related operations.
+
+To run the [garbage collector](../overview/storage.md#garbage-collector) synchronously. Unlike the RUN_GC [command](#commands), which is queued and executed at some later point by the state machine, the response is sent back once the collection has finished and reports the number of bytes reclaimed from orphaned objects:
+
+```
+$ curl -X POST --unix-socket /pantavisor/pv-ctrl "http://localhost/storage/gc"
+{"reclaimed": 8646656}
+```
+
 ## /objects
 
 This endpoint can be used to list, send and receive objects to and from Pantavisor. Bear in mind that objects are the artifacts that form a Pantavisor revision.
