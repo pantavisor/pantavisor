@@ -61,6 +61,7 @@
 #define PVTX_TXN_DST_RUNJS "bsp/run.json"
 #define PVTX_TXN_OBJ_EXP "^[0-9a-f]{64}$"
 #define PVTX_TXN_BUF_ENV "PVTX_OBJECT_BUF_SIZE"
+#define PVTX_TXN_LOCAL_REV_PREFIX "locals/"
 #define PVTX_TXN_BUF_MIN (512)
 #define PVTX_TXN_BUF_MAX (10485760)
 
@@ -107,8 +108,8 @@ static const char *get_pvtxdir(void)
 			pv_fs_path_concat(pvtxdir_cache, 2, pfx,
 					  PVTX_TXN_DEFAULT_PATH_ROOT);
 		else
-			memccpy(pvtxdir_cache, PVTX_TXN_DEFAULT_PATH_ROOT,
-				'\0', PATH_MAX);
+			memccpy(pvtxdir_cache, PVTX_TXN_DEFAULT_PATH_ROOT, '\0',
+				PATH_MAX);
 	} else {
 		char *home = getenv("HOME");
 		if (!home) {
@@ -120,8 +121,8 @@ static const char *get_pvtxdir(void)
 			pv_fs_path_concat(pvtxdir_cache, 2, home,
 					  PVTX_TXN_DEFAULT_PATH_USER);
 		else
-			memccpy(pvtxdir_cache, PVTX_TXN_DEFAULT_PATH_ROOT,
-				'\0', PATH_MAX);
+			memccpy(pvtxdir_cache, PVTX_TXN_DEFAULT_PATH_ROOT, '\0',
+				PATH_MAX);
 	}
 
 	pv_fs_mkdir_p(pvtxdir_cache, 0755);
@@ -588,8 +589,8 @@ static char *get_rev_name(const char *data, size_t len)
 	if (getrandom(&rand, sizeof(unsigned int), 0) == -1)
 		goto out;
 
-	int n = asprintf(&rev, "locals/pvtx-%jd-%s-%d", (intmax_t)time(NULL),
-			 hash8, (rand % 1000));
+	int n = asprintf(&rev, "%spvtx-%jd-%s-%d", PVTX_TXN_LOCAL_REV_PREFIX,
+			 (intmax_t)time(NULL), hash8, (rand % 1000));
 	if (n == -1)
 		rev = NULL;
 out:
@@ -1221,7 +1222,19 @@ char *pv_pvtx_txn_commit(const char *name, struct pv_pvtx_error *err)
 	}
 
 	// caller-supplied name used verbatim; else auto-generate
-	rev = (name && name[0]) ? strdup(name) : get_rev_name(json, json_len);
+	if (name && name[0]) {
+		if (strncmp(name, PVTX_TXN_LOCAL_REV_PREFIX,
+			    strlen(PVTX_TXN_LOCAL_REV_PREFIX))) {
+			pv_pvtx_error_set(
+				err, -1,
+				"local transaction names must start with '%s'",
+				PVTX_TXN_LOCAL_REV_PREFIX);
+			goto out;
+		}
+		rev = strdup(name);
+	} else {
+		rev = get_rev_name(json, json_len);
+	}
 
 	if (!rev) {
 		pv_pvtx_error_set(err, -1, "couldn't build revision string");
@@ -1235,6 +1248,8 @@ char *pv_pvtx_txn_commit(const char *name, struct pv_pvtx_error *err)
 			"via pv-ctrl",
 			rev);
 
+		free(rev);
+		rev = NULL;
 		goto out;
 	}
 
