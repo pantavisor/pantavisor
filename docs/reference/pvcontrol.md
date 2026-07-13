@@ -284,6 +284,7 @@ pvcontrol cmd disable-ssh
 
 # Remote / debug
 pvcontrol cmd go-remote                    # go remote from a locals/ revision (if config allows)
+pvcontrol cmd unclaim                      # remove Hub credentials; device re-registers and becomes claimable again
 pvcontrol cmd defer-reboot <new_timeout>   # defer a pending debug-shell reboot
 ```
 
