@@ -203,6 +203,7 @@ add_executable(pantavisor
 			ctrl/ctrl_objects_ep.c
 			ctrl/ctrl_signal_ep.c
 			ctrl/ctrl_steps_ep.c
+			ctrl/ctrl_storage_ep.c
 			ctrl/ctrl_upload.c
 			ctrl/ctrl_upload.h
 			ctrl/ctrl_usrmeta_ep.c

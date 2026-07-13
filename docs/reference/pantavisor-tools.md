@@ -94,6 +94,9 @@ pvcontrol cmd poweroff [message]
 pvcontrol cmd run-gc                 # trigger garbage collection
 pvcontrol cmd enable-ssh             # start SSH server until next reboot
 
+# Garbage collector (synchronous, reports reclaimed bytes)
+pvcontrol storage gc
+
 # Metadata
 pvcontrol devmeta ls
 pvcontrol devmeta save <key> <value>
