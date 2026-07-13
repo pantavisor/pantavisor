@@ -282,6 +282,7 @@ static void ctrl_add_endpoints()
 	pv_ctrl_endpoints_config_init();
 	pv_ctrl_endpoints_xconnect_graph_init();
 	pv_ctrl_endpoints_daemons_init();
+	pv_ctrl_endpoints_storage_init();
 }
 
 int pv_ctrl_start()
