@@ -678,6 +678,31 @@ static pv_state_t _pv_command(struct pantavisor *pv)
 		pv->remote_mode = true;
 		pv_metadata_add_devmeta(DEVMETA_KEY_PV_MODE, "remote");
 		break;
+	case CMD_UNCLAIM:
+		if (pv->unclaimed) {
+			pv_log(WARN,
+			       "ignoring unclaim command because device is already unclaimed");
+			goto out;
+		}
+
+		if (pv->update) {
+			pv_log(WARN,
+			       "ignoring unclaim command because an update is in progress");
+			goto out;
+		}
+
+		pv_log(DEBUG,
+		       "unclaim command received. Removing credentials...");
+		pv_config_set_creds_prn("");
+		pv_config_set_creds_id("");
+		pv_config_set_creds_secret("");
+		// still claimed at this point, so this saves to pantahub.config
+		if (pv_config_save_creds())
+			pv_log(WARN, "could not remove credentials from disk");
+		pv->unclaimed = true;
+		pv_pantahub_stop();
+		pv_metadata_rm_devmeta("pantahub.claimed");
+		break;
 	case CMD_DEFER_REBOOT:
 		if (!pv_config_get_bool(PV_DEBUG_SHELL)) {
 			pv_log(WARN,
