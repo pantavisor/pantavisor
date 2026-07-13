@@ -107,7 +107,7 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 	    ((cmd->op == CMD_REBOOT_DEVICE) ||
 	     (cmd->op == CMD_POWEROFF_DEVICE) || (cmd->op == CMD_LOCAL_RUN) ||
 	     (cmd->op == CMD_LOCAL_RUN_COMMIT) ||
-	     (cmd->op == CMD_MAKE_FACTORY))) {
+	     (cmd->op == CMD_MAKE_FACTORY) || (cmd->op == CMD_UNCLAIM))) {
 		return (struct pv_ctrl_cmd_add_result){
 			false,
 			HTTP_SERVUNAVAIL,
@@ -154,6 +154,16 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 			HTTP_NOCONTENT,
 			-1,
 			"Already in remote mode",
+		};
+	}
+
+	if (pv->unclaimed && cmd->op == CMD_UNCLAIM) {
+		pv_log(WARN, "rejecting unclaim command: already unclaimed");
+		return (struct pv_ctrl_cmd_add_result){
+			false,
+			HTTP_NOCONTENT,
+			-1,
+			"Device is already unclaimed",
 		};
 	}
 
