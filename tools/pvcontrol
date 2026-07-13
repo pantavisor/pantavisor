@@ -42,7 +42,7 @@ OUTPUT=""
 MESSAGE=""
 
 usage() {
-	echo "Usage: pvcontrol [options] <ls|containers|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons> [arguments]"
+	echo "Usage: pvcontrol [options] <ls|containers|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons|storage> [arguments]"
 	echo "Control Pantavisor from your container"
 	echo "options:"
 	echo "       -h           show help"
@@ -105,6 +105,12 @@ usage_usrmeta() {
 usage_buildinfo() {
 	echo "Usage: pvcontrol buildinfo"
 	echo "Dump Pantavisor build info"
+}
+
+usage_storage() {
+	echo "Usage: pvcontrol storage <gc>"
+	echo "Storage related operations"
+	echo "       pvcontrol storage gc - run garbage collector synchronously and report reclaimed bytes"
 }
 
 usage_objects() {
@@ -321,6 +327,20 @@ parse_buildinfo_args() {
 		;;
 	*)
 		usage_buildinfo; exit 1
+		;;
+	esac
+}
+
+parse_storage_args() {
+	case "$1" in
+	gc)
+		cmd='storagegc'
+		;;
+	--help)
+		usage_storage; exit 0
+		;;
+	*)
+		usage_storage; exit 1
 		;;
 	esac
 }
@@ -561,6 +581,9 @@ parse_args() {
 	daemons)
 		parse_daemons_args "$2" "$3"
 		;;
+	storage)
+		parse_storage_args "$2"
+		;;
 	--help)
 		usage; exit 0
 		;;
@@ -722,6 +745,9 @@ exec_cmd() {
 			;;
 		dumpbuildinfo)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/buildinfo"`
+			;;
+		storagegc)
+			response=`$CURL -X POST --unix-socket "$SOCKET" "http://localhost/storage/gc"`
 			;;
 		putobject)
 			put_object "$path" "$sha"
