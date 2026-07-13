@@ -93,6 +93,7 @@ pvcontrol cmd reboot [message]
 pvcontrol cmd poweroff [message]
 pvcontrol cmd run-gc                 # trigger garbage collection
 pvcontrol cmd enable-ssh             # start SSH server until next reboot
+pvcontrol cmd unclaim                # remove Hub credentials, device becomes claimable again
 
 # Metadata
 pvcontrol devmeta ls

@@ -135,6 +135,7 @@ These are the different commands that are supported. You can test them by substi
 | LOCAL_RUN_COMMIT | revision | transition to revision and commit it automatically |
 | LOCAL_APPLY | revision | apply revision changes without a full reboot |
 | XCONNECT_GRAPH | N/A | trigger an immediate xconnect graph reconciliation |
+| UNCLAIM | N/A | remove Pantacor Hub credentials so the device registers and becomes claimable again, without a reboot |
 
 ## /objects
 
