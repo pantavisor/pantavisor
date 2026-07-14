@@ -457,6 +457,18 @@ static pv_state_t pv_wait_network(struct pantavisor *pv)
 	// new ph client state machine
 	pv_pantahub_start();
 
+	// rollback local revisions during TESTING only if the Hub was reachable
+	// at some point during this boot and then turned unstable. Devices that
+	// have never seen the Hub (e.g. PV_CONTROL_REMOTE_ALWAYS=1 with no
+	// network yet) keep committing locally and are not penalized.
+	if (pv_update_is_testing() && pv_pantahub_was_ever_online() &&
+	    pv_pantahub_got_any_failure()) {
+		pv_log(ERROR,
+		       "Hub was reachable earlier this boot but became unstable during testing. Rolling back...");
+		pv_update_set_error_hub_unstable();
+		return PV_STATE_ROLLBACK;
+	}
+
 	// we don't want to rollback local revisions because of failing Hub comms
 	// which could happen when PV_CONTROL_REMOTE_ALWAYS=1
 	if (pv_update_is_local())
