@@ -1,0 +1,29 @@
+#
+# Copyright (c) 2024-2026 Pantacor Ltd.
+#
+# SPDX-License-Identifier: Apache-2.0
+#
+
+CONFIG_SOC_SERIES_IMX8MN_M7=y
+CONFIG_SOC_MIMX8MN6=y
+CONFIG_BOARD_MIMX8MN_EVK=y
+CONFIG_CLOCK_CONTROL=y
+CONFIG_SERIAL=n
+CONFIG_CONSOLE=n
+CONFIG_PRINTK=y
+CONFIG_LOG=y
+CONFIG_XIP=y
+CONFIG_CODE_DDR=y
+CONFIG_PINCTRL=y
+
+# OpenAMP / RPMsg for remoteproc communication
+CONFIG_IPM=y
+CONFIG_IPM_IMX=y
+CONFIG_OPENAMP_RSC_TABLE=y
+CONFIG_OPENAMP_RSC_TABLE_NUM_RPMSG_BUFF=32
+
+# MU register mapping: 4 bytes per register = 4 independent channels.
+# Linux DTB uses mbox index 1, so M7 must monitor RR[1].
+# With SIZE_16 (default), only RR[3] is monitored — wrong register.
+CONFIG_IPM_IMX_MAX_DATA_SIZE_16=n
+CONFIG_IPM_IMX_MAX_DATA_SIZE_4=y
