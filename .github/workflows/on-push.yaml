@@ -2,6 +2,15 @@ name: "On push: Raspberry Pi ARMv8"
 
 on:
   push:
+    branches:
+      - master
+    paths:
+      - "**"
+      - ".github/configs/**"
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - "*"
     paths:
       - "**"
       - ".github/configs/**"
