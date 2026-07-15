@@ -149,6 +149,9 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 	}
 
 	if (pv->remote_mode && cmd->op == CMD_GO_REMOTE) {
+		pv_log(WARN,
+		       "rejecting go-remote command: already in remote mode");
+
 		return (struct pv_ctrl_cmd_add_result){
 			false,
 			HTTP_NOCONTENT,
