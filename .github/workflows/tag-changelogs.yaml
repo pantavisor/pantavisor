@@ -55,7 +55,6 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
-          token: ${{ secrets.PANTAVISOR_TAG_SYNC_TOKEN }}
 
       - name: Generate changelog file (historical mode)
         run: |
@@ -93,7 +92,7 @@ jobs:
       - name: Open PR with updated CHANGELOG
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.PANTAVISOR_TAG_SYNC_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           base: master
           branch: changelog/${{ env.TAG }}
           delete-branch: true
