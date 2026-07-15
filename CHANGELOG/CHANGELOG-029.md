@@ -37,4 +37,23 @@ Changes since [`029-rc1`](https://github.com/pantavisor/pantavisor/releases/tag/
 - **reference**: document hosted dbus system bus and config entry
 - **xconnect**: add pantavisor-hosted system bus design proposal
 - dup CLAUDE.md instead of using reference to GEMINI.md
+## v029-rc1
+
+Released: 2026-07-02
+Commit: [`a4ab01fed0f2`](https://github.com/pantavisor/pantavisor/commit/a4ab01fed0f209948f4b66a83108307055fb1ef1)
+
+### Changes
+
+Changes since [`028`](https://github.com/pantavisor/pantavisor/releases/tag/028):
+
+#### Fixes
+- **ph_logger**: drop-and-log fragments the server permanently rejects
+- **ph_logger**: chunk cloud log push and correct transport error reporting
+- **platforms**: kill container before unmounting its volumes on force stop
+
+#### CI
+- **tag-changelogs**: generate changelog and release on synced tag
+
+#### Docs
+- fix links for Docusaurus site and normalize reading structure
 
