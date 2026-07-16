@@ -125,8 +125,8 @@ These are the different commands that are supported. You can test them by substi
 | REBOOT_DEVICE | message | reboot device with optional message |
 | POWEROFF_DEVICE | message | poweroff device with optional message |
 | TRY_ONCE | revision | try a revision once (will rollback on failure or next reboot) |
-| LOCAL_RUN | [revision](https://docs.pantavisor.io/develop/cli-tools/workflows) | transition to specified revision |
-| MAKE_FACTORY | revision | make the revision the factory revision. If revision is not set, Pantavisor will use the current one. Device needs to be [not claimed](https://docs.pantavisor.io/operate/device-access/remote-pantahub) |
+| LOCAL_RUN | [revision](../../meta-pantavisor/getting-started/develop/cli-tools/workflows.md) | transition to specified revision |
+| MAKE_FACTORY | revision | make the revision the factory revision. If revision is not set, Pantavisor will use the current one. Device needs to be [not claimed](../../meta-pantavisor/getting-started/operate/device-access/remote-pantahub.md) |
 | RUN_GC | N/A | run garbage collector |
 | ENABLE_SSH | N/A | [enable SSH server](../overview/pantavisor-configuration-levels.md#commands) ignoring config until reboot |
 | DISABLE_SSH | N/A | [disable SSH server](../overview/pantavisor-configuration-levels.md#commands) ignoring config until reboot |

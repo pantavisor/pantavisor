@@ -2,7 +2,7 @@
 title: "Configuration Levels"
 sidebar_position: 12
 ---
-# Pantavisor Configuration
+# Configuration Levels
 
 :::note
 The configuration syntax is common for all levels, but not all levels support the same keys. Our [reference](../reference/pantavisor-configuration.md) contains the list of keys and the allowed levels for each one.
@@ -21,15 +21,15 @@ There are several ways to set Pantavisor configuration, depending on when it can
 
 ## pantavisor.config
 
-Configuration file for [Pantavisor](pantavisor-architecture.md). It can only be changed at [build time](https://docs.pantavisor.io/build).
+Configuration file for [Pantavisor](pantavisor-architecture.md). It can only be changed at [build time](../../meta-pantavisor/overview/get-started.md).
 
 ## pantahub.config
 
-[Build time](https://docs.pantavisor.io/build) configuration file for Pantavisor built-in [Pantacor Hub client](remote-control.md#pantacor-hub).
+[Build time](../../meta-pantavisor/overview/get-started.md) configuration file for Pantavisor built-in [Pantacor Hub client](remote-control.md#pantacor-hub).
 
 ## Policies
 
-Policies are added at build time from the [vendor skel directory](https://docs.pantavisor.io/build), but loaded during boot up time.
+Policies are added at build time from the [vendor skel directory](../../meta-pantavisor/overview/get-started.md), but loaded during boot up time.
 
 To select a policy among the installed ones, we need to set its name to the `PV_POLICY` key either from [pantavisor.config](#pantavisorconfig) or [environment variables](#environment-variables).
 
@@ -45,7 +45,7 @@ Its location [inside the revision](../reference/pantavisor-state-format-v2.md#1-
 This method is _DEPRECATED_ but still supported for backwards compatibility reasons. It is recommended to use [env variables](#environment-variables) instead.
 :::
 
-Right after loading the [configuration files](#pantavisorconfig), Pantavisor reads `/proc/cmdline` in search for `key=value` pairs that use the prefix `ph_` or `pv_`. This can be done from the [bootloader console](https://docs.pantavisor.io/operate/device-access/serial-port).
+Right after loading the [configuration files](#pantavisorconfig), Pantavisor reads `/proc/cmdline` in search for `key=value` pairs that use the prefix `ph_` or `pv_`. This can be done from the [bootloader console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md).
 
 ## Environment Variables
 
@@ -55,7 +55,7 @@ Linux environment variables can be used to configure Pantavisor. To do that, the
 * Do not use `.`
 * If ` ` characted is needed, you can escape them by using `"` between the config item. For example: `"PV_SYSCTL_KERNEL_CORE_PATTERN=|/lib/pv/pvcrash --skip"`.
 
-These variables need to be set during boot time, and setting them after that will have no effect on Pantavisor. This can be achieved from the [bootloader console](https://docs.pantavisor.io/operate/device-access/serial-port).
+These variables need to be set during boot time, and setting them after that will have no effect on Pantavisor. This can be achieved from the [bootloader console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md).
 
 ## User Metadata
 
@@ -65,7 +65,7 @@ If the [user metadata volume](../reference/pantavisor-state-format-v2.md#4-infra
 
 [User metadata](storage.md#user-metadata) can be used to override any of the previously presented configuration mechanisms.
 
-There is a number of ways of setting user metadata, depending on the device management method choice. Go to our [how-to use Pantavisor guide](https://docs.pantavisor.io/operate/device-access) for more information.
+There is a number of ways of setting user metadata, depending on the device management method choice. Go to our [how-to use Pantavisor guide](../../meta-pantavisor/getting-started/operate/device-access/index.md) for more information.
 
 ## Commands
 

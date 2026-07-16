@@ -18,5 +18,5 @@ This mode was created for debugging Pantavisor. It works the same way as _embedd
 App Engine mode is meant for prototyping on already setup devices running any Linux distro. In this case, Pantavisor will run as a daemon that can be started from your init system or directly from console.
 
 :::note
-You can get more information about how to run Pantavisor in our [how-to guides](https://docs.pantavisor.io/start).
+You can get more information about how to run Pantavisor in our [how-to guides](../../meta-pantavisor/getting-started/start/index.md).
 :::

@@ -62,13 +62,13 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_CONTROL_REMOTE_ALWAYS` | `0` or `1` | `0` | keep [communication with Pantacor Hub](../overview/remote-control.md#pantacor-hub) even when a [local revision](../overview/local-control.md) is running |
 | `PV_DEBUG_SHELL` | `0` or `1` | `1` | enable local debug shell |
 | `PV_DEBUG_SHELL_AUTOLOGIN` | `0` or `1` | `0` | enable autologin for debug shell |
-| `PV_DEBUG_SHELL_TIMEOUT` | time (in seconds) | `60` | time that Pantavisor waits before rebooting if [debug shell console](https://docs.pantavisor.io/operate/device-access/serial-port) is opened |
+| `PV_DEBUG_SHELL_TIMEOUT` | time (in seconds) | `60` | time that Pantavisor waits before rebooting if [debug shell console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) is opened |
 | `PV_DEBUG_SSH` | `0` or `1` | `1` | enable SSH debug access |
 | `PV_DEBUG_SSH_AUTHORIZED_KEYS` | string | empty | set authorized keys for SSH debug access |
 | `PV_DISK_EXPORTSDIR` | path | `/exports` | set exports directory |
 | `PV_DISK_VOLDIR` | path | `/volumes` | set volumes directory |
 | `PV_DISK_WRITABLEDIR` | path | `/writable` | set writable directory |
-| `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](https://docs.pantavisor.io/operate/device-access/local-network) cache directory |
+| `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) cache directory |
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
 | `PV_LIBTHTTP_LOG_LEVEL` | `0` to `5` | `3` | set libthttp log verbosity level |
