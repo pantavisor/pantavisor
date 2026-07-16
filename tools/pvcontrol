@@ -1,5 +1,9 @@
 #!/bin/sh
 
+if [ -n "$PVTEST_EXEC" ]; then
+	exec $PVTEST_EXEC pvcontrol "$@"
+fi
+
 cmd=''
 metakey=''
 metavalue=''
@@ -830,8 +834,9 @@ show_output() {
 	http_code=`echo "$response" | tail -n 1`
 	content=`echo "$response" | head -n -1`
 
-	if ! [ "$http_code" = "200" ]; then		
+	if ! [ "$http_code" = "200" ]; then
 		code=255
+		[ "$http_code" = "503" ] && code=75
 		case "$content" in
 			"{\"Error\":\"Not enough disk space available\"}")
 				code=48

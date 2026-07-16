@@ -1,6 +1,86 @@
 #!/bin/sh
 
-pvtest_log() { local level=$1; shift; printf '[pvtest] %s %s -- [%s]: %s\n' "$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*"; }
+pvtest_log() {
+	local level=$1; shift
+	local line
+	# leading tag is the device/container this line concerns (PVTEST_AE, bound
+	# per-attach in pool/single-device mode); falls back to this tester
+	# container's own name (PVTEST_TESTER_NAME, set by test.docker.sh) for
+	# dispatcher-level lines that aren't about any one device yet.
+	line=$(printf '[%s] %s %s -- [%s]: %s' "${PVTEST_AE:-${PVTEST_TESTER_NAME:-pvtest}}" "$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*")
+	printf '%s\n' "$line"
+	# When a test is active, mirror the message into its per-test test.log so the
+	# log holds the whole test (setup -> script -> teardown), not just the script.
+	[ -n "$PVTEST_ACTIVE_TESTLOG" ] && printf '%s\n' "$line" >> "$PVTEST_ACTIVE_TESTLOG" 2>/dev/null
+	return 0
+}
+
+# args are shell-quoted (printf %q) since SSH flattens them into one remote command
+_pv_exec() {
+	local prog="$1"; shift
+	if [ -n "$PVTEST_EXEC" ]; then
+		local cmd="$prog"
+		for a in "$@"; do
+			cmd="$cmd $(printf '%q' "$a")"
+		done
+		# tester-side wall bound: a device-side call can block forever on a
+		# ctrl socket that accepts but never answers (boot/shutdown windows),
+		# or on a TCP connection black-holed by a device reboot, wedging
+		# every wait_for_* loop on a single poll. --foreground keeps ssh in
+		# our process group so it isn't SIGTTIN-stopped under the test pty.
+		timeout --foreground "${PVTEST_EXEC_TIMEOUT:-60}" $PVTEST_EXEC "$cmd"
+	else
+		command "$prog" "$@"
+	fi
+}
+
+pvcontrol() { _pv_exec pvcontrol "$@"; }
+pventer()   { _pv_exec pventer   "$@"; }
+pvcurl()    { _pv_exec pvcurl    "$@"; }
+# Routes via PVTEST_EXEC; stdin is forwarded too, so `pvtx add - < file` streams.
+# Longer bound: adds stream whole tarballs to low-spec devices.
+pvtx()      { PVTEST_EXEC_TIMEOUT="${PVTEST_EXEC_TIMEOUT:-600}" _pv_exec pvtx "$@"; }
+
+# Stage a tester-local file where a forwarded command can read it; echoes the
+# path to pass as the file arg (device-side copy when PVTEST_EXEC is set).
+pv_stage_file() {
+	if [ -n "$PVTEST_EXEC" ]; then
+		local remote="/tmp/pvtest_stage.$$.${1##*/}"
+		$PVTEST_EXEC "cat > '$remote'" < "$1" || return 1
+		printf '%s\n' "$remote"
+	else
+		printf '%s\n' "$1"
+	fi
+}
+
+# Remove a path previously echoed by pv_stage_file (no-op when it was local).
+pv_unstage_file() {
+	[ -n "$PVTEST_EXEC" ] && $PVTEST_EXEC "rm -f '$1'" > /dev/null 2>&1
+	return 0
+}
+
+# Fetch a file from the exec target into tester path $2 (plain copy when local).
+pv_fetch_file() {
+	if [ -n "$PVTEST_EXEC" ]; then
+		$PVTEST_EXEC "cat '$1'" > "$2"
+	else
+		cat "$1" > "$2"
+	fi
+}
+
+# True if pvtx can be run on the exec target (the device rootfs). pvtx is a
+# compiled binary a device's runtime BSP may not ship, unlike the pvcontrol/
+# pvcurl/pventer POSIX-shell wrappers — probe before choosing the install path.
+# Requires PVTEST_EXEC: without it there is no device to run pvtx on (a local
+# pvtx would target the tester's own pantavisor, not the device under test).
+_have_pvtx() {
+	[ -n "$PVTEST_EXEC" ] || return 1
+	$PVTEST_EXEC "command -v pvtx >/dev/null 2>&1"
+}
+
+# SIGTERM, not SIGKILL: appengine PV catches it and reboots cleanly (SIGKILL leaves stale pv-ctrl sockets).
+# Caller must wait for READY after.
+crash_pv() { _pv_exec killall pantavisor; }
 
 # wait for a cmd stdout
 wait_for_value() {
@@ -41,11 +121,21 @@ wait_for_status() {
 	return 1
 }
 
-# wait for a path to appear or dissapear
+# storage root from PV_STORAGE_MNTPOINT (target-dependent), cached after first read
+storage_dir() {
+	if [ -z "$_PVTEST_STORAGE_DIR" ]; then
+		_PVTEST_STORAGE_DIR=$(pvcontrol conf ls 2>/dev/null \
+			| jq -r '.[] | select(.key == "PV_STORAGE_MNTPOINT") | .value')
+	fi
+	printf '%s' "$_PVTEST_STORAGE_DIR"
+}
+
+# wait for a device path to appear or dissapear: wait_for_path <path> -a|-d
+# (legacy leading container arg ignored; test -e because ls exit codes vary per libc)
 wait_for_path() {
-	local control_container="$1"
-	local path="$2"
-	local action="$3"
+	[ $# -eq 3 ] && shift
+	local path="$1"
+	local action="$2"
 	local status=0
 
 	if [ "$action" = "-a" ]; then
@@ -54,7 +144,7 @@ wait_for_path() {
 		status=1
 	fi
 
-	wait_for_status "pventer -c $control_container ls $path" "$status" 30
+	wait_for_status "_pv_exec test -e $path" "$status" 30
 }
 
 # wait for a process to appear or dissapear
@@ -84,21 +174,79 @@ wait_for_process() {
 	return 1
 }
 
-# wait for Pantavisor to get to a given revision and update state
-wait_for_revision_state() {
-	local control_container="$1"
-	local rev="$2"
-	local state="$3"
+# wait for pv-ctrl up, rev current, step DONE/UPDATED, (optional) READY.
+# require_ready=false for BSP-only revisions (never reach READY).
+wait_for_new_revision() {
+	local rev="$1"
+	local require_ready="${2:-true}"
 
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 30 || return 1
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 30 || return 1
-	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 30 || return 1
+	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120 || return 1
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120 || return 1
+
+	local counter=0 st
+	while [ $counter -lt 120 ]; do
+		st=$(pvcontrol steps show-progress "$rev" 2>/dev/null | jq -r '.status' 2>/dev/null)
+		case "$st" in
+			DONE|UPDATED) break ;;
+			ERROR|WONTGO) return 1 ;;
+		esac
+		sleep 1
+		counter=$((counter + 1))
+	done
+	[ $counter -lt 120 ] || return 1
+
+	[ "$require_ready" != "true" ] && return 0
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60
 }
 
-# wait for Pantahub to get to a given status
-wait_for_pantahub_state() {
-	local control_container="$1"
+# drain previous test's activity: wait for current rev DONE/UPDATED (+READY best-effort).
+# ERROR/rollback is transient, not terminal — keep waiting.
+wait_for_current_settled() {
+	local require_ready="${1:-true}"
+	local term_timeout="${2:-180}" ready_timeout="${3:-120}"
+
+	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120 || return 1
+
+	local counter=0 st
+	while [ $counter -lt $term_timeout ]; do
+		st=$(pvcontrol steps show-progress current 2>/dev/null | jq -r '.status' 2>/dev/null)
+		case "$st" in DONE|UPDATED) break ;; esac
+		sleep 1
+		counter=$((counter + 1))
+	done
+	[ $counter -lt $term_timeout ] || return 1
+
+	[ "$require_ready" = "true" ] || return 0
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "$ready_timeout" || true
+	return 0
+}
+
+# wait for Pantavisor to get to a given revision and update state:
+# wait_for_revision_state <rev> <state> (legacy leading container arg ignored)
+wait_for_revision_state() {
+	[ $# -eq 3 ] && shift
+	local rev="$1"
 	local state="$2"
+
+	# generous timeouts: long trail/no-reset suites can exceed 30s
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120 || return 1
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60 || return 1
+	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 120 || return 1
+}
+
+# posts checkout, echoes assigned Hub revision number — never hardcode it, trail is shared.
+# usage: rev=$(pvr_post_rev -m "msg" "$trail_url")
+pvr_post_rev() {
+	pvr post "$@" 2>&1 \
+		| sed -n 's/.*Successfully posted Revision \([0-9][0-9]*\).*/\1/p' \
+		| head -n1
+}
+
+# wait for Pantahub to get to a given status: wait_for_pantahub_state <state>
+# (legacy leading container arg ignored)
+wait_for_pantahub_state() {
+	[ $# -eq 2 ] && shift
+	local state="$1"
 
 	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "$state" 30
 }
