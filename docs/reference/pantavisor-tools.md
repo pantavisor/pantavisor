@@ -93,6 +93,10 @@ pvcontrol cmd reboot [message]
 pvcontrol cmd poweroff [message]
 pvcontrol cmd run-gc                 # trigger garbage collection
 pvcontrol cmd enable-ssh             # start SSH server until next reboot
+pvcontrol cmd unclaim                # remove Hub credentials, device becomes claimable again
+
+# Garbage collector (synchronous, reports reclaimed bytes)
+pvcontrol storage gc
 
 # Metadata
 pvcontrol devmeta ls
@@ -114,7 +118,7 @@ pvtx begin <base> [object]
 pvtx add <file> | -
 pvtx remove <part>
 pvtx abort
-pvtx commit
+pvtx commit [name]
 pvtx show
 pvtx deploy <directory>
 ```
@@ -125,7 +129,7 @@ pvtx deploy <directory>
 | `add <file> \| -` | Add a JSON or tarball (`.json`, `.tar`, `.tar.gz`, `.tgz`, `.bz2`) to the current transaction. Use `-` to read from stdin. |
 | `remove <part>` | Remove a part from the revision. `part` can be a name (`nginx`), a signature path (`_sigs/nginx.json`), or a config path (`_config/nginx`). |
 | `abort` | Discard the current transaction and clean up state. |
-| `commit` | Commit a remote transaction to pv-ctrl; prints the new revision hash. |
+| `commit [name]` | Commit a remote transaction to pv-ctrl; prints the revision name. With `name`, uses it verbatim (e.g. `locals/my-rev`); otherwise generates `locals/pvtx-<timestamp>-<hash>-<rand>`. |
 | `show` | Print the current transaction state as JSON to stdout. |
 | `deploy <directory>` | Write a local transaction to disk (creates `.pvr/json`, `.pvr/config`, `bsp/run.json`). |
 

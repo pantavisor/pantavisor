@@ -284,6 +284,7 @@ pvcontrol cmd disable-ssh
 
 # Remote / debug
 pvcontrol cmd go-remote                    # go remote from a locals/ revision (if config allows)
+pvcontrol cmd unclaim                      # remove Hub credentials; device re-registers and becomes claimable again
 pvcontrol cmd defer-reboot <new_timeout>   # defer a pending debug-shell reboot
 ```
 
@@ -292,6 +293,20 @@ already in progress.
 
 > **`poweroff`/`reboot` are destructive.** They stop all containers and bring
 > the device down.
+
+---
+
+## Storage
+
+`pvcontrol storage gc` runs the garbage collector synchronously via
+`POST /storage/gc`. Unlike `cmd run-gc` — which only queues the command for
+the state machine — the call returns once the collection has finished,
+reporting the bytes reclaimed from orphaned objects:
+
+```console
+$ pvcontrol storage gc
+{"reclaimed": 8646656}
+```
 
 ---
 
@@ -454,6 +469,7 @@ On a platform without managed drivers these are effectively no-ops returning
 | `graph ls` | GET | `/xconnect-graph` |
 | `signal ready\|alive` | POST | `/signal` |
 | `cmd <subcommand>` | POST | `/commands` |
+| `storage gc` | POST | `/storage/gc` |
 | `devmeta ls` | GET | `/device-meta` |
 | `devmeta save\|delete <key>` | PUT / DELETE | `/device-meta/{key}` |
 | `usrmeta ls` | GET | `/user-meta` |

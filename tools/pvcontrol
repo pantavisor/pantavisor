@@ -1,5 +1,9 @@
 #!/bin/sh
 
+if [ -n "$PVTEST_EXEC" ]; then
+	exec $PVTEST_EXEC pvcontrol "$@"
+fi
+
 cmd=''
 metakey=''
 metavalue=''
@@ -42,7 +46,7 @@ OUTPUT=""
 MESSAGE=""
 
 usage() {
-	echo "Usage: pvcontrol [options] <ls|containers|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons> [arguments]"
+	echo "Usage: pvcontrol [options] <ls|containers|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons|storage> [arguments]"
 	echo "Control Pantavisor from your container"
 	echo "options:"
 	echo "       -h           show help"
@@ -71,7 +75,7 @@ usage_signal() {
 }
 
 usage_command() {
-	echo "Usage: pvcontrol cmd <run|poweroff|reboot|run-gc|make-factory|enable-ssh|disable-ssh|go-remote> [arguments]"
+	echo "Usage: pvcontrol cmd <run|poweroff|reboot|run-gc|make-factory|enable-ssh|disable-ssh|go-remote|unclaim> [arguments]"
 	echo "Send command to the Pantavisor state machine"
 	echo "       pvcontrol cmd run <locals/revision|revision> 			- runs an installed step"
 	echo "       pvcontrol cmd run-commit <locals/revision|revision>		- runs and commit an installed step"
@@ -82,6 +86,7 @@ usage_command() {
 	echo "       pvcontrol cmd enable-ssh                     			- start SSH server ignoring config until reboot"
 	echo "       pvcontrol cmd disable-ssh                    			- stops SSH server ignoring config until reboot"
 	echo "       pvcontrol cmd go-remote                      			- go remote when running on a locals/ revision if allowed by config"
+	echo "       pvcontrol cmd unclaim                        			- remove Pantacor Hub credentials and make the device claimable again"
 	echo "       pvcontrol cmd defer-reboot [new_timeout]     			- when debug shell is enabled and a reboot is issue, it will defer reboot to a new timeout"
 }
 
@@ -104,6 +109,12 @@ usage_usrmeta() {
 usage_buildinfo() {
 	echo "Usage: pvcontrol buildinfo"
 	echo "Dump Pantavisor build info"
+}
+
+usage_storage() {
+	echo "Usage: pvcontrol storage <gc>"
+	echo "Storage related operations"
+	echo "       pvcontrol storage gc - run garbage collector synchronously and report reclaimed bytes"
 }
 
 usage_objects() {
@@ -243,6 +254,9 @@ parse_command_args() {
 	go-remote)
 		cmd='goremote'
 		;;
+	unclaim)
+		cmd='unclaim'
+		;;
 	defer-reboot)
 		if [ -z "$2" ]; then usage_command; exit 1; fi
 		cmd='deferreboot'
@@ -317,6 +331,20 @@ parse_buildinfo_args() {
 		;;
 	*)
 		usage_buildinfo; exit 1
+		;;
+	esac
+}
+
+parse_storage_args() {
+	case "$1" in
+	gc)
+		cmd='storagegc'
+		;;
+	--help)
+		usage_storage; exit 0
+		;;
+	*)
+		usage_storage; exit 1
 		;;
 	esac
 }
@@ -557,6 +585,9 @@ parse_args() {
 	daemons)
 		parse_daemons_args "$2" "$3"
 		;;
+	storage)
+		parse_storage_args "$2"
+		;;
 	--help)
 		usage; exit 0
 		;;
@@ -692,6 +723,9 @@ exec_cmd() {
 		goremote)
 			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"GO_REMOTE\",\"payload\":\"\"}" --unix-socket "$SOCKET" http://localhost/commands`
 			;;
+		unclaim)
+			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"UNCLAIM\",\"payload\":\"\"}" --unix-socket "$SOCKET" http://localhost/commands`
+			;;
 		deferreboot)
 			response=`$CURL -X POST --header "Content-Type: application/json" --data "{\"op\":\"DEFER_REBOOT\",\"payload\":\"$timeout\"}" --unix-socket "$SOCKET" http://localhost/commands`
 			;;
@@ -715,6 +749,9 @@ exec_cmd() {
 			;;
 		dumpbuildinfo)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/buildinfo"`
+			;;
+		storagegc)
+			response=`$CURL -X POST --unix-socket "$SOCKET" "http://localhost/storage/gc"`
 			;;
 		putobject)
 			put_object "$path" "$sha"
@@ -797,8 +834,9 @@ show_output() {
 	http_code=`echo "$response" | tail -n 1`
 	content=`echo "$response" | head -n -1`
 
-	if ! [ "$http_code" = "200" ]; then		
+	if ! [ "$http_code" = "200" ]; then
 		code=255
+		[ "$http_code" = "503" ] && code=75
 		case "$content" in
 			"{\"Error\":\"Not enough disk space available\"}")
 				code=48
