@@ -324,7 +324,7 @@ Right now, RS256, ES256, ES384 and ES512 algorithms are supported and Pantavisor
 We recommend to use the [certificate chain of trust](#certificate-chain-of-trust) for your field devices.
 :::
 
-In this option, Pantavisor will need the RSA public key to be stored on disk. You can store it during [build time](https://docs.pantavisor.io/build/get-started) from the [ca/ directory](https://docs.pantavisor.io/build).
+In this option, Pantavisor will need the RSA public key to be stored on disk. You can store it during [build time](../../meta-pantavisor/overview/get-started.md) from the [ca/ directory](../../meta-pantavisor/overview/get-started.md).
 
 It will need the signature and information about how to generate it in the [revision checkout](../reference/pantavisor-state-format-v2.md#9-security-_sigscontainerjson). We offer [pvr sig](https://docs.pantahub.com/pvr/#pvr-sig-commands) for convenience.
 
@@ -332,7 +332,7 @@ It will need the signature and information about how to generate it in the [revi
 
 In this case, the public key will travel in the [revision checkout](../reference/pantavisor-state-format-v2.md#9-security-_sigscontainerjson) in a x509 certificate. The certificate will be validated by Pantavisor against a root certificate located on disk .
 
-The root certificate is placed during [Pantavisor build](https://docs.pantavisor.io/build/get-started). The build system will extract the files from the [ca/ directory](https://docs.pantavisor.io/build).
+The root certificate is placed during [Pantavisor build](../../meta-pantavisor/overview/get-started.md). The build system will extract the files from the [ca/ directory](../../meta-pantavisor/overview/get-started.md).
 
 Depending on the subject CN of the signature certificate, we validate it with the following criteria:
 

@@ -13,7 +13,7 @@ The Pantavisor binary and dependency tree are part of the revision BSP in the st
 
 Additional files can be [added](../reference/pantavisor-state-format-v2.md#2-bsp-bsprunjson) to Pantavisor initrd rootfs without having to do it during compile time.
 
-It is important to remark that the binary file has to be under cpio.xz4 compression. That is, cpio.xz with 4 Byte alignment. You can take a look at how we do the cpio.xz4 compression at [this example](https://gitlab.com/pantacor/pantavisor-addons/gdbserver). For the rest of gdbserver installation and use, go [here](https://docs.pantavisor.io/troubleshooting).
+It is important to remark that the binary file has to be under cpio.xz4 compression. That is, cpio.xz with 4 Byte alignment. You can take a look at how we do the cpio.xz4 compression at [this example](https://gitlab.com/pantacor/pantavisor-addons/gdbserver). For the rest of gdbserver installation and use, go [here](../../meta-pantavisor/getting-started/troubleshooting/index.md).
 
 ## Linux Kernel
 
@@ -29,7 +29,7 @@ The modules that are part of a driver will only be loaded if referenced from a [
 
 To natively run Pantavisor on a device, it is necessary to have some on-disk artifacts that fall out of the umbrella of Pantavisor [revisions](revisions.md). This is the case of the bootloader, which will load the Linux kernel and directly execute the initrd (Pantavisor) after that. Pantavisor and the bootloader communicate through [storage](storage.md): Pantavisor is solely responsible for writing the target revision into the bootloader environment; the bootloader only reads from it at boot time to locate the kernel and initrd to load.
 
-We support a number of boards, using both U-Boot and GRUB bootloaders. These include all the bring up mechanisms that is necessary to run Pantavisor in its minimal form. You can take a look at the supported boards [here](https://docs.pantavisor.io/install/supported-devices). [Contact us](https://community.pantavisor.io) if you need support for your board!
+We support a number of boards, using both U-Boot and GRUB bootloaders. These include all the bring up mechanisms that is necessary to run Pantavisor in its minimal form. You can take a look at the supported boards [here](../../meta-pantavisor/overview/supported-device.md). [Contact us](https://community.pantavisor.io) if you need support for your board!
 
 In regards of how the interaction with the bootloader is done, Pantavisor can be set up to different modes using the `PV_BOOTLOADER_TYPE` [config key](../reference/pantavisor-configuration.md):
 
