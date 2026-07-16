@@ -121,6 +121,24 @@ wait_for_status() {
 	return 1
 }
 
+# wait for pv-ctrl to stop responding — the "down" half of a reboot/crash fence.
+# Only needed when whatever you check right after has no way to tell a stale
+# response from the dying instance apart from the real thing (e.g. a bare
+# command with no gating check, or a wait on a value the old instance could
+# already have shown before the trigger). Not needed when the following wait
+# is keyed on a revision name/state the old instance could never report.
+wait_for_down() {
+	local timeout="${1:-30}"
+
+	local counter=0
+	while [ $counter -lt $timeout ]; do
+		pvcontrol devmeta ls > /dev/null 2>&1 || return 0
+		sleep 1
+		counter=$((counter+1))
+	done
+	return 1
+}
+
 # storage root from PV_STORAGE_MNTPOINT (target-dependent), cached after first read
 storage_dir() {
 	if [ -z "$_PVTEST_STORAGE_DIR" ]; then
