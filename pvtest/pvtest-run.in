@@ -13,9 +13,10 @@ usage() {
 	echo ""
 	echo "Single-device mode: set PVTEST_QUEUE and PVTEST_DEVICE_TARGET to the device"
 	echo "name (plus PVTEST_EXEC/PVTEST_HOST to reach it). Every queued test runs"
-	echo "sequentially against the one device; on real hardware, tests whose"
-	echo "required-config the device does not satisfy are SKIPPED. Also the volatile"
-	echo "model's one-test-per-container path. See docs/testing/device-target.md."
+	echo "sequentially against the one device. If PVTEST_DEV_HOOK_CTRL is set (the"
+	echo "manifest configured hook=), a required-config mismatch re-types the device"
+	echo "through the hook; otherwise such tests are SKIPPED. Also the volatile"
+	echo "model's one-test-per-container path. See docs/overview/testing/device-target.md."
 	echo ""
 	echo "Interactive/manual mode: set PVTEST_APPENGINES to the appengine name(s) and"
 	echo "INTERACTIVE=true; drops into the tester console instead of running tests."
@@ -944,6 +945,66 @@ _setup_retype() {
 	return 0
 }
 
+# real device (persistent model, --devices with a manifest hook=): the config
+# mismatch already power-cycles as part of the hook itself (unlike the pool's
+# _reqcfg_gate, which powers off first and waits for a fresh container to boot
+# it back up), so this asks the host to run the hook and then fences the same
+# target's reboot directly — no new container identity to disambiguate against,
+# just this device going down and coming back with the new config.
+_setup_device_retype() {
+	local _rev="$1" _id _resp _status _waited=0
+
+	pvtest_log INFO "device retype: requesting hook cfg=[$(_reqcfg_norm "$required_env")]"
+
+	_id="req.$$.$(date +%s%N)"
+	{ printf 'cfg=%s\n' "$required_env"; } > "$PVTEST_DEV_HOOK_CTRL/req/.tmp.$_id"
+	mv "$PVTEST_DEV_HOOK_CTRL/req/.tmp.$_id" "$PVTEST_DEV_HOOK_CTRL/req/$_id"
+
+	_resp="$PVTEST_DEV_HOOK_CTRL/resp/$_id"
+	while [ ! -f "$_resp" ]; do
+		sleep 1
+		_waited=$((_waited + 1))
+		if [ "$_waited" -gt 300 ]; then
+			pvtest_log ERROR "device retype: host did not respond"
+			return 1
+		fi
+	done
+	_status=$(sed -n 's/^status=//p' "$_resp")
+	rm -f "$_resp"
+
+	case "$_status" in
+		ok) ;;
+		nohook)
+			pvtest_log ERROR "device retype: no hook configured (should have been caught by the SKIP gate)"
+			return 1
+			;;
+		*)
+			pvtest_log ERROR "device retype: hook failed (status=$_status; see host-side log)"
+			return 1
+			;;
+	esac
+
+	# the hook already power-cycled the board; the "down" window may already
+	# be over by the time we start polling — best-effort fence, not a hard gate
+	pvtest_log INFO "device retype: waiting for device to go down..."
+	wait_for_down 30 || pvtest_log WARN "device did not confirm down within 30s; continuing"
+
+	pvtest_log INFO "device retype: waiting for pv-ctrl after reboot [via SSH]..."
+	if ! wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120; then
+		pvtest_log ERROR "timed out waiting for pv-ctrl after device retype"
+		return 1
+	fi
+
+	pvtest_log INFO "device retype: waiting for $_rev DONE after reboot [via SSH]..."
+	if ! wait_for_revision_state "$_rev" "DONE"; then
+		pvtest_log ERROR "$_rev not DONE after device retype"
+		return 1
+	fi
+
+	pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
+	return 0
+}
+
 # provision the test's initial revision (child of factory) and wait until live.
 # setup_test only installs state — the test body runs later in exec_test.
 setup_test() {
@@ -1006,6 +1067,15 @@ setup_test() {
 	if [ -n "$PVTEST_CTRL" ] && [ -n "$PVTEST_SLOT" ]; then
 		# persistent pool: _reqcfg_gate powers off before returning 3
 		_reqcfg_gate "$required_env"; _grc=$?
+	elif [ -n "$PVTEST_DEV_HOOK_CTRL" ]; then
+		# real device with a manifest hook=: check mismatch, signal retype via a
+		# distinct sentinel (4) rather than reusing _reqcfg_gate's 3 — do NOT
+		# pre-poweroff like the pool does, the hook's own power-cycle assumes
+		# the board's current live state.
+		pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
+		if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
+			_grc=4
+		fi
 	else
 		# no re-type mechanism (real device without an env hook; volatile is
 		# booted with its own config): a mismatch that slipped past the
@@ -1018,6 +1088,8 @@ setup_test() {
 	fi
 	if [ "$_grc" = 3 ]; then
 		_setup_retype "$rev" || return 1
+	elif [ "$_grc" = 4 ]; then
+		_setup_device_retype "$rev" || return 1
 	elif [ "$_st" = "UPDATED" ]; then
 		pvtest_log INFO "initial revision needs a reboot to commit; rebooting..."
 		pv_ctrl cmd reboot "pvtest: committing initial revision for $test_id" || return 1
@@ -1230,13 +1302,16 @@ run_test_attempt() {
 		fi
 	fi
 
-	# real device (persistent model, --devices): SKIP tests whose config.env the
-	# live device doesn't already satisfy — a device's config can't be injected
-	# the way an appengine container's is at boot (no bootloader hook consumer
-	# yet). Never gates the pool, which boots the config itself.
-	if [ "$PVTEST_MODEL" = "persistent" ] && [ -n "$PVTEST_DEVICE_TARGET" ] && [ -n "$required_env" ]; then
+	# real device (persistent model, --devices) with no manifest hook=: SKIP
+	# tests whose config.env the live device doesn't already satisfy — without
+	# a hook there's no way to inject boot-time config on hardware. When a hook
+	# IS configured (PVTEST_DEV_HOOK_CTRL set), skip this pre-emptive check
+	# entirely and let setup_test's _setup_device_retype attempt the retype
+	# instead; a retype failure there already aborts the test on its own.
+	# Never gates the pool, which boots the config itself.
+	if [ "$PVTEST_MODEL" = "persistent" ] && [ -n "$PVTEST_DEVICE_TARGET" ] && [ -n "$required_env" ] && [ -z "$PVTEST_DEV_HOOK_CTRL" ]; then
 		if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
-			pvtest_log INFO "'$test_id' SKIPPED (required-config not satisfied by device: $required_env)"
+			pvtest_log INFO "'$test_id' SKIPPED (required-config not satisfied by device: $required_env, no hook configured)"
 			return 2
 		fi
 	fi
