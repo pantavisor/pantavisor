@@ -71,6 +71,15 @@ char *pv_str_skip_prefix(char *str, const char *key);
 int pv_str_count_list(char **list);
 int pv_str_fmt_build(char **str, const char *fmt, ...);
 
+/*
+ * Parses a DURATION config value into seconds: a bare number ("3600") is
+ * seconds, or a single-unit literal ("30s", "10min", "1h", "1d"). Returns
+ * false on NULL/empty/non-positive/garbage input (out_seconds left
+ * untouched); the caller decides how to fall back (config.c logs a WARN and
+ * keeps the entry's existing/default value, matching INT parse failures).
+ */
+bool pv_parse_duration(const char *value, int *out_seconds);
+
 /* prints seconds since beginning of epoch in buf */
 size_t epochsecstring(char *buf, size_t len, time_t t);
 
