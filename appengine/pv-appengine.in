@@ -39,6 +39,25 @@ init_storage() {
 			[ -e "/dev/loop$i" ] || mknod "/dev/loop$i" b 7 "$i" 2>/dev/null
 			i=$((i + 1))
 		done
+
+		# self-heal PV_LOOP_INDEX_BASE's band (see config.h) left dirty by a
+		# prior generation that didn't shut down cleanly: only reaps devices
+		# whose backing file shows "(deleted)", so unrelated host loop users
+		# sharing the same minor range are never touched.
+		if [ -n "$PV_LOOP_INDEX_BASE" ] && [ "$PV_LOOP_INDEX_BASE" -ge 0 ] 2>/dev/null; then
+			i="$PV_LOOP_INDEX_BASE"
+			end=$((PV_LOOP_INDEX_BASE + 64))
+			while [ "$i" -lt "$end" ]; do
+				[ -e "/dev/loop$i" ] || mknod "/dev/loop$i" b 7 "$i" 2>/dev/null
+				bf="/sys/class/block/loop$i/loop/backing_file"
+				if [ -f "$bf" ]; then
+					case "$(cat "$bf" 2>/dev/null)" in
+						*" (deleted)") losetup -d "/dev/loop$i" 2>/dev/null ;;
+					esac
+				fi
+				i=$((i + 1))
+			done
+		fi
 	fi
 
 	if [ ! -f "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config" ]; then
