@@ -36,6 +36,7 @@
 
 #include "utils/fs.h"
 #include "utils/str.h"
+#include "config.h"
 #include "init.h"
 #include "loop.h"
 
@@ -65,10 +66,41 @@ static int mount_ext4(char *dev, char *dest)
 	return mount(dev, dest, "ext4", 0, 0);
 }
 
+#define LOOP_INDEX_RANGE 64
+
+// avoids racing LOOP_CTL_GET_FREE when several instances share one host kernel
+static int get_free_loop_in_range(char *devname, int base)
+{
+	struct loop_info64 info;
+
+	for (int dev = base; dev < base + LOOP_INDEX_RANGE; dev++) {
+		SNPRINTF_WTRUNC(devname, PATH_MAX, "/dev/loop%d", dev);
+		mknod(devname, S_IFBLK | 0600, makedev(7, dev));
+
+		int fd = open(devname, O_RDWR);
+		if (fd < 0)
+			continue;
+
+		int busy = ioctl(fd, LOOP_GET_STATUS64, &info) == 0;
+		close(fd);
+
+		if (!busy)
+			return 0;
+	}
+
+	pv_log(ERROR, "no free loop device in range [%d, %d)", base,
+	       base + LOOP_INDEX_RANGE);
+	return -1;
+}
+
 static int get_free_loop(char *devname)
 {
 	int ret = -1;
 	int lctlfd, dev;
+	int index_base = pv_config_get_int(PV_LOOP_INDEX_BASE);
+
+	if (index_base >= 0)
+		return get_free_loop_in_range(devname, index_base);
 
 	lctlfd = open("/dev/loop-control", O_RDWR);
 	if (lctlfd < 0)

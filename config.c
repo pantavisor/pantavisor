@@ -226,6 +226,7 @@ static struct pv_config_entry entries[] = {
 	  .value.s = NULL },
 	{ STR, "PV_LOG_STDOUT_TIMESTAMP_FORMAT", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },
+	{ INT, "PV_LOOP_INDEX_BASE", PV, 0, false, .value.i = -1 },
 	{ INT, "PV_LXC_LOG_LEVEL", PV | OEM, 0, false, .value.i = 2 },
 	{ STR, "PV_NET_BRADDRESS4", PV | OEM, 0, false,
 	  .value.s = NET_BRADDRESS4_DEF },
