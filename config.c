@@ -1000,7 +1000,30 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 	}
 
 	long value_int = 0;
-	if ((entry->type == BOOL) || (entry->type == INT)) {
+	if (entry->type == BOOL) {
+		// accept symbolic booleans (true/false/yes/no/on/off) as well as
+		// numeric 1/0, so "true" is not rejected as an invalid number
+		int vlen = strlen(value);
+		if (pv_str_matches_case(value, vlen, "true", 4) ||
+		    pv_str_matches_case(value, vlen, "yes", 3) ||
+		    pv_str_matches_case(value, vlen, "on", 2)) {
+			value_int = 1;
+		} else if (pv_str_matches_case(value, vlen, "false", 5) ||
+			   pv_str_matches_case(value, vlen, "no", 2) ||
+			   pv_str_matches_case(value, vlen, "off", 3)) {
+			value_int = 0;
+		} else {
+			char *endptr;
+			value_int = strtol(value, &endptr, 10);
+			if (*endptr != '\0') {
+				pv_log(WARN,
+				       "invalid bool value '%s' for key '%s'",
+				       value, entry->key);
+				return -1;
+			}
+			value_int = value_int ? 1 : 0;
+		}
+	} else if (entry->type == INT) {
 		char *endptr;
 		value_int = strtol(value, &endptr, 10);
 
