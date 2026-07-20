@@ -88,8 +88,8 @@ static int get_free_loop_in_range(char *devname, int base)
 			return 0;
 	}
 
-	pv_log(ERROR, "no free loop device in range [%d, %d)", base,
-	       base + LOOP_INDEX_RANGE);
+	pv_log(WARN, "no free loop device in range [%d, %d), falling back",
+	       base, base + LOOP_INDEX_RANGE);
 	return -1;
 }
 
@@ -99,8 +99,8 @@ static int get_free_loop(char *devname)
 	int lctlfd, dev;
 	int index_base = pv_config_get_int(PV_LOOP_INDEX_BASE);
 
-	if (index_base >= 0)
-		return get_free_loop_in_range(devname, index_base);
+	if (index_base >= 0 && get_free_loop_in_range(devname, index_base) == 0)
+		return 0;
 
 	lctlfd = open("/dev/loop-control", O_RDWR);
 	if (lctlfd < 0)
