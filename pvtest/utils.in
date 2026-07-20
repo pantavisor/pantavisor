@@ -252,6 +252,14 @@ wait_for_revision_state() {
 	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 120 || return 1
 }
 
+# surfaces pvr's own error on failure instead of swallowing it
+pvr_clone_local_or_die() {
+	local dest="$1" label="${2:+ ($2)}"
+	local out
+	out=$(pvr clone "http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr" "$dest" 2>&1) \
+		|| { echo "ERROR: pvr clone${label} failed: $out" >&2; exit 1; }
+}
+
 # posts checkout, echoes assigned Hub revision number — never hardcode it, trail is shared.
 # usage: rev=$(pvr_post_rev -m "msg" "$trail_url")
 pvr_post_rev() {
