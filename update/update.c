@@ -35,6 +35,8 @@
 
 #include "logserver/logserver.h"
 
+#include "power/wakelock.h"
+
 #include "parser/parser.h"
 
 #include "utils/fs.h"
@@ -280,6 +282,11 @@ void pv_update_start_install(const char *rev, const char *progress_hub,
 	_reset_object_list_retries(u);
 
 	pv_log(DEBUG, "starting update");
+
+	// hold the device awake across download, install and the post-boot
+	// test/commit phase; released in pv_update_finish
+	pv_wakelock_acquire(WL_UPDATE);
+	u->wakelock_held = true;
 
 	pv_logserver_start_update(rev);
 	u->logserver_started = true;
@@ -721,6 +728,11 @@ out:
 	if (!u)
 		return -1;
 
+	// re-hold the update lock through testing (fresh process after a reboot
+	// update, or still held on a non-reboot resume); released in finish
+	pv_wakelock_acquire(WL_UPDATE);
+	u->wakelock_held = true;
+
 	pv_update_progress_set(&u->progress,
 			       PV_UPDATE_PROGRESS_STATUS_INPROGRESS,
 			       PV_UPDATE_PROGRESS_MSG_TRY);
@@ -899,6 +911,13 @@ void pv_update_finish()
 		return;
 
 	pv_log(DEBUG, "finishing update");
+
+	// release only if this update acquired it (finish also runs for
+	// done/failed/factory revisions that never acquired)
+	if (u->wakelock_held) {
+		pv_wakelock_release(WL_UPDATE);
+		u->wakelock_held = false;
+	}
 
 	/*
 	 * Clear pv_try only on the rolled-back boot, after ERROR has been

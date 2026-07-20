@@ -40,6 +40,8 @@
 #include "paths.h"
 #include "wall.h"
 
+#include "power/wakelock.h"
+
 #include "event/event.h"
 #include "event/event_socket.h"
 #include "event/event_periodic.h"
@@ -103,6 +105,10 @@ static void pv_debug_shell_new_session(int print_wall)
 {
 	shell_pid = tsh_run("/sbin/getty -n -l /bin/sh 0 console", 0, NULL);
 	shell_session = true;
+	// keep the device awake while a debug shell is open so an operator can
+	// intervene over serial (e.g. roll back a bad revision); released when
+	// the shell closes
+	pv_wakelock_acquire(WL_DEBUG_SHELL);
 	pv_log(INFO, "shell started with pid %d", shell_pid);
 	if (print_wall)
 		pv_wall_shell_open();
@@ -141,6 +147,7 @@ static void pv_debug_is_shell_alive()
 
 	// shell process is not alive anymore, restart console listener
 	shell_session = false;
+	pv_wakelock_release(WL_DEBUG_SHELL);
 	pv_log(INFO, "shell with pid %d closed", shell_pid);
 	shell_pid = -1;
 	pv_wall("Shell session closed");
