@@ -1055,7 +1055,8 @@ int pv_start()
 
 	// bring up suspend-blocking wakelocks before the FSM runs, then hold the
 	// device awake from the first instruction until it reaches steady state
-	pv_wakelock_init();
+	if (pv_wakelock_init() < 0)
+		return 1;
 	pv_wakelock_acquire(WL_BOOT);
 
 	_next_state(PV_STATE_INIT);

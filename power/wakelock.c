@@ -72,6 +72,8 @@
 
 static struct pv_wakelock {
 	bool init;
+	// power.mode=locks degrades (not fails) when the kernel lacks wakelock
+	// support, since it never changes fundamental power behavior
 	bool degraded;
 	power_mode_t mode;
 	// shared reference count; a sysfs write happens only on the 0->1 and
@@ -182,30 +184,11 @@ static int _sysfs_write(int fd, const char *buf)
 	return 0;
 }
 
-// Latch the module disabled. A wakelock failure must never fail an update, so
-// from here every acquire/release is bookkept but touches no sysfs.
-static void _set_degraded(void)
-{
-	if (!wl.degraded) {
-		wl.degraded = true;
-		pv_log(WARN, "wakelock: degraded (no CONFIG_PM_WAKELOCKS)");
-	}
-
-	if (wl.lock_fd >= 0) {
-		close(wl.lock_fd);
-		wl.lock_fd = -1;
-	}
-	if (wl.unlock_fd >= 0) {
-		close(wl.unlock_fd);
-		wl.unlock_fd = -1;
-	}
-}
-
 static void _count_inc(void)
 {
 	wl.count++;
 
-	if (wl.count == 1 && !wl.degraded) {
+	if (wl.count == 1) {
 		if (_sysfs_write(wl.lock_fd, WL_NAME) == 0)
 			pv_log(DEBUG, "wakelock: wake_lock/%s", WL_NAME);
 	}
@@ -218,7 +201,7 @@ static void _count_dec(void)
 
 	wl.count--;
 
-	if (wl.count == 0 && !wl.degraded) {
+	if (wl.count == 0) {
 		if (_sysfs_write(wl.unlock_fd, WL_NAME) == 0)
 			pv_log(DEBUG, "wakelock: wake_unlock/%s", WL_NAME);
 	}
@@ -830,7 +813,7 @@ static void _managed_settle_cb(evutil_socket_t fd, short events, void *arg)
 // (PV_POWER_AUTOSLEEP_SETTLE) to let the system go quiescent first.
 void pv_wakelock_managed_ready(void)
 {
-	if (!wl.init || wl.degraded)
+	if (!wl.init)
 		return;
 	if (wl.mode != PWR_MANAGED)
 		return;
@@ -915,17 +898,37 @@ int pv_wakelock_init(void)
 	if (wl.mode == PWR_DISABLED)
 		return 0;
 
+	// Kernel capability probe: power.mode=locks/managed needs a usable
+	// /sys/power/wake_lock (CONFIG_PM_WAKELOCKS). If the node is missing or
+	// not writable: managed changes fundamental power behavior (autosleep),
+	// so fail init loudly rather than silently never suspending; locks only
+	// blocks suspend, so degrade instead and keep booting.
 	_sysfs_path(path, sizeof(path), WL_SYSFS_LOCK);
 	wl.lock_fd = open(path, O_WRONLY | O_CLOEXEC);
-	if (wl.lock_fd < 0) {
-		_set_degraded();
-		return 0;
-	}
-
 	_sysfs_path(path, sizeof(path), WL_SYSFS_UNLOCK);
-	wl.unlock_fd = open(path, O_WRONLY | O_CLOEXEC);
-	if (wl.unlock_fd < 0) {
-		_set_degraded();
+	if (wl.lock_fd >= 0)
+		wl.unlock_fd = open(path, O_WRONLY | O_CLOEXEC);
+	if (wl.lock_fd < 0 || wl.unlock_fd < 0) {
+		int open_errno = errno;
+
+		if (wl.lock_fd >= 0)
+			close(wl.lock_fd);
+		wl.lock_fd = -1;
+		wl.unlock_fd = -1;
+
+		if (wl.mode == PWR_MANAGED) {
+			pv_log(ERROR,
+			       "wakelock: power.mode=%s requires kernel wakelock support: %s",
+			       pv_config_get_power_mode_str(),
+			       strerror(open_errno));
+			wl.init = false;
+			return -1;
+		}
+
+		wl.degraded = true;
+		pv_log(WARN,
+		       "wakelock: power.mode=locks unavailable: no kernel wakelock support (%s); continuing with wakelocks disabled",
+		       strerror(open_errno));
 		return 0;
 	}
 
@@ -944,7 +947,7 @@ int pv_wakelock_init(void)
 
 void pv_wakelock_apply_config(void)
 {
-	if (!wl.init || wl.degraded)
+	if (!wl.init)
 		return;
 
 	power_mode_t m = pv_config_get_power_mode();
