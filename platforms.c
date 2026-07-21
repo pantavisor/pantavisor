@@ -1704,7 +1704,8 @@ void pv_platform_add_service_export(struct pv_platform *p,
 void pv_platform_add_service_owns(struct pv_platform *p,
 				  service_type_t svc_type, const char *bus,
 				  const char *owns, const char *role,
-				  char **allow, int allow_count)
+				  char **allow, int allow_count,
+				  bool activatable)
 {
 	struct pv_platform_service_export *se =
 		calloc(1, sizeof(struct pv_platform_service_export));
@@ -1712,6 +1713,7 @@ void pv_platform_add_service_owns(struct pv_platform *p,
 		return;
 
 	se->svc_type = svc_type;
+	se->activatable = activatable;
 	if (bus)
 		se->bus = strdup(bus);
 	if (owns)

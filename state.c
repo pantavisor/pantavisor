@@ -2146,6 +2146,47 @@ char *pv_state_get_xconnect_graph_json(struct pv_state *s)
 			}
 		}
 	}
+#ifdef PANTAVISOR_XCONNECT_DBUS_SYSTEMBUS
+	// Activatable-name descriptors: expose which hosted-bus well-known names
+	// start their owner on demand, so pv-xconnect can hold a cold method_call
+	// to such a name and trigger activation. These are not links (no consumer)
+	// — the xconnect reconcile collects them into its activatable-name set.
+	if (pv_config_get_bool(PV_XCONNECT_DBUS_SYSTEMBUS_ENABLED)) {
+		struct pv_platform *op, *op_tmp;
+		dl_list_for_each_safe(op, op_tmp, &s->platforms,
+				      struct pv_platform, list)
+		{
+			struct pv_platform_service_export *oe, *oe_tmp;
+			dl_list_for_each_safe(oe, oe_tmp, &op->service_exports,
+					      struct pv_platform_service_export,
+					      list)
+			{
+				if (!oe->owns || !oe->activatable)
+					continue;
+				pv_json_ser_object(&js);
+				{
+					pv_json_ser_key(&js, "activatable");
+					pv_json_ser_string(&js, oe->owns);
+					pv_json_ser_key(&js, "bus");
+					pv_json_ser_string(
+						&js,
+						oe->bus ?
+							oe->bus :
+							PV_DBUS_SYSTEMBUS_NAME);
+					pv_json_ser_key(&js, "owner");
+					pv_json_ser_string(&js, op->name);
+					// The host-side bus socket, so the
+					// pv-xconnect ownership monitor knows
+					// where to connect.
+					pv_json_ser_key(&js, "socket");
+					pv_json_ser_string(
+						&js, PV_DBUS_SYSTEMBUS_SOCKET);
+				}
+				pv_json_ser_object_pop(&js);
+			}
+		}
+	}
+#endif
 	pv_json_ser_array_pop(&js);
 	return pv_json_ser_str(&js);
 }

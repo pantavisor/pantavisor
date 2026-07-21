@@ -48,6 +48,11 @@ struct pvx_proxy {
 	int client_eof;
 	int provider_eof;
 	struct event *linger;
+	// Optional per-session cleanup hook, invoked by pvx_proxy_free() before
+	// the bufferevents and the session are freed. A plugin that embeds this
+	// struct uses it to release its own state (e.g. dbus activation waiter /
+	// held buffer) so nothing dangles onto the freed session.
+	void (*on_free)(struct pvx_proxy *p);
 };
 
 /* The opposite bufferevent of `bev` within the session (for forwarding). */

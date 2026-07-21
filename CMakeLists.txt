@@ -208,6 +208,7 @@ add_executable(pantavisor
 			ctrl/ctrl_upload.h
 			ctrl/ctrl_usrmeta_ep.c
 			ctrl/ctrl_xconnect_graph_ep.c
+			ctrl/ctrl_xconnect_activate_ep.c
 			ctrl/ctrl_util.c
 			ctrl/ctrl_util.h
 			daemons.c
