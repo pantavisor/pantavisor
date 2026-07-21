@@ -25,6 +25,7 @@
 // D-Bus header field codes (the ones we read).
 #define FIELD_INTERFACE 2
 #define FIELD_MEMBER 3
+#define FIELD_REPLY_SERIAL 5
 #define FIELD_DESTINATION 6
 
 #define DBUS_IFACE "org.freedesktop.DBus"
@@ -84,6 +85,12 @@ static bool read_string(const uint8_t *buf, size_t end, size_t *pp, bool little,
 	p += (size_t)len + 1; // skip string + trailing NUL
 	*pp = p;
 	return true;
+}
+
+bool pv_dbus_read_string(const uint8_t *buf, size_t end, size_t *pp,
+			 bool little, char *dst, size_t cap)
+{
+	return read_string(buf, end, pp, little, dst, cap);
 }
 
 int pv_dbus_msg_parse(const uint8_t *buf, size_t avail, struct pv_dbus_msg *out)
@@ -157,6 +164,8 @@ int pv_dbus_msg_parse(const uint8_t *buf, size_t avail, struct pv_dbus_msg *out)
 			p = align4(p);
 			if (p + 4 > header_end)
 				return -1;
+			if (code == FIELD_REPLY_SERIAL)
+				out->reply_serial = rd32(buf + p, little);
 			p += 4;
 		} else {
 			// A field type we don't model — we can't compute its
