@@ -49,6 +49,7 @@ struct pv_dbus_msg {
 	uint8_t flags;
 	bool little; // wire byte order
 	uint32_t serial;
+	uint32_t reply_serial; // REPLY_SERIAL header field (0 if absent)
 	size_t body_off; // offset of the body within the message
 	size_t total_len; // full on-wire size of this message (header+pad+body)
 	// Selected header fields (empty string if absent).
@@ -71,6 +72,13 @@ int pv_dbus_msg_parse(const uint8_t *buf, size_t avail,
 // Returns false on any parse error.
 bool pv_dbus_parse_name_owner_changed(const uint8_t *buf, size_t avail,
 				      char *name, char *new_owner);
+
+// Read a marshaled STRING/OBJECT_PATH at *pp (advancing it past the value),
+// with 4-byte alignment applied first. `end` bounds the buffer. Copies into dst
+// (cap bytes, safely truncated) if non-NULL. Returns false on bounds error.
+// Exposed so callers can walk a method_return body (e.g. ListNames "as").
+bool pv_dbus_read_string(const uint8_t *buf, size_t end, size_t *pp,
+			 bool little, char *dst, size_t cap);
 
 // Build a method_call to org.freedesktop.DBus with the given member and an
 // optional single string argument (NULL for none, e.g. Hello). Writes at most
