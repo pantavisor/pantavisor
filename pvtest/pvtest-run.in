@@ -38,6 +38,8 @@ parse_test() {
 	required_env=$(jq -r '.setup.config.env // ""' "$j")
 	usrmeta=$(jq -r '.setup.config.usrmeta // ""' "$j")
 	tarballs=$(jq -r '.setup.containers.tarballs[]? // empty' "$j")
+	# commit-initial: whether the initial revision has to be committed.
+	commit_initial=$(jq -r '.setup."commit-initial" // "true"' "$j")
 	self_claim=$(jq -r '.setup."self-claim"' "$j")
 	test_script=$(jq -r '."test-script"' "$j")
 	return 0
@@ -351,6 +353,12 @@ init_device() {
 	pvcontrol devmeta ls > "/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null || true
 	jq -r '"  revision=\(.["pantavisor.revision"])  arch=\(.["pantavisor.arch"])  version=\(.["pantavisor.version"])"' \
 		"/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null || true
+
+	# volatile boots straight into the test's revision
+	if [ "$PVTEST_MODEL" = "volatile" ]; then
+		pvtest_log INFO "init: done"
+		return 0
+	fi
 
 	# pristine clone of the factory revision; each test's setup starts from a copy of this
 	pvtest_log INFO "init: cloning factory revision [via pvr HTTP]..."
@@ -943,14 +951,8 @@ _setup_device_retype() {
 	return 0
 }
 
-# provision the test's initial revision (child of factory) and wait until live.
-# setup_test only installs state — the test body runs later in exec_test.
-setup_test() {
-
-	# every model installs this test's own initial revision as a fresh child
-	# of factory and commits it as a rollback point itself (below) — no
-	# separate throwaway factory-only revision precedes it, so a later test
-	# that deliberately triggers a rollback lands on this named revision.
+_install_initial_rev() {
+	local rev="$1"
 
 	pvtest_log INFO "installing initial revision for $test_id..."
 
@@ -970,10 +972,6 @@ setup_test() {
 	pvtest_log INFO "waiting for device to settle from previous test [via SSH]..."
 	wait_for_current_settled \
 		|| pvtest_log WARN "device did not fully settle before initial revision; continuing"
-
-	# deterministic name so golden outputs see a stable "locals/<id>", not a random pvtx name
-	local rev
-	rev="locals/$(printf '%s' "$test_id" | tr '/' '_' | tr '-' '_')"
 
 	# Prefer pvtx — a single fast on-device transaction (matters on low-spec
 	# targets like M2); fall back to a tester-side pvr HTTP-post when the device
@@ -1024,12 +1022,41 @@ setup_test() {
 		_setup_retype "$rev" || return 1
 	elif [ "$_grc" = 4 ]; then
 		_setup_device_retype "$rev" || return 1
+	elif [ "$_st" = "UPDATED" ] && [ "$commit_initial" = "false" ]; then
+		pvtest_log DEBUG "initial revision left UPDATED (commit-initial=false)"
 	elif [ "$_st" = "UPDATED" ]; then
 		pvtest_log INFO "initial revision needs a reboot to commit; rebooting..."
 		pv_ctrl cmd reboot "pvtest: committing initial revision for $test_id" || return 1
 		wait_for_down 30 || pvtest_log WARN "device did not confirm down after reboot; continuing"
 		wait_for_target_ready "commit reboot" "$rev" DONE || return 1
 	fi
+	return 0
+}
+
+setup_test() {
+	# deterministic name so golden outputs see a stable "locals/<id>", not a random pvtx name
+	local rev
+	rev="locals/$(printf '%s' "$test_id" | tr '/' '_' | tr '-' '_')"
+
+	# volatile factory revision should be already the test initial revision
+	if [ "$PVTEST_MODEL" = "volatile" ]; then
+		local _cur
+		_cur=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantavisor.revision"]' 2>/dev/null | tr -d '\r')
+		if [ "$_cur" != "$rev" ]; then
+			pvtest_log ERROR "expected to boot into initial revision $rev, found '${_cur:-<none>}'"
+			return 1
+		fi
+		pvtest_log INFO "booted into initial revision $rev for $test_id"
+
+		# conf snapshot was taken by init_device on this same boot
+		if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
+			pvtest_log ERROR "required config not satisfied: $required_env"
+			return 1
+		fi
+	else
+		_install_initial_rev "$rev" || return 1
+	fi
+
 	_dev_gc || true
 
 	# strip a leftover claim before go-remote brings the Hub client up (see
@@ -1364,7 +1391,8 @@ _slot_abort_tests() {
 # (the appengine accessors pass a pre-set value through). Also doubles as the
 # volatile model's one-test-per-container path (PVTEST_MODEL=volatile): a fresh
 # container per test makes any factory-reset here (leading or trailing) pure
-# waste, since the container is torn down right after — skipped in that case.
+# waste, since the container is torn down right after — skipped in that case,
+# as is the initial-revision install itself (the container boots into it).
 run_single_device() {
 	local _name="$1"
 	local _json _rc _overall=0
@@ -1548,6 +1576,7 @@ description=
 required_env=
 usrmeta=
 tarballs=
+commit_initial=
 self_claim=
 claimed_device=
 applied_usrmeta_keys=

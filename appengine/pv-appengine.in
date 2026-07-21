@@ -30,6 +30,38 @@ cleanup_cgroup() {
 	fi
 }
 
+deploy_rev() {
+	local dir="$1"; shift
+	local d a
+
+	pvtx abort > /dev/null 2>&1 || true
+	pvtx begin empty @PV_INSTALL_FULL_STORAGEDIR@/objects
+	for d in @PV_INSTALL_FULL_PVTXDIR@ "$@"; do
+		for a in "$d"/*; do
+			[ -f "$a" ] || continue
+			pvtx add "$a"
+		done
+	done
+	# rm only the .pvr stub, keeping the revision dir for deploy's rename swap
+	rm -rf "$dir/.pvr"
+	mkdir -p "$dir"
+	pvtx deploy "$dir"
+}
+
+# pantavisor only commits the revision it boots into when that revision is
+# literally named "0" (update.c:_is_factory), so a renamed initial revision
+# would come up with no progress on disk and never reach DONE. Write what that
+# factory path would have written.
+mark_rev_factory() {
+	local dir="$1"
+
+	mkdir -p "$dir/.pv"
+	: > "$dir/.pv/done"
+	printf '{"status":"DONE","status-msg":"Factory revision","progress":100,"retries":0}' \
+		> "$dir/.pv/progress"
+	chmod 644 "$dir/.pv/done" "$dir/.pv/progress"
+}
+
 init_storage() {
 	# pre-create /dev/loopN nodes: no udev here, so losetup fails otherwise for whatever index the kernel picks.
 	# parallel-safe (LOOP_CTL_GET_FREE is host-global/atomic) and idempotent.
@@ -84,25 +116,24 @@ init_storage() {
 	fi
 
 	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done ]; then
-		pvtest_log DEBUG "first boot: running pvtx deploy"
-		pvtx abort
-		pvtx begin empty @PV_INSTALL_FULL_STORAGEDIR@/objects
-		for a in $(ls @PV_INSTALL_FULL_PVTXDIR@/* @PV_INSTALL_FULL_PVTXEXTRADIR@/* 2>/dev/null); do
-			# Skip non-files: @PV_INSTALL_FULL_PVTXEXTRADIR@ may be empty, making
-			# the glob expand to /* and ls output directory headers like "/bin:".
-			[ -f "$a" ] || continue
-			pvtx add "$a"
-		done
-		# rm only the .pvr stub; pvtx deploy needs trails/0 itself to exist for its rename swap
-		rm -rf @PV_INSTALL_FULL_STORAGEDIR@/trails/0/.pvr
-		pvtx deploy @PV_INSTALL_FULL_STORAGEDIR@/trails/0
+		if [ -n "$PV_APPENGINE_INITIAL_REV" ]; then
+			pvtest_log DEBUG "first boot: deploying initial revision $PV_APPENGINE_INITIAL_REV"
+			rm -rf @PV_INSTALL_FULL_STORAGEDIR@/trails/0
+			deploy_rev "@PV_INSTALL_FULL_STORAGEDIR@/trails/$PV_APPENGINE_INITIAL_REV" \
+				@PV_INSTALL_FULL_PVTXEXTRADIR@
+			mark_rev_factory "@PV_INSTALL_FULL_STORAGEDIR@/trails/$PV_APPENGINE_INITIAL_REV"
+		else
+			pvtest_log DEBUG "first boot: running pvtx deploy"
+			deploy_rev @PV_INSTALL_FULL_STORAGEDIR@/trails/0
+		fi
 		touch @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
 	fi
 
 	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt ]; then
 		pvtest_log DEBUG "first boot: initialising boot state"
 		mkdir -p @PV_INSTALL_FULL_STORAGEDIR@/boot
-		echo -e -n 'pv_rev=0\0\0' > @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
+		printf 'pv_rev=%s\0\0' "${PV_APPENGINE_INITIAL_REV:-0}" \
+			> @PV_INSTALL_FULL_STORAGEDIR@/boot/uboot.txt
 	fi
 }
 
