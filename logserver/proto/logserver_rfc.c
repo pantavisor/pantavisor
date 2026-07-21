@@ -21,8 +21,8 @@
  */
 
 #include "logserver_rfc.h"
+#include "logserver/logserver_timestamp.h"
 #include "log.h"
-#include "utils/timer.h"
 #include "cgroup.h"
 
 #include <syslog.h>
@@ -181,9 +181,9 @@ int logserver_rfc_to_log(struct logserver_rfc *rfc, pid_t pid, const char *rev,
 
 	log->code = rfc->code;
 	log->lvl = logserver_rfc_level_to_pv(rfc->prival);
-	log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
 	log->tnano = 0;
 	log->time = rfc->time;
+	log->tsec = logserver_timestamp_get_tsec(log->time);
 	log->src = rfc->app;
 	log->running_rev = rev ? (char *)rev : "";
 	log->updated_rev = upd_rev ? (char *)upd_rev : "";
