@@ -1424,6 +1424,10 @@ run_single_device() {
 	fi
 
 	pvtest_log INFO "SLOT_DETACH"
+
+	[ "$PVTEST_MODEL" = "volatile" ] && \
+		pv_ctrl cmd poweroff "pvtest: volatile test done" > /dev/null 2>&1 || true
+
 	return $_overall
 }
 
