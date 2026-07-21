@@ -341,34 +341,7 @@ init_device() {
 
 	trap 'int_handler' INT
 
-	pvtest_log INFO "init: waiting for pv-ctrl [via SSH]..."
-	# fail fast on permanent SSH auth errors instead of polling the full timeout
-	local probe_err probe_rc=0
-	probe_err=$(pvcontrol devmeta ls 2>&1 > /dev/null) || probe_rc=$?
-	if [ "$probe_rc" = 255 ] && printf '%s\n' "$probe_err" | grep -qiE 'permission denied|identity file|no such identity'; then
-		pvtest_log ERROR "SSH to device failed: $(printf '%s\n' "$probe_err" | tail -n 2 | tr '\n' ' ')"
-		pvtest_log ERROR "check the key referenced by the device manifest's exec= line (try running that command with 'true')"
-		return 1
-	fi
-	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120
-	if [ $? != 0 ]; then
-		probe_err=$(pvcontrol devmeta ls 2>&1 > /dev/null | tail -n 2 | tr '\n' ' ')
-		pvtest_log ERROR "timed out waiting for pv-ctrl${probe_err:+ — last error: $probe_err}"
-		return 1
-	fi
-
-	pvtest_log INFO "init: waiting for current revision DONE/UPDATED [via SSH]..."
-	wait_for_status "pvcontrol steps show-progress current 2>/dev/null | jq -r .status | grep -qE '^(DONE|UPDATED)$'" 0 120
-	if [ $? != 0 ]; then
-		pvtest_log ERROR "timed out waiting for current revision DONE/UPDATED"
-		return 1
-	fi
-	pvtest_log INFO "init: pantavisor ready"
-
-	# best-effort: a BSP-only factory revision (no containers) never reaches READY
-	pvtest_log INFO "init: best-effort wait for READY [via SSH]..."
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "30" \
-		|| pvtest_log WARN "not READY (expected for BSP-only factory revision); continuing"
+	wait_for_target_ready "init" "" "DONE|UPDATED" || return 1
 
 	# capture device's live config once; tests matched against it via setup.config.env
 	pvtest_log INFO "init: storing config [via SSH]..."
@@ -384,7 +357,6 @@ init_device() {
 	local factory_dir; factory_dir="$(_ae_factory_dir "$ae")"
 	rm -rf "$factory_dir" "$factory_dir.home"
 	mkdir -p "$factory_dir.home"
-	wait_for_status "curl -s 'http://$(_ae_host "$ae"):12368/cgi-bin/pvr' > /dev/null 2>&1; ec=\$?; [ \$ec -eq 0 ] || [ \$ec -eq 52 ]" 0 30
 	if ! ( export HOME="$factory_dir.home"; pvr clone "http://$(_ae_host "$ae"):12368/cgi-bin/pvr" "$factory_dir" > /dev/null 2>&1 ); then
 		pvtest_log ERROR "failed to clone factory revision"
 		return 1
@@ -436,7 +408,7 @@ _settle_to_factory() {
 	fi
 
 	# 1. drain whatever the last test left running
-	wait_for_current_settled false \
+	wait_for_current_settled \
 		|| pvtest_log WARN "device did not settle before factory reset; continuing"
 
 	# 2. install a fresh, randomly-named child of the factory clone (no test
@@ -457,10 +429,11 @@ _settle_to_factory() {
 	fi
 	tarballs="$_saved_tarballs"
 
-	if [ -z "$_new_rev" ] || ! wait_for_new_revision "$_new_rev" false; then
-		pvtest_log ERROR "factory-reset revision${_new_rev:+ $_new_rev} not DONE/UPDATED"
+	if [ -z "$_new_rev" ]; then
+		pvtest_log ERROR "factory-reset revision was installed without a name"
 		return 1
 	fi
+	wait_for_target_ready "factory revision" "$_new_rev" "DONE|UPDATED" || return 1
 	_st=$(pvcontrol steps show-progress "$_new_rev" 2>/dev/null | jq -r '.status' 2>/dev/null)
 
 	# 3. commit the fresh revision with a reboot if it's still pending
@@ -468,19 +441,12 @@ _settle_to_factory() {
 	if [ "$_st" = "UPDATED" ]; then
 		pvtest_log INFO "factory revision needs a reboot to commit; rebooting..."
 		pv_ctrl cmd reboot "pvtest: committing factory reset" || return 1
-		# wait for DONE specifically, not wait_for_new_revision (accepts
-		# DONE *or* UPDATED, so it can be satisfied by stale pre-reboot state
-		# before the actual reboot takes effect — cmd reboot doesn't restart
-		# instantly). No READY wait here: an embedded target's bare factory
-		# revision may carry no containers and never reach READY.
-		if ! wait_for_value "pvcontrol steps show-progress $_new_rev | jq -r '.status'" "DONE" 120; then
-			pvtest_log ERROR "factory revision not DONE after reboot"
-			return 1
-		fi
+		wait_for_down 30 || pvtest_log WARN "device did not confirm down after reboot; continuing"
+		wait_for_target_ready "factory reset" "$_new_rev" DONE || return 1
 	fi
 
 	# 4. confirm back and gc
-	wait_for_current_settled true || true
+	wait_for_current_settled || true
 	_dev_gc || true
 	return 0
 }
@@ -506,7 +472,7 @@ _dev_unclaim() {
 
 	# an update in flight (e.g. the test's own revision still applying) makes
 	# pv reject unclaim with 503 — drain it first
-	wait_for_current_settled false \
+	wait_for_current_settled \
 		|| pvtest_log WARN "device did not settle before unclaim; trying anyway"
 
 	pv_ctrl cmd unclaim || return 1
@@ -847,15 +813,6 @@ _install_initial_pvr() {
 		return 1
 	fi
 
-	# curl 52 (empty reply) is normal here — accept 0 or 52 as "server ready"
-	pvtest_log DEBUG "waiting for pvr HTTP endpoint [via pvr HTTP]"
-	wait_for_status "curl -s 'http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr' > /dev/null 2>&1; ec=\$?; [ \$ec -eq 0 ] || [ \$ec -eq 52 ]" 0 30
-	if [ $? -ne 0 ]; then
-		pvtest_log ERROR "pvr HTTP endpoint not ready"
-		rm -rf "$setup_parent"
-		return 1
-	fi
-
 	if [ -n "$rev_name" ]; then
 		pvtest_log DEBUG "posting initial revision $rev_name [via pvr HTTP]"
 		( export HOME="$setup_parent"; cd "$setup_dir" && pvr post --rev "$rev_name" "http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr" > /dev/null 2>&1 )
@@ -926,17 +883,8 @@ _setup_retype() {
 		fi
 	fi
 
-	pvtest_log INFO "waiting for pv-ctrl on re-typed '$_new' [via SSH]..."
-	if ! wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120; then
-		pvtest_log ERROR "timed out waiting for pv-ctrl after re-type"
+	if ! wait_for_target_ready "re-type '$_new'" "$_rev" DONE; then
 		export PVTEST_AE=""
-		return 1
-	fi
-
-	# the new instance boots the pending revision and commits it
-	pvtest_log INFO "waiting for $_rev DONE after re-type [via SSH]..."
-	if ! wait_for_revision_state "$_rev" "DONE"; then
-		pvtest_log ERROR "$_rev not DONE after re-type"
 		return 1
 	fi
 
@@ -989,17 +937,7 @@ _setup_device_retype() {
 	pvtest_log INFO "device retype: waiting for device to go down..."
 	wait_for_down 30 || pvtest_log WARN "device did not confirm down within 30s; continuing"
 
-	pvtest_log INFO "device retype: waiting for pv-ctrl after reboot [via SSH]..."
-	if ! wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120; then
-		pvtest_log ERROR "timed out waiting for pv-ctrl after device retype"
-		return 1
-	fi
-
-	pvtest_log INFO "device retype: waiting for $_rev DONE after reboot [via SSH]..."
-	if ! wait_for_revision_state "$_rev" "DONE"; then
-		pvtest_log ERROR "$_rev not DONE after device retype"
-		return 1
-	fi
+	wait_for_target_ready "device retype" "$_rev" DONE || return 1
 
 	pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
 	return 0
@@ -1030,7 +968,7 @@ setup_test() {
 	# after an attach, from init_device's factory clone/export) before
 	# installing this test's own revision
 	pvtest_log INFO "waiting for device to settle from previous test [via SSH]..."
-	wait_for_current_settled true \
+	wait_for_current_settled \
 		|| pvtest_log WARN "device did not fully settle before initial revision; continuing"
 
 	# deterministic name so golden outputs see a stable "locals/<id>", not a random pvtx name
@@ -1051,11 +989,7 @@ setup_test() {
 		return 1
 	fi
 
-	pvtest_log INFO "waiting for $rev to become ready [via SSH]..."
-	if ! wait_for_new_revision "$rev" true; then
-		pvtest_log ERROR "timeout waiting for $rev to become ready"
-		return 1
-	fi
+	wait_for_target_ready "initial revision" "$rev" "DONE|UPDATED" || return 1
 
 	# single merged power cycle: a config change re-types the container (the new
 	# generation boots straight into the pending revision, committing it);
@@ -1093,14 +1027,8 @@ setup_test() {
 	elif [ "$_st" = "UPDATED" ]; then
 		pvtest_log INFO "initial revision needs a reboot to commit; rebooting..."
 		pv_ctrl cmd reboot "pvtest: committing initial revision for $test_id" || return 1
-		# wait_for_new_revision accepts DONE *or* UPDATED, so it can be
-		# satisfied by stale pre-reboot state before the actual reboot takes
-		# effect (cmd reboot doesn't restart instantly) — wait for DONE
-		# specifically, like a test posting a reboot-type update does
-		if ! wait_for_revision_state "$rev" "DONE"; then
-			pvtest_log ERROR "$rev not DONE after reboot"
-			return 1
-		fi
+		wait_for_down 30 || pvtest_log WARN "device did not confirm down after reboot; continuing"
+		wait_for_target_ready "commit reboot" "$rev" DONE || return 1
 	fi
 	_dev_gc || true
 

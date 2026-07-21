@@ -192,36 +192,91 @@ wait_for_process() {
 	return 1
 }
 
-# wait for pv-ctrl up, rev current, step DONE/UPDATED, (optional) READY.
-# require_ready=false for BSP-only revisions (never reach READY).
-wait_for_new_revision() {
-	local rev="$1"
-	local require_ready="${2:-true}"
+wait_for_target_ready() {
+	local label="$1" rev="$2" status="${3:-}"
+	local _l="${label:+$label: }"
 
-	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120 || return 1
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120 || return 1
+	# stage 1: SSH — tells "container/board not up" apart from "pv-ctrl not up"
+	if [ -n "$PVTEST_EXEC" ]; then
+		pvtest_log INFO "${_l}waiting for SSH..."
+		# fail fast on permanent auth errors instead of polling the full timeout
+		local _err _rc=0
+		_err=$(_pv_exec true 2>&1 > /dev/null) || _rc=$?
+		if [ "$_rc" = 255 ] && printf '%s\n' "$_err" | grep -qiE 'permission denied|identity file|no such identity'; then
+			pvtest_log ERROR "${_l}SSH to target failed: $(printf '%s\n' "$_err" | tail -n 2 | tr '\n' ' ')"
+			pvtest_log ERROR "${_l}check the key referenced by the device manifest's exec= line (try running that command with 'true')"
+			return 1
+		fi
+		if ! wait_for_status "_pv_exec true > /dev/null 2>&1" 0 120; then
+			pvtest_log ERROR "${_l}timed out waiting for SSH"
+			return 1
+		fi
+	fi
 
-	local counter=0 st
-	while [ $counter -lt 120 ]; do
-		st=$(pvcontrol steps show-progress "$rev" 2>/dev/null | jq -r '.status' 2>/dev/null)
-		case "$st" in
-			DONE|UPDATED) break ;;
-			ERROR|WONTGO) return 1 ;;
-		esac
-		sleep 1
-		counter=$((counter + 1))
-	done
-	[ $counter -lt 120 ] || return 1
+	# stage 2: pv-ctrl answering
+	pvtest_log INFO "${_l}waiting for pv-ctrl..."
+	if ! wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120; then
+		local _probe
+		_probe=$(pvcontrol devmeta ls 2>&1 > /dev/null | tail -n 2 | tr '\n' ' ')
+		pvtest_log ERROR "${_l}timed out waiting for pv-ctrl${_probe:+ — last error: $_probe}"
+		return 1
+	fi
 
-	[ "$require_ready" != "true" ] && return 0
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60
+	# stage 3: the expected revision is the current one
+	if [ -n "$rev" ]; then
+		pvtest_log INFO "${_l}waiting for $rev to become current..."
+		if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120; then
+			pvtest_log ERROR "${_l}timed out waiting for $rev to become current"
+			return 1
+		fi
+	fi
+
+	# stage 4: terminal-good step status (ERROR/WONTGO fail fast unless asked for)
+	if [ -n "$status" ]; then
+		pvtest_log INFO "${_l}waiting for ${rev:-current} $status..."
+		local counter=0 st
+		while [ $counter -lt 120 ]; do
+			st=$(pvcontrol steps show-progress "${rev:-current}" 2>/dev/null | jq -r '.status' 2>/dev/null)
+			case "|$status|" in *"|$st|"*) break ;; esac
+			case "$st" in
+				ERROR|WONTGO)
+					pvtest_log ERROR "${_l}${rev:-current} reached $st, expected $status"
+					return 1
+					;;
+			esac
+			sleep 1
+			counter=$((counter + 1))
+		done
+		if [ $counter -ge 120 ]; then
+			pvtest_log ERROR "${_l}timed out waiting for ${rev:-current} $status"
+			return 1
+		fi
+	fi
+
+	# stage 5: containers up
+	pvtest_log INFO "${_l}waiting for READY..."
+	if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 120; then
+		pvtest_log ERROR "${_l}timed out waiting for READY"
+		return 1
+	fi
+
+	# stage 6: pvr HTTP endpoint — served by the pv-pvr-sdk container, so it
+	# comes up after READY; a pvr call issued before this races it
+	pvtest_log INFO "${_l}waiting for pvr HTTP endpoint [via pvr HTTP]..."
+	if ! wait_for_pvr_endpoint; then
+		pvtest_log ERROR "${_l}pvr HTTP endpoint not ready"
+		return 1
+	fi
+
+	return 0
 }
 
-# drain previous test's activity: wait for current rev DONE/UPDATED (+READY best-effort).
-# ERROR/rollback is transient, not terminal — keep waiting.
+wait_for_pvr_endpoint() {
+	wait_for_status "curl -s 'http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr' > /dev/null 2>&1; ec=\$?; [ \$ec -eq 0 ] || [ \$ec -eq 52 ]" 0 "${1:-60}"
+}
+
 wait_for_current_settled() {
-	local require_ready="${1:-true}"
-	local term_timeout="${2:-180}" ready_timeout="${3:-120}"
+	local term_timeout="${1:-180}" ready_timeout="${2:-120}"
 
 	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120 || return 1
 
@@ -234,8 +289,12 @@ wait_for_current_settled() {
 	done
 	[ $counter -lt $term_timeout ] || return 1
 
-	[ "$require_ready" = "true" ] || return 0
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "$ready_timeout" || true
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "$ready_timeout" \
+		|| pvtest_log WARN "settle: not READY after ${ready_timeout}s; continuing"
+	# pv-pvr-sdk comes up after READY, so a caller that posts/clones right
+	# after this (_install_initial_pvr) would otherwise race it
+	wait_for_pvr_endpoint \
+		|| pvtest_log WARN "settle: pvr endpoint not up; continuing"
 	return 0
 }
 
@@ -252,7 +311,6 @@ wait_for_revision_state() {
 	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 120 || return 1
 }
 
-# surfaces pvr's own error on failure instead of swallowing it
 pvr_clone_local_or_die() {
 	local dest="$1" label="${2:+ ($2)}"
 	local out
