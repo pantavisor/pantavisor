@@ -48,6 +48,7 @@
 #include "utils/str.h"
 #include "utils/math.h"
 #include "utils/json.h"
+#include "utils/timer.h"
 
 #define MODULE_NAME "config"
 #define pv_log(level, msg, ...)                                                \
@@ -63,6 +64,7 @@ typedef enum {
 	LOG_SERVER_OUTPUT_UPDATE_MASK,
 	SB_MODE,
 	STR,
+	TIMER_TYPE,
 	WDT_MODE
 } type_t;
 
@@ -226,6 +228,8 @@ static struct pv_config_entry entries[] = {
 	  .value.s = NULL },
 	{ STR, "PV_LOG_STDOUT_TIMESTAMP_FORMAT", PV | OEM | RUN, 0, false,
 	  .value.s = NULL },
+	{ TIMER_TYPE, "PV_LOG_TIMESTAMP", PV | OEM | RUN, 0, false,
+	  .value.i = RELATIV_TIMER },
 	{ INT, "PV_LOOP_INDEX_BASE", PV, 0, false, .value.i = -1 },
 	{ INT, "PV_LXC_LOG_LEVEL", PV | OEM, 0, false, .value.i = 2 },
 	{ STR, "PV_NET_BRADDRESS4", PV | OEM, 0, false,
@@ -836,6 +840,34 @@ wdt_mode_t pv_config_get_wdt_mode()
 	return pv_config_get_int(PV_WDT_MODE);
 }
 
+static char *_get_timer_type_str(timer_type_t type)
+{
+	switch (type) {
+	case RELATIV_TIMER:
+		return "relative";
+	case ABSOLUTE_TIMER:
+		return "absolute";
+	default:
+		return "unknown";
+	}
+}
+
+static void _set_config_by_entry_timer_type(struct pv_config_entry *entry,
+					    const char *value)
+{
+	if (!entry)
+		return;
+
+	if (pv_str_matches(value, strlen(value), "relative",
+			   strlen("relative")))
+		entry->value.i = RELATIV_TIMER;
+	else if (pv_str_matches(value, strlen(value), "absolute",
+				strlen("absolute")))
+		entry->value.i = ABSOLUTE_TIMER;
+	else
+		pv_log(WARN, "unknown timer type '%s'", value);
+}
+
 static char *_get_wdt_mode_str(wdt_mode_t mode)
 {
 	switch (mode) {
@@ -1045,6 +1077,9 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		break;
 	case STR:
 		_set_config_by_entry_str(entry, value);
+		break;
+	case TIMER_TYPE:
+		_set_config_by_entry_timer_type(entry, value);
 		break;
 	case WDT_MODE:
 		_set_config_by_entry_wdt_mode(entry, value);
@@ -1431,6 +1466,7 @@ static void _add_config_entry_alias_json(config_index_t ci,
 	case INT:
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
 	case SB_MODE:
+	case TIMER_TYPE:
 	case WDT_MODE:
 		pv_json_ser_number(js, entries[ci].value.i);
 		break;
@@ -1491,6 +1527,10 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 		break;
 	case STR:
 		snprintf(out, len, "%s", entries[ci].value.s);
+		break;
+	case TIMER_TYPE:
+		snprintf(out, len, "%s",
+			 _get_timer_type_str(entries[ci].value.i));
 		break;
 	case WDT_MODE:
 		snprintf(out, len, "%s",
@@ -1590,6 +1630,11 @@ static void _print_config_entry(config_index_t ci)
 		break;
 	case STR:
 		pv_log(INFO, "%s = '%s' (%s)", key, entries[ci].value.s,
+		       _get_mod_level_str(modified));
+		break;
+	case TIMER_TYPE:
+		pv_log(INFO, "%s = '%s' (%s)", key,
+		       _get_timer_type_str(entries[ci].value.i),
 		       _get_mod_level_str(modified));
 		break;
 	case WDT_MODE:

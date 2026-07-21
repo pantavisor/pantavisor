@@ -87,6 +87,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for single-file logs |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT` | format string | empty | timestamp format for stdout logs |
+| `PV_LOG_TIMESTAMP` | `relative` or `absolute` | `relative` | clock behind the `tsec` field of every log line: seconds since boot, or Unix epoch |
 | `PV_LXC_LOG_LEVEL` | `0` to `5` | `2` | set LXC log level |
 | `PV_NET_BRADDRESS4` | IP address | `10.0.3.1` | set bridge IPv4 address |
 | `PV_NET_BRDEV` | interface name | `lxcbr0` | set bridge device name |
@@ -198,6 +199,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_LOG_AUTO_DEVLOG`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT`     | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_LOG_TIMESTAMP`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LXC_LOG_LEVEL`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRADDRESS4`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRDEV`                       | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |

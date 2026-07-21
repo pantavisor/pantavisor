@@ -24,8 +24,11 @@
 #define LOGSERVER_TIMESTAMP_H
 
 #include <time.h>
+#include <stdint.h>
 
 int logserver_timestamp_get_formated(char *buf, int buf_size,
 				     const time_t *time, const char *name);
+
+uint64_t logserver_timestamp_get_tsec(time_t time);
 
 #endif

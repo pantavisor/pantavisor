@@ -21,8 +21,7 @@
  */
 
 #include "logserver_binary.h"
-
-#include "utils/timer.h"
+#include "logserver/logserver_timestamp.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -69,9 +68,9 @@ int logserver_bin_parse_msg(struct logserver_msg *msg,
 	if (log->data.len < 0)
 		return -1;
 
-	log->tsec = timer_get_current_time_sec(RELATIV_TIMER);
 	log->tnano = 0;
 	log->time = time(NULL);
+	log->tsec = logserver_timestamp_get_tsec(log->time);
 
 	return 0;
 }

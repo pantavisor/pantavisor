@@ -1,4 +1,6 @@
 #include "logserver_timestamp.h"
+#include "config.h"
+#include "utils/timer.h"
 
 #include <string.h>
 
@@ -34,6 +36,14 @@ static const char *get_fmt(const char *name)
 			return formats[i].fmt;
 	}
 	return NULL;
+}
+
+uint64_t logserver_timestamp_get_tsec(time_t time)
+{
+	if (pv_config_get_int(PV_LOG_TIMESTAMP) == ABSOLUTE_TIMER)
+		return (uint64_t)time;
+
+	return timer_get_current_time_sec(RELATIV_TIMER);
 }
 
 int logserver_timestamp_get_formated(char *buf, int buf_size,
