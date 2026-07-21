@@ -45,8 +45,8 @@
 #include "logserver_singlefile.h"
 #include "logserver_update.h"
 #include "logserver_stdout.h"
+#include "logserver_timestamp.h"
 #include "logserver.h"
-#include "utils/timer.h"
 #include "utils/fs.h"
 #include "utils/json.h"
 #include "utils/system.h"
@@ -191,11 +191,12 @@ static int pv_log(int level, char *msg, ...)
 
 		buf_len = vsnprintf(buf, pv_buffer->size, msg, args);
 
+		time_t now = time(NULL);
 		struct logserver_log data = {
 			.code = LOG_PROTOCOL_LEGACY,
 			.lvl = level,
-			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
-			.time = time(NULL),
+			.tsec = logserver_timestamp_get_tsec(now),
+			.time = now,
 			.plat = PV_PLATFORM_STR,
 			.src = "logserver",
 			.running_rev = logserver.running_rev,
@@ -593,11 +594,12 @@ static void logserver_consume_fd(int fd)
 		struct logserver_fd *lfd =
 			logserver_fetch_fd_from_list(&logserver.fdlst, fd);
 
+		time_t now = time(NULL);
 		struct logserver_log d = {
 			.code = LOG_PROTOCOL_LEGACY,
 			.lvl = lfd->lvl,
-			.tsec = timer_get_current_time_sec(RELATIV_TIMER),
-			.time = time(NULL),
+			.tsec = logserver_timestamp_get_tsec(now),
+			.time = now,
 			.src = lfd->src,
 			.running_rev = logserver.running_rev,
 			.updated_rev = logserver.updated_rev,
@@ -1053,12 +1055,13 @@ static int logserver_msg_fill(struct logserver_log *log,
 int pv_logserver_send_vlog(bool is_platform, char *platform, char *src,
 			   int level, const char *msg, va_list args)
 {
+	time_t now = time(NULL);
 	struct logserver_log log = {
 		.code = LOG_PROTOCOL_LEGACY,
 		.lvl = level,
-		.tsec = timer_get_current_time_sec(RELATIV_TIMER),
+		.tsec = logserver_timestamp_get_tsec(now),
 		.tnano = 0,
-		.time = time(NULL),
+		.time = now,
 		.src = src,
 	};
 

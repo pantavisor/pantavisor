@@ -162,6 +162,10 @@ With this option, all logs will be centralized in one file. These logs are deliv
 }
 ```
 
+`tsec` is seconds since boot by default (`tnano` is currently always 0). Setting
+[`PV_LOG_TIMESTAMP`](../reference/pantavisor-configuration.md#summary) to `absolute`
+switches every sink to Unix epoch instead.
+
 #### Standard Output
 
 Outputs logs into stdout, which can be useful for debugging. Unlike [stdout_direct](#standard-output-direct), this sink is processed by the [log server](#logs). This will provide more control on the output than its direct counterpart and a way of working that is more similar to the other sinks.
