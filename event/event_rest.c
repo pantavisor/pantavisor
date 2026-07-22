@@ -21,6 +21,7 @@
  */
 #include <dirent.h>
 #include <fcntl.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -45,6 +46,7 @@
 #include "paths.h"
 
 #include "utils/fs.h"
+#include "utils/list.h"
 #include "utils/str.h"
 
 #define MODULE_NAME "event_rest"
@@ -59,8 +61,82 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 static mbedtls_entropy_context entropy;
 static mbedtls_ssl_config config;
 
+// test-only download pacer; libevent's token bucket is a no-op on mbedtls
+struct pv_rest_pacer {
+	struct evhttp_request *req; // key for the per-chunk lookup
+	void *ctx; // request's cb_arg; key for the completion-cb lookup
+	void (*done_cb)(struct evhttp_request *, void *); // real done_cb
+	struct bufferevent *bev; // never freed here, libevent owns it
+	struct event *timer; // one-shot, re-enables EV_READ
+	size_t rate; // bytes/sec
+	struct dl_list list;
+};
+
+static struct dl_list pacers;
+
+static struct pv_rest_pacer *_pacer_find_by_req(struct evhttp_request *req)
+{
+	struct pv_rest_pacer *p;
+
+	dl_list_for_each(p, &pacers, struct pv_rest_pacer, list)
+	{
+		if (p->req == req)
+			return p;
+	}
+
+	return NULL;
+}
+
+static struct pv_rest_pacer *_pacer_find_by_ctx(void *ctx)
+{
+	struct pv_rest_pacer *p;
+
+	dl_list_for_each(p, &pacers, struct pv_rest_pacer, list)
+	{
+		if (p->ctx == ctx)
+			return p;
+	}
+
+	return NULL;
+}
+
+static void _pacer_drop(struct pv_rest_pacer *pacer)
+{
+	// event_free() also removes a still-pending timer
+	event_free(pacer->timer);
+	dl_list_del(&pacer->list);
+	free(pacer);
+}
+
+static void _pacer_resume_cb(evutil_socket_t fd, short what, void *arg)
+{
+	(void)fd;
+	(void)what;
+	struct pv_rest_pacer *pacer = arg;
+
+	bufferevent_enable(pacer->bev, EV_READ);
+}
+
+// rides done_cb since on_complete_cb never fires for client requests; req
+// is NULL on error, hence the lookup by ctx
+static void _pacer_done_cb(struct evhttp_request *req, void *ctx)
+{
+	struct pv_rest_pacer *pacer = _pacer_find_by_ctx(ctx);
+	void (*done_cb)(struct evhttp_request *, void *) = NULL;
+
+	if (pacer) {
+		done_cb = pacer->done_cb;
+		_pacer_drop(pacer);
+	}
+
+	if (done_cb)
+		done_cb(req, ctx);
+}
+
 int pv_event_rest_init(void)
 {
+	dl_list_init(&pacers);
+
 	mbedtls_x509_crt_init(&cacert);
 	mbedtls_ctr_drbg_init(&ctr_drbg);
 	mbedtls_entropy_init(&entropy);
@@ -95,12 +171,28 @@ int pv_event_rest_init(void)
 
 void pv_event_rest_cleanup(void)
 {
+	struct pv_rest_pacer *p, *tmp;
+
+	dl_list_for_each_safe(p, tmp, &pacers, struct pv_rest_pacer, list)
+		_pacer_drop(p);
+
 	mbedtls_x509_crt_free(&cacert);
 	mbedtls_ssl_config_free(&config);
 	mbedtls_ctr_drbg_free(&ctr_drbg);
 	mbedtls_entropy_free(&entropy);
 
 	pv_log(DEBUG, "HTTP REST cleaned up");
+}
+
+void pv_event_rest_cancel_request(struct evhttp_request *req)
+{
+	struct pv_rest_pacer *pacer = _pacer_find_by_req(req);
+
+	// on cancel libevent never runs done_cb, so drop the pacer here
+	if (pacer)
+		_pacer_drop(pacer);
+
+	evhttp_cancel_request(req);
 }
 
 static const char *_op_string(enum evhttp_cmd_type op)
@@ -218,10 +310,12 @@ int pv_event_rest_send_by_components(
 	const char *endpoint, const char *token, const char *body,
 	void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
-	struct evhttp_request **out_req)
+	struct evhttp_request **out_req, size_t rate_limit_bytes_per_sec)
 {
 	if (!pv_event_get_base())
 		return -1;
+
+	struct pv_rest_pacer *pacer = NULL;
 
 	pv_log(TRACE, "%s %s HTTP/1.1", _op_string(op), endpoint);
 
@@ -242,6 +336,22 @@ int pv_event_rest_send_by_components(
 	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
 	/* Bound buffered read data so large downloads don't starve the event loop. */
 	bufferevent_setwatermark(bev, EV_READ, 0, HTTP_DOWNLOAD_READ_HIGHWATER);
+
+	// a disabled knob must cost nothing: no pacer, no hooks
+	if (rate_limit_bytes_per_sec > 0) {
+		pacer = calloc(1, sizeof(*pacer));
+		if (!pacer) {
+			pv_log(WARN, "could not allocate download pacer");
+		} else {
+			pacer->timer = evtimer_new(pv_event_get_base(),
+						   _pacer_resume_cb, pacer);
+			if (!pacer->timer) {
+				pv_log(WARN, "could not create pacer timer");
+				free(pacer);
+				pacer = NULL;
+			}
+		}
+	}
 
 	struct evhttp_connection *evcon;
 	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
@@ -267,7 +377,7 @@ int pv_event_rest_send_by_components(
 	evhttp_connection_set_write_timeout_tv(evcon, &time);
 
 	struct evhttp_request *req;
-	req = evhttp_request_new(done_cb, ctx);
+	req = evhttp_request_new(pacer ? _pacer_done_cb : done_cb, ctx);
 	if (!req) {
 		pv_log(ERROR, "evhttp_request_new failed");
 		goto error;
@@ -316,6 +426,15 @@ int pv_event_rest_send_by_components(
 	}
 	evhttp_connection_free_on_completion(evcon);
 
+	if (pacer) {
+		pacer->req = req;
+		pacer->ctx = ctx;
+		pacer->done_cb = done_cb;
+		pacer->bev = bev;
+		pacer->rate = rate_limit_bytes_per_sec;
+		dl_list_add(&pacers, &pacer->list);
+	}
+
 	pv_log(TRACE,
 	       "add event: type='rest' chunk_cb=%p done_cb=%p req='%s %s HTTP/1.1'",
 	       (void *)chunk_cb, (void *)done_cb, _op_string(op), endpoint);
@@ -325,6 +444,10 @@ int pv_event_rest_send_by_components(
 
 	return 0;
 error:
+	if (pacer) {
+		event_free(pacer->timer);
+		free(pacer);
+	}
 	if (evcon) {
 		evhttp_connection_free(evcon);
 	} else if (bev) {
@@ -337,7 +460,8 @@ error:
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
-			      void *ctx, struct evhttp_request **out_req)
+			      void *ctx, struct evhttp_request **out_req,
+			      size_t rate_limit_bytes_per_sec)
 {
 	int ret = -1, port;
 	const char *scheme, *host, *path;
@@ -375,7 +499,8 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 		path = "/";
 
 	ret = pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
-					       chunk_cb, done_cb, ctx, out_req);
+					       chunk_cb, done_cb, ctx, out_req,
+					       rate_limit_bytes_per_sec);
 
 out:
 	if (http_uri)
@@ -510,6 +635,24 @@ int pv_event_rest_recv_chunk_path(struct evhttp_request *req, const char *path,
 	close(fd);
 	if (written)
 		*written = total_written;
+
+	// O(1) when no download is paced: check list emptiness before the lookup
+	if (!dl_list_empty(&pacers) && total_written > 0) {
+		struct pv_rest_pacer *pacer = _pacer_find_by_req(req);
+
+		if (pacer) {
+			uint64_t usec = (uint64_t)total_written * 1000000ULL /
+					pacer->rate;
+			if (usec < 1000)
+				usec = 1000; // minimum 1 ms
+			struct timeval tv = { .tv_sec = usec / 1000000,
+					      .tv_usec = usec % 1000000 };
+
+			bufferevent_disable(pacer->bev, EV_READ);
+			evtimer_add(pacer->timer, &tv);
+		}
+	}
+
 	return 0;
 }
 

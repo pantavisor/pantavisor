@@ -352,7 +352,8 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 	}
 
 	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, arg, out_req);
+						body, NULL, cb, arg, out_req,
+						0);
 }
 
 static void _on_request_unresponsive()
@@ -841,7 +842,7 @@ void pv_pantahub_proto_cancel_transfers(void)
 		// evhttp_cancel_request() never runs done_cb, so free our own
 		// bookkeeping here instead of waiting for it
 		if (o->active && o->req)
-			evhttp_cancel_request(o->req);
+			pv_event_rest_cancel_request(o->req);
 		dl_list_del(&o->list);
 		free(o);
 	}
@@ -1013,10 +1014,10 @@ static int _get_object(const char *geturl, const char *id_ref,
 
 	pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
 
-	return pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
-					 _recv_get_object_chunk_cb,
-					 _recv_get_object_done_cb,
-					 (void *)id_ref, out_req);
+	return pv_event_rest_send_by_url(
+		EVHTTP_REQ_GET, geturl, _recv_get_object_chunk_cb,
+		_recv_get_object_done_cb, (void *)id_ref, out_req,
+		pv_config_get_int(PH_UPDATER_DOWNLOAD_RATE_LIMIT));
 }
 
 int pv_pantahub_proto_get_objects()

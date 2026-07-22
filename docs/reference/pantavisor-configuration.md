@@ -68,6 +68,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_METADATA_DEVMETA_THRESHOLD` | percent | `1` | relative change a numeric [device metadata](pantavisor-metadata.md#change-thresholds) field needs before it triggers a push of its own |
 | `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](../overview/storage.md#user-metadata) from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_ONLINE_REQUEST_THRESHOLD` | number of failures | `0` | number of failed requests to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) allowed to still consider device online |
+| `PH_UPDATER_DOWNLOAD_RATE_LIMIT` | bytes per second | `0` (unlimited) | throttle object-download throughput; test/debug knob for reliably exercising resume/interruption behavior, not a production traffic-shaping feature |
 | `PH_UPDATER_INTERVAL` | time (in seconds) | `5` | set time between [Pantacor Hub](../overview/remote-control.md#pantacor-hub) [update](../overview/updates.md) requests |
 | `PH_UPDATER_NETWORK_TIMEOUT` | time (in seconds) | `120` | set time before [rollback](../overview/updates.md#error) if device cannot communicate with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_UPDATER_TRANSFER_MAX_COUNT` | number of transfers | `5` | set maximum number of object transfers to and from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) during [updates](../overview/updates.md) |
@@ -200,6 +201,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PH_METADATA_DEVMETA_THRESHOLD`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_USRMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_ONLINE_REQUEST_THRESHOLD`        | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PH_UPDATER_DOWNLOAD_RATE_LIMIT`     | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_UPDATER_INTERVAL`                | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_UPDATER_NETWORK_TIMEOUT`         | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_UPDATER_TRANSFER_MAX_COUNT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
