@@ -38,6 +38,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials secret |
 | `PH_CREDS_TYPE` | `builtin` | `builtin` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials type |
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_LIBEVENT_HTTP_DOWNLOAD_RATE_LIMIT` | bytes per second | `0` (unlimited) | throttle object-download throughput; test/debug knob for reliably exercising resume/interruption behavior, not a production traffic-shaping feature |
 | `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](../overview/storage.md#device-metadata) to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
@@ -151,6 +152,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PH_FACTORY_AUTOTOK`                 | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_LIBEVENT_HTTP_TIMEOUT`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_LIBEVENT_HTTP_RETRIES`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PH_LIBEVENT_HTTP_DOWNLOAD_RATE_LIMIT` | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_USRMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_ONLINE_REQUEST_THRESHOLD`        | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |

@@ -309,7 +309,7 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 	}
 
 	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, arg, 0);
+						body, NULL, cb, arg, 0, 0);
 }
 
 static void _on_request_unresponsive()
@@ -896,7 +896,8 @@ static int _get_object(const char *geturl, const char *id_ref)
 
 	if (pv_event_rest_send_by_url(
 		    EVHTTP_REQ_GET, geturl, _recv_get_object_chunk_cb,
-		    _recv_get_object_done_cb, (void *)dctx, existing)) {
+		    _recv_get_object_done_cb, (void *)dctx, existing,
+		    pv_config_get_int(PH_LIBEVENT_HTTP_DOWNLOAD_RATE_LIMIT))) {
 		free(dctx);
 		return -1;
 	}
