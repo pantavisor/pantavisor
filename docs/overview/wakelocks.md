@@ -52,13 +52,20 @@ platforms are up (first `RUN -> WAIT`), it enables kernel autosleep. From then:
 3. The event loop opens a **wake window**: it re-arms the alarm for the next
    cycle and holds `poll` while it polls Hub. The window stays open at least
    `power.wake.min_awake` (so the network can re-associate after deep
-   suspend) and until one poll round reaches Hub, bounded by
-   `power.wake.max_awake`.
+   suspend), until one poll round reaches Hub (or trivially, if unauthed/no
+   Hub configured) plus `power.wake.run_window` more as the containers'
+   guaranteed run time, bounded by `power.wake.max_awake`.
 4. When the window closes, `poll` is released and the device suspends again.
 
 A found update holds `update` (independent of the poll window), so the device
 stays awake through download, install and reboot regardless of the wake
 schedule.
+
+Every wake carries up to two payloads: the Hub roundtrip (if authed) and the
+container run window (`power.wake.run_window`, off by default). A wake is
+only re-armed if at least one payload applies — a device with neither Hub nor
+a declared run window has nothing to wake for and stays asleep until an
+external event.
 
 Waking through the RTC char device with a blocking read is deliberate. A
 `CLOCK_BOOTTIME_ALARM` timerfd serviced from the event loop loses the race:
@@ -71,7 +78,8 @@ the wakelock inline on the same thread closes that gap.
 | key | default | meaning |
 |-----|---------|---------|
 | `power.mode` | `locks` | `disabled` / `locks` / `managed` |
-| `power.wake.interval` | `3600` | managed: seconds between timed wakes |
+| `power.wake.interval` | `3600` | managed: seconds between timed wakes (device heartbeat) |
+| `power.wake.run_window` | `0` (off) | managed: after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
 | `power.autosleep.settle` | `90` | managed: delay after ready before autosleep is enabled |
 | `power.wake.min_awake` | `10` | managed: minimum awake seconds per wake window |
 | `power.wake.max_awake` | `60` | managed: maximum awake seconds per wake window |

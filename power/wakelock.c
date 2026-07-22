@@ -112,6 +112,13 @@ static struct pv_wakelock {
 	struct event *poll_min_ev;
 	struct event *poll_max_ev;
 	struct event *poll_retry_ev;
+	// phase-0 container run window: once the round is done (or trivially so
+	// on an unauthed/no-Hub device), the window stays open run_window
+	// longer as the containers' guaranteed run time, independent of Hub
+	// latency. run_window_elapsed defaults true (no extra wait) whenever the
+	// knob is off.
+	bool run_window_elapsed;
+	struct event *run_window_ev;
 	// devmeta dirty-gate: WL_DEVMETA held while there is un-acked devmeta;
 	// generation counters avoid clearing a change that landed mid-flight
 	unsigned int dm_pending_gen;
@@ -387,18 +394,71 @@ static void _poll_window_close(const char *why)
 		event_free(wl.poll_retry_ev);
 		wl.poll_retry_ev = NULL;
 	}
+	if (wl.run_window_ev) {
+		event_del(wl.run_window_ev);
+		event_free(wl.run_window_ev);
+		wl.run_window_ev = NULL;
+	}
 
 	pv_wakelock_release(WL_POLL);
 	pv_log(DEBUG, "wakelock: wake window closed (%s)", why);
 }
 
-// Close only once BOTH the min-awake floor elapsed AND a full round reached Hub,
-// so we neither re-suspend before the network recovers nor linger past a done
-// round.
+// Close only once the min-awake floor elapsed, a full round reached Hub (or
+// trivially did, see _run_window_arm()), AND the phase-0 container run window
+// (if any) has elapsed, so we neither re-suspend before the network recovers
+// nor cut the containers' guaranteed run time short.
 static void _poll_window_maybe_close(void)
 {
-	if (wl.poll_round_ok && wl.poll_min_elapsed)
+	if (wl.poll_round_ok && wl.poll_min_elapsed && wl.run_window_elapsed)
 		_poll_window_close("round complete");
+}
+
+static void _run_window_cb(evutil_socket_t fd, short events, void *arg)
+{
+	wl.run_window_elapsed = true;
+	pv_log(INFO, "wakelock: run window close");
+	_poll_window_maybe_close();
+}
+
+// Start the phase-0 container run window: called once the poll round is done
+// (real or trivial). With the knob off, the window imposes no extra wait.
+static void _run_window_arm(void)
+{
+	int run_window = pv_config_get_int(PV_POWER_WAKE_RUN_WINDOW);
+
+	if (wl.run_window_ev) {
+		event_del(wl.run_window_ev);
+		event_free(wl.run_window_ev);
+		wl.run_window_ev = NULL;
+	}
+
+	if (run_window <= 0) {
+		wl.run_window_elapsed = true;
+		return;
+	}
+
+	struct event_base *base = pv_event_get_base();
+	if (!base) {
+		// no event loop: don't hang the window on a timer we can't arm
+		wl.run_window_elapsed = true;
+		return;
+	}
+
+	wl.run_window_elapsed = false;
+
+	wl.run_window_ev = evtimer_new(base, _run_window_cb, NULL);
+	if (!wl.run_window_ev) {
+		pv_log(WARN,
+		       "wakelock: could not arm run-window timer; skipping run window");
+		wl.run_window_elapsed = true;
+		return;
+	}
+
+	struct timeval tv = { run_window, 0 };
+	event_add(wl.run_window_ev, &tv);
+
+	pv_log(INFO, "wakelock: run window open (%ds)", run_window);
 }
 
 static void _poll_retry_cb(evutil_socket_t fd, short events, void *arg)
@@ -476,6 +536,7 @@ static void _poll_window_open(void)
 	wl.poll_active = true;
 	wl.poll_round_ok = false;
 	wl.poll_min_elapsed = (min_awake <= 0);
+	wl.run_window_elapsed = true;
 
 	struct timeval tv_max = { max_awake, 0 };
 	event_add(wl.poll_max_ev, &tv_max);
@@ -493,6 +554,18 @@ static void _poll_window_open(void)
 	pv_log(DEBUG,
 	       "wakelock: wake window opened (min_awake=%ds max_awake=%ds)",
 	       min_awake, max_awake);
+
+	// No Hub configured/authed: there is no roundtrip to wait for, so the
+	// round is trivially complete at open and the window is governed purely
+	// by min_awake / run_window (capped by max_awake). This is what
+	// makes the wake a device heartbeat on a local-management device instead
+	// of every wake burning to the max-awake backstop.
+	if (!pv_pantahub_proto_is_auth()) {
+		wl.poll_round_ok = true;
+		_run_window_arm();
+		_poll_window_maybe_close();
+		return;
+	}
 
 	_poll_fire_requests();
 }
@@ -600,14 +673,23 @@ static void _alarm_notify_cb(evutil_socket_t fd, short events, void *arg)
 	// at the kernel level: same WL_NAME); the normal release path now owns it
 	pv_wakelock_acquire(WL_POLL);
 
-	// the RTC alarm is one-shot; re-arm the next wake now, while WL_POLL holds
-	// the device awake, so a future wake is always armed before we can sleep
-	int interval = pv_config_get_int(PV_POWER_WAKE_INTERVAL);
-	if (interval <= 0)
-		interval = 1;
-	_managed_rtc_arm(wl.alarm_fd, interval);
-
 	pv_log(DEBUG, "wakelock: managed wake");
+
+	// This wake carries up to two payloads: a Hub roundtrip (if authed) and
+	// the container run window (if declared). Re-arm the next wake, while
+	// WL_POLL holds the device awake, only if at least one payload applies —
+	// a pure external-wake device (no Hub, no run window) has nothing to gain
+	// from a periodic wake at all.
+	if (pv_pantahub_proto_is_auth() ||
+	    pv_config_get_int(PV_POWER_WAKE_RUN_WINDOW) > 0) {
+		int interval = pv_config_get_int(PV_POWER_WAKE_INTERVAL);
+		if (interval <= 0)
+			interval = 1;
+		_managed_rtc_arm(wl.alarm_fd, interval);
+	} else {
+		pv_log(INFO,
+		       "wakelock: no Hub and no run window declared; heartbeat not re-armed");
+	}
 
 	// a window from a previous alarm is still open: it already owns WL_POLL,
 	// so leave our (no-op) acquire in place and don't stack another window
@@ -617,14 +699,9 @@ static void _alarm_notify_cb(evutil_socket_t fd, short events, void *arg)
 		return;
 	}
 
-	// not authed: nothing to poll — drop the lock we just took and let the
-	// device go back to sleep
-	if (!pv_pantahub_proto_is_auth()) {
-		pv_wakelock_release(WL_POLL);
-		return;
-	}
-
 	// _poll_window_open takes ownership of the WL_POLL we are already holding
+	// (authed: fires the Hub roundtrip; not authed: still opens the window
+	// when a run window is declared, see _poll_window_open())
 	_poll_window_open();
 }
 
@@ -639,6 +716,7 @@ void pv_wakelock_poll_round_done(bool reached_hub)
 	if (reached_hub) {
 		wl.poll_round_ok = true;
 		pv_log(DEBUG, "wakelock: poll round reached Hub");
+		_run_window_arm();
 		_poll_window_maybe_close();
 		return;
 	}
@@ -697,6 +775,14 @@ static void _managed_arm_alarm(void)
 	if (interval <= 0)
 		interval = 1;
 
+	// A pure external-wake device (no Hub configured/authed and no run window
+	// declared) has nothing to gain from a periodic wake; skip arming it
+	// (thread still starts, parked in a blocking read that a future config
+	// change/claim cannot yet re-trigger — a known phase-0 limitation, closed
+	// once wake-source routing lands).
+	bool heartbeat_needed = pv_pantahub_proto_is_auth() ||
+				pv_config_get_int(PV_POWER_WAKE_RUN_WINDOW) > 0;
+
 	// Open the RTC char device BLOCKING and keep it open for the life of managed
 	// mode: the worker thread parks in read() here and grabs the wakelock inline
 	// on return — that inline grab is what beats the autosleep re-suspend race.
@@ -725,7 +811,7 @@ static void _managed_arm_alarm(void)
 		goto err_wl;
 	}
 
-	if (_managed_rtc_arm(wl.alarm_fd, interval) < 0)
+	if (heartbeat_needed && _managed_rtc_arm(wl.alarm_fd, interval) < 0)
 		goto err_notify;
 
 	wl.alarm_ev = event_new(base, wl.alarm_notify_fd, EV_READ | EV_PERSIST,
@@ -749,9 +835,14 @@ static void _managed_arm_alarm(void)
 	}
 	wl.alarm_thread_started = true;
 
-	pv_log(INFO,
-	       "wakelock: managed wake alarm armed via %s at %ds (blocking-read thread)",
-	       WL_RTC_DEV, interval);
+	if (heartbeat_needed)
+		pv_log(INFO,
+		       "wakelock: managed wake alarm armed via %s at %ds (blocking-read thread)",
+		       WL_RTC_DEV, interval);
+	else
+		pv_log(INFO,
+		       "wakelock: no Hub and no run window declared; heartbeat not armed (%s thread parked)",
+		       WL_RTC_DEV);
 	return;
 
 err_notify:
@@ -939,8 +1030,19 @@ int pv_wakelock_init(void)
 	// Managed mode: arm the wake alarm now, but defer enabling autosleep to
 	// pv_wakelock_managed_ready() (first RUN->WAIT) so we never suspend before
 	// the boot lock is held and platforms are up.
-	if (wl.mode == PWR_MANAGED)
+	if (wl.mode == PWR_MANAGED) {
+		// misconfiguration check: min_awake + run_window anchored past
+		// max_awake means the cap always swallows the declared run window
+		int min_awake = pv_config_get_int(PV_POWER_WAKE_MIN_AWAKE);
+		int run_window = pv_config_get_int(PV_POWER_WAKE_RUN_WINDOW);
+		int max_awake = pv_config_get_int(PV_POWER_WAKE_MAX_AWAKE);
+		if (min_awake + run_window > max_awake)
+			pv_log(WARN,
+			       "wakelock: power.wake.min_awake (%ds) + power.wake.run_window (%ds) exceeds power.wake.max_awake (%ds); the cap will swallow the run window",
+			       min_awake, run_window, max_awake);
+
 		_managed_arm_alarm();
+	}
 
 	return 0;
 }
@@ -1000,6 +1102,11 @@ void pv_wakelock_deinit(void)
 		event_del(wl.poll_retry_ev);
 		event_free(wl.poll_retry_ev);
 		wl.poll_retry_ev = NULL;
+	}
+	if (wl.run_window_ev) {
+		event_del(wl.run_window_ev);
+		event_free(wl.run_window_ev);
+		wl.run_window_ev = NULL;
 	}
 	wl.poll_active = false;
 
@@ -1072,6 +1179,11 @@ char *pv_wakelock_get_json(void)
 		// managed wake window: true while awake for a timed poll round
 		pv_json_ser_key(&js, "polling");
 		pv_json_ser_bool(&js, wl.poll_active);
+
+		// phase-0 container run window: true while the window is open past
+		// round-complete for the containers' guaranteed run time
+		pv_json_ser_key(&js, "run_window");
+		pv_json_ser_bool(&js, wl.poll_active && !wl.run_window_elapsed);
 
 		pv_json_ser_key(&js, "held");
 		pv_json_ser_object(&js);
