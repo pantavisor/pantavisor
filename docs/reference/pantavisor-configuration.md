@@ -61,6 +61,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials secret |
 | `PH_CREDS_TYPE` | `builtin` or `ext-<handler>` | `builtin` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials type; `ext-<handler>` delegates login to an external handler binary instead of the built-in PRN/secret flow |
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_LIBEVENT_HTTP_DOWNLOAD_RATE_LIMIT` | bytes per second | `0` (unlimited) | throttle object-download throughput; test/debug knob for reliably exercising resume/interruption behavior, not a production traffic-shaping feature |
 | `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_METADATA_DEVMETA_HEARTBEAT` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `60` | upper bound between [device metadata](../overview/storage.md#device-metadata) pushes; a push happens even when nothing changed, so [Pantacor Hub](../overview/remote-control.md#pantacor-hub) keeps seeing the device as alive |
@@ -193,6 +194,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PH_CREDS_SECRET`                    | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_TYPE`                      | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_FACTORY_AUTOTOK`                 | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| `PH_LIBEVENT_HTTP_DOWNLOAD_RATE_LIMIT` | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_LIBEVENT_HTTP_RETRIES`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_LIBEVENT_HTTP_TIMEOUT`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_HEARTBEAT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |

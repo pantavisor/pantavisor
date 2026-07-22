@@ -35,11 +35,12 @@ int pv_event_rest_send_by_components(
 	const char *endpoint, const char *token, const char *body,
 	void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
-	off_t resume_from);
+	off_t resume_from, size_t rate_limit_bytes_per_sec);
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
-			      void *ctx, off_t resume_from);
+			      void *ctx, off_t resume_from,
+			      size_t rate_limit_bytes_per_sec);
 
 int pv_event_rest_recv_buffer(struct evhttp_request *req, char **buf,
 			      size_t max_len);
