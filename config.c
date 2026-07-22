@@ -255,6 +255,22 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 300 },
 	{ STR, "PV_POWER_SYSFS_DIR", PV | OEM | RUN, 0, false,
 	  .value.s = POWER_SYSFS_DIR_DEF },
+	// container power section defaults (phase 1 declarative cadence);
+	// 0 = not declared at this level (interval/align: no window unless a
+	// group or container declares one)
+	{ DURATION, "PV_POWER_CONTAINER_INTERVAL", PV | OEM | RUN, 0, false,
+	  .value.i = 0 },
+	{ DURATION, "PV_POWER_CONTAINER_MIN_AWAKE", PV | OEM | RUN, 0, false,
+	  .value.i = 10 },
+	{ DURATION, "PV_POWER_CONTAINER_MAX_AWAKE", PV | OEM | RUN, 0, false,
+	  .value.i = 120 },
+	{ DURATION, "PV_POWER_CONTAINER_ALIGN", PV | OEM | RUN, 0, false,
+	  .value.i = 0 },
+	// clamps on resolved container power values; 0 = no clamp
+	{ DURATION, "PV_POWER_LIMIT_MAX_AWAKE", PV | OEM | RUN, 0, false,
+	  .value.i = 0 },
+	{ DURATION, "PV_POWER_LIMIT_INTERVAL", PV | OEM | RUN, 0, false,
+	  .value.i = 0 },
 	{ INT, "PV_REVISION_RETRIES", PV | OEM | RUN, 0, false, .value.i = 10 },
 	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV, 0, false, .value.b = true },
 	{ BOOL, "PV_SECUREBOOT_HANDLERS", PV, 0, false, .value.b = true },
@@ -375,6 +391,12 @@ static struct pv_config_alias aliases[] = {
 	{ "power.wake.max_awake", "PV_POWER_WAKE_MAX_AWAKE" },
 	{ "power.devmeta.max_held", "PV_POWER_DEVMETA_MAX_HELD" },
 	{ "power.sysfs_dir", "PV_POWER_SYSFS_DIR" },
+	{ "power.container.interval", "PV_POWER_CONTAINER_INTERVAL" },
+	{ "power.container.min_awake", "PV_POWER_CONTAINER_MIN_AWAKE" },
+	{ "power.container.max_awake", "PV_POWER_CONTAINER_MAX_AWAKE" },
+	{ "power.container.align", "PV_POWER_CONTAINER_ALIGN" },
+	{ "power.limit.max_awake", "PV_POWER_LIMIT_MAX_AWAKE" },
+	{ "power.limit.interval", "PV_POWER_LIMIT_INTERVAL" },
 	{ "revision.retries", "PV_REVISION_RETRIES" },
 	{ "secureboot.checksum", "PV_SECUREBOOT_CHECKSUM" },
 	{ "secureboot.handlers", "PV_SECUREBOOT_HANDLERS" },
@@ -1106,16 +1128,21 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 			return -1;
 		}
 	} else if (entry->type == DURATION) {
-		// bare number = seconds, or a single-unit literal (30s/10min/1h/1d);
-		// same behavior as an INT parse failure: warn and leave the default
-		int seconds;
-		if (!pv_parse_duration(value, &seconds)) {
-			pv_log(WARN,
-			       "invalid duration format '%s' for key '%s'",
-			       value, entry->key);
-			return -1;
+		// "0" is the disabled/unset sentinel for power.container.*/
+		// power.limit.*, not a genuine duration; pv_parse_duration()
+		// itself only ever accepts positive values
+		if (!strcmp(value, "0")) {
+			value_int = 0;
+		} else {
+			int seconds;
+			if (!pv_parse_duration(value, &seconds)) {
+				pv_log(WARN,
+				       "invalid duration format '%s' for key '%s'",
+				       value, entry->key);
+				return -1;
+			}
+			value_int = seconds;
 		}
-		value_int = seconds;
 	}
 
 	// snapshot pre-metadata value before first override
