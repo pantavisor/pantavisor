@@ -22,6 +22,8 @@
 #ifndef PV_EVENT_REST_H
 #define PV_EVENT_REST_H
 
+#include <sys/types.h>
+
 #include <event2/event.h>
 #include <event2/http.h>
 
@@ -35,12 +37,14 @@ int pv_event_rest_send_by_components(
 	const char *endpoint, const char *token, const char *body,
 	void (*chunk_cb)(struct evhttp_request *, void *),
 	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
-	struct evhttp_request **out_req, size_t rate_limit_bytes_per_sec);
+	struct evhttp_request **out_req, size_t rate_limit_bytes_per_sec,
+	off_t resume_from);
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
 			      void *ctx, struct evhttp_request **out_req,
-			      size_t rate_limit_bytes_per_sec);
+			      size_t rate_limit_bytes_per_sec,
+			      off_t resume_from);
 
 // drops any download pacer for req, then evhttp_cancel_request()s it
 void pv_event_rest_cancel_request(struct evhttp_request *req);
