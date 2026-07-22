@@ -25,7 +25,6 @@
 #include "json.h"
 #include "pantavisor.h"
 #include "config.h"
-#include "state.h"
 
 #include <event2/http.h>
 
@@ -113,14 +112,6 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 		return _cmd_reject(
 			cmd, HTTP_SERVUNAVAIL, 10 * 60,
 			"Cannot do this operation while update is ongoing");
-	}
-
-	if (!pv_state_is_done(pv->state) &&
-	    ((cmd->op == CMD_UNCLAIM) ||
-	     (pv->unclaimed && cmd->op == CMD_GO_REMOTE))) {
-		return _cmd_reject(
-			cmd, HTTP_SERVUNAVAIL, -1,
-			"Cannot do this operation while not running a DONE revision");
 	}
 
 	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {
