@@ -64,11 +64,22 @@ struct pv_progress {
 	char *body;
 };
 
+// per-request context for an in-flight object GET; carries whether this
+// attempt asked the Hub to resume from a byte offset, so the response can be
+// checked once for whether the Hub actually honored it
+struct pv_object_download_ctx {
+	const char *id_ref;
+	bool sent_range;
+	bool checked_response;
+};
+
 struct pv_object_transfer {
 	const char *id_ref;
 	bool active;
 	off_t received; // bytes received so far for this object
 	struct evhttp_request *req; // set once active, to allow cancelling
+	struct pv_object_download_ctx
+		*dl_ctx; // done_cb frees it; cancel must too
 	struct dl_list list; // struct pv_object_transfer
 };
 
@@ -352,7 +363,7 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 	}
 
 	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, arg, out_req,
+						body, NULL, cb, arg, out_req, 0,
 						0);
 }
 
@@ -849,6 +860,7 @@ void pv_pantahub_proto_cancel_transfers(void)
 		// bookkeeping here instead of waiting for it
 		if (o->active && o->req)
 			pv_event_rest_cancel_request(o->req);
+		free(o->dl_ctx);
 		dl_list_del(&o->list);
 		free(o);
 	}
@@ -945,16 +957,34 @@ static void _recv_get_object_chunk_cb(struct evhttp_request *req, void *ctx)
 {
 	char path[PATH_MAX];
 	size_t written = 0;
-	const char *id_ref = (char *)ctx;
+	struct pv_object_download_ctx *dctx =
+		(struct pv_object_download_ctx *)ctx;
 	struct pv_object_transfer *o;
 
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_object_chunk_cb);
 
-	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
+	pv_storage_set_object_download_path(path, PATH_MAX, dctx->id_ref);
+
+	// on the first chunk of the response, check whether the Hub actually
+	// honored our Range request; if it didn't (plain 200, or 416 because
+	// our on-disk partial no longer lines up), fall back gracefully by
+	// discarding the stale partial before this (full) body gets appended
+	if (!dctx->checked_response) {
+		dctx->checked_response = true;
+
+		int code = evhttp_request_get_response_code(req);
+		if (dctx->sent_range && code != 206) {
+			pv_log(DEBUG,
+			       "object '%s': Hub did not resume (status %d), restarting download from scratch",
+			       dctx->id_ref, code);
+			pv_fs_path_remove(path, false);
+		}
+	}
+
 	if (pv_event_rest_recv_chunk_path(req, path, &written))
 		return;
 
-	o = _search_object_transfer(id_ref);
+	o = _search_object_transfer(dctx->id_ref);
 	if (o)
 		o->received += written;
 	pv_update_add_downloaded((off_t)written);
@@ -965,7 +995,9 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	char path[PATH_MAX];
 	size_t written = 0;
 	int res;
-	const char *id_ref = (char *)ctx;
+	struct pv_object_download_ctx *dctx =
+		(struct pv_object_download_ctx *)ctx;
+	const char *id_ref = dctx->id_ref;
 	struct pv_object_transfer *o;
 	off_t received = 0;
 
@@ -985,45 +1017,87 @@ static void _recv_get_object_done_cb(struct evhttp_request *req, void *ctx)
 	_remove_object_transfer(id_ref);
 
 	if (res == 401) {
+		// token expired mid-transfer: the bytes we have are still
+		// good, just re-auth and resume from here next attempt
 		pv_log(WARN, "GET object unauthorized");
 		_free_token();
-		pv_update_add_downloaded(-received); // roll back partial
-		goto out;
+		pv_update_add_downloaded(
+			-received); // roll back in-flight counter
+		goto out_keep;
 	}
-	if (res != 200) {
-		pv_log(WARN, "GET object returned %d", res);
-		pv_update_add_downloaded(-received); // roll back partial
-		goto out;
+	if (res != 200 && res != 206) {
+		// transient/network failure: keep the partial file so the
+		// next attempt can resume with a Range request
+		pv_log(WARN, "GET object returned %d, will resume next attempt",
+		       res);
+		pv_update_add_downloaded(
+			-received); // roll back in-flight counter
+		goto out_keep;
 	}
-	pv_log(DEBUG, "object downloaded from Hub");
+	pv_log(DEBUG, "object downloaded from Hub (status %d)", res);
 
 	if (pv_update_install_object(path)) {
+		// install failed (e.g. checksum mismatch): the bytes we have
+		// are actually wrong, so they must not be resumed from
 		pv_log(WARN, "object download failed");
-		pv_update_add_downloaded(-received); // roll back partial
-		goto out;
+		pv_update_add_downloaded(
+			-received); // roll back in-flight counter
+		goto out_delete;
 	}
-out:
+
+out_delete:
 	pv_fs_path_remove(path, false);
+out_keep:
 	pv_pantahub_evaluate_state();
+	free(dctx);
 }
 
 static int _get_object(const char *geturl, const char *id_ref,
-		       struct evhttp_request **out_req)
+		       struct evhttp_request **out_req,
+		       struct pv_object_download_ctx **out_ctx)
 {
 	char path[PATH_MAX];
+	off_t existing;
+	struct pv_object_download_ctx *dctx;
 
 	if (!geturl || !id_ref)
 		return -1;
 
 	pv_storage_set_object_download_path(path, PATH_MAX, id_ref);
-	pv_fs_path_remove(path, true);
 
-	pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
+	// objects are immutable and content-addressed by sha256, so any
+	// partial file already at this path (from a prior failed attempt) is
+	// always safe to resume from
+	existing = pv_fs_path_get_size(path);
+	if (existing < 0)
+		existing = 0;
 
-	return pv_event_rest_send_by_url(
-		EVHTTP_REQ_GET, geturl, _recv_get_object_chunk_cb,
-		_recv_get_object_done_cb, (void *)id_ref, out_req,
-		pv_config_get_int(PH_UPDATER_DOWNLOAD_RATE_LIMIT));
+	dctx = calloc(1, sizeof(*dctx));
+	if (!dctx)
+		return -1;
+	dctx->id_ref = id_ref;
+	dctx->sent_range = (existing > 0);
+
+	if (existing > 0) {
+		pv_log(DEBUG,
+		       "requesting object '%s' from Hub, resuming from byte %jd",
+		       id_ref, (intmax_t)existing);
+	} else {
+		pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
+	}
+
+	if (pv_event_rest_send_by_url(
+		    EVHTTP_REQ_GET, geturl, _recv_get_object_chunk_cb,
+		    _recv_get_object_done_cb, (void *)dctx, out_req,
+		    pv_config_get_int(PH_UPDATER_DOWNLOAD_RATE_LIMIT),
+		    existing)) {
+		free(dctx);
+		return -1;
+	}
+
+	*out_ctx = dctx;
+
+	return 0;
 }
 
 int pv_pantahub_proto_get_objects()
@@ -1044,7 +1118,8 @@ int pv_pantahub_proto_get_objects()
 	{
 		if (!o->active) {
 			geturl = pv_update_get_object_geturl(o->id_ref);
-			if (!_get_object(geturl, o->id_ref, &o->req))
+			if (!_get_object(geturl, o->id_ref, &o->req,
+					 &o->dl_ctx))
 				o->active = true;
 		}
 
