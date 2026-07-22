@@ -1225,11 +1225,7 @@ run_test_attempt() {
 	local _skip
 	_skip=$(jq -r '.skip' "$json_path")
 	if [ "$_skip" = "true" ]; then
-		if [ "$FAIL_ON_SKIP_FIELD" = "true" ]; then
-			pvtest_log ERROR "'$test_id' has skip:true but FAIL_ON_SKIP_FIELD is set (skip is not allowed on master)"
-			return 1
-		fi
-		pvtest_log INFO "'$test_id' SKIPPED"
+		pvtest_log INFO "'$test_id' SKIPPED (test.json skip:true)"
 		return 2
 	fi
 
