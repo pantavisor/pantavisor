@@ -343,7 +343,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		return PV_STATE_WAIT;
 
 	if (!pv_state_is_done(pv->state)) {
-		pv_log(WARN, 
+		WARN_ONCE(
 			"will not allow claiming if not running a DONE revision");
 		return PV_STATE_WAIT;
 	}
