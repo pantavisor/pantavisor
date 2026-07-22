@@ -1582,6 +1582,30 @@ static int do_action_for_auto_recovery(struct json_key_action *jka, char *value)
 	return 0;
 }
 
+static int do_action_for_power(struct json_key_action *jka, char *value)
+{
+	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
+	struct pv_platform *p = *bundle->platform;
+	int tokc;
+	jsmntok_t *tokv;
+	char *buf = jka->buf;
+
+	if (!p || !buf)
+		return -1;
+
+	if (jsmnutil_parse_json(buf, &tokv, &tokc) < 0) {
+		pv_log(ERROR, "wrong format power");
+		return -1;
+	}
+
+	pv_power_parse_json(buf, tokv, tokc, &p->power_decl,
+			    p->name ? p->name : "platform");
+
+	if (tokv)
+		free(tokv);
+	return 0;
+}
+
 static int do_action_for_network(struct json_key_action *jka, char *value)
 {
 	struct platform_bundle *bundle = (struct platform_bundle *)jka->opaque;
@@ -1905,6 +1929,8 @@ static int parse_platform(struct pv_state *s, char *buf, int n)
 			      do_action_for_roles_array, false),
 		ADD_JKA_ENTRY("auto_recovery", JSMN_OBJECT, &bundle,
 			      do_action_for_auto_recovery, false),
+		ADD_JKA_ENTRY("power", JSMN_OBJECT, &bundle,
+			      do_action_for_power, false),
 		ADD_JKA_ENTRY("network", JSMN_OBJECT, &bundle,
 			      do_action_for_network, false),
 		ADD_JKA_ENTRY("config", JSMN_STRING, &config, NULL, true),
@@ -2174,6 +2200,18 @@ static int parse_groups(struct pv_state *s, char *value)
 					tmp2, artokv, artokc,
 					&g->default_auto_recovery);
 				free(artokv);
+			}
+			free(tmp2);
+			tmp2 = NULL;
+		}
+		tmp2 = pv_json_get_value(str, "power", groupv, groupc);
+		if (tmp2) {
+			jsmntok_t *pwtokv;
+			int pwtokc;
+			if (jsmnutil_parse_json(tmp2, &pwtokv, &pwtokc) >= 0) {
+				pv_power_parse_json(tmp2, pwtokv, pwtokc,
+						    &g->power_decl, g->name);
+				free(pwtokv);
 			}
 			free(tmp2);
 			tmp2 = NULL;
@@ -2760,6 +2798,8 @@ static struct pv_state *system1_parse_validate(struct pv_state *this,
 
 	if (pv_state_validate(this))
 		return NULL;
+
+	pv_state_resolve_power(this);
 
 	pv_state_print(this);
 

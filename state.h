@@ -83,6 +83,11 @@ state_spec_t pv_state_spec(struct pv_state *s);
 int pv_state_validate(struct pv_state *s);
 bool pv_state_validate_checksum(struct pv_state *s);
 
+// Resolve each platform's "power" section (container > group > config >
+// default), per field, now that groups, platforms and default status goals
+// are all final. Must run after pv_state_validate().
+void pv_state_resolve_power(struct pv_state *s);
+
 int pv_state_prepare_run(struct pv_state *s);
 int pv_state_start(struct pv_state *s);
 int pv_state_run(struct pv_state *s);

@@ -34,6 +34,8 @@ struct pv_group {
 	restart_policy_t default_restart_policy;
 	int default_status_goal_timeout;
 	struct pv_auto_recovery default_auto_recovery;
+	struct pv_power_decl
+		power_decl; // group-level "power" section, as declared
 	struct dl_list platform_refs; // pv_platform_ref
 	struct dl_list list; // pv_group
 };

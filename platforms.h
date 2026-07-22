@@ -32,6 +32,7 @@
 
 #include "event/event_socket.h"
 #include "ipam.h"
+#include "power/cadence.h"
 
 typedef enum {
 	PLAT_NONE,
@@ -174,6 +175,9 @@ struct pv_platform {
 	int roles;
 	restart_policy_t restart_policy;
 	struct pv_auto_recovery auto_recovery;
+	struct pv_power_decl
+		power_decl; // "power" section as declared in run.json
+	struct pv_power_resolved power; // resolved after groups+platforms parsed
 	bool updated;
 	bool automodfw; // auto mount modfw
 	bool export;
