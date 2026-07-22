@@ -324,6 +324,8 @@ add_executable(pantavisor
 			ph_logger.h
 			platforms.c
 			platforms.h
+			power/cadence.c
+			power/cadence.h
 			power/wakelock.c
 			power/wakelock.h
 			pvctl_utils.c

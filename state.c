@@ -480,6 +480,19 @@ int pv_state_validate(struct pv_state *s)
 	return 0;
 }
 
+void pv_state_resolve_power(struct pv_state *s)
+{
+	struct pv_platform *p, *tmp;
+	struct dl_list *platforms = &s->platforms;
+
+	dl_list_for_each_safe(p, tmp, platforms, struct pv_platform, list)
+	{
+		pv_power_resolve(&p->power_decl, &p->group->power_decl,
+				 p->status.goal == PLAT_MOUNTED, p->name,
+				 &p->power);
+	}
+}
+
 static int pv_state_mount_bsp_volumes(struct pv_state *s)
 {
 	if (pv_disk_mount_swap(&s->disks) != 0)
