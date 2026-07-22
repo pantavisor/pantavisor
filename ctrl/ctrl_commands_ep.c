@@ -64,6 +64,8 @@ static void ctrl_command_run(struct evhttp_request *req, void *ctx)
 		goto out;
 	}
 
+	pv_ctrl_cmd_free(cmd);
+
 	if (rs.err) {
 		if (rs.code == HTTP_SERVUNAVAIL && rs.retry > 0) {
 			char buf[12] = { 0 };
