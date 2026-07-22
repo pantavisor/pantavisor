@@ -81,26 +81,27 @@ out:
 	return cmd;
 }
 
+static struct pv_ctrl_cmd_add_result _cmd_reject(const struct pv_ctrl_cmd *cmd,
+						 int code, int retry, char *err)
+{
+	pv_log(WARN, "rejecting %s command: %s",
+	       cmd ? pv_ctrl_cmd_op_to_str(cmd->op) : "unknown", err);
+
+	return (struct pv_ctrl_cmd_add_result){ false, code, retry, err };
+}
+
 struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 {
 	if (!cmd) {
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			HTTP_INTERNAL,
-			-1,
-			"Command is empty",
-		};
+		return _cmd_reject(cmd, HTTP_INTERNAL, -1, "Command is empty");
 	}
 
 	struct pantavisor *pv = pv_get_instance();
 
 	if (!pv->remote_mode && cmd->op == CMD_UPDATE_METADATA) {
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			PV_HTTP_CONFLICT,
-			-1,
-			"Cannot do this operation while on local mode",
-		};
+		return _cmd_reject(
+			cmd, PV_HTTP_CONFLICT, -1,
+			"Cannot do this operation while on local mode");
 	}
 
 	if (pv->update &&
@@ -108,75 +109,45 @@ struct pv_ctrl_cmd_add_result pv_ctrl_cmd_add(struct pv_ctrl_cmd *cmd)
 	     (cmd->op == CMD_POWEROFF_DEVICE) || (cmd->op == CMD_LOCAL_RUN) ||
 	     (cmd->op == CMD_LOCAL_RUN_COMMIT) ||
 	     (cmd->op == CMD_MAKE_FACTORY) || (cmd->op == CMD_UNCLAIM))) {
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			HTTP_SERVUNAVAIL,
-			10 * 60,
-			"Cannot do this operation while update is ongoing",
-		};
+		return _cmd_reject(
+			cmd, HTTP_SERVUNAVAIL, 10 * 60,
+			"Cannot do this operation while update is ongoing");
 	}
 
 	if (!pv->unclaimed && cmd->op == CMD_MAKE_FACTORY) {
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			PV_HTTP_CONFLICT,
-			-1,
-			"Cannot do this operation if device is already claimed",
-		};
+		return _cmd_reject(
+			cmd, PV_HTTP_CONFLICT, -1,
+			"Cannot do this operation if device is already claimed");
 	}
 
 	if (!pv_config_get_bool(PV_CONTROL_REMOTE) &&
 	    cmd->op == CMD_GO_REMOTE) {
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			PV_HTTP_CONFLICT,
-			-1,
-			"Cannot do this operation when remote mode is disabled by config",
-		};
+		return _cmd_reject(
+			cmd, PV_HTTP_CONFLICT, -1,
+			"Cannot do this operation when remote mode is disabled by config");
 	}
 
 	if (!pv_config_get_bool(PV_DEBUG_SHELL) &&
 	    cmd->op == CMD_DEFER_REBOOT) {
-		pv_log(WARN,
-		       "Cannot do this operation when debug shell is not active");
-
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			PV_HTTP_CONFLICT,
-			-1,
-			"Cannot do this operation when debug shell is not active",
-		};
+		return _cmd_reject(
+			cmd, PV_HTTP_CONFLICT, -1,
+			"Cannot do this operation when debug shell is not active");
 	}
 
 	if (pv->remote_mode && cmd->op == CMD_GO_REMOTE) {
-		pv_log(WARN,
-		       "rejecting go-remote command: already in remote mode");
-
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			HTTP_NOCONTENT,
-			-1,
-			"Already in remote mode",
-		};
+		return _cmd_reject(cmd, HTTP_NOCONTENT, -1,
+				   "Already in remote mode");
 	}
 
 	if (pv->unclaimed && cmd->op == CMD_UNCLAIM) {
-		pv_log(WARN, "rejecting unclaim command: already unclaimed");
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			HTTP_NOCONTENT,
-			-1,
-			"Device is already unclaimed",
-		};
+		return _cmd_reject(cmd, HTTP_NOCONTENT, -1,
+				   "Device is already unclaimed");
 	}
 
 	if (pv->cmd) {
-		return (struct pv_ctrl_cmd_add_result){
-			false,
-			HTTP_SERVUNAVAIL,
-			2 * 60,
-			"A command is already in progress. Try again",
-		};
+		return _cmd_reject(
+			cmd, HTTP_SERVUNAVAIL, 2 * 60,
+			"A command is already in progress. Try again");
 	}
 
 	pv->cmd = cmd;
