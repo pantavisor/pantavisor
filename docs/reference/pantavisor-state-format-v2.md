@@ -91,6 +91,7 @@ Defines how containers are grouped and started.
 | `restart_policy` | enum | `container` | Policy on failure: `system`, `container`. |
 | `timeout` | integer | 30 | Seconds to wait for members to reach `status_goal`. |
 | `auto_recovery` | object | none | Default [auto-recovery](#auto-recovery-object) for containers in this group. Inherited all-or-nothing by containers without their own `auto_recovery`. |
+| `power` | object | none | Default [power](#power-object) section for containers in this group. Inherited **per field** by containers, unlike `auto_recovery`'s all-or-nothing. |
 
 ---
 
@@ -144,6 +145,7 @@ Configures an individual container runtime.
 | `dev-log` | boolean | No | Whether to bind-mount `/dev/log` into this container. Overrides the global [`PV_LOG_AUTO_DEVLOG`](pantavisor-configuration.md#summary) setting for this container. |
 | `exports` | array | No | (Boolean flag in code) Marks container as an exporter. |
 | `auto_recovery` | object | No | [Auto-recovery configuration](#auto-recovery-object). If absent, inherited from group. |
+| `power` | object | No | [Power section](#power-object) — declarative wake cadence (phase 1). Resolved **per field** from container, group, and config; absent = inherit, explicit `0` = disabled at this scope. |
 
 ### Auto-Recovery Object
 
@@ -158,6 +160,53 @@ Configures automatic restart behavior when a container crashes. See [Auto-Recove
 | `reset_window` | integer | 0 | Seconds of continuous uptime after which the retry counter resets to 0. |
 | `stable_timeout` | integer | 0 | Seconds the container must survive after reaching its status goal to be considered stable. Used to gate [TESTING](../overview/updates.md#testing) commit. |
 | `backoff_policy` | string | `reboot` | Action after `max_retries` exhausted in steady state: `reboot`, `never`, or a duration string (`10min`, `1h`, `30s`). |
+
+### Power Object
+
+Declarative wake cadence — phase 1 of the [container-DX wakelock
+design](../overview/wakelocks-container-dx.md). Same shape in `run.json`
+(container scope) and in a `groups.json`/`device.json` group entry (group
+scope). Only meaningful when `power.mode=managed` (see
+[configuration](pantavisor-configuration.md#summary)); parsed but inert in
+`disabled`/`locks` mode.
+
+| Key | Value Type | Description |
+|:---|:---|:---|
+| `interval` | DURATION | Open a run window at least this often. |
+| `min_awake` | DURATION | Cold-start grace before quiescence sensing is trusted. |
+| `max_awake` | DURATION | Hard cap on the window — the only guarantee. |
+| `align` | DURATION | Snap due-times to multiples of this duration from UTC midnight. Requires a resolved `interval`. |
+
+**DURATION values**: a JSON number is seconds; a JSON string is a duration
+literal (`30s`, `10min`, `1h`, `1d`; bare digits also mean seconds).
+
+**Inheritance is per field — this is where `power` diverges from
+`auto_recovery`'s inherit-the-whole-object semantics.** Each of the four
+fields above is resolved independently:
+
+`run.json power.<F>` → group `power.<F>` → config
+[`power.container.<F>`](pantavisor-configuration.md#summary) → built-in
+default (`min_awake`=10s, `max_awake`=2min; `interval`/`align`=none — no
+window is scheduled unless some scope declares an `interval`).
+
+A field absent at a scope means "inherit from the next scope down." An
+**explicit `0`** means "disabled at this scope" and stops inheritance there
+— e.g. a group enables `interval` for all its members, and one container
+opts back out with `"interval": 0`.
+
+**Clamps**: the resolved `max_awake`/`interval` are clamped against
+[`power.limit.max_awake`/`power.limit.interval`](pantavisor-configuration.md#summary),
+a system-wide ceiling/floor. Clamping only ever warns — it never fails a
+state or triggers `WONTGO` — and is visible in `GET /wakelocks` stats and
+devmeta.
+
+**Shape errors — warn and ignore the whole section, container still
+runs:**
+- `align` set without a resolved `interval`.
+- Resolved `min_awake` greater than resolved `max_awake`.
+- A `power` section on a container whose resolved `status_goal` is
+  `MOUNTED` (a mounted-only container never runs, so a wake window makes
+  no sense).
 
 ### Storage Object
 Defines persistence for specific directories. Keys are paths relative to container root.
