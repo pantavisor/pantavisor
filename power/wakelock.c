@@ -47,8 +47,14 @@
 #include "config.h"
 #include "event/event.h"
 #include "pantahub/pantahub_proto.h"
+#include "pantavisor.h"
+#include "state.h"
+#include "platforms.h"
+#include "group.h"
+#include "metadata.h"
 
 #include "utils/json.h"
+#include "utils/list.h"
 
 #define MODULE_NAME "wakelock"
 #define pv_log(level, msg, ...)                                                \
@@ -120,6 +126,9 @@ static struct pv_wakelock {
 	unsigned int dm_pending_gen;
 	unsigned int dm_sent_gen;
 	struct event *dm_backstop_ev;
+	// phase-1 declarative cadence: one wl_window per platform with an
+	// active resolved "power" section (see _windows_refresh())
+	struct dl_list windows;
 } wl = {
 	.lock_fd = -1,
 	.unlock_fd = -1,
@@ -560,6 +569,554 @@ static void _poll_window_open(void)
 	_poll_fire_requests();
 }
 
+// container windows (phase 1: declarative cadence) ---------------------------
+
+// quiescence sampling: conservative constants, not config -- calibrated later
+// from real phase-1 window stats (see docs/overview/wakelocks-container-dx.md
+// open questions)
+#define WL_QUIESCE_SETTLE_S 5
+#define WL_QUIESCE_CPU_PCT_MAX 1.0
+#define WL_QUIESCE_PSI_AVG10_MAX 1.0
+// coalescing tolerance: open a window early if its due falls within this
+// fraction of its own interval from now (v1: 25%)
+#define WL_COALESCE_FRACTION 4
+
+struct wl_window {
+	char *platform; // keyed by name: platform pointers don't survive reloads
+	long interval;
+	long min_awake;
+	long max_awake;
+	long align;
+	time_t due; // next scheduled open time (epoch seconds, UTC)
+
+	bool open;
+	bool held; // this window currently contributes to wl.count
+	time_t opened_at;
+	struct event *min_ev;
+	struct event *max_ev;
+	struct event *quiesce_ev;
+
+	// quiescence sampling state
+	bool have_last_usage;
+	unsigned long long last_usage_usec;
+	time_t last_sample_at;
+
+	// stats (surfaced via GET /wakelocks and devmeta)
+	unsigned long windows_opened;
+	unsigned long closes_quiesce;
+	unsigned long closes_max;
+	unsigned int consecutive_max_closes;
+	unsigned long long cumulative_open_s;
+
+	struct dl_list list;
+};
+
+static void _window_close(struct wl_window *w, const char *reason);
+static void _windows_devmeta_update(void);
+
+// UTC-midnight-based alignment: epoch 0 is already a UTC midnight, so
+// snapping to the next multiple of `align` from `from` is a plain remainder
+// bump. align<=0 means no alignment.
+static time_t _next_due(time_t from, long interval, long align)
+{
+	time_t due = from + (interval > 0 ? interval : 1);
+
+	if (align > 0) {
+		time_t rem = due % align;
+		if (rem != 0)
+			due += (align - rem);
+	}
+
+	return due;
+}
+
+static struct wl_window *_window_find(const char *platform)
+{
+	struct wl_window *w;
+
+	dl_list_for_each(w, &wl.windows, struct wl_window, list)
+	{
+		if (!strcmp(w->platform, platform))
+			return w;
+	}
+
+	return NULL;
+}
+
+// Rebuild the container-window registry from the current state's resolved
+// per-platform power sections. Safe to call repeatedly (on every wake and on
+// managed-mode entry); windows for platforms that lost their power section
+// are dropped, unless currently open (left to close on its own bound).
+static void _windows_refresh(void)
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv || !pv->state)
+		return;
+
+	struct pv_platform *p, *tmp_p;
+	dl_list_for_each_safe(p, tmp_p, &pv->state->platforms,
+			      struct pv_platform, list)
+	{
+		if (!p->power.active)
+			continue;
+
+		struct wl_window *w = _window_find(p->name);
+		if (!w) {
+			w = calloc(1, sizeof(*w));
+			if (!w)
+				continue;
+			w->platform = strdup(p->name);
+			w->due = _next_due(time(NULL), p->power.interval,
+					   p->power.align);
+			dl_list_init(&w->list);
+			dl_list_add_tail(&wl.windows, &w->list);
+		}
+		w->interval = p->power.interval;
+		w->min_awake = p->power.min_awake;
+		w->max_awake = p->power.max_awake;
+		w->align = p->power.align;
+	}
+
+	struct wl_window *w, *tmp_w;
+	dl_list_for_each_safe(w, tmp_w, &wl.windows, struct wl_window, list)
+	{
+		if (w->open)
+			continue;
+
+		struct pv_platform *found =
+			pv_state_fetch_platform(pv->state, w->platform);
+		if (found && found->power.active)
+			continue;
+
+		dl_list_del(&w->list);
+		free(w->platform);
+		free(w);
+	}
+}
+
+static bool _cgroup2_base_path(char *out, size_t len)
+{
+	struct pantavisor *pv = pv_get_instance();
+	if (!pv)
+		return false;
+
+	if (pv->cgroupv == CGROUP_UNIFIED)
+		snprintf(out, len, "/sys/fs/cgroup");
+	else if (pv->cgroupv == CGROUP_HYBRID)
+		snprintf(out, len, "/sys/fs/cgroup/unified");
+	else
+		return false; // legacy: no cgroup2 mount, no PSI
+
+	return true;
+}
+
+static bool _read_cpu_pressure_avg10(const char *path, double *avg10)
+{
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return false;
+
+	char line[256];
+	bool found = false;
+	while (fgets(line, sizeof(line), f)) {
+		if (!strncmp(line, "some ", 5)) {
+			found = (sscanf(line, "some avg10=%lf", avg10) == 1);
+			break;
+		}
+	}
+	fclose(f);
+
+	return found;
+}
+
+static bool _read_cpu_usage_usec_v2(const char *path,
+				    unsigned long long *usage_usec)
+{
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return false;
+
+	char key[64];
+	unsigned long long val;
+	bool found = false;
+	while (fscanf(f, "%63s %llu", key, &val) == 2) {
+		if (!strcmp(key, "usage_usec")) {
+			*usage_usec = val;
+			found = true;
+			break;
+		}
+	}
+	fclose(f);
+
+	return found;
+}
+
+static bool _read_cpu_usage_usec_v1(const char *platform,
+				    unsigned long long *usage_usec)
+{
+	char path[PATH_MAX];
+	snprintf(path, sizeof(path),
+		 "/sys/fs/cgroup/cpu,cpuacct/lxc/%s/cpuacct.usage", platform);
+
+	FILE *f = fopen(path, "r");
+	if (!f)
+		return false;
+
+	unsigned long long ns;
+	bool ok = (fscanf(f, "%llu", &ns) == 1);
+	fclose(f);
+
+	if (ok)
+		*usage_usec = ns / 1000;
+
+	return ok;
+}
+
+// Availability ladder: per-cgroup cpu.pressure (unified mount) -> global
+// /proc/pressure/cpu as a stall veto + per-cgroup usage -> usage-only. Never
+// closes early without at least a container-specific usage-rate signal
+// (conservative: worst case a window just runs to max_awake).
+static bool _window_is_quiescent(struct wl_window *w)
+{
+	char base[PATH_MAX], path[PATH_MAX];
+	bool have_cgroup2 = _cgroup2_base_path(base, sizeof(base));
+
+	double psi_avg10 = 0;
+	bool psi_ok = false;
+	if (have_cgroup2) {
+		// a truncated path just fails to open below (handled); GCC cannot
+		// bound the runtime platform-name length, so silence the warning
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+		snprintf(path, sizeof(path), "%s/lxc/%s/cpu.pressure", base,
+			 w->platform);
+#pragma GCC diagnostic pop
+		psi_ok = _read_cpu_pressure_avg10(path, &psi_avg10);
+	}
+	if (!psi_ok)
+		psi_ok = _read_cpu_pressure_avg10("/proc/pressure/cpu",
+						  &psi_avg10);
+
+	if (psi_ok && psi_avg10 > WL_QUIESCE_PSI_AVG10_MAX)
+		return false; // stalled (runnable-but-denied): not idle
+
+	unsigned long long usage_usec = 0;
+	bool usage_ok = false;
+	if (have_cgroup2) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-truncation"
+		snprintf(path, sizeof(path), "%s/lxc/%s/cpu.stat", base,
+			 w->platform);
+#pragma GCC diagnostic pop
+		usage_ok = _read_cpu_usage_usec_v2(path, &usage_usec);
+	}
+	if (!usage_ok)
+		usage_ok = _read_cpu_usage_usec_v1(w->platform, &usage_usec);
+
+	if (!usage_ok)
+		return false; // no per-container signal at all: never guess
+
+	time_t now = time(NULL);
+	bool quiescent = false;
+	if (w->have_last_usage) {
+		long dt = (long)(now - w->last_sample_at);
+		if (dt > 0) {
+			unsigned long long dusage =
+				(usage_usec > w->last_usage_usec) ?
+					usage_usec - w->last_usage_usec :
+					0;
+			double pct =
+				((double)dusage / (dt * 1000000.0)) * 100.0;
+			quiescent = pct <= WL_QUIESCE_CPU_PCT_MAX;
+		}
+	}
+
+	w->last_usage_usec = usage_usec;
+	w->last_sample_at = now;
+	w->have_last_usage = true;
+
+	return quiescent;
+}
+
+static void _window_quiesce_cb(evutil_socket_t fd, short events, void *arg)
+{
+	struct wl_window *w = (struct wl_window *)arg;
+
+	if (!w->open)
+		return;
+
+	if (_window_is_quiescent(w)) {
+		_window_close(w, "quiesce");
+		return;
+	}
+
+	// not quiescent yet (idle, working, or starved): keep sampling
+	struct event_base *base = pv_event_get_base();
+	if (!base)
+		return;
+
+	if (w->quiesce_ev) {
+		event_del(w->quiesce_ev);
+		event_free(w->quiesce_ev);
+	}
+	w->quiesce_ev = evtimer_new(base, _window_quiesce_cb, w);
+	if (!w->quiesce_ev)
+		return;
+
+	struct timeval tv = { WL_QUIESCE_SETTLE_S, 0 };
+	event_add(w->quiesce_ev, &tv);
+}
+
+static void _window_arm_quiesce_check(struct wl_window *w)
+{
+	struct event_base *base = pv_event_get_base();
+	if (!base)
+		return;
+
+	w->have_last_usage = false;
+
+	if (w->quiesce_ev) {
+		event_del(w->quiesce_ev);
+		event_free(w->quiesce_ev);
+	}
+	w->quiesce_ev = evtimer_new(base, _window_quiesce_cb, w);
+	if (!w->quiesce_ev)
+		return;
+
+	struct timeval tv = { WL_QUIESCE_SETTLE_S, 0 };
+	event_add(w->quiesce_ev, &tv);
+}
+
+static void _window_min_cb(evutil_socket_t fd, short events, void *arg)
+{
+	struct wl_window *w = (struct wl_window *)arg;
+
+	if (w->min_ev) {
+		event_free(w->min_ev);
+		w->min_ev = NULL;
+	}
+
+	if (!w->open)
+		return;
+
+	_window_arm_quiesce_check(w);
+}
+
+static void _window_max_cb(evutil_socket_t fd, short events, void *arg)
+{
+	struct wl_window *w = (struct wl_window *)arg;
+
+	if (w->max_ev) {
+		event_free(w->max_ev);
+		w->max_ev = NULL;
+	}
+
+	_window_close(w, "max");
+}
+
+// Open one container's window: a refcounted hold (scope "window:<platform>")
+// on the shared wakelock, independent of the poll window -- every container
+// runs whenever the device is awake (no freezing until a later phase).
+static void _window_open(struct wl_window *w, time_t now)
+{
+	struct event_base *base = pv_event_get_base();
+
+	w->open = true;
+	w->opened_at = now;
+	w->windows_opened++;
+
+	if (!w->held) {
+		w->held = true;
+		_count_inc();
+	}
+
+	pv_log(INFO, "wakelock: WINDOW open platform=%s", w->platform);
+
+	// coalescing: the next due reschedules from the actual open, not from
+	// the missed due-time
+	w->due = _next_due(now, w->interval, w->align);
+
+	_windows_devmeta_update();
+
+	if (!base) {
+		// no event loop: cannot bound this window, so do not open it
+		// unbounded -- close immediately instead
+		_window_close(w, "max");
+		return;
+	}
+
+	struct timeval tv_max = { w->max_awake > 0 ? w->max_awake : 1, 0 };
+	w->max_ev = evtimer_new(base, _window_max_cb, w);
+	if (w->max_ev)
+		event_add(w->max_ev, &tv_max);
+
+	if (w->min_awake > 0) {
+		struct timeval tv_min = { w->min_awake, 0 };
+		w->min_ev = evtimer_new(base, _window_min_cb, w);
+		if (w->min_ev)
+			event_add(w->min_ev, &tv_min);
+	} else {
+		_window_arm_quiesce_check(w);
+	}
+}
+
+static void _window_close(struct wl_window *w, const char *reason)
+{
+	if (!w->open)
+		return;
+	w->open = false;
+
+	if (w->min_ev) {
+		event_del(w->min_ev);
+		event_free(w->min_ev);
+		w->min_ev = NULL;
+	}
+	if (w->max_ev) {
+		event_del(w->max_ev);
+		event_free(w->max_ev);
+		w->max_ev = NULL;
+	}
+	if (w->quiesce_ev) {
+		event_del(w->quiesce_ev);
+		event_free(w->quiesce_ev);
+		w->quiesce_ev = NULL;
+	}
+
+	time_t held_s = time(NULL) - w->opened_at;
+	w->cumulative_open_s += (held_s > 0) ? (unsigned long long)held_s : 0;
+
+	if (!strcmp(reason, "quiesce")) {
+		w->closes_quiesce++;
+		w->consecutive_max_closes = 0;
+	} else {
+		w->closes_max++;
+		w->consecutive_max_closes++;
+	}
+
+	pv_log(INFO, "wakelock: WINDOW close platform=%s reason=%s",
+	       w->platform, reason);
+
+	if (w->held) {
+		w->held = false;
+		_count_dec();
+	}
+
+	_windows_devmeta_update();
+}
+
+// Coalescing: on any wake, open every window whose due-time falls within
+// WL_COALESCE_FRACTION of its own interval from now.
+static void _windows_wake(time_t now)
+{
+	struct wl_window *w;
+
+	dl_list_for_each(w, &wl.windows, struct wl_window, list)
+	{
+		if (w->open)
+			continue;
+
+		long tolerance = w->interval / WL_COALESCE_FRACTION;
+		if (w->due - now <= tolerance)
+			_window_open(w, now);
+	}
+}
+
+// Minimal earliest-deadline arming (not a queue): the next RTC wake is
+// min(heartbeat interval, earliest container window due).
+static int _next_wake_interval(time_t now)
+{
+	int interval = pv_config_get_int(PV_POWER_WAKE_INTERVAL);
+	if (interval <= 0)
+		interval = 1;
+
+	time_t earliest = now + interval;
+
+	struct wl_window *w;
+	dl_list_for_each(w, &wl.windows, struct wl_window, list)
+	{
+		if (w->due < earliest)
+			earliest = w->due;
+	}
+
+	long delta = (long)(earliest - now);
+	return delta > 0 ? (int)delta : 1;
+}
+
+static void _windows_deinit(void)
+{
+	struct wl_window *w, *tmp;
+
+	dl_list_for_each_safe(w, tmp, &wl.windows, struct wl_window, list)
+	{
+		if (w->min_ev) {
+			event_del(w->min_ev);
+			event_free(w->min_ev);
+		}
+		if (w->max_ev) {
+			event_del(w->max_ev);
+			event_free(w->max_ev);
+		}
+		if (w->quiesce_ev) {
+			event_del(w->quiesce_ev);
+			event_free(w->quiesce_ev);
+		}
+		dl_list_del(&w->list);
+		free(w->platform);
+		free(w);
+	}
+}
+
+static void _windows_get_json(struct pv_json_ser *js)
+{
+	struct wl_window *w;
+
+	pv_json_ser_array(js);
+	{
+		dl_list_for_each(w, &wl.windows, struct wl_window, list)
+		{
+			pv_json_ser_object(js);
+			{
+				pv_json_ser_key(js, "platform");
+				pv_json_ser_string(js, w->platform);
+				pv_json_ser_key(js, "open");
+				pv_json_ser_bool(js, w->open);
+				pv_json_ser_key(js, "windows_opened");
+				pv_json_ser_number(js, w->windows_opened);
+				pv_json_ser_key(js, "closes_quiesce");
+				pv_json_ser_number(js, w->closes_quiesce);
+				pv_json_ser_key(js, "closes_max");
+				pv_json_ser_number(js, w->closes_max);
+				pv_json_ser_key(js, "consecutive_max_closes");
+				pv_json_ser_number(js,
+						   w->consecutive_max_closes);
+				pv_json_ser_key(js, "cumulative_open_s");
+				pv_json_ser_number(js, w->cumulative_open_s);
+
+				pv_json_ser_object_pop(js);
+			}
+		}
+
+		pv_json_ser_array_pop(js);
+	}
+}
+
+// Stats are a calibration input (busy-looper signal, thresholds): push them
+// to devmeta on every open/close so fleet visibility does not wait for a
+// container to misbehave for a full devmeta interval.
+static void _windows_devmeta_update(void)
+{
+	struct pv_json_ser js;
+
+	pv_json_ser_init(&js, 512);
+	_windows_get_json(&js);
+
+	char *json = pv_json_ser_str(&js);
+	if (json) {
+		pv_metadata_add_devmeta("wakelock.windows", json);
+		free(json);
+	}
+}
+
 // Arm the RTC wake alarm for now + interval seconds via the /dev/rtc char
 // device. The RTC alarm is one-shot, so this is called both to arm the first
 // wake and to re-arm each cycle from _alarm_cb.
@@ -665,17 +1222,20 @@ static void _alarm_notify_cb(evutil_socket_t fd, short events, void *arg)
 
 	pv_log(DEBUG, "wakelock: managed wake");
 
-	// Re-arm only if there's a reason to wake again: a Hub roundtrip or a
-	// declared run window. Neither means nothing to wake for.
+	time_t now = time(NULL);
+	_windows_refresh();
+	_windows_wake(now);
+
+	// Re-arm only if there's a reason to wake again: a Hub roundtrip, a
+	// declared run window, or a pending container window. None of those
+	// means nothing to wake for.
 	if (pv_pantahub_proto_is_auth() ||
-	    pv_config_get_int(PV_POWER_WAKE_RUN_WINDOW) > 0) {
-		int interval = pv_config_get_int(PV_POWER_WAKE_INTERVAL);
-		if (interval <= 0)
-			interval = 1;
-		_managed_rtc_arm(wl.alarm_fd, interval);
+	    pv_config_get_int(PV_POWER_WAKE_RUN_WINDOW) > 0 ||
+	    !dl_list_empty(&wl.windows)) {
+		_managed_rtc_arm(wl.alarm_fd, _next_wake_interval(now));
 	} else {
 		pv_log(INFO,
-		       "wakelock: no Hub and no run window declared; heartbeat not re-armed");
+		       "wakelock: no Hub, no run window, and no container windows declared; heartbeat not re-armed");
 	}
 
 	// a window from a previous alarm is still open: it already owns WL_POLL,
@@ -885,6 +1445,7 @@ void pv_wakelock_managed_ready(void)
 		return;
 
 	_managed_arm_alarm();
+	_windows_refresh();
 
 	// already settled (e.g. runtime transition already enabled autosleep)
 	if (wl.autosleep || wl.settle_pending)
@@ -958,6 +1519,7 @@ int pv_wakelock_init(void)
 
 	wl.mode = pv_config_get_power_mode();
 	wl.init = true;
+	dl_list_init(&wl.windows);
 
 	pv_log(INFO, "wakelock: mode=%s", pv_config_get_power_mode_str());
 
@@ -1041,6 +1603,7 @@ void pv_wakelock_apply_config(void)
 	// transitions just change how acquire/release behave via wl.mode.
 	if (m == PWR_MANAGED) {
 		_managed_arm_alarm();
+		_windows_refresh();
 		_managed_enable_autosleep();
 	}
 }
@@ -1051,6 +1614,7 @@ void pv_wakelock_deinit(void)
 		return;
 
 	_devmeta_backstop_cancel();
+	_windows_deinit();
 
 	if (wl.settle_ev) {
 		event_del(wl.settle_ev);
@@ -1181,6 +1745,10 @@ char *pv_wakelock_get_json(void)
 
 			pv_json_ser_object_pop(&js);
 		}
+
+		// phase-1 declarative cadence: per-container window stats
+		pv_json_ser_key(&js, "containers");
+		_windows_get_json(&js);
 
 		pv_json_ser_object_pop(&js);
 	}
