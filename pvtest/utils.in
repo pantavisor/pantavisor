@@ -268,8 +268,7 @@ wait_for_target_ready() {
 		return 1
 	fi
 
-	# stage 6: pvr HTTP endpoint — served by the pv-pvr-sdk container, so it
-	# comes up after READY; a pvr call issued before this races it
+	# stage 6: pvr HTTP endpoint — served by a container, so it comes up after READY
 	_target_ready_log INFO "${_l}waiting for pvr HTTP endpoint [via pvr HTTP]..."
 	if ! wait_for_pvr_endpoint; then
 		_target_ready_log ERROR "${_l}pvr HTTP endpoint not ready"
@@ -299,7 +298,7 @@ wait_for_current_settled() {
 
 	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "$ready_timeout" \
 		|| pvtest_log WARN "settle: not READY after ${ready_timeout}s; continuing"
-	# pv-pvr-sdk comes up after READY, so a caller that posts/clones right
+	# the pvr endpoint comes up after READY, so a caller that posts/clones right
 	# after this (_install_initial_pvr) would otherwise race it
 	wait_for_pvr_endpoint \
 		|| pvtest_log WARN "settle: pvr endpoint not up; continuing"

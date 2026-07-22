@@ -11,7 +11,7 @@ usage() {
 	echo "PVTEST_CTRL to the host control dir; PVTEST_SLOTS workers force each test's"
 	echo "config.env, asking the host to re-type their slot's container on demand."
 	echo ""
-	echo "Single-device mode: set PVTEST_QUEUE and PVTEST_DEVICE_TARGET to the device"
+	echo "Single-device mode: set PVTEST_QUEUE and PVTEST_DEVICE_NAME to the device"
 	echo "name (plus PVTEST_EXEC/PVTEST_HOST to reach it). Every queued test runs"
 	echo "sequentially against the one device. If PVTEST_DEV_HOOK_CTRL is set (the"
 	echo "manifest configured hook=), a required-config mismatch re-types the device"
@@ -1233,14 +1233,14 @@ run_test_attempt() {
 		return 2
 	fi
 
-	if [ -n "$PVTEST_DEVICE" ]; then
+	if [ -n "$PVTEST_DEVICE_TYPE" ]; then
 		local _devs
 		_devs=$(jq -r 'if (.devices // []) == [] then "" else (.devices | join(" ")) end' "$json_path")
 		if [ -n "$_devs" ]; then
 			case " $_devs " in
-				*" $PVTEST_DEVICE "*) ;;
+				*" $PVTEST_DEVICE_TYPE "*) ;;
 				*)
-					pvtest_log INFO "'$test_id' SKIPPED (device=$PVTEST_DEVICE not in: $_devs)"
+					pvtest_log INFO "'$test_id' SKIPPED (target type $PVTEST_DEVICE_TYPE not in: $_devs)"
 					return 2
 					;;
 			esac
@@ -1254,7 +1254,7 @@ run_test_attempt() {
 	# entirely and let setup_test's _setup_device_retype attempt the retype
 	# instead; a retype failure there already aborts the test on its own.
 	# Never gates the pool, which boots the config itself.
-	if [ "$PVTEST_MODEL" = "persistent" ] && [ -n "$PVTEST_DEVICE_TARGET" ] && [ -n "$required_env" ] && [ -z "$PVTEST_DEV_HOOK_CTRL" ]; then
+	if [ "$PVTEST_MODEL" = "persistent" ] && [ -n "$PVTEST_DEVICE_NAME" ] && [ -n "$required_env" ] && [ -z "$PVTEST_DEV_HOOK_CTRL" ]; then
 		if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
 			pvtest_log INFO "'$test_id' SKIPPED (required-config not satisfied by device: $required_env, no hook configured)"
 			return 2
@@ -1553,7 +1553,7 @@ valgrind=${VALGRIND:-$7}
 run_dir=${RUN_DIR:-/work/run}
 # assignment model: persistent = force each test's config.env (also the
 # real-device SKIP gate — see run_single_device), volatile = one container per
-# test (runs through run_single_device with PVTEST_DEVICE_TARGET set). Unset
+# test (runs through run_single_device with PVTEST_DEVICE_NAME set). Unset
 # means persistent; the host owns the default.
 PVTEST_MODEL="${PVTEST_MODEL:-persistent}"
 # APPENGINE_LOGS (if set): mounted host dir containing <name>.log files,
@@ -1587,10 +1587,10 @@ pvtest_log INFO "starting test run: ${_run_scope:-all}"
 initial_setup
 
 # single real-device mode: flat queue (PVTEST_QUEUE) run sequentially against the
-# one device named in PVTEST_DEVICE_TARGET (PVTEST_EXEC/PVTEST_HOST reach it)
-if [ -n "$PVTEST_QUEUE" ] && [ -n "$PVTEST_DEVICE_TARGET" ]; then
+# one device named in PVTEST_DEVICE_NAME (PVTEST_EXEC/PVTEST_HOST reach it)
+if [ -n "$PVTEST_QUEUE" ] && [ -n "$PVTEST_DEVICE_NAME" ]; then
 	test_json_list="$PVTEST_QUEUE"
-	run_single_device "$PVTEST_DEVICE_TARGET"
+	run_single_device "$PVTEST_DEVICE_NAME"
 	exit $?
 fi
 
@@ -1635,6 +1635,6 @@ if [ -n "$PVTEST_APPENGINES" ]; then
 	exit 0
 fi
 
-pvtest_log ERROR "no dispatch mode configured (need PVTEST_QUEUE with PVTEST_DEVICE_TARGET or PVTEST_CTRL, or PVTEST_APPENGINES)"
+pvtest_log ERROR "no dispatch mode configured (need PVTEST_QUEUE with PVTEST_DEVICE_NAME or PVTEST_CTRL, or PVTEST_APPENGINES)"
 usage
 exit 1
