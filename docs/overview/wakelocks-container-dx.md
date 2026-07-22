@@ -2,7 +2,8 @@
 
 > Status: design proposal, 2026-07-21. Builds on the wakelocks feature
 > ([wakelocks.md](wakelocks.md), branch `feature/wakelock-managed`,
-> pantavisor PR #768). Nothing in this document is implemented yet.
+> pantavisor PR #768). Phase 0 (§2.0) is implemented and validated
+> on-device; phases 1+ (§7) are not started yet.
 
 The wakelocks feature gives *Pantavisor itself* suspend-safety: internal
 scopes (boot, update, hub roundtrips, shutdown, …) hold a refcounted kernel
@@ -26,6 +27,64 @@ All levels are implemented on one internal broker: per-owner wakelock
 accounting + a wake-alarm queue + per-container run-window state machines
 (the managed poll window logic, generalized).
 
+### 1.1 Naming, units and inheritance — the scheme
+
+Every key in this topic — the base wakelocks feature and all phases below
+— follows one scheme:
+
+**Vocabulary.** The same words at every layer (config, manifest, ctrl
+API, logs): *wake* (any resume; the periodic one is the device
+**heartbeat**), *window* (run time granted to containers), *lock* (a
+held wakelock or lease), *alarm* (a scheduled future wake), *freeze*,
+*wakeup* (wake sources). Held-time bounds are always `max_held`.
+
+**Durations.** No `_s`-suffixed names anywhere. All durations are
+`DURATION` config values parsed by one `pv_parse_duration()`: a bare
+number is seconds (`3600`), or a single-unit literal — `30s`, `10min`,
+`1h`, `1d` (the syntax `backoff_policy` already speaks). In JSON
+(manifest and ctrl API): number = seconds, string = duration literal.
+
+**Namespace.** No mode prefixes (`managed.` does not appear in key paths
+— mode gating is behavior, documented per key). The base feature's keys:
+
+| key | default | meaning |
+|---|---|---|
+| `power.mode` | `locks` | `disabled` / `locks` / `managed` |
+| `power.sysfs_dir` | `/sys/power` | base dir of the wakelock/autosleep sysfs nodes |
+| `power.wake.interval` | `1h` | the heartbeat: time between timed wakes |
+| `power.wake.min_awake` | `10s` | minimum awake time per wake |
+| `power.wake.max_awake` | `1min` | hard cap on awake time per wake |
+| `power.wake.run_window` | `0` (off) | shared container run window after the wake's payloads (phase 0) |
+| `power.autosleep.settle` | `90s` | delay after ready before autosleep is enabled |
+| `power.devmeta.eager_push` | `false` | push devmeta to the Hub immediately on dirty instead of waiting an interval |
+| `power.devmeta.max_held` | `5min` | backstop on the devmeta lock awaiting a Hub ack |
+
+Env vars derive mechanically (`PV_POWER_WAKE_INTERVAL`,
+`PV_POWER_DEVMETA_MAX_HELD`, …). Planned subtrees: `power.container.*`
+— the **global scope of the manifest `power` section, field-for-field**
+(§3); `power.limit.*` — system clamps, always in the battery-protective
+direction (ceilings on awake/held time, floors on intervals);
+`power.freeze.*` and `power.wakeup.*` (phases 5/6).
+
+**Inheritance (per-container policy fields).** Two orthogonal stacks.
+The existing config-level stack (`RUN > OEM > PV`) resolves every
+`power.*` config key as usual. The scope stack resolves each manifest
+field `F` independently, per field:
+
+`run.json power.F` → group's `power.F` (groups.json) →
+config `power.container.F` → built-in default.
+
+Rules, for every present and future field: **absent = inherit; explicit
+`0`/`"off"` = disabled at that scope** and stops inheritance (a group
+can enable, a single container can opt out). After resolution, values
+are clamped against `power.limit.*` with a log warning and devmeta
+visibility — never a validation failure. Shape errors (`align` without
+`interval`, `min_awake > max_awake`, a `power` section on a
+`MOUNTED`-goal container) are warn-and-ignore. Note this is a
+**per-field merge** — deliberately finer than `auto_recovery`'s
+all-or-nothing group inheritance; the reference doc must state the
+divergence explicitly.
+
 ## 2. Level 0 — run windows (no declarations)
 
 ### 2.0 Phase 0: the basic run window, built from what already exists
@@ -39,19 +98,21 @@ contract with **one new knob**:
 
 | key | default | meaning |
 |---|---|---|
-| `power.wake.run_window` | `0` (off) | after the hub roundtrip completes, stay awake this many further seconds as the containers' guaranteed run window |
+| `power.wake.run_window` | `0` (off) | after the hub roundtrip completes, stay awake this much longer as the containers' guaranteed run window |
 
-- **Why not just raise `min_awake`?** `power.wake.min_awake` is anchored at
-  the wake and *includes* the roundtrip — a slow hub eats the containers'
-  time. `run_window` starts when the round is done, so the container
-  guarantee is independent of hub latency. Implementation is one more close
-  condition in the existing `_poll_window_maybe_close()`: close when round
-  done AND min elapsed AND `run_window` elapsed since round completion — or
-  at the `max_awake` hard cap, unchanged.
+- **Why not just raise `min_awake`?** `power.wake.min_awake` is anchored
+  at the wake and *includes* the roundtrip — a slow hub eats the
+  containers' time. `run_window` starts when the round is done, so the
+  container guarantee is independent of hub latency. Implementation is one
+  more close condition in the existing `_poll_window_maybe_close()`: close
+  when round done AND min elapsed AND `run_window` elapsed since round
+  completion — or at the `power.wake.max_awake` hard cap, unchanged.
 - **Cadence** is `power.wake.interval` — already configurable.
-- **Safety is already in place**: `max_awake` bounds the whole window, so
-  a chatty container can at worst push the duty cycle to
+- **Safety is already in place**: `power.wake.max_awake` bounds the whole
+  window, so a chatty container can at worst push the duty cycle to
   `max_awake / interval` — bounded misbehavior, no freezer needed.
+  Because it caps the *whole* wake, `min_awake + run_window > max_awake`
+  is a misconfiguration — warned at startup.
 - Observability: `wakelock: run window open/close` log markers; `polling`
   in `GET /wakelocks` already covers the window state.
 
@@ -69,18 +130,16 @@ heartbeat with two optional payloads (hub roundtrip; container run window):
   window open, so the window is `run_window` anchored at the wake.
 - **Arming rule**: no Hub *and* `run_window=0` → nothing to wake for →
   do not arm the periodic RTC alarm at all (pure external-wake device).
-  Either payload present → arm at `interval`.
-- **Key naming**: `power.wake.interval` already names the heartbeat for
-  what it now governs (hub or not) rather than the update-check-only
-  cadence it started as — the `power.wake.*` namespace groups everything
-  the periodic wake owns (`interval`, `min_awake`, `max_awake`,
-  `run_window`).
+  Either payload present → arm at `power.wake.interval`.
+- **Key naming**: the interval lives at `power.wake.interval` because it
+  governs the heartbeat whether or not a Hub is configured (§1.1; the
+  original `update_check.*` naming was dropped pre-release).
 
 What phase 0 consciously does **not** give: separation (containers also run
 during the roundtrip — harmless), per-container accounting, quiescence
 close (the window is timer-closed only), and any per-container scheduling.
 The stated contract for unmodified software is simply: *"your container
-runs at least `run_window` every `interval`, wall-clock timers catch
+runs at least `run_window` every `wake.interval`, wall-clock timers catch
 up on each wake"* — and it holds identically on Hub-managed and
 local-management devices.
 
@@ -238,37 +297,39 @@ exist.
 
 A `power` section in the platform manifest (same layer as roles and restart
 policy), handled entirely by Pantavisor. The section itself — and its
-container > group > system inheritance — is born in phase 2 with the single
-`max_held_s` field (§5, health integration); later phases only ever add
-fields to it.
+container > group > system inheritance — is born in phase 1 with the
+declarative cadence fields below; later phases only ever add fields to it
+(phase 3 adds `max_held`, §5 health integration). Field names, duration
+syntax and the scope-resolution rules are the §1.1 scheme: the same
+fields exist identically in `run.json`, in the group definition, and as
+`power.container.*` config keys (the global scope).
 
-**Phase 3 (locked): declarative cadence.** Fields added:
+**Phase 1 (locked): declarative cadence.** Fields added:
 
 ```json
 "power": {
-  "max_held_s": 1800,   // from phase 2 — quiescence health contract
-  "cadence_s": 3600,    // open my run window at least once an hour
-  "min_awake_s": 10,    // cold-start grace before quiescence sensing is trusted
-  "max_awake_s": 120,   // hard cap on my window — THE guarantee
-  "align": "hour"       // anchor due-times to wall clock (stock cron works)
+  "interval": "1h",     // open my run window at least once an hour
+  "min_awake": "10s",   // cold-start grace before quiescence sensing is trusted
+  "max_awake": "2min",  // hard cap on my window — THE guarantee
+  "align": "1h"         // anchor due-times to wall clock (stock cron works)
 }
 ```
 
-Phase-3 semantics, as locked:
+Phase-1 semantics, as locked:
 
 - **Scheduling — minimal earliest-deadline arming, not a queue.** The RTC
   is armed for `min(heartbeat, earliest container due-time)` via the
-  existing `_managed_rtc_arm()` — a `min()` over containers. Phase 5
+  existing `_managed_rtc_arm()` — a `min()` over containers. Phase 4
   generalizes this into the real named-alarm queue; this is its embryo.
 - **Coalescing**: any wake (whatever its reason) opens every window whose
   due-time falls within a tolerance of now — v1: 25 % of that container's
-  `cadence_s` — and the container's next due reschedules from the actual
+  `interval` — and the container's next due reschedules from the actual
   open. Ten hourly containers must not mean ten wakes.
-- **Pre-freeze semantics — holds, not slots.** Until phase 6, a
+- **Pre-freeze semantics — holds, not slots.** Until phase 5, a
   per-container window is a *refcounted hold* (scope
   `window:<platform>`) keeping the device awake until close; it is NOT an
   exclusive run slot — every container runs whenever the device is awake.
-  Exclusivity is exactly what phase 6's freezing adds.
+  Exclusivity is exactly what phase 5's freezing adds.
 - **No CPU floor — opportunity, not consumption.** An idle container must
   not pin its window (a consumption floor `min_cpu_ms` would hang every
   idle window to the max cap — removed). Instead, **quiescence is
@@ -277,7 +338,7 @@ Phase-3 semantics, as locked:
   This separates the three cases correctly: idle-by-choice closes early
   (it had its opportunity), working stays open, and *starved* stays open
   too — stall counts as activity, which is what the CPU floor was for.
-  `min_awake_s` survives only as a small cold-start grace (default ~10 s:
+  `min_awake` survives only as a small cold-start grace (default ~10 s:
   caught-up timers need a moment to begin showing activity).
   Availability ladder: per-cgroup `cpu.pressure` (unified mount +
   `CONFIG_PSI`) → global `/proc/pressure/cpu` as a conservative
@@ -285,20 +346,22 @@ Phase-3 semantics, as locked:
   item: `CONFIG_PSI=y` joins the wakelock kernel fragment (watch
   `CONFIG_PSI_DEFAULT_DISABLED` → needs `psi=1` cmdline).
 - **Bounded against busy-loopers.** Quiescence only ever closes a window
-  *early*; `max_awake_s` is the guarantee. A spinning container runs to
+  *early*; `max_awake` is the guarantee. A spinning container runs to
   the cap and closes anyway; worst-case duty cycle is
-  `max_awake_s / cadence_s`, and system ceilings (below) bound that
+  `max_awake / interval`, and system limits (below) bound that
   fleet-wide regardless of declarations.
 - **Clamp + warn, never validation-fail.** Declared values are clamped
-  against system ceilings (`power.window.max_awake_ceiling_s`,
-  `power.window.cadence_floor_s`, …) with a log warning and devmeta
+  against the system limits (`power.limit.max_awake` ceiling,
+  `power.limit.interval` floor, …) with a log warning and devmeta
   visibility. Unlike xconnect name collisions (correctness conflicts,
-  rightly fatal), power values are quantitative — a greedy `cadence_s`
+  rightly fatal), power values are quantitative — a greedy `interval`
   must not WONTGO an update. The global `power.wake.max_awake`
-  stays poll-window-only.
-- **`align`** anchors due-times to wall-clock boundaries (pure due-time
+  stays wake-scope-only.
+- **`align`** anchors due-times to wall-clock boundaries: its value is a
+  duration, and due-times snap to multiples of it from UTC midnight —
+  `"1h"` = on the hour, `"15min"`, `"1d"` = midnight (pure due-time
   computation on the same min()-arming — no alarm queue needed). This is
-  deliberately *in* phase 3: without it, unmodified wall-clock software
+  deliberately *in* phase 1: without it, unmodified wall-clock software
   (stock cron) only fires if a window happens to cover the scheduled
   minute, and monotonic-timer loops (`sleep 3600`) need 3600 s of
   cumulative awake time — the adoption payoff of declared cadences lives
@@ -308,8 +371,8 @@ Phase-3 semantics, as locked:
   via devmeta: windows opened; closes by reason (`quiesce` vs `max`);
   consecutive max-closes (the busy-looper signal — bound first, make the
   pathology visible); cumulative window time; cumulative lease held-time
-  (phase 1). These are the calibration inputs for `run_window`,
-  quiescence thresholds, and phase-2 `max_held_s` values — thresholds get
+  (phase 2). These are the calibration inputs for `run_window`,
+  quiescence thresholds, and phase-3 `max_held` values — thresholds get
   measured, not guessed. Log markers:
   `wakelock: WINDOW open platform=<p>` /
   `wakelock: WINDOW close platform=<p> reason=quiesce|max`.
@@ -359,10 +422,10 @@ data path.)
 
 - **Wakelocks as leases — two forms, one table.** Caller identity always
   comes from SO_PEERCRED → platform; every acquisition carries a mandatory,
-  capped `timeout_s`; everything auto-releases when the container leaves
+  capped `timeout`; everything auto-releases when the container leaves
   RUNNING; all forms feed the single kernel lock's refcount.
   - **Anonymous, refcounted** (the zero-coordination default):
-    `POST /wakelocks {"timeout_s": 30}` pushes one reference on the
+    `POST /wakelocks {"timeout": "30s"}` pushes one reference on the
     caller's *container default lock*; `DELETE /wakelocks` pops one.
     Multiple processes/scripts inside one container stack references
     without inventing names or coordinating — kernel-wakelock-style
@@ -373,8 +436,8 @@ data path.)
     Popping at count 0 is an explicit error (409), so double-release bugs
     surface.
   - **Named, idempotent** (the state-guard form):
-    `POST /wakelocks/{name} {"timeout_s": 60}` is held-or-renew — re-POST
-    *renews* (resets the lease to `timeout_s` from now, absolute not
+    `POST /wakelocks/{name} {"timeout": "1min"}` is held-or-renew — re-POST
+    *renews* (resets the lease to `timeout` from now, absolute not
     additive), never stacks, so a renew loop (UI "user-active") cannot
     leak counts. `DELETE /wakelocks/{name}` releases. Named locks are for
     renewable long holds, distinct timeout policies, and introspection.
@@ -387,17 +450,18 @@ data path.)
   reasons: `RTC_WKALM_SET` has one slot, and the ~197 µs autosleep
   re-suspend race means a container-side `CLOCK_BOOTTIME_ALARM` timerfd
   fires without the container ever being scheduled. The phase-4 **deadline
-  queue** generalizes phase 3's `min()` arming and serves everything —
-  API alarms, phase-3 cadence windows (system-owned entries), and the
+  queue** generalizes phase 1's `min()` arming and serves everything —
+  API alarms, phase-1 cadence windows (system-owned entries), and the
   managed poll (just another entry). One scheduler.
-  - API: `POST /alarms/{name}` with `at` (epoch) | `in_s`, plus
-    `period_s`, `persistent`, `window_s`, `grace_s`; `GET /alarms` (own),
+  - API: `POST /alarms/{name}` with `at` (epoch) | `in`, plus
+    `period`, `persistent`, `window`, `grace`; `GET /alarms` (own),
     `DELETE /alarms/{name}`. Named per container like named locks.
-  - **`window_s` — inexact placement**: fire anywhere in
+    Duration fields follow §1.1 (number = seconds, string = literal).
+  - **`window` — inexact placement**: fire anywhere in
     `[at, at+window]`, preferring an already-scheduled wake (reuses the
-    phase-3 coalescing logic). The telemetry persona's field.
+    phase-1 coalescing logic). The telemetry persona's field.
   - **Past-due fires immediately** (including `persistent` alarms found
-    past-due at boot after power-off); `period_s` realigns forward from
+    past-due at boot after power-off); `period` realigns forward from
     now. The only robust behavior on RTC-from-1970 boards (§8 clock
     caveat remains for wall-clock-anchored alarms).
   - **Persistence**: `persistent: true` survives container restart *and*
@@ -407,12 +471,12 @@ data path.)
   - **Delivery — handoff is takeover-not-ack**: the RTC thread grabs the
     kernel lock inline; the broker holds a **handoff lease** for the
     target container, released when the container acquires *any* lock of
-    its own (the natural "I've taken over") or at `grace_s` expiry
-    (default 10 s, ceiling 30 s). No explicit ack verb — acquiring a
+    its own (the natural "I've taken over") or at `grace` expiry
+    (default `10s`, ceiling `30s`). No explicit ack verb — acquiring a
     lease is already the documented wake pattern.
-  - **Caps** (clamp-and-warn, phase-3 style):
-    `power.alarm.min_interval_s` (60), `max_alarms_per_platform` (8),
-    `grace_ceiling_s` (30).
+  - **Caps** (clamp-and-warn, phase-1 style):
+    `power.limit.alarm_interval` (`1min` floor), `power.limit.alarms`
+    (8 per container), `power.limit.alarm_grace` (`30s` ceiling).
 - **Power events (phase 4, locked)** — long-poll
   `GET /power/events?timeout=N` on pv-ctrl.
   - **Per-container bounded event queue** (16 deep, at-least-once): a
@@ -432,17 +496,17 @@ data path.)
     delivered; **handoff outcomes split takeover vs. grace-expiry**
     (grace-expiry = "slept through its own alarm" — the alarm-side
     busy-looper analogue, a future health input); event-queue overflows;
-    coalesced-vs-exact placements (proves `window_s` earns its keep).
+    coalesced-vs-exact placements (proves `window` earns its keep).
 - **Caps & grants**: per-container `power` grant with limits
   (max lease, min alarm interval, infinite-lock privilege). Default:
   allow with tight caps; OEM config tightens or grants more.
-- **Health integration — the quiescence contract (its own phase, after
-  Locks v1).** Leases bound *leaks*,
+- **Health integration — the quiescence contract (phase 3, its own phase
+  after Locks v1 — phase 2).** Leases bound *leaks*,
   but not a buggy container that renews forever: a wedged state machine
   re-POSTing on schedule looks alive to the lease layer while pinning the
   battery indefinitely. So wakelock behavior becomes part of the container
   health contract: if a container's aggregate refcount does not return to
-  **zero** within `power.wakelock.ctrl.max_held_s` (measured
+  **zero** within its resolved `max_held` (measured
   since the count last left zero; renewals do *not* reset it), the
   container is deemed broken and **recycled via its existing restart
   policy** — which already encodes the blast radius (container restart
@@ -454,29 +518,30 @@ data path.)
 
   | level | where | meaning |
   |---|---|---|
-  | system | config `power.wakelock.ctrl.max_held_s` | fleet/device-wide default; `0` (default) = check disabled |
-  | group | `"power": {"max_held_s": N}` in the group definition | applies to all containers in the group |
-  | container | `"power": {"max_held_s": N}` in the container manifest | per-container tuning |
+  | system | config `power.container.max_held` | fleet/device-wide default; `0` (default) = check disabled |
+  | group | `"power": {"max_held": "30min"}` in the group definition | applies to all containers in the group |
+  | container | `"power": {"max_held": "30min"}` in the container manifest | per-container tuning |
 
-  Precedence container > group > system; **absent = inherit**, explicit
-  `0` = disabled at that level (so a group can enable the check and one
-  known-long-holder container can opt out). The check is therefore
-  **off unless some policy level enables it** — it is an opt-in health
-  contract, and enabling it per group (e.g. "all `app`-group containers
-  must quiesce within 1800 s") is the expected common shape.
+  Precedence and sentinels are exactly the §1.1 scope stack: container >
+  group > system; **absent = inherit**, explicit `0` = disabled at that
+  level (so a group can enable the check and one known-long-holder
+  container can opt out). The check is therefore **off unless some policy
+  level enables it** — it is an opt-in health contract, and enabling it
+  per group (e.g. "all `app`-group containers must quiesce within
+  `30min`") is the expected common shape.
 
-  Schema note: `max_held_s` is deliberately declared as the **first field
-  of the same `power` section** that the Level-1 declarative layer (§3)
-  later extends with `cadence_s`, `min_awake_s`, etc. — the section and
-  its group/container/inheritance plumbing are born in this phase with a
-  single integer field; later phases add fields, never a second shape.
+  Schema note: `max_held` joins the `power` section that phase 1's
+  declarative cadence layer (§3) already established — born there with
+  `interval`/`min_awake`/`max_awake`/`align` and its
+  group/container/inheritance plumbing. This phase only ever adds the one
+  duration field to that existing shape, never a second one.
 
-  Sequence on trip: log `wakelock: FORFEIT platform=<p> held_s=<n>` +
+  Sequence on trip: log `wakelock: FORFEIT platform=<p> held=<n>s` +
   drop all the container's locks + apply restart policy; trip counts
   surface in `GET /wakelocks` stats and devmeta (fleet visibility of
   misbehaving apps). Thresholds should be generous (order of an hour) —
   this is a broken-container detector, not a scheduling tool. Same
-  philosophy as the internal devmeta `max_held` backstop and the
+  philosophy as the internal `power.devmeta.max_held` backstop and the
   watchdog: every hold is bounded, and sustained failure to quiesce is a
   health signal, not a power state.
 - **Tooling**: `pvcontrol wakelock acquire|release|ls`,
@@ -498,7 +563,7 @@ data path.)
   lock class — that reintroduces unbounded holds.
 - **BT onboarding**: button wake → routed window (later: wake-activation
   starts the container) → bounded pairing lease → release.
-- **Telemetry/uploaders**: inexact `window_s` work coalesced onto wakes
+- **Telemetry/uploaders**: inexact `window` work coalesced onto wakes
   that happen anyway — without this, managed mode's savings evaporate.
 - **Debug/maintenance**: renewable debug lease; SSH into a container on a
   managed device today can suspend (or, with Level 0, freeze) mid-session
@@ -514,32 +579,40 @@ data path.)
   one close condition added to the existing poll-window machinery, log
   markers. No freezing, no new API surface; testable with the existing
   wakelocks testplan approach.
-- **Phase 1 — Locks v1**: pv-ctrl leases (anonymous refcounted + named
+- **Phase 1 — Declarative cadence v1**: `interval`/`min_awake`/
+  `max_awake`/`align` in a new `power` manifest section — born here,
+  with container/group/system inheritance plumbing; later phases only
+  ever add fields to it, never a second shape. Minimal earliest-deadline
+  RTC arming; coalescing (25 % tolerance); PSI-informed quiescence close
+  (no CPU floor); clamp-and-warn against system ceilings; per-container
+  window/close-reason stats in mgmt GET + devmeta (the calibration and
+  busy-looper signals). Windows are refcounted holds until phase 5 adds
+  exclusivity. Purely declarative — no ctrl API, no container code
+  changes, so it ships independently of Locks v1 (reordered ahead of it:
+  bigger adoption payoff for less surface, and nothing here depends on
+  the ctrl-API mechanism phase 2 builds).
+- **Phase 2 — Locks v1**: pv-ctrl leases (anonymous refcounted + named
   idempotent) + global caps + auto-release + per-caller GET + pvcontrol
-  subcommands. Pure ctrl + wakelock code; no policy parsing.
-- **Phase 2 — Lock health check**: the quiescence contract (FORFEIT →
-  restart policy), enabled and tuned via layered policy (system config →
-  group → container; see §5). Introduces the `power` policy section in
-  the state format with its single first field (`max_held_s`) plus the
-  inheritance plumbing — the declarative *surface* is born here; later
-  phases add fields to it, never a second shape. Thresholds calibrated
-  from real phase-1 lease telemetry.
-- **Phase 3 — Declarative cadence v1**: `cadence_s`/`min_awake_s`/
-  `max_awake_s`/`align` added to the existing `power` section; minimal
-  earliest-deadline RTC arming; coalescing (25 % tolerance);
-  PSI-informed quiescence close (no CPU floor); clamp-and-warn against
-  system ceilings; per-container window/close-reason stats in mgmt GET +
-  devmeta (the calibration and busy-looper signals). Windows are
-  refcounted holds until phase 5 adds exclusivity.
+  subcommands. Pure ctrl + wakelock code; no policy parsing. Shares the
+  underlying keyed wakelock table with phase 1 but is otherwise
+  independent of it (imperative container-initiated leases vs.
+  phase 1's declarative, pantavisor-initiated windows).
+- **Phase 3 — Lock health check**: the quiescence contract (FORFEIT →
+  restart policy) for phase 2's leases specifically — a wedged container
+  that renews a lease forever looks alive to the lease layer while
+  pinning the battery, so this catches it. Enabled and tuned via layered
+  policy (system config → group → container; see §5). Adds `max_held`
+  to the `power` section phase 1 already established. Thresholds
+  calibrated from real phase-2 lease telemetry.
 - **Phase 4 — Alarms + events**: deadline queue, long-poll
-  `/power/events`, handoff leases, `persistent`/`period_s`/`window_s`.
+  `/power/events`, handoff leases, `persistent`/`period`/`window`.
   Alarms are pure delivery to running containers — no exec (see phase 8).
 - **Phase 5 — Freeze/thaw hardening of run windows** (§2.1): group-aware
   freeze policy, direct cgroup writes (v2 `cgroup.freeze` preferred, v1
   fallback), thaw-before-stop discipline, exclusive app windows. Entry
   gate: the §8 cgroup-v2-in-hybrid on-device check.
 - **Phase 6 — Wake reasons + wakeup-source config**: resume detector —
-  the open engineering item — plus `power.wakeup_sources` and
+  the open engineering item — plus `power.wakeup.sources` and
   per-container `wakeup`; `resume {reason}` events join `/power/events`.
 - **Phase 7 — logind inhibitor bridge** on the hosted D-Bus bus.
 - **Phase 8 — Job containers + wake-activation**: a scheduled one-shot
@@ -556,10 +629,10 @@ data path.)
 
 - Do LXC containers get per-container cgroups on the hybrid `unified`
   mount in our embedded layout? This single on-device check now gates
-  *two* features: v2 `cgroup.freeze` (phase 6) and per-cgroup
-  `cpu.pressure` PSI for quiescence sensing (phase 3) — answer it early.
+  *two* features: v2 `cgroup.freeze` (phase 5) and per-cgroup
+  `cpu.pressure` PSI for quiescence sensing (phase 1) — answer it early.
 - Quiescence calibration: settle-period length and the "≈ 0" thresholds
-  for usage and stall — to be measured from phase-3 window stats on a
+  for usage and stall — to be measured from phase-1 window stats on a
   real device, not guessed.
 - `PrepareForSleep` grace semantics under autosleep — stock-NetworkManager
   experiment.
@@ -570,3 +643,6 @@ data path.)
   /storage) vs. container-restart only; clock-validity on RTC-from-1970
   boards.
 - Default-allow caps vs. OEM `grant-only` switch for the Level-3 API.
+- Fleet-level `align` thundering herd: aligned due-times synchronize
+  whole fleets onto the same wall-clock instant — deterministic
+  per-device jitter within the coalescing tolerance?
