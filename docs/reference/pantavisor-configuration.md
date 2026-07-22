@@ -24,6 +24,11 @@ All keys are case insensitive.
 Syntax and behavior of keys tagged with (experimental) might change and break backwards compatibility.
 :::
 
+:::note
+A `DURATION` value is a bare number (seconds) or a number with a single-unit
+suffix: `30s`, `10min`, `1h`, `1d`.
+:::
+
 This table contains the currently supported list of configuration keys, sorted alphabetically.
 
 | Key | Value | Default | Description |
@@ -93,6 +98,12 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_NET_BRMASK4` | IP mask | `255.255.255.0` | set bridge IPv4 mask |
 | `PV_OEM_NAME` | string | empty | set OEM name for configuration overrides |
 | `PV_POLICY` | string | empty | set policy name for configuration |
+| `PV_POWER_CONTAINER_INTERVAL` | DURATION | none | (`power.container.interval`) default `power.interval` for containers/groups that don't declare their own — see [Power Object](pantavisor-state-format-v2.md#power-object). None = no window scheduled unless a group or container declares one. |
+| `PV_POWER_CONTAINER_MIN_AWAKE` | DURATION | `10s` | (`power.container.min_awake`) default `power.min_awake`. |
+| `PV_POWER_CONTAINER_MAX_AWAKE` | DURATION | `2min` | (`power.container.max_awake`) default `power.max_awake`. |
+| `PV_POWER_CONTAINER_ALIGN` | DURATION | none | (`power.container.align`) default `power.align`. |
+| `PV_POWER_LIMIT_MAX_AWAKE` | DURATION | none | (`power.limit.max_awake`) system-wide ceiling on the resolved `power.max_awake`; clamps and warns, never fails a state. None = no ceiling. |
+| `PV_POWER_LIMIT_INTERVAL` | DURATION | none | (`power.limit.interval`) system-wide floor on the resolved `power.interval`; clamps and warns, never fails a state. None = no floor. |
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../overview/storage.md#artifact-checksum) |
@@ -204,6 +215,12 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_NET_BRMASK4`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_OEM_NAME`                        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_POLICY`                          | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| `PV_POWER_CONTAINER_INTERVAL`        | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `PV_POWER_CONTAINER_MIN_AWAKE`       | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `PV_POWER_CONTAINER_MAX_AWAKE`       | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `PV_POWER_CONTAINER_ALIGN`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `PV_POWER_LIMIT_MAX_AWAKE`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `PV_POWER_LIMIT_INTERVAL`            | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `PV_REMOUNT_POLICY`                   | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `PV_REVISION_RETRIES`                | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_SECUREBOOT_CHECKSUM`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |

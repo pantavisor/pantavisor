@@ -89,4 +89,19 @@ the wakelock inline on the same thread closes that gap.
 ## Inspecting state
 
 `GET /wakelocks` on the pv-ctrl socket returns the current mode, refcount,
-whether autosleep/settle/poll are active, and which scopes are held.
+whether autosleep/settle/poll are active, and which scopes are held. In
+`managed` mode it also lists per-container window stats (see phase 1 below).
+
+## Container run windows (phase 1)
+
+Phase 1 of the [container-DX design](wakelocks-container-dx.md) adds a
+declarative `power` section to `run.json`/groups (`interval`, `min_awake`,
+`max_awake`, `align` — see the [Power
+Object](../reference/pantavisor-state-format-v2.md#power-object)). Each
+container with a resolved `interval` gets its own refcounted wake window,
+armed alongside the existing managed heartbeat (earliest-deadline: the RTC
+wakes for `min(heartbeat, earliest container due)`), coalesced onto any wake
+within 25% of its own interval, and closed early on PSI-informed quiescence
+(never before `min_awake`, always by `max_awake`). Only active in
+`power.mode=managed`. Per-container stats (opens, close reason, cumulative
+awake time) are in `GET /wakelocks` and devmeta under `wakelock.windows`.
