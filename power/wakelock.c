@@ -835,14 +835,15 @@ static void _managed_arm_alarm(void)
 	}
 	wl.alarm_thread_started = true;
 
-	if (heartbeat_needed)
+	if (heartbeat_needed) {
 		pv_log(INFO,
 		       "wakelock: managed wake alarm armed via %s at %ds (blocking-read thread)",
 		       WL_RTC_DEV, interval);
-	else
+	} else {
 		pv_log(INFO,
 		       "wakelock: no Hub and no run window declared; heartbeat not armed (%s thread parked)",
 		       WL_RTC_DEV);
+	}
 	return;
 
 err_notify:
