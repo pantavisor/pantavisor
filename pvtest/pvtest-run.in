@@ -468,13 +468,6 @@ _dev_read_file() {
 	fi
 }
 
-# reboot-free unclaim + delete from Hub: `cmd unclaim` strips the creds from
-# config and pantahub.config, then the device walks idle->register->claim on
-# its own; wait until it is claimable again before deleting it from the Hub,
-# so a failed unclaim never leaves the device Hub-deleted but still claimed
-# on-device. Optional $1 = device id (read from the device when omitted —
-# captured up front, since a self-registration during the walk back to
-# "claim" would otherwise leave a stale/renewed id on disk).
 _dev_unclaim() {
 	local dev="${1:-$(_dev_read_file /var/run/pantavisor/pv/device-id)}"
 
@@ -493,17 +486,12 @@ _dev_unclaim() {
 		pvtest_log ERROR "pvcontrol cmd unclaim failed: $pv_ctrl_out"
 		return 1
 	fi
-	if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "claim" 120; then
-		pvtest_log ERROR "timed out waiting for pantahub.state=claim after unclaim"
-		return 1
-	fi
-
 	if [ -n "$dev" ]; then
 		pvtest_log INFO "deleting device $dev from Hub"
 		_pvr_logged dev delete -y "$dev"
 		_track_device del "$dev"
 	fi
-	pvtest_log INFO "device is claimable again"
+	pvtest_log INFO "device unclaimed"
 	return 0
 }
 
@@ -576,7 +564,7 @@ _dev_delete_only() {
 # the just-installed test revision. Claimed is detected from the hint files: pv writes
 # the device-id at boot only when pantahub.config carries creds, and the challenge file
 # is non-empty only while the device is registered-but-unclaimed. Hub-side deletion is
-# deferred to handle_self_claim, once the device has walked back to pantahub.state=claim.
+# deferred to handle_self_claim.
 handle_pre_remote_unclaim() {
 	pre_unclaimed_device=
 
@@ -626,26 +614,19 @@ handle_self_claim() {
 	# right after boot, pantahub.state can take a few seconds to appear once the
 	# Hub client comes up — wait for it instead of a one-shot check
 	local state
+	state=$(_wait_pantahub_terminal_state 120)
+	if [ -z "$state" ]; then
+		pvtest_log ERROR "pantahub.state did not settle"
+		return 1
+	fi
+
+	# drop the identity a pre-go-remote unclaim (handle_pre_remote_unclaim)
+	# left behind; _dev_claim below re-checks the state it needs
 	if [ -n "$pre_unclaimed_device" ]; then
-		# finish a pre-go-remote unclaim (handle_pre_remote_unclaim): devmeta
-		# can still show a stale "idle" until the register walk kicks in, so
-		# wait for claim specifically; only then is it safe to delete the old
-		# identity from the Hub
-		if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "claim" 120; then
-			pvtest_log ERROR "timed out waiting for pantahub.state=claim after pre-go-remote unclaim"
-			return 1
-		fi
-		state=claim
 		pvtest_log INFO "deleting device $pre_unclaimed_device from Hub"
 		_pvr_logged dev delete -y "$pre_unclaimed_device"
 		_track_device del "$pre_unclaimed_device"
 		pre_unclaimed_device=
-	else
-		state=$(_wait_pantahub_terminal_state 120)
-		if [ -z "$state" ]; then
-			pvtest_log ERROR "pantahub.state did not settle"
-			return 1
-		fi
 	fi
 
 	local device_id
