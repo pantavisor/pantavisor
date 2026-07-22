@@ -168,6 +168,8 @@ static struct pv_config_entry entries[] = {
 	  .value.i = 5 },
 	{ INT, "PH_ONLINE_REQUEST_THRESHOLD", PH | OEM | RUN, 0, false,
 	  .value.i = 0 },
+	{ INT, "PH_UPDATER_DOWNLOAD_RATE_LIMIT", PH | OEM | RUN, 0, false,
+	  .value.i = 0 },
 	{ INT, "PH_UPDATER_INTERVAL", PH | OEM | RUN, 0, false, .value.i = 5 },
 	{ INT, "PH_UPDATER_NETWORK_TIMEOUT", PH | OEM | RUN, 0, false,
 	  .value.i = 120 },
