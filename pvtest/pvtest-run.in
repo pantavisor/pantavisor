@@ -483,7 +483,16 @@ _dev_unclaim() {
 	wait_for_current_settled \
 		|| pvtest_log WARN "device did not settle before unclaim; trying anyway"
 
-	pv_ctrl cmd unclaim || return 1
+	if ! pv_ctrl -q cmd unclaim; then
+		case "$pv_ctrl_out" in
+		*"already unclaimed"*)
+			pvtest_log INFO "device already unclaimed"
+			return 0
+			;;
+		esac
+		pvtest_log ERROR "pvcontrol cmd unclaim failed: $pv_ctrl_out"
+		return 1
+	fi
 	if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "claim" 120; then
 		pvtest_log ERROR "timed out waiting for pantahub.state=claim after unclaim"
 		return 1
@@ -642,7 +651,7 @@ handle_self_claim() {
 	local device_id
 	device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
 
-	if [ "$state" = "idle" ] && [ "$self_claim" = "false" ]; then
+	if [ "$state" = "idle" ] && [ "$self_claim" = "false" ] && [ -n "$device_id" ]; then
 		pvtest_log INFO "self-claim=false but device claimed; unclaiming ($device_id)..."
 		_dev_unclaim "$device_id" || return 1
 	elif [ "$state" = "claim" ] && [ "$self_claim" = "true" ]; then
