@@ -2,6 +2,15 @@ name: "On push: Raspberry Pi ARMv8"
 
 on:
   push:
+    branches:
+      - master
+    paths:
+      - "**"
+      - ".github/configs/**"
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - "*"
     paths:
       - "**"
       - ".github/configs/**"
@@ -35,7 +44,7 @@ jobs:
           repository: pantavisor/meta-pantavisor
 
       - name: debug
-        run: echo "Pantavisor ref - ${{ github.sha }}"
+        run: echo "Pantavisor ref - ${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: chown
         run: chown -R builder:builder $RUNNER_WORKSPACE
@@ -47,7 +56,7 @@ jobs:
       - name: Build Kas
         run:
           su - builder -c "cd $GITHUB_WORKSPACE && kas shell ${{ env.configs }}  -c 'devtool modify pantavisor &&
-          cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.sha }} && bitbake -c compile pantavisor' "
+          cd workspace/sources/pantavisor && git fetch && git checkout ${{ github.event.pull_request.head.sha || github.sha }} && bitbake -c compile pantavisor' "
 
   summary:
     needs: build

@@ -23,7 +23,7 @@ The [control socket](../reference/pantavisor-commands.md) exposes a REST API for
 
 [Pantabox](https://gitlab.com/pantacor/pv-platforms/pvr-sdk) is the top level control tool that can be run inside of a [container](containers.md). It offers a [ncurses](https://invisible-island.net/ncurses/) user interface that lets you interact with Pantavisor (install new [revisions](revisions.md), exchange [metadata](storage.md#metadata), reboot or shutdown your device...).
 
-It is included in [pvr-sdk](https://gitlab.com/pantacor/pv-platforms/pvr-sdk), our development platform that is included with the [initial devices](https://docs.pantavisor.io/install/supported-devices). To get more info or try it out, [ssh your pvr-sdk container](https://docs.pantavisor.io/operate/device-access/local-network) and just type the command:
+It is included in [pvr-sdk](https://gitlab.com/pantacor/pv-platforms/pvr-sdk), our development platform that is included with the [initial devices](../../meta-pantavisor/overview/supported-device.md). To get more info or try it out, [ssh your pvr-sdk container](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) and just type the command:
 
 ```
 pantabox
@@ -35,7 +35,7 @@ Pantabox is built on top of [pvcontrol](#pvcontrol).
 
 [pvcontrol](../tools/pvcontrol.md) is the CLI control tool that communicates with [Pantavisor control socket](../reference/pantavisor-commands.md) using [cURL](https://curl.se/). As it is a [Pantabox](#pantabox) dependency, it generally gets advantage of the latest features of the control socket first.
 
-It is also included in [pvr-sdk](https://gitlab.com/pantacor/pv-platforms/pvr-sdk), included with the [initial devices](https://docs.pantavisor.io/install/supported-devices). To try it out, [ssh to your pvr-sdk container](https://docs.pantavisor.io/operate/device-access/local-network) and just type the command:
+It is also included in [pvr-sdk](https://gitlab.com/pantacor/pv-platforms/pvr-sdk), included with the [initial devices](../../meta-pantavisor/overview/supported-device.md). To try it out, [ssh to your pvr-sdk container](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) and just type the command:
 
 ```
 pvcontrol
