@@ -1,6 +1,6 @@
 ---
 title: "Log Sockets"
-sidebar_position: 8
+sidebar_position: 6
 description: "Logserver Unix socket paths and message formats."
 ---
 

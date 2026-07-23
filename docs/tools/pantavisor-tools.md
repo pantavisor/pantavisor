@@ -1,6 +1,6 @@
 ---
 title: "Tools"
-sidebar_position: 4
+sidebar_position: 1
 description: "On-device CLI tools: pventer, pvcurl, pvcontrol, and pvtx."
 ---
 

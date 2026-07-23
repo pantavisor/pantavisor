@@ -1,6 +1,6 @@
 ---
 title: "pvcontrol"
-sidebar_position: 5
+sidebar_position: 2
 description: "Full pvcontrol CLI reference with worked examples."
 ---
 
@@ -10,7 +10,7 @@ description: "Full pvcontrol CLI reference with worked examples."
 container. It is a small POSIX-shell wrapper (`tools/pvcontrol`) around
 [`pvcurl`](pantavisor-tools.md#pvcurl) that talks to the pv-ctrl REST API over
 a Unix socket. Every subcommand maps to one HTTP endpoint documented in
-[pantavisor-commands.md](pantavisor-commands.md).
+[pantavisor-commands.md](../reference/pantavisor-commands.md).
 
 Use `pvcontrol` for everyday operations (status, metadata, lifecycle,
 commands) and drop down to raw `pvcurl` only when you need a method/endpoint
@@ -141,7 +141,7 @@ with aliased dotted keys:
 {"creds.host":"api.pantahub.com","creds.port":443,"metadata.usrmeta.interval":5,"updater.interval":60}
 ```
 
-See [pantavisor-configuration.md](pantavisor-configuration.md) for the key
+See [pantavisor-configuration.md](../reference/pantavisor-configuration.md) for the key
 reference.
 
 ### xconnect graph
@@ -151,7 +151,7 @@ pvcontrol graph ls
 ```
 
 Returns the current xconnect service-mesh graph (providers/consumers and the
-links between them). See [pantavisor-xconnect.md](pantavisor-xconnect.md).
+links between them). See [pantavisor-xconnect.md](../reference/pantavisor-xconnect.md).
 
 ---
 
@@ -174,7 +174,7 @@ pvcontrol usrmeta delete my-key
 
 `save` with the same key overwrites the existing value. Deleting a
 non-existent key returns HTTP 404 (exit code 255). See
-[pantavisor-metadata.md](pantavisor-metadata.md).
+[pantavisor-metadata.md](../reference/pantavisor-metadata.md).
 
 A user-metadata round-trip looks like:
 
@@ -369,7 +369,7 @@ cat /tmp/file.bin | pvcontrol objects put -"$SIZE" "$SHA"
 
 Steps are revisions of device state. See
 [revisions.md](../overview/revisions.md) and
-[pantavisor-state-format-v2.md](pantavisor-state-format-v2.md).
+[pantavisor-state-format-v2.md](../reference/pantavisor-state-format-v2.md).
 
 ```bash
 pvcontrol steps ls                              # list revisions on the device
@@ -485,4 +485,4 @@ On a platform without managed drivers these are effectively no-ops returning
 
 For the authoritative endpoint contracts (request/response shapes, status
 codes, management-socket requirements), see
-[pantavisor-commands.md](pantavisor-commands.md).
+[pantavisor-commands.md](../reference/pantavisor-commands.md).

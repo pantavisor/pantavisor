@@ -1,6 +1,6 @@
 ---
 title: "Metadata"
-sidebar_position: 7
+sidebar_position: 5
 description: "User-defined and system-managed device metadata reference."
 ---
 

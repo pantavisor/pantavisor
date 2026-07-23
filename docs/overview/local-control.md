@@ -33,7 +33,7 @@ Pantabox is built on top of [pvcontrol](#pvcontrol).
 
 ## pvcontrol
 
-[pvcontrol](../reference/pvcontrol.md) is the CLI control tool that communicates with [Pantavisor control socket](../reference/pantavisor-commands.md) using [cURL](https://curl.se/). As it is a [Pantabox](#pantabox) dependency, it generally gets advantage of the latest features of the control socket first.
+[pvcontrol](../tools/pvcontrol.md) is the CLI control tool that communicates with [Pantavisor control socket](../reference/pantavisor-commands.md) using [cURL](https://curl.se/). As it is a [Pantabox](#pantabox) dependency, it generally gets advantage of the latest features of the control socket first.
 
 It is also included in [pvr-sdk](https://gitlab.com/pantacor/pv-platforms/pvr-sdk), included with the [initial devices](../../meta-pantavisor/overview/supported-device.md). To try it out, [ssh to your pvr-sdk container](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) and just type the command:
 

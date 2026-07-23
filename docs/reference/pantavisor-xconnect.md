@@ -1,6 +1,6 @@
 ---
 title: "xconnect"
-sidebar_position: 6
+sidebar_position: 4
 description: "Service mesh manifest formats and mediation patterns."
 ---
 
