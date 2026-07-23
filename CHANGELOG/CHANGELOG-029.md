@@ -8,6 +8,24 @@ which runs automatically in CI (via
 [`tag-changelogs.yaml`](../.github/workflows/tag-changelogs.yaml) when a
 tag is synced from meta-pantavisor) and on demand locally.
 
+## v029-rc4
+
+Released: 2026-07-16
+Commit: [`2b921223de5a`](https://github.com/pantavisor/pantavisor/commit/2b921223de5ad27e9275d216dce170ea83075c90)
+
+### Changes
+
+Changes since [`029-rc3`](https://github.com/pantavisor/pantavisor/releases/tag/029-rc3):
+
+#### Fixes
+- **ci**: checkout the PR's actual head commit, not GitHub's synthetic merge SHA
+- **ci**: use GITHUB_TOKEN instead of missing PANTAVISOR_TAG_SYNC_TOKEN
+- **ci**: scope on-push workflow to master/pull_request, exclude tag pushes
+- **pvtx**: force to use "locals/" as prefix in custom revision names
+
+#### Docs
+- fix dead docs.pantavisor.io links, use relative cross-repo refs
+
 ## v029-rc3
 
 Released: 2026-07-10
