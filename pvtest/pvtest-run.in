@@ -898,12 +898,15 @@ _setup_retype() {
 # target's reboot directly — no new container identity to disambiguate against,
 # just this device going down and coming back with the new config.
 _setup_device_retype() {
-	local _rev="$1" _id _resp _status _waited=0
+	local _rev="$1" _id _resp _status _cfg _waited=0
 
-	pvtest_log INFO "device retype: requesting hook cfg=[$(_reqcfg_norm "$required_env")]"
+	_cfg="$required_env"
+	[ -n "$PVTEST_DEV_ENV_BASE" ] && _cfg="$PVTEST_DEV_ENV_BASE $required_env"
+
+	pvtest_log INFO "device retype: requesting hook cfg=[$(_reqcfg_norm "$_cfg")]"
 
 	_id="req.$$.$(date +%s%N)"
-	{ printf 'cfg=%s\n' "$required_env"; } > "$PVTEST_DEV_HOOK_CTRL/req/.tmp.$_id"
+	{ printf 'cfg=%s\n' "$_cfg"; } > "$PVTEST_DEV_HOOK_CTRL/req/.tmp.$_id"
 	mv "$PVTEST_DEV_HOOK_CTRL/req/.tmp.$_id" "$PVTEST_DEV_HOOK_CTRL/req/$_id"
 
 	_resp="$PVTEST_DEV_HOOK_CTRL/resp/$_id"
