@@ -54,7 +54,13 @@ struct ctrl_srv {
 	struct dl_list request;
 };
 
-static struct ctrl_srv pvctrl = { 0 };
+// custom_cb/normal_cb/request self-initialized to empty lists so pv_ctrl_stop()
+// is safe to call before pv_ctrl_start() (e.g. a pre-FSM pv_start() failure path).
+static struct ctrl_srv pvctrl = {
+	.custom_cb = { &pvctrl.custom_cb, &pvctrl.custom_cb },
+	.normal_cb = { &pvctrl.normal_cb, &pvctrl.normal_cb },
+	.request = { &pvctrl.request, &pvctrl.request }
+};
 
 // catch any error in the communication, for example use any other protocol
 // than http against the socket
@@ -336,8 +342,10 @@ static void ctrl_free_request_list(struct dl_list *req_list)
 
 void pv_ctrl_stop()
 {
-	evhttp_free(pvctrl.srv);
-	pvctrl.srv = NULL;
+	if (pvctrl.srv) {
+		evhttp_free(pvctrl.srv);
+		pvctrl.srv = NULL;
+	}
 
 	ctrl_free_cb_list(&pvctrl.custom_cb);
 	ctrl_free_cb_list(&pvctrl.normal_cb);
