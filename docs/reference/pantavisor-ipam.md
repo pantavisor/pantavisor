@@ -1,6 +1,6 @@
 ---
 title: "IPAM"
-sidebar_position: 9
+sidebar_position: 7
 description: "IP address management configuration: pools, leases, and per-container networks."
 ---
 

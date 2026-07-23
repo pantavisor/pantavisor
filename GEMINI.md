@@ -27,12 +27,19 @@ API and format specifications, versioned with each Pantavisor release. Always up
 | **Log Sockets** | [docs/reference/logserver-sockets.md](docs/reference/logserver-sockets.md) | Logserver unix sockets reference |
 | **Metadata** | [docs/reference/pantavisor-metadata.md](docs/reference/pantavisor-metadata.md) | User and device metadata reference |
 | **State Format** | [docs/reference/pantavisor-state-format-v2.md](docs/reference/pantavisor-state-format-v2.md) | state.json format (v2) |
-| **Tools** | [docs/reference/pantavisor-tools.md](docs/reference/pantavisor-tools.md) | pventer, pvcurl, pvcontrol, pvtx — on-device CLI tools |
-| **pvcontrol** | [docs/reference/pvcontrol.md](docs/reference/pvcontrol.md) | Full `pvcontrol` CLI reference with worked examples |
+
+### Tools (`docs/tools/`)
+
+On-device CLI tool docs, versioned with each Pantavisor release alongside `docs/reference/`.
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| **Tools** | [docs/tools/pantavisor-tools.md](docs/tools/pantavisor-tools.md) | pventer, pvcurl, pvcontrol, pvtx — on-device CLI tools |
+| **pvcontrol** | [docs/tools/pvcontrol.md](docs/tools/pvcontrol.md) | Full `pvcontrol` CLI reference with worked examples |
 
 ### Technical Overview (`docs/overview/`)
 
-Feature overview intended to be read top-to-bottom as a book. Not versioned — always reflects current master. Synced to the docs site under the "Technical Overview" section.
+Feature overview intended to be read top-to-bottom as a book, versioned with each Pantavisor release alongside `docs/reference/`. Synced to the docs site under the "Technical Overview" section.
 
 | Document | Location | Description |
 |----------|----------|-------------|
@@ -45,7 +52,7 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 | **Disks** | [docs/overview/disks.md](docs/overview/disks.md) | Disk types, dual mode, dm-crypt, boot sequence |
 | **Remote Control** | [docs/overview/remote-control.md](docs/overview/remote-control.md) | Pantacor Hub client and remote controllers |
 | **Local Control** | [docs/overview/local-control.md](docs/overview/local-control.md) | pv-ctrl socket, Pantabox, pvcontrol |
-| **Configuration** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
+| **Configuration Levels** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
 | **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
 | **Watchdog** | [docs/overview/watchdog.md](docs/overview/watchdog.md) | Watchdog configuration and modes |
 | **Hooks** | [docs/overview/hooks.md](docs/overview/hooks.md) | System lifecycle hooks |
@@ -53,15 +60,15 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 
 ## Docs Pipeline
 
-The `docs/` folder is published on [docs.pantavisor.io/reference](https://docs.pantavisor.io/reference) by the [docs.pantavisor](https://github.com/pantavisor/docs.pantavisor) Docusaurus site:
-1. Each meta-pantavisor release bundles a docs tarball containing this repo's `docs/` as `pantavisor/` and meta-pantavisor's `docs/` as a sibling `meta-pantavisor/` directory.
-2. `scripts/sync-reference.mjs` + `migrate-docs.js` in docs.pantavisor download the tarball for each published version and generate the versioned Reference instance at `/reference/<version>/pantavisor/...`.
+The `docs/` folder is published on [docs.pantavisor.io/reference](https://docs.pantavisor.io/reference) by the [docs.pantavisor](https://github.com/pantavisor/docs.pantavisor) Docusaurus site, versioned per release rather than by folder:
+1. Each meta-pantavisor release publishes a docs tarball, tracked in [`releases.json`](https://pantavisor-ci.s3.amazonaws.com/meta-pantavisor/releases.json) on S3. The tarball bundles this repo's `docs/` as `pantavisor/` and meta-pantavisor's `docs/` as a sibling `meta-pantavisor/` directory.
+2. `scripts/sync-reference.mjs` + `migrate-docs.js` in docs.pantavisor download the tarball for each published version listed in `releases.json` and generate a versioned instance at `/reference/<version>/pantavisor/...`. This covers everything under `docs/` — `docs/reference/`, `docs/overview/`, and `docs/tools/` alike — snapshotted together per release.
 3. Hand-authored, versionless guides live in the site's `curated/` instance (served at the site root, e.g. `/build`, `/install`, `/operate`); they are never generated from this repo.
 
 ### Link conventions (docs/)
 
 - **Within the same folder**: plain relative links, e.g. `containers.md#restart-policy`.
-- **Between `docs/overview/` and `docs/reference/`**: relative sibling links, e.g. `../reference/pantavisor-configuration.md#summary` or `../overview/containers.md#status`. These resolve both on GitHub and on the published site.
+- **Between `docs/overview/`, `docs/reference/`, and `docs/tools/`**: relative sibling links, e.g. `../reference/pantavisor-commands.md#steps`, `../overview/containers.md#status`, or `../tools/pvcontrol.md`. These resolve both on GitHub and on the published site.
 - **To meta-pantavisor docs**: `../../meta-pantavisor/<section>/<page>.md` — resolves only on the published site, where both repos' docs are siblings.
 - **To curated site pages**: full URLs, e.g. `https://docs.pantavisor.io/operate/device-access/serial-port`.
 - **Do not** use the retired MkDocs-era prefixes (`../../../reference/legacy/`, `../../../reference/027/`, `../../pantavisor-src/docs/...`) — they dangle on the Docusaurus site.

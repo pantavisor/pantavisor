@@ -27,11 +27,19 @@ API and format specifications, versioned with each Pantavisor release. Always up
 | **Log Sockets** | [docs/reference/logserver-sockets.md](docs/reference/logserver-sockets.md) | Logserver unix sockets reference |
 | **Metadata** | [docs/reference/pantavisor-metadata.md](docs/reference/pantavisor-metadata.md) | User and device metadata reference |
 | **State Format** | [docs/reference/pantavisor-state-format-v2.md](docs/reference/pantavisor-state-format-v2.md) | state.json format (v2) |
-| **Tools** | [docs/reference/pantavisor-tools.md](docs/reference/pantavisor-tools.md) | pventer, pvcurl, pvcontrol, pvtx — on-device CLI tools |
+
+### Tools (`docs/tools/`)
+
+On-device CLI tool docs, versioned with each Pantavisor release alongside `docs/reference/`.
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| **Tools** | [docs/tools/pantavisor-tools.md](docs/tools/pantavisor-tools.md) | pventer, pvcurl, pvcontrol, pvtx — on-device CLI tools |
+| **pvcontrol** | [docs/tools/pvcontrol.md](docs/tools/pvcontrol.md) | Full `pvcontrol` CLI reference with worked examples |
 
 ### Technical Overview (`docs/overview/`)
 
-Feature overview intended to be read top-to-bottom as a book. Not versioned — always reflects current master. Synced to the docs site under the "Technical Overview" section.
+Feature overview intended to be read top-to-bottom as a book, versioned with each Pantavisor release alongside `docs/reference/`. Synced to the docs site under the "Technical Overview" section.
 
 | Document | Location | Description |
 |----------|----------|-------------|
@@ -44,7 +52,7 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 | **Disks** | [docs/overview/disks.md](docs/overview/disks.md) | Disk types, dual mode, dm-crypt, boot sequence |
 | **Remote Control** | [docs/overview/remote-control.md](docs/overview/remote-control.md) | Pantacor Hub client and remote controllers |
 | **Local Control** | [docs/overview/local-control.md](docs/overview/local-control.md) | pv-ctrl socket, Pantabox, pvcontrol |
-| **Configuration** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
+| **Configuration Levels** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
 | **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
 | **Watchdog** | [docs/overview/watchdog.md](docs/overview/watchdog.md) | Watchdog configuration and modes |
 | **Hooks** | [docs/overview/hooks.md](docs/overview/hooks.md) | System lifecycle hooks |
@@ -52,12 +60,10 @@ Feature overview intended to be read top-to-bottom as a book. Not versioned — 
 
 ## Docs Pipeline
 
-Changes to `docs/**` on master automatically trigger a GitLab CI pipeline in the docs repo (via GitHub Action → GitLab CI trigger). The docs pipeline:
-1. Updates the `content/pantavisor-src` submodule to latest master
-2. Copies `docs/reference/` files into versioned directories (`content/reference/<version>/`)
-3. Copies `docs/overview/` files into `content/` (the docs site root, overwriting existing)
-4. Regenerates the `mkdocs.yml` navigation for the Reference Pages section
-5. Auto-commits and pushes if anything changed
+`docs/` is published on [docs.pantavisor.io](https://docs.pantavisor.io/) by the [docs.pantavisor](https://github.com/pantavisor/docs.pantavisor) Docusaurus site, versioned per release rather than by folder:
+1. Each meta-pantavisor release publishes a docs tarball, tracked in [`releases.json`](https://pantavisor-ci.s3.amazonaws.com/meta-pantavisor/releases.json) on S3. The tarball bundles this repo's `docs/` as `pantavisor/` alongside meta-pantavisor's `docs/` as a sibling `meta-pantavisor/` directory.
+2. `scripts/sync-reference.mjs` + `migrate-docs.js` in docs.pantavisor download the tarball for each published version listed in `releases.json` and generate a versioned instance at `/reference/<version>/pantavisor/...`. This covers everything under `docs/` — `docs/reference/`, `docs/overview/`, and `docs/tools/` alike — snapshotted together per release, not just the reference pages.
+3. Hand-authored, versionless guides live in the site's `curated/` instance (served at the site root, e.g. `/build`, `/install`, `/operate`); they are never generated from this repo.
 
 ## Architecture
 

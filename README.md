@@ -53,6 +53,13 @@ After you've downloaded and flashed your device with Pantavisor, try out a tutor
 | **State Format** | [docs/reference/pantavisor-state-format-v2.md](docs/reference/pantavisor-state-format-v2.md) | Pantavisor state.json format (v2) |
 | **Config (Legacy)**| [docs/reference/pantavisor-configuration-legacy.md](docs/reference/pantavisor-configuration-legacy.md) | Legacy configuration reference |
 
+## Tools
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| **Tools** | [docs/tools/pantavisor-tools.md](docs/tools/pantavisor-tools.md) | pventer, pvcurl, pvcontrol, pvtx — on-device CLI tools |
+| **pvcontrol** | [docs/tools/pvcontrol.md](docs/tools/pvcontrol.md) | Full `pvcontrol` CLI reference with worked examples |
+
 ## Technical Overview
 
 | Document | Location | Description |

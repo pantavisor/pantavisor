@@ -7,4 +7,5 @@ description: "Entry point for Pantavisor runtime documentation."
 # Pantavisor Documentation
 
 - [Technical Overview](overview/index.md) — Concept-level explanations of how Pantavisor works, ordered from architecture down to individual subsystems
-- [Reference](reference/index.md) — Exact specifications for state formats, configuration keys, control socket commands, CLI tools, and schemas
+- [Reference](reference/index.md) — Exact specifications for state formats, configuration keys, control socket commands, and schemas
+- [Tools](tools/index.md) — On-device CLI tools: `pventer`, `pvcurl`, `pvcontrol`, and `pvtx`

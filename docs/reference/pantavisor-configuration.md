@@ -1,5 +1,5 @@
 ---
-title: "Configuration"
+title: "Pantavisor Configuration"
 sidebar_position: 2
 description: "All pantavisor.json configuration keys, defaults, and allowed levels."
 ---
@@ -8,6 +8,10 @@ description: "All pantavisor.json configuration keys, defaults, and allowed leve
 
 :::note
 This reference page presents the newly unified configuration key syntax. To get to the deprecated but still supported previous format, you will have to go [here](https://github.com/pantavisor/docs.pantavisor/blob/master/archive/legacy/pantavisor-configuration-legacy.md).
+:::
+
+:::note
+This page lists all configuration keys, their values, and the levels each one supports. For an explanation of what each level means and how they take precedence over one another, see [Configuration Levels](../overview/pantavisor-configuration-levels.md).
 :::
 
 ## Summary

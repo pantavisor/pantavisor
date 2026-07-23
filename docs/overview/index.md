@@ -17,7 +17,7 @@ description: "Concept-level explanations of how Pantavisor works, meant to be re
 9. [Local Control](local-control.md) — pv-ctrl Unix socket, Pantabox, and the pvcontrol CLI
 10. [IPAM](ipam.md) — Container IP address management: address allocation and network namespace configuration
 11. [Inter-Container Communication](xconnect.md) — xconnect service mesh: service discovery, Unix sockets, D-Bus, DRM, and Wayland mediation between containers
-12. [Configuration Levels](pantavisor-configuration-levels.md) — The precedence hierarchy for pantavisor.json configuration across factory, device, and container scopes
+12. [Configuration Levels](pantavisor-configuration-levels.md) — The precedence hierarchy for pantavisor.json configuration across factory, device, and container scopes. See the [Pantavisor Configuration reference](../reference/pantavisor-configuration.md) for the full list of keys, defaults, and levels
 13. [Init Mode](init-mode.md) — Embedded, standalone, and appengine operational modes and when to use each
 14. [Hooks](hooks.md) — System lifecycle hooks: boot, update, platform-ready, and custom extension points
 15. [Watchdog](watchdog.md) — Hardware and software watchdog integration, kick intervals, and failure handling
