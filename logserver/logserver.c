@@ -610,6 +610,11 @@ static void logserver_consume_fd(int fd)
 		snprintf(d.plat, LOGSERVER_PLAT_MAX_LEN, "%s", lfd->platform);
 
 		logserver_log_msg_data(&d, 0);
+		if ((logserver.active_out & LOG_SERVER_OUTPUT_STDOUT_DIRECT) &&
+		    d.src &&
+		    (!strcmp(d.src, PV_PLATFORM_LXC_LOG) ||
+		     !strcmp(d.src, PV_PLATFORM_LXC_CONSOLE_LOG)))
+			logserver_utils_stdout(&d);
 	} else if (errno != EAGAIN) {
 		pv_log(DEBUG,
 		       "dead fd subscribed found (%d) trying to read: %s",

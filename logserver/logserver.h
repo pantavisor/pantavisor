@@ -30,6 +30,9 @@
 
 #define PV_PLATFORM_STR "pantavisor"
 
+#define PV_PLATFORM_LXC_LOG "lxc/lxc.log"
+#define PV_PLATFORM_LXC_CONSOLE_LOG "lxc/console.log"
+
 void pv_logserver_toggle(struct pantavisor *pv, const char *rev);
 
 int pv_logserver_init(const char *rev);
