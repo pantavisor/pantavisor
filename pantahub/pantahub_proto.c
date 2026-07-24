@@ -890,6 +890,7 @@ static int _get_object(const char *geturl, const char *id_ref)
 		pv_log(DEBUG,
 		       "requesting object '%s' from Hub, resuming from byte %jd",
 		       id_ref, (intmax_t)existing);
+		pv_update_add_resume(id_ref);
 	} else {
 		pv_log(DEBUG, "requesting object '%s' from Hub", id_ref);
 	}
