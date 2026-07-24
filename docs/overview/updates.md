@@ -76,9 +76,11 @@ file left over from an earlier attempt is always safe to resume from. If the
 Hub does not honor the `Range` request (e.g. an older Hub without range
 support) and answers with a full `200` response instead of `206 Partial
 Content`, Pantavisor falls back gracefully and restarts that object's
-download from scratch. This reuses the same retry loop as before — there is
-no separate resume counter; a stuck object still only stops retrying once
-the update itself hits its overall retry ceiling.
+download from scratch. This reuses the same retry loop as before. The step
+progress reports how often a download was resumed in
+`downloads.total.total_resumes`, but that is a counter, not a separate retry
+budget: a stuck object still only stops retrying once the update itself hits
+its overall retry ceiling.
 
 | Messages |
 | ---------|
