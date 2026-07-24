@@ -207,6 +207,7 @@ add_executable(pantavisor
 			ctrl/ctrl_upload.c
 			ctrl/ctrl_upload.h
 			ctrl/ctrl_usrmeta_ep.c
+			ctrl/ctrl_wakelock_ep.c
 			ctrl/ctrl_xconnect_graph_ep.c
 			ctrl/ctrl_util.c
 			ctrl/ctrl_util.h
@@ -314,6 +315,8 @@ add_executable(pantavisor
 			ph_logger.h
 			platforms.c
 			platforms.h
+			power/wakelock.c
+			power/wakelock.h
 			pvctl_utils.c
 			pvctl_utils.h
 			pvlogger.c
@@ -375,6 +378,7 @@ target_link_libraries(pantavisor
 	${PANTAVISOR_RUNTIME_LXC}
 	${PANTAVISOR_RUNTIME_ZLIB}
 	${PANTAVISOR_RUNTIME_EVENT_LIBRARIES}
+	pthread
 )
 
 install(TARGETS pantavisor DESTINATION bin)

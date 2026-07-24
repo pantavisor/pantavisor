@@ -96,6 +96,15 @@ typedef enum {
 	PV_NET_BRMASK4,
 	PV_OEM_NAME,
 	PV_POLICY,
+	PV_POWER_MODE,
+	PV_POWER_DEVMETA_EAGER_PUSH,
+	PV_POWER_WAKE_INTERVAL,
+	PV_POWER_WAKE_RUN_WINDOW,
+	PV_POWER_AUTOSLEEP_SETTLE,
+	PV_POWER_WAKE_MIN_AWAKE,
+	PV_POWER_WAKE_MAX_AWAKE,
+	PV_POWER_DEVMETA_MAX_HELD,
+	PV_POWER_SYSFS_DIR,
 	PV_REVISION_RETRIES,
 	PV_SECUREBOOT_CHECKSUM,
 	PV_SECUREBOOT_HANDLERS,
@@ -203,6 +212,17 @@ typedef enum { IM_EMBEDDED, IM_STANDALONE, IM_APPENGINE } init_mode_t;
 init_mode_t pv_config_get_system_init_mode(void);
 char *pv_config_get_system_init_mode_str(void);
 void pv_config_set_system_init_mode(init_mode_t mode);
+
+// POWER MODE
+
+typedef enum {
+	PWR_DISABLED,
+	PWR_LOCKS,
+	PWR_MANAGED,
+} power_mode_t;
+
+power_mode_t pv_config_get_power_mode(void);
+char *pv_config_get_power_mode_str(void);
 
 // WATCHDOG MODE
 

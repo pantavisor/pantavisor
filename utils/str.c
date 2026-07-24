@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
 #include "str.h"
 
 char *pv_str_replace_char(char *str, int len, char which, char what)
@@ -185,4 +186,33 @@ exit_error:
 	buf[len - 1] = 0;
 
 	return 0;
+}
+
+bool pv_parse_duration(const char *value, int *out_seconds)
+{
+	if (!value || !value[0])
+		return false;
+
+	// bare number or single-unit literal: "3600", "30s", "10min", "1h", "1d"
+	char *end = NULL;
+	long val = strtol(value, &end, 10);
+	if (val <= 0 || !end || end == value)
+		return false;
+
+	int seconds = (int)val;
+	if (!*end || !strcmp(end, "s")) {
+		// seconds, no scaling
+	} else if (!strcmp(end, "min")) {
+		seconds *= 60;
+	} else if (!strcmp(end, "h")) {
+		seconds *= 3600;
+	} else if (!strcmp(end, "d")) {
+		seconds *= 86400;
+	} else {
+		return false; // unknown/garbage unit
+	}
+
+	if (out_seconds)
+		*out_seconds = seconds;
+	return true;
 }

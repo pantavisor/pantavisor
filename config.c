@@ -58,9 +58,11 @@
 typedef enum {
 	BOOL,
 	BOOTLOADER,
+	DURATION,
 	INIT_MODE,
 	INT,
 	LOG_SERVER_OUTPUT_UPDATE_MASK,
+	PWR_MODE,
 	SB_MODE,
 	STR,
 	WDT_MODE
@@ -104,6 +106,7 @@ typedef enum {
 #define NET_BRADDRESS4_DEF "10.0.3.1"
 #define NET_BRDEV_DEF "lxcbr0"
 #define NET_BRMASK4_DEF "255.255.255.0"
+#define POWER_SYSFS_DIR_DEF "/sys/power"
 #define SECUREBOOT_OEM_TRUSTSTORE_DEF PVS_CERT_DEFAULT_OEM_STORE
 #define SECUREBOOT_TRUSTSTORE_DEF PVS_CERT_DEFAULT_STORE
 #define SYSTEM_CONFDIR_DEF "/configs"
@@ -234,6 +237,24 @@ static struct pv_config_entry entries[] = {
 	  .value.s = NET_BRMASK4_DEF },
 	{ STR, "PV_OEM_NAME", PV, 0, false, .value.s = NULL },
 	{ STR, "PV_POLICY", PV, 0, false, .value.s = NULL },
+	{ PWR_MODE, "PV_POWER_MODE", PV | OEM | RUN, 0, false,
+	  .value.i = PWR_LOCKS },
+	{ BOOL, "PV_POWER_DEVMETA_EAGER_PUSH", PV | OEM | RUN, 0, false,
+	  .value.b = false },
+	{ DURATION, "PV_POWER_WAKE_INTERVAL", PV | OEM | RUN, 0, false,
+	  .value.i = 3600 },
+	{ DURATION, "PV_POWER_WAKE_RUN_WINDOW", PV | OEM | RUN, 0, false,
+	  .value.i = 0 },
+	{ DURATION, "PV_POWER_AUTOSLEEP_SETTLE", PV | OEM | RUN, 0, false,
+	  .value.i = 90 },
+	{ DURATION, "PV_POWER_WAKE_MIN_AWAKE", PV | OEM | RUN, 0, false,
+	  .value.i = 10 },
+	{ DURATION, "PV_POWER_WAKE_MAX_AWAKE", PV | OEM | RUN, 0, false,
+	  .value.i = 60 },
+	{ DURATION, "PV_POWER_DEVMETA_MAX_HELD", PV | OEM | RUN, 0, false,
+	  .value.i = 300 },
+	{ STR, "PV_POWER_SYSFS_DIR", PV | OEM | RUN, 0, false,
+	  .value.s = POWER_SYSFS_DIR_DEF },
 	{ INT, "PV_REVISION_RETRIES", PV | OEM | RUN, 0, false, .value.i = 10 },
 	{ BOOL, "PV_SECUREBOOT_CHECKSUM", PV, 0, false, .value.b = true },
 	{ BOOL, "PV_SECUREBOOT_HANDLERS", PV, 0, false, .value.b = true },
@@ -345,6 +366,15 @@ static struct pv_config_alias aliases[] = {
 	{ "net.brdev", "PV_NET_BRDEV" },
 	{ "net.brmask4", "PV_NET_BRMASK4" },
 	{ "policy", "PV_POLICY" },
+	{ "power.mode", "PV_POWER_MODE" },
+	{ "power.devmeta.eager_push", "PV_POWER_DEVMETA_EAGER_PUSH" },
+	{ "power.wake.interval", "PV_POWER_WAKE_INTERVAL" },
+	{ "power.wake.run_window", "PV_POWER_WAKE_RUN_WINDOW" },
+	{ "power.autosleep.settle", "PV_POWER_AUTOSLEEP_SETTLE" },
+	{ "power.wake.min_awake", "PV_POWER_WAKE_MIN_AWAKE" },
+	{ "power.wake.max_awake", "PV_POWER_WAKE_MAX_AWAKE" },
+	{ "power.devmeta.max_held", "PV_POWER_DEVMETA_MAX_HELD" },
+	{ "power.sysfs_dir", "PV_POWER_SYSFS_DIR" },
 	{ "revision.retries", "PV_REVISION_RETRIES" },
 	{ "secureboot.checksum", "PV_SECUREBOOT_CHECKSUM" },
 	{ "secureboot.handlers", "PV_SECUREBOOT_HANDLERS" },
@@ -878,6 +908,48 @@ static void _set_config_by_entry_wdt_mode(struct pv_config_entry *entry,
 		pv_log(WARN, "unknown wdt mode '%s'", value);
 }
 
+power_mode_t pv_config_get_power_mode()
+{
+	return pv_config_get_int(PV_POWER_MODE);
+}
+
+static char *_get_power_mode_str(power_mode_t mode)
+{
+	switch (mode) {
+	case PWR_DISABLED:
+		return "disabled";
+	case PWR_LOCKS:
+		return "locks";
+	case PWR_MANAGED:
+		return "managed";
+	default:
+		return "unknown";
+	}
+}
+
+char *pv_config_get_power_mode_str(void)
+{
+	return _get_power_mode_str(pv_config_get_power_mode());
+}
+
+static void _set_config_by_entry_power_mode(struct pv_config_entry *entry,
+					    const char *value)
+{
+	if (!entry)
+		return;
+
+	if (pv_str_matches(value, strlen(value), "disabled",
+			   strlen("disabled")))
+		entry->value.i = PWR_DISABLED;
+	else if (pv_str_matches(value, strlen(value), "locks", strlen("locks")))
+		entry->value.i = PWR_LOCKS;
+	else if (pv_str_matches(value, strlen(value), "managed",
+				strlen("managed")))
+		entry->value.i = PWR_MANAGED;
+	else
+		pv_log(WARN, "unknown power mode '%s'", value);
+}
+
 static char *_get_value_policy(struct dl_list *config_list)
 {
 	char *item = config_get_value(config_list, "PV_POLICY");
@@ -1000,7 +1072,31 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 	}
 
 	long value_int = 0;
-	if ((entry->type == BOOL) || (entry->type == INT)) {
+	if (entry->type == BOOL) {
+		// accept symbolic booleans (true/false/yes/no/on/off) as well as
+		// numeric 1/0 — a config value of "true" must not be silently
+		// rejected as an invalid number and leave the key at its default
+		int vlen = strlen(value);
+		if (pv_str_matches_case(value, vlen, "true", 4) ||
+		    pv_str_matches_case(value, vlen, "yes", 3) ||
+		    pv_str_matches_case(value, vlen, "on", 2)) {
+			value_int = 1;
+		} else if (pv_str_matches_case(value, vlen, "false", 5) ||
+			   pv_str_matches_case(value, vlen, "no", 2) ||
+			   pv_str_matches_case(value, vlen, "off", 3)) {
+			value_int = 0;
+		} else {
+			char *endptr;
+			value_int = strtol(value, &endptr, 10);
+			if (*endptr != '\0') {
+				pv_log(WARN,
+				       "invalid bool value '%s' for key '%s'",
+				       value, entry->key);
+				return -1;
+			}
+			value_int = value_int ? 1 : 0;
+		}
+	} else if (entry->type == INT) {
 		char *endptr;
 		value_int = strtol(value, &endptr, 10);
 
@@ -1009,6 +1105,17 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 			       value, entry->key);
 			return -1;
 		}
+	} else if (entry->type == DURATION) {
+		// bare number = seconds, or a single-unit literal (30s/10min/1h/1d);
+		// same behavior as an INT parse failure: warn and leave the default
+		int seconds;
+		if (!pv_parse_duration(value, &seconds)) {
+			pv_log(WARN,
+			       "invalid duration format '%s' for key '%s'",
+			       value, entry->key);
+			return -1;
+		}
+		value_int = seconds;
 	}
 
 	// snapshot pre-metadata value before first override
@@ -1030,6 +1137,9 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 	case BOOTLOADER:
 		_set_config_by_entry_bootloader_type(entry, value);
 		break;
+	case DURATION:
+		_set_config_by_entry_int(entry, value_int);
+		break;
 	case INIT_MODE:
 		_set_config_by_entry_init_mode(entry, value);
 		break;
@@ -1038,6 +1148,9 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 		break;
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
 		_set_config_by_entry_log_server_outputs(entry, value);
+		break;
+	case PWR_MODE:
+		_set_config_by_entry_power_mode(entry, value);
 		break;
 	case SB_MODE:
 		_set_config_by_entry_secureboot_mode(entry, value);
@@ -1426,9 +1539,11 @@ static void _add_config_entry_alias_json(config_index_t ci,
 		pv_json_ser_bool(js, entries[ci].value.b);
 		break;
 	case BOOTLOADER:
+	case DURATION:
 	case INIT_MODE:
 	case INT:
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
+	case PWR_MODE:
 	case SB_MODE:
 	case WDT_MODE:
 		pv_json_ser_number(js, entries[ci].value.i);
@@ -1474,6 +1589,9 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 		snprintf(out, len, "%s",
 			 _get_bootloader_type_str(entries[ci].value.i));
 		break;
+	case DURATION:
+		snprintf(out, len, "%d", entries[ci].value.i);
+		break;
 	case INIT_MODE:
 		snprintf(out, len, "%s",
 			 _get_system_init_mode_str(entries[ci].value.i));
@@ -1483,6 +1601,10 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 		break;
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
 		snprintf(out, len, "%d", entries[ci].value.i);
+		break;
+	case PWR_MODE:
+		snprintf(out, len, "%s",
+			 _get_power_mode_str(entries[ci].value.i));
 		break;
 	case SB_MODE:
 		snprintf(out, len, "%s",
@@ -1569,6 +1691,10 @@ static void _print_config_entry(config_index_t ci)
 		       _get_bootloader_type_str(entries[ci].value.i),
 		       _get_mod_level_str(modified));
 		break;
+	case DURATION:
+		pv_log(INFO, "%s = %d (%s)", key, entries[ci].value.i,
+		       _get_mod_level_str(modified));
+		break;
 	case INIT_MODE:
 		pv_log(INFO, "%s = '%s' (%s)", key,
 		       _get_system_init_mode_str(entries[ci].value.i),
@@ -1580,6 +1706,11 @@ static void _print_config_entry(config_index_t ci)
 		break;
 	case LOG_SERVER_OUTPUT_UPDATE_MASK:
 		pv_log(INFO, "%s = %d (%s)", key, entries[ci].value.i,
+		       _get_mod_level_str(modified));
+		break;
+	case PWR_MODE:
+		pv_log(INFO, "%s = '%s' (%s)", key,
+		       _get_power_mode_str(entries[ci].value.i),
 		       _get_mod_level_str(modified));
 		break;
 	case SB_MODE:

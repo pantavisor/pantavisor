@@ -39,6 +39,8 @@
 
 #include "update/update.h"
 
+#include "power/wakelock.h"
+
 #include "utils/fs.h"
 #include "utils/str.h"
 
@@ -440,6 +442,9 @@ static void _recv_get_usrmeta_cb(struct evhttp_request *req, void *ctx)
 
 	session.get_usrmeta_active = 0;
 
+	// usrmeta is request-scoped: the roundtrip is done, release either way
+	pv_wakelock_release(WL_USRMETA);
+
 	char *body = NULL;
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "GET usrmeta failed");
@@ -547,10 +552,16 @@ static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 	char *body = NULL;
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "PUT devmeta failed");
+		// failed: release so an unreachable Hub cannot pin the device
+		// awake; buffered on disk and retried later
+		pv_wakelock_devmeta_acked(false);
 		goto out;
 	}
 
 	pv_log(DEBUG, "devmeta updated in Hub");
+	// 200: release if caught up, keep held if a newer change landed
+	// mid-flight (generation counter decides)
+	pv_wakelock_devmeta_acked(true);
 out:
 	if (body)
 		free(body);
@@ -583,8 +594,12 @@ void pv_pantahub_proto_set_devmeta()
 	}
 
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
-			       _recv_set_devmeta_cb, NULL))
+			       _recv_set_devmeta_cb, NULL)) {
 		session.set_devmeta_active = 1;
+		// snapshot the pending generation at PUT send time so a change
+		// landing before the 200 is not wrongly cleared
+		pv_wakelock_devmeta_sent();
+	}
 
 out:
 	free(json);
@@ -598,6 +613,13 @@ static void _recv_get_pending_steps_cb(struct evhttp_request *req, void *ctx)
 	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_pending_steps_cb);
 
 	session.get_pending_steps_active = 0;
+
+	// the update-check roundtrip completed; release either way
+	pv_wakelock_release(WL_UPDATE_CHECK);
+
+	// drive the managed wake window: non-NULL req means it reached Hub
+	// (network up); NULL is a connection failure, so the window retries
+	pv_wakelock_poll_round_done(req != NULL);
 
 	// if there is an update and its not final we dont process more steps
 	if (pv_update_get_rev() && !pv_update_is_final()) {
@@ -657,8 +679,12 @@ void pv_pantahub_proto_get_pending_steps()
 		 pv_config_get_str(PH_CREDS_ID), QUERY_PENDING_STEPS);
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_pending_steps_cb, NULL))
+			       _recv_get_pending_steps_cb, NULL)) {
 		session.get_pending_steps_active = 1;
+		// keep the device awake for one poll roundtrip; released in
+		// _recv_get_pending_steps_cb on success or failure
+		pv_wakelock_acquire(WL_UPDATE_CHECK);
+	}
 }
 
 void pv_pantahub_proto_init_object_transfer()
