@@ -36,6 +36,7 @@ void pv_update_get_unavailable_objects(char ***objects);
 char *pv_update_get_object_geturl(const char *sha256sum);
 int pv_update_install_object(const char *path);
 void pv_update_add_downloaded(off_t downloaded);
+void pv_update_add_resume(const char *sha256sum);
 void pv_update_report_download_progress(void);
 
 // LOCAL UPDATE
