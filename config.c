@@ -230,6 +230,7 @@ static struct pv_config_entry entries[] = {
 	  .value.s = NULL },
 	{ TIMER_TYPE, "PV_LOG_TIMESTAMP", PV | OEM | RUN, 0, false,
 	  .value.i = RELATIV_TIMER },
+	{ INT, "PV_LOOP_INDEX_BASE", PV, 0, false, .value.i = -1 },
 	{ INT, "PV_LXC_LOG_LEVEL", PV | OEM, 0, false, .value.i = 2 },
 	{ STR, "PV_NET_BRADDRESS4", PV | OEM, 0, false,
 	  .value.s = NET_BRADDRESS4_DEF },
