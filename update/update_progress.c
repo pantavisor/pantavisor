@@ -121,6 +121,9 @@ static char *_ser_progress(struct pv_update_progress *p)
 					pv_json_ser_key(&js, "current_time");
 					pv_json_ser_number(
 						&js, p->total.current_time);
+					pv_json_ser_key(&js, "total_resumes");
+					pv_json_ser_number(&js,
+							   p->total.resumes);
 					pv_json_ser_object_pop(&js);
 				}
 				pv_json_ser_object_pop(&js);
@@ -256,6 +259,7 @@ static void _parse_update_progress_total(const char *json,
 	t->start_time = pv_json_get_value_int(json, "start_time", tokv, tokc);
 	t->current_time =
 		pv_json_get_value_int(json, "current_time", tokv, tokc);
+	t->resumes = pv_json_get_value_int(json, "total_resumes", tokv, tokc);
 out:
 	if (tokv)
 		free(tokv);
@@ -497,8 +501,17 @@ void pv_update_progress_start_download(struct pv_update_progress *p)
 	p->total.reported = 0;
 	p->total.start_time = time(NULL);
 	p->total.current_time = time(NULL);
+	p->total.resumes = 0;
 
 	_report(p, true);
+}
+
+void pv_update_progress_add_resume(struct pv_update_progress *p)
+{
+	if (!p)
+		return;
+
+	p->total.resumes++;
 }
 
 void pv_update_progress_add_downloaded(struct pv_update_progress *p,

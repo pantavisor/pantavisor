@@ -65,6 +65,19 @@ Only valid for [remote](remote-control.md#pantacor-hub) updates.
 
 Downloading the artifacts for the new revision.
 
+Object downloads are resumable: if a transfer is interrupted (dropped
+connection, timeout, or a Hub-side error), Pantavisor keeps the partial file
+on disk and retries with an HTTP `Range` request picking up from the last
+byte received, instead of starting the object over from scratch. Since
+objects are immutable and content-addressed by their sha256, any partial
+file left over from an earlier attempt is always safe to resume from. If the
+Hub does not honor the `Range` request (e.g. an older Hub without range
+support) and answers with a full `200` response instead of `206 Partial
+Content`, Pantavisor falls back gracefully and restarts that object's
+download from scratch. This reuses the same retry loop as before — there is
+no separate resume counter; a stuck object still only stops retrying once
+the update itself hits its overall retry ceiling.
+
 | Messages |
 | ---------|
 Retry X of Y |

@@ -509,6 +509,19 @@ void pv_update_add_downloaded(off_t downloaded)
 	pv_update_progress_add_downloaded(&u->progress, downloaded);
 }
 
+void pv_update_add_resume(const char *sha256sum)
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u || !u->state)
+		return;
+
+	struct pv_object *o = pv_state_fetch_object_id(u->state, sha256sum);
+	if (o)
+		o->resumes++;
+
+	pv_update_progress_add_resume(&u->progress);
+}
+
 void pv_update_report_download_progress(void)
 {
 	struct pv_update *u = _get_update_instance();
