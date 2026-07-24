@@ -67,9 +67,6 @@
 	     ##__VA_ARGS__)
 #include "log.h"
 
-#define PV_PLATFORM_LXC_LOG "lxc/lxc.log"
-#define PV_PLATFORM_LXC_CONSOLE_LOG "lxc/console.log"
-
 static const char *syslog[][2] = { { "file", "/var/log/syslog" },
 				   { "truncate", "true" },
 				   { "maxsize", "2097152" },

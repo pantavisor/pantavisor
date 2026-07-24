@@ -33,6 +33,9 @@
 #include "event/event_socket.h"
 #include "ipam.h"
 
+#define PV_PLATFORM_LXC_LOG "lxc/lxc.log"
+#define PV_PLATFORM_LXC_CONSOLE_LOG "lxc/console.log"
+
 typedef enum {
 	PLAT_NONE,
 	PLAT_INSTALLED,
