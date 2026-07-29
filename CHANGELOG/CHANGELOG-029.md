@@ -8,6 +8,31 @@ which runs automatically in CI (via
 [`tag-changelogs.yaml`](../.github/workflows/tag-changelogs.yaml) when a
 tag is synced from meta-pantavisor) and on demand locally.
 
+## v029-rc5
+
+Released: 2026-07-27
+Commit: [`c5721b9d0fb9`](https://github.com/pantavisor/pantavisor/commit/c5721b9d0fb9e6b635ec56c7f0963cee867cd946)
+
+### Changes
+
+Changes since [`029-rc4`](https://github.com/pantavisor/pantavisor/releases/tag/029-rc4):
+
+#### Features
+- **logserver**: send lxc logs to stdout_direct when active
+- **loop**: new PV_LOOP_INDEX_BASE config to assign 64 loop device slots to device
+- **pantavisor**: add PV_LOG_TIMESTAMP config to switch between absolut and relative timestamp
+- add AGENTS.md and replace GEMINI.md and CLAUDE.md with symlinks
+- **ctrl**: add synchronous /storage/gc endpoint
+- **ctrl**: add unclaim command
+
+#### Fixes
+- **ctrl**: log every rejected pv-ctrl command with its op
+- **ctrl**: cmd struct not being freed
+- **ctrl**: log rejected go-remote command when already in remote mode
+
+#### Docs
+- split docs/ into overview, reference, and tools folders
+
 ## v029-rc4
 
 Released: 2026-07-16
