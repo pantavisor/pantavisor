@@ -8,6 +8,60 @@ which runs automatically in CI (via
 [`tag-changelogs.yaml`](../.github/workflows/tag-changelogs.yaml) when a
 tag is synced from meta-pantavisor) and on demand locally.
 
+## v029
+
+Released: 2026-07-30
+Commit: [`13b0829fc3a5`](https://github.com/pantavisor/pantavisor/commit/13b0829fc3a5444200a6cf82408d75dc209ef673)
+
+### Changes
+
+Changes since [`028`](https://github.com/pantavisor/pantavisor/releases/tag/028):
+
+#### Features
+- **logserver**: send lxc logs to stdout_direct when active
+- **loop**: new PV_LOOP_INDEX_BASE config to assign 64 loop device slots to device
+- **pantavisor**: add PV_LOG_TIMESTAMP config to switch between absolut and relative timestamp
+- add AGENTS.md and replace GEMINI.md and CLAUDE.md with symlinks
+- **ctrl**: add synchronous /storage/gc endpoint
+- **ctrl**: add unclaim command
+- **pvtx**: support explicit commit revision name, fix ctrl socket lookup order
+- **xconnect**: key links on target, masquerade to hosted-bus uid
+- **state**: generate hosted dbus bus policy, uids, graph, validation
+- **daemons**: host a managed dbus system bus for xconnect
+- **config**: add xconnect.dbus.systembus.enabled config entry
+
+#### Fixes
+- **ctrl**: log every rejected pv-ctrl command with its op
+- **ctrl**: cmd struct not being freed
+- **ctrl**: log rejected go-remote command when already in remote mode
+- **ci**: checkout the PR's actual head commit, not GitHub's synthetic merge SHA
+- **ci**: use GITHUB_TOKEN instead of missing PANTAVISOR_TAG_SYNC_TOKEN
+- **ci**: scope on-push workflow to master/pull_request, exclude tag pushes
+- **pvtx**: force to use "locals/" as prefix in custom revision names
+- **update**: report download progress on the mainloop heartbeat, not per object
+- **dbus**: make hosted system-bus policy generation idempotent
+- **xconnect**: make injected proxy sockets world-connectable
+- **dbus**: run hosted bus with role passwd jail
+- **appengine**: reboot instead of poweroff on SIGTERM
+- **config**: honor user-metadata deletions
+- **config**: PV_UPDATER_GOALS_TIMEOUT being setable from user meta with no effect
+- **drivers**: unload modules in reverse of load order
+- **ph_logger**: drop-and-log fragments the server permanently rejects
+- **ph_logger**: chunk cloud log push and correct transport error reporting
+- **platforms**: kill container before unmounting its volumes on force stop
+
+#### CI
+- **tag-changelogs**: generate changelog and release on synced tag
+
+#### Docs
+- split docs/ into overview, reference, and tools folders
+- fix dead docs.pantavisor.io links, use relative cross-repo refs
+- **xconnect**: document multi-name/role hosted system bus
+- **reference**: document hosted dbus system bus and config entry
+- **xconnect**: add pantavisor-hosted system bus design proposal
+- dup CLAUDE.md instead of using reference to GEMINI.md
+- fix links for Docusaurus site and normalize reading structure
+
 ## v029-rc5
 
 Released: 2026-07-27
