@@ -399,7 +399,6 @@ static int logserver_handle_msg(int fd)
 	char *upd = logserver.updated_rev;
 
 	struct logserver_conninfo *ci = logserver_conninfo_search(fd);
-
 	char *cgroup = NULL;
 
 	if (!ci)
