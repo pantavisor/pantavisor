@@ -92,12 +92,12 @@ static int logserver_rfc3164_parse(char *buf, struct logserver_rfc *rfc)
 	return 0;
 }
 
-int logserver_rfc3164_to_log(char *buf, pid_t pid, const char *rev,
+int logserver_rfc3164_to_log(char *buf, const char *cgroup, const char *rev,
 			     const char *upd_rev, struct logserver_log *log)
 {
 	struct logserver_rfc rfc = { .code = logserver_rfc_get_type(buf) };
 	if (logserver_rfc3164_parse(buf, &rfc) != 0)
 		return -1;
 
-	return logserver_rfc_to_log(&rfc, pid, rev, upd_rev, log);
+	return logserver_rfc_to_log(&rfc, cgroup, rev, upd_rev, log);
 }

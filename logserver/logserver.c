@@ -90,6 +90,13 @@ struct logserver_fd {
 	struct dl_list list;
 };
 
+struct logserver_conninfo {
+	int fd;
+	pid_t pid;
+	char *cgroup;
+	struct dl_list list;
+};
+
 struct logserver {
 	pid_t pid;
 	pid_t cmd_pid;
@@ -108,6 +115,7 @@ struct logserver {
 	// only if was sent to the fd_sock
 	struct dl_list tmplst;
 	struct dl_list outputs;
+	struct dl_list conninfo;
 };
 
 static struct logserver logserver = {
@@ -140,6 +148,55 @@ static logserver_outputs_builder_t
 	};
 
 static int pv_log(int level, char *msg, ...);
+static void logserver_remove_fd(int fd);
+
+static void logserver_conninfo_free(struct logserver_conninfo *ci)
+{
+	if (!ci)
+		return;
+	if (ci->cgroup)
+		free(ci->cgroup);
+	free(ci);
+}
+
+static struct logserver_conninfo *logserver_conninfo_new(int fd)
+{
+	if (fd < 0)
+		return NULL;
+
+	struct logserver_conninfo *ci = calloc(1, sizeof(*ci));
+	if (!ci)
+		return NULL;
+
+	ci->pid = pv_socket_get_sender_pid(fd);
+	if (ci->pid < 0)
+		goto err;
+
+	ci->cgroup = pv_cgroup_get_process_name(ci->pid);
+	if (!ci->cgroup)
+		goto err;
+
+	ci->fd = fd;
+
+	return ci;
+err:
+	if (ci)
+		logserver_conninfo_free(ci);
+
+	return NULL;
+}
+
+static struct logserver_conninfo *logserver_conninfo_search(int fd)
+{
+	struct logserver_conninfo *it, *tmp;
+	dl_list_for_each_safe(it, tmp, &logserver.conninfo,
+			      struct logserver_conninfo, list)
+	{
+		if (it->fd == fd)
+			return it;
+	}
+	return NULL;
+}
 
 static int logserver_log_msg_data(const struct logserver_log *log, int output)
 {
@@ -239,16 +296,8 @@ static void logserver_rename_update(const char *rev)
 	pv_fs_path_rename(path_tmp, path_perm);
 }
 
-static int logserver_process_cmd(const struct logserver_log *log,
-				 pid_t sender_pid)
+static int logserver_process_cmd(const struct logserver_log *log)
 {
-	if (sender_pid != logserver.cmd_pid) {
-		pv_log(WARN,
-		       "logserver command received from pid %d while authorized pid is %d only",
-		       sender_pid, logserver.cmd_pid);
-		return -1;
-	}
-
 	int tokc;
 	jsmntok_t *tokv = NULL;
 	jsmnutil_parse_json(log->data.buf, &tokv, &tokc);
@@ -300,26 +349,76 @@ static int logserver_process_cmd(const struct logserver_log *log,
 	return 0;
 }
 
-static int logserver_handle_msg(char *buf, pid_t sender_pid)
+static struct buffer *logserver_get_log_data(int fd)
+{
+	struct buffer *buffer = pv_buffer_get(true);
+	if (!buffer) {
+		pv_log(DEBUG, "couldn't allocate buffer for log");
+		return NULL;
+	}
+
+	// set fd as non-block
+	int flags = fcntl(fd, F_GETFL, 0);
+	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+	errno = 0;
+	ssize_t total = pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
+
+	if (total > 0) {
+		int end = total;
+		if (total >= buffer->size - 1)
+			end = buffer->size - 1;
+		buffer->buf[end] = '\0';
+		return buffer;
+	}
+
+	if (errno != EAGAIN) {
+		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
+		       strerror(errno));
+		logserver_remove_fd(fd);
+	}
+
+	if (buffer)
+		pv_buffer_drop(buffer);
+
+	return NULL;
+}
+
+static int logserver_handle_msg(int fd)
 {
 	struct logserver_log log;
-	int ret = 0;
+	int ret = -1;
 
-	log_protocol_code_t type = logserver_rfc_get_type(buf);
+	struct buffer *buffer = logserver_get_log_data(fd);
+	if (!buffer)
+		goto out;
+
+	log_protocol_code_t type = logserver_rfc_get_type(buffer->buf);
 
 	char *run = logserver.running_rev;
 	char *upd = logserver.updated_rev;
 
-	if (type == LOG_PROTOCOL_RFC5424)
-		ret = logserver_rfc5424_to_log(buf, sender_pid, run, upd, &log);
-	else if (type == LOG_PROTOCOL_RFC3164)
-		ret = logserver_rfc3164_to_log(buf, sender_pid, run, upd, &log);
+	struct logserver_conninfo *ci = logserver_conninfo_search(fd);
+
+	char *cgroup = NULL;
+
+	if (!ci)
+		pv_log(DEBUG, "couldn't found current fd information");
 	else
-		ret = logserver_bin_to_log(buf, run, upd, &log);
+		cgroup = ci->cgroup;
+
+	if (type == LOG_PROTOCOL_RFC5424)
+		ret = logserver_rfc5424_to_log(buffer->buf, cgroup, run, upd,
+					       &log);
+	else if (type == LOG_PROTOCOL_RFC3164)
+		ret = logserver_rfc3164_to_log(buffer->buf, cgroup, run, upd,
+					       &log);
+	else
+		ret = logserver_bin_to_log(buffer->buf, run, upd, &log);
 
 	if (ret != 0) {
 		pv_log(WARN, "logserver message could not be handled");
-		return ret;
+		goto out;
 	}
 
 	switch (log.code) {
@@ -329,11 +428,22 @@ static int logserver_handle_msg(char *buf, pid_t sender_pid)
 		ret = logserver_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:
-		ret = logserver_process_cmd(&log, sender_pid);
+		if (ci && ci->pid != logserver.cmd_pid) {
+			pv_log(WARN,
+			       "logserver command received from pid %d while "
+			       "authorized pid is %d only",
+			       ci->pid, logserver.cmd_pid);
+			ret = -1;
+			goto out;
+		}
+		ret = logserver_process_cmd(&log);
 		break;
 	case LOG_PROTOCOL_UNKNOWN:
 		pv_log(DEBUG, "unknown log protocol");
 	}
+out:
+	if (buffer)
+		pv_buffer_drop(buffer);
 
 	return ret;
 }
@@ -546,39 +656,14 @@ static void logserver_remove_fd(int fd)
 	} else if (logserver_list_exists(&logserver.tmplst, fd))
 		logserver_list_del(&logserver.tmplst, fd, NULL);
 
-	logserver_epoll_del(fd);
-	close(fd);
-}
-
-static void logserver_consume_log_data(int fd)
-{
-	struct buffer *buffer = pv_buffer_get(true);
-	if (!buffer)
-		return;
-
-	errno = 0;
-
-	// set fd as non-block
-	int flags = fcntl(fd, F_GETFL, 0);
-	fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-
-	ssize_t total = pv_fs_file_read_nointr(fd, buffer->buf, buffer->size);
-
-	if (total > 0) {
-		int end = total;
-		if (total >= buffer->size - 1)
-			end = buffer->size - 1;
-		buffer->buf[end] = '\0';
-
-		pid_t sender_pid = pv_socket_get_sender_pid(fd);
-		logserver_handle_msg(buffer->buf, sender_pid);
-	} else if (errno != EAGAIN) {
-		pv_log(DEBUG, "dead fd (%d) found trying to read: %s", errno,
-		       strerror(errno));
-		logserver_remove_fd(fd);
+	struct logserver_conninfo *ci = logserver_conninfo_search(fd);
+	if (ci) {
+		dl_list_del(&ci->list);
+		logserver_conninfo_free(ci);
 	}
 
-	pv_buffer_drop(buffer);
+	logserver_epoll_del(fd);
+	close(fd);
 }
 
 static void logserver_consume_fd(int fd)
@@ -708,6 +793,12 @@ static void logserver_loop()
 				continue;
 			}
 
+			struct logserver_conninfo *ci =
+				logserver_conninfo_new(fd);
+
+			if (ci)
+				dl_list_add(&logserver.conninfo, &ci->list);
+
 			if (logserver_epoll_add(fd) != 0) {
 				logserver_remove_fd(fd);
 				continue;
@@ -729,7 +820,7 @@ static void logserver_loop()
 			bool sub = logserver_list_exists(fdlst, curfd);
 
 			if (!sub) {
-				logserver_consume_log_data(curfd);
+				logserver_handle_msg(curfd);
 				logserver_remove_fd(curfd);
 			} else {
 				logserver_consume_fd(curfd);
@@ -1000,6 +1091,8 @@ int pv_logserver_init(const char *rev)
 
 	dl_list_init(&logserver.fdlst);
 	dl_list_init(&logserver.tmplst);
+	dl_list_init(&logserver.conninfo);
+
 	logserver.rot = pv_logserver_rot_init(rev, pv_log);
 
 	logserver_start_service(rev);
