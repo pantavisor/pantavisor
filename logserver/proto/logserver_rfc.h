@@ -41,11 +41,12 @@ char *logserver_rfc_get_facility(int prival);
 int logserver_rfc_get_prival(const char *buf);
 int logserver_rfc_create_socket(const char *cur_sock);
 log_protocol_code_t logserver_rfc_get_type(const char *buf);
-int logserver_rfc_to_log(struct logserver_rfc *rfc, pid_t pid, const char *rev,
-			 const char *upd_rev, struct logserver_log *log);
-int logserver_rfc5424_to_log(char *buf, pid_t pid, const char *rev,
+int logserver_rfc_to_log(struct logserver_rfc *rfc, const char *cgroup,
+			 const char *rev, const char *upd_rev,
+			 struct logserver_log *log);
+int logserver_rfc5424_to_log(char *buf, const char *cgroup, const char *rev,
 			     const char *upd_rev, struct logserver_log *log);
-int logserver_rfc3164_to_log(char *buf, pid_t pid, const char *rev,
+int logserver_rfc3164_to_log(char *buf, const char *cgroup, const char *rev,
 			     const char *upd_rev, struct logserver_log *log);
 
 #endif

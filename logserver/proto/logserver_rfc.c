@@ -23,7 +23,6 @@
 #include "logserver_rfc.h"
 #include "logserver/logserver_timestamp.h"
 #include "log.h"
-#include "cgroup.h"
 
 #include <syslog.h>
 #include <ctype.h>
@@ -37,27 +36,21 @@
 #define LOGSERVER_RFC_MAIN_PLAT "pantavisor"
 #define LOGSERVER_RFC_UNK_PLAT "unknown-platform"
 
-static void logserver_rfc_set_platform_name(pid_t pid, char *name)
+static void logserver_rfc_set_platform_name(const char *cgroup, char *name)
 {
-	char *plat = pv_cgroup_get_process_name(pid);
-
-	if (!plat) {
+	if (!cgroup) {
 		memccpy(name, LOGSERVER_RFC_UNK_PLAT, 0,
 			strlen(LOGSERVER_RFC_UNK_PLAT) + 1);
 		return;
 	}
 
-	if (!strncmp(plat, LOGSERVER_RFC_PV, strlen(LOGSERVER_RFC_PV))) {
+	if (!strncmp(cgroup, LOGSERVER_RFC_PV, strlen(LOGSERVER_RFC_PV))) {
 		memccpy(name, LOGSERVER_RFC_MAIN_PLAT, 0,
 			strlen(LOGSERVER_RFC_MAIN_PLAT) + 1);
-		goto out;
+		return;
 	}
-	memccpy(name, plat, 0, LOGSERVER_PLAT_MAX_LEN);
+	memccpy(name, cgroup, 0, LOGSERVER_PLAT_MAX_LEN);
 	name[LOGSERVER_PLAT_MAX_LEN - 1] = '\0';
-
-out:
-	if (plat)
-		free(plat);
 }
 
 int logserver_rfc_level_to_pv(int prival)
@@ -171,13 +164,14 @@ log_protocol_code_t logserver_rfc_get_type(const char *buf)
 	return LOG_PROTOCOL_UNKNOWN;
 }
 
-int logserver_rfc_to_log(struct logserver_rfc *rfc, pid_t pid, const char *rev,
-			 const char *upd_rev, struct logserver_log *log)
+int logserver_rfc_to_log(struct logserver_rfc *rfc, const char *cgroup,
+			 const char *rev, const char *upd_rev,
+			 struct logserver_log *log)
 {
 	if (!rfc || !log)
 		return -1;
 
-	logserver_rfc_set_platform_name(pid, log->plat);
+	logserver_rfc_set_platform_name(cgroup, log->plat);
 
 	log->code = rfc->code;
 	log->lvl = logserver_rfc_level_to_pv(rfc->prival);
