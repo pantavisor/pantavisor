@@ -46,6 +46,10 @@ The client state can be consulted at any moment via [device metadata](../referen
 * **prep download**: a new update (same as a new state JSON) has been received and the device will now download the object metadata information for each of its objects. This includes object size, sha and download URL.
 * **download**: all object metadata is now on memory and we can proceed dowloading all objects that are not already installed in disk. Then we will continue with progressing to the new revision.
 
+Only object hashes that changed are downloaded — for a sense of scale, see
+[meta-pantavisor's firmware-size guide](https://docs.pantavisor.io/development/meta-pantavisor/getting-started/solutions/firmware-size)
+for an illustrative example (not a measured benchmark).
+
 ## Other Remote Controllers
 
 It is also possible to control Pantavisor using any other server. For that, it is necessary to implement a container that performs the communication between the server itself and [Pantavisor](local-control.md).
