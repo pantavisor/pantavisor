@@ -1,5 +1,9 @@
 #!/bin/sh
 
+if [ -n "$PVTEST_EXEC" ]; then
+	exec $PVTEST_EXEC pventer "$@"
+fi
+
 usage() {
 	echo "USAGE: pventer -c <container> [CMD ...]"
 	echo "executes CMD in "container" namespace. If CMD is empty enters container and runs default shell"
