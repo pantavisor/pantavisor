@@ -1,8 +1,61 @@
 #!/bin/sh
 
-pvtest_log() { local level=$1; shift; printf '[pvtest] %s %s -- [%s]: %s\n' "$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*"; }
+# Helpers only available in the tester container (pvtest-run and test scripts)
+# Includes common functions plus any util that talks to a target
 
-# wait for a cmd stdout
+# pvtest_log, wait_for_status, pvtest_ssh_cmd and pvtest_normalize_cfg come from
+# common, which is shared with the host orchestrator (test.docker.sh)
+. /usr/share/pantavisor/pvtest/common
+
+pv_exec() {
+	local prog="$1"; shift
+	if [ -n "$PVTEST_EXEC" ]; then
+		local cmd="$prog"
+		for a in "$@"; do
+			cmd="$cmd $(printf '%q' "$a")"
+		done
+		timeout --foreground "${PVTEST_EXEC_TIMEOUT:-60}" $PVTEST_EXEC "$cmd"
+	else
+		command "$prog" "$@"
+	fi
+}
+
+pvcontrol() { pv_exec pvcontrol "$@"; }
+pventer()   { pv_exec pventer   "$@"; }
+pvcurl()    { pv_exec pvcurl    "$@"; }
+# Longer bound adds stream whole tarballs to low-spec devices
+pvtx()      { PVTEST_EXEC_TIMEOUT="${PVTEST_EXEC_TIMEOUT:-600}" pv_exec pvtx "$@"; }
+
+# Stage a tester-local file where a forwarded command can read it
+pv_stage_file() {
+	if [ -n "$PVTEST_EXEC" ]; then
+		local remote="/tmp/pvtest_stage.$$.${1##*/}"
+		$PVTEST_EXEC "cat > '$remote'" < "$1" || return 1
+		printf '%s\n' "$remote"
+	else
+		printf '%s\n' "$1"
+	fi
+}
+
+# Remove a path previously echoed by pv_stage_file (no-op when it was local).
+pv_unstage_file() {
+	[ -n "$PVTEST_EXEC" ] && $PVTEST_EXEC "rm -f '$1'" > /dev/null 2>&1
+	return 0
+}
+
+# Fetch a file from the exec target into tester
+pv_fetch_file() {
+	if [ -n "$PVTEST_EXEC" ]; then
+		$PVTEST_EXEC "cat '$1'" > "$2"
+	else
+		cat "$1" > "$2"
+	fi
+}
+
+# SIGTERM to provoke a Valgrind-friendly lenient shutdown
+pv_crash() { pv_exec killall pantavisor; }
+
+# Wait for a cmd stdout
 wait_for_value() {
 	local cmd="$1"
 	local value="$2"
@@ -21,31 +74,32 @@ wait_for_value() {
 	return 1
 }
 
-# wait for a cmd exit status code
-wait_for_status() {
-	local cmd="$1"
-	local status="$2"
-	local timeout="$3"
+# Wait for pv-ctrl to stop responding after issuing reboot or crash
+wait_for_down() {
+	local timeout="${1:-30}"
 
 	local counter=0
 	while [ $counter -lt $timeout ]; do
-		cmd_status=0
-		eval "$cmd" || cmd_status=$?
-		if [ "$cmd_status" = "$status" ]; then
-			return 0
-		else
-			sleep 1
-			counter=$((counter+1))
-		fi
+		pvcontrol devmeta ls > /dev/null 2>&1 || return 0
+		sleep 1
+		counter=$((counter+1))
 	done
 	return 1
 }
 
-# wait for a path to appear or dissapear
+# Print storage root from PV_STORAGE_MNTPOINT
+pv_storage_dir() {
+	if [ -z "$_PVTEST_STORAGE_DIR" ]; then
+		_PVTEST_STORAGE_DIR=$(pvcontrol conf ls 2>/dev/null \
+			| jq -r '.[] | select(.key == "PV_STORAGE_MNTPOINT") | .value')
+	fi
+	printf '%s' "$_PVTEST_STORAGE_DIR"
+}
+
+# Wait for a device path to appear or disappear: wait_for_path <path> -a|-d
 wait_for_path() {
-	local control_container="$1"
-	local path="$2"
-	local action="$3"
+	local path="$1"
+	local action="$2"
 	local status=0
 
 	if [ "$action" = "-a" ]; then
@@ -54,51 +108,152 @@ wait_for_path() {
 		status=1
 	fi
 
-	wait_for_status "pventer -c $control_container ls $path" "$status" 30
+	wait_for_status "pv_exec test -e $path" "$status" 30
 }
 
-# wait for a process to appear or dissapear
-wait_for_process() {
-	local cmd="$1"
-	local timeout="$2"
-	local action="$3"
+_target_ready_log() {
+	if [ -n "$label" ]; then
+		pvtest_log "$@"
+	else
+		pvtest_log "$@" >&2
+	fi
+}
 
-	local counter=0
-	local cmd_pid=
-	while [ $counter -lt $timeout ]; do
-		cmd_pid=$(ps | grep "$cmd" | awk 'NR==1 {print $1}')
-		if [ "$action" = "-a" ]; then
-			if [ -n "$cmd_pid" ]; then
-				return 0
-			fi
-		elif [ "$action" = "-d" ]; then
-			if [ -z "$cmd_pid" ]; then
-				return 0
-			fi
+# Wait for a device to be SSH up, ctrl responsive, running a given revision, DONE|UPDATED, READY and pvr online
+wait_for_target_ready() {
+	local label="$1" rev="$2" status="${3:-}"
+	local _l="${label:+$label: }"
+
+	# stage 1: SSH — tells "container/board not up" apart from "pv-ctrl not up"
+	if [ -n "$PVTEST_EXEC" ]; then
+		_target_ready_log INFO "${_l}waiting for SSH..."
+		# fail fast on permanent auth errors instead of polling the full timeout
+		local _err _rc=0
+		_err=$(pv_exec true 2>&1 > /dev/null) || _rc=$?
+		if [ "$_rc" = 255 ] && printf '%s\n' "$_err" | grep -qiE 'permission denied|identity file|no such identity'; then
+			_target_ready_log ERROR "${_l}SSH to target failed: $(printf '%s\n' "$_err" | tail -n 2 | tr '\n' ' ')"
+			_target_ready_log ERROR "${_l}check the key referenced by the device manifest's exec= line (try running that command with 'true')"
+			return 1
 		fi
+		if ! wait_for_status "pv_exec true > /dev/null 2>&1" 0 120; then
+			_target_ready_log ERROR "${_l}timed out waiting for SSH"
+			return 1
+		fi
+	fi
 
+	# stage 2: pv-ctrl answering
+	_target_ready_log INFO "${_l}waiting for pv-ctrl..."
+	if ! wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120; then
+		local _probe
+		_probe=$(pvcontrol devmeta ls 2>&1 > /dev/null | tail -n 2 | tr '\n' ' ')
+		_target_ready_log ERROR "${_l}timed out waiting for pv-ctrl${_probe:+ — last error: $_probe}"
+		return 1
+	fi
+
+	# stage 3: the expected revision is the current one
+	if [ -n "$rev" ]; then
+		_target_ready_log INFO "${_l}waiting for $rev to become current..."
+		if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120; then
+			_target_ready_log ERROR "${_l}timed out waiting for $rev to become current"
+			return 1
+		fi
+	fi
+
+	# stage 4: terminal-good step status (ERROR/WONTGO fail fast unless asked for)
+	if [ -n "$status" ]; then
+		_target_ready_log INFO "${_l}waiting for ${rev:-current} $status..."
+		local counter=0 st
+		while [ $counter -lt 120 ]; do
+			st=$(pvcontrol steps show-progress "${rev:-current}" 2>/dev/null | jq -r '.status' 2>/dev/null)
+			case "|$status|" in *"|$st|"*) break ;; esac
+			case "$st" in
+				ERROR|WONTGO)
+					_target_ready_log ERROR "${_l}${rev:-current} reached $st, expected $status"
+					return 1
+					;;
+			esac
+			sleep 1
+			counter=$((counter + 1))
+		done
+		if [ $counter -ge 120 ]; then
+			_target_ready_log ERROR "${_l}timed out waiting for ${rev:-current} $status"
+			return 1
+		fi
+	fi
+
+	# stage 5: containers up
+	_target_ready_log INFO "${_l}waiting for READY..."
+	if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 120; then
+		_target_ready_log ERROR "${_l}timed out waiting for READY"
+		return 1
+	fi
+
+	# stage 6: pvr HTTP endpoint — served by a container, so it comes up after READY
+	_target_ready_log INFO "${_l}waiting for pvr HTTP endpoint [via pvr HTTP]..."
+	if ! wait_for_pvr_endpoint; then
+		_target_ready_log ERROR "${_l}pvr HTTP endpoint not ready"
+		return 1
+	fi
+
+	return 0
+}
+
+# Wait for device pvr server online
+wait_for_pvr_endpoint() {
+	wait_for_status "curl -s 'http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr' > /dev/null 2>&1; ec=\$?; [ \$ec -eq 0 ] || [ \$ec -eq 52 ]" 0 "${1:-60}"
+}
+
+# Wait for device to be ctrl responsive, DONE|UPDATED, READY and pvr online
+wait_for_current_settled() {
+	local term_timeout="${1:-180}" ready_timeout="${2:-120}"
+
+	wait_for_status "pvcontrol devmeta ls > /dev/null 2>&1" 0 120 || return 1
+
+	local counter=0 st
+	while [ $counter -lt $term_timeout ]; do
+		st=$(pvcontrol steps show-progress current 2>/dev/null | jq -r '.status' 2>/dev/null)
+		case "$st" in DONE|UPDATED) break ;; esac
 		sleep 1
-		counter=$((counter+1))
+		counter=$((counter + 1))
 	done
+	[ $counter -lt $term_timeout ] || return 1
 
-	return 1
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" "$ready_timeout" \
+		|| pvtest_log WARN "settle: not READY after ${ready_timeout}s; continuing"
+	wait_for_pvr_endpoint \
+		|| pvtest_log WARN "settle: pvr endpoint not up; continuing"
+	return 0
 }
 
-# wait for Pantavisor to get to a given revision and update state
+# Wait for Pantavisor to get to a given revision and update state
 wait_for_revision_state() {
-	local control_container="$1"
-	local rev="$2"
-	local state="$3"
+	local rev="$1"
+	local state="$2"
 
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 30 || return 1
-	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 30 || return 1
-	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 30 || return 1
+	# generous timeouts: long trail/no-reset suites can exceed 30s
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.revision\"]'" "$rev" 120 || return 1
+	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60 || return 1
+	wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "$state" 120 || return 1
 }
 
-# wait for Pantahub to get to a given status
+# Clone and exit if clone fails
+pvr_clone_local_or_die() {
+	local dest="$1" label="${2:+ ($2)}"
+	local out
+	out=$(pvr clone "http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr" "$dest" 2>&1) \
+		|| { echo "ERROR: pvr clone${label} failed: $out" >&2; exit 1; }
+}
+
+# Post an echo revision name
+pvr_post_rev() {
+	pvr post "$@" 2>&1 \
+		| sed -n 's/.*Successfully posted Revision \([0-9][0-9]*\).*/\1/p' \
+		| head -n1
+}
+
+# Wait for Pantavisor to get to a given update state
 wait_for_pantahub_state() {
-	local control_container="$1"
-	local state="$2"
+	local state="$1"
 
 	wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "$state" 30
 }
