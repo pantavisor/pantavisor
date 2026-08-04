@@ -8,6 +8,7 @@ Pantavisor is a container-based runtime for embedded Linux systems. It handles c
 |-----------|-------------|
 | `xconnect/` | Service mesh daemon with plugins (unix, rest, dbus, drm, wayland) |
 | `ctrl/` | REST API: /xconnect-graph, /daemons, /signal, /containers, /groups endpoints |
+| `appengine/` | `pv-appengine` entrypoint, baseline config and rev0 state for running Pantavisor as PID 1 in a container |
 | `tools/pvcurl` | Lightweight curl wrapper using nc for HTTP-over-Unix-socket |
 | `tools/pvcontrol` | CLI wrapper around pvcurl for pv-ctrl operations |
 | `utils/tsh.c` | Daemon stdout/stderr capture via logserver |
@@ -27,6 +28,7 @@ API and format specifications, versioned with each Pantavisor release. Always up
 | **Log Sockets** | [docs/reference/logserver-sockets.md](docs/reference/logserver-sockets.md) | Logserver unix sockets reference |
 | **Metadata** | [docs/reference/pantavisor-metadata.md](docs/reference/pantavisor-metadata.md) | User and device metadata reference |
 | **State Format** | [docs/reference/pantavisor-state-format-v2.md](docs/reference/pantavisor-state-format-v2.md) | state.json format (v2) |
+| **IPAM** | [docs/reference/pantavisor-ipam.md](docs/reference/pantavisor-ipam.md) | Address pool schema, per-container assignment, backend-plugin hook |
 
 ### Tools (`docs/tools/`)
 
@@ -52,6 +54,7 @@ Feature overview intended to be read top-to-bottom as a book, versioned with eac
 | **Disks** | [docs/overview/disks.md](docs/overview/disks.md) | Disk types, dual mode, dm-crypt, boot sequence |
 | **Remote Control** | [docs/overview/remote-control.md](docs/overview/remote-control.md) | Pantacor Hub client and remote controllers |
 | **Local Control** | [docs/overview/local-control.md](docs/overview/local-control.md) | pv-ctrl socket, Pantabox, pvcontrol |
+| **IPAM** | [docs/overview/ipam.md](docs/overview/ipam.md) | Container IP address management: pools, allocation, network namespaces |
 | **Configuration Levels** | [docs/overview/pantavisor-configuration-levels.md](docs/overview/pantavisor-configuration-levels.md) | Configuration levels and precedence |
 | **Init Mode** | [docs/overview/init-mode.md](docs/overview/init-mode.md) | Embedded, standalone, appengine modes |
 | **Watchdog** | [docs/overview/watchdog.md](docs/overview/watchdog.md) | Watchdog configuration and modes |
