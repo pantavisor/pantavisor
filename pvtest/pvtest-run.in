@@ -1,73 +1,60 @@
 #!/bin/sh
 
 PVTEST_LOG_SOURCE=pvtest-run
-source @CMAKE_INSTALL_FULL_DATADIR@/@PROJECT_NAME@/pvtest/utils
+source /usr/share/pantavisor/pvtest/utils
 
-usage() {
-	echo ""
-	echo "Usage: $0 <test-path> <interactive> <manual> <overwrite> <verbose> <netsim> <valgrind>"
-	echo ""
-}
+# self-claimed devices pending delete; swept on exit if a test was killed mid-run
+PVTEST_CLAIMED_DEVICES_FILE="/tmp/pvtest_claimed_devices.$$"
+: > "$PVTEST_CLAIMED_DEVICES_FILE" 2>/dev/null || true
 
-parse_test() {
-	json_path="$test_path/test.json"
-	if [ ! -e "$json_path" ]; then
-		pvtest_log ERROR "'$json_path' not found"
-		exit 1
-	fi
-
-	description=$(jq -r '.description' "$json_path")
-	cmdline=$(jq -r '.setup.cmdline' "$json_path")
-	pantavisor_config=$(jq -r '.setup."pantavisor.config"' "$json_path")
-	pvs=$(jq -r '.setup.pvs' "$json_path")
-	control_container=$(jq -r '.setup.containers.control' "$json_path")
-	tarballs=$(jq -r '.setup.containers.tarballs[]' "$json_path")
-	ready_script=$(jq -r '.setup."ready-script"' "$json_path")
-	self_claim=$(jq -r '.setup."self-claim"' "$json_path")
-	test_script=$(jq -r '."test-script"' "$json_path")
-}
+_PVTEST_EXEC_ENV="$PVTEST_EXEC"
+_PVTEST_HOST_ENV="$PVTEST_HOST"
 
 cleanup() {
+	_sweep_tracked_devices
 	kill $(jobs -p) 2>/dev/null
 }
 trap cleanup EXIT
 
-initial_setup() {
-	# Pre-create loop device nodes. The tester container has /dev/loop-control,
-	# CAP_MKNOD and a 'b 7:* rmw' device-cgroup rule, but no devtmpfs/udev — so
-	# LOOP_CTL_GET_FREE hands out a free index while the matching /dev/loopN node
-	# is never created, and losetup (for the dm-crypt disk or container
-	# squashfs) fails with "failed to set up loop device: No such file or
-	# directory". Creating the nodes up front makes losetup work for whatever
-	# index the kernel picks, no matter how loaded the host is. This is
-	# parallel-safe: LOOP_CTL_GET_FREE is host-global and atomic so concurrent
-	# tester containers get distinct backing indices, and each container has its
-	# own /dev so the nodes never collide. Idempotent and harmless where the
-	# nodes already exist (real devices with devtmpfs).
-	if [ -e /dev/loop-control ]; then
-		i=0
-		while [ "$i" -lt 1024 ]; do
-			[ -e "/dev/loop$i" ] || mknod "/dev/loop$i" b 7 "$i" 2>/dev/null
-			i=$((i + 1))
-		done
-	fi
 
-	if ! cat /proc/mounts | awk '{ print $2}' | grep -q '^@PV_INSTALL_FULL_STORAGEDIR@$'; then
-		pvtest_log ERROR "@PV_INSTALL_FULL_STORAGEDIR@ must be a mountpoint."
-		sleep 10
-		exit 1
-	fi
+usage() {
+	echo ""
+	echo "Usage: $0 [-v]"
+	echo "Runs pvtests against a target from inside the tester container."
+	echo "test.docker.sh launches this as the container's entrypoint, driven by env."
+	echo ""
+	echo "Always required (true|false):"
+	echo "  INTERACTIVE OVERWRITE VERBOSE NETSIM"
+	echo ""
+	echo "Dispatch mode, checked in this order:"
+	echo ""
+	echo "  1) INTERACTIVE=true            tester console on one target already up"
+	echo "       PVTEST_EXEC               command prefix to reach it (e.g. an ssh invocation)"
+	echo "       PVTEST_HOST               host/IP for its pvr HTTP endpoint"
+	echo ""
+	echo "  2) PVTEST_QUEUE + PVTEST_CTRL  slot pool"
+	echo "       PVTEST_QUEUE              space-separated /work/<test>/test.json paths"
+	echo "       PVTEST_CTRL               ctrl dir mounted from the host (req/resp/state)"
+	echo "       PVTEST_SLOTS              worker count (default: 1)"
+	echo "       PVTEST_MODEL              persistent (keep target across tests) | volatile (one per test)"
+	echo "       PVTEST_RETYPE             container (boot a generation) | hook (power-cycle a board) | none"
+	echo "       PVTEST_EXEC/PVTEST_HOST   as above, for a target that never re-types; a"
+	echo "                                 ready ctrl reply supersedes them for that slot"
+	echo ""
+	echo "Target identity:"
+	echo "  PVTEST_DEVICE_TYPE  target class matched against a test's \"devices\" array"
+	echo "  PVTEST_DEVICE_NAME  fallback bind when the host reports a target 'unsupported' for re-type"
+	echo ""
+	echo "Other:"
+	echo "  RUN_DIR          results dir (default: /work/run)"
+	echo "  APPENGINE_LOGS   dir of <target>.log files, tailed into each test's log"
+	echo "  PH_USER/PH_PASS  Hub credentials, for self-claim and Hub-side usrmeta"
+	echo ""
+	echo "See docs/overview/testing/automated/."
+	echo ""
+}
 
-	if ! [ -f @PV_INSTALL_FULL_STORAGEDIR@/.created ]; then
-		cp -a @PV_INSTALL_FULL_SKELDIR@/* @PV_INSTALL_FULL_STORAGEDIR@/
-		touch @PV_INSTALL_FULL_STORAGEDIR@/.created
-	fi
-
-	if [ ! -f "$test_path/$test_script" ]; then
-		pvtest_log ERROR "'$test_path/$test_script' does not exist"
-		exit 1
-	fi
-
+wait_for_netsim() {
 	if [ "$netsim" = "true" ]; then
 		wait_for_status "ip link set wlan1 name wlan0" 0 5 > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
@@ -75,76 +62,215 @@ initial_setup() {
 			exit 1
 		fi
 	fi
-
-	if [ -n "$pantavisor_config" ]; then
-		cp "$test_path/$pantavisor_config" "@CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor-appengine.config"
-	fi
-
-	if [ -n "$pvs" ]; then
-		rm -f @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/*
-		find $test_path/$pvs -exec tar -xf '{}' -C @CMAKE_INSTALL_FULL_SYSCONFDIR@/pantavisor/pvs/trust/ --strip-components=1 \;
-	fi
-
-	# lets be double sure we start from fresh revision
-	pvtx abort
-	pvtx begin empty @PV_INSTALL_FULL_STORAGEDIR@/objects
-	# copy rev to pvtxdir
-	mkdir -p @PV_INSTALL_FULL_PVTXDIR@
-	for tarball in $tarballs; do
-		if [ ! -e "$test_path/$tarball" ]; then pvtest_log ERROR "'$test_path/$tarball' does not exist"; exit 1; fi
-		cp -f "$test_path/$tarball" @PV_INSTALL_FULL_PVTXDIR@/
-	done
-	rm -f @PV_INSTALL_FULL_STORAGEDIR@/.pvtx-done
 }
 
-exec_interactive() {
+run_interactive() {
 	echo ""
-	echo "Welcome to Pantavisor appengine!"
+	echo "Welcome to pvtest tester!"
 	echo ""
 
-	if [ "$manual" = "true" ]; then
-		pvtest_log INFO "Pantavisor is not running."
-		echo "To run Pantavisor with stdout logs:"
-		echo "pv-appengine -e \"PV_LOG_SERVER_OUTPUTS=filetree,stdout\""
-		echo ""
-	else
-		pvtest_log INFO "Pantavisor is already running."
-		echo "To run your test:"
-		echo "$test_path/$test_script"
-		echo ""
+	if [ "$PVTEST_RETYPE" = "container" ]; then
+		echo "Pantavisor is starting in the appengine container (no state deployed yet)."
 	fi
+	echo "Run pvtest-run to wait for device ready, deploy test state, and execute tests."
+	echo ""
 
-	sh -c "bash"
+	# INTERACTIVE=false for a nested pvtest-run call
+	export INTERACTIVE=false
+	local _rc
+	_rc=$(mktemp /tmp/pvtest_rc.XXXXXX)
+	printf '. /usr/share/pantavisor/pvtest/utils\n' > "$_rc"
+	bash --rcfile "$_rc" -i
+	rm -f "$_rc"
 }
-stop_pv() {
-	pvtest_log DEBUG "stopping Pantavisor"
-	if [ -f "@CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id" ]; then
-		device_id=`cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id`
-	fi
-	if [ "$self_claim" = "true" ] && [ -n "$device_id" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
-		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
-		pvr dev delete -y $device_id
-	fi
 
-	local pv_appengine_pid=$(ps | grep " pv-appengine$" | awk 'NR==1 {print $1}')
-	if [ -n "$pv_appengine_pid" ]; then
-		kill "$pv_appengine_pid"
-	fi
+# Container/device name as a filename component for a given appengine name
+_ae_safe() { printf '%s' "$1" | tr '/.-' '___'; }
 
-	local pv_pid=$(ps | grep " pantavisor$" | awk 'NR==1 {print $1}')
-	if [ -n "$pv_pid" ]; then
-		eval "pvcontrol commands poweroff" > /dev/null 2>&1
-		wait_for_process " pantavisor$" "120" "-d"
-		if [ $? -ne 0 ]; then
-			pvtest_log WARN "Pantavisor still running. Shutting it down..."
-			kill "$pv_pid"
-			wait_for_process " pantavisor$" "30" "-d"
-			if [ $? -ne 0 ]; then
-				pvtest_log ERROR "Pantavisor still running. Exiting..."
-				kill -SIGKILL "$pv_pid"
-			fi
+# Stored `conf ls` JSON for a given appengine name
+_ae_conf_file() { printf '/tmp/pvtest_device_conf_%s.json' "$(_ae_safe "$1")"; }
+
+# Stored factory clone for a given appengine name
+_ae_factory_dir() { printf '/tmp/pvtest_factory_%s' "$(_ae_safe "$1")"; }
+
+# pvr HOME for a given appengine name
+_ae_pvr_home() { printf '/tmp/pvtest_pvrhome_%s' "$(_ae_safe "${1:-${PVTEST_AE:-default}}")"; }
+
+# Run a pvr command authenticated against the Hub
+_pvr_auth() {
+	if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
+		pvtest_log ERROR "PH_USER/PH_PASS not set; refusing unauthenticated 'pvr $*'"
+		return 1
+	fi
+	local home; home="$(_ae_pvr_home)"
+	mkdir -p "$home" 2>/dev/null
+	(
+		export HOME="$home"
+		if ! PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1; then
+			pvtest_log ERROR "pvr login failed; refusing 'pvr $*'"
+			exit 1
 		fi
+		pvr "$@"
+	)
+}
+
+# _pvr_auth wrapper that logs output on failure so Hub ops aren't silent when they fail
+_pvr_logged() {
+	local out rc
+	out=$(_pvr_auth "$@" 2>&1)
+	rc=$?
+	if [ $rc -ne 0 ]; then
+		pvtest_log ERROR "pvr $* failed (exit $rc)${out:+: $out}"
 	fi
+	return $rc
+}
+
+# Hub access token
+_hub_token() {
+	local home
+	{ [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; } || return 1
+	home="$(_ae_pvr_home)"; mkdir -p "$home" 2>/dev/null
+	( export HOME="$home"
+	  PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1 )
+	jq -r 'first(.tokens[]) | .["access-token"] // empty' "$home/.pvr/auth.json" 2>/dev/null
+}
+
+_hub_usrmeta_delete() {
+	local device_id="$1" key="$2" tok
+	[ -n "$device_id" ] || return 0
+	tok=$(_hub_token)
+	[ -n "$tok" ] || return 0
+	curl -s -X PATCH \
+		-H "Authorization: Bearer $tok" -H "Content-Type: application/json" \
+		-d "{\"$key\": null}" \
+		"${PVTEST_HUB_URL:-https://api.pantahub.com}/devices/$device_id/user-meta" \
+		> /dev/null 2>&1
+}
+
+_hub_usrmeta_set() {
+	local device_id="$1" key="$2" value="$3" tok attempt=1
+	[ -n "$device_id" ] || return 0
+	tok=$(_hub_token)
+	[ -n "$tok" ] || return 1
+	while [ $attempt -le 4 ]; do
+		curl -sf -X PATCH \
+			-H "Authorization: Bearer $tok" -H "Content-Type: application/json" \
+			-d "{\"$key\": \"$value\"}" \
+			"${PVTEST_HUB_URL:-https://api.pantahub.com}/devices/$device_id/user-meta" \
+			> /dev/null 2>&1 && return 0
+		attempt=$((attempt + 1))
+		[ $attempt -le 4 ] && sleep 5
+	done
+	return 1
+}
+
+# Wait for pantahub.state to settle to either claim or idle
+_wait_pantahub_terminal_state() {
+	local timeout="${1:-120}" counter=0 st
+	while [ "$counter" -lt "$timeout" ]; do
+		st=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantahub.state"] // empty')
+		case "$st" in
+		claim | idle)
+			printf '%s' "$st"
+			return 0
+			;;
+		esac
+		sleep 2
+		counter=$((counter + 2))
+	done
+	return 1
+}
+
+# Track ($1=add) or untrack ($1=del) a self-claimed device id ($2)
+_track_device() {
+	local op="$1" dev="$2" f="$PVTEST_CLAIMED_DEVICES_FILE"
+	[ -n "$f" ] && [ -n "$dev" ] || return 0
+	(
+		flock -x 8
+		case "$op" in
+			add) grep -qxF "$dev" "$f" 2>/dev/null || printf '%s\n' "$dev" >> "$f" ;;
+			del) [ -f "$f" ] && { grep -vxF "$dev" "$f" > "$f.tmp" 2>/dev/null; mv "$f.tmp" "$f" 2>/dev/null; } ;;
+		esac
+	) 8>>"$f.lock"
+}
+
+# Delete any still-tracked self-claimed devices (a test killed before teardown)
+_sweep_tracked_devices() {
+	local f="$PVTEST_CLAIMED_DEVICES_FILE" d
+	[ -n "$f" ] && [ -s "$f" ] || return 0
+	while IFS= read -r d; do
+		[ -n "$d" ] || continue
+		pvtest_log WARN "sweeping leftover self-claimed device $d"
+		_pvr_auth dev delete -y "$d" > /dev/null 2>&1
+	done < "$f"
+	: > "$f" 2>/dev/null || true
+}
+
+# Echo the value of config key $1 from a `conf ls` JSON file $2
+_conf_value() {
+	# conf ls format: [{"key":"PV_CONTROL_REMOTE","value":"0","modified":"..."}, ...]
+	jq -r --arg k "$1" 'if type=="array" then (.[] | select(.key==$k) | .value) // empty else empty end' \
+		"$2" 2>/dev/null
+}
+
+# True when captured `conf ls` ($2) satisfies every KEY=VALUE in required-config ($1).
+_reqcfg_satisfied() {
+	local kv k v actual
+	for kv in $(pvtest_normalize_cfg "$1"); do
+		k=${kv%%=*}
+		v=${kv#*=}
+		actual=$(_conf_value "$k" "$2")
+		[ "$actual" = "$v" ] || return 1
+	done
+	return 0
+}
+
+# If target doesn't satisfy config $1, power off device and return 3 to signal for re-typing
+_reqcfg_gate() {
+	local _next_cfg="$1"
+	[ -n "$_next_cfg" ] || return 0
+	pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
+	if ! _reqcfg_satisfied "$_next_cfg" "$(_ae_conf_file "$PVTEST_AE")"; then
+		if [ "$PVTEST_RETYPE" = "container" ]; then
+			pvtest_log INFO "test needs a different config; powering off..."
+			pv_ctrl cmd poweroff "pvtest: test needs different config" > /dev/null 2>&1 || true
+		else
+			pvtest_log INFO "test needs a different config; requesting re-type..."
+		fi
+		return 3
+	fi
+	return 0
+}
+
+# pvcontrol wrapper. Retries on 75/503 (slot busy). -q silences WARNs
+# The last response body is left in pv_ctrl_out
+pv_ctrl() {
+	local quiet=
+	[ "$1" = "-q" ] && { quiet=1; shift; }
+	local max_attempts=4 delay=5 attempt=1 out rc
+	local _via="${PVTEST_EXEC:+ [via SSH]}"
+	pvtest_log DEBUG "pvcontrol $*${_via}"
+	while [ $attempt -le $max_attempts ]; do
+		out=$(pvcontrol "$@" 2>&1)
+		rc=$?
+		pv_ctrl_out="$out"
+		[ $rc -eq 0 ] && return 0
+		if [ $rc -eq 75 ]; then
+			[ -n "$quiet" ] || pvtest_log WARN "pvcontrol $*${_via} rejected (503, attempt $attempt/$max_attempts)${out:+: $out}; retrying in ${delay}s..."
+			attempt=$((attempt + 1))
+			[ $attempt -le $max_attempts ] && sleep $delay
+		else
+			[ -n "$quiet" ] || pvtest_log WARN "pvcontrol $*${_via} failed (exit $rc)${out:+: $out}"
+			return $rc
+		fi
+	done
+	[ -n "$quiet" ] || pvtest_log WARN "pvcontrol $* failed after $max_attempts attempts (503)"
+	return 75
+}
+
+stop_pv() {
+	pvtest_log DEBUG "stop_pv: requesting lenient pantavisor shutdown..."
+	pv_ctrl cmd poweroff "pvtest: run complete"
 }
 
 int_handler() {
@@ -153,159 +279,1190 @@ int_handler() {
 	exit 2
 }
 
-start_pv() {
-	local valgrind_opt=""
-	if [ "$valgrind" = "true" ]; then
-		valgrind_opt="-V"
-		pvtest_log DEBUG "valgrind enabled"
-	fi
-	pv_cmd="pv-appengine $valgrind_opt -d 0 -c \"$cmdline\""
-
-	pvtest_log INFO "starting Pantavisor"
-	eval "$pv_cmd &"
+# Wait for pantavisor to respond, collect device info
+init_device() {
+	local ae="$1" ae_safe
+	ae_safe=$(_ae_safe "$ae")
 
 	trap 'int_handler' INT
 
-	wait_for_process " pantavisor$" "30" "-a"
-	if [ $? != 0 ]; then
-		pvtest_log ERROR "timed out waiting for Pantavisor PID"
-		stop_pv
-		exit 1
-	fi
-	pvtest_log INFO "Pantavisor running"
+	wait_for_target_ready "init" "" "DONE|UPDATED" || return 1
 
-	if [ -n "$ready_script" ]; then
-		sh -c "$test_path/$ready_script"
+	# Capture device live config once. Tests matched against it via setup.config.env
+	pvtest_log INFO "init: storing config [via SSH]..."
+	pvcontrol conf ls > "$(_ae_conf_file "$ae")" 2>/dev/null || true
+
+	# Collect device metadata
+	pvtest_log INFO "init: collecting device info [via SSH]..."
+	pvcontrol devmeta ls > "/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null || true
+	jq -r '"  revision=\(.["pantavisor.revision"])  arch=\(.["pantavisor.arch"])  version=\(.["pantavisor.version"])"' \
+		"/tmp/pvtest_device_info_${ae_safe}.json" 2>/dev/null || true
+
+	# Volatile boots straight into the test revision
+	if [ "$PVTEST_MODEL" = "volatile" ]; then
+		pvtest_log INFO "init: done"
+		return 0
 	fi
 
-	wait_for_value "pvcontrol devmeta ls | jq -r .'[\"pantavisor.status\"]'" "READY" "120"
-	if [ $? != 0 ]; then
-		pvtest_log ERROR "timed out waiting for pantavisor.status READY"
-		stop_pv
-		exit 1
+	# Pristine clone of the factory revision. Each test setup starts from a copy of this
+	pvtest_log INFO "init: cloning factory revision [via pvr HTTP]..."
+	local factory_dir; factory_dir="$(_ae_factory_dir "$ae")"
+	rm -rf "$factory_dir" "$factory_dir.home"
+	mkdir -p "$factory_dir.home"
+	if ! ( export HOME="$factory_dir.home"; pvr clone "http://${PVTEST_HOST}:12368/cgi-bin/pvr" "$factory_dir" > /dev/null 2>&1 ); then
+		pvtest_log ERROR "failed to clone factory revision"
+		return 1
 	fi
-	pvtest_log INFO "Pantavisor status: READY"
 
-	wait_for_status "LD_LIBRARY_PATH=/lib:/usr/lib curl -s X GET http://localhost:12368/cgi-bin/pvtx/status > /dev/null 2>&1" 0 120
+	# Export of the pristine clone, for pvtx setups
+	pvtest_log INFO "init: exporting factory revision..."
+	rm -f "$factory_dir.tgz"
+	if ! ( export HOME="$factory_dir.home"; cd "$factory_dir" && pvr export "$factory_dir.tgz" > /dev/null 2>&1 ); then
+		pvtest_log ERROR "failed to export factory revision"
+		return 1
+	fi
+
+	pvtest_log INFO "init: done"
+	return 0
+}
+
+# Run the synchronous garbage collector
+_dev_gc() {
+	local _out
+	_out=$(pvcontrol storage gc 2>&1)
 	if [ $? -ne 0 ]; then
-		pvtest_log ERROR "timed out waiting for $control_container pvr endpoint to be online"
-		stop_pv
-		exit 1
+		pvtest_log WARN "sync gc failed${_out:+: $_out}"
+		return 1
 	fi
-	pvtest_log DEBUG "pvr endpoint online"
+	pvtest_log INFO "gc finished${_out:+: $_out}"
+	return 0
+}
 
-	if [ "$self_claim" = "true" ]; then
-		pvr -u "$PH_USER" -p "$PH_PASS" login > /dev/null 2>&1
+_settle_to_factory() {
+	local factory_dir _new_rev _st _saved_tarballs
 
-		wait_for_pantahub_state "$control_container" "claim"
-		if [ $? -ne 0 ]; then
-			pvtest_log ERROR "timed out waiting for pantahub.state claim"
-			stop_pv
-			exit 1
+	factory_dir="$(_ae_factory_dir "$PVTEST_AE")"
+	if [ ! -d "$factory_dir" ]; then
+		pvtest_log WARN "no factory clone; skipping factory reset"
+		return 0
+	fi
+
+	wait_for_current_settled \
+		|| pvtest_log WARN "device did not settle before factory reset; continuing"
+
+	# Re-install the factory clone
+	_saved_tarballs="$tarballs"; tarballs=""
+	if _have_pvtx; then
+		pvtest_log DEBUG "resetting to factory with pvtx"
+		_install_initial_pvtx "" || { tarballs="$_saved_tarballs"; return 1; }
+		_new_rev="$_pvtx_rev"
+	elif command -v pvr > /dev/null 2>&1; then
+		pvtest_log INFO "pvtx not available on device; falling back to pvr HTTP-post"
+		_install_initial_pvr "$factory_dir" "" || { tarballs="$_saved_tarballs"; return 1; }
+		_new_rev="$_pvr_rev"
+	else
+		tarballs="$_saved_tarballs"
+		pvtest_log ERROR "cannot reset to factory: neither pvtx nor pvr available"
+		return 1
+	fi
+	tarballs="$_saved_tarballs"
+
+	if [ -z "$_new_rev" ]; then
+		pvtest_log ERROR "factory reset revision was installed without a name"
+		return 1
+	fi
+	wait_for_target_ready "factory revision" "$_new_rev" "DONE|UPDATED" || return 1
+	_st=$(pvcontrol steps show-progress "$_new_rev" 2>/dev/null | jq -r '.status' 2>/dev/null)
+
+	# Commit the fresh revision
+	if [ "$_st" = "UPDATED" ]; then
+		pvtest_log INFO "factory revision needs a reboot to commit; rebooting..."
+		pv_ctrl cmd reboot "pvtest: committing factory reset" || return 1
+		wait_for_down 30 || pvtest_log WARN "device did not confirm down after reboot; continuing"
+		wait_for_target_ready "factory reset" "$_new_rev" DONE || return 1
+	fi
+
+	wait_for_current_settled || true
+	_dev_gc || true
+
+	pvtest_log DEBUG "factory reset revision done at revision '$_new_rev'"
+
+	return 0
+}
+
+_dev_read_file() {
+	if [ -n "$PVTEST_EXEC" ]; then
+		$PVTEST_EXEC "cat $1" 2>/dev/null
+	else
+		cat "$1" 2>/dev/null
+	fi
+}
+
+_dev_unclaim() {
+	local dev="${1:-$(_dev_read_file /var/run/pantavisor/pv/device-id)}"
+
+	wait_for_current_settled \
+		|| pvtest_log WARN "device did not settle before unclaim; trying anyway"
+
+	if ! pv_ctrl -q cmd unclaim; then
+		case "$pv_ctrl_out" in
+		*"already unclaimed"*)
+			pvtest_log INFO "device already unclaimed"
+			return 0
+			;;
+		esac
+		pvtest_log ERROR "pvcontrol cmd unclaim failed: $pv_ctrl_out"
+		return 1
+	fi
+	if [ -n "$dev" ]; then
+		pvtest_log INFO "deleting device $dev from Hub"
+		_pvr_logged dev delete -y "$dev"
+		_track_device del "$dev"
+	fi
+	pvtest_log INFO "device unclaimed"
+	return 0
+}
+
+_dev_claim() {
+	local state
+	state=$(_wait_pantahub_terminal_state 120)
+	if [ "$state" != "claim" ]; then
+		pvtest_log ERROR "cannot claim: pantahub.state='${state:-<none>}' (expected claim)"
+		return 1
+	fi
+	local device_id challenge _waited=0
+	while [ $_waited -lt 60 ]; do
+		device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+		challenge=$(_dev_read_file /var/run/pantavisor/pv/challenge)
+		[ -n "$device_id" ] && [ -n "$challenge" ] && break
+		sleep 2
+		_waited=$((_waited + 2))
+	done
+	if [ -z "$device_id" ] || [ -z "$challenge" ]; then
+		pvtest_log ERROR "cannot claim: missing device-id ('$device_id') or challenge after ${_waited}s"
+		return 1
+	fi
+
+	local _try _claimed=
+	for _try in 1 2 3; do
+		device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+		challenge=$(_dev_read_file /var/run/pantavisor/pv/challenge)
+		if [ -z "$device_id" ] || [ -z "$challenge" ]; then
+			pvtest_log ERROR "cannot claim (attempt $_try): missing device-id ('$device_id') or challenge"
+		else
+			pvtest_log INFO "claiming device $device_id (attempt $_try)..."
+			if _pvr_logged claim -c "$challenge" "$device_id"; then
+				_claimed=1; break
+			fi
 		fi
+		[ "$_try" != 3 ] && sleep 2
+	done
+	if [ -z "$_claimed" ]; then
+		pvtest_log ERROR "claim failed after 3 attempts"
+		return 1
+	fi
+	_track_device add "$device_id"
+	if ! wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantahub.state\"]'" "idle" 120; then
+		pvtest_log ERROR "timed out waiting for pantahub.state=idle after claim"
+		return 1
+	fi
+	pvtest_log INFO "claimed device $device_id"
+	return 0
+}
 
-		device_id=$(cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/device-id)
-		challenge=$(cat @CMAKE_INSTALL_FULL_RUNSTATEDIR@/pantavisor/pv/challenge)
+# Delete the device this slot currently points at from the Hub without device unclaim
+_dev_delete_only() {
+	local device_id="${1:-$(_dev_read_file /var/run/pantavisor/pv/device-id)}"
+	[ -n "$device_id" ] || return 0
+	pvtest_log INFO "deleting claimed device $device_id"
+	_pvr_logged dev delete -y "$device_id"
+	_track_device del "$device_id"
+}
 
-		pvr claim -c "$challenge" "$device_id"
-		if [ $? -ne 0 ]; then
-			pvtest_log ERROR "pvr claim failed"
-			stop_pv
-			exit 1
+# Unclaim device this slot currently points at via pvcontrol without Hub dev deletion
+handle_pre_remote_unclaim() {
+	pre_unclaimed_device=
+
+	case " $(pvtest_normalize_cfg "$required_env") " in
+	*" PV_CONTROL_REMOTE=1 "*) ;;
+	*) return 0 ;;
+	esac
+	[ "$self_claim" = "false" ] || return 0
+
+	local dev challenge
+	dev=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+	challenge=$(_dev_read_file /var/run/pantavisor/pv/challenge)
+	{ [ -n "$dev" ] && [ -z "$challenge" ]; } || return 0
+
+	pvtest_log INFO "device claimed from a previous test; unclaiming ($dev) before go-remote..."
+	if ! pv_ctrl -q cmd unclaim; then
+		# an aborted previous setup can leave the device already unclaimed
+		# with the hint files not yet renewed — benign, nothing to delete
+		case "$pv_ctrl_out" in
+		*"already unclaimed"*)
+			pvtest_log INFO "device already unclaimed"
+			return 0
+			;;
+		esac
+		pvtest_log ERROR "pvcontrol cmd unclaim failed: $pv_ctrl_out"
+		return 1
+	fi
+	pre_unclaimed_device="$dev"
+	return 0
+}
+
+# Prepare device and perform claim if not there and required by test
+# If claimed and not required by test, unclaim
+handle_self_claim() {
+	claimed_device=
+
+	# No-op for tests without PV_CONTROL_REMOTE=1
+	case " $(pvtest_normalize_cfg "$required_env") " in
+	*" PV_CONTROL_REMOTE=1 "*) ;;
+	*) return 0 ;;
+	esac
+
+	local state
+	state=$(_wait_pantahub_terminal_state 120)
+	if [ -z "$state" ]; then
+		pvtest_log ERROR "pantahub.state did not settle"
+		return 1
+	fi
+
+	if [ -n "$pre_unclaimed_device" ]; then
+		pvtest_log INFO "deleting device $pre_unclaimed_device from Hub"
+		_pvr_logged dev delete -y "$pre_unclaimed_device"
+		_track_device del "$pre_unclaimed_device"
+		pre_unclaimed_device=
+	fi
+
+	local device_id
+	device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+
+	if [ "$state" = "idle" ] && [ "$self_claim" = "false" ] && [ -n "$device_id" ]; then
+		pvtest_log INFO "self-claim=false but device claimed; unclaiming ($device_id)..."
+		_dev_unclaim "$device_id" || return 1
+	elif [ "$state" = "claim" ] && [ "$self_claim" = "true" ]; then
+		local _claim_start
+		_claim_start=$(date +%s)
+		_dev_claim || return 1
+		claimed_device=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+		# Report claim result-style so it lands in SUMMARY alongside PASSED/FAILED as it is a time consuming task
+		pvtest_log INFO "'$PVTEST_AE' claimed ($(( $(date +%s) - _claim_start )) s)"
+	fi
+	return 0
+}
+
+# Set test usrmeta per key. Set both locally (immediate effect) and on Hub (survives remote sync overwrite)
+apply_usrmeta() {
+	applied_usrmeta_keys=
+	[ -n "$usrmeta" ] || return 0
+	local device_id=""
+	if [ "$self_claim" = "true" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+		device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+	fi
+	local kv k v
+	for kv in $usrmeta; do
+		k=${kv%%=*}
+		v=${kv#*=}
+		[ -n "$k" ] || continue
+		pvtest_log INFO "usrmeta save $k=$v"
+		pv_ctrl -q usrmeta save "$k" "$v"
+		if [ -n "$device_id" ]; then
+			_hub_usrmeta_set "$device_id" "$k" "$v" \
+				|| pvtest_log WARN "could not set Hub user-meta $k=$v"
 		fi
+		applied_usrmeta_keys="${applied_usrmeta_keys:+$applied_usrmeta_keys }$k"
+	done
+}
 
-		wait_for_pantahub_state "$control_container" "idle"
-		if [ $? -ne 0 ]; then
-			pvtest_log ERROR "timed out waiting for pantahub.state idle after claim"
-			stop_pv
-			exit 1
+# Tarball $1 as an absolute path from relative path at test.json
+_tarball_path() {
+	case "$1" in
+	/*) printf '%s' "$1" ;;
+	*)  printf '%s/%s' "$test_dir" "$1" ;;
+	esac
+}
+
+# Deterministic "locals/<id>" name for initial test revision
+_initial_rev_name() {
+	printf 'locals/%s' "$(printf '%s' "$1" | tr '/' '_' | tr '-' '_')"
+}
+
+# Stage $1's tarballs into $2 under PVTEST_CTRL for the host to mount as pvtx.extra.d
+_stage_seed() {
+	local _json="$1" _dir="$2"
+	local _t _src _n=0 _tdir
+	_tdir=$(dirname "$_json")
+
+	rm -rf "$_dir"; mkdir -p "$_dir" || return 1
+	for _t in $(jq -r '.setup.containers.tarballs[]? // empty' "$_json"); do
+		case "$_t" in
+			/*) _src="$_t" ;;
+			*)  _src="$_tdir/$_t" ;;
+		esac
+		if [ ! -f "$_src" ]; then
+			pvtest_log ERROR "tarball '$_t' not found for '$(dirname "${_json#/work/}")'"
+			return 1
 		fi
+		cp "$_src" "$(printf '%s/%02d-%s' "$_dir" "$_n" "${_src##*/}")" || return 1
+		_n=$((_n + 1))
+	done
+	return 0
+}
+
+# Stage tarball $1 (labelled $2) onto the device and pvtx add it
+_pvtx_add_tarball() {
+	local src="$1" label="${2:-${1##*/}}" remote="/tmp/pvtest_pvtx_$$_${1##*/}" out
+	pvtest_log DEBUG "pvtx add $label [via SSH]"
+	if ! $PVTEST_EXEC "cat > '$remote'" < "$src"; then
+		pvtest_log ERROR "failed to stage $label to device"
+		pvtx abort > /dev/null 2>&1
+		return 1
+	fi
+	if ! out=$(pvtx add "$remote" 2>&1); then
+		pvtest_log ERROR "pvtx add failed for $label: $out"
+		$PVTEST_EXEC "rm -f '$remote'" > /dev/null 2>&1
+		pvtx abort > /dev/null 2>&1
+		return 1
+	fi
+	$PVTEST_EXEC "rm -f '$remote'" > /dev/null 2>&1
+	return 0
+}
+
+# True if pvtx can be run on the exec target
+_have_pvtx() {
+	[ -n "$PVTEST_EXEC" ] || return 1
+	$PVTEST_EXEC "command -v pvtx >/dev/null 2>&1"
+}
+
+_install_initial_pvtx() {
+	local rev_name="$1"
+	local _out
+	_pvtx_rev=""
+
+	pvtx abort > /dev/null 2>&1
+	pvtest_log DEBUG "pvtx begin empty [via SSH]"
+	if ! _out=$(pvtx begin empty 2>&1); then
+		pvtest_log ERROR "pvtx begin empty failed: $_out"
+		return 1
+	fi
+
+	# Seed with the factory export plus test.json specified tarballs
+	local t factory_tgz
+	factory_tgz="$(_ae_factory_dir "$PVTEST_AE").tgz"
+	if [ -f "$factory_tgz" ]; then
+		_pvtx_add_tarball "$factory_tgz" "factory export" || return 1
+	else
+		pvtest_log WARN "no factory export found; building initial revision from tarballs only"
+	fi
+
+	for t in $tarballs; do
+		_pvtx_add_tarball "$(_tarball_path "$t")" || return 1
+	done
+
+	pvtest_log DEBUG "pvtx commit $rev_name [via SSH]"
+	if ! _out=$(pvtx commit "$rev_name" 2>&1); then
+		pvtest_log ERROR "pvtx commit failed: $_out"
+		pvtx abort > /dev/null 2>&1
+		return 1
+	fi
+	_pvtx_rev=$(printf '%s' "$_out" | tr -d '\r' | grep -v '^$' | tail -n1)
+	if [ -z "$_pvtx_rev" ]; then
+		pvtest_log ERROR "pvtx commit produced no revision"
+		return 1
+	fi
+	pvtest_log INFO "pvtx committed initial revision $_pvtx_rev"
+
+	pvtest_log DEBUG "pvcontrol cmd run $_pvtx_rev [via SSH]"
+	if ! _out=$(pvcontrol cmd run "$_pvtx_rev" 2>&1); then
+		pvtest_log ERROR "failed to run revision $_pvtx_rev: $_out"
+		return 1
+	fi
+	return 0
+}
+
+_install_initial_pvr() {
+	local factory_dir="$1" rev_name="$2"
+	_pvr_rev=""
+
+	local setup_parent setup_dir
+	setup_parent=$(mktemp -d /tmp/pvtest_setup.XXXXXX)
+	setup_dir="$setup_parent/repo"
+	mkdir -p "$setup_dir"
+
+	# Seed from factory clone plus test.json specified tarballs
+	pvtest_log DEBUG "seeding $setup_dir from factory clone $factory_dir"
+	if [ ! -d "$factory_dir/.pvr" ] || ! cp -a "$factory_dir/." "$setup_dir/" 2>/dev/null; then
+		pvtest_log ERROR "failed to copy factory clone"
+		rm -rf "$setup_parent"
+		return 1
+	fi
+
+	local t tarball_path frag_dir
+	for t in $tarballs; do
+		tarball_path="$(_tarball_path "$t")"
+		frag_dir=$(mktemp -d /tmp/pvtest_frag.XXXXXX)
+		tar xzf "$tarball_path" -C "$frag_dir" > /dev/null 2>&1
+		if [ $? -ne 0 ]; then
+			pvtest_log ERROR "failed to extract tarball: $tarball_path"
+			rm -rf "$frag_dir" "$setup_parent"
+			return 1
+		fi
+		pvtest_log DEBUG "pvr merge ${tarball_path##*/}"
+		( export HOME="$setup_parent"; cd "$setup_dir" && pvr merge "$frag_dir" > /dev/null 2>&1 )
+		if [ $? -ne 0 ]; then
+			pvtest_log ERROR "pvr merge failed for $tarball_path"
+			rm -rf "$frag_dir" "$setup_parent"
+			return 1
+		fi
+		rm -rf "$frag_dir"
+	done
+
+	pvtest_log DEBUG "pvr checkout && pvr commit"
+	( export HOME="$setup_parent"; cd "$setup_dir" && pvr checkout > /dev/null 2>&1 && pvr commit > /dev/null 2>&1 )
+	if [ $? -ne 0 ]; then
+		pvtest_log ERROR "pvr checkout/commit failed"
+		rm -rf "$setup_parent"
+		return 1
+	fi
+
+	if [ -n "$rev_name" ]; then
+		pvtest_log DEBUG "posting initial revision $rev_name [via pvr HTTP]"
+		( export HOME="$setup_parent"; cd "$setup_dir" && pvr post --rev "$rev_name" "http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr" > /dev/null 2>&1 )
+		if [ $? -ne 0 ]; then
+			pvtest_log ERROR "pvr post failed for $rev_name"
+			rm -rf "$setup_parent"
+			return 1
+		fi
+	else
+		local _prev_rev
+		_prev_rev=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantavisor.revision"] // empty')
+		pvtest_log DEBUG "posting revision (device-assigned name) [via pvr HTTP]"
+		( export HOME="$setup_parent"; cd "$setup_dir" && pvr post "http://${PVTEST_HOST:-localhost}:12368/cgi-bin/pvr" > /dev/null 2>&1 )
+		if [ $? -ne 0 ]; then
+			pvtest_log ERROR "pvr post failed"
+			rm -rf "$setup_parent"
+			return 1
+		fi
+		if ! wait_for_status "test \"\$(pvcontrol devmeta ls 2>/dev/null | jq -r '.[\"pantavisor.revision\"] // empty')\" != \"$_prev_rev\"" 0 30; then
+			pvtest_log ERROR "posted revision never became current"
+			rm -rf "$setup_parent"
+			return 1
+		fi
+		_pvr_rev=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantavisor.revision"] // empty')
+	fi
+
+	rm -rf "$setup_parent"
+	return 0
+}
+
+# ctrl: host<->tester channel, a dir bind-mounted at $PVTEST_CTRL. One key=value file per
+# slot, published by rename: req/slot<N> (slot=,cfg=[,storage=,rev=,seed=]) -> resp/slot<N>
+# (status=ready|down|failed|unsupported[,ae=,exec=,host=,log=]). Empty cfg = release.
+
+_slot_bind_file() { printf '/tmp/pvtest_bind.slot%s' "${1:-$PVTEST_SLOT}"; }
+
+# Ask host for slot $1 on config $2 via PVTEST_CTRL
+# $3=persistent storage; $4=revision name; $5=volatile seed
+# echoes target name
+# rc: 0 ready/released, 1 failed, 2 unsupported (no re-type mechanism)
+_retype_slot() {
+	local _slot="$1" _cfg="$2" _storage="${3:-}" _rev="${4:-}" _seed="${5:-}"
+	local _req _resp _waited _status _ae
+
+	# Make request to host at this slot
+	_req="$PVTEST_CTRL/req/slot${_slot}"
+	_resp="$PVTEST_CTRL/resp/slot${_slot}"
+	rm -f "$_resp"
+	{
+		printf 'slot=%s\ncfg=%s\n' "$_slot" "$_cfg"
+		[ -n "$_storage" ] && printf 'storage=%s\n' "$_storage"
+		[ -n "$_rev" ] && printf 'rev=%s\n' "$_rev"
+		[ -n "$_seed" ] && printf 'seed=%s\n' "$_seed"
+	} > "$PVTEST_CTRL/req/.tmp.slot${_slot}"
+	mv "$PVTEST_CTRL/req/.tmp.slot${_slot}" "$_req"
+
+	# Get reply from host with slot status
+	_waited=0
+	while [ ! -f "$_resp" ]; do
+		sleep 1
+		_waited=$((_waited + 1))
+		[ "$_waited" -gt 300 ] && return 1
+	done
+	_status=$(sed -n 's/^status=//p' "$_resp")
+	_ae=$(sed -n 's/^ae=//p' "$_resp")
+	if [ "$_status" = ready ]; then
+		sed -n '/^exec=/p; /^host=/p' "$_resp" > "$(_slot_bind_file "$_slot")"
+	else
+		rm -f "$(_slot_bind_file "$_slot")"
+	fi
+	rm -f "$_resp"
+	case "$_status" in
+		ready)       printf '%s' "$_ae"; return 0 ;;
+		down)        return 0 ;;
+		unsupported) return 2 ;;
+		*)           return 1 ;;
+	esac
+}
+
+# Bind PVTEST_EXEC/HOST/AE to slot device $1
+_slot_bind_ae() {
+	local _f _exec= _host=
+	_f=$(_slot_bind_file)
+	if [ -f "$_f" ]; then
+		_exec=$(sed -n 's/^exec=//p' "$_f")
+		_host=$(sed -n 's/^host=//p' "$_f")
+	fi
+	export PVTEST_EXEC="${_exec:-$_PVTEST_EXEC_ENV}"
+	export PVTEST_HOST="${_host:-$_PVTEST_HOST_ENV}"
+	export PVTEST_AE="$1"
+}
+
+# Bring the device slot retyped with rev $1 and test.json required env
+_setup_retype() {
+	local _rev="$1" _old="$PVTEST_AE" _new
+
+	pvtest_log INFO "re-typing slot ${PVTEST_SLOT} cfg=[$(pvtest_normalize_cfg "$required_env")]"
+	_new=$(_retype_slot "$PVTEST_SLOT" "$required_env" "w${PVTEST_SLOT}")
+	if [ -z "$_new" ]; then
+		pvtest_log ERROR "re-type failed"
+		export PVTEST_AE=""
+		return 1
+	fi
+
+	# Factory clone or export is identical across tests
+	mv "$(_ae_factory_dir "$_old")" "$(_ae_factory_dir "$_new")" 2>/dev/null
+	mv "$(_ae_factory_dir "$_old").home" "$(_ae_factory_dir "$_new").home" 2>/dev/null
+	mv "$(_ae_factory_dir "$_old").tgz" "$(_ae_factory_dir "$_new").tgz" 2>/dev/null
+
+	_slot_bind_ae "$_new"
+
+	# Re-target the new device log tail at current test log
+	if [ -n "$ae_tail_pid" ]; then
+		kill "$ae_tail_pid" 2>/dev/null
+		wait "$ae_tail_pid" 2>/dev/null || true
+		ae_log="$APPENGINE_LOGS/${_new}.log"
+		ae_tail_pid=""
+		if [ -f "$ae_log" ]; then
+			tail -n +1 -f "$ae_log" >> "$PVTEST_ACTIVE_TESTLOG" 2>/dev/null &
+			ae_tail_pid=$!
+		fi
+	fi
+
+	if ! wait_for_target_ready "re-type '$_new'" "$_rev" DONE; then
+		export PVTEST_AE=""
+		return 1
+	fi
+
+	# Refresh the stored conf snapshot for the newly loaded config
+	pvcontrol conf ls > "$(_ae_conf_file "$_new")" 2>/dev/null || true
+	return 0
+}
+
+_install_initial_rev() {
+	local rev="$1"
+
+	pvtest_log INFO "installing initial revision for $test_id..."
+
+	local factory_dir
+	factory_dir="$(_ae_factory_dir "$PVTEST_AE")"
+
+	if [ ! -d "$factory_dir" ]; then
+		pvtest_log ERROR "no factory clone for '$PVTEST_AE'"
+		return 1
+	fi
+
+	pvtest_log INFO "waiting for device to settle from previous test [via SSH]..."
+	wait_for_current_settled \
+		|| pvtest_log WARN "device did not fully settle before initial revision; continuing"
+
+	# Prefer pvtx and fallback on pvr when not available
+	if _have_pvtx; then
+		pvtest_log DEBUG "installing initial revision with pvtx"
+		_install_initial_pvtx "$rev" || return 1
+	elif command -v pvr > /dev/null 2>&1; then
+		pvtest_log INFO "pvtx not available on device; falling back to pvr HTTP-post"
+		_install_initial_pvr "$factory_dir" "$rev" || return 1
+	else
+		pvtest_log ERROR "cannot install initial revision: neither pvtx (on the device) nor pvr (on the tester) is available"
+		return 1
+	fi
+
+	wait_for_target_ready "initial revision" "$rev" "DONE|UPDATED" || return 1
+
+	local _st _res=0
+	_st=$(pvcontrol steps show-progress "$rev" 2>/dev/null | jq -r '.status' 2>/dev/null)
+	case "$PVTEST_RETYPE" in
+		container|hook)
+			_reqcfg_gate "$required_env"; _res=$?
+			;;
+		*)
+			# A mismatch that slipped past run_test_attempt SKIP gate directly aborts
+			pvcontrol conf ls > "$(_ae_conf_file "$PVTEST_AE")" 2>/dev/null || true
+			if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
+				pvtest_log ERROR "required config not satisfied and no re-type mechanism: $required_env"
+				return 1
+			fi
+			;;
+	esac
+	if [ "$_res" = 3 ]; then
+		# test.json config not met by device config, so we need to retype
+		_setup_retype "$rev" || return 1
+	elif [ "$_st" = "UPDATED" ] && [ "$commit_initial" = "false" ]; then
+		# nothing to do here if we are in initial revision and we don't care about UPDATED
+		pvtest_log DEBUG "initial revision left UPDATED (commit-initial=false)"
+	elif [ "$_st" = "UPDATED" ]; then
+		# we are in initial revision with UPDATED and test.json requires it to be DONE
+		pvtest_log INFO "initial revision needs a reboot to commit; rebooting..."
+		pv_ctrl cmd reboot "pvtest: committing initial revision for $test_id" || return 1
+		wait_for_down 30 || pvtest_log WARN "device did not confirm down after reboot; continuing"
+		wait_for_target_ready "commit reboot" "$rev" DONE || return 1
+	fi
+	return 0
+}
+
+setup_test() {
+	local rev
+	rev=$(_initial_rev_name "$test_id")
+
+	# Volatile factory revision should be already the test.json initial revision
+	if [ "$PVTEST_MODEL" = "volatile" ]; then
+		local _cur
+		_cur=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantavisor.revision"]' 2>/dev/null | tr -d '\r')
+		if [ "$_cur" != "$rev" ]; then
+			pvtest_log ERROR "expected to boot into initial revision $rev, found '${_cur:-<none>}'"
+			return 1
+		fi
+		pvtest_log INFO "booted into initial revision $rev for $test_id"
+
+		# Conf snapshot should also be good from boot
+		if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
+			pvtest_log ERROR "required config not satisfied: $required_env"
+			return 1
+		fi
+	else
+		_install_initial_rev "$rev" || return 1
+	fi
+
+	_dev_gc || true
+
+	handle_pre_remote_unclaim || return 1
+
+	# Go remote unless disabled by config so we support ALWAYS=0 test setups
+	local _cf
+	_cf="$(_ae_conf_file "$PVTEST_AE")"
+	if [ "$(_conf_value PV_CONTROL_REMOTE "$_cf")" = "0" ]; then
+		pvtest_log DEBUG "remote disabled by config; skipping go-remote"
+	elif [ "$(_conf_value PV_CONTROL_REMOTE_ALWAYS "$_cf")" = "1" ]; then
+		pvtest_log DEBUG "remote mode forced by config; skipping go-remote"
+	else
+		pv_ctrl cmd go-remote || true
+	fi
+
+	handle_self_claim || return 1
+
+	apply_usrmeta
+
+	pvtest_log INFO "done — installed initial revision $rev for $test_id"
+}
+
+teardown_test() {
+	# In volatile, the container dies with this test, so only the Hub side needs cleaning
+	if [ "$PVTEST_MODEL" = "volatile" ]; then
+		if [ -n "$claimed_device" ]; then
+			_dev_delete_only "$claimed_device"
+			claimed_device=
+		fi
+		return 0
+	fi
+
+	# Remove usrmeta applied for this test, locally and on the Hub
+	if [ -n "$applied_usrmeta_keys" ]; then
+		local device_id=""
+		if [ "$self_claim" = "true" ] && [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+			device_id=$(_dev_read_file /var/run/pantavisor/pv/device-id)
+		fi
+		local k
+		for k in $applied_usrmeta_keys; do
+			pvtest_log INFO "usrmeta delete $k"
+			pv_ctrl -q usrmeta delete "$k"
+			[ -n "$device_id" ] && _hub_usrmeta_delete "$device_id" "$k"
+		done
+		applied_usrmeta_keys=
 	fi
 }
 
 exec_test() {
+	pvtest_log INFO "executing test script for $test_id..."
+	if [ ! -f "$test_dir/$test_script" ]; then
+		pvtest_log ERROR "'$test_dir/$test_script' does not exist"
+		return 1
+	fi
+
+	local pvrhome=""
+	if [ -n "$PH_USER" ] && [ -n "$PH_PASS" ]; then
+		pvrhome="$(_ae_pvr_home)"
+		mkdir -p "$pvrhome" 2>/dev/null
+		HOME="$pvrhome" PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" \
+			pvr login > /dev/null 2>&1 \
+			|| pvtest_log WARN "pvr login failed for test script"
+	fi
+
 	tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
-	sed '5iexport PS4='"'"'[pvtest] $(date +%s) DEBUG -- [test-script]: '"'"'; set -x' "$test_path/$test_script" > "$tmp_script_path"
+	{
+		[ -n "$pvrhome" ] && printf 'export HOME=%s\n' "$pvrhome"
+		echo ". /usr/share/pantavisor/pvtest/utils"
+		cat "$test_dir/$test_script"
+	} > "$tmp_script_path"
 	chmod +x "$tmp_script_path"
 
+	# We only use stdout to compare with golden output, so we separate stderr
+	# but keep it for logging
 	tmp_out_path=$(mktemp /tmp/pv_appengine_output.XXXXXX)
-	# we use script to get stdout and stderr in the same order we do in console
-	# tee shows output in real-time while saving it for later comparison
-	script -q -c "bash -c \"$tmp_script_path\"" | tee $tmp_out_path
+	tmp_err_path=$(mktemp /tmp/pv_appengine_stderr.XXXXXX)
+	mkdir -p "$run_dir/$test_id"
+	local _live=/dev/null
+	[ "$verbose" = "true" ] && _live=/dev/stdout
+	# Test script execution itself with a timeout to kill hanged tests after 10 minutes
+	timeout -k 10 --foreground "${PVTEST_TEST_TIMEOUT:-600}" \
+		script -q -c "bash -c \"$tmp_script_path\" 2> \"$tmp_err_path\"" \
+		| tee "$tmp_out_path" \
+		| tee -a "$run_dir/$test_id/test.log" > "$_live"
+	local _script_rc=${PIPESTATUS[0]}
+
+	[ -s "$tmp_err_path" ] && cat "$tmp_err_path" >> "$run_dir/$test_id/test.log"
+
+	if [ "$_script_rc" = 124 ] || [ "$_script_rc" = 137 ]; then
+		pvtest_log ERROR "test script for $test_id timed out after ${PVTEST_TEST_TIMEOUT:-600}s (killed)"
+	fi
 	pvtest_log INFO "test script complete"
 
 	if [ "$overwrite" = "true" ]; then
 		pvtest_log INFO "overwriting expected output"
-		cat $tmp_out_path > $test_path/output
+		cat "$tmp_out_path" > "$test_dir/output"
 	fi
 	rm -f "$tmp_script_path"
 }
 
 eval_test() {
-	if [ "$overwrite" != "true" ]; then
-		diff <(grep -vE '^(\+|\$|\[+pvtest\] [0-9]+ DEBUG -- \[test-script\]:)' $test_path/output) <(grep -vE '^(\+|\$|\[+pvtest\] [0-9]+ DEBUG -- \[test-script\]:)' "$tmp_out_path") | tee /var/pantavisor/storage/diff
-		if [ "${PIPESTATUS[0]}" -ne 0 ]; then
-			stop_pv
-			exit 1
-		fi
-		rm -f "$tmp_script_path"
+	if [ "$overwrite" = "true" ]; then
+		rm -f "$tmp_err_path"
+		return 0
 	fi
+
+	local diff_out
+	# Pass/fail is decided on stdout alone
+	diff_out=$(diff "$test_dir/output" "$tmp_out_path")
+	local rc=$?
+	if [ $rc -ne 0 ]; then
+		# For display and logging, diff against stdout+stderr
+		local _display_path="$tmp_out_path"
+		if [ -s "$tmp_err_path" ]; then
+			_display_path=$(mktemp /tmp/pv_appengine_combined.XXXXXX)
+			cat "$tmp_out_path" "$tmp_err_path" > "$_display_path"
+			diff_out=$(diff "$test_dir/output" "$_display_path")
+		fi
+		echo "--- diff: $test_id ---"
+		echo "$diff_out"
+		echo "--- end diff ---"
+		if [ -n "$run_dir" ]; then
+			mkdir -p "$run_dir/$test_id"
+			echo "$diff_out" > "$run_dir/$test_id/diff"
+		fi
+		[ "$_display_path" != "$tmp_out_path" ] && rm -f "$_display_path"
+	fi
+	rm -f "$tmp_out_path" "$tmp_err_path"
+	return $rc
+}
+
+parse_test() {
+	local j="$test_dir/test.json"
+	if [ ! -e "$j" ]; then
+		pvtest_log ERROR "'$j' not found"
+		return 1
+	fi
+
+	required_env=$(jq -r '.setup.config.env // ""' "$j")
+	usrmeta=$(jq -r '.setup.config.usrmeta // ""' "$j")
+	tarballs=$(jq -r '.setup.containers.tarballs[]? // empty' "$j")
+	commit_initial=$(jq -r '.setup."commit-initial" // "true"' "$j")
+	self_claim=$(jq -r '.setup."self-claim"' "$j")
+	test_script=$(jq -r '."test-script"' "$j")
+	return 0
+}
+
+# Runs one test
+# rc: 0 pass, 1 fail-abort, 2 skip
+run_test_attempt() {
+	local json_path="$1"
+	test_dir=$(dirname "$json_path")
+	test_id=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
+
+	# Device log path
+	local ae_log="" ae_log_start=0
+	if [ -n "$PVTEST_AE" ] && [ -n "$APPENGINE_LOGS" ]; then
+		ae_log="$APPENGINE_LOGS/${PVTEST_AE}.log"
+		[ -f "$ae_log" ] && ae_log_start=$(wc -l < "$ae_log")
+	fi
+
+	if ! parse_test; then
+		echo "=== TEST: $test_id ERROR (parse failed) ==="
+		return 1
+	fi
+
+	# Explicit skip from test.json
+	local _skip
+	_skip=$(jq -r '.skip' "$json_path")
+	if [ "$_skip" = "true" ]; then
+		pvtest_log INFO "'$test_id' SKIPPED (test.json skip:true)"
+		return 2
+	fi
+
+	# Device filtering done at the test.json level
+	if [ -n "$PVTEST_DEVICE_TYPE" ]; then
+		local _devs
+		_devs=$(jq -r 'if (.devices // []) == [] then "" else (.devices | join(" ")) end' "$json_path")
+		if [ -n "$_devs" ]; then
+			case " $_devs " in
+				*" $PVTEST_DEVICE_TYPE "*) ;;
+				*)
+					pvtest_log INFO "'$test_id' SKIPPED (target type $PVTEST_DEVICE_TYPE not in: $_devs)"
+					return 2
+					;;
+			esac
+		fi
+	fi
+
+	# Target with no re-type mechanism and unmet test.json env config results in test skip
+	if [ "$PVTEST_RETYPE" = "none" ] && [ -n "$required_env" ]; then
+		if ! _reqcfg_satisfied "$required_env" "$(_ae_conf_file "$PVTEST_AE")"; then
+			pvtest_log INFO "'$test_id' SKIPPED (required-config not satisfied by target and no re-type mechanism: $required_env)"
+			return 2
+		fi
+	fi
+
+	# Preemptive creds check if required by test.json
+	if [ "$self_claim" = "true" ] && { [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; }; then
+		pvtest_log ERROR "PH_USER/PH_PASS not set but required by self-claim test(s)"
+		pvtest_log INFO "'$test_id' SKIPPED (PH_USER/PH_PASS not set)"
+		return 2
+	fi
+
+	# Per-test log path
+	mkdir -p "$run_dir/$test_id"
+	local PVTEST_ACTIVE_TESTLOG="$run_dir/$test_id/test.log"
+
+	# Follow the device log into test.log for the whole test window (setup to teardown)
+	local ae_tail_pid=""
+	if [ -n "$ae_log" ] && [ -f "$ae_log" ]; then
+		tail -n "+$((ae_log_start + 1))" -f "$ae_log" >> "$PVTEST_ACTIVE_TESTLOG" 2>/dev/null &
+		ae_tail_pid=$!
+	fi
+
+	pvtest_log INFO "'$test_id' START"
+	local _test_start
+	_test_start=$(date +%s)
+
+	# The real thing -> setup -> exec -> eval
+	local _outcome test_result=0
+	if ! setup_test; then
+		_outcome=ABORTED
+	elif ! exec_test; then
+		_outcome=ABORTED
+	else
+		eval_test
+		test_result=$?
+		if [ "$overwrite" = "true" ]; then
+			_outcome=RECORDED
+		elif [ $test_result -eq 0 ]; then
+			_outcome=PASSED
+		else
+			_outcome=FAILED
+		fi
+	fi
+
+	teardown_test
+	local _test_runtime=$(( $(date +%s) - _test_start ))
+	[ -n "$ae_tail_pid" ] && { kill "$ae_tail_pid" 2>/dev/null; wait "$ae_tail_pid" 2>/dev/null || true; }
+
+	case "$_outcome" in
+	RECORDED) pvtest_log INFO  "'$test_id' RECORDED ($_test_runtime s)"; return 0 ;;
+	PASSED)   pvtest_log INFO  "'$test_id' PASSED ($_test_runtime s)";   return 0 ;;
+	ABORTED)  pvtest_log ERROR "'$test_id' ABORTED ($_test_runtime s)";  return 1 ;;
+	*)        pvtest_log ERROR "'$test_id' FAILED ($_test_runtime s)";   return 1 ;;
+	esac
+}
+
+# Print ABORTED plus reason $1 for each test path in $@
+_slot_abort_tests() {
+	local _reason="$1" _j _tid
+	shift
+	for _j in "$@"; do
+		_tid=$(echo "$_j" | sed 's|^/work/||; s|/test\.json$||')
+		pvtest_log ERROR "'${_tid}' ABORTED (${_reason})"
+	done
+}
+
+# Attach and retype slot $1 to config $2, echo device name
+_slot_attach() {
+	local _slot="$1" _cfg="$2" _ae _rc
+	_ae=$(_retype_slot "$_slot" "$_cfg" "${3:-}" "${4:-}" "${5:-}"); _rc=$?
+	# 'unsupported' is not a failure for now, we return its existing name
+	[ "$_rc" = 2 ] && _ae="$PVTEST_DEVICE_NAME"
+	printf '%s' "$_ae"
+	[ -n "$_ae" ]
 }
 
 
-test_path=${1:-$TEST_PATH}
-interactive=${2-$INTERACTIVE}
-manual=${3:-$MANUAL}
-overwrite=${4:-$OVERWRITE}
-verbose=${5:-$VERBOSE}
-netsim=${6:-$NETSIM}
-daemon=${7:-$DAEMON}
-valgrind=${8:-$VALGRIND}
+# Pop the next "<rank>\t<cfg>\t<jsonpath>" line added at run_slot_pool from the shared queue
+# Empty when drained
+_queue_pick() {
+	local _pool="$1"
+	(
+		flock -x 9
+		[ -s "$_pool/queue" ] || exit 0
+		head -n1 "$_pool/queue"
+		tail -n +2 "$_pool/queue" > "$_pool/queue.tmp" && mv "$_pool/queue.tmp" "$_pool/queue"
+	) 9>"$_pool/lock"
+}
 
-if [ -z "$test_path" ] || [ -z "$interactive" ] || [ -z "$manual" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$netsim" ]; then
+# Persistent model:
+#  * designed to emulate real devices and avoid full flashing between tests
+#  * one flat queue sorted so claim tests come first
+#  * N slots and one test per slot until test finishes and slot is freed
+#  * one claim per slot
+#  * one storage per slot
+#  * several retypes (reboot with new env) per slot
+persistent_worker() {
+	local _slot="$1" _pool="$2" _failed="$3"
+	local _ae="" _line _newcfg _json _rc _state
+
+	export PVTEST_SLOT="$_slot"
+
+	while : ; do
+		# Get a new test to run
+		_line=$(_queue_pick "$_pool")
+		[ -n "$_line" ] || break
+		_newcfg=$(printf '%s' "$_line" | cut -f2)
+		_json=$(printf '%s' "$_line" | cut -f3)
+
+		# Attach worker to test (might need retype)
+		if [ -z "$_ae" ]; then
+			_ae=$(_slot_attach "$_slot" "$_newcfg" "w${_slot}")
+			if [ -z "$_ae" ]; then
+				_slot_abort_tests "re-type failed" "$_json"; touch "$_failed"; continue
+			fi
+			_slot_bind_ae "$_ae"
+			if ! init_device "$_ae"; then
+				pvtest_log ERROR "init failed"
+				_slot_abort_tests "device init failed" "$_json"; touch "$_failed"
+				_ae=""; continue
+			fi
+			pvtest_log INFO "[slot $_slot] SLOT_ATTACH ae=$_ae storage=w${_slot} cfg=[$_newcfg]"
+		fi
+
+		_slot_bind_ae "$_ae"
+		run_test_attempt "$_json"; _rc=$?
+		_ae="$PVTEST_AE"
+		{ [ "$_rc" -ne 0 ] && [ "$_rc" -ne 2 ]; } && touch "$_failed"
+	done
+
+	# After testing detach 
+	if [ -n "$_ae" ]; then
+		_slot_bind_ae "$_ae"
+		_state=$(pvcontrol devmeta ls 2>/dev/null | jq -r '.["pantahub.state"] // empty')
+		if [ "$_state" = "idle" ]; then
+			_dev_unclaim
+		else
+			_dev_delete_only
+		fi
+
+		# End-of-run courtesy reset
+		if [ "$PVTEST_RETYPE" != "container" ]; then
+			_settle_to_factory || pvtest_log WARN "final factory reset failed"
+		fi
+
+		pvtest_log INFO "[slot $_slot] SLOT_DETACH ae=$_ae"
+		if [ "$PVTEST_RETYPE" = "container" ]; then
+			pv_ctrl cmd poweroff "pvtest: worker done" > /dev/null 2>&1 || true
+			_retype_slot "$_slot" "" > /dev/null 2>&1 || true
+		fi
+	fi
+}
+
+# Volatile model:
+#  * designed for time efficiency
+#  * one flat queue sorted alphabetically
+#  * N slots and one test per slot until test finishes and slot is freed
+#  * one claim per test
+#  * one storage per test
+#  * one new container instance per test
+#  * only compatible with appengine
+#  * initial revision already seeded at first boot
+volatile_worker() {
+	local _slot="$1" _pool="$2" _failed="$3"
+	local _line _cfg _json _tid _rev _ae _rc
+	local _seed="$PVTEST_CTRL/seed/slot${_slot}"
+
+	export PVTEST_SLOT="$_slot"
+
+	while : ; do
+		# Get a new test to run
+		_line=$(_queue_pick "$_pool")
+		[ -n "$_line" ] || break
+		_cfg=$(printf '%s' "$_line" | cut -f2)
+		_json=$(printf '%s' "$_line" | cut -f3)
+		_tid=$(echo "$_json" | sed 's|^/work/||; s|/test\.json$||')
+		_rev=$(_initial_rev_name "$_tid")
+
+		# Prepare tarballs for first boot
+		if ! _stage_seed "$_json" "$_seed"; then
+			_slot_abort_tests "could not stage container tarballs" "$_json"
+			touch "$_failed"; continue
+		fi
+
+		# Storage keyed by test id, so a workspace keeps one storage dir per test
+		_ae=$(_slot_attach "$_slot" "$_cfg" "$_tid" "$_rev" "slot${_slot}")
+		if [ -z "$_ae" ]; then
+			_slot_abort_tests "appengine boot failed" "$_json"
+			touch "$_failed"; continue
+		fi
+
+		_slot_bind_ae "$_ae"
+		if ! init_device "$_ae"; then
+			pvtest_log ERROR "init failed"
+			_slot_abort_tests "device init failed" "$_json"; touch "$_failed"
+		else
+			pvtest_log INFO "[slot $_slot] SLOT_ATTACH ae=$_ae rev=$_rev cfg=[$_cfg]"
+			run_test_attempt "$_json"; _rc=$?
+			{ [ "$_rc" -ne 0 ] && [ "$_rc" -ne 2 ]; } && touch "$_failed"
+		fi
+
+		# Drop the target leniently for Valgrind
+		pvtest_log INFO "[slot $_slot] SLOT_DETACH ae=$_ae"
+		pv_ctrl cmd poweroff "pvtest: volatile test done" > /dev/null 2>&1 || true
+		_retype_slot "$_slot" "" > /dev/null 2>&1 || true
+		rm -rf "$_seed"
+	done
+}
+
+# The scheduler for every model and every kind of target
+# Build one flat queue, fan it out across PVTEST_SLOTS workers
+# Collect a single pass/fail for all tests
+run_slot_pool() {
+	local _slots="${PVTEST_SLOTS:-1}"
+	local _pool _failed _j _req _sc _rank _pids _w
+	_pool=$(mktemp -d /tmp/pvtest_slotpool.XXXXXX)
+
+	# One line per test: "<rank>\t<cfg>\t<jsonpath>"
+	# rank 0=self-claim
+	for _j in $test_json_list; do
+		_req=$(pvtest_normalize_cfg "$(jq -r '.setup.config.env // ""' "$_j")")
+		_sc=$(jq -r '.setup."self-claim" // "false"' "$_j")
+		_rank=1
+		case " $_req " in
+			*" PV_CONTROL_REMOTE=1 "*) [ "$_sc" = "true" ] && _rank=0 ;;
+		esac
+		printf '%s\t%s\t%s\n' "$_rank" "$_req" "$_j"
+	done > "$_pool/queue.raw"
+
+	if [ "$PVTEST_MODEL" = "volatile" ]; then
+		# Keep alphabetical order
+		mv "$_pool/queue.raw" "$_pool/queue"
+	else
+		# Sort by rank/config/path so claims batch and re-types are rare
+		sort -t "$(printf '\t')" -k1,1 -k2,2 -k3,3 "$_pool/queue.raw" > "$_pool/queue"
+		rm -f "$_pool/queue.raw"
+	fi
+
+	pvtest_log INFO "=== ${PVTEST_MODEL} pool: $(wc -l < "$_pool/queue") test(s) across up to ${_slots} worker(s) ==="
+
+	_failed=$(mktemp); rm -f "$_failed"
+
+	_pids=""; _w=0
+	while [ "$_w" -lt "$_slots" ]; do
+		if [ "$PVTEST_MODEL" = "volatile" ]; then
+			volatile_worker "$_w" "$_pool" "$_failed" &
+		else
+			persistent_worker "$_w" "$_pool" "$_failed" &
+		fi
+		_pids="${_pids:+$_pids }$!"
+		_w=$((_w + 1))
+	done
+	[ -n "$_pids" ] && wait $_pids
+
+	rm -rf "$_pool"
+	if [ -f "$_failed" ]; then rm -f "$_failed"; return 1; fi
+	return 0
+}
+
+
+if [ "$1" = "-v" ] || [ "$1" = "--verbose" ]; then
+	VERBOSE=true
+	shift
+fi
+
+test_selector=${TEST_PATH:-$1}
+interactive=${INTERACTIVE:-$2}
+overwrite=${OVERWRITE:-$3}
+verbose=${VERBOSE:-$4}
+netsim=${NETSIM:-$5}
+run_dir=${RUN_DIR:-/work/run}
+PVTEST_MODEL="${PVTEST_MODEL:-persistent}"
+case "$PVTEST_MODEL" in
+	persistent|volatile) ;;
+	*)
+		pvtest_log ERROR "unknown PVTEST_MODEL '$PVTEST_MODEL'"
+		exit 1
+		;;
+esac
+
+if [ -z "$interactive" ] || [ -z "$overwrite" ] || [ -z "$verbose" ] || [ -z "$netsim" ]; then
 	pvtest_log ERROR "missing arguments / envs"
 	usage
+	exit 1
 fi
 if [ "$verbose" = "true" ]; then set -x; fi
 
-description=
-cmdline=
-pantavisor_config=
-pvs=
-control_container=
+required_env=
+usrmeta=
 tarballs=
-ready_script=
+commit_initial=
 self_claim=
+claimed_device=
+applied_usrmeta_keys=
 test_script=
+test_dir=
+test_id=
+tmp_out_path=
+tmp_err_path=
 
-parse_test
+# drop /work/ prefix for human-readable test name label
+_run_scope=${test_selector#/work/}
+_run_scope=${_run_scope%/}
+pvtest_log INFO "starting test run: ${_run_scope:-all}"
 
-if [ "$self_claim" = "true" ]; then
-	if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
-		pvtest_log ERROR "you need to set PH_USER and PH_PASS to execute the test"
-		exit 1
-	fi
-fi
+wait_for_netsim
 
-pvtest_log INFO "setting up test: $test_path"
-initial_setup
-
-if [ "$manual" = "false" ]; then
-	start_pv
-fi
-
+# interactive mode: PVTEST_EXEC/PVTEST_HOST already point at the one target test.docker.sh set up
 if [ "$interactive" = "true" ]; then
-	exec_interactive
+	run_interactive
+	# No poweroff for real devices
+	if [ "$PVTEST_RETYPE" = "container" ]; then
+		pvtest_log DEBUG "requesting pantavisor shutdown"
+		pv_ctrl cmd poweroff "pvtest: console exit"
+	fi
+	exit 0
 fi
 
-if [ "$daemon" = "true" ]; then
-	sleep 100000
-elif [ "$interactive" = "false" ]; then
-	pvtest_log INFO "running test script"
-	exec_test
+# slot-pool mode: flat PVTEST_QUEUE dispatched across PVTEST_SLOTS via PVTEST_CTRL
+if [ -n "$PVTEST_QUEUE" ] && [ -n "$PVTEST_CTRL" ]; then
+	test_json_list="$PVTEST_QUEUE"
+	run_slot_pool
+	exit $?
 fi
-stop_pv
 
-if [ "$interactive" = "false" ]; then
-	eval_test
-fi
+pvtest_log ERROR "need PVTEST_QUEUE with PVTEST_CTRL"
+usage
+exit 1

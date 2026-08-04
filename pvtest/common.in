@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# Helpers shared by the two halves of the pvtest framework (host and tester container)
+# Only context-free helpers belong here
+
+# [<tag>] <epoch> <LEVEL> -- [<source>]: <msg>
+pvtest_log() {
+	local level=$1; shift
+	local line
+	line=$(printf '[%s] %s %s -- [%s]: %s' \
+		"${PVTEST_LOG_TAG:-${PVTEST_AE:-${PVTEST_TESTER_NAME:-${PVTEST_LOG_HOST:-pvtest}}}}" \
+		"$(date +%s)" "$level" "${PVTEST_LOG_SOURCE:-pvtest}" "$*")
+	printf '%s\n' "$line"
+	# When a test is active, mirror the message into its per-test test.log
+	[ -n "$PVTEST_ACTIVE_TESTLOG" ] && printf '%s\n' "$line" >> "$PVTEST_ACTIVE_TESTLOG" 2>/dev/null
+	return 0
+}
+
+# Wait for a cmd exit status code
+wait_for_status() {
+	local cmd="$1"
+	local status="$2"
+	local timeout="$3"
+
+	local counter=0
+	while [ $counter -lt $timeout ]; do
+		cmd_status=0
+		eval "$cmd" || cmd_status=$?
+		if [ "$cmd_status" = "$status" ]; then
+			return 0
+		else
+			sleep 1
+			counter=$((counter+1))
+		fi
+	done
+	return 1
+}
+
+# SSH invocation to reach a pantavisor target's dropbear-pv
+pvtest_ssh_cmd() {
+	printf 'ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=3 -o ServerAliveCountMax=2 -i %s -p %s _pv_@%s' \
+		"${2:-/tmp/pvtest_id}" "${PVTEST_SSH_PORT:-8222}" "$1"
+}
+
+# Normalized signature for a test's config.env (drop empties, sort, join with single spaces)
+pvtest_normalize_cfg() {
+	printf '%s\n' $1 | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ *$//'
+}
