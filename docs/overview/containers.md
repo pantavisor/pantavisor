@@ -74,6 +74,12 @@ If groups are not [explicitly configured](../reference/pantavisor-state-format-v
 | platform | STARTED | system | middleware and utility containers |
 | app | STARTED | container | application level containers |
 
+**Note:** this "platform" is a default group *name*, unrelated to the other
+two senses of the word elsewhere in these docs — a `kas/platforms/*.yaml`
+SoC/board family in meta-pantavisor's build system, or a Docker `platform`
+architecture string (e.g. `linux/arm64`) in an image config. Same word,
+three unrelated meanings depending on where you see it.
+
 When using the default groups and if a container is not linked to a group, it will be automatically set to _platform_, except if it is the first container in alphabetical order and no other container has been set to _root_, in which case it will be set to _root_. If not using the default groups and if a container is not linked to a group, the [revision](revisions.md) will [fail](updates.md#error).
 
 ## Roles

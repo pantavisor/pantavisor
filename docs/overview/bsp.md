@@ -19,6 +19,30 @@ It is important to remark that the binary file has to be under cpio.xz4 compress
 
 The Linux Kernel, modules and firmware are also part of the revision BSP of the state JSON.
 
+### Kernel requirements
+
+Porting to a board with an existing, booting kernel doesn't guarantee it can
+run Pantavisor's [container](containers.md) and
+[storage](storage.md) layers. At minimum the kernel config needs:
+
+- **Namespaces and cgroups** (`CONFIG_NAMESPACES`, `CONFIG_CGROUPS`, plus the
+  `CONFIG_CGROUP_*`/`CONFIG_MEMCG`/`CONFIG_CPUSETS` subsystems) — required by
+  [LXC](../../meta-pantavisor/overview/glossary.md#lxc) for container
+  isolation.
+- **`CONFIG_OVERLAY_FS`** — used for the container config-overlay mechanism
+  (see [Containers](containers.md)).
+- **`CONFIG_SQUASHFS`** (plus `CONFIG_SQUASHFS_LZ4`/`CONFIG_SQUASHFS_ZSTD` if
+  using those compressors) — every container rootfs is a squashfs image.
+- **Device-mapper** (`CONFIG_DM_CRYPT`, `CONFIG_DM_VERITY`) — only if you use
+  the `dm-crypt`/`dm-verity`
+  [`PANTAVISOR_FEATURES`](../../meta-pantavisor/overview/meta-pantavisor.md#pantavisor_features),
+  which are on by default in `meta-pantavisor`'s standard configuration.
+
+Check what your kernel already has with `zcat /proc/config.gz | grep -E
+'NAMESPACES|CGROUP|OVERLAY_FS|SQUASHFS|DM_CRYPT|DM_VERITY'` on a board
+that's already booting a similar kernel version, since exact defaults vary
+by kernel version and vendor BSP.
+
 ### Managed Drivers
 
 Pantavisor offers a [declarative way](../reference/pantavisor-state-format-v2.md#3-drivers-bspdriversjson) to define a list of drivers at BSP level, each driver being just a set of Kernel modules. Parameters for Kernel loading are supported too by mapping drivers to [device or user metadata](storage.md#metadata).
