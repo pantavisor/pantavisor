@@ -7,7 +7,7 @@ This page is for explaining cloud-oriented ways of controlling your Pantavisor d
 
 ## Pantacor Hub
 
-[Pantacor Hub](https://hub.pantacor.com) is our remote device state management system.
+[Pantacor Hub](https://hub.pantacor.com) is our remote device state management system. It's optional — Pantavisor updates fully standalone over the local network without it. Pantahub is also open source and self-hostable; see [Project, licensing, and governance](/meta-pantavisor/getting-started/licensing) for the license split and what's commercial vs. open.
 
 To interact with Pantacor Hub, you can either use the [web user interface](https://hub.pantacor.com), the [API](https://github.com/pantacor/pantahub-base) or the [pvr CLI tool](https://github.com/pantacor/pvr).
 
