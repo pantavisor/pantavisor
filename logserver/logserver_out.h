@@ -51,16 +51,8 @@ struct logserver_data {
 	int len;
 };
 
-typedef enum {
-	LOG_PROTOCOL_LEGACY = 0,
-	LOG_PROTOCOL_UNKNOWN,
-	LOG_PROTOCOL_RFC5424,
-	LOG_PROTOCOL_RFC3164,
-	LOG_PROTOCOL_CMD = 256
-} log_protocol_code_t;
-
 struct logserver_log {
-	log_protocol_code_t code;
+	int code;
 	int lvl;
 	uint64_t tsec;
 	uint32_t tnano;

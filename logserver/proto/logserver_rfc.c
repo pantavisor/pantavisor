@@ -32,26 +32,6 @@
 #include <unistd.h>
 
 #define LOGSERVER_RFC_SOCKET "/dev/log"
-#define LOGSERVER_RFC_PV "_pv_"
-#define LOGSERVER_RFC_MAIN_PLAT "pantavisor"
-#define LOGSERVER_RFC_UNK_PLAT "unknown-platform"
-
-static void logserver_rfc_set_platform_name(const char *cgroup, char *name)
-{
-	if (!cgroup) {
-		memccpy(name, LOGSERVER_RFC_UNK_PLAT, 0,
-			strlen(LOGSERVER_RFC_UNK_PLAT) + 1);
-		return;
-	}
-
-	if (!strncmp(cgroup, LOGSERVER_RFC_PV, strlen(LOGSERVER_RFC_PV))) {
-		memccpy(name, LOGSERVER_RFC_MAIN_PLAT, 0,
-			strlen(LOGSERVER_RFC_MAIN_PLAT) + 1);
-		return;
-	}
-	memccpy(name, cgroup, 0, LOGSERVER_PLAT_MAX_LEN);
-	name[LOGSERVER_PLAT_MAX_LEN - 1] = '\0';
-}
 
 int logserver_rfc_level_to_pv(int prival)
 {
@@ -147,9 +127,9 @@ int logserver_rfc_create_socket(const char *cur_sock)
 	return symlink(cur_sock, LOGSERVER_RFC_SOCKET);
 }
 
-log_protocol_code_t logserver_rfc_get_type(const char *buf)
+log_protocol_code_t logserver_rfc_check_type(const char *buf)
 {
-	if (buf[0] != '<')
+	if (!buf || !buf[0] || buf[0] != '<')
 		return LOG_PROTOCOL_UNKNOWN;
 
 	int i = 1;
@@ -171,7 +151,8 @@ int logserver_rfc_to_log(struct logserver_rfc *rfc, const char *cgroup,
 	if (!rfc || !log)
 		return -1;
 
-	logserver_rfc_set_platform_name(cgroup, log->plat);
+	if (logserver_proto_set_platform_name(cgroup, log->plat) != 0)
+		return -1;
 
 	log->code = rfc->code;
 	log->lvl = logserver_rfc_level_to_pv(rfc->prival);

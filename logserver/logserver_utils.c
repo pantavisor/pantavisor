@@ -26,6 +26,7 @@
 
 #include "logserver_utils.h"
 #include "logserver_timestamp.h"
+#include "proto/logserver_proto.h"
 #include "config.h"
 #include "utils/fs.h"
 #include "log.h"
@@ -35,7 +36,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
-#include <inttypes.h>
 #include <fcntl.h>
 #include <glob.h>
 #include <sys/stat.h>
@@ -211,8 +211,7 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 	else
 		strcpy(tmpl, "[%s] %.*s");
 
-	if (log->code == LOG_PROTOCOL_RFC3164 ||
-	    log->code == LOG_PROTOCOL_RFC5424)
+	if (log->code != LOG_PROTOCOL_LEGACY)
 		strcat(tmpl, "\n");
 
 	if (!ts_fmt)

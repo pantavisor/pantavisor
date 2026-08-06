@@ -71,6 +71,7 @@ void __log(char *module, int level, const char *fmt, ...);
  * Don't free the return value!
  */
 const char *pv_log_level_name(int level);
+int pv_log_level_value(const char *name);
 
 void pv_log_umount(void);
 

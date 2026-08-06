@@ -20,21 +20,13 @@
  * SOFTWARE.
  */
 
-#ifndef LOGSERVER_BINARY_H
-#define LOGSERVER_BINARY_H
+#ifndef LOGSERVER_JSON_H
+#define LOGSERVER_JSON_H
 
 #include "logserver_proto.h"
 
-#include <stdbool.h>
-
-struct logserver_msg {
-	log_protocol_code_t code;
-	int len;
-	char buf[0];
-};
-
-log_protocol_code_t logserver_bin_check_type(const char *buf);
-int logserver_bin_to_log(struct logserver_log_data *data,
-			 struct logserver_log *log);
+log_protocol_code_t logserver_json_check_type(const char *buf);
+int logserver_json_to_log(struct logserver_log_data *data,
+			  struct logserver_log *log);
 
 #endif

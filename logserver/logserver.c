@@ -35,8 +35,9 @@
 #include <stdarg.h>
 #include <fcntl.h>
 
-#include "proto/logserver_rfc.h"
 #include "proto/logserver_binary.h"
+#include "proto/logserver_rfc.h"
+#include "proto/logserver_proto.h"
 #include "logserver_rotation.h"
 #include "logserver_out.h"
 #include "logserver_utils.h"
@@ -386,35 +387,26 @@ static struct buffer *logserver_get_log_data(int fd)
 
 static int logserver_handle_msg(int fd)
 {
-	struct logserver_log log;
 	int ret = -1;
 
 	struct buffer *buffer = logserver_get_log_data(fd);
 	if (!buffer)
 		goto out;
 
-	log_protocol_code_t type = logserver_rfc_get_type(buffer->buf);
-
-	char *run = logserver.running_rev;
-	char *upd = logserver.updated_rev;
-
 	struct logserver_conninfo *ci = logserver_conninfo_search(fd);
-	char *cgroup = NULL;
 
 	if (!ci)
 		pv_log(DEBUG, "couldn't found current fd information");
-	else
-		cgroup = ci->cgroup;
 
-	if (type == LOG_PROTOCOL_RFC5424)
-		ret = logserver_rfc5424_to_log(buffer->buf, cgroup, run, upd,
-					       &log);
-	else if (type == LOG_PROTOCOL_RFC3164)
-		ret = logserver_rfc3164_to_log(buffer->buf, cgroup, run, upd,
-					       &log);
-	else
-		ret = logserver_bin_to_log(buffer->buf, run, upd, &log);
+	struct logserver_log_data data = {
+		.rev = logserver.running_rev,
+		.upd = logserver.updated_rev,
+		.cgroup = ci->cgroup,
+		.buf = buffer->buf,
+	};
 
+	struct logserver_log log = { 0 };
+	ret = logserver_proto_to_log(&data, &log);
 	if (ret != 0) {
 		pv_log(WARN, "logserver message could not be handled");
 		goto out;
@@ -424,6 +416,7 @@ static int logserver_handle_msg(int fd)
 	case LOG_PROTOCOL_LEGACY:
 	case LOG_PROTOCOL_RFC5424:
 	case LOG_PROTOCOL_RFC3164:
+	case LOG_PROTOCOL_JSON:
 		ret = logserver_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:
