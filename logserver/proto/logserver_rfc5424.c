@@ -116,12 +116,16 @@ static int logserver_rfc5424_parse(char *buf, struct logserver_rfc *rfc)
 	return 0;
 }
 
-int logserver_rfc5424_to_log(char *buf, const char *cgroup, const char *rev,
-			     const char *upd_rev, struct logserver_log *log)
+int logserver_rfc5424_to_log(struct logserver_log_data *data,
+			     struct logserver_log *log)
 {
-	struct logserver_rfc rfc = { .code = logserver_rfc_get_type(buf) };
-	if (logserver_rfc5424_parse(buf, &rfc) != 0)
+	struct logserver_rfc rfc = {
+		.code = logserver_rfc_check_type(data->buf),
+	};
+
+	if (logserver_rfc5424_parse(data->buf, &rfc) != 0)
 		return -1;
 
-	return logserver_rfc_to_log(&rfc, cgroup, rev, upd_rev, log);
+	return logserver_rfc_to_log(&rfc, data->cgroup, data->rev, data->upd,
+				    log);
 }

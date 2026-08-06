@@ -157,28 +157,42 @@ int pv_json_get_value_int(const char *buf, const char *key, jsmntok_t *tok,
 	return val;
 }
 
+const char *pv_json_get_value_ref(const char *buf, const char *key,
+                                 jsmntok_t *tok, int tokc, int *len)
+{
+      int i;
+      int t = -1;
+
+      for (i = 0; i < tokc; i++) {
+              int n = tok[i].end - tok[i].start;
+              int m = strlen(key);
+              if (n == m && tok[i].type == JSMN_STRING &&
+                  !strncmp(buf + tok[i].start, key, n)) {
+                      t = 1;
+              } else if (t == 1) {
+                      *len = n;
+                      return buf + tok[i].start;
+              }
+      }
+
+      *len = 0;
+      return NULL;
+}
+
 char *pv_json_get_value(const char *buf, const char *key, jsmntok_t *tok,
 			int tokc)
 {
-	int i;
-	int t = -1;
+	int len = 0;
+	const char *ref = pv_json_get_value_ref(buf, key, tok, tokc, &len);
+	if (!ref)
+		return NULL;
 
-	for (i = 0; i < tokc; i++) {
-		int n = tok[i].end - tok[i].start;
-		int m = strlen(key);
-		if (n == m && tok[i].type == JSMN_STRING &&
-		    !strncmp(buf + tok[i].start, key, n)) {
-			t = 1;
-		} else if (t == 1) {
-			char *idval = malloc(n + 1);
-			idval[n] = 0;
-			strncpy(idval, buf + tok[i].start, n);
-			return idval;
-		} else if (t == 1) {
-			return NULL;
-		}
-	}
-	return NULL;
+	char *val = calloc(len + 1, sizeof(char));
+	if (!val)
+		return NULL;
+
+	memcpy(val, ref, len);
+	return val;
 }
 
 char *pv_json_format(const char *buf, int len)

@@ -23,7 +23,7 @@
 #ifndef LOGSERVER_RFC_H
 #define LOGSERVER_RFC_H
 
-#include "logserver/logserver_out.h"
+#include "logserver_proto.h"
 
 #include <time.h>
 #include <stdbool.h>
@@ -40,13 +40,13 @@ int logserver_rfc_level_to_pv(int prival);
 char *logserver_rfc_get_facility(int prival);
 int logserver_rfc_get_prival(const char *buf);
 int logserver_rfc_create_socket(const char *cur_sock);
-log_protocol_code_t logserver_rfc_get_type(const char *buf);
+log_protocol_code_t logserver_rfc_check_type(const char *buf);
 int logserver_rfc_to_log(struct logserver_rfc *rfc, const char *cgroup,
 			 const char *rev, const char *upd_rev,
 			 struct logserver_log *log);
-int logserver_rfc5424_to_log(char *buf, const char *cgroup, const char *rev,
-			     const char *upd_rev, struct logserver_log *log);
-int logserver_rfc3164_to_log(char *buf, const char *cgroup, const char *rev,
-			     const char *upd_rev, struct logserver_log *log);
+int logserver_rfc5424_to_log(struct logserver_log_data *data,
+			     struct logserver_log *log);
+int logserver_rfc3164_to_log(struct logserver_log_data *data,
+			     struct logserver_log *log);
 
 #endif

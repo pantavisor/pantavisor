@@ -10,7 +10,9 @@ The Pantavisor logging system uses two Unix sockets for inter-process log manage
 
 ## pv-ctrl-log
 
-This socket is used by applications and containers to send log messages directly to the Pantavisor Log Server. All messages must follow the `logserver_msg` structure:
+This socket is used by applications and containers to send log messages directly to the Pantavisor Log Server. The wire format is auto-detected per message: the binary `logserver_msg` structure below, RFC 3164/RFC 5424 syslog text (also reachable via [`/dev/log`](#devlog)), or [JSON](#json-protocol).
+
+Messages using the binary structure must follow the `logserver_msg` structure:
 
 ```C
 struct logserver_msg {
@@ -39,7 +41,45 @@ The supported log levels are:
 * `2`: WARN
 * `3`: INFO
 * `4`: DEBUG
-* `5`: ALL
+* `5`: TRACE
+
+### JSON Protocol
+
+`pv-ctrl-log` also accepts log messages formatted as a single JSON object. Unlike the Legacy Protocol, JSON messages are sent as-is on the wire — they are not wrapped in the `logserver_msg` structure. Any datagram that parses as a valid JSON object is auto-detected as JSON (see the [protocol detection table](#devlog) for how this fits together with the binary and syslog formats).
+
+**Message format:**
+
+```json
+{
+  "version": "0",
+  "level": "INFO",
+  "src": "myapp",
+  "message": "Connection established"
+}
+```
+
+* **version**: Protocol version. Must be `"0"` — the only version currently supported. Messages with any other value, or missing the field, are rejected.
+* **level**: Log level name, case-insensitive. See the level table below.
+* **src**: The specific source of the log (e.g., a process name or module) — equivalent to `source` in the [Legacy Protocol](#legacy-protocol-code--0).
+* **message**: The actual log message content.
+
+:::note
+There is no `platform` field. The platform (the folder name under the log directory) is always derived automatically from the cgroup of the process that sent the message, the same way it is for the [Legacy](#legacy-protocol-code--0), [RFC 3164](#rfc-3164), and [RFC 5424](#rfc-5424) protocols.
+:::
+
+The supported log levels are:
+* `FATAL`
+* `ERROR`
+* `WARN`
+* `INFO`
+* `DEBUG`
+* `TRACE`
+
+:::note
+`ALL` is a valid threshold for [`PV_LOG_LEVEL`](pantavisor-configuration.md#summary), but it is not accepted as a per-message `level` here — a JSON message with `"level": "ALL"` is silently dropped.
+:::
+
+A message that fails to parse (invalid JSON, wrong `version`, unrecognized `level`, or missing `src`/`message`) is dropped; Pantavisor logs a `WARN` and continues.
 
 ## pv-fd-log
 
@@ -100,6 +140,7 @@ The parser is selected at runtime based on the first bytes of each datagram:
 |-------------|-------------------|
 | `<NNN>1 …` (digit `1` immediately after the closing `>`) | RFC 5424 |
 | `<NNN>…` (any other character after the closing `>`) | RFC 3164 |
+| Valid JSON object (e.g. `{ "version": ...`) | [JSON](#json-protocol) |
 | Binary `struct logserver_msg` with `code` header | [Legacy binary](#pv-ctrl-log) |
 
 ### RFC 3164

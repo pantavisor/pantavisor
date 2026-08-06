@@ -147,6 +147,16 @@ const char *pv_log_level_name(int level)
 	return level_names[level].name;
 }
 
+int pv_log_level_value(const char *name)
+{
+	for (int i = 0; i < ALL; i++) {
+		if (!strncmp(name, level_names[i].name,
+			     strlen(level_names[i].name)))
+			return level_names[i].log_level;
+	}
+	return -1;
+}
+
 void pv_log_umount(void)
 {
 	char path[PATH_MAX];

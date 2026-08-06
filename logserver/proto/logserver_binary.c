@@ -27,8 +27,8 @@
 #include <string.h>
 #include <time.h>
 
-int logserver_bin_parse_msg(struct logserver_msg *msg,
-			    struct logserver_log *log)
+static int logserver_bin_parse_msg(struct logserver_msg *msg,
+				   struct logserver_log *log)
 {
 	const char *end = msg->buf + msg->len;
 	int bytes_read = 0;
@@ -75,14 +75,24 @@ int logserver_bin_parse_msg(struct logserver_msg *msg,
 	return 0;
 }
 
-int logserver_bin_to_log(const char *buf, const char *rev, const char *upd_rev,
-			 struct logserver_log *log)
+log_protocol_code_t logserver_bin_check_type(const char *buf)
 {
 	struct logserver_msg *msg = (struct logserver_msg *)buf;
 
+	if (msg->code == LOG_PROTOCOL_LEGACY || msg->code == LOG_PROTOCOL_CMD)
+		return msg->code;
+
+	return LOG_PROTOCOL_UNKNOWN;
+}
+
+int logserver_bin_to_log(struct logserver_log_data *data,
+			 struct logserver_log *log)
+{
+	struct logserver_msg *msg = (struct logserver_msg *)data->buf;
+
 	log->code = msg->code;
-	log->running_rev = (char *)rev;
-	log->updated_rev = (char *)upd_rev;
+	log->running_rev = data->rev;
+	log->updated_rev = data->upd;
 
 	int ret = 0;
 
