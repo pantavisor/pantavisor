@@ -417,6 +417,7 @@ static int logserver_handle_msg(int fd)
 	case LOG_PROTOCOL_RFC5424:
 	case LOG_PROTOCOL_RFC3164:
 	case LOG_PROTOCOL_JSON:
+	case LOG_PROTOCOL_KEY_VAL:
 		ret = logserver_log_msg_data(&log, 0);
 		break;
 	case LOG_PROTOCOL_CMD:

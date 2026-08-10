@@ -24,6 +24,7 @@
 #include "logserver_rfc.h"
 #include "logserver_binary.h"
 #include "logserver_json.h"
+#include "logserver_kv.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -44,6 +45,7 @@ struct logserver_proto {
 static check_proto_fn proto_type[] = {
 	logserver_rfc_check_type,
 	logserver_json_check_type,
+	logserver_kv_check_type,
 	logserver_bin_check_type,
 };
 
@@ -53,6 +55,7 @@ static struct logserver_proto proto[] = {
 	{ LOG_PROTOCOL_RFC3164, logserver_rfc3164_to_log },
 	{ LOG_PROTOCOL_RFC5424, logserver_rfc5424_to_log },
 	{ LOG_PROTOCOL_JSON, logserver_json_to_log },
+	{ LOG_PROTOCOL_KEY_VAL, logserver_kv_to_log },
 	{ LOG_PROTOCOL_UNKNOWN, NULL }
 };
 
@@ -76,7 +79,7 @@ int logserver_proto_to_log(struct logserver_log_data *data,
 	log_protocol_code_t code = logserver_proto_get(data->buf);
 
 	if (code == LOG_PROTOCOL_UNKNOWN)
-		return 0;
+		return -1;
 
 	int ret = -1;
 

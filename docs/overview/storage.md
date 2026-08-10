@@ -161,7 +161,7 @@ pvcontrol conf ls | grep -i log      # e.g. PV_LOG_SERVER_OUTPUTS, PV_LOG_LEVEL,
 * [pv-ctrl-log](../reference/logserver-sockets.md#pv-ctrl-log): to send log traces.
 * [pv-fd-log](../reference/logserver-sockets.md#pv-fd-log): to suscribe file descriptors.
 
-Containers can also log using the standard syslog protocol by writing to `/dev/log`. Both [RFC 3164](../reference/logserver-sockets.md#rfc-3164) and [RFC 5424](../reference/logserver-sockets.md#rfc-5424) are supported and auto-detected per message — no configuration is needed. See the [/dev/log section](../reference/logserver-sockets.md#devlog) for message formats, priority mapping, and per-language library examples. Applications can also send a [JSON-formatted message](../reference/logserver-sockets.md#json-protocol) directly to `pv-ctrl-log`.
+Containers can also log using the standard syslog protocol by writing to `/dev/log`. Both [RFC 3164](../reference/logserver-sockets.md#rfc-3164) and [RFC 5424](../reference/logserver-sockets.md#rfc-5424) are supported and auto-detected per message — no configuration is needed. See the [/dev/log section](../reference/logserver-sockets.md#devlog) for message formats, priority mapping, and per-language library examples. Applications can also send a [JSON-formatted message](../reference/logserver-sockets.md#json-protocol) or a [key-value formatted message](../reference/logserver-sockets.md#key-value-protocol) directly to `pv-ctrl-log`.
 
 ```bash
 logger -t myapp "hello from myapp"

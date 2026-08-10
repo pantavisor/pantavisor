@@ -273,6 +273,8 @@ add_executable(pantavisor
 			logserver/proto/logserver_binary.h
 			logserver/proto/logserver_json.c
 			logserver/proto/logserver_json.h
+			logserver/proto/logserver_kv.c
+			logserver/proto/logserver_kv.h
 			logserver/proto/logserver_proto.c
 			logserver/proto/logserver_proto.h
 			logserver/proto/logserver_rfc.c

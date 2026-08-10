@@ -10,7 +10,7 @@ The Pantavisor logging system uses two Unix sockets for inter-process log manage
 
 ## pv-ctrl-log
 
-This socket is used by applications and containers to send log messages directly to the Pantavisor Log Server. The wire format is auto-detected per message: the binary `logserver_msg` structure below, RFC 3164/RFC 5424 syslog text (also reachable via [`/dev/log`](#devlog)), or [JSON](#json-protocol).
+This socket is used by applications and containers to send log messages directly to the Pantavisor Log Server. The wire format is auto-detected per message: the binary `logserver_msg` structure below, RFC 3164/RFC 5424 syslog text (also reachable via [`/dev/log`](#devlog)), [JSON](#json-protocol), or [Key-Value](#key-value-protocol).
 
 Messages using the binary structure must follow the `logserver_msg` structure:
 
@@ -81,6 +81,50 @@ The supported log levels are:
 
 A message that fails to parse (invalid JSON, wrong `version`, unrecognized `level`, or missing `src`/`message`) is dropped; Pantavisor logs a `WARN` and continues.
 
+### Key-Value Protocol
+
+`pv-ctrl-log` also accepts log messages formatted as `key=value` pairs. Like JSON messages, key-value messages are sent as-is on the wire — they are not wrapped in the `logserver_msg` structure. A datagram is auto-detected as key-value formatted when it is made up entirely of `level=`, `src=`, and `message=` pairs and all three are present (see the [protocol detection table](#devlog) for how this fits together with the binary, syslog, and JSON formats).
+
+**Message format:**
+
+```
+level=INFO src=myapp message=hello
+```
+
+Values containing spaces must be quoted:
+
+```
+level="INFO" src="my-component" message="hello world"
+```
+
+* **level**: Log level name, case-insensitive. See the level table below.
+* **src**: The specific source of the log (e.g., a process name or module) — equivalent to `source` in the [Legacy Protocol](#legacy-protocol-code--0).
+* **message**: The actual log message content.
+
+All three keys are required and may appear in any order. Unlike the [JSON Protocol](#json-protocol), there is no `version` field.
+
+:::note
+Unquoted values end at the first whitespace character. `message=hello world` without quotes is parsed as `message=hello`, with `world` left dangling and the message rejected — quote any value that contains spaces, as shown above. Quoted values support escaped quotes (`\"`).
+:::
+
+:::note
+There is no `platform` field. The platform (the folder name under the log directory) is always derived automatically from the cgroup of the process that sent the message, the same way it is for the [Legacy](#legacy-protocol-code--0), [RFC 3164](#rfc-3164), [RFC 5424](#rfc-5424), and [JSON](#json-protocol) protocols.
+:::
+
+The supported log levels are:
+* `FATAL`
+* `ERROR`
+* `WARN`
+* `INFO`
+* `DEBUG`
+* `TRACE`
+
+:::note
+`ALL` is a valid threshold for [`PV_LOG_LEVEL`](pantavisor-configuration.md#summary), but it is not accepted as a per-message `level` here — a message with `level=ALL` is silently dropped, the same as for the [JSON Protocol](#json-protocol).
+:::
+
+A message that fails to parse (missing one of the three keys, or an unrecognized `level`) is dropped; Pantavisor logs a `WARN` and continues.
+
 ## pv-fd-log
 
 This socket allows containers to delegate the polling of their file descriptors (e.g., pipes, sockets, or open files) to Pantavisor.
@@ -141,6 +185,7 @@ The parser is selected at runtime based on the first bytes of each datagram:
 | `<NNN>1 …` (digit `1` immediately after the closing `>`) | RFC 5424 |
 | `<NNN>…` (any other character after the closing `>`) | RFC 3164 |
 | Valid JSON object (e.g. `{ "version": ...`) | [JSON](#json-protocol) |
+| `level=`/`src=`/`message=` pairs, all three present | [Key-Value](#key-value-protocol) |
 | Binary `struct logserver_msg` with `code` header | [Legacy binary](#pv-ctrl-log) |
 
 ### RFC 3164
