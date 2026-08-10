@@ -63,7 +63,7 @@ static int logserver_json_get_level(const char *buf, jsmntok_t *tokv, int tokc)
 		return -1;
 
 	for (size_t i = 0; i < strlen(name); i++)
-		name[i] = toupper(name[i]);
+		name[i] = toupper((unsigned char)name[i]);
 
 	int lvl = pv_log_level_value(name);
 	free(name);
