@@ -36,7 +36,7 @@ The `buf` contains the log metadata and message, separated by null terminators (
 level\0platform\0source\0data
 ```
 
-* **level**: Log level as a string (e.g., "3" for INFO).
+* **level**: Log level as a string (e.g., "4" for INFO).
 * **platform**: Name of the container or "pantavisor".
 * **source**: The specific source of the log (e.g., a process name or module).
 * **data**: The actual log message content.
@@ -45,9 +45,16 @@ The supported log levels are:
 * `0`: FATAL
 * `1`: ERROR
 * `2`: WARN
-* `3`: INFO
-* `4`: DEBUG
-* `5`: TRACE
+* `3`: WALL — visible one step before `INFO`; see [console alerts](#console-alerts)
+* `4`: INFO
+* `5`: DEBUG
+* `6`: TRACE
+
+:::note
+These numbers changed in this release: `WALL` now sits at `3`, and `INFO`/`DEBUG`/`TRACE`
+shifted up by one (previously `3`/`4`/`5`). Senders that hardcode the old numeric levels
+must update.
+:::
 
 ### JSON Protocol
 
@@ -365,6 +372,65 @@ warning.
 | `nullsink` | `/dev/null` |
 
 See [Output types](../overview/storage.md#output-types) for what each sink is useful for.
+
+## Console alerts
+
+Pantavisor's own messages mirrored to `/dev/console`, one line each; enabled by default.
+Overview: [Storage → Console alerts](../overview/storage.md#console-alerts).
+
+| Action | Setting |
+|--------|---------|
+| Disable at boot | [`PV_LOG_CONSOLE_ALERTS`](pantavisor-configuration.md#summary)`=0` |
+| Disable at runtime | `pvcontrol usrmeta save PV_LOG_CONSOLE_ALERTS 0` — applies from the next message |
+| Revert to the boot value | `pvcontrol usrmeta delete PV_LOG_CONSOLE_ALERTS` |
+
+### Line format
+
+```
+[    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
+```
+
+| Field | Content |
+|-------|---------|
+| `[    6.217276]` | Seconds since boot (`CLOCK_MONOTONIC`), `dmesg`-style: 5 digits, 6 decimals |
+| `[PANTAVISOR]` | Fixed tag |
+| `[platforms]` | The emitting Pantavisor module |
+| `WALL` | Level name: `WALL`, `ERROR` or `FATAL` |
+| `platform 'awconnect' …` | The message, without the `(function:line)` prefix of the log files. Whole line capped at 1024 bytes; truncated lines end in `...` |
+
+### Alert sources
+
+| Source | Emitted when | Level |
+|--------|--------------|-------|
+| `platforms` | A container changes [status](../overview/containers.md#status), one line per transition | `WALL` |
+| any Pantavisor module | It logs an error | `ERROR` or `FATAL` |
+| container logs | Never mirrored, whatever their level | — |
+
+### Relation to logging
+
+| Condition | Console alert | Log outputs |
+|-----------|---------------|-------------|
+| Level allowed by [`PV_LOG_LEVEL`](pantavisor-configuration.md#summary), no stdout output shows it | printed | logged |
+| Level allowed by `PV_LOG_LEVEL`, a stdout output shows it | skipped | logged |
+| Level filtered out by `PV_LOG_LEVEL` | printed | not logged |
+| `PV_LOG_CONSOLE_ALERTS=0` | never printed | follows `PV_LOG_LEVEL` |
+
+| Level | Value | Logged when `PV_LOG_LEVEL` ≥ |
+|-------|-------|------------------------------|
+| `FATAL` | `0` | always |
+| `ERROR` | `1` | `1` |
+| `WALL` | `3` | `3`, one step before `INFO` (`4`) |
+
+Default `PV_LOG_LEVEL` is `0`: only `FATAL` is logged, all three still reach the console.
+
+Outputs that count as "a stdout output shows it" (second row of the first table):
+
+| Output | Log server running | Not running (before start, after stop) |
+|--------|--------------------|----------------------------------------|
+| `stdout` | skips the alert | skips the alert |
+| `stdout.pantavisor` | skips the alert | — |
+| `stdout_direct` | skips the alert | skips the alert |
+| `stdout.containers` | — | — |
 
 ## Timestamp formats
 

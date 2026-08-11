@@ -47,7 +47,7 @@ pvcontrol conf ls | jq -M '.[] | select(.key == "PH_METADATA_USRMETA_INTERVAL")'
 echo "== metadata (before write) =="
 pvcontrol conf ls | jq -M '.[] | select(.key == "PV_LOG_LEVEL")' | tr -d '\r'
 echo "== update PV_LOG_LEVEL via user-meta =="
-pvcontrol usrmeta save PV_LOG_LEVEL 5
+pvcontrol usrmeta save PV_LOG_LEVEL 6
 echo "== metadata (after write) =="
 pvcontrol conf ls | jq -M '.[] | select(.key == "PV_LOG_LEVEL")' | tr -d '\r'
 # No reset between tests: user-meta is device-persistent, so clean up our key.

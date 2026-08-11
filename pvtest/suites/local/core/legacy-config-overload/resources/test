@@ -47,7 +47,7 @@ pvcontrol config ls | jq -M -r '.["metadata.usrmeta.interval"]' | tr -d '\r'
 echo "== metadata (before write) =="
 pvcontrol config ls | jq -M -r '.["log.level"]' | tr -d '\r'
 echo "== update log.level via user-meta =="
-pvcontrol usrmeta save log.level 5
+pvcontrol usrmeta save log.level 6
 echo "== metadata (after write) =="
 pvcontrol config ls | jq -M -r '.["log.level"]' | tr -d '\r'
 pvcontrol usrmeta delete log.level > /dev/null 2>&1

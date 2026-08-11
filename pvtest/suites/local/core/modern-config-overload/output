@@ -37,7 +37,7 @@
 == metadata (before write) ==
 {
   "key": "PV_LOG_LEVEL",
-  "value": "4",
+  "value": "5",
   "modified": "pv conf file"
 }
 == update PV_LOG_LEVEL via user-meta ==
@@ -45,6 +45,6 @@
 == metadata (after write) ==
 {
   "key": "PV_LOG_LEVEL",
-  "value": "5",
+  "value": "6",
   "modified": "metadata"
 }

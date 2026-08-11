@@ -48,10 +48,11 @@ enum log_level {
 	FATAL, // 0
 	ERROR, // 1
 	WARN, // 2
-	INFO, // 3
-	DEBUG, // 4
-	TRACE, // 5
-	ALL // 6
+	WALL, // 3
+	INFO, // 4
+	DEBUG, // 5
+	TRACE, // 6
+	ALL // 7
 };
 
 #define JSON_FORMAT                                                            \
@@ -71,6 +72,7 @@ void __log(char *module, int level, const char *fmt, ...);
  * Don't free the return value!
  */
 const char *pv_log_level_name(int level);
+int pv_log_level_is_alert(int level);
 int pv_log_level_value(const char *name);
 
 void pv_log_umount(void);
