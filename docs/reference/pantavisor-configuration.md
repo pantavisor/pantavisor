@@ -97,6 +97,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_NET_BRDEV` | interface name | `lxcbr0` | set bridge device name |
 | `PV_NET_BRMASK4` | IP mask | `255.255.255.0` | set bridge IPv4 mask |
 | `PV_OEM_NAME` | string | empty | set OEM name for configuration overrides |
+| `PV_PLATFORM_ALERT_STATUS` | comma-separated list of `NONE`, `INSTALLED`, `MOUNTED`, `BLOCKED`, `STARTING`, `STARTED`, `READY`, `RECOVERING`, `STOPPING`, `STOPPED` or `ALL` | `DISABLED` | set container [status](../overview/containers.md#status) transitions that trigger a [console alert](../overview/containers.md#alerts) |
 | `PV_POLICY` | string | empty | set policy name for configuration |
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
@@ -209,6 +210,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_NET_BRDEV`                       | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRMASK4`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_OEM_NAME`                        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_PLATFORM_ALERT_STATUS`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_POLICY`                          | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `PV_REMOUNT_POLICY`                   | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `PV_REVISION_RETRIES`                | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |

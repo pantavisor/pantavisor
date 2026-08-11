@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include <sys/stat.h>
 #include <mntent.h>
@@ -44,6 +45,7 @@
 #include "paths.h"
 #include "pantavisor.h"
 #include "parser/parser.h"
+#include "platforms.h"
 #include "utils/fs.h"
 #include "utils/str.h"
 #include "utils/math.h"
@@ -67,7 +69,8 @@ typedef enum {
 	SB_MODE,
 	STR,
 	TIMER_TYPE,
-	WDT_MODE
+	WDT_MODE,
+	PLATFORM_STATUS
 } type_t;
 
 typedef enum {
@@ -241,6 +244,8 @@ static struct pv_config_entry entries[] = {
 	{ STR, "PV_NET_BRMASK4", PV | OEM, 0, false,
 	  .value.s = NET_BRMASK4_DEF },
 	{ STR, "PV_OEM_NAME", PV, 0, false, .value.s = NULL },
+	{ PLATFORM_STATUS, "PV_PLATFORM_ALERT_STATUS", PV | OEM, 0, false,
+	  .value.i = 0 },
 	{ STR, "PV_POLICY", PV, 0, false, .value.s = NULL },
 	{ PWR_MODE, "PV_POWER_MODE", PV | OEM | RUN, 0, false,
 	  .value.i = PWR_LOCKS },
@@ -604,6 +609,87 @@ _set_config_by_entry_log_server_outputs(struct pv_config_entry *entry,
 
 	server_outputs |= LOG_SERVER_OUTPUT_UPDATE;
 	entry->value.i = server_outputs;
+}
+
+static void _set_config_by_entry_platform_status(struct pv_config_entry *entry,
+						 const char *value)
+{
+	if (!entry)
+		return;
+
+	char *tmp = NULL;
+	char *val = strdup(value);
+	if (!val)
+		return;
+
+	int status_code = 0;
+
+	for (char *str = val;; str = NULL) {
+		char *tok = strtok_r(str, ",", &tmp);
+		if (!tok)
+			break;
+
+		int len = strlen(tok);
+		for (int i = 0; i < len; i++)
+			tok[i] = toupper((unsigned char)tok[i]);
+
+		if (pv_str_matches(tok, len, "ALL", strlen("ALL"))) {
+			status_code = 0xffff;
+			goto out;
+		}
+
+		int status = pv_platform_status_from_string(tok);
+		if (status == -1) {
+			pv_log(DEBUG,
+			       "Unrecognized plataform status %s changes will "
+			       "be no reported",
+			       tok);
+			continue;
+		}
+
+		status_code |= 1 << status;
+	}
+
+out:
+	if (val)
+		free(val);
+
+	entry->value.i = status_code;
+}
+
+static char *_get_platform_str(int status)
+{
+	char *str = NULL;
+	int size = 0;
+
+	if (status == 0) {
+		str = strdup("DISABLED");
+		return str;
+	}
+
+	for (int i = PLAT_NONE; i <= PLAT_STOPPED; i++) {
+		if (!((1 << i) & status))
+			continue;
+		const char *name = pv_platform_status_string(i);
+		int len = strlen(name);
+
+		char *tmp = realloc(str, len + size + 1);
+		if (!tmp) {
+			free(str);
+			return NULL;
+		}
+		str = tmp;
+
+		memcpy(str + size, name, len);
+		size += len;
+		str[size] = ',';
+		size++;
+	}
+
+	if (str)
+		str[size - 1] = '\0';
+
+	return str;
 }
 
 static off_t _get_size_in_bytes(const char *size_str)
@@ -1197,6 +1283,9 @@ static int _set_config_by_entry(struct pv_config_entry *entry,
 	case WDT_MODE:
 		_set_config_by_entry_wdt_mode(entry, value);
 		break;
+	case PLATFORM_STATUS:
+		_set_config_by_entry_platform_status(entry, value);
+		break;
 	default:
 		pv_log(WARN, "unknown config type %d for key '%s'", entry->type,
 		       entry->key);
@@ -1618,6 +1707,8 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 	if (ci >= PV_MAX)
 		return;
 
+	char *status = NULL;
+
 	switch (entries[ci].type) {
 	case BOOL:
 		snprintf(out, len, "%d", entries[ci].value.b);
@@ -1658,6 +1749,17 @@ static void _format_value_str(char *out, size_t len, config_index_t ci)
 		snprintf(out, len, "%s",
 			 _get_wdt_mode_str(entries[ci].value.i));
 		break;
+
+	case PLATFORM_STATUS:
+		status = _get_platform_str(entries[ci].value.i);
+		if (!status) {
+			snprintf(out, len, "couldn't get status");
+			break;
+		}
+
+		snprintf(out, len, "%s", status);
+		free(status);
+		break;
 	default:
 		pv_log(WARN, "unknown type for config entry %s",
 		       entries[ci].key);
@@ -1689,6 +1791,11 @@ static void _add_config_entry_json(config_index_t ci, struct pv_json_ser *js)
 	}
 }
 
+bool pv_config_platform_status_has_alert(int status)
+{
+	return ((1 << status) & entries[PV_PLATFORM_ALERT_STATUS].value.i);
+}
+
 char *pv_config_get_json()
 {
 	struct pv_json_ser js;
@@ -1715,6 +1822,7 @@ static void _print_config_entry(config_index_t ci)
 	const char *key = entries[ci].key;
 	level_t modified = entries[ci].modified;
 	bool secret = entries[ci].secret;
+	char *status = NULL;
 
 	if (secret && modified) {
 		pv_log(INFO, "%s = XXXX (%s)", key,
@@ -1772,6 +1880,16 @@ static void _print_config_entry(config_index_t ci)
 		pv_log(INFO, "%s = '%s' (%s)", key,
 		       _get_wdt_mode_str(entries[ci].value.i),
 		       _get_mod_level_str(modified));
+		break;
+	case PLATFORM_STATUS:
+		status = _get_platform_str(entries[ci].value.i);
+		if (!status) {
+			pv_log(INFO, "could not get %s configuration", key);
+			break;
+		}
+		pv_log(INFO, "%s = '%s' (%s)", key, status,
+		       _get_mod_level_str(modified));
+		free(status);
 		break;
 	default:
 		pv_log(WARN, "unknown type for config entry %s", key);
