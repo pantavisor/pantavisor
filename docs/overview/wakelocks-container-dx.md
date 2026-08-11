@@ -1,9 +1,9 @@
 # Wakelocks for Containers — Developer Experience Design (DRAFT)
 
-> Status: design proposal, 2026-07-21. Builds on the wakelocks feature
-> ([wakelocks.md](wakelocks.md), branch `feature/wakelock-managed`,
-> pantavisor PR #768). Phase 0 (§2.0) is implemented and validated
-> on-device; phases 1+ (§7) are not started yet.
+> Status: design proposal. Builds on the wakelocks feature
+> ([wakelocks.md](wakelocks.md), pantavisor PR #768). Each phase in §7
+> carries its own status: phase 0 shipped with the base feature, phase 1
+> is implemented in this branch, and everything beyond is design only.
 
 The wakelocks feature gives *Pantavisor itself* suspend-safety: internal
 scopes (boot, update, hub roundtrips, shutdown, …) hold a refcounted kernel
@@ -60,11 +60,12 @@ number is seconds (`3600`), or a single-unit literal — `30s`, `10min`,
 | `power.devmeta.max_held` | `5min` | backstop on the devmeta lock awaiting a Hub ack |
 
 Env vars derive mechanically (`PV_POWER_WAKE_INTERVAL`,
-`PV_POWER_DEVMETA_MAX_HELD`, …). Planned subtrees: `power.container.*`
+`PV_POWER_DEVMETA_MAX_HELD`, …). Further subtrees: `power.container.*`
 — the **global scope of the manifest `power` section, field-for-field**
-(§3); `power.limit.*` — system clamps, always in the battery-protective
-direction (ceilings on awake/held time, floors on intervals);
-`power.freeze.*` and `power.wakeup.*` (phases 5/6).
+(§3) — and `power.limit.*` — system clamps, always in the
+battery-protective direction (ceilings on awake/held time, floors on
+intervals); both are implemented here. `power.freeze.*` and
+`power.wakeup.*` are design only (phases 5/6).
 
 **Inheritance (per-container policy fields).** Two orthogonal stacks.
 The existing config-level stack (`RUN > OEM > PV`) resolves every
@@ -80,10 +81,8 @@ can enable, a single container can opt out). After resolution, values
 are clamped against `power.limit.*` with a log warning and devmeta
 visibility — never a validation failure. Shape errors (`align` without
 `interval`, `min_awake > max_awake`, a `power` section on a
-`MOUNTED`-goal container) are warn-and-ignore. Note this is a
-**per-field merge** — deliberately finer than `auto_recovery`'s
-all-or-nothing group inheritance; the reference doc must state the
-divergence explicitly.
+`MOUNTED`-goal container) are warn-and-ignore. This is a **per-field
+merge**, finer than `auto_recovery`'s all-or-nothing group inheritance.
 
 ## 2. Level 0 — run windows (no declarations)
 
@@ -123,17 +122,17 @@ containers still need their run window — there, the window is the *only*
 purpose of the wake. Phase 0 therefore reframes the RTC wake as the device
 heartbeat with two optional payloads (hub roundtrip; container run window):
 
-- **Close-condition fix (required)**: today the window closes on
-  `poll_round_ok`, which is set by the Hub client — on an unauthed device
-  it never fires and every wake would burn to the `max_awake` backstop.
-  Rule: with no Hub configured/authed, the round is considered complete at
-  window open, so the window is `run_window` anchored at the wake.
-- **Arming rule**: no Hub *and* `run_window=0` → nothing to wake for →
-  do not arm the periodic RTC alarm at all (pure external-wake device).
-  Either payload present → arm at `power.wake.interval`.
+- **Close condition**: with no Hub configured or authed, the round counts
+  as complete at window open, so the window is `run_window` anchored at
+  the wake. (It otherwise closes on `poll_round_ok`, which only the Hub
+  client sets, and every wake would burn to the `max_awake` backstop.)
+- **Arming**: the first alarm is always armed — at `pv_start()`,
+  `is_auth()` and the container manifest are not yet loaded, so there is
+  nothing to decide on. Each wake then re-arms only if there is a reason
+  to wake again: a Hub roundtrip or a declared `run_window`. A device
+  with neither wakes once and thereafter sleeps until an external wake.
 - **Key naming**: the interval lives at `power.wake.interval` because it
-  governs the heartbeat whether or not a Hub is configured (§1.1; the
-  original `update_check.*` naming was dropped pre-release).
+  governs the heartbeat whether or not a Hub is configured (§1.1).
 
 What phase 0 consciously does **not** give: separation (containers also run
 during the roundtrip — harmless), per-container accounting, quiescence
@@ -179,7 +178,7 @@ steady state and **thawed only during explicit run windows**:
   window with its own accounting — adjacency is an optimization, not a
   semantic.
 
-#### Mechanism — what exists today (verified in source)
+#### Mechanism — what exists today
 
 - Pantavisor itself constructs the cgroup layout in embedded/standalone
   mode (`cgroup.c:271-299`): tmpfs root, named `systemd`/`pantavisor` v1
@@ -575,65 +574,68 @@ data path.)
 
 ## 7. Phasing
 
-- **Phase 0 — basic run window** (§2.0): `power.wake.run_window`,
+Status per phase: **shipped** = in the base wakelocks feature (PR #768);
+**implemented** = in this branch; **design** = this document only.
+
+- **Phase 0 — basic run window** — *shipped* with the base feature (§2.0): `power.wake.run_window`,
   one close condition added to the existing poll-window machinery, log
   markers. No freezing, no new API surface; testable with the existing
   wakelocks testplan approach.
-- **Phase 1 — Declarative cadence v1**: `interval`/`min_awake`/
-  `max_awake`/`align` in a new `power` manifest section — born here,
-  with container/group/system inheritance plumbing; later phases only
-  ever add fields to it, never a second shape. Minimal earliest-deadline
-  RTC arming; coalescing (25 % tolerance); PSI-informed quiescence close
-  (no CPU floor); clamp-and-warn against system ceilings; per-container
-  window/close-reason stats in mgmt GET + devmeta (the calibration and
-  busy-looper signals). Windows are refcounted holds until phase 5 adds
-  exclusivity. Purely declarative — no ctrl API, no container code
-  changes, so it ships independently of Locks v1 (reordered ahead of it:
-  bigger adoption payoff for less surface, and nothing here depends on
-  the ctrl-API mechanism phase 2 builds).
-- **Phase 2 — Locks v1**: pv-ctrl leases (anonymous refcounted + named
+- **Phase 1 — Declarative cadence v1** — *implemented here*:
+  `interval`/`min_awake`/`max_awake`/`align`
+  in a new `power` manifest section, with container/group/system
+  inheritance plumbing; later phases only ever add fields to it, never a
+  second shape. Earliest-deadline RTC arming; coalescing (25 %
+  tolerance); quiescence close on per-container CPU usage, with PSI
+  `cpu.pressure` as an additional stall veto where available;
+  clamp-and-warn against system ceilings; per-container
+  window/close-reason stats in mgmt GET + devmeta. Windows are refcounted
+  holds until phase 5 adds exclusivity. Purely declarative — no ctrl API,
+  no container code changes — so it is independent of Locks v1.
+- **Phase 2 — Locks v1** — *design*: pv-ctrl leases (anonymous refcounted + named
   idempotent) + global caps + auto-release + per-caller GET + pvcontrol
   subcommands. Pure ctrl + wakelock code; no policy parsing. Shares the
   underlying keyed wakelock table with phase 1 but is otherwise
   independent of it (imperative container-initiated leases vs.
   phase 1's declarative, pantavisor-initiated windows).
-- **Phase 3 — Lock health check**: the quiescence contract (FORFEIT →
+- **Phase 3 — Lock health check** — *design*: the quiescence contract (FORFEIT →
   restart policy) for phase 2's leases specifically — a wedged container
   that renews a lease forever looks alive to the lease layer while
   pinning the battery, so this catches it. Enabled and tuned via layered
   policy (system config → group → container; see §5). Adds `max_held`
   to the `power` section phase 1 already established. Thresholds
   calibrated from real phase-2 lease telemetry.
-- **Phase 4 — Alarms + events**: deadline queue, long-poll
+- **Phase 4 — Alarms + events** — *design*: deadline queue, long-poll
   `/power/events`, handoff leases, `persistent`/`period`/`window`.
   Alarms are pure delivery to running containers — no exec (see phase 8).
-- **Phase 5 — Freeze/thaw hardening of run windows** (§2.1): group-aware
+- **Phase 5 — Freeze/thaw hardening of run windows** — *design* (§2.1): group-aware
   freeze policy, direct cgroup writes (v2 `cgroup.freeze` preferred, v1
   fallback), thaw-before-stop discipline, exclusive app windows. Entry
   gate: the §8 cgroup-v2-in-hybrid on-device check.
-- **Phase 6 — Wake reasons + wakeup-source config**: resume detector —
+- **Phase 6 — Wake reasons + wakeup-source config** — *design*: resume detector —
   the open engineering item — plus `power.wakeup.sources` and
   per-container `wakeup`; `resume {reason}` events join `/power/events`.
-- **Phase 7 — logind inhibitor bridge** on the hosted D-Bus bus.
-- **Phase 8 — Job containers + wake-activation**: a scheduled one-shot
+- **Phase 7 — logind inhibitor bridge** — *design*: on the hosted D-Bus bus.
+- **Phase 8 — Job containers + wake-activation** — *design*: a scheduled one-shot
   container *type* (declares a schedule; the phase-4 queue *starts* the
   container; **exit is the close condition** — exact, no quiescence
   heuristics; exit code feeds restart policy; logs via normal container
-  capture). This supersedes the dropped `exec` field: the container's
-  existing init-cmd (`lxc.init.cmd`) makes any CLI tool a job with one
-  manifest entry. Wake-activation generalizes it to event-triggered
+  capture). The container's existing init-cmd (`lxc.init.cmd`) makes any
+  CLI tool a job with one manifest entry. Wake-activation generalizes it to event-triggered
   starts (wake reason → start container). Plus whatever coalescing/stat
   refinements the field data asks for.
 
 ## 8. Open questions
 
 - Do LXC containers get per-container cgroups on the hybrid `unified`
-  mount in our embedded layout? This single on-device check now gates
-  *two* features: v2 `cgroup.freeze` (phase 5) and per-cgroup
-  `cpu.pressure` PSI for quiescence sensing (phase 1) — answer it early.
-- Quiescence calibration: settle-period length and the "≈ 0" thresholds
-  for usage and stall — to be measured from phase-1 window stats on a
-  real device, not guessed.
+  mount in our embedded layout? Phase 1 handles both answers already
+  (per-cgroup `cpu.pressure` and `cpu.stat`, falling back to global
+  `/proc/pressure/cpu` and cgroup-v1 usage), but the per-container path
+  is unverified on device, and v2 `cgroup.freeze` (phase 5) depends on
+  the same check.
+- Quiescence calibration: the phase-1 defaults (5 s settle, 1 % usage,
+  PSI avg10 ≤ 1.0) are starting points, to be measured from window stats
+  on a real device.
 - `PrepareForSleep` grace semantics under autosleep — stock-NetworkManager
   experiment.
 - Resume-detection mechanism for non-RTC wakes (`wakeup_count` handshake
