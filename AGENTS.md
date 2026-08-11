@@ -68,6 +68,16 @@ The `docs/` folder is published on [docs.pantavisor.io/reference](https://docs.p
 2. `scripts/sync-reference.mjs` + `migrate-docs.js` in docs.pantavisor download the tarball for each published version listed in `releases.json` and generate a versioned instance at `/reference/<version>/pantavisor/...`. This covers everything under `docs/` — `docs/reference/`, `docs/overview/`, and `docs/tools/` alike — snapshotted together per release.
 3. Hand-authored, versionless guides live in the site's `curated/` instance (served at the site root, e.g. `/build`, `/install`, `/operate`); they are never generated from this repo.
 
+### Actionability (docs/)
+
+Every feature described in `docs/` should give the reader a direct or inline path to *do* something with it, not just explain the concept. Concretely:
+
+- Alongside (or right after) the conceptual explanation of a feature, show the concrete command, config key, or endpoint that exercises it — e.g. a `pvcontrol` invocation ([docs/tools/pvcontrol.md](docs/tools/pvcontrol.md)), a raw `pv-ctrl` call ([docs/reference/pantavisor-commands.md](docs/reference/pantavisor-commands.md)), a configuration key ([docs/reference/pantavisor-configuration.md](docs/reference/pantavisor-configuration.md)), or an on-disk path to inspect ([docs/overview/storage.md](docs/overview/storage.md)).
+- Prefer a short fenced code block over prose describing what a command does — show the invocation and, where useful, its output.
+- If a feature genuinely has no user-facing action (e.g. it's fully automatic, internal bookkeeping), say so explicitly rather than leaving the reader to wonder — a one-line "this is managed automatically; no action needed" is enough.
+- Verify every command, config key, path, and filename you add against the actual source or an existing doc before writing it down — don't invent plausible-looking examples.
+- This applies both when writing new docs and when editing existing ones: if you touch a section that only explains a feature without showing how to use it, add the missing hands-on reference while you're there.
+
 ### Link conventions (docs/)
 
 - **Within the same folder**: plain relative links, e.g. `containers.md#restart-policy`.
