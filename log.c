@@ -62,13 +62,11 @@ struct level_name {
 	char *name;
 };
 
-#define LEVEL_NAME(LEVEL)                                                      \
-	{                                                                      \
-		LEVEL, #LEVEL                                                  \
-	}
+#define LEVEL_NAME(LEVEL) { LEVEL, #LEVEL }
 static struct level_name level_names[] = {
 	LEVEL_NAME(FATAL), LEVEL_NAME(ERROR), LEVEL_NAME(WARN),
-	LEVEL_NAME(INFO),  LEVEL_NAME(DEBUG), LEVEL_NAME(TRACE)
+	LEVEL_NAME(INFO),  LEVEL_NAME(DEBUG), LEVEL_NAME(TRACE),
+	LEVEL_NAME(WALL),
 };
 
 static pid_t log_init_pid = -1;
@@ -130,7 +128,9 @@ void __log(char *module, int level, const char *fmt, ...)
 {
 	va_list args;
 
-	if ((level != FATAL) && (level > pv_config_get_int(PV_LOG_LEVEL)))
+	if ((level != FATAL) &&
+	    (pv_log_level_rank(level) > pv_config_get_int(PV_LOG_LEVEL)) &&
+	    !pv_log_level_is_alert(level))
 		return;
 
 	va_start(args, fmt);
@@ -145,6 +145,17 @@ const char *pv_log_level_name(int level)
 	if (level < FATAL || level >= ALL)
 		return "UNDEFINED";
 	return level_names[level].name;
+}
+
+int pv_log_level_rank(int level)
+{
+	return level == WALL ? INFO : level;
+}
+
+int pv_log_level_is_alert(int level)
+{
+	return pv_config_get_bool(PV_LOG_CONSOLE_ALERTS) &&
+	       (level == WALL || level == ERROR || level == FATAL);
 }
 
 int pv_log_level_value(const char *name)

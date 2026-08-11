@@ -251,6 +251,39 @@ per sink, either as one of the Go time layout constants or as an arbitrary `strf
 string. See [timestamp formats](../reference/logserver-sockets.md#timestamp-formats) for the
 accepted values and the keys that set them.
 
+### Console alerts
+
+Some events matter to whoever is sitting in front of a device rather than reading logs after the
+fact — a container coming up during boot, for instance. Pantavisor mirrors those to `/dev/console`
+as **console alerts**, one line each, alongside the normal log entry:
+
+```
+[    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
+[    6.341446] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTED
+```
+
+The timestamp is seconds since boot, the same way `dmesg` prints one, so alerts line up with kernel
+messages on the same console.
+
+Alerts come from a dedicated `WALL` level, used for events meant for the console, and from every
+`ERROR` and `FATAL` that Pantavisor itself logs; container logs are not mirrored. `WALL` is filtered
+like `INFO` in the logs, but an alert reaches the console even when
+[`PV_LOG_LEVEL`](../reference/pantavisor-configuration.md#summary) keeps it out of the logs. When a
+stdout [output type](#output-types) already prints the message to the console, the alert is skipped
+so the line does not appear twice.
+
+Alerts are on by default, and can be turned off at boot with
+[`PV_LOG_CONSOLE_ALERTS`](../reference/pantavisor-configuration.md#summary):
+
+```bash
+PV_LOG_CONSOLE_ALERTS=0
+```
+
+Disabling them only silences the console; logging still follows `PV_LOG_LEVEL`. See
+[console alerts](../reference/logserver-sockets.md#console-alerts) for the line format, the
+complete list of what emits them and how they relate to the log level — today,
+[container status changes](containers.md#console-alerts) and Pantavisor errors.
+
 ### Log Directory Size Management
 
 Pantavisor manages log storage at two levels:

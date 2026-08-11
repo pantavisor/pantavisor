@@ -21,40 +21,112 @@
  */
 
 #include <fcntl.h>
-#include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
 #include <limits.h>
 #include <utmp.h>
+#include <time.h>
 
 #include "log.h"
 #include "version.h"
 #include "pantavisor.h"
-#include "state.h"
+
+#define PV_WALL_LOG_MAX (1024)
+#define PV_WALL_LOG_TMPL "[%5ld.%06ld] [PANTAVISOR] [%s] %s: "
+#define PV_WALL_LOG_TRUNC "...\n"
 
 #define MODULE_NAME "wall"
 #define pv_log(level, msg, ...)                                                \
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
 	     ##__VA_ARGS__)
 
-void pv_wall(const char *message, ...)
+static int pv_wall_get_console_fd()
 {
 	int con_fd;
-	va_list args;
 
-	con_fd = open("/dev/console", O_WRONLY | O_NOCTTY | O_NONBLOCK);
+	con_fd = open("/dev/console",
+		      O_WRONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
 	if (con_fd < 0) {
 		pv_log(WARN, "Unable to open /dev/console");
-		return;
+		return -1;
 	}
 
-	va_start(args, message);
+	return con_fd;
+}
+
+void pv_wall_v(const char *message, va_list args)
+{
+	int con_fd = pv_wall_get_console_fd();
+	if (con_fd < 0)
+		return;
+
 	vdprintf(con_fd, message, args);
 	dprintf(con_fd, "\n");
 
-	va_end(args);
 	close(con_fd);
+}
+
+void pv_wall(const char *message, ...)
+{
+	va_list args;
+
+	va_start(args, message);
+	pv_wall_v(message, args);
+
+	va_end(args);
+}
+
+void pv_wall_vlog(int level, const char *src, const char *message, va_list args)
+{
+	char buf[PV_WALL_LOG_MAX] = { 0 };
+
+	struct timespec tm;
+	clock_gettime(CLOCK_MONOTONIC, &tm);
+
+	size_t cap = sizeof(buf) - strlen(PV_WALL_LOG_TRUNC);
+	int len = snprintf(buf, cap, PV_WALL_LOG_TMPL, (long)tm.tv_sec,
+			   (long)tm.tv_nsec / 1000, src,
+			   pv_log_level_name(level));
+	if (len < 0)
+		return;
+
+	size_t total = len;
+
+	if (total < cap) {
+		len = vsnprintf(buf + total, cap - total, message, args);
+		if (len < 0)
+			return;
+		total += len;
+	}
+
+	if (total >= cap) {
+		total = cap - 1;
+		memcpy(buf + total, PV_WALL_LOG_TRUNC,
+		       strlen(PV_WALL_LOG_TRUNC));
+		total += strlen(PV_WALL_LOG_TRUNC);
+	} else {
+		buf[total++] = '\n';
+	}
+
+	int con_fd = pv_wall_get_console_fd();
+	if (con_fd < 0)
+		return;
+
+	if (write(con_fd, buf, total) < 0)
+		pv_log(DEBUG, "console write failed: %s", strerror(errno));
+
+	close(con_fd);
+}
+
+void pv_wall_log(int level, const char *src, const char *message, ...)
+{
+	va_list args;
+
+	va_start(args, message);
+	pv_wall_vlog(level, src, message, args);
+
+	va_end(args);
 }
 
 void pv_wall_ssh_users(const char *message, ...)
@@ -81,7 +153,8 @@ void pv_wall_ssh_users(const char *message, ...)
 		snprintf(tty_path, sizeof(tty_path), "/dev/pts/%s",
 			 entry->ut_line);
 
-		int fd = open(tty_path, O_WRONLY | O_NOCTTY | O_NONBLOCK);
+		int fd = open(tty_path,
+			      O_WRONLY | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
 		if (fd >= 0) {
 			dprintf(fd, "%s\n", buffer);
 			close(fd);

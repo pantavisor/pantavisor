@@ -48,6 +48,7 @@ The supported log levels are:
 * `3`: INFO
 * `4`: DEBUG
 * `5`: TRACE
+* `6`: WALL — filtered like `INFO`; see [console alerts](#console-alerts)
 
 ### JSON Protocol
 
@@ -365,6 +366,71 @@ warning.
 | `nullsink` | `/dev/null` |
 
 See [Output types](../overview/storage.md#output-types) for what each sink is useful for.
+
+## Console alerts
+
+Besides the sinks above, Pantavisor mirrors selected messages of its own to the device console.
+These are **console alerts**: single lines written directly to `/dev/console`, so whoever is
+watching a [serial console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md)
+sees significant events as they happen without tailing a log file. They reach that console only —
+never [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other
+remote sessions. [Storage → Console alerts](../overview/storage.md#console-alerts) explains what the
+channel is for.
+
+They are controlled by [`PV_LOG_CONSOLE_ALERTS`](pantavisor-configuration.md#summary), enabled by
+default and only read at boot:
+
+```bash
+PV_LOG_CONSOLE_ALERTS=0     # silence every console alert
+```
+
+### Line format
+
+```
+[    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
+```
+
+| Field | Content |
+|-------|---------|
+| `[    6.217276]` | Seconds since boot (`CLOCK_MONOTONIC`), `dmesg`-style: 5 digits, 6 decimals |
+| `[PANTAVISOR]` | Fixed tag, so alerts stand out among kernel and container output |
+| `[platforms]` | The emitting Pantavisor module |
+| `WALL` | Level name: `WALL`, `ERROR` or `FATAL` |
+| `platform 'awconnect' …` | The message, without the `(function:line)` prefix it carries in the log files |
+
+A line is limited to 1024 bytes; longer messages are truncated and end in `...`.
+
+### Alert sources
+
+| Source | Emitted when | Level |
+|--------|--------------|-------|
+| `platforms` | A container changes [status](../overview/containers.md#status) — one line per transition | `WALL` |
+| any Pantavisor module | It logs an error | `ERROR` or `FATAL` |
+
+Only messages logged by Pantavisor itself become alerts. Container logs are never mirrored, whatever
+their level.
+
+### Relation to logging
+
+| Condition | Console alert | Log outputs |
+|-----------|---------------|-------------|
+| Level allowed by [`PV_LOG_LEVEL`](pantavisor-configuration.md#summary), no stdout output shows it | printed | logged |
+| Level allowed by `PV_LOG_LEVEL`, a stdout output shows it | skipped | logged |
+| Level filtered out by `PV_LOG_LEVEL` | printed | not logged |
+| `PV_LOG_CONSOLE_ALERTS=0` | never printed | follows `PV_LOG_LEVEL` |
+
+`WALL` has the same precedence as `INFO` when compared against `PV_LOG_LEVEL`. With the default
+`PV_LOG_LEVEL=0`, `WALL` and `ERROR` messages are filtered out of the logs but still reach the
+console.
+
+:::note
+A stdout output "shows" an alert when it would already put the same message on standard output:
+`stdout`, `stdout.pantavisor` or `stdout_direct` while the log server runs, and `stdout_direct` or
+`stdout` while it is not running (before it starts and after it stops). Pantavisor enables the kernel's
+`ignore_loglevel` when a stdout output is configured, so that copy reaches the console, and the
+alert is skipped to avoid printing the line twice. `stdout.containers` never carries Pantavisor
+messages, so it does not suppress alerts.
+:::
 
 ## Timestamp formats
 
