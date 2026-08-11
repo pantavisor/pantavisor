@@ -6,14 +6,14 @@ on:
       - master
     paths:
       - "**"
-      - ".github/configs/**"
+      - "!docs/**"
   pull_request:
     types: [opened, synchronize]
     branches:
       - "*"
     paths:
       - "**"
-      - ".github/configs/**"
+      - "!docs/**"
 
 jobs:
   build:
