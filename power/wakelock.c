@@ -63,11 +63,8 @@
 #define WL_SYSFS_UNLOCK "wake_unlock"
 #define WL_SYSFS_AUTOSLEEP "autosleep"
 
-// RTC char device (rtc0). Managed mode wakes from autosleep via a blocking read
-// on this fd (see _alarm_thread_fn): the read returns in-kernel still under the
-// wakeup-event hold, so the worker thread can grab the wakelock inline before
-// the autosleep loop re-suspends — a timerfd + event-loop callback loses that
-// race.
+// managed mode wakes from autosleep by blocking-reading this; see
+// _alarm_thread_fn for why that has to be a thread
 #define WL_RTC_DEV "/dev/rtc0"
 
 static struct pv_wakelock {
@@ -89,10 +86,7 @@ static struct pv_wakelock {
 	bool autosleep;
 	int alarm_fd; // /dev/rtc0, kept open; the worker thread blocks reading it
 	struct event *alarm_ev;
-	// The RTC wake handoff needs a BLOCKING read on alarm_fd with the kernel
-	// wakelock grabbed inline in the same thread; an event-loop callback loses
-	// the autosleep re-suspend race. The thread parks in read(/dev/rtc0), grabs
-	// the wakelock via its own fd on wake, then kicks the event loop.
+	// see _alarm_thread_fn
 	pthread_t alarm_thread;
 	bool alarm_thread_started;
 	volatile bool alarm_thread_run;
@@ -496,27 +490,23 @@ static void _poll_arm_retry(void)
 	event_add(wl.poll_retry_ev, &tv);
 }
 
-// Open a wake window: hold the device awake for at least min-awake seconds (so
-// wifi/tailscale re-associate after deep suspend) and until one full poll round
-// reaches Hub, bounded by max-awake seconds. All three timers run while WL_POLL
-// is held, so plain libevent timers are exact here.
+// Hold the device awake for at least min-awake (so wifi/tailscale re-associate
+// after deep suspend) and until one poll round reaches Hub, capped at max-awake.
 static void _poll_window_open(void)
 {
 	struct event_base *base = pv_event_get_base();
 	int min_awake = pv_config_get_int(PV_POWER_WAKE_MIN_AWAKE);
 	int max_awake = pv_config_get_int(PV_POWER_WAKE_MAX_AWAKE);
 
-	// feature disabled (no max bound) or no event loop: fall back to the
-	// legacy single-shot behaviour (fire once; the per-request scopes govern
-	// awake time)
+	// no max bound configured (or no event loop): fire once and let the
+	// per-request scopes govern awake time
 	if (max_awake <= 0 || !base) {
 		_poll_fire_requests();
 		return;
 	}
 
-	// max-awake backstop: an offline Hub can never pin the device awake. This
-	// is the safety bound, so if it cannot be armed we must NOT open a window
-	// (which could otherwise stay awake forever) — fall back to single-shot.
+	// the safety bound that stops an offline Hub pinning the device awake
+	// forever, so without it we must not open a window at all
 	wl.poll_max_ev = evtimer_new(base, _poll_max_cb, NULL);
 	if (!wl.poll_max_ev) {
 		pv_log(WARN,
@@ -606,15 +596,12 @@ static int _managed_rtc_arm(int fd, int interval)
 	return 0;
 }
 
-// Worker thread: park in a BLOCKING read on the RTC char device. When the alarm
-// fires (the device is woken from autosleep) grab the kernel wakelock the
-// instant the read returns — in this same thread, before anything else — so the
-// kernel's post-read wakeup hold covers us before the autosleep loop can
-// re-suspend (~197us, faster than any event-loop callback could react). Then
-// kick the event loop via an eventfd to do the poll-window work, which is not
-// latency-critical because the wakelock is already held. The thread must not
-// call pv_log or any other Pantavisor code — only raw syscalls — to stay
-// thread-safe against the single-threaded event loop.
+// Parks in a blocking read on the RTC and grabs the wakelock inline the instant
+// it returns, while the kernel's post-read wakeup hold still covers us: the
+// autosleep loop re-suspends ~197us later, faster than any event-loop callback
+// could react. The rest is handed to the event loop, which is safe once the
+// lock is held. Raw syscalls only — no pv_log or other Pantavisor calls, which
+// are not thread-safe against the single-threaded event loop.
 static void *_alarm_thread_fn(void *arg)
 {
 	(void)arg;
@@ -711,11 +698,8 @@ void pv_wakelock_poll_round_done(bool reached_hub)
 	_poll_arm_retry();
 }
 
-// Enable opportunistic suspend (write "mem" to /sys/power/autosleep). From here
-// the kernel suspends whenever the wakelock refcount is zero, so this must only
-// run once the device is ready (boot lock released, platforms up) — see
-// pv_wakelock_managed_ready(). The RTC worker thread (see _managed_arm_alarm)
-// wakes us back up on schedule. Idempotent.
+// From here the kernel suspends whenever the refcount hits zero, so only call
+// this once the device is ready — see pv_wakelock_managed_ready(). Idempotent.
 static void _managed_enable_autosleep(void)
 {
 	char path[PATH_MAX];
@@ -741,12 +725,8 @@ static void _managed_enable_autosleep(void)
 	close(fd);
 }
 
-// Arm the wake alarm via the RTC char device and start the worker thread that
-// parks in a blocking read on it (the RTC alarm survives suspend, so the device
-// can wake itself on a schedule to poll). Keeping the fd open and reading it
-// blocking-in-a-thread is deliberate — see WL_RTC_DEV / _alarm_thread_fn. Safe
-// to call at init: arming the alarm does not itself suspend the device.
-// Idempotent (wl.alarm_ev guards re-entry).
+// Arm the RTC wake alarm (it survives suspend) and start the worker thread that
+// waits on it. Idempotent, and safe at init: arming does not itself suspend.
 static void _managed_arm_alarm(void)
 {
 	struct event_base *base = pv_event_get_base();
@@ -763,9 +743,8 @@ static void _managed_arm_alarm(void)
 	// Always arm the first alarm: this runs at pv_start(), too early to trust
 	// is_auth()/run_window (the re-arm gate lives in _alarm_notify_cb).
 
-	// Open the RTC char device BLOCKING and keep it open for the life of managed
-	// mode: the worker thread parks in read() here and grabs the wakelock inline
-	// on return — that inline grab is what beats the autosleep re-suspend race.
+	// blocking, and held open for the life of managed mode: the worker thread
+	// parks in read() on it
 	wl.alarm_fd = open(WL_RTC_DEV, O_RDONLY | O_CLOEXEC);
 	if (wl.alarm_fd < 0) {
 		pv_log(WARN, "wakelock: could not open %s: %s", WL_RTC_DEV,
@@ -856,10 +835,8 @@ static void _managed_settle_done(const char *why)
 	_managed_enable_autosleep();
 }
 
-// Backstop: if the device never reaches the Hub (offline), settle anyway after
-// a bounded delay so managed mode still eventually suspends. Driven by a kernel
-// timerfd (fires when the fd becomes readable), so the delay is exact and not
-// subject to libevent's cached-time skew.
+// Backstop so an offline device still eventually suspends. Kernel timerfd
+// rather than a libevent timer, whose cached time skews the delay.
 static void _managed_settle_cb(evutil_socket_t fd, short events, void *arg)
 {
 	uint64_t expirations = 0;
@@ -870,13 +847,11 @@ static void _managed_settle_cb(evutil_socket_t fd, short events, void *arg)
 	_managed_settle_done("timeout");
 }
 
-// Called once the top-level FSM first reaches steady state (boot lock released,
-// platforms started). In managed mode we arm the wake alarm here, but do NOT
-// enable autosleep yet: at this point containers are typically still mounting
-// (loop/dm/EXT4 recovery) and out-of-tree drivers (e.g. the NXP moal wifi) are
-// still initializing, so suspending now hangs the freeze and the watchdog
-// resets the board. Instead we hold autosleep off for a fixed settle delay
-// (PV_POWER_AUTOSLEEP_SETTLE) to let the system go quiescent first.
+// Steady state (boot lock released, platforms started) still is not quiescent:
+// containers are mounting and out-of-tree drivers (e.g. NXP moal wifi) are
+// initializing, and suspending into that hangs the freeze until the watchdog
+// resets the board. So autosleep waits a further PV_POWER_AUTOSLEEP_SETTLE.
+// (The alarm is armed at init; re-arming here is just belt-and-braces.)
 void pv_wakelock_managed_ready(void)
 {
 	if (!wl.init)
@@ -964,11 +939,9 @@ int pv_wakelock_init(void)
 	if (wl.mode == PWR_DISABLED)
 		return 0;
 
-	// Kernel capability probe: power.mode=locks/managed needs a usable
-	// /sys/power/wake_lock (CONFIG_PM_WAKELOCKS). If the node is missing or
-	// not writable: managed changes fundamental power behavior (autosleep),
-	// so fail init loudly rather than silently never suspending; locks only
-	// blocks suspend, so degrade instead and keep booting.
+	// Both modes need a usable /sys/power/wake_lock (CONFIG_PM_WAKELOCKS).
+	// Without it managed would silently never suspend, so fail loudly; locks
+	// only blocks suspend, so degrade and keep booting.
 	_sysfs_path(path, sizeof(path), WL_SYSFS_LOCK);
 	wl.lock_fd = open(path, O_WRONLY | O_CLOEXEC);
 	_sysfs_path(path, sizeof(path), WL_SYSFS_UNLOCK);
@@ -1035,10 +1008,9 @@ void pv_wakelock_apply_config(void)
 	       _mode_str(wl.mode), _mode_str(m));
 	wl.mode = m;
 
-	// only-forward transition we act on: entering managed at runtime (after
-	// boot) arms the wake alarm and enables autosleep. This path is post-ready
-	// by construction, so enabling autosleep immediately is safe. Other
-	// transitions just change how acquire/release behave via wl.mode.
+	// the only transition we act on; it is post-ready by construction, so
+	// enabling autosleep straight away is safe. Others just change how
+	// acquire/release behave via wl.mode.
 	if (m == PWR_MANAGED) {
 		_managed_arm_alarm();
 		_managed_enable_autosleep();
