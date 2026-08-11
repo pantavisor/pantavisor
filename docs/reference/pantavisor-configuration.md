@@ -102,6 +102,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../overview/storage.md#logs) buffer size |
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |
+| `PV_LOG_CONSOLE_ALERTS` | `0` or `1` | `1` | print [console alerts](logserver-sockets.md#console-alerts) straight to the device console |
 | `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](../overview/storage.md#logs) directory |
 | `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto | `0` | max size of the [log directory](../overview/storage.md#log-directory-size-management); `0` auto-sizes to 10% of the backing partition, or 100% if it is tmpfs |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for filetree logs |
@@ -235,6 +236,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_LOG_BUF_NITEMS`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_CAPTURE`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_CAPTURE_DMESG`               | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| `PV_LOG_CONSOLE_ALERTS`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_DIR`                         | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LOG_DIR_MAXSIZE`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT`   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |

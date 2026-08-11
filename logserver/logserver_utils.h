@@ -37,5 +37,4 @@ char *logserver_utils_output_to_str(int out_type);
 int logserver_utils_stdout(const struct logserver_log *log);
 int logserver_utils_printk_devmsg_on(void);
 int logserver_utils_ignore_loglevel(void);
-
 #endif
