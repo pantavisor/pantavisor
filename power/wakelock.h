@@ -68,6 +68,10 @@ void pv_wakelock_devmeta_deauth(void);
 // staying awake, until one succeeds or max-awake elapses.
 void pv_wakelock_poll_round_done(bool reached_hub);
 
+// An update finished; poll again before sleeping so a queued revision applies
+// in this wake. Call while the update still holds WL_UPDATE.
+void pv_wakelock_update_finished(void);
+
 // Read-only state for the GET /wakelocks control endpoint. Caller frees.
 char *pv_wakelock_get_json(void);
 

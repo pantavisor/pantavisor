@@ -915,6 +915,9 @@ void pv_update_finish()
 	// release only if this update acquired it (finish also runs for
 	// done/failed/factory revisions that never acquired)
 	if (u->wakelock_held) {
+		// drain any queued revision in this wake; ordered before the
+		// release so the refcount never reaches zero in between
+		pv_wakelock_update_finished();
 		pv_wakelock_release(WL_UPDATE);
 		u->wakelock_held = false;
 	}
