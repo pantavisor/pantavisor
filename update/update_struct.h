@@ -104,6 +104,9 @@ struct pv_update {
 	// pv_logserver_stop_update when no logs were ever tracked (e.g. the
 	// factory/DONE early-return branches of pv_update_resume).
 	bool logserver_started;
+	// set once this update acquired the update wakelock; finish releases
+	// only if held (it also runs for done/failed/factory revisions at boot)
+	bool wakelock_held;
 };
 
 #endif

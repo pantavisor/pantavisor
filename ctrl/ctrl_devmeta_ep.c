@@ -26,6 +26,9 @@
 #include "ctrl_util.h"
 #include "metadata.h"
 
+#include "pantahub/pantahub_proto.h"
+#include "power/wakelock.h"
+
 #include <event2/http.h>
 #include <event2/buffer.h>
 
@@ -88,6 +91,12 @@ static void ctrl_devmeta_set_key(struct evbuffer *buf,
 		goto out;
 	}
 
+	// a real local change on a Hub device must not suspend before it syncs;
+	// gate on is_auth so non-Hub devices never arm, and hook here rather than
+	// in pv_metadata_add_devmeta so internal producers do not pin us awake
+	if (ret > 0 && pv_pantahub_proto_is_auth())
+		pv_wakelock_devmeta_dirty();
+
 	pv_ctrl_utils_send_ok(req);
 out:
 	if (value)
@@ -126,6 +135,10 @@ static void ctrl_devmeta_delete(struct evhttp_request *req, void *ctx)
 					 "Device meta does not exist");
 		return;
 	}
+
+	// a successful delete is a real change; same gating as set
+	if (pv_pantahub_proto_is_auth())
+		pv_wakelock_devmeta_dirty();
 
 	pv_ctrl_utils_send_ok(req);
 }

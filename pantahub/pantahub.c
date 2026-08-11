@@ -60,6 +60,8 @@
 
 #include "pantahub/pantahub_proto.h"
 
+#include "power/wakelock.h"
+
 #include "utils/tsh.h"
 #include "utils/str.h"
 #include "utils/fs.h"
@@ -628,6 +630,12 @@ static void _close_state()
 	pv_event_periodic_stop(&ph->request_timer);
 	pv_event_periodic_stop(&ph->devmeta_timer);
 	pv_event_periodic_stop(&ph->usrmeta_timer);
+
+	// _close_state runs on every PH transition; only drop a held devmeta
+	// lock on real de-auth (a still-authed transient offline keeps holding,
+	// bounded by the max-hold backstop)
+	if (!pv_pantahub_proto_is_auth())
+		pv_wakelock_devmeta_deauth();
 }
 
 int pv_pantahub_close()
@@ -724,6 +732,9 @@ static void _usrmeta_cb(evutil_socket_t fd, short event, void *arg)
 	if (!pv_pantahub_proto_is_online())
 		return;
 
+	// hold the device awake around the usrmeta GET; released in
+	// _recv_get_usrmeta_cb
+	pv_wakelock_acquire(WL_USRMETA);
 	pv_pantahub_proto_get_usrmeta();
 }
 

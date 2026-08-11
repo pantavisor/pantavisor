@@ -128,12 +128,16 @@ struct ph_logger {
 	struct dl_list files; // ph_logger_file
 };
 
+// .files self-initialized to an empty list so ph_logger_close() is safe to
+// call before ph_logger_init() (e.g. a pre-FSM pv_start() failure path).
 static struct ph_logger ph_logger = { .epoll_fd = -1,
 				      .pv_conn = NULL,
 				      .client = NULL,
 				      .log_service = -1,
 				      .range_service = -1,
-				      .push_service = -1 };
+				      .push_service = -1,
+				      .files = { &ph_logger.files,
+						 &ph_logger.files } };
 
 static char *current_process = MODULE_NAME;
 

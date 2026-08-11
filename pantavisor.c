@@ -47,6 +47,7 @@
 #include "ctrl/ctrl.h"
 #include "version.h"
 #include "wdt.h"
+#include "power/wakelock.h"
 #include "network.h"
 #include "blkid.h"
 #include "init.h"
@@ -274,6 +275,10 @@ static pv_state_t _pv_run(struct pantavisor *pv)
 	}
 	// load configuration that lives in revision
 	pv_config_load_update(pv->state->rev, pv->state->bsp.config);
+
+	// power.mode may live in a config level loaded only now (e.g.
+	// pantahub.config on /storage); apply it so managed mode can start
+	pv_wakelock_apply_config();
 
 	// reload remote bool after non reboot updates, when we don't load config again
 	pv->remote_mode = pv_config_get_bool(PV_CONTROL_REMOTE);
@@ -775,6 +780,12 @@ static pv_state_t pv_shutdown(struct pantavisor *pv, pv_system_transition_t t)
 	if (!pv)
 		return PV_STATE_EXIT;
 
+	// Bridge the teardown window: pv_update_finish() below releases the
+	// update lock mid-shutdown, but sync + container teardown + unmounts
+	// must not be interrupted by a suspend. Never released (reboot/exit
+	// ends the process).
+	pv_wakelock_acquire(WL_SHUTDOWN);
+
 	init_mode_t init_mode = pv_config_get_system_init_mode();
 
 	pv_log(INFO, "preparing '%s'...", pv_system_transition_str(t));
@@ -999,6 +1010,20 @@ static void _next_state(pv_state_t next_state)
 	pv_state_t prev_state = state;
 	state = next_state;
 
+	// Release the boot lock the first time the top-level FSM reaches
+	// steady state (RUN -> WAIT): _pv_run has resumed any pending update,
+	// started platforms and armed the timers. RUN -> WAIT recurs on every
+	// later non-reboot update, so a static latch releases only once.
+	static bool boot_released = false;
+	if (!boot_released && prev_state == PV_STATE_RUN &&
+	    next_state == PV_STATE_WAIT) {
+		pv_wakelock_release(WL_BOOT);
+		boot_released = true;
+		// managed mode: now that platforms are up and the boot lock is
+		// gone, turn on opportunistic suspend (deferred from init).
+		pv_wakelock_managed_ready();
+	}
+
 	if (state != PV_STATE_WAIT && state != PV_STATE_BLOCK_REBOOT) {
 		pv_wake_state_machine();
 		return;
@@ -1028,9 +1053,19 @@ int pv_start()
 	if (pv_event_base_init() < 0)
 		return 1;
 
+	// bring up suspend-blocking wakelocks before the FSM runs, then hold the
+	// device awake from the first instruction until it reaches steady state
+	if (pv_wakelock_init() < 0)
+		return 1;
+	pv_wakelock_acquire(WL_BOOT);
+
 	_next_state(PV_STATE_INIT);
 
 	pv_event_base_loop();
+
+	pv_wakelock_deinit();
+
+	return 0;
 }
 
 void pv_stop()
