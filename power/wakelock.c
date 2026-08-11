@@ -677,6 +677,30 @@ static void _alarm_notify_cb(evutil_socket_t fd, short events, void *arg)
 	_poll_window_open();
 }
 
+// An update just finished. Poll once more before the device is allowed back to
+// sleep, so a queued revision applies in this wake rather than waiting a whole
+// wake interval. Must run while WL_UPDATE is still held: acquiring WL_POLL first
+// keeps the refcount off zero, which would otherwise let autosleep suspend us
+// between the two calls.
+void pv_wakelock_update_finished(void)
+{
+	if (!wl.init || wl.mode != PWR_MANAGED)
+		return;
+
+	// re-firing inside the open window keeps its max-awake cap, so the drain
+	// cannot extend this wake beyond the configured bound
+	if (wl.poll_active) {
+		wl.poll_round_ok = false;
+		pv_log(DEBUG,
+		       "wakelock: update finished; re-polling in window");
+		_poll_fire_requests();
+		return;
+	}
+
+	pv_log(DEBUG, "wakelock: update finished; opening drain window");
+	_poll_window_open();
+}
+
 // Called from the update-check response path. A round that round-tripped to Hub
 // completes the window (after the min-awake floor); a connection failure retries
 // within the max-awake budget instead of letting the device re-suspend.
