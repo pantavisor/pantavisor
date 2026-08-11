@@ -23,7 +23,10 @@
 #ifndef WALL_H
 #define WALL_H
 
+#include <stdarg.h>
+
 void pv_wall(const char *message, ...);
+void pv_vwall(const char *message, va_list args);
 void pv_wall_welcome(void);
 void pv_wall_ssh_users(const char *message, ...);
 void pv_wall_shell_open(void);

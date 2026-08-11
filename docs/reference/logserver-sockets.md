@@ -366,6 +366,57 @@ warning.
 
 See [Output types](../overview/storage.md#output-types) for what each sink is useful for.
 
+## Console alerts
+
+Besides the sinks above, Pantavisor can mirror selected messages straight to the device console.
+These are **console alerts**: single lines written directly to `/dev/console`, so whoever is
+watching a [serial console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md)
+sees significant events as they happen without tailing a log file. They reach that console only —
+never [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other
+remote sessions. [Storage → Console alerts](../overview/storage.md#console-alerts) explains what the
+channel is for.
+
+They are controlled by [`PV_LOG_CONSOLE_ALERTS`](pantavisor-configuration.md#summary), enabled by
+default:
+
+```bash
+PV_LOG_CONSOLE_ALERTS=0     # silence every console alert
+```
+
+### Line format
+
+```
+[    6.217276] [PANTAVISOR] [platforms] INFO: platform 'awconnect' status is now STARTING
+```
+
+| Field | Content |
+|-------|---------|
+| `[    6.217276]` | Seconds since boot (`CLOCK_MONOTONIC`), `dmesg`-style: 5 digits, 6 decimals |
+| `[PANTAVISOR]` | Fixed tag, so alerts stand out among kernel and container output |
+| `[platforms]` | The emitting Pantavisor module |
+| `INFO` | Level name: `FATAL`, `ERROR`, `WARN`, `INFO`, `DEBUG` or `TRACE` |
+| `platform 'awconnect' …` | The message |
+
+### Alert sources
+
+| Source | Emitted when | Level |
+|--------|--------------|-------|
+| `platforms` | A container changes [status](../overview/containers.md#status) — one line per transition | `INFO` |
+
+:::note
+Console alerts bypass the log server: they ignore [`PV_LOG_SERVER_OUTPUTS`](#log-server-outputs),
+never reach the log files under `PV_LOG_DIR`, and are not pushed to
+[Pantacor Hub](../overview/remote-control.md#pantacor-hub). They do not replace ordinary logging
+either — a source that also logs the event, as `platforms` does, produces both a console line and a
+regular log entry, so nothing is lost when alerts are disabled.
+:::
+
+:::note
+The level in the line is a label, not a filter. Console alerts are not matched against
+[`PV_LOG_LEVEL`](pantavisor-configuration.md#summary) — while `PV_LOG_CONSOLE_ALERTS` is enabled,
+every alert reaches the console.
+:::
+
 ## Timestamp formats
 
 Every sink except `nullsink` prefixes each line with a timestamp. The format is set per sink with

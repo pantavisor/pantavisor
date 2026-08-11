@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -60,6 +61,7 @@
 #include "utils/tsh.h"
 #include "utils/system.h"
 #include "ipam.h"
+#include "wall.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
@@ -237,6 +239,9 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	p->status.current = status;
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
+	pv_logserver_console_log(INFO, MODULE_NAME,
+				 "platform '%s' status is now %s", p->name,
+				 pv_platform_status_string(status));
 
 	if (status == PLAT_STOPPED)
 		pv_platform_unmount_volumes(p);

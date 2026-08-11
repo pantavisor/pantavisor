@@ -251,6 +251,32 @@ per sink, either as one of the Go time layout constants or as an arbitrary `strf
 string. See [timestamp formats](../reference/logserver-sockets.md#timestamp-formats) for the
 accepted values and the keys that set them.
 
+### Console alerts
+
+Some events matter to whoever is sitting in front of a device rather than reading logs after the
+fact — a container coming up during boot, for instance. Pantavisor mirrors those to `/dev/console`
+as **console alerts**, one line each, alongside the normal log entry:
+
+```
+[    6.217276] [PANTAVISOR] [platforms] INFO: platform 'awconnect' status is now STARTING
+[    6.341446] [PANTAVISOR] [platforms] INFO: platform 'awconnect' status is now STARTED
+```
+
+The timestamp is seconds since boot, the same way `dmesg` prints one, so alerts line up with kernel
+messages on the same console.
+
+Alerts take the short path: straight to the console, bypassing the log server and its
+[output types](#output-types). They are on by default, and can be turned off with
+[`PV_LOG_CONSOLE_ALERTS`](../reference/pantavisor-configuration.md#summary):
+
+```bash
+PV_LOG_CONSOLE_ALERTS=0
+```
+
+Disabling them only silences the console; the same events are still logged normally. See
+[console alerts](../reference/logserver-sockets.md#console-alerts) for the line format and the
+complete list of what emits them — today, [container status changes](containers.md#console-alerts).
+
 ### Log Directory Size Management
 
 Pantavisor manages log storage at two levels:

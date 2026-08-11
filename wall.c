@@ -21,7 +21,6 @@
  */
 
 #include <fcntl.h>
-#include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <unistd.h>
@@ -31,17 +30,15 @@
 #include "log.h"
 #include "version.h"
 #include "pantavisor.h"
-#include "state.h"
 
 #define MODULE_NAME "wall"
 #define pv_log(level, msg, ...)                                                \
 	vlog(MODULE_NAME, level, "(%s:%d) " msg, __FUNCTION__, __LINE__,       \
 	     ##__VA_ARGS__)
 
-void pv_wall(const char *message, ...)
+void pv_vwall(const char *message, va_list args)
 {
 	int con_fd;
-	va_list args;
 
 	con_fd = open("/dev/console", O_WRONLY | O_NOCTTY | O_NONBLOCK);
 	if (con_fd < 0) {
@@ -49,12 +46,20 @@ void pv_wall(const char *message, ...)
 		return;
 	}
 
-	va_start(args, message);
 	vdprintf(con_fd, message, args);
 	dprintf(con_fd, "\n");
 
-	va_end(args);
 	close(con_fd);
+}
+
+void pv_wall(const char *message, ...)
+{
+	va_list args;
+
+	va_start(args, message);
+	pv_vwall(message, args);
+
+	va_end(args);
 }
 
 void pv_wall_ssh_users(const char *message, ...)

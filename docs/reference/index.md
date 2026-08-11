@@ -16,7 +16,7 @@ Complete, enumerable specifications. Every accepted value, default and field is 
 ## Runtime interfaces
 
 - [Control Socket](pantavisor-commands.md) — pv-ctrl HTTP-over-Unix-socket endpoints: containers, groups, wakelocks, signals, commands, storage, objects, steps, metadata, xconnect graph, config and drivers
-- [Log Sockets](logserver-sockets.md) — `pv-ctrl-log` and `pv-fd-log`, the `/dev/log` syslog protocols, output sinks and timestamp formats
+- [Log Sockets](logserver-sockets.md) — `pv-ctrl-log` and `pv-fd-log`, the `/dev/log` syslog protocols, output sinks, console alerts and timestamp formats
 - [Metadata](pantavisor-metadata.md) — device and user metadata keys, formats, refresh behaviour and change thresholds
 
 ## Configuration
