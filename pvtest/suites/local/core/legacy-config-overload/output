@@ -11,8 +11,8 @@ true
 == oem config ==
 30
 == metadata (before write) ==
-4
+5
 == update log.level via user-meta ==
 
 == metadata (after write) ==
-5
+6

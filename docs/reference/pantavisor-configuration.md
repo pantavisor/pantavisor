@@ -97,16 +97,17 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) cache directory |
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
-| `PV_LIBTHTTP_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` TRACE | `3` | set libthttp log verbosity level |
+| `PV_LIBTHTTP_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` ALL | `3` | set libthttp log verbosity level |
 | `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../overview/storage.md#logs) buffer size |
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |
+| `PV_LOG_CONSOLE_ALERTS` | `0` or `1` | `1` | print [console alerts](logserver-sockets.md#console-alerts) (`WALL`, `ERROR` and `FATAL` messages) to the device console, even when `PV_LOG_LEVEL` filters them out of the logs |
 | `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](../overview/storage.md#logs) directory |
 | `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto | `0` | max size of the [log directory](../overview/storage.md#log-directory-size-management); `0` auto-sizes to 10% of the backing partition, or 100% if it is tmpfs |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for filetree logs |
 | `PV_LOG_HYSTERESIS_FACTOR` | positive integer | `4` | controls the gap between high and low watermarks for [log directory cleanup](../overview/storage.md#log-directory-size-management) |
-| `PV_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` TRACE | `0` | set Pantavisor [log](../overview/storage.md#logs) verbosity level |
+| `PV_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` WALL, `4` INFO, `5` DEBUG, `6` TRACE | `0` | set Pantavisor [log](../overview/storage.md#logs) verbosity level |
 | `PV_LOG_LOGGERS` | `0` or `1` | `1` | enable loggers for containers |
 | `PV_LOG_PUSH` | `0` or `1` | `1` | push logs to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PV_LOG_ROTATE_FACTOR` | integer | `5` | determines per-file rotation threshold for [log directory cleanup](../overview/storage.md#log-directory-size-management) |
@@ -235,6 +236,7 @@ The **Command** column is currently unreachable. The only command that mutates c
 | `PV_LOG_BUF_NITEMS`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_CAPTURE`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_CAPTURE_DMESG`               | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| `PV_LOG_CONSOLE_ALERTS`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_DIR`                         | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LOG_DIR_MAXSIZE`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT`   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
