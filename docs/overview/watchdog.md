@@ -7,7 +7,12 @@ Pantavisor also offers some [configurable](../reference/pantavisor-configuration
 
 ## Mode
 
-The watchdog mode will determine when the watchdog is pinged by Pantavisor.
+The watchdog mode will determine when the watchdog is pinged by Pantavisor. Set
+it with the [`PV_WDT_MODE`](../reference/pantavisor-configuration.md#summary)
+config key (`disabled`, `shutdown`, `startup`, or `always`; default
+`shutdown`); the ping interval is set separately with
+[`PV_WDT_TIMEOUT`](../reference/pantavisor-configuration.md#summary) (seconds,
+default `15`).
 
 ### Disabled
 
