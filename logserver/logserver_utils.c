@@ -217,7 +217,6 @@ int logserver_utils_print_raw(int fd, const struct logserver_log *log)
 	if (!ts_fmt)
 		return dprintf(fd, tmpl, log->data.len, log->data.buf);
 
-
 	char ts[256] = { 0 };
 	if (logserver_timestamp_get_formated(ts, 256, &log->time, ts_fmt) != 0)
 		strncpy(ts, "--", 3);

@@ -219,6 +219,8 @@ static struct pv_config_entry entries[] = {
 	{ BOOL, "PV_LOG_AUTO_DEVLOG", PV | OEM, 0, false, .value.b = true },
 	{ BOOL, "PV_LOG_CAPTURE", PV | OEM, 0, false, .value.b = true },
 	{ BOOL, "PV_LOG_CAPTURE_DMESG", PV | OEM, 0, false, .value.b = true },
+	{ BOOL, "PV_LOG_CONSOLE_ALERTS", PV | OEM | RUN, 0, false,
+	  .value.b = true },
 	{ INT, "PV_LOG_BUF_NITEMS", PV | OEM, 0, false, .value.i = 128 },
 	{ STR, "PV_LOG_DIR", PV, 0, false, .value.s = LOG_DIR_DEF },
 	{ STR, "PV_LOG_DIR_MAXSIZE", PV | OEM | RUN, 0, false, .value.s = "0" },

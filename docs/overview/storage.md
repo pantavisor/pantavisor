@@ -251,6 +251,46 @@ per sink, either as one of the Go time layout constants or as an arbitrary `strf
 string. See [timestamp formats](../reference/logserver-sockets.md#timestamp-formats) for the
 accepted values and the keys that set them.
 
+### Console alerts
+
+Some events matter to whoever is sitting in front of a device rather than reading logs after the
+fact — a container coming up during boot, for instance. Pantavisor mirrors those to `/dev/console`
+as **console alerts**, one line each, alongside the normal log entry. They reach whoever watches a
+[serial console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) only —
+never [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other
+remote sessions:
+
+```
+[    6.217276] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTING
+[    6.341446] [PANTAVISOR] [platforms] WALL: platform 'awconnect' status is now STARTED
+```
+
+The timestamp is seconds since boot, the same way `dmesg` prints one, so alerts line up with kernel
+messages on the same console.
+
+Alerts come from a dedicated `WALL` level, used for events meant for the console, and from every
+`ERROR` and `FATAL` that Pantavisor itself logs; container logs are not mirrored. `WALL` becomes
+visible in the logs one step before `INFO` does, but an alert reaches the console even when
+[`PV_LOG_LEVEL`](../reference/pantavisor-configuration.md#summary) keeps it out of the logs. When a
+stdout [output type](#output-types) is configured, Pantavisor enables the kernel's `ignore_loglevel`
+so that copy of the message reaches the console too; the alert is then skipped so the line does not
+appear twice. `stdout.containers` never carries Pantavisor's own messages, so it does not count.
+
+Alerts are on by default, and can be turned off with
+[`PV_LOG_CONSOLE_ALERTS`](../reference/pantavisor-configuration.md#summary), either at boot or at
+runtime through [user metadata](pantavisor-configuration-levels.md#user-metadata):
+
+```bash
+PV_LOG_CONSOLE_ALERTS=0                          # at boot
+pvcontrol usrmeta save PV_LOG_CONSOLE_ALERTS 0   # at runtime, from the next message
+pvcontrol usrmeta delete PV_LOG_CONSOLE_ALERTS   # back to the boot value
+```
+
+Disabling them only silences the console; logging still follows `PV_LOG_LEVEL`. See
+[console alerts](../reference/logserver-sockets.md#console-alerts) for the line format, the
+complete list of what emits them and how they relate to the log level — today,
+[container status changes](containers.md#console-alerts) and Pantavisor errors.
+
 ### Log Directory Size Management
 
 Pantavisor manages log storage at two levels:
