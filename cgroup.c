@@ -102,6 +102,59 @@ static int pv_cgroup_mkcgroup_root()
 	return ret;
 }
 
+#define PV_CGROUP_NAME "pantavisor"
+
+static const char *pv_cgroup_get_name(void)
+{
+	static char name[NAME_MAX];
+
+	if (name[0])
+		return name;
+
+	SNPRINTF_WTRUNC(name, sizeof(name), PV_CGROUP_NAME);
+
+	// plain "pantavisor" when not in appengine
+	if (pv_config_get_system_init_mode() != IM_APPENGINE)
+		return name;
+
+	FILE *fd = fopen("/proc/self/cgroup", "r");
+	if (!fd) {
+		pv_log(WARN, "could not open /proc/self/cgroup: %s",
+		       strerror(errno));
+		return name;
+	}
+
+	char buf[PATH_MAX];
+	while (fgets(buf, sizeof(buf), fd)) {
+		if (!pv_str_startswith("0::", 3, buf))
+			continue;
+
+		buf[strcspn(buf, "\n")] = '\0';
+
+		// e.g. 0::/system.slice/docker-1e95247e…d15e.scope
+		char *base = strrchr(buf, '/');
+		// e.g. docker-1e95247e…d15e.scope
+		base = base ? base + 1 : buf + 3;
+
+		// cgroups root or ".." means we keep the plain name
+		if (!base[0] || !strcmp(base, ".") || !strcmp(base, ".."))
+			break;
+
+		if (pv_str_startswith(PV_CGROUP_NAME, strlen(PV_CGROUP_NAME),
+				      base))
+			SNPRINTF_WTRUNC(name, sizeof(name), "%s", base);
+		else
+			// e.g. pantavisor-docker-1e95247e…d15e.scope
+			SNPRINTF_WTRUNC(name, sizeof(name),
+					PV_CGROUP_NAME "-%s", base);
+		break;
+	}
+
+	fclose(fd);
+
+	return name;
+}
+
 static int pv_cgroup_mkcgroup2_init(const char *init)
 {
 	char path[PATH_MAX];
@@ -249,19 +302,22 @@ static int pv_cgroup_init_appengine()
 	struct pantavisor *pv = pv_get_instance();
 	pv->cgroupv = pv_cgroup_get_version();
 
+	const char *name = pv_cgroup_get_name();
+
 	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID)) {
-		if (pv_cgroup_mkcgroup_init("pantavisor")) {
+		if (pv_cgroup_mkcgroup_init(name)) {
 			pv_log(WARN,
 			       "Pantavisor cgroup could not be initialized. It might be left over from previous runs. Continuing ...");
 		}
 	} else {
-		if (pv_cgroup_mkcgroup2_init("pantavisor")) {
+		if (pv_cgroup_mkcgroup2_init(name)) {
 			pv_log(WARN,
 			       "Pantavisor cgroup could not be initialized. It might be left over from previous runs. Continuing ...");
 		}
-		if (pv_cgroup2_join("pantavisor")) {
+		if (pv_cgroup2_join(name)) {
 			pv_log(ERROR,
-			       "Pantavisor could not join 'pantavisor' cgroupv2.");
+			       "Pantavisor could not join '%s' cgroupv2.",
+			       name);
 			return -1;
 		}
 	}
@@ -280,7 +336,7 @@ int pv_cgroup_init()
 
 	if (pv_cgroup_mkcgroup_init("systemd"))
 		return -1;
-	if (pv_cgroup_mkcgroup_init("pantavisor"))
+	if (pv_cgroup_mkcgroup_init(pv_cgroup_get_name()))
 		return -1;
 
 	pv_cgroup_mkcgroup_resource("blkio");
@@ -311,20 +367,28 @@ int pv_cgroup_init()
 
 void pv_cgroup_umount(void)
 {
-	pv_fs_path_remove("/sys/fs/cgroup/pantavisor", false);
+	char path[PATH_MAX];
+	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s",
+			pv_cgroup_get_name());
+
+	pv_fs_path_remove(path, false);
 }
 
 static char *pv_cgroup_parse_proc_legacy(FILE *fd)
 {
 	char *pvcg, *pname = NULL;
-	char buf[128];
-	while (fgets(buf, 128, fd)) {
+	char needle[NAME_MAX];
+	SNPRINTF_WTRUNC(needle, sizeof(needle), ":name=%s:/",
+			pv_cgroup_get_name());
+
+	char buf[PATH_MAX];
+	while (fgets(buf, sizeof(buf), fd)) {
 		int l = strlen(buf) - 1;
 		if (buf[l] == '\n')
 			buf[l] = 0;
-		pvcg = strstr(buf, ":name=pantavisor:/");
+		pvcg = strstr(buf, needle);
 		if (pvcg) {
-			pvcg += strlen(":name=pantavisor:/");
+			pvcg += strlen(needle);
 			if (!strncmp(pvcg, "lxc/", 4))
 				pvcg += 4;
 			if (!strlen(pvcg))
@@ -491,6 +555,13 @@ void pv_cgroup_destroy(const char *name)
 		struct dirent *entry;
 		while ((entry = readdir(d)) != NULL) {
 			if (entry->d_name[0] == '.')
+				continue;
+
+			// other appengine instances hold their own hierarchy next to ours
+			if (pv_str_startswith(PV_CGROUP_NAME,
+					      strlen(PV_CGROUP_NAME),
+					      entry->d_name) &&
+			    strcmp(entry->d_name, pv_cgroup_get_name()))
 				continue;
 
 			char hierarchy[PATH_MAX];
