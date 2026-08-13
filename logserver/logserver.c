@@ -864,8 +864,7 @@ static int logserver_open_server_socket(const char *fname)
 	// sometimes, the socket file still exists after reboot
 	unlink(addr.sun_path);
 
-	if (bind(fd, (const struct sockaddr *)&addr, sizeof(addr.sun_path)) ==
-	    -1) {
+	if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
 		pv_log(ERROR, "unable to bind control socket: %s",
 		       strerror(errno));
 		close(fd);
