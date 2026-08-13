@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -264,9 +265,14 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
 
-	if (pv_config_platform_status_has_alert(status))
-		pv_wall("platform '%s' status is now %s", p->name,
+	if (pv_config_platform_status_has_alert(status)) {
+		struct timespec tm;
+		clock_gettime(CLOCK_MONOTONIC, &tm);
+
+		pv_wall("[%5ld.%06ld] platform '%s' status is now %s",
+			(long)tm.tv_sec, (long)tm.tv_sec / 1000, p->name,
 			pv_platform_status_string(status));
+	}
 
 	if (status == PLAT_STOPPED)
 		pv_platform_unmount_volumes(p);
