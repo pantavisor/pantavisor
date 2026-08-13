@@ -32,6 +32,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <time.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -60,6 +61,7 @@
 #include "utils/tsh.h"
 #include "utils/system.h"
 #include "ipam.h"
+#include "wall.h"
 
 #define MODULE_NAME "platforms"
 #define pv_log(level, msg, ...)                                                \
@@ -156,6 +158,31 @@ const char *pv_platform_status_string(plat_status_t status)
 	return "UNKNOWN";
 }
 
+plat_status_t pv_platform_status_from_string(const char *status)
+{
+	if (!strcmp(status, "NONE"))
+		return PLAT_NONE;
+	else if (!strcmp(status, "INSTALLED"))
+		return PLAT_INSTALLED;
+	else if (!strcmp(status, "MOUNTED"))
+		return PLAT_MOUNTED;
+	else if (!strcmp(status, "BLOCKED"))
+		return PLAT_BLOCKED;
+	else if (!strcmp(status, "STARTING"))
+		return PLAT_STARTING;
+	else if (!strcmp(status, "STARTED"))
+		return PLAT_STARTED;
+	else if (!strcmp(status, "READY"))
+		return PLAT_READY;
+	else if (!strcmp(status, "RECOVERING"))
+		return PLAT_RECOVERING;
+	else if (!strcmp(status, "STOPPING"))
+		return PLAT_STOPPING;
+	else if (!strcmp(status, "STOPPED"))
+		return PLAT_STOPPED;
+	return -1;
+}
+
 static void pv_platform_on_status_goal_reached(struct pv_platform *p)
 {
 	struct timer_state tstate = timer_current_state(&p->timer_status_goal);
@@ -237,6 +264,15 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	p->status.current = status;
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
+
+	if (pv_config_platform_status_has_alert(status)) {
+		struct timespec tm;
+		clock_gettime(CLOCK_MONOTONIC, &tm);
+
+		pv_wall("[%5ld.%06ld] platform '%s' status is now %s",
+			(long)tm.tv_sec, (long)tm.tv_sec / 1000, p->name,
+			pv_platform_status_string(status));
+	}
 
 	if (status == PLAT_STOPPED)
 		pv_platform_unmount_volumes(p);

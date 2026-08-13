@@ -255,6 +255,7 @@ void pv_platform_set_std_log(struct pv_platform *p, bool std_log_support);
 bool pv_platform_support_std_log(struct pv_platform *p);
 
 const char *pv_platform_status_string(plat_status_t status);
+plat_status_t pv_platform_status_from_string(const char *status);
 const char *pv_platforms_restart_policy_str(restart_policy_t policy);
 const char *pv_backoff_policy_str(backoff_policy_t policy, int duration);
 backoff_policy_t pv_parse_backoff_policy(const char *value, int *duration_out);

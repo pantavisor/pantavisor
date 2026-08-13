@@ -154,6 +154,12 @@ For now, we only support the `ready` signal, which can be used to get to the [RE
 
 Once all containers have met their [status goal](#status-goal), Pantavisor fires the `system-done` [hook point](hooks.md#hook-points), allowing operators to react to the platform reaching its fully-running state.
 
+### Alerts
+
+Pantavisor can broadcast a message to the [device console](../../meta-pantavisor/getting-started/operate/device-access/serial-port.md) whenever a container reaches one of its [statuses](#status). Configure which statuses trigger it with the [`PV_PLATFORM_ALERT_STATUS`](../reference/pantavisor-configuration.md#summary) config key: a comma-separated, case-insensitive list of status names (`INSTALLED`, `MOUNTED`, `BLOCKED`, `STARTING`, `STARTED`, `READY`, `RECOVERING`, `STOPPING`, `STOPPED`), or `ALL` to alert on every status change. The key is empty by default, so no alerts are sent unless configured.
+
+Alerts are only written to the device console — they are not delivered to [SSH](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) or other remote sessions.
+
 ## Auto-Recovery
 
 Containers can be configured to automatically restart after a crash using the `auto_recovery` object in [run.json](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) or inherited from the container's [group](#groups).

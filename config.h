@@ -97,6 +97,7 @@ typedef enum {
 	PV_NET_BRDEV,
 	PV_NET_BRMASK4,
 	PV_OEM_NAME,
+	PV_PLATFORM_ALERT_STATUS,
 	PV_POLICY,
 	PV_POWER_MODE,
 	PV_POWER_DEVMETA_EAGER_PUSH,
@@ -237,6 +238,8 @@ typedef enum {
 
 wdt_mode_t pv_config_get_wdt_mode(void);
 char *pv_config_get_wdt_mode_str(void);
+
+bool pv_config_platform_status_has_alert(int status);
 
 // MAIN FUNCTIONS
 
