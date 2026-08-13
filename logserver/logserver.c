@@ -849,7 +849,7 @@ static int logserver_open_client_socket(const char *fname)
 	return fd;
 }
 
-static int logserver_open_server_socket(const char *fname)
+static int logserver_open_server_socket(const char *fname, bool create_std_sock)
 {
 	struct sockaddr_un addr = { 0 };
 	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -879,7 +879,8 @@ static int logserver_open_server_socket(const char *fname)
 		return -1;
 	}
 
-	if (logserver_rfc_create_socket(addr.sun_path) != 0) {
+	if (create_std_sock &&
+	    logserver_rfc_create_socket(addr.sun_path) != 0) {
 		pv_log(WARN, "standard socket could not be linked");
 	}
 
@@ -1062,12 +1063,12 @@ int pv_logserver_init(const char *rev)
 		return -1;
 	}
 
-	logserver.logsock = logserver_open_server_socket(LOGCTRL_FNAME);
+	logserver.logsock = logserver_open_server_socket(LOGCTRL_FNAME, true);
 	if (logserver.logsock < 0)
 		pv_log(WARN,
 		       "could not initialize log socket, logs will not be captured");
 
-	logserver.fdsock = logserver_open_server_socket(LOGFD_FNAME);
+	logserver.fdsock = logserver_open_server_socket(LOGFD_FNAME, false);
 	if (logserver.fdsock < 0)
 		pv_log(WARN,
 		       "could not open fd socket, some containers logs will be lost");
