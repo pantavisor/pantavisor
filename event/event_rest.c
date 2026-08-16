@@ -217,7 +217,8 @@ int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
 	const char *endpoint, const char *token, const char *body,
 	void (*chunk_cb)(struct evhttp_request *, void *),
-	void (*done_cb)(struct evhttp_request *, void *), void *ctx)
+	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
+	off_t resume_from, size_t rate_limit_bytes_per_sec)
 {
 	if (!pv_event_get_base())
 		return -1;
@@ -241,6 +242,20 @@ int pv_event_rest_send_by_components(
 	bufferevent_mbedtls_set_allow_dirty_shutdown(bev, 1);
 	/* Bound buffered read data so large downloads don't starve the event loop. */
 	bufferevent_setwatermark(bev, EV_READ, 0, HTTP_DOWNLOAD_READ_HIGHWATER);
+
+	if (rate_limit_bytes_per_sec > 0) {
+		const struct timeval tick = { 1, 0 };
+		// cfg must outlive the bufferevent's use of it; deliberately
+		// not freed since this test-only knob defaults to disabled
+		struct ev_token_bucket_cfg *rate_cfg = ev_token_bucket_cfg_new(
+			rate_limit_bytes_per_sec, rate_limit_bytes_per_sec,
+			rate_limit_bytes_per_sec, rate_limit_bytes_per_sec,
+			&tick);
+		if (rate_cfg)
+			bufferevent_set_rate_limit(bev, rate_cfg);
+		else
+			pv_log(WARN, "could not create rate limit config");
+	}
 
 	struct evhttp_connection *evcon;
 	evcon = evhttp_connection_base_bufferevent_new(pv_event_get_base(),
@@ -292,6 +307,14 @@ int pv_event_rest_send_by_components(
 		_add_header(output_headers, "Authorization", bearer);
 	}
 
+	if (resume_from > 0) {
+		char range[64];
+		snprintf(range, sizeof(range), "bytes=%jd-",
+			 (intmax_t)resume_from);
+
+		_add_header(output_headers, "Range", range);
+	}
+
 	if (body) {
 		size_t len = strlen(body);
 		pv_log(TRACE, "");
@@ -333,7 +356,8 @@ error:
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
-			      void *ctx)
+			      void *ctx, off_t resume_from,
+			      size_t rate_limit_bytes_per_sec)
 {
 	int ret = -1, port;
 	const char *scheme, *host, *path;
@@ -371,7 +395,9 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 		path = "/";
 
 	ret = pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
-					       chunk_cb, done_cb, ctx);
+					       chunk_cb, done_cb, ctx,
+					       resume_from,
+					       rate_limit_bytes_per_sec);
 
 out:
 	if (http_uri)
@@ -521,14 +547,16 @@ int pv_event_rest_recv_done_path(struct evhttp_request *req, const char *path,
 	}
 
 	ret = _recv_status_line(req);
-	if (ret == 200) {
+	if (ret == 200 || ret == 206) {
 		size = pv_fs_path_get_size(path);
 		pv_log(DEBUG,
-		       "successfully downloaded file with size %jd bytes at '%s'",
-		       (intmax_t)size, path);
+		       "successfully downloaded file with size %jd bytes at '%s' (status %d)",
+		       (intmax_t)size, path, ret);
 	} else {
-		pv_log(WARN, "file transfer to '%s' failed", path);
-		pv_fs_path_remove(path, false);
+		// caller decides whether the partial file at 'path' is kept
+		// around for a resumed retry or discarded
+		pv_log(WARN, "file transfer to '%s' failed with status %d",
+		       path, ret);
 	}
 
 	if (ret < 0) {
