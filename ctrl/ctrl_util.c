@@ -337,6 +337,17 @@ void pv_ctrl_utils_drain_req(struct evhttp_request *req)
 	ctrl_utils_drain_buf(evhttp_request_get_input_buffer(req));
 }
 
+static bool ctrl_utils_expects_body(struct evhttp_request *req)
+{
+	const char *te = evhttp_find_header(
+		evhttp_request_get_input_headers(req), "transfer-encoding");
+
+	if (te && !evutil_ascii_strcasecmp(te, "chunked"))
+		return true;
+
+	return pv_ctrl_utils_get_content_length(req) > 0;
+}
+
 static void ctrl_utils_drain_ok_callback(struct evbuffer *buf,
 					 const struct evbuffer_cb_info *info,
 					 void *ctx)
@@ -380,6 +391,12 @@ static void ctrl_utils_drain_error_callback(struct evbuffer *buf,
 
 void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req)
 {
+	if (!ctrl_utils_expects_body(req)) {
+		pv_ctrl_utils_drain_req(req);
+		pv_ctrl_utils_send_ok(req);
+		return;
+	}
+
 	evbuffer_add_cb(evhttp_request_get_input_buffer(req),
 			ctrl_utils_drain_ok_callback, req);
 }
@@ -387,6 +404,12 @@ void pv_ctrl_utils_drain_on_arrive_with_ok(struct evhttp_request *req)
 void pv_ctrl_utils_drain_on_arrive_with_err(struct evhttp_request *req,
 					    int code, const char *err_str)
 {
+	if (!ctrl_utils_expects_body(req)) {
+		pv_ctrl_utils_drain_req(req);
+		pv_ctrl_utils_send_error(req, code, err_str);
+		return;
+	}
+
 	struct ctrl_utils_drain_data *data =
 		calloc(1, sizeof(struct ctrl_utils_drain_data));
 	if (!data) {
