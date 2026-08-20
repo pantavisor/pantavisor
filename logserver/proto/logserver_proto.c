@@ -78,8 +78,10 @@ int logserver_proto_to_log(struct logserver_log_data *data,
 {
 	log_protocol_code_t code = logserver_proto_get(data->buf);
 
-	if (code == LOG_PROTOCOL_UNKNOWN)
-		return -1;
+	if (code == LOG_PROTOCOL_UNKNOWN) {
+		log->code = code;
+		return 0;
+	}
 
 	int ret = -1;
 

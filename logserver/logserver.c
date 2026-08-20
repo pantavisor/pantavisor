@@ -394,14 +394,17 @@ static int logserver_handle_msg(int fd)
 		goto out;
 
 	struct logserver_conninfo *ci = logserver_conninfo_search(fd);
+	char *cgroup = NULL;
 
 	if (!ci)
 		pv_log(DEBUG, "couldn't found current fd information");
+	else
+		cgroup = ci->cgroup;
 
 	struct logserver_log_data data = {
 		.rev = logserver.running_rev,
 		.upd = logserver.updated_rev,
-		.cgroup = ci->cgroup,
+		.cgroup = cgroup,
 		.buf = buffer->buf,
 	};
 
