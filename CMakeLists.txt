@@ -263,6 +263,10 @@ add_executable(pantavisor
 			logger.h
 			logserver/logserver.c
 			logserver/logserver.h
+			logserver/logserver_epoll.c
+			logserver/logserver_epoll.h
+			logserver/logserver_fd.c
+			logserver/logserver_fd.h
 			logserver/logserver_filetree.c
 			logserver/logserver_filetree.h
 			logserver/logserver_null.c
@@ -285,6 +289,8 @@ add_executable(pantavisor
 			logserver/logserver_rotation.h
 			logserver/logserver_singlefile.c
 			logserver/logserver_singlefile.h
+			logserver/logserver_socket.c
+			logserver/logserver_socket.h
 			logserver/logserver_stdout.c
 			logserver/logserver_stdout.h
 			logserver/logserver_timestamp.c
