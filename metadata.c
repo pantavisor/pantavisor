@@ -68,6 +68,8 @@
 	     ##__VA_ARGS__)
 #include "log.h"
 
+#define PV_DEVMETA_UPTIME_PATH "/proc/uptime"
+
 static const unsigned int METADATA_MAX_SIZE = 4096;
 
 #define PV_USERMETA_ADD (1 << 0)
@@ -386,6 +388,27 @@ static int pv_devmeta_time(struct pv_devmeta_read *pv_devmeta_read)
 
 	return 0;
 }
+
+static int pv_devmeta_get_uptime(double *uptime, double *idle)
+{
+	FILE *fd = fopen(PV_DEVMETA_UPTIME_PATH, "r");
+	if (!fd) {
+		pv_log(DEBUG, "couldn't open %s", PV_DEVMETA_UPTIME_PATH);
+		return -1;
+	}
+
+	int ret = fscanf(fd, "%lf %lf", uptime, idle);
+	fclose(fd);
+
+	if (ret != 2) {
+		pv_log(DEBUG, "couldn't read %s (got %d fields)",
+		       PV_DEVMETA_UPTIME_PATH, ret);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
@@ -403,13 +426,23 @@ static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 		return -1;
 	}
 
+	double uptime = 0;
+	double idle = 0;
+
+	// for the updatime we read /proc/uptime if available to get the full
+	// precision plus idle time. If we can't read, then fallback to sysinfo
+	if (pv_devmeta_get_uptime(&uptime, &idle) < 0)
+		uptime = (double)info.uptime;
+
 	struct pv_json_ser js;
 	pv_json_ser_init(&js, 512);
 
 	pv_json_ser_object(&js);
 	{
 		pv_json_ser_key(&js, "uptime");
-		pv_json_ser_number(&js, info.uptime);
+		pv_json_ser_number(&js, uptime);
+		pv_json_ser_key(&js, "idle");
+		pv_json_ser_number(&js, idle);
 		pv_json_ser_key(&js, "loads.0");
 		pv_json_ser_number(&js, info.loads[0]);
 		pv_json_ser_key(&js, "loads.1");
@@ -978,10 +1011,49 @@ int pv_metadata_init()
 	return 0;
 }
 
+static void pv_devmeta_update_sysinfo()
+{
+	struct pv_devmeta_read *sysinfo = NULL;
+	for (int i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
+		if (!strcmp(pv_devmeta_readkeys[i].key,
+			    DEVMETA_KEY_PV_SYSINFO)) {
+			sysinfo = &pv_devmeta_readkeys[i];
+			break;
+		}
+	}
+
+	if (!sysinfo) {
+		pv_log(DEBUG, "couldn't update sysinfo, key not found");
+		return;
+	}
+
+	struct buffer *buffer = pv_buffer_get(true);
+	if (!buffer) {
+		pv_log(DEBUG,
+		       "couldn't update sysinfo, cannot allocate buffer");
+		return;
+	}
+
+	sysinfo->buf = buffer->buf;
+	sysinfo->buflen = buffer->size;
+	if (sysinfo->reader(sysinfo) != 0) {
+		pv_log(DEBUG, "couldn't update sysinfo");
+		goto out;
+	}
+
+	pv_metadata_add_devmeta(sysinfo->key, sysinfo->buf);
+out:
+	pv_buffer_drop(buffer);
+}
+
 static char *pv_metadata_get_meta_string(struct dl_list *meta_list)
 {
 	struct pv_meta *curr, *tmp;
 	int len = 1, line_len;
+
+	if (meta_list == &pv_get_instance()->metadata->devmeta)
+		pv_devmeta_update_sysinfo();;
+
 	char *json = calloc(len, sizeof(char));
 
 	// open json
