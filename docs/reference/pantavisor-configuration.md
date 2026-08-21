@@ -96,8 +96,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_NET_BRADDRESS4` | IP address | `10.0.3.1` | set bridge IPv4 address |
 | `PV_NET_BRDEV` | interface name | `lxcbr0` | set bridge device name |
 | `PV_NET_BRMASK4` | IP mask | `255.255.255.0` | set bridge IPv4 mask |
-| `PV_OEM_NAME` | string | empty | set OEM name for configuration overrides |
-| `PV_POLICY` | string | empty | set policy name for configuration |
+| `PV_OEM_NAME` | string | empty | set OEM name to load the in-revision [OEM configuration](../overview/pantavisor-configuration-levels.md#oem) file from `<PV_OEM_NAME>/<PV_POLICY>.config`; empty disables the OEM level |
+| `PV_POLICY` | string | empty | set policy name to select the [policy](../overview/pantavisor-configuration-levels.md#policies) config file and the name of the [OEM configuration](../overview/pantavisor-configuration-levels.md#oem) file (`default` if empty) |
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../overview/storage.md#artifact-checksum) |

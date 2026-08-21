@@ -35,9 +35,66 @@ To select a policy among the installed ones, we need to set its name to the `PV_
 
 ## OEM
 
-For setups where we want to modify the configuration based on device [updates](updates.md), we offer the possibility to attach a configuration file to a [revision](revisions.md).
+For setups where we want to modify the configuration based on device [updates](updates.md), we offer the possibility to attach a configuration file to a [revision](revisions.md). This way, the configuration values travel with the revision like any other artifact: they can be changed with a regular update, are covered by the same rollback guarantees, and do not require rebuilding the Pantavisor image.
 
-Its location [inside the revision](../reference/pantavisor-state-format-v2.md#1-root-level-statejson) will be defined by the [configuration](../reference/pantavisor-configuration.md) values of the keys `PV_OEM_NAME` and `PV_POLICY` from [pantavisor.config](#pantavisorconfig), [environment variables](#environment-variables) or [policies](#policies) levels.
+### How it works
+
+Every time a revision is started (after boot up or a device [update](updates.md)), Pantavisor searches [inside the revision](../reference/pantavisor-state-format-v2.md#1-root-level-statejson) for a configuration file at:
+
+```
+<PV_OEM_NAME>/<PV_POLICY>.config
+```
+
+The two keys that define this location are set at the [pantavisor.config](#pantavisorconfig), [environment variables](#environment-variables) or [policies](#policies) levels:
+
+| Key | Default | Effect on the OEM level |
+|-----|---------|-------------------------|
+| `PV_OEM_NAME` | empty | Name of the directory that contains the file. If not set, the OEM level is disabled and no file is loaded |
+| `PV_POLICY` | empty | Name of the file. If not set, the file name falls back to `default.config` |
+
+For example, with `PV_OEM_NAME=myoem` and `PV_POLICY` unset, Pantavisor will load `myoem/default.config` from the revision. With `PV_POLICY=production`, it will load `myoem/production.config` instead. This means a single revision can ship one configuration file per [policy](#policies), and each device will pick the one matching its installed policy.
+
+If `PV_OEM_NAME` is set but the revision does not contain the file, an informative message is printed in the logs and startup continues normally.
+
+The file uses the same `key=value` syntax as [pantavisor.config](#pantavisorconfig). Its values are applied at the OEM level, so they overwrite [pantavisor.config](#pantavisorconfig), [pantahub.config](#pantahubconfig) and [policies](#policies), but can still be overwritten by [cmdline](#cmdline), [environment variables](#environment-variables), [user metadata](#user-metadata) and [commands](#commands). Only the keys allowed at the OEM level will be accepted, while the rest will be ignored with a warning in the logs. Our [reference](../reference/pantavisor-configuration.md#levels) contains the list of keys that can be set at this level.
+
+### How to set it up
+
+First, set the OEM name in one of its allowed levels. The typical choice is [pantavisor.config](#pantavisorconfig) at [build time](../../meta-pantavisor/overview/get-started.md):
+
+```
+PV_OEM_NAME=myoem
+```
+
+Then, attach the configuration file to the revision from a [pvr](https://docs.pantahub.com/pvr/) checkout of your device:
+
+```bash
+mkdir myoem
+cat > myoem/default.config << EOF
+PH_METADATA_DEVMETA_INTERVAL=30
+PH_METADATA_USRMETA_INTERVAL=30
+EOF
+pvr add .
+pvr commit
+pvr post
+```
+
+After the device runs the new revision, the overridden values can be verified with [pvcontrol](local-control.md#pvcontrol), which reports the level each key was last modified at:
+
+```bash
+$ pvcontrol conf ls
+...
+{
+  "key": "PH_METADATA_USRMETA_INTERVAL",
+  "value": "30",
+  "modified": "oem config"
+}
+...
+```
+
+:::note
+If [state signature](storage.md#state-signature) validation is enabled, the OEM configuration directory, like the BSP one, can only be secured by a certificate that is validated against the default root certificate. Signatures whose certificate subject CN matches `PV_OEM_NAME` are validated against the OEM root certificate instead, and cannot include any artifact from those two directories. See the [certificate chain of trust](storage.md#certificate-chain-of-trust) for more information.
+:::
 
 ## cmdline
 

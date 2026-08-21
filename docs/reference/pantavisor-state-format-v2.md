@@ -25,6 +25,7 @@ These keys represent the files at the root of a revision.
 | `<container>/services.json` | [Service Exports](#8-service-mesh-containerservicesjson) | No | Services exported to the xconnect mesh. |
 | `_sigs/<container>.json` | [Signature Manifest](#9-security-_sigscontainerjson) | No | Security signature for container artifacts. |
 | `_config/<container>/<path>` | string | No | Injects data into `<path>` inside the container's rootfs. |
+| `<PV_OEM_NAME>/<PV_POLICY>.config` | string | No | [OEM configuration](../overview/pantavisor-configuration-levels.md#oem) file with `key=value` overrides, loaded on revision startup. |
 | `<any/other/path>` | string | No | SHA256 identifier for a binary artifact at that path. |
 
 ---
