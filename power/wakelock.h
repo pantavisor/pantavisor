@@ -63,6 +63,8 @@ void pv_wakelock_devmeta_dirty(void);
 void pv_wakelock_devmeta_sent(void);
 void pv_wakelock_devmeta_acked(bool ok);
 void pv_wakelock_devmeta_deauth(void);
+// true while a local mutation is still waiting to reach Hub
+bool pv_wakelock_devmeta_is_pending(void);
 
 // Drives the per-wake window: a round that did not reach Hub is retried while
 // staying awake, until one succeeds or max-awake elapses.

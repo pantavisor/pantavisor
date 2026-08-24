@@ -1138,6 +1138,223 @@ out:
 	return json;
 }
 
+// Change policy: what makes a devmeta key worth a Hub roundtrip. Keys and
+// fields not listed are compared verbatim, so state keys keep report-on-change.
+typedef enum {
+	DEVMETA_SIG_EXACT,
+	DEVMETA_SIG_NEVER,
+	DEVMETA_SIG_REL,
+} devmeta_sig_t;
+
+struct pv_devmeta_sig {
+	const char *name;
+	devmeta_sig_t sig;
+	int pct; // DEVMETA_SIG_REL only; 0 means metadata.devmeta.threshold
+	const struct pv_devmeta_sig *sub; // policy for a flat object value
+};
+
+static const struct pv_devmeta_sig pv_devmeta_sig_sysinfo[] = {
+	// both only ever grow and Hub can derive them from the PUT it just
+	// received, so they must never be the reason we send one
+	{ .name = "uptime", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "idle", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "loads.0", .sig = DEVMETA_SIG_REL, .pct = 10 },
+	{ .name = "loads.1", .sig = DEVMETA_SIG_REL, .pct = 10 },
+	{ .name = "loads.2", .sig = DEVMETA_SIG_REL, .pct = 10 },
+	{ .name = "procs", .sig = DEVMETA_SIG_REL, .pct = 5 },
+	{ .name = "freeram", .sig = DEVMETA_SIG_REL },
+	{ .name = "sharedram", .sig = DEVMETA_SIG_REL },
+	{ .name = "bufferram", .sig = DEVMETA_SIG_REL },
+	{ .name = "freeswap", .sig = DEVMETA_SIG_REL },
+	{ .name = "freehigh", .sig = DEVMETA_SIG_REL },
+	// totalram, totalswap, totalhigh and mem_unit stay exact: they only
+	// move when the machine itself changed
+	{ 0 }
+};
+
+static const struct pv_devmeta_sig pv_devmeta_sig_storage[] = {
+	{ .name = "free", .sig = DEVMETA_SIG_REL },
+	{ .name = "real_free", .sig = DEVMETA_SIG_REL },
+	// total and reserved stay exact
+	{ 0 }
+};
+
+static const struct pv_devmeta_sig pv_devmeta_sig_keys[] = {
+	{ .name = DEVMETA_KEY_PV_TIME, .sig = DEVMETA_SIG_NEVER },
+	{ .name = DEVMETA_KEY_PV_SYSINFO,
+	  .sig = DEVMETA_SIG_EXACT,
+	  .sub = pv_devmeta_sig_sysinfo },
+	{ .name = DEVMETA_KEY_STORAGE,
+	  .sig = DEVMETA_SIG_EXACT,
+	  .sub = pv_devmeta_sig_storage },
+	{ 0 }
+};
+
+static const struct pv_devmeta_sig *
+pv_devmeta_sig_get(const struct pv_devmeta_sig *tbl, const char *name, int len)
+{
+	if (!tbl)
+		return NULL;
+
+	for (; tbl->name; tbl++) {
+		if ((int)strlen(tbl->name) == len &&
+		    !strncmp(tbl->name, name, len))
+			return tbl;
+	}
+
+	return NULL;
+}
+
+static jsmntok_t *pv_devmeta_sig_find(const char *buf, jsmntok_t **keys,
+				      const char *name, int len)
+{
+	for (jsmntok_t **k = keys; *k; k++) {
+		int n = (*k)->end - (*k)->start;
+
+		if (n == len && !strncmp(buf + (*k)->start, name, len))
+			return *k + 1;
+	}
+
+	return NULL;
+}
+
+static bool pv_devmeta_sig_num(const char *prev, int prev_len, const char *next,
+			       int next_len, int pct)
+{
+	char a[32], b[32];
+	char *ea = NULL, *eb = NULL;
+
+	if (prev_len >= (int)sizeof(a) || next_len >= (int)sizeof(b))
+		return true;
+
+	memcpy(a, prev, prev_len);
+	a[prev_len] = '\0';
+	memcpy(b, next, next_len);
+	b[next_len] = '\0';
+
+	double va = strtod(a, &ea);
+	double vb = strtod(b, &eb);
+	if (ea == a || eb == b)
+		return true;
+
+	if (pct <= 0)
+		pct = pv_config_get_int(PH_METADATA_DEVMETA_THRESHOLD);
+	if (pct <= 0)
+		return true;
+
+	double delta = vb > va ? vb - va : va - vb;
+	double base = va < 0 ? -va : va;
+
+	// a percentage of nearly nothing is noise; take any whole-unit move
+	if (base < 1)
+		return delta >= 1;
+
+	return delta * 100 >= base * pct;
+}
+
+// Compare two flat json objects under tbl. Fails safe: anything we cannot parse
+// counts as a change so we never sit on an update we failed to understand.
+static bool pv_devmeta_sig_obj(const char *prev, const char *next,
+			       const struct pv_devmeta_sig *tbl)
+{
+	jsmntok_t *ptokv = NULL, *ntokv = NULL;
+	jsmntok_t **pkeys = NULL, **nkeys = NULL;
+	int ptokc = 0, ntokc = 0;
+	bool sig = true;
+
+	if (jsmnutil_parse_json(prev, &ptokv, &ptokc) < 0 || !ptokv)
+		goto out;
+	if (jsmnutil_parse_json(next, &ntokv, &ntokc) < 0 || !ntokv)
+		goto out;
+
+	pkeys = jsmnutil_get_object_keys(prev, ptokv);
+	nkeys = jsmnutil_get_object_keys(next, ntokv);
+	if (!pkeys || !nkeys)
+		goto out;
+
+	for (jsmntok_t **k = nkeys; *k; k++) {
+		int len = (*k)->end - (*k)->start;
+		const char *name = next + (*k)->start;
+		const struct pv_devmeta_sig *e =
+			pv_devmeta_sig_get(tbl, name, len);
+		devmeta_sig_t kind = e ? e->sig : DEVMETA_SIG_EXACT;
+
+		if (kind == DEVMETA_SIG_NEVER)
+			continue;
+
+		jsmntok_t *pt = pv_devmeta_sig_find(prev, pkeys, name, len);
+		if (!pt)
+			goto out;
+
+		jsmntok_t *nt = *k + 1;
+		int plen = pt->end - pt->start;
+		int nlen = nt->end - nt->start;
+		const char *pval = prev + pt->start;
+		const char *nval = next + nt->start;
+
+		if (plen == nlen && !memcmp(pval, nval, plen))
+			continue;
+
+		if (e && e->sub) {
+			char *ps = strndup(pval, plen);
+			char *ns = strndup(nval, nlen);
+			bool sub = !ps || !ns ||
+				   pv_devmeta_sig_obj(ps, ns, e->sub);
+
+			free(ps);
+			free(ns);
+			if (sub)
+				goto out;
+			continue;
+		}
+
+		if (kind == DEVMETA_SIG_REL) {
+			if (pv_devmeta_sig_num(pval, plen, nval, nlen, e->pct))
+				goto out;
+			continue;
+		}
+
+		goto out;
+	}
+
+	// a key that disappeared is a change too, unless we ignore it anyway
+	for (jsmntok_t **k = pkeys; *k; k++) {
+		int len = (*k)->end - (*k)->start;
+		const char *name = prev + (*k)->start;
+		const struct pv_devmeta_sig *e =
+			pv_devmeta_sig_get(tbl, name, len);
+
+		if (e && e->sig == DEVMETA_SIG_NEVER)
+			continue;
+		if (!pv_devmeta_sig_find(next, nkeys, name, len))
+			goto out;
+	}
+
+	sig = false;
+out:
+	if (pkeys)
+		jsmnutil_tokv_free(pkeys);
+	if (nkeys)
+		jsmnutil_tokv_free(nkeys);
+	if (ptokv)
+		free(ptokv);
+	if (ntokv)
+		free(ntokv);
+
+	return sig;
+}
+
+bool pv_metadata_devmeta_significant(const char *prev, const char *next)
+{
+	if (!prev || !next)
+		return true;
+
+	if (!strcmp(prev, next))
+		return false;
+
+	return pv_devmeta_sig_obj(prev, next, pv_devmeta_sig_keys);
+}
+
 char *pv_metadata_get_user_meta_string()
 {
 	return pv_metadata_get_meta_string(

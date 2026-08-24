@@ -43,6 +43,7 @@
 
 #include "utils/fs.h"
 #include "utils/str.h"
+#include "utils/timer.h"
 
 #define MODULE_NAME "pantahub_proto"
 #define pv_log(level, msg, ...)                                                \
@@ -98,6 +99,47 @@ struct pv_pantahub_session {
 
 static struct pv_pantahub_session session;
 
+// Hub reads devmeta PUTs as a liveness signal, so we keep a predictable floor
+// under them while suppressing the ones that carry no news.
+static struct devmeta_gate {
+	char *acked; // last payload Hub returned 200 for
+	char *inflight; // payload of the PUT we are waiting on
+	struct timer heartbeat;
+} devmeta_gate;
+
+static void _devmeta_gate_arm(void)
+{
+	timer_start(&devmeta_gate.heartbeat,
+		    pv_config_get_int(PH_METADATA_DEVMETA_HEARTBEAT), 0,
+		    RELATIV_TIMER);
+}
+
+static void _devmeta_gate_reset(void)
+{
+	free(devmeta_gate.acked);
+	devmeta_gate.acked = NULL;
+	free(devmeta_gate.inflight);
+	devmeta_gate.inflight = NULL;
+
+	_devmeta_gate_arm();
+}
+
+static bool _devmeta_gate_pass(const char *json)
+{
+	// nothing acked yet: Hub has no copy of this session's devmeta
+	if (!devmeta_gate.acked)
+		return true;
+
+	// a local mutation is holding the device awake until it syncs
+	if (pv_wakelock_devmeta_is_pending())
+		return true;
+
+	if (timer_current_state(&devmeta_gate.heartbeat).fin)
+		return true;
+
+	return pv_metadata_devmeta_significant(devmeta_gate.acked, json);
+}
+
 void pv_pantahub_proto_init()
 {
 	session.token = NULL;
@@ -113,6 +155,8 @@ void pv_pantahub_proto_init()
 	session.put_progress_active = false;
 
 	session.next_progress = NULL;
+
+	_devmeta_gate_reset();
 
 	dl_list_init(&session.object_transfer_list);
 
@@ -241,6 +285,9 @@ void _free_token()
 	if (session.token)
 		free(session.token);
 	session.token = NULL;
+
+	// a new session must resync in full: we cannot know what Hub kept
+	_devmeta_gate_reset();
 
 	pv_log(DEBUG, "removed token");
 }
@@ -552,11 +599,19 @@ static void _recv_set_devmeta_cb(struct evhttp_request *req, void *ctx)
 	char *body = NULL;
 	if (_recv_buffer(req, &body)) {
 		pv_log(WARN, "PUT devmeta failed");
+		// the payload never landed; keep comparing against what did
+		free(devmeta_gate.inflight);
+		devmeta_gate.inflight = NULL;
 		// failed: release so an unreachable Hub cannot pin the device
 		// awake; buffered on disk and retried later
 		pv_wakelock_devmeta_acked(false);
 		goto out;
 	}
+
+	free(devmeta_gate.acked);
+	devmeta_gate.acked = devmeta_gate.inflight;
+	devmeta_gate.inflight = NULL;
+	_devmeta_gate_arm();
 
 	pv_log(DEBUG, "devmeta updated in Hub");
 	// 200: release if caught up, keep held if a newer change landed
@@ -593,9 +648,17 @@ void pv_pantahub_proto_set_devmeta()
 		return;
 	}
 
+	if (!_devmeta_gate_pass(json)) {
+		pv_log(DEBUG,
+		       "devmeta unchanged beyond threshold; not sending");
+		goto out;
+	}
+
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
 			       _recv_set_devmeta_cb, NULL)) {
 		session.set_devmeta_active = 1;
+		free(devmeta_gate.inflight);
+		devmeta_gate.inflight = strdup(json);
 		// snapshot the pending generation at PUT send time so a change
 		// landing before the 200 is not wrongly cleared
 		pv_wakelock_devmeta_sent();

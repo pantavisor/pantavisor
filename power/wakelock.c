@@ -338,6 +338,14 @@ void pv_wakelock_devmeta_acked(bool ok)
 	// else keep held; the next push flushes the newer change
 }
 
+bool pv_wakelock_devmeta_is_pending(void)
+{
+	if (!wl.init || wl.mode == PWR_DISABLED)
+		return false;
+
+	return wl.held[WL_DEVMETA] && wl.dm_pending_gen != wl.dm_sent_gen;
+}
+
 void pv_wakelock_devmeta_deauth(void)
 {
 	if (!wl.init || wl.mode == PWR_DISABLED)

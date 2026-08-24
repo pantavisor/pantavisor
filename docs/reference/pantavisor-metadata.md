@@ -64,6 +64,28 @@ plus two taken from `/proc/uptime`:
 When `/proc/uptime` is unavailable, `uptime` falls back to the whole-second
 value from `sysinfo(2)` and `idle` is omitted.
 
+## Change thresholds
+
+Device metadata is pushed to Pantacor Hub every
+[`PH_METADATA_DEVMETA_INTERVAL`](pantavisor-configuration.md#summary) seconds,
+but a push only happens when the payload actually changed in a way worth
+reporting:
+
+- Most keys are compared verbatim: any change is pushed.
+- Numeric fields inside `sysinfo` and `storage` need a relative change of at
+  least [`PH_METADATA_DEVMETA_THRESHOLD`](pantavisor-configuration.md#summary)
+  percent (`loads.*` need 10%, `procs` 5%). Fields describing the machine
+  itself — `totalram`, `totalswap`, `totalhigh`, `mem_unit`, `storage.total`,
+  `storage.reserved` — are compared verbatim.
+- `sysinfo.uptime`, `sysinfo.idle` and `time` never trigger a push on their own:
+  they only ever move forward and Hub can derive them from the moment it
+  received the push. They are still included in whatever gets pushed.
+
+Regardless of the above, a push always happens at least every
+[`PH_METADATA_DEVMETA_HEARTBEAT`](pantavisor-configuration.md#summary) seconds,
+after re-authenticating with Hub, and whenever a container wrote device metadata
+through [pv-ctrl](pantavisor-commands.md) that has not reached Hub yet.
+
 ## `interfaces` format
 
 The `interfaces` device metadata is a JSON object keyed by `<iface>.<family>`. Each value is an array, since an interface can hold multiple addresses of the same family. The `mac` family carries the interface hardware (MAC) address; interfaces without a hardware address (e.g. `lo`) have no `mac` entry.
