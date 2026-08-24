@@ -393,9 +393,20 @@ static char *pv_storage_get_json(struct pv_storage *storage)
 	return pv_json_ser_str(&js);
 }
 
+char *pv_storage_get_meta_json()
+{
+	struct pv_storage *storage = pv_storage_new();
+	if (!storage)
+		return NULL;
+
+	char *json = pv_storage_get_json(storage);
+	free(storage);
+
+	return json;
+}
+
 void pv_storage_gc_run_threshold()
 {
-	char *json;
 	struct pv_storage *storage;
 	struct pantavisor *pv = pv_get_instance();
 	struct timer_state tstate;
@@ -407,10 +418,6 @@ void pv_storage_gc_run_threshold()
 	storage = pv_storage_new();
 	if (!storage)
 		return;
-
-	json = pv_storage_get_json(storage);
-	pv_metadata_add_devmeta("storage", json);
-	free(json);
 
 	tstate = timer_current_state(&threshold_timer);
 	if (pv->loading_objects && tstate.fin) {

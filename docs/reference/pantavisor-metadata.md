@@ -28,9 +28,41 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantavisor.status` | string | [revision status](../overview/containers.md#status) |
 | `pantavisor.uname` | json | [uname](https://man7.org/linux/man-pages/man1/uname.1.html) output |
 | `pantavisor.version` | string | Pantavisor build version |
-| `storage` | json | disk usage of the device |
-| `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) |
-| `time` | json | time information |
+| `storage` | json | disk usage of the device (see [refreshed on read](#refreshed-on-read)) |
+| `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) plus `uptime` and `idle` (see [`sysinfo` format](#sysinfo-format)) |
+| `time` | json | time information (see [refreshed on read](#refreshed-on-read)) |
+
+## Refreshed on read
+
+`sysinfo`, `storage` and `time` are measurements, not state: they are re-read
+every time the device metadata is serialized, so a read always answers with the
+current value rather than one captured at boot. Because they change on every
+read they are never written to the persistent device metadata directory
+(`PV_CACHE_DEVMETADIR`); an older copy left there by a previous Pantavisor
+version is removed on start.
+
+Every other key keeps its existing behaviour: its producer publishes it when it
+changes, and the value is persisted.
+
+```bash
+# both reads report the current uptime, not the boot-time one
+pvcontrol devmeta ls | jq .sysinfo.uptime
+sleep 5
+pvcontrol devmeta ls | jq .sysinfo.uptime
+```
+
+## `sysinfo` format
+
+`sysinfo` carries the fields of [sysinfo(2)](https://man7.org/linux/man-pages/man2/sysinfo.2.html)
+plus two taken from `/proc/uptime`:
+
+| Field | Description |
+| ----- | ----------- |
+| `uptime` | seconds since boot, with the centisecond precision `/proc/uptime` provides |
+| `idle` | seconds all CPUs spent idle, **summed over every CPU**, so on an SMP machine it can exceed `uptime`. Absent when `/proc/uptime` cannot be read |
+
+When `/proc/uptime` is unavailable, `uptime` falls back to the whole-second
+value from `sysinfo(2)` and `idle` is omitted.
 
 ## `interfaces` format
 

@@ -85,6 +85,8 @@ struct pv_devmeta_read {
 	char *buf;
 	int buflen;
 	int (*reader)(struct pv_devmeta_read *);
+	// re-read on every serialization; such a value is never persisted
+	bool dynamic;
 };
 
 static int pv_metadata_mount_usrmeta_vol()
@@ -389,16 +391,17 @@ static int pv_devmeta_time(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+// second field is idle time summed over all CPUs, so it can exceed uptime
 static int pv_devmeta_get_uptime(double *uptime, double *idle)
 {
-	FILE *fd = fopen(PV_DEVMETA_UPTIME_PATH, "r");
-	if (!fd) {
+	FILE *fp = fopen(PV_DEVMETA_UPTIME_PATH, "r");
+	if (!fp) {
 		pv_log(DEBUG, "couldn't open %s", PV_DEVMETA_UPTIME_PATH);
 		return -1;
 	}
 
-	int ret = fscanf(fd, "%lf %lf", uptime, idle);
-	fclose(fd);
+	int ret = fscanf(fp, "%lf %lf", uptime, idle);
+	fclose(fp);
 
 	if (ret != 2) {
 		pv_log(DEBUG, "couldn't read %s (got %d fields)",
@@ -428,10 +431,10 @@ static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 
 	double uptime = 0;
 	double idle = 0;
+	// sysinfo() only has whole seconds and no idle time at all
+	bool has_idle = pv_devmeta_get_uptime(&uptime, &idle) == 0;
 
-	// for the updatime we read /proc/uptime if available to get the full
-	// precision plus idle time. If we can't read, then fallback to sysinfo
-	if (pv_devmeta_get_uptime(&uptime, &idle) < 0)
+	if (!has_idle)
 		uptime = (double)info.uptime;
 
 	struct pv_json_ser js;
@@ -441,8 +444,10 @@ static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 	{
 		pv_json_ser_key(&js, "uptime");
 		pv_json_ser_number(&js, uptime);
-		pv_json_ser_key(&js, "idle");
-		pv_json_ser_number(&js, idle);
+		if (has_idle) {
+			pv_json_ser_key(&js, "idle");
+			pv_json_ser_number(&js, idle);
+		}
 		pv_json_ser_key(&js, "loads.0");
 		pv_json_ser_number(&js, info.loads[0]);
 		pv_json_ser_key(&js, "loads.1");
@@ -540,6 +545,26 @@ static int pv_devmeta_read_claimed(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+static int pv_devmeta_storage(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	char *json = pv_storage_get_meta_json();
+	if (!json) {
+		pv_log(WARN, "couldn't get storage usage");
+		return -1;
+	}
+
+	SNPRINTF_WTRUNC(buf, buflen, "%s", json);
+	free(json);
+
+	return 0;
+}
+
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_ARCH, .reader = pv_devmeta_read_arch },
 	{ .key = DEVMETA_KEY_PV_VERSION, .reader = pv_devmeta_read_version },
@@ -550,8 +575,15 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
 	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
 	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname },
-	{ .key = DEVMETA_KEY_PV_TIME, .reader = pv_devmeta_time },
-	{ .key = DEVMETA_KEY_PV_SYSINFO, .reader = pv_devmeta_sysinfo }
+	{ .key = DEVMETA_KEY_PV_TIME,
+	  .reader = pv_devmeta_time,
+	  .dynamic = true },
+	{ .key = DEVMETA_KEY_PV_SYSINFO,
+	  .reader = pv_devmeta_sysinfo,
+	  .dynamic = true },
+	{ .key = DEVMETA_KEY_STORAGE,
+	  .reader = pv_devmeta_storage,
+	  .dynamic = true }
 };
 
 static void pv_metadata_free(struct pv_meta *usermeta)
@@ -777,20 +809,25 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-int pv_metadata_add_devmeta(const char *key, const char *value)
+static int _pv_metadata_add_devmeta(const char *key, const char *value,
+				    bool persist)
 {
 	struct pantavisor *pv = pv_get_instance();
-	struct pv_meta *curr;
 	int ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
 
-	if (ret > 0) {
-		curr = pv_metadata_get_by_key(&pv->metadata->devmeta, key);
-
+	// a dynamic value changes on every read, so neither the write-through
+	// nor the log line below carry any information worth the flash wear
+	if (ret > 0 && persist) {
 		pv_log(DEBUG, "device metadata key %s added or updated", key);
 		pv_storage_save_devmeta(key, value);
 	}
 
 	return ret;
+}
+
+int pv_metadata_add_devmeta(const char *key, const char *value)
+{
+	return _pv_metadata_add_devmeta(key, value, true);
 }
 
 int pv_metadata_rm_devmeta(const char *key)
@@ -876,14 +913,21 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 
 	// add system info to initial device metadata
 	for (i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
+		struct pv_devmeta_read *rk = &pv_devmeta_readkeys[i];
 		int ret = 0;
 
-		pv_devmeta_readkeys[i].buf = buf;
-		pv_devmeta_readkeys[i].buflen = bufsize;
-		ret = pv_devmeta_readkeys[i].reader(&pv_devmeta_readkeys[i]);
+		// drop copies persisted by pantavisor versions that wrote
+		// dynamic keys through to storage
+		if (rk->dynamic)
+			pv_storage_rm_devmeta(rk->key);
+
+		rk->buf = buf;
+		rk->buflen = bufsize;
+		ret = rk->reader(rk);
 		if (!ret)
-			pv_metadata_add_devmeta(pv_devmeta_readkeys[i].key,
-						buf);
+			_pv_metadata_add_devmeta(rk->key, buf, !rk->dynamic);
+		rk->buf = NULL;
+		rk->buflen = 0;
 	}
 	pv_buffer_drop(buffer);
 
@@ -1011,38 +1055,37 @@ int pv_metadata_init()
 	return 0;
 }
 
-static void pv_devmeta_update_sysinfo()
+// Refresh every key whose value is only meaningful at the moment it is read,
+// so that what we hand out is current instead of frozen at pv_metadata_init_devmeta().
+static void pv_devmeta_refresh_dynamic(void)
 {
-	struct pv_devmeta_read *sysinfo = NULL;
-	for (int i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
-		if (!strcmp(pv_devmeta_readkeys[i].key,
-			    DEVMETA_KEY_PV_SYSINFO)) {
-			sysinfo = &pv_devmeta_readkeys[i];
-			break;
-		}
-	}
-
-	if (!sysinfo) {
-		pv_log(DEBUG, "couldn't update sysinfo, key not found");
-		return;
-	}
-
 	struct buffer *buffer = pv_buffer_get(true);
 	if (!buffer) {
-		pv_log(DEBUG,
-		       "couldn't update sysinfo, cannot allocate buffer");
+		pv_log(WARN, "couldn't refresh dynamic devmeta: no buffer");
 		return;
 	}
 
-	sysinfo->buf = buffer->buf;
-	sysinfo->buflen = buffer->size;
-	if (sysinfo->reader(sysinfo) != 0) {
-		pv_log(DEBUG, "couldn't update sysinfo");
-		goto out;
+	for (int i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
+		struct pv_devmeta_read *rk = &pv_devmeta_readkeys[i];
+
+		if (!rk->dynamic)
+			continue;
+
+		rk->buf = buffer->buf;
+		rk->buflen = buffer->size;
+		if (rk->reader(rk) != 0) {
+			pv_log(DEBUG, "couldn't refresh devmeta key %s",
+			       rk->key);
+		} else {
+			_pv_metadata_add_devmeta(rk->key, rk->buf, false);
+		}
+
+		// the buffer goes back to the pool below; do not leave the
+		// table pointing into it
+		rk->buf = NULL;
+		rk->buflen = 0;
 	}
 
-	pv_metadata_add_devmeta(sysinfo->key, sysinfo->buf);
-out:
 	pv_buffer_drop(buffer);
 }
 
@@ -1050,10 +1093,6 @@ static char *pv_metadata_get_meta_string(struct dl_list *meta_list)
 {
 	struct pv_meta *curr, *tmp;
 	int len = 1, line_len;
-
-	if (meta_list == &pv_get_instance()->metadata->devmeta)
-		pv_devmeta_update_sysinfo();;
-
 	char *json = calloc(len, sizeof(char));
 
 	// open json
@@ -1107,6 +1146,8 @@ char *pv_metadata_get_user_meta_string()
 
 char *pv_metadata_get_device_meta_string()
 {
+	pv_devmeta_refresh_dynamic();
+
 	return pv_metadata_get_meta_string(
 		&pv_get_instance()->metadata->devmeta);
 }
