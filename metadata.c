@@ -1158,15 +1158,19 @@ static const struct pv_devmeta_sig pv_devmeta_sig_sysinfo[] = {
 	// received, so they must never be the reason we send one
 	{ .name = "uptime", .sig = DEVMETA_SIG_NEVER },
 	{ .name = "idle", .sig = DEVMETA_SIG_NEVER },
-	{ .name = "loads.0", .sig = DEVMETA_SIG_REL, .pct = 10 },
-	{ .name = "loads.1", .sig = DEVMETA_SIG_REL, .pct = 10 },
-	{ .name = "loads.2", .sig = DEVMETA_SIG_REL, .pct = 10 },
-	{ .name = "procs", .sig = DEVMETA_SIG_REL, .pct = 5 },
-	{ .name = "freeram", .sig = DEVMETA_SIG_REL },
-	{ .name = "sharedram", .sig = DEVMETA_SIG_REL },
-	{ .name = "bufferram", .sig = DEVMETA_SIG_REL },
-	{ .name = "freeswap", .sig = DEVMETA_SIG_REL },
-	{ .name = "freehigh", .sig = DEVMETA_SIG_REL },
+	// Thresholds below are the measured noise floor on an idle board sampled
+	// one devmeta interval apart: loads.0 moved 19%, sharedram 78% and freeram
+	// 12% with nothing happening, so anything tighter just sends every cycle.
+	// The heartbeat still carries these out at least once per period.
+	{ .name = "loads.0", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "loads.1", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "loads.2", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "sharedram", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "procs", .sig = DEVMETA_SIG_REL, .pct = 10 },
+	{ .name = "freeram", .sig = DEVMETA_SIG_REL, .pct = 25 },
+	{ .name = "bufferram", .sig = DEVMETA_SIG_REL, .pct = 25 },
+	{ .name = "freeswap", .sig = DEVMETA_SIG_REL, .pct = 25 },
+	{ .name = "freehigh", .sig = DEVMETA_SIG_REL, .pct = 25 },
 	// totalram, totalswap, totalhigh and mem_unit stay exact: they only
 	// move when the machine itself changed
 	{ 0 }
