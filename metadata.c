@@ -443,10 +443,10 @@ static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 	pv_json_ser_object(&js);
 	{
 		pv_json_ser_key(&js, "uptime");
-		pv_json_ser_number(&js, uptime);
+		pv_json_ser_number_fixed(&js, uptime, 2);
 		if (has_idle) {
 			pv_json_ser_key(&js, "idle");
-			pv_json_ser_number(&js, idle);
+			pv_json_ser_number_fixed(&js, idle, 2);
 		}
 		pv_json_ser_key(&js, "loads.0");
 		pv_json_ser_number(&js, info.loads[0]);

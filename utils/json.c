@@ -440,6 +440,30 @@ int pv_json_ser_number(struct pv_json_ser *js, double value)
 	return ret;
 }
 
+// jsonb_number renders with "%.17G", which turns a value like 89.49 into
+// 89.489999999999995. Format the token ourselves when that noise is not wanted.
+int pv_json_ser_number_fixed(struct pv_json_ser *js, double value, int decimals)
+{
+	jsonbcode ret;
+	char token[64];
+
+	if (!js || !js->size)
+		return -1;
+
+	int len = snprintf(token, sizeof(token), "%.*f", decimals, value);
+	if (len < 0 || len >= (int)sizeof(token))
+		return -1;
+
+	ret = jsonb_token(&js->b, js->buf, js->size, token, len);
+	while (ret == JSONB_ERROR_NOMEM) {
+		if (pv_json_ser_resize(js))
+			return -1;
+		ret = jsonb_token(&js->b, js->buf, js->size, token, len);
+	}
+
+	return ret;
+}
+
 char *pv_json_ser_str(struct pv_json_ser *js)
 {
 	return js->buf;
