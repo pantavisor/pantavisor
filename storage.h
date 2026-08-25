@@ -51,6 +51,8 @@ void pv_storage_init_trail_pvr(void);
 void pv_storage_rm_rev(const char *rev);
 void pv_storage_set_active();
 int pv_storage_update_factory(const char *rev);
+// caller owns the returned json
+char *pv_storage_get_meta_json(void);
 bool pv_storage_is_revision_local(const char *rev);
 char *pv_storage_get_revisions_string(void);
 

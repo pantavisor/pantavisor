@@ -68,6 +68,8 @@
 	     ##__VA_ARGS__)
 #include "log.h"
 
+#define PV_DEVMETA_UPTIME_PATH "/proc/uptime"
+
 static const unsigned int METADATA_MAX_SIZE = 4096;
 
 #define PV_USERMETA_ADD (1 << 0)
@@ -83,6 +85,8 @@ struct pv_devmeta_read {
 	char *buf;
 	int buflen;
 	int (*reader)(struct pv_devmeta_read *);
+	// re-read on every serialization; such a value is never persisted
+	bool dynamic;
 };
 
 static int pv_metadata_mount_usrmeta_vol()
@@ -386,6 +390,28 @@ static int pv_devmeta_time(struct pv_devmeta_read *pv_devmeta_read)
 
 	return 0;
 }
+
+// second field is idle time summed over all CPUs, so it can exceed uptime
+static int pv_devmeta_get_uptime(double *uptime, double *idle)
+{
+	FILE *fp = fopen(PV_DEVMETA_UPTIME_PATH, "r");
+	if (!fp) {
+		pv_log(DEBUG, "couldn't open %s", PV_DEVMETA_UPTIME_PATH);
+		return -1;
+	}
+
+	int ret = fscanf(fp, "%lf %lf", uptime, idle);
+	fclose(fp);
+
+	if (ret != 2) {
+		pv_log(DEBUG, "couldn't read %s (got %d fields)",
+		       PV_DEVMETA_UPTIME_PATH, ret);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 {
 	char *buf = pv_devmeta_read->buf;
@@ -403,13 +429,25 @@ static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 		return -1;
 	}
 
+	double uptime = 0;
+	double idle = 0;
+	// sysinfo() only has whole seconds and no idle time at all
+	bool has_idle = pv_devmeta_get_uptime(&uptime, &idle) == 0;
+
+	if (!has_idle)
+		uptime = (double)info.uptime;
+
 	struct pv_json_ser js;
 	pv_json_ser_init(&js, 512);
 
 	pv_json_ser_object(&js);
 	{
 		pv_json_ser_key(&js, "uptime");
-		pv_json_ser_number(&js, info.uptime);
+		pv_json_ser_number_fixed(&js, uptime, 2);
+		if (has_idle) {
+			pv_json_ser_key(&js, "idle");
+			pv_json_ser_number_fixed(&js, idle, 2);
+		}
 		pv_json_ser_key(&js, "loads.0");
 		pv_json_ser_number(&js, info.loads[0]);
 		pv_json_ser_key(&js, "loads.1");
@@ -507,6 +545,26 @@ static int pv_devmeta_read_claimed(struct pv_devmeta_read *pv_devmeta_read)
 	return 0;
 }
 
+static int pv_devmeta_storage(struct pv_devmeta_read *pv_devmeta_read)
+{
+	char *buf = pv_devmeta_read->buf;
+	int buflen = pv_devmeta_read->buflen;
+
+	if (pv_devmeta_buf_check(pv_devmeta_read))
+		return -1;
+
+	char *json = pv_storage_get_meta_json();
+	if (!json) {
+		pv_log(WARN, "couldn't get storage usage");
+		return -1;
+	}
+
+	SNPRINTF_WTRUNC(buf, buflen, "%s", json);
+	free(json);
+
+	return 0;
+}
+
 static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PV_ARCH, .reader = pv_devmeta_read_arch },
 	{ .key = DEVMETA_KEY_PV_VERSION, .reader = pv_devmeta_read_version },
@@ -517,8 +575,15 @@ static struct pv_devmeta_read pv_devmeta_readkeys[] = {
 	{ .key = DEVMETA_KEY_PH_ONLINE, .reader = pv_devmeta_read_online },
 	{ .key = DEVMETA_KEY_PH_CLAIMED, .reader = pv_devmeta_read_claimed },
 	{ .key = DEVMETA_KEY_PV_UNAME, .reader = pv_devmeta_uname },
-	{ .key = DEVMETA_KEY_PV_TIME, .reader = pv_devmeta_time },
-	{ .key = DEVMETA_KEY_PV_SYSINFO, .reader = pv_devmeta_sysinfo }
+	{ .key = DEVMETA_KEY_PV_TIME,
+	  .reader = pv_devmeta_time,
+	  .dynamic = true },
+	{ .key = DEVMETA_KEY_PV_SYSINFO,
+	  .reader = pv_devmeta_sysinfo,
+	  .dynamic = true },
+	{ .key = DEVMETA_KEY_STORAGE,
+	  .reader = pv_devmeta_storage,
+	  .dynamic = true }
 };
 
 static void pv_metadata_free(struct pv_meta *usermeta)
@@ -744,20 +809,25 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
-int pv_metadata_add_devmeta(const char *key, const char *value)
+static int _pv_metadata_add_devmeta(const char *key, const char *value,
+				    bool persist)
 {
 	struct pantavisor *pv = pv_get_instance();
-	struct pv_meta *curr;
 	int ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
 
-	if (ret > 0) {
-		curr = pv_metadata_get_by_key(&pv->metadata->devmeta, key);
-
+	// a dynamic value changes on every read, so neither the write-through
+	// nor the log line below carry any information worth the flash wear
+	if (ret > 0 && persist) {
 		pv_log(DEBUG, "device metadata key %s added or updated", key);
 		pv_storage_save_devmeta(key, value);
 	}
 
 	return ret;
+}
+
+int pv_metadata_add_devmeta(const char *key, const char *value)
+{
+	return _pv_metadata_add_devmeta(key, value, true);
 }
 
 int pv_metadata_rm_devmeta(const char *key)
@@ -843,14 +913,21 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 
 	// add system info to initial device metadata
 	for (i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
+		struct pv_devmeta_read *rk = &pv_devmeta_readkeys[i];
 		int ret = 0;
 
-		pv_devmeta_readkeys[i].buf = buf;
-		pv_devmeta_readkeys[i].buflen = bufsize;
-		ret = pv_devmeta_readkeys[i].reader(&pv_devmeta_readkeys[i]);
+		// drop copies persisted by pantavisor versions that wrote
+		// dynamic keys through to storage
+		if (rk->dynamic)
+			pv_storage_rm_devmeta(rk->key);
+
+		rk->buf = buf;
+		rk->buflen = bufsize;
+		ret = rk->reader(rk);
 		if (!ret)
-			pv_metadata_add_devmeta(pv_devmeta_readkeys[i].key,
-						buf);
+			_pv_metadata_add_devmeta(rk->key, buf, !rk->dynamic);
+		rk->buf = NULL;
+		rk->buflen = 0;
 	}
 	pv_buffer_drop(buffer);
 
@@ -978,6 +1055,40 @@ int pv_metadata_init()
 	return 0;
 }
 
+// Refresh every key whose value is only meaningful at the moment it is read,
+// so that what we hand out is current instead of frozen at pv_metadata_init_devmeta().
+static void pv_devmeta_refresh_dynamic(void)
+{
+	struct buffer *buffer = pv_buffer_get(true);
+	if (!buffer) {
+		pv_log(WARN, "couldn't refresh dynamic devmeta: no buffer");
+		return;
+	}
+
+	for (int i = 0; i < ARRAY_LEN(pv_devmeta_readkeys); i++) {
+		struct pv_devmeta_read *rk = &pv_devmeta_readkeys[i];
+
+		if (!rk->dynamic)
+			continue;
+
+		rk->buf = buffer->buf;
+		rk->buflen = buffer->size;
+		if (rk->reader(rk) != 0) {
+			pv_log(DEBUG, "couldn't refresh devmeta key %s",
+			       rk->key);
+		} else {
+			_pv_metadata_add_devmeta(rk->key, rk->buf, false);
+		}
+
+		// the buffer goes back to the pool below; do not leave the
+		// table pointing into it
+		rk->buf = NULL;
+		rk->buflen = 0;
+	}
+
+	pv_buffer_drop(buffer);
+}
+
 static char *pv_metadata_get_meta_string(struct dl_list *meta_list)
 {
 	struct pv_meta *curr, *tmp;
@@ -1027,6 +1138,227 @@ out:
 	return json;
 }
 
+// Change policy: what makes a devmeta key worth a Hub roundtrip. Keys and
+// fields not listed are compared verbatim, so state keys keep report-on-change.
+typedef enum {
+	DEVMETA_SIG_EXACT,
+	DEVMETA_SIG_NEVER,
+	DEVMETA_SIG_REL,
+} devmeta_sig_t;
+
+struct pv_devmeta_sig {
+	const char *name;
+	devmeta_sig_t sig;
+	int pct; // DEVMETA_SIG_REL only; 0 means metadata.devmeta.threshold
+	const struct pv_devmeta_sig *sub; // policy for a flat object value
+};
+
+static const struct pv_devmeta_sig pv_devmeta_sig_sysinfo[] = {
+	// both only ever grow and Hub can derive them from the PUT it just
+	// received, so they must never be the reason we send one
+	{ .name = "uptime", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "idle", .sig = DEVMETA_SIG_NEVER },
+	// Thresholds below are the measured noise floor on an idle board sampled
+	// one devmeta interval apart: loads.0 moved 19%, sharedram 78% and freeram
+	// 12% with nothing happening, so anything tighter just sends every cycle.
+	// The heartbeat still carries these out at least once per period.
+	{ .name = "loads.0", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "loads.1", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "loads.2", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "sharedram", .sig = DEVMETA_SIG_NEVER },
+	{ .name = "procs", .sig = DEVMETA_SIG_REL, .pct = 10 },
+	{ .name = "freeram", .sig = DEVMETA_SIG_REL, .pct = 25 },
+	{ .name = "bufferram", .sig = DEVMETA_SIG_REL, .pct = 25 },
+	{ .name = "freeswap", .sig = DEVMETA_SIG_REL, .pct = 25 },
+	{ .name = "freehigh", .sig = DEVMETA_SIG_REL, .pct = 25 },
+	// totalram, totalswap, totalhigh and mem_unit stay exact: they only
+	// move when the machine itself changed
+	{ 0 }
+};
+
+static const struct pv_devmeta_sig pv_devmeta_sig_storage[] = {
+	{ .name = "free", .sig = DEVMETA_SIG_REL },
+	{ .name = "real_free", .sig = DEVMETA_SIG_REL },
+	// total and reserved stay exact
+	{ 0 }
+};
+
+static const struct pv_devmeta_sig pv_devmeta_sig_keys[] = {
+	{ .name = DEVMETA_KEY_PV_TIME, .sig = DEVMETA_SIG_NEVER },
+	{ .name = DEVMETA_KEY_PV_SYSINFO,
+	  .sig = DEVMETA_SIG_EXACT,
+	  .sub = pv_devmeta_sig_sysinfo },
+	{ .name = DEVMETA_KEY_STORAGE,
+	  .sig = DEVMETA_SIG_EXACT,
+	  .sub = pv_devmeta_sig_storage },
+	{ 0 }
+};
+
+static const struct pv_devmeta_sig *
+pv_devmeta_sig_get(const struct pv_devmeta_sig *tbl, const char *name, int len)
+{
+	if (!tbl)
+		return NULL;
+
+	for (; tbl->name; tbl++) {
+		if ((int)strlen(tbl->name) == len &&
+		    !strncmp(tbl->name, name, len))
+			return tbl;
+	}
+
+	return NULL;
+}
+
+static jsmntok_t *pv_devmeta_sig_find(const char *buf, jsmntok_t **keys,
+				      const char *name, int len)
+{
+	for (jsmntok_t **k = keys; *k; k++) {
+		int n = (*k)->end - (*k)->start;
+
+		if (n == len && !strncmp(buf + (*k)->start, name, len))
+			return *k + 1;
+	}
+
+	return NULL;
+}
+
+static bool pv_devmeta_sig_num(const char *prev, int prev_len, const char *next,
+			       int next_len, int pct)
+{
+	char a[32], b[32];
+	char *ea = NULL, *eb = NULL;
+
+	if (prev_len >= (int)sizeof(a) || next_len >= (int)sizeof(b))
+		return true;
+
+	memcpy(a, prev, prev_len);
+	a[prev_len] = '\0';
+	memcpy(b, next, next_len);
+	b[next_len] = '\0';
+
+	double va = strtod(a, &ea);
+	double vb = strtod(b, &eb);
+	if (ea == a || eb == b)
+		return true;
+
+	if (pct <= 0)
+		pct = pv_config_get_int(PH_METADATA_DEVMETA_THRESHOLD);
+	if (pct <= 0)
+		return true;
+
+	double delta = vb > va ? vb - va : va - vb;
+	double base = va < 0 ? -va : va;
+
+	// a percentage of nearly nothing is noise; take any whole-unit move
+	if (base < 1)
+		return delta >= 1;
+
+	return delta * 100 >= base * pct;
+}
+
+// Compare two flat json objects under tbl. Fails safe: anything we cannot parse
+// counts as a change so we never sit on an update we failed to understand.
+static bool pv_devmeta_sig_obj(const char *prev, const char *next,
+			       const struct pv_devmeta_sig *tbl)
+{
+	jsmntok_t *ptokv = NULL, *ntokv = NULL;
+	jsmntok_t **pkeys = NULL, **nkeys = NULL;
+	int ptokc = 0, ntokc = 0;
+	bool sig = true;
+
+	if (jsmnutil_parse_json(prev, &ptokv, &ptokc) < 0 || !ptokv)
+		goto out;
+	if (jsmnutil_parse_json(next, &ntokv, &ntokc) < 0 || !ntokv)
+		goto out;
+
+	pkeys = jsmnutil_get_object_keys(prev, ptokv);
+	nkeys = jsmnutil_get_object_keys(next, ntokv);
+	if (!pkeys || !nkeys)
+		goto out;
+
+	for (jsmntok_t **k = nkeys; *k; k++) {
+		int len = (*k)->end - (*k)->start;
+		const char *name = next + (*k)->start;
+		const struct pv_devmeta_sig *e =
+			pv_devmeta_sig_get(tbl, name, len);
+		devmeta_sig_t kind = e ? e->sig : DEVMETA_SIG_EXACT;
+
+		if (kind == DEVMETA_SIG_NEVER)
+			continue;
+
+		jsmntok_t *pt = pv_devmeta_sig_find(prev, pkeys, name, len);
+		if (!pt)
+			goto out;
+
+		jsmntok_t *nt = *k + 1;
+		int plen = pt->end - pt->start;
+		int nlen = nt->end - nt->start;
+		const char *pval = prev + pt->start;
+		const char *nval = next + nt->start;
+
+		if (plen == nlen && !memcmp(pval, nval, plen))
+			continue;
+
+		if (e && e->sub) {
+			char *ps = strndup(pval, plen);
+			char *ns = strndup(nval, nlen);
+			bool sub = !ps || !ns ||
+				   pv_devmeta_sig_obj(ps, ns, e->sub);
+
+			free(ps);
+			free(ns);
+			if (sub)
+				goto out;
+			continue;
+		}
+
+		if (kind == DEVMETA_SIG_REL) {
+			if (pv_devmeta_sig_num(pval, plen, nval, nlen, e->pct))
+				goto out;
+			continue;
+		}
+
+		goto out;
+	}
+
+	// a key that disappeared is a change too, unless we ignore it anyway
+	for (jsmntok_t **k = pkeys; *k; k++) {
+		int len = (*k)->end - (*k)->start;
+		const char *name = prev + (*k)->start;
+		const struct pv_devmeta_sig *e =
+			pv_devmeta_sig_get(tbl, name, len);
+
+		if (e && e->sig == DEVMETA_SIG_NEVER)
+			continue;
+		if (!pv_devmeta_sig_find(next, nkeys, name, len))
+			goto out;
+	}
+
+	sig = false;
+out:
+	if (pkeys)
+		jsmnutil_tokv_free(pkeys);
+	if (nkeys)
+		jsmnutil_tokv_free(nkeys);
+	if (ptokv)
+		free(ptokv);
+	if (ntokv)
+		free(ntokv);
+
+	return sig;
+}
+
+bool pv_metadata_devmeta_significant(const char *prev, const char *next)
+{
+	if (!prev || !next)
+		return true;
+
+	if (!strcmp(prev, next))
+		return false;
+
+	return pv_devmeta_sig_obj(prev, next, pv_devmeta_sig_keys);
+}
+
 char *pv_metadata_get_user_meta_string()
 {
 	return pv_metadata_get_meta_string(
@@ -1035,6 +1367,8 @@ char *pv_metadata_get_user_meta_string()
 
 char *pv_metadata_get_device_meta_string()
 {
+	pv_devmeta_refresh_dynamic();
+
 	return pv_metadata_get_meta_string(
 		&pv_get_instance()->metadata->devmeta);
 }

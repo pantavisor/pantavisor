@@ -42,6 +42,7 @@
 #define DEVMETA_KEY_PV_UNAME "pantavisor.uname"
 #define DEVMETA_KEY_PV_TIME "time"
 #define DEVMETA_KEY_PV_SYSINFO "sysinfo"
+#define DEVMETA_KEY_STORAGE "storage"
 
 typedef enum { USER_META, DEVICE_META } pv_metadata_t;
 
@@ -70,5 +71,8 @@ void pv_metadata_remove(void);
 
 char *pv_metadata_get_user_meta_string(void);
 char *pv_metadata_get_device_meta_string(void);
+
+// true when next differs from prev by enough to justify a Hub roundtrip
+bool pv_metadata_devmeta_significant(const char *prev, const char *next);
 
 #endif

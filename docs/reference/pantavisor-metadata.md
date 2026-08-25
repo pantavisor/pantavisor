@@ -28,9 +28,63 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantavisor.status` | string | [revision status](../overview/containers.md#status) |
 | `pantavisor.uname` | json | [uname](https://man7.org/linux/man-pages/man1/uname.1.html) output |
 | `pantavisor.version` | string | Pantavisor build version |
-| `storage` | json | disk usage of the device |
-| `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) |
-| `time` | json | time information |
+| `storage` | json | disk usage of the device (see [refreshed on read](#refreshed-on-read)) |
+| `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) plus `uptime` and `idle` (see [`sysinfo` format](#sysinfo-format)) |
+| `time` | json | time information (see [refreshed on read](#refreshed-on-read)) |
+
+## Refreshed on read
+
+`sysinfo`, `storage` and `time` are measurements, not state: they are re-read
+every time the device metadata is serialized, so a read always answers with the
+current value rather than one captured at boot. Because they change on every
+read they are never written to the persistent device metadata directory
+(`PV_CACHE_DEVMETADIR`); an older copy left there by a previous Pantavisor
+version is removed on start.
+
+Every other key keeps its existing behaviour: its producer publishes it when it
+changes, and the value is persisted.
+
+```bash
+# both reads report the current uptime, not the boot-time one
+pvcontrol devmeta ls | jq .sysinfo.uptime
+sleep 5
+pvcontrol devmeta ls | jq .sysinfo.uptime
+```
+
+## `sysinfo` format
+
+`sysinfo` carries the fields of [sysinfo(2)](https://man7.org/linux/man-pages/man2/sysinfo.2.html)
+plus two taken from `/proc/uptime`:
+
+| Field | Description |
+| ----- | ----------- |
+| `uptime` | seconds since boot, with the centisecond precision `/proc/uptime` provides |
+| `idle` | seconds all CPUs spent idle, **summed over every CPU**, so on an SMP machine it can exceed `uptime`. Absent when `/proc/uptime` cannot be read |
+
+When `/proc/uptime` is unavailable, `uptime` falls back to the whole-second
+value from `sysinfo(2)` and `idle` is omitted.
+
+## Change thresholds
+
+Device metadata is pushed to Pantacor Hub every
+[`PH_METADATA_DEVMETA_INTERVAL`](pantavisor-configuration.md#summary) seconds,
+but a push only happens when the payload actually changed in a way worth
+reporting:
+
+- Most keys are compared verbatim: any change is pushed.
+- Numeric fields inside `sysinfo` and `storage` need a relative change of at
+  least [`PH_METADATA_DEVMETA_THRESHOLD`](pantavisor-configuration.md#summary)
+  percent (`loads.*` need 10%, `procs` 5%). Fields describing the machine
+  itself — `totalram`, `totalswap`, `totalhigh`, `mem_unit`, `storage.total`,
+  `storage.reserved` — are compared verbatim.
+- `sysinfo.uptime`, `sysinfo.idle` and `time` never trigger a push on their own:
+  they only ever move forward and Hub can derive them from the moment it
+  received the push. They are still included in whatever gets pushed.
+
+Regardless of the above, a push always happens at least every
+[`PH_METADATA_DEVMETA_HEARTBEAT`](pantavisor-configuration.md#summary) seconds,
+after re-authenticating with Hub, and whenever a container wrote device metadata
+through [pv-ctrl](pantavisor-commands.md) that has not reached Hub yet.
 
 ## `interfaces` format
 

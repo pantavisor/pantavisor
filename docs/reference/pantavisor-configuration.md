@@ -44,7 +44,9 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_METADATA_DEVMETA_HEARTBEAT` | time (in seconds) | `60` | upper bound between [device metadata](../overview/storage.md#device-metadata) pushes; a push happens even when nothing changed, so [Pantacor Hub](../overview/remote-control.md#pantacor-hub) keeps seeing the device as alive |
 | `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](../overview/storage.md#device-metadata) to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_METADATA_DEVMETA_THRESHOLD` | percent | `1` | relative change a numeric [device metadata](pantavisor-metadata.md#change-thresholds) field needs before it triggers a push of its own |
 | `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](../overview/storage.md#user-metadata) from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_ONLINE_REQUEST_THRESHOLD` | number of failures | `0` | number of failed requests to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) allowed to still consider device online |
 | `PH_UPDATER_INTERVAL` | time (in seconds) | `5` | set time between [Pantacor Hub](../overview/remote-control.md#pantacor-hub) [update](../overview/updates.md) requests |
@@ -156,7 +158,9 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PH_FACTORY_AUTOTOK`                 | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_LIBEVENT_HTTP_TIMEOUT`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_LIBEVENT_HTTP_RETRIES`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PH_METADATA_DEVMETA_HEARTBEAT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PH_METADATA_DEVMETA_THRESHOLD`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_USRMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_ONLINE_REQUEST_THRESHOLD`        | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_UPDATER_INTERVAL`                | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
