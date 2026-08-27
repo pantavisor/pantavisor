@@ -16,6 +16,8 @@ Enter a running container's namespaces.
 pventer -c <container-name> [CMD ...]
 ```
 
+`-c`/`--container` is required; `--container` is the long-form alias of `-c`.
+
 Without a command, drops into the container's default shell. With a command, executes it inside the container's namespace. Uses `fallbear-cmd` under the hood via LXC paths.
 
 ```bash
@@ -155,7 +157,7 @@ pvtx queue process [base] [queue] [object]
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PVTXDIR` | `/var/pvr-sdk/pvtx` | Temp directory for transaction state |
+| `PVTXDIR` | `/var/cache/pvtx` (root), `~/.local/share/pvtx` (non-root) | Temp directory for transaction state |
 | `PVTX_OBJECT_BUF_SIZE` | — | Buffer size for saving objects (512B–10M) |
 | `PVTX_CTRL_BUF_SIZE` | — | Buffer size for pv-ctrl I/O (16K–10M) |
 

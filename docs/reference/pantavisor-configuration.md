@@ -94,12 +94,22 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for single-file logs |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT` | format string | empty | timestamp format for stdout logs |
 | `PV_LOG_TIMESTAMP` | `relative` or `absolute` | `relative` | clock behind the `tsec` field of every log line: seconds since boot, or Unix epoch |
+| `PV_LOOP_INDEX_BASE` | integer | `-1` | set base index of the [loop device range](../overview/init-mode.md) reserved for this instance; `-1` disables ranging |
 | `PV_LXC_LOG_LEVEL` | `0` to `5` | `2` | set LXC log level |
 | `PV_NET_BRADDRESS4` | IP address | `10.0.3.1` | set bridge IPv4 address |
 | `PV_NET_BRDEV` | interface name | `lxcbr0` | set bridge device name |
 | `PV_NET_BRMASK4` | IP mask | `255.255.255.0` | set bridge IPv4 mask |
 | `PV_OEM_NAME` | string | empty | set OEM name to load the in-revision [OEM configuration](../overview/pantavisor-configuration-levels.md#oem) file from `<PV_OEM_NAME>/<PV_POLICY>.config`; empty disables the OEM level |
 | `PV_POLICY` | string | empty | set policy name to select the [policy](../overview/pantavisor-configuration-levels.md#policies) config file and the name of the [OEM configuration](../overview/pantavisor-configuration-levels.md#oem) file (`default` if empty) |
+| `PV_POWER_AUTOSLEEP_SETTLE` | time (in seconds) | `90` | [managed power mode](../overview/wakelocks.md#configuration): delay after ready before autosleep is enabled |
+| `PV_POWER_DEVMETA_EAGER_PUSH` | `0` or `1` | `0` | push [device metadata](../overview/wakelocks.md#configuration) out-of-band right away instead of waiting up to a full devmeta interval, minimizing awake time |
+| `PV_POWER_DEVMETA_MAX_HELD` | time (in seconds) | `300` | max seconds the [`devmeta` wakelock](../overview/wakelocks.md#configuration) is held awaiting a Hub ack |
+| `PV_POWER_MODE` | `disabled`, `locks` or `managed` | `locks` | set [power mode](../overview/wakelocks.md#configuration) |
+| `PV_POWER_SYSFS_DIR` | path | `/sys/power` | base dir of the [wakelock sysfs nodes](../overview/wakelocks.md#configuration) |
+| `PV_POWER_WAKE_INTERVAL` | time (in seconds) | `3600` | [managed power mode](../overview/wakelocks.md#configuration): seconds between timed wakes (device heartbeat) |
+| `PV_POWER_WAKE_MAX_AWAKE` | time (in seconds) | `60` | [managed power mode](../overview/wakelocks.md#configuration): maximum awake seconds per wake window |
+| `PV_POWER_WAKE_MIN_AWAKE` | time (in seconds) | `10` | [managed power mode](../overview/wakelocks.md#configuration): minimum awake seconds per wake window |
+| `PV_POWER_WAKE_RUN_WINDOW` | time (in seconds) | `0` | [managed power mode](../overview/wakelocks.md#configuration): after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../overview/storage.md#artifact-checksum) |
@@ -123,6 +133,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSCTL_KERNEL_CORE_PATTERN` | string | `\|/lib/pv/pvcrash --skip` | set kernel core dump pattern |
 | `PV_SYSTEM_APPARMOR_PROFILES` | string | empty | AppArmor profiles to load |
 | `PV_SYSTEM_CONFDIR` | path | `/configs` | set directory for system configurations |
+| `PV_SYSTEM_DISKSDIR` | path | `/run/pantavisor/disks` | set system disks directory |
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO` | `0` or `1` | `0` | enable early auto-loading of drivers |
 | `PV_SYSTEM_ETCDIR` | path | `/etc` | set system etc directory |
 | `PV_SYSTEM_ETCPANTAVISORDIR` | path | `/etc/pantavisor` | set Pantavisor etc directory |
@@ -208,12 +219,22 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT`     | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_TIMESTAMP`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_LOOP_INDEX_BASE`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LXC_LOG_LEVEL`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRADDRESS4`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRDEV`                       | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRMASK4`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_OEM_NAME`                        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_POLICY`                          | ✓ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| `PV_POWER_AUTOSLEEP_SETTLE`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_DEVMETA_EAGER_PUSH`         | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_DEVMETA_MAX_HELD`           | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_MODE`                       | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_SYSFS_DIR`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_WAKE_INTERVAL`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_WAKE_MAX_AWAKE`             | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_WAKE_MIN_AWAKE`             | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_POWER_WAKE_RUN_WINDOW`            | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_REMOUNT_POLICY`                   | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
 | `PV_REVISION_RETRIES`                | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_SECUREBOOT_CHECKSUM`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -235,6 +256,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_SYSCTL_KERNEL_CORE_PATTERN`      | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_SYSTEM_APPARMOR_PROFILES`        | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_CONFDIR`                  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_SYSTEM_DISKSDIR`                  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO`  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_ETCDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_INIT_MODE`                | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |

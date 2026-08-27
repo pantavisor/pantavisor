@@ -78,6 +78,7 @@ the wakelock inline on the same thread closes that gap.
 | key | default | meaning |
 |-----|---------|---------|
 | `power.mode` | `locks` | `disabled` / `locks` / `managed` |
+| `power.devmeta.eager_push` | `false` | push a dirty `devmeta` change out-of-band right away rather than waiting up to a full devmeta interval, minimizing awake time |
 | `power.wake.interval` | `3600` | managed: seconds between timed wakes (device heartbeat) |
 | `power.wake.run_window` | `0` (off) | managed: after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
 | `power.autosleep.settle` | `90` | managed: delay after ready before autosleep is enabled |
