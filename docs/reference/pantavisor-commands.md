@@ -93,6 +93,14 @@ To list all groups in the current revision:
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/groups"
 ```
 
+## /wakelocks
+
+Returns the current [power mode and wakelock state](../overview/wakelocks.md#inspecting-state): mode, refcount, whether autosleep/settle/poll are active, and which scopes are held. See [Wakelocks and power modes](../overview/wakelocks.md) for full semantics.
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/wakelocks"
+```
+
 ## /signal
 
 This type of command can be issued to alter the container [status](../overview/containers.md#status) in Pantavisor.
@@ -131,7 +139,7 @@ These are the different commands that are supported. You can test them by substi
 | ENABLE_SSH | N/A | [enable SSH server](../overview/pantavisor-configuration-levels.md#commands) ignoring config until reboot |
 | DISABLE_SSH | N/A | [disable SSH server](../overview/pantavisor-configuration-levels.md#commands) ignoring config until reboot |
 | GO_REMOTE | N/A | go remote when running on a [locals/ revision](pantavisor-commands.md#steps) if allowed by config |
-| DEFER_REBOOT | N/A | defer reboot when debug shell is active |
+| DEFER_REBOOT | new_timeout | defer reboot when debug shell is active, setting a new debug-shell-reboot timeout |
 | LOCAL_RUN_COMMIT | revision | transition to revision and commit it automatically |
 | LOCAL_APPLY | revision | apply revision changes without a full reboot |
 | XCONNECT_GRAPH | N/A | trigger an immediate xconnect graph reconciliation |
@@ -264,6 +272,22 @@ With cURL, this would look like:
 
 ```
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/buildinfo"
+```
+
+## /config
+
+Returns the active [Pantavisor configuration](pantavisor-configuration.md) as a flat object with aliased dotted keys.
+
+```
+curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/config"
+```
+
+## /config2
+
+Returns the active [Pantavisor configuration](pantavisor-configuration.md) as an array of `{key, value, modified}` records, where `modified` shows where the value came from (`default`, a config file, etc.).
+
+```
+curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/config2"
 ```
 
 ## /drivers
