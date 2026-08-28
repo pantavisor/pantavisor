@@ -24,9 +24,10 @@ usage() {
 }
 
 cleanup_cgroup() {
-	if [ -d /sys/fs/cgroup/lxc ]; then
-		find /sys/fs/cgroup/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1 || true
-		rmdir /sys/fs/cgroup/lxc* > /dev/null 2>&1 || true
+	# pv's containers live under its own cgroup, not at the tree root
+	if [ -d /sys/fs/cgroup/pantavisor/lxc ]; then
+		find /sys/fs/cgroup/pantavisor/lxc/ -mindepth 1 -maxdepth 1 -type d -exec rmdir {} \; > /dev/null 2>&1 || true
+		rmdir /sys/fs/cgroup/pantavisor/lxc* > /dev/null 2>&1 || true
 	fi
 }
 
