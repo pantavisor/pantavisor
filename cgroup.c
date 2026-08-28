@@ -102,6 +102,8 @@ static int pv_cgroup_mkcgroup_root()
 	return ret;
 }
 
+#define PV_CGROUP_NAME "pantavisor"
+
 static int pv_cgroup_mkcgroup2_init(const char *init)
 {
 	char path[PATH_MAX];
@@ -159,17 +161,7 @@ static int pv_cgroup_mkcgroup_unified()
 	return ret;
 }
 
-#include <errno.h>
-#include <fcntl.h>
-#include <linux/limits.h>
-#include <sched.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/mount.h>
-#include <unistd.h>
-
-static int pv_cgroup2_join_2(const char *cgroup, int unshare_ns,
-			     int remount_cgroupfs)
+static int pv_cgroup2_join(const char *cgroup)
 {
 	int fd, written;
 	pid_t pid;
@@ -178,70 +170,25 @@ static int pv_cgroup2_join_2(const char *cgroup, int unshare_ns,
 	SNPRINTF_WTRUNC(path, sizeof(path), "/sys/fs/cgroup/%s/cgroup.procs",
 			cgroup);
 
-	// Open cgroup.procs
 	fd = open(path, O_WRONLY);
 	if (fd < 0) {
-		fprintf(stderr, "Failed to open %s: %s\n", path,
-			strerror(errno));
+		pv_log(ERROR, "could not open %s: %s", path, strerror(errno));
 		return -1;
 	}
 
-	// Get our PID
 	pid = getpid();
 	snprintf(pid_str, sizeof(pid_str), "%d", pid);
 
-	// Write PID to cgroup.procs
 	written = write(fd, pid_str, strlen(pid_str));
 	if (written < 0) {
-		fprintf(stderr, "Failed to write to %s: %s\n", path,
-			strerror(errno));
+		pv_log(ERROR, "could not write to %s: %s", path,
+		       strerror(errno));
 		close(fd);
 		return -1;
 	}
 	close(fd);
 
-	// check if we are already in the right namespace
-	char *name = pv_cgroup_get_process_name(getpid());
-	bool is_pv = (name && !strcmp(name, "_pv_"));
-	if (name)
-		free(name);
-
-	if (is_pv)
-		return 0;
-
-	if (!unshare_ns)
-		return 0;
-
-	// Unshare cgroup namespace - must be done AFTER joining the cgroup
-	if (unshare(CLONE_NEWCGROUP) < 0) {
-		fprintf(stderr, "Failed to unshare cgroup namespace: %s\n",
-			strerror(errno));
-		return -1;
-	}
-
-	if (!remount_cgroupfs)
-		return 0;
-
-	// Remount cgroupfs to reflect new namespace view
-	// Note: requires being in a mount namespace already
-	if (umount2("/sys/fs/cgroup", MNT_DETACH) < 0) {
-		fprintf(stderr, "Failed to umount /sys/fs/cgroup: %s\n",
-			strerror(errno));
-		return -1;
-	}
-
-	if (mount("none", "/sys/fs/cgroup", "cgroup2", 0, NULL) < 0) {
-		fprintf(stderr, "Failed to mount cgroup2: %s\n",
-			strerror(errno));
-		return -1;
-	}
-
 	return 0;
-}
-
-static int pv_cgroup2_join(const char *cgroup)
-{
-	return pv_cgroup2_join_2(cgroup, 1, 0);
 }
 
 static int pv_cgroup_init_appengine()
@@ -250,16 +197,16 @@ static int pv_cgroup_init_appengine()
 	pv->cgroupv = pv_cgroup_get_version();
 
 	if ((pv->cgroupv == CGROUP_LEGACY) || (pv->cgroupv == CGROUP_HYBRID)) {
-		if (pv_cgroup_mkcgroup_init("pantavisor")) {
+		if (pv_cgroup_mkcgroup_init(PV_CGROUP_NAME)) {
 			pv_log(WARN,
 			       "Pantavisor cgroup could not be initialized. It might be left over from previous runs. Continuing ...");
 		}
 	} else {
-		if (pv_cgroup_mkcgroup2_init("pantavisor")) {
+		if (pv_cgroup_mkcgroup2_init(PV_CGROUP_NAME)) {
 			pv_log(WARN,
 			       "Pantavisor cgroup could not be initialized. It might be left over from previous runs. Continuing ...");
 		}
-		if (pv_cgroup2_join("pantavisor")) {
+		if (pv_cgroup2_join(PV_CGROUP_NAME)) {
 			pv_log(ERROR,
 			       "Pantavisor could not join 'pantavisor' cgroupv2.");
 			return -1;
@@ -311,7 +258,7 @@ int pv_cgroup_init()
 
 void pv_cgroup_umount(void)
 {
-	pv_fs_path_remove("/sys/fs/cgroup/pantavisor", false);
+	pv_fs_path_remove("/sys/fs/cgroup/" PV_CGROUP_NAME, false);
 }
 
 static char *pv_cgroup_parse_proc_legacy(FILE *fd)
@@ -367,9 +314,10 @@ static char *pv_cgroup_parse_proc_unified(FILE *fd)
 				pname = strdup("_pv_");
 				break;
 			}
-			if (i > 0 && i == len - 5 &&
+			// appengine: pv sits in its own cgroup, not at the root
+			if (i > 0 &&
 			    pv_config_get_system_init_mode() == IM_APPENGINE &&
-			    strcmp(&buf[i], "::/..") == 0) {
+			    strcmp(&buf[i], "::/" PV_CGROUP_NAME) == 0) {
 				pname = strdup("_pv_");
 				break;
 			}
@@ -471,13 +419,23 @@ static void pv_cgroup_remove_hierarchy_leaves(const char *hierarchy,
 	pv_cgroup_remove_monitor_variants(hierarchy, name);
 }
 
+// appengine keeps its containers under pv's own cgroup, not at the tree root
+static const char *pv_cgroup_unified_base(void)
+{
+	if (pv_config_get_system_init_mode() == IM_APPENGINE)
+		return "/sys/fs/cgroup/" PV_CGROUP_NAME;
+
+	return "/sys/fs/cgroup";
+}
+
 void pv_cgroup_destroy(const char *name)
 {
 	struct pantavisor *pv = pv_get_instance();
 
 	switch (pv->cgroupv) {
 	case CGROUP_UNIFIED:
-		pv_cgroup_remove_hierarchy_leaves("/sys/fs/cgroup", name);
+		pv_cgroup_remove_hierarchy_leaves(pv_cgroup_unified_base(),
+						  name);
 		break;
 	case CGROUP_HYBRID: {
 		// Walk every cgroup hierarchy under /sys/fs/cgroup. The
