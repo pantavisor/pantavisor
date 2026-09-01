@@ -1,7 +1,11 @@
 #!/bin/sh
 
 PVTEST_LOG_SOURCE=pvtest-run
-source /usr/share/pantavisor/pvtest/utils
+# Where utils/common live. Overridable so the runner works from an unpacked
+# distro on a plain host, not only from the package's install prefix.
+PVTEST_LIBDIR="${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}"
+export PVTEST_LIBDIR
+. "$PVTEST_LIBDIR/utils"
 
 # self-claimed devices pending delete; swept on exit if a test was killed mid-run
 PVTEST_CLAIMED_DEVICES_FILE="/tmp/pvtest_claimed_devices.$$"
@@ -79,7 +83,7 @@ run_interactive() {
 	export INTERACTIVE=false
 	local _rc
 	_rc=$(mktemp /tmp/pvtest_rc.XXXXXX)
-	printf '. /usr/share/pantavisor/pvtest/utils\n' > "$_rc"
+	printf '. %s/utils\n' "$PVTEST_LIBDIR" > "$_rc"
 	bash --rcfile "$_rc" -i
 	rm -f "$_rc"
 }
@@ -1012,7 +1016,7 @@ exec_test() {
 	tmp_script_path=$(mktemp /tmp/pv_appengine_script.XXXXXX)
 	{
 		[ -n "$pvrhome" ] && printf 'export HOME=%s\n' "$pvrhome"
-		echo ". /usr/share/pantavisor/pvtest/utils"
+		printf '. %s/utils\n' "$PVTEST_LIBDIR"
 		cat "$test_dir/$test_script"
 	} > "$tmp_script_path"
 	chmod +x "$tmp_script_path"

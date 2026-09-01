@@ -5,7 +5,7 @@
 
 # pvtest_log, wait_for_status, pvtest_ssh_cmd and pvtest_normalize_cfg come from
 # common, which is shared with the host orchestrator (test.docker.sh)
-. /usr/share/pantavisor/pvtest/common
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/common"
 
 pv_exec() {
 	local prog="$1"; shift
