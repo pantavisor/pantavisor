@@ -5,6 +5,10 @@ PVTEST_LOG_SOURCE=pvtest-run
 # distro on a plain host, not only from the package's install prefix.
 PVTEST_LIBDIR="${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}"
 export PVTEST_LIBDIR
+# Prefix stripped off queue entries to form a test id. /work is where the tester
+# container mounts the suites; a native runner points it at its own tree.
+PVTEST_ROOT="${PVTEST_ROOT:-/work}"
+export PVTEST_ROOT
 . "$PVTEST_LIBDIR/utils"
 
 # self-claimed devices pending delete; swept on exit if a test was killed mid-run
@@ -37,7 +41,7 @@ usage() {
 	echo "       PVTEST_HOST               host/IP for its pvr HTTP endpoint"
 	echo ""
 	echo "  2) PVTEST_QUEUE + PVTEST_CTRL  slot pool"
-	echo "       PVTEST_QUEUE              space-separated /work/<test>/test.json paths"
+	echo "       PVTEST_QUEUE              space-separated <PVTEST_ROOT>/<test>/test.json paths"
 	echo "       PVTEST_CTRL               ctrl dir mounted from the host (req/resp/state)"
 	echo "       PVTEST_SLOTS              worker count (default: 1)"
 	echo "       PVTEST_MODEL              persistent (keep target across tests) | volatile (one per test)"
@@ -50,7 +54,9 @@ usage() {
 	echo "  PVTEST_DEVICE_NAME  fallback bind when the host reports a target 'unsupported' for re-type"
 	echo ""
 	echo "Other:"
-	echo "  RUN_DIR          results dir (default: /work/run)"
+	echo "  RUN_DIR          results dir (default: \$PVTEST_ROOT/run)"
+	echo "  PVTEST_ROOT      prefix stripped from queue entries to form a test id (default: /work)"
+	echo "  PVTEST_LIBDIR    where utils/common live (default: /usr/share/pantavisor/pvtest)"
 	echo "  APPENGINE_LOGS   dir of <target>.log files, tailed into each test's log"
 	echo "  PH_USER/PH_PASS  Hub credentials, for self-claim and Hub-side usrmeta"
 	echo ""
@@ -606,7 +612,7 @@ _stage_seed() {
 			*)  _src="$_tdir/$_t" ;;
 		esac
 		if [ ! -f "$_src" ]; then
-			pvtest_log ERROR "tarball '$_t' not found for '$(dirname "${_json#/work/}")'"
+			pvtest_log ERROR "tarball '$_t' not found for '$(dirname "${_json#"$PVTEST_ROOT"/}")'"
 			return 1
 		fi
 		cp "$_src" "$(printf '%s/%02d-%s' "$_dir" "$_n" "${_src##*/}")" || return 1
@@ -1101,7 +1107,7 @@ parse_test() {
 run_test_attempt() {
 	local json_path="$1"
 	test_dir=$(dirname "$json_path")
-	test_id=$(echo "$json_path" | sed 's|^/work/||; s|/test\.json$||')
+	test_id=${json_path#"$PVTEST_ROOT"/}; test_id=${test_id%/test.json}
 
 	# Device log path
 	local ae_log="" ae_log_start=0
@@ -1203,7 +1209,7 @@ _slot_abort_tests() {
 	local _reason="$1" _j _tid
 	shift
 	for _j in "$@"; do
-		_tid=$(echo "$_j" | sed 's|^/work/||; s|/test\.json$||')
+		_tid=${_j#"$PVTEST_ROOT"/}; _tid=${_tid%/test.json}
 		pvtest_log ERROR "'${_tid}' ABORTED (${_reason})"
 	done
 }
@@ -1317,7 +1323,7 @@ volatile_worker() {
 		[ -n "$_line" ] || break
 		_cfg=$(printf '%s' "$_line" | cut -f2)
 		_json=$(printf '%s' "$_line" | cut -f3)
-		_tid=$(echo "$_json" | sed 's|^/work/||; s|/test\.json$||')
+		_tid=${_json#"$PVTEST_ROOT"/}; _tid=${_tid%/test.json}
 		_rev=$(_initial_rev_name "$_tid")
 
 		# Prepare tarballs for first boot
@@ -1412,7 +1418,7 @@ interactive=${INTERACTIVE:-$2}
 overwrite=${OVERWRITE:-$3}
 verbose=${VERBOSE:-$4}
 netsim=${NETSIM:-$5}
-run_dir=${RUN_DIR:-/work/run}
+run_dir=${RUN_DIR:-$PVTEST_ROOT/run}
 PVTEST_MODEL="${PVTEST_MODEL:-persistent}"
 case "$PVTEST_MODEL" in
 	persistent|volatile) ;;
@@ -1442,8 +1448,8 @@ test_id=
 tmp_out_path=
 tmp_err_path=
 
-# drop /work/ prefix for human-readable test name label
-_run_scope=${test_selector#/work/}
+# drop the root prefix for human-readable test name label
+_run_scope=${test_selector#"$PVTEST_ROOT"/}
 _run_scope=${_run_scope%/}
 pvtest_log INFO "starting test run: ${_run_scope:-all}"
 
