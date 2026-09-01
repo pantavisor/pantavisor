@@ -8,6 +8,18 @@ which runs automatically in CI (via
 [`tag-changelogs.yaml`](../.github/workflows/tag-changelogs.yaml) when a
 tag is synced from meta-pantavisor) and on demand locally.
 
+## v030-rc2
+
+Released: 2026-08-28
+Commit: [`2bd4e7ae59b9`](https://github.com/pantavisor/pantavisor/commit/2bd4e7ae59b9b7fa82d5ec48fe4f903aab95a946)
+
+### Changes
+
+Changes since [`030-rc1`](https://github.com/pantavisor/pantavisor/releases/tag/030-rc1):
+
+#### Docs
+- close config/API gaps from 2026-08-27 code check
+
 ## v030-rc1
 
 Released: 2026-08-25
