@@ -27,7 +27,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum { RELATIV_TIMER, ABSOLUTE_TIMER } timer_type_t;
+// BOOTTIME_TIMER is RELATIV_TIMER's suspend-aware sibling: it keeps counting
+// while the system is suspended, so a deadline expressed in wall-clock seconds
+// still expires on time under power.mode=managed
+typedef enum { RELATIV_TIMER, ABSOLUTE_TIMER, BOOTTIME_TIMER } timer_type_t;
 
 uint64_t timer_get_current_time_sec(timer_type_t type);
 

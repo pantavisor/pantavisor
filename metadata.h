@@ -72,7 +72,15 @@ void pv_metadata_remove(void);
 char *pv_metadata_get_user_meta_string(void);
 char *pv_metadata_get_device_meta_string(void);
 
-// true when next differs from prev by enough to justify a Hub roundtrip
-bool pv_metadata_devmeta_significant(const char *prev, const char *next);
+void pv_metadata_refresh_devmeta(void);
+
+// True when next differs from prev by enough to justify a sync. elapsed is the
+// number of seconds between the two samples, negative when that is not known;
+// it is what the rate-of-change policies are measured against.
+bool pv_metadata_devmeta_should_sync(const char *prev, const char *next,
+				     double elapsed);
+// same, for the value of one devmeta key rather than the whole payload
+bool pv_metadata_devmeta_key_should_sync(const char *key, const char *prev,
+					 const char *next, double elapsed);
 
 #endif

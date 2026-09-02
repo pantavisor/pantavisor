@@ -555,6 +555,10 @@ static pv_state_t _pv_wait(struct pantavisor *pv)
 	// check state of debug tools
 	pv_debug_check_ssh_running();
 
+	// keep the live device metadata keys within one syncbeat, with or
+	// without a Hub to send them to
+	pv_metadata_refresh_devmeta();
+
 	// check if we need to run garbage collector
 	pv_storage_gc_run_threshold();
 

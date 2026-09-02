@@ -77,8 +77,20 @@ struct pv_meta {
 	char *key;
 	char *value;
 	bool updated;
+	// baseline for the disk consumer: the value the file under
+	// PV_CACHE_DEVMETADIR holds, when it was written, and the bound after
+	// which it gets rewritten whatever the policy says
+	char *synced;
+	uint64_t synced_at;
+	struct timer syncbeat;
 	struct dl_list list; // pv_meta
 };
+
+typedef enum {
+	DEVMETA_WRITE_NONE, // memory only
+	DEVMETA_WRITE_GATED, // write when the policy or the syncbeat says so
+	DEVMETA_WRITE_FORCE, // write whatever the policy says
+} devmeta_write_t;
 
 struct pv_devmeta_read {
 	char *key;
@@ -437,6 +449,10 @@ static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 	if (!has_idle)
 		uptime = (double)info.uptime;
 
+	long nproc = sysconf(_SC_NPROCESSORS_ONLN);
+	if (nproc < 1)
+		nproc = 1;
+
 	struct pv_json_ser js;
 	pv_json_ser_init(&js, 512);
 
@@ -474,6 +490,10 @@ static int pv_devmeta_sysinfo(struct pv_devmeta_read *pv_devmeta_read)
 		pv_json_ser_number(&js, info.freehigh);
 		pv_json_ser_key(&js, "mem_unit");
 		pv_json_ser_number(&js, info.mem_unit);
+		// idle is summed over every online CPU, so a reader needs the
+		// divisor to make sense of it
+		pv_json_ser_key(&js, "nproc");
+		pv_json_ser_number(&js, nproc);
 		pv_json_ser_object_pop(&js);
 	}
 
@@ -592,6 +612,8 @@ static void pv_metadata_free(struct pv_meta *usermeta)
 		free(usermeta->key);
 	if (usermeta->value)
 		free(usermeta->value);
+	if (usermeta->synced)
+		free(usermeta->synced);
 
 	free(usermeta);
 }
@@ -809,25 +831,65 @@ static void usermeta_clear(struct pantavisor *pv)
 	}
 }
 
+static void _pv_metadata_devmeta_synced(struct pv_meta *meta, const char *value)
+{
+	if (meta->synced)
+		free(meta->synced);
+	meta->synced = strdup(value);
+	meta->synced_at = timer_get_current_time_sec(BOOTTIME_TIMER);
+	timer_start(&meta->syncbeat,
+		    pv_config_get_int(PV_METADATA_DEVMETA_SYNCBEAT), 0,
+		    BOOTTIME_TIMER);
+}
+
+static void _pv_metadata_devmeta_write(struct pv_meta *meta, const char *value)
+{
+	pv_storage_save_devmeta(meta->key, value);
+	_pv_metadata_devmeta_synced(meta, value);
+}
+
+// Memory always takes the new value, so pv-ctrl reads and Hub payloads stay
+// live. Only the write-through to flash is gated, against what the file holds
+// rather than against the previous in-memory value.
 static int _pv_metadata_add_devmeta(const char *key, const char *value,
-				    bool persist)
+				    devmeta_write_t mode)
 {
 	struct pantavisor *pv = pv_get_instance();
 	int ret = pv_metadata_add(&pv->metadata->devmeta, key, value);
 
-	// a dynamic value changes on every read, so neither the write-through
-	// nor the log line below carry any information worth the flash wear
-	if (ret > 0 && persist) {
+	if (ret < 0 || mode == DEVMETA_WRITE_NONE)
+		return ret;
+
+	struct pv_meta *meta =
+		pv_metadata_get_by_key(&pv->metadata->devmeta, key);
+	if (!meta)
+		return ret;
+
+	if (mode == DEVMETA_WRITE_FORCE)
+		goto write;
+
+	// the file already holds this value; there is nothing to bound
+	if (meta->synced && !strcmp(meta->synced, value))
+		return ret;
+
+	if (meta->synced && !timer_current_state(&meta->syncbeat).fin &&
+	    !pv_metadata_devmeta_key_should_sync(
+		    key, meta->synced, value,
+		    timer_get_current_time_sec(BOOTTIME_TIMER) -
+			    meta->synced_at))
+		return ret;
+
+	if (ret > 0)
 		pv_log(DEBUG, "device metadata key %s added or updated", key);
-		pv_storage_save_devmeta(key, value);
-	}
+write:
+	_pv_metadata_devmeta_write(meta, value);
 
 	return ret;
 }
 
 int pv_metadata_add_devmeta(const char *key, const char *value)
 {
-	return _pv_metadata_add_devmeta(key, value, true);
+	return _pv_metadata_add_devmeta(key, value, DEVMETA_WRITE_GATED);
 }
 
 int pv_metadata_rm_devmeta(const char *key)
@@ -916,16 +978,16 @@ int pv_metadata_init_devmeta(struct pantavisor *pv)
 		struct pv_devmeta_read *rk = &pv_devmeta_readkeys[i];
 		int ret = 0;
 
-		// drop copies persisted by pantavisor versions that wrote
-		// dynamic keys through to storage
-		if (rk->dynamic)
-			pv_storage_rm_devmeta(rk->key);
-
 		rk->buf = buf;
 		rk->buflen = bufsize;
 		ret = rk->reader(rk);
+		// a live key loaded from disk is the *previous* boot's
+		// measurement, so the first write cannot wait for the policy
 		if (!ret)
-			_pv_metadata_add_devmeta(rk->key, buf, !rk->dynamic);
+			_pv_metadata_add_devmeta(rk->key, buf,
+						 rk->dynamic ?
+							 DEVMETA_WRITE_FORCE :
+							 DEVMETA_WRITE_GATED);
 		rk->buf = NULL;
 		rk->buflen = 0;
 	}
@@ -1028,7 +1090,16 @@ static void pv_metadata_load_devmeta()
 			continue;
 		}
 
-		pv_metadata_add_devmeta(curr->path, value);
+		// what we just read is what the file holds, so it is already
+		// synced; rewriting it would be a flash write for nothing
+		if (_pv_metadata_add_devmeta(curr->path, value,
+					     DEVMETA_WRITE_NONE) >= 0) {
+			struct pv_meta *meta = pv_metadata_get_by_key(
+				&pv_get_instance()->metadata->devmeta,
+				curr->path);
+			if (meta)
+				_pv_metadata_devmeta_synced(meta, value);
+		}
 		free(value);
 	}
 
@@ -1077,7 +1148,8 @@ static void pv_devmeta_refresh_dynamic(void)
 			pv_log(DEBUG, "couldn't refresh devmeta key %s",
 			       rk->key);
 		} else {
-			_pv_metadata_add_devmeta(rk->key, rk->buf, false);
+			_pv_metadata_add_devmeta(rk->key, rk->buf,
+						 DEVMETA_WRITE_GATED);
 		}
 
 		// the buffer goes back to the pool below; do not leave the
@@ -1087,6 +1159,21 @@ static void pv_devmeta_refresh_dynamic(void)
 	}
 
 	pv_buffer_drop(buffer);
+}
+
+// Nothing refreshes the live keys on a device that is not talking to Hub, so
+// the mainloop samples them itself; the per-key gate decides what reaches flash.
+void pv_metadata_refresh_devmeta(void)
+{
+	static struct timer refresh;
+
+	if (!timer_current_state(&refresh).fin)
+		return;
+
+	timer_start(&refresh, pv_config_get_int(PH_METADATA_DEVMETA_INTERVAL),
+		    0, BOOTTIME_TIMER);
+
+	pv_devmeta_refresh_dynamic();
 }
 
 static char *pv_metadata_get_meta_string(struct dl_list *meta_list)
@@ -1138,64 +1225,140 @@ out:
 	return json;
 }
 
-// Change policy: what makes a devmeta key worth a Hub roundtrip. Keys and
-// fields not listed are compared verbatim, so state keys keep report-on-change.
+// Sync triggers: which devmeta fields get a vote on *when* a sync happens.
+// Every field is published in every sync whatever its kind; the kind only says
+// whether a move in that field is a reason to sync now. No threshold is ever
+// relative to the value being measured.
 typedef enum {
-	DEVMETA_SIG_EXACT,
-	DEVMETA_SIG_NEVER,
-	DEVMETA_SIG_REL,
-} devmeta_sig_t;
+	DEVMETA_SYNC_EXACT, // any difference triggers
+	DEVMETA_SYNC_ABS, // |delta| over a fixed magnitude
+	DEVMETA_SYNC_FRAC, // |delta| over a fraction of a capacity sibling
+	DEVMETA_SYNC_RATE, // departure from an expected rate of change
+	DEVMETA_SYNC_OPPORTUNISTIC, // never asks; goes out with whatever syncs
+} devmeta_sync_t;
 
-struct pv_devmeta_sig {
+struct pv_devmeta_sync {
 	const char *name;
-	devmeta_sig_t sig;
-	int pct; // DEVMETA_SIG_REL only; 0 means metadata.devmeta.threshold
-	const struct pv_devmeta_sig *sub; // policy for a flat object value
+	devmeta_sync_t kind;
+	// ABS and RATE: magnitude in the units this table is written in
+	// FRAC: permille of the field named by ref
+	double limit;
+	// FRAC: the capacity field this one is measured against
+	// RATE: the field holding the expected units per second
+	const char *ref;
+	// RATE: expected units per second when ref is unset
+	double rate;
+	// json units per table unit, for fields the kernel serializes scaled
+	double scale;
+	const struct pv_devmeta_sync *sub; // policy for an object value
 };
 
-static const struct pv_devmeta_sig pv_devmeta_sig_sysinfo[] = {
-	// both only ever grow and Hub can derive them from the PUT it just
-	// received, so they must never be the reason we send one
-	{ .name = "uptime", .sig = DEVMETA_SIG_NEVER },
-	{ .name = "idle", .sig = DEVMETA_SIG_NEVER },
-	// Thresholds below are the measured noise floor on an idle board sampled
-	// one devmeta interval apart: loads.0 moved 19%, sharedram 78% and freeram
-	// 12% with nothing happening, so anything tighter just sends every cycle.
-	// The heartbeat still carries these out at least once per period.
-	{ .name = "loads.0", .sig = DEVMETA_SIG_NEVER },
-	{ .name = "loads.1", .sig = DEVMETA_SIG_NEVER },
-	{ .name = "loads.2", .sig = DEVMETA_SIG_NEVER },
-	{ .name = "sharedram", .sig = DEVMETA_SIG_NEVER },
-	{ .name = "procs", .sig = DEVMETA_SIG_REL, .pct = 10 },
-	{ .name = "freeram", .sig = DEVMETA_SIG_REL, .pct = 25 },
-	{ .name = "bufferram", .sig = DEVMETA_SIG_REL, .pct = 25 },
-	{ .name = "freeswap", .sig = DEVMETA_SIG_REL, .pct = 25 },
-	{ .name = "freehigh", .sig = DEVMETA_SIG_REL, .pct = 25 },
-	// totalram, totalswap, totalhigh and mem_unit stay exact: they only
-	// move when the machine itself changed
+#ifndef SI_LOAD_SHIFT
+#define SI_LOAD_SHIFT 16
+#endif
+#define SI_LOAD_SCALE ((double)(1 << SI_LOAD_SHIFT))
+
+static const struct pv_devmeta_sync pv_devmeta_sync_sysinfo[] = {
+	// a monotonic counter carries no news in its value; it carries news when
+	// it stops keeping up with the clock, which for uptime it never does
+	{ .name = "uptime", .kind = DEVMETA_SYNC_RATE, .limit = 2, .rate = 1.0 },
+	// idle is summed over every CPU, so one idle second per cpu per second
+	// is a device doing nothing; falling behind that is a device that worked
+	{ .name = "idle",
+	  .kind = DEVMETA_SYNC_RATE,
+	  .limit = 2,
+	  .ref = "nproc" },
+	{ .name = "loads.0",
+	  .kind = DEVMETA_SYNC_ABS,
+	  .limit = 0.5,
+	  .scale = SI_LOAD_SCALE },
+	{ .name = "loads.1",
+	  .kind = DEVMETA_SYNC_ABS,
+	  .limit = 0.5,
+	  .scale = SI_LOAD_SCALE },
+	{ .name = "loads.2",
+	  .kind = DEVMETA_SYNC_ABS,
+	  .limit = 0.5,
+	  .scale = SI_LOAD_SCALE },
+	{ .name = "procs", .kind = DEVMETA_SYNC_ABS, .limit = 5 },
+	// gauges are measured against the capacity that does not move, so the
+	// threshold does not tighten as the device fills up
+	{ .name = "freeram",
+	  .kind = DEVMETA_SYNC_FRAC,
+	  .limit = 50,
+	  .ref = "totalram" },
+	{ .name = "sharedram",
+	  .kind = DEVMETA_SYNC_FRAC,
+	  .limit = 50,
+	  .ref = "totalram" },
+	{ .name = "bufferram",
+	  .kind = DEVMETA_SYNC_FRAC,
+	  .limit = 50,
+	  .ref = "totalram" },
+	{ .name = "freeswap",
+	  .kind = DEVMETA_SYNC_FRAC,
+	  .limit = 50,
+	  .ref = "totalswap" },
+	{ .name = "freehigh",
+	  .kind = DEVMETA_SYNC_FRAC,
+	  .limit = 50,
+	  .ref = "totalhigh" },
+	// totalram, totalswap, totalhigh, mem_unit and nproc stay exact: they
+	// only move when the machine itself changed
 	{ 0 }
 };
 
-static const struct pv_devmeta_sig pv_devmeta_sig_storage[] = {
-	{ .name = "free", .sig = DEVMETA_SIG_REL },
-	{ .name = "real_free", .sig = DEVMETA_SIG_REL },
+static const struct pv_devmeta_sync pv_devmeta_sync_storage[] = {
+	{ .name = "free",
+	  .kind = DEVMETA_SYNC_FRAC,
+	  .limit = 10,
+	  .ref = "total" },
+	{ .name = "real_free",
+	  .kind = DEVMETA_SYNC_FRAC,
+	  .limit = 10,
+	  .ref = "total" },
 	// total and reserved stay exact
 	{ 0 }
 };
 
-static const struct pv_devmeta_sig pv_devmeta_sig_keys[] = {
-	{ .name = DEVMETA_KEY_PV_TIME, .sig = DEVMETA_SIG_NEVER },
-	{ .name = DEVMETA_KEY_PV_SYSINFO,
-	  .sig = DEVMETA_SIG_EXACT,
-	  .sub = pv_devmeta_sig_sysinfo },
-	{ .name = DEVMETA_KEY_STORAGE,
-	  .sig = DEVMETA_SIG_EXACT,
-	  .sub = pv_devmeta_sig_storage },
+static const struct pv_devmeta_sync pv_devmeta_sync_timeval[] = {
+	// trips on an NTP step, not on the mere passage of time
+	{ .name = "tv_sec", .kind = DEVMETA_SYNC_RATE, .limit = 2, .rate = 1.0 },
+	{ .name = "tv_usec", .kind = DEVMETA_SYNC_OPPORTUNISTIC },
 	{ 0 }
 };
 
-static const struct pv_devmeta_sig *
-pv_devmeta_sig_get(const struct pv_devmeta_sig *tbl, const char *name, int len)
+static const struct pv_devmeta_sync pv_devmeta_sync_time[] = {
+	{ .name = "timeval",
+	  .kind = DEVMETA_SYNC_EXACT,
+	  .sub = pv_devmeta_sync_timeval },
+	// timezone.tz_minuteswest and tz_dsttime stay exact
+	{ 0 }
+};
+
+static const struct pv_devmeta_sync pv_devmeta_sync_keys[] = {
+	{ .name = DEVMETA_KEY_PV_TIME,
+	  .kind = DEVMETA_SYNC_EXACT,
+	  .sub = pv_devmeta_sync_time },
+	{ .name = DEVMETA_KEY_PV_SYSINFO,
+	  .kind = DEVMETA_SYNC_EXACT,
+	  .sub = pv_devmeta_sync_sysinfo },
+	{ .name = DEVMETA_KEY_STORAGE,
+	  .kind = DEVMETA_SYNC_EXACT,
+	  .sub = pv_devmeta_sync_storage },
+	{ 0 }
+};
+
+// the object a field lives in, so FRAC and RATE can resolve their sibling
+struct pv_devmeta_sync_ctx {
+	const char *buf;
+	jsmntok_t **keys;
+	double elapsed; // seconds between the two samples, negative if unknown
+};
+
+static const struct pv_devmeta_sync *
+pv_devmeta_sync_get(const struct pv_devmeta_sync *tbl, const char *name,
+		    int len)
 {
 	if (!tbl)
 		return NULL;
@@ -1209,9 +1372,12 @@ pv_devmeta_sig_get(const struct pv_devmeta_sig *tbl, const char *name, int len)
 	return NULL;
 }
 
-static jsmntok_t *pv_devmeta_sig_find(const char *buf, jsmntok_t **keys,
-				      const char *name, int len)
+static jsmntok_t *pv_devmeta_sync_find(const char *buf, jsmntok_t **keys,
+				       const char *name, int len)
 {
+	if (!keys)
+		return NULL;
+
 	for (jsmntok_t **k = keys; *k; k++) {
 		int n = (*k)->end - (*k)->start;
 
@@ -1222,49 +1388,103 @@ static jsmntok_t *pv_devmeta_sig_find(const char *buf, jsmntok_t **keys,
 	return NULL;
 }
 
-static bool pv_devmeta_sig_num(const char *prev, int prev_len, const char *next,
-			       int next_len, int pct)
+static bool pv_devmeta_sync_num(const char *val, int len, double *out)
 {
-	char a[32], b[32];
-	char *ea = NULL, *eb = NULL;
+	char buf[32];
+	char *end = NULL;
 
-	if (prev_len >= (int)sizeof(a) || next_len >= (int)sizeof(b))
-		return true;
+	if (len <= 0 || len >= (int)sizeof(buf))
+		return false;
 
-	memcpy(a, prev, prev_len);
-	a[prev_len] = '\0';
-	memcpy(b, next, next_len);
-	b[next_len] = '\0';
+	memcpy(buf, val, len);
+	buf[len] = '\0';
 
-	double va = strtod(a, &ea);
-	double vb = strtod(b, &eb);
-	if (ea == a || eb == b)
-		return true;
+	*out = strtod(buf, &end);
 
-	if (pct <= 0)
-		pct = pv_config_get_int(PH_METADATA_DEVMETA_THRESHOLD);
-	if (pct <= 0)
-		return true;
-
-	double delta = vb > va ? vb - va : va - vb;
-	double base = va < 0 ? -va : va;
-
-	// a percentage of nearly nothing is noise; take any whole-unit move
-	if (base < 1)
-		return delta >= 1;
-
-	return delta * 100 >= base * pct;
+	return end != buf;
 }
 
-// Compare two flat json objects under tbl. Fails safe: anything we cannot parse
+static bool pv_devmeta_sync_sibling(const struct pv_devmeta_sync_ctx *ctx,
+				    const char *name, double *out)
+{
+	jsmntok_t *t;
+
+	if (!ctx || !ctx->buf || !name)
+		return false;
+
+	t = pv_devmeta_sync_find(ctx->buf, ctx->keys, name, strlen(name));
+	if (!t)
+		return false;
+
+	return pv_devmeta_sync_num(ctx->buf + t->start, t->end - t->start, out);
+}
+
+// integer percent applied to every magnitude in the tables above; 0 turns the
+// gate off, so every difference becomes a reason to sync
+static bool pv_devmeta_sync_limit(double limit, double *out)
+{
+	int factor = pv_config_get_int(PV_METADATA_DEVMETA_THRESHOLD_FACTOR);
+
+	if (factor <= 0)
+		return false;
+
+	*out = limit * factor / 100;
+
+	return true;
+}
+
+// Compare one numeric field under its kind. Fails safe: anything we cannot
+// parse or resolve counts as a change so we never sit on news we misread.
+static bool pv_devmeta_sync_field(const struct pv_devmeta_sync *e,
+				  const char *prev, int prev_len,
+				  const char *next, int next_len,
+				  const struct pv_devmeta_sync_ctx *ctx)
+{
+	double va, vb, limit, ref, delta, expected;
+
+	if (!pv_devmeta_sync_num(prev, prev_len, &va) ||
+	    !pv_devmeta_sync_num(next, next_len, &vb))
+		return true;
+
+	if (!pv_devmeta_sync_limit(e->limit, &limit))
+		return true;
+
+	limit *= e->scale > 0 ? e->scale : 1;
+	delta = vb > va ? vb - va : va - vb;
+
+	switch (e->kind) {
+	case DEVMETA_SYNC_ABS:
+		return delta >= limit;
+	case DEVMETA_SYNC_FRAC:
+		if (!pv_devmeta_sync_sibling(ctx, e->ref, &ref) || ref <= 0)
+			return true;
+		return delta * 1000 >= limit * ref;
+	case DEVMETA_SYNC_RATE:
+		if (!ctx || ctx->elapsed < 0)
+			return true;
+		expected = e->rate;
+		if (e->ref && !pv_devmeta_sync_sibling(ctx, e->ref, &expected))
+			return true;
+		expected *= ctx->elapsed;
+		delta = vb - va - expected;
+		if (delta < 0)
+			delta = -delta;
+		return delta > limit;
+	default:
+		return true;
+	}
+}
+
+// Compare two json objects under tbl. Fails safe: anything we cannot parse
 // counts as a change so we never sit on an update we failed to understand.
-static bool pv_devmeta_sig_obj(const char *prev, const char *next,
-			       const struct pv_devmeta_sig *tbl)
+static bool pv_devmeta_sync_obj(const char *prev, const char *next,
+				const struct pv_devmeta_sync *tbl,
+				double elapsed)
 {
 	jsmntok_t *ptokv = NULL, *ntokv = NULL;
 	jsmntok_t **pkeys = NULL, **nkeys = NULL;
 	int ptokc = 0, ntokc = 0;
-	bool sig = true;
+	bool sync = true;
 
 	if (jsmnutil_parse_json(prev, &ptokv, &ptokc) < 0 || !ptokv)
 		goto out;
@@ -1276,17 +1496,21 @@ static bool pv_devmeta_sig_obj(const char *prev, const char *next,
 	if (!pkeys || !nkeys)
 		goto out;
 
+	struct pv_devmeta_sync_ctx ctx = { .buf = next,
+					   .keys = nkeys,
+					   .elapsed = elapsed };
+
 	for (jsmntok_t **k = nkeys; *k; k++) {
 		int len = (*k)->end - (*k)->start;
 		const char *name = next + (*k)->start;
-		const struct pv_devmeta_sig *e =
-			pv_devmeta_sig_get(tbl, name, len);
-		devmeta_sig_t kind = e ? e->sig : DEVMETA_SIG_EXACT;
+		const struct pv_devmeta_sync *e =
+			pv_devmeta_sync_get(tbl, name, len);
+		devmeta_sync_t kind = e ? e->kind : DEVMETA_SYNC_EXACT;
 
-		if (kind == DEVMETA_SIG_NEVER)
+		if (kind == DEVMETA_SYNC_OPPORTUNISTIC)
 			continue;
 
-		jsmntok_t *pt = pv_devmeta_sig_find(prev, pkeys, name, len);
+		jsmntok_t *pt = pv_devmeta_sync_find(prev, pkeys, name, len);
 		if (!pt)
 			goto out;
 
@@ -1303,7 +1527,7 @@ static bool pv_devmeta_sig_obj(const char *prev, const char *next,
 			char *ps = strndup(pval, plen);
 			char *ns = strndup(nval, nlen);
 			bool sub = !ps || !ns ||
-				   pv_devmeta_sig_obj(ps, ns, e->sub);
+				   pv_devmeta_sync_obj(ps, ns, e->sub, elapsed);
 
 			free(ps);
 			free(ns);
@@ -1312,8 +1536,9 @@ static bool pv_devmeta_sig_obj(const char *prev, const char *next,
 			continue;
 		}
 
-		if (kind == DEVMETA_SIG_REL) {
-			if (pv_devmeta_sig_num(pval, plen, nval, nlen, e->pct))
+		if (kind != DEVMETA_SYNC_EXACT) {
+			if (pv_devmeta_sync_field(e, pval, plen, nval, nlen,
+						  &ctx))
 				goto out;
 			continue;
 		}
@@ -1321,20 +1546,20 @@ static bool pv_devmeta_sig_obj(const char *prev, const char *next,
 		goto out;
 	}
 
-	// a key that disappeared is a change too, unless we ignore it anyway
+	// a key that disappeared is a change too, unless it never votes anyway
 	for (jsmntok_t **k = pkeys; *k; k++) {
 		int len = (*k)->end - (*k)->start;
 		const char *name = prev + (*k)->start;
-		const struct pv_devmeta_sig *e =
-			pv_devmeta_sig_get(tbl, name, len);
+		const struct pv_devmeta_sync *e =
+			pv_devmeta_sync_get(tbl, name, len);
 
-		if (e && e->sig == DEVMETA_SIG_NEVER)
+		if (e && e->kind == DEVMETA_SYNC_OPPORTUNISTIC)
 			continue;
-		if (!pv_devmeta_sig_find(next, nkeys, name, len))
+		if (!pv_devmeta_sync_find(next, nkeys, name, len))
 			goto out;
 	}
 
-	sig = false;
+	sync = false;
 out:
 	if (pkeys)
 		jsmnutil_tokv_free(pkeys);
@@ -1345,10 +1570,11 @@ out:
 	if (ntokv)
 		free(ntokv);
 
-	return sig;
+	return sync;
 }
 
-bool pv_metadata_devmeta_significant(const char *prev, const char *next)
+bool pv_metadata_devmeta_should_sync(const char *prev, const char *next,
+				     double elapsed)
 {
 	if (!prev || !next)
 		return true;
@@ -1356,7 +1582,35 @@ bool pv_metadata_devmeta_significant(const char *prev, const char *next)
 	if (!strcmp(prev, next))
 		return false;
 
-	return pv_devmeta_sig_obj(prev, next, pv_devmeta_sig_keys);
+	return pv_devmeta_sync_obj(prev, next, pv_devmeta_sync_keys, elapsed);
+}
+
+bool pv_metadata_devmeta_key_should_sync(const char *key, const char *prev,
+					 const char *next, double elapsed)
+{
+	if (!key || !prev || !next)
+		return true;
+
+	if (!strcmp(prev, next))
+		return false;
+
+	const struct pv_devmeta_sync *e =
+		pv_devmeta_sync_get(pv_devmeta_sync_keys, key, strlen(key));
+	if (!e)
+		return true;
+
+	if (e->sub)
+		return pv_devmeta_sync_obj(prev, next, e->sub, elapsed);
+
+	if (e->kind == DEVMETA_SYNC_OPPORTUNISTIC)
+		return false;
+	if (e->kind == DEVMETA_SYNC_EXACT)
+		return true;
+
+	struct pv_devmeta_sync_ctx ctx = { .elapsed = elapsed };
+
+	return pv_devmeta_sync_field(e, prev, strlen(prev), next, strlen(next),
+				     &ctx);
 }
 
 char *pv_metadata_get_user_meta_string()

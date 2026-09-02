@@ -28,21 +28,30 @@ This is the device metadata created by Pantavisor that will give you useful info
 | `pantavisor.status` | string | [revision status](../overview/containers.md#status) |
 | `pantavisor.uname` | json | [uname](https://man7.org/linux/man-pages/man1/uname.1.html) output |
 | `pantavisor.version` | string | Pantavisor build version |
-| `storage` | json | disk usage of the device (see [refreshed on read](#refreshed-on-read)) |
-| `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) plus `uptime` and `idle` (see [`sysinfo` format](#sysinfo-format)) |
-| `time` | json | time information (see [refreshed on read](#refreshed-on-read)) |
+| `storage` | json | disk usage of the device (see [live keys](#live-keys)) |
+| `sysinfo` | json | [sysinfo](https://man7.org/linux/man-pages/man2/sysinfo.2.html) plus `uptime`, `idle` and `nproc` (see [`sysinfo` format](#sysinfo-format)) |
+| `time` | json | time information (see [live keys](#live-keys)) |
 
-## Refreshed on read
+## Live keys
 
 `sysinfo`, `storage` and `time` are measurements, not state: they are re-read
 every time the device metadata is serialized, so a read always answers with the
-current value rather than one captured at boot. Because they change on every
-read they are never written to the persistent device metadata directory
-(`PV_CACHE_DEVMETADIR`); an older copy left there by a previous Pantavisor
-version is removed on start.
+current value rather than one captured at boot.
 
-Every other key keeps its existing behaviour: its producer publishes it when it
-changes, and the value is persisted.
+Like every other key they are persisted under `PV_CACHE_DEVMETADIR` and appear
+in the container-visible device metadata directory, so a container can read them
+straight from the filesystem:
+
+```bash
+# from inside a container
+cat /pv/device-meta/sysinfo | jq .uptime
+cat /pv/device-meta/storage | jq .free
+```
+
+What is gated is *when* those files are rewritten, not whether they exist — see
+[sync triggers](#sync-triggers). No key is ever staler than
+[`PV_METADATA_DEVMETA_SYNCBEAT`](pantavisor-configuration.md#summary), and the
+copy left by the previous boot is overwritten before anything can read it.
 
 ```bash
 # both reads report the current uptime, not the boot-time one
@@ -54,37 +63,106 @@ pvcontrol devmeta ls | jq .sysinfo.uptime
 ## `sysinfo` format
 
 `sysinfo` carries the fields of [sysinfo(2)](https://man7.org/linux/man-pages/man2/sysinfo.2.html)
-plus two taken from `/proc/uptime`:
+plus three that it does not provide:
 
 | Field | Description |
 | ----- | ----------- |
 | `uptime` | seconds since boot, with the centisecond precision `/proc/uptime` provides |
 | `idle` | seconds all CPUs spent idle, **summed over every CPU**, so on an SMP machine it can exceed `uptime`. Absent when `/proc/uptime` cannot be read |
+| `nproc` | online CPUs, from `sysconf(_SC_NPROCESSORS_ONLN)`; the divisor that makes `idle` readable |
 
 When `/proc/uptime` is unavailable, `uptime` falls back to the whole-second
 value from `sysinfo(2)` and `idle` is omitted.
 
-## Change thresholds
+## Sync triggers
 
-Device metadata is pushed to Pantacor Hub every
+Device metadata is sampled every
 [`PH_METADATA_DEVMETA_INTERVAL`](pantavisor-configuration.md#summary) seconds,
-but a push only happens when the payload actually changed in a way worth
-reporting:
+but a sample only causes a sync — a write to `PV_CACHE_DEVMETADIR`, a
+`PUT /device-meta` to Pantacor Hub — when it carries news. Every field is
+published in every sync whatever its kind below; the kind only decides whether a
+move in *that* field is a reason to sync now.
 
-- Most keys are compared verbatim: any change is pushed.
-- Numeric fields inside `sysinfo` and `storage` need a relative change of at
-  least [`PH_METADATA_DEVMETA_THRESHOLD`](pantavisor-configuration.md#summary)
-  percent (`loads.*` need 10%, `procs` 5%). Fields describing the machine
-  itself — `totalram`, `totalswap`, `totalhigh`, `mem_unit`, `storage.total`,
-  `storage.reserved` — are compared verbatim.
-- `sysinfo.uptime`, `sysinfo.idle` and `time` never trigger a push on their own:
-  they only ever move forward and Hub can derive them from the moment it
-  received the push. They are still included in whatever gets pushed.
+| Kind | A sync is triggered when |
+| ---- | ------------------------ |
+| exact | the value differs at all |
+| absolute | the value moved by more than a fixed magnitude |
+| fraction | the value moved by more than a fraction of its capacity field |
+| rate | the value departed from its expected rate of change |
+| opportunistic | never; the field goes out with whatever else syncs |
 
-Regardless of the above, a push always happens at least every
-[`PH_METADATA_DEVMETA_HEARTBEAT`](pantavisor-configuration.md#summary) seconds,
-after re-authenticating with Hub, and whenever a container wrote device metadata
-through [pv-ctrl](pantavisor-commands.md) that has not reached Hub yet.
+No threshold is ever relative to the value being measured. A gauge is measured
+against the capacity that does not move, so a 25% swing in free memory means the
+same thing on a device with 20 MB free as on one with 400 MB free.
+
+### `sysinfo`
+
+| Field | Kind | Default |
+| ----- | ---- | ------- |
+| `uptime` | rate | expected 1.0/s, tolerance 2s |
+| `idle` | rate | expected `nproc`/s, tolerance 2s |
+| `loads.0`, `loads.1`, `loads.2` | absolute | 0.5 load |
+| `procs` | absolute | 5 |
+| `freeram`, `sharedram`, `bufferram` | fraction | 50‰ of `totalram` |
+| `freeswap` | fraction | 50‰ of `totalswap` |
+| `freehigh` | fraction | 50‰ of `totalhigh` |
+| `totalram`, `totalswap`, `totalhigh`, `mem_unit`, `nproc` | exact | — |
+
+`uptime` never triggers on its own — not by exclusion, but because a counter
+that advances one second per second is exactly what the rate policy expects.
+`idle` runs on the same rule and trips when the CPUs were *busy*, which is the
+event worth reporting.
+
+### `storage`
+
+| Field | Kind | Default |
+| ----- | ---- | ------- |
+| `free`, `real_free` | fraction | 10‰ of `total` |
+| `total`, `reserved` | exact | — |
+
+### `time`
+
+| Field | Kind | Default |
+| ----- | ---- | ------- |
+| `timeval.tv_sec` | rate | expected 1.0/s, tolerance 2s |
+| `timeval.tv_usec` | opportunistic | — |
+| `timezone.tz_minuteswest`, `timezone.tz_dsttime` | exact | — |
+
+`tv_sec` trips on an NTP **step** and not on the mere passage of time, which no
+magnitude threshold could tell apart.
+
+### Everything else
+
+`pantavisor.*`, `pantahub.*`, `interfaces` and every container-written key are
+exact: they sync on any change.
+
+### Tuning and bounds
+
+[`PV_METADATA_DEVMETA_THRESHOLD_FACTOR`](pantavisor-configuration.md#summary)
+scales every magnitude above by an integer percent — `50` is twice as sensitive,
+`400` four times as tolerant, and `0` turns the gate off entirely so any
+difference syncs, which is the setting to reach for when diagnosing. It has no
+effect on exact or opportunistic fields.
+
+Both keys allow the [user metadata level](../overview/pantavisor-configuration-levels.md#user-metadata),
+so they can be changed on a running device without a reboot; the value actually
+in force is readable from [`/config`](pantavisor-commands.md#config):
+
+```bash
+curl -X GET --unix-socket /pantavisor/pv-ctrl \
+     "http://localhost/config" | jq '."metadata.devmeta.threshold_factor"'
+```
+
+Regardless of any of the above, nothing is ever staler than
+[`PV_METADATA_DEVMETA_SYNCBEAT`](pantavisor-configuration.md#summary) seconds,
+on disk or at Pantacor Hub. That bound is measured on a suspend-aware clock, so
+a device sleeping under [`PV_POWER_MODE=managed`](../overview/wakelocks.md)
+counts the wall-clock seconds it spent asleep rather than only the ones it spent
+awake.
+
+A push to Pantacor Hub additionally happens after re-authenticating, and
+whenever a container wrote device metadata through
+[pv-ctrl](pantavisor-commands.md) that has not reached Hub yet.
 
 ## `interfaces` format
 

@@ -20,6 +20,10 @@
  * SOFTWARE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <sys/param.h>
 
 #include "timer.h"
@@ -31,6 +35,8 @@ static clockid_t timer_type_clockid(timer_type_t type)
 		return CLOCK_MONOTONIC;
 	case ABSOLUTE_TIMER:
 		return CLOCK_REALTIME;
+	case BOOTTIME_TIMER:
+		return CLOCK_BOOTTIME;
 	}
 
 	return 0;
@@ -86,7 +92,7 @@ int timer_start(struct timer *t, time_t sec, long nsec, timer_type_t type)
 	struct timespec now;
 
 	t->type = type;
-	if (type == RELATIV_TIMER) {
+	if (type != ABSOLUTE_TIMER) {
 		get_current_time(type, &now);
 
 		t->timeout.tv_sec = now.tv_sec + sec;
