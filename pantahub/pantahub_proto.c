@@ -104,14 +104,18 @@ static struct pv_pantahub_session session;
 static struct devmeta_gate {
 	char *acked; // last payload Hub returned 200 for
 	char *inflight; // payload of the PUT we are waiting on
-	struct timer heartbeat;
+	uint64_t acked_at;
+	struct timer syncbeat;
 } devmeta_gate;
 
+// on a suspend-aware clock: under power.mode=managed a monotonic one counts
+// awake seconds, so a 60s bound would only expire after hours of wall time
 static void _devmeta_gate_arm(void)
 {
-	timer_start(&devmeta_gate.heartbeat,
-		    pv_config_get_int(PH_METADATA_DEVMETA_HEARTBEAT), 0,
-		    RELATIV_TIMER);
+	devmeta_gate.acked_at = timer_get_current_time_sec(BOOTTIME_TIMER);
+	timer_start(&devmeta_gate.syncbeat,
+		    pv_config_get_int(PV_METADATA_DEVMETA_SYNCBEAT), 0,
+		    BOOTTIME_TIMER);
 }
 
 static void _devmeta_gate_reset(void)
@@ -134,10 +138,13 @@ static bool _devmeta_gate_pass(const char *json)
 	if (pv_wakelock_devmeta_is_pending())
 		return true;
 
-	if (timer_current_state(&devmeta_gate.heartbeat).fin)
+	if (timer_current_state(&devmeta_gate.syncbeat).fin)
 		return true;
 
-	return pv_metadata_devmeta_significant(devmeta_gate.acked, json);
+	return pv_metadata_devmeta_should_sync(
+		devmeta_gate.acked, json,
+		timer_get_current_time_sec(BOOTTIME_TIMER) -
+			devmeta_gate.acked_at);
 }
 
 void pv_pantahub_proto_init()
@@ -649,8 +656,7 @@ void pv_pantahub_proto_set_devmeta()
 	}
 
 	if (!_devmeta_gate_pass(json)) {
-		pv_log(DEBUG,
-		       "devmeta unchanged beyond threshold; not sending");
+		pv_log(DEBUG, "devmeta carries no news; not sending");
 		goto out;
 	}
 

@@ -44,9 +44,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
-| `PH_METADATA_DEVMETA_HEARTBEAT` | time (in seconds) | `60` | upper bound between [device metadata](../overview/storage.md#device-metadata) pushes; a push happens even when nothing changed, so [Pantacor Hub](../overview/remote-control.md#pantacor-hub) keeps seeing the device as alive |
 | `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](../overview/storage.md#device-metadata) to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
-| `PH_METADATA_DEVMETA_THRESHOLD` | percent | `1` | relative change a numeric [device metadata](pantavisor-metadata.md#change-thresholds) field needs before it triggers a push of its own |
 | `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](../overview/storage.md#user-metadata) from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_ONLINE_REQUEST_THRESHOLD` | number of failures | `0` | number of failed requests to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) allowed to still consider device online |
 | `PH_UPDATER_INTERVAL` | time (in seconds) | `5` | set time between [Pantacor Hub](../overview/remote-control.md#pantacor-hub) [update](../overview/updates.md) requests |
@@ -96,6 +94,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_TIMESTAMP` | `relative` or `absolute` | `relative` | clock behind the `tsec` field of every log line: seconds since boot, or Unix epoch |
 | `PV_LOOP_INDEX_BASE` | integer | `-1` | set base index of the [loop device range](../overview/init-mode.md) reserved for this instance; `-1` disables ranging |
 | `PV_LXC_LOG_LEVEL` | `0` to `5` | `2` | set LXC log level |
+| `PV_METADATA_DEVMETA_SYNCBEAT` | time (in seconds) | `60` | upper bound on how stale any [device metadata](pantavisor-metadata.md#sync-triggers) key may be, on disk and at [Pantacor Hub](../overview/remote-control.md#pantacor-hub); measured on a suspend-aware clock, so it holds under [`PV_POWER_MODE=managed`](../overview/wakelocks.md) too |
+| `PV_METADATA_DEVMETA_THRESHOLD_FACTOR` | percent | `100` | scales every magnitude in the [sync trigger](pantavisor-metadata.md#sync-triggers) table: `50` is twice as sensitive, `400` four times as tolerant, `0` turns the gate off so any change syncs |
 | `PV_NET_BRADDRESS4` | IP address | `10.0.3.1` | set bridge IPv4 address |
 | `PV_NET_BRDEV` | interface name | `lxcbr0` | set bridge device name |
 | `PV_NET_BRMASK4` | IP mask | `255.255.255.0` | set bridge IPv4 mask |
@@ -169,9 +169,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PH_FACTORY_AUTOTOK`                 | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_LIBEVENT_HTTP_TIMEOUT`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_LIBEVENT_HTTP_RETRIES`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| `PH_METADATA_DEVMETA_HEARTBEAT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| `PH_METADATA_DEVMETA_THRESHOLD`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_USRMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_ONLINE_REQUEST_THRESHOLD`        | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_UPDATER_INTERVAL`                | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
@@ -221,6 +219,8 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_LOG_TIMESTAMP`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOOP_INDEX_BASE`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LXC_LOG_LEVEL`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| `PV_METADATA_DEVMETA_SYNCBEAT`       | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_METADATA_DEVMETA_THRESHOLD_FACTOR` | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_NET_BRADDRESS4`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRDEV`                       | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_NET_BRMASK4`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
