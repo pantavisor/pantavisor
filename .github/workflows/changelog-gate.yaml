@@ -1,0 +1,87 @@
+name: "ontag: changelog gate"
+
+# Blocks a stable release (0NN tag, no -rc) unless the tagged commit carries a
+# finalized CHANGELOG/CHANGELOG-<MAJOR>.md:
+#   * a "## v<MAJOR>" stable section is present, and
+#   * a "## v<MAJOR>-rcN" section is present for every <MAJOR>-rc* git tag, and
+#   * those RC sections match the per-major S3 accumulator byte-for-byte.
+#
+# RC tags pass instantly — their sections live only on the S3 accumulator and
+# are never expected in the repo. Run `make-changelog.sh --finalize <MAJOR>`
+# and push the resulting commit before tagging the stable release.
+#
+# Called by tag-changelogs.yaml (the changelog job needs it), so a stable tag
+# without the finalize commit publishes neither the S3 accumulator nor the
+# GitHub Release.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag to gate (defaults to the triggering ref)"
+        type: string
+        required: false
+
+jobs:
+  gate:
+    name: "changelog gate (${{ inputs.tag || github.ref_name }})"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the tagged commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Verify the finalize commit
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$TAG" == *-rc* ]]; then
+            echo "RC tag '$TAG' — changelog gate not applicable."
+            exit 0
+          fi
+          if [[ ! "$TAG" =~ ^0[0-9]+$ ]]; then
+            echo "Tag '$TAG' is not a stable release tag — nothing to gate."
+            exit 0
+          fi
+
+          MAJOR="$TAG"
+          FILE="CHANGELOG/CHANGELOG-${MAJOR}.md"
+          S3_URL="https://pantavisor-ci.s3.amazonaws.com/pantavisor/changelog/pantavisor/CHANGELOG-${MAJOR}.md"
+
+          fail() { echo "::error::$*"; exit 1; }
+
+          [ -f "$FILE" ] || fail "$FILE is missing from the tagged commit — run make-changelog.sh --finalize $MAJOR and push the commit before tagging."
+
+          grep -qx "## v${MAJOR}" "$FILE" \
+            || fail "$FILE has no '## v${MAJOR}' stable section — run make-changelog.sh --finalize $MAJOR before tagging."
+
+          missing=()
+          while IFS= read -r rc; do
+            [ -n "$rc" ] || continue
+            grep -qx "## v${rc}" "$FILE" || missing+=("## v${rc}")
+          done < <(git tag -l "${MAJOR}-rc*" | sort -V)
+          if [ ${#missing[@]} -gt 0 ]; then
+            fail "$FILE is missing RC sections: ${missing[*]} — re-run make-changelog.sh --finalize $MAJOR (after all RC release workflows have finished)."
+          fi
+
+          # RC section bodies are immutable and fully known; the finalized file
+          # must reproduce the S3 accumulator's RC sections exactly.
+          curl -sfL -o /tmp/s3-changelog.md "$S3_URL" \
+            || fail "S3 accumulator $S3_URL is unreachable — cannot verify the finalize commit."
+
+          extract_rc() {
+            awk -v maj="$1" '
+              /^## v/ { inrc = ($0 ~ "^## v" maj "-rc[0-9]+$") }
+              inrc    { print }
+            ' "$2"
+          }
+
+          if ! diff -u <(extract_rc "$MAJOR" /tmp/s3-changelog.md) <(extract_rc "$MAJOR" "$FILE"); then
+            fail "committed RC sections differ from the S3 accumulator (- S3, + committed) — re-run make-changelog.sh --finalize $MAJOR."
+          fi
+
+          echo "changelog gate passed for $TAG."
