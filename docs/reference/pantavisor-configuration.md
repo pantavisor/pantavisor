@@ -11,6 +11,10 @@ This reference page presents the newly unified configuration key syntax. To get 
 :::
 
 :::note
+The legacy dotted key set is frozen: it only covers keys that predate the unified syntax. Keys added since (for example the `PV_POWER_*` power keys) have no dotted form and new keys are never given one. `GET /config` (`pvcontrol config ls`) therefore only shows the pre-existing legacy keys — use `/config2` (`pvcontrol conf ls`) for the full set.
+:::
+
+:::note
 This page lists all configuration keys, their values, and the levels each one supports. For an explanation of what each level means and how they take precedence over one another, see [Configuration Levels](../overview/pantavisor-configuration-levels.md).
 :::
 
