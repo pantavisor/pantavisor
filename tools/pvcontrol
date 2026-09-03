@@ -46,7 +46,7 @@ OUTPUT=""
 MESSAGE=""
 
 usage() {
-	echo "Usage: pvcontrol [options] <ls|containers|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons|storage> [arguments]"
+	echo "Usage: pvcontrol [options] <ls|containers|groups|signal|cmd|usrmeta|devmeta|buildinfo|objects|steps|conf|graph|daemons|storage|wakelocks> [arguments]"
 	echo "Control Pantavisor from your container"
 	echo "options:"
 	echo "       -h           show help"
@@ -169,6 +169,12 @@ usage_conf() {
 	echo "Usage: pvcontrol <configuration|conf> <ls>"
 	echo "Configuration related operations"
 	echo "       pvcontrol conf ls - lists current configuration"
+}
+
+usage_wakelocks() {
+	echo "Usage: pvcontrol wakelocks <ls>"
+	echo "Power mode and wakelock state operations"
+	echo "       pvcontrol wakelocks ls - show current power mode and wakelock state"
 }
 
 parse_ls_args() {
@@ -512,6 +518,20 @@ parse_conf_args() {
 	esac
 }
 
+parse_wakelocks_args() {
+	case "$1" in
+	ls|list)
+		cmd='listwakelocks'
+		;;
+	--help)
+		usage_wakelocks; exit 0
+		;;
+	*)
+		usage_wakelocks; exit 1
+		;;
+	esac
+}
+
 parse_args() {
 	# parse options
 	while [ $# -gt 0 ]; do
@@ -581,6 +601,9 @@ parse_args() {
 		;;
 	graph)
 		parse_graph_args "$2"
+		;;
+	wakelocks)
+		parse_wakelocks_args "$2"
 		;;
 	daemons)
 		parse_daemons_args "$2" "$3"
@@ -818,6 +841,9 @@ exec_cmd() {
 			;;
 		listconf)
 			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/config2"`
+			;;
+		listwakelocks)
+			response=`$CURL -X GET --unix-socket "$SOCKET" "http://localhost/wakelocks"`
 			;;
 		*)
 			echo "ERROR: unknown operation"; exit 1

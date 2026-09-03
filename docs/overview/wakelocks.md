@@ -1,7 +1,7 @@
 # Wakelocks and power modes
 
 Pantavisor can block and schedule system suspend so a device sleeps between
-activity without missing updates. The behaviour is selected by `power.mode`:
+activity without missing updates. The behaviour is selected by `PV_POWER_MODE`:
 
 | mode | suspend | description |
 |------|---------|-------------|
@@ -37,7 +37,7 @@ scope owns a guard, so it contributes at most one to the count.
 
 `devmeta` is dirty-gated: held from a local `pv-ctrl` metadata change (only on an
 authenticated Hub device) until Hub acks the change, bounded by
-`power.devmeta.max_held`.
+`PV_POWER_DEVMETA_MAX_HELD`.
 
 ## Managed mode
 
@@ -51,10 +51,10 @@ platforms are up (first `RUN -> WAIT`), it enables kernel autosleep. From then:
    loop can re-suspend, then signals the event loop over an eventfd.
 3. The event loop opens a **wake window**: it re-arms the alarm for the next
    cycle and holds `poll` while it polls Hub. The window stays open at least
-   `power.wake.min_awake` (so the network can re-associate after deep
+   `PV_POWER_WAKE_MIN_AWAKE` (so the network can re-associate after deep
    suspend), until one poll round reaches Hub (or trivially, if unauthed/no
-   Hub configured) plus `power.wake.run_window` more as the containers'
-   guaranteed run time, bounded by `power.wake.max_awake`.
+   Hub configured) plus `PV_POWER_WAKE_RUN_WINDOW` more as the containers'
+   guaranteed run time, bounded by `PV_POWER_WAKE_MAX_AWAKE`.
 4. When the window closes, `poll` is released and the device suspends again.
 
 A found update holds `update` (independent of the poll window), so the device
@@ -62,7 +62,7 @@ stays awake through download, install and reboot regardless of the wake
 schedule.
 
 Every wake carries up to two payloads: the Hub roundtrip (if authed) and the
-container run window (`power.wake.run_window`, off by default). A wake is
+container run window (`PV_POWER_WAKE_RUN_WINDOW`, off by default). A wake is
 only re-armed if at least one payload applies — a device with neither Hub nor
 a declared run window has nothing to wake for and stays asleep until an
 external event.
@@ -77,17 +77,70 @@ the wakelock inline on the same thread closes that gap.
 
 | key | default | meaning |
 |-----|---------|---------|
-| `power.mode` | `locks` | `disabled` / `locks` / `managed` |
-| `power.devmeta.eager_push` | `false` | push a dirty `devmeta` change out-of-band right away rather than waiting up to a full devmeta interval, minimizing awake time |
-| `power.wake.interval` | `3600` | managed: seconds between timed wakes (device heartbeat) |
-| `power.wake.run_window` | `0` (off) | managed: after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
-| `power.autosleep.settle` | `90` | managed: delay after ready before autosleep is enabled |
-| `power.wake.min_awake` | `10` | managed: minimum awake seconds per wake window |
-| `power.wake.max_awake` | `60` | managed: maximum awake seconds per wake window |
-| `power.devmeta.max_held` | `300` | max seconds the `devmeta` lock is held awaiting a Hub ack |
-| `power.sysfs_dir` | `/sys/power` | base dir of the wakelock sysfs nodes |
+| `PV_POWER_MODE` | `locks` | `disabled` / `locks` / `managed` |
+| `PV_POWER_DEVMETA_EAGER_PUSH` | `false` | push a dirty `devmeta` change out-of-band right away rather than waiting up to a full devmeta interval, minimizing awake time |
+| `PV_POWER_WAKE_INTERVAL` | `3600` | managed: seconds between timed wakes (device heartbeat) |
+| `PV_POWER_WAKE_RUN_WINDOW` | `0` (off) | managed: after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
+| `PV_POWER_AUTOSLEEP_SETTLE` | `90` | managed: delay after ready before autosleep is enabled |
+| `PV_POWER_WAKE_MIN_AWAKE` | `10` | managed: minimum awake seconds per wake window |
+| `PV_POWER_WAKE_MAX_AWAKE` | `60` | managed: maximum awake seconds per wake window |
+| `PV_POWER_DEVMETA_MAX_HELD` | `300` | max seconds the `devmeta` lock is held awaiting a Hub ack |
+| `PV_POWER_SYSFS_DIR` | `/sys/power` | base dir of the wakelock sysfs nodes |
+
+All the DURATION keys above (every one but `PV_POWER_MODE` and
+`PV_POWER_SYSFS_DIR`) accept a bare number of seconds or a suffixed value —
+`30s`, `10min`, `1h`, `1d`.
+
+Set any of these like any other Pantavisor key — for example in
+`pantavisor.config` or as a boot environment variable, `PV_POWER_MODE=managed`
+— see [Configuration Levels](pantavisor-configuration-levels.md) for the full
+list of levels and precedence. Check the value actually in effect with
+`pvcontrol conf ls` (these keys have no legacy dotted alias, so they never show
+up in `pvcontrol config ls`).
 
 ## Inspecting state
 
-`GET /wakelocks` on the pv-ctrl socket returns the current mode, refcount,
-whether autosleep/settle/poll are active, and which scopes are held.
+`GET /wakelocks` on the pv-ctrl socket, or `pvcontrol wakelocks ls`, returns the
+current mode, refcount, whether autosleep/settle/poll are active, and which
+scopes are held:
+
+```
+$ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/wakelocks"
+{
+  "mode": "managed",
+  "count": 1,
+  "degraded": false,
+  "autosleep": true,
+  "settling": false,
+  "polling": true,
+  "run_window": true,
+  "held": {
+    "boot": false,
+    "update": false,
+    "update_check": false,
+    "devmeta": false,
+    "usrmeta": false,
+    "shutdown": false,
+    "debug_shell": false,
+    "poll": true
+  }
+}
+```
+
+| field | meaning |
+|-------|---------|
+| `mode` | the active power mode (`disabled` / `locks` / `managed`) |
+| `count` | current wakelock refcount; `0` means the device is free to suspend |
+| `degraded` | `true` when `locks` mode fell back to no-op wakelocks because the kernel lacks wakelock support (`managed` fails init instead) |
+| `autosleep` | `true` once managed mode has enabled kernel autosleep (after the settle delay) |
+| `settling` | `true` while managed mode is waiting out `PV_POWER_AUTOSLEEP_SETTLE` before enabling autosleep |
+| `polling` | `true` while a managed wake window is open (the device woke to poll Hub and/or run containers) |
+| `run_window` | `true` only while `polling` is true and the guaranteed container run window has not yet elapsed |
+| `held.boot` | the `boot` wakelock, held from start until the FSM first reaches steady state |
+| `held.update` | an update is downloading, installing, or in its post-boot test/commit |
+| `held.update_check` | a poll-for-updates roundtrip is in flight |
+| `held.devmeta` | a local device-metadata change is not yet synced to Hub |
+| `held.usrmeta` | a user-metadata GET is in flight |
+| `held.shutdown` | teardown (sync, unmount) is running during shutdown |
+| `held.debug_shell` | a debug/serial shell session is open |
+| `held.poll` | a managed-mode wake window is open (mirrors `polling`) |
