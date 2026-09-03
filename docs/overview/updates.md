@@ -75,7 +75,7 @@ Installing or progressing to this revision. Transitions to new revisions can eit
 
 [Hooks](hooks.md) fire at key points during installation: before and after the bootloader writes the new revision (`system-before-install-update` / `system-after-install-update`), and once the revision has been committed after a successful try-boot (`system-boot-done`).
 
-To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a [configurable](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson) time, Pantavisor will [rollback](#error) the revision.
+To finish this state, it is necessary that all [status goals](containers.md#status-goal) existing in the new revision have been achieved. Also, in the case of a [remote](remote-control.md#pantacor-hub) update, Pantavisor needs to have performed communication with Pantacor Hub. If these two conditions are not met within a configurable time, Pantavisor will [rollback](#error) the revision. The wait is set per group by `timeout` in [groups.json](../reference/pantavisor-state-format-v2.md#5-orchestration-groupsjson), falling back to [`PV_UPDATER_GOALS_TIMEOUT`](../reference/pantavisor-configuration.md#summary) (seconds, default `120`) for any group that does not set it.
 
 | Messages |
 | ---------|
@@ -108,7 +108,7 @@ In this case, Pantavisor will only stop the containers that were affected by the
 
 Waiting to see if the revision is stable. During this stage, Pantavisor checks if all containers are running and will [rollback](#error) if any of them exits. Besides that, in the case of a [remote](remote-control.md#pantacor-hub) update, it will also [rollback](#error) in case Pantacor Hub communication is lost.
 
-If any container has a [stable_timeout](containers.md#stability-tracking), the commit is held even after the commit delay timer expires, until all containers have survived their stability window. If a container with [auto-recovery](containers.md#auto-recovery) exhausts its `max_retries` during TESTING, a rollback is triggered immediately regardless of the configured `backoff_policy`.
+If any container has a [stable_timeout](containers.md#stability-tracking), the commit is held even after the commit delay timer ([`PV_UPDATER_COMMIT_DELAY`](../reference/pantavisor-configuration.md#summary), seconds, default `25`) expires, until all containers have survived their stability window. If a container with [auto-recovery](containers.md#auto-recovery) exhausts its `max_retries` during TESTING, a rollback is triggered immediately regardless of the configured `backoff_policy`.
 
 | Messages |
 | ---------|
