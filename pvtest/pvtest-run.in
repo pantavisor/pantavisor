@@ -37,7 +37,7 @@ usage() {
 	echo "       PVTEST_CTRL               ctrl dir mounted from the host (req/resp/state)"
 	echo "       PVTEST_SLOTS              worker count (default: 1)"
 	echo "       PVTEST_MODEL              persistent (keep target across tests) | volatile (one per test)"
-	echo "       PVTEST_RETYPE             container (boot a generation) | hook (power-cycle a board) | none"
+	echo "       PVTEST_RETYPE             container (boot a generation) | setbootconfig (write the boot config, power-cycle a board) | none"
 	echo "       PVTEST_EXEC/PVTEST_HOST   as above, for a target that never re-types; a"
 	echo "                                 ready ctrl reply supersedes them for that slot"
 	echo ""
@@ -894,7 +894,7 @@ _install_initial_rev() {
 	local _st _res=0
 	_st=$(pvcontrol steps show-progress "$rev" 2>/dev/null | jq -r '.status' 2>/dev/null)
 	case "$PVTEST_RETYPE" in
-		container|hook)
+		container|setbootconfig|hook)
 			_reqcfg_gate "$required_env"; _res=$?
 			;;
 		*)
