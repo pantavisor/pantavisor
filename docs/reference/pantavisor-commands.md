@@ -95,10 +95,29 @@ $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/groups"
 
 ## /wakelocks
 
-Returns the current [power mode and wakelock state](../overview/wakelocks.md#inspecting-state): mode, refcount, whether autosleep/settle/poll are active, and which scopes are held. See [Wakelocks and power modes](../overview/wakelocks.md) for full semantics.
+Returns the current [power mode and wakelock state](../overview/wakelocks.md#inspecting-state): mode, refcount, whether autosleep/settle/poll are active, and which scopes are held. See [Wakelocks and power modes](../overview/wakelocks.md) for the field-by-field semantics.
 
 ```
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/wakelocks"
+{
+  "mode": "locks",
+  "count": 0,
+  "degraded": false,
+  "autosleep": false,
+  "settling": false,
+  "polling": false,
+  "run_window": false,
+  "held": {
+    "boot": false,
+    "update": false,
+    "update_check": false,
+    "devmeta": false,
+    "usrmeta": false,
+    "shutdown": false,
+    "debug_shell": false,
+    "poll": false
+  }
+}
 ```
 
 ## /signal

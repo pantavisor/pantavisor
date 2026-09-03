@@ -123,14 +123,17 @@ Plain-text build manifest. May be empty on some builds.
 ### Configuration
 
 ```bash
-pvcontrol config ls    # legacy /config — aliased key names
+pvcontrol config ls    # legacy /config — frozen, dotted-alias keys only
 pvcontrol conf ls      # full /config2 — complete configuration object
 ```
 
 Both return the active Pantavisor configuration. `conf ls` returns an array of
 `{key, value, modified}` records (the `modified` field shows where the value
-came from — `default`, a config file, etc.); `config ls` returns a flat object
-with aliased dotted keys:
+came from — `default`, a config file, etc.) covering every key; `config ls`
+returns a flat object with dotted keys, but only for the ones that predate the
+env-var scheme — that alias table is frozen, so a key added since (e.g. the
+`PV_POWER_*` power keys) has no dotted form and only ever shows up in
+`conf ls`:
 
 ```json
 // pvcontrol conf ls
@@ -152,6 +155,22 @@ pvcontrol graph ls
 
 Returns the current xconnect service-mesh graph (providers/consumers and the
 links between them). See [pantavisor-xconnect.md](../reference/pantavisor-xconnect.md).
+
+### Wakelocks
+
+```bash
+pvcontrol wakelocks ls
+```
+
+Returns the current power mode and wakelock state — mode, refcount, whether
+autosleep/settle/poll are active, and which scopes are held. Example output:
+
+```json
+{"mode":"locks","count":0,"degraded":false,"autosleep":false,"settling":false,"polling":false,"run_window":false,"held":{"boot":false,"update":false,"update_check":false,"devmeta":false,"usrmeta":false,"shutdown":false,"debug_shell":false,"poll":false}}
+```
+
+See [wakelocks.md](../overview/wakelocks.md#inspecting-state) for the
+field-by-field semantics and the `PV_POWER_*` configuration keys.
 
 ---
 
@@ -467,6 +486,7 @@ On a platform without managed drivers these are effectively no-ops returning
 | `daemons ls` | GET | `/daemons` |
 | `daemons start\|stop\|restart <name>` | PUT | `/daemons/{name}` |
 | `graph ls` | GET | `/xconnect-graph` |
+| `wakelocks ls` | GET | `/wakelocks` |
 | `signal ready\|alive` | POST | `/signal` |
 | `cmd <subcommand>` | POST | `/commands` |
 | `storage gc` | POST | `/storage/gc` |
