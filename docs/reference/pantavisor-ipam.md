@@ -6,6 +6,9 @@ description: "IP address management configuration: pools, leases, and per-contai
 
 # Pantavisor IPAM
 
+**Overview:** [IPAM](../overview/ipam.md) explains why pools exist, how allocation works, and how IPAM
+coexists with backend-native static IPs.
+
 Reference for the IP Address Management (IPAM) subsystem: `device.json` pool schema, per-container `run.json` / `args.json` schema, lifecycle behaviors, and backend-plugin hook.
 
 For the narrative overview, see [Technical Overview — IPAM](../overview/ipam.md).
@@ -107,34 +110,36 @@ Leases are keyed by `(pool_name, container_name)` and held in each pool's in-mem
 | Platform teardown (state transition, reboot, rollback) | Lease released in `pv_platform_free`. |
 | IPAM alloc failure mid-start (e.g. static IP collision) | Any partial leases for the platform are released in the `ipam_error` rollback path. |
 
-## Backends and NAT Setup
+## Backend plugin hooks
 
-Bridge creation uses netlink. NAT installation uses a probe-based backend selection:
+Two optional symbols are `dlsym`'d on the container-backend plugin. A backend that does not provide
+them simply contributes nothing.
 
-1. If `nft` is available (`command -v nft` succeeds), install a `table ip nat` with a `postrouting` chain of `srcnat` priority, containing one `ip saddr <subnet> oifname != "<bridge>" masquerade` rule per pool.
-2. Otherwise, if `iptables` is available, fall back to `iptables -t nat -A POSTROUTING -s <subnet> ! -o <bridge> -j MASQUERADE`.
-3. If neither is available, a warning is logged and the pool runs without NAT.
+| Symbol | Called from | Effect |
+|--------|-------------|--------|
+| `pv_validate_container_config(p, conf_file)` | `pv_platform_start`, before IPAM allocation | Non-zero refuses the start. The LXC plugin uses it to reject a pool-using container whose `lxc.container.conf` bakes `lxc.net.*` entries. `lxc.namespace.keep = net` is not flagged |
+| `pv_enumerate_static_ips(p, conf_file, cb, ctx)` | `pv_platforms_reserve_static_ips`, once at startup after `pv_ipam_setup_bridges` | Invokes `cb(ip_in_host_order, ctx)` per hard-coded address found. The LXC plugin greps `lxc.net.N.ipv4.address = X.Y.Z.W[/M]`, ignoring the `auto` and `dhcp` sentinels |
 
-The preference order is nftables-first because every modern Linux kernel (3.13+, so any host from 2014 onward) has nftables native, and recent distros ship iptables as a compat shim over nftables anyway.
+Each enumerated address is routed into `pv_ipam_reserve_static(ip, source)`:
 
-## Static-IP Reservation from Backend Config
+| Address | Disposition |
+|---------|-------------|
+| Inside a pool's subnet | Leased to that pool, tagged `pv:static:<source>`, so `is_ip_available()` skips it |
+| Outside every pool's subnet | Logged at DEBUG, ignored |
+| Equal to a pool's gateway | Logged at WARN, not reserved |
+| Already leased | Skipped |
 
-A second plugin hook — `pv_enumerate_static_ips(p, conf_file, cb, ctx)` — lets pantavisor reserve any hard-coded IPv4 addresses in the container's backend config from the pool allocator, so IPAM never hands the same address out twice.
+## NAT backend
 
-Called once at startup from `pv_platforms_reserve_static_ips(state)` right after `pv_ipam_setup_bridges()`. For each platform that has a backend with this hook, every configured address file is scanned; the hook invokes `cb(ip_in_host_order, ctx)` for each hard-coded address it finds. The default callback routes that into `pv_ipam_reserve_static(ip, source)`:
+NAT is installed per pool with `nat: true`, using the first available backend:
 
-- If the IP falls inside any pool's subnet, a lease tagged `pv:static:<source>` is added to that pool. `is_ip_available()` already filters these out, so no change to `pv_ipam_allocate()` is needed.
-- If the IP is outside every pool's subnet: logged at DEBUG, ignored. The container is managing its own networking on a bridge pantavisor doesn't know about.
-- If the IP clashes with a pool's gateway: logged at WARN, not reserved. The container will likely fail to bring that interface up anyway.
-- Duplicate reservations (same IP already leased) are skipped.
+| Order | Condition | Rule installed |
+|-------|-----------|----------------|
+| 1 | `nft` is on `PATH` | `table ip nat`, `postrouting` chain at `srcnat` priority, one `ip saddr <subnet> oifname != "<bridge>" masquerade` rule per pool |
+| 2 | `iptables` is on `PATH` | `iptables -t nat -A POSTROUTING -s <subnet> ! -o <bridge> -j MASQUERADE` |
+| 3 | neither | WARN logged; the pool runs without NAT |
 
-The LXC plugin implements this by grepping `lxc.container.conf` for `lxc.net.N.ipv4.address = X.Y.Z.W[/M]` lines, ignoring the `auto` and `dhcp` sentinels. Plugins without the hook contribute no reservations — IPAM then allocates from the full subnet minus the gateway and existing dynamic leases.
-
-## Pre-start Validation
-
-Container-backend plugins can reject a start with backend-specific config problems via `pv_validate_container_config(p, conf_file)` — a dlsym'd symbol on the backend plugin library. If present, pantavisor calls it from `pv_platform_start` before the IPAM allocation block. A non-zero return refuses the start; `pv_state_run` returns `-1` and the error bubbles into `PV_STATE_ROLLBACK` (TESTING update) or `PV_STATE_REBOOT` (steady state).
-
-The LXC plugin uses this hook to refuse a pool-using container whose `lxc.container.conf` bakes `lxc.net.*` entries. That combination is ambiguous: pantavisor's own `lxc.net.0.*` injection at start time would overwrite parts of the baked config but can leave orphan attributes from the previous type. The defensive policy is to refuse and ask the user to remove the conflict. `lxc.namespace.keep = net` (present in pvr's default template) is not flagged — pantavisor strips `net` from the keep list at runtime when it injects the veth.
+Bridge creation itself uses netlink.
 
 ## Error Handling
 
@@ -146,13 +151,3 @@ The LXC plugin uses this hook to refuse a pool-using container whose `lxc.contai
 | Static IP already in use | Refuse at `pv_platform_start`. Bubbles up. |
 | Pool exhausted (no free IPs) | Refuse at `pv_platform_start`. Bubbles up. |
 | NAT setup fails | Logged as WARN; the pool is still usable for same-pool traffic. |
-
-## Zero-Impact Invariant for Non-IPAM Devices
-
-If a device's `device.json` has no `network.pools` block and no container's `run.json` has a `network` block:
-
-- `pv_ipam_init()` / `pv_ipam_setup_bridges()` are called but operate on an empty registry — no bridges, no netfilter rules, no routes.
-- All per-container IPAM code paths in `platforms.c`, `state.c`, and `plugins/pv_lxc.c` are guarded by `p->network && p->network->mode == NET_MODE_POOL` and skip.
-- The LXC plugin's `pv_validate_container_config` hook also short-circuits when the platform is not in `NET_MODE_POOL`.
-
-Net observable effect: two INFO log lines at boot (`IPAM subsystem initialized` and a no-op setup). No behavioral change otherwise.

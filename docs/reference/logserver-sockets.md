@@ -6,6 +6,9 @@ description: "Logserver Unix socket paths and message formats."
 
 # Pantavisor Log Sockets
 
+**Overview:** [Storage → Logs](../overview/storage.md#logs) explains how the log server fits together and
+what each sink is for.
+
 The Pantavisor logging system uses two Unix sockets for inter-process log management: `pv-ctrl-log` for receiving direct log messages and `pv-fd-log` for subscribing file descriptors to be polled by Pantavisor.
 
 ## pv-ctrl-log
@@ -16,11 +19,14 @@ Messages using the binary structure must follow the `logserver_msg` structure:
 
 ```C
 struct logserver_msg {
-    int code; // Protocol code: 0 for LEGACY, 256 for CMD
+    int code; // Protocol code: 0 for LEGACY, 256 for CMD (internal)
     int len;  // Length of the following buffer
     char buf[0]; // Log data buffer
 };
 ```
+
+Code `256` (CMD) is reserved for Pantavisor's own internal use. The log server rejects any CMD
+message whose sender PID is not Pantavisor's, so containers cannot use it.
 
 ### Legacy Protocol (code = 0)
 
@@ -211,13 +217,15 @@ Annotated example:
 
 | RFC 3164 field | Pantavisor attribute | Notes |
 |----------------|----------------------|-------|
-| `HOSTNAME` | `platform` | Container name or source identifier |
-| `APP` | `src` (source) | Process name; `[PID]` suffix is stripped |
+| `HOSTNAME` | — | Parsed to advance the cursor, then discarded |
+| `APP` | `src` (source) | Process name; `[PID]` suffix is stripped. Falls back to `unknown-app` |
 | `PRI` severity bits | `lvl` (level) | See [priority table](#priority-and-facility) |
 | Timestamp | `time` | Parsed with `strptime("%b %d %H:%M:%S")` |
 | Message text | log data | Everything after `APP[PID]: ` |
+| — | `plat` (platform) | Not taken from the message: resolved from the sender's cgroup, falling back to `unknown-platform` |
 
-Missing or unparseable fields fall back to `"unknown-host"` and `"unknown-app"`.
+The `HOSTNAME` a client sends is never trusted or stored. Like every other protocol on this socket,
+the platform is resolved by Pantavisor from the sending process' cgroup.
 
 ### RFC 5424
 
@@ -245,8 +253,8 @@ Nil fields are represented by a single `-` character. Pantavisor accepts `PROCID
 
 | RFC 5424 field | Pantavisor attribute | Notes |
 |----------------|----------------------|-------|
-| `HOSTNAME` | `platform` | Container name or source identifier |
-| `APP` | `src` (source) | Application name |
+| `HOSTNAME` | — | Ignored entirely; `plat` is resolved from the sender's cgroup |
+| `APP` | `src` (source) | Application name. Falls back to `unknown-app` |
 | `PRI` severity bits | `lvl` (level) | See [priority table](#priority-and-facility) |
 | `TIMESTAMP` | `time` | Parsed with `strptime("%Y-%m-%dT%H:%M:%S")`; nil (`-`) → current time |
 | `MSG` | log data | Everything after the structured-data field |
@@ -338,3 +346,47 @@ func main() {
     w.Info("Container started")
 }
 ```
+
+## Log server outputs
+
+Where the log server writes what it receives is set with
+[`PV_LOG_SERVER_OUTPUTS`](pantavisor-configuration.md#summary), a comma-separated list. The sinks
+are not mutually exclusive and can be combined in any fashion; unknown tokens are dropped with a
+warning.
+
+| Value | Destination |
+|-------|-------------|
+| `filetree` | One file per container under `<PV_LOG_DIR>/<revision>/<container>/`. Default |
+| `singlefile` | All logs as JSON lines in a single `<PV_LOG_DIR>/<revision>/pv.log` |
+| `stdout` | Standard output, processed by the log server |
+| `stdout.pantavisor` | Standard output, Pantavisor's own messages only |
+| `stdout.containers` | Standard output, container messages only |
+| `stdout_direct` | Standard output, bypassing the log server. Also auto-enabled before the server starts and after it stops, and always passes FATAL through |
+| `nullsink` | `/dev/null` |
+
+See [Output types](../overview/storage.md#output-types) for what each sink is useful for.
+
+## Timestamp formats
+
+Every sink except `nullsink` prefixes each line with a timestamp. The format is set per sink with
+[`PV_LOG_FILETREE_TIMESTAMP_FORMAT`](pantavisor-configuration.md#summary),
+`PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` and `PV_LOG_STDOUT_TIMESTAMP_FORMAT`.
+
+Two prefixes are accepted:
+
+| Prefix | Meaning |
+|--------|---------|
+| `golang:<constant>` | One of the [Go time layout constants](https://pkg.go.dev/time#pkg-constants) below |
+| `strftime:<format>` | Any [strftime(3)](https://man7.org/linux/man-pages/man3/strftime.3.html) format string, e.g. `strftime:%d, %T %Y` |
+
+| `golang:` constant | Example |
+|--------------------|---------|
+| `golang:Layout` | `01/02 03:04:05PM '06 -0700` |
+| `golang:RubyDate` | `Mon Jan 02 15:04:05 -0700 2006` |
+| `golang:ANSIC` | `Mon Jan _2 15:04:05 2006` |
+| `golang:RFC822Z` | `02 Jan 06 15:04 -0700` |
+| `golang:RFC1123Z` | `Mon, 02 Jan 2006 15:04:05 -0700` |
+
+Separately, [`PV_LOG_TIMESTAMP`](pantavisor-configuration.md#summary) selects the clock behind the
+`tsec` field of every log line: `relative` (seconds since boot, the default) or `absolute`
+(Unix epoch).

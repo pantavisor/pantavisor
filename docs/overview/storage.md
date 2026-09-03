@@ -1,5 +1,7 @@
 ---
+title: "Storage"
 sidebar_position: 6
+description: "On-disk layout: boot, cache, metadata, config, logs, trails and objects, integrity, garbage collection."
 ---
 # Storage
 
@@ -175,17 +177,10 @@ There are a number of parameters that can be tweaked from the [configuration](..
 PV_LOG_SERVER_OUTPUTS=filetree,stdout
 ```
 
-Multiple outputs are comma-separated and combined, choosing from:
-
-* [filetree](#file-tree)
-* [singlefile](#single-file)
-* [stdout](#standard-output)
-* [stdout.pantavisor](#standard-output-pantavisor)
-* [stdout.containers](#standard-output-containers)
-* [stdout_direct](#standard-output-direct)
-* [nullsink](#null-sink)
-
-These options are not mutually exclusive and can be combined in any fashion.
+Multiple outputs are comma-separated and combined, not mutually exclusive. The complete list of
+accepted values is in the
+[log server outputs reference](../reference/logserver-sockets.md#log-server-outputs); the sections
+below explain what each one is useful for.
 
 #### File tree
 
@@ -251,17 +246,10 @@ Send logs to /dev/null.
 
 ### Timestamp format
 
-All the log outputs, except for the NULL Sink, will print the timestamp along the log lines. It is possible to configure the format of the timestamp with the [configuration](../reference/pantavisor-configuration.md#summary) key `log.<output>.timestamp.format`, which can be set with the following values:
-
-| value | example |
-|-------|---------|
-golang:Layout | "01/02 03:04:05PM '06 -0700" |
-golang:RubyDate | "Mon Jan 02 15:04:05 -0700 2006" |
-golang:ANSIC | "Mon Jan \_2 15:04:05 2006" |
-golang:RFC822Z | "02 Jan 06 15:04 -0700" |
-golang:RFC1123Z | "Mon, 02 Jan 2006 15:04:05 -0700"|
-
-Those formats are based in the [Golang time constants](https://pkg.go.dev/time#pkg-constants). For other formats, the strftime formatters can be used setting the `strftime:` prefix. For example: `strftime:%d, %T %Y`. Please check the [strftime manual](https://man7.org/linux/man-pages/man3/strftime.3.html) for more information about formatters.
+Every output except the NULL Sink prefixes each line with a timestamp. The format is configurable
+per sink, either as one of the Go time layout constants or as an arbitrary `strftime` format
+string. See [timestamp formats](../reference/logserver-sockets.md#timestamp-formats) for the
+accepted values and the keys that set them.
 
 ### Log Directory Size Management
 
@@ -281,13 +269,9 @@ Partition size is read from `/sys/class/block/<dev>/size` (kernel sectors × 512
 
 #### Manual sizing
 
-Set `PV_LOG_DIR_MAXSIZE` to an explicit value using one of these formats:
-
-| Format | Example | Meaning |
-|--------|---------|---------|
-| Plain integer (bytes) | `16777216` | 16 MiB |
-| With unit suffix | `256MB`, `1GB`, `512K` | Absolute size |
-| Percentage | `20%` | 20% of the underlying partition |
+Set [`PV_LOG_DIR_MAXSIZE`](../reference/pantavisor-configuration.md#summary) to an explicit value:
+a plain byte count, a size with a unit suffix (`256MB`, `1GB`, `512K`), or a percentage of the
+underlying partition (`20%`).
 
 Values exceeding the available partition capacity are rejected and fall back to the auto-calculated default.
 
@@ -318,13 +302,9 @@ low_watermark  = 512 MB - 128 MB = 384 MB  → cleanup stops here
 rotation_size  = 128 MB / 5 ≈ 25 MB       → per-file size before rotation
 ```
 
-#### Configuration reference
-
-| Key | Default | Purpose |
-|-----|---------|---------|
-| [`PV_LOG_DIR_MAXSIZE`](../reference/pantavisor-configuration.md#summary) | `0` (auto) | Total log directory budget |
-| [`PV_LOG_HYSTERESIS_FACTOR`](../reference/pantavisor-configuration.md#summary) | `4` | Controls the gap between high and low watermarks |
-| [`PV_LOG_ROTATE_FACTOR`](../reference/pantavisor-configuration.md#summary) | `5` | Per-file rotation size divisor |
+The three keys behind this (`PV_LOG_DIR_MAXSIZE`, `PV_LOG_HYSTERESIS_FACTOR` and
+`PV_LOG_ROTATE_FACTOR`) are documented with their defaults and levels in the
+[configuration reference](../reference/pantavisor-configuration.md#summary).
 
 
 ## Trails and objects
@@ -455,3 +435,10 @@ pvcontrol storage gc     # run GC synchronously, reports bytes reclaimed
 ```
 
 See [pvcontrol Storage](../tools/pvcontrol.md#storage) for the difference between the two.
+
+## Reference
+
+- [Log Sockets](../reference/logserver-sockets.md) — log socket protocols, output sinks, timestamp formats
+- [Configuration](../reference/pantavisor-configuration.md#summary) — every `PV_LOG_*`, `PV_STORAGE_*` and `PV_CACHE_*` key
+- [Metadata](../reference/pantavisor-metadata.md) — every device and user metadata key
+- [State Format](../reference/pantavisor-state-format-v2.md) — the `state.json` stored in each trail

@@ -1,5 +1,7 @@
 ---
-sidebar_position: 15
+title: "Watchdog"
+sidebar_position: 13
+description: "Linux kernel watchdog integration and the four ping modes."
 ---
 # Watchdog
 
@@ -29,3 +31,8 @@ This mode combines Pantavisor pinging the watchdog during initialization and shu
 ### Always
 
 In this mode, Pantavisor will ping the watchdog during all the device operation.
+
+## Reference
+
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_WDT_MODE` and `PV_WDT_TIMEOUT`, with their levels
+- [Power](../reference/pantavisor-power.md) — the separate suspend/wakelock machinery

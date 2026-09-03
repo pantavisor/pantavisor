@@ -1,5 +1,7 @@
 ---
+title: "IPAM"
 sidebar_position: 10
+description: "Container IP address management: pools, allocation, and network namespace configuration."
 ---
 # IPAM — Container IP Address Management
 
@@ -52,7 +54,7 @@ A pool is a named L3 segment with a bridge and optional NAT:
 }
 ```
 
-The `nat` flag is independent per pool — you can have one pool that reaches the external network through a MASQUERADE rule, and another that is only routable on its own bridge.
+The `nat` flag is independent per pool — you can have one pool that reaches the external network through a MASQUERADE rule, and another that is only routable on its own bridge. Pantavisor installs that rule with nftables when `nft` is present and falls back to `iptables` otherwise: nftables-first because every kernel from 3.13 onward has it natively, and recent distros ship `iptables` as a compat shim over nftables anyway. See [NAT backend](../reference/pantavisor-ipam.md#nat-backend).
 
 Today only `type: "bridge"` is wired up end-to-end. A `macvlan` type is sketched in the schema for future work.
 
@@ -80,7 +82,7 @@ A pool's subnet may overlap with a bridge that is also used by containers with b
 
 Pantavisor handles this automatically. At startup, right after `pv_ipam_setup_bridges()` runs, a **reservation walk** visits every container and asks the backend plugin to enumerate its hard-coded IPv4 addresses. Each enumerated address that falls inside a pool's subnet is added to that pool's lease list as a tagged reservation (`pv:static:<container>`), so `pv_ipam_allocate()`'s `is_ip_available()` check already skips it without any change to the allocator. Addresses outside any pool's subnet are logged at DEBUG and ignored — those containers are managing their own networking on a bridge pantavisor doesn't know about, and that's fine.
 
-The plugin hook is optional — backends that don't provide it simply contribute nothing to the reservation set, and the pool allocates from the full subnet minus the gateway and any existing leases.
+The plugin hook is optional — backends that don't provide it simply contribute nothing to the reservation set, and the pool allocates from the full subnet minus the gateway and any existing leases. Addresses that clash with a pool's gateway are warned about rather than reserved, since the container will likely fail to bring that interface up anyway. See [backend plugin hooks](../reference/pantavisor-ipam.md#backend-plugin-hooks) for the hook signatures and the full disposition table.
 
 ## Pre-start validation
 
@@ -99,6 +101,22 @@ Short version: **if a container declares a pool, don't hand-roll `lxc.net.*` in 
 - **Platform teardown** (state transition / reboot / rollback): releases the lease. The new revision's allocation starts clean.
 - **Unknown pool reference**: the container is refused at start time; the revision is torn down and rolled back in TESTING.
 
+## Devices that do not use IPAM
+
+If a device's `device.json` has no `network.pools` block and no container declares a `network` block,
+IPAM is inert. `pv_ipam_init()` and `pv_ipam_setup_bridges()` still run, but over an empty registry —
+no bridges, no netfilter rules, no routes. Every per-container IPAM path in `platforms.c`, `state.c`
+and the LXC plugin is guarded on the container actually being in pool mode and is skipped, as is the
+plugin's config-validation hook. The only observable effect is two INFO lines at boot.
+
+Both blocks are optional in the schema. See [`device.json` pools](../reference/pantavisor-ipam.md#devicejson--pools)
+and [`run.json` per-container network](../reference/pantavisor-ipam.md#runjson--per-container-network).
+
 ## Isolation (follow-up)
 
 Today the kernel's default `FORWARD` policy is `ACCEPT`, so containers in different pools can reach each other at L3. That is a gap, tracked as a separate effort that defaults all pools to isolated and expects cross-pool service access to go through the [xconnect service mesh](xconnect.md) rather than flat routing.
+
+## Reference
+
+- [IPAM](../reference/pantavisor-ipam.md) — pool and per-container schemas, lease lifecycle, plugin hooks, NAT backend, error handling
+- [State Format](../reference/pantavisor-state-format-v2.md) — where `network` sits in `device.json` and `run.json`

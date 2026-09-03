@@ -6,6 +6,9 @@ description: "Full pvcontrol CLI reference with worked examples."
 
 # pvcontrol
 
+**Overview:** [Local Control](../overview/local-control.md) explains where `pvcontrol` fits; the
+[Control Socket reference](../reference/pantavisor-commands.md) documents the endpoints it calls.
+
 `pvcontrol` is the on-device CLI for controlling Pantavisor from inside a
 container. It is a small POSIX-shell wrapper (`tools/pvcontrol`) around
 [`pvcurl`](pantavisor-tools.md#pvcurl) that talks to the pv-ctrl REST API over
@@ -41,8 +44,8 @@ When `-s` is not given, the socket is selected in this order:
 2. `/pv/pv-ctrl` — alternative embedded path
 3. `/pantavisor/pv-ctrl` — default location inside a container (fallback)
 
-If the chosen socket does not exist, `pvcontrol` prints `ERROR: <socket> not
-found` and exits non-zero.
+If the chosen socket does not exist, `pvcontrol` prints `ERROR: <socket> not found`
+and exits non-zero.
 
 ### Environment variables
 
@@ -61,8 +64,15 @@ printed to stderr):
 | `0` | Success (HTTP 200). |
 | `48` | Not enough disk space available. |
 | `60` | Object has bad checksum. |
-| `70` | State verification failed. |
+| `70` | State verification failed. Not currently reachable — see the note below. |
+| `75` | HTTP 503: an update is ongoing, or another command is still pending. Retry after the interval in the response's `Retry-After` header — see [Rejections](../reference/pantavisor-commands.md#rejections). |
 | `255` | Any other non-200 response. |
+
+:::note
+Exit code `70` matches on an error string Pantavisor does not currently emit, so a real
+state-verification failure on `steps put` or `steps install` exits `255` with the actual reason
+(`Storage: …`, `Secureboot: …` or `Parser: …`) on stderr.
+:::
 
 > Because errors surface only through the exit code, assert HTTP status codes
 > with raw `pvcurl -w '%{http_code}'` when you need to distinguish, e.g., 404
@@ -169,8 +179,9 @@ autosleep/settle/poll are active, and which scopes are held. Example output:
 {"mode":"locks","count":0,"degraded":false,"autosleep":false,"settling":false,"polling":false,"run_window":false,"held":{"boot":false,"update":false,"update_check":false,"devmeta":false,"usrmeta":false,"shutdown":false,"debug_shell":false,"poll":false}}
 ```
 
-See [wakelocks.md](../overview/wakelocks.md#inspecting-state) for the
-field-by-field semantics and the `PV_POWER_*` configuration keys.
+See [`GET /wakelocks`](../reference/pantavisor-power.md#get-wakelocks) for the field-by-field
+semantics and [Power](../reference/pantavisor-power.md#configuration-keys) for the `PV_POWER_*`
+configuration keys.
 
 ---
 
@@ -270,12 +281,13 @@ one non-management endpoint — it does not require management-socket access.
 
 ```bash
 pvcontrol signal ready    # container has finished starting
-pvcontrol signal alive    # liveness/watchdog heartbeat
 ```
 
+`ready` is the only signal Pantavisor implements. `pvcontrol` will send any other value the
+CLI accepts, but the runtime answers "signal not supported".
+
 > Signals issued from a platform container (e.g. pvr-sdk) may return HTTP 500
-> because that caller is not ready-gated; this is expected. `alive` is not a
-> supported signal type on all builds.
+> because that caller is not ready-gated; this is expected.
 
 ---
 
@@ -487,7 +499,7 @@ On a platform without managed drivers these are effectively no-ops returning
 | `daemons start\|stop\|restart <name>` | PUT | `/daemons/{name}` |
 | `graph ls` | GET | `/xconnect-graph` |
 | `wakelocks ls` | GET | `/wakelocks` |
-| `signal ready\|alive` | POST | `/signal` |
+| `signal ready` | POST | `/signal` |
 | `cmd <subcommand>` | POST | `/commands` |
 | `storage gc` | POST | `/storage/gc` |
 | `devmeta ls` | GET | `/device-meta` |

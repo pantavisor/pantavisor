@@ -6,6 +6,9 @@ description: "pv-ctrl HTTP-over-Unix-socket endpoints."
 
 # Pantavisor Control Socket
 
+**Overview:** [Local Control](../overview/local-control.md) explains what the control socket is for and
+who may use it.
+
 The pv-ctrl socket enables communication between the containers and Pantavisor during runtime.
 
 The following subsections describe the behaviour of the HTTP API for the different endpoints, which you can test either using any HTTP client or our [pvcontrol tool](https://gitlab.com/pantacor/pv-platforms/pvr-sdk/-/blob/master/files/usr/bin/pvcontrol) from the default [pvr-sdk container](https://gitlab.com/pantacor/pv-platforms/pvr-sdk).
@@ -25,6 +28,27 @@ Returns all containers with their [status](../overview/containers.md#status), [r
 ```
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/containers"
 ```
+
+#### Status values
+
+The same values are reported per group by [`/groups`](#groups) and per revision in
+[device metadata](pantavisor-metadata.md#device-metadata).
+
+| Status | Meaning |
+|--------|---------|
+| `NONE` | No status yet assigned |
+| `INSTALLED` | Installed and ready to go |
+| `MOUNTED` | Volumes mounted, not started |
+| `BLOCKED` | A container in an earlier [group](../overview/containers.md#groups) has not met its status goal |
+| `STARTING` | Starting |
+| `STARTED` | The container PID is running |
+| `READY` | A readiness [signal](#signal) has been received from the container |
+| `RECOVERING` | Crashed, and [auto-recovery](../overview/containers.md#auto-recovery) is waiting to restart it |
+| `STOPPING` | Stopping because of an [update transition](../overview/updates.md) |
+| `STOPPED` | Stopped |
+
+`MOUNTED`, `STARTED` and `READY` are also the three values accepted as a container's or group's
+[`status_goal`](pantavisor-state-format-v2.md#7-container-containerrunjson).
 
 ### Lifecycle control
 
@@ -95,7 +119,7 @@ $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/groups"
 
 ## /wakelocks
 
-Returns the current [power mode and wakelock state](../overview/wakelocks.md#inspecting-state): mode, refcount, whether autosleep/settle/poll are active, and which scopes are held. See [Wakelocks and power modes](../overview/wakelocks.md) for the field-by-field semantics.
+Returns the current power mode and wakelock state: mode, refcount, whether autosleep/settle/poll are active, and which scopes are held. See [`GET /wakelocks`](pantavisor-power.md#get-wakelocks) for the field-by-field semantics, and [Power and Wakelocks](../overview/wakelocks.md) for what the modes mean.
 
 ```
 $ curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/wakelocks"
@@ -148,7 +172,7 @@ These are the different commands that are supported. You can test them by substi
 
 | op | payload | Description |
 | -- | ------- | ----------- |
-| UPDATE_METADATA | {key, value} | upload the json as a new pair of device metadata to Pantacor Hub |
+| UPDATE_METADATA | `{key, value}` | upload the json as a new pair of device metadata to Pantacor Hub |
 | REBOOT_DEVICE | message | reboot device with optional message |
 | POWEROFF_DEVICE | message | poweroff device with optional message |
 | TRY_ONCE | revision | try a revision once (will rollback on failure or next reboot) |
@@ -163,6 +187,20 @@ These are the different commands that are supported. You can test them by substi
 | LOCAL_APPLY | revision | apply revision changes without a full reboot |
 | XCONNECT_GRAPH | N/A | trigger an immediate xconnect graph reconciliation |
 | UNCLAIM | N/A | remove Pantacor Hub credentials so the device registers and becomes claimable again, without a reboot |
+
+### Rejections
+
+A command is not always accepted. These are the non-`200` responses and what causes them:
+
+| Status | Header | Commands | Condition |
+|--------|--------|----------|-----------|
+| `204` | — | `GO_REMOTE` | device is already in remote mode |
+| `204` | — | `UNCLAIM` | device is already unclaimed |
+| `409` | — | `UPDATE_METADATA` | device is not in remote mode |
+| `409` | — | `GO_REMOTE` | remote control is disabled by [`PV_CONTROL_REMOTE`](pantavisor-configuration.md#summary) |
+| `409` | — | `DEFER_REBOOT` | the [debug shell](pantavisor-configuration.md#summary) is not active |
+| `503` | `Retry-After: 600` | `REBOOT_DEVICE`, `POWEROFF_DEVICE`, `LOCAL_RUN`, `LOCAL_RUN_COMMIT`, `MAKE_FACTORY`, `UNCLAIM` | an [update](../overview/updates.md) is ongoing |
+| `503` | `Retry-After: 120` | any | another command is still pending |
 
 ## /storage
 
@@ -213,7 +251,7 @@ To get an existing step json:
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/033e779113f2499a2bfb55c0c374803fba9c820361d71bbda616643007cacd5a"
 ```
 
-To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must be under 64 characters and must not contain any other "/" character. These revisions that are installed using the socket ([locals](../overview/local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](../overview/remote-control.md)), as you will have to manually request the transition to locals using the [run command](#commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued.
+To send a new json, the format of the new revision in the URI has to contain the "locals/" prefix. The name after the prefix must not contain any other "/" character. These revisions that are installed using the socket ([locals](../overview/local-control.md)) are treated in a different way than the ones installed from Pantacor Hub ([remotes](../overview/remote-control.md)), as you will have to manually request the transition to locals using the [run command](#commands). Most importantly, locals will not attempt any communication with Pantacor Hub during runtime unless a [go remote command](#commands) is issued.
 
 ```
 curl -X PUT --upload-file json --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/locals/example"
@@ -224,6 +262,15 @@ To get the update progress (DONE, TESTING, INPROGRESS...) and some related infor
 ```
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/steps/033e779113f2499a2bfb55c0c374803fba9c820361d71bbda616643007cacd5a/progress"
 ```
+
+Every `/steps/{sha}` route has a `locals/{name}` counterpart for revisions installed through this
+socket:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/steps/locals/{name}` | read back a local revision's state json |
+| `GET` | `/steps/locals/{name}/progress` | update progress of a local revision |
+| `PUT` | `/steps/locals/{name}/commitmsg` | set the commit message of a local revision |
 
 Finally, you can set a commit message that will be stored along a revision and showed when listing revisions so the user can idendifcate each one of them:
 
@@ -282,6 +329,9 @@ This endpoint returns the current xconnect service mesh graph in JSON format. Fo
 ```
 curl -X GET --unix-socket /pantavisor/pv-ctrl "http://localhost/xconnect-graph"
 ```
+
+On a build without the `PANTAVISOR_XCONNECT` feature, this endpoint returns `404` with
+`{"Error":"xconnect not enabled at build time"}`.
 
 ## /buildinfo
 
