@@ -15,7 +15,13 @@ To interact with Pantacor Hub, you can either use the [web user interface](https
 
 ### Pantacor Hub Client
 
-Pantavisor includes a build-in Pantacor Hub client which is [enabled by default](../reference/pantavisor-configuration.md#summary). To begin remote control and monitoring of devices with [Pantacor Hub](https://hub.pantacor.com), it is necessary to create an account and [claim the device to it](../../meta-pantavisor/getting-started/operate/device-access/remote-pantahub.md). From that moment on, the device will be attached to that account and will try to keep the connection with Pantacor Hub opened, except if a [local revision](../reference/pantavisor-commands.md#steps) is installed. In that case, the device will turn to [local control](local-control.md) until a [go remote command](../reference/pantavisor-commands.md#commands) is issued. This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary).
+Pantavisor includes a build-in Pantacor Hub client which is [enabled by default](../reference/pantavisor-configuration.md#summary) (`PV_CONTROL_REMOTE`, default `1`). To begin remote control and monitoring of devices with [Pantacor Hub](https://hub.pantacor.com), it is necessary to create an account and [claim the device to it](../../meta-pantavisor/getting-started/operate/device-access/remote-pantahub.md). From that moment on, the device will be attached to that account and will try to keep the connection with Pantacor Hub opened, except if a [local revision](../reference/pantavisor-commands.md#steps) is installed. In that case, the device will turn to [local control](local-control.md) until a [go remote command](../reference/pantavisor-commands.md#commands) is issued:
+
+```bash
+pvcontrol cmd go-remote
+```
+
+This behavior can be avoided with the [remote always configuration](../reference/pantavisor-configuration.md#summary) (`PV_CONTROL_REMOTE_ALWAYS`, default `0`).
 
 The main features offered by remote control are:
 
