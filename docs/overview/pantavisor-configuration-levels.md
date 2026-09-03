@@ -23,6 +23,10 @@ There are several ways to set Pantavisor configuration, depending on when it can
 
 Configuration file for [Pantavisor](pantavisor-architecture.md). It can only be changed at [build time](../../meta-pantavisor/overview/get-started.md).
 
+:::note
+Keys use the unified `PV_*`/`PH_*` env-var-style syntax; the older dotted syntax is legacy and frozen, so any key added since (e.g. `PV_POWER_*`) only exists in this form.
+:::
+
 ## pantahub.config
 
 [Build time](../../meta-pantavisor/overview/get-started.md) configuration file for Pantavisor built-in [Pantacor Hub client](remote-control.md#pantacor-hub).

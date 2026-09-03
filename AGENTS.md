@@ -98,6 +98,7 @@ Every feature described in `docs/` should give the reader a direct or inline pat
 
 ## Development Guidelines
 
+- **Configuration keys**: the `PV_*`/`PH_*` env-var name in `entries[]` (config.c) is the only identity of a key. The dotted `aliases[]` table is frozen legacy: never add an alias for a new entry, and write docs, commits, and examples in the env-var form only (see the note in [docs/reference/pantavisor-configuration.md](docs/reference/pantavisor-configuration.md)).
 - **Documentation**: Always check if [reference documentation](docs/reference/) should be updated after making changes to the code. Follow the link conventions in the Docs Pipeline section above.
 - **Commits**: Always use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification (v1.0.0) for all commit messages.
 - **Formatting**: Run `clang-format -i` on modified `.c`/`.h` files before committing

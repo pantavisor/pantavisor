@@ -69,7 +69,7 @@
 
 static struct pv_wakelock {
 	bool init;
-	// power.mode=locks degrades (not fails) when the kernel lacks wakelock
+	// PV_POWER_MODE=locks degrades (not fails) when the kernel lacks wakelock
 	// support, since it never changes fundamental power behavior
 	bool degraded;
 	power_mode_t mode;
@@ -989,7 +989,7 @@ int pv_wakelock_init(void)
 
 		if (wl.mode == PWR_MANAGED) {
 			pv_log(ERROR,
-			       "wakelock: power.mode=%s requires kernel wakelock support: %s",
+			       "wakelock: PV_POWER_MODE=%s requires kernel wakelock support: %s",
 			       pv_config_get_power_mode_str(),
 			       strerror(open_errno));
 			wl.init = false;
@@ -998,7 +998,7 @@ int pv_wakelock_init(void)
 
 		wl.degraded = true;
 		pv_log(WARN,
-		       "wakelock: power.mode=locks unavailable: no kernel wakelock support (%s); continuing with wakelocks disabled",
+		       "wakelock: PV_POWER_MODE=locks unavailable: no kernel wakelock support (%s); continuing with wakelocks disabled",
 		       strerror(open_errno));
 		return 0;
 	}
@@ -1018,7 +1018,7 @@ int pv_wakelock_init(void)
 		int max_awake = pv_config_get_int(PV_POWER_WAKE_MAX_AWAKE);
 		if (min_awake + run_window > max_awake)
 			pv_log(WARN,
-			       "wakelock: power.wake.min_awake (%ds) + power.wake.run_window (%ds) exceeds power.wake.max_awake (%ds); the cap will swallow the run window",
+			       "wakelock: PV_POWER_WAKE_MIN_AWAKE (%ds) + PV_POWER_WAKE_RUN_WINDOW (%ds) exceeds PV_POWER_WAKE_MAX_AWAKE (%ds); the cap will swallow the run window",
 			       min_awake, run_window, max_awake);
 
 		_managed_arm_alarm();
