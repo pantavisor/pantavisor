@@ -1,0 +1,43 @@
+name: "Docs"
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "docs/**"
+      - "scripts/check-docs.sh"
+      - "config.c"
+      - "config.h"
+      - "ctrl/**"
+      - "metadata.h"
+      - "metadata.c"
+      - "logserver/**"
+      - "tools/pvcontrol"
+      - ".github/workflows/docs.yaml"
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - "*"
+    paths:
+      - "docs/**"
+      - "scripts/check-docs.sh"
+      - "config.c"
+      - "config.h"
+      - "ctrl/**"
+      - "metadata.h"
+      - "metadata.c"
+      - "logserver/**"
+      - "tools/pvcontrol"
+      - ".github/workflows/docs.yaml"
+
+jobs:
+  check:
+    name: "check docs against code"
+    runs-on: ["self-hosted"]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: check docs
+        run: ./scripts/check-docs.sh

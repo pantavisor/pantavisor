@@ -1,5 +1,7 @@
 ---
+title: "Remote Control"
 sidebar_position: 8
+description: "Pantacor Hub client, cloud-initiated updates, and other remote controllers."
 ---
 # Remote Control
 
@@ -55,3 +57,9 @@ for an illustrative example (not a measured benchmark).
 It is also possible to control Pantavisor using any other server. For that, it is necessary to implement a container that performs the communication between the server itself and [Pantavisor](local-control.md).
 
 One example of this kind of setup is our [Azure IoT Hub client](https://github.com/Azure/iot-hub-device-update/tree/contributor/pantacor%2FPVContainer-ci).
+
+## Reference
+
+- [Configuration](../reference/pantavisor-configuration.md#summary) — every `PH_*` key, plus `PV_CONTROL_REMOTE` and `PV_CONTROL_REMOTE_ALWAYS`
+- [Metadata](../reference/pantavisor-metadata.md) — what the device reports up and what it reads back down
+- [State Format](../reference/pantavisor-state-format-v2.md) — the revision format the trail is made of

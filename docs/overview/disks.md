@@ -1,5 +1,7 @@
 ---
+title: "Disks"
 sidebar_position: 7
+description: "Disk types, single and dual-mode partitioning, dm-crypt encryption, and boot sequence."
 ---
 # Disks
 
@@ -26,14 +28,10 @@ not prevent parsing the others.
 
 Swap space from a block device, file, or zram.
 
-- `path`: block device or file path (ignored when `provision` is `"zram"`)
-- `provision`: required by the dispatcher — `"file"` for file-backed
-  swap, `"zram"` for compressed RAM (see Zram section). For block
-  device swap, set to any non-zram value (e.g. `"block"`).
-- `provision_ops`: for file-backed swap, must contain `size=<value>`
-  (e.g. `"size=64M"`)
-- `format_ops`: optional — passed to `mkswap`
-- `mount_ops`: optional — passed to `swapon`
+The `provision` field selects the backend: `"file"` for file-backed swap, `"zram"` for compressed
+RAM, or any other value for a plain block device. See
+[required fields per disk type](../reference/pantavisor-state-format-v2.md#required-fields-per-disk-type)
+for what each backend needs.
 
 Swap disks are mounted first during boot, before all other disk types.
 
@@ -53,7 +51,7 @@ Swap disks are mounted first during boot, before all other disk types.
     "name": "my-swap",
     "type": "swap-disk",
     "provision": "file",
-    "provision_ops": "size=64M",
+    "provision_options": "size=64M",
     "path": "/storage/swapfile",
     "format": "swap"
 }
@@ -65,7 +63,7 @@ Swap disks are mounted first during boot, before all other disk types.
     "name": "my-zram-swap",
     "type": "swap-disk",
     "provision": "zram",
-    "provision_ops": "disksize=128M comp_algorithm=lz4",
+    "provision_options": "disksize=128M comp_algorithm=lz4",
     "format": "swap"
 }
 ```
@@ -88,9 +86,6 @@ The bind mount target uses the `dmcrypt` namespace because `volumes.c`
 resolves disk-backed volume paths under that namespace regardless of the
 actual disk type.
 
-- `provision`: absent
-- `path`, `format`, `mount_target`: not required
-
 This is the recommended mode for appengine and CI test environments where
 dm-crypt hardware (CAAM, DCP) is unavailable.
 
@@ -112,16 +107,10 @@ dm-crypt hardware (CAAM, DCP) is unavailable.
 
 Plain (unencrypted) ext4/ext3 volume mounted at a specified target.
 
-- `format`: required — `"ext4"` or `"ext3"`
-- `mount_target`: required — where to mount the filesystem
-- `path`: required — block device path (ignored when `provision` is `"zram"`)
-- `provision`: set to `"zram"` for compressed RAM backend (see Zram section);
-  any other non-empty value selects block device mode.
-- `format_ops`: optional — passed to `mkfs.<format>`
-- `mount_ops`: optional — comma-separated mount flags:
-  `MS_NOATIME`, `MS_NODEV`, `MS_NOEXEC`, `MS_NOSUID`, `MS_RDONLY`,
-  `MS_RELATIME`, `MS_SYNCHRONOUS`, `MS_DIRSYNC`, `MS_LAZYTIME`,
-  `MS_MANDLOCK`, `MS_NODIRATIME`, `MS_REC`, `MS_SILENT`, `MS_STRICTATIME`
+Setting `provision` to `"zram"` selects a compressed RAM backend; any other non-empty value selects
+block device mode. See
+[required fields per disk type](../reference/pantavisor-state-format-v2.md#required-fields-per-disk-type)
+for the mandatory fields and the accepted `mount_options` flags.
 
 **Block device backed:**
 ```json
@@ -142,7 +131,7 @@ Plain (unencrypted) ext4/ext3 volume mounted at a specified target.
     "name": "my-tmpdata",
     "type": "volume-disk",
     "provision": "zram",
-    "provision_ops": "disksize=64M",
+    "provision_options": "disksize=64M",
     "format": "ext4",
     "mount_target": "/tmp/data"
 }
@@ -154,9 +143,8 @@ When `provision` is `"zram"`, a compressed RAM-backed block device is
 created dynamically instead of using a physical device. Works for both
 swap and volume disk types.
 
-- `provision_ops`: space-separated `key=value` pairs written to
-  `/sys/block/zramX/*` — e.g. `"disksize=128M comp_algorithm=lz4"`
-- `path`: ignored (overwritten with `/dev/zramX`)
+`provision_options` carries the zram tunables and `path` is overwritten with the allocated device.
+See [required fields per disk type](../reference/pantavisor-state-format-v2.md#required-fields-per-disk-type).
 
 The zram device is reset on umount.
 
@@ -165,7 +153,7 @@ The zram device is reset on umount.
     "name": "my-zram-swap",
     "type": "swap-disk",
     "provision": "zram",
-    "provision_ops": "disksize=128M comp_algorithm=lz4"
+    "provision_options": "disksize=128M comp_algorithm=lz4"
 }
 ```
 
@@ -292,13 +280,8 @@ are internal (see Internal Disks section below).
 
 #### init_order Actions
 
-| Action | Description |
-|--------|-------------|
-| `primary` | Try mounting existing primary disk (`--no-create`). Fails if not initialized. |
-| `secondary` | Try mounting existing secondary disk (`--no-create`). Fails if not initialized. |
-| `create-primary` | Create, format, and mount primary disk. |
-| `create-secondary` | Create, format, and mount secondary disk. |
-| `copy-once-to-primary` | Mount secondary read-only, create primary, copy all data with file-level verification. Skipped if already done (tracked by dual `init_done` marker). |
+Pantavisor tries each action in turn until one succeeds. See
+[`init_order` actions](../reference/pantavisor-state-format-v2.md#init_order-actions).
 
 #### Common Policies
 
@@ -483,3 +466,9 @@ Crypt disks: `<mediadir>/pv/dmcrypt/<disk-name>`
 Volume disks: configured via `mount_target` field.
 
 Swap disks: no mount point (activated via `swapon`).
+
+## Reference
+
+- [State Format → Disks](../reference/pantavisor-state-format-v2.md#6-storage-disksjson) — every `device.json` disk field, and the required fields per type
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_DISK_*`, `PV_SYSTEM_DISKSDIR`, `PV_VOLMOUNT_DM_EXTRA_ARGS`
+- [Storage](storage.md) — how disks relate to the rest of the on-disk layout

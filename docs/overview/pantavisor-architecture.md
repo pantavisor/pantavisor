@@ -1,5 +1,7 @@
 ---
+title: "Architecture"
 sidebar_position: 1
+description: "High-level system design: container orchestration, cloud and local communication, service mesh, and the state machine."
 ---
 # Pantavisor Architecture
 
@@ -55,3 +57,9 @@ Each state can be summarized as:
     - Process [control socket](local-control.md) requests
     - Manage [metadata](storage.md#metadata)
     - Check and run [garbage collector](storage.md#garbage-collector)
+
+## Reference
+
+- [Reference index](../reference/index.md) — every specification, grouped by kind
+- [Configuration](../reference/pantavisor-configuration.md) — every key that shapes the behaviour described here
+- [Control Socket](../reference/pantavisor-commands.md) — the API the WAIT state serves

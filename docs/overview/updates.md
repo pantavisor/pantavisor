@@ -1,5 +1,7 @@
 ---
+title: "Updates"
 sidebar_position: 5
+description: "Atomic update flow: progress states, reboot and non-reboot transitions, success and failure paths."
 ---
 # Updates
 
@@ -169,3 +171,10 @@ Unexpected rollback | Crash or power cycle before having the chance to report an
 ### CANCELLED
 
 Only applicable on [remote](remote-control.md#pantacor-hub) updates. The revision has been marked as cancelled by the cloud side.
+
+## Reference
+
+- [Control Socket → /steps](../reference/pantavisor-commands.md#steps) — installing revisions and reading update progress
+- [Control Socket → /commands](../reference/pantavisor-commands.md#commands) — `LOCAL_RUN`, `TRY_ONCE`, `LOCAL_RUN_COMMIT` and friends
+- [Configuration](../reference/pantavisor-configuration.md#summary) — `PV_UPDATER_*`, `PH_UPDATER_*` and `PV_REVISION_RETRIES`
+- [Hooks](../reference/pantavisor-hooks.md#hook-points) — the update hook points fired along the way

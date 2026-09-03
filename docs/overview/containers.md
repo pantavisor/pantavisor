@@ -1,5 +1,7 @@
 ---
+title: "Containers"
 sidebar_position: 4
+description: "Container runtime: storage, networking, groups, roles, status, auto-recovery, lifecycle control."
 ---
 # Containers
 
@@ -116,7 +118,7 @@ If the restart policy is not [explicitly configured](../reference/pantavisor-sta
 
 After a new [revision](revisions.md) is [updated](updates.md), or after the board is booted up, the containers will try to start if they were not previously started (this could happen in case of a [non-reboot update](updates.md#non-reboot-transition)).
 
-These are the different status containers can be at:
+These are the different [status](../reference/pantavisor-commands.md#status-values) containers can be at:
 
 * INSTALLED: the container is installed and ready to go.
 * MOUNTED: the container volumes are mounted, but not yet started.
@@ -160,12 +162,12 @@ Containers can be configured to automatically restart after a crash using the `a
 
 ### Recovery Policies
 
-| Policy | Behavior |
-| ------ | -------- |
-| `no` | Never restart (default). |
-| `on-failure` | Restart on exit. (Note: the current implementation does not distinguish exit codes — it behaves the same as `always`. A future revision will leave the container stopped if it exits with status 0.) |
-| `always` | Restart on any exit. |
-| `unless-stopped` | Restart on any exit unless the container was explicitly stopped via API. |
+The recovery policy controls what happens if a container unexpectedly stops. A container either
+never restarts (`no`, the default), restarts on any exit (`always`), restarts unless it was
+explicitly stopped through [ctrl](local-control.md) (`unless-stopped`), or restarts on failure
+(`on-failure`). See the
+[auto-recovery object](../reference/pantavisor-state-format-v2.md#auto-recovery-object) for the
+full field list.
 
 ### Exponential Backoff
 
@@ -177,15 +179,13 @@ The `stable_timeout` field defines how many seconds a container must survive aft
 
 ### Backoff Policy
 
-The `backoff_policy` field controls what happens after `max_retries` is exhausted:
+The `backoff_policy` field controls what happens after all restart retries is exhausted: reboot
+the system (`reboot`, the default), leave the container stopped (`never`), or wait a
+[duration](../reference/pantavisor-state-format-v2.md#auto-recovery-object) such as `10min` before
+resetting the retry counter and restarting the whole recovery cycle.
 
-| Value | Behavior |
-| ----- | -------- |
-| `reboot` | Reboot the system (default). |
-| `never` | Leave the container stopped; system continues running. |
-| Duration (e.g., `10min`) | Wait the specified duration, reset the retry counter, and restart the full recovery cycle. Supported units: `s` (seconds), `min` (minutes), `h` (hours). |
-
-During [TESTING](updates.md#testing), `max_retries` exhaustion always triggers a [rollback](updates.md#error) regardless of the backoff policy.
+During [TESTING](updates.md#testing), a restart retry exhaustion always triggers a
+[rollback](updates.md#error) regardless of the backoff policy.
 
 ### Group-Level Defaults
 
@@ -231,3 +231,9 @@ This list can be expanded to other files using the [state JSON](../reference/pan
 ## Service Mesh
 
 Containers can expose services to each other and consume services from other containers through [xconnect](xconnect.md), Pantavisor's built-in service mesh. Providers declare services in a `services.json` manifest; consumers declare requirements in their `run.json`. The `pv-xconnect` daemon handles mediation and resource injection at runtime, supporting Unix sockets, REST, D-Bus, DRM, and Wayland.
+
+## Reference
+
+- [State Format → Container](../reference/pantavisor-state-format-v2.md#7-container-containerrunjson) — every `run.json` field, plus the auto-recovery, storage and service-requirement objects
+- [Control Socket → /containers](../reference/pantavisor-commands.md#containers) — listing, lifecycle actions, and the status values
+- [xconnect](../reference/pantavisor-xconnect.md) — the service manifests behind the service mesh

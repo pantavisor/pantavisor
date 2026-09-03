@@ -6,6 +6,9 @@ description: "All pantavisor.json configuration keys, defaults, and allowed leve
 
 # Pantavisor Configuration
 
+**Overview:** [Configuration Levels](../overview/pantavisor-configuration-levels.md) explains what the levels
+mean and how they take precedence.
+
 :::note
 This reference page presents the newly unified configuration key syntax. To get to the deprecated but still supported previous format, you will have to go [here](https://github.com/pantavisor/docs.pantavisor/blob/master/archive/legacy/pantavisor-configuration-legacy.md).
 :::
@@ -32,6 +35,18 @@ All keys are case insensitive.
 Syntax and behavior of keys tagged with (experimental) might change and break backwards compatibility.
 :::
 
+:::note
+**Default** is the built-in default compiled into Pantavisor. A device may well be running a
+different value: to see what it actually resolved, and which level set it, use
+[`pvcontrol conf ls`](../tools/pvcontrol.md#configuration).
+:::
+
+:::note
+Keys whose value is `0` or `1` also accept the symbolic forms `true`/`false`, `yes`/`no` and
+`on`/`off`, case-insensitively. The one exception is `PH_CREDS_PROXY_NOPROXYCONNECT`, which is
+integer-typed and accepts only numeric `0` or `1`.
+:::
+
 This table contains the currently supported list of configuration keys, sorted alphabetically.
 
 | Key | Value | Default | Description |
@@ -39,16 +54,16 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PH_CREDS_HOST` | IP or hostname | `api.pantahub.com` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) address |
 | `PH_CREDS_ID` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) device ID |
 | `PH_CREDS_PORT` | port | `443` | set port for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
+| `PH_CREDS_PRN` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) device PRN |
 | `PH_CREDS_PROXY_HOST` | IP or hostname | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) proxy address |
 | `PH_CREDS_PROXY_NOPROXYCONNECT` | `0` or `1` | `0` | disable proxy communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_CREDS_PROXY_PORT` | port | `3218` | set port for proxy communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
-| `PH_CREDS_PRN` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) device PRN |
 | `PH_CREDS_SECRET` | string | empty | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials secret |
-| `PH_CREDS_TYPE` | `builtin` | `builtin` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials type |
+| `PH_CREDS_TYPE` | `builtin` or `ext-<handler>` | `builtin` | set [Pantacor Hub](../overview/remote-control.md#pantacor-hub) credentials type; `ext-<handler>` delegates login to an external handler binary instead of the built-in PRN/secret flow |
 | `PH_FACTORY_AUTOTOK` | token | empty | set [factory auto token](https://docs.pantahub.com/pantahub-base/devices/#auto-assign-devices-to-owners) for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_RETRIES` | number of retries | `1` | set HTTP request number of retries for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_LIBEVENT_HTTP_TIMEOUT` | time (in seconds) | `60` | set HTTP request timeout for communication with [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
-| `PH_METADATA_DEVMETA_HEARTBEAT` | time (in seconds) | `60` | upper bound between [device metadata](../overview/storage.md#device-metadata) pushes; a push happens even when nothing changed, so [Pantacor Hub](../overview/remote-control.md#pantacor-hub) keeps seeing the device as alive |
+| `PH_METADATA_DEVMETA_HEARTBEAT` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `60` | upper bound between [device metadata](../overview/storage.md#device-metadata) pushes; a push happens even when nothing changed, so [Pantacor Hub](../overview/remote-control.md#pantacor-hub) keeps seeing the device as alive |
 | `PH_METADATA_DEVMETA_INTERVAL` | time (in seconds) | `10` | set push interval for [device metadata](../overview/storage.md#device-metadata) to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PH_METADATA_DEVMETA_THRESHOLD` | percent | `1` | relative change a numeric [device metadata](pantavisor-metadata.md#change-thresholds) field needs before it triggers a push of its own |
 | `PH_METADATA_USRMETA_INTERVAL` | time (in seconds) | `5` | set refresh interval for [user metadata](../overview/storage.md#user-metadata) from [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
@@ -81,56 +96,56 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_DROPBEAR_CACHE_DIR` | path | `/storage/cache/dropbear` | set [debug ssh server](../../meta-pantavisor/getting-started/operate/device-access/local-network.md) cache directory |
 | `PV_LIBEVENT_DEBUG_MODE` | `0` or `1` | `0` | enable event loop debug logs |
 | `PV_LIBTHTTP_CERTSDIR` | path | `/certs` | set certificates directory for libthttp |
-| `PV_LIBTHTTP_LOG_LEVEL` | `0` to `5` | `3` | set libthttp log verbosity level |
+| `PV_LIBTHTTP_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` TRACE | `3` | set libthttp log verbosity level |
+| `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_BUF_NITEMS` | integer | `128` | set in-memory [logs](../overview/storage.md#logs) buffer size |
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |
 | `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](../overview/storage.md#logs) directory |
-| `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto 10% (100% if tmpfs) | `16777216` | max size of log directory |
-| `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for filetree logs |
+| `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto | `0` | max size of the [log directory](../overview/storage.md#log-directory-size-management); `0` auto-sizes to 10% of the backing partition, or 100% if it is tmpfs |
+| `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for filetree logs |
 | `PV_LOG_HYSTERESIS_FACTOR` | positive integer | `4` | controls the gap between high and low watermarks for [log directory cleanup](../overview/storage.md#log-directory-size-management) |
-| `PV_LOG_LEVEL` | `0` to `5` | `0` | set Pantavisor log level (0: FATAL to 5: TRACE) |
+| `PV_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` TRACE | `0` | set Pantavisor [log](../overview/storage.md#logs) verbosity level |
 | `PV_LOG_LOGGERS` | `0` or `1` | `1` | enable loggers for containers |
 | `PV_LOG_PUSH` | `0` or `1` | `1` | push logs to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PV_LOG_ROTATE_FACTOR` | integer | `5` | determines per-file rotation threshold for [log directory cleanup](../overview/storage.md#log-directory-size-management) |
-| `PV_LOG_SERVER_OUTPUTS` | string | `filetree` | set log server outputs (comma separated) |
-| `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
-| `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for single-file logs |
-| `PV_LOG_STDOUT_TIMESTAMP_FORMAT` | format string | empty | timestamp format for stdout logs |
+| `PV_LOG_SERVER_OUTPUTS` | comma-separated list of `filetree`, `singlefile`, `stdout`, `stdout.pantavisor`, `stdout.containers`, `stdout_direct`, `nullsink` | `filetree` | set [log server outputs](logserver-sockets.md#log-server-outputs); unknown tokens are dropped with a warning |
+| `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for single-file logs |
+| `PV_LOG_STDOUT_TIMESTAMP_FORMAT` | `golang:<constant>` or `strftime:<format>` | empty | [timestamp format](logserver-sockets.md#timestamp-formats) for stdout logs |
 | `PV_LOG_TIMESTAMP` | `relative` or `absolute` | `relative` | clock behind the `tsec` field of every log line: seconds since boot, or Unix epoch |
 | `PV_LOOP_INDEX_BASE` | integer | `-1` | set base index of the [loop device range](../overview/init-mode.md) reserved for this instance; `-1` disables ranging |
-| `PV_LXC_LOG_LEVEL` | `0` to `5` | `2` | set LXC log level |
+| `PV_LXC_LOG_LEVEL` | `0` FATAL, `1` ERROR, `2` WARN, `3` INFO, `4` DEBUG, `5` TRACE | `2` | log verbosity forwarded to the LXC platform plugin |
 | `PV_NET_BRADDRESS4` | IP address | `10.0.3.1` | set bridge IPv4 address |
 | `PV_NET_BRDEV` | interface name | `lxcbr0` | set bridge device name |
 | `PV_NET_BRMASK4` | IP mask | `255.255.255.0` | set bridge IPv4 mask |
 | `PV_OEM_NAME` | string | empty | set OEM name to load the in-revision [OEM configuration](../overview/pantavisor-configuration-levels.md#oem) file from `<PV_OEM_NAME>/<PV_POLICY>.config`; empty disables the OEM level |
 | `PV_POLICY` | string | empty | set policy name to select the [policy](../overview/pantavisor-configuration-levels.md#policies) config file and the name of the [OEM configuration](../overview/pantavisor-configuration-levels.md#oem) file (`default` if empty) |
-| `PV_POWER_AUTOSLEEP_SETTLE` | time (in seconds) | `90` | [managed power mode](../overview/wakelocks.md#configuration): delay after ready before autosleep is enabled |
-| `PV_POWER_DEVMETA_EAGER_PUSH` | `0` or `1` | `0` | push [device metadata](../overview/wakelocks.md#configuration) out-of-band right away instead of waiting up to a full devmeta interval, minimizing awake time |
-| `PV_POWER_DEVMETA_MAX_HELD` | time (in seconds) | `300` | max seconds the [`devmeta` wakelock](../overview/wakelocks.md#configuration) is held awaiting a Hub ack |
-| `PV_POWER_MODE` | `disabled`, `locks` or `managed` | `locks` | set [power mode](../overview/wakelocks.md#configuration) |
-| `PV_POWER_SYSFS_DIR` | path | `/sys/power` | base dir of the [wakelock sysfs nodes](../overview/wakelocks.md#configuration) |
-| `PV_POWER_WAKE_INTERVAL` | time (in seconds) | `3600` | [managed power mode](../overview/wakelocks.md#configuration): seconds between timed wakes (device heartbeat) |
-| `PV_POWER_WAKE_MAX_AWAKE` | time (in seconds) | `60` | [managed power mode](../overview/wakelocks.md#configuration): maximum awake seconds per wake window |
-| `PV_POWER_WAKE_MIN_AWAKE` | time (in seconds) | `10` | [managed power mode](../overview/wakelocks.md#configuration): minimum awake seconds per wake window |
-| `PV_POWER_WAKE_RUN_WINDOW` | time (in seconds) | `0` | [managed power mode](../overview/wakelocks.md#configuration): after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
+| `PV_POWER_AUTOSLEEP_SETTLE` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `90` | [managed power mode](pantavisor-power.md#configuration-keys): delay after ready before autosleep is enabled |
+| `PV_POWER_DEVMETA_EAGER_PUSH` | `0` or `1` | `0` | push [device metadata](pantavisor-power.md#configuration-keys) out-of-band right away instead of waiting up to a full devmeta interval, minimizing awake time |
+| `PV_POWER_DEVMETA_MAX_HELD` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `300` | max seconds the [`devmeta` wakelock](pantavisor-power.md#wakelock-scopes) is held awaiting a Hub ack |
+| `PV_POWER_MODE` | `disabled`, `locks` or `managed` | `locks` | set [power mode](pantavisor-power.md#power-modes) |
+| `PV_POWER_SYSFS_DIR` | path | `/sys/power` | base dir of the [wakelock sysfs nodes](pantavisor-power.md#kernel-requirement) |
+| `PV_POWER_WAKE_INTERVAL` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `3600` | [managed power mode](pantavisor-power.md#configuration-keys): seconds between timed wakes (device heartbeat) |
+| `PV_POWER_WAKE_MAX_AWAKE` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `60` | [managed power mode](pantavisor-power.md#configuration-keys): maximum awake seconds per wake window |
+| `PV_POWER_WAKE_MIN_AWAKE` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `10` | [managed power mode](pantavisor-power.md#configuration-keys): minimum awake seconds per wake window |
+| `PV_POWER_WAKE_RUN_WINDOW` | duration: seconds, or `30s`, `10min`, `1h`, `1d` | `0` | [managed power mode](pantavisor-power.md#configuration-keys): after the wake's payload(s) complete, stay awake this many further seconds as the containers' guaranteed run window |
 | `PV_REMOUNT_POLICY` | string | empty | set remount policy name for filesystem remounting |
 | `PV_REVISION_RETRIES` | integer | `10` | number of retries for revision transitions |
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../overview/storage.md#artifact-checksum) |
 | `PV_SECUREBOOT_HANDLERS` | `0` or `1` | `1` | enable handlers verification |
 | `PV_SECUREBOOT_MODE` | `disabled`, `audit`, `lenient` or `strict` | `lenient` | set secureboot mode |
-| `PV_SECUREBOOT_OEM_TRUSTSTORE` | path | `/etc/pantavisor/certs/oem` | set path to OEM truststore |
-| `PV_SECUREBOOT_TRUSTSTORE` | path | `/etc/pantavisor/certs` | set path to Pantavisor truststore |
+| `PV_SECUREBOOT_OEM_TRUSTSTORE` | truststore name | `ca-oem-certificates` | name of the OEM truststore, resolved to `<PV_SYSTEM_ETCDIR>/pantavisor/pvs/trust/<name>.crt` |
+| `PV_SECUREBOOT_TRUSTSTORE` | truststore name | `ca-certificates` | name of the Pantavisor truststore, resolved to `<PV_SYSTEM_ETCDIR>/pantavisor/pvs/trust/<name>.crt` |
 | `PV_STORAGE_DEVICE` | string | empty | set storage device name |
-| `PV_STORAGE_FSTYPE` | string | empty | set storage filesystem type |
+| `PV_STORAGE_FIRMWARE_VOL` | `0` or `1` | `0` | use bsp volume `pv--firmware` as alternate kernel firmware load path (written to `/sys/module/firmware_class/parameters/path`); requires the volume to be declared in `device.json` |
+| `PV_STORAGE_FSTYPE` | filesystem name | empty | set storage filesystem type; passed to `mount(2)`. `ext4`, `ubifs` and `jffs2` additionally select special handling |
 | `PV_STORAGE_GC_KEEP_FACTORY` | `0` or `1` | `0` | keep factory revision during GC |
 | `PV_STORAGE_GC_RESERVED` | percentage | `5` | reserved storage percentage for GC |
 | `PV_STORAGE_GC_THRESHOLD` | percentage | `0` | storage GC threshold percentage |
 | `PV_STORAGE_GC_THRESHOLD_DEFERTIME` | time (in seconds) | `600` | defer time for GC threshold |
 | `PV_STORAGE_LOGTEMPSIZE` | size string | empty | set size for temporary log storage |
 | `PV_STORAGE_MNTPOINT` | path | empty | set storage mount point |
-| `PV_STORAGE_MNTTYPE` | string | empty | set storage mount type |
-| `PV_STORAGE_FIRMWARE_VOL` | `0` or `1` | `0` | use bsp volume `pv--firmware` as alternate kernel firmware load path (written to `/sys/module/firmware_class/parameters/path`); requires the volume to be declared in `device.json` |
+| `PV_STORAGE_MNTTYPE` | filesystem name | empty | set storage mount type; passed to `mount(2)`. `ext4`, `ubifs` and `jffs2` additionally select special handling |
 | `PV_STORAGE_PHCONFIG_VOL` | `0` or `1` | `0` | use volume for Pantahub configuration |
 | `PV_STORAGE_WAIT` | time (in seconds) | `5` | time to wait for storage device |
 | `PV_SYSCTL_*` | string | — | set any kernel sysctl at runtime; key maps to `/proc/sys/` (e.g. `PV_SYSCTL_KERNEL_CORE_PATTERN` → `/proc/sys/kernel/core_pattern`) |
@@ -145,7 +160,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSTEM_LIBDIR` | path | `/lib` | set system library directory |
 | `PV_SYSTEM_MEDIADIR` | path | `/media` | set system media directory |
 | `PV_SYSTEM_MOUNT_SECURITYFS` | `0` or `1` | `0` | mount securityfs |
-| `PV_SYSTEM_RUNDIR` | path | `/run/pantavisor/pv` | set system run directory |
+| `PV_SYSTEM_RUNDIR` | path | `/pv` | set system run directory |
 | `PV_SYSTEM_USRDIR` | path | `/usr` | set system usr directory |
 | `PV_UPDATER_COMMIT_DELAY` | time (in seconds) | `25` | delay before committing an update |
 | `PV_UPDATER_GOALS_TIMEOUT` | time (in seconds) | `120` | timeout for reaching update goals |
@@ -159,20 +174,27 @@ This table contains the currently supported list of configuration keys, sorted a
 
 This table shows the [configuration levels](../overview/pantavisor-configuration-levels.md) that are allowed for each [configuration key](#summary).
 
+:::note
+The **Command** column is currently unreachable. The only command that mutates configuration
+(`ENABLE_SSH` / `DISABLE_SSH`) applies its override at the user-metadata level, so
+[`pvcontrol conf ls`](../tools/pvcontrol.md#configuration) reports those keys as modified by
+`metadata`, never by `command`.
+:::
+
 | Key | [pv.conf](../overview/pantavisor-configuration-levels.md#pantavisorconfig) | [ph.conf](../overview/pantavisor-configuration-levels.md#pantahubconfig) | [env,bootargs](../overview/pantavisor-configuration-levels.md#environment-variables) | [Policy](../overview/pantavisor-configuration-levels.md#policies) | [OEM](../overview/pantavisor-configuration-levels.md#oem) | [User meta](../overview/pantavisor-configuration-levels.md#user-metadata) | [Command](../overview/pantavisor-configuration-levels.md#commands) |
 |-----|------------------------------------------------------------|------------------------------------------------------------|-----------------------------------------------------------------|-------------------------------------------------------|-----------------------------------------------|---------------------------------------------------------------|--------------------------------------------------------|
 | `PH_CREDS_HOST`                      | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_ID`                        | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_PORT`                      | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| `PH_CREDS_PRN`                       | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_PROXY_HOST`                | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_PROXY_NOPROXYCONNECT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_PROXY_PORT`                | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| `PH_CREDS_PRN`                       | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_SECRET`                    | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_CREDS_TYPE`                      | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PH_FACTORY_AUTOTOK`                 | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| `PH_LIBEVENT_HTTP_TIMEOUT`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_LIBEVENT_HTTP_RETRIES`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PH_LIBEVENT_HTTP_TIMEOUT`           | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_HEARTBEAT`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_INTERVAL`       | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PH_METADATA_DEVMETA_THRESHOLD`      | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
@@ -187,8 +209,8 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_BOOTLOADER_TYPE`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_UBOOTAB_A_NAME`       | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_UBOOTAB_B_NAME`       | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
-| `PV_BOOTLOADER_UBOOTAB_ENV_NAME`     | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_UBOOTAB_ENV_BAK_NAME` | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_BOOTLOADER_UBOOTAB_ENV_NAME`     | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_UBOOTAB_ENV_OFFSET`   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_BOOTLOADER_UBOOTAB_ENV_SIZE`     | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_CACHE_DEVMETADIR`                | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -207,6 +229,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_LIBEVENT_DEBUG_MODE`             | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LIBTHTTP_CERTSDIR`               | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_LIBTHTTP_LOG_LEVEL`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_LOG_AUTO_DEVLOG`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_BUF_NITEMS`                  | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_CAPTURE`                     | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_CAPTURE_DMESG`               | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
@@ -219,7 +242,6 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_LOG_PUSH`                        | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_ROTATE_FACTOR`               | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_SERVER_OUTPUTS`              | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| `PV_LOG_AUTO_DEVLOG`                 | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT`     | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_LOG_TIMESTAMP`                   | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
@@ -247,14 +269,16 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_SECUREBOOT_OEM_TRUSTSTORE`       | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SECUREBOOT_TRUSTSTORE`           | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_STORAGE_DEVICE`                  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_STORAGE_FIRMWARE_VOL`            | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_STORAGE_FSTYPE`                  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_STORAGE_GC_KEEP_FACTORY`         | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_STORAGE_GC_RESERVED`             | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| `PV_STORAGE_GC_THRESHOLD_DEFERTIME`  | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_STORAGE_GC_THRESHOLD`            | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| `PV_STORAGE_GC_THRESHOLD_DEFERTIME`  | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ |
 | `PV_STORAGE_LOGTEMPSIZE`             | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_STORAGE_MNTPOINT`                | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_STORAGE_MNTTYPE`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_STORAGE_PHCONFIG_VOL`            | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_STORAGE_WAIT`                    | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSCTL_*`                        | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | `PV_SYSCTL_KERNEL_CORE_PATTERN`      | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ |
@@ -263,6 +287,7 @@ This table shows the [configuration levels](../overview/pantavisor-configuration
 | `PV_SYSTEM_DISKSDIR`                  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_DRIVERS_LOAD_EARLY_AUTO`  | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_ETCDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
+| `PV_SYSTEM_ETCPANTAVISORDIR`         | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_INIT_MODE`                | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_LIBDIR`                   | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |
 | `PV_SYSTEM_MEDIADIR`                 | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ |

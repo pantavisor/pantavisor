@@ -1,5 +1,7 @@
 ---
+title: "Local Control"
 sidebar_position: 9
+description: "The pv-ctrl socket, Pantabox, pvcontrol, and writing your own local controller."
 ---
 # Local Control
 
@@ -46,3 +48,9 @@ pvcontrol
 In the end, [Pantabox](#pantabox) and [pvcontrol](#pvcontrol) are just HTTP clients that are making use of [Pantavisor control socket](../reference/pantavisor-commands.md).
 
 If you want to take advantage of the local control in your own container, first make sure [mgmt role](containers.md#roles) is selected in your container. Then, consider importing Pantabox and/or pvcontrol into your container. Besides this option, you can always directly use [cURL](https://curl.se/) or any other HTTP client to attack the [control socket endpoints](../reference/pantavisor-commands.md).
+
+## Reference
+
+- [Control Socket](../reference/pantavisor-commands.md) — every endpoint, payload and status code
+- [pvcontrol](../tools/pvcontrol.md) — the CLI reference, with a worked example per command
+- [Tools](../tools/pantavisor-tools.md) — `pventer`, `pvcurl`, `pvcontrol` and `pvtx`
