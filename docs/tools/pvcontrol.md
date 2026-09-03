@@ -23,6 +23,10 @@ directly.
 pvcontrol [options] <command> [arguments]
 ```
 
+Several commands accept aliases: `ls`/`list`, `cmd`/`command`/`commands`,
+`conf`/`configuration`, and `devmeta save`/`devmeta upload`. The forms used
+throughout this page are the canonical ones.
+
 ### Options
 
 | Option | Description |
@@ -62,6 +66,7 @@ printed to stderr):
 | `48` | Not enough disk space available. |
 | `60` | Object has bad checksum. |
 | `70` | State verification failed. |
+| `75` | HTTP 503 — the operation is already in progress (e.g. a running GC cycle). |
 | `255` | Any other non-200 response. |
 
 > Because errors surface only through the exit code, assert HTTP status codes

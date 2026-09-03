@@ -86,14 +86,14 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_LOG_CAPTURE` | `0` or `1` | `1` | capture logs from containers |
 | `PV_LOG_CAPTURE_DMESG` | `0` or `1` | `1` | capture dmesg logs |
 | `PV_LOG_DIR` | path | `/storage/logs/` | set [logs](../overview/storage.md#logs) directory |
-| `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto 10% (100% if tmpfs) | `16777216` | max size of log directory |
+| `PV_LOG_DIR_MAXSIZE` | integer with optional suffix `B`(default),`K`,`KB`,`M`,`MB`,`G`,`GB`,`T`,`TB`,`%`; `0` for auto 10% (100% if tmpfs) | `0` | max size of log directory |
 | `PV_LOG_FILETREE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for filetree logs |
 | `PV_LOG_HYSTERESIS_FACTOR` | positive integer | `4` | controls the gap between high and low watermarks for [log directory cleanup](../overview/storage.md#log-directory-size-management) |
 | `PV_LOG_LEVEL` | `0` to `5` | `0` | set Pantavisor log level (0: FATAL to 5: TRACE) |
 | `PV_LOG_LOGGERS` | `0` or `1` | `1` | enable loggers for containers |
 | `PV_LOG_PUSH` | `0` or `1` | `1` | push logs to [Pantacor Hub](../overview/remote-control.md#pantacor-hub) |
 | `PV_LOG_ROTATE_FACTOR` | integer | `5` | determines per-file rotation threshold for [log directory cleanup](../overview/storage.md#log-directory-size-management) |
-| `PV_LOG_SERVER_OUTPUTS` | string | `filetree` | set log server outputs (comma separated) |
+| `PV_LOG_SERVER_OUTPUTS` | string | `filetree` | set [log server outputs](../overview/storage.md#output-types) (comma separated) |
 | `PV_LOG_AUTO_DEVLOG` | `0` or `1` | `1` | globally enable or disable the [/dev/log](logserver-sockets.md#devlog) bind-mount into containers; can be overridden per-container with `dev-log` in `run.json` |
 | `PV_LOG_SINGLEFILE_TIMESTAMP_FORMAT` | format string | empty | timestamp format for single-file logs |
 | `PV_LOG_STDOUT_TIMESTAMP_FORMAT` | format string | empty | timestamp format for stdout logs |
@@ -119,8 +119,8 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SECUREBOOT_CHECKSUM` | `0` or `1` | `1` | enable artifact [checksum validation](../overview/storage.md#artifact-checksum) |
 | `PV_SECUREBOOT_HANDLERS` | `0` or `1` | `1` | enable handlers verification |
 | `PV_SECUREBOOT_MODE` | `disabled`, `audit`, `lenient` or `strict` | `lenient` | set secureboot mode |
-| `PV_SECUREBOOT_OEM_TRUSTSTORE` | path | `/etc/pantavisor/certs/oem` | set path to OEM truststore |
-| `PV_SECUREBOOT_TRUSTSTORE` | path | `/etc/pantavisor/certs` | set path to Pantavisor truststore |
+| `PV_SECUREBOOT_OEM_TRUSTSTORE` | truststore name | `ca-oem-certificates` | set OEM truststore, read from `<PV_SYSTEM_ETCDIR>/pantavisor/pvs/trust/<name>.crt`. Also accepted under the legacy misspelled alias `PV_SECUREBOOT_OEM_TRUSTORE` |
+| `PV_SECUREBOOT_TRUSTSTORE` | truststore name | `ca-certificates` | set Pantavisor truststore, read from `<PV_SYSTEM_ETCDIR>/pantavisor/pvs/trust/<name>.crt` |
 | `PV_STORAGE_DEVICE` | string | empty | set storage device name |
 | `PV_STORAGE_FSTYPE` | string | empty | set storage filesystem type |
 | `PV_STORAGE_GC_KEEP_FACTORY` | `0` or `1` | `0` | keep factory revision during GC |
@@ -145,7 +145,7 @@ This table contains the currently supported list of configuration keys, sorted a
 | `PV_SYSTEM_LIBDIR` | path | `/lib` | set system library directory |
 | `PV_SYSTEM_MEDIADIR` | path | `/media` | set system media directory |
 | `PV_SYSTEM_MOUNT_SECURITYFS` | `0` or `1` | `0` | mount securityfs |
-| `PV_SYSTEM_RUNDIR` | path | `/run/pantavisor/pv` | set system run directory |
+| `PV_SYSTEM_RUNDIR` | path | `/pv` | set system run directory. Images that run Pantavisor outside its own mount namespace (appengine) override this to `/run/pantavisor/pv` |
 | `PV_SYSTEM_USRDIR` | path | `/usr` | set system usr directory |
 | `PV_UPDATER_COMMIT_DELAY` | time (in seconds) | `25` | delay before committing an update |
 | `PV_UPDATER_GOALS_TIMEOUT` | time (in seconds) | `120` | timeout for reaching update goals |
