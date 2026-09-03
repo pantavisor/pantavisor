@@ -18,7 +18,7 @@ pventer -c <container-name> [CMD ...]
 
 `-c`/`--container` is required; `--container` is the long-form alias of `-c`.
 
-Without a command, drops into the container's default shell. With a command, executes it inside the container's namespace. Uses `fallbear-cmd` under the hood via LXC paths.
+Without a command, drops into the container's default shell. With a command, executes it inside the container's namespace. Uses `fallbear-cmd` under the hood via LXC paths — `LXC_PATH` (default `/usr/var/lib/lxc`) overrides where those are looked up.
 
 ```bash
 # Drop into a shell inside the container
@@ -158,10 +158,10 @@ pvtx queue process [base] [queue] [object]
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PVTXDIR` | `/var/cache/pvtx` (root), `~/.local/share/pvtx` (non-root) | Temp directory for transaction state |
-| `PVTX_OBJECT_BUF_SIZE` | — | Buffer size for saving objects (512B–10M) |
+| `PVTX_OBJECT_BUF_SIZE` | `512B` | Buffer size for saving objects (512B–10M) |
 | `PVTX_CTRL_BUF_SIZE` | — | Buffer size for pv-ctrl I/O (16K–10M) |
 
-Socket paths (auto-detected): `/pv/pv-ctrl` (container root) or `/pantavisor/pv-ctrl` (inside containers).
+Socket paths (auto-detected, in order): `/run/pantavisor/pv/pv-ctrl` (appengine / embedded mode), `/pv/pv-ctrl` (container root) or `/pantavisor/pv-ctrl` (inside containers).
 
 ```bash
 # Remote transaction: modify current revision and commit
