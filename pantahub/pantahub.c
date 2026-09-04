@@ -316,7 +316,7 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 
 	// If registered, override in-memory PantaHub credentials
 	if (!res) {
-		pv_log(WARN, "HTTP request GET %s could not be initialized",
+		pv_log(WARN, "HTTP request POST %s could not be initialized",
 		       req->path);
 	} else if (res->code == THTTP_STATUS_OK && res->body) {
 		char *val;
@@ -333,10 +333,10 @@ static int pv_ph_register_self_builtin(struct pantavisor *pv)
 		free(tokv);
 		ret = 1;
 	} else if (!res->code) {
-		pv_log(WARN, "HTTP request GET %s got no response", req->path);
+		pv_log(WARN, "HTTP request POST %s got no response", req->path);
 	} else {
 		pv_log(WARN,
-		       "HTTP request GET %s returned HTTP error (code=%d; body='%s')",
+		       "HTTP request POST %s returned HTTP error (code=%d; body='%s')",
 		       req->path, res->code, res->body);
 	}
 
