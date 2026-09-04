@@ -79,6 +79,7 @@ struct pv_download_info {
 	off_t reported;
 	off_t start_time;
 	off_t current_time;
+	off_t resumes;
 };
 
 struct pv_update_progress {
