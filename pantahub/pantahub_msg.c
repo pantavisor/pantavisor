@@ -188,6 +188,41 @@ void pv_pantahub_msg_clean_step(struct pv_step *step)
 		free(step->state);
 }
 
+char *pv_pantahub_msg_parse_step_progress_status(const char *json)
+{
+	int tokc;
+	jsmntok_t *tokv = NULL;
+	char *progress = NULL, *status = NULL;
+
+	if (!json)
+		goto out;
+
+	if (jsmnutil_parse_json(json, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted step JSON");
+		goto out;
+	}
+
+	progress = pv_json_get_value(json, "progress", tokv, tokc);
+	if (!progress)
+		goto out;
+
+	free(tokv);
+	tokv = NULL;
+	if (jsmnutil_parse_json(progress, &tokv, &tokc) < 0) {
+		pv_log(WARN, "bad formatted step progress JSON");
+		goto out;
+	}
+
+	status = pv_json_get_value(progress, "status", tokv, tokc);
+
+out:
+	if (progress)
+		free(progress);
+	if (tokv)
+		free(tokv);
+	return status;
+}
+
 void pv_pantahub_msg_parse_object_metadata(
 	const char *json, struct pv_object_metadata *object_metadata)
 {

@@ -68,6 +68,7 @@ struct pv_object_transfer {
 	const char *id_ref;
 	bool active;
 	off_t received; // bytes received so far for this object
+	struct evhttp_request *req; // set once active, to allow cancelling
 	struct dl_list list; // struct pv_object_transfer
 };
 
@@ -89,6 +90,7 @@ struct pv_pantahub_session {
 	bool get_trails_status_active;
 	bool get_pending_steps_active;
 	bool put_progress_active;
+	bool get_step_active;
 
 	struct pv_progress *next_progress;
 
@@ -153,6 +155,7 @@ void pv_pantahub_proto_init()
 	session.get_trails_status_active = false;
 	session.get_pending_steps_active = false;
 	session.put_progress_active = false;
+	session.get_step_active = false;
 
 	session.next_progress = NULL;
 
@@ -336,7 +339,7 @@ bool pv_pantahub_proto_is_trails_unsynced()
 static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 			     const char *token, const char *body,
 			     void (*cb)(struct evhttp_request *, void *),
-			     void *arg)
+			     void *arg, struct evhttp_request **out_req)
 {
 	char *host;
 	int port;
@@ -349,7 +352,7 @@ static int _send_by_endpoint(enum evhttp_cmd_type op, const char *endpoint,
 	}
 
 	return pv_event_rest_send_by_components(op, host, port, endpoint, token,
-						body, NULL, cb, arg);
+						body, NULL, cb, arg, out_req);
 }
 
 static void _on_request_unresponsive()
@@ -472,7 +475,7 @@ void pv_pantahub_proto_post_auth()
 	}
 
 	if (!_send_by_endpoint(EVHTTP_REQ_POST, uri, NULL, body,
-			       _recv_post_auth_cb, NULL))
+			       _recv_post_auth_cb, NULL, NULL))
 		session.open_session_active = 1;
 
 	free(body);
@@ -562,7 +565,7 @@ void pv_pantahub_proto_get_trails_status()
 	snprintf(uri, sizeof(uri), "/trails/");
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_trails_status_cb, NULL))
+			       _recv_get_trails_status_cb, NULL, NULL))
 		session.get_trails_status_active = 1;
 }
 
@@ -586,7 +589,7 @@ void pv_pantahub_proto_get_usrmeta()
 		 pv_config_get_str(PH_CREDS_ID));
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_usrmeta_cb, NULL))
+			       _recv_get_usrmeta_cb, NULL, NULL))
 		session.get_usrmeta_active = 1;
 }
 
@@ -655,7 +658,7 @@ void pv_pantahub_proto_set_devmeta()
 	}
 
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, json,
-			       _recv_set_devmeta_cb, NULL)) {
+			       _recv_set_devmeta_cb, NULL, NULL)) {
 		session.set_devmeta_active = 1;
 		free(devmeta_gate.inflight);
 		devmeta_gate.inflight = strdup(json);
@@ -742,12 +745,82 @@ void pv_pantahub_proto_get_pending_steps()
 		 pv_config_get_str(PH_CREDS_ID), QUERY_PENDING_STEPS);
 
 	if (!_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-			       _recv_get_pending_steps_cb, NULL)) {
+			       _recv_get_pending_steps_cb, NULL, NULL)) {
 		session.get_pending_steps_active = 1;
 		// keep the device awake for one poll roundtrip; released in
 		// _recv_get_pending_steps_cb on success or failure
 		pv_wakelock_acquire(WL_UPDATE_CHECK);
 	}
+}
+
+static void _recv_get_step_status_cb(struct evhttp_request *req, void *ctx)
+{
+	char *body = NULL, *status = NULL;
+
+	pv_log(TRACE, "run event: cb=%p", (void *)_recv_get_step_status_cb);
+
+	session.get_step_active = false;
+
+	if (_recv_buffer(req, &body)) {
+		pv_log(DEBUG, "GET step status failed");
+		goto out;
+	}
+	if (!body) {
+		pv_log(DEBUG, "GET step status received empty body");
+		goto out;
+	}
+
+	status = pv_pantahub_msg_parse_step_progress_status(body);
+	if (!status) {
+		pv_log(DEBUG, "could not parse step progress status");
+		goto out;
+	}
+
+	pv_log(DEBUG, "step '%s' status on Hub: %s", pv_update_get_rev(),
+	       status);
+	if (!pv_str_matches(status, strlen(status), "CANCEL", strlen("CANCEL")))
+		goto out;
+
+	pv_log(INFO, "Hub requested cancel of rev '%s'", pv_update_get_rev());
+	pv_pantahub_proto_cancel_transfers();
+	pv_update_cancel();
+out:
+	if (status)
+		free(status);
+	if (body)
+		free(body);
+	pv_pantahub_evaluate_state();
+}
+
+int pv_pantahub_proto_get_step_status(void)
+{
+	char *rev;
+
+	if (!session.token) {
+		pv_log(ERROR, "session must be opened first");
+		return -1;
+	}
+
+	if (session.get_step_active) {
+		pv_log(DEBUG,
+		       "get_step_active = true; skip sending another request...");
+		return -1;
+	}
+
+	rev = pv_update_get_rev();
+	if (!rev)
+		return -1;
+
+	char uri[256];
+	snprintf(uri, sizeof(uri), "/trails/%s/steps/%s",
+		 pv_config_get_str(PH_CREDS_ID), rev);
+
+	if (_send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
+			      _recv_get_step_status_cb, NULL, NULL))
+		return -1;
+
+	session.get_step_active = true;
+	return 0;
 }
 
 void pv_pantahub_proto_init_object_transfer()
@@ -756,6 +829,22 @@ void pv_pantahub_proto_init_object_transfer()
 		pv_log(WARN, "object transfer list found not empty");
 
 	_free_object_transfer_list(&session.object_transfer_list);
+}
+
+void pv_pantahub_proto_cancel_transfers(void)
+{
+	struct pv_object_transfer *o, *tmp;
+
+	dl_list_for_each_safe(o, tmp, &session.object_transfer_list,
+			      struct pv_object_transfer, list)
+	{
+		// evhttp_cancel_request() never runs done_cb, so free our own
+		// bookkeeping here instead of waiting for it
+		if (o->active && o->req)
+			evhttp_cancel_request(o->req);
+		dl_list_del(&o->list);
+		free(o);
+	}
 }
 
 static void _recv_get_object_metadata_cb(struct evhttp_request *req, void *ctx)
@@ -799,7 +888,8 @@ out:
 	pv_pantahub_evaluate_state();
 }
 
-static int _get_object_metadata(const char *id_ref)
+static int _get_object_metadata(const char *id_ref,
+				struct evhttp_request **out_req)
 {
 	pv_log(DEBUG, "requesting object '%s' metadata from Hub", id_ref);
 
@@ -812,7 +902,8 @@ static int _get_object_metadata(const char *id_ref)
 	snprintf(uri, sizeof(uri), "/objects/%s", id_ref);
 
 	return _send_by_endpoint(EVHTTP_REQ_GET, uri, session.token, NULL,
-				 _recv_get_object_metadata_cb, (void *)id_ref);
+				 _recv_get_object_metadata_cb, (void *)id_ref,
+				 out_req);
 }
 
 int pv_pantahub_proto_get_objects_metadata()
@@ -831,7 +922,7 @@ int pv_pantahub_proto_get_objects_metadata()
 			      struct pv_object_transfer, list)
 	{
 		if (!o->active) {
-			if (!_get_object_metadata(o->id_ref))
+			if (!_get_object_metadata(o->id_ref, &o->req))
 				o->active = true;
 		}
 
@@ -909,7 +1000,8 @@ out:
 	pv_pantahub_evaluate_state();
 }
 
-static int _get_object(const char *geturl, const char *id_ref)
+static int _get_object(const char *geturl, const char *id_ref,
+		       struct evhttp_request **out_req)
 {
 	char path[PATH_MAX];
 
@@ -924,7 +1016,7 @@ static int _get_object(const char *geturl, const char *id_ref)
 	return pv_event_rest_send_by_url(EVHTTP_REQ_GET, geturl,
 					 _recv_get_object_chunk_cb,
 					 _recv_get_object_done_cb,
-					 (void *)id_ref);
+					 (void *)id_ref, out_req);
 }
 
 int pv_pantahub_proto_get_objects()
@@ -945,7 +1037,7 @@ int pv_pantahub_proto_get_objects()
 	{
 		if (!o->active) {
 			geturl = pv_update_get_object_geturl(o->id_ref);
-			if (!_get_object(geturl, o->id_ref))
+			if (!_get_object(geturl, o->id_ref, &o->req))
 				o->active = true;
 		}
 
@@ -1028,7 +1120,7 @@ static void _put_progress(const char *rev, const char *progress)
 		 pv_config_get_str(PH_CREDS_ID), rev);
 
 	if (!_send_by_endpoint(EVHTTP_REQ_PUT, uri, session.token, progress,
-			       _recv_put_progress_cb, NULL))
+			       _recv_put_progress_cb, NULL, NULL))
 		session.put_progress_active = true;
 }
 

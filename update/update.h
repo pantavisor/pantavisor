@@ -59,6 +59,7 @@ void pv_update_set_error_hub_reach(void);
 void pv_update_set_error_hub_unstable(void);
 void pv_update_set_error_no_state_json(void);
 void pv_update_set_final(void);
+void pv_update_cancel(void);
 
 void pv_update_finish(void);
 

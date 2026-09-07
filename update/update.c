@@ -992,7 +992,26 @@ bool pv_update_is_final()
 	return (_progress_has_status(PV_UPDATE_PROGRESS_STATUS_DONE) ||
 		_progress_has_status(PV_UPDATE_PROGRESS_STATUS_UPDATED) ||
 		_progress_has_status(PV_UPDATE_PROGRESS_STATUS_WONTGO) ||
-		_progress_has_status(PV_UPDATE_PROGRESS_STATUS_ERROR));
+		_progress_has_status(PV_UPDATE_PROGRESS_STATUS_ERROR) ||
+		_progress_has_status(PV_UPDATE_PROGRESS_STATUS_CANCEL));
+}
+
+void pv_update_cancel(void)
+{
+	struct pv_update *u = _get_update_instance();
+	if (!u)
+		return;
+
+	// Hub cancel is only honored while nothing irreversible has happened
+	// yet (bootloader untouched, no containers started)
+	if (!pv_update_is_queued() && !pv_update_is_downloading())
+		return;
+
+	pv_log(INFO, "cancelling update as requested by Hub owner");
+	pv_update_progress_set(&u->progress, PV_UPDATE_PROGRESS_STATUS_CANCEL,
+			       PV_UPDATE_PROGRESS_MSG_CANCELLED);
+
+	pv_update_finish();
 }
 
 bool pv_update_is_local()
