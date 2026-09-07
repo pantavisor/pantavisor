@@ -1,0 +1,12 @@
+== post one large object (download throttled to 1 MB/s) ==
+== wait for the posted revision to start downloading ==
+{"status":"DOWNLOADING","status-msg":"Downloading update artifacts, retry 1 of 3","progress":25,"retries":1}
+partial-object-on-disk-before-crash: 1
+== crash PV mid-download ==
+== wait for retry 2 to pick the download up ==
+{"status":"DOWNLOADING","status-msg":"Downloading update artifacts, retry 2 of 3","progress":25,"retries":2}
+object-tmp-file-no-reset: 1
+resume-attempt-counted: 1
+== wait for the update to finish ==
+{"status":"UPDATED","progress":100}
+hub-honored-range: 1

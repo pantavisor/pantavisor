@@ -1,0 +1,12 @@
+== post one large object (download throttled to 1 MB/s) ==
+== wait for the posted revision to start downloading ==
+== sample progress through the download window ==
+local-intermediate-progress-observed: 1
+local-monotonic-non-decreasing: 1
+local-no-overshoot: 1
+cloud-intermediate-progress-observed: 1
+cloud-monotonic-non-decreasing: 1
+cloud-no-overshoot: 1
+== wait for the update to finish locally and on the Hub ==
+{"status":"UPDATED","progress":100}
+cloud-final-status: UPDATED

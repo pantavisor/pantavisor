@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "always remote disabled",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1 PV_CONTROL_REMOTE_ALWAYS=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

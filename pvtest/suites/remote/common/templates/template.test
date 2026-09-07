@@ -1,0 +1,21 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME (see
+# automated-workflow.md § Test authoring rules). Delete this block if the test does
+# not clone.
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+# write your test here. Post to the Hub trail and CAPTURE the assigned revision
+# (Hub rev numbers accumulate across the shared trail — never hardcode them):
+#   rev=$(pvr_post_rev -m "example" "$trail_url")
+#   [ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+#   wait_for_revision_state "$rev" "UPDATED"
+# Output is diffed byte-for-byte: pipe JSON through `jq -M`, strip `\r`, and mask
+# the volatile $rev integer (e.g. sed "s/\"$rev\"/\"REV\"/g").

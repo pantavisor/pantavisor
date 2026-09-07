@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+echo "== ph-logger cloud push config =="
+pvcontrol conf ls | jq '.[] | select(.key == "PV_LOG_PUSH")'
+
+echo "== wait for ph-logger to push logs =="
+sleep 20
+
+echo "== fetch device logs from Hub =="
+device_id=`pv_exec cat /run/pantavisor/pv/device-id`
+rev=`pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]'`
+output=`mktemp`
+pvr device logs "$device_id" -r "$rev" > "$output" &
+
+sleep 20
+
+echo "== logs received from Hub =="
+if [ -s "$output" ]; then
+	echo "true"
+else
+	echo "false"
+fi

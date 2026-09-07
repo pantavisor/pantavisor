@@ -1,0 +1,19 @@
+== steps get current revision (structure) ==
+{
+  "spec": "pantavisor-service-system@1",
+  "has_entries": true
+}
+== steps show-progress current revision ==
+{
+  "progress": 100,
+  "retries": 0
+}
+== steps get current -> file ==
+current state saved non-empty: yes
+== steps put new local revision ==
+steps put exit: 0
+== steps ls names ==
+[
+  "locals/local_runtime_steps_rw",
+  "locals/test-put-rev"
+]

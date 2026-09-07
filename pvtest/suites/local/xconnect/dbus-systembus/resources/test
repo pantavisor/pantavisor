@@ -1,0 +1,81 @@
+#!/bin/sh
+#
+# Hosted D-Bus system bus end-to-end.
+#
+# The service owner (pv-example-system-dbus-server, role "example-service",
+# owns org.pantavisor.Example, allow ["operator","monitor"]) and two callers are
+# single-pid containers on the pantavisor-managed bus:
+#   pv-example-system-dbus-client         role "operator" (in allow -> permitted)
+#   pv-example-system-dbus-client-denied  role "stranger" (not in allow -> denied)
+# There is no dbus-daemon, policy XML or passwd in any container: the bus is
+# hosted by pantavisor and the policy is generated from the owns/allow
+# declaration.
+#
+# The bus runs a generated default-deny policy, so a method call can only
+# succeed if (a) the proxy masqueraded the caller to its role's numeric uid and
+# (b) the generated policy grants that uid send access to the owned name. A
+# successful GetInfo therefore proves the whole masquerade + policy chain.
+
+ADDR="unix:path=/run/dbus/system_bus_socket"
+SVC="org.pantavisor.Example"
+OBJ="/org/pantavisor/Example"
+
+dsend() {
+	# run dbus-send inside the operator client container against the injected
+	# bus socket. Exec dbus-send directly (via env for the address) rather than
+	# through "sh -c": under pventer a busybox "sh -c" wrapper swallows
+	# dbus-send's stdout, so the reply would be lost.
+	# shellcheck disable=SC2086
+	pventer -c "pv-example-system-dbus-client" \
+		env DBUS_SYSTEM_BUS_ADDRESS="$ADDR" \
+		dbus-send --system --print-reply $* 2>&1
+}
+
+# Wait for the python owner to claim the well-known name on the hosted bus.
+i=0
+while [ $i -lt 30 ]; do
+	if dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC" \
+		| grep -q "boolean true"; then
+		break
+	fi
+	sleep 1
+	i=$((i + 1))
+done
+
+echo "== well-known name $SVC is owned =="
+dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:$SVC" \
+	| grep -o "boolean true"
+
+echo "== allowed role 'operator' calls GetInfo (masquerade + policy allow) =="
+if dsend "--dest=$SVC $OBJ $SVC.GetInfo" | grep -q '"status": "active"'; then
+	echo "operator GetInfo: OK"
+else
+	echo "operator GetInfo: FAILED"
+fi
+
+# A separate container holds the "stranger" identity, which is NOT in the
+# server's allow list, so the generated default-deny policy grants its
+# masqueraded uid no send access to the owned name. This proves the allow list
+# actually restricts callers rather than merely permitting the listed ones: the
+# identical GetInfo must NOT succeed.
+dsend_stranger() {
+	# shellcheck disable=SC2086
+	pventer -c "pv-example-system-dbus-client-denied" \
+		env DBUS_SYSTEM_BUS_ADDRESS="$ADDR" \
+		dbus-send --system --print-reply $* 2>&1
+}
+
+echo "== default-deny: non-allowed role 'stranger' may not call the service =="
+if dsend_stranger "--dest=$SVC $OBJ $SVC.GetInfo" | grep -q '"status": "active"'; then
+	echo "stranger GetInfo: ALLOWED (unexpected)"
+else
+	echo "stranger GetInfo: DENIED"
+fi
+
+echo "== default-deny: 'operator' may not own a well-known name =="
+if dsend "--dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.RequestName string:org.pantavisor.Rogue uint32:0" \
+	| grep -qE "AccessDenied|not allowed to own"; then
+	echo "operator RequestName: DENIED"
+else
+	echo "operator RequestName: ALLOWED (unexpected)"
+fi

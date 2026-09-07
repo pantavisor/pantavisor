@@ -1,0 +1,6 @@
+== post revision that triggers goals timeout rollback ==
+== cloud step status ==
+{
+  "status": "ERROR",
+  "status-msg": "Status goal not reached"
+}

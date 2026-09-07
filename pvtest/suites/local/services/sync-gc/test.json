@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Synchronous /storage/gc replies after collection finished: storage checks pass immediately, keeping the DONE rollback and running revision",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=disabled PV_STORAGE_LOGTEMPSIZE=",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz",
+				"../../common/tarballs/pv-example-norole.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

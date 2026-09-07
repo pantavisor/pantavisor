@@ -1,0 +1,87 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+INITIAL="locals/local_services_on_demand_gc"
+REBOOT="locals/on_demand_gc_reboot"
+NONREBOOT="locals/on_demand_gc_nonreboot"
+
+# present/absent check for a storage path, on the device host via pv_exec
+# (no mgmt container needed). Paths are relative to the storage mountpoint,
+# resolved through pv_storage_dir() so they work on any device layout.
+S=$(pv_storage_dir)
+exists() { pv_exec ls -d "$S$1" > /dev/null 2>&1 && echo present || echo absent; }
+
+echo "== initial revision =="
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+
+# Per-test isolation: private $HOME + temp checkout dir (see automated-workflow.md § Test authoring rules).
+export HOME="$(mktemp -d)"
+pvr_clone_local_or_die "$HOME/checkout"
+cd "$HOME/checkout"
+
+# pvr objects are content-addressed by sha256; capture conf object names before/after
+# each edit so GC assertions never hard-code factory hashes.
+#   norole_orig: original pv-example-norole conf, referenced only by the initial
+#             revision (both updates supersede it) -> GC reclaims it.
+#   app_orig: original pv-example-app conf, still referenced by the retained
+#             reboot/DONE revision (which never changed it) -> GC keeps it.
+norole_orig=$(sha256sum pv-example-norole/lxc.container.conf | cut -d' ' -f1)
+app_orig=$(sha256sum pv-example-app/lxc.container.conf | cut -d' ' -f1)
+
+echo "== post reboot update =="
+sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' pv-example-norole/lxc.container.conf
+norole_new=$(sha256sum pv-example-norole/lxc.container.conf | cut -d' ' -f1)
+pvr add .
+pvr commit > /dev/null 2>&1
+pvr post --rev "$REBOOT" > /dev/null 2>&1
+
+wait_for_revision_state "$REBOOT" "DONE" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for $REBOOT to reach DONE" >&2; exit 1; }
+echo "== reboot update: DONE (rollback point) =="
+pvcontrol steps show-progress "$REBOOT"
+
+echo "== post non-reboot update =="
+sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' pv-example-app/lxc.container.conf
+app_new=$(sha256sum pv-example-app/lxc.container.conf | cut -d' ' -f1)
+pvr add .
+pvr commit > /dev/null 2>&1
+pvr post --rev "$NONREBOOT" > /dev/null 2>&1
+
+wait_for_revision_state "$NONREBOOT" "UPDATED" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for $NONREBOOT to reach UPDATED" >&2; exit 1; }
+echo "== non-reboot update: UPDATED (current) =="
+pvcontrol steps show-progress "$NONREBOOT"
+
+echo "== running revision =="
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+
+echo "== storage before GC =="
+echo "initial trail:        $(exists /trails/$INITIAL)"
+echo "initial logs:         $(exists /logs/$INITIAL)"
+echo "orig norole object:   $(exists /objects/$norole_orig)"
+
+echo "== run garbage collector =="
+pvcontrol commands run-gc
+# run-gc is processed asynchronously by the PV main loop; gate on the initial
+# trail and its orphaned object disappearing (object GC runs in the same pass).
+wait_for_path "$S/trails/$INITIAL" "-d" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for initial trail to be GC'd" >&2; exit 1; }
+wait_for_path "$S/objects/$norole_orig" "-d" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for orig norole object to be GC'd" >&2; exit 1; }
+
+echo "== trails after GC =="
+echo "initial:    $(exists /trails/$INITIAL)"
+echo "reboot:     $(exists /trails/$REBOOT)"
+echo "nonreboot:  $(exists /trails/$NONREBOOT)"
+
+echo "== logs after GC =="
+echo "initial:    $(exists /logs/$INITIAL)"
+echo "reboot:     $(exists /logs/$REBOOT)"
+echo "nonreboot:  $(exists /logs/$NONREBOOT)"
+
+echo "== objects after GC =="
+echo "orig norole (initial-only):        $(exists /objects/$norole_orig)"
+echo "new norole (reboot+nonreboot):     $(exists /objects/$norole_new)"
+echo "orig pv-example-app (shared DONE): $(exists /objects/$app_orig)"
+echo "new pv-example-app (nonreboot):    $(exists /objects/$app_new)"

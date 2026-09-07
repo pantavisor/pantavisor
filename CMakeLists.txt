@@ -591,7 +591,7 @@ ENDIF() # PANTAVISOR_APPENGINE
 
 IF(PANTAVISOR_PVTEST)
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/pvtest-run.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/tester/pvtest-run.in
     ${CMAKE_CURRENT_BINARY_DIR}/pvtest-run
     @ONLY
 )
@@ -600,7 +600,7 @@ install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/pvtest-run
 )
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/utils.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/tester/utils.in
     ${CMAKE_CURRENT_BINARY_DIR}/utils
     @ONLY
 )
@@ -610,7 +610,7 @@ install(FILES
 )
 
 configure_file(
-    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/common.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/pvtest/shared/common.in
     ${CMAKE_CURRENT_BINARY_DIR}/common
     @ONLY
 )

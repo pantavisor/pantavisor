@@ -1,0 +1,7 @@
+#!/bin/sh
+
+source /work/scripts/utils
+. /opt/pantavisor/set_env
+set -x
+
+# write your script to get to status READY here

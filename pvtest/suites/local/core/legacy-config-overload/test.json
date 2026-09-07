@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "legacy configuration overload",
+	"setup": {
+		"config": {
+			"env": "PV_POLICY=test PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-oem-developer-001.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

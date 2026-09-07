@@ -1,0 +1,21 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+echo "== phconfig volume config key =="
+pvcontrol conf ls | jq '.[] | select(.key == "PV_STORAGE_PHCONFIG_VOL")'
+
+# Persistent-model workers share /storage across many prior tests, so
+# /storage/config can carry leftover pantahub.config/unclaimed.config from an
+# earlier test that ran without PV_STORAGE_PHCONFIG_VOL — checking "is it
+# empty" is unreliable. Instead, write our own uniquely-named marker into the
+# bind-mounted phconfig dir and check only for THAT name: deterministic
+# regardless of storage history, and does not depend on claim state at all.
+marker="pvtest_phconfig_marker"
+pv_exec sh -c "echo marker > /run/pantavisor/pv/phconfig/$marker"
+
+echo "== marker visible in /volumes/bsp/pv--phconfig (bind-mount target when PV_STORAGE_PHCONFIG_VOL=1) =="
+pv_exec test -e "/volumes/bsp/pv--phconfig/$marker" && echo present || echo absent
+
+echo "== marker absent from /storage/config (phconfig writes never fall back to plain storage) =="
+pv_exec test -e "/storage/config/$marker" && echo present || echo absent

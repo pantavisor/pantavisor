@@ -1,0 +1,64 @@
+== containers (test-owned) ==
+[
+  {
+    "name": "pv-example-app",
+    "group": "root",
+    "status": "STARTED",
+    "status_goal": "STARTED",
+    "restart_policy": "container",
+    "roles": [
+      "mgmt"
+    ],
+    "user_stopped": "false"
+  }
+]
+== groups (built-in) ==
+[
+  {
+    "name": "data",
+    "status_goal": "MOUNTED",
+    "restart_policy": "system",
+    "status": "READY"
+  },
+  {
+    "name": "root",
+    "status_goal": "STARTED",
+    "restart_policy": "system",
+    "status": "READY"
+  },
+  {
+    "name": "platform",
+    "status_goal": "STARTED",
+    "restart_policy": "system",
+    "status": "READY"
+  },
+  {
+    "name": "app",
+    "status_goal": "STARTED",
+    "restart_policy": "container",
+    "status": "READY"
+  }
+]
+== user-meta ==
+user-meta is object: true
+== device-meta ==
+{
+  "pantavisor.mode": "local",
+  "pantavisor.revision": "locals/local_control_basic_endpoints_curl",
+  "pantavisor.status": "READY"
+}
+object count > 0: true
+== steps (current revision) ==
+[
+  {
+    "name": "locals/local_control_basic_endpoints_curl",
+    "commitmsg": "",
+    "progress": {
+      "progress": 100,
+      "retries": 0
+    }
+  }
+]
+== config ==
+config entries well-formed: true
+has PV_STORAGE_MNTPOINT: true

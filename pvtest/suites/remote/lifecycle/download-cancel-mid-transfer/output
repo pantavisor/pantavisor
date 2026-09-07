@@ -1,0 +1,12 @@
+== post one large object (download throttled to 1 MB/s) ==
+== wait for the posted revision to start downloading ==
+{"status":"DOWNLOADING"}
+partial-object-on-disk-before-cancel: 1
+== cancel the step from the Hub as the owner ==
+hub-cancel-http-code: 200
+== wait for the device to report CANCEL ==
+{"status":"CANCEL","status-msg":"Cancelled as requested by owner"}
+== device goes back to idle and stays on the previous revision ==
+still-on-previous-revision: 1
+partial-object-kept: 1
+hub-step-status: CANCEL

@@ -1,0 +1,22 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+echo "== checksum validation log =="
+# The validated file set is the device baseline (target-dependent), so assert
+# the invariant core as booleans instead of a literal file list.
+LOG=$(pv_exec grep 'validati' "$(pv_storage_dir)/logs/current/pantavisor/pantavisor.log" \
+	| tr -d '\r' \
+	| grep -v '\[dmesg\]' \
+	| sed 's/^.* -- \[[^]]*\]: *//; s/^([a-zA-Z_][a-zA-Z0-9_]*:[0-9]*) //')
+echo "device.json value validated: $(echo "$LOG" | grep -q 'validating value for json .*/device\.json$' && echo yes || echo no)"
+echo "bsp/run.json value validated: $(echo "$LOG" | grep -q 'validating value for json .*/bsp/run\.json$' && echo yes || echo no)"
+echo "object checksums validated: $(echo "$LOG" | grep -q 'validating checksum for .*/objects/' && echo yes || echo no)"
+echo "bsp/pantavisor checksum skipped: $(echo "$LOG" | grep -q '^skipping validation of object named bsp/pantavisor and id=' && echo yes || echo no)"
+echo "pvr-sdk/root.squashfs checksum skipped: $(echo "$LOG" | grep -q '^skipping validation of object named pvr-sdk/root\.squashfs and id=' && echo yes || echo no)"
+# unique object *names* skipped, not raw line count: a revision needing a
+# reboot to commit gets checksummed again on the post-reboot boot, doubling
+# every line here without meaning a different object got skipped
+skipped_names=$(echo "$LOG" | sed -n 's/^skipping validation of object named \([^ ]*\) and id=.*/\1/p' | sort -u)
+expected_names=$(printf '%s\n' bsp/pantavisor pvr-sdk/root.squashfs | sort)
+echo "no other objects skipped: $([ "$skipped_names" = "$expected_names" ] && echo yes || echo no)"

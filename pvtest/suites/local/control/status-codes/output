@@ -1,0 +1,14 @@
+== buildinfo (GET) ==
+200
+== drivers list ==
+{}
+== drivers load ==
+200
+== drivers unload ==
+200
+== signal ready ==
+500
+== signal alive ==
+500
+== command run-gc ==
+200

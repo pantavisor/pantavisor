@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Hosted D-Bus system bus, real daemon: avahi owns org.freedesktop.Avahi, monitor consumer roundtrips its API",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-avahi.pvrexport.tgz",
+				"../../common/tarballs/pv-avahi-browse.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

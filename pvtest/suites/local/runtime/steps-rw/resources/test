@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# pv-ctrl step read + local revision write.
+#
+# state.json is large and carries volatile object hashes — and its full key
+# set is the device baseline (device-dependent) — so we only assert its
+# structure; the new revision is verified by name in steps ls.
+
+current_rev=$(pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | tr -d '\r')
+
+echo "== steps get current revision (structure) =="
+pvcontrol steps get "$current_rev" | jq -M '{spec: .["#spec"], has_entries: (keys | length > 1)}' | tr -d '\r'
+
+echo "== steps show-progress current revision =="
+# No reset between tests: a rev installed as the device's first revision lands
+# DONE (rollback point), but the same rev installed after other tests lands
+# UPDATED (non-reboot) — position-dependent. Drop the status/msg and keep the
+# deterministic progress/retries.
+pvcontrol steps show-progress "$current_rev" | jq -M 'del(.status, .["status-msg"])' | tr -d '\r'
+
+echo "== steps get current -> file =="
+# capture stdout instead of -f: -f writes on the exec target, not the tester
+state_json=$(mktemp)
+pvcontrol steps get current > "$state_json"
+echo "current state saved non-empty: $([ -s "$state_json" ] && echo yes || echo no)"
+
+echo "== steps put new local revision =="
+state_staged=$(pv_stage_file "$state_json")
+pvcontrol -m "test put" steps put "$state_staged" locals/test-put-rev >/dev/null 2>&1
+echo "steps put exit: $?"
+pv_unstage_file "$state_staged"
+rm -f "$state_json"
+
+echo "== steps ls names =="
+# No reset between tests: the trail accumulates revisions from prior tests (and
+# the factory rev name is device-specific), so filter to this test's own
+# revisions (the current rev and the put rev).
+pvcontrol steps ls | jq -M --arg r "$current_rev" 'map(.name) | map(select(. == $r or . == "locals/test-put-rev")) | sort' | tr -d '\r'

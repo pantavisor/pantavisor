@@ -1,0 +1,41 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME (see
+# automated-workflow.md § Test authoring rules).
+# Two checkouts: posting to the Hub URL rebinds a checkout's default remote, which
+# would hijack a later bare local post.
+co_remote="$(mktemp -d)/remote"
+co_local="$(mktemp -d)/local"
+pvr_clone_local_or_die "$co_remote" remote
+pvr_clone_local_or_die "$co_local" local
+
+echo "== post remote update 1 (non-reboot) =="
+cd "$co_remote"
+rev1=$(pvr_post_rev -m "remote update 1" "$trail_url")
+[ -n "$rev1" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+wait_for_revision_state "$rev1" "UPDATED" \
+    || { echo "ERROR: timeout waiting for revision $rev1 to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress "$rev1"
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | sed "s/^${rev1}\$/REMOTE_REV_1/"
+
+echo "== post local update (non-reboot) =="
+cd "$co_local"
+pvr post --rev "locals/test-303" > /dev/null 2>&1
+wait_for_revision_state "locals/test-303" "UPDATED" \
+    || { echo "ERROR: timeout waiting for locals/test-303 to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress "locals/test-303"
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+
+echo "== post remote update 2 (applied immediately; REMOTE_ALWAYS=1 keeps Hub open) =="
+cd "$co_remote"
+rev2=$(pvr_post_rev -m "remote update 2" "$trail_url")
+[ -n "$rev2" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+wait_for_revision_state "$rev2" "UPDATED" \
+    || { echo "ERROR: timeout waiting for revision $rev2 to reach UPDATED" >&2; exit 1; }
+pvcontrol steps show-progress "$rev2"
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]' | sed "s/^${rev2}\$/REMOTE_REV_2/"

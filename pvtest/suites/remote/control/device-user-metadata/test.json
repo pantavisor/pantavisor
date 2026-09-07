@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "device/user metadata exchange with Pantahub",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

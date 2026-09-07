@@ -1,0 +1,8 @@
+== well-known name org.pantavisor.Example is owned ==
+boolean true
+== allowed role 'operator' calls GetInfo (masquerade + policy allow) ==
+operator GetInfo: OK
+== default-deny: non-allowed role 'stranger' may not call the service ==
+stranger GetInfo: DENIED
+== default-deny: 'operator' may not own a well-known name ==
+operator RequestName: DENIED

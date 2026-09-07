@@ -1,0 +1,9 @@
+== PUT empty object with Content-Length: 0 ==
+200
+empty object present: true
+== PUT again, taking the already-exists branch ==
+200
+== PUT with neither body nor content-length ==
+200
+== object survived all three PUTs ==
+empty object present: true

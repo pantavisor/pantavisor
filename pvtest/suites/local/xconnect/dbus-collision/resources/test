@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# Hosted D-Bus system bus: name-collision validation + rollback.
+#
+# Two containers each declare ownership of the SAME well-known name
+# (org.pantavisor.Example) on the SAME hosted bus (system-bus), with different
+# roles:
+#   pv-example-system-dbus-server            role "example-service"
+#   pv-example-system-dbus-server-collision  role "example-service-2"
+#
+# pv_dbus_daemon_validate() runs at the top of pv_state_run() and rejects a
+# state that has two owners of one name on one bus ("owned by more than one
+# app"), before any container starts. So a revision carrying both owners never
+# reaches DONE: pv_state_run returns -1, pantavisor tears the platforms down and
+# rolls back to the previous revision. The second owner never needs to run a
+# real D-Bus server; only its owns declaration is required.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+echo "== initial revision =="
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+# Merge a container pvrexport tarball (from the staged common tarballs) into the
+# checkout. The colliding owners must arrive together as a posted revision, so
+# they are deliberately NOT part of the setup tarballs.
+merge_tarball() {
+    dir=$(mktemp -d)
+    tar xzf "$1" -C "$dir" > /dev/null 2>&1 \
+        || { echo "ERROR: failed to extract $1" >&2; exit 1; }
+    pvr merge "$dir" > /dev/null 2>&1 \
+        || { echo "ERROR: pvr merge failed for $1" >&2; exit 1; }
+    rm -rf "$dir"
+}
+
+echo "== post revision with two owners of org.pantavisor.Example =="
+merge_tarball ${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-system-dbus-server.pvrexport.tgz
+merge_tarball ${PVTEST_ROOT:-/work}/local/common/tarballs/pv-example-system-dbus-server-collision.pvrexport.tgz
+pvr checkout > /dev/null 2>&1
+pvr commit > /dev/null 2>&1
+pvr post --rev "locals/collision" > /dev/null 2>&1
+
+# locals/collision triggers a rollback (validation rejects the duplicate owner).
+# Longer timeouts than the container-mode default: on scarce-resource real
+# devices the rollback itself, not just the validation, takes longer.
+wait_for_value "pvcontrol steps show-progress locals/collision | jq -r '.status'" "ERROR" 180 > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/collision to reach ERROR" >&2; exit 1; }
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantavisor.status\"'" "READY" 90 > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for pantavisor.status READY after rollback" >&2; exit 1; }
+echo "== locals/collision: ERROR (rolled back) =="
+pvcontrol steps show-progress locals/collision | sed 's/\\\"tsec\\\":[0-9]\+/\\\"tsec\\\":0/g; s/\\\"tnano\\\":[0-9]\+/\\\"tnano\\\":0/g; s/\\\"msg\\\":\\\"([a-zA-Z_][a-zA-Z0-9_]*:[0-9]\+) /\\\"msg\\\":\\\"/g'
+pvcontrol devmeta ls | jq -M -r '.["pantavisor.revision"]'

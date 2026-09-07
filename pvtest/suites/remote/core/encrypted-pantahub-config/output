@@ -1,0 +1,10 @@
+== phconfig volume config key ==
+[1;39m{
+  [0m[1;34m"key"[0m[1;39m: [0m[0;32m"PV_STORAGE_PHCONFIG_VOL"[0m[1;39m,
+  [0m[1;34m"value"[0m[1;39m: [0m[0;32m"1"[0m[1;39m,
+  [0m[1;34m"modified"[0m[1;39m: [0m[0;32m"env"[0m[1;39m
+[1;39m}[0m
+== marker visible in /volumes/bsp/pv--phconfig (bind-mount target when PV_STORAGE_PHCONFIG_VOL=1) ==
+present
+== marker absent from /storage/config (phconfig writes never fall back to plain storage) ==
+absent

@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Object download resumes via Range after a mid-transfer crash",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1 PH_UPDATER_DOWNLOAD_RATE_LIMIT=1048576",
+			"usrmeta": "PH_UPDATER_INTERVAL=5 PV_REVISION_RETRIES=3"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}
