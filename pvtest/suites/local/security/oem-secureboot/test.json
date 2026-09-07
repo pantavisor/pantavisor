@@ -1,0 +1,21 @@
+{
+	"#spec": "pv-test@1",
+	"description": "OEM secureboot",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0 PV_SECUREBOOT_MODE=strict",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-oem-developer-001.pvrexport.tgz",
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

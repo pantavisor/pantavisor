@@ -61,7 +61,7 @@ usage() {
 	echo "  PH_USER/PH_PASS  Hub credentials, for self-claim and Hub-side usrmeta"
 	echo "  PVTEST_HUB_URL   Hub the run targets (default: https://api.pantahub.com)"
 	echo ""
-	echo "See docs/overview/testing/automated/."
+	echo "See docs/testing/."
 	echo ""
 }
 

@@ -1,0 +1,7 @@
+== wait for unclaimed state ==
+claim
+== generate factory autotok via Pantahub API ==
+== inject autotok and reboot ==
+== wait for auto-claim ==
+idle
+== cleanup ==

@@ -1,0 +1,29 @@
+== initial revision ==
+locals/local_services_sync_gc
+== post reboot update ==
+== reboot update: DONE (rollback point) ==
+{"status":"DONE","status-msg":"Update finished, revision set as rollback point","progress":100,"retries":0}
+== post non-reboot update ==
+== non-reboot update: UPDATED (current) ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":0}
+== running revision ==
+locals/sync_gc_nonreboot
+== storage before GC ==
+initial trail:        present
+initial logs:         present
+orig norole object:   present
+== run synchronous garbage collector ==
+true
+== trails after GC ==
+initial:    absent
+reboot:     present
+nonreboot:  present
+== logs after GC ==
+initial:    absent
+reboot:     present
+nonreboot:  present
+== objects after GC ==
+orig norole (initial-only):        absent
+new norole (reboot+nonreboot):     present
+orig pv-example-app (shared DONE): present
+new pv-example-app (nonreboot):    present

@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# pv-ctrl role scoping: mgmt containers get full pvcontrol access and can see
+# logs/meta for every container; non-mgmt containers are denied pvcontrol and
+# can only see their own logs. Asserted as explicit path checks (not a
+# recursive /pantavisor listing) so this stays independent of find(1)
+# capabilities and of any other test's leftover state under /pantavisor/logs.
+
+echo "== pv-example-mgmt (mgmt role): pvcontrol access =="
+# The listing includes the device's baseline containers (target-dependent), so
+# keep it device-agnostic by reporting only the containers this test installs.
+pventer -c "pv-example-mgmt" pvcontrol ls | jq -Mc 'map(select(.name | startswith("pv-example")))'
+
+REV=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+
+echo "== pv-example-mgmt: sees pantavisor + all containers' logs =="
+for f in \
+	"pantavisor/pantavisor.log" \
+	"pv-example-mgmt/lxc/lxc.log" \
+	"pv-example-mgmt/var/log/messages" \
+	"pv-example-mgmt/var/log/syslog" \
+	"pv-example-norole/lxc/lxc.log" \
+	"pv-example-norole/var/log/messages" \
+	"pv-example-norole/var/log/syslog"; do
+	echo "$f present: $(pventer -c "pv-example-mgmt" test -e "/pantavisor/logs/$REV/$f" && echo yes || echo no)"
+done
+
+echo "== pv-example-mgmt: sees other containers' device-meta/user-meta snapshots =="
+echo "device-meta.pv-example-norole present: $(pventer -c "pv-example-mgmt" test -e "/pantavisor/device-meta.pv-example-norole" && echo yes || echo no)"
+echo "user-meta.pv-example-norole present: $(pventer -c "pv-example-mgmt" test -e "/pantavisor/user-meta.pv-example-norole" && echo yes || echo no)"
+
+echo "== pv-example-norole (no role): pvcontrol access (expected to fail) =="
+# the denial body goes to pvcontrol's stderr; merge it so the assertion is in
+# the compared stdout (in-container pvcontrol is test-owned, so no BSP noise)
+pventer -c "pv-example-norole" pvcontrol ls 2>&1
+
+echo "== pv-example-norole: sees only its own container's logs =="
+for f in "lxc/lxc.log" "var/log/messages" "var/log/syslog"; do
+	echo "$f present: $(pventer -c "pv-example-norole" test -e "/pantavisor/logs/$f" && echo yes || echo no)"
+done
+
+echo "== pv-example-norole: gets no device-meta/user-meta content (none written for it in this test) =="
+norole_devmeta=$(pventer -c "pv-example-norole" ls -A /pantavisor/device-meta 2>/dev/null)
+norole_usermeta=$(pventer -c "pv-example-norole" ls -A /pantavisor/user-meta 2>/dev/null)
+echo "device-meta empty: $([ -z "$norole_devmeta" ] && echo yes || echo no)"
+echo "user-meta empty: $([ -z "$norole_usermeta" ] && echo yes || echo no)"
+
+echo "== pv-example-norole: cannot see mgmt's logs or any per-container meta snapshot =="
+echo "pv-example-mgmt logs visible: $(pventer -c "pv-example-norole" test -e "/pantavisor/logs/$REV/pv-example-mgmt" && echo yes || echo no)"
+echo "device-meta.pv-example-mgmt present: $(pventer -c "pv-example-norole" test -e "/pantavisor/device-meta.pv-example-mgmt" && echo yes || echo no)"

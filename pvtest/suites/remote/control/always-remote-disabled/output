@@ -1,0 +1,15 @@
+== enter remote mode (base was installed as a local revision) ==
+== post remote update 1 (non-reboot) ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":1}
+REMOTE_REV_1
+== post local update (device enters local mode) ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":0}
+locals/test-302
+== post remote update 2 (should not be consumed in local mode) ==
+== step 2 should not exist (Hub client stopped in local mode) ==
+{"Error":"Resource does not exist"}
+== resume Hub connection via GO_REMOTE ==
+
+== remote update 2 applied after GO_REMOTE ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":1}
+REMOTE_REV_2

@@ -1,0 +1,8 @@
+== avahi owns org.freedesktop.Avahi on the hosted bus ==
+boolean true
+== monitor roundtrip: Server.GetVersionString (masquerade + policy allow) ==
+monitor GetVersionString: OK
+== monitor roundtrip: Server.GetHostName ==
+monitor GetHostName: OK
+== default-deny: monitor may not own a well-known name ==
+monitor RequestName: DENIED

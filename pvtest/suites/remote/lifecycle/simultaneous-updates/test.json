@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "multiple simultaneous new revisions",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1",
+			"usrmeta": "PV_STORAGE_GC_THRESHOLD=100"
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

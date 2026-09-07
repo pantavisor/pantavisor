@@ -1,0 +1,8 @@
+== initial state ==
+Initial state: NOROLE=running WEB=running
+== update 1: modify pv-example-app ==
+Update 1: NOROLE=stable WEB=restarted
+== update 2: add pv-example-app1 ==
+Update 2: NOROLE=stable WEB=stable WEB1=started
+== update 3: modify pv-example-app again ==
+Update 3: NOROLE=stable WEB=restarted WEB1=stable

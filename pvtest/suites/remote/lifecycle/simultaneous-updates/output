@@ -1,0 +1,16 @@
+== post 3 revisions simultaneously ==
+== first revision ==
+{
+  "status": "UPDATED",
+  "status-msg": "Update finished, revision not set as rollback point"
+}
+== second revision ==
+{
+  "status": "UPDATED",
+  "status-msg": "Update finished, revision not set as rollback point"
+}
+== third revision ==
+{
+  "status": "UPDATED",
+  "status-msg": "Update finished, revision not set as rollback point"
+}

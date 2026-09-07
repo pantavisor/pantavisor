@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# pv-ctrl object store.
+# Covers testplan-pvctrl.md Tests 11 (list), 12 (put small),
+# 13 (put large / chunked), 14 (get + integrity), 15 (bad checksum -> 422),
+# 16 (duplicate put idempotency).
+#
+# Object content is fixed (never random); we assert type/booleans/deltas/codes, not hashes.
+# Payloads are created and hashed in the tester, then moved via pv_stage_file/pv_fetch_file.
+# No reset between tests: object store is device-persistent, so assert deltas/presence, not
+# absolute counts.
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+SOCK=/run/pantavisor/pv/pv-ctrl
+
+present() {
+	# present <sha> -> "true"/"false" whether sha is in objects ls
+	# (objects ls returns [{"sha256":..,"size":..}, ...])
+	pvcontrol objects ls | jq -r --arg s "$1" 'any(.[]; .sha256 == $s)' | tr -d '\r'
+}
+
+count() { pvcontrol objects ls | jq 'length' | tr -d '\r'; }
+
+echo "== objects ls returns an array =="
+pvcontrol objects ls | jq -M 'type' | tr -d '\r'
+
+echo "== put small object (fixed content) =="
+small=$(mktemp)
+printf "hello pvctrl object test\n" > "$small"
+SHA_SMALL=$(sha256sum "$small" | cut -d" " -f1)
+CNT_BEFORE=$(count)
+small_staged=$(pv_stage_file "$small")
+pvcontrol objects put "$small_staged" "$SHA_SMALL"
+echo "small object present: $(present "$SHA_SMALL")"
+echo "object count increased by one: $([ "$(count)" = "$((CNT_BEFORE + 1))" ] && echo yes || echo no)"
+
+echo "== put large object (2MB, chunked upload) =="
+large=$(mktemp)
+head -c 2097152 /dev/zero | tr "\0" "x" > "$large"
+SHA_LARGE=$(sha256sum "$large" | cut -d" " -f1)
+large_staged=$(pv_stage_file "$large")
+pvcontrol objects put "$large_staged" "$SHA_LARGE"
+echo "large object present: $(present "$SHA_LARGE")"
+
+echo "== get large object + verify integrity =="
+pvcontrol -f /tmp/pvtest_large_dl.$$ objects get "$SHA_LARGE"
+large_dl=$(mktemp)
+pv_fetch_file /tmp/pvtest_large_dl.$$ "$large_dl"
+SHA_DL=$(sha256sum "$large_dl" | cut -d" " -f1)
+echo "download integrity ok: $([ "$SHA_DL" = "$SHA_LARGE" ] && echo yes || echo no)"
+pv_unstage_file /tmp/pvtest_large_dl.$$
+
+echo "== put with wrong checksum (expect 422) =="
+bad=$(mktemp)
+printf "checksum mismatch payload\n" > "$bad"
+bad_staged=$(pv_stage_file "$bad")
+pvcurl -s -o /dev/null -w '%{http_code}\n' --unix-socket "$SOCK" \
+	-X PUT -T "$bad_staged" \
+	http://localhost/objects/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+pv_unstage_file "$bad_staged"
+
+echo "== duplicate put is idempotent =="
+CNT_BEFORE=$(count)
+pvcontrol objects put "$small_staged" "$SHA_SMALL"
+echo "object count unchanged on duplicate: $([ "$CNT_BEFORE" = "$(count)" ] && echo yes || echo no)"
+
+pv_unstage_file "$small_staged"
+pv_unstage_file "$large_staged"
+rm -f "$small" "$large" "$bad" "$large_dl"

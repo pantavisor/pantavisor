@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Update retries when PV crashes with GC pressure",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1",
+			"usrmeta": "PV_STORAGE_GC_THRESHOLD=100 PV_REVISION_RETRIES=3"
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# pv-ctrl device-meta / user-meta CRUD.
+# Covers testplan-pvctrl.md Tests 8 (device-meta), 9 (user-meta),
+# 10 (delete non-existent device-meta key -> 404).
+
+SOCK=/run/pantavisor/pv/pv-ctrl
+# whitelist: the devmeta baseline is device-dependent (extra hw keys, claimed state)
+DEVFILTER='to_entries | map(select(.key as $k | ["pantahub.online", "pantavisor.mode", "pantavisor.revision", "pantavisor.status"] | index($k))) | sort_by(.key) | from_entries'
+
+echo "== device-meta initial =="
+pvcontrol devmeta ls | jq -M "$DEVFILTER" | tr -d '\r'
+
+echo "== device-meta save =="
+pvcontrol devmeta save test-key "test-value-123"
+pvcontrol devmeta ls | jq -M '.["test-key"]' | tr -d '\r'
+
+echo "== device-meta update =="
+pvcontrol devmeta save test-key "updated-value-456"
+pvcontrol devmeta ls | jq -M '.["test-key"]' | tr -d '\r'
+
+echo "== device-meta delete =="
+pvcontrol devmeta delete test-key
+echo "test-key present after delete: $(pvcontrol devmeta ls | jq -M 'has("test-key")' | tr -d '\r')"
+
+echo "== device-meta delete non-existent key (expect 404) =="
+pvcurl -s -o /dev/null -w '%{http_code}\n' --unix-socket "$SOCK" \
+	-X DELETE http://localhost/device-meta/nonexistent-key-xyz
+
+echo "== user-meta initial =="
+# No reset between tests: user-meta is device-persistent and may carry keys from
+# earlier tests. Assert our own key's absence rather than dumping the whole map.
+echo "my-key present initially: $(pvcontrol usrmeta ls | jq -M 'has("my-key")' | tr -d '\r')"
+
+echo "== user-meta save =="
+pvcontrol usrmeta save my-key "my-value"
+pvcontrol usrmeta ls | jq -M '.["my-key"]' | tr -d '\r'
+
+echo "== user-meta update =="
+pvcontrol usrmeta save my-key "new-value"
+pvcontrol usrmeta ls | jq -M '.["my-key"]' | tr -d '\r'
+
+echo "== user-meta delete =="
+pvcontrol usrmeta delete my-key
+echo "my-key present after delete: $(pvcontrol usrmeta ls | jq -M 'has("my-key")' | tr -d '\r')"

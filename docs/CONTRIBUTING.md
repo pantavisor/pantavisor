@@ -11,13 +11,14 @@ rules; [AGENTS.md](../AGENTS.md) points here rather than restating them.
 It is `draft: true`, so it never publishes to docs.pantavisor.io — it is for people and agents
 working in this repository.
 
-## The three folders
+## The four folders
 
 | Folder | Answers | Contains | Never contains |
 |--------|---------|----------|----------------|
 | [`docs/overview/`](overview/index.md) | *How does this work, and why is it built this way?* | Prose, rationale, diagrams, worked examples, algorithm walk-throughs | Exhaustive key / field / endpoint tables — link to reference instead |
 | [`docs/reference/`](reference/index.md) | *What exactly are the valid values?* | Tables: every key, every accepted value, every default, every field, every status code | Multi-paragraph explanation — link to overview instead |
 | [`docs/tools/`](tools/index.md) | *How do I invoke it?* | CLI synopsis, flags, exit codes, worked invocations | Subsystem theory |
+| [`docs/testing/`](testing/index.md) | *How do I test it?* | The pvtest harness, running the suite, authoring tests, the test list | Yocto build instructions — those stay in meta-pantavisor |
 
 Reference is **authoritative and complete**. Overview is **readable top-to-bottom and never
 complete** — it is allowed to skip cases, and it must say where the complete list lives.
@@ -31,11 +32,13 @@ Ask, in order:
    list every member; never write `string` where the parser accepts seven specific tokens.
 2. **Does it explain a mechanism, a trade-off, or a "why"?** → **overview**.
 3. **Is it how to run a command-line tool?** → **tools**.
-4. **Both?** Write both, and link them to each other. The overview names the feature and explains
+4. **Is it about the pvtest suite — running it, or writing a test?** → **testing**.
+5. **Both?** Write both, and link them to each other. The overview names the feature and explains
    it; the reference table is the complete list. Neither duplicates the other's job.
 
 A new subsystem needs all three of: an overview page, an entry in
-[`overview/index.md`](overview/index.md), and a reference page for its tables. A feature that is
+[`overview/index.md`](overview/index.md), and a reference page for its tables. If it grows pvtest
+coverage, the tests are listed in [`testing/pvtest-list.md`](testing/pvtest-list.md). A feature that is
 purely a set of config keys may skip the overview page, but its keys still go in the
 [configuration reference](reference/pantavisor-configuration.md).
 
@@ -110,7 +113,7 @@ Meta pages that must not publish (this page, [`issues.md`](issues.md)) use `draf
 ## Link conventions
 
 - **Within the same folder**: plain relative links, e.g. `containers.md#restart-policy`.
-- **Between `overview/`, `reference/` and `tools/`**: relative sibling links, e.g.
+- **Between `overview/`, `reference/`, `tools/` and `testing/`**: relative sibling links, e.g.
   `../reference/pantavisor-commands.md#steps`, `../overview/containers.md#status`. These resolve
   both on GitHub and on the published site.
 - **To meta-pantavisor docs**: `../../meta-pantavisor/<section>/<page>.md` — resolves only on the

@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+# pv-ctrl daemon management.
+# Covers testplan-pvctrl.md Tests 17 (list), 18 (stop), 19 (start),
+# 20 (stop non-existent -> 404).
+#
+# pv-xconnect and, when the hosted system bus is enabled, pv-dbus are spawned
+# by pantavisor itself. Their PIDs are volatile, so normalize any positive pid
+# to "POS" and keep the stable respawn flag.
+
+SOCK=/run/pantavisor/pv/pv-ctrl
+PIDNORM='sort_by(.name) | map(.pid = (if (.pid // 0) > 0 then "POS" else .pid end))'
+
+echo "== daemons initial =="
+pvcontrol daemons ls | jq -M "$PIDNORM" | tr -d '\r'
+
+echo "== stop pv-xconnect =="
+pvcontrol daemons stop pv-xconnect
+sleep 2
+pvcontrol daemons ls | jq -M "$PIDNORM" | tr -d '\r'
+
+echo "== start pv-xconnect =="
+pvcontrol daemons start pv-xconnect
+sleep 2
+pvcontrol daemons ls | jq -M "$PIDNORM" | tr -d '\r'
+
+echo "== stop non-existent daemon (expect 404) =="
+pvcurl -s -o /dev/null -w '%{http_code}\n' --unix-socket "$SOCK" \
+	-X PUT --data '{"action":"stop"}' http://localhost/daemons/nonexistent-daemon

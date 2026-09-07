@@ -1,0 +1,25 @@
+== pv-example-mgmt (mgmt role): pvcontrol access ==
+[{"name":"pv-example-mgmt","group":"root","status":"STARTED","status_goal":"STARTED","restart_policy":"system","roles":["mgmt"]},{"name":"pv-example-norole","group":"root","status":"STARTED","status_goal":"STARTED","restart_policy":"system","roles":[]}]
+== pv-example-mgmt: sees pantavisor + all containers' logs ==
+pantavisor/pantavisor.log present: yes
+pv-example-mgmt/lxc/lxc.log present: yes
+pv-example-mgmt/var/log/messages present: yes
+pv-example-mgmt/var/log/syslog present: yes
+pv-example-norole/lxc/lxc.log present: yes
+pv-example-norole/var/log/messages present: yes
+pv-example-norole/var/log/syslog present: yes
+== pv-example-mgmt: sees other containers' device-meta/user-meta snapshots ==
+device-meta.pv-example-norole present: yes
+user-meta.pv-example-norole present: yes
+== pv-example-norole (no role): pvcontrol access (expected to fail) ==
+{"Error":"Request not sent from a mgmt platform"}
+== pv-example-norole: sees only its own container's logs ==
+lxc/lxc.log present: yes
+var/log/messages present: yes
+var/log/syslog present: yes
+== pv-example-norole: gets no device-meta/user-meta content (none written for it in this test) ==
+device-meta empty: yes
+user-meta empty: yes
+== pv-example-norole: cannot see mgmt's logs or any per-container meta snapshot ==
+pv-example-mgmt logs visible: no
+device-meta.pv-example-mgmt present: no

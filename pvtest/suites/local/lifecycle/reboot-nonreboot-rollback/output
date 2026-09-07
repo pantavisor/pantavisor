@@ -1,0 +1,14 @@
+== initial revision ==
+locals/local_lifecycle_reboot_nonreboot_rollback
+== post reboot update ==
+== locals/reboot: DONE ==
+{"status":"DONE","status-msg":"Update finished, revision set as rollback point","progress":100,"retries":0}
+locals/reboot
+== post non-reboot update ==
+== locals/nonreboot: UPDATED ==
+{"status":"UPDATED","status-msg":"Update finished, revision not set as rollback point","progress":100,"retries":0}
+locals/nonreboot
+== post broken update (triggers rollback to locals/reboot) ==
+== rolled back to locals/reboot ==
+{"status":"ERROR","status-msg":"A container could not be started","progress":100,"retries":0,"logs":"{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"state\",\"msg\":\"platform 'pv-example-norole' is not running\"}\n{\"tsec\":0,\"tnano\":0,\"platform\":\"pantavisor\",\"lvl\":\"ERROR\",\"src\":\"controller\",\"msg\":\"a platform did not work as expected. Tearing down...\"}\n"}
+locals/reboot

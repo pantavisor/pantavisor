@@ -1,0 +1,38 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
+    echo "ERROR: PH_USER/PH_PASS not set" >&2; exit 1
+fi
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1 \
+    || { echo "ERROR: pvr login failed" >&2; exit 1; }
+
+echo "== wait for unclaimed state =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }
+pvcontrol devmeta ls | jq -M -r '.["pantahub.state"]'
+
+echo "== claim device =="
+# state flips to "claim" before the hint files are written; wait for them so we
+# never call pvr claim with empty args (which blocks on its interactive prompt).
+wait_for_status "pv_exec test -s /run/pantavisor/pv/device-id" 0 30 \
+    || { echo "ERROR: timeout waiting for device-id hint file" >&2; exit 1; }
+wait_for_status "pv_exec test -s /run/pantavisor/pv/challenge" 0 30 \
+    || { echo "ERROR: timeout waiting for challenge hint file" >&2; exit 1; }
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+challenge=$(pv_exec cat /run/pantavisor/pv/challenge)
+if [ -z "$device_id" ] || [ -z "$challenge" ]; then
+    echo "ERROR: empty device-id or challenge in claim state" >&2; exit 1
+fi
+pvr claim -c "$challenge" "$(pvr_device_url "$device_id")" </dev/null
+
+echo "== wait for idle (claimed) =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+pvcontrol devmeta ls | jq -M -r '.["pantahub.state"]'
+
+echo "== cleanup =="
+if [ -n "$device_id" ]; then
+	pvr dev delete -y "$(pvr_device_url "$device_id")"
+fi

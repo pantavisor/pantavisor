@@ -1,0 +1,22 @@
+{
+	"#spec": "pv-test@1",
+	"description": "Hosted D-Bus system bus: role masquerade + generated default-deny policy end-to-end",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-system-dbus-server.pvrexport.tgz",
+				"../../common/tarballs/pv-example-system-dbus-client.pvrexport.tgz",
+				"../../common/tarballs/pv-example-system-dbus-client-denied.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": ["appengine"]
+}

@@ -1,0 +1,16 @@
+== objects ls returns an array ==
+"array"
+== put small object (fixed content) ==
+
+small object present: true
+object count increased by one: yes
+== put large object (2MB, chunked upload) ==
+
+large object present: true
+== get large object + verify integrity ==
+download integrity ok: yes
+== put with wrong checksum (expect 422) ==
+422
+== duplicate put is idempotent ==
+
+object count unchanged on duplicate: yes

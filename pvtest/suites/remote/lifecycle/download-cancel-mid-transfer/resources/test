@@ -1,0 +1,100 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+bearer=$(cat "$HOME/.pvr/auth.json" 2>/dev/null | jq -r 'first(.tokens[]) | .["access-token"] // empty')
+[ -n "$bearer" ] || { echo "ERROR: no Hub access token in \$HOME/.pvr/auth.json" >&2; exit 1; }
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME.
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+echo "== post one large object (download throttled to 1 MB/s) =="
+# 100 MB incompressible object, throttled via PH_UPDATER_DOWNLOAD_RATE_LIMIT
+# in test.json: ~100 s of transfer, a wide window to cancel from the cloud.
+dd if=/dev/urandom of=pv-example-app/bigfile.bin bs=1M count=100 2>/dev/null
+sha=$(sha256sum pv-example-app/bigfile.bin | awk '{print $1}')
+pvr add pv-example-app/bigfile.bin > /dev/null 2>&1
+pvr commit -m "add large file to exercise remote cancel" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "remote cancel mid-download test" "$trail_url")
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+
+storage=$(pv_storage_dir)
+tmp_path="$storage/objects/${sha}.tmp"
+
+echo "== wait for the posted revision to start downloading =="
+wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "DOWNLOADING" 120 \
+    || { echo "ERROR: timeout waiting for revision $rev to start DOWNLOADING" >&2; exit 1; }
+pvcontrol steps show-progress $rev | jq -Mc '{status}'
+
+# Cancel only once real bytes are on disk, so the abort lands mid-transfer.
+size_before_cancel=0
+for i in $(seq 1 60); do
+    size_before_cancel=$(pv_exec wc -c "$tmp_path" 2>/dev/null | awk '{print $1}')
+    [ -z "$size_before_cancel" ] && size_before_cancel=0
+    [ "$size_before_cancel" -gt 5242880 ] 2>/dev/null && break
+    sleep 1
+done
+if ! [ "$size_before_cancel" -gt 0 ] 2>/dev/null; then
+    echo "ERROR: no partial bytes observed before cancel" >&2
+    exit 1
+fi
+echo "partial-object-on-disk-before-cancel: 1"
+
+echo "== cancel the step from the Hub as the owner =="
+code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT \
+    -H "Authorization: Bearer $bearer" \
+    "$trail_url/steps/$rev/cancel")
+echo "hub-cancel-http-code: $code"
+
+# Diagnostics only (stderr): show the device actually polled its step.
+polls=$(pv_exec grep -rc "status on Hub" "$storage/logs" 2>/dev/null | awk -F: '{n+=$2} END{print n+0}')
+echo "device polled its step $polls times before the cancel landed" >&2
+
+echo "== wait for the device to report CANCEL =="
+# One download tick is 6 s; the device polls its own step on every tick and
+# only then reports progress. A cancel landing between that poll and the
+# progress PUT is overwritten on the Hub (progress PUTs are unconditional so
+# a non-adhering device stays visible); re-issue it, as an owner would.
+attempt=1
+while ! wait_for_value "pvcontrol steps show-progress $rev | jq -r '.status'" "CANCEL" 15; do
+    hub_now=$(curl -s -H "Authorization: Bearer $bearer" "$trail_url/steps/$rev" | jq -r '.progress.status')
+    [ "$hub_now" = "CANCEL" ] && continue
+    attempt=$((attempt + 1))
+    [ "$attempt" -le 4 ] || { echo "ERROR: revision $rev never reported CANCEL (Hub shows $hub_now)" >&2; exit 1; }
+    echo "cancel overwritten by a progress PUT (Hub shows $hub_now); re-issuing, attempt $attempt" >&2
+    curl -s -o /dev/null -X PUT -H "Authorization: Bearer $bearer" "$trail_url/steps/$rev/cancel"
+done
+pvcontrol steps show-progress $rev | jq -Mc '{status, "status-msg"}'
+
+echo "== device goes back to idle and stays on the previous revision =="
+wait_for_pantahub_state "idle" \
+    || { echo "ERROR: timeout waiting for pantahub.state idle" >&2; exit 1; }
+wait_for_value "pvcontrol devmeta ls | jq -r '.[\"pantavisor.status\"]'" "READY" 60 \
+    || { echo "ERROR: device not READY after cancel" >&2; exit 1; }
+current=$(pvcontrol devmeta ls | jq -r '.["pantavisor.revision"]')
+if [ "$current" != "$rev" ]; then
+    echo "still-on-previous-revision: 1"
+else
+    echo "still-on-previous-revision: 0 ($current)"
+fi
+
+# The partial object is content-addressed and must survive the cancel so a
+# later re-post of the same content resumes instead of starting over.
+size_after_cancel=$(pv_exec wc -c "$tmp_path" 2>/dev/null | awk '{print $1}')
+[ -z "$size_after_cancel" ] && size_after_cancel=0
+if [ "$size_after_cancel" -ge "$size_before_cancel" ] 2>/dev/null; then
+    echo "partial-object-kept: 1"
+else
+    echo "partial-object-kept: 0 ($size_after_cancel < $size_before_cancel)"
+fi
+
+# Prove the device did not overwrite the owner's decision on the Hub side:
+# give any in-flight progress PUT a moment to land, then read the step back.
+sleep 10
+hub_status=$(curl -s -H "Authorization: Bearer $bearer" "$trail_url/steps/$rev" | jq -r '.progress.status')
+echo "hub-step-status: $hub_status"

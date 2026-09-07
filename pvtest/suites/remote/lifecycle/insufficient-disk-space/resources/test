@@ -1,0 +1,46 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME (see
+# automated-workflow.md § Test authoring rules).
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+echo "== post revision (same content, makes factory rev GC-able) =="
+revA=$(pvr_post_rev -m "same revision to make factory rev GC-able" "$trail_url")
+[ -n "$revA" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+wait_for_revision_state "$revA" "UPDATED" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for revision $revA to reach UPDATED" >&2; exit 1; }
+
+echo "== reboot to commit revision as current =="
+pvcontrol commands reboot "pvtest: commit revision as current" > /dev/null 2>&1
+wait_for_revision_state "$revA" "DONE" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for revision $revA to reach DONE" >&2; exit 1; }
+pvcontrol commands go-remote > /dev/null
+
+echo "== post large file (GC_RESERVED=100 ensures WONTGO after GC) =="
+dd if=/dev/urandom of=pv-example-app/bigfile.bin bs=1M count=50 2>/dev/null
+pvr add pv-example-app/bigfile.bin > /dev/null 2>&1
+pvr commit -m "add large file to trigger insufficient space" > /dev/null 2>&1
+revB=$(pvr_post_rev -m "trigger insufficient space" "$trail_url")
+[ -n "$revB" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+
+wait_for_path "$(pv_storage_dir)/trails/0" "-d" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for /storage/trails/0 to be GC'd" >&2; exit 1; }
+wait_for_value "pvcontrol steps show-progress $revB | jq -r '.status'" "WONTGO" 120 \
+    || { echo "ERROR: timeout waiting for revision $revB to reach WONTGO" >&2; exit 1; }
+
+echo "== local step progress =="
+pvcontrol steps show-progress $revB | jq -Mc 'del(.logs, .downloads)'
+
+echo "== cloud step status =="
+cloud_step_url="$PVTEST_HUB_URL/trails/$device_id/steps/$revB"
+wait_for_value "pvr stepinfo $cloud_step_url 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "WONTGO" 60 \
+    || { echo "ERROR: timeout waiting for cloud to reflect WONTGO" >&2; exit 1; }
+pvr stepinfo "$cloud_step_url" | sed -n '/^{/,$p' | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'

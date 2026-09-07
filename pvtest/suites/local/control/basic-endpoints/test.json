@@ -1,0 +1,20 @@
+{
+	"#spec": "pv-test@1",
+	"description": "control socket basic",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=0",
+			"usrmeta": ""
+		},
+		"containers": {
+			"tarballs": [
+				"../../common/tarballs/pv-example-app.pvrexport.tgz"
+			]
+		},
+		"self-claim": "false",
+		"commit-initial": "false"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

@@ -1,0 +1,50 @@
+== pv conf file ==
+{
+  "key": "PV_SYSTEM_INIT_MODE",
+  "value": "appengine",
+  "modified": "pv conf file"
+}
+== ph conf file ==
+{
+  "key": "PH_CREDS_HOST",
+  "value": "api.pantahub.com",
+  "modified": "ph conf file"
+}
+== cmdline ==
+{
+  "key": "PH_METADATA_DEVMETA_INTERVAL",
+  "value": "15",
+  "modified": "ph cmdline"
+}
+== env ==
+{
+  "key": "PV_POLICY",
+  "value": "test",
+  "modified": "env"
+}
+== policy ==
+{
+  "key": "PV_LOG_CAPTURE_DMESG",
+  "value": "1",
+  "modified": "policy"
+}
+== oem config ==
+{
+  "key": "PH_METADATA_USRMETA_INTERVAL",
+  "value": "30",
+  "modified": "oem config"
+}
+== metadata (before write) ==
+{
+  "key": "PV_LOG_LEVEL",
+  "value": "4",
+  "modified": "pv conf file"
+}
+== update PV_LOG_LEVEL via user-meta ==
+
+== metadata (after write) ==
+{
+  "key": "PV_LOG_LEVEL",
+  "value": "5",
+  "modified": "metadata"
+}

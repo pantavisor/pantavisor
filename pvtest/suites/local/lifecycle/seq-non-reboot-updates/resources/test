@@ -1,0 +1,110 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+# Per-test isolation: private $HOME + temp checkout dir (see automated-workflow.md § Test authoring rules).
+export HOME="$(mktemp -d)"
+pvr_clone_local_or_die "$HOME/checkout"
+cd "$HOME/checkout"
+
+# Container init PIDs live on the device host, not the tester, so route lxc-info
+# via pv_exec (falls back to local exec when PVTEST_EXEC is unset).
+get_pid() {
+    pv_exec lxc-info -P /usr/var/lib/lxc -n "$1" -p 2>/dev/null | awk '{print $2}' | tr -d '\r'
+}
+
+echo "== initial state =="
+PID_NOROLE_0=$(get_pid "pv-example-norole")
+PID_WEB_0=$(get_pid "pv-example-app")
+
+if [ -z "$PID_NOROLE_0" ]; then
+    echo "ERROR: pv-example-norole is not running at initial state"
+    exit 1
+fi
+if [ -z "$PID_WEB_0" ]; then
+    echo "ERROR: pv-example-app is not running at initial state"
+    exit 1
+fi
+
+echo "Initial state: NOROLE=running WEB=running"
+
+echo "== update 1: modify pv-example-app =="
+sed -i 's/lxc\.tty\.max = 8/lxc.tty.max = 4/g' pv-example-app/lxc.container.conf
+pvr add .
+pvr commit -m "update pv-example-app" > /dev/null 2>&1
+pvr post --rev "locals/update1" > /dev/null 2>&1
+
+wait_for_revision_state "locals/update1" "UPDATED" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/update1 to reach UPDATED" >&2; exit 1; }
+
+PID_NOROLE_1=$(get_pid "pv-example-norole")
+PID_WEB_1=$(get_pid "pv-example-app")
+
+if [ "$PID_NOROLE_0" != "$PID_NOROLE_1" ]; then
+    echo "ERROR: pv-example-norole restarted in update 1"
+    exit 1
+fi
+if [ "$PID_WEB_0" = "$PID_WEB_1" ]; then
+    echo "ERROR: pv-example-app did NOT restart in update 1"
+    exit 1
+fi
+
+echo "Update 1: NOROLE=stable WEB=restarted"
+
+echo "== update 2: add pv-example-app1 =="
+cp -r pv-example-app/ pv-example-app1/
+grep -rl "pv-example-app" pv-example-app1/ | xargs sed -i 's/pv-example-app/pv-example-app1/g'
+sed -i 's/\bnet\b//g' pv-example-app1/lxc.container.conf
+pvr add .
+pvr commit -m "add pv-example-app1" > /dev/null 2>&1
+pvr post --rev "locals/update2" > /dev/null 2>&1
+
+wait_for_revision_state "locals/update2" "UPDATED" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/update2 to reach UPDATED" >&2; exit 1; }
+
+PID_NOROLE_2=$(get_pid "pv-example-norole")
+PID_WEB_2=$(get_pid "pv-example-app")
+PID_WEB1_2=$(get_pid "pv-example-app1")
+
+if [ "$PID_NOROLE_1" != "$PID_NOROLE_2" ]; then
+    echo "ERROR: pv-example-norole restarted in update 2"
+    exit 1
+fi
+if [ "$PID_WEB_1" != "$PID_WEB_2" ]; then
+    echo "ERROR: pv-example-app restarted in update 2"
+    exit 1
+fi
+if [ -z "$PID_WEB1_2" ]; then
+    echo "ERROR: pv-example-app1 failed to start in update 2"
+    exit 1
+fi
+
+echo "Update 2: NOROLE=stable WEB=stable WEB1=started"
+
+echo "== update 3: modify pv-example-app again =="
+sed -i 's/lxc\.tty\.max = 4/lxc.tty.max = 2/g' pv-example-app/lxc.container.conf
+pvr add .
+pvr commit -m "update pv-example-app again" > /dev/null 2>&1
+pvr post --rev "locals/update3" > /dev/null 2>&1
+
+wait_for_revision_state "locals/update3" "UPDATED" > /dev/null 2>&1 \
+    || { echo "ERROR: timeout waiting for locals/update3 to reach UPDATED" >&2; exit 1; }
+
+PID_NOROLE_3=$(get_pid "pv-example-norole")
+PID_WEB_3=$(get_pid "pv-example-app")
+PID_WEB1_3=$(get_pid "pv-example-app1")
+
+if [ "$PID_NOROLE_2" != "$PID_NOROLE_3" ]; then
+    echo "ERROR: pv-example-norole restarted in update 3"
+    exit 1
+fi
+if [ "$PID_WEB_2" = "$PID_WEB_3" ]; then
+    echo "ERROR: pv-example-app did NOT restart in update 3"
+    exit 1
+fi
+if [ "$PID_WEB1_2" != "$PID_WEB1_3" ]; then
+    echo "ERROR: pv-example-app1 restarted in update 3"
+    exit 1
+fi
+
+echo "Update 3: NOROLE=stable WEB=restarted WEB1=stable"

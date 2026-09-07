@@ -1,0 +1,68 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+if [ -z "$PH_USER" ] || [ -z "$PH_PASS" ]; then
+    echo "ERROR: PH_USER/PH_PASS not set" >&2; exit 1
+fi
+PVR_USERNAME="$PH_USER" PVR_PASSWORD="$PH_PASS" pvr login > /dev/null 2>&1 \
+    || { echo "ERROR: pvr login failed" >&2; exit 1; }
+
+echo "== wait for unclaimed state =="
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "claim" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state claim" >&2; exit 1; }
+pvcontrol devmeta ls | jq -M -r '.["pantahub.state"]'
+
+echo "== generate factory autotok via Pantahub API =="
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+bearer=$(cat "$HOME/.pvr/auth.json" 2>/dev/null | jq -r 'first(.tokens[]) | .["access-token"] // empty')
+autotok_json=$(curl -s -X POST \
+	-H "Authorization: Bearer $bearer" \
+	-H "Content-Type: application/json" \
+	-d '{}' \
+	"$PVTEST_HUB_URL/devices/tokens")
+autotok=$(echo "$autotok_json" | jq -r '.token')
+autotok_id=$(echo "$autotok_json" | jq -r '.id')
+
+echo "== inject autotok and reboot =="
+# Overwrite (not append) unclaimed.config: clearing PH_CREDS_ID forces a fresh
+# registration, the only path that consumes the factory autotok.
+pv_exec sh -c "echo PH_FACTORY_AUTOTOK=$autotok > /run/pantavisor/pv/phconfig/unclaimed.config"
+pvcontrol commands reboot "pvtest: inject autotok and reboot" > /dev/null 2>&1
+
+echo "== wait for auto-claim =="
+# This reboot has no revision transition to key on (unlike every other reboot
+# in this suite, which pair a reboot with a DONE/UPDATED revision-state
+# change) — it only flips a registration config consumed at boot. cmd reboot
+# doesn't restart instantly: the appengine wrapper exits the old pantavisor
+# and execs a new one after a short delay (pv-appengine.in exec_run), so
+# pv-ctrl actually drops for that window. Fence on that drop-then-return
+# before issuing go-remote, so it's guaranteed to land on the NEW instance —
+# racing the still-alive old one wastes it (harmlessly rejected, now logged,
+# as "Already in remote mode") while the new instance, which boots local
+# (PV_CONTROL_REMOTE_ALWAYS=0), never gets a go-remote and so never even
+# attempts the registration that consumes the autotok.
+wait_for_down 30 \
+    || { echo "ERROR: pv-ctrl never went down after reboot" >&2; exit 1; }
+wait_for_target_ready \
+    || { echo "ERROR: timeout waiting for device to come back after reboot" >&2; exit 1; }
+pvcontrol commands go-remote > /dev/null
+wait_for_value "pvcontrol devmeta ls | jq -r '.\"pantahub.state\"'" "idle" 120 \
+    || { echo "ERROR: timeout waiting for pantahub.state idle after auto-claim" >&2; exit 1; }
+pvcontrol devmeta ls | jq -M -r '.["pantahub.state"]'
+
+echo "== cleanup =="
+if [ -n "$device_id" ]; then
+	pvr dev delete -y "$(pvr_device_url "$device_id")"
+fi
+# The newly auto-claimed device (post-reboot registration) is NOT deleted
+# here: persistent_worker's own final-detach hygiene (pvtest-run.in) reads the
+# device's current id itself and does unclaim -> wait for pantahub.state=claim
+# -> Hub delete. Deleting it here too races that: the Hub record would already
+# be gone by the time the framework tries to unclaim, so its wait for
+# pantahub.state=claim can never be satisfied and times out.
+if [ -n "$autotok_id" ]; then
+	curl -s -X DELETE \
+		-u "$PH_USER:$PH_PASS" \
+		"$PVTEST_HUB_URL/devices/tokens/$autotok_id" > /dev/null 2>&1
+fi

@@ -1,0 +1,21 @@
+#!/bin/sh
+
+echo "== pv conf file =="
+pvcontrol config ls | jq -M -r '.["system.init.mode"]' | tr -d '\r'
+echo "== ph conf file =="
+pvcontrol config ls | jq -M -r '.["creds.host"]' | tr -d '\r'
+echo "== cmdline =="
+pvcontrol config ls | jq -M -r '.["metadata.devmeta.interval"]' | tr -d '\r'
+echo "== env =="
+pvcontrol config ls | jq -M -r '.["policy"]' | tr -d '\r'
+echo "== policy =="
+pvcontrol config ls | jq -M -r '.["log.capture.dmesg"]' | tr -d '\r'
+echo "== oem config =="
+pvcontrol config ls | jq -M -r '.["metadata.usrmeta.interval"]' | tr -d '\r'
+echo "== metadata (before write) =="
+pvcontrol config ls | jq -M -r '.["log.level"]' | tr -d '\r'
+echo "== update log.level via user-meta =="
+pvcontrol usrmeta save log.level 5
+echo "== metadata (after write) =="
+pvcontrol config ls | jq -M -r '.["log.level"]' | tr -d '\r'
+pvcontrol usrmeta delete log.level > /dev/null 2>&1

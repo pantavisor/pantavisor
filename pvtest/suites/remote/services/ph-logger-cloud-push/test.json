@@ -1,0 +1,18 @@
+{
+	"#spec": "pv-test@1",
+	"description": "ph logger push",
+	"setup": {
+		"config": {
+			"env": "PV_CONTROL_REMOTE=1",
+			"usrmeta": "PV_LOG_PUSH=1"
+		},
+		"containers": {
+			"tarballs": []
+		},
+		"self-claim": "true",
+		"commit-initial": "true"
+	},
+	"test-script": "resources/test",
+	"skip": "false",
+	"devices": []
+}

@@ -1,0 +1,27 @@
+#!/bin/sh
+
+. "${PVTEST_LIBDIR:-/usr/share/pantavisor/pvtest}/utils"
+
+device_id=$(pv_exec cat /run/pantavisor/pv/device-id)
+
+# Per-test isolation: clone into a temp checkout dir; never override $HOME (see
+# automated-workflow.md § Test authoring rules).
+checkout="$(mktemp -d)/checkout"
+pvr_clone_local_or_die "$checkout"
+cd "$checkout"
+
+trail_url="$PVTEST_HUB_URL/trails/$device_id"
+
+echo "== post revision that triggers goals timeout rollback =="
+tmp=$(mktemp)
+jq '."status_goal" = "READY"' pv-example-app/run.json > "$tmp" && mv "$tmp" pv-example-app/run.json
+pvr add pv-example-app/run.json > /dev/null 2>&1
+pvr commit -m "change status_goal to READY to trigger goals timeout" > /dev/null 2>&1
+rev=$(pvr_post_rev -m "trigger rollback" "$trail_url")
+[ -n "$rev" ] || { echo "ERROR: could not determine posted revision" >&2; exit 1; }
+
+echo "== cloud step status =="
+cloud_step_url="$PVTEST_HUB_URL/trails/$device_id/steps/$rev"
+wait_for_value "pvr stepinfo \"$cloud_step_url\" 2>/dev/null | sed -n '/^{/,\$p' | jq -r '.progress.status // empty'" "ERROR" 120 \
+    || { echo "ERROR: timeout waiting for cloud to reflect ERROR" >&2; exit 1; }
+pvr stepinfo "$cloud_step_url" | sed -n '/^{/,$p' | jq -M '{status: .progress.status, "status-msg": .progress["status-msg"]}'
