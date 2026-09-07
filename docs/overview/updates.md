@@ -41,7 +41,7 @@ Pantavisor will only progress to the new revision in case of success. Otherwise,
 * [DONE](#done)
 * [WONTGO](#wontgo)
 * [ERROR](#error)
-* [CANCELLED](#cancelled)
+* [CANCEL](#cancel)
 
 ### NEW
 
@@ -168,9 +168,15 @@ Status goal not reached | [Status goal](containers.md#status-goal) of a containe
 A container could not be started | A [container](containers.md) failed during LXC start up |
 Unexpected rollback | Crash or power cycle before having the chance to report any meaningful status |
 
-### CANCELLED
+### CANCEL
 
-Only applicable on [remote](remote-control.md#pantacor-hub) updates. The revision has been marked as cancelled by the cloud side.
+Only valid for [remote](remote-control.md#pantacor-hub) updates.
+
+Set by the device owner from the cloud side, and honored by the device while the revision is still [QUEUED](#queued) or [DOWNLOADING](#downloading) — checked every ~6 seconds, alongside the download requests, by polling the device's own step with its device token. Any object downloads in flight are aborted, but partial objects already on disk are kept so a later re-post of the same revision can resume them instead of starting over. Once the revision reaches [INPROGRESS](#inprogress), the device no longer looks for a cancel: the bootloader may already have been written and containers may already be starting, so stopping midway is no longer safe. A cancel set on the Hub at that point only keeps a device that lost track of the step (for example after a crash before the try was recorded) from fetching and retrying it, which is also what the older owner `wontgo` action does.
+
+| Messages | Possible causes |
+| ---------|---------------- |
+Cancelled as requested by owner | The device owner cancelled the revision from [Pantacor Hub](remote-control.md#pantacor-hub) |
 
 ## Reference
 

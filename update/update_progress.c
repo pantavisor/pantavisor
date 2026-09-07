@@ -72,6 +72,8 @@ static const char *_ser_update_progress_status(pv_update_progress_status_t s)
 		return "WONTGO";
 	case PV_UPDATE_PROGRESS_STATUS_ERROR:
 		return "ERROR";
+	case PV_UPDATE_PROGRESS_STATUS_CANCEL:
+		return "CANCEL";
 	default:
 		return "UNKNOWN";
 	}
@@ -183,6 +185,9 @@ static void _set_progress(struct pv_update_progress *p)
 	case PV_UPDATE_PROGRESS_STATUS_ERROR:
 		p->progress = 100;
 		break;
+	case PV_UPDATE_PROGRESS_STATUS_CANCEL:
+		p->progress = 100;
+		break;
 	default:
 		pv_log(WARN, "unknown progress");
 		p->progress = 0;
@@ -234,6 +239,8 @@ _parse_update_progress_status(const char *str)
 		return PV_UPDATE_PROGRESS_STATUS_WONTGO;
 	else if (pv_str_matches(str, len, "ERROR", strlen("ERROR")))
 		return PV_UPDATE_PROGRESS_STATUS_ERROR;
+	else if (pv_str_matches(str, len, "CANCEL", strlen("CANCEL")))
+		return PV_UPDATE_PROGRESS_STATUS_CANCEL;
 
 	return PV_UPDATE_PROGRESS_STATUS_UNKNOWN;
 }
@@ -397,6 +404,9 @@ static char *_ser_update_progress_msg(struct pv_update_progress *p,
 		break;
 	case PV_UPDATE_PROGRESS_MSG_ROLLEDBACK:
 		ret = strdup("Unexpected rollback");
+		break;
+	case PV_UPDATE_PROGRESS_MSG_CANCELLED:
+		ret = strdup("Cancelled as requested by owner");
 		break;
 	default:
 		ret = strdup("Internal error");

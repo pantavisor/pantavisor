@@ -217,7 +217,8 @@ int pv_event_rest_send_by_components(
 	enum evhttp_cmd_type op, const char *host, int port,
 	const char *endpoint, const char *token, const char *body,
 	void (*chunk_cb)(struct evhttp_request *, void *),
-	void (*done_cb)(struct evhttp_request *, void *), void *ctx)
+	void (*done_cb)(struct evhttp_request *, void *), void *ctx,
+	struct evhttp_request **out_req)
 {
 	if (!pv_event_get_base())
 		return -1;
@@ -319,6 +320,9 @@ int pv_event_rest_send_by_components(
 	       "add event: type='rest' chunk_cb=%p done_cb=%p req='%s %s HTTP/1.1'",
 	       (void *)chunk_cb, (void *)done_cb, _op_string(op), endpoint);
 
+	if (out_req)
+		*out_req = req;
+
 	return 0;
 error:
 	if (evcon) {
@@ -333,7 +337,7 @@ error:
 int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 			      void (*chunk_cb)(struct evhttp_request *, void *),
 			      void (*done_cb)(struct evhttp_request *, void *),
-			      void *ctx)
+			      void *ctx, struct evhttp_request **out_req)
 {
 	int ret = -1, port;
 	const char *scheme, *host, *path;
@@ -371,7 +375,7 @@ int pv_event_rest_send_by_url(enum evhttp_cmd_type op, const char *url,
 		path = "/";
 
 	ret = pv_event_rest_send_by_components(op, host, port, path, NULL, NULL,
-					       chunk_cb, done_cb, ctx);
+					       chunk_cb, done_cb, ctx, out_req);
 
 out:
 	if (http_uri)

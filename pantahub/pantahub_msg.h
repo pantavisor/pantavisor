@@ -48,6 +48,8 @@ void pv_pantahub_msg_parse_step(const char *json, struct pv_step *step);
 void pv_pantahub_msg_print_step(struct pv_step *step);
 void pv_pantahub_msg_clean_step(struct pv_step *step);
 
+char *pv_pantahub_msg_parse_step_progress_status(const char *json);
+
 void pv_pantahub_msg_parse_object_metadata(
 	const char *json, struct pv_object_metadata *object_metadata);
 void pv_pantahub_msg_print_object_metadata(

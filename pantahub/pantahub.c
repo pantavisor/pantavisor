@@ -792,6 +792,9 @@ static void _prep_download_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(TRACE, "run event: cb=%p", (void *)_prep_download_cb);
 
+	// poll for a Hub-side cancel before issuing more requests
+	pv_pantahub_proto_get_step_status();
+
 	if (pv_pantahub_proto_get_objects_metadata()) {
 		_next_state(PH_STATE_IDLE);
 		return;
@@ -819,6 +822,9 @@ static void _run_state_prep_download()
 static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
 {
 	pv_log(TRACE, "run event: cb=%p", (void *)_download_objects_cb);
+
+	// poll for a Hub-side cancel before issuing more requests
+	pv_pantahub_proto_get_step_status();
 
 	if (pv_pantahub_proto_get_objects()) {
 		_next_state(PH_STATE_IDLE);
