@@ -34,7 +34,7 @@ on:
 jobs:
   check:
     name: "check docs against code"
-    runs-on: ["self-hosted"]
+    runs-on: ["bsp-builder"]
     steps:
       - name: checkout
         uses: actions/checkout@v4
