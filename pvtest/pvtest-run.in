@@ -59,6 +59,7 @@ usage() {
 	echo "  PVTEST_LIBDIR    where utils/common live (default: /usr/share/pantavisor/pvtest)"
 	echo "  APPENGINE_LOGS   dir of <target>.log files, tailed into each test's log"
 	echo "  PH_USER/PH_PASS  Hub credentials, for self-claim and Hub-side usrmeta"
+	echo "  PVTEST_HUB_URL   Hub the run targets (default: https://api.pantahub.com)"
 	echo ""
 	echo "See docs/overview/testing/automated/."
 	echo ""
@@ -153,7 +154,7 @@ _hub_usrmeta_delete() {
 	curl -s -X PATCH \
 		-H "Authorization: Bearer $tok" -H "Content-Type: application/json" \
 		-d "{\"$key\": null}" \
-		"${PVTEST_HUB_URL:-https://api.pantahub.com}/devices/$device_id/user-meta" \
+		"$PVTEST_HUB_URL/devices/$device_id/user-meta" \
 		> /dev/null 2>&1
 }
 
@@ -166,7 +167,7 @@ _hub_usrmeta_set() {
 		curl -sf -X PATCH \
 			-H "Authorization: Bearer $tok" -H "Content-Type: application/json" \
 			-d "{\"$key\": \"$value\"}" \
-			"${PVTEST_HUB_URL:-https://api.pantahub.com}/devices/$device_id/user-meta" \
+			"$PVTEST_HUB_URL/devices/$device_id/user-meta" \
 			> /dev/null 2>&1 && return 0
 		attempt=$((attempt + 1))
 		[ $attempt -le 4 ] && sleep 5
@@ -211,7 +212,7 @@ _sweep_tracked_devices() {
 	while IFS= read -r d; do
 		[ -n "$d" ] || continue
 		pvtest_log WARN "sweeping leftover self-claimed device $d"
-		_pvr_auth dev delete -y "$d" > /dev/null 2>&1
+		_pvr_auth dev delete -y "$(pvr_device_url "$d")" > /dev/null 2>&1
 	done < "$f"
 	: > "$f" 2>/dev/null || true
 }
@@ -426,7 +427,7 @@ _dev_unclaim() {
 	fi
 	if [ -n "$dev" ]; then
 		pvtest_log INFO "deleting device $dev from Hub"
-		_pvr_logged dev delete -y "$dev"
+		_pvr_logged dev delete -y "$(pvr_device_url "$dev")"
 		_track_device del "$dev"
 	fi
 	pvtest_log INFO "device unclaimed"
@@ -461,7 +462,7 @@ _dev_claim() {
 			pvtest_log ERROR "cannot claim (attempt $_try): missing device-id ('$device_id') or challenge"
 		else
 			pvtest_log INFO "claiming device $device_id (attempt $_try)..."
-			if _pvr_logged claim -c "$challenge" "$device_id"; then
+			if _pvr_logged claim -c "$challenge" "$(pvr_device_url "$device_id")"; then
 				_claimed=1; break
 			fi
 		fi
@@ -485,7 +486,7 @@ _dev_delete_only() {
 	local device_id="${1:-$(_dev_read_file /var/run/pantavisor/pv/device-id)}"
 	[ -n "$device_id" ] || return 0
 	pvtest_log INFO "deleting claimed device $device_id"
-	_pvr_logged dev delete -y "$device_id"
+	_pvr_logged dev delete -y "$(pvr_device_url "$device_id")"
 	_track_device del "$device_id"
 }
 
@@ -541,7 +542,7 @@ handle_self_claim() {
 
 	if [ -n "$pre_unclaimed_device" ]; then
 		pvtest_log INFO "deleting device $pre_unclaimed_device from Hub"
-		_pvr_logged dev delete -y "$pre_unclaimed_device"
+		_pvr_logged dev delete -y "$(pvr_device_url "$pre_unclaimed_device")"
 		_track_device del "$pre_unclaimed_device"
 		pre_unclaimed_device=
 	fi
@@ -1094,6 +1095,8 @@ parse_test() {
 	fi
 
 	required_env=$(jq -r '.setup.config.env // ""' "$j")
+	# remote tests need the target pointed at the run's Hub, unless the test names its own
+	required_env=$(pvtest_cfg_with_hub "$required_env" "$PVTEST_HUB_URL")
 	usrmeta=$(jq -r '.setup.config.usrmeta // ""' "$j")
 	tarballs=$(jq -r '.setup.containers.tarballs[]? // empty' "$j")
 	commit_initial=$(jq -r '.setup."commit-initial" // "true"' "$j")
@@ -1368,7 +1371,7 @@ run_slot_pool() {
 	# One line per test: "<rank>\t<cfg>\t<jsonpath>"
 	# rank 0=self-claim
 	for _j in $test_json_list; do
-		_req=$(pvtest_normalize_cfg "$(jq -r '.setup.config.env // ""' "$_j")")
+		_req=$(pvtest_cfg_with_hub "$(jq -r '.setup.config.env // ""' "$_j")" "$PVTEST_HUB_URL")
 		_sc=$(jq -r '.setup."self-claim" // "false"' "$_j")
 		_rank=1
 		case " $_req " in
@@ -1452,6 +1455,7 @@ tmp_err_path=
 _run_scope=${test_selector#"$PVTEST_ROOT"/}
 _run_scope=${_run_scope%/}
 pvtest_log INFO "starting test run: ${_run_scope:-all}"
+pvtest_log INFO "Hub: $PVTEST_HUB_URL"
 
 wait_for_netsim
 

@@ -46,3 +46,30 @@ pvtest_ssh_cmd() {
 pvtest_normalize_cfg() {
 	printf '%s\n' $1 | grep -v '^$' | sort | tr '\n' ' ' | sed 's/ *$//'
 }
+
+# Pantavisor config tokens pointing a target at the Hub at URL $1 (https://host[:port])
+pvtest_hub_cfg() {
+	local _hp _host _port
+	_hp=${1#*://}; _hp=${_hp%%/*}
+	_host=${_hp%%:*}
+	_port=${_hp#"$_host"}; _port=${_port#:}
+	[ -n "$_host" ] || return 1
+	printf 'PH_CREDS_HOST=%s' "$_host"
+	[ -n "$_port" ] && printf ' PH_CREDS_PORT=%s' "$_port"
+	printf '\n'
+}
+
+# Config $1 plus the Hub tokens for URL $2 when it enables remote control and names no Hub itself
+pvtest_cfg_with_hub() {
+	local _n
+	_n=$(pvtest_normalize_cfg "$1")
+	case " $_n " in
+	*" PV_CONTROL_REMOTE=1 "*)
+		case " $_n " in
+		*" PH_CREDS_HOST="*) ;;
+		*) _n="$_n $(pvtest_hub_cfg "$2")" ;;
+		esac
+		;;
+	esac
+	pvtest_normalize_cfg "$_n"
+}
