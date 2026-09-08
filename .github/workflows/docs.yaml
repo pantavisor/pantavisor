@@ -31,6 +31,10 @@ on:
       - "tools/pvcontrol"
       - ".github/workflows/docs.yaml"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     name: "check docs against code"
