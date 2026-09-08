@@ -830,10 +830,8 @@ static void _download_objects_cb(evutil_socket_t fd, short event, void *arg)
 		_next_state(PH_STATE_IDLE);
 		return;
 	}
-
-	// push the current byte counter to the trail-dir file and Hub, ~every
-	// REQ_INTERVAL seconds; skipped internally if no bytes moved
-	pv_update_report_download_progress();
+	// download progress is reported from the step poll callback, after it
+	// came back without a cancel, so the PUT cannot overwrite a fresh CANCEL
 }
 
 static void _run_state_download()
