@@ -779,8 +779,14 @@ static void _recv_get_step_status_cb(struct evhttp_request *req, void *ctx)
 
 	pv_log(DEBUG, "step '%s' status on Hub: %s", pv_update_get_rev(),
 	       status);
-	if (!pv_str_matches(status, strlen(status), "CANCEL", strlen("CANCEL")))
+	if (!pv_str_matches(status, strlen(status), "CANCEL",
+			    strlen("CANCEL"))) {
+		// only now report download progress: a PUT racing the poll
+		// would overwrite a CANCEL that landed since the last tick
+		if (pv_update_is_downloading())
+			pv_update_report_download_progress();
 		goto out;
+	}
 
 	pv_log(INFO, "Hub requested cancel of rev '%s'", pv_update_get_rev());
 	pv_pantahub_proto_cancel_transfers();
