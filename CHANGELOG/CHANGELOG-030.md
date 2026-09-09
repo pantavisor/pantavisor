@@ -8,6 +8,43 @@ which runs automatically in CI (via
 [`tag-changelogs.yaml`](../.github/workflows/tag-changelogs.yaml) when a
 tag is synced from meta-pantavisor) and on demand locally.
 
+## v030-rc3
+
+Released: 2026-09-09
+Commit: [`48c582334875`](https://github.com/pantavisor/pantavisor/commit/48c582334875dde17634973049885c7ab6049116)
+
+### Changes
+
+Changes since [`030-rc2`](https://github.com/pantavisor/pantavisor/releases/tag/030-rc2):
+
+#### Features
+- **pantahub**: report cumulative resume-attempt counter in update progress
+- **pantahub**: resume interrupted object downloads via HTTP Range
+- **pantahub**: add object-download rate-limit knob for testing
+- **update**: honor a Hub-side cancel while queued or downloading
+- **pvtest**: point a whole run at another Hub via PVTEST_HUB_URL
+- **pvtest**: allow relocating the suite root via PVTEST_ROOT
+- **pvtest**: allow relocating utils/common via PVTEST_LIBDIR
+- **pvtest**: name the board re-type mechanism setbootconfig
+
+#### Fixes
+- **pantahub**: report download progress only after the step poll returns
+- **pantahub**: POST /devices error being logged as GET
+- **ctrl**: require an exact cgroup name match for caller identity
+- **cgroup**: keep appengine's cgroup ns root and cgroupfs mount root in sync
+
+#### CI
+- cancel superseded runs of the same PR
+- run build and docs jobs on runners labelled bsp-builder
+
+#### Docs
+- name the config keys and command behind remote control and updates
+- overview vs reference contract and fixup
+- **wakelocks**: use canonical PV_POWER_* keys and document the pv-ctrl endpoint
+
+#### Other
+- (refactor) **config**: drop the dotted power.* aliases, freeze the legacy key table
+
 ## v030-rc1
 
 Released: 2026-08-25
