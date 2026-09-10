@@ -964,9 +964,34 @@ static int parse_service_exports(struct pv_state *s, struct pv_platform *p,
 					free(allow_str);
 				}
 
+				// activation:{"mode":"on-demand"|"always"};
+				// default "always" (start at boot). Only the
+				// nested "mode" string is consulted.
+				bool activatable = false;
+				char *act_str = pv_json_get_value(
+					svc_s, "activation", sv, svc_c);
+				if (act_str) {
+					jsmntok_t *atv = NULL;
+					int atc;
+					if (jsmnutil_parse_json(act_str, &atv,
+								&atc) > 0) {
+						char *mode = pv_json_get_value(
+							act_str, "mode", atv,
+							atc);
+						if (mode) {
+							activatable = !strcmp(
+								mode,
+								"on-demand");
+							free(mode);
+						}
+						free(atv);
+					}
+					free(act_str);
+				}
+
 				pv_platform_add_service_owns(
 					p, service_str_to_type(t_s), bus, owns,
-					role, allow, allow_count);
+					role, allow, allow_count, activatable);
 
 				for (int j = 0; j < allow_count; j++)
 					free(allow[j]);
