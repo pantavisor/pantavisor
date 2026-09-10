@@ -1,0 +1,12 @@
+== activatable name is exposed in the xconnect graph ==
+{"activatable":"org.freedesktop.Avahi","owner":"pv-avahi"}
+== passive owner: mounted, not started, name unowned ==
+{"status":"MOUNTED","status_goal":"MOUNTED"}
+boolean false
+== first call to org.freedesktop.Avahi activates the owner transparently ==
+cold GetVersionString: OK
+== owner promoted MOUNTED -> STARTED, name owned ==
+{"status":"STARTED","status_goal":"STARTED"}
+boolean true
+== warm path: second call goes straight through ==
+warm GetHostName: OK
