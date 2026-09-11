@@ -1,224 +1,162 @@
 ---
-title: "Running Against a Real Device"
+title: "Running Against a Real Device With a Containerized Tester"
 sidebar_position: 3
 description: "Running tests against real devices with the help of the device manifest, hook scripts, architecture specific test containers and pvs signing."
 ---
 # Running pvtests Against a Real Device
 
-The same suite that runs against the appengine pool runs against real hardware. The tester is
-always x86, always runs on the host, and reaches the device over SSH and the pvr HTTP endpoint.
-Only the example container tarballs the tests deploy are board-specific: they carry a rootfs
-built for one architecture and signed by one CA.
+The [pvtest](pvtest-harness.md) suite can also run against real hardware. The tester
+still runs on the host as in the [appengine](appengine.md) case. However, in this case,
+the device is separated, typically connected to the same network as the host. While the
+pvtest suite is the same for every target runner, the example container tarballs must be
+built specifically for the architecture of the runner and signed for the base bsp CA.
 
-For the framework itself see [pvtest-harness.md](pvtest-harness.md); for authoring tests and CI,
-[appengine.md](appengine.md).
+The containerized tester provides a solution that lets you run the tester in your host
+with a minimal set of dependencies besides Docker. It is also possible to run the tester
+[natively](native.md) to avoid the container runtime entirely.
+
+## Installing
+
+Same as in the case of [appengine](appengine.md), everything that is needed to run pvtest
+against real devices is included in the
+[meta-pantavisor built](../../meta-pantavisor/overview/testing/automated/index.md)
+`pantavisor-appengine-distro-<machine>.tar.gz` tarball.
+
+Untar it and check the included `README.md` to know how to continue.
 
 ## Setup
 
-### Install
-
-Extract the tarball and load the Docker images as described in the tarball's own `README.md`.
-Building it is a meta-pantavisor Yocto build:
-[Building the pvtest distro](../../meta-pantavisor/overview/testing/automated/index.md).
-
 ### The device manifest
 
-`device.txt` is a template: copy it, fill it in, uncomment.
+`device.txt` documents every key. Copy it, fill it in, uncomment.
 
-| Key | Required | Default | Meaning |
-|---|---|---|---|
-| `name=` | yes | — | identifies this one runner, console capture lands in `<name>.log` |
-| `type=` | no | `name=` | the *class* of target, shared by every board of the same kind (the Yocto MACHINE is the natural value). This is what a test's `"devices"` allow-list matches |
-| `ip=` | yes | — | device IP for the pvr HTTP endpoint on `:12368` → `PVTEST_HOST` |
-| `exec=` | yes | — | command prefix to run `pvcontrol`/`pventer` on the device → `PVTEST_EXEC` |
-| `tty=` | yes | — | host-local serial device path for console capture. Prefer a stable `/dev/serial/by-id/…` over `/dev/ttyUSBN` |
-| `baud=` | no | `115200` | `stty` baud for the console |
-| `setbootconfig=` | no | — | host command that writes the device's boot-time config and power-cycles it. When set, a test whose `config.env` doesn't match the live device re-types through this script instead of SKIPping |
-| `setbootconfig_conf=` | no | — | config file passed to `setbootconfig=` as `-c <file>` |
-| `setbootconfig_base=` | no | — | this board's base boot-config tokens, space-separated `KEY=VALUE`, passed to `setbootconfig=` ahead of each test's own tokens. Useful, for example, to set `PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct` so every test captures pantavisor's logs on the console |
-
-Unrecognized keys produce a `WARN` and are ignored.
-
-A manifest describes a *workstation's* board, so it lives in the host's pvtest config dir
-rather than in a workspace the next install throws away:
+A manifest describes a workstation board and the means to communicate with it, so it
+should be installed in a permanent place in the host that can be reused through pvtest
+installs, such as the config dir:
 
 ```
 ~/.config/pvtest/
-  rock5a.conf             <- whatever setbootconfig=/setbootconfig_conf= reads. Host-side only
-  devices/                <- the only directory bind-mounted into the tester
-    rock5a.txt            <- a named manifest, used by --device rock5a
-    id_board              <- the SSH key exec= names, 0600
+  devices/        <- the only directory bind-mounted into the tester
+    rock5a.txt    <- a named manifest, used by --device rock5a
+    id_board      <- the SSH key referenced by exec=, 0600
+  hooks/
+    rock5a.conf   <- config file for setbootconfig_conf= and flash_conf=
 ```
 
-`--device` always takes a value and resolves it against that tree, name first:
+`--device` always takes a value and firstly resolves it against that tree:
 
 | Invocation | Manifest |
 |---|---|
 | `--device rock5a` | `~/.config/pvtest/devices/rock5a.txt` |
-| `--device ./b.txt`, `--device /abs/b.txt` | that path, when the config dir holds no such name |
-
-**An installed manifest never implies device mode.** `--device` is the only thing that
-selects a board: a run without it drives the appengine pool, whatever sits in the config dir.
+| `--device ./b.txt`, `--device /abs/b.txt` | path, when the config dir holds no such name |
 
 ### The setbootconfig script
 
-A board is a slot like any other: the tester asks the host to bring slot 0 up on a given config
-over the same ctrl protocol the appengine pool uses, and the host satisfies it by running this
-board's setbootconfig script (`PVTEST_RETYPE=setbootconfig`) instead of booting a container.
+`setbootconfig=` in device manifest can be used to provide pvtest harness with a hook
+command that sets a board with the necessary environment configuration before each test.
 
-A board with no `setbootconfig=` answers `unsupported`, which is a normal reply rather than an
-error: the tester binds the board as it is and SKIPs any test whose `config.env` it doesn't
-already satisfy — so run device-mode suites **without** `--fail-on-skip` until each test's
-`"devices"` array is triaged.
+This hook will be used in the [persistent model](pvtest-harness.md#persistent-model)
+only. In that case, we share the storage of the target runners between test executions.
+If the hook is set, we will execute it before each test that requires a boot config that
+is not already met by the device. If the hook is not set and the device does not meet the
+env config requirements, the test will be directly `SKIPPED`.
 
-Path rules: `setbootconfig=`/`setbootconfig_conf=` are consumed host-side only and may point
-anywhere on the host. Paths in `exec=` must be absolute and inside the manifest's own directory
-— that directory is bind-mounted into the tester at the same absolute path, so an SSH key
-anywhere else is invisible to it.
+`setbootconfig_conf=` is not parsed by the framework but directly passed to the hook.
 
-The contract:
+The contract for the hook is in `device.txt`.
 
-```
-setbootconfig contract
-Invocation:  <setbootconfig> [-c <setbootconfig_conf>] KEY=VALUE ...
-Inputs
-  argv    the complete set of boot-config tokens the board must boot with:
-          setbootconfig_base= tokens first, then the test's config.env tokens.
-          A later token wins on a duplicate key. An empty value (KEY=) means
-          "unset, use the default". Write them as a whole; do not merge with
-          whatever the board currently has.
-  -c      setbootconfig_conf=, if set. Opaque to the runner.
-  env     the runner's own environment (under a lab wrapper that includes
-          whatever it exports, e.g. power-port commands). No PVTEST_* is
-          guaranteed. stdin is closed. cwd is unspecified: use absolute paths.
-  console the runner releases tty= before the call and re-opens it after, so
-          the script may open the serial device exclusively.
-Outputs
-  exit 0  the tokens are the board's persistent boot config (they survive the
-          reboots a test itself triggers, until the next call) AND a reboot or
-          power-cycle has been started. Return as soon as it has; do not wait
-          for the board to come back, the runner fences READY itself.
-  exit !0 failure. The runner reports the target as failed for that test.
-  stdout/stderr  captured to <workspace>/dev-setbootconfig-<name>-<id>.log.
-Must not: contact the board over exec= (it is rebooting), change keys it was
-not given (other than by restoring setbootconfig_base=), require a TTY on
-stdin, or leave the serial device open on exit.
-Timing: no timeout is enforced; the runner only WARNs if the console shows no
-activity within 30 s of return.
-```
+### The flash script
+
+`flash=` from device manifest can be used to provide the pvtest framework with means to
+get the board to the initial setup with the containers plus env boot config required by
+each test.
+
+As tests themselves don't include the bsp itself, it is the responsibility
+of the hook to install the setup initial containers along a working bsp that comes with
+pvtx endpoint. If that is not the case, a container with pvr endpoint (e.g. pvr-sdk) can
+do that role. Additionally, the hook could provision the board with connectivity if
+remote testing is to be performed.
+
+The hook is only used by the [volatile model](pvtest-harness.md#volatile-model), being
+mandatory in this case. The hook will be executed before every test to get that fresh
+board state under testing.
+
+`flash_conf=` is not parsed by the framework but directly passed to the hook.
+
+The contract for the hook is in `device.txt`.
 
 ### Building target tarballs
 
-The example containers are ordinary `image` + `container-pvrexport` recipes with no arch
-literals, so building *just those recipes* for the board's MACHINE is enough — any build config
-with the right MACHINE and the right signing CA will do. The invocation is in meta-pantavisor:
-[Building fixtures for another MACHINE](../../meta-pantavisor/overview/testing/automated/index.md#building-fixtures-for-another-machine).
-The exports land in the deploy dir under exactly the names the tests reference, making it a
-drop-in source with no renaming or staging step.
+The pvtest distro includes example container tarballs used by the test suite. They are
+built for the [appengine pool](appengine.md) though.
 
-What that leaves you to check:
+To run the tests in a real device, you are going to need to build those example
+containers so they match the board architecture and are signed using the CA that is used
+by its bsp to validate the revisions.
 
-- **Which containers.** `PV_PVTEST_CONTAINERS` in meta-pantavisor's
-  `pantavisor-appengine-distro.bb` is the authoritative list of what the suites consume. The
-  `PV_PVTEST_CONTAINERS_XCONNECT` set (the dbus fixtures plus the avahi pair) is pinned
-  `"devices": ["appengine"]`, so a real-device run never needs it.
-- **Architecture.** Each `pv-example-*.pvrexport.tgz` embeds a squashfs of a Yocto rootfs built
-  for the current MACHINE/TUNE, so its busybox and coreutils will not run on another
-  architecture. Nothing else in them is arch-bound.
-- **Signature.** Each tarball carries a `_sigs/<PN>.json` `pvs@2` JWS produced by `pvr sig add`
-  using the CA that `pvr-ca.bbclass` fetched; a device only accepts it if its BSP trust store
-  holds the same CA. To switch vendor, set `PVS_VENDOR_NAME`, `PVS_URI` and `PVS_URI_SHA256`
-  consistently across `container-pvrexport`, `pvrexport`, `pvroot-image` and `pantavisor-bsp`.
-- **pvtx on the device.** `setup_test` installs each test's revision with `pvtx` when the
-  device rootfs has it, falling back to a tester-side `pvr post`. On a low-spec board the
-  `pvtx` path is a single fast transaction and worth having; add `pantavisor-pvtx` to the
-  BSP's initramfs in the test distro conf if it isn't there.
+As the example containers live in meta-pantavisor, you will need to build them from
+[there](../../meta-pantavisor/overview/testing/automated/index.md#building-fixtures-for-another-machine).
+The list of containers that are required by the pvtest suite can be found at the
+`PV_PVTEST_CONTAINERS` list in `pantavisor-appengine-distro.bb`.
 
 ### Installing target tarballs
 
+To install the previously built target tarballs:
+
 ```bash
-./test.docker.sh install-tarballs radxa-rock5a <dir|tarball>...   # creates the tree
+./test.docker.sh install-tarballs <target> <dir|tarball> ...
 ```
 
-The target is the first argument and is required — it is deliberately not defaulted to
-`appengine`. A target tree that does not exist yet is created on first install. Each install
-prints what it wrote with a sha256 prefix per tarball, and installing for one board cannot
-disturb another's or the shipped appengine set.
+The target must be the manifest `type=`. For example:
 
-Only the tarballs vary by target, so the suites are **not** copied per board — `local/` and
-`remote/` stay single shared trees:
+```bash
+./test.docker.sh install-tarballs rock5a /tmp/rock5a-example-containers
+```
+
+This will create a new target tree if that didn't exist before:
 
 ```
 <distro-root>/
-  local/  remote/                        shared suites, one copy
-    common/templates/                    scope-varying, target-invariant
+  local/  remote/                               <- shared suites, one copy
+    common/templates/                           <- scope-varying, target-invariant
   targets/
     appengine/{local,remote}/*.pvrexport.tgz
-    radxa-rock5a/{local,remote}/*.pvrexport.tgz
+    rock5a/{local,remote}/*.pvrexport.tgz
 ```
 
-At tester start, `test.docker.sh` bind-mounts `targets/<type>/<scope>/` over
-`/work/<scope>/common/tarballs`, so a `test.json`'s relative
-`../../common/tarballs/<name>.pvrexport.tgz` resolves to the right architecture on every
-target and nothing in the test data mentions a target. `<type>` is the manifest's `type=`
-field, or `appengine` for a run without `--device`, and `PVTEST_DEVICE_TYPE` overrides both.
-Every run announces it at `INFO` in the head of `run.log`:
+Every run announces the target type in `run.log`:
 
 ```
-[ci-runner] 1753600000 INFO -- [test.docker.sh]: target type: radxa-rock5a (tarballs from targets/radxa-rock5a)
+[ci-runner] 1753600000 INFO -- [test.docker.sh]: target type: rock5a (tarballs from targets/rock5a)
 ```
-
-If the resolved target has no tree under `targets/`, the run **aborts before any container
-starts**, listing the targets that do exist. A tree that exists but is missing a tarball a test
-asks for fails later, in the runner, naming the tarball and the test that wanted it.
-
-Name the tarball files explicitly, or stage them into a directory of their own and pass that:
-pointing `install-tarballs` at a raw deploy directory also sweeps up
-`pantavisor-bsp-*.pvrexport.tgz`, `pv-pvr-sdk-*.pvrexport.tgz` and versioned duplicates, which
-the suites do not want. Target trees live in the *extracted* distro, not in the meta-pantavisor
-source tree — a rebuild re-stages the pristine `targets/appengine/`.
 
 ## Running
 
-```bash
-./test.docker.sh run local --device rock5a
-```
-
-`./test.docker.sh -h` and the tarball `README.md` cover the rest. Device specifics:
-`--device` is incompatible with `-p>1`, `-n` and `-V`, and forces `--model persistent`. `-i`
-opens the tester console wired to the board; `-m` opens a shell on the board itself through
-`exec=`, entering it as it is (no re-type, so the test's `config.env` is not applied) and
-leaving it running on exit.
+See the `README.md` included in the pvtest distro tarball to learn how to run.
 
 ## Debugging
 
-The run workspace's own `README.md` documents the layout, the log format and its sources, the
-useful greps and the result lines. Two deltas against an appengine run:
-
-- there is no `storage/` tree — the device keeps its own on-device storage;
-- pantavisor's own log sources reach `test.log` only if the manifest sets
-  `setbootconfig_base=PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct`. The serial console capture
-  always lands in `<name>.log`.
+The run workspace will include another `README.md` that documents the output layout,
+including log format and its sources, useful greps, and how to interpret results.
 
 ### Expected outcomes
 
-Not every non-PASS is a bug. Triage device results against these classes first:
+As you might find yourself running the tests on a new target, bear in mind that not every
+non-PASSED is a bug:
 
-- **SKIPPED because the test is pinned to another target is by design.** A test whose
-  `"devices"` allow-list excludes this target never runs here (see the target-pinning rule
-  in [appengine.md](appengine.md#test-authoring-rules)); the log line names the target and
-  the list. Today that is `local/core/*-config-overload` (their golden output asserts
-  appengine-specific config values, and `PV_POLICY=test` requires a `test.config` policy a
-  BSP need not ship — a missing policy file is fatal to pantavisor init), `local/xconnect/*`
-  (they need the `xconnect-dbus-systembus` build feature and its example containers), and
-  `local/services/daemons` (it asserts the appengine image's daemon set).
-- **SKIPPED on unmet `config.env` with no `setbootconfig=` configured is by design, not a
-  failure.** Without a setbootconfig script a real device's config is immutable per test, so
-  e.g. the config-overload tests (`PV_POLICY=test`), the secureboot tests
-  (`PV_SECUREBOOT_MODE=strict`) and `on-demand-gc` (`PV_STORAGE_LOGTEMPSIZE=` — persistent
-  logs) skip wherever the device's live config says otherwise. Never change a device's config
-  or BSP just to un-skip a test — configure a `setbootconfig=` instead if the device supports
-  boot-time config injection.
-- **Timeouts**: device runs default `PVTEST_TEST_TIMEOUT` to 1800 s (vs 600 s for
-  containers) — updates may need real reboots and every forwarded poll pays an ssh
-  round-trip.
+- **SKIPPED on target type filter:** A test.json can contain a `"devices"` allow-list
+  that excludes all targets that are not on said list. In this case, the test will be
+  SKIPPED. See [test authoring rules](appengine.md#test-authoring-rules).
+- **SKIPPED on unmet `config.env` with no `setbootconfig=`:** When running
+  [persistent model](pvtest-harness.md#persistent-model), any test that does not meet
+  the boot config env requirements will be SKIPPED.
+- **ABORTED on setup timeout:** `setbootconfig=` (300 s) or `flash=` (3600 s) timeouts
+  will result in the test being ABORTED.
+- **FAILED on test timeout:** test script might also end up in a timeout (600 s),
+  specially in boards with low specs. In that case the test will be flagged as FAILED.
+  `PVTEST_TEST_TIMEOUT` could be adjusted for that.
+- **FAILED on test script output diff:** this generally means the test failed. As tests
+  are authored and tested against appengine pool, it is important to closely review these
+  output diffs in case the test itself is not properly prepared for multi target. In case
+  this is not possible to fix in the test itself, the solution is to filter it out for
+  specific device types with `"devices"` from test.json.
