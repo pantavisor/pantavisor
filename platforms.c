@@ -238,8 +238,11 @@ static void pv_platform_set_status(struct pv_platform *p, plat_status_t status)
 	pv_log(INFO, "platform '%s' status is now %s", p->name,
 	       pv_platform_status_string(status));
 
-	if (status == PLAT_STOPPED)
+	if (status == PLAT_STOPPED) {
+		if (p->log_path[0])
+			pv_logserver_remove_platform_socket(p->log_path);
 		pv_platform_unmount_volumes(p);
+	}
 
 	pv_platform_on_status_goal_reached(p);
 
@@ -278,6 +281,7 @@ struct pv_platform *pv_platform_add(struct pv_state *s, char *name)
 		p->pipefd[1] = -1;
 		p->pipefd_listener.fd = -1;
 		p->pipefd_listener.ev = NULL;
+		memset(p->log_path, 0, sizeof(p->log_path));
 		dl_list_init(&p->drivers);
 		dl_list_init(&p->services);
 		dl_list_init(&p->service_exports);

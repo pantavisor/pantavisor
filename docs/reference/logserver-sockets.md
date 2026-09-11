@@ -9,7 +9,23 @@ description: "Logserver Unix socket paths and message formats."
 **Overview:** [Storage → Logs](../overview/storage.md#logs) explains how the log server fits together and
 what each sink is for.
 
-The Pantavisor logging system uses two Unix sockets for inter-process log management: `pv-ctrl-log` for receiving direct log messages and `pv-fd-log` for subscribing file descriptors to be polled by Pantavisor.
+The Pantavisor logging system listens on two long-lived Unix sockets for inter-process log
+management — `pv-ctrl-log` for receiving direct log messages and `pv-fd-log` for subscribing file
+descriptors to be polled by Pantavisor — plus one datagram socket per running container,
+bind-mounted at [`/dev/log`](#devlog) so that standard syslog clients are captured without any
+configuration.
+
+| Socket | Path | Type | Created | Removed |
+|--------|------|------|---------|---------|
+| `pv-ctrl-log` | `<PV_SYSTEM_RUNDIR>/pv-ctrl-log` | `SOCK_STREAM` | Log server start | Log server stop |
+| `pv-fd-log` | `<PV_SYSTEM_RUNDIR>/pv-fd-log` | `SOCK_STREAM` | Log server start | Log server stop |
+| `log.sock` | `<PV_SYSTEM_RUNDIR>/pv-plat-log/<container>/log.sock` | `SOCK_DGRAM`, mode `0666` | Container start, when [`dev-log`](#per-container-control) allows it | Container stop, or a failed start |
+| `/dev/log` | `/dev/log` | `SOCK_DGRAM`, mode `0666` | Log server start, when [`PV_LOG_AUTO_DEVLOG`](pantavisor-configuration.md#summary) is enabled | Closed at log server stop; the socket file is left in place |
+
+`<PV_SYSTEM_RUNDIR>` is the directory set by
+[`PV_SYSTEM_RUNDIR`](pantavisor-configuration.md#summary) (default `/pv`). The last row is
+Pantavisor's own `/dev/log`, used by the processes Pantavisor runs outside any container; each
+container gets its own `log.sock` instead.
 
 ## pv-ctrl-log
 
@@ -70,7 +86,7 @@ The supported log levels are:
 * **message**: The actual log message content.
 
 :::note
-There is no `platform` field. The platform (the folder name under the log directory) is always derived automatically from the cgroup of the process that sent the message, the same way it is for the [Legacy](#legacy-protocol-code--0), [RFC 3164](#rfc-3164), and [RFC 5424](#rfc-5424) protocols.
+There is no `platform` field. The platform (the folder name under the log directory) is never taken from the message: on `pv-ctrl-log` it is derived from the cgroup of the process that sent it, and on [`/dev/log`](#devlog) it is the container that owns the socket. The same applies to the [Legacy](#legacy-protocol-code--0), [RFC 3164](#rfc-3164) and [RFC 5424](#rfc-5424) protocols.
 :::
 
 The supported log levels are:
@@ -114,7 +130,7 @@ Unquoted values end at the first whitespace character. `message=hello world` wit
 :::
 
 :::note
-There is no `platform` field. The platform (the folder name under the log directory) is always derived automatically from the cgroup of the process that sent the message, the same way it is for the [Legacy](#legacy-protocol-code--0), [RFC 3164](#rfc-3164), [RFC 5424](#rfc-5424), and [JSON](#json-protocol) protocols.
+There is no `platform` field. The platform (the folder name under the log directory) is never taken from the message: on `pv-ctrl-log` it is derived from the cgroup of the process that sent it, and on [`/dev/log`](#devlog) it is the container that owns the socket. The same applies to the [Legacy](#legacy-protocol-code--0), [RFC 3164](#rfc-3164), [RFC 5424](#rfc-5424) and [JSON](#json-protocol) protocols.
 :::
 
 The supported log levels are:
@@ -151,7 +167,7 @@ The `msghdr` must contain an `iovec` array with 4 elements:
 #### Subscribe
 - Send the file descriptor using `SCM_RIGHTS`.
 - Set `iov[3]` to `1`.
-- Pantavisor will poll this FD and create a corresponding log file at `/storage/logs/current/<platform>/<source>`.
+- Pantavisor will poll this FD and create a corresponding log file under `<PV_LOG_DIR>/<revision>/<platform>/`, named after the source as described in [Filetree paths](#filetree-paths) — a source with no `/` in it, such as `stdout`, lands at `<platform>/syslog/stdout`.
 
 #### Unsubscribe
 - Set `iov[3]` to `0`.
@@ -164,9 +180,31 @@ Only one file descriptor can be subscribed per platform-source pair. Subscribing
 
 ## /dev/log
 
-Pantavisor's Log Server creates a symbolic link to the pv-ctrl-log socket at `/dev/log` — the standard syslog socket path used by most operating systems and logging libraries. Applications that write standard syslog messages will have their logs captured automatically with no additional configuration.
+Every container gets its own datagram socket at
+`<PV_SYSTEM_RUNDIR>/pv-plat-log/<container>/log.sock`, bind-mounted at `/dev/log` inside the
+container — the standard syslog socket path used by most operating systems and logging libraries.
+Applications that write standard syslog messages will have their logs captured automatically with no
+additional configuration.
 
-RFC 3164 and RFC 5424 protocol support is always active. The `/dev/log` bind-mount into containers is controlled globally by [`PV_LOG_AUTO_DEVLOG`](pantavisor-configuration.md#summary) (default: enabled).
+The socket is created when the container starts and removed when it stops or fails to start, so
+`/dev/log` exists for exactly as long as the container runs. Pantavisor's own processes log to a
+separate `/dev/log` socket, created at log server start when
+[`PV_LOG_AUTO_DEVLOG`](pantavisor-configuration.md#summary) is enabled (default: enabled).
+
+Because each container writes to its own socket, the container a message came from is known from the
+socket it arrived on rather than resolved from the sender's cgroup. RFC 3164 and RFC 5424 protocol
+support is always active.
+
+:::note
+These sockets are `SOCK_DGRAM`, so every message a client sends is captured, including from
+datagram-only syslog clients such as glibc's `syslog()`. The two long-lived sockets,
+[`pv-ctrl-log`](#pv-ctrl-log) and [`pv-fd-log`](#pv-fd-log), remain `SOCK_STREAM`.
+:::
+
+:::note
+A container whose name is empty, is `.` or `..`, or contains `/`, `\` or `"` gets no socket: the
+path cannot be formed, Pantavisor logs a `WARN` and that container simply has no `/dev/log`.
+:::
 
 ### Per-container control
 
@@ -181,8 +219,8 @@ Each container inherits the global [`PV_LOG_AUTO_DEVLOG`](pantavisor-configurati
 
 | Value | Effect |
 |-------|--------|
-| `true` (default) | `/dev/log` is bind-mounted into the container |
-| `false` | `/dev/log` is never mounted in this container, regardless of the global setting |
+| `true` (default) | The container's `log.sock` is created and bind-mounted at `/dev/log` |
+| `false` | No socket is created and `/dev/log` is never mounted in this container, regardless of the global setting |
 
 The parser is selected at runtime based on the first bytes of each datagram:
 
@@ -222,10 +260,11 @@ Annotated example:
 | `PRI` severity bits | `lvl` (level) | See [priority table](#priority-and-facility) |
 | Timestamp | `time` | Parsed with `strptime("%b %d %H:%M:%S")` |
 | Message text | log data | Everything after `APP[PID]: ` |
-| — | `plat` (platform) | Not taken from the message: resolved from the sender's cgroup, falling back to `unknown-platform` |
+| — | `plat` (platform) | Not taken from the message: the container owning the [`/dev/log`](#devlog) socket, or the sender's cgroup on `pv-ctrl-log`, falling back to `unknown-platform` |
 
-The `HOSTNAME` a client sends is never trusted or stored. Like every other protocol on this socket,
-the platform is resolved by Pantavisor from the sending process' cgroup.
+The `HOSTNAME` a client sends is never trusted or stored. Like every other protocol, the platform is
+resolved by Pantavisor — from the socket the message arrived on when that socket belongs to a
+container, and from the sending process' cgroup otherwise.
 
 ### RFC 5424
 
@@ -253,7 +292,7 @@ Nil fields are represented by a single `-` character. Pantavisor accepts `PROCID
 
 | RFC 5424 field | Pantavisor attribute | Notes |
 |----------------|----------------------|-------|
-| `HOSTNAME` | — | Ignored entirely; `plat` is resolved from the sender's cgroup |
+| `HOSTNAME` | — | Ignored entirely; `plat` is resolved from the [`/dev/log`](#devlog) socket's container, or the sender's cgroup on `pv-ctrl-log` |
 | `APP` | `src` (source) | Application name. Falls back to `unknown-app` |
 | `PRI` severity bits | `lvl` (level) | See [priority table](#priority-and-facility) |
 | `TIMESTAMP` | `time` | Parsed with `strptime("%Y-%m-%dT%H:%M:%S")`; nil (`-`) → current time |
@@ -315,8 +354,6 @@ int main(void) {
 
 `openlog` targets `/dev/log` by default on Linux. `LOG_LOCAL0` maps to facility 16.
 
-```
-
 **Python (`logging.handlers.SysLogHandler`)**
 
 ```python
@@ -365,6 +402,41 @@ warning.
 | `nullsink` | `/dev/null` |
 
 See [Output types](../overview/storage.md#output-types) for what each sink is useful for.
+
+### Filetree paths
+
+The `filetree` sink turns the `src` of each message into a path under the container's directory,
+`<PV_LOG_DIR>/<revision>/<container>/`. Leading and trailing `/` are stripped first; a `src` that is
+then empty, is `..`, or still contains `../` or `/..` is replaced by `unknown-src`, so a container
+can never write outside its own directory. A `src` with no `/` left in it is filed under `syslog/`;
+one that still contains a `/` is used as a relative path as-is.
+
+| `src` as sent | Stored at |
+|---------------|-----------|
+| `myapp` | `<container>/syslog/myapp` |
+| `/myapp/` | `<container>/syslog/myapp` |
+| `lxc/console.log` | `<container>/lxc/console.log` |
+| `..`, `a/../b`, or empty | `<container>/syslog/unknown-src` |
+
+The `syslog/` prefix applies to any `src` without a `/`, whatever protocol delivered the message —
+a [JSON](#json-protocol) or [Key-Value](#key-value-protocol) message sent to
+[`pv-ctrl-log`](#pv-ctrl-log) is filed there too, not only syslog text from [`/dev/log`](#devlog):
+
+```
+logs/<revision>/<container>/
+├── syslog/
+│   ├── myapp        <- RFC 3164 via /dev/log
+│   ├── jsonapp      <- JSON via pv-ctrl-log
+│   └── messages
+└── lxc/
+    ├── lxc.log
+    └── console.log
+```
+
+Pantavisor's own messages are unaffected: they always go to
+`<PV_LOG_DIR>/<revision>/pantavisor/pantavisor.log`. This rewriting is specific to `filetree`, the
+only sink that builds file paths out of `src` — `singlefile` and the `stdout*` sinks record `src` as
+a field and never as a path.
 
 ## Timestamp formats
 

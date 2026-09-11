@@ -69,5 +69,4 @@ int pv_fs_file_copy_no_sync(const char *src, const char *dst, mode_t mode);
 int pv_fs_path_copy_recursive_no_sync(const char *src, const char *dst);
 int pv_fs_rename_safe_noatomic(const char *oldpath, const char *newpath);
 
-
 #endif
