@@ -386,7 +386,7 @@ static pv_state_t pv_wait_unclaimed(struct pantavisor *pv)
 		pv_config_save_creds();
 		pv_ph_release_client(pv);
 		pv_paths_pv_file(path, PATH_MAX, CHALLENGE_FNAME);
-		if (pv_fs_file_save(path, "", 0444) < 0)
+		if (pv_fs_file_write_inplace(path, "", 0444) < 0)
 			pv_log(WARN, "could not save file %s: %s", path,
 			       strerror(errno));
 		pv_metadata_add_devmeta("pantahub.claimed", "1");

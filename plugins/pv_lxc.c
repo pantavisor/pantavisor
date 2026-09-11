@@ -40,6 +40,7 @@
 #include <stdbool.h>
 
 #include "utils/fs.h"
+#include "utils/math.h"
 #include "pv_lxc.h"
 #include "utils/list.h"
 #include "pvlogger.h"
@@ -50,6 +51,7 @@
 #include "utils/pvsignals.h"
 #include "utils/system.h"
 #include "ipam.h"
+#include "logserver/logserver.h"
 
 #define PV_VLOG __vlog
 #include "utils/tsh.h"
@@ -300,7 +302,7 @@ int pv_validate_container_config(struct pv_platform *p, const char *conf_file)
 //
 // Called from platforms.c during IPAM setup, once per container, before
 // any pool-using container has tried to allocate. Exported via dlsym as
-// `pv_enumerate_static_ips` and wired into the cont_ctrl table.
+// any // `pv_enumerate_static_ips` and wired into the cont_ctrl table.
 void pv_enumerate_static_ips(struct pv_platform *p, const char *conf_file,
 			     void (*cb)(uint32_t ip_host_order, void *ctx),
 			     void *ctx)
@@ -462,8 +464,31 @@ static void pv_setup_lxc_network(struct lxc_container *c, struct pv_platform *p)
 	}
 }
 
-static void pv_setup_lxc_container(struct lxc_container *c,
-				   struct pv_platform *p, const char *rev)
+static int pv_mount_log_socket_as(struct pv_platform *p,
+				  struct lxc_container *c, const char *dest)
+{
+	char entry[PATH_MAX * 2] = { 0 };
+
+	if (!p->log_path[0]) {
+		pv_log(WARN, "no log socket path for %s, skipping mount",
+		       p->name);
+		return -1;
+	}
+
+	snprintf(entry, sizeof(entry), "%s %s none bind,rw,create=file 0 0",
+		 p->log_path, dest + 1);
+
+	if (!c->set_config_item(c, "lxc.mount.entry", entry)) {
+		pv_log(WARN, "couldn't mount log socket %s as %s", p->log_path,
+		       dest);
+		return -1;
+	}
+
+	return 0;
+}
+
+static int pv_setup_lxc_container(struct lxc_container *c,
+				  struct pv_platform *p, const char *rev)
 {
 	int fd, ret;
 	struct utsname uts;
@@ -514,11 +539,23 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	pv_setup_lxc_container_cgroup(c);
 	// role specific lxc config
 	if (p->roles & PLAT_ROLE_MGMT) {
-		__pv_paths_pv_file(path, PATH_MAX, "");
-		snprintf(entry, sizeof(entry),
-			 "%s %s none bind,ro,create=dir 0 0", path,
-			 PLATFORM_PV_PATH + 1);
-		c->set_config_item(c, "lxc.mount.entry", entry);
+		static const char *const ro_pv_files[] = {
+			DEVICE_ID_FNAME, CHALLENGE_FNAME, PHHOST_FNAME,
+			PVCTRL_FNAME,	 LOGFD_FNAME,
+		};
+		for (ssize_t i = 0; i < ARRAY_LEN(ro_pv_files); i++) {
+			__pv_paths_pv_file(path, PATH_MAX, ro_pv_files[i]);
+			snprintf(entry, sizeof(entry),
+				 "%s %s/%s none bind,ro,create=file 0 0", path,
+				 PLATFORM_PV_PATH + 1, ro_pv_files[i]);
+			c->set_config_item(c, "lxc.mount.entry", entry);
+		}
+
+		// __pv_paths_pv_file(path, PATH_MAX, PHCONFIG_DNAME);
+		// snprintf(entry, sizeof(entry),
+		// 	 "%s %s/%s none bind,ro,create=dir 0 0", path,
+		// 	 PLATFORM_PV_PATH + 1, PHCONFIG_DNAME);
+		// c->set_config_item(c, "lxc.mount.entry", entry);
 
 		__pv_paths_pv_log(path, PATH_MAX, "");
 		snprintf(entry, sizeof(entry),
@@ -537,12 +574,12 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 			 "%s %s none bind,ro,create=dir 0 0", path,
 			 PLATFORM_DEVICE_META_PATH + 1);
 		c->set_config_item(c, "lxc.mount.entry", entry);
+
+		if (pv_mount_log_socket_as(p, c, PLATFORM_LOG_CTRL_PATH) != 0)
+			return -1;
 	} else {
-		__pv_paths_pv_file(path, PATH_MAX, LOGCTRL_FNAME);
-		snprintf(entry, sizeof(entry),
-			 "%s %s none bind,rw,create=file 0 0", path,
-			 PLATFORM_LOG_CTRL_PATH + 1);
-		c->set_config_item(c, "lxc.mount.entry", entry);
+		if (pv_mount_log_socket_as(p, c, PLATFORM_LOG_CTRL_PATH) != 0)
+			return -1;
 
 		__pv_paths_pv_file(path, PATH_MAX, PVCTRL_FNAME);
 		snprintf(entry, sizeof(entry),
@@ -628,7 +665,7 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 	__pv_paths_lib_hook(path, PATH_MAX, "");
 	d = opendir(path);
 	if (!d)
-		return;
+		return 0;
 
 	const char *export_hook = "export.sh";
 
@@ -647,6 +684,8 @@ static void pv_setup_lxc_container(struct lxc_container *c,
 
 	// Configure IPAM network if platform has pool-based networking
 	pv_setup_lxc_network(c, p);
+
+	return 0;
 }
 
 static void pv_setup_default_log(struct pv_platform *p, struct lxc_container *c,
@@ -757,6 +796,16 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 		return -1;
 	}
 
+	memset(p->log_path, 0, sizeof(p->log_path));
+	if (pv_logserver_create_platform_socket(p->name, p->log_path) < 0)
+		pv_log(WARN, "couldn't create log socket for %s", p->name);
+
+	if (!pv_fs_path_exist_timeout(p->log_path, 5))
+		pv_log(WARN,
+		       "log socket %s for %s did not appear in time, "
+		       "mount may fail",
+		       p->log_path, p->name);
+
 	if (pvsignals_block_chld(&oldmask)) {
 		pv_log(ERROR,
 		       "failed to block SIGCHLD for starting pantavisor: ",
@@ -827,19 +876,14 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 			_exit(0);
 		}
 
-		pv_setup_lxc_container(c, p, rev);
+		if (pv_setup_lxc_container(c, p, rev) != 0)
+			goto out_container_init;
 
 		if (p->exec)
 			c->set_config_item(c, "lxc.init.cmd", p->exec);
 
-		if (p->std_log) {
-			char *mount_log =
-				"/dev/log dev/log none bind,create=file 0 0";
-			if (!c->set_config_item(c, "lxc.mount.entry",
-						mount_log)) {
-				pv_log(WARN, "/dev/log not mounting");
-			}
-		}
+		if (p->std_log)
+			pv_mount_log_socket_as(p, c, "/dev/log");
 
 		c->save_config(c, NULL);
 
@@ -866,6 +910,7 @@ int pv_start_container(struct pv_platform *p, const char *rev, char *conf_file,
 	chdir("/");
 	return 0;
 out_failure:
+	pv_logserver_remove_platform_socket(p->log_path);
 	chdir("/");
 	return -1;
 }
