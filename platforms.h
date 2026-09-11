@@ -25,6 +25,7 @@
 #include <stdbool.h>
 
 #include <sys/types.h>
+#include <linux/limits.h>
 
 #include "utils/list.h"
 #include "utils/json.h"
@@ -185,6 +186,7 @@ struct pv_platform {
 	// raw lifecycle_goal value from run.json, resolved against status_goal in pv_state_validate()
 	char *lifecycle_goal_raw;
 	bool std_log;
+	char log_path[PATH_MAX];
 	int pipefd[2];
 	struct pv_event_socket pipefd_listener;
 	struct timer timer_status_goal;
