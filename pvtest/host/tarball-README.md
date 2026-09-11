@@ -56,11 +56,18 @@ mkdir -p ~/.config/pvtest/devices
 cp device.txt ~/.config/pvtest/devices/rock5a.txt   # fill in name/type/ip/exec/tty/baud
 ```
 
+`device.txt` documents every key. `name=`, `ip=`, `exec=` and `tty=` are
+required. Without a `setbootconfig=` the board is bound as it is and any test whose
+`config.env` it does not already satisfy is SKIPPED — that is by design, so run
+without `--fail-on-skip` until each test's `"devices"` array is triaged. Without
+a `flash=`, the board will not be able to run --model volatile.
+
 Then, run it using the installed config:
 
 
 ```
 ./test.docker.sh run local --device rock5a                # devices/rock5a.txt
+./test.docker.sh run local --device rock5a --model volatile # flash= the board before every test
 ```
 
 A device run only uses the tester container to forward commands over `exec=`, so
