@@ -42,21 +42,13 @@ build/tmp-scarthgap/deploy/images/<machine>/
   pantavisor-pvtest-scripts-<machine>/              same, already unpacked
 ```
 
-Its `README.md` is the hands-on guide. `targets/` starts empty — a device needs tarballs built
-for its own MACHINE, installed exactly as in the container flow:
-
-```bash
-./test.native.sh install-tarballs radxa-rock5a <dir-or-tarball>...
-```
+Its `README.md` covers host setup and running. `targets/` starts empty. A device needs tarballs
+built for its own MACHINE, installed as described in
+[device.md](device.md#installing-target-tarballs).
 
 ## Host dependencies
 
-```bash
-./test.native.sh check
-```
-
-reports every missing tool and whether the shipped runner supports relocation. Package names
-for Alpine and Debian are in the tarball's `README.md`. The four that busybox cannot cover are
+`./test.native.sh check` and the package lists are in the `README.md`. The four that busybox cannot cover are
 `coreutils` (`timeout --foreground`), `sed` (`sed -u` for the serial capture), `util-linux-misc`
 (`script`, which wraps every test) and `flock`.
 
@@ -69,19 +61,10 @@ bundled one is used only if it actually executes.
 
 ## Running
 
-```bash
-./test.native.sh run local --device rock5a
-./test.native.sh run local/lifecycle/foo --device rock5a -o   # regenerate a golden
-./test.native.sh run local/lifecycle/foo --device rock5a -i   # tester shell
-./test.native.sh run --device rock5a -m                       # shell on the board
-./test.native.sh run remote --device rock5a --hub https://api.stage.pantahub.com
-```
-
 `--device` is required. `--hub URL` (or `PVTEST_HUB_URL`) selects the Hub as for
-`test.docker.sh`. `--model` is always `persistent` and `PVTEST_SLOTS` is always 1,
-because there is one board; `-n` and `-V` do not apply. Results land in the workspace exactly
-as they do for a container run — `run.log`, `results/<test>/{test.log,diff}` and the serial
-capture in `<device>.log` — with `workspace-README.md` copied in beside them.
+`test.docker.sh`. `--model` defaults to `persistent`; `--model volatile` needs `flash=` in the
+manifest (see [device.md](device.md#the-flash-script)). `PVTEST_SLOTS` is always 1, because there
+is one board; `-n` and `-V` do not apply.
 
 ## How it differs internally
 
@@ -100,8 +83,8 @@ Three things the container provided have host-side stand-ins. Nothing else chang
   Writes follow the symlinks back to the real files, so `-o` updates the golden in the source
   tree just as the bind mount does.
 - **The lifecycle service.** Identical: `_retype_service` from `pvtest/host-common` answers the
-  tester's re-type requests by running the manifest's `setbootconfig=`, or replies `unsupported`
-  for a board without one.
+  tester's re-type requests by running the manifest's `setbootconfig=` (or `flash=`, in the
+  volatile model), or replies `unsupported` for a board without one.
 
 `pvtest/host-common` is the host half shared by both runners — test selection, tarball install,
 device manifest, ctrl protocol, summary. Anything that knows about containers stays in

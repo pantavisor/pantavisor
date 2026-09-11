@@ -15,29 +15,9 @@ For the framework itself see [pvtest-harness.md](pvtest-harness.md); for authori
 
 ## Setup
 
-### Install
-
-Extract the tarball and load the Docker images as described in the tarball's own `README.md`.
-Building it is a meta-pantavisor Yocto build:
-[Building the pvtest distro](../../meta-pantavisor/overview/testing/automated/index.md).
-
 ### The device manifest
 
-`device.txt` is a template: copy it, fill it in, uncomment.
-
-| Key | Required | Default | Meaning |
-|---|---|---|---|
-| `name=` | yes | — | identifies this one runner, console capture lands in `<name>.log` |
-| `type=` | no | `name=` | the *class* of target, shared by every board of the same kind (the Yocto MACHINE is the natural value). This is what a test's `"devices"` allow-list matches |
-| `ip=` | yes | — | device IP for the pvr HTTP endpoint on `:12368` → `PVTEST_HOST` |
-| `exec=` | yes | — | command prefix to run `pvcontrol`/`pventer` on the device → `PVTEST_EXEC` |
-| `tty=` | yes | — | host-local serial device path for console capture. Prefer a stable `/dev/serial/by-id/…` over `/dev/ttyUSBN` |
-| `baud=` | no | `115200` | `stty` baud for the console |
-| `setbootconfig=` | no | — | host command that writes the device's boot-time config and power-cycles it. When set, a test whose `config.env` doesn't match the live device re-types through this script instead of SKIPping |
-| `setbootconfig_conf=` | no | — | config file passed to `setbootconfig=` as `-c <file>` |
-| `setbootconfig_base=` | no | — | this board's base boot-config tokens, space-separated `KEY=VALUE`, passed to `setbootconfig=` ahead of each test's own tokens. Useful, for example, to set `PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct` so every test captures pantavisor's logs on the console |
-
-Unrecognized keys produce a `WARN` and are ignored.
+`device.txt` documents every key. Copy it, fill it in, uncomment.
 
 A manifest describes a *workstation's* board, so it lives in the host's pvtest config dir
 rather than in a workspace the next install throws away:
@@ -76,36 +56,37 @@ anywhere on the host. Paths in `exec=` must be absolute and inside the manifest'
 — that directory is bind-mounted into the tester at the same absolute path, so an SSH key
 anywhere else is invisible to it.
 
-The contract:
+The contract is in `device.txt`.
 
-```
-setbootconfig contract
-Invocation:  <setbootconfig> [-c <setbootconfig_conf>] KEY=VALUE ...
-Inputs
-  argv    the complete set of boot-config tokens the board must boot with:
-          setbootconfig_base= tokens first, then the test's config.env tokens.
-          A later token wins on a duplicate key. An empty value (KEY=) means
-          "unset, use the default". Write them as a whole; do not merge with
-          whatever the board currently has.
-  -c      setbootconfig_conf=, if set. Opaque to the runner.
-  env     the runner's own environment (under a lab wrapper that includes
-          whatever it exports, e.g. power-port commands). No PVTEST_* is
-          guaranteed. stdin is closed. cwd is unspecified: use absolute paths.
-  console the runner releases tty= before the call and re-opens it after, so
-          the script may open the serial device exclusively.
-Outputs
-  exit 0  the tokens are the board's persistent boot config (they survive the
-          reboots a test itself triggers, until the next call) AND a reboot or
-          power-cycle has been started. Return as soon as it has; do not wait
-          for the board to come back, the runner fences READY itself.
-  exit !0 failure. The runner reports the target as failed for that test.
-  stdout/stderr  captured to <workspace>/dev-setbootconfig-<name>-<id>.log.
-Must not: contact the board over exec= (it is rebooting), change keys it was
-not given (other than by restoring setbootconfig_base=), require a TTY on
-stdin, or leave the serial device open on exit.
-Timing: no timeout is enforced; the runner only WARNs if the console shows no
-activity within 30 s of return.
-```
+### The flash script
+
+`setbootconfig=` sets the test env on a board that keeps its storage across tests, which is the
+persistent model. The volatile model requires the test env too, plus starting each test on a fresh target
+whose factory revision is the test's initial one. This is achieved by the appengine pool by
+booting a new container. A real device gets it from its `flash=` script
+(`PVTEST_RETYPE=flash`).
+
+Before every test, the tester stages the test's container tarballs into the ctrl channel and
+asks the host for slot 0 along with the test's config, its revision name and that seed
+directory. The host runs the script and replies `ready` once it returns.
+
+How the board is flashed is the script's business (a full reflash through the vendor tooling, or
+anything else that leaves a factory-fresh storage). What the script must agree on with the
+appengine pool is the result: the board boots `locals/<scope>_<category>_<name>` as its only,
+committed revision, so the tester's check that it booted into the initial revision holds and
+golden outputs stay target-independent. Board-specific base (BSP, pvr endpoint container...)
+and connectivity are also part of the script's responsibilities.
+
+Worth knowing before choosing the model:
+
+- **Time.** A flash per test takes minutes, not seconds, so the tester waits up to
+  `PVTEST_RETYPE_TIMEOUT` for the host to bring the slot up, 3600 s by default for `flash`.
+- **Hub.** A fresh storage has no credentials, so each test that goes remote registers a new
+  device on the Hub, exactly as on the appengine pool. The tester claims the `self-claim` ones
+  and deletes them when the test is done automatically.
+- **After the run.** The board is left running the last test's revision. Nothing powers it off.
+
+The contract is in `device.txt`.
 
 ### Building target tarballs
 
@@ -180,12 +161,10 @@ source tree — a rebuild re-stages the pristine `targets/appengine/`.
 
 ## Running
 
-```bash
-./test.docker.sh run local --device rock5a
-```
-
-`./test.docker.sh -h` and the tarball `README.md` cover the rest. Device specifics:
-`--device` is incompatible with `-p>1`, `-n` and `-V`, and forces `--model persistent`. `-i`
+Invocations are in the tarball `README.md`. Device specifics:
+`--device` is incompatible with `-p>1`, `-n` and `-V`. It runs the persistent model unless
+`--model volatile` is given, which needs `flash=` in the manifest (see
+[The flash script](#the-flash-script)). `-i`
 opens the tester console wired to the board; `-m` opens a shell on the board itself through
 `exec=`, entering it as it is (no re-type, so the test's `config.env` is not applied) and
 leaving it running on exit.
@@ -193,12 +172,7 @@ leaving it running on exit.
 ## Debugging
 
 The run workspace's own `README.md` documents the layout, the log format and its sources, the
-useful greps and the result lines. Two deltas against an appengine run:
-
-- there is no `storage/` tree — the device keeps its own on-device storage;
-- pantavisor's own log sources reach `test.log` only if the manifest sets
-  `setbootconfig_base=PV_LOG_SERVER_OUTPUTS=filetree,stdout_direct`. The serial console capture
-  always lands in `<name>.log`.
+useful greps and the result lines, including what differs on a real device.
 
 ### Expected outcomes
 
@@ -213,12 +187,13 @@ Not every non-PASS is a bug. Triage device results against these classes first:
   (they need the `xconnect-dbus-systembus` build feature and its example containers), and
   `local/services/daemons` (it asserts the appengine image's daemon set).
 - **SKIPPED on unmet `config.env` with no `setbootconfig=` configured is by design, not a
-  failure.** Without a setbootconfig script a real device's config is immutable per test, so
-  e.g. the config-overload tests (`PV_POLICY=test`), the secureboot tests
-  (`PV_SECUREBOOT_MODE=strict`) and `on-demand-gc` (`PV_STORAGE_LOGTEMPSIZE=` — persistent
-  logs) skip wherever the device's live config says otherwise. Never change a device's config
-  or BSP just to un-skip a test — configure a `setbootconfig=` instead if the device supports
-  boot-time config injection.
+  failure.** It only happens in the persistent model. Without a setbootconfig script a real
+  device's config is immutable per test, so e.g. the config-overload tests
+  (`PV_POLICY=test`), the secureboot tests (`PV_SECUREBOOT_MODE=strict`) and `on-demand-gc`
+  (`PV_STORAGE_LOGTEMPSIZE=` — persistent logs) skip wherever the device's live config says
+  otherwise. Instead of changing a device's config or BSP just to un-skip a test,
+  configuring a `setbootconfig=` (if the device supports boot-time config injection) is
+  preferable.
 - **Timeouts**: device runs default `PVTEST_TEST_TIMEOUT` to 1800 s (vs 600 s for
   containers) — updates may need real reboots and every forwarded poll pays an ssh
   round-trip.
