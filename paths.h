@@ -31,11 +31,13 @@
 #define PVCTRL_FNAME "pv-ctrl"
 #define LOGCTRL_FNAME "pv-ctrl-log"
 #define LOGFD_FNAME "pv-fd-log"
+#define LOGPLAT_DNAME "pv-plat-log"
 #define PHCONFIG_DNAME "phconfig"
 #define UNCLAIMED_FNAME "phconfig/unclaimed.config"
 #define PANTAHUB_FNAME "phconfig/pantahub.config"
 
 void pv_paths_pv_file(char *buf, size_t size, const char *name);
+void pv_paths_platform_socket(char *buf, size_t size, const char *name);
 
 #define USRMETA_DNAME "user-meta"
 #define SSH_KEY_FNAME "pvr-sdk.authorized_keys"

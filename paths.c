@@ -43,6 +43,19 @@ void pv_paths_pv_file(char *buf, size_t size, const char *name)
 			pv_config_get_str(PV_SYSTEM_RUNDIR), name);
 }
 
+void pv_paths_platform_socket(char *buf, size_t size, const char *name)
+{
+	if (!name || !*name || strpbrk(name, "/\\\"") || !strcmp(name, ".") ||
+	    !strcmp(name, "..")) {
+		buf[0] = '\0';
+		return;
+	}
+
+	SNPRINTF_WTRUNC(buf, size, "/%s/%s/%s",
+			pv_config_get_str(PV_SYSTEM_RUNDIR), LOGPLAT_DNAME,
+			name);
+}
+
 #define PV_USRMETA_PATHF PV_PATH "/" USRMETA_DNAME "/%s"
 #define PV_USRMETA_PLAT_PATHF PV_PATH "/user-meta.%s/%s"
 
