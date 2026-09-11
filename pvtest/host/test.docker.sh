@@ -48,7 +48,8 @@ usage() {
 	echo "  --hub URL             Hub the run targets (default:"
     echo "                        https://api.pantahub.com)"
 	echo "  --model MODEL         persistent (default) or volatile storage"
-    echo "                        between tests for each worker slot"
+    echo "                        between tests for each worker slot. volatile"
+    echo "                        with --device needs flash= in the manifest"
 	echo "  --fail-on-skip        Exit non-zero if any test is SKIPPED, for any"
     echo "                        reason"
 	echo "  -V, --valgrind        Run Pantavisor with valgrind"
@@ -391,6 +392,10 @@ _run_pass() {
 	local pass_model="$1"
 	local res=0
 
+	# A board flash takes minutes where a container boots in seconds
+	local retype_timeout="${PVTEST_RETYPE_TIMEOUT:-300}"
+	[ "$retype_mech" = "flash" ] && retype_timeout="${PVTEST_RETYPE_TIMEOUT:-3600}"
+
 	local ctrl_dir="$work_path/ctrl"
 	mkdir -p "$ctrl_dir/req" "$ctrl_dir/resp" "$ctrl_dir/state"
 
@@ -416,6 +421,7 @@ _run_pass() {
 		-e PVTEST_QUEUE="$pvtest_queue"
 		-e PVTEST_MODEL="$pass_model"
 		-e PVTEST_RETYPE="$retype_mech"
+		-e PVTEST_RETYPE_TIMEOUT="$retype_timeout"
 		-e PVTEST_SLOTS="$parallel"
 		-e PVTEST_CTRL="/work/ctrl"
 		-e PVTEST_TESTER_NAME="${tester_name}"
@@ -609,15 +615,6 @@ run_test() {
 			;;
 	esac
 
-	if [ -n "$device_file" ] && [ "$model" != "persistent" ]; then
-		if [ "$model_explicit" = "true" ]; then
-			pvtest_log ERROR "--model $model is not supported with --device; use --model persistent"
-			exit 1
-		fi
-		pvtest_log INFO "--device: selecting --model persistent"
-		model="persistent"
-	fi
-
 	if [ "$model_explicit" = "true" ] && { [ "$interactive" = "true" ] || [ "$manual" = "true" ]; }; then
 		pvtest_log ERROR "--model does not apply to -i/-m"
 		usage
@@ -732,6 +729,11 @@ run_test() {
 			release_slot
 			return 1
 		fi
+		if [ "$model" = "volatile" ] && [ -z "$_dev_flash" ]; then
+			pvtest_log ERROR "--model volatile with --device needs flash= in '$device_file'; use --model persistent"
+			release_slot
+			return 1
+		fi
 		local PVTEST_LOG_TAG="$_dev_name"
 
 		if ! _lock_device "$_dev_name"; then
@@ -773,6 +775,8 @@ run_test() {
 	local retype_mech=none
 	if [ "$pool_mode" = true ]; then
 		retype_mech=container
+	elif [ -n "$device_file" ] && [ "$model" = "volatile" ]; then
+		retype_mech=flash
 	elif [ -n "$_dev_setbootconfig" ]; then
 		retype_mech=setbootconfig
 	fi

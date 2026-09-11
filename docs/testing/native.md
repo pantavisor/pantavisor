@@ -78,8 +78,9 @@ bundled one is used only if it actually executes.
 ```
 
 `--device` is required. `--hub URL` (or `PVTEST_HUB_URL`) selects the Hub as for
-`test.docker.sh`. `--model` is always `persistent` and `PVTEST_SLOTS` is always 1,
-because there is one board; `-n` and `-V` do not apply. Results land in the workspace exactly
+`test.docker.sh`. `--model` defaults to `persistent`; `--model volatile` needs `flash=` in the
+manifest (see [device.md](device.md#the-flash-script)). `PVTEST_SLOTS` is always 1, because there
+is one board; `-n` and `-V` do not apply. Results land in the workspace exactly
 as they do for a container run — `run.log`, `results/<test>/{test.log,diff}` and the serial
 capture in `<device>.log` — with `workspace-README.md` copied in beside them.
 
@@ -100,8 +101,8 @@ Three things the container provided have host-side stand-ins. Nothing else chang
   Writes follow the symlinks back to the real files, so `-o` updates the golden in the source
   tree just as the bind mount does.
 - **The lifecycle service.** Identical: `_retype_service` from `pvtest/host-common` answers the
-  tester's re-type requests by running the manifest's `setbootconfig=`, or replies `unsupported`
-  for a board without one.
+  tester's re-type requests by running the manifest's `setbootconfig=` (or `flash=`, in the
+  volatile model), or replies `unsupported` for a board without one.
 
 `pvtest/host-common` is the host half shared by both runners — test selection, tarball install,
 device manifest, ctrl protocol, summary. Anything that knows about containers stays in

@@ -196,6 +196,7 @@ _resolve_device_file() {
 
 _dev_name= _dev_type= _dev_ip= _dev_exec= _dev_tty= _dev_baud=
 _dev_setbootconfig= _dev_setbootconfig_conf= _dev_setbootconfig_base= _dev_lock_fd=
+_dev_flash= _dev_flash_conf=
 
 _parse_device_manifest() {
 	local file="$1" line
@@ -224,6 +225,8 @@ _parse_device_manifest() {
 			setbootconfig=*) _dev_setbootconfig="${line#setbootconfig=}" ;;
 			setbootconfig_conf=*) _dev_setbootconfig_conf="${line#setbootconfig_conf=}" ;;
 			setbootconfig_base=*) _dev_setbootconfig_base="${line#setbootconfig_base=}" ;;
+			flash=*) _dev_flash="${line#flash=}" ;;
+			flash_conf=*) _dev_flash_conf="${line#flash_conf=}" ;;
 			""|\#*) ;;
 			*) pvtest_log WARN "ignoring unrecognized line in '$file': $line" ;;
 		esac
@@ -321,50 +324,66 @@ _retype_reply() {
 	mv "$ctrl/resp/.tmp.$id" "$ctrl/resp/$id"
 }
 
-# --- re-typing a real device through setbootconfig= ---------------------
+# --- re-typing a real device through setbootconfig= or flash= ----------
 
-# Run the setbootconfig script for retyping real devices with settings from ctrl; contract in docs/testing/device.md
+# Run the manifest's $3 script (setbootconfig|flash) with settings from ctrl; contracts in docs/testing/device.md
+# flash also takes the revision name $5 and the tarballs the tester staged under ctrl seed/$6
 _retype_handle_device() {
-	local ctrl="$1" id="$2" cfg="$3"
+	local ctrl="$1" id="$2" mech="$3" cfg="$4" rev="$5" seed="$6"
+	local script conf tag="$id"
 
 	if [ -z "$cfg" ]; then
 		_retype_reply "$ctrl" "$id" "status=down"
 		return 0
 	fi
 
-	if [ -z "$_dev_setbootconfig" ]; then
+	case "$mech" in
+		flash) script="$_dev_flash"; conf="$_dev_flash_conf" ;;
+		*)     script="$_dev_setbootconfig"; conf="$_dev_setbootconfig_conf" ;;
+	esac
+	if [ -z "$script" ]; then
 		_retype_reply "$ctrl" "$id" "status=unsupported"
 		return 0
+	fi
+	if [ "$mech" = flash ]; then
+		if [ -z "$rev" ] || [ ! -d "$ctrl/seed/$seed" ]; then
+			pvtest_log ERROR "device '$_dev_name' flash request needs rev= and a staged seed= (rev='$rev' seed='$seed')"
+			_retype_reply "$ctrl" "$id" "status=failed"
+			return 0
+		fi
+		# One log per test rather than per slot
+		tag=$(printf '%s' "$rev" | tr '/' '_')
 	fi
 	[ -n "$_dev_setbootconfig_base" ] && cfg="$_dev_setbootconfig_base $cfg"
 
 	# Stop getting tty logs from device
 	_stop_device_capture "$_dev_name"
 
-	# Execute the setbootconfig script itself
-	local sbc_log="$work_path/dev-setbootconfig-${_dev_name}-${id}.log"
-	local -a sbc_args=("$_dev_setbootconfig")
-	[ -n "$_dev_setbootconfig_conf" ] && sbc_args+=(-c "$_dev_setbootconfig_conf")
-	sbc_args+=($cfg)
-	local _sbc_ok=0
-	if "${sbc_args[@]}" > "$sbc_log" 2>&1; then
-		_sbc_ok=1
+	# Execute the device script itself
+	local script_log="$work_path/dev-${mech}-${_dev_name}-${tag}.log"
+	local -a script_args=("$script")
+	[ -n "$conf" ] && script_args+=(-c "$conf")
+	[ "$mech" = flash ] && script_args+=(-r "$rev" -t "$ctrl/seed/$seed")
+	script_args+=($cfg)
+	local _script_ok=0
+	if "${script_args[@]}" >> "$script_log" 2>&1; then
+		_script_ok=1
 	else
-		pvtest_log ERROR "device '$_dev_name' setbootconfig failed (see $sbc_log)"
+		pvtest_log ERROR "device '$_dev_name' $mech failed (see $script_log)"
 	fi
 
 	# Resume tty logs from device
 	_start_device_capture "$_dev_name" "$_dev_tty" "$_dev_baud" \
-		|| pvtest_log ERROR "failed to resume tty capture for device '$_dev_name' after setbootconfig"
+		|| pvtest_log ERROR "failed to resume tty capture for device '$_dev_name' after $mech"
 
-	if [ "$_sbc_ok" = 1 ]; then
+	if [ "$_script_ok" = 1 ]; then
 		# Best-effort confirm the board is actually mid-reboot before telling the tester it is ready
 		_wait_tty_activity "$work_path/${_dev_name}.log" 30 \
-			|| pvtest_log WARN "no serial activity from '$_dev_name' within 30s after setbootconfig; continuing"
+			|| pvtest_log WARN "no serial activity from '$_dev_name' within 30s after $mech; continuing"
 		_retype_reply "$ctrl" "$id" "ae=$_dev_name" "exec=$_dev_exec" "host=$_dev_ip" \
-			"status=ready" "log=$sbc_log"
+			"status=ready" "log=$script_log"
 	else
-		_retype_reply "$ctrl" "$id" "status=failed" "log=$sbc_log"
+		_retype_reply "$ctrl" "$id" "status=failed" "log=$script_log"
 	fi
 }
 
@@ -394,7 +413,8 @@ _retype_service() {
 						continue
 					fi
 					( _retype_handle_appengine "$ctrl" "$id" "$S" "$cfg" "$stor" "$rev" "$seed" ) & ;;
-				setbootconfig) ( _retype_handle_device "$ctrl" "$id" "$cfg" ) & ;;
+				setbootconfig) ( _retype_handle_device "$ctrl" "$id" setbootconfig "$cfg" ) & ;;
+				flash)         ( _retype_handle_device "$ctrl" "$id" flash "$cfg" "$rev" "$seed" ) & ;;
 				*)         _retype_reply "$ctrl" "$id" "status=unsupported" ;;
 			esac
 		done

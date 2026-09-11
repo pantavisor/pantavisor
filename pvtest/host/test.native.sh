@@ -42,6 +42,9 @@ usage() {
     echo "                        reason"
 	echo "  --hub URL             Hub the run targets (default:"
     echo "                        https://api.pantahub.com)"
+	echo "  --model MODEL         persistent (default) or volatile, which flashes"
+    echo "                        the board before every test and needs flash="
+    echo "                        in the manifest"
 	echo "  -w, --work PATH       Set workspace path for logs (default: mktemp)"
 	echo ""
 	echo "Path selectors for 'run' command:"
@@ -298,7 +301,7 @@ run_test() {
 	local manual="false"
 	local work_path=
 	local fail_on_skip="false"
-	local device_file= hub_url=
+	local device_file= hub_url= model="persistent"
 	local ctrl_dir=
 	local _logtee_pid=
 
@@ -337,6 +340,16 @@ run_test() {
 				esac
 				hub_url="$2"
 				shift 2
+				;;
+			--model)
+				case "${2:-}" in
+					persistent|volatile) model="$2"; shift 2 ;;
+					*)
+						pvtest_log ERROR "invalid --model '${2:-}' (expected persistent or volatile)"
+						usage
+						exit 1
+						;;
+				esac
 				;;
 			*)
 				pvtest_log ERROR "Unknown argument: $1"
@@ -396,15 +409,29 @@ run_test() {
 
 	_parse_device_manifest "$device_file" || { release_slot; return 1; }
 	local PVTEST_LOG_TAG="$_dev_name"
+	if [ "$model" = "volatile" ]; then
+		if [ "$interactive" = "true" ]; then
+			pvtest_log ERROR "--model does not apply to -i/-m"
+			release_slot
+			return 1
+		fi
+		if [ -z "$_dev_flash" ]; then
+			pvtest_log ERROR "--model volatile needs flash= in '$device_file'; use --model persistent"
+			release_slot
+			return 1
+		fi
+	fi
 
 	_lock_device "$_dev_name" || { release_slot; return 1; }
 	_start_device_capture "$_dev_name" "$_dev_tty" "$_dev_baud" \
 		|| pvtest_log ERROR "failed to start tty capture for device '$_dev_name'"
 
-	# How this run's target changes config: a board with no setbootconfig= is bound as it
-	# is, and any test whose config it does not satisfy is SKIPPED.
 	local retype_mech=none
-	[ -n "$_dev_setbootconfig" ] && retype_mech=setbootconfig
+	if [ "$model" = "volatile" ]; then
+		retype_mech=flash
+	elif [ -n "$_dev_setbootconfig" ]; then
+		retype_mech=setbootconfig
+	fi
 
 	local target_type
 	target_type="${PVTEST_DEVICE_TYPE:-${_dev_type:-appengine}}"
@@ -483,7 +510,11 @@ run_test() {
 
 	local _nq
 	_nq=$(printf '%s\n' $pvtest_queue | grep -c .)
-	pvtest_log INFO "=== persistent pool: ${_nq} test(s) on device '$_dev_name' ==="
+	pvtest_log INFO "=== ${model} pool: ${_nq} test(s) on device '$_dev_name' ==="
+
+	# A board flash takes minutes where a re-type returns as soon as the reboot starts
+	local retype_timeout="${PVTEST_RETYPE_TIMEOUT:-300}"
+	[ "$retype_mech" = "flash" ] && retype_timeout="${PVTEST_RETYPE_TIMEOUT:-3600}"
 
 	# A fifo, not `exec > >(tee ...)`: process substitution needs /dev/fd, which
 	# a mount namespace need not provide — and if it fails, run.log stays empty
@@ -501,7 +532,7 @@ run_test() {
 	fi
 
 	# Same lifecycle service the container run uses: it answers the tester's
-	# re-type requests by running the manifest's setbootconfig=, or 'unsupported'.
+	# re-type requests by running the manifest's setbootconfig= or flash=, or 'unsupported'.
 	_retype_service "$ctrl_dir" "$retype_mech" &
 	local svc_pid=$!
 
@@ -510,7 +541,8 @@ run_test() {
 		"TEST_PATH=$farm/$target_path" \
 		"INTERACTIVE=false" \
 		"PVTEST_QUEUE=$pvtest_queue" \
-		"PVTEST_MODEL=persistent" \
+		"PVTEST_MODEL=$model" \
+		"PVTEST_RETYPE_TIMEOUT=$retype_timeout" \
 		"PVTEST_SLOTS=1" \
 		"PVTEST_CTRL=$ctrl_dir" \
 		"PVTEST_TESTER_NAME=pantavisor-native-${USER}-${slot}" \

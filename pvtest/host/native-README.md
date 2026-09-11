@@ -116,7 +116,8 @@ $EDITOR ~/.config/pvtest/devices/rock5a.txt
 `device.txt` documents every key. `name=`, `ip=`, `exec=` and `tty=` are
 required. Without a `setbootconfig=` the board is bound as it is and any test whose
 `config.env` it does not already satisfy is SKIPPED — that is by design, so run
-without `--fail-on-skip` until each test's `"devices"` array is triaged.
+without `--fail-on-skip` until each test's `"devices"` array is triaged. Without
+a `flash=`, the board will not be able to run --model volatile.
 
 Then install container tarballs built for the board's MACHINE. The target name
 is the manifest's `type=`:
@@ -131,6 +132,7 @@ is the manifest's `type=`:
 ./test.native.sh check                          # host readiness
 ./test.native.sh ls                             # list tests
 ./test.native.sh run local --device rock5a      # run a scope
+./test.native.sh run local --device rock5a --model volatile  # flash= before every test
 ./test.native.sh run local/lifecycle/foo --device rock5a
 ./test.native.sh run local/lifecycle/foo --device rock5a -o   # regenerate golden
 ./test.native.sh run local/lifecycle/foo --device rock5a -i   # tester shell

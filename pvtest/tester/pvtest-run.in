@@ -45,7 +45,8 @@ usage() {
 	echo "       PVTEST_CTRL               ctrl dir mounted from the host (req/resp/state)"
 	echo "       PVTEST_SLOTS              worker count (default: 1)"
 	echo "       PVTEST_MODEL              persistent (keep target across tests) | volatile (one per test)"
-	echo "       PVTEST_RETYPE             container (boot a generation) | setbootconfig (write the boot config, power-cycle a board) | none"
+	echo "       PVTEST_RETYPE             container (boot a generation) | setbootconfig (write the boot config, power-cycle a board) | flash (flash a board per test, volatile only) | none"
+	echo "       PVTEST_RETYPE_TIMEOUT     seconds to wait for the host to bring a slot up (default: 300)"
 	echo "       PVTEST_EXEC/PVTEST_HOST   as above, for a target that never re-types; a"
 	echo "                                 ready ctrl reply supersedes them for that slot"
 	echo ""
@@ -799,7 +800,7 @@ _retype_slot() {
 	while [ ! -f "$_resp" ]; do
 		sleep 1
 		_waited=$((_waited + 1))
-		[ "$_waited" -gt 300 ] && return 1
+		[ "$_waited" -gt "${PVTEST_RETYPE_TIMEOUT:-300}" ] && return 1
 	done
 	_status=$(sed -n 's/^status=//p' "$_resp")
 	_ae=$(sed -n 's/^ae=//p' "$_resp")
@@ -1305,13 +1306,12 @@ persistent_worker() {
 }
 
 # Volatile model:
-#  * designed for time efficiency
+#  * designed for time efficiency on appengine, where a new container is cheap
 #  * one flat queue sorted alphabetically
 #  * N slots and one test per slot until test finishes and slot is freed
 #  * one claim per test
 #  * one storage per test
-#  * one new container instance per test
-#  * only compatible with appengine
+#  * one new container instance, or one board flash, per test
 #  * initial revision already seeded at first boot
 volatile_worker() {
 	local _slot="$1" _pool="$2" _failed="$3"
@@ -1338,7 +1338,7 @@ volatile_worker() {
 		# Storage keyed by test id, so a workspace keeps one storage dir per test
 		_ae=$(_slot_attach "$_slot" "$_cfg" "$_tid" "$_rev" "slot${_slot}")
 		if [ -z "$_ae" ]; then
-			_slot_abort_tests "appengine boot failed" "$_json"
+			_slot_abort_tests "target boot failed" "$_json"
 			touch "$_failed"; continue
 		fi
 
@@ -1352,9 +1352,11 @@ volatile_worker() {
 			{ [ "$_rc" -ne 0 ] && [ "$_rc" -ne 2 ]; } && touch "$_failed"
 		fi
 
-		# Drop the target leniently for Valgrind
 		pvtest_log INFO "[slot $_slot] SLOT_DETACH ae=$_ae"
-		pv_ctrl cmd poweroff "pvtest: volatile test done" > /dev/null 2>&1 || true
+		# Drop a container leniently for Valgrind; a board stays up for its next flash
+		if [ "$PVTEST_RETYPE" = "container" ]; then
+			pv_ctrl cmd poweroff "pvtest: volatile test done" > /dev/null 2>&1 || true
+		fi
 		_retype_slot "$_slot" "" > /dev/null 2>&1 || true
 		rm -rf "$_seed"
 	done
