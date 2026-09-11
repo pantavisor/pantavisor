@@ -39,7 +39,6 @@ struct logserver_rfc {
 int logserver_rfc_level_to_pv(int prival);
 char *logserver_rfc_get_facility(int prival);
 int logserver_rfc_get_prival(const char *buf);
-int logserver_rfc_create_socket(const char *cur_sock);
 log_protocol_code_t logserver_rfc_check_type(const char *buf);
 int logserver_rfc_to_log(struct logserver_rfc *rfc, const char *cgroup,
 			 const char *rev, const char *upd_rev,

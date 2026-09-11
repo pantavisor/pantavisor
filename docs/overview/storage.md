@@ -150,7 +150,7 @@ Additional volumes can be [specified](../reference/pantavisor-state-format-v2.md
 
 ## Logs
 
-Pantavisor can centralize all of your [container logs](containers.md#loggers), separated by [revision](revisions.md), in one place on-disk. It does so by running a small server (Log Server) which [offers](containers.md#roles) a couple of [sockets](../reference/logserver-sockets.md) to the [containers](containers.md):
+Pantavisor can centralize all of your [container logs](containers.md#loggers), separated by [revision](revisions.md), in one place on-disk. It does so by running a small server (Log Server) which [offers](containers.md#roles) a set of [sockets](../reference/logserver-sockets.md) to the [containers](containers.md):
 
 To check the Log Server's current configuration on a running device, use [pvcontrol](../tools/pvcontrol.md#configuration):
 
@@ -162,11 +162,22 @@ pvcontrol conf ls | grep -i log      # e.g. PV_LOG_SERVER_OUTPUTS, PV_LOG_LEVEL,
 
 * [pv-ctrl-log](../reference/logserver-sockets.md#pv-ctrl-log): to send log traces.
 * [pv-fd-log](../reference/logserver-sockets.md#pv-fd-log): to suscribe file descriptors.
+* [/dev/log](../reference/logserver-sockets.md#devlog): one datagram socket per container, for standard syslog clients.
 
-Containers can also log using the standard syslog protocol by writing to `/dev/log`. Both [RFC 3164](../reference/logserver-sockets.md#rfc-3164) and [RFC 5424](../reference/logserver-sockets.md#rfc-5424) are supported and auto-detected per message — no configuration is needed. See the [/dev/log section](../reference/logserver-sockets.md#devlog) for message formats, priority mapping, and per-language library examples. Applications can also send a [JSON-formatted message](../reference/logserver-sockets.md#json-protocol) or a [key-value formatted message](../reference/logserver-sockets.md#key-value-protocol) directly to `pv-ctrl-log`.
+Containers can also log using the standard syslog protocol by writing to `/dev/log`. Each container
+gets its own datagram socket for this, bind-mounted at `/dev/log` when it starts and removed when it
+stops, so ordinary syslog clients are captured as-is and the container a message came from is known
+from the socket it arrived on rather than guessed from the sender's cgroup. Both
+[RFC 3164](../reference/logserver-sockets.md#rfc-3164) and
+[RFC 5424](../reference/logserver-sockets.md#rfc-5424) are supported and auto-detected per message
+— no configuration is needed. Applications can also send
+a [JSON-formatted message](../reference/logserver-sockets.md#json-protocol) or a
+[key-value formatted message](../reference/logserver-sockets.md#key-value-protocol) directly to
+`pv-ctrl-log`.
 
 ```bash
 logger -t myapp "hello from myapp"
+tail -f /storage/logs/0/my-container/syslog/myapp
 ```
 
 See the [/dev/log section](../reference/logserver-sockets.md#devlog) for message formats, priority mapping, and per-language library examples (Python `SysLogHandler`, C `openlog`/`syslog`, Go, etc.).
@@ -186,10 +197,18 @@ below explain what each one is useful for.
 
 This is the default option. In this case the log output will be delivered in different files by [containers](containers.md). Pantavisor logs will also be stored in its own directory.
 
+Inside a container's directory the log's source becomes its path: a plain source name is filed under
+`syslog/`, while a source that already looks like a path keeps its shape, which is how the lxc logs
+end up under `lxc/`. The complete rule, including how a source containing `..` is rejected, is in
+[Filetree paths](../reference/logserver-sockets.md#filetree-paths).
+
 Browse and tail these files directly under `/storage/logs/<revision>/<container>/`:
 
 ```bash
-ls /storage/logs/0/                  # containers/sources logged for revision 0
+ls /storage/logs/0/                            # containers logged for revision 0
+ls /storage/logs/0/my-container/syslog/        # sources logged by my-container
+tail -f /storage/logs/0/my-container/syslog/myapp
+tail -f /storage/logs/0/my-container/lxc/console.log
 tail -f /storage/logs/0/pantavisor/pantavisor.log
 ```
 
